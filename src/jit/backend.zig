@@ -328,10 +328,10 @@ fn jitNreverse(list_raw: u64) callconv(.c) u64 {
 /// append two lists. Returns tagged value. Allocates new cons cells.
 fn jitAppend(list1_raw: u64, list2_raw: u64) callconv(.c) u64 {
     const list1 = jitResolveForwarded(Value{ .raw = list1_raw });
-    const list2 = jitResolveForwarded(Value{ .raw = list2_raw });
+    const list2 = Value{ .raw = list2_raw };
     if (!list1.isCons()) return list2.raw;
-    // Build reversed copy of list1, then reverse-cons onto list2
-    // jitCons takes (cdr_raw, car_raw) — reversed parameter order!
+
+    // Copy list1 once into a reversed fresh list.
     var rev = Value.nil;
     var curr = list1;
     while (curr.isCons()) {
@@ -342,18 +342,18 @@ fn jitAppend(list1_raw: u64, list2_raw: u64) callconv(.c) u64 {
         rev = Value{ .raw = new_cell };
         curr = jitResolveForwarded(cell.cdr);
     }
-    // Now rev is reversed list1. Reverse-cons onto list2.
-    var result = list2;
-    curr = rev;
-    while (curr.isCons()) {
-        const cell = curr.toPtr(runtime.Cons);
-        const car = jitResolveForwarded(cell.car);
-        const new_cell = jitCons(result.raw, car.raw);
-        if (new_cell == 0) return 0; // OOM
-        result = Value{ .raw = new_cell };
-        curr = jitResolveForwarded(cell.cdr);
-    }
-    return result.raw;
+
+    // Reverse in place so the copied list preserves source order.
+    const copy_head = Value{ .raw = jitNreverse(rev.raw) };
+
+    // `rev` was the head before in-place reverse; now it's the tail.
+    const tail = jitResolveForwarded(rev);
+    const list2_live = jitResolveForwarded(list2);
+    const tail_cell = tail.toPtr(runtime.Cons);
+    tail_cell.cdr = list2_live;
+    jitWriteBarrier(tail.raw, list2_live.raw);
+
+    return copy_head.raw;
 }
 
 /// assoc: lookup in alist by eq. Returns tagged value (pair or nil).
@@ -10154,6 +10154,49 @@ test "hoist phi loop: dump codegen for debugging" {
     const result = f();
     // sum(0..9) = 45, tagged = 91
     try testing.expectEqual(@as(i64, 91), result);
+}
+
+test "jitAppend allocates one copy of left list" {
+    const prev_heap = g_heap;
+    const prev_alloc_ptr = g_alloc_ptr;
+    const prev_alloc_end = g_alloc_end;
+    const prev_batch_ops = g_safepoint_batch_ops;
+    defer {
+        g_heap = prev_heap;
+        g_alloc_ptr = prev_alloc_ptr;
+        g_alloc_end = prev_alloc_end;
+        g_safepoint_batch_ops = prev_batch_ops;
+    }
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+    setHeap(&heap);
+
+    const left = try runtime.primitives.list.list(&heap, &[_]Value{
+        Value.makeFixnum(1),
+        Value.makeFixnum(2),
+        Value.makeFixnum(3),
+    });
+    const right = try runtime.primitives.list.list(&heap, &[_]Value{
+        Value.makeFixnum(4),
+        Value.makeFixnum(5),
+    });
+
+    const before = heap.bytesUsed();
+    const out_raw = jitAppend(left.raw, right.raw);
+    try testing.expect(out_raw != 0);
+    syncHeapFromGlobal(&heap);
+    const after = heap.bytesUsed();
+
+    try testing.expectEqual(@as(usize, @sizeOf(Cons) * 3), after - before);
+
+    const out = Value{ .raw = out_raw };
+    try testing.expectEqual(@as(i64, 5), runtime.primitives.list.length(out));
+    try testing.expectEqual(@as(i64, 1), runtime.primitives.list.nth(out, 0).toFixnum());
+    try testing.expectEqual(@as(i64, 2), runtime.primitives.list.nth(out, 1).toFixnum());
+    try testing.expectEqual(@as(i64, 3), runtime.primitives.list.nth(out, 2).toFixnum());
+    try testing.expectEqual(@as(i64, 4), runtime.primitives.list.nth(out, 3).toFixnum());
+    try testing.expectEqual(@as(i64, 5), runtime.primitives.list.nth(out, 4).toFixnum());
 }
 
 test "jit bridge trampoline enters and unwinds" {

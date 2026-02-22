@@ -1311,3 +1311,14 @@ Environment guard:
 #### Did Not Work
 - A plain `ArenaAllocator` alone was insufficient: Zig allocator `free`/realloc paths poison old buffers, so stale Hoist succ/param slices still became `0xAAAAAAAA` (`src/jit/backend.zig` pre-fix compile path).
 - Using full `zig build test -Duse-hoist=true` as proof for this dot remains noisy in this workspace because an unrelated pre-existing integration segfault (`deep recursive defun does not overflow block stack at 64`) still fails outside the Hoist-succ fix scope.
+
+### Session Notes (2026-02-22, append copy-once in runtime + JIT)
+
+#### Worked Well
+- Replacing append's double-copy path with copy-once tail splice in the runtime primitive (`src/runtime/primitives/list.zig:121`) removed half the cons allocations for left-list elements while preserving output order and GC write-barrier correctness (`setCdr`).
+- Replacing JIT append's reverse-cons double allocation with `jitNreverse` + tail splice (`src/jit/backend.zig:329`) matched runtime semantics with one left-side copy and explicit barrier on the tail link.
+- Locking allocation behavior with focused regressions (`src/runtime/primitives/list.zig:294`, `src/jit/backend.zig:10159`) made allocation-count regressions immediately visible.
+- Running `bench-comp` on parent `cdefc0a7` vs this change showed `list_append` improve from `14.949 ms` to `12.740 ms` in the same harness run shape.
+
+#### Did Not Work
+- Treating full-suite `zig build test` as a gate for this dot remains blocked by the unrelated pre-existing crash in `tests.integration.test.deep recursive defun does not overflow block stack at 64`; targeted append/JIT tests were the stable validation path for this fix.

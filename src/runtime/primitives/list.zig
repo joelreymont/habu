@@ -122,23 +122,20 @@ pub fn append(heap: *Heap, list1: Value, list2: Value) error{OutOfMemory}!Value 
     if (list1.isNil()) return list2;
     if (!list1.isCons()) return list2;
 
-    // Build reversed copy of list1
-    var reversed = Value.nil;
-    var curr = list1;
+    // Copy list1 once, preserving order, then splice list2 at tail.
+    const first_src = list1.toPtr(objects.Cons);
+    const head = try cons(heap, first_src.car, Value.nil);
+    var tail = head;
+    var curr = first_src.cdr;
     while (curr.isCons()) {
-        const c = curr.toPtr(objects.Cons);
-        reversed = try cons(heap, c.car, reversed);
-        curr = c.cdr;
+        const src_cell = curr.toPtr(objects.Cons);
+        const copied = try cons(heap, src_cell.car, Value.nil);
+        setCdr(heap, tail, copied);
+        tail = copied;
+        curr = src_cell.cdr;
     }
-
-    // Cons reversed elements onto list2
-    var result = list2;
-    while (reversed.isCons()) {
-        const c = reversed.toPtr(objects.Cons);
-        result = try cons(heap, c.car, result);
-        reversed = c.cdr;
-    }
-    return result;
+    setCdr(heap, tail, list2);
+    return head;
 }
 
 /// Reverse a list
@@ -292,6 +289,35 @@ test "append" {
     try testing.expectEqual(@as(i64, 2), nth(combined, 1).toFixnum());
     try testing.expectEqual(@as(i64, 3), nth(combined, 2).toFixnum());
     try testing.expectEqual(@as(i64, 4), nth(combined, 3).toFixnum());
+}
+
+test "append allocates one cons per left element" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const lst1 = try list(&heap, &[_]Value{
+        Value.makeFixnum(1),
+        Value.makeFixnum(2),
+        Value.makeFixnum(3),
+    });
+    const lst2 = try list(&heap, &[_]Value{
+        Value.makeFixnum(4),
+        Value.makeFixnum(5),
+    });
+
+    const before = heap.bytesUsed();
+    const combined = try append(&heap, lst1, lst2);
+    const after = heap.bytesUsed();
+
+    try testing.expectEqual(@as(usize, @sizeOf(Cons) * 3), after - before);
+    try testing.expectEqual(@as(i64, 5), length(combined));
+    try testing.expectEqual(@as(i64, 1), nth(combined, 0).toFixnum());
+    try testing.expectEqual(@as(i64, 2), nth(combined, 1).toFixnum());
+    try testing.expectEqual(@as(i64, 3), nth(combined, 2).toFixnum());
+    try testing.expectEqual(@as(i64, 4), nth(combined, 3).toFixnum());
+    try testing.expectEqual(@as(i64, 5), nth(combined, 4).toFixnum());
 }
 
 test "last" {
