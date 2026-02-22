@@ -21,12 +21,15 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Locking the reader relay behavior with a focused integration regression (`src/tests/integration.zig:3032`) gives deterministic coverage for nested read-eval non-local exits across call barriers.
 - Switching `runVmPreserveMacroState` from pointer-classified `currentExtRoots` restore to `saveExtRoots`/`restoreExtRoots` (`src/interp/repl.zig:812`, `src/interp/repl.zig:863`) removed a stale-slice restore path and made nested VM root restoration owner-stable under reallocations.
 - Adding a direct owner-reallocation regression for ext-root snapshots (`src/interp/vm.zig:12759`) locks `restoreExtRoots` semantics so restores rebind by owner and not by stale slice pointers.
+- Treating AArch64 unscaled/pre/post-index load/store forms as first-class register uses in MOVZ liveness (`src/jit/backend.zig:6380`, `src/jit/backend.zig:6421`, `src/jit/backend.zig:6491`) fixed the nested-cons JIT corruption/crash path where live constant materialization for cons stores was being NOPed.
+- Locking MOVZ liveness and nested-cons runtime behavior with focused regressions (`src/jit/backend.zig:7906`, `src/jit/backend.zig:7928`, `src/tests/integration.zig:245`) gives direct red/green coverage for this exact failure mode.
 
 ### Did Not Work
 - Treating all non-symbol atoms in `tagbody` as executable forms was incorrect; CL treats integer atoms as labels too, so tests that expected trailing fixnum atoms as forms were invalid and had to be rewritten (`src/compiler/compile.zig:20972`, `src/compiler/compile.zig:21032`).
 - Relying on contiguous backward scans of only `mov x0..x7,*` before BL/BLR in `fixCallArgMoves` missed valid call setup windows with interleaved target setup ops, leaving indirect-call argument corruption unpatched.
 - Converting read-eval/dispatch callback errors to parser `UnexpectedToken` in bridge hooks (`src/interp/vm.zig` pre-fix `readEvalBridge`/`dispatchMacroBridge`, `src/interp/repl.zig` pre-fix `parserReadEval`/`parserDispatchMacro`) masked real control transfers as parse/type errors and broke `(catch ...)` around `read-from-string` `#.` forms.
 - Restoring nested VM ext roots via pointer-identity classification (`persistent`/`ctx`/`slice`) in `runVmPreserveMacroState` was brittle; unclassified owners fell back to raw slices and risked stale restores after owner reallocation.
+- Restricting load/store read/write detection to the unsigned-offset `0x39*` family in MOVZ dead-code analysis (`src/jit/backend.zig` pre-fix `insnReadsReg`/`insnWritesReg`) missed hoist-emitted unscaled `F8*` forms, so `eliminateDeadMovz` deleted live constants and produced malformed cons cells at runtime.
 
 ## Session Notes (2026-02-21)
 

@@ -27,6 +27,7 @@
   - [ ] `habu-stabilize-eval-vm-d1c1c5cc` Stabilize eval/VM paths under macro-heavy Maxima workloads. Depends on `habu-close-cl-semantic-dac2c058`.
     - [ ] `habu-rca-indirect-call-d9f594ad` RCA and fix JIT indirect-call path root cause (no workaround).
       - [x] `habu-rca-jit-indirect-a4555d20` Harden indirect-call argument move repair for interleaved BLR target setup (`mov/movz/movk`) and duplicate-destination copy chains; add backend machine-code regressions.
+      - [x] `habu-fix-nested-cons-c6b553bd` Fix JIT nested-cons corruption/crash by correcting dead-MOVZ liveness over unscaled/pre/post-index load/store forms (store-value/base reads) and lock with backend + integration regressions.
     - [ ] `habu-fix-nested-eval-420ba9e0` Fix nested eval/non-local exit frame restoration. Depends on `habu-rca-indirect-call-d9f594ad`.
       - [x] `habu-fix-nested-eval-e96f4a89` Preserve non-local exits from reader hooks (`#.`/dispatch) by propagating hook VM errors through parser boundaries; add `read-from-string` throw relay regression.
     - [x] `habu-fix-ext-roots-1da298cf` Use owner-aware ext-root snapshots/restores in nested VM macro-state runs; remove stale slice restore path and add VM regression for owner rebind after root-owner reallocation.

@@ -6377,6 +6377,40 @@ fn isRegDeadFrom(code: []const u8, start_idx: usize, reg: u5, memo: []u8) bool {
 }
 
 /// Check if an ARM64 instruction writes to a specific register.
+fn isLoadStoreImmediate(insn: u32) bool {
+    // Unsigned offset loads/stores (includes 8/16/32/64/128-bit families).
+    if (insn & 0x3B000000 == 0x39000000) return true;
+
+    // Unscaled/pre/post-index loads/stores.
+    const mode = insn & 0x3B200C00;
+    return mode == 0x38000000 or // STUR
+        mode == 0x38400000 or // LDUR
+        mode == 0x38000400 or // STR post-index
+        mode == 0x38400400 or // LDR post-index
+        mode == 0x38000C00 or // STR pre-index
+        mode == 0x38400C00; // LDR pre-index
+}
+
+fn isStoreImmediate(insn: u32) bool {
+    if (!isLoadStoreImmediate(insn)) return false;
+    const opc: u2 = @truncate((insn >> 22) & 0x3);
+    return opc == 0; // store
+}
+
+fn isLoadImmediate(insn: u32) bool {
+    if (!isLoadStoreImmediate(insn)) return false;
+    const opc: u2 = @truncate((insn >> 22) & 0x3);
+    return opc != 0; // load / load+extend
+}
+
+fn hasLoadStoreWriteback(insn: u32) bool {
+    const mode = insn & 0x3B200C00;
+    return mode == 0x38000400 or // post-index
+        mode == 0x38400400 or // post-index
+        mode == 0x38000C00 or // pre-index
+        mode == 0x38400C00; // pre-index
+}
+
 fn insnWritesReg(insn: u32, reg: u5) bool {
     // Most data-processing instructions write to Rd (bits 4:0)
     const rd: u5 = @truncate(insn & 0x1F);
@@ -6397,10 +6431,21 @@ fn insnWritesReg(insn: u32, reg: u5) bool {
     // MUL/MADD/MSUB: writes Rd
     if (insn & 0x1F800000 == 0x1B000000) return rd == reg;
 
-    // Load: writes Rt (bits 4:0)
-    if (insn & 0x3B000000 == 0x39000000) return rd == reg; // LDR unsigned offset
-    if (insn & 0x3B200C00 == 0x38000400) return rd == reg; // LDR post-index
-    if (insn & 0x3B200C00 == 0x38000C00) return rd == reg; // LDR pre-index
+    // Load/store immediate classes (unsigned + unscaled/pre/post-index).
+    if (isLoadImmediate(insn)) {
+        const rt: u5 = @truncate(insn & 0x1F);
+        if (rt == reg) return true;
+        // Pre/post-index forms update the base register as well.
+        if (hasLoadStoreWriteback(insn)) {
+            const rn: u5 = @truncate((insn >> 5) & 0x1F);
+            if (rn == reg) return true;
+        }
+        return false;
+    }
+    if (isStoreImmediate(insn) and hasLoadStoreWriteback(insn)) {
+        const rn: u5 = @truncate((insn >> 5) & 0x1F);
+        return rn == reg;
+    }
 
     // LDP: writes Rt (bits 4:0) AND Rt2 (bits 14:10)
     if (insn & 0x7FC00000 == 0xA9400000 or insn & 0x7FE00000 == 0xA8C00000 or
@@ -6447,9 +6492,8 @@ fn insnReadsReg(insn: u32, reg: u5) bool {
         return rn == reg or rm == reg or ra == reg;
     }
 
-    // Store: reads Rt (data) and Rn (address base)
-    if (insn & 0x3B000000 == 0x39000000 and insn & 0x00C00000 == 0x00000000) {
-        // STR unsigned offset
+    // Store immediate classes: reads Rt (data) and Rn (base)
+    if (isStoreImmediate(insn)) {
         const rt: u5 = @truncate(insn & 0x1F);
         const rn: u5 = @truncate((insn >> 5) & 0x1F);
         return rt == reg or rn == reg;
@@ -6470,8 +6514,8 @@ fn insnReadsReg(insn: u32, reg: u5) bool {
         return rn == reg or rm == reg;
     }
 
-    // Load with register: reads Rn (base)
-    if (insn & 0x3B000000 == 0x39000000) {
+    // Load immediate classes: reads Rn (base)
+    if (isLoadImmediate(insn)) {
         const rn: u5 = @truncate((insn >> 5) & 0x1F);
         return rn == reg;
     }
@@ -7901,6 +7945,50 @@ test "isRegDeadAfter keeps movz live in cset-elided graph" {
     for (insns) |insn| try appendInsn(&code, testing.allocator, insn);
 
     try testing.expect(!isRegDeadAfter(code.items, 10, 3));
+}
+
+test "eliminateDeadMovz keeps movz live for store data operands" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    try appendInsn(&code, testing.allocator, 0xD28000A1); // movz x1, #5
+    try appendInsn(&code, testing.allocator, 0xF80000C1); // str x1, [x6]
+    try appendInsn(&code, testing.allocator, 0xD28000E1); // movz x1, #7 (dead)
+    try appendInsn(&code, testing.allocator, 0xD65F03C0); // ret
+
+    eliminateDeadMovz(code.items);
+
+    try testing.expectEqual(@as(u32, 0xD28000A1), readInsn(code.items, 0));
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(code.items, 2));
+}
+
+test "eliminateDeadMovz keeps movz live for unscaled load base" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    try appendInsn(&code, testing.allocator, 0xD2800063); // movz x3, #3
+    try appendInsn(&code, testing.allocator, 0xF8400066); // ldr x6, [x3]
+    try appendInsn(&code, testing.allocator, 0xD2800003); // movz x3, #0 (dead)
+    try appendInsn(&code, testing.allocator, 0xD65F03C0); // ret
+
+    eliminateDeadMovz(code.items);
+
+    try testing.expectEqual(@as(u32, 0xD2800063), readInsn(code.items, 0));
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(code.items, 2));
 }
 
 test "coalesceMovs keeps source live across loop backedge" {
