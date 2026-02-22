@@ -4629,20 +4629,32 @@ fn patchSelfCallsToBL(buf: []u8, placeholder: u64) bool {
         }
         if (mov_idx == null) continue;
 
-        // Scan backward from MOV for the MOVZ+MOVK sequence that loaded src_reg.
-        // It could be anywhere earlier in the function (preEmitConstants puts it in entry).
+        // Resolve the reaching definition of `src_reg` for this MOV x9,src_reg.
+        // Only rewrite when the nearest definition is the exact self-placeholder
+        // MOVZ+MOVK+MOVK+MOVK chain. This avoids retargeting unrelated calls that
+        // happen to reuse the same source register after loading a different target.
         var load_idx: ?usize = null;
         {
+            var def_idx: ?usize = null;
             var j: usize = mov_idx.?;
-            while (j >= 4) {
+            while (j > 0) {
                 j -= 1;
-                if (isPlaceholderLoad(buf, j, ph)) |rd| {
-                    if (rd == src_reg) {
-                        load_idx = j;
-                        break;
+                const w = readInsn(buf, j);
+                if (w == NOP) continue;
+                if (@as(u5, @truncate(w & 0x1F)) == src_reg) {
+                    def_idx = j;
+                    break;
+                }
+            }
+            if (def_idx) |di| {
+                if (di >= 3) {
+                    const start = di - 3;
+                    if (isPlaceholderLoad(buf, start, ph)) |rd| {
+                        if (rd == src_reg) {
+                            load_idx = start;
+                        }
                     }
                 }
-                if (j == 0) break;
             }
         }
         if (load_idx == null) continue;
@@ -8071,6 +8083,30 @@ test "fixCallArgMoves stops at non-target movz setup" {
     try testing.expectEqual(old19, regs[0]);
     try testing.expectEqual(@as(u64, 3), regs[1]);
     try testing.expectEqual(old1, regs[2]);
+}
+
+test "patchSelfCallsToBL only rewrites true self target" {
+    const placeholder: u64 = 0x1122_3344_5566_7788;
+    const other_target: u64 = 0x0000_ABCD_EF01_2468;
+    const words = [_]u32{
+        makeMovzImm(1, @truncate(placeholder), 0),
+        makeMovkImm(1, @truncate(placeholder >> 16), 1),
+        makeMovkImm(1, @truncate(placeholder >> 32), 2),
+        makeMovkImm(1, @truncate(placeholder >> 48), 3),
+        makeMovInsn(9, 1),
+        0xD63F0120, // BLR x9 (self target)
+        makeMovzImm(1, @truncate(other_target), 0),
+        makeMovkImm(1, @truncate(other_target >> 16), 1),
+        makeMovkImm(1, @truncate(other_target >> 32), 2),
+        makeMovInsn(9, 1),
+        0xD63F0120, // BLR x9 (non-self target)
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    try testing.expect(patchSelfCallsToBL(&code, placeholder));
+    try testing.expect(readInsn(&code, 5) & 0xFC000000 == 0x94000000);
+    try testing.expectEqual(@as(u32, 0xD63F0120), readInsn(&code, 10));
 }
 
 test "containsHelperCalls excludes numeric ops under fixnum inline lowering" {

@@ -1322,3 +1322,15 @@ Environment guard:
 
 #### Did Not Work
 - Treating full-suite `zig build test` as a gate for this dot remains blocked by the unrelated pre-existing crash in `tests.integration.test.deep recursive defun does not overflow block stack at 64`; targeted append/JIT tests were the stable validation path for this fix.
+
+### Session Notes (2026-02-22, JIT self-call patch RCA + safety gate restore)
+
+#### Worked Well
+- Reproducing with a minimal recursive program under Hoist (`/tmp/recur.habu`) and dumping final machine code (`HABU_DUMP_HOIST=1`) exposed the real fault: self-call patching rewrote a later non-self BLR to self when the same source register was reused (`src/jit/backend.zig:4632`).
+- Fixing `patchSelfCallsToBL` to use the nearest reaching definition of the BLR source register (`src/jit/backend.zig:4638`) eliminated false self-call rewrites and removed the recursive JIT crash path.
+- Adding a low-level regression for mixed self/non-self target reuse (`src/jit/backend.zig:8088`) locked the patcher behavior directly at machine-instruction level.
+- Restoring a JIT admission safety gate (`src/jit/candidates.zig:98`) preserved CL safety semantics (`TypeMismatch` paths) by avoiding unsafe JIT arithmetic lowering for non-`safety 0` lambdas.
+- Adding an integration regression for recursive `safety 0` JIT execution (`src/tests/integration.zig:560`) ensured recursive call lowering still works under the intended admission policy.
+
+#### Did Not Work
+- Running full `zig build test -Duse-hoist=true` as an always-clean gate remained unreliable in this workspace due occasional lingering `test --listen` runners; targeted filters plus explicit stale-runner cleanup were the stable validation path for this RCA/fix cycle.

@@ -95,6 +95,10 @@ pub fn ineligibleReason(lambda_ir: *const Ir) ?IneligibleReason {
     if (lambda_ir.* != .lambda) return .not_lambda;
     const lambda = lambda_ir.lambda;
 
+    // Current JIT lowering assumes unsafe arithmetic helpers and skips dynamic
+    // type checks. Preserve CL safety semantics by admitting only safety=0.
+    if (lambda.safety != 0) return .safety;
+
     // Skip functions whose body is just a type assertion.
     if (lambda.body.* == .assert_fixnum) return .assert_fixnum_body;
     // Keep current bridge constraints.

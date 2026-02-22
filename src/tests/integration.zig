@@ -557,6 +557,47 @@ test "deep recursive defun does not overflow block stack at 64" {
     try testing.expectEqual(@as(i64, 96), result.toFixnum());
 }
 
+test "recursive safety-0 defun runs correctly under JIT" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    const before = vm.jit_fns.count();
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defun jit-depth-sum (n) (declare (optimize (speed 3) (safety 0))) (if (<= n 0) 0 (+ 1 (jit-depth-sum (- n 1)))))",
+    ));
+    try testing.expect(vm.jit_fns.count() >= before + 1);
+
+    const result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-depth-sum 96)",
+    ));
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 96), result.toFixnum());
+}
+
 test "compileChunk JIT handles recursive nqueens helper entry copies" {
     if (!build_options.use_hoist) return;
 
