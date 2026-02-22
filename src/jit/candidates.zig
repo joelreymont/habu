@@ -95,8 +95,7 @@ pub fn ineligibleReason(lambda_ir: *const Ir) ?IneligibleReason {
     if (lambda_ir.* != .lambda) return .not_lambda;
     const lambda = lambda_ir.lambda;
 
-    // Require explicit (optimize (speed 3) (safety 0)) for JIT.
-    if (lambda.speed < 3) return .speed;
+    // Safety=0 required until JIT call bridge can relay Lisp conditions.
     if (lambda.safety > 0) return .safety;
     // Skip functions whose body is just a type assertion.
     if (lambda.body.* == .assert_fixnum) return .assert_fixnum_body;

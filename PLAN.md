@@ -145,8 +145,11 @@
       - Remaining blocker: strict JIT admission requires explicit `(optimize (speed 3) (safety 0))`; current Maxima workload functions do not meet this, so no Maxima functions are hoist-compiled yet.
   - [ ] `habu-unlock-generic-jit-026e30f3` Unlock generic JIT admission after post-hoist.
     - [x] `habu-add-jit-skip-2302fb62` Add JIT skip-reason telemetry.
-    - [ ] `habu-broaden-safe-admission-d08e543b` Broaden safe admission without opt-decl dependency.
-    - [ ] `habu-rebaseline-admission-and-990a7df6` Rebaseline admission and gate on wins.
+    - [x] `habu-broaden-safe-admission-d08e543b` Broaden safe admission without opt-decl dependency.
+    - [x] `habu-rebaseline-admission-and-990a7df6` Rebaseline admission and gate on wins.
+    - [ ] `habu-relay-jit-bridge-535dce04` Relay JIT bridge errors without panic.
+      - Rebaseline (`tools/maxima-hotspots --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-22): `jit_compiled=0`, `jit_adm.cand=4145`, `jit_adm.sk_safety=4143`, gate `pass=false`.
+      - Blocker: enabling safety>0 admission still crashes through JIT bridge on Lisp non-local exits (`UnhandledThrow`), so bridge condition relay is required before expanding admission further.
 
 ### 0. Plan Control
 - [ ] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

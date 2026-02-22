@@ -185,7 +185,10 @@ test "compileChunk records JIT admission counters" {
         &comp,
         &chunk_pool,
         "(progn\n" ++
-            "  (defun jit-skip-speed (n)\n" ++
+            "  (defun jit-skip-opt (n &optional m)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (+ n (if m m 0)))\n" ++
+            "  (defun jit-no-decl (n)\n" ++
             "    (+ n 1))\n" ++
             "  (defun jit-ok-adm (n)\n" ++
             "    (declare (optimize (speed 3) (safety 0)))\n" ++
@@ -193,7 +196,7 @@ test "compileChunk records JIT admission counters" {
     ));
 
     try testing.expect(vm.jit_adm.cand >= 2);
-    try testing.expect(vm.jit_adm.sk_speed >= 1);
+    try testing.expect(vm.jit_adm.sk_opt >= 1);
     try testing.expect(vm.jit_adm.elig >= 1);
     try testing.expect(vm.jit_adm.comp >= 1);
 }
