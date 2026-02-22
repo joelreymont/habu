@@ -118,13 +118,25 @@ fn tryHoistCompile(
     @memset(used_chunks, false);
 
     for (candidates.items) |candidate| {
-        if (!jit_candidates.isEligible(candidate.lambda_ir)) {
+        vm.jit_adm.cand += 1;
+        if (jit_candidates.ineligibleReason(candidate.lambda_ir)) |reason| {
+            switch (reason) {
+                .not_lambda => vm.jit_adm.fail_other += 1,
+                .speed => vm.jit_adm.sk_speed += 1,
+                .safety => vm.jit_adm.sk_safety += 1,
+                .assert_fixnum_body => vm.jit_adm.sk_assert += 1,
+                .captures => vm.jit_adm.sk_caps += 1,
+                .optional_params => vm.jit_adm.sk_opt += 1,
+                .key_params => vm.jit_adm.sk_key += 1,
+                .rest_param => vm.jit_adm.sk_rest += 1,
+            }
             if (trace and candidate.lambda_ir.* == .lambda) {
                 const lambda = candidate.lambda_ir.lambda;
                 std.debug.print(
-                    "JIT bench: skip '{s}' speed={d} safety={d} caps={d} opt={d} key={d} rest={}\n",
+                    "JIT bench: skip '{s}' reason={s} speed={d} safety={d} caps={d} opt={d} key={d} rest={}\n",
                     .{
                         candidate.name,
+                        jit_candidates.reasonLabel(reason),
                         lambda.speed,
                         lambda.safety,
                         lambda.captures.len,
@@ -138,9 +150,11 @@ fn tryHoistCompile(
         }
 
         const chunk_ptr = jit_candidates.findMatchingChunk(&candidate, child_chunks, used_chunks) orelse {
+            vm.jit_adm.sk_chunk += 1;
             if (trace) std.debug.print("JIT bench: no chunk for '{s}' local={s}\n", .{ candidate.name, candidate.local_name });
             continue;
         };
+        vm.jit_adm.elig += 1;
 
         const lambda = candidate.lambda_ir.lambda;
         if (trace) {
@@ -161,6 +175,11 @@ fn tryHoistCompile(
         }
 
         const compiled = jit_backend.compileIr(allocator, candidate.lambda_ir, candidate.name) catch |err| {
+            if (err == error.UnsupportedIrNode) {
+                vm.jit_adm.fail_unsupported += 1;
+            } else {
+                vm.jit_adm.fail_other += 1;
+            }
             if (trace) {
                 if (err == error.UnsupportedIrNode) {
                     const bad = jit_backend.IrTranslator.firstUnsupportedTag(lambda.body) orelse std.meta.activeTag(lambda.body.*);
@@ -176,13 +195,18 @@ fn tryHoistCompile(
             }
             continue;
         };
-        const persistent = try allocator.create(jit_backend.CompiledFn);
+        const persistent = allocator.create(jit_backend.CompiledFn) catch {
+            vm.jit_adm.fail_other += 1;
+            return error.OutOfMemory;
+        };
         persistent.* = compiled;
         vm.registerJitFn(chunk_ptr, persistent) catch {
             persistent.deinit();
             allocator.destroy(persistent);
+            vm.jit_adm.fail_other += 1;
             return error.OutOfMemory;
         };
+        vm.jit_adm.comp += 1;
         if (trace) std.debug.print("JIT bench: registered '{s}' map={d}\n", .{ candidate.name, vm.jit_fns.count() });
     }
 }

@@ -574,6 +574,7 @@ pub fn main() !void {
     try repl.init(allocator, &heap, .{});
     defer repl.deinit();
     try repl.wireGlobalEnv();
+    repl.vm.resetJitAdm();
 
     var timer = try std.time.Timer.start();
 
@@ -603,6 +604,7 @@ pub fn main() !void {
         try benches.append(allocator, runBench(allocator, &timer, &repl, def, opts.scale));
     }
     const jit_compiled = repl.vm.jit_fns.count();
+    const jit_adm = repl.vm.jit_adm;
     const gc_after_run = gcSnap(&heap);
     const gc_load = gcDelta(gc_start, gc_after_load);
     const gc_run = gcDelta(gc_after_load, gc_after_run);
@@ -631,6 +633,7 @@ pub fn main() !void {
             .nursery_mb = opts.nursery_mb,
             .scale = opts.scale,
             .jit_compiled = jit_compiled,
+            .jit_adm = jit_adm,
             .loader = .{
                 .ok = loader.ok,
                 .total = loader.total,
@@ -654,6 +657,24 @@ pub fn main() !void {
     try w.print("Maxima workload benchmark (Habu)\n", .{});
     try w.print("  heap: {d} MiB, nursery: {d} MiB, scale: {d}\n", .{ opts.heap_mb, opts.nursery_mb, opts.scale });
     try w.print("  jit_compiled: {d}\n", .{jit_compiled});
+    try w.print(
+        "  jit_adm: cand={d} elig={d} comp={d} sk(speed={d},safety={d},assert={d},caps={d},opt={d},key={d},rest={d},chunk={d}) fail(unsupported={d},other={d})\n",
+        .{
+            jit_adm.cand,
+            jit_adm.elig,
+            jit_adm.comp,
+            jit_adm.sk_speed,
+            jit_adm.sk_safety,
+            jit_adm.sk_assert,
+            jit_adm.sk_caps,
+            jit_adm.sk_opt,
+            jit_adm.sk_key,
+            jit_adm.sk_rest,
+            jit_adm.sk_chunk,
+            jit_adm.fail_unsupported,
+            jit_adm.fail_other,
+        },
+    );
     try w.print(
         "  loader: ok={d}/{d}, fail={d}, attempted={d}, missing={d}, {d:.3} ms\n",
         .{ loader.ok, loader.total, loader.fail, loader.attempted, loader.missing, @as(f64, @floatFromInt(loader.ns)) / 1e6 },

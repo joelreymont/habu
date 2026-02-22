@@ -1072,39 +1072,39 @@ pub const Repl = struct {
         };
     }
 
-fn pushRootValue(vm: *Vm, root_idx: u16, stack_idx: u16, root_val: Value) !void {
-    try ensureVmGlobalRootStackSlots(vm, root_idx, stack_idx);
-    const saved_root = vm.resolveForwardedValue(vm.globals[root_idx]);
-    const saved_stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
-    const live_root = vm.resolveForwardedValue(root_val);
-    vm.globals[root_idx] = live_root;
-    errdefer {
-        vm.globals[root_idx] = saved_root;
-        vm.globals[stack_idx] = saved_stack;
+    fn pushRootValue(vm: *Vm, root_idx: u16, stack_idx: u16, root_val: Value) !void {
+        try ensureVmGlobalRootStackSlots(vm, root_idx, stack_idx);
+        const saved_root = vm.resolveForwardedValue(vm.globals[root_idx]);
+        const saved_stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
+        const live_root = vm.resolveForwardedValue(root_val);
+        vm.globals[root_idx] = live_root;
+        errdefer {
+            vm.globals[root_idx] = saved_root;
+            vm.globals[stack_idx] = saved_stack;
+        }
+        const extra = [_]Value{live_root};
+        vm.globals[stack_idx] = try allocRootCons(vm, saved_root, saved_stack, extra[0..]);
     }
-    const extra = [_]Value{live_root};
-    vm.globals[stack_idx] = try allocRootCons(vm, saved_root, saved_stack, extra[0..]);
-}
 
-fn popRootValue(vm: *Vm, root_idx: u16, stack_idx: u16) void {
-    if (root_idx >= vm.globals.len or stack_idx >= vm.globals.len) return;
-    const stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
-    vm.globals[stack_idx] = stack;
-    if (!stack.isCons()) {
-        vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
-        vm.globals[stack_idx] = Value.nil;
-        return;
+    fn popRootValue(vm: *Vm, root_idx: u16, stack_idx: u16) void {
+        if (root_idx >= vm.globals.len or stack_idx >= vm.globals.len) return;
+        const stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
+        vm.globals[stack_idx] = stack;
+        if (!stack.isCons()) {
+            vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+            vm.globals[stack_idx] = Value.nil;
+            return;
+        }
+        const stack_addr = stack.toPtrAddr();
+        if (!vm.heap.containsAddrForDebug(stack_addr)) {
+            vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+            vm.globals[stack_idx] = Value.nil;
+            return;
+        }
+        const cell = stack.toPtr(Cons);
+        vm.globals[root_idx] = vm.resolveForwardedValue(cell.car);
+        vm.globals[stack_idx] = vm.resolveForwardedValue(cell.cdr);
     }
-    const stack_addr = stack.toPtrAddr();
-    if (!vm.heap.containsAddrForDebug(stack_addr)) {
-        vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
-        vm.globals[stack_idx] = Value.nil;
-        return;
-    }
-    const cell = stack.toPtr(Cons);
-    vm.globals[root_idx] = vm.resolveForwardedValue(cell.car);
-    vm.globals[stack_idx] = vm.resolveForwardedValue(cell.cdr);
-}
 
     fn compileExprRooted(self: *Repl, vm: *Vm, expr: Value, env: *const Env) !*Ir {
         const root_idx = try self.ensureLoadFormRootGlobal();
@@ -1115,64 +1115,64 @@ fn popRootValue(vm: *Vm, root_idx: u16, stack_idx: u16) void {
         return self.compiler.compile(live_expr, env);
     }
 
-fn pushMacroCallRoots(
-    vm: *Vm,
-    root_idx: u16,
-    stack_idx: u16,
+    fn pushMacroCallRoots(
+        vm: *Vm,
+        root_idx: u16,
+        stack_idx: u16,
         tmp_idx: u16,
         args: Value,
         whole_form: Value,
-) !void {
-    try ensureVmGlobalRootSlots(vm, root_idx, stack_idx, tmp_idx);
-    const saved_root = vm.resolveForwardedValue(vm.globals[root_idx]);
-    const saved_tmp = vm.resolveForwardedValue(vm.globals[tmp_idx]);
-    const saved_stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
-    const args_live = vm.resolveForwardedValue(args);
-    const whole_live = vm.resolveForwardedValue(whole_form);
-    vm.globals[root_idx] = args_live;
-    vm.globals[tmp_idx] = whole_live;
-    errdefer {
-        vm.globals[root_idx] = saved_root;
-        vm.globals[tmp_idx] = saved_tmp;
+    ) !void {
+        try ensureVmGlobalRootSlots(vm, root_idx, stack_idx, tmp_idx);
+        const saved_root = vm.resolveForwardedValue(vm.globals[root_idx]);
+        const saved_tmp = vm.resolveForwardedValue(vm.globals[tmp_idx]);
+        const saved_stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
+        const args_live = vm.resolveForwardedValue(args);
+        const whole_live = vm.resolveForwardedValue(whole_form);
+        vm.globals[root_idx] = args_live;
+        vm.globals[tmp_idx] = whole_live;
+        errdefer {
+            vm.globals[root_idx] = saved_root;
+            vm.globals[tmp_idx] = saved_tmp;
+        }
+        const saved_pair = try allocRootCons(vm, saved_root, saved_tmp, &[_]Value{ args_live, whole_live });
+        vm.globals[stack_idx] = try allocRootCons(vm, saved_pair, saved_stack, &[_]Value{ args_live, whole_live, saved_pair });
     }
-    const saved_pair = try allocRootCons(vm, saved_root, saved_tmp, &[_]Value{ args_live, whole_live });
-    vm.globals[stack_idx] = try allocRootCons(vm, saved_pair, saved_stack, &[_]Value{ args_live, whole_live, saved_pair });
-}
 
-fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void {
-    if (root_idx >= vm.globals.len or stack_idx >= vm.globals.len or tmp_idx >= vm.globals.len) return;
-    const stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
-    vm.globals[stack_idx] = stack;
-    if (!stack.isCons()) {
-        vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
-        vm.globals[tmp_idx] = vm.resolveForwardedValue(vm.globals[tmp_idx]);
-        vm.globals[stack_idx] = Value.nil;
-        return;
+    fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void {
+        if (root_idx >= vm.globals.len or stack_idx >= vm.globals.len or tmp_idx >= vm.globals.len) return;
+        const stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
+        vm.globals[stack_idx] = stack;
+        if (!stack.isCons()) {
+            vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+            vm.globals[tmp_idx] = vm.resolveForwardedValue(vm.globals[tmp_idx]);
+            vm.globals[stack_idx] = Value.nil;
+            return;
+        }
+        if (!vm.heap.containsAddrForDebug(stack.toPtrAddr())) {
+            vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+            vm.globals[tmp_idx] = vm.resolveForwardedValue(vm.globals[tmp_idx]);
+            vm.globals[stack_idx] = Value.nil;
+            return;
+        }
+        const stack_cell = stack.toPtr(Cons);
+        const next_stack = vm.resolveForwardedValue(stack_cell.cdr);
+        const saved_pair = vm.resolveForwardedValue(stack_cell.car);
+        vm.globals[stack_idx] = next_stack;
+        if (!saved_pair.isCons()) {
+            vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+            vm.globals[tmp_idx] = vm.resolveForwardedValue(vm.globals[tmp_idx]);
+            return;
+        }
+        if (!vm.heap.containsAddrForDebug(saved_pair.toPtrAddr())) {
+            vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+            vm.globals[tmp_idx] = vm.resolveForwardedValue(vm.globals[tmp_idx]);
+            return;
+        }
+        const pair = saved_pair.toPtr(Cons);
+        vm.globals[root_idx] = vm.resolveForwardedValue(pair.car);
+        vm.globals[tmp_idx] = vm.resolveForwardedValue(pair.cdr);
     }
-    if (!vm.heap.containsAddrForDebug(stack.toPtrAddr())) {
-        vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
-        vm.globals[tmp_idx] = vm.resolveForwardedValue(vm.globals[tmp_idx]);
-        vm.globals[stack_idx] = Value.nil;
-        return;
-    }
-    const stack_cell = stack.toPtr(Cons);
-    const next_stack = vm.resolveForwardedValue(stack_cell.cdr);
-    const saved_pair = vm.resolveForwardedValue(stack_cell.car);
-    vm.globals[stack_idx] = next_stack;
-    if (!saved_pair.isCons()) {
-        vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
-        vm.globals[tmp_idx] = vm.resolveForwardedValue(vm.globals[tmp_idx]);
-        return;
-    }
-    if (!vm.heap.containsAddrForDebug(saved_pair.toPtrAddr())) {
-        vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
-        vm.globals[tmp_idx] = vm.resolveForwardedValue(vm.globals[tmp_idx]);
-        return;
-    }
-    const pair = saved_pair.toPtr(Cons);
-    vm.globals[root_idx] = vm.resolveForwardedValue(pair.car);
-    vm.globals[tmp_idx] = vm.resolveForwardedValue(pair.cdr);
-}
 
     /// Helper to set a CL global: intern symbol in CL, define global, set value
     fn setClGlobal(self: *Repl, sym_name: []const u8, value: Value) !void {
@@ -2869,12 +2869,24 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
 
         var compiled_any = false;
         for (candidates.items) |candidate| {
+            self.vm.jit_adm.cand += 1;
             const lambda_ir = candidate.lambda_ir;
-            if (!jit_candidates.isEligible(lambda_ir)) {
+            if (jit_candidates.ineligibleReason(lambda_ir)) |reason| {
+                switch (reason) {
+                    .not_lambda => self.vm.jit_adm.fail_other += 1,
+                    .speed => self.vm.jit_adm.sk_speed += 1,
+                    .safety => self.vm.jit_adm.sk_safety += 1,
+                    .assert_fixnum_body => self.vm.jit_adm.sk_assert += 1,
+                    .captures => self.vm.jit_adm.sk_caps += 1,
+                    .optional_params => self.vm.jit_adm.sk_opt += 1,
+                    .key_params => self.vm.jit_adm.sk_key += 1,
+                    .rest_param => self.vm.jit_adm.sk_rest += 1,
+                }
                 if (trace and lambda_ir.* == .lambda) {
                     const lambda = lambda_ir.lambda;
-                    std.debug.print("JIT: skip '{s}' speed={d} safety={d} captures={d} opt={d} key={d} rest={}\n", .{
+                    std.debug.print("JIT: skip '{s}' reason={s} speed={d} safety={d} captures={d} opt={d} key={d} rest={}\n", .{
                         candidate.name,
+                        jit_candidates.reasonLabel(reason),
                         lambda.speed,
                         lambda.safety,
                         lambda.captures.len,
@@ -2887,11 +2899,13 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
             }
 
             const chunk_ptr = jit_candidates.findMatchingChunk(&candidate, child_chunks, used_chunks) orelse {
+                self.vm.jit_adm.sk_chunk += 1;
                 if (trace) {
                     std.debug.print("JIT: no matching chunk for '{s}' local={s}\n", .{ candidate.name, candidate.local_name });
                 }
                 continue;
             };
+            self.vm.jit_adm.elig += 1;
 
             if (trace and lambda_ir.* == .lambda) {
                 const lambda = lambda_ir.lambda;
@@ -2907,8 +2921,13 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
                 });
             }
 
-            if (self.doHoistCompile(lambda_ir, candidate.name, chunk_ptr)) {
-                compiled_any = true;
+            switch (self.doHoistCompile(lambda_ir, candidate.name, chunk_ptr)) {
+                .compiled => {
+                    compiled_any = true;
+                    self.vm.jit_adm.comp += 1;
+                },
+                .unsupported => self.vm.jit_adm.fail_unsupported += 1,
+                .failed => self.vm.jit_adm.fail_other += 1,
             }
         }
 
@@ -2921,7 +2940,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         lambda_ir: *const Ir,
         name: []const u8,
         chunk_ptr: *const runtime.objects.Chunk,
-    ) bool {
+    ) enum { compiled, unsupported, failed } {
         // Build known_fns map from existing hoist-compiled functions
         var known_fns = std.StringHashMap(jit_backend.KnownFn).init(self.allocator);
         defer known_fns.deinit();
@@ -2947,7 +2966,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
                 if (trace) {
                     std.debug.print("JIT: literal root prep failed for '{s}': {s}\n", .{ name, @errorName(err) });
                 }
-                return false;
+                return .failed;
             };
         }
         const literal_roots_ptr: ?*const jit_backend.LiteralRoots = if (literal_roots.count() > 0)
@@ -2959,11 +2978,12 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
             if (trace) {
                 std.debug.print("JIT: hoist compile failed for '{s}': {s}\n", .{ name, @errorName(err) });
             }
-            return false;
+            if (err == error.UnsupportedIrNode) return .unsupported;
+            return .failed;
         };
         const persistent = self.allocator.create(jit_backend.CompiledFn) catch {
             compiled.deinit();
-            return false;
+            return .failed;
         };
         persistent.* = compiled;
 
@@ -2975,7 +2995,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
             const ir_arena = self.allocator.create(std.heap.ArenaAllocator) catch {
                 persistent.deinit();
                 self.allocator.destroy(persistent);
-                return false;
+                return .failed;
             };
             ir_arena.* = std.heap.ArenaAllocator.init(self.allocator);
             const ir_alloc = ir_arena.allocator();
@@ -2988,9 +3008,9 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
                 self.vm.registerJitFn(chunk_ptr, persistent) catch {
                     persistent.deinit();
                     self.allocator.destroy(persistent);
-                    return false;
+                    return .failed;
                 };
-                return true;
+                return .compiled;
             };
             const params_copy = ir_alloc.alloc([]const u8, lambda.params.len) catch {
                 ir_arena.deinit();
@@ -2999,9 +3019,9 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
                 self.vm.registerJitFn(chunk_ptr, persistent) catch {
                     persistent.deinit();
                     self.allocator.destroy(persistent);
-                    return false;
+                    return .failed;
                 };
-                return true;
+                return .compiled;
             };
             for (lambda.params, 0..) |p, pi| {
                 params_copy[pi] = ir_alloc.dupe(u8, p) catch {
@@ -3011,9 +3031,9 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
                     self.vm.registerJitFn(chunk_ptr, persistent) catch {
                         persistent.deinit();
                         self.allocator.destroy(persistent);
-                        return false;
+                        return .failed;
                     };
-                    return true;
+                    return .compiled;
                 };
             }
             persistent.ir_arena = ir_arena;
@@ -3026,7 +3046,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         self.vm.registerJitFn(chunk_ptr, persistent) catch {
             persistent.deinit();
             self.allocator.destroy(persistent);
-            return false;
+            return .failed;
         };
 
         // Post-registration: patch cross-calls from BLR to BL (direct call).
@@ -3045,7 +3065,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
                 _ = self.vm.jit_fns.remove(@intFromPtr(chunk_ptr));
                 persistent.deinit();
                 self.allocator.destroy(persistent);
-                return false;
+                return .failed;
             };
             jit_backend.patchCrossCallsToBL(code_ptr, code_len, fn_base);
             // Flush icache and restore exec permission
@@ -3057,7 +3077,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
                 _ = self.vm.jit_fns.remove(@intFromPtr(chunk_ptr));
                 persistent.deinit();
                 self.allocator.destroy(persistent);
-                return false;
+                return .failed;
             };
         }
 
@@ -3067,7 +3087,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
                 @intFromPtr(chunk_ptr), self.vm.jit_fns.count(),
             });
         }
-        return true;
+        return .compiled;
     }
 
     /// Run the REPL loop with File-based I/O

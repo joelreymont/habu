@@ -434,6 +434,22 @@ fn jitCallBridge7(ctx: *anyopaque, fn_raw: u64, arg0: u64, arg1: u64, arg2: u64,
 }
 
 pub const Vm = struct {
+    pub const JitAdmStats = struct {
+        cand: u64 = 0,
+        elig: u64 = 0,
+        comp: u64 = 0,
+        sk_speed: u64 = 0,
+        sk_safety: u64 = 0,
+        sk_assert: u64 = 0,
+        sk_caps: u64 = 0,
+        sk_opt: u64 = 0,
+        sk_key: u64 = 0,
+        sk_rest: u64 = 0,
+        sk_chunk: u64 = 0,
+        fail_unsupported: u64 = 0,
+        fail_other: u64 = 0,
+    };
+
     /// Value stack
     stack: [STACK_SIZE]Value,
     /// Stack pointer (next free slot)
@@ -599,6 +615,7 @@ pub const Vm = struct {
 
     /// Stable host-root slots for JIT literal Values.
     jit_literal_roots: std.ArrayList(*Value),
+    jit_adm: JitAdmStats,
 
     trace_jit_call: bool,
     trace_fn_resolve: bool,
@@ -994,6 +1011,7 @@ pub const Vm = struct {
             .ext_roots_owner = null,
             .jit_fns = std.AutoHashMap(usize, *jit_backend.CompiledFn).init(allocator),
             .jit_literal_roots = std.ArrayList(*Value){},
+            .jit_adm = .{},
             .trace_jit_call = std.posix.getenv("HABU_TRACE_JIT_CALL") != null,
             .trace_fn_resolve = std.posix.getenv("HABU_TRACE_FN_RESOLVE") != null,
             .trace_call_mismatch = std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null,
@@ -1030,6 +1048,10 @@ pub const Vm = struct {
         self.jit_literal_roots.deinit(self.allocator);
         self.uninterned_values.deinit();
         self.gc_slots.deinit(self.allocator);
+    }
+
+    pub fn resetJitAdm(self: *Vm) void {
+        self.jit_adm = .{};
     }
 
     /// Set the chunk pool for closures with a base offset (deprecated)

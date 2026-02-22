@@ -14,6 +14,17 @@ pub const LambdaCandidate = struct {
     lambda_ir: *const Ir,
 };
 
+pub const IneligibleReason = enum {
+    not_lambda,
+    speed,
+    safety,
+    assert_fixnum_body,
+    captures,
+    optional_params,
+    key_params,
+    rest_param,
+};
+
 fn stripQualifiedName(name: []const u8) []const u8 {
     if (std.mem.indexOf(u8, name, "::")) |sep| return name[sep + 2 ..];
     if (std.mem.indexOfScalar(u8, name, ':')) |sep| return name[sep + 1 ..];
@@ -77,20 +88,38 @@ pub fn collectLambdaCandidates(
 }
 
 pub fn isEligible(lambda_ir: *const Ir) bool {
-    if (lambda_ir.* != .lambda) return false;
+    return ineligibleReason(lambda_ir) == null;
+}
+
+pub fn ineligibleReason(lambda_ir: *const Ir) ?IneligibleReason {
+    if (lambda_ir.* != .lambda) return .not_lambda;
     const lambda = lambda_ir.lambda;
 
     // Require explicit (optimize (speed 3) (safety 0)) for JIT.
-    if (lambda.speed < 3 or lambda.safety > 0) return false;
+    if (lambda.speed < 3) return .speed;
+    if (lambda.safety > 0) return .safety;
     // Skip functions whose body is just a type assertion.
-    if (lambda.body.* == .assert_fixnum) return false;
+    if (lambda.body.* == .assert_fixnum) return .assert_fixnum_body;
     // Keep current bridge constraints.
-    if (lambda.captures.len > 0) return false;
-    if (lambda.optional_params.len > 0) return false;
-    if (lambda.key_params.len > 0) return false;
-    if (lambda.rest_param != null) return false;
+    if (lambda.captures.len > 0) return .captures;
+    if (lambda.optional_params.len > 0) return .optional_params;
+    if (lambda.key_params.len > 0) return .key_params;
+    if (lambda.rest_param != null) return .rest_param;
 
-    return true;
+    return null;
+}
+
+pub fn reasonLabel(reason: IneligibleReason) []const u8 {
+    return switch (reason) {
+        .not_lambda => "not_lambda",
+        .speed => "speed",
+        .safety => "safety",
+        .assert_fixnum_body => "assert_fixnum_body",
+        .captures => "captures",
+        .optional_params => "optional_params",
+        .key_params => "key_params",
+        .rest_param => "rest_param",
+    };
 }
 
 fn chunkSignatureMatches(lambda_ir: *const Ir, chunk: *const Chunk) bool {

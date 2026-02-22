@@ -159,6 +159,45 @@ test "compileChunk JITs all optimized defuns in progn" {
     try testing.expectEqual(@as(i64, 44), result.toFixnum());
 }
 
+test "compileChunk records JIT admission counters" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+    vm.resetJitAdm();
+
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(progn\n" ++
+            "  (defun jit-skip-speed (n)\n" ++
+            "    (+ n 1))\n" ++
+            "  (defun jit-ok-adm (n)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (+ n 2)))",
+    ));
+
+    try testing.expect(vm.jit_adm.cand >= 2);
+    try testing.expect(vm.jit_adm.sk_speed >= 1);
+    try testing.expect(vm.jit_adm.elig >= 1);
+    try testing.expect(vm.jit_adm.comp >= 1);
+}
+
 test "compileChunk JIT length handles string literals" {
     if (!build_options.use_hoist) return;
 

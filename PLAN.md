@@ -143,6 +143,10 @@
     - [x] `habu-rebaseline-post-hoist-5a1874e5` Rebaseline post-hoist JIT performance and document remaining blockers.
       - Rebaseline (`tools/maxima-hotspots --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-22): `jit_compiled=0`, gate `pass=false` (`wins=1/5`, compiled delta `0`).
       - Remaining blocker: strict JIT admission requires explicit `(optimize (speed 3) (safety 0))`; current Maxima workload functions do not meet this, so no Maxima functions are hoist-compiled yet.
+  - [ ] `habu-unlock-generic-jit-026e30f3` Unlock generic JIT admission after post-hoist.
+    - [x] `habu-add-jit-skip-2302fb62` Add JIT skip-reason telemetry.
+    - [ ] `habu-broaden-safe-admission-d08e543b` Broaden safe admission without opt-decl dependency.
+    - [ ] `habu-rebaseline-admission-and-990a7df6` Rebaseline admission and gate on wins.
 
 ### 0. Plan Control
 - [ ] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

@@ -75,12 +75,16 @@ def summarize(jit: dict, interp: dict, workloads: list[str]) -> dict:
             }
         )
     rows.sort(key=lambda r: r["jit_ns"], reverse=True)
+    jit_adm = jit.get("jit_adm", {}) if isinstance(jit.get("jit_adm", {}), dict) else {}
+    interp_adm = interp.get("jit_adm", {}) if isinstance(interp.get("jit_adm", {}), dict) else {}
     return {
         "workloads": rows,
         "jit_loader_ns": int(jit.get("loader", {}).get("ns", 0)),
         "interp_loader_ns": int(interp.get("loader", {}).get("ns", 0)),
         "jit_compiled": int(jit.get("jit_compiled", 0)),
         "interp_compiled": int(interp.get("jit_compiled", 0)),
+        "jit_adm": {k: int(v) for k, v in jit_adm.items() if isinstance(v, int)},
+        "interp_adm": {k: int(v) for k, v in interp_adm.items() if isinstance(v, int)},
     }
 
 
@@ -139,6 +143,29 @@ def format_text(summary: dict) -> str:
     lines.append("")
     lines.append(f"loader_ns jit={summary['jit_loader_ns']} interp={summary['interp_loader_ns']}")
     lines.append(f"jit_compiled jit={summary.get('jit_compiled', 0)} interp={summary.get('interp_compiled', 0)}")
+    if isinstance(summary.get("jit_adm"), dict):
+        j = summary.get("jit_adm", {})
+        i = summary.get("interp_adm", {})
+        lines.append(
+            "jit_adm cand={jc}/{ic} elig={je}/{ie} comp={jp}/{ip} sk_speed={jss}/{iss} sk_safety={jsf}/{isf} sk_chunk={jsc}/{isc} fail_unsup={jfu}/{ifu} fail_other={jfo}/{ifo}".format(
+                jc=j.get("cand", 0),
+                ic=i.get("cand", 0),
+                je=j.get("elig", 0),
+                ie=i.get("elig", 0),
+                jp=j.get("comp", 0),
+                ip=i.get("comp", 0),
+                jss=j.get("sk_speed", 0),
+                iss=i.get("sk_speed", 0),
+                jsf=j.get("sk_safety", 0),
+                isf=i.get("sk_safety", 0),
+                jsc=j.get("sk_chunk", 0),
+                isc=i.get("sk_chunk", 0),
+                jfu=j.get("fail_unsupported", 0),
+                ifu=i.get("fail_unsupported", 0),
+                jfo=j.get("fail_other", 0),
+                ifo=i.get("fail_other", 0),
+            )
+        )
     gate = summary.get("jit_gate")
     if isinstance(gate, dict):
         lines.append(
@@ -177,6 +204,29 @@ def format_markdown(summary: dict, scale: int, heap_mb: int, nursery_mb: int) ->
     lines.append(
         f"- jit_compiled: jit=`{summary.get('jit_compiled', 0)}`, interp=`{summary.get('interp_compiled', 0)}`"
     )
+    if isinstance(summary.get("jit_adm"), dict):
+        j = summary.get("jit_adm", {})
+        i = summary.get("interp_adm", {})
+        lines.append(
+            "- jit_adm: cand=`{jc}/{ic}`, elig=`{je}/{ie}`, comp=`{jp}/{ip}`, sk_speed=`{jss}/{iss}`, sk_safety=`{jsf}/{isf}`, sk_chunk=`{jsc}/{isc}`, fail_unsup=`{jfu}/{ifu}`, fail_other=`{jfo}/{ifo}`".format(
+                jc=j.get("cand", 0),
+                ic=i.get("cand", 0),
+                je=j.get("elig", 0),
+                ie=i.get("elig", 0),
+                jp=j.get("comp", 0),
+                ip=i.get("comp", 0),
+                jss=j.get("sk_speed", 0),
+                iss=i.get("sk_speed", 0),
+                jsf=j.get("sk_safety", 0),
+                isf=i.get("sk_safety", 0),
+                jsc=j.get("sk_chunk", 0),
+                isc=i.get("sk_chunk", 0),
+                jfu=j.get("fail_unsupported", 0),
+                ifu=i.get("fail_unsupported", 0),
+                jfo=j.get("fail_other", 0),
+                ifo=i.get("fail_other", 0),
+            )
+        )
     gate = summary.get("jit_gate")
     if isinstance(gate, dict):
         wins = gate.get("checks", {}).get("wins", {})
