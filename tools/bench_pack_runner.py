@@ -279,10 +279,11 @@ def _build_workload_cmd(
                 cmd.append("--interp")
             return cmd, None
         if suite == "maxima":
+            use_hoist = "false" if mode == "interp" else "true"
             return [
                 "zig",
                 "build",
-                "-Duse-hoist=true",
+                f"-Duse-hoist={use_hoist}",
                 "bench-maxima",
                 "--",
                 "--json",

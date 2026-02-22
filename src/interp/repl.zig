@@ -17,6 +17,7 @@ const Ir = ir.Ir;
 const IrBuilder = ir.IrBuilder;
 const passes = @import("../compiler/passes/passes.zig");
 const jit_backend = @import("../jit/backend_api.zig");
+const jit_candidates = @import("../jit/candidates.zig");
 const bytecode = @import("../bytecode/bytecode.zig");
 const Emitter = bytecode.Emitter;
 const Op = bytecode.Op;
@@ -2605,7 +2606,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         }
 
         // Try hoist SSA JIT compilation for eligible lambda nodes
-        _ = self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
+        _ = self.tryHoistCompileLambdas(specialized, child_chunks);
 
         // Patch main chunk to use absolute chunk indices
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
@@ -2654,38 +2655,6 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
     /// E.g., (add (assert_fixnum x) (assert_fixnum y)) → fixnum_add
     fn specializeIr(self: *Repl, ir_node: *const Ir) !*const Ir {
         return try passes.specialize.specialize(self.compiler.allocator, ir_node);
-    }
-
-    const JitLambdaCandidate = struct {
-        name: []const u8,
-        lambda_ir: *const Ir,
-    };
-
-    fn extractJitLambdaCandidate(ir_node: *const Ir) ?JitLambdaCandidate {
-        return switch (ir_node.*) {
-            .define => |d| switch (d.value.*) {
-                .lambda => .{ .name = d.name, .lambda_ir = d.value },
-                else => null,
-            },
-            .set_symbol_function => |op| blk: {
-                if (op.left.* != .lit) break :blk null;
-                if (!op.left.lit.isSymbol()) break :blk null;
-                if (op.right.* != .lambda) break :blk null;
-                break :blk .{
-                    .name = op.left.lit.toPtr(runtime.Symbol).getName(),
-                    .lambda_ir = op.right,
-                };
-            },
-            .progn => |exprs| blk: {
-                for (exprs) |expr| {
-                    if (extractJitLambdaCandidate(expr)) |candidate| {
-                        break :blk candidate;
-                    }
-                }
-                break :blk null;
-            },
-            else => null,
-        };
     }
 
     fn shouldRootJitLiteral(v: Value) bool {
@@ -2882,42 +2851,68 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         self: *Repl,
         ir_node: *const Ir,
         child_chunks: []const Value,
-        chunk_base: u16,
     ) bool {
-        _ = chunk_base;
         const trace = std.posix.getenv("HABU_TRACE_JIT") != null;
-        const candidate = extractJitLambdaCandidate(ir_node) orelse {
-            if (trace) std.debug.print("JIT: no lambda candidate in top-level IR ({s})\n", .{@tagName(ir_node.*)});
+        var candidates = std.ArrayList(jit_candidates.LambdaCandidate){};
+        defer candidates.deinit(self.allocator);
+        jit_candidates.collectLambdaCandidates(self.allocator, ir_node, &candidates) catch {
             return false;
         };
-        const fn_name = candidate.name;
-        const lambda_ir = candidate.lambda_ir;
-        const lambda = lambda_ir.lambda;
-
-        if (trace) std.debug.print("JIT: considering '{s}' speed={d} safety={d} captures={d} opt={d} key={d} rest={}\n", .{ fn_name, lambda.speed, lambda.safety, lambda.captures.len, lambda.optional_params.len, lambda.key_params.len, lambda.rest_param != null });
-
-        // Require explicit (optimize (speed 3) (safety 0)) for JIT.
-        if (lambda.speed < 3 or lambda.safety > 0) return false;
-        // Skip functions whose body is just a type assertion (e.g. (the fixnum x)).
-        // These may receive non-fixnum types; the untagged JIT would corrupt them.
-        if (lambda.body.* == .assert_fixnum) return false;
-
-        // Only simple functions without captures, optional, key, or rest params
-        if (lambda.captures.len > 0) return false;
-        if (lambda.optional_params.len > 0) return false;
-        if (lambda.key_params.len > 0) return false;
-        if (lambda.rest_param != null) return false;
-
-        // The first child chunk is the lambda's chunk
-        if (child_chunks.len == 0) {
-            if (trace) std.debug.print("JIT: no child chunks for '{s}'\n", .{fn_name});
+        if (candidates.items.len == 0) {
+            if (trace) std.debug.print("JIT: no lambda candidates in top-level IR ({s})\n", .{@tagName(ir_node.*)});
             return false;
         }
-        const chunk_val = child_chunks[0];
-        const chunk_ptr = chunk_val.toPtr(runtime.objects.Chunk);
 
-        // Try hoist compilation (may fail for unsupported IR nodes — that's OK)
-        return self.doHoistCompile(lambda_ir, fn_name, chunk_ptr);
+        const used_chunks = self.allocator.alloc(bool, child_chunks.len) catch return false;
+        defer self.allocator.free(used_chunks);
+        @memset(used_chunks, false);
+
+        var compiled_any = false;
+        for (candidates.items) |candidate| {
+            const lambda_ir = candidate.lambda_ir;
+            if (!jit_candidates.isEligible(lambda_ir)) {
+                if (trace and lambda_ir.* == .lambda) {
+                    const lambda = lambda_ir.lambda;
+                    std.debug.print("JIT: skip '{s}' speed={d} safety={d} captures={d} opt={d} key={d} rest={}\n", .{
+                        candidate.name,
+                        lambda.speed,
+                        lambda.safety,
+                        lambda.captures.len,
+                        lambda.optional_params.len,
+                        lambda.key_params.len,
+                        lambda.rest_param != null,
+                    });
+                }
+                continue;
+            }
+
+            const chunk_ptr = jit_candidates.findMatchingChunk(&candidate, child_chunks, used_chunks) orelse {
+                if (trace) {
+                    std.debug.print("JIT: no matching chunk for '{s}' local={s}\n", .{ candidate.name, candidate.local_name });
+                }
+                continue;
+            };
+
+            if (trace and lambda_ir.* == .lambda) {
+                const lambda = lambda_ir.lambda;
+                std.debug.print("JIT: considering '{s}' speed={d} safety={d} captures={d} opt={d} key={d} rest={} chunk=0x{x}\n", .{
+                    candidate.name,
+                    lambda.speed,
+                    lambda.safety,
+                    lambda.captures.len,
+                    lambda.optional_params.len,
+                    lambda.key_params.len,
+                    lambda.rest_param != null,
+                    @intFromPtr(chunk_ptr),
+                });
+            }
+
+            if (self.doHoistCompile(lambda_ir, candidate.name, chunk_ptr)) {
+                compiled_any = true;
+            }
+        }
+
+        return compiled_any;
     }
 
     /// Inner function that propagates errors to allow try usage.
@@ -3440,7 +3435,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         }
 
         // Try hoist SSA JIT compilation for eligible lambda nodes
-        _ = self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
+        _ = self.tryHoistCompileLambdas(specialized, child_chunks);
 
         // Free child chunk array (now owned by persistent storage)
         self.allocator.free(child_chunks);

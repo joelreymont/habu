@@ -58,6 +58,24 @@ def parse_args():
         help="run OCaml adapters when available and include normalized status/errors",
     )
     p.add_argument(
+        "--jit-min-interp-jit",
+        type=float,
+        default=1.01,
+        help="minimum interp/jit speedup counted as a JIT win in maxima gate",
+    )
+    p.add_argument(
+        "--jit-min-wins",
+        type=int,
+        default=2,
+        help="minimum maxima workload JIT wins required by the JIT gate",
+    )
+    p.add_argument(
+        "--jit-min-compiled",
+        type=int,
+        default=32,
+        help="minimum compiled-function count required by the JIT gate",
+    )
+    p.add_argument(
         "--history-file",
         default="bench/results/perf_loop_history.jsonl",
         help="append-only JSONL file for persisted perf-loop history",
@@ -238,6 +256,14 @@ def collect_maxima(scale: int, heap_mb: int, profile_mutator: bool, with_ocaml: 
         heap_mb=heap_mb,
         env=env,
     )
+    habu_interp_run = bench_pack.run_workload_runtime(
+        "habu",
+        "maxima",
+        scale=scale,
+        heap_mb=heap_mb,
+        mode="interp",
+        env=env,
+    )
     sbcl_run = bench_pack.run_workload_runtime(
         "sbcl",
         "maxima",
@@ -249,6 +275,7 @@ def collect_maxima(scale: int, heap_mb: int, profile_mutator: bool, with_ocaml: 
     )
 
     must_ok(habu_run, "maxima habu runner")
+    must_ok(habu_interp_run, "maxima habu interp runner")
     must_ok(sbcl_run, "maxima sbcl runner")
 
     entries = []
@@ -312,8 +339,88 @@ def collect_maxima(scale: int, heap_mb: int, profile_mutator: bool, with_ocaml: 
         habu.get("loader", {}),
         sbcl.get("loader", {}),
         mutator_profile,
-        {"habu": habu_run, "sbcl": sbcl_run, "ocaml": ocaml_run},
+        {"habu": habu_run, "habu_interp": habu_interp_run, "sbcl": sbcl_run, "ocaml": ocaml_run},
     )
+
+
+def compute_jit_gate(
+    habu_jit_run: dict,
+    habu_interp_run: dict,
+    min_interp_jit: float,
+    min_wins: int,
+    min_compiled: int,
+):
+    wins = 0
+    checked = 0
+    for name in habu_jit_run.get("workload_order", []):
+        jit_row = habu_jit_run.get("workloads", {}).get(name, {})
+        interp_row = habu_interp_run.get("workloads", {}).get(name, {})
+        if jit_row.get("status") != "ok" or interp_row.get("status") != "ok":
+            continue
+        jit_ns = int(jit_row.get("ns", 0))
+        interp_ns = int(interp_row.get("ns", 0))
+        if jit_ns <= 0 or interp_ns <= 0:
+            continue
+        checked += 1
+        if (interp_ns / jit_ns) >= min_interp_jit:
+            wins += 1
+
+    jit_payload = habu_jit_run.get("payload", {})
+    interp_payload = habu_interp_run.get("payload", {})
+    jit_compiled = int(jit_payload.get("jit_compiled", 0))
+    interp_compiled = int(interp_payload.get("jit_compiled", 0))
+
+    checks = {
+        "wins": {"actual": wins, "checked": checked, "target_min": min_wins, "pass": wins >= min_wins},
+        "compiled_min": {
+            "actual": jit_compiled,
+            "target_min": min_compiled,
+            "pass": jit_compiled >= min_compiled,
+        },
+        "compiled_delta": {
+            "actual": jit_compiled - interp_compiled,
+            "target_min": 1,
+            "pass": jit_compiled > interp_compiled,
+        },
+    }
+    return {
+        "pass": all(c.get("pass", False) for c in checks.values()),
+        "min_interp_jit": min_interp_jit,
+        "checks": checks,
+    }
+
+
+def load_open_dot_ids():
+    try:
+        out = run_cmd(["dot", "ls", "--json"], timeout=20)
+        rows = json.loads(out)
+        if not isinstance(rows, list):
+            return None
+        open_ids = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            status = row.get("status")
+            dot_id = row.get("id")
+            if status in ("open", "active") and isinstance(dot_id, str) and dot_id:
+                open_ids.add(dot_id)
+        return open_ids
+    except Exception:
+        return None
+
+
+def pick_fallback_dot(open_dot_ids):
+    if not open_dot_ids:
+        return None
+    priority = [
+        "habu-post-hoist-jit-b9628ff3",
+        "habu-2x-perf-exec-68f37b3e",
+        "habu-maxima-fast-exec-049ee786",
+    ]
+    for dot_id in priority:
+        if dot_id in open_dot_ids:
+            return dot_id
+    return sorted(open_dot_ids)[0]
 
 
 def collect_gc_gates(
@@ -413,7 +520,13 @@ def gc_summary(gc_compare: dict, gate_level: str):
     }
 
 
-def rank_gc_actions(gc_compare: dict, gc_norm: dict, gc_stats: dict):
+def rank_gc_actions(
+    gc_compare: dict,
+    gc_norm: dict,
+    gc_stats: dict,
+    open_dot_ids: set[str] | None = None,
+    fallback_dot: str | None = None,
+):
     means = gc_stats.get("means", {})
     conf_by_metric = gc_stats.get("confidence_by_metric", {})
     run_confidence = float(gc_stats.get("confidence", 1.0))
@@ -514,6 +627,31 @@ def rank_gc_actions(gc_compare: dict, gc_norm: dict, gc_stats: dict):
         )
 
     ranked = sorted(raw, key=lambda a: a["score"], reverse=True)
+
+    if open_dot_ids:
+        remapped = []
+        for action in ranked:
+            dot_id = action.get("dot")
+            if isinstance(dot_id, str) and dot_id in open_dot_ids:
+                remapped.append(action)
+                continue
+            if fallback_dot is None:
+                continue
+            action = dict(action)
+            action["reason"] = f"{action['reason']}; remapped_stale_dot={dot_id}->{fallback_dot}"
+            action["dot"] = fallback_dot
+            remapped.append(action)
+
+        dedup = {}
+        for action in remapped:
+            dot_id = action.get("dot")
+            if not isinstance(dot_id, str):
+                continue
+            prev = dedup.get(dot_id)
+            if prev is None or float(action.get("score", 0.0)) > float(prev.get("score", 0.0)):
+                dedup[dot_id] = action
+        ranked = sorted(dedup.values(), key=lambda a: a["score"], reverse=True)
+
     for i, a in enumerate(ranked, start=1):
         a["rank"] = i
     return ranked
@@ -734,6 +872,13 @@ def main():
     maxima_entries, maxima_errs, maxima_ocaml_errs, h_loader, s_loader, mutator_profile, maxima_runners = collect_maxima(
         args.scale, args.heap_mb, args.profile_mutator, args.with_ocaml
     )
+    jit_gate = compute_jit_gate(
+        maxima_runners["habu"],
+        maxima_runners["habu_interp"],
+        args.jit_min_interp_jit,
+        args.jit_min_wins,
+        args.jit_min_compiled,
+    )
     gc_runs = collect_gc_gates(
         args.gc_iters,
         args.gc_live_mb,
@@ -745,8 +890,16 @@ def main():
     gc_compare = gc_runs[-1]
     gc_stats = gc_run_stats(gc_runs)
     gate_pass = bool(gc_compare.get("gate_pass", False))
+    open_dot_ids = load_open_dot_ids()
+    fallback_dot = pick_fallback_dot(open_dot_ids)
     gc_norm = gc_summary(gc_compare, args.gate_level)
-    gc_actions = rank_gc_actions(gc_compare, gc_norm, gc_stats)
+    gc_actions = rank_gc_actions(
+        gc_compare,
+        gc_norm,
+        gc_stats,
+        open_dot_ids=open_dot_ids,
+        fallback_dot=fallback_dot,
+    )
     gc_validation = validate_gc_report(gc_norm, gc_actions)
     if not gc_validation["ok"]:
         raise RuntimeError("invalid gc report: " + "; ".join(gc_validation["errors"]))
@@ -767,8 +920,13 @@ def main():
             "gate_level": args.gate_level,
             "with_ocaml": bool(args.with_ocaml),
             "profile_mutator": bool(args.profile_mutator),
+            "jit_min_interp_jit": args.jit_min_interp_jit,
+            "jit_min_wins": args.jit_min_wins,
+            "jit_min_compiled": args.jit_min_compiled,
         },
         "gc_gate_pass": gate_pass,
+        "jit_gate_pass": bool(jit_gate.get("pass", False)),
+        "jit_gate": jit_gate,
         "gc_summary": gc_norm,
         "gc_run_stats": gc_stats,
         "gc_actions": gc_actions,
@@ -813,12 +971,14 @@ def main():
                 },
                 "maxima": {
                     "habu": maxima_runners["habu"],
+                    "habu_interp": maxima_runners["habu_interp"],
                     "sbcl": maxima_runners["sbcl"],
                     "ocaml": maxima_runners["ocaml"],
                 },
                 "gc": (gc_compare.get("runners") or {}).get("gc"),
             },
             "mutator_profile": mutator_profile,
+            "jit_gate": jit_gate,
             "gc_compare": gc_compare,
             "gc_run_stats": gc_stats,
             "gc_summary": gc_norm,
@@ -842,8 +1002,13 @@ def main():
             ],
         }
         print(json.dumps(payload, indent=2))
-        if args.fail_on_gates and not gate_pass:
-            raise RuntimeError(f"gc gate {args.gate_level} failed")
+        if args.fail_on_gates and (not gate_pass or not bool(jit_gate.get("pass", False))):
+            raise RuntimeError(
+                "gate failure: gc={gc} jit={jit}".format(
+                    gc=gate_pass,
+                    jit=bool(jit_gate.get("pass", False)),
+                )
+            )
         return
 
     print("Performance self-improvement loop")
@@ -918,6 +1083,16 @@ def main():
         print(f"  maxima errors: {len(maxima_errs)}")
     if args.with_ocaml and (micro_ocaml_errs or maxima_ocaml_errs):
         print(f"  ocaml errors: {len(micro_ocaml_errs) + len(maxima_ocaml_errs)}")
+    print(
+        "  jit gate: {status} wins={wins}/{checked} min_speedup={speed:.3f} compiled={compiled} delta={delta}".format(
+            status="PASS" if jit_gate.get("pass") else "FAIL",
+            wins=jit_gate.get("checks", {}).get("wins", {}).get("actual", 0),
+            checked=jit_gate.get("checks", {}).get("wins", {}).get("checked", 0),
+            speed=args.jit_min_interp_jit,
+            compiled=jit_gate.get("checks", {}).get("compiled_min", {}).get("actual", 0),
+            delta=jit_gate.get("checks", {}).get("compiled_delta", {}).get("actual", 0),
+        )
+    )
     gc_metrics = gc_norm
     gc_gate = gc_norm.get("gate_details", {})
     if gc_metrics:
@@ -1014,8 +1189,13 @@ def main():
     print()
     emit_table(worst)
     emit_actions(worst)
-    if args.fail_on_gates and not gate_pass:
-        raise RuntimeError(f"gc gate {args.gate_level} failed")
+    if args.fail_on_gates and (not gate_pass or not bool(jit_gate.get("pass", False))):
+        raise RuntimeError(
+            "gate failure: gc={gc} jit={jit}".format(
+                gc=gate_pass,
+                jit=bool(jit_gate.get("pass", False)),
+            )
+        )
 
 
 if __name__ == "__main__":

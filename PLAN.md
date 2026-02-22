@@ -136,6 +136,11 @@
   - [x] `habu-lock-hoist-api-0d6259d1` Lock `../hoist` API drift handling in Habu-side contract checks.
     - [x] `habu-hoist-api-contract-6bac1b3e` Add compile/runtime contract probes for hoist interface.
   - [x] `habu-perf-ci-and-2b7ac2f9` Add perf regression gates and unified docs. Depends on `habu-cut-vm-gc-511ec7d3`, `habu-lock-hoist-api-0d6259d1`.
+  - [ ] `habu-post-hoist-jit-b9628ff3` Post-hoist JIT uplift execution.
+    - [x] `habu-compile-all-eligible-245a1bd0` Compile all eligible lambdas (replace single-candidate + `child_chunks[0]` assumption with robust chunk matching and coverage regressions).
+    - [ ] `habu-retire-stale-hoist-7b69a1eb` Retire stale Habu-side hoist workarounds where no longer required; lock with backend regressions.
+    - [x] `habu-gate-jit-efficacy-77cafe97` Gate JIT efficacy in hotspot tooling and remove stale closed-dot recommendations.
+    - [ ] `habu-rebaseline-post-hoist-5a1874e5` Rebaseline post-hoist JIT performance and document remaining blockers.
 
 ### 0. Plan Control
 - [ ] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

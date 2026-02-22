@@ -602,6 +602,7 @@ pub fn main() !void {
     for (bench_defs) |def| {
         try benches.append(allocator, runBench(allocator, &timer, &repl, def, opts.scale));
     }
+    const jit_compiled = repl.vm.jit_fns.count();
     const gc_after_run = gcSnap(&heap);
     const gc_load = gcDelta(gc_start, gc_after_load);
     const gc_run = gcDelta(gc_after_load, gc_after_run);
@@ -629,6 +630,7 @@ pub fn main() !void {
             .heap_mb = opts.heap_mb,
             .nursery_mb = opts.nursery_mb,
             .scale = opts.scale,
+            .jit_compiled = jit_compiled,
             .loader = .{
                 .ok = loader.ok,
                 .total = loader.total,
@@ -651,6 +653,7 @@ pub fn main() !void {
 
     try w.print("Maxima workload benchmark (Habu)\n", .{});
     try w.print("  heap: {d} MiB, nursery: {d} MiB, scale: {d}\n", .{ opts.heap_mb, opts.nursery_mb, opts.scale });
+    try w.print("  jit_compiled: {d}\n", .{jit_compiled});
     try w.print(
         "  loader: ok={d}/{d}, fail={d}, attempted={d}, missing={d}, {d:.3} ms\n",
         .{ loader.ok, loader.total, loader.fail, loader.attempted, loader.missing, @as(f64, @floatFromInt(loader.ns)) / 1e6 },

@@ -79,6 +79,50 @@ def summarize(jit: dict, interp: dict, workloads: list[str]) -> dict:
         "workloads": rows,
         "jit_loader_ns": int(jit.get("loader", {}).get("ns", 0)),
         "interp_loader_ns": int(interp.get("loader", {}).get("ns", 0)),
+        "jit_compiled": int(jit.get("jit_compiled", 0)),
+        "interp_compiled": int(interp.get("jit_compiled", 0)),
+    }
+
+
+def evaluate_gate(summary: dict, min_interp_jit: float, min_jit_wins: int, min_jit_compiled: int) -> dict:
+    wins = 0
+    checked = 0
+    for row in summary.get("workloads", []):
+        if row.get("jit_error") is not None or row.get("interp_error") is not None:
+            continue
+        sp = row.get("speedup_interp_over_jit")
+        if sp is None:
+            continue
+        checked += 1
+        if float(sp) >= min_interp_jit:
+            wins += 1
+
+    jit_compiled = int(summary.get("jit_compiled", 0))
+    interp_compiled = int(summary.get("interp_compiled", 0))
+
+    checks = {
+        "wins": {
+            "actual": wins,
+            "target_min": min_jit_wins,
+            "pass": wins >= min_jit_wins,
+            "checked": checked,
+        },
+        "compiled_min": {
+            "actual": jit_compiled,
+            "target_min": min_jit_compiled,
+            "pass": jit_compiled >= min_jit_compiled,
+        },
+        "compiled_delta": {
+            "actual": jit_compiled - interp_compiled,
+            "target_min": 1,
+            "pass": jit_compiled > interp_compiled,
+        },
+    }
+    gate_pass = all(item["pass"] for item in checks.values())
+    return {
+        "pass": gate_pass,
+        "min_interp_jit": min_interp_jit,
+        "checks": checks,
     }
 
 
@@ -94,6 +138,19 @@ def format_text(summary: dict) -> str:
         )
     lines.append("")
     lines.append(f"loader_ns jit={summary['jit_loader_ns']} interp={summary['interp_loader_ns']}")
+    lines.append(f"jit_compiled jit={summary.get('jit_compiled', 0)} interp={summary.get('interp_compiled', 0)}")
+    gate = summary.get("jit_gate")
+    if isinstance(gate, dict):
+        lines.append(
+            "jit_gate pass={p} wins={w}/{n} min_speedup={s:.3f} compiled={c} delta={d}".format(
+                p=gate.get("pass"),
+                w=gate.get("checks", {}).get("wins", {}).get("actual", 0),
+                n=gate.get("checks", {}).get("wins", {}).get("checked", 0),
+                s=gate.get("min_interp_jit", 0.0),
+                c=gate.get("checks", {}).get("compiled_min", {}).get("actual", 0),
+                d=gate.get("checks", {}).get("compiled_delta", {}).get("actual", 0),
+            )
+        )
     return "\n".join(lines)
 
 
@@ -117,6 +174,26 @@ def format_markdown(summary: dict, scale: int, heap_mb: int, nursery_mb: int) ->
     lines.append(
         f"- loader_ns: jit=`{summary['jit_loader_ns']}`, interp=`{summary['interp_loader_ns']}`"
     )
+    lines.append(
+        f"- jit_compiled: jit=`{summary.get('jit_compiled', 0)}`, interp=`{summary.get('interp_compiled', 0)}`"
+    )
+    gate = summary.get("jit_gate")
+    if isinstance(gate, dict):
+        wins = gate.get("checks", {}).get("wins", {})
+        comp = gate.get("checks", {}).get("compiled_min", {})
+        delta = gate.get("checks", {}).get("compiled_delta", {})
+        lines.append(
+            "- jit_gate: pass=`{p}`, wins=`{wa}/{wc}` (min speedup `{s:.3f}`, min wins `{wm}`), compiled=`{ca}` (min `{cm}`), delta=`{da}`".format(
+                p=gate.get("pass"),
+                wa=wins.get("actual", 0),
+                wc=wins.get("checked", 0),
+                s=gate.get("min_interp_jit", 0.0),
+                wm=wins.get("target_min", 0),
+                ca=comp.get("actual", 0),
+                cm=comp.get("target_min", 0),
+                da=delta.get("actual", 0),
+            )
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -131,6 +208,10 @@ def main() -> int:
         default=",".join(DEFAULT_WORKLOADS),
         help="comma-separated workload names from bench-maxima output",
     )
+    p.add_argument("--min-interp-jit", type=float, default=1.01, help="minimum interp/jit speedup counted as a JIT win")
+    p.add_argument("--min-jit-wins", type=int, default=2, help="minimum workload win count required by jit gate")
+    p.add_argument("--min-jit-compiled", type=int, default=32, help="minimum compiled-function count required by jit gate")
+    p.add_argument("--fail-on-gate", action="store_true", help="exit non-zero when jit gate fails")
     p.add_argument("--json", action="store_true", help="print JSON summary")
     p.add_argument("--markdown-out", type=str, default="", help="write markdown report")
     args = p.parse_args()
@@ -144,6 +225,12 @@ def main() -> int:
         jit = run_bench(True, args.scale, args.heap_mb, args.nursery_mb)
         interp = run_bench(False, args.scale, args.heap_mb, args.nursery_mb)
         summary = summarize(jit, interp, workloads)
+        summary["jit_gate"] = evaluate_gate(
+            summary,
+            args.min_interp_jit,
+            args.min_jit_wins,
+            args.min_jit_compiled,
+        )
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -157,6 +244,9 @@ def main() -> int:
         md = format_markdown(summary, args.scale, args.heap_mb, args.nursery_mb)
         Path(args.markdown_out).write_text(md)
         print(f"wrote {args.markdown_out}", file=sys.stderr)
+
+    if args.fail_on_gate and not summary.get("jit_gate", {}).get("pass", False):
+        return 2
 
     return 0
 

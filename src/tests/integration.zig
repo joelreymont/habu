@@ -85,6 +85,80 @@ test "compileChunk JITs optimized defun with implicit block" {
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
+test "compileChunk JITs all optimized defuns in progn" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    const before = vm.jit_fns.count();
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(progn\n" ++
+            "  (defun jit-progn-a (n)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (+ n 1))\n" ++
+            "  (defun jit-progn-b (n)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    ((lambda (x) (+ x 2)) n))\n" ++
+            "  (defun jit-progn-c (n)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (+ n 3)))",
+    ));
+    try testing.expect(vm.jit_fns.count() >= before + 2);
+
+    const fn_a = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(symbol-function 'jit-progn-a)",
+    ));
+    try testing.expect(fn_a.isClosure());
+    const chunk_a = fn_a.toPtr(runtime.Closure).code.toPtr(Chunk);
+    try testing.expect(vm.lookupJitFn(chunk_a) != null);
+
+    const fn_c = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(symbol-function 'jit-progn-c)",
+    ));
+    try testing.expect(fn_c.isClosure());
+    const chunk_c = fn_c.toPtr(runtime.Closure).code.toPtr(Chunk);
+    try testing.expect(vm.lookupJitFn(chunk_c) != null);
+
+    const result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(+ (jit-progn-a 40) (jit-progn-c 0))",
+    ));
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 44), result.toFixnum());
+}
+
 test "compileChunk JIT length handles string literals" {
     if (!build_options.use_hoist) return;
 
