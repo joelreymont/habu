@@ -809,32 +809,10 @@ pub const Repl = struct {
         try self.syncMacroMapsIfGcChanged();
         const gc_before = self.heap.stats.gc_count;
 
-        const saved_ext = vm.currentExtRoots();
-        const SavedExtRestore = union(enum) {
-            slice: []Value,
-            persistent,
-            ctx: *VmRootCtx,
-        };
-        const saved_ext_restore: SavedExtRestore = blk: {
-            if (saved_ext.len == self.persistent_roots.items.len and
-                saved_ext.ptr == self.persistent_roots.items.ptr)
-            {
-                break :blk .persistent;
-            }
-            var ctx_opt = self.active_root_ctx;
-            while (ctx_opt) |ctx| {
-                if (ctx.vm == vm and
-                    saved_ext.len == ctx.roots.items.len and
-                    saved_ext.ptr == ctx.roots.items.ptr)
-                {
-                    break :blk .{ .ctx = ctx };
-                }
-                ctx_opt = ctx.prev;
-            }
-            break :blk .{ .slice = saved_ext };
-        };
-        if (saved_ext.len != 0) {
-            for (saved_ext) |*val| {
+        const saved_ext = vm.saveExtRoots();
+        const saved_ext_roots = saved_ext.roots;
+        if (saved_ext_roots.len != 0) {
+            for (saved_ext_roots) |*val| {
                 val.* = vm.resolveForwardedValue(val.*);
             }
         }
@@ -851,7 +829,7 @@ pub const Repl = struct {
         defer repl_macros.deinit(self.allocator);
         try self.collectReplMacroPairs(&repl_macros);
 
-        const total_roots = saved_ext.len +
+        const total_roots = saved_ext_roots.len +
             (compiler_macros.items.len * 2) +
             (symbol_macros.items.len * 2) +
             (repl_macros.items.len * 2);
@@ -859,8 +837,8 @@ pub const Repl = struct {
         defer roots.deinit(self.allocator);
         try roots.ensureTotalCapacity(self.allocator, total_roots);
 
-        if (saved_ext.len > 0) {
-            try roots.appendSlice(self.allocator, saved_ext);
+        if (saved_ext_roots.len > 0) {
+            try roots.appendSlice(self.allocator, saved_ext_roots);
         }
 
         const compiler_macro_start = roots.items.len;
@@ -882,11 +860,7 @@ pub const Repl = struct {
         }
 
         vm.setExtRootsOwned(&roots);
-        defer switch (saved_ext_restore) {
-            .persistent => vm.setExtRootsOwned(&self.persistent_roots),
-            .ctx => |ctx| vm.setExtRootsOwned(ctx.roots),
-            .slice => |slice| vm.setExtRoots(slice),
-        };
+        defer vm.restoreExtRoots(saved_ext);
         var root_ctx = VmRootCtx{
             .vm = vm,
             .roots = &roots,

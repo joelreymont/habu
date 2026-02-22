@@ -19,11 +19,14 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Letting parser read-eval/dispatch hooks surface original VM errors via parser-side hook capture (`src/reader/parser.zig:61`, `src/reader/parser.zig:105`, `src/reader/parser.zig:169`, `src/reader/parser.zig:201`) preserved non-local-exit semantics instead of collapsing them to parse failures.
 - Routing VM and REPL parse callsites through hook-error-aware parsing (`src/interp/vm.zig:290`, `src/interp/vm.zig:6927`, `src/interp/repl.zig:2234`, `src/interp/repl.zig:2329`, `src/interp/repl.zig:3386`) fixed nested `#.` throw relay paths (`(catch 'x (read-from-string \"#.(throw 'x 42)\") ...)`) without special-casing Maxima code.
 - Locking the reader relay behavior with a focused integration regression (`src/tests/integration.zig:3032`) gives deterministic coverage for nested read-eval non-local exits across call barriers.
+- Switching `runVmPreserveMacroState` from pointer-classified `currentExtRoots` restore to `saveExtRoots`/`restoreExtRoots` (`src/interp/repl.zig:812`, `src/interp/repl.zig:863`) removed a stale-slice restore path and made nested VM root restoration owner-stable under reallocations.
+- Adding a direct owner-reallocation regression for ext-root snapshots (`src/interp/vm.zig:12759`) locks `restoreExtRoots` semantics so restores rebind by owner and not by stale slice pointers.
 
 ### Did Not Work
 - Treating all non-symbol atoms in `tagbody` as executable forms was incorrect; CL treats integer atoms as labels too, so tests that expected trailing fixnum atoms as forms were invalid and had to be rewritten (`src/compiler/compile.zig:20972`, `src/compiler/compile.zig:21032`).
 - Relying on contiguous backward scans of only `mov x0..x7,*` before BL/BLR in `fixCallArgMoves` missed valid call setup windows with interleaved target setup ops, leaving indirect-call argument corruption unpatched.
 - Converting read-eval/dispatch callback errors to parser `UnexpectedToken` in bridge hooks (`src/interp/vm.zig` pre-fix `readEvalBridge`/`dispatchMacroBridge`, `src/interp/repl.zig` pre-fix `parserReadEval`/`parserDispatchMacro`) masked real control transfers as parse/type errors and broke `(catch ...)` around `read-from-string` `#.` forms.
+- Restoring nested VM ext roots via pointer-identity classification (`persistent`/`ctx`/`slice`) in `runVmPreserveMacroState` was brittle; unclassified owners fell back to raw slices and risked stale restores after owner reallocation.
 
 ## Session Notes (2026-02-21)
 

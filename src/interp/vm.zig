@@ -12756,6 +12756,43 @@ test "vm collectGarbage updates ext roots" {
     try testing.expect(ptr >= start and ptr < end);
 }
 
+test "vm restoreExtRoots rebinds owner after reallocation" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var roots_owner = std.ArrayList(Value){};
+    defer roots_owner.deinit(allocator);
+    try roots_owner.append(allocator, Value.makeFixnum(1));
+    vm.setExtRootsOwned(&roots_owner);
+
+    const saved = vm.saveExtRoots();
+    try testing.expect(saved.owner != null);
+
+    const before_ptr = @intFromPtr(roots_owner.items.ptr);
+    try roots_owner.ensureTotalCapacity(allocator, 1024);
+    while (roots_owner.items.len < 1024) {
+        try roots_owner.append(allocator, Value.makeFixnum(@intCast(roots_owner.items.len)));
+    }
+    try testing.expect(@intFromPtr(roots_owner.items.ptr) != before_ptr);
+
+    var temp = [_]Value{Value.nil};
+    vm.setExtRoots(temp[0..]);
+    vm.restoreExtRoots(saved);
+
+    try testing.expect(vm.ext_roots_owner == &roots_owner);
+    try testing.expectEqual(@intFromPtr(roots_owner.items.ptr), @intFromPtr(vm.currentExtRoots().ptr));
+    try testing.expectEqual(roots_owner.items.len, vm.currentExtRoots().len);
+
+    try roots_owner.append(allocator, Value.makeFixnum(2048));
+    try testing.expectEqual(roots_owner.items.len, vm.currentExtRoots().len);
+}
+
 test "vm collectGarbage reuses gc_slots buffer" {
     const testing = std.testing;
     const allocator = testing.allocator;
