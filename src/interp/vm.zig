@@ -394,6 +394,45 @@ fn jitCallBridge4(ctx: *anyopaque, fn_raw: u64, arg0: u64, arg1: u64, arg2: u64,
     return jitCallBridgeInvoke(vm, fn_raw, &args);
 }
 
+fn jitCallBridge5(ctx: *anyopaque, fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64) callconv(.c) u64 {
+    const vm: *Vm = @ptrCast(@alignCast(ctx));
+    const args = [_]Value{
+        Value{ .raw = arg0 },
+        Value{ .raw = arg1 },
+        Value{ .raw = arg2 },
+        Value{ .raw = arg3 },
+        Value{ .raw = arg4 },
+    };
+    return jitCallBridgeInvoke(vm, fn_raw, &args);
+}
+
+fn jitCallBridge6(ctx: *anyopaque, fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) callconv(.c) u64 {
+    const vm: *Vm = @ptrCast(@alignCast(ctx));
+    const args = [_]Value{
+        Value{ .raw = arg0 },
+        Value{ .raw = arg1 },
+        Value{ .raw = arg2 },
+        Value{ .raw = arg3 },
+        Value{ .raw = arg4 },
+        Value{ .raw = arg5 },
+    };
+    return jitCallBridgeInvoke(vm, fn_raw, &args);
+}
+
+fn jitCallBridge7(ctx: *anyopaque, fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64, arg6: u64) callconv(.c) u64 {
+    const vm: *Vm = @ptrCast(@alignCast(ctx));
+    const args = [_]Value{
+        Value{ .raw = arg0 },
+        Value{ .raw = arg1 },
+        Value{ .raw = arg2 },
+        Value{ .raw = arg3 },
+        Value{ .raw = arg4 },
+        Value{ .raw = arg5 },
+        Value{ .raw = arg6 },
+    };
+    return jitCallBridgeInvoke(vm, fn_raw, &args);
+}
+
 pub const Vm = struct {
     /// Value stack
     stack: [STACK_SIZE]Value,
@@ -1319,6 +1358,9 @@ pub const Vm = struct {
             .call2 = jitCallBridge2,
             .call3 = jitCallBridge3,
             .call4 = jitCallBridge4,
+            .call5 = jitCallBridge5,
+            .call6 = jitCallBridge6,
+            .call7 = jitCallBridge7,
         });
 
         // Extract args from the VM stack (they're above the callee frame)

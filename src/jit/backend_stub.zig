@@ -16,6 +16,9 @@ pub const CallBridge = struct {
     call2: *const fn (*anyopaque, u64, u64, u64) callconv(.c) u64,
     call3: *const fn (*anyopaque, u64, u64, u64, u64) callconv(.c) u64,
     call4: *const fn (*anyopaque, u64, u64, u64, u64, u64) callconv(.c) u64,
+    call5: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
+    call6: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
+    call7: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
 };
 
 pub fn setCallBridge(_: CallBridge) void {}

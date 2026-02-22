@@ -52,6 +52,9 @@ pub const CallBridge = struct {
     call2: *const fn (*anyopaque, u64, u64, u64) callconv(.c) u64,
     call3: *const fn (*anyopaque, u64, u64, u64, u64) callconv(.c) u64,
     call4: *const fn (*anyopaque, u64, u64, u64, u64, u64) callconv(.c) u64,
+    call5: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
+    call6: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
+    call7: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
 };
 var g_call_bridge: ?CallBridge = null;
 
@@ -325,6 +328,21 @@ fn jitCall3(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64) callconv(.c) u64 {
 fn jitCall4(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64) callconv(.c) u64 {
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call4(bridge.context, fn_raw, arg0, arg1, arg2, arg3);
+}
+
+fn jitCall5(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64) callconv(.c) u64 {
+    const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
+    return bridge.call5(bridge.context, fn_raw, arg0, arg1, arg2, arg3, arg4);
+}
+
+fn jitCall6(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) callconv(.c) u64 {
+    const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
+    return bridge.call6(bridge.context, fn_raw, arg0, arg1, arg2, arg3, arg4, arg5);
+}
+
+fn jitCall7(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64, arg6: u64) callconv(.c) u64 {
+    const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
+    return bridge.call7(bridge.context, fn_raw, arg0, arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 fn jitToFloat(v: Value) ?f64 {
@@ -3047,9 +3065,11 @@ pub const IrTranslator = struct {
     }
 
     fn translateGenericCall(self: *IrTranslator, func_ir: *const Ir, args: []const *const Ir) anyerror!HoistValue {
-        if (args.len > 4) return error.UnsupportedCallTarget;
+        // Keep helper calls register-only: helper receives (fn + args), so max
+        // user args is 7 to stay within 8 integer argument registers.
+        if (args.len > 7) return error.UnsupportedCallTarget;
 
-        var call_args: [5]HoistValue = undefined;
+        var call_args: [8]HoistValue = undefined;
         call_args[0] = try self.translateCallDesignator(func_ir);
         for (args, 0..) |arg, i| {
             call_args[i + 1] = try self.translate(arg);
@@ -3061,6 +3081,9 @@ pub const IrTranslator = struct {
             2 => @intFromPtr(@as(*const anyopaque, @ptrCast(&jitCall2))),
             3 => @intFromPtr(@as(*const anyopaque, @ptrCast(&jitCall3))),
             4 => @intFromPtr(@as(*const anyopaque, @ptrCast(&jitCall4))),
+            5 => @intFromPtr(@as(*const anyopaque, @ptrCast(&jitCall5))),
+            6 => @intFromPtr(@as(*const anyopaque, @ptrCast(&jitCall6))),
+            7 => @intFromPtr(@as(*const anyopaque, @ptrCast(&jitCall7))),
             else => unreachable,
         };
         const fn_ptr = try self.b.iconst(I64, @as(i64, @bitCast(helper_ptr)));
@@ -7831,6 +7854,15 @@ test "hoist IR translator: global_ref generic call loads rooted designator" {
         fn call4(_: *anyopaque, fn_raw: u64, _: u64, _: u64, _: u64, _: u64) callconv(.c) u64 {
             return fn_raw;
         }
+        fn call5(_: *anyopaque, fn_raw: u64, _: u64, _: u64, _: u64, _: u64, _: u64) callconv(.c) u64 {
+            return fn_raw;
+        }
+        fn call6(_: *anyopaque, fn_raw: u64, _: u64, _: u64, _: u64, _: u64, _: u64, _: u64) callconv(.c) u64 {
+            return fn_raw;
+        }
+        fn call7(_: *anyopaque, fn_raw: u64, _: u64, _: u64, _: u64, _: u64, _: u64, _: u64, _: u64) callconv(.c) u64 {
+            return fn_raw;
+        }
     };
 
     var ctx_byte: u8 = 0;
@@ -7841,6 +7873,9 @@ test "hoist IR translator: global_ref generic call loads rooted designator" {
         .call2 = EchoBridge.call2,
         .call3 = EchoBridge.call3,
         .call4 = EchoBridge.call4,
+        .call5 = EchoBridge.call5,
+        .call6 = EchoBridge.call6,
+        .call7 = EchoBridge.call7,
     });
 
     var compiled = try compileIrWithKnownFnsAndLiteralRoots(
@@ -7854,6 +7889,98 @@ test "hoist IR translator: global_ref generic call loads rooted designator" {
 
     const result = compiled.call0();
     try testing.expectEqual(@as(i64, @bitCast(Value.t.raw)), result);
+}
+
+test "hoist IR translator: generic call supports seven args" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const fn_ref = try alloc.create(Ir);
+    fn_ref.* = .{ .global_ref = .{ .name = "ROOTED-CALLEE-7", .index = 0 } };
+
+    const call_args = try alloc.alloc(*const Ir, 7);
+    for (0..7) |i| {
+        const lit = try alloc.create(Ir);
+        lit.* = .{ .lit = Value.makeFixnum(@intCast(i + 1)) };
+        call_args[i] = lit;
+    }
+
+    const call_node = try alloc.create(Ir);
+    call_node.* = .{ .call = .{ .func = fn_ref, .args = call_args } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = &.{},
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = call_node,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    const slot = try testing.allocator.create(Value);
+    defer testing.allocator.destroy(slot);
+    slot.* = Value.t;
+
+    var roots = LiteralRoots.init(testing.allocator);
+    defer roots.deinit();
+    try roots.put(@intFromPtr(fn_ref), slot);
+
+    const EchoBridge = struct {
+        fn call0(_: *anyopaque, _: u64) callconv(.c) u64 {
+            return Value.nil.raw;
+        }
+        fn call1(_: *anyopaque, _: u64, _: u64) callconv(.c) u64 {
+            return Value.nil.raw;
+        }
+        fn call2(_: *anyopaque, _: u64, _: u64, _: u64) callconv(.c) u64 {
+            return Value.nil.raw;
+        }
+        fn call3(_: *anyopaque, _: u64, _: u64, _: u64, _: u64) callconv(.c) u64 {
+            return Value.nil.raw;
+        }
+        fn call4(_: *anyopaque, _: u64, _: u64, _: u64, _: u64, _: u64) callconv(.c) u64 {
+            return Value.nil.raw;
+        }
+        fn call5(_: *anyopaque, _: u64, _: u64, _: u64, _: u64, _: u64, _: u64) callconv(.c) u64 {
+            return Value.nil.raw;
+        }
+        fn call6(_: *anyopaque, _: u64, _: u64, _: u64, _: u64, _: u64, _: u64, _: u64) callconv(.c) u64 {
+            return Value.nil.raw;
+        }
+        fn call7(_: *anyopaque, fn_raw: u64, _: u64, _: u64, _: u64, _: u64, _: u64, _: u64, arg6: u64) callconv(.c) u64 {
+            if (fn_raw == 0) return Value.nil.raw;
+            return arg6;
+        }
+    };
+
+    var ctx_byte: u8 = 0;
+    setCallBridge(.{
+        .context = @ptrCast(&ctx_byte),
+        .call0 = EchoBridge.call0,
+        .call1 = EchoBridge.call1,
+        .call2 = EchoBridge.call2,
+        .call3 = EchoBridge.call3,
+        .call4 = EchoBridge.call4,
+        .call5 = EchoBridge.call5,
+        .call6 = EchoBridge.call6,
+        .call7 = EchoBridge.call7,
+    });
+
+    var compiled = try compileIrWithKnownFnsAndLiteralRoots(
+        testing.allocator,
+        lambda,
+        "global-ref-generic-call-seven-args",
+        null,
+        &roots,
+    );
+    defer compiled.deinit();
+
+    const result = compiled.call0();
+    try testing.expectEqual(@as(i64, @bitCast(Value.makeFixnum(7).raw)), result);
 }
 
 /// Helper: build Hoist function, compile, load into JIT memory
