@@ -57,6 +57,7 @@ pub const CallBridge = struct {
     call7: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
 };
 var g_call_bridge: ?CallBridge = null;
+var g_bridge_err: bool = false;
 
 /// Set the global heap pointer for JIT allocation.
 pub fn setHeap(heap: *Heap) void {
@@ -67,6 +68,18 @@ pub fn setHeap(heap: *Heap) void {
 
 pub fn setCallBridge(bridge: CallBridge) void {
     g_call_bridge = bridge;
+}
+
+pub fn clearBridgeError() void {
+    g_bridge_err = false;
+}
+
+pub fn markBridgeError() void {
+    g_bridge_err = true;
+}
+
+pub fn bridgeErrorPending() bool {
+    return g_bridge_err;
 }
 
 /// Sync heap.alloc_ptr from the JIT global g_alloc_ptr.
@@ -306,41 +319,49 @@ fn jitAssoc(key_raw: u64, alist_raw: u64) callconv(.c) u64 {
 }
 
 fn jitCall0(fn_raw: u64) callconv(.c) u64 {
+    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call0(bridge.context, fn_raw);
 }
 
 fn jitCall1(fn_raw: u64, arg0: u64) callconv(.c) u64 {
+    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call1(bridge.context, fn_raw, arg0);
 }
 
 fn jitCall2(fn_raw: u64, arg0: u64, arg1: u64) callconv(.c) u64 {
+    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call2(bridge.context, fn_raw, arg0, arg1);
 }
 
 fn jitCall3(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64) callconv(.c) u64 {
+    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call3(bridge.context, fn_raw, arg0, arg1, arg2);
 }
 
 fn jitCall4(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64) callconv(.c) u64 {
+    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call4(bridge.context, fn_raw, arg0, arg1, arg2, arg3);
 }
 
 fn jitCall5(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64) callconv(.c) u64 {
+    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call5(bridge.context, fn_raw, arg0, arg1, arg2, arg3, arg4);
 }
 
 fn jitCall6(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) callconv(.c) u64 {
+    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call6(bridge.context, fn_raw, arg0, arg1, arg2, arg3, arg4, arg5);
 }
 
 fn jitCall7(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64, arg6: u64) callconv(.c) u64 {
+    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call7(bridge.context, fn_raw, arg0, arg1, arg2, arg3, arg4, arg5, arg6);
 }
@@ -3087,7 +3108,8 @@ pub const IrTranslator = struct {
             else => unreachable,
         };
         const fn_ptr = try self.b.iconst(I64, @as(i64, @bitCast(helper_ptr)));
-        return try self.emitIndirectCallValues(fn_ptr, call_args[0 .. args.len + 1]);
+        const result = try self.emitIndirectCallValues(fn_ptr, call_args[0 .. args.len + 1]);
+        return result;
     }
 
     fn translateCallDesignator(self: *IrTranslator, func_ir: *const Ir) anyerror!HoistValue {

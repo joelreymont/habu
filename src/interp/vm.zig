@@ -202,6 +202,7 @@ pub const State = struct {
     throw_barrier_depth: usize,
     relay_throw_tag: Value,
     relay_throw_value: Value,
+    jit_bridge_error: ?anyerror,
     pending_error: ?anyerror,
     is_unwinding: bool,
     pending_block_name: Value,
@@ -233,6 +234,7 @@ pub const State = struct {
             .throw_barrier_depth = vm.throw_barrier_depth,
             .relay_throw_tag = vm.relay_throw_tag,
             .relay_throw_value = vm.relay_throw_value,
+            .jit_bridge_error = vm.jit_bridge_error,
             .pending_error = vm.pending_error,
             .is_unwinding = vm.is_unwinding,
             .pending_block_name = vm.pending_block_name,
@@ -265,6 +267,7 @@ pub const State = struct {
         vm.throw_barrier_depth = self.throw_barrier_depth;
         vm.relay_throw_tag = self.relay_throw_tag;
         vm.relay_throw_value = self.relay_throw_value;
+        vm.jit_bridge_error = self.jit_bridge_error;
         vm.pending_error = self.pending_error;
         vm.is_unwinding = self.is_unwinding;
         vm.pending_block_name = self.pending_block_name;
@@ -349,13 +352,20 @@ fn jitCallBridgeInvoke(vm: *Vm, fn_raw: u64, args: []const Value) u64 {
     // Bridge calls may run GC and move semispaces; refresh JIT bump-cache from
     // heap before and after so inline-cons globals never drift from VM state.
     jit_backend.setHeap(vm.heap);
-    const result = vm.callFromStackAt(vm.sp, fn_val, args) catch |err| {
-        std.debug.panic("jit call bridge failed: {s} argc={d}", .{ @errorName(err), args.len });
+    defer {
+        // Nested JIT calls inside vm.callFromStackAt may have advanced g_alloc_ptr.
+        // Sync first, then refresh globals against the current semispace after GC.
+        jit_backend.syncHeapFromGlobal(vm.heap);
+        jit_backend.setHeap(vm.heap);
+    }
+    const result = vm.callFromStackAt(vm.sp, fn_val, args) catch |err| blk: {
+        vm.jit_bridge_error = err;
+        jit_backend.markBridgeError();
+        if (trace_bridge) {
+            std.debug.print("JIT_BRIDGE err {s} argc={d}\n", .{ @errorName(err), args.len });
+        }
+        break :blk Value.nil;
     };
-    // Nested JIT calls inside vm.callFromStackAt may have advanced g_alloc_ptr.
-    // Sync first, then refresh globals against the current semispace after GC.
-    jit_backend.syncHeapFromGlobal(vm.heap);
-    jit_backend.setHeap(vm.heap);
     if (trace_bridge) {
         std.debug.print("JIT_BRIDGE ret ", .{});
         traceJitBridgeValue(result);
@@ -546,6 +556,7 @@ pub const Vm = struct {
     throw_barrier_depth: usize,
     relay_throw_tag: Value,
     relay_throw_value: Value,
+    jit_bridge_error: ?anyerror,
     pending_error: ?anyerror,
     is_unwinding: bool,
 
@@ -980,6 +991,7 @@ pub const Vm = struct {
             .throw_barrier_depth = 0,
             .relay_throw_tag = Value.nil,
             .relay_throw_value = Value.nil,
+            .jit_bridge_error = null,
             .pending_error = null,
             .is_unwinding = false,
             .last_error_value = Value.nil,
@@ -1362,13 +1374,19 @@ pub const Vm = struct {
 
     /// Try to call a closure via hoist-compiled native code.
     /// Returns the result of calling it, or null if not hoist-compiled.
-    fn tryCallJit(self: *Vm, argc: u8) ?Value {
+    fn tryCallJit(self: *Vm, argc: u8) Error!?Value {
         const chunk = self.chunk;
         const compiled = self.jit_fns.get(@intFromPtr(chunk)) orelse return null;
         if (compiled.arity != argc) return null;
         const trace_jit_call = self.trace_jit_call;
         if (trace_jit_call) {
             std.debug.print("JIT_CALL enter {s} argc={d}\n", .{ compiled.name, argc });
+        }
+        self.jit_bridge_error = null;
+        jit_backend.clearBridgeError();
+        defer {
+            self.jit_bridge_error = null;
+            jit_backend.clearBridgeError();
         }
 
         // Set global heap pointer so JIT cons can allocate
@@ -1389,6 +1407,7 @@ pub const Vm = struct {
         const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
         const args = self.stack[bp .. bp + argc];
         const result = compiled.callFromValues(args);
+        const bridge_err = self.jit_bridge_error;
         if (trace_jit_call) {
             std.debug.print("JIT_CALL leave {s}\n", .{compiled.name});
         }
@@ -1401,6 +1420,7 @@ pub const Vm = struct {
         // Sync heap alloc_ptr back from JIT global (inline cons updates g_alloc_ptr
         // but not heap.alloc_ptr directly)
         jit_backend.syncHeapFromGlobal(self.heap);
+        if (bridge_err) |err| return err;
 
         return result;
     }
@@ -2334,7 +2354,7 @@ pub const Vm = struct {
 
         // After doCall, self.chunk is the callee's chunk.
         // Try hoist SSA JIT for native execution.
-        if (self.tryCallJit(argc)) |result| {
+        if (try self.tryCallJit(argc)) |result| {
             // Hoist call succeeded — unwind frame and return result
             self.fp -= 1;
             self.sp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
@@ -3924,7 +3944,7 @@ pub const Vm = struct {
                 }
                 // Check for hoist-compiled function
 
-                if (self.tryCallJit(argc)) |result| {
+                if (try self.tryCallJit(argc)) |result| {
                     // Pop the call frame and push result
                     self.fp -= 1;
                     const caller_frame = self.frames[self.fp];

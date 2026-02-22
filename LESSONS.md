@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-22)
 
 ### Worked Well
+- Replacing bridge panic-on-error with an explicit JIT bridge error lane (`src/interp/vm.zig:335`, `src/interp/vm.zig:1377`, `src/jit/backend.zig:60`, `src/jit/backend.zig:3116`) let `tryCallJit` propagate VM errors (`UnhandledThrow`, `ControlTransfer`, etc.) through normal VM error paths instead of aborting the process.
+- Locking bridge relay behavior with a focused regression (`src/tests/integration.zig:1877`) catches panic regressions on JIT generic-call error paths and proves error relay works end-to-end.
 - Replacing single-candidate JIT extraction (`extract first candidate` + `child_chunks[0]`) with full candidate discovery and signature/name chunk matching (`src/jit/candidates.zig`, `src/interp/repl.zig:2850`, `src/testing/compile_chunk.zig:102`) removed incorrect chunk registration when top-level forms contain multiple defuns and nested lambdas.
 - Locking multi-defun progn JIT registration with function-cell chunk lookups (`src/tests/integration.zig:88`) catches regressions where only the first eligible function gets native code.
 - Adding explicit `jit_compiled` counters + machine-checkable JIT gate (`bench/maxima_workload.zig:605`, `tools/maxima-hotspots:87`, `tools/perf-loop:346`) made "JIT effective vs interpreter" a hard signal instead of manual inspection.
@@ -48,6 +50,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Keeping a hard allocator-cursor invariant check after JIT returns (`src/interp/vm.zig:1311`, `src/jit/backend.zig:95`) turns cursor corruption into immediate, attributable failures instead of delayed heap-state crashes.
 
 ### Did Not Work
+- Injecting a post-generic-call guard CFG inside JIT translation (an `emitBridgeErrorGuard` experiment in `src/jit/backend.zig`) regressed recursive JIT functions (`compileChunk JIT handles recursive nqueens helper entry copies`) with null-call crashes; keep bridge relay state in VM/backend runtime lanes until that control-flow lowering path is proven safe.
+- Using a direct keyword-heavy generic call as the bridge relay regression target caused an unrelated native crash (`Bus error at 0x3`) before reaching the bridge helper; the stable repro is a JIT call into an interpreted wrapper that triggers the keyword failure (`src/tests/integration.zig:1877`).
 - Expecting all `(speed 3, safety 0)` functions in the same top-level progn to compile is still wrong when one body contains unsupported IR (`lambda` nodes in body): candidate collection now keeps compiling later candidates, but unsupported functions remain interpreted by design (`src/testing/compile_chunk.zig:163`).
 - Running perf-loop with large microbench iteration counts for quick validation (`tools/perf-loop --iters 1000`) stalls practical feedback loops; keep smoke validation runs small and use targeted bench commands for deep measurements.
 - Widening `CallBridge` in hoist mode without matching `src/jit/backend_stub.zig` broke `-Duse-hoist=false` builds immediately; backend and stub interfaces must evolve together.

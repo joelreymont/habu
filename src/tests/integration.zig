@@ -1874,6 +1874,33 @@ test "keyword arg validation" {
     try testing.expect(ok2.isNil());
 }
 
+test "JIT bridge relays keyword throw without panic" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defun bridge-keyfail (&key a b) (if a a b))");
+    _ = try repl.eval("(defun bridge-keyfail-wrapper () (bridge-keyfail :a 1 :z 2))");
+
+    const jit_before = repl.vm.jit_fns.count();
+    _ = try repl.eval(
+        \\(defun jit-bridge-keyfail ()
+        \\  (declare (optimize (speed 3) (safety 0)))
+        \\  (bridge-keyfail-wrapper))
+    );
+    try testing.expect(repl.vm.jit_fns.count() > jit_before);
+
+    try testing.expectError(error.UnhandledThrow, repl.eval("(jit-bridge-keyfail)"));
+}
+
 test "tail call preserves keyword argument layout" {
     const allocator = testing.allocator;
 

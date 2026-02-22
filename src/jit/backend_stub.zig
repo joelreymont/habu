@@ -29,6 +29,14 @@ pub fn allocPtrRaw() u64 {
     return 0;
 }
 
+pub fn clearBridgeError() void {}
+
+pub fn markBridgeError() void {}
+
+pub fn bridgeErrorPending() bool {
+    return false;
+}
+
 pub const KnownFn = struct {
     fn_ptr: u64 = 0,
     arity: u32 = 0,
