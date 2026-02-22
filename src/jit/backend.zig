@@ -4069,18 +4069,14 @@ fn containsCons(body: *const Ir) bool {
 }
 
 /// Detect IR nodes lowered to C-ABI helper calls in this backend.
-fn containsHelperCalls(body: *const Ir) bool {
+/// When `fixnum_inline` is true, generic numeric ops are lowered inline and
+/// should not force helper-call classification.
+fn containsHelperCalls(body: *const Ir, fixnum_inline: bool) bool {
     return irAny(body, struct {
-        fn check(_: @This(), ir: *const Ir) bool {
+        fixnum_inline: bool,
+        fn check(self: @This(), ir: *const Ir) bool {
             return switch (ir.*) {
-                .add,
-                .sub,
-                .mul,
-                .lt,
-                .gt,
-                .le,
-                .ge,
-                .num_eq,
+                .add, .sub, .mul, .lt, .gt, .le, .ge, .num_eq => !self.fixnum_inline,
                 .sqrt,
                 .round,
                 .make_hash,
@@ -4100,7 +4096,7 @@ fn containsHelperCalls(body: *const Ir) bool {
                 else => false,
             };
         }
-    }{});
+    }{ .fixnum_inline = fixnum_inline });
 }
 
 /// Conservative gate for untagged mode: only pure fixnum arithmetic/control.
@@ -4381,15 +4377,18 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     translator.fn_name = name;
     translator.known_fns = known_fns;
     translator.literal_roots = literal_roots;
-    translator.has_cross_calls = containsCons(lambda.body) or
-        containsHelperCalls(lambda.body) or
-        containsPrimitiveCalls(lambda.body, name) or
-        hasAnyNonSelfCalls(lambda.body, name);
-
     translator.user_arity = arity;
     translator.is_recursive = detectSelfCalls(lambda.body, name);
     translator.has_loops = detectLoops(lambda.body);
     translator.has_loads = containsLoads(lambda.body);
+    translator.untagged = translator.has_loops and !translator.is_recursive and
+        isUntaggedSafeExpr(lambda.body);
+
+    const fixnum_inline = translator.untagged or translator.is_recursive;
+    translator.has_cross_calls = containsCons(lambda.body) or
+        containsHelperCalls(lambda.body, fixnum_inline) or
+        containsPrimitiveCalls(lambda.body, name) or
+        hasAnyNonSelfCalls(lambda.body, name);
 
     if (std.posix.getenv("HABU_TRACE_JIT_FLAGS") != null) {
         std.debug.print(
@@ -4418,11 +4417,6 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
         try indirect_sig.returns.append(allocator, AbiParam.new(I64));
         translator.self_sig_ref = try func.addSignature(indirect_sig);
     }
-
-    // Enable untagged mode only for a conservative arithmetic subset.
-    // This avoids mixing untagged fixnums with tagged runtime/helper paths.
-    translator.untagged = translator.has_loops and !translator.is_recursive and
-        isUntaggedSafeExpr(lambda.body);
 
     // Map params to SSA values, untagging at entry in untagged mode.
     const block_params = func.dfg.blockParams(entry);
@@ -4455,8 +4449,9 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
             translator.is_recursive = false;
         }
         // May still have cross-calls (cons, known functions)
+        const tco_fixnum_inline = translator.untagged or translator.is_recursive;
         translator.has_cross_calls = containsCons(lambda.body) or
-            containsHelperCalls(lambda.body) or
+            containsHelperCalls(lambda.body, tco_fixnum_inline) or
             containsPrimitiveCalls(lambda.body, name) or
             hasAnyNonSelfCalls(lambda.body, name);
     }
@@ -6483,6 +6478,36 @@ fn dumpAsmPass(label: []const u8, code: []const u8) void {
 // ============================================================================
 
 const testing = std.testing;
+
+test "containsHelperCalls excludes numeric ops under fixnum inline lowering" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const var_x = try alloc.create(Ir);
+    var_x.* = .{ .@"var" = .{ .name = "x", .depth = 0, .index = 0 } };
+    const one = try alloc.create(Ir);
+    one.* = .{ .lit = Value.makeFixnum(1) };
+    const add = try alloc.create(Ir);
+    add.* = .{ .add = .{ .left = var_x, .right = one } };
+
+    try testing.expect(containsHelperCalls(add, false));
+    try testing.expect(!containsHelperCalls(add, true));
+}
+
+test "containsHelperCalls preserves true helper ops under fixnum inline lowering" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const one = try alloc.create(Ir);
+    one.* = .{ .lit = Value.makeFixnum(1) };
+    const sqrt = try alloc.create(Ir);
+    sqrt.* = .{ .sqrt = .{ .operand = one } };
+
+    try testing.expect(containsHelperCalls(sqrt, false));
+    try testing.expect(containsHelperCalls(sqrt, true));
+}
 
 /// Helper: build Hoist function, compile, load into JIT memory
 fn compileAndLoad(allocator: std.mem.Allocator, func: *Function) !struct { fn_ptr: *const fn (i64) callconv(.c) i64, mem: *JitMem } {

@@ -26,6 +26,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Locking the failure mode with a dedicated regression (`src/tests/integration.zig:206`) for optimized `bench-intern` loop count prevents future call-setup rewrites from silently dropping live save/restore moves.
 - Resolving forwarded values at every quasiquote recursion boundary (`src/compiler/compile.zig:7696`, `src/compiler/compile.zig:7754`) fixed a smallest-heap stdlib-load crash where `quasiquoteList` dereferenced stale/forwarded cons cells under GC pressure.
 - Making the MV conditional-jump regression independent of stdlib macros (`src/tests/integration.zig:6485`) by using direct `if` instead of `when` removed false negatives from missing macro expansion setup.
+- Computing untagged eligibility before cross-call classification and making helper detection lowering-aware (`containsHelperCalls(body, fixnum_inline)` in `src/jit/backend.zig:4072`, `src/jit/backend.zig:4384`) removed false `cross=true` flags for pure arithmetic loops, restoring aggressive JIT opt-level selection for `bench-fixnum-loop`/`bench-fixnum-mul`.
+- Adding focused backend unit tests for helper-call classification (`src/jit/backend.zig:6486`, `src/jit/backend.zig:6502`) locked the new lowering-aware behavior so future refactors do not silently reintroduce conservative cross-call misclassification.
 
 ### Did Not Work
 - Relocating keyword pairs before positional arguments in tail-call `&key` frame reuse (`src/interp/vm.zig` pre-fix `doCall` tail key path) still clobbered positional source slots when ranges overlapped, producing partially fixed but still wrong bindings (`lst` became `:TEST`); positional arguments must be copied first.
@@ -37,6 +39,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Restricting LOOP `AND` to FOR/AS/WITH-only continuation (`lib/stdlib.habu` pre-fix `loop-expand`) is too strict for ANSI/Maxima code that uses `and` to chain action clauses, and it produced hard load stops (`AND must continue FOR/AS/WITH clause`) in `mload.lisp`.
 - Eliminating round-trip MOV pairs using only local between-use checks (`src/jit/backend.zig` pre-fix `eliminateRoundTripMovs`) is unsound for call setup: `mov x22,x0` / `mov x0,x22` around helper calls can look cancelable but are live state transfer when the source register is overwritten in-between.
 - Using `when` in low-level VM jump tests without loading stdlib macros (`src/tests/integration.zig` pre-fix `mv: values through conditional jumps`) can fail as `UnboundSymbol` and hide the real jump/multiple-value behavior being tested.
+- Relying on a single-run `bench-comp` number to validate sub-millisecond loop improvements is noisy; confirm with `HABU_TRACE_JIT_FLAGS` classification output plus repeated runs before concluding a regression or win.
 
 ## Session Notes (2026-02-20)
 

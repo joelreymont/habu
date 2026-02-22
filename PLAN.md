@@ -167,6 +167,7 @@
     - [x] `habu-fix-jit-heap-62c0436e` Keep JIT heap cursor sync monotonic and add intern+format distinct-symbol regression guard.
     - [x] `habu-fix-jit-bridge-685a2246` Preserve inline-cons cursor across JIT↔VM bridge calls and force call-arg cycle fixing for generic non-self calls (nqueens helper-entry regression).
     - [x] `habu-fix-jit-lt-caa8b70b` Fix JIT `<` helper-call argument corruption from unsafe round-trip MOV elimination in call setup (bench-comp `intern`/perf-loop crash path) and add loop regression.
+    - [x] `habu-improve-fixnum-loop-64cf30de` Reclassify untagged arithmetic loops as non-cross-call JIT functions so `fixnum_loop`/`fixnum_mul` can compile with aggressive optimization; add backend unit tests for helper-call classification.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).
