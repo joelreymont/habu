@@ -1324,73 +1324,75 @@ pub const Builtins = struct {
     /// Comptime list of primitive function field names (not special forms)
     const primitive_fields = [_][]const u8{
         // Arithmetic
-        "+",                      "-",                        "*",                         "/",                        "mod",                      "%",                           "quot",               "truncate",               "rem",
+        "+",                          "-",                          "*",                         "/",                           "mod",                "%",                      "quot",                  "truncate",             "rem",
         // Comparison
-        "eq",                     "equal",                    "eql",                       "equalp",                   "<",                        ">",                           "<=",                 ">=",                     "=",
+        "eq",                         "equal",                      "eql",                       "equalp",                      "<",                  ">",                      "<=",                    ">=",                   "=",
         // List operations
-        "cons",                   "car",                      "cdr",                       "first",                    "rest",                     "caar",                        "cadr",               "cdar",                   "cddr",
-        "caaar",                  "caadr",                    "cadar",                     "caddr",                    "cdaar",                    "cdadr",                       "cddar",              "cdddr",                  "second",
-        "third",                  "fourth",                   "append",                    "length",                   "reverse",                  "nth",                         "nthcdr",             "last",                   "member",
-        "assoc",                  "find",                     "position",                  "count",                    "remove",                   "list",                        "rplaca",             "rplacd",
+        "cons",                       "car",                        "cdr",                       "first",                       "rest",               "caar",                   "cadr",                  "cdar",                 "cddr",
+        "caaar",                      "caadr",                      "cadar",                     "caddr",                       "cdaar",              "cdadr",                  "cddar",                 "cdddr",                "second",
+        "third",                      "fourth",                     "append",                    "length",                      "reverse",            "nth",                    "nthcdr",                "last",                 "member",
+        "assoc",                      "find",                       "position",                  "count",                       "remove",             "list",                   "rplaca",                "rplacd",
         // Type predicates
-                        "consp",
-        "symbolp",                "numberp",                  "integerp",                  "realp",                    "stringp",                  "vectorp",                     "closurep",           "keywordp",               "null",
-        "not",                    "characterp",               "floatp",                    "listp",                    "atom",
+                      "consp",
+        "symbolp",                    "numberp",                    "integerp",                  "realp",                       "stringp",            "vectorp",                "closurep",              "keywordp",             "null",
+        "not",                        "characterp",                 "floatp",                    "listp",                       "atom",
         // Character operations
-                            "char-code",                   "code-char",          "char=",                  "char<",
-        "char>",                  "%read-char",               "%peek-char",                "read", "%read",                    "read-from-string",         "load",                        "unread-char",        "listen",                 "upgraded-complex-part-type",
-        "eval",                   "gensym",                   "macroexpand",               "macroexpand-1",
+                      "char-code",              "code-char",             "char=",                "char<",
+        "char>",                      "%read-char",                 "%peek-char",                "read",                        "%read",              "read-from-string",       "load",                  "unread-char",          "listen",
+        "upgraded-complex-part-type", "eval",                       "gensym",                    "macroexpand",                 "macroexpand-1",
         // Symbol operations
-                   "boundp",                   "fboundp",                     "symbol-value",       "symbol-function",        "symbol-plist",            "function-lambda-expression",
-        "typep",                  "type-of",                  "intern",                    "symbol-name",              "symbol-package",           "copy-symbol",              "makunbound",                  "set",                "copy-structure",         "get",
-        "put",                    "remprop",                   "%set-symbol-value",         "%set-symbol-plist",
+             "boundp",                 "fboundp",               "symbol-value",         "symbol-function",
+        "symbol-plist",               "function-lambda-expression", "typep",                     "type-of",                     "intern",             "symbol-name",            "symbol-package",        "copy-symbol",          "makunbound",
+        "set",                        "copy-structure",             "get",                       "put",                         "remprop",            "%set-symbol-value",      "%set-symbol-plist",
         // Numeric
-                         "abs",                       "zerop",                    "plusp",                    "minusp",                      "evenp",              "oddp",
+            "abs",                  "zerop",
+        "plusp",                      "minusp",                     "evenp",                     "oddp",
         // Math functions
-                          "sqrt",
-        "sin",                    "cos",                      "tan",                       "exp",                      "log",                      "floor",                       "ceiling",            "round",
+                               "sqrt",               "sin",                    "cos",                   "tan",                  "exp",
+        "log",                        "floor",                      "ceiling",                   "round",
         // Vector operations
-                         "aref",
-        "svref",                  "vector-length",            "make-vector",               "vector",                   "make-array",
+                              "aref",               "svref",                  "vector-length",         "make-vector",          "vector",
+        "make-array",
         // String operations
-                      "char",                        "schar",              "string-length",          "string-concat",
-        "string=",                "string<",                  "string>",                   "string<=",                 "string>=",                 "substring",                   "subseq",
+                        "char",                       "schar",                     "string-length",               "string-concat",      "string=",                "string<",               "string>",              "string<=",
+        "string>=",                   "substring",                  "subseq",
         // I/O
-                    "write",                  "print",
-        "princ",                  "terpri",                   "write-char",                "random",                   "random-seed",              "format",
+                           "write",                       "print",              "princ",                  "terpri",                "write-char",           "random",
+        "random-seed",                "format",
         // Character functions
-                             "char-upcase",        "char-downcase",          "digit-char-p",
-        "alpha-char-p",
+                            "char-upcase",               "char-downcase",               "digit-char-p",       "alpha-char-p",
         // String/number conversion
-                  "parse-integer",            "write-to-string",
+                  "parse-integer",         "write-to-string",
         // Bitwise operations
-        "logand",                   "logior",                   "logxor",                      "lognot",             "ash",                    "lognand",
-        "lognor",                 "logandc1",                 "logandc2",                  "logorc1",                  "logorc2",                  "logeqv",                      "logbitp",                  "logcount",                    "integer-length",
+             "logand",
+        "logior",                     "logxor",                     "lognot",                    "ash",                         "lognand",            "lognor",                 "logandc1",              "logandc2",             "logorc1",
+        "logorc2",                    "logeqv",                     "logbitp",                   "logcount",                    "integer-length",
         // File I/O
-            "read-file",              "write-file",
-        "delete-file",            "rename-file",              "probe-file",                "file-write-date",          "file-author",              "file-string-length",          "get-universal-time", "get-internal-real-time", "get-internal-run-time",
-        "get-decoded-time",       "decode-universal-time",    "encode-universal-time",     "room",                     "lisp-implementation-type", "lisp-implementation-version", "software-type",      "machine-type",           "machine-instance",
-        "machine-version",        "software-version",         "short-site-name",           "long-site-name",           "user-homedir-pathname",
+            "read-file",              "write-file",            "delete-file",          "rename-file",
+        "probe-file",                 "file-write-date",            "file-author",               "file-string-length",          "get-universal-time", "get-internal-real-time", "get-internal-run-time", "get-decoded-time",     "decode-universal-time",
+        "encode-universal-time",      "room",                       "lisp-implementation-type",  "lisp-implementation-version", "software-type",      "machine-type",           "machine-instance",      "machine-version",      "software-version",
+        "short-site-name",            "long-site-name",             "user-homedir-pathname",
         // String construction
-           "make-string",                 "string-to-list",     "list-to-string",         "string-upcase",
-        "string-downcase",        "concatenate",   "%string-upcase",  "%string-downcase",
+            "make-string",                 "string-to-list",     "list-to-string",         "string-upcase",         "string-downcase",      "concatenate",
+        "%string-upcase",             "%string-downcase",
         // Hash tables
-                     "make-hash-table",           "gethash",                  "puthash",                  "remhash",                     "hash-table-count",   "hash-table-capacity",    "clrhash",
-        "hash-table-test",        "hash-table-p",             "hash-table-keys",           "hash-table-alist",         "sxhash",
+                  "make-hash-table",           "gethash",                     "puthash",            "remhash",                "hash-table-count",      "hash-table-capacity",  "clrhash",
+        "hash-table-test",            "hash-table-p",               "hash-table-keys",           "hash-table-alist",            "sxhash",
         // Numeric types
-                          "rationalp",                   "complexp",           "make-complex",           "real-part",
-        "imag-part",              "numerator",                "denominator",
+                    "rationalp",              "complexp",              "make-complex",         "real-part",
+        "imag-part",                  "numerator",                  "denominator",
         // Streams
-                      "streamp",                  "input-stream-p",           "output-stream-p",             "open-stream-p",      "interactive-stream-p",   "stream-element-type",
-        "stream-external-format", "make-string-input-stream", "make-string-output-stream", "get-output-stream-string", "write-to-stream",
+                      "streamp",                     "input-stream-p",     "output-stream-p",        "open-stream-p",         "interactive-stream-p", "stream-element-type",
+        "stream-external-format",     "make-string-input-stream",   "make-string-output-stream", "get-output-stream-string",    "write-to-stream",
         // Pathname primitives
-                 "pathname-host",               "pathname-device",    "pathname-directory",     "pathname-name",
-        "pathname-type",          "pathname-version",         "truename",                  "ensure-directories-exist", "pathname",                 "parse-namestring",            "namestring",         "merge-pathnames",        "directory-namestring",
-        "file-namestring",        "host-namestring",          "wild-pathname-p",
+           "pathname-host",          "pathname-device",       "pathname-directory",   "pathname-name",
+        "pathname-type",              "pathname-version",           "truename",                  "ensure-directories-exist",    "pathname",           "parse-namestring",       "namestring",            "merge-pathnames",      "directory-namestring",
+        "file-namestring",            "host-namestring",            "wild-pathname-p",
         // Also callable
-                  "funcall",                  "apply",                    "values",                      "values-list",
+                  "funcall",                     "apply",              "values",                 "values-list",
         // Internal setters used by setf expanders and bootstrap fdefinition wiring
-                  "%aset",                    "%svset",                   "%sset",
+                  "%aset",                "%svset",
+        "%sset",
     };
 
     /// Check if a symbol is a builtin function (not special form)
@@ -1401,7 +1403,6 @@ pub const Builtins = struct {
         }
         return false;
     }
-
 };
 
 /// Lexical environment for variable resolution
@@ -6250,22 +6251,41 @@ pub const Compiler = struct {
 
         const cons1 = args.toPtr(Cons);
         const fn_expr = cons1.car;
-        var rest = cons1.cdr;
+        var rest = self.resolveForwardedValue(cons1.cdr);
 
         if (!rest.isCons()) return error.InvalidSyntax;
 
         var spread_count: usize = 0;
-        var count_cur = rest;
-        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+        var count_cur = self.resolveForwardedValue(rest);
+        while (count_cur.isCons()) {
+            count_cur = self.resolveForwardedValue(count_cur);
             spread_count += 1;
+            count_cur = self.resolveForwardedValue(count_cur.toPtr(Cons).cdr);
         }
-        if (spread_count == 0) return error.InvalidSyntax;
+        if (spread_count == 0 or !count_cur.isNil()) return error.InvalidSyntax;
+
+        var rest_tok: ?CompileRootToken = null;
+        var rest_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, rest);
+            rest_tok = tok;
+            rest_vm = vm;
+            rest = vm.globals[tok.root_idx];
+        }
+        defer if (rest_tok) |tok| {
+            popCompileRoot(rest_vm.?, tok.root_idx, tok.stack_idx);
+        };
 
         const fn_ir = try self.compile(fn_expr, env);
 
         // If only one arg, it's just (apply fn args-list)
         if (spread_count == 1) {
-            const only_arg = try self.compile(rest.toPtr(Cons).car, env);
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| rest = vm.globals[tok.root_idx];
+            }
+            rest = self.resolveForwardedValue(rest);
+            if (!rest.isCons()) return error.InvalidSyntax;
+            const only_arg = try self.compile(self.resolveForwardedValue(rest.toPtr(Cons).car), env);
             const node = try self.allocator.create(ir.Ir);
             node.* = .{ .apply = .{ .func = fn_ir, .args = only_arg } };
             return node;
@@ -6273,15 +6293,30 @@ pub const Compiler = struct {
 
         const spread_args = try self.allocator.alloc(*const Ir, spread_count);
         var idx: usize = 0;
-        while (rest.isCons()) {
+        while (true) {
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| rest = vm.globals[tok.root_idx];
+            }
             rest = self.resolveForwardedValue(rest);
+            if (!rest.isCons()) break;
             const cons = rest.toPtr(Cons);
             const arg_expr = self.resolveForwardedValue(cons.car);
             const next = self.resolveForwardedValue(cons.cdr);
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| {
+                    vm.globals[tok.root_idx] = next;
+                }
+            } else {
+                rest = next;
+            }
             spread_args[idx] = try self.compile(arg_expr, env);
             idx += 1;
-            rest = next;
         }
+        if (rest_tok) |tok| {
+            if (rest_vm) |vm| rest = vm.globals[tok.root_idx];
+        }
+        rest = self.resolveForwardedValue(rest);
+        if (!rest.isNil()) return error.InvalidSyntax;
 
         // Multiple args: need to build combined args list
         // (apply fn a b c final-list) => call fn with (a b c . final-list)
@@ -6316,22 +6351,63 @@ pub const Compiler = struct {
             pair_count += 1;
             count_cur = self.resolveForwardedValue(c1.cdr.toPtr(Cons).cdr);
         }
+        if (!count_cur.isNil()) return error.InvalidSet;
 
         const forms = try self.allocator.alloc(*const Ir, pair_count);
-        var rest = live_args;
+        var rest = self.resolveForwardedValue(live_args);
+        var rest_tok: ?CompileRootToken = null;
+        var rest_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, rest);
+            rest_tok = tok;
+            rest_vm = vm;
+            rest = vm.globals[tok.root_idx];
+        }
+        defer if (rest_tok) |tok| {
+            popCompileRoot(rest_vm.?, tok.root_idx, tok.stack_idx);
+        };
+
         var form_idx: usize = 0;
-        while (rest.isCons()) {
+        while (true) {
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| rest = vm.globals[tok.root_idx];
+            }
+            rest = self.resolveForwardedValue(rest);
+            if (!rest.isCons()) break;
             const c1 = rest.toPtr(Cons);
             if (!c1.cdr.isCons()) return error.InvalidSet;
             const c2 = c1.cdr.toPtr(Cons);
-            const next_rest = c2.cdr;
+            const var_expr = self.resolveForwardedValue(c1.car);
+            const val_expr = self.resolveForwardedValue(c2.car);
+
             // Build a two-element list (var value) for compileSet
             const heap = self.heap orelse return error.InvalidSet;
-            const pair = try heap.allocCons(c1.car, try heap.allocCons(c2.car, Value.nil));
+            const pair = try heap.allocCons(var_expr, try heap.allocCons(val_expr, Value.nil));
             forms[form_idx] = try self.compileSet(pair, env);
             form_idx += 1;
-            rest = self.resolveForwardedValue(next_rest);
+
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| rest = vm.globals[tok.root_idx];
+            }
+            rest = self.resolveForwardedValue(rest);
+            if (!rest.isCons()) return error.InvalidSet;
+            const live_c1 = rest.toPtr(Cons);
+            if (!live_c1.cdr.isCons()) return error.InvalidSet;
+            const live_c2 = live_c1.cdr.toPtr(Cons);
+            const next_rest = self.resolveForwardedValue(live_c2.cdr);
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| {
+                    vm.globals[tok.root_idx] = next_rest;
+                }
+            } else {
+                rest = next_rest;
+            }
         }
+        if (rest_tok) |tok| {
+            if (rest_vm) |vm| rest = vm.globals[tok.root_idx];
+        }
+        rest = self.resolveForwardedValue(rest);
+        if (!rest.isNil()) return error.InvalidSet;
 
         const node = try self.allocator.create(Ir);
         node.* = .{ .progn = forms };
@@ -6571,10 +6647,7 @@ pub const Compiler = struct {
                     const idx_arg = place_args.toPtr(Cons).cdr.toPtr(Cons).car;
                     // Build (%set-elt seq idx val) call
                     const set_elt_sym = try heap.intern("%set-elt");
-                    const form = try heap.allocCons(set_elt_sym,
-                        try heap.allocCons(seq_arg,
-                            try heap.allocCons(idx_arg,
-                                try heap.allocCons(value_expr, Value.nil))));
+                    const form = try heap.allocCons(set_elt_sym, try heap.allocCons(seq_arg, try heap.allocCons(idx_arg, try heap.allocCons(value_expr, Value.nil))));
                     return self.compile(form, env);
                 }
 
@@ -7240,20 +7313,55 @@ pub const Compiler = struct {
         const setf_ref = try self.builder.globalRef(setf_name, idx);
 
         var arg_count: usize = 1;
-        var p = place_args;
-        while (p.isCons()) : (p = p.toPtr(Cons).cdr) arg_count += 1;
+        var p = self.resolveForwardedValue(place_args);
+        while (p.isCons()) {
+            p = self.resolveForwardedValue(p);
+            arg_count += 1;
+            p = self.resolveForwardedValue(p.toPtr(Cons).cdr);
+        }
+        if (!p.isNil()) return error.InvalidSetf;
 
         const call_args = try self.allocator.alloc(*Ir, arg_count);
         call_args[0] = val_ir;
 
-        var i: usize = 1;
-        p = place_args;
-        while (p.isCons()) {
-            const arg_cons = p.toPtr(Cons);
-            call_args[i] = try self.compile(arg_cons.car, env);
-            i += 1;
-            p = arg_cons.cdr;
+        var arg_list = self.resolveForwardedValue(place_args);
+        var arg_tok: ?CompileRootToken = null;
+        var arg_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, arg_list);
+            arg_tok = tok;
+            arg_vm = vm;
+            arg_list = vm.globals[tok.root_idx];
         }
+        defer if (arg_tok) |tok| {
+            popCompileRoot(arg_vm.?, tok.root_idx, tok.stack_idx);
+        };
+
+        var i: usize = 1;
+        while (true) {
+            if (arg_tok) |tok| {
+                if (arg_vm) |vm| arg_list = vm.globals[tok.root_idx];
+            }
+            arg_list = self.resolveForwardedValue(arg_list);
+            if (!arg_list.isCons()) break;
+            const arg_cons = arg_list.toPtr(Cons);
+            const arg_expr = self.resolveForwardedValue(arg_cons.car);
+            const next = self.resolveForwardedValue(arg_cons.cdr);
+            if (arg_tok) |tok| {
+                if (arg_vm) |vm| {
+                    vm.globals[tok.root_idx] = next;
+                }
+            } else {
+                arg_list = next;
+            }
+            call_args[i] = try self.compile(arg_expr, env);
+            i += 1;
+        }
+        if (arg_tok) |tok| {
+            if (arg_vm) |vm| arg_list = vm.globals[tok.root_idx];
+        }
+        arg_list = self.resolveForwardedValue(arg_list);
+        if (!arg_list.isNil()) return error.InvalidSetf;
 
         return try self.builder.call(setf_ref, call_args);
     }
@@ -7496,7 +7604,7 @@ pub const Compiler = struct {
         };
         const body = try self.allocator.create(Ir);
         body.* = .{ .intern = .{ .operand = name_ref } };
-        return try self.builder.lambda(&.{ "name" }, &optional, &.{}, false, null, &.{}, body);
+        return try self.builder.lambda(&.{"name"}, &optional, &.{}, false, null, &.{}, body);
     }
 
     fn makeVariadicAddWrapper(self: *Compiler) anyerror!*Ir {
@@ -8345,69 +8453,117 @@ pub const Compiler = struct {
 
     fn compileTagbody(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (tagbody [tag | form]...)
-        // Count tags first so segment/tag storage can be allocated once.
-        var tag_count: usize = 0;
-        var scan = args;
-        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
-            if (scan.toPtr(Cons).car.isSymbol()) tag_count += 1;
+        var rest = self.resolveForwardedValue(args);
+        var rest_tok: ?CompileRootToken = null;
+        var rest_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, rest);
+            rest_tok = tok;
+            rest_vm = vm;
+            rest = vm.globals[tok.root_idx];
         }
-        if (!scan.isNil()) return error.InvalidSyntax;
+        defer if (rest_tok) |tok| {
+            popCompileRoot(rest_vm.?, tok.root_idx, tok.stack_idx);
+        };
 
-        const tags = try self.allocator.alloc(Value, tag_count);
-        const segments = try self.allocator.alloc(*const Ir, tag_count + 1);
+        var tags = std.ArrayList(Value){};
+        defer tags.deinit(self.allocator);
 
-        var rest = args;
-        var tag_idx: usize = 0;
-        var seg_idx: usize = 0;
+        var segments = std.ArrayList(*const Ir){};
+        defer segments.deinit(self.allocator);
+
         while (true) {
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| rest = vm.globals[tok.root_idx];
+            }
+            rest = self.resolveForwardedValue(rest);
+
             var form_count: usize = 0;
             var seg_scan = rest;
             while (seg_scan.isCons()) {
-                const elem = seg_scan.toPtr(Cons).car;
-                if (elem.isSymbol()) break;
+                seg_scan = self.resolveForwardedValue(seg_scan);
+                const elem = self.resolveForwardedValue(seg_scan.toPtr(Cons).car);
+                if (self.isTagbodyTag(elem)) break;
                 form_count += 1;
-                seg_scan = seg_scan.toPtr(Cons).cdr;
+                seg_scan = self.resolveForwardedValue(seg_scan.toPtr(Cons).cdr);
             }
             if (!seg_scan.isNil() and !seg_scan.isCons()) return error.InvalidSyntax;
 
-            const seg_forms = try self.allocator.alloc(Value, form_count);
-            var fill = rest;
-            var form_idx: usize = 0;
-            while (form_idx < form_count) : (form_idx += 1) {
-                const cell = fill.toPtr(Cons);
-                seg_forms[form_idx] = cell.car;
-                fill = cell.cdr;
+            const seg_ir = try self.compileTagbodySegment(form_count, env, &rest, rest_tok, rest_vm);
+            try segments.append(self.allocator, seg_ir);
+
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| rest = vm.globals[tok.root_idx];
             }
-            segments[seg_idx] = try self.compileFormsToProgn(seg_forms, env);
-            seg_idx += 1;
+            rest = self.resolveForwardedValue(rest);
+            if (!rest.isCons()) {
+                if (!rest.isNil()) return error.InvalidSyntax;
+                break;
+            }
 
-            if (!seg_scan.isCons()) break;
+            const tag_cell = rest.toPtr(Cons);
+            const tag = self.resolveForwardedValue(tag_cell.car);
+            if (!self.isTagbodyTag(tag)) return error.InvalidSyntax;
+            try tags.append(self.allocator, tag);
 
-            const tag_cell = seg_scan.toPtr(Cons);
-            tags[tag_idx] = tag_cell.car;
-            tag_idx += 1;
-            rest = tag_cell.cdr;
+            const next_rest = self.resolveForwardedValue(tag_cell.cdr);
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| {
+                    vm.globals[tok.root_idx] = next_rest;
+                }
+            } else {
+                rest = next_rest;
+            }
         }
 
-        std.debug.assert(tag_idx == tags.len);
-        std.debug.assert(seg_idx == segments.len);
-        return try self.builder.tagbody(tags, segments);
+        return try self.builder.tagbody(tags.items, segments.items);
     }
 
-    fn compileFormsToProgn(self: *Compiler, forms: []const Value, env: *const Env) anyerror!*Ir {
-        if (forms.len == 0) {
+    fn isTagbodyTag(self: *Compiler, value: Value) bool {
+        const live_value = self.resolveForwardedValue(value);
+        return live_value.isSymbol() or live_value.isFixnum() or live_value.isBignum();
+    }
+
+    fn compileTagbodySegment(
+        self: *Compiler,
+        form_count: usize,
+        env: *const Env,
+        rest: *Value,
+        rest_tok: ?CompileRootToken,
+        rest_vm: ?*Vm,
+    ) anyerror!*Ir {
+        if (form_count == 0) {
             return try self.builder.lit(Value.nil);
         }
-        if (forms.len == 1) {
-            return self.compile(forms[0], env);
+
+        var exprs = std.ArrayList(*const Ir){};
+        defer exprs.deinit(self.allocator);
+
+        var idx: usize = 0;
+        while (idx < form_count) : (idx += 1) {
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| rest.* = vm.globals[tok.root_idx];
+            }
+            rest.* = self.resolveForwardedValue(rest.*);
+            if (!rest.*.isCons()) return error.InvalidSyntax;
+
+            const cell = rest.*.toPtr(Cons);
+            const form = self.resolveForwardedValue(cell.car);
+            const next_rest = self.resolveForwardedValue(cell.cdr);
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| {
+                    vm.globals[tok.root_idx] = next_rest;
+                }
+            } else {
+                rest.* = next_rest;
+            }
+
+            const form_ir = try self.compileWithTail(form, env, false);
+            try exprs.append(self.allocator, form_ir);
         }
-        const exprs = try self.allocator.alloc(*const Ir, forms.len);
-        for (forms, 0..) |form, i| {
-            exprs[i] = try self.compile(form, env);
-        }
-        const node = try self.allocator.create(Ir);
-        node.* = .{ .progn = exprs };
-        return node;
+
+        if (exprs.items.len == 1) return @constCast(exprs.items[0]);
+        return try self.builder.progn(exprs.items);
     }
 
     fn compileGo(self: *Compiler, args: Value) anyerror!*Ir {
@@ -8415,9 +8571,10 @@ pub const Compiler = struct {
         if (!args.isCons()) return error.InvalidSyntax;
 
         const cons = args.toPtr(Cons);
-        if (!cons.car.isSymbol()) return error.InvalidSyntax;
+        const tag = self.resolveForwardedValue(cons.car);
+        if (!self.isTagbodyTag(tag)) return error.InvalidSyntax;
 
-        return try self.builder.go(cons.car);
+        return try self.builder.go(tag);
     }
 
     fn compileValues(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -12816,30 +12973,30 @@ pub const Compiler = struct {
             var next_method = dispatch_body;
 
             // Build chain from innermost (last around) to outermost (first around)
-                var a = around_methods.items.len;
-                while (a > 0) {
-                    a -= 1;
-                    const around = around_methods.items[a];
+            var a = around_methods.items.len;
+            while (a > 0) {
+                a -= 1;
+                const around = around_methods.items[a];
 
-                    // Wrap next_method in a lambda so it can be called via %next-method%
-                    const lambda_params = try self.allocator.dupe([]const u8, dispatch_params);
-                    const lambda_captures = try self.allocator.alloc(Ir.Capture, dispatch_params.len);
-                    for (dispatch_params, 0..) |pname, idx| {
-                        lambda_captures[idx] = .{
-                            .name = pname,
-                            .depth = 0,
-                            .index = @intCast(idx),
-                        };
-                    }
-                    const next_method_lambda = try self.builder.lambda(
-                        lambda_params,
-                        &[_]Ir.OptionalParam{},
-                        &[_]Ir.KeyParam{},
-                        false,
-                        null,
-                        lambda_captures,
-                        next_method,
-                    );
+                // Wrap next_method in a lambda so it can be called via %next-method%
+                const lambda_params = try self.allocator.dupe([]const u8, dispatch_params);
+                const lambda_captures = try self.allocator.alloc(Ir.Capture, dispatch_params.len);
+                for (dispatch_params, 0..) |pname, idx| {
+                    lambda_captures[idx] = .{
+                        .name = pname,
+                        .depth = 0,
+                        .index = @intCast(idx),
+                    };
+                }
+                const next_method_lambda = try self.builder.lambda(
+                    lambda_params,
+                    &[_]Ir.OptionalParam{},
+                    &[_]Ir.KeyParam{},
+                    false,
+                    null,
+                    lambda_captures,
+                    next_method,
+                );
 
                 // Define %next-method% global (use qualified name to match symbol interning)
                 const nm_name = try self.getNextMethodName();
@@ -15621,9 +15778,15 @@ pub const Compiler = struct {
         if (s == b.@"%make-concatenated-stream".raw) return self.compileConcatenatedStream(args, env);
         if (s == b.@"class-of".raw) return self.compileClassOf(args, env);
         // floor/ceiling/round: 1-arg uses opcode (sets secondary values), 2-arg uses stdlib defun
-        if (s == b.floor.raw) { if (try self.compileFloorCeilRound(args, env, .floor)) |r| return r; }
-        if (s == b.ceiling.raw) { if (try self.compileFloorCeilRound(args, env, .ceiling)) |r| return r; }
-        if (s == b.round.raw) { if (try self.compileFloorCeilRound(args, env, .round)) |r| return r; }
+        if (s == b.floor.raw) {
+            if (try self.compileFloorCeilRound(args, env, .floor)) |r| return r;
+        }
+        if (s == b.ceiling.raw) {
+            if (try self.compileFloorCeilRound(args, env, .ceiling)) |r| return r;
+        }
+        if (s == b.round.raw) {
+            if (try self.compileFloorCeilRound(args, env, .round)) |r| return r;
+        }
         // truncate: 1-arg only (2-arg handled by stdlib)
         if (s == b.truncate.raw and args.isCons() and !args.toPtr(Cons).cdr.isCons())
             return self.compileBinaryPrim(args, env, .quot);
@@ -15809,7 +15972,22 @@ pub const Compiler = struct {
         const first_expr = self.resolveForwardedValue(cons1.car);
         var result = try self.compile(first_expr, env);
         var rest = self.resolveForwardedValue(cons1.cdr);
+        var rest_tok: ?CompileRootToken = null;
+        var rest_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, rest);
+            rest_tok = tok;
+            rest_vm = vm;
+            rest = vm.globals[tok.root_idx];
+        }
+        defer if (rest_tok) |tok| {
+            popCompileRoot(rest_vm.?, tok.root_idx, tok.stack_idx);
+        };
 
+        if (rest_tok) |tok| {
+            if (rest_vm) |vm| rest = vm.globals[tok.root_idx];
+        }
+        rest = self.resolveForwardedValue(rest);
         if (rest.isNil()) {
             // (+ x) -> x, (* x) -> x
             // (- x) -> (- 0 x), (/ x) -> (/ 1 x)
@@ -15824,12 +16002,22 @@ pub const Compiler = struct {
             return result;
         }
 
-        while (rest.isCons()) {
-            const live_rest = self.resolveForwardedValue(rest);
-            if (!live_rest.isCons()) break;
-            const c = live_rest.toPtr(Cons);
+        while (true) {
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| rest = vm.globals[tok.root_idx];
+            }
+            rest = self.resolveForwardedValue(rest);
+            if (!rest.isCons()) break;
+            const c = rest.toPtr(Cons);
             const arg_expr = self.resolveForwardedValue(c.car);
             const next_rest = self.resolveForwardedValue(c.cdr);
+            if (rest_tok) |tok| {
+                if (rest_vm) |vm| {
+                    vm.globals[tok.root_idx] = next_rest;
+                }
+            } else {
+                rest = next_rest;
+            }
             const arg = try self.compile(arg_expr, env);
             result = switch (op) {
                 .add => try self.builder.add(result, arg),
@@ -15838,8 +16026,11 @@ pub const Compiler = struct {
                 .div => try self.builder.div(result, arg),
                 else => unreachable,
             };
-            rest = next_rest;
         }
+        if (rest_tok) |tok| {
+            if (rest_vm) |vm| rest = vm.globals[tok.root_idx];
+        }
+        rest = self.resolveForwardedValue(rest);
 
         if (!rest.isNil()) return error.InvalidSyntax;
         return result;
@@ -17631,16 +17822,42 @@ pub const Compiler = struct {
 
         const call_args = try self.allocator.alloc(*const Ir, arg_count);
         var cur = self.resolveForwardedValue(args_expr);
+        var cur_tok: ?CompileRootToken = null;
+        var cur_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, cur);
+            cur_tok = tok;
+            cur_vm = vm;
+            cur = vm.globals[tok.root_idx];
+        }
+        defer if (cur_tok) |tok| {
+            popCompileRoot(cur_vm.?, tok.root_idx, tok.stack_idx);
+        };
+
         var idx: usize = 0;
-        while (cur.isCons()) {
+        while (true) {
+            if (cur_tok) |tok| {
+                if (cur_vm) |vm| cur = vm.globals[tok.root_idx];
+            }
             cur = self.resolveForwardedValue(cur);
+            if (!cur.isCons()) break;
             const cons = cur.toPtr(Cons);
             const arg_expr = self.resolveForwardedValue(cons.car);
             const next = self.resolveForwardedValue(cons.cdr);
+            if (cur_tok) |tok| {
+                if (cur_vm) |vm| {
+                    vm.globals[tok.root_idx] = next;
+                }
+            } else {
+                cur = next;
+            }
             call_args[idx] = try self.compile(arg_expr, env);
             idx += 1;
-            cur = next;
         }
+        if (cur_tok) |tok| {
+            if (cur_vm) |vm| cur = vm.globals[tok.root_idx];
+        }
+        cur = self.resolveForwardedValue(cur);
         if (!cur.isNil()) return error.InvalidSyntax;
         return call_args;
     }
@@ -20756,7 +20973,7 @@ test "compile tagbody builds segments without dropping forms" {
     var env = Env.init(arena_alloc, null);
     defer env.deinit();
 
-    var parser = try Parser.init(arena_alloc, &heap, "(tagbody start (go done) done 42)", &vm.builtins);
+    var parser = try Parser.init(arena_alloc, &heap, "(tagbody start (go done) done (quote 42))", &vm.builtins);
     defer parser.deinit();
     const expr = try parser.parse();
     const ir_node = try compiler.compile(expr, &env);
@@ -20792,6 +21009,40 @@ test "compile tagbody rejects dotted tails" {
     defer parser.deinit();
     const expr = try parser.parse();
     try testing.expectError(error.InvalidSyntax, compiler.compile(expr, &env));
+}
+
+test "compile tagbody accepts integer tags" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(tagbody 1 (go 2) 2 (quote 42))", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .tagbody);
+    try testing.expectEqual(@as(usize, 2), ir_node.tagbody.tags.len);
+    try testing.expect(ir_node.tagbody.tags[0].isFixnum());
+    try testing.expect(ir_node.tagbody.tags[1].isFixnum());
+    try testing.expect(ir_node.tagbody.segments[1].* == .go);
+    try testing.expect(ir_node.tagbody.segments[1].go.tag.isFixnum());
+    try testing.expectEqual(@as(i64, 2), ir_node.tagbody.segments[1].go.tag.toFixnum());
 }
 
 test "compile format preserves variadic argument count" {

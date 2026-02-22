@@ -215,7 +215,7 @@ pub const Ir = union(enum) {
     },
 
     /// Tagbody: (tagbody tag1 form1 tag2 form2 ...)
-    /// Tags are symbols, forms are expressions
+    /// Tags are symbols or integers, forms are expressions
     tagbody: struct {
         /// Tag names (for go targets)
         tags: []const Value,
@@ -3003,16 +3003,37 @@ pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) !*const Ir {
             .right = try deepCopyIr(allocator, op.right),
         } },
         // All binary ops
-        inline .fixnum_add, .fixnum_sub, .add, .sub,
-        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
-        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq,
+        inline .fixnum_add,
+        .fixnum_sub,
+        .add,
+        .sub,
+        .fixnum_le,
+        .fixnum_lt,
+        .fixnum_gt,
+        .fixnum_ge,
+        .fixnum_eq,
+        .le,
+        .lt,
+        .gt,
+        .ge,
+        .num_eq,
+        .fixnum_mul,
+        .mul,
+        .eq,
         => |op, tag| @unionInit(Ir, @tagName(tag), .{
             .left = try deepCopyIr(allocator, op.left),
             .right = try deepCopyIr(allocator, op.right),
         }),
         // All unary ops
-        inline .assert_fixnum, .nilp, .not, .consp, .abs,
-        .car, .cdr, .unsafe_car, .unsafe_cdr,
+        inline .assert_fixnum,
+        .nilp,
+        .not,
+        .consp,
+        .abs,
+        .car,
+        .cdr,
+        .unsafe_car,
+        .unsafe_cdr,
         => |op, tag| @unionInit(Ir, @tagName(tag), .{
             .operand = try deepCopyIr(allocator, op.operand),
         }),

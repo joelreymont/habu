@@ -246,6 +246,7 @@
   - [x] `habu-fix-make-instance-1e1e34ef` Fix `make-instance` class-metadata lookup across package qualifier aliases (for example `BIGFLOAT-IMPL:*` symbol package vs `BIGFLOAT:*` class metadata keys) with unambiguous local-name fallback.
   - [x] `habu-fix-transl-loader-a7ab1c8a` Fix `transl.lisp` `DEF%TR` loader `UnhandledThrow` by correcting condition relay/catch behavior and loader failure-list integrity.
   - [x] `habu-lock-maxima-transl-1f293d51` Add script-level Maxima transl subset gate proving `handler-case` catches once and failed file execution does not resume.
+  - [x] `habu-fix-invalidsyntax-in-24666922` Fix `DISTRIBUTE-OVER` InvalidSyntax/crash root by making compiler list traversals GC-safe (`tagbody`/`apply`/call-args/variadic arithmetic/`setf` global call) and supporting integer `tagbody`/`go` tags; revalidate Maxima generational loader through `nparse`.
 
 ## Execution Loop
 1. Pick the first unblocked unchecked leaf.

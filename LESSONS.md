@@ -6,6 +6,17 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ---
 
+## Session Notes (2026-02-22)
+
+### Worked Well
+- Keeping list cursors rooted and advancing the root before recursive compile calls (`src/compiler/compile.zig:6246`, `src/compiler/compile.zig:7231`, `src/compiler/compile.zig:15847`, `src/compiler/compile.zig:17671`) fixed real stale-pointer traversal hazards in moving-GC compiler passes.
+- Rewriting `compileTagbody` to compile segments from rooted cursors instead of staging raw `Value` arrays (`src/compiler/compile.zig:8457`) eliminated the Maxima `nparse` crash (`compileTagbody` segfault on stale cons pointers) under generational load.
+- Supporting integer tags in `tagbody`/`go` (`src/compiler/compile.zig:8524`, `src/compiler/ir.zig:218`) aligned behavior with CL semantics and removed false `InvalidSyntax` on numeric tag targets.
+- Locking integer-tag behavior in both compiler and runtime tests (`src/compiler/compile.zig:21016`, `src/tests/integration.zig:3101`) prevented silent regressions in tag parsing and jump resolution.
+
+### Did Not Work
+- Treating all non-symbol atoms in `tagbody` as executable forms was incorrect; CL treats integer atoms as labels too, so tests that expected trailing fixnum atoms as forms were invalid and had to be rewritten (`src/compiler/compile.zig:20972`, `src/compiler/compile.zig:21032`).
+
 ## Session Notes (2026-02-21)
 
 ### Worked Well

@@ -2026,7 +2026,11 @@ pub const IrTranslator = struct {
             .vec_ref, .str_ref, .str_concat => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
             .vec_set => |v| canTranslateWithLiteralRoots(v.vec, literal_roots) and canTranslateWithLiteralRoots(v.index, literal_roots) and canTranslateWithLiteralRoots(v.value, literal_roots),
             .hash_count => |h| canTranslateWithLiteralRoots(h.operand, literal_roots),
-            .hash_capacity, .hash_clear, .hash_test, .hash_keys, .hash_alist => |h| canTranslateWithLiteralRoots(h.operand, literal_roots),
+            .hash_capacity => |h| canTranslateWithLiteralRoots(h.operand, literal_roots),
+            .hash_clear => |h| canTranslateWithLiteralRoots(h.operand, literal_roots),
+            .hash_test => |h| canTranslateWithLiteralRoots(h.operand, literal_roots),
+            .hash_keys => |h| canTranslateWithLiteralRoots(h.operand, literal_roots),
+            .hash_alist => |h| canTranslateWithLiteralRoots(h.operand, literal_roots),
             .make_hash => true,
             .hash_get => |h| canTranslateWithLiteralRoots(h.table, literal_roots) and canTranslateWithLiteralRoots(h.key, literal_roots) and
                 (if (h.default) |d| canTranslateWithLiteralRoots(d, literal_roots) else true),
@@ -2170,7 +2174,11 @@ pub const IrTranslator = struct {
             .vec_ref, .str_ref, .str_concat => |op| firstUnsupportedTagWithLiteralRoots(op.left, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(op.right, literal_roots),
             .vec_set => |v| firstUnsupportedTagWithLiteralRoots(v.vec, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(v.index, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(v.value, literal_roots),
             .hash_count => |h| firstUnsupportedTagWithLiteralRoots(h.operand, literal_roots),
-            .hash_capacity, .hash_clear, .hash_test, .hash_keys, .hash_alist => |h| firstUnsupportedTagWithLiteralRoots(h.operand, literal_roots),
+            .hash_capacity => |h| firstUnsupportedTagWithLiteralRoots(h.operand, literal_roots),
+            .hash_clear => |h| firstUnsupportedTagWithLiteralRoots(h.operand, literal_roots),
+            .hash_test => |h| firstUnsupportedTagWithLiteralRoots(h.operand, literal_roots),
+            .hash_keys => |h| firstUnsupportedTagWithLiteralRoots(h.operand, literal_roots),
+            .hash_alist => |h| firstUnsupportedTagWithLiteralRoots(h.operand, literal_roots),
             .make_hash => null,
             .hash_get => |h| firstUnsupportedTagWithLiteralRoots(h.table, literal_roots) orelse
                 firstUnsupportedTagWithLiteralRoots(h.key, literal_roots) orelse

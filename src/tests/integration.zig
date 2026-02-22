@@ -3098,6 +3098,30 @@ test "tagbody loop" {
     try testing.expectEqual(@as(i64, 5), result.toFixnum());
 }
 
+test "tagbody loop with integer tag" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(define counter 0)");
+    _ = try repl.eval(
+        \\(tagbody
+        \\  1
+        \\  (define counter (+ counter 1))
+        \\  (if (< counter 4)
+        \\      (go 1)))
+    );
+    const result = try repl.eval("counter");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 4), result.toFixnum());
+}
+
 // ============================================================================
 // multiple values tests
 // ============================================================================
