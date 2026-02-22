@@ -35,7 +35,7 @@ pub const Error = error{
 };
 
 pub const Parser = struct {
-    pub const ReadEvalFn = *const fn (ctx: *anyopaque, expr: Value) Error!Value;
+    pub const ReadEvalFn = *const fn (ctx: *anyopaque, expr: Value) anyerror!Value;
     pub const DispatchMacroFn = *const fn (
         ctx: *anyopaque,
         function: Value,
@@ -43,7 +43,7 @@ pub const Parser = struct {
         sub_char: u8,
         arg: ?u32,
         stream: Value,
-    ) Error!Value;
+    ) anyerror!Value;
 
     lexer: Lexer,
     heap: *Heap,
@@ -58,6 +58,7 @@ pub const Parser = struct {
     read_eval_fn: ?ReadEvalFn,
     dispatch_ctx: ?*anyopaque,
     dispatch_fn: ?DispatchMacroFn,
+    hook_error: ?anyerror,
 
     pub fn init(alloc: std.mem.Allocator, heap: *Heap, source: []const u8, builtins: *const builtins_mod.BuiltinSymbols) Error!Parser {
         var lexer = Lexer.init(source);
@@ -82,6 +83,7 @@ pub const Parser = struct {
             .read_eval_fn = null,
             .dispatch_ctx = null,
             .dispatch_fn = null,
+            .hook_error = null,
         };
     }
 
@@ -100,6 +102,12 @@ pub const Parser = struct {
         self.dispatch_fn = hook;
     }
 
+    pub fn takeHookError(self: *Parser) ?anyerror {
+        const err = self.hook_error;
+        self.hook_error = null;
+        return err;
+    }
+
     /// Get the current token's location for error reporting
     pub fn getErrorLocation(self: *Parser) struct { line: u32, column: u32, text: []const u8 } {
         return .{
@@ -111,6 +119,7 @@ pub const Parser = struct {
 
     /// Parse one S-expression
     pub fn parse(self: *Parser) Error!Value {
+        self.hook_error = null;
         while (true) {
             const expr = self.parseExpr() catch |err| switch (err) {
                 error.SkipForm => continue,
@@ -123,6 +132,7 @@ pub const Parser = struct {
     /// Parse all expressions until EOF
     pub fn parseAll(self: *Parser, allocator: std.mem.Allocator, results: *std.ArrayList(Value)) Error!void {
         while (self.current.kind != .eof) {
+            self.hook_error = null;
             const expr = self.parseExpr() catch |err| switch (err) {
                 error.SkipForm => continue,
                 else => return err,
@@ -171,7 +181,10 @@ pub const Parser = struct {
         const expr = try self.parseExpr();
         if (self.read_eval_fn) |hook| {
             const ctx = self.read_eval_ctx orelse return error.UnexpectedToken;
-            return try hook(ctx, expr);
+            return hook(ctx, expr) catch |hook_err| {
+                self.hook_error = hook_err;
+                return error.UnexpectedToken;
+            };
         }
         // Fallback when no read-eval hook is configured.
         return expr;
@@ -209,7 +222,10 @@ pub const Parser = struct {
         const tail = self.lexer.source[self.lexer.pos..];
         const tail_str = try self.heap.allocBaseString(tail);
         const stream = try self.heap.allocStringInputStream(tail_str);
-        const result = try hook(ctx, function, header.disp_char, header.sub_char, header.arg, stream);
+        const result = hook(ctx, function, header.disp_char, header.sub_char, header.arg, stream) catch |hook_err| {
+            self.hook_error = hook_err;
+            return error.UnexpectedToken;
+        };
 
         const consumed_u64 = stream.toPtr(runtime.Stream).position;
         const consumed = std.math.cast(usize, consumed_u64) orelse return error.UnexpectedToken;

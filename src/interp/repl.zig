@@ -2231,7 +2231,16 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         vm: *Vm,
     };
 
-    fn parserReadEval(ctx: *anyopaque, expr: Value) reader.ParseError!Value {
+    fn parseWithHookError(parser: *Parser) anyerror!Value {
+        return parser.parse() catch |parse_err| {
+            if (parse_err == error.UnexpectedToken) {
+                if (parser.takeHookError()) |hook_err| return hook_err;
+            }
+            return parse_err;
+        };
+    }
+
+    fn parserReadEval(ctx: *anyopaque, expr: Value) anyerror!Value {
         const hook: *ReadEvalCtx = @ptrCast(@alignCast(ctx));
         var arena = std.heap.ArenaAllocator.init(hook.repl.allocator);
         defer arena.deinit();
@@ -2249,7 +2258,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
                     std.debug.print("TRACE read-eval error: {s} expr-kind={s}\n", .{ @errorName(err), @tagName(expr.typeKind()) });
                 }
             }
-            return error.UnexpectedToken;
+            return err;
         };
     }
 
@@ -2260,7 +2269,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         sub_char: u8,
         arg: ?u32,
         stream: Value,
-    ) reader.ParseError!Value {
+    ) anyerror!Value {
         _ = disp_char;
         const hook: *DispatchMacroCtx = @ptrCast(@alignCast(ctx));
         const arg_val = if (arg) |n| Value.makeFixnum(@intCast(n)) else Value.nil;
@@ -2281,7 +2290,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
                     );
                 }
             }
-            return error.UnexpectedToken;
+            return err;
         };
     }
 
@@ -2317,7 +2326,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
 
         while (parser.current.kind != .eof) {
             self.syncReaderPackageFromVm(source_vm);
-            const expr = parser.parse() catch |err| {
+            const expr = parseWithHookError(&parser) catch |err| {
                 if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null or trace_forms) {
                     const loc = parser.getErrorLocation();
                     var load_name: []const u8 = "<unknown>";
@@ -2487,7 +2496,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         var dispatch_ctx = DispatchMacroCtx{ .vm = vm };
         parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
         parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
-        const expr = try parser.parse();
+        const expr = try parseWithHookError(&parser);
 
         return self.evalParsedWithVm(expr, vm, arena_alloc, null);
     }
@@ -3374,7 +3383,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
         parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
 
-        var expr = if (parser.parse()) |parsed| parsed else |err| {
+        var expr = if (parseWithHookError(&parser)) |parsed| parsed else |err| {
             const loc = parser.getErrorLocation();
             err_info.* = .{
                 .kind = switch (err) {
@@ -4901,7 +4910,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         defer parser.deinit();
         var dispatch_ctx = DispatchMacroCtx{ .vm = &self.vm };
         parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
-        const expr = try parser.parse();
+        const expr = try parseWithHookError(&parser);
         if (expr.isNil()) {
             try writer.writeAll("Empty expression\n");
             return;

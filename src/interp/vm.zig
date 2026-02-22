@@ -35,7 +35,6 @@ const compiler = @import("../compiler/compiler.zig");
 const GlobalEnv = compiler.GlobalEnv;
 const parser_mod = @import("../reader/parser.zig");
 const Parser = parser_mod.Parser;
-const ParseError = parser_mod.Error;
 const BuiltinSymbols = @import("../runtime/builtins.zig").BuiltinSymbols;
 const jit_backend = @import("../jit/backend_api.zig");
 
@@ -288,11 +287,20 @@ const DispatchMacroBridge = struct {
     vm: *Vm,
 };
 
-fn readEvalBridge(ctx: *anyopaque, expr: Value) ParseError!Value {
+fn parseWithHookError(parser: *Parser) Error!Value {
+    return parser.parse() catch |parse_err| {
+        if (parse_err == error.UnexpectedToken) {
+            if (parser.takeHookError()) |hook_err| return hook_err;
+        }
+        return parse_err;
+    };
+}
+
+fn readEvalBridge(ctx: *anyopaque, expr: Value) Error!Value {
     const bridge: *ReadEvalBridge = @ptrCast(@alignCast(ctx));
     const callback = bridge.callback orelse return error.UnexpectedToken;
     const eval_ctx = bridge.context orelse return error.UnexpectedToken;
-    return callback(expr, eval_ctx) catch return error.UnexpectedToken;
+    return callback(expr, eval_ctx);
 }
 
 fn dispatchMacroBridge(
@@ -302,12 +310,12 @@ fn dispatchMacroBridge(
     sub_char: u8,
     arg: ?u32,
     stream: Value,
-) ParseError!Value {
+) Error!Value {
     _ = disp_char;
     const bridge: *DispatchMacroBridge = @ptrCast(@alignCast(ctx));
     const arg_val = if (arg) |n| Value.makeFixnum(@intCast(n)) else Value.nil;
     const args = [_]Value{ stream, Value.makeCharacter(sub_char), arg_val };
-    return bridge.vm.callFromStackAt(bridge.vm.sp, function, &args) catch return error.UnexpectedToken;
+    return bridge.vm.callFromStackAt(bridge.vm.sp, function, &args);
 }
 
 fn traceJitBridgeValue(v: Value) void {
@@ -6916,7 +6924,7 @@ pub const Vm = struct {
                 defer parser.deinit();
                 var dm_ctx = DispatchMacroBridge{ .vm = self };
                 parser.setDispatchMacroHook(@ptrCast(&dm_ctx), dispatchMacroBridge);
-                const result = try parser.parse();
+                const result = try parseWithHookError(&parser);
                 try self.push(result);
             },
 
@@ -6968,7 +6976,7 @@ pub const Vm = struct {
                     if (self.eval_callback != null) {
                         parser.setReadEvalHook(@ptrCast(&re_ctx), readEvalBridge);
                     }
-                    const result = try parser.parse();
+                    const result = try parseWithHookError(&parser);
                     try self.push(result);
                     self.secondary_values[0] = Value.makeFixnum(@intCast(parser.lexer.token_start));
                     self.secondary_values_count = 1;
@@ -6990,7 +6998,7 @@ pub const Vm = struct {
                     if (self.eval_callback != null) {
                         parser.setReadEvalHook(@ptrCast(&re_ctx32), readEvalBridge);
                     }
-                    const result = try parser.parse();
+                    const result = try parseWithHookError(&parser);
                     try self.push(result);
                     self.secondary_values[0] = Value.makeFixnum(@intCast(parser.lexer.pos));
                     self.secondary_values_count = 1;

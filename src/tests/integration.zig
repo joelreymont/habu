@@ -3029,6 +3029,27 @@ test "throw across function call" {
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
+test "throw from #. read-eval relays across nested eval frame" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(catch 'exit
+        \\  (progn
+        \\    (read-from-string "#.(throw 'exit 42)")
+        \\    999))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
 // ============================================================================
 // tagbody/go tests
 // ============================================================================

@@ -16,10 +16,14 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Normalizing BL/BLR argument-copy chains before scheduling in `fixCallArgMoves` (`src/jit/backend.zig:7036`) handled duplicate destination moves and preserved final pre-call register mapping under indirect call setup.
 - Scanning call setup through interleaved BLR target materialization (`mov`/`movz`/`movk`) in `fixCallArgMoves` (`src/jit/backend.zig:7041`) fixed a real blind spot where argument moves were skipped when target setup appeared between arg copies and call.
 - Adding machine-code regressions for interleaved target setup and two-cycle copies (`src/jit/backend.zig:7244`, `src/jit/backend.zig:7266`, `src/jit/backend.zig:7288`) gives direct protection for indirect-call repair logic without relying on full-suite runtime repros.
+- Letting parser read-eval/dispatch hooks surface original VM errors via parser-side hook capture (`src/reader/parser.zig:61`, `src/reader/parser.zig:105`, `src/reader/parser.zig:169`, `src/reader/parser.zig:201`) preserved non-local-exit semantics instead of collapsing them to parse failures.
+- Routing VM and REPL parse callsites through hook-error-aware parsing (`src/interp/vm.zig:290`, `src/interp/vm.zig:6927`, `src/interp/repl.zig:2234`, `src/interp/repl.zig:2329`, `src/interp/repl.zig:3386`) fixed nested `#.` throw relay paths (`(catch 'x (read-from-string \"#.(throw 'x 42)\") ...)`) without special-casing Maxima code.
+- Locking the reader relay behavior with a focused integration regression (`src/tests/integration.zig:3032`) gives deterministic coverage for nested read-eval non-local exits across call barriers.
 
 ### Did Not Work
 - Treating all non-symbol atoms in `tagbody` as executable forms was incorrect; CL treats integer atoms as labels too, so tests that expected trailing fixnum atoms as forms were invalid and had to be rewritten (`src/compiler/compile.zig:20972`, `src/compiler/compile.zig:21032`).
 - Relying on contiguous backward scans of only `mov x0..x7,*` before BL/BLR in `fixCallArgMoves` missed valid call setup windows with interleaved target setup ops, leaving indirect-call argument corruption unpatched.
+- Converting read-eval/dispatch callback errors to parser `UnexpectedToken` in bridge hooks (`src/interp/vm.zig` pre-fix `readEvalBridge`/`dispatchMacroBridge`, `src/interp/repl.zig` pre-fix `parserReadEval`/`parserDispatchMacro`) masked real control transfers as parse/type errors and broke `(catch ...)` around `read-from-string` `#.` forms.
 
 ## Session Notes (2026-02-21)
 
