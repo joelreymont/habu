@@ -82,17 +82,11 @@ test "C3 linearization - diamond" {
 test "method specificity - sorts most specific first" {
     const compile = @import("../compiler/compile.zig");
 
-    var heap = try Heap.init(std.testing.allocator, .{});
-    defer heap.deinit();
-
-    const dog = try heap.intern("dog");
-    const animal = try heap.intern("animal");
-
     var methods = [_]compile.Compiler.MethodDef{
-        .{ .specializers = &.{Value.t}, .function_name = "m1", .qualifier = .primary },
-        .{ .specializers = &.{animal}, .function_name = "m2", .qualifier = .primary },
-        .{ .specializers = &.{dog}, .function_name = "m3", .qualifier = .primary },
-        .{ .specializers = &.{ dog, animal }, .function_name = "m4", .qualifier = .primary },
+        .{ .specializers = &.{.any}, .function_name = "m1", .qualifier = .primary },
+        .{ .specializers = &.{.{ .class_name = "animal" }}, .function_name = "m2", .qualifier = .primary },
+        .{ .specializers = &.{.{ .class_name = "dog" }}, .function_name = "m3", .qualifier = .primary },
+        .{ .specializers = &.{ .{ .class_name = "dog" }, .{ .class_name = "animal" } }, .function_name = "m4", .qualifier = .primary },
     };
 
     const Ctx = struct {
@@ -103,20 +97,20 @@ test "method specificity - sorts most specific first" {
                     var a_count: usize = 0;
                     var b_count: usize = 0;
                     for (a.specializers) |s| {
-                        if (!s.eq(Value.t)) a_count += 1;
+                        if (s != .any) a_count += 1;
                     }
                     for (b.specializers) |s| {
-                        if (!s.eq(Value.t)) b_count += 1;
+                        if (s != .any) b_count += 1;
                     }
                     if (a_count != b_count) return a_count > b_count;
 
-                    // Same count, compare positionally (earlier non-t = more specific)
+                    // Same count, compare positionally (earlier non-any = more specific)
                     const min_len = @min(a.specializers.len, b.specializers.len);
                     for (0..min_len) |i| {
-                        const a_is_t = a.specializers[i].eq(Value.t);
-                        const b_is_t = b.specializers[i].eq(Value.t);
-                        if (!a_is_t and b_is_t) return true;
-                        if (a_is_t and !b_is_t) return false;
+                        const a_is_any = a.specializers[i] == .any;
+                        const b_is_any = b.specializers[i] == .any;
+                        if (!a_is_any and b_is_any) return true;
+                        if (a_is_any and !b_is_any) return false;
                     }
                     return false;
                 }

@@ -7694,21 +7694,24 @@ pub const Compiler = struct {
     /// Process an expression inside quasiquote at given nesting depth.
     /// At depth 0, unquotes are evaluated. At depth > 0, they're left as forms.
     fn quasiquoteExpr(self: *Compiler, expr: Value, env: *const Env, depth: u32) anyerror!*Ir {
+        const live_expr = self.resolveForwardedValue(expr);
+
         // Non-list: return as quoted literal
-        if (!expr.isCons()) {
-            return try self.builder.lit(expr);
+        if (!live_expr.isCons()) {
+            return try self.builder.lit(live_expr);
         }
 
-        const cons = expr.toPtr(Cons);
-        const head = cons.car;
+        const cons = live_expr.toPtr(Cons);
+        const head = self.resolveForwardedValue(cons.car);
 
         // Check for special forms (unquote, unquote-splicing, quasiquote)
         if (head.isSymbol()) {
             const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
             const dispatch_head = self.canonicalBuiltinSymbol(head);
             if (dispatch_head.raw == b.unquote.raw) {
-                if (!cons.cdr.isCons()) return error.InvalidSyntax;
-                const unquoted = cons.cdr.toPtr(Cons).car;
+                const cdr_live = self.resolveForwardedValue(cons.cdr);
+                if (!cdr_live.isCons()) return error.InvalidSyntax;
+                const unquoted = self.resolveForwardedValue(cdr_live.toPtr(Cons).car);
                 if (depth == 0) {
                     // At outermost level: evaluate the expression
                     return self.compile(unquoted, env);
@@ -7724,23 +7727,25 @@ pub const Compiler = struct {
                     // unquote-splicing outside of list context at depth 0 is an error
                     return error.InvalidSyntax;
                 } else {
-                    if (!cons.cdr.isCons()) return error.InvalidSyntax;
-                    const unquoted = cons.cdr.toPtr(Cons).car;
+                    const cdr_live = self.resolveForwardedValue(cons.cdr);
+                    if (!cdr_live.isCons()) return error.InvalidSyntax;
+                    const unquoted = self.resolveForwardedValue(cdr_live.toPtr(Cons).car);
                     const inner = try self.quasiquoteExpr(unquoted, env, depth - 1);
                     return try self.buildList2(try self.builder.lit(head), inner);
                 }
             }
             if (dispatch_head.raw == b.quasiquote.raw) {
                 // Nested quasiquote: increment depth
-                if (!cons.cdr.isCons()) return error.InvalidSyntax;
-                const nested_expr = cons.cdr.toPtr(Cons).car;
+                const cdr_live = self.resolveForwardedValue(cons.cdr);
+                if (!cdr_live.isCons()) return error.InvalidSyntax;
+                const nested_expr = self.resolveForwardedValue(cdr_live.toPtr(Cons).car);
                 const inner = try self.quasiquoteExpr(nested_expr, env, depth + 1);
                 return try self.buildList2(try self.builder.lit(head), inner);
             }
         }
 
         // Regular list: build with cons at runtime
-        return self.quasiquoteList(expr, env, depth);
+        return self.quasiquoteList(live_expr, env, depth);
     }
 
     /// Helper: build a 2-element list (a b) -> (cons a (cons b nil))
@@ -7752,18 +7757,20 @@ pub const Compiler = struct {
 
     /// Build a list from quasiquoted elements using cons/append
     fn quasiquoteList(self: *Compiler, list: Value, env: *const Env, depth: u32) anyerror!*Ir {
-        if (list.isNil()) {
+        const live_list = self.resolveForwardedValue(list);
+
+        if (live_list.isNil()) {
             return try self.builder.lit(Value.nil);
         }
 
-        if (!list.isCons()) {
+        if (!live_list.isCons()) {
             // Improper list tail - just quote it
-            return try self.builder.lit(list);
+            return try self.builder.lit(live_list);
         }
 
-        const cons = list.toPtr(Cons);
-        const head = cons.car;
-        const tail = cons.cdr;
+        const cons = live_list.toPtr(Cons);
+        const head = self.resolveForwardedValue(cons.car);
+        const tail = self.resolveForwardedValue(cons.cdr);
 
         // Handle dotted pair unquote: (a b . ,x) where list = (UNQUOTE x)
         // The car is the UNQUOTE symbol and cdr is (x).
@@ -7786,13 +7793,16 @@ pub const Compiler = struct {
 
         // Check for (unquote-splicing x) - splice x into result
         if (head.isCons()) {
-            const head_cons = head.toPtr(Cons);
-            if (head_cons.car.isSymbol()) {
+            const live_head = self.resolveForwardedValue(head);
+            const head_cons = live_head.toPtr(Cons);
+            const splice_head = self.resolveForwardedValue(head_cons.car);
+            if (splice_head.isSymbol()) {
                 const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
-                const dispatch_head = self.canonicalBuiltinSymbol(head_cons.car);
+                const dispatch_head = self.canonicalBuiltinSymbol(splice_head);
                 if (dispatch_head.raw == b.@"unquote-splicing".raw) {
-                    if (!head_cons.cdr.isCons()) return error.InvalidSyntax;
-                    const spliced = head_cons.cdr.toPtr(Cons).car;
+                    const splice_cdr = self.resolveForwardedValue(head_cons.cdr);
+                    if (!splice_cdr.isCons()) return error.InvalidSyntax;
+                    const spliced = self.resolveForwardedValue(splice_cdr.toPtr(Cons).car);
                     if (depth == 0) {
                         // At outermost: (,@x ...) -> (append x (quasiquote-list ...))
                         const spliced_ir = try self.compile(spliced, env);
@@ -7801,7 +7811,7 @@ pub const Compiler = struct {
                     } else {
                         // Nested: build (unquote-splicing <processed>) as a list element
                         const inner = try self.quasiquoteExpr(spliced, env, depth - 1);
-                        const splice_form = try self.buildList2(try self.builder.lit(head_cons.car), inner);
+                        const splice_form = try self.buildList2(try self.builder.lit(splice_head), inner);
                         const tail_ir = try self.quasiquoteList(tail, env, depth);
                         return try self.builder.cons(splice_form, tail_ir);
                     }

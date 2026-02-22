@@ -6481,10 +6481,10 @@ test "mv: values through conditional jumps (jmp_nil/jmp_not_nil)" {
     defer repl.deinit();
     try repl.wireGlobalEnv();
 
-    // (when ...) expands to (if ... nil) — values from body must survive
+    // Use direct IF so this test does not depend on stdlib macros.
     const result = try repl.eval(
         \\(multiple-value-bind (a b)
-        \\    (when t (values 5 6))
+        \\    (if t (values 5 6) nil)
         \\  (list a b))
     );
     try testing.expect(result.isCons());
