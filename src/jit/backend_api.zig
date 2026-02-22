@@ -16,6 +16,7 @@ else
 pub const setHeap = impl.setHeap;
 pub const setCallBridge = impl.setCallBridge;
 pub const syncHeapFromGlobal = impl.syncHeapFromGlobal;
+pub const allocPtrRaw = impl.allocPtrRaw;
 pub const CallBridge = impl.CallBridge;
 pub const LiteralRoots = impl.LiteralRoots;
 pub const KnownFn = impl.KnownFn;

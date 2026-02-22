@@ -18,6 +18,8 @@ const Opts = struct {
     iters: usize = 3,
     json: bool = false,
     mode: enum { jit, interp } = .jit,
+    bench: ?[]const u8 = null,
+    trace_stage: bool = false,
 };
 
 fn parseArgs() Opts {
@@ -33,6 +35,10 @@ fn parseArgs() Opts {
             opts.heap_mb = std.fmt.parseInt(usize, arg["--heap-mb=".len..], 10) catch 512;
         } else if (std.mem.startsWith(u8, arg, "--iters=")) {
             opts.iters = std.fmt.parseInt(usize, arg["--iters=".len..], 10) catch 3;
+        } else if (std.mem.startsWith(u8, arg, "--bench=")) {
+            opts.bench = arg["--bench=".len..];
+        } else if (std.mem.eql(u8, arg, "--trace-stage")) {
+            opts.trace_stage = true;
         }
     }
     return opts;
@@ -311,13 +317,34 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
+    if (opts.trace_stage) {
+        var buf: [4096]u8 = undefined;
+        var w = std.fs.File.stderr().writer(&buf);
+        w.interface.print("stage=heap-init\n", .{}) catch {};
+        w.interface.flush() catch {};
+    }
+
     var heap = try Heap.init(allocator, .{ .total_size = opts.heap_mb * 1024 * 1024 });
     defer heap.deinit();
+
+    if (opts.trace_stage) {
+        var buf: [4096]u8 = undefined;
+        var w = std.fs.File.stderr().writer(&buf);
+        w.interface.print("stage=repl-init\n", .{}) catch {};
+        w.interface.flush() catch {};
+    }
 
     var repl: Repl = undefined;
     try repl.init(allocator, &heap, .{});
     defer repl.deinit();
     try repl.wireGlobalEnv();
+
+    if (opts.trace_stage) {
+        var buf: [4096]u8 = undefined;
+        var w = std.fs.File.stderr().writer(&buf);
+        w.interface.print("stage=load-stdlib\n", .{}) catch {};
+        w.interface.flush() catch {};
+    }
 
     // Load stdlib
     {
@@ -330,12 +357,26 @@ pub fn main() !void {
         };
     }
 
+    if (opts.trace_stage) {
+        var buf: [4096]u8 = undefined;
+        var w = std.fs.File.stderr().writer(&buf);
+        w.interface.print("stage=bench-loop\n", .{}) catch {};
+        w.interface.flush() catch {};
+    }
+
     var timer = try std.time.Timer.start();
     const mode_str: []const u8 = if (opts.mode == .jit) "jit" else "interp";
 
     // Run benchmarks
     var benches: [bench_defs.len]Bench = undefined;
     for (bench_defs, 0..) |def, i| {
+        if (opts.bench) |want| {
+            if (!std.mem.eql(u8, def.name, want)) {
+                benches[i] = .{ .name = def.name, .ns = 0, .category = def.category };
+                continue;
+            }
+        }
+
         {
             var buf: [4096]u8 = undefined;
             var w = std.fs.File.stderr().writer(&buf);
@@ -352,6 +393,12 @@ pub fn main() !void {
         var setup_failed = false;
         for (setups) |maybe_s| {
             const s = maybe_s orelse continue;
+            if (opts.trace_stage) {
+                var buf: [4096]u8 = undefined;
+                var w = std.fs.File.stderr().writer(&buf);
+                w.interface.print("   stage=setup len={d}\n", .{s.len}) catch {};
+                w.interface.flush() catch {};
+            }
             _ = repl.eval(s) catch |err| {
                 benches[i] = .{ .name = def.name, .ns = 0, .err_name = @errorName(err), .category = def.category };
                 {
@@ -367,6 +414,12 @@ pub fn main() !void {
         if (setup_failed) continue;
 
         // Warmup
+        if (opts.trace_stage) {
+            var buf: [4096]u8 = undefined;
+            var w = std.fs.File.stderr().writer(&buf);
+            w.interface.print("   stage=warmup\n", .{}) catch {};
+            w.interface.flush() catch {};
+        }
         _ = repl.eval(def.expr) catch |err| {
             benches[i] = .{ .name = def.name, .ns = 0, .err_name = @errorName(err), .category = def.category };
             {
@@ -382,6 +435,12 @@ pub fn main() !void {
         var best_ns: u64 = std.math.maxInt(u64);
         var had_error: ?[]const u8 = null;
         for (0..opts.iters) |_| {
+            if (opts.trace_stage) {
+                var buf: [4096]u8 = undefined;
+                var w = std.fs.File.stderr().writer(&buf);
+                w.interface.print("   stage=timed\n", .{}) catch {};
+                w.interface.flush() catch {};
+            }
             const t0 = timer.read();
             _ = repl.eval(def.expr) catch |err| {
                 had_error = @errorName(err);

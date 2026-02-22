@@ -92,6 +92,10 @@ var g_alloc_end: u64 = 0;
 var g_safepoint_batch_ops: usize = 0;
 const JIT_SAFEPOINT_BATCH_OPS: usize = 8;
 
+pub fn allocPtrRaw() u64 {
+    return g_alloc_ptr;
+}
+
 fn jitConsRefreshCache() void {
     if (g_heap) |heap| {
         g_alloc_ptr = @intFromPtr(heap.alloc_ptr);
@@ -1044,36 +1048,6 @@ fn jitAllocArrayFromDims(heap: *Heap, rank: u8, dims: [8]u64, init_val: Value) e
     return Value.makeArray(arr).raw;
 }
 
-fn jitMakeArrayStatic(
-    rank_raw: u64,
-    d0_raw: u64,
-    d1_raw: u64,
-    d2_raw: u64,
-    d3_raw: u64,
-    d4_raw: u64,
-    d5_raw: u64,
-    d6_raw: u64,
-    d7_raw: u64,
-    init_raw: u64,
-) callconv(.c) u64 {
-    const rank_val = Value{ .raw = rank_raw };
-    if (!rank_val.isFixnum()) return Value.nil.raw;
-    const rank_signed = rank_val.toFixnum();
-    if (rank_signed < 0 or rank_signed > 8) return Value.nil.raw;
-    const rank: usize = @intCast(rank_signed);
-    const raw_dims = [_]u64{ d0_raw, d1_raw, d2_raw, d3_raw, d4_raw, d5_raw, d6_raw, d7_raw };
-    var dims: [8]u64 = [_]u64{0} ** 8;
-    for (0..rank) |i| {
-        const dim_val = Value{ .raw = raw_dims[i] };
-        if (!dim_val.isFixnum()) return Value.nil.raw;
-        const dim_signed = dim_val.toFixnum();
-        if (dim_signed < 0) return Value.nil.raw;
-        dims[i] = @intCast(dim_signed);
-    }
-    const heap = g_heap orelse return Value.nil.raw;
-    return jitAllocArrayFromDims(heap, @intCast(rank), dims, Value{ .raw = init_raw }) catch return Value.nil.raw;
-}
-
 fn jitMakeArrayDynamic(dims_raw: u64, init_raw: u64) callconv(.c) u64 {
     const dims_val = Value{ .raw = dims_raw };
     var dims: [8]u64 = [_]u64{0} ** 8;
@@ -1879,6 +1853,8 @@ pub const IrTranslator = struct {
     /// Params are untagged at entry, result is re-tagged at return.
     /// Self-calls use untagged convention (no tag/untag at call boundary).
     untagged: bool = false,
+    /// Allow recursive fixnum-fast lowering (safety=0 only).
+    fixnum_fast: bool = false,
 
     /// When true, emit fresh small constants in blocks containing calls.
     /// Hoist's LICM moves cached constants to block0, forcing callee-saved regs.
@@ -2407,7 +2383,7 @@ pub const IrTranslator = struct {
     }
 
     fn translateAdd(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or self.is_recursive) return self.translateFixnumAdd(left, right);
+        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumAdd(left, right);
         const l = try self.translate(left);
         const r = try self.translate(right);
         const args = [_]HoistValue{ l, r };
@@ -2416,7 +2392,7 @@ pub const IrTranslator = struct {
     }
 
     fn translateSub(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or self.is_recursive) return self.translateFixnumSub(left, right);
+        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumSub(left, right);
         const l = try self.translate(left);
         const r = try self.translate(right);
         const args = [_]HoistValue{ l, r };
@@ -2425,7 +2401,7 @@ pub const IrTranslator = struct {
     }
 
     fn translateMul(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or self.is_recursive) return self.translateFixnumMul(left, right);
+        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumMul(left, right);
         const l = try self.translate(left);
         const r = try self.translate(right);
         const args = [_]HoistValue{ l, r };
@@ -2443,31 +2419,31 @@ pub const IrTranslator = struct {
     }
 
     fn translateLt(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or self.is_recursive) return self.translateFixnumCmp(.slt, left, right);
+        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.slt, left, right);
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitLtNum)));
         return try self.translateCmpTagged(prim_ptr, left, right);
     }
 
     fn translateGt(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or self.is_recursive) return self.translateFixnumCmp(.sgt, left, right);
+        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.sgt, left, right);
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitGtNum)));
         return try self.translateCmpTagged(prim_ptr, left, right);
     }
 
     fn translateLe(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or self.is_recursive) return self.translateFixnumCmp(.sle, left, right);
+        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.sle, left, right);
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitLeNum)));
         return try self.translateCmpTagged(prim_ptr, left, right);
     }
 
     fn translateGe(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or self.is_recursive) return self.translateFixnumCmp(.sge, left, right);
+        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.sge, left, right);
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitGeNum)));
         return try self.translateCmpTagged(prim_ptr, left, right);
     }
 
     fn translateNumEq(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or self.is_recursive) return self.translateFixnumCmp(.eq, left, right);
+        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.eq, left, right);
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitNumEq)));
         return try self.translateCmpTagged(prim_ptr, left, right);
     }
@@ -2922,14 +2898,6 @@ pub const IrTranslator = struct {
                 try self.preEmitConstants(n.right);
             },
             .cons => |n| {
-                // Pre-emit inline cons constants for loop LICM, but only when not
-                // in a recursive function (which has high register pressure from
-                // callee-saved regs, cross-calls, self-calls).
-                if (self.in_loop_preemit and !self.is_recursive) {
-                    _ = try self.cachedIconst(@as(i64, @bitCast(@intFromPtr(&g_alloc_ptr))));
-                    _ = try self.cachedIconst(16);
-                    _ = try self.cachedIconst(8);
-                }
                 try self.preEmitConstants(n.left);
                 try self.preEmitConstants(n.right);
             },
@@ -3156,6 +3124,9 @@ pub const IrTranslator = struct {
     }
 
     fn emitIndirectCallValues(self: *IrTranslator, fn_ptr: HoistValue, args: []const HoistValue) anyerror!HoistValue {
+        // Hoist stack-arg lowering for indirect calls is currently unsafe with
+        // frame-based prologues. Keep JIT indirect calls register-only.
+        if (args.len > 8) return error.UnsupportedCallTarget;
         const arity: u32 = @intCast(args.len);
         const sig = try self.getCallSigForArity(arity);
 
@@ -3963,9 +3934,7 @@ pub const IrTranslator = struct {
         return self.translateCdr(operand_ir);
     }
 
-    /// cons: inline bump allocation with C-ABI slow path fallback.
-    /// Fast path: load alloc_ptr, store car+cdr, bump pointer.
-    /// Slow path: call jitCons() for GC + allocate.
+    /// cons allocation via jitCons helper.
     fn translateCons(self: *IrTranslator, car_ir: *const Ir, cdr_ir: *const Ir) anyerror!HoistValue {
         var car_val = try self.translate(car_ir);
         var cdr_val = try self.translate(cdr_ir);
@@ -3986,30 +3955,8 @@ pub const IrTranslator = struct {
             }
         }
 
-        // Inline bump allocation directly in hoist IR to avoid call_indirect
-        // register swap issues. Loads g_alloc_ptr, stores car+cdr, bumps pointer.
-        // No GC check — relies on sufficient heap space (same as jitCons fast path).
-        const alloc_ptr_addr = try self.cachedIconst(@as(i64, @bitCast(@intFromPtr(&g_alloc_ptr))));
-        const sixteen = try self.cachedIconst(16);
-        const eight = try self.cachedIconst(8);
-
-        const mf = hoist.memflags.MemFlags.default();
-
-        // Load current allocation pointer
-        const ptr = try self.b.load(I64, alloc_ptr_addr, mf);
-        // Store car at [ptr+0]
-        try self.b.store(car_val, ptr, mf);
-        // Store cdr at [ptr+8]
-        const ptr_plus_8 = try self.b.iadd(I64, ptr, eight);
-        try self.b.store(cdr_val, ptr_plus_8, mf);
-        // Bump allocation pointer
-        const new_ptr = try self.b.iadd(I64, ptr, sixteen);
-        try self.b.store(new_ptr, alloc_ptr_addr, mf);
-
-        // Return ptr as cons value (cons tag = 0, so raw = ptr)
-        // In untagged mode, the cons pointer is NOT a fixnum — it's already
-        // a tagged cons (tag=0, raw=ptr). Don't untag it.
-        return ptr;
+        const args = [_]HoistValue{ cdr_val, car_val };
+        return try self.emitPrimitiveCallValues(@intFromPtr(&jitCons), &args);
     }
 
     /// Check if an IR expression produces a fixnum value (needs retagging in untagged mode).
@@ -4317,23 +4264,30 @@ pub const IrTranslator = struct {
 
     fn translateArrNew(self: *IrTranslator, dimensions: []const *const Ir, init_ir: ?*const Ir) anyerror!HoistValue {
         if (dimensions.len > 8) return error.UnsupportedIrNode;
-        const rank = try self.cachedIconst(@as(i64, @bitCast(Value.makeFixnum(@intCast(dimensions.len)).raw)));
         const init_val = if (init_ir) |v|
             try self.translate(v)
         else
             try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
-        const nil_val = try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
-        var args: [10]HoistValue = undefined;
-        args[0] = rank;
-        for (0..8) |i| {
-            args[i + 1] = if (i < dimensions.len)
-                try self.translate(dimensions[i])
-            else
-                nil_val;
+
+        if (dimensions.len == 1) {
+            const dim = try self.translate(dimensions[0]);
+            const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitMakeArray1)));
+            return try self.emitPrimitiveCallValues(prim_ptr, &.{ dim, init_val });
         }
-        args[9] = init_val;
-        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitMakeArrayStatic)));
-        return try self.emitPrimitiveCallValues(prim_ptr, args[0..]);
+
+        // Build list dims for rank 0 and rank>=2 to keep call arity <= 8.
+        const nil_val = try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
+        const cons_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitCons)));
+        var dims_list = nil_val;
+        var i: usize = dimensions.len;
+        while (i > 0) {
+            i -= 1;
+            const dim = try self.translate(dimensions[i]);
+            dims_list = try self.emitPrimitiveCallValues(cons_ptr, &.{ dims_list, dim });
+        }
+
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitMakeArrayDynamic)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ dims_list, init_val });
     }
 
     fn translateArrNewDynamic(self: *IrTranslator, dimensions_ir: *const Ir, init_ir: ?*const Ir) anyerror!HoistValue {
@@ -5143,10 +5097,11 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     translator.is_recursive = detectSelfCalls(lambda.body, name);
     translator.has_loops = detectLoops(lambda.body);
     translator.has_loads = containsLoads(lambda.body);
-    translator.untagged = translator.has_loops and !translator.is_recursive and
+    translator.fixnum_fast = lambda.safety == 0;
+    translator.untagged = translator.fixnum_fast and translator.has_loops and !translator.is_recursive and
         isUntaggedSafeExpr(lambda.body);
 
-    const fixnum_inline = translator.untagged or translator.is_recursive;
+    const fixnum_inline = translator.untagged or (translator.is_recursive and translator.fixnum_fast);
     translator.has_cross_calls = containsCons(lambda.body) or
         containsHelperCalls(lambda.body, fixnum_inline) or
         containsPrimitiveCalls(lambda.body, name) or
@@ -5211,7 +5166,7 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
             translator.is_recursive = false;
         }
         // May still have cross-calls (cons, known functions)
-        const tco_fixnum_inline = translator.untagged or translator.is_recursive;
+        const tco_fixnum_inline = translator.untagged or (translator.is_recursive and translator.fixnum_fast);
         translator.has_cross_calls = containsCons(lambda.body) or
             containsHelperCalls(lambda.body, tco_fixnum_inline) or
             containsPrimitiveCalls(lambda.body, name) or

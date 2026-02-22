@@ -25,9 +25,11 @@
     - [ ] `habu-fix-macro-expansion-35b2e63f` Fix macro expansion edge semantics for large sources.
   - [ ] `habu-reader-parser-parity-a7ceffb7` Close reader/parser parity gaps (`#.` and `#nA` terminal parsing). Depends on `habu-define-maxima-gates-aca4e665`.
   - [ ] `habu-stabilize-eval-vm-d1c1c5cc` Stabilize eval/VM paths under macro-heavy Maxima workloads. Depends on `habu-close-cl-semantic-dac2c058`.
-    - [ ] `habu-rca-indirect-call-d9f594ad` RCA and fix JIT indirect-call path root cause (no workaround).
+    - [x] `habu-rca-indirect-call-d9f594ad` RCA and fix JIT indirect-call path root cause (no workaround).
       - [x] `habu-rca-jit-indirect-a4555d20` Harden indirect-call argument move repair for interleaved BLR target setup (`mov/movz/movk`) and duplicate-destination copy chains; add backend machine-code regressions.
       - [x] `habu-fix-nested-cons-c6b553bd` Fix JIT nested-cons corruption/crash by correcting dead-MOVZ liveness over unscaled/pre/post-index load/store forms (store-value/base reads) and lock with backend + integration regressions.
+      - [x] `habu-fix-gc-vector-9fcc771c` Fix JIT `gc_vector` crash by removing >8-arg indirect call lowering from `arr_new`, routing through register-only helper calls, and locking with a focused JIT integration regression.
+    - [x] `habu-rca-curr-maxima-365c1a4a` RCA current Maxima load blocker (`%MAP-REVERSE` JIT crash), restore strict JIT eligibility gate (`speed=3,safety=0`), and add JIT call/cursor diagnostics.
     - [ ] `habu-fix-nested-eval-420ba9e0` Fix nested eval/non-local exit frame restoration. Depends on `habu-rca-indirect-call-d9f594ad`.
       - [x] `habu-fix-nested-eval-e96f4a89` Preserve non-local exits from reader hooks (`#.`/dispatch) by propagating hook VM errors through parser boundaries; add `read-from-string` throw relay regression.
     - [x] `habu-fix-ext-roots-1da298cf` Use owner-aware ext-root snapshots/restores in nested VM macro-state runs; remove stale slice restore path and add VM regression for owner rebind after root-owner reallocation.
@@ -38,6 +40,7 @@
     - [x] `habu-add-maxima-real-c6c59d32` Add Maxima real-workload benchmark harness (`bench/maxima_workload.zig`, `bench/maxima_workload.lisp`, `tools/maxima-bench`) with loader + CAS timing JSON.
     - [x] `habu-extend-microbench-matrix-31060fbb` Extend microbench matrix and self-improvement comparison loop. Depends on `habu-add-maxima-real-c6c59d32`.
     - [x] `habu-measure-gc-against-b81d7bc6` Measure GC against SBCL workloads with comparable load/alloc scenarios. Depends on `habu-extend-microbench-matrix-31060fbb`.
+    - [ ] `habu-maxima-hotspot-uplift-04ded9f4` Convert post-crash hotspot data into generic runtime/compiler speedups (no Maxima-only paths). Depends on `habu-rca-curr-maxima-365c1a4a`.
     - [ ] `habu-extract-sbcl-ocaml-4e8a4268` Extract SBCL/OCaml GC techniques into Habu gap map + implementation plan. Depends on `habu-measure-gc-against-b81d7bc6`.
       - [x] `habu-study-sbcl-gc-2294e52d` Study SBCL `gencgc` internals and record transferrable heuristics.
         - [x] `habu-sbcl-gc-map-03111566` SBCL GC: map trigger heuristics.

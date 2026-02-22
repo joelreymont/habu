@@ -22,6 +22,10 @@ pub fn setCallBridge(_: CallBridge) void {}
 
 pub fn syncHeapFromGlobal(_: *Heap) void {}
 
+pub fn allocPtrRaw() u64 {
+    return 0;
+}
+
 pub const KnownFn = struct {
     fn_ptr: u64 = 0,
     arity: u32 = 0,

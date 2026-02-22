@@ -25,14 +25,22 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Locking MOVZ liveness and nested-cons runtime behavior with focused regressions (`src/jit/backend.zig:7906`, `src/jit/backend.zig:7928`, `src/tests/integration.zig:245`) gives direct red/green coverage for this exact failure mode.
 - Treating `RET` as reading x0 in liveness (`src/jit/backend.zig:6326`, `src/jit/backend.zig:6372`) fixed a real dead-MOVZ miscompile where `movz x0,#imm; ret` got NOPed and leaf functions returned stale pointer garbage (`hoist IR translator: block wrapper compiles` expected tagged 85).
 - Locking return-register liveness with focused backend regressions (`src/jit/backend.zig:8045`, `src/jit/backend.zig:8063`) prevents future dead-code passes from deleting result materialization before `RET`.
+- Replacing static `arr_new` lowering with register-only call shapes in `translateArrNew` (`src/jit/backend.zig:4291`) removed 10-arg indirect calls from JIT array construction and fixed the `gc_vector` warmup crash path.
+- Guarding indirect-call lowering to max 8 args (`src/jit/backend.zig:3128`) turns unsafe stack-arg call emission into an explicit compile-time fallback instead of silent return-address corruption.
+- Locking the crash repro with a focused JIT integration regression (`src/tests/integration.zig:245`) keeps `(make-array ... )` loop return paths covered under `(optimize (speed 3) (safety 0))`.
+- Tracing JIT call entry/exit (`HABU_TRACE_JIT_CALL`) in `tryCallJit` (`src/interp/vm.zig:1285`) gave a deterministic failing function name (`%MAP-REVERSE`) for a Maxima-load crash that otherwise only surfaced as random native PC faults.
+- Restoring strict JIT eligibility to explicit `(optimize (speed 3) (safety 0))` (`src/interp/repl.zig:2910`, `src/testing/compile_chunk.zig:164`) removed unsafe safety>0 JIT compilation and restored full `bench-maxima` load+run stability.
+- Keeping a hard allocator-cursor invariant check after JIT returns (`src/interp/vm.zig:1311`, `src/jit/backend.zig:95`) turns cursor corruption into immediate, attributable failures instead of delayed heap-state crashes.
 
 ### Did Not Work
+- Broadening JIT admission to safety>0 call-free lambdas without full runtime-safety lowering/bridge semantics caused deterministic Maxima crashes in `%MAP-REVERSE` (segfault + misaligned allocator cursor), even after partial cons-lowering changes.
 - Treating all non-symbol atoms in `tagbody` as executable forms was incorrect; CL treats integer atoms as labels too, so tests that expected trailing fixnum atoms as forms were invalid and had to be rewritten (`src/compiler/compile.zig:20972`, `src/compiler/compile.zig:21032`).
 - Relying on contiguous backward scans of only `mov x0..x7,*` before BL/BLR in `fixCallArgMoves` missed valid call setup windows with interleaved target setup ops, leaving indirect-call argument corruption unpatched.
 - Converting read-eval/dispatch callback errors to parser `UnexpectedToken` in bridge hooks (`src/interp/vm.zig` pre-fix `readEvalBridge`/`dispatchMacroBridge`, `src/interp/repl.zig` pre-fix `parserReadEval`/`parserDispatchMacro`) masked real control transfers as parse/type errors and broke `(catch ...)` around `read-from-string` `#.` forms.
 - Restoring nested VM ext roots via pointer-identity classification (`persistent`/`ctx`/`slice`) in `runVmPreserveMacroState` was brittle; unclassified owners fell back to raw slices and risked stale restores after owner reallocation.
 - Restricting load/store read/write detection to the unsigned-offset `0x39*` family in MOVZ dead-code analysis (`src/jit/backend.zig` pre-fix `insnReadsReg`/`insnWritesReg`) missed hoist-emitted unscaled `F8*` forms, so `eliminateDeadMovz` deleted live constants and produced malformed cons cells at runtime.
 - Treating `RET` as a pure control-flow terminator in liveness (`src/jit/backend.zig` pre-fix `isRegDeadInBlock`/`isRegDeadFrom`) is incorrect for x0: dead-MOVZ elimination can remove return-value setup and surface as nondeterministic pointer returns in leaf wrappers.
+- Emitting `arr_new` via `jitMakeArrayStatic` with 10 indirect-call args (`src/jit/backend.zig` pre-fix `translateArrNew`) exercised hoist stack-arg lowering that spilled at `[sp]` and overwrote saved LR, crashing on function return (`Bus error at 0x4e1f` in `gc_vector` JIT warmup).
 
 ## Session Notes (2026-02-21)
 

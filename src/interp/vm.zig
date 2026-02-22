@@ -1282,6 +1282,10 @@ pub const Vm = struct {
         const chunk = self.chunk;
         const compiled = self.jit_fns.get(@intFromPtr(chunk)) orelse return null;
         if (compiled.arity != argc) return null;
+        const trace_jit_call = std.posix.getenv("HABU_TRACE_JIT_CALL") != null;
+        if (trace_jit_call) {
+            std.debug.print("JIT_CALL enter {s} argc={d}\n", .{ compiled.name, argc });
+        }
 
         // Set global heap pointer so JIT cons can allocate
         jit_backend.setHeap(self.heap);
@@ -1298,6 +1302,14 @@ pub const Vm = struct {
         const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
         const args = self.stack[bp .. bp + argc];
         const result = compiled.callFromValues(args);
+        if (trace_jit_call) {
+            std.debug.print("JIT_CALL leave {s}\n", .{compiled.name});
+        }
+
+        const jit_alloc_ptr = jit_backend.allocPtrRaw();
+        if (!std.mem.isAligned(jit_alloc_ptr, runtime.heap.ALIGNMENT)) {
+            std.debug.panic("jit alloc cursor misaligned after '{s}': 0x{x}", .{ compiled.name, jit_alloc_ptr });
+        }
 
         // Sync heap alloc_ptr back from JIT global (inline cons updates g_alloc_ptr
         // but not heap.alloc_ptr directly)

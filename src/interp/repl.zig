@@ -2907,9 +2907,8 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
 
         if (trace) std.debug.print("JIT: considering '{s}' speed={d} safety={d} captures={d} opt={d} key={d} rest={}\n", .{ fn_name, lambda.speed, lambda.safety, lambda.captures.len, lambda.optional_params.len, lambda.key_params.len, lambda.rest_param != null });
 
-        // Only compile speed=3, safety=0 functions
-        // Safety > 0 needs runtime type checks that hoist backend doesn't emit
-        if (lambda.safety > 0) return false;
+        // Require explicit (optimize (speed 3) (safety 0)) for JIT.
+        if (lambda.speed < 3 or lambda.safety > 0) return false;
         // Skip functions whose body is just a type assertion (e.g. (the fixnum x)).
         // These may receive non-fixnum types; the untagged JIT would corrupt them.
         if (lambda.body.* == .assert_fixnum) return false;

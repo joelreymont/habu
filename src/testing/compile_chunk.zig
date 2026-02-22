@@ -161,8 +161,13 @@ fn tryHoistCompile(
         );
     }
 
+    // Keep test/bench JIT eligibility aligned with runtime REPL behavior.
     if (lambda.speed < 3 or lambda.safety > 0) {
-        if (trace) std.debug.print("JIT bench: skip '{s}' optimize gates\n", .{name});
+        if (trace) std.debug.print("JIT bench: skip '{s}' speed/safety gate\n", .{name});
+        return;
+    }
+    if (lambda.body.* == .assert_fixnum) {
+        if (trace) std.debug.print("JIT bench: skip '{s}' assert-fixnum body\n", .{name});
         return;
     }
     if (lambda.captures.len > 0) {
