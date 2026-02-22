@@ -1893,7 +1893,7 @@ test "JIT bridge relays keyword throw without panic" {
     const jit_before = repl.vm.jit_fns.count();
     _ = try repl.eval(
         \\(defun jit-bridge-keyfail ()
-        \\  (declare (optimize (speed 3) (safety 0)))
+        \\  (declare (optimize (speed 3) (safety 3)))
         \\  (bridge-keyfail-wrapper))
     );
     try testing.expect(repl.vm.jit_fns.count() > jit_before);
@@ -1902,12 +1902,87 @@ test "JIT bridge relays keyword throw without panic" {
 
     _ = try repl.eval(
         \\(defun jit-bridge-after ()
-        \\  (declare (optimize (speed 3) (safety 0)))
+        \\  (declare (optimize (speed 3) (safety 3)))
         \\  7)
     );
     const after = try repl.eval("(jit-bridge-after)");
     try testing.expect(after.isFixnum());
     try testing.expectEqual(@as(i64, 7), after.toFixnum());
+}
+
+test "JIT handles branch-local let scopes without panic" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const jit_before = repl.vm.jit_fns.count();
+    _ = try repl.eval(
+        \\(defun jit-if-let-scope (x y)
+        \\  (if x
+        \\      (let ((a (+ y 1))
+        \\            (b (+ y 2)))
+        \\        (+ a b))
+        \\      (let ((c (+ y 3)))
+        \\        c)))
+    );
+    try testing.expect(repl.vm.jit_fns.count() > jit_before);
+
+    const then_val = try repl.eval("(jit-if-let-scope t 10)");
+    try testing.expect(then_val.isFixnum());
+    try testing.expectEqual(@as(i64, 23), then_val.toFixnum());
+
+    const else_val = try repl.eval("(jit-if-let-scope nil 10)");
+    try testing.expect(else_val.isFixnum());
+    try testing.expectEqual(@as(i64, 13), else_val.toFixnum());
+}
+
+test "JIT handles deep branch chains without Hoist succ corruption" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var src = std.ArrayList(u8){};
+    defer src.deinit(allocator);
+    try src.appendSlice(allocator, "(defun jit-deep-branch (x) (declare (optimize (speed 3) (safety 0))) ");
+
+    var i: usize = 0;
+    while (i < 40) : (i += 1) {
+        var if_buf: [64]u8 = undefined;
+        const if_form = try std.fmt.bufPrint(&if_buf, "(if (= x {d}) {d} ", .{ i, i });
+        try src.appendSlice(allocator, if_form);
+    }
+    try src.appendSlice(allocator, "999");
+    for (0..41) |_| {
+        try src.appendSlice(allocator, ")");
+    }
+
+    const jit_before = repl.vm.jit_fns.count();
+    _ = try repl.eval(src.items);
+    try testing.expect(repl.vm.jit_fns.count() > jit_before);
+
+    const hit = try repl.eval("(jit-deep-branch 39)");
+    try testing.expect(hit.isFixnum());
+    try testing.expectEqual(@as(i64, 39), hit.toFixnum());
+
+    const miss = try repl.eval("(jit-deep-branch 1000)");
+    try testing.expect(miss.isFixnum());
+    try testing.expectEqual(@as(i64, 999), miss.toFixnum());
 }
 
 test "tail call preserves keyword argument layout" {

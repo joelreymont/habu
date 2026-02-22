@@ -74,3 +74,13 @@ that need to be fixed upstream or worked around in habu.
 - **Impact:** Correctness bug for leaf functions with 3+ params under `.aggressive` optimization.
 - **Workaround:** Such functions currently fall through to bytecode interpreter (they don't have `safety 0` or aren't leaf). Functions compiled with `.none` (recursive/calling) save to callee-saved regs first, avoiding the conflict.
 - **Proper fix:** Use parallel copy algorithm for entry param shuffling, or ensure regalloc doesn't create overlapping assignments for ABI parameter registers.
+
+### 10. VCode successor slices corrupt after ArrayList growth
+- **File:** hoist `../hoist/src/machinst/vcode.zig` (`finishBlock`, `computePreds`)
+- **Symptom:** deterministic panic in lowering: `index out of bounds: 0xAAAAAAAA` inside `computePreds`.
+- **Repro:** create ~34+ VCode blocks with one successor each, then call `computePreds`; early block successor values become `0xAAAAAAAA`.
+- **Root cause:** blocks keep long-lived slices into growable `succs` storage; after growth/remap, old storage bytes are poisoned by allocator semantics, leaving stale block slices.
+- **Impact:** crashes real workloads with moderate CFG edge counts (e.g. Maxima `SMINMAX`, `ORDFN` paths).
+- **Habu mitigation:** compile via remap-stable allocator wrapper (`src/jit/backend.zig`) so old buffers remain readable for full compile.
+- **Proper fix:** make `VCodeBlock` reference stable successor/param storage (index ranges or owned copies) instead of slices into a reallocated `ArrayList`.
+- **Details:** `docs/hoist-vcode-successor-corruption.md`

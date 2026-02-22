@@ -1299,3 +1299,15 @@ Environment guard:
 
 #### Did Not Work
 - Introducing additional recursive stdlib sort helper defuns for string fast paths triggered deterministic generational load crashes in compiler capture analysis (`src/compiler/compile.zig:4989`) and later macro handling (`src/interp/repl.zig:3686`) during `loadStdlib`.
+
+### Session Notes (2026-02-22, Hoist VCode successor corruption under growth)
+
+#### Worked Well
+- Building a standalone Hoist reproducer (linear 80-block VCode chain) proved the `computePreds` panic is deterministic once successor storage grows past 32 entries; this removed ambiguity about Habu IR correctness.
+- Routing Hoist compilation through a remap-stable allocator wrapper (`src/jit/backend.zig:49`) over a per-compile arena fixed the root issue without touching `../hoist`: old backing slices survive ArrayList growth and `computePreds` no longer reads poisoned entries.
+- Wiring the stable allocator in the Hoist compile entry (`src/jit/backend.zig:5365`, `src/jit/backend.zig:5383`) removed the Maxima `SMINMAX` panic path; `bench-maxima` now completes (`jit_compiled=397` at scale 1 in current run).
+- Adding a deep branch-chain JIT regression (`src/tests/integration.zig:1947`) locks the >32-edge lowering path that previously crashed in Hoist.
+
+#### Did Not Work
+- A plain `ArenaAllocator` alone was insufficient: Zig allocator `free`/realloc paths poison old buffers, so stale Hoist succ/param slices still became `0xAAAAAAAA` (`src/jit/backend.zig` pre-fix compile path).
+- Using full `zig build test -Duse-hoist=true` as proof for this dot remains noisy in this workspace because an unrelated pre-existing integration segfault (`deep recursive defun does not overflow block stack at 64`) still fails outside the Hoist-succ fix scope.

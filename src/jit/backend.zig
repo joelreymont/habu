@@ -42,6 +42,55 @@ const I64 = HoistType.I64;
 const I8 = HoistType.I8;
 pub const LiteralRoots = std.AutoHashMap(usize, *Value);
 
+/// Hoist VCode stores block succ/param slices into backing ArrayLists.
+/// Those slices must remain valid across ArrayList growth. Zig's allocator
+/// `free` path poisons old buffers, so we provide a remap-only allocator that
+/// preserves old bytes for the full compile arena lifetime.
+const HoistStableAlloc = struct {
+    backing: std.mem.Allocator,
+
+    fn init(backing: std.mem.Allocator) HoistStableAlloc {
+        return .{ .backing = backing };
+    }
+
+    fn allocator(self: *HoistStableAlloc) std.mem.Allocator {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .alloc = alloc,
+                .resize = resize,
+                .remap = remap,
+                .free = free,
+            },
+        };
+    }
+
+    fn alloc(ctx: *anyopaque, n: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const self: *HoistStableAlloc = @ptrCast(@alignCast(ctx));
+        return self.backing.rawAlloc(n, alignment, ra);
+    }
+
+    fn resize(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) bool {
+        return false;
+    }
+
+    fn remap(
+        ctx: *anyopaque,
+        memory: []u8,
+        alignment: std.mem.Alignment,
+        new_len: usize,
+        ra: usize,
+    ) ?[*]u8 {
+        const self: *HoistStableAlloc = @ptrCast(@alignCast(ctx));
+        const new_mem = self.backing.rawAlloc(new_len, alignment, ra) orelse return null;
+        const copy_len = @min(memory.len, new_len);
+        @memcpy(new_mem[0..copy_len], memory[0..copy_len]);
+        return new_mem;
+    }
+
+    fn free(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize) void {}
+};
+
 // ── Global heap pointer for JIT cons allocation ──
 // Set by the VM before calling JIT functions that may allocate.
 var g_heap: ?*Heap = null;
@@ -408,6 +457,22 @@ fn jitAddNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
     }
 
     const out = runtime.primitives.arith.add(jitRequireHeap(), a, b) catch |err| {
+        if (std.posix.getenv("HABU_TRACE_JIT_NUM") != null) {
+            std.debug.print(
+                "JIT_NUM add fail err={s} a=0x{x} b=0x{x} a_fix={} b_fix={} a_float={} b_float={} a_ptr={} b_ptr={}\n",
+                .{
+                    @errorName(err),
+                    a.raw,
+                    b.raw,
+                    a.isFixnum(),
+                    b.isFixnum(),
+                    a.isFloat(),
+                    b.isFloat(),
+                    a.isPointer(),
+                    b.isPointer(),
+                },
+            );
+        }
         std.debug.panic("jit add failed: {s}", .{@errorName(err)});
     };
     return out.raw;
@@ -1825,6 +1890,7 @@ const CseKey = struct {
 
 pub const IrTranslator = struct {
     allocator: std.mem.Allocator,
+    persist_allocator: std.mem.Allocator,
     func: *Function,
     b: *FunctionBuilder,
 
@@ -1923,9 +1989,15 @@ pub const IrTranslator = struct {
     /// Heap-allocated continuation stack buffer (ownership transferred to CompiledFn).
     cont_buf_alloc: ?[]align(8) u8 = null,
 
-    pub fn init(allocator: std.mem.Allocator, func: *Function, builder: *FunctionBuilder) IrTranslator {
+    pub fn init(
+        allocator: std.mem.Allocator,
+        persist_allocator: std.mem.Allocator,
+        func: *Function,
+        builder: *FunctionBuilder,
+    ) IrTranslator {
         return .{
             .allocator = allocator,
+            .persist_allocator = persist_allocator,
             .func = func,
             .b = builder,
             .locals = std.ArrayList(HoistValue){},
@@ -2648,6 +2720,15 @@ pub const IrTranslator = struct {
         return try self.b.select(I64, val, t_val, nil_val);
     }
 
+    /// Normalize Lisp truthy/nil values to an I8 branch predicate.
+    /// Hoist branch lowering is most stable when brif operands are explicit I8.
+    fn branchCond(self: *IrTranslator, val: HoistValue) anyerror!HoistValue {
+        const val_ty = self.func.dfg.valueType(val) orelse I64;
+        if (val_ty.raw == I8.raw) return val;
+        const zero = try self.cachedIconst(0);
+        return try self.b.icmp(I8, IntCC.ne, val, zero);
+    }
+
     fn translateIf(self: *IrTranslator, cond_ir: *const Ir, then_ir_orig: *const Ir, else_ir_orig: *const Ir) anyerror!HoistValue {
         // Optimize condition patterns to avoid redundant conversions:
         // - (not expr): swap branches, translate expr directly
@@ -2738,7 +2819,7 @@ pub const IrTranslator = struct {
         defer self.allocator.free(saved_locals);
         @memcpy(saved_locals, self.locals.items);
 
-        try self.b.brif(cond_val, then_blk, else_blk);
+        try self.b.brif(try self.branchCond(cond_val), then_blk, else_blk);
 
         // Then branch
         self.switchBlock(then_blk);
@@ -2788,15 +2869,43 @@ pub const IrTranslator = struct {
     }
 
     fn translateLet(self: *IrTranslator, bindings: []const Ir.Binding, body: *const Ir) anyerror!HoistValue {
-        // Evaluate each binding and add to locals
-        // Remap indices through inline scope if active
+        // Evaluate each binding and add to locals.
+        // Restore bound slots and trim branch-local extensions on scope exit.
         const scope_base: usize = if (self.inline_scopes.items.len > 0)
             self.inline_scopes.items[self.inline_scopes.items.len - 1].base
         else
             0;
+        const old_len = self.locals.items.len;
+
+        const SavedLocal = struct { idx: usize, val: HoistValue };
+        var saved = std.ArrayList(SavedLocal){};
+        defer saved.deinit(self.allocator);
+
+        defer {
+            for (saved.items) |entry| {
+                self.locals.items[entry.idx] = entry.val;
+            }
+            self.locals.shrinkRetainingCapacity(old_len);
+        }
+
         for (bindings) |binding| {
             const val = try self.translate(binding.value);
             const actual_index = scope_base + binding.index;
+            if (actual_index < old_len) {
+                var already_saved = false;
+                for (saved.items) |entry| {
+                    if (entry.idx == actual_index) {
+                        already_saved = true;
+                        break;
+                    }
+                }
+                if (!already_saved) {
+                    try saved.append(self.allocator, .{
+                        .idx = actual_index,
+                        .val = self.locals.items[actual_index],
+                    });
+                }
+            }
             // Extend locals array if needed
             while (self.locals.items.len <= actual_index) {
                 try self.locals.append(self.allocator, HoistValue.new(0)); // placeholder
@@ -3028,7 +3137,7 @@ pub const IrTranslator = struct {
         }
 
         const cond_val = try self.translate(cond_ir);
-        try self.b.brif(cond_val, loop_body, loop_exit);
+        try self.b.brif(try self.branchCond(cond_val), loop_body, loop_exit);
 
         // Body: execute body, then jump back to header with updated values
         self.switchBlock(loop_body);
@@ -3401,7 +3510,8 @@ pub const IrTranslator = struct {
         if (use_cont_stack) {
             // Allocate 128KB buffer for continuation stack (16384 entries * 8 bytes)
             const cont_buf_size: usize = 16384 * @as(usize, cont_width) * 8;
-            const cont_buf = try self.allocator.alignedAlloc(u8, .@"8", cont_buf_size);
+            // This buffer survives function compilation and is returned in CompiledFn.
+            const cont_buf = try self.persist_allocator.alignedAlloc(u8, .@"8", cont_buf_size);
             self.cont_buf_alloc = cont_buf;
             // Store the buffer pointer as a constant in the IR
             const buf_ptr = @intFromPtr(cont_buf.ptr);
@@ -3648,7 +3758,7 @@ pub const IrTranslator = struct {
                     const else_blk = try self.func.dfg.addBlock();
                     try self.func.layout.appendBlock(else_blk);
 
-                    try self.b.brif(cond, then_blk, else_blk);
+                    try self.b.brif(try self.branchCond(cond), then_blk, else_blk);
 
                     self.switchBlock(then_blk);
                     _ = try self.translateTCOExpr(then_branch);
@@ -3674,7 +3784,7 @@ pub const IrTranslator = struct {
                     const else_blk = try self.func.dfg.addBlock();
                     try self.func.layout.appendBlock(else_blk);
 
-                    try self.b.brif(cond, then_blk, else_blk);
+                    try self.b.brif(try self.branchCond(cond), then_blk, else_blk);
 
                     self.switchBlock(then_blk);
                     if (then_is_simple_exit and self.tco_exit != null) {
@@ -3704,7 +3814,7 @@ pub const IrTranslator = struct {
                     const else_blk = try self.func.dfg.addBlock();
                     try self.func.layout.appendBlock(else_blk);
 
-                    try self.b.brif(cond, then_blk, else_blk);
+                    try self.b.brif(try self.branchCond(cond), then_blk, else_blk);
 
                     self.switchBlock(then_blk);
                     if (then_is_simple_exit and self.tco_exit != null) {
@@ -3726,7 +3836,7 @@ pub const IrTranslator = struct {
                     const else_blk = try self.func.dfg.addBlock();
                     try self.func.layout.appendBlock(else_blk);
 
-                    try self.b.brif(cond, then_blk, else_blk);
+                    try self.b.brif(try self.branchCond(cond), then_blk, else_blk);
 
                     self.switchBlock(else_blk);
                     if (else_is_simple_exit and self.tco_exit != null) {
@@ -3810,7 +3920,7 @@ pub const IrTranslator = struct {
         defer self.allocator.free(saved_locals);
         @memcpy(saved_locals, self.locals.items);
 
-        try self.b.brif(cond_val, then_blk, else_blk);
+        try self.b.brif(try self.branchCond(cond_val), then_blk, else_blk);
 
         // Then branch (with TCO context)
         self.switchBlock(then_blk);
@@ -4006,9 +4116,10 @@ pub const IrTranslator = struct {
 
         if (self.fixnum_fast) {
             // Inline bump allocation directly in hoist IR to avoid call_indirect
-            // register swap issues. Loads g_alloc_ptr, stores car+cdr, bumps pointer.
-            // No GC check — relies on sufficient heap space (same as jitCons fast path).
+            // register swap issues. Loads g_alloc_ptr/g_alloc_end and falls back
+            // to jitCons slow path when the inline cursor overflows.
             const alloc_ptr_addr = try self.cachedIconst(@as(i64, @bitCast(@intFromPtr(&g_alloc_ptr))));
+            const alloc_end_addr = try self.cachedIconst(@as(i64, @bitCast(@intFromPtr(&g_alloc_end))));
             const sixteen = try self.cachedIconst(16);
             const eight = try self.cachedIconst(8);
 
@@ -4016,19 +4127,40 @@ pub const IrTranslator = struct {
 
             // Load current allocation pointer
             const ptr = try self.b.load(I64, alloc_ptr_addr, mf);
+            const new_ptr = try self.b.iadd(I64, ptr, sixteen);
+            const alloc_end = try self.b.load(I64, alloc_end_addr, mf);
+            const has_space = try self.b.icmp(I8, IntCC.ule, new_ptr, alloc_end);
+
+            const fast_blk = try self.b.createBlock();
+            const slow_blk = try self.b.createBlock();
+            const merge_blk = try self.b.createBlock();
+            const merge_param = try self.b.appendBlockParam(merge_blk, I64);
+
+            try self.b.brif(has_space, fast_blk, slow_blk);
+
+            self.switchBlock(fast_blk);
+            try self.b.sealBlock(fast_blk);
             // Store car at [ptr+0]
             try self.b.store(car_val, ptr, mf);
             // Store cdr at [ptr+8]
             const ptr_plus_8 = try self.b.iadd(I64, ptr, eight);
             try self.b.store(cdr_val, ptr_plus_8, mf);
             // Bump allocation pointer
-            const new_ptr = try self.b.iadd(I64, ptr, sixteen);
             try self.b.store(new_ptr, alloc_ptr_addr, mf);
+            try self.b.jumpArgs(merge_blk, &[_]HoistValue{ptr});
 
-            // Return ptr as cons value (cons tag = 0, so raw = ptr)
-            // In untagged mode, the cons pointer is NOT a fixnum — it's already
-            // a tagged cons (tag=0, raw=ptr). Don't untag it.
-            return ptr;
+            self.switchBlock(slow_blk);
+            try self.b.sealBlock(slow_blk);
+            const slow_args = [_]HoistValue{ cdr_val, car_val };
+            const slow_cons = try self.emitPrimitiveCallValues(@intFromPtr(&jitCons), &slow_args);
+            try self.b.jumpArgs(merge_blk, &[_]HoistValue{slow_cons});
+
+            self.switchBlock(merge_blk);
+            try self.b.sealBlock(merge_blk);
+
+            // Return ptr as cons value (cons tag = 0, so raw = ptr).
+            // In untagged mode, cons results stay tagged pointers.
+            return merge_param;
         }
 
         const args = [_]HoistValue{ cdr_val, car_val };
@@ -4992,6 +5124,17 @@ fn containsLoads(body: *const Ir) bool {
     }{});
 }
 
+fn containsUnsafeConsLoads(body: *const Ir) bool {
+    return irAny(body, struct {
+        fn check(_: @This(), ir: *const Ir) bool {
+            return switch (ir.*) {
+                .car, .cdr, .unsafe_car, .unsafe_cdr => true,
+                else => false,
+            };
+        }
+    }{});
+}
+
 /// Check if an expression is a self-tail-call (immediate, not nested).
 fn isTailCall(ir: *const Ir, name: []const u8) bool {
     return switch (ir.*) {
@@ -5100,6 +5243,108 @@ fn isCallTargetSelf(func_ir: *const Ir, name: []const u8) bool {
     };
 }
 
+fn isIdentityJumpWrapper(func: *const Function, blk: Block) ?Block {
+    var inst_iter = func.layout.blockInsts(blk);
+    const first_inst = inst_iter.next() orelse return null;
+    if (inst_iter.next() != null) return null;
+
+    const inst_data = func.dfg.insts.get(first_inst) orelse return null;
+    if (inst_data.* != .jump) return null;
+    const jump = inst_data.jump;
+    if (std.meta.eql(jump.destination, blk)) return null;
+
+    const params = func.dfg.blockParams(blk);
+    const args = func.dfg.value_lists.asSlice(jump.args);
+    if (params.len != args.len) return null;
+    for (params, args) |param, arg| {
+        if (!std.meta.eql(param, arg)) return null;
+    }
+
+    return jump.destination;
+}
+
+fn resolveBlockRewrite(rewrites: *const std.AutoHashMap(Block, Block), blk: Block) Block {
+    var cur = blk;
+    var hops: usize = 0;
+    while (hops < 256) : (hops += 1) {
+        const next = rewrites.get(cur) orelse return cur;
+        if (std.meta.eql(next, cur)) return cur;
+        cur = next;
+    }
+    return cur;
+}
+
+/// Remove jump-only wrapper blocks of the form:
+///   blockX(p0..pn): jump blockY(p0..pn)
+///
+/// These wrappers are semantically inert and inflate CFG size.
+fn collapseIdentityJumpWrappers(func: *Function, allocator: std.mem.Allocator) !usize {
+    var rewrites = std.AutoHashMap(Block, Block).init(allocator);
+    defer rewrites.deinit();
+
+    const entry = func.layout.entryBlock();
+    var block_iter = func.layout.blockIter();
+    while (block_iter.next()) |blk| {
+        if (entry != null and std.meta.eql(blk, entry.?)) continue;
+        const dest = isIdentityJumpWrapper(func, blk) orelse continue;
+        try rewrites.put(blk, dest);
+    }
+    if (rewrites.count() == 0) return 0;
+
+    // Canonicalize rewrite destinations through chains.
+    var canon_iter = rewrites.iterator();
+    while (canon_iter.next()) |entry_ptr| {
+        entry_ptr.value_ptr.* = resolveBlockRewrite(&rewrites, entry_ptr.value_ptr.*);
+    }
+
+    // Rewrite all terminator block targets away from wrappers.
+    var blk_iter = func.layout.blockIter();
+    while (blk_iter.next()) |blk| {
+        var inst_iter = func.layout.blockInsts(blk);
+        while (inst_iter.next()) |inst| {
+            const inst_data = func.dfg.insts.getMut(inst) orelse continue;
+            switch (inst_data.*) {
+                .jump => |*jump| {
+                    jump.destination = resolveBlockRewrite(&rewrites, jump.destination);
+                },
+                .branch => |*br| {
+                    if (br.then_dest) |then_dest| {
+                        br.then_dest = resolveBlockRewrite(&rewrites, then_dest);
+                    }
+                    if (br.else_dest) |else_dest| {
+                        br.else_dest = resolveBlockRewrite(&rewrites, else_dest);
+                    }
+                },
+                .branch_z => |*brz| {
+                    brz.destination = resolveBlockRewrite(&rewrites, brz.destination);
+                },
+                .try_call => |*tc| {
+                    tc.normal_successor = resolveBlockRewrite(&rewrites, tc.normal_successor);
+                    tc.exception_successor = resolveBlockRewrite(&rewrites, tc.exception_successor);
+                },
+                .try_call_indirect => |*tc| {
+                    tc.normal_successor = resolveBlockRewrite(&rewrites, tc.normal_successor);
+                    tc.exception_successor = resolveBlockRewrite(&rewrites, tc.exception_successor);
+                },
+                else => {},
+            }
+        }
+    }
+
+    var dead_blocks = std.ArrayList(Block){};
+    defer dead_blocks.deinit(allocator);
+    var key_iter = rewrites.keyIterator();
+    while (key_iter.next()) |blk_ptr| {
+        try dead_blocks.append(allocator, blk_ptr.*);
+    }
+
+    for (dead_blocks.items) |blk| {
+        try func.deleteBlock(blk);
+    }
+    return dead_blocks.items.len;
+}
+
+
 pub fn compileIr(
     allocator: std.mem.Allocator,
     ir: *const Ir,
@@ -5132,22 +5377,30 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     // Fast reject: check if all IR nodes are supported before allocating
     if (!IrTranslator.canTranslateWithLiteralRoots(lambda.body, literal_roots)) return error.UnsupportedIrNode;
 
+    // Hoist stores block successor/param slices that must remain valid for the
+    // full lowering pass. Route all Hoist allocations through a remap-stable
+    // allocator over an arena so old buffers are never poisoned mid-compile.
+    var hoist_arena = std.heap.ArenaAllocator.init(allocator);
+    defer hoist_arena.deinit();
+    var hoist_stable_alloc = HoistStableAlloc.init(hoist_arena.allocator());
+    const hoist_alloc = hoist_stable_alloc.allocator();
+
     const arity: u32 = @intCast(lambda.params.len);
 
     // Build signature: all params are i64 (tagged values), return i64
-    var sig = Signature.init(allocator, .system_v);
+    var sig = Signature.init(hoist_alloc, .system_v);
     var sig_owned = true;
     defer if (sig_owned) sig.deinit();
     for (0..arity) |_| {
-        try sig.params.append(allocator, AbiParam.new(I64));
+        try sig.params.append(hoist_alloc, AbiParam.new(I64));
     }
-    try sig.returns.append(allocator, AbiParam.new(I64));
+    try sig.returns.append(hoist_alloc, AbiParam.new(I64));
 
-    var func = try Function.init(allocator, name, sig);
+    var func = try Function.init(hoist_alloc, name, sig);
     sig_owned = false; // Ownership transferred to func
     defer func.deinit();
 
-    var b = try FunctionBuilder.init(allocator, &func);
+    var b = try FunctionBuilder.init(hoist_alloc, &func);
     defer b.deinit();
 
     // Create entry block with params
@@ -5163,7 +5416,7 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     try b.sealBlock(entry);
 
     // Set up translator
-    var translator = IrTranslator.init(allocator, &func, &b);
+    var translator = IrTranslator.init(hoist_alloc, allocator, &func, &b);
     defer translator.deinit();
 
     translator.fn_name = name;
@@ -5174,6 +5427,9 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     translator.has_loops = detectLoops(lambda.body);
     translator.has_loads = containsLoads(lambda.body);
     translator.fixnum_fast = lambda.safety == 0;
+    if (!translator.fixnum_fast and containsUnsafeConsLoads(lambda.body)) {
+        return error.UnsupportedIrNode;
+    }
     translator.untagged = translator.fixnum_fast and translator.has_loops and !translator.is_recursive and
         isUntaggedSafeExpr(lambda.body);
 
@@ -5182,6 +5438,14 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
         containsHelperCalls(lambda.body, fixnum_inline) or
         containsPrimitiveCalls(lambda.body, name) or
         hasAnyNonSelfCalls(lambda.body, name);
+
+    const dump_hoist = blk: {
+        if (std.posix.getenv("HABU_DUMP_HOIST") == null) break :blk false;
+        if (std.posix.getenv("HABU_DUMP_HOIST_FN")) |dump_name| {
+            break :blk std.mem.eql(u8, dump_name, name);
+        }
+        break :blk true;
+    };
 
     if (std.posix.getenv("HABU_TRACE_JIT_FLAGS") != null) {
         std.debug.print(
@@ -5203,17 +5467,17 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
 
     // For recursive functions, register the callee signature for call_indirect
     if (translator.is_recursive) {
-        var indirect_sig = Signature.init(allocator, .system_v);
+        var indirect_sig = Signature.init(hoist_alloc, .system_v);
         for (0..arity) |_| {
-            try indirect_sig.params.append(allocator, AbiParam.new(I64));
+            try indirect_sig.params.append(hoist_alloc, AbiParam.new(I64));
         }
-        try indirect_sig.returns.append(allocator, AbiParam.new(I64));
+        try indirect_sig.returns.append(hoist_alloc, AbiParam.new(I64));
         translator.self_sig_ref = try func.addSignature(indirect_sig);
     }
 
     // Map params to SSA values, untagging at entry in untagged mode.
     const block_params = func.dfg.blockParams(entry);
-    try translator.locals.ensureTotalCapacity(allocator, arity);
+    try translator.locals.ensureTotalCapacity(hoist_alloc, arity);
     if (translator.untagged) {
         const one = try translator.cachedIconst(1);
         // Untag all params. For multi-param functions, the hoist regalloc
@@ -5221,11 +5485,11 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
         // We work around this in fixEntryParamMoves post-pass.
         for (0..arity) |i| {
             const untagged = try b.sshr(I64, block_params[i], one);
-            try translator.locals.append(allocator, untagged);
+            try translator.locals.append(hoist_alloc, untagged);
         }
     } else {
         for (0..arity) |i| {
-            try translator.locals.append(allocator, block_params[i]);
+            try translator.locals.append(hoist_alloc, block_params[i]);
         }
     }
 
@@ -5283,9 +5547,10 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     }
 
     try b.retValues(&.{result_i64});
+    _ = try collapseIdentityJumpWrappers(&func, hoist_alloc);
 
     // Compile with Hoist
-    var ctx_builder = ContextBuilder.init(allocator);
+    var ctx_builder = ContextBuilder.init(hoist_alloc);
     _ = try ctx_builder.targetNative();
     // Use .none for functions with calls (cross or recursive) — hoist optimizer
     // hangs or produces incorrect results for call_indirect at any opt level > none.
@@ -5299,7 +5564,7 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     defer ctx.deinit();
 
     // Print function for debug
-    if (std.posix.getenv("HABU_DUMP_HOIST") != null) {
+    if (dump_hoist) {
         var pp_buf: [8192]u8 = undefined;
         var pp_fbs = std.io.fixedBufferStream(&pp_buf);
         hoist.ir_print.writeFunction(pp_fbs.writer(), &func, .{}) catch {};
@@ -5312,7 +5577,7 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     defer code.deinit();
 
     // Debug: dump machine code
-    if (std.posix.getenv("HABU_DUMP_HOIST") != null) {
+    if (dump_hoist) {
         std.debug.print("[hoist-asm] {d} bytes:", .{code.code.items.len});
         for (code.code.items, 0..) |byte, i| {
             if (i % 4 == 0) std.debug.print(" ", .{});
@@ -5485,7 +5750,7 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     if (dump_passes) dumpAsmPass("after final compact/branch", code.code.items);
 
     // Debug: dump final machine code before making executable
-    if (std.posix.getenv("HABU_DUMP_HOIST") != null) {
+    if (dump_hoist) {
         std.debug.print("[hoist-asm-final] {d} bytes:\n", .{code.code.items.len});
         var dbg_i: usize = 0;
         while (dbg_i + 4 <= code.code.items.len) : (dbg_i += 4) {
@@ -5500,7 +5765,7 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     try mem.writeExec(buf, code.code.items);
 
     // Debug: verify self-pointer in executable buffer
-    if (std.posix.getenv("HABU_DUMP_HOIST") != null) {
+    if (dump_hoist) {
         std.debug.print("[hoist-exec] fn_ptr=0x{x}\n", .{@intFromPtr(buf.ptr)});
         // Read self-ptr from offset 0x38 in the code
         if (translator.is_recursive and code.code.items.len >= 0x48) {
@@ -5632,11 +5897,7 @@ fn fuseCmpImmediate(code: []u8) void {
             }
 
             // Branches stop the scan
-            if (insn_j & 0xFC000000 == 0x14000000 or // B
-                insn_j & 0xFC000000 == 0x94000000 or // BL
-                insn_j & 0xFF000010 == 0x54000000 or // B.cond
-                insn_j & 0xFFFFFC1F == 0xD63F0000 or // BLR
-                insn_j & 0xFFFFFC1F == 0xD65F0000) break; // RET
+            if (isControlFlowBoundaryInsn(insn_j)) break;
         }
         if (found) {}
     }
@@ -5725,11 +5986,7 @@ fn fuseSelectCondition(code: []u8) void {
             }
 
             // Also stop at branches
-            if (insn_j & 0xFC000000 == 0x14000000 or // B
-                insn_j & 0xFC000000 == 0x94000000 or // BL
-                insn_j & 0xFF000010 == 0x54000000 or // B.cond
-                insn_j & 0xFFFFFC1F == 0xD63F0000 or // BLR
-                insn_j & 0xFFFFFC1F == 0xD65F0000) break; // RET
+            if (isControlFlowBoundaryInsn(insn_j)) break;
         }
         if (found) {
             i += 1; // skip past the NOP'd CSET
@@ -5808,9 +6065,7 @@ fn fuseMulAdd(code: []u8) void {
                 break;
             }
             if (rd_next == mul_rd) break; // overwritten, safe
-            if (next & 0xFC000000 == 0x14000000 or
-                next & 0xFF000010 == 0x54000000 or
-                next & 0xFFFFFC1F == 0xD65F0000) break;
+            if (isControlFlowBoundaryInsn(next)) break;
         }
         if (mul_rd_used_later) continue;
 
@@ -5886,11 +6141,7 @@ fn eliminateRoundTripMovs(code: []u8) void {
                     if (insn_k == nop) continue;
 
                     // Control-flow between the pair can make local reasoning invalid.
-                    if (insn_k & 0xFC000000 == 0x14000000 or // B
-                        insn_k & 0xFF000000 == 0x54000000 or // B.cond
-                        insn_k & 0xFFFFFC1F == 0xD65F0000 or // RET
-                        insn_k & 0xFFFFFC1F == 0xD63F0000 or // BLR
-                        insn_k & 0xFC000000 == 0x94000000) // BL
+                    if (isControlFlowBoundaryInsn(insn_k))
                     {
                         safe = false;
                         break;
@@ -6192,6 +6443,46 @@ fn invertBranchOverBranch(code: []u8) void {
     }
 }
 
+fn isBInsn(insn: u32) bool {
+    return insn & 0xFC000000 == 0x14000000;
+}
+
+fn isBlInsn(insn: u32) bool {
+    return insn & 0xFC000000 == 0x94000000;
+}
+
+fn isBCondInsn(insn: u32) bool {
+    return insn & 0xFF000010 == 0x54000000;
+}
+
+fn isCbzCbnzInsn(insn: u32) bool {
+    return insn & 0x7E000000 == 0x34000000;
+}
+
+fn isTbzTbnzInsn(insn: u32) bool {
+    return insn & 0x7E000000 == 0x36000000;
+}
+
+fn isCondBranchInsn(insn: u32) bool {
+    return isBCondInsn(insn) or isCbzCbnzInsn(insn) or isTbzTbnzInsn(insn);
+}
+
+fn isAnyBranchInsn(insn: u32) bool {
+    return isBInsn(insn) or isCondBranchInsn(insn);
+}
+
+fn isBlrInsn(insn: u32) bool {
+    return insn & 0xFFFFFC1F == 0xD63F0000;
+}
+
+fn isRetInsn(insn: u32) bool {
+    return insn & 0xFFFFFC1F == 0xD65F0000;
+}
+
+fn isControlFlowBoundaryInsn(insn: u32) bool {
+    return isAnyBranchInsn(insn) or isBlInsn(insn) or isBlrInsn(insn) or isRetInsn(insn);
+}
+
 /// Eliminate dead MOV instructions that appear before unconditional branches.
 /// Pattern: `MOV Xd, Xs; B target` where target is:
 /// Check if MOVZ dest reg is safe to eliminate (dead after consumer).
@@ -6207,11 +6498,7 @@ fn hasControlFlowBeforeWrite(code: []const u8, start_idx: usize, reg: u5) bool {
         const insn = readInsn(code, j);
         if (insn == 0xD503201F) continue;
         if (insnWritesReg(insn, reg)) return false;
-        if (insn & 0xFC000000 == 0x14000000 or // B
-            insn & 0xFF000000 == 0x54000000 or // B.cond
-            insn & 0xFC000000 == 0x94000000 or // BL
-            insn & 0xFFFFFC1F == 0xD63F0000 or // BLR
-            insn & 0xFFFFFC1F == 0xD65F0000) // RET
+        if (isControlFlowBoundaryInsn(insn))
             return true;
     }
     return false;
@@ -6354,14 +6641,25 @@ fn isRegDeadInBlock(code: []const u8, idx: usize, reg: u5) bool {
         const insn = readInsn(code, j);
         if (insn == 0xD503201F) continue; // NOP
         // RET reads x0 as the return value register.
-        if (insn == 0xD65F03C0) {
-            return reg != 0;
+        if (isRetInsn(insn)) {
+            const rn: u5 = @truncate((insn >> 5) & 0x1F);
+            return reg != 0 and reg != rn;
+        }
+        // For call instructions, caller-saved registers become dead, but
+        // callee-saved registers can stay live after the call.
+        if (isBlInsn(insn)) {
+            if (isCallArgReg(reg)) return false;
+            if (isCallerSavedCallReg(reg)) return true;
+            continue;
+        }
+        if (isBlrInsn(insn)) {
+            const target_reg: u5 = @truncate((insn >> 5) & 0x1F);
+            if (reg == target_reg or isCallArgReg(reg)) return false;
+            if (isCallerSavedCallReg(reg)) return true;
+            continue;
         }
         // Stop at any branch/call.
-        if (insn & 0xFC000000 == 0x14000000 or // B
-            insn & 0xFF000000 == 0x54000000 or // B.cond
-            insn & 0xFC000000 == 0x94000000 or // BL
-            insn & 0xFFFFFC1F == 0xD63F0000) // BLR
+        if (isAnyBranchInsn(insn))
         {
             return true; // reached end of basic block without reading reg
         }
@@ -6392,24 +6690,47 @@ fn isRegDeadFrom(code: []const u8, start_idx: usize, reg: u5, memo: []u8) bool {
     }
 
     // Calls/returns/branches first (control-flow boundaries).
-    if (insn & 0xFC000000 == 0x94000000) { // BL
-        const dead = if (reg <= 8) false else if (reg <= 17) true else false;
+    if (isBlInsn(insn)) {
+        if (isCallArgReg(reg)) {
+            memo[start_idx] = 3;
+            return false;
+        }
+        if (isCallerSavedCallReg(reg)) {
+            memo[start_idx] = 2;
+            return true;
+        }
+        const dead = if (start_idx + 1 < n)
+            isRegDeadFrom(code, start_idx + 1, reg, memo)
+        else
+            true;
         memo[start_idx] = if (dead) 2 else 3;
         return dead;
     }
-    if (insn & 0xFFFFFC1F == 0xD63F0000) { // BLR
+    if (isBlrInsn(insn)) {
         const target_reg: u5 = @truncate((insn >> 5) & 0x1F);
-        const dead = if (reg == target_reg) false else if (reg <= 8) false else if (reg <= 17) true else false;
+        if (reg == target_reg or isCallArgReg(reg)) {
+            memo[start_idx] = 3;
+            return false;
+        }
+        if (isCallerSavedCallReg(reg)) {
+            memo[start_idx] = 2;
+            return true;
+        }
+        const dead = if (start_idx + 1 < n)
+            isRegDeadFrom(code, start_idx + 1, reg, memo)
+        else
+            true;
         memo[start_idx] = if (dead) 2 else 3;
         return dead;
     }
-    if (insn == 0xD65F03C0) { // RET
-        // RET reads x0 as the function result register.
-        const dead = reg != 0;
+    if (isRetInsn(insn)) { // RET Xn
+        // Habu return convention consumes x0, RET consumes target register.
+        const ret_reg: u5 = @truncate((insn >> 5) & 0x1F);
+        const dead = reg != 0 and reg != ret_reg;
         memo[start_idx] = if (dead) 2 else 3;
         return dead;
     }
-    if (insn & 0xFC000000 == 0x14000000) { // B
+    if (isBInsn(insn)) {
         const imm26_raw = insn & 0x3FFFFFF;
         const imm26: i32 = if (imm26_raw & 0x2000000 != 0)
             @as(i32, @intCast(imm26_raw)) - 0x4000000
@@ -6424,13 +6745,63 @@ fn isRegDeadFrom(code: []const u8, start_idx: usize, reg: u5, memo: []u8) bool {
         memo[start_idx] = if (dead) 2 else 3;
         return dead;
     }
-    if (insn & 0xFF000000 == 0x54000000) { // B.cond
+    if (isBCondInsn(insn)) {
         const imm19_raw = (insn >> 5) & 0x7FFFF;
         const imm19: i32 = if (imm19_raw & 0x40000 != 0)
             @as(i32, @intCast(imm19_raw)) - 0x80000
         else
             @intCast(imm19_raw);
         const taken_target: i32 = @as(i32, @intCast(start_idx)) + imm19;
+        if (taken_target < 0 or taken_target >= @as(i32, @intCast(n))) {
+            memo[start_idx] = 3;
+            return false;
+        }
+        const taken_dead = isRegDeadFrom(code, @intCast(taken_target), reg, memo);
+        const fall_dead = if (start_idx + 1 < n)
+            isRegDeadFrom(code, start_idx + 1, reg, memo)
+        else
+            true;
+        const dead = taken_dead and fall_dead;
+        memo[start_idx] = if (dead) 2 else 3;
+        return dead;
+    }
+    if (isCbzCbnzInsn(insn)) {
+        const rt: u5 = @truncate(insn & 0x1F);
+        if (rt == reg) {
+            memo[start_idx] = 3;
+            return false;
+        }
+        const imm19_raw = (insn >> 5) & 0x7FFFF;
+        const imm19: i32 = if (imm19_raw & 0x40000 != 0)
+            @as(i32, @intCast(imm19_raw)) - 0x80000
+        else
+            @intCast(imm19_raw);
+        const taken_target: i32 = @as(i32, @intCast(start_idx)) + imm19;
+        if (taken_target < 0 or taken_target >= @as(i32, @intCast(n))) {
+            memo[start_idx] = 3;
+            return false;
+        }
+        const taken_dead = isRegDeadFrom(code, @intCast(taken_target), reg, memo);
+        const fall_dead = if (start_idx + 1 < n)
+            isRegDeadFrom(code, start_idx + 1, reg, memo)
+        else
+            true;
+        const dead = taken_dead and fall_dead;
+        memo[start_idx] = if (dead) 2 else 3;
+        return dead;
+    }
+    if (isTbzTbnzInsn(insn)) {
+        const rt: u5 = @truncate(insn & 0x1F);
+        if (rt == reg) {
+            memo[start_idx] = 3;
+            return false;
+        }
+        const imm14_raw = (insn >> 5) & 0x3FFF;
+        const imm14: i32 = if (imm14_raw & 0x2000 != 0)
+            @as(i32, @intCast(imm14_raw)) - 0x4000
+        else
+            @intCast(imm14_raw);
+        const taken_target: i32 = @as(i32, @intCast(start_idx)) + imm14;
         if (taken_target < 0 or taken_target >= @as(i32, @intCast(n))) {
             memo[start_idx] = 3;
             return false;
@@ -6494,6 +6865,16 @@ fn hasLoadStoreWriteback(insn: u32) bool {
         mode == 0x38400C00; // pre-index
 }
 
+fn isCallerSavedCallReg(reg: u5) bool {
+    // AArch64 AAPCS64 caller-saved: x0-x17, x18 (platform register), x30 (LR).
+    return reg <= 17 or reg == 18 or reg == 30;
+}
+
+fn isCallArgReg(reg: u5) bool {
+    // AArch64 integer/pointer argument registers.
+    return reg <= 7;
+}
+
 fn insnWritesReg(insn: u32, reg: u5) bool {
     // Most data-processing instructions write to Rd (bits 4:0)
     const rd: u5 = @truncate(insn & 0x1F);
@@ -6547,6 +6928,35 @@ fn insnWritesReg(insn: u32, reg: u5) bool {
 
 /// Check if an ARM64 instruction reads a specific register.
 fn insnReadsReg(insn: u32, reg: u5) bool {
+    // BL reads call argument registers x0-x7.
+    if (isBlInsn(insn)) {
+        return isCallArgReg(reg);
+    }
+
+    // BLR reads the target register.
+    if (isBlrInsn(insn)) {
+        const rn: u5 = @truncate((insn >> 5) & 0x1F);
+        return rn == reg or isCallArgReg(reg);
+    }
+
+    // RET reads the target register (default x30).
+    if (isRetInsn(insn)) {
+        const rn: u5 = @truncate((insn >> 5) & 0x1F);
+        return rn == reg;
+    }
+
+    // CBZ/CBNZ reads tested register Rt.
+    if (isCbzCbnzInsn(insn)) {
+        const rt: u5 = @truncate(insn & 0x1F);
+        return rt == reg;
+    }
+
+    // TBZ/TBNZ reads tested register Rt.
+    if (isTbzTbnzInsn(insn)) {
+        const rt: u5 = @truncate(insn & 0x1F);
+        return rt == reg;
+    }
+
     // ADD/SUB (shifted reg): reads Rn (bits 9:5) and Rm (bits 20:16)
     if (insn & 0x1F000000 == 0x0B000000) {
         const rn: u5 = @truncate((insn >> 5) & 0x1F);
@@ -6720,18 +7130,26 @@ fn fixEntryParamMovesAlloc(allocator: std.mem.Allocator, code_list: *std.ArrayLi
     if (code.len < 8) return;
     const n_insns = code.len / 4;
 
-    // Find first entry MOV that reads an ABI argument register.
-    var first_mov: ?usize = null;
-    for (0..@min(n_insns, 24)) |insn_idx| {
-        const insn = readInsn(code, insn_idx);
-        if (insn & 0xFFE0FFE0 != 0xAA0003E0) continue;
-        const src: u5 = @truncate((insn >> 16) & 0x1F);
-        if (src <= 7) {
-            first_mov = insn_idx;
-            break;
-        }
+    // Entry-param shuffles must start immediately after prologue setup.
+    // Do not scan deeper into the function: call setup windows can also
+    // contain x0-x7 moves and must be handled by fixCallArgMoves instead.
+    var start: usize = 0;
+    const prologue_limit = @min(n_insns, 16);
+    while (start < prologue_limit) : (start += 1) {
+        const insn = readInsn(code, start);
+        const is_nop = insn == 0xD503201F;
+        const is_stp_fp_lr = (insn & 0xFFC07FFF) == 0xA9807BFD;
+        const is_mov_fp = (insn == 0xAA1F03FD) or (insn == 0x910003FD);
+        const is_stp_callee = (insn & 0xFFC003E0) == 0xA90003E0;
+        if (is_nop or is_stp_fp_lr or is_mov_fp or is_stp_callee) continue;
+        break;
     }
-    const start = first_mov orelse return;
+    if (start >= n_insns) return;
+
+    const first = readInsn(code, start);
+    if (first & 0xFFE0FFE0 != 0xAA0003E0) return;
+    const first_src: u5 = @truncate((first >> 16) & 0x1F);
+    if (first_src > 7) return;
 
     // Collect consecutive MOVs in the entry copy region.
     const MovInfo = struct { src: u5, dst: u5, pos: usize };
@@ -6877,6 +7295,48 @@ fn makeMovInsn(rd: u5, rm: u5) u32 {
     return 0xAA0003E0 | @as(u32, rd) | (@as(u32, rm) << 16);
 }
 
+fn retargetContiguousMovImmChain(code: []u8, end_idx: usize, from_reg: u5, to_reg: u5) bool {
+    if (to_reg == from_reg or end_idx == 0) return false;
+
+    var start_idx = end_idx;
+    var saw_movz = false;
+    while (start_idx > 0) {
+        const idx = start_idx - 1;
+        const insn = readInsn(code, idx);
+        const rd: u5 = @truncate(insn & 0x1F);
+        if (rd != from_reg) break;
+
+        const op = insn & 0xFF800000;
+        if (op == 0xF2800000) { // MOVK
+            start_idx = idx;
+            continue;
+        }
+        if (op == 0xD2800000) { // MOVZ
+            start_idx = idx;
+            saw_movz = true;
+            break;
+        }
+        break;
+    }
+
+    if (!saw_movz) return false;
+
+    for (start_idx..end_idx) |idx| {
+        const insn = readInsn(code, idx);
+        const rd: u5 = @truncate(insn & 0x1F);
+        if (rd != from_reg) return false;
+        const op = insn & 0xFF800000;
+        if (op != 0xD2800000 and op != 0xF2800000) return false;
+    }
+
+    for (start_idx..end_idx) |idx| {
+        const insn = readInsn(code, idx);
+        writeInsn(code, idx, (insn & ~@as(u32, 0x1F)) | @as(u32, to_reg));
+    }
+
+    return true;
+}
+
 /// Coalesce: replace `op rD, rA, rB; mov rC, rD` with `op rC, rA, rB; nop`
 /// when rD is not used elsewhere after the mov. This eliminates phi-copy moves.
 /// Eliminate B .+4 instructions (unconditional jump to next instruction = NOP)
@@ -6946,10 +7406,7 @@ fn usedAsBlrTargetBeforeRedef(code: []u8, from: usize, reg: u5) bool {
         }
 
         // Stop at control-flow boundaries.
-        if (insn & 0xFC000000 == 0x14000000 or // B
-            insn & 0xFF000000 == 0x54000000 or // B.cond
-            insn & 0xFFFFFC1F == 0xD65F0000 or // RET
-            insn & 0xFC000000 == 0x94000000) // BL
+        if (isControlFlowBoundaryInsn(insn) and !isBlrInsn(insn))
             return false;
 
         // If register is overwritten first, BLR target use is no longer relevant.
@@ -7016,11 +7473,7 @@ fn coalesceMovs(code: []u8) void {
                 if (rd_next == rd0) break;
 
                 // Stop at branch/ret/call
-                if (next & 0xFC000000 == 0x14000000 or // B
-                    next & 0xFF000000 == 0x54000000 or // B.cond
-                    next & 0xFFFFFC1F == 0xD65F0000 or // RET
-                    next & 0xFFFFFC1F == 0xD63F0000 or // BLR
-                    next & 0xFC000000 == 0x94000000) break; // BL
+                if (isControlFlowBoundaryInsn(next)) break;
             }
 
             const mi = mov_idx orelse continue;
@@ -7114,11 +7567,7 @@ fn fixBlrTargetClobber(code: []u8) void {
                 }
             }
 
-            if (prev & 0xFC000000 == 0x14000000 or // B
-                prev & 0xFF000000 == 0x54000000 or // B.cond
-                prev & 0xFFFFFC1F == 0xD65F0000 or // RET
-                prev & 0xFFFFFC1F == 0xD63F0000 or // BLR
-                prev & 0xFC000000 == 0x94000000) // BL
+            if (isControlFlowBoundaryInsn(prev))
                 break;
         }
 
@@ -7331,14 +7780,47 @@ fn fixCallArgMoves(code: []u8) bool {
                     const slot_dst: u5 = @truncate(slot_insn & 0x1F);
                     const slot_src: u5 = @truncate((slot_insn >> 16) & 0x1F);
                     if (slot_dst == 9) {
-                        const patched_call = (insn & ~@as(u32, 0x3E0)) | (@as(u32, slot_src) << 5);
-                        writeInsn(code, i, patched_call);
-                        writeInsn(code, slot_pos, result[0]);
-                        for (0..n_movs) |k| {
-                            const pos = movs[k].pos;
-                            writeInsn(code, pos, result[k + 1]);
+                        const slot_src_clobbered = blk: {
+                            if (scratch == slot_src) break :blk true;
+                            for (assigns[0..n_assigns]) |a| {
+                                if (a.dst == slot_src) break :blk true;
+                            }
+                            break :blk false;
+                        };
+
+                        // Prefer retargeting BLR to slot_src when slot_src remains stable.
+                        if (!slot_src_clobbered) {
+                            const patched_call = (insn & ~@as(u32, 0x3E0)) | (@as(u32, slot_src) << 5);
+                            writeInsn(code, i, patched_call);
+                            writeInsn(code, slot_pos, result[0]);
+                            for (0..n_movs) |k| {
+                                const pos = movs[k].pos;
+                                writeInsn(code, pos, result[k + 1]);
+                            }
+                            continue;
                         }
-                        continue;
+
+                        // slot_src is clobbered by the rewritten arg moves. Retarget
+                        // the MOVZ/MOVK chain to a stable non-argument register and
+                        // point BLR there instead.
+                        var alt_target: u5 = 9;
+                        while (alt_target < 28 and
+                            (alt_target == call_target_reg or
+                                alt_target == slot_src or
+                                alt_target == scratch or
+                                regUsed(assigns[0..n_assigns], alt_target))) : (alt_target += 1)
+                        {}
+
+                        if (alt_target < 28 and retargetContiguousMovImmChain(code, slot_pos, slot_src, alt_target)) {
+                            const patched_call = (insn & ~@as(u32, 0x3E0)) | (@as(u32, alt_target) << 5);
+                            writeInsn(code, i, patched_call);
+                            writeInsn(code, slot_pos, result[0]);
+                            for (0..n_movs) |k| {
+                                const pos = movs[k].pos;
+                                writeInsn(code, pos, result[k + 1]);
+                            }
+                            continue;
+                        }
                     }
                 }
             }
@@ -7380,6 +7862,14 @@ fn writeWords(words: []const u32, code: []u8) void {
         const off = idx * 4;
         std.mem.writeInt(u32, code[off..][0..4], word, .little);
     }
+}
+
+fn makeMovzImm(rd: u5, imm16: u16, hw: u2) u32 {
+    return 0xD2800000 | (@as(u32, hw) << 21) | (@as(u32, imm16) << 5) | @as(u32, rd);
+}
+
+fn makeMovkImm(rd: u5, imm16: u16, hw: u2) u32 {
+    return 0xF2800000 | (@as(u32, hw) << 21) | (@as(u32, imm16) << 5) | @as(u32, rd);
 }
 
 fn simulateMovesUntilCall(code: []const u8, regs: *[32]u64) void {
@@ -7485,6 +7975,51 @@ test "fixCallArgMoves uses target slot for 2-cycle" {
 
     try testing.expectEqual(old1, regs[0]);
     try testing.expectEqual(old0, regs[1]);
+}
+
+test "fixCallArgMoves retargets call source when slot source is clobbered" {
+    const expected_ptr: u64 = 0x0000_0123_4567_89ab;
+    const words = [_]u32{
+        makeMovzImm(2, 0x89AB, 0),
+        makeMovkImm(2, 0x4567, 1),
+        makeMovkImm(2, 0x0123, 2),
+        makeMovInsn(9, 2), // target slot before arg setup
+        makeMovInsn(0, 3),
+        makeMovInsn(1, 4),
+        makeMovInsn(2, 0), // clobbers slot source reg (x2)
+        makeMovInsn(3, 5),
+        makeMovInsn(4, 1),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    try testing.expect(fixCallArgMoves(&code));
+
+    const patched_call = readInsn(&code, words.len - 1);
+    const call_target: u5 = @truncate((patched_call >> 5) & 0x1F);
+    try testing.expectEqual(@as(u5, 10), call_target);
+
+    try testing.expectEqual(@as(u5, 10), @as(u5, @truncate(readInsn(&code, 0) & 0x1F)));
+    try testing.expectEqual(@as(u5, 10), @as(u5, @truncate(readInsn(&code, 1) & 0x1F)));
+    try testing.expectEqual(@as(u5, 10), @as(u5, @truncate(readInsn(&code, 2) & 0x1F)));
+
+    var regs: [32]u64 = undefined;
+    for (0..regs.len) |idx| regs[idx] = @as(u64, 6000 + idx);
+    const old0 = regs[0];
+    const old1 = regs[1];
+    const old3 = regs[3];
+    const old4 = regs[4];
+    const old5 = regs[5];
+
+    simulateMovesUntilCall(&code, &regs);
+
+    try testing.expectEqual(expected_ptr, regs[call_target]);
+    try testing.expectEqual(old3, regs[0]);
+    try testing.expectEqual(old4, regs[1]);
+    try testing.expectEqual(old0, regs[2]);
+    try testing.expectEqual(old5, regs[3]);
+    try testing.expectEqual(old1, regs[4]);
 }
 
 test "fixCallArgMoves preserves 3-cycle call-arg mapping" {
@@ -8079,6 +8614,43 @@ test "fixEntryParamMovesAlloc preserves chained entry copies" {
     }
 }
 
+test "fixEntryParamMovesAlloc ignores non-entry call setup window" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    const words = [_]u32{
+        0xA9BF7BFD, // stp x29, x30, [sp, #-16]!
+        0x910003FD, // mov x29, sp
+        makeMovzImm(2, 0x89AB, 0),
+        makeMovkImm(2, 0x4567, 1),
+        makeMovkImm(2, 0x0123, 2),
+        makeMovInsn(9, 2),
+        makeMovInsn(0, 3),
+        makeMovInsn(1, 4),
+        makeMovInsn(2, 0),
+        makeMovInsn(3, 1),
+        makeMovInsn(4, 5),
+        0xD63F0120, // blr x9
+    };
+    for (words) |word| try appendInsn(&code, testing.allocator, word);
+
+    var before = std.ArrayList(u8){};
+    defer before.deinit(testing.allocator);
+    try before.appendSlice(testing.allocator, code.items);
+
+    try fixEntryParamMovesAlloc(testing.allocator, &code);
+
+    try testing.expectEqual(before.items.len, code.items.len);
+    try testing.expect(std.mem.eql(u8, before.items, code.items));
+}
+
 test "fuseMovzAlu keeps movz source register live across branch" {
     var code = std.ArrayList(u8){};
     defer code.deinit(testing.allocator);
@@ -8197,6 +8769,95 @@ test "isRegDeadAfter treats return register as live at ret" {
     try appendInsn(&code, testing.allocator, 0xD65F03C0); // ret
 
     try testing.expect(!isRegDeadAfter(code.items, 0, 0));
+}
+
+test "isRegDeadAfter keeps callee-saved reg live across blr" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    try appendInsn(&code, testing.allocator, makeMovzImm(21, 8, 0)); // movz x21, #8
+    try appendInsn(&code, testing.allocator, makeMovzImm(9, 1, 0)); // movz x9, #1
+    try appendInsn(&code, testing.allocator, 0xD63F0120); // blr x9
+    try appendInsn(&code, testing.allocator, 0x8B1502C1); // add x1, x22, x21
+    try appendInsn(&code, testing.allocator, 0xD65F03C0); // ret
+
+    try testing.expect(!isRegDeadAfter(code.items, 0, 21));
+
+    eliminateDeadMovz(code.items);
+    try testing.expectEqual(makeMovzImm(21, 8, 0), readInsn(code.items, 0));
+}
+
+test "isRegDeadAfter keeps blr target register live at call" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    try appendInsn(&code, testing.allocator, makeMovzImm(9, 1, 0)); // movz x9, #1
+    try appendInsn(&code, testing.allocator, 0xD63F0120); // blr x9
+    try appendInsn(&code, testing.allocator, 0xD65F03C0); // ret
+
+    try testing.expect(!isRegDeadAfter(code.items, 0, 9));
+
+    eliminateDeadMovz(code.items);
+    try testing.expectEqual(makeMovzImm(9, 1, 0), readInsn(code.items, 0));
+}
+
+test "isRegDeadAfter keeps movz live on cbnz taken path" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    try appendInsn(&code, testing.allocator, makeMovzImm(19, 1, 0)); // movz x19, #1
+    try appendInsn(&code, testing.allocator, 0xB5000040); // cbnz x0, +2 (to idx 3)
+    try appendInsn(&code, testing.allocator, 0xD65F03C0); // ret
+    try appendInsn(&code, testing.allocator, makeMovInsn(1, 19)); // mov x1, x19
+    try appendInsn(&code, testing.allocator, 0xD65F03C0); // ret
+
+    try testing.expect(!isRegDeadAfter(code.items, 0, 19));
+
+    eliminateDeadMovz(code.items);
+    try testing.expectEqual(makeMovzImm(19, 1, 0), readInsn(code.items, 0));
+}
+
+test "isRegDeadAfter keeps call arg register live at blr" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    try appendInsn(&code, testing.allocator, makeMovzImm(1, 3, 0)); // movz x1, #3
+    try appendInsn(&code, testing.allocator, makeMovzImm(9, 1, 0)); // movz x9, #1
+    try appendInsn(&code, testing.allocator, 0xD63F0120); // blr x9
+    try appendInsn(&code, testing.allocator, 0xD65F03C0); // ret
+
+    try testing.expect(!isRegDeadAfter(code.items, 0, 1));
+
+    eliminateDeadMovz(code.items);
+    try testing.expectEqual(makeMovzImm(1, 3, 0), readInsn(code.items, 0));
 }
 
 test "eliminateDeadMovz keeps movz live for return register" {

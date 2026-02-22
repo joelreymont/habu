@@ -3067,7 +3067,9 @@ pub const Repl = struct {
                 self.allocator.destroy(persistent);
                 return .failed;
             };
-            jit_backend.patchCrossCallsToBL(code_ptr, code_len, fn_base);
+            if (std.posix.getenv("HABU_NO_PATCH_CROSS_BL") == null) {
+                jit_backend.patchCrossCallsToBL(code_ptr, code_len, fn_base);
+            }
             // Flush icache and restore exec permission
             jit_mem.flushCacheRange(code_ptr, code_len);
             jit_mem.setExec(true) catch |err| {

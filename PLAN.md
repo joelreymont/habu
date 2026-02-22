@@ -141,15 +141,17 @@
     - [x] `habu-retire-stale-hoist-7b69a1eb` Retire stale Habu-side hoist workarounds where no longer required; lock with backend regressions.
     - [x] `habu-gate-jit-efficacy-77cafe97` Gate JIT efficacy in hotspot tooling and remove stale closed-dot recommendations.
     - [x] `habu-rebaseline-post-hoist-5a1874e5` Rebaseline post-hoist JIT performance and document remaining blockers.
-      - Rebaseline (`tools/maxima-hotspots --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-22): `jit_compiled=0`, gate `pass=false` (`wins=1/5`, compiled delta `0`).
-      - Remaining blocker: strict JIT admission requires explicit `(optimize (speed 3) (safety 0))`; current Maxima workload functions do not meet this, so no Maxima functions are hoist-compiled yet.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-22): `jit_compiled=397`, gate `pass=false` (`wins=0/5`, compiled delta `397`).
+      - Remaining blocker: JIT coverage is now broad, but current JIT mode is still slower than interpreter on tracked Maxima workloads.
   - [ ] `habu-unlock-generic-jit-026e30f3` Unlock generic JIT admission after post-hoist.
     - [x] `habu-add-jit-skip-2302fb62` Add JIT skip-reason telemetry.
     - [x] `habu-broaden-safe-admission-d08e543b` Broaden safe admission without opt-decl dependency.
     - [x] `habu-rebaseline-admission-and-990a7df6` Rebaseline admission and gate on wins.
+    - [x] `habu-admit-safety-0-e37dc27b` Admit safety>0 lambdas now that bridge throw relay and eligibility checks are in place.
     - [ ] `habu-relay-jit-bridge-535dce04` Relay JIT bridge errors without panic.
-      - Rebaseline (`tools/maxima-hotspots --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-22): `jit_compiled=0`, `jit_adm.cand=4145`, `jit_adm.sk_safety=4143`, gate `pass=false`.
-      - Blocker: enabling safety>0 admission still crashes through JIT bridge on Lisp non-local exits (`UnhandledThrow`), so bridge condition relay is required before expanding admission further.
+    - [x] `habu-fix-hoist-succ-cd841da5` Fix Hoist VCode successor corruption by compiling through a remap-stable allocator over a per-compile arena; add deep-branch JIT regression to keep >32-edge lowering stable without touching `../hoist`.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-22): `jit_compiled=397`, `jit_adm.cand=4145`, `jit_adm.sk_safety=0`, gate `pass=false`.
+      - Blocker: safety admission and bridge throw relay are stable, but runtime throughput still regresses versus interpreter on current real workloads.
 
 ### 0. Plan Control
 - [ ] `habu-unify-plan-and-1848633e` Unify plan and dot tree.
