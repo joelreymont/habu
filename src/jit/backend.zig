@@ -7022,6 +7022,7 @@ fn fixBlrTargetClobber(code: []u8) void {
 fn fixCallArgMoves(code: []u8) bool {
     if (code.len < 8) return true;
     const n_insns = code.len / 4;
+    const NOP: u32 = 0xD503201F;
 
     var i: usize = 0;
     while (i < n_insns) : (i += 1) {
@@ -7032,15 +7033,23 @@ fn fixCallArgMoves(code: []u8) bool {
         const is_bl = (insn & 0xFC000000 == 0x94000000);
         if (!is_blr and !is_bl) continue;
 
-        // Found a call. Scan backwards for mov instructions (up to 8).
+        const call_target: ?u5 = if (is_blr) @truncate((insn >> 5) & 0x1F) else null;
+
+        // Found a call. Scan backwards for argument move setup (up to 24 instructions).
+        // Allow interleaved call-target setup (mov/movz/movk for BLR target register).
         const MovInfo = struct { src: u5, dst: u5, pos: usize };
         var movs: [8]MovInfo = undefined;
         var n_movs: usize = 0;
+        var saw_arg_move = false;
 
         var j = i;
-        while (j > 0 and n_movs < 8) {
+        var scan_steps: usize = 0;
+        while (j > 0 and n_movs < 8 and scan_steps < 24) {
             j -= 1;
+            scan_steps += 1;
             const prev = readInsn(code, j);
+            if (prev == NOP) continue;
+
             // Check for MOV Xd, Xm (ORR Xd, XZR, Xm): 0xAA0003E0 mask 0xFFE0FFE0
             if (prev & 0xFFE0FFE0 == 0xAA0003E0) {
                 const rd: u5 = @truncate(prev & 0x1F);
@@ -7050,21 +7059,70 @@ fn fixCallArgMoves(code: []u8) bool {
                 if (rd <= 7) {
                     movs[n_movs] = .{ .src = rm, .dst = rd, .pos = j };
                     n_movs += 1;
-                } else {
-                    break; // Non-argument move, stop scanning
+                    saw_arg_move = true;
+                    continue;
                 }
-            } else {
-                break; // Stop at non-mov instruction
+
+                // Interleaved target setup before BLR call.
+                if (call_target) |target| {
+                    if (rd == target) continue;
+                }
+
+                if (saw_arg_move) continue;
+                break;
             }
+
+            // movz/movk are commonly used for BLR target materialization.
+            if ((prev & 0xFF800000 == 0xD2800000) or (prev & 0xFF800000 == 0xF2800000)) {
+                const rd: u5 = @truncate(prev & 0x1F);
+                if (call_target) |target| {
+                    if (rd == target) continue;
+                }
+                if (saw_arg_move) continue;
+                break;
+            }
+
+            // Reached non-setup instruction.
+            break;
         }
 
         if (n_movs < 2) continue;
 
+        // Sort by instruction position so symbolic execution follows original order.
+        var sidx: usize = 1;
+        while (sidx < n_movs) : (sidx += 1) {
+            var k = sidx;
+            while (k > 0 and movs[k - 1].pos > movs[k].pos) : (k -= 1) {
+                const tmp = movs[k];
+                movs[k] = movs[k - 1];
+                movs[k - 1] = tmp;
+            }
+        }
+
+        // Normalize to final destination mapping by symbolically executing the
+        // original move chain. This handles duplicate destinations correctly.
+        var state: [32]u5 = undefined;
+        for (0..state.len) |r| state[r] = @intCast(r);
+        var dst_assigned = [_]bool{false} ** 8;
+        for (0..n_movs) |mi| {
+            const dst = movs[mi].dst;
+            const src = movs[mi].src;
+            state[dst] = state[src];
+            dst_assigned[dst] = true;
+        }
+
         const Assign = struct { dst: u5, src: u5 };
         var assigns: [8]Assign = undefined;
-        for (0..n_movs) |mi| {
-            assigns[mi] = .{ .dst = movs[mi].dst, .src = movs[mi].src };
+        var n_assigns: usize = 0;
+        for (0..8) |dst_idx| {
+            if (!dst_assigned[dst_idx]) continue;
+            const dst: u5 = @intCast(dst_idx);
+            const src = state[dst];
+            if (src == dst) continue;
+            assigns[n_assigns] = .{ .dst = dst, .src = src };
+            n_assigns += 1;
         }
+        if (n_assigns < 2) continue;
 
         const regUsed = struct {
             fn f(assigns_slice: []const Assign, reg: u5) bool {
@@ -7076,7 +7134,7 @@ fn fixCallArgMoves(code: []u8) bool {
         }.f;
 
         var scratch: u5 = 9;
-        while (scratch < 28 and regUsed(assigns[0..n_movs], scratch)) : (scratch += 1) {}
+        while (scratch < 28 and regUsed(assigns[0..n_assigns], scratch)) : (scratch += 1) {}
         if (scratch >= 28) scratch = 9;
 
         // Resolve parallel copy with cycle handling via scratch register.
@@ -7085,14 +7143,14 @@ fn fixCallArgMoves(code: []u8) bool {
         var result: [9]u32 = undefined; // up to n_movs + 1 for one broken cycle
         var n_result: usize = 0;
 
-        while (emitted_count < n_movs) {
+        while (emitted_count < n_assigns) {
             var progressed = false;
 
-            for (0..n_movs) |ai| {
+            for (0..n_assigns) |ai| {
                 if (emitted[ai]) continue;
                 const dst = assigns[ai].dst;
                 var dst_needed = false;
-                for (0..n_movs) |other| {
+                for (0..n_assigns) |other| {
                     if (ai == other or emitted[other]) continue;
                     if (assigns[other].src == dst) {
                         dst_needed = true;
@@ -7112,7 +7170,7 @@ fn fixCallArgMoves(code: []u8) bool {
 
             // Cycle: preserve one source in scratch, then continue.
             var cycle_idx: ?usize = null;
-            for (0..n_movs) |ai| {
+            for (0..n_assigns) |ai| {
                 if (!emitted[ai]) {
                     cycle_idx = ai;
                     break;
@@ -7125,11 +7183,10 @@ fn fixCallArgMoves(code: []u8) bool {
             assigns[ci].src = scratch;
         }
 
-        // Existing mov slots are written in execution order:
-        // movs[n-1], movs[n-2], ..., movs[0].
+        // Existing arg-move slots are written in original execution order.
         if (n_result <= n_movs) {
             for (0..n_movs) |k| {
-                const pos = movs[n_movs - 1 - k].pos;
+                const pos = movs[k].pos;
                 if (k < n_result) {
                     writeInsn(code, pos, result[k]);
                 } else {
@@ -7141,10 +7198,10 @@ fn fixCallArgMoves(code: []u8) bool {
 
         // Need one extra slot for cycle break: reuse `mov x9, xT; blr x9`.
         if (n_result == n_movs + 1 and is_blr) {
-            const call_target: u5 = @truncate((insn >> 5) & 0x1F);
-            const farthest_pos = movs[n_movs - 1].pos;
-            if (call_target == 9 and farthest_pos > 0) {
-                const slot_pos = farthest_pos - 1;
+            const call_target_reg = call_target orelse return false;
+            const earliest_pos = movs[0].pos;
+            if (call_target_reg == 9 and earliest_pos > 0) {
+                const slot_pos = earliest_pos - 1;
                 const slot_insn = readInsn(code, slot_pos);
                 if (slot_insn & 0xFFE0FFE0 == 0xAA0003E0) {
                     const slot_dst: u5 = @truncate(slot_insn & 0x1F);
@@ -7154,7 +7211,7 @@ fn fixCallArgMoves(code: []u8) bool {
                         writeInsn(code, i, patched_call);
                         writeInsn(code, slot_pos, result[0]);
                         for (0..n_movs) |k| {
-                            const pos = movs[n_movs - 1 - k].pos;
+                            const pos = movs[k].pos;
                             writeInsn(code, pos, result[k + 1]);
                         }
                         continue;
@@ -7193,6 +7250,118 @@ fn dumpAsmPass(label: []const u8, code: []const u8) void {
 // ============================================================================
 
 const testing = std.testing;
+
+fn writeWords(words: []const u32, code: []u8) void {
+    for (words, 0..) |word, idx| {
+        const off = idx * 4;
+        std.mem.writeInt(u32, code[off..][0..4], word, .little);
+    }
+}
+
+fn simulateMovesUntilCall(code: []const u8, regs: *[32]u64) void {
+    const n_insns = code.len / 4;
+    var i: usize = 0;
+    while (i < n_insns) : (i += 1) {
+        const insn = readInsn(code, i);
+        const is_blr = (insn & 0xFFFFFC1F == 0xD63F0000);
+        const is_bl = (insn & 0xFC000000 == 0x94000000);
+        if (is_blr or is_bl) break;
+
+        if (insn & 0xFFE0FFE0 == 0xAA0003E0) {
+            const rd: u5 = @truncate(insn & 0x1F);
+            const rm: u5 = @truncate((insn >> 16) & 0x1F);
+            regs[rd] = regs[rm];
+            continue;
+        }
+
+        if (insn & 0xFF800000 == 0xD2800000) { // MOVZ
+            const rd: u5 = @truncate(insn & 0x1F);
+            const imm16: u64 = @truncate((insn >> 5) & 0xFFFF);
+            const hw: u6 = @truncate((insn >> 21) & 0x3);
+            regs[rd] = imm16 << (@as(u6, hw) * 16);
+            continue;
+        }
+
+        if (insn & 0xFF800000 == 0xF2800000) { // MOVK
+            const rd: u5 = @truncate(insn & 0x1F);
+            const imm16: u64 = @truncate((insn >> 5) & 0xFFFF);
+            const hw: u6 = @truncate((insn >> 21) & 0x3);
+            const shift = @as(u6, hw) * 16;
+            const mask: u64 = ~(@as(u64, 0xFFFF) << shift);
+            regs[rd] = (regs[rd] & mask) | (imm16 << shift);
+        }
+    }
+}
+
+test "fixCallArgMoves handles target mov between arg setup and blr" {
+    const words = [_]u32{
+        makeMovInsn(0, 23),
+        makeMovInsn(9, 22),
+        makeMovInsn(1, 0),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    try testing.expect(fixCallArgMoves(&code));
+
+    var regs: [32]u64 = undefined;
+    for (0..regs.len) |idx| regs[idx] = @as(u64, 1000 + idx);
+    const old0 = regs[0];
+    const old23 = regs[23];
+    simulateMovesUntilCall(&code, &regs);
+
+    try testing.expectEqual(old23, regs[0]);
+    try testing.expectEqual(old0, regs[1]);
+}
+
+test "fixCallArgMoves scans through movz target setup" {
+    const words = [_]u32{
+        makeMovInsn(0, 23),
+        0xD2800029, // MOVZ x9, #1
+        makeMovInsn(1, 0),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    try testing.expect(fixCallArgMoves(&code));
+
+    var regs: [32]u64 = undefined;
+    for (0..regs.len) |idx| regs[idx] = @as(u64, 2000 + idx);
+    const old0 = regs[0];
+    const old23 = regs[23];
+    simulateMovesUntilCall(&code, &regs);
+
+    try testing.expectEqual(old23, regs[0]);
+    try testing.expectEqual(old0, regs[1]);
+}
+
+test "fixCallArgMoves uses target slot for 2-cycle" {
+    const words = [_]u32{
+        makeMovInsn(9, 22), // available slot before arg copies
+        makeMovInsn(0, 1),
+        makeMovInsn(1, 0),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    try testing.expect(fixCallArgMoves(&code));
+
+    const patched_call = readInsn(&code, 3);
+    const call_target: u5 = @truncate((patched_call >> 5) & 0x1F);
+    try testing.expectEqual(@as(u5, 22), call_target);
+
+    var regs: [32]u64 = undefined;
+    for (0..regs.len) |idx| regs[idx] = @as(u64, 3000 + idx);
+    const old0 = regs[0];
+    const old1 = regs[1];
+    simulateMovesUntilCall(&code, &regs);
+
+    try testing.expectEqual(old1, regs[0]);
+    try testing.expectEqual(old0, regs[1]);
+}
 
 test "containsHelperCalls excludes numeric ops under fixnum inline lowering" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);

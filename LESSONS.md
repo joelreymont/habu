@@ -13,9 +13,13 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Rewriting `compileTagbody` to compile segments from rooted cursors instead of staging raw `Value` arrays (`src/compiler/compile.zig:8457`) eliminated the Maxima `nparse` crash (`compileTagbody` segfault on stale cons pointers) under generational load.
 - Supporting integer tags in `tagbody`/`go` (`src/compiler/compile.zig:8524`, `src/compiler/ir.zig:218`) aligned behavior with CL semantics and removed false `InvalidSyntax` on numeric tag targets.
 - Locking integer-tag behavior in both compiler and runtime tests (`src/compiler/compile.zig:21016`, `src/tests/integration.zig:3101`) prevented silent regressions in tag parsing and jump resolution.
+- Normalizing BL/BLR argument-copy chains before scheduling in `fixCallArgMoves` (`src/jit/backend.zig:7036`) handled duplicate destination moves and preserved final pre-call register mapping under indirect call setup.
+- Scanning call setup through interleaved BLR target materialization (`mov`/`movz`/`movk`) in `fixCallArgMoves` (`src/jit/backend.zig:7041`) fixed a real blind spot where argument moves were skipped when target setup appeared between arg copies and call.
+- Adding machine-code regressions for interleaved target setup and two-cycle copies (`src/jit/backend.zig:7244`, `src/jit/backend.zig:7266`, `src/jit/backend.zig:7288`) gives direct protection for indirect-call repair logic without relying on full-suite runtime repros.
 
 ### Did Not Work
 - Treating all non-symbol atoms in `tagbody` as executable forms was incorrect; CL treats integer atoms as labels too, so tests that expected trailing fixnum atoms as forms were invalid and had to be rewritten (`src/compiler/compile.zig:20972`, `src/compiler/compile.zig:21032`).
+- Relying on contiguous backward scans of only `mov x0..x7,*` before BL/BLR in `fixCallArgMoves` missed valid call setup windows with interleaved target setup ops, leaving indirect-call argument corruption unpatched.
 
 ## Session Notes (2026-02-21)
 
