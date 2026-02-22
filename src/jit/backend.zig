@@ -2898,6 +2898,13 @@ pub const IrTranslator = struct {
                 try self.preEmitConstants(n.right);
             },
             .cons => |n| {
+                // Pre-emit inline cons constants for loop LICM only on safety=0
+                // fixnum-fast paths. Safe-mode functions stay on helper calls.
+                if (self.fixnum_fast and self.in_loop_preemit and !self.is_recursive) {
+                    _ = try self.cachedIconst(@as(i64, @bitCast(@intFromPtr(&g_alloc_ptr))));
+                    _ = try self.cachedIconst(16);
+                    _ = try self.cachedIconst(8);
+                }
                 try self.preEmitConstants(n.left);
                 try self.preEmitConstants(n.right);
             },
@@ -3934,7 +3941,9 @@ pub const IrTranslator = struct {
         return self.translateCdr(operand_ir);
     }
 
-    /// cons allocation via jitCons helper.
+    /// cons allocation:
+    /// - safety=0 fast path: inline bump allocation
+    /// - safe path: helper call (preserves full runtime invariants)
     fn translateCons(self: *IrTranslator, car_ir: *const Ir, cdr_ir: *const Ir) anyerror!HoistValue {
         var car_val = try self.translate(car_ir);
         var cdr_val = try self.translate(cdr_ir);
@@ -3953,6 +3962,33 @@ pub const IrTranslator = struct {
                 const shifted = try self.b.ishl(I64, cdr_val, one);
                 cdr_val = try self.b.bor(I64, shifted, one);
             }
+        }
+
+        if (self.fixnum_fast) {
+            // Inline bump allocation directly in hoist IR to avoid call_indirect
+            // register swap issues. Loads g_alloc_ptr, stores car+cdr, bumps pointer.
+            // No GC check — relies on sufficient heap space (same as jitCons fast path).
+            const alloc_ptr_addr = try self.cachedIconst(@as(i64, @bitCast(@intFromPtr(&g_alloc_ptr))));
+            const sixteen = try self.cachedIconst(16);
+            const eight = try self.cachedIconst(8);
+
+            const mf = hoist.memflags.MemFlags.default();
+
+            // Load current allocation pointer
+            const ptr = try self.b.load(I64, alloc_ptr_addr, mf);
+            // Store car at [ptr+0]
+            try self.b.store(car_val, ptr, mf);
+            // Store cdr at [ptr+8]
+            const ptr_plus_8 = try self.b.iadd(I64, ptr, eight);
+            try self.b.store(cdr_val, ptr_plus_8, mf);
+            // Bump allocation pointer
+            const new_ptr = try self.b.iadd(I64, ptr, sixteen);
+            try self.b.store(new_ptr, alloc_ptr_addr, mf);
+
+            // Return ptr as cons value (cons tag = 0, so raw = ptr)
+            // In untagged mode, the cons pointer is NOT a fixnum — it's already
+            // a tagged cons (tag=0, raw=ptr). Don't untag it.
+            return ptr;
         }
 
         const args = [_]HoistValue{ cdr_val, car_val };

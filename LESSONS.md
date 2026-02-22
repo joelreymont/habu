@@ -9,6 +9,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-22)
 
 ### Worked Well
+- Replacing REPL-side alias-cache rebuilds with an incremental `GlobalEnv` alias index (`src/compiler/compile.zig:1901`, `src/compiler/compile.zig:1968`, `src/interp/repl.zig:1619`) removed per-lookup global-table scans and cut Maxima hotspot workloads (`ratsimp`, `factor`, `integrate`) by ~1.6-3x at `tools/maxima-hotspots --scale 1 --heap-mb 1024 --nursery-mb 32`.
+- Adding `GlobalEnv` reverse name indexing and routing VM global-name lookup to O(1) (`src/compiler/compile.zig:1930`, `src/compiler/compile.zig:2036`, `src/interp/vm.zig:1636`) eliminated `globalNameForIndex` hash-map iterator walks from the `loadGlobal` hot path.
+- Caching `HABU_TRACE_FN_RESOLVE` at REPL init (`src/interp/repl.zig:105`, `src/interp/repl.zig:130`, `src/interp/repl.zig:1338`, `src/interp/repl.zig:1546`) removed repeated `getenv` calls in function-resolution hot loops without changing trace semantics.
 - Keeping list cursors rooted and advancing the root before recursive compile calls (`src/compiler/compile.zig:6246`, `src/compiler/compile.zig:7231`, `src/compiler/compile.zig:15847`, `src/compiler/compile.zig:17671`) fixed real stale-pointer traversal hazards in moving-GC compiler passes.
 - Rewriting `compileTagbody` to compile segments from rooted cursors instead of staging raw `Value` arrays (`src/compiler/compile.zig:8457`) eliminated the Maxima `nparse` crash (`compileTagbody` segfault on stale cons pointers) under generational load.
 - Supporting integer tags in `tagbody`/`go` (`src/compiler/compile.zig:8524`, `src/compiler/ir.zig:218`) aligned behavior with CL semantics and removed false `InvalidSyntax` on numeric tag targets.
@@ -33,6 +36,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Keeping a hard allocator-cursor invariant check after JIT returns (`src/interp/vm.zig:1311`, `src/jit/backend.zig:95`) turns cursor corruption into immediate, attributable failures instead of delayed heap-state crashes.
 
 ### Did Not Work
+- Invalidating a REPL-owned alias cache by `globals.next_index` and rebuilding from `globals.bindings.iterator()` (`src/interp/repl.zig` pre-fix alias-cache helpers around 1538-1607) was still O(n) under loader churn and stayed on the hotspot path.
 - Broadening JIT admission to safety>0 call-free lambdas without full runtime-safety lowering/bridge semantics caused deterministic Maxima crashes in `%MAP-REVERSE` (segfault + misaligned allocator cursor), even after partial cons-lowering changes.
 - Treating all non-symbol atoms in `tagbody` as executable forms was incorrect; CL treats integer atoms as labels too, so tests that expected trailing fixnum atoms as forms were invalid and had to be rewritten (`src/compiler/compile.zig:20972`, `src/compiler/compile.zig:21032`).
 - Relying on contiguous backward scans of only `mov x0..x7,*` before BL/BLR in `fixCallArgMoves` missed valid call setup windows with interleaved target setup ops, leaving indirect-call argument corruption unpatched.

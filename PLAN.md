@@ -40,7 +40,8 @@
     - [x] `habu-add-maxima-real-c6c59d32` Add Maxima real-workload benchmark harness (`bench/maxima_workload.zig`, `bench/maxima_workload.lisp`, `tools/maxima-bench`) with loader + CAS timing JSON.
     - [x] `habu-extend-microbench-matrix-31060fbb` Extend microbench matrix and self-improvement comparison loop. Depends on `habu-add-maxima-real-c6c59d32`.
     - [x] `habu-measure-gc-against-b81d7bc6` Measure GC against SBCL workloads with comparable load/alloc scenarios. Depends on `habu-extend-microbench-matrix-31060fbb`.
-    - [ ] `habu-maxima-hotspot-uplift-04ded9f4` Convert post-crash hotspot data into generic runtime/compiler speedups (no Maxima-only paths). Depends on `habu-rca-curr-maxima-365c1a4a`.
+    - [x] `habu-maxima-hotspot-uplift-04ded9f4` Convert post-crash hotspot data into generic runtime/compiler speedups (no Maxima-only paths). Depends on `habu-rca-curr-maxima-365c1a4a`.
+    - [ ] `habu-cut-fn-resolve-e03eb304` Cut function-resolve builtin/getenv overhead with measured ReleaseFast hotspot gates. Depends on `habu-maxima-hotspot-uplift-04ded9f4`.
     - [ ] `habu-extract-sbcl-ocaml-4e8a4268` Extract SBCL/OCaml GC techniques into Habu gap map + implementation plan. Depends on `habu-measure-gc-against-b81d7bc6`.
       - [x] `habu-study-sbcl-gc-2294e52d` Study SBCL `gencgc` internals and record transferrable heuristics.
         - [x] `habu-sbcl-gc-map-03111566` SBCL GC: map trigger heuristics.

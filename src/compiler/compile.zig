@@ -1898,9 +1898,36 @@ pub const DeclEnv = struct {
 };
 
 /// Global environment for top-level definitions
+const GlobalAliasCtx = struct {
+    pub fn hash(_: @This(), key: []const u8) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        var i: usize = 0;
+        while (i < key.len) : (i += 1) {
+            const upper = std.ascii.toUpper(key[i]);
+            hasher.update(&[_]u8{upper});
+        }
+        return hasher.final();
+    }
+
+    pub fn eql(_: @This(), a: []const u8, b: []const u8) bool {
+        return std.ascii.eqlIgnoreCase(a, b);
+    }
+};
+
+const GlobalAliasMap = std.HashMap(
+    []const u8,
+    std.ArrayListUnmanaged(u16),
+    GlobalAliasCtx,
+    std.hash_map.default_max_load_percentage,
+);
+
 pub const GlobalEnv = struct {
     /// Map from name to global index
     bindings: std.StringHashMap(u16),
+    /// Map from unqualified local name to global indices (case-insensitive).
+    aliases: GlobalAliasMap,
+    /// Reverse map from global index to canonical name.
+    names_by_index: std.ArrayListUnmanaged(?[]const u8),
     /// Next available index
     next_index: u16,
     allocator: std.mem.Allocator,
@@ -1908,18 +1935,60 @@ pub const GlobalEnv = struct {
     pub fn init(allocator: std.mem.Allocator) GlobalEnv {
         return .{
             .bindings = std.StringHashMap(u16).init(allocator),
+            .aliases = GlobalAliasMap.init(allocator),
+            .names_by_index = .{},
             .next_index = 0,
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *GlobalEnv) void {
+        var alias_it = self.aliases.iterator();
+        while (alias_it.next()) |entry| {
+            entry.value_ptr.deinit(self.allocator);
+        }
+        self.aliases.deinit();
+        self.names_by_index.deinit(self.allocator);
+
         // Free all allocated name strings
         var iter = self.bindings.keyIterator();
         while (iter.next()) |key| {
             self.allocator.free(key.*);
         }
         self.bindings.deinit();
+    }
+
+    fn localName(name: []const u8) []const u8 {
+        if (std.mem.lastIndexOfScalar(u8, name, ':')) |split| {
+            return name[split + 1 ..];
+        }
+        return name;
+    }
+
+    fn registerAlias(self: *GlobalEnv, name: []const u8, idx: u16) !void {
+        const local = localName(name);
+        if (self.aliases.getPtr(local)) |list| {
+            try list.append(self.allocator, idx);
+            return;
+        }
+
+        var list = std.ArrayListUnmanaged(u16){};
+        errdefer list.deinit(self.allocator);
+        try list.append(self.allocator, idx);
+        try self.aliases.put(local, list);
+    }
+
+    fn setNameIndex(self: *GlobalEnv, idx: u16, name: []const u8) !void {
+        const need = @as(usize, idx) + 1;
+        if (self.names_by_index.items.len < need) {
+            const old_len = self.names_by_index.items.len;
+            try self.names_by_index.resize(self.allocator, need);
+            var i = old_len;
+            while (i < need) : (i += 1) {
+                self.names_by_index.items[i] = null;
+            }
+        }
+        self.names_by_index.items[idx] = name;
     }
 
     /// Define a global, returns its index
@@ -1930,14 +1999,44 @@ pub const GlobalEnv = struct {
         const idx = self.next_index;
         // Dupe name - callers may pass transient slices (e.g. from symbol storage)
         const name_copy = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(name_copy);
         try self.bindings.put(name_copy, idx);
+        errdefer _ = self.bindings.remove(name_copy);
+        try self.registerAlias(name_copy, idx);
+        try self.setNameIndex(idx, name_copy);
         self.next_index += 1;
         return idx;
+    }
+
+    /// Define a global with explicit index (used when cloning global envs).
+    pub fn defineKnown(self: *GlobalEnv, name: []const u8, idx: u16) !void {
+        if (self.bindings.get(name) != null) return;
+
+        const name_copy = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(name_copy);
+        try self.bindings.put(name_copy, idx);
+        errdefer _ = self.bindings.remove(name_copy);
+        try self.registerAlias(name_copy, idx);
+        try self.setNameIndex(idx, name_copy);
+        if (idx >= self.next_index) self.next_index = idx + 1;
     }
 
     /// Lookup a global, returns index or null
     pub fn lookup(self: *const GlobalEnv, name: []const u8) ?u16 {
         return self.bindings.get(name);
+    }
+
+    /// Lookup all globals sharing the same local (unqualified) name.
+    pub fn lookupAlias(self: *const GlobalEnv, local_name: []const u8) ?[]const u16 {
+        const list = self.aliases.get(local_name) orelse return null;
+        return list.items;
+    }
+
+    /// Lookup global name by index.
+    pub fn nameForIndex(self: *const GlobalEnv, idx: u16) ?[]const u8 {
+        const i: usize = idx;
+        if (i >= self.names_by_index.items.len) return null;
+        return self.names_by_index.items[i];
     }
 };
 
@@ -3833,11 +3932,7 @@ pub const Compiler = struct {
         while (giter.next()) |entry| {
             const name = entry.key_ptr.*;
             const idx = entry.value_ptr.*;
-            const name_copy = try macro_compiler.globals.allocator.dupe(u8, name);
-            try macro_compiler.globals.bindings.put(name_copy, idx);
-            if (idx >= macro_compiler.globals.next_index) {
-                macro_compiler.globals.next_index = idx + 1;
-            }
+            try macro_compiler.globals.defineKnown(name, idx);
         }
 
         var empty_env = Env.init(arena_alloc, null);
@@ -19443,6 +19538,38 @@ test "macro expansion restores VM global_env" {
     compiler.deinit();
     try testing.expect(vm.global_env == saved_env);
     _ = try vm.collectGarbage();
+}
+
+test "global env keeps alias and reverse index maps in sync" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var globals = GlobalEnv.init(allocator);
+    defer globals.deinit();
+
+    const idx_a = try globals.define("PKG-A:FOO");
+    const idx_b = try globals.define("pkg-b:foo");
+    const idx_a_dup = try globals.define("PKG-A:FOO");
+    try testing.expectEqual(idx_a, idx_a_dup);
+    try testing.expectEqual(@as(u16, 0), idx_a);
+    try testing.expectEqual(@as(u16, 1), idx_b);
+
+    const alias = globals.lookupAlias("foo") orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(@as(usize, 2), alias.len);
+    try testing.expectEqual(idx_a, alias[0]);
+    try testing.expectEqual(idx_b, alias[1]);
+
+    const name_a = globals.nameForIndex(idx_a) orelse return error.TestUnexpectedResult;
+    const name_b = globals.nameForIndex(idx_b) orelse return error.TestUnexpectedResult;
+    try testing.expect(std.mem.eql(u8, name_a, "PKG-A:FOO"));
+    try testing.expect(std.mem.eql(u8, name_b, "pkg-b:foo"));
+
+    try globals.defineKnown("COMMON-LISP:BAR", 9);
+    const alias_bar = globals.lookupAlias("bar") orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(@as(usize, 1), alias_bar.len);
+    try testing.expectEqual(@as(u16, 9), alias_bar[0]);
+    const name_bar = globals.nameForIndex(9) orelse return error.TestUnexpectedResult;
+    try testing.expect(std.mem.eql(u8, name_bar, "COMMON-LISP:BAR"));
 }
 
 test "macro expansion preserves dotted rest params" {

@@ -101,6 +101,8 @@ pub const Repl = struct {
     active_root_ctx: ?*VmRootCtx,
     /// Heap GC count when macro maps were last key-refreshed/rebuilt.
     macro_gc_synced: usize,
+    /// Cached trace toggle for function resolver hot path.
+    trace_fn_resolve: bool,
 
     fn traceFormIndexFromEnv() ?usize {
         const raw_c = std.posix.getenv("HABU_TRACE_FORM_INDEX") orelse return null;
@@ -125,6 +127,7 @@ pub const Repl = struct {
             .current_vm = null,
             .active_root_ctx = null,
             .macro_gc_synced = 0,
+            .trace_fn_resolve = std.posix.getenv("HABU_TRACE_FN_RESOLVE") != null,
         };
         errdefer self.chunk_pool.deinit(allocator);
         errdefer self.macros.deinit();
@@ -1332,7 +1335,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
     fn functionResolveCallback(sym: Value, context: *anyopaque) vm_mod.Error!?Value {
         const self: *Repl = @ptrCast(@alignCast(context));
         if (!sym.isSymbol()) return null;
-        const trace_fn_resolve = std.posix.getenv("HABU_TRACE_FN_RESOLVE") != null;
+        const trace_fn_resolve = self.trace_fn_resolve;
         if (trace_fn_resolve) {
             std.debug.print("TRACE fn-resolve sym={s}\n", .{sym.toPtr(Symbol).getName()});
         }
@@ -1540,7 +1543,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         const source_vm = self.activeVm();
         const s = sym.toPtr(Symbol);
         const local_name = s.getName();
-        const trace = std.posix.getenv("HABU_TRACE_FN_RESOLVE") != null;
+        const trace = self.trace_fn_resolve;
         if (try self.lookupFunctionCellValue(sym)) |fn_cell| {
             if (trace) {
                 std.debug.print("TRACE fn-lookup fn-cell={s}\n", .{local_name});
@@ -1616,46 +1619,32 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
 
         // Package alias fallback: if there is exactly one callable global whose
         // local (unqualified) name matches, treat it as the function binding.
-        var alias_count: usize = 0;
-        var alias_val = Value.nil;
-        var alias_it = self.compiler.globals.bindings.iterator();
-        while (alias_it.next()) |entry| {
-            const idx = entry.value_ptr.*;
-            const candidate_val = self.lookupCallableAtGlobalIdx(source_vm, idx) orelse continue;
-            if (!isCallableValue(candidate_val)) continue;
-
-            const key = entry.key_ptr.*;
-            const key_local = if (std.mem.lastIndexOfScalar(u8, key, ':')) |split|
-                key[split + 1 ..]
-            else
-                key;
-
-            if (!std.ascii.eqlIgnoreCase(key_local, local_name)) continue;
-            alias_count += 1;
-            alias_val = candidate_val;
-            if (alias_count > 1) break;
-        }
-        if (alias_count == 1) {
-            if (trace) {
-                std.debug.print("TRACE fn-lookup alias-hit local={s}\n", .{local_name});
+        if (self.compiler.globals.lookupAlias(local_name)) |alias_idxs| {
+            var alias_count: usize = 0;
+            var alias_val = Value.nil;
+            for (alias_idxs) |idx_u16| {
+                const idx: usize = idx_u16;
+                const candidate_val = self.lookupCallableAtGlobalIdx(source_vm, idx) orelse continue;
+                if (!isCallableValue(candidate_val)) continue;
+                alias_count += 1;
+                alias_val = candidate_val;
+                if (alias_count > 1) break;
             }
-            return alias_val;
-        }
-        if (trace) {
-            var dbg_it = self.compiler.globals.bindings.iterator();
-            while (dbg_it.next()) |entry| {
-                const key = entry.key_ptr.*;
-                const key_local = if (std.mem.lastIndexOfScalar(u8, key, ':')) |split|
-                    key[split + 1 ..]
-                else
-                    key;
-                if (!std.ascii.eqlIgnoreCase(key_local, local_name)) continue;
-                const idx = entry.value_ptr.*;
-                std.debug.print("TRACE fn-lookup alias-cand key={s} idx={d} kind={s}\n", .{
-                    key,
-                    idx,
-                    globalKindName(source_vm, idx),
-                });
+            if (alias_count == 1) {
+                if (trace) {
+                    std.debug.print("TRACE fn-lookup alias-hit local={s}\n", .{local_name});
+                }
+                return alias_val;
+            }
+            if (trace) {
+                for (alias_idxs) |idx_u16| {
+                    const idx: usize = idx_u16;
+                    std.debug.print("TRACE fn-lookup alias-cand local={s} idx={d} kind={s}\n", .{
+                        local_name,
+                        idx,
+                        globalKindName(source_vm, idx),
+                    });
+                }
             }
         }
         return null;
@@ -5113,6 +5102,48 @@ test "dolist supports early return without corrupting iteration state" {
         "(equal (progn (setq seen nil) (list (dolist (x '(1 2 a 3) 'done) (if (numberp x) (push x seen) (return :stop))) (nreverse seen))) '(:stop (1 2)))",
     );
     try testing.expect(!result.isNil());
+}
+
+test "lookupCallableFunction alias cache tracks callable uniqueness" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const fn_val = try repl.eval("(lambda () 99)");
+    try testing.expect(Repl.isCallableValue(fn_val));
+
+    const sym = try repl.heap.intern("HABU-ALIAS-CACHE-TEST-FN");
+    const sym_lower = try repl.heap.intern("habu-alias-cache-test-fn");
+    const idx_a = try repl.compiler.globals.define("PKG-A:HABU-ALIAS-CACHE-TEST-FN");
+    repl.vm.globals[idx_a] = fn_val;
+    if (idx_a >= repl.vm.num_globals) repl.vm.num_globals = idx_a + 1;
+
+    const first = try repl.lookupCallableFunction(sym);
+    try testing.expect(first != null);
+    try testing.expect(first.?.eq(fn_val));
+
+    const first_lower = try repl.lookupCallableFunction(sym_lower);
+    try testing.expect(first_lower != null);
+    try testing.expect(first_lower.?.eq(fn_val));
+
+    const idx_b = try repl.compiler.globals.define("PKG-B:HABU-ALIAS-CACHE-TEST-FN");
+    repl.vm.globals[idx_b] = Value.nil;
+    if (idx_b >= repl.vm.num_globals) repl.vm.num_globals = idx_b + 1;
+
+    const second = try repl.lookupCallableFunction(sym);
+    try testing.expect(second != null);
+    try testing.expect(second.?.eq(fn_val));
+
+    repl.vm.globals[idx_b] = fn_val;
+    const third = try repl.lookupCallableFunction(sym);
+    try testing.expect(third == null);
 }
 
 test "eval parse error sets error info" {

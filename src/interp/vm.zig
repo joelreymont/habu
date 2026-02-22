@@ -1635,11 +1635,7 @@ pub const Vm = struct {
 
     fn globalNameForIndex(self: *Vm, idx: u16) ?[]const u8 {
         const env = self.global_env orelse return null;
-        var iter = env.bindings.iterator();
-        while (iter.next()) |entry| {
-            if (entry.value_ptr.* == idx) return entry.key_ptr.*;
-        }
-        return null;
+        return env.nameForIndex(idx);
     }
 
     fn symbolFromGlobalName(self: *Vm, global_name: []const u8) Error!?Value {
