@@ -23,6 +23,24 @@ pub const CallBridge = struct {
 
 pub fn setCallBridge(_: CallBridge) void {}
 
+pub const ErrorBridge = struct {
+    context: *anyopaque,
+    set_error: *const fn (*anyopaque, u16) callconv(.c) void,
+};
+
+pub fn setErrorBridge(_: ErrorBridge) void {}
+
+pub fn clearErrorBridge() void {}
+
+pub const GlobalBridge = struct {
+    context: *anyopaque,
+    load_global: *const fn (*anyopaque, u16) callconv(.c) u64,
+};
+
+pub fn setGlobalBridge(_: GlobalBridge) void {}
+
+pub fn clearGlobalBridge() void {}
+
 pub fn syncHeapFromGlobal(_: *Heap) void {}
 
 pub fn allocPtrRaw() u64 {

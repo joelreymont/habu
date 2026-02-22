@@ -159,6 +159,209 @@ test "compileChunk JITs all optimized defuns in progn" {
     try testing.expectEqual(@as(i64, 44), result.toFixnum());
 }
 
+test "compileChunk keeps JIT chunk-to-name mapping stable" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(progn\n" ++
+            "  (defun jit-map-a (n)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (+ n 100))\n" ++
+            "  (defun jit-map-b (n)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (* n 7))\n" ++
+            "  (defun jit-map-c (n)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (- n 5)))",
+    ));
+
+    const fn_a = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(symbol-function 'jit-map-a)",
+    ));
+    const fn_b = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(symbol-function 'jit-map-b)",
+    ));
+    const fn_c = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(symbol-function 'jit-map-c)",
+    ));
+
+    try testing.expect(fn_a.isClosure());
+    try testing.expect(fn_b.isClosure());
+    try testing.expect(fn_c.isClosure());
+
+    const chunk_a = fn_a.toPtr(runtime.Closure).code.toPtr(Chunk);
+    const chunk_b = fn_b.toPtr(runtime.Closure).code.toPtr(Chunk);
+    const chunk_c = fn_c.toPtr(runtime.Closure).code.toPtr(Chunk);
+
+    const jit_a = vm.lookupJitFn(chunk_a);
+    const jit_b = vm.lookupJitFn(chunk_b);
+    const jit_c = vm.lookupJitFn(chunk_c);
+    try testing.expect(jit_a != null);
+    try testing.expect(jit_b != null);
+    try testing.expect(jit_c != null);
+
+    try testing.expect(std.ascii.eqlIgnoreCase(jit_a.?.name, "JIT-MAP-A"));
+    try testing.expect(std.ascii.eqlIgnoreCase(jit_b.?.name, "JIT-MAP-B"));
+    try testing.expect(std.ascii.eqlIgnoreCase(jit_c.?.name, "JIT-MAP-C"));
+
+    const out_a = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-map-a 3)",
+    ));
+    const out_b = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-map-b 3)",
+    ));
+    const out_c = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-map-c 3)",
+    ));
+
+    try testing.expect(out_a.isFixnum());
+    try testing.expect(out_b.isFixnum());
+    try testing.expect(out_c.isFixnum());
+    try testing.expectEqual(@as(i64, 103), out_a.toFixnum());
+    try testing.expectEqual(@as(i64, 21), out_b.toFixnum());
+    try testing.expectEqual(@as(i64, -2), out_c.toFixnum());
+}
+
+test "compileChunk rekeys JIT map after chunk movement GC" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defun jit-gc-rekey (n)\n" ++
+            "  (declare (optimize (speed 3) (safety 0)))\n" ++
+            "  (+ n 1))",
+    ));
+
+    const fn0 = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(symbol-function 'jit-gc-rekey)",
+    ));
+    try testing.expect(fn0.isClosure());
+    const old_chunk = fn0.toPtr(runtime.Closure).code.toPtr(Chunk);
+    const old_addr = @intFromPtr(old_chunk);
+    const old_key = old_addr;
+    try testing.expect(vm.lookupJitFn(old_chunk) != null);
+    try testing.expect(vm.jit_fns.get(old_key) != null);
+
+    var moved = false;
+    var live_chunk = old_chunk;
+    var attempt: usize = 0;
+    while (attempt < 8 and !moved) : (attempt += 1) {
+        _ = try vm.run(try compile_chunk.compileChunk(
+            allocator,
+            &heap,
+            &vm,
+            &comp,
+            &chunk_pool,
+            "(let ((i 0))\n" ++
+                "  (while (< i 200000)\n" ++
+                "    (cons i nil)\n" ++
+                "    (setq i (+ i 1)))\n" ++
+                "  i)",
+        ));
+        const fn_live = try vm.run(try compile_chunk.compileChunk(
+            allocator,
+            &heap,
+            &vm,
+            &comp,
+            &chunk_pool,
+            "(symbol-function 'jit-gc-rekey)",
+        ));
+        try testing.expect(fn_live.isClosure());
+        live_chunk = fn_live.toPtr(runtime.Closure).code.toPtr(Chunk);
+        moved = @intFromPtr(live_chunk) != old_addr;
+    }
+    try testing.expect(moved);
+
+    try testing.expect(vm.lookupJitFn(live_chunk) != null);
+    try testing.expect(vm.jit_fns.get(@intFromPtr(live_chunk)) != null);
+    try testing.expect(vm.jit_fns.get(old_key) == null);
+
+    const out = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-gc-rekey 41)",
+    ));
+    try testing.expect(out.isFixnum());
+    try testing.expectEqual(@as(i64, 42), out.toFixnum());
+}
+
 test "compileChunk records JIT admission counters" {
     if (!build_options.use_hoist) return;
 
@@ -2365,6 +2568,30 @@ test "declaim/proclaim optimize sets default safety" {
     _ = try repl.eval("(defun globally-safe (x) (the fixnum x))");
     const checked = repl.eval("(globally-safe \"hi\")");
     try testing.expectError(error.TypeMismatch, checked);
+}
+
+test "JIT safety>0 arithmetic relays TypeMismatch without panic" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const jit_before = repl.vm.jit_fns.count();
+    _ = try repl.eval("(defun jit-safe-double (x) (declare (optimize (speed 3) (safety 3))) (* x 2))");
+    try testing.expect(repl.vm.jit_fns.count() > jit_before);
+
+    const ok = try repl.eval("(jit-safe-double 21)");
+    try testing.expect(ok.isFixnum());
+    try testing.expectEqual(@as(i64, 42), ok.toFixnum());
+
+    try testing.expectError(error.TypeMismatch, repl.eval("(jit-safe-double \"hi\")"));
 }
 
 test "declaim notinline accepts setf function name" {

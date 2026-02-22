@@ -3442,7 +3442,7 @@ pub const Compiler = struct {
             // Check for macros - expand at compile time if VM is available
             const macro_def_opt = self.lookupMacroDef(head);
             if (std.posix.getenv("HABU_TRACE_PROG_LOOKUP") != null and std.mem.eql(u8, name, "PROG")) {
-                const home_pkg = symbolHomePackage(head);
+                const home_pkg = symbolHomePackage(self, head);
                 const home_name = if (home_pkg) |pkg| pkg.name else "<none>";
                 const canonical = self.canonicalBuiltinSymbol(head);
                 std.debug.print(
@@ -3603,8 +3603,13 @@ pub const Compiler = struct {
         has_env: bool,
     ) !Value {
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
-        const saved_ext = vm.saveExtRoots();
+        const saved_ext = try vm.saveExtRoots();
         const saved_ext_roots = saved_ext.roots;
+        if (saved_ext_roots.len != 0) {
+            for (saved_ext_roots) |*val| {
+                val.* = vm.resolveForwardedValue(val.*);
+            }
+        }
         const macro_count = self.macro_table.count();
         const symbol_macro_count = self.symbol_macros.count();
 
@@ -3639,7 +3644,7 @@ pub const Compiler = struct {
         }
 
         vm.setExtRootsOwned(&roots);
-        defer vm.restoreExtRoots(saved_ext);
+        defer vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext_roots.len);
 
         if (has_env) {
             roots.items[root_env_idx] = try heap.allocMacroEnv();
@@ -3971,8 +3976,13 @@ pub const Compiler = struct {
 
         const saved_state = vm_mod.State.save(vm);
         const saved_env = vm.global_env;
-        const saved_ext = vm.saveExtRoots();
+        const saved_ext = try vm.saveExtRoots();
         const saved_ext_roots = saved_ext.roots;
+        if (saved_ext_roots.len != 0) {
+            for (saved_ext_roots) |*val| {
+                val.* = vm.resolveForwardedValue(val.*);
+            }
+        }
         const saved_pool = saved_state.chunk_pool;
         const macro_count = self.macro_table.count();
         const symbol_macro_count = self.symbol_macros.count();
@@ -4030,7 +4040,7 @@ pub const Compiler = struct {
         vm.setGlobalEnv(&self.globals);
         vm.setChunkPool(chunk_roots);
         defer {
-            vm.restoreExtRoots(saved_ext);
+            vm.restoreExtRootsSynced(saved_ext, macro_roots.items, ext_prefix);
             vm.global_env = saved_env;
 
             var restore_state = saved_state;
@@ -9885,8 +9895,13 @@ pub const Compiler = struct {
 
         const saved_state = vm_mod.State.save(vm);
         const saved_env = vm.global_env;
-        const saved_ext = vm.saveExtRoots();
+        const saved_ext = try vm.saveExtRoots();
         const saved_ext_roots = saved_ext.roots;
+        if (saved_ext_roots.len != 0) {
+            for (saved_ext_roots) |*val| {
+                val.* = vm.resolveForwardedValue(val.*);
+            }
+        }
         const saved_pool = saved_state.chunk_pool;
         const ext_prefix = saved_ext_roots.len;
 
@@ -9908,7 +9923,7 @@ pub const Compiler = struct {
         vm.setExtRootsOwned(&pool_roots);
         vm.setChunkPool(chunk_roots);
         defer {
-            vm.restoreExtRoots(saved_ext);
+            vm.restoreExtRootsSynced(saved_ext, pool_roots.items, ext_prefix);
             vm.global_env = saved_env;
 
             var restore_state = saved_state;
@@ -15799,13 +15814,41 @@ pub const Compiler = struct {
         if (!live.isSymbol()) return live;
         const heap = if (self.heap) |val| val else return live;
         const cl_pkg = if (heap.cl_package) |val| val else return live;
-        const name = live.toPtr(Symbol).getName();
+        const name = self.safeSymbolName(live) orelse return live;
         return cl_pkg.findAccessibleUpper(name) orelse live;
     }
 
-    fn symbolHomePackage(sym: Value) ?*runtime.heap.Package {
-        if (!sym.isSymbol()) return null;
-        const bits = sym.toPtr(Symbol).reserved;
+    fn safeSymbolName(self: *Compiler, sym: Value) ?[]const u8 {
+        const live = self.resolveForwardedValue(sym);
+        if (!live.isSymbol()) return null;
+
+        const heap = self.heap orelse return live.toPtr(Symbol).getName();
+        const addr = live.toPtrAddr();
+        if (!heap.containsAddrForDebug(addr)) return null;
+        const sym_ptr = live.toPtr(Symbol);
+
+        const name_len = std.math.cast(usize, sym_ptr.name_len) orelse return null;
+        const data_start = std.math.add(usize, addr, @sizeOf(Symbol)) catch |err| switch (err) {
+            error.Overflow => return null,
+        };
+        const data_size = std.mem.alignForward(usize, name_len, 8);
+        const data_end = std.math.add(usize, data_start, data_size) catch |err| switch (err) {
+            error.Overflow => return null,
+        };
+        const name_ptr = @intFromPtr(sym_ptr.name_ptr);
+        const name_end = std.math.add(usize, name_ptr, name_len) catch |err| switch (err) {
+            error.Overflow => return null,
+        };
+        if (name_ptr < data_start or name_end > data_end) return null;
+
+        return sym_ptr.getName();
+    }
+
+    fn symbolHomePackage(self: *Compiler, sym: Value) ?*runtime.heap.Package {
+        const live = self.resolveForwardedValue(sym);
+        if (!live.isSymbol()) return null;
+        if (self.safeSymbolName(live) == null) return null;
+        const bits = live.toPtr(Symbol).reserved;
         if (bits == 0 or (bits & 1) != 0) return null;
         return @ptrFromInt(bits);
     }
@@ -15826,16 +15869,17 @@ pub const Compiler = struct {
     fn lookupMacroDefByName(self: *Compiler, target_sym: Value) ?Value {
         const live_target = self.resolveForwardedValue(target_sym);
         if (!live_target.isSymbol()) return null;
-        const target_name = live_target.toPtr(Symbol).getName();
-        const target_pkg = symbolHomePackage(live_target);
+        const target_name = self.safeSymbolName(live_target) orelse return null;
+        const target_pkg = symbolHomePackage(self, live_target);
 
         var it = self.macro_table.iterator();
         while (it.next()) |entry| {
             const key_live = self.resolveForwardedValue(entry.key_ptr.*);
             if (!key_live.isSymbol()) continue;
-            if (!std.mem.eql(u8, key_live.toPtr(Symbol).getName(), target_name)) continue;
+            const key_name = self.safeSymbolName(key_live) orelse continue;
+            if (!std.mem.eql(u8, key_name, target_name)) continue;
             if (target_pkg) |pkg| {
-                const key_pkg = symbolHomePackage(key_live) orelse continue;
+                const key_pkg = symbolHomePackage(self, key_live) orelse continue;
                 if (!packageCanSeeSymbolNameFrom(pkg, key_pkg, target_name)) continue;
             }
             return self.resolveForwardedValue(entry.value_ptr.*);
@@ -15846,16 +15890,17 @@ pub const Compiler = struct {
     fn lookupSymbolMacroByName(self: *Compiler, target_sym: Value) ?Value {
         const live_target = self.resolveForwardedValue(target_sym);
         if (!live_target.isSymbol()) return null;
-        const target_name = live_target.toPtr(Symbol).getName();
-        const target_pkg = symbolHomePackage(live_target);
+        const target_name = self.safeSymbolName(live_target) orelse return null;
+        const target_pkg = symbolHomePackage(self, live_target);
 
         var it = self.symbol_macros.iterator();
         while (it.next()) |entry| {
             const key_live = self.resolveForwardedValue(entry.key_ptr.*);
             if (!key_live.isSymbol()) continue;
-            if (!std.mem.eql(u8, key_live.toPtr(Symbol).getName(), target_name)) continue;
+            const key_name = self.safeSymbolName(key_live) orelse continue;
+            if (!std.mem.eql(u8, key_name, target_name)) continue;
             if (target_pkg) |pkg| {
-                const key_pkg = symbolHomePackage(key_live) orelse continue;
+                const key_pkg = symbolHomePackage(self, key_live) orelse continue;
                 if (!packageCanSeeSymbolNameFrom(pkg, key_pkg, target_name)) continue;
             }
             return self.resolveForwardedValue(entry.value_ptr.*);
@@ -15890,7 +15935,10 @@ pub const Compiler = struct {
                     if (entry.isCons()) {
                         const entry_cons = entry.toPtr(Cons);
                         if (entry_cons.car.isSymbol()) {
-                            const key_name = entry_cons.car.toPtr(Symbol).getName();
+                            const key_name = self.safeSymbolName(entry_cons.car) orelse {
+                                plist = pc.cdr;
+                                continue;
+                            };
                             if (std.mem.eql(u8, key_name, "%HABU-MACRO-ENTRY")) {
                                 const val = entry_cons.cdr;
                                 if (self.decodeCompiledMacroEntry(val) != null) {

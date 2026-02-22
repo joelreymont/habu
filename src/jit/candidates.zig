@@ -10,7 +10,7 @@ const Chunk = runtime.Chunk;
 pub const LambdaCandidate = struct {
     name: []const u8,
     local_name: []const u8,
-    name_raw: u64,
+    name_sym: Value,
     lambda_ir: *const Ir,
 };
 
@@ -39,18 +39,17 @@ fn appendCandidate(
 ) !void {
     if (lambda_ir.* != .lambda) return;
 
-    var local_name = stripQualifiedName(name);
-    var name_raw: u64 = 0;
-    if (lambda_ir.lambda.name.isSymbol()) {
-        const sym = lambda_ir.lambda.name.toPtr(Symbol);
-        local_name = sym.getName();
-        name_raw = lambda_ir.lambda.name.raw;
-    }
+    const local_name = stripQualifiedName(name);
+
+    const owned_name = try allocator.dupe(u8, name);
+    errdefer allocator.free(owned_name);
+    const owned_local_name = try allocator.dupe(u8, local_name);
+    errdefer allocator.free(owned_local_name);
 
     try out.append(allocator, .{
-        .name = name,
-        .local_name = local_name,
-        .name_raw = name_raw,
+        .name = owned_name,
+        .local_name = owned_local_name,
+        .name_sym = lambda_ir.lambda.name,
         .lambda_ir = lambda_ir,
     });
 }
@@ -67,9 +66,12 @@ fn collectNode(
             }
         },
         .set_symbol_function => |op| {
-            if (op.left.* == .lit and op.left.lit.isSymbol() and op.right.* == .lambda) {
-                const sym_name = op.left.lit.toPtr(Symbol).getName();
-                try appendCandidate(allocator, out, sym_name, op.right);
+            if (op.right.* == .lambda) {
+                const name = if (op.left.* == .quote_sym)
+                    op.left.quote_sym
+                else
+                    "<set-symbol-function>";
+                try appendCandidate(allocator, out, name, op.right);
             }
         },
         .progn => |exprs| {
@@ -87,6 +89,16 @@ pub fn collectLambdaCandidates(
     try collectNode(allocator, node, out);
 }
 
+pub fn freeLambdaCandidates(
+    allocator: std.mem.Allocator,
+    candidates: []const LambdaCandidate,
+) void {
+    for (candidates) |candidate| {
+        allocator.free(candidate.name);
+        allocator.free(candidate.local_name);
+    }
+}
+
 pub fn isEligible(lambda_ir: *const Ir) bool {
     return ineligibleReason(lambda_ir) == null;
 }
@@ -95,12 +107,6 @@ pub fn ineligibleReason(lambda_ir: *const Ir) ?IneligibleReason {
     if (lambda_ir.* != .lambda) return .not_lambda;
     const lambda = lambda_ir.lambda;
 
-    // Current JIT lowering assumes unsafe arithmetic helpers and skips dynamic
-    // type checks. Preserve CL safety semantics by admitting only safety=0.
-    if (lambda.safety != 0) return .safety;
-
-    // Skip functions whose body is just a type assertion.
-    if (lambda.body.* == .assert_fixnum) return .assert_fixnum_body;
     // Keep current bridge constraints.
     if (lambda.captures.len > 0) return .captures;
     if (lambda.optional_params.len > 0) return .optional_params;
@@ -133,8 +139,8 @@ fn chunkSignatureMatches(lambda_ir: *const Ir, chunk: *const Chunk) bool {
     return true;
 }
 
-fn chunkNameMatches(candidate: *const LambdaCandidate, chunk: *const Chunk) bool {
-    if (candidate.name_raw != 0 and chunk.name.raw == candidate.name_raw) return true;
+fn chunkNameMatches(candidate: *const LambdaCandidate, live_name_sym: Value, chunk: *const Chunk) bool {
+    if (live_name_sym.isSymbol() and chunk.name.raw == live_name_sym.raw) return true;
 
     if (chunk.name.isSymbol()) {
         const chunk_name = chunk.name.toPtr(Symbol).getName();
@@ -153,6 +159,7 @@ fn chunkNameMatches(candidate: *const LambdaCandidate, chunk: *const Chunk) bool
 
 pub fn findMatchingChunk(
     candidate: *const LambdaCandidate,
+    live_name_sym: Value,
     child_chunks: []const Value,
     used: []bool,
 ) ?*const Chunk {
@@ -162,15 +169,7 @@ pub fn findMatchingChunk(
         if (used[idx]) continue;
         const chunk = chunk_val.toPtr(Chunk);
         if (!chunkSignatureMatches(candidate.lambda_ir, chunk)) continue;
-        if (!chunkNameMatches(candidate, chunk)) continue;
-        used[idx] = true;
-        return chunk;
-    }
-
-    for (child_chunks, 0..) |chunk_val, idx| {
-        if (used[idx]) continue;
-        const chunk = chunk_val.toPtr(Chunk);
-        if (!chunkSignatureMatches(candidate.lambda_ir, chunk)) continue;
+        if (!chunkNameMatches(candidate, live_name_sym, chunk)) continue;
         used[idx] = true;
         return chunk;
     }

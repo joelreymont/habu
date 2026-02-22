@@ -203,6 +203,7 @@ pub const State = struct {
     relay_throw_tag: Value,
     relay_throw_value: Value,
     jit_bridge_error: ?anyerror,
+    jit_gc_forbidden_depth: usize,
     pending_error: ?anyerror,
     is_unwinding: bool,
     pending_block_name: Value,
@@ -235,6 +236,7 @@ pub const State = struct {
             .relay_throw_tag = vm.relay_throw_tag,
             .relay_throw_value = vm.relay_throw_value,
             .jit_bridge_error = vm.jit_bridge_error,
+            .jit_gc_forbidden_depth = vm.jit_gc_forbidden_depth,
             .pending_error = vm.pending_error,
             .is_unwinding = vm.is_unwinding,
             .pending_block_name = vm.pending_block_name,
@@ -268,6 +270,7 @@ pub const State = struct {
         vm.relay_throw_tag = self.relay_throw_tag;
         vm.relay_throw_value = self.relay_throw_value;
         vm.jit_bridge_error = self.jit_bridge_error;
+        vm.jit_gc_forbidden_depth = self.jit_gc_forbidden_depth;
         vm.pending_error = self.pending_error;
         vm.is_unwinding = self.is_unwinding;
         vm.pending_block_name = self.pending_block_name;
@@ -444,6 +447,21 @@ fn jitCallBridge7(ctx: *anyopaque, fn_raw: u64, arg0: u64, arg1: u64, arg2: u64,
     return jitCallBridgeInvoke(vm, fn_raw, &args);
 }
 
+fn jitErrorBridgeSet(ctx: *anyopaque, err_int: u16) callconv(.c) void {
+    const vm: *Vm = @ptrCast(@alignCast(ctx));
+    vm.jit_bridge_error = @errorFromInt(err_int);
+}
+
+fn jitGlobalBridgeLoad(ctx: *anyopaque, idx: u16) callconv(.c) u64 {
+    const vm: *Vm = @ptrCast(@alignCast(ctx));
+    const val = vm.loadGlobal(idx) catch |err| {
+        vm.jit_bridge_error = err;
+        jit_backend.bridgeThrow();
+        std.debug.panic("jit global bridge throw returned: {s}", .{@errorName(err)});
+    };
+    return vm.resolveForwardedValue(val).raw;
+}
+
 const JitInvokeCtx = struct {
     compiled: *const jit_backend.CompiledFn,
     args_ptr: [*]const Value,
@@ -570,6 +588,7 @@ pub const Vm = struct {
     relay_throw_tag: Value,
     relay_throw_value: Value,
     jit_bridge_error: ?anyerror,
+    jit_gc_forbidden_depth: usize,
     pending_error: ?anyerror,
     is_unwinding: bool,
 
@@ -633,8 +652,10 @@ pub const Vm = struct {
     /// External GC roots (e.g., JIT stack/consts)
     ext_roots: []Value,
     ext_roots_owner: ?*std.ArrayList(Value),
+    ext_roots_saved: [MAX_EXT_ROOT_SNAPSHOTS]ExtRootsSnapshot,
+    ext_roots_saved_sp: usize,
 
-    /// Hoist SSA JIT: maps chunk address to compiled native function.
+    /// Hoist SSA JIT: maps live chunk address to compiled native function.
     jit_fns: std.AutoHashMap(usize, *jit_backend.CompiledFn),
 
     /// Stable host-root slots for JIT literal Values.
@@ -672,6 +693,7 @@ pub const Vm = struct {
     const MAX_HANDLERS = 64;
     const MAX_SAVED_CHUNKS = 1024;
     const MAX_COMPILE_ROOTS = 4096;
+    const MAX_EXT_ROOT_SNAPSHOTS = 256;
     const SAFEPOINT_BATCH_OPS = 32;
     const SAFEPOINT_BATCH_BYTES = 64 * 1024;
 
@@ -695,6 +717,12 @@ pub const Vm = struct {
             .string => chunk.name.toPtr(runtime.String).bytes(),
             else => "<anon>",
         };
+    }
+
+    fn isStaleNurseryAddr(self: *const Vm, addr: usize) bool {
+        const stale_start = @intFromPtr(self.heap.to_start);
+        const stale_end = stale_start + self.heap.space_size;
+        return addr >= stale_start and addr < stale_end;
     }
 
     fn csvHasExactToken(csv: []const u8, needle: []const u8) bool {
@@ -1005,6 +1033,7 @@ pub const Vm = struct {
             .relay_throw_tag = Value.nil,
             .relay_throw_value = Value.nil,
             .jit_bridge_error = null,
+            .jit_gc_forbidden_depth = 0,
             .pending_error = null,
             .is_unwinding = false,
             .last_error_value = Value.nil,
@@ -1034,6 +1063,8 @@ pub const Vm = struct {
             .current_argc = 0,
             .ext_roots = &[_]Value{},
             .ext_roots_owner = null,
+            .ext_roots_saved = undefined,
+            .ext_roots_saved_sp = 0,
             .jit_fns = std.AutoHashMap(usize, *jit_backend.CompiledFn).init(allocator),
             .jit_literal_roots = std.ArrayList(*Value){},
             .jit_adm = .{},
@@ -1298,6 +1329,13 @@ pub const Vm = struct {
     }
 
     pub fn setExtRootsOwned(self: *Vm, owner: *std.ArrayList(Value)) void {
+        if (std.posix.getenv("HABU_TRACE_EXT_ROOT_OWNER") != null) {
+            const first_raw = if (owner.items.len != 0) owner.items[0].raw else 0;
+            std.debug.print(
+                "TRACE set-ext-owned owner=0x{x} ptr=0x{x} len={d} first=0x{x} caller=0x{x}\n",
+                .{ @intFromPtr(owner), @intFromPtr(owner.items.ptr), owner.items.len, first_raw, @returnAddress() },
+            );
+        }
         self.ext_roots_owner = owner;
         self.ext_roots = owner.items;
     }
@@ -1312,19 +1350,64 @@ pub const Vm = struct {
         return self.ext_roots;
     }
 
-    pub fn saveExtRoots(self: *const Vm) ExtRootsSnapshot {
-        return .{
+    fn extRootsSnapshotMatches(a: ExtRootsSnapshot, b: ExtRootsSnapshot) bool {
+        if (a.owner != b.owner) return false;
+        if (a.owner != null) return true;
+        return @intFromPtr(a.roots.ptr) == @intFromPtr(b.roots.ptr) and a.roots.len == b.roots.len;
+    }
+
+    fn dropSavedExtRootsSnapshot(self: *Vm, saved: ExtRootsSnapshot) void {
+        var i = self.ext_roots_saved_sp;
+        while (i > 0) {
+            i -= 1;
+            if (!extRootsSnapshotMatches(self.ext_roots_saved[i], saved)) continue;
+            var shift = i;
+            while (shift + 1 < self.ext_roots_saved_sp) : (shift += 1) {
+                self.ext_roots_saved[shift] = self.ext_roots_saved[shift + 1];
+            }
+            self.ext_roots_saved_sp -= 1;
+            return;
+        }
+        if (std.posix.getenv("HABU_TRACE_EXT_ROOT_OWNER") != null) {
+            const owner_addr = if (saved.owner) |owner| @intFromPtr(owner) else 0;
+            std.debug.print(
+                "TRACE drop-ext-snapshot-miss owner=0x{x} ptr=0x{x} len={d}\n",
+                .{ owner_addr, @intFromPtr(saved.roots.ptr), saved.roots.len },
+            );
+        }
+    }
+
+    pub fn saveExtRoots(self: *Vm) Error!ExtRootsSnapshot {
+        const snap: ExtRootsSnapshot = .{
             .roots = self.currentExtRoots(),
             .owner = self.ext_roots_owner,
         };
+        if (self.ext_roots_saved_sp >= MAX_EXT_ROOT_SNAPSHOTS) return error.StackOverflow;
+        self.ext_roots_saved[self.ext_roots_saved_sp] = snap;
+        self.ext_roots_saved_sp += 1;
+        return snap;
     }
 
     pub fn restoreExtRoots(self: *Vm, saved: ExtRootsSnapshot) void {
+        self.dropSavedExtRootsSnapshot(saved);
         if (saved.owner) |owner| {
             self.setExtRootsOwned(owner);
             return;
         }
         self.setExtRoots(saved.roots);
+    }
+
+    /// Compatibility shim: inactive saved ext-root snapshots are now rooted directly
+    /// during GC, so restore no longer needs prefix copyback from temporary owners.
+    pub fn restoreExtRootsSynced(
+        self: *Vm,
+        saved: ExtRootsSnapshot,
+        current_roots: []const Value,
+        saved_prefix_len: usize,
+    ) void {
+        _ = current_roots;
+        _ = saved_prefix_len;
+        self.restoreExtRoots(saved);
     }
 
     pub fn clearExtRoots(self: *Vm) void {
@@ -1369,7 +1452,13 @@ pub const Vm = struct {
 
     /// Register a hoist-compiled native function for a chunk.
     pub fn registerJitFn(self: *Vm, chunk: *const Chunk, compiled: *jit_backend.CompiledFn) !void {
-        try self.jit_fns.put(@intFromPtr(chunk), compiled);
+        const key = @intFromPtr(chunk);
+        if (try self.jit_fns.fetchPut(key, compiled)) |old| {
+            if (old.value != compiled) {
+                old.value.deinit();
+                self.allocator.destroy(old.value);
+            }
+        }
     }
 
     /// Register a stable host-root slot for a JIT literal Value.
@@ -1382,19 +1471,18 @@ pub const Vm = struct {
 
     /// Look up hoist-compiled function for a chunk.
     pub fn lookupJitFn(self: *Vm, chunk: *const Chunk) ?*const jit_backend.CompiledFn {
-        return self.jit_fns.get(@intFromPtr(chunk));
+        const key = @intFromPtr(chunk);
+        return self.jit_fns.get(key);
     }
 
     /// Try to call a closure via hoist-compiled native code.
     /// Returns the result of calling it, or null if not hoist-compiled.
     fn tryCallJit(self: *Vm, argc: u8) Error!?Value {
         const chunk = self.chunk;
-        const compiled = self.jit_fns.get(@intFromPtr(chunk)) orelse return null;
+        const key = @intFromPtr(chunk);
+        const compiled = self.jit_fns.get(key) orelse return null;
         if (compiled.arity != argc) return null;
         const trace_jit_call = self.trace_jit_call;
-        if (trace_jit_call) {
-            std.debug.print("JIT_CALL enter {s} argc={d}\n", .{ compiled.name, argc });
-        }
         self.jit_bridge_error = null;
         // Set global heap pointer so JIT cons can allocate
         jit_backend.setHeap(self.heap);
@@ -1409,17 +1497,46 @@ pub const Vm = struct {
             .call6 = jitCallBridge6,
             .call7 = jitCallBridge7,
         });
+        jit_backend.setErrorBridge(.{
+            .context = self,
+            .set_error = jitErrorBridgeSet,
+        });
+        jit_backend.setGlobalBridge(.{
+            .context = self,
+            .load_global = jitGlobalBridgeLoad,
+        });
+        defer jit_backend.clearGlobalBridge();
+        defer jit_backend.clearErrorBridge();
 
         // Extract args from the VM stack (they're above the callee frame)
         const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
         const args = self.stack[bp .. bp + argc];
+        if (trace_jit_call) {
+            const caller_chunk = if (self.fp > 0) self.frames[self.fp - 1].chunk else chunk;
+            std.debug.print(
+                "JIT_CALL enter {s} argc={d} chunk={s} caller={s} fp={d} sp={d}\n",
+                .{ compiled.name, argc, chunkTraceName(self.chunk), chunkTraceName(caller_chunk), self.fp, self.sp },
+            );
+            if (std.posix.getenv("HABU_TRACE_JIT_CALL_ARGS") != null) {
+                const dump_n = @min(@as(usize, argc), envTraceCount("HABU_TRACE_JIT_CALL_ARGS", 4));
+                for (args[0..dump_n], 0..) |arg, idx| {
+                    std.debug.print("  jit-arg[{d}]=", .{idx});
+                    traceJitBridgeValue(arg);
+                    std.debug.print("\n", .{});
+                }
+            }
+        }
         var invoke_ctx = JitInvokeCtx{
             .compiled = compiled,
             .args_ptr = args.ptr,
             .argc = argc,
         };
         var result_raw: u64 = Value.nil.raw;
-        const jump_rc = jit_backend.bridgeRun(jitInvokeCompiledFn, &invoke_ctx, &result_raw);
+        self.jit_gc_forbidden_depth += 1;
+        const jump_rc = blk: {
+            defer self.jit_gc_forbidden_depth -= 1;
+            break :blk jit_backend.bridgeRun(jitInvokeCompiledFn, &invoke_ctx, &result_raw);
+        };
         if (jump_rc < 0) return error.StackOverflow;
         if (jump_rc != 0) {
             const err = self.jit_bridge_error orelse error.InvalidOpcode;
@@ -1429,6 +1546,10 @@ pub const Vm = struct {
             jit_backend.setHeap(self.heap);
             if (trace_jit_call) {
                 std.debug.print("JIT_CALL abort {s} err={s}\n", .{ compiled.name, @errorName(err) });
+            }
+            if (err == error.OutOfMemory) {
+                _ = try self.collectGarbage();
+                return null;
             }
             return err;
         }
@@ -1448,6 +1569,58 @@ pub const Vm = struct {
         self.jit_bridge_error = null;
 
         return result;
+    }
+
+    fn rekeyJitFnsAfterGc(self: *Vm) !void {
+        if (self.jit_fns.count() == 0) return;
+
+        var rebuilt = std.AutoHashMap(usize, *jit_backend.CompiledFn).init(self.allocator);
+        defer rebuilt.deinit();
+        try rebuilt.ensureTotalCapacity(self.jit_fns.count());
+
+        var retire = std.ArrayList(*jit_backend.CompiledFn){};
+        defer retire.deinit(self.allocator);
+        try retire.ensureTotalCapacity(self.allocator, self.jit_fns.count());
+
+        var it = self.jit_fns.iterator();
+        while (it.next()) |entry| {
+            const old_addr = entry.key_ptr.*;
+            const compiled = entry.value_ptr.*;
+            const old_chunk: *const Chunk = @ptrFromInt(old_addr);
+            const old_val = Value.makeChunk(old_chunk);
+            const live_val = self.resolveForwardedValue(old_val);
+            if (!live_val.isChunk()) {
+                try retire.append(self.allocator, compiled);
+                continue;
+            }
+
+            const live_addr = live_val.toPtrAddr();
+            if (self.isStaleNurseryAddr(live_addr)) {
+                try retire.append(self.allocator, compiled);
+                continue;
+            }
+
+            if (try rebuilt.fetchPut(live_addr, compiled)) |prior| {
+                try retire.append(self.allocator, prior.value);
+            }
+        }
+
+        var next_map = std.AutoHashMap(usize, *jit_backend.CompiledFn).init(self.allocator);
+        errdefer next_map.deinit();
+        try next_map.ensureTotalCapacity(rebuilt.count());
+        var rebuilt_it = rebuilt.iterator();
+        while (rebuilt_it.next()) |entry| {
+            next_map.putAssumeCapacity(entry.key_ptr.*, entry.value_ptr.*);
+        }
+
+        var old_map = self.jit_fns;
+        self.jit_fns = next_map;
+        old_map.deinit();
+
+        for (retire.items) |dead| {
+            dead.deinit();
+            self.allocator.destroy(dead);
+        }
     }
 
     fn bytesInHeap(self: *const Vm, bytes: []const u8) bool {
@@ -1770,38 +1943,9 @@ pub const Vm = struct {
         return env.nameForIndex(idx);
     }
 
-    fn symbolFromGlobalName(self: *Vm, global_name: []const u8) Error!?Value {
-        var sym_name = global_name;
-        if (std.mem.lastIndexOfScalar(u8, global_name, ':')) |split| {
-            const pkg_name = global_name[0..split];
-            sym_name = global_name[split + 1 ..];
-            if (pkg_name.len > 0) {
-                if (try self.heap.internInPackage(pkg_name, sym_name)) |sym| return sym;
-            }
-        }
-        if (sym_name.len == 0) return null;
-        // Only lazily materialize known-safe primitive function placeholders.
-        if (!std.mem.eql(u8, sym_name, "SYMBOL-PACKAGE")) return null;
-        return try self.intern(sym_name);
-    }
-
     pub fn loadGlobal(self: *Vm, idx: u16) Error!Value {
         if (idx >= MAX_GLOBALS) return error.InvalidConstant;
-        var val = try self.handleSpecialVarLoad(idx);
-        if (val.raw == Value.nil.raw or val.raw == Value.unbound.raw) {
-            if (self.function_resolve_callback) |cb| {
-                if (self.globalNameForIndex(idx)) |global_name| {
-                    if (try self.symbolFromGlobalName(global_name)) |sym| {
-                        if (try cb(sym, self.function_resolve_context.?)) |resolved| {
-                            self.globals[idx] = resolved;
-                            if (idx >= self.num_globals) self.num_globals = idx + 1;
-                            val = resolved;
-                        }
-                    }
-                }
-            }
-        }
-        return val;
+        return self.handleSpecialVarLoad(idx);
     }
 
     pub fn storeGlobal(self: *Vm, idx: u16, val: Value) Error!void {
@@ -1828,6 +1972,7 @@ pub const Vm = struct {
     }
 
     fn collectIfDebt(self: *Vm, extra_roots: []Value, alloc_hint_bytes: usize) !void {
+        if (self.jit_gc_forbidden_depth != 0) return;
         self.safepoint_batch_ops +%= 1;
         self.safepoint_batch_bytes +%= alloc_hint_bytes;
 
@@ -1850,6 +1995,7 @@ pub const Vm = struct {
     }
 
     fn collectGarbageExtra(self: *Vm, extra_roots: []Value) !usize {
+        if (self.jit_gc_forbidden_depth != 0) return error.OutOfMemory;
         const trace_validate_roots = std.posix.getenv("HABU_TRACE_VALIDATE_ROOT_LAYOUT") != null;
         const trap_validate_roots = std.posix.getenv("HABU_TRAP_VALIDATE_ROOT_LAYOUT") != null;
         if (trace_validate_roots or trap_validate_roots) {
@@ -1955,54 +2101,72 @@ pub const Vm = struct {
         }
         self.gc_slots.appendAssumeCapacity(&current_chunk_root);
 
-        var ranges: [13]roots_mod.RootRange = undefined;
+        var ranges: [13 + MAX_EXT_ROOT_SNAPSHOTS]roots_mod.RootRange = undefined;
         var range_len: usize = 0;
+        const pushRangeUnique = struct {
+            fn run(buf: []roots_mod.RootRange, len: *usize, vals: []Value) void {
+                if (vals.len == 0) return;
+                const ptr_addr = @intFromPtr(vals.ptr);
+                for (buf[0..len.*]) |existing| {
+                    if (@intFromPtr(existing.ptr) == ptr_addr and existing.len == vals.len) return;
+                }
+                std.debug.assert(len.* < buf.len);
+                buf[len.*] = .{ .ptr = vals.ptr, .len = vals.len };
+                len.* += 1;
+            }
+        }.run;
         if (self.sp != 0) {
-            ranges[range_len] = .{ .ptr = self.stack[0..self.sp].ptr, .len = self.sp };
-            range_len += 1;
+            pushRangeUnique(&ranges, &range_len, self.stack[0..self.sp]);
         }
         if (self.num_globals != 0) {
-            ranges[range_len] = .{ .ptr = self.globals[0..self.num_globals].ptr, .len = self.num_globals };
-            range_len += 1;
+            pushRangeUnique(&ranges, &range_len, self.globals[0..self.num_globals]);
         }
         if (self.comp_root_sp != 0) {
-            ranges[range_len] = .{ .ptr = self.comp_root_stack[0..self.comp_root_sp].ptr, .len = self.comp_root_sp };
-            range_len += 1;
+            pushRangeUnique(&ranges, &range_len, self.comp_root_stack[0..self.comp_root_sp]);
         }
         if (self.secondary_values_count != 0) {
-            ranges[range_len] = .{ .ptr = self.secondary_values[0..self.secondary_values_count].ptr, .len = self.secondary_values_count };
-            range_len += 1;
+            pushRangeUnique(&ranges, &range_len, self.secondary_values[0..self.secondary_values_count]);
         }
         if (self.saved_chunk_sp != 0) {
-            ranges[range_len] = .{ .ptr = self.saved_chunks[0..self.saved_chunk_sp].ptr, .len = self.saved_chunk_sp };
-            range_len += 1;
+            pushRangeUnique(&ranges, &range_len, self.saved_chunks[0..self.saved_chunk_sp]);
         }
         const builtin_roots = valueFieldSlice(BuiltinSymbols, &self.builtins);
         if (builtin_roots.len != 0) {
-            ranges[range_len] = .{ .ptr = builtin_roots.ptr, .len = builtin_roots.len };
-            range_len += 1;
+            pushRangeUnique(&ranges, &range_len, builtin_roots);
         }
         const type_roots = valueFieldSlice(type_mod.TypeSymbols, &self.type_syms);
         if (type_roots.len != 0) {
-            ranges[range_len] = .{ .ptr = type_roots.ptr, .len = type_roots.len };
-            range_len += 1;
+            pushRangeUnique(&ranges, &range_len, type_roots);
         }
         if (self.chunk_pool.len != 0) {
-            ranges[range_len] = .{ .ptr = self.chunk_pool.ptr, .len = self.chunk_pool.len };
-            range_len += 1;
+            pushRangeUnique(&ranges, &range_len, self.chunk_pool);
         }
         const ext_roots = self.currentExtRoots();
         if (ext_roots.len != 0) {
-            ranges[range_len] = .{ .ptr = ext_roots.ptr, .len = ext_roots.len };
-            range_len += 1;
+            pushRangeUnique(&ranges, &range_len, ext_roots);
+        }
+        if (self.ext_roots_saved_sp != 0) {
+            for (self.ext_roots_saved[0..self.ext_roots_saved_sp]) |saved| {
+                const saved_roots = if (saved.owner) |owner| owner.items else saved.roots;
+                if (saved_roots.len != 0) {
+                    pushRangeUnique(&ranges, &range_len, saved_roots);
+                }
+            }
         }
         if (extra_roots.len != 0) {
-            ranges[range_len] = .{ .ptr = extra_roots.ptr, .len = extra_roots.len };
-            range_len += 1;
+            pushRangeUnique(&ranges, &range_len, extra_roots);
         }
 
         if (std.posix.getenv("HABU_TRACE_BAD_ROOT_LAYOUT") != null) {
             var dbg_idx: usize = 0;
+            if (ext_roots.len != 0) {
+                const first = ext_roots[0];
+                const owner_addr = if (self.ext_roots_owner) |owner| @intFromPtr(owner) else 0;
+                std.debug.print(
+                    "TRACE gc-ext owner=0x{x} ptr=0x{x} len={d} first=0x{x} kind={s}\n",
+                    .{ owner_addr, @intFromPtr(ext_roots.ptr), ext_roots.len, first.raw, @tagName(first.typeKind()) },
+                );
+            }
             if (self.sp != 0) {
                 std.debug.print("TRACE gc-range idx={d} name=stack len={d}\n", .{ dbg_idx, self.sp });
                 dbg_idx += 1;
@@ -2038,6 +2202,16 @@ pub const Vm = struct {
             if (ext_roots.len != 0) {
                 std.debug.print("TRACE gc-range idx={d} name=ext_roots len={d}\n", .{ dbg_idx, ext_roots.len });
                 dbg_idx += 1;
+            }
+            if (self.ext_roots_saved_sp != 0) {
+                var saved_idx: usize = 0;
+                while (saved_idx < self.ext_roots_saved_sp) : (saved_idx += 1) {
+                    const saved = self.ext_roots_saved[saved_idx];
+                    const saved_roots = if (saved.owner) |owner| owner.items else saved.roots;
+                    if (saved_roots.len == 0) continue;
+                    std.debug.print("TRACE gc-range idx={d} name=ext_saved len={d}\n", .{ dbg_idx, saved_roots.len });
+                    dbg_idx += 1;
+                }
             }
             if (extra_roots.len != 0) {
                 std.debug.print("TRACE gc-range idx={d} name=extra_roots len={d}\n", .{ dbg_idx, extra_roots.len });
@@ -2154,6 +2328,8 @@ pub const Vm = struct {
                 }
             }
         }
+
+        try self.rekeyJitFnsAfterGc();
 
         if (trace_validate_roots or trap_validate_roots) {
             if (!self.validateBuiltinAndTypeRoots("post-restore")) {
@@ -12931,7 +13107,7 @@ test "vm restoreExtRoots rebinds owner after reallocation" {
     try roots_owner.append(allocator, Value.makeFixnum(1));
     vm.setExtRootsOwned(&roots_owner);
 
-    const saved = vm.saveExtRoots();
+    const saved = try vm.saveExtRoots();
     try testing.expect(saved.owner != null);
 
     const before_ptr = @intFromPtr(roots_owner.items.ptr);
@@ -12951,6 +13127,79 @@ test "vm restoreExtRoots rebinds owner after reallocation" {
 
     try roots_owner.append(allocator, Value.makeFixnum(2048));
     try testing.expectEqual(roots_owner.items.len, vm.currentExtRoots().len);
+}
+
+test "vm restoreExtRootsSynced does not overwrite saved owner prefix" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var roots_owner = std.ArrayList(Value){};
+    defer roots_owner.deinit(allocator);
+    try roots_owner.append(allocator, try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2)));
+    vm.setExtRootsOwned(&roots_owner);
+
+    const saved = try vm.saveExtRoots();
+
+    var temp_roots = std.ArrayList(Value){};
+    defer temp_roots.deinit(allocator);
+    try temp_roots.appendSlice(allocator, saved.roots);
+    vm.setExtRootsOwned(&temp_roots);
+
+    const before = temp_roots.items[0];
+    _ = try vm.collectGarbage();
+    try testing.expect(temp_roots.items[0].isCons());
+    try testing.expect(temp_roots.items[0].raw != before.raw);
+
+    // Temporary roots may be transiently rewritten by nested eval paths; restoring
+    // must not copy this stale value back into the saved owner prefix.
+    temp_roots.items[0] = Value.nil;
+    vm.restoreExtRootsSynced(saved, temp_roots.items, saved.roots.len);
+
+    try testing.expect(vm.ext_roots_owner == &roots_owner);
+    try testing.expect(roots_owner.items[0].isCons());
+
+    const ptr = roots_owner.items[0].toPtrAddr();
+    const start = @intFromPtr(heap.from_start);
+    const end = start + heap.space_size;
+    try testing.expect(ptr >= start and ptr < end);
+}
+
+test "vm saveExtRoots keeps inactive plain slices rooted" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var ext = [_]Value{try heap.allocCons(Value.makeFixnum(7), Value.makeFixnum(8))};
+    vm.setExtRoots(ext[0..]);
+    const saved = try vm.saveExtRoots();
+
+    var temp_roots = std.ArrayList(Value){};
+    defer temp_roots.deinit(allocator);
+    try temp_roots.appendSlice(allocator, saved.roots);
+    vm.setExtRootsOwned(&temp_roots);
+
+    const before = ext[0];
+    _ = try vm.collectGarbage();
+
+    try testing.expect(ext[0].isCons());
+    try testing.expect(ext[0].raw != before.raw);
+    try testing.expect(temp_roots.items[0].isCons());
+    vm.restoreExtRootsSynced(saved, temp_roots.items, saved.roots.len);
+
+    try testing.expect(vm.ext_roots_owner == null);
+    try testing.expectEqual(@intFromPtr(ext[0..].ptr), @intFromPtr(vm.currentExtRoots().ptr));
+    try testing.expectEqual(ext.len, vm.currentExtRoots().len);
 }
 
 test "vm collectGarbage reuses gc_slots buffer" {

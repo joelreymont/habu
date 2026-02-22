@@ -12,6 +12,7 @@ const Ir = compiler_mod.ir.Ir;
 
 const Heap = runtime.Heap;
 const Chunk = runtime.Chunk;
+const Symbol = runtime.Symbol;
 const Vm = interp.Vm;
 const Compiler = compiler_mod.Compiler;
 const Env = compiler_mod.Env;
@@ -103,10 +104,12 @@ fn tryHoistCompile(
     chunk_base: u16,
     vm: *Vm,
 ) !void {
-    _ = chunk_base;
     const trace = std.posix.getenv("HABU_TRACE_JIT") != null;
     var candidates = std.ArrayList(jit_candidates.LambdaCandidate){};
-    defer candidates.deinit(allocator);
+    defer {
+        jit_candidates.freeLambdaCandidates(allocator, candidates.items);
+        candidates.deinit(allocator);
+    }
     try jit_candidates.collectLambdaCandidates(allocator, ir_node, &candidates);
     if (candidates.items.len == 0) {
         if (trace) std.debug.print("JIT bench: no JIT candidates in top-level IR ({s})\n", .{@tagName(ir_node.*)});
@@ -116,8 +119,22 @@ fn tryHoistCompile(
     const used_chunks = try allocator.alloc(bool, child_chunks.len);
     defer allocator.free(used_chunks);
     @memset(used_chunks, false);
+    const live_chunks = try allocator.alloc(runtime.Value, child_chunks.len);
+    defer allocator.free(live_chunks);
+    const chunk_base_usize: usize = chunk_base;
 
     for (candidates.items) |candidate| {
+        for (child_chunks, 0..) |child_chunk, idx| {
+            const pool_idx = chunk_base_usize + idx;
+            const pooled = if (pool_idx < vm.chunk_pool.len) vm.chunk_pool[pool_idx] else child_chunk;
+            live_chunks[idx] = vm.resolveForwardedValue(pooled);
+        }
+        const live_name_sym = vm.resolveForwardedValue(candidate.name_sym);
+        const compile_name = if (live_name_sym.isSymbol())
+            live_name_sym.toPtr(Symbol).getName()
+        else
+            candidate.name;
+
         vm.jit_adm.cand += 1;
         if (jit_candidates.ineligibleReason(candidate.lambda_ir)) |reason| {
             switch (reason) {
@@ -135,7 +152,7 @@ fn tryHoistCompile(
                 std.debug.print(
                     "JIT bench: skip '{s}' reason={s} speed={d} safety={d} caps={d} opt={d} key={d} rest={}\n",
                     .{
-                        candidate.name,
+                        compile_name,
                         jit_candidates.reasonLabel(reason),
                         lambda.speed,
                         lambda.safety,
@@ -149,9 +166,9 @@ fn tryHoistCompile(
             continue;
         }
 
-        const chunk_ptr = jit_candidates.findMatchingChunk(&candidate, child_chunks, used_chunks) orelse {
+        const chunk_ptr = jit_candidates.findMatchingChunk(&candidate, live_name_sym, live_chunks, used_chunks) orelse {
             vm.jit_adm.sk_chunk += 1;
-            if (trace) std.debug.print("JIT bench: no chunk for '{s}' local={s}\n", .{ candidate.name, candidate.local_name });
+            if (trace) std.debug.print("JIT bench: no chunk for '{s}' local={s}\n", .{ compile_name, candidate.local_name });
             continue;
         };
         vm.jit_adm.elig += 1;
@@ -161,7 +178,7 @@ fn tryHoistCompile(
             std.debug.print(
                 "JIT bench: consider '{s}' speed={d} safety={d} caps={d} opt={d} key={d} rest={} chunks={d} chunk=0x{x}\n",
                 .{
-                    candidate.name,
+                    compile_name,
                     lambda.speed,
                     lambda.safety,
                     lambda.captures.len,
@@ -174,7 +191,7 @@ fn tryHoistCompile(
             );
         }
 
-        const compiled = jit_backend.compileIr(allocator, candidate.lambda_ir, candidate.name) catch |err| {
+        const compiled = jit_backend.compileIr(allocator, candidate.lambda_ir, compile_name) catch |err| {
             if (err == error.UnsupportedIrNode) {
                 vm.jit_adm.fail_unsupported += 1;
             } else {
@@ -184,13 +201,13 @@ fn tryHoistCompile(
                 if (err == error.UnsupportedIrNode) {
                     const bad = jit_backend.IrTranslator.firstUnsupportedTag(lambda.body) orelse std.meta.activeTag(lambda.body.*);
                     std.debug.print("JIT bench: compile fail '{s}' {s} body={s} unsupported={s}\n", .{
-                        candidate.name,
+                        compile_name,
                         @errorName(err),
                         @tagName(lambda.body.*),
                         @tagName(bad),
                     });
                 } else {
-                    std.debug.print("JIT bench: compile fail '{s}' {s}\n", .{ candidate.name, @errorName(err) });
+                    std.debug.print("JIT bench: compile fail '{s}' {s}\n", .{ compile_name, @errorName(err) });
                 }
             }
             continue;
@@ -207,6 +224,6 @@ fn tryHoistCompile(
             return error.OutOfMemory;
         };
         vm.jit_adm.comp += 1;
-        if (trace) std.debug.print("JIT bench: registered '{s}' map={d}\n", .{ candidate.name, vm.jit_fns.count() });
+        if (trace) std.debug.print("JIT bench: registered '{s}' map={d}\n", .{ compile_name, vm.jit_fns.count() });
     }
 }

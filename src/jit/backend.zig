@@ -106,6 +106,16 @@ pub const CallBridge = struct {
     call7: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
 };
 var g_call_bridge: ?CallBridge = null;
+pub const ErrorBridge = struct {
+    context: *anyopaque,
+    set_error: *const fn (*anyopaque, u16) callconv(.c) void,
+};
+var g_error_bridge: ?ErrorBridge = null;
+pub const GlobalBridge = struct {
+    context: *anyopaque,
+    load_global: *const fn (*anyopaque, u16) callconv(.c) u64,
+};
+var g_global_bridge: ?GlobalBridge = null;
 pub const BridgeRunFn = *const fn (*anyopaque) callconv(.c) u64;
 extern fn habu_jit_bridge_run(func: BridgeRunFn, ctx: *anyopaque, out_raw: *u64) c_int;
 extern fn habu_jit_bridge_throw() void;
@@ -120,6 +130,22 @@ pub fn setHeap(heap: *Heap) void {
 
 pub fn setCallBridge(bridge: CallBridge) void {
     g_call_bridge = bridge;
+}
+
+pub fn setErrorBridge(bridge: ErrorBridge) void {
+    g_error_bridge = bridge;
+}
+
+pub fn clearErrorBridge() void {
+    g_error_bridge = null;
+}
+
+pub fn setGlobalBridge(bridge: GlobalBridge) void {
+    g_global_bridge = bridge;
+}
+
+pub fn clearGlobalBridge() void {
+    g_global_bridge = null;
 }
 
 pub fn bridgeRun(func: BridgeRunFn, ctx: *anyopaque, out_raw: *u64) c_int {
@@ -233,6 +259,7 @@ fn jitResolveForwarded(val: Value) Value {
 
         const from_start = @intFromPtr(heap.from_start);
         const from_live_end = @intFromPtr(heap.alloc_ptr);
+        const src_in_from = addr >= from_start and addr < from_live_end;
         const in_from = new_addr >= from_start and new_addr < from_live_end and
             forwarded_size <= from_live_end - new_addr;
 
@@ -252,11 +279,12 @@ fn jitResolveForwarded(val: Value) Value {
         }
 
         if (!forwarded_size_ok or !(in_from or in_stale or in_tenured)) break;
+        if (!runtime.objects.forwardingTargetLooksValid(cur.getTag(), new_addr, forwarded_size)) break;
 
         const next = Value{ .raw = new_addr | @as(u64, @intFromEnum(cur.getTag())) };
         if (next.raw == cur.raw) break;
         cur = next;
-        if (in_from or in_tenured) {
+        if (in_from or in_tenured or (src_in_from and in_stale)) {
             resolved_live = cur;
         }
     }
@@ -426,12 +454,17 @@ fn jitRequireHeap() *Heap {
     return g_heap orelse std.debug.panic("jit helper missing heap", .{});
 }
 
+fn jitRelayError(err: anyerror) noreturn {
+    if (g_error_bridge) |bridge| {
+        bridge.set_error(bridge.context, @intCast(@intFromError(err)));
+    }
+    bridgeThrow();
+    std.debug.panic("jit helper relay returned: {s}", .{@errorName(err)});
+}
+
 fn jitFloatCast(a_raw: u64) callconv(.c) u64 {
     const a = Value{ .raw = a_raw };
-    const f = jitToFloat(a) orelse std.debug.panic(
-        "jit float failed: type={s}",
-        .{@tagName(a.typeKind())},
-    );
+    const f = jitToFloat(a) orelse jitRelayError(error.TypeMismatch);
     return Value.makeFloat(f).raw;
 }
 
@@ -440,9 +473,7 @@ fn jitAddNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
     const b = Value{ .raw = b_raw };
 
     if (a.isFloat() or b.isFloat()) {
-        const out = runtime.primitives.arith.addFloat(a, b) catch |err| {
-            std.debug.panic("jit add-float failed: {s}", .{@errorName(err)});
-        };
+        const out = runtime.primitives.arith.addFloat(a, b) catch |err| jitRelayError(err);
         return out.raw;
     }
     if (a.isFixnum() and b.isFixnum()) {
@@ -473,7 +504,7 @@ fn jitAddNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
                 },
             );
         }
-        std.debug.panic("jit add failed: {s}", .{@errorName(err)});
+        jitRelayError(err);
     };
     return out.raw;
 }
@@ -483,9 +514,7 @@ fn jitSubNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
     const b = Value{ .raw = b_raw };
 
     if (a.isFloat() or b.isFloat()) {
-        const out = runtime.primitives.arith.subFloat(a, b) catch |err| {
-            std.debug.panic("jit sub-float failed: {s}", .{@errorName(err)});
-        };
+        const out = runtime.primitives.arith.subFloat(a, b) catch |err| jitRelayError(err);
         return out.raw;
     }
     if (a.isFixnum() and b.isFixnum()) {
@@ -516,7 +545,7 @@ fn jitSubNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
                 },
             );
         }
-        std.debug.panic("jit sub failed: {s}", .{@errorName(err)});
+        jitRelayError(err);
     };
     return out.raw;
 }
@@ -526,9 +555,7 @@ fn jitMulNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
     const b = Value{ .raw = b_raw };
 
     if (a.isFloat() or b.isFloat()) {
-        const out = runtime.primitives.arith.mulFloat(a, b) catch |err| {
-            std.debug.panic("jit mul-float failed: {s}", .{@errorName(err)});
-        };
+        const out = runtime.primitives.arith.mulFloat(a, b) catch |err| jitRelayError(err);
         return out.raw;
     }
     if (a.isFixnum() and b.isFixnum()) {
@@ -542,27 +569,21 @@ fn jitMulNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
         }
     }
 
-    const out = runtime.primitives.arith.mul(jitRequireHeap(), a, b) catch |err| {
-        std.debug.panic("jit mul failed: {s}", .{@errorName(err)});
-    };
+    const out = runtime.primitives.arith.mul(jitRequireHeap(), a, b) catch |err| jitRelayError(err);
     return out.raw;
 }
 
 fn jitLtNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
     const a = Value{ .raw = a_raw };
     const b = Value{ .raw = b_raw };
-    const ok = runtime.primitives.arith.lt(a, b) catch |err| {
-        std.debug.panic("jit lt failed: {s}", .{@errorName(err)});
-    };
+    const ok = runtime.primitives.arith.lt(a, b) catch |err| jitRelayError(err);
     return if (ok) Value.t.raw else Value.nil.raw;
 }
 
 fn jitGtNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
     const a = Value{ .raw = a_raw };
     const b = Value{ .raw = b_raw };
-    const ok = runtime.primitives.arith.gt(a, b) catch |err| {
-        std.debug.panic("jit gt failed: {s}", .{@errorName(err)});
-    };
+    const ok = runtime.primitives.arith.gt(a, b) catch |err| jitRelayError(err);
     return if (ok) Value.t.raw else Value.nil.raw;
 }
 
@@ -584,18 +605,14 @@ fn jitLeNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
             },
         );
     }
-    const ok = runtime.primitives.arith.le(a, b) catch |err| {
-        std.debug.panic("jit le failed: {s}", .{@errorName(err)});
-    };
+    const ok = runtime.primitives.arith.le(a, b) catch |err| jitRelayError(err);
     return if (ok) Value.t.raw else Value.nil.raw;
 }
 
 fn jitGeNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
     const a = Value{ .raw = a_raw };
     const b = Value{ .raw = b_raw };
-    const ok = runtime.primitives.arith.ge(a, b) catch |err| {
-        std.debug.panic("jit ge failed: {s}", .{@errorName(err)});
-    };
+    const ok = runtime.primitives.arith.ge(a, b) catch |err| jitRelayError(err);
     return if (ok) Value.t.raw else Value.nil.raw;
 }
 
@@ -607,14 +624,9 @@ fn jitNumEq(a_raw: u64, b_raw: u64) callconv(.c) u64 {
 
 fn jitSqrt(a_raw: u64) callconv(.c) u64 {
     const a = Value{ .raw = a_raw };
-    const f = jitToFloat(a) orelse std.debug.panic(
-        "jit sqrt failed: type={s}",
-        .{@tagName(a.typeKind())},
-    );
+    const f = jitToFloat(a) orelse jitRelayError(error.TypeMismatch);
     if (f < 0) {
-        const cplx = jitRequireHeap().allocComplex(0.0, @sqrt(-f)) catch |err| {
-            std.debug.panic("jit sqrt complex alloc failed: {s}", .{@errorName(err)});
-        };
+        const cplx = jitRequireHeap().allocComplex(0.0, @sqrt(-f)) catch |err| jitRelayError(err);
         return cplx.raw;
     }
     return Value.makeFloat(@sqrt(f)).raw;
@@ -623,10 +635,7 @@ fn jitSqrt(a_raw: u64) callconv(.c) u64 {
 fn jitRound(a_raw: u64) callconv(.c) u64 {
     const a = Value{ .raw = a_raw };
     if (a.isFixnum()) return a.raw;
-    const f = jitToFloat(a) orelse std.debug.panic(
-        "jit round failed: type={s}",
-        .{@tagName(a.typeKind())},
-    );
+    const f = jitToFloat(a) orelse jitRelayError(error.TypeMismatch);
 
     // CL round: ties to even.
     const rounded = blk: {
@@ -641,6 +650,12 @@ fn jitRound(a_raw: u64) callconv(.c) u64 {
     };
     const q: i64 = @intFromFloat(rounded);
     return Value.makeFixnum(q).raw;
+}
+
+fn jitAssertFixnum(v_raw: u64) callconv(.c) u64 {
+    const v = Value{ .raw = v_raw };
+    if (!v.isFixnum()) jitRelayError(error.TypeMismatch);
+    return v_raw;
 }
 
 fn jitMakeHash(capacity_raw: u64, test_raw: u64) callconv(.c) u64 {
@@ -664,20 +679,29 @@ fn jitMakeHash(capacity_raw: u64, test_raw: u64) callconv(.c) u64 {
 }
 
 fn jitHashGet(table_raw: u64, key_raw: u64, default_raw: u64) callconv(.c) u64 {
-    const table = Value{ .raw = table_raw };
+    const table = jitResolveForwarded(Value{ .raw = table_raw });
     if (!table.isHashTable()) return Value.nil.raw;
     const ht = table.toPtr(runtime.HashTable);
-    const key = Value{ .raw = key_raw };
+    const key = jitResolveForwarded(Value{ .raw = key_raw });
     if (ht.get(key)) |v| return v.raw;
     return default_raw;
 }
 
+fn jitLoadGlobal(index_raw: u64) callconv(.c) u64 {
+    const idx_val = Value{ .raw = index_raw };
+    if (!idx_val.isFixnum()) jitRelayError(error.TypeMismatch);
+    const idx_i = idx_val.toFixnum();
+    if (idx_i < 0 or idx_i > std.math.maxInt(u16)) jitRelayError(error.InvalidGlobal);
+    const bridge = g_global_bridge orelse jitRelayError(error.InvalidGlobal);
+    return bridge.load_global(bridge.context, @intCast(idx_i));
+}
+
 fn jitHashSet(table_raw: u64, key_raw: u64, value_raw: u64) callconv(.c) u64 {
-    const table = Value{ .raw = table_raw };
+    const table = jitResolveForwarded(Value{ .raw = table_raw });
     if (!table.isHashTable()) return Value.nil.raw;
     const ht = table.toPtr(runtime.HashTable);
-    const key = Value{ .raw = key_raw };
-    const value = Value{ .raw = value_raw };
+    const key = jitResolveForwarded(Value{ .raw = key_raw });
+    const value = jitResolveForwarded(Value{ .raw = value_raw });
     const heap = g_heap orelse return Value.nil.raw;
 
     while (true) {
@@ -696,7 +720,7 @@ fn jitHashSet(table_raw: u64, key_raw: u64, value_raw: u64) callconv(.c) u64 {
 }
 
 fn jitHashCount(table_raw: u64) callconv(.c) u64 {
-    const table = Value{ .raw = table_raw };
+    const table = jitResolveForwarded(Value{ .raw = table_raw });
     if (!table.isHashTable()) return Value.nil.raw;
     const ht = table.toPtr(runtime.HashTable);
     if (ht.count > std.math.maxInt(i64)) return Value.nil.raw;
@@ -704,15 +728,15 @@ fn jitHashCount(table_raw: u64) callconv(.c) u64 {
 }
 
 fn jitHashRem(table_raw: u64, key_raw: u64) callconv(.c) u64 {
-    const table = Value{ .raw = table_raw };
+    const table = jitResolveForwarded(Value{ .raw = table_raw });
     if (!table.isHashTable()) return Value.nil.raw;
     const ht = table.toPtr(runtime.HashTable);
-    const key = Value{ .raw = key_raw };
+    const key = jitResolveForwarded(Value{ .raw = key_raw });
     return if (ht.remove(key)) Value.t.raw else Value.nil.raw;
 }
 
 fn jitHashCapacity(table_raw: u64) callconv(.c) u64 {
-    const table = Value{ .raw = table_raw };
+    const table = jitResolveForwarded(Value{ .raw = table_raw });
     if (!table.isHashTable()) return Value.nil.raw;
     const ht = table.toPtr(runtime.HashTable);
     if (ht.capacity > std.math.maxInt(i64)) return Value.nil.raw;
@@ -720,7 +744,7 @@ fn jitHashCapacity(table_raw: u64) callconv(.c) u64 {
 }
 
 fn jitHashClear(table_raw: u64) callconv(.c) u64 {
-    const table = Value{ .raw = table_raw };
+    const table = jitResolveForwarded(Value{ .raw = table_raw });
     if (!table.isHashTable()) return Value.nil.raw;
     const ht = table.toPtr(runtime.HashTable);
     ht.clear();
@@ -728,7 +752,7 @@ fn jitHashClear(table_raw: u64) callconv(.c) u64 {
 }
 
 fn jitHashTest(table_raw: u64) callconv(.c) u64 {
-    const table = Value{ .raw = table_raw };
+    const table = jitResolveForwarded(Value{ .raw = table_raw });
     if (!table.isHashTable()) return Value.nil.raw;
     const ht = table.toPtr(runtime.HashTable);
     const test_name = switch (ht.test_type) {
@@ -2383,8 +2407,8 @@ pub const IrTranslator = struct {
             .let => |let_node| try self.translateLet(let_node.bindings, let_node.body),
             .set => |set_node| try self.translateSet(set_node.index, set_node.value),
             .loop => |loop_node| try self.translateLoop(loop_node.cond, loop_node.body),
-            .assert_fixnum => |op| try self.translate(op.operand), // At safety 0, just pass through
-            .global_ref => |_| try self.translateLit(ir, Value.nil), // TODO: general global refs
+            .assert_fixnum => |op| try self.translateAssertFixnum(op.operand),
+            .global_ref => |gr| try self.translateGlobalRef(gr.index),
             .lambda => |_| try self.translateLambdaLiteral(ir),
             // List / predicate operations (inline, no heap access needed)
             .nilp => |op| try self.translateNilp(op.operand),
@@ -2480,6 +2504,13 @@ pub const IrTranslator = struct {
         unreachable; // TODO: closure captures
     }
 
+    fn translateGlobalRef(self: *IrTranslator, index: u16) anyerror!HoistValue {
+        const idx_val = Value.makeFixnum(@intCast(index));
+        const idx = try self.cachedIconst(@as(i64, @bitCast(idx_val.raw)));
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitLoadGlobal)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{idx});
+    }
+
     /// Extract a constant tagged fixnum value from an IR node, if it's a literal.
     fn getFixnumLit(ir: *const Ir) ?i64 {
         return switch (ir.*) {
@@ -2552,6 +2583,14 @@ pub const IrTranslator = struct {
         if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.eq, left, right);
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitNumEq)));
         return try self.translateCmpTagged(prim_ptr, left, right);
+    }
+
+    fn translateAssertFixnum(self: *IrTranslator, operand: *const Ir) anyerror!HoistValue {
+        const v = try self.translate(operand);
+        if (self.fixnum_fast) return v;
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAssertFixnum)));
+        const args = [_]HoistValue{v};
+        return try self.emitPrimitiveCallValues(prim_ptr, &args);
     }
 
     fn translateFixnumAdd(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {

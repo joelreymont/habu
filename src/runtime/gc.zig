@@ -772,10 +772,22 @@ pub const GC = struct {
                             if (first_word.isForwarding()) continue;
                             const cls: *const objects.Closure = @ptrFromInt(addr);
                             const max_caps = heap.space_size / @sizeOf(Value);
-                            if (cls.num_captures > max_caps) {
+                            const cap_start = addr + @sizeOf(objects.Closure);
+                            const bad_caps = cls.num_captures > max_caps;
+                            const bad_ptr = @intFromPtr(cls.captures) != cap_start;
+                            if (bad_caps or bad_ptr) {
                                 std.debug.print(
-                                    "TRACE bad-root range={d} idx={d} root_ptr=0x{x} val=0x{x} closure-captures={d} max={d}\n",
-                                    .{ range_idx, elem_idx, @intFromPtr(root), root_val.raw, cls.num_captures, max_caps },
+                                    "TRACE bad-root range={d} idx={d} root_ptr=0x{x} val=0x{x} closure-captures={d} max={d} captures_ptr=0x{x} expected=0x{x}\n",
+                                    .{
+                                        range_idx,
+                                        elem_idx,
+                                        @intFromPtr(root),
+                                        root_val.raw,
+                                        cls.num_captures,
+                                        max_caps,
+                                        @intFromPtr(cls.captures),
+                                        cap_start,
+                                    },
                                 );
                                 if (trap_bad_root) {
                                     @panic("bad closure root");
@@ -856,10 +868,21 @@ pub const GC = struct {
                         if (first_word.isForwarding()) continue;
                         const cls: *const objects.Closure = @ptrFromInt(addr);
                         const max_caps = heap.space_size / @sizeOf(Value);
-                        if (cls.num_captures > max_caps) {
+                        const cap_start = addr + @sizeOf(objects.Closure);
+                        const bad_caps = cls.num_captures > max_caps;
+                        const bad_ptr = @intFromPtr(cls.captures) != cap_start;
+                        if (bad_caps or bad_ptr) {
                             std.debug.print(
-                                "TRACE bad-root slot={d} slot_ptr=0x{x} val=0x{x} closure-captures={d} max={d}\n",
-                                .{ slot_idx, @intFromPtr(slot), slot_val.raw, cls.num_captures, max_caps },
+                                "TRACE bad-root slot={d} slot_ptr=0x{x} val=0x{x} closure-captures={d} max={d} captures_ptr=0x{x} expected=0x{x}\n",
+                                .{
+                                    slot_idx,
+                                    @intFromPtr(slot),
+                                    slot_val.raw,
+                                    cls.num_captures,
+                                    max_caps,
+                                    @intFromPtr(cls.captures),
+                                    cap_start,
+                                },
                             );
                             if (trap_bad_root) {
                                 @panic("bad closure slot root");
@@ -1433,7 +1456,11 @@ pub const GC = struct {
         }
         if (tag == .symbol and self.trace_bad_symbol) {
             const sym: *const objects.Symbol = @ptrFromInt(obj_addr);
-            if (sym.name_len > heap.space_size) {
+            const name_addr = @intFromPtr(sym.name_ptr);
+            const expected_name_addr = obj_addr + @sizeOf(objects.Symbol);
+            const bad_len = sym.name_len > heap.space_size;
+            const bad_ptr = name_addr != expected_name_addr;
+            if (bad_len or bad_ptr) {
                 const fw: *const Value = @ptrFromInt(obj_addr);
                 const w1: *const usize = @ptrFromInt(obj_addr + @sizeOf(Value));
                 const from_s = @intFromPtr(heap.from_start);
@@ -1441,10 +1468,13 @@ pub const GC = struct {
                 const to_s = @intFromPtr(heap.to_start);
                 const to_e = to_s + heap.space_size;
                 std.debug.print(
-                    "TRACE bad-symbol-copy val=0x{x} obj=0x{x} fw=0x{x} is_fwd={} w1=0x{x} from=[0x{x},0x{x}) to=[0x{x},0x{x}) scan=0x{x}:{s} parent=0x{x}:{s} grand=0x{x}:{s} origin={s}:{d}:{d}\n",
+                    "TRACE bad-symbol-copy val=0x{x} obj=0x{x} len={d} name_ptr=0x{x} expected=0x{x} fw=0x{x} is_fwd={} w1=0x{x} from=[0x{x},0x{x}) to=[0x{x},0x{x}) scan=0x{x}:{s} parent=0x{x}:{s} grand=0x{x}:{s} origin={s}:{d}:{d}\n",
                     .{
                         val.raw,
                         obj_addr,
+                        sym.name_len,
+                        name_addr,
+                        expected_name_addr,
                         fw.raw,
                         fw.isForwarding(),
                         w1.*,

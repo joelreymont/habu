@@ -15,6 +15,10 @@ else
 
 pub const setHeap = impl.setHeap;
 pub const setCallBridge = impl.setCallBridge;
+pub const setErrorBridge = impl.setErrorBridge;
+pub const clearErrorBridge = impl.clearErrorBridge;
+pub const setGlobalBridge = impl.setGlobalBridge;
+pub const clearGlobalBridge = impl.clearGlobalBridge;
 pub const syncHeapFromGlobal = impl.syncHeapFromGlobal;
 pub const allocPtrRaw = impl.allocPtrRaw;
 pub const BridgeRunFn = impl.BridgeRunFn;
@@ -22,6 +26,8 @@ pub const bridgeRun = impl.bridgeRun;
 pub const bridgeThrow = impl.bridgeThrow;
 pub const bridgeDepth = impl.bridgeDepth;
 pub const CallBridge = impl.CallBridge;
+pub const ErrorBridge = impl.ErrorBridge;
+pub const GlobalBridge = impl.GlobalBridge;
 pub const LiteralRoots = impl.LiteralRoots;
 pub const KnownFn = impl.KnownFn;
 pub const CompiledFn = impl.CompiledFn;

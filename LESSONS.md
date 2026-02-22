@@ -6,9 +6,24 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ---
 
+## Session Notes (2026-02-23)
+
+### Worked Well
+- Replacing ext-root prefix copyback with snapshot-stack rooting (`src/interp/vm.zig:655`, `src/interp/vm.zig:1359`, `src/interp/vm.zig:2148`) fixed nested owner restore corruption; inactive ext-root owners/slices now stay in GC root ranges directly instead of being reconstructed from temporary arrays.
+- Making `saveExtRoots` fallible and updating all swap callsites (`src/compiler/compile.zig:3606`, `src/interp/repl.zig:816`) removed silent snapshot-drop risk and kept nested ext-root save/restore bookkeeping explicit.
+- Adding a JIT no-GC execution fence with OOM deopt (`src/interp/vm.zig:1535`, `src/interp/vm.zig:1998`, `src/interp/vm.zig:1550`) stopped moving-GC from running while JIT-held register values have no root map; `bench-maxima` now completes instead of crashing in `jitHashGet`.
+- Aligning backend forwarding resolution with VM semantics (`src/jit/backend.zig:239`, `src/jit/backend.zig:262`, `src/jit/backend.zig:287`) and resolving hash helper arguments (`src/jit/backend.zig:681`, `src/jit/backend.zig:699`, `src/jit/backend.zig:730`) removed one stale-forwarding blind spot on helper entry.
+- New regressions for ext-root behavior (`src/interp/vm.zig:13132`, `src/interp/vm.zig:13172`) lock both owner-backed and plain-slice inactive-root correctness.
+
+### Did Not Work
+- Relying on `restoreExtRootsSynced` copyback from temporary root arrays propagated stale values into persistent owners under nested save/set/restore chains (`src/interp/vm.zig` pre-fix `restoreExtRootsSynced` logic).
+- Fixing only helper-entry forwarded resolution was insufficient by itself; stale symbol-tagged pointers can survive long enough to lose forwarding metadata before first helper use, so preventing in-JIT GC was required for correctness (`src/jit/backend.zig:239`, `src/interp/vm.zig:1535`, `src/interp/vm.zig:1998`).
+
 ## Session Notes (2026-02-22)
 
 ### Worked Well
+- Rekeying JIT chunk maps at GC boundaries from forwarding pointers (`src/interp/vm.zig:1489`, invoked at `src/interp/vm.zig:2246`) fixed stale-pointer chunk dispatch without mutating `Chunk` object layout, and the regression (`src/tests/integration.zig:275`) now proves lookup works after chunk movement.
+- Keeping registration/removal on raw chunk addresses (`src/interp/vm.zig:1382`, `src/interp/repl.zig:3076`, `src/interp/repl.zig:3090`) plus replacing prior compiled entries in-place prevented stale map entries from surviving failed JIT finalization paths.
 - Moving JIT bridge unwinding to a C trampoline (`src/jit/bridge_jump.c`) with `bridgeRun(callback)` kept the `setjmp` frame alive across native execution and enabled true non-local exits from bridge errors without continuing compiled code.
 - Routing `jitCallBridgeInvoke` error catches to `bridgeThrow` (`src/interp/vm.zig:355`) and executing compiled calls through `bridgeRun` (`src/interp/vm.zig:1422`) cleanly aborts active JIT frames while preserving VM error semantics (`UnhandledThrow`, etc.).
 - Replacing bridge panic-on-error with an explicit JIT bridge error lane (`src/interp/vm.zig:335`, `src/interp/vm.zig:1377`, `src/jit/backend.zig:60`, `src/jit/backend.zig:3116`) let `tryCallJit` propagate VM errors (`UnhandledThrow`, `ControlTransfer`, etc.) through normal VM error paths instead of aborting the process.
@@ -52,6 +67,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Keeping a hard allocator-cursor invariant check after JIT returns (`src/interp/vm.zig:1311`, `src/jit/backend.zig:95`) turns cursor corruption into immediate, attributable failures instead of delayed heap-state crashes.
 
 ### Did Not Work
+- Adding identity inside `Chunk` itself for JIT key stability was not viable in practice: layout changes destabilized hoist-mode Maxima runs, so chunk identity must stay external to the GC object layout.
+- Even after JIT map rekeying, `bench-maxima -Duse-hoist=true --scale=1 --json` still crashes in package symbol lookup (`src/runtime/heap.zig:211`, `src/compiler/compile.zig:15803`) with an invalid string pointer path (`0x30`), so this is a separate root-cause track.
 - Calling `setjmp` in a helper that returns to Zig (`bridgeEnter`) and later `longjmp`ing back to that dead frame crashed immediately (`Segmentation fault at address 0x0`); `setjmp` must remain active in the same frame for the full JIT call window.
 - Injecting a post-generic-call guard CFG inside JIT translation (an `emitBridgeErrorGuard` experiment in `src/jit/backend.zig`) regressed recursive JIT functions (`compileChunk JIT handles recursive nqueens helper entry copies`) with null-call crashes; keep bridge relay state in VM/backend runtime lanes until that control-flow lowering path is proven safe.
 - Using a direct keyword-heavy generic call as the bridge relay regression target caused an unrelated native crash (`Bus error at 0x3`) before reaching the bridge helper; the stable repro is a JIT call into an interpreted wrapper that triggers the keyword failure (`src/tests/integration.zig:1877`).

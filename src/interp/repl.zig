@@ -813,7 +813,7 @@ pub const Repl = struct {
         try self.syncMacroMapsIfGcChanged();
         const gc_before = self.heap.stats.gc_count;
 
-        const saved_ext = vm.saveExtRoots();
+        const saved_ext = try vm.saveExtRoots();
         const saved_ext_roots = saved_ext.roots;
         if (saved_ext_roots.len != 0) {
             for (saved_ext_roots) |*val| {
@@ -864,7 +864,7 @@ pub const Repl = struct {
         }
 
         vm.setExtRootsOwned(&roots);
-        defer vm.restoreExtRoots(saved_ext);
+        defer vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext_roots.len);
         var root_ctx = VmRootCtx{
             .vm = vm,
             .roots = &roots,
@@ -1176,8 +1176,13 @@ pub const Repl = struct {
 
     /// Helper to set a CL global: intern symbol in CL, define global, set value
     fn setClGlobal(self: *Repl, sym_name: []const u8, value: Value) !void {
-        const saved_ext = self.vm.saveExtRoots();
+        const saved_ext = try self.vm.saveExtRoots();
         const saved_ext_roots = saved_ext.roots;
+        if (saved_ext_roots.len != 0) {
+            for (saved_ext_roots) |*val| {
+                val.* = self.vm.resolveForwardedValue(val.*);
+            }
+        }
         var roots = std.ArrayList(Value){};
         defer roots.deinit(self.allocator);
         try roots.ensureTotalCapacity(self.allocator, saved_ext_roots.len + 1);
@@ -1187,7 +1192,7 @@ pub const Repl = struct {
         const value_idx = roots.items.len;
         try roots.append(self.allocator, value);
         self.vm.setExtRootsOwned(&roots);
-        defer self.vm.restoreExtRoots(saved_ext);
+        defer self.vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext_roots.len);
 
         // Intern symbol in CL package so it's found when CL-USER code references it
         _ = try self.heap.internInPackage("COMMON-LISP", sym_name);
@@ -1220,8 +1225,13 @@ pub const Repl = struct {
     }
 
     fn createStreamGlobals(self: *Repl) !void {
-        const saved_ext = self.vm.saveExtRoots();
+        const saved_ext = try self.vm.saveExtRoots();
         const saved_ext_roots = saved_ext.roots;
+        if (saved_ext_roots.len != 0) {
+            for (saved_ext_roots) |*val| {
+                val.* = self.vm.resolveForwardedValue(val.*);
+            }
+        }
         var roots = std.ArrayList(Value){};
         defer roots.deinit(self.allocator);
         try roots.ensureTotalCapacity(self.allocator, saved_ext_roots.len + 3);
@@ -1236,7 +1246,7 @@ pub const Repl = struct {
         try roots.append(self.allocator, try self.heap.allocStderr());
 
         self.vm.setExtRootsOwned(&roots);
-        defer self.vm.restoreExtRoots(saved_ext);
+        defer self.vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext_roots.len);
 
         try self.setClGlobal("*STANDARD-INPUT*", roots.items[stdin_idx]);
         roots.items[stdin_idx] = self.vm.resolveForwardedValue(roots.items[stdin_idx]);
@@ -1335,13 +1345,15 @@ pub const Repl = struct {
     /// Returns a callable Value for globals or lazily materialized primitive wrappers.
     fn functionResolveCallback(sym: Value, context: *anyopaque) vm_mod.Error!?Value {
         const self: *Repl = @ptrCast(@alignCast(context));
-        if (!sym.isSymbol()) return null;
+        const live_sym = self.vm.resolveForwardedValue(sym);
+        if (!live_sym.isSymbol()) return null;
         const trace_fn_resolve = self.trace_fn_resolve;
         if (trace_fn_resolve) {
-            std.debug.print("TRACE fn-resolve sym={s}\n", .{sym.toPtr(Symbol).getName()});
+            const name = self.safeSymbolName(live_sym) orelse "<invalid-symbol>";
+            std.debug.print("TRACE fn-resolve sym={s}\n", .{name});
         }
 
-        if (try self.lookupCallableFunction(sym)) |fn_val| {
+        if (try self.lookupCallableFunction(live_sym)) |fn_val| {
             if (trace_fn_resolve) {
                 std.debug.print("TRACE fn-resolve hit-global kind={s}\n", .{@tagName(fn_val.typeKind())});
             }
@@ -1350,12 +1362,13 @@ pub const Repl = struct {
 
         // Lazily materialize builtin primitive wrappers.
         if (self.compiler.builtins) |_| {
-            const dispatch_sym = try self.canonicalBuiltinFunctionSymbol(sym);
+            const dispatch_sym = try self.canonicalBuiltinFunctionSymbol(live_sym);
             const is_builtin = self.compiler.isBuiltinFunctionRaw(dispatch_sym);
             if (trace_fn_resolve) {
+                const dispatch_name = self.safeSymbolName(dispatch_sym) orelse "<invalid-symbol>";
                 std.debug.print(
                     "TRACE fn-resolve dispatch={s} builtin={}\n",
-                    .{ dispatch_sym.toPtr(Symbol).getName(), is_builtin },
+                    .{ dispatch_name, is_builtin },
                 );
             }
             if (is_builtin) {
@@ -1400,13 +1413,14 @@ pub const Repl = struct {
     /// This includes internal CL names (for example `%set-symbol-plist`) which
     /// may not be externally accessible from the current package.
     fn canonicalBuiltinFunctionSymbol(self: *Repl, sym: Value) vm_mod.Error!Value {
-        if (!sym.isSymbol()) return sym;
-        _ = self.compiler.builtins orelse return sym;
+        const live_sym = self.vm.resolveForwardedValue(sym);
+        if (!live_sym.isSymbol()) return live_sym;
+        _ = self.compiler.builtins orelse return live_sym;
 
-        const direct = self.canonicalMacroSymbol(sym);
+        const direct = self.canonicalMacroSymbol(live_sym);
         if (self.compiler.isBuiltinFunctionRaw(direct)) return direct;
 
-        const name = sym.toPtr(Symbol).getName();
+        const name = self.safeSymbolName(live_sym) orelse return direct;
         if (try self.findBuiltinByName(name)) |resolved| return resolved;
 
         // Some macro-heavy code paths refer to builtin operators through an
@@ -1540,12 +1554,13 @@ pub const Repl = struct {
     }
 
     fn lookupCallableFunction(self: *Repl, sym: Value) !?Value {
-        if (!sym.isSymbol()) return null;
+        const live_sym = self.vm.resolveForwardedValue(sym);
+        if (!live_sym.isSymbol()) return null;
+        const local_name = self.safeSymbolName(live_sym) orelse return null;
         const source_vm = self.activeVm();
-        const s = sym.toPtr(Symbol);
-        const local_name = s.getName();
+        const s = live_sym.toPtr(Symbol);
         const trace = self.trace_fn_resolve;
-        if (try self.lookupFunctionCellValue(sym)) |fn_cell| {
+        if (try self.lookupFunctionCellValue(live_sym)) |fn_cell| {
             if (trace) {
                 std.debug.print("TRACE fn-lookup fn-cell={s}\n", .{local_name});
             }
@@ -2606,7 +2621,7 @@ pub const Repl = struct {
         }
 
         // Try hoist SSA JIT compilation for eligible lambda nodes
-        _ = self.tryHoistCompileLambdas(specialized, child_chunks);
+        _ = self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
 
         // Patch main chunk to use absolute chunk indices
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
@@ -2851,10 +2866,14 @@ pub const Repl = struct {
         self: *Repl,
         ir_node: *const Ir,
         child_chunks: []const Value,
+        chunk_base: u16,
     ) bool {
         const trace = std.posix.getenv("HABU_TRACE_JIT") != null;
         var candidates = std.ArrayList(jit_candidates.LambdaCandidate){};
-        defer candidates.deinit(self.allocator);
+        defer {
+            jit_candidates.freeLambdaCandidates(self.allocator, candidates.items);
+            candidates.deinit(self.allocator);
+        }
         jit_candidates.collectLambdaCandidates(self.allocator, ir_node, &candidates) catch {
             return false;
         };
@@ -2866,9 +2885,23 @@ pub const Repl = struct {
         const used_chunks = self.allocator.alloc(bool, child_chunks.len) catch return false;
         defer self.allocator.free(used_chunks);
         @memset(used_chunks, false);
+        const live_chunks = self.allocator.alloc(Value, child_chunks.len) catch return false;
+        defer self.allocator.free(live_chunks);
+        const chunk_base_usize: usize = chunk_base;
 
         var compiled_any = false;
         for (candidates.items) |candidate| {
+            for (child_chunks, 0..) |child_chunk, idx| {
+                const pool_idx = chunk_base_usize + idx;
+                const pooled = if (pool_idx < self.vm.chunk_pool.len) self.vm.chunk_pool[pool_idx] else child_chunk;
+                live_chunks[idx] = self.vm.resolveForwardedValue(pooled);
+            }
+            const live_name_sym = self.vm.resolveForwardedValue(candidate.name_sym);
+            const compile_name = if (live_name_sym.isSymbol())
+                live_name_sym.toPtr(Symbol).getName()
+            else
+                candidate.name;
+
             self.vm.jit_adm.cand += 1;
             const lambda_ir = candidate.lambda_ir;
             if (jit_candidates.ineligibleReason(lambda_ir)) |reason| {
@@ -2885,7 +2918,7 @@ pub const Repl = struct {
                 if (trace and lambda_ir.* == .lambda) {
                     const lambda = lambda_ir.lambda;
                     std.debug.print("JIT: skip '{s}' reason={s} speed={d} safety={d} captures={d} opt={d} key={d} rest={}\n", .{
-                        candidate.name,
+                        compile_name,
                         jit_candidates.reasonLabel(reason),
                         lambda.speed,
                         lambda.safety,
@@ -2898,10 +2931,10 @@ pub const Repl = struct {
                 continue;
             }
 
-            const chunk_ptr = jit_candidates.findMatchingChunk(&candidate, child_chunks, used_chunks) orelse {
+            const chunk_ptr = jit_candidates.findMatchingChunk(&candidate, live_name_sym, live_chunks, used_chunks) orelse {
                 self.vm.jit_adm.sk_chunk += 1;
                 if (trace) {
-                    std.debug.print("JIT: no matching chunk for '{s}' local={s}\n", .{ candidate.name, candidate.local_name });
+                    std.debug.print("JIT: no matching chunk for '{s}' local={s}\n", .{ compile_name, candidate.local_name });
                 }
                 continue;
             };
@@ -2910,7 +2943,7 @@ pub const Repl = struct {
             if (trace and lambda_ir.* == .lambda) {
                 const lambda = lambda_ir.lambda;
                 std.debug.print("JIT: considering '{s}' speed={d} safety={d} captures={d} opt={d} key={d} rest={} chunk=0x{x}\n", .{
-                    candidate.name,
+                    compile_name,
                     lambda.speed,
                     lambda.safety,
                     lambda.captures.len,
@@ -2921,7 +2954,7 @@ pub const Repl = struct {
                 });
             }
 
-            switch (self.doHoistCompile(lambda_ir, candidate.name, chunk_ptr)) {
+            switch (self.doHoistCompile(lambda_ir, compile_name, chunk_ptr)) {
                 .compiled => {
                     compiled_any = true;
                     self.vm.jit_adm.comp += 1;
@@ -3457,7 +3490,7 @@ pub const Repl = struct {
         }
 
         // Try hoist SSA JIT compilation for eligible lambda nodes
-        _ = self.tryHoistCompileLambdas(specialized, child_chunks);
+        _ = self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
 
         // Free child chunk array (now owned by persistent storage)
         self.allocator.free(child_chunks);
@@ -3769,9 +3802,35 @@ pub const Repl = struct {
         return pkg.findAccessibleUpper(upper_buf[0..name.len]);
     }
 
+    fn safeSymbolName(self: *Repl, sym: Value) ?[]const u8 {
+        const live = self.vm.resolveForwardedValue(sym);
+        if (!live.isSymbol()) return null;
+
+        const addr = live.toPtrAddr();
+        if (!self.heap.containsAddrForDebug(addr)) return null;
+        const sym_ptr = live.toPtr(Symbol);
+
+        const name_len = std.math.cast(usize, sym_ptr.name_len) orelse return null;
+        const data_start = std.math.add(usize, addr, @sizeOf(Symbol)) catch |err| switch (err) {
+            error.Overflow => return null,
+        };
+        const data_size = std.mem.alignForward(usize, name_len, 8);
+        const data_end = std.math.add(usize, data_start, data_size) catch |err| switch (err) {
+            error.Overflow => return null,
+        };
+        const name_ptr = @intFromPtr(sym_ptr.name_ptr);
+        const name_end = std.math.add(usize, name_ptr, name_len) catch |err| switch (err) {
+            error.Overflow => return null,
+        };
+        if (name_ptr < data_start or name_end > data_end) return null;
+
+        return sym_ptr.getName();
+    }
+
     fn canonicalMacroSymbol(self: *Repl, sym: Value) Value {
-        if (!sym.isSymbol()) return sym;
-        const name = sym.toPtr(Symbol).getName();
+        const live_sym = self.vm.resolveForwardedValue(sym);
+        if (!live_sym.isSymbol()) return live_sym;
+        const name = self.safeSymbolName(live_sym) orelse return live_sym;
 
         if (self.heap.cl_package) |cl_pkg| {
             if (findAccessibleCaseFolded(cl_pkg, name)) |canonical| return canonical;
@@ -3780,7 +3839,7 @@ pub const Repl = struct {
             if (findAccessibleCaseFolded(cl_user_pkg, name)) |canonical| return canonical;
         }
 
-        return sym;
+        return live_sym;
     }
 
     fn lookupMacroByNameInPackage(self: *Repl, pkg: *runtime.heap.Package, name: []const u8) ?MacroEntry {
