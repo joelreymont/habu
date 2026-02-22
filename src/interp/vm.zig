@@ -352,20 +352,21 @@ fn jitCallBridgeInvoke(vm: *Vm, fn_raw: u64, args: []const Value) u64 {
     // Bridge calls may run GC and move semispaces; refresh JIT bump-cache from
     // heap before and after so inline-cons globals never drift from VM state.
     jit_backend.setHeap(vm.heap);
-    defer {
-        // Nested JIT calls inside vm.callFromStackAt may have advanced g_alloc_ptr.
-        // Sync first, then refresh globals against the current semispace after GC.
+    const result = vm.callFromStackAt(vm.sp, fn_val, args) catch |err| {
+        vm.jit_bridge_error = err;
+        // Keep allocator cursors coherent before non-local escape.
         jit_backend.syncHeapFromGlobal(vm.heap);
         jit_backend.setHeap(vm.heap);
-    }
-    const result = vm.callFromStackAt(vm.sp, fn_val, args) catch |err| blk: {
-        vm.jit_bridge_error = err;
-        jit_backend.markBridgeError();
         if (trace_bridge) {
             std.debug.print("JIT_BRIDGE err {s} argc={d}\n", .{ @errorName(err), args.len });
         }
-        break :blk Value.nil;
+        jit_backend.bridgeThrow();
+        std.debug.panic("jit bridge throw returned: {s}", .{@errorName(err)});
     };
+    // Nested JIT calls inside vm.callFromStackAt may have advanced g_alloc_ptr.
+    // Sync first, then refresh globals against the current semispace after GC.
+    jit_backend.syncHeapFromGlobal(vm.heap);
+    jit_backend.setHeap(vm.heap);
     if (trace_bridge) {
         std.debug.print("JIT_BRIDGE ret ", .{});
         traceJitBridgeValue(result);
@@ -441,6 +442,18 @@ fn jitCallBridge7(ctx: *anyopaque, fn_raw: u64, arg0: u64, arg1: u64, arg2: u64,
         Value{ .raw = arg6 },
     };
     return jitCallBridgeInvoke(vm, fn_raw, &args);
+}
+
+const JitInvokeCtx = struct {
+    compiled: *const jit_backend.CompiledFn,
+    args_ptr: [*]const Value,
+    argc: u8,
+};
+
+fn jitInvokeCompiledFn(ctx_ptr: *anyopaque) callconv(.c) u64 {
+    const ctx: *const JitInvokeCtx = @ptrCast(@alignCast(ctx_ptr));
+    const args = ctx.args_ptr[0..ctx.argc];
+    return ctx.compiled.callFromValues(args).raw;
 }
 
 pub const Vm = struct {
@@ -1383,12 +1396,6 @@ pub const Vm = struct {
             std.debug.print("JIT_CALL enter {s} argc={d}\n", .{ compiled.name, argc });
         }
         self.jit_bridge_error = null;
-        jit_backend.clearBridgeError();
-        defer {
-            self.jit_bridge_error = null;
-            jit_backend.clearBridgeError();
-        }
-
         // Set global heap pointer so JIT cons can allocate
         jit_backend.setHeap(self.heap);
         jit_backend.setCallBridge(.{
@@ -1406,8 +1413,26 @@ pub const Vm = struct {
         // Extract args from the VM stack (they're above the callee frame)
         const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
         const args = self.stack[bp .. bp + argc];
-        const result = compiled.callFromValues(args);
-        const bridge_err = self.jit_bridge_error;
+        var invoke_ctx = JitInvokeCtx{
+            .compiled = compiled,
+            .args_ptr = args.ptr,
+            .argc = argc,
+        };
+        var result_raw: u64 = Value.nil.raw;
+        const jump_rc = jit_backend.bridgeRun(jitInvokeCompiledFn, &invoke_ctx, &result_raw);
+        if (jump_rc < 0) return error.StackOverflow;
+        if (jump_rc != 0) {
+            const err = self.jit_bridge_error orelse error.InvalidOpcode;
+            self.jit_bridge_error = null;
+            // Ensure allocator cursor coherence after non-local bridge exits.
+            jit_backend.syncHeapFromGlobal(self.heap);
+            jit_backend.setHeap(self.heap);
+            if (trace_jit_call) {
+                std.debug.print("JIT_CALL abort {s} err={s}\n", .{ compiled.name, @errorName(err) });
+            }
+            return err;
+        }
+        const result = Value{ .raw = result_raw };
         if (trace_jit_call) {
             std.debug.print("JIT_CALL leave {s}\n", .{compiled.name});
         }
@@ -1420,7 +1445,7 @@ pub const Vm = struct {
         // Sync heap alloc_ptr back from JIT global (inline cons updates g_alloc_ptr
         // but not heap.alloc_ptr directly)
         jit_backend.syncHeapFromGlobal(self.heap);
-        if (bridge_err) |err| return err;
+        self.jit_bridge_error = null;
 
         return result;
     }

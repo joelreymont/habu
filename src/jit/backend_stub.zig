@@ -29,12 +29,17 @@ pub fn allocPtrRaw() u64 {
     return 0;
 }
 
-pub fn clearBridgeError() void {}
+pub const BridgeRunFn = *const fn (*anyopaque) callconv(.c) u64;
 
-pub fn markBridgeError() void {}
+pub fn bridgeRun(func: BridgeRunFn, ctx: *anyopaque, out_raw: *u64) c_int {
+    out_raw.* = func(ctx);
+    return 0;
+}
 
-pub fn bridgeErrorPending() bool {
-    return false;
+pub fn bridgeThrow() void {}
+
+pub fn bridgeDepth() c_int {
+    return 0;
 }
 
 pub const KnownFn = struct {

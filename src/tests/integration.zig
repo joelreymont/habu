@@ -1899,6 +1899,15 @@ test "JIT bridge relays keyword throw without panic" {
     try testing.expect(repl.vm.jit_fns.count() > jit_before);
 
     try testing.expectError(error.UnhandledThrow, repl.eval("(jit-bridge-keyfail)"));
+
+    _ = try repl.eval(
+        \\(defun jit-bridge-after ()
+        \\  (declare (optimize (speed 3) (safety 0)))
+        \\  7)
+    );
+    const after = try repl.eval("(jit-bridge-after)");
+    try testing.expect(after.isFixnum());
+    try testing.expectEqual(@as(i64, 7), after.toFixnum());
 }
 
 test "tail call preserves keyword argument layout" {

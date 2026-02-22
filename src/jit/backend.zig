@@ -57,7 +57,10 @@ pub const CallBridge = struct {
     call7: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
 };
 var g_call_bridge: ?CallBridge = null;
-var g_bridge_err: bool = false;
+pub const BridgeRunFn = *const fn (*anyopaque) callconv(.c) u64;
+extern fn habu_jit_bridge_run(func: BridgeRunFn, ctx: *anyopaque, out_raw: *u64) c_int;
+extern fn habu_jit_bridge_throw() void;
+extern fn habu_jit_bridge_depth() c_int;
 
 /// Set the global heap pointer for JIT allocation.
 pub fn setHeap(heap: *Heap) void {
@@ -70,16 +73,16 @@ pub fn setCallBridge(bridge: CallBridge) void {
     g_call_bridge = bridge;
 }
 
-pub fn clearBridgeError() void {
-    g_bridge_err = false;
+pub fn bridgeRun(func: BridgeRunFn, ctx: *anyopaque, out_raw: *u64) c_int {
+    return habu_jit_bridge_run(func, ctx, out_raw);
 }
 
-pub fn markBridgeError() void {
-    g_bridge_err = true;
+pub fn bridgeThrow() void {
+    habu_jit_bridge_throw();
 }
 
-pub fn bridgeErrorPending() bool {
-    return g_bridge_err;
+pub fn bridgeDepth() c_int {
+    return habu_jit_bridge_depth();
 }
 
 /// Sync heap.alloc_ptr from the JIT global g_alloc_ptr.
@@ -319,49 +322,41 @@ fn jitAssoc(key_raw: u64, alist_raw: u64) callconv(.c) u64 {
 }
 
 fn jitCall0(fn_raw: u64) callconv(.c) u64 {
-    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call0(bridge.context, fn_raw);
 }
 
 fn jitCall1(fn_raw: u64, arg0: u64) callconv(.c) u64 {
-    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call1(bridge.context, fn_raw, arg0);
 }
 
 fn jitCall2(fn_raw: u64, arg0: u64, arg1: u64) callconv(.c) u64 {
-    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call2(bridge.context, fn_raw, arg0, arg1);
 }
 
 fn jitCall3(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64) callconv(.c) u64 {
-    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call3(bridge.context, fn_raw, arg0, arg1, arg2);
 }
 
 fn jitCall4(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64) callconv(.c) u64 {
-    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call4(bridge.context, fn_raw, arg0, arg1, arg2, arg3);
 }
 
 fn jitCall5(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64) callconv(.c) u64 {
-    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call5(bridge.context, fn_raw, arg0, arg1, arg2, arg3, arg4);
 }
 
 fn jitCall6(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) callconv(.c) u64 {
-    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call6(bridge.context, fn_raw, arg0, arg1, arg2, arg3, arg4, arg5);
 }
 
 fn jitCall7(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64, arg6: u64) callconv(.c) u64 {
-    if (g_bridge_err) return Value.nil.raw;
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call7(bridge.context, fn_raw, arg0, arg1, arg2, arg3, arg4, arg5, arg6);
 }
@@ -9498,4 +9493,21 @@ test "hoist phi loop: dump codegen for debugging" {
     const result = f();
     // sum(0..9) = 45, tagged = 91
     try testing.expectEqual(@as(i64, 91), result);
+}
+
+test "jit bridge trampoline enters and unwinds" {
+    const Trampoline = struct {
+        fn throwFn(_: *anyopaque) callconv(.c) u64 {
+            bridgeThrow();
+            return 0;
+        }
+    };
+
+    var dummy: u8 = 0;
+    var result_raw: u64 = 0;
+    try testing.expectEqual(@as(c_int, 0), bridgeDepth());
+
+    const rc = bridgeRun(Trampoline.throwFn, &dummy, &result_raw);
+    try testing.expectEqual(@as(c_int, 1), rc);
+    try testing.expectEqual(@as(c_int, 0), bridgeDepth());
 }

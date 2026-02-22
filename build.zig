@@ -1,5 +1,12 @@
 const std = @import("std");
 
+fn addJitBridgeSource(b: *std.Build, module: *std.Build.Module) void {
+    module.addCSourceFile(.{
+        .file = b.path("src/jit/bridge_jump.c"),
+        .flags = &.{"-std=c11"},
+    });
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -18,6 +25,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     exe.root_module.addOptions("build_options", build_opts);
+    addJitBridgeSource(b, exe.root_module);
 
     // Hoist SSA compiler backend (default-on; can be disabled with -Duse-hoist=false)
     var hoist_mod: ?*std.Build.Module = null;
@@ -59,6 +67,7 @@ pub fn build(b: *std.Build) void {
         .filters = test_filters,
     });
     lib_tests.root_module.addOptions("build_options", build_opts);
+    addJitBridgeSource(b, lib_tests.root_module);
 
     // Add ohsnap for snapshot testing
     if (b.lazyDependency("ohsnap", .{
@@ -134,6 +143,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     habu_bench_mod.addOptions("build_options", build_opts);
+    addJitBridgeSource(b, habu_bench_mod);
     if (hoist_mod) |m| {
         habu_bench_mod.addImport("hoist", m);
     }
