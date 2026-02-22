@@ -1769,6 +1769,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
+        emitter.setRetainedValueLookup(Compiler.retainedValueLookup, &self.compiler);
         defer emitter.deinit();
         try emitter.emit(specialized);
         const chunk = try emitter.finalize();
@@ -2593,6 +2594,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
+        emitter.setRetainedValueLookup(Compiler.retainedValueLookup, &self.compiler);
         defer emitter.deinit();
         try emitter.emit(specialized);
         const chunk = try emitter.finalize();
@@ -3426,6 +3428,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
+        emitter.setRetainedValueLookup(Compiler.retainedValueLookup, &self.compiler);
         defer emitter.deinit();
 
         try emitter.emit(specialized);
@@ -4081,6 +4084,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
+        emitter.setRetainedValueLookup(Compiler.retainedValueLookup, &self.compiler);
         defer emitter.deinit();
         try emitter.emit(specialized);
         const chunk = try emitter.finalize();
@@ -4381,6 +4385,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
+        emitter.setRetainedValueLookup(Compiler.retainedValueLookup, &self.compiler);
         defer emitter.deinit();
         try emitter.emit(specialized);
         const chunk = try emitter.finalize();
@@ -4857,6 +4862,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
+        emitter.setRetainedValueLookup(Compiler.retainedValueLookup, &self.compiler);
         defer emitter.deinit();
         try emitter.emit(specialized);
         const chunk = try emitter.finalize();

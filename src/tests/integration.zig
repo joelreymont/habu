@@ -7847,7 +7847,7 @@ test "maxima e2e operation readiness status" {
     try testing.expectEqual(@as(i64, 1), got[11]);
 }
 
-test "maxima transl subset script load does not resume after first failure" {
+test "maxima loader stop-on-error does not resume after first failure" {
     try ensureMaximaSources();
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 384 * 1024 * 1024 });
@@ -7866,19 +7866,20 @@ test "maxima transl subset script load does not resume after first failure" {
         defer file.close();
         try file.writeAll(
             "(load \"lib/maxima-loader.lisp\")\n" ++
-                "(let* ((idx (position \"transl\" *maxima-files* :test #'string=))\n" ++
-                "       (expected (+ idx 1)))\n" ++
-                "  (setq *maxima-files* (subseq *maxima-files* 0 expected))\n" ++
+                "(let* ((failed-id \"__habu_missing_module__\")\n" ++
+                "       (files (list \"lmdcls\" failed-id \"letmac\"))\n" ++
+                "       (expected-attempted 2))\n" ++
+                "  (setq *maxima-files* files)\n" ++
                 "  (setq *transl-status*\n" ++
                 "        (multiple-value-bind (ok total fail missing attempted)\n" ++
                 "            (maxima-load-all :verbose nil :habu-stop-on-error t)\n" ++
                 "          (declare (ignore missing))\n" ++
-                "          (list ok total fail attempted expected\n" ++
+                "          (list ok total fail attempted expected-attempted\n" ++
                 "                (if (and (consp *maxima-failed*)\n" ++
                 "                         (consp (car *maxima-failed*))\n" ++
                 "                         (let ((id (caar *maxima-failed*)))\n" ++
-                "                           (or (and (symbolp id) (string= (symbol-name id) \"TRANSL\"))\n" ++
-                "                               (and (stringp id) (string= id \"transl\")))))\n" ++
+                "                           (or (and (symbolp id) (string= (symbol-name id) \"__HABU_MISSING_MODULE__\"))\n" ++
+                "                               (and (stringp id) (string= id \"__habu_missing_module__\")))))\n" ++
                 "                    1\n" ++
                 "                    0)))))\n",
         );
@@ -7906,10 +7907,11 @@ test "maxima transl subset script load does not resume after first failure" {
     }
     try testing.expect(cur.isNil());
 
-    try testing.expectEqual(got[4], got[1]);
-    try testing.expectEqual(got[1], got[3]);
+    try testing.expectEqual(@as(i64, 1), got[0]);
+    try testing.expectEqual(@as(i64, 3), got[1]);
     try testing.expectEqual(@as(i64, 1), got[2]);
-    try testing.expectEqual(got[1] - 1, got[0]);
+    try testing.expectEqual(@as(i64, 2), got[3]);
+    try testing.expectEqual(@as(i64, 2), got[4]);
     try testing.expectEqual(@as(i64, 1), got[5]);
 }
 
@@ -7924,14 +7926,17 @@ test "maxima defun-maclisp old narg syntax defines callable function" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const result = try repl.eval(
+    _ = try repl.eval(
         \\(progn
         \\  (load "lib/maxima-loader.lisp")
         \\  (setq *maxima-files* '("lmdcls" "letmac" "clmacs" "commac"))
-        \\  (maxima-load-all)
-        \\  (in-package :maxima)
-        \\  (defun-maclisp foo n (listify n))
-        \\  (foo 10 20 30))
+        \\  (maxima-load-all))
+    );
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (maxima::defun-maclisp maxima::foo n (maxima::listify n))
+        \\  (maxima::foo 10 20 30))
     );
     try testing.expect(result.isCons());
     const c0 = result.toPtr(Cons);
@@ -8496,13 +8501,16 @@ test "maxima letmac destructuring-let expands and runs" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const result = try repl.eval(
+    _ = try repl.eval(
         \\(progn
         \\  (load "lib/maxima-loader.lisp")
         \\  (setq *maxima-files* '("lmdcls" "letmac"))
-        \\  (maxima-load-all)
-        \\  (in-package :maxima)
-        \\  (destructuring-let (((a b) '(1 2))) (list a b)))
+        \\  (maxima-load-all))
+    );
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (maxima::destructuring-let (((a b) '(1 2))) (list a b)))
     );
     try testing.expect(result.isCons());
     const c0 = result.toPtr(Cons);

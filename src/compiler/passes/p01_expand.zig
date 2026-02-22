@@ -121,6 +121,7 @@ pub const Expander = struct {
         var emitter = emit_mod.Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = comp.optimize_current.speed;
         emitter.safety = comp.optimize_current.safety;
+        emitter.setRetainedValueLookup(compiler_mod.Compiler.retainedValueLookup, &comp);
         defer emitter.deinit();
         try emitter.emit(ir);
         const chunk_val = try emitter.finalize();

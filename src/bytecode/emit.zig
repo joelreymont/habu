@@ -89,6 +89,9 @@ pub const Emitter = struct {
     captures: []const Ir.Capture,
     /// Heap for symbol interning (optional)
     heap: ?*Heap,
+    /// Optional lookup for compiler-retained runtime Values.
+    retain_ctx: ?*anyopaque = null,
+    retain_lookup: ?*const fn (*anyopaque, u32) Value = null,
     /// Unified control stack for blocks and unwind-protects
     control_stack: std.ArrayList(ControlEntry),
     /// Per-local-slot type tags for JIT (TypeKind as u8, 0xFF = unknown)
@@ -114,6 +117,8 @@ pub const Emitter = struct {
             .name = "",
             .captures = &[_]Ir.Capture{},
             .heap = null,
+            .retain_ctx = null,
+            .retain_lookup = null,
             .control_stack = std.ArrayList(ControlEntry){},
         };
     }
@@ -134,8 +139,25 @@ pub const Emitter = struct {
             .name = "",
             .captures = &[_]Ir.Capture{},
             .heap = heap,
+            .retain_ctx = null,
+            .retain_lookup = null,
             .control_stack = std.ArrayList(ControlEntry){},
         };
+    }
+
+    pub fn setRetainedValueLookup(
+        self: *Emitter,
+        lookup: *const fn (*anyopaque, u32) Value,
+        ctx: *anyopaque,
+    ) void {
+        self.retain_lookup = lookup;
+        self.retain_ctx = ctx;
+    }
+
+    fn resolveRetainedValue(self: *const Emitter, idx: u32) Value {
+        const lookup = self.retain_lookup orelse return Value.nil;
+        const ctx = self.retain_ctx orelse return Value.nil;
+        return lookup(ctx, idx);
     }
 
     pub fn deinit(self: *Emitter) void {
@@ -1524,6 +1546,8 @@ pub const Emitter = struct {
             Emitter.init(self.allocator);
         lambda_emitter.speed = lam.speed;
         lambda_emitter.safety = lam.safety;
+        lambda_emitter.retain_ctx = self.retain_ctx;
+        lambda_emitter.retain_lookup = self.retain_lookup;
         defer lambda_emitter.deinit();
 
         const arity: u8 = @intCast(lam.params.len);
@@ -1632,8 +1656,22 @@ pub const Emitter = struct {
         // Finalize lambda chunk (GC Value)
         const chunk_val = try lambda_emitter.finalize();
         const chunk = chunk_val.toPtr(Chunk);
-        chunk.lambda_expr = self.resolveForwardedValue(lam.lambda_expr);
-        chunk.name = self.resolveForwardedValue(lam.name);
+
+        const lambda_expr = if (lam.lambda_expr_idx) |idx| blk: {
+            if (self.retain_lookup != null and self.retain_ctx != null) {
+                break :blk self.resolveRetainedValue(idx);
+            }
+            break :blk lam.lambda_expr;
+        } else lam.lambda_expr;
+        chunk.lambda_expr = self.resolveForwardedValue(lambda_expr);
+
+        const lambda_name = if (lam.name_idx) |idx| blk: {
+            if (self.retain_lookup != null and self.retain_ctx != null) {
+                break :blk self.resolveRetainedValue(idx);
+            }
+            break :blk lam.name;
+        } else lam.name;
+        chunk.name = self.resolveForwardedValue(lambda_name);
         chunk.allow_other_keys = if (lam.allow_other_keys) 1 else 0;
         if (lam.key_params.len > 0) {
             if (lambda_emitter.heap) |heap| {

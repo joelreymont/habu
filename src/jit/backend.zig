@@ -819,6 +819,21 @@ fn jitAref1(arr_raw: u64, idx_raw: u64) callconv(.c) u64 {
     };
 }
 
+fn jitAref2(arr_raw: u64, s0_raw: u64, s1_raw: u64) callconv(.c) u64 {
+    return jitArefN(
+        arr_raw,
+        Value.makeFixnum(2).raw,
+        s0_raw,
+        s1_raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+    );
+}
+
 fn jitArefN(
     arr_raw: u64,
     count_raw: u64,
@@ -969,6 +984,38 @@ fn jitAsetN(
         },
         else => return Value.nil.raw,
     }
+}
+
+fn jitAset1(arr_raw: u64, s0_raw: u64, value_raw: u64) callconv(.c) u64 {
+    return jitAsetN(
+        arr_raw,
+        Value.makeFixnum(1).raw,
+        s0_raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        value_raw,
+    );
+}
+
+fn jitAset2(arr_raw: u64, s0_raw: u64, s1_raw: u64, value_raw: u64) callconv(.c) u64 {
+    return jitAsetN(
+        arr_raw,
+        Value.makeFixnum(2).raw,
+        s0_raw,
+        s1_raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        Value.nil.raw,
+        value_raw,
+    );
 }
 
 fn jitAllocArrayFromDims(heap: *Heap, rank: u8, dims: [8]u64, init_val: Value) error{ OutOfMemory, Overflow }!u64 {
@@ -2058,13 +2105,13 @@ pub const IrTranslator = struct {
                 break :blk true;
             },
             .arr_ref => |a| blk: {
-                if (a.subscripts.len > 8) break :blk false;
+                if (a.subscripts.len < 1 or a.subscripts.len > 2) break :blk false;
                 if (!canTranslateWithLiteralRoots(a.array, literal_roots)) break :blk false;
                 for (a.subscripts) |s| if (!canTranslateWithLiteralRoots(s, literal_roots)) break :blk false;
                 break :blk true;
             },
             .arr_set => |a| blk: {
-                if (a.subscripts.len > 8) break :blk false;
+                if (a.subscripts.len < 1 or a.subscripts.len > 2) break :blk false;
                 if (!canTranslateWithLiteralRoots(a.array, literal_roots)) break :blk false;
                 if (!canTranslateWithLiteralRoots(a.value, literal_roots)) break :blk false;
                 for (a.subscripts) |s| if (!canTranslateWithLiteralRoots(s, literal_roots)) break :blk false;
@@ -2208,13 +2255,13 @@ pub const IrTranslator = struct {
                 break :blk null;
             },
             .arr_ref => |a| blk: {
-                if (a.subscripts.len > 8) break :blk .arr_ref;
+                if (a.subscripts.len < 1 or a.subscripts.len > 2) break :blk .arr_ref;
                 if (firstUnsupportedTagWithLiteralRoots(a.array, literal_roots)) |tag| break :blk tag;
                 for (a.subscripts) |s| if (firstUnsupportedTagWithLiteralRoots(s, literal_roots)) |tag| break :blk tag;
                 break :blk null;
             },
             .arr_set => |a| blk: {
-                if (a.subscripts.len > 8) break :blk .arr_set;
+                if (a.subscripts.len < 1 or a.subscripts.len > 2) break :blk .arr_set;
                 if (firstUnsupportedTagWithLiteralRoots(a.array, literal_roots)) |tag| break :blk tag;
                 if (firstUnsupportedTagWithLiteralRoots(a.value, literal_roots)) |tag| break :blk tag;
                 for (a.subscripts) |s| if (firstUnsupportedTagWithLiteralRoots(s, literal_roots)) |tag| break :blk tag;
@@ -4300,40 +4347,40 @@ pub const IrTranslator = struct {
     }
 
     fn translateArrRef(self: *IrTranslator, array_ir: *const Ir, subscripts: []const *const Ir) anyerror!HoistValue {
-        if (subscripts.len > 8) return error.UnsupportedIrNode;
         const arr = try self.translate(array_ir);
-        const count = try self.cachedIconst(@as(i64, @bitCast(Value.makeFixnum(@intCast(subscripts.len)).raw)));
-        const nil_val = try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
-        var args: [10]HoistValue = undefined;
-        args[0] = arr;
-        args[1] = count;
-        for (0..8) |i| {
-            args[i + 2] = if (i < subscripts.len)
-                try self.translate(subscripts[i])
-            else
-                nil_val;
-        }
-        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitArefN)));
-        return try self.emitPrimitiveCallValues(prim_ptr, args[0..]);
+        return switch (subscripts.len) {
+            1 => blk: {
+                const s0 = try self.translate(subscripts[0]);
+                const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAref1)));
+                break :blk try self.emitPrimitiveCallValues(prim_ptr, &.{ arr, s0 });
+            },
+            2 => blk: {
+                const s0 = try self.translate(subscripts[0]);
+                const s1 = try self.translate(subscripts[1]);
+                const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAref2)));
+                break :blk try self.emitPrimitiveCallValues(prim_ptr, &.{ arr, s0, s1 });
+            },
+            else => error.UnsupportedIrNode,
+        };
     }
 
     fn translateArrSet(self: *IrTranslator, array_ir: *const Ir, subscripts: []const *const Ir, value_ir: *const Ir) anyerror!HoistValue {
-        if (subscripts.len > 8) return error.UnsupportedIrNode;
         const arr = try self.translate(array_ir);
-        const count = try self.cachedIconst(@as(i64, @bitCast(Value.makeFixnum(@intCast(subscripts.len)).raw)));
-        const nil_val = try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
-        var args: [11]HoistValue = undefined;
-        args[0] = arr;
-        args[1] = count;
-        for (0..8) |i| {
-            args[i + 2] = if (i < subscripts.len)
-                try self.translate(subscripts[i])
-            else
-                nil_val;
-        }
-        args[10] = try self.translate(value_ir);
-        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAsetN)));
-        return try self.emitPrimitiveCallValues(prim_ptr, args[0..]);
+        const value = try self.translate(value_ir);
+        return switch (subscripts.len) {
+            1 => blk: {
+                const s0 = try self.translate(subscripts[0]);
+                const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAset1)));
+                break :blk try self.emitPrimitiveCallValues(prim_ptr, &.{ arr, s0, value });
+            },
+            2 => blk: {
+                const s0 = try self.translate(subscripts[0]);
+                const s1 = try self.translate(subscripts[1]);
+                const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAset2)));
+                break :blk try self.emitPrimitiveCallValues(prim_ptr, &.{ arr, s0, s1, value });
+            },
+            else => error.UnsupportedIrNode,
+        };
     }
 
     fn translatePosition(self: *IrTranslator, item_ir: *const Ir, seq_ir: *const Ir) anyerror!HoistValue {
@@ -6275,12 +6322,15 @@ fn isRegDeadInBlock(code: []const u8, idx: usize, reg: u5) bool {
     while (j < n) : (j += 1) {
         const insn = readInsn(code, j);
         if (insn == 0xD503201F) continue; // NOP
-        // Stop at any branch/call/ret
+        // RET reads x0 as the return value register.
+        if (insn == 0xD65F03C0) {
+            return reg != 0;
+        }
+        // Stop at any branch/call.
         if (insn & 0xFC000000 == 0x14000000 or // B
             insn & 0xFF000000 == 0x54000000 or // B.cond
             insn & 0xFC000000 == 0x94000000 or // BL
-            insn & 0xFFFFFC1F == 0xD63F0000 or // BLR
-            insn == 0xD65F03C0) // RET
+            insn & 0xFFFFFC1F == 0xD63F0000) // BLR
         {
             return true; // reached end of basic block without reading reg
         }
@@ -6323,8 +6373,10 @@ fn isRegDeadFrom(code: []const u8, start_idx: usize, reg: u5, memo: []u8) bool {
         return dead;
     }
     if (insn == 0xD65F03C0) { // RET
-        memo[start_idx] = 2;
-        return true;
+        // RET reads x0 as the function result register.
+        const dead = reg != 0;
+        memo[start_idx] = if (dead) 2 else 3;
+        return dead;
     }
     if (insn & 0xFC000000 == 0x14000000) { // B
         const imm26_raw = insn & 0x3FFFFFF;
@@ -7084,7 +7136,6 @@ fn fixCallArgMoves(code: []u8) bool {
         const MovInfo = struct { src: u5, dst: u5, pos: usize };
         var movs: [8]MovInfo = undefined;
         var n_movs: usize = 0;
-        var saw_arg_move = false;
 
         var j = i;
         var scan_steps: usize = 0;
@@ -7103,7 +7154,6 @@ fn fixCallArgMoves(code: []u8) bool {
                 if (rd <= 7) {
                     movs[n_movs] = .{ .src = rm, .dst = rd, .pos = j };
                     n_movs += 1;
-                    saw_arg_move = true;
                     continue;
                 }
 
@@ -7112,7 +7162,6 @@ fn fixCallArgMoves(code: []u8) bool {
                     if (rd == target) continue;
                 }
 
-                if (saw_arg_move) continue;
                 break;
             }
 
@@ -7122,7 +7171,6 @@ fn fixCallArgMoves(code: []u8) bool {
                 if (call_target) |target| {
                     if (rd == target) continue;
                 }
-                if (saw_arg_move) continue;
                 break;
             }
 
@@ -7143,15 +7191,16 @@ fn fixCallArgMoves(code: []u8) bool {
             }
         }
 
-        // Normalize to final destination mapping by symbolically executing the
-        // original move chain. This handles duplicate destinations correctly.
-        var state: [32]u5 = undefined;
-        for (0..state.len) |r| state[r] = @intCast(r);
+        // Build the intended parallel-copy mapping from the original mov window.
+        // Hoist lowers call-arg parallel copies into a linear mov chain, so
+        // each mov's source must be interpreted as the pre-window register state
+        // (not the register state after earlier movs in the window).
+        // If a destination appears multiple times, the last assignment wins.
+        var last_src: [8]u5 = undefined;
         var dst_assigned = [_]bool{false} ** 8;
         for (0..n_movs) |mi| {
             const dst = movs[mi].dst;
-            const src = movs[mi].src;
-            state[dst] = state[src];
+            last_src[dst] = movs[mi].src;
             dst_assigned[dst] = true;
         }
 
@@ -7161,7 +7210,7 @@ fn fixCallArgMoves(code: []u8) bool {
         for (0..8) |dst_idx| {
             if (!dst_assigned[dst_idx]) continue;
             const dst: u5 = @intCast(dst_idx);
-            const src = state[dst];
+            const src = last_src[dst];
             if (src == dst) continue;
             assigns[n_assigns] = .{ .dst = dst, .src = src };
             n_assigns += 1;
@@ -7320,7 +7369,7 @@ fn simulateMovesUntilCall(code: []const u8, regs: *[32]u64) void {
 
         if (insn & 0xFF800000 == 0xD2800000) { // MOVZ
             const rd: u5 = @truncate(insn & 0x1F);
-            const imm16: u64 = @truncate((insn >> 5) & 0xFFFF);
+            const imm16: u64 = @as(u64, (insn >> 5) & 0xFFFF);
             const hw: u6 = @truncate((insn >> 21) & 0x3);
             regs[rd] = imm16 << (@as(u6, hw) * 16);
             continue;
@@ -7328,7 +7377,7 @@ fn simulateMovesUntilCall(code: []const u8, regs: *[32]u64) void {
 
         if (insn & 0xFF800000 == 0xF2800000) { // MOVK
             const rd: u5 = @truncate(insn & 0x1F);
-            const imm16: u64 = @truncate((insn >> 5) & 0xFFFF);
+            const imm16: u64 = @as(u64, (insn >> 5) & 0xFFFF);
             const hw: u6 = @truncate((insn >> 21) & 0x3);
             const shift = @as(u6, hw) * 16;
             const mask: u64 = ~(@as(u64, 0xFFFF) << shift);
@@ -7405,6 +7454,57 @@ test "fixCallArgMoves uses target slot for 2-cycle" {
 
     try testing.expectEqual(old1, regs[0]);
     try testing.expectEqual(old0, regs[1]);
+}
+
+test "fixCallArgMoves preserves 3-cycle call-arg mapping" {
+    const words = [_]u32{
+        makeMovInsn(9, 22), // call target setup
+        makeMovInsn(0, 1),
+        makeMovInsn(1, 2),
+        makeMovInsn(2, 0),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    try testing.expect(fixCallArgMoves(&code));
+
+    var regs: [32]u64 = undefined;
+    for (0..regs.len) |idx| regs[idx] = @as(u64, 4000 + idx);
+    const old0 = regs[0];
+    const old1 = regs[1];
+    const old2 = regs[2];
+    simulateMovesUntilCall(&code, &regs);
+
+    try testing.expectEqual(old1, regs[0]);
+    try testing.expectEqual(old2, regs[1]);
+    try testing.expectEqual(old0, regs[2]);
+}
+
+test "fixCallArgMoves stops at non-target movz setup" {
+    const words = [_]u32{
+        makeMovInsn(0, 1), // pre-window setup that must stay out of arg-copy solve
+        0xD2800074, // MOVZ x20, #3
+        makeMovInsn(9, 22),
+        makeMovInsn(0, 19),
+        makeMovInsn(1, 20),
+        makeMovInsn(2, 0),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    try testing.expect(fixCallArgMoves(&code));
+
+    var regs: [32]u64 = undefined;
+    for (0..regs.len) |idx| regs[idx] = @as(u64, 5000 + idx);
+    const old1 = regs[1];
+    const old19 = regs[19];
+    simulateMovesUntilCall(&code, &regs);
+
+    try testing.expectEqual(old19, regs[0]);
+    try testing.expectEqual(@as(u64, 3), regs[1]);
+    try testing.expectEqual(old1, regs[2]);
 }
 
 test "containsHelperCalls excludes numeric ops under fixnum inline lowering" {
@@ -7945,6 +8045,42 @@ test "isRegDeadAfter keeps movz live in cset-elided graph" {
     for (insns) |insn| try appendInsn(&code, testing.allocator, insn);
 
     try testing.expect(!isRegDeadAfter(code.items, 10, 3));
+}
+
+test "isRegDeadAfter treats return register as live at ret" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    try appendInsn(&code, testing.allocator, 0xD2800AA0); // movz x0, #85
+    try appendInsn(&code, testing.allocator, 0xD65F03C0); // ret
+
+    try testing.expect(!isRegDeadAfter(code.items, 0, 0));
+}
+
+test "eliminateDeadMovz keeps movz live for return register" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    try appendInsn(&code, testing.allocator, 0xD2800AA0); // movz x0, #85
+    try appendInsn(&code, testing.allocator, 0xD65F03C0); // ret
+
+    eliminateDeadMovz(code.items);
+
+    try testing.expectEqual(@as(u32, 0xD2800AA0), readInsn(code.items, 0));
 }
 
 test "eliminateDeadMovz keeps movz live for store data operands" {

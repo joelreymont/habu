@@ -431,6 +431,11 @@ pub const Vm = struct {
 
     /// Current package (special variable)
     current_package: Value,
+    /// Compiler-internal root slots (used during compile/eval pipelines).
+    comp_retain: Value,
+    comp_retain_n: Value,
+    comp_root_stack: [MAX_COMPILE_ROOTS]Value,
+    comp_root_sp: usize,
 
     /// Chunk pool for closures (boxed chunk values)
     chunk_pool: []Value,
@@ -573,6 +578,7 @@ pub const Vm = struct {
     const MAX_PROGVS = 256;
     const MAX_HANDLERS = 64;
     const MAX_SAVED_CHUNKS = 1024;
+    const MAX_COMPILE_ROOTS = 4096;
     const SAFEPOINT_BATCH_OPS = 32;
     const SAFEPOINT_BATCH_BYTES = 64 * 1024;
 
@@ -878,6 +884,10 @@ pub const Vm = struct {
             .globals = undefined,
             .num_globals = 0,
             .current_package = Value.nil,
+            .comp_retain = Value.nil,
+            .comp_retain_n = Value.makeFixnum(0),
+            .comp_root_stack = [_]Value{Value.nil} ** MAX_COMPILE_ROOTS,
+            .comp_root_sp = 0,
             .chunk_pool = &[_]Value{},
             .chunk_pool_owner = null,
             .chunk_base = 0,
@@ -1727,7 +1737,7 @@ pub const Vm = struct {
             self.restart_sp +
             self.progv_sp +
             self.handler_sp * 2 +
-            7 +
+            9 +
             self.uninterned_values.count() +
             self.jit_literal_roots.items.len +
             self.fp +
@@ -1762,6 +1772,8 @@ pub const Vm = struct {
         self.gc_slots.appendAssumeCapacity(&self.pending_block_name);
         self.gc_slots.appendAssumeCapacity(&self.pending_block_value);
         self.gc_slots.appendAssumeCapacity(&self.current_package);
+        self.gc_slots.appendAssumeCapacity(&self.comp_retain);
+        self.gc_slots.appendAssumeCapacity(&self.comp_retain_n);
         var uninterned_it = self.uninterned_values.valueIterator();
         while (uninterned_it.next()) |slot| {
             self.gc_slots.appendAssumeCapacity(slot);
@@ -1803,7 +1815,7 @@ pub const Vm = struct {
         }
         self.gc_slots.appendAssumeCapacity(&current_chunk_root);
 
-        var ranges: [12]roots_mod.RootRange = undefined;
+        var ranges: [13]roots_mod.RootRange = undefined;
         var range_len: usize = 0;
         if (self.sp != 0) {
             ranges[range_len] = .{ .ptr = self.stack[0..self.sp].ptr, .len = self.sp };
@@ -1811,6 +1823,10 @@ pub const Vm = struct {
         }
         if (self.num_globals != 0) {
             ranges[range_len] = .{ .ptr = self.globals[0..self.num_globals].ptr, .len = self.num_globals };
+            range_len += 1;
+        }
+        if (self.comp_root_sp != 0) {
+            ranges[range_len] = .{ .ptr = self.comp_root_stack[0..self.comp_root_sp].ptr, .len = self.comp_root_sp };
             range_len += 1;
         }
         if (self.secondary_values_count != 0) {
@@ -1853,6 +1869,10 @@ pub const Vm = struct {
             }
             if (self.num_globals != 0) {
                 std.debug.print("TRACE gc-range idx={d} name=globals len={d}\n", .{ dbg_idx, self.num_globals });
+                dbg_idx += 1;
+            }
+            if (self.comp_root_sp != 0) {
+                std.debug.print("TRACE gc-range idx={d} name=comp_root_stack len={d}\n", .{ dbg_idx, self.comp_root_sp });
                 dbg_idx += 1;
             }
             if (self.secondary_values_count != 0) {

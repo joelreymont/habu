@@ -863,8 +863,8 @@ pub const GC = struct {
         if (marked_cards > 0) {
             try heap.appendMarkedCardRuns(self.allocator, &self.remembered_runs);
             self.runs_peak = self.remembered_runs.items.len;
-            rem_scanned +%= try self.scanRememberedObjects(heap, heap.tenured_objs.items, &alloc_ptr);
-            rem_scanned +%= try self.scanRememberedObjects(heap, heap.los_objs.items, &alloc_ptr);
+            rem_scanned +%= try self.scanRememberedObjects(heap, &heap.tenured_objs, &alloc_ptr);
+            rem_scanned +%= try self.scanRememberedObjects(heap, &heap.los_objs, &alloc_ptr);
         }
 
         try self.processMinorWork(heap, &alloc_ptr);
@@ -900,13 +900,17 @@ pub const GC = struct {
     fn scanRememberedObjects(
         self: *GC,
         heap: *heap_mod.Heap,
-        objs: anytype,
+        objs: *const std.ArrayList(heap_mod.Heap.TenuredObj),
         alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8,
     ) !usize {
         if (self.remembered_runs.items.len == 0) return 0;
         var scanned: usize = 0;
-        for (objs) |obj| {
-            if (!heap.hasMarkedCardInAddrRangeRuns(obj.addr, obj.addr + obj.size, self.remembered_runs.items)) continue;
+        const initial_len = objs.items.len;
+        var i: usize = 0;
+        while (i < initial_len) : (i += 1) {
+            const obj = objs.items[i];
+            const end_addr = std.math.add(usize, obj.addr, obj.size) catch @panic("corrupt remembered object range");
+            if (!heap.hasMarkedCardInAddrRangeRuns(obj.addr, end_addr, self.remembered_runs.items)) continue;
             self.debug_parent_addr = 0;
             self.debug_parent_tag = .cons;
             self.debug_grand_addr = 0;
@@ -3143,6 +3147,55 @@ test "minor gc records remembered-set telemetry" {
     try testing.expect(heap.stats.gc_remembered_runs > 0);
     try testing.expect(heap.stats.gc_remembered_scanned > 0);
     try testing.expect(heap.stats.gc_remembered_runs <= heap.stats.gc_remembered_marked_cards);
+}
+
+test "remembered scan survives tenured list growth" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .los_threshold = 1024 * 1024,
+            .promote_threshold = 16,
+            .promote_threshold_min = 16,
+            .promote_threshold_max = 16,
+        },
+    });
+    defer heap.deinit();
+
+    var owner_a = try heap.allocVector(64, 64);
+    var owner_b = try heap.allocVector(1, 1);
+    var owner_a_vec = owner_a.toPtr(objects.Vector);
+    for (0..64) |i| owner_a_vec.set(i, Value.nil);
+    owner_b.toPtr(objects.Vector).set(0, Value.nil);
+
+    var roots = [_]Value{ owner_a, owner_b };
+    _ = try heap.collectGarbage(&roots);
+    owner_a = roots[0];
+    owner_b = roots[1];
+    owner_a_vec = owner_a.toPtr(objects.Vector);
+    const tenured_before = heap.tenured_objs.items.len;
+
+    var i: usize = 0;
+    while (i < 64) : (i += 1) {
+        const child = try heap.allocCons(Value.makeFixnum(@intCast(i)), Value.nil);
+        owner_a_vec.set(i, child);
+        heap.writeBarrier(owner_a, child);
+    }
+
+    _ = try heap.collectGarbage(&roots);
+    owner_a = roots[0];
+    owner_b = roots[1];
+    owner_a_vec = owner_a.toPtr(objects.Vector);
+
+    try testing.expect(owner_b.isVector());
+    try testing.expect(heap.tenured_objs.items.len > tenured_before);
+    for (0..64) |idx| {
+        try testing.expect(owner_a_vec.get(idx).isCons());
+    }
 }
 
 test "los sweep reclaims unreachable large objects" {

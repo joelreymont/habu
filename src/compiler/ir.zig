@@ -106,9 +106,13 @@ pub const Ir = union(enum) {
         /// Original source (lambda ...) form, or nil if unavailable.
         /// Used by FUNCTION-LAMBDA-EXPRESSION.
         lambda_expr: Value = Value.nil,
+        /// Stable retained index for lambda_expr during compile->emit GC windows.
+        lambda_expr_idx: ?u32 = null,
         /// Function name symbol, or nil if anonymous.
         /// Used by FUNCTION-LAMBDA-EXPRESSION.
         name: Value = Value.nil,
+        /// Stable retained index for name during compile->emit GC windows.
+        name_idx: ?u32 = null,
         /// Per-lambda optimize speed (from declarations)
         speed: u8 = 1,
         /// Per-lambda optimize safety (from declarations)

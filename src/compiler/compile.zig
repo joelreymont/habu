@@ -64,7 +64,6 @@ fn restoreVmStatePreserveRelay(vm: *Vm, saved_state: vm_mod.State) void {
     }
 }
 const compile_expr_root_name = "__HABU_INTERNAL_COMPILE_EXPR_ROOT__";
-const compile_expr_stack_name = "__HABU_INTERNAL_COMPILE_EXPR_STACK__";
 
 /// Pre-interned special form symbols for identity comparison
 pub const Builtins = struct {
@@ -2009,6 +2008,8 @@ pub const Compiler = struct {
     optimize_current: OptimizeSettings,
     /// Diagnostic prints for compile errors
     diag: bool,
+    /// Top-level compile recursion depth.
+    compile_depth: u32 = 0,
 
     /// ADT variant definition
     pub const Variant = struct {
@@ -2079,6 +2080,7 @@ pub const Compiler = struct {
             .optimize_global = .{},
             .optimize_current = .{},
             .diag = false,
+            .compile_depth = 0,
         };
     }
 
@@ -2120,6 +2122,7 @@ pub const Compiler = struct {
             .optimize_global = .{},
             .optimize_current = .{},
             .diag = false,
+            .compile_depth = 0,
         };
     }
 
@@ -2158,6 +2161,7 @@ pub const Compiler = struct {
             .optimize_global = .{},
             .optimize_current = .{},
             .diag = false,
+            .compile_depth = 0,
         };
     }
 
@@ -2688,71 +2692,129 @@ pub const Compiler = struct {
         return idx;
     }
 
-    fn ensureCompileRootStackGlobal(self: *Compiler, vm: *Vm) !u16 {
-        if (self.globals.lookup(compile_expr_stack_name)) |idx| {
-            if (idx >= vm.globals.len) return error.InvalidConstant;
-            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
-            return idx;
-        }
-        const idx = try self.globals.define(compile_expr_stack_name);
-        if (idx >= vm.globals.len) return error.InvalidConstant;
-        if (idx >= vm.num_globals) vm.num_globals = idx + 1;
-        vm.globals[idx] = Value.nil;
-        return idx;
+    fn clearRetainedCompileValues(self: *Compiler, vm: *Vm) void {
+        _ = self;
+        vm.comp_retain = Value.nil;
+        vm.comp_retain_n = Value.makeFixnum(0);
     }
 
-    fn popCompileRoot(vm: *Vm, root_idx: u16, stack_idx: u16) void {
-        if (root_idx >= vm.globals.len or stack_idx >= vm.globals.len) return;
-        const stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
-        vm.globals[stack_idx] = stack;
-        if (!stack.isCons()) {
-            vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
-            vm.globals[stack_idx] = Value.nil;
+    fn retainCompileValue(self: *Compiler, vm: *Vm, value: Value) !u32 {
+        _ = self;
+        const count_val = vm.resolveForwardedValue(vm.comp_retain_n);
+        const count: u32 = blk: {
+            if (!count_val.isFixnum()) break :blk 0;
+            const raw = count_val.toFixnum();
+            if (raw < 0) break :blk 0;
+            break :blk @intCast(raw);
+        };
+        if (count == std.math.maxInt(u32)) return error.InvalidConstant;
+
+        const live_value = vm.resolveForwardedValue(value);
+        const saved = vm.resolveForwardedValue(vm.comp_retain);
+        vm.comp_retain = saved;
+        vm.comp_retain = try vm.allocCons(live_value, saved);
+        vm.comp_retain_n = Value.makeFixnum(@intCast(count + 1));
+        return count;
+    }
+
+    fn retainedCompileValueCount(self: *Compiler, vm: *Vm) u32 {
+        _ = self;
+        const count_val = vm.resolveForwardedValue(vm.comp_retain_n);
+        if (!count_val.isFixnum()) return 0;
+        const raw = count_val.toFixnum();
+        if (raw < 0) return 0;
+        return @intCast(raw);
+    }
+
+    fn lookupRetainedCompileValue(self: *Compiler, vm: *Vm, idx: u32) Value {
+        const total = self.retainedCompileValueCount(vm);
+        if (idx >= total) return Value.nil;
+        const steps = total - 1 - idx;
+
+        var cur = vm.resolveForwardedValue(vm.comp_retain);
+        var i: u32 = 0;
+        while (i < steps) : (i += 1) {
+            if (!cur.isCons()) return Value.nil;
+            cur = vm.resolveForwardedValue(cur.toPtr(Cons).cdr);
+        }
+        if (!cur.isCons()) return Value.nil;
+        const cell = cur.toPtr(Cons);
+        const live = vm.resolveForwardedValue(cell.car);
+        cell.car = live;
+        return live;
+    }
+
+    pub fn retainedValueLookup(ctx: *anyopaque, idx: u32) Value {
+        const self: *Compiler = @ptrCast(@alignCast(ctx));
+        const vm = self.vm orelse return Value.nil;
+        return self.lookupRetainedCompileValue(vm, idx);
+    }
+
+    fn setLambdaExpr(self: *Compiler, lam_ir: *Ir, lambda_expr: Value) !void {
+        lam_ir.lambda.lambda_expr = self.resolveForwardedValue(lambda_expr);
+        lam_ir.lambda.lambda_expr_idx = null;
+        if (self.vm) |vm| {
+            lam_ir.lambda.lambda_expr_idx = try self.retainCompileValue(vm, lam_ir.lambda.lambda_expr);
+        }
+    }
+
+    fn setLambdaName(self: *Compiler, lam_ir: *Ir, name: Value) !void {
+        lam_ir.lambda.name = self.resolveForwardedValue(name);
+        lam_ir.lambda.name_idx = null;
+        if (self.vm) |vm| {
+            lam_ir.lambda.name_idx = try self.retainCompileValue(vm, lam_ir.lambda.name);
+        }
+    }
+
+    fn popCompileRoot(vm: *Vm, root_idx: u16) void {
+        if (root_idx >= vm.globals.len) return;
+        if (vm.comp_root_sp == 0) {
+            vm.globals[root_idx] = Value.nil;
             return;
         }
-        if (!vm.heap.containsAddrForDebug(stack.toPtrAddr())) {
-            vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
-            vm.globals[stack_idx] = Value.nil;
-            return;
-        }
-        const cell = stack.toPtr(Cons);
-        vm.globals[root_idx] = vm.resolveForwardedValue(cell.car);
-        vm.globals[stack_idx] = vm.resolveForwardedValue(cell.cdr);
+        vm.comp_root_sp -= 1;
+        const saved = vm.resolveForwardedValue(vm.comp_root_stack[vm.comp_root_sp]);
+        vm.comp_root_stack[vm.comp_root_sp] = Value.nil;
+        vm.globals[root_idx] = saved;
     }
 
     const CompileRootToken = struct {
         root_idx: u16,
-        stack_idx: u16,
     };
 
     fn pushCompileRoot(self: *Compiler, vm: *Vm, value: Value) !CompileRootToken {
         const root_idx = try self.ensureCompileRootGlobal(vm);
-        const stack_idx = try self.ensureCompileRootStackGlobal(vm);
         const saved_root = vm.resolveForwardedValue(vm.globals[root_idx]);
-        const saved_stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
         const live_value = vm.resolveForwardedValue(value);
 
+        if (vm.comp_root_sp >= vm.comp_root_stack.len) return error.StackOverflow;
+        vm.comp_root_stack[vm.comp_root_sp] = saved_root;
+        vm.comp_root_sp += 1;
+        errdefer vm.comp_root_sp -= 1;
+
         vm.globals[root_idx] = live_value;
-        errdefer {
-            vm.globals[root_idx] = saved_root;
-            vm.globals[stack_idx] = saved_stack;
-        }
-        vm.globals[stack_idx] = try vm.allocCons(saved_root, saved_stack);
-        return .{ .root_idx = root_idx, .stack_idx = stack_idx };
+        return .{ .root_idx = root_idx };
     }
 
     pub fn compile(self: *Compiler, expr: Value, env: *const Env) anyerror!*Ir {
+        const is_top_level = self.compile_depth == 0;
+        self.compile_depth += 1;
+        defer self.compile_depth -= 1;
+
         var rooted_expr = expr;
         var root_tok: ?CompileRootToken = null;
         var root_vm: ?*Vm = null;
         if (self.vm) |vm| {
+            if (is_top_level) {
+                self.clearRetainedCompileValues(vm);
+            }
             const tok = try self.pushCompileRoot(vm, rooted_expr);
             root_tok = tok;
             root_vm = vm;
             rooted_expr = vm.globals[tok.root_idx];
         }
         defer if (root_tok) |tok| {
-            popCompileRoot(root_vm.?, tok.root_idx, tok.stack_idx);
+            popCompileRoot(root_vm.?, tok.root_idx);
         };
 
         const result = self.compileWithTail(rooted_expr, env, false);
@@ -2783,7 +2845,7 @@ pub const Compiler = struct {
             rooted_expr = vm.globals[tok.root_idx];
         }
         defer if (root_tok) |tok| {
-            popCompileRoot(root_vm.?, tok.root_idx, tok.stack_idx);
+            popCompileRoot(root_vm.?, tok.root_idx);
         };
 
         try self.refreshBuiltins();
@@ -3786,6 +3848,7 @@ pub const Compiler = struct {
         var emitter = Emitter.initWithHeap(arena_alloc, heap);
         emitter.speed = self.optimize_current.speed;
         emitter.safety = self.optimize_current.safety;
+        emitter.setRetainedValueLookup(Compiler.retainedValueLookup, &macro_compiler);
         defer emitter.deinit();
         try emitter.emit(lambda_ir);
 
@@ -4155,7 +4218,7 @@ pub const Compiler = struct {
             lambda_args = vm.globals[tok.root_idx];
         }
         defer if (lambda_args_tok) |tok| {
-            popCompileRoot(lambda_args_vm.?, tok.root_idx, tok.stack_idx);
+            popCompileRoot(lambda_args_vm.?, tok.root_idx);
         };
 
         const cons = lambda_args.toPtr(Cons);
@@ -4613,7 +4676,9 @@ pub const Compiler = struct {
             }
             break :blk self.resolveForwardedValue(lambda_args);
         } else self.resolveForwardedValue(lambda_args);
-        lam_ir.lambda.lambda_expr = try heap.allocCons(b.lambda, live_lambda_args);
+        const lambda_sym = self.resolveForwardedValue(b.lambda);
+        const lambda_expr = try heap.allocCons(lambda_sym, live_lambda_args);
+        try self.setLambdaExpr(lam_ir, lambda_expr);
         return lam_ir;
     }
 
@@ -5781,10 +5846,11 @@ pub const Compiler = struct {
             if (!f.cdr.isCons()) return error.InvalidLet;
             const lambda_ir = try self.compileLambda(f.cdr, env);
             if (lambda_ir.* == .lambda) {
-                lambda_ir.lambda.name = if (self.heap) |heap|
+                const lambda_name = if (self.heap) |heap|
                     try heap.intern(name)
                 else
                     self.resolveForwardedValue(f.car);
+                try self.setLambdaName(lambda_ir, lambda_name);
             }
 
             bindings[filled] = .{ .name = name, .value = lambda_ir, .index = index };
@@ -5892,10 +5958,11 @@ pub const Compiler = struct {
         for (entries[0..filled], 0..) |entry, i| {
             const lambda_ir = try self.compileLambda(entry.lambda_args, &labels_env);
             if (lambda_ir.* == .lambda) {
-                lambda_ir.lambda.name = if (self.heap) |heap|
+                const lambda_name = if (self.heap) |heap|
                     try heap.intern(entry.name)
                 else
                     self.resolveForwardedValue(entry.sym_val);
+                try self.setLambdaName(lambda_ir, lambda_name);
             }
 
             // Use the stable copied name captured before any GC-capable work.
@@ -6273,7 +6340,7 @@ pub const Compiler = struct {
             rest = vm.globals[tok.root_idx];
         }
         defer if (rest_tok) |tok| {
-            popCompileRoot(rest_vm.?, tok.root_idx, tok.stack_idx);
+            popCompileRoot(rest_vm.?, tok.root_idx);
         };
 
         const fn_ir = try self.compile(fn_expr, env);
@@ -6364,7 +6431,7 @@ pub const Compiler = struct {
             rest = vm.globals[tok.root_idx];
         }
         defer if (rest_tok) |tok| {
-            popCompileRoot(rest_vm.?, tok.root_idx, tok.stack_idx);
+            popCompileRoot(rest_vm.?, tok.root_idx);
         };
 
         var form_idx: usize = 0;
@@ -7334,7 +7401,7 @@ pub const Compiler = struct {
             arg_list = vm.globals[tok.root_idx];
         }
         defer if (arg_tok) |tok| {
-            popCompileRoot(arg_vm.?, tok.root_idx, tok.stack_idx);
+            popCompileRoot(arg_vm.?, tok.root_idx);
         };
 
         var i: usize = 1;
@@ -8463,7 +8530,7 @@ pub const Compiler = struct {
             rest = vm.globals[tok.root_idx];
         }
         defer if (rest_tok) |tok| {
-            popCompileRoot(rest_vm.?, tok.root_idx, tok.stack_idx);
+            popCompileRoot(rest_vm.?, tok.root_idx);
         };
 
         var tags = std.ArrayList(Value){};
@@ -8711,10 +8778,11 @@ pub const Compiler = struct {
         // std.debug.print("  Compiling value for define: {s}\n", .{name});
         const value_ir = try self.compile(cons2.car, env);
         if (value_ir.* == .lambda) {
-            value_ir.lambda.name = if (self.heap) |heap|
+            const lambda_name = if (self.heap) |heap|
                 try heap.intern(local_name)
             else
                 self.resolveForwardedValue(cons1.car);
+            try self.setLambdaName(value_ir, lambda_name);
         }
 
         return try self.builder.define(name, idx, value_ir);
@@ -8852,7 +8920,7 @@ pub const Compiler = struct {
             if (name_val.isSymbol()) {
                 lambda_ir.lambda.body = try self.builder.block(name_val, lambda_ir.lambda.body);
             }
-            lambda_ir.lambda.name = name_val;
+            try self.setLambdaName(lambda_ir, name_val);
         }
 
         // A plain function definition overrides any previously tracked generic
@@ -9694,6 +9762,7 @@ pub const Compiler = struct {
         var emitter = Emitter.initWithHeap(arena_alloc, heap);
         emitter.speed = self.optimize_current.speed;
         emitter.safety = self.optimize_current.safety;
+        emitter.setRetainedValueLookup(Compiler.retainedValueLookup, &eval_compiler);
         defer emitter.deinit();
         try emitter.emit(thunk_ir);
 
@@ -14598,7 +14667,7 @@ pub const Compiler = struct {
             list = vm.globals[tok.root_idx];
         }
         defer if (list_tok) |tok| {
-            popCompileRoot(list_vm.?, tok.root_idx, tok.stack_idx);
+            popCompileRoot(list_vm.?, tok.root_idx);
         };
 
         var items = std.ArrayList(*const Ir){};
@@ -15981,7 +16050,7 @@ pub const Compiler = struct {
             rest = vm.globals[tok.root_idx];
         }
         defer if (rest_tok) |tok| {
-            popCompileRoot(rest_vm.?, tok.root_idx, tok.stack_idx);
+            popCompileRoot(rest_vm.?, tok.root_idx);
         };
 
         if (rest_tok) |tok| {
@@ -17831,7 +17900,7 @@ pub const Compiler = struct {
             cur = vm.globals[tok.root_idx];
         }
         defer if (cur_tok) |tok| {
-            popCompileRoot(cur_vm.?, tok.root_idx, tok.stack_idx);
+            popCompileRoot(cur_vm.?, tok.root_idx);
         };
 
         var idx: usize = 0;
@@ -18284,6 +18353,68 @@ test "compile or type assertions" {
     const ir_the = try compiler.compile(the_expr, &env_the);
     defer arena_alloc.destroy(ir_the);
     try testing.expect(ir_the.* == .assert_or);
+}
+
+test "lambda_expr survives GC between compile and emit" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var parser = try Parser.init(allocator, &heap, "(lambda (fpexpm1) fpexpm1)", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const ir_node = try compiler.compile(expr, &env);
+
+    // Exercise repeated collections before emission; lambda_expr must stay valid.
+    var gc_round: usize = 0;
+    while (gc_round < 3) : (gc_round += 1) {
+        var i: usize = 0;
+        while (i < 256) : (i += 1) {
+            _ = try vm.allocCons(Value.makeFixnum(@intCast(i)), Value.nil);
+        }
+        _ = try vm.collectGarbage();
+    }
+
+    var emitter = Emitter.initWithHeap(allocator, &heap);
+    emitter.setRetainedValueLookup(Compiler.retainedValueLookup, &compiler);
+    defer emitter.deinit();
+    try emitter.emit(ir_node);
+    _ = try emitter.finalize();
+
+    const child_chunks = try emitter.getChildChunks();
+    defer allocator.free(child_chunks);
+    try testing.expect(child_chunks.len > 0);
+
+    const lambda_chunk = child_chunks[0].toPtr(Chunk);
+    const lambda_expr = lambda_chunk.lambda_expr;
+    try testing.expect(lambda_expr.isCons());
+
+    const lambda_cons = lambda_expr.toPtr(Cons);
+    try testing.expect(lambda_cons.car.isSymbol());
+    try testing.expectEqualStrings("LAMBDA", lambda_cons.car.toPtr(Symbol).getName());
+    try testing.expect(lambda_cons.cdr.isCons());
+
+    const params = lambda_cons.cdr.toPtr(Cons).car;
+    try testing.expect(params.isCons());
+    const first_param = params.toPtr(Cons).car;
+    try testing.expect(first_param.isSymbol());
+    try testing.expectEqualStrings("FPEXPM1", first_param.toPtr(Symbol).getName());
 }
 
 test "env lookup" {

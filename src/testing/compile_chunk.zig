@@ -68,6 +68,7 @@ pub fn compileChunk(
     var emitter = Emitter.initWithHeap(allocator, heap);
     emitter.speed = comp.optimize_current.speed;
     emitter.safety = comp.optimize_current.safety;
+    emitter.setRetainedValueLookup(Compiler.retainedValueLookup, comp);
     defer emitter.deinit();
     try emitter.emit(specialized);
     const chunk = try emitter.finalize();
