@@ -30,6 +30,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding focused backend unit tests for helper-call classification (`src/jit/backend.zig:6486`, `src/jit/backend.zig:6502`) locked the new lowering-aware behavior so future refactors do not silently reintroduce conservative cross-call misclassification.
 - Rooting `global_ref` symbols during JIT literal-root collection (`src/interp/repl.zig:2726`) and lowering generic-call designators from those roots (`src/jit/backend.zig:2478`) fixed missing call-target patterns where non-primitive/non-known global calls previously fell through with invalid designators.
 - Locking the behavior with dedicated backend regressions (`src/jit/backend.zig:6533`, `src/jit/backend.zig:6559`) catches both required-root failure mode and rooted designator success path in generic call lowering.
+- Extending JIT helper lowering for data-path IR (`src/jit/backend.zig:603`, `src/jit/backend.zig:822`, `src/jit/backend.zig:1000`, `src/jit/backend.zig:1063`) removed major unsupported coverage gaps for vector/hash/string ops plus generic N-subscript `arr_ref`/`arr_set` and dynamic/static array construction.
+- Wiring the same data tags through translator support gates (`src/jit/backend.zig:1960`, `src/jit/backend.zig:2083`, `src/jit/backend.zig:4763`) prevented false JIT rejection/classification drift where helpers existed but `canTranslate`/`firstUnsupportedTag`/`containsHelperCalls` lagged behind lowering.
+- Adding backend regressions for the new generic data paths (`src/jit/backend.zig:7219`, `src/jit/backend.zig:7263`, `src/jit/backend.zig:7328`, `src/jit/backend.zig:7392`) gives direct red/green signal for vec/hash/multidim-array helper lowering.
 
 ### Did Not Work
 - Relocating keyword pairs before positional arguments in tail-call `&key` frame reuse (`src/interp/vm.zig` pre-fix `doCall` tail key path) still clobbered positional source slots when ranges overlapped, producing partially fixed but still wrong bindings (`lst` became `:TEST`); positional arguments must be copied first.
@@ -43,6 +46,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Using `when` in low-level VM jump tests without loading stdlib macros (`src/tests/integration.zig` pre-fix `mv: values through conditional jumps`) can fail as `UnboundSymbol` and hide the real jump/multiple-value behavior being tested.
 - Relying on a single-run `bench-comp` number to validate sub-millisecond loop improvements is noisy; confirm with `HABU_TRACE_JIT_FLAGS` classification output plus repeated runs before concluding a regression or win.
 - Leaving `.global_ref` call designators on the legacy `nil` translation path in JIT (`src/jit/backend.zig` pre-fix `translateGenericCall`) silently masks call-target lowering gaps; generic calls must load rooted symbol designators or fail fast.
+- Full Habu test validation is currently blocked when `../hoist` has syntax-incomplete edits (`/Users/joel/Work/hoist/src/context.zig:25`), so dot closure must record external-blocker status and use partial compile/test signal until hoist builds again.
 
 ## Session Notes (2026-02-20)
 

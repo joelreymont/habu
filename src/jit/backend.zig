@@ -586,6 +586,8 @@ fn jitHashSet(table_raw: u64, key_raw: u64, value_raw: u64) callconv(.c) u64 {
                 continue;
             },
         };
+        jitWriteBarrier(table_raw, key_raw);
+        jitWriteBarrier(table_raw, value_raw);
         return value_raw;
     }
 }
@@ -594,7 +596,131 @@ fn jitHashCount(table_raw: u64) callconv(.c) u64 {
     const table = Value{ .raw = table_raw };
     if (!table.isHashTable()) return Value.nil.raw;
     const ht = table.toPtr(runtime.HashTable);
+    if (ht.count > std.math.maxInt(i64)) return Value.nil.raw;
     return Value.makeFixnum(@intCast(ht.count)).raw;
+}
+
+fn jitHashRem(table_raw: u64, key_raw: u64) callconv(.c) u64 {
+    const table = Value{ .raw = table_raw };
+    if (!table.isHashTable()) return Value.nil.raw;
+    const ht = table.toPtr(runtime.HashTable);
+    const key = Value{ .raw = key_raw };
+    return if (ht.remove(key)) Value.t.raw else Value.nil.raw;
+}
+
+fn jitHashCapacity(table_raw: u64) callconv(.c) u64 {
+    const table = Value{ .raw = table_raw };
+    if (!table.isHashTable()) return Value.nil.raw;
+    const ht = table.toPtr(runtime.HashTable);
+    if (ht.capacity > std.math.maxInt(i64)) return Value.nil.raw;
+    return Value.makeFixnum(@intCast(ht.capacity)).raw;
+}
+
+fn jitHashClear(table_raw: u64) callconv(.c) u64 {
+    const table = Value{ .raw = table_raw };
+    if (!table.isHashTable()) return Value.nil.raw;
+    const ht = table.toPtr(runtime.HashTable);
+    ht.clear();
+    return table_raw;
+}
+
+fn jitHashTest(table_raw: u64) callconv(.c) u64 {
+    const table = Value{ .raw = table_raw };
+    if (!table.isHashTable()) return Value.nil.raw;
+    const ht = table.toPtr(runtime.HashTable);
+    const test_name = switch (ht.test_type) {
+        .eq => "eq",
+        .eql => "eql",
+        .equal => "equal",
+        .equalp => "equalp",
+    };
+    const heap = g_heap orelse return Value.nil.raw;
+    const sym = heap.intern(test_name) catch return Value.nil.raw;
+    return sym.raw;
+}
+
+fn jitHashKeys(table_raw: u64) callconv(.c) u64 {
+    const table = Value{ .raw = table_raw };
+    if (!table.isHashTable()) return Value.nil.raw;
+    const ht = table.toPtr(runtime.HashTable);
+    const heap = g_heap orelse return Value.nil.raw;
+
+    var result = Value.nil;
+    var i: u64 = 0;
+    while (i < ht.capacity) : (i += 1) {
+        const key = ht.getKey(@intCast(i));
+        if (runtime.HashTable.isAvailableKey(key)) continue;
+        result = heap.allocCons(key, result) catch return Value.nil.raw;
+    }
+    return result.raw;
+}
+
+fn jitHashAlist(table_raw: u64) callconv(.c) u64 {
+    const table = Value{ .raw = table_raw };
+    if (!table.isHashTable()) return Value.nil.raw;
+    const ht = table.toPtr(runtime.HashTable);
+    const heap = g_heap orelse return Value.nil.raw;
+
+    var result = Value.nil;
+    var i: u64 = 0;
+    while (i < ht.capacity) : (i += 1) {
+        const key = ht.getKey(@intCast(i));
+        if (runtime.HashTable.isAvailableKey(key)) continue;
+        const val = ht.getValue(@intCast(i));
+        const pair = heap.allocCons(key, val) catch return Value.nil.raw;
+        result = heap.allocCons(pair, result) catch return Value.nil.raw;
+    }
+    return result.raw;
+}
+
+fn jitDecodeFixnumIndex(raw: u64) ?usize {
+    const idx_val = Value{ .raw = raw };
+    if (!idx_val.isFixnum()) return null;
+    const idx_signed = idx_val.toFixnum();
+    if (idx_signed < 0) return null;
+    const idx_u64: u64 = @intCast(idx_signed);
+    if (idx_u64 > std.math.maxInt(usize)) return null;
+    return @intCast(idx_u64);
+}
+
+fn jitMakeVector(size_raw: u64, init_raw: u64) callconv(.c) u64 {
+    const size = jitDecodeFixnumIndex(size_raw) orelse return Value.nil.raw;
+    const heap = g_heap orelse return Value.nil.raw;
+    const vec = heap.allocVector(size, size) catch return Value.nil.raw;
+    const init_val = Value{ .raw = init_raw };
+    const vec_obj = vec.toPtr(runtime.Vector);
+    for (0..size) |i| {
+        vec_obj.data[i] = init_val;
+    }
+    return vec.raw;
+}
+
+fn jitVecRef(vec_raw: u64, idx_raw: u64) callconv(.c) u64 {
+    const vec_val = Value{ .raw = vec_raw };
+    const idx = jitDecodeFixnumIndex(idx_raw) orelse return Value.nil.raw;
+    if (!vec_val.isVector()) return Value.nil.raw;
+    const vec = vec_val.toPtr(runtime.Vector);
+    if (idx >= vec.length) return Value.nil.raw;
+    return vec.get(idx).raw;
+}
+
+fn jitVecSet(vec_raw: u64, idx_raw: u64, value_raw: u64) callconv(.c) u64 {
+    const vec_val = Value{ .raw = vec_raw };
+    const idx = jitDecodeFixnumIndex(idx_raw) orelse return Value.nil.raw;
+    if (!vec_val.isVector()) return Value.nil.raw;
+    const vec = vec_val.toPtr(runtime.Vector);
+    if (idx >= vec.length) return Value.nil.raw;
+    vec.set(idx, Value{ .raw = value_raw });
+    jitWriteBarrier(vec_raw, value_raw);
+    return value_raw;
+}
+
+fn jitVecLen(vec_raw: u64) callconv(.c) u64 {
+    const vec_val = Value{ .raw = vec_raw };
+    if (!vec_val.isVector()) return Value.nil.raw;
+    const vec = vec_val.toPtr(runtime.Vector);
+    if (vec.length > std.math.maxInt(i64)) return Value.nil.raw;
+    return Value.makeFixnum(@intCast(vec.length)).raw;
 }
 
 fn jitMakeString(len_raw: u64, char_raw: u64) callconv(.c) u64 {
@@ -691,6 +817,348 @@ fn jitAref1(arr_raw: u64, idx_raw: u64) callconv(.c) u64 {
         },
         else => Value.nil.raw,
     };
+}
+
+fn jitArefN(
+    arr_raw: u64,
+    count_raw: u64,
+    s0_raw: u64,
+    s1_raw: u64,
+    s2_raw: u64,
+    s3_raw: u64,
+    s4_raw: u64,
+    s5_raw: u64,
+    s6_raw: u64,
+    s7_raw: u64,
+) callconv(.c) u64 {
+    const count_val = Value{ .raw = count_raw };
+    if (!count_val.isFixnum()) return Value.nil.raw;
+    const count_signed = count_val.toFixnum();
+    if (count_signed < 0 or count_signed > 8) return Value.nil.raw;
+    const sub_count: usize = @intCast(count_signed);
+
+    const raw_subs = [_]u64{ s0_raw, s1_raw, s2_raw, s3_raw, s4_raw, s5_raw, s6_raw, s7_raw };
+    var subs: [8]u64 = [_]u64{0} ** 8;
+    var i: usize = 0;
+    while (i < sub_count) : (i += 1) {
+        const idx = jitDecodeFixnumIndex(raw_subs[i]) orelse return Value.nil.raw;
+        subs[i] = @intCast(idx);
+    }
+
+    const arr_val = Value{ .raw = arr_raw };
+    return switch (arr_val.typeKind()) {
+        .vector => blk: {
+            if (sub_count != 1) break :blk Value.nil.raw;
+            const idx = subs[0];
+            const vec = arr_val.toPtr(runtime.Vector);
+            if (idx >= vec.length) break :blk Value.nil.raw;
+            break :blk vec.get(@intCast(idx)).raw;
+        },
+        .string => blk: {
+            if (sub_count != 1) break :blk Value.nil.raw;
+            const idx = subs[0];
+            const str = arr_val.toPtr(runtime.String);
+            if (idx >= str.length) break :blk Value.nil.raw;
+            break :blk Value.makeCharacter(@intCast(str.bytes()[@intCast(idx)])).raw;
+        },
+        .string32 => blk: {
+            if (sub_count != 1) break :blk Value.nil.raw;
+            const idx = subs[0];
+            const str32 = arr_val.toPtr(runtime.String32);
+            if (idx >= str32.length) break :blk Value.nil.raw;
+            const cp = str32.codepoints()[@intCast(idx)];
+            if (cp > std.math.maxInt(u21)) break :blk Value.nil.raw;
+            break :blk Value.makeCharacter(@intCast(cp)).raw;
+        },
+        .array => blk: {
+            const arr = arr_val.toPtr(runtime.Array);
+            if (arr.rank != sub_count) break :blk Value.nil.raw;
+            var index: u64 = 0;
+            for (0..sub_count) |k| {
+                if (subs[k] >= arr.dimensions[k]) break :blk Value.nil.raw;
+                var stride: u64 = 1;
+                for (k + 1..sub_count) |m| {
+                    stride = std.math.mul(u64, stride, arr.dimensions[m]) catch return Value.nil.raw;
+                }
+                const term = std.math.mul(u64, subs[k], stride) catch return Value.nil.raw;
+                index = std.math.add(u64, index, term) catch return Value.nil.raw;
+            }
+            if (index >= arr.total_size) break :blk Value.nil.raw;
+            const data: [*]Value = @ptrFromInt(arr.data_ptr);
+            break :blk data[@intCast(index)].raw;
+        },
+        else => Value.nil.raw,
+    };
+}
+
+fn jitAsetN(
+    arr_raw: u64,
+    count_raw: u64,
+    s0_raw: u64,
+    s1_raw: u64,
+    s2_raw: u64,
+    s3_raw: u64,
+    s4_raw: u64,
+    s5_raw: u64,
+    s6_raw: u64,
+    s7_raw: u64,
+    value_raw: u64,
+) callconv(.c) u64 {
+    const count_val = Value{ .raw = count_raw };
+    if (!count_val.isFixnum()) return Value.nil.raw;
+    const count_signed = count_val.toFixnum();
+    if (count_signed < 0 or count_signed > 8) return Value.nil.raw;
+    const sub_count: usize = @intCast(count_signed);
+
+    const raw_subs = [_]u64{ s0_raw, s1_raw, s2_raw, s3_raw, s4_raw, s5_raw, s6_raw, s7_raw };
+    var subs: [8]u64 = [_]u64{0} ** 8;
+    var i: usize = 0;
+    while (i < sub_count) : (i += 1) {
+        const idx = jitDecodeFixnumIndex(raw_subs[i]) orelse return Value.nil.raw;
+        subs[i] = @intCast(idx);
+    }
+
+    const new_val = Value{ .raw = value_raw };
+    const arr_val = Value{ .raw = arr_raw };
+    switch (arr_val.typeKind()) {
+        .vector => {
+            if (sub_count != 1) return Value.nil.raw;
+            const idx = subs[0];
+            const vec = arr_val.toPtr(runtime.Vector);
+            if (idx >= vec.length) return Value.nil.raw;
+            vec.set(@intCast(idx), new_val);
+            jitWriteBarrier(arr_raw, value_raw);
+            return value_raw;
+        },
+        .string => {
+            if (sub_count != 1 or !new_val.isCharacter()) return Value.nil.raw;
+            const idx = subs[0];
+            const str = arr_val.toPtr(runtime.String);
+            if (idx >= str.length) return Value.nil.raw;
+            const cp = new_val.toCharacter();
+            if (cp > 255) return Value.nil.raw;
+            str.mutableBytes()[@intCast(idx)] = @intCast(cp);
+            return value_raw;
+        },
+        .string32 => {
+            if (sub_count != 1 or !new_val.isCharacter()) return Value.nil.raw;
+            const idx = subs[0];
+            const str32 = arr_val.toPtr(runtime.String32);
+            if (idx >= str32.length) return Value.nil.raw;
+            str32.mutableCodepoints()[@intCast(idx)] = new_val.toCharacter();
+            return value_raw;
+        },
+        .array => {
+            const arr = arr_val.toPtr(runtime.Array);
+            if (arr.rank != sub_count) return Value.nil.raw;
+            var index: u64 = 0;
+            for (0..sub_count) |k| {
+                if (subs[k] >= arr.dimensions[k]) return Value.nil.raw;
+                var stride: u64 = 1;
+                for (k + 1..sub_count) |m| {
+                    stride = std.math.mul(u64, stride, arr.dimensions[m]) catch return Value.nil.raw;
+                }
+                const term = std.math.mul(u64, subs[k], stride) catch return Value.nil.raw;
+                index = std.math.add(u64, index, term) catch return Value.nil.raw;
+            }
+            if (index >= arr.total_size) return Value.nil.raw;
+            const data: [*]Value = @ptrFromInt(arr.data_ptr);
+            data[@intCast(index)] = new_val;
+            jitWriteBarrier(arr_raw, value_raw);
+            return value_raw;
+        },
+        else => return Value.nil.raw,
+    }
+}
+
+fn jitAllocArrayFromDims(heap: *Heap, rank: u8, dims: [8]u64, init_val: Value) error{ OutOfMemory, Overflow }!u64 {
+    var total_size: u64 = 1;
+    for (0..rank) |i| {
+        total_size = try std.math.mul(u64, total_size, dims[i]);
+    }
+    if (total_size > std.math.maxInt(usize)) return error.Overflow;
+    const elem_count: usize = @intCast(total_size);
+    const bytes_data = try std.math.mul(usize, elem_count, @sizeOf(Value));
+    const total_bytes = try std.math.add(usize, @sizeOf(runtime.Array), bytes_data);
+    const ptr = try heap.allocRaw(total_bytes);
+    const arr: *runtime.Array = @ptrCast(@alignCast(ptr));
+    const data_ptr: [*]Value = @ptrCast(@alignCast(ptr + @sizeOf(runtime.Array)));
+    arr.* = .{
+        .kind = .array,
+        .rank = rank,
+        .dimensions = dims,
+        .total_size = total_size,
+        .data_ptr = @intFromPtr(data_ptr),
+    };
+
+    for (0..elem_count) |idx| {
+        data_ptr[idx] = init_val;
+    }
+    return Value.makeArray(arr).raw;
+}
+
+fn jitMakeArrayStatic(
+    rank_raw: u64,
+    d0_raw: u64,
+    d1_raw: u64,
+    d2_raw: u64,
+    d3_raw: u64,
+    d4_raw: u64,
+    d5_raw: u64,
+    d6_raw: u64,
+    d7_raw: u64,
+    init_raw: u64,
+) callconv(.c) u64 {
+    const rank_val = Value{ .raw = rank_raw };
+    if (!rank_val.isFixnum()) return Value.nil.raw;
+    const rank_signed = rank_val.toFixnum();
+    if (rank_signed < 0 or rank_signed > 8) return Value.nil.raw;
+    const rank: usize = @intCast(rank_signed);
+    const raw_dims = [_]u64{ d0_raw, d1_raw, d2_raw, d3_raw, d4_raw, d5_raw, d6_raw, d7_raw };
+    var dims: [8]u64 = [_]u64{0} ** 8;
+    for (0..rank) |i| {
+        const dim_val = Value{ .raw = raw_dims[i] };
+        if (!dim_val.isFixnum()) return Value.nil.raw;
+        const dim_signed = dim_val.toFixnum();
+        if (dim_signed < 0) return Value.nil.raw;
+        dims[i] = @intCast(dim_signed);
+    }
+    const heap = g_heap orelse return Value.nil.raw;
+    return jitAllocArrayFromDims(heap, @intCast(rank), dims, Value{ .raw = init_raw }) catch return Value.nil.raw;
+}
+
+fn jitMakeArrayDynamic(dims_raw: u64, init_raw: u64) callconv(.c) u64 {
+    const dims_val = Value{ .raw = dims_raw };
+    var dims: [8]u64 = [_]u64{0} ** 8;
+    var rank: u8 = 0;
+    switch (dims_val.typeKind()) {
+        .fixnum => {
+            const dim_signed = dims_val.toFixnum();
+            if (dim_signed < 0) return Value.nil.raw;
+            dims[0] = @intCast(dim_signed);
+            rank = 1;
+        },
+        .nil, .cons => {
+            var cur = dims_val;
+            var idx: usize = 0;
+            while (cur.isCons()) {
+                if (idx >= dims.len) return Value.nil.raw;
+                const pair = cur.toPtr(runtime.Cons);
+                if (!pair.car.isFixnum()) return Value.nil.raw;
+                const dim_signed = pair.car.toFixnum();
+                if (dim_signed < 0) return Value.nil.raw;
+                dims[idx] = @intCast(dim_signed);
+                idx += 1;
+                cur = pair.cdr;
+            }
+            if (!cur.isNil()) return Value.nil.raw;
+            rank = @intCast(idx);
+        },
+        else => return Value.nil.raw,
+    }
+    const heap = g_heap orelse return Value.nil.raw;
+    return jitAllocArrayFromDims(heap, rank, dims, Value{ .raw = init_raw }) catch return Value.nil.raw;
+}
+
+fn jitStrRef(str_raw: u64, idx_raw: u64) callconv(.c) u64 {
+    const str_val = Value{ .raw = str_raw };
+    const idx = jitDecodeFixnumIndex(idx_raw) orelse return Value.nil.raw;
+    return switch (str_val.typeKind()) {
+        .string => blk: {
+            const str = str_val.toPtr(runtime.String);
+            if (idx >= str.length) break :blk Value.nil.raw;
+            break :blk Value.makeCharacter(@intCast(str.bytes()[idx])).raw;
+        },
+        .string32 => blk: {
+            const str32 = str_val.toPtr(runtime.String32);
+            if (idx >= str32.length) break :blk Value.nil.raw;
+            const cp = str32.codepoints()[idx];
+            if (cp > std.math.maxInt(u21)) break :blk Value.nil.raw;
+            break :blk Value.makeCharacter(@intCast(cp)).raw;
+        },
+        else => Value.nil.raw,
+    };
+}
+
+fn jitStrLen(str_raw: u64) callconv(.c) u64 {
+    const str_val = Value{ .raw = str_raw };
+    return switch (str_val.typeKind()) {
+        .string => blk: {
+            const str = str_val.toPtr(runtime.String);
+            if (str.length > std.math.maxInt(i64)) break :blk Value.nil.raw;
+            break :blk Value.makeFixnum(@intCast(str.length)).raw;
+        },
+        .string32 => blk: {
+            const str32 = str_val.toPtr(runtime.String32);
+            if (str32.length > std.math.maxInt(i64)) break :blk Value.nil.raw;
+            break :blk Value.makeFixnum(@intCast(str32.length)).raw;
+        },
+        else => Value.nil.raw,
+    };
+}
+
+fn jitStrConcat(s1_raw: u64, s2_raw: u64) callconv(.c) u64 {
+    const s1 = Value{ .raw = s1_raw };
+    const s2 = Value{ .raw = s2_raw };
+    const s1_is_base = s1.isString();
+    const s1_is_utf32 = s1.isString32();
+    const s2_is_base = s2.isString();
+    const s2_is_utf32 = s2.isString32();
+    if (!(s1_is_base or s1_is_utf32) or !(s2_is_base or s2_is_utf32)) return Value.nil.raw;
+
+    const heap = g_heap orelse return Value.nil.raw;
+    if (s1_is_base and s2_is_base) {
+        const len1 = s1.toPtr(runtime.String).length;
+        const len2 = s2.toPtr(runtime.String).length;
+        const new_len = std.math.add(usize, len1, len2) catch return Value.nil.raw;
+        const result = heap.allocStringUninitialized(new_len) catch return Value.nil.raw;
+        const result_str = result.toPtr(runtime.String);
+        const dest = result_str.mutableBytes();
+        const str1 = s1.toPtr(runtime.String);
+        const str2 = s2.toPtr(runtime.String);
+        @memcpy(dest[0..len1], str1.bytes());
+        @memcpy(dest[len1..new_len], str2.bytes());
+        return result.raw;
+    }
+
+    const len1 = if (s1_is_utf32) s1.toPtr(runtime.String32).length else s1.toPtr(runtime.String).length;
+    const len2 = if (s2_is_utf32) s2.toPtr(runtime.String32).length else s2.toPtr(runtime.String).length;
+    const new_len = std.math.add(usize, len1, len2) catch return Value.nil.raw;
+    const result = heap.allocString32Uninitialized(new_len) catch return Value.nil.raw;
+    const dest = result.toPtr(runtime.String32).mutableCodepoints();
+
+    var out_idx: usize = 0;
+    if (s1_is_utf32) {
+        const cps = s1.toPtr(runtime.String32).codepoints();
+        @memcpy(dest[0..cps.len], cps);
+        out_idx = cps.len;
+    } else {
+        const bytes = s1.toPtr(runtime.String).bytes();
+        for (bytes, 0..) |b, i| dest[i] = @intCast(b);
+        out_idx = bytes.len;
+    }
+
+    if (s2_is_utf32) {
+        const cps = s2.toPtr(runtime.String32).codepoints();
+        @memcpy(dest[out_idx .. out_idx + cps.len], cps);
+    } else {
+        const bytes = s2.toPtr(runtime.String).bytes();
+        for (bytes, 0..) |b, i| dest[out_idx + i] = @intCast(b);
+    }
+    return result.raw;
+}
+
+fn jitSubstring(str_raw: u64, start_raw: u64, end_raw: u64) callconv(.c) u64 {
+    const start_idx = jitDecodeFixnumIndex(start_raw) orelse return Value.nil.raw;
+    const end_idx = jitDecodeFixnumIndex(end_raw) orelse return Value.nil.raw;
+    const heap = g_heap orelse return Value.nil.raw;
+    const result = runtime.primitives.string.substring(
+        heap,
+        Value{ .raw = str_raw },
+        start_idx,
+        end_idx,
+    ) catch return Value.nil.raw;
+    return result.raw;
 }
 
 fn jitStrSet(str_raw: u64, idx_raw: u64, char_raw: u64) callconv(.c) u64 {
@@ -1549,12 +2017,21 @@ pub const IrTranslator = struct {
             .car, .cdr, .unsafe_car, .unsafe_cdr => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
             .length => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
             .cons => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
-            .sqrt, .round, .intern => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
+            .sqrt, .round, .intern, .vec_len, .str_len => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
+            .vec_new => |v| blk: {
+                if (!canTranslateWithLiteralRoots(v.size, literal_roots)) break :blk false;
+                if (v.init) |init_val| break :blk canTranslateWithLiteralRoots(init_val, literal_roots);
+                break :blk true;
+            },
+            .vec_ref, .str_ref, .str_concat => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
+            .vec_set => |v| canTranslateWithLiteralRoots(v.vec, literal_roots) and canTranslateWithLiteralRoots(v.index, literal_roots) and canTranslateWithLiteralRoots(v.value, literal_roots),
             .hash_count => |h| canTranslateWithLiteralRoots(h.operand, literal_roots),
+            .hash_capacity, .hash_clear, .hash_test, .hash_keys, .hash_alist => |h| canTranslateWithLiteralRoots(h.operand, literal_roots),
             .make_hash => true,
             .hash_get => |h| canTranslateWithLiteralRoots(h.table, literal_roots) and canTranslateWithLiteralRoots(h.key, literal_roots) and
                 (if (h.default) |d| canTranslateWithLiteralRoots(d, literal_roots) else true),
             .hash_set => |h| canTranslateWithLiteralRoots(h.table, literal_roots) and canTranslateWithLiteralRoots(h.key, literal_roots) and canTranslateWithLiteralRoots(h.value, literal_roots),
+            .hash_rem => |h| canTranslateWithLiteralRoots(h.table, literal_roots) and canTranslateWithLiteralRoots(h.key, literal_roots),
             .format => |f| blk: {
                 if (f.args.len > 1) break :blk false;
                 if (!canTranslateWithLiteralRoots(f.dest, literal_roots) or !canTranslateWithLiteralRoots(f.control, literal_roots)) break :blk false;
@@ -1563,16 +2040,31 @@ pub const IrTranslator = struct {
             },
             .make_string => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
             .str_set => |s| canTranslateWithLiteralRoots(s.str, literal_roots) and canTranslateWithLiteralRoots(s.index, literal_roots) and canTranslateWithLiteralRoots(s.value, literal_roots),
+            .substring => |s| canTranslateWithLiteralRoots(s.str, literal_roots) and canTranslateWithLiteralRoots(s.start, literal_roots) and canTranslateWithLiteralRoots(s.end, literal_roots),
             .position, .position_eq, .position_equal => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
             .arr_new => |a| blk: {
-                if (a.dimensions.len != 1) break :blk false;
-                if (!canTranslateWithLiteralRoots(a.dimensions[0], literal_roots)) break :blk false;
+                if (a.dimensions.len > 8) break :blk false;
+                for (a.dimensions) |d| if (!canTranslateWithLiteralRoots(d, literal_roots)) break :blk false;
+                if (a.init) |v| break :blk canTranslateWithLiteralRoots(v, literal_roots);
+                break :blk true;
+            },
+            .arr_new_dyn => |a| blk: {
+                if (!canTranslateWithLiteralRoots(a.dimensions, literal_roots)) break :blk false;
                 if (a.init) |v| break :blk canTranslateWithLiteralRoots(v, literal_roots);
                 break :blk true;
             },
             .arr_ref => |a| blk: {
-                if (a.subscripts.len != 1) break :blk false;
-                break :blk canTranslateWithLiteralRoots(a.array, literal_roots) and canTranslateWithLiteralRoots(a.subscripts[0], literal_roots);
+                if (a.subscripts.len > 8) break :blk false;
+                if (!canTranslateWithLiteralRoots(a.array, literal_roots)) break :blk false;
+                for (a.subscripts) |s| if (!canTranslateWithLiteralRoots(s, literal_roots)) break :blk false;
+                break :blk true;
+            },
+            .arr_set => |a| blk: {
+                if (a.subscripts.len > 8) break :blk false;
+                if (!canTranslateWithLiteralRoots(a.array, literal_roots)) break :blk false;
+                if (!canTranslateWithLiteralRoots(a.value, literal_roots)) break :blk false;
+                for (a.subscripts) |s| if (!canTranslateWithLiteralRoots(s, literal_roots)) break :blk false;
+                break :blk true;
             },
             .logand => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
             .mod, .rem => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
@@ -1667,13 +2159,24 @@ pub const IrTranslator = struct {
             .sqrt,
             .round,
             .intern,
+            .vec_len,
+            .str_len,
             => |op| firstUnsupportedTagWithLiteralRoots(op.operand, literal_roots),
+            .vec_new => |v| blk: {
+                if (firstUnsupportedTagWithLiteralRoots(v.size, literal_roots)) |tag| break :blk tag;
+                if (v.init) |init_val| break :blk firstUnsupportedTagWithLiteralRoots(init_val, literal_roots);
+                break :blk null;
+            },
+            .vec_ref, .str_ref, .str_concat => |op| firstUnsupportedTagWithLiteralRoots(op.left, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(op.right, literal_roots),
+            .vec_set => |v| firstUnsupportedTagWithLiteralRoots(v.vec, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(v.index, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(v.value, literal_roots),
             .hash_count => |h| firstUnsupportedTagWithLiteralRoots(h.operand, literal_roots),
+            .hash_capacity, .hash_clear, .hash_test, .hash_keys, .hash_alist => |h| firstUnsupportedTagWithLiteralRoots(h.operand, literal_roots),
             .make_hash => null,
             .hash_get => |h| firstUnsupportedTagWithLiteralRoots(h.table, literal_roots) orelse
                 firstUnsupportedTagWithLiteralRoots(h.key, literal_roots) orelse
                 (if (h.default) |d| firstUnsupportedTagWithLiteralRoots(d, literal_roots) else null),
             .hash_set => |h| firstUnsupportedTagWithLiteralRoots(h.table, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(h.key, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(h.value, literal_roots),
+            .hash_rem => |h| firstUnsupportedTagWithLiteralRoots(h.table, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(h.key, literal_roots),
             .format => |f| blk: {
                 if (f.args.len > 1) break :blk .format;
                 if (firstUnsupportedTagWithLiteralRoots(f.dest, literal_roots)) |tag| break :blk tag;
@@ -1683,16 +2186,31 @@ pub const IrTranslator = struct {
             },
             .make_string => |op| firstUnsupportedTagWithLiteralRoots(op.left, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(op.right, literal_roots),
             .str_set => |s| firstUnsupportedTagWithLiteralRoots(s.str, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(s.index, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(s.value, literal_roots),
+            .substring => |s| firstUnsupportedTagWithLiteralRoots(s.str, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(s.start, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(s.end, literal_roots),
             .position, .position_eq, .position_equal => |op| firstUnsupportedTagWithLiteralRoots(op.left, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(op.right, literal_roots),
             .arr_new => |a| blk: {
-                if (a.dimensions.len != 1) break :blk .arr_new;
-                if (firstUnsupportedTagWithLiteralRoots(a.dimensions[0], literal_roots)) |tag| break :blk tag;
+                if (a.dimensions.len > 8) break :blk .arr_new;
+                for (a.dimensions) |d| if (firstUnsupportedTagWithLiteralRoots(d, literal_roots)) |tag| break :blk tag;
+                if (a.init) |v| break :blk firstUnsupportedTagWithLiteralRoots(v, literal_roots);
+                break :blk null;
+            },
+            .arr_new_dyn => |a| blk: {
+                if (firstUnsupportedTagWithLiteralRoots(a.dimensions, literal_roots)) |tag| break :blk tag;
                 if (a.init) |v| break :blk firstUnsupportedTagWithLiteralRoots(v, literal_roots);
                 break :blk null;
             },
             .arr_ref => |a| blk: {
-                if (a.subscripts.len != 1) break :blk .arr_ref;
-                break :blk firstUnsupportedTagWithLiteralRoots(a.array, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(a.subscripts[0], literal_roots);
+                if (a.subscripts.len > 8) break :blk .arr_ref;
+                if (firstUnsupportedTagWithLiteralRoots(a.array, literal_roots)) |tag| break :blk tag;
+                for (a.subscripts) |s| if (firstUnsupportedTagWithLiteralRoots(s, literal_roots)) |tag| break :blk tag;
+                break :blk null;
+            },
+            .arr_set => |a| blk: {
+                if (a.subscripts.len > 8) break :blk .arr_set;
+                if (firstUnsupportedTagWithLiteralRoots(a.array, literal_roots)) |tag| break :blk tag;
+                if (firstUnsupportedTagWithLiteralRoots(a.value, literal_roots)) |tag| break :blk tag;
+                for (a.subscripts) |s| if (firstUnsupportedTagWithLiteralRoots(s, literal_roots)) |tag| break :blk tag;
+                break :blk null;
             },
             else => std.meta.activeTag(ir.*),
         };
@@ -1746,17 +2264,33 @@ pub const IrTranslator = struct {
             .length => |op| try self.translateLength(op.operand),
             .sqrt => |op| try self.translateSqrt(op.operand),
             .round => |op| try self.translateRound(op.operand),
+            .vec_new => |v| try self.translateVecNew(v.size, v.init),
+            .vec_ref => |op| try self.translateVecRef(op.left, op.right),
+            .vec_set => |v| try self.translateVecSet(v.vec, v.index, v.value),
+            .vec_len => |op| try self.translateVecLen(op.operand),
             .make_hash => |h| try self.translateMakeHash(h.capacity, h.test_type),
             .hash_get => |h| try self.translateHashGet(h.table, h.key, h.default),
             .hash_set => |h| try self.translateHashSet(h.table, h.key, h.value),
+            .hash_rem => |h| try self.translateHashRem(h.table, h.key),
             .hash_count => |h| try self.translateHashCount(h.operand),
+            .hash_capacity => |h| try self.translateHashCapacity(h.operand),
+            .hash_clear => |h| try self.translateHashClear(h.operand),
+            .hash_test => |h| try self.translateHashTest(h.operand),
+            .hash_keys => |h| try self.translateHashKeys(h.operand),
+            .hash_alist => |h| try self.translateHashAlist(h.operand),
             .format => |f| try self.translateFormat(f.dest, f.control, f.args),
             .make_string => |op| try self.translateMakeString(op.left, op.right),
+            .str_ref => |op| try self.translateStrRef(op.left, op.right),
+            .str_len => |op| try self.translateStrLen(op.operand),
             .str_set => |s| try self.translateStrSet(s.str, s.index, s.value),
+            .str_concat => |op| try self.translateStrConcat(op.left, op.right),
+            .substring => |s| try self.translateSubstring(s.str, s.start, s.end),
             .position, .position_eq, .position_equal => |op| try self.translatePosition(op.left, op.right),
             .intern => |op| try self.translateIntern(op.operand),
             .arr_new => |a| try self.translateArrNew(a.dimensions, a.init),
+            .arr_new_dyn => |a| try self.translateArrNewDynamic(a.dimensions, a.init),
             .arr_ref => |a| try self.translateArrRef(a.array, a.subscripts),
+            .arr_set => |a| try self.translateArrSet(a.array, a.subscripts, a.value),
             // Binary: bitwise/modular
             .logand => |op| try self.translateLogand(op.left, op.right),
             .mod => |op| try self.translateMod(op.left, op.right),
@@ -3571,6 +4105,37 @@ pub const IrTranslator = struct {
         return try self.emitPrimitiveCallValues(prim_ptr, &.{ cap, test_val });
     }
 
+    fn translateVecNew(self: *IrTranslator, size_ir: *const Ir, init_ir: ?*const Ir) anyerror!HoistValue {
+        const size = try self.translate(size_ir);
+        const init_val = if (init_ir) |v|
+            try self.translate(v)
+        else
+            try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitMakeVector)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ size, init_val });
+    }
+
+    fn translateVecRef(self: *IrTranslator, vec_ir: *const Ir, idx_ir: *const Ir) anyerror!HoistValue {
+        const vec = try self.translate(vec_ir);
+        const idx = try self.translate(idx_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitVecRef)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ vec, idx });
+    }
+
+    fn translateVecSet(self: *IrTranslator, vec_ir: *const Ir, idx_ir: *const Ir, value_ir: *const Ir) anyerror!HoistValue {
+        const vec = try self.translate(vec_ir);
+        const idx = try self.translate(idx_ir);
+        const value = try self.translate(value_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitVecSet)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ vec, idx, value });
+    }
+
+    fn translateVecLen(self: *IrTranslator, vec_ir: *const Ir) anyerror!HoistValue {
+        const vec = try self.translate(vec_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitVecLen)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{vec});
+    }
+
     fn translateHashGet(self: *IrTranslator, table_ir: *const Ir, key_ir: *const Ir, default_ir: ?*const Ir) anyerror!HoistValue {
         const table = try self.translate(table_ir);
         const key = try self.translate(key_ir);
@@ -3590,9 +4155,46 @@ pub const IrTranslator = struct {
         return try self.emitPrimitiveCallValues(prim_ptr, &.{ table, key, value });
     }
 
+    fn translateHashRem(self: *IrTranslator, table_ir: *const Ir, key_ir: *const Ir) anyerror!HoistValue {
+        const table = try self.translate(table_ir);
+        const key = try self.translate(key_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitHashRem)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ table, key });
+    }
+
     fn translateHashCount(self: *IrTranslator, table_ir: *const Ir) anyerror!HoistValue {
         const table = try self.translate(table_ir);
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitHashCount)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{table});
+    }
+
+    fn translateHashCapacity(self: *IrTranslator, table_ir: *const Ir) anyerror!HoistValue {
+        const table = try self.translate(table_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitHashCapacity)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{table});
+    }
+
+    fn translateHashClear(self: *IrTranslator, table_ir: *const Ir) anyerror!HoistValue {
+        const table = try self.translate(table_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitHashClear)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{table});
+    }
+
+    fn translateHashTest(self: *IrTranslator, table_ir: *const Ir) anyerror!HoistValue {
+        const table = try self.translate(table_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitHashTest)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{table});
+    }
+
+    fn translateHashKeys(self: *IrTranslator, table_ir: *const Ir) anyerror!HoistValue {
+        const table = try self.translate(table_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitHashKeys)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{table});
+    }
+
+    fn translateHashAlist(self: *IrTranslator, table_ir: *const Ir) anyerror!HoistValue {
+        const table = try self.translate(table_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitHashAlist)));
         return try self.emitPrimitiveCallValues(prim_ptr, &.{table});
     }
 
@@ -3616,12 +4218,40 @@ pub const IrTranslator = struct {
         return try self.emitPrimitiveCallValues(prim_ptr, &.{ len, ch });
     }
 
+    fn translateStrRef(self: *IrTranslator, str_ir: *const Ir, idx_ir: *const Ir) anyerror!HoistValue {
+        const s = try self.translate(str_ir);
+        const idx = try self.translate(idx_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitStrRef)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ s, idx });
+    }
+
+    fn translateStrLen(self: *IrTranslator, str_ir: *const Ir) anyerror!HoistValue {
+        const s = try self.translate(str_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitStrLen)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{s});
+    }
+
     fn translateStrSet(self: *IrTranslator, str_ir: *const Ir, idx_ir: *const Ir, value_ir: *const Ir) anyerror!HoistValue {
         const s = try self.translate(str_ir);
         const idx = try self.translate(idx_ir);
         const v = try self.translate(value_ir);
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitStrSet)));
         return try self.emitPrimitiveCallValues(prim_ptr, &.{ s, idx, v });
+    }
+
+    fn translateStrConcat(self: *IrTranslator, left_ir: *const Ir, right_ir: *const Ir) anyerror!HoistValue {
+        const left = try self.translate(left_ir);
+        const right = try self.translate(right_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitStrConcat)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ left, right });
+    }
+
+    fn translateSubstring(self: *IrTranslator, str_ir: *const Ir, start_ir: *const Ir, end_ir: *const Ir) anyerror!HoistValue {
+        const s = try self.translate(str_ir);
+        const start = try self.translate(start_ir);
+        const end = try self.translate(end_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitSubstring)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ s, start, end });
     }
 
     fn translateIntern(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
@@ -3631,22 +4261,71 @@ pub const IrTranslator = struct {
     }
 
     fn translateArrNew(self: *IrTranslator, dimensions: []const *const Ir, init_ir: ?*const Ir) anyerror!HoistValue {
-        if (dimensions.len != 1) return error.UnsupportedIrNode;
-        const dim = try self.translate(dimensions[0]);
+        if (dimensions.len > 8) return error.UnsupportedIrNode;
+        const rank = try self.cachedIconst(@as(i64, @bitCast(Value.makeFixnum(@intCast(dimensions.len)).raw)));
         const init_val = if (init_ir) |v|
             try self.translate(v)
         else
             try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
-        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitMakeArray1)));
-        return try self.emitPrimitiveCallValues(prim_ptr, &.{ dim, init_val });
+        const nil_val = try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
+        var args: [10]HoistValue = undefined;
+        args[0] = rank;
+        for (0..8) |i| {
+            args[i + 1] = if (i < dimensions.len)
+                try self.translate(dimensions[i])
+            else
+                nil_val;
+        }
+        args[9] = init_val;
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitMakeArrayStatic)));
+        return try self.emitPrimitiveCallValues(prim_ptr, args[0..]);
+    }
+
+    fn translateArrNewDynamic(self: *IrTranslator, dimensions_ir: *const Ir, init_ir: ?*const Ir) anyerror!HoistValue {
+        const dims = try self.translate(dimensions_ir);
+        const init_val = if (init_ir) |v|
+            try self.translate(v)
+        else
+            try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitMakeArrayDynamic)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ dims, init_val });
     }
 
     fn translateArrRef(self: *IrTranslator, array_ir: *const Ir, subscripts: []const *const Ir) anyerror!HoistValue {
-        if (subscripts.len != 1) return error.UnsupportedIrNode;
+        if (subscripts.len > 8) return error.UnsupportedIrNode;
         const arr = try self.translate(array_ir);
-        const idx = try self.translate(subscripts[0]);
-        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAref1)));
-        return try self.emitPrimitiveCallValues(prim_ptr, &.{ arr, idx });
+        const count = try self.cachedIconst(@as(i64, @bitCast(Value.makeFixnum(@intCast(subscripts.len)).raw)));
+        const nil_val = try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
+        var args: [10]HoistValue = undefined;
+        args[0] = arr;
+        args[1] = count;
+        for (0..8) |i| {
+            args[i + 2] = if (i < subscripts.len)
+                try self.translate(subscripts[i])
+            else
+                nil_val;
+        }
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitArefN)));
+        return try self.emitPrimitiveCallValues(prim_ptr, args[0..]);
+    }
+
+    fn translateArrSet(self: *IrTranslator, array_ir: *const Ir, subscripts: []const *const Ir, value_ir: *const Ir) anyerror!HoistValue {
+        if (subscripts.len > 8) return error.UnsupportedIrNode;
+        const arr = try self.translate(array_ir);
+        const count = try self.cachedIconst(@as(i64, @bitCast(Value.makeFixnum(@intCast(subscripts.len)).raw)));
+        const nil_val = try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
+        var args: [11]HoistValue = undefined;
+        args[0] = arr;
+        args[1] = count;
+        for (0..8) |i| {
+            args[i + 2] = if (i < subscripts.len)
+                try self.translate(subscripts[i])
+            else
+                nil_val;
+        }
+        args[10] = try self.translate(value_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAsetN)));
+        return try self.emitPrimitiveCallValues(prim_ptr, args[0..]);
     }
 
     fn translatePosition(self: *IrTranslator, item_ir: *const Ir, seq_ir: *const Ir) anyerror!HoistValue {
@@ -4091,15 +4770,31 @@ fn containsHelperCalls(body: *const Ir, fixnum_inline: bool) bool {
                 .add, .sub, .mul, .lt, .gt, .le, .ge, .num_eq => !self.fixnum_inline,
                 .sqrt,
                 .round,
+                .vec_new,
+                .vec_ref,
+                .vec_set,
+                .vec_len,
                 .make_hash,
                 .hash_get,
                 .hash_set,
+                .hash_rem,
                 .hash_count,
+                .hash_capacity,
+                .hash_clear,
+                .hash_test,
+                .hash_keys,
+                .hash_alist,
                 .make_string,
+                .str_ref,
+                .str_len,
                 .intern,
                 .arr_new,
+                .arr_new_dyn,
                 .arr_ref,
+                .arr_set,
                 .str_set,
+                .str_concat,
+                .substring,
                 .position,
                 .position_eq,
                 .position_equal,
@@ -6519,6 +7214,233 @@ test "containsHelperCalls preserves true helper ops under fixnum inline lowering
 
     try testing.expect(containsHelperCalls(sqrt, false));
     try testing.expect(containsHelperCalls(sqrt, true));
+}
+
+test "hoist IR translator canTranslate new data ops" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const var_a = try alloc.create(Ir);
+    var_a.* = .{ .@"var" = .{ .name = "a", .depth = 0, .index = 0 } };
+    const var_b = try alloc.create(Ir);
+    var_b.* = .{ .@"var" = .{ .name = "b", .depth = 0, .index = 1 } };
+    const var_c = try alloc.create(Ir);
+    var_c.* = .{ .@"var" = .{ .name = "c", .depth = 0, .index = 2 } };
+    const one = try alloc.create(Ir);
+    one.* = .{ .lit = Value.makeFixnum(1) };
+    const two = try alloc.create(Ir);
+    two.* = .{ .lit = Value.makeFixnum(2) };
+
+    const str_concat = try alloc.create(Ir);
+    str_concat.* = .{ .str_concat = .{ .left = var_a, .right = var_b } };
+    try testing.expect(IrTranslator.canTranslate(str_concat));
+
+    const substring = try alloc.create(Ir);
+    substring.* = .{ .substring = .{ .str = var_a, .start = one, .end = two } };
+    try testing.expect(IrTranslator.canTranslate(substring));
+
+    const arr_new_dyn = try alloc.create(Ir);
+    arr_new_dyn.* = .{ .arr_new_dyn = .{ .dimensions = var_a, .init = var_b } };
+    try testing.expect(IrTranslator.canTranslate(arr_new_dyn));
+
+    const subs = try alloc.alloc(*const Ir, 2);
+    subs[0] = one;
+    subs[1] = two;
+    const arr_set = try alloc.create(Ir);
+    arr_set.* = .{ .arr_set = .{ .array = var_a, .subscripts = subs, .value = var_c } };
+    try testing.expect(IrTranslator.canTranslate(arr_set));
+
+    const hash_keys = try alloc.create(Ir);
+    hash_keys.* = .{ .hash_keys = .{ .operand = var_a } };
+    try testing.expect(IrTranslator.canTranslate(hash_keys));
+
+    const hash_alist = try alloc.create(Ir);
+    hash_alist.* = .{ .hash_alist = .{ .operand = var_a } };
+    try testing.expect(IrTranslator.canTranslate(hash_alist));
+}
+
+test "hoist IR translator: vec_ref vec_set vec_len helpers" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 2);
+    params[0] = "v";
+    params[1] = "x";
+
+    const var_v_set = try alloc.create(Ir);
+    var_v_set.* = .{ .@"var" = .{ .name = "v", .depth = 0, .index = 0 } };
+    const var_v_len = try alloc.create(Ir);
+    var_v_len.* = .{ .@"var" = .{ .name = "v", .depth = 0, .index = 0 } };
+    const var_v_ref = try alloc.create(Ir);
+    var_v_ref.* = .{ .@"var" = .{ .name = "v", .depth = 0, .index = 0 } };
+    const var_x = try alloc.create(Ir);
+    var_x.* = .{ .@"var" = .{ .name = "x", .depth = 0, .index = 1 } };
+    const idx = try alloc.create(Ir);
+    idx.* = .{ .lit = Value.makeFixnum(1) };
+
+    const vec_set = try alloc.create(Ir);
+    vec_set.* = .{ .vec_set = .{ .vec = var_v_set, .index = idx, .value = var_x } };
+
+    const vec_len = try alloc.create(Ir);
+    vec_len.* = .{ .vec_len = .{ .operand = var_v_len } };
+
+    const vec_ref = try alloc.create(Ir);
+    vec_ref.* = .{ .vec_ref = .{ .left = var_v_ref, .right = idx } };
+
+    const exprs = try alloc.alloc(*const Ir, 3);
+    exprs[0] = vec_set;
+    exprs[1] = vec_len;
+    exprs[2] = vec_ref;
+    const body = try alloc.create(Ir);
+    body.* = .{ .progn = exprs };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = body,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "jit_vec_ops");
+    defer compiled.deinit();
+
+    var heap = try runtime.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    const vec = try heap.allocVector(3, 3);
+    const vec_obj = vec.toPtr(runtime.Vector);
+    vec_obj.set(0, Value.makeFixnum(10));
+    vec_obj.set(1, Value.makeFixnum(11));
+    vec_obj.set(2, Value.makeFixnum(12));
+
+    const new_val = Value.makeFixnum(42);
+    const result = compiled.call2(@as(i64, @bitCast(vec.raw)), @as(i64, @bitCast(new_val.raw)));
+    try testing.expectEqual(@as(i64, @bitCast(new_val.raw)), result);
+    try testing.expectEqual(new_val.raw, vec_obj.get(1).raw);
+}
+
+test "hoist IR translator: multidim arr_set and arr_ref helpers" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 2);
+    params[0] = "a";
+    params[1] = "v";
+
+    const var_a_set = try alloc.create(Ir);
+    var_a_set.* = .{ .@"var" = .{ .name = "a", .depth = 0, .index = 0 } };
+    const var_a_ref = try alloc.create(Ir);
+    var_a_ref.* = .{ .@"var" = .{ .name = "a", .depth = 0, .index = 0 } };
+    const var_v = try alloc.create(Ir);
+    var_v.* = .{ .@"var" = .{ .name = "v", .depth = 0, .index = 1 } };
+
+    const s1 = try alloc.create(Ir);
+    s1.* = .{ .lit = Value.makeFixnum(1) };
+    const s2 = try alloc.create(Ir);
+    s2.* = .{ .lit = Value.makeFixnum(2) };
+    const subs = try alloc.alloc(*const Ir, 2);
+    subs[0] = s1;
+    subs[1] = s2;
+
+    const arr_set = try alloc.create(Ir);
+    arr_set.* = .{ .arr_set = .{ .array = var_a_set, .subscripts = subs, .value = var_v } };
+
+    const arr_ref = try alloc.create(Ir);
+    arr_ref.* = .{ .arr_ref = .{ .array = var_a_ref, .subscripts = subs } };
+
+    const exprs = try alloc.alloc(*const Ir, 2);
+    exprs[0] = arr_set;
+    exprs[1] = arr_ref;
+    const body = try alloc.create(Ir);
+    body.* = .{ .progn = exprs };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = body,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "jit_arr_ops");
+    defer compiled.deinit();
+
+    var heap = try runtime.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    const dims = [_]u64{ 2, 3 };
+    const arr = try heap.allocArray(&dims);
+    const arr_obj = arr.toPtr(runtime.Array);
+    const data: [*]Value = @ptrFromInt(arr_obj.data_ptr);
+
+    const new_val = Value.makeFixnum(77);
+    const result = compiled.call2(@as(i64, @bitCast(arr.raw)), @as(i64, @bitCast(new_val.raw)));
+    try testing.expectEqual(@as(i64, @bitCast(new_val.raw)), result);
+    try testing.expectEqual(new_val.raw, data[5].raw);
+}
+
+test "hoist IR translator: hash_rem and hash_capacity helpers" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 2);
+    params[0] = "h";
+    params[1] = "k";
+
+    const var_h_rem = try alloc.create(Ir);
+    var_h_rem.* = .{ .@"var" = .{ .name = "h", .depth = 0, .index = 0 } };
+    const var_h_cap = try alloc.create(Ir);
+    var_h_cap.* = .{ .@"var" = .{ .name = "h", .depth = 0, .index = 0 } };
+    const var_k = try alloc.create(Ir);
+    var_k.* = .{ .@"var" = .{ .name = "k", .depth = 0, .index = 1 } };
+
+    const hash_rem = try alloc.create(Ir);
+    hash_rem.* = .{ .hash_rem = .{ .table = var_h_rem, .key = var_k } };
+    const hash_capacity = try alloc.create(Ir);
+    hash_capacity.* = .{ .hash_capacity = .{ .operand = var_h_cap } };
+
+    const exprs = try alloc.alloc(*const Ir, 2);
+    exprs[0] = hash_rem;
+    exprs[1] = hash_capacity;
+    const body = try alloc.create(Ir);
+    body.* = .{ .progn = exprs };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = body,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "jit_hash_ops");
+    defer compiled.deinit();
+
+    var heap = try runtime.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    const ht = try heap.allocHashTable(8, .equal);
+    const table = ht.toPtr(runtime.HashTable);
+    const key = Value.makeFixnum(5);
+    try table.put(key, Value.makeFixnum(99));
+
+    const result = compiled.call2(@as(i64, @bitCast(ht.raw)), @as(i64, @bitCast(key.raw)));
+    try testing.expectEqual(@as(usize, 0), table.count);
+    try testing.expectEqual(@as(i64, @bitCast(Value.makeFixnum(@intCast(table.capacity)).raw)), result);
 }
 
 test "hoist IR translator: global_ref generic call requires literal root" {

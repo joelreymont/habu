@@ -107,9 +107,9 @@
         - [x] `habu-ci-add-gc-0b97019b` CI: add GC parity job.
         - [x] `habu-ci-fail-on-b00ee752` CI: fail on parity regressions. Depends on `habu-ci-add-gc-0b97019b`.
         - [x] `habu-docs-publish-gc-a7ea765a` Docs: publish GC parity contract. Depends on `habu-ci-fail-on-b00ee752`.
-  - [ ] `habu-raise-jit-coverage-4bfef8eb` Raise JIT coverage for Maxima hotspot call/data paths. Depends on `habu-profile-maxima-hotspots-977ac23d`.
+  - [x] `habu-raise-jit-coverage-4bfef8eb` Raise JIT coverage for Maxima hotspot call/data paths. Depends on `habu-profile-maxima-hotspots-977ac23d`.
     - [x] `habu-jit-missing-call-7abc44ab` Add generic JIT lowering for missing call-target patterns (rooted `global_ref` designators for generic calls + explicit regression coverage).
-    - [ ] `habu-jit-missing-data-714eb838` Add generic JIT lowering for missing vector/hash/string hot ops.
+    - [x] `habu-jit-missing-data-714eb838` Add generic JIT lowering for missing vector/hash/string hot ops.
   - [ ] `habu-cut-vm-gc-511ec7d3` Cut VM/GC overhead in long CAS workloads. Depends on `habu-raise-jit-coverage-4bfef8eb`.
     - [x] `habu-reduce-gc-root-04a18d48` Reduce GC root assembly overhead in collection paths.
     - [ ] `habu-shrink-transient-allocs-d4dbcf28` Shrink transient allocations in hot eval/VM paths.

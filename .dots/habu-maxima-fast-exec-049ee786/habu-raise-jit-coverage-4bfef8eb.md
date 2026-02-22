@@ -1,9 +1,11 @@
 ---
 title: Raise JIT coverage
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-17T22:23:04.188059+01:00"
+created-at: "\"2026-02-17T22:23:04.188059+01:00\""
+closed-at: "2026-02-22T08:43:02.867199+01:00"
+close-reason: Closed call-target and data-op JIT coverage subtasks
 blocks:
   - habu-profile-maxima-hotspots-977ac23d
 ---
