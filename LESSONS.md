@@ -14,10 +14,12 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding a JIT no-GC execution fence with OOM deopt (`src/interp/vm.zig:1535`, `src/interp/vm.zig:1998`, `src/interp/vm.zig:1550`) stopped moving-GC from running while JIT-held register values have no root map; `bench-maxima` now completes instead of crashing in `jitHashGet`.
 - Aligning backend forwarding resolution with VM semantics (`src/jit/backend.zig:239`, `src/jit/backend.zig:262`, `src/jit/backend.zig:287`) and resolving hash helper arguments (`src/jit/backend.zig:681`, `src/jit/backend.zig:699`, `src/jit/backend.zig:730`) removed one stale-forwarding blind spot on helper entry.
 - New regressions for ext-root behavior (`src/interp/vm.zig:13132`, `src/interp/vm.zig:13172`) lock both owner-backed and plain-slice inactive-root correctness.
+- Running focused bridge/safety regressions plus `bench-maxima` rebaseline (`src/tests/integration.zig:1877`, `src/tests/integration.zig:2573`, `bench/maxima_workload.zig`) validated that bridge relay remains stable in JIT mode and safety admission stays open (`jit_adm.sk_safety=0`, loader `85/85`).
 
 ### Did Not Work
 - Relying on `restoreExtRootsSynced` copyback from temporary root arrays propagated stale values into persistent owners under nested save/set/restore chains (`src/interp/vm.zig` pre-fix `restoreExtRootsSynced` logic).
 - Fixing only helper-entry forwarded resolution was insufficient by itself; stale symbol-tagged pointers can survive long enough to lose forwarding metadata before first helper use, so preventing in-JIT GC was required for correctness (`src/jit/backend.zig:239`, `src/interp/vm.zig:1535`, `src/interp/vm.zig:1998`).
+- Manually updating `PLAN.md` checkboxes drifted from dot state; syncing checkboxes from `dot show` status avoids stale "open vs done" plan state when many dots close in parallel.
 
 ## Session Notes (2026-02-22)
 

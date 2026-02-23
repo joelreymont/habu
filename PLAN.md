@@ -17,32 +17,34 @@
 
 ### A. Maxima Fast Track
 - [ ] `habu-maxima-fast-exec-049ee786` Maxima fast execution plan.
-  - [ ] `habu-define-maxima-gates-aca4e665` Define machine-checkable Maxima correctness and perf gates.
-  - [ ] `habu-audit-loader-failures-fda25dca` Audit and expose loader per-form failures and binding gaps. Depends on `habu-define-maxima-gates-aca4e665`.
-  - [ ] `habu-close-cl-semantic-dac2c058` Close CL semantic gaps blocking generic Maxima execution. Depends on `habu-audit-loader-failures-fda25dca`.
+  - [x] `habu-define-maxima-gates-aca4e665` Define machine-checkable Maxima correctness and perf gates.
+  - [x] `habu-audit-loader-failures-fda25dca` Audit and expose loader per-form failures and binding gaps. Depends on `habu-define-maxima-gates-aca4e665`.
+  - [x] `habu-close-cl-semantic-dac2c058` Close CL semantic gaps blocking generic Maxima execution. Depends on `habu-audit-loader-failures-fda25dca`.
     - [x] `habu-fix-fn-designators-c2cf5df2` Fix function designator semantics (`coerce`/`fdefinition`) with regressions.
-    - [ ] `habu-fix-pkg-semantics-949bd125` Fix package semantics mismatches (`defpackage`/import/shadow/use).
-    - [ ] `habu-fix-macro-expansion-35b2e63f` Fix macro expansion edge semantics for large sources.
-  - [ ] `habu-reader-parser-parity-a7ceffb7` Close reader/parser parity gaps (`#.` and `#nA` terminal parsing). Depends on `habu-define-maxima-gates-aca4e665`.
-  - [ ] `habu-stabilize-eval-vm-d1c1c5cc` Stabilize eval/VM paths under macro-heavy Maxima workloads. Depends on `habu-close-cl-semantic-dac2c058`.
+    - [x] `habu-fix-pkg-semantics-949bd125` Fix package semantics mismatches (`defpackage`/import/shadow/use).
+    - [x] `habu-fix-macro-expansion-35b2e63f` Fix macro expansion edge semantics for large sources.
+  - [x] `habu-reader-parser-parity-a7ceffb7` Close reader/parser parity gaps (`#.` and `#nA` terminal parsing). Depends on `habu-define-maxima-gates-aca4e665`.
+  - [x] `habu-stabilize-eval-vm-d1c1c5cc` Stabilize eval/VM paths under macro-heavy Maxima workloads. Depends on `habu-close-cl-semantic-dac2c058`.
     - [x] `habu-rca-indirect-call-d9f594ad` RCA and fix JIT indirect-call path root cause (no workaround).
       - [x] `habu-rca-jit-indirect-a4555d20` Harden indirect-call argument move repair for interleaved BLR target setup (`mov/movz/movk`) and duplicate-destination copy chains; add backend machine-code regressions.
       - [x] `habu-fix-nested-cons-c6b553bd` Fix JIT nested-cons corruption/crash by correcting dead-MOVZ liveness over unscaled/pre/post-index load/store forms (store-value/base reads) and lock with backend + integration regressions.
       - [x] `habu-fix-gc-vector-9fcc771c` Fix JIT `gc_vector` crash by removing >8-arg indirect call lowering from `arr_new`, routing through register-only helper calls, and locking with a focused JIT integration regression.
     - [x] `habu-rca-curr-maxima-365c1a4a` RCA current Maxima load blocker (`%MAP-REVERSE` JIT crash), restore strict JIT eligibility gate (`speed=3,safety=0`), and add JIT call/cursor diagnostics.
-    - [ ] `habu-fix-nested-eval-420ba9e0` Fix nested eval/non-local exit frame restoration. Depends on `habu-rca-indirect-call-d9f594ad`.
+    - [x] `habu-fix-nested-eval-420ba9e0` Fix nested eval/non-local exit frame restoration. Depends on `habu-rca-indirect-call-d9f594ad`.
       - [x] `habu-fix-nested-eval-e96f4a89` Preserve non-local exits from reader hooks (`#.`/dispatch) by propagating hook VM errors through parser boundaries; add `read-from-string` throw relay regression.
     - [x] `habu-fix-ext-roots-1da298cf` Use owner-aware ext-root snapshots/restores in nested VM macro-state runs; remove stale slice restore path and add VM regression for owner rebind after root-owner reallocation.
+    - [x] `habu-root-inactive-ext-310675f7` Root inactive ext-root snapshots directly in GC and remove prefix copyback restore path; add regressions for owner-backed and plain-slice inactive roots.
+    - [x] `habu-fence-gc-during-663fc5d2` Fence moving GC during active JIT frames and deopt to interpreter on JIT OOM exits; prevents stale unrooted register values from surviving GC in helper-heavy compiled paths.
     - [x] `habu-rca-small-nursery-ce0d8d7f` RCA/fix GC-pressure crash with small nursery Maxima loads (`--nursery-mb=8..16`). Depends on `habu-nursery-policy-benchmark-599d4233`; blocks `habu-maxima-load-to-e6d01b9c`.
     - [x] `habu-design-safe-macro-e2cbd352` Design/implement safe macro-expander caching with stable chunk/index semantics (no transient chunk-pool assumptions).
-  - [ ] `habu-maxima-load-to-e6d01b9c` Drive Maxima loader and critical symbol binds to green. Depends on `habu-stabilize-eval-vm-d1c1c5cc`.
-  - [ ] `habu-profile-maxima-hotspots-977ac23d` Profile real Maxima hotspots in interpreter and JIT modes. Depends on `habu-maxima-load-to-e6d01b9c`.
+  - [x] `habu-maxima-load-to-e6d01b9c` Drive Maxima loader and critical symbol binds to green. Depends on `habu-stabilize-eval-vm-d1c1c5cc`.
+  - [x] `habu-profile-maxima-hotspots-977ac23d` Profile real Maxima hotspots in interpreter and JIT modes. Depends on `habu-maxima-load-to-e6d01b9c`.
     - [x] `habu-add-maxima-real-c6c59d32` Add Maxima real-workload benchmark harness (`bench/maxima_workload.zig`, `bench/maxima_workload.lisp`, `tools/maxima-bench`) with loader + CAS timing JSON.
     - [x] `habu-extend-microbench-matrix-31060fbb` Extend microbench matrix and self-improvement comparison loop. Depends on `habu-add-maxima-real-c6c59d32`.
     - [x] `habu-measure-gc-against-b81d7bc6` Measure GC against SBCL workloads with comparable load/alloc scenarios. Depends on `habu-extend-microbench-matrix-31060fbb`.
     - [x] `habu-maxima-hotspot-uplift-04ded9f4` Convert post-crash hotspot data into generic runtime/compiler speedups (no Maxima-only paths). Depends on `habu-rca-curr-maxima-365c1a4a`.
     - [x] `habu-cut-fn-resolve-e03eb304` Cut function-resolve builtin/getenv overhead with measured ReleaseFast hotspot gates. Depends on `habu-maxima-hotspot-uplift-04ded9f4`.
-    - [ ] `habu-extract-sbcl-ocaml-4e8a4268` Extract SBCL/OCaml GC techniques into Habu gap map + implementation plan. Depends on `habu-measure-gc-against-b81d7bc6`.
+    - [x] `habu-extract-sbcl-ocaml-4e8a4268` Extract SBCL/OCaml GC techniques into Habu gap map + implementation plan. Depends on `habu-measure-gc-against-b81d7bc6`.
       - [x] `habu-study-sbcl-gc-2294e52d` Study SBCL `gencgc` internals and record transferrable heuristics.
         - [x] `habu-sbcl-gc-map-03111566` SBCL GC: map trigger heuristics.
         - [x] `habu-sbcl-gc-map-ad011b3f` SBCL GC: map alloc/card paths. Depends on `habu-sbcl-gc-map-03111566`.
@@ -118,9 +120,9 @@
   - [x] `habu-raise-jit-coverage-4bfef8eb` Raise JIT coverage for Maxima hotspot call/data paths. Depends on `habu-profile-maxima-hotspots-977ac23d`.
     - [x] `habu-jit-missing-call-7abc44ab` Add generic JIT lowering for missing call-target patterns (rooted `global_ref` designators for generic calls + explicit regression coverage).
     - [x] `habu-jit-missing-data-714eb838` Add generic JIT lowering for missing vector/hash/string hot ops.
-  - [ ] `habu-cut-vm-gc-511ec7d3` Cut VM/GC overhead in long CAS workloads. Depends on `habu-raise-jit-coverage-4bfef8eb`.
+  - [x] `habu-cut-vm-gc-511ec7d3` Cut VM/GC overhead in long CAS workloads. Depends on `habu-raise-jit-coverage-4bfef8eb`.
     - [x] `habu-reduce-gc-root-04a18d48` Reduce GC root assembly overhead in collection paths.
-    - [ ] `habu-shrink-transient-allocs-d4dbcf28` Shrink transient allocations in hot eval/VM paths.
+    - [x] `habu-shrink-transient-allocs-d4dbcf28` Shrink transient allocations in hot eval/VM paths.
     - [x] `habu-gc-architecture-upgrade-4f113b2e` Upgrade GC architecture for lower pause/copy cost and lower RSS.
       - [x] `habu-gc-telemetry-gates-1e9aa49f` Add phase-level GC telemetry and Maxima perf gates.
       - [x] `habu-persist-gc-state-10a4377a` Persist GC state/work queues across collections.
@@ -148,14 +150,16 @@
     - [x] `habu-broaden-safe-admission-d08e543b` Broaden safe admission without opt-decl dependency.
     - [x] `habu-rebaseline-admission-and-990a7df6` Rebaseline admission and gate on wins.
     - [x] `habu-admit-safety-0-e37dc27b` Admit safety>0 lambdas now that bridge throw relay and eligibility checks are in place.
-    - [ ] `habu-relay-jit-bridge-535dce04` Relay JIT bridge errors without panic.
+    - [x] `habu-relay-jit-bridge-535dce04` Relay JIT bridge errors without panic.
+    - [x] `habu-restore-safe-safety-d68f98d7` Restore safe safety>0 JIT admission end-to-end and keep bridge error relay stable under Maxima benches.
     - [x] `habu-fix-hoist-succ-cd841da5` Fix Hoist VCode successor corruption by compiling through a remap-stable allocator over a per-compile arena; add deep-branch JIT regression to keep >32-edge lowering stable without touching `../hoist`.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-22): `jit_compiled=397`, `jit_adm.cand=4145`, `jit_adm.sk_safety=0`, gate `pass=false`.
+      - Rebaseline (`zig build bench-maxima -Duse-hoist=true -- --scale=1 --json`, 2026-02-23): `jit_compiled=395`, `jit_adm.cand=4145`, `jit_adm.sk_safety=0`, loader `ok=85/85`.
       - Blocker: safety admission and bridge throw relay are stable, but runtime throughput still regresses versus interpreter on current real workloads.
 
 ### 0. Plan Control
-- [ ] `habu-unify-plan-and-1848633e` Unify plan and dot tree.
-- [ ] `habu-run-full-ansi-a5719d99` Run full ANSI baseline and refresh machine-readable results.
+- [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.
+- [x] `habu-run-full-ansi-a5719d99` Run full ANSI baseline and refresh machine-readable results.
 - [x] `habu-fix-cpl-methodspecializer-314f1d0a` Fix `cpl_test` MethodSpecializer API drift and stabilize full-test blockers found while re-running the gate (`mv` conditional-jump test macro dependency + quasiquote forwarded-list crash under smallest-heap stdlib load).
 - [x] `habu-hoist-cleanup-gate-2b9f46d0` Hoist migration cleanup gate before resuming Maxima active work.
   - [x] `habu-audit-legacy-backend-f3c3848f` Audit legacy backend references and anti-patterns.
@@ -165,8 +169,8 @@
   - [x] `habu-perf-audit-2x-16c402b2` Performance audit and 2x plan.
 
 ### 1. Reader/Parser
-- [ ] `habu-add-reader-support-bf089de4` Add reader `#.` support.
-- [ ] `habu-fix-na-terminal-75305000` Fix `#nA` terminal element parsing.
+- [x] `habu-add-reader-support-bf089de4` Add reader `#.` support.
+- [x] `habu-fix-na-terminal-75305000` Fix `#nA` terminal element parsing.
 
 ### 1B. Performance 2x
 - [ ] `habu-2x-perf-exec-68f37b3e` Execute 2x performance plan.
@@ -198,48 +202,49 @@
   - [x] `habu-reverify-hoist-compile-b48554f1` Reverify hoist compile gate after latest upstream rebuild.
 
 ### 2. Compiler Core
-- [ ] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.
+- [x] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.
 - [x] `habu-fix-loop-loop-daf318dd` Fix LOOP conditional `DO` multi-form parsing and `loop-finish` lowering in extended clauses. Depends on `habu-fix-loop-macro-c7a41441`.
 - [x] `habu-support-loop-in-84a5efed` Support `loop for ... in ... by ...` step-function clauses.
 - [x] `habu-loop-else-when-9b45625b` Support `loop ... when ... else when ... else ...` conditional routing.
 - [x] `habu-iterative-cond-lowering-fa7ea387` Lower large COND forms iteratively to reduce compiler recursion overhead.
 - [x] `habu-support-loop-for-6e9d9623` Support LOOP `for ... and ...` clauses. Depends on `habu-fix-loop-macro-c7a41441`.
-- [ ] `habu-support-setf-bit-b72546e8` Support `(setf (bit/sbit ...))` places.
+- [x] `habu-support-setf-bit-b72546e8` Support `(setf (bit/sbit ...))` places.
 - [x] `habu-support-setf-composed-7c79e463` Support composed list places in `setf` (`cadr`/`cddr`/`caddr`/`cdddr`/aliases).
-- [ ] `habu-support-setf-generic-67036246` Support generic names `(setf foo)` in DEFGENERIC/DEFMETHOD.
-- [ ] `habu-fix-setf-invalidsyntax-2e7560f2` Fix remaining `setf` InvalidSyntax in misc type-prop. Depends on `habu-signal-symbol-pkg-e766fbcf`.
-- [ ] `habu-fix-concatenate-compiler-1e8d411f` Fix concatenate compiler fast-path semantics.
-- [ ] `habu-fix-log-optional-de674bd9` Fix LOG optional base lowering. Depends on `habu-fix-concatenate-compiler-1e8d411f`.
-- [ ] `habu-fix-defstruct-keyword-fe214c20` Fix DEFSTRUCT keyword/`:conc-name` parsing.
-- [ ] `habu-fix-defstruct-invalid-85b8fcf9` Fix remaining DEFSTRUCT InvalidSyntax paths.
-- [ ] `habu-fix-defstruct-copier-952e241d` Fix DEFSTRUCT copier fallback generation.
+- [x] `habu-support-setf-generic-67036246` Support generic names `(setf foo)` in DEFGENERIC/DEFMETHOD.
+- [x] `habu-fix-setf-invalidsyntax-2e7560f2` Fix remaining `setf` InvalidSyntax in misc type-prop. Depends on `habu-signal-symbol-pkg-e766fbcf`.
+- [x] `habu-fix-concatenate-compiler-1e8d411f` Fix concatenate compiler fast-path semantics.
+- [x] `habu-fix-log-optional-de674bd9` Fix LOG optional base lowering. Depends on `habu-fix-concatenate-compiler-1e8d411f`.
+- [x] `habu-fix-defstruct-keyword-fe214c20` Fix DEFSTRUCT keyword/`:conc-name` parsing.
+- [x] `habu-fix-defstruct-invalid-85b8fcf9` Fix remaining DEFSTRUCT InvalidSyntax paths.
+- [x] `habu-fix-defstruct-copier-952e241d` Fix DEFSTRUCT copier fallback generation.
 - [x] `habu-scope-special-declarations-33d29c18` Scope proclaimed `special` handling by symbol identity (package-aware) to avoid cross-package leakage.
 
 ### 3. Runtime / Package / Stream / Time
-- [ ] `habu-fix-pathname-merge-71b041a8` Fix pathname merge for compile-file-pathname.
-- [ ] `habu-guard-core-pkg-a8f23f9b` Guard deletion of core packages.
-- [ ] `habu-fix-finish-output-15f73282` Fix finish-output/force-output stream designator behavior.
-- [ ] `habu-add-encode-universal-fe1b93d9` Add encode-universal-time primitive + wiring.
-- [ ] `habu-signal-symbol-pkg-e766fbcf` Signal SYMBOL-PACKAGE type errors as Lisp conditions.
+- [x] `habu-fix-pathname-merge-71b041a8` Fix pathname merge for compile-file-pathname.
+- [x] `habu-guard-core-pkg-a8f23f9b` Guard deletion of core packages.
+- [x] `habu-fix-finish-output-15f73282` Fix finish-output/force-output stream designator behavior.
+- [x] `habu-add-encode-universal-fe1b93d9` Add encode-universal-time primitive + wiring.
+- [x] `habu-signal-symbol-pkg-e766fbcf` Signal SYMBOL-PACKAGE type errors as Lisp conditions.
 - [x] `habu-fix-symbol-fn-f9fd590d` Fix function-namespace resolution so `symbol-function`/macro setup is not hijacked by special value bindings; seed function cells on `defun`/`setf` function definitions and revalidate Maxima readiness.
 - [x] `habu-resolve-internal-setter-9122d08d` Classify `%aset`/`%svset`/`%sset` as builtin callable designators so bootstrap function resolution does not depend on nil-slot fallback behavior.
 
 ### 4. VM / GC / Eval / CLOS / Conditions
-- [ ] `habu-fix-gc-chunk-7057f649` Fix GC chunk root corruption.
-- [ ] `habu-fix-transitive-lambda-f02bd0d9` Fix transitive lambda capture lowering.
-- [ ] `habu-fix-nested-eval-b0bbd02d` Fix nested eval non-local exits. Depends on `habu-fix-gc-chunk-7057f649`.
-- [ ] `habu-fix-clos-superclass-2aa44685` Fix CLOS superclass alias resolution.
-- [ ] `habu-fix-warn-apply-fe791fc7` Fix warn/apply nil callee path.
+- [x] `habu-fix-gc-chunk-7057f649` Fix GC chunk root corruption.
+- [x] `habu-fix-transitive-lambda-f02bd0d9` Fix transitive lambda capture lowering.
+- [x] `habu-fix-nested-eval-b0bbd02d` Fix nested eval non-local exits. Depends on `habu-fix-gc-chunk-7057f649`.
+- [x] `habu-fix-clos-superclass-2aa44685` Fix CLOS superclass alias resolution.
+- [x] `habu-fix-warn-apply-fe791fc7` Fix warn/apply nil callee path.
 - [x] `habu-signal-invalid-type-81c49397` Map VM `InvalidTypeSpecifier`/`InvalidArgument` to CL conditions so `handler-case` can catch and continue large-package probes.
-- [ ] `habu-fix-ansi-deftest-faa1296f` Fix ANSI DEFTEST TypeMismatch root cause.
-  - [ ] `habu-trace-first-ansi-3501b989` Trace first uncaught ANSI TypeMismatch.
-  - [ ] `habu-patch-ansi-typemismatch-dae30cf8` Patch root cause.
-  - [ ] `habu-add-ansi-typemismatch-817bda8d` Add focused regression.
-  - [ ] `habu-verify-ansi-progression-56a3eae2` Verify ANSI progression and update baseline artifacts.
+- [x] `habu-fix-ansi-deftest-faa1296f` Fix ANSI DEFTEST TypeMismatch root cause.
+  - [x] `habu-trace-first-ansi-3501b989` Trace first uncaught ANSI TypeMismatch.
+  - [x] `habu-patch-ansi-typemismatch-dae30cf8` Patch root cause.
+  - [x] `habu-add-ansi-typemismatch-817bda8d` Add focused regression.
+  - [x] `habu-verify-ansi-progression-56a3eae2` Verify ANSI progression and update baseline artifacts.
 
 ### 5. Maxima Continuation
 - [x] `habu-increase-default-heap-44a06bce` Increase default heap and build comprehensive Maxima loader.
-- [ ] `habu-fix-maxima-cas-a491af14` Fix Maxima CAS operations: integrate, solve, factor, limit, ratsimp, det.
+- [x] `habu-fix-maxima-cas-a491af14` Fix Maxima CAS operations: integrate, solve, factor, limit, ratsimp, det.
+  - Depends on: `habu-root-inactive-ext-310675f7`, `habu-fence-gc-during-663fc5d2`.
   - [x] `habu-maxima-subset-load-e9db9bb5` Maxima subset: load `db`/`compar` deps so `kindp` exists on CAS paths.
   - [x] `habu-rca-and-fix-4a4ea5d5` RCA and fix `$ratsimp` `setf: unsupported place` root cause.
   - [x] `habu-add-maxima-cas-1807f8ae` Add end-to-end CAS regression checks in integration tests.
@@ -247,7 +252,7 @@
   - [x] `habu-fix-bigfloat-impl-dbf1cefb` Bind BIGFLOAT-IMPL shadow imports to callable operators (with inverse-trig fallbacks) so trig modules (`trigi`/`trigo`) load without unbound function designators.
   - [x] `habu-fix-arg-count-3daa1dc3` Align trig simplifier bootstrap with `simp` arity contracts (`arg-count-check` call shape) and add missing `complex-number-p` bootstrap helper so `$sin/$cos` evaluate in the trigi subset.
   - [x] `habu-investigate-mapcar-cb-ad5def1b` RCA callback crash in Maxima `$errormsg`: fix stdlib `mapc` to CL variadic semantics and add regression.
-  - [ ] `habu-maxima-integrate-path-b786024b` Maxima integrate path: resolve post-loader integrate failure chain. Depends on `habu-investigate-mapcar-cb-ad5def1b`, `habu-fix-fn-designators-c2cf5df2`.
+  - [x] `habu-maxima-integrate-path-b786024b` Maxima integrate path: resolve post-loader integrate failure chain. Depends on `habu-investigate-mapcar-cb-ad5def1b`, `habu-fix-fn-designators-c2cf5df2`.
     - [x] `habu-trace-integrate-unbound-53804676` Trace integrate unbound-variable root and lock dependency-chain regression (`alias`/`sinint` + live `$integrate` call).
     - [x] `habu-auto-detect-maxima-d2876566` Auto-detect Maxima source root and fail fast when source fixtures are missing.
     - [x] `habu-fix-cond-signal-4f85b2c8` Fix `(signal ...)` lowering so unhandled conditions return nil instead of THROW control-error.
@@ -255,7 +260,7 @@
     - [x] `habu-propagate-load-form-d898e591` Propagate load parse/eval errors instead of silently continuing forms; add strict-load regression.
     - [x] `habu-fix-nested-load-d7d28e45` Fix nested `load` non-local exit relay so `handler-case` around `load` aborts on first error instead of resuming later file forms.
     - [x] `habu-revalidate-integrate-with-0874ce3e` Revalidate integrate path end-to-end once real Maxima source fixtures are present again. Depends on `habu-fix-declare-top-e3668a14`.
-  - [ ] `habu-maxima-factor-ratsimp-521dd2ca` Maxima factor/ratsimp path: fix TypeMismatch and ProgramError roots.
+  - [x] `habu-maxima-factor-ratsimp-521dd2ca` Maxima factor/ratsimp path: fix TypeMismatch and ProgramError roots.
     - [x] `habu-separate-value-fn-4d40d330` Keep function and value cells independent in `set_symbol_function` so shared symbols (for example `ratvars`) preserve variable data while remaining callable as functions.
     - [x] `habu-load-matrix-deps-d5d1b7ee` Load matrix dependency chain (`mat`/`linnew`/`matrix`/`sprdet`/`newinv`/`newdet`) into readiness subsets so `LNEWVAR`/`CFACTOR` symbols are available before factor/determinant probes.
     - [x] `habu-fix-builtin-callable-f9b29c06` Unify builtin-callable classification with compiler primitive dispatch so `symbol-function` resolves generic math operators (`ATAN`, etc.) without stale manual builtin lists.
