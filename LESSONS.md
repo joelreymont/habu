@@ -22,6 +22,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Sampling the real ReleaseFast bench binary (not Debug) for `assoc` kept the hotspot unambiguous in `jitAssoc`, which avoided false follow-up work on compiler/debug-only overhead (`/tmp/habu_assoc_releasefast_sample.txt`, `src/jit/backend.zig:387`).
 - Disabling runtime safety inside `jitAssoc` and switching to raw 64-bit cons-field loads plus a combined cons mask (`src/jit/backend.zig:388`, `src/jit/backend.zig:394`) reduced ReleaseFast `assoc` from ~5.25ms to ~4.69ms (~10.7%) with focused regressions still green.
 - Extending `patchCrossCallsToBL` to consume optional `MOVK hw=3` target materialization (`src/jit/backend.zig:4967`, `src/jit/backend.zig:5018`) closes a 64-bit direct-branch patch gap and is locked by a new machine-code regression (`src/jit/backend.zig:8248`).
+- Adding a conservative BLR-target-clobber detector with focused bad/good machine-code regressions (`src/jit/backend.zig:7822`, `src/jit/backend.zig:8267`, `src/jit/backend.zig:8285`) preserved baseline runtime behavior while locking the exact cached-helper crash signature for follow-up repair.
 
 ### Did Not Work
 - Relying on `restoreExtRootsSynced` copyback from temporary root arrays propagated stale values into persistent owners under nested save/set/restore chains (`src/interp/vm.zig` pre-fix `restoreExtRootsSynced` logic).
