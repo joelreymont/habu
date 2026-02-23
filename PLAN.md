@@ -162,6 +162,9 @@
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `ratsimp` corrected from ~`308ms` artifact to ~`39ms`; gate still `pass=false` (`wins=0/5`) with JIT now within ~3-6% of interpreter on tracked workloads.
       - Blocker: safety admission and bridge throw relay are stable, but runtime throughput still regresses versus interpreter on current real workloads.
     - [x] `habu-unify-hotspot-interp-97f8c613` Run `tools/maxima-hotspots` JIT/interpreter baselines on hoist-only backend by adding runtime JIT disable switch (internal option/env) and removing `-Duse-hoist=false` interpreter dependency.
+    - [x] `habu-profile-and-cut-b220c4d6` Profile remaining JIT runtime gap (integrate-first) after hoist-only baseline unification and land one measured hotspot optimization without semantic shortcuts.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): JIT runtime improved on `integrate` (~`173ms` -> ~`165ms`), `factor` (~`57.7ms` -> ~`53.0ms`), `ratsimp` (~`43.1ms` -> ~`40.1ms`), and `solve` (~`13.7ms` -> ~`13.1ms`) after function-resolution cache hot-path cleanup.
+      - Runtime sample at high scale (`/tmp/habu_integrate_jit_scale80.sample`) confirms remaining JIT overhead is dominated by `doCall` frame/setup work (keyword/rest/stack moves and chunk resolution), not function-cell lookup misses.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

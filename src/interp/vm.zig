@@ -523,6 +523,11 @@ pub const Vm = struct {
         fail_other: u64 = 0,
     };
 
+    const FnResolveEntry = struct {
+        sym: Value = Value.nil,
+        fn_val: Value = Value.nil,
+    };
+
     /// Value stack
     stack: [STACK_SIZE]Value,
     /// Stack pointer (next free slot)
@@ -669,6 +674,7 @@ pub const Vm = struct {
     /// Used to lazily materialize callable values for builtin primitive symbols.
     function_resolve_callback: ?*const fn (Value, *anyopaque) Error!?Value,
     function_resolve_context: ?*anyopaque,
+    fn_resolve_cache: [MAX_FN_RESOLVE_CACHE]FnResolveEntry,
     /// Value cells for uninterned symbols, keyed by stable symbol uid.
     uninterned_values: std.AutoHashMap(u64, Value),
 
@@ -726,6 +732,7 @@ pub const Vm = struct {
     const MAX_SAVED_CHUNKS = 1024;
     const MAX_COMPILE_ROOTS = 4096;
     const MAX_EXT_ROOT_SNAPSHOTS = 256;
+    const MAX_FN_RESOLVE_CACHE = 256;
     const SAFEPOINT_BATCH_OPS = 32;
     const SAFEPOINT_BATCH_BYTES = 64 * 1024;
 
@@ -1089,6 +1096,7 @@ pub const Vm = struct {
             .fboundp_context = null,
             .function_resolve_callback = null,
             .function_resolve_context = null,
+            .fn_resolve_cache = [_]FnResolveEntry{.{}} ** MAX_FN_RESOLVE_CACHE,
             .uninterned_values = std.AutoHashMap(u64, Value).init(allocator),
             .gensym_counter = 0,
             .current_closure = null,
@@ -1291,20 +1299,70 @@ pub const Vm = struct {
         self.clearSymbolLocalValueCell(sym);
     }
 
-    fn lookupFunctionCell(self: *Vm, sym_val: Value) Error!?Value {
+    inline fn fnResolveCacheIndex(sym: Value) usize {
+        return @intCast((sym.raw >> 4) & (MAX_FN_RESOLVE_CACHE - 1));
+    }
+
+    fn clearFnResolveCache(self: *Vm) void {
+        for (&self.fn_resolve_cache) |*entry| {
+            entry.* = .{};
+        }
+    }
+
+    fn lookupFnResolveCache(self: *Vm, sym: Value) ?Value {
+        const idx = fnResolveCacheIndex(sym);
+        const entry = &self.fn_resolve_cache[idx];
+        if (!entry.sym.eq(sym)) return null;
+        return entry.fn_val;
+    }
+
+    fn storeFnResolveCache(self: *Vm, sym: Value, fn_val: Value) void {
+        const live_sym = self.resolveForwardedValue(sym);
+        const live_fn = self.resolveForwardedValue(fn_val);
+        if (!live_sym.isSymbol() or !isCallableFunctionValue(live_fn)) return;
+        const idx = fnResolveCacheIndex(live_sym);
+        self.fn_resolve_cache[idx] = .{ .sym = live_sym, .fn_val = live_fn };
+    }
+
+    fn clearFnResolveCacheEntry(self: *Vm, sym: Value) void {
+        const idx = fnResolveCacheIndex(sym);
+        self.fn_resolve_cache[idx] = .{};
+    }
+
+    fn lookupFunctionCell(self: *Vm, sym_val: Value) ?Value {
         const live_sym_val = self.resolveForwardedValue(sym_val);
         if (!live_sym_val.isSymbol()) return null;
         const key = self.builtins.sym_function_cell;
-        const cell = try primitives.list.get(self.heap, live_sym_val, key);
-        if (!isCallableFunctionValue(cell)) return null;
-        return cell;
+        const sym = live_sym_val.toPtr(Symbol);
+
+        var plist = sym.plist;
+        while (plist.isCons()) {
+            const entry = plist.toPtr(Cons);
+            const pair_val = entry.car;
+            if (pair_val.isCons()) {
+                const pair = pair_val.toPtr(Cons);
+                if (pair.car.eq(key)) {
+                    const cell = pair.cdr;
+                    if (!isCallableFunctionValue(cell)) return null;
+                    return cell;
+                }
+            }
+            plist = entry.cdr;
+        }
+        return null;
     }
 
     fn storeFunctionCell(self: *Vm, sym_val: Value, fn_val: Value) Error!void {
         const live_sym_val = self.resolveForwardedValue(sym_val);
         if (!live_sym_val.isSymbol()) return;
+        const live_fn_val = self.resolveForwardedValue(fn_val);
         const key = self.builtins.sym_function_cell;
-        _ = try primitives.list.put(self.heap, live_sym_val, key, fn_val);
+        _ = try primitives.list.put(self.heap, live_sym_val, key, live_fn_val);
+        if (isCallableFunctionValue(live_fn_val)) {
+            self.storeFnResolveCache(live_sym_val, live_fn_val);
+        } else {
+            self.clearFnResolveCacheEntry(live_sym_val);
+        }
     }
 
     fn clearFunctionCell(self: *Vm, sym_val: Value) Error!void {
@@ -1312,30 +1370,37 @@ pub const Vm = struct {
         if (!live_sym_val.isSymbol()) return;
         const key = self.builtins.sym_function_cell;
         _ = try primitives.list.remprop(self.heap, live_sym_val, key);
+        self.clearFnResolveCacheEntry(live_sym_val);
     }
 
     fn resolveFunctionValue(self: *Vm, sym_val: Value) Error!?Value {
-        if (!sym_val.isSymbol()) return null;
-        if (try self.lookupFunctionCell(sym_val)) |fn_cell| {
+        const live_sym_val = self.resolveForwardedValue(sym_val);
+        if (!live_sym_val.isSymbol()) return null;
+        if (self.lookupFnResolveCache(live_sym_val)) |cached_fn| {
+            return cached_fn;
+        }
+        if (self.lookupFunctionCell(live_sym_val)) |fn_cell| {
+            self.storeFnResolveCache(live_sym_val, fn_cell);
             return fn_cell;
         }
 
         var global_seen = false;
         var global_val = Value.nil;
-        const sym = sym_val.toPtr(Symbol);
+        const sym = live_sym_val.toPtr(Symbol);
         if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
             global_seen = true;
-            global_val = self.globals[idx];
+            global_val = self.resolveForwardedValue(self.globals[idx]);
             if (isCallableFunctionValue(global_val)) {
-                try self.storeFunctionCell(sym_val, global_val);
+                try self.storeFunctionCell(live_sym_val, global_val);
                 return global_val;
             }
         }
 
         if (self.function_resolve_callback) |cb| {
-            if (try cb(sym_val, self.function_resolve_context.?)) |resolved| {
+            if (try cb(live_sym_val, self.function_resolve_context.?)) |resolved_raw| {
+                const resolved = self.resolveForwardedValue(resolved_raw);
                 if (isCallableFunctionValue(resolved)) {
-                    try self.storeFunctionCell(sym_val, resolved);
+                    try self.storeFunctionCell(live_sym_val, resolved);
                     return resolved;
                 }
             }
@@ -2367,6 +2432,7 @@ pub const Vm = struct {
         }
 
         try self.rekeyJitFnsAfterGc();
+        self.clearFnResolveCache();
 
         if (trace_validate_roots or trap_validate_roots) {
             if (!self.validateBuiltinAndTypeRoots("post-restore")) {
