@@ -59,7 +59,7 @@ test "compileChunk JITs optimized defun with implicit block" {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPoolOwned(&chunk_pool);
 
-    const before = vm.jit_fns.count();
+    const before = vm.jit_fns.items.len;
     const def_chunk = try compile_chunk.compileChunk(
         allocator,
         &heap,
@@ -69,7 +69,7 @@ test "compileChunk JITs optimized defun with implicit block" {
         "(defun jit-block-probe (n) (declare (optimize (speed 3) (safety 0))) (if (<= n 0) 0 (+ n 1)))",
     );
     _ = try vm.run(def_chunk);
-    const after = vm.jit_fns.count();
+    const after = vm.jit_fns.items.len;
     try testing.expect(after > before);
 
     const call_chunk = try compile_chunk.compileChunk(
@@ -103,7 +103,7 @@ test "compileChunk JIT progv restores dynamic binding" {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPoolOwned(&chunk_pool);
 
-    const before = vm.jit_fns.count();
+    const before = vm.jit_fns.items.len;
     _ = try vm.run(try compile_chunk.compileChunk(
         allocator,
         &heap,
@@ -118,7 +118,7 @@ test "compileChunk JIT progv restores dynamic binding" {
             "          (after jit-progv-probe*))\n" ++
             "      (+ inside after))))",
     ));
-    try testing.expect(vm.jit_fns.count() > before);
+    try testing.expect(vm.jit_fns.items.len > before);
 
     const result = try vm.run(try compile_chunk.compileChunk(
         allocator,
@@ -161,7 +161,7 @@ test "compileChunk JIT roots progv call targets across GC" {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPoolOwned(&chunk_pool);
 
-    const before = vm.jit_fns.count();
+    const before = vm.jit_fns.items.len;
     _ = try vm.run(try compile_chunk.compileChunk(
         allocator,
         &heap,
@@ -177,7 +177,7 @@ test "compileChunk JIT roots progv call targets across GC" {
             "    (declare (special v))\n" ++
             "    (funcall 'jit-id v)))",
     ));
-    try testing.expect(vm.jit_fns.count() > before);
+    try testing.expect(vm.jit_fns.items.len > before);
 
     const first = try vm.run(try compile_chunk.compileChunk(
         allocator,
@@ -222,7 +222,7 @@ test "compileChunk JIT handles special aux bindings without crash" {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPoolOwned(&chunk_pool);
 
-    const before = vm.jit_fns.count();
+    const before = vm.jit_fns.items.len;
     _ = try vm.run(try compile_chunk.compileChunk(
         allocator,
         &heap,
@@ -235,7 +235,7 @@ test "compileChunk JIT handles special aux bindings without crash" {
             "    (declare (optimize (speed 3) (safety 0)))\n" ++
             "    jit-special-aux*))",
     ));
-    try testing.expect(vm.jit_fns.count() > before);
+    try testing.expect(vm.jit_fns.items.len > before);
 
     const out = try vm.run(try compile_chunk.compileChunk(
         allocator,
@@ -381,7 +381,7 @@ test "compileChunk JITs all optimized defuns in progn" {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPoolOwned(&chunk_pool);
 
-    const before = vm.jit_fns.count();
+    const before = vm.jit_fns.items.len;
     _ = try vm.run(try compile_chunk.compileChunk(
         allocator,
         &heap,
@@ -399,7 +399,7 @@ test "compileChunk JITs all optimized defuns in progn" {
             "    (declare (optimize (speed 3) (safety 0)))\n" ++
             "    (+ n 3)))",
     ));
-    try testing.expect(vm.jit_fns.count() >= before + 2);
+    try testing.expect(vm.jit_fns.items.len >= before + 2);
 
     const fn_a = try vm.run(try compile_chunk.compileChunk(
         allocator,
@@ -590,9 +590,7 @@ test "compileChunk rekeys JIT map after chunk movement GC" {
     try testing.expect(fn0.isClosure());
     const old_chunk = fn0.toPtr(runtime.Closure).code.toPtr(Chunk);
     const old_addr = @intFromPtr(old_chunk);
-    const old_key = old_addr;
     try testing.expect(vm.lookupJitFn(old_chunk) != null);
-    try testing.expect(vm.jit_fns.get(old_key) != null);
 
     var moved = false;
     var live_chunk = old_chunk;
@@ -625,8 +623,7 @@ test "compileChunk rekeys JIT map after chunk movement GC" {
     try testing.expect(moved);
 
     try testing.expect(vm.lookupJitFn(live_chunk) != null);
-    try testing.expect(vm.jit_fns.get(@intFromPtr(live_chunk)) != null);
-    try testing.expect(vm.jit_fns.get(old_key) == null);
+    try testing.expect(vm.lookupJitFn(old_chunk) == null);
 
     const out = try vm.run(try compile_chunk.compileChunk(
         allocator,
@@ -700,7 +697,7 @@ test "compileChunk JIT length handles string literals" {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPoolOwned(&chunk_pool);
 
-    const before = vm.jit_fns.count();
+    const before = vm.jit_fns.items.len;
     _ = try vm.run(try compile_chunk.compileChunk(
         allocator,
         &heap,
@@ -709,7 +706,7 @@ test "compileChunk JIT length handles string literals" {
         &chunk_pool,
         "(defun jit-string-len () (declare (optimize (speed 3) (safety 0))) (length \"xxxxxxxx\"))",
     ));
-    try testing.expect(vm.jit_fns.count() > before);
+    try testing.expect(vm.jit_fns.items.len > before);
 
     const result = try vm.run(try compile_chunk.compileChunk(
         allocator,
@@ -857,7 +854,7 @@ test "compileChunk JIT make-array loop preserves return path" {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPoolOwned(&chunk_pool);
 
-    const before = vm.jit_fns.count();
+    const before = vm.jit_fns.items.len;
     _ = try vm.run(try compile_chunk.compileChunk(
         allocator,
         &heap,
@@ -866,7 +863,7 @@ test "compileChunk JIT make-array loop preserves return path" {
         &chunk_pool,
         "(defun jit-gc-vector-loop () (declare (optimize (speed 3) (safety 0))) (let ((v nil) (i 0)) (while (< i 10000) (setq v (make-array 4 :initial-element i)) (setq i (+ i 1))) (aref v 0)))",
     ));
-    try testing.expect(vm.jit_fns.count() > before);
+    try testing.expect(vm.jit_fns.items.len > before);
 
     const result = try vm.run(try compile_chunk.compileChunk(
         allocator,
@@ -898,7 +895,7 @@ test "compileChunk JIT nested cons preserves car and cdr values" {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPoolOwned(&chunk_pool);
 
-    const before = vm.jit_fns.count();
+    const before = vm.jit_fns.items.len;
     _ = try vm.run(try compile_chunk.compileChunk(
         allocator,
         &heap,
@@ -907,7 +904,7 @@ test "compileChunk JIT nested cons preserves car and cdr values" {
         &chunk_pool,
         "(defun jit-nested-cons () (declare (optimize (speed 3) (safety 0))) (cons 1 (cons 2 nil)))",
     ));
-    try testing.expect(vm.jit_fns.count() > before);
+    try testing.expect(vm.jit_fns.items.len > before);
 
     const result = try vm.run(try compile_chunk.compileChunk(
         allocator,
@@ -948,7 +945,7 @@ test "compileChunk JIT generic float arithmetic and compare stay correct" {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPoolOwned(&chunk_pool);
 
-    const before = vm.jit_fns.count();
+    const before = vm.jit_fns.items.len;
     _ = try vm.run(try compile_chunk.compileChunk(
         allocator,
         &heap,
@@ -965,7 +962,7 @@ test "compileChunk JIT generic float arithmetic and compare stay correct" {
         &chunk_pool,
         "(defun jit-float-branch (x) (declare (optimize (speed 3) (safety 0))) (if (< x 2.5) 11 22))",
     ));
-    try testing.expect(vm.jit_fns.count() >= before + 2);
+    try testing.expect(vm.jit_fns.items.len >= before + 2);
 
     const accum = try vm.run(try compile_chunk.compileChunk(
         allocator,
@@ -1056,7 +1053,7 @@ test "recursive safety-0 defun runs correctly under JIT" {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPoolOwned(&chunk_pool);
 
-    const before = vm.jit_fns.count();
+    const before = vm.jit_fns.items.len;
     _ = try vm.run(try compile_chunk.compileChunk(
         allocator,
         &heap,
@@ -1065,7 +1062,7 @@ test "recursive safety-0 defun runs correctly under JIT" {
         &chunk_pool,
         "(defun jit-depth-sum (n) (declare (optimize (speed 3) (safety 0))) (if (<= n 0) 0 (+ 1 (jit-depth-sum (- n 1)))))",
     ));
-    try testing.expect(vm.jit_fns.count() >= before + 1);
+    try testing.expect(vm.jit_fns.items.len >= before + 1);
 
     const result = try vm.run(try compile_chunk.compileChunk(
         allocator,
@@ -2468,7 +2465,7 @@ test "repl config disables hoist JIT compilation" {
     try testing.expect(out.isFixnum());
     try testing.expectEqual(@as(i64, 42), out.toFixnum());
 
-    try testing.expectEqual(@as(usize, 0), repl.vm.jit_fns.count());
+    try testing.expectEqual(@as(usize, 0), repl.vm.jit_fns.items.len);
     try testing.expectEqual(@as(u64, 0), repl.vm.jit_adm.cand);
 }
 
@@ -2488,13 +2485,13 @@ test "JIT bridge relays keyword throw without panic" {
     _ = try repl.eval("(defun bridge-keyfail (&key a b) (if a a b))");
     _ = try repl.eval("(defun bridge-keyfail-wrapper () (bridge-keyfail :a 1 :z 2))");
 
-    const jit_before = repl.vm.jit_fns.count();
+    const jit_before = repl.vm.jit_fns.items.len;
     _ = try repl.eval(
         \\(defun jit-bridge-keyfail ()
         \\  (declare (optimize (speed 3) (safety 3)))
         \\  (bridge-keyfail-wrapper))
     );
-    try testing.expect(repl.vm.jit_fns.count() > jit_before);
+    try testing.expect(repl.vm.jit_fns.items.len > jit_before);
 
     try testing.expectError(error.UnhandledThrow, repl.eval("(jit-bridge-keyfail)"));
 
@@ -2521,7 +2518,7 @@ test "JIT handles branch-local let scopes without panic" {
     defer repl.deinit();
     try repl.wireGlobalEnv();
 
-    const jit_before = repl.vm.jit_fns.count();
+    const jit_before = repl.vm.jit_fns.items.len;
     _ = try repl.eval(
         \\(defun jit-if-let-scope (x y)
         \\  (if x
@@ -2531,7 +2528,7 @@ test "JIT handles branch-local let scopes without panic" {
         \\      (let ((c (+ y 3)))
         \\        c)))
     );
-    try testing.expect(repl.vm.jit_fns.count() > jit_before);
+    try testing.expect(repl.vm.jit_fns.items.len > jit_before);
 
     const then_val = try repl.eval("(jit-if-let-scope t 10)");
     try testing.expect(then_val.isFixnum());
@@ -2570,9 +2567,9 @@ test "JIT handles deep branch chains without Hoist succ corruption" {
         try src.appendSlice(allocator, ")");
     }
 
-    const jit_before = repl.vm.jit_fns.count();
+    const jit_before = repl.vm.jit_fns.items.len;
     _ = try repl.eval(src.items);
-    try testing.expect(repl.vm.jit_fns.count() > jit_before);
+    try testing.expect(repl.vm.jit_fns.items.len > jit_before);
 
     const hit = try repl.eval("(jit-deep-branch 39)");
     try testing.expect(hit.isFixnum());
@@ -2983,9 +2980,9 @@ test "JIT safety>0 arithmetic relays TypeMismatch without panic" {
     defer repl.deinit();
     try repl.wireGlobalEnv();
 
-    const jit_before = repl.vm.jit_fns.count();
+    const jit_before = repl.vm.jit_fns.items.len;
     _ = try repl.eval("(defun jit-safe-double (x) (declare (optimize (speed 3) (safety 3))) (* x 2))");
-    try testing.expect(repl.vm.jit_fns.count() > jit_before);
+    try testing.expect(repl.vm.jit_fns.items.len > jit_before);
 
     const ok = try repl.eval("(jit-safe-double 21)");
     try testing.expect(ok.isFixnum());

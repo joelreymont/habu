@@ -198,7 +198,7 @@ pub fn main() !void {
     const code_bytes_before = sumJitCodeBytes(&vm);
     var keys_before = try snapshotJitKeys(allocator, &vm);
     defer keys_before.deinit();
-    const jit_count_before = vm.jit_fns.count();
+    const jit_count_before = vm.jit_fns.items.len;
 
     var src_buf_jit: [896]u8 = undefined;
     const setup_jit = try std.fmt.bufPrint(
@@ -213,7 +213,7 @@ pub fn main() !void {
     const compile_ns = t_compile1 - t_compile0;
     _ = try vm.run(setup_jit_chunk);
 
-    const jit_count_after = vm.jit_fns.count();
+    const jit_count_after = vm.jit_fns.items.len;
     const compile_n: u64 = if (jit_count_after >= jit_count_before) jit_count_after - jit_count_before else 0;
     const fail_n: u64 = if (compile_n == 0) 1 else 0;
     const code_bytes_after = sumJitCodeBytes(&vm);

@@ -252,6 +252,16 @@
         - `factor`: from ~`jit 9.37s / interp 9.88s` to ~`jit 7.23-7.30s / interp 7.20-7.25s` (~22-27% faster absolute runtime).
         - `ratsimp`: from ~`jit 6.70s / interp 6.69s` to ~`jit 5.24-5.29s / interp 5.08-5.09s` (~21-24% faster absolute runtime).
       - Gate status: still red on relative JIT-vs-interpreter wins (`wins=0/2`) even though both modes got materially faster.
+    - [x] `habu-rca-post-gc-ae2f4c30` RCA post-GC JIT relative gap.
+      - Root cause found in JIT-only GC refresh: `rekeyJitFnsAfterGc` rebuilt a hash map every collection (`src/interp/vm.zig`), and runtime samples repeatedly surfaced hash-map churn under GC-heavy `factor`/`ratsimp` runs.
+      - Replaced VM JIT registry from `AutoHashMap(usize,*CompiledFn)` to a compact entry list keyed by live chunk `Value` (`src/interp/vm.zig`), removed per-GC map rebuild/fetchPut churn, and updated REPL known-fn enumeration to iterate entries directly (`src/interp/repl.zig`).
+      - Updated all bench/test helpers from `jit_fns.count()` to `jit_fns.items.len` and adapted the GC rekey integration assertion from map-key existence to chunk-based lookup continuity (`src/tests/integration.zig`).
+      - Direct rebaseline (`./zig-out/bin/maxima_workload_bench --json --scale=120 --heap-mb=1024 --nursery-mb=32 --workloads=factor,ratsimp`):
+        - JIT: `factor 1,110,823,792ns`, `ratsimp 813,487,417ns`
+        - interp: `factor 1,086,767,666ns`, `ratsimp 779,890,125ns`
+        - ratios (`interp/jit`): `factor 0.9783`, `ratsimp 0.9587` (still red, but improved from earlier ~`0.9760` / `0.9469` on this host).
+      - Validation completed: `zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-maxima`; `zig build bench -- --json`.
+      - Validation blocked: `zig build test -- --test-filter ...` repeatedly hung in this environment (timed out at 240s with no emitted output), so full test-gate revalidation remains pending.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

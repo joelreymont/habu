@@ -2992,9 +2992,8 @@ pub const Repl = struct {
         var known_fns = std.StringHashMap(jit_backend.KnownFn).init(self.allocator);
         defer known_fns.deinit();
         {
-            var iter = self.vm.jit_fns.iterator();
-            while (iter.next()) |entry| {
-                const cfn = entry.value_ptr.*;
+            for (self.vm.jit_fns.items) |entry| {
+                const cfn = entry.compiled;
                 known_fns.put(cfn.name, .{
                     .fn_ptr = @intFromPtr(cfn.fn_ptr),
                     .arity = cfn.arity,
@@ -3140,9 +3139,9 @@ pub const Repl = struct {
         }
 
         if (std.posix.getenv("HABU_TRACE_JIT") != null) {
-            std.debug.print("JIT: hoist compiled '{s}' OK (arity={d}, fn_ptr={*}, chunk=0x{x}, map_count={d})\n", .{
+            std.debug.print("JIT: hoist compiled '{s}' OK (arity={d}, fn_ptr={*}, chunk=0x{x}, reg_count={d})\n", .{
                 name,                   compiled.arity,          compiled.fn_ptr,
-                @intFromPtr(chunk_ptr), self.vm.jit_fns.count(),
+                @intFromPtr(chunk_ptr), self.vm.jit_fns.items.len,
             });
         }
         return .compiled;

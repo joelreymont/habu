@@ -474,6 +474,6 @@ fn tryHoistCompile(
             return error.OutOfMemory;
         };
         vm.jit_adm.comp += 1;
-        if (trace) std.debug.print("JIT bench: registered '{s}' map={d}\n", .{ compile_name, vm.jit_fns.count() });
+        if (trace) std.debug.print("JIT bench: registered '{s}' map={d}\n", .{ compile_name, vm.jit_fns.items.len });
     }
 }

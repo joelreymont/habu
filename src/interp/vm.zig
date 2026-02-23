@@ -556,6 +556,11 @@ pub const Vm = struct {
         gc_count: usize = 0,
     };
 
+    const JitFnEntry = struct {
+        chunk: Value = Value.nil,
+        compiled: *jit_backend.CompiledFn,
+    };
+
     /// Value stack
     stack: [STACK_SIZE]Value,
     /// Stack pointer (next free slot)
@@ -727,8 +732,8 @@ pub const Vm = struct {
     ext_roots_saved: [MAX_EXT_ROOT_SNAPSHOTS]ExtRootsSnapshot,
     ext_roots_saved_sp: usize,
 
-    /// Hoist SSA JIT: maps live chunk address to compiled native function.
-    jit_fns: std.AutoHashMap(usize, *jit_backend.CompiledFn),
+    /// Hoist SSA JIT: compiled functions registered by owning chunk.
+    jit_fns: std.ArrayList(JitFnEntry),
 
     /// Stable host-root slots for JIT literal Values.
     jit_literal_roots: std.ArrayList(*Value),
@@ -1153,7 +1158,7 @@ pub const Vm = struct {
             .ext_roots_owner = null,
             .ext_roots_saved = undefined,
             .ext_roots_saved_sp = 0,
-            .jit_fns = std.AutoHashMap(usize, *jit_backend.CompiledFn).init(allocator),
+            .jit_fns = std.ArrayList(JitFnEntry){},
             .jit_literal_roots = std.ArrayList(*Value){},
             .jit_adm = .{},
             .trace_jit_call = std.posix.getenv("HABU_TRACE_JIT_CALL") != null,
@@ -1181,12 +1186,11 @@ pub const Vm = struct {
     pub fn deinit(self: *Vm) void {
         self.uninstallJitBridges();
         // Clean up hoist-compiled functions
-        var it = self.jit_fns.valueIterator();
-        while (it.next()) |compiled_ptr| {
-            compiled_ptr.*.deinit();
-            self.allocator.destroy(compiled_ptr.*);
+        for (self.jit_fns.items) |entry| {
+            entry.compiled.deinit();
+            self.allocator.destroy(entry.compiled);
         }
-        self.jit_fns.deinit();
+        self.jit_fns.deinit(self.allocator);
         for (self.jit_literal_roots.items) |slot| {
             self.allocator.destroy(slot);
         }
@@ -1707,14 +1711,32 @@ pub const Vm = struct {
         ht.count = tmp.count;
     }
 
+    fn findJitFnIndex(self: *Vm, chunk_val: Value) ?usize {
+        for (self.jit_fns.items, 0..) |*entry, idx| {
+            if (entry.chunk.eq(chunk_val)) return idx;
+            const live_chunk = self.resolveForwardedValue(entry.chunk);
+            if (!live_chunk.eq(entry.chunk)) entry.chunk = live_chunk;
+            if (live_chunk.eq(chunk_val)) return idx;
+        }
+        return null;
+    }
+
     /// Register a hoist-compiled native function for a chunk.
     pub fn registerJitFn(self: *Vm, chunk: *const Chunk, compiled: *jit_backend.CompiledFn) !void {
-        const key = @intFromPtr(chunk);
-        if (try self.jit_fns.fetchPut(key, compiled)) |old| {
-            if (old.value != compiled) {
-                old.value.deinit();
-                self.allocator.destroy(old.value);
+        const chunk_val = Value.makeChunk(chunk);
+        if (self.findJitFnIndex(chunk_val)) |idx| {
+            const old = self.jit_fns.items[idx].compiled;
+            self.jit_fns.items[idx].chunk = chunk_val;
+            self.jit_fns.items[idx].compiled = compiled;
+            if (old != compiled) {
+                old.deinit();
+                self.allocator.destroy(old);
             }
+        } else {
+            try self.jit_fns.append(self.allocator, .{
+                .chunk = chunk_val,
+                .compiled = compiled,
+            });
         }
         @constCast(chunk).jit_fn = @intFromPtr(compiled);
     }
@@ -1733,15 +1755,19 @@ pub const Vm = struct {
             const compiled: *jit_backend.CompiledFn = @ptrFromInt(chunk.jit_fn);
             return compiled;
         }
-        const key = @intFromPtr(chunk);
-        const compiled = self.jit_fns.get(key) orelse return null;
+        const chunk_val = Value.makeChunk(chunk);
+        const idx = self.findJitFnIndex(chunk_val) orelse return null;
+        const compiled = self.jit_fns.items[idx].compiled;
         @constCast(chunk).jit_fn = @intFromPtr(compiled);
         return compiled;
     }
 
     pub fn unregisterJitFn(self: *Vm, chunk: *const Chunk) bool {
         @constCast(chunk).jit_fn = 0;
-        return self.jit_fns.remove(@intFromPtr(chunk));
+        const chunk_val = Value.makeChunk(chunk);
+        const idx = self.findJitFnIndex(chunk_val) orelse return false;
+        _ = self.jit_fns.swapRemove(idx);
+        return true;
     }
 
     fn installJitBridges(self: *Vm) void {
@@ -1871,58 +1897,29 @@ pub const Vm = struct {
     }
 
     fn rekeyJitFnsAfterGc(self: *Vm) !void {
-        if (self.jit_fns.count() == 0) return;
-
-        var rebuilt = std.AutoHashMap(usize, *jit_backend.CompiledFn).init(self.allocator);
-        defer rebuilt.deinit();
-        try rebuilt.ensureTotalCapacity(self.jit_fns.count());
-
-        var retire = std.ArrayList(*jit_backend.CompiledFn){};
-        defer retire.deinit(self.allocator);
-        try retire.ensureTotalCapacity(self.allocator, self.jit_fns.count());
-
-        var it = self.jit_fns.iterator();
-        while (it.next()) |entry| {
-            const old_addr = entry.key_ptr.*;
-            const compiled = entry.value_ptr.*;
-            const old_chunk: *const Chunk = @ptrFromInt(old_addr);
-            const old_val = Value.makeChunk(old_chunk);
-            const live_val = self.resolveForwardedValue(old_val);
+        var i: usize = 0;
+        while (i < self.jit_fns.items.len) {
+            const compiled = self.jit_fns.items[i].compiled;
+            const live_val = self.resolveForwardedValue(self.jit_fns.items[i].chunk);
             if (!live_val.isChunk()) {
-                try retire.append(self.allocator, compiled);
+                compiled.deinit();
+                self.allocator.destroy(compiled);
+                _ = self.jit_fns.swapRemove(i);
                 continue;
             }
 
             const live_addr = live_val.toPtrAddr();
             if (self.isStaleNurseryAddr(live_addr)) {
-                try retire.append(self.allocator, compiled);
+                compiled.deinit();
+                self.allocator.destroy(compiled);
+                _ = self.jit_fns.swapRemove(i);
                 continue;
             }
+
+            self.jit_fns.items[i].chunk = live_val;
             const live_chunk: *Chunk = @ptrFromInt(live_addr);
             live_chunk.jit_fn = @intFromPtr(compiled);
-
-            if (try rebuilt.fetchPut(live_addr, compiled)) |prior| {
-                if (prior.value != compiled) {
-                    try retire.append(self.allocator, prior.value);
-                }
-            }
-        }
-
-        var next_map = std.AutoHashMap(usize, *jit_backend.CompiledFn).init(self.allocator);
-        errdefer next_map.deinit();
-        try next_map.ensureTotalCapacity(rebuilt.count());
-        var rebuilt_it = rebuilt.iterator();
-        while (rebuilt_it.next()) |entry| {
-            next_map.putAssumeCapacity(entry.key_ptr.*, entry.value_ptr.*);
-        }
-
-        var old_map = self.jit_fns;
-        self.jit_fns = next_map;
-        old_map.deinit();
-
-        for (retire.items) |dead| {
-            dead.deinit();
-            self.allocator.destroy(dead);
+            i += 1;
         }
     }
 
@@ -13437,10 +13434,14 @@ test "vm registerJitFn updates chunk jit pointer fast path" {
 
     var dummy: jit_backend.CompiledFn = undefined;
     try vm.registerJitFn(chunk_ptr, &dummy);
+    try testing.expectEqual(@as(usize, 1), vm.jit_fns.items.len);
+    try vm.registerJitFn(chunk_ptr, &dummy);
+    try testing.expectEqual(@as(usize, 1), vm.jit_fns.items.len);
     try testing.expectEqual(@intFromPtr(&dummy), chunk_ptr.jit_fn);
     try testing.expect(vm.lookupJitFn(chunk_ptr).? == &dummy);
 
     try testing.expect(vm.unregisterJitFn(chunk_ptr));
+    try testing.expectEqual(@as(usize, 0), vm.jit_fns.items.len);
     try testing.expectEqual(@as(usize, 0), chunk_ptr.jit_fn);
     try testing.expect(vm.lookupJitFn(chunk_ptr) == null);
     try testing.expect(!vm.unregisterJitFn(chunk_ptr));

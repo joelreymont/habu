@@ -682,7 +682,7 @@ pub fn main() !void {
         if (!workloadSelected(opts.workloads_csv, def.name)) continue;
         try benches.append(allocator, runBench(allocator, &timer, &repl, def, opts.scale));
     }
-    const jit_compiled = repl.vm.jit_fns.count();
+    const jit_compiled = repl.vm.jit_fns.items.len;
     const jit_adm = repl.vm.jit_adm;
     const gc_after_run = gcSnap(&heap);
     const gc_load = gcDelta(gc_start, gc_after_load);
