@@ -10945,7 +10945,18 @@ pub const Vm = struct {
             if (callee_chunk.allow_other_keys == 0 and callee_chunk.allowed_keywords.raw != Value.nil.raw) {
                 const allow_kw = self.builtins.kw_allow_other_keys;
                 const arg_base = self.sp - argc;
+                const allowed_list = callee_chunk.allowed_keywords;
+                const kw_pair_count: u8 = (argc - actual_positional) / 2;
+                var allowed_fast: []const Value = &.{};
+                if (@as(usize, key_count) <= KEY_FAST_TABLE_MAX and kw_pair_count > 1) {
+                    allowed_fast = self.lookupKeyAllowlistCache(callee_chunk, key_count);
+                    if (allowed_fast.len == 0) {
+                        allowed_fast = self.populateKeyAllowlistCache(callee_chunk, key_count, allowed_list);
+                    }
+                }
+
                 var allow_unknown = false;
+                var unknown_seen = false;
                 var i: u8 = actual_positional;
                 while (i + 1 < argc) : (i += 2) {
                     const kw = self.stack[arg_base + i];
@@ -10955,31 +10966,17 @@ pub const Vm = struct {
                         allow_unknown = true;
                         break;
                     }
-                }
-
-                if (!allow_unknown) {
-                    const allowed_list = callee_chunk.allowed_keywords;
-                    const kw_pair_count: u8 = (argc - actual_positional) / 2;
-                    var allowed_fast: []const Value = &.{};
-                    if (@as(usize, key_count) <= KEY_FAST_TABLE_MAX and kw_pair_count > 1) {
-                        allowed_fast = self.lookupKeyAllowlistCache(callee_chunk, key_count);
-                        if (allowed_fast.len == 0) {
-                            allowed_fast = self.populateKeyAllowlistCache(callee_chunk, key_count, allowed_list);
-                        }
-                    }
-                    i = actual_positional;
-                    while (i + 1 < argc) : (i += 2) {
-                        const kw = self.stack[arg_base + i];
-                        if (kw.raw == allow_kw.raw) continue;
+                    if (!unknown_seen) {
                         const known = if (allowed_fast.len > 0)
                             keywordInSlice(kw, allowed_fast)
                         else
                             isAllowedKeyword(kw, allowed_list);
-                        if (!known) {
-                            try self.callMismatch(fn_val, argc, "key-unknown");
-                            return;
-                        }
+                        if (!known) unknown_seen = true;
                     }
+                }
+                if (!allow_unknown and unknown_seen) {
+                    try self.callMismatch(fn_val, argc, "key-unknown");
+                    return;
                 }
             }
         } else if (opt_count > 0) {

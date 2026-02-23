@@ -184,6 +184,10 @@
       - Fresh long-run integrate sample (`bench-maxima --workloads=integrate --scale=80`) still shows `doCall`/`resolveFunctionValue`/`resolveForwardedValue` as dominant VM runtime hotspots.
       - Added a safe symbol-cache fast path in `resolveFunctionValue`: check function-resolution cache by symbol identity before any forwarded-value canonicalization, then resolve/recheck only on cache miss.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): best observed run improved to `integrate ~158.4ms`, `factor ~52.8ms`, `solve ~12.9ms` with gate still red (`wins=0/5`).
+    - [x] `habu-fold-key-valid-93c03c13` Fold `&key` unknown-key validation into a single pass while preserving `:allow-other-keys` semantics. Depends on `habu-profile-and-cut-d22c8611`.
+      - Replaced two-pass keyword validation (`scan for :allow-other-keys` then `scan for unknown keywords`) with one pass that tracks `allow_unknown`/`unknown_seen` while keeping ANSI semantics (later `:allow-other-keys` still overrides earlier unknown keywords).
+      - Retained per-chunk allowlist cache path and fallback list-walk semantics; only pass structure changed.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): runs improved to about `integrate ~157.3-157.7ms`, `factor ~52.2-52.9ms`, `ratsimp ~39.1-39.3ms` with gate still red (`wins=0/5`).
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.
