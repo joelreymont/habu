@@ -176,6 +176,10 @@
       - Removed duplicate forwarded-resolution passes in symbol function-cell lookup/cache paths (`storeFnResolveCacheLive`, `lookupFunctionCellLive`) so `resolveFunctionValue` does one canonical symbol resolve before cache/cell checks.
       - Rejected an attempted closure-specific resolve skip in `doCall` after A/B evidence showed `keyword_call` regression; kept canonical `doCall` resolution semantics unchanged.
       - A/B rebaseline against parent commit (`734cd0a3`) showed slight real-workload improvements on current host in repeated `tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32` runs (notably `integrate`/`ratsimp`), with gate status still red (`wins=0/5`).
+    - [x] `habu-cache-keyword-allowlist-6325ee72` Cache small per-chunk `&key` allowlists in VM to avoid repeated plist walks on hot keyword calls while preserving generic fallback semantics. Depends on `habu-cut-docall-forwarded-84455dbe`.
+      - Added a GC-cleared VM cache keyed by chunk address for small keyword allowlists (`<=8`) so repeated `&key` calls skip per-call plist traversal while keeping fallback validation for uncached/large/irregular lists.
+      - Kept ANSI behavior unchanged (`:allow-other-keys` handling + unknown-key signaling) and retained generic list-walk fallback whenever cache population cannot prove a complete allowlist.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): best observed run improved to `integrate ~158.3ms`, `factor ~52.3ms`, `ratsimp ~40.0ms`, `solve ~13.0ms` with gate still red (`wins=0/5`).
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

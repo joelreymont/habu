@@ -528,6 +528,13 @@ pub const Vm = struct {
         fn_val: Value = Value.nil,
     };
 
+    const KeyAllowlistCacheEntry = struct {
+        chunk_key: usize = 0,
+        key_count: u8 = 0,
+        len: u8 = 0,
+        keywords: [KEY_FAST_TABLE_MAX]Value = [_]Value{Value.nil} ** KEY_FAST_TABLE_MAX,
+    };
+
     /// Value stack
     stack: [STACK_SIZE]Value,
     /// Stack pointer (next free slot)
@@ -675,6 +682,7 @@ pub const Vm = struct {
     function_resolve_callback: ?*const fn (Value, *anyopaque) Error!?Value,
     function_resolve_context: ?*anyopaque,
     fn_resolve_cache: [MAX_FN_RESOLVE_CACHE]FnResolveEntry,
+    key_allowlist_cache: [MAX_KEY_ALLOWLIST_CACHE]KeyAllowlistCacheEntry,
     /// Value cells for uninterned symbols, keyed by stable symbol uid.
     uninterned_values: std.AutoHashMap(u64, Value),
 
@@ -733,6 +741,7 @@ pub const Vm = struct {
     const MAX_COMPILE_ROOTS = 4096;
     const MAX_EXT_ROOT_SNAPSHOTS = 256;
     const MAX_FN_RESOLVE_CACHE = 256;
+    const MAX_KEY_ALLOWLIST_CACHE = 256;
     const SAFEPOINT_BATCH_OPS = 32;
     const SAFEPOINT_BATCH_BYTES = 64 * 1024;
     const KEY_FAST_TABLE_MAX = 8;
@@ -1102,6 +1111,7 @@ pub const Vm = struct {
             .function_resolve_callback = null,
             .function_resolve_context = null,
             .fn_resolve_cache = [_]FnResolveEntry{.{}} ** MAX_FN_RESOLVE_CACHE,
+            .key_allowlist_cache = [_]KeyAllowlistCacheEntry{.{}} ** MAX_KEY_ALLOWLIST_CACHE,
             .uninterned_values = std.AutoHashMap(u64, Value).init(allocator),
             .gensym_counter = 0,
             .current_closure = null,
@@ -1308,10 +1318,49 @@ pub const Vm = struct {
         return @intCast((sym.raw >> 4) & (MAX_FN_RESOLVE_CACHE - 1));
     }
 
+    inline fn keyAllowlistCacheIndex(chunk: *const Chunk) usize {
+        return @intCast((@intFromPtr(chunk) >> 4) & (MAX_KEY_ALLOWLIST_CACHE - 1));
+    }
+
     fn clearFnResolveCache(self: *Vm) void {
         for (&self.fn_resolve_cache) |*entry| {
             entry.* = .{};
         }
+    }
+
+    fn clearKeyAllowlistCache(self: *Vm) void {
+        for (&self.key_allowlist_cache) |*entry| {
+            entry.* = .{};
+        }
+    }
+
+    fn lookupKeyAllowlistCache(self: *Vm, chunk: *const Chunk, key_count: u8) []const Value {
+        if (key_count == 0 or @as(usize, key_count) > KEY_FAST_TABLE_MAX) return &.{};
+        const chunk_key = @intFromPtr(chunk);
+        const entry = &self.key_allowlist_cache[keyAllowlistCacheIndex(chunk)];
+        if (entry.chunk_key != chunk_key or entry.key_count != key_count) return &.{};
+        return entry.keywords[0..entry.len];
+    }
+
+    fn populateKeyAllowlistCache(self: *Vm, chunk: *const Chunk, key_count: u8, allowed_list: Value) []const Value {
+        if (key_count == 0 or @as(usize, key_count) > KEY_FAST_TABLE_MAX) return &.{};
+
+        var list = allowed_list;
+        var n: usize = 0;
+        var tmp: [KEY_FAST_TABLE_MAX]Value = undefined;
+        while (n < @as(usize, key_count) and isConsRaw(list)) : (n += 1) {
+            const cell = consFromRaw(list);
+            tmp[n] = cell.car;
+            list = cell.cdr;
+        }
+        if (n != @as(usize, key_count) or list.raw != Value.nil.raw) return &.{};
+
+        const entry = &self.key_allowlist_cache[keyAllowlistCacheIndex(chunk)];
+        entry.chunk_key = @intFromPtr(chunk);
+        entry.key_count = key_count;
+        entry.len = @intCast(n);
+        @memcpy(entry.keywords[0..n], tmp[0..n]);
+        return entry.keywords[0..n];
     }
 
     fn lookupFnResolveCache(self: *Vm, sym: Value) ?Value {
@@ -2435,6 +2484,7 @@ pub const Vm = struct {
 
         try self.rekeyJitFnsAfterGc();
         self.clearFnResolveCache();
+        self.clearKeyAllowlistCache();
 
         if (trace_validate_roots or trap_validate_roots) {
             if (!self.validateBuiltinAndTypeRoots("post-restore")) {
@@ -10904,17 +10954,10 @@ pub const Vm = struct {
                     const allowed_list = callee_chunk.allowed_keywords;
                     const kw_pair_count: u8 = (argc - actual_positional) / 2;
                     var allowed_fast: []const Value = &.{};
-                    var allowed_buf: [KEY_FAST_TABLE_MAX]Value = undefined;
                     if (@as(usize, key_count) <= KEY_FAST_TABLE_MAX and kw_pair_count > 1) {
-                        var list = allowed_list;
-                        var n: usize = 0;
-                        while (n < @as(usize, key_count) and isConsRaw(list)) : (n += 1) {
-                            const cell = consFromRaw(list);
-                            allowed_buf[n] = cell.car;
-                            list = cell.cdr;
-                        }
-                        if (n == @as(usize, key_count) and list.raw == Value.nil.raw) {
-                            allowed_fast = allowed_buf[0..n];
+                        allowed_fast = self.lookupKeyAllowlistCache(callee_chunk, key_count);
+                        if (allowed_fast.len == 0) {
+                            allowed_fast = self.populateKeyAllowlistCache(callee_chunk, key_count, allowed_list);
                         }
                     }
                     i = actual_positional;

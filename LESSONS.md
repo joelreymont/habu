@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-23)
 
 ### Worked Well
+- Caching small `&key` allowlists per callee chunk (`src/interp/vm.zig:531`, `src/interp/vm.zig:1337`, `src/interp/vm.zig:1345`, `src/interp/vm.zig:10958`) removed repeated plist walks from hot keyword validation while preserving fallback behavior for uncached/irregular lists.
+- Clearing the keyword allowlist cache at GC boundaries (`src/interp/vm.zig:2487`) kept chunk-keyed cache entries safe under moving collectors without adding new root-management complexity.
 - Deduplicating forwarded-resolution in function-designator resolution (`src/interp/vm.zig:1324`, `src/interp/vm.zig:1335`, `src/interp/vm.zig:1378`) removed redundant `resolveForwardedValue` work between `resolveFunctionValue`, function-cell lookup, and cache store paths while keeping symbol semantics unchanged.
 - Running A/B checks against the parent revision in a separate `jj` workspace before keeping a perf change prevented locking in a microbench regression; repeated `tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32` runs are more reliable than one noisy sample for call-path decisions.
 - Fixing `&key` boundary detection to scan optional slots one-by-one in `doCall` (`src/interp/vm.zig:10859`, `src/interp/vm.zig:10863`) closed a real semantic bug for mixed `&optional`+`&key` lambdas and removed unnecessary keyword probes on key-only lambdas (`opt_count==0` fast boundary).
@@ -45,6 +47,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Emitting first unsupported IR tags on JIT compile failures (`src/interp/repl.zig:3013`) turned generic `UnsupportedIrNode` logs into actionable blockers; current Maxima benchmark wrapper rejection points to `.progv` as the first missing lowering.
 
 ### Did Not Work
+- Treating one benchmark run as authoritative for keyword-call changes was too noisy; decision quality improved only after repeated `keyword_call` + repeated Maxima hotspot runs on both current and parent revisions.
 - A closure-specific resolve skip in `doCall` (attempted around the hot entry path near `src/interp/vm.zig:10748`) regressed the dedicated `keyword_call` microbench in A/B checks; preserving canonical doCall-time forwarded resolution was the better choice.
 - Scanning for first keyword in steps of two from `arity` (`src/interp/vm.zig` pre-fix around current `10863`) is unsound for `&optional`+`&key`: odd-offset key starts are missed, and some invalid extra positional args can slip through without signaling.
 - Eagerly materializing an allowed-keyword slice on every key call (pre-threshold version near current `10907`) added overhead to small or zero-key-pair calls; gating fast materialization by `(kw_pair_count > 1)` and small declared-key count is necessary.
