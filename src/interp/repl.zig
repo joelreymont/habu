@@ -3010,6 +3010,12 @@ pub const Repl = struct {
         var compiled = jit_backend.compileIrWithKnownFnsAndLiteralRoots(self.allocator, lambda_ir, name, &known_fns, literal_roots_ptr) catch |err| {
             if (trace) {
                 std.debug.print("JIT: hoist compile failed for '{s}': {s}\n", .{ name, @errorName(err) });
+                if (err == error.UnsupportedIrNode) {
+                    const body_ir = if (lambda_ir.* == .lambda) lambda_ir.lambda.body else lambda_ir;
+                    if (jit_backend.IrTranslator.firstUnsupportedTagWithLiteralRoots(body_ir, literal_roots_ptr)) |tag| {
+                        std.debug.print("JIT: first unsupported tag for '{s}' is {s}\n", .{ name, @tagName(tag) });
+                    }
+                }
             }
             if (err == error.UnsupportedIrNode) return .unsupported;
             return .failed;
