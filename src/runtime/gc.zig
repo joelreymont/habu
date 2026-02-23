@@ -1853,10 +1853,9 @@ pub const GC = struct {
                 }
             },
             .symbol => {
-                // Scan plist (offset 16: after name_len and name_ptr)
-                const plist_ptr: *Value = @ptrFromInt(addr + 16);
-                if (plist_ptr.isPointer() and !plist_ptr.isNil()) {
-                    plist_ptr.* = try self.copyValue(heap, plist_ptr.*, alloc_ptr);
+                const sym: *objects.Symbol = @ptrFromInt(addr);
+                if (sym.plist.isPointer() and !sym.plist.isNil()) {
+                    sym.plist = try self.copyValue(heap, sym.plist, alloc_ptr);
                 }
             },
             .vector => {

@@ -9,6 +9,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-23)
 
 ### Worked Well
+- Canonicalizing forwarded symbol/list values at `progv` boundaries (`src/interp/vm.zig:5213`, `src/interp/vm.zig:8117`, `src/interp/vm.zig:8194`) removed a deterministic non-hoist Maxima crash where `pushProgvFrame` dereferenced stale forwarded symbol objects (`name_ptr=0x30/0x40`) during macro-expansion-time dynamic binding.
+- Extending symbol-cell and function-cell entry points to resolve forwarded symbol values before lookup/store (`src/interp/vm.zig:1249`, `src/interp/vm.zig:1262`, `src/interp/vm.zig:1281`, `src/interp/vm.zig:1294`) closed adjacent stale-pointer dereference paths beyond `progv`.
+- Locking the bug with a VM-level regression that injects a deliberately stale forwarded symbol into a `progv` symbol list (`src/interp/vm.zig:13352`) gives deterministic red/green coverage without relying on long Maxima bench reproductions.
 - Replacing ext-root prefix copyback with snapshot-stack rooting (`src/interp/vm.zig:655`, `src/interp/vm.zig:1359`, `src/interp/vm.zig:2148`) fixed nested owner restore corruption; inactive ext-root owners/slices now stay in GC root ranges directly instead of being reconstructed from temporary arrays.
 - Making `saveExtRoots` fallible and updating all swap callsites (`src/compiler/compile.zig:3606`, `src/interp/repl.zig:816`) removed silent snapshot-drop risk and kept nested ext-root save/restore bookkeeping explicit.
 - Adding a JIT no-GC execution fence with OOM deopt (`src/interp/vm.zig:1535`, `src/interp/vm.zig:1998`, `src/interp/vm.zig:1550`) stopped moving-GC from running while JIT-held register values have no root map; `bench-maxima` now completes instead of crashing in `jitHashGet`.
@@ -31,6 +34,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Emitting first unsupported IR tags on JIT compile failures (`src/interp/repl.zig:3013`) turned generic `UnsupportedIrNode` logs into actionable blockers; current Maxima benchmark wrapper rejection points to `.progv` as the first missing lowering.
 
 ### Did Not Work
+- Hardening only qualified-symbol lookup (`src/runtime/qual_name.zig`) was insufficient: the stale-forwarded symbol was introduced earlier, and `pushProgvFrame` could still dereference stale symbol/list cells before lookup ever ran.
 - Relying on `restoreExtRootsSynced` copyback from temporary root arrays propagated stale values into persistent owners under nested save/set/restore chains (`src/interp/vm.zig` pre-fix `restoreExtRootsSynced` logic).
 - Fixing only helper-entry forwarded resolution was insufficient by itself; stale symbol-tagged pointers can survive long enough to lose forwarding metadata before first helper use, so preventing in-JIT GC was required for correctness (`src/jit/backend.zig:239`, `src/interp/vm.zig:1535`, `src/interp/vm.zig:1998`).
 - Manually updating `PLAN.md` checkboxes drifted from dot state; syncing checkboxes from `dot show` status avoids stale "open vs done" plan state when many dots close in parallel.

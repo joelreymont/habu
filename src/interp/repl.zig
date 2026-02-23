@@ -1571,7 +1571,7 @@ pub const Repl = struct {
         }
 
         var qbuf: [512]u8 = undefined;
-        const q = try qual_name.qualSym(self.allocator, s, &qbuf);
+        const q = try qual_name.qualSymWithHeap(self.allocator, self.heap, s, &qbuf);
         defer if (q.owned) self.allocator.free(q.name);
 
         if (self.compiler.globals.lookup(q.name)) |idx| {
@@ -3799,7 +3799,7 @@ pub const Repl = struct {
         return dispatch_head.raw == b.defpackage.raw;
     }
 
-    fn findAccessibleCaseFolded(pkg: *runtime.heap.Package, name: []const u8) ?Value {
+    fn findAccessibleCaseFolded(pkg: *const runtime.heap.Package, name: []const u8) ?Value {
         if (pkg.findAccessibleUpper(name)) |canonical| return canonical;
 
         var needs_upper = false;
@@ -3856,7 +3856,7 @@ pub const Repl = struct {
         return live_sym;
     }
 
-    fn lookupMacroByNameInPackage(self: *Repl, pkg: *runtime.heap.Package, name: []const u8) ?MacroEntry {
+    fn lookupMacroByNameInPackage(self: *Repl, pkg: *const runtime.heap.Package, name: []const u8) ?MacroEntry {
         if (pkg.symbols.get(name)) |pkg_sym| {
             if (self.macros.get(pkg_sym)) |entry| return entry;
         }
@@ -3870,10 +3870,8 @@ pub const Repl = struct {
         return null;
     }
 
-    fn symbolPackage(sym: *const Symbol) ?*runtime.heap.Package {
-        const bits = sym.reserved;
-        if (bits == 0 or (bits & 1) != 0) return null;
-        return @ptrFromInt(bits);
+    fn symbolPackage(self: *const Repl, sym: *const Symbol) ?*const runtime.heap.Package {
+        return self.heap.symbolHomePkg(sym);
     }
 
     fn lookupMacroEntry(self: *Repl, sym: Value) ?MacroEntry {
@@ -3902,7 +3900,7 @@ pub const Repl = struct {
             );
         }
 
-        if (symbolPackage(sym_ptr)) |pkg| {
+        if (self.symbolPackage(sym_ptr)) |pkg| {
             if (self.lookupMacroByNameInPackage(pkg, name)) |entry| {
                 if (trace_lookup) std.debug.print("TRACE macro-lookup hit-pkg name={s}\n", .{name});
                 return entry;
@@ -3980,7 +3978,7 @@ pub const Repl = struct {
     /// Package-scoped brute-force lookup: scan macro entries for symbols
     /// with matching name that belong to the given package (or its use-list).
     /// Prevents cross-package name collisions (CL:FLOAT vs MAXIMA::FLOAT).
-    fn lookupMacroByNameInPackage2(self: *Repl, pkg: *runtime.heap.Package, name: []const u8) ?MacroEntry {
+    fn lookupMacroByNameInPackage2(self: *Repl, pkg: *const runtime.heap.Package, name: []const u8) ?MacroEntry {
         var it = self.macros.iterator();
         while (it.next()) |entry| {
             const k = entry.key_ptr.*;
@@ -3988,7 +3986,7 @@ pub const Repl = struct {
             if (!self.isLiveValue(k)) continue;
             if (!std.mem.eql(u8, k.toPtr(Symbol).getName(), name)) continue;
             // Check that the symbol belongs to the target package
-            const sym_pkg = symbolPackage(k.toPtr(Symbol)) orelse continue;
+            const sym_pkg = self.symbolPackage(k.toPtr(Symbol)) orelse continue;
             if (sym_pkg == pkg) return entry.value_ptr.*;
             // Also check used packages
             for (pkg.use_list.items) |used_pkg| {
@@ -4617,7 +4615,7 @@ pub const Repl = struct {
             if (self.lookupMacroEntry(head)) |macro_entry| {
                 if (std.posix.getenv("HABU_TRACE_MACRO_DEPTH") != null and depth >= 480) {
                     const sym = head.toPtr(runtime.Symbol);
-                    if (symbolPackage(sym)) |pkg| {
+                    if (self.symbolPackage(sym)) |pkg| {
                         std.debug.print("TRACE macro-depth {d}: {s} [{s}]\n", .{ depth, sym.getName(), pkg.name });
                     } else {
                         std.debug.print("TRACE macro-depth {d}: {s} [uninterned]\n", .{ depth, sym.getName() });

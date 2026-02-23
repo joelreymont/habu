@@ -207,7 +207,7 @@ pub const Package = struct {
         self.allocator.destroy(self);
     }
 
-    pub fn findAccessibleUpper(self: *Package, upper_name: []const u8) ?Value {
+    pub fn findAccessibleUpper(self: *const Package, upper_name: []const u8) ?Value {
         if (self.symbols.get(upper_name)) |existing| {
             return existing;
         }
@@ -221,7 +221,7 @@ pub const Package = struct {
         return null;
     }
 
-    pub fn findAccessible(self: *Package, name: []const u8) error{OutOfMemory}!?Value {
+    pub fn findAccessible(self: *const Package, name: []const u8) error{OutOfMemory}!?Value {
         var upper_buf: [256]u8 = undefined;
         const upper = try upperNameAlloc(self.allocator, name, upper_buf[0..]);
         defer freeUpperName(self.allocator, upper);
@@ -2944,6 +2944,17 @@ pub const Heap = struct {
         return Value.makeNativeCode(nc);
     }
 
+    fn nextSymUidBits(self: *Heap) error{OutOfMemory}!u64 {
+        const uid = self.sym_uid_counter;
+        if (uid == 0 or uid > (std.math.maxInt(u64) >> 1)) return error.OutOfMemory;
+        self.sym_uid_counter = uid + 1;
+        return (uid << 1) | 1;
+    }
+
+    pub fn retagUninterned(self: *Heap, sym: *objects.Symbol) error{OutOfMemory}!void {
+        sym.reserved = try self.nextSymUidBits();
+    }
+
     /// Allocate a symbol from a string
     pub fn allocSymbol(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
         const aligned_name_len = std.mem.alignForward(usize, name.len, 8);
@@ -2958,10 +2969,7 @@ pub const Heap = struct {
 
         // Uninterned symbols get a stable id in reserved (low-bit tagged).
         // Interned symbols overwrite reserved with a *Package pointer later.
-        const uid = self.sym_uid_counter;
-        if (uid == 0 or uid > (std.math.maxInt(u64) >> 1)) return error.OutOfMemory;
-        self.sym_uid_counter = uid + 1;
-        const reserved_uid = (uid << 1) | 1;
+        const reserved_uid = try self.nextSymUidBits();
 
         sym.* = .{
             .name_len = name.len,
@@ -3119,7 +3127,7 @@ pub const Heap = struct {
         return sym;
     }
 
-    fn hasNativePackagePtr(self: *const Heap, pkg: *Package) bool {
+    fn hasNativePackagePtr(self: *const Heap, pkg: *const Package) bool {
         if (self.cl_package != null and self.cl_package.? == pkg) return true;
         if (self.cl_user_package != null and self.cl_user_package.? == pkg) return true;
         if (self.keyword_package != null and self.keyword_package.? == pkg) return true;
@@ -3135,6 +3143,17 @@ pub const Heap = struct {
         }
 
         return false;
+    }
+
+    pub fn nativePkgFromBits(self: *const Heap, bits: u64) ?*const Package {
+        if (bits == 0 or (bits & 1) != 0) return null;
+        const pkg: *const Package = @ptrFromInt(bits);
+        if (!self.hasNativePackagePtr(pkg)) return null;
+        return pkg;
+    }
+
+    pub fn symbolHomePkg(self: *const Heap, sym: *const objects.Symbol) ?*const Package {
+        return self.nativePkgFromBits(sym.reserved);
     }
 
     fn resolveCurrentPackageForIntern(self: *Heap) ?*Package {

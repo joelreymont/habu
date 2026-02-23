@@ -37,6 +37,7 @@
     - [x] `habu-fence-gc-during-663fc5d2` Fence moving GC during active JIT frames and deopt to interpreter on JIT OOM exits; prevents stale unrooted register values from surviving GC in helper-heavy compiled paths.
     - [x] `habu-rca-small-nursery-ce0d8d7f` RCA/fix GC-pressure crash with small nursery Maxima loads (`--nursery-mb=8..16`). Depends on `habu-nursery-policy-benchmark-599d4233`; blocks `habu-maxima-load-to-e6d01b9c`.
     - [x] `habu-design-safe-macro-e2cbd352` Design/implement safe macro-expander caching with stable chunk/index semantics (no transient chunk-pool assumptions).
+    - [x] `habu-fix-progv-stale-8d616a4f` Fix stale forwarded symbol dereference in `progv` dynamic binding paths by canonicalizing forwarded values before symbol/global/local lookup; add deterministic VM regression.
   - [x] `habu-maxima-load-to-e6d01b9c` Drive Maxima loader and critical symbol binds to green. Depends on `habu-stabilize-eval-vm-d1c1c5cc`.
   - [x] `habu-profile-maxima-hotspots-977ac23d` Profile real Maxima hotspots in interpreter and JIT modes. Depends on `habu-maxima-load-to-e6d01b9c`.
     - [x] `habu-add-maxima-real-c6c59d32` Add Maxima real-workload benchmark harness (`bench/maxima_workload.zig`, `bench/maxima_workload.lisp`, `tools/maxima-bench`) with loader + CAS timing JSON.

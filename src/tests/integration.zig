@@ -5927,6 +5927,28 @@ test "ansi repro symbol-package function designator resolves callable" {
     try testing.expect(result.isNil());
 }
 
+test "delete-package retags symbol for progv lookup" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(let* ((p (make-package "DOT-PROGV-PKG"))
+        \\       (s (intern "DYN-X" p)))
+        \\  (delete-package p)
+        \\  (progv (list s) (list 42)
+        \\    (symbol-value s)))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
 test "ansi repro intern function designator accepts optional package arg" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

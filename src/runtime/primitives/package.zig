@@ -249,6 +249,13 @@ fn removeNativeSymbol(pkg: *heap_mod.Package, sym: Value) void {
     _ = pkg.symbols.remove(sym_name);
 }
 
+fn detachHomeSymbol(heap: *Heap, native_pkg: *heap_mod.Package, sym: Value) !void {
+    if (!sym.isSymbol()) return;
+    const sym_obj = sym.toPtr(objects.Symbol);
+    if (sym_obj.reserved != @intFromPtr(native_pkg)) return;
+    try heap.retagUninterned(sym_obj);
+}
+
 /// Create a new package
 pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value) !Value {
     switch (name.typeKind()) {
@@ -289,9 +296,7 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
     const resolved_use_list = if (use_list) |ul| try resolvePkgList(heap, ul) else Value.nil;
     const native_pkg = if (reused_native) |native| native else try heap.findOrCreatePackage(pkg_name);
     errdefer if (reused_native == null) {
-        if (heap.packages.fetchRemove(pkg_name)) |removed| {
-            heap.backing_allocator.free(removed.key);
-        }
+        purgeNativePackageEntries(heap, native_pkg) catch {};
         native_pkg.deinit();
     };
 
@@ -797,6 +802,7 @@ pub fn shadowingImport(heap: *Heap, symbols: Value, pkg: Value) !void {
                     }
                     removeNativeExport(native, sym_name);
                     removeNativeSymbol(native, existing);
+                    try detachHomeSymbol(heap2, native, existing);
                 } else {
                     return;
                 }
@@ -928,6 +934,7 @@ pub fn uninternSymbol(heap: *Heap, symbol: Value, pkg: Value) !bool {
     }
     removeNativeExport(native_pkg, symbol.toPtr(objects.Symbol).getName());
     removeNativeSymbol(native_pkg, symbol);
+    try detachHomeSymbol(heap, native_pkg, symbol);
 
     // Remove from shadowing list if present
     var new_shadowing = Value.nil;
@@ -990,6 +997,11 @@ pub fn deletePackage(heap: *Heap, designator: Value) !bool {
         if (other_pkg == native_pkg) continue;
         if (other_pkg.use_list.items.len == 0) continue;
         filterNativeUseList(&other_pkg.use_list, native_rm[0..]);
+    }
+
+    var native_sym_it = native_pkg.symbols.iterator();
+    while (native_sym_it.next()) |entry| {
+        try detachHomeSymbol(heap, native_pkg, entry.value_ptr.*);
     }
 
     // Remove from Lisp package registry
@@ -1224,6 +1236,34 @@ test "use-package and inherited symbols" {
     try testing.expect(found_sym.raw == sym.raw);
 }
 
+test "shadowing-import retags replaced local home symbol" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const pkg1 = try makePackage(&heap, try heap.allocBaseString("PKG1"), null, null);
+    const pkg2 = try makePackage(&heap, try heap.allocBaseString("PKG2"), null, null);
+    const sym_name = try heap.allocBaseString("SWAP");
+
+    const intern1 = try internSymbol(&heap, sym_name, pkg1);
+    const old_sym = intern1.toPtr(objects.Cons).car;
+    const old_bits_before = old_sym.toPtr(objects.Symbol).reserved;
+    try testing.expect(old_bits_before != 0 and (old_bits_before & 1) == 0);
+
+    const intern2 = try internSymbol(&heap, sym_name, pkg2);
+    const new_sym = intern2.toPtr(objects.Cons).car;
+
+    try shadowingImport(&heap, new_sym, pkg1);
+
+    const old_bits_after = old_sym.toPtr(objects.Symbol).reserved;
+    try testing.expect(old_bits_after != 0 and (old_bits_after & 1) == 1);
+
+    const found = try findSymbol(&heap, sym_name, pkg1);
+    try testing.expect(found.isCons());
+    const found_sym = found.toPtr(objects.Cons).car;
+    try testing.expect(found_sym.raw == new_sym.raw);
+}
+
 test "findAllSymbols returns distinct symbols" {
     const testing = std.testing;
     var heap = try Heap.init(testing.allocator, .{});
@@ -1340,9 +1380,14 @@ test "unintern removes symbol" {
     const sym_name = try heap.allocBaseString("Z");
     const result = try internSymbol(&heap, sym_name, pkg);
     const sym = result.toPtr(objects.Cons).car;
+    const home_bits_before = sym.toPtr(objects.Symbol).reserved;
+    try testing.expect(home_bits_before != 0 and (home_bits_before & 1) == 0);
 
     const removed = try uninternSymbol(&heap, sym, pkg);
     try testing.expect(removed);
+
+    const home_bits_after = sym.toPtr(objects.Symbol).reserved;
+    try testing.expect(home_bits_after != 0 and (home_bits_after & 1) == 1);
 
     const found = try findSymbol(&heap, sym_name, pkg);
     const found_sym = found.toPtr(objects.Cons).car;
@@ -1374,6 +1419,11 @@ test "delete-package removes from system" {
     const name = try heap.allocBaseString("TO-DELETE");
     const pkg = try makePackage(&heap, name, null, null);
     try testing.expect(pkg.isPackage());
+    const sym_name = try heap.allocBaseString("TO-DELETE-SYM");
+    const interned = try internSymbol(&heap, sym_name, pkg);
+    const sym = interned.toPtr(objects.Cons).car;
+    const home_bits_before = sym.toPtr(objects.Symbol).reserved;
+    try testing.expect(home_bits_before != 0 and (home_bits_before & 1) == 0);
 
     const found1 = try findPackage(&heap, name);
     try testing.expect(found1 != null);
@@ -1383,6 +1433,9 @@ test "delete-package removes from system" {
 
     const found2 = try findPackage(&heap, name);
     try testing.expect(found2 == null);
+
+    const home_bits_after = sym.toPtr(objects.Symbol).reserved;
+    try testing.expect(home_bits_after != 0 and (home_bits_after & 1) == 1);
 }
 
 test "delete-package removes nicknames" {

@@ -4384,8 +4384,21 @@ pub const Compiler = struct {
                 if (!live_sym.isSymbol()) return error.InvalidLambda;
                 const sym_ptr = live_sym.toPtr(Symbol);
                 const bits = sym_ptr.reserved;
-                const sym_uid: u64 = if ((bits & 1) != 0) bits >> 1 else 0;
-                const sym_pkg_ptr: usize = if (sym_uid == 0 and bits != 0) @intCast(bits) else 0;
+                var sym_uid: u64 = 0;
+                var sym_pkg_ptr: usize = 0;
+                if ((bits & 1) != 0) {
+                    sym_uid = bits >> 1;
+                } else if (bits != 0) {
+                    if (comp.heap) |heap| {
+                        if (heap.symbolHomePkg(sym_ptr)) |pkg| {
+                            sym_pkg_ptr = @intFromPtr(pkg);
+                        } else {
+                            sym_uid = bits >> 1;
+                        }
+                    } else {
+                        sym_pkg_ptr = @intCast(bits);
+                    }
+                }
                 try special_list.append(comp.allocator, .{
                     .sym_pkg_ptr = sym_pkg_ptr,
                     .sym_uid = sym_uid,
@@ -4760,8 +4773,10 @@ pub const Compiler = struct {
                         sym.toPtr(Symbol).reserved = (sp.sym_uid << 1) | 1;
                         break :blk sym;
                     } else if (sp.sym_pkg_ptr != 0) blk: {
-                        const pkg: *runtime.heap.Package = @ptrFromInt(sp.sym_pkg_ptr);
-                        break :blk try pkg.intern(heap, sp.name);
+                        if (heap.nativePkgFromBits(@as(u64, @intCast(sp.sym_pkg_ptr)))) |pkg| {
+                            break :blk try @constCast(pkg).intern(heap, sp.name);
+                        }
+                        break :blk try heap.allocSymbol(sp.name);
                     } else blk: {
                         break :blk try heap.intern(sp.name);
                     };
@@ -10289,7 +10304,7 @@ pub const Compiler = struct {
 
     /// Get qualified name for a symbol (PKG:NAME or just NAME if no package)
     fn getQualifiedName(self: *Compiler, sym: *const Symbol, buf: []u8) !qual_name.QualName {
-        return qual_name.qualSym(self.allocator, sym, buf);
+        return qual_name.qualSymWithHeap(self.allocator, self.heap, sym, buf);
     }
 
     fn isLegacyFallbackPackageName(pkg_name: []const u8) bool {
@@ -10298,10 +10313,8 @@ pub const Compiler = struct {
     }
 
     fn allowLegacyGlobalFallbackSym(self: *const Compiler, sym: *const Symbol) bool {
-        _ = self;
-        const pkg_bits = sym.reserved;
-        if (pkg_bits == 0 or (pkg_bits & 1) != 0) return true;
-        const pkg: *runtime.heap.Package = @ptrFromInt(pkg_bits);
+        const heap = self.heap orelse return true;
+        const pkg = heap.symbolHomePkg(sym) orelse return true;
         return isLegacyFallbackPackageName(pkg.name);
     }
 
@@ -11788,13 +11801,22 @@ pub const Compiler = struct {
 
     fn lookupClassMetadataBySymbol(self: *Compiler, class_sym: *const Symbol) error{ OutOfMemory, Overflow }!?[]const SlotSpec {
         const class_name = class_sym.getName();
-        const pkg_bits: u64 = class_sym.reserved;
-        if (pkg_bits != 0 and (pkg_bits & 1) == 0) {
-            const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_bits);
-            var qual_buf: [256]u8 = undefined;
-            const qualified = try self.makePkgQualifiedName(&qual_buf, pkg.name, class_name);
-            defer if (qualified.owned) self.allocator.free(qualified.slice);
-            if (self.class_metadata.get(qualified.slice)) |specs| return specs;
+        if (self.heap) |heap| {
+            if (heap.symbolHomePkg(class_sym)) |pkg| {
+                var qual_buf: [256]u8 = undefined;
+                const qualified = try self.makePkgQualifiedName(&qual_buf, pkg.name, class_name);
+                defer if (qualified.owned) self.allocator.free(qualified.slice);
+                if (self.class_metadata.get(qualified.slice)) |specs| return specs;
+            }
+        } else {
+            const pkg_bits: u64 = class_sym.reserved;
+            if (pkg_bits != 0 and (pkg_bits & 1) == 0) {
+                const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_bits);
+                var qual_buf: [256]u8 = undefined;
+                const qualified = try self.makePkgQualifiedName(&qual_buf, pkg.name, class_name);
+                defer if (qualified.owned) self.allocator.free(qualified.slice);
+                if (self.class_metadata.get(qualified.slice)) |specs| return specs;
+            }
         }
 
         return try self.lookupClassMetadataByName(class_name);
@@ -15877,18 +15899,19 @@ pub const Compiler = struct {
         return sym_ptr.getName();
     }
 
-    fn symbolHomePackage(self: *Compiler, sym: Value) ?*runtime.heap.Package {
+    fn symbolHomePackage(self: *Compiler, sym: Value) ?*const runtime.heap.Package {
         const live = self.resolveForwardedValue(sym);
         if (!live.isSymbol()) return null;
         if (self.safeSymbolName(live) == null) return null;
+        if (self.heap) |heap| return heap.symbolHomePkg(live.toPtr(Symbol));
         const bits = live.toPtr(Symbol).reserved;
         if (bits == 0 or (bits & 1) != 0) return null;
         return @ptrFromInt(bits);
     }
 
     fn packageCanSeeSymbolNameFrom(
-        target_pkg: *runtime.heap.Package,
-        owner_pkg: *runtime.heap.Package,
+        target_pkg: *const runtime.heap.Package,
+        owner_pkg: *const runtime.heap.Package,
         name: []const u8,
     ) bool {
         if (target_pkg == owner_pkg) return true;

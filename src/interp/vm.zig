@@ -1226,7 +1226,7 @@ pub const Vm = struct {
         if (symbolIsUninterned(sym)) return null;
         const env = self.global_env orelse return null;
         var qual_buf: [512]u8 = undefined;
-        const q = try qual_name.qualSym(self.allocator, sym, &qual_buf);
+        const q = try qual_name.qualSymWithHeap(self.allocator, self.heap, sym, &qual_buf);
         defer if (q.owned) self.allocator.free(q.name);
         return try env.define(q.name);
     }
@@ -1247,8 +1247,9 @@ pub const Vm = struct {
     }
 
     fn lookupSymbolValueCell(self: *Vm, sym_val: Value) Error!?Value {
-        if (!sym_val.isSymbol()) return null;
-        const sym = sym_val.toPtr(Symbol);
+        const live_sym_val = self.resolveForwardedValue(sym_val);
+        if (!live_sym_val.isSymbol()) return null;
+        const sym = live_sym_val.toPtr(Symbol);
         if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
             if (idx >= MAX_GLOBALS) return null;
             const val = self.globals[idx];
@@ -1259,8 +1260,9 @@ pub const Vm = struct {
     }
 
     fn setSymbolValueCell(self: *Vm, sym_val: Value, val: Value) Error!void {
-        if (!sym_val.isSymbol()) return error.TypeMismatch;
-        const sym = sym_val.toPtr(Symbol);
+        const live_sym_val = self.resolveForwardedValue(sym_val);
+        if (!live_sym_val.isSymbol()) return error.TypeMismatch;
+        const sym = live_sym_val.toPtr(Symbol);
         if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
             if (idx < MAX_GLOBALS) {
                 try self.storeGlobal(idx, val);
@@ -1277,8 +1279,9 @@ pub const Vm = struct {
     }
 
     fn clearSymbolValueCell(self: *Vm, sym_val: Value) Error!void {
-        if (!sym_val.isSymbol()) return error.TypeMismatch;
-        const sym = sym_val.toPtr(Symbol);
+        const live_sym_val = self.resolveForwardedValue(sym_val);
+        if (!live_sym_val.isSymbol()) return error.TypeMismatch;
+        const sym = live_sym_val.toPtr(Symbol);
         if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
             if (idx < MAX_GLOBALS) {
                 self.globals[idx] = Value.unbound;
@@ -1289,23 +1292,26 @@ pub const Vm = struct {
     }
 
     fn lookupFunctionCell(self: *Vm, sym_val: Value) Error!?Value {
-        if (!sym_val.isSymbol()) return null;
+        const live_sym_val = self.resolveForwardedValue(sym_val);
+        if (!live_sym_val.isSymbol()) return null;
         const key = self.builtins.sym_function_cell;
-        const cell = try primitives.list.get(self.heap, sym_val, key);
+        const cell = try primitives.list.get(self.heap, live_sym_val, key);
         if (!isCallableFunctionValue(cell)) return null;
         return cell;
     }
 
     fn storeFunctionCell(self: *Vm, sym_val: Value, fn_val: Value) Error!void {
-        if (!sym_val.isSymbol()) return;
+        const live_sym_val = self.resolveForwardedValue(sym_val);
+        if (!live_sym_val.isSymbol()) return;
         const key = self.builtins.sym_function_cell;
-        _ = try primitives.list.put(self.heap, sym_val, key, fn_val);
+        _ = try primitives.list.put(self.heap, live_sym_val, key, fn_val);
     }
 
     fn clearFunctionCell(self: *Vm, sym_val: Value) Error!void {
-        if (!sym_val.isSymbol()) return;
+        const live_sym_val = self.resolveForwardedValue(sym_val);
+        if (!live_sym_val.isSymbol()) return;
         const key = self.builtins.sym_function_cell;
-        _ = try primitives.list.remprop(self.heap, sym_val, key);
+        _ = try primitives.list.remprop(self.heap, live_sym_val, key);
     }
 
     fn resolveFunctionValue(self: *Vm, sym_val: Value) Error!?Value {
@@ -1942,7 +1948,7 @@ pub const Vm = struct {
         const local_name = sym.getName();
 
         var qual_buf: [512]u8 = undefined;
-        const q = try qual_name.qualSym(self.allocator, sym, &qual_buf);
+        const q = try qual_name.qualSymWithHeap(self.allocator, self.heap, sym, &qual_buf);
         defer if (q.owned) self.allocator.free(q.name);
 
         if (env.lookup(q.name)) |idx| return idx;
@@ -1965,10 +1971,7 @@ pub const Vm = struct {
     }
 
     fn allowLegacyGlobalFallbackSym(self: *const Vm, sym: *const Symbol) bool {
-        _ = self;
-        const pkg_bits = sym.reserved;
-        if (pkg_bits == 0 or (pkg_bits & 1) != 0) return false;
-        const pkg: *runtime.heap.Package = @ptrFromInt(pkg_bits);
+        const pkg = self.heap.symbolHomePkg(sym) orelse return false;
         return isLegacyFallbackPackageName(pkg.name);
     }
 
@@ -4969,7 +4972,7 @@ pub const Vm = struct {
                         } else if (self.global_env) |env| {
                             // Create a new global slot for this symbol
                             var qual_buf: [512]u8 = undefined;
-                            const q = try qual_name.qualSym(self.allocator, sym_obj, &qual_buf);
+                            const q = try qual_name.qualSymWithHeap(self.allocator, self.heap, sym_obj, &qual_buf);
                             defer if (q.owned) self.allocator.free(q.name);
                             const idx = try env.define(q.name);
                             if (idx < self.globals.len) {
@@ -5207,8 +5210,8 @@ pub const Vm = struct {
                         std.debug.print("TRACE progv disasm error={s}\n", .{@errorName(derr)});
                     }
                 }
-                const values = try self.pop();
-                const symbols = try self.pop();
+                const values = self.resolveForwardedValue(try self.pop());
+                const symbols = self.resolveForwardedValue(try self.pop());
                 try self.pushProgvFrame(symbols, values);
             },
 
@@ -5609,10 +5612,7 @@ pub const Vm = struct {
                     },
                     .symbol => {
                         const sym = val.toPtr(Symbol);
-                        const pkg_bits = sym.reserved;
-                        if (pkg_bits != 0 and (pkg_bits & 1) == 0) {
-                            // Get the Zig package struct
-                            const zig_pkg: *const runtime.heap.Package = @ptrFromInt(pkg_bits);
+                        if (self.heap.symbolHomePkg(sym)) |zig_pkg| {
                             // Look up the Lisp package object by name
                             const name_val = try self.heap.allocBaseString(zig_pkg.name);
                             if (try self.heap.findLispPackage(name_val)) |pkg| {
@@ -8117,51 +8117,76 @@ pub const Vm = struct {
     fn pushProgvFrame(self: *Vm, symbols: Value, values: Value) Error!void {
         if (self.progv_sp >= MAX_PROGVS) return error.StackOverflow;
 
-        // Build list of (binding-key . old-value) pairs.
-        // binding-key is either a global index fixnum or an uninterned symbol.
-        var saved_bindings = Value.nil;
-        var sym_list = symbols;
-        var val_list = values;
+        const base_sp = self.sp;
+        defer self.sp = base_sp;
 
-        while (sym_list.isCons()) {
-            const sym_cons = sym_list.toPtr(Cons);
-            const symbol = sym_cons.car;
+        // Root traversal cursors and accumulated bindings on the VM stack so
+        // moving GC cannot leave stale forwarded locals mid-loop.
+        try self.push(self.resolveForwardedValue(symbols));
+        try self.push(self.resolveForwardedValue(values));
+        try self.push(Value.nil);
+
+        const sym_slot = base_sp;
+        const val_slot = base_sp + 1;
+        const saved_slot = base_sp + 2;
+
+        while (true) {
+            const symbol_list = self.resolveForwardedValue(self.stack[sym_slot]);
+            self.stack[sym_slot] = symbol_list;
+            if (!symbol_list.isCons()) break;
+            const sym_cons = symbol_list.toPtr(Cons);
+            const symbol = self.resolveForwardedValue(sym_cons.car);
 
             if (!symbol.isSymbol()) return error.TypeMismatch;
 
+            var next_val = self.resolveForwardedValue(self.stack[val_slot]);
+            const new_value = if (next_val.isCons()) blk: {
+                const val_cons = next_val.toPtr(Cons);
+                next_val = self.resolveForwardedValue(val_cons.cdr);
+                break :blk self.resolveForwardedValue(val_cons.car);
+            } else Value.nil;
+            const next_sym = self.resolveForwardedValue(sym_cons.cdr);
+
+            var key_val: Value = undefined;
+            var old_value: Value = undefined;
             const sym_ptr = symbol.toPtr(Symbol);
-            const new_value = if (val_list.isCons()) val_list.toPtr(Cons).car else Value.nil;
 
             if (try self.lookupSymbolGlobalIndex(sym_ptr)) |idx| {
-                const old_value = if (idx < self.num_globals) self.globals[idx] else Value.unbound;
+                old_value = if (idx < self.num_globals)
+                    self.resolveForwardedValue(self.globals[idx])
+                else
+                    Value.unbound;
                 if (idx < MAX_GLOBALS) {
                     try self.storeGlobal(idx, new_value);
                 }
-                const idx_fix = Value.makeFixnum(@intCast(idx));
-                const pair = try self.heap.allocCons(idx_fix, old_value);
-                saved_bindings = try self.heap.allocCons(pair, saved_bindings);
+                key_val = Value.makeFixnum(@intCast(idx));
             } else if (try self.defineSymbolGlobalIndex(sym_ptr)) |idx| {
                 if (idx < MAX_GLOBALS) {
                     try self.storeGlobal(idx, new_value);
                 }
-                const idx_fix = Value.makeFixnum(@intCast(idx));
-                const pair = try self.heap.allocCons(idx_fix, Value.unbound);
-                saved_bindings = try self.heap.allocCons(pair, saved_bindings);
+                key_val = Value.makeFixnum(@intCast(idx));
+                old_value = Value.unbound;
             } else {
-                const old_value = self.lookupSymbolLocalValueCell(sym_ptr) orelse Value.unbound;
+                old_value = self.resolveForwardedValue(self.lookupSymbolLocalValueCell(sym_ptr) orelse Value.unbound);
                 try self.setSymbolLocalValueCell(sym_ptr, new_value);
-                const pair = try self.heap.allocCons(symbol, old_value);
-                saved_bindings = try self.heap.allocCons(pair, saved_bindings);
+                key_val = symbol;
             }
 
-            // Advance lists
-            sym_list = sym_cons.cdr;
-            if (val_list.isCons()) {
-                val_list = val_list.toPtr(Cons).cdr;
-            }
+            self.stack[sym_slot] = next_sym;
+            self.stack[val_slot] = next_val;
+
+            // Root key/old operands while cons allocation may trigger GC.
+            try self.push(key_val);
+            try self.push(old_value);
+            const key_slot = self.sp - 2;
+            const old_slot = self.sp - 1;
+            const pair = try self.heap.allocCons(self.stack[key_slot], self.stack[old_slot]);
+            const saved = try self.heap.allocCons(pair, self.stack[saved_slot]);
+            self.stack[saved_slot] = saved;
+            self.sp -= 2;
         }
 
-        self.progv_stack[self.progv_sp] = .{ .saved_bindings = saved_bindings };
+        self.progv_stack[self.progv_sp] = .{ .saved_bindings = self.stack[saved_slot] };
         self.progv_sp += 1;
     }
 
@@ -8170,17 +8195,17 @@ pub const Vm = struct {
         self.progv_sp -= 1;
 
         const frame = self.progv_stack[self.progv_sp];
-        var bindings = frame.saved_bindings;
+        var bindings = self.resolveForwardedValue(frame.saved_bindings);
 
         // Restore old values
         while (bindings.isCons()) {
             const binding_cons = bindings.toPtr(Cons);
-            const pair = binding_cons.car;
+            const pair = self.resolveForwardedValue(binding_cons.car);
 
             if (pair.isCons()) {
                 const pair_cons = pair.toPtr(Cons);
-                const key_val = pair_cons.car;
-                const old_value = pair_cons.cdr;
+                const key_val = self.resolveForwardedValue(pair_cons.car);
+                const old_value = self.resolveForwardedValue(pair_cons.cdr);
                 switch (key_val.typeKind()) {
                     .fixnum => {
                         const idx_signed = key_val.toFixnum();
@@ -8192,7 +8217,9 @@ pub const Vm = struct {
                         }
                     },
                     .symbol => {
-                        const sym = key_val.toPtr(Symbol);
+                        const sym_val = self.resolveForwardedValue(key_val);
+                        if (!sym_val.isSymbol()) return error.TypeMismatch;
+                        const sym = sym_val.toPtr(Symbol);
                         if (old_value.raw == Value.unbound.raw) {
                             self.clearSymbolLocalValueCell(sym);
                         } else {
@@ -8203,7 +8230,7 @@ pub const Vm = struct {
                 }
             }
 
-            bindings = binding_cons.cdr;
+            bindings = self.resolveForwardedValue(binding_cons.cdr);
         }
     }
 
@@ -10586,9 +10613,7 @@ pub const Vm = struct {
                     if (fn_name.isSymbol()) {
                         const sym = fn_name.toPtr(Symbol);
                         var pkg_name: []const u8 = "<none>";
-                        const bits = sym.reserved;
-                        if (bits != 0 and (bits & 1) == 0) {
-                            const pkg: *runtime.heap.Package = @ptrFromInt(bits);
+                        if (self.heap.symbolHomePkg(sym)) |pkg| {
                             pkg_name = pkg.name;
                         }
                         std.debug.print("TRACE unbound function: {s} pkg={s}\n", .{ sym.getName(), pkg_name });
@@ -13322,6 +13347,47 @@ test "vm collectGarbage roots slot-tracked values" {
     try testing.expect(vm.pending_block_value.raw != raw_d);
     try testing.expect(vm.current_package.raw != raw_e);
     try testing.expect(vm.handler_stack[0].condition_type.raw != raw_h);
+}
+
+test "vm progv resolves forwarded symbol values before lookup" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var env = GlobalEnv.init(allocator);
+    defer env.deinit();
+    vm.setGlobalEnv(&env);
+
+    const sym = try heap.intern("PROGV-FORWARDED-SYM");
+    const sym_ptr = sym.toPtr(Symbol);
+    const idx = (try vm.defineSymbolGlobalIndex(sym_ptr)) orelse return error.TestUnexpectedResult;
+    try vm.storeGlobal(idx, Value.makeFixnum(5));
+
+    const stale_raw = sym.raw;
+    _ = try vm.collectGarbage();
+    const stale_sym = Value{ .raw = stale_raw };
+    const live_sym = vm.resolveForwardedValue(stale_sym);
+    try testing.expect(live_sym.isSymbol());
+    try testing.expect(live_sym.raw != stale_sym.raw);
+
+    const symbol_list = try heap.allocCons(stale_sym, Value.nil);
+    const value_list = try heap.allocCons(Value.makeFixnum(42), Value.nil);
+
+    try vm.pushProgvFrame(symbol_list, value_list);
+
+    const cur_val = try vm.loadGlobal(idx);
+    try testing.expect(cur_val.isFixnum());
+    try testing.expectEqual(@as(i64, 42), cur_val.toFixnum());
+
+    try vm.popProgvFrame();
+    const restored = try vm.loadGlobal(idx);
+    try testing.expect(restored.isFixnum());
+    try testing.expectEqual(@as(i64, 5), restored.toFixnum());
 }
 
 test "vm allocVector triggers debt-driven precollection" {

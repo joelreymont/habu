@@ -102,7 +102,15 @@ pub const IrTranslator = struct {
         return false;
     }
 
+    pub fn canTranslateWithLiteralRoots(_: *const Ir, _: ?*const LiteralRoots) bool {
+        return false;
+    }
+
     pub fn firstUnsupportedTag(_: *const Ir) ?std.meta.Tag(Ir) {
+        return null;
+    }
+
+    pub fn firstUnsupportedTagWithLiteralRoots(_: *const Ir, _: ?*const LiteralRoots) ?std.meta.Tag(Ir) {
         return null;
     }
 };
