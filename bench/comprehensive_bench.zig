@@ -62,21 +62,24 @@ const decl_jit = "(declare (optimize (speed 3) (safety 0)))";
 const bench_defs = [_]BenchDef{
     // ── arith ──
     .{
-        .name = "fixnum_loop", .category = "arith",
+        .name = "fixnum_loop",
+        .category = "arith",
         .setup_jit = "(defun bench-fixnum-loop () " ++ decl_jit ++
             " (let ((i 0) (acc 0)) (while (< i 1000000) (setq acc (+ acc i)) (setq i (+ i 1))) acc))",
         .setup_interp = "(defun bench-fixnum-loop () (let ((i 0) (acc 0)) (while (< i 1000000) (setq acc (+ acc i)) (setq i (+ i 1))) acc))",
         .expr = "(bench-fixnum-loop)",
     },
     .{
-        .name = "fixnum_mul", .category = "arith",
+        .name = "fixnum_mul",
+        .category = "arith",
         .setup_jit = "(defun bench-fixnum-mul () " ++ decl_jit ++
             " (let ((i 0) (acc 1)) (while (< i 1000000) (setq acc (logand (+ acc (* (+ i 1) 3)) #xffffff)) (setq i (+ i 1))) acc))",
         .setup_interp = "(defun bench-fixnum-mul () (let ((i 0) (acc 1)) (while (< i 1000000) (setq acc (logand (+ acc (* (+ i 1) 3)) #xffffff)) (setq i (+ i 1))) acc))",
         .expr = "(bench-fixnum-mul)",
     },
     .{
-        .name = "gcd", .category = "arith",
+        .name = "gcd",
+        .category = "arith",
         .setup_jit = "(defun bench-gcd () " ++ decl_jit ++
             " (let ((i 0) (sum 0)) (while (< i 100000) (setq sum (+ sum (gcd (+ i 17) (+ i 31)))) (setq i (+ i 1))) sum))",
         .setup_interp = "(defun bench-gcd () (let ((i 0) (sum 0)) (while (< i 100000) (setq sum (+ sum (gcd (+ i 17) (+ i 31)))) (setq i (+ i 1))) sum))",
@@ -85,14 +88,16 @@ const bench_defs = [_]BenchDef{
 
     // ── float ──
     .{
-        .name = "float_sum", .category = "float",
+        .name = "float_sum",
+        .category = "float",
         .setup_jit = "(defun bench-float-sum () " ++ decl_jit ++
             " (let ((i 0) (acc 0.0)) (while (< i 100000) (setq acc (+ acc (* (float i) 0.001))) (setq i (+ i 1))) (round acc)))",
         .setup_interp = "(defun bench-float-sum () (let ((i 0) (acc 0.0)) (while (< i 100000) (setq acc (+ acc (* (float i) 0.001))) (setq i (+ i 1))) (round acc)))",
         .expr = "(bench-float-sum)",
     },
     .{
-        .name = "float_sqrt", .category = "float",
+        .name = "float_sqrt",
+        .category = "float",
         .setup_jit = "(defun bench-float-sqrt () " ++ decl_jit ++
             " (let ((i 0) (acc 0.0)) (while (< i 100000) (setq acc (+ acc (sqrt (+ 1.0 (float i))))) (setq i (+ i 1))) (round acc)))",
         .setup_interp = "(defun bench-float-sqrt () (let ((i 0) (acc 0.0)) (while (< i 100000) (setq acc (+ acc (sqrt (+ 1.0 (float i))))) (setq i (+ i 1))) (round acc)))",
@@ -101,13 +106,15 @@ const bench_defs = [_]BenchDef{
 
     // ── recurse ──
     .{
-        .name = "fib35", .category = "recurse",
+        .name = "fib35",
+        .category = "recurse",
         .setup_jit = "(defun fib (n) (declare (type fixnum n) (optimize (speed 3) (safety 0))) (if (<= n 1) n (the fixnum (+ (fib (the fixnum (- n 1))) (fib (the fixnum (- n 2)))))))",
         .setup_interp = "(defun fib (n) (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2)))))",
         .expr = "(fib 35)",
     },
     .{
-        .name = "tak", .category = "recurse",
+        .name = "tak",
+        .category = "recurse",
         .setup_jit =
         \\(defun tak (x y z) (declare (type fixnum x y z) (optimize (speed 3) (safety 0)))
         \\    (if (<= x y) z (tak (tak (the fixnum (- x 1)) y z) (tak (the fixnum (- y 1)) z x) (tak (the fixnum (- z 1)) x y))))
@@ -118,13 +125,28 @@ const bench_defs = [_]BenchDef{
         .expr = "(let ((i 0)) (while (< i 1000) (tak 18 12 6) (setq i (+ i 1))))",
     },
     .{
-        .name = "ack", .category = "recurse",
+        .name = "ack",
+        .category = "recurse",
         .setup_jit = "(defun ack (m n) (declare (optimize (speed 3) (safety 0))) (cond ((= m 0) (+ n 1)) ((= n 0) (ack (- m 1) 1)) (t (ack (- m 1) (ack m (- n 1))))))",
         .setup_interp = "(defun ack (m n) (cond ((= m 0) (+ n 1)) ((= n 0) (ack (- m 1) 1)) (t (ack (- m 1) (ack m (- n 1))))))",
-        .expr = "(ack 3 10)",  // ~180ms — eval overhead negligible
+        .expr = "(ack 3 10)", // ~180ms — eval overhead negligible
     },
     .{
-        .name = "nqueens10", .category = "recurse",
+        .name = "keyword_call",
+        .category = "call",
+        .setup_jit = "(defun bench-key-target (x &key (a 1) (b 2) (c 3) (d 4)) (+ x a b c d))",
+        .setup_jit2 = "(defun bench-keyword-call () " ++ decl_jit ++
+            " (let ((i 0) (acc 0)) (while (< i 300000) (setq acc (+ acc (bench-key-target i :a i :c 7))) (setq i (+ i 1))) acc))",
+        .setup_interp =
+        \\(progn
+        \\  (defun bench-key-target (x &key (a 1) (b 2) (c 3) (d 4)) (+ x a b c d))
+        \\  (defun bench-keyword-call () (let ((i 0) (acc 0)) (while (< i 300000) (setq acc (+ acc (bench-key-target i :a i :c 7))) (setq i (+ i 1))) acc)))
+        ,
+        .expr = "(bench-keyword-call)",
+    },
+    .{
+        .name = "nqueens10",
+        .category = "recurse",
         .setup_jit =
         \\(defun nqueens-safe-p (col placed row)
         \\    (declare (optimize (speed 3) (safety 0)))
@@ -174,28 +196,32 @@ const bench_defs = [_]BenchDef{
 
     // ── list ──
     .{
-        .name = "list_build", .category = "list",
+        .name = "list_build",
+        .category = "list",
         .setup_jit = "(defun bench-list-build () " ++ decl_jit ++
             " (let ((xs nil) (i 0)) (while (< i 100000) (setq xs (cons i xs)) (setq i (+ i 1))) (length xs)))",
         .setup_interp = "(defun bench-list-build () (let ((xs nil) (i 0)) (while (< i 100000) (setq xs (cons i xs)) (setq i (+ i 1))) (length xs)))",
         .expr = "(bench-list-build)",
     },
     .{
-        .name = "list_reverse", .category = "list",
+        .name = "list_reverse",
+        .category = "list",
         .setup_jit = "(defun bench-list-reverse () " ++ decl_jit ++
             " (let ((xs nil) (i 0)) (while (< i 100000) (setq xs (cons i xs)) (setq i (+ i 1))) (length (nreverse xs))))",
         .setup_interp = "(defun bench-list-reverse () (let ((xs nil) (i 0)) (while (< i 100000) (setq xs (cons i xs)) (setq i (+ i 1))) (length (nreverse xs))))",
         .expr = "(bench-list-reverse)",
     },
     .{
-        .name = "list_append", .category = "list",
+        .name = "list_append",
+        .category = "list",
         .setup_jit = "(defun bench-list-append () " ++ decl_jit ++
             " (let ((base (let ((xs nil) (i 0)) (while (< i 100) (setq xs (cons i xs)) (setq i (+ i 1))) xs)) (result nil) (i 0)) (while (< i 1000) (setq result (append base result)) (setq i (+ i 1))) (length result)))",
         .setup_interp = "(defun bench-list-append () (let ((base (let ((xs nil) (i 0)) (while (< i 100) (setq xs (cons i xs)) (setq i (+ i 1))) xs)) (result nil) (i 0)) (while (< i 1000) (setq result (append base result)) (setq i (+ i 1))) (length result)))",
         .expr = "(bench-list-append)",
     },
     .{
-        .name = "assoc", .category = "list",
+        .name = "assoc",
+        .category = "list",
         .setup_jit = "(defun bench-assoc () " ++ decl_jit ++
             " (let ((al (let ((xs nil) (i 0)) (while (< i 100) (setq xs (cons (cons i (* i i)) xs)) (setq i (+ i 1))) xs)) (sum 0) (i 0)) (while (< i 50000) (let ((pair (assoc (mod i 100) al))) (when pair (setq sum (+ sum (cdr pair))))) (setq i (+ i 1))) sum))",
         .setup_interp = "(defun bench-assoc () (let ((al (let ((xs nil) (i 0)) (while (< i 100) (setq xs (cons (cons i (* i i)) xs)) (setq i (+ i 1))) xs)) (sum 0) (i 0)) (while (< i 50000) (let ((pair (assoc (mod i 100) al))) (when pair (setq sum (+ sum (cdr pair))))) (setq i (+ i 1))) sum))",
@@ -204,21 +230,24 @@ const bench_defs = [_]BenchDef{
 
     // ── hof ──
     .{
-        .name = "mapcar", .category = "hof",
+        .name = "mapcar",
+        .category = "hof",
         .setup_jit = "(defun bench-mapcar () " ++ decl_jit ++
             " (let ((xs (let ((r nil) (i 0)) (while (< i 10000) (setq r (cons i r)) (setq i (+ i 1))) r))) (length (mapcar (lambda (x) (+ x 1)) xs))))",
         .setup_interp = "(defun bench-mapcar () (let ((xs (let ((r nil) (i 0)) (while (< i 10000) (setq r (cons i r)) (setq i (+ i 1))) r))) (length (mapcar (lambda (x) (+ x 1)) xs))))",
         .expr = "(bench-mapcar)",
     },
     .{
-        .name = "reduce", .category = "hof",
+        .name = "reduce",
+        .category = "hof",
         .setup_jit = "(defun bench-reduce () " ++ decl_jit ++
             " (let ((xs (let ((r nil) (i 0)) (while (< i 10000) (setq r (cons i r)) (setq i (+ i 1))) r))) (reduce #'+ xs)))",
         .setup_interp = "(defun bench-reduce () (let ((xs (let ((r nil) (i 0)) (while (< i 10000) (setq r (cons i r)) (setq i (+ i 1))) r))) (reduce #'+ xs)))",
         .expr = "(bench-reduce)",
     },
     .{
-        .name = "remove_if", .category = "hof",
+        .name = "remove_if",
+        .category = "hof",
         .setup_jit = "(defun bench-remove-if () " ++ decl_jit ++
             " (let ((xs (let ((r nil) (i 0)) (while (< i 10000) (setq r (cons i r)) (setq i (+ i 1))) r)) (result nil) (rest nil)) (setq rest xs) (while rest (when (not (oddp (car rest))) (setq result (cons (car rest) result))) (setq rest (cdr rest))) (length result)))",
         .setup_interp = "(defun bench-remove-if () (let ((xs (let ((r nil) (i 0)) (while (< i 10000) (setq r (cons i r)) (setq i (+ i 1))) r)) (result nil) (rest nil)) (setq rest xs) (while rest (when (not (oddp (car rest))) (setq result (cons (car rest) result))) (setq rest (cdr rest))) (length result)))",
@@ -227,14 +256,16 @@ const bench_defs = [_]BenchDef{
 
     // ── hash ──
     .{
-        .name = "hash_insert", .category = "hash",
+        .name = "hash_insert",
+        .category = "hash",
         .setup_jit = "(defun bench-hash-insert () " ++ decl_jit ++
             " (let ((h (make-hash-table :size 256)) (i 0)) (while (< i 20000) (setf (gethash i h) i) (setq i (+ i 1))) (hash-table-count h)))",
         .setup_interp = "(defun bench-hash-insert () (let ((h (make-hash-table :size 256)) (i 0)) (while (< i 20000) (setf (gethash i h) i) (setq i (+ i 1))) (hash-table-count h)))",
         .expr = "(bench-hash-insert)",
     },
     .{
-        .name = "hash_lookup", .category = "hash",
+        .name = "hash_lookup",
+        .category = "hash",
         .setup_jit = "(defun bench-hash-lookup () " ++ decl_jit ++
             " (let ((h (make-hash-table :size 256)) (i 0) (sum 0)) (while (< i 20000) (setf (gethash i h) i) (setq i (+ i 1))) (setq i 0) (while (< i 50000) (let ((v (gethash (mod i 20000) h))) (when v (setq sum (+ sum v)))) (setq i (+ i 1))) sum))",
         .setup_interp = "(defun bench-hash-lookup () (let ((h (make-hash-table :size 256)) (i 0) (sum 0)) (while (< i 20000) (setf (gethash i h) i) (setq i (+ i 1))) (setq i 0) (while (< i 50000) (let ((v (gethash (mod i 20000) h))) (when v (setq sum (+ sum v)))) (setq i (+ i 1))) sum))",
@@ -243,7 +274,8 @@ const bench_defs = [_]BenchDef{
 
     // ── string ──
     .{
-        .name = "string_concat", .category = "string",
+        .name = "string_concat",
+        .category = "string",
         .setup_jit = "(defun bench-string-concat () " ++ decl_jit ++
             \\  (let ((result "") (i 0)) (while (< i 1000) (setq result (concatenate 'string result "x")) (setq i (+ i 1))) (length result)))
         ,
@@ -253,7 +285,8 @@ const bench_defs = [_]BenchDef{
         .expr = "(bench-string-concat)",
     },
     .{
-        .name = "string_search", .category = "string",
+        .name = "string_search",
+        .category = "string",
         .setup_jit = "(defun bench-string-search () " ++ decl_jit ++
             \\ (let ((haystack (make-string 10000 :initial-element #\a)) (count 0) (i 0)) (setf (char haystack 9999) #\b) (while (< i 1000) (when (position #\b haystack) (setq count (+ count 1))) (setq i (+ i 1))) count))
         ,
@@ -265,14 +298,16 @@ const bench_defs = [_]BenchDef{
 
     // ── sort ──
     .{
-        .name = "sort_fixnum", .category = "sort",
+        .name = "sort_fixnum",
+        .category = "sort",
         .setup_jit = "(defun bench-sort-fixnum () " ++ decl_jit ++
             " (let ((xs (let ((r nil) (i 100)) (while (> i 0) (setq r (cons i r)) (setq i (- i 1))) r))) (length (sort xs #'<))))",
         .setup_interp = "(defun bench-sort-fixnum () (let ((xs (let ((r nil) (i 100)) (while (> i 0) (setq r (cons i r)) (setq i (- i 1))) r))) (length (sort xs #'<))))",
         .expr = "(bench-sort-fixnum)",
     },
     .{
-        .name = "sort_string", .category = "sort",
+        .name = "sort_string",
+        .category = "sort",
         .setup_jit = "(defun bench-sort-string () " ++ decl_jit ++
             \\  (let ((xs (let ((r nil) (i 0)) (while (< i 100) (setq r (cons (format nil "~6,'0d" (- 100 i)) r)) (setq i (+ i 1))) r))) (length (sort xs #'string<))))
         ,
@@ -284,14 +319,16 @@ const bench_defs = [_]BenchDef{
 
     // ── gc ──
     .{
-        .name = "gc_cons", .category = "gc",
+        .name = "gc_cons",
+        .category = "gc",
         .setup_jit = "(defun bench-gc-cons () " ++ decl_jit ++
             " (let ((i 0) (last nil)) (while (< i 100000) (setq last (cons i nil)) (setq i (+ i 1))) last))",
         .setup_interp = "(defun bench-gc-cons () (let ((i 0) (last nil)) (while (< i 100000) (setq last (cons i nil)) (setq i (+ i 1))) last))",
         .expr = "(bench-gc-cons)",
     },
     .{
-        .name = "gc_vector", .category = "gc",
+        .name = "gc_vector",
+        .category = "gc",
         .setup_jit = "(defun bench-gc-vector () " ++ decl_jit ++
             " (let ((v nil) (i 0)) (while (< i 10000) (setq v (make-array 4 :initial-element i)) (setq i (+ i 1))) (aref v 0)))",
         .setup_interp = "(defun bench-gc-vector () (let ((v nil) (i 0)) (while (< i 10000) (setq v (make-array 4 :initial-element i)) (setq i (+ i 1))) (aref v 0)))",
@@ -300,7 +337,8 @@ const bench_defs = [_]BenchDef{
 
     // ── symbol ──
     .{
-        .name = "intern", .category = "symbol",
+        .name = "intern",
+        .category = "symbol",
         .setup_jit = "(defun bench-intern () " ++ decl_jit ++
             \\  (let ((count 0) (i 0)) (while (< i 10000) (intern (format nil "BENCH-SYM-~d" i)) (setq count (+ count 1)) (setq i (+ i 1))) count))
         ,

@@ -735,6 +735,11 @@ pub const Vm = struct {
     const MAX_FN_RESOLVE_CACHE = 256;
     const SAFEPOINT_BATCH_OPS = 32;
     const SAFEPOINT_BATCH_BYTES = 64 * 1024;
+    const KEY_FAST_TABLE_MAX = 8;
+    const RAW_TAG_MASK: u64 = 0xE;
+    const RAW_PTR_MASK: u64 = ~@as(u64, 0xF);
+    const RAW_CONS_TAG: u64 = @intFromEnum(runtime.Tag.cons);
+    const RAW_KEYWORD_TAG: u64 = @intFromEnum(runtime.Tag.keyword);
 
     fn chunkRoot(ptr: *const Chunk) Value {
         const addr = @intFromPtr(ptr);
@@ -10027,12 +10032,40 @@ pub const Vm = struct {
     // Function call support
     // ========================================================================
 
+    inline fn isPointerRaw(val: Value) bool {
+        const raw = val.raw;
+        return raw != 0 and (raw & 1) == 0 and (raw >> 62) == 0;
+    }
+
+    inline fn hasRawTag(val: Value, tag: u64) bool {
+        return isPointerRaw(val) and (val.raw & RAW_TAG_MASK) == tag;
+    }
+
+    inline fn isConsRaw(val: Value) bool {
+        return hasRawTag(val, RAW_CONS_TAG);
+    }
+
+    inline fn isKeywordRaw(val: Value) bool {
+        return hasRawTag(val, RAW_KEYWORD_TAG);
+    }
+
+    inline fn consFromRaw(val: Value) *Cons {
+        return @ptrFromInt(@as(usize, @intCast(val.raw & RAW_PTR_MASK)));
+    }
+
     fn isAllowedKeyword(kw: Value, allowed_list: Value) bool {
         var list = allowed_list;
-        while (list.isCons()) {
-            const cell = list.toPtr(Cons);
+        while (isConsRaw(list)) {
+            const cell = consFromRaw(list);
             if (cell.car.raw == kw.raw) return true;
             list = cell.cdr;
+        }
+        return false;
+    }
+
+    fn keywordInSlice(kw: Value, allowed: []const Value) bool {
+        for (allowed) |entry| {
+            if (entry.raw == kw.raw) return true;
         }
         return false;
     }
@@ -10816,17 +10849,21 @@ pub const Vm = struct {
             return;
         }
 
-        // Find where keyword args actually start by scanning for first keyword
-        // This handles cases like (foo req :k v) where optional is omitted
+        // Find where keyword args start.
+        // For &key without &optional, keys always start immediately after required args.
+        // For &optional + &key, scan positional optional slots one-by-one until first
+        // keyword marker or optional slots are exhausted.
         var actual_positional = argc;
         if (key_count > 0 and argc > arity) {
-            const arg_base = self.sp - argc;
-            // Scan from required args position onwards for keyword objects
-            var i: u8 = arity;
-            while (i < argc) : (i += 2) {
-                if (self.stack[arg_base + i].isKeyword()) {
-                    actual_positional = i;
-                    break;
+            if (opt_count == 0) {
+                actual_positional = arity;
+            } else {
+                const arg_base = self.sp - argc;
+                actual_positional = arity;
+                while (actual_positional < argc and actual_positional < max_positional) : (actual_positional += 1) {
+                    if (isKeywordRaw(self.stack[arg_base + actual_positional])) {
+                        break;
+                    }
                 }
             }
         }
@@ -10867,11 +10904,30 @@ pub const Vm = struct {
 
                 if (!allow_unknown) {
                     const allowed_list = callee_chunk.allowed_keywords;
+                    const kw_pair_count: u8 = (argc - actual_positional) / 2;
+                    var allowed_fast: []const Value = &.{};
+                    var allowed_buf: [KEY_FAST_TABLE_MAX]Value = undefined;
+                    if (@as(usize, key_count) <= KEY_FAST_TABLE_MAX and kw_pair_count > 1) {
+                        var list = allowed_list;
+                        var n: usize = 0;
+                        while (n < @as(usize, key_count) and isConsRaw(list)) : (n += 1) {
+                            const cell = consFromRaw(list);
+                            allowed_buf[n] = cell.car;
+                            list = cell.cdr;
+                        }
+                        if (n == @as(usize, key_count) and list.raw == Value.nil.raw) {
+                            allowed_fast = allowed_buf[0..n];
+                        }
+                    }
                     i = actual_positional;
                     while (i + 1 < argc) : (i += 2) {
                         const kw = self.stack[arg_base + i];
                         if (kw.raw == allow_kw.raw) continue;
-                        if (!isAllowedKeyword(kw, allowed_list)) {
+                        const known = if (allowed_fast.len > 0)
+                            keywordInSlice(kw, allowed_fast)
+                        else
+                            isAllowedKeyword(kw, allowed_list);
+                        if (!known) {
                             try self.callMismatch(fn_val, argc, "key-unknown");
                             return;
                         }

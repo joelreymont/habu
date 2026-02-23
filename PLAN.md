@@ -168,6 +168,10 @@
     - [x] `habu-cut-docall-chunk-bf3ebffc` Cut `doCall` chunk/arity overhead on fixed-arity closure calls and rebaseline Maxima hotspots. Depends on `habu-profile-and-cut-b220c4d6`.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): JIT runtime improved again on `integrate` (~`165ms` -> ~`157ms`), `factor` (~`53ms` -> ~`51.7ms`), `ratsimp` (~`40.1ms` -> ~`38.8ms`), and `solve` (~`13.1ms` -> ~`12.8ms`) after fixed-arity call setup fast paths in `doCall`.
       - Gate remains red (`wins=0..1/5`), but JIT/interpreter deltas narrowed materially and remaining loss is now concentrated in complex call-shape paths (`&key`/`&rest`/dynamic dispatch).
+    - [x] `habu-cut-docall-key-8d3eb630` Cut `doCall` `&key` boundary/validation overhead while preserving generic CL semantics. Depends on `habu-cut-docall-chunk-bf3ebffc`.
+      - Fixed `&optional`+`&key` boundary detection in `doCall`: positional scan now advances by one optional slot (not two), eliminating missed key starts and extra-positional acceptance bugs.
+      - Added regressions for invalid extra positional args on `&key` lambdas and odd-offset first-key detection with omitted optionals.
+      - Added `keyword_call` microbench to `bench/comprehensive_bench.zig` for dedicated tracking of `&key` call-path throughput in both JIT and interpreter modes.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

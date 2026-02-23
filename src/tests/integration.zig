@@ -2391,9 +2391,42 @@ test "keyword arg validation" {
     try testing.expectEqual(@as(i64, 1), ok.toFixnum());
 
     try testing.expectError(error.UnhandledThrow, repl.eval("(f :b 2)"));
+    try testing.expectError(error.UnhandledThrow, repl.eval("(f 1)"));
 
     const ok2 = try repl.eval("(f :b 2 :allow-other-keys t)");
     try testing.expect(ok2.isNil());
+}
+
+test "keyword optional boundary detects key start" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defun f (req &optional o1 o2 &key k) (list req o1 o2 k))");
+
+    const out = try repl.eval("(f 1 2 :k 9)");
+    try testing.expect(out.isCons());
+    const c0 = out.toPtr(runtime.Cons);
+    try testing.expect(c0.car.isFixnum());
+    try testing.expectEqual(@as(i64, 1), c0.car.toFixnum());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(runtime.Cons);
+    try testing.expect(c1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 2), c1.car.toFixnum());
+    try testing.expect(c1.cdr.isCons());
+    const c2 = c1.cdr.toPtr(runtime.Cons);
+    try testing.expect(c2.car.isNil());
+    try testing.expect(c2.cdr.isCons());
+    const c3 = c2.cdr.toPtr(runtime.Cons);
+    try testing.expect(c3.car.isFixnum());
+    try testing.expectEqual(@as(i64, 9), c3.car.toFixnum());
+    try testing.expect(c3.cdr.isNil());
 }
 
 test "repl config disables hoist JIT compilation" {
@@ -2580,6 +2613,29 @@ test "fixed arity tail recursion stays stack safe" {
     const out = try repl.eval("(fixed-tail-acc 1500 0)");
     try testing.expect(out.isFixnum());
     try testing.expectEqual(@as(i64, 1500), out.toFixnum());
+}
+
+test "keyword tail recursion stays stack safe" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval(
+        \\(defun key-tail-acc (n &key (a 1) (b 2) (c 3) (d 4) (e 5) (f 6))
+        \\  (if (= n 0)
+        \\      (+ a b c d e f)
+        \\      (key-tail-acc (- n 1) :a (+ a 1) :b b :c c :d d :e e :f f)))
+    );
+
+    const out = try repl.eval("(key-tail-acc 300)");
+    try testing.expect(out.isFixnum());
+    try testing.expectEqual(@as(i64, 321), out.toFixnum());
 }
 
 test "eval defun recursive" {

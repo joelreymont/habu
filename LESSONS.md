@@ -9,6 +9,10 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-23)
 
 ### Worked Well
+- Fixing `&key` boundary detection to scan optional slots one-by-one in `doCall` (`src/interp/vm.zig:10859`, `src/interp/vm.zig:10863`) closed a real semantic bug for mixed `&optional`+`&key` lambdas and removed unnecessary keyword probes on key-only lambdas (`opt_count==0` fast boundary).
+- Adding a small-array allowlist path for keyword validation (`src/interp/vm.zig:738`, `src/interp/vm.zig:10907`, `src/interp/vm.zig:10910`) retained generic keyword checking while reducing repeated cons-walks on repeated multi-key calls.
+- Locking the path with targeted regressions (`src/tests/integration.zig:2394`, `src/tests/integration.zig:2400`) prevents both silent extra-positional acceptance on `&key` lambdas and odd-offset key-start mis-parsing after omitted optionals.
+- Adding a dedicated `keyword_call` microbench (`bench/comprehensive_bench.zig:127`) gives a stable hot-loop signal for `doCall` `&key` cost independent of full Maxima loader noise.
 - Adding a dedicated fixed-arity call setup fast path (`src/interp/vm.zig:10651`, `src/interp/vm.zig:10815`) and a fast closure-code chunk decode path (`src/interp/vm.zig:10786`) removed hot `doCall` overhead from the no-`&optional`/no-`&key`/no-`&rest` majority path; Maxima hotspot reruns improved JIT runtime again (`integrate` ~`165ms` -> ~`157ms`, `factor` ~`53ms` -> ~`51.7ms`, `ratsimp` ~`40.1ms` -> ~`38.8ms`, `solve` ~`13.1ms` -> ~`12.8ms`).
 - Locking the fast path with a stack-depth regression (`src/tests/integration.zig:2574`, `fixed-tail-acc`) prevents accidental loss of tail-call stack safety when refactoring fixed-arity frame setup.
 - Converting function-resolution cache hits to raw symbol-identity checks with GC-epoch invalidation (`src/interp/vm.zig:1309`, `src/interp/vm.zig:1312`, `src/interp/vm.zig:2435`) removed per-call forwarded-value chasing on hot `doCall` paths; `tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32` improved JIT runtimes on `integrate` (~173ms -> ~165ms), `factor` (~57.7ms -> ~53.0ms), `ratsimp` (~43.1ms -> ~40.1ms), and `solve` (~13.7ms -> ~13.1ms) in same-host reruns.
@@ -39,6 +43,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Emitting first unsupported IR tags on JIT compile failures (`src/interp/repl.zig:3013`) turned generic `UnsupportedIrNode` logs into actionable blockers; current Maxima benchmark wrapper rejection points to `.progv` as the first missing lowering.
 
 ### Did Not Work
+- Scanning for first keyword in steps of two from `arity` (`src/interp/vm.zig` pre-fix around current `10863`) is unsound for `&optional`+`&key`: odd-offset key starts are missed, and some invalid extra positional args can slip through without signaling.
+- Eagerly materializing an allowed-keyword slice on every key call (pre-threshold version near current `10907`) added overhead to small or zero-key-pair calls; gating fast materialization by `(kw_pair_count > 1)` and small declared-key count is necessary.
 - Fixed-arity fast paths alone are not enough to pass the JIT gate (`wins` still `0..1/5`): after call-setup wins, remaining loss is in dynamic call-shape paths (`&key`/`&rest`/dispatcher-heavy frames), so follow-up work must target those branches directly.
 - Keeping `lookupFnResolveCache` defensive by resolving forwarded values and rechecking callable tags on every hit (`src/interp/vm.zig` pre-fix `lookupFnResolveCache`) consumed measurable runtime in `doCall -> resolveFunctionValue` and left obvious hotspot time on the table.
 - Sampling short scale-1 runs for integrate mostly captured loader/compile activity; runtime-stage profiling required long-running benches (`--scale=80`) before call-resolution hotspots became visible in `/tmp/habu_integrate_jit_scale80.sample`.
