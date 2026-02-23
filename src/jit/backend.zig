@@ -7759,12 +7759,34 @@ fn fixBlrTargetClobber(code: []u8) void {
         writeInsn(code, pos, makeMovInsn(scratch, load_src));
         const patched_call = (insn & ~@as(u32, 0x3E0)) | (@as(u32, scratch) << 5);
         writeInsn(code, i, patched_call);
+        continue;
+    }
+
+    // Repair the specific imm-chain clobber shape captured by
+    // hasBlrTargetImmClobber(): an older MOVZ/MOVK target chain exists, but a
+    // later single MOVZ to the same BLR target register overwrites it.
+    i = 0;
+    while (i < n_insns) : (i += 1) {
+        const insn = readInsn(code, i);
+        if (insn & 0xFFFFFC1F != 0xD63F0000) continue; // BLR
+        const target: u5 = @truncate((insn >> 5) & 0x1F);
+        const pattern = findBlrTargetImmClobber(code, i, target) orelse continue;
+
+        const scratch = pickScratchForRange(code, pattern.prev_chain_start, i, target);
+        if (scratch == target) continue;
+        if (!retargetContiguousMovImmChain(code, pattern.prev_chain_end, target, scratch)) continue;
+
+        const patched_call = (insn & ~@as(u32, 0x3E0)) | (@as(u32, scratch) << 5);
+        writeInsn(code, i, patched_call);
     }
 }
 
-fn hasBlrTargetImmClobber(code: []const u8) bool {
-    if (code.len < 8) return false;
-    const n_insns = code.len / 4;
+const BlrTargetImmClobber = struct {
+    prev_chain_start: usize,
+    prev_chain_end: usize,
+};
+
+fn findBlrTargetImmClobber(code: []const u8, blr_idx: usize, target: u5) ?BlrTargetImmClobber {
     const NOP: u32 = 0xD503201F;
 
     const isMovImmForReg = struct {
@@ -7782,68 +7804,81 @@ fn hasBlrTargetImmClobber(code: []const u8) bool {
         }
     }.f;
 
+    var latest_write: ?usize = null;
+    {
+        var j = blr_idx;
+        var steps: usize = 0;
+        while (j > 0 and steps < 24) : (steps += 1) {
+            j -= 1;
+            const prev = readInsn(code, j);
+            if (prev == NOP) continue;
+            if (isControlFlowBoundaryInsn(prev)) break;
+            if (@as(u5, @truncate(prev & 0x1F)) == target) {
+                latest_write = j;
+                break;
+            }
+        }
+    }
+    const latest = latest_write orelse return null;
+    const latest_insn = readInsn(code, latest);
+    if (!isMovzForReg(latest_insn, target)) return null;
+
+    var latest_chain_start = latest;
+    while (latest_chain_start > 0) {
+        const prev_idx = latest_chain_start - 1;
+        const prev = readInsn(code, prev_idx);
+        if (!isMovImmForReg(prev, target)) break;
+        latest_chain_start = prev_idx;
+    }
+    if (latest + 1 - latest_chain_start != 1) return null; // only single MOVZ clobber
+
+    var prev_chain_start: ?usize = null;
+    var prev_chain_end: ?usize = null;
+    {
+        var j = latest_chain_start;
+        var steps: usize = 0;
+        while (j > 0 and steps < 24) : (steps += 1) {
+            j -= 1;
+            const prev = readInsn(code, j);
+            if (prev == NOP) continue;
+            if (isControlFlowBoundaryInsn(prev)) break;
+
+            if (isMovImmForReg(prev, target)) {
+                var chain_start = j;
+                while (chain_start > 0) {
+                    const pidx = chain_start - 1;
+                    const pinsn = readInsn(code, pidx);
+                    if (!isMovImmForReg(pinsn, target)) break;
+                    chain_start = pidx;
+                }
+                const chain_len = j + 1 - chain_start;
+                if (chain_len >= 2) {
+                    prev_chain_start = chain_start;
+                    prev_chain_end = j + 1;
+                }
+                break;
+            }
+
+            if (@as(u5, @truncate(prev & 0x1F)) == target) break;
+        }
+    }
+
+    return .{
+        .prev_chain_start = prev_chain_start orelse return null,
+        .prev_chain_end = prev_chain_end orelse return null,
+    };
+}
+
+fn hasBlrTargetImmClobber(code: []const u8) bool {
+    if (code.len < 8) return false;
+    const n_insns = code.len / 4;
+
     var i: usize = 0;
     while (i < n_insns) : (i += 1) {
         const insn = readInsn(code, i);
         if (insn & 0xFFFFFC1F != 0xD63F0000) continue; // BLR
         const target: u5 = @truncate((insn >> 5) & 0x1F);
-
-        var latest_write: ?usize = null;
-        {
-            var j = i;
-            var steps: usize = 0;
-            while (j > 0 and steps < 24) : (steps += 1) {
-                j -= 1;
-                const prev = readInsn(code, j);
-                if (prev == NOP) continue;
-                if (isControlFlowBoundaryInsn(prev)) break;
-                if (@as(u5, @truncate(prev & 0x1F)) == target) {
-                    latest_write = j;
-                    break;
-                }
-            }
-        }
-        const latest = latest_write orelse continue;
-        const latest_insn = readInsn(code, latest);
-        if (!isMovzForReg(latest_insn, target)) continue;
-
-        var latest_chain_start = latest;
-        while (latest_chain_start > 0) {
-            const prev_idx = latest_chain_start - 1;
-            const prev = readInsn(code, prev_idx);
-            if (!isMovImmForReg(prev, target)) break;
-            latest_chain_start = prev_idx;
-        }
-        if (latest + 1 - latest_chain_start != 1) continue; // only single MOVZ clobber
-
-        var found_prev_chain = false;
-        {
-            var j = latest_chain_start;
-            var steps: usize = 0;
-            while (j > 0 and steps < 24) : (steps += 1) {
-                j -= 1;
-                const prev = readInsn(code, j);
-                if (prev == NOP) continue;
-                if (isControlFlowBoundaryInsn(prev)) break;
-
-                if (isMovImmForReg(prev, target)) {
-                    var chain_start = j;
-                    while (chain_start > 0) {
-                        const pidx = chain_start - 1;
-                        const pinsn = readInsn(code, pidx);
-                        if (!isMovImmForReg(pinsn, target)) break;
-                        chain_start = pidx;
-                    }
-                    const chain_len = j + 1 - chain_start;
-                    if (chain_len >= 2) found_prev_chain = true;
-                    break;
-                }
-
-                if (@as(u5, @truncate(prev & 0x1F)) == target) break;
-            }
-        }
-
-        if (found_prev_chain) return true;
+        if (findBlrTargetImmClobber(code, i, target) != null) return true;
     }
 
     return false;
@@ -8343,6 +8378,37 @@ test "hasBlrTargetImmClobber detects single movz clobber before blr" {
     writeWords(&words, &code);
 
     try testing.expect(hasBlrTargetImmClobber(&code));
+}
+
+test "fixBlrTargetClobber repairs detected imm target clobber" {
+    const target_ptr: u64 = 0x1234_ABCD_5678_9ABC;
+    const words = [_]u32{
+        makeMovzImm(9, @truncate(target_ptr), 0),
+        makeMovkImm(9, @truncate(target_ptr >> 16), 1),
+        makeMovkImm(9, @truncate(target_ptr >> 32), 2),
+        makeMovkImm(9, @truncate(target_ptr >> 48), 3),
+        makeMovInsn(0, 24),
+        makeMovzImm(9, 201, 0), // clobber target register with arg constant
+        makeMovInsn(1, 9),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+    try testing.expect(hasBlrTargetImmClobber(&code));
+
+    fixBlrTargetClobber(&code);
+
+    try testing.expect(!hasBlrTargetImmClobber(&code));
+    const patched_blr = readInsn(&code, 7);
+    const call_target: u5 = @truncate((patched_blr >> 5) & 0x1F);
+    try testing.expect(call_target != 9);
+
+    for (0..4) |idx| {
+        const rd: u5 = @truncate(readInsn(&code, idx) & 0x1F);
+        try testing.expectEqual(call_target, rd);
+    }
+    try testing.expectEqual(words[5], readInsn(&code, 5));
+    try testing.expectEqual(words[6], readInsn(&code, 6));
 }
 
 test "hasBlrTargetImmClobber ignores valid imm chain blr target" {

@@ -23,6 +23,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Disabling runtime safety inside `jitAssoc` and switching to raw 64-bit cons-field loads plus a combined cons mask (`src/jit/backend.zig:388`, `src/jit/backend.zig:394`) reduced ReleaseFast `assoc` from ~5.25ms to ~4.69ms (~10.7%) with focused regressions still green.
 - Extending `patchCrossCallsToBL` to consume optional `MOVK hw=3` target materialization (`src/jit/backend.zig:4967`, `src/jit/backend.zig:5018`) closes a 64-bit direct-branch patch gap and is locked by a new machine-code regression (`src/jit/backend.zig:8248`).
 - Adding a conservative BLR-target-clobber detector with focused bad/good machine-code regressions (`src/jit/backend.zig:7822`, `src/jit/backend.zig:8267`, `src/jit/backend.zig:8285`) preserved baseline runtime behavior while locking the exact cached-helper crash signature for follow-up repair.
+- Extending `fixBlrTargetClobber` with a targeted imm-chain repair path (`src/jit/backend.zig:7707`, `src/jit/backend.zig:7785`) now fixes the captured single-`MOVZ` overwrite shape in backend regressions (`src/jit/backend.zig:8303`) without destabilizing baseline ReleaseFast benches.
 
 ### Did Not Work
 - Relying on `restoreExtRootsSynced` copyback from temporary root arrays propagated stale values into persistent owners under nested save/set/restore chains (`src/interp/vm.zig` pre-fix `restoreExtRootsSynced` logic).
@@ -40,6 +41,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Rewriting post-registration cross-call patching to a compact `BL + B-skip` shape at materialization head regressed ReleaseFast `assoc` from ~4.5-4.7ms to ~4.94ms, so keep the conservative patch form until call-target integrity is proven with stronger machine-code checks (`src/jit/backend.zig:4923` attempted rewrite, reverted).
 - Adding unrolled/prefetch variants to `jitAssoc` regressed ReleaseFast `assoc` into ~4.87-5.48ms; this loop is latency-sensitive and extra control/memory ops hurt on this host (`src/jit/backend.zig:388` attempted variants, reverted).
 - Caching helper pointers via `cachedIconst` in `emitPrimitiveCall*` triggered `BENCH-ASSOC` EXC_BAD_ACCESS from `BLR x9` target clobber (`movz x9,#imm` in arg setup); call-target preservation must be proven first before re-enabling pointer caching (`src/jit/backend.zig:3406`, `src/jit/backend.zig:3412`, `/tmp/assoc_dump2.txt`).
+- Even after landing one imm-chain clobber repair in `fixBlrTargetClobber`, enabling cached helper pointers still crashes `BENCH-ASSOC`; additional BLR target corruption shapes exist beyond the single-`MOVZ` signature and need separate regressions before retrying caching.
 
 ## Session Notes (2026-02-22)
 

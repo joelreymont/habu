@@ -211,6 +211,7 @@
     - [x] `habu-compact-patched-bl-1fa5f4d1` Compact rewritten helper call sites by patching direct `BL` + return-skip branch instead of NOP-heavy MOV materialization stubs (rejected after ReleaseFast `assoc` regressions).
     - [ ] `habu-prove-blr-target-ad05fbd8` Prove BLR target integrity across helper-call arg materialization (`MOV`/`MOVZ`/`MOVK`) with machine-code regressions before retrying cached helper-pointer lowering.
     - [x] `habu-detect-blr-imm-382c3cd1` Add a backend detector + regressions for the observed BLR target clobber signature (single `MOVZ` overwrite after earlier target imm chain) to lock RCA before repair work.
+    - [x] `habu-repair-one-blr-9397cf99` Repair the detected single-`MOVZ` BLR target clobber signature in `fixBlrTargetClobber` and lock with backend machine-code tests (follow-up still required for remaining cached-pointer crash forms).
 
 ### 2. Compiler Core
 - [x] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.
