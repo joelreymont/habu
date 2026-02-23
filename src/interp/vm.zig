@@ -689,6 +689,8 @@ pub const Vm = struct {
     fn_resolve_cache: [MAX_FN_RESOLVE_CACHE]FnResolveEntry,
     key_allowlist_cache: [MAX_KEY_ALLOWLIST_CACHE]KeyAllowlistCacheEntry,
     chunk_const_cache: [MAX_CHUNK_CONST_CACHE]ChunkConstCacheEntry,
+    const_last_chunk_key: usize,
+    const_last_gc_count: usize,
     /// Value cells for uninterned symbols, keyed by stable symbol uid.
     uninterned_values: std.AutoHashMap(u64, Value),
 
@@ -1120,6 +1122,8 @@ pub const Vm = struct {
             .fn_resolve_cache = [_]FnResolveEntry{.{}} ** MAX_FN_RESOLVE_CACHE,
             .key_allowlist_cache = [_]KeyAllowlistCacheEntry{.{}} ** MAX_KEY_ALLOWLIST_CACHE,
             .chunk_const_cache = [_]ChunkConstCacheEntry{.{}} ** MAX_CHUNK_CONST_CACHE,
+            .const_last_chunk_key = 0,
+            .const_last_gc_count = 0,
             .uninterned_values = std.AutoHashMap(u64, Value).init(allocator),
             .gensym_counter = 0,
             .current_closure = null,
@@ -1350,6 +1354,8 @@ pub const Vm = struct {
         for (&self.chunk_const_cache) |*entry| {
             entry.* = .{};
         }
+        self.const_last_chunk_key = 0;
+        self.const_last_gc_count = 0;
     }
 
     fn chunkConstsAreFresh(self: *Vm, chunk: *const Chunk, gc_count: usize) bool {
@@ -11803,10 +11809,15 @@ pub const Vm = struct {
         if (idx >= consts.len) return error.InvalidConstant;
 
         const gc_count = self.heap.stats.gc_count;
-        if (!self.chunkConstsAreFresh(self.chunk, gc_count)) {
-            self.refreshChunkConsts(self.chunk);
-            self.markChunkConstsFresh(self.chunk, gc_count);
-            consts = self.chunk.getConstants();
+        const chunk_key = @intFromPtr(self.chunk);
+        if (self.const_last_chunk_key != chunk_key or self.const_last_gc_count != gc_count) {
+            if (!self.chunkConstsAreFresh(self.chunk, gc_count)) {
+                self.refreshChunkConsts(self.chunk);
+                self.markChunkConstsFresh(self.chunk, gc_count);
+                consts = self.chunk.getConstants();
+            }
+            self.const_last_chunk_key = chunk_key;
+            self.const_last_gc_count = gc_count;
         }
 
         return consts[idx];
@@ -13301,6 +13312,8 @@ test "vm loadConst refreshes chunk constants per gc epoch" {
     const entry0 = vm.chunk_const_cache[Vm.chunkConstCacheIndex(vm.chunk)];
     try testing.expectEqual(@intFromPtr(vm.chunk), entry0.chunk_key);
     try testing.expectEqual(heap.stats.gc_count, entry0.gc_count);
+    try testing.expectEqual(@intFromPtr(vm.chunk), vm.const_last_chunk_key);
+    try testing.expectEqual(heap.stats.gc_count, vm.const_last_gc_count);
 
     const gc_before = heap.stats.gc_count;
     _ = try vm.collectGarbage();
@@ -13313,6 +13326,8 @@ test "vm loadConst refreshes chunk constants per gc epoch" {
     const entry1 = vm.chunk_const_cache[Vm.chunkConstCacheIndex(vm.chunk)];
     try testing.expectEqual(@intFromPtr(vm.chunk), entry1.chunk_key);
     try testing.expectEqual(heap.stats.gc_count, entry1.gc_count);
+    try testing.expectEqual(@intFromPtr(vm.chunk), vm.const_last_chunk_key);
+    try testing.expectEqual(heap.stats.gc_count, vm.const_last_gc_count);
 }
 
 test "vm registerJitFn updates chunk jit pointer fast path" {

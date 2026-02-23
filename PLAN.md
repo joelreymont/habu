@@ -214,6 +214,11 @@
       - Kept tracing/filter semantics unchanged when `trace_call_ret` is enabled; only non-tracing hot path changed (`src/interp/vm.zig:4340`, `src/interp/vm.zig:4383`, `src/interp/vm.zig:4401`).
       - Quick A/B loop on this host (`bench-comp --bench=keyword_call --iters=7`) favored the guarded path over unconditional helper calls after warmup drift.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): run reached near-parity on `integrate` (`jit ~139.30ms`, `interp ~139.69ms`), with gate still red overall.
+    - [x] `habu-add-last-chunk-e6c0dc0c` Add VM-local last-chunk/GC memo in `loadConst` so repeated loads in the same chunk/epoch skip extra chunk-const cache probes without changing chunk object layout.
+      - Added `const_last_chunk_key`/`const_last_gc_count` VM fields and wired them into `loadConst` + `clearChunkConstCache` (`src/interp/vm.zig`).
+      - Extended `vm loadConst refreshes chunk constants per gc epoch` regression to assert memo state updates.
+      - Rebaseline (`bench-comp --bench=keyword_call --iters=7`, 5 runs, 2026-02-23): observed runs around `137.29-138.14ms` with no functional regressions.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): all 5 workloads executed cleanly (no `UnhandledThrow`/`OutOfMemory`) with `integrate ~139.5ms`, `factor ~50.6ms`, `solve ~12.0ms`.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

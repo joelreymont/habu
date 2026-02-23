@@ -9,6 +9,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-23)
 
 ### Worked Well
+- Keeping `loadConst` freshness state in VM-local last-chunk memo fields (`const_last_chunk_key`/`const_last_gc_count`) while preserving the existing chunk-const cache table (`src/interp/vm.zig:691`, `src/interp/vm.zig:11801`) trimmed hot repeated-constant loads without changing chunk layout ABI.
 - Guarding `.call`/`.ret` trace checks with `trace_call_ret` before invoking `shouldTraceCallRet` (`src/interp/vm.zig:4340`, `src/interp/vm.zig:4383`, `src/interp/vm.zig:4401`) removed unnecessary hot-path helper calls and trace-only function-designator reads in normal benchmark runs.
 - Embedding a chunk-local compiled function pointer (`jit_fn`) and updating it on register/unregister/rekey (`src/runtime/objects.zig:813`, `src/interp/vm.zig:1656`, `src/interp/vm.zig:1674`, `src/interp/vm.zig:1694`, `src/interp/vm.zig:1790`) removed one hot `tryCallJit -> HashMap.get` dependency; 5-run `keyword_call` A/B on this host showed the direct chunk pointer path slightly faster than the lookup fallback variant.
 - Routing REPL JIT registration failure cleanup through `unregisterJitFn` (`src/interp/repl.zig:3121`, `src/interp/repl.zig:3135`) keeps chunk-local JIT pointer state coherent when post-registration code patching fails.
@@ -56,6 +57,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Emitting first unsupported IR tags on JIT compile failures (`src/interp/repl.zig:3013`) turned generic `UnsupportedIrNode` logs into actionable blockers; current Maxima benchmark wrapper rejection points to `.progv` as the first missing lowering.
 
 ### Did Not Work
+- Adding a per-chunk constant-refresh epoch field directly to `Chunk` layout (`src/runtime/objects.zig` experiment) caused deterministic JIT Maxima workload failures (`UnhandledThrow`/`OutOfMemory`) after `integrate`; treat chunk header layout as ABI-sensitive with hoist/JIT paths unless the full cross-repo contract is updated together.
 - Calling `shouldTraceCallRet` unconditionally from hot `.call`/`.ret` op paths (even with tracing disabled) leaves measurable avoidable overhead on call-heavy benchmarks; keep a top-level `trace_call_ret` guard before helper invocation.
 - Keeping `tryCallJit` on the `lookupJitFn` path (even with chunk-pointer caching inside lookup) underperformed direct `chunk.jit_fn` reads in quick A/B runs; the extra lookup path still left more overhead than the direct fast pointer path for the hot call site (`src/interp/vm.zig:1694`).
 - Treating all `&optional` slots as strictly positional before `&key` parsing (no early key boundary) regressed constructor-style keyword initarg calls (`make-instance`, defstruct constructors); boundary logic must allow early key start when the remaining tail is a complete even pair list.
