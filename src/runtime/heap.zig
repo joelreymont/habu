@@ -353,9 +353,9 @@ pub const Heap = struct {
     /// Structural signature of root-bearing tables.
     gc_root_sig: GcRootSig,
     gc_root_sig_valid: bool,
-    /// Nursery survivor age maps (addr -> minor survival age).
-    survivor_age_cur: std.AutoHashMapUnmanaged(usize, u8),
-    survivor_age_next: std.AutoHashMapUnmanaged(usize, u8),
+    /// Nursery survivor ages indexed by semispace slot (addr >> ALIGNMENT).
+    survivor_age_cur: []u8,
+    survivor_age_next: []u8,
     /// Card table for old->young write barriers (generational scaffold).
     card_table: []u8,
     /// Tenured bump pointer (used by minor-GC promotion policy).
@@ -715,6 +715,13 @@ pub const Heap = struct {
         const trace_bad_store = std.posix.getenv("HABU_TRACE_BAD_STORE") != null;
         const disable_gc_slot_cache = std.posix.getenv("HABU_DISABLE_GC_SLOT_CACHE") != null;
         const trace_gc_slot_overlap = std.posix.getenv("HABU_TRACE_GC_SLOT_OVERLAP") != null;
+        const age_slots = @max(space_size / ALIGNMENT, @as(usize, 1));
+        const survivor_age_cur = try allocator.alloc(u8, age_slots);
+        errdefer allocator.free(survivor_age_cur);
+        @memset(survivor_age_cur, 0);
+        const survivor_age_next = try allocator.alloc(u8, age_slots);
+        errdefer allocator.free(survivor_age_next);
+        @memset(survivor_age_next, 0);
 
         var heap = Heap{
             .memory = memory,
@@ -735,8 +742,8 @@ pub const Heap = struct {
             .gc_internal_slots = std.ArrayList(*Value){},
             .gc_root_sig = .{},
             .gc_root_sig_valid = false,
-            .survivor_age_cur = .{},
-            .survivor_age_next = .{},
+            .survivor_age_cur = survivor_age_cur,
+            .survivor_age_next = survivor_age_next,
             .card_table = card_table,
             .tenured_alloc_ptr = if (layout.tenured) |r| r.start else null,
             .promote_threshold = promote_target,
@@ -911,8 +918,8 @@ pub const Heap = struct {
         self.stream_list.deinit(self.backing_allocator);
         self.gc_slots.deinit(self.backing_allocator);
         self.gc_internal_slots.deinit(self.backing_allocator);
-        self.survivor_age_cur.deinit(self.backing_allocator);
-        self.survivor_age_next.deinit(self.backing_allocator);
+        self.backing_allocator.free(self.survivor_age_cur);
+        self.backing_allocator.free(self.survivor_age_next);
         self.tenured_objs.deinit(self.backing_allocator);
         self.tenured_free.deinit(self.backing_allocator);
         for (&self.tenured_free_bins) |*bin| {
@@ -1944,21 +1951,25 @@ pub const Heap = struct {
         return 7;
     }
 
+    inline fn survivorAgeSlotForAddr(self: *const Heap, addr: usize) ?usize {
+        const start = @intFromPtr(self.from_start);
+        const end = start + self.space_size;
+        if (addr < start or addr >= end) return null;
+        return (addr - start) / ALIGNMENT;
+    }
+
     pub fn nextSurvivorAge(self: *const Heap, addr: usize) u8 {
-        const prev = self.survivor_age_cur.get(addr) orelse 0;
+        const idx = survivorAgeSlotForAddr(self, addr) orelse return 0;
+        const prev = self.survivor_age_cur[idx];
         if (prev == std.math.maxInt(u8)) return prev;
         return prev + 1;
     }
 
     pub fn rebuildSurvivorAges(self: *Heap, entries: []const SurvivorAgeEntry) !void {
-        self.survivor_age_next.clearRetainingCapacity();
-        try self.survivor_age_next.ensureTotalCapacity(self.backing_allocator, @intCast(entries.len));
-
-        const nursery_start = @intFromPtr(self.from_start);
-        const nursery_end = @intFromPtr(self.from_end);
+        @memset(self.survivor_age_next, 0);
         for (entries) |entry| {
-            if (entry.addr < nursery_start or entry.addr >= nursery_end) continue;
-            try self.survivor_age_next.put(self.backing_allocator, entry.addr, entry.age);
+            const idx = survivorAgeSlotForAddr(self, entry.addr) orelse continue;
+            self.survivor_age_next[idx] = entry.age;
         }
 
         const tmp = self.survivor_age_cur;
@@ -3975,6 +3986,41 @@ test "heap LOS chunk metadata edges survive minor GC" {
     const stale_end = stale_start + heap.space_size;
     try testing.expect(!(repaired_addr >= stale_start and repaired_addr < stale_end));
     try testing.expectEqualStrings("LOS-CHUNK-NAME", repaired.toPtr(objects.Symbol).getName());
+}
+
+test "heap survivor age table rebuild maps nursery slots" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 4 * 1024 * 1024,
+        .gc_layout = .generational,
+    });
+    defer heap.deinit();
+
+    const base = @intFromPtr(heap.from_start);
+    const addr_a = base;
+    const addr_b = base + ALIGNMENT * 3;
+    const outside = @intFromPtr(heap.from_end) + ALIGNMENT;
+
+    const updates = [_]Heap.SurvivorAgeEntry{
+        .{ .addr = addr_a, .age = 1 },
+        .{ .addr = addr_b, .age = 7 },
+        .{ .addr = outside, .age = 5 },
+    };
+    try heap.rebuildSurvivorAges(&updates);
+
+    try testing.expectEqual(@as(u8, 2), heap.nextSurvivorAge(addr_a));
+    try testing.expectEqual(@as(u8, 8), heap.nextSurvivorAge(addr_b));
+    try testing.expectEqual(@as(u8, 0), heap.nextSurvivorAge(outside));
+
+    const sat = [_]Heap.SurvivorAgeEntry{
+        .{ .addr = addr_a, .age = std.math.maxInt(u8) },
+    };
+    try heap.rebuildSurvivorAges(&sat);
+    try testing.expectEqual(std.math.maxInt(u8), heap.nextSurvivorAge(addr_a));
+
+    const empty: [0]Heap.SurvivorAgeEntry = .{};
+    try heap.rebuildSurvivorAges(empty[0..]);
+    try testing.expectEqual(@as(u8, 1), heap.nextSurvivorAge(addr_a));
 }
 
 test "heap LOS chunk constant cons edges survive repeated minor GC" {

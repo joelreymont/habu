@@ -244,6 +244,14 @@
       - Added focused regression `vm global index cache resets on env swap`.
       - Rebaseline (`tools/maxima-hotspots --json --scale 100 --workloads factor,ratsimp --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `factor` improved to `jit 9,369,996,000ns` vs `interp 9,882,324,916ns` (`interp/jit 1.0547`), `ratsimp` stayed near parity (`jit 6,695,341,292ns`, `interp 6,691,289,500ns`, `interp/jit 0.9994`), gate `wins=1/2`.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1000 --workloads factor,ratsimp --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `factor` stayed slightly JIT-faster (`jit 114,627,966,875ns`, `interp 115,220,234,083ns`, `interp/jit 1.0052`), `ratsimp` remained near parity (`jit 80,556,754,542ns`, `interp 80,388,892,959ns`, `interp/jit 0.9979`), gate still red (`wins=0/2`, threshold `1.01`).
+    - [x] `habu-optimize-survivor-age-3f9a53c5` Remove survivor-age hash-map overhead from GC hot path.
+      - Replaced `survivor_age_cur/next` `AutoHashMap` tables with semispace-indexed age arrays in `src/runtime/heap.zig`, removing Wyhash/getIndex churn from `nextSurvivorAge` and `rebuildSurvivorAges`.
+      - Added regression `heap survivor age table rebuild maps nursery slots` to lock age update, saturation, outside-nursery ignore, and clear-on-empty behavior.
+      - Revalidated GC behavior with focused tests (`minor gc promotes large survivors to tenured`, `tenuring policy lowers threshold on mature survivor pressure`) and `zig build bench -- --json`.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 100 --workloads factor,ratsimp --heap-mb 1024 --nursery-mb 32`, 2026-02-23, repeated):
+        - `factor`: from ~`jit 9.37s / interp 9.88s` to ~`jit 7.23-7.30s / interp 7.20-7.25s` (~22-27% faster absolute runtime).
+        - `ratsimp`: from ~`jit 6.70s / interp 6.69s` to ~`jit 5.24-5.29s / interp 5.08-5.09s` (~21-24% faster absolute runtime).
+      - Gate status: still red on relative JIT-vs-interpreter wins (`wins=0/2`) even though both modes got materially faster.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

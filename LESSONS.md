@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-23)
 
 ### Worked Well
+- Replacing survivor-age tracking hash maps with semispace-indexed age arrays (`src/runtime/heap.zig:357`, `src/runtime/heap.zig:1961`, `src/runtime/heap.zig:1968`) removed `HashMap/Wyhash` overhead from minor-GC hot paths and delivered large absolute Maxima wins on both `factor` and `ratsimp` runs.
+- Locking array-based survivor age behavior with `heap survivor age table rebuild maps nursery slots` (`src/runtime/heap.zig:3992`) protects saturation, outside-nursery filtering, and reset semantics after rebuilding age state.
 - Adding a VM direct-mapped symbol->global-index cache in `lookupSymbolGlobalIndex` (`src/interp/vm.zig:2208`, `src/interp/vm.zig:1380`, `src/interp/vm.zig:1387`) removed repeated `qualSymWithHeap` + `GlobalEnv.lookup` string-hash lookups on hot symbol-resolution paths; invalidating on `setGlobalEnv` and GC (`src/interp/vm.zig:1224`, `src/interp/vm.zig:2620`) kept cache correctness under env swaps and moving-GC.
 - Locking the cache invalidation contract with `vm global index cache resets on env swap` (`src/interp/vm.zig:13974`) prevented stale global-slot reuse across environment transitions while keeping factor/ratsimp hotspot runs near parity.
 - Making caller-frame restore infallible on return paths (`src/interp/vm.zig:10770`, `src/interp/vm.zig:4383`, `src/interp/vm.zig:4419`) removed hot `try push` overhead while preserving frame-depth restoration behavior in existing regressions.
@@ -63,6 +65,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Emitting first unsupported IR tags on JIT compile failures (`src/interp/repl.zig:3013`) turned generic `UnsupportedIrNode` logs into actionable blockers; current Maxima benchmark wrapper rejection points to `.progv` as the first missing lowering.
 
 ### Did Not Work
+- Improving absolute GC throughput alone did not satisfy the current JIT-relative gate: the survivor-age array rewrite sped up both JIT and interpreter paths similarly, so `wins` stayed red even with ~20%+ absolute runtime drops.
 - Running performance A/B in a detached `jj workspace` path without a Git metadata root failed for `bench-maxima` because the build path shells out to `git rev-parse`; for parity A/B, run from the main Git-backed workspace.
 - Adding a per-chunk constant-refresh epoch field directly to `Chunk` layout (`src/runtime/objects.zig` experiment) caused deterministic JIT Maxima workload failures (`UnhandledThrow`/`OutOfMemory`) after `integrate`; treat chunk header layout as ABI-sensitive with hoist/JIT paths unless the full cross-repo contract is updated together.
 - Calling `shouldTraceCallRet` unconditionally from hot `.call`/`.ret` op paths (even with tracing disabled) leaves measurable avoidable overhead on call-heavy benchmarks; keep a top-level `trace_call_ret` guard before helper invocation.
