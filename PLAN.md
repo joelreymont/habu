@@ -208,6 +208,8 @@
     - [x] `habu-assoc-helper-c-49a60b1f` Evaluate C fast-helper replacement for `jitAssoc` (rejected after rebench; keep Zig helper path).
     - [x] `habu-tune-zig-jitassoc-d02c42bd` Tune `jitAssoc` loop shape in Zig (no C helper) and keep only measured ReleaseFast wins (rejected tested reshape after regression).
     - [x] `habu-extend-cross-call-6d173600` Extend cross-call BL patching to 64-bit target materialization patterns (`MOVZ+MOVK+MOVK+MOVK`) with focused backend coverage.
+    - [x] `habu-compact-patched-bl-1fa5f4d1` Compact rewritten helper call sites by patching direct `BL` + return-skip branch instead of NOP-heavy MOV materialization stubs (rejected after ReleaseFast `assoc` regressions).
+    - [ ] `habu-prove-blr-target-ad05fbd8` Prove BLR target integrity across helper-call arg materialization (`MOV`/`MOVZ`/`MOVK`) with machine-code regressions before retrying cached helper-pointer lowering.
 
 ### 2. Compiler Core
 - [x] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.

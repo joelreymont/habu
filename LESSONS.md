@@ -36,6 +36,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Replacing `jitAssoc` with a C helper path did not outperform the tuned Zig helper in repeated ReleaseFast rebench runs, so this hotspot should stay Zig-native and be optimized in-place.
 - Reshaping `jitAssoc` to a `while (true)` loop and removing pointer-mask loads regressed ReleaseFast `assoc`, so the prior masked/guarded loop form should remain the baseline until a proven win appears.
 - Extending cross-call BL patch coverage to 64-bit materialization did not move the current `assoc` microbench immediately; treat it as coverage/hardening for address-layout variability rather than guaranteed direct speedup.
+- Rewriting post-registration cross-call patching to a compact `BL + B-skip` shape at materialization head regressed ReleaseFast `assoc` from ~4.5-4.7ms to ~4.94ms, so keep the conservative patch form until call-target integrity is proven with stronger machine-code checks (`src/jit/backend.zig:4923` attempted rewrite, reverted).
+- Adding unrolled/prefetch variants to `jitAssoc` regressed ReleaseFast `assoc` into ~4.87-5.48ms; this loop is latency-sensitive and extra control/memory ops hurt on this host (`src/jit/backend.zig:388` attempted variants, reverted).
+- Caching helper pointers via `cachedIconst` in `emitPrimitiveCall*` triggered `BENCH-ASSOC` EXC_BAD_ACCESS from `BLR x9` target clobber (`movz x9,#imm` in arg setup); call-target preservation must be proven first before re-enabling pointer caching (`src/jit/backend.zig:3406`, `src/jit/backend.zig:3412`, `/tmp/assoc_dump2.txt`).
 
 ## Session Notes (2026-02-22)
 
