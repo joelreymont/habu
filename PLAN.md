@@ -201,7 +201,7 @@
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).
   - [x] `habu-reverify-hoist-compile-b48554f1` Reverify hoist compile gate after latest upstream rebuild.
-  - [ ] `habu-assoc-releasefast-parity-5b658109` Close ReleaseFast `assoc` gap to SBCL by reducing `jitAssoc`/helper overhead (current Habu JIT ~4.69ms vs SBCL ~2.79ms, ~0.59x).
+  - [x] `habu-assoc-releasefast-parity-5b658109` Close ReleaseFast `assoc` gap to SBCL by reducing `jitAssoc`/helper overhead (current Habu JIT ~2.79-2.83ms vs SBCL ~2.77-2.78ms, ~0.98-1.00x).
     - [x] `habu-jitassoc-raw-tag-a25755cd` Rewrite `jitAssoc` hot loop to raw tagged checks to remove `Value` predicate/assert overhead from Debug benchmark runs.
     - [x] `habu-jit-num-compare-cfdaf4dc` Add fixnum/float fast paths to `jitLtNum`/`jitLeNum`/`jitGtNum`/`jitGeNum` and lower fixnum-fast compare IR through a fast-path+helper-fallback split.
     - [x] `habu-assoc-releasefast-hotspot-f661bdd1` Profile ReleaseFast `assoc` after helper fast paths, isolate dominant remaining cost, and land one root-cause optimization with rebench.
@@ -212,6 +212,7 @@
     - [x] `habu-prove-blr-target-ad05fbd8` Prove BLR target integrity across helper-call arg materialization (`MOV`/`MOVZ`/`MOVK`) with machine-code regressions before retrying cached helper-pointer lowering.
     - [x] `habu-detect-blr-imm-382c3cd1` Add a backend detector + regressions for the observed BLR target clobber signature (single `MOVZ` overwrite after earlier target imm chain) to lock RCA before repair work.
     - [x] `habu-repair-one-blr-9397cf99` Repair the detected single-`MOVZ` BLR target clobber signature in `fixBlrTargetClobber` and lock with backend machine-code tests (follow-up still required for remaining cached-pointer crash forms).
+    - Rebaseline (`zig build -Doptimize=ReleaseFast bench-comp -Duse-hoist=true -- --json --bench=assoc --iters=30`, 2026-02-23): Habu JIT `assoc` = `2.79-2.83ms` (repeat runs); SBCL reference (`sbcl --script bench/comprehensive.lisp`) `assoc` = `2.77-2.78ms`.
 
 ### 2. Compiler Core
 - [x] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.
