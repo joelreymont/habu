@@ -180,6 +180,10 @@
       - Added a GC-cleared VM cache keyed by chunk address for small keyword allowlists (`<=8`) so repeated `&key` calls skip per-call plist traversal while keeping fallback validation for uncached/large/irregular lists.
       - Kept ANSI behavior unchanged (`:allow-other-keys` handling + unknown-key signaling) and retained generic list-walk fallback whenever cache population cannot prove a complete allowlist.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): best observed run improved to `integrate ~158.3ms`, `factor ~52.3ms`, `ratsimp ~40.0ms`, `solve ~13.0ms` with gate still red (`wins=0/5`).
+    - [x] `habu-profile-and-cut-d22c8611` Profile fresh post-cache call hotspots and land one measured runtime cut. Depends on `habu-cache-keyword-allowlist-6325ee72`.
+      - Fresh long-run integrate sample (`bench-maxima --workloads=integrate --scale=80`) still shows `doCall`/`resolveFunctionValue`/`resolveForwardedValue` as dominant VM runtime hotspots.
+      - Added a safe symbol-cache fast path in `resolveFunctionValue`: check function-resolution cache by symbol identity before any forwarded-value canonicalization, then resolve/recheck only on cache miss.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): best observed run improved to `integrate ~158.4ms`, `factor ~52.8ms`, `solve ~12.9ms` with gate still red (`wins=0/5`).
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

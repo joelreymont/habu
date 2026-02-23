@@ -1425,10 +1425,17 @@ pub const Vm = struct {
     }
 
     fn resolveFunctionValue(self: *Vm, sym_val: Value) Error!?Value {
+        if (!sym_val.isSymbol()) return null;
+        if (self.lookupFnResolveCache(sym_val)) |cached_fn| {
+            return cached_fn;
+        }
+
         const live_sym_val = self.resolveForwardedValue(sym_val);
         if (!live_sym_val.isSymbol()) return null;
-        if (self.lookupFnResolveCache(live_sym_val)) |cached_fn| {
-            return cached_fn;
+        if (live_sym_val.raw != sym_val.raw) {
+            if (self.lookupFnResolveCache(live_sym_val)) |cached_fn| {
+                return cached_fn;
+            }
         }
         if (self.lookupFunctionCellLive(live_sym_val)) |fn_cell| {
             self.storeFnResolveCacheLive(live_sym_val, fn_cell);
