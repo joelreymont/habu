@@ -196,6 +196,15 @@
       - Added overlap-safe tiny-count (`1..4`) fast paths to `stackMove` for both forward and backward directions; larger moves keep the existing loop path.
       - Focused keyword/allow-other-keys regressions stayed green, including keyword tail recursion/layout tests.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): runs improved to about `integrate ~154.2-154.5ms`, `factor ~51.7-52.3ms`, `solve ~12.6-13.0ms` with gate still red (`wins=0/5`).
+    - [x] `habu-cache-chunk-const-5d3d9de8` Cache per-chunk constant forwarding fixups by GC epoch to remove repeated `loadConst -> resolveForwardedValue` hot-path churn. Depends on `habu-specialize-stackmove-for-c4cdce70`.
+      - Added VM direct-mapped `chunk_const_cache` keyed by `(chunk_addr, gc_count)` and chunk-wide constant refresh (`refreshChunkConsts`) on cache miss.
+      - Added focused VM regression `vm loadConst refreshes chunk constants per gc epoch` to lock post-GC constant slot repair behavior.
+      - Rebaseline (`bench-comp keyword_call`, 2026-02-23): improved to ~`137.28ms` (from ~`139ms` pre-dot on this host).
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): improved to about `integrate ~144.9ms`, `factor ~50.8ms`, `ratsimp ~37.9ms`, `solve ~12.3ms` (gate still red, `wins=0/5`).
+    - [x] `habu-fix-optional-key-eba6589b` Fix `&optional + &key` boundary semantics: only start keyword parsing inside optional slots when remaining args can form complete key/value pairs. Depends on `habu-cache-chunk-const-5d3d9de8`.
+      - Prevents lone trailing keyword values (for example `:eof` in `read-from-string`) from being misclassified as malformed keyword tails.
+      - Preserves paired-tail keyword starts needed by generated constructor-style call shapes (for example defstruct keyword initargs).
+      - Updated integration coverage in `src/tests/integration.zig` with `keyword optional boundary handles odd and paired tails`.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

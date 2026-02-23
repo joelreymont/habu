@@ -535,6 +535,11 @@ pub const Vm = struct {
         keywords: [KEY_FAST_TABLE_MAX]Value = [_]Value{Value.nil} ** KEY_FAST_TABLE_MAX,
     };
 
+    const ChunkConstCacheEntry = struct {
+        chunk_key: usize = 0,
+        gc_count: usize = 0,
+    };
+
     /// Value stack
     stack: [STACK_SIZE]Value,
     /// Stack pointer (next free slot)
@@ -683,6 +688,7 @@ pub const Vm = struct {
     function_resolve_context: ?*anyopaque,
     fn_resolve_cache: [MAX_FN_RESOLVE_CACHE]FnResolveEntry,
     key_allowlist_cache: [MAX_KEY_ALLOWLIST_CACHE]KeyAllowlistCacheEntry,
+    chunk_const_cache: [MAX_CHUNK_CONST_CACHE]ChunkConstCacheEntry,
     /// Value cells for uninterned symbols, keyed by stable symbol uid.
     uninterned_values: std.AutoHashMap(u64, Value),
 
@@ -742,6 +748,7 @@ pub const Vm = struct {
     const MAX_EXT_ROOT_SNAPSHOTS = 256;
     const MAX_FN_RESOLVE_CACHE = 256;
     const MAX_KEY_ALLOWLIST_CACHE = 256;
+    const MAX_CHUNK_CONST_CACHE = 1024;
     const SAFEPOINT_BATCH_OPS = 32;
     const SAFEPOINT_BATCH_BYTES = 64 * 1024;
     const KEY_FAST_TABLE_MAX = 8;
@@ -1112,6 +1119,7 @@ pub const Vm = struct {
             .function_resolve_context = null,
             .fn_resolve_cache = [_]FnResolveEntry{.{}} ** MAX_FN_RESOLVE_CACHE,
             .key_allowlist_cache = [_]KeyAllowlistCacheEntry{.{}} ** MAX_KEY_ALLOWLIST_CACHE,
+            .chunk_const_cache = [_]ChunkConstCacheEntry{.{}} ** MAX_CHUNK_CONST_CACHE,
             .uninterned_values = std.AutoHashMap(u64, Value).init(allocator),
             .gensym_counter = 0,
             .current_closure = null,
@@ -1322,6 +1330,10 @@ pub const Vm = struct {
         return @intCast((@intFromPtr(chunk) >> 4) & (MAX_KEY_ALLOWLIST_CACHE - 1));
     }
 
+    inline fn chunkConstCacheIndex(chunk: *const Chunk) usize {
+        return @intCast((@intFromPtr(chunk) >> 4) & (MAX_CHUNK_CONST_CACHE - 1));
+    }
+
     fn clearFnResolveCache(self: *Vm) void {
         for (&self.fn_resolve_cache) |*entry| {
             entry.* = .{};
@@ -1331,6 +1343,35 @@ pub const Vm = struct {
     fn clearKeyAllowlistCache(self: *Vm) void {
         for (&self.key_allowlist_cache) |*entry| {
             entry.* = .{};
+        }
+    }
+
+    fn clearChunkConstCache(self: *Vm) void {
+        for (&self.chunk_const_cache) |*entry| {
+            entry.* = .{};
+        }
+    }
+
+    fn chunkConstsAreFresh(self: *Vm, chunk: *const Chunk, gc_count: usize) bool {
+        const entry = &self.chunk_const_cache[chunkConstCacheIndex(chunk)];
+        return entry.chunk_key == @intFromPtr(chunk) and entry.gc_count == gc_count;
+    }
+
+    fn markChunkConstsFresh(self: *Vm, chunk: *const Chunk, gc_count: usize) void {
+        const entry = &self.chunk_const_cache[chunkConstCacheIndex(chunk)];
+        entry.* = .{
+            .chunk_key = @intFromPtr(chunk),
+            .gc_count = gc_count,
+        };
+    }
+
+    fn refreshChunkConsts(self: *Vm, chunk: *const Chunk) void {
+        const consts = chunk.getConstants();
+        for (consts, 0..) |raw, i| {
+            const fixed = self.resolveForwardedValue(raw);
+            if (fixed.raw != raw.raw) {
+                consts[i] = fixed;
+            }
         }
     }
 
@@ -2492,6 +2533,7 @@ pub const Vm = struct {
         try self.rekeyJitFnsAfterGc();
         self.clearFnResolveCache();
         self.clearKeyAllowlistCache();
+        self.clearChunkConstCache();
 
         if (trace_validate_roots or trap_validate_roots) {
             if (!self.validateBuiltinAndTypeRoots("post-restore")) {
@@ -10948,10 +10990,10 @@ pub const Vm = struct {
             return;
         }
 
-        // Find where keyword args start.
-        // For &key without &optional, keys always start immediately after required args.
-        // For &optional + &key, scan positional optional slots one-by-one until first
-        // keyword marker or optional slots are exhausted.
+        // Determine positional argument span before keyword pairs.
+        // For &key without &optional, keys start after required args.
+        // For &optional + &key, treat a keyword as key-start only when the
+        // remaining argument tail can form complete key/value pairs.
         var actual_positional = argc;
         if (key_count > 0 and argc > arity) {
             if (opt_count == 0) {
@@ -10960,7 +11002,8 @@ pub const Vm = struct {
                 const arg_base = self.sp - argc;
                 actual_positional = arity;
                 while (actual_positional < argc and actual_positional < max_positional) : (actual_positional += 1) {
-                    if (isKeywordRaw(self.stack[arg_base + actual_positional])) {
+                    const rem = argc - actual_positional;
+                    if (rem >= 2 and rem % 2 == 0 and isKeywordRaw(self.stack[arg_base + actual_positional])) {
                         break;
                     }
                 }
@@ -11735,14 +11778,17 @@ pub const Vm = struct {
     }
 
     fn loadConst(self: *Vm, idx: u16) Error!Value {
-        if (idx >= self.chunk.getConstants().len) return error.InvalidConstant;
-        const consts = self.chunk.getConstants();
-        const raw = consts[idx];
-        const fixed = self.resolveForwardedValue(raw);
-        if (fixed.raw != raw.raw) {
-            self.chunk.getConstants()[idx] = fixed;
+        var consts = self.chunk.getConstants();
+        if (idx >= consts.len) return error.InvalidConstant;
+
+        const gc_count = self.heap.stats.gc_count;
+        if (!self.chunkConstsAreFresh(self.chunk, gc_count)) {
+            self.refreshChunkConsts(self.chunk);
+            self.markChunkConstsFresh(self.chunk, gc_count);
+            consts = self.chunk.getConstants();
         }
-        return fixed;
+
+        return consts[idx];
     }
 
     fn refreshCurrentChunk(self: *Vm) void {
@@ -13210,6 +13256,42 @@ test "vm collectGarbage relocates chunk pointers" {
     const pool_after = @intFromPtr(pool[0].toPtr(Chunk));
     try testing.expect(pool_after >= start and pool_after < end);
     try testing.expect(pool_after != @intFromPtr(pool_ptr));
+}
+
+test "vm loadConst refreshes chunk constants per gc epoch" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    const const_str = try heap.allocBaseString("const-value");
+    const code = [_]u8{};
+    const consts = [_]Value{const_str};
+    const chunk_val = try heap.allocChunk(&code, &consts, 0, 0, 0, false, 0);
+    vm.chunk = chunk_val.toPtr(Chunk);
+
+    const first = try vm.loadConst(0);
+    try testing.expect(first.isString());
+
+    const entry0 = vm.chunk_const_cache[Vm.chunkConstCacheIndex(vm.chunk)];
+    try testing.expectEqual(@intFromPtr(vm.chunk), entry0.chunk_key);
+    try testing.expectEqual(heap.stats.gc_count, entry0.gc_count);
+
+    const gc_before = heap.stats.gc_count;
+    _ = try vm.collectGarbage();
+    try testing.expect(heap.stats.gc_count > gc_before);
+
+    const second = try vm.loadConst(0);
+    try testing.expect(second.isString());
+    try testing.expectEqual(second.raw, vm.chunk.getConstants()[0].raw);
+
+    const entry1 = vm.chunk_const_cache[Vm.chunkConstCacheIndex(vm.chunk)];
+    try testing.expectEqual(@intFromPtr(vm.chunk), entry1.chunk_key);
+    try testing.expectEqual(heap.stats.gc_count, entry1.gc_count);
 }
 
 test "vm state restore refreshes owned chunk pool slice" {

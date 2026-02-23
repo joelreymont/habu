@@ -2397,7 +2397,7 @@ test "keyword arg validation" {
     try testing.expect(ok2.isNil());
 }
 
-test "keyword optional boundary detects key start" {
+test "keyword optional boundary handles odd and paired tails" {
     const allocator = testing.allocator;
 
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
@@ -2410,23 +2410,40 @@ test "keyword optional boundary detects key start" {
 
     _ = try repl.eval("(defun f (req &optional o1 o2 &key k) (list req o1 o2 k))");
 
-    const out = try repl.eval("(f 1 2 :k 9)");
-    try testing.expect(out.isCons());
-    const c0 = out.toPtr(runtime.Cons);
-    try testing.expect(c0.car.isFixnum());
-    try testing.expectEqual(@as(i64, 1), c0.car.toFixnum());
-    try testing.expect(c0.cdr.isCons());
-    const c1 = c0.cdr.toPtr(runtime.Cons);
-    try testing.expect(c1.car.isFixnum());
-    try testing.expectEqual(@as(i64, 2), c1.car.toFixnum());
-    try testing.expect(c1.cdr.isCons());
-    const c2 = c1.cdr.toPtr(runtime.Cons);
-    try testing.expect(c2.car.isNil());
-    try testing.expect(c2.cdr.isCons());
-    const c3 = c2.cdr.toPtr(runtime.Cons);
-    try testing.expect(c3.car.isFixnum());
-    try testing.expectEqual(@as(i64, 9), c3.car.toFixnum());
-    try testing.expect(c3.cdr.isNil());
+    const positional_kw = try repl.eval("(f 1 2 :k)");
+    try testing.expect(positional_kw.isCons());
+    const p0 = positional_kw.toPtr(runtime.Cons);
+    try testing.expect(p0.car.isFixnum());
+    try testing.expectEqual(@as(i64, 1), p0.car.toFixnum());
+    try testing.expect(p0.cdr.isCons());
+    const p1 = p0.cdr.toPtr(runtime.Cons);
+    try testing.expect(p1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 2), p1.car.toFixnum());
+    try testing.expect(p1.cdr.isCons());
+    const p2 = p1.cdr.toPtr(runtime.Cons);
+    try testing.expect(p2.car.isKeyword());
+    try testing.expect(p2.cdr.isCons());
+    const p3 = p2.cdr.toPtr(runtime.Cons);
+    try testing.expect(p3.car.isNil());
+    try testing.expect(p3.cdr.isNil());
+
+    const keyed = try repl.eval("(f 1 2 :k 9)");
+    try testing.expect(keyed.isCons());
+    const k0 = keyed.toPtr(runtime.Cons);
+    try testing.expect(k0.car.isFixnum());
+    try testing.expectEqual(@as(i64, 1), k0.car.toFixnum());
+    try testing.expect(k0.cdr.isCons());
+    const k1 = k0.cdr.toPtr(runtime.Cons);
+    try testing.expect(k1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 2), k1.car.toFixnum());
+    try testing.expect(k1.cdr.isCons());
+    const k2 = k1.cdr.toPtr(runtime.Cons);
+    try testing.expect(k2.car.isNil());
+    try testing.expect(k2.cdr.isCons());
+    const k3 = k2.cdr.toPtr(runtime.Cons);
+    try testing.expect(k3.car.isFixnum());
+    try testing.expectEqual(@as(i64, 9), k3.car.toFixnum());
+    try testing.expect(k3.cdr.isNil());
 }
 
 test "repl config disables hoist JIT compilation" {
