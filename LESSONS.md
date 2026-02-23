@@ -24,6 +24,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Extending `patchCrossCallsToBL` to consume optional `MOVK hw=3` target materialization (`src/jit/backend.zig:4967`, `src/jit/backend.zig:5018`) closes a 64-bit direct-branch patch gap and is locked by a new machine-code regression (`src/jit/backend.zig:8248`).
 - Adding a conservative BLR-target-clobber detector with focused bad/good machine-code regressions (`src/jit/backend.zig:7822`, `src/jit/backend.zig:8267`, `src/jit/backend.zig:8285`) preserved baseline runtime behavior while locking the exact cached-helper crash signature for follow-up repair.
 - Extending `fixBlrTargetClobber` with a targeted imm-chain repair path (`src/jit/backend.zig:7707`, `src/jit/backend.zig:7785`) now fixes the captured single-`MOVZ` overwrite shape in backend regressions (`src/jit/backend.zig:8303`) without destabilizing baseline ReleaseFast benches.
+- Generalizing BLR-target clobber detection to include low-immediate chain rewrites and non-imm overwrites (`src/jit/backend.zig:7788`, `src/jit/backend.zig:8406`, `src/jit/backend.zig:8425`, `src/jit/backend.zig:8474`, `src/jit/backend.zig:8503`) removed the known helper-target corruption signatures and kept cached helper-pointer lowering enabled (`src/jit/backend.zig:3406`).
+- Making constant-cache reuse block-local at CFG boundaries (`src/jit/backend.zig:2107`) fixed a real SSA-dominance bug in cached helper-pointer lowering that crashed branch-local JIT paths on second invocation (`src/tests/integration.zig:2186`); ReleaseFast `assoc` now runs stably at ~2.79-2.80ms on repeated checks.
 
 ### Did Not Work
 - Relying on `restoreExtRootsSynced` copyback from temporary root arrays propagated stale values into persistent owners under nested save/set/restore chains (`src/interp/vm.zig` pre-fix `restoreExtRootsSynced` logic).
@@ -42,6 +44,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding unrolled/prefetch variants to `jitAssoc` regressed ReleaseFast `assoc` into ~4.87-5.48ms; this loop is latency-sensitive and extra control/memory ops hurt on this host (`src/jit/backend.zig:388` attempted variants, reverted).
 - Caching helper pointers via `cachedIconst` in `emitPrimitiveCall*` triggered `BENCH-ASSOC` EXC_BAD_ACCESS from `BLR x9` target clobber (`movz x9,#imm` in arg setup); call-target preservation must be proven first before re-enabling pointer caching (`src/jit/backend.zig:3406`, `src/jit/backend.zig:3412`, `/tmp/assoc_dump2.txt`).
 - Even after landing one imm-chain clobber repair in `fixBlrTargetClobber`, enabling cached helper pointers still crashes `BENCH-ASSOC`; additional BLR target corruption shapes exist beyond the single-`MOVZ` signature and need separate regressions before retrying caching.
+- Reusing cached constants across blocks without dominance checks was unsound: helper pointer constants first materialized in one branch were reused from sibling branches, leading to undefined call targets and deterministic second-call crashes in branch-local JIT tests (`src/jit/backend.zig` pre-fix `switchBlock` behavior, `src/tests/integration.zig:2186`).
 
 ## Session Notes (2026-02-22)
 

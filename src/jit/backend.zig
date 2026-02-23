@@ -2107,16 +2107,14 @@ pub const IrTranslator = struct {
     fn switchBlock(self: *IrTranslator, blk: anytype) void {
         self.b.switchToBlock(blk);
         self.cse_cache.clearRetainingCapacity();
-        if (self.local_consts) {
-            // local_consts mode intentionally keeps constants block-local to avoid
-            // long live ranges across calls and to preserve SSA dominance.
-            self.const_cache.clearRetainingCapacity();
-        }
+        // Constants are represented as SSA values. Reusing a constant materialized
+        // in one predecessor from another block is invalid unless dominance is
+        // proven. Keep cache block-local to avoid cross-branch stale definitions.
+        self.const_cache.clearRetainingCapacity();
     }
 
-    /// Emit an iconst, reusing a previously emitted value for the same constant.
-    /// This provides LICM for loop-invariant constants: a constant emitted in the
-    /// entry block is reusable in all subsequent blocks (SSA dominance).
+    /// Emit an iconst, reusing a previously emitted value for the same constant
+    /// within the current block.
     ///
     /// When `local_consts` is set (functions with calls), small constants
     /// (fitting in a single MOV immediate) are emitted fresh at each use-site
@@ -3404,13 +3402,12 @@ pub const IrTranslator = struct {
     }
 
     fn emitPrimitiveCall(self: *IrTranslator, prim_ptr: u64, args: []const *const Ir) anyerror!HoistValue {
-        // Primitive fn pointers are emitted locally (not pre-emitted/cached)
-        const fn_ptr = try self.b.iconst(I64, @as(i64, @bitCast(prim_ptr)));
+        const fn_ptr = try self.cachedIconst(@as(i64, @bitCast(prim_ptr)));
         return try self.emitIndirectCall(fn_ptr, args);
     }
 
     fn emitPrimitiveCallValues(self: *IrTranslator, prim_ptr: u64, args: []const HoistValue) anyerror!HoistValue {
-        const fn_ptr = try self.b.iconst(I64, @as(i64, @bitCast(prim_ptr)));
+        const fn_ptr = try self.cachedIconst(@as(i64, @bitCast(prim_ptr)));
         return try self.emitIndirectCallValues(fn_ptr, args);
     }
 
@@ -7797,76 +7794,100 @@ fn findBlrTargetImmClobber(code: []const u8, blr_idx: usize, target: u5) ?BlrTar
         }
     }.f;
 
-    const isMovzForReg = struct {
-        fn f(insn: u32, reg: u5) bool {
-            if (@as(u5, @truncate(insn & 0x1F)) != reg) return false;
-            return (insn & 0xFF800000) == 0xD2800000;
+    const decodeMovImmChain = struct {
+        fn f(code_buf: []const u8, start: usize, end: usize, reg: u5) ?u64 {
+            if (start >= end) return null;
+            var out: u64 = 0;
+            var saw_movz = false;
+            for (start..end) |idx| {
+                const insn = readInsn(code_buf, idx);
+                if (@as(u5, @truncate(insn & 0x1F)) != reg) return null;
+                const op = insn & 0xFF800000;
+                const hw: u2 = @truncate((insn >> 21) & 0x3);
+                const shift: u6 = @as(u6, hw) * 16;
+                const imm = @as(u64, (insn >> 5) & 0xFFFF);
+                if (op == 0xD2800000) { // MOVZ
+                    out = imm << shift;
+                    saw_movz = true;
+                } else if (op == 0xF2800000) { // MOVK
+                    const mask: u64 = ~(@as(u64, 0xFFFF) << shift);
+                    out = (out & mask) | (imm << shift);
+                } else {
+                    return null;
+                }
+            }
+            if (!saw_movz) return null;
+            return out;
         }
     }.f;
 
-    var latest_write: ?usize = null;
+    // Find the closest high-address immediate chain for BLR target.
+    var high_start: ?usize = null;
+    var high_end: ?usize = null;
     {
         var j = blr_idx;
         var steps: usize = 0;
         while (j > 0 and steps < 24) : (steps += 1) {
             j -= 1;
-            const prev = readInsn(code, j);
-            if (prev == NOP) continue;
-            if (isControlFlowBoundaryInsn(prev)) break;
-            if (@as(u5, @truncate(prev & 0x1F)) == target) {
-                latest_write = j;
+            const insn = readInsn(code, j);
+            if (insn == NOP) continue;
+            if (isControlFlowBoundaryInsn(insn)) break;
+            if (!isMovImmForReg(insn, target)) continue;
+
+            var chain_start = j;
+            while (chain_start > 0) {
+                const pidx = chain_start - 1;
+                const pinsn = readInsn(code, pidx);
+                if (!isMovImmForReg(pinsn, target)) break;
+                chain_start = pidx;
+            }
+            const chain_end = j + 1;
+            const chain_val = decodeMovImmChain(code, chain_start, chain_end, target) orelse return null;
+            if ((chain_val >> 32) != 0) {
+                high_start = chain_start;
+                high_end = chain_end;
                 break;
             }
+            j = chain_start;
         }
     }
-    const latest = latest_write orelse return null;
-    const latest_insn = readInsn(code, latest);
-    if (!isMovzForReg(latest_insn, target)) return null;
+    const src_start = high_start orelse return null;
+    const src_end = high_end orelse return null;
 
-    var latest_chain_start = latest;
-    while (latest_chain_start > 0) {
-        const prev_idx = latest_chain_start - 1;
-        const prev = readInsn(code, prev_idx);
-        if (!isMovImmForReg(prev, target)) break;
-        latest_chain_start = prev_idx;
-    }
-    if (latest + 1 - latest_chain_start != 1) return null; // only single MOVZ clobber
-
-    var prev_chain_start: ?usize = null;
-    var prev_chain_end: ?usize = null;
-    {
-        var j = latest_chain_start;
-        var steps: usize = 0;
-        while (j > 0 and steps < 24) : (steps += 1) {
-            j -= 1;
-            const prev = readInsn(code, j);
-            if (prev == NOP) continue;
-            if (isControlFlowBoundaryInsn(prev)) break;
-
-            if (isMovImmForReg(prev, target)) {
-                var chain_start = j;
-                while (chain_start > 0) {
-                    const pidx = chain_start - 1;
-                    const pinsn = readInsn(code, pidx);
-                    if (!isMovImmForReg(pinsn, target)) break;
-                    chain_start = pidx;
-                }
-                const chain_len = j + 1 - chain_start;
-                if (chain_len >= 2) {
-                    prev_chain_start = chain_start;
-                    prev_chain_end = j + 1;
-                }
-                break;
-            }
-
-            if (@as(u5, @truncate(prev & 0x1F)) == target) break;
+    // Find the latest write to BLR target after the high-address chain.
+    var latest_write: ?usize = null;
+    var k = src_end;
+    while (k < blr_idx) : (k += 1) {
+        const insn = readInsn(code, k);
+        if (insn == NOP) continue;
+        if (@as(u5, @truncate(insn & 0x1F)) == target) {
+            latest_write = k;
         }
     }
+    const lw = latest_write orelse return null;
 
-    return .{
-        .prev_chain_start = prev_chain_start orelse return null,
-        .prev_chain_end = prev_chain_end orelse return null,
-    };
+    // If the latest write is still part of the chosen source chain, no clobber.
+    if (lw >= src_start and lw < src_end) return null;
+
+    const latest_insn = readInsn(code, lw);
+    if (isMovImmForReg(latest_insn, target)) {
+        var latest_start = lw;
+        while (latest_start > src_end) {
+            const pidx = latest_start - 1;
+            const pinsn = readInsn(code, pidx);
+            if (!isMovImmForReg(pinsn, target)) break;
+            latest_start = pidx;
+        }
+        const latest_end = lw + 1;
+        const latest_val = decodeMovImmChain(code, latest_start, latest_end, target) orelse return null;
+        // Latest high-address chain is a plausible call target; do not clobber-repair.
+        if ((latest_val >> 32) != 0) return null;
+        // Latest low-value chain clobbers the high-address source chain.
+        return .{ .prev_chain_start = src_start, .prev_chain_end = src_end };
+    }
+
+    // Latest non-imm write clobbers the high-address source chain.
+    return .{ .prev_chain_start = src_start, .prev_chain_end = src_end };
 }
 
 fn hasBlrTargetImmClobber(code: []const u8) bool {
@@ -8380,6 +8401,43 @@ test "hasBlrTargetImmClobber detects single movz clobber before blr" {
     try testing.expect(hasBlrTargetImmClobber(&code));
 }
 
+test "hasBlrTargetImmClobber detects low imm chain clobber before blr" {
+    const target_ptr: u64 = 0x1234_ABCD_5678_9ABC;
+    const words = [_]u32{
+        makeMovzImm(9, @truncate(target_ptr), 0),
+        makeMovkImm(9, @truncate(target_ptr >> 16), 1),
+        makeMovkImm(9, @truncate(target_ptr >> 32), 2),
+        makeMovkImm(9, @truncate(target_ptr >> 48), 3),
+        makeMovInsn(0, 24),
+        makeMovzImm(9, 0xBEEF, 0), // low-value overwrite chain starts
+        makeMovkImm(9, 0x1234, 1),
+        makeMovInsn(1, 9),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    try testing.expect(hasBlrTargetImmClobber(&code));
+}
+
+test "hasBlrTargetImmClobber detects low imm chain after non-imm overwrite" {
+    const target_ptr: u64 = 0x1234_ABCD_5678_9ABC;
+    const words = [_]u32{
+        makeMovzImm(9, @truncate(target_ptr), 0),
+        makeMovkImm(9, @truncate(target_ptr >> 16), 1),
+        makeMovkImm(9, @truncate(target_ptr >> 32), 2),
+        makeMovkImm(9, @truncate(target_ptr >> 48), 3),
+        makeMovInsn(9, 2), // non-imm overwrite between chains
+        makeMovzImm(9, 0xBEEF, 0),
+        makeMovkImm(9, 0x1234, 1),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    try testing.expect(hasBlrTargetImmClobber(&code));
+}
+
 test "fixBlrTargetClobber repairs detected imm target clobber" {
     const target_ptr: u64 = 0x1234_ABCD_5678_9ABC;
     const words = [_]u32{
@@ -8411,6 +8469,63 @@ test "fixBlrTargetClobber repairs detected imm target clobber" {
     try testing.expectEqual(words[6], readInsn(&code, 6));
 }
 
+test "fixBlrTargetClobber repairs detected low imm chain clobber" {
+    const target_ptr: u64 = 0x1234_ABCD_5678_9ABC;
+    const words = [_]u32{
+        makeMovzImm(9, @truncate(target_ptr), 0),
+        makeMovkImm(9, @truncate(target_ptr >> 16), 1),
+        makeMovkImm(9, @truncate(target_ptr >> 32), 2),
+        makeMovkImm(9, @truncate(target_ptr >> 48), 3),
+        makeMovInsn(0, 24),
+        makeMovzImm(9, 0xBEEF, 0),
+        makeMovkImm(9, 0x1234, 1),
+        makeMovInsn(1, 9),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+    try testing.expect(hasBlrTargetImmClobber(&code));
+
+    fixBlrTargetClobber(&code);
+
+    try testing.expect(!hasBlrTargetImmClobber(&code));
+    const patched_blr = readInsn(&code, 8);
+    const call_target: u5 = @truncate((patched_blr >> 5) & 0x1F);
+    try testing.expect(call_target != 9);
+    for (0..4) |idx| {
+        const rd: u5 = @truncate(readInsn(&code, idx) & 0x1F);
+        try testing.expectEqual(call_target, rd);
+    }
+}
+
+test "fixBlrTargetClobber repairs low imm chain after non-imm overwrite" {
+    const target_ptr: u64 = 0x1234_ABCD_5678_9ABC;
+    const words = [_]u32{
+        makeMovzImm(9, @truncate(target_ptr), 0),
+        makeMovkImm(9, @truncate(target_ptr >> 16), 1),
+        makeMovkImm(9, @truncate(target_ptr >> 32), 2),
+        makeMovkImm(9, @truncate(target_ptr >> 48), 3),
+        makeMovInsn(9, 2),
+        makeMovzImm(9, 0xBEEF, 0),
+        makeMovkImm(9, 0x1234, 1),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+    try testing.expect(hasBlrTargetImmClobber(&code));
+
+    fixBlrTargetClobber(&code);
+
+    try testing.expect(!hasBlrTargetImmClobber(&code));
+    const patched_blr = readInsn(&code, 7);
+    const call_target: u5 = @truncate((patched_blr >> 5) & 0x1F);
+    try testing.expect(call_target != 9);
+    for (0..4) |idx| {
+        const rd: u5 = @truncate(readInsn(&code, idx) & 0x1F);
+        try testing.expectEqual(call_target, rd);
+    }
+}
+
 test "hasBlrTargetImmClobber ignores valid imm chain blr target" {
     const target_ptr: u64 = 0x1234_ABCD_5678_9ABC;
     const words = [_]u32{
@@ -8419,6 +8534,25 @@ test "hasBlrTargetImmClobber ignores valid imm chain blr target" {
         makeMovkImm(9, @truncate(target_ptr >> 32), 2),
         makeMovkImm(9, @truncate(target_ptr >> 48), 3),
         makeMovInsn(0, 24),
+        makeMovInsn(1, 25),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    try testing.expect(!hasBlrTargetImmClobber(&code));
+}
+
+test "hasBlrTargetImmClobber ignores latest high imm chain target" {
+    const early_small: u64 = 0x0000_0000_0000_AAAA;
+    const target_ptr: u64 = 0x1234_ABCD_5678_9ABC;
+    const words = [_]u32{
+        makeMovzImm(9, @truncate(early_small), 0),
+        makeMovInsn(0, 24),
+        makeMovzImm(9, @truncate(target_ptr), 0), // latest chain is high target
+        makeMovkImm(9, @truncate(target_ptr >> 16), 1),
+        makeMovkImm(9, @truncate(target_ptr >> 32), 2),
+        makeMovkImm(9, @truncate(target_ptr >> 48), 3),
         makeMovInsn(1, 25),
         0xD63F0120, // BLR x9
     };
