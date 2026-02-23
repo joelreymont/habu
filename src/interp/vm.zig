@@ -4380,7 +4380,7 @@ pub const Vm = struct {
                     // Pop the call frame and push result
                     self.fp -= 1;
                     const caller_frame = self.frames[self.fp];
-                    try self.restoreCallerFrameAfterCall(caller_frame, result);
+                    self.restoreCallerFrameAfterCall(caller_frame, result);
                 }
             },
             .tail_call => {
@@ -4416,7 +4416,7 @@ pub const Vm = struct {
                     tracePrintValue(result);
                     std.debug.print("\n", .{});
                 }
-                try self.restoreCallerFrameAfterCall(frame, result);
+                self.restoreCallerFrameAfterCall(frame, result);
             },
             .make_closure => {
                 const chunk_idx = self.readU16();
@@ -10767,15 +10767,16 @@ pub const Vm = struct {
         try self.signalTypeErrorDatumExpected(Value.nil, Value.nil);
     }
 
-    fn restoreCallerFrameAfterCall(self: *Vm, frame: Frame, result: Value) Error!void {
-        self.sp = frame.bp;
+    fn restoreCallerFrameAfterCall(self: *Vm, frame: Frame, result: Value) void {
+        std.debug.assert(frame.bp < STACK_SIZE);
         self.chunk = frame.chunk;
         self.ip = frame.return_ip;
         self.restoreDynamicDepthsFromFrame(frame);
-        try self.push(result);
+        self.stack[frame.bp] = result;
+        self.sp = frame.bp + 1;
     }
 
-    fn restoreDynamicDepthsFromFrame(self: *Vm, frame: Frame) void {
+    inline fn restoreDynamicDepthsFromFrame(self: *Vm, frame: Frame) void {
         if (frame.handler_restore_depth) |depth| {
             self.handler_sp = depth;
         } else {
@@ -13440,7 +13441,7 @@ test "vm restore caller frame uses handler restore depth" {
     };
 
     vm.fp -= 1;
-    try vm.restoreCallerFrameAfterCall(vm.frames[vm.fp], Value.makeFixnum(42));
+    vm.restoreCallerFrameAfterCall(vm.frames[vm.fp], Value.makeFixnum(42));
 
     try testing.expect(vm.chunk == &halt_chunk);
     try testing.expectEqual(@as(usize, 7), vm.ip);
@@ -13491,7 +13492,7 @@ test "vm restore caller frame falls back to handler depth" {
     };
 
     vm.fp -= 1;
-    try vm.restoreCallerFrameAfterCall(vm.frames[vm.fp], Value.makeFixnum(9));
+    vm.restoreCallerFrameAfterCall(vm.frames[vm.fp], Value.makeFixnum(9));
 
     try testing.expectEqual(@as(usize, 2), vm.sp);
     try testing.expectEqual(@as(i64, 9), vm.stack[1].toFixnum());

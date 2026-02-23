@@ -9,6 +9,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-23)
 
 ### Worked Well
+- Making caller-frame restore infallible on return paths (`src/interp/vm.zig:10770`, `src/interp/vm.zig:4383`, `src/interp/vm.zig:4419`) removed hot `try push` overhead while preserving frame-depth restoration behavior in existing regressions.
 - Keeping `loadConst` freshness state in VM-local last-chunk memo fields (`const_last_chunk_key`/`const_last_gc_count`) while preserving the existing chunk-const cache table (`src/interp/vm.zig:691`, `src/interp/vm.zig:11801`) trimmed hot repeated-constant loads without changing chunk layout ABI.
 - Guarding `.call`/`.ret` trace checks with `trace_call_ret` before invoking `shouldTraceCallRet` (`src/interp/vm.zig:4340`, `src/interp/vm.zig:4383`, `src/interp/vm.zig:4401`) removed unnecessary hot-path helper calls and trace-only function-designator reads in normal benchmark runs.
 - Embedding a chunk-local compiled function pointer (`jit_fn`) and updating it on register/unregister/rekey (`src/runtime/objects.zig:813`, `src/interp/vm.zig:1656`, `src/interp/vm.zig:1674`, `src/interp/vm.zig:1694`, `src/interp/vm.zig:1790`) removed one hot `tryCallJit -> HashMap.get` dependency; 5-run `keyword_call` A/B on this host showed the direct chunk pointer path slightly faster than the lookup fallback variant.

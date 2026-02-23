@@ -219,6 +219,10 @@
       - Extended `vm loadConst refreshes chunk constants per gc epoch` regression to assert memo state updates.
       - Rebaseline (`bench-comp --bench=keyword_call --iters=7`, 5 runs, 2026-02-23): observed runs around `137.29-138.14ms` with no functional regressions.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): all 5 workloads executed cleanly (no `UnhandledThrow`/`OutOfMemory`) with `integrate ~139.5ms`, `factor ~50.6ms`, `solve ~12.0ms`.
+    - [x] `habu-inline-caller-frame-d9a5b875` Make caller-frame restore infallible and inline dynamic-depth restore on hot return paths.
+      - Replaced `restoreCallerFrameAfterCall` `try push` with direct stack write/assert and switched callsites in `.call`/`.ret` to non-fallible restore (`src/interp/vm.zig`).
+      - Marked `restoreDynamicDepthsFromFrame` inline; kept handler restore-depth semantics unchanged.
+      - Revalidated return-frame regressions and hotspot baselines (`keyword_call`, `maxima-hotspots`), with no functional regressions and call-path microbench staying in the current improved band.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.
