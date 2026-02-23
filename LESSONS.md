@@ -18,6 +18,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Hardening `tools/dot-finish` with timeout-aware test execution (`tools/dot-finish`) removes a recurring dev-loop failure mode where full-suite hangs left stale `zig build test` processes alive for hours and tripped unified exec process limits.
 - Sampling `./zig-out/bin/comprehensive_bench --bench=assoc` in Debug (`/tmp/habu_assoc_bin_sample.txt`) showed `jit.backend.jitAssoc` (`src/jit/backend.zig:360-369`) as the dominant hotspot with heavy `debug.assert` overhead; ReleaseFast `zig build -Doptimize=ReleaseFast bench-comp ...` measured ~5.0ms for the same bench.
 - Rewriting `jitAssoc` to use raw tagged checks instead of `Value.isCons()/toPtr()` (`src/jit/backend.zig:360-374`) cut Debug `bench-comp --bench=assoc` from ~137ms to ~39ms on this host, improving inner-loop developer feedback.
+- Adding direct fixnum/float fast paths in numeric compare helpers (`src/jit/backend.zig:459`, `src/jit/backend.zig:608`, `src/jit/backend.zig:618`, `src/jit/backend.zig:646`, `src/jit/backend.zig:653`) plus a fixnum-guarded translator fast lane (`src/jit/backend.zig:2602`) reduced ReleaseFast `assoc` from ~5.23ms to ~5.12ms while preserving generic fallback semantics.
 
 ### Did Not Work
 - Relying on `restoreExtRootsSynced` copyback from temporary root arrays propagated stale values into persistent owners under nested save/set/restore chains (`src/interp/vm.zig` pre-fix `restoreExtRootsSynced` logic).
@@ -26,6 +27,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Running `tools/dot-finish` with an unbounded `zig build test` on this machine can leave long-lived test jobs after harness stalls; timeout guardrails are required to keep the process pool healthy.
 - Treating Debug `bench-comp` numbers as runtime parity signal was misleading for `assoc`: Debug sampling showed `debug.assert`/tag-check overhead inside `jitAssoc`; parity tracking must use `-Doptimize=ReleaseFast`.
 - The `jitAssoc` raw-check rewrite materially improved Debug numbers but did not move ReleaseFast parity (`~5.23ms` to `~5.25ms`), so remaining gap is elsewhere (helper/call lowering and loop arithmetic), not `Value` predicate overhead.
+- Even with compare-helper fast paths, `assoc` parity remains far from SBCL in ReleaseFast (`~5.12ms` vs `~2.79ms` baseline), so the next wins are not in scalar compare helpers but in call/loop lowering and remaining helper-bound overhead.
 
 ## Session Notes (2026-02-22)
 

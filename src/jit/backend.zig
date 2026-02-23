@@ -454,6 +454,34 @@ fn jitToFloat(v: Value) ?f64 {
     return null;
 }
 
+const NumCmp = enum { lt, gt, le, ge };
+
+fn jitFastNumCmp(a: Value, b: Value, comptime op: NumCmp) ?bool {
+    if (a.isFixnum() and b.isFixnum()) {
+        const av = a.toFixnum();
+        const bv = b.toFixnum();
+        return switch (op) {
+            .lt => av < bv,
+            .gt => av > bv,
+            .le => av <= bv,
+            .ge => av >= bv,
+        };
+    }
+
+    if (a.isFloat() or b.isFloat()) {
+        const af = jitToFloat(a) orelse return null;
+        const bf = jitToFloat(b) orelse return null;
+        return switch (op) {
+            .lt => af < bf,
+            .gt => af > bf,
+            .le => af <= bf,
+            .ge => af >= bf,
+        };
+    }
+
+    return null;
+}
+
 fn jitRequireHeap() *Heap {
     return g_heap orelse std.debug.panic("jit helper missing heap", .{});
 }
@@ -580,6 +608,9 @@ fn jitMulNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
 fn jitLtNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
     const a = Value{ .raw = a_raw };
     const b = Value{ .raw = b_raw };
+    if (jitFastNumCmp(a, b, .lt)) |ok_fast| {
+        return if (ok_fast) Value.t.raw else Value.nil.raw;
+    }
     const ok = runtime.primitives.arith.lt(a, b) catch |err| jitRelayError(err);
     return if (ok) Value.t.raw else Value.nil.raw;
 }
@@ -587,6 +618,9 @@ fn jitLtNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
 fn jitGtNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
     const a = Value{ .raw = a_raw };
     const b = Value{ .raw = b_raw };
+    if (jitFastNumCmp(a, b, .gt)) |ok_fast| {
+        return if (ok_fast) Value.t.raw else Value.nil.raw;
+    }
     const ok = runtime.primitives.arith.gt(a, b) catch |err| jitRelayError(err);
     return if (ok) Value.t.raw else Value.nil.raw;
 }
@@ -609,6 +643,9 @@ fn jitLeNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
             },
         );
     }
+    if (jitFastNumCmp(a, b, .le)) |ok_fast| {
+        return if (ok_fast) Value.t.raw else Value.nil.raw;
+    }
     const ok = runtime.primitives.arith.le(a, b) catch |err| jitRelayError(err);
     return if (ok) Value.t.raw else Value.nil.raw;
 }
@@ -616,6 +653,9 @@ fn jitLeNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
 fn jitGeNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
     const a = Value{ .raw = a_raw };
     const b = Value{ .raw = b_raw };
+    if (jitFastNumCmp(a, b, .ge)) |ok_fast| {
+        return if (ok_fast) Value.t.raw else Value.nil.raw;
+    }
     const ok = runtime.primitives.arith.ge(a, b) catch |err| jitRelayError(err);
     return if (ok) Value.t.raw else Value.nil.raw;
 }
@@ -2559,26 +2599,83 @@ pub const IrTranslator = struct {
         return try self.b.icmp(I8, IntCC.ne, tagged, zero);
     }
 
+    fn translateCmpFixnumFastFallback(
+        self: *IrTranslator,
+        cc_fixnum: IntCC,
+        prim_ptr: u64,
+        left: *const Ir,
+        right: *const Ir,
+    ) anyerror!HoistValue {
+        const l = try self.translate(left);
+        const r = try self.translate(right);
+        const one = try self.cachedIconst(1);
+        const l_tag = try self.b.band(I64, l, one);
+        const r_tag = try self.b.band(I64, r, one);
+        const l_is_fixnum = try self.b.icmp(I8, IntCC.eq, l_tag, one);
+        const r_is_fixnum = try self.b.icmp(I8, IntCC.eq, r_tag, one);
+        const both_fixnum = try self.b.band(I8, l_is_fixnum, r_is_fixnum);
+
+        const fast_blk = try self.b.createBlock();
+        const slow_blk = try self.b.createBlock();
+        const merge_blk = try self.b.createBlock();
+        const out = try self.b.appendBlockParam(merge_blk, I8);
+
+        try self.b.brif(both_fixnum, fast_blk, slow_blk);
+
+        self.switchBlock(fast_blk);
+        try self.b.sealBlock(fast_blk);
+        const fast_cmp = try self.b.icmp(I8, cc_fixnum, l, r);
+        try self.b.jumpArgs(merge_blk, &.{fast_cmp});
+
+        self.switchBlock(slow_blk);
+        try self.b.sealBlock(slow_blk);
+        const args = [_]HoistValue{ l, r };
+        const tagged = try self.emitPrimitiveCallValues(prim_ptr, &args);
+        const zero = try self.cachedIconst(0);
+        const slow_cmp = try self.b.icmp(I8, IntCC.ne, tagged, zero);
+        try self.b.jumpArgs(merge_blk, &.{slow_cmp});
+
+        self.switchBlock(merge_blk);
+        try self.b.sealBlock(merge_blk);
+        return out;
+    }
+
     fn translateLt(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
         if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.slt, left, right);
+        if (self.fixnum_fast) {
+            const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitLtNum)));
+            return try self.translateCmpFixnumFastFallback(.slt, prim_ptr, left, right);
+        }
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitLtNum)));
         return try self.translateCmpTagged(prim_ptr, left, right);
     }
 
     fn translateGt(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
         if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.sgt, left, right);
+        if (self.fixnum_fast) {
+            const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitGtNum)));
+            return try self.translateCmpFixnumFastFallback(.sgt, prim_ptr, left, right);
+        }
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitGtNum)));
         return try self.translateCmpTagged(prim_ptr, left, right);
     }
 
     fn translateLe(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
         if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.sle, left, right);
+        if (self.fixnum_fast) {
+            const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitLeNum)));
+            return try self.translateCmpFixnumFastFallback(.sle, prim_ptr, left, right);
+        }
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitLeNum)));
         return try self.translateCmpTagged(prim_ptr, left, right);
     }
 
     fn translateGe(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
         if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.sge, left, right);
+        if (self.fixnum_fast) {
+            const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitGeNum)));
+            return try self.translateCmpFixnumFastFallback(.sge, prim_ptr, left, right);
+        }
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitGeNum)));
         return try self.translateCmpTagged(prim_ptr, left, right);
     }
@@ -10288,6 +10385,20 @@ test "jitAssoc finds matching pair in alist" {
 
     const miss_raw = jitAssoc(Value.makeFixnum(99).raw, alist.raw);
     try testing.expectEqual(Value.nil.raw, miss_raw);
+}
+
+test "jit numeric compare helpers fast path fixnum and float" {
+    try testing.expectEqual(Value.t.raw, jitLtNum(Value.makeFixnum(1).raw, Value.makeFixnum(2).raw));
+    try testing.expectEqual(Value.nil.raw, jitLtNum(Value.makeFixnum(2).raw, Value.makeFixnum(1).raw));
+    try testing.expectEqual(Value.t.raw, jitLeNum(Value.makeFixnum(2).raw, Value.makeFixnum(2).raw));
+    try testing.expectEqual(Value.t.raw, jitGtNum(Value.makeFixnum(3).raw, Value.makeFixnum(2).raw));
+    try testing.expectEqual(Value.t.raw, jitGeNum(Value.makeFixnum(3).raw, Value.makeFixnum(3).raw));
+
+    const f_1_5 = Value.makeFloat(1.5).raw;
+    const f_2_0 = Value.makeFloat(2.0).raw;
+    try testing.expectEqual(Value.t.raw, jitLtNum(f_1_5, f_2_0));
+    try testing.expectEqual(Value.t.raw, jitLeNum(Value.makeFixnum(1).raw, f_1_5));
+    try testing.expectEqual(Value.t.raw, jitGeNum(f_2_0, Value.makeFixnum(2).raw));
 }
 
 test "jit bridge trampoline enters and unwinds" {
