@@ -192,6 +192,10 @@
       - Added a `fn_from_symbol_resolve` guard in `doCall` so symbol designators resolved through `resolveFunctionValue` (already canonicalized) skip an immediate second `resolveForwardedValue`; non-symbol call targets still canonicalize exactly as before.
       - Verified `&key`/`allow-other-keys` and symbol-function regressions remain green; behavior is unchanged.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): observed runs around `integrate ~156.4-158.3ms`, `factor ~51.7-52.3ms`, `ratsimp ~39.0-39.6ms`; gate still red (`wins=0/5`).
+    - [x] `habu-specialize-stackmove-for-c4cdce70` Specialize `stackMove` tiny-count moves used by `doCall` keyword/rest layout paths while preserving overlap correctness. Depends on `habu-skip-redundant-docall-ed095926`.
+      - Added overlap-safe tiny-count (`1..4`) fast paths to `stackMove` for both forward and backward directions; larger moves keep the existing loop path.
+      - Focused keyword/allow-other-keys regressions stayed green, including keyword tail recursion/layout tests.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): runs improved to about `integrate ~154.2-154.5ms`, `factor ~51.7-52.3ms`, `solve ~12.6-13.0ms` with gate still red (`wins=0/5`).
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

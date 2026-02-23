@@ -10722,15 +10722,55 @@ pub const Vm = struct {
     fn stackMove(self: *Vm, dest: usize, src: usize, count: usize) void {
         if (count == 0 or dest == src) return;
         if (dest < src) {
-            var i: usize = 0;
-            while (i < count) : (i += 1) {
-                self.stack[dest + i] = self.stack[src + i];
+            switch (count) {
+                1 => self.stack[dest] = self.stack[src],
+                2 => {
+                    self.stack[dest] = self.stack[src];
+                    self.stack[dest + 1] = self.stack[src + 1];
+                },
+                3 => {
+                    self.stack[dest] = self.stack[src];
+                    self.stack[dest + 1] = self.stack[src + 1];
+                    self.stack[dest + 2] = self.stack[src + 2];
+                },
+                4 => {
+                    self.stack[dest] = self.stack[src];
+                    self.stack[dest + 1] = self.stack[src + 1];
+                    self.stack[dest + 2] = self.stack[src + 2];
+                    self.stack[dest + 3] = self.stack[src + 3];
+                },
+                else => {
+                    var i: usize = 0;
+                    while (i < count) : (i += 1) {
+                        self.stack[dest + i] = self.stack[src + i];
+                    }
+                },
             }
         } else {
-            var i: usize = count;
-            while (i > 0) {
-                i -= 1;
-                self.stack[dest + i] = self.stack[src + i];
+            switch (count) {
+                1 => self.stack[dest] = self.stack[src],
+                2 => {
+                    self.stack[dest + 1] = self.stack[src + 1];
+                    self.stack[dest] = self.stack[src];
+                },
+                3 => {
+                    self.stack[dest + 2] = self.stack[src + 2];
+                    self.stack[dest + 1] = self.stack[src + 1];
+                    self.stack[dest] = self.stack[src];
+                },
+                4 => {
+                    self.stack[dest + 3] = self.stack[src + 3];
+                    self.stack[dest + 2] = self.stack[src + 2];
+                    self.stack[dest + 1] = self.stack[src + 1];
+                    self.stack[dest] = self.stack[src];
+                },
+                else => {
+                    var i: usize = count;
+                    while (i > 0) {
+                        i -= 1;
+                        self.stack[dest + i] = self.stack[src + i];
+                    }
+                },
             }
         }
     }
