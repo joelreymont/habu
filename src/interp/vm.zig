@@ -1321,9 +1321,7 @@ pub const Vm = struct {
         return entry.fn_val;
     }
 
-    fn storeFnResolveCache(self: *Vm, sym: Value, fn_val: Value) void {
-        const live_sym = self.resolveForwardedValue(sym);
-        const live_fn = self.resolveForwardedValue(fn_val);
+    fn storeFnResolveCacheLive(self: *Vm, live_sym: Value, live_fn: Value) void {
         if (!live_sym.isSymbol() or !isCallableFunctionValue(live_fn)) return;
         const idx = fnResolveCacheIndex(live_sym);
         self.fn_resolve_cache[idx] = .{ .sym = live_sym, .fn_val = live_fn };
@@ -1334,8 +1332,7 @@ pub const Vm = struct {
         self.fn_resolve_cache[idx] = .{};
     }
 
-    fn lookupFunctionCell(self: *Vm, sym_val: Value) ?Value {
-        const live_sym_val = self.resolveForwardedValue(sym_val);
+    fn lookupFunctionCellLive(self: *Vm, live_sym_val: Value) ?Value {
         if (!live_sym_val.isSymbol()) return null;
         const key = self.builtins.sym_function_cell;
         const sym = live_sym_val.toPtr(Symbol);
@@ -1364,7 +1361,7 @@ pub const Vm = struct {
         const key = self.builtins.sym_function_cell;
         _ = try primitives.list.put(self.heap, live_sym_val, key, live_fn_val);
         if (isCallableFunctionValue(live_fn_val)) {
-            self.storeFnResolveCache(live_sym_val, live_fn_val);
+            self.storeFnResolveCacheLive(live_sym_val, live_fn_val);
         } else {
             self.clearFnResolveCacheEntry(live_sym_val);
         }
@@ -1384,8 +1381,8 @@ pub const Vm = struct {
         if (self.lookupFnResolveCache(live_sym_val)) |cached_fn| {
             return cached_fn;
         }
-        if (self.lookupFunctionCell(live_sym_val)) |fn_cell| {
-            self.storeFnResolveCache(live_sym_val, fn_cell);
+        if (self.lookupFunctionCellLive(live_sym_val)) |fn_cell| {
+            self.storeFnResolveCacheLive(live_sym_val, fn_cell);
             return fn_cell;
         }
 
@@ -10750,7 +10747,8 @@ pub const Vm = struct {
         if (self.sp < @as(usize, argc) + 1) return error.StackUnderflow;
 
         // Get function value (below args on stack)
-        const fn_designator = self.stack[self.sp - argc - 1];
+        const fn_slot = self.sp - argc - 1;
+        const fn_designator = self.stack[fn_slot];
         var fn_val = fn_designator;
 
         // Function designator: symbol -> function cell/global binding.
@@ -10784,13 +10782,13 @@ pub const Vm = struct {
                 }
                 return error.UnboundSymbol;
             };
-            self.stack[self.sp - argc - 1] = fn_val;
+            self.stack[fn_slot] = fn_val;
         }
 
         const canonical_fn = self.resolveForwardedValue(fn_val);
         if (canonical_fn.raw != fn_val.raw) {
             fn_val = canonical_fn;
-            self.stack[self.sp - argc - 1] = fn_val;
+            self.stack[fn_slot] = fn_val;
         }
 
         // If calling a generic function, delegate to its dispatcher
@@ -10802,7 +10800,7 @@ pub const Vm = struct {
             }
             fn_val = self.resolveForwardedValue(gf.dispatcher);
             // Update function slot on stack
-            self.stack[self.sp - argc - 1] = fn_val;
+            self.stack[fn_slot] = fn_val;
         }
 
         if (!fn_val.isClosure()) {

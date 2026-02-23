@@ -172,6 +172,10 @@
       - Fixed `&optional`+`&key` boundary detection in `doCall`: positional scan now advances by one optional slot (not two), eliminating missed key starts and extra-positional acceptance bugs.
       - Added regressions for invalid extra positional args on `&key` lambdas and odd-offset first-key detection with omitted optionals.
       - Added `keyword_call` microbench to `bench/comprehensive_bench.zig` for dedicated tracking of `&key` call-path throughput in both JIT and interpreter modes.
+    - [x] `habu-cut-docall-forwarded-84455dbe` Cut forwarded-resolution churn in function-designator resolution paths without semantic shortcuts. Depends on `habu-cut-docall-key-8d3eb630`.
+      - Removed duplicate forwarded-resolution passes in symbol function-cell lookup/cache paths (`storeFnResolveCacheLive`, `lookupFunctionCellLive`) so `resolveFunctionValue` does one canonical symbol resolve before cache/cell checks.
+      - Rejected an attempted closure-specific resolve skip in `doCall` after A/B evidence showed `keyword_call` regression; kept canonical `doCall` resolution semantics unchanged.
+      - A/B rebaseline against parent commit (`734cd0a3`) showed slight real-workload improvements on current host in repeated `tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32` runs (notably `integrate`/`ratsimp`), with gate status still red (`wins=0/5`).
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.
