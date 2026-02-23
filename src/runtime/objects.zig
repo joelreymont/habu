@@ -810,6 +810,8 @@ pub const Chunk = extern struct {
     allowed_keywords: Value = Value.nil,
     /// Type map for JIT: one TypeKind byte per local slot, or null
     type_map: ?[*]u8 = null,
+    /// Cached hoist compiled function pointer (host pointer as integer), or 0.
+    jit_fn: usize = 0,
     /// Constant pool pointer (points to inline array after header)
     const_pool: [*]Value,
     /// Bytecode pointer (points to inline array after constants)

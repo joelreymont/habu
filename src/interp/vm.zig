@@ -1661,6 +1661,7 @@ pub const Vm = struct {
                 self.allocator.destroy(old.value);
             }
         }
+        @constCast(chunk).jit_fn = @intFromPtr(compiled);
     }
 
     /// Register a stable host-root slot for a JIT literal Value.
@@ -1673,16 +1674,28 @@ pub const Vm = struct {
 
     /// Look up hoist-compiled function for a chunk.
     pub fn lookupJitFn(self: *Vm, chunk: *const Chunk) ?*const jit_backend.CompiledFn {
+        if (chunk.jit_fn != 0) {
+            const compiled: *jit_backend.CompiledFn = @ptrFromInt(chunk.jit_fn);
+            return compiled;
+        }
         const key = @intFromPtr(chunk);
-        return self.jit_fns.get(key);
+        const compiled = self.jit_fns.get(key) orelse return null;
+        @constCast(chunk).jit_fn = @intFromPtr(compiled);
+        return compiled;
+    }
+
+    pub fn unregisterJitFn(self: *Vm, chunk: *const Chunk) bool {
+        @constCast(chunk).jit_fn = 0;
+        return self.jit_fns.remove(@intFromPtr(chunk));
     }
 
     /// Try to call a closure via hoist-compiled native code.
     /// Returns the result of calling it, or null if not hoist-compiled.
     fn tryCallJit(self: *Vm, argc: u8) Error!?Value {
         const chunk = self.chunk;
-        const key = @intFromPtr(chunk);
-        const compiled = self.jit_fns.get(key) orelse return null;
+        const compiled_ptr = chunk.jit_fn;
+        if (compiled_ptr == 0) return null;
+        const compiled: *const jit_backend.CompiledFn = @ptrFromInt(compiled_ptr);
         if (compiled.arity != argc) return null;
         const trace_jit_call = self.trace_jit_call;
         self.jit_bridge_error = null;
@@ -1803,9 +1816,13 @@ pub const Vm = struct {
                 try retire.append(self.allocator, compiled);
                 continue;
             }
+            const live_chunk: *Chunk = @ptrFromInt(live_addr);
+            live_chunk.jit_fn = @intFromPtr(compiled);
 
             if (try rebuilt.fetchPut(live_addr, compiled)) |prior| {
-                try retire.append(self.allocator, prior.value);
+                if (prior.value != compiled) {
+                    try retire.append(self.allocator, prior.value);
+                }
             }
         }
 
@@ -13292,6 +13309,33 @@ test "vm loadConst refreshes chunk constants per gc epoch" {
     const entry1 = vm.chunk_const_cache[Vm.chunkConstCacheIndex(vm.chunk)];
     try testing.expectEqual(@intFromPtr(vm.chunk), entry1.chunk_key);
     try testing.expectEqual(heap.stats.gc_count, entry1.gc_count);
+}
+
+test "vm registerJitFn updates chunk jit pointer fast path" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    const code = [_]u8{};
+    const consts = [_]Value{};
+    const chunk_val = try heap.allocChunk(&code, &consts, 0, 0, 0, false, 0);
+    const chunk_ptr = chunk_val.toPtr(Chunk);
+    try testing.expectEqual(@as(usize, 0), chunk_ptr.jit_fn);
+
+    var dummy: jit_backend.CompiledFn = undefined;
+    try vm.registerJitFn(chunk_ptr, &dummy);
+    try testing.expectEqual(@intFromPtr(&dummy), chunk_ptr.jit_fn);
+    try testing.expect(vm.lookupJitFn(chunk_ptr).? == &dummy);
+
+    try testing.expect(vm.unregisterJitFn(chunk_ptr));
+    try testing.expectEqual(@as(usize, 0), chunk_ptr.jit_fn);
+    try testing.expect(vm.lookupJitFn(chunk_ptr) == null);
+    try testing.expect(!vm.unregisterJitFn(chunk_ptr));
 }
 
 test "vm state restore refreshes owned chunk pool slice" {

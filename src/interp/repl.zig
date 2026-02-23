@@ -3118,7 +3118,7 @@ pub const Repl = struct {
                 if (trace) {
                     std.debug.print("JIT: setExec(false) failed for '{s}': {s}\n", .{ name, @errorName(err) });
                 }
-                _ = self.vm.jit_fns.remove(@intFromPtr(chunk_ptr));
+                _ = self.vm.unregisterJitFn(chunk_ptr);
                 persistent.deinit();
                 self.allocator.destroy(persistent);
                 return .failed;
@@ -3132,7 +3132,7 @@ pub const Repl = struct {
                 if (trace) {
                     std.debug.print("JIT: setExec(true) failed for '{s}': {s}\n", .{ name, @errorName(err) });
                 }
-                _ = self.vm.jit_fns.remove(@intFromPtr(chunk_ptr));
+                _ = self.vm.unregisterJitFn(chunk_ptr);
                 persistent.deinit();
                 self.allocator.destroy(persistent);
                 return .failed;

@@ -205,6 +205,11 @@
       - Prevents lone trailing keyword values (for example `:eof` in `read-from-string`) from being misclassified as malformed keyword tails.
       - Preserves paired-tail keyword starts needed by generated constructor-style call shapes (for example defstruct keyword initargs).
       - Updated integration coverage in `src/tests/integration.zig` with `keyword optional boundary handles odd and paired tails`.
+    - [x] `habu-embed-jit-fn-ca3d429a` Embed a chunk-local hoist compiled-fn pointer and use it in `tryCallJit` to remove per-call hash lookup overhead while keeping register/unregister/rekey coherence.
+      - Added `Chunk.jit_fn` host pointer slot (`src/runtime/objects.zig`) and wired `registerJitFn`/`unregisterJitFn`/`rekeyJitFnsAfterGc` updates (`src/interp/vm.zig`).
+      - Switched REPL JIT registration failure cleanup to `unregisterJitFn` so chunk-local fast pointer state cannot go stale (`src/interp/repl.zig`).
+      - Added VM regression `vm registerJitFn updates chunk jit pointer fast path` (`src/interp/vm.zig`).
+      - A/B (`bench-comp --bench=keyword_call --iters=7`, 5-run samples, 2026-02-23): direct chunk pointer path (`tryCallJit` reads `chunk.jit_fn`) was slightly faster than lookup fallback on this host.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

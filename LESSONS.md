@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-23)
 
 ### Worked Well
+- Embedding a chunk-local compiled function pointer (`jit_fn`) and updating it on register/unregister/rekey (`src/runtime/objects.zig:813`, `src/interp/vm.zig:1656`, `src/interp/vm.zig:1674`, `src/interp/vm.zig:1694`, `src/interp/vm.zig:1790`) removed one hot `tryCallJit -> HashMap.get` dependency; 5-run `keyword_call` A/B on this host showed the direct chunk pointer path slightly faster than the lookup fallback variant.
+- Routing REPL JIT registration failure cleanup through `unregisterJitFn` (`src/interp/repl.zig:3121`, `src/interp/repl.zig:3135`) keeps chunk-local JIT pointer state coherent when post-registration code patching fails.
 - Caching chunk constant forwarding fixups by `(chunk_addr, gc_count)` (`src/interp/vm.zig:541`, `src/interp/vm.zig:1340`, `src/interp/vm.zig:11780`) removed repeated `loadConst -> resolveForwardedValue` checks on hot opcode paths and gave a measurable Maxima runtime drop (`integrate` into ~`145ms` range on this host).
 - Special-casing tiny overlap-safe stack moves (`1..4`) in `stackMove` (`src/interp/vm.zig:10722`) reduced hot `doCall` keyword frame-relayout overhead and produced a measurable Maxima hotspot drop on `integrate` while preserving key/rest layout correctness.
 - Skipping redundant post-resolution canonicalization in `doCall` for symbol designators (`src/interp/vm.zig:10807`) is safe when `resolveFunctionValue` already returns canonicalized callable values; keeping canonicalization for non-symbol call targets preserves forwarding safety.
@@ -53,6 +55,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Emitting first unsupported IR tags on JIT compile failures (`src/interp/repl.zig:3013`) turned generic `UnsupportedIrNode` logs into actionable blockers; current Maxima benchmark wrapper rejection points to `.progv` as the first missing lowering.
 
 ### Did Not Work
+- Keeping `tryCallJit` on the `lookupJitFn` path (even with chunk-pointer caching inside lookup) underperformed direct `chunk.jit_fn` reads in quick A/B runs; the extra lookup path still left more overhead than the direct fast pointer path for the hot call site (`src/interp/vm.zig:1694`).
 - Treating all `&optional` slots as strictly positional before `&key` parsing (no early key boundary) regressed constructor-style keyword initarg calls (`make-instance`, defstruct constructors); boundary logic must allow early key start when the remaining tail is a complete even pair list.
 - Replacing all stack moves with one generic loop path leaves easy performance on the table for `doCall` tiny keyword-pair shuffles; tiny-count specialization is worth the branch cost here.
 - Evaluating tiny call-path optimizations from a single hotspot run was too unstable; running quick A/B in a separate `jj` workspace against `@-` gave clearer keep/revert signal for near-noise deltas.
