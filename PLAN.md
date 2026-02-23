@@ -210,6 +210,10 @@
       - Switched REPL JIT registration failure cleanup to `unregisterJitFn` so chunk-local fast pointer state cannot go stale (`src/interp/repl.zig`).
       - Added VM regression `vm registerJitFn updates chunk jit pointer fast path` (`src/interp/vm.zig`).
       - A/B (`bench-comp --bench=keyword_call --iters=7`, 5-run samples, 2026-02-23): direct chunk pointer path (`tryCallJit` reads `chunk.jit_fn`) was slightly faster than lookup fallback on this host.
+    - [x] `habu-bypass-call-trace-9f281e27` Bypass `shouldTraceCallRet` helper calls and function-designator extraction on `.call`/`.ret` fast paths when call tracing is disabled.
+      - Kept tracing/filter semantics unchanged when `trace_call_ret` is enabled; only non-tracing hot path changed (`src/interp/vm.zig:4340`, `src/interp/vm.zig:4383`, `src/interp/vm.zig:4401`).
+      - Quick A/B loop on this host (`bench-comp --bench=keyword_call --iters=7`) favored the guarded path over unconditional helper calls after warmup drift.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): run reached near-parity on `integrate` (`jit ~139.30ms`, `interp ~139.69ms`), with gate still red overall.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

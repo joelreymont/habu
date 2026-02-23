@@ -4339,8 +4339,12 @@ pub const Vm = struct {
             // Function calls
             .call => {
                 const argc = self.readU8();
-                const fn_designator = self.stack[self.sp - argc - 1];
-                const trace_call = self.shouldTraceCallRet(fn_designator, self.chunk, null);
+                var trace_call = false;
+                var fn_designator = Value.nil;
+                if (self.trace_call_ret) {
+                    fn_designator = self.stack[self.sp - argc - 1];
+                    trace_call = self.shouldTraceCallRet(fn_designator, self.chunk, null);
+                }
                 if (trace_call) {
                     const caller = chunkTraceName(self.chunk);
                     std.debug.print(
@@ -4383,7 +4387,7 @@ pub const Vm = struct {
             .ret => {
                 const result = try self.pop();
                 if (self.fp == 0) {
-                    if (self.shouldTraceCallRet(null, self.chunk, null)) {
+                    if (self.trace_call_ret and self.shouldTraceCallRet(null, self.chunk, null)) {
                         std.debug.print(
                             "TRACE ret-top chunk={s} ip={d} sp={d} result=",
                             .{ chunkTraceName(self.chunk), self.ip, self.sp },
@@ -4398,7 +4402,7 @@ pub const Vm = struct {
                 // Restore caller state
                 self.fp -= 1;
                 const frame = self.frames[self.fp];
-                if (self.shouldTraceCallRet(null, self.chunk, frame.chunk)) {
+                if (self.trace_call_ret and self.shouldTraceCallRet(null, self.chunk, frame.chunk)) {
                     std.debug.print(
                         "TRACE ret chunk={s} ip={d} -> caller={s} return_ip={d} fp={d} sp={d} result=",
                         .{ chunkTraceName(self.chunk), self.ip, chunkTraceName(frame.chunk), frame.return_ip, self.fp, frame.bp },
