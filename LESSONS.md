@@ -16,12 +16,16 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - New regressions for ext-root behavior (`src/interp/vm.zig:13132`, `src/interp/vm.zig:13172`) lock both owner-backed and plain-slice inactive-root correctness.
 - Running focused bridge/safety regressions plus `bench-maxima` rebaseline (`src/tests/integration.zig:1877`, `src/tests/integration.zig:2573`, `bench/maxima_workload.zig`) validated that bridge relay remains stable in JIT mode and safety admission stays open (`jit_adm.sk_safety=0`, loader `85/85`).
 - Hardening `tools/dot-finish` with timeout-aware test execution (`tools/dot-finish`) removes a recurring dev-loop failure mode where full-suite hangs left stale `zig build test` processes alive for hours and tripped unified exec process limits.
+- Sampling `./zig-out/bin/comprehensive_bench --bench=assoc` in Debug (`/tmp/habu_assoc_bin_sample.txt`) showed `jit.backend.jitAssoc` (`src/jit/backend.zig:360-369`) as the dominant hotspot with heavy `debug.assert` overhead; ReleaseFast `zig build -Doptimize=ReleaseFast bench-comp ...` measured ~5.0ms for the same bench.
+- Rewriting `jitAssoc` to use raw tagged checks instead of `Value.isCons()/toPtr()` (`src/jit/backend.zig:360-374`) cut Debug `bench-comp --bench=assoc` from ~137ms to ~39ms on this host, improving inner-loop developer feedback.
 
 ### Did Not Work
 - Relying on `restoreExtRootsSynced` copyback from temporary root arrays propagated stale values into persistent owners under nested save/set/restore chains (`src/interp/vm.zig` pre-fix `restoreExtRootsSynced` logic).
 - Fixing only helper-entry forwarded resolution was insufficient by itself; stale symbol-tagged pointers can survive long enough to lose forwarding metadata before first helper use, so preventing in-JIT GC was required for correctness (`src/jit/backend.zig:239`, `src/interp/vm.zig:1535`, `src/interp/vm.zig:1998`).
 - Manually updating `PLAN.md` checkboxes drifted from dot state; syncing checkboxes from `dot show` status avoids stale "open vs done" plan state when many dots close in parallel.
 - Running `tools/dot-finish` with an unbounded `zig build test` on this machine can leave long-lived test jobs after harness stalls; timeout guardrails are required to keep the process pool healthy.
+- Treating Debug `bench-comp` numbers as runtime parity signal was misleading for `assoc`: Debug sampling showed `debug.assert`/tag-check overhead inside `jitAssoc`; parity tracking must use `-Doptimize=ReleaseFast`.
+- The `jitAssoc` raw-check rewrite materially improved Debug numbers but did not move ReleaseFast parity (`~5.23ms` to `~5.25ms`), so remaining gap is elsewhere (helper/call lowering and loop arithmetic), not `Value` predicate overhead.
 
 ## Session Notes (2026-02-22)
 

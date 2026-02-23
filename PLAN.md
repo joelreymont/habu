@@ -201,6 +201,8 @@
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).
   - [x] `habu-reverify-hoist-compile-b48554f1` Reverify hoist compile gate after latest upstream rebuild.
+  - [ ] `habu-assoc-releasefast-parity-5b658109` Close ReleaseFast `assoc` gap to SBCL by reducing `jitAssoc`/helper overhead (current Habu JIT ~5.23ms vs SBCL ~2.79ms, ~0.53x).
+    - [x] `habu-jitassoc-raw-tag-a25755cd` Rewrite `jitAssoc` hot loop to raw tagged checks to remove `Value` predicate/assert overhead from Debug benchmark runs.
 
 ### 2. Compiler Core
 - [x] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.

@@ -386,14 +386,18 @@ fn jitAppend(list1_raw: u64, list2_raw: u64) callconv(.c) u64 {
 
 /// assoc: lookup in alist by eq. Returns tagged value (pair or nil).
 fn jitAssoc(key_raw: u64, alist_raw: u64) callconv(.c) u64 {
-    var curr = Value{ .raw = alist_raw };
-    while (curr.isCons()) {
-        const cell = curr.toPtr(runtime.Cons);
-        if (cell.car.isCons()) {
-            const pair = cell.car.toPtr(runtime.Cons);
-            if (pair.car.raw == key_raw) return cell.car.raw;
+    // Raw tagged checks avoid Value predicate/toPtr overhead in this hot loop.
+    const ptr_mask: u64 = ~@as(u64, 0xF);
+    var curr_raw = alist_raw;
+
+    while (curr_raw != 0 and (curr_raw & 0xF) == 0 and (curr_raw >> 62) == 0) {
+        const cell: *runtime.Cons = @ptrFromInt(curr_raw & ptr_mask);
+        const pair_raw = cell.car.raw;
+        if (pair_raw != 0 and (pair_raw & 0xF) == 0 and (pair_raw >> 62) == 0) {
+            const pair: *runtime.Cons = @ptrFromInt(pair_raw & ptr_mask);
+            if (pair.car.raw == key_raw) return pair_raw;
         }
-        curr = cell.cdr;
+        curr_raw = cell.cdr.raw;
     }
     return Value.nil.raw;
 }
@@ -5395,7 +5399,6 @@ fn collapseIdentityJumpWrappers(func: *Function, allocator: std.mem.Allocator) !
     return dead_blocks.items.len;
 }
 
-
 pub fn compileIr(
     allocator: std.mem.Allocator,
     ir: *const Ir,
@@ -6192,8 +6195,7 @@ fn eliminateRoundTripMovs(code: []u8) void {
                     if (insn_k == nop) continue;
 
                     // Control-flow between the pair can make local reasoning invalid.
-                    if (isControlFlowBoundaryInsn(insn_k))
-                    {
+                    if (isControlFlowBoundaryInsn(insn_k)) {
                         safe = false;
                         break;
                     }
@@ -6710,8 +6712,7 @@ fn isRegDeadInBlock(code: []const u8, idx: usize, reg: u5) bool {
             continue;
         }
         // Stop at any branch/call.
-        if (isAnyBranchInsn(insn))
-        {
+        if (isAnyBranchInsn(insn)) {
             return true; // reached end of basic block without reading reg
         }
         if (insnReadsReg(insn, reg)) return false;
@@ -10272,6 +10273,21 @@ test "jitAppend allocates one copy of left list" {
     try testing.expectEqual(@as(i64, 3), runtime.primitives.list.nth(out, 2).toFixnum());
     try testing.expectEqual(@as(i64, 4), runtime.primitives.list.nth(out, 3).toFixnum());
     try testing.expectEqual(@as(i64, 5), runtime.primitives.list.nth(out, 4).toFixnum());
+}
+
+test "jitAssoc finds matching pair in alist" {
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    const pair1 = try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(10));
+    const pair2 = try heap.allocCons(Value.makeFixnum(2), Value.makeFixnum(20));
+    const alist = try runtime.primitives.list.list(&heap, &.{ pair1, pair2 });
+
+    const found_raw = jitAssoc(Value.makeFixnum(2).raw, alist.raw);
+    try testing.expectEqual(pair2.raw, found_raw);
+
+    const miss_raw = jitAssoc(Value.makeFixnum(99).raw, alist.raw);
+    try testing.expectEqual(Value.nil.raw, miss_raw);
 }
 
 test "jit bridge trampoline enters and unwinds" {
