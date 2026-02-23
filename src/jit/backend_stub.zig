@@ -7,7 +7,17 @@ const Value = runtime.Value;
 const Heap = runtime.Heap;
 pub const LiteralRoots = std.AutoHashMap(usize, *Value);
 
-pub fn setHeap(_: *Heap) void {}
+var g_heap: ?*Heap = null;
+
+pub fn setHeap(heap: *Heap) void {
+    g_heap = heap;
+}
+
+pub fn heapContext() ?*Heap {
+    return g_heap;
+}
+
+pub fn refreshHeapCursor() void {}
 
 pub const CallBridge = struct {
     context: *anyopaque,

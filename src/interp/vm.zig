@@ -335,6 +335,14 @@ fn traceJitBridgeValue(v: Value) void {
     }
 }
 
+fn refreshJitHeap(vm: *Vm) void {
+    if (jit_backend.heapContext() != vm.heap) {
+        jit_backend.setHeap(vm.heap);
+        return;
+    }
+    jit_backend.refreshHeapCursor();
+}
+
 fn jitCallBridgeInvoke(vm: *Vm, fn_raw: u64, args: []const Value) u64 {
     const fn_val = Value{ .raw = fn_raw };
     const trace_bridge = std.posix.getenv("HABU_TRACE_JIT_BRIDGE") != null;
@@ -354,12 +362,12 @@ fn jitCallBridgeInvoke(vm: *Vm, fn_raw: u64, args: []const Value) u64 {
     jit_backend.syncHeapFromGlobal(vm.heap);
     // Bridge calls may run GC and move semispaces; refresh JIT bump-cache from
     // heap before and after so inline-cons globals never drift from VM state.
-    jit_backend.setHeap(vm.heap);
+    refreshJitHeap(vm);
     const result = vm.callFromStackAt(vm.sp, fn_val, args) catch |err| {
         vm.jit_bridge_error = err;
         // Keep allocator cursors coherent before non-local escape.
         jit_backend.syncHeapFromGlobal(vm.heap);
-        jit_backend.setHeap(vm.heap);
+        refreshJitHeap(vm);
         if (trace_bridge) {
             std.debug.print("JIT_BRIDGE err {s} argc={d}\n", .{ @errorName(err), args.len });
         }
@@ -369,7 +377,7 @@ fn jitCallBridgeInvoke(vm: *Vm, fn_raw: u64, args: []const Value) u64 {
     // Nested JIT calls inside vm.callFromStackAt may have advanced g_alloc_ptr.
     // Sync first, then refresh globals against the current semispace after GC.
     jit_backend.syncHeapFromGlobal(vm.heap);
-    jit_backend.setHeap(vm.heap);
+    refreshJitHeap(vm);
     if (trace_bridge) {
         std.debug.print("JIT_BRIDGE ret ", .{});
         traceJitBridgeValue(result);
@@ -452,30 +460,30 @@ fn jitCallBridgePushProgv(ctx: *anyopaque, symbols_raw: u64, values_raw: u64) ca
     const symbols = vm.resolveForwardedValue(Value{ .raw = symbols_raw });
     const values = vm.resolveForwardedValue(Value{ .raw = values_raw });
     jit_backend.syncHeapFromGlobal(vm.heap);
-    jit_backend.setHeap(vm.heap);
+    refreshJitHeap(vm);
     vm.pushProgvFrame(symbols, values) catch |err| {
         vm.jit_bridge_error = err;
         jit_backend.syncHeapFromGlobal(vm.heap);
-        jit_backend.setHeap(vm.heap);
+        refreshJitHeap(vm);
         return @intCast(@intFromError(err));
     };
     jit_backend.syncHeapFromGlobal(vm.heap);
-    jit_backend.setHeap(vm.heap);
+    refreshJitHeap(vm);
     return 0;
 }
 
 fn jitCallBridgePopProgv(ctx: *anyopaque) callconv(.c) u16 {
     const vm: *Vm = @ptrCast(@alignCast(ctx));
     jit_backend.syncHeapFromGlobal(vm.heap);
-    jit_backend.setHeap(vm.heap);
+    refreshJitHeap(vm);
     vm.popProgvFrame() catch |err| {
         vm.jit_bridge_error = err;
         jit_backend.syncHeapFromGlobal(vm.heap);
-        jit_backend.setHeap(vm.heap);
+        refreshJitHeap(vm);
         return @intCast(@intFromError(err));
     };
     jit_backend.syncHeapFromGlobal(vm.heap);
-    jit_backend.setHeap(vm.heap);
+    refreshJitHeap(vm);
     return 0;
 }
 
@@ -1751,7 +1759,7 @@ pub const Vm = struct {
         const trace_jit_call = self.trace_jit_call;
         self.jit_bridge_error = null;
         // Set global heap pointer so JIT cons can allocate
-        jit_backend.setHeap(self.heap);
+        refreshJitHeap(self);
         self.installJitBridges();
 
         // Extract args from the VM stack (they're above the callee frame)
@@ -1789,7 +1797,7 @@ pub const Vm = struct {
             self.jit_bridge_error = null;
             // Ensure allocator cursor coherence after non-local bridge exits.
             jit_backend.syncHeapFromGlobal(self.heap);
-            jit_backend.setHeap(self.heap);
+            refreshJitHeap(self);
             if (trace_jit_call) {
                 std.debug.print("JIT_CALL abort {s} err={s}\n", .{ compiled.name, @errorName(err) });
             }

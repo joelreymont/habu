@@ -131,6 +131,14 @@ pub fn setHeap(heap: *Heap) void {
     jitConsRefreshCache();
 }
 
+pub fn heapContext() ?*Heap {
+    return g_heap;
+}
+
+pub fn refreshHeapCursor() void {
+    jitConsRefreshCache();
+}
+
 pub fn setCallBridge(bridge: CallBridge) void {
     g_call_bridge = bridge;
     g_trace_jit_generic_call = std.posix.getenv("HABU_TRACE_JIT_GENERIC_CALL") != null;
@@ -10997,6 +11005,33 @@ test "jitAppend allocates one copy of left list" {
     try testing.expectEqual(@as(i64, 3), runtime.primitives.list.nth(out, 2).toFixnum());
     try testing.expectEqual(@as(i64, 4), runtime.primitives.list.nth(out, 3).toFixnum());
     try testing.expectEqual(@as(i64, 5), runtime.primitives.list.nth(out, 4).toFixnum());
+}
+
+test "jit heap cursor refresh tracks heap alloc pointer" {
+    const prev_heap = g_heap;
+    const prev_alloc_ptr = g_alloc_ptr;
+    const prev_alloc_end = g_alloc_end;
+    const prev_batch_ops = g_safepoint_batch_ops;
+    defer {
+        g_heap = prev_heap;
+        g_alloc_ptr = prev_alloc_ptr;
+        g_alloc_end = prev_alloc_end;
+        g_safepoint_batch_ops = prev_batch_ops;
+    }
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+    setHeap(&heap);
+    try testing.expect(heapContext() == &heap);
+
+    const before = g_alloc_ptr;
+    _ = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    const after = @intFromPtr(heap.alloc_ptr);
+    try testing.expect(after != before);
+    try testing.expect(g_alloc_ptr != after);
+
+    refreshHeapCursor();
+    try testing.expectEqual(after, g_alloc_ptr);
 }
 
 test "jitAssoc finds matching pair in alist" {

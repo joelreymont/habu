@@ -228,6 +228,11 @@
       - Added VM-owned bridge install/uninstall lifecycle (`src/interp/vm.zig`: install on demand by context match, clear on `Vm.deinit` only when owner matches).
       - Added regression `vm jit bridge lifecycle tracks owner vm` to lock owner-handoff and deinit-clear behavior.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `integrate` `137.42ms` vs interp `137.11ms` (near parity), `solve` `12.18ms` vs `12.17ms`, gate still red (`wins=1/5`, `pass=false`) with all workloads stable.
+    - [x] `habu-cache-jit-heap-e668f7d9` Cache JIT heap install path by separating heap-pointer ownership from alloc-cursor refresh.
+      - Added `heapContext` + `refreshHeapCursor` APIs in `src/jit/backend.zig` and `src/jit/backend_stub.zig`, exported via `src/jit/backend_api.zig`.
+      - Added `refreshJitHeap` VM helper (`src/interp/vm.zig`) and replaced hot bridge/tryCallJit `setHeap` calls with pointer-aware refresh (`setHeap` only on heap change, cursor refresh otherwise).
+      - Added backend regression `jit heap cursor refresh tracks heap alloc pointer` to lock cursor coherence after interpreter-side heap advances.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated 2026-02-23): `integrate` improved into ~`135-137ms` band with stable loads; gate remains red (`wins=1/5`, `pass=false`), next work remains `factor`/`ratsimp` runtime gap.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

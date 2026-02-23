@@ -14,6 +14,8 @@ else
     };
 
 pub const setHeap = impl.setHeap;
+pub const heapContext = impl.heapContext;
+pub const refreshHeapCursor = impl.refreshHeapCursor;
 pub const setCallBridge = impl.setCallBridge;
 pub const clearCallBridge = impl.clearCallBridge;
 pub const callBridgeContext = impl.callBridgeContext;
