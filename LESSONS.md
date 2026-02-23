@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-23)
 
 ### Worked Well
+- Adding a dedicated fixed-arity call setup fast path (`src/interp/vm.zig:10651`, `src/interp/vm.zig:10815`) and a fast closure-code chunk decode path (`src/interp/vm.zig:10786`) removed hot `doCall` overhead from the no-`&optional`/no-`&key`/no-`&rest` majority path; Maxima hotspot reruns improved JIT runtime again (`integrate` ~`165ms` -> ~`157ms`, `factor` ~`53ms` -> ~`51.7ms`, `ratsimp` ~`40.1ms` -> ~`38.8ms`, `solve` ~`13.1ms` -> ~`12.8ms`).
+- Locking the fast path with a stack-depth regression (`src/tests/integration.zig:2574`, `fixed-tail-acc`) prevents accidental loss of tail-call stack safety when refactoring fixed-arity frame setup.
 - Converting function-resolution cache hits to raw symbol-identity checks with GC-epoch invalidation (`src/interp/vm.zig:1309`, `src/interp/vm.zig:1312`, `src/interp/vm.zig:2435`) removed per-call forwarded-value chasing on hot `doCall` paths; `tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32` improved JIT runtimes on `integrate` (~173ms -> ~165ms), `factor` (~57.7ms -> ~53.0ms), `ratsimp` (~43.1ms -> ~40.1ms), and `solve` (~13.7ms -> ~13.1ms) in same-host reruns.
 - Scanning function-cell plists directly from live symbol objects (`src/interp/vm.zig:1334`) and canonicalizing function-cell writes once at store time (`src/interp/vm.zig:1358`) reduced avoidable forwarded-resolution churn while keeping symbol-function semantics unchanged in focused regressions.
 - Canonicalizing forwarded symbol/list values at `progv` boundaries (`src/interp/vm.zig:5213`, `src/interp/vm.zig:8117`, `src/interp/vm.zig:8194`) removed a deterministic non-hoist Maxima crash where `pushProgvFrame` dereferenced stale forwarded symbol objects (`name_ptr=0x30/0x40`) during macro-expansion-time dynamic binding.
@@ -37,6 +39,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Emitting first unsupported IR tags on JIT compile failures (`src/interp/repl.zig:3013`) turned generic `UnsupportedIrNode` logs into actionable blockers; current Maxima benchmark wrapper rejection points to `.progv` as the first missing lowering.
 
 ### Did Not Work
+- Fixed-arity fast paths alone are not enough to pass the JIT gate (`wins` still `0..1/5`): after call-setup wins, remaining loss is in dynamic call-shape paths (`&key`/`&rest`/dispatcher-heavy frames), so follow-up work must target those branches directly.
 - Keeping `lookupFnResolveCache` defensive by resolving forwarded values and rechecking callable tags on every hit (`src/interp/vm.zig` pre-fix `lookupFnResolveCache`) consumed measurable runtime in `doCall -> resolveFunctionValue` and left obvious hotspot time on the table.
 - Sampling short scale-1 runs for integrate mostly captured loader/compile activity; runtime-stage profiling required long-running benches (`--scale=80`) before call-resolution hotspots became visible in `/tmp/habu_integrate_jit_scale80.sample`.
 - Hardening only qualified-symbol lookup (`src/runtime/qual_name.zig`) was insufficient: the stale-forwarded symbol was introduced earlier, and `pushProgvFrame` could still dereference stale symbol/list cells before lookup ever ran.

@@ -10648,6 +10648,70 @@ pub const Vm = struct {
         }
     }
 
+    fn enterFixedArityCall(self: *Vm, closure: *runtime.Closure, callee_chunk: *const Chunk, argc: u8, tail: bool) Error!void {
+        if (tail) {
+            const current_bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
+            const arg_start = self.sp - argc;
+            if (self.fp > 0) {
+                self.restoreDynamicDepthsFromFrame(self.frames[self.fp - 1]);
+            }
+
+            for (0..argc) |i| {
+                self.stack[current_bp + i] = self.stack[arg_start + i];
+            }
+            self.sp = current_bp + argc;
+
+            self.chunk = callee_chunk;
+            self.ip = 0;
+
+            if (self.fp > 0) {
+                self.frames[self.fp - 1].closure = closure;
+                self.frames[self.fp - 1].argc = argc;
+                self.frames[self.fp - 1].positional_argc = argc;
+            }
+
+            var i: usize = argc;
+            while (i < callee_chunk.num_locals) : (i += 1) {
+                try self.push(Value.nil);
+            }
+            return;
+        }
+
+        if (self.fp >= MAX_FRAMES) return error.StackOverflow;
+        self.frames[self.fp] = .{
+            .chunk = self.chunk,
+            .return_ip = self.ip,
+            .bp = self.sp - argc - 1,
+            .closure = closure,
+            .argc = argc,
+            .positional_argc = argc,
+            .block_depth = self.block_sp,
+            .catch_depth = self.catch_sp,
+            .unwind_depth = self.unwind_sp,
+            .restart_depth = self.restart_sp,
+            .progv_depth = self.progv_sp,
+            .handler_depth = self.handler_sp,
+            .handler_restore_depth = self.pending_handler_restore_depth,
+        };
+        self.pending_handler_restore_depth = null;
+        self.fp += 1;
+
+        const new_bp = self.sp - argc - 1;
+        for (0..argc) |i| {
+            self.stack[new_bp + i] = self.stack[new_bp + 1 + i];
+        }
+        self.sp = new_bp + argc;
+        self.frames[self.fp - 1].bp = new_bp;
+
+        self.chunk = callee_chunk;
+        self.ip = 0;
+
+        var i: usize = argc;
+        while (i < callee_chunk.num_locals) : (i += 1) {
+            try self.push(Value.nil);
+        }
+    }
+
     fn doCall(self: *Vm, argc: u8, tail: bool) Error!void {
         // Bounds check: need at least argc + 1 items on stack (args + function)
         if (self.sp < @as(usize, argc) + 1) return error.StackUnderflow;
@@ -10718,18 +10782,39 @@ pub const Vm = struct {
         }
 
         const closure = fn_val.toPtr(runtime.Closure);
-        const code_val = self.resolveForwardedValue(closure.code);
-        if (code_val.raw != closure.code.raw) {
-            closure.code = code_val;
+        var callee_chunk_opt: ?*const Chunk = null;
+        const raw_code = closure.code;
+        if (raw_code.isChunk()) {
+            const chunk = raw_code.toPtr(Chunk);
+            if (chunk.kind == .chunk) {
+                callee_chunk_opt = chunk;
+            }
         }
-        const callee_chunk = self.chunkFromValue(code_val) orelse {
+        if (callee_chunk_opt == null) {
+            const code_val = self.resolveForwardedValue(raw_code);
+            if (code_val.raw != raw_code.raw) {
+                closure.code = code_val;
+            }
+            callee_chunk_opt = self.chunkFromValue(code_val);
+        }
+        const callee_chunk = callee_chunk_opt orelse {
             try self.callMismatch(fn_val, argc, "closure-code-not-chunk");
             return;
         };
         const arity = callee_chunk.arity;
         const opt_count = callee_chunk.opt_count;
         const key_count = callee_chunk.key_count;
+        const has_rest = callee_chunk.has_rest != 0;
         const max_positional = arity + opt_count;
+
+        if (!has_rest and opt_count == 0 and key_count == 0) {
+            if (argc != arity) {
+                try self.callMismatch(fn_val, argc, "fixed-arity");
+                return;
+            }
+            try self.enterFixedArityCall(closure, callee_chunk, argc, tail);
+            return;
+        }
 
         // Find where keyword args actually start by scanning for first keyword
         // This handles cases like (foo req :k v) where optional is omitted
@@ -10747,7 +10832,7 @@ pub const Vm = struct {
         }
 
         // Check arity
-        if (callee_chunk.has_rest != 0) {
+        if (has_rest) {
             // Variadic: need at least required args
             if (argc < arity) {
                 try self.callMismatch(fn_val, argc, "rest-arity");
@@ -10810,7 +10895,7 @@ pub const Vm = struct {
         // Build rest list if variadic (before we modify the stack)
         // Rest list contains args beyond required + optional + key params
         var rest_list = Value.nil;
-        if (callee_chunk.has_rest != 0 and argc > max_positional) {
+        if (has_rest and argc > max_positional) {
             // Build list from extra args (in reverse since we pop from end)
             const extra_count = argc - max_positional;
             var i: u8 = 0;
@@ -10874,7 +10959,7 @@ pub const Vm = struct {
             }
 
             // If variadic, push rest list as next local (after required + optional)
-            if (callee_chunk.has_rest != 0) {
+            if (has_rest) {
                 try self.push(rest_list);
             }
 
@@ -10895,7 +10980,7 @@ pub const Vm = struct {
                 const kw_pair_count: u8 = argc - actual_positional;
                 break :blk @as(usize, max_positional) + @as(usize, key_count) + @as(usize, kw_pair_count);
             } else @as(usize, actual_argc);
-            const used_locals: usize = used_slots + @as(usize, if (callee_chunk.has_rest != 0) @as(u8, 1) else @as(u8, 0));
+            const used_locals: usize = used_slots + @as(usize, if (has_rest) @as(u8, 1) else @as(u8, 0));
             var i: usize = used_locals;
             while (i < callee_chunk.num_locals) : (i += 1) {
                 try self.push(Value.nil);
@@ -10967,7 +11052,7 @@ pub const Vm = struct {
             }
 
             // If variadic, push rest list as next local (after required + optional)
-            if (callee_chunk.has_rest != 0) {
+            if (has_rest) {
                 try self.push(rest_list);
             }
 
@@ -10984,7 +11069,7 @@ pub const Vm = struct {
                 const kw_pair_count: u8 = argc - actual_positional;
                 break :blk @as(usize, max_positional) + @as(usize, key_count) + @as(usize, kw_pair_count);
             } else @as(usize, actual_argc);
-            const used: usize = used_slots + @as(usize, if (callee_chunk.has_rest != 0) @as(u8, 1) else @as(u8, 0));
+            const used: usize = used_slots + @as(usize, if (has_rest) @as(u8, 1) else @as(u8, 0));
             var i: usize = used;
             while (i < callee_chunk.num_locals) : (i += 1) {
                 try self.push(Value.nil);

@@ -165,6 +165,9 @@
     - [x] `habu-profile-and-cut-b220c4d6` Profile remaining JIT runtime gap (integrate-first) after hoist-only baseline unification and land one measured hotspot optimization without semantic shortcuts.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): JIT runtime improved on `integrate` (~`173ms` -> ~`165ms`), `factor` (~`57.7ms` -> ~`53.0ms`), `ratsimp` (~`43.1ms` -> ~`40.1ms`), and `solve` (~`13.7ms` -> ~`13.1ms`) after function-resolution cache hot-path cleanup.
       - Runtime sample at high scale (`/tmp/habu_integrate_jit_scale80.sample`) confirms remaining JIT overhead is dominated by `doCall` frame/setup work (keyword/rest/stack moves and chunk resolution), not function-cell lookup misses.
+    - [x] `habu-cut-docall-chunk-bf3ebffc` Cut `doCall` chunk/arity overhead on fixed-arity closure calls and rebaseline Maxima hotspots. Depends on `habu-profile-and-cut-b220c4d6`.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): JIT runtime improved again on `integrate` (~`165ms` -> ~`157ms`), `factor` (~`53ms` -> ~`51.7ms`), `ratsimp` (~`40.1ms` -> ~`38.8ms`), and `solve` (~`13.1ms` -> ~`12.8ms`) after fixed-arity call setup fast paths in `doCall`.
+      - Gate remains red (`wins=0..1/5`), but JIT/interpreter deltas narrowed materially and remaining loss is now concentrated in complex call-shape paths (`&key`/`&rest`/dynamic dispatch).
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

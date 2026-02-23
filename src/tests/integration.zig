@@ -2559,6 +2559,29 @@ test "tail call preserves keyword argument layout" {
     try testing.expect(ok.isT());
 }
 
+test "fixed arity tail recursion stays stack safe" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval(
+        \\(defun fixed-tail-acc (n acc)
+        \\  (if (= n 0)
+        \\      acc
+        \\      (fixed-tail-acc (- n 1) (+ acc 1))))
+    );
+
+    const out = try repl.eval("(fixed-tail-acc 1500 0)");
+    try testing.expect(out.isFixnum());
+    try testing.expectEqual(@as(i64, 1500), out.toFixnum());
+}
+
 test "eval defun recursive" {
     const allocator = testing.allocator;
 
