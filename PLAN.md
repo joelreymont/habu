@@ -205,6 +205,7 @@
     - [x] `habu-jitassoc-raw-tag-a25755cd` Rewrite `jitAssoc` hot loop to raw tagged checks to remove `Value` predicate/assert overhead from Debug benchmark runs.
     - [x] `habu-jit-num-compare-cfdaf4dc` Add fixnum/float fast paths to `jitLtNum`/`jitLeNum`/`jitGtNum`/`jitGeNum` and lower fixnum-fast compare IR through a fast-path+helper-fallback split.
     - [x] `habu-assoc-releasefast-hotspot-f661bdd1` Profile ReleaseFast `assoc` after helper fast paths, isolate dominant remaining cost, and land one root-cause optimization with rebench.
+    - [x] `habu-assoc-helper-c-49a60b1f` Evaluate C fast-helper replacement for `jitAssoc` (rejected after rebench; keep Zig helper path).
 
 ### 2. Compiler Core
 - [x] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.
