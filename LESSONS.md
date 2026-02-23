@@ -33,6 +33,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Inlining `assoc` directly in Hoist IR (replacing helper calls in `translateAssoc`) regressed ReleaseFast `assoc` to ~7.59ms; for this path, optimized native helper code beats `.none`-mode JIT control-flow lowering.
 - Sampling `./zig-out/bin/comprehensive_bench` before rebuilding with `-Doptimize=ReleaseFast` reintroduced debug-only signals and distorted RCA; rebuild mode must match measured mode before profiling.
 - Replacing `jitAssoc` with a C helper path did not outperform the tuned Zig helper in repeated ReleaseFast rebench runs, so this hotspot should stay Zig-native and be optimized in-place.
+- Reshaping `jitAssoc` to a `while (true)` loop and removing pointer-mask loads regressed ReleaseFast `assoc`, so the prior masked/guarded loop form should remain the baseline until a proven win appears.
 
 ## Session Notes (2026-02-22)
 
