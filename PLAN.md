@@ -238,6 +238,12 @@
       - Added `Vm.jit_bridge_epoch` cache and switched `installJitBridges` to epoch fast-return; context probes now only run when epoch changed.
       - Extended `vm jit bridge lifecycle tracks owner vm` regression with epoch-stability assertions on repeated install calls.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): workloads remain stable with `integrate`/`factor` near parity band; gate still red (`wins=1/5`, `pass=false`).
+    - [x] `habu-profile-factor-ratsimp-5d11722c` Profile `factor`/`ratsimp` runtime gap and cut symbol global-lookup hashing in hot call paths.
+      - Added VM direct-mapped symbol global-index cache (`global_index_cache`) in `lookupSymbolGlobalIndex` to avoid repeated `qualSymWithHeap` + `GlobalEnv.lookup` hashing on repeated symbol resolution.
+      - Invalidated the cache on `setGlobalEnv` and after each GC to avoid stale symbol/address/env-index reuse.
+      - Added focused regression `vm global index cache resets on env swap`.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 100 --workloads factor,ratsimp --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `factor` improved to `jit 9,369,996,000ns` vs `interp 9,882,324,916ns` (`interp/jit 1.0547`), `ratsimp` stayed near parity (`jit 6,695,341,292ns`, `interp 6,691,289,500ns`, `interp/jit 0.9994`), gate `wins=1/2`.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1000 --workloads factor,ratsimp --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `factor` stayed slightly JIT-faster (`jit 114,627,966,875ns`, `interp 115,220,234,083ns`, `interp/jit 1.0052`), `ratsimp` remained near parity (`jit 80,556,754,542ns`, `interp 80,388,892,959ns`, `interp/jit 0.9979`), gate still red (`wins=0/2`, threshold `1.01`).
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

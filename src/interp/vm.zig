@@ -539,6 +539,11 @@ pub const Vm = struct {
         fn_val: Value = Value.nil,
     };
 
+    const GlobalIndexCacheEntry = struct {
+        sym: Value = Value.nil,
+        idx: u16 = 0,
+    };
+
     const KeyAllowlistCacheEntry = struct {
         chunk_key: usize = 0,
         key_count: u8 = 0,
@@ -699,6 +704,7 @@ pub const Vm = struct {
     function_resolve_callback: ?*const fn (Value, *anyopaque) Error!?Value,
     function_resolve_context: ?*anyopaque,
     fn_resolve_cache: [MAX_FN_RESOLVE_CACHE]FnResolveEntry,
+    global_index_cache: [MAX_GLOBAL_INDEX_CACHE]GlobalIndexCacheEntry,
     key_allowlist_cache: [MAX_KEY_ALLOWLIST_CACHE]KeyAllowlistCacheEntry,
     chunk_const_cache: [MAX_CHUNK_CONST_CACHE]ChunkConstCacheEntry,
     const_last_chunk_key: usize,
@@ -761,6 +767,7 @@ pub const Vm = struct {
     const MAX_COMPILE_ROOTS = 4096;
     const MAX_EXT_ROOT_SNAPSHOTS = 256;
     const MAX_FN_RESOLVE_CACHE = 256;
+    const MAX_GLOBAL_INDEX_CACHE = 1024;
     const MAX_KEY_ALLOWLIST_CACHE = 256;
     const MAX_CHUNK_CONST_CACHE = 1024;
     const SAFEPOINT_BATCH_OPS = 32;
@@ -1133,6 +1140,7 @@ pub const Vm = struct {
             .function_resolve_callback = null,
             .function_resolve_context = null,
             .fn_resolve_cache = [_]FnResolveEntry{.{}} ** MAX_FN_RESOLVE_CACHE,
+            .global_index_cache = [_]GlobalIndexCacheEntry{.{}} ** MAX_GLOBAL_INDEX_CACHE,
             .key_allowlist_cache = [_]KeyAllowlistCacheEntry{.{}} ** MAX_KEY_ALLOWLIST_CACHE,
             .chunk_const_cache = [_]ChunkConstCacheEntry{.{}} ** MAX_CHUNK_CONST_CACHE,
             .const_last_chunk_key = 0,
@@ -1215,6 +1223,7 @@ pub const Vm = struct {
     /// Set the global environment for boundp/fboundp lookups
     pub fn setGlobalEnv(self: *Vm, env: *GlobalEnv) void {
         self.global_env = env;
+        self.clearGlobalIndexCache();
     }
 
     /// Set the load callback for (load "filename")
@@ -1344,6 +1353,10 @@ pub const Vm = struct {
         return @intCast((sym.raw >> 4) & (MAX_FN_RESOLVE_CACHE - 1));
     }
 
+    inline fn globalIndexCacheIndex(sym: Value) usize {
+        return @intCast((sym.raw >> 4) & (MAX_GLOBAL_INDEX_CACHE - 1));
+    }
+
     inline fn keyAllowlistCacheIndex(chunk: *const Chunk) usize {
         return @intCast((@intFromPtr(chunk) >> 4) & (MAX_KEY_ALLOWLIST_CACHE - 1));
     }
@@ -1356,6 +1369,28 @@ pub const Vm = struct {
         for (&self.fn_resolve_cache) |*entry| {
             entry.* = .{};
         }
+    }
+
+    fn clearGlobalIndexCache(self: *Vm) void {
+        for (&self.global_index_cache) |*entry| {
+            entry.* = .{};
+        }
+    }
+
+    fn lookupGlobalIndexCache(self: *Vm, sym: Value) ?u16 {
+        const idx = globalIndexCacheIndex(sym);
+        const entry = &self.global_index_cache[idx];
+        if (!entry.sym.eq(sym)) return null;
+        return entry.idx;
+    }
+
+    fn storeGlobalIndexCache(self: *Vm, sym: Value, idx: u16) void {
+        if (!sym.isSymbol()) return;
+        const slot = globalIndexCacheIndex(sym);
+        self.global_index_cache[slot] = .{
+            .sym = sym,
+            .idx = idx,
+        };
     }
 
     fn clearKeyAllowlistCache(self: *Vm) void {
@@ -2173,21 +2208,32 @@ pub const Vm = struct {
     fn lookupSymbolGlobalIndex(self: *Vm, sym: *const Symbol) Error!?u16 {
         const env = self.global_env orelse return null;
         if (symbolIsUninterned(sym)) return null;
+        const sym_val = Value.makeSymbol(sym);
+        if (self.lookupGlobalIndexCache(sym_val)) |idx| return idx;
         const local_name = sym.getName();
 
         var qual_buf: [512]u8 = undefined;
         const q = try qual_name.qualSymWithHeap(self.allocator, self.heap, sym, &qual_buf);
         defer if (q.owned) self.allocator.free(q.name);
 
-        if (env.lookup(q.name)) |idx| return idx;
+        if (env.lookup(q.name)) |idx| {
+            self.storeGlobalIndexCache(sym_val, idx);
+            return idx;
+        }
         if (self.allowLegacyGlobalFallbackSym(sym)) {
-            if (env.lookup(local_name)) |idx| return idx;
+            if (env.lookup(local_name)) |idx| {
+                self.storeGlobalIndexCache(sym_val, idx);
+                return idx;
+            }
 
             const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
             var full_buf: [640]u8 = undefined;
             for (prefixes) |prefix| {
                 const candidate = std.fmt.bufPrint(&full_buf, "{s}{s}", .{ prefix, local_name }) catch continue;
-                if (env.lookup(candidate)) |idx| return idx;
+                if (env.lookup(candidate)) |idx| {
+                    self.storeGlobalIndexCache(sym_val, idx);
+                    return idx;
+                }
             }
         }
         return null;
@@ -2596,6 +2642,7 @@ pub const Vm = struct {
 
         try self.rekeyJitFnsAfterGc();
         self.clearFnResolveCache();
+        self.clearGlobalIndexCache();
         self.clearKeyAllowlistCache();
         self.clearChunkConstCache();
 
@@ -13922,6 +13969,39 @@ test "vm progv resolves forwarded symbol values before lookup" {
     const restored = try vm.loadGlobal(idx);
     try testing.expect(restored.isFixnum());
     try testing.expectEqual(@as(i64, 5), restored.toFixnum());
+}
+
+test "vm global index cache resets on env swap" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var env_b = GlobalEnv.init(allocator);
+    defer env_b.deinit();
+    vm.setGlobalEnv(&env_b);
+    const dummy = try heap.intern("GLOBAL-CACHE-DUMMY");
+    _ = (try vm.defineSymbolGlobalIndex(dummy.toPtr(Symbol))) orelse return error.TestUnexpectedResult;
+
+    const sym = try heap.intern("GLOBAL-CACHE-SYM");
+    const sym_ptr = sym.toPtr(Symbol);
+    const idx_b = (try vm.defineSymbolGlobalIndex(sym_ptr)) orelse return error.TestUnexpectedResult;
+
+    var env_a = GlobalEnv.init(allocator);
+    defer env_a.deinit();
+    vm.setGlobalEnv(&env_a);
+    const idx_a = (try vm.defineSymbolGlobalIndex(sym_ptr)) orelse return error.TestUnexpectedResult;
+    try testing.expect(idx_b != idx_a);
+    const got_a = (try vm.lookupSymbolGlobalIndex(sym_ptr)) orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(idx_a, got_a);
+
+    vm.setGlobalEnv(&env_b);
+    const got_b = (try vm.lookupSymbolGlobalIndex(sym_ptr)) orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(idx_b, got_b);
 }
 
 test "vm allocVector triggers debt-driven precollection" {

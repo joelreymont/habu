@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-23)
 
 ### Worked Well
+- Adding a VM direct-mapped symbol->global-index cache in `lookupSymbolGlobalIndex` (`src/interp/vm.zig:2208`, `src/interp/vm.zig:1380`, `src/interp/vm.zig:1387`) removed repeated `qualSymWithHeap` + `GlobalEnv.lookup` string-hash lookups on hot symbol-resolution paths; invalidating on `setGlobalEnv` and GC (`src/interp/vm.zig:1224`, `src/interp/vm.zig:2620`) kept cache correctness under env swaps and moving-GC.
+- Locking the cache invalidation contract with `vm global index cache resets on env swap` (`src/interp/vm.zig:13974`) prevented stale global-slot reuse across environment transitions while keeping factor/ratsimp hotspot runs near parity.
 - Making caller-frame restore infallible on return paths (`src/interp/vm.zig:10770`, `src/interp/vm.zig:4383`, `src/interp/vm.zig:4419`) removed hot `try push` overhead while preserving frame-depth restoration behavior in existing regressions.
 - Persisting JIT bridge ownership per VM (`src/interp/vm.zig:1700`, `src/interp/vm.zig:1730`, `src/interp/vm.zig:1160`) and clearing bridge globals only on owner `Vm.deinit` (`src/jit/backend.zig:139`, `src/jit/backend.zig:147`, `src/jit/backend.zig:159`) removed per-call bridge set/clear churn while keeping cross-VM bridge handoff safe (locked by `vm jit bridge lifecycle tracks owner vm`).
 - Splitting JIT heap setup into owner check + cursor refresh (`src/interp/vm.zig:338`, `src/interp/vm.zig:1762`; `src/jit/backend.zig:134`, `src/jit/backend.zig:138`) avoided redundant `setHeap` resets on same-heap bridge paths while preserving inline-cons cursor coherence (locked by `jit heap cursor refresh tracks heap alloc pointer`).
@@ -61,6 +63,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Emitting first unsupported IR tags on JIT compile failures (`src/interp/repl.zig:3013`) turned generic `UnsupportedIrNode` logs into actionable blockers; current Maxima benchmark wrapper rejection points to `.progv` as the first missing lowering.
 
 ### Did Not Work
+- Running performance A/B in a detached `jj workspace` path without a Git metadata root failed for `bench-maxima` because the build path shells out to `git rev-parse`; for parity A/B, run from the main Git-backed workspace.
 - Adding a per-chunk constant-refresh epoch field directly to `Chunk` layout (`src/runtime/objects.zig` experiment) caused deterministic JIT Maxima workload failures (`UnhandledThrow`/`OutOfMemory`) after `integrate`; treat chunk header layout as ABI-sensitive with hoist/JIT paths unless the full cross-repo contract is updated together.
 - Calling `shouldTraceCallRet` unconditionally from hot `.call`/`.ret` op paths (even with tracing disabled) leaves measurable avoidable overhead on call-heavy benchmarks; keep a top-level `trace_call_ret` guard before helper invocation.
 - Keeping `tryCallJit` on the `lookupJitFn` path (even with chunk-pointer caching inside lookup) underperformed direct `chunk.jit_fn` reads in quick A/B runs; the extra lookup path still left more overhead than the direct fast pointer path for the hot call site (`src/interp/vm.zig:1694`).
