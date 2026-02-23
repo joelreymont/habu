@@ -153,8 +153,10 @@
     - [x] `habu-relay-jit-bridge-535dce04` Relay JIT bridge errors without panic.
     - [x] `habu-restore-safe-safety-d68f98d7` Restore safe safety>0 JIT admission end-to-end and keep bridge error relay stable under Maxima benches.
     - [x] `habu-fix-hoist-succ-cd841da5` Fix Hoist VCode successor corruption by compiling through a remap-stable allocator over a per-compile arena; add deep-branch JIT regression to keep >32-edge lowering stable without touching `../hoist`.
+    - [x] `habu-rca-ratsimp-jit-63174079` RCA/fix Maxima `ratsimp` JIT slowdown caused by cross-workload benchmark carryover: add `bench-maxima --workloads=...`, add per-bench trace markers, force pre-timed GC after warmup, and wire `tools/maxima-hotspots` to run only selected workloads.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-22): `jit_compiled=397`, `jit_adm.cand=4145`, `jit_adm.sk_safety=0`, gate `pass=false`.
       - Rebaseline (`zig build bench-maxima -Duse-hoist=true -- --scale=1 --json`, 2026-02-23): `jit_compiled=395`, `jit_adm.cand=4145`, `jit_adm.sk_safety=0`, loader `ok=85/85`.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `ratsimp` corrected from ~`308ms` artifact to ~`39ms`; gate still `pass=false` (`wins=0/5`) with JIT now within ~3-6% of interpreter on tracked workloads.
       - Blocker: safety admission and bridge throw relay are stable, but runtime throughput still regresses versus interpreter on current real workloads.
 
 ### 0. Plan Control

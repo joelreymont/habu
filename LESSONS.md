@@ -26,6 +26,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Extending `fixBlrTargetClobber` with a targeted imm-chain repair path (`src/jit/backend.zig:7707`, `src/jit/backend.zig:7785`) now fixes the captured single-`MOVZ` overwrite shape in backend regressions (`src/jit/backend.zig:8303`) without destabilizing baseline ReleaseFast benches.
 - Generalizing BLR-target clobber detection to include low-immediate chain rewrites and non-imm overwrites (`src/jit/backend.zig:7788`, `src/jit/backend.zig:8406`, `src/jit/backend.zig:8425`, `src/jit/backend.zig:8474`, `src/jit/backend.zig:8503`) removed the known helper-target corruption signatures and kept cached helper-pointer lowering enabled (`src/jit/backend.zig:3406`).
 - Making constant-cache reuse block-local at CFG boundaries (`src/jit/backend.zig:2107`) fixed a real SSA-dominance bug in cached helper-pointer lowering that crashed branch-local JIT paths on second invocation (`src/tests/integration.zig:2186`); ReleaseFast `assoc` now runs stably at ~2.79-2.83ms on repeated checks.
+- Adding `bench-maxima --workloads=...` filtering (`bench/maxima_workload.zig:240`, `bench/maxima_workload.zig:277`, `bench/maxima_workload.zig:658`) plus wiring `tools/maxima-hotspots` to pass selected workloads (`tools/maxima-hotspots:22`, `tools/maxima-hotspots:288`) removed hidden benchmark-order coupling from hotspot runs.
+- Forcing a pre-timed GC after benchmark warmup (`bench/maxima_workload.zig:390`) eliminated cross-workload nursery carryover from timed sections; `ratsimp` JIT dropped from ~308ms artifact to ~39ms when measured without in-window GC pauses.
 
 ### Did Not Work
 - Relying on `restoreExtRootsSynced` copyback from temporary root arrays propagated stale values into persistent owners under nested save/set/restore chains (`src/interp/vm.zig` pre-fix `restoreExtRootsSynced` logic).
@@ -45,6 +47,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Caching helper pointers via `cachedIconst` in `emitPrimitiveCall*` triggered `BENCH-ASSOC` EXC_BAD_ACCESS from `BLR x9` target clobber (`movz x9,#imm` in arg setup); call-target preservation must be proven first before re-enabling pointer caching (`src/jit/backend.zig:3406`, `src/jit/backend.zig:3412`, `/tmp/assoc_dump2.txt`).
 - Even after landing one imm-chain clobber repair in `fixBlrTargetClobber`, enabling cached helper pointers still crashes `BENCH-ASSOC`; additional BLR target corruption shapes exist beyond the single-`MOVZ` signature and need separate regressions before retrying caching.
 - Reusing cached constants across blocks without dominance checks was unsound: helper pointer constants first materialized in one branch were reused from sibling branches, leading to undefined call targets and deterministic second-call crashes in branch-local JIT tests (`src/jit/backend.zig` pre-fix `switchBlock` behavior, `src/tests/integration.zig:2186`).
+- Running `tools/maxima-hotspots` against full `bench-maxima` output while only filtering rows post-hoc produced misleading regressions: excluded earlier workloads could trigger GC inside a selected workload’s timed section, inflating that workload’s reported cost.
 
 ## Session Notes (2026-02-22)
 

@@ -6,13 +6,13 @@
 
 | workload | jit_ns | interp_ns | interp/jit |
 |---|---:|---:|---:|
-| ratsimp | 340136084 | 341057083 | 1.003 |
-| integrate | 165999375 | 166190292 | 1.001 |
-| factor | 87909500 | 85881334 | 0.977 |
-| solve | 12719291 | 12555208 | 0.987 |
-| determinant | 1179625 | 1244583 | 1.055 |
+| integrate | 173163250 | 166381209 | 0.961 |
+| factor | 54375792 | 49636333 | 0.913 |
+| ratsimp | 41375334 | 36791167 | 0.889 |
+| solve | 14753125 | 13732250 | 0.931 |
+| determinant | 2193084 | 1998125 | 0.911 |
 
-- loader_ns: jit=`12255589167`, interp=`12288330458`
-- jit_compiled: jit=`0`, interp=`0`
-- jit_adm: cand=`4145/4145`, elig=`2/2`, comp=`0/0`, sk_speed=`0/0`, sk_safety=`4143/4143`, sk_chunk=`0/0`, fail_unsup=`2/0`, fail_other=`0/2`
-- jit_gate: pass=`False`, wins=`1/5` (min speedup `1.010`, min wins `2`), compiled=`0` (min `32`), delta=`0`
+- loader_ns: jit=`17247930833`, interp=`15844721834`
+- jit_compiled: jit=`395`, interp=`0`
+- jit_adm: cand=`4139/4139`, elig=`3421/3421`, comp=`395/0`, sk_speed=`0/0`, sk_safety=`0/0`, sk_chunk=`277/277`, fail_unsup=`2906/0`, fail_other=`120/3421`
+- jit_gate: pass=`False`, wins=`0/5` (min speedup `1.010`, min wins `2`), compiled=`395` (min `32`), delta=`395`

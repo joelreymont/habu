@@ -14,6 +14,7 @@ const Opts = struct {
     nursery_mb: usize = 32,
     scale: usize = 1,
     json: bool = false,
+    workloads_csv: ?[]const u8 = null,
 };
 
 const LoaderStats = struct {
@@ -237,7 +238,7 @@ fn usage(w: anytype) !void {
         \\Maxima workload benchmark (Habu)
         \\
         \\Usage:
-        \\  zig build -Duse-hoist=true bench-maxima -- [--heap-mb N] [--nursery-mb N] [--scale N] [--json]
+        \\  zig build -Duse-hoist=true bench-maxima -- [--heap-mb N] [--nursery-mb N] [--scale N] [--workloads a,b,c] [--json]
         \\
     );
 }
@@ -270,6 +271,10 @@ fn parseArgs() !Opts {
             opts.scale = try std.fmt.parseInt(usize, arg["--scale=".len..], 10);
             continue;
         }
+        if (std.mem.startsWith(u8, arg, "--workloads=")) {
+            opts.workloads_csv = arg["--workloads=".len..];
+            continue;
+        }
         return error.InvalidArgs;
     }
 
@@ -277,6 +282,17 @@ fn parseArgs() !Opts {
     if (opts.nursery_mb == 0) return error.InvalidArgs;
     if (opts.scale == 0) return error.InvalidArgs;
     return opts;
+}
+
+fn workloadSelected(workloads_csv: ?[]const u8, name: []const u8) bool {
+    const csv = workloads_csv orelse return true;
+    var it = std.mem.splitScalar(u8, csv, ',');
+    while (it.next()) |raw_item| {
+        const item = std.mem.trim(u8, raw_item, &std.ascii.whitespace);
+        if (item.len == 0) continue;
+        if (std.mem.eql(u8, item, name)) return true;
+    }
+    return false;
 }
 
 fn listNthFixnum(list: Value, idx: usize) !i64 {
@@ -346,6 +362,7 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
     };
 
     const n = def.iters * scale;
+    const trace_workload = std.posix.getenv("HABU_TRACE_MAXIMA_WORKLOAD") != null;
     const call_src = std.fmt.allocPrint(allocator, "({s} {d})", .{ def.call_name, n }) catch |err| {
         return .{
             .name = def.name,
@@ -367,8 +384,41 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
         };
     };
 
+    // Stabilize per-workload timing by draining pending nursery debt after
+    // warmup so cross-workload GC carryover does not land inside timed runs.
+    _ = repl.vm.collectGarbage() catch |err| {
+        return .{
+            .name = def.name,
+            .category = def.category,
+            .iters = n,
+            .ns = 0,
+            .err_name = @errorName(err),
+        };
+    };
+
+    if (trace_workload) {
+        std.debug.print("MAXIMA_BENCH start {s} n={d}\n", .{ def.name, n });
+    }
+    const gc_before = repl.vm.heap.stats.gc_count;
+    const gc_minor_before = repl.vm.heap.stats.gc_minor_count;
+    const gc_major_before = repl.vm.heap.stats.gc_major_count;
     const t0 = timer.read();
     _ = repl.eval(call_src) catch |err| {
+        if (trace_workload) {
+            const gc_after_fail = repl.vm.heap.stats.gc_count;
+            const gc_minor_after_fail = repl.vm.heap.stats.gc_minor_count;
+            const gc_major_after_fail = repl.vm.heap.stats.gc_major_count;
+            std.debug.print(
+                "MAXIMA_BENCH fail {s} err={s} gc={d} minor={d} major={d}\n",
+                .{
+                    def.name,
+                    @errorName(err),
+                    gc_after_fail -% gc_before,
+                    gc_minor_after_fail -% gc_minor_before,
+                    gc_major_after_fail -% gc_major_before,
+                },
+            );
+        }
         return .{
             .name = def.name,
             .category = def.category,
@@ -378,6 +428,21 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
         };
     };
     const t1 = timer.read();
+    if (trace_workload) {
+        const gc_after = repl.vm.heap.stats.gc_count;
+        const gc_minor_after = repl.vm.heap.stats.gc_minor_count;
+        const gc_major_after = repl.vm.heap.stats.gc_major_count;
+        std.debug.print(
+            "MAXIMA_BENCH end {s} ns={d} gc={d} minor={d} major={d}\n",
+            .{
+                def.name,
+                t1 - t0,
+                gc_after -% gc_before,
+                gc_minor_after -% gc_minor_before,
+                gc_major_after -% gc_major_before,
+            },
+        );
+    }
 
     return .{
         .name = def.name,
@@ -601,6 +666,7 @@ pub fn main() !void {
     defer benches.deinit(allocator);
 
     for (bench_defs) |def| {
+        if (!workloadSelected(opts.workloads_csv, def.name)) continue;
         try benches.append(allocator, runBench(allocator, &timer, &repl, def, opts.scale));
     }
     const jit_compiled = repl.vm.jit_fns.count();

@@ -106,6 +106,7 @@ pub const CallBridge = struct {
     call7: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
 };
 var g_call_bridge: ?CallBridge = null;
+var g_trace_jit_generic_call: bool = false;
 pub const ErrorBridge = struct {
     context: *anyopaque,
     set_error: *const fn (*anyopaque, u16) callconv(.c) void,
@@ -130,6 +131,7 @@ pub fn setHeap(heap: *Heap) void {
 
 pub fn setCallBridge(bridge: CallBridge) void {
     g_call_bridge = bridge;
+    g_trace_jit_generic_call = std.posix.getenv("HABU_TRACE_JIT_GENERIC_CALL") != null;
 }
 
 pub fn setErrorBridge(bridge: ErrorBridge) void {
@@ -412,11 +414,17 @@ fn jitCall0(fn_raw: u64) callconv(.c) u64 {
 }
 
 fn jitCall1(fn_raw: u64, arg0: u64) callconv(.c) u64 {
+    if (g_trace_jit_generic_call) {
+        std.debug.print("JIT_GCALL1 fn=0x{x} a0=0x{x}\n", .{ fn_raw, arg0 });
+    }
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call1(bridge.context, fn_raw, arg0);
 }
 
 fn jitCall2(fn_raw: u64, arg0: u64, arg1: u64) callconv(.c) u64 {
+    if (g_trace_jit_generic_call) {
+        std.debug.print("JIT_GCALL2 fn=0x{x} a0=0x{x} a1=0x{x}\n", .{ fn_raw, arg0, arg1 });
+    }
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call2(bridge.context, fn_raw, arg0, arg1);
 }

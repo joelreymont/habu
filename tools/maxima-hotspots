@@ -23,8 +23,9 @@ def parse_json_tail(text: str, label: str) -> dict:
     return json.loads(m.group(0))
 
 
-def run_bench(use_hoist: bool, scale: int, heap_mb: int, nursery_mb: int) -> dict:
+def run_bench(use_hoist: bool, scale: int, heap_mb: int, nursery_mb: int, workloads: list[str]) -> dict:
     mode = "jit" if use_hoist else "interp"
+    workloads_csv = ",".join(workloads)
     cmd = [
         "zig",
         "build",
@@ -35,6 +36,7 @@ def run_bench(use_hoist: bool, scale: int, heap_mb: int, nursery_mb: int) -> dic
         f"--scale={scale}",
         f"--heap-mb={heap_mb}",
         f"--nursery-mb={nursery_mb}",
+        f"--workloads={workloads_csv}",
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     out = (proc.stdout or "") + (proc.stderr or "")
@@ -272,8 +274,8 @@ def main() -> int:
         return 2
 
     try:
-        jit = run_bench(True, args.scale, args.heap_mb, args.nursery_mb)
-        interp = run_bench(False, args.scale, args.heap_mb, args.nursery_mb)
+        jit = run_bench(True, args.scale, args.heap_mb, args.nursery_mb, workloads)
+        interp = run_bench(False, args.scale, args.heap_mb, args.nursery_mb, workloads)
         summary = summarize(jit, interp, workloads)
         summary["jit_gate"] = evaluate_gate(
             summary,
