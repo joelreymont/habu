@@ -119,10 +119,16 @@ pub const GlobalBridge = struct {
     load_global: *const fn (*anyopaque, u16) callconv(.c) u64,
 };
 var g_global_bridge: ?GlobalBridge = null;
+var g_bridge_epoch: usize = 1;
 pub const BridgeRunFn = *const fn (*anyopaque) callconv(.c) u64;
 extern fn habu_jit_bridge_run(func: BridgeRunFn, ctx: *anyopaque, out_raw: *u64) c_int;
 extern fn habu_jit_bridge_throw() void;
 extern fn habu_jit_bridge_depth() c_int;
+
+fn bumpBridgeEpoch() void {
+    g_bridge_epoch +%= 1;
+    if (g_bridge_epoch == 0) g_bridge_epoch = 1;
+}
 
 /// Set the global heap pointer for JIT allocation.
 pub fn setHeap(heap: *Heap) void {
@@ -139,14 +145,20 @@ pub fn refreshHeapCursor() void {
     jitConsRefreshCache();
 }
 
+pub fn bridgeEpoch() usize {
+    return g_bridge_epoch;
+}
+
 pub fn setCallBridge(bridge: CallBridge) void {
     g_call_bridge = bridge;
     g_trace_jit_generic_call = std.posix.getenv("HABU_TRACE_JIT_GENERIC_CALL") != null;
+    bumpBridgeEpoch();
 }
 
 pub fn clearCallBridge() void {
     g_call_bridge = null;
     g_trace_jit_generic_call = false;
+    bumpBridgeEpoch();
 }
 
 pub fn callBridgeContext() ?*anyopaque {
@@ -156,10 +168,12 @@ pub fn callBridgeContext() ?*anyopaque {
 
 pub fn setErrorBridge(bridge: ErrorBridge) void {
     g_error_bridge = bridge;
+    bumpBridgeEpoch();
 }
 
 pub fn clearErrorBridge() void {
     g_error_bridge = null;
+    bumpBridgeEpoch();
 }
 
 pub fn errorBridgeContext() ?*anyopaque {
@@ -169,10 +183,12 @@ pub fn errorBridgeContext() ?*anyopaque {
 
 pub fn setGlobalBridge(bridge: GlobalBridge) void {
     g_global_bridge = bridge;
+    bumpBridgeEpoch();
 }
 
 pub fn clearGlobalBridge() void {
     g_global_bridge = null;
+    bumpBridgeEpoch();
 }
 
 pub fn globalBridgeContext() ?*anyopaque {

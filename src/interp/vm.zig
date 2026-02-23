@@ -203,6 +203,7 @@ pub const State = struct {
     relay_throw_tag: Value,
     relay_throw_value: Value,
     jit_bridge_error: ?anyerror,
+    jit_bridge_epoch: usize,
     jit_gc_forbidden_depth: usize,
     pending_error: ?anyerror,
     is_unwinding: bool,
@@ -236,6 +237,7 @@ pub const State = struct {
             .relay_throw_tag = vm.relay_throw_tag,
             .relay_throw_value = vm.relay_throw_value,
             .jit_bridge_error = vm.jit_bridge_error,
+            .jit_bridge_epoch = vm.jit_bridge_epoch,
             .jit_gc_forbidden_depth = vm.jit_gc_forbidden_depth,
             .pending_error = vm.pending_error,
             .is_unwinding = vm.is_unwinding,
@@ -270,6 +272,7 @@ pub const State = struct {
         vm.relay_throw_tag = self.relay_throw_tag;
         vm.relay_throw_value = self.relay_throw_value;
         vm.jit_bridge_error = self.jit_bridge_error;
+        vm.jit_bridge_epoch = self.jit_bridge_epoch;
         vm.jit_gc_forbidden_depth = self.jit_gc_forbidden_depth;
         vm.pending_error = self.pending_error;
         vm.is_unwinding = self.is_unwinding;
@@ -645,6 +648,7 @@ pub const Vm = struct {
     relay_throw_tag: Value,
     relay_throw_value: Value,
     jit_bridge_error: ?anyerror,
+    jit_bridge_epoch: usize,
     jit_gc_forbidden_depth: usize,
     pending_error: ?anyerror,
     is_unwinding: bool,
@@ -1103,6 +1107,7 @@ pub const Vm = struct {
             .relay_throw_tag = Value.nil,
             .relay_throw_value = Value.nil,
             .jit_bridge_error = null,
+            .jit_bridge_epoch = 0,
             .jit_gc_forbidden_depth = 0,
             .pending_error = null,
             .is_unwinding = false,
@@ -1705,34 +1710,38 @@ pub const Vm = struct {
     }
 
     fn installJitBridges(self: *Vm) void {
+        const epoch = jit_backend.bridgeEpoch();
+        if (self.jit_bridge_epoch != 0 and self.jit_bridge_epoch == epoch) return;
         const ctx: *anyopaque = self;
-        if (jit_backend.callBridgeContext() != ctx) {
-            jit_backend.setCallBridge(.{
-                .context = self,
-                .call0 = jitCallBridge0,
-                .call1 = jitCallBridge1,
-                .call2 = jitCallBridge2,
-                .call3 = jitCallBridge3,
-                .call4 = jitCallBridge4,
-                .call5 = jitCallBridge5,
-                .call6 = jitCallBridge6,
-                .call7 = jitCallBridge7,
-                .push_progv = jitCallBridgePushProgv,
-                .pop_progv = jitCallBridgePopProgv,
-            });
+        if (jit_backend.callBridgeContext() == ctx and
+            jit_backend.errorBridgeContext() == ctx and
+            jit_backend.globalBridgeContext() == ctx)
+        {
+            self.jit_bridge_epoch = epoch;
+            return;
         }
-        if (jit_backend.errorBridgeContext() != ctx) {
-            jit_backend.setErrorBridge(.{
-                .context = self,
-                .set_error = jitErrorBridgeSet,
-            });
-        }
-        if (jit_backend.globalBridgeContext() != ctx) {
-            jit_backend.setGlobalBridge(.{
-                .context = self,
-                .load_global = jitGlobalBridgeLoad,
-            });
-        }
+        jit_backend.setCallBridge(.{
+            .context = self,
+            .call0 = jitCallBridge0,
+            .call1 = jitCallBridge1,
+            .call2 = jitCallBridge2,
+            .call3 = jitCallBridge3,
+            .call4 = jitCallBridge4,
+            .call5 = jitCallBridge5,
+            .call6 = jitCallBridge6,
+            .call7 = jitCallBridge7,
+            .push_progv = jitCallBridgePushProgv,
+            .pop_progv = jitCallBridgePopProgv,
+        });
+        jit_backend.setErrorBridge(.{
+            .context = self,
+            .set_error = jitErrorBridgeSet,
+        });
+        jit_backend.setGlobalBridge(.{
+            .context = self,
+            .load_global = jitGlobalBridgeLoad,
+        });
+        self.jit_bridge_epoch = jit_backend.bridgeEpoch();
     }
 
     fn uninstallJitBridges(self: *Vm) void {
@@ -1746,6 +1755,7 @@ pub const Vm = struct {
         if (jit_backend.callBridgeContext() == ctx) {
             jit_backend.clearCallBridge();
         }
+        self.jit_bridge_epoch = jit_backend.bridgeEpoch();
     }
 
     /// Try to call a closure via hoist-compiled native code.
@@ -13415,11 +13425,17 @@ test "vm jit bridge lifecycle tracks owner vm" {
     try testing.expect(jit_backend.callBridgeContext() == ctx_a);
     try testing.expect(jit_backend.errorBridgeContext() == ctx_a);
     try testing.expect(jit_backend.globalBridgeContext() == ctx_a);
+    const epoch_a = jit_backend.bridgeEpoch();
+    vm_a.installJitBridges();
+    try testing.expectEqual(epoch_a, jit_backend.bridgeEpoch());
 
     vm_b.installJitBridges();
     try testing.expect(jit_backend.callBridgeContext() == ctx_b);
     try testing.expect(jit_backend.errorBridgeContext() == ctx_b);
     try testing.expect(jit_backend.globalBridgeContext() == ctx_b);
+    const epoch_b = jit_backend.bridgeEpoch();
+    vm_b.installJitBridges();
+    try testing.expectEqual(epoch_b, jit_backend.bridgeEpoch());
 
     vm_a.deinit();
     keep_vm_a = false;

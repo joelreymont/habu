@@ -233,6 +233,11 @@
       - Added `refreshJitHeap` VM helper (`src/interp/vm.zig`) and replaced hot bridge/tryCallJit `setHeap` calls with pointer-aware refresh (`setHeap` only on heap change, cursor refresh otherwise).
       - Added backend regression `jit heap cursor refresh tracks heap alloc pointer` to lock cursor coherence after interpreter-side heap advances.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated 2026-02-23): `integrate` improved into ~`135-137ms` band with stable loads; gate remains red (`wins=1/5`, `pass=false`), next work remains `factor`/`ratsimp` runtime gap.
+    - [x] `habu-cache-jit-bridge-2fe0c377` Cache JIT bridge install by backend bridge-epoch in VM hot call path.
+      - Added backend/stub `bridgeEpoch` API bumped on all bridge set/clear transitions and exported via `src/jit/backend_api.zig`.
+      - Added `Vm.jit_bridge_epoch` cache and switched `installJitBridges` to epoch fast-return; context probes now only run when epoch changed.
+      - Extended `vm jit bridge lifecycle tracks owner vm` regression with epoch-stability assertions on repeated install calls.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): workloads remain stable with `integrate`/`factor` near parity band; gate still red (`wins=1/5`, `pass=false`).
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

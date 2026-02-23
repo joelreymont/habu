@@ -8,6 +8,7 @@ const Heap = runtime.Heap;
 pub const LiteralRoots = std.AutoHashMap(usize, *Value);
 
 var g_heap: ?*Heap = null;
+var g_bridge_epoch: usize = 1;
 
 pub fn setHeap(heap: *Heap) void {
     g_heap = heap;
@@ -18,6 +19,10 @@ pub fn heapContext() ?*Heap {
 }
 
 pub fn refreshHeapCursor() void {}
+
+pub fn bridgeEpoch() usize {
+    return g_bridge_epoch;
+}
 
 pub const CallBridge = struct {
     context: *anyopaque,
@@ -37,10 +42,14 @@ var g_call_bridge: ?CallBridge = null;
 
 pub fn setCallBridge(bridge: CallBridge) void {
     g_call_bridge = bridge;
+    g_bridge_epoch +%= 1;
+    if (g_bridge_epoch == 0) g_bridge_epoch = 1;
 }
 
 pub fn clearCallBridge() void {
     g_call_bridge = null;
+    g_bridge_epoch +%= 1;
+    if (g_bridge_epoch == 0) g_bridge_epoch = 1;
 }
 
 pub fn callBridgeContext() ?*anyopaque {
@@ -57,10 +66,14 @@ var g_error_bridge: ?ErrorBridge = null;
 
 pub fn setErrorBridge(bridge: ErrorBridge) void {
     g_error_bridge = bridge;
+    g_bridge_epoch +%= 1;
+    if (g_bridge_epoch == 0) g_bridge_epoch = 1;
 }
 
 pub fn clearErrorBridge() void {
     g_error_bridge = null;
+    g_bridge_epoch +%= 1;
+    if (g_bridge_epoch == 0) g_bridge_epoch = 1;
 }
 
 pub fn errorBridgeContext() ?*anyopaque {
@@ -77,10 +90,14 @@ var g_global_bridge: ?GlobalBridge = null;
 
 pub fn setGlobalBridge(bridge: GlobalBridge) void {
     g_global_bridge = bridge;
+    g_bridge_epoch +%= 1;
+    if (g_bridge_epoch == 0) g_bridge_epoch = 1;
 }
 
 pub fn clearGlobalBridge() void {
     g_global_bridge = null;
+    g_bridge_epoch +%= 1;
+    if (g_bridge_epoch == 0) g_bridge_epoch = 1;
 }
 
 pub fn globalBridgeContext() ?*anyopaque {
