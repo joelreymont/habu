@@ -2792,6 +2792,11 @@ pub const Repl = struct {
                 try self.collectJitLiteralRoots(l.cond, roots);
                 try self.collectJitLiteralRoots(l.body, roots);
             },
+            .progv => |p| {
+                try self.collectJitLiteralRoots(p.symbols, roots);
+                try self.collectJitLiteralRoots(p.values, roots);
+                try self.collectJitLiteralRoots(p.body, roots);
+            },
             .assert_fixnum => |op| try self.collectJitLiteralRoots(op.operand, roots),
             .call => |c| {
                 try self.collectJitLiteralRoots(c.func, roots);
@@ -3006,6 +3011,9 @@ pub const Repl = struct {
             &literal_roots
         else
             null;
+        if (std.posix.getenv("HABU_TRACE_JIT_LIT_ROOTS") != null) {
+            std.debug.print("JIT_LIT_ROOTS fn={s} count={d}\n", .{ name, literal_roots.count() });
+        }
 
         var compiled = jit_backend.compileIrWithKnownFnsAndLiteralRoots(self.allocator, lambda_ir, name, &known_fns, literal_roots_ptr) catch |err| {
             if (trace) {

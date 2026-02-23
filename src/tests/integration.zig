@@ -85,6 +85,284 @@ test "compileChunk JITs optimized defun with implicit block" {
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
+test "compileChunk JIT progv restores dynamic binding" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    const before = vm.jit_fns.count();
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(progn\n" ++
+            "  (defvar jit-progv-probe* 1)\n" ++
+            "  (defun jit-progv-probe ()\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (let ((inside (progv '(jit-progv-probe*) '(40) jit-progv-probe*))\n" ++
+            "          (after jit-progv-probe*))\n" ++
+            "      (+ inside after))))",
+    ));
+    try testing.expect(vm.jit_fns.count() > before);
+
+    const result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-progv-probe)",
+    ));
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 41), result.toFixnum());
+
+    const global_after = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "jit-progv-probe*",
+    ));
+    try testing.expect(global_after.isFixnum());
+    try testing.expectEqual(@as(i64, 1), global_after.toFixnum());
+}
+
+test "compileChunk JIT roots progv call targets across GC" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    const before = vm.jit_fns.count();
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(progn\n" ++
+            "  (defun jit-id (x)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    x)\n" ++
+            "  (defun jit-progv-funcall (v)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (declare (special v))\n" ++
+            "    (funcall 'jit-id v)))",
+    ));
+    try testing.expect(vm.jit_fns.count() > before);
+
+    const first = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-progv-funcall 41)",
+    ));
+    try testing.expect(first.isFixnum());
+    try testing.expectEqual(@as(i64, 41), first.toFixnum());
+
+    _ = try vm.collectGarbage();
+
+    const second = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-progv-funcall 42)",
+    ));
+    try testing.expect(second.isFixnum());
+    try testing.expectEqual(@as(i64, 42), second.toFixnum());
+}
+
+test "compileChunk JIT handles special aux bindings without crash" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    const before = vm.jit_fns.count();
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(progn\n" ++
+            "  (defvar jit-special-aux* 100)\n" ++
+            "  (defun jit-special-aux (x &aux (jit-special-aux* (+ x 1)))\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    jit-special-aux*))",
+    ));
+    try testing.expect(vm.jit_fns.count() > before);
+
+    const out = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-special-aux 4)",
+    ));
+    try testing.expect(out.isFixnum());
+    try testing.expectEqual(@as(i64, 5), out.toFixnum());
+
+    const global_after = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "jit-special-aux*",
+    ));
+    try testing.expect(global_after.isFixnum());
+    try testing.expectEqual(@as(i64, 100), global_after.toFixnum());
+}
+
+test "compileChunk JIT handles defc-style special let" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 24 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(progn\n" ++
+            "  (defvar bas nil)\n" ++
+            "  (defun defc1 (desc)\n" ++
+            "    (declare (ignore desc))\n" ++
+            "    bas)\n" ++
+            "  (defun defc (desc)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (let ((bas 'x))\n" ++
+            "      (defc1 desc))))",
+    ));
+
+    const out = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defc '(selector foo bar baz))",
+    ));
+    try testing.expect(out.isSymbol());
+    try testing.expectEqualStrings("X", out.toPtr(Symbol).getName());
+}
+
+test "compileChunk JIT handles defc quasiquote path" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 24 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(progn\n" ++
+            "  (defun coerce (x y) (declare (ignore y)) x)\n" ++
+            "  (defvar bas nil)\n" ++
+            "  (defun defc1 (desc)\n" ++
+            "    (cond ((atom desc) (list 'quote desc))\n" ++
+            "          ((eq 'selector (car desc))\n" ++
+            "           (cond ((not (null (cdddr desc))) (list 'quote (fourth desc)))\n" ++
+            "                 (t (setq bas (list 'cdr bas))\n" ++
+            "                    (list 'car bas))))\n" ++
+            "          ((eq 'cons (car desc))\n" ++
+            "           (list 'cons (defc1 (second desc)) (defc1 (third desc))))\n" ++
+            "          (t (list 'quote desc))))\n" ++
+            "  (defun defc (desc)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (let ((bas 'x))\n" ++
+            "      (coerce `(lambda (x &optional env)\n" ++
+            "                 (declare (ignore env))\n" ++
+            "                 ,(defc1 desc))\n" ++
+            "              'function))))",
+    ));
+
+    const out = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defc '(selector foo))",
+    ));
+    try testing.expect(out.isCons());
+}
+
 test "compileChunk JITs all optimized defuns in progn" {
     if (!build_options.use_hoist) return;
 

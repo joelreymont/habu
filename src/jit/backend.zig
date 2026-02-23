@@ -104,6 +104,8 @@ pub const CallBridge = struct {
     call5: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
     call6: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
     call7: *const fn (*anyopaque, u64, u64, u64, u64, u64, u64, u64, u64) callconv(.c) u64,
+    push_progv: *const fn (*anyopaque, u64, u64) callconv(.c) u16,
+    pop_progv: *const fn (*anyopaque) callconv(.c) u16,
 };
 var g_call_bridge: ?CallBridge = null;
 var g_trace_jit_generic_call: bool = false;
@@ -452,6 +454,20 @@ fn jitCall6(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, 
 fn jitCall7(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64, arg6: u64) callconv(.c) u64 {
     const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
     return bridge.call7(bridge.context, fn_raw, arg0, arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+fn jitPushProgv(symbols_raw: u64, values_raw: u64) callconv(.c) u64 {
+    const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
+    const err_int = bridge.push_progv(bridge.context, symbols_raw, values_raw);
+    if (err_int != 0) jitRelayError(@errorFromInt(err_int));
+    return Value.nil.raw;
+}
+
+fn jitPopProgv() callconv(.c) u64 {
+    const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
+    const err_int = bridge.pop_progv(bridge.context);
+    if (err_int != 0) jitRelayError(@errorFromInt(err_int));
+    return Value.nil.raw;
 }
 
 fn jitToFloat(v: Value) ?f64 {
@@ -1679,6 +1695,7 @@ fn irAny(ir: *const Ir, pred: anytype) bool {
             break :blk false;
         },
         .loop => |n| irAny(n.cond, pred) or irAny(n.body, pred),
+        .progv => |n| irAny(n.symbols, pred) or irAny(n.values, pred) or irAny(n.body, pred),
         .call => |c| blk: {
             for (c.args) |a| if (irAny(a, pred)) break :blk true;
             break :blk false;
@@ -1785,6 +1802,7 @@ fn countIrNodes(node: *const Ir) usize {
             count += countIrNodes(e);
         },
         .loop => |n| count += countIrNodes(n.cond) + countIrNodes(n.body),
+        .progv => |n| count += countIrNodes(n.symbols) + countIrNodes(n.values) + countIrNodes(n.body),
         .call => |c| {
             count += countIrNodes(c.func);
             for (c.args) |a| count += countIrNodes(a);
@@ -2204,6 +2222,9 @@ pub const IrTranslator = struct {
             },
             .set => |s| canTranslateWithLiteralRoots(s.value, literal_roots),
             .loop => |l| canTranslateWithLiteralRoots(l.cond, literal_roots) and canTranslateWithLiteralRoots(l.body, literal_roots),
+            .progv => |p| canTranslateWithLiteralRoots(p.symbols, literal_roots) and
+                canTranslateWithLiteralRoots(p.values, literal_roots) and
+                canTranslateWithLiteralRoots(p.body, literal_roots),
             .assert_fixnum => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
             .call => |c| {
                 if (!canTranslateWithLiteralRoots(c.func, literal_roots)) return false;
@@ -2344,6 +2365,9 @@ pub const IrTranslator = struct {
             },
             .set => |s| firstUnsupportedTagWithLiteralRoots(s.value, literal_roots),
             .loop => |l| firstUnsupportedTagWithLiteralRoots(l.cond, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(l.body, literal_roots),
+            .progv => |p| firstUnsupportedTagWithLiteralRoots(p.symbols, literal_roots) orelse
+                firstUnsupportedTagWithLiteralRoots(p.values, literal_roots) orelse
+                firstUnsupportedTagWithLiteralRoots(p.body, literal_roots),
             .assert_fixnum => |op| firstUnsupportedTagWithLiteralRoots(op.operand, literal_roots),
             .call => |c| blk: {
                 if (firstUnsupportedTagWithLiteralRoots(c.func, literal_roots)) |tag| break :blk tag;
@@ -2461,6 +2485,7 @@ pub const IrTranslator = struct {
             .let => |let_node| try self.translateLet(let_node.bindings, let_node.body),
             .set => |set_node| try self.translateSet(set_node.index, set_node.value),
             .loop => |loop_node| try self.translateLoop(loop_node.cond, loop_node.body),
+            .progv => |p| try self.translateProgv(p.symbols, p.values, p.body),
             .assert_fixnum => |op| try self.translateAssertFixnum(op.operand),
             .global_ref => |gr| try self.translateGlobalRef(gr.index),
             .lambda => |_| try self.translateLambdaLiteral(ir),
@@ -2523,14 +2548,30 @@ pub const IrTranslator = struct {
     }
 
     fn translateLit(self: *IrTranslator, ir: *const Ir, val: Value) anyerror!HoistValue {
+        const trace_lit_roots = std.posix.getenv("HABU_TRACE_JIT_LIT_ROOTS") != null;
         if (self.untagged and val.isFixnum()) {
             return try self.cachedIconst(val.toFixnum());
         }
         if (litNeedsRoot(val)) {
             if (self.literal_roots) |roots| {
                 const slot = roots.get(@intFromPtr(ir)) orelse return error.UnsupportedIrNode;
+                if (trace_lit_roots) {
+                    std.debug.print("JIT_LIT_ROOT fn={s} ir=0x{x} val=0x{x} slot=0x{x}\n", .{
+                        self.fn_name,
+                        @intFromPtr(ir),
+                        val.raw,
+                        @intFromPtr(slot),
+                    });
+                }
                 const slot_addr = try self.cachedIconst(@as(i64, @bitCast(@intFromPtr(slot))));
                 return try self.b.load(I64, slot_addr, MemFlags.default());
+            }
+            if (trace_lit_roots) {
+                std.debug.print("JIT_LIT_NOROOT fn={s} ir=0x{x} val=0x{x}\n", .{
+                    self.fn_name,
+                    @intFromPtr(ir),
+                    val.raw,
+                });
             }
         }
         return try self.cachedIconst(@as(i64, @bitCast(val.raw)));
@@ -3228,6 +3269,11 @@ pub const IrTranslator = struct {
                 for (l.bindings) |binding| try self.preEmitConstants(binding.value);
                 try self.preEmitConstants(l.body);
             },
+            .progv => |p| {
+                try self.preEmitConstants(p.symbols);
+                try self.preEmitConstants(p.values);
+                try self.preEmitConstants(p.body);
+            },
             else => {},
         }
     }
@@ -3314,9 +3360,35 @@ pub const IrTranslator = struct {
         return try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
     }
 
+    fn translateProgv(self: *IrTranslator, symbols_ir: *const Ir, values_ir: *const Ir, body_ir: *const Ir) anyerror!HoistValue {
+        const symbols = try self.translate(symbols_ir);
+        const values = try self.translate(values_ir);
+
+        const push_args = [_]HoistValue{ symbols, values };
+        const push_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitPushProgv)));
+        _ = try self.emitPrimitiveCallValues(push_ptr, &push_args);
+
+        const body_val = try self.translate(body_ir);
+
+        const pop_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitPopProgv)));
+        const pop_args = [_]HoistValue{};
+        _ = try self.emitPrimitiveCallValues(pop_ptr, &pop_args);
+
+        return body_val;
+    }
+
     fn translateCall(self: *IrTranslator, func_ir: *const Ir, args: []const *const Ir) anyerror!HoistValue {
+        const trace_xcall = std.posix.getenv("HABU_TRACE_JIT_XCALL") != null;
         // Check for self-recursive call
         if (self.is_recursive and isCallTargetSelf(func_ir, self.fn_name)) {
+            if (trace_xcall) {
+                const target_name = getCallTargetName(func_ir) orelse "<noname>";
+                std.debug.print("JIT_XCALL caller={s} target={s} argc={d} mode=self\n", .{
+                    self.fn_name,
+                    target_name,
+                    args.len,
+                });
+            }
             return try self.translateSelfCall(args);
         }
 
@@ -3324,6 +3396,16 @@ pub const IrTranslator = struct {
         if (self.known_fns) |kf| {
             if (getCallTargetName(func_ir)) |target_name| {
                 if (self.lookupKnownFn(kf, target_name)) |known| {
+                    if (trace_xcall) {
+                        std.debug.print("JIT_XCALL caller={s} target={s} argc={d} mode=known callee={s} arity={d} fn_ptr=0x{x}\n", .{
+                            self.fn_name,
+                            target_name,
+                            args.len,
+                            known.callee_name,
+                            known.arity,
+                            known.fn_ptr,
+                        });
+                    }
                     return try self.translateCrossCall(known, args);
                 }
             }
@@ -3332,10 +3414,26 @@ pub const IrTranslator = struct {
         // Check for known runtime primitive (gcd, nreverse, append, assoc, etc.)
         if (getCallTargetName(func_ir)) |target_name| {
             if (getJitPrimitivePtrWithArity(target_name, args.len)) |prim_ptr| {
+                if (trace_xcall) {
+                    std.debug.print("JIT_XCALL caller={s} target={s} argc={d} mode=prim ptr=0x{x}\n", .{
+                        self.fn_name,
+                        target_name,
+                        args.len,
+                        prim_ptr,
+                    });
+                }
                 return try self.emitPrimitiveCall(prim_ptr, args);
             }
         }
 
+        if (trace_xcall) {
+            const target_name = getCallTargetName(func_ir) orelse "<dynamic>";
+            std.debug.print("JIT_XCALL caller={s} target={s} argc={d} mode=generic\n", .{
+                self.fn_name,
+                target_name,
+                args.len,
+            });
+        }
         return try self.translateGenericCall(func_ir, args);
     }
 
@@ -5059,6 +5157,11 @@ fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: st
             try collectMutatedVars(l.cond, indices, allocator);
             try collectMutatedVars(l.body, indices, allocator);
         },
+        .progv => |p| {
+            try collectMutatedVars(p.symbols, indices, allocator);
+            try collectMutatedVars(p.values, indices, allocator);
+            try collectMutatedVars(p.body, indices, allocator);
+        },
         .fixnum_add, .fixnum_sub, .fixnum_mul, .add, .sub, .mul => |op| {
             try collectMutatedVars(op.left, indices, allocator);
             try collectMutatedVars(op.right, indices, allocator);
@@ -5191,6 +5294,7 @@ fn containsHelperCalls(body: *const Ir, fixnum_inline: bool) bool {
                 .position_eq,
                 .position_equal,
                 .format,
+                .progv,
                 => true,
                 else => false,
             };
@@ -7708,6 +7812,28 @@ fn pickScratchForRange(code: []const u8, start_idx: usize, end_idx: usize, avoid
     return avoid;
 }
 
+fn pickCallStableScratchForRange(code: []const u8, start_idx: usize, end_idx: usize, avoid: u5) u5 {
+    var reg: u5 = 19;
+    while (reg < 28) : (reg += 1) {
+        if (reg == avoid) continue;
+        var used = false;
+        var i = start_idx;
+        while (i <= end_idx) : (i += 1) {
+            const insn = readInsn(code, i);
+            if (insn == 0xD503201F) continue;
+            const rd: u5 = @truncate(insn & 0x1F);
+            const rn: u5 = @truncate((insn >> 5) & 0x1F);
+            const rm: u5 = @truncate((insn >> 16) & 0x1F);
+            if (rd == reg or rn == reg or rm == reg) {
+                used = true;
+                break;
+            }
+        }
+        if (!used) return reg;
+    }
+    return avoid;
+}
+
 fn fixBlrTargetClobber(code: []u8) void {
     if (code.len < 8) return;
     const n_insns = code.len / 4;
@@ -7746,10 +7872,16 @@ fn fixBlrTargetClobber(code: []u8) void {
         const pos = load_pos orelse continue;
 
         var clobbered = false;
+        var call_clobber = false;
         var k = pos + 1;
         while (k < i) : (k += 1) {
             const mid = readInsn(code, k);
             if (mid == 0xD503201F) continue;
+            if ((isBlInsn(mid) or isBlrInsn(mid)) and target < 19) {
+                clobbered = true;
+                call_clobber = true;
+                continue;
+            }
             const rd: u5 = @truncate(mid & 0x1F);
             if (rd == target) {
                 clobbered = true;
@@ -7758,7 +7890,10 @@ fn fixBlrTargetClobber(code: []u8) void {
         }
         if (!clobbered) continue;
 
-        const scratch = pickScratchForRange(code, pos, i, target);
+        const scratch = if (call_clobber)
+            pickCallStableScratchForRange(code, pos, i, target)
+        else
+            pickScratchForRange(code, pos, i, target);
         if (scratch == target) continue;
 
         writeInsn(code, pos, makeMovInsn(scratch, load_src));
@@ -7777,7 +7912,10 @@ fn fixBlrTargetClobber(code: []u8) void {
         const target: u5 = @truncate((insn >> 5) & 0x1F);
         const pattern = findBlrTargetImmClobber(code, i, target) orelse continue;
 
-        const scratch = pickScratchForRange(code, pattern.prev_chain_start, i, target);
+        const scratch = if (pattern.call_clobber)
+            pickCallStableScratchForRange(code, pattern.prev_chain_start, i, target)
+        else
+            pickScratchForRange(code, pattern.prev_chain_start, i, target);
         if (scratch == target) continue;
         if (!retargetContiguousMovImmChain(code, pattern.prev_chain_end, target, scratch)) continue;
 
@@ -7789,10 +7927,18 @@ fn fixBlrTargetClobber(code: []u8) void {
 const BlrTargetImmClobber = struct {
     prev_chain_start: usize,
     prev_chain_end: usize,
+    call_clobber: bool,
 };
 
 fn findBlrTargetImmClobber(code: []const u8, blr_idx: usize, target: u5) ?BlrTargetImmClobber {
     const NOP: u32 = 0xD503201F;
+
+    const isLikelyCallTargetImmediate = struct {
+        fn f(val: u64) bool {
+            if ((val & 0x3) != 0) return false;
+            return val >= 0x0000_0001_0000_0000;
+        }
+    }.f;
 
     const isMovImmForReg = struct {
         fn f(insn: u32, reg: u5) bool {
@@ -7851,7 +7997,7 @@ fn findBlrTargetImmClobber(code: []const u8, blr_idx: usize, target: u5) ?BlrTar
             }
             const chain_end = j + 1;
             const chain_val = decodeMovImmChain(code, chain_start, chain_end, target) orelse return null;
-            if ((chain_val >> 32) != 0) {
+            if (isLikelyCallTargetImmediate(chain_val)) {
                 high_start = chain_start;
                 high_end = chain_end;
                 break;
@@ -7864,18 +8010,40 @@ fn findBlrTargetImmClobber(code: []const u8, blr_idx: usize, target: u5) ?BlrTar
 
     // Find the latest write to BLR target after the high-address chain.
     var latest_write: ?usize = null;
+    var saw_call_clobber = false;
     var k = src_end;
     while (k < blr_idx) : (k += 1) {
         const insn = readInsn(code, k);
         if (insn == NOP) continue;
+        if ((isBlInsn(insn) or isBlrInsn(insn)) and target < 19) {
+            saw_call_clobber = true;
+        }
         if (@as(u5, @truncate(insn & 0x1F)) == target) {
             latest_write = k;
         }
     }
-    const lw = latest_write orelse return null;
+    const lw = latest_write orelse {
+        if (saw_call_clobber) {
+            return .{
+                .prev_chain_start = src_start,
+                .prev_chain_end = src_end,
+                .call_clobber = true,
+            };
+        }
+        return null;
+    };
 
     // If the latest write is still part of the chosen source chain, no clobber.
-    if (lw >= src_start and lw < src_end) return null;
+    if (lw >= src_start and lw < src_end) {
+        if (saw_call_clobber) {
+            return .{
+                .prev_chain_start = src_start,
+                .prev_chain_end = src_end,
+                .call_clobber = true,
+            };
+        }
+        return null;
+    }
 
     const latest_insn = readInsn(code, lw);
     if (isMovImmForReg(latest_insn, target)) {
@@ -7889,13 +8057,21 @@ fn findBlrTargetImmClobber(code: []const u8, blr_idx: usize, target: u5) ?BlrTar
         const latest_end = lw + 1;
         const latest_val = decodeMovImmChain(code, latest_start, latest_end, target) orelse return null;
         // Latest high-address chain is a plausible call target; do not clobber-repair.
-        if ((latest_val >> 32) != 0) return null;
+        if (isLikelyCallTargetImmediate(latest_val)) return null;
         // Latest low-value chain clobbers the high-address source chain.
-        return .{ .prev_chain_start = src_start, .prev_chain_end = src_end };
+        return .{
+            .prev_chain_start = src_start,
+            .prev_chain_end = src_end,
+            .call_clobber = saw_call_clobber,
+        };
     }
 
     // Latest non-imm write clobbers the high-address source chain.
-    return .{ .prev_chain_start = src_start, .prev_chain_end = src_end };
+    return .{
+        .prev_chain_start = src_start,
+        .prev_chain_end = src_end,
+        .call_clobber = saw_call_clobber,
+    };
 }
 
 fn hasBlrTargetImmClobber(code: []const u8) bool {
@@ -8428,6 +8604,22 @@ test "hasBlrTargetImmClobber detects low imm chain clobber before blr" {
     try testing.expect(hasBlrTargetImmClobber(&code));
 }
 
+test "hasBlrTargetImmClobber detects call clobber between target chain and blr" {
+    const target_ptr: u64 = 0x1234_ABCD_5678_9ABC;
+    const words = [_]u32{
+        makeMovzImm(9, @truncate(target_ptr), 0),
+        makeMovkImm(9, @truncate(target_ptr >> 16), 1),
+        makeMovkImm(9, @truncate(target_ptr >> 32), 2),
+        makeMovkImm(9, @truncate(target_ptr >> 48), 3),
+        0x94000000, // BL . (call-clobbers x9)
+        0xD63F0120, // BLR x9 (stale without repair)
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    try testing.expect(hasBlrTargetImmClobber(&code));
+}
+
 test "hasBlrTargetImmClobber detects low imm chain after non-imm overwrite" {
     const target_ptr: u64 = 0x1234_ABCD_5678_9ABC;
     const words = [_]u32{
@@ -8475,6 +8667,34 @@ test "fixBlrTargetClobber repairs detected imm target clobber" {
     }
     try testing.expectEqual(words[5], readInsn(&code, 5));
     try testing.expectEqual(words[6], readInsn(&code, 6));
+}
+
+test "fixBlrTargetClobber repairs call-clobbered target chain" {
+    const target_ptr: u64 = 0x1234_ABCD_5678_9ABC;
+    const words = [_]u32{
+        makeMovzImm(9, @truncate(target_ptr), 0),
+        makeMovkImm(9, @truncate(target_ptr >> 16), 1),
+        makeMovkImm(9, @truncate(target_ptr >> 32), 2),
+        makeMovkImm(9, @truncate(target_ptr >> 48), 3),
+        0x94000000, // BL . (call-clobbers x9)
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+    try testing.expect(hasBlrTargetImmClobber(&code));
+
+    fixBlrTargetClobber(&code);
+
+    try testing.expect(!hasBlrTargetImmClobber(&code));
+    const patched_blr = readInsn(&code, words.len - 1);
+    const call_target: u5 = @truncate((patched_blr >> 5) & 0x1F);
+    try testing.expect(call_target != 9);
+    try testing.expect(call_target >= 19 and call_target < 28);
+
+    for (0..4) |idx| {
+        const rd: u5 = @truncate(readInsn(&code, idx) & 0x1F);
+        try testing.expectEqual(call_target, rd);
+    }
 }
 
 test "fixBlrTargetClobber repairs detected low imm chain clobber" {
@@ -8959,6 +9179,12 @@ test "hoist IR translator: global_ref generic call loads rooted designator" {
         fn call7(_: *anyopaque, fn_raw: u64, _: u64, _: u64, _: u64, _: u64, _: u64, _: u64, _: u64) callconv(.c) u64 {
             return fn_raw;
         }
+        fn pushProgv(_: *anyopaque, _: u64, _: u64) callconv(.c) u16 {
+            return 0;
+        }
+        fn popProgv(_: *anyopaque) callconv(.c) u16 {
+            return 0;
+        }
     };
 
     var ctx_byte: u8 = 0;
@@ -8972,6 +9198,8 @@ test "hoist IR translator: global_ref generic call loads rooted designator" {
         .call5 = EchoBridge.call5,
         .call6 = EchoBridge.call6,
         .call7 = EchoBridge.call7,
+        .push_progv = EchoBridge.pushProgv,
+        .pop_progv = EchoBridge.popProgv,
     });
 
     var compiled = try compileIrWithKnownFnsAndLiteralRoots(
@@ -9051,6 +9279,12 @@ test "hoist IR translator: generic call supports seven args" {
             if (fn_raw == 0) return Value.nil.raw;
             return arg6;
         }
+        fn pushProgv(_: *anyopaque, _: u64, _: u64) callconv(.c) u16 {
+            return 0;
+        }
+        fn popProgv(_: *anyopaque) callconv(.c) u16 {
+            return 0;
+        }
     };
 
     var ctx_byte: u8 = 0;
@@ -9064,6 +9298,8 @@ test "hoist IR translator: generic call supports seven args" {
         .call5 = EchoBridge.call5,
         .call6 = EchoBridge.call6,
         .call7 = EchoBridge.call7,
+        .push_progv = EchoBridge.pushProgv,
+        .pop_progv = EchoBridge.popProgv,
     });
 
     var compiled = try compileIrWithKnownFnsAndLiteralRoots(

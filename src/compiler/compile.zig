@@ -4747,40 +4747,73 @@ pub const Compiler = struct {
         // Copy key params
         const kp_params = try self.allocator.dupe(Ir.KeyParam, key_params.items);
 
-        // If we have aux bindings, wrap body in a let
-        if (aux_bindings.items.len > 0) {
-            const aux_slice = try self.allocator.dupe(Ir.Binding, aux_bindings.items);
-            body_ir = try self.builder.letExpr(aux_slice, body_ir);
-        }
+        const wrapSpecialBindings = struct {
+            fn run(comp: *Compiler, heap: *runtime.Heap, specials: []const SpecialParam, body: *const Ir) anyerror!*Ir {
+                const special_syms = try comp.allocator.alloc(Value, specials.len);
+                defer comp.allocator.free(special_syms);
+                const special_vals = try comp.allocator.alloc(*const Ir, specials.len);
+                defer comp.allocator.free(special_vals);
 
-        // Globally proclaimed special params must be dynamically visible to
-        // callees (e.g. declare-top helpers in Maxima mrgmac/db pipeline).
-        if (special_params.items.len > 0) {
-            const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
-            const special_syms = try self.allocator.alloc(Value, special_params.items.len);
-            defer self.allocator.free(special_syms);
-            const special_vals = try self.allocator.alloc(*const Ir, special_params.items.len);
-            defer self.allocator.free(special_vals);
+                for (specials, 0..) |sp, i| {
+                    const sym_val = if (sp.sym_uid != 0) blk: {
+                        const sym = try heap.allocSymbol(sp.name);
+                        sym.toPtr(Symbol).reserved = (sp.sym_uid << 1) | 1;
+                        break :blk sym;
+                    } else if (sp.sym_pkg_ptr != 0) blk: {
+                        const pkg: *runtime.heap.Package = @ptrFromInt(sp.sym_pkg_ptr);
+                        break :blk try pkg.intern(heap, sp.name);
+                    } else blk: {
+                        break :blk try heap.intern(sp.name);
+                    };
+                    special_syms[i] = sym_val;
+                    special_vals[i] = try comp.builder.variable(sp.name, 0, sp.idx);
+                }
 
-            for (special_params.items, 0..) |sp, i| {
-                const sym_val = if (sp.sym_uid != 0) blk: {
-                    const sym = try heap.allocSymbol(sp.name);
-                    sym.toPtr(Symbol).reserved = (sp.sym_uid << 1) | 1;
-                    break :blk sym;
-                } else if (sp.sym_pkg_ptr != 0) blk: {
-                    const pkg: *runtime.heap.Package = @ptrFromInt(sp.sym_pkg_ptr);
-                    break :blk try pkg.intern(heap, sp.name);
-                } else blk: {
-                    break :blk try heap.intern(sp.name);
-                };
-                special_syms[i] = sym_val;
-                special_vals[i] = try self.builder.variable(sp.name, 0, sp.idx);
+                const special_syms_list = try comp.listFromSlice(special_syms);
+                const special_syms_ir = try comp.builder.lit(special_syms_list);
+                const special_vals_ir = try comp.buildIrList(special_vals);
+                return try comp.builder.progv(special_syms_ir, special_vals_ir, body);
+            }
+        }.run;
+
+        // Globally proclaimed special bindings must follow lexical scope:
+        // parameter specials bind at function entry; aux specials bind only
+        // after aux initializers have established their local slots.
+        if (special_params.items.len > 0 or aux_bindings.items.len > 0) {
+            var entry_specials = std.ArrayList(SpecialParam){};
+            defer entry_specials.deinit(self.allocator);
+            var aux_specials = std.ArrayList(SpecialParam){};
+            defer aux_specials.deinit(self.allocator);
+
+            for (special_params.items) |sp| {
+                var is_aux_special = false;
+                for (aux_bindings.items) |aux_binding| {
+                    if (aux_binding.index == sp.idx) {
+                        is_aux_special = true;
+                        break;
+                    }
+                }
+                if (is_aux_special) {
+                    try aux_specials.append(self.allocator, sp);
+                } else {
+                    try entry_specials.append(self.allocator, sp);
+                }
             }
 
-            const special_syms_list = try self.listFromSlice(special_syms);
-            const special_syms_ir = try self.builder.lit(special_syms_list);
-            const special_vals_ir = try self.buildIrList(special_vals);
-            body_ir = try self.builder.progv(special_syms_ir, special_vals_ir, body_ir);
+            if (aux_bindings.items.len > 0) {
+                const aux_slice = try self.allocator.dupe(Ir.Binding, aux_bindings.items);
+                var aux_body = body_ir;
+                if (aux_specials.items.len > 0) {
+                    const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
+                    aux_body = try wrapSpecialBindings(self, heap, aux_specials.items, aux_body);
+                }
+                body_ir = try self.builder.letExpr(aux_slice, aux_body);
+            }
+
+            if (entry_specials.items.len > 0) {
+                const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
+                body_ir = try wrapSpecialBindings(self, heap, entry_specials.items, body_ir);
+            }
         }
 
         const lam_ir = try self.builder.lambda(params.items, opt_params, kp_params, allow_other_keys, rest_param, captures, body_ir);

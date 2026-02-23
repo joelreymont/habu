@@ -1382,3 +1382,14 @@ Environment guard:
 
 #### Did Not Work
 - Running full `zig build test -Duse-hoist=true` as an always-clean gate remained unreliable in this workspace due occasional lingering `test --listen` runners; targeted filters plus explicit stale-runner cleanup were the stable validation path for this RCA/fix cycle.
+
+### Session Notes (2026-02-23, progv literal-root completeness in all JIT paths)
+
+#### Worked Well
+- Tracing `ratsimp` with `HABU_TRACE_JIT_BRIDGE` + `HABU_TRACE_JIT_XCALL` narrowed the crash to a corrupted generic call designator inside `CPUT` (not the BLR target path), which focused RCA on literal rooting instead of call lowering (`src/interp/vm.zig:338`, `src/jit/backend.zig:3386`).
+- Adding `.progv` traversal to REPL literal-root collection fixed a real missing-root gap for progv-wrapped bodies (`src/interp/repl.zig:2795`), and `bench-maxima --workloads=ratsimp` now completes.
+- Extending the test `compile_chunk` JIT path to collect and pass literal roots (including `.progv`) removed the same stale-literal class from integration helpers (`src/testing/compile_chunk.zig:52`, `src/testing/compile_chunk.zig:136`, `src/testing/compile_chunk.zig:438`).
+- The new regression (`src/tests/integration.zig:146`) locks post-GC call-target stability for progv-wrapped JIT code paths.
+
+#### Did Not Work
+- Fixing only REPL literal-root traversal was insufficient: integration `compile_chunk` still compiled with `compileIr(...)` (no roots), emitted `JIT_LIT_NOROOT`, and reproduced post-GC call-target corruption until the helper path was upgraded too (`src/testing/compile_chunk.zig` pre-fix `tryHoistCompile`).

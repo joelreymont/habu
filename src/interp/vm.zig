@@ -447,6 +447,38 @@ fn jitCallBridge7(ctx: *anyopaque, fn_raw: u64, arg0: u64, arg1: u64, arg2: u64,
     return jitCallBridgeInvoke(vm, fn_raw, &args);
 }
 
+fn jitCallBridgePushProgv(ctx: *anyopaque, symbols_raw: u64, values_raw: u64) callconv(.c) u16 {
+    const vm: *Vm = @ptrCast(@alignCast(ctx));
+    const symbols = vm.resolveForwardedValue(Value{ .raw = symbols_raw });
+    const values = vm.resolveForwardedValue(Value{ .raw = values_raw });
+    jit_backend.syncHeapFromGlobal(vm.heap);
+    jit_backend.setHeap(vm.heap);
+    vm.pushProgvFrame(symbols, values) catch |err| {
+        vm.jit_bridge_error = err;
+        jit_backend.syncHeapFromGlobal(vm.heap);
+        jit_backend.setHeap(vm.heap);
+        return @intCast(@intFromError(err));
+    };
+    jit_backend.syncHeapFromGlobal(vm.heap);
+    jit_backend.setHeap(vm.heap);
+    return 0;
+}
+
+fn jitCallBridgePopProgv(ctx: *anyopaque) callconv(.c) u16 {
+    const vm: *Vm = @ptrCast(@alignCast(ctx));
+    jit_backend.syncHeapFromGlobal(vm.heap);
+    jit_backend.setHeap(vm.heap);
+    vm.popProgvFrame() catch |err| {
+        vm.jit_bridge_error = err;
+        jit_backend.syncHeapFromGlobal(vm.heap);
+        jit_backend.setHeap(vm.heap);
+        return @intCast(@intFromError(err));
+    };
+    jit_backend.syncHeapFromGlobal(vm.heap);
+    jit_backend.setHeap(vm.heap);
+    return 0;
+}
+
 fn jitErrorBridgeSet(ctx: *anyopaque, err_int: u16) callconv(.c) void {
     const vm: *Vm = @ptrCast(@alignCast(ctx));
     vm.jit_bridge_error = @errorFromInt(err_int);
@@ -1496,6 +1528,8 @@ pub const Vm = struct {
             .call5 = jitCallBridge5,
             .call6 = jitCallBridge6,
             .call7 = jitCallBridge7,
+            .push_progv = jitCallBridgePushProgv,
+            .pop_progv = jitCallBridgePopProgv,
         });
         jit_backend.setErrorBridge(.{
             .context = self,
