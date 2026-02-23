@@ -62,6 +62,10 @@ pub const Config = struct {
     show_disasm: bool = false,
     /// Show bytecode bytes
     show_bytes: bool = false,
+    /// Allow hoist JIT compilation for eligible lambdas.
+    /// Internal/benchmark option: disabling keeps the same backend while
+    /// forcing interpreter-only execution.
+    enable_jit: bool = true,
     /// Prompt string
     prompt: []const u8 = "🐍 ",
     /// Continuation prompt (for multi-line input)
@@ -115,11 +119,15 @@ pub const Repl = struct {
     pub fn init(self: *Repl, allocator: std.mem.Allocator, heap: *Heap, config: Config) !void {
         // NOTE: Repl must be initialized in-place so Compiler subcomponents can
         // safely keep pointers into vm (builtins, etc) without a move.
+        var repl_cfg = config;
+        if (std.posix.getenv("HABU_DISABLE_JIT") != null) {
+            repl_cfg.enable_jit = false;
+        }
         self.* = .{
             .allocator = allocator,
             .heap = heap,
             .vm = undefined,
-            .config = config,
+            .config = repl_cfg,
             .compiler = undefined,
             .chunk_pool = std.ArrayList(Value){},
             .macros = std.AutoHashMap(Value, MacroEntry).init(allocator),
@@ -2873,6 +2881,7 @@ pub const Repl = struct {
         child_chunks: []const Value,
         chunk_base: u16,
     ) bool {
+        if (!self.config.enable_jit) return false;
         const trace = std.posix.getenv("HABU_TRACE_JIT") != null;
         var candidates = std.ArrayList(jit_candidates.LambdaCandidate){};
         defer {

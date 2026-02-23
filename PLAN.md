@@ -161,6 +161,7 @@
       - Rebaseline (`zig build bench-maxima -Duse-hoist=true -- --scale=1 --json`, 2026-02-23): `jit_compiled=395`, `jit_adm.cand=4145`, `jit_adm.sk_safety=0`, loader `ok=85/85`.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `ratsimp` corrected from ~`308ms` artifact to ~`39ms`; gate still `pass=false` (`wins=0/5`) with JIT now within ~3-6% of interpreter on tracked workloads.
       - Blocker: safety admission and bridge throw relay are stable, but runtime throughput still regresses versus interpreter on current real workloads.
+    - [x] `habu-unify-hotspot-interp-97f8c613` Run `tools/maxima-hotspots` JIT/interpreter baselines on hoist-only backend by adding runtime JIT disable switch (internal option/env) and removing `-Duse-hoist=false` interpreter dependency.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

@@ -13,6 +13,7 @@ const Opts = struct {
     heap_mb: usize = 1024,
     nursery_mb: usize = 32,
     scale: usize = 1,
+    jit: bool = true,
     json: bool = false,
     workloads_csv: ?[]const u8 = null,
 };
@@ -238,7 +239,7 @@ fn usage(w: anytype) !void {
         \\Maxima workload benchmark (Habu)
         \\
         \\Usage:
-        \\  zig build -Duse-hoist=true bench-maxima -- [--heap-mb N] [--nursery-mb N] [--scale N] [--workloads a,b,c] [--json]
+        \\  zig build -Duse-hoist=true bench-maxima -- [--heap-mb N] [--nursery-mb N] [--scale N] [--jit on|off] [--workloads a,b,c] [--json]
         \\
     );
 }
@@ -270,6 +271,18 @@ fn parseArgs() !Opts {
         if (std.mem.startsWith(u8, arg, "--scale=")) {
             opts.scale = try std.fmt.parseInt(usize, arg["--scale=".len..], 10);
             continue;
+        }
+        if (std.mem.startsWith(u8, arg, "--jit=")) {
+            const mode = arg["--jit=".len..];
+            if (std.mem.eql(u8, mode, "on")) {
+                opts.jit = true;
+                continue;
+            }
+            if (std.mem.eql(u8, mode, "off")) {
+                opts.jit = false;
+                continue;
+            }
+            return error.InvalidArgs;
         }
         if (std.mem.startsWith(u8, arg, "--workloads=")) {
             opts.workloads_csv = arg["--workloads=".len..];
@@ -636,7 +649,7 @@ pub fn main() !void {
     defer heap.deinit();
 
     var repl: Repl = undefined;
-    try repl.init(allocator, &heap, .{});
+    try repl.init(allocator, &heap, .{ .enable_jit = opts.jit });
     defer repl.deinit();
     try repl.wireGlobalEnv();
     repl.vm.resetJitAdm();
@@ -698,6 +711,7 @@ pub fn main() !void {
             .heap_mb = opts.heap_mb,
             .nursery_mb = opts.nursery_mb,
             .scale = opts.scale,
+            .jit = opts.jit,
             .jit_compiled = jit_compiled,
             .jit_adm = jit_adm,
             .loader = .{
@@ -721,7 +735,12 @@ pub fn main() !void {
     }
 
     try w.print("Maxima workload benchmark (Habu)\n", .{});
-    try w.print("  heap: {d} MiB, nursery: {d} MiB, scale: {d}\n", .{ opts.heap_mb, opts.nursery_mb, opts.scale });
+    try w.print("  heap: {d} MiB, nursery: {d} MiB, scale: {d}, jit={s}\n", .{
+        opts.heap_mb,
+        opts.nursery_mb,
+        opts.scale,
+        if (opts.jit) "on" else "off",
+    });
     try w.print("  jit_compiled: {d}\n", .{jit_compiled});
     try w.print(
         "  jit_adm: cand={d} elig={d} comp={d} sk(speed={d},safety={d},assert={d},caps={d},opt={d},key={d},rest={d},chunk={d}) fail(unsupported={d},other={d})\n",

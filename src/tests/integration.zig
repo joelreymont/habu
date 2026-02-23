@@ -2396,6 +2396,32 @@ test "keyword arg validation" {
     try testing.expect(ok2.isNil());
 }
 
+test "repl config disables hoist JIT compilation" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{ .enable_jit = false });
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval(
+        \\(defun no-jit-candidate (x)
+        \\  (declare (optimize (speed 3) (safety 0)))
+        \\  (+ x 1))
+    );
+    const out = try repl.eval("(no-jit-candidate 41)");
+    try testing.expect(out.isFixnum());
+    try testing.expectEqual(@as(i64, 42), out.toFixnum());
+
+    try testing.expectEqual(@as(usize, 0), repl.vm.jit_fns.count());
+    try testing.expectEqual(@as(u64, 0), repl.vm.jit_adm.cand);
+}
+
 test "JIT bridge relays keyword throw without panic" {
     if (!build_options.use_hoist) return;
 
