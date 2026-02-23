@@ -188,6 +188,10 @@
       - Replaced two-pass keyword validation (`scan for :allow-other-keys` then `scan for unknown keywords`) with one pass that tracks `allow_unknown`/`unknown_seen` while keeping ANSI semantics (later `:allow-other-keys` still overrides earlier unknown keywords).
       - Retained per-chunk allowlist cache path and fallback list-walk semantics; only pass structure changed.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): runs improved to about `integrate ~157.3-157.7ms`, `factor ~52.2-52.9ms`, `ratsimp ~39.1-39.3ms` with gate still red (`wins=0/5`).
+    - [x] `habu-skip-redundant-docall-ed095926` Skip redundant `doCall` canonicalization for symbol-resolved function targets while preserving non-symbol forwarding safety. Depends on `habu-fold-key-valid-93c03c13`.
+      - Added a `fn_from_symbol_resolve` guard in `doCall` so symbol designators resolved through `resolveFunctionValue` (already canonicalized) skip an immediate second `resolveForwardedValue`; non-symbol call targets still canonicalize exactly as before.
+      - Verified `&key`/`allow-other-keys` and symbol-function regressions remain green; behavior is unchanged.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): observed runs around `integrate ~156.4-158.3ms`, `factor ~51.7-52.3ms`, `ratsimp ~39.0-39.6ms`; gate still red (`wins=0/5`).
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

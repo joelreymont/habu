@@ -9,6 +9,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-23)
 
 ### Worked Well
+- Skipping redundant post-resolution canonicalization in `doCall` for symbol designators (`src/interp/vm.zig:10807`) is safe when `resolveFunctionValue` already returns canonicalized callable values; keeping canonicalization for non-symbol call targets preserves forwarding safety.
 - Folding `&key` validation to a single scan in `doCall` (`src/interp/vm.zig:10920`) removed repeated keyword-pair traversal while preserving ANSI `:allow-other-keys` semantics where a later `:allow-other-keys` still authorizes earlier unknown keywords.
 - Checking `fn_resolve_cache` by raw symbol identity before forwarding canonicalization in `resolveFunctionValue` (`src/interp/vm.zig:1427`) removed a hot per-call `resolveForwardedValue` on cache-hit symbol calls and improved repeated Maxima hotspot runs (notably `integrate`/`factor`) without changing function-designator semantics.
 - Long-run profiling (`bench-maxima --workloads=integrate --scale=80`) remained the fastest way to confirm that runtime work has shifted but still clusters in `doCall` + function-resolution paths after each cut.
@@ -50,6 +51,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Emitting first unsupported IR tags on JIT compile failures (`src/interp/repl.zig:3013`) turned generic `UnsupportedIrNode` logs into actionable blockers; current Maxima benchmark wrapper rejection points to `.progv` as the first missing lowering.
 
 ### Did Not Work
+- Evaluating tiny call-path optimizations from a single hotspot run was too unstable; running quick A/B in a separate `jj` workspace against `@-` gave clearer keep/revert signal for near-noise deltas.
 - Keeping the old two-pass keyword validation path (`allow-other-keys` scan then unknown-key scan) added avoidable repeated work in hot keyword-call paths; a single-pass stateful scan gives the same semantics with lower call overhead.
 - A direct `resolveForwardedValue` region-fast-path experiment (tenured/LOS early-return + loop-hoisted region math) improved micro-signal but regressed repeated full Maxima hotspot timings on this host, so it was reverted in favor of call-site resolve-count reductions.
 - Treating one benchmark run as authoritative for keyword-call changes was too noisy; decision quality improved only after repeated `keyword_call` + repeated Maxima hotspot runs on both current and parent revisions.

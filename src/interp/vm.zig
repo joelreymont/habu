@@ -10807,6 +10807,7 @@ pub const Vm = struct {
         const fn_slot = self.sp - argc - 1;
         const fn_designator = self.stack[fn_slot];
         var fn_val = fn_designator;
+        var fn_from_symbol_resolve = false;
 
         // Function designator: symbol -> function cell/global binding.
         if (fn_val.isSymbol()) {
@@ -10840,12 +10841,15 @@ pub const Vm = struct {
                 return error.UnboundSymbol;
             };
             self.stack[fn_slot] = fn_val;
+            fn_from_symbol_resolve = true;
         }
 
-        const canonical_fn = self.resolveForwardedValue(fn_val);
-        if (canonical_fn.raw != fn_val.raw) {
-            fn_val = canonical_fn;
-            self.stack[fn_slot] = fn_val;
+        if (!fn_from_symbol_resolve) {
+            const canonical_fn = self.resolveForwardedValue(fn_val);
+            if (canonical_fn.raw != fn_val.raw) {
+                fn_val = canonical_fn;
+                self.stack[fn_slot] = fn_val;
+            }
         }
 
         // If calling a generic function, delegate to its dispatcher
