@@ -21,6 +21,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding direct fixnum/float fast paths in numeric compare helpers (`src/jit/backend.zig:459`, `src/jit/backend.zig:608`, `src/jit/backend.zig:618`, `src/jit/backend.zig:646`, `src/jit/backend.zig:653`) plus a fixnum-guarded translator fast lane (`src/jit/backend.zig:2602`) reduced ReleaseFast `assoc` from ~5.23ms to ~5.12ms while preserving generic fallback semantics.
 - Sampling the real ReleaseFast bench binary (not Debug) for `assoc` kept the hotspot unambiguous in `jitAssoc`, which avoided false follow-up work on compiler/debug-only overhead (`/tmp/habu_assoc_releasefast_sample.txt`, `src/jit/backend.zig:387`).
 - Disabling runtime safety inside `jitAssoc` and switching to raw 64-bit cons-field loads plus a combined cons mask (`src/jit/backend.zig:388`, `src/jit/backend.zig:394`) reduced ReleaseFast `assoc` from ~5.25ms to ~4.69ms (~10.7%) with focused regressions still green.
+- Extending `patchCrossCallsToBL` to consume optional `MOVK hw=3` target materialization (`src/jit/backend.zig:4967`, `src/jit/backend.zig:5018`) closes a 64-bit direct-branch patch gap and is locked by a new machine-code regression (`src/jit/backend.zig:8248`).
 
 ### Did Not Work
 - Relying on `restoreExtRootsSynced` copyback from temporary root arrays propagated stale values into persistent owners under nested save/set/restore chains (`src/interp/vm.zig` pre-fix `restoreExtRootsSynced` logic).
@@ -34,6 +35,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Sampling `./zig-out/bin/comprehensive_bench` before rebuilding with `-Doptimize=ReleaseFast` reintroduced debug-only signals and distorted RCA; rebuild mode must match measured mode before profiling.
 - Replacing `jitAssoc` with a C helper path did not outperform the tuned Zig helper in repeated ReleaseFast rebench runs, so this hotspot should stay Zig-native and be optimized in-place.
 - Reshaping `jitAssoc` to a `while (true)` loop and removing pointer-mask loads regressed ReleaseFast `assoc`, so the prior masked/guarded loop form should remain the baseline until a proven win appears.
+- Extending cross-call BL patch coverage to 64-bit materialization did not move the current `assoc` microbench immediately; treat it as coverage/hardening for address-layout variability rather than guaranteed direct speedup.
 
 ## Session Notes (2026-02-22)
 

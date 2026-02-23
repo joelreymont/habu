@@ -4957,6 +4957,7 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) void {
 
         // Scan backward from MOV for MOVZ rN, #imm16 + MOVK + MOVK (3-instruction 48-bit load)
         var load_idx: ?usize = null;
+        var load_len: usize = 0;
         var loaded_addr: u64 = 0;
         {
             // Scan backward from MOV looking for MOVZ+MOVK+MOVK loading src_reg.
@@ -4981,6 +4982,16 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) void {
                         const imm1 = @as(u64, (w1 >> 5) & 0xFFFF) << 16;
                         const imm2 = @as(u64, (w2 >> 5) & 0xFFFF) << 32;
                         loaded_addr = imm0 | imm1 | imm2;
+                        load_len = 3;
+                        // Optional high 16 bits (MOVK hw=3) for full 64-bit targets.
+                        if (j + 3 < start_j) {
+                            const w3 = readInsn(buf, j + 3);
+                            if ((w3 & 0xFFE00000) == 0xF2E00000 and @as(u5, @truncate(w3 & 0x1F)) == src_reg) {
+                                const imm3 = @as(u64, (w3 >> 5) & 0xFFFF) << 48;
+                                loaded_addr |= imm3;
+                                load_len = 4;
+                            }
+                        }
                         load_idx = j;
                         break;
                     }
@@ -4990,7 +5001,7 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) void {
                 if (!is_movz and !is_movk and w0_rd == src_reg) break;
             }
         }
-        if (load_idx == null or loaded_addr == 0) continue;
+        if (load_idx == null or load_len == 0 or loaded_addr == 0) continue;
 
         // Check BL range: ±128MB
         const blr_addr = caller_base + i * 4;
@@ -4998,12 +5009,12 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) void {
         const diff = @as(i64, @intCast(target)) - @as(i64, @intCast(blr_addr));
         if (diff < -128 * 1024 * 1024 or diff > 128 * 1024 * 1024) continue;
 
-        // Patch: NOP the MOVZ/MOVK/MOVK sequence, NOP the MOV, replace BLR with BL
+        // Patch: NOP the MOVZ/MOVK[...] sequence, NOP the MOV, replace BLR with BL
         const rel_offset: i32 = @intCast(@divExact(diff, 4));
         const imm26: u32 = @as(u32, @bitCast(rel_offset)) & 0x03FFFFFF;
-        writeInsn(buf, load_idx.?, NOP);
-        writeInsn(buf, load_idx.? + 1, NOP);
-        writeInsn(buf, load_idx.? + 2, NOP);
+        for (0..load_len) |k| {
+            writeInsn(buf, load_idx.? + k, NOP);
+        }
         writeInsn(buf, mov_idx.?, NOP);
         writeInsn(buf, i, 0x94000000 | imm26);
     }
@@ -8251,6 +8262,29 @@ test "patchSelfCallsToBL only rewrites true self target" {
     try testing.expect(patchSelfCallsToBL(&code, placeholder));
     try testing.expect(readInsn(&code, 5) & 0xFC000000 == 0x94000000);
     try testing.expectEqual(@as(u32, 0xD63F0120), readInsn(&code, 10));
+}
+
+test "patchCrossCallsToBL handles 64-bit MOVK target materialization" {
+    const caller_base: usize = 0x0001_0000_1000_0000;
+    const target: u64 = caller_base + 64;
+    const words = [_]u32{
+        makeMovzImm(10, @truncate(target), 0),
+        makeMovkImm(10, @truncate(target >> 16), 1),
+        makeMovkImm(10, @truncate(target >> 32), 2),
+        makeMovkImm(10, @truncate(target >> 48), 3),
+        makeMovInsn(9, 10),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    patchCrossCallsToBLSlice(&code, caller_base);
+
+    for (0..5) |idx| {
+        try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, idx));
+    }
+    const patched = readInsn(&code, 5);
+    try testing.expectEqual(@as(u32, 0x9400000B), patched);
 }
 
 test "containsHelperCalls excludes numeric ops under fixnum inline lowering" {
