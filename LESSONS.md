@@ -15,11 +15,13 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Aligning backend forwarding resolution with VM semantics (`src/jit/backend.zig:239`, `src/jit/backend.zig:262`, `src/jit/backend.zig:287`) and resolving hash helper arguments (`src/jit/backend.zig:681`, `src/jit/backend.zig:699`, `src/jit/backend.zig:730`) removed one stale-forwarding blind spot on helper entry.
 - New regressions for ext-root behavior (`src/interp/vm.zig:13132`, `src/interp/vm.zig:13172`) lock both owner-backed and plain-slice inactive-root correctness.
 - Running focused bridge/safety regressions plus `bench-maxima` rebaseline (`src/tests/integration.zig:1877`, `src/tests/integration.zig:2573`, `bench/maxima_workload.zig`) validated that bridge relay remains stable in JIT mode and safety admission stays open (`jit_adm.sk_safety=0`, loader `85/85`).
+- Hardening `tools/dot-finish` with timeout-aware test execution (`tools/dot-finish`) removes a recurring dev-loop failure mode where full-suite hangs left stale `zig build test` processes alive for hours and tripped unified exec process limits.
 
 ### Did Not Work
 - Relying on `restoreExtRootsSynced` copyback from temporary root arrays propagated stale values into persistent owners under nested save/set/restore chains (`src/interp/vm.zig` pre-fix `restoreExtRootsSynced` logic).
 - Fixing only helper-entry forwarded resolution was insufficient by itself; stale symbol-tagged pointers can survive long enough to lose forwarding metadata before first helper use, so preventing in-JIT GC was required for correctness (`src/jit/backend.zig:239`, `src/interp/vm.zig:1535`, `src/interp/vm.zig:1998`).
 - Manually updating `PLAN.md` checkboxes drifted from dot state; syncing checkboxes from `dot show` status avoids stale "open vs done" plan state when many dots close in parallel.
+- Running `tools/dot-finish` with an unbounded `zig build test` on this machine can leave long-lived test jobs after harness stalls; timeout guardrails are required to keep the process pool healthy.
 
 ## Session Notes (2026-02-22)
 

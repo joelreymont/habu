@@ -10,6 +10,8 @@ Runs tests, commits the current jj change, pushes a bookmark, then closes the do
 Defaults:
   - bookmark: $JJ_BOOKMARK or "codex/cl-parity"
   - close reason: commit msg
+  - test timeout: $DOT_FINISH_TEST_TIMEOUT_SEC or 900
+  - test command: $DOT_FINISH_TEST_CMD or "zig build test"
 
 Examples:
   tools/dot-finish habu-add-integerp-realp-490c51c9 -m "Add integerp and realp"
@@ -20,6 +22,8 @@ dot_id=""
 msg=""
 reason=""
 bookmark="${JJ_BOOKMARK:-codex/cl-parity}"
+test_timeout="${DOT_FINISH_TEST_TIMEOUT_SEC:-900}"
+test_cmd="${DOT_FINISH_TEST_CMD:-zig build test}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -48,7 +52,36 @@ if [[ -z "$reason" ]]; then
   reason="$msg"
 fi
 
-zig build test
+run_with_timeout() {
+  local secs="$1"
+  shift
+
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+    return $?
+  fi
+  if command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+    return $?
+  fi
+
+  "$@"
+}
+
+echo "dot-finish: running tests: $test_cmd (timeout ${test_timeout}s)" >&2
+set +e
+run_with_timeout "$test_timeout" bash -lc "$test_cmd"
+test_rc=$?
+set -e
+
+if [[ "$test_rc" -eq 124 || "$test_rc" -eq 137 ]]; then
+  echo "error: tests timed out after ${test_timeout}s: $test_cmd" >&2
+  exit "$test_rc"
+fi
+if [[ "$test_rc" -ne 0 ]]; then
+  echo "error: tests failed with exit code ${test_rc}: $test_cmd" >&2
+  exit "$test_rc"
+fi
 
 dot off "$dot_id" -r "$reason"
 jj describe -m "$msg"

@@ -160,6 +160,7 @@
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.
 - [x] `habu-run-full-ansi-a5719d99` Run full ANSI baseline and refresh machine-readable results.
+- [x] `habu-harden-dot-finish-4f517fdb` Harden `tools/dot-finish` test gate with timeout controls so stalled full-suite runs cannot leak long-lived processes.
 - [x] `habu-fix-cpl-methodspecializer-314f1d0a` Fix `cpl_test` MethodSpecializer API drift and stabilize full-test blockers found while re-running the gate (`mv` conditional-jump test macro dependency + quasiquote forwarded-list crash under smallest-heap stdlib load).
 - [x] `habu-hoist-cleanup-gate-2b9f46d0` Hoist migration cleanup gate before resuming Maxima active work.
   - [x] `habu-audit-legacy-backend-f3c3848f` Audit legacy backend references and anti-patterns.
