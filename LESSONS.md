@@ -19,6 +19,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Sampling `./zig-out/bin/comprehensive_bench --bench=assoc` in Debug (`/tmp/habu_assoc_bin_sample.txt`) showed `jit.backend.jitAssoc` (`src/jit/backend.zig:360-369`) as the dominant hotspot with heavy `debug.assert` overhead; ReleaseFast `zig build -Doptimize=ReleaseFast bench-comp ...` measured ~5.0ms for the same bench.
 - Rewriting `jitAssoc` to use raw tagged checks instead of `Value.isCons()/toPtr()` (`src/jit/backend.zig:360-374`) cut Debug `bench-comp --bench=assoc` from ~137ms to ~39ms on this host, improving inner-loop developer feedback.
 - Adding direct fixnum/float fast paths in numeric compare helpers (`src/jit/backend.zig:459`, `src/jit/backend.zig:608`, `src/jit/backend.zig:618`, `src/jit/backend.zig:646`, `src/jit/backend.zig:653`) plus a fixnum-guarded translator fast lane (`src/jit/backend.zig:2602`) reduced ReleaseFast `assoc` from ~5.23ms to ~5.12ms while preserving generic fallback semantics.
+- Sampling the real ReleaseFast bench binary (not Debug) for `assoc` kept the hotspot unambiguous in `jitAssoc`, which avoided false follow-up work on compiler/debug-only overhead (`/tmp/habu_assoc_releasefast_sample.txt`, `src/jit/backend.zig:387`).
+- Disabling runtime safety inside `jitAssoc` and switching to raw 64-bit cons-field loads plus a combined cons mask (`src/jit/backend.zig:388`, `src/jit/backend.zig:394`) reduced ReleaseFast `assoc` from ~5.25ms to ~4.69ms (~10.7%) with focused regressions still green.
 
 ### Did Not Work
 - Relying on `restoreExtRootsSynced` copyback from temporary root arrays propagated stale values into persistent owners under nested save/set/restore chains (`src/interp/vm.zig` pre-fix `restoreExtRootsSynced` logic).
@@ -28,6 +30,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Treating Debug `bench-comp` numbers as runtime parity signal was misleading for `assoc`: Debug sampling showed `debug.assert`/tag-check overhead inside `jitAssoc`; parity tracking must use `-Doptimize=ReleaseFast`.
 - The `jitAssoc` raw-check rewrite materially improved Debug numbers but did not move ReleaseFast parity (`~5.23ms` to `~5.25ms`), so remaining gap is elsewhere (helper/call lowering and loop arithmetic), not `Value` predicate overhead.
 - Even with compare-helper fast paths, `assoc` parity remains far from SBCL in ReleaseFast (`~5.12ms` vs `~2.79ms` baseline), so the next wins are not in scalar compare helpers but in call/loop lowering and remaining helper-bound overhead.
+- Inlining `assoc` directly in Hoist IR (replacing helper calls in `translateAssoc`) regressed ReleaseFast `assoc` to ~7.59ms; for this path, optimized native helper code beats `.none`-mode JIT control-flow lowering.
+- Sampling `./zig-out/bin/comprehensive_bench` before rebuilding with `-Doptimize=ReleaseFast` reintroduced debug-only signals and distorted RCA; rebuild mode must match measured mode before profiling.
 
 ## Session Notes (2026-02-22)
 

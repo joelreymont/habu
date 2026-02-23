@@ -386,18 +386,22 @@ fn jitAppend(list1_raw: u64, list2_raw: u64) callconv(.c) u64 {
 
 /// assoc: lookup in alist by eq. Returns tagged value (pair or nil).
 fn jitAssoc(key_raw: u64, alist_raw: u64) callconv(.c) u64 {
+    @setRuntimeSafety(false);
+
     // Raw tagged checks avoid Value predicate/toPtr overhead in this hot loop.
+    // Cons pointers satisfy: raw != 0 and (raw & 0xC00000000000000F) == 0.
     const ptr_mask: u64 = ~@as(u64, 0xF);
+    const cons_mask: u64 = 0xC00000000000000F;
     var curr_raw = alist_raw;
 
-    while (curr_raw != 0 and (curr_raw & 0xF) == 0 and (curr_raw >> 62) == 0) {
-        const cell: *runtime.Cons = @ptrFromInt(curr_raw & ptr_mask);
-        const pair_raw = cell.car.raw;
-        if (pair_raw != 0 and (pair_raw & 0xF) == 0 and (pair_raw >> 62) == 0) {
-            const pair: *runtime.Cons = @ptrFromInt(pair_raw & ptr_mask);
-            if (pair.car.raw == key_raw) return pair_raw;
+    while (curr_raw != 0 and (curr_raw & cons_mask) == 0) {
+        const cell_words: [*]const u64 = @ptrFromInt(curr_raw & ptr_mask);
+        const pair_raw = cell_words[0];
+        if (pair_raw != 0 and (pair_raw & cons_mask) == 0) {
+            const pair_words: [*]const u64 = @ptrFromInt(pair_raw & ptr_mask);
+            if (pair_words[0] == key_raw) return pair_raw;
         }
-        curr_raw = cell.cdr.raw;
+        curr_raw = cell_words[1];
     }
     return Value.nil.raw;
 }
@@ -4186,16 +4190,19 @@ pub const IrTranslator = struct {
     /// nil is also 0b0000 but nil.raw == 0, so we need both checks.
     fn translateConsp(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
         const val = try self.translate(operand_ir);
+        const both = try self.isConsRaw(val);
+        const t_val = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw)));
+        const nil_val = try self.cachedIconst(0);
+        return try self.b.select(I64, both, t_val, nil_val);
+    }
+
+    fn isConsRaw(self: *IrTranslator, val: HoistValue) anyerror!HoistValue {
         const mask = try self.cachedIconst(0xF);
         const tag_bits = try self.b.band(I64, val, mask);
         const zero = try self.cachedIconst(0);
         const tag_ok = try self.b.icmp(I8, IntCC.eq, tag_bits, zero);
         const not_nil = try self.b.icmp(I8, IntCC.ne, val, zero);
-        // Both conditions must be true: tag is cons AND not nil
-        const both = try self.b.band(I8, tag_ok, not_nil);
-        const t_val = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw)));
-        const nil_val = try self.cachedIconst(0);
-        return try self.b.select(I64, both, t_val, nil_val);
+        return try self.b.band(I8, tag_ok, not_nil);
     }
 
     /// car: load [val + 0]
