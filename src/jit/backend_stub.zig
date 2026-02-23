@@ -23,25 +23,60 @@ pub const CallBridge = struct {
     pop_progv: *const fn (*anyopaque) callconv(.c) u16,
 };
 
-pub fn setCallBridge(_: CallBridge) void {}
+var g_call_bridge: ?CallBridge = null;
+
+pub fn setCallBridge(bridge: CallBridge) void {
+    g_call_bridge = bridge;
+}
+
+pub fn clearCallBridge() void {
+    g_call_bridge = null;
+}
+
+pub fn callBridgeContext() ?*anyopaque {
+    if (g_call_bridge) |bridge| return bridge.context;
+    return null;
+}
 
 pub const ErrorBridge = struct {
     context: *anyopaque,
     set_error: *const fn (*anyopaque, u16) callconv(.c) void,
 };
 
-pub fn setErrorBridge(_: ErrorBridge) void {}
+var g_error_bridge: ?ErrorBridge = null;
 
-pub fn clearErrorBridge() void {}
+pub fn setErrorBridge(bridge: ErrorBridge) void {
+    g_error_bridge = bridge;
+}
+
+pub fn clearErrorBridge() void {
+    g_error_bridge = null;
+}
+
+pub fn errorBridgeContext() ?*anyopaque {
+    if (g_error_bridge) |bridge| return bridge.context;
+    return null;
+}
 
 pub const GlobalBridge = struct {
     context: *anyopaque,
     load_global: *const fn (*anyopaque, u16) callconv(.c) u64,
 };
 
-pub fn setGlobalBridge(_: GlobalBridge) void {}
+var g_global_bridge: ?GlobalBridge = null;
 
-pub fn clearGlobalBridge() void {}
+pub fn setGlobalBridge(bridge: GlobalBridge) void {
+    g_global_bridge = bridge;
+}
+
+pub fn clearGlobalBridge() void {
+    g_global_bridge = null;
+}
+
+pub fn globalBridgeContext() ?*anyopaque {
+    if (g_global_bridge) |bridge| return bridge.context;
+    return null;
+}
 
 pub fn syncHeapFromGlobal(_: *Heap) void {}
 

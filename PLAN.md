@@ -223,6 +223,11 @@
       - Replaced `restoreCallerFrameAfterCall` `try push` with direct stack write/assert and switched callsites in `.call`/`.ret` to non-fallible restore (`src/interp/vm.zig`).
       - Marked `restoreDynamicDepthsFromFrame` inline; kept handler restore-depth semantics unchanged.
       - Revalidated return-frame regressions and hotspot baselines (`keyword_call`, `maxima-hotspots`), with no functional regressions and call-path microbench staying in the current improved band.
+    - [x] `habu-persist-jit-bridge-11514d83` Persist JIT bridge globals per owning VM and remove per-call bridge set/clear churn in `tryCallJit`.
+      - Added bridge context query/clear APIs in `src/jit/backend.zig` + `src/jit/backend_stub.zig`, exported via `src/jit/backend_api.zig`.
+      - Added VM-owned bridge install/uninstall lifecycle (`src/interp/vm.zig`: install on demand by context match, clear on `Vm.deinit` only when owner matches).
+      - Added regression `vm jit bridge lifecycle tracks owner vm` to lock owner-handoff and deinit-clear behavior.
+      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `integrate` `137.42ms` vs interp `137.11ms` (near parity), `solve` `12.18ms` vs `12.17ms`, gate still red (`wins=1/5`, `pass=false`) with all workloads stable.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

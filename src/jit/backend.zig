@@ -136,6 +136,16 @@ pub fn setCallBridge(bridge: CallBridge) void {
     g_trace_jit_generic_call = std.posix.getenv("HABU_TRACE_JIT_GENERIC_CALL") != null;
 }
 
+pub fn clearCallBridge() void {
+    g_call_bridge = null;
+    g_trace_jit_generic_call = false;
+}
+
+pub fn callBridgeContext() ?*anyopaque {
+    if (g_call_bridge) |bridge| return bridge.context;
+    return null;
+}
+
 pub fn setErrorBridge(bridge: ErrorBridge) void {
     g_error_bridge = bridge;
 }
@@ -144,12 +154,22 @@ pub fn clearErrorBridge() void {
     g_error_bridge = null;
 }
 
+pub fn errorBridgeContext() ?*anyopaque {
+    if (g_error_bridge) |bridge| return bridge.context;
+    return null;
+}
+
 pub fn setGlobalBridge(bridge: GlobalBridge) void {
     g_global_bridge = bridge;
 }
 
 pub fn clearGlobalBridge() void {
     g_global_bridge = null;
+}
+
+pub fn globalBridgeContext() ?*anyopaque {
+    if (g_global_bridge) |bridge| return bridge.context;
+    return null;
 }
 
 pub fn bridgeRun(func: BridgeRunFn, ctx: *anyopaque, out_raw: *u64) c_int {

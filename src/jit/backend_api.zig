@@ -15,10 +15,14 @@ else
 
 pub const setHeap = impl.setHeap;
 pub const setCallBridge = impl.setCallBridge;
+pub const clearCallBridge = impl.clearCallBridge;
+pub const callBridgeContext = impl.callBridgeContext;
 pub const setErrorBridge = impl.setErrorBridge;
 pub const clearErrorBridge = impl.clearErrorBridge;
+pub const errorBridgeContext = impl.errorBridgeContext;
 pub const setGlobalBridge = impl.setGlobalBridge;
 pub const clearGlobalBridge = impl.clearGlobalBridge;
+pub const globalBridgeContext = impl.globalBridgeContext;
 pub const syncHeapFromGlobal = impl.syncHeapFromGlobal;
 pub const allocPtrRaw = impl.allocPtrRaw;
 pub const BridgeRunFn = impl.BridgeRunFn;

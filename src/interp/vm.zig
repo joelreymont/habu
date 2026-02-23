@@ -1158,6 +1158,7 @@ pub const Vm = struct {
     }
 
     pub fn deinit(self: *Vm) void {
+        self.uninstallJitBridges();
         // Clean up hoist-compiled functions
         var it = self.jit_fns.valueIterator();
         while (it.next()) |compiled_ptr| {
@@ -1695,6 +1696,50 @@ pub const Vm = struct {
         return self.jit_fns.remove(@intFromPtr(chunk));
     }
 
+    fn installJitBridges(self: *Vm) void {
+        const ctx: *anyopaque = self;
+        if (jit_backend.callBridgeContext() != ctx) {
+            jit_backend.setCallBridge(.{
+                .context = self,
+                .call0 = jitCallBridge0,
+                .call1 = jitCallBridge1,
+                .call2 = jitCallBridge2,
+                .call3 = jitCallBridge3,
+                .call4 = jitCallBridge4,
+                .call5 = jitCallBridge5,
+                .call6 = jitCallBridge6,
+                .call7 = jitCallBridge7,
+                .push_progv = jitCallBridgePushProgv,
+                .pop_progv = jitCallBridgePopProgv,
+            });
+        }
+        if (jit_backend.errorBridgeContext() != ctx) {
+            jit_backend.setErrorBridge(.{
+                .context = self,
+                .set_error = jitErrorBridgeSet,
+            });
+        }
+        if (jit_backend.globalBridgeContext() != ctx) {
+            jit_backend.setGlobalBridge(.{
+                .context = self,
+                .load_global = jitGlobalBridgeLoad,
+            });
+        }
+    }
+
+    fn uninstallJitBridges(self: *Vm) void {
+        const ctx: *anyopaque = self;
+        if (jit_backend.globalBridgeContext() == ctx) {
+            jit_backend.clearGlobalBridge();
+        }
+        if (jit_backend.errorBridgeContext() == ctx) {
+            jit_backend.clearErrorBridge();
+        }
+        if (jit_backend.callBridgeContext() == ctx) {
+            jit_backend.clearCallBridge();
+        }
+    }
+
     /// Try to call a closure via hoist-compiled native code.
     /// Returns the result of calling it, or null if not hoist-compiled.
     fn tryCallJit(self: *Vm, argc: u8) Error!?Value {
@@ -1707,29 +1752,7 @@ pub const Vm = struct {
         self.jit_bridge_error = null;
         // Set global heap pointer so JIT cons can allocate
         jit_backend.setHeap(self.heap);
-        jit_backend.setCallBridge(.{
-            .context = self,
-            .call0 = jitCallBridge0,
-            .call1 = jitCallBridge1,
-            .call2 = jitCallBridge2,
-            .call3 = jitCallBridge3,
-            .call4 = jitCallBridge4,
-            .call5 = jitCallBridge5,
-            .call6 = jitCallBridge6,
-            .call7 = jitCallBridge7,
-            .push_progv = jitCallBridgePushProgv,
-            .pop_progv = jitCallBridgePopProgv,
-        });
-        jit_backend.setErrorBridge(.{
-            .context = self,
-            .set_error = jitErrorBridgeSet,
-        });
-        jit_backend.setGlobalBridge(.{
-            .context = self,
-            .load_global = jitGlobalBridgeLoad,
-        });
-        defer jit_backend.clearGlobalBridge();
-        defer jit_backend.clearErrorBridge();
+        self.installJitBridges();
 
         // Extract args from the VM stack (they're above the callee frame)
         const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
@@ -13356,6 +13379,51 @@ test "vm registerJitFn updates chunk jit pointer fast path" {
     try testing.expectEqual(@as(usize, 0), chunk_ptr.jit_fn);
     try testing.expect(vm.lookupJitFn(chunk_ptr) == null);
     try testing.expect(!vm.unregisterJitFn(chunk_ptr));
+}
+
+test "vm jit bridge lifecycle tracks owner vm" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    jit_backend.clearGlobalBridge();
+    jit_backend.clearErrorBridge();
+    jit_backend.clearCallBridge();
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm_a = try Vm.init(allocator, &heap);
+    var keep_vm_a = true;
+    defer if (keep_vm_a) vm_a.deinit();
+
+    var vm_b = try Vm.init(allocator, &heap);
+    var keep_vm_b = true;
+    defer if (keep_vm_b) vm_b.deinit();
+
+    const ctx_a: *anyopaque = &vm_a;
+    const ctx_b: *anyopaque = &vm_b;
+
+    vm_a.installJitBridges();
+    try testing.expect(jit_backend.callBridgeContext() == ctx_a);
+    try testing.expect(jit_backend.errorBridgeContext() == ctx_a);
+    try testing.expect(jit_backend.globalBridgeContext() == ctx_a);
+
+    vm_b.installJitBridges();
+    try testing.expect(jit_backend.callBridgeContext() == ctx_b);
+    try testing.expect(jit_backend.errorBridgeContext() == ctx_b);
+    try testing.expect(jit_backend.globalBridgeContext() == ctx_b);
+
+    vm_a.deinit();
+    keep_vm_a = false;
+    try testing.expect(jit_backend.callBridgeContext() == ctx_b);
+    try testing.expect(jit_backend.errorBridgeContext() == ctx_b);
+    try testing.expect(jit_backend.globalBridgeContext() == ctx_b);
+
+    vm_b.deinit();
+    keep_vm_b = false;
+    try testing.expect(jit_backend.callBridgeContext() == null);
+    try testing.expect(jit_backend.errorBridgeContext() == null);
+    try testing.expect(jit_backend.globalBridgeContext() == null);
 }
 
 test "vm state restore refreshes owned chunk pool slice" {
