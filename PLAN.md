@@ -262,6 +262,11 @@
         - ratios (`interp/jit`): `factor 0.9783`, `ratsimp 0.9587` (still red, but improved from earlier ~`0.9760` / `0.9469` on this host).
       - Validation completed: `zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-maxima`; `zig build bench -- --json`.
       - Validation blocked: `zig build test -- --test-filter ...` repeatedly hung in this environment (timed out at 240s with no emitted output), so full test-gate revalidation remains pending.
+    - [x] `habu-rca-jit-maxima-323d6d5d` RCA/fix JIT Maxima OOM in authoritative `bench-maxima` path.
+      - RCA: `tryCompileSpecialLet` held unrooted special-symbol/init temporaries across nested `compile()` calls; after multiple GC cycles stale symbol pointers were reinserted into heap lists (observed via `HABU_TRACE_BAD_STORE`), later exploding during GC copy as absurd symbol sizes (`~76TB` requests).
+      - Fix: root LET arg/binding cursors with compile-root tokens (`src/compiler/compile.zig`), root fast-path special symbol/init slices via temporary VM ext roots while compiling init forms (`src/compiler/compile.zig`), and resolve list elements/tails before cons construction (`src/compiler/compile.zig`).
+      - Validation: `bench-maxima` JIT mode now passes for `factor,ratsimp` at `--scale=1`, `--scale=20`, and `--scale=120` with `--heap-mb=1024 --nursery-mb=32`; `HABU_TRACE_BAD_STORE=1` run is clean (no invalid symbol-store panic).
+    - [x] `habu-root-compiler-temp-2a9b1e4b` Root compiler special-LET temp values against moving-GC during nested compile.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

@@ -5558,18 +5558,41 @@ pub const Compiler = struct {
 
     fn compileLetWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
         // (let ((x 1) (y 2)) body)
-        const live_args = self.resolveForwardedValue(args);
+        var live_args = self.resolveForwardedValue(args);
         if (!live_args.isCons()) return error.InvalidLet;
 
-        const cons = live_args.toPtr(Cons);
-        const bindings_expr = cons.car;
-        const body_exprs = cons.cdr;
+        var args_tok: ?CompileRootToken = null;
+        var args_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, live_args);
+            args_tok = tok;
+            args_vm = vm;
+            live_args = vm.globals[tok.root_idx];
+        }
+        defer if (args_tok) |tok| {
+            popCompileRoot(args_vm.?, tok.root_idx);
+        };
+
+        live_args = self.resolveForwardedValue(live_args);
+        if (!live_args.isCons()) return error.InvalidLet;
+        var args_cons = live_args.toPtr(Cons);
+        var bindings_expr = self.resolveForwardedValue(args_cons.car);
+        var body_exprs = self.resolveForwardedValue(args_cons.cdr);
 
         // Special-variable dynamic binding path.
         // Lower (let ((*var* init) ...) body) to progv so callees observe dynamic values.
         if (try self.tryCompileSpecialLet(bindings_expr, body_exprs, env, in_tail)) |special_ir| {
             return special_ir;
         }
+
+        if (args_tok) |tok| {
+            live_args = args_vm.?.globals[tok.root_idx];
+        }
+        live_args = self.resolveForwardedValue(live_args);
+        if (!live_args.isCons()) return error.InvalidLet;
+        args_cons = live_args.toPtr(Cons);
+        bindings_expr = self.resolveForwardedValue(args_cons.car);
+        body_exprs = self.resolveForwardedValue(args_cons.cdr);
 
         // First pass: collect binding names for boxing analysis
         var binding_names = std.ArrayList([]const u8){};
@@ -5817,9 +5840,27 @@ pub const Compiler = struct {
         var has_lexical = false;
 
         var bindings = live_bindings_expr;
-        while (bindings.isCons()) {
+        var bindings_tok: ?CompileRootToken = null;
+        var bindings_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, bindings);
+            bindings_tok = tok;
+            bindings_vm = vm;
+            bindings = vm.globals[tok.root_idx];
+        }
+        defer if (bindings_tok) |tok| {
+            popCompileRoot(bindings_vm.?, tok.root_idx);
+        };
+
+        while (true) {
+            if (bindings_tok) |tok| {
+                bindings = bindings_vm.?.globals[tok.root_idx];
+            }
+            bindings = self.resolveForwardedValue(bindings);
+            if (!bindings.isCons()) break;
+
             const bind_cons = bindings.toPtr(Cons);
-            const next_bindings = bind_cons.cdr;
+            const next_bindings = self.resolveForwardedValue(bind_cons.cdr);
             const binding = self.resolveForwardedValue(bind_cons.car);
 
             const sym = if (binding.isSymbolLike()) blk: {
@@ -5857,9 +5898,16 @@ pub const Compiler = struct {
                 try rewritten_bindings.append(self.allocator, binding);
             }
 
-            bindings = self.resolveForwardedValue(next_bindings);
+            bindings = next_bindings;
+            if (bindings_tok) |tok| {
+                bindings_vm.?.globals[tok.root_idx] = bindings;
+            }
         }
 
+        if (bindings_tok) |tok| {
+            bindings = bindings_vm.?.globals[tok.root_idx];
+        }
+        bindings = self.resolveForwardedValue(bindings);
         if (!bindings.isNil()) return error.InvalidLet;
         if (special_syms.items.len == 0) return null;
 
@@ -5867,13 +5915,49 @@ pub const Compiler = struct {
         if (!has_lexical) {
             const vals = try self.allocator.alloc(*const Ir, special_inits.items.len);
             defer self.allocator.free(vals);
+
+            if (self.vm) |vm| {
+                const saved_ext = try vm.saveExtRoots();
+                const saved_ext_roots = saved_ext.roots;
+                if (saved_ext_roots.len != 0) {
+                    for (saved_ext_roots) |*val| {
+                        val.* = vm.resolveForwardedValue(val.*);
+                    }
+                }
+
+                const sym_n = special_syms.items.len;
+                const root_count = saved_ext_roots.len + sym_n + special_inits.items.len;
+                var roots = std.ArrayList(Value){};
+                defer roots.deinit(self.allocator);
+                try roots.ensureTotalCapacity(self.allocator, root_count);
+                if (saved_ext_roots.len != 0) {
+                    try roots.appendSlice(self.allocator, saved_ext_roots);
+                }
+                try roots.appendSlice(self.allocator, special_syms.items);
+                try roots.appendSlice(self.allocator, special_inits.items);
+                vm.setExtRootsOwned(&roots);
+                defer vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext_roots.len);
+
+                const init_base = saved_ext_roots.len + sym_n;
+                for (0..special_inits.items.len) |i| {
+                    vals[i] = try self.compile(self.resolveForwardedValue(roots.items[init_base + i]), env);
+                }
+
+                const sym_slice = roots.items[saved_ext_roots.len .. saved_ext_roots.len + sym_n];
+                const sym_list = try self.listFromSlice(sym_slice);
+                const symbols_ir = try self.builder.lit(sym_list);
+                const values_ir = try self.buildIrList(vals);
+                const body_ir = try self.compileBodyWithTail(self.resolveForwardedValue(body_exprs), env, in_tail);
+                return try self.builder.progv(symbols_ir, values_ir, body_ir);
+            }
+
             for (special_inits.items, 0..) |init_expr, i| {
-                vals[i] = try self.compile(init_expr, env);
+                vals[i] = try self.compile(self.resolveForwardedValue(init_expr), env);
             }
             const sym_list = try self.listFromSlice(special_syms.items);
             const symbols_ir = try self.builder.lit(sym_list);
             const values_ir = try self.buildIrList(vals);
-            const body_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
+            const body_ir = try self.compileBodyWithTail(self.resolveForwardedValue(body_exprs), env, in_tail);
             return try self.builder.progv(symbols_ir, values_ir, body_ir);
         }
 
@@ -9157,18 +9241,18 @@ pub const Compiler = struct {
         var i = items.len;
         while (i > 0) {
             i -= 1;
-            result = try heap.allocCons(items[i], result);
+            result = try heap.allocCons(self.resolveForwardedValue(items[i]), result);
         }
         return result;
     }
 
     fn listFromSliceWithTail(self: *Compiler, items: []const Value, tail: Value) !Value {
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
-        var result = tail;
+        var result = self.resolveForwardedValue(tail);
         var i = items.len;
         while (i > 0) {
             i -= 1;
-            result = try heap.allocCons(items[i], result);
+            result = try heap.allocCons(self.resolveForwardedValue(items[i]), result);
         }
         return result;
     }

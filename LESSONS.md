@@ -9,6 +9,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-23)
 
 ### Worked Well
+- Enabling `HABU_TRACE_BAD_STORE=1` while running authoritative `bench-maxima` immediately exposed the first bad write site (`src/runtime/heap.zig:2115`) and pointed straight at compiler special-LET lowering (`src/compiler/compile.zig:5888-5895`) instead of later GC fallout.
+- Rooting `compileLetWithTail`/`tryCompileSpecialLet` cursors with compile-root tokens (`src/compiler/compile.zig:5564-5595`, `src/compiler/compile.zig:5842-5910`) and rooting special-LET fast-path symbol/init slices via temporary VM ext roots (`src/compiler/compile.zig:5919-5951`) removed stale-symbol reintroduction and cleared the JIT Maxima OOM path at scales 1/20/120.
+- Resolving values in `listFromSlice`/`listFromSliceWithTail` before `allocCons` (`src/compiler/compile.zig:9244-9255`) added a low-cost guardrail that prevented forwarded/stale list elements from being copied back into newly allocated compiler-built lists.
 - Replacing VM JIT-function tracking from `AutoHashMap(usize,*CompiledFn)` to a compact entry array with in-place GC refresh (`src/interp/vm.zig:559`, `src/interp/vm.zig:1714`, `src/interp/vm.zig:1899`) removed hash rebuild churn from `collectGarbageExtra` and improved `factor`/`ratsimp` JIT-relative runtime in direct scale-120 rebaselines on this host.
 - Replacing survivor-age tracking hash maps with semispace-indexed age arrays (`src/runtime/heap.zig:357`, `src/runtime/heap.zig:1961`, `src/runtime/heap.zig:1968`) removed `HashMap/Wyhash` overhead from minor-GC hot paths and delivered large absolute Maxima wins on both `factor` and `ratsimp` runs.
 - Locking array-based survivor age behavior with `heap survivor age table rebuild maps nursery slots` (`src/runtime/heap.zig:3992`) protects saturation, outside-nursery filtering, and reset semantics after rebuilding age state.
@@ -66,6 +69,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Emitting first unsupported IR tags on JIT compile failures (`src/interp/repl.zig:3013`) turned generic `UnsupportedIrNode` logs into actionable blockers; current Maxima benchmark wrapper rejection points to `.progv` as the first missing lowering.
 
 ### Did Not Work
+- Retaining every temporary compiler `Value` through `vm.comp_retain` (the `saveVal/loadVal` experiment) introduced many extra GC points and surfaced unrelated stale-cursor crashes; this broad retention strategy was reverted in favor of narrower cursor-rooting + ext-root windows.
 - Relying on `tools/maxima-hotspots` as the only RCA signal for `factor`/`ratsimp` at larger scales was noisy here (intermittent `maxima workload error: OutOfMemory` lines and occasional inflated totals); direct `./zig-out/bin/maxima_workload_bench --json --jit=on/off` runs were required for stable apples-to-apples deltas.
 - `zig build test -- --test-filter ...` can hang in this environment with no emitted output even for focused filters (timed out at 240s in this session), so validation had to rely on bench builds/runs plus targeted runtime checks until the test-runner hang is fixed.
 - Improving absolute GC throughput alone did not satisfy the current JIT-relative gate: the survivor-age array rewrite sped up both JIT and interpreter paths similarly, so `wins` stayed red even with ~20%+ absolute runtime drops.
