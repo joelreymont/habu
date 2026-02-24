@@ -146,7 +146,7 @@
     - [x] `habu-rebaseline-post-hoist-5a1874e5` Rebaseline post-hoist JIT performance and document remaining blockers.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-22): `jit_compiled=397`, gate `pass=false` (`wins=0/5`, compiled delta `397`).
       - Remaining blocker: JIT coverage is now broad, but current JIT mode is still slower than interpreter on tracked Maxima workloads.
-  - [ ] `habu-unlock-generic-jit-026e30f3` Unlock generic JIT admission after post-hoist.
+  - [x] `habu-unlock-generic-jit-026e30f3` Unlock generic JIT admission after post-hoist.
     - [x] `habu-add-jit-skip-2302fb62` Add JIT skip-reason telemetry.
     - [x] `habu-broaden-safe-admission-d08e543b` Broaden safe admission without opt-decl dependency.
     - [x] `habu-rebaseline-admission-and-990a7df6` Rebaseline admission and gate on wins.
@@ -162,6 +162,7 @@
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `ratsimp` corrected from ~`308ms` artifact to ~`39ms`; gate still `pass=false` (`wins=0/5`) with JIT now within ~3-6% of interpreter on tracked workloads.
       - Blocker: safety admission and bridge throw relay are stable, but runtime throughput still regresses versus interpreter on current real workloads.
     - [x] `habu-unify-hotspot-interp-97f8c613` Run `tools/maxima-hotspots` JIT/interpreter baselines on hoist-only backend by adding runtime JIT disable switch (internal option/env) and removing `-Duse-hoist=false` interpreter dependency.
+    - Status (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-24): admission is now broadly active (`jit_adm.elig=3417`, `jit_compiled=548`, `jit_adm.sk_safety=0`) and no longer blocked by the original post-hoist zero-coverage condition.
     - [x] `habu-profile-and-cut-b220c4d6` Profile remaining JIT runtime gap (integrate-first) after hoist-only baseline unification and land one measured hotspot optimization without semantic shortcuts.
       - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): JIT runtime improved on `integrate` (~`173ms` -> ~`165ms`), `factor` (~`57.7ms` -> ~`53.0ms`), `ratsimp` (~`43.1ms` -> ~`40.1ms`), and `solve` (~`13.7ms` -> ~`13.1ms`) after function-resolution cache hot-path cleanup.
       - Runtime sample at high scale (`/tmp/habu_integrate_jit_scale80.sample`) confirms remaining JIT overhead is dominated by `doCall` frame/setup work (keyword/rest/stack moves and chunk resolution), not function-cell lookup misses.
