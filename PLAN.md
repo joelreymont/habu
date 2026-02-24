@@ -355,6 +355,9 @@
       - [x] `habu-nqueens-fuse-tagged-e297d675` Add a generic tagged-abs peephole for hot compare loops and rebaseline (rejected after A/B).
         - Implemented and benchmarked a tagged-abs ladder fusion candidate in `src/jit/backend.zig`, then A/B compared against parent commit `17789016` using five repeated `nqueens10` runs (`--iters=60`) in isolated workspaces.
         - Result: candidate averaged slightly slower (`~3.150ms`) than parent (`~3.142ms`) on this host; reverted backend changes and kept current codegen path.
+      - [x] `habu-jit-re-evaluate-9f8decf7` Re-evaluate `.aggressive` gating for call-free load-heavy functions (rejected).
+        - Trialed relaxing the backend gate to allow `.aggressive` for call-free functions with loads.
+        - Result: `nqueens10` benchmark stopped completing within timeout (`timeout 30 ... --bench=nqueens10 --iters=60` exit `124`), so the change was reverted; keep load-bearing functions on `.none` until hoist-side load-path optimization issues are resolved.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).

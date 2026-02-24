@@ -43,6 +43,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Running mirrored-entry MOV elimination too early in the pass pipeline (before first compaction) had negligible effect because constant materialization still split the mirror windows; placement in the pipeline mattered more than the transform itself.
 - Sampling optimized JIT workloads often reports anonymous native PCs only (`???` in `sample`) for generated code ranges; combine `sample` with `HABU_DUMP_HOIST` and patch traces to map hotspots back to concrete generated blocks before changing passes.
 - A tagged-abs peephole candidate for `sub/add/cmp/mov/sub/csel` in `NQUEENS-SAFE-P` looked promising in instruction count but lost on measured A/B (~`3.150ms` vs parent ~`3.142ms` over 5 runs at `nqueens10`/60 iters), so it was reverted; keep this path measurement-driven.
+- Relaxing JIT opt-level gating to allow `.aggressive` on call-free load-bearing functions reintroduced the historical load-path instability: `nqueens10` no longer completed within `timeout 30` at 60 iterations, so keep `has_loads` in the `.none` gate until hoist-side load optimization bugs are fixed.
 
 ## Session Notes (2026-02-23)
 
