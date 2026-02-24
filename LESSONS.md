@@ -29,6 +29,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Dumping `NQUEENS-SAFE-P` hoist IR after post-pass changes exposed that helper calls (`jitSubNum`/`jitNumEq`/`jitAddNum`) were back in a tail-recursive hot loop because TCO flipped `is_recursive=false`; keeping a separate `fixnum_inline` flag in `IrTranslator` (`src/jit/backend.zig`) preserved recursive fixnum-inline lowering through TCO and removed those helper calls again.
 - Implementing a guarded mirrored-entry MOV eliminator (`src/jit/backend.zig:6640`) with strict shape checks (entry-only window, exact inverse second leg, disjoint first-leg src/dst sets, and post-mirror temp liveness) made this cleanup pass safe and deterministic, then locked behavior with dedicated backend tests (`src/jit/backend.zig:9738`, `src/jit/backend.zig:9770`, `src/jit/backend.zig:9801`).
 - Running mirrored-entry elimination after first `compactNops` (`src/jit/backend.zig` pipeline) exposed normalized copy windows that were hidden by pre-compaction constant materialization, allowing safe removal of redundant restore MOV legs in hot JIT loops (`NQUEENS-SAFE-P` shrank from 144B to 120B and `nqueens10` moved from ~`3.51ms` to ~`3.15ms` at 60 iters on this host).
+- Adding liveness-driven target-load pruning to cross-call BL patching (`src/jit/backend.zig:5266-5274`) safely removes dead non-adjacent MOVZ/MOVK target chains after BLR→BL rewrite while preserving shared load chains until their final use; this is locked by focused regressions (`src/jit/backend.zig:9180-9225`).
 
 ### Did Not Work
 - Relaxing hoist opt gating to allow `.aggressive` for all call-free load-bearing functions caused pathological benchmark slowdowns/hangs; keep `has_loads` in the `.none` gate until load-path correctness/perf is proven.
@@ -44,6 +45,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Sampling optimized JIT workloads often reports anonymous native PCs only (`???` in `sample`) for generated code ranges; combine `sample` with `HABU_DUMP_HOIST` and patch traces to map hotspots back to concrete generated blocks before changing passes.
 - A tagged-abs peephole candidate for `sub/add/cmp/mov/sub/csel` in `NQUEENS-SAFE-P` looked promising in instruction count but lost on measured A/B (~`3.150ms` vs parent ~`3.142ms` over 5 runs at `nqueens10`/60 iters), so it was reverted; keep this path measurement-driven.
 - Relaxing JIT opt-level gating to allow `.aggressive` on call-free load-bearing functions reintroduced the historical load-path instability: `nqueens10` no longer completed within `timeout 30` at 60 iterations, so keep `has_loads` in the `.none` gate until hoist-side load optimization bugs are fixed.
+- Running parent/patch perf loops in a fresh `jj workspace` failed at first because the bench build shells out to `git rev-parse` and the workspace lacked `.git`; baseline loops only became runnable after wiring git metadata into the workspace.
 
 ## Session Notes (2026-02-23)
 

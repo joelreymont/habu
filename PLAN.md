@@ -358,6 +358,11 @@
       - [x] `habu-jit-re-evaluate-9f8decf7` Re-evaluate `.aggressive` gating for call-free load-heavy functions (rejected).
         - Trialed relaxing the backend gate to allow `.aggressive` for call-free functions with loads.
         - Result: `nqueens10` benchmark stopped completing within timeout (`timeout 30 ... --bench=nqueens10 --iters=60` exit `124`), so the change was reverted; keep load-bearing functions on `.none` until hoist-side load-path optimization issues are resolved.
+      - [x] `habu-elide-dead-cross-7c16bf2a` Elide dead cross-call target materialization after BLR→BL rewrites.
+        - Fix (`src/jit/backend.zig`): in `patchCrossCallsToBLSlice`, run post-rewrite register liveness on the materialized target register and NOP the MOVZ/MOVK load chain when dead, including non-adjacent materialization windows.
+        - Added regressions: `patchCrossCallsToBL elides dead non-adjacent target materialization` and `patchCrossCallsToBL keeps shared target load alive until last use`.
+        - Validation: `zig build test -Dtest-filter=patchCrossCallsToBL` (2026-02-24) passes.
+        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): baseline avg `3,142,758ns`, patched avg `3,142,358ns` (~`0.013%` faster, neutral-to-slight win) with no regression.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).

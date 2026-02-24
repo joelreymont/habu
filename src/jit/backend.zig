@@ -5192,7 +5192,6 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) usize {
         var load_idx: ?usize = null;
         var load_len: usize = 0;
         var loaded_addr: u64 = 0;
-        var nop_load_seq: bool = false;
         {
             // Scan backward from MOV looking for MOVZ[+MOVK...] loading src_reg.
             // The MOVZ/MOVK sequence may be in the function prologue (pre-emitted constants).
@@ -5246,7 +5245,6 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) usize {
                         loaded_addr = addr;
                         load_len = seq_len;
                         load_idx = j;
-                        nop_load_seq = (j + seq_len == start_j);
                         break;
                     }
                 }
@@ -5265,13 +5263,16 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) usize {
         // Patch: NOP the MOVZ/MOVK[...] sequence, NOP the MOV, replace BLR with BL
         const rel_offset: i32 = @intCast(@divExact(diff, 4));
         const imm26: u32 = @as(u32, @bitCast(rel_offset)) & 0x03FFFFFF;
-        if (nop_load_seq) {
+        writeInsn(buf, mov_idx.?, NOP);
+        writeInsn(buf, i, 0x94000000 | imm26);
+        // Remove target materialization when it is dead after this rewrite.
+        // This handles both adjacent and non-adjacent MOVZ/MOVK chains.
+        const load_end = load_idx.? + load_len - 1;
+        if (isRegDeadAfter(buf, load_end, src_reg)) {
             for (0..load_len) |k| {
                 writeInsn(buf, load_idx.? + k, NOP);
             }
         }
-        writeInsn(buf, mov_idx.?, NOP);
-        writeInsn(buf, i, 0x94000000 | imm26);
         patched += 1;
     }
     return patched;
@@ -9177,7 +9178,7 @@ test "patchCrossCallsToBL handles 16-bit MOVZ target materialization" {
     try testing.expectEqual(@as(u32, 0x9400000E), patched_insn);
 }
 
-test "patchCrossCallsToBL handles non-adjacent target materialization" {
+test "patchCrossCallsToBL elides dead non-adjacent target materialization" {
     const caller_base: usize = 0x0000_0001_0000_0000;
     const target: u64 = caller_base + 64;
     const words = [_]u32{
@@ -9193,12 +9194,39 @@ test "patchCrossCallsToBL handles non-adjacent target materialization" {
     const patched = patchCrossCallsToBLSlice(&code, caller_base);
     try testing.expectEqual(@as(usize, 1), patched);
 
-    // Non-adjacent load sequence is preserved; MOV+BLR are rewritten.
-    try testing.expectEqual(words[0], readInsn(&code, 0));
-    try testing.expectEqual(words[1], readInsn(&code, 1));
+    // Target-load chain is now dropped once dead, even when non-adjacent.
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, 0));
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, 1));
     try testing.expectEqual(words[2], readInsn(&code, 2));
     try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, 3));
     try testing.expectEqual(@as(u32, 0x9400000C), readInsn(&code, 4));
+}
+
+test "patchCrossCallsToBL keeps shared target load alive until last use" {
+    const caller_base: usize = 0x0000_0001_0000_0000;
+    const target: u64 = caller_base + 80;
+    const words = [_]u32{
+        makeMovzImm(10, @truncate(target), 0),
+        makeMovkImm(10, @truncate(target >> 32), 2),
+        makeMovInsn(9, 10),
+        0xD63F0120, // BLR x9
+        makeMovInsn(9, 10),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    const patched = patchCrossCallsToBLSlice(&code, caller_base);
+    try testing.expectEqual(@as(usize, 2), patched);
+
+    // Both calls are patched, proving the shared load stayed available for
+    // the second rewrite before being removed as dead.
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, 0));
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, 1));
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, 2));
+    try testing.expectEqual(@as(u32, 0x94000011), readInsn(&code, 3));
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, 4));
+    try testing.expectEqual(@as(u32, 0x9400000F), readInsn(&code, 5));
 }
 
 test "containsHelperCalls excludes numeric ops under fixnum inline lowering" {
