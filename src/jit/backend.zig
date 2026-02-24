@@ -3507,10 +3507,11 @@ pub const IrTranslator = struct {
 
     fn translateCall(self: *IrTranslator, func_ir: *const Ir, args: []const *const Ir) anyerror!HoistValue {
         const trace_xcall = std.posix.getenv("HABU_TRACE_JIT_XCALL") != null;
+        const target_name_opt = self.callTargetName(func_ir);
         // Check for self-recursive call
-        if (self.is_recursive and isCallTargetSelf(func_ir, self.fn_name)) {
+        if (self.is_recursive and target_name_opt != null and namesMatch(target_name_opt.?, self.fn_name)) {
             if (trace_xcall) {
-                const target_name = self.callTargetName(func_ir) orelse "<noname>";
+                const target_name = target_name_opt.?;
                 std.debug.print("JIT_XCALL caller={s} target={s} argc={d} mode=self\n", .{
                     self.fn_name,
                     target_name,
@@ -3522,7 +3523,7 @@ pub const IrTranslator = struct {
 
         // Check for cross-function call to known JIT-compiled function
         if (self.known_fns) |kf| {
-            if (self.callTargetName(func_ir)) |target_name| {
+            if (target_name_opt) |target_name| {
                 if (self.lookupKnownFn(kf, target_name)) |known| {
                     if (trace_xcall) {
                         std.debug.print("JIT_XCALL caller={s} target={s} argc={d} mode=known callee={s} arity={d} fn_ptr=0x{x}\n", .{
@@ -3540,7 +3541,7 @@ pub const IrTranslator = struct {
         }
 
         // Check for known runtime primitive (gcd, nreverse, append, assoc, etc.)
-        if (self.callTargetName(func_ir)) |target_name| {
+        if (target_name_opt) |target_name| {
             if (getJitPrimitivePtrWithArity(target_name, args.len)) |prim_ptr| {
                 if (trace_xcall) {
                     std.debug.print("JIT_XCALL caller={s} target={s} argc={d} mode=prim ptr=0x{x}\n", .{
@@ -3555,7 +3556,7 @@ pub const IrTranslator = struct {
         }
 
         if (trace_xcall) {
-            const target_name = self.callTargetName(func_ir) orelse "<dynamic>";
+            const target_name = target_name_opt orelse "<dynamic>";
             std.debug.print("JIT_XCALL caller={s} target={s} argc={d} mode=generic\n", .{
                 self.fn_name,
                 target_name,
@@ -3870,9 +3871,9 @@ pub const IrTranslator = struct {
         // Detect continuation pattern: does the body have a tail self-call
         // where exactly ONE arg contains a non-tail self-call?
         // Multiple inner self-calls (like tak) are not supported by cont stack.
-        const use_cont_stack = hasNonTailSelfCalls(body_ir, self.fn_name) and
-            hasSelfTailCalls(body_ir, self.fn_name) and
-            hasSingleInnerSelfCall(body_ir, self.fn_name);
+        const use_cont_stack = hasNonTailSelfCallsWithLiteralRoots(body_ir, self.fn_name, self.literal_roots) and
+            hasSelfTailCallsWithLiteralRoots(body_ir, self.fn_name, self.literal_roots) and
+            hasSingleInnerSelfCallWithLiteralRoots(body_ir, self.fn_name, self.literal_roots);
 
         // Determine continuation width: number of values to save per continuation.
         // For ack pattern: tail_call(self, arg0, inner_call) → save arg0 = 1 value.
@@ -4034,13 +4035,13 @@ pub const IrTranslator = struct {
         switch (ir.*) {
             .block => |b| return self.translateTCOExpr(b.body),
             .tailcall => |tc| {
-                if (isCallTargetSelf(tc.func, self.fn_name)) {
+                if (isCallTargetSelfWithLiteralRoots(tc.func, self.fn_name, self.literal_roots)) {
                     // Check for continuation stack mode: if active and an arg
                     // contains a self-call, replace call_indirect with push+jump.
                     if (self.cont_depth_phi != null) {
                         var call_arg_idx: ?usize = null;
                         for (tc.args, 0..) |arg, i| {
-                            if (detectSelfCalls(arg, self.fn_name)) {
+                            if (detectSelfCallsWithLiteralRoots(arg, self.fn_name, self.literal_roots)) {
                                 call_arg_idx = i;
                                 break;
                             }
@@ -4096,7 +4097,7 @@ pub const IrTranslator = struct {
                     // Standard tail call path (no continuation stack, or no inner self-call)
                     if (self.local_consts) {
                         for (tc.args) |arg| {
-                            if (detectSelfCalls(arg, self.fn_name)) {
+                            if (detectSelfCallsWithLiteralRoots(arg, self.fn_name, self.literal_roots)) {
                                 self.in_call_block = true;
                                 break;
                             }
@@ -4106,7 +4107,7 @@ pub const IrTranslator = struct {
                     var arg_vals: [9]HoistValue = undefined;
                     var has_call = [_]bool{false} ** 9;
                     for (tc.args, 0..) |arg, i| {
-                        has_call[i] = detectSelfCalls(arg, self.fn_name);
+                        has_call[i] = detectSelfCallsWithLiteralRoots(arg, self.fn_name, self.literal_roots);
                     }
                     for (tc.args, 0..) |arg, i| {
                         if (has_call[i]) {
@@ -4153,8 +4154,8 @@ pub const IrTranslator = struct {
                 } else try self.translate(cond_ir);
 
                 // Check if both branches are tail — if so, no merge needed
-                const then_is_tail = isTailCall(then_branch, self.fn_name);
-                const else_is_tail = isTailCall(else_branch, self.fn_name);
+                const then_is_tail = isTailCallWithLiteralRoots(then_branch, self.fn_name, self.literal_roots);
+                const else_is_tail = isTailCallWithLiteralRoots(else_branch, self.fn_name, self.literal_roots);
 
                 if (then_is_tail and else_is_tail) {
                     // Both branches are tail calls — no merge block needed
@@ -5395,39 +5396,49 @@ fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: st
 /// Check if IR tree contains calls to known runtime primitives (gcd, nreverse, etc.)
 /// Check if IR tree contains calls to known runtime primitives (gcd, nreverse, etc.)
 fn containsPrimitiveCalls(body: *const Ir, self_name: []const u8) bool {
+    return containsPrimitiveCallsWithLiteralRoots(body, self_name, null);
+}
+
+fn containsPrimitiveCallsWithLiteralRoots(body: *const Ir, self_name: []const u8, literal_roots: ?*const LiteralRoots) bool {
     return irAny(body, struct {
         name: []const u8,
+        literal_roots: ?*const LiteralRoots,
         fn check(self: @This(), ir: *const Ir) bool {
             const func_ir = switch (ir.*) {
                 .call => |c| c.func,
                 .tailcall => |tc| tc.func,
                 else => return false,
             };
-            if (isCallTargetSelf(func_ir, self.name)) return false;
-            const target = getCallTargetName(func_ir) orelse return false;
+            if (isCallTargetSelfWithLiteralRoots(func_ir, self.name, self.literal_roots)) return false;
+            const target = getCallTargetNameWithLiteralRoots(func_ir, self.literal_roots) orelse return false;
             return getJitPrimitivePtr(target) != null;
         }
-    }{ .name = self_name });
+    }{ .name = self_name, .literal_roots = literal_roots });
 }
 
 /// Detect if a self-call appears as an argument to another self-call.
 /// This pattern (e.g., tak) causes segfaults due to hoist regalloc bug.
 fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
+    return hasNestedSelfCallsWithLiteralRoots(body, name, null);
+}
+
+fn hasNestedSelfCallsWithLiteralRoots(body: *const Ir, name: []const u8, literal_roots: ?*const LiteralRoots) bool {
     return irAny(body, struct {
         name: []const u8,
+        literal_roots: ?*const LiteralRoots,
         fn check(self: @This(), ir: *const Ir) bool {
             const func_ir, const args = switch (ir.*) {
                 .call => |c| .{ c.func, c.args },
                 .tailcall => |tc| .{ tc.func, tc.args },
                 else => return false,
             };
-            if (!isCallTargetSelf(func_ir, self.name)) return false;
+            if (!isCallTargetSelfWithLiteralRoots(func_ir, self.name, self.literal_roots)) return false;
             for (args) |arg| {
-                if (detectSelfCalls(arg, self.name)) return true;
+                if (detectSelfCallsWithLiteralRoots(arg, self.name, self.literal_roots)) return true;
             }
             return false;
         }
-    }{ .name = name });
+    }{ .name = name, .literal_roots = literal_roots });
 }
 
 /// Check if IR tree contains cons/append operations.
@@ -5549,31 +5560,41 @@ pub fn hasNonSelfCalls(body: *const Ir, name: []const u8) bool {
 
 /// Detect whether a function body contains any non-self call.
 pub fn hasAnyNonSelfCalls(body: *const Ir, name: []const u8) bool {
+    return hasAnyNonSelfCallsWithLiteralRoots(body, name, null);
+}
+
+pub fn hasAnyNonSelfCallsWithLiteralRoots(body: *const Ir, name: []const u8, literal_roots: ?*const LiteralRoots) bool {
     return irAny(body, struct {
         name: []const u8,
+        literal_roots: ?*const LiteralRoots,
         fn check(self: @This(), ir: *const Ir) bool {
             const func_ir = switch (ir.*) {
                 .call => |c| c.func,
                 .tailcall => |tc| tc.func,
                 else => return false,
             };
-            return !isCallTargetSelf(func_ir, self.name);
+            return !isCallTargetSelfWithLiteralRoots(func_ir, self.name, self.literal_roots);
         }
-    }{ .name = name });
+    }{ .name = name, .literal_roots = literal_roots });
 }
 
 /// Detect whether a function body contains self-recursive calls.
 fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
+    return detectSelfCallsWithLiteralRoots(body, name, null);
+}
+
+fn detectSelfCallsWithLiteralRoots(body: *const Ir, name: []const u8, literal_roots: ?*const LiteralRoots) bool {
     return irAny(body, struct {
         name: []const u8,
+        literal_roots: ?*const LiteralRoots,
         fn check(self: @This(), ir: *const Ir) bool {
             return switch (ir.*) {
-                .call => |c| isCallTargetSelf(c.func, self.name),
-                .tailcall => |tc| isCallTargetSelf(tc.func, self.name),
+                .call => |c| isCallTargetSelfWithLiteralRoots(c.func, self.name, self.literal_roots),
+                .tailcall => |tc| isCallTargetSelfWithLiteralRoots(tc.func, self.name, self.literal_roots),
                 else => false,
             };
         }
-    }{ .name = name });
+    }{ .name = name, .literal_roots = literal_roots });
 }
 
 /// Detect whether an IR tree contains load-generating operations (car, cdr, length).
@@ -5601,8 +5622,12 @@ fn containsUnsafeConsLoads(body: *const Ir) bool {
 
 /// Check if an expression is a self-tail-call (immediate, not nested).
 fn isTailCall(ir: *const Ir, name: []const u8) bool {
+    return isTailCallWithLiteralRoots(ir, name, null);
+}
+
+fn isTailCallWithLiteralRoots(ir: *const Ir, name: []const u8, literal_roots: ?*const LiteralRoots) bool {
     return switch (ir.*) {
-        .tailcall => |tc| isCallTargetSelf(tc.func, name),
+        .tailcall => |tc| isCallTargetSelfWithLiteralRoots(tc.func, name, literal_roots),
         else => false,
     };
 }
@@ -5610,12 +5635,16 @@ fn isTailCall(ir: *const Ir, name: []const u8) bool {
 /// Detect whether a function body has self-recursive tail calls.
 /// Walks only tail positions (if branches, let body, last progn expr).
 fn hasSelfTailCalls(body: *const Ir, name: []const u8) bool {
+    return hasSelfTailCallsWithLiteralRoots(body, name, null);
+}
+
+fn hasSelfTailCallsWithLiteralRoots(body: *const Ir, name: []const u8, literal_roots: ?*const LiteralRoots) bool {
     return switch (body.*) {
-        .tailcall => |tc| isCallTargetSelf(tc.func, name),
-        .block => |b| hasSelfTailCalls(b.body, name),
-        .@"if" => |i| hasSelfTailCalls(i.then_branch, name) or hasSelfTailCalls(i.else_branch, name),
-        .let => |l| hasSelfTailCalls(l.body, name),
-        .progn => |exprs| if (exprs.len == 0) false else hasSelfTailCalls(exprs[exprs.len - 1], name),
+        .tailcall => |tc| isCallTargetSelfWithLiteralRoots(tc.func, name, literal_roots),
+        .block => |b| hasSelfTailCallsWithLiteralRoots(b.body, name, literal_roots),
+        .@"if" => |i| hasSelfTailCallsWithLiteralRoots(i.then_branch, name, literal_roots) or hasSelfTailCallsWithLiteralRoots(i.else_branch, name, literal_roots),
+        .let => |l| hasSelfTailCallsWithLiteralRoots(l.body, name, literal_roots),
+        .progn => |exprs| if (exprs.len == 0) false else hasSelfTailCallsWithLiteralRoots(exprs[exprs.len - 1], name, literal_roots),
         else => false,
     };
 }
@@ -5623,34 +5652,43 @@ fn hasSelfTailCalls(body: *const Ir, name: []const u8) bool {
 /// Check if the continuation stack pattern applies: exactly one tail-call arg
 /// contains a self-call. Multiple self-call args (like tak) aren't supported.
 fn hasSingleInnerSelfCall(body: *const Ir, name: []const u8) bool {
+    return hasSingleInnerSelfCallWithLiteralRoots(body, name, null);
+}
+
+fn hasSingleInnerSelfCallWithLiteralRoots(body: *const Ir, name: []const u8, literal_roots: ?*const LiteralRoots) bool {
     return switch (body.*) {
         .tailcall => |tc| blk: {
-            if (!isCallTargetSelf(tc.func, name)) break :blk false;
+            if (!isCallTargetSelfWithLiteralRoots(tc.func, name, literal_roots)) break :blk false;
             var count: u32 = 0;
             for (tc.args) |arg| {
-                if (detectSelfCalls(arg, name)) count += 1;
+                if (detectSelfCallsWithLiteralRoots(arg, name, literal_roots)) count += 1;
             }
             break :blk count == 1;
         },
-        .block => |b| hasSingleInnerSelfCall(b.body, name),
-        .@"if" => |i| hasSingleInnerSelfCall(i.then_branch, name) or hasSingleInnerSelfCall(i.else_branch, name),
-        .let => |l| hasSingleInnerSelfCall(l.body, name),
-        .progn => |exprs| if (exprs.len == 0) false else hasSingleInnerSelfCall(exprs[exprs.len - 1], name),
+        .block => |b| hasSingleInnerSelfCallWithLiteralRoots(b.body, name, literal_roots),
+        .@"if" => |i| hasSingleInnerSelfCallWithLiteralRoots(i.then_branch, name, literal_roots) or hasSingleInnerSelfCallWithLiteralRoots(i.else_branch, name, literal_roots),
+        .let => |l| hasSingleInnerSelfCallWithLiteralRoots(l.body, name, literal_roots),
+        .progn => |exprs| if (exprs.len == 0) false else hasSingleInnerSelfCallWithLiteralRoots(exprs[exprs.len - 1], name, literal_roots),
         else => false,
     };
 }
 
 /// Detect if a function body has non-tail self-calls (.call nodes targeting self).
 fn hasNonTailSelfCalls(body: *const Ir, name: []const u8) bool {
+    return hasNonTailSelfCallsWithLiteralRoots(body, name, null);
+}
+
+fn hasNonTailSelfCallsWithLiteralRoots(body: *const Ir, name: []const u8, literal_roots: ?*const LiteralRoots) bool {
     return irAny(body, struct {
         name: []const u8,
+        literal_roots: ?*const LiteralRoots,
         fn check(self: @This(), ir: *const Ir) bool {
             return switch (ir.*) {
-                .call => |c| isCallTargetSelf(c.func, self.name),
+                .call => |c| isCallTargetSelfWithLiteralRoots(c.func, self.name, self.literal_roots),
                 else => false,
             };
         }
-    }{ .name = name });
+    }{ .name = name, .literal_roots = literal_roots });
 }
 
 /// Detect whether a function body contains loop constructs.
@@ -5664,8 +5702,19 @@ fn detectLoops(body: *const Ir) bool {
 
 /// Extract the target function name from a call's func IR node.
 fn getCallTargetName(func_ir: *const Ir) ?[]const u8 {
+    return getCallTargetNameWithLiteralRoots(func_ir, null);
+}
+
+fn getCallTargetNameWithLiteralRoots(func_ir: *const Ir, literal_roots: ?*const LiteralRoots) ?[]const u8 {
     return switch (func_ir.*) {
         .global_ref => |gr| gr.name,
+        .lit => blk: {
+            const roots = literal_roots orelse break :blk null;
+            const slot = roots.get(@intFromPtr(func_ir)) orelse break :blk null;
+            const val = slot.*;
+            if (!val.isSymbol()) break :blk null;
+            break :blk val.toPtr(Symbol).getName();
+        },
         else => null,
     };
 }
@@ -5690,10 +5739,12 @@ fn namesMatch(a: []const u8, b: []const u8) bool {
 }
 
 fn isCallTargetSelf(func_ir: *const Ir, name: []const u8) bool {
-    return switch (func_ir.*) {
-        .global_ref => |gr| namesMatch(gr.name, name),
-        else => false,
-    };
+    return isCallTargetSelfWithLiteralRoots(func_ir, name, null);
+}
+
+fn isCallTargetSelfWithLiteralRoots(func_ir: *const Ir, name: []const u8, literal_roots: ?*const LiteralRoots) bool {
+    const target_name = getCallTargetNameWithLiteralRoots(func_ir, literal_roots) orelse return false;
+    return namesMatch(target_name, name);
 }
 
 fn isIdentityJumpWrapper(func: *const Function, blk: Block) ?Block {
@@ -5875,7 +5926,7 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     translator.known_fns = known_fns;
     translator.literal_roots = literal_roots;
     translator.user_arity = arity;
-    translator.is_recursive = detectSelfCalls(lambda.body, name);
+    translator.is_recursive = detectSelfCallsWithLiteralRoots(lambda.body, name, literal_roots);
     translator.has_loops = detectLoops(lambda.body);
     translator.has_loads = containsLoads(lambda.body);
     translator.fixnum_fast = lambda.safety == 0;
@@ -5888,8 +5939,8 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
 
     translator.has_cross_calls = containsCons(lambda.body) or
         containsHelperCalls(lambda.body, translator.fixnum_inline) or
-        containsPrimitiveCalls(lambda.body, name) or
-        hasAnyNonSelfCalls(lambda.body, name);
+        containsPrimitiveCallsWithLiteralRoots(lambda.body, name, literal_roots) or
+        hasAnyNonSelfCallsWithLiteralRoots(lambda.body, name, literal_roots);
 
     const dump_hoist = blk: {
         if (std.posix.getenv("HABU_DUMP_HOIST") == null) break :blk false;
@@ -5913,7 +5964,7 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
 
     // Enable call result spilling for nested self-calls (e.g., tak pattern)
     // to break parallel copy conflicts in the regalloc.
-    if (translator.is_recursive and hasNestedSelfCalls(lambda.body, name)) {
+    if (translator.is_recursive and hasNestedSelfCallsWithLiteralRoots(lambda.body, name, literal_roots)) {
         translator.needs_call_spill = true;
     }
 
@@ -5949,26 +6000,26 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     // Partial TCO: tail self-calls become jumps to header, non-tail self-calls
     // remain as call_indirect. This eliminates prologue/epilogue overhead for
     // tail calls while keeping non-tail calls correct.
-    const use_tco = hasSelfTailCalls(lambda.body, name);
+    const use_tco = hasSelfTailCallsWithLiteralRoots(lambda.body, name, literal_roots);
 
     if (use_tco) {
         // Partial TCO: tail self-calls become jumps. If there are still non-tail
         // self-calls, the function remains recursive (needs self-pointer).
-        if (!hasNonTailSelfCalls(lambda.body, name)) {
+        if (!hasNonTailSelfCallsWithLiteralRoots(lambda.body, name, literal_roots)) {
             translator.is_recursive = false;
         }
         // May still have cross-calls (cons, known functions)
         translator.has_cross_calls = containsCons(lambda.body) or
             containsHelperCalls(lambda.body, translator.fixnum_inline) or
-            containsPrimitiveCalls(lambda.body, name) or
-            hasAnyNonSelfCalls(lambda.body, name);
+            containsPrimitiveCallsWithLiteralRoots(lambda.body, name, literal_roots) or
+            hasAnyNonSelfCallsWithLiteralRoots(lambda.body, name, literal_roots);
     }
 
     // Emit small constants locally (not cached) when a TCO function has
     // non-tail self-calls. Hoist's optimizer moves cached constants to block0,
     // forcing callee-saved registers since their live ranges span call sites.
     // Only enabled for TCO functions where the loop header creates the problem.
-    translator.local_consts = use_tco and hasNonTailSelfCalls(lambda.body, name);
+    translator.local_consts = use_tco and hasNonTailSelfCallsWithLiteralRoots(lambda.body, name, literal_roots);
 
     var result_i64: HoistValue = undefined;
 
@@ -10444,6 +10495,30 @@ test "call target helpers validate literal symbol pointers" {
     const lit_invalid = Ir{ .lit = Value{ .raw = 0x32 } };
     try testing.expect(getCallTargetName(&lit_invalid) == null);
     try testing.expect(!isCallTargetSelf(&lit_invalid, "jit-target"));
+}
+
+test "literal roots restore self-call detection for lit targets" {
+    var heap = try runtime.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const sym = try heap.intern("self-lit");
+    var func_lit = Ir{ .lit = sym };
+    const args: []const *const Ir = &.{};
+    var call_ir = Ir{ .call = .{ .func = &func_lit, .args = args } };
+    var tailcall_ir = Ir{ .tailcall = .{ .func = &func_lit, .args = args } };
+
+    var roots = LiteralRoots.init(testing.allocator);
+    defer roots.deinit();
+    const slot = try testing.allocator.create(Value);
+    defer testing.allocator.destroy(slot);
+    slot.* = sym;
+    try roots.put(@intFromPtr(&func_lit), slot);
+
+    try testing.expect(!detectSelfCalls(&call_ir, "self-lit"));
+    try testing.expect(detectSelfCallsWithLiteralRoots(&call_ir, "self-lit", &roots));
+
+    try testing.expect(!hasSelfTailCalls(&tailcall_ir, "self-lit"));
+    try testing.expect(hasSelfTailCallsWithLiteralRoots(&tailcall_ir, "self-lit", &roots));
 }
 
 test "hoist IR translator: nested if in expression" {

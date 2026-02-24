@@ -423,6 +423,17 @@
           - `tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32 --workloads factor,ratsimp` (no panic).
         - A/B (`--bench=nqueens10 --iters=80`, 5 runs each, 2026-02-24): parent `3,145,450ns` -> patched `3,080,125ns` (~`2.1%` faster).
         - SBCL parity rebaseline (`sbcl --script bench/comprehensive.lisp --json --iters 80 --bench nqueens10`, 5 runs, 2026-02-24): SBCL avg `3,086,800ns`; Habu JIT avg `3,080,125ns` (slightly faster on host).
+      - [x] `habu-profile-nqueens-residual-7ea7e597` Fix rooted-literal self-call classification in residual nqueens recursion paths.
+        - RCA (`HABU_TRACE_JIT_XCALL=1`, 2026-02-24): after static `.lit` hardening, `NQUEENS-SAFE-P` self-recursive calls fell back to `mode=generic` because recursion/tail-call detection only recognized `.global_ref`.
+        - Fix (`src/jit/backend.zig`):
+          - add literal-root-aware call-target helpers for current-lambda analysis (`detectSelfCallsWithLiteralRoots`, `hasSelfTailCallsWithLiteralRoots`, `hasNonTailSelfCallsWithLiteralRoots`, `hasNestedSelfCallsWithLiteralRoots`, `containsPrimitiveCallsWithLiteralRoots`, `hasAnyNonSelfCallsWithLiteralRoots`);
+          - keep no-root analysis conservative for deep-copied known bodies (`.global_ref` only);
+          - route `translateCall` self/known/primitive dispatch through rooted `callTargetName` for current IR.
+        - Validation:
+          - `zig build test -Dtest-filter='literal roots restore self-call detection for lit targets'`
+          - `zig build test -Dtest-filter='compileChunk JIT handles recursive nqueens helper entry copies'`
+          - `zig build test -Dtest-filter='compileChunk JIT generic float arithmetic and compare stay correct'`
+          - trace check: `JIT_XCALL caller=NQUEENS-SAFE-P ... mode=generic` removed, `JIT_XCALL caller=NQUEENS-SOLVE ... mode=self` preserved.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).
