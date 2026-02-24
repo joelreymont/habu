@@ -467,6 +467,12 @@
     - [x] `habu-detect-blr-imm-382c3cd1` Add a backend detector + regressions for the observed BLR target clobber signature (single `MOVZ` overwrite after earlier target imm chain) to lock RCA before repair work.
     - [x] `habu-repair-one-blr-9397cf99` Repair the detected single-`MOVZ` BLR target clobber signature in `fixBlrTargetClobber` and lock with backend machine-code tests (follow-up still required for remaining cached-pointer crash forms).
     - Rebaseline (`zig build -Doptimize=ReleaseFast bench-comp -Duse-hoist=true -- --json --bench=assoc --iters=30`, 2026-02-23): Habu JIT `assoc` = `2.79-2.83ms` (repeat runs); SBCL reference (`sbcl --script bench/comprehensive.lisp`) `assoc` = `2.77-2.78ms`.
+  - [ ] `habu-cut-factor-ratsimp-670e8067` Cut remaining `factor`/`ratsimp` runtime gap with measured, generic optimizations.
+    - Current baseline (`tools/maxima-hotspots --json --scale 120 --heap-mb 1024 --nursery-mb 32 --workloads factor,ratsimp`, 2026-02-24): `factor interp/jit ~0.991`, `ratsimp interp/jit ~0.969`, gate still red (`wins=0/2`).
+    - [x] `habu-remove-legacy-global-661e1400` Remove legacy global-name fallback probing in symbol global-index lookup.
+      - Removed CL/COMMON-LISP/CL-USER prefix probing from `lookupSymbolGlobalIndex` (`src/interp/vm.zig`) and kept qualified-name lookup only.
+      - Added regression `vm does not use legacy global fallback names` to lock hard-cutover behavior (no implicit unqualified fallback lookup).
+      - Validation: `zig build test -Dtest-filter='vm does not use legacy global fallback names'`, `zig build test -Dtest-filter='vm global index cache resets on env swap'`.
 
 ### 2. Compiler Core
 - [x] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.

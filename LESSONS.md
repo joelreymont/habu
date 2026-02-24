@@ -9,6 +9,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-24)
 
 ### Worked Well
+- Removing legacy global-name fallback probes in `lookupSymbolGlobalIndex` (`src/interp/vm.zig`) and locking it with `vm does not use legacy global fallback names` prevented silent CL/CL-USER prefix fallback behavior from creeping back in after hard cutover.
 - Enforcing `(optimize (speed 3) (safety 0))` at compile time for every JIT benchmark `defun` (`bench/comprehensive_bench.zig:65`, `bench/comprehensive_bench.zig:396`) prevents silent benchmark-mode drift and catches missing declarations during build instead of after noisy perf runs.
 - Splitting call-target name handling by context fixed a real crash class: keep static recursion/cross-call analysis on `.global_ref` only (`src/jit/backend.zig:getCallTargetName`, `src/jit/backend.zig:isCallTargetSelf`) and use rooted literal slots only in translation-time dispatch (`src/jit/backend.zig:IrTranslator.callTargetName`); this preserved primitive/known dispatch while eliminating stale `.lit` symbol dereferences in deep-copied IR.
 - Extending recursion/tail-call analysis with literal-root-aware variants for the current lambda (`src/jit/backend.zig:detectSelfCallsWithLiteralRoots`, `src/jit/backend.zig:hasSelfTailCallsWithLiteralRoots`) restored self-recursion classification for literal call targets: `NQUEENS-SAFE-P` no longer compiles with `mode=generic` self-calls under `HABU_TRACE_JIT_XCALL`.
@@ -41,6 +42,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding liveness-driven target-load pruning to cross-call BL patching (`src/jit/backend.zig:5266-5274`) safely removes dead non-adjacent MOVZ/MOVK target chains after BLR→BL rewrite while preserving shared load chains until their final use; this is locked by focused regressions (`src/jit/backend.zig:9180-9225`).
 
 ### Did Not Work
+- Reworking VM symbol/function lookup caches by rekeying across GC or broad alias-first lookup changes in `lookupSymbolGlobalIndex` did not produce stable `factor/ratsimp` wins on this host; keep perf claims gated on repeated `tools/maxima-hotspots --scale 120` checks and revert speculative cache churn quickly.
 - Treating inlining-threshold broadening as a safe knob without stronger structural proof caused catastrophic runtime regressions in hot recursion (`NQUEENS-SAFE-P` path); keep threshold experiments gated by strict shape constraints plus immediate A/B rollback rules.
 - Trying to harden `.lit` symbol-name extraction in static call-target analysis by consulting global JIT heap state (`g_heap`) was wrong: stale heap pointers in long-lived test flows caused overflow/segfault (`src/jit/backend.zig:safeLiteralSymbolName` trial). Static analysis must not depend on mutable global heap bridges.
 - Keeping recursion detection `.global_ref`-only after the static `.lit` crash hardening regressed current-lambda recursive lowering (`NQUEENS-SAFE-P` fell to `mode=generic` self-calls); current-lambda analysis must use rooted literal slots, while deep-copied/no-root analysis stays conservative.

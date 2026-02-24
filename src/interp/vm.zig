@@ -2440,7 +2440,6 @@ pub const Vm = struct {
         if (symbolIsUninterned(sym)) return null;
         const sym_val = Value.makeSymbol(sym);
         if (self.lookupGlobalIndexCache(sym_val)) |idx| return idx;
-        const local_name = sym.getName();
 
         var qual_buf: [512]u8 = undefined;
         const q = try qual_name.qualSymWithHeap(self.allocator, self.heap, sym, &qual_buf);
@@ -2450,33 +2449,7 @@ pub const Vm = struct {
             self.storeGlobalIndexCache(sym_val, idx);
             return idx;
         }
-        if (self.allowLegacyGlobalFallbackSym(sym)) {
-            if (env.lookup(local_name)) |idx| {
-                self.storeGlobalIndexCache(sym_val, idx);
-                return idx;
-            }
-
-            const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
-            var full_buf: [640]u8 = undefined;
-            for (prefixes) |prefix| {
-                const candidate = std.fmt.bufPrint(&full_buf, "{s}{s}", .{ prefix, local_name }) catch continue;
-                if (env.lookup(candidate)) |idx| {
-                    self.storeGlobalIndexCache(sym_val, idx);
-                    return idx;
-                }
-            }
-        }
         return null;
-    }
-
-    fn isLegacyFallbackPackageName(pkg_name: []const u8) bool {
-        return std.mem.eql(u8, pkg_name, "CL-USER") or
-            std.mem.eql(u8, pkg_name, "COMMON-LISP-USER");
-    }
-
-    fn allowLegacyGlobalFallbackSym(self: *const Vm, sym: *const Symbol) bool {
-        const pkg = self.heap.symbolHomePkg(sym) orelse return false;
-        return isLegacyFallbackPackageName(pkg.name);
     }
 
     fn globalNameForIndex(self: *Vm, idx: u16) ?[]const u8 {
@@ -14404,6 +14377,28 @@ test "vm global index cache resets on env swap" {
     vm.setGlobalEnv(&env_b);
     const got_b = (try vm.lookupSymbolGlobalIndex(sym_ptr)) orelse return error.TestUnexpectedResult;
     try testing.expectEqual(idx_b, got_b);
+}
+
+test "vm does not use legacy global fallback names" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var env = GlobalEnv.init(allocator);
+    defer env.deinit();
+    vm.setGlobalEnv(&env);
+
+    _ = try env.define("LEGACY-FALLBACK-SYM");
+    const sym = try heap.intern("LEGACY-FALLBACK-SYM");
+    const sym_ptr = sym.toPtr(Symbol);
+
+    const got = try vm.lookupSymbolGlobalIndex(sym_ptr);
+    try testing.expect(got == null);
 }
 
 test "vm allocVector triggers debt-driven precollection" {

@@ -1,0 +1,4 @@
+dot_id=habu-remove-legacy-global-661e1400
+timestamp=20260224_191853
+perf_micro_cmd=zig build -Duse-hoist=true bench-comp -- --json
+perf_real_cmd=tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32 --workloads factor,ratsimp
