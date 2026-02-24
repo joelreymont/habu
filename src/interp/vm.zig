@@ -755,6 +755,7 @@ pub const Vm = struct {
     /// Stable host-root slots for JIT literal Values.
     jit_literal_roots: std.ArrayList(*Value),
     jit_adm: JitAdmStats,
+    jit_direct_calls: u64,
     call_shape: CallShapeStats,
     track_call_shape: bool,
 
@@ -1180,6 +1181,7 @@ pub const Vm = struct {
             .jit_fns = std.ArrayList(JitFnEntry){},
             .jit_literal_roots = std.ArrayList(*Value){},
             .jit_adm = .{},
+            .jit_direct_calls = 0,
             .call_shape = .{},
             .track_call_shape = std.posix.getenv("HABU_TRACK_CALL_SHAPES") != null,
             .trace_jit_call = std.posix.getenv("HABU_TRACE_JIT_CALL") != null,
@@ -1222,6 +1224,10 @@ pub const Vm = struct {
 
     pub fn resetJitAdm(self: *Vm) void {
         self.jit_adm = .{};
+    }
+
+    pub fn resetJitDirectCalls(self: *Vm) void {
+        self.jit_direct_calls = 0;
     }
 
     pub fn resetCallShapeStats(self: *Vm) void {
@@ -1852,31 +1858,26 @@ pub const Vm = struct {
         self.jit_bridge_epoch = jit_backend.bridgeEpoch();
     }
 
-    /// Try to call a closure via hoist-compiled native code.
-    /// Returns the result of calling it, or null if not hoist-compiled.
-    fn tryCallJit(self: *Vm, argc: u8) Error!?Value {
-        const chunk = self.chunk;
-        const compiled_ptr = chunk.jit_fn;
-        if (compiled_ptr == 0) return null;
-        const compiled: *const jit_backend.CompiledFn = @ptrFromInt(compiled_ptr);
-        if (compiled.arity != argc) return null;
+    fn runJitCompiled(
+        self: *Vm,
+        compiled: *const jit_backend.CompiledFn,
+        callee_chunk: *const Chunk,
+        caller_chunk: *const Chunk,
+        args: []const Value,
+    ) Error!?Value {
         const trace_jit_call = self.trace_jit_call;
         self.jit_bridge_error = null;
         // Set global heap pointer so JIT cons can allocate
         refreshJitHeap(self);
         self.installJitBridges();
 
-        // Extract args from the VM stack (they're above the callee frame)
-        const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
-        const args = self.stack[bp .. bp + argc];
         if (trace_jit_call) {
-            const caller_chunk = if (self.fp > 0) self.frames[self.fp - 1].chunk else chunk;
             std.debug.print(
                 "JIT_CALL enter {s} argc={d} chunk={s} caller={s} fp={d} sp={d}\n",
-                .{ compiled.name, argc, chunkTraceName(self.chunk), chunkTraceName(caller_chunk), self.fp, self.sp },
+                .{ compiled.name, args.len, chunkTraceName(callee_chunk), chunkTraceName(caller_chunk), self.fp, self.sp },
             );
             if (std.posix.getenv("HABU_TRACE_JIT_CALL_ARGS") != null) {
-                const dump_n = @min(@as(usize, argc), envTraceCount("HABU_TRACE_JIT_CALL_ARGS", 4));
+                const dump_n = @min(args.len, envTraceCount("HABU_TRACE_JIT_CALL_ARGS", 4));
                 for (args[0..dump_n], 0..) |arg, idx| {
                     std.debug.print("  jit-arg[{d}]=", .{idx});
                     traceJitBridgeValue(arg);
@@ -1884,6 +1885,7 @@ pub const Vm = struct {
                 }
             }
         }
+        const argc: u8 = @intCast(args.len);
         var invoke_ctx = JitInvokeCtx{
             .compiled = compiled,
             .args_ptr = args.ptr,
@@ -1926,6 +1928,67 @@ pub const Vm = struct {
         jit_backend.syncHeapFromGlobal(self.heap);
         self.jit_bridge_error = null;
 
+        return result;
+    }
+
+    /// Try to call a closure via hoist-compiled native code.
+    /// Returns the result of calling it, or null if not hoist-compiled.
+    fn tryCallJit(self: *Vm, argc: u8) Error!?Value {
+        const callee_chunk = self.chunk;
+        const compiled_ptr = callee_chunk.jit_fn;
+        if (compiled_ptr == 0) return null;
+        const compiled: *const jit_backend.CompiledFn = @ptrFromInt(compiled_ptr);
+        if (compiled.arity != argc) return null;
+
+        // Extract args from the VM stack (they're above the callee frame)
+        const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
+        const argc_us: usize = @intCast(argc);
+        const args = self.stack[bp .. bp + argc_us];
+        const caller_chunk = if (self.fp > 0) self.frames[self.fp - 1].chunk else callee_chunk;
+        return try self.runJitCompiled(compiled, callee_chunk, caller_chunk, args);
+    }
+
+    /// Try fixed-arity direct JIT call before generic doCall frame setup.
+    /// Eligible only for closure-valued calls with no &optional/&key/&rest.
+    fn tryDirectCallJit(self: *Vm, argc: u8) Error!?Value {
+        if (self.sp < @as(usize, argc) + 1) return null;
+
+        const argc_us: usize = @intCast(argc);
+        const fn_slot = self.sp - argc_us - 1;
+        var fn_val = self.resolveForwardedValue(self.stack[fn_slot]);
+        if (!fn_val.isClosure()) return null;
+        if (fn_val.raw != self.stack[fn_slot].raw) self.stack[fn_slot] = fn_val;
+
+        const closure = fn_val.toPtr(runtime.Closure);
+        const code_val = self.resolveForwardedValue(closure.code);
+        if (!code_val.isChunk()) return null;
+        if (code_val.raw != closure.code.raw) closure.code = code_val;
+        const callee_chunk = code_val.toPtr(Chunk);
+        if (callee_chunk.kind != .chunk) return null;
+        if (callee_chunk.opt_count != 0 or callee_chunk.key_count != 0 or callee_chunk.has_rest != 0) return null;
+        if (callee_chunk.arity != argc) return null;
+
+        const compiled_ptr = callee_chunk.jit_fn;
+        if (compiled_ptr == 0) return null;
+        const compiled: *const jit_backend.CompiledFn = @ptrFromInt(compiled_ptr);
+        if (compiled.arity != argc) return null;
+
+        const args = self.stack[self.sp - argc_us .. self.sp];
+        const caller_chunk = self.chunk;
+        const saved_chunk = self.chunk;
+        const saved_ip = self.ip;
+        self.chunk = callee_chunk;
+        self.ip = 0;
+        defer {
+            self.chunk = saved_chunk;
+            self.ip = saved_ip;
+        }
+
+        const result = (try self.runJitCompiled(compiled, callee_chunk, caller_chunk, args)) orelse return null;
+        self.stack[fn_slot] = result;
+        self.sp = fn_slot + 1;
+        self.jit_direct_calls +%= 1;
+        self.recordCallShape(.fixed, false, false);
         return result;
     }
 
@@ -4487,6 +4550,17 @@ pub const Vm = struct {
                             std.debug.print("\n", .{});
                         }
                     }
+                }
+                if (try self.tryDirectCallJit(argc)) |direct_result| {
+                    if (trace_call) {
+                        std.debug.print(
+                            "TRACE call-jit-direct caller={s} argc={d} fp={d} sp={d} result=",
+                            .{ chunkTraceName(self.chunk), argc, self.fp, self.sp },
+                        );
+                        tracePrintValue(direct_result);
+                        std.debug.print("\n", .{});
+                    }
+                    return;
                 }
                 try self.doCall(argc, false);
                 if (trace_call) {

@@ -15,10 +15,12 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Extending `tools/maxima-hotspots` to ingest `call_shape.run` from both JIT and interpreter payloads (`tools/maxima-hotspots:summarize`) made cross-mode call-shape drift visible in the same report as timing deltas.
 - Re-running `factor/ratsimp` at both `--scale=1` and `--scale=120` before choosing next optimizations avoided a false “near parity” conclusion from short-run noise.
 - Enforcing dual perf evidence directly in `tools/dot-finish` (auto-detected perf dots + micro/real workload commands + persisted artifacts) makes perf dot closure auditable and reduces single-benchmark bias.
+- Adding a closure-only fixed-arity direct JIT path in VM call dispatch (`src/interp/vm.zig:tryDirectCallJit`) safely removed generic frame setup on eligible interpreted call sites; `jit_direct_calls` telemetry in `bench/maxima_workload.zig` and `tools/maxima-hotspots` confirmed activation in JIT runs.
 
 ### Did Not Work
 - Keeping “meta” open dots (`curr`/`next`/`active` placeholders) without `PLAN.md` entries obscures real remaining work and makes completion status unreliable; these must be pruned or mapped into explicit plan leaves.
 - Relying on plain `zig build test -- --test-filter ...` in this environment still stalls with no output; wrapping with `timeout` is required to prevent leaked long-lived test processes while keeping CI gates actionable.
+- Using `continue` inside `executeOp` opcode switch during direct-call insertion was invalid (`continue expression outside loop`); opcode handlers must `return` from `executeOp` instead.
 
 ## Session Notes (2026-02-23)
 

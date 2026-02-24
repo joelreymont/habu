@@ -275,7 +275,11 @@
       - Added gated VM counters for `fixed`/`optional`/`key`/`rest`/`dynamic`/`tail` call shapes and surfaced load/run deltas in `bench-maxima` JSON and text output.
       - Wired `tools/maxima-hotspots` to ingest and report `call_shape(run)` for both JIT and interpreter runs.
       - Validation sample (`tools/maxima-hotspots --json --scale 120 --workloads factor,ratsimp`): `total=5,088,004` call sites with high `dynamic` share (`4,848,004`), confirming dynamic-call path remains the dominant optimization target.
-    - [ ] `habu-add-direct-jit-40f23edc` Add direct JIT entry stubs for dominant fixed-arity call signatures to bypass generic frame setup. Depends on `habu-add-call-shape-62cebbaf`.
+    - [x] `habu-add-direct-jit-40f23edc` Add direct JIT entry stubs for dominant fixed-arity call signatures to bypass generic frame setup. Depends on `habu-add-call-shape-62cebbaf`.
+      - Added VM fixed-arity direct JIT call path (`tryDirectCallJit`) for closure-valued call sites with no `&optional`/`&key`/`&rest`, bypassing generic `doCall` frame setup on eligible interpreted calls.
+      - Refactored JIT invoke flow into shared `runJitCompiled` path and exposed `jit_direct_calls` telemetry in `bench-maxima`/`tools/maxima-hotspots`.
+      - Validation (`tools/maxima-hotspots --json --scale 1 --workloads factor,ratsimp`, 2026-02-24): `jit_direct_calls_jit=309`, `jit_direct_calls_interp=0`, confirming direct path activation in JIT mode only.
+      - Added integration regression `compileChunk direct JIT closure calls bypass generic call setup` (`src/tests/integration.zig`); focused `zig build test -- --test-filter ...` remains blocked by environment hang/timeout and needs follow-up once runner stability is fixed.
     - [ ] `habu-persist-session-jit-4dfb2dd6` Add session-persistent JIT cache keyed by stable chunk identity + GC epoch for loader/runtime reuse. Depends on `habu-add-direct-jit-40f23edc`.
 
 ### 0. Plan Control

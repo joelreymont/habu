@@ -85,6 +85,58 @@ test "compileChunk JITs optimized defun with implicit block" {
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
+test "compileChunk direct JIT closure calls bypass generic call setup" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+    vm.resetJitDirectCalls();
+
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(progn\n" ++
+            "  (defun jit-direct-add (a b)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (+ a b))\n" ++
+            "  (defun jit-direct-driver (n)\n" ++
+            "    (let ((f (symbol-function 'jit-direct-add))\n" ++
+            "          (i 0)\n" ++
+            "          (acc 0))\n" ++
+            "      (while (< i n)\n" ++
+            "        (setq acc (+ acc (funcall f i i)))\n" ++
+            "        (setq i (+ i 1)))\n" ++
+            "      acc)))",
+    ));
+
+    const result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-direct-driver 100)",
+    ));
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 9900), result.toFixnum());
+    try testing.expect(vm.jit_direct_calls > 0);
+}
+
 test "compileChunk JIT progv restores dynamic binding" {
     if (!build_options.use_hoist) return;
 

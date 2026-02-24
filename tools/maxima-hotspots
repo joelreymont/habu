@@ -101,6 +101,8 @@ def summarize(jit: dict, interp: dict, workloads: list[str]) -> dict:
         "interp_loader_ns": int(interp.get("loader", {}).get("ns", 0)),
         "jit_compiled": int(jit.get("jit_compiled", 0)),
         "interp_compiled": int(interp.get("jit_compiled", 0)),
+        "jit_direct_calls_jit": int(jit.get("jit_direct_calls", 0)),
+        "jit_direct_calls_interp": int(interp.get("jit_direct_calls", 0)),
         "jit_adm": {k: int(v) for k, v in jit_adm.items() if isinstance(v, int)},
         "interp_adm": {k: int(v) for k, v in interp_adm.items() if isinstance(v, int)},
         "jit_call_shape": run_call_shape(jit),
@@ -163,6 +165,9 @@ def format_text(summary: dict) -> str:
     lines.append("")
     lines.append(f"loader_ns jit={summary['jit_loader_ns']} interp={summary['interp_loader_ns']}")
     lines.append(f"jit_compiled jit={summary.get('jit_compiled', 0)} interp={summary.get('interp_compiled', 0)}")
+    lines.append(
+        f"jit_direct_calls jit={summary.get('jit_direct_calls_jit', 0)} interp={summary.get('jit_direct_calls_interp', 0)}"
+    )
     if isinstance(summary.get("jit_adm"), dict):
         j = summary.get("jit_adm", {})
         i = summary.get("interp_adm", {})
@@ -244,6 +249,9 @@ def format_markdown(summary: dict, scale: int, heap_mb: int, nursery_mb: int) ->
     )
     lines.append(
         f"- jit_compiled: jit=`{summary.get('jit_compiled', 0)}`, interp=`{summary.get('interp_compiled', 0)}`"
+    )
+    lines.append(
+        f"- jit_direct_calls: jit=`{summary.get('jit_direct_calls_jit', 0)}`, interp=`{summary.get('jit_direct_calls_interp', 0)}`"
     )
     if isinstance(summary.get("jit_adm"), dict):
         j = summary.get("jit_adm", {})

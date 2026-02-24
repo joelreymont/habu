@@ -707,6 +707,7 @@ pub fn main() !void {
     }
     const jit_compiled = repl.vm.jit_fns.items.len;
     const jit_adm = repl.vm.jit_adm;
+    const jit_direct_calls = repl.vm.jit_direct_calls;
     const gc_after_run = gcSnap(&heap);
     const call_shape_after_run = callShapeSnap(&repl);
     const gc_load = gcDelta(gc_start, gc_after_load);
@@ -739,6 +740,7 @@ pub fn main() !void {
             .scale = opts.scale,
             .jit = opts.jit,
             .jit_compiled = jit_compiled,
+            .jit_direct_calls = jit_direct_calls,
             .jit_adm = jit_adm,
             .loader = .{
                 .ok = loader.ok,
@@ -772,6 +774,7 @@ pub fn main() !void {
         if (opts.jit) "on" else "off",
     });
     try w.print("  jit_compiled: {d}\n", .{jit_compiled});
+    try w.print("  jit_direct_calls: {d}\n", .{jit_direct_calls});
     try w.print(
         "  jit_adm: cand={d} elig={d} comp={d} sk(speed={d},safety={d},assert={d},caps={d},opt={d},key={d},rest={d},chunk={d}) fail(unsupported={d},other={d})\n",
         .{
