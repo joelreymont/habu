@@ -6139,12 +6139,6 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     fuseMovzAlu(code.code.items);
     if (dump_passes) dumpAsmPass("after fuseMovzAlu#1", code.code.items);
 
-    // Eliminate mirrored entry MOV blocks emitted by some TCO lowering forms:
-    //   mov t0,a0; mov t1,a1; ...; mov a0,t0; mov a1,t1; ...
-    // when temps are dead after the mirror.
-    eliminateMirroredEntryMovs(code.code.items);
-    if (dump_passes) dumpAsmPass("after eliminateMirroredEntryMovs", code.code.items);
-
     // Eliminate round-trip MOV pairs: MOV xA, xB; ... MOV xB, xA → NOP both.
     // Common in TCO functions where entry params are copied to intermediate regs
     // and then immediately copied back for the loop header phis.
@@ -6166,6 +6160,13 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     // Must run LAST after all other peephole passes that introduce NOPs.
     compactNops(code.code.items, &code.code);
     if (dump_passes) dumpAsmPass("after compactNops#1", code.code.items);
+
+    // After first NOP compaction, entry mirror copies become easier to match
+    // because dead constant materialization noise has been removed.
+    eliminateMirroredEntryMovs(code.code.items);
+    if (dump_passes) dumpAsmPass("after eliminateMirroredEntryMovs", code.code.items);
+    compactNops(code.code.items, &code.code);
+    if (dump_passes) dumpAsmPass("after compactNops#1.5", code.code.items);
 
     // After NOP compaction, new adjacent MOVZ+ALU pairs may emerge.
     // Also dead MOVZ may be exposed.
@@ -6699,20 +6700,30 @@ fn eliminateMirroredEntryMovs(code: []u8) void {
             }
             if (!ok) continue;
 
-            // Temp destinations from leg A must be dead after the mirror.
+            // Temp destinations from leg A dead after the mirror means both
+            // legs can be dropped. When temps remain live, leg B is still
+            // redundant (it only rewrites unchanged source registers), so
+            // we keep leg A and drop leg B.
             const mirror_end = i + pair_len * 2 - 1;
+            var temps_dead = true;
             for (0..pair_len) |k| {
                 const insn_a = readInsn(code, i + k);
                 const dst_a: u5 = @truncate(insn_a & 0x1F);
                 if (!isRegDeadAfter(code, mirror_end, dst_a)) {
-                    ok = false;
+                    temps_dead = false;
                     break;
                 }
             }
             if (!ok) continue;
 
-            for (0..pair_len * 2) |k| {
-                writeInsn(code, i + k, nop);
+            if (temps_dead) {
+                for (0..pair_len * 2) |k| {
+                    writeInsn(code, i + k, nop);
+                }
+            } else {
+                for (0..pair_len) |k| {
+                    writeInsn(code, i + pair_len + k, nop);
+                }
             }
             i += pair_len * 2 - 1;
             break;
@@ -9844,7 +9855,7 @@ test "eliminateMirroredEntryMovs keeps dependent source-dest chains" {
     try testing.expect(std.mem.eql(u8, before.items, code.items));
 }
 
-test "eliminateMirroredEntryMovs keeps mirrored block with live temps" {
+test "eliminateMirroredEntryMovs drops restore leg when temps stay live" {
     var code = std.ArrayList(u8){};
     defer code.deinit(testing.allocator);
 
@@ -9863,13 +9874,11 @@ test "eliminateMirroredEntryMovs keeps mirrored block with live temps" {
     };
     for (words) |w| try appendInsn(&code, testing.allocator, w);
 
-    var before = std.ArrayList(u8){};
-    defer before.deinit(testing.allocator);
-    try before.appendSlice(testing.allocator, code.items);
-
     eliminateMirroredEntryMovs(code.items);
 
-    try testing.expect(std.mem.eql(u8, before.items, code.items));
+    try testing.expectEqual(makeMovInsn(20, 0), readInsn(code.items, 0));
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(code.items, 1));
+    try testing.expectEqual(makeMovInsn(5, 20), readInsn(code.items, 2));
 }
 
 test "fuseMovzAlu keeps movz source register live across branch" {

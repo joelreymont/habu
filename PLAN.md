@@ -347,6 +347,11 @@
       - Fix: make IR-copy miss non-fatal without early return, continue through the normal patch/flush/success path, and add `HABU_TRACE_JIT_PATCH` tracing with before/after call-op counts (`NQUEENS-SOLVE patched=2`, `blr=2->0`, `bl=1->3` on current run).
       - Rebaseline (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=40 --json`, 2026-02-24): `~3.48ms` (still open; SBCL reference with `sbcl --script bench/comprehensive.lisp --json --iters=40 --bench nqueens10` is `~3.06ms`, ~`0.88x`).
       - Rebaseline (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=60 --json`, 2026-02-24): `~3.44ms` vs SBCL `~3.11ms` (`sbcl --script bench/comprehensive.lisp --json --iters=60 --bench nqueens10`), still open at ~`0.90x`.
+      - [x] `habu-nqueens-profile-residual-7ff0bf92` Profile the residual `nqueens` gap and land one measured generic optimization.
+        - Profiling (`sample`, `HABU_DUMP_HOIST`, `HABU_TRACE_JIT_PATCH`) showed the residual hotspot remained inside JIT native code, with `NQUEENS-SAFE-P` carrying mirrored entry move windows (`mov t,a ... mov a,t`) after first compaction.
+        - Fix (`src/jit/backend.zig`): extend `eliminateMirroredEntryMovs` to drop redundant restore legs even when temp aliases stay live, and run the pass after first `compactNops` so it sees normalized entry windows.
+        - Added/updated pass-level regressions for dead-temp full elimination, dependent-chain no-op, and live-temp restore-leg elimination.
+        - Rebaseline (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=60 --json`, 2026-02-24): `~3.15ms` vs SBCL `~3.09ms` (`sbcl --script bench/comprehensive.lisp --json --iters=60 --bench nqueens10`), improving from ~`3.51ms` (~`0.98x` of SBCL).
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).

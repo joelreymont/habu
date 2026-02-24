@@ -1,0 +1,4 @@
+dot_id=habu-nqueens-profile-residual-7ff0bf92
+timestamp=20260224_123924
+perf_micro_cmd=zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=60 --json
+perf_real_cmd=sbcl --script bench/comprehensive.lisp --json --iters=60 --bench nqueens10
