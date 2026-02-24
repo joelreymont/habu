@@ -60,6 +60,42 @@ const BenchDef = struct {
 };
 
 const decl_jit = "(declare (optimize (speed 3) (safety 0)))";
+const decl_opt = "(optimize (speed 3) (safety 0))";
+
+fn requireJitOptDeclsPerDefun(
+    comptime bench_name: []const u8,
+    comptime field_name: []const u8,
+    comptime setup: []const u8,
+) void {
+    var pos: usize = 0;
+    while (findSubPos(setup, pos, "(defun")) |def_pos| {
+        const next_def = findSubPos(setup, def_pos + 6, "(defun") orelse setup.len;
+        const decl_pos = findSubPos(setup, def_pos, decl_opt) orelse {
+            @compileError(std.fmt.comptimePrint(
+                "bench {s} {s}: missing speed/safety optimize declaration",
+                .{ bench_name, field_name },
+            ));
+        };
+        if (decl_pos >= next_def) {
+            @compileError(std.fmt.comptimePrint(
+                "bench {s} {s}: every defun must include speed/safety optimize declaration",
+                .{ bench_name, field_name },
+            ));
+        }
+        pos = next_def;
+    }
+}
+
+fn findSubPos(hay: []const u8, start: usize, needle: []const u8) ?usize {
+    if (needle.len == 0 or start >= hay.len) return null;
+    var i = start;
+    while (i + needle.len <= hay.len) : (i += 1) {
+        var j: usize = 0;
+        while (j < needle.len and hay[i + j] == needle[j]) : (j += 1) {}
+        if (j == needle.len) return i;
+    }
+    return null;
+}
 
 const bench_defs = [_]BenchDef{
     // ── arith ──
@@ -136,7 +172,7 @@ const bench_defs = [_]BenchDef{
     .{
         .name = "keyword_call",
         .category = "call",
-        .setup_jit = "(defun bench-key-target (x &key (a 1) (b 2) (c 3) (d 4)) (+ x a b c d))",
+        .setup_jit = "(defun bench-key-target (x &key (a 1) (b 2) (c 3) (d 4)) " ++ decl_jit ++ " (+ x a b c d))",
         .setup_jit2 = "(defun bench-keyword-call () " ++ decl_jit ++
             " (let ((i 0) (acc 0)) (while (< i 300000) (setq acc (+ acc (bench-key-target i :a i :c 7))) (setq i (+ i 1))) acc))",
         .setup_interp =
@@ -171,8 +207,12 @@ const bench_defs = [_]BenchDef{
         \\              (setq count (+ count (nqueens-solve n (+ row 1) (cons col placed)))))
         \\            (setq col (+ col 1)))
         \\          count)))
-        \\  (defun nqueens (n) (nqueens-solve n 0 nil))
-        \\  (defun bench-nqueens () (nqueens 10)))
+        \\  (defun nqueens (n)
+        \\    (declare (optimize (speed 3) (safety 0)))
+        \\    (nqueens-solve n 0 nil))
+        \\  (defun bench-nqueens ()
+        \\    (declare (optimize (speed 3) (safety 0)))
+        \\    (nqueens 10)))
         ,
         .setup_interp =
         \\(progn
@@ -352,6 +392,18 @@ const bench_defs = [_]BenchDef{
         .expr = "(bench-intern)",
     },
 };
+
+comptime {
+    @setEvalBranchQuota(200000);
+    for (bench_defs) |def| {
+        if (def.setup_jit) |setup| {
+            requireJitOptDeclsPerDefun(def.name, "setup_jit", setup);
+        }
+        if (def.setup_jit2) |setup| {
+            requireJitOptDeclsPerDefun(def.name, "setup_jit2", setup);
+        }
+    }
+}
 
 fn benchWrapperForm(buf: []u8, mode: BenchMode, expr: []const u8) ![]const u8 {
     return if (mode == .jit)

@@ -286,6 +286,10 @@
       - Wired REPL and `compileChunk` hoist pipelines to consult cache before compile, skip redundant compile attempts on cache hits, and record outcomes after each attempt.
       - Extended JIT admission telemetry with cache counters (`cache_comp`/`cache_unsupported`/`cache_failed`) and surfaced them via existing `jit_adm` JSON payloads.
       - Validation (`tools/maxima-hotspots --json --scale 1 --workloads factor --heap-mb 1024 --nursery-mb 32`, 2026-02-24): `jit_adm.cache_unsupported=3` confirms repeated unsupported compile attempts are now skipped during Maxima load; JIT loader dropped into ~`15.2s` band on this host (from prior ~`16.2s` runs).
+    - [x] `habu-speed-up-forwarding-edeeb1ad` Speed up forwarding target validation (rejected).
+      - RCA sample pointed at `runtime.objects.forwardingTargetLooksValid` alignment helpers under GC-heavy `factor`/`ratsimp`.
+      - Trialed branch-light bitmath validation helpers in `src/runtime/objects.zig` with focused helper tests.
+      - A/B showed no proven real-workload gain and occasional regressions; reverted trial and kept the existing correctness path.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.
@@ -434,6 +438,15 @@
           - `zig build test -Dtest-filter='compileChunk JIT handles recursive nqueens helper entry copies'`
           - `zig build test -Dtest-filter='compileChunk JIT generic float arithmetic and compare stay correct'`
           - trace check: `JIT_XCALL caller=NQUEENS-SAFE-P ... mode=generic` removed, `JIT_XCALL caller=NQUEENS-SOLVE ... mode=self` preserved.
+      - [x] `habu-inline-threshold-for-1269a322` Inline-threshold trial for known-loop helper (rejected).
+        - Trialed broader known-callee inlining in `src/jit/backend.zig:translateCrossCall` for `NQUEENS-SAFE-P` (`31` IR nodes).
+        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, repeated, 2026-02-24): trial regressed heavily on this host and was reverted.
+        - Decision: keep the prior inline cap and structural cross-call TCO gate; no fallback path introduced.
+      - [x] `habu-declare-nqueens-wrappers-0d6a58a4` Enforce optimize declarations for every JIT benchmark `defun`.
+        - Fix (`bench/comprehensive_bench.zig`): add missing `(declare (optimize (speed 3) (safety 0)))` to `nqueens` and `bench-nqueens` in `setup_jit2`, and to `bench-key-target` in `setup_jit`.
+        - Guard: add compile-time checker (`requireJitOptDeclsPerDefun`) that fails build when any `setup_jit`/`setup_jit2` `defun` omits the declaration.
+        - Rebaseline (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 2026-02-24): `3.308ms`; SBCL reference (`sbcl --script bench/comprehensive.lisp --json --iters 80 --bench nqueens10`) `3.119ms`.
+        - Rebaseline (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=keyword_call --iters=7 --json`, 2026-02-24): `135.159ms`.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).

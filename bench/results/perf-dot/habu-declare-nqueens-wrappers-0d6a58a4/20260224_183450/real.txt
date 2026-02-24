@@ -1,0 +1,102 @@
+{
+  "workloads": [
+    {
+      "name": "factor",
+      "jit_ns": 47040792,
+      "interp_ns": 47714459,
+      "speedup_interp_over_jit": 1.0143209110935036,
+      "jit_error": null,
+      "interp_error": null
+    },
+    {
+      "name": "ratsimp",
+      "jit_ns": 35233167,
+      "interp_ns": 34387916,
+      "speedup_interp_over_jit": 0.9760097921370509,
+      "jit_error": null,
+      "interp_error": null
+    }
+  ],
+  "jit_loader_ns": 15786538292,
+  "interp_loader_ns": 14289751083,
+  "jit_compiled": 546,
+  "interp_compiled": 0,
+  "jit_direct_calls_jit": 309,
+  "jit_direct_calls_interp": 0,
+  "jit_adm": {
+    "cand": 4136,
+    "elig": 3418,
+    "comp": 546,
+    "sk_speed": 0,
+    "sk_safety": 0,
+    "sk_assert": 0,
+    "sk_caps": 0,
+    "sk_opt": 236,
+    "sk_key": 56,
+    "sk_rest": 149,
+    "sk_chunk": 277,
+    "fail_unsupported": 2673,
+    "fail_other": 199,
+    "cache_comp": 0,
+    "cache_unsupported": 3,
+    "cache_failed": 0
+  },
+  "interp_adm": {
+    "cand": 0,
+    "elig": 0,
+    "comp": 0,
+    "sk_speed": 0,
+    "sk_safety": 0,
+    "sk_assert": 0,
+    "sk_caps": 0,
+    "sk_opt": 0,
+    "sk_key": 0,
+    "sk_rest": 0,
+    "sk_chunk": 0,
+    "fail_unsupported": 0,
+    "fail_other": 0,
+    "cache_comp": 0,
+    "cache_unsupported": 0,
+    "cache_failed": 0
+  },
+  "jit_call_shape": {
+    "total": 42404,
+    "fixed": 34004,
+    "optional": 800,
+    "key": 2400,
+    "rest": 5200,
+    "dynamic": 40404,
+    "tail": 10000
+  },
+  "interp_call_shape": {
+    "total": 42404,
+    "fixed": 34004,
+    "optional": 800,
+    "key": 2400,
+    "rest": 5200,
+    "dynamic": 40404,
+    "tail": 10400
+  },
+  "jit_gate": {
+    "pass": false,
+    "min_interp_jit": 1.01,
+    "checks": {
+      "wins": {
+        "actual": 1,
+        "target_min": 2,
+        "pass": false,
+        "checked": 2
+      },
+      "compiled_min": {
+        "actual": 546,
+        "target_min": 32,
+        "pass": true
+      },
+      "compiled_delta": {
+        "actual": 546,
+        "target_min": 1,
+        "pass": true
+      }
+    }
+  }
+}
