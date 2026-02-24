@@ -6,12 +6,19 @@ usage() {
 Usage: tools/dot-finish <dot-id> -m "commit msg" [-r "dot close reason"] [-b bookmark]
 
 Runs tests, commits the current jj change, pushes a bookmark, then closes the dot.
+For performance dots (title/description contains perf/bench/hotspot/throughput/latency/speedup),
+also runs required micro + real workload perf evidence commands before closing.
 
 Defaults:
   - bookmark: $JJ_BOOKMARK or "codex/cl-parity"
   - close reason: commit msg
   - test timeout: $DOT_FINISH_TEST_TIMEOUT_SEC or 900
   - test command: $DOT_FINISH_TEST_CMD or "zig build test"
+  - perf timeout: $DOT_FINISH_PERF_TIMEOUT_SEC or 1800
+  - perf micro cmd: $DOT_FINISH_PERF_MICRO_CMD or "zig build -Duse-hoist=true bench-comp -- --json"
+  - perf real cmd: $DOT_FINISH_PERF_REAL_CMD or "tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32 --workloads factor,ratsimp"
+  - perf evidence out dir: $DOT_FINISH_PERF_OUT_DIR or "bench/results/perf-dot"
+  - skip perf evidence: set $DOT_FINISH_SKIP_PERF_EVIDENCE=1
 
 Examples:
   tools/dot-finish habu-add-integerp-realp-490c51c9 -m "Add integerp and realp"
@@ -24,6 +31,10 @@ reason=""
 bookmark="${JJ_BOOKMARK:-codex/cl-parity}"
 test_timeout="${DOT_FINISH_TEST_TIMEOUT_SEC:-900}"
 test_cmd="${DOT_FINISH_TEST_CMD:-zig build test}"
+perf_timeout="${DOT_FINISH_PERF_TIMEOUT_SEC:-1800}"
+perf_micro_cmd="${DOT_FINISH_PERF_MICRO_CMD:-zig build -Duse-hoist=true bench-comp -- --json}"
+perf_real_cmd="${DOT_FINISH_PERF_REAL_CMD:-tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32 --workloads factor,ratsimp}"
+perf_out_dir="${DOT_FINISH_PERF_OUT_DIR:-bench/results/perf-dot}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -68,19 +79,62 @@ run_with_timeout() {
   "$@"
 }
 
-echo "dot-finish: running tests: $test_cmd (timeout ${test_timeout}s)" >&2
-set +e
-run_with_timeout "$test_timeout" bash -lc "$test_cmd"
-test_rc=$?
-set -e
+run_cmd_checked() {
+  local label="$1"
+  local timeout_s="$2"
+  local cmd="$3"
+  local out="$4"
 
-if [[ "$test_rc" -eq 124 || "$test_rc" -eq 137 ]]; then
-  echo "error: tests timed out after ${test_timeout}s: $test_cmd" >&2
-  exit "$test_rc"
-fi
-if [[ "$test_rc" -ne 0 ]]; then
-  echo "error: tests failed with exit code ${test_rc}: $test_cmd" >&2
-  exit "$test_rc"
+  echo "dot-finish: running ${label}: ${cmd} (timeout ${timeout_s}s)" >&2
+  set +e
+  run_with_timeout "$timeout_s" bash -lc "$cmd" >"$out" 2>&1
+  local rc=$?
+  set -e
+  if [[ "$rc" -eq 124 || "$rc" -eq 137 ]]; then
+    echo "error: ${label} timed out after ${timeout_s}s: $cmd" >&2
+    echo "error: see $out" >&2
+    exit "$rc"
+  fi
+  if [[ "$rc" -ne 0 ]]; then
+    echo "error: ${label} failed with exit code ${rc}: $cmd" >&2
+    echo "error: see $out" >&2
+    exit "$rc"
+  fi
+}
+
+is_perf_dot() {
+  local dot_show
+  dot_show="$(dot show "$dot_id" 2>/dev/null || true)"
+  if [[ -z "$dot_show" ]]; then
+    return 1
+  fi
+  echo "$dot_show" | grep -Eiq '(perf|benchmark|bench|hotspot|throughput|latency|speedup)'
+}
+
+run_perf_evidence() {
+  local ts
+  ts="$(date +%Y%m%d_%H%M%S)"
+  local out_dir="${perf_out_dir}/${dot_id}/${ts}"
+  mkdir -p "$out_dir"
+
+  run_cmd_checked "perf-micro" "$perf_timeout" "$perf_micro_cmd" "$out_dir/micro.txt"
+  run_cmd_checked "perf-real" "$perf_timeout" "$perf_real_cmd" "$out_dir/real.txt"
+
+  {
+    echo "dot_id=$dot_id"
+    echo "timestamp=$ts"
+    echo "perf_micro_cmd=$perf_micro_cmd"
+    echo "perf_real_cmd=$perf_real_cmd"
+  } >"$out_dir/meta.txt"
+
+  echo "dot-finish: perf evidence saved in $out_dir" >&2
+}
+
+echo "dot-finish: running tests: $test_cmd (timeout ${test_timeout}s)" >&2
+run_cmd_checked "tests" "$test_timeout" "$test_cmd" "/tmp/dot-finish-test-${dot_id}.log"
+
+if [[ "${DOT_FINISH_SKIP_PERF_EVIDENCE:-0}" != "1" ]] && is_perf_dot; then
+  run_perf_evidence
 fi
 
 dot off "$dot_id" -r "$reason"

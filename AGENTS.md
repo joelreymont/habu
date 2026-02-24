@@ -8,6 +8,13 @@ machine code than to try to optimize whatever significant amount of code you hav
 generated. You dot all tasks and commit after each significant change or feature.
 You keep track of what works and what doesn't in `LESSONS.md`.
 
+## Cutover Policy (Blocking)
+
+- Use hard cutover only.
+- No legacy support paths.
+- No compatibility fallbacks.
+- Remove replaced code paths instead of keeping dual behavior.
+
 ## LESSONS.md Discipline (Required)
 
 - Read `LESSONS.md` before starting any new dot.

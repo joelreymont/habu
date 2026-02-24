@@ -6,6 +6,20 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ---
 
+## Session Notes (2026-02-24)
+
+### Worked Well
+- Comparing unchecked `PLAN.md` leaves against `dot list` before starting new perf work exposed plan drift immediately (`habu-close-post-fix-77d8f862` open but missing from `PLAN.md`), which prevented hidden execution debt.
+- Encoding new performance work as dependent dots in `PLAN.md` (shape counters -> direct JIT stubs -> session JIT cache) keeps optimization sequencing explicit and avoids parallel speculative tuning.
+- Adding gated VM call-shape counters directly in `doCall` (`src/interp/vm.zig:11100+`) and exporting load/run deltas via `bench/maxima_workload.zig` produced immediate, quantified attribution for dynamic-call overhead without changing semantics.
+- Extending `tools/maxima-hotspots` to ingest `call_shape.run` from both JIT and interpreter payloads (`tools/maxima-hotspots:summarize`) made cross-mode call-shape drift visible in the same report as timing deltas.
+- Re-running `factor/ratsimp` at both `--scale=1` and `--scale=120` before choosing next optimizations avoided a false “near parity” conclusion from short-run noise.
+- Enforcing dual perf evidence directly in `tools/dot-finish` (auto-detected perf dots + micro/real workload commands + persisted artifacts) makes perf dot closure auditable and reduces single-benchmark bias.
+
+### Did Not Work
+- Keeping “meta” open dots (`curr`/`next`/`active` placeholders) without `PLAN.md` entries obscures real remaining work and makes completion status unreliable; these must be pruned or mapped into explicit plan leaves.
+- Relying on plain `zig build test -- --test-filter ...` in this environment still stalls with no output; wrapping with `timeout` is required to prevent leaked long-lived test processes while keeping CI gates actionable.
+
 ## Session Notes (2026-02-23)
 
 ### Worked Well

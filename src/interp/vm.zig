@@ -534,6 +534,23 @@ pub const Vm = struct {
         fail_other: u64 = 0,
     };
 
+    pub const CallShapeStats = struct {
+        total: u64 = 0,
+        fixed: u64 = 0,
+        optional: u64 = 0,
+        key: u64 = 0,
+        rest: u64 = 0,
+        dynamic: u64 = 0,
+        tail: u64 = 0,
+    };
+
+    pub const CallShapeKind = enum(u8) {
+        fixed,
+        optional,
+        key,
+        rest,
+    };
+
     const FnResolveEntry = struct {
         sym: Value = Value.nil,
         fn_val: Value = Value.nil,
@@ -738,6 +755,8 @@ pub const Vm = struct {
     /// Stable host-root slots for JIT literal Values.
     jit_literal_roots: std.ArrayList(*Value),
     jit_adm: JitAdmStats,
+    call_shape: CallShapeStats,
+    track_call_shape: bool,
 
     trace_jit_call: bool,
     trace_fn_resolve: bool,
@@ -1161,6 +1180,8 @@ pub const Vm = struct {
             .jit_fns = std.ArrayList(JitFnEntry){},
             .jit_literal_roots = std.ArrayList(*Value){},
             .jit_adm = .{},
+            .call_shape = .{},
+            .track_call_shape = std.posix.getenv("HABU_TRACK_CALL_SHAPES") != null,
             .trace_jit_call = std.posix.getenv("HABU_TRACE_JIT_CALL") != null,
             .trace_fn_resolve = std.posix.getenv("HABU_TRACE_FN_RESOLVE") != null,
             .trace_call_mismatch = std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null,
@@ -1201,6 +1222,18 @@ pub const Vm = struct {
 
     pub fn resetJitAdm(self: *Vm) void {
         self.jit_adm = .{};
+    }
+
+    pub fn resetCallShapeStats(self: *Vm) void {
+        self.call_shape = .{};
+    }
+
+    pub fn setCallShapeTracking(self: *Vm, enabled: bool) void {
+        self.track_call_shape = enabled;
+    }
+
+    pub fn callShapeStats(self: *const Vm) CallShapeStats {
+        return self.call_shape;
     }
 
     /// Set the chunk pool for closures with a base offset (deprecated)
@@ -11093,12 +11126,17 @@ pub const Vm = struct {
         const key_count = callee_chunk.key_count;
         const has_rest = callee_chunk.has_rest != 0;
         const max_positional = arity + opt_count;
+        const call_shape = classifyCallShape(callee_chunk);
+        const dynamic_call = fn_designator.isSymbol() or
+            fn_designator.isGenericFunction() or
+            (fn_designator.raw != fn_val.raw and !fn_designator.isClosure());
 
         if (!has_rest and opt_count == 0 and key_count == 0) {
             if (argc != arity) {
                 try self.callMismatch(fn_val, argc, "fixed-arity");
                 return;
             }
+            self.recordCallShape(call_shape, tail, dynamic_call);
             try self.enterFixedArityCall(closure, callee_chunk, argc, tail);
             return;
         }
@@ -11207,6 +11245,8 @@ pub const Vm = struct {
             // Pop the extra args
             self.sp -= extra_count;
         }
+
+        self.recordCallShape(call_shape, tail, dynamic_call);
 
         // Determine how many args to copy as locals
         // For keyword args, we need to keep ALL args for find_key to scan
@@ -11375,6 +11415,26 @@ pub const Vm = struct {
             while (i < callee_chunk.num_locals) : (i += 1) {
                 try self.push(Value.nil);
             }
+        }
+    }
+
+    inline fn classifyCallShape(callee_chunk: *const Chunk) CallShapeKind {
+        if (callee_chunk.key_count != 0) return .key;
+        if (callee_chunk.has_rest != 0) return .rest;
+        if (callee_chunk.opt_count != 0) return .optional;
+        return .fixed;
+    }
+
+    inline fn recordCallShape(self: *Vm, kind: CallShapeKind, tail: bool, dynamic: bool) void {
+        if (!self.track_call_shape) return;
+        self.call_shape.total +%= 1;
+        if (tail) self.call_shape.tail +%= 1;
+        if (dynamic) self.call_shape.dynamic +%= 1;
+        switch (kind) {
+            .fixed => self.call_shape.fixed +%= 1,
+            .optional => self.call_shape.optional +%= 1,
+            .key => self.call_shape.key +%= 1,
+            .rest => self.call_shape.rest +%= 1,
         }
     }
 
@@ -13695,6 +13755,98 @@ test "vm doCall tail call restores dynamic depths" {
     try testing.expectEqual(@as(usize, 4), vm.restart_sp);
     try testing.expectEqual(@as(usize, 5), vm.progv_sp);
     try testing.expectEqual(@as(usize, 7), vm.handler_sp);
+}
+
+test "vm classifyCallShape categorizes lambda signatures" {
+    const testing = std.testing;
+
+    const code = [_]u8{};
+    const consts = [_]Value{};
+
+    const fixed_chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = 0,
+        .arity = 1,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 1,
+    };
+    const optional_chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = 0,
+        .arity = 1,
+        .opt_count = 2,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 3,
+    };
+    const key_chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = 0,
+        .arity = 1,
+        .opt_count = 0,
+        .key_count = 2,
+        .has_rest = 0,
+        .num_locals = 3,
+    };
+    const rest_chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = 0,
+        .arity = 1,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 1,
+        .num_locals = 2,
+    };
+
+    try testing.expectEqual(Vm.CallShapeKind.fixed, Vm.classifyCallShape(&fixed_chunk));
+    try testing.expectEqual(Vm.CallShapeKind.optional, Vm.classifyCallShape(&optional_chunk));
+    try testing.expectEqual(Vm.CallShapeKind.key, Vm.classifyCallShape(&key_chunk));
+    try testing.expectEqual(Vm.CallShapeKind.rest, Vm.classifyCallShape(&rest_chunk));
+}
+
+test "vm call-shape tracking is gated and accumulates counters" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    vm.setCallShapeTracking(false);
+    vm.resetCallShapeStats();
+    vm.recordCallShape(.fixed, false, false);
+    var stats = vm.callShapeStats();
+    try testing.expectEqual(@as(u64, 0), stats.total);
+    try testing.expectEqual(@as(u64, 0), stats.fixed);
+    try testing.expectEqual(@as(u64, 0), stats.dynamic);
+
+    vm.setCallShapeTracking(true);
+    vm.recordCallShape(.fixed, false, false);
+    vm.recordCallShape(.key, true, true);
+    stats = vm.callShapeStats();
+    try testing.expectEqual(@as(u64, 2), stats.total);
+    try testing.expectEqual(@as(u64, 1), stats.fixed);
+    try testing.expectEqual(@as(u64, 1), stats.key);
+    try testing.expectEqual(@as(u64, 1), stats.dynamic);
+    try testing.expectEqual(@as(u64, 1), stats.tail);
+
+    vm.resetCallShapeStats();
+    stats = vm.callShapeStats();
+    try testing.expectEqual(@as(u64, 0), stats.total);
+    try testing.expectEqual(@as(u64, 0), stats.fixed);
+    try testing.expectEqual(@as(u64, 0), stats.key);
 }
 
 test "vm collectGarbage updates ext roots" {

@@ -8,6 +8,7 @@ const Heap = runtime.Heap;
 const Repl = interp.Repl;
 const Value = runtime.Value;
 const Cons = runtime.Cons;
+const CallShapeStats = interp.Vm.CallShapeStats;
 
 const Opts = struct {
     heap_mb: usize = 1024,
@@ -135,6 +136,8 @@ const GcDelta = struct {
     gc_debt_pause_error: f64,
 };
 
+const CallShapeDelta = CallShapeStats;
+
 fn counterDelta(comptime T: type, after: T, before: T) T {
     return after -% before;
 }
@@ -231,6 +234,22 @@ fn gcDelta(before: GcSnap, after: GcSnap) GcDelta {
         .gc_debt_occupancy = after.gc_debt_occupancy,
         .gc_debt_survival = after.gc_debt_survival,
         .gc_debt_pause_error = after.gc_debt_pause_error,
+    };
+}
+
+fn callShapeSnap(repl: *const Repl) CallShapeStats {
+    return repl.vm.callShapeStats();
+}
+
+fn callShapeDelta(before: CallShapeStats, after: CallShapeStats) CallShapeDelta {
+    return .{
+        .total = counterDelta(u64, after.total, before.total),
+        .fixed = counterDelta(u64, after.fixed, before.fixed),
+        .optional = counterDelta(u64, after.optional, before.optional),
+        .key = counterDelta(u64, after.key, before.key),
+        .rest = counterDelta(u64, after.rest, before.rest),
+        .dynamic = counterDelta(u64, after.dynamic, before.dynamic),
+        .tail = counterDelta(u64, after.tail, before.tail),
     };
 }
 
@@ -653,10 +672,13 @@ pub fn main() !void {
     defer repl.deinit();
     try repl.wireGlobalEnv();
     repl.vm.resetJitAdm();
+    repl.vm.setCallShapeTracking(true);
+    repl.vm.resetCallShapeStats();
 
     var timer = try std.time.Timer.start();
 
     const gc_start = gcSnap(&heap);
+    const call_shape_start = callShapeSnap(&repl);
     const loader = loadMaxima(&timer, &repl) catch |err| {
         var out_buf_err: [2048]u8 = undefined;
         var out_err = std.fs.File.stdout().writer(&out_buf_err);
@@ -674,6 +696,7 @@ pub fn main() !void {
         return;
     };
     const gc_after_load = gcSnap(&heap);
+    const call_shape_after_load = callShapeSnap(&repl);
 
     var benches = std.ArrayList(Bench){};
     defer benches.deinit(allocator);
@@ -685,8 +708,11 @@ pub fn main() !void {
     const jit_compiled = repl.vm.jit_fns.items.len;
     const jit_adm = repl.vm.jit_adm;
     const gc_after_run = gcSnap(&heap);
+    const call_shape_after_run = callShapeSnap(&repl);
     const gc_load = gcDelta(gc_start, gc_after_load);
     const gc_run = gcDelta(gc_after_load, gc_after_run);
+    const call_shape_load = callShapeDelta(call_shape_start, call_shape_after_load);
+    const call_shape_run = callShapeDelta(call_shape_after_load, call_shape_after_run);
 
     var out_buf: [16384]u8 = undefined;
     var out = std.fs.File.stdout().writer(&out_buf);
@@ -725,6 +751,10 @@ pub fn main() !void {
             .gc = .{
                 .load = gc_load,
                 .run = gc_run,
+            },
+            .call_shape = .{
+                .load = call_shape_load,
+                .run = call_shape_run,
             },
             .benches = json_benches.items,
         };
@@ -790,6 +820,30 @@ pub fn main() !void {
             gc_run.gc_nursery_scale,
             gc_run.gc_nursery_survival,
             gc_run.gc_nursery_pause_error,
+        },
+    );
+    try w.print(
+        "  call_shape(load): total={d} fixed={d} optional={d} key={d} rest={d} dynamic={d} tail={d}\n",
+        .{
+            call_shape_load.total,
+            call_shape_load.fixed,
+            call_shape_load.optional,
+            call_shape_load.key,
+            call_shape_load.rest,
+            call_shape_load.dynamic,
+            call_shape_load.tail,
+        },
+    );
+    try w.print(
+        "  call_shape(run): total={d} fixed={d} optional={d} key={d} rest={d} dynamic={d} tail={d}\n",
+        .{
+            call_shape_run.total,
+            call_shape_run.fixed,
+            call_shape_run.optional,
+            call_shape_run.key,
+            call_shape_run.rest,
+            call_shape_run.dynamic,
+            call_shape_run.tail,
         },
     );
     try w.print(

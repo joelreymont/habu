@@ -267,6 +267,16 @@
       - Fix: root LET arg/binding cursors with compile-root tokens (`src/compiler/compile.zig`), root fast-path special symbol/init slices via temporary VM ext roots while compiling init forms (`src/compiler/compile.zig`), and resolve list elements/tails before cons construction (`src/compiler/compile.zig`).
       - Validation: `bench-maxima` JIT mode now passes for `factor,ratsimp` at `--scale=1`, `--scale=20`, and `--scale=120` with `--heap-mb=1024 --nursery-mb=32`; `HABU_TRACE_BAD_STORE=1` run is clean (no invalid symbol-store panic).
     - [x] `habu-root-compiler-temp-2a9b1e4b` Root compiler special-LET temp values against moving-GC during nested compile.
+    - [x] `habu-close-post-fix-77d8f862` Close post-fix factor/ratsimp gap. Depends on `habu-rca-jit-maxima-323d6d5d`.
+      - Reprofile (`tools/maxima-hotspots --json --scale 1 --workloads factor,ratsimp --heap-mb 1024 --nursery-mb 32`, 2026-02-24): `factor` remains slightly JIT-faster (`interp/jit ~1.018`), `ratsimp` remains JIT-slower (`interp/jit ~0.959`), gate still red (`wins=1/2`).
+      - Reprofile (`tools/maxima-hotspots --json --scale 120 --workloads factor,ratsimp --heap-mb 1024 --nursery-mb 32`, 2026-02-24): both workloads currently JIT-slower (`factor ~0.993`, `ratsimp ~0.970`), confirming remaining runtime gap is steady-state, not scale-1 noise.
+      - Added call-shape telemetry path to remove attribution blind spots before next runtime cuts.
+    - [x] `habu-add-call-shape-62cebbaf` Add per-call-shape VM counters for `doCall` hot-path attribution. Depends on `habu-close-post-fix-77d8f862`.
+      - Added gated VM counters for `fixed`/`optional`/`key`/`rest`/`dynamic`/`tail` call shapes and surfaced load/run deltas in `bench-maxima` JSON and text output.
+      - Wired `tools/maxima-hotspots` to ingest and report `call_shape(run)` for both JIT and interpreter runs.
+      - Validation sample (`tools/maxima-hotspots --json --scale 120 --workloads factor,ratsimp`): `total=5,088,004` call sites with high `dynamic` share (`4,848,004`), confirming dynamic-call path remains the dominant optimization target.
+    - [ ] `habu-add-direct-jit-40f23edc` Add direct JIT entry stubs for dominant fixed-arity call signatures to bypass generic frame setup. Depends on `habu-add-call-shape-62cebbaf`.
+    - [ ] `habu-persist-session-jit-4dfb2dd6` Add session-persistent JIT cache keyed by stable chunk identity + GC epoch for loader/runtime reuse. Depends on `habu-add-direct-jit-40f23edc`.
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.
@@ -312,6 +322,10 @@
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).
   - [x] `habu-reverify-hoist-compile-b48554f1` Reverify hoist compile gate after latest upstream rebuild.
+  - [x] `habu-enforce-dual-perf-88246c10` Enforce dual perf evidence (microbench + real workload) for closing perf dots and wire gate checks/docs.
+    - `tools/dot-finish` now auto-detects perf dots by metadata and requires both micro (`DOT_FINISH_PERF_MICRO_CMD`) and real-workload (`DOT_FINISH_PERF_REAL_CMD`) evidence commands before dot closure, with timeout enforcement and persisted artifacts under `bench/results/perf-dot/<dot-id>/<timestamp>/`.
+    - `tools/maxima-hotspots` now reports call-shape run counters in JSON/text/markdown outputs so perf closures include workload-level runtime attribution, not just aggregate timings.
+    - `docs/maxima-hotspots.md` regenerated with current report format (including call-shape telemetry).
   - [x] `habu-assoc-releasefast-parity-5b658109` Close ReleaseFast `assoc` gap to SBCL by reducing `jitAssoc`/helper overhead (current Habu JIT ~2.79-2.83ms vs SBCL ~2.77-2.78ms, ~0.98-1.00x).
     - [x] `habu-jitassoc-raw-tag-a25755cd` Rewrite `jitAssoc` hot loop to raw tagged checks to remove `Value` predicate/assert overhead from Debug benchmark runs.
     - [x] `habu-jit-num-compare-cfdaf4dc` Add fixnum/float fast paths to `jitLtNum`/`jitLeNum`/`jitGtNum`/`jitGeNum` and lower fixnum-fast compare IR through a fast-path+helper-fallback split.
