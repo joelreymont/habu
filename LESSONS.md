@@ -48,6 +48,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Running parent/patch perf loops in a fresh `jj workspace` failed at first because the bench build shells out to `git rev-parse` and the workspace lacked `.git`; baseline loops only became runnable after wiring git metadata into the workspace.
 - Adding a dead-callee-save pruning pass (`eliminateDeadCalleeSaveSlots`) to the JIT pipeline regressed `nqueens10` by ~5% in 5-run A/B (`src/jit/backend.zig` trial, reverted). Keep this optimization rejected unless new evidence isolates a safe win.
 - Raising known-call inline-node thresholds in `translateCrossCall` did not inline the `NQUEENS-SAFE-P` helper (`HABU_TRACE_JIT_PATCH` for `NQUEENS-SOLVE` stayed `patched=2`), so this knob-change path was reverted.
+- Broadening `translator.local_consts` to all TCO cross-call functions produced no win on `nqueens10` (5-run A/B was ~0.04% slower), so keep `local_consts` restricted to the existing targeted TCO case.
 
 ## Session Notes (2026-02-23)
 
