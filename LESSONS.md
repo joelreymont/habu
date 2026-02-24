@@ -46,6 +46,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - A tagged-abs peephole candidate for `sub/add/cmp/mov/sub/csel` in `NQUEENS-SAFE-P` looked promising in instruction count but lost on measured A/B (~`3.150ms` vs parent ~`3.142ms` over 5 runs at `nqueens10`/60 iters), so it was reverted; keep this path measurement-driven.
 - Relaxing JIT opt-level gating to allow `.aggressive` on call-free load-bearing functions reintroduced the historical load-path instability: `nqueens10` no longer completed within `timeout 30` at 60 iterations, so keep `has_loads` in the `.none` gate until hoist-side load optimization bugs are fixed.
 - Running parent/patch perf loops in a fresh `jj workspace` failed at first because the bench build shells out to `git rev-parse` and the workspace lacked `.git`; baseline loops only became runnable after wiring git metadata into the workspace.
+- Adding a dead-callee-save pruning pass (`eliminateDeadCalleeSaveSlots`) to the JIT pipeline regressed `nqueens10` by ~5% in 5-run A/B (`src/jit/backend.zig` trial, reverted). Keep this optimization rejected unless new evidence isolates a safe win.
 
 ## Session Notes (2026-02-23)
 

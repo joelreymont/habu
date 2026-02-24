@@ -363,6 +363,10 @@
         - Added regressions: `patchCrossCallsToBL elides dead non-adjacent target materialization` and `patchCrossCallsToBL keeps shared target load alive until last use`.
         - Validation: `zig build test -Dtest-filter=patchCrossCallsToBL` (2026-02-24) passes.
         - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): baseline avg `3,142,758ns`, patched avg `3,142,358ns` (~`0.013%` faster, neutral-to-slight win) with no regression.
+      - [x] `habu-prune-dead-callee-a546ec48` Prune dead callee-save slots in JIT output (rejected).
+        - Attempted `eliminateDeadCalleeSaveSlots` in `src/jit/backend.zig` (wired in compile pass pipeline and post-`patchCrossCallsToBLSlice`) with focused backend tests.
+        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): baseline avg `3,239,533ns`, patched avg `3,406,683ns` (~`5.1%` slower).
+        - Result: rejected and backend changes reverted.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).
