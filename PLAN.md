@@ -280,7 +280,11 @@
       - Refactored JIT invoke flow into shared `runJitCompiled` path and exposed `jit_direct_calls` telemetry in `bench-maxima`/`tools/maxima-hotspots`.
       - Validation (`tools/maxima-hotspots --json --scale 1 --workloads factor,ratsimp`, 2026-02-24): `jit_direct_calls_jit=309`, `jit_direct_calls_interp=0`, confirming direct path activation in JIT mode only.
       - Added integration regression `compileChunk direct JIT closure calls bypass generic call setup` (`src/tests/integration.zig`); focused `zig build test -- --test-filter ...` remains blocked by environment hang/timeout and needs follow-up once runner stability is fixed.
-    - [ ] `habu-persist-session-jit-4dfb2dd6` Add session-persistent JIT cache keyed by stable chunk identity + GC epoch for loader/runtime reuse. Depends on `habu-add-direct-jit-40f23edc`.
+    - [x] `habu-persist-session-jit-4dfb2dd6` Add session-persistent JIT cache keyed by stable chunk identity + GC epoch for loader/runtime reuse. Depends on `habu-add-direct-jit-40f23edc`.
+      - Added VM JIT compile-status cache (`none/compiled/unsupported/failed`) keyed by deterministic chunk fingerprints (chunk metadata + bytecode + literal fingerprints), with `failed` scoped to current GC epoch and `unsupported` persisted across epochs.
+      - Wired REPL and `compileChunk` hoist pipelines to consult cache before compile, skip redundant compile attempts on cache hits, and record outcomes after each attempt.
+      - Extended JIT admission telemetry with cache counters (`cache_comp`/`cache_unsupported`/`cache_failed`) and surfaced them via existing `jit_adm` JSON payloads.
+      - Validation (`tools/maxima-hotspots --json --scale 1 --workloads factor --heap-mb 1024 --nursery-mb 32`, 2026-02-24): `jit_adm.cache_unsupported=3` confirms repeated unsupported compile attempts are now skipped during Maxima load; JIT loader dropped into ~`15.2s` band on this host (from prior ~`16.2s` runs).
 
 ### 0. Plan Control
 - [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

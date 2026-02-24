@@ -776,7 +776,7 @@ pub fn main() !void {
     try w.print("  jit_compiled: {d}\n", .{jit_compiled});
     try w.print("  jit_direct_calls: {d}\n", .{jit_direct_calls});
     try w.print(
-        "  jit_adm: cand={d} elig={d} comp={d} sk(speed={d},safety={d},assert={d},caps={d},opt={d},key={d},rest={d},chunk={d}) fail(unsupported={d},other={d})\n",
+        "  jit_adm: cand={d} elig={d} comp={d} sk(speed={d},safety={d},assert={d},caps={d},opt={d},key={d},rest={d},chunk={d}) fail(unsupported={d},other={d}) cache(comp={d},unsupported={d},failed={d})\n",
         .{
             jit_adm.cand,
             jit_adm.elig,
@@ -791,6 +791,9 @@ pub fn main() !void {
             jit_adm.sk_chunk,
             jit_adm.fail_unsupported,
             jit_adm.fail_other,
+            jit_adm.cache_comp,
+            jit_adm.cache_unsupported,
+            jit_adm.cache_failed,
         },
     );
     try w.print(

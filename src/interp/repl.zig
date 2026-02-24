@@ -2629,7 +2629,7 @@ pub const Repl = struct {
         }
 
         // Try hoist SSA JIT compilation for eligible lambda nodes
-        _ = self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
+        _ = try self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
 
         // Patch main chunk to use absolute chunk indices
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
@@ -2880,7 +2880,7 @@ pub const Repl = struct {
         ir_node: *const Ir,
         child_chunks: []const Value,
         chunk_base: u16,
-    ) bool {
+    ) !bool {
         if (!self.config.enable_jit) return false;
         const trace = std.posix.getenv("HABU_TRACE_JIT") != null;
         var candidates = std.ArrayList(jit_candidates.LambdaCandidate){};
@@ -2888,18 +2888,16 @@ pub const Repl = struct {
             jit_candidates.freeLambdaCandidates(self.allocator, candidates.items);
             candidates.deinit(self.allocator);
         }
-        jit_candidates.collectLambdaCandidates(self.allocator, ir_node, &candidates) catch {
-            return false;
-        };
+        try jit_candidates.collectLambdaCandidates(self.allocator, ir_node, &candidates);
         if (candidates.items.len == 0) {
             if (trace) std.debug.print("JIT: no lambda candidates in top-level IR ({s})\n", .{@tagName(ir_node.*)});
             return false;
         }
 
-        const used_chunks = self.allocator.alloc(bool, child_chunks.len) catch return false;
+        const used_chunks = try self.allocator.alloc(bool, child_chunks.len);
         defer self.allocator.free(used_chunks);
         @memset(used_chunks, false);
-        const live_chunks = self.allocator.alloc(Value, child_chunks.len) catch return false;
+        const live_chunks = try self.allocator.alloc(Value, child_chunks.len);
         defer self.allocator.free(live_chunks);
         const chunk_base_usize: usize = chunk_base;
 
@@ -2954,6 +2952,44 @@ pub const Repl = struct {
             };
             self.vm.jit_adm.elig += 1;
 
+            switch (try self.vm.jitCompileStatus(chunk_ptr)) {
+                .compiled => {
+                    compiled_any = true;
+                    self.vm.jit_adm.comp += 1;
+                    self.vm.jit_adm.cache_comp += 1;
+                    if (trace) {
+                        std.debug.print("JIT: cache hit compiled '{s}' chunk=0x{x}\n", .{
+                            compile_name,
+                            @intFromPtr(chunk_ptr),
+                        });
+                    }
+                    continue;
+                },
+                .unsupported => {
+                    self.vm.jit_adm.fail_unsupported += 1;
+                    self.vm.jit_adm.cache_unsupported += 1;
+                    if (trace) {
+                        std.debug.print("JIT: cache hit unsupported '{s}' chunk=0x{x}\n", .{
+                            compile_name,
+                            @intFromPtr(chunk_ptr),
+                        });
+                    }
+                    continue;
+                },
+                .failed => {
+                    self.vm.jit_adm.fail_other += 1;
+                    self.vm.jit_adm.cache_failed += 1;
+                    if (trace) {
+                        std.debug.print("JIT: cache hit failed '{s}' chunk=0x{x}\n", .{
+                            compile_name,
+                            @intFromPtr(chunk_ptr),
+                        });
+                    }
+                    continue;
+                },
+                .none => {},
+            }
+
             if (trace and lambda_ir.* == .lambda) {
                 const lambda = lambda_ir.lambda;
                 std.debug.print("JIT: considering '{s}' speed={d} safety={d} captures={d} opt={d} key={d} rest={} chunk=0x{x}\n", .{
@@ -2968,7 +3004,13 @@ pub const Repl = struct {
                 });
             }
 
-            switch (self.doHoistCompile(lambda_ir, compile_name, chunk_ptr)) {
+            const compile_result = self.doHoistCompile(lambda_ir, compile_name, chunk_ptr);
+            try self.vm.noteJitCompileStatus(chunk_ptr, switch (compile_result) {
+                .compiled => .compiled,
+                .unsupported => .unsupported,
+                .failed => .failed,
+            });
+            switch (compile_result) {
                 .compiled => {
                     compiled_any = true;
                     self.vm.jit_adm.comp += 1;
@@ -3140,7 +3182,7 @@ pub const Repl = struct {
 
         if (std.posix.getenv("HABU_TRACE_JIT") != null) {
             std.debug.print("JIT: hoist compiled '{s}' OK (arity={d}, fn_ptr={*}, chunk=0x{x}, reg_count={d})\n", .{
-                name,                   compiled.arity,          compiled.fn_ptr,
+                name,                   compiled.arity,            compiled.fn_ptr,
                 @intFromPtr(chunk_ptr), self.vm.jit_fns.items.len,
             });
         }
@@ -3512,7 +3554,7 @@ pub const Repl = struct {
         }
 
         // Try hoist SSA JIT compilation for eligible lambda nodes
-        _ = self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
+        _ = try self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
 
         // Free child chunk array (now owned by persistent storage)
         self.allocator.free(child_chunks);

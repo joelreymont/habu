@@ -532,6 +532,9 @@ pub const Vm = struct {
         sk_chunk: u64 = 0,
         fail_unsupported: u64 = 0,
         fail_other: u64 = 0,
+        cache_comp: u64 = 0,
+        cache_unsupported: u64 = 0,
+        cache_failed: u64 = 0,
     };
 
     pub const CallShapeStats = struct {
@@ -571,6 +574,19 @@ pub const Vm = struct {
     const ChunkConstCacheEntry = struct {
         chunk_key: usize = 0,
         gc_count: usize = 0,
+    };
+
+    pub const JitCompileStatus = enum(u8) {
+        none = 0,
+        compiled,
+        unsupported,
+        failed,
+    };
+
+    const JitCompileCacheEntry = struct {
+        chunk_key: u64 = 0,
+        gc_count: usize = 0,
+        status: JitCompileStatus = .none,
     };
 
     const JitFnEntry = struct {
@@ -731,6 +747,7 @@ pub const Vm = struct {
     chunk_const_cache: [MAX_CHUNK_CONST_CACHE]ChunkConstCacheEntry,
     const_last_chunk_key: usize,
     const_last_gc_count: usize,
+    jit_compile_cache: [MAX_JIT_COMPILE_CACHE]JitCompileCacheEntry,
     /// Value cells for uninterned symbols, keyed by stable symbol uid.
     uninterned_values: std.AutoHashMap(u64, Value),
 
@@ -795,6 +812,7 @@ pub const Vm = struct {
     const MAX_GLOBAL_INDEX_CACHE = 1024;
     const MAX_KEY_ALLOWLIST_CACHE = 256;
     const MAX_CHUNK_CONST_CACHE = 1024;
+    const MAX_JIT_COMPILE_CACHE = 2048;
     const SAFEPOINT_BATCH_OPS = 32;
     const SAFEPOINT_BATCH_BYTES = 64 * 1024;
     const KEY_FAST_TABLE_MAX = 8;
@@ -1170,6 +1188,7 @@ pub const Vm = struct {
             .chunk_const_cache = [_]ChunkConstCacheEntry{.{}} ** MAX_CHUNK_CONST_CACHE,
             .const_last_chunk_key = 0,
             .const_last_gc_count = 0,
+            .jit_compile_cache = [_]JitCompileCacheEntry{.{}} ** MAX_JIT_COMPILE_CACHE,
             .uninterned_values = std.AutoHashMap(u64, Value).init(allocator),
             .gensym_counter = 0,
             .current_closure = null,
@@ -1461,6 +1480,115 @@ pub const Vm = struct {
             .chunk_key = @intFromPtr(chunk),
             .gc_count = gc_count,
         };
+    }
+
+    inline fn jitCompileCacheIndex(chunk_key: u64) usize {
+        return @intCast(chunk_key & (MAX_JIT_COMPILE_CACHE - 1));
+    }
+
+    fn clearJitCompileCacheForKey(self: *Vm, chunk_key: u64) void {
+        if (chunk_key == 0) return;
+        const idx = jitCompileCacheIndex(chunk_key);
+        if (self.jit_compile_cache[idx].chunk_key == chunk_key) {
+            self.jit_compile_cache[idx] = .{};
+        }
+    }
+
+    fn hashJitKeyU64(hasher: *std.hash.Wyhash, val: u64) void {
+        var buf: [8]u8 = undefined;
+        std.mem.writeInt(u64, &buf, val, .little);
+        hasher.update(&buf);
+    }
+
+    fn hashJitChunkMeta(hasher: *std.hash.Wyhash, chunk: *const Chunk) void {
+        hashJitKeyU64(hasher, @as(u64, chunk.const_count));
+        hashJitKeyU64(hasher, @as(u64, chunk.code_len));
+        hashJitKeyU64(hasher, @as(u64, chunk.arity));
+        hashJitKeyU64(hasher, @as(u64, chunk.opt_count));
+        hashJitKeyU64(hasher, @as(u64, chunk.key_count));
+        hashJitKeyU64(hasher, @as(u64, chunk.has_rest));
+        hashJitKeyU64(hasher, @as(u64, chunk.allow_other_keys));
+        hashJitKeyU64(hasher, @as(u64, chunk.num_locals));
+        hashJitKeyU64(hasher, @as(u64, chunk.speed));
+        hashJitKeyU64(hasher, @as(u64, chunk.safety));
+    }
+
+    fn hashJitCacheValue(self: *Vm, hasher: *std.hash.Wyhash, raw_val: Value, depth: u8) void {
+        const val = self.resolveForwardedValue(raw_val);
+        hasher.update(&[_]u8{@intFromEnum(val.typeKind())});
+        switch (val.typeKind()) {
+            .nil, .t, .fixnum, .char, .float => hashJitKeyU64(hasher, val.raw),
+            .symbol => hasher.update(val.toPtr(Symbol).getName()),
+            .keyword => hasher.update(val.toPtr(runtime.Keyword).getName()),
+            .string => hasher.update(val.toPtr(runtime.String).bytes()),
+            .string32 => hasher.update(std.mem.sliceAsBytes(val.toPtr(runtime.String32).codepoints())),
+            .chunk => {
+                if (depth >= 1) {
+                    hashJitKeyU64(hasher, val.raw);
+                } else {
+                    const child = val.toPtr(Chunk);
+                    hashJitChunkMeta(hasher, child);
+                    hasher.update(child.getCode());
+                }
+            },
+            else => hashJitKeyU64(hasher, val.raw),
+        }
+    }
+
+    fn computeJitChunkKey(self: *Vm, chunk: *const Chunk) u64 {
+        var hasher = std.hash.Wyhash.init(0x71C7A5D2C8E9F3B1);
+        hashJitChunkMeta(&hasher, chunk);
+        hasher.update(chunk.getCode());
+        for (chunk.getConstants()) |const_val| {
+            self.hashJitCacheValue(&hasher, const_val, 0);
+        }
+        const key = hasher.final();
+        return if (key == 0) 1 else key;
+    }
+
+    fn ensureJitChunkKey(self: *Vm, chunk: *const Chunk) !u64 {
+        return self.computeJitChunkKey(chunk);
+    }
+
+    fn noteJitCompileStatusByKey(self: *Vm, chunk_key: u64, status: JitCompileStatus) void {
+        const idx = jitCompileCacheIndex(chunk_key);
+        self.jit_compile_cache[idx] = .{
+            .chunk_key = chunk_key,
+            .gc_count = self.heap.stats.gc_count,
+            .status = status,
+        };
+    }
+
+    pub fn noteJitCompileStatus(self: *Vm, chunk: *const Chunk, status: JitCompileStatus) !void {
+        if (status == .none) {
+            self.clearJitCompileCacheForKey(self.computeJitChunkKey(chunk));
+            return;
+        }
+        const key = try self.ensureJitChunkKey(chunk);
+        self.noteJitCompileStatusByKey(key, status);
+    }
+
+    pub fn jitCompileStatus(self: *Vm, chunk: *const Chunk) !JitCompileStatus {
+        const key = try self.ensureJitChunkKey(chunk);
+        const idx = jitCompileCacheIndex(key);
+        const entry = &self.jit_compile_cache[idx];
+        if (entry.chunk_key != key) return .none;
+
+        switch (entry.status) {
+            .none => return .none,
+            .compiled => {
+                if (chunk.jit_fn == 0 and self.lookupJitFn(chunk) == null) {
+                    entry.* = .{};
+                    return .none;
+                }
+                entry.gc_count = self.heap.stats.gc_count;
+                return .compiled;
+            },
+            .unsupported, .failed => {
+                if (entry.status == .failed and entry.gc_count != self.heap.stats.gc_count) return .none;
+                return entry.status;
+            },
+        }
     }
 
     fn refreshChunkConsts(self: *Vm, chunk: *const Chunk) void {
@@ -1763,6 +1891,7 @@ pub const Vm = struct {
     /// Register a hoist-compiled native function for a chunk.
     pub fn registerJitFn(self: *Vm, chunk: *const Chunk, compiled: *jit_backend.CompiledFn) !void {
         const chunk_val = Value.makeChunk(chunk);
+        const chunk_key = try self.ensureJitChunkKey(chunk);
         if (self.findJitFnIndex(chunk_val)) |idx| {
             const old = self.jit_fns.items[idx].compiled;
             self.jit_fns.items[idx].chunk = chunk_val;
@@ -1778,6 +1907,7 @@ pub const Vm = struct {
             });
         }
         @constCast(chunk).jit_fn = @intFromPtr(compiled);
+        self.noteJitCompileStatusByKey(chunk_key, .compiled);
     }
 
     /// Register a stable host-root slot for a JIT literal Value.
@@ -1806,6 +1936,7 @@ pub const Vm = struct {
         const chunk_val = Value.makeChunk(chunk);
         const idx = self.findJitFnIndex(chunk_val) orelse return false;
         _ = self.jit_fns.swapRemove(idx);
+        self.clearJitCompileCacheForKey(self.computeJitChunkKey(chunk));
         return true;
     }
 
@@ -13579,6 +13710,44 @@ test "vm registerJitFn updates chunk jit pointer fast path" {
     try testing.expectEqual(@as(usize, 0), chunk_ptr.jit_fn);
     try testing.expect(vm.lookupJitFn(chunk_ptr) == null);
     try testing.expect(!vm.unregisterJitFn(chunk_ptr));
+}
+
+test "vm jit compile cache honors gc epoch and compiled persistence" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    const code = [_]u8{};
+    const consts = [_]Value{};
+    const chunk_val = try heap.allocChunk(&code, &consts, 0, 0, 0, false, 0);
+    vm.chunk = chunk_val.toPtr(Chunk);
+
+    try testing.expectEqual(Vm.JitCompileStatus.none, try vm.jitCompileStatus(vm.chunk));
+
+    try vm.noteJitCompileStatus(vm.chunk, .unsupported);
+    try testing.expectEqual(Vm.JitCompileStatus.unsupported, try vm.jitCompileStatus(vm.chunk));
+
+    const gc0 = heap.stats.gc_count;
+    _ = try vm.collectGarbage();
+    try testing.expect(heap.stats.gc_count > gc0);
+    try testing.expectEqual(Vm.JitCompileStatus.unsupported, try vm.jitCompileStatus(vm.chunk));
+
+    var dummy: jit_backend.CompiledFn = undefined;
+    try vm.registerJitFn(vm.chunk, &dummy);
+    try testing.expectEqual(Vm.JitCompileStatus.compiled, try vm.jitCompileStatus(vm.chunk));
+
+    const gc1 = heap.stats.gc_count;
+    _ = try vm.collectGarbage();
+    try testing.expect(heap.stats.gc_count > gc1);
+    try testing.expectEqual(Vm.JitCompileStatus.compiled, try vm.jitCompileStatus(vm.chunk));
+
+    try testing.expect(vm.unregisterJitFn(vm.chunk));
+    try testing.expectEqual(Vm.JitCompileStatus.none, try vm.jitCompileStatus(vm.chunk));
 }
 
 test "vm jit bridge lifecycle tracks owner vm" {

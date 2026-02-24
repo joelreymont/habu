@@ -172,7 +172,7 @@ def format_text(summary: dict) -> str:
         j = summary.get("jit_adm", {})
         i = summary.get("interp_adm", {})
         lines.append(
-            "jit_adm cand={jc}/{ic} elig={je}/{ie} comp={jp}/{ip} sk_speed={jss}/{iss} sk_safety={jsf}/{isf} sk_chunk={jsc}/{isc} fail_unsup={jfu}/{ifu} fail_other={jfo}/{ifo}".format(
+            "jit_adm cand={jc}/{ic} elig={je}/{ie} comp={jp}/{ip} sk_speed={jss}/{iss} sk_safety={jsf}/{isf} sk_chunk={jsc}/{isc} fail_unsup={jfu}/{ifu} fail_other={jfo}/{ifo} cache_comp={jcc}/{icc} cache_unsup={jcu}/{icu} cache_fail={jcf}/{icf}".format(
                 jc=j.get("cand", 0),
                 ic=i.get("cand", 0),
                 je=j.get("elig", 0),
@@ -189,6 +189,12 @@ def format_text(summary: dict) -> str:
                 ifu=i.get("fail_unsupported", 0),
                 jfo=j.get("fail_other", 0),
                 ifo=i.get("fail_other", 0),
+                jcc=j.get("cache_comp", 0),
+                icc=i.get("cache_comp", 0),
+                jcu=j.get("cache_unsupported", 0),
+                icu=i.get("cache_unsupported", 0),
+                jcf=j.get("cache_failed", 0),
+                icf=i.get("cache_failed", 0),
             )
         )
     if isinstance(summary.get("jit_call_shape"), dict):
@@ -257,7 +263,7 @@ def format_markdown(summary: dict, scale: int, heap_mb: int, nursery_mb: int) ->
         j = summary.get("jit_adm", {})
         i = summary.get("interp_adm", {})
         lines.append(
-            "- jit_adm: cand=`{jc}/{ic}`, elig=`{je}/{ie}`, comp=`{jp}/{ip}`, sk_speed=`{jss}/{iss}`, sk_safety=`{jsf}/{isf}`, sk_chunk=`{jsc}/{isc}`, fail_unsup=`{jfu}/{ifu}`, fail_other=`{jfo}/{ifo}`".format(
+            "- jit_adm: cand=`{jc}/{ic}`, elig=`{je}/{ie}`, comp=`{jp}/{ip}`, sk_speed=`{jss}/{iss}`, sk_safety=`{jsf}/{isf}`, sk_chunk=`{jsc}/{isc}`, fail_unsup=`{jfu}/{ifu}`, fail_other=`{jfo}/{ifo}`, cache_comp=`{jcc}/{icc}`, cache_unsup=`{jcu}/{icu}`, cache_fail=`{jcf}/{icf}`".format(
                 jc=j.get("cand", 0),
                 ic=i.get("cand", 0),
                 je=j.get("elig", 0),
@@ -274,6 +280,12 @@ def format_markdown(summary: dict, scale: int, heap_mb: int, nursery_mb: int) ->
                 ifu=i.get("fail_unsupported", 0),
                 jfo=j.get("fail_other", 0),
                 ifo=i.get("fail_other", 0),
+                jcc=j.get("cache_comp", 0),
+                icc=i.get("cache_comp", 0),
+                jcu=j.get("cache_unsupported", 0),
+                icu=i.get("cache_unsupported", 0),
+                jcf=j.get("cache_failed", 0),
+                icf=i.get("cache_failed", 0),
             )
         )
     if isinstance(summary.get("jit_call_shape"), dict):

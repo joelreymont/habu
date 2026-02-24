@@ -403,6 +403,43 @@ fn tryHoistCompile(
         };
         vm.jit_adm.elig += 1;
 
+        switch (try vm.jitCompileStatus(chunk_ptr)) {
+            .compiled => {
+                vm.jit_adm.comp += 1;
+                vm.jit_adm.cache_comp += 1;
+                if (trace) {
+                    std.debug.print("JIT bench: cache hit compiled '{s}' chunk=0x{x}\n", .{
+                        compile_name,
+                        @intFromPtr(chunk_ptr),
+                    });
+                }
+                continue;
+            },
+            .unsupported => {
+                vm.jit_adm.fail_unsupported += 1;
+                vm.jit_adm.cache_unsupported += 1;
+                if (trace) {
+                    std.debug.print("JIT bench: cache hit unsupported '{s}' chunk=0x{x}\n", .{
+                        compile_name,
+                        @intFromPtr(chunk_ptr),
+                    });
+                }
+                continue;
+            },
+            .failed => {
+                vm.jit_adm.fail_other += 1;
+                vm.jit_adm.cache_failed += 1;
+                if (trace) {
+                    std.debug.print("JIT bench: cache hit failed '{s}' chunk=0x{x}\n", .{
+                        compile_name,
+                        @intFromPtr(chunk_ptr),
+                    });
+                }
+                continue;
+            },
+            .none => {},
+        }
+
         const lambda = candidate.lambda_ir.lambda;
         if (trace) {
             std.debug.print(
@@ -426,6 +463,7 @@ fn tryHoistCompile(
         if (candidate.lambda_ir.* == .lambda) {
             collectJitLiteralRoots(vm, heap, candidate.lambda_ir.lambda.body, &literal_roots) catch |err| {
                 vm.jit_adm.fail_other += 1;
+                try vm.noteJitCompileStatus(chunk_ptr, .failed);
                 if (trace) std.debug.print("JIT bench: literal roots fail '{s}' {s}\n", .{ compile_name, @errorName(err) });
                 continue;
             };
@@ -444,8 +482,10 @@ fn tryHoistCompile(
         ) catch |err| {
             if (err == error.UnsupportedIrNode) {
                 vm.jit_adm.fail_unsupported += 1;
+                try vm.noteJitCompileStatus(chunk_ptr, .unsupported);
             } else {
                 vm.jit_adm.fail_other += 1;
+                try vm.noteJitCompileStatus(chunk_ptr, .failed);
             }
             if (trace) {
                 if (err == error.UnsupportedIrNode) {
@@ -464,6 +504,7 @@ fn tryHoistCompile(
         };
         const persistent = allocator.create(jit_backend.CompiledFn) catch {
             vm.jit_adm.fail_other += 1;
+            try vm.noteJitCompileStatus(chunk_ptr, .failed);
             return error.OutOfMemory;
         };
         persistent.* = compiled;
@@ -471,8 +512,10 @@ fn tryHoistCompile(
             persistent.deinit();
             allocator.destroy(persistent);
             vm.jit_adm.fail_other += 1;
+            try vm.noteJitCompileStatus(chunk_ptr, .failed);
             return error.OutOfMemory;
         };
+        try vm.noteJitCompileStatus(chunk_ptr, .compiled);
         vm.jit_adm.comp += 1;
         if (trace) std.debug.print("JIT bench: registered '{s}' map={d}\n", .{ compile_name, vm.jit_fns.items.len });
     }
