@@ -375,6 +375,33 @@
         - Trialed broadening `translator.local_consts` in `src/jit/backend.zig` from `TCO + non-tail-self-call` to `TCO + (non-tail-self-call or cross-call)`.
         - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): baseline avg `3,137,916ns`, patched avg `3,139,066ns` (~`0.04%` slower).
         - Result: rejected and reverted.
+      - [x] `habu-abs-sub-fastpath-6eb95baf` Add abs(sub) tagged fast path (rejected).
+        - Trialed a targeted `translateAbs` fast path in `src/jit/backend.zig` for `.abs(.sub/.fixnum_sub)` to compute `abs(l_raw-r_raw)+1` directly, with a focused translator regression.
+        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): baseline avg `3,339,458ns`, patched avg `3,421,358ns` (~`2.4%` slower).
+        - Result: rejected and reverted.
+      - [x] `habu-stabilize-nqueens-bench-d2bee0b5` Stabilize nqueens bench environment (rejected).
+        - Trialed benchmark harness changes in `bench/comprehensive_bench.zig`: higher default heap and forced pre-timed GC stabilization flow.
+        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): baseline avg `3,338,708ns`, patched avg `3,386,408ns` (~`1.4%` slower).
+        - Result: rejected and reverted.
+      - [x] `habu-fast-path-num-526ad4e5` Fast-path `.num_eq` for `fixnum_fast` mode (rejected).
+        - Trialed `src/jit/backend.zig`: route `translateNumEq` through `translateCmpFixnumFastFallback(.eq, jitNumEq, ...)` when `fixnum_fast`, and added `jitNumEq` helper fast path via `jitFastNumCmp(.eq)`.
+        - Added focused regressions (`hoist IR translator: generic num_eq fixnum guard fallback`, `jit numeric compare helpers fast path fixnum and float`) and revalidated existing nqueens recursive JIT regression.
+        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): parent workspace avg `3,153,800ns`, patched avg `3,237,992ns` (~`2.7%` slower).
+        - Result: rejected and reverted.
+      - [x] `habu-elide-return-trampoline-dff6cf6b` Elide return trampoline branches (rejected).
+        - Trialed `src/jit/backend.zig`: rewrite `mov xN,xM; b L` to `mov x0,xM; ret` when `L` is a return trampoline (`mov x0,xN; ret`), plus focused pass regressions.
+        - Validation: focused tests passed (`eliminateReturnTrampolineBranches rewrites mov+b trampoline chain`, `...keeps mismatched source chains`, `compileChunk JIT handles recursive nqueens helper entry copies`).
+        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): parent workspace avg `3,153,800ns`, patched avg `3,363,217ns` (~`6.6%` slower).
+        - Result: rejected and reverted.
+      - [x] `habu-restore-known-fn-8dd48c03` Restore known-function IR deep-copy coverage for JIT metadata.
+        - RCA (`HABU_TRACE_JIT=1`, 2026-02-24): `src/compiler/ir.zig:deepCopyIr` rejected many JIT-translatable tags (`UnsupportedIrNode`), causing `src/interp/repl.zig` to log `IR copy skipped` (115 occurrences in the previous trace) and leaving `KnownFn.ir_body/param_names` null for known-call analysis paths.
+        - Fix (`src/compiler/ir.zig`): extend `deepCopyIr` coverage to the full translator-supported subset (block/progv/lambda copies, unary/binary helper ops, hash/vector/string/array forms), add reusable deep-copy helpers, and lock with `deepCopyIr copies block-wrapped recursive shape`.
+        - Validation (`zig build test`, 2026-02-24): `deepCopyIr` regression plus existing nqueens recursive JIT regressions all pass.
+        - Reprofile (`HABU_TRACE_JIT=1 ... --bench=nqueens10 --iters=1`): `IR copy skipped` dropped from `115` to `0`; `NQUEENS-SAFE-P` and `NQUEENS-SOLVE` now retain deep-copied IR metadata.
+      - [x] `habu-trial-guarded-tco-d9b81301` Trial guarded TCO cross-call inlining (rejected).
+        - With deep-copy restored, re-enabling the existing cross-call TCO inliner path in `src/jit/backend.zig:translateCrossCall` became active and immediately reproduced the known nested-loop regalloc instability.
+        - Runtime outcome: `comprehensive_bench --bench=nqueens10` terminated unexpectedly under the trial path; backend trial changes were reverted.
+        - Decision: keep cross-call TCO inlining disabled until the underlying hoist regalloc phi-copy issue is solved in a root-cause-safe way.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).

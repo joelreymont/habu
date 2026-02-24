@@ -2939,7 +2939,18 @@ pub const IrBuilder = struct {
 
 /// Deep-copy an IR tree to a new allocator. Handles the subset of nodes
 /// that pass IrTranslator.canTranslate. Returns null for unsupported nodes.
-pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) !*const Ir {
+fn deepCopyOptionalIr(allocator: std.mem.Allocator, src: ?*const Ir) anyerror!?*const Ir {
+    if (src) |node| return try deepCopyIr(allocator, node);
+    return null;
+}
+
+fn deepCopyIrSlice(allocator: std.mem.Allocator, src: []const *const Ir) anyerror![]const *const Ir {
+    const dst = try allocator.alloc(*const Ir, src.len);
+    for (src, 0..) |node, i| dst[i] = try deepCopyIr(allocator, node);
+    return dst;
+}
+
+pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) anyerror!*const Ir {
     const node = try allocator.create(Ir);
     node.* = switch (src.*) {
         .lit => |v| .{ .lit = v },
@@ -2958,14 +2969,17 @@ pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) !*const Ir {
             .index = s.index,
             .value = try deepCopyIr(allocator, s.value),
         } },
+        .block => |b| .{ .block = .{
+            .name = b.name,
+            .body = try deepCopyIr(allocator, b.body),
+        } },
         .@"if" => |f| .{ .@"if" = .{
             .cond = try deepCopyIr(allocator, f.cond),
             .then_branch = try deepCopyIr(allocator, f.then_branch),
             .else_branch = try deepCopyIr(allocator, f.else_branch),
         } },
         .progn => |exprs| blk: {
-            const new_exprs = try allocator.alloc(*const Ir, exprs.len);
-            for (exprs, 0..) |e, i| new_exprs[i] = try deepCopyIr(allocator, e);
+            const new_exprs = try deepCopyIrSlice(allocator, exprs);
             break :blk .{ .progn = new_exprs };
         },
         .let => |l| blk: {
@@ -2986,20 +3000,71 @@ pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) !*const Ir {
             .cond = try deepCopyIr(allocator, l.cond),
             .body = try deepCopyIr(allocator, l.body),
         } },
+        .progv => |p| .{ .progv = .{
+            .symbols = try deepCopyIr(allocator, p.symbols),
+            .values = try deepCopyIr(allocator, p.values),
+            .body = try deepCopyIr(allocator, p.body),
+        } },
         .call => |c| blk: {
-            const new_args = try allocator.alloc(*const Ir, c.args.len);
-            for (c.args, 0..) |a, i| new_args[i] = try deepCopyIr(allocator, a);
+            const new_args = try deepCopyIrSlice(allocator, c.args);
             break :blk .{ .call = .{
                 .func = try deepCopyIr(allocator, c.func),
                 .args = new_args,
             } };
         },
         .tailcall => |tc| blk: {
-            const new_args = try allocator.alloc(*const Ir, tc.args.len);
-            for (tc.args, 0..) |a, i| new_args[i] = try deepCopyIr(allocator, a);
+            const new_args = try deepCopyIrSlice(allocator, tc.args);
             break :blk .{ .tailcall = .{
                 .func = try deepCopyIr(allocator, tc.func),
                 .args = new_args,
+            } };
+        },
+        .lambda => |lam| blk: {
+            const new_params = try allocator.alloc([]const u8, lam.params.len);
+            for (lam.params, 0..) |param, i| {
+                new_params[i] = try allocator.dupe(u8, param);
+            }
+
+            const new_optional = try allocator.alloc(Ir.OptionalParam, lam.optional_params.len);
+            for (lam.optional_params, 0..) |param, i| {
+                new_optional[i] = .{
+                    .name = try allocator.dupe(u8, param.name),
+                    .default = try deepCopyOptionalIr(allocator, param.default),
+                };
+            }
+
+            const new_key = try allocator.alloc(Ir.KeyParam, lam.key_params.len);
+            for (lam.key_params, 0..) |param, i| {
+                new_key[i] = .{
+                    .keyword = try allocator.dupe(u8, param.keyword),
+                    .name = try allocator.dupe(u8, param.name),
+                    .default = try deepCopyOptionalIr(allocator, param.default),
+                };
+            }
+
+            const new_captures = try allocator.alloc(Ir.Capture, lam.captures.len);
+            for (lam.captures, 0..) |capture, i| {
+                new_captures[i] = .{
+                    .name = try allocator.dupe(u8, capture.name),
+                    .depth = capture.depth,
+                    .index = capture.index,
+                };
+            }
+
+            break :blk .{ .lambda = .{
+                .params = new_params,
+                .optional_params = new_optional,
+                .key_params = new_key,
+                .allow_other_keys = lam.allow_other_keys,
+                .rest_param = if (lam.rest_param) |rest_param| try allocator.dupe(u8, rest_param) else null,
+                .captures = new_captures,
+                .body = try deepCopyIr(allocator, lam.body),
+                .lambda_expr = lam.lambda_expr,
+                .lambda_expr_idx = lam.lambda_expr_idx,
+                .name = lam.name,
+                .name_idx = lam.name_idx,
+                .speed = lam.speed,
+                .safety = lam.safety,
             } };
         },
         .cons => |op| .{ .cons = .{
@@ -3024,6 +3089,18 @@ pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) !*const Ir {
         .fixnum_mul,
         .mul,
         .eq,
+        .vec_ref,
+        .str_ref,
+        .str_concat,
+        .make_string,
+        .position,
+        .position_eq,
+        .position_equal,
+        .logand,
+        .mod,
+        .rem,
+        .append,
+        .assoc,
         => |op, tag| @unionInit(Ir, @tagName(tag), .{
             .left = try deepCopyIr(allocator, op.left),
             .right = try deepCopyIr(allocator, op.right),
@@ -3034,13 +3111,84 @@ pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) !*const Ir {
         .not,
         .consp,
         .abs,
+        .zerop,
+        .oddp,
+        .evenp,
         .car,
         .cdr,
         .unsafe_car,
         .unsafe_cdr,
+        .length,
+        .sqrt,
+        .round,
+        .intern,
+        .vec_len,
+        .str_len,
+        .hash_count,
+        .hash_capacity,
+        .hash_clear,
+        .hash_test,
+        .hash_keys,
+        .hash_alist,
         => |op, tag| @unionInit(Ir, @tagName(tag), .{
             .operand = try deepCopyIr(allocator, op.operand),
         }),
+        .vec_new => |v| .{ .vec_new = .{
+            .size = try deepCopyIr(allocator, v.size),
+            .init = try deepCopyOptionalIr(allocator, v.init),
+        } },
+        .vec_set => |v| .{ .vec_set = .{
+            .vec = try deepCopyIr(allocator, v.vec),
+            .index = try deepCopyIr(allocator, v.index),
+            .value = try deepCopyIr(allocator, v.value),
+        } },
+        .make_hash => |h| .{ .make_hash = h },
+        .hash_get => |h| .{ .hash_get = .{
+            .table = try deepCopyIr(allocator, h.table),
+            .key = try deepCopyIr(allocator, h.key),
+            .default = try deepCopyOptionalIr(allocator, h.default),
+        } },
+        .hash_set => |h| .{ .hash_set = .{
+            .table = try deepCopyIr(allocator, h.table),
+            .key = try deepCopyIr(allocator, h.key),
+            .value = try deepCopyIr(allocator, h.value),
+        } },
+        .hash_rem => |h| .{ .hash_rem = .{
+            .table = try deepCopyIr(allocator, h.table),
+            .key = try deepCopyIr(allocator, h.key),
+        } },
+        .format => |f| .{ .format = .{
+            .dest = try deepCopyIr(allocator, f.dest),
+            .control = try deepCopyIr(allocator, f.control),
+            .args = try deepCopyIrSlice(allocator, f.args),
+        } },
+        .str_set => |s| .{ .str_set = .{
+            .str = try deepCopyIr(allocator, s.str),
+            .index = try deepCopyIr(allocator, s.index),
+            .value = try deepCopyIr(allocator, s.value),
+        } },
+        .substring => |s| .{ .substring = .{
+            .str = try deepCopyIr(allocator, s.str),
+            .start = try deepCopyIr(allocator, s.start),
+            .end = try deepCopyIr(allocator, s.end),
+        } },
+        .arr_new => |a| .{ .arr_new = .{
+            .dimensions = try deepCopyIrSlice(allocator, a.dimensions),
+            .init = try deepCopyOptionalIr(allocator, a.init),
+        } },
+        .arr_new_dyn => |a| .{ .arr_new_dyn = .{
+            .dimensions = try deepCopyIr(allocator, a.dimensions),
+            .init = try deepCopyOptionalIr(allocator, a.init),
+        } },
+        .arr_ref => |a| .{ .arr_ref = .{
+            .array = try deepCopyIr(allocator, a.array),
+            .subscripts = try deepCopyIrSlice(allocator, a.subscripts),
+        } },
+        .arr_set => |a| .{ .arr_set = .{
+            .array = try deepCopyIr(allocator, a.array),
+            .subscripts = try deepCopyIrSlice(allocator, a.subscripts),
+            .value = try deepCopyIr(allocator, a.value),
+        } },
         else => return error.UnsupportedIrNode,
     };
     return node;
@@ -3124,4 +3272,64 @@ test "ir tag name" {
     const node = try builder.lit(Value.nil);
 
     try std.testing.expectEqualStrings("lit", node.tagName());
+}
+
+test "deepCopyIr copies block-wrapped recursive shape" {
+    var src_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer src_arena.deinit();
+
+    const builder = IrBuilder.init(src_arena.allocator());
+
+    const col = try builder.variable("col", 0, 0);
+    const placed = try builder.variable("placed", 0, 1);
+    const row = try builder.variable("row", 0, 2);
+
+    const cond_nil = try builder.nilp(placed);
+    const c = try builder.car(placed);
+    const eq_col = try builder.eq(c, col);
+    const diff = try builder.sub(c, col);
+    const diag = try builder.abs(diff);
+    const eq_diag = try builder.eq(diag, row);
+    const not_diag = try builder.not(eq_diag);
+    const rest = try builder.cdr(placed);
+    const one = try builder.lit(Value.makeFixnum(1));
+    const row_next = try builder.add(row, one);
+    const self_fn = try builder.globalRef("NQUEENS-SAFE-P", 0);
+    const recurse_args = [_]*const Ir{ col, rest, row_next };
+    const recurse = try builder.tailcall(self_fn, &recurse_args);
+    const nil_lit = try builder.lit(Value.nil);
+    const t_lit = try builder.lit(Value.t);
+    const inner_if = try builder.ifExpr(not_diag, recurse, nil_lit);
+    const not_same_col = try builder.not(eq_col);
+    const let_body = try builder.ifExpr(not_same_col, inner_if, nil_lit);
+    const bindings = [_]Ir.Binding{
+        .{ .name = "c", .value = c, .index = 3 },
+    };
+    const let_node = try builder.letExpr(&bindings, let_body);
+    const body = try builder.ifExpr(cond_nil, t_lit, let_node);
+    const wrapped = try builder.block(Value.nil, body);
+
+    var dst_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer dst_arena.deinit();
+
+    const copied = try deepCopyIr(dst_arena.allocator(), wrapped);
+    try std.testing.expectEqual(Ir.block, std.meta.activeTag(copied.*));
+    try std.testing.expect(@intFromPtr(copied) != @intFromPtr(wrapped));
+
+    const outer_if = copied.block.body;
+    try std.testing.expectEqual(Ir.@"if", std.meta.activeTag(outer_if.*));
+
+    const copied_let = outer_if.@"if".else_branch;
+    try std.testing.expectEqual(Ir.let, std.meta.activeTag(copied_let.*));
+
+    const cmp_if = copied_let.let.body;
+    try std.testing.expectEqual(Ir.@"if", std.meta.activeTag(cmp_if.*));
+
+    const recurse_if = cmp_if.@"if".then_branch;
+    try std.testing.expectEqual(Ir.@"if", std.meta.activeTag(recurse_if.*));
+
+    const recurse_call = recurse_if.@"if".then_branch;
+    try std.testing.expectEqual(Ir.tailcall, std.meta.activeTag(recurse_call.*));
+    try std.testing.expectEqual(Ir.global_ref, std.meta.activeTag(recurse_call.tailcall.func.*));
+    try std.testing.expectEqualStrings("NQUEENS-SAFE-P", recurse_call.tailcall.func.global_ref.name);
 }

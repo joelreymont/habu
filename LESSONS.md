@@ -10,6 +10,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ### Worked Well
 - Moving `bench/comprehensive_bench.zig` timed loops from per-iteration `repl.eval(expr)` to pre-resolved runner function values invoked with `Vm.callFromStackAtFast` removed parser/evaluator overhead from microbench timings and improved `nqueens10` from ~`3.98ms` to ~`3.48ms` on this host while preserving benchmark semantics.
+- Extending `deepCopyIr` to cover the translator-supported JIT subset (`src/compiler/ir.zig:2942+`) removed `IR copy skipped` fallout from hoist compile logs (`115 -> 0` in `HABU_TRACE_JIT` nqueens traces) and restored retained `KnownFn.ir_body/param_names` metadata for known-function analysis/inlining paths in `src/interp/repl.zig:3138`.
+- Locking the deep-copy restoration with `deepCopyIr copies block-wrapped recursive shape` (`src/compiler/ir.zig`) caught the missing `.block`/recursive-form coverage that originally nulled callee IR metadata under JIT.
 - Keeping `doHoistCompile` on the normal post-registration path even when IR deep-copy fails (`src/interp/repl.zig:3099-3173`) restored `patchCrossCallsToBL` execution and compile-success telemetry for compiled functions that cannot be inlined yet; `NQUEENS-SOLVE` now reports patched cross-calls (`patched=2`) under `HABU_TRACE_JIT_PATCH=1`.
 - Returning cross-call BL patch counts from backend patching (`src/jit/backend.zig:5149`, `src/jit/backend_stub.zig:180`) plus focused patch-count tests made rewrite coverage measurable instead of inferred.
 - Extending `HABU_TRACE_JIT_PATCH` with per-function call-op deltas (`blr`/`bl`) in `src/interp/repl.zig` confirmed that `NQUEENS-SOLVE` has no residual indirect calls after patching (`blr=2->0`), which prevented further time on indirect-call RCA and redirected effort to codegen quality.
@@ -33,6 +35,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ### Did Not Work
 - Relaxing hoist opt gating to allow `.aggressive` for all call-free load-bearing functions caused pathological benchmark slowdowns/hangs; keep `has_loads` in the `.none` gate until load-path correctness/perf is proven.
+- Re-enabling guarded cross-call TCO inlining in `translateCrossCall` after deep-copy restoration immediately re-triggered the known nested-loop regalloc instability: `comprehensive_bench --bench=nqueens10` terminated unexpectedly, so the trial was reverted and cross-call TCO inlining remains disabled (`src/jit/backend.zig:3618`).
 - Assuming IR deep-copy misses were harmless in `doHoistCompile` was incorrect: the early `.compiled` returns bypassed cross-call BL patching and masked compile success traces, leaving measurable call overhead on functions like `NQUEENS-SOLVE`.
 - Driving benchmark runners through `Vm.callFromStack` (non-fast path) caused severe cross-benchmark regressions; use `Vm.callFromStackAtFast` for timing harnesses that target JIT throughput.
 - Keeping “meta” open dots (`curr`/`next`/`active` placeholders) without `PLAN.md` entries obscures real remaining work and makes completion status unreliable; these must be pruned or mapped into explicit plan leaves.
@@ -49,6 +52,10 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding a dead-callee-save pruning pass (`eliminateDeadCalleeSaveSlots`) to the JIT pipeline regressed `nqueens10` by ~5% in 5-run A/B (`src/jit/backend.zig` trial, reverted). Keep this optimization rejected unless new evidence isolates a safe win.
 - Raising known-call inline-node thresholds in `translateCrossCall` did not inline the `NQUEENS-SAFE-P` helper (`HABU_TRACE_JIT_PATCH` for `NQUEENS-SOLVE` stayed `patched=2`), so this knob-change path was reverted.
 - Broadening `translator.local_consts` to all TCO cross-call functions produced no win on `nqueens10` (5-run A/B was ~0.04% slower), so keep `local_consts` restricted to the existing targeted TCO case.
+- A direct `.abs(.sub)` tagged fast path in `translateAbs` (`abs(l_raw-r_raw)+1`) looked promising in IR shape but regressed `nqueens10` by ~2.4% in 5-run A/B; keep the existing tagged-abs lowering.
+- Benchmark-harness “stabilization” tweaks (higher default heap + forced pre-GC before timed runs in `bench/comprehensive_bench.zig`) made `nqueens10` slower (~1.4% in 5-run A/B), so treat harness changes as measurement-affecting and keep them out unless they improve both signal and throughput.
+- For non-inline `fixnum_fast` code, adding a generic `.num_eq` fixnum-guard/fallback split in `translateNumEq` plus `jitNumEq` helper fast-path (`jitFastNumCmp(.eq)`) increased `nqueens10` runtime (~2.7% slower in 5-run parent-vs-patch A/B), so keep the simpler current `translateNumEq` lowering and only revisit with new profiler evidence.
+- A machine-code pass that rewrote return trampolines (`mov xN,xM; b -> mov x0,xM; ret` when branch target was `mov x0,xN; ret`) passed focused unit tests but regressed `nqueens10` heavily (~6.6% slower in 5-run parent-vs-patch A/B), so keep return-trampoline branches as-is unless a profiler-guided variant proves a win.
 
 ## Session Notes (2026-02-23)
 
