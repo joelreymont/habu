@@ -19,12 +19,15 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Caching JIT compile outcomes in VM with a deterministic chunk fingerprint key (`src/interp/vm.zig:computeJitChunkKey`, `src/interp/vm.zig:jitCompileStatus`) safely skipped repeated unsupported compile attempts without introducing fallback behavior; Maxima factor load now reports non-zero cache hits (`jit_adm.cache_unsupported=3`).
 - Wiring cache checks before `doHoistCompile` in both REPL and test helper compile paths (`src/interp/repl.zig:tryHoistCompileLambdas`, `src/testing/compile_chunk.zig:tryHoistCompile`) kept admission counters coherent and cut redundant compile work during loader-heavy runs.
 - Extending `JitAdmStats` with cache-hit counters (`src/interp/vm.zig:JitAdmStats`) made cache effect measurable in existing benchmark JSON without adding another telemetry channel.
+- Dumping `BENCH-GC-CONS` hoist output before editing exposed a concrete hot-path bug (`src/jit/backend.zig:translateAdd`): safety=0 non-recursive generic `+` still emitted per-iteration helper calls in a fixnum loop, despite inline cons allocation.
+- Adding guarded fixnum fast paths for generic `.add`/`.sub` (`src/jit/backend.zig:translateArithFixnumFastFallback`) with non-fixnum and overflow fallback to helpers delivered a large measured win on `gc_cons` (`~1.7-1.9ms` -> `~0.69-0.74ms`) without introducing a Maxima-specific path.
 
 ### Did Not Work
 - Keeping “meta” open dots (`curr`/`next`/`active` placeholders) without `PLAN.md` entries obscures real remaining work and makes completion status unreliable; these must be pruned or mapped into explicit plan leaves.
 - Relying on plain `zig build test -- --test-filter ...` in this environment still stalls with no output; wrapping with `timeout` is required to prevent leaked long-lived test processes while keeping CI gates actionable.
 - Using `continue` inside `executeOp` opcode switch during direct-call insertion was invalid (`continue expression outside loop`); opcode handlers must `return` from `executeOp` instead.
 - Keying compile-status cache by per-chunk pointer identity did not produce useful reuse under Maxima loader churn; switching to deterministic chunk fingerprints was required to convert the cache from “mostly cold” to measurable hits.
+- Running filtered tests via the build wrapper can still leave long-lived `.zig-cache/.../build ... test` processes active after command completion; explicit `pgrep`/`kill` cleanup is required before continuing perf work to avoid unified-exec process-limit pressure.
 
 ## Session Notes (2026-02-23)
 

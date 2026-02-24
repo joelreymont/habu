@@ -40,6 +40,8 @@ const Cons = runtime.Cons;
 
 const I64 = HoistType.I64;
 const I8 = HoistType.I8;
+const FIXNUM_MIN_UNTAGGED: i64 = -(@as(i64, 1) << 62);
+const FIXNUM_MAX_UNTAGGED: i64 = (@as(i64, 1) << 62) - 1;
 pub const LiteralRoots = std.AutoHashMap(usize, *Value);
 
 /// Hoist VCode stores block succ/param slices into backing ArrayLists.
@@ -2660,6 +2662,10 @@ pub const IrTranslator = struct {
 
     fn translateAdd(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
         if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumAdd(left, right);
+        if (self.fixnum_fast) {
+            const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAddNum)));
+            return try self.translateArithFixnumFastFallback(.add, prim_ptr, left, right);
+        }
         const l = try self.translate(left);
         const r = try self.translate(right);
         const args = [_]HoistValue{ l, r };
@@ -2669,6 +2675,10 @@ pub const IrTranslator = struct {
 
     fn translateSub(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
         if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumSub(left, right);
+        if (self.fixnum_fast) {
+            const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitSubNum)));
+            return try self.translateArithFixnumFastFallback(.sub, prim_ptr, left, right);
+        }
         const l = try self.translate(left);
         const r = try self.translate(right);
         const args = [_]HoistValue{ l, r };
@@ -2692,6 +2702,76 @@ pub const IrTranslator = struct {
         const tagged = try self.emitPrimitiveCallValues(prim_ptr, &args);
         const zero = try self.cachedIconst(0);
         return try self.b.icmp(I8, IntCC.ne, tagged, zero);
+    }
+
+    const ArithFixnumOp = enum { add, sub };
+
+    fn translateArithFixnumFastFallback(
+        self: *IrTranslator,
+        op: ArithFixnumOp,
+        prim_ptr: u64,
+        left: *const Ir,
+        right: *const Ir,
+    ) anyerror!HoistValue {
+        const l = try self.translate(left);
+        const r = try self.translate(right);
+        const one = try self.cachedIconst(1);
+
+        var both_fixnum: HoistValue = undefined;
+        if (getFixnumLit(left) != null and getFixnumLit(right) != null) {
+            both_fixnum = try self.b.icmp(I8, IntCC.eq, one, one);
+        } else if (getFixnumLit(left) != null) {
+            const r_tag = try self.b.band(I64, r, one);
+            both_fixnum = try self.b.icmp(I8, IntCC.eq, r_tag, one);
+        } else if (getFixnumLit(right) != null) {
+            const l_tag = try self.b.band(I64, l, one);
+            both_fixnum = try self.b.icmp(I8, IntCC.eq, l_tag, one);
+        } else {
+            const l_tag = try self.b.band(I64, l, one);
+            const r_tag = try self.b.band(I64, r, one);
+            const l_is_fixnum = try self.b.icmp(I8, IntCC.eq, l_tag, one);
+            const r_is_fixnum = try self.b.icmp(I8, IntCC.eq, r_tag, one);
+            both_fixnum = try self.b.band(I8, l_is_fixnum, r_is_fixnum);
+        }
+
+        const fast_blk = try self.b.createBlock();
+        const fast_ok_blk = try self.b.createBlock();
+        const slow_blk = try self.b.createBlock();
+        const merge_blk = try self.b.createBlock();
+        const out = try self.b.appendBlockParam(merge_blk, I64);
+
+        try self.b.brif(both_fixnum, fast_blk, slow_blk);
+
+        self.switchBlock(fast_blk);
+        try self.b.sealBlock(fast_blk);
+        const l_num = try self.b.sshr(I64, l, one);
+        const r_num = try self.b.sshr(I64, r, one);
+        const fast_num = switch (op) {
+            .add => try self.b.iadd(I64, l_num, r_num),
+            .sub => try self.b.isub(I64, l_num, r_num),
+        };
+        const max_fix = try self.cachedIconst(FIXNUM_MAX_UNTAGGED);
+        const min_fix = try self.cachedIconst(FIXNUM_MIN_UNTAGGED);
+        const le_max = try self.b.icmp(I8, IntCC.sle, fast_num, max_fix);
+        const ge_min = try self.b.icmp(I8, IntCC.sge, fast_num, min_fix);
+        const in_range = try self.b.band(I8, le_max, ge_min);
+        try self.b.brif(in_range, fast_ok_blk, slow_blk);
+
+        self.switchBlock(fast_ok_blk);
+        try self.b.sealBlock(fast_ok_blk);
+        const fast_shifted = try self.b.ishl(I64, fast_num, one);
+        const fast_tagged = try self.b.bor(I64, fast_shifted, one);
+        try self.b.jumpArgs(merge_blk, &.{fast_tagged});
+
+        self.switchBlock(slow_blk);
+        try self.b.sealBlock(slow_blk);
+        const args = [_]HoistValue{ l, r };
+        const slow = try self.emitPrimitiveCallValues(prim_ptr, &args);
+        try self.b.jumpArgs(merge_blk, &.{slow});
+
+        self.switchBlock(merge_blk);
+        try self.b.sealBlock(merge_blk);
+        return out;
     }
 
     fn translateCmpFixnumFastFallback(
@@ -10327,6 +10407,43 @@ test "hoist IR translator: two-arg add" {
 
     // (+ 0 0) = 0. Tagged: 0→1, 0→1, 0→1
     try testing.expectEqual(@as(i64, 1), compiled.call2(1, 1));
+}
+
+test "hoist IR translator: generic add fixnum guard fallback" {
+    // (lambda (a) (+ a 1))
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 1);
+    params[0] = "a";
+
+    const var_a = try alloc.create(Ir);
+    var_a.* = .{ .@"var" = .{ .name = "a", .depth = 0, .index = 0 } };
+    const lit_1 = try alloc.create(Ir);
+    lit_1.* = .{ .lit = Value.makeFixnum(1) };
+    const add = try alloc.create(Ir);
+    add.* = .{ .add = .{ .left = var_a, .right = lit_1 } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = add,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "generic_add_guard");
+    defer compiled.deinit();
+
+    // (+ 5 1) = 6, tagged => 13
+    try testing.expectEqual(@as(i64, 13), compiled.call1(@as(i64, @bitCast(Value.makeFixnum(5).raw))));
+    // Non-fixnum must take generic helper path and return NIL.
+    try testing.expectEqual(@as(i64, @bitCast(Value.nil.raw)), compiled.call1(@as(i64, @bitCast(Value.t.raw))));
 }
 
 test "hoist IR translator: ackermann 2-arg recursive" {

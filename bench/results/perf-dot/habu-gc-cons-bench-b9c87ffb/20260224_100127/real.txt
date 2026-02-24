@@ -1,0 +1,94 @@
+{
+  "workloads": [
+    {
+      "name": "factor",
+      "jit_ns": 47339209,
+      "interp_ns": 47300083,
+      "speedup_interp_over_jit": 0.9991734969631622,
+      "jit_error": null,
+      "interp_error": null
+    }
+  ],
+  "jit_loader_ns": 15940626000,
+  "interp_loader_ns": 14440572166,
+  "jit_compiled": 548,
+  "interp_compiled": 0,
+  "jit_direct_calls_jit": 309,
+  "jit_direct_calls_interp": 0,
+  "jit_adm": {
+    "cand": 4135,
+    "elig": 3417,
+    "comp": 548,
+    "sk_speed": 0,
+    "sk_safety": 0,
+    "sk_assert": 0,
+    "sk_caps": 0,
+    "sk_opt": 236,
+    "sk_key": 56,
+    "sk_rest": 149,
+    "sk_chunk": 277,
+    "fail_unsupported": 2670,
+    "fail_other": 199,
+    "cache_comp": 0,
+    "cache_unsupported": 3,
+    "cache_failed": 0
+  },
+  "interp_adm": {
+    "cand": 0,
+    "elig": 0,
+    "comp": 0,
+    "sk_speed": 0,
+    "sk_safety": 0,
+    "sk_assert": 0,
+    "sk_caps": 0,
+    "sk_opt": 0,
+    "sk_key": 0,
+    "sk_rest": 0,
+    "sk_chunk": 0,
+    "fail_unsupported": 0,
+    "fail_other": 0,
+    "cache_comp": 0,
+    "cache_unsupported": 0,
+    "cache_failed": 0
+  },
+  "jit_call_shape": {
+    "total": 20002,
+    "fixed": 16402,
+    "optional": 800,
+    "key": 400,
+    "rest": 2400,
+    "dynamic": 19602,
+    "tail": 4400
+  },
+  "interp_call_shape": {
+    "total": 20002,
+    "fixed": 16402,
+    "optional": 800,
+    "key": 400,
+    "rest": 2400,
+    "dynamic": 19602,
+    "tail": 4400
+  },
+  "jit_gate": {
+    "pass": false,
+    "min_interp_jit": 1.01,
+    "checks": {
+      "wins": {
+        "actual": 0,
+        "target_min": 2,
+        "pass": false,
+        "checked": 1
+      },
+      "compiled_min": {
+        "actual": 548,
+        "target_min": 32,
+        "pass": true
+      },
+      "compiled_delta": {
+        "actual": 548,
+        "target_min": 1,
+        "pass": true
+      }
+    }
+  }
+}

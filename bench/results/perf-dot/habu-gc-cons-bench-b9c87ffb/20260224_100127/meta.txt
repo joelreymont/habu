@@ -1,0 +1,4 @@
+dot_id=habu-gc-cons-bench-b9c87ffb
+timestamp=20260224_100127
+perf_micro_cmd=zig build bench-comp -- --bench=gc_cons --iters=12 --json
+perf_real_cmd=tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32 --workloads factor

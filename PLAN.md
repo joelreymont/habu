@@ -327,6 +327,13 @@
     - [x] `habu-fix-jit-bridge-685a2246` Preserve inline-cons cursor across JIT↔VM bridge calls and force call-arg cycle fixing for generic non-self calls (nqueens helper-entry regression).
     - [x] `habu-fix-jit-lt-caa8b70b` Fix JIT `<` helper-call argument corruption from unsafe round-trip MOV elimination in call setup (bench-comp `intern`/perf-loop crash path) and add loop regression.
     - [x] `habu-improve-fixnum-loop-64cf30de` Reclassify untagged arithmetic loops as non-cross-call JIT functions so `fixnum_loop`/`fixnum_mul` can compile with aggressive optimization; add backend unit tests for helper-call classification.
+    - [x] `habu-gc-cons-bench-b9c87ffb` Close `gc_cons` JIT cons-loop gap by removing per-iteration generic `+` helper calls in safety=0 loops.
+      - RCA (`BENCH-GC-CONS` hoist dump, 2026-02-24): `(+ i 1)` in the loop body was still lowered to `call_indirect jitAddNum` on every iteration, dominating runtime even with inline cons allocation.
+      - Fix (`src/jit/backend.zig`): add guarded fixnum fast paths for generic `.add`/`.sub` in safety=0 mode (`fixnum tag check -> 63-bit range check -> inline math`, else helper fallback), preserving generic arithmetic semantics on non-fixnum and overflow paths.
+      - Added backend regression `hoist IR translator: generic add fixnum guard fallback`.
+      - Rebaseline (`zig build bench-comp -- --bench=gc_cons --iters=12 --json`, 2026-02-24): improved from ~`1.7-1.9ms` to ~`0.69-0.74ms` on this host.
+    - [ ] `habu-ack-bench-0-b7dec251` Close `ack` JIT benchmark gap to SBCL.
+    - [ ] `habu-nqueens-bench-0-e42d3cd8` Close `nqueens` JIT benchmark gap to SBCL.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).
