@@ -340,7 +340,10 @@
       - Added backend regression `hoist IR translator: tco keeps recursive fixnum inline lowering`.
       - A/B (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=8 --json`, 2026-02-24): parent `817a1145` ~`76.7ms` -> post-fix ~`3.94ms` (root-cause regression removed).
       - Harness uplift (`bench/comprehensive_bench.zig`, 2026-02-24): replaced per-iteration `repl.eval(expr)` timing with pre-resolved runner function calls via `Vm.callFromStackAtFast`, and switched nqueens bench expression to `bench-nqueens` for the same no-arg runner path used by other benches.
+      - RCA/fix (`src/interp/repl.zig`, `src/jit/backend.zig`, 2026-02-24): non-fatal IR deep-copy failures in `doHoistCompile` returned early after `registerJitFn`, which skipped post-registration `patchCrossCallsToBL` and hid compile success telemetry for affected functions (including `NQUEENS-SOLVE`).
+      - Fix: make IR-copy miss non-fatal without early return, continue through the normal patch/flush/success path, and add `HABU_TRACE_JIT_PATCH` patch-count tracing (`NQUEENS-SOLVE patched=2` on current run).
       - Rebaseline (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=40 --json`, 2026-02-24): `~3.48ms` (still open; SBCL reference with `sbcl --script bench/comprehensive.lisp --json --iters=40 --bench nqueens10` is `~3.06ms`, ~`0.88x`).
+      - Rebaseline (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=60 --json`, 2026-02-24): `~3.44ms` vs SBCL `~3.11ms` (`sbcl --script bench/comprehensive.lisp --json --iters=60 --bench nqueens10`), still open at ~`0.90x`.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).

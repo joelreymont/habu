@@ -3096,46 +3096,40 @@ pub const Repl = struct {
             };
             ir_arena.* = std.heap.ArenaAllocator.init(self.allocator);
             const ir_alloc = ir_arena.allocator();
-
-            const body_copy = ir.deepCopyIr(ir_alloc, lambda.body) catch {
-                ir_arena.deinit();
-                self.allocator.destroy(ir_arena);
-                persistent.ir_arena = null;
-                // Non-fatal: function still works, just can't be inlined
-                self.vm.registerJitFn(chunk_ptr, persistent) catch {
-                    persistent.deinit();
-                    self.allocator.destroy(persistent);
-                    return .failed;
+            var copy_ok = false;
+            copy_blk: {
+                const body_copy = ir.deepCopyIr(ir_alloc, lambda.body) catch |err| {
+                    if (trace) {
+                        std.debug.print("JIT: IR copy skipped for '{s}' body: {s}\n", .{ name, @errorName(err) });
+                    }
+                    break :copy_blk;
                 };
-                return .compiled;
-            };
-            const params_copy = ir_alloc.alloc([]const u8, lambda.params.len) catch {
-                ir_arena.deinit();
-                self.allocator.destroy(ir_arena);
-                persistent.ir_arena = null;
-                self.vm.registerJitFn(chunk_ptr, persistent) catch {
-                    persistent.deinit();
-                    self.allocator.destroy(persistent);
-                    return .failed;
+                const params_copy = ir_alloc.alloc([]const u8, lambda.params.len) catch |err| {
+                    if (trace) {
+                        std.debug.print("JIT: IR copy skipped for '{s}' params: {s}\n", .{ name, @errorName(err) });
+                    }
+                    break :copy_blk;
                 };
-                return .compiled;
-            };
-            for (lambda.params, 0..) |p, pi| {
-                params_copy[pi] = ir_alloc.dupe(u8, p) catch {
-                    ir_arena.deinit();
-                    self.allocator.destroy(ir_arena);
-                    persistent.ir_arena = null;
-                    self.vm.registerJitFn(chunk_ptr, persistent) catch {
-                        persistent.deinit();
-                        self.allocator.destroy(persistent);
-                        return .failed;
+                for (lambda.params, 0..) |p, pi| {
+                    params_copy[pi] = ir_alloc.dupe(u8, p) catch |err| {
+                        if (trace) {
+                            std.debug.print("JIT: IR copy skipped for '{s}' param[{d}]: {s}\n", .{ name, pi, @errorName(err) });
+                        }
+                        break :copy_blk;
                     };
-                    return .compiled;
-                };
+                }
+                persistent.ir_arena = ir_arena;
+                persistent.ir_body = body_copy;
+                persistent.param_names = params_copy;
+                copy_ok = true;
             }
-            persistent.ir_arena = ir_arena;
-            persistent.ir_body = body_copy;
-            persistent.param_names = params_copy;
+            if (!copy_ok) {
+                ir_arena.deinit();
+                self.allocator.destroy(ir_arena);
+                persistent.ir_arena = null;
+                persistent.ir_body = null;
+                persistent.param_names = null;
+            }
         }
 
         // Always register on the primary VM - activeVm() may return a context VM
@@ -3154,6 +3148,7 @@ pub const Repl = struct {
             const code_ptr = jit_mem.ptr;
             const code_len = jit_mem.used;
             const fn_base = @intFromPtr(code_ptr);
+            const trace_patch = std.posix.getenv("HABU_TRACE_JIT_PATCH") != null;
             // Make writable for patching
             jit_mem.setExec(false) catch |err| {
                 if (trace) {
@@ -3164,8 +3159,12 @@ pub const Repl = struct {
                 self.allocator.destroy(persistent);
                 return .failed;
             };
+            var patched_bl: usize = 0;
             if (std.posix.getenv("HABU_NO_PATCH_CROSS_BL") == null) {
-                jit_backend.patchCrossCallsToBL(code_ptr, code_len, fn_base);
+                patched_bl = jit_backend.patchCrossCallsToBL(code_ptr, code_len, fn_base);
+            }
+            if (trace_patch) {
+                std.debug.print("JIT: cross-bl patch '{s}' patched={d}\n", .{ name, patched_bl });
             }
             // Flush icache and restore exec permission
             jit_mem.flushCacheRange(code_ptr, code_len);

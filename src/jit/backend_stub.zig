@@ -177,7 +177,9 @@ pub const IrTranslator = struct {
     }
 };
 
-pub fn patchCrossCallsToBL(_: [*]u8, _: usize, _: usize) void {}
+pub fn patchCrossCallsToBL(_: [*]u8, _: usize, _: usize) usize {
+    return 0;
+}
 
 pub fn compileIr(
     _: std.mem.Allocator,

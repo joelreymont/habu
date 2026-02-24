@@ -5146,15 +5146,16 @@ fn patchPlaceholder(buf: []u8, placeholder: u64, target: u64) bool {
 /// is within BL range (±128MB). This eliminates the MOVZ/MOVK/MOVK + MOV + BLR
 /// sequence (6 instructions) and replaces with NOP...NOP + BL (1 instruction).
 /// Called from the REPL after all functions in a batch are compiled.
-pub fn patchCrossCallsToBL(code_ptr: [*]u8, code_len: usize, caller_base: usize) void {
+pub fn patchCrossCallsToBL(code_ptr: [*]u8, code_len: usize, caller_base: usize) usize {
     const buf = code_ptr[0..code_len];
-    patchCrossCallsToBLSlice(buf, caller_base);
+    return patchCrossCallsToBLSlice(buf, caller_base);
 }
 
-fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) void {
+fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) usize {
     const NOP: u32 = 0xD503201F;
-    if (buf.len < 24) return;
+    if (buf.len < 24) return 0;
     const n_insns = buf.len / 4;
+    var patched: usize = 0;
 
     var i: usize = 0;
     while (i < n_insns) : (i += 1) {
@@ -5271,7 +5272,9 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) void {
         }
         writeInsn(buf, mov_idx.?, NOP);
         writeInsn(buf, i, 0x94000000 | imm26);
+        patched += 1;
     }
+    return patched;
 }
 
 /// Recursively collect all variable indices that are assigned (set) within an IR subtree.
@@ -8987,13 +8990,14 @@ test "patchCrossCallsToBL handles 64-bit MOVK target materialization" {
     var code: [words.len * 4]u8 = undefined;
     writeWords(&words, &code);
 
-    patchCrossCallsToBLSlice(&code, caller_base);
+    const patched = patchCrossCallsToBLSlice(&code, caller_base);
+    try testing.expectEqual(@as(usize, 1), patched);
 
     for (0..5) |idx| {
         try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, idx));
     }
-    const patched = readInsn(&code, 5);
-    try testing.expectEqual(@as(u32, 0x9400000B), patched);
+    const patched_insn = readInsn(&code, 5);
+    try testing.expectEqual(@as(u32, 0x9400000B), patched_insn);
 }
 
 test "patchCrossCallsToBL handles 32-bit MOVK target materialization" {
@@ -9008,13 +9012,14 @@ test "patchCrossCallsToBL handles 32-bit MOVK target materialization" {
     var code: [words.len * 4]u8 = undefined;
     writeWords(&words, &code);
 
-    patchCrossCallsToBLSlice(&code, caller_base);
+    const patched = patchCrossCallsToBLSlice(&code, caller_base);
+    try testing.expectEqual(@as(usize, 1), patched);
 
     for (0..3) |idx| {
         try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, idx));
     }
-    const patched = readInsn(&code, 3);
-    try testing.expectEqual(@as(u32, 0x9400000D), patched);
+    const patched_insn = readInsn(&code, 3);
+    try testing.expectEqual(@as(u32, 0x9400000D), patched_insn);
 }
 
 test "patchCrossCallsToBL handles 16-bit MOVZ target materialization" {
@@ -9028,13 +9033,14 @@ test "patchCrossCallsToBL handles 16-bit MOVZ target materialization" {
     var code: [words.len * 4]u8 = undefined;
     writeWords(&words, &code);
 
-    patchCrossCallsToBLSlice(&code, caller_base);
+    const patched = patchCrossCallsToBLSlice(&code, caller_base);
+    try testing.expectEqual(@as(usize, 1), patched);
 
     for (0..2) |idx| {
         try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, idx));
     }
-    const patched = readInsn(&code, 2);
-    try testing.expectEqual(@as(u32, 0x9400000E), patched);
+    const patched_insn = readInsn(&code, 2);
+    try testing.expectEqual(@as(u32, 0x9400000E), patched_insn);
 }
 
 test "patchCrossCallsToBL handles non-adjacent target materialization" {
@@ -9050,7 +9056,8 @@ test "patchCrossCallsToBL handles non-adjacent target materialization" {
     var code: [words.len * 4]u8 = undefined;
     writeWords(&words, &code);
 
-    patchCrossCallsToBLSlice(&code, caller_base);
+    const patched = patchCrossCallsToBLSlice(&code, caller_base);
+    try testing.expectEqual(@as(usize, 1), patched);
 
     // Non-adjacent load sequence is preserved; MOV+BLR are rewritten.
     try testing.expectEqual(words[0], readInsn(&code, 0));

@@ -10,6 +10,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ### Worked Well
 - Moving `bench/comprehensive_bench.zig` timed loops from per-iteration `repl.eval(expr)` to pre-resolved runner function values invoked with `Vm.callFromStackAtFast` removed parser/evaluator overhead from microbench timings and improved `nqueens10` from ~`3.98ms` to ~`3.48ms` on this host while preserving benchmark semantics.
+- Keeping `doHoistCompile` on the normal post-registration path even when IR deep-copy fails (`src/interp/repl.zig:3099-3173`) restored `patchCrossCallsToBL` execution and compile-success telemetry for compiled functions that cannot be inlined yet; `NQUEENS-SOLVE` now reports patched cross-calls (`patched=2`) under `HABU_TRACE_JIT_PATCH=1`.
+- Returning cross-call BL patch counts from backend patching (`src/jit/backend.zig:5149`, `src/jit/backend_stub.zig:180`) plus focused patch-count tests made rewrite coverage measurable instead of inferred.
 - Sampling long-running `nqueens10` after an explicit startup delay (attach at +12s, sample 5s, then kill) produced steady-state JIT hotspots instead of loader/warmup noise, giving actionable codegen signal.
 - Comparing unchecked `PLAN.md` leaves against `dot list` before starting new perf work exposed plan drift immediately (`habu-close-post-fix-77d8f862` open but missing from `PLAN.md`), which prevented hidden execution debt.
 - Encoding new performance work as dependent dots in `PLAN.md` (shape counters -> direct JIT stubs -> session JIT cache) keeps optimization sequencing explicit and avoids parallel speculative tuning.
@@ -27,6 +29,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ### Did Not Work
 - Relaxing hoist opt gating to allow `.aggressive` for all call-free load-bearing functions caused pathological benchmark slowdowns/hangs; keep `has_loads` in the `.none` gate until load-path correctness/perf is proven.
+- Assuming IR deep-copy misses were harmless in `doHoistCompile` was incorrect: the early `.compiled` returns bypassed cross-call BL patching and masked compile success traces, leaving measurable call overhead on functions like `NQUEENS-SOLVE`.
 - Driving benchmark runners through `Vm.callFromStack` (non-fast path) caused severe cross-benchmark regressions; use `Vm.callFromStackAtFast` for timing harnesses that target JIT throughput.
 - Keeping “meta” open dots (`curr`/`next`/`active` placeholders) without `PLAN.md` entries obscures real remaining work and makes completion status unreliable; these must be pruned or mapped into explicit plan leaves.
 - Relying on plain `zig build test -- --test-filter ...` in this environment still stalls with no output; wrapping with `timeout` is required to prevent leaked long-lived test processes while keeping CI gates actionable.
