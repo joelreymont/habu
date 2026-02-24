@@ -27,6 +27,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Dumping `BENCH-GC-CONS` hoist output before editing exposed a concrete hot-path bug (`src/jit/backend.zig:translateAdd`): safety=0 non-recursive generic `+` still emitted per-iteration helper calls in a fixnum loop, despite inline cons allocation.
 - Adding guarded fixnum fast paths for generic `.add`/`.sub` (`src/jit/backend.zig:translateArithFixnumFastFallback`) with non-fixnum and overflow fallback to helpers delivered a large measured win on `gc_cons` (`~1.7-1.9ms` -> `~0.69-0.74ms`) without introducing a Maxima-specific path.
 - Dumping `NQUEENS-SAFE-P` hoist IR after post-pass changes exposed that helper calls (`jitSubNum`/`jitNumEq`/`jitAddNum`) were back in a tail-recursive hot loop because TCO flipped `is_recursive=false`; keeping a separate `fixnum_inline` flag in `IrTranslator` (`src/jit/backend.zig`) preserved recursive fixnum-inline lowering through TCO and removed those helper calls again.
+- Implementing a guarded mirrored-entry MOV eliminator (`src/jit/backend.zig:6640`) with strict shape checks (entry-only window, exact inverse second leg, disjoint first-leg src/dst sets, and post-mirror temp liveness) made this cleanup pass safe and deterministic, then locked behavior with dedicated backend tests (`src/jit/backend.zig:9738`, `src/jit/backend.zig:9770`, `src/jit/backend.zig:9801`).
 
 ### Did Not Work
 - Relaxing hoist opt gating to allow `.aggressive` for all call-free load-bearing functions caused pathological benchmark slowdowns/hangs; keep `has_loads` in the `.none` gate until load-path correctness/perf is proven.
@@ -38,6 +39,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Keying compile-status cache by per-chunk pointer identity did not produce useful reuse under Maxima loader churn; switching to deterministic chunk fingerprints was required to convert the cache from “mostly cold” to measurable hits.
 - Running filtered tests via the build wrapper can still leave long-lived `.zig-cache/.../build ... test` processes active after command completion; explicit `pgrep`/`kill` cleanup is required before continuing perf work to avoid unified-exec process-limit pressure.
 - Reusing `is_recursive` for both call-shape lowering and numeric fast-path eligibility caused hidden performance regressions after TCO rewrites; recursion-driven call conversion and fixnum-inline policy need independent state in the translator.
+- Mirrored-entry MOV elimination did not move `nqueens10` materially on current host (`~3.44ms` before/after at 60 iterations), so treat it as code-quality cleanup rather than a throughput lever for this benchmark.
 
 ## Session Notes (2026-02-23)
 

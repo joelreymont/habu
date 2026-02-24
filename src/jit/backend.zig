@@ -6139,6 +6139,12 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     fuseMovzAlu(code.code.items);
     if (dump_passes) dumpAsmPass("after fuseMovzAlu#1", code.code.items);
 
+    // Eliminate mirrored entry MOV blocks emitted by some TCO lowering forms:
+    //   mov t0,a0; mov t1,a1; ...; mov a0,t0; mov a1,t1; ...
+    // when temps are dead after the mirror.
+    eliminateMirroredEntryMovs(code.code.items);
+    if (dump_passes) dumpAsmPass("after eliminateMirroredEntryMovs", code.code.items);
+
     // Eliminate round-trip MOV pairs: MOV xA, xB; ... MOV xB, xA → NOP both.
     // Common in TCO functions where entry params are copied to intermediate regs
     // and then immediately copied back for the loop header phis.
@@ -6593,6 +6599,123 @@ fn eliminateRoundTripMovs(code: []u8) void {
                 writeInsn(code, j, nop);
                 break; // Move to next i
             }
+        }
+    }
+}
+
+/// Eliminate mirrored entry MOV windows:
+///   mov t0,a0; mov t1,a1; ...; mov a0,t0; mov a1,t1; ...
+/// when the temporary registers (t*) are dead after the mirror.
+/// This is a no-op block emitted by some TCO lowering forms.
+fn eliminateMirroredEntryMovs(code: []u8) void {
+    const n_insns = code.len / 4;
+    if (n_insns < 2) return;
+
+    const nop: u32 = 0xD503201F;
+
+    // Skip standard prologue setup.
+    var entry_start: usize = 0;
+    const prologue_limit = @min(n_insns, 16);
+    while (entry_start < prologue_limit) : (entry_start += 1) {
+        const insn = readInsn(code, entry_start);
+        const is_nop = insn == nop;
+        const is_stp_fp_lr = (insn & 0xFFC07FFF) == 0xA9807BFD;
+        const is_mov_fp = (insn == 0xAA1F03FD) or (insn == 0x910003FD);
+        const is_stp_callee = (insn & 0xFFC003E0) == 0xA90003E0;
+        if (is_nop or is_stp_fp_lr or is_mov_fp or is_stp_callee) continue;
+        break;
+    }
+    if (entry_start >= n_insns) return;
+
+    // Stay in a small entry window and stop at first control-flow edge.
+    const scan_limit = @min(n_insns, entry_start + 24);
+    var i = entry_start;
+    while (i < scan_limit) : (i += 1) {
+        const head = readInsn(code, i);
+        if (head == nop) continue;
+        if (isControlFlowBoundaryInsn(head)) break;
+        if (head & 0xFFE0FFE0 != 0xAA0003E0) continue;
+
+        var j = i;
+        while (j < scan_limit) : (j += 1) {
+            const cur = readInsn(code, j);
+            if (cur & 0xFFE0FFE0 != 0xAA0003E0) break;
+        }
+        const run_len = j - i;
+        if (run_len < 2) continue;
+
+        var pair_len = run_len / 2;
+        while (pair_len > 0) : (pair_len -= 1) {
+            if (i + pair_len * 2 > scan_limit) continue;
+
+            var used_dst = [_]bool{false} ** 32;
+            var used_src = [_]bool{false} ** 32;
+            var ok = true;
+
+            // First leg must be a pure copy from one register set into a disjoint
+            // destination set (no destination also used as a source in the leg).
+            for (0..pair_len) |k| {
+                const insn_a = readInsn(code, i + k);
+                const dst_a: u5 = @truncate(insn_a & 0x1F);
+                const src_a: u5 = @truncate((insn_a >> 16) & 0x1F);
+
+                if (dst_a == src_a) {
+                    ok = false;
+                    break;
+                }
+                if (used_dst[dst_a]) {
+                    ok = false;
+                    break;
+                }
+                used_dst[dst_a] = true;
+                used_src[src_a] = true;
+            }
+            if (!ok) continue;
+
+            for (0..32) |r| {
+                if (used_dst[r] and used_src[r]) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (!ok) continue;
+
+            // Second leg must exactly mirror the first leg move-by-move.
+            for (0..pair_len) |k| {
+                const insn_a = readInsn(code, i + k);
+                const insn_b = readInsn(code, i + pair_len + k);
+                if (insn_b & 0xFFE0FFE0 != 0xAA0003E0) {
+                    ok = false;
+                    break;
+                }
+                const dst_a: u5 = @truncate(insn_a & 0x1F);
+                const src_a: u5 = @truncate((insn_a >> 16) & 0x1F);
+                const dst_b: u5 = @truncate(insn_b & 0x1F);
+                const src_b: u5 = @truncate((insn_b >> 16) & 0x1F);
+                if (dst_b != src_a or src_b != dst_a) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (!ok) continue;
+
+            // Temp destinations from leg A must be dead after the mirror.
+            const mirror_end = i + pair_len * 2 - 1;
+            for (0..pair_len) |k| {
+                const insn_a = readInsn(code, i + k);
+                const dst_a: u5 = @truncate(insn_a & 0x1F);
+                if (!isRegDeadAfter(code, mirror_end, dst_a)) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (!ok) continue;
+
+            for (0..pair_len * 2) |k| {
+                writeInsn(code, i + k, nop);
+            }
+            i += pair_len * 2 - 1;
+            break;
         }
     }
 }
@@ -9658,6 +9781,94 @@ test "fixEntryParamMovesAlloc ignores non-entry call setup window" {
     try fixEntryParamMovesAlloc(testing.allocator, &code);
 
     try testing.expectEqual(before.items.len, code.items.len);
+    try testing.expect(std.mem.eql(u8, before.items, code.items));
+}
+
+test "eliminateMirroredEntryMovs drops mirrored entry block when temps dead" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    const words = [_]u32{
+        0xA9BF7BFD, // stp x29, x30, [sp, #-16]!
+        0x910003FD, // mov x29, sp
+        makeMovInsn(20, 0), // mov x20, x0
+        makeMovInsn(21, 1), // mov x21, x1
+        makeMovInsn(0, 20), // mov x0, x20
+        makeMovInsn(1, 21), // mov x1, x21
+        0x8B010000, // add x0, x0, x1
+        0xD65F03C0, // ret
+    };
+    for (words) |w| try appendInsn(&code, testing.allocator, w);
+
+    eliminateMirroredEntryMovs(code.items);
+
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(code.items, 2));
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(code.items, 3));
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(code.items, 4));
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(code.items, 5));
+}
+
+test "eliminateMirroredEntryMovs keeps dependent source-dest chains" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    const words = [_]u32{
+        makeMovInsn(2, 1), // mov x2, x1
+        makeMovInsn(3, 2), // mov x3, x2 (depends on overwritten x2)
+        makeMovInsn(1, 2), // mov x1, x2
+        makeMovInsn(2, 3), // mov x2, x3
+        0xD65F03C0, // ret
+    };
+    for (words) |w| try appendInsn(&code, testing.allocator, w);
+
+    var before = std.ArrayList(u8){};
+    defer before.deinit(testing.allocator);
+    try before.appendSlice(testing.allocator, code.items);
+
+    eliminateMirroredEntryMovs(code.items);
+
+    try testing.expect(std.mem.eql(u8, before.items, code.items));
+}
+
+test "eliminateMirroredEntryMovs keeps mirrored block with live temps" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    const words = [_]u32{
+        makeMovInsn(20, 0), // mov x20, x0
+        makeMovInsn(0, 20), // mov x0, x20
+        makeMovInsn(5, 20), // mov x5, x20 (temp remains live)
+        0xD65F03C0, // ret
+    };
+    for (words) |w| try appendInsn(&code, testing.allocator, w);
+
+    var before = std.ArrayList(u8){};
+    defer before.deinit(testing.allocator);
+    try before.appendSlice(testing.allocator, code.items);
+
+    eliminateMirroredEntryMovs(code.items);
+
     try testing.expect(std.mem.eql(u8, before.items, code.items));
 }
 

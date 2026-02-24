@@ -335,6 +335,9 @@
     - [x] `habu-ack-bench-0-b7dec251` Close `ack` JIT benchmark gap to SBCL.
       - Rebaseline (`tools/comprehensive-bench --json --iters=1`, 2026-02-24): Habu JIT `ack` is faster than SBCL on this host.
     - [ ] `habu-nqueens-bench-0-e42d3cd8` Close `nqueens` JIT benchmark gap to SBCL.
+      - [x] `habu-elide-mirrored-entry-d27455d8` Elide mirrored entry MOV windows from TCO-lowered entry blocks with liveness guards.
+        - Added `eliminateMirroredEntryMovs` in `src/jit/backend.zig` (entry-window only, exact mirror matching, disjoint source/destination set validation, temp liveness check) and pass-level regressions.
+        - Rebaseline (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=60 --json`, 2026-02-24): `~3.44ms` (no measurable `nqueens` gain; kept as safe codegen cleanup).
       - RCA/fix (`src/jit/backend.zig`, 2026-02-24): tail-call conversion (`use_tco`) flipped `is_recursive=false`, which unintentionally disabled recursive fixnum-inline lowering and reintroduced helper-call slow paths (`jitSubNum`/`jitNumEq`/`jitAddNum`) in `NQUEENS-SAFE-P`.
       - Fix: separate `fixnum_inline` eligibility from mutable `is_recursive` call-shape state so TCO loops keep recursive fixnum-inline lowering enabled.
       - Added backend regression `hoist IR translator: tco keeps recursive fixnum inline lowering`.
