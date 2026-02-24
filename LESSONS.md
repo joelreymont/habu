@@ -47,6 +47,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Relaxing JIT opt-level gating to allow `.aggressive` on call-free load-bearing functions reintroduced the historical load-path instability: `nqueens10` no longer completed within `timeout 30` at 60 iterations, so keep `has_loads` in the `.none` gate until hoist-side load optimization bugs are fixed.
 - Running parent/patch perf loops in a fresh `jj workspace` failed at first because the bench build shells out to `git rev-parse` and the workspace lacked `.git`; baseline loops only became runnable after wiring git metadata into the workspace.
 - Adding a dead-callee-save pruning pass (`eliminateDeadCalleeSaveSlots`) to the JIT pipeline regressed `nqueens10` by ~5% in 5-run A/B (`src/jit/backend.zig` trial, reverted). Keep this optimization rejected unless new evidence isolates a safe win.
+- Raising known-call inline-node thresholds in `translateCrossCall` did not inline the `NQUEENS-SAFE-P` helper (`HABU_TRACE_JIT_PATCH` for `NQUEENS-SOLVE` stayed `patched=2`), so this knob-change path was reverted.
 
 ## Session Notes (2026-02-23)
 
