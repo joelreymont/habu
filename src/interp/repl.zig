@@ -84,6 +84,22 @@ const VmRootCtx = struct {
     prev: ?*VmRootCtx,
 };
 
+const CallOpCounts = struct {
+    blr: usize = 0,
+    bl: usize = 0,
+};
+
+fn countCallOps(code: []const u8) CallOpCounts {
+    var counts = CallOpCounts{};
+    var i: usize = 0;
+    while (i + 4 <= code.len) : (i += 4) {
+        const insn = std.mem.readInt(u32, code[i..][0..4], .little);
+        if (insn & 0xFFFFFC1F == 0xD63F0000) counts.blr += 1;
+        if (insn & 0xFC000000 == 0x94000000) counts.bl += 1;
+    }
+    return counts;
+}
+
 /// REPL state
 pub const Repl = struct {
     allocator: std.mem.Allocator,
@@ -3160,11 +3176,29 @@ pub const Repl = struct {
                 return .failed;
             };
             var patched_bl: usize = 0;
+            const call_counts_before = if (trace_patch)
+                countCallOps(code_ptr[0..code_len])
+            else
+                CallOpCounts{};
             if (std.posix.getenv("HABU_NO_PATCH_CROSS_BL") == null) {
                 patched_bl = jit_backend.patchCrossCallsToBL(code_ptr, code_len, fn_base);
             }
+            const call_counts_after = if (trace_patch)
+                countCallOps(code_ptr[0..code_len])
+            else
+                CallOpCounts{};
             if (trace_patch) {
-                std.debug.print("JIT: cross-bl patch '{s}' patched={d}\n", .{ name, patched_bl });
+                std.debug.print(
+                    "JIT: cross-bl patch '{s}' patched={d} blr={d}->{d} bl={d}->{d}\n",
+                    .{
+                        name,
+                        patched_bl,
+                        call_counts_before.blr,
+                        call_counts_after.blr,
+                        call_counts_before.bl,
+                        call_counts_after.bl,
+                    },
+                );
             }
             // Flush icache and restore exec permission
             jit_mem.flushCacheRange(code_ptr, code_len);
