@@ -1338,6 +1338,22 @@ pub const Emitter = struct {
 
     fn addValueConstant(self: *Emitter, val: Value) Error!u16 {
         const live = self.resolveForwardedValue(val);
+        if (std.posix.getenv("HABU_TRAP_EMIT_STALE_CONST") != null) {
+            if (self.heap) |heap| {
+                if (live.isPointer()) {
+                    const addr = live.toPtrAddr();
+                    const stale_start = @intFromPtr(heap.to_start);
+                    const stale_end = stale_start + heap.space_size;
+                    if (addr >= stale_start and addr < stale_end) {
+                        std.debug.print(
+                            "TRACE emit-stale-const name={s} raw=0x{x} kind={s} stale=[0x{x},0x{x})\n",
+                            .{ self.name, live.raw, @tagName(live.typeKind()), stale_start, stale_end },
+                        );
+                        @panic("emitter stale constant");
+                    }
+                }
+            }
+        }
         return self.addConstant(live.raw);
     }
 

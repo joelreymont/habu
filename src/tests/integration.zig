@@ -137,6 +137,66 @@ test "compileChunk direct JIT closure calls bypass generic call setup" {
     try testing.expect(vm.jit_direct_calls > 0);
 }
 
+test "compileChunk JIT cross-call tags predicate arguments" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    const before = vm.jit_fns.items.len;
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(progn\n" ++
+            "  (defun jit-bool-id (x)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (let ((i 0) (acc x))\n" ++
+            "      (while (< i 8)\n" ++
+            "        (setq acc (if acc x nil))\n" ++
+            "        (setq i (+ i 1)))\n" ++
+            "      acc))\n" ++
+            "  (defun jit-bool-bridge (a b)\n" ++
+            "    (declare (optimize (speed 3) (safety 0)))\n" ++
+            "    (jit-bool-id (< a b))))",
+    ));
+    try testing.expect(vm.jit_fns.items.len > before);
+
+    const t_result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-bool-bridge 1 2)",
+    ));
+    try testing.expect(!t_result.isNil());
+
+    const nil_result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-bool-bridge 2 1)",
+    ));
+    try testing.expect(nil_result.isNil());
+}
+
 test "compileChunk JIT progv restores dynamic binding" {
     if (!build_options.use_hoist) return;
 
@@ -8170,12 +8230,13 @@ test "maxima core subset loader binds CAS entrypoints" {
         \\          (if (fboundp 'maxima::mformat) 1 0)
         \\          (if (fboundp 'maxima::$factor) 1 0)
         \\          (if (fboundp 'maxima::$ratsimp) 1 0)
-        \\          (if (fboundp 'maxima::$expand) 1 0))))
+        \\          (if (fboundp 'maxima::$expand) 1 0)
+        \\          (if (handler-case (progn (maxima::$factor 1) t) (error () nil)) 1 0))))
     );
 
     try testing.expect(status.isCons());
     var cur = status;
-    const expected_tail = [_]i64{ 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+    const expected_tail = [_]i64{ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
 
     try testing.expect(cur.isCons());
     const ok_cell = cur.toPtr(Cons);
@@ -9490,12 +9551,20 @@ test "handler-case catches invalid argument and invalid type specifier" {
         \\               :caught))
         \\           :caught)
         \\      1
+        \\      0)
+        \\  (if (eq (handler-case
+        \\               (typep 1 '(integer 0))
+        \\             (error (c)
+        \\               (declare (ignore c))
+        \\               :caught))
+        \\           t)
+        \\      1
         \\      0))
     );
 
     try testing.expect(out.isCons());
     var cur = out;
-    const expected = [_]i64{ 1, 1 };
+    const expected = [_]i64{ 1, 1, 1 };
     for (expected) |want| {
         try testing.expect(cur.isCons());
         const cell = cur.toPtr(Cons);

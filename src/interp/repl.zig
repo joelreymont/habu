@@ -216,6 +216,28 @@ pub const Repl = struct {
         }
     }
 
+    fn appendChildChunksAndSync(self: *Repl, vm: *Vm, child_chunks: []const Value) !void {
+        try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
+        for (child_chunks) |child_chunk| {
+            self.chunk_pool.appendAssumeCapacity(child_chunk);
+        }
+        self.syncChunkPools(vm);
+
+        if (std.posix.getenv("HABU_TRAP_CHUNK_POOL_SANITY") != null) {
+            var i: usize = 0;
+            while (i < self.chunk_pool.items.len) : (i += 1) {
+                const live = vm.resolveForwardedValue(self.chunk_pool.items[i]);
+                self.chunk_pool.items[i] = live;
+                if (live.isNil() or live.isChunk()) continue;
+                std.debug.print(
+                    "TRACE chunk-pool-corrupt idx={d} raw=0x{x} kind={s}\n",
+                    .{ i, live.raw, @tagName(live.typeKind()) },
+                );
+                @panic("chunk pool contains non-chunk value");
+            }
+        }
+    }
+
     fn appendToVmExtRootOwner(self: *Repl, vm: *Vm, vals: []const Value) !void {
         const owner = vm.ext_roots_owner orelse return;
         if (owner == &self.persistent_roots) return;
@@ -836,6 +858,7 @@ pub const Repl = struct {
     fn runVmPreserveMacroState(self: *Repl, vm: *Vm, chunk_ptr: *runtime.objects.Chunk) !Value {
         try self.syncMacroMapsIfGcChanged();
         const gc_before = self.heap.stats.gc_count;
+        const trace_vm_root_counts = std.posix.getenv("HABU_TRACE_VM_ROOT_COUNTS") != null;
 
         const saved_ext = try vm.saveExtRoots();
         const saved_ext_roots = saved_ext.roots;
@@ -861,6 +884,19 @@ pub const Repl = struct {
             (compiler_macros.items.len * 2) +
             (symbol_macros.items.len * 2) +
             (repl_macros.items.len * 2);
+        if (trace_vm_root_counts) {
+            std.debug.print(
+                "TRACE vm-roots saved={d} compiler={d} symbol={d} repl={d} total={d} gc={d}\n",
+                .{
+                    saved_ext_roots.len,
+                    compiler_macros.items.len,
+                    symbol_macros.items.len,
+                    repl_macros.items.len,
+                    total_roots,
+                    gc_before,
+                },
+            );
+        }
         var roots = std.ArrayList(Value){};
         defer roots.deinit(self.allocator);
         try roots.ensureTotalCapacity(self.allocator, total_roots);
@@ -1814,15 +1850,13 @@ pub const Repl = struct {
             try patchChunkIndices(chunk_ptr, chunk_base);
         }
 
-        // Store child chunks for closures
-        try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
-        for (child_chunks) |c| {
-            self.chunk_pool.appendAssumeCapacity(c);
-        }
+        // Store child chunks for closures and sync all VM views immediately.
+        // tryHoistCompileLambdas and runtime eval can allocate/GC; chunk_pool
+        // slices must already point at the current owner storage.
+        try self.appendChildChunksAndSync(source_vm, child_chunks);
 
         // Run through the same VM using a nested call frame. This preserves
         // the caller VM's stack/locals across GC while evaluating runtime EVAL.
-        self.syncChunkPools(source_vm);
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         try patchChunkIndices(chunk_ptr, chunk_base);
         const closure = try self.heap.allocClosure(chunk, chunk_ptr.arity, &[_]Value{});
@@ -2638,11 +2672,9 @@ pub const Repl = struct {
             try patchChunkIndices(child_chunk.toPtr(runtime.objects.Chunk), chunk_base);
         }
 
-        // Store chunks persistently
-        try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
-        for (child_chunks) |child_chunk| {
-            self.chunk_pool.appendAssumeCapacity(child_chunk);
-        }
+        // Store chunks persistently and sync owner-backed VM slices before any
+        // operation that may allocate/GC (JIT, patching, disasm, run).
+        try self.appendChildChunksAndSync(vm, child_chunks);
 
         // Try hoist SSA JIT compilation for eligible lambda nodes
         _ = try self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
@@ -2673,9 +2705,6 @@ pub const Repl = struct {
             }
             std.debug.print("TRACE form disasm end\n", .{});
         }
-
-        // Set chunk pool and run with base offset
-        self.syncChunkPools(vm);
 
         return try self.runVmPreserveMacroState(vm, chunk_ptr);
     }
@@ -3580,19 +3609,15 @@ pub const Repl = struct {
             try patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
         }
 
-        // Store child chunks persistently (closures need them beyond this eval)
-        try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
-        for (child_chunks) |c| {
-            self.chunk_pool.appendAssumeCapacity(c);
-        }
+        // Store child chunks persistently and sync VM chunk-pool slices before
+        // any JIT/GC-capable work.
+        try self.appendChildChunksAndSync(&self.vm, child_chunks);
 
         // Try hoist SSA JIT compilation for eligible lambda nodes
         _ = try self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
 
         // Free child chunk array (now owned by persistent storage)
         self.allocator.free(child_chunks);
-
-        self.syncChunkPools(&self.vm);
 
         const result = if (self.runVmPreserveMacroState(&self.vm, chunk.toPtr(runtime.objects.Chunk))) |value| value else |err| {
             const kind: ErrorKind = if (err == error.UserError or err == error.UnhandledThrow)
@@ -4260,13 +4285,8 @@ pub const Repl = struct {
             try patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
         }
 
-        // Add child chunks
-        try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
-        for (child_chunks) |c| {
-            self.chunk_pool.appendAssumeCapacity(c);
-        }
-
-        self.syncChunkPools(source_vm);
+        // Add child chunks and sync VM chunk-pool slices immediately.
+        try self.appendChildChunksAndSync(source_vm, child_chunks);
         const saved_current_vm = self.current_vm;
         self.current_vm = source_vm;
         defer self.current_vm = saved_current_vm;
@@ -4560,13 +4580,8 @@ pub const Repl = struct {
         }
         try patchChunkIndices(chunk.toPtr(runtime.objects.Chunk), chunk_base);
 
-        // Add child chunks
-        try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
-        for (child_chunks) |c| {
-            self.chunk_pool.appendAssumeCapacity(c);
-        }
-
-        self.syncChunkPools(source_vm);
+        // Add child chunks and sync VM chunk-pool slices immediately.
+        try self.appendChildChunksAndSync(source_vm, child_chunks);
 
         const saved_current_vm = self.current_vm;
         self.current_vm = source_vm;

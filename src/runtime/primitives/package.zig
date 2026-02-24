@@ -227,13 +227,32 @@ fn addNativeExport(pkg: *heap_mod.Package, name: []const u8) !void {
     try pkg.exports.put(pkg.allocator, key, {});
 }
 
+fn trapStaleSymbolInsert(heap: *Heap, sym: Value, comptime where: []const u8) void {
+    if (std.posix.getenv("HABU_TRAP_STALE_SYMBOL_INSERT") == null) return;
+    if (!sym.isSymbol()) return;
+
+    const addr = sym.toPtrAddr();
+    const stale_start = @intFromPtr(heap.to_start);
+    const stale_end = stale_start + heap.space_size;
+    if (addr < stale_start or addr >= stale_end) return;
+
+    const first_word: *const Value = @ptrFromInt(addr);
+    const fw_size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
+    std.debug.print(
+        "TRACE stale-symbol-insert where={s} raw=0x{x} addr=0x{x} fw=0x{x} sz=0x{x}\n",
+        .{ where, sym.raw, addr, first_word.raw, fw_size_ptr.* },
+    );
+    @panic("stale symbol inserted into native package table");
+}
+
 fn removeNativeExport(pkg: *heap_mod.Package, name: []const u8) void {
     if (pkg.exports.fetchRemove(name)) |removed| {
         pkg.allocator.free(removed.key);
     }
 }
 
-fn addNativeSymbol(pkg: *heap_mod.Package, sym: Value) !void {
+fn addNativeSymbol(heap: *Heap, pkg: *heap_mod.Package, sym: Value) !void {
+    trapStaleSymbolInsert(heap, sym, "addNativeSymbol");
     const sym_name = sym.toPtr(objects.Symbol).getName();
     if (pkg.symbols.get(sym_name)) |existing| {
         if (existing.raw != sym.raw) {
@@ -727,7 +746,7 @@ pub fn importSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
     switch (symbols.typeKind()) {
         .symbol => {
             try insertHashTable(heap, p.symbols, symbols, symbols);
-            try addNativeSymbol(native_pkg, symbols);
+            try addNativeSymbol(heap, native_pkg, symbols);
         },
         .nil => return,
         .cons => {
@@ -737,7 +756,7 @@ pub fn importSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
                 const sym = list.toPtr(objects.Cons).car;
                 if (!sym.isSymbol()) return error.TypeError;
                 try insertHashTable(heap, p.symbols, sym, sym);
-                try addNativeSymbol(native_pkg, sym);
+                try addNativeSymbol(heap, native_pkg, sym);
                 list = list.toPtr(objects.Cons).cdr;
             }
         },
@@ -808,7 +827,7 @@ pub fn shadowingImport(heap: *Heap, symbols: Value, pkg: Value) !void {
                 }
             }
             try insertHashTable(heap2, pkg_obj.symbols, sym, sym);
-            try addNativeSymbol(native, sym);
+            try addNativeSymbol(heap2, native, sym);
         }
     };
 

@@ -129,6 +129,7 @@ const DEBT_TRIGGER_SOFT_RATIO = 0.85;
 const DEBT_TRIGGER_SOFT_SCORE = 0.95;
 pub const MAJOR_MARK_BUDGET_OBJS: usize = 512;
 pub const MAJOR_SWEEP_BUDGET_OBJS: usize = 1024;
+pub const PROMOTE_AGE_THRESHOLD: u8 = 2;
 
 const MajorPhase = enum {
     idle,
@@ -379,6 +380,7 @@ pub const GC = struct {
     trace_bad_root: bool,
     trap_bad_root: bool,
     trace_stale_resolve: bool,
+    trap_stale_resolve_reject: bool,
     trace_bad_keyword: bool,
     trap_bad_keyword: bool,
     trace_bad_symbol: bool,
@@ -414,6 +416,7 @@ pub const GC = struct {
             .trace_bad_root = std.posix.getenv("HABU_TRACE_BAD_ROOT") != null,
             .trap_bad_root = std.posix.getenv("HABU_TRAP_BAD_ROOT") != null,
             .trace_stale_resolve = std.posix.getenv("HABU_TRACE_STALE_RESOLVE") != null,
+            .trap_stale_resolve_reject = std.posix.getenv("HABU_TRAP_STALE_RESOLVE_REJECT") != null,
             .trace_bad_keyword = std.posix.getenv("HABU_TRACE_GC_BAD_KEYWORD") != null,
             .trap_bad_keyword = std.posix.getenv("HABU_TRAP_BAD_KEYWORD") != null,
             .trace_bad_symbol = std.posix.getenv("HABU_TRACE_GC_BAD_SYMBOL") != null,
@@ -843,8 +846,8 @@ pub const GC = struct {
                             if (trap_bad_root) {
                                 @panic("bad boxed slot root");
                             }
-                            }
                         }
+                    }
                 } else if (slot_val.isPointer() and slot_val.getTag() == .symbol) {
                     const addr = slot_val.toPtrAddr();
                     if (heap.containsAddrForDebug(addr)) {
@@ -1253,13 +1256,14 @@ pub const GC = struct {
         };
     }
 
-    fn shouldPromote(heap: *const heap_mod.Heap, tag: Tag, size: usize) bool {
+    fn shouldPromote(heap: *const heap_mod.Heap, tag: Tag, size: usize, survivor_age: u8) bool {
         if (heap.gcLayoutMode() != .generational) return false;
         if (tag == .forwarding) return false;
-        return size >= heap.promote_threshold;
+        if (size >= heap.promote_threshold) return true;
+        return survivor_age >= PROMOTE_AGE_THRESHOLD;
     }
 
-    fn resolveStaleForwardedValue(trace_stale_resolve: bool, heap: *const heap_mod.Heap, val: Value, obj_addr: usize) ?Value {
+    fn resolveStaleForwardedValue(self: *GC, heap: *const heap_mod.Heap, val: Value, obj_addr: usize) ?Value {
         const stale_start = @intFromPtr(heap.to_start);
         const stale_end = stale_start + heap.space_size;
         if (obj_addr < stale_start or obj_addr >= stale_end) return null;
@@ -1268,6 +1272,11 @@ pub const GC = struct {
         if (!first_word.isForwarding()) return null;
 
         const new_addr = first_word.toPtrAddr();
+        // Current-cycle to-space objects can have header words that alias the
+        // forwarding tag bits (for example symbol name_len=14). If the
+        // "forwarding target" is not even inside heap memory, treat this as a
+        // regular object header, not stale forwarding metadata.
+        if (!heap.containsAddrForDebug(new_addr)) return null;
         const forwarded_size_ptr: *const usize = @ptrFromInt(obj_addr + @sizeOf(Value));
         const forwarded_size = forwarded_size_ptr.*;
         const forwarded_size_ok = forwarded_size > 0 and
@@ -1287,12 +1296,60 @@ pub const GC = struct {
             }
         }
         if (!forwarded_size_ok) {
-            if (trace_stale_resolve) {
+            if (self.trace_stale_resolve) {
                 std.debug.print(
-                    "TRACE stale-resolve reject-size val=0x{x} obj=0x{x} fw=0x{x} sz={d} stale=[0x{x},0x{x})\n",
-                    .{ val.raw, obj_addr, first_word.raw, forwarded_size, stale_start, stale_end },
+                    "TRACE stale-resolve reject-size val=0x{x} obj=0x{x} fw=0x{x} sz={d} stale=[0x{x},0x{x}) scan=0x{x}:{s} parent=0x{x}:{s} grand=0x{x}:{s} origin={s}:{d}:{d}\n",
+                    .{
+                        val.raw,
+                        obj_addr,
+                        first_word.raw,
+                        forwarded_size,
+                        stale_start,
+                        stale_end,
+                        self.debug_scan_addr,
+                        @tagName(self.debug_scan_tag),
+                        self.debug_parent_addr,
+                        @tagName(self.debug_parent_tag),
+                        self.debug_grand_addr,
+                        @tagName(self.debug_grand_tag),
+                        @tagName(self.debug_origin_kind),
+                        self.debug_origin_a,
+                        self.debug_origin_b,
+                    },
                 );
+                if (val.getTag() == .symbol) {
+                    const sym: *const objects.Symbol = @ptrFromInt(obj_addr);
+                    const name_ptr = @intFromPtr(sym.name_ptr);
+                    const sym_name = blk: {
+                        if (sym.name_len == 0 or sym.name_len > 128) break :blk "<bad-len>";
+                        const n: usize = @intCast(sym.name_len);
+                        if (name_ptr != obj_addr + @sizeOf(objects.Symbol)) break :blk "<bad-ptr>";
+                        break :blk sym.name_ptr[0..n];
+                    };
+                    std.debug.print(
+                        "TRACE stale-resolve reject-size symbol obj=0x{x} len={d} name_ptr=0x{x} name={s} plist=0x{x}\n",
+                        .{ obj_addr, sym.name_len, name_ptr, sym_name, sym.plist.raw },
+                    );
+                    if (!std.mem.eql(u8, sym_name, "<bad-len>") and !std.mem.eql(u8, sym_name, "<bad-ptr>")) {
+                        if (heap.symbols.get(sym_name)) |global_sym| {
+                            std.debug.print(
+                                "TRACE stale-resolve reject-size symbol global-hit name={s} raw=0x{x}\n",
+                                .{ sym_name, global_sym.raw },
+                            );
+                        }
+                        var pkg_it = heap.packages.valueIterator();
+                        while (pkg_it.next()) |pkg| {
+                            if (pkg.*.symbols.get(sym_name)) |pkg_sym| {
+                                std.debug.print(
+                                    "TRACE stale-resolve reject-size symbol pkg-hit pkg={s} name={s} raw=0x{x}\n",
+                                    .{ pkg.*.name, sym_name, pkg_sym.raw },
+                                );
+                            }
+                        }
+                    }
+                }
             }
+            if (self.trap_stale_resolve_reject) @panic("stale resolve reject-size");
             return null;
         }
 
@@ -1306,24 +1363,59 @@ pub const GC = struct {
             }
         }
         if (!(in_from or in_tenured)) {
-            if (trace_stale_resolve) {
+            if (self.trace_stale_resolve) {
                 std.debug.print(
-                    "TRACE stale-resolve reject-range val=0x{x} obj=0x{x} fw=0x{x} new=0x{x} sz={d} from=[0x{x},0x{x})\n",
-                    .{ val.raw, obj_addr, first_word.raw, new_addr, forwarded_size, from_start, from_end },
+                    "TRACE stale-resolve reject-range val=0x{x} obj=0x{x} fw=0x{x} new=0x{x} sz={d} from=[0x{x},0x{x}) scan=0x{x}:{s} parent=0x{x}:{s} grand=0x{x}:{s} origin={s}:{d}:{d}\n",
+                    .{
+                        val.raw,
+                        obj_addr,
+                        first_word.raw,
+                        new_addr,
+                        forwarded_size,
+                        from_start,
+                        from_end,
+                        self.debug_scan_addr,
+                        @tagName(self.debug_scan_tag),
+                        self.debug_parent_addr,
+                        @tagName(self.debug_parent_tag),
+                        self.debug_grand_addr,
+                        @tagName(self.debug_grand_tag),
+                        @tagName(self.debug_origin_kind),
+                        self.debug_origin_a,
+                        self.debug_origin_b,
+                    },
                 );
             }
+            if (self.trap_stale_resolve_reject) @panic("stale resolve reject-range");
             return null;
         }
         if (!objects.forwardingTargetLooksValid(val.getTag(), new_addr, forwarded_size)) {
-            if (trace_stale_resolve) {
+            if (self.trace_stale_resolve) {
                 std.debug.print(
-                    "TRACE stale-resolve reject-layout val=0x{x} obj=0x{x} fw=0x{x} new=0x{x} sz={d} tag={s}\n",
-                    .{ val.raw, obj_addr, first_word.raw, new_addr, forwarded_size, @tagName(val.getTag()) },
+                    "TRACE stale-resolve reject-layout val=0x{x} obj=0x{x} fw=0x{x} new=0x{x} sz={d} tag={s} scan=0x{x}:{s} parent=0x{x}:{s} grand=0x{x}:{s} origin={s}:{d}:{d}\n",
+                    .{
+                        val.raw,
+                        obj_addr,
+                        first_word.raw,
+                        new_addr,
+                        forwarded_size,
+                        @tagName(val.getTag()),
+                        self.debug_scan_addr,
+                        @tagName(self.debug_scan_tag),
+                        self.debug_parent_addr,
+                        @tagName(self.debug_parent_tag),
+                        self.debug_grand_addr,
+                        @tagName(self.debug_grand_tag),
+                        @tagName(self.debug_origin_kind),
+                        self.debug_origin_a,
+                        self.debug_origin_b,
+                    },
                 );
             }
+            if (self.trap_stale_resolve_reject) @panic("stale resolve reject-layout");
             return null;
         }
-        if (trace_stale_resolve) {
+        if (self.trace_stale_resolve) {
             std.debug.print(
                 "TRACE stale-resolve ok val=0x{x} obj=0x{x} fw=0x{x} sz={d} from=[0x{x},0x{x})\n",
                 .{ val.raw, obj_addr, first_word.raw, forwarded_size, from_start, from_end },
@@ -1355,17 +1447,21 @@ pub const GC = struct {
             return self.rememberScanStore(heap, val);
         }
 
-        // Check if object is in from-space
-        const obj_addr = val.toPtrAddr();
-        if (resolveStaleForwardedValue(self.trace_stale_resolve, heap, val, obj_addr)) |resolved| {
-            return self.rememberScanStore(heap, resolved);
+        // Resolve stale forwarded roots first, then continue normal copy flow.
+        // Returning early here skips scan/copy for container objects and leaves
+        // nested references stale across cycles.
+        var live = val;
+        var obj_addr = live.toPtrAddr();
+        if (self.resolveStaleForwardedValue(heap, live, obj_addr)) |resolved| {
+            live = resolved;
+            obj_addr = live.toPtrAddr();
         }
         const from_start = @intFromPtr(heap.from_start);
         const from_end = @intFromPtr(heap.from_end);
 
         if (obj_addr < from_start or obj_addr >= from_end) {
             if (heap.isMajorCycleActive()) {
-                const old_tag = val.getTag();
+                const old_tag = live.getTag();
                 const has_refs = objectHasRefsAtAddr(old_tag, obj_addr);
 
                 switch (heap.markTenuredObject(obj_addr)) {
@@ -1386,7 +1482,7 @@ pub const GC = struct {
                 }
             }
             // Object is not in from-space (might be static), don't copy
-            return self.rememberScanStore(heap, val);
+            return self.rememberScanStore(heap, live);
         }
 
         // Check if already has forwarding pointer
@@ -1420,14 +1516,14 @@ pub const GC = struct {
             }
             const forwarded_range_ok = in_from_space or in_to_space or in_tenured;
             if (forwarded_size_ok and forwarded_range_ok and
-                objects.forwardingTargetLooksValid(val.getTag(), new_addr, forwarded_size))
+                objects.forwardingTargetLooksValid(live.getTag(), new_addr, forwarded_size))
             {
-                return self.rememberScanStore(heap, .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) });
+                return self.rememberScanStore(heap, .{ .raw = new_addr | @as(u64, @intFromEnum(live.getTag())) });
             }
         }
 
         // Copy object to to-space
-        const tag = val.getTag();
+        const tag = live.getTag();
         if (tag == .keyword and self.trace_bad_keyword) {
             const kw: *const objects.Keyword = @ptrFromInt(obj_addr);
             const name_addr = @intFromPtr(kw.name_ptr);
@@ -1438,7 +1534,7 @@ pub const GC = struct {
                 std.debug.print(
                     "TRACE bad-keyword-copy val=0x{x} obj=0x{x} len={d} name_ptr=0x{x} expected=0x{x} parent=0x{x}:{s} scan=0x{x}:{s}\n",
                     .{
-                        val.raw,
+                        live.raw,
                         obj_addr,
                         kw.name_len,
                         name_addr,
@@ -1470,7 +1566,7 @@ pub const GC = struct {
                 std.debug.print(
                     "TRACE bad-symbol-copy val=0x{x} obj=0x{x} len={d} name_ptr=0x{x} expected=0x{x} fw=0x{x} is_fwd={} w1=0x{x} from=[0x{x},0x{x}) to=[0x{x},0x{x}) scan=0x{x}:{s} parent=0x{x}:{s} grand=0x{x}:{s} origin={s}:{d}:{d}\n",
                     .{
-                        val.raw,
+                        live.raw,
                         obj_addr,
                         sym.name_len,
                         name_addr,
@@ -1674,20 +1770,20 @@ pub const GC = struct {
                 }
             }
         }
-        const size = objects.objectSize(val);
+        const size = objects.objectSize(live);
         const aligned_size = std.mem.alignForward(usize, size, heap_mod.ALIGNMENT);
         const survivor_age: u8 = if (heap.gcLayoutMode() == .generational)
             heap.nextSurvivorAge(obj_addr)
         else
             0;
 
-        var promote = shouldPromote(heap, tag, aligned_size);
+        var promote = shouldPromote(heap, tag, aligned_size, survivor_age);
         const dest: [*]u8 = if (promote)
             @ptrCast(heap.allocTenuredRaw(aligned_size) catch |err| {
                 if (err == error.OutOfMemory and self.trace_gc_oom) {
                     std.debug.print(
                         "TRACE gc-copy-oom promote={any} tag={s} size={d} aligned={d} val=0x{x} obj=0x{x} phase={s}\n",
-                        .{ true, @tagName(tag), size, aligned_size, val.raw, obj_addr, @tagName(self.major.phase) },
+                        .{ true, @tagName(tag), size, aligned_size, live.raw, obj_addr, @tagName(self.major.phase) },
                     );
                 }
                 return err;
@@ -1709,7 +1805,7 @@ pub const GC = struct {
                     if (err == error.OutOfMemory and self.trace_gc_oom) {
                         std.debug.print(
                             "TRACE gc-copy-oom promote={any} tag={s} size={d} aligned={d} val=0x{x} obj=0x{x} phase={s}\n",
-                            .{ true, @tagName(tag), size, aligned_size, val.raw, obj_addr, @tagName(self.major.phase) },
+                            .{ true, @tagName(tag), size, aligned_size, live.raw, obj_addr, @tagName(self.major.phase) },
                         );
                     }
                     return err;
@@ -1957,17 +2053,108 @@ pub const GC = struct {
                     .chunk => {
                         // Scan chunk metadata + all constants in the constant pool
                         const chunk: *objects.Chunk = @ptrFromInt(addr);
+                        const chunk_in_nursery = heap.isInNurseryAddr(addr);
+                        const chunk_size = objects.objectSize(Value.makeChunk(chunk));
+                        const chunk_marked = heap.hasMarkedCardInAddrRange(addr, addr + chunk_size);
+                        const from_start_dbg = @intFromPtr(heap.from_start);
+                        const from_end_dbg = @intFromPtr(heap.from_end);
+                        const chunk_in_from = addr >= from_start_dbg and addr < from_end_dbg;
+                        var chunk_in_tenured = false;
+                        for (heap.tenured_objs.items) |obj| {
+                            if (obj.addr == addr) {
+                                chunk_in_tenured = true;
+                                break;
+                            }
+                        }
+                        var chunk_in_los = false;
+                        for (heap.los_objs.items) |obj| {
+                            if (obj.addr == addr) {
+                                chunk_in_los = true;
+                                break;
+                            }
+                        }
+                        const stale_start = @intFromPtr(heap.to_start);
+                        const stale_end = stale_start + heap.space_size;
+                        const trace_chunk_stale = self.trace_stale_resolve;
                         if (chunk.lambda_expr.isPointer() and !chunk.lambda_expr.isNil()) {
+                            if (trace_chunk_stale) {
+                                const ptr = chunk.lambda_expr.toPtrAddr();
+                                if (ptr >= stale_start and ptr < stale_end) {
+                                    std.debug.print(
+                                        "TRACE chunk-stale field=lambda-expr chunk=0x{x} in-from={any} from=[0x{x},0x{x}) nursery={any} marked={any} tenured={any} los={any} name=0x{x}({s}) val=0x{x}\n",
+                                        .{
+                                            addr,
+                                            chunk_in_from,
+                                            from_start_dbg,
+                                            from_end_dbg,
+                                            chunk_in_nursery,
+                                            chunk_marked,
+                                            chunk_in_tenured,
+                                            chunk_in_los,
+                                            chunk.name.raw,
+                                            @tagName(chunk.name.typeKind()),
+                                            chunk.lambda_expr.raw,
+                                        },
+                                    );
+                                }
+                            }
                             chunk.lambda_expr = try self.copyValue(heap, chunk.lambda_expr, alloc_ptr);
                         }
                         if (chunk.name.isPointer() and !chunk.name.isNil()) {
+                            if (trace_chunk_stale) {
+                                const ptr = chunk.name.toPtrAddr();
+                                if (ptr >= stale_start and ptr < stale_end) {
+                                    std.debug.print(
+                                        "TRACE chunk-stale field=name chunk=0x{x} nursery={any} name=0x{x}({s}) val=0x{x}\n",
+                                        .{
+                                            addr,
+                                            chunk_in_nursery,
+                                            chunk.name.raw,
+                                            @tagName(chunk.name.typeKind()),
+                                            chunk.name.raw,
+                                        },
+                                    );
+                                }
+                            }
                             chunk.name = try self.copyValue(heap, chunk.name, alloc_ptr);
                         }
                         if (chunk.allowed_keywords.isPointer() and !chunk.allowed_keywords.isNil()) {
+                            if (trace_chunk_stale) {
+                                const ptr = chunk.allowed_keywords.toPtrAddr();
+                                if (ptr >= stale_start and ptr < stale_end) {
+                                    std.debug.print(
+                                        "TRACE chunk-stale field=allowed-keywords chunk=0x{x} nursery={any} name=0x{x}({s}) val=0x{x}\n",
+                                        .{
+                                            addr,
+                                            chunk_in_nursery,
+                                            chunk.name.raw,
+                                            @tagName(chunk.name.typeKind()),
+                                            chunk.allowed_keywords.raw,
+                                        },
+                                    );
+                                }
+                            }
                             chunk.allowed_keywords = try self.copyValue(heap, chunk.allowed_keywords, alloc_ptr);
                         }
-                        for (chunk.getConstants()) |*const_val| {
+                        for (chunk.getConstants(), 0..) |*const_val, ci| {
                             if (const_val.isPointer() and !const_val.isNil()) {
+                                if (trace_chunk_stale) {
+                                    const ptr = const_val.toPtrAddr();
+                                    if (ptr >= stale_start and ptr < stale_end) {
+                                        std.debug.print(
+                                            "TRACE chunk-stale field=const idx={d} chunk=0x{x} nursery={any} name=0x{x}({s}) val=0x{x} kind={s}\n",
+                                            .{
+                                                ci,
+                                                addr,
+                                                chunk_in_nursery,
+                                                chunk.name.raw,
+                                                @tagName(chunk.name.typeKind()),
+                                                const_val.raw,
+                                                @tagName(const_val.typeKind()),
+                                            },
+                                        );
+                                    }
+                                }
                                 const_val.* = try self.copyValue(heap, const_val.*, alloc_ptr);
                             }
                         }
@@ -2808,6 +2995,39 @@ test "minor gc promotes large survivors to tenured" {
     try testing.expect(heap.tenuredBytesUsed() > 0);
 }
 
+test "minor gc promotes aged small survivors to tenured" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            // Keep size-gate effectively disabled for cons cells so this test
+            // exercises age-gated promotion.
+            .promote_threshold = 1024 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    var root = try heap.allocCons(Value.makeFixnum(7), Value.nil);
+    var roots = [_]Value{root};
+
+    _ = try heap.collectGarbage(&roots);
+    root = roots[0];
+    try testing.expect(heap.isInNurseryAddr(root.toPtrAddr()));
+
+    _ = try heap.collectGarbage(&roots);
+    root = roots[0];
+
+    const tenured = heap.tenuredRegion().?;
+    const addr = root.toPtrAddr();
+    try testing.expect(addr >= @intFromPtr(tenured.start) and addr < @intFromPtr(tenured.end));
+    try testing.expect(heap.stats.gc_promote_n > 0);
+    try testing.expect(heap.stats.gc_promote_age[PROMOTE_AGE_THRESHOLD] > 0);
+}
+
 test "promotion success telemetry records surviving promoted objects" {
     const testing = std.testing;
 
@@ -3116,7 +3336,8 @@ test "tenured marking follows nursery references" {
     _ = try heap.collectGarbage(&roots_s);
     s = roots_s[0];
     const s_addr = s.toPtrAddr();
-    try testing.expectEqual(tenured_base + 1, heap.tenured_objs.items.len);
+    const tenured_after_s = heap.tenured_objs.items.len;
+    try testing.expect(tenured_after_s >= tenured_base + 1);
     try testing.expect(tenuredContainsAddr(&heap, s_addr));
 
     var c = try heap.allocCons(s, Value.nil);
@@ -3124,7 +3345,7 @@ test "tenured marking follows nursery references" {
     _ = try heap.collectGarbage(&roots_c);
     c = roots_c[0];
 
-    try testing.expectEqual(tenured_base + 1, heap.tenured_objs.items.len);
+    try testing.expect(heap.tenured_objs.items.len >= tenured_after_s);
     try testing.expect(tenuredContainsAddr(&heap, s_addr));
     const cons = c.toPtr(objects.Cons);
     try testing.expect(cons.car.isString());
@@ -3162,7 +3383,10 @@ test "los object scan updates nursery references" {
     const child2 = owner2.get(0);
     try testing.expect(child2.isCons());
     try testing.expect(child2.raw != child1_raw);
-    try testing.expect(heap.isInNurseryAddr(child2.toPtrAddr()));
+    const child2_addr = child2.toPtrAddr();
+    if (!heap.isInNurseryAddr(child2_addr)) {
+        try testing.expect(tenuredContainsAddr(&heap, child2_addr));
+    }
 }
 
 test "minor gc records remembered-set telemetry" {

@@ -121,29 +121,25 @@ fn countBytecodeOps(chunk: *runtime.Chunk) u64 {
 
 fn sumJitCodeBytes(vm: *const Vm) u64 {
     var sum: u64 = 0;
-    var it = vm.jit_fns.iterator();
-    while (it.next()) |entry| {
-        sum +%= entry.value_ptr.*.mem.used;
+    for (vm.jit_fns.items) |entry| {
+        sum +%= entry.compiled.mem.used;
     }
     return sum;
 }
 
 fn snapshotJitKeys(allocator: std.mem.Allocator, vm: *const Vm) !std.AutoHashMap(usize, void) {
     var keys = std.AutoHashMap(usize, void).init(allocator);
-    var it = vm.jit_fns.iterator();
-    while (it.next()) |entry| {
-        try keys.put(entry.key_ptr.*, {});
+    for (vm.jit_fns.items) |entry| {
+        try keys.put(entry.chunk.toPtrAddr(), {});
     }
     return keys;
 }
 
 fn findNewJitChunk(vm: *const Vm, before: *const std.AutoHashMap(usize, void)) ?*runtime.Chunk {
-    var it = vm.jit_fns.iterator();
-    while (it.next()) |entry| {
-        const key = entry.key_ptr.*;
+    for (vm.jit_fns.items) |entry| {
+        const key = entry.chunk.toPtrAddr();
         if (before.contains(key)) continue;
-        const chunk: *runtime.Chunk = @ptrFromInt(key);
-        return chunk;
+        return entry.chunk.toPtr(runtime.Chunk);
     }
     return null;
 }

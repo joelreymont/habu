@@ -3695,7 +3695,10 @@ pub const IrTranslator = struct {
         var call_args = ValueList.default();
         try self.func.dfg.value_lists.push(&call_args, fn_ptr);
         for (0..arity) |i| {
-            try self.func.dfg.value_lists.push(&call_args, args[i]);
+            // Comparators/predicates may produce I8 SSA values internally.
+            // All indirect-call ABIs in Habu expect tagged Lisp values (I64).
+            const tagged_arg = try self.boolToTagged(args[i]);
+            try self.func.dfg.value_lists.push(&call_args, tagged_arg);
         }
 
         const call_data = InstructionData{

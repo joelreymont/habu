@@ -2810,53 +2810,30 @@ pub const Compiler = struct {
 
     fn clearRetainedCompileValues(self: *Compiler, vm: *Vm) void {
         _ = self;
-        vm.comp_retain = Value.nil;
-        vm.comp_retain_n = Value.makeFixnum(0);
+        vm.comp_retain_vals.clearRetainingCapacity();
     }
 
     fn retainCompileValue(self: *Compiler, vm: *Vm, value: Value) !u32 {
         _ = self;
-        const count_val = vm.resolveForwardedValue(vm.comp_retain_n);
-        const count: u32 = blk: {
-            if (!count_val.isFixnum()) break :blk 0;
-            const raw = count_val.toFixnum();
-            if (raw < 0) break :blk 0;
-            break :blk @intCast(raw);
-        };
+        const count: u32 = @intCast(vm.comp_retain_vals.items.len);
         if (count == std.math.maxInt(u32)) return error.InvalidConstant;
 
         const live_value = vm.resolveForwardedValue(value);
-        const saved = vm.resolveForwardedValue(vm.comp_retain);
-        vm.comp_retain = saved;
-        vm.comp_retain = try vm.allocCons(live_value, saved);
-        vm.comp_retain_n = Value.makeFixnum(@intCast(count + 1));
+        try vm.comp_retain_vals.append(vm.allocator, live_value);
         return count;
     }
 
     fn retainedCompileValueCount(self: *Compiler, vm: *Vm) u32 {
         _ = self;
-        const count_val = vm.resolveForwardedValue(vm.comp_retain_n);
-        if (!count_val.isFixnum()) return 0;
-        const raw = count_val.toFixnum();
-        if (raw < 0) return 0;
-        return @intCast(raw);
+        return @intCast(vm.comp_retain_vals.items.len);
     }
 
     fn lookupRetainedCompileValue(self: *Compiler, vm: *Vm, idx: u32) Value {
         const total = self.retainedCompileValueCount(vm);
         if (idx >= total) return Value.nil;
-        const steps = total - 1 - idx;
-
-        var cur = vm.resolveForwardedValue(vm.comp_retain);
-        var i: u32 = 0;
-        while (i < steps) : (i += 1) {
-            if (!cur.isCons()) return Value.nil;
-            cur = vm.resolveForwardedValue(cur.toPtr(Cons).cdr);
-        }
-        if (!cur.isCons()) return Value.nil;
-        const cell = cur.toPtr(Cons);
-        const live = vm.resolveForwardedValue(cell.car);
-        cell.car = live;
+        const ui: usize = @intCast(idx);
+        const live = vm.resolveForwardedValue(vm.comp_retain_vals.items[ui]);
+        vm.comp_retain_vals.items[ui] = live;
         return live;
     }
 
@@ -2916,6 +2893,17 @@ pub const Compiler = struct {
         const is_top_level = self.compile_depth == 0;
         self.compile_depth += 1;
         defer self.compile_depth -= 1;
+
+        var gc_guard_vm: ?*Vm = null;
+        if (is_top_level) {
+            if (self.vm) |vm| {
+                vm.jit_gc_forbidden_depth += 1;
+                gc_guard_vm = vm;
+            }
+        }
+        defer if (gc_guard_vm) |vm| {
+            vm.jit_gc_forbidden_depth -= 1;
+        };
 
         var rooted_expr = expr;
         var root_tok: ?CompileRootToken = null;

@@ -380,6 +380,7 @@ pub const Heap = struct {
     los_free_bins: [TENURED_FREE_BIN_N]std.ArrayList(FreeSpan),
     profile_mutator: bool,
     trace_tenured_oom: bool,
+    trace_alloc_oom: bool,
     trace_bad_store: bool,
     disable_gc_slot_cache: bool,
     trace_gc_slot_overlap: bool,
@@ -712,6 +713,7 @@ pub const Heap = struct {
 
         const profile_mutator = std.posix.getenv("HABU_PROFILE_MUTATOR") != null;
         const trace_tenured_oom = std.posix.getenv("HABU_TRACE_TENURED_OOM") != null;
+        const trace_alloc_oom = std.posix.getenv("HABU_TRACE_ALLOC_OOM") != null;
         const trace_bad_store = std.posix.getenv("HABU_TRACE_BAD_STORE") != null;
         const disable_gc_slot_cache = std.posix.getenv("HABU_DISABLE_GC_SLOT_CACHE") != null;
         const trace_gc_slot_overlap = std.posix.getenv("HABU_TRACE_GC_SLOT_OVERLAP") != null;
@@ -762,6 +764,7 @@ pub const Heap = struct {
             .los_free_bins = [_]std.ArrayList(FreeSpan){std.ArrayList(FreeSpan){}} ** TENURED_FREE_BIN_N,
             .profile_mutator = profile_mutator,
             .trace_tenured_oom = trace_tenured_oom,
+            .trace_alloc_oom = trace_alloc_oom,
             .trace_bad_store = trace_bad_store,
             .disable_gc_slot_cache = disable_gc_slot_cache,
             .trace_gc_slot_overlap = trace_gc_slot_overlap,
@@ -1884,17 +1887,70 @@ pub const Heap = struct {
 
         const raw_current = @intFromPtr(self.alloc_ptr);
         const end = @intFromPtr(self.from_end);
-        if (raw_current >= end) return error.OutOfMemory;
-        if (raw_current > std.math.maxInt(usize) - (ALIGNMENT - 1)) return error.OutOfMemory;
+        if (raw_current >= end) {
+            if (self.trace_alloc_oom) {
+                std.debug.print(
+                    "TRACE alloc-oom stage=raw-current-end req={d} align={d} cur=0x{x} end=0x{x} gc={d} minor={d} major={d}\n",
+                    .{
+                        size,
+                        aligned_size,
+                        raw_current,
+                        end,
+                        self.stats.gc_count,
+                        self.stats.gc_minor_count,
+                        self.stats.gc_major_count,
+                    },
+                );
+            }
+            return error.OutOfMemory;
+        }
+        if (raw_current > std.math.maxInt(usize) - (ALIGNMENT - 1)) {
+            if (self.trace_alloc_oom) {
+                std.debug.print(
+                    "TRACE alloc-oom stage=raw-current-overflow req={d} align={d} cur=0x{x}\n",
+                    .{ size, aligned_size, raw_current },
+                );
+            }
+            return error.OutOfMemory;
+        }
 
         const current = std.mem.alignForward(usize, raw_current, ALIGNMENT);
-        if (current < raw_current) return error.OutOfMemory;
+        if (current < raw_current) {
+            if (self.trace_alloc_oom) {
+                std.debug.print(
+                    "TRACE alloc-oom stage=align-underflow req={d} align={d} raw=0x{x} aligned=0x{x}\n",
+                    .{ size, aligned_size, raw_current, current },
+                );
+            }
+            return error.OutOfMemory;
+        }
         if (current > std.math.maxInt(usize) - aligned_size) {
+            if (self.trace_alloc_oom) {
+                std.debug.print(
+                    "TRACE alloc-oom stage=next-overflow req={d} align={d} cur=0x{x}\n",
+                    .{ size, aligned_size, current },
+                );
+            }
             return error.OutOfMemory;
         }
         const next = current + aligned_size;
 
         if (next > end) {
+            if (self.trace_alloc_oom) {
+                std.debug.print(
+                    "TRACE alloc-oom stage=next-end req={d} align={d} cur=0x{x} next=0x{x} end=0x{x} gc={d} minor={d} major={d}\n",
+                    .{
+                        size,
+                        aligned_size,
+                        current,
+                        next,
+                        end,
+                        self.stats.gc_count,
+                        self.stats.gc_minor_count,
+                        self.stats.gc_major_count,
+                    },
+                );
+            }
             return error.OutOfMemory;
         }
 
@@ -2071,13 +2127,17 @@ pub const Heap = struct {
             .symbol => {
                 const sym: *const objects.Symbol = @ptrFromInt(addr);
                 if (sym.name_len <= self.space_size) return;
+                const w0 = @as(*const u64, @ptrFromInt(addr)).*;
+                const w1 = @as(*const u64, @ptrFromInt(addr + @sizeOf(u64))).*;
                 std.debug.print(
-                    "TRACE bad-store field={s} val=0x{x} addr=0x{x} tag=symbol name_len={d} in_stale={any} from=[0x{x},0x{x}) to=[0x{x},0x{x})\n",
+                    "TRACE bad-store field={s} val=0x{x} addr=0x{x} tag=symbol name_len={d} w0=0x{x} w1=0x{x} in_stale={any} from=[0x{x},0x{x}) to=[0x{x},0x{x})\n",
                     .{
                         field,
                         val.raw,
                         addr,
                         sym.name_len,
+                        w0,
+                        w1,
                         in_stale,
                         @intFromPtr(self.from_start),
                         @intFromPtr(self.from_end),
@@ -3420,6 +3480,42 @@ pub const Heap = struct {
         self.gc_root_sig_valid = true;
     }
 
+    fn traceStalePackageSymbols(self: *const Heap, phase: []const u8) bool {
+        const stale_start = @intFromPtr(self.to_start);
+        const stale_end = stale_start + self.space_size;
+        var found = false;
+
+        var pkg_it = self.packages.valueIterator();
+        while (pkg_it.next()) |pkg| {
+            var sym_it = pkg.*.symbols.map.iterator();
+            while (sym_it.next()) |entry| {
+                const sym = entry.value_ptr.*;
+                if (!sym.isPointer() or sym.isMagicSymbol()) continue;
+                const addr = sym.toPtrAddr();
+                if (addr < stale_start or addr >= stale_end) continue;
+                const first_word: *const Value = @ptrFromInt(addr);
+                const w1: *const usize = @ptrFromInt(addr + @sizeOf(Value));
+                std.debug.print(
+                    "TRACE stale-pkg-symbol phase={s} pkg={s} key={s} raw=0x{x} addr=0x{x} fw=0x{x} is_fwd={any} w1=0x{x} stale=[0x{x},0x{x})\n",
+                    .{
+                        phase,
+                        pkg.*.name,
+                        entry.key_ptr.*,
+                        sym.raw,
+                        addr,
+                        first_word.raw,
+                        first_word.isForwarding(),
+                        w1.*,
+                        stale_start,
+                        stale_end,
+                    },
+                );
+                found = true;
+            }
+        }
+        return found;
+    }
+
     /// Run garbage collection with external roots (from VM stack, globals, etc.)
     /// Returns bytes reclaimed (space_used_before - space_used_after)
     pub fn collectGarbage(self: *Heap, external_roots: []Value) !usize {
@@ -3435,6 +3531,10 @@ pub const Heap = struct {
     pub fn collectGarbageRootSet(self: *Heap, external_roots: roots_mod.RootSet) !usize {
         const before = self.bytesUsed();
         const build_start = std.time.nanoTimestamp();
+        const trap_stale_pkg_symbols = std.posix.getenv("HABU_TRAP_STALE_PACKAGE_SYMBOLS") != null;
+        if (trap_stale_pkg_symbols and self.traceStalePackageSymbols("pre")) {
+            @panic("stale package symbol before GC");
+        }
 
         // Internal roots are tracked by slot address; external roots are passed as a range.
         self.gc_slots.clearRetainingCapacity();
@@ -3465,6 +3565,9 @@ pub const Heap = struct {
             .ranges = external_roots.ranges,
             .slots = self.gc_slots.items,
         });
+        if (trap_stale_pkg_symbols and self.traceStalePackageSymbols("post")) {
+            @panic("stale package symbol after GC");
+        }
 
         const after = self.bytesUsed();
         const reclaimed = if (before > after) before - after else 0;

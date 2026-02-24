@@ -6,6 +6,7 @@ const interp = habu.interp;
 
 const Heap = runtime.Heap;
 const Repl = interp.Repl;
+const Vm = interp.Vm;
 const Value = runtime.Value;
 const Cons = runtime.Cons;
 const CallShapeStats = interp.Vm.CallShapeStats;
@@ -341,6 +342,23 @@ fn listNthFixnum(list: Value, idx: usize) !i64 {
     return cell.car.toFixnum();
 }
 
+fn isCorruptSymbolLike(vm: *Vm, val: Value) bool {
+    if (!val.isSymbol() or val.isMagicSymbol()) return false;
+    const addr = val.toPtrAddr();
+    if (!vm.heap.containsAddrForDebug(addr)) return false;
+    const sym = val.toPtr(runtime.Symbol);
+    return sym.name_len > vm.heap.space_size;
+}
+
+fn countCorruptGlobalSymbols(vm: *Vm) usize {
+    var bad: usize = 0;
+    var i: usize = 0;
+    while (i < vm.num_globals and i < vm.globals.len) : (i += 1) {
+        if (isCorruptSymbolLike(vm, vm.globals[i])) bad += 1;
+    }
+    return bad;
+}
+
 const maxima_files_expr =
     \\(setq *maxima-files*
     \\  '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
@@ -383,7 +401,27 @@ fn loadMaxima(timer: *std.time.Timer, repl: *Repl) !LoaderStats {
 }
 
 fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, def: BenchDef, scale: usize) Bench {
+    const trace_err_stack = std.posix.getenv("HABU_TRACE_BENCH_ERROR_STACK") != null;
+    const trace_workload = std.posix.getenv("HABU_TRACE_MAXIMA_WORKLOAD") != null;
+    const traceBenchErr = struct {
+        fn run(bench_name: []const u8, phase: []const u8, err: anyerror) void {
+            std.debug.print("MAXIMA_BENCH error bench={s} phase={s} err={s}\n", .{ bench_name, phase, @errorName(err) });
+            if (@errorReturnTrace()) |t| {
+                std.debug.dumpStackTrace(t.*);
+            }
+        }
+    }.run;
+
+    if (trace_workload) {
+        std.debug.print(
+            "MAXIMA_BENCH setup {s} vm_globals={d} env_globals={d}\n",
+            .{ def.name, repl.vm.num_globals, repl.compiler.globals.names_by_index.items.len },
+        );
+    }
+
     _ = repl.eval(def.setup) catch |err| {
+        std.debug.print("MAXIMA_BENCH fail {s} phase=setup err={s}\n", .{ def.name, @errorName(err) });
+        if (trace_err_stack) traceBenchErr(def.name, "setup", err);
         return .{
             .name = def.name,
             .category = def.category,
@@ -394,8 +432,14 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
     };
 
     const n = def.iters * scale;
-    const trace_workload = std.posix.getenv("HABU_TRACE_MAXIMA_WORKLOAD") != null;
+    if (trace_workload) {
+        std.debug.print(
+            "MAXIMA_BENCH warmup {s} n={d} vm_globals={d} env_globals={d}\n",
+            .{ def.name, n, repl.vm.num_globals, repl.compiler.globals.names_by_index.items.len },
+        );
+    }
     const call_src = std.fmt.allocPrint(allocator, "({s} {d})", .{ def.call_name, n }) catch |err| {
+        std.debug.print("MAXIMA_BENCH fail {s} phase=build-call err={s}\n", .{ def.name, @errorName(err) });
         return .{
             .name = def.name,
             .category = def.category,
@@ -407,6 +451,8 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
     defer allocator.free(call_src);
 
     _ = repl.eval(call_src) catch |err| {
+        std.debug.print("MAXIMA_BENCH fail {s} phase=warmup err={s}\n", .{ def.name, @errorName(err) });
+        if (trace_err_stack) traceBenchErr(def.name, "warmup", err);
         return .{
             .name = def.name,
             .category = def.category,
@@ -419,6 +465,8 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
     // Stabilize per-workload timing by draining pending nursery debt after
     // warmup so cross-workload GC carryover does not land inside timed runs.
     _ = repl.vm.collectGarbage() catch |err| {
+        std.debug.print("MAXIMA_BENCH fail {s} phase=pre-timed-gc err={s}\n", .{ def.name, @errorName(err) });
+        if (trace_err_stack) traceBenchErr(def.name, "pre-timed-gc", err);
         return .{
             .name = def.name,
             .category = def.category,
@@ -436,6 +484,8 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
     const gc_major_before = repl.vm.heap.stats.gc_major_count;
     const t0 = timer.read();
     _ = repl.eval(call_src) catch |err| {
+        std.debug.print("MAXIMA_BENCH fail {s} phase=timed err={s}\n", .{ def.name, @errorName(err) });
+        if (trace_err_stack) traceBenchErr(def.name, "timed", err);
         if (trace_workload) {
             const gc_after_fail = repl.vm.heap.stats.gc_count;
             const gc_minor_after_fail = repl.vm.heap.stats.gc_minor_count;
@@ -697,6 +747,16 @@ pub fn main() !void {
     };
     const gc_after_load = gcSnap(&heap);
     const call_shape_after_load = callShapeSnap(&repl);
+    if (std.posix.getenv("HABU_TRACE_GLOBAL_SANITY") != null) {
+        std.debug.print(
+            "TRACE global-sanity phase=post-load vm_globals={d} env_globals={d} corrupt_symbols={d}\n",
+            .{
+                repl.vm.num_globals,
+                repl.compiler.globals.names_by_index.items.len,
+                countCorruptGlobalSymbols(&repl.vm),
+            },
+        );
+    }
 
     var benches = std.ArrayList(Bench){};
     defer benches.deinit(allocator);

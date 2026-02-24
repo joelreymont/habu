@@ -9,6 +9,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-24)
 
 ### Worked Well
+- Treating stale-resolve traps as hypotheses, then validating against root-range provenance (`origin=range:6`) and package-table state, exposed a false-positive class instead of a real stale-root leak: current-cycle to-space symbol headers (`name_len=14` => `0xe`) were being misread as forwarding metadata (`src/runtime/gc.zig:1263+`).
+- Fixing stale-forwarding classification at the source (require forwarding target address to be inside heap before reading forwarding-size metadata) removed strict-trap Maxima failures without adding fallback behavior (`src/runtime/gc.zig:1273`).
+- Replacing `typep` integer-range parsing with a CL-style bound parser (`src/runtime/primitives/type.zig`) fixed both correctness and Maxima behavior: `(typep 1 '(integer 0))` now succeeds and full-loader factor probe reaches `:OK` (`/tmp/habu_factor_probe_full.lisp` output `(85 85 0 t :OK)`).
 - Removing legacy global-name fallback probes in `lookupSymbolGlobalIndex` (`src/interp/vm.zig`) and locking it with `vm does not use legacy global fallback names` prevented silent CL/CL-USER prefix fallback behavior from creeping back in after hard cutover.
 - Enforcing `(optimize (speed 3) (safety 0))` at compile time for every JIT benchmark `defun` (`bench/comprehensive_bench.zig:65`, `bench/comprehensive_bench.zig:396`) prevents silent benchmark-mode drift and catches missing declarations during build instead of after noisy perf runs.
 - Splitting call-target name handling by context fixed a real crash class: keep static recursion/cross-call analysis on `.global_ref` only (`src/jit/backend.zig:getCallTargetName`, `src/jit/backend.zig:isCallTargetSelf`) and use rooted literal slots only in translation-time dispatch (`src/jit/backend.zig:IrTranslator.callTargetName`); this preserved primitive/known dispatch while eliminating stale `.lit` symbol dereferences in deep-copied IR.
@@ -42,6 +45,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding liveness-driven target-load pruning to cross-call BL patching (`src/jit/backend.zig:5266-5274`) safely removes dead non-adjacent MOVZ/MOVK target chains after BLR→BL rewrite while preserving shared load chains until their final use; this is locked by focused regressions (`src/jit/backend.zig:9180-9225`).
 
 ### Did Not Work
+- Interpreting every `reject-size` stale-resolve trap as proof of an unresolved stale pointer path was wrong; with strict traps enabled, valid to-space objects during the same GC cycle can match forwarding tag bits and must be filtered by target-address validity first (`src/runtime/gc.zig:1263-1295`).
 - Reworking VM symbol/function lookup caches by rekeying across GC or broad alias-first lookup changes in `lookupSymbolGlobalIndex` did not produce stable `factor/ratsimp` wins on this host; keep perf claims gated on repeated `tools/maxima-hotspots --scale 120` checks and revert speculative cache churn quickly.
 - Treating inlining-threshold broadening as a safe knob without stronger structural proof caused catastrophic runtime regressions in hot recursion (`NQUEENS-SAFE-P` path); keep threshold experiments gated by strict shape constraints plus immediate A/B rollback rules.
 - Trying to harden `.lit` symbol-name extraction in static call-target analysis by consulting global JIT heap state (`g_heap`) was wrong: stale heap pointers in long-lived test flows caused overflow/segfault (`src/jit/backend.zig:safeLiteralSymbolName` trial). Static analysis must not depend on mutable global heap bridges.
@@ -56,6 +60,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Using `continue` inside `executeOp` opcode switch during direct-call insertion was invalid (`continue expression outside loop`); opcode handlers must `return` from `executeOp` instead.
 - Keying compile-status cache by per-chunk pointer identity did not produce useful reuse under Maxima loader churn; switching to deterministic chunk fingerprints was required to convert the cache from “mostly cold” to measurable hits.
 - Running filtered tests via the build wrapper can still leave long-lived `.zig-cache/.../build ... test` processes active after command completion; explicit `pgrep`/`kill` cleanup is required before continuing perf work to avoid unified-exec process-limit pressure.
+- Some long `zig build test -Dtest-filter=...` runs can stall with test binaries blocked in `test_runner.mainServer` waiting on `--listen=-` protocol input (`sample` trace on `.zig-cache/.../test`); for Maxima end-to-end checks in this environment, prefer direct runtime probes via `./zig-out/bin/habu <script>` and kill stale test runners.
 - Reusing `is_recursive` for both call-shape lowering and numeric fast-path eligibility caused hidden performance regressions after TCO rewrites; recursion-driven call conversion and fixnum-inline policy need independent state in the translator.
 - Running mirrored-entry MOV elimination too early in the pass pipeline (before first compaction) had negligible effect because constant materialization still split the mirror windows; placement in the pipeline mattered more than the transform itself.
 - Sampling optimized JIT workloads often reports anonymous native PCs only (`???` in `sample`) for generated code ranges; combine `sample` with `HABU_DUMP_HOIST` and patch traces to map hotspots back to concrete generated blocks before changing passes.
@@ -1517,3 +1522,16 @@ Environment guard:
 
 #### Did Not Work
 - Fixing only REPL literal-root traversal was insufficient: integration `compile_chunk` still compiled with `compileIr(...)` (no roots), emitted `JIT_LIT_NOROOT`, and reproduced post-GC call-target corruption until the helper path was upgraded too (`src/testing/compile_chunk.zig` pre-fix `tryHoistCompile`).
+
+### Session Notes (2026-02-24, stale-forwarding false positives + strict return-from semantics)
+
+#### Worked Well
+- Guarding stale-forward resolution with a heap-address validity check (`src/runtime/gc.zig:resolveStaleForwardedValue`) correctly separated real forwarding metadata from current-cycle to-space headers (e.g. symbol `name_len=14` aliasing forwarding tag bits), removing strict-trap false positives under `HABU_TRAP_STALE_RESOLVE_REJECT=1`.
+- Keeping age-based promotion coverage explicit (`src/runtime/gc.zig`: `minor gc promotes aged small survivors to tenured`) while updating edge tests to assert pointer/edge correctness rather than placement-only assumptions made GC behavior changes testable without hiding regressions.
+- Removing the `ABORTED` fallback in `doReturnFrom` (`src/interp/vm.zig`) and validating with focused return-from/unwind tests removed a non-lexical control-flow escape hatch and aligned behavior with strict block semantics.
+- Cleaning orphaned `zig build test` / `test --listen` runners after interrupted runs prevented stale process accumulation and reduced process-limit warning noise during iterative perf/test loops.
+
+#### Did Not Work
+- Running perf checks in Debug mode produced misleadingly slow wall-clock runs; comparability with historical Maxima numbers required explicit `-Doptimize=ReleaseFast`.
+- The full `zig build test` loop remains expensive/noisy for rapid iteration in this workspace; focused test filters were the reliable signal for validating return-from/GC changes before broader reruns.
+- Leaving benchmark helpers on stale container APIs (`vm.jit_fns.iterator()` after VM moved to `ArrayList(JitFnEntry)`) silently broke `zig build` install targets; bench harnesses must be kept in lockstep with VM container migrations.

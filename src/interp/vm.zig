@@ -107,6 +107,16 @@ pub const BlockFrame = struct {
     block_sp: usize,
     /// Frame pointer to restore
     block_fp: usize,
+    /// Catch stack depth to restore
+    catch_depth: usize,
+    /// Unwind stack depth to restore
+    unwind_depth: usize,
+    /// Restart stack depth to restore
+    restart_depth: usize,
+    /// Dynamic variable binding depth to restore
+    progv_depth: usize,
+    /// Handler stack depth to restore
+    handler_depth: usize,
 };
 
 /// Restart frame for restart-case
@@ -125,6 +135,12 @@ pub const RestartFrame = struct {
     catch_depth: usize,
     /// Unwind stack depth to restore
     unwind_depth: usize,
+    /// Block stack depth to restore
+    block_depth: usize,
+    /// Dynamic variable binding depth to restore
+    progv_depth: usize,
+    /// Handler stack depth to restore
+    handler_depth: usize,
 };
 
 /// Handler frame for handler-bind
@@ -630,9 +646,8 @@ pub const Vm = struct {
 
     /// Current package (special variable)
     current_package: Value,
-    /// Compiler-internal root slots (used during compile/eval pipelines).
-    comp_retain: Value,
-    comp_retain_n: Value,
+    /// Compiler-retained values that must survive compile->emit GC windows.
+    comp_retain_vals: std.ArrayList(Value),
     comp_root_stack: [MAX_COMPILE_ROOTS]Value,
     comp_root_sp: usize,
 
@@ -1127,8 +1142,7 @@ pub const Vm = struct {
             .globals = undefined,
             .num_globals = 0,
             .current_package = Value.nil,
-            .comp_retain = Value.nil,
-            .comp_retain_n = Value.makeFixnum(0),
+            .comp_retain_vals = std.ArrayList(Value){},
             .comp_root_stack = [_]Value{Value.nil} ** MAX_COMPILE_ROOTS,
             .comp_root_sp = 0,
             .chunk_pool = &[_]Value{},
@@ -1237,6 +1251,7 @@ pub const Vm = struct {
             self.allocator.destroy(slot);
         }
         self.jit_literal_roots.deinit(self.allocator);
+        self.comp_retain_vals.deinit(self.allocator);
         self.uninterned_values.deinit();
         self.gc_slots.deinit(self.allocator);
     }
@@ -1280,6 +1295,11 @@ pub const Vm = struct {
         self.chunk_pool_owner = owner;
         self.chunk_pool = owner.items;
         self.chunk_base = 0;
+    }
+
+    pub fn currentChunkPool(self: *const Vm) []Value {
+        if (self.chunk_pool_owner) |owner| return owner.items;
+        return self.chunk_pool;
     }
 
     /// Set the global environment for boundp/fboundp lookups
@@ -2508,6 +2528,52 @@ pub const Vm = struct {
         _ = try self.collectGarbageExtra(extra_roots);
     }
 
+    fn hasSeenChunk(seen: []const usize, addr: usize) bool {
+        for (seen) |item| {
+            if (item == addr) return true;
+        }
+        return false;
+    }
+
+    fn appendChunkGraphRoots(self: *Vm, roots: *std.ArrayList(*Value), chunk_pool: []Value) !void {
+        var seen = std.ArrayList(usize){};
+        defer seen.deinit(self.allocator);
+        try seen.ensureTotalCapacity(self.allocator, chunk_pool.len);
+
+        var stack = std.ArrayList(Value){};
+        defer stack.deinit(self.allocator);
+        try stack.ensureTotalCapacity(self.allocator, chunk_pool.len);
+
+        for (chunk_pool, 0..) |chunk_val_raw, idx| {
+            const chunk_val = self.resolveForwardedValue(chunk_val_raw);
+            if (chunk_val.raw != chunk_val_raw.raw) chunk_pool[idx] = chunk_val;
+            if (chunk_val.isChunk()) {
+                try stack.append(self.allocator, chunk_val);
+            }
+        }
+
+        while (stack.items.len != 0) {
+            const chunk_val = stack.items[stack.items.len - 1];
+            _ = stack.pop();
+            const chunk_addr = chunk_val.toPtrAddr();
+            if (hasSeenChunk(seen.items, chunk_addr)) continue;
+            try seen.append(self.allocator, chunk_addr);
+
+            const chunk = chunk_val.toPtr(Chunk);
+            try roots.append(self.allocator, &chunk.lambda_expr);
+            try roots.append(self.allocator, &chunk.name);
+            try roots.append(self.allocator, &chunk.allowed_keywords);
+            for (chunk.getConstants()) |*const_val| {
+                try roots.append(self.allocator, const_val);
+                const live_const = self.resolveForwardedValue(const_val.*);
+                if (live_const.raw != const_val.raw) const_val.* = live_const;
+                if (live_const.isChunk()) {
+                    try stack.append(self.allocator, live_const);
+                }
+            }
+        }
+    }
+
     fn collectGarbageExtra(self: *Vm, extra_roots: []Value) !usize {
         if (self.jit_gc_forbidden_depth != 0) return error.OutOfMemory;
         const trace_validate_roots = std.posix.getenv("HABU_TRACE_VALIDATE_ROOT_LAYOUT") != null;
@@ -2530,6 +2596,7 @@ pub const Vm = struct {
         var restart_chunk_roots: [MAX_RESTARTS]Value = undefined;
         var current_chunk_root = chunkRoot(self.chunk);
         var frame_chunk_roots: [MAX_FRAMES]Value = undefined;
+        const chunk_pool = self.currentChunkPool();
 
         const has_current_closure = self.current_closure != null;
         const slots_need: usize = self.catch_sp +
@@ -2572,8 +2639,6 @@ pub const Vm = struct {
         self.gc_slots.appendAssumeCapacity(&self.pending_block_name);
         self.gc_slots.appendAssumeCapacity(&self.pending_block_value);
         self.gc_slots.appendAssumeCapacity(&self.current_package);
-        self.gc_slots.appendAssumeCapacity(&self.comp_retain);
-        self.gc_slots.appendAssumeCapacity(&self.comp_retain_n);
         var uninterned_it = self.uninterned_values.valueIterator();
         while (uninterned_it.next()) |slot| {
             self.gc_slots.appendAssumeCapacity(slot);
@@ -2581,6 +2646,7 @@ pub const Vm = struct {
         for (self.jit_literal_roots.items) |slot| {
             self.gc_slots.appendAssumeCapacity(slot);
         }
+        try self.appendChunkGraphRoots(&self.gc_slots, chunk_pool);
 
         var closure_idx: usize = 0;
         for (self.frames[0..self.fp], 0..) |frame, i| {
@@ -2638,6 +2704,9 @@ pub const Vm = struct {
         if (self.comp_root_sp != 0) {
             pushRangeUnique(&ranges, &range_len, self.comp_root_stack[0..self.comp_root_sp]);
         }
+        if (self.comp_retain_vals.items.len != 0) {
+            pushRangeUnique(&ranges, &range_len, self.comp_retain_vals.items);
+        }
         if (self.secondary_values_count != 0) {
             pushRangeUnique(&ranges, &range_len, self.secondary_values[0..self.secondary_values_count]);
         }
@@ -2652,8 +2721,8 @@ pub const Vm = struct {
         if (type_roots.len != 0) {
             pushRangeUnique(&ranges, &range_len, type_roots);
         }
-        if (self.chunk_pool.len != 0) {
-            pushRangeUnique(&ranges, &range_len, self.chunk_pool);
+        if (chunk_pool.len != 0) {
+            pushRangeUnique(&ranges, &range_len, chunk_pool);
         }
         const ext_roots = self.currentExtRoots();
         if (ext_roots.len != 0) {
@@ -2669,6 +2738,61 @@ pub const Vm = struct {
         }
         if (extra_roots.len != 0) {
             pushRangeUnique(&ranges, &range_len, extra_roots);
+        }
+
+        if (std.posix.getenv("HABU_TRACE_CHUNK_POOL_SLOT")) |raw_idx| {
+            const trimmed = std.mem.trim(u8, std.mem.sliceTo(raw_idx, 0), " \t\r\n");
+            const idx = std.fmt.parseUnsigned(usize, trimmed, 10) catch 0;
+            if (idx < chunk_pool.len) {
+                const slot = chunk_pool[idx];
+                std.debug.print(
+                    "TRACE chunk-pool-slot idx={d} len={d} raw=0x{x} kind={s}\n",
+                    .{ idx, chunk_pool.len, slot.raw, @tagName(slot.typeKind()) },
+                );
+                if (slot.isChunk()) {
+                    const chunk = slot.toPtr(Chunk);
+                    const chunk_addr = @intFromPtr(chunk);
+                    const expected_const_pool = chunk_addr + @sizeOf(runtime.objects.Chunk);
+                    std.debug.print(
+                        "TRACE chunk-pool-slot-meta idx={d} consts={d} code_len={d} const_pool=0x{x} expected=0x{x}\n",
+                        .{
+                            idx,
+                            chunk.const_count,
+                            chunk.code_len,
+                            @intFromPtr(chunk.const_pool),
+                            expected_const_pool,
+                        },
+                    );
+                    const stale_start = @intFromPtr(self.heap.to_start);
+                    const stale_end = stale_start + self.heap.space_size;
+                    const consts = chunk.getConstants();
+                    var ci: usize = 0;
+                    while (ci < consts.len) : (ci += 1) {
+                        const cv = consts[ci];
+                        if (!cv.isPointer() or cv.isMagicSymbol()) continue;
+                        const addr = cv.toPtrAddr();
+                        if (addr < stale_start or addr >= stale_end) continue;
+                        const fw: *const Value = @ptrFromInt(addr);
+                        const w1: *const usize = @ptrFromInt(addr + @sizeOf(Value));
+                        std.debug.print(
+                            "TRACE chunk-pool-slot-stale idx={d} const={d} raw=0x{x} kind={s} addr=0x{x} fw=0x{x} is_fwd={any} w1=0x{x} chunk={s}\n",
+                            .{
+                                idx,
+                                ci,
+                                cv.raw,
+                                @tagName(cv.typeKind()),
+                                addr,
+                                fw.raw,
+                                fw.isForwarding(),
+                                w1.*,
+                                chunkTraceName(chunk),
+                            },
+                        );
+                    }
+                }
+            } else {
+                std.debug.print("TRACE chunk-pool-slot idx={d} out-of-range len={d}\n", .{ idx, chunk_pool.len });
+            }
         }
 
         if (std.posix.getenv("HABU_TRACE_BAD_ROOT_LAYOUT") != null) {
@@ -2693,6 +2817,10 @@ pub const Vm = struct {
                 std.debug.print("TRACE gc-range idx={d} name=comp_root_stack len={d}\n", .{ dbg_idx, self.comp_root_sp });
                 dbg_idx += 1;
             }
+            if (self.comp_retain_vals.items.len != 0) {
+                std.debug.print("TRACE gc-range idx={d} name=comp_retain_vals len={d}\n", .{ dbg_idx, self.comp_retain_vals.items.len });
+                dbg_idx += 1;
+            }
             if (self.secondary_values_count != 0) {
                 std.debug.print("TRACE gc-range idx={d} name=secondary len={d}\n", .{ dbg_idx, self.secondary_values_count });
                 dbg_idx += 1;
@@ -2709,8 +2837,8 @@ pub const Vm = struct {
                 std.debug.print("TRACE gc-range idx={d} name=type_syms len={d}\n", .{ dbg_idx, type_roots.len });
                 dbg_idx += 1;
             }
-            if (self.chunk_pool.len != 0) {
-                std.debug.print("TRACE gc-range idx={d} name=chunk_pool len={d}\n", .{ dbg_idx, self.chunk_pool.len });
+            if (chunk_pool.len != 0) {
+                std.debug.print("TRACE gc-range idx={d} name=chunk_pool len={d}\n", .{ dbg_idx, chunk_pool.len });
                 dbg_idx += 1;
             }
             if (ext_roots.len != 0) {
@@ -4682,7 +4810,7 @@ pub const Vm = struct {
                     // Pop the call frame and push result
                     self.fp -= 1;
                     const caller_frame = self.frames[self.fp];
-                    self.restoreCallerFrameAfterCall(caller_frame, result);
+                    try self.restoreCallerFrameAfterCall(caller_frame, result);
                 }
             },
             .tail_call => {
@@ -4718,7 +4846,7 @@ pub const Vm = struct {
                     tracePrintValue(result);
                     std.debug.print("\n", .{});
                 }
-                self.restoreCallerFrameAfterCall(frame, result);
+                try self.restoreCallerFrameAfterCall(frame, result);
             },
             .make_closure => {
                 const chunk_idx = self.readU16();
@@ -4726,8 +4854,9 @@ pub const Vm = struct {
 
                 // Get the chunk from the pool (offset by base for this eval)
                 const abs_idx = self.chunk_base + chunk_idx;
-                if (abs_idx >= self.chunk_pool.len) return error.InvalidConstant;
-                const closure_chunk_val = self.chunk_pool[abs_idx];
+                const chunk_pool = self.currentChunkPool();
+                if (abs_idx >= chunk_pool.len) return error.InvalidConstant;
+                const closure_chunk_val = chunk_pool[abs_idx];
                 if (closure_chunk_val.isNil()) return error.InvalidConstant;
                 const closure_chunk = closure_chunk_val.toPtr(Chunk);
 
@@ -5757,6 +5886,11 @@ pub const Vm = struct {
                     .exit_ip = exit_ip,
                     .block_sp = self.sp,
                     .block_fp = self.fp,
+                    .catch_depth = self.catch_sp,
+                    .unwind_depth = self.unwind_sp,
+                    .restart_depth = self.restart_sp,
+                    .progv_depth = self.progv_sp,
+                    .handler_depth = self.handler_sp,
                 };
                 self.block_sp += 1;
             },
@@ -5834,6 +5968,9 @@ pub const Vm = struct {
                     .restart_fp = self.fp,
                     .catch_depth = self.catch_sp,
                     .unwind_depth = self.unwind_sp,
+                    .block_depth = self.block_sp,
+                    .progv_depth = self.progv_sp,
+                    .handler_depth = self.handler_sp,
                 };
                 self.restart_sp += 1;
             },
@@ -8506,17 +8643,20 @@ pub const Vm = struct {
                     if (frame.catch_sp > STACK_SIZE or frame.catch_fp > MAX_FRAMES) {
                         return self.invalidOpcode("throw.catch-stack-corrupt");
                     }
-                    while (self.progv_sp > frame.progv_depth) {
-                        try self.popProgvFrame();
-                    }
+                    if (frame.block_depth > MAX_BLOCKS) return self.invalidOpcode("throw.block-depth-corrupt");
+                    self.block_sp = frame.block_depth;
+                    try self.restoreControlDepths(
+                        ci,
+                        frame.unwind_depth,
+                        frame.restart_depth,
+                        frame.progv_depth,
+                        frame.handler_depth,
+                        null,
+                    );
                     self.chunk = frame.chunk;
                     self.ip = frame.catch_ip;
                     self.sp = frame.catch_sp;
                     self.fp = frame.catch_fp;
-                    self.block_sp = frame.block_depth;
-                    self.unwind_sp = frame.unwind_depth;
-                    self.restart_sp = frame.restart_depth;
-                    self.handler_sp = frame.handler_depth;
                     self.pending_handler_restore_depth = null;
                     // Push the thrown value as result
                     try self.push(value);
@@ -8646,6 +8786,8 @@ pub const Vm = struct {
             var key_val: Value = undefined;
             var old_value: Value = undefined;
             const sym_ptr = symbol.toPtr(Symbol);
+            var old_from_global = false;
+            var old_global_idx: usize = 0;
 
             if (try self.lookupSymbolGlobalIndex(sym_ptr)) |idx| {
                 old_value = if (idx < self.num_globals)
@@ -8656,16 +8798,41 @@ pub const Vm = struct {
                     try self.storeGlobal(idx, new_value);
                 }
                 key_val = Value.makeFixnum(@intCast(idx));
+                old_from_global = true;
+                old_global_idx = idx;
             } else if (try self.defineSymbolGlobalIndex(sym_ptr)) |idx| {
                 if (idx < MAX_GLOBALS) {
                     try self.storeGlobal(idx, new_value);
                 }
                 key_val = Value.makeFixnum(@intCast(idx));
                 old_value = Value.unbound;
+                old_from_global = true;
+                old_global_idx = idx;
             } else {
                 old_value = self.resolveForwardedValue(self.lookupSymbolLocalValueCell(sym_ptr) orelse Value.unbound);
                 try self.setSymbolLocalValueCell(sym_ptr, new_value);
                 key_val = symbol;
+            }
+
+            if (std.posix.getenv("HABU_TRAP_PROGV_CORRUPT") != null and old_value.isSymbol() and !old_value.isMagicSymbol()) {
+                const old_sym = old_value.toPtr(Symbol);
+                if (old_sym.name_len > self.heap.space_size) {
+                    const bind_name = sym_ptr.getName();
+                    std.debug.print(
+                        "TRACE progv-corrupt bind={s} global={any} idx={d} old=0x{x} name_len={d} sp={d} fp={d} ip={d}\n",
+                        .{
+                            bind_name,
+                            old_from_global,
+                            old_global_idx,
+                            old_value.raw,
+                            old_sym.name_len,
+                            self.sp,
+                            self.fp,
+                            self.ip,
+                        },
+                    );
+                    @panic("corrupt old_value in pushProgvFrame");
+                }
             }
 
             self.stack[sym_slot] = next_sym;
@@ -8676,8 +8843,41 @@ pub const Vm = struct {
             try self.push(old_value);
             const key_slot = self.sp - 2;
             const old_slot = self.sp - 1;
-            const pair = try self.heap.allocCons(self.stack[key_slot], self.stack[old_slot]);
-            const saved = try self.heap.allocCons(pair, self.stack[saved_slot]);
+
+            const live_key = self.resolveForwardedValue(self.stack[key_slot]);
+            const live_old = self.resolveForwardedValue(self.stack[old_slot]);
+            self.stack[key_slot] = live_key;
+            self.stack[old_slot] = live_old;
+
+            if (std.posix.getenv("HABU_TRAP_PROGV_CORRUPT") != null and live_old.isSymbol() and !live_old.isMagicSymbol()) {
+                const live_old_sym = live_old.toPtr(Symbol);
+                if (live_old_sym.name_len > self.heap.space_size) {
+                    const bind_name = sym_ptr.getName();
+                    std.debug.print(
+                        "TRACE progv-corrupt-live bind={s} global={any} idx={d} old=0x{x} live_old=0x{x} live_old_len={d} sp={d} fp={d} ip={d}\n",
+                        .{
+                            bind_name,
+                            old_from_global,
+                            old_global_idx,
+                            old_value.raw,
+                            live_old.raw,
+                            live_old_sym.name_len,
+                            self.sp,
+                            self.fp,
+                            self.ip,
+                        },
+                    );
+                    @panic("corrupt live_old in pushProgvFrame");
+                }
+            }
+
+            const pair = try self.allocCons(live_key, live_old);
+
+            const live_pair = self.resolveForwardedValue(pair);
+            const live_saved = self.resolveForwardedValue(self.stack[saved_slot]);
+            self.stack[saved_slot] = live_saved;
+
+            const saved = try self.allocCons(live_pair, live_saved);
             self.stack[saved_slot] = saved;
             self.sp -= 2;
         }
@@ -8765,6 +8965,15 @@ pub const Vm = struct {
             // Check if name matches (using raw value identity)
             if (name_raw == frame.name_raw) {
                 self.block_sp = i;
+                try self.restoreControlDepths(
+                    frame.catch_depth,
+                    frame.unwind_depth,
+                    frame.restart_depth,
+                    frame.progv_depth,
+                    frame.handler_depth,
+                    null,
+                );
+                self.pending_handler_restore_depth = null;
                 // Found matching block - restore state and jump
                 if (frame.block_sp > STACK_SIZE or frame.block_fp > MAX_FRAMES) {
                     return self.invalidOpcode("return-from.block-stack-corrupt");
@@ -8777,13 +8986,6 @@ pub const Vm = struct {
                 try self.push(value);
                 return;
             }
-        }
-        // ANSI harness helper lambdas can invoke (return-from ABORTED ...)
-        // from callback-evaluated contexts where the lexical block is absent.
-        // Treat this as an early return of the provided value.
-        if (name_raw.isSymbol() and std.mem.eql(u8, name_raw.toPtr(Symbol).getName(), "ABORTED")) {
-            try self.push(value);
-            return;
         }
         if (std.posix.getenv("HABU_TRACE_BLOCK_MISS") != null or std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
             const req_name = if (name_raw.isSymbol()) name_raw.toPtr(Symbol).getName() else @tagName(name_raw.typeKind());
@@ -9001,11 +9203,20 @@ pub const Vm = struct {
             const frame = self.restart_stack[i];
             if (frame.name.raw == name.raw) {
                 // Found matching restart - restore state
-                // First, restore catch/unwind stack depths
-                self.catch_sp = frame.catch_depth;
-                self.unwind_sp = frame.unwind_depth;
+                if (frame.block_depth > MAX_BLOCKS) {
+                    return self.invalidOpcode("invoke-restart.block-depth-corrupt");
+                }
+                self.block_sp = frame.block_depth;
+                try self.restoreControlDepths(
+                    frame.catch_depth,
+                    frame.unwind_depth,
+                    i,
+                    frame.progv_depth,
+                    frame.handler_depth,
+                    null,
+                );
                 // Pop this restart and all more recent ones
-                self.restart_sp = i;
+                self.pending_handler_restore_depth = null;
 
                 // Restore execution state
                 if (frame.restart_sp > STACK_SIZE or frame.restart_fp > MAX_FRAMES) {
@@ -10849,8 +11060,9 @@ pub const Vm = struct {
                         } else if (op == .make_closure and pos + 3 < code.len) {
                             const cidx = @as(u16, code[pos + 2]) | (@as(u16, code[pos + 3]) << 8);
                             std.debug.print(" idx={d}", .{cidx});
-                            if (cidx < self.chunk_pool.len) {
-                                const callee_val = self.chunk_pool[cidx];
+                            const chunk_pool = self.currentChunkPool();
+                            if (cidx < chunk_pool.len) {
+                                const callee_val = chunk_pool[cidx];
                                 if (callee_val.isNil()) {
                                     std.debug.print(" callee=nil", .{});
                                 } else {
@@ -11069,26 +11281,60 @@ pub const Vm = struct {
         try self.signalTypeErrorDatumExpected(Value.nil, Value.nil);
     }
 
-    fn restoreCallerFrameAfterCall(self: *Vm, frame: Frame, result: Value) void {
+    fn restoreCallerFrameAfterCall(self: *Vm, frame: Frame, result: Value) Error!void {
         std.debug.assert(frame.bp < STACK_SIZE);
         self.chunk = frame.chunk;
         self.ip = frame.return_ip;
-        self.restoreDynamicDepthsFromFrame(frame);
+        try self.restoreDynamicDepthsFromFrame(frame);
         self.stack[frame.bp] = result;
         self.sp = frame.bp + 1;
     }
 
-    inline fn restoreDynamicDepthsFromFrame(self: *Vm, frame: Frame) void {
-        if (frame.handler_restore_depth) |depth| {
+    fn restoreControlDepths(
+        self: *Vm,
+        catch_depth: usize,
+        unwind_depth: usize,
+        restart_depth: usize,
+        progv_depth: usize,
+        handler_depth: usize,
+        handler_restore_depth: ?usize,
+    ) Error!void {
+        if (catch_depth > MAX_CATCHES or
+            unwind_depth > MAX_UNWINDS or
+            restart_depth > MAX_RESTARTS or
+            progv_depth > MAX_PROGVS or
+            handler_depth > MAX_HANDLERS)
+        {
+            return self.invalidOpcode("restore.depth-corrupt");
+        }
+        if (handler_restore_depth) |depth| {
+            if (depth > MAX_HANDLERS) return self.invalidOpcode("restore.handler-depth-corrupt");
             self.handler_sp = depth;
         } else {
-            self.handler_sp = frame.handler_depth;
+            self.handler_sp = handler_depth;
         }
+        self.catch_sp = catch_depth;
+        self.unwind_sp = unwind_depth;
+        self.restart_sp = restart_depth;
+        if (self.progv_sp < progv_depth) {
+            return self.invalidOpcode("restore.progv-depth-underflow");
+        }
+        while (self.progv_sp > progv_depth) {
+            try self.popProgvFrame();
+        }
+    }
+
+    fn restoreDynamicDepthsFromFrame(self: *Vm, frame: Frame) Error!void {
+        if (frame.block_depth > MAX_BLOCKS) return self.invalidOpcode("restore.block-depth-corrupt");
         self.block_sp = frame.block_depth;
-        self.catch_sp = frame.catch_depth;
-        self.unwind_sp = frame.unwind_depth;
-        self.restart_sp = frame.restart_depth;
-        self.progv_sp = frame.progv_depth;
+        try self.restoreControlDepths(
+            frame.catch_depth,
+            frame.unwind_depth,
+            frame.restart_depth,
+            frame.progv_depth,
+            frame.handler_depth,
+            frame.handler_restore_depth,
+        );
     }
 
     fn stackMove(self: *Vm, dest: usize, src: usize, count: usize) void {
@@ -11152,7 +11398,7 @@ pub const Vm = struct {
             const current_bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
             const arg_start = self.sp - argc;
             if (self.fp > 0) {
-                self.restoreDynamicDepthsFromFrame(self.frames[self.fp - 1]);
+                try self.restoreDynamicDepthsFromFrame(self.frames[self.fp - 1]);
             }
 
             for (0..argc) |i| {
@@ -11443,7 +11689,7 @@ pub const Vm = struct {
             const current_bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
             const arg_start = self.sp - actual_argc;
             if (self.fp > 0) {
-                self.restoreDynamicDepthsFromFrame(self.frames[self.fp - 1]);
+                try self.restoreDynamicDepthsFromFrame(self.frames[self.fp - 1]);
             }
 
             if (key_count > 0) {
@@ -13570,6 +13816,11 @@ test "vm collectGarbage relocates chunk pointers" {
         .exit_ip = 0,
         .block_sp = 0,
         .block_fp = 0,
+        .catch_depth = 0,
+        .unwind_depth = 0,
+        .restart_depth = 0,
+        .progv_depth = 0,
+        .handler_depth = 0,
     };
     vm.block_sp = 1;
     vm.restart_stack[0] = .{
@@ -13580,6 +13831,9 @@ test "vm collectGarbage relocates chunk pointers" {
         .restart_fp = 0,
         .catch_depth = 0,
         .unwind_depth = 0,
+        .block_depth = 0,
+        .progv_depth = 0,
+        .handler_depth = 0,
     };
     vm.restart_sp = 1;
 
@@ -13846,6 +14100,9 @@ test "vm restore caller frame uses handler restore depth" {
     vm.unwind_sp = 10;
     vm.restart_sp = 9;
     vm.progv_sp = 8;
+    for (vm.progv_stack[0..vm.progv_sp]) |*slot| {
+        slot.* = .{ .saved_bindings = Value.nil };
+    }
     vm.frames[0] = .{
         .chunk = &halt_chunk,
         .return_ip = 7,
@@ -13863,7 +14120,7 @@ test "vm restore caller frame uses handler restore depth" {
     };
 
     vm.fp -= 1;
-    vm.restoreCallerFrameAfterCall(vm.frames[vm.fp], Value.makeFixnum(42));
+    try vm.restoreCallerFrameAfterCall(vm.frames[vm.fp], Value.makeFixnum(42));
 
     try testing.expect(vm.chunk == &halt_chunk);
     try testing.expectEqual(@as(usize, 7), vm.ip);
@@ -13897,6 +14154,9 @@ test "vm restore caller frame falls back to handler depth" {
     vm.unwind_sp = 9;
     vm.restart_sp = 9;
     vm.progv_sp = 9;
+    for (vm.progv_stack[0..vm.progv_sp]) |*slot| {
+        slot.* = .{ .saved_bindings = Value.nil };
+    }
     vm.frames[0] = .{
         .chunk = &halt_chunk,
         .return_ip = 5,
@@ -13914,7 +14174,7 @@ test "vm restore caller frame falls back to handler depth" {
     };
 
     vm.fp -= 1;
-    vm.restoreCallerFrameAfterCall(vm.frames[vm.fp], Value.makeFixnum(9));
+    try vm.restoreCallerFrameAfterCall(vm.frames[vm.fp], Value.makeFixnum(9));
 
     try testing.expectEqual(@as(usize, 2), vm.sp);
     try testing.expectEqual(@as(i64, 9), vm.stack[1].toFixnum());
@@ -13952,6 +14212,9 @@ test "vm doCall tail call restores dynamic depths" {
     vm.restart_sp = 14;
     vm.progv_sp = 13;
     vm.handler_sp = 12;
+    for (vm.progv_stack[0..vm.progv_sp]) |*slot| {
+        slot.* = .{ .saved_bindings = Value.nil };
+    }
     vm.frames[0] = .{
         .chunk = &halt_chunk,
         .return_ip = 99,
@@ -13977,6 +14240,187 @@ test "vm doCall tail call restores dynamic depths" {
     try testing.expectEqual(@as(usize, 4), vm.restart_sp);
     try testing.expectEqual(@as(usize, 5), vm.progv_sp);
     try testing.expectEqual(@as(usize, 7), vm.handler_sp);
+}
+
+test "vm restore caller frame pops progv bindings" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var env = GlobalEnv.init(allocator);
+    defer env.deinit();
+    vm.setGlobalEnv(&env);
+
+    const sym = try heap.intern("PROGV-RESTORE-SYM");
+    const idx = (try vm.defineSymbolGlobalIndex(sym.toPtr(Symbol))) orelse return error.TestUnexpectedResult;
+    try vm.storeGlobal(idx, Value.makeFixnum(10));
+
+    const symbol_list = try heap.allocCons(sym, Value.nil);
+    const value_list = try heap.allocCons(Value.makeFixnum(99), Value.nil);
+    try vm.pushProgvFrame(symbol_list, value_list);
+    try testing.expectEqual(@as(usize, 1), vm.progv_sp);
+    const rebound = try vm.loadGlobal(idx);
+    try testing.expect(rebound.isFixnum());
+    try testing.expectEqual(@as(i64, 99), rebound.toFixnum());
+
+    vm.chunk = &halt_chunk;
+    vm.ip = 11;
+    vm.sp = 2;
+    vm.fp = 1;
+    vm.frames[0] = .{
+        .chunk = &halt_chunk,
+        .return_ip = 3,
+        .bp = 0,
+        .closure = null,
+        .argc = 0,
+        .positional_argc = 0,
+        .block_depth = 0,
+        .catch_depth = 0,
+        .unwind_depth = 0,
+        .restart_depth = 0,
+        .progv_depth = 0,
+        .handler_depth = 0,
+        .handler_restore_depth = null,
+    };
+
+    vm.fp -= 1;
+    try vm.restoreCallerFrameAfterCall(vm.frames[vm.fp], Value.makeFixnum(1));
+
+    try testing.expectEqual(@as(usize, 0), vm.progv_sp);
+    const restored = try vm.loadGlobal(idx);
+    try testing.expect(restored.isFixnum());
+    try testing.expectEqual(@as(i64, 10), restored.toFixnum());
+}
+
+test "vm return-from restores dynamic depths and progv" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var env = GlobalEnv.init(allocator);
+    defer env.deinit();
+    vm.setGlobalEnv(&env);
+
+    const block_name = try heap.intern("RETURN-FROM-BLOCK");
+    const sym = try heap.intern("RETURN-FROM-SYM");
+    const idx = (try vm.defineSymbolGlobalIndex(sym.toPtr(Symbol))) orelse return error.TestUnexpectedResult;
+    try vm.storeGlobal(idx, Value.makeFixnum(10));
+
+    const symbol_list = try heap.allocCons(sym, Value.nil);
+    const value_list = try heap.allocCons(Value.makeFixnum(99), Value.nil);
+    try vm.pushProgvFrame(symbol_list, value_list);
+    try testing.expectEqual(@as(usize, 1), vm.progv_sp);
+    try testing.expectEqual(@as(i64, 99), (try vm.loadGlobal(idx)).toFixnum());
+
+    vm.chunk = &halt_chunk;
+    vm.ip = 1;
+    vm.sp = 0;
+    vm.fp = 0;
+    vm.block_sp = 1;
+    vm.catch_sp = 4;
+    vm.unwind_sp = 0;
+    vm.restart_sp = 2;
+    vm.handler_sp = 5;
+    vm.block_stack[0] = .{
+        .name_raw = block_name,
+        .chunk = &halt_chunk,
+        .exit_ip = 77,
+        .block_sp = 0,
+        .block_fp = 0,
+        .catch_depth = 0,
+        .unwind_depth = 0,
+        .restart_depth = 0,
+        .progv_depth = 0,
+        .handler_depth = 0,
+    };
+
+    try vm.doReturnFrom(block_name, Value.makeFixnum(42));
+
+    try testing.expect(vm.chunk == &halt_chunk);
+    try testing.expectEqual(@as(usize, 77), vm.ip);
+    try testing.expectEqual(@as(usize, 1), vm.sp);
+    try testing.expectEqual(@as(usize, 0), vm.fp);
+    try testing.expectEqual(@as(i64, 42), vm.stack[0].toFixnum());
+    try testing.expectEqual(@as(usize, 0), vm.block_sp);
+    try testing.expectEqual(@as(usize, 0), vm.catch_sp);
+    try testing.expectEqual(@as(usize, 0), vm.unwind_sp);
+    try testing.expectEqual(@as(usize, 0), vm.restart_sp);
+    try testing.expectEqual(@as(usize, 0), vm.handler_sp);
+    try testing.expectEqual(@as(usize, 0), vm.progv_sp);
+    try testing.expectEqual(@as(i64, 10), (try vm.loadGlobal(idx)).toFixnum());
+}
+
+test "vm invoke-restart restores dynamic depths and progv" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var env = GlobalEnv.init(allocator);
+    defer env.deinit();
+    vm.setGlobalEnv(&env);
+
+    const restart_name = try heap.intern("RESTART-NAME");
+    const sym = try heap.intern("RESTART-SYM");
+    const idx = (try vm.defineSymbolGlobalIndex(sym.toPtr(Symbol))) orelse return error.TestUnexpectedResult;
+    try vm.storeGlobal(idx, Value.makeFixnum(21));
+
+    const symbol_list = try heap.allocCons(sym, Value.nil);
+    const value_list = try heap.allocCons(Value.makeFixnum(84), Value.nil);
+    try vm.pushProgvFrame(symbol_list, value_list);
+    try testing.expectEqual(@as(usize, 1), vm.progv_sp);
+    try testing.expectEqual(@as(i64, 84), (try vm.loadGlobal(idx)).toFixnum());
+
+    vm.chunk = &halt_chunk;
+    vm.ip = 5;
+    vm.sp = 0;
+    vm.fp = 0;
+    vm.block_sp = 3;
+    vm.catch_sp = 3;
+    vm.unwind_sp = 2;
+    vm.restart_sp = 1;
+    vm.handler_sp = 4;
+    vm.restart_stack[0] = .{
+        .name = restart_name,
+        .chunk = &halt_chunk,
+        .handler_ip = 99,
+        .restart_sp = 0,
+        .restart_fp = 0,
+        .catch_depth = 0,
+        .unwind_depth = 0,
+        .block_depth = 0,
+        .progv_depth = 0,
+        .handler_depth = 0,
+    };
+
+    try vm.doInvokeRestart(restart_name, Value.makeFixnum(7));
+
+    try testing.expect(vm.chunk == &halt_chunk);
+    try testing.expectEqual(@as(usize, 99), vm.ip);
+    try testing.expectEqual(@as(usize, 1), vm.sp);
+    try testing.expectEqual(@as(usize, 0), vm.fp);
+    try testing.expectEqual(@as(i64, 7), vm.stack[0].toFixnum());
+    try testing.expectEqual(@as(usize, 0), vm.block_sp);
+    try testing.expectEqual(@as(usize, 0), vm.catch_sp);
+    try testing.expectEqual(@as(usize, 0), vm.unwind_sp);
+    try testing.expectEqual(@as(usize, 0), vm.restart_sp);
+    try testing.expectEqual(@as(usize, 0), vm.handler_sp);
+    try testing.expectEqual(@as(usize, 0), vm.progv_sp);
+    try testing.expectEqual(@as(i64, 21), (try vm.loadGlobal(idx)).toFixnum());
 }
 
 test "vm classifyCallShape categorizes lambda signatures" {

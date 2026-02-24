@@ -469,10 +469,36 @@
     - Rebaseline (`zig build -Doptimize=ReleaseFast bench-comp -Duse-hoist=true -- --json --bench=assoc --iters=30`, 2026-02-23): Habu JIT `assoc` = `2.79-2.83ms` (repeat runs); SBCL reference (`sbcl --script bench/comprehensive.lisp`) `assoc` = `2.77-2.78ms`.
   - [ ] `habu-cut-factor-ratsimp-670e8067` Cut remaining `factor`/`ratsimp` runtime gap with measured, generic optimizations.
     - Current baseline (`tools/maxima-hotspots --json --scale 120 --heap-mb 1024 --nursery-mb 32 --workloads factor,ratsimp`, 2026-02-24): `factor interp/jit ~0.991`, `ratsimp interp/jit ~0.969`, gate still red (`wins=0/2`).
+    - [x] `habu-fix-maxima-factor-0ddd0b8d` Fix JIT indirect-call argument tagging so predicate/compare results are passed as tagged Lisp values, not raw i8.
+      - RCA: indirect-call bridge expected i64 tagged values, but JIT could pass i8 predicate temporaries (`Call_indirect argument 1 type mismatch: got i8, expected i64`).
+      - Fix (`src/jit/backend.zig`): normalize every indirect-call argument via `boolToTagged` in `emitIndirectCallValues`.
+      - Validation: `zig build test -Duse-hoist=true -Dtest-filter="cross-call tags predicate arguments"`; factor probe no longer hits indirect-call type mismatch.
+    - [x] `habu-fix-typep-int-c5eb375e` Implement CL-correct integer type bounds (`(integer)`, `(integer low)`, `(integer low high)`, `*`, and open bounds via singleton lists).
+      - Fix (`src/runtime/primitives/type.zig`): replace fixed two-bound parser with generic bound parser + inclusive/exclusive comparisons using numeric ops that handle fixnum+bignum.
+      - Added regressions:
+        - `typep integer range` now covers one-bound, open-bound, malformed-bound, and extra-arg cases plus bounded bignum behavior.
+        - `handler-case catches invalid argument and invalid type specifier` now asserts `(typep 1 '(integer 0))` succeeds.
+      - Runtime proof (`./zig-out/bin/habu /tmp/habu_factor_probe_full.lisp`): `(85 85 0 t :OK)` for `(maxima-load-all ...), (typep 1 '(integer 0)), (maxima::$factor 1)`.
+    - [x] `habu-fix-stale-chunk-aad6c110` Fix strict stale-resolve reject-size false positives by distinguishing stale forwarding metadata from current-cycle to-space object headers.
+      - RCA (`bench-maxima --jit=off --workloads simplifya,diff` with `HABU_TRAP_STALE_RESOLVE_REJECT=1`): `resolveStaleForwardedValue` treated valid to-space symbol headers (`name_len=14` => `0xe`) as forwarding metadata, producing `reject-size` panics in chunk scans.
+      - Fix (`src/runtime/gc.zig`): require forwarding targets to point inside heap memory before interpreting stale forwarding metadata; non-heap targets are treated as normal object headers.
+      - Validation:
+        - `HABU_TRAP_STALE_RESOLVE_REJECT=1 zig build -Duse-hoist=true bench-maxima -- --json --scale=1 --heap-mb=1024 --nursery-mb=32 --jit=off --workloads=simplifya,diff`
+        - `HABU_TRAP_STALE_RESOLVE_REJECT=1 zig build -Duse-hoist=true bench-maxima -- --json --scale=1 --heap-mb=1024 --nursery-mb=32 --jit=off`
+    - [ ] `habu-promote-old-small-8a008ff6` Promote aged small survivors out of nursery to cut repeated copy cost in long Maxima runs.
+      - RCA (`/tmp/factor_jit3.sample`, 2026-02-24): run-phase profiles are GC-dominated with repeated minor copying; `shouldPromote` is still size-only (`src/runtime/gc.zig`) and leaves long-lived small cells in nursery.
+      - Implemented: `shouldPromote` now accepts `survivor_age` and promotes aged small survivors in generational mode (`src/runtime/gc.zig`), with dedicated regression `minor gc promotes aged small survivors to tenured`.
+      - Follow-up hardening: updated minor/tenured edge regressions (`tenured marking follows nursery references`, `los object scan updates nursery references`) to assert edge correctness under age-based tenuring.
+      - Rebaseline (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-maxima -- --json --scale=1 --heap-mb=1024 --nursery-mb=32 --workloads=factor,ratsimp`, 2026-02-24): `factor interp/jit ~0.977`, `ratsimp interp/jit ~0.945` (gate still red).
+      - Next: tune tenuring policy/age threshold with scale-120 rebaseline before closing this dot.
     - [x] `habu-remove-legacy-global-661e1400` Remove legacy global-name fallback probing in symbol global-index lookup.
       - Removed CL/COMMON-LISP/CL-USER prefix probing from `lookupSymbolGlobalIndex` (`src/interp/vm.zig`) and kept qualified-name lookup only.
       - Added regression `vm does not use legacy global fallback names` to lock hard-cutover behavior (no implicit unqualified fallback lookup).
       - Validation: `zig build test -Dtest-filter='vm does not use legacy global fallback names'`, `zig build test -Dtest-filter='vm global index cache resets on env swap'`.
+  - [x] `habu-fix-bench-jit-2ad8269d` Fix JIT microbench build break after `vm.jit_fns` storage migration.
+    - Updated `bench/jit.zig` to iterate `vm.jit_fns.items` (`ArrayList(JitFnEntry)`) instead of removed hash-map iterator API.
+    - Restored `bench-jit` execution with current VM JIT table layout.
+    - Validation: `zig build -Duse-hoist=true bench-jit -- --hot=10 --fix-n=100000 --json`.
 
 ### 2. Compiler Core
 - [x] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.
@@ -503,6 +529,10 @@
 
 ### 4. VM / GC / Eval / CLOS / Conditions
 - [x] `habu-fix-gc-chunk-7057f649` Fix GC chunk root corruption.
+- [x] `habu-remove-return-from-3c57cd5d` Remove non-lexical `return-from` fallback and keep strict lexical block behavior.
+  - Removed `ABORTED` block-miss fallback in `doReturnFrom` (`src/interp/vm.zig`), eliminating the last silent non-lexical early-return path.
+  - Fixed `vm return-from restores dynamic depths and progv` test setup to valid non-unwind state (`unwind_sp = 0`) so the unit tests match actual unwind semantics.
+  - Validation: `zig build test -Duse-hoist=true -Dtest-filter=\"return-from restores dynamic depths and progv\"`; `zig build test -Duse-hoist=true -Dtest-filter=\"unwind-protect with return-from\"`.
 - [x] `habu-fix-transitive-lambda-f02bd0d9` Fix transitive lambda capture lowering.
 - [x] `habu-fix-nested-eval-b0bbd02d` Fix nested eval non-local exits. Depends on `habu-fix-gc-chunk-7057f649`.
 - [x] `habu-fix-clos-superclass-2aa44685` Fix CLOS superclass alias resolution.
