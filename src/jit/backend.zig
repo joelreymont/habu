@@ -2099,6 +2099,10 @@ pub const IrTranslator = struct {
     untagged: bool = false,
     /// Allow recursive fixnum-fast lowering (safety=0 only).
     fixnum_fast: bool = false,
+    /// Inline generic numeric ops without helper calls when safe.
+    /// This is computed from the original recursion shape and must not change
+    /// when TCO lowers tail recursion into loops.
+    fixnum_inline: bool = false,
 
     /// When true, emit fresh small constants in blocks containing calls.
     /// Hoist's LICM moves cached constants to block0, forcing callee-saved regs.
@@ -2661,7 +2665,7 @@ pub const IrTranslator = struct {
     }
 
     fn translateAdd(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumAdd(left, right);
+        if (self.fixnum_inline) return self.translateFixnumAdd(left, right);
         if (self.fixnum_fast) {
             const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAddNum)));
             return try self.translateArithFixnumFastFallback(.add, prim_ptr, left, right);
@@ -2674,7 +2678,7 @@ pub const IrTranslator = struct {
     }
 
     fn translateSub(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumSub(left, right);
+        if (self.fixnum_inline) return self.translateFixnumSub(left, right);
         if (self.fixnum_fast) {
             const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitSubNum)));
             return try self.translateArithFixnumFastFallback(.sub, prim_ptr, left, right);
@@ -2687,7 +2691,7 @@ pub const IrTranslator = struct {
     }
 
     fn translateMul(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumMul(left, right);
+        if (self.fixnum_inline) return self.translateFixnumMul(left, right);
         const l = try self.translate(left);
         const r = try self.translate(right);
         const args = [_]HoistValue{ l, r };
@@ -2816,7 +2820,7 @@ pub const IrTranslator = struct {
     }
 
     fn translateLt(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.slt, left, right);
+        if (self.fixnum_inline) return self.translateFixnumCmp(.slt, left, right);
         if (self.fixnum_fast) {
             const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitLtNum)));
             return try self.translateCmpFixnumFastFallback(.slt, prim_ptr, left, right);
@@ -2826,7 +2830,7 @@ pub const IrTranslator = struct {
     }
 
     fn translateGt(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.sgt, left, right);
+        if (self.fixnum_inline) return self.translateFixnumCmp(.sgt, left, right);
         if (self.fixnum_fast) {
             const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitGtNum)));
             return try self.translateCmpFixnumFastFallback(.sgt, prim_ptr, left, right);
@@ -2836,7 +2840,7 @@ pub const IrTranslator = struct {
     }
 
     fn translateLe(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.sle, left, right);
+        if (self.fixnum_inline) return self.translateFixnumCmp(.sle, left, right);
         if (self.fixnum_fast) {
             const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitLeNum)));
             return try self.translateCmpFixnumFastFallback(.sle, prim_ptr, left, right);
@@ -2846,7 +2850,7 @@ pub const IrTranslator = struct {
     }
 
     fn translateGe(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.sge, left, right);
+        if (self.fixnum_inline) return self.translateFixnumCmp(.sge, left, right);
         if (self.fixnum_fast) {
             const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitGeNum)));
             return try self.translateCmpFixnumFastFallback(.sge, prim_ptr, left, right);
@@ -2856,7 +2860,7 @@ pub const IrTranslator = struct {
     }
 
     fn translateNumEq(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
-        if (self.untagged or (self.is_recursive and self.fixnum_fast)) return self.translateFixnumCmp(.eq, left, right);
+        if (self.fixnum_inline) return self.translateFixnumCmp(.eq, left, right);
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitNumEq)));
         return try self.translateCmpTagged(prim_ptr, left, right);
     }
@@ -5182,12 +5186,14 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) void {
         }
         if (mov_idx == null) continue;
 
-        // Scan backward from MOV for MOVZ rN, #imm16 + MOVK + MOVK (3-instruction 48-bit load)
+        // Scan backward from MOV for MOVZ/MOVK target materialization.
+        // Accept 1..4-instruction chains (16/32/48/64-bit).
         var load_idx: ?usize = null;
         var load_len: usize = 0;
         var loaded_addr: u64 = 0;
+        var nop_load_seq: bool = false;
         {
-            // Scan backward from MOV looking for MOVZ+MOVK+MOVK loading src_reg.
+            // Scan backward from MOV looking for MOVZ[+MOVK...] loading src_reg.
             // The MOVZ/MOVK sequence may be in the function prologue (pre-emitted constants).
             const start_j = mov_idx.?;
             var scan_count: usize = 0;
@@ -5196,35 +5202,54 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) void {
                 j -= 1;
                 const w0 = readInsn(buf, j);
                 if (w0 == NOP) continue;
-                // Check if this is MOVZ with hw=0 writing to src_reg
-                const is_movz = (w0 & 0xFFE00000) == 0xD2800000;
+                // MOVZ/MOVK with any halfword lane.
+                const is_movz = (w0 & 0xFF800000) == 0xD2800000;
+                const is_movk = (w0 & 0xFF800000) == 0xF2800000;
                 const w0_rd: u5 = @truncate(w0 & 0x1F);
-                if (is_movz and w0_rd == src_reg and j + 2 < start_j) {
-                    const w1 = readInsn(buf, j + 1);
-                    const w2 = readInsn(buf, j + 2);
-                    if ((w1 & 0xFFE00000) == 0xF2A00000 and @as(u5, @truncate(w1 & 0x1F)) == src_reg and
-                        (w2 & 0xFFE00000) == 0xF2C00000 and @as(u5, @truncate(w2 & 0x1F)) == src_reg)
-                    {
-                        const imm0 = @as(u64, (w0 >> 5) & 0xFFFF);
-                        const imm1 = @as(u64, (w1 >> 5) & 0xFFFF) << 16;
-                        const imm2 = @as(u64, (w2 >> 5) & 0xFFFF) << 32;
-                        loaded_addr = imm0 | imm1 | imm2;
-                        load_len = 3;
-                        // Optional high 16 bits (MOVK hw=3) for full 64-bit targets.
-                        if (j + 3 < start_j) {
-                            const w3 = readInsn(buf, j + 3);
-                            if ((w3 & 0xFFE00000) == 0xF2E00000 and @as(u5, @truncate(w3 & 0x1F)) == src_reg) {
-                                const imm3 = @as(u64, (w3 >> 5) & 0xFFFF) << 48;
-                                loaded_addr |= imm3;
-                                load_len = 4;
-                            }
+                if (is_movz and w0_rd == src_reg) {
+                    var addr: u64 = 0;
+                    var seq_len: usize = 1;
+                    const lane0: u6 = @intCast(((w0 >> 21) & 0x3) * 16);
+                    const lane_mask0: u64 = @as(u64, 0xFFFF) << lane0;
+                    addr = (addr & ~lane_mask0) | (@as(u64, (w0 >> 5) & 0xFFFF) << lane0);
+
+                    var k = j + 1;
+                    while (k < start_j) : (k += 1) {
+                        const wk = readInsn(buf, k);
+                        if (wk == NOP) break;
+                        const wk_is_movk = (wk & 0xFF800000) == 0xF2800000;
+                        const wk_rd: u5 = @truncate(wk & 0x1F);
+                        if (!wk_is_movk or wk_rd != src_reg) break;
+
+                        const lane: u6 = @intCast(((wk >> 21) & 0x3) * 16);
+                        const lane_mask: u64 = @as(u64, 0xFFFF) << lane;
+                        addr = (addr & ~lane_mask) | (@as(u64, (wk >> 5) & 0xFFFF) << lane);
+                        seq_len += 1;
+                    }
+
+                    // Accept non-adjacent chains as long as src_reg is not redefined
+                    // before the target register MOV.
+                    var redefined = false;
+                    var t = j + seq_len;
+                    while (t < start_j) : (t += 1) {
+                        const wt = readInsn(buf, t);
+                        if (wt == NOP) continue;
+                        const wt_rd: u5 = @truncate(wt & 0x1F);
+                        if (wt_rd == src_reg) {
+                            redefined = true;
+                            break;
                         }
+                    }
+
+                    if (!redefined) {
+                        loaded_addr = addr;
+                        load_len = seq_len;
                         load_idx = j;
+                        nop_load_seq = (j + seq_len == start_j);
                         break;
                     }
                 }
                 // Stop on non-MOVZ/non-MOVK write to src_reg
-                const is_movk = (w0 & 0xFF800000) == 0xF2800000;
                 if (!is_movz and !is_movk and w0_rd == src_reg) break;
             }
         }
@@ -5239,8 +5264,10 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) void {
         // Patch: NOP the MOVZ/MOVK[...] sequence, NOP the MOV, replace BLR with BL
         const rel_offset: i32 = @intCast(@divExact(diff, 4));
         const imm26: u32 = @as(u32, @bitCast(rel_offset)) & 0x03FFFFFF;
-        for (0..load_len) |k| {
-            writeInsn(buf, load_idx.? + k, NOP);
+        if (nop_load_seq) {
+            for (0..load_len) |k| {
+                writeInsn(buf, load_idx.? + k, NOP);
+            }
         }
         writeInsn(buf, mov_idx.?, NOP);
         writeInsn(buf, i, 0x94000000 | imm26);
@@ -5834,10 +5861,10 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     }
     translator.untagged = translator.fixnum_fast and translator.has_loops and !translator.is_recursive and
         isUntaggedSafeExpr(lambda.body);
+    translator.fixnum_inline = translator.untagged or (translator.is_recursive and translator.fixnum_fast);
 
-    const fixnum_inline = translator.untagged or (translator.is_recursive and translator.fixnum_fast);
     translator.has_cross_calls = containsCons(lambda.body) or
-        containsHelperCalls(lambda.body, fixnum_inline) or
+        containsHelperCalls(lambda.body, translator.fixnum_inline) or
         containsPrimitiveCalls(lambda.body, name) or
         hasAnyNonSelfCalls(lambda.body, name);
 
@@ -5908,9 +5935,8 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
             translator.is_recursive = false;
         }
         // May still have cross-calls (cons, known functions)
-        const tco_fixnum_inline = translator.untagged or (translator.is_recursive and translator.fixnum_fast);
         translator.has_cross_calls = containsCons(lambda.body) or
-            containsHelperCalls(lambda.body, tco_fixnum_inline) or
+            containsHelperCalls(lambda.body, translator.fixnum_inline) or
             containsPrimitiveCalls(lambda.body, name) or
             hasAnyNonSelfCalls(lambda.body, name);
     }
@@ -8525,6 +8551,15 @@ fn simulateMovesUntilCall(code: []const u8, regs: *[32]u64) void {
     }
 }
 
+fn containsBlrInsn(code: []const u8) bool {
+    var i: usize = 0;
+    while (i + 4 <= code.len) : (i += 4) {
+        const insn = std.mem.readInt(u32, code[i..][0..4], .little);
+        if ((insn & 0xFFFFFC1F) == 0xD63F0000) return true;
+    }
+    return false;
+}
+
 test "fixCallArgMoves handles target mov between arg setup and blr" {
     const words = [_]u32{
         makeMovInsn(0, 23),
@@ -8959,6 +8994,70 @@ test "patchCrossCallsToBL handles 64-bit MOVK target materialization" {
     }
     const patched = readInsn(&code, 5);
     try testing.expectEqual(@as(u32, 0x9400000B), patched);
+}
+
+test "patchCrossCallsToBL handles 32-bit MOVK target materialization" {
+    const caller_base: usize = 0x0000_0001_0000_0000;
+    const target: u64 = caller_base + 64;
+    const words = [_]u32{
+        makeMovzImm(10, @truncate(target), 0),
+        makeMovkImm(10, @truncate(target >> 32), 2),
+        makeMovInsn(9, 10),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    patchCrossCallsToBLSlice(&code, caller_base);
+
+    for (0..3) |idx| {
+        try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, idx));
+    }
+    const patched = readInsn(&code, 3);
+    try testing.expectEqual(@as(u32, 0x9400000D), patched);
+}
+
+test "patchCrossCallsToBL handles 16-bit MOVZ target materialization" {
+    const caller_base: usize = 0x0000_0000_0000_1000;
+    const target: u64 = caller_base + 64;
+    const words = [_]u32{
+        makeMovzImm(10, @truncate(target), 0),
+        makeMovInsn(9, 10),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    patchCrossCallsToBLSlice(&code, caller_base);
+
+    for (0..2) |idx| {
+        try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, idx));
+    }
+    const patched = readInsn(&code, 2);
+    try testing.expectEqual(@as(u32, 0x9400000E), patched);
+}
+
+test "patchCrossCallsToBL handles non-adjacent target materialization" {
+    const caller_base: usize = 0x0000_0001_0000_0000;
+    const target: u64 = caller_base + 64;
+    const words = [_]u32{
+        makeMovzImm(10, @truncate(target), 0),
+        makeMovkImm(10, @truncate(target >> 32), 2),
+        makeMovzImm(1, 1, 0), // unrelated instruction between load and MOV target
+        makeMovInsn(9, 10),
+        0xD63F0120, // BLR x9
+    };
+    var code: [words.len * 4]u8 = undefined;
+    writeWords(&words, &code);
+
+    patchCrossCallsToBLSlice(&code, caller_base);
+
+    // Non-adjacent load sequence is preserved; MOV+BLR are rewritten.
+    try testing.expectEqual(words[0], readInsn(&code, 0));
+    try testing.expectEqual(words[1], readInsn(&code, 1));
+    try testing.expectEqual(words[2], readInsn(&code, 2));
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(&code, 3));
+    try testing.expectEqual(@as(u32, 0x9400000C), readInsn(&code, 4));
 }
 
 test "containsHelperCalls excludes numeric ops under fixnum inline lowering" {
@@ -10444,6 +10543,75 @@ test "hoist IR translator: generic add fixnum guard fallback" {
     try testing.expectEqual(@as(i64, 13), compiled.call1(@as(i64, @bitCast(Value.makeFixnum(5).raw))));
     // Non-fixnum must take generic helper path and return NIL.
     try testing.expectEqual(@as(i64, @bitCast(Value.nil.raw)), compiled.call1(@as(i64, @bitCast(Value.t.raw))));
+}
+
+test "hoist IR translator: tco keeps recursive fixnum inline lowering" {
+    // (lambda (n acc)
+    //   (if (= n 0)
+    //       acc
+    //       (tail-inline (- n 1) (+ acc 1))))
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 2);
+    params[0] = "n";
+    params[1] = "acc";
+
+    const var_n = try alloc.create(Ir);
+    var_n.* = .{ .@"var" = .{ .name = "n", .depth = 0, .index = 0 } };
+    const var_acc = try alloc.create(Ir);
+    var_acc.* = .{ .@"var" = .{ .name = "acc", .depth = 0, .index = 1 } };
+    const lit_0 = try alloc.create(Ir);
+    lit_0.* = .{ .lit = Value.makeFixnum(0) };
+    const lit_1 = try alloc.create(Ir);
+    lit_1.* = .{ .lit = Value.makeFixnum(1) };
+
+    const n_eq_0 = try alloc.create(Ir);
+    n_eq_0.* = .{ .num_eq = .{ .left = var_n, .right = lit_0 } };
+    const n_minus_1 = try alloc.create(Ir);
+    n_minus_1.* = .{ .sub = .{ .left = var_n, .right = lit_1 } };
+    const acc_plus_1 = try alloc.create(Ir);
+    acc_plus_1.* = .{ .add = .{ .left = var_acc, .right = lit_1 } };
+
+    const self_ref = try alloc.create(Ir);
+    self_ref.* = .{ .global_ref = .{ .name = "tail_inline", .index = 0 } };
+    const call_args = try alloc.alloc(*const Ir, 2);
+    call_args[0] = n_minus_1;
+    call_args[1] = acc_plus_1;
+    const recur_call = try alloc.create(Ir);
+    recur_call.* = .{ .call = .{ .func = self_ref, .args = call_args } };
+
+    const if_node = try alloc.create(Ir);
+    if_node.* = .{ .@"if" = .{
+        .cond = n_eq_0,
+        .then_branch = var_acc,
+        .else_branch = recur_call,
+    } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = if_node,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "tail_inline");
+    defer compiled.deinit();
+
+    const tagged_ten = @as(i64, @bitCast(Value.makeFixnum(10).raw));
+    const tagged_zero = @as(i64, @bitCast(Value.makeFixnum(0).raw));
+    try testing.expectEqual(@as(i64, @bitCast(Value.makeFixnum(10).raw)), compiled.call2(tagged_ten, tagged_zero));
+
+    // No helper-call BLR remains in the loop body when recursive fixnum-inline
+    // lowering stays enabled after tail-call conversion.
+    const code = compiled.mem.ptr[0..compiled.mem.used];
+    try testing.expect(!containsBlrInsn(code));
 }
 
 test "hoist IR translator: ackermann 2-arg recursive" {

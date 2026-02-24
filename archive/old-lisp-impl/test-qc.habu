@@ -1,7 +1,0 @@
-(defun make-gen (gen-fn shrink-fn) (cons gen-fn shrink-fn))
-(defun gen-value (g) ((car g)))
-(defun shrink-value (g val) ((cdr g) val))
-(defun gen-int (min max) (make-gen (lambda () (+ min (random (+ 1 (- max min))))) (lambda (n) nil)))
-(defun gen-bool () (make-gen (lambda () (= 1 (random 2))) (lambda (b) (if b (list1 nil) nil))))
-(defun check-prop (gen prop n) (if (zerop n) t (if (prop (gen-value gen)) (check-prop gen prop (dec n)) nil)))
-(defun prop-add-commutes (pair) (= (+ (first pair) (second pair)) (+ (second pair) (first pair))))

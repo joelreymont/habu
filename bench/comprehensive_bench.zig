@@ -13,11 +13,13 @@ const Bench = struct {
     category: []const u8,
 };
 
+const BenchMode = enum { jit, interp };
+
 const Opts = struct {
     heap_mb: usize = 512,
     iters: usize = 3,
     json: bool = false,
-    mode: enum { jit, interp } = .jit,
+    mode: BenchMode = .jit,
     bench: ?[]const u8 = null,
     trace_stage: bool = false,
 };
@@ -169,7 +171,8 @@ const bench_defs = [_]BenchDef{
         \\              (setq count (+ count (nqueens-solve n (+ row 1) (cons col placed)))))
         \\            (setq col (+ col 1)))
         \\          count)))
-        \\  (defun nqueens (n) (nqueens-solve n 0 nil)))
+        \\  (defun nqueens (n) (nqueens-solve n 0 nil))
+        \\  (defun bench-nqueens () (nqueens 10)))
         ,
         .setup_interp =
         \\(progn
@@ -189,9 +192,10 @@ const bench_defs = [_]BenchDef{
         \\              (setq count (+ count (nqueens-solve n (+ row 1) (cons col placed)))))
         \\            (setq col (+ col 1)))
         \\          count)))
-        \\  (defun nqueens (n) (nqueens-solve n 0 nil)))
+        \\  (defun nqueens (n) (nqueens-solve n 0 nil))
+        \\  (defun bench-nqueens () (nqueens 10)))
         ,
-        .expr = "(nqueens 10)",
+        .expr = "(bench-nqueens)",
     },
 
     // ── list ──
@@ -349,6 +353,25 @@ const bench_defs = [_]BenchDef{
     },
 };
 
+fn benchWrapperForm(buf: []u8, mode: BenchMode, expr: []const u8) ![]const u8 {
+    return if (mode == .jit)
+        std.fmt.bufPrint(buf, "(defun __bench-run () {s} {s})", .{ decl_jit, expr })
+    else
+        std.fmt.bufPrint(buf, "(defun __bench-run () {s})", .{expr});
+}
+
+fn parseSimpleNoArgCall(expr: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, expr, " \t\r\n");
+    if (trimmed.len < 3) return null;
+    if (trimmed[0] != '(' or trimmed[trimmed.len - 1] != ')') return null;
+    const body = std.mem.trim(u8, trimmed[1 .. trimmed.len - 1], " \t\r\n");
+    if (body.len == 0) return null;
+    for (body) |ch| {
+        if (ch == ' ' or ch == '\t' or ch == '\r' or ch == '\n') return null;
+    }
+    return body;
+}
+
 pub fn main() !void {
     const opts = parseArgs();
 
@@ -451,6 +474,64 @@ pub fn main() !void {
         }
         if (setup_failed) continue;
 
+        const runner_fn = blk: {
+            if (parseSimpleNoArgCall(def.expr)) |fn_name| {
+                var fn_form_buf: [256]u8 = undefined;
+                const fn_form = std.fmt.bufPrint(&fn_form_buf, "#'{s}", .{fn_name}) catch |err| {
+                    benches[i] = .{ .name = def.name, .ns = 0, .err_name = @errorName(err), .category = def.category };
+                    {
+                        var buf: [4096]u8 = undefined;
+                        var w = std.fs.File.stderr().writer(&buf);
+                        w.interface.print(" ERR(runner): {s}\n", .{@errorName(err)}) catch {};
+                        w.interface.flush() catch {};
+                    }
+                    continue;
+                };
+                break :blk repl.eval(fn_form) catch |err| {
+                    benches[i] = .{ .name = def.name, .ns = 0, .err_name = @errorName(err), .category = def.category };
+                    {
+                        var buf: [4096]u8 = undefined;
+                        var w = std.fs.File.stderr().writer(&buf);
+                        w.interface.print(" ERR(runner-resolve): {s}\n", .{@errorName(err)}) catch {};
+                        w.interface.flush() catch {};
+                    }
+                    continue;
+                };
+            }
+
+            var wrapper_buf: [512]u8 = undefined;
+            const wrapper_form = benchWrapperForm(&wrapper_buf, opts.mode, def.expr) catch |err| {
+                benches[i] = .{ .name = def.name, .ns = 0, .err_name = @errorName(err), .category = def.category };
+                {
+                    var buf: [4096]u8 = undefined;
+                    var w = std.fs.File.stderr().writer(&buf);
+                    w.interface.print(" ERR(wrapper): {s}\n", .{@errorName(err)}) catch {};
+                    w.interface.flush() catch {};
+                }
+                continue;
+            };
+            _ = repl.eval(wrapper_form) catch |err| {
+                benches[i] = .{ .name = def.name, .ns = 0, .err_name = @errorName(err), .category = def.category };
+                {
+                    var buf: [4096]u8 = undefined;
+                    var w = std.fs.File.stderr().writer(&buf);
+                    w.interface.print(" ERR(wrapper): {s}\n", .{@errorName(err)}) catch {};
+                    w.interface.flush() catch {};
+                }
+                continue;
+            };
+            break :blk repl.eval("#'__bench-run") catch |err| {
+                benches[i] = .{ .name = def.name, .ns = 0, .err_name = @errorName(err), .category = def.category };
+                {
+                    var buf: [4096]u8 = undefined;
+                    var w = std.fs.File.stderr().writer(&buf);
+                    w.interface.print(" ERR(wrapper-resolve): {s}\n", .{@errorName(err)}) catch {};
+                    w.interface.flush() catch {};
+                }
+                continue;
+            };
+        };
+
         // Warmup
         if (opts.trace_stage) {
             var buf: [4096]u8 = undefined;
@@ -458,7 +539,7 @@ pub fn main() !void {
             w.interface.print("   stage=warmup\n", .{}) catch {};
             w.interface.flush() catch {};
         }
-        _ = repl.eval(def.expr) catch |err| {
+        _ = repl.vm.callFromStackAtFast(0, runner_fn, &.{}) catch |err| {
             benches[i] = .{ .name = def.name, .ns = 0, .err_name = @errorName(err), .category = def.category };
             {
                 var buf: [4096]u8 = undefined;
@@ -480,7 +561,7 @@ pub fn main() !void {
                 w.interface.flush() catch {};
             }
             const t0 = timer.read();
-            _ = repl.eval(def.expr) catch |err| {
+            _ = repl.vm.callFromStackAtFast(0, runner_fn, &.{}) catch |err| {
                 had_error = @errorName(err);
                 break;
             };

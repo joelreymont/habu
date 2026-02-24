@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-24)
 
 ### Worked Well
+- Moving `bench/comprehensive_bench.zig` timed loops from per-iteration `repl.eval(expr)` to pre-resolved runner function values invoked with `Vm.callFromStackAtFast` removed parser/evaluator overhead from microbench timings and improved `nqueens10` from ~`3.98ms` to ~`3.48ms` on this host while preserving benchmark semantics.
+- Sampling long-running `nqueens10` after an explicit startup delay (attach at +12s, sample 5s, then kill) produced steady-state JIT hotspots instead of loader/warmup noise, giving actionable codegen signal.
 - Comparing unchecked `PLAN.md` leaves against `dot list` before starting new perf work exposed plan drift immediately (`habu-close-post-fix-77d8f862` open but missing from `PLAN.md`), which prevented hidden execution debt.
 - Encoding new performance work as dependent dots in `PLAN.md` (shape counters -> direct JIT stubs -> session JIT cache) keeps optimization sequencing explicit and avoids parallel speculative tuning.
 - Adding gated VM call-shape counters directly in `doCall` (`src/interp/vm.zig:11100+`) and exporting load/run deltas via `bench/maxima_workload.zig` produced immediate, quantified attribution for dynamic-call overhead without changing semantics.
@@ -21,13 +23,17 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Extending `JitAdmStats` with cache-hit counters (`src/interp/vm.zig:JitAdmStats`) made cache effect measurable in existing benchmark JSON without adding another telemetry channel.
 - Dumping `BENCH-GC-CONS` hoist output before editing exposed a concrete hot-path bug (`src/jit/backend.zig:translateAdd`): safety=0 non-recursive generic `+` still emitted per-iteration helper calls in a fixnum loop, despite inline cons allocation.
 - Adding guarded fixnum fast paths for generic `.add`/`.sub` (`src/jit/backend.zig:translateArithFixnumFastFallback`) with non-fixnum and overflow fallback to helpers delivered a large measured win on `gc_cons` (`~1.7-1.9ms` -> `~0.69-0.74ms`) without introducing a Maxima-specific path.
+- Dumping `NQUEENS-SAFE-P` hoist IR after post-pass changes exposed that helper calls (`jitSubNum`/`jitNumEq`/`jitAddNum`) were back in a tail-recursive hot loop because TCO flipped `is_recursive=false`; keeping a separate `fixnum_inline` flag in `IrTranslator` (`src/jit/backend.zig`) preserved recursive fixnum-inline lowering through TCO and removed those helper calls again.
 
 ### Did Not Work
+- Relaxing hoist opt gating to allow `.aggressive` for all call-free load-bearing functions caused pathological benchmark slowdowns/hangs; keep `has_loads` in the `.none` gate until load-path correctness/perf is proven.
+- Driving benchmark runners through `Vm.callFromStack` (non-fast path) caused severe cross-benchmark regressions; use `Vm.callFromStackAtFast` for timing harnesses that target JIT throughput.
 - Keeping “meta” open dots (`curr`/`next`/`active` placeholders) without `PLAN.md` entries obscures real remaining work and makes completion status unreliable; these must be pruned or mapped into explicit plan leaves.
 - Relying on plain `zig build test -- --test-filter ...` in this environment still stalls with no output; wrapping with `timeout` is required to prevent leaked long-lived test processes while keeping CI gates actionable.
 - Using `continue` inside `executeOp` opcode switch during direct-call insertion was invalid (`continue expression outside loop`); opcode handlers must `return` from `executeOp` instead.
 - Keying compile-status cache by per-chunk pointer identity did not produce useful reuse under Maxima loader churn; switching to deterministic chunk fingerprints was required to convert the cache from “mostly cold” to measurable hits.
 - Running filtered tests via the build wrapper can still leave long-lived `.zig-cache/.../build ... test` processes active after command completion; explicit `pgrep`/`kill` cleanup is required before continuing perf work to avoid unified-exec process-limit pressure.
+- Reusing `is_recursive` for both call-shape lowering and numeric fast-path eligibility caused hidden performance regressions after TCO rewrites; recursion-driven call conversion and fixnum-inline policy need independent state in the translator.
 
 ## Session Notes (2026-02-23)
 

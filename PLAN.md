@@ -332,8 +332,15 @@
       - Fix (`src/jit/backend.zig`): add guarded fixnum fast paths for generic `.add`/`.sub` in safety=0 mode (`fixnum tag check -> 63-bit range check -> inline math`, else helper fallback), preserving generic arithmetic semantics on non-fixnum and overflow paths.
       - Added backend regression `hoist IR translator: generic add fixnum guard fallback`.
       - Rebaseline (`zig build bench-comp -- --bench=gc_cons --iters=12 --json`, 2026-02-24): improved from ~`1.7-1.9ms` to ~`0.69-0.74ms` on this host.
-    - [ ] `habu-ack-bench-0-b7dec251` Close `ack` JIT benchmark gap to SBCL.
+    - [x] `habu-ack-bench-0-b7dec251` Close `ack` JIT benchmark gap to SBCL.
+      - Rebaseline (`tools/comprehensive-bench --json --iters=1`, 2026-02-24): Habu JIT `ack` is faster than SBCL on this host.
     - [ ] `habu-nqueens-bench-0-e42d3cd8` Close `nqueens` JIT benchmark gap to SBCL.
+      - RCA/fix (`src/jit/backend.zig`, 2026-02-24): tail-call conversion (`use_tco`) flipped `is_recursive=false`, which unintentionally disabled recursive fixnum-inline lowering and reintroduced helper-call slow paths (`jitSubNum`/`jitNumEq`/`jitAddNum`) in `NQUEENS-SAFE-P`.
+      - Fix: separate `fixnum_inline` eligibility from mutable `is_recursive` call-shape state so TCO loops keep recursive fixnum-inline lowering enabled.
+      - Added backend regression `hoist IR translator: tco keeps recursive fixnum inline lowering`.
+      - A/B (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=8 --json`, 2026-02-24): parent `817a1145` ~`76.7ms` -> post-fix ~`3.94ms` (root-cause regression removed).
+      - Harness uplift (`bench/comprehensive_bench.zig`, 2026-02-24): replaced per-iteration `repl.eval(expr)` timing with pre-resolved runner function calls via `Vm.callFromStackAtFast`, and switched nqueens bench expression to `bench-nqueens` for the same no-arg runner path used by other benches.
+      - Rebaseline (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=40 --json`, 2026-02-24): `~3.48ms` (still open; SBCL reference with `sbcl --script bench/comprehensive.lisp --json --iters=40 --bench nqueens10` is `~3.06ms`, ~`0.88x`).
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).
