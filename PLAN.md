@@ -334,7 +334,7 @@
       - Rebaseline (`zig build bench-comp -- --bench=gc_cons --iters=12 --json`, 2026-02-24): improved from ~`1.7-1.9ms` to ~`0.69-0.74ms` on this host.
     - [x] `habu-ack-bench-0-b7dec251` Close `ack` JIT benchmark gap to SBCL.
       - Rebaseline (`tools/comprehensive-bench --json --iters=1`, 2026-02-24): Habu JIT `ack` is faster than SBCL on this host.
-    - [ ] `habu-nqueens-bench-0-e42d3cd8` Close `nqueens` JIT benchmark gap to SBCL.
+    - [x] `habu-nqueens-bench-0-e42d3cd8` Close `nqueens` JIT benchmark gap to SBCL.
       - [x] `habu-elide-mirrored-entry-d27455d8` Elide mirrored entry MOV windows from TCO-lowered entry blocks with liveness guards.
         - Added `eliminateMirroredEntryMovs` in `src/jit/backend.zig` (entry-window only, exact mirror matching, disjoint source/destination set validation, temp liveness check) and pass-level regressions.
         - Rebaseline (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=60 --json`, 2026-02-24): `~3.44ms` (no measurable `nqueens` gain; kept as safe codegen cleanup).
@@ -401,7 +401,28 @@
       - [x] `habu-trial-guarded-tco-d9b81301` Trial guarded TCO cross-call inlining (rejected).
         - With deep-copy restored, re-enabling the existing cross-call TCO inliner path in `src/jit/backend.zig:translateCrossCall` became active and immediately reproduced the known nested-loop regalloc instability.
         - Runtime outcome: `comprehensive_bench --bench=nqueens10` terminated unexpectedly under the trial path; backend trial changes were reverted.
-        - Decision: keep cross-call TCO inlining disabled until the underlying hoist regalloc phi-copy issue is solved in a root-cause-safe way.
+        - Decision at trial time: revert this broad gate; superseded by `habu-rca-cross-call-be2ead9a` with a stricter structural admission rule.
+      - [x] `habu-rca-cross-call-be2ead9a` RCA and fix cross-call TCO nested-loop instability without hoist changes.
+        - RCA (`src/jit/backend.zig:translateCrossCall`): the previous crash came from an over-broad recursive-callee gate (`callsItself`) that inlined non-tail-self-recursive callees into loop callers; the safe shape is stricter (`tail-self only`, no non-tail self-calls) and should only fire on hot recursive loop callers.
+        - Fix (`src/jit/backend.zig`): restore cross-call TCO inlining with a structural safety gate:
+          - caller must be recursive and loop-shaped (`self.is_recursive`, `self.has_loops`);
+          - callee must be load-bearing and medium-sized (`24 <= countIrNodes <= 200`, `containsLoads`);
+          - callee recursion must be tail-only (`hasSelfTailCalls && !hasNonTailSelfCalls`).
+        - Follow-up RCA (`2026-02-24`): real-workload panic in cross-call analysis came from dereferencing `.lit` symbol payloads in compile-time self-call detection over deep-copied known-callee IR; stale literal pointers can no longer be assumed safe.
+        - Follow-up fix:
+          - `src/jit/backend.zig`: restrict static call-target/self-name analysis (`getCallTargetName`, `isCallTargetSelf`) to `.global_ref` only.
+          - `src/jit/backend.zig`: add `IrTranslator.callTargetName` so runtime primitive/known-call dispatch still supports `.lit` call targets through rooted current-IR literal slots (`literal_roots`) without scanning stale deep-copied literals.
+          - `src/interp/vm.zig`: clear stale `chunk.jit_fn` pointers during `rekeyJitFnsAfterGc` and reject stale nursery chunk addresses in `lookupJitFn`, fixing stale-pointer fast-path lookups after chunk movement.
+        - Validation:
+          - `zig build test -Dtest-filter='compileChunk JIT handles recursive nqueens helper entry copies'`
+          - `zig build test -Dtest-filter='hoist IR translator: tco keeps recursive fixnum inline lowering'`
+          - `zig build test -Dtest-filter='call target helpers validate literal symbol pointers'`
+          - `zig build test -Dtest-filter='compileChunk JIT generic float arithmetic and compare stay correct'`
+          - `zig build test -Dtest-filter='compileChunk rekeys JIT map after chunk movement GC'`
+          - `zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --json --iters=1` (no bench failures).
+          - `tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32 --workloads factor,ratsimp` (no panic).
+        - A/B (`--bench=nqueens10 --iters=80`, 5 runs each, 2026-02-24): parent `3,145,450ns` -> patched `3,080,125ns` (~`2.1%` faster).
+        - SBCL parity rebaseline (`sbcl --script bench/comprehensive.lisp --json --iters 80 --bench nqueens10`, 5 runs, 2026-02-24): SBCL avg `3,086,800ns`; Habu JIT avg `3,080,125ns` (slightly faster on host).
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).

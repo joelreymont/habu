@@ -1920,6 +1920,7 @@ pub const Vm = struct {
 
     /// Look up hoist-compiled function for a chunk.
     pub fn lookupJitFn(self: *Vm, chunk: *const Chunk) ?*const jit_backend.CompiledFn {
+        if (self.isStaleNurseryAddr(@intFromPtr(chunk))) return null;
         if (chunk.jit_fn != 0) {
             const compiled: *jit_backend.CompiledFn = @ptrFromInt(chunk.jit_fn);
             return compiled;
@@ -2127,7 +2128,12 @@ pub const Vm = struct {
         var i: usize = 0;
         while (i < self.jit_fns.items.len) {
             const compiled = self.jit_fns.items[i].compiled;
-            const live_val = self.resolveForwardedValue(self.jit_fns.items[i].chunk);
+            const old_val = self.jit_fns.items[i].chunk;
+            if (old_val.isChunk()) {
+                old_val.toPtr(Chunk).jit_fn = 0;
+            }
+
+            const live_val = self.resolveForwardedValue(old_val);
             if (!live_val.isChunk()) {
                 compiled.deinit();
                 self.allocator.destroy(compiled);

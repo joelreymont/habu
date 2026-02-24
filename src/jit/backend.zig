@@ -3510,7 +3510,7 @@ pub const IrTranslator = struct {
         // Check for self-recursive call
         if (self.is_recursive and isCallTargetSelf(func_ir, self.fn_name)) {
             if (trace_xcall) {
-                const target_name = getCallTargetName(func_ir) orelse "<noname>";
+                const target_name = self.callTargetName(func_ir) orelse "<noname>";
                 std.debug.print("JIT_XCALL caller={s} target={s} argc={d} mode=self\n", .{
                     self.fn_name,
                     target_name,
@@ -3522,7 +3522,7 @@ pub const IrTranslator = struct {
 
         // Check for cross-function call to known JIT-compiled function
         if (self.known_fns) |kf| {
-            if (getCallTargetName(func_ir)) |target_name| {
+            if (self.callTargetName(func_ir)) |target_name| {
                 if (self.lookupKnownFn(kf, target_name)) |known| {
                     if (trace_xcall) {
                         std.debug.print("JIT_XCALL caller={s} target={s} argc={d} mode=known callee={s} arity={d} fn_ptr=0x{x}\n", .{
@@ -3540,7 +3540,7 @@ pub const IrTranslator = struct {
         }
 
         // Check for known runtime primitive (gcd, nreverse, append, assoc, etc.)
-        if (getCallTargetName(func_ir)) |target_name| {
+        if (self.callTargetName(func_ir)) |target_name| {
             if (getJitPrimitivePtrWithArity(target_name, args.len)) |prim_ptr| {
                 if (trace_xcall) {
                     std.debug.print("JIT_XCALL caller={s} target={s} argc={d} mode=prim ptr=0x{x}\n", .{
@@ -3555,7 +3555,7 @@ pub const IrTranslator = struct {
         }
 
         if (trace_xcall) {
-            const target_name = getCallTargetName(func_ir) orelse "<dynamic>";
+            const target_name = self.callTargetName(func_ir) orelse "<dynamic>";
             std.debug.print("JIT_XCALL caller={s} target={s} argc={d} mode=generic\n", .{
                 self.fn_name,
                 target_name,
@@ -3563,6 +3563,20 @@ pub const IrTranslator = struct {
             });
         }
         return try self.translateGenericCall(func_ir, args);
+    }
+
+    fn callTargetName(self: *IrTranslator, func_ir: *const Ir) ?[]const u8 {
+        return switch (func_ir.*) {
+            .global_ref => |gr| gr.name,
+            .lit => blk: {
+                const roots = self.literal_roots orelse break :blk null;
+                const slot = roots.get(@intFromPtr(func_ir)) orelse break :blk null;
+                const val = slot.*;
+                if (!val.isSymbol()) break :blk null;
+                break :blk val.toPtr(Symbol).getName();
+            },
+            else => null,
+        };
     }
 
     fn translateGenericCall(self: *IrTranslator, func_ir: *const Ir, args: []const *const Ir) anyerror!HoistValue {
@@ -3615,9 +3629,25 @@ pub const IrTranslator = struct {
                 return try self.translateInlinedCall(params, body, args);
             }
 
-            // Inline TCO disabled: hoist regalloc phi copy bug for nested loops.
-            // Cross-call works correctly with ~5% overhead.
-            if (false and countIrNodes(body) <= 40 and known.callee_name.len > 0 and
+            const enable_xcall_tco = true;
+            const node_count = countIrNodes(body);
+            const tco_self = known.callee_name.len > 0 and hasSelfTailCalls(body, known.callee_name);
+            const tco_non_tail = if (known.callee_name.len > 0)
+                hasNonTailSelfCalls(body, known.callee_name)
+            else
+                false;
+            if (std.posix.getenv("HABU_TRACE_JIT_XCALL") != null) {
+                std.debug.print("JIT_XCALL_TCO caller={s} callee={s} argc={d} nodes={d} self_tail={} non_tail={} enabled={}\n", .{
+                    self.fn_name,
+                    known.callee_name,
+                    args.len,
+                    node_count,
+                    tco_self,
+                    tco_non_tail,
+                    enable_xcall_tco,
+                });
+            }
+            if (enable_xcall_tco and self.has_loops and self.is_recursive and node_count >= 24 and node_count <= 200 and containsLoads(body) and known.callee_name.len > 0 and
                 hasSelfTailCalls(body, known.callee_name) and
                 !hasNonTailSelfCalls(body, known.callee_name))
             {
@@ -5636,11 +5666,6 @@ fn detectLoops(body: *const Ir) bool {
 fn getCallTargetName(func_ir: *const Ir) ?[]const u8 {
     return switch (func_ir.*) {
         .global_ref => |gr| gr.name,
-        .lit => |v| blk: {
-            if (!v.isSymbol()) break :blk null;
-            if (v.isNil()) break :blk null;
-            break :blk v.toPtr(Symbol).getName();
-        },
         else => null,
     };
 }
@@ -5667,12 +5692,6 @@ fn namesMatch(a: []const u8, b: []const u8) bool {
 fn isCallTargetSelf(func_ir: *const Ir, name: []const u8) bool {
     return switch (func_ir.*) {
         .global_ref => |gr| namesMatch(gr.name, name),
-        .lit => |v| blk: {
-            if (!v.isSymbol()) break :blk false;
-            if (v.isNil()) break :blk false;
-            const sym_name = v.toPtr(Symbol).getName();
-            break :blk namesMatch(sym_name, name);
-        },
         else => false,
     };
 }
@@ -10412,6 +10431,19 @@ test "hoist IR translator: pointer literal requires root when provided" {
     var compiled = try compileIrWithKnownFnsAndLiteralRoots(testing.allocator, lambda, "jit_lit_sym", null, &roots);
     defer compiled.deinit();
     try testing.expectEqual(@as(i64, @bitCast(sym.raw)), compiled.call0());
+}
+
+test "call target helpers validate literal symbol pointers" {
+    const gr = Ir{ .global_ref = .{ .name = "jit-target", .index = 0 } };
+    const gr_name = getCallTargetName(&gr) orelse return error.TestUnexpectedResult;
+    try testing.expect(std.mem.eql(u8, gr_name, "jit-target"));
+    try testing.expect(isCallTargetSelf(&gr, "jit-target"));
+
+    // Deliberately invalid tagged symbol pointer (tag=.symbol, addr=0x30).
+    // Regression: backend name/self detection must not dereference .lit targets.
+    const lit_invalid = Ir{ .lit = Value{ .raw = 0x32 } };
+    try testing.expect(getCallTargetName(&lit_invalid) == null);
+    try testing.expect(!isCallTargetSelf(&lit_invalid, "jit-target"));
 }
 
 test "hoist IR translator: nested if in expression" {
