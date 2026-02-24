@@ -351,7 +351,10 @@
         - Profiling (`sample`, `HABU_DUMP_HOIST`, `HABU_TRACE_JIT_PATCH`) showed the residual hotspot remained inside JIT native code, with `NQUEENS-SAFE-P` carrying mirrored entry move windows (`mov t,a ... mov a,t`) after first compaction.
         - Fix (`src/jit/backend.zig`): extend `eliminateMirroredEntryMovs` to drop redundant restore legs even when temp aliases stay live, and run the pass after first `compactNops` so it sees normalized entry windows.
         - Added/updated pass-level regressions for dead-temp full elimination, dependent-chain no-op, and live-temp restore-leg elimination.
-        - Rebaseline (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=60 --json`, 2026-02-24): `~3.15ms` vs SBCL `~3.09ms` (`sbcl --script bench/comprehensive.lisp --json --iters=60 --bench nqueens10`), improving from ~`3.51ms` (~`0.98x` of SBCL).
+      - Rebaseline (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=60 --json`, 2026-02-24): `~3.15ms` vs SBCL `~3.09ms` (`sbcl --script bench/comprehensive.lisp --json --iters=60 --bench nqueens10`), improving from ~`3.51ms` (~`0.98x` of SBCL).
+      - [x] `habu-nqueens-fuse-tagged-e297d675` Add a generic tagged-abs peephole for hot compare loops and rebaseline (rejected after A/B).
+        - Implemented and benchmarked a tagged-abs ladder fusion candidate in `src/jit/backend.zig`, then A/B compared against parent commit `17789016` using five repeated `nqueens10` runs (`--iters=60`) in isolated workspaces.
+        - Result: candidate averaged slightly slower (`~3.150ms`) than parent (`~3.142ms`) on this host; reverted backend changes and kept current codegen path.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).
