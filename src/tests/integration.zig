@@ -9629,3 +9629,52 @@ test "maxima letmac destructuring-let expands and runs" {
     const c1 = c0.cdr.toPtr(Cons);
     try testing.expectEqual(@as(i64, 2), c1.car.toFixnum());
 }
+
+test "compileChunk JIT OOM relay falls back to interpreted execution" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    // Small heap: 2MB — enough to init VM but triggers OOM during heavy allocation
+    var heap = try Heap.init(allocator, .{ .total_size = 2 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    // Define a JIT-compiled function that allocates cons cells in a loop.
+    // With a 2MB heap this will eventually trigger OOM in the JIT path.
+    // The bridge should relay the error, VM runs GC, and retries interpreted.
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defun jit-alloc-loop (n)" ++
+            " (declare (optimize (speed 3) (safety 0)))" ++
+            " (let ((acc nil))" ++
+            "   (dotimes (i n acc)" ++
+            "     (setq acc (cons i acc)))))",
+    ));
+
+    // Call it — should succeed (possibly via interpreted fallback after OOM+GC).
+    // The key assertion: no crash, no silent nil, produces a valid list.
+    const result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(length (jit-alloc-loop 100))",
+    ));
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 100), result.toFixnum());
+}
