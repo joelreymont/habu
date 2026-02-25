@@ -1,596 +1,135 @@
-# Master Plan (Dot-Driven)
+# Deep Review Fix Plan
 
-## Contract
-- Every executable plan leaf is a dot.
-- Plan checkboxes map 1:1 to dot IDs.
-- A task is complete only when its dot is closed.
-- Work order is top-to-bottom unless an explicit dependency says otherwise.
+Fixes for issues found during deep review, ordered by severity and dependency.
 
-## Maxima Fast Targets
-- Correctness gate: `maxima-load-all` has zero hard failures and all critical entrypoints are bound (`$integrate`, `$ratsimp`, `$factor`, `$solve`, `$limit`, `$determinant`).
-- Genericity gate: fixes are CL-semantic and reusable across non-Maxima Lisp code (no Maxima-only patch paths).
-- Performance gate: 2x speedup on Maxima workload suite versus current baseline (tracked in reproducible scripts).
-- Stability gate: no JIT indirect-call crashes, no masked errors, no fallback-only behavior.
-- Drift gate: Habu detects `../hoist` API changes with explicit contract tests.
+## Critical
 
-## Tree
+### 1. Fix JIT helpers that silently swallow OOM / overflow errors
+- **Files**: `src/jit/backend.zig:347-1700` — 37 `catch return` patterns across 16 functions
+- **What**: Replace error-swallowing patterns with `catch |err| jitRelayError(err)` so the bridge longjmps out and the VM retries interpreted.
 
-### A. Maxima Fast Track
-- [ ] `habu-maxima-fast-exec-049ee786` Maxima fast execution plan.
-  - [x] `habu-define-maxima-gates-aca4e665` Define machine-checkable Maxima correctness and perf gates.
-  - [x] `habu-audit-loader-failures-fda25dca` Audit and expose loader per-form failures and binding gaps. Depends on `habu-define-maxima-gates-aca4e665`.
-  - [x] `habu-close-cl-semantic-dac2c058` Close CL semantic gaps blocking generic Maxima execution. Depends on `habu-audit-loader-failures-fda25dca`.
-    - [x] `habu-fix-fn-designators-c2cf5df2` Fix function designator semantics (`coerce`/`fdefinition`) with regressions.
-    - [x] `habu-fix-pkg-semantics-949bd125` Fix package semantics mismatches (`defpackage`/import/shadow/use).
-    - [x] `habu-fix-macro-expansion-35b2e63f` Fix macro expansion edge semantics for large sources.
-  - [x] `habu-reader-parser-parity-a7ceffb7` Close reader/parser parity gaps (`#.` and `#nA` terminal parsing). Depends on `habu-define-maxima-gates-aca4e665`.
-  - [x] `habu-stabilize-eval-vm-d1c1c5cc` Stabilize eval/VM paths under macro-heavy Maxima workloads. Depends on `habu-close-cl-semantic-dac2c058`.
-    - [x] `habu-rca-indirect-call-d9f594ad` RCA and fix JIT indirect-call path root cause (no workaround).
-      - [x] `habu-rca-jit-indirect-a4555d20` Harden indirect-call argument move repair for interleaved BLR target setup (`mov/movz/movk`) and duplicate-destination copy chains; add backend machine-code regressions.
-      - [x] `habu-fix-nested-cons-c6b553bd` Fix JIT nested-cons corruption/crash by correcting dead-MOVZ liveness over unscaled/pre/post-index load/store forms (store-value/base reads) and lock with backend + integration regressions.
-      - [x] `habu-fix-gc-vector-9fcc771c` Fix JIT `gc_vector` crash by removing >8-arg indirect call lowering from `arr_new`, routing through register-only helper calls, and locking with a focused JIT integration regression.
-    - [x] `habu-rca-curr-maxima-365c1a4a` RCA current Maxima load blocker (`%MAP-REVERSE` JIT crash), restore strict JIT eligibility gate (`speed=3,safety=0`), and add JIT call/cursor diagnostics.
-    - [x] `habu-fix-nested-eval-420ba9e0` Fix nested eval/non-local exit frame restoration. Depends on `habu-rca-indirect-call-d9f594ad`.
-      - [x] `habu-fix-nested-eval-e96f4a89` Preserve non-local exits from reader hooks (`#.`/dispatch) by propagating hook VM errors through parser boundaries; add `read-from-string` throw relay regression.
-    - [x] `habu-fix-ext-roots-1da298cf` Use owner-aware ext-root snapshots/restores in nested VM macro-state runs; remove stale slice restore path and add VM regression for owner rebind after root-owner reallocation.
-    - [x] `habu-root-inactive-ext-310675f7` Root inactive ext-root snapshots directly in GC and remove prefix copyback restore path; add regressions for owner-backed and plain-slice inactive roots.
-    - [x] `habu-fence-gc-during-663fc5d2` Fence moving GC during active JIT frames and deopt to interpreter on JIT OOM exits; prevents stale unrooted register values from surviving GC in helper-heavy compiled paths.
-    - [x] `habu-rca-small-nursery-ce0d8d7f` RCA/fix GC-pressure crash with small nursery Maxima loads (`--nursery-mb=8..16`). Depends on `habu-nursery-policy-benchmark-599d4233`; blocks `habu-maxima-load-to-e6d01b9c`.
-    - [x] `habu-design-safe-macro-e2cbd352` Design/implement safe macro-expander caching with stable chunk/index semantics (no transient chunk-pool assumptions).
-    - [x] `habu-fix-progv-stale-8d616a4f` Fix stale forwarded symbol dereference in `progv` dynamic binding paths by canonicalizing forwarded values before symbol/global/local lookup; add deterministic VM regression.
-  - [x] `habu-maxima-load-to-e6d01b9c` Drive Maxima loader and critical symbol binds to green. Depends on `habu-stabilize-eval-vm-d1c1c5cc`.
-  - [x] `habu-profile-maxima-hotspots-977ac23d` Profile real Maxima hotspots in interpreter and JIT modes. Depends on `habu-maxima-load-to-e6d01b9c`.
-    - [x] `habu-add-maxima-real-c6c59d32` Add Maxima real-workload benchmark harness (`bench/maxima_workload.zig`, `bench/maxima_workload.lisp`, `tools/maxima-bench`) with loader + CAS timing JSON.
-    - [x] `habu-extend-microbench-matrix-31060fbb` Extend microbench matrix and self-improvement comparison loop. Depends on `habu-add-maxima-real-c6c59d32`.
-    - [x] `habu-measure-gc-against-b81d7bc6` Measure GC against SBCL workloads with comparable load/alloc scenarios. Depends on `habu-extend-microbench-matrix-31060fbb`.
-    - [x] `habu-maxima-hotspot-uplift-04ded9f4` Convert post-crash hotspot data into generic runtime/compiler speedups (no Maxima-only paths). Depends on `habu-rca-curr-maxima-365c1a4a`.
-    - [x] `habu-cut-fn-resolve-e03eb304` Cut function-resolve builtin/getenv overhead with measured ReleaseFast hotspot gates. Depends on `habu-maxima-hotspot-uplift-04ded9f4`.
-    - [x] `habu-extract-sbcl-ocaml-4e8a4268` Extract SBCL/OCaml GC techniques into Habu gap map + implementation plan. Depends on `habu-measure-gc-against-b81d7bc6`.
-      - [x] `habu-study-sbcl-gc-2294e52d` Study SBCL `gencgc` internals and record transferrable heuristics.
-        - [x] `habu-sbcl-gc-map-03111566` SBCL GC: map trigger heuristics.
-        - [x] `habu-sbcl-gc-map-ad011b3f` SBCL GC: map alloc/card paths. Depends on `habu-sbcl-gc-map-03111566`.
-        - [x] `habu-sbcl-gc-doc-cc1d45a6` SBCL GC: document transferable invariants. Depends on `habu-sbcl-gc-map-ad011b3f`.
-      - [x] `habu-study-ocaml-gc-d799848f` Study OCaml runtime GC internals and record transferrable heuristics.
-        - [x] `habu-ocaml-gc-map-1059f3df` OCaml GC: map pacing heuristics.
-        - [x] `habu-ocaml-gc-map-6d2cc823` OCaml GC: map shared heap sweeps. Depends on `habu-ocaml-gc-map-1059f3df`.
-        - [x] `habu-ocaml-gc-doc-ca9eb86f` OCaml GC: document transferable invariants. Depends on `habu-ocaml-gc-map-6d2cc823`.
-      - [x] `habu-build-habu-vs-5f1f7bf6` Build Habu vs SBCL/OCaml GC gap matrix. Depends on `habu-study-ocaml-gc-d799848f`.
-        - [x] `habu-gc-gap-inventory-101abe09` GC gap: inventory Habu current state.
-        - [x] `habu-gc-gap-build-06231b8d` GC gap: build SBCL/OCaml matrix. Depends on `habu-gc-gap-inventory-101abe09`.
-        - [x] `habu-gc-gap-rank-801a44a1` GC gap: rank by perf impact. Depends on `habu-gc-gap-build-06231b8d`.
-      - [x] `habu-define-gc-parity-c2bf61b3` Define machine-checkable GC parity gates in bench tools. Depends on `habu-build-habu-vs-5f1f7bf6`.
-        - [x] `habu-gc-gates-set-e17bc236` GC gates: set parity thresholds.
-        - [x] `habu-gc-gates-encode-374df105` GC gates: encode machine schema. Depends on `habu-gc-gates-set-e17bc236`.
-        - [x] `habu-gc-gates-wire-b71c2f49` GC gates: wire fail conditions. Depends on `habu-gc-gates-encode-374df105`.
-      - [x] `habu-add-pause-budget-92f30aad` Add pause-budget telemetry for young/major phases. Depends on `habu-define-gc-parity-c2bf61b3`.
-        - [x] `habu-gc-telemetry-phase-e17cdcf3` GC telemetry: phase pause timers.
-        - [x] `habu-gc-telemetry-export-87936024` GC telemetry: export p95/p99. Depends on `habu-gc-telemetry-phase-e17cdcf3`.
-        - [x] `habu-gc-telemetry-add-9580666d` GC telemetry: add regression tests. Depends on `habu-gc-telemetry-export-87936024`.
-      - [x] `habu-add-allocation-hot-1f31ac72` Add allocation hot-type sampling and survival telemetry. Depends on `habu-add-pause-budget-92f30aad`.
-        - [x] `habu-gc-telemetry-sample-13149884` GC telemetry: sample alloc hot classes.
-        - [x] `habu-gc-telemetry-track-230600dd` GC telemetry: track survival histograms. Depends on `habu-gc-telemetry-sample-13149884`.
-        - [x] `habu-gc-telemetry-emit-dec8e7ae` GC telemetry: emit alloc hot metrics. Depends on `habu-gc-telemetry-track-230600dd`.
-      - [x] `habu-feed-gc-metrics-8a4ffc19` Feed GC telemetry into self-improvement ranking loop. Depends on `habu-add-allocation-hot-1f31ac72`.
-        - [x] `habu-perf-loop-ingest-2b991d65` Perf loop: ingest GC telemetry.
-        - [x] `habu-perf-loop-rank-2043d329` Perf loop: rank GC actions. Depends on `habu-perf-loop-ingest-2b991d65`.
-        - [x] `habu-perf-loop-validate-b73f42d1` Perf loop: validate action reports. Depends on `habu-perf-loop-rank-2043d329`.
-      - [x] `habu-implement-adaptive-nursery-08dfe594` Implement adaptive nursery sizing from live/survival feedback. Depends on `habu-feed-gc-metrics-8a4ffc19`.
-        - [x] `habu-nursery-policy-derive-d65d5879` Nursery policy: derive control law.
-        - [x] `habu-nursery-policy-runtime-1b0c5008` Nursery policy: runtime resizing. Depends on `habu-nursery-policy-derive-d65d5879`.
-        - [x] `habu-nursery-policy-benchmark-599d4233` Nursery policy: benchmark tuning. Depends on `habu-nursery-policy-runtime-1b0c5008`.
-      - [x] `habu-implement-adaptive-tenuring-8d7cbd85` Implement adaptive tenuring policy from age/survival signals. Depends on `habu-implement-adaptive-nursery-08dfe594`.
-        - [x] `habu-tenuring-collect-age-66c01bf2` Tenuring: collect age distributions.
-        - [x] `habu-tenuring-adaptive-threshold-34c571a8` Tenuring: adaptive threshold logic. Depends on `habu-tenuring-collect-age-66c01bf2`.
-        - [x] `habu-tenuring-lock-perf-72884770` Tenuring: lock perf regressions. Depends on `habu-tenuring-adaptive-threshold-34c571a8`.
-      - [x] `habu-optimize-remembered-set-4ebdf466` Optimize remembered-set/card scanning paths. Depends on `habu-implement-adaptive-tenuring-8d7cbd85`.
-        - [x] `habu-rset-tighten-card-ba8ce5c2` RSet: tighten card mark granularity.
-        - [x] `habu-rset-add-scan-13787e2c` RSet: add scan fast paths. Depends on `habu-rset-tighten-card-ba8ce5c2`.
-        - [x] `habu-rset-verify-correctness-3010858a` RSet: verify correctness and speed. Depends on `habu-rset-add-scan-13787e2c`.
-      - [x] `habu-implement-gc-debt-bb3f3f6e` Implement GC debt trigger model with pause targets. Depends on `habu-optimize-remembered-set-4ebdf466`.
-        - [x] `habu-debt-account-allocation-07cb1149` Debt: account allocation pressure.
-        - [x] `habu-debt-integrate-trigger-c402efa2` Debt: integrate trigger decisions. Depends on `habu-debt-account-allocation-07cb1149`.
-        - [x] `habu-debt-tune-coefficients-d2f31c52` Debt: tune coefficients with benches. Depends on `habu-debt-integrate-trigger-c402efa2`.
-      - [x] `habu-add-incremental-major-c1faa29a` Add incremental major marking with pause budget slicing. Depends on `habu-implement-gc-debt-bb3f3f6e`.
-        - [x] `habu-major-gc-incremental-068b1148` Major GC: incremental mark state machine.
-        - [x] `habu-major-gc-barrier-ac8038a7` Major GC: barrier-assisted marking. Depends on `habu-major-gc-incremental-068b1148`.
-        - [x] `habu-major-gc-pause-bee3923c` Major GC: pause-slice validation. Depends on `habu-major-gc-barrier-ac8038a7`.
-      - [x] `habu-improve-tenured-free-e53ce37d` Improve tenured free-list allocator and coalescing. Depends on `habu-add-incremental-major-c1faa29a`.
-        - [x] `habu-tenured-alloc-segregated-942b726a` Tenured alloc: segregated free bins.
-        - [x] `habu-tenured-alloc-coalesce-4dcdcd32` Tenured alloc: coalesce/split policy. Depends on `habu-tenured-alloc-segregated-942b726a`.
-        - [x] `habu-tenured-alloc-fragmentation-35baabcd` Tenured alloc: fragmentation benchmarks. Depends on `habu-tenured-alloc-coalesce-4dcdcd32`.
-      - [x] `habu-improve-los-policy-bfcc62a6` Improve LOS threshold/reuse policy for lower RSS and pauses. Depends on `habu-improve-tenured-free-e53ce37d`.
-        - [x] `habu-los-threshold-auto-6d2a6cc1` LOS: threshold auto-tuning model.
-        - [x] `habu-los-reuse-and-ca77f709` LOS: reuse and reclamation path. Depends on `habu-los-threshold-auto-6d2a6cc1`.
-        - [x] `habu-los-validate-rss-db6cebaf` LOS: validate RSS/pause impact. Depends on `habu-los-reuse-and-ca77f709`.
-      - [x] `habu-reduce-barrier-and-254725b9` Reduce barrier/safepoint mutator overhead in VM/JIT hot paths. Depends on `habu-improve-los-policy-bfcc62a6`.
-        - [x] `habu-barrier-profile-mutator-812522db` Barrier: profile mutator overhead.
-        - [x] `habu-barrier-inline-hot-4222c4ad` Barrier: inline hot fast paths. Depends on `habu-barrier-profile-mutator-812522db`.
-        - [x] `habu-safepoint-batch-polling-4c6aa8b1` Safepoint: batch polling strategy. Depends on `habu-barrier-inline-hot-4222c4ad`.
-      - [x] `habu-create-cross-runtime-056102b6` Create cross-runtime GC benchmark pack for parity validation. Depends on `habu-reduce-barrier-and-254725b9`.
-        - [x] `habu-bench-pack-define-4131275b` Bench pack: define shared workloads.
-        - [x] `habu-bench-pack-implement-72607a92` Bench pack: implement runtime runners. Depends on `habu-bench-pack-define-4131275b`.
-        - [x] `habu-bench-pack-add-cb3ac540` Bench pack: add unified diff report. Depends on `habu-bench-pack-implement-72607a92`.
-      - [x] `habu-automate-gc-self-807cbd79` Automate GC self-improvement loop from ranked deltas. Depends on `habu-create-cross-runtime-056102b6`.
-        - [x] `habu-self-loop-rank-9d5c4220` Self-loop: rank bottleneck candidates.
-        - [x] `habu-self-loop-persist-f5acd7c3` Self-loop: persist run history. Depends on `habu-self-loop-rank-9d5c4220`.
-        - [x] `habu-self-loop-emit-73c9938b` Self-loop: emit next-dot recommendations. Depends on `habu-self-loop-persist-f5acd7c3`.
-      - [x] `habu-enforce-gc-parity-0ddebcf0` Enforce GC parity CI gates and fail regressions. Depends on `habu-automate-gc-self-807cbd79`.
-        - [x] `habu-ci-add-gc-0b97019b` CI: add GC parity job.
-        - [x] `habu-ci-fail-on-b00ee752` CI: fail on parity regressions. Depends on `habu-ci-add-gc-0b97019b`.
-        - [x] `habu-docs-publish-gc-a7ea765a` Docs: publish GC parity contract. Depends on `habu-ci-fail-on-b00ee752`.
-  - [x] `habu-raise-jit-coverage-4bfef8eb` Raise JIT coverage for Maxima hotspot call/data paths. Depends on `habu-profile-maxima-hotspots-977ac23d`.
-    - [x] `habu-jit-missing-call-7abc44ab` Add generic JIT lowering for missing call-target patterns (rooted `global_ref` designators for generic calls + explicit regression coverage).
-    - [x] `habu-jit-missing-data-714eb838` Add generic JIT lowering for missing vector/hash/string hot ops.
-  - [x] `habu-cut-vm-gc-511ec7d3` Cut VM/GC overhead in long CAS workloads. Depends on `habu-raise-jit-coverage-4bfef8eb`.
-    - [x] `habu-reduce-gc-root-04a18d48` Reduce GC root assembly overhead in collection paths.
-    - [x] `habu-shrink-transient-allocs-d4dbcf28` Shrink transient allocations in hot eval/VM paths.
-    - [x] `habu-gc-architecture-upgrade-4f113b2e` Upgrade GC architecture for lower pause/copy cost and lower RSS.
-      - [x] `habu-gc-telemetry-gates-1e9aa49f` Add phase-level GC telemetry and Maxima perf gates.
-      - [x] `habu-persist-gc-state-10a4377a` Persist GC state/work queues across collections.
-      - [x] `habu-root-slot-idx-582a4cc2` Add persistent root-slot index and dirty-epoch rebuild control. Depends on `habu-persist-gc-state-10a4377a`.
-      - [x] `habu-nursery-layout-scaffold-7aa479dc` Add nursery/tenured/LOS heap layout scaffolding. Depends on `habu-persist-gc-state-10a4377a`.
-      - [x] `habu-write-barrier-stores-2b8bf449` Add write barriers to all pointer mutators. Depends on `habu-nursery-layout-scaffold-7aa479dc`.
-      - [x] `habu-remembered-set-c9541b7e` Add card table + remembered set scanning APIs. Depends on `habu-write-barrier-stores-2b8bf449`.
-      - [x] `habu-minor-gc-collector-2f89a428` Implement minor GC with promotion policy. Depends on `habu-remembered-set-c9541b7e`.
-      - [x] `habu-tenured-collector-1dc6f7a9` Implement non-moving tenured mark-sweep collector. Depends on `habu-minor-gc-collector-2f89a428`.
-      - [x] `habu-large-obj-space-a5bd4ea3` Implement large-object space and pinning semantics. Depends on `habu-minor-gc-collector-2f89a428`.
-      - [x] `habu-vm-jit-barrier-0df52611` Wire VM/JIT store paths to barrier/safepoint hooks. Depends on `habu-write-barrier-stores-2b8bf449`.
-      - [x] `habu-gc-regression-perf-91ce5f3c` Add GC regression and throughput gates. Depends on `habu-minor-gc-collector-2f89a428`.
-  - [x] `habu-lock-hoist-api-0d6259d1` Lock `../hoist` API drift handling in Habu-side contract checks.
-    - [x] `habu-hoist-api-contract-6bac1b3e` Add compile/runtime contract probes for hoist interface.
-  - [x] `habu-perf-ci-and-2b7ac2f9` Add perf regression gates and unified docs. Depends on `habu-cut-vm-gc-511ec7d3`, `habu-lock-hoist-api-0d6259d1`.
-  - [x] `habu-post-hoist-jit-b9628ff3` Post-hoist JIT uplift execution.
-    - [x] `habu-compile-all-eligible-245a1bd0` Compile all eligible lambdas (replace single-candidate + `child_chunks[0]` assumption with robust chunk matching and coverage regressions).
-    - [x] `habu-retire-stale-hoist-7b69a1eb` Retire stale Habu-side hoist workarounds where no longer required; lock with backend regressions.
-    - [x] `habu-gate-jit-efficacy-77cafe97` Gate JIT efficacy in hotspot tooling and remove stale closed-dot recommendations.
-    - [x] `habu-rebaseline-post-hoist-5a1874e5` Rebaseline post-hoist JIT performance and document remaining blockers.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-22): `jit_compiled=397`, gate `pass=false` (`wins=0/5`, compiled delta `397`).
-      - Remaining blocker: JIT coverage is now broad, but current JIT mode is still slower than interpreter on tracked Maxima workloads.
-  - [x] `habu-unlock-generic-jit-026e30f3` Unlock generic JIT admission after post-hoist.
-    - [x] `habu-add-jit-skip-2302fb62` Add JIT skip-reason telemetry.
-    - [x] `habu-broaden-safe-admission-d08e543b` Broaden safe admission without opt-decl dependency.
-    - [x] `habu-rebaseline-admission-and-990a7df6` Rebaseline admission and gate on wins.
-    - [x] `habu-admit-safety-0-e37dc27b` Admit safety>0 lambdas now that bridge throw relay and eligibility checks are in place.
-    - [x] `habu-relay-jit-bridge-535dce04` Relay JIT bridge errors without panic.
-    - [x] `habu-restore-safe-safety-d68f98d7` Restore safe safety>0 JIT admission end-to-end and keep bridge error relay stable under Maxima benches.
-    - [x] `habu-fix-hoist-succ-cd841da5` Fix Hoist VCode successor corruption by compiling through a remap-stable allocator over a per-compile arena; add deep-branch JIT regression to keep >32-edge lowering stable without touching `../hoist`.
-    - [x] `habu-rca-unsupported-maxima-1968734c` Add precise first-unsupported-tag diagnostics to JIT compile failure logs and identify current Maxima wrapper blocker (`progv`) for follow-up lowering work.
-    - [x] `habu-add-jit-progv-50ea8db1` Add generic JIT support for `.progv` lowering so wrapper-style loops stop falling back to interpreter-only paths; fix literal-root collection for progv-wrapped call targets in both REPL and `compile_chunk` JIT paths.
-    - [x] `habu-rca-ratsimp-jit-63174079` RCA/fix Maxima `ratsimp` JIT slowdown caused by cross-workload benchmark carryover: add `bench-maxima --workloads=...`, add per-bench trace markers, force pre-timed GC after warmup, and wire `tools/maxima-hotspots` to run only selected workloads.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-22): `jit_compiled=397`, `jit_adm.cand=4145`, `jit_adm.sk_safety=0`, gate `pass=false`.
-      - Rebaseline (`zig build bench-maxima -Duse-hoist=true -- --scale=1 --json`, 2026-02-23): `jit_compiled=395`, `jit_adm.cand=4145`, `jit_adm.sk_safety=0`, loader `ok=85/85`.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `ratsimp` corrected from ~`308ms` artifact to ~`39ms`; gate still `pass=false` (`wins=0/5`) with JIT now within ~3-6% of interpreter on tracked workloads.
-      - Blocker: safety admission and bridge throw relay are stable, but runtime throughput still regresses versus interpreter on current real workloads.
-    - [x] `habu-unify-hotspot-interp-97f8c613` Run `tools/maxima-hotspots` JIT/interpreter baselines on hoist-only backend by adding runtime JIT disable switch (internal option/env) and removing `-Duse-hoist=false` interpreter dependency.
-    - Status (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-24): admission is now broadly active (`jit_adm.elig=3417`, `jit_compiled=548`, `jit_adm.sk_safety=0`) and no longer blocked by the original post-hoist zero-coverage condition.
-    - [x] `habu-profile-and-cut-b220c4d6` Profile remaining JIT runtime gap (integrate-first) after hoist-only baseline unification and land one measured hotspot optimization without semantic shortcuts.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): JIT runtime improved on `integrate` (~`173ms` -> ~`165ms`), `factor` (~`57.7ms` -> ~`53.0ms`), `ratsimp` (~`43.1ms` -> ~`40.1ms`), and `solve` (~`13.7ms` -> ~`13.1ms`) after function-resolution cache hot-path cleanup.
-      - Runtime sample at high scale (`/tmp/habu_integrate_jit_scale80.sample`) confirms remaining JIT overhead is dominated by `doCall` frame/setup work (keyword/rest/stack moves and chunk resolution), not function-cell lookup misses.
-    - [x] `habu-cut-docall-chunk-bf3ebffc` Cut `doCall` chunk/arity overhead on fixed-arity closure calls and rebaseline Maxima hotspots. Depends on `habu-profile-and-cut-b220c4d6`.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): JIT runtime improved again on `integrate` (~`165ms` -> ~`157ms`), `factor` (~`53ms` -> ~`51.7ms`), `ratsimp` (~`40.1ms` -> ~`38.8ms`), and `solve` (~`13.1ms` -> ~`12.8ms`) after fixed-arity call setup fast paths in `doCall`.
-      - Gate remains red (`wins=0..1/5`), but JIT/interpreter deltas narrowed materially and remaining loss is now concentrated in complex call-shape paths (`&key`/`&rest`/dynamic dispatch).
-    - [x] `habu-cut-docall-key-8d3eb630` Cut `doCall` `&key` boundary/validation overhead while preserving generic CL semantics. Depends on `habu-cut-docall-chunk-bf3ebffc`.
-      - Fixed `&optional`+`&key` boundary detection in `doCall`: positional scan now advances by one optional slot (not two), eliminating missed key starts and extra-positional acceptance bugs.
-      - Added regressions for invalid extra positional args on `&key` lambdas and odd-offset first-key detection with omitted optionals.
-      - Added `keyword_call` microbench to `bench/comprehensive_bench.zig` for dedicated tracking of `&key` call-path throughput in both JIT and interpreter modes.
-    - [x] `habu-cut-docall-forwarded-84455dbe` Cut forwarded-resolution churn in function-designator resolution paths without semantic shortcuts. Depends on `habu-cut-docall-key-8d3eb630`.
-      - Removed duplicate forwarded-resolution passes in symbol function-cell lookup/cache paths (`storeFnResolveCacheLive`, `lookupFunctionCellLive`) so `resolveFunctionValue` does one canonical symbol resolve before cache/cell checks.
-      - Rejected an attempted closure-specific resolve skip in `doCall` after A/B evidence showed `keyword_call` regression; kept canonical `doCall` resolution semantics unchanged.
-      - A/B rebaseline against parent commit (`734cd0a3`) showed slight real-workload improvements on current host in repeated `tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32` runs (notably `integrate`/`ratsimp`), with gate status still red (`wins=0/5`).
-    - [x] `habu-cache-keyword-allowlist-6325ee72` Cache small per-chunk `&key` allowlists in VM to avoid repeated plist walks on hot keyword calls while preserving generic fallback semantics. Depends on `habu-cut-docall-forwarded-84455dbe`.
-      - Added a GC-cleared VM cache keyed by chunk address for small keyword allowlists (`<=8`) so repeated `&key` calls skip per-call plist traversal while keeping fallback validation for uncached/large/irregular lists.
-      - Kept ANSI behavior unchanged (`:allow-other-keys` handling + unknown-key signaling) and retained generic list-walk fallback whenever cache population cannot prove a complete allowlist.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): best observed run improved to `integrate ~158.3ms`, `factor ~52.3ms`, `ratsimp ~40.0ms`, `solve ~13.0ms` with gate still red (`wins=0/5`).
-    - [x] `habu-profile-and-cut-d22c8611` Profile fresh post-cache call hotspots and land one measured runtime cut. Depends on `habu-cache-keyword-allowlist-6325ee72`.
-      - Fresh long-run integrate sample (`bench-maxima --workloads=integrate --scale=80`) still shows `doCall`/`resolveFunctionValue`/`resolveForwardedValue` as dominant VM runtime hotspots.
-      - Added a safe symbol-cache fast path in `resolveFunctionValue`: check function-resolution cache by symbol identity before any forwarded-value canonicalization, then resolve/recheck only on cache miss.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): best observed run improved to `integrate ~158.4ms`, `factor ~52.8ms`, `solve ~12.9ms` with gate still red (`wins=0/5`).
-    - [x] `habu-fold-key-valid-93c03c13` Fold `&key` unknown-key validation into a single pass while preserving `:allow-other-keys` semantics. Depends on `habu-profile-and-cut-d22c8611`.
-      - Replaced two-pass keyword validation (`scan for :allow-other-keys` then `scan for unknown keywords`) with one pass that tracks `allow_unknown`/`unknown_seen` while keeping ANSI semantics (later `:allow-other-keys` still overrides earlier unknown keywords).
-      - Retained per-chunk allowlist cache path and fallback list-walk semantics; only pass structure changed.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): runs improved to about `integrate ~157.3-157.7ms`, `factor ~52.2-52.9ms`, `ratsimp ~39.1-39.3ms` with gate still red (`wins=0/5`).
-    - [x] `habu-skip-redundant-docall-ed095926` Skip redundant `doCall` canonicalization for symbol-resolved function targets while preserving non-symbol forwarding safety. Depends on `habu-fold-key-valid-93c03c13`.
-      - Added a `fn_from_symbol_resolve` guard in `doCall` so symbol designators resolved through `resolveFunctionValue` (already canonicalized) skip an immediate second `resolveForwardedValue`; non-symbol call targets still canonicalize exactly as before.
-      - Verified `&key`/`allow-other-keys` and symbol-function regressions remain green; behavior is unchanged.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): observed runs around `integrate ~156.4-158.3ms`, `factor ~51.7-52.3ms`, `ratsimp ~39.0-39.6ms`; gate still red (`wins=0/5`).
-    - [x] `habu-specialize-stackmove-for-c4cdce70` Specialize `stackMove` tiny-count moves used by `doCall` keyword/rest layout paths while preserving overlap correctness. Depends on `habu-skip-redundant-docall-ed095926`.
-      - Added overlap-safe tiny-count (`1..4`) fast paths to `stackMove` for both forward and backward directions; larger moves keep the existing loop path.
-      - Focused keyword/allow-other-keys regressions stayed green, including keyword tail recursion/layout tests.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated on 2026-02-23): runs improved to about `integrate ~154.2-154.5ms`, `factor ~51.7-52.3ms`, `solve ~12.6-13.0ms` with gate still red (`wins=0/5`).
-    - [x] `habu-cache-chunk-const-5d3d9de8` Cache per-chunk constant forwarding fixups by GC epoch to remove repeated `loadConst -> resolveForwardedValue` hot-path churn. Depends on `habu-specialize-stackmove-for-c4cdce70`.
-      - Added VM direct-mapped `chunk_const_cache` keyed by `(chunk_addr, gc_count)` and chunk-wide constant refresh (`refreshChunkConsts`) on cache miss.
-      - Added focused VM regression `vm loadConst refreshes chunk constants per gc epoch` to lock post-GC constant slot repair behavior.
-      - Rebaseline (`bench-comp keyword_call`, 2026-02-23): improved to ~`137.28ms` (from ~`139ms` pre-dot on this host).
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): improved to about `integrate ~144.9ms`, `factor ~50.8ms`, `ratsimp ~37.9ms`, `solve ~12.3ms` (gate still red, `wins=0/5`).
-    - [x] `habu-fix-optional-key-eba6589b` Fix `&optional + &key` boundary semantics: only start keyword parsing inside optional slots when remaining args can form complete key/value pairs. Depends on `habu-cache-chunk-const-5d3d9de8`.
-      - Prevents lone trailing keyword values (for example `:eof` in `read-from-string`) from being misclassified as malformed keyword tails.
-      - Preserves paired-tail keyword starts needed by generated constructor-style call shapes (for example defstruct keyword initargs).
-      - Updated integration coverage in `src/tests/integration.zig` with `keyword optional boundary handles odd and paired tails`.
-    - [x] `habu-embed-jit-fn-ca3d429a` Embed a chunk-local hoist compiled-fn pointer and use it in `tryCallJit` to remove per-call hash lookup overhead while keeping register/unregister/rekey coherence.
-      - Added `Chunk.jit_fn` host pointer slot (`src/runtime/objects.zig`) and wired `registerJitFn`/`unregisterJitFn`/`rekeyJitFnsAfterGc` updates (`src/interp/vm.zig`).
-      - Switched REPL JIT registration failure cleanup to `unregisterJitFn` so chunk-local fast pointer state cannot go stale (`src/interp/repl.zig`).
-      - Added VM regression `vm registerJitFn updates chunk jit pointer fast path` (`src/interp/vm.zig`).
-      - A/B (`bench-comp --bench=keyword_call --iters=7`, 5-run samples, 2026-02-23): direct chunk pointer path (`tryCallJit` reads `chunk.jit_fn`) was slightly faster than lookup fallback on this host.
-    - [x] `habu-bypass-call-trace-9f281e27` Bypass `shouldTraceCallRet` helper calls and function-designator extraction on `.call`/`.ret` fast paths when call tracing is disabled.
-      - Kept tracing/filter semantics unchanged when `trace_call_ret` is enabled; only non-tracing hot path changed (`src/interp/vm.zig:4340`, `src/interp/vm.zig:4383`, `src/interp/vm.zig:4401`).
-      - Quick A/B loop on this host (`bench-comp --bench=keyword_call --iters=7`) favored the guarded path over unconditional helper calls after warmup drift.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): run reached near-parity on `integrate` (`jit ~139.30ms`, `interp ~139.69ms`), with gate still red overall.
-    - [x] `habu-add-last-chunk-e6c0dc0c` Add VM-local last-chunk/GC memo in `loadConst` so repeated loads in the same chunk/epoch skip extra chunk-const cache probes without changing chunk object layout.
-      - Added `const_last_chunk_key`/`const_last_gc_count` VM fields and wired them into `loadConst` + `clearChunkConstCache` (`src/interp/vm.zig`).
-      - Extended `vm loadConst refreshes chunk constants per gc epoch` regression to assert memo state updates.
-      - Rebaseline (`bench-comp --bench=keyword_call --iters=7`, 5 runs, 2026-02-23): observed runs around `137.29-138.14ms` with no functional regressions.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): all 5 workloads executed cleanly (no `UnhandledThrow`/`OutOfMemory`) with `integrate ~139.5ms`, `factor ~50.6ms`, `solve ~12.0ms`.
-    - [x] `habu-inline-caller-frame-d9a5b875` Make caller-frame restore infallible and inline dynamic-depth restore on hot return paths.
-      - Replaced `restoreCallerFrameAfterCall` `try push` with direct stack write/assert and switched callsites in `.call`/`.ret` to non-fallible restore (`src/interp/vm.zig`).
-      - Marked `restoreDynamicDepthsFromFrame` inline; kept handler restore-depth semantics unchanged.
-      - Revalidated return-frame regressions and hotspot baselines (`keyword_call`, `maxima-hotspots`), with no functional regressions and call-path microbench staying in the current improved band.
-    - [x] `habu-persist-jit-bridge-11514d83` Persist JIT bridge globals per owning VM and remove per-call bridge set/clear churn in `tryCallJit`.
-      - Added bridge context query/clear APIs in `src/jit/backend.zig` + `src/jit/backend_stub.zig`, exported via `src/jit/backend_api.zig`.
-      - Added VM-owned bridge install/uninstall lifecycle (`src/interp/vm.zig`: install on demand by context match, clear on `Vm.deinit` only when owner matches).
-      - Added regression `vm jit bridge lifecycle tracks owner vm` to lock owner-handoff and deinit-clear behavior.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `integrate` `137.42ms` vs interp `137.11ms` (near parity), `solve` `12.18ms` vs `12.17ms`, gate still red (`wins=1/5`, `pass=false`) with all workloads stable.
-    - [x] `habu-cache-jit-heap-e668f7d9` Cache JIT heap install path by separating heap-pointer ownership from alloc-cursor refresh.
-      - Added `heapContext` + `refreshHeapCursor` APIs in `src/jit/backend.zig` and `src/jit/backend_stub.zig`, exported via `src/jit/backend_api.zig`.
-      - Added `refreshJitHeap` VM helper (`src/interp/vm.zig`) and replaced hot bridge/tryCallJit `setHeap` calls with pointer-aware refresh (`setHeap` only on heap change, cursor refresh otherwise).
-      - Added backend regression `jit heap cursor refresh tracks heap alloc pointer` to lock cursor coherence after interpreter-side heap advances.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, repeated 2026-02-23): `integrate` improved into ~`135-137ms` band with stable loads; gate remains red (`wins=1/5`, `pass=false`), next work remains `factor`/`ratsimp` runtime gap.
-    - [x] `habu-cache-jit-bridge-2fe0c377` Cache JIT bridge install by backend bridge-epoch in VM hot call path.
-      - Added backend/stub `bridgeEpoch` API bumped on all bridge set/clear transitions and exported via `src/jit/backend_api.zig`.
-      - Added `Vm.jit_bridge_epoch` cache and switched `installJitBridges` to epoch fast-return; context probes now only run when epoch changed.
-      - Extended `vm jit bridge lifecycle tracks owner vm` regression with epoch-stability assertions on repeated install calls.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32`, 2026-02-23): workloads remain stable with `integrate`/`factor` near parity band; gate still red (`wins=1/5`, `pass=false`).
-    - [x] `habu-profile-factor-ratsimp-5d11722c` Profile `factor`/`ratsimp` runtime gap and cut symbol global-lookup hashing in hot call paths.
-      - Added VM direct-mapped symbol global-index cache (`global_index_cache`) in `lookupSymbolGlobalIndex` to avoid repeated `qualSymWithHeap` + `GlobalEnv.lookup` hashing on repeated symbol resolution.
-      - Invalidated the cache on `setGlobalEnv` and after each GC to avoid stale symbol/address/env-index reuse.
-      - Added focused regression `vm global index cache resets on env swap`.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 100 --workloads factor,ratsimp --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `factor` improved to `jit 9,369,996,000ns` vs `interp 9,882,324,916ns` (`interp/jit 1.0547`), `ratsimp` stayed near parity (`jit 6,695,341,292ns`, `interp 6,691,289,500ns`, `interp/jit 0.9994`), gate `wins=1/2`.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 1000 --workloads factor,ratsimp --heap-mb 1024 --nursery-mb 32`, 2026-02-23): `factor` stayed slightly JIT-faster (`jit 114,627,966,875ns`, `interp 115,220,234,083ns`, `interp/jit 1.0052`), `ratsimp` remained near parity (`jit 80,556,754,542ns`, `interp 80,388,892,959ns`, `interp/jit 0.9979`), gate still red (`wins=0/2`, threshold `1.01`).
-    - [x] `habu-optimize-survivor-age-3f9a53c5` Remove survivor-age hash-map overhead from GC hot path.
-      - Replaced `survivor_age_cur/next` `AutoHashMap` tables with semispace-indexed age arrays in `src/runtime/heap.zig`, removing Wyhash/getIndex churn from `nextSurvivorAge` and `rebuildSurvivorAges`.
-      - Added regression `heap survivor age table rebuild maps nursery slots` to lock age update, saturation, outside-nursery ignore, and clear-on-empty behavior.
-      - Revalidated GC behavior with focused tests (`minor gc promotes large survivors to tenured`, `tenuring policy lowers threshold on mature survivor pressure`) and `zig build bench -- --json`.
-      - Rebaseline (`tools/maxima-hotspots --json --scale 100 --workloads factor,ratsimp --heap-mb 1024 --nursery-mb 32`, 2026-02-23, repeated):
-        - `factor`: from ~`jit 9.37s / interp 9.88s` to ~`jit 7.23-7.30s / interp 7.20-7.25s` (~22-27% faster absolute runtime).
-        - `ratsimp`: from ~`jit 6.70s / interp 6.69s` to ~`jit 5.24-5.29s / interp 5.08-5.09s` (~21-24% faster absolute runtime).
-      - Gate status: still red on relative JIT-vs-interpreter wins (`wins=0/2`) even though both modes got materially faster.
-    - [x] `habu-rca-post-gc-ae2f4c30` RCA post-GC JIT relative gap.
-      - Root cause found in JIT-only GC refresh: `rekeyJitFnsAfterGc` rebuilt a hash map every collection (`src/interp/vm.zig`), and runtime samples repeatedly surfaced hash-map churn under GC-heavy `factor`/`ratsimp` runs.
-      - Replaced VM JIT registry from `AutoHashMap(usize,*CompiledFn)` to a compact entry list keyed by live chunk `Value` (`src/interp/vm.zig`), removed per-GC map rebuild/fetchPut churn, and updated REPL known-fn enumeration to iterate entries directly (`src/interp/repl.zig`).
-      - Updated all bench/test helpers from `jit_fns.count()` to `jit_fns.items.len` and adapted the GC rekey integration assertion from map-key existence to chunk-based lookup continuity (`src/tests/integration.zig`).
-      - Direct rebaseline (`./zig-out/bin/maxima_workload_bench --json --scale=120 --heap-mb=1024 --nursery-mb=32 --workloads=factor,ratsimp`):
-        - JIT: `factor 1,110,823,792ns`, `ratsimp 813,487,417ns`
-        - interp: `factor 1,086,767,666ns`, `ratsimp 779,890,125ns`
-        - ratios (`interp/jit`): `factor 0.9783`, `ratsimp 0.9587` (still red, but improved from earlier ~`0.9760` / `0.9469` on this host).
-      - Validation completed: `zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-maxima`; `zig build bench -- --json`.
-      - Validation blocked: `zig build test -- --test-filter ...` repeatedly hung in this environment (timed out at 240s with no emitted output), so full test-gate revalidation remains pending.
-    - [x] `habu-rca-jit-maxima-323d6d5d` RCA/fix JIT Maxima OOM in authoritative `bench-maxima` path.
-      - RCA: `tryCompileSpecialLet` held unrooted special-symbol/init temporaries across nested `compile()` calls; after multiple GC cycles stale symbol pointers were reinserted into heap lists (observed via `HABU_TRACE_BAD_STORE`), later exploding during GC copy as absurd symbol sizes (`~76TB` requests).
-      - Fix: root LET arg/binding cursors with compile-root tokens (`src/compiler/compile.zig`), root fast-path special symbol/init slices via temporary VM ext roots while compiling init forms (`src/compiler/compile.zig`), and resolve list elements/tails before cons construction (`src/compiler/compile.zig`).
-      - Validation: `bench-maxima` JIT mode now passes for `factor,ratsimp` at `--scale=1`, `--scale=20`, and `--scale=120` with `--heap-mb=1024 --nursery-mb=32`; `HABU_TRACE_BAD_STORE=1` run is clean (no invalid symbol-store panic).
-    - [x] `habu-root-compiler-temp-2a9b1e4b` Root compiler special-LET temp values against moving-GC during nested compile.
-    - [x] `habu-close-post-fix-77d8f862` Close post-fix factor/ratsimp gap. Depends on `habu-rca-jit-maxima-323d6d5d`.
-      - Reprofile (`tools/maxima-hotspots --json --scale 1 --workloads factor,ratsimp --heap-mb 1024 --nursery-mb 32`, 2026-02-24): `factor` remains slightly JIT-faster (`interp/jit ~1.018`), `ratsimp` remains JIT-slower (`interp/jit ~0.959`), gate still red (`wins=1/2`).
-      - Reprofile (`tools/maxima-hotspots --json --scale 120 --workloads factor,ratsimp --heap-mb 1024 --nursery-mb 32`, 2026-02-24): both workloads currently JIT-slower (`factor ~0.993`, `ratsimp ~0.970`), confirming remaining runtime gap is steady-state, not scale-1 noise.
-      - Added call-shape telemetry path to remove attribution blind spots before next runtime cuts.
-    - [x] `habu-add-call-shape-62cebbaf` Add per-call-shape VM counters for `doCall` hot-path attribution. Depends on `habu-close-post-fix-77d8f862`.
-      - Added gated VM counters for `fixed`/`optional`/`key`/`rest`/`dynamic`/`tail` call shapes and surfaced load/run deltas in `bench-maxima` JSON and text output.
-      - Wired `tools/maxima-hotspots` to ingest and report `call_shape(run)` for both JIT and interpreter runs.
-      - Validation sample (`tools/maxima-hotspots --json --scale 120 --workloads factor,ratsimp`): `total=5,088,004` call sites with high `dynamic` share (`4,848,004`), confirming dynamic-call path remains the dominant optimization target.
-    - [x] `habu-add-direct-jit-40f23edc` Add direct JIT entry stubs for dominant fixed-arity call signatures to bypass generic frame setup. Depends on `habu-add-call-shape-62cebbaf`.
-      - Added VM fixed-arity direct JIT call path (`tryDirectCallJit`) for closure-valued call sites with no `&optional`/`&key`/`&rest`, bypassing generic `doCall` frame setup on eligible interpreted calls.
-      - Refactored JIT invoke flow into shared `runJitCompiled` path and exposed `jit_direct_calls` telemetry in `bench-maxima`/`tools/maxima-hotspots`.
-      - Validation (`tools/maxima-hotspots --json --scale 1 --workloads factor,ratsimp`, 2026-02-24): `jit_direct_calls_jit=309`, `jit_direct_calls_interp=0`, confirming direct path activation in JIT mode only.
-      - Added integration regression `compileChunk direct JIT closure calls bypass generic call setup` (`src/tests/integration.zig`); focused `zig build test -- --test-filter ...` remains blocked by environment hang/timeout and needs follow-up once runner stability is fixed.
-    - [x] `habu-persist-session-jit-4dfb2dd6` Add session-persistent JIT cache keyed by stable chunk identity + GC epoch for loader/runtime reuse. Depends on `habu-add-direct-jit-40f23edc`.
-      - Added VM JIT compile-status cache (`none/compiled/unsupported/failed`) keyed by deterministic chunk fingerprints (chunk metadata + bytecode + literal fingerprints), with `failed` scoped to current GC epoch and `unsupported` persisted across epochs.
-      - Wired REPL and `compileChunk` hoist pipelines to consult cache before compile, skip redundant compile attempts on cache hits, and record outcomes after each attempt.
-      - Extended JIT admission telemetry with cache counters (`cache_comp`/`cache_unsupported`/`cache_failed`) and surfaced them via existing `jit_adm` JSON payloads.
-      - Validation (`tools/maxima-hotspots --json --scale 1 --workloads factor --heap-mb 1024 --nursery-mb 32`, 2026-02-24): `jit_adm.cache_unsupported=3` confirms repeated unsupported compile attempts are now skipped during Maxima load; JIT loader dropped into ~`15.2s` band on this host (from prior ~`16.2s` runs).
-    - [x] `habu-speed-up-forwarding-edeeb1ad` Speed up forwarding target validation (rejected).
-      - RCA sample pointed at `runtime.objects.forwardingTargetLooksValid` alignment helpers under GC-heavy `factor`/`ratsimp`.
-      - Trialed branch-light bitmath validation helpers in `src/runtime/objects.zig` with focused helper tests.
-      - A/B showed no proven real-workload gain and occasional regressions; reverted trial and kept the existing correctness path.
+#### Functions to fix (16 total):
 
-### 0. Plan Control
-- [x] `habu-unify-plan-and-1848633e` Unify plan and dot tree.
-- [x] `habu-run-full-ansi-a5719d99` Run full ANSI baseline and refresh machine-readable results.
-- [x] `habu-harden-dot-finish-4f517fdb` Harden `tools/dot-finish` test gate with timeout controls so stalled full-suite runs cannot leak long-lived processes.
-- [x] `habu-fix-cpl-methodspecializer-314f1d0a` Fix `cpl_test` MethodSpecializer API drift and stabilize full-test blockers found while re-running the gate (`mv` conditional-jump test macro dependency + quasiquote forwarded-list crash under smallest-heap stdlib load).
-- [x] `habu-hoist-cleanup-gate-2b9f46d0` Hoist migration cleanup gate before resuming Maxima active work.
-  - [x] `habu-audit-legacy-backend-f3c3848f` Audit legacy backend references and anti-patterns.
-  - [x] `habu-drop-dead-ir-27996ee9` Drop dead legacy IR backend export/module.
-  - [x] `habu-scrub-stale-backend-d8b2bb66` Scrub stale backend docs and invalid file references.
-  - [x] `habu-verify-hoist-only-4707566f` Verify hoist-only live paths via grep/build.
-  - [x] `habu-perf-audit-2x-16c402b2` Performance audit and 2x plan.
+| Function | Line | Pattern | Error type |
+|----------|------|---------|------------|
+| `jitCons` | 367 | `allocCons catch return 0` | OOM |
+| `jitMakeHash` | 795 | `allocHashTable catch return nil` | OOM |
+| `jitHashSet` | 829-830 | `math.mul catch`, `growHashTable catch` | Overflow, OOM |
+| `jitHashTest` | 883 | `heap.intern catch` | OOM |
+| `jitHashKeys` | 898 | `allocCons catch` (in loop) | OOM |
+| `jitHashAlist` | 915-916 | `allocCons catch` (2x in loop) | OOM |
+| `jitMakeVector` | 934 | `allocVector catch` | OOM |
+| `jitMakeString` | 985 | `allocStringUninitialized catch` | OOM |
+| `jitInternName` | 996 | `heap.intern catch` | OOM |
+| `jitMakeArray1` | 1024 | `allocArray catch` | OOM |
+| `jitArefN` | 1141-1144 | `math.mul/add catch` (index calc) | Overflow |
+| `jitAsetN` | 1219-1222 | `math.mul/add catch` (index calc) | Overflow |
+| `jitMakeArrayDynamic` | 1322 | `jitAllocArrayFromDims catch` | OOM |
+| `jitStrConcat` | 1375-1389 | `math.add catch`, `allocString catch` | Overflow, OOM |
+| `jitSubstring` | 1422 | `substring catch` | OOM |
+| `jitFormatSimple` | 1588-1655 | multiple alloc catches | OOM |
 
-### 1. Reader/Parser
-- [x] `habu-add-reader-support-bf089de4` Add reader `#.` support.
-- [x] `habu-fix-na-terminal-75305000` Fix `#nA` terminal element parsing.
+#### Pattern (mechanical replacement):
+```zig
+// BEFORE:
+const result = heap.allocCons(car, cdr) catch return 0;
+// AFTER:
+const result = heap.allocCons(car, cdr) catch |err| jitRelayError(err);
+```
 
-### 1B. Performance 2x
-- [ ] `habu-2x-perf-exec-68f37b3e` Execute 2x performance plan.
-  - [x] `habu-audit-hoist-api-6ace8084` Audit hoist API delta.
-  - [x] `habu-adapt-habu-to-7e7240c7` Adapt Habu to hoist API changes.
-  - [x] `habu-rewire-jit-eligibility-699cbe9e` Rewire JIT eligibility after API sync.
-  - [x] `habu-rebaseline-perf-post-b340b0e2` Rebaseline perf after hoist sync.
-  - [x] `habu-fix-bench-comp-4a26be60` Fix comprehensive benchmark JIT crash (gcd path).
-  - [x] `habu-raise-jit-coverage-51d21fa9` Raise JIT coverage for current interpreter-only workloads.
-    - [x] `habu-hash-insert-bench-fcce9fed` JIT `make-hash-table`/`setf gethash`/`hash-table-count` benchmark path.
-    - [x] `habu-hash-lookup-bench-65e5589f` JIT `gethash` lookup path with hash growth-safe set.
-    - [x] `habu-str-search-bench-ec385e1b` JIT `make-string`/`setf char`/`position` benchmark path.
-    - [x] `habu-gc-vector-bench-b4995d1c` JIT `make-array`/`aref` benchmark path.
-    - [x] `habu-mapcar-bench-jit-622b58d5` Add mapcar fast paths for 1/2 list arities and preserve variadic semantics.
-    - [x] `habu-reduce-bench-jit-b7c95d90` Optimize stdlib reduce hot path (`#'+`, non-`:from-end`) with loop fast path and preserve fold semantics.
-    - [x] `habu-sort-fixnum-bench-f2e5e01d` Optimize `sort` list path with copy-once working-list recursion (preserve designator semantics).
-    - [x] `habu-sort-str-bench-a3f88f51` Add direct `string<` comparator fast path in stdlib merge-sort (symbol/function designators).
-    - [x] `habu-jit-float-support-91148537` Resolve float call-target and boxed-float lowering.
-    - [x] `habu-str-concat-bench-c576d53b` Add direct string concatenate fast path (1/2-arg hot cases + 3+-arg prealloc path) and keep generic fallback semantics.
-    - [x] `habu-intern-bench-jit-1a268ee9` Fix JIT call-arg cycle handling for helper calls and optimize simple `format`+`intern` hot path.
-    - [x] `habu-fix-jit-helper-aadb5b24` Fix BLR helper call arg-cycle corruption and extend compiled arity bridge (`callFromValues`) through arity 8.
-    - [x] `habu-fix-jit-heap-62c0436e` Keep JIT heap cursor sync monotonic and add intern+format distinct-symbol regression guard.
-    - [x] `habu-fix-jit-bridge-685a2246` Preserve inline-cons cursor across JIT↔VM bridge calls and force call-arg cycle fixing for generic non-self calls (nqueens helper-entry regression).
-    - [x] `habu-fix-jit-lt-caa8b70b` Fix JIT `<` helper-call argument corruption from unsafe round-trip MOV elimination in call setup (bench-comp `intern`/perf-loop crash path) and add loop regression.
-    - [x] `habu-improve-fixnum-loop-64cf30de` Reclassify untagged arithmetic loops as non-cross-call JIT functions so `fixnum_loop`/`fixnum_mul` can compile with aggressive optimization; add backend unit tests for helper-call classification.
-    - [x] `habu-gc-cons-bench-b9c87ffb` Close `gc_cons` JIT cons-loop gap by removing per-iteration generic `+` helper calls in safety=0 loops.
-      - RCA (`BENCH-GC-CONS` hoist dump, 2026-02-24): `(+ i 1)` in the loop body was still lowered to `call_indirect jitAddNum` on every iteration, dominating runtime even with inline cons allocation.
-      - Fix (`src/jit/backend.zig`): add guarded fixnum fast paths for generic `.add`/`.sub` in safety=0 mode (`fixnum tag check -> 63-bit range check -> inline math`, else helper fallback), preserving generic arithmetic semantics on non-fixnum and overflow paths.
-      - Added backend regression `hoist IR translator: generic add fixnum guard fallback`.
-      - Rebaseline (`zig build bench-comp -- --bench=gc_cons --iters=12 --json`, 2026-02-24): improved from ~`1.7-1.9ms` to ~`0.69-0.74ms` on this host.
-    - [x] `habu-ack-bench-0-b7dec251` Close `ack` JIT benchmark gap to SBCL.
-      - Rebaseline (`tools/comprehensive-bench --json --iters=1`, 2026-02-24): Habu JIT `ack` is faster than SBCL on this host.
-    - [x] `habu-nqueens-bench-0-e42d3cd8` Close `nqueens` JIT benchmark gap to SBCL.
-      - [x] `habu-elide-mirrored-entry-d27455d8` Elide mirrored entry MOV windows from TCO-lowered entry blocks with liveness guards.
-        - Added `eliminateMirroredEntryMovs` in `src/jit/backend.zig` (entry-window only, exact mirror matching, disjoint source/destination set validation, temp liveness check) and pass-level regressions.
-        - Rebaseline (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=60 --json`, 2026-02-24): `~3.44ms` (no measurable `nqueens` gain; kept as safe codegen cleanup).
-      - RCA/fix (`src/jit/backend.zig`, 2026-02-24): tail-call conversion (`use_tco`) flipped `is_recursive=false`, which unintentionally disabled recursive fixnum-inline lowering and reintroduced helper-call slow paths (`jitSubNum`/`jitNumEq`/`jitAddNum`) in `NQUEENS-SAFE-P`.
-      - Fix: separate `fixnum_inline` eligibility from mutable `is_recursive` call-shape state so TCO loops keep recursive fixnum-inline lowering enabled.
-      - Added backend regression `hoist IR translator: tco keeps recursive fixnum inline lowering`.
-      - A/B (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=8 --json`, 2026-02-24): parent `817a1145` ~`76.7ms` -> post-fix ~`3.94ms` (root-cause regression removed).
-      - Harness uplift (`bench/comprehensive_bench.zig`, 2026-02-24): replaced per-iteration `repl.eval(expr)` timing with pre-resolved runner function calls via `Vm.callFromStackAtFast`, and switched nqueens bench expression to `bench-nqueens` for the same no-arg runner path used by other benches.
-      - RCA/fix (`src/interp/repl.zig`, `src/jit/backend.zig`, 2026-02-24): non-fatal IR deep-copy failures in `doHoistCompile` returned early after `registerJitFn`, which skipped post-registration `patchCrossCallsToBL` and hid compile success telemetry for affected functions (including `NQUEENS-SOLVE`).
-      - Fix: make IR-copy miss non-fatal without early return, continue through the normal patch/flush/success path, and add `HABU_TRACE_JIT_PATCH` tracing with before/after call-op counts (`NQUEENS-SOLVE patched=2`, `blr=2->0`, `bl=1->3` on current run).
-      - Rebaseline (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=40 --json`, 2026-02-24): `~3.48ms` (still open; SBCL reference with `sbcl --script bench/comprehensive.lisp --json --iters=40 --bench nqueens10` is `~3.06ms`, ~`0.88x`).
-      - Rebaseline (`zig build -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=60 --json`, 2026-02-24): `~3.44ms` vs SBCL `~3.11ms` (`sbcl --script bench/comprehensive.lisp --json --iters=60 --bench nqueens10`), still open at ~`0.90x`.
-      - [x] `habu-nqueens-profile-residual-7ff0bf92` Profile the residual `nqueens` gap and land one measured generic optimization.
-        - Profiling (`sample`, `HABU_DUMP_HOIST`, `HABU_TRACE_JIT_PATCH`) showed the residual hotspot remained inside JIT native code, with `NQUEENS-SAFE-P` carrying mirrored entry move windows (`mov t,a ... mov a,t`) after first compaction.
-        - Fix (`src/jit/backend.zig`): extend `eliminateMirroredEntryMovs` to drop redundant restore legs even when temp aliases stay live, and run the pass after first `compactNops` so it sees normalized entry windows.
-        - Added/updated pass-level regressions for dead-temp full elimination, dependent-chain no-op, and live-temp restore-leg elimination.
-      - Rebaseline (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=60 --json`, 2026-02-24): `~3.15ms` vs SBCL `~3.09ms` (`sbcl --script bench/comprehensive.lisp --json --iters=60 --bench nqueens10`), improving from ~`3.51ms` (~`0.98x` of SBCL).
-      - [x] `habu-nqueens-fuse-tagged-e297d675` Add a generic tagged-abs peephole for hot compare loops and rebaseline (rejected after A/B).
-        - Implemented and benchmarked a tagged-abs ladder fusion candidate in `src/jit/backend.zig`, then A/B compared against parent commit `17789016` using five repeated `nqueens10` runs (`--iters=60`) in isolated workspaces.
-        - Result: candidate averaged slightly slower (`~3.150ms`) than parent (`~3.142ms`) on this host; reverted backend changes and kept current codegen path.
-      - [x] `habu-jit-re-evaluate-9f8decf7` Re-evaluate `.aggressive` gating for call-free load-heavy functions (rejected).
-        - Trialed relaxing the backend gate to allow `.aggressive` for call-free functions with loads.
-        - Result: `nqueens10` benchmark stopped completing within timeout (`timeout 30 ... --bench=nqueens10 --iters=60` exit `124`), so the change was reverted; keep load-bearing functions on `.none` until hoist-side load-path optimization issues are resolved.
-      - [x] `habu-elide-dead-cross-7c16bf2a` Elide dead cross-call target materialization after BLR→BL rewrites.
-        - Fix (`src/jit/backend.zig`): in `patchCrossCallsToBLSlice`, run post-rewrite register liveness on the materialized target register and NOP the MOVZ/MOVK load chain when dead, including non-adjacent materialization windows.
-        - Added regressions: `patchCrossCallsToBL elides dead non-adjacent target materialization` and `patchCrossCallsToBL keeps shared target load alive until last use`.
-        - Validation: `zig build test -Dtest-filter=patchCrossCallsToBL` (2026-02-24) passes.
-        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): baseline avg `3,142,758ns`, patched avg `3,142,358ns` (~`0.013%` faster, neutral-to-slight win) with no regression.
-      - [x] `habu-prune-dead-callee-a546ec48` Prune dead callee-save slots in JIT output (rejected).
-        - Attempted `eliminateDeadCalleeSaveSlots` in `src/jit/backend.zig` (wired in compile pass pipeline and post-`patchCrossCallsToBLSlice`) with focused backend tests.
-        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): baseline avg `3,239,533ns`, patched avg `3,406,683ns` (~`5.1%` slower).
-        - Result: rejected and backend changes reverted.
-      - [x] `habu-tune-known-call-ed6b1941` Tune known-call inlining threshold (rejected).
-        - Trialed wider `translateCrossCall` inline-node caps for known non-recursive callees in `src/jit/backend.zig`.
-        - Verification (`HABU_TRACE_JIT_PATCH=1`, 2026-02-24) showed `NQUEENS-SOLVE` remained `patched=2 blr=2->0 bl=1->3` with unchanged call shape, so `NQUEENS-SAFE-P` was still not inlined.
-        - Result: no proven `nqueens10` win; reverted threshold changes and kept the original inline cap.
-      - [x] `habu-localize-constants-in-ba1454f5` Localize constants in TCO cross-call functions (rejected).
-        - Trialed broadening `translator.local_consts` in `src/jit/backend.zig` from `TCO + non-tail-self-call` to `TCO + (non-tail-self-call or cross-call)`.
-        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): baseline avg `3,137,916ns`, patched avg `3,139,066ns` (~`0.04%` slower).
-        - Result: rejected and reverted.
-      - [x] `habu-abs-sub-fastpath-6eb95baf` Add abs(sub) tagged fast path (rejected).
-        - Trialed a targeted `translateAbs` fast path in `src/jit/backend.zig` for `.abs(.sub/.fixnum_sub)` to compute `abs(l_raw-r_raw)+1` directly, with a focused translator regression.
-        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): baseline avg `3,339,458ns`, patched avg `3,421,358ns` (~`2.4%` slower).
-        - Result: rejected and reverted.
-      - [x] `habu-stabilize-nqueens-bench-d2bee0b5` Stabilize nqueens bench environment (rejected).
-        - Trialed benchmark harness changes in `bench/comprehensive_bench.zig`: higher default heap and forced pre-timed GC stabilization flow.
-        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): baseline avg `3,338,708ns`, patched avg `3,386,408ns` (~`1.4%` slower).
-        - Result: rejected and reverted.
-      - [x] `habu-fast-path-num-526ad4e5` Fast-path `.num_eq` for `fixnum_fast` mode (rejected).
-        - Trialed `src/jit/backend.zig`: route `translateNumEq` through `translateCmpFixnumFastFallback(.eq, jitNumEq, ...)` when `fixnum_fast`, and added `jitNumEq` helper fast path via `jitFastNumCmp(.eq)`.
-        - Added focused regressions (`hoist IR translator: generic num_eq fixnum guard fallback`, `jit numeric compare helpers fast path fixnum and float`) and revalidated existing nqueens recursive JIT regression.
-        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): parent workspace avg `3,153,800ns`, patched avg `3,237,992ns` (~`2.7%` slower).
-        - Result: rejected and reverted.
-      - [x] `habu-elide-return-trampoline-dff6cf6b` Elide return trampoline branches (rejected).
-        - Trialed `src/jit/backend.zig`: rewrite `mov xN,xM; b L` to `mov x0,xM; ret` when `L` is a return trampoline (`mov x0,xN; ret`), plus focused pass regressions.
-        - Validation: focused tests passed (`eliminateReturnTrampolineBranches rewrites mov+b trampoline chain`, `...keeps mismatched source chains`, `compileChunk JIT handles recursive nqueens helper entry copies`).
-        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 5 runs each, 2026-02-24): parent workspace avg `3,153,800ns`, patched avg `3,363,217ns` (~`6.6%` slower).
-        - Result: rejected and reverted.
-      - [x] `habu-restore-known-fn-8dd48c03` Restore known-function IR deep-copy coverage for JIT metadata.
-        - RCA (`HABU_TRACE_JIT=1`, 2026-02-24): `src/compiler/ir.zig:deepCopyIr` rejected many JIT-translatable tags (`UnsupportedIrNode`), causing `src/interp/repl.zig` to log `IR copy skipped` (115 occurrences in the previous trace) and leaving `KnownFn.ir_body/param_names` null for known-call analysis paths.
-        - Fix (`src/compiler/ir.zig`): extend `deepCopyIr` coverage to the full translator-supported subset (block/progv/lambda copies, unary/binary helper ops, hash/vector/string/array forms), add reusable deep-copy helpers, and lock with `deepCopyIr copies block-wrapped recursive shape`.
-        - Validation (`zig build test`, 2026-02-24): `deepCopyIr` regression plus existing nqueens recursive JIT regressions all pass.
-        - Reprofile (`HABU_TRACE_JIT=1 ... --bench=nqueens10 --iters=1`): `IR copy skipped` dropped from `115` to `0`; `NQUEENS-SAFE-P` and `NQUEENS-SOLVE` now retain deep-copied IR metadata.
-      - [x] `habu-trial-guarded-tco-d9b81301` Trial guarded TCO cross-call inlining (rejected).
-        - With deep-copy restored, re-enabling the existing cross-call TCO inliner path in `src/jit/backend.zig:translateCrossCall` became active and immediately reproduced the known nested-loop regalloc instability.
-        - Runtime outcome: `comprehensive_bench --bench=nqueens10` terminated unexpectedly under the trial path; backend trial changes were reverted.
-        - Decision at trial time: revert this broad gate; superseded by `habu-rca-cross-call-be2ead9a` with a stricter structural admission rule.
-      - [x] `habu-rca-cross-call-be2ead9a` RCA and fix cross-call TCO nested-loop instability without hoist changes.
-        - RCA (`src/jit/backend.zig:translateCrossCall`): the previous crash came from an over-broad recursive-callee gate (`callsItself`) that inlined non-tail-self-recursive callees into loop callers; the safe shape is stricter (`tail-self only`, no non-tail self-calls) and should only fire on hot recursive loop callers.
-        - Fix (`src/jit/backend.zig`): restore cross-call TCO inlining with a structural safety gate:
-          - caller must be recursive and loop-shaped (`self.is_recursive`, `self.has_loops`);
-          - callee must be load-bearing and medium-sized (`24 <= countIrNodes <= 200`, `containsLoads`);
-          - callee recursion must be tail-only (`hasSelfTailCalls && !hasNonTailSelfCalls`).
-        - Follow-up RCA (`2026-02-24`): real-workload panic in cross-call analysis came from dereferencing `.lit` symbol payloads in compile-time self-call detection over deep-copied known-callee IR; stale literal pointers can no longer be assumed safe.
-        - Follow-up fix:
-          - `src/jit/backend.zig`: restrict static call-target/self-name analysis (`getCallTargetName`, `isCallTargetSelf`) to `.global_ref` only.
-          - `src/jit/backend.zig`: add `IrTranslator.callTargetName` so runtime primitive/known-call dispatch still supports `.lit` call targets through rooted current-IR literal slots (`literal_roots`) without scanning stale deep-copied literals.
-          - `src/interp/vm.zig`: clear stale `chunk.jit_fn` pointers during `rekeyJitFnsAfterGc` and reject stale nursery chunk addresses in `lookupJitFn`, fixing stale-pointer fast-path lookups after chunk movement.
-        - Validation:
-          - `zig build test -Dtest-filter='compileChunk JIT handles recursive nqueens helper entry copies'`
-          - `zig build test -Dtest-filter='hoist IR translator: tco keeps recursive fixnum inline lowering'`
-          - `zig build test -Dtest-filter='call target helpers validate literal symbol pointers'`
-          - `zig build test -Dtest-filter='compileChunk JIT generic float arithmetic and compare stay correct'`
-          - `zig build test -Dtest-filter='compileChunk rekeys JIT map after chunk movement GC'`
-          - `zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --json --iters=1` (no bench failures).
-          - `tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32 --workloads factor,ratsimp` (no panic).
-        - A/B (`--bench=nqueens10 --iters=80`, 5 runs each, 2026-02-24): parent `3,145,450ns` -> patched `3,080,125ns` (~`2.1%` faster).
-        - SBCL parity rebaseline (`sbcl --script bench/comprehensive.lisp --json --iters 80 --bench nqueens10`, 5 runs, 2026-02-24): SBCL avg `3,086,800ns`; Habu JIT avg `3,080,125ns` (slightly faster on host).
-      - [x] `habu-profile-nqueens-residual-7ea7e597` Fix rooted-literal self-call classification in residual nqueens recursion paths.
-        - RCA (`HABU_TRACE_JIT_XCALL=1`, 2026-02-24): after static `.lit` hardening, `NQUEENS-SAFE-P` self-recursive calls fell back to `mode=generic` because recursion/tail-call detection only recognized `.global_ref`.
-        - Fix (`src/jit/backend.zig`):
-          - add literal-root-aware call-target helpers for current-lambda analysis (`detectSelfCallsWithLiteralRoots`, `hasSelfTailCallsWithLiteralRoots`, `hasNonTailSelfCallsWithLiteralRoots`, `hasNestedSelfCallsWithLiteralRoots`, `containsPrimitiveCallsWithLiteralRoots`, `hasAnyNonSelfCallsWithLiteralRoots`);
-          - keep no-root analysis conservative for deep-copied known bodies (`.global_ref` only);
-          - route `translateCall` self/known/primitive dispatch through rooted `callTargetName` for current IR.
-        - Validation:
-          - `zig build test -Dtest-filter='literal roots restore self-call detection for lit targets'`
-          - `zig build test -Dtest-filter='compileChunk JIT handles recursive nqueens helper entry copies'`
-          - `zig build test -Dtest-filter='compileChunk JIT generic float arithmetic and compare stay correct'`
-          - trace check: `JIT_XCALL caller=NQUEENS-SAFE-P ... mode=generic` removed, `JIT_XCALL caller=NQUEENS-SOLVE ... mode=self` preserved.
-      - [x] `habu-inline-threshold-for-1269a322` Inline-threshold trial for known-loop helper (rejected).
-        - Trialed broader known-callee inlining in `src/jit/backend.zig:translateCrossCall` for `NQUEENS-SAFE-P` (`31` IR nodes).
-        - A/B (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, repeated, 2026-02-24): trial regressed heavily on this host and was reverted.
-        - Decision: keep the prior inline cap and structural cross-call TCO gate; no fallback path introduced.
-      - [x] `habu-declare-nqueens-wrappers-0d6a58a4` Enforce optimize declarations for every JIT benchmark `defun`.
-        - Fix (`bench/comprehensive_bench.zig`): add missing `(declare (optimize (speed 3) (safety 0)))` to `nqueens` and `bench-nqueens` in `setup_jit2`, and to `bench-key-target` in `setup_jit`.
-        - Guard: add compile-time checker (`requireJitOptDeclsPerDefun`) that fails build when any `setup_jit`/`setup_jit2` `defun` omits the declaration.
-        - Rebaseline (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=nqueens10 --iters=80 --json`, 2026-02-24): `3.308ms`; SBCL reference (`sbcl --script bench/comprehensive.lisp --json --iters 80 --bench nqueens10`) `3.119ms`.
-        - Rebaseline (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-comp -- --bench=keyword_call --iters=7 --json`, 2026-02-24): `135.159ms`.
-  - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
-  - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
-  - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).
-  - [x] `habu-reverify-hoist-compile-b48554f1` Reverify hoist compile gate after latest upstream rebuild.
-  - [x] `habu-enforce-dual-perf-88246c10` Enforce dual perf evidence (microbench + real workload) for closing perf dots and wire gate checks/docs.
-    - `tools/dot-finish` now auto-detects perf dots by metadata and requires both micro (`DOT_FINISH_PERF_MICRO_CMD`) and real-workload (`DOT_FINISH_PERF_REAL_CMD`) evidence commands before dot closure, with timeout enforcement and persisted artifacts under `bench/results/perf-dot/<dot-id>/<timestamp>/`.
-    - `tools/maxima-hotspots` now reports call-shape run counters in JSON/text/markdown outputs so perf closures include workload-level runtime attribution, not just aggregate timings.
-    - `docs/maxima-hotspots.md` regenerated with current report format (including call-shape telemetry).
-  - [x] `habu-assoc-releasefast-parity-5b658109` Close ReleaseFast `assoc` gap to SBCL by reducing `jitAssoc`/helper overhead (current Habu JIT ~2.79-2.83ms vs SBCL ~2.77-2.78ms, ~0.98-1.00x).
-    - [x] `habu-jitassoc-raw-tag-a25755cd` Rewrite `jitAssoc` hot loop to raw tagged checks to remove `Value` predicate/assert overhead from Debug benchmark runs.
-    - [x] `habu-jit-num-compare-cfdaf4dc` Add fixnum/float fast paths to `jitLtNum`/`jitLeNum`/`jitGtNum`/`jitGeNum` and lower fixnum-fast compare IR through a fast-path+helper-fallback split.
-    - [x] `habu-assoc-releasefast-hotspot-f661bdd1` Profile ReleaseFast `assoc` after helper fast paths, isolate dominant remaining cost, and land one root-cause optimization with rebench.
-    - [x] `habu-assoc-helper-c-49a60b1f` Evaluate C fast-helper replacement for `jitAssoc` (rejected after rebench; keep Zig helper path).
-    - [x] `habu-tune-zig-jitassoc-d02c42bd` Tune `jitAssoc` loop shape in Zig (no C helper) and keep only measured ReleaseFast wins (rejected tested reshape after regression).
-    - [x] `habu-extend-cross-call-6d173600` Extend cross-call BL patching to 64-bit target materialization patterns (`MOVZ+MOVK+MOVK+MOVK`) with focused backend coverage.
-    - [x] `habu-compact-patched-bl-1fa5f4d1` Compact rewritten helper call sites by patching direct `BL` + return-skip branch instead of NOP-heavy MOV materialization stubs (rejected after ReleaseFast `assoc` regressions).
-    - [x] `habu-prove-blr-target-ad05fbd8` Prove BLR target integrity across helper-call arg materialization (`MOV`/`MOVZ`/`MOVK`) with machine-code regressions before retrying cached helper-pointer lowering.
-    - [x] `habu-detect-blr-imm-382c3cd1` Add a backend detector + regressions for the observed BLR target clobber signature (single `MOVZ` overwrite after earlier target imm chain) to lock RCA before repair work.
-    - [x] `habu-repair-one-blr-9397cf99` Repair the detected single-`MOVZ` BLR target clobber signature in `fixBlrTargetClobber` and lock with backend machine-code tests (follow-up still required for remaining cached-pointer crash forms).
-    - Rebaseline (`zig build -Doptimize=ReleaseFast bench-comp -Duse-hoist=true -- --json --bench=assoc --iters=30`, 2026-02-23): Habu JIT `assoc` = `2.79-2.83ms` (repeat runs); SBCL reference (`sbcl --script bench/comprehensive.lisp`) `assoc` = `2.77-2.78ms`.
-  - [ ] `habu-cut-factor-ratsimp-670e8067` Cut remaining `factor`/`ratsimp` runtime gap with measured, generic optimizations.
-    - Current baseline (`tools/maxima-hotspots --json --scale 120 --heap-mb 1024 --nursery-mb 32 --workloads factor,ratsimp`, 2026-02-24): `factor interp/jit ~0.991`, `ratsimp interp/jit ~0.969`, gate still red (`wins=0/2`).
-    - [x] `habu-fix-maxima-factor-0ddd0b8d` Fix JIT indirect-call argument tagging so predicate/compare results are passed as tagged Lisp values, not raw i8.
-      - RCA: indirect-call bridge expected i64 tagged values, but JIT could pass i8 predicate temporaries (`Call_indirect argument 1 type mismatch: got i8, expected i64`).
-      - Fix (`src/jit/backend.zig`): normalize every indirect-call argument via `boolToTagged` in `emitIndirectCallValues`.
-      - Validation: `zig build test -Duse-hoist=true -Dtest-filter="cross-call tags predicate arguments"`; factor probe no longer hits indirect-call type mismatch.
-    - [x] `habu-fix-typep-int-c5eb375e` Implement CL-correct integer type bounds (`(integer)`, `(integer low)`, `(integer low high)`, `*`, and open bounds via singleton lists).
-      - Fix (`src/runtime/primitives/type.zig`): replace fixed two-bound parser with generic bound parser + inclusive/exclusive comparisons using numeric ops that handle fixnum+bignum.
-      - Added regressions:
-        - `typep integer range` now covers one-bound, open-bound, malformed-bound, and extra-arg cases plus bounded bignum behavior.
-        - `handler-case catches invalid argument and invalid type specifier` now asserts `(typep 1 '(integer 0))` succeeds.
-      - Runtime proof (`./zig-out/bin/habu /tmp/habu_factor_probe_full.lisp`): `(85 85 0 t :OK)` for `(maxima-load-all ...), (typep 1 '(integer 0)), (maxima::$factor 1)`.
-    - [x] `habu-fix-stale-chunk-aad6c110` Fix strict stale-resolve reject-size false positives by distinguishing stale forwarding metadata from current-cycle to-space object headers.
-      - RCA (`bench-maxima --jit=off --workloads simplifya,diff` with `HABU_TRAP_STALE_RESOLVE_REJECT=1`): `resolveStaleForwardedValue` treated valid to-space symbol headers (`name_len=14` => `0xe`) as forwarding metadata, producing `reject-size` panics in chunk scans.
-      - Fix (`src/runtime/gc.zig`): require forwarding targets to point inside heap memory before interpreting stale forwarding metadata; non-heap targets are treated as normal object headers.
-      - Validation:
-        - `HABU_TRAP_STALE_RESOLVE_REJECT=1 zig build -Duse-hoist=true bench-maxima -- --json --scale=1 --heap-mb=1024 --nursery-mb=32 --jit=off --workloads=simplifya,diff`
-        - `HABU_TRAP_STALE_RESOLVE_REJECT=1 zig build -Duse-hoist=true bench-maxima -- --json --scale=1 --heap-mb=1024 --nursery-mb=32 --jit=off`
-    - [ ] `habu-promote-old-small-8a008ff6` Promote aged small survivors out of nursery to cut repeated copy cost in long Maxima runs.
-      - RCA (`/tmp/factor_jit3.sample`, 2026-02-24): run-phase profiles are GC-dominated with repeated minor copying; `shouldPromote` is still size-only (`src/runtime/gc.zig`) and leaves long-lived small cells in nursery.
-      - Implemented: `shouldPromote` now uses heap-configured age gating (`heap.promote_age_threshold`) instead of fixed constant (`src/runtime/gc.zig`), with heap config/env wiring (`src/runtime/heap.zig`, `HABU_PROMOTE_AGE_THRESHOLD`), stats export (`gc_promote_age_threshold`), and runtime setter (`setPromoteAgeThreshold`).
-      - Implemented: adaptive promotion-age policy (`derivePromoteAgePolicy`) wired into minor-GC control loop; new policy regressions cover raise/lower/clamp behavior, and age-based tenuring regression now asserts promotion at/above active age threshold.
-      - Implemented: benchmark plumbing for age-threshold experiments (`bench/maxima_workload.zig --promote-age`, `tools/maxima-hotspots --promote-age`) with text/JSON/markdown surfacing.
-      - [x] `habu-unblock-build-graph-d231003d` Restored build graph integrity (`build.zig.zon`, missing runtime/compiler/interp/type modules, `deps/ohsnap` module files) so `zig build` and focused `zig build test -Duse-hoist=true` run again.
-      - Remaining blocker before close: full `bench-maxima` factor/ratsimp rebaseline still needs a completed long-run pass in this environment (current scale-1 factor smoke exceeds local timeout budget).
-      - Next after unblock: run `tools/maxima-hotspots --json --scale 120 --heap-mb 1024 --nursery-mb 32 --workloads factor,ratsimp --promote-age {1..7}` and lock tuned policy deltas.
-    - [x] `habu-remove-legacy-global-661e1400` Remove legacy global-name fallback probing in symbol global-index lookup.
-      - Removed CL/COMMON-LISP/CL-USER prefix probing from `lookupSymbolGlobalIndex` (`src/interp/vm.zig`) and kept qualified-name lookup only.
-      - Added regression `vm does not use legacy global fallback names` to lock hard-cutover behavior (no implicit unqualified fallback lookup).
-      - Validation: `zig build test -Dtest-filter='vm does not use legacy global fallback names'`, `zig build test -Dtest-filter='vm global index cache resets on env swap'`.
-  - [x] `habu-fix-bench-jit-2ad8269d` Fix JIT microbench build break after `vm.jit_fns` storage migration.
-    - Updated `bench/jit.zig` to iterate `vm.jit_fns.items` (`ArrayList(JitFnEntry)`) instead of removed hash-map iterator API.
-    - Restored `bench-jit` execution with current VM JIT table layout.
-    - Validation: `zig build -Duse-hoist=true bench-jit -- --hot=10 --fix-n=100000 --json`.
+Use `catch |err| jitRelayError(err)` (not hardcoded error types) — relay the actual error.
 
-### 2. Compiler Core
-- [x] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.
-- [x] `habu-fix-loop-loop-daf318dd` Fix LOOP conditional `DO` multi-form parsing and `loop-finish` lowering in extended clauses. Depends on `habu-fix-loop-macro-c7a41441`.
-- [x] `habu-support-loop-in-84a5efed` Support `loop for ... in ... by ...` step-function clauses.
-- [x] `habu-loop-else-when-9b45625b` Support `loop ... when ... else when ... else ...` conditional routing.
-- [x] `habu-iterative-cond-lowering-fa7ea387` Lower large COND forms iteratively to reduce compiler recursion overhead.
-- [x] `habu-support-loop-for-6e9d9623` Support LOOP `for ... and ...` clauses. Depends on `habu-fix-loop-macro-c7a41441`.
-- [x] `habu-support-setf-bit-b72546e8` Support `(setf (bit/sbit ...))` places.
-- [x] `habu-support-setf-composed-7c79e463` Support composed list places in `setf` (`cadr`/`cddr`/`caddr`/`cdddr`/aliases).
-- [x] `habu-support-setf-generic-67036246` Support generic names `(setf foo)` in DEFGENERIC/DEFMETHOD.
-- [x] `habu-fix-setf-invalidsyntax-2e7560f2` Fix remaining `setf` InvalidSyntax in misc type-prop. Depends on `habu-signal-symbol-pkg-e766fbcf`.
-- [x] `habu-fix-concatenate-compiler-1e8d411f` Fix concatenate compiler fast-path semantics.
-- [x] `habu-fix-log-optional-de674bd9` Fix LOG optional base lowering. Depends on `habu-fix-concatenate-compiler-1e8d411f`.
-- [x] `habu-fix-defstruct-keyword-fe214c20` Fix DEFSTRUCT keyword/`:conc-name` parsing.
-- [x] `habu-fix-defstruct-invalid-85b8fcf9` Fix remaining DEFSTRUCT InvalidSyntax paths.
-- [x] `habu-fix-defstruct-copier-952e241d` Fix DEFSTRUCT copier fallback generation.
-- [x] `habu-scope-special-declarations-33d29c18` Scope proclaimed `special` handling by symbol identity (package-aware) to avoid cross-package leakage.
+#### Special case — jitFormatSimple (lines 1559-1665):
+- Has `defer out.deinit(heap.backing_allocator)` at line 1604
+- `longjmp` from `jitRelayError` skips `defer` → leaks the ArrayList
+- **Fix**: Replace `defer` with explicit cleanup. Before each error relay, do `out.deinit(heap.backing_allocator)` then `jitRelayError(err)`. Or use a wrapper:
+  ```zig
+  fn jitFormatOomRelay(out: *std.ArrayList(u8), allocator: std.mem.Allocator, err: anyerror) noreturn {
+      out.deinit(allocator);
+      jitRelayError(err);
+  }
+  ```
+- The fast path (line 1596 `allocBaseString catch`) has NO defer — can use `jitRelayError` directly.
 
-### 3. Runtime / Package / Stream / Time
-- [x] `habu-fix-pathname-merge-71b041a8` Fix pathname merge for compile-file-pathname.
-- [x] `habu-guard-core-pkg-a8f23f9b` Guard deletion of core packages.
-- [x] `habu-fix-finish-output-15f73282` Fix finish-output/force-output stream designator behavior.
-- [x] `habu-add-encode-universal-fe1b93d9` Add encode-universal-time primitive + wiring.
-- [x] `habu-signal-symbol-pkg-e766fbcf` Signal SYMBOL-PACKAGE type errors as Lisp conditions.
-- [x] `habu-fix-symbol-fn-f9fd590d` Fix function-namespace resolution so `symbol-function`/macro setup is not hijacked by special value bindings; seed function cells on `defun`/`setf` function definitions and revalidate Maxima readiness.
-- [x] `habu-resolve-internal-setter-9122d08d` Classify `%aset`/`%svset`/`%sset` as builtin callable designators so bootstrap function resolution does not depend on nil-slot fallback behavior.
+#### Dead code cleanup:
+- `jitAppend` line 419: `if (new_cell == 0) return 0;` — dead after jitCons longjmps. Remove.
 
-### 4. VM / GC / Eval / CLOS / Conditions
-- [x] `habu-fix-gc-chunk-7057f649` Fix GC chunk root corruption.
-- [x] `habu-remove-return-from-3c57cd5d` Remove non-lexical `return-from` fallback and keep strict lexical block behavior.
-  - Removed `ABORTED` block-miss fallback in `doReturnFrom` (`src/interp/vm.zig`), eliminating the last silent non-lexical early-return path.
-  - Fixed `vm return-from restores dynamic depths and progv` test setup to valid non-unwind state (`unwind_sp = 0`) so the unit tests match actual unwind semantics.
-  - Validation: `zig build test -Duse-hoist=true -Dtest-filter=\"return-from restores dynamic depths and progv\"`; `zig build test -Duse-hoist=true -Dtest-filter=\"unwind-protect with return-from\"`.
-- [x] `habu-fix-transitive-lambda-f02bd0d9` Fix transitive lambda capture lowering.
-- [x] `habu-fix-nested-eval-b0bbd02d` Fix nested eval non-local exits. Depends on `habu-fix-gc-chunk-7057f649`.
-- [x] `habu-fix-clos-superclass-2aa44685` Fix CLOS superclass alias resolution.
-- [x] `habu-fix-warn-apply-fe791fc7` Fix warn/apply nil callee path.
-- [x] `habu-signal-invalid-type-81c49397` Map VM `InvalidTypeSpecifier`/`InvalidArgument` to CL conditions so `handler-case` can catch and continue large-package probes.
-- [x] `habu-fix-ansi-deftest-faa1296f` Fix ANSI DEFTEST TypeMismatch root cause.
-  - [x] `habu-trace-first-ansi-3501b989` Trace first uncaught ANSI TypeMismatch.
-  - [x] `habu-patch-ansi-typemismatch-dae30cf8` Patch root cause.
-  - [x] `habu-add-ansi-typemismatch-817bda8d` Add focused regression.
-  - [x] `habu-verify-ansi-progression-56a3eae2` Verify ANSI progression and update baseline artifacts.
+#### NOT in scope (leave as-is):
+- `g_heap orelse return 0/nil` (16 sites) — null heap is an initialization bug, not a runtime error. These could be changed to `jitRequireHeap()` (panic) in a separate item but that's a different failure mode.
+- `bufPrint catch return nil` in jitFormatSimple (2 sites) — buffer overflow on 64-byte num buf for fixnum is unreachable in practice.
+- `parseInt catch return nil` in jitFormatSimple (1 site) — malformed format string, not allocation.
 
-### 5. Maxima Continuation
-- [x] `habu-increase-default-heap-44a06bce` Increase default heap and build comprehensive Maxima loader.
-- [x] `habu-fix-maxima-cas-a491af14` Fix Maxima CAS operations: integrate, solve, factor, limit, ratsimp, det.
-  - Depends on: `habu-root-inactive-ext-310675f7`, `habu-fence-gc-during-663fc5d2`.
-  - [x] `habu-maxima-subset-load-e9db9bb5` Maxima subset: load `db`/`compar` deps so `kindp` exists on CAS paths.
-  - [x] `habu-rca-and-fix-4a4ea5d5` RCA and fix `$ratsimp` `setf: unsupported place` root cause.
-  - [x] `habu-add-maxima-cas-1807f8ae` Add end-to-end CAS regression checks in integration tests.
-  - [x] `habu-maxima-loader-fix-d654483f` Maxima loader: fix `server`/`coerce` crash so full module load can continue.
-  - [x] `habu-fix-bigfloat-impl-dbf1cefb` Bind BIGFLOAT-IMPL shadow imports to callable operators (with inverse-trig fallbacks) so trig modules (`trigi`/`trigo`) load without unbound function designators.
-  - [x] `habu-fix-arg-count-3daa1dc3` Align trig simplifier bootstrap with `simp` arity contracts (`arg-count-check` call shape) and add missing `complex-number-p` bootstrap helper so `$sin/$cos` evaluate in the trigi subset.
-  - [x] `habu-investigate-mapcar-cb-ad5def1b` RCA callback crash in Maxima `$errormsg`: fix stdlib `mapc` to CL variadic semantics and add regression.
-  - [x] `habu-maxima-integrate-path-b786024b` Maxima integrate path: resolve post-loader integrate failure chain. Depends on `habu-investigate-mapcar-cb-ad5def1b`, `habu-fix-fn-designators-c2cf5df2`.
-    - [x] `habu-trace-integrate-unbound-53804676` Trace integrate unbound-variable root and lock dependency-chain regression (`alias`/`sinint` + live `$integrate` call).
-    - [x] `habu-auto-detect-maxima-d2876566` Auto-detect Maxima source root and fail fast when source fixtures are missing.
-    - [x] `habu-fix-cond-signal-4f85b2c8` Fix `(signal ...)` lowering so unhandled conditions return nil instead of THROW control-error.
-    - [x] `habu-fix-declare-top-e3668a14` Honor proclaimed `special` lambda params via dynamic bindings (`progv`) so `declare-top` state is visible in helper callees (`define-mode`/`defs1`) and `db.lisp` `defmode`/`clear` load path no longer fails at function-definition time.
-    - [x] `habu-propagate-load-form-d898e591` Propagate load parse/eval errors instead of silently continuing forms; add strict-load regression.
-    - [x] `habu-fix-nested-load-d7d28e45` Fix nested `load` non-local exit relay so `handler-case` around `load` aborts on first error instead of resuming later file forms.
-    - [x] `habu-revalidate-integrate-with-0874ce3e` Revalidate integrate path end-to-end once real Maxima source fixtures are present again. Depends on `habu-fix-declare-top-e3668a14`.
-  - [x] `habu-maxima-factor-ratsimp-521dd2ca` Maxima factor/ratsimp path: fix TypeMismatch and ProgramError roots.
-    - [x] `habu-separate-value-fn-4d40d330` Keep function and value cells independent in `set_symbol_function` so shared symbols (for example `ratvars`) preserve variable data while remaining callable as functions.
-    - [x] `habu-load-matrix-deps-d5d1b7ee` Load matrix dependency chain (`mat`/`linnew`/`matrix`/`sprdet`/`newinv`/`newdet`) into readiness subsets so `LNEWVAR`/`CFACTOR` symbols are available before factor/determinant probes.
-    - [x] `habu-fix-builtin-callable-f9b29c06` Unify builtin-callable classification with compiler primitive dispatch so `symbol-function` resolves generic math operators (`ATAN`, etc.) without stale manual builtin lists.
-  - [x] `habu-fix-maxima-limit-e2a25da2` Fix Maxima `limit` workload execution path.
-    - [x] `habu-fix-int-bitops-733d9c09` Extend integer bitwise operations to bignum operands (MT random-state init path).
-    - [x] `habu-fix-limit-unknowntypespecifier-8b3b0eb0` Register `defstruct` type names in runtime class table so `typep`/`typecase` on struct names return booleans instead of `UnknownTypeSpecifier`.
-  - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.
-  - [x] `habu-rca-load-stackoverflow-e3d4f5d8` RCA and fix load stack overflow path for Maxima large source files.
-  - [x] `habu-fix-sin-lisp-b34b817f` Fix `sin.lisp` load root so `SININT` is bound and integrate path can complete. Ensure `schatc` dependency chain is loaded (`m2`/`schatchen-cond` present) before integrate execution.
-  - [x] `habu-add-internal-option-8cbd6feb` Add system-only/internal keyword controls for loader diagnostics and bind checks. Dependency for `habu-maxima-end-to-efe58661`.
-- [ ] `habu-maxima-end-to-efe58661` Maxima end-to-end integration test continuation. Depends on `habu-fix-maxima-cas-a491af14`, `habu-maxima-subset-load-e9db9bb5`, `habu-rca-and-fix-4a4ea5d5`, `habu-add-maxima-cas-1807f8ae`, `habu-cut-gc-root-25d3bb03`, `habu-fix-hoist-compile-9a100641`, `habu-load-matrix-deps-d5d1b7ee`, and `habu-fix-builtin-callable-f9b29c06`.
-  - [x] `habu-fix-make-instance-1e1e34ef` Fix `make-instance` class-metadata lookup across package qualifier aliases (for example `BIGFLOAT-IMPL:*` symbol package vs `BIGFLOAT:*` class metadata keys) with unambiguous local-name fallback.
-  - [x] `habu-fix-transl-loader-a7ab1c8a` Fix `transl.lisp` `DEF%TR` loader `UnhandledThrow` by correcting condition relay/catch behavior and loader failure-list integrity.
-  - [x] `habu-lock-maxima-transl-1f293d51` Add script-level Maxima transl subset gate proving `handler-case` catches once and failed file execution does not resume.
-  - [x] `habu-fix-invalidsyntax-in-24666922` Fix `DISTRIBUTE-OVER` InvalidSyntax/crash root by making compiler list traversals GC-safe (`tagbody`/`apply`/call-args/variadic arithmetic/`setf` global call) and supporting integer `tagbody`/`go` tags; revalidate Maxima generational loader through `nparse`.
+- **Acceptance**: Zero `catch return 0` / `catch return Value.nil.raw` for allocation or math overflow errors. jitFormatSimple properly cleans up ArrayList before relay. All existing tests pass.
+- **Test**: Add integration test that forces OOM during JIT execution (small heap + JIT loop that allocates) and verifies error propagation.
+- **Effort**: 2-3 hours (mechanical changes across 16 functions)
+- **Depends on**: Nothing
 
-## Execution Loop
-1. Pick the first unblocked unchecked leaf.
-2. `dot on <id>`.
-3. Implement + test.
-4. `dot off <id> -r "completed"`.
-5. Check the leaf in this file.
-6. Repeat until all leaves are checked.
+### 2. Replace `unreachable` with proper error for closure captures in JIT
+- **File**: `src/jit/backend.zig:2637-2650`
+- **What**:
+  1. Change `translateVar` return type from `HoistValue` to `anyerror!HoistValue`
+  2. Add `try` at call site line 2512: `.@"var" => |v| try self.translateVar(v),`
+  3. Replace `unreachable; // TODO: closure captures` with `return error.UnsupportedIrNode`
+- **Acceptance**: The `unreachable` is gone. Compile succeeds. Existing tests pass.
+- **Effort**: 15 minutes
+- **Depends on**: Nothing
 
-## Done Criteria
-- All leaves above checked.
-- No open/active dots for IDs listed in this file.
-- `tools/ansi/run.sh habu` produces updated baseline artifacts in `docs/ansi/results/`.
+## Major
+
+### 3. Replace string dispatch with interned symbol comparison in compiler
+- **Files**: `src/compiler/compile.zig` — 12 sites in ~8 locations (not ~30 as originally estimated)
+- **What**: Pre-intern names, replace `std.mem.eql(u8, ...)` dispatch with identity comparison.
+
+#### Sites to fix:
+| Line(s) | String literal | Fix |
+|---------|---------------|-----|
+| 7247-7248 | `"MACRO-FUNCTION"` / `"macro-function"` | Intern once, compare by identity |
+| 10432-10433 | `"CL-USER"` / `"COMMON-LISP-USER"` | Compare package pointer identity |
+| 10916 | `"QUOTE"` | Use `builtins.sym_quote` |
+| 16127 | `"%HABU-MACRO-ENTRY"` | Intern once |
+| 16133-16134 | `"MACRO-FUNCTION"` / `"macro-function"` | Same as 7247 |
+| 18106-18116 | 6 keywords × 2 cases | Intern as keywords at heap init |
+
+#### NOT in scope (legitimate string comparisons, keep as-is):
+- Lines 1425, 1768, 2439, 9220, 11680, 11737, 11912, 12419, 13656, 16065, 16086, 18374 — content equality, not dispatch
+- Lines 3481, 3493 — debug trace only
+- Lines 3743, 3754 — Maxima compat hacks (rare path)
+- Test assertions
+
+- **Acceptance**: All symbol/keyword dispatch uses identity comparison.
+- **Risk**: Must verify intern order — some of these symbols must exist before compiler init. The heap already pre-interns many CL symbols (`builtins`), so adding ~8 more should be straightforward.
+- **Effort**: 2-3 hours (fewer sites than originally estimated)
+- **Depends on**: Nothing
+
+### 4. Fix SymbolTable.put duplicate key leak
+- **File**: `src/runtime/heap.zig:95-100`
+- **What**: Use `getOrPut` to check for existing key before allocating:
+  ```zig
+  pub fn put(self: *SymbolTable, name: []const u8, sym: Value) !void {
+      const result = try self.map.getOrPut(self.allocator, name);
+      if (!result.found_existing) {
+          result.key_ptr.* = try self.allocator.dupe(u8, name);
+      }
+      result.value_ptr.* = sym;
+      self.version +%= 1;
+  }
+  ```
+- **Note**: Currently only triggered during init (`"T"`, `"NIL"`), not by `intern()` which guards with `.get()` first. Low practical impact but easy correctness fix.
+- **Acceptance**: `put` with existing key doesn't leak. Test with testing allocator confirms.
+- **Effort**: 20 minutes
+- **Depends on**: Nothing
+
+### 5. Add unit tests for untested JIT files
+- **Files**: `src/jit/candidates.zig` (177 lines, 0 tests)
+- **What**: Test `isEligible`, `ineligibleReason`, `findMatchingChunk`, `collectLambdaCandidates`
+- **Note**: `hoist_contract.zig` (46 lines) is a compile-time contract check — tested implicitly by `zig build test`. No separate tests needed.
+- **Acceptance**: `candidates.zig` has ≥4 test blocks covering: eligible lambda, ineligible captures, ineligible optional, chunk matching.
+- **Effort**: 1-2 hours
+- **Depends on**: Nothing
+
+## Minor (defer — tracked elsewhere)
+
+### 6. Condition system stubs — tracked in `docs/cl-symbols.md`
+### 7. DST detection in decode-universal-time — tracked in `docs/cl-symbols.md`
+### 8. Thread safety for JIT globals — not needed until concurrency work
+### 9. jitSafepointBeforeAlloc doesn't trigger GC — less critical after item 1 fix

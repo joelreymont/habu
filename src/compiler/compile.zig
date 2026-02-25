@@ -716,6 +716,14 @@ pub const Builtins = struct {
     kw_absolute: Value,
     kw_relative: Value,
 
+    // Compiler dispatch symbols
+    macro_function: Value,
+    habu_macro_entry: Value,
+    kw_initial_contents: Value,
+    kw_element_type: Value,
+    kw_adjustable: Value,
+    kw_fill_pointer: Value,
+
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) !Builtins {
         return .{
@@ -1317,6 +1325,14 @@ pub const Builtins = struct {
             .kw_windows = try heap.internKeyword("windows"),
             .kw_absolute = try heap.internKeyword("absolute"),
             .kw_relative = try heap.internKeyword("relative"),
+
+            // Compiler dispatch symbols
+            .macro_function = try heap.intern("MACRO-FUNCTION"),
+            .habu_macro_entry = try heap.intern("%HABU-MACRO-ENTRY"),
+            .kw_initial_contents = try heap.internKeyword("INITIAL-CONTENTS"),
+            .kw_element_type = try heap.internKeyword("ELEMENT-TYPE"),
+            .kw_adjustable = try heap.internKeyword("ADJUSTABLE"),
+            .kw_fill_pointer = try heap.internKeyword("FILL-POINTER"),
         };
     }
 
@@ -7243,9 +7259,8 @@ pub const Compiler = struct {
                 // (setf (macro-function 'name) fn)
                 // -> (setf (get name 'macro-function) fn) for property list storage
                 if (head.isSymbol()) {
-                    const head_name = head.toPtr(Symbol).getName();
-                    if (std.mem.eql(u8, head_name, "MACRO-FUNCTION") or
-                        std.mem.eql(u8, head_name, "macro-function"))
+                    const b_mf = self.builtins orelse return error.UninitializedBuiltins;
+                    if (head.raw == b_mf.macro_function.raw)
                     {
                         // (macro-function sym-expr [env]) -> rewrite to (get sym-expr 'macro-function)
                         if (!place_args.isCons()) return error.InvalidSyntax;
@@ -10912,8 +10927,8 @@ pub const Compiler = struct {
             if (super_entry.isCons()) {
                 const maybe_quote = super_entry.toPtr(Cons);
                 if (maybe_quote.car.isSymbol() and maybe_quote.cdr.isCons()) {
-                    const head_name = maybe_quote.car.toPtr(Symbol).getName();
-                    if (std.mem.eql(u8, head_name, "QUOTE")) {
+                    const b2 = self.builtins orelse return error.UninitializedBuiltins;
+                    if (maybe_quote.car.raw == b2.quote.raw) {
                         super_entry = maybe_quote.cdr.toPtr(Cons).car;
                     }
                 }
@@ -16120,18 +16135,17 @@ pub const Compiler = struct {
                     if (entry.isCons()) {
                         const entry_cons = entry.toPtr(Cons);
                         if (entry_cons.car.isSymbol()) {
-                            const key_name = self.safeSymbolName(entry_cons.car) orelse {
+                            const b3 = self.builtins orelse {
                                 plist = pc.cdr;
                                 continue;
                             };
-                            if (std.mem.eql(u8, key_name, "%HABU-MACRO-ENTRY")) {
+                            if (entry_cons.car.raw == b3.habu_macro_entry.raw) {
                                 const val = entry_cons.cdr;
                                 if (self.decodeCompiledMacroEntry(val) != null) {
                                     macro_entry_val = val;
                                 }
                             }
-                            if (std.mem.eql(u8, key_name, "MACRO-FUNCTION") or
-                                std.mem.eql(u8, key_name, "macro-function"))
+                            if (entry_cons.car.raw == b3.macro_function.raw)
                             {
                                 const val = entry_cons.cdr;
                                 if (val.isClosure()) macro_fn_val = val;
@@ -18100,20 +18114,16 @@ pub const Compiler = struct {
                 const val_cons = kv_cons.cdr.toPtr(Cons);
                 const val = self.resolveForwardedValue(val_cons.car);
                 const next_rest_kw = self.resolveForwardedValue(val_cons.cdr);
-                // Check which keyword
-                const kw_sym = kv_cons.car.toPtr(runtime.Keyword);
-                const kw_name = kw_sym.getName();
-                if (std.mem.eql(u8, kw_name, "initial-contents") or
-                    std.mem.eql(u8, kw_name, "INITIAL-CONTENTS"))
+                // Check which keyword by identity
+                const b4 = self.builtins orelse return error.UninitializedBuiltins;
+                const kw_raw = kv_cons.car.raw;
+                if (kw_raw == b4.kw_initial_contents.raw)
                 {
                     // Store raw value for post-construction fill
                     initial_contents = val;
-                } else if (std.mem.eql(u8, kw_name, "element-type") or
-                    std.mem.eql(u8, kw_name, "ELEMENT-TYPE") or
-                    std.mem.eql(u8, kw_name, "adjustable") or
-                    std.mem.eql(u8, kw_name, "ADJUSTABLE") or
-                    std.mem.eql(u8, kw_name, "fill-pointer") or
-                    std.mem.eql(u8, kw_name, "FILL-POINTER"))
+                } else if (kw_raw == b4.kw_element_type.raw or
+                    kw_raw == b4.kw_adjustable.raw or
+                    kw_raw == b4.kw_fill_pointer.raw)
                 {
                     // ignore for now
                 } else {

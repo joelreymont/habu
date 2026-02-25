@@ -1548,3 +1548,10 @@ Environment guard:
 - Running perf checks in Debug mode produced misleadingly slow wall-clock runs; comparability with historical Maxima numbers required explicit `-Doptimize=ReleaseFast`.
 - The full `zig build test` loop remains expensive/noisy for rapid iteration in this workspace; focused test filters were the reliable signal for validating return-from/GC changes before broader reruns.
 - Leaving benchmark helpers on stale container APIs (`vm.jit_fns.iterator()` after VM moved to `ArrayList(JitFnEntry)`) silently broke `zig build` install targets; bench harnesses must be kept in lockstep with VM container migrations.
+
+### jj workspaces in /tmp don't work for builds with relative deps (2026-02-25)
+`jj workspace add /tmp/xxx --name minion-N` creates a working copy in /tmp, but:
+1. `build.zig.zon` has `.path = "../hoist"` — doesn't exist relative to /tmp
+2. `build.zig` runs `git rev-parse --short HEAD` — /tmp isn't a git repo (jj uses .jj, not .git)
+For parallel agent work, use `git worktree` or apply changes directly to the main repo.
+jj workspaces only work when the build system has no relative path deps and no git assumptions.

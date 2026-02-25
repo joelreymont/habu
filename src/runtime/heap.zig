@@ -93,9 +93,11 @@ pub const SymbolTable = struct {
     }
 
     pub fn put(self: *SymbolTable, name: []const u8, sym: Value) !void {
-        const key = try self.allocator.dupe(u8, name);
-        errdefer self.allocator.free(key);
-        try self.map.put(self.allocator, key, sym);
+        const result = try self.map.getOrPut(self.allocator, name);
+        if (!result.found_existing) {
+            result.key_ptr.* = try self.allocator.dupe(u8, name);
+        }
+        result.value_ptr.* = sym;
         self.version +%= 1;
     }
 

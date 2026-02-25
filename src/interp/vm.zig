@@ -803,6 +803,32 @@ pub const Vm = struct {
     trace_op_only_filter: ?[]const u8,
     trace_call_ret: bool,
     trace_call_ret_filter: ?[]const u8,
+    trace_ext_root_owner: bool,
+    trace_jit_call_args: bool,
+    trace_validate_root_layout: bool,
+    trap_validate_root_layout: bool,
+    trace_chunk_pool_slot: ?usize,
+    trace_bad_root_layout: bool,
+    trace_bad_global_root: bool,
+    trace_bad_global_kind: bool,
+    trace_builtin_write: bool,
+    trap_builtin_write: bool,
+    trace_stale_root_table: bool,
+    trap_stale_root_table: bool,
+    trace_local_mismatch: bool,
+    trace_upvalue: bool,
+    trace_sub_context: bool,
+    trace_copy_structure: bool,
+    trace_call_args: bool,
+    trace_io: bool,
+    trace_progv_disasm: bool,
+    trace_throw: bool,
+    trap_progv_corrupt: bool,
+    trace_block_miss: bool,
+    trace_error_disasm: bool,
+    trace_call_mismatch_fn_disasm: bool,
+    trace_call_mismatch_callee_disasm: bool,
+    trace_call_mismatch_disasm: bool,
 
     /// Pre-interned builtin symbols for fast dispatch
     builtins: BuiltinSymbols,
@@ -891,6 +917,13 @@ pub const Vm = struct {
         const parsed = std.fmt.parseUnsigned(usize, raw, 10) catch return default_count;
         if (parsed == 0) return default_count;
         return parsed;
+    }
+
+    fn envTraceIndex(name: []const u8) ?usize {
+        const raw_c = std.posix.getenv(name) orelse return null;
+        const raw = std.mem.trim(u8, std.mem.sliceTo(raw_c, 0), " \t\r\n");
+        if (raw.len == 0) return null;
+        return std.fmt.parseUnsigned(usize, raw, 10) catch null;
     }
 
     fn invalidOpcode(self: *const Vm, comptime site: []const u8) Error {
@@ -1229,6 +1262,32 @@ pub const Vm = struct {
             .trace_op_only_filter = if (std.posix.getenv("HABU_TRACE_OP_ONLY")) |raw| std.mem.sliceTo(raw, 0) else null,
             .trace_call_ret = std.posix.getenv("HABU_TRACE_CALL_RET") != null,
             .trace_call_ret_filter = if (std.posix.getenv("HABU_TRACE_CALL_RET_ONLY")) |raw| std.mem.sliceTo(raw, 0) else null,
+            .trace_ext_root_owner = std.posix.getenv("HABU_TRACE_EXT_ROOT_OWNER") != null,
+            .trace_jit_call_args = std.posix.getenv("HABU_TRACE_JIT_CALL_ARGS") != null,
+            .trace_validate_root_layout = std.posix.getenv("HABU_TRACE_VALIDATE_ROOT_LAYOUT") != null,
+            .trap_validate_root_layout = std.posix.getenv("HABU_TRAP_VALIDATE_ROOT_LAYOUT") != null,
+            .trace_chunk_pool_slot = envTraceIndex("HABU_TRACE_CHUNK_POOL_SLOT"),
+            .trace_bad_root_layout = std.posix.getenv("HABU_TRACE_BAD_ROOT_LAYOUT") != null,
+            .trace_bad_global_root = std.posix.getenv("HABU_TRACE_BAD_GLOBAL_ROOT") != null,
+            .trace_bad_global_kind = std.posix.getenv("HABU_TRACE_BAD_GLOBAL_KIND") != null,
+            .trace_builtin_write = std.posix.getenv("HABU_TRACE_BUILTINS_WRITE") != null,
+            .trap_builtin_write = std.posix.getenv("HABU_TRAP_BUILTINS_WRITE") != null,
+            .trace_stale_root_table = std.posix.getenv("HABU_TRACE_STALE_ROOT_TABLE") != null,
+            .trap_stale_root_table = std.posix.getenv("HABU_TRAP_STALE_ROOT_TABLE") != null,
+            .trace_local_mismatch = std.posix.getenv("HABU_TRACE_LOCAL_MISMATCH") != null,
+            .trace_upvalue = std.posix.getenv("HABU_TRACE_UPVALUE") != null,
+            .trace_sub_context = std.posix.getenv("HABU_TRACE_SUB_CONTEXT") != null,
+            .trace_copy_structure = std.posix.getenv("HABU_TRACE_COPY_STRUCTURE") != null,
+            .trace_call_args = std.posix.getenv("HABU_TRACE_CALL_ARGS") != null,
+            .trace_io = std.posix.getenv("HABU_TRACE_IO") != null,
+            .trace_progv_disasm = std.posix.getenv("HABU_TRACE_PROGV_DISASM") != null,
+            .trace_throw = std.posix.getenv("HABU_TRACE_THROW") != null,
+            .trap_progv_corrupt = std.posix.getenv("HABU_TRAP_PROGV_CORRUPT") != null,
+            .trace_block_miss = std.posix.getenv("HABU_TRACE_BLOCK_MISS") != null,
+            .trace_error_disasm = std.posix.getenv("HABU_TRACE_ERROR_DISASM") != null,
+            .trace_call_mismatch_fn_disasm = std.posix.getenv("HABU_TRACE_CALL_MISMATCH_FN_DISASM") != null,
+            .trace_call_mismatch_callee_disasm = std.posix.getenv("HABU_TRACE_CALL_MISMATCH_CALLEE_DISASM") != null,
+            .trace_call_mismatch_disasm = std.posix.getenv("HABU_TRACE_CALL_MISMATCH_DISASM") != null,
             .builtins = try BuiltinSymbols.init(heap),
             .type_syms = try type_mod.TypeSymbols.init(heap),
         };
@@ -1777,7 +1836,7 @@ pub const Vm = struct {
     }
 
     pub fn setExtRootsOwned(self: *Vm, owner: *std.ArrayList(Value)) void {
-        if (std.posix.getenv("HABU_TRACE_EXT_ROOT_OWNER") != null) {
+        if (self.trace_ext_root_owner) {
             const first_raw = if (owner.items.len != 0) owner.items[0].raw else 0;
             std.debug.print(
                 "TRACE set-ext-owned owner=0x{x} ptr=0x{x} len={d} first=0x{x} caller=0x{x}\n",
@@ -1816,7 +1875,7 @@ pub const Vm = struct {
             self.ext_roots_saved_sp -= 1;
             return;
         }
-        if (std.posix.getenv("HABU_TRACE_EXT_ROOT_OWNER") != null) {
+        if (self.trace_ext_root_owner) {
             const owner_addr = if (saved.owner) |owner| @intFromPtr(owner) else 0;
             std.debug.print(
                 "TRACE drop-ext-snapshot-miss owner=0x{x} ptr=0x{x} len={d}\n",
@@ -2028,7 +2087,7 @@ pub const Vm = struct {
                 "JIT_CALL enter {s} argc={d} chunk={s} caller={s} fp={d} sp={d}\n",
                 .{ compiled.name, args.len, chunkTraceName(callee_chunk), chunkTraceName(caller_chunk), self.fp, self.sp },
             );
-            if (std.posix.getenv("HABU_TRACE_JIT_CALL_ARGS") != null) {
+            if (self.trace_jit_call_args) {
                 const dump_n = @min(args.len, envTraceCount("HABU_TRACE_JIT_CALL_ARGS", 4));
                 for (args[0..dump_n], 0..) |arg, idx| {
                     std.debug.print("  jit-arg[{d}]=", .{idx});
@@ -2576,8 +2635,8 @@ pub const Vm = struct {
 
     fn collectGarbageExtra(self: *Vm, extra_roots: []Value) !usize {
         if (self.jit_gc_forbidden_depth != 0) return error.OutOfMemory;
-        const trace_validate_roots = std.posix.getenv("HABU_TRACE_VALIDATE_ROOT_LAYOUT") != null;
-        const trap_validate_roots = std.posix.getenv("HABU_TRAP_VALIDATE_ROOT_LAYOUT") != null;
+        const trace_validate_roots = self.trace_validate_root_layout;
+        const trap_validate_roots = self.trap_validate_root_layout;
         if (trace_validate_roots or trap_validate_roots) {
             if (!self.validateBuiltinAndTypeRoots("pre-gc")) {
                 if (trap_validate_roots) @panic("invalid root layout pre-gc");
@@ -2740,9 +2799,7 @@ pub const Vm = struct {
             pushRangeUnique(&ranges, &range_len, extra_roots);
         }
 
-        if (std.posix.getenv("HABU_TRACE_CHUNK_POOL_SLOT")) |raw_idx| {
-            const trimmed = std.mem.trim(u8, std.mem.sliceTo(raw_idx, 0), " \t\r\n");
-            const idx = std.fmt.parseUnsigned(usize, trimmed, 10) catch 0;
+        if (self.trace_chunk_pool_slot) |idx| {
             if (idx < chunk_pool.len) {
                 const slot = chunk_pool[idx];
                 std.debug.print(
@@ -2795,7 +2852,7 @@ pub const Vm = struct {
             }
         }
 
-        if (std.posix.getenv("HABU_TRACE_BAD_ROOT_LAYOUT") != null) {
+        if (self.trace_bad_root_layout) {
             var dbg_idx: usize = 0;
             if (ext_roots.len != 0) {
                 const first = ext_roots[0];
@@ -2862,7 +2919,7 @@ pub const Vm = struct {
             std.debug.print("TRACE gc-range total={d}\n", .{dbg_idx});
         }
 
-        if (std.posix.getenv("HABU_TRACE_BAD_GLOBAL_ROOT") != null) {
+        if (self.trace_bad_global_root) {
             const from_start = @intFromPtr(self.heap.from_start);
             const from_end = @intFromPtr(self.heap.from_end);
             const kind_n = @typeInfo(runtime.objects.BoxedKind).@"enum".fields.len;
@@ -2884,7 +2941,7 @@ pub const Vm = struct {
             }
         }
 
-        if (std.posix.getenv("HABU_TRACE_BAD_GLOBAL_KIND") != null) {
+        if (self.trace_bad_global_kind) {
             const kind_n = @typeInfo(runtime.objects.BoxedKind).@"enum".fields.len;
             var gi: usize = 0;
             while (gi < self.num_globals and gi < MAX_GLOBALS) : (gi += 1) {
@@ -3389,10 +3446,10 @@ pub const Vm = struct {
         self.execute_depth += 1;
         defer self.execute_depth -= 1;
 
-        const trace_builtin_write = std.posix.getenv("HABU_TRACE_BUILTINS_WRITE") != null;
-        const trap_builtin_write = std.posix.getenv("HABU_TRAP_BUILTINS_WRITE") != null;
-        const trace_stale_root_table = std.posix.getenv("HABU_TRACE_STALE_ROOT_TABLE") != null;
-        const trap_stale_root_table = std.posix.getenv("HABU_TRAP_STALE_ROOT_TABLE") != null;
+        const trace_builtin_write = self.trace_builtin_write;
+        const trap_builtin_write = self.trap_builtin_write;
+        const trace_stale_root_table = self.trace_stale_root_table;
+        const trap_stale_root_table = self.trap_stale_root_table;
         var trace_gc_count: usize = self.heap.stats.gc_count;
         var trace_builtins_prev: [BUILTIN_ROOT_N]Value = undefined;
         var trace_type_prev: [TYPE_ROOT_N]Value = undefined;
@@ -3542,7 +3599,7 @@ pub const Vm = struct {
                 const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
                 const stack_idx = bp + idx;
                 if (idx >= self.chunk.num_locals or stack_idx >= STACK_SIZE) {
-                    if (std.posix.getenv("HABU_TRACE_LOCAL_MISMATCH") != null) {
+                    if (self.trace_local_mismatch) {
                         std.debug.print("LOCAL_MISMATCH op=load idx={d} num_locals={d} bp={d} stack_idx={d} ip={d}", .{
                             idx,
                             self.chunk.num_locals,
@@ -3574,7 +3631,7 @@ pub const Vm = struct {
                 const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
                 const stack_idx = bp + idx;
                 if (idx >= self.chunk.num_locals or stack_idx >= STACK_SIZE) {
-                    if (std.posix.getenv("HABU_TRACE_LOCAL_MISMATCH") != null) {
+                    if (self.trace_local_mismatch) {
                         std.debug.print("LOCAL_MISMATCH op=store idx={d} num_locals={d} bp={d} stack_idx={d} ip={d}", .{
                             idx,
                             self.chunk.num_locals,
@@ -3662,7 +3719,7 @@ pub const Vm = struct {
                     if (index < c.num_captures) {
                         try self.push(c.getCapture(index));
                     } else {
-                        if (std.posix.getenv("HABU_TRACE_UPVALUE") != null) {
+                        if (self.trace_upvalue) {
                             if (c.code.isChunk()) {
                                 const code_chunk = c.code.toPtr(Chunk);
                                 switch (code_chunk.name.typeKind()) {
@@ -3699,7 +3756,7 @@ pub const Vm = struct {
                         return error.InvalidConstant;
                     }
                 } else {
-                    if (std.posix.getenv("HABU_TRACE_UPVALUE") != null) {
+                    if (self.trace_upvalue) {
                         std.debug.print(
                             "TRACE upvalue no closure: index={d} ip={d} fp={d} sp={d}\n",
                             .{ index, self.ip, self.fp, self.sp },
@@ -3725,7 +3782,7 @@ pub const Vm = struct {
                         captures[index] = val;
                         self.writeBarrierStore(Value.makeClosure(@constCast(c)), val);
                     } else {
-                        if (std.posix.getenv("HABU_TRACE_UPVALUE") != null) {
+                        if (self.trace_upvalue) {
                             if (c.code.isChunk()) {
                                 const code_chunk = c.code.toPtr(Chunk);
                                 switch (code_chunk.name.typeKind()) {
@@ -3822,7 +3879,7 @@ pub const Vm = struct {
             .sub => {
                 const b = try self.pop();
                 const a = try self.pop();
-                if (std.posix.getenv("HABU_TRACE_SUB_CONTEXT") != null) {
+                if (self.trace_sub_context) {
                     const chunk_name = if (self.chunk.name.isSymbol())
                         self.chunk.name.toPtr(runtime.Symbol).getName()
                     else
@@ -3918,7 +3975,7 @@ pub const Vm = struct {
                     .nil => try self.push(Value.nil), // CL: (cdr nil) => nil
                     .cons => try self.push(pair.toPtr(Cons).cdr),
                     else => {
-                        if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                        if (self.trace_error_context) {
                             std.debug.print(
                                 "TRACE cdr mismatch: raw=0x{x} kind={s}\n",
                                 .{ pair.raw, @tagName(pair.typeKind()) },
@@ -4441,7 +4498,7 @@ pub const Vm = struct {
 
             .copy_structure => {
                 const obj = try self.pop();
-                if (std.posix.getenv("HABU_TRACE_COPY_STRUCTURE") != null) {
+                if (self.trace_copy_structure) {
                     std.debug.print("TRACE copy-structure arg={s}\n", .{@tagName(obj.typeKind())});
                     if (obj.isVector()) {
                         const vec = obj.toPtr(runtime.Vector);
@@ -4778,7 +4835,7 @@ pub const Vm = struct {
                     );
                     tracePrintValue(fn_designator);
                     std.debug.print("\n", .{});
-                    if (std.posix.getenv("HABU_TRACE_CALL_ARGS") != null) {
+                    if (self.trace_call_args) {
                         const dump_n: usize = @min(@as(usize, argc), envTraceCount("HABU_TRACE_CALL_ARGS", 4));
                         var ai: usize = 0;
                         while (ai < dump_n) : (ai += 1) {
@@ -4871,7 +4928,7 @@ pub const Vm = struct {
                     closure_chunk.arity,
                     self.stack[cap_start..self.sp],
                 );
-                if (std.posix.getenv("HABU_TRACE_UPVALUE") != null) {
+                if (self.trace_upvalue) {
                     switch (closure_chunk.name.typeKind()) {
                         .symbol => std.debug.print("TRACE make_closure chunk={s} captures={d} code_len={d}\n", .{
                             closure_chunk.name.toPtr(Symbol).getName(),
@@ -5160,7 +5217,7 @@ pub const Vm = struct {
             .file_write_date => {
                 const path_val = try self.pop();
                 const path_str = try self.pathDesignatorBytes(path_val);
-                if (std.posix.getenv("HABU_TRACE_IO") != null) {
+                if (self.trace_io) {
                     std.debug.print("TRACE file-write-date: {s}\n", .{path_str});
                 }
                 const timestamp = try io.fileWriteDate(path_str);
@@ -5826,7 +5883,7 @@ pub const Vm = struct {
             },
 
             .push_progv => {
-                if (std.posix.getenv("HABU_TRACE_PROGV_DISASM") != null) {
+                if (self.trace_progv_disasm) {
                     var disasm_buf = std.ArrayList(u8){};
                     defer disasm_buf.deinit(self.allocator);
                     if (disasm.disassembleRuntime(self.chunk, disasm_buf.writer(self.allocator))) {
@@ -8508,7 +8565,7 @@ pub const Vm = struct {
     }
 
     fn doThrow(self: *Vm, tag: Value, value: Value) Error!void {
-        const trace_throw = std.posix.getenv("HABU_TRACE_THROW") != null;
+        const trace_throw = self.trace_throw;
         if (trace_throw) {
             std.debug.print(
                 "TRACE throw: catch_sp={d} barrier={d} handler_sp={d} unwind_sp={d} block_sp={d}\n",
@@ -8562,7 +8619,7 @@ pub const Vm = struct {
                 condition_type = value;
                 condition_object = value;
             }
-            if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+            if (self.trace_error_context) {
                 std.debug.print(
                     "TRACE condition dispatch: type={s} raw=0x{x} handlers={d}\n",
                     .{ @tagName(condition_type.typeKind()), condition_type.raw, self.handler_sp },
@@ -8573,7 +8630,7 @@ pub const Vm = struct {
             while (i > 0) {
                 i -= 1;
                 const frame = self.handler_stack[i];
-                if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                if (self.trace_error_context) {
                     std.debug.print(
                         "  handler[{d}] expects={s} fn={s}\n",
                         .{ i, @tagName(frame.condition_type.typeKind()), @tagName(frame.handler_fn.typeKind()) },
@@ -8589,13 +8646,13 @@ pub const Vm = struct {
                     self.stack[self.sp] = frame.handler_fn;
                     self.stack[self.sp + 1] = condition_object;
                     self.sp += 2;
-                    if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                    if (self.trace_error_context) {
                         std.debug.print("  handler match -> doCall argc=1\n", .{});
                     }
                     self.doCall(1, false) catch |call_err| {
                         self.pending_handler_restore_depth = null;
                         self.handler_sp = saved_handler_sp;
-                        if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                        if (self.trace_error_context) {
                             std.debug.print("  handler doCall error={s}\n", .{@errorName(call_err)});
                         }
                         return call_err;
@@ -8603,7 +8660,7 @@ pub const Vm = struct {
                     return;
                 }
             }
-            if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+            if (self.trace_error_context) {
                 std.debug.print("  handler dispatch complete; continuing throw search\n", .{});
             }
         }
@@ -8814,7 +8871,7 @@ pub const Vm = struct {
                 key_val = symbol;
             }
 
-            if (std.posix.getenv("HABU_TRAP_PROGV_CORRUPT") != null and old_value.isSymbol() and !old_value.isMagicSymbol()) {
+            if (self.trap_progv_corrupt and old_value.isSymbol() and !old_value.isMagicSymbol()) {
                 const old_sym = old_value.toPtr(Symbol);
                 if (old_sym.name_len > self.heap.space_size) {
                     const bind_name = sym_ptr.getName();
@@ -8849,7 +8906,7 @@ pub const Vm = struct {
             self.stack[key_slot] = live_key;
             self.stack[old_slot] = live_old;
 
-            if (std.posix.getenv("HABU_TRAP_PROGV_CORRUPT") != null and live_old.isSymbol() and !live_old.isMagicSymbol()) {
+            if (self.trap_progv_corrupt and live_old.isSymbol() and !live_old.isMagicSymbol()) {
                 const live_old_sym = live_old.toPtr(Symbol);
                 if (live_old_sym.name_len > self.heap.space_size) {
                     const bind_name = sym_ptr.getName();
@@ -8987,7 +9044,7 @@ pub const Vm = struct {
                 return;
             }
         }
-        if (std.posix.getenv("HABU_TRACE_BLOCK_MISS") != null or std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+        if (self.trace_block_miss or self.trace_error_context) {
             const req_name = if (name_raw.isSymbol()) name_raw.toPtr(Symbol).getName() else @tagName(name_raw.typeKind());
             std.debug.print(
                 "TRACE block-miss: req={s} raw=0x{x} block_sp={d} fp={d} sp={d} ip={d}\n",
@@ -9148,7 +9205,7 @@ pub const Vm = struct {
                     .{ i, name, frame.return_ip, frame.bp, frame.argc },
                 );
             }
-            if (std.posix.getenv("HABU_TRACE_ERROR_DISASM") != null and (err == error.TypeMismatch or err == error.StackOverflow)) {
+            if (self.trace_error_disasm and (err == error.TypeMismatch or err == error.StackOverflow)) {
                 std.debug.print("TRACE disasm begin (ip={d})\n", .{self.ip});
                 var disasm_buf = std.ArrayList(u8){};
                 defer disasm_buf.deinit(self.allocator);
@@ -10723,7 +10780,7 @@ pub const Vm = struct {
     }
 
     fn callMismatch(self: *Vm, fn_val: Value, argc: u8, reason: []const u8) Error!void {
-        if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null) {
+        if (self.trace_call_mismatch) {
             std.debug.print("CALL_MISMATCH reason={s} argc={d} fn-kind={s}", .{
                 reason,
                 argc,
@@ -10764,7 +10821,7 @@ pub const Vm = struct {
                         .string => std.debug.print(" chunk={s}", .{chunk.name.toPtr(runtime.String).bytes()}),
                         else => {},
                     }
-                    if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH_FN_DISASM") != null) {
+                    if (self.trace_call_mismatch_fn_disasm) {
                         std.debug.print("\nCALL_MISMATCH fn-disasm begin\n", .{});
                         if (chunk.code_len > 0) {
                             const fcode = chunk.getCode();
@@ -11098,7 +11155,7 @@ pub const Vm = struct {
                                         .string => std.debug.print(" name={s}", .{callee.name.toPtr(runtime.String).bytes()}),
                                         else => std.debug.print(" name-kind={s}", .{@tagName(callee.name.typeKind())}),
                                     }
-                                    if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH_CALLEE_DISASM") != null) {
+                                    if (self.trace_call_mismatch_callee_disasm) {
                                         std.debug.print("\nCALL_MISMATCH callee-disasm idx={d} begin\n", .{cidx});
                                         const stdout_file = std.fs.File.stdout();
                                         var cbuf: [8192]u8 = undefined;
@@ -11142,7 +11199,7 @@ pub const Vm = struct {
                 std.debug.print("\n", .{});
             }
 
-            if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH_DISASM") != null) {
+            if (self.trace_call_mismatch_disasm) {
                 std.debug.print("CALL_MISMATCH disasm-begin\n", .{});
                 const stdout_file = std.fs.File.stdout();
                 var buf: [8192]u8 = undefined;
@@ -11168,7 +11225,7 @@ pub const Vm = struct {
         const prev_ip = self.ip;
         const prev_sp = self.sp;
         self.signalCondition(condition_name) catch |throw_err| {
-            if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null) {
+            if (self.trace_call_mismatch) {
                 std.debug.print("CALL_MISMATCH throw-failed={s} condition={s}\n", .{
                     @errorName(throw_err),
                     condition_name,
@@ -12310,7 +12367,7 @@ pub const Vm = struct {
     // ========================================================================
 
     fn readOp(self: *Vm) Op {
-        const code = self.chunk.getCode();
+        const code = self.chunk.code;
         const low: u16 = code[self.ip];
         const high: u16 = code[self.ip + 1];
         self.ip += 2;
@@ -12319,25 +12376,36 @@ pub const Vm = struct {
     }
 
     fn readU8(self: *Vm) u8 {
-        const byte = self.chunk.getCode()[self.ip];
+        const byte = self.chunk.code[self.ip];
         self.ip += 1;
         return byte;
     }
 
     fn readU16(self: *Vm) u16 {
-        const val = self.chunk.readU16(self.ip);
+        const code = self.chunk.code;
+        const off = self.ip;
+        const val = @as(u16, code[off]) | (@as(u16, code[off + 1]) << 8);
         self.ip += 2;
         return val;
     }
 
     fn readI16(self: *Vm) i16 {
-        const val = self.chunk.readI16(self.ip);
+        const code = self.chunk.code;
+        const off = self.ip;
+        const raw = @as(u16, code[off]) | (@as(u16, code[off + 1]) << 8);
+        const val: i16 = @bitCast(raw);
         self.ip += 2;
         return val;
     }
 
     fn readI32(self: *Vm) i32 {
-        const val = self.chunk.readI32(self.ip);
+        const code = self.chunk.code;
+        const off = self.ip;
+        const raw = @as(u32, code[off]) |
+            (@as(u32, code[off + 1]) << 8) |
+            (@as(u32, code[off + 2]) << 16) |
+            (@as(u32, code[off + 3]) << 24);
+        const val: i32 = @bitCast(raw);
         self.ip += 4;
         return val;
     }
@@ -15042,4 +15110,21 @@ test "vm trace csv substring matching is case-insensitive" {
     try testing.expect(Vm.csvHasSubstringToken("powerlist, integrator", "MAXIMA-POWERLIST-PATH"));
     try testing.expect(Vm.csvHasSubstringToken("mapcar", "MAPCAR"));
     try testing.expect(!Vm.csvHasSubstringToken("powerlist", "MATCHER"));
+}
+
+test "vm caches hot trace flags from environment" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    try testing.expectEqual(std.posix.getenv("HABU_TRACE_CALL_ARGS") != null, vm.trace_call_args);
+    try testing.expectEqual(std.posix.getenv("HABU_TRACE_UPVALUE") != null, vm.trace_upvalue);
+    try testing.expectEqual(std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null, vm.trace_error_context);
+    try testing.expectEqual(std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null, vm.trace_call_mismatch);
+    try testing.expectEqual(std.posix.getenv("HABU_TRACE_CHUNK_POOL_SLOT") != null, vm.trace_chunk_pool_slot != null);
 }

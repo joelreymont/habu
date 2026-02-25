@@ -2337,6 +2337,7 @@ pub const Repl = struct {
     fn evalForms(self: *Repl, content: []const u8) !Value {
         var last_value = Value.nil;
         const trace_forms = std.process.hasEnvVar(self.allocator, "HABU_TRACE_FORMS") catch false;
+        const trace_form_timing = std.process.hasEnvVar(self.allocator, "HABU_TRACE_FORM_TIMING") catch false;
         var form_idx: usize = 0;
         var had_deftest_state: ?bool = null;
 
@@ -2484,12 +2485,31 @@ pub const Repl = struct {
             defer popRootValue(source_vm, form_root_idx, form_stack_idx);
 
             const live_form = source_vm.globals[form_root_idx];
+            const form_start_ns: i128 = if (trace_form_timing) std.time.nanoTimestamp() else 0;
             last_value = self.evalParsedWithVm(live_form, source_vm, eval_alloc, form_idx) catch |err| {
                 if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null or trace_forms) {
                     std.debug.print("TRACE load eval error: {s} form={d}\n", .{ @errorName(err), form_idx });
                 }
                 return err;
             };
+            if (trace_form_timing) {
+                const elapsed_ns: i128 = std.time.nanoTimestamp() - form_start_ns;
+                const elapsed_ms = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000.0;
+                var load_name: []const u8 = "<unknown>";
+                if (self.currentLoadTruename(source_vm)) |truename| {
+                    const ns = primitives.pathname.namestring(
+                        self.allocator,
+                        self.heap,
+                        &self.vm.builtins,
+                        truename,
+                    ) catch Value.nil;
+                    if (ns.isString()) load_name = ns.toPtr(runtime.String).bytes();
+                }
+                std.debug.print(
+                    "TRACE form-time file={s} form={d} ms={d:.3}\n",
+                    .{ load_name, form_idx, elapsed_ms },
+                );
+            }
             if (std.posix.getenv("HABU_TRACE_DEFMACRO") != null) {
                 var has_def = false;
                 var it = self.macros.iterator();

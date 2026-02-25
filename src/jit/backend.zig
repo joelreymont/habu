@@ -364,7 +364,7 @@ fn jitCons(cdr_raw: u64, car_raw: u64) callconv(.c) u64 {
     // Slow path: full allocation with potential GC
     const heap = g_heap orelse return 0;
     jitSafepointBeforeAlloc();
-    const result = heap.allocCons(car, cdr) catch return 0;
+    const result = heap.allocCons(car, cdr) catch |err| jitRelayError(err);
     // Refresh cache after potential GC
     jitConsRefreshCache();
     return result.raw;
@@ -416,7 +416,6 @@ fn jitAppend(list1_raw: u64, list2_raw: u64) callconv(.c) u64 {
         const cell = curr.toPtr(runtime.Cons);
         const car = jitResolveForwarded(cell.car);
         const new_cell = jitCons(rev.raw, car.raw);
-        if (new_cell == 0) return 0; // OOM
         rev = Value{ .raw = new_cell };
         curr = jitResolveForwarded(cell.cdr);
     }
@@ -792,7 +791,7 @@ fn jitMakeHash(capacity_raw: u64, test_raw: u64) callconv(.c) u64 {
         else => return Value.nil.raw,
     };
     const heap = g_heap orelse return Value.nil.raw;
-    const ht = heap.allocHashTable(cap, test_type) catch return Value.nil.raw;
+    const ht = heap.allocHashTable(cap, test_type) catch |err| jitRelayError(err);
     return ht.raw;
 }
 
@@ -826,8 +825,8 @@ fn jitHashSet(table_raw: u64, key_raw: u64, value_raw: u64) callconv(.c) u64 {
         ht.put(key, value) catch |err| switch (err) {
             error.HashTableNeedsGrowth, error.HashTableFull => {
                 const cap: usize = @intCast(ht.capacity);
-                const new_cap = std.math.mul(usize, cap, 2) catch return Value.nil.raw;
-                heap.growHashTableInPlace(ht, new_cap) catch return Value.nil.raw;
+                const new_cap = std.math.mul(usize, cap, 2) catch |e| jitRelayError(e);
+                heap.growHashTableInPlace(ht, new_cap) catch |e| jitRelayError(e);
                 continue;
             },
         };
@@ -880,7 +879,7 @@ fn jitHashTest(table_raw: u64) callconv(.c) u64 {
         .equalp => "equalp",
     };
     const heap = g_heap orelse return Value.nil.raw;
-    const sym = heap.intern(test_name) catch return Value.nil.raw;
+    const sym = heap.intern(test_name) catch |err| jitRelayError(err);
     return sym.raw;
 }
 
@@ -895,7 +894,7 @@ fn jitHashKeys(table_raw: u64) callconv(.c) u64 {
     while (i < ht.capacity) : (i += 1) {
         const key = ht.getKey(@intCast(i));
         if (runtime.HashTable.isAvailableKey(key)) continue;
-        result = heap.allocCons(key, result) catch return Value.nil.raw;
+        result = heap.allocCons(key, result) catch |err| jitRelayError(err);
     }
     return result.raw;
 }
@@ -912,8 +911,8 @@ fn jitHashAlist(table_raw: u64) callconv(.c) u64 {
         const key = ht.getKey(@intCast(i));
         if (runtime.HashTable.isAvailableKey(key)) continue;
         const val = ht.getValue(@intCast(i));
-        const pair = heap.allocCons(key, val) catch return Value.nil.raw;
-        result = heap.allocCons(pair, result) catch return Value.nil.raw;
+        const pair = heap.allocCons(key, val) catch |err| jitRelayError(err);
+        result = heap.allocCons(pair, result) catch |err| jitRelayError(err);
     }
     return result.raw;
 }
@@ -931,7 +930,7 @@ fn jitDecodeFixnumIndex(raw: u64) ?usize {
 fn jitMakeVector(size_raw: u64, init_raw: u64) callconv(.c) u64 {
     const size = jitDecodeFixnumIndex(size_raw) orelse return Value.nil.raw;
     const heap = g_heap orelse return Value.nil.raw;
-    const vec = heap.allocVector(size, size) catch return Value.nil.raw;
+    const vec = heap.allocVector(size, size) catch |err| jitRelayError(err);
     const init_val = Value{ .raw = init_raw };
     const vec_obj = vec.toPtr(runtime.Vector);
     for (0..size) |i| {
@@ -982,7 +981,7 @@ fn jitMakeString(len_raw: u64, char_raw: u64) callconv(.c) u64 {
     } else if (char_val.isNil()) ' ' else return Value.nil.raw;
 
     const heap = g_heap orelse return Value.nil.raw;
-    const str = heap.allocStringUninitialized(len) catch return Value.nil.raw;
+    const str = heap.allocStringUninitialized(len) catch |err| jitRelayError(err);
     const str_obj = str.toPtr(runtime.String);
     @memset(str_obj.data[0..len], fill_char);
     return str.raw;
@@ -993,7 +992,7 @@ fn jitInternName(name: []const u8) u64 {
     if (std.posix.getenv("HABU_TRACE_JIT_INTERN") != null) {
         std.debug.print("JIT_INTERN name=\"{s}\"\n", .{name});
     }
-    const sym = heap.intern(name) catch return Value.nil.raw;
+    const sym = heap.intern(name) catch |err| jitRelayError(err);
     return sym.raw;
 }
 
@@ -1021,7 +1020,7 @@ fn jitMakeArray1(dim_raw: u64, init_raw: u64) callconv(.c) u64 {
     const dim: u64 = @intCast(dim_signed);
     const heap = g_heap orelse return Value.nil.raw;
     const dims = [_]u64{dim};
-    const arr_val = heap.allocArray(&dims) catch return Value.nil.raw;
+    const arr_val = heap.allocArray(&dims) catch |err| jitRelayError(err);
     const arr = arr_val.toPtr(runtime.Array);
     const data: [*]Value = @ptrFromInt(arr.data_ptr);
     const init_val = Value{ .raw = init_raw };
@@ -1138,10 +1137,10 @@ fn jitArefN(
                 if (subs[k] >= arr.dimensions[k]) break :blk Value.nil.raw;
                 var stride: u64 = 1;
                 for (k + 1..sub_count) |m| {
-                    stride = std.math.mul(u64, stride, arr.dimensions[m]) catch return Value.nil.raw;
+                    stride = std.math.mul(u64, stride, arr.dimensions[m]) catch |err| jitRelayError(err);
                 }
-                const term = std.math.mul(u64, subs[k], stride) catch return Value.nil.raw;
-                index = std.math.add(u64, index, term) catch return Value.nil.raw;
+                const term = std.math.mul(u64, subs[k], stride) catch |err| jitRelayError(err);
+                index = std.math.add(u64, index, term) catch |err| jitRelayError(err);
             }
             if (index >= arr.total_size) break :blk Value.nil.raw;
             const data: [*]Value = @ptrFromInt(arr.data_ptr);
@@ -1216,10 +1215,10 @@ fn jitAsetN(
                 if (subs[k] >= arr.dimensions[k]) return Value.nil.raw;
                 var stride: u64 = 1;
                 for (k + 1..sub_count) |m| {
-                    stride = std.math.mul(u64, stride, arr.dimensions[m]) catch return Value.nil.raw;
+                    stride = std.math.mul(u64, stride, arr.dimensions[m]) catch |err| jitRelayError(err);
                 }
-                const term = std.math.mul(u64, subs[k], stride) catch return Value.nil.raw;
-                index = std.math.add(u64, index, term) catch return Value.nil.raw;
+                const term = std.math.mul(u64, subs[k], stride) catch |err| jitRelayError(err);
+                index = std.math.add(u64, index, term) catch |err| jitRelayError(err);
             }
             if (index >= arr.total_size) return Value.nil.raw;
             const data: [*]Value = @ptrFromInt(arr.data_ptr);
@@ -1319,7 +1318,7 @@ fn jitMakeArrayDynamic(dims_raw: u64, init_raw: u64) callconv(.c) u64 {
         else => return Value.nil.raw,
     }
     const heap = g_heap orelse return Value.nil.raw;
-    return jitAllocArrayFromDims(heap, rank, dims, Value{ .raw = init_raw }) catch return Value.nil.raw;
+    return jitAllocArrayFromDims(heap, rank, dims, Value{ .raw = init_raw }) catch |err| jitRelayError(err);
 }
 
 fn jitStrRef(str_raw: u64, idx_raw: u64) callconv(.c) u64 {
@@ -1372,8 +1371,8 @@ fn jitStrConcat(s1_raw: u64, s2_raw: u64) callconv(.c) u64 {
     if (s1_is_base and s2_is_base) {
         const len1 = s1.toPtr(runtime.String).length;
         const len2 = s2.toPtr(runtime.String).length;
-        const new_len = std.math.add(usize, len1, len2) catch return Value.nil.raw;
-        const result = heap.allocStringUninitialized(new_len) catch return Value.nil.raw;
+        const new_len = std.math.add(usize, len1, len2) catch |err| jitRelayError(err);
+        const result = heap.allocStringUninitialized(new_len) catch |err| jitRelayError(err);
         const result_str = result.toPtr(runtime.String);
         const dest = result_str.mutableBytes();
         const str1 = s1.toPtr(runtime.String);
@@ -1385,8 +1384,8 @@ fn jitStrConcat(s1_raw: u64, s2_raw: u64) callconv(.c) u64 {
 
     const len1 = if (s1_is_utf32) s1.toPtr(runtime.String32).length else s1.toPtr(runtime.String).length;
     const len2 = if (s2_is_utf32) s2.toPtr(runtime.String32).length else s2.toPtr(runtime.String).length;
-    const new_len = std.math.add(usize, len1, len2) catch return Value.nil.raw;
-    const result = heap.allocString32Uninitialized(new_len) catch return Value.nil.raw;
+    const new_len = std.math.add(usize, len1, len2) catch |err| jitRelayError(err);
+    const result = heap.allocString32Uninitialized(new_len) catch |err| jitRelayError(err);
     const dest = result.toPtr(runtime.String32).mutableCodepoints();
 
     var out_idx: usize = 0;
@@ -1419,7 +1418,7 @@ fn jitSubstring(str_raw: u64, start_raw: u64, end_raw: u64) callconv(.c) u64 {
         Value{ .raw = str_raw },
         start_idx,
         end_idx,
-    ) catch return Value.nil.raw;
+    ) catch |err| jitRelayError(err);
     return result.raw;
 }
 
@@ -1546,6 +1545,12 @@ fn jitLength(seq_raw: u64) callconv(.c) u64 {
     };
 }
 
+/// Cleanup ArrayList before relaying error via longjmp (defer is skipped by longjmp).
+fn jitFormatOomRelay(out: *std.ArrayList(u8), allocator: std.mem.Allocator, err: anyerror) noreturn {
+    out.deinit(allocator);
+    jitRelayError(err);
+}
+
 fn jitFormatSimple(dest_raw: u64, control_raw: u64, arg_raw: u64, argc_raw: u64) callconv(.c) u64 {
     const dest = Value{ .raw = dest_raw };
     const control = Value{ .raw = control_raw };
@@ -1593,7 +1598,7 @@ fn jitFormatSimple(dest_raw: u64, control_raw: u64, arg_raw: u64, argc_raw: u64)
                     @memcpy(out_buf[0..pos], bytes[0..pos]);
                     @memcpy(out_buf[pos .. pos + printed.len], printed);
                     @memcpy(out_buf[pos + printed.len .. total_len], suffix);
-                    const result = heap.allocBaseString(out_buf[0..total_len]) catch return Value.nil.raw;
+                    const result = heap.allocBaseString(out_buf[0..total_len]) catch |err| jitRelayError(err);
                     return result.raw;
                 }
             }
@@ -1607,7 +1612,7 @@ fn jitFormatSimple(dest_raw: u64, control_raw: u64, arg_raw: u64, argc_raw: u64)
     var arg_used = false;
     while (i < bytes.len) {
         if (bytes[i] != '~') {
-            out.append(heap.backing_allocator, bytes[i]) catch return Value.nil.raw;
+            out.append(heap.backing_allocator, bytes[i]) catch |err| jitFormatOomRelay(&out, heap.backing_allocator, err);
             i += 1;
             continue;
         }
@@ -1644,18 +1649,18 @@ fn jitFormatSimple(dest_raw: u64, control_raw: u64, arg_raw: u64, argc_raw: u64)
                     if (printed.len < w) {
                         const pad_count = w - printed.len;
                         if (pad == '0' and printed[0] == '-') {
-                            out.append(heap.backing_allocator, '-') catch return Value.nil.raw;
-                            for (0..pad_count) |_| out.append(heap.backing_allocator, '0') catch return Value.nil.raw;
-                            out.appendSlice(heap.backing_allocator, printed[1..]) catch return Value.nil.raw;
+                            out.append(heap.backing_allocator, '-') catch |err| jitFormatOomRelay(&out, heap.backing_allocator, err);
+                            for (0..pad_count) |_| out.append(heap.backing_allocator, '0') catch |err| jitFormatOomRelay(&out, heap.backing_allocator, err);
+                            out.appendSlice(heap.backing_allocator, printed[1..]) catch |err| jitFormatOomRelay(&out, heap.backing_allocator, err);
                         } else {
-                            for (0..pad_count) |_| out.append(heap.backing_allocator, pad) catch return Value.nil.raw;
-                            out.appendSlice(heap.backing_allocator, printed) catch return Value.nil.raw;
+                            for (0..pad_count) |_| out.append(heap.backing_allocator, pad) catch |err| jitFormatOomRelay(&out, heap.backing_allocator, err);
+                            out.appendSlice(heap.backing_allocator, printed) catch |err| jitFormatOomRelay(&out, heap.backing_allocator, err);
                         }
                     } else {
-                        out.appendSlice(heap.backing_allocator, printed) catch return Value.nil.raw;
+                        out.appendSlice(heap.backing_allocator, printed) catch |err| jitFormatOomRelay(&out, heap.backing_allocator, err);
                     }
                 } else {
-                    out.appendSlice(heap.backing_allocator, printed) catch return Value.nil.raw;
+                    out.appendSlice(heap.backing_allocator, printed) catch |err| jitFormatOomRelay(&out, heap.backing_allocator, err);
                 }
                 arg_used = true;
             },
@@ -1663,7 +1668,7 @@ fn jitFormatSimple(dest_raw: u64, control_raw: u64, arg_raw: u64, argc_raw: u64)
         }
     }
 
-    const result = heap.allocBaseString(out.items) catch return Value.nil.raw;
+    const result = heap.allocBaseString(out.items) catch |err| jitFormatOomRelay(&out, heap.backing_allocator, err);
     return result.raw;
 }
 
@@ -2509,7 +2514,7 @@ pub const IrTranslator = struct {
     pub fn translate(self: *IrTranslator, ir: *const Ir) anyerror!HoistValue {
         return switch (ir.*) {
             .lit => |v| try self.translateLit(ir, v),
-            .@"var" => |v| self.translateVar(v),
+            .@"var" => |v| try self.translateVar(v),
             // Specialized fixnum ops (from type specialize pass)
             .fixnum_add => |op| try self.translateFixnumAdd(op.left, op.right),
             .fixnum_sub => |op| try self.translateFixnumSub(op.left, op.right),
@@ -2634,7 +2639,7 @@ pub const IrTranslator = struct {
         return try self.b.load(I64, slot_addr, MemFlags.default());
     }
 
-    fn translateVar(self: *IrTranslator, v: anytype) HoistValue {
+    fn translateVar(self: *IrTranslator, v: anytype) anyerror!HoistValue {
         if (v.depth == 0) {
             // If we're inside an inlined call, remap indices
             if (self.inline_scopes.items.len > 0) {
@@ -2646,7 +2651,7 @@ pub const IrTranslator = struct {
             }
             return self.locals.items[v.index];
         }
-        unreachable; // TODO: closure captures
+        return error.UnsupportedIrNode;
     }
 
     fn translateGlobalRef(self: *IrTranslator, index: u16) anyerror!HoistValue {

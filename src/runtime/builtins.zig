@@ -88,6 +88,10 @@ pub const BuiltinSymbols = struct {
     sym_package_error: Value,
     sym_end_of_file: Value,
 
+    // Compiler dispatch symbols
+    sym_macro_function: Value,
+    sym_habu_macro_entry: Value,
+
     // Feature evaluation
     sym_and: Value,
     sym_or: Value,
@@ -112,6 +116,10 @@ pub const BuiltinSymbols = struct {
     kw_capitalize: Value,
     kw_wild: Value,
     kw_wild_inferiors: Value,
+    kw_initial_contents: Value,
+    kw_element_type: Value,
+    kw_adjustable: Value,
+    kw_fill_pointer: Value,
 
     pub fn init(heap: *Heap) !BuiltinSymbols {
         return BuiltinSymbols{
@@ -199,6 +207,10 @@ pub const BuiltinSymbols = struct {
             .sym_package_error = try heap.intern("package-error"),
             .sym_end_of_file = try heap.intern("end-of-file"),
 
+            // Compiler dispatch symbols
+            .sym_macro_function = try heap.intern("MACRO-FUNCTION"),
+            .sym_habu_macro_entry = try heap.intern("%HABU-MACRO-ENTRY"),
+
             // Feature evaluation
             .sym_and = try heap.intern("and"),
             .sym_or = try heap.intern("or"),
@@ -223,6 +235,10 @@ pub const BuiltinSymbols = struct {
             .kw_capitalize = try heap.internKeyword("capitalize"),
             .kw_wild = try heap.internKeyword("wild"),
             .kw_wild_inferiors = try heap.internKeyword("wild-inferiors"),
+            .kw_initial_contents = try heap.internKeyword("INITIAL-CONTENTS"),
+            .kw_element_type = try heap.internKeyword("ELEMENT-TYPE"),
+            .kw_adjustable = try heap.internKeyword("ADJUSTABLE"),
+            .kw_fill_pointer = try heap.internKeyword("FILL-POINTER"),
         };
     }
 };
