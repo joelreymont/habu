@@ -6,6 +6,19 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ---
 
+## Session Notes (2026-02-25)
+
+### Worked Well
+- Restoring a full-file JJ conflict artifact by materializing the known-good file content from a specific revision (`jj file show -r <rev> path > path`) was safer and faster than hand-editing prefixed conflict-diff lines (`src/runtime/primitives/type.zig`).
+- Making age-gated promotion a heap-owned runtime knob (`src/runtime/heap.zig`: `promote_age_threshold`, `setPromoteAgeThreshold`) let GC control logic adapt policy without hardcoded collector constants (`src/runtime/gc.zig:shouldPromote`).
+- Separating tenuring-byte policy and age-threshold policy (`deriveTenuringPolicy` + `derivePromoteAgePolicy` in `src/runtime/gc.zig`) kept control loops simple and testable; dedicated policy tests caught bound/step behavior directly without requiring full runtime benches.
+- Wiring bench/tool controls end-to-end (`bench/maxima_workload.zig --promote-age`, `tools/maxima-hotspots --promote-age`) turned policy tuning into a reproducible command-line parameter instead of ad-hoc code edits.
+- For large accidental file-drop states, scripting restore from the immediate pre-break revision (`817a1145bd62`) by scanning missing `@import` targets and replaying `jj file show -r <rev> <path>` restored build integrity quickly without hand-chasing every compiler error.
+
+### Did Not Work
+- Treating `zig build` failure as a local code-change regression was incorrect in this session: build/test paths are currently blocked by repository state drift (missing `build.zig.zon` plus missing runtime/build entry files referenced by imports/build graph), so perf rebaseline steps must be gated on build-graph restoration first.
+- Running `python -m py_compile` in-tree created tracked `__pycache__` artifacts; these must be immediately removed and never committed (`tools/__pycache__/maxima-hotspotscpython-314.pyc`).
+
 ## Session Notes (2026-02-24)
 
 ### Worked Well

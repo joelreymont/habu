@@ -81,6 +81,24 @@ pub const TenuringPolicyOutput = struct {
     mature_survive_ratio: f64,
 };
 
+pub const PromoteAgePolicyInput = struct {
+    current_age: u8,
+    min_age: u8,
+    max_age: u8,
+    promote_n: usize,
+    promote_success_n: usize,
+    promote_age: [heap_mod.GC_AGE_N]usize,
+    survive_n: usize,
+    survive_age: [heap_mod.GC_AGE_N]usize,
+};
+
+pub const PromoteAgePolicyOutput = struct {
+    target_age: u8,
+    success_rate: f64,
+    young_promote_ratio: f64,
+    mature_survive_ratio: f64,
+};
+
 pub const LosPolicyInput = struct {
     current_bytes: usize,
     min_bytes: usize,
@@ -129,7 +147,6 @@ const DEBT_TRIGGER_SOFT_RATIO = 0.85;
 const DEBT_TRIGGER_SOFT_SCORE = 0.95;
 pub const MAJOR_MARK_BUDGET_OBJS: usize = 512;
 pub const MAJOR_SWEEP_BUDGET_OBJS: usize = 1024;
-pub const PROMOTE_AGE_THRESHOLD: u8 = 2;
 
 const MajorPhase = enum {
     idle,
@@ -241,6 +258,56 @@ pub fn deriveTenuringPolicy(in: TenuringPolicyInput) TenuringPolicyOutput {
     return .{
         .target_bytes = target,
         .scale = scale,
+        .success_rate = success_rate,
+        .young_promote_ratio = young_ratio,
+        .mature_survive_ratio = mature_ratio,
+    };
+}
+
+/// Derive next age-gated promotion threshold from promotion quality and age mix.
+/// Control law goals:
+/// - raise age when young promotions are frequent and unsuccessful,
+/// - lower age when survivors pile up above the current age gate,
+/// - move by one bucket per cycle to avoid oscillation.
+pub fn derivePromoteAgePolicy(in: PromoteAgePolicyInput) PromoteAgePolicyOutput {
+    const promote_n_f = @as(f64, @floatFromInt(@max(in.promote_n, @as(usize, 1))));
+    const success_f = @as(f64, @floatFromInt(in.promote_success_n));
+    const success_rate = clampf(success_f / promote_n_f, 0.0, 1.0);
+
+    const young_cut: usize = @intCast(@min(@as(usize, in.current_age), heap_mod.GC_AGE_N - 1));
+    var young_promoted: usize = 0;
+    var i: usize = 0;
+    while (i <= young_cut) : (i += 1) {
+        young_promoted +%= in.promote_age[i];
+    }
+    const young_ratio = if (in.promote_n == 0)
+        0.0
+    else
+        clampf(@as(f64, @floatFromInt(young_promoted)) / @as(f64, @floatFromInt(in.promote_n)), 0.0, 1.0);
+
+    const mature_start: usize = @intCast(@min(@as(usize, in.current_age) + 1, heap_mod.GC_AGE_N));
+    var mature_survive: usize = 0;
+    i = mature_start;
+    while (i < heap_mod.GC_AGE_N) : (i += 1) {
+        mature_survive +%= in.survive_age[i];
+    }
+    const mature_ratio = if (in.survive_n == 0)
+        0.0
+    else
+        clampf(@as(f64, @floatFromInt(mature_survive)) / @as(f64, @floatFromInt(in.survive_n)), 0.0, 1.0);
+
+    var target = in.current_age;
+    if (in.promote_n > 0 and success_rate < 0.20 and young_ratio > 0.50) {
+        if (target < in.max_age) target += 1;
+    } else if (in.survive_n > 0 and mature_ratio > 0.30) {
+        if (target > in.min_age) target -= 1;
+    }
+
+    if (target < in.min_age) target = in.min_age;
+    if (target > in.max_age) target = in.max_age;
+
+    return .{
+        .target_age = target,
         .success_rate = success_rate,
         .young_promote_ratio = young_ratio,
         .mature_survive_ratio = mature_ratio,
@@ -525,6 +592,17 @@ pub const GC = struct {
                     tenuring.young_promote_ratio,
                     tenuring.mature_survive_ratio,
                 );
+                const age_policy = derivePromoteAgePolicy(.{
+                    .current_age = heap.promote_age_threshold,
+                    .min_age = 1,
+                    .max_age = @intCast(heap_mod.GC_AGE_N - 1),
+                    .promote_n = promote_n_cycle,
+                    .promote_success_n = promote_success_cycle,
+                    .promote_age = promote_age_cycle,
+                    .survive_n = survive_n_cycle,
+                    .survive_age = survive_age_cycle,
+                });
+                heap.setPromoteAgeThreshold(age_policy.target_age);
                 const los_policy = deriveLosPolicy(.{
                     .current_bytes = heap.los_threshold,
                     .min_bytes = heap.los_threshold_min,
@@ -1260,7 +1338,7 @@ pub const GC = struct {
         if (heap.gcLayoutMode() != .generational) return false;
         if (tag == .forwarding) return false;
         if (size >= heap.promote_threshold) return true;
-        return survivor_age >= PROMOTE_AGE_THRESHOLD;
+        return survivor_age >= heap.promote_age_threshold;
     }
 
     fn resolveStaleForwardedValue(self: *GC, heap: *const heap_mod.Heap, val: Value, obj_addr: usize) ?Value {
@@ -2794,6 +2872,69 @@ test "tenuring policy keeps threshold inside deadband" {
     try testing.expectEqual(@as(f64, 1.0), out.scale);
 }
 
+test "promote-age policy raises age on young low-success promotions" {
+    const testing = std.testing;
+
+    const out = derivePromoteAgePolicy(.{
+        .current_age = 2,
+        .min_age = 1,
+        .max_age = 7,
+        .promote_n = 100,
+        .promote_success_n = 5,
+        .promote_age = .{ 40, 35, 20, 5, 0, 0, 0, 0 },
+        .survive_n = 200,
+        .survive_age = .{ 40, 35, 20, 10, 40, 25, 20, 10 },
+    });
+    try testing.expectEqual(@as(u8, 3), out.target_age);
+    try testing.expect(out.success_rate < 0.20);
+    try testing.expect(out.young_promote_ratio > 0.50);
+}
+
+test "promote-age policy lowers age on mature survivor pressure" {
+    const testing = std.testing;
+
+    const out = derivePromoteAgePolicy(.{
+        .current_age = 5,
+        .min_age = 1,
+        .max_age = 7,
+        .promote_n = 20,
+        .promote_success_n = 19,
+        .promote_age = .{ 0, 0, 0, 1, 2, 5, 6, 6 },
+        .survive_n = 200,
+        .survive_age = .{ 5, 10, 10, 15, 20, 50, 45, 45 },
+    });
+    try testing.expectEqual(@as(u8, 4), out.target_age);
+    try testing.expect(out.mature_survive_ratio > 0.30);
+}
+
+test "promote-age policy clamps to configured bounds" {
+    const testing = std.testing;
+
+    const hi = derivePromoteAgePolicy(.{
+        .current_age = 7,
+        .min_age = 1,
+        .max_age = 7,
+        .promote_n = 100,
+        .promote_success_n = 0,
+        .promote_age = .{ 50, 30, 15, 5, 0, 0, 0, 0 },
+        .survive_n = 100,
+        .survive_age = .{ 40, 30, 15, 5, 5, 3, 1, 1 },
+    });
+    try testing.expectEqual(@as(u8, 7), hi.target_age);
+
+    const lo = derivePromoteAgePolicy(.{
+        .current_age = 1,
+        .min_age = 1,
+        .max_age = 7,
+        .promote_n = 0,
+        .promote_success_n = 0,
+        .promote_age = .{0} ** heap_mod.GC_AGE_N,
+        .survive_n = 100,
+        .survive_age = .{ 0, 5, 10, 15, 20, 20, 15, 15 },
+    });
+    try testing.expectEqual(@as(u8, 1), lo.target_age);
+}
+
 test "los policy lowers threshold when large-object share is high" {
     const testing = std.testing;
 
@@ -2869,6 +3010,9 @@ test "minor gc applies adaptive promote threshold at runtime" {
     try testing.expect(heap.promote_threshold >= initial);
     try testing.expectEqual(heap.promote_threshold, heap.stats.gc_promote_threshold);
     try testing.expect(heap.stats.gc_promote_scale >= 1.0);
+    try testing.expect(heap.promote_age_threshold >= 1);
+    try testing.expect(@as(usize, heap.promote_age_threshold) < heap_mod.GC_AGE_N);
+    try testing.expectEqual(heap.promote_age_threshold, heap.stats.gc_promote_age_threshold);
 }
 
 test "minor gc applies adaptive nursery target at runtime" {
@@ -3025,7 +3169,10 @@ test "minor gc promotes aged small survivors to tenured" {
     const addr = root.toPtrAddr();
     try testing.expect(addr >= @intFromPtr(tenured.start) and addr < @intFromPtr(tenured.end));
     try testing.expect(heap.stats.gc_promote_n > 0);
-    try testing.expect(heap.stats.gc_promote_age[PROMOTE_AGE_THRESHOLD] > 0);
+    try testing.expect(@as(usize, heap.promote_age_threshold) < heap_mod.GC_AGE_N);
+    var promote_age_sum: usize = 0;
+    for (heap.stats.gc_promote_age) |n| promote_age_sum +%= n;
+    try testing.expectEqual(heap.stats.gc_promote_n, promote_age_sum);
 }
 
 test "promotion success telemetry records surviving promoted objects" {

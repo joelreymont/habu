@@ -294,6 +294,8 @@ pub const GenerationalConfig = struct {
     los_threshold: usize = 32 * 1024,
     /// Promote nursery survivors at/above this size.
     promote_threshold: usize = 1024,
+    /// Promote nursery survivors at/above this age bucket.
+    promote_age_threshold: u8 = 2,
     /// Lower bound for adaptive promotion threshold.
     promote_threshold_min: ?usize = null,
     /// Upper bound for adaptive promotion threshold.
@@ -361,6 +363,7 @@ pub const Heap = struct {
     /// Tenured bump pointer (used by minor-GC promotion policy).
     tenured_alloc_ptr: ?[*]align(ALIGNMENT) u8,
     promote_threshold: usize,
+    promote_age_threshold: u8,
     promote_threshold_min: usize,
     promote_threshold_max: usize,
     /// Metadata for promoted tenured objects (for remembered-set scans).
@@ -490,6 +493,7 @@ pub const Heap = struct {
         gc_promote_success_age: [GC_AGE_N]usize = [_]usize{0} ** GC_AGE_N,
         gc_promote_success_age_class: [ALLOC_CLASS_N][GC_AGE_N]usize = [_][GC_AGE_N]usize{[_]usize{0} ** GC_AGE_N} ** ALLOC_CLASS_N,
         gc_promote_threshold: usize = 0,
+        gc_promote_age_threshold: u8 = 0,
         gc_promote_threshold_min: usize = 0,
         gc_promote_threshold_max: usize = 0,
         gc_promote_scale: f64 = 1.0,
@@ -700,6 +704,15 @@ pub const Heap = struct {
         var promote_target = base_promote;
         if (promote_target < promote_min) promote_target = promote_min;
         if (promote_target > promote_max) promote_target = promote_max;
+        const promote_age_target: u8 = blk: {
+            var v = config.generational.promote_age_threshold;
+            if (std.posix.getenv("HABU_PROMOTE_AGE_THRESHOLD")) |raw| {
+                v = std.fmt.parseInt(u8, raw, 10) catch return error.InvalidArgument;
+            }
+            const max_age: u8 = @intCast(GC_AGE_N - 1);
+            if (v < 1 or v > max_age) return error.InvalidArgument;
+            break :blk v;
+        };
 
         const base_los_threshold = std.mem.alignForward(usize, @max(config.generational.los_threshold, @as(usize, ALIGNMENT)), ALIGNMENT);
         const los_min_default = @max(base_los_threshold / 4, @as(usize, 256));
@@ -749,6 +762,7 @@ pub const Heap = struct {
             .card_table = card_table,
             .tenured_alloc_ptr = if (layout.tenured) |r| r.start else null,
             .promote_threshold = promote_target,
+            .promote_age_threshold = promote_age_target,
             .promote_threshold_min = promote_min,
             .promote_threshold_max = promote_max,
             .tenured_objs = std.ArrayList(TenuredObj){},
@@ -804,6 +818,7 @@ pub const Heap = struct {
         heap.stats.gc_nursery_target = nursery_target;
         heap.stats.gc_debt_threshold = debt_threshold;
         heap.stats.gc_promote_threshold = promote_target;
+        heap.stats.gc_promote_age_threshold = promote_age_target;
         heap.stats.gc_promote_threshold_min = promote_min;
         heap.stats.gc_promote_threshold_max = promote_max;
         heap.stats.gc_los_threshold = los_threshold_target;
@@ -1862,6 +1877,16 @@ pub const Heap = struct {
         self.stats.gc_promote_success_rate = success_rate;
         self.stats.gc_promote_young_ratio = young_ratio;
         self.stats.gc_promote_mature_ratio = mature_ratio;
+    }
+
+    pub fn setPromoteAgeThreshold(self: *Heap, target_age: u8) void {
+        if (self.layout.mode != .generational) return;
+        const max_age: u8 = @intCast(GC_AGE_N - 1);
+        var target = target_age;
+        if (target < 1) target = 1;
+        if (target > max_age) target = max_age;
+        self.promote_age_threshold = target;
+        self.stats.gc_promote_age_threshold = target;
     }
 
     pub fn setLosThreshold(self: *Heap, target_bytes: usize, scale: f64, large_ratio: f64, occupancy: f64, pause_error: f64) void {

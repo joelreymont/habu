@@ -487,10 +487,12 @@
         - `HABU_TRAP_STALE_RESOLVE_REJECT=1 zig build -Duse-hoist=true bench-maxima -- --json --scale=1 --heap-mb=1024 --nursery-mb=32 --jit=off`
     - [ ] `habu-promote-old-small-8a008ff6` Promote aged small survivors out of nursery to cut repeated copy cost in long Maxima runs.
       - RCA (`/tmp/factor_jit3.sample`, 2026-02-24): run-phase profiles are GC-dominated with repeated minor copying; `shouldPromote` is still size-only (`src/runtime/gc.zig`) and leaves long-lived small cells in nursery.
-      - Implemented: `shouldPromote` now accepts `survivor_age` and promotes aged small survivors in generational mode (`src/runtime/gc.zig`), with dedicated regression `minor gc promotes aged small survivors to tenured`.
-      - Follow-up hardening: updated minor/tenured edge regressions (`tenured marking follows nursery references`, `los object scan updates nursery references`) to assert edge correctness under age-based tenuring.
-      - Rebaseline (`zig build -Doptimize=ReleaseFast -Duse-hoist=true bench-maxima -- --json --scale=1 --heap-mb=1024 --nursery-mb=32 --workloads=factor,ratsimp`, 2026-02-24): `factor interp/jit ~0.977`, `ratsimp interp/jit ~0.945` (gate still red).
-      - Next: tune tenuring policy/age threshold with scale-120 rebaseline before closing this dot.
+      - Implemented: `shouldPromote` now uses heap-configured age gating (`heap.promote_age_threshold`) instead of fixed constant (`src/runtime/gc.zig`), with heap config/env wiring (`src/runtime/heap.zig`, `HABU_PROMOTE_AGE_THRESHOLD`), stats export (`gc_promote_age_threshold`), and runtime setter (`setPromoteAgeThreshold`).
+      - Implemented: adaptive promotion-age policy (`derivePromoteAgePolicy`) wired into minor-GC control loop; new policy regressions cover raise/lower/clamp behavior, and age-based tenuring regression now asserts promotion at/above active age threshold.
+      - Implemented: benchmark plumbing for age-threshold experiments (`bench/maxima_workload.zig --promote-age`, `tools/maxima-hotspots --promote-age`) with text/JSON/markdown surfacing.
+      - [x] `habu-unblock-build-graph-d231003d` Restored build graph integrity (`build.zig.zon`, missing runtime/compiler/interp/type modules, `deps/ohsnap` module files) so `zig build` and focused `zig build test -Duse-hoist=true` run again.
+      - Remaining blocker before close: full `bench-maxima` factor/ratsimp rebaseline still needs a completed long-run pass in this environment (current scale-1 factor smoke exceeds local timeout budget).
+      - Next after unblock: run `tools/maxima-hotspots --json --scale 120 --heap-mb 1024 --nursery-mb 32 --workloads factor,ratsimp --promote-age {1..7}` and lock tuned policy deltas.
     - [x] `habu-remove-legacy-global-661e1400` Remove legacy global-name fallback probing in symbol global-index lookup.
       - Removed CL/COMMON-LISP/CL-USER prefix probing from `lookupSymbolGlobalIndex` (`src/interp/vm.zig`) and kept qualified-name lookup only.
       - Added regression `vm does not use legacy global fallback names` to lock hard-cutover behavior (no implicit unqualified fallback lookup).

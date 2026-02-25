@@ -14,6 +14,7 @@ const CallShapeStats = interp.Vm.CallShapeStats;
 const Opts = struct {
     heap_mb: usize = 1024,
     nursery_mb: usize = 32,
+    promote_age: u8 = 2,
     scale: usize = 1,
     jit: bool = true,
     json: bool = false,
@@ -62,6 +63,7 @@ const GcSnap = struct {
     gc_minor_ns: u64,
     gc_major_ns: u64,
     gc_nursery_target: usize,
+    gc_promote_age_threshold: u8,
     gc_nursery_scale: f64,
     gc_nursery_survival: f64,
     gc_nursery_pause_error: f64,
@@ -104,6 +106,7 @@ const GcDelta = struct {
     avg_minor_ns: u64,
     avg_major_ns: u64,
     gc_nursery_target: usize,
+    gc_promote_age_threshold: u8,
     gc_nursery_scale: f64,
     gc_nursery_survival: f64,
     gc_nursery_pause_error: f64,
@@ -153,6 +156,7 @@ fn gcSnap(heap: *const Heap) GcSnap {
         .gc_minor_ns = heap.stats.gc_minor_ns,
         .gc_major_ns = heap.stats.gc_major_ns,
         .gc_nursery_target = heap.stats.gc_nursery_target,
+        .gc_promote_age_threshold = heap.stats.gc_promote_age_threshold,
         .gc_nursery_scale = heap.stats.gc_nursery_scale,
         .gc_nursery_survival = heap.stats.gc_nursery_survival,
         .gc_nursery_pause_error = heap.stats.gc_nursery_pause_error,
@@ -204,6 +208,7 @@ fn gcDelta(before: GcSnap, after: GcSnap) GcDelta {
         .avg_minor_ns = if (minor_n_u64 == 0) 0 else minor_ns / minor_n_u64,
         .avg_major_ns = if (major_n_u64 == 0) 0 else major_ns / major_n_u64,
         .gc_nursery_target = after.gc_nursery_target,
+        .gc_promote_age_threshold = after.gc_promote_age_threshold,
         .gc_nursery_scale = after.gc_nursery_scale,
         .gc_nursery_survival = after.gc_nursery_survival,
         .gc_nursery_pause_error = after.gc_nursery_pause_error,
@@ -259,7 +264,7 @@ fn usage(w: anytype) !void {
         \\Maxima workload benchmark (Habu)
         \\
         \\Usage:
-        \\  zig build -Duse-hoist=true bench-maxima -- [--heap-mb N] [--nursery-mb N] [--scale N] [--jit on|off] [--workloads a,b,c] [--json]
+        \\  zig build -Duse-hoist=true bench-maxima -- [--heap-mb N] [--nursery-mb N] [--promote-age N] [--scale N] [--jit on|off] [--workloads a,b,c] [--json]
         \\
     );
 }
@@ -292,6 +297,10 @@ fn parseArgs() !Opts {
             opts.scale = try std.fmt.parseInt(usize, arg["--scale=".len..], 10);
             continue;
         }
+        if (std.mem.startsWith(u8, arg, "--promote-age=")) {
+            opts.promote_age = try std.fmt.parseInt(u8, arg["--promote-age=".len..], 10);
+            continue;
+        }
         if (std.mem.startsWith(u8, arg, "--jit=")) {
             const mode = arg["--jit=".len..];
             if (std.mem.eql(u8, mode, "on")) {
@@ -314,6 +323,8 @@ fn parseArgs() !Opts {
     if (opts.heap_mb == 0) return error.InvalidArgs;
     if (opts.nursery_mb == 0) return error.InvalidArgs;
     if (opts.scale == 0) return error.InvalidArgs;
+    const max_promote_age: u8 = @intCast(runtime.heap.GC_AGE_N - 1);
+    if (opts.promote_age < 1 or opts.promote_age > max_promote_age) return error.InvalidArgs;
     return opts;
 }
 
@@ -713,6 +724,7 @@ pub fn main() !void {
             .los_size = nursery_bytes,
             .los_threshold = 32 * 1024,
             .promote_threshold = 1024,
+            .promote_age_threshold = opts.promote_age,
         },
     });
     defer heap.deinit();
@@ -873,7 +885,7 @@ pub fn main() !void {
         },
     );
     try w.print(
-        "  gc(run): n={d} minor={d} major={d} copied={d} promoted={d} avg_minor={d:.3}ms avg_major={d:.3}ms nursery={d} scale={d:.3} surv={d:.3} pause_err={d:.3}\n",
+        "  gc(run): n={d} minor={d} major={d} copied={d} promoted={d} avg_minor={d:.3}ms avg_major={d:.3}ms nursery={d} age={d} scale={d:.3} surv={d:.3} pause_err={d:.3}\n",
         .{
             gc_run.gc_count,
             gc_run.gc_minor_count,
@@ -883,6 +895,7 @@ pub fn main() !void {
             @as(f64, @floatFromInt(gc_run.avg_minor_ns)) / 1e6,
             @as(f64, @floatFromInt(gc_run.avg_major_ns)) / 1e6,
             gc_run.gc_nursery_target,
+            gc_run.gc_promote_age_threshold,
             gc_run.gc_nursery_scale,
             gc_run.gc_nursery_survival,
             gc_run.gc_nursery_pause_error,

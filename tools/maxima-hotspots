@@ -23,7 +23,14 @@ def parse_json_tail(text: str, label: str) -> dict:
     return json.loads(m.group(0))
 
 
-def run_bench(jit_enabled: bool, scale: int, heap_mb: int, nursery_mb: int, workloads: list[str]) -> dict:
+def run_bench(
+    jit_enabled: bool,
+    scale: int,
+    heap_mb: int,
+    nursery_mb: int,
+    promote_age: int,
+    workloads: list[str],
+) -> dict:
     mode = "jit" if jit_enabled else "interp"
     workloads_csv = ",".join(workloads)
     cmd = [
@@ -36,6 +43,7 @@ def run_bench(jit_enabled: bool, scale: int, heap_mb: int, nursery_mb: int, work
         f"--scale={scale}",
         f"--heap-mb={heap_mb}",
         f"--nursery-mb={nursery_mb}",
+        f"--promote-age={promote_age}",
         f"--jit={'on' if jit_enabled else 'off'}",
         f"--workloads={workloads_csv}",
     ]
@@ -163,6 +171,7 @@ def format_text(summary: dict) -> str:
             f"{row['name']:<18} {row['jit_ns']:>12} {row['interp_ns']:>12} {sp_txt:>11}"
         )
     lines.append("")
+    lines.append(f"promote_age={summary.get('promote_age', 0)}")
     lines.append(f"loader_ns jit={summary['jit_loader_ns']} interp={summary['interp_loader_ns']}")
     lines.append(f"jit_compiled jit={summary.get('jit_compiled', 0)} interp={summary.get('interp_compiled', 0)}")
     lines.append(
@@ -233,13 +242,14 @@ def format_text(summary: dict) -> str:
     return "\n".join(lines)
 
 
-def format_markdown(summary: dict, scale: int, heap_mb: int, nursery_mb: int) -> str:
+def format_markdown(summary: dict, scale: int, heap_mb: int, nursery_mb: int, promote_age: int) -> str:
     lines = []
     lines.append("# Maxima Hotspots")
     lines.append("")
     lines.append(f"- scale: `{scale}`")
     lines.append(f"- heap_mb: `{heap_mb}`")
     lines.append(f"- nursery_mb: `{nursery_mb}`")
+    lines.append(f"- promote_age: `{promote_age}`")
     lines.append("")
     lines.append("| workload | jit_ns | interp_ns | interp/jit |")
     lines.append("|---|---:|---:|---:|")
@@ -334,6 +344,7 @@ def main() -> int:
     p.add_argument("--scale", type=int, default=1)
     p.add_argument("--heap-mb", type=int, default=1024)
     p.add_argument("--nursery-mb", type=int, default=24)
+    p.add_argument("--promote-age", type=int, default=2)
     p.add_argument(
         "--workloads",
         type=str,
@@ -352,11 +363,15 @@ def main() -> int:
     if not workloads:
         print("no workloads selected", file=sys.stderr)
         return 2
+    if args.promote_age <= 0:
+        print("promote-age must be >= 1", file=sys.stderr)
+        return 2
 
     try:
-        jit = run_bench(True, args.scale, args.heap_mb, args.nursery_mb, workloads)
-        interp = run_bench(False, args.scale, args.heap_mb, args.nursery_mb, workloads)
+        jit = run_bench(True, args.scale, args.heap_mb, args.nursery_mb, args.promote_age, workloads)
+        interp = run_bench(False, args.scale, args.heap_mb, args.nursery_mb, args.promote_age, workloads)
         summary = summarize(jit, interp, workloads)
+        summary["promote_age"] = int(args.promote_age)
         summary["jit_gate"] = evaluate_gate(
             summary,
             args.min_interp_jit,
@@ -373,7 +388,7 @@ def main() -> int:
         print(format_text(summary))
 
     if args.markdown_out:
-        md = format_markdown(summary, args.scale, args.heap_mb, args.nursery_mb)
+        md = format_markdown(summary, args.scale, args.heap_mb, args.nursery_mb, args.promote_age)
         Path(args.markdown_out).write_text(md)
         print(f"wrote {args.markdown_out}", file=sys.stderr)
 
