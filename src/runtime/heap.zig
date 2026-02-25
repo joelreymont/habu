@@ -427,8 +427,8 @@ pub const Heap = struct {
     built_in_class: Value,
     structure_class: Value,
     /// Class metadata for CLOS slot-value lookup
-    /// Maps class symbol to slot symbol array
-    class_metadata: std.AutoHashMapUnmanaged(Value, []const Value),
+    /// Maps qualified class name to slot symbol array
+    class_metadata: std.StringHashMapUnmanaged([]const Value),
     /// Readtable for reader macros
     /// Maps character (u8) to macro function and flags
     readtable: std.AutoHashMapUnmanaged(u8, ReadtableEntry),
@@ -590,6 +590,7 @@ pub const Heap = struct {
         readtable: usize = 0,
         dispatch_tables: usize = 0,
         dispatch_entries: usize = 0,
+        class_metadata: usize = 0,
 
         fn eql(a: GcRootSig, b: GcRootSig) bool {
             return a.symbols_ver == b.symbols_ver and
@@ -599,7 +600,8 @@ pub const Heap = struct {
                 a.pkg_symbols_ver == b.pkg_symbols_ver and
                 a.readtable == b.readtable and
                 a.dispatch_tables == b.dispatch_tables and
-                a.dispatch_entries == b.dispatch_entries;
+                a.dispatch_entries == b.dispatch_entries and
+                a.class_metadata == b.class_metadata;
         }
     };
 
@@ -909,9 +911,10 @@ pub const Heap = struct {
             self.backing_allocator.free(entry.key_ptr.*);
         }
         self.package_aliases.deinit(self.backing_allocator);
-        // Free class_metadata slot arrays
+        // Free class_metadata keys and slot arrays
         var class_iter = self.class_metadata.iterator();
         while (class_iter.next()) |entry| {
+            self.backing_allocator.free(entry.key_ptr.*);
             self.backing_allocator.free(entry.value_ptr.*);
         }
         self.class_metadata.deinit(self.backing_allocator);
@@ -3177,6 +3180,55 @@ pub const Heap = struct {
         return ht.get(name);
     }
 
+    pub fn setClassMetadata(self: *Heap, class_name: []const u8, slot_names: []const Value) !void {
+        if (self.class_metadata.getPtr(class_name)) |old_slot_names| {
+            self.backing_allocator.free(old_slot_names.*);
+            old_slot_names.* = slot_names;
+            self.gc_root_sig_valid = false;
+            return;
+        }
+        const key_copy = try self.backing_allocator.dupe(u8, class_name);
+        errdefer self.backing_allocator.free(key_copy);
+        try self.class_metadata.put(self.backing_allocator, key_copy, slot_names);
+        self.gc_root_sig_valid = false;
+    }
+
+    const ClassMetadataKey = struct {
+        name: []const u8,
+        owned: bool,
+    };
+
+    fn makeClassMetadataKey(
+        self: *Heap,
+        buf: *[256]u8,
+        pkg_name: []const u8,
+        sym_name: []const u8,
+    ) error{ OutOfMemory, Overflow }!ClassMetadataKey {
+        const pkg_len = try std.math.add(usize, pkg_name.len, 1);
+        const total_len = try std.math.add(usize, pkg_len, sym_name.len);
+        if (total_len <= buf.len) {
+            @memcpy(buf[0..pkg_name.len], pkg_name);
+            buf[pkg_name.len] = ':';
+            @memcpy(buf[pkg_len..][0..sym_name.len], sym_name);
+            return .{ .name = buf[0..total_len], .owned = false };
+        }
+        const key = try std.fmt.allocPrint(self.backing_allocator, "{s}:{s}", .{ pkg_name, sym_name });
+        return .{ .name = key, .owned = true };
+    }
+
+    pub fn lookupClassMetadata(self: *Heap, class_name: Value) error{ OutOfMemory, Overflow }!?[]const Value {
+        if (!class_name.isSymbol()) return null;
+        const sym = class_name.toPtr(objects.Symbol);
+        const sym_name = sym.getName();
+        if (self.symbolHomePkg(sym)) |pkg| {
+            var qual_buf: [256]u8 = undefined;
+            const qual = try self.makeClassMetadataKey(&qual_buf, pkg.name, sym_name);
+            defer if (qual.owned) self.backing_allocator.free(qual.name);
+            if (self.class_metadata.get(qual.name)) |slot_names| return slot_names;
+        }
+        return self.class_metadata.get(sym_name);
+    }
+
     pub fn getKeywordPlist(self: *Heap, kw: Value) Value {
         if (!kw.isKeyword() or self.keyword_plists.raw == Value.nil.raw) return Value.nil;
         const ht = self.keyword_plists.toPtr(objects.HashTable);
@@ -3420,6 +3472,7 @@ pub const Heap = struct {
             .readtable = self.readtable.count(),
             .dispatch_tables = self.dispatch_readtable.count(),
             .dispatch_entries = dispatch_entries,
+            .class_metadata = self.class_metadata.count(),
         };
     }
 
@@ -3472,6 +3525,12 @@ pub const Heap = struct {
         }
         if (self.lisp_classes.raw != Value.nil.raw) {
             try self.gc_internal_slots.append(self.backing_allocator, &self.lisp_classes);
+        }
+        var class_md_it = self.class_metadata.iterator();
+        while (class_md_it.next()) |entry| {
+            for (entry.value_ptr.*) |*slot_name| {
+                try self.gc_internal_slots.append(self.backing_allocator, @constCast(slot_name));
+            }
         }
         if (self.keyword_plists.raw != Value.nil.raw) {
             try self.gc_internal_slots.append(self.backing_allocator, &self.keyword_plists);
@@ -4383,6 +4442,59 @@ test "heap collectGarbage caches internal roots by signature" {
     _ = try heap.collectGarbage(&roots);
     try testing.expect(heap.gc_root_sig.pkg_symbols_ver > sig0.pkg_symbols_ver);
     try testing.expect(heap.gc_internal_slots.items.len >= slot_len0 + 1);
+}
+
+test "heap setClassMetadata replaces existing slot array" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const slot_a = try heap.intern("A");
+    const slot_b = try heap.intern("B");
+    const class_name = "COMMON-LISP:COND-FOO";
+
+    const first_slots = try heap.backing_allocator.alloc(Value, 1);
+    first_slots[0] = slot_a;
+    try heap.setClassMetadata(class_name, first_slots);
+
+    const second_slots = try heap.backing_allocator.alloc(Value, 2);
+    second_slots[0] = slot_a;
+    second_slots[1] = slot_b;
+    try heap.setClassMetadata(class_name, second_slots);
+
+    const slots_opt = heap.class_metadata.get(class_name);
+    try testing.expect(slots_opt != null);
+    const slots = slots_opt.?;
+    try testing.expectEqual(@as(usize, 2), slots.len);
+    try testing.expectEqual(slot_b.raw, slots[1].raw);
+    try testing.expectEqual(@as(usize, 1), heap.class_metadata.count());
+}
+
+test "heap class_metadata keys and slots stay valid across GC" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var class_sym = try heap.intern("COND-BAR");
+    var slot_sym = try heap.intern("DATUM");
+    const class_name = "COMMON-LISP:COND-BAR";
+
+    const slots = try heap.backing_allocator.alloc(Value, 1);
+    slots[0] = slot_sym;
+    try heap.setClassMetadata(class_name, slots);
+
+    var roots = [_]Value{ class_sym, slot_sym };
+    _ = try heap.collectGarbage(&roots);
+    class_sym = roots[0];
+    slot_sym = roots[1];
+
+    const after_slots_opt = try heap.lookupClassMetadata(class_sym);
+    try testing.expect(after_slots_opt != null);
+    const after_slots = after_slots_opt.?;
+    try testing.expectEqual(@as(usize, 1), after_slots.len);
+    try testing.expectEqual(slot_sym.raw, after_slots[0].raw);
 }
 
 test "heap collectGarbageRootSet updates multi-range" {

@@ -11,8 +11,8 @@ const Keyword = objects.Keyword;
 const Class = objects.Class;
 const GenericFunction = objects.GenericFunction;
 
-fn lookupClassMetadata(heap: *Heap, class_val: Value) ?[]const Value {
-    return heap.class_metadata.get(class_val);
+fn lookupClassMetadata(heap: *Heap, class_val: Value) !?[]const Value {
+    return try heap.lookupClassMetadata(class_val);
 }
 
 /// make-instance: (make-instance 'class-name :slot1 val1 :slot2 val2 ...)
@@ -100,7 +100,7 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_names = if (lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
+    const slot_names = if (try lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (name.eq(slot_name)) {
@@ -153,7 +153,7 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_names = if (lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
+    const slot_names = if (try lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (name.eq(slot_name)) {
@@ -268,7 +268,7 @@ pub fn slotExistsP(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return Value.nil;
-    const slot_names = lookupClassMetadata(heap, class_name_val) orelse return Value.nil;
+    const slot_names = (try lookupClassMetadata(heap, class_name_val)) orelse return Value.nil;
 
     for (slot_names) |name| {
         if (name.eq(slot_name)) {
@@ -307,7 +307,7 @@ pub fn slotBoundp(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_names = if (lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
+    const slot_names = if (try lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (name.eq(slot_name)) {
@@ -353,7 +353,7 @@ pub fn slotMakunbound(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_names = if (lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
+    const slot_names = if (try lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (name.eq(slot_name)) {
@@ -823,7 +823,7 @@ test "slot-value uses symbol metadata" {
 
     const slot_names = try heap.backing_allocator.alloc(Value, 1);
     slot_names[0] = slot_sym;
-    try heap.class_metadata.put(heap.backing_allocator, class_sym, slot_names);
+    try heap.setClassMetadata("COMMON-LISP:FOO-CLASS", slot_names);
 
     const vec = try heap.allocVector(2, 2);
     const vec_obj = vec.toPtr(Vector);

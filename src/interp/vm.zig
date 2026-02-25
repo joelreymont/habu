@@ -9101,6 +9101,22 @@ pub const Vm = struct {
                 "TRACE error ctx: err={s} chunk={s} ip={d} code_len={d} fp={d} sp={d}\n",
                 .{ @errorName(err), cur_name, self.ip, code_len, self.fp, self.sp },
             );
+            if (err == error.OutOfMemory) {
+                std.debug.print(
+                    "  oom-stats heap_used={d} heap_total={d} gc_count={d} gc_major={d} jit_gc_forbidden={d} comp_root_sp={d} comp_retain={d} ext_roots={d} ext_saved={d}\n",
+                    .{
+                        self.heap.bytesUsed(),
+                        self.heap.memory.len,
+                        self.heap.stats.gc_count,
+                        self.heap.stats.gc_major_count,
+                        self.jit_gc_forbidden_depth,
+                        self.comp_root_sp,
+                        self.comp_retain_vals.items.len,
+                        self.currentExtRoots().len,
+                        self.ext_roots_saved_sp,
+                    },
+                );
+            }
             if (err == error.InvalidOpcode or err == error.InvalidConstant) {
                 const from_start = @intFromPtr(self.heap.from_start);
                 const from_end = @intFromPtr(self.heap.from_end);
@@ -11177,7 +11193,7 @@ pub const Vm = struct {
             return try self.allocCons(datum, expected_type);
         }
 
-        if (self.heap.class_metadata.get(condition_type)) |slot_names| {
+        if (try self.heap.lookupClassMetadata(condition_type)) |slot_names| {
             const payload = try self.allocVector(slot_names.len + 1, slot_names.len + 1);
             const vec = payload.toPtr(runtime.Vector);
             vec.data[0] = condition_type;

@@ -2392,6 +2392,69 @@ pub const Compiler = struct {
         return self.specialSetContainsSym(&self.global_special_syms, sym_val);
     }
 
+    fn freePersistentSlotSpecs(self: *Compiler, specs: []const SlotSpec) void {
+        for (specs) |spec| {
+            self.globals.allocator.free(spec.name);
+            var mut_initargs = spec.initargs;
+            var mut_readers = spec.readers;
+            var mut_writers = spec.writers;
+            mut_initargs.deinit(self.globals.allocator);
+            mut_readers.deinit(self.globals.allocator);
+            mut_writers.deinit(self.globals.allocator);
+        }
+        self.globals.allocator.free(specs);
+    }
+
+    fn setClassMetadata(self: *Compiler, class_name: []const u8, specs: []const SlotSpec) !void {
+        if (self.class_metadata.getPtr(class_name)) |old_specs| {
+            self.freePersistentSlotSpecs(old_specs.*);
+            old_specs.* = specs;
+            return;
+        }
+
+        const key_copy = try self.globals.allocator.dupe(u8, class_name);
+        errdefer self.globals.allocator.free(key_copy);
+        try self.class_metadata.put(key_copy, specs);
+    }
+
+    fn freeMethodSpecializers(self: *Compiler, specializers: []const MethodSpecializer) void {
+        for (specializers) |spec| {
+            switch (spec) {
+                .class_name => |name| self.globals.allocator.free(name),
+                .any, .eql_obj => {},
+            }
+        }
+        self.globals.allocator.free(specializers);
+    }
+
+    fn freeMethodDef(self: *Compiler, method: MethodDef) void {
+        self.freeMethodSpecializers(method.specializers);
+        self.globals.allocator.free(method.function_name);
+    }
+
+    fn methodSpecializerEq(a: MethodSpecializer, b: MethodSpecializer) bool {
+        return switch (a) {
+            .any => b == .any,
+            .class_name => |a_name| switch (b) {
+                .class_name => |b_name| std.mem.eql(u8, a_name, b_name),
+                else => false,
+            },
+            .eql_obj => |a_obj| switch (b) {
+                .eql_obj => |b_obj| a_obj.raw == b_obj.raw,
+                else => false,
+            },
+        };
+    }
+
+    fn methodDefMatches(method: MethodDef, qualifier: MethodQualifier, specializers: []const MethodSpecializer) bool {
+        if (method.qualifier != qualifier) return false;
+        if (method.specializers.len != specializers.len) return false;
+        for (method.specializers, 0..) |existing, idx| {
+            if (!methodSpecializerEq(existing, specializers[idx])) return false;
+        }
+        return true;
+    }
+
     pub fn deinit(self: *Compiler) void {
         self.type_checker.deinit();
         self.bi_checker.deinit();
@@ -2419,16 +2482,7 @@ pub const Compiler = struct {
         var class_iter = self.class_metadata.iterator();
         while (class_iter.next()) |entry| {
             self.globals.allocator.free(entry.key_ptr.*);
-            for (entry.value_ptr.*) |spec| {
-                self.globals.allocator.free(spec.name);
-                var mut_initargs = spec.initargs;
-                var mut_readers = spec.readers;
-                var mut_writers = spec.writers;
-                mut_initargs.deinit(self.globals.allocator);
-                mut_readers.deinit(self.globals.allocator);
-                mut_writers.deinit(self.globals.allocator);
-            }
-            self.globals.allocator.free(entry.value_ptr.*);
+            self.freePersistentSlotSpecs(entry.value_ptr.*);
         }
         self.class_metadata.deinit();
         // Free generic_functions - keys, method lists, specializers, function names
@@ -2438,15 +2492,7 @@ pub const Compiler = struct {
             self.globals.allocator.free(entry.key_ptr.*);
             // Free each method's data
             for (entry.value_ptr.items) |method| {
-                for (method.specializers) |spec| {
-                    switch (spec) {
-                        .class_name => |name| self.globals.allocator.free(name),
-                        .any, .eql_obj => {},
-                    }
-                }
-                self.globals.allocator.free(method.specializers);
-                // Free function name
-                self.globals.allocator.free(method.function_name);
+                self.freeMethodDef(method);
             }
             // Free methods list
             entry.value_ptr.deinit(self.globals.allocator);
@@ -2478,6 +2524,11 @@ pub const Compiler = struct {
 
     /// Register a struct type definition
     pub fn registerStructType(self: *Compiler, struct_name: []const u8, struct_type: *const types.Type) !void {
+        if (self.struct_types.getPtr(struct_name)) |old_type| {
+            old_type.* = struct_type;
+            return;
+        }
+
         // Use globals.allocator for persistence across expressions
         const name_copy = try self.globals.allocator.dupe(u8, struct_name);
         try self.struct_types.put(name_copy, struct_type);
@@ -2505,6 +2556,15 @@ pub const Compiler = struct {
             const q_copy = try self.globals.allocator.dupe(u8, q.name);
             try self.struct_accessors.put(q_copy, slot_idx);
         }
+    }
+
+    fn registerStructPredicate(self: *Compiler, pred_name: []const u8, struct_type: *const types.Type) !void {
+        if (self.struct_predicates.getPtr(pred_name)) |old_type| {
+            old_type.* = struct_type;
+            return;
+        }
+        const key_copy = try self.globals.allocator.dupe(u8, pred_name);
+        try self.struct_predicates.put(key_copy, struct_type);
     }
 
     /// Enable type checking mode
@@ -2893,17 +2953,6 @@ pub const Compiler = struct {
         const is_top_level = self.compile_depth == 0;
         self.compile_depth += 1;
         defer self.compile_depth -= 1;
-
-        var gc_guard_vm: ?*Vm = null;
-        if (is_top_level) {
-            if (self.vm) |vm| {
-                vm.jit_gc_forbidden_depth += 1;
-                gc_guard_vm = vm;
-            }
-        }
-        defer if (gc_guard_vm) |vm| {
-            vm.jit_gc_forbidden_depth -= 1;
-        };
 
         var rooted_expr = expr;
         var root_tok: ?CompileRootToken = null;
@@ -10808,8 +10857,7 @@ pub const Compiler = struct {
             def_idx += 1;
 
             // Register predicate for occurrence typing
-            const persistent_pred_name = try self.globals.allocator.dupe(u8, pred_name);
-            try self.struct_predicates.put(persistent_pred_name, struct_type);
+            try self.registerStructPredicate(pred_name, struct_type);
         }
 
         // 5. Copier (unless suppressed)
@@ -11917,6 +11965,7 @@ pub const Compiler = struct {
 
         const class_name_raw = name_val.toPtr(Symbol).getName();
         const class_name = try self.allocator.dupe(u8, class_name_raw);
+        defer self.allocator.free(class_name);
 
         // Parse superclasses (second arg) and inherit their slots
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
@@ -12280,8 +12329,7 @@ pub const Compiler = struct {
         var qual_buf: [256]u8 = undefined;
         const q = try self.qualifyName(class_name, &qual_buf);
         defer if (q.owned) self.allocator.free(q.name);
-        const persistent_class_name = try self.globals.allocator.dupe(u8, q.name);
-        try self.class_metadata.put(persistent_class_name, persistent_specs);
+        try self.setClassMetadata(q.name, persistent_specs);
 
         // Also store in heap for runtime slot-value lookup
         {
@@ -12290,7 +12338,7 @@ pub const Compiler = struct {
                 if (!spec.sym.isSymbol()) return error.InvalidSyntax;
                 heap_slot_names[i] = spec.sym;
             }
-            try heap.class_metadata.put(heap.backing_allocator, name_val, heap_slot_names);
+            try heap.setClassMetadata(q.name, heap_slot_names);
         }
 
         // Allocate Class object and compute CPL, then register in class registry
@@ -12338,8 +12386,7 @@ pub const Compiler = struct {
         var pred_qual_buf: [512]u8 = undefined;
         const q_pred = try self.qualifyName(pred_name, &pred_qual_buf);
         defer if (q_pred.owned) self.allocator.free(q_pred.name);
-        const persistent_pred_name = try self.globals.allocator.dupe(u8, q_pred.name);
-        try self.struct_predicates.put(persistent_pred_name, class_type);
+        try self.registerStructPredicate(q_pred.name, class_type);
 
         // 3. Default accessors: (defun class-name-slot (obj) (if (class-name-p obj) (aref obj N+1) (error)))
         for (slot_specs.items, 0..) |spec, i| {
@@ -12742,9 +12789,12 @@ pub const Compiler = struct {
         const cons2 = cons1.cdr.toPtr(Cons);
         const lambda_list = cons2.car;
 
-        // Register generic function
-        const persistent_name = try self.globals.allocator.dupe(u8, gen_name);
-        try self.generic_functions.put(persistent_name, std.ArrayList(MethodDef){});
+        // Register generic function only once; redefining must not drop methods.
+        if (!self.generic_functions.contains(gen_name)) {
+            const persistent_name = try self.globals.allocator.dupe(u8, gen_name);
+            errdefer self.globals.allocator.free(persistent_name);
+            try self.generic_functions.put(persistent_name, std.ArrayList(MethodDef){});
+        }
 
         // Register as global
         const idx = try self.globals.define(gen_name);
@@ -12979,34 +13029,41 @@ pub const Compiler = struct {
             .function_name = persistent_method_name,
             .qualifier = qualifier,
         };
+        errdefer self.freeMethodDef(method_def);
 
-        // Manually grow the methods list
-        // Use globals.allocator for persistent storage across arena resets
-        // Also track if this is a new GF (needs implicit creation)
+        // Add or replace method definition by CLOS signature (qualifier + specializers).
         const needs_implicit_gf = !gop.found_existing;
         if (needs_implicit_gf) {
-            // New generic function - create list with first method
             const new_methods = try self.globals.allocator.alloc(MethodDef, 1);
             new_methods[0] = method_def;
             gop.value_ptr.* = .{ .items = new_methods, .capacity = 1 };
         } else {
-            // Existing function - reallocate with one more slot
-            const old_items = gop.value_ptr.items;
-            const old_len = old_items.len;
-            const new_methods = try self.globals.allocator.alloc(MethodDef, old_len + 1);
-
-            // Copy old methods
-            for (old_items, 0..) |old_method, i| {
-                new_methods[i] = old_method;
+            const methods = gop.value_ptr.items;
+            var replace_idx: ?usize = null;
+            for (methods, 0..) |old_method, idx| {
+                if (methodDefMatches(old_method, qualifier, specializers.items)) {
+                    replace_idx = idx;
+                    break;
+                }
             }
 
-            // Add new method
-            new_methods[old_len] = method_def;
+            if (replace_idx) |idx| {
+                self.freeMethodDef(methods[idx]);
+                methods[idx] = method_def;
+            } else {
+                // Existing function - append one more method.
+                const old_items = gop.value_ptr.items;
+                const old_len = old_items.len;
+                const new_methods = try self.globals.allocator.alloc(MethodDef, old_len + 1);
 
-            // Free old memory (safe because we allocated with globals.allocator)
-            self.globals.allocator.free(old_items);
+                for (old_items, 0..) |old_method, i| {
+                    new_methods[i] = old_method;
+                }
+                new_methods[old_len] = method_def;
+                self.globals.allocator.free(old_items);
 
-            gop.value_ptr.* = .{ .items = new_methods, .capacity = old_len + 1 };
+                gop.value_ptr.* = .{ .items = new_methods, .capacity = old_len + 1 };
+            }
         }
 
         // Generate dispatcher function
@@ -20292,6 +20349,49 @@ test "compile defclass slot list" {
     try testing.expect(last.lit.eq(class_sym));
 }
 
+test "compile defclass redefinition replaces metadata in place" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser_first = try Parser.init(
+        arena_alloc,
+        &heap,
+        "(defclass foo () ((x :initarg :x)))",
+        &vm.builtins,
+    );
+    defer parser_first.deinit();
+    _ = try compiler.compile(try parser_first.parse(), &env);
+
+    var parser_second = try Parser.init(
+        arena_alloc,
+        &heap,
+        "(defclass foo () ((x :initarg :x) (y :initarg :y)))",
+        &vm.builtins,
+    );
+    defer parser_second.deinit();
+    _ = try compiler.compile(try parser_second.parse(), &env);
+
+    const specs = try compiler.lookupClassMetadataByName("FOO");
+    try testing.expect(specs != null);
+    try testing.expectEqual(@as(usize, 2), specs.?.len);
+    try testing.expectEqual(@as(usize, 1), compiler.class_metadata.count());
+}
+
 test "compile defclass expansion count includes readers and writers" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -20370,6 +20470,90 @@ test "compile defmethod specialized param" {
             found = true;
             break;
         }
+    }
+    try testing.expect(found);
+}
+
+test "compile defgeneric redefinition does not reset methods" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser_gf1 = try Parser.init(arena_alloc, &heap, "(defgeneric foo (x))", &vm.builtins);
+    defer parser_gf1.deinit();
+    _ = try compiler.compile(try parser_gf1.parse(), &env);
+
+    var parser_m = try Parser.init(arena_alloc, &heap, "(defmethod foo ((x fixnum)) x)", &vm.builtins);
+    defer parser_m.deinit();
+    _ = try compiler.compile(try parser_m.parse(), &env);
+
+    var parser_gf2 = try Parser.init(arena_alloc, &heap, "(defgeneric foo (x))", &vm.builtins);
+    defer parser_gf2.deinit();
+    _ = try compiler.compile(try parser_gf2.parse(), &env);
+
+    var found = false;
+    var it = compiler.generic_functions.iterator();
+    while (it.next()) |entry| {
+        const key = entry.key_ptr.*;
+        const local = if (std.mem.lastIndexOfScalar(u8, key, ':')) |sep| key[sep + 1 ..] else key;
+        if (!std.mem.eql(u8, local, "FOO")) continue;
+        found = true;
+        try testing.expectEqual(@as(usize, 1), entry.value_ptr.items.len);
+        break;
+    }
+    try testing.expect(found);
+}
+
+test "compile defmethod duplicate signature replaces existing method" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser_m1 = try Parser.init(arena_alloc, &heap, "(defmethod foo ((x fixnum)) x)", &vm.builtins);
+    defer parser_m1.deinit();
+    _ = try compiler.compile(try parser_m1.parse(), &env);
+
+    var parser_m2 = try Parser.init(arena_alloc, &heap, "(defmethod foo ((x fixnum)) (+ x 1))", &vm.builtins);
+    defer parser_m2.deinit();
+    _ = try compiler.compile(try parser_m2.parse(), &env);
+
+    var found = false;
+    var it = compiler.generic_functions.iterator();
+    while (it.next()) |entry| {
+        const key = entry.key_ptr.*;
+        const local = if (std.mem.lastIndexOfScalar(u8, key, ':')) |sep| key[sep + 1 ..] else key;
+        if (!std.mem.eql(u8, local, "FOO")) continue;
+        found = true;
+        try testing.expectEqual(@as(usize, 1), entry.value_ptr.items.len);
+        break;
     }
     try testing.expect(found);
 }
