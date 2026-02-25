@@ -1555,3 +1555,16 @@ Environment guard:
 2. `build.zig` runs `git rev-parse --short HEAD` — /tmp isn't a git repo (jj uses .jj, not .git)
 For parallel agent work, use `git worktree` or apply changes directly to the main repo.
 jj workspaces only work when the build system has no relative path deps and no git assumptions.
+
+### Use tools/dot-finish per dot, never batch commits (2026-02-25)
+`tools/dot-finish <id> -m "msg"` is mandatory after each dot. It runs tests, commits,
+pushes, closes the dot, and starts a fresh jj change. Batching multiple dots into one
+commit defeats the purpose of dots — each dot should be one atomic, independently
+revertable commit. The fix plan had 11 dots that should have been 11 commits. Instead
+they were crammed into 2 commits, making them impossible to split or revert individually.
+
+### jj sibling workspaces for parallel agents (2026-02-25)
+Create jj workspaces as sibling directories (`${PROJECT}-minion-XXXX`), not in /tmp.
+Add a `.git` symlink pointing to the main repo's `.git` for colocated jj+git repos.
+This ensures relative path deps (`../hoist`) resolve and `git rev-parse` works.
+Cleanup is mandatory: `jj workspace forget` + `rm -rf` the sibling dirs after merge.
