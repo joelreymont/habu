@@ -60,6 +60,8 @@ test "compileChunk JITs optimized defun with implicit block" {
     vm.setChunkPoolOwned(&chunk_pool);
 
     const before = vm.jit_fns.items.len;
+    vm.resetJitDirectCalls();
+    const direct_before = vm.jit_direct_calls;
     const def_chunk = try compile_chunk.compileChunk(
         allocator,
         &heap,
@@ -83,6 +85,8 @@ test "compileChunk JITs optimized defun with implicit block" {
     const result = try vm.run(call_chunk);
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
+    // Generic symbol call path should not increment direct-call counter.
+    try testing.expectEqual(direct_before, vm.jit_direct_calls);
 }
 
 test "compileChunk direct JIT closure calls bypass generic call setup" {
@@ -1694,6 +1698,12 @@ test "stdlib append function designators stay variadic" {
 
     const r2 = try repl.eval("(equal (funcall (symbol-function 'append) '(a) '(b) '(c)) '(a b c))");
     try testing.expect(r2.raw == Value.t.raw);
+
+    const r3 = try repl.eval("(equal (apply #'append '((a) (b) (c))) '(a b c))");
+    try testing.expect(r3.raw == Value.t.raw);
+
+    const r4 = try repl.eval("(equal (apply (symbol-function 'append) '((a) (b) (c))) '(a b c))");
+    try testing.expect(r4.raw == Value.t.raw);
 }
 
 test "stdlib mapc supports variadic list dispatch" {
@@ -9634,8 +9644,8 @@ test "compileChunk JIT OOM relay falls back to interpreted execution" {
     if (!build_options.use_hoist) return;
 
     const allocator = testing.allocator;
-    // Small heap: 2MB — enough to init VM but triggers OOM during heavy allocation
-    var heap = try Heap.init(allocator, .{ .total_size = 2 * 1024 * 1024 });
+    // Small heap to force JIT no-GC path pressure while keeping interpreter fallback viable.
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 });
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
@@ -9649,9 +9659,9 @@ test "compileChunk JIT OOM relay falls back to interpreted execution" {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPoolOwned(&chunk_pool);
 
-    // Define a JIT-compiled function that allocates cons cells in a loop.
-    // With a 2MB heap this will eventually trigger OOM in the JIT path.
-    // The bridge should relay the error, VM runs GC, and retries interpreted.
+    const jit_before = vm.jit_fns.items.len;
+
+    // Define optimized function so hoist/JIT can compile it.
     _ = try vm.run(try compile_chunk.compileChunk(
         allocator,
         &heap,
@@ -9660,21 +9670,74 @@ test "compileChunk JIT OOM relay falls back to interpreted execution" {
         &chunk_pool,
         "(defun jit-alloc-loop (n)" ++
             " (declare (optimize (speed 3) (safety 0)))" ++
-            " (let ((acc nil))" ++
-            "   (dotimes (i n acc)" ++
-            "     (setq acc (cons i acc)))))",
+            " (let ((acc 0) (i 0))" ++
+            "   (while (< i n)" ++
+            "     (setq acc (+ acc (length (make-string 1024))))" ++
+            "     (setq i (+ i 1)))" ++
+            "   acc))",
     ));
 
-    // Call it — should succeed (possibly via interpreted fallback after OOM+GC).
-    // The key assertion: no crash, no silent nil, produces a valid list.
-    const result = try vm.run(try compile_chunk.compileChunk(
+    // JIT-attempt evidence: optimized defun should register a compiled fn.
+    try testing.expect(vm.jit_fns.items.len > jit_before);
+
+    vm.resetJitFallbackOomCount();
+
+    // No-OOM control: small allocation must not use fallback counter.
+    const control = try vm.run(try compile_chunk.compileChunk(
         allocator,
         &heap,
         &vm,
         &comp,
         &chunk_pool,
-        "(length (jit-alloc-loop 100))",
+        "(jit-alloc-loop 8)",
     ));
-    try testing.expect(result.isFixnum());
-    try testing.expectEqual(@as(i64, 100), result.toFixnum());
+    try testing.expect(control.isFixnum());
+    try testing.expectEqual(@as(i64, 8 * 1024), control.toFixnum());
+    try testing.expectEqual(@as(u64, 0), vm.jit_fallback_oom_count);
+
+    // Fallback evidence contract:
+    // - JIT attempted (asserted above)
+    // - OOM during JIT triggers fallback counter + GC
+    // - Result semantics remain correct
+    const gc_before = heap.stats.gc_count;
+    const fallback_before = vm.jit_fallback_oom_count;
+
+    // Escalate pressure until we observe at least one JIT OOM fallback.
+    const pressure_sizes = [_]i64{ 64, 128, 256, 512 };
+    var saw_fallback = false;
+    for (pressure_sizes) |n| {
+        var expr_buf: [96]u8 = undefined;
+        const expr = try std.fmt.bufPrint(&expr_buf, "(jit-alloc-loop {d})", .{n});
+        const pressure = try vm.run(try compile_chunk.compileChunk(
+            allocator,
+            &heap,
+            &vm,
+            &comp,
+            &chunk_pool,
+            expr,
+        ));
+        try testing.expect(pressure.isFixnum());
+        try testing.expectEqual(n * 1024, pressure.toFixnum());
+        if (vm.jit_fallback_oom_count > fallback_before) {
+            saw_fallback = true;
+            break;
+        }
+    }
+
+    try testing.expect(saw_fallback);
+    try testing.expect(heap.stats.gc_count >= gc_before + 1);
+
+    // Repeated stability after pressure.
+    inline for (0..3) |_| {
+        const stable = try vm.run(try compile_chunk.compileChunk(
+            allocator,
+            &heap,
+            &vm,
+            &comp,
+            &chunk_pool,
+            "(jit-alloc-loop 16)",
+        ));
+        try testing.expect(stable.isFixnum());
+        try testing.expectEqual(@as(i64, 16 * 1024), stable.toFixnum());
+    }
 }

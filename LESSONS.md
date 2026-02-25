@@ -9,15 +9,28 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-25)
 
 ### Worked Well
+- For the `mforma` form-34 stall, isolating macro body subexpressions showed the real blocker was dynamic `append` invocation (`apply`/`funcall`) rather than macro-rewrite recursion: `(apply #'append ...)` hung while direct `(append ...)` succeeded, which pinpointed a function-designator path bug quickly (`lib/stdlib.habu:963-986`, `/tmp/mformat_dispatch_subexpr_probe.lisp`).
+- Replacing `%append2` primitive-capture indirection with an explicit binary append helper in stdlib removed self-recursive dynamic-call behavior and unblocked full Maxima macro expansion (`lib/stdlib.habu:963-991`); `/tmp/mforma_trace.lisp` now reaches `[PHASE] mforma done`.
+- Locking append dynamic-call behavior with integration assertions for both `funcall` and `apply` on `#'append` and `(symbol-function 'append)` prevents regressions in macro-heavy code paths that rely on function designators (`src/tests/integration.zig:1696-1708`).
 - Restoring a full-file JJ conflict artifact by materializing the known-good file content from a specific revision (`jj file show -r <rev> path > path`) was safer and faster than hand-editing prefixed conflict-diff lines (`src/runtime/primitives/type.zig`).
 - Making age-gated promotion a heap-owned runtime knob (`src/runtime/heap.zig`: `promote_age_threshold`, `setPromoteAgeThreshold`) let GC control logic adapt policy without hardcoded collector constants (`src/runtime/gc.zig:shouldPromote`).
 - Separating tenuring-byte policy and age-threshold policy (`deriveTenuringPolicy` + `derivePromoteAgePolicy` in `src/runtime/gc.zig`) kept control loops simple and testable; dedicated policy tests caught bound/step behavior directly without requiring full runtime benches.
 - Wiring bench/tool controls end-to-end (`bench/maxima_workload.zig --promote-age`, `tools/maxima-hotspots --promote-age`) turned policy tuning into a reproducible command-line parameter instead of ad-hoc code edits.
 - For large accidental file-drop states, scripting restore from the immediate pre-break revision (`817a1145bd62`) by scanning missing `@import` targets and replaying `jj file show -r <rev> <path>` restored build integrity quickly without hand-chasing every compiler error.
+- Treating plan findings as hypotheses first, then validating against execution invariants (`src/interp/vm.zig:2106-2109`, `src/interp/vm.zig:2636-2637`) prevented incorrect escalation of GC-staleness reports in JIT helpers and produced a cleaner `PLAN.md` with explicit accept/reject rationale.
+- Splitting `doHoistCompile` map population into a dedicated helper (`src/interp/repl.zig:3092+`, `populateKnownFns`) made allocator-failure behavior unit-testable: deterministic first-insert, partial-map, and no-preseed control cases can now be validated without depending on full Hoist compilation side effects.
+- Reworking the OOM relay integration workload from retained cons-list growth to repeated transient `make-string` allocations (`src/tests/integration.zig:9658+`) made fallback observability deterministic and fast enough for 3 consecutive reruns while still proving JIT-attempt + fallback-counter + GC-delta invariants.
+- For the MAXIMA `mforma` hang, creating prefix-only repro scripts (`/tmp/mforma_prefix_33.lisp` + `/tmp/mforma_prefix_plain_defun_loop.lisp`) isolated the trigger to defining a function whose body contains `mformat-loop-c`; a minimal `defun-maclisp` without `mformat-loop-c` does not hang, which narrows RCA away from generic `defun-maclisp` handling.
 
 ### Did Not Work
+- Treating the `mforma` timeout as pure macro-expansion recursion for too long delayed RCA: direct probes showed `macroexpand-1` stabilized, and the real loop was dynamic `append` calls inside macro bodies (`apply/funcall` designator path), not repeated rewrite growth (`lib/stdlib.habu:963-986`, `/tmp/mformat_dispatch_macro_probe.lisp`).
 - Treating `zig build` failure as a local code-change regression was incorrect in this session: build/test paths are currently blocked by repository state drift (missing `build.zig.zon` plus missing runtime/build entry files referenced by imports/build graph), so perf rebaseline steps must be gated on build-graph restoration first.
 - Running `python -m py_compile` in-tree created tracked `__pycache__` artifacts; these must be immediately removed and never committed (`tools/__pycache__/maxima-hotspotscpython-314.pyc`).
+- Accepting deep-review severity labels at face value (without checking current VM JIT GC fences) can create false-critical plan churn; verify findings against live control-flow guards before prioritizing fixes (`src/interp/vm.zig:2106-2109`, `src/interp/vm.zig:2636-2637`, `src/jit/backend.zig:816-917`).
+- "Review plan" can drift into plan-prose critique if prompts/skills do not force a fresh code-grounding phase; require explicit file:line re-verification + goal→plan coverage matrix before accepting plan conclusions.
+- Subagent review prompts can silently mis-dispatch to unknown default agents (e.g., `claude`/`code`) if task roles are phrased loosely; always verify subagent result metadata and ensure configured project agent names (`plan-critic`, `edge-case-hunter`, `scout`) were actually used.
+- Using broad retained-allocation loops in OOM fallback tests (`cons` list growth) made CI/runtime behavior bimodal (sometimes no fallback, sometimes long timeout). Prefer bounded transient allocations with explicit pressure ladders and direct fallback counters (`src/tests/integration.zig:9688+`) for deterministic OOM-path evidence.
+- Treating `macroexpand-1` as proof that full macro expansion is safe was misleading for `mformat-loop-c`: `macroexpand-1` completed quickly while recursive `macroexpand`/top-level `defun` expansion still hung, so RCA for macro stalls must always test the full expansion path.
 
 ## Session Notes (2026-02-24)
 
@@ -1556,12 +1569,11 @@ Environment guard:
 For parallel agent work, use `git worktree` or apply changes directly to the main repo.
 jj workspaces only work when the build system has no relative path deps and no git assumptions.
 
-### Use tools/dot-finish per dot, never batch commits (2026-02-25)
-`tools/dot-finish <id> -m "msg"` is mandatory after each dot. It runs tests, commits,
-pushes, closes the dot, and starts a fresh jj change. Batching multiple dots into one
-commit defeats the purpose of dots — each dot should be one atomic, independently
-revertable commit. The fix plan had 11 dots that should have been 11 commits. Instead
-they were crammed into 2 commits, making them impossible to split or revert individually.
+### Batch dot execution, then test once per batch (2026-02-25)
+For multi-dot implementation runs, run all related dots first, then run `zig build test`
+once before commit/push. Running the full test suite after every dot is too expensive in
+this repo and slows execution significantly. Keep dot tracking granular (`dot add`/`dot off`)
+while allowing batch validation and batch commits when dots are tightly related.
 
 ### jj sibling workspaces for parallel agents (2026-02-25)
 Create jj workspaces as sibling directories (`${PROJECT}-minion-XXXX`), not in /tmp.

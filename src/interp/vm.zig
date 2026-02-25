@@ -788,6 +788,8 @@ pub const Vm = struct {
     jit_literal_roots: std.ArrayList(*Value),
     jit_adm: JitAdmStats,
     jit_direct_calls: u64,
+    /// Number of times JIT execution fell back to interpreter due to OOM.
+    jit_fallback_oom_count: u64,
     call_shape: CallShapeStats,
     track_call_shape: bool,
 
@@ -1248,6 +1250,7 @@ pub const Vm = struct {
             .jit_literal_roots = std.ArrayList(*Value){},
             .jit_adm = .{},
             .jit_direct_calls = 0,
+            .jit_fallback_oom_count = 0,
             .call_shape = .{},
             .track_call_shape = std.posix.getenv("HABU_TRACK_CALL_SHAPES") != null,
             .trace_jit_call = std.posix.getenv("HABU_TRACE_JIT_CALL") != null,
@@ -1321,6 +1324,10 @@ pub const Vm = struct {
 
     pub fn resetJitDirectCalls(self: *Vm) void {
         self.jit_direct_calls = 0;
+    }
+
+    pub fn resetJitFallbackOomCount(self: *Vm) void {
+        self.jit_fallback_oom_count = 0;
     }
 
     pub fn resetCallShapeStats(self: *Vm) void {
@@ -2119,6 +2126,7 @@ pub const Vm = struct {
                 std.debug.print("JIT_CALL abort {s} err={s}\n", .{ compiled.name, @errorName(err) });
             }
             if (err == error.OutOfMemory) {
+                self.jit_fallback_oom_count +%= 1;
                 _ = try self.collectGarbage();
                 return null;
             }

@@ -387,12 +387,17 @@ The benchmark harness (`bench/comprehensive_bench.zig`) runs in two modes:
 # REQUIRED before starting any multi-step task:
 dot add "Task title" -d "Full context: file:line, what needs to be done, dependencies"
 
-# REQUIRED after completing work:
-tools/dot-finish <id> -m "50-char imperative commit msg" [-r "Brief completion note"]
+# REQUIRED after completing each dot:
+dot off <id> -r "done (batched validation pending)"
+
+# REQUIRED after completing a related batch of dots (or before push):
+zig build test
+jj describe -m "<imperative batch commit message>"
+jj git push
 ```
 
-`tools/dot-finish` is mandatory for any dot that changes tracked files. It runs `zig build test`,
-creates a jj commit message, pushes, closes the dot, then starts a new empty change.
+`tools/dot-finish` is optional (useful for single-dot changes), but it is not required.
+Default workflow for multi-dot work is: complete dots -> run tests once -> commit/push batch.
 
 **When to create dots (MANDATORY):**
 - Before implementing any new feature (>30 min)

@@ -167,6 +167,7 @@ pub fn findMatchingChunk(
 
     for (child_chunks, 0..) |chunk_val, idx| {
         if (used[idx]) continue;
+        if (!chunk_val.isChunk()) continue;
         const chunk = chunk_val.toPtr(Chunk);
         if (!chunkSignatureMatches(candidate.lambda_ir, chunk)) continue;
         if (!chunkNameMatches(candidate, live_name_sym, chunk)) continue;
@@ -311,4 +312,330 @@ test "collectLambdaCandidates: skips non-lambda define" {
 
     try collectLambdaCandidates(testing.allocator, &define_ir, &candidates);
     try testing.expectEqual(@as(usize, 0), candidates.items.len);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// stripQualifiedName edge cases
+// ═══════════════════════════════════════════════════════════════════
+
+test "stripQualifiedName: empty string" {
+    try testing.expectEqualStrings("", stripQualifiedName(""));
+}
+
+test "stripQualifiedName: no qualifier" {
+    try testing.expectEqualStrings("FOO", stripQualifiedName("FOO"));
+    try testing.expectEqualStrings("my-func", stripQualifiedName("my-func"));
+}
+
+test "stripQualifiedName: double colon qualifier" {
+    try testing.expectEqualStrings("BAR", stripQualifiedName("FOO::BAR"));
+    try testing.expectEqualStrings("my-func", stripQualifiedName("CL-USER::my-func"));
+}
+
+test "stripQualifiedName: single colon qualifier" {
+    try testing.expectEqualStrings("BAR", stripQualifiedName("FOO:BAR"));
+    try testing.expectEqualStrings("print", stripQualifiedName("CL:print"));
+}
+
+test "stripQualifiedName: trailing double colon" {
+    try testing.expectEqualStrings("", stripQualifiedName("FOO::"));
+    try testing.expectEqualStrings("", stripQualifiedName("PACKAGE::"));
+}
+
+test "stripQualifiedName: trailing single colon" {
+    try testing.expectEqualStrings("", stripQualifiedName("FOO:"));
+}
+
+test "stripQualifiedName: just double colon" {
+    try testing.expectEqualStrings("", stripQualifiedName("::"));
+}
+
+test "stripQualifiedName: just single colon" {
+    try testing.expectEqualStrings("", stripQualifiedName(":"));
+}
+
+test "stripQualifiedName: leading double colon" {
+    try testing.expectEqualStrings("FOO", stripQualifiedName("::FOO"));
+}
+
+test "stripQualifiedName: leading single colon" {
+    try testing.expectEqualStrings("FOO", stripQualifiedName(":FOO"));
+}
+
+test "stripQualifiedName: multiple qualifiers prefers double colon" {
+    // First :: at index 1, returns everything after first ::
+    try testing.expectEqualStrings("B::C", stripQualifiedName("A::B::C"));
+}
+
+test "stripQualifiedName: mixed qualifiers prefers double colon" {
+    // :: at index 1 comes before : at index 3
+    try testing.expectEqualStrings("B:C", stripQualifiedName("A::B:C"));
+}
+
+test "stripQualifiedName: only single colons" {
+    // No ::, uses first :
+    try testing.expectEqualStrings("B:C", stripQualifiedName("A:B:C"));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// findMatchingChunk edge cases
+// ═══════════════════════════════════════════════════════════════════
+
+test "findMatchingChunk: empty child_chunks" {
+    var lambda_ir = makeLambdaIr(&.{}, &.{}, &.{}, null);
+    const candidate = LambdaCandidate{
+        .name = "test",
+        .local_name = "test",
+        .name_sym = Value.nil,
+        .lambda_ir = &lambda_ir,
+    };
+    var used: [0]bool = .{};
+    try testing.expectEqual(null, findMatchingChunk(&candidate, Value.nil, &.{}, &used));
+}
+
+test "findMatchingChunk: length mismatch between chunks and used" {
+    var lambda_ir = makeLambdaIr(&.{}, &.{}, &.{}, null);
+    const candidate = LambdaCandidate{
+        .name = "test",
+        .local_name = "test",
+        .name_sym = Value.nil,
+        .lambda_ir = &lambda_ir,
+    };
+
+    const chunks = [_]Value{Value.nil};
+    var used: [0]bool = .{}; // wrong length
+
+    try testing.expectEqual(null, findMatchingChunk(&candidate, Value.nil, &chunks, &used));
+}
+
+fn makeLambdaIrWithParams(
+    params: []const []const u8,
+    optional_params: []const ir.Ir.OptionalParam,
+    key_params: []const ir.Ir.KeyParam,
+    rest_param: ?[]const u8,
+) Ir {
+    const body_storage = struct {
+        var body: Ir = .{ .lit = Value.nil };
+    };
+    return .{ .lambda = .{
+        .params = params,
+        .optional_params = optional_params,
+        .key_params = key_params,
+        .rest_param = rest_param,
+        .captures = &.{},
+        .body = &body_storage.body,
+        .name = Value.nil,
+    } };
+}
+
+fn allocChunkNamed(
+    heap: *runtime.Heap,
+    name: Value,
+    arity: u8,
+    opt_count: u8,
+    key_count: u8,
+    has_rest: bool,
+) !Value {
+    const code = [_]u8{};
+    const constants = [_]Value{};
+    const chunk_val = try heap.allocChunk(&code, &constants, arity, opt_count, key_count, has_rest, 0);
+    chunk_val.toPtr(Chunk).name = name;
+    return chunk_val;
+}
+
+test "collectLambdaCandidates: set_symbol_function with quote_sym" {
+    var lambda_ir = makeLambdaIr(&.{}, &.{}, &.{}, null);
+    var quote_sym_ir: Ir = .{ .quote_sym = "PKG::my-fn" };
+    var set_ir: Ir = .{ .set_symbol_function = .{ .left = &quote_sym_ir, .right = &lambda_ir } };
+
+    var candidates = std.ArrayList(LambdaCandidate){};
+    defer {
+        freeLambdaCandidates(testing.allocator, candidates.items);
+        candidates.deinit(testing.allocator);
+    }
+
+    try collectLambdaCandidates(testing.allocator, &set_ir, &candidates);
+    try testing.expectEqual(@as(usize, 1), candidates.items.len);
+    try testing.expectEqualStrings("PKG::my-fn", candidates.items[0].name);
+    try testing.expectEqualStrings("my-fn", candidates.items[0].local_name);
+}
+
+test "collectLambdaCandidates: set_symbol_function fallback name" {
+    var lambda_ir = makeLambdaIr(&.{}, &.{}, &.{}, null);
+    var left_ir: Ir = .{ .lit = Value.nil };
+    var set_ir: Ir = .{ .set_symbol_function = .{ .left = &left_ir, .right = &lambda_ir } };
+
+    var candidates = std.ArrayList(LambdaCandidate){};
+    defer {
+        freeLambdaCandidates(testing.allocator, candidates.items);
+        candidates.deinit(testing.allocator);
+    }
+
+    try collectLambdaCandidates(testing.allocator, &set_ir, &candidates);
+    try testing.expectEqual(@as(usize, 1), candidates.items.len);
+    try testing.expectEqualStrings("<set-symbol-function>", candidates.items[0].name);
+}
+
+test "findMatchingChunk: matches signature and mutates used on success" {
+    const allocator = testing.allocator;
+    var heap = try runtime.Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+
+    const params = [_][]const u8{"x"};
+    var lambda_ir = makeLambdaIrWithParams(&params, &.{}, &.{}, null);
+    const name_sym = try heap.intern("MY-FN");
+    const candidate = LambdaCandidate{
+        .name = "MY-FN",
+        .local_name = "MY-FN",
+        .name_sym = name_sym,
+        .lambda_ir = &lambda_ir,
+    };
+
+    const chunk_val = try allocChunkNamed(&heap, name_sym, 1, 0, 0, false);
+    const chunks = [_]Value{chunk_val};
+    var used = [_]bool{false};
+
+    const matched = findMatchingChunk(&candidate, name_sym, &chunks, &used);
+    try testing.expect(matched != null);
+    try testing.expect(used[0]);
+}
+
+test "findMatchingChunk: signature mismatch keeps used unchanged" {
+    const allocator = testing.allocator;
+    var heap = try runtime.Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+
+    const params = [_][]const u8{"x"};
+    var lambda_ir = makeLambdaIrWithParams(&params, &.{}, &.{}, null);
+    const name_sym = try heap.intern("MY-FN");
+    const candidate = LambdaCandidate{
+        .name = "MY-FN",
+        .local_name = "MY-FN",
+        .name_sym = name_sym,
+        .lambda_ir = &lambda_ir,
+    };
+
+    const chunk_val = try allocChunkNamed(&heap, name_sym, 0, 0, 0, false); // arity mismatch
+    const chunks = [_]Value{chunk_val};
+    var used = [_]bool{false};
+
+    try testing.expectEqual(null, findMatchingChunk(&candidate, name_sym, &chunks, &used));
+    try testing.expect(!used[0]);
+}
+
+test "findMatchingChunk: optional/key/rest signature dimensions must match" {
+    const allocator = testing.allocator;
+    var heap = try runtime.Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var body: Ir = .{ .lit = Value.nil };
+    const opt_params = [_]ir.Ir.OptionalParam{.{ .name = "opt", .default = null }};
+    const key_params = [_]ir.Ir.KeyParam{.{ .keyword = "k", .name = "k", .default = null }};
+    var lambda_ir = makeLambdaIrWithParams(&.{}, &opt_params, &key_params, "rest");
+    lambda_ir.lambda.body = &body;
+
+    const name_sym = try heap.intern("SIG-FN");
+    const candidate = LambdaCandidate{
+        .name = "SIG-FN",
+        .local_name = "SIG-FN",
+        .name_sym = name_sym,
+        .lambda_ir = &lambda_ir,
+    };
+
+    const chunk_opt_miss = try allocChunkNamed(&heap, name_sym, 0, 0, 1, true);
+    const chunk_key_miss = try allocChunkNamed(&heap, name_sym, 0, 1, 0, true);
+    const chunk_rest_miss = try allocChunkNamed(&heap, name_sym, 0, 1, 1, false);
+    const chunk_match = try allocChunkNamed(&heap, name_sym, 0, 1, 1, true);
+    const chunks = [_]Value{ chunk_opt_miss, chunk_key_miss, chunk_rest_miss, chunk_match };
+    var used = [_]bool{ false, false, false, false };
+
+    const matched = findMatchingChunk(&candidate, name_sym, &chunks, &used);
+    try testing.expect(matched != null);
+    try testing.expect(!used[0]);
+    try testing.expect(!used[1]);
+    try testing.expect(!used[2]);
+    try testing.expect(used[3]);
+}
+
+test "findMatchingChunk: name mismatch keeps used unchanged" {
+    const allocator = testing.allocator;
+    var heap = try runtime.Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var lambda_ir = makeLambdaIrWithParams(&.{}, &.{}, &.{}, null);
+    const name_sym = try heap.intern("EXPECTED");
+    const other_sym = try heap.intern("OTHER");
+    const candidate = LambdaCandidate{
+        .name = "EXPECTED",
+        .local_name = "EXPECTED",
+        .name_sym = name_sym,
+        .lambda_ir = &lambda_ir,
+    };
+
+    const chunk_val = try allocChunkNamed(&heap, other_sym, 0, 0, 0, false);
+    const chunks = [_]Value{chunk_val};
+    var used = [_]bool{false};
+
+    try testing.expectEqual(null, findMatchingChunk(&candidate, name_sym, &chunks, &used));
+    try testing.expect(!used[0]);
+}
+
+test "findMatchingChunk: case-insensitive local-name match with string chunk name" {
+    const allocator = testing.allocator;
+    var heap = try runtime.Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var lambda_ir = makeLambdaIrWithParams(&.{}, &.{}, &.{}, null);
+    const string_name = try heap.allocBaseString("foo");
+    const candidate = LambdaCandidate{
+        .name = "PKG::Foo",
+        .local_name = "Foo",
+        .name_sym = Value.nil,
+        .lambda_ir = &lambda_ir,
+    };
+
+    const chunk_val = try allocChunkNamed(&heap, string_name, 0, 0, 0, false);
+    const chunks = [_]Value{chunk_val};
+    var used = [_]bool{false};
+
+    const matched = findMatchingChunk(&candidate, Value.nil, &chunks, &used);
+    try testing.expect(matched != null);
+    try testing.expect(used[0]);
+}
+
+test "findMatchingChunk: non-chunk child value is ignored safely" {
+    var lambda_ir = makeLambdaIrWithParams(&.{}, &.{}, &.{}, null);
+    const candidate = LambdaCandidate{
+        .name = "test",
+        .local_name = "test",
+        .name_sym = Value.nil,
+        .lambda_ir = &lambda_ir,
+    };
+
+    const chunks = [_]Value{Value.nil};
+    var used = [_]bool{false};
+    try testing.expectEqual(null, findMatchingChunk(&candidate, Value.nil, &chunks, &used));
+    try testing.expect(!used[0]);
+}
+
+test "findMatchingChunk: pre-used entry is skipped" {
+    const allocator = testing.allocator;
+    var heap = try runtime.Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var lambda_ir = makeLambdaIrWithParams(&.{}, &.{}, &.{}, null);
+    const name_sym = try heap.intern("FN");
+    const candidate = LambdaCandidate{
+        .name = "FN",
+        .local_name = "FN",
+        .name_sym = name_sym,
+        .lambda_ir = &lambda_ir,
+    };
+
+    const chunk_val = try allocChunkNamed(&heap, name_sym, 0, 0, 0, false);
+    const chunks = [_]Value{chunk_val};
+    var used = [_]bool{true};
+
+    try testing.expectEqual(null, findMatchingChunk(&candidate, name_sym, &chunks, &used));
+    try testing.expect(used[0]);
 }

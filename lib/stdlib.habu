@@ -960,8 +960,21 @@
 (defun list-length (lst)
   (if (null lst) 0 (length-aux lst 0)))
 
-; Capture primitive 2-arg append before redefining CL append.
-(setf (fdefinition '%append2) #'append)
+; Binary append helper for dynamic call paths (funcall/apply).
+; Copies the left list and shares the right tail.
+(defun %append2 (left right)
+  (let ((rev nil))
+    (block nil
+      (while t
+        (if (null left)
+            (progn
+              (while (consp rev)
+                (setq right (cons (car rev) right))
+                (setq rev (cdr rev)))
+              (return-from nil right))
+          (progn
+            (setq rev (cons (car left) rev))
+            (setq left (cdr left))))))))
 
 ; append - CL-compatible variadic append
 (defun append (&rest lists)

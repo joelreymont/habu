@@ -1,0 +1,61 @@
+{
+  "workloads": [],
+  "jit_loader_ns": 0,
+  "interp_loader_ns": 356385049708,
+  "jit_compiled": 0,
+  "interp_compiled": 0,
+  "jit_direct_calls_jit": 0,
+  "jit_direct_calls_interp": 0,
+  "jit_adm": {},
+  "interp_adm": {
+    "cand": 0,
+    "elig": 0,
+    "comp": 0,
+    "sk_speed": 0,
+    "sk_safety": 0,
+    "sk_assert": 0,
+    "sk_caps": 0,
+    "sk_opt": 0,
+    "sk_key": 0,
+    "sk_rest": 0,
+    "sk_chunk": 0,
+    "fail_unsupported": 0,
+    "fail_other": 0,
+    "cache_comp": 0,
+    "cache_unsupported": 0,
+    "cache_failed": 0
+  },
+  "jit_call_shape": {},
+  "interp_call_shape": {
+    "total": 42404,
+    "fixed": 34004,
+    "optional": 800,
+    "key": 2400,
+    "rest": 5200,
+    "dynamic": 40404,
+    "tail": 10400
+  },
+  "promote_age": 2,
+  "jit_gate": {
+    "pass": false,
+    "min_interp_jit": 1.01,
+    "checks": {
+      "wins": {
+        "actual": 0,
+        "target_min": 2,
+        "pass": false,
+        "checked": 0
+      },
+      "compiled_min": {
+        "actual": 0,
+        "target_min": 32,
+        "pass": false
+      },
+      "compiled_delta": {
+        "actual": 0,
+        "target_min": 1,
+        "pass": false
+      }
+    }
+  }
+}

@@ -3088,6 +3088,19 @@ pub const Repl = struct {
         return compiled_any;
     }
 
+    fn populateKnownFns(self: *Repl, known_fns: *std.StringHashMap(jit_backend.KnownFn)) !void {
+        for (self.vm.jit_fns.items) |entry| {
+            const cfn = entry.compiled;
+            try known_fns.put(cfn.name, .{
+                .fn_ptr = @intFromPtr(cfn.fn_ptr),
+                .arity = cfn.arity,
+                .ir_body = cfn.ir_body,
+                .param_names = cfn.param_names,
+                .callee_name = cfn.name,
+            });
+        }
+    }
+
     /// Inner function that propagates errors to allow try usage.
     fn doHoistCompile(
         self: *Repl,
@@ -3098,18 +3111,7 @@ pub const Repl = struct {
         // Build known_fns map from existing hoist-compiled functions
         var known_fns = std.StringHashMap(jit_backend.KnownFn).init(self.allocator);
         defer known_fns.deinit();
-        {
-            for (self.vm.jit_fns.items) |entry| {
-                const cfn = entry.compiled;
-                known_fns.put(cfn.name, .{
-                    .fn_ptr = @intFromPtr(cfn.fn_ptr),
-                    .arity = cfn.arity,
-                    .ir_body = cfn.ir_body,
-                    .param_names = cfn.param_names,
-                    .callee_name = cfn.name,
-                }) catch {};
-            }
-        }
+        self.populateKnownFns(&known_fns) catch return .failed;
 
         const trace = std.posix.getenv("HABU_TRACE_JIT") != null;
         var literal_roots = jit_backend.LiteralRoots.init(self.allocator);
@@ -5149,6 +5151,63 @@ pub fn evalString(allocator: std.mem.Allocator, heap: *Heap, source: []const u8)
     return repl.eval(source);
 }
 
+const FailAfterAllocator = struct {
+    const Self = @This();
+
+    backing: std.mem.Allocator,
+    fail_after: usize,
+    op_count: usize = 0,
+
+    fn init(backing: std.mem.Allocator, fail_after: usize) Self {
+        return .{ .backing = backing, .fail_after = fail_after };
+    }
+
+    fn allocator(self: *Self) std.mem.Allocator {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .alloc = alloc,
+                .resize = resize,
+                .remap = remap,
+                .free = free,
+            },
+        };
+    }
+
+    fn shouldFail(self: *Self) bool {
+        const fail = self.op_count >= self.fail_after;
+        self.op_count += 1;
+        return fail;
+    }
+
+    fn alloc(ctx: *anyopaque, n: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        if (self.shouldFail()) return null;
+        return self.backing.rawAlloc(n, alignment, ra);
+    }
+
+    fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) bool {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        if (self.shouldFail()) return false;
+        return self.backing.rawResize(memory, alignment, new_len, ra);
+    }
+
+    fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) ?[*]u8 {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        if (self.shouldFail()) return null;
+        return self.backing.rawRemap(memory, alignment, new_len, ra);
+    }
+
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ra: usize) void {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        self.backing.rawFree(memory, alignment, ra);
+    }
+};
+
+fn fakeJitTarget() callconv(.c) u64 {
+    return Value.nil.raw;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -6146,6 +6205,106 @@ test "specialize pass - literal fixnum addition specializes" {
 
     const result = try repl.eval("(+ 3 4)");
     try testing.expectEqual(@as(i64, 7), result.toFixnum());
+}
+
+test "populateKnownFns: no-preseed control does not fail" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    var failing = FailAfterAllocator.init(allocator, 0);
+    repl.allocator = failing.allocator();
+
+    var known_fns = std.StringHashMap(jit_backend.KnownFn).init(repl.allocator);
+    defer known_fns.deinit();
+
+    try repl.populateKnownFns(&known_fns);
+    try testing.expectEqual(@as(usize, 0), known_fns.count());
+}
+
+test "doHoistCompile: preseeded known_fns first insert failure returns failed" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    defer repl.vm.jit_fns.clearRetainingCapacity();
+
+    var seeded: jit_backend.CompiledFn = .{
+        .mem = undefined,
+        .fn_ptr = @ptrCast(&fakeJitTarget),
+        .arity = 0,
+        .allocator = allocator,
+        .name = "PRESEEDED",
+    };
+    try repl.vm.jit_fns.append(allocator, .{ .chunk = Value.nil, .compiled = &seeded });
+    const before = repl.vm.jit_fns.items.len;
+
+    var failing = FailAfterAllocator.init(allocator, 0);
+    repl.allocator = failing.allocator();
+
+    var body: Ir = .{ .lit = Value.makeFixnum(1) };
+    var lambda_ir: Ir = .{ .lambda = .{
+        .params = &.{},
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = &body,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    const result = repl.doHoistCompile(&lambda_ir, "OOM-KNOWN-FNS", repl.vm.chunk);
+    try testing.expect(result == .failed);
+    try testing.expectEqual(before, repl.vm.jit_fns.items.len);
+}
+
+test "populateKnownFns: partial-map failure after successful inserts" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    defer repl.vm.jit_fns.clearRetainingCapacity();
+
+    var seeded: [16]jit_backend.CompiledFn = undefined;
+    var name_bufs: [16][16]u8 = undefined;
+    for (0..seeded.len) |i| {
+        const name = try std.fmt.bufPrint(&name_bufs[i], "PRESEEDED-{d}", .{i});
+        seeded[i] = .{
+            .mem = undefined,
+            .fn_ptr = @ptrCast(&fakeJitTarget),
+            .arity = 0,
+            .allocator = allocator,
+            .name = name,
+        };
+        try repl.vm.jit_fns.append(allocator, .{ .chunk = Value.nil, .compiled = &seeded[i] });
+    }
+
+    var failing = FailAfterAllocator.init(allocator, 1);
+    repl.allocator = failing.allocator();
+
+    var known_fns = std.StringHashMap(jit_backend.KnownFn).init(repl.allocator);
+    defer known_fns.deinit();
+
+    try testing.expectError(error.OutOfMemory, repl.populateKnownFns(&known_fns));
+    try testing.expect(known_fns.count() > 0);
+    try testing.expect(failing.op_count > 1);
 }
 
 test "repl stream globals survive repeated gc" {

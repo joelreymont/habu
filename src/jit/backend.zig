@@ -884,7 +884,8 @@ fn jitHashTest(table_raw: u64) callconv(.c) u64 {
 }
 
 fn jitHashKeys(table_raw: u64) callconv(.c) u64 {
-    const table = Value{ .raw = table_raw };
+    // Keep helper-entry forwarded-resolution invariant aligned with jitHashSet.
+    const table = jitResolveForwarded(Value{ .raw = table_raw });
     if (!table.isHashTable()) return Value.nil.raw;
     const ht = table.toPtr(runtime.HashTable);
     const heap = g_heap orelse return Value.nil.raw;
@@ -900,7 +901,8 @@ fn jitHashKeys(table_raw: u64) callconv(.c) u64 {
 }
 
 fn jitHashAlist(table_raw: u64) callconv(.c) u64 {
-    const table = Value{ .raw = table_raw };
+    // Keep helper-entry forwarded-resolution invariant aligned with jitHashSet.
+    const table = jitResolveForwarded(Value{ .raw = table_raw });
     if (!table.isHashTable()) return Value.nil.raw;
     const ht = table.toPtr(runtime.HashTable);
     const heap = g_heap orelse return Value.nil.raw;
@@ -2644,10 +2646,14 @@ pub const IrTranslator = struct {
             // If we're inside an inlined call, remap indices
             if (self.inline_scopes.items.len > 0) {
                 const scope = self.inline_scopes.items[self.inline_scopes.items.len - 1];
-                const idx = scope.base + v.index;
+                const idx = std.math.add(usize, scope.base, v.index) catch return error.UnsupportedIrNode;
                 if (idx < self.locals.items.len) {
                     return self.locals.items[idx];
                 }
+            }
+            // Bounds check before accessing locals array
+            if (v.index >= self.locals.items.len) {
+                return error.UnsupportedIrNode;
             }
             return self.locals.items[v.index];
         }
@@ -11720,6 +11726,38 @@ test "jitAssoc finds matching pair in alist" {
     try testing.expectEqual(Value.nil.raw, miss_raw);
 }
 
+test "jit hash helpers handle non-table and table entry paths" {
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    const prev_heap = g_heap;
+    const prev_alloc_ptr = g_alloc_ptr;
+    const prev_alloc_end = g_alloc_end;
+    const prev_batch_ops = g_safepoint_batch_ops;
+    defer {
+        g_heap = prev_heap;
+        g_alloc_ptr = prev_alloc_ptr;
+        g_alloc_end = prev_alloc_end;
+        g_safepoint_batch_ops = prev_batch_ops;
+    }
+    setHeap(&heap);
+
+    try testing.expectEqual(Value.nil.raw, jitHashKeys(Value.makeFixnum(1).raw));
+    try testing.expectEqual(Value.nil.raw, jitHashAlist(Value.makeFixnum(1).raw));
+    try testing.expectEqual(Value.nil.raw, jitHashSet(Value.makeFixnum(1).raw, Value.makeFixnum(2).raw, Value.makeFixnum(3).raw));
+
+    const table = try heap.allocHashTable(8, .eql);
+    _ = try runtime.primitives.hash.primPuthash(&heap, &.{ Value.makeFixnum(1), table, Value.makeFixnum(99) });
+
+    const keys = Value{ .raw = jitHashKeys(table.raw) };
+    const alist = Value{ .raw = jitHashAlist(table.raw) };
+    try testing.expect(keys.isCons());
+    try testing.expect(alist.isCons());
+
+    const set_raw = jitHashSet(table.raw, Value.makeFixnum(2).raw, Value.makeFixnum(77).raw);
+    try testing.expectEqual(Value.makeFixnum(77).raw, set_raw);
+}
+
 test "jit numeric compare helpers fast path fixnum and float" {
     try testing.expectEqual(Value.t.raw, jitLtNum(Value.makeFixnum(1).raw, Value.makeFixnum(2).raw));
     try testing.expectEqual(Value.nil.raw, jitLtNum(Value.makeFixnum(2).raw, Value.makeFixnum(1).raw));
@@ -11749,4 +11787,108 @@ test "jit bridge trampoline enters and unwinds" {
     const rc = bridgeRun(Trampoline.throwFn, &dummy, &result_raw);
     try testing.expectEqual(@as(c_int, 1), rc);
     try testing.expectEqual(@as(c_int, 0), bridgeDepth());
+}
+
+test "translateVar out-of-range index returns UnsupportedIrNode" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const bad_var = try alloc.create(Ir);
+    bad_var.* = .{ .@"var" = .{ .name = "x", .depth = 0, .index = 2 } };
+
+    const params = [_][]const u8{"x"};
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = &params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = bad_var,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    try testing.expectError(error.UnsupportedIrNode, compileIr(testing.allocator, lambda, "var-oob"));
+}
+
+test "translateVar remap hit returns scoped local" {
+    var sig = Signature.init(testing.allocator, .system_v);
+    try sig.returns.append(testing.allocator, AbiParam.new(I64));
+
+    var func = try Function.init(testing.allocator, "tv-remap-hit", sig);
+    defer func.deinit();
+    var b = try FunctionBuilder.init(testing.allocator, &func);
+    defer b.deinit();
+
+    const entry = try func.dfg.addBlock();
+    try func.layout.appendBlock(entry);
+    b.switchToBlock(entry);
+
+    var tr = IrTranslator.init(testing.allocator, testing.allocator, &func, &b);
+    defer tr.deinit();
+
+    const l0 = try b.iconst(I64, 10);
+    const l1 = try b.iconst(I64, 11);
+    const l2 = try b.iconst(I64, 12);
+    const locals = [_]HoistValue{ l0, l1, l2 };
+    try tr.locals.appendSlice(testing.allocator, &locals);
+    try tr.inline_scopes.append(testing.allocator, .{ .base = 1, .count = 2 });
+
+    const got = try tr.translateVar(.{ .name = "x", .depth = 0, .index = 1 });
+    try testing.expectEqual(l2.index, got.index);
+}
+
+test "translateVar remap miss falls back to direct local" {
+    var sig = Signature.init(testing.allocator, .system_v);
+    try sig.returns.append(testing.allocator, AbiParam.new(I64));
+
+    var func = try Function.init(testing.allocator, "tv-remap-fallback", sig);
+    defer func.deinit();
+    var b = try FunctionBuilder.init(testing.allocator, &func);
+    defer b.deinit();
+
+    const entry = try func.dfg.addBlock();
+    try func.layout.appendBlock(entry);
+    b.switchToBlock(entry);
+
+    var tr = IrTranslator.init(testing.allocator, testing.allocator, &func, &b);
+    defer tr.deinit();
+
+    const l0 = try b.iconst(I64, 20);
+    const l1 = try b.iconst(I64, 21);
+    const locals = [_]HoistValue{ l0, l1 };
+    try tr.locals.appendSlice(testing.allocator, &locals);
+    try tr.inline_scopes.append(testing.allocator, .{ .base = 64, .count = 1 });
+
+    const got = try tr.translateVar(.{ .name = "y", .depth = 0, .index = 1 });
+    try testing.expectEqual(l1.index, got.index);
+}
+
+test "translateVar overflow and empty-locals return UnsupportedIrNode" {
+    var sig = Signature.init(testing.allocator, .system_v);
+    try sig.returns.append(testing.allocator, AbiParam.new(I64));
+
+    var func = try Function.init(testing.allocator, "tv-overflow", sig);
+    defer func.deinit();
+    var b = try FunctionBuilder.init(testing.allocator, &func);
+    defer b.deinit();
+
+    const entry = try func.dfg.addBlock();
+    try func.layout.appendBlock(entry);
+    b.switchToBlock(entry);
+
+    var tr = IrTranslator.init(testing.allocator, testing.allocator, &func, &b);
+    defer tr.deinit();
+
+    const lone = try b.iconst(I64, 1);
+    try tr.locals.append(testing.allocator, lone);
+    try tr.inline_scopes.append(testing.allocator, .{ .base = std.math.maxInt(usize), .count = 1 });
+
+    try testing.expectError(error.UnsupportedIrNode, tr.translateVar(.{ .name = "z", .depth = 0, .index = 1 }));
+
+    tr.inline_scopes.clearRetainingCapacity();
+    tr.locals.clearRetainingCapacity();
+    try testing.expectError(error.UnsupportedIrNode, tr.translateVar(.{ .name = "z", .depth = 0, .index = 0 }));
 }

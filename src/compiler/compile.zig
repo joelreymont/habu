@@ -7260,15 +7260,12 @@ pub const Compiler = struct {
                 // -> (setf (get name 'macro-function) fn) for property list storage
                 if (head.isSymbol()) {
                     const b_mf = self.builtins orelse return error.UninitializedBuiltins;
-                    if (head.raw == b_mf.macro_function.raw)
-                    {
+                    if (head.raw == b_mf.macro_function.raw) {
                         // (macro-function sym-expr [env]) -> rewrite to (get sym-expr 'macro-function)
                         if (!place_args.isCons()) return error.InvalidSyntax;
                         const sym_expr = place_args.toPtr(Cons).car;
                         const sym_ir = try self.compile(sym_expr, env);
-                        const heap2 = if (self.heap) |val| val else return error.InvalidSyntax;
-                        const mf_sym = try heap2.intern("MACRO-FUNCTION");
-                        const key_ir = try self.builder.lit(mf_sym);
+                        const key_ir = try self.builder.lit(b_mf.macro_function);
                         const val_ir = try self.compile(value_expr, env);
                         const node = try self.allocator.create(Ir);
                         node.* = .{ .put = .{ .first = sym_ir, .second = key_ir, .third = val_ir } };
@@ -16145,8 +16142,7 @@ pub const Compiler = struct {
                                     macro_entry_val = val;
                                 }
                             }
-                            if (entry_cons.car.raw == b3.macro_function.raw)
-                            {
+                            if (entry_cons.car.raw == b3.macro_function.raw) {
                                 const val = entry_cons.cdr;
                                 if (val.isClosure()) macro_fn_val = val;
                             }
@@ -18117,8 +18113,7 @@ pub const Compiler = struct {
                 // Check which keyword by identity
                 const b4 = self.builtins orelse return error.UninitializedBuiltins;
                 const kw_raw = kv_cons.car.raw;
-                if (kw_raw == b4.kw_initial_contents.raw)
-                {
+                if (kw_raw == b4.kw_initial_contents.raw) {
                     // Store raw value for post-construction fill
                     initial_contents = val;
                 } else if (kw_raw == b4.kw_element_type.raw or
