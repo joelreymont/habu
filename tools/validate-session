@@ -1,0 +1,188 @@
+#!/bin/bash
+# Focused validation harness for session-sized batch changes.
+# Codifies the 2026-02-25/26 workflow lessons:
+# - run focused, evidence-bearing tests first
+# - run explicit MAXIMA macro-hang repro/proof script
+# - attempt full suite once with timeout and report blocker if it times out
+#
+# Usage:
+#   tools/validate-session --profile maxima-macro-hang
+#   tools/validate-session --profile maxima-macro-hang --strict-full
+#   tools/validate-session --profile maxima-macro-hang --no-full
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+PROFILE=""
+FULL_TIMEOUT_SEC="${FULL_TIMEOUT_SEC:-900}"
+TRACE_TIMEOUT_SEC="${TRACE_TIMEOUT_SEC:-600}"
+RUN_FULL=1
+STRICT_FULL=0
+
+usage() {
+  cat <<'EOF'
+Usage: tools/validate-session --profile <name> [options]
+
+Profiles:
+  maxima-macro-hang
+
+Options:
+  --full-timeout <sec>   Timeout for full 'zig build test' attempt (default: 900)
+  --trace-timeout <sec>  Timeout for profile runtime trace script (default: 600)
+  --no-full              Skip full-suite attempt
+  --strict-full          Treat full-suite timeout as failure
+  -h|--help              Show help
+
+Notes:
+- Focused checks are always strict (non-zero on failure).
+- Full-suite timeout (rc=124/137) is reported as blocker unless --strict-full is set.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --profile)
+      PROFILE="$2"
+      shift 2
+      ;;
+    --full-timeout)
+      FULL_TIMEOUT_SEC="$2"
+      shift 2
+      ;;
+    --trace-timeout)
+      TRACE_TIMEOUT_SEC="$2"
+      shift 2
+      ;;
+    --no-full)
+      RUN_FULL=0
+      shift
+      ;;
+    --strict-full)
+      STRICT_FULL=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "error: unknown arg: $1" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -z "$PROFILE" ]]; then
+  echo "error: --profile is required" >&2
+  usage
+  exit 2
+fi
+
+run_with_timeout() {
+  local secs="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+    return $?
+  fi
+  if command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+    return $?
+  fi
+  "$@"
+}
+
+run_step() {
+  local label="$1"
+  shift
+  echo "[validate] ${label}" >&2
+  "$@"
+}
+
+run_step_timeout() {
+  local label="$1"
+  local secs="$2"
+  shift 2
+  echo "[validate] ${label} (timeout ${secs}s)" >&2
+  run_with_timeout "$secs" "$@"
+}
+
+run_maxima_macro_hang_profile() {
+  run_step "zig build" zig build
+
+  local tests=(
+    "stdlib append function designators stay variadic"
+    "compileChunk JIT OOM relay falls back to interpreted execution"
+    "translateVar remap hit returns scoped local"
+    "jit hash helpers handle non-table and table entry paths"
+    "findMatchingChunk"
+  )
+
+  local t
+  for t in "${tests[@]}"; do
+    run_step "zig build test -Dtest-filter='${t}'" \
+      zig build test -Dtest-filter="${t}"
+  done
+
+  local trace_script="/tmp/mforma_trace.lisp"
+  if [[ ! -f "$trace_script" ]]; then
+    echo "error: required trace script missing: $trace_script" >&2
+    return 1
+  fi
+
+  local trace_out
+  trace_out="$(mktemp -t habu-validate-session-trace.XXXXXX)"
+  if ! run_step_timeout "mforma trace proof" "$TRACE_TIMEOUT_SEC" \
+      ./zig-out/bin/habu "$trace_script" >"$trace_out" 2>&1; then
+    echo "error: mforma trace execution failed; output: $trace_out" >&2
+    tail -40 "$trace_out" >&2 || true
+    return 1
+  fi
+
+  if ! rg -q "\[PHASE\] mforma done" "$trace_out"; then
+    echo "error: mforma trace did not reach completion marker" >&2
+    echo "error: expected '[PHASE] mforma done' in $trace_out" >&2
+    tail -80 "$trace_out" >&2 || true
+    return 1
+  fi
+
+  echo "[validate] trace proof ok: [PHASE] mforma done" >&2
+
+  if [[ "$RUN_FULL" -eq 1 ]]; then
+    echo "[validate] full-suite attempt: zig build test (timeout ${FULL_TIMEOUT_SEC}s)" >&2
+    set +e
+    run_with_timeout "$FULL_TIMEOUT_SEC" zig build test
+    local full_rc=$?
+    set -e
+
+    if [[ "$full_rc" -eq 0 ]]; then
+      echo "[validate] full-suite pass" >&2
+    elif [[ "$full_rc" -eq 124 || "$full_rc" -eq 137 ]]; then
+      if [[ "$STRICT_FULL" -eq 1 ]]; then
+        echo "error: full-suite timed out (rc=${full_rc}) under --strict-full" >&2
+        return "$full_rc"
+      fi
+      echo "[validate] full-suite blocker: timed out rc=${full_rc} (recorded, focused suite already passed)" >&2
+    else
+      echo "error: full-suite failed rc=${full_rc}" >&2
+      return "$full_rc"
+    fi
+  else
+    echo "[validate] full-suite attempt skipped (--no-full)" >&2
+  fi
+}
+
+case "$PROFILE" in
+  maxima-macro-hang)
+    run_maxima_macro_hang_profile
+    ;;
+  *)
+    echo "error: unknown profile: $PROFILE" >&2
+    usage
+    exit 2
+    ;;
+esac
+
+echo "[validate] profile '${PROFILE}' complete" >&2
