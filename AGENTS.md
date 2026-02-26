@@ -426,6 +426,30 @@ dot add "Add sequence map function" -d "src/runtime/primitives/seq.zig: Implemen
 dot add "map function" -d "add map"
 ```
 
+### Skill Routing - MANDATORY (BLOCKING REQUIREMENT)
+
+When a task matches one of these patterns, load and follow the corresponding skill. Do not improvise a manual-only variant.
+
+- **dot** (`~/.claude/skills/dot/SKILL.md`)
+  - Use for: dot creation/closure/status cleanup, "dot this", "close dot", "show dots".
+- **lessons** (`~/.claude/skills/lessons/SKILL.md`)
+  - Use for: adding/updating `LESSONS.md` entries after significant findings.
+- **parallel / minions** (`~/.claude/skills/parallel/SKILL.md`, `~/.claude/skills/minions/SKILL.md`)
+  - Use for: splitting independent work across 2-4 agents/dots.
+  - Repo rule: sibling jj workspaces + `.git` symlink (never `/tmp`).
+- **small-dots** (`~/.claude/skills/small-dots/SKILL.md`)
+  - Use for: decomposing large work into <30 min executable dots.
+- **troubleshoot** (`~/.claude/skills/troubleshoot/SKILL.md`)
+  - Use for: symbolic execution/debugging wrong-value or hang paths.
+- **deepthink / oracle / review-loop** (`~/.claude/skills/deepthink/SKILL.md`, `~/.claude/skills/oracle/SKILL.md`, `~/.claude/skills/review-loop/SKILL.md`)
+  - Use for: hard RCA, second-opinion analysis, deep performance/DRY audits.
+
+For pi subagent workflows (Dotfiles `~/.pi/agent/skills`), the following are mandatory when triggered:
+- **deep-review**: required for "deep review"/"full audit" requests (parallel subagents, evidence-driven output).
+- **review-plan**: required for "review plan" requests (code-grounded + parallel plan critics).
+- **macro-hang-rca**: required for macro expansion hangs/timeouts (prove full expansion path, not only `macroexpand-1`).
+- **focused-validation**: required when full suite is timeout-prone (focused profile + one full-suite attempt with blocker note).
+
 ### Lessons Learned - MANDATORY (BLOCKING REQUIREMENT)
 
 **Read `LESSONS.md` before starting any session.** It contains hard-won patterns from 50+ sessions.
