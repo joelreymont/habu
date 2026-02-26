@@ -8590,6 +8590,47 @@ test "def%tr-style top-level form survives generational GC pressure" {
     try testing.expect(!prop_val.isNil());
 }
 
+test "eval-when compile-toplevel keeps body cursor rooted across GC" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(setq *evw-count* 0)");
+
+    _ = try repl.eval(
+        \\(eval-when (:compile-toplevel)
+        \\  (setq *evw-count* (+ *evw-count* 1))
+        \\  (setq *evw-junk* (make-string 262144))
+        \\  (setq *evw-count* (+ *evw-count* 1))
+        \\  (setq *evw-junk* (make-string 262144))
+        \\  (setq *evw-count* (+ *evw-count* 1))
+        \\  (setq *evw-junk* (make-string 262144))
+        \\  (setq *evw-count* (+ *evw-count* 1))
+        \\  (setq *evw-junk* (make-string 262144))
+        \\  (setq *evw-count* (+ *evw-count* 1))
+        \\  (setq *evw-junk* (make-string 262144))
+        \\  (setq *evw-count* (+ *evw-count* 1))
+        \\  (setq *evw-junk* (make-string 262144))
+        \\  (setq *evw-count* (+ *evw-count* 1))
+        \\  (setq *evw-junk* (make-string 262144))
+        \\  (setq *evw-count* (+ *evw-count* 1))
+        \\  (setq *evw-junk* (make-string 262144))
+        \\  (setq *evw-count* (+ *evw-count* 1))
+        \\  (setq *evw-junk* (make-string 262144))
+        \\  (setq *evw-count* (+ *evw-count* 1))
+        \\  (setq *evw-junk* (make-string 262144)))
+    );
+
+    const result = try repl.eval("*evw-count*");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 10), result.toFixnum());
+}
+
 test "defun-prop keeps and/or pair metadata intact" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });

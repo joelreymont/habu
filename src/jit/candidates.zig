@@ -107,6 +107,10 @@ pub fn ineligibleReason(lambda_ir: *const Ir) ?IneligibleReason {
     if (lambda_ir.* != .lambda) return .not_lambda;
     const lambda = lambda_ir.lambda;
 
+    // Admission policy: compile only explicit speed-3/safety-0 lambdas.
+    if (lambda.speed < 3) return .speed;
+    if (lambda.safety > 0) return .safety;
+
     // Keep current bridge constraints.
     if (lambda.captures.len > 0) return .captures;
     if (lambda.optional_params.len > 0) return .optional_params;
@@ -203,8 +207,24 @@ fn makeLambdaIr(
     } };
 }
 
-test "ineligibleReason: plain lambda is eligible" {
+test "ineligibleReason: default lambda requires speed 3" {
     var lambda_ir = makeLambdaIr(&.{}, &.{}, &.{}, null);
+    try testing.expectEqual(IneligibleReason.speed, ineligibleReason(&lambda_ir));
+    try testing.expect(!isEligible(&lambda_ir));
+}
+
+test "ineligibleReason: lambda requires safety 0" {
+    var lambda_ir = makeLambdaIr(&.{}, &.{}, &.{}, null);
+    lambda_ir.lambda.speed = 3;
+    lambda_ir.lambda.safety = 1;
+    try testing.expectEqual(IneligibleReason.safety, ineligibleReason(&lambda_ir));
+    try testing.expect(!isEligible(&lambda_ir));
+}
+
+test "ineligibleReason: speed 3 safety 0 lambda is eligible" {
+    var lambda_ir = makeLambdaIr(&.{}, &.{}, &.{}, null);
+    lambda_ir.lambda.speed = 3;
+    lambda_ir.lambda.safety = 0;
     try testing.expectEqual(null, ineligibleReason(&lambda_ir));
     try testing.expect(isEligible(&lambda_ir));
 }
@@ -212,6 +232,8 @@ test "ineligibleReason: plain lambda is eligible" {
 test "ineligibleReason: lambda with captures" {
     const cap = [_]ir.Ir.Capture{.{ .name = "x", .depth = 1, .index = 0 }};
     var lambda_ir = makeLambdaIr(&cap, &.{}, &.{}, null);
+    lambda_ir.lambda.speed = 3;
+    lambda_ir.lambda.safety = 0;
     try testing.expectEqual(IneligibleReason.captures, ineligibleReason(&lambda_ir));
     try testing.expect(!isEligible(&lambda_ir));
 }
@@ -225,11 +247,15 @@ test "ineligibleReason: lambda with optional params" {
         .default = &body_storage.body,
     }};
     var lambda_ir = makeLambdaIr(&.{}, &opt, &.{}, null);
+    lambda_ir.lambda.speed = 3;
+    lambda_ir.lambda.safety = 0;
     try testing.expectEqual(IneligibleReason.optional_params, ineligibleReason(&lambda_ir));
 }
 
 test "ineligibleReason: lambda with rest param" {
     var lambda_ir = makeLambdaIr(&.{}, &.{}, &.{}, "rest");
+    lambda_ir.lambda.speed = 3;
+    lambda_ir.lambda.safety = 0;
     try testing.expectEqual(IneligibleReason.rest_param, ineligibleReason(&lambda_ir));
 }
 

@@ -449,8 +449,9 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
             .{ def.name, n, repl.vm.num_globals, repl.compiler.globals.names_by_index.items.len },
         );
     }
-    const call_src = std.fmt.allocPrint(allocator, "({s} {d})", .{ def.call_name, n }) catch |err| {
-        std.debug.print("MAXIMA_BENCH fail {s} phase=build-call err={s}\n", .{ def.name, @errorName(err) });
+
+    const fn_form = std.fmt.allocPrint(allocator, "#'{s}", .{def.call_name}) catch |err| {
+        std.debug.print("MAXIMA_BENCH fail {s} phase=build-runner err={s}\n", .{ def.name, @errorName(err) });
         return .{
             .name = def.name,
             .category = def.category,
@@ -459,9 +460,21 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
             .err_name = @errorName(err),
         };
     };
-    defer allocator.free(call_src);
+    defer allocator.free(fn_form);
 
-    _ = repl.eval(call_src) catch |err| {
+    const runner_fn = repl.eval(fn_form) catch |err| {
+        std.debug.print("MAXIMA_BENCH fail {s} phase=resolve-runner err={s}\n", .{ def.name, @errorName(err) });
+        if (trace_err_stack) traceBenchErr(def.name, "resolve-runner", err);
+        return .{
+            .name = def.name,
+            .category = def.category,
+            .iters = n,
+            .ns = 0,
+            .err_name = @errorName(err),
+        };
+    };
+
+    _ = repl.vm.callFromStackAtFast(0, runner_fn, &.{}) catch |err| {
         std.debug.print("MAXIMA_BENCH fail {s} phase=warmup err={s}\n", .{ def.name, @errorName(err) });
         if (trace_err_stack) traceBenchErr(def.name, "warmup", err);
         return .{
@@ -493,43 +506,55 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
     const gc_before = repl.vm.heap.stats.gc_count;
     const gc_minor_before = repl.vm.heap.stats.gc_minor_count;
     const gc_major_before = repl.vm.heap.stats.gc_major_count;
-    const t0 = timer.read();
-    _ = repl.eval(call_src) catch |err| {
-        std.debug.print("MAXIMA_BENCH fail {s} phase=timed err={s}\n", .{ def.name, @errorName(err) });
-        if (trace_err_stack) traceBenchErr(def.name, "timed", err);
-        if (trace_workload) {
-            const gc_after_fail = repl.vm.heap.stats.gc_count;
-            const gc_minor_after_fail = repl.vm.heap.stats.gc_minor_count;
-            const gc_major_after_fail = repl.vm.heap.stats.gc_major_count;
-            std.debug.print(
-                "MAXIMA_BENCH fail {s} err={s} gc={d} minor={d} major={d}\n",
-                .{
-                    def.name,
-                    @errorName(err),
-                    gc_after_fail -% gc_before,
-                    gc_minor_after_fail -% gc_minor_before,
-                    gc_major_after_fail -% gc_major_before,
-                },
-            );
+    const timed_repeats: usize = 3;
+    var best_ns: u64 = std.math.maxInt(u64);
+    var rep: usize = 0;
+    while (rep < timed_repeats) : (rep += 1) {
+        const t0 = timer.read();
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            _ = repl.vm.callFromStackAtFast(0, runner_fn, &.{}) catch |err| {
+                std.debug.print("MAXIMA_BENCH fail {s} phase=timed err={s}\n", .{ def.name, @errorName(err) });
+                if (trace_err_stack) traceBenchErr(def.name, "timed", err);
+                if (trace_workload) {
+                    const gc_after_fail = repl.vm.heap.stats.gc_count;
+                    const gc_minor_after_fail = repl.vm.heap.stats.gc_minor_count;
+                    const gc_major_after_fail = repl.vm.heap.stats.gc_major_count;
+                    std.debug.print(
+                        "MAXIMA_BENCH fail {s} err={s} gc={d} minor={d} major={d}\n",
+                        .{
+                            def.name,
+                            @errorName(err),
+                            gc_after_fail -% gc_before,
+                            gc_minor_after_fail -% gc_minor_before,
+                            gc_major_after_fail -% gc_major_before,
+                        },
+                    );
+                }
+                return .{
+                    .name = def.name,
+                    .category = def.category,
+                    .iters = n,
+                    .ns = 0,
+                    .err_name = @errorName(err),
+                };
+            };
         }
-        return .{
-            .name = def.name,
-            .category = def.category,
-            .iters = n,
-            .ns = 0,
-            .err_name = @errorName(err),
-        };
-    };
-    const t1 = timer.read();
+        const t1 = timer.read();
+        const elapsed = t1 - t0;
+        if (elapsed < best_ns) best_ns = elapsed;
+    }
+
     if (trace_workload) {
         const gc_after = repl.vm.heap.stats.gc_count;
         const gc_minor_after = repl.vm.heap.stats.gc_minor_count;
         const gc_major_after = repl.vm.heap.stats.gc_major_count;
         std.debug.print(
-            "MAXIMA_BENCH end {s} ns={d} gc={d} minor={d} major={d}\n",
+            "MAXIMA_BENCH end {s} best_ns={d} repeats={d} gc={d} minor={d} major={d}\n",
             .{
                 def.name,
-                t1 - t0,
+                best_ns,
+                timed_repeats,
                 gc_after -% gc_before,
                 gc_minor_after -% gc_minor_before,
                 gc_major_after -% gc_major_before,
@@ -541,7 +566,7 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
         .name = def.name,
         .category = def.category,
         .iters = n,
-        .ns = t1 - t0,
+        .ns = best_ns,
         .err_name = null,
     };
 }
@@ -551,12 +576,8 @@ const bench_defs = [_]BenchDef{
         .name = "simplifya",
         .category = "maxima",
         .setup =
-        \\(defun bench-maxima-simplifya (n)
-        \\  (let ((i 0) (out nil))
-        \\    (while (< i n)
-        \\      (setq out (maxima::simplifya '((maxima::mplus) 3 4) t))
-        \\      (setq i (+ i 1)))
-        \\    out))
+        \\(defun bench-maxima-simplifya ()
+        \\  (funcall 'maxima::simplifya '((maxima::mplus) 3 4) t))
         ,
         .call_name = "bench-maxima-simplifya",
         .iters = 200,
@@ -565,12 +586,8 @@ const bench_defs = [_]BenchDef{
         .name = "diff",
         .category = "maxima",
         .setup =
-        \\(defun bench-maxima-diff (n)
-        \\  (let ((i 0) (out nil))
-        \\    (while (< i n)
-        \\      (setq out (maxima::$diff 0 'maxima::$x))
-        \\      (setq i (+ i 1)))
-        \\    out))
+        \\(defun bench-maxima-diff ()
+        \\  (funcall 'maxima::$diff 0 'maxima::$x))
         ,
         .call_name = "bench-maxima-diff",
         .iters = 200,
@@ -579,12 +596,8 @@ const bench_defs = [_]BenchDef{
         .name = "integrate",
         .category = "maxima",
         .setup =
-        \\(defun bench-maxima-integrate (n)
-        \\  (let ((i 0) (out nil))
-        \\    (while (< i n)
-        \\      (setq out (maxima::$integrate 0 'maxima::$x))
-        \\      (setq i (+ i 1)))
-        \\    out))
+        \\(defun bench-maxima-integrate ()
+        \\  (funcall 'maxima::$integrate 0 'maxima::$x))
         ,
         .call_name = "bench-maxima-integrate",
         .iters = 200,
@@ -593,12 +606,8 @@ const bench_defs = [_]BenchDef{
         .name = "factor",
         .category = "maxima",
         .setup =
-        \\(defun bench-maxima-factor (n)
-        \\  (let ((i 0) (out nil))
-        \\    (while (< i n)
-        \\      (setq out (maxima::$factor 1))
-        \\      (setq i (+ i 1)))
-        \\    out))
+        \\(defun bench-maxima-factor ()
+        \\  (funcall 'maxima::$factor 1))
         ,
         .call_name = "bench-maxima-factor",
         .iters = 200,
@@ -607,12 +616,8 @@ const bench_defs = [_]BenchDef{
         .name = "ratsimp",
         .category = "maxima",
         .setup =
-        \\(defun bench-maxima-ratsimp (n)
-        \\  (let ((i 0) (out nil))
-        \\    (while (< i n)
-        \\      (setq out (maxima::$ratsimp 1))
-        \\      (setq i (+ i 1)))
-        \\    out))
+        \\(defun bench-maxima-ratsimp ()
+        \\  (funcall 'maxima::$ratsimp 1))
         ,
         .call_name = "bench-maxima-ratsimp",
         .iters = 200,
@@ -621,12 +626,8 @@ const bench_defs = [_]BenchDef{
         .name = "limit",
         .category = "maxima",
         .setup =
-        \\(defun bench-maxima-limit (n)
-        \\  (let ((i 0) (out nil))
-        \\    (while (< i n)
-        \\      (setq out (maxima::$limit 0 'maxima::$x 0))
-        \\      (setq i (+ i 1)))
-        \\    out))
+        \\(defun bench-maxima-limit ()
+        \\  (funcall 'maxima::$limit 0 'maxima::$x 0))
         ,
         .call_name = "bench-maxima-limit",
         .iters = 20,
@@ -635,12 +636,8 @@ const bench_defs = [_]BenchDef{
         .name = "solve",
         .category = "maxima",
         .setup =
-        \\(defun bench-maxima-solve (n)
-        \\  (let ((i 0) (out nil))
-        \\    (while (< i n)
-        \\      (setq out (maxima::$solve 0 'maxima::$x))
-        \\      (setq i (+ i 1)))
-        \\    out))
+        \\(defun bench-maxima-solve ()
+        \\  (funcall 'maxima::$solve 0 'maxima::$x))
         ,
         .call_name = "bench-maxima-solve",
         .iters = 20,
@@ -649,12 +646,8 @@ const bench_defs = [_]BenchDef{
         .name = "determinant",
         .category = "maxima",
         .setup =
-        \\(defun bench-maxima-determinant (n)
-        \\  (let ((i 0) (out nil))
-        \\    (while (< i n)
-        \\      (setq out (maxima::$determinant 1))
-        \\      (setq i (+ i 1)))
-        \\    out))
+        \\(defun bench-maxima-determinant ()
+        \\  (funcall 'maxima::$determinant 1))
         ,
         .call_name = "bench-maxima-determinant",
         .iters = 20,
@@ -663,12 +656,8 @@ const bench_defs = [_]BenchDef{
         .name = "expand",
         .category = "maxima",
         .setup =
-        \\(defun bench-maxima-expand (n)
-        \\  (let ((i 0) (out nil))
-        \\    (while (< i n)
-        \\      (setq out (maxima::$expand 1))
-        \\      (setq i (+ i 1)))
-        \\    out))
+        \\(defun bench-maxima-expand ()
+        \\  (funcall 'maxima::$expand 1))
         ,
         .call_name = "bench-maxima-expand",
         .iters = 200,
@@ -677,12 +666,8 @@ const bench_defs = [_]BenchDef{
         .name = "sin",
         .category = "maxima",
         .setup =
-        \\(defun bench-maxima-sin (n)
-        \\  (let ((i 0) (out nil))
-        \\    (while (< i n)
-        \\      (setq out (maxima::$sin 0))
-        \\      (setq i (+ i 1)))
-        \\    out))
+        \\(defun bench-maxima-sin ()
+        \\  (funcall 'maxima::$sin 0))
         ,
         .call_name = "bench-maxima-sin",
         .iters = 200,
@@ -691,12 +676,8 @@ const bench_defs = [_]BenchDef{
         .name = "cos",
         .category = "maxima",
         .setup =
-        \\(defun bench-maxima-cos (n)
-        \\  (let ((i 0) (out nil))
-        \\    (while (< i n)
-        \\      (setq out (maxima::$cos 0))
-        \\      (setq i (+ i 1)))
-        \\    out))
+        \\(defun bench-maxima-cos ()
+        \\  (funcall 'maxima::$cos 0))
         ,
         .call_name = "bench-maxima-cos",
         .iters = 200,
@@ -759,6 +740,26 @@ pub fn main() !void {
     };
     const gc_after_load = gcSnap(&heap);
     const call_shape_after_load = callShapeSnap(&repl);
+
+    // JIT mode: benchmark wrapper defuns must compile at speed 3 / safety 0.
+    // Keep interpreter mode at default optimization for fair baseline.
+    if (opts.jit) {
+        _ = repl.eval("(declaim (optimize (speed 3) (safety 0)))") catch |err| {
+            if (opts.json) {
+                var out_buf_err: [2048]u8 = undefined;
+                var out_err = std.fs.File.stdout().writer(&out_buf_err);
+                const w_err = &out_err.interface;
+                try w_err.print(
+                    "{{\"engine\":\"habu\",\"workload\":\"maxima\",\"error\":\"{s}\"}}\n",
+                    .{@errorName(err)},
+                );
+                try w_err.flush();
+                return;
+            }
+            return err;
+        };
+    }
+
     if (std.posix.getenv("HABU_TRACE_GLOBAL_SANITY") != null) {
         std.debug.print(
             "TRACE global-sanity phase=post-load vm_globals={d} env_globals={d} corrupt_symbols={d}\n",

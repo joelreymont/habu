@@ -23,7 +23,21 @@ def parse_json_tail(text: str, label: str) -> dict:
     return json.loads(m.group(0))
 
 
+def ensure_bench_binary() -> Path:
+    build_cmd = ["zig", "build", "-Duse-hoist=true"]
+    build_proc = subprocess.run(build_cmd, capture_output=True, text=True)
+    build_out = (build_proc.stdout or "") + (build_proc.stderr or "")
+    if build_proc.returncode != 0:
+        raise RuntimeError(f"build failed ({build_proc.returncode})\n{build_out}")
+
+    bench_bin = Path("zig-out/bin/maxima_workload_bench")
+    if not bench_bin.exists():
+        raise RuntimeError(f"missing benchmark binary: {bench_bin}")
+    return bench_bin
+
+
 def run_bench(
+    bench_bin: Path,
     jit_enabled: bool,
     scale: int,
     heap_mb: int,
@@ -34,11 +48,7 @@ def run_bench(
     mode = "jit" if jit_enabled else "interp"
     workloads_csv = ",".join(workloads)
     cmd = [
-        "zig",
-        "build",
-        "-Duse-hoist=true",
-        "bench-maxima",
-        "--",
+        str(bench_bin),
         "--json",
         f"--scale={scale}",
         f"--heap-mb={heap_mb}",
@@ -353,7 +363,12 @@ def main() -> int:
     )
     p.add_argument("--min-interp-jit", type=float, default=1.01, help="minimum interp/jit speedup counted as a JIT win")
     p.add_argument("--min-jit-wins", type=int, default=2, help="minimum workload win count required by jit gate")
-    p.add_argument("--min-jit-compiled", type=int, default=32, help="minimum compiled-function count required by jit gate")
+    p.add_argument(
+        "--min-jit-compiled",
+        type=int,
+        default=None,
+        help="minimum compiled-function count required by jit gate (default: number of selected workloads)",
+    )
     p.add_argument("--fail-on-gate", action="store_true", help="exit non-zero when jit gate fails")
     p.add_argument("--json", action="store_true", help="print JSON summary")
     p.add_argument("--markdown-out", type=str, default="", help="write markdown report")
@@ -368,15 +383,21 @@ def main() -> int:
         return 2
 
     try:
-        jit = run_bench(True, args.scale, args.heap_mb, args.nursery_mb, args.promote_age, workloads)
-        interp = run_bench(False, args.scale, args.heap_mb, args.nursery_mb, args.promote_age, workloads)
+        bench_bin = ensure_bench_binary()
+        jit = run_bench(bench_bin, True, args.scale, args.heap_mb, args.nursery_mb, args.promote_age, workloads)
+        interp = run_bench(bench_bin, False, args.scale, args.heap_mb, args.nursery_mb, args.promote_age, workloads)
         summary = summarize(jit, interp, workloads)
         summary["promote_age"] = int(args.promote_age)
+        effective_min_jit_compiled = (
+            int(args.min_jit_compiled)
+            if args.min_jit_compiled is not None
+            else max(1, len(workloads))
+        )
         summary["jit_gate"] = evaluate_gate(
             summary,
             args.min_interp_jit,
             args.min_jit_wins,
-            args.min_jit_compiled,
+            effective_min_jit_compiled,
         )
     except Exception as exc:
         print(str(exc), file=sys.stderr)

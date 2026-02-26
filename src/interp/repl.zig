@@ -4510,11 +4510,26 @@ pub const Repl = struct {
     /// Evaluate all forms in compile-toplevel context.
     /// Each form is evaluated individually using evalSingleExpr.
     fn evalCompileToplevel(self: *Repl, body: Value, arena_alloc: std.mem.Allocator) ReplError!void {
-        var form = body;
-        while (form.isCons()) {
-            const form_cons = form.toPtr(Cons);
-            _ = try self.evalSingleExpr(form_cons.car, arena_alloc);
-            form = form_cons.cdr;
+        const source_vm = self.activeVm();
+        const form_root_idx = try self.ensureLoadFormRootGlobal();
+        const form_stack_idx = try self.ensureLoadFormRootStackGlobal();
+        try pushRootValue(source_vm, form_root_idx, form_stack_idx, body);
+        defer popRootValue(source_vm, form_root_idx, form_stack_idx);
+
+        while (true) {
+            const form_live = source_vm.resolveForwardedValue(source_vm.globals[form_root_idx]);
+            source_vm.globals[form_root_idx] = form_live;
+            if (!form_live.isCons()) {
+                if (!form_live.isNil()) return error.CompileError;
+                return;
+            }
+
+            const form_cons = form_live.toPtr(Cons);
+            const expr = form_cons.car;
+            // Root the tail before evaluating this form. evalSingleExpr can
+            // allocate/GC and move the body list between iterations.
+            source_vm.globals[form_root_idx] = form_cons.cdr;
+            _ = try self.evalSingleExpr(expr, arena_alloc);
         }
     }
 

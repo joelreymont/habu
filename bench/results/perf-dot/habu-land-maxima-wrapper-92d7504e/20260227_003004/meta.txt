@@ -1,0 +1,4 @@
+dot_id=habu-land-maxima-wrapper-92d7504e
+timestamp=20260227_003004
+perf_micro_cmd=zig build -Duse-hoist=true bench-comp -- --json
+perf_real_cmd=tools/maxima-hotspots --json --scale 1 --heap-mb 1024 --nursery-mb 32 --workloads factor,ratsimp

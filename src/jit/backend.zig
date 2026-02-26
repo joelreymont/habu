@@ -2302,6 +2302,14 @@ pub const IrTranslator = struct {
             .car, .cdr, .unsafe_car, .unsafe_cdr => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
             .length => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
             .cons => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
+            .list => |elements| blk: {
+                for (elements) |e| if (!canTranslateWithLiteralRoots(e, literal_roots)) break :blk false;
+                break :blk true;
+            },
+            .list_star => |elements| blk: {
+                for (elements) |e| if (!canTranslateWithLiteralRoots(e, literal_roots)) break :blk false;
+                break :blk true;
+            },
             .sqrt, .round, .intern, .vec_len, .str_len => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
             .vec_new => |v| blk: {
                 if (!canTranslateWithLiteralRoots(v.size, literal_roots)) break :blk false;
@@ -2410,6 +2418,14 @@ pub const IrTranslator = struct {
             .append,
             .assoc,
             => |op| firstUnsupportedTagWithLiteralRoots(op.left, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(op.right, literal_roots),
+            .list => |elements| blk: {
+                for (elements) |e| if (firstUnsupportedTagWithLiteralRoots(e, literal_roots)) |tag| break :blk tag;
+                break :blk null;
+            },
+            .list_star => |elements| blk: {
+                for (elements) |e| if (firstUnsupportedTagWithLiteralRoots(e, literal_roots)) |tag| break :blk tag;
+                break :blk null;
+            },
             .@"if" => |f| firstUnsupportedTagWithLiteralRoots(f.cond, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(f.then_branch, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(f.else_branch, literal_roots),
             .block => |b| firstUnsupportedTagWithLiteralRoots(b.body, literal_roots),
             .progn => |exprs| blk: {
@@ -2552,6 +2568,8 @@ pub const IrTranslator = struct {
             .consp => |op| try self.translateConsp(op.operand),
             .car => |op| try self.translateCar(op.operand),
             .cdr => |op| try self.translateCdr(op.operand),
+            .list => |elements| try self.translateList(elements),
+            .list_star => |elements| try self.translateListStar(elements),
             .unsafe_car => |op| try self.translateUnsafeCar(op.operand),
             .unsafe_cdr => |op| try self.translateUnsafeCdr(op.operand),
             .abs => |op| try self.translateAbs(op.operand),
@@ -4514,29 +4532,15 @@ pub const IrTranslator = struct {
         return self.translateCdr(operand_ir);
     }
 
-    /// cons allocation:
-    /// - safety=0 fast path: inline bump allocation
-    /// - safe path: helper call (preserves full runtime invariants)
-    fn translateCons(self: *IrTranslator, car_ir: *const Ir, cdr_ir: *const Ir) anyerror!HoistValue {
-        var car_val = try self.translate(car_ir);
-        var cdr_val = try self.translate(cdr_ir);
+    fn retagConsSlotIfNeeded(self: *IrTranslator, val: HoistValue, ir_node: *const Ir) anyerror!HoistValue {
+        if (!self.untagged) return val;
+        if (!producesFixnum(ir_node)) return val;
+        const one = try self.cachedIconst(1);
+        const shifted = try self.b.ishl(I64, val, one);
+        return try self.b.bor(I64, shifted, one);
+    }
 
-        // In untagged mode, cons cells must store TAGGED values (they're runtime
-        // objects read by the interpreter and other functions). Re-tag fixnum
-        // arguments: tagged_raw = (untagged << 1) | 1.
-        if (self.untagged) {
-            if (producesFixnum(car_ir)) {
-                const one = try self.cachedIconst(1);
-                const shifted = try self.b.ishl(I64, car_val, one);
-                car_val = try self.b.bor(I64, shifted, one);
-            }
-            if (producesFixnum(cdr_ir)) {
-                const one = try self.cachedIconst(1);
-                const shifted = try self.b.ishl(I64, cdr_val, one);
-                cdr_val = try self.b.bor(I64, shifted, one);
-            }
-        }
-
+    fn translateConsTaggedValues(self: *IrTranslator, car_val: HoistValue, cdr_val: HoistValue) anyerror!HoistValue {
         if (self.fixnum_fast) {
             // Inline bump allocation directly in hoist IR to avoid call_indirect
             // register swap issues. Loads g_alloc_ptr/g_alloc_end and falls back
@@ -4588,6 +4592,51 @@ pub const IrTranslator = struct {
 
         const args = [_]HoistValue{ cdr_val, car_val };
         return try self.emitPrimitiveCallValues(@intFromPtr(&jitCons), &args);
+    }
+
+    /// cons allocation:
+    /// - safety=0 fast path: inline bump allocation
+    /// - safe path: helper call (preserves full runtime invariants)
+    fn translateCons(self: *IrTranslator, car_ir: *const Ir, cdr_ir: *const Ir) anyerror!HoistValue {
+        const car_raw = try self.translate(car_ir);
+        const cdr_raw = try self.translate(cdr_ir);
+        const car_val = try self.retagConsSlotIfNeeded(car_raw, car_ir);
+        const cdr_val = try self.retagConsSlotIfNeeded(cdr_raw, cdr_ir);
+        return self.translateConsTaggedValues(car_val, cdr_val);
+    }
+
+    fn translateList(self: *IrTranslator, elements: []const *const Ir) anyerror!HoistValue {
+        var out = try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
+        var i = elements.len;
+        while (i > 0) {
+            i -= 1;
+            const elem_ir = elements[i];
+            const elem_raw = try self.translate(elem_ir);
+            const elem_tagged = try self.retagConsSlotIfNeeded(elem_raw, elem_ir);
+            out = try self.translateConsTaggedValues(elem_tagged, out);
+        }
+        return out;
+    }
+
+    fn translateListStar(self: *IrTranslator, elements: []const *const Ir) anyerror!HoistValue {
+        if (elements.len == 0) {
+            return try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
+        }
+
+        const tail_idx = elements.len - 1;
+        const tail_ir = elements[tail_idx];
+        const tail_raw = try self.translate(tail_ir);
+        var out = try self.retagConsSlotIfNeeded(tail_raw, tail_ir);
+
+        var i = tail_idx;
+        while (i > 0) {
+            i -= 1;
+            const elem_ir = elements[i];
+            const elem_raw = try self.translate(elem_ir);
+            const elem_tagged = try self.retagConsSlotIfNeeded(elem_raw, elem_ir);
+            out = try self.translateConsTaggedValues(elem_tagged, out);
+        }
+        return out;
     }
 
     /// Check if an IR expression produces a fixnum value (needs retagging in untagged mode).
@@ -9385,6 +9434,78 @@ test "hoist IR translator canTranslate new data ops" {
     const hash_alist = try alloc.create(Ir);
     hash_alist.* = .{ .hash_alist = .{ .operand = var_a } };
     try testing.expect(IrTranslator.canTranslate(hash_alist));
+}
+
+test "hoist IR translator: list and list_star lower to cons allocation" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const one = try alloc.create(Ir);
+    one.* = .{ .lit = Value.makeFixnum(1) };
+    const two = try alloc.create(Ir);
+    two.* = .{ .lit = Value.makeFixnum(2) };
+    const three = try alloc.create(Ir);
+    three.* = .{ .lit = Value.makeFixnum(3) };
+
+    const list_elems = try alloc.alloc(*const Ir, 2);
+    list_elems[0] = one;
+    list_elems[1] = two;
+    const list_ir = try alloc.create(Ir);
+    list_ir.* = .{ .list = list_elems };
+
+    const list_star_elems = try alloc.alloc(*const Ir, 3);
+    list_star_elems[0] = one;
+    list_star_elems[1] = two;
+    list_star_elems[2] = three;
+    const list_star_ir = try alloc.create(Ir);
+    list_star_ir.* = .{ .list_star = list_star_elems };
+
+    const exprs = try alloc.alloc(*const Ir, 2);
+    exprs[0] = list_ir;
+    exprs[1] = list_star_ir;
+    const body = try alloc.create(Ir);
+    body.* = .{ .progn = exprs };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = &.{},
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = body,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "jit_list_ops");
+    defer compiled.deinit();
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    const prev_heap = g_heap;
+    const prev_alloc_ptr = g_alloc_ptr;
+    const prev_alloc_end = g_alloc_end;
+    const prev_batch_ops = g_safepoint_batch_ops;
+    defer {
+        g_heap = prev_heap;
+        g_alloc_ptr = prev_alloc_ptr;
+        g_alloc_end = prev_alloc_end;
+        g_safepoint_batch_ops = prev_batch_ops;
+    }
+    setHeap(&heap);
+
+    const raw = compiled.call0();
+    const out = Value{ .raw = @bitCast(raw) };
+    try testing.expect(out.isCons());
+    try testing.expectEqual(@as(i64, 1), runtime.primitives.list.nth(out, 0).toFixnum());
+    try testing.expectEqual(@as(i64, 2), runtime.primitives.list.nth(out, 1).toFixnum());
+    // list* tail stays dotted, so cdr of second cell is 3 (not a cons).
+    const second = runtime.primitives.list.nthcdr(out, 1);
+    try testing.expect(second.isCons());
+    try testing.expectEqual(@as(i64, 3), second.toPtr(runtime.Cons).cdr.toFixnum());
 }
 
 test "hoist IR translator: vec_ref vec_set vec_len helpers" {
