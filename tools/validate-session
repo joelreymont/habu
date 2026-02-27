@@ -19,6 +19,7 @@ FULL_TIMEOUT_SEC="${FULL_TIMEOUT_SEC:-900}"
 TRACE_TIMEOUT_SEC="${TRACE_TIMEOUT_SEC:-600}"
 RUN_FULL=1
 STRICT_FULL=0
+MAXIMA_TIMEOUT_SEC="${MAXIMA_TIMEOUT_SEC:-1200}"
 
 usage() {
   cat <<'EOF'
@@ -30,6 +31,7 @@ Profiles:
 Options:
   --full-timeout <sec>   Timeout for full 'zig build test' attempt (default: 900)
   --trace-timeout <sec>  Timeout for profile runtime trace script (default: 600)
+  --maxima-timeout <sec> Timeout for bench-maxima jit/interp smoke runs (default: 1200)
   --no-full              Skip full-suite attempt
   --strict-full          Treat full-suite timeout as failure
   -h|--help              Show help
@@ -52,6 +54,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --trace-timeout)
       TRACE_TIMEOUT_SEC="$2"
+      shift 2
+      ;;
+    --maxima-timeout)
+      MAXIMA_TIMEOUT_SEC="$2"
       shift 2
       ;;
     --no-full)
@@ -109,6 +115,76 @@ run_step_timeout() {
   run_with_timeout "$secs" "$@"
 }
 
+run_maxima_compile_run_smoke() {
+  local jit_out interp_out jit_err interp_err
+  jit_out="$(mktemp -t habu-validate-maxima-jit.XXXXXX)"
+  interp_out="$(mktemp -t habu-validate-maxima-interp.XXXXXX)"
+  jit_err="$(mktemp -t habu-validate-maxima-jit-err.XXXXXX)"
+  interp_err="$(mktemp -t habu-validate-maxima-interp-err.XXXXXX)"
+
+  run_step_timeout "bench-maxima jit smoke" "$MAXIMA_TIMEOUT_SEC" \
+    zig build -Duse-hoist=true bench-maxima -- \
+      --json --scale=1 --heap-mb=1024 --nursery-mb=32 --promote-age=2 \
+      --jit=on --workloads=factor,ratsimp >"$jit_out" 2>"$jit_err"
+
+  run_step_timeout "bench-maxima interp smoke" "$MAXIMA_TIMEOUT_SEC" \
+    zig build -Duse-hoist=true bench-maxima -- \
+      --json --scale=1 --heap-mb=1024 --nursery-mb=32 --promote-age=2 \
+      --jit=off --workloads=factor,ratsimp >"$interp_out" 2>"$interp_err"
+
+  run_step "verify maxima compile+run smoke" python3 - "$jit_out" "$interp_out" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+
+def parse_tail(path: str) -> dict:
+    text = Path(path).read_text()
+    m = re.search(r"\{.*\}\s*$", text, re.S)
+    if not m:
+        raise RuntimeError(f"missing trailing JSON payload in {path}")
+    return json.loads(m.group(0))
+
+
+def check_payload(payload: dict, label: str):
+    loader = payload.get("loader", {})
+    ok = int(loader.get("ok", 0))
+    total = int(loader.get("total", 0))
+    fail = int(loader.get("fail", 0))
+    if total <= 0 or ok != total or fail != 0:
+        raise RuntimeError(
+            f"{label}: loader incomplete ok={ok} total={total} fail={fail}"
+        )
+
+    bad = []
+    for row in payload.get("benches", []):
+        if row.get("error") not in (None, "", False):
+            bad.append((row.get("name"), row.get("error")))
+    if bad:
+        raise RuntimeError(f"{label}: workload errors present: {bad}")
+
+
+jit = parse_tail(sys.argv[1])
+interp = parse_tail(sys.argv[2])
+check_payload(jit, "jit")
+check_payload(interp, "interp")
+
+jit_comp = int(jit.get("jit_compiled", 0))
+interp_comp = int(interp.get("jit_compiled", 0))
+if jit_comp <= interp_comp:
+    raise RuntimeError(
+        f"compile delta check failed: jit_compiled={jit_comp} interp_compiled={interp_comp}"
+    )
+
+print(
+    "[validate] maxima smoke ok: "
+    f"loader={jit.get('loader', {}).get('ok', 0)}/{jit.get('loader', {}).get('total', 0)} "
+    f"jit_compiled={jit_comp} interp_compiled={interp_comp}"
+)
+PY
+}
+
 run_maxima_macro_hang_profile() {
   run_step "zig build" zig build
 
@@ -125,6 +201,8 @@ run_maxima_macro_hang_profile() {
     run_step "zig build test -Dtest-filter='${t}'" \
       zig build test -Dtest-filter="${t}"
   done
+
+  run_maxima_compile_run_smoke
 
   local trace_script="/tmp/mforma_trace.lisp"
   if [[ ! -f "$trace_script" ]]; then

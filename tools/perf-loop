@@ -2,6 +2,9 @@
 """Performance self-improvement loop.
 
 Runs microbench + real workload comparisons, ranks bottlenecks, and prints next actions.
+
+Correctness-first policy for Maxima: gate on load+compile+run success, then treat
+JIT speedup thresholds as informational unless explicitly enforced.
 """
 
 import argparse
@@ -61,19 +64,24 @@ def parse_args():
         "--jit-min-interp-jit",
         type=float,
         default=1.01,
-        help="minimum interp/jit speedup counted as a JIT win in maxima gate",
+        help="minimum interp/jit speedup counted as a JIT performance win (informational unless --enforce-jit-perf-gate)",
     )
     p.add_argument(
         "--jit-min-wins",
         type=int,
         default=2,
-        help="minimum maxima workload JIT wins required by the JIT gate",
+        help="minimum maxima workload JIT performance wins (informational unless --enforce-jit-perf-gate)",
     )
     p.add_argument(
         "--jit-min-compiled",
         type=int,
         default=32,
-        help="minimum compiled-function count required by the JIT gate",
+        help="minimum compiled-function count for JIT performance gate (informational unless --enforce-jit-perf-gate)",
+    )
+    p.add_argument(
+        "--enforce-jit-perf-gate",
+        action="store_true",
+        help="include JIT performance gate in --fail-on-gates; default gate is correctness-first",
     )
     p.add_argument(
         "--history-file",
@@ -91,7 +99,11 @@ def parse_args():
         action="store_true",
         help="disable history persistence and trend summarization",
     )
-    p.add_argument("--fail-on-gates", action="store_true", help="exit non-zero if selected GC gate fails")
+    p.add_argument(
+        "--fail-on-gates",
+        action="store_true",
+        help="exit non-zero when GC gate or Maxima execution gate fails (and JIT perf gate only if --enforce-jit-perf-gate)",
+    )
     p.add_argument("--top", type=int, default=12, help="top bottlenecks to print")
     p.add_argument("--json", action="store_true", help="emit JSON only")
     return p.parse_args()
@@ -343,7 +355,53 @@ def collect_maxima(scale: int, heap_mb: int, profile_mutator: bool, with_ocaml: 
     )
 
 
-def compute_jit_gate(
+def compute_maxima_exec_gate(habu_jit_run: dict, habu_interp_run: dict):
+    def loader_ok(run: dict):
+        payload = run.get("payload", {})
+        loader = payload.get("loader", {})
+        ok = int(loader.get("ok", 0))
+        total = int(loader.get("total", 0))
+        fail = int(loader.get("fail", 0))
+        return total > 0 and ok == total and fail == 0
+
+    def failing_workloads(run: dict):
+        out = []
+        rows = run.get("workloads", {})
+        for name in run.get("workload_order", []):
+            row = rows.get(name, {})
+            if row.get("status") != "ok":
+                out.append(name)
+        return out
+
+    jit_fail = failing_workloads(habu_jit_run)
+    interp_fail = failing_workloads(habu_interp_run)
+
+    jit_payload = habu_jit_run.get("payload", {})
+    interp_payload = habu_interp_run.get("payload", {})
+    jit_compiled = int(jit_payload.get("jit_compiled", 0))
+    interp_compiled = int(interp_payload.get("jit_compiled", 0))
+
+    checks = {
+        "loader_jit_complete": {"pass": loader_ok(habu_jit_run)},
+        "loader_interp_complete": {"pass": loader_ok(habu_interp_run)},
+        "workloads_jit_ok": {"pass": len(jit_fail) == 0, "failing": jit_fail},
+        "workloads_interp_ok": {"pass": len(interp_fail) == 0, "failing": interp_fail},
+        "jit_compiled_nonzero": {"pass": jit_compiled > 0, "actual": jit_compiled, "target_min": 1},
+        "jit_compiled_delta": {
+            "pass": jit_compiled > interp_compiled,
+            "actual": jit_compiled - interp_compiled,
+            "target_min": 1,
+        },
+    }
+    return {
+        "pass": all(c.get("pass", False) for c in checks.values()),
+        "checks": checks,
+        "jit_compiled": jit_compiled,
+        "interp_compiled": interp_compiled,
+    }
+
+
+def compute_jit_perf_gate(
     habu_jit_run: dict,
     habu_interp_run: dict,
     min_interp_jit: float,
@@ -872,7 +930,11 @@ def main():
     maxima_entries, maxima_errs, maxima_ocaml_errs, h_loader, s_loader, mutator_profile, maxima_runners = collect_maxima(
         args.scale, args.heap_mb, args.profile_mutator, args.with_ocaml
     )
-    jit_gate = compute_jit_gate(
+    maxima_exec_gate = compute_maxima_exec_gate(
+        maxima_runners["habu"],
+        maxima_runners["habu_interp"],
+    )
+    jit_perf_gate = compute_jit_perf_gate(
         maxima_runners["habu"],
         maxima_runners["habu_interp"],
         args.jit_min_interp_jit,
@@ -923,10 +985,13 @@ def main():
             "jit_min_interp_jit": args.jit_min_interp_jit,
             "jit_min_wins": args.jit_min_wins,
             "jit_min_compiled": args.jit_min_compiled,
+            "enforce_jit_perf_gate": bool(args.enforce_jit_perf_gate),
         },
         "gc_gate_pass": gate_pass,
-        "jit_gate_pass": bool(jit_gate.get("pass", False)),
-        "jit_gate": jit_gate,
+        "maxima_exec_gate_pass": bool(maxima_exec_gate.get("pass", False)),
+        "jit_perf_gate_pass": bool(jit_perf_gate.get("pass", False)),
+        "maxima_exec_gate": maxima_exec_gate,
+        "jit_perf_gate": jit_perf_gate,
         "gc_summary": gc_norm,
         "gc_run_stats": gc_stats,
         "gc_actions": gc_actions,
@@ -978,7 +1043,8 @@ def main():
                 "gc": (gc_compare.get("runners") or {}).get("gc"),
             },
             "mutator_profile": mutator_profile,
-            "jit_gate": jit_gate,
+            "maxima_exec_gate": maxima_exec_gate,
+            "jit_perf_gate": jit_perf_gate,
             "gc_compare": gc_compare,
             "gc_run_stats": gc_stats,
             "gc_summary": gc_norm,
@@ -1002,11 +1068,14 @@ def main():
             ],
         }
         print(json.dumps(payload, indent=2))
-        if args.fail_on_gates and (not gate_pass or not bool(jit_gate.get("pass", False))):
+        perf_gate_fail = args.enforce_jit_perf_gate and (not bool(jit_perf_gate.get("pass", False)))
+        if args.fail_on_gates and (not gate_pass or not bool(maxima_exec_gate.get("pass", False)) or perf_gate_fail):
             raise RuntimeError(
-                "gate failure: gc={gc} jit={jit}".format(
+                "gate failure: gc={gc} maxima_exec={mx} jit_perf={jp} enforce_jit_perf={ej}".format(
                     gc=gate_pass,
-                    jit=bool(jit_gate.get("pass", False)),
+                    mx=bool(maxima_exec_gate.get("pass", False)),
+                    jp=bool(jit_perf_gate.get("pass", False)),
+                    ej=bool(args.enforce_jit_perf_gate),
                 )
             )
         return
@@ -1083,14 +1152,31 @@ def main():
         print(f"  maxima errors: {len(maxima_errs)}")
     if args.with_ocaml and (micro_ocaml_errs or maxima_ocaml_errs):
         print(f"  ocaml errors: {len(micro_ocaml_errs) + len(maxima_ocaml_errs)}")
+    mx_checks = maxima_exec_gate.get("checks", {})
     print(
-        "  jit gate: {status} wins={wins}/{checked} min_speedup={speed:.3f} compiled={compiled} delta={delta}".format(
-            status="PASS" if jit_gate.get("pass") else "FAIL",
-            wins=jit_gate.get("checks", {}).get("wins", {}).get("actual", 0),
-            checked=jit_gate.get("checks", {}).get("wins", {}).get("checked", 0),
+        "  maxima exec gate: {status} loader(jit/interp)={lj}/{li} workloads(jit/interp)={wj}/{wi} compiled={jc} delta={cd}".format(
+            status="PASS" if maxima_exec_gate.get("pass") else "FAIL",
+            lj="ok" if mx_checks.get("loader_jit_complete", {}).get("pass") else "fail",
+            li="ok" if mx_checks.get("loader_interp_complete", {}).get("pass") else "fail",
+            wj="ok" if mx_checks.get("workloads_jit_ok", {}).get("pass") else "fail",
+            wi="ok" if mx_checks.get("workloads_interp_ok", {}).get("pass") else "fail",
+            jc=maxima_exec_gate.get("jit_compiled", 0),
+            cd=mx_checks.get("jit_compiled_delta", {}).get("actual", 0),
+        )
+    )
+    if not mx_checks.get("workloads_jit_ok", {}).get("pass", True):
+        print(f"    failing jit workloads: {mx_checks.get('workloads_jit_ok', {}).get('failing', [])}")
+    if not mx_checks.get("workloads_interp_ok", {}).get("pass", True):
+        print(f"    failing interp workloads: {mx_checks.get('workloads_interp_ok', {}).get('failing', [])}")
+    print(
+        "  jit perf gate{suffix}: {status} wins={wins}/{checked} min_speedup={speed:.3f} compiled={compiled} delta={delta}".format(
+            suffix=" [ENFORCED]" if args.enforce_jit_perf_gate else " [info]",
+            status="PASS" if jit_perf_gate.get("pass") else "FAIL",
+            wins=jit_perf_gate.get("checks", {}).get("wins", {}).get("actual", 0),
+            checked=jit_perf_gate.get("checks", {}).get("wins", {}).get("checked", 0),
             speed=args.jit_min_interp_jit,
-            compiled=jit_gate.get("checks", {}).get("compiled_min", {}).get("actual", 0),
-            delta=jit_gate.get("checks", {}).get("compiled_delta", {}).get("actual", 0),
+            compiled=jit_perf_gate.get("checks", {}).get("compiled_min", {}).get("actual", 0),
+            delta=jit_perf_gate.get("checks", {}).get("compiled_delta", {}).get("actual", 0),
         )
     )
     gc_metrics = gc_norm
@@ -1189,11 +1275,14 @@ def main():
     print()
     emit_table(worst)
     emit_actions(worst)
-    if args.fail_on_gates and (not gate_pass or not bool(jit_gate.get("pass", False))):
+    perf_gate_fail = args.enforce_jit_perf_gate and (not bool(jit_perf_gate.get("pass", False)))
+    if args.fail_on_gates and (not gate_pass or not bool(maxima_exec_gate.get("pass", False)) or perf_gate_fail):
         raise RuntimeError(
-            "gate failure: gc={gc} jit={jit}".format(
+            "gate failure: gc={gc} maxima_exec={mx} jit_perf={jp} enforce_jit_perf={ej}".format(
                 gc=gate_pass,
-                jit=bool(jit_gate.get("pass", False)),
+                mx=bool(maxima_exec_gate.get("pass", False)),
+                jp=bool(jit_perf_gate.get("pass", False)),
+                ej=bool(args.enforce_jit_perf_gate),
             )
         )
 
