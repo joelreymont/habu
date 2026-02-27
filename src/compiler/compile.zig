@@ -7096,21 +7096,40 @@ pub const Compiler = struct {
                     if (!q1.cdr.isNil()) return error.InvalidSyntax;
                     const fn_name = q1.car;
 
-                    const val_ir = try self.compile(value_expr, env);
+                    const FdefinitionTarget = union(enum) {
+                        symbol: struct {
+                            name: []const u8,
+                            local_name: []const u8,
+                            idx: u16,
+                        },
+                        setf_name: struct {
+                            name: []const u8,
+                            idx: u16,
+                        },
+                    };
 
-                    switch (fn_name.typeKind()) {
+                    const target = blk: switch (fn_name.typeKind()) {
                         .symbol => {
                             const sym = fn_name.toPtr(Symbol);
+                            const local_name = try self.allocator.dupe(u8, sym.getName());
+                            errdefer self.allocator.free(local_name);
+
                             var qual_buf: [256]u8 = undefined;
                             const q = try self.getQualifiedName(sym, &qual_buf);
                             defer if (q.owned) self.allocator.free(q.name);
-                            const name = q.name;
+                            const name = try self.allocator.dupe(u8, q.name);
+                            errdefer self.allocator.free(name);
                             const idx = try self.globals.define(name);
-                            return try self.compileFunctionDefine(fn_name, name, idx, val_ir);
+                            break :blk FdefinitionTarget{ .symbol = .{
+                                .name = name,
+                                .local_name = local_name,
+                                .idx = idx,
+                            } };
                         },
                         .cons => {
                             const c0 = fn_name.toPtr(Cons);
-                            if (!c0.car.isSymbol() or c0.car.raw != b.setf.raw) return error.InvalidSyntax;
+                            const c0_head = self.canonicalBuiltinSymbol(c0.car);
+                            if (!c0_head.isSymbol() or c0_head.raw != b.setf.raw) return error.InvalidSyntax;
                             if (!c0.cdr.isCons()) return error.InvalidSyntax;
                             const c1 = c0.cdr.toPtr(Cons);
                             if (!c1.car.isSymbol()) return error.InvalidSyntax;
@@ -7123,12 +7142,34 @@ pub const Compiler = struct {
                             var qual_buf: [512]u8 = undefined;
                             const q = try self.qualifyName(setf_name, &qual_buf);
                             defer if (q.owned) self.allocator.free(q.name);
-                            const name = q.name;
+                            const name = try self.allocator.dupe(u8, q.name);
+                            errdefer self.allocator.free(name);
                             const idx = try self.globals.define(name);
-                            return try self.builder.define(name, idx, val_ir);
+                            break :blk FdefinitionTarget{ .setf_name = .{
+                                .name = name,
+                                .idx = idx,
+                            } };
                         },
                         else => return error.InvalidSyntax,
-                    }
+                    };
+                    defer switch (target) {
+                        .symbol => |data| {
+                            self.allocator.free(data.name);
+                            self.allocator.free(data.local_name);
+                        },
+                        .setf_name => |data| {
+                            self.allocator.free(data.name);
+                        },
+                    };
+
+                    const val_ir = try self.compile(value_expr, env);
+                    return switch (target) {
+                        .symbol => |data| blk2: {
+                            const name_sym = try self.refreshDefunNameSymbol(data.name, data.local_name, Value.nil);
+                            break :blk2 try self.compileFunctionDefine(name_sym, data.name, data.idx, val_ir);
+                        },
+                        .setf_name => |data| try self.builder.define(data.name, data.idx, val_ir),
+                    };
                 }
 
                 // (setf (gethash key table) val) -> hash_set IR
@@ -12327,9 +12368,10 @@ pub const Compiler = struct {
             const initargs_slice = try self.globals.allocator.dupe(Value, spec.initargs.items);
             const readers_slice = try self.globals.allocator.dupe(Value, spec.readers.items);
             const writers_slice = try self.globals.allocator.dupe(Value, spec.writers.items);
+            const stable_slot_sym = try heap.intern(spec.name);
             persistent_specs[i] = .{
                 .name = try self.globals.allocator.dupe(u8, spec.name),
-                .sym = spec.sym,
+                .sym = stable_slot_sym,
                 .field_type = spec.field_type,
                 .initform = spec.initform,
                 .initargs = std.ArrayList(Value).fromOwnedSlice(initargs_slice),
@@ -12347,8 +12389,7 @@ pub const Compiler = struct {
         {
             const heap_slot_names = try heap.backing_allocator.alloc(Value, slot_specs.items.len);
             for (slot_specs.items, 0..) |spec, i| {
-                if (!spec.sym.isSymbol()) return error.InvalidSyntax;
-                heap_slot_names[i] = spec.sym;
+                heap_slot_names[i] = try heap.intern(spec.name);
             }
             try heap.setClassMetadata(q.name, heap_slot_names);
         }
