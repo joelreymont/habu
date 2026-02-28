@@ -5,12 +5,15 @@
 
 (defparameter *json-mode* nil)
 (defparameter *scale* 1)
+(defparameter *workloads-csv* nil)
 
 (dolist (arg (cdr sb-ext:*posix-argv*))
   (cond
     ((string= arg "--json") (setf *json-mode* t))
     ((and (> (length arg) 8) (string= (subseq arg 0 8) "--scale="))
-     (setf *scale* (max 1 (parse-integer (subseq arg 8)))))))
+     (setf *scale* (max 1 (parse-integer (subseq arg 8)))))
+    ((and (> (length arg) 12) (string= (subseq arg 0 12) "--workloads="))
+     (setf *workloads-csv* (subseq arg 12)))))
 
 (defun now-ns ()
   (round (* (get-internal-real-time)
@@ -26,6 +29,18 @@
         (#\Return (write-string "\\r" out))
         (#\Tab (write-string "\\t" out))
         (t (write-char ch out))))))
+
+(defun workload-selected-p (name)
+  (if (null *workloads-csv*)
+      t
+      (let ((csv *workloads-csv*))
+        (loop with len = (length csv)
+              for start = 0 then (1+ end)
+              for end = (or (position #\, csv :start start) len)
+              do (when (string= name (subseq csv start end))
+                   (return t))
+                 (when (= end len)
+                   (return nil))))))
 
 (load "../maxima/src/maxima-package.lisp")
 (load "lib/maxima-stubs.lisp")
@@ -77,25 +92,25 @@
   (let ((out nil))
     (dotimes (i n out)
       (declare (ignore i))
-      (setf out (maxima::$diff 0 'maxima::$x)))))
+      (setf out (maxima::$diff 'maxima::$x 'maxima::$x)))))
 
 (defun bench-integrate (n)
   (let ((out nil))
     (dotimes (i n out)
       (declare (ignore i))
-      (setf out (maxima::$integrate 0 'maxima::$x)))))
+      (setf out (maxima::$integrate 'maxima::$x 'maxima::$x)))))
 
 (defun bench-factor (n)
   (let ((out nil))
     (dotimes (i n out)
       (declare (ignore i))
-      (setf out (maxima::$factor 1)))))
+      (setf out (maxima::$factor 'maxima::$x)))))
 
 (defun bench-ratsimp (n)
   (let ((out nil))
     (dotimes (i n out)
       (declare (ignore i))
-      (setf out (maxima::$ratsimp 1)))))
+      (setf out (maxima::$ratsimp 'maxima::$x)))))
 
 (defun bench-limit (n)
   (let ((out nil))
@@ -136,7 +151,7 @@
 (defparameter *bench-specs*
   '(("simplifya" bench-simplifya 200)
     ("diff" bench-diff 200)
-    ("integrate" bench-integrate 200)
+    ("integrate" bench-integrate 5)
     ("factor" bench-factor 200)
     ("ratsimp" bench-ratsimp 200)
     ("limit" bench-limit 20)
@@ -161,9 +176,9 @@
 (multiple-value-bind (ok total fail attempted first-error load-ns)
     (load-maxima-workload)
   (let ((results
-          (mapcar (lambda (spec)
-                    (run-bench (first spec) (symbol-function (second spec)) (third spec)))
-                  *bench-specs*)))
+          (loop for spec in *bench-specs*
+                when (workload-selected-p (first spec))
+                collect (run-bench (first spec) (symbol-function (second spec)) (third spec)))))
     (if *json-mode*
         (progn
           (format t "{\"engine\":\"sbcl\",\"workload\":\"maxima\",\"scale\":~d," *scale*)

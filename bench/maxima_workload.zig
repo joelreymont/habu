@@ -587,7 +587,7 @@ const bench_defs = [_]BenchDef{
         .category = "maxima",
         .setup =
         \\(defun bench-maxima-diff ()
-        \\  (funcall 'maxima::$diff 0 'maxima::$x))
+        \\  (funcall 'maxima::$diff 'maxima::$x 'maxima::$x))
         ,
         .call_name = "bench-maxima-diff",
         .iters = 200,
@@ -597,17 +597,17 @@ const bench_defs = [_]BenchDef{
         .category = "maxima",
         .setup =
         \\(defun bench-maxima-integrate ()
-        \\  (funcall 'maxima::$integrate 0 'maxima::$x))
+        \\  (funcall 'maxima::$integrate 'maxima::$x 'maxima::$x))
         ,
         .call_name = "bench-maxima-integrate",
-        .iters = 200,
+        .iters = 5,
     },
     .{
         .name = "factor",
         .category = "maxima",
         .setup =
         \\(defun bench-maxima-factor ()
-        \\  (funcall 'maxima::$factor 1))
+        \\  (funcall 'maxima::$factor 'maxima::$x))
         ,
         .call_name = "bench-maxima-factor",
         .iters = 200,
@@ -617,7 +617,7 @@ const bench_defs = [_]BenchDef{
         .category = "maxima",
         .setup =
         \\(defun bench-maxima-ratsimp ()
-        \\  (funcall 'maxima::$ratsimp 1))
+        \\  (funcall 'maxima::$ratsimp 'maxima::$x))
         ,
         .call_name = "bench-maxima-ratsimp",
         .iters = 200,
