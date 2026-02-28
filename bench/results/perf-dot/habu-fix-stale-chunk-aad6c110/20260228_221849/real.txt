@@ -1,0 +1,103 @@
+{
+  "workloads": [
+    {
+      "name": "ratsimp",
+      "jit_ns": 57546875,
+      "interp_ns": 57996583,
+      "speedup_interp_over_jit": 1.0078146380667934,
+      "jit_error": null,
+      "interp_error": null
+    },
+    {
+      "name": "factor",
+      "jit_ns": 16674541,
+      "interp_ns": 16701709,
+      "speedup_interp_over_jit": 1.0016293102160954,
+      "jit_error": null,
+      "interp_error": null
+    }
+  ],
+  "jit_loader_ns": 330043411792,
+  "interp_loader_ns": 332012702709,
+  "jit_compiled": 2,
+  "interp_compiled": 0,
+  "jit_direct_calls_jit": 0,
+  "jit_direct_calls_interp": 0,
+  "jit_adm": {
+    "cand": 4137,
+    "elig": 4,
+    "comp": 2,
+    "sk_speed": 4123,
+    "sk_safety": 10,
+    "sk_assert": 0,
+    "sk_caps": 0,
+    "sk_opt": 0,
+    "sk_key": 0,
+    "sk_rest": 0,
+    "sk_chunk": 0,
+    "fail_unsupported": 2,
+    "fail_other": 0,
+    "cache_comp": 0,
+    "cache_unsupported": 0,
+    "cache_failed": 0
+  },
+  "interp_adm": {
+    "cand": 0,
+    "elig": 0,
+    "comp": 0,
+    "sk_speed": 0,
+    "sk_safety": 0,
+    "sk_assert": 0,
+    "sk_caps": 0,
+    "sk_opt": 0,
+    "sk_key": 0,
+    "sk_rest": 0,
+    "sk_chunk": 0,
+    "fail_unsupported": 0,
+    "fail_other": 0,
+    "cache_comp": 0,
+    "cache_unsupported": 0,
+    "cache_failed": 0
+  },
+  "jit_call_shape": {
+    "total": 69716,
+    "fixed": 58297,
+    "optional": 1202,
+    "key": 4808,
+    "rest": 5409,
+    "dynamic": 63105,
+    "tail": 18631
+  },
+  "interp_call_shape": {
+    "total": 69716,
+    "fixed": 58297,
+    "optional": 1202,
+    "key": 4808,
+    "rest": 5409,
+    "dynamic": 63105,
+    "tail": 18631
+  },
+  "promote_age": 2,
+  "jit_gate": {
+    "pass": false,
+    "min_interp_jit": 1.01,
+    "checks": {
+      "wins": {
+        "actual": 0,
+        "target_min": 2,
+        "pass": false,
+        "checked": 2
+      },
+      "compiled_min": {
+        "actual": 2,
+        "target_min": 2,
+        "pass": true
+      },
+      "compiled_delta": {
+        "actual": 2,
+        "target_min": 1,
+        "pass": true
+      }
+    }
+  }
+}

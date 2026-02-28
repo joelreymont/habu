@@ -474,7 +474,44 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
         };
     };
 
-    _ = repl.vm.callFromStackAtFast(0, runner_fn, &.{}) catch |err| {
+    const saved_ext = repl.vm.saveExtRoots() catch |err| {
+        std.debug.print("MAXIMA_BENCH fail {s} phase=save-ext-roots err={s}\n", .{ def.name, @errorName(err) });
+        return .{
+            .name = def.name,
+            .category = def.category,
+            .iters = n,
+            .ns = 0,
+            .err_name = @errorName(err),
+        };
+    };
+    defer repl.vm.restoreExtRoots(saved_ext);
+
+    var bench_roots = std.ArrayList(Value){};
+    defer bench_roots.deinit(allocator);
+    bench_roots.appendSlice(allocator, repl.vm.currentExtRoots()) catch |err| {
+        std.debug.print("MAXIMA_BENCH fail {s} phase=root-copy err={s}\n", .{ def.name, @errorName(err) });
+        return .{
+            .name = def.name,
+            .category = def.category,
+            .iters = n,
+            .ns = 0,
+            .err_name = @errorName(err),
+        };
+    };
+    const runner_root_idx = bench_roots.items.len;
+    bench_roots.append(allocator, runner_fn) catch |err| {
+        std.debug.print("MAXIMA_BENCH fail {s} phase=root-append err={s}\n", .{ def.name, @errorName(err) });
+        return .{
+            .name = def.name,
+            .category = def.category,
+            .iters = n,
+            .ns = 0,
+            .err_name = @errorName(err),
+        };
+    };
+    repl.vm.setExtRootsOwned(&bench_roots);
+
+    _ = repl.vm.callFromStackAtFast(0, bench_roots.items[runner_root_idx], &.{}) catch |err| {
         std.debug.print("MAXIMA_BENCH fail {s} phase=warmup err={s}\n", .{ def.name, @errorName(err) });
         if (trace_err_stack) traceBenchErr(def.name, "warmup", err);
         return .{
@@ -513,7 +550,7 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
         const t0 = timer.read();
         var i: usize = 0;
         while (i < n) : (i += 1) {
-            _ = repl.vm.callFromStackAtFast(0, runner_fn, &.{}) catch |err| {
+            _ = repl.vm.callFromStackAtFast(0, bench_roots.items[runner_root_idx], &.{}) catch |err| {
                 std.debug.print("MAXIMA_BENCH fail {s} phase=timed err={s}\n", .{ def.name, @errorName(err) });
                 if (trace_err_stack) traceBenchErr(def.name, "timed", err);
                 if (trace_workload) {

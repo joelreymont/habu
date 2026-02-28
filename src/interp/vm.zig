@@ -2181,7 +2181,10 @@ pub const Vm = struct {
         const closure = fn_val.toPtr(runtime.Closure);
         const code_val = self.resolveForwardedValue(closure.code);
         if (!code_val.isChunk()) return null;
-        if (code_val.raw != closure.code.raw) closure.code = code_val;
+        if (code_val.raw != closure.code.raw) {
+            closure.code = code_val;
+            self.writeBarrierStore(Value.makeClosure(closure), code_val);
+        }
         const callee_chunk = code_val.toPtr(Chunk);
         if (callee_chunk.kind != .chunk) return null;
         if (callee_chunk.opt_count != 0 or callee_chunk.key_count != 0 or callee_chunk.has_rest != 0) return null;
@@ -11625,6 +11628,7 @@ pub const Vm = struct {
             const code_val = self.resolveForwardedValue(raw_code);
             if (code_val.raw != raw_code.raw) {
                 closure.code = code_val;
+                self.writeBarrierStore(Value.makeClosure(closure), code_val);
             }
             callee_chunk_opt = self.chunkFromValue(code_val);
         }
