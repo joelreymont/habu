@@ -130,6 +130,7 @@ pub const KnownFn = struct {
     ir_body: ?*const Ir = null,
     param_names: ?[]const []const u8 = null,
     callee_name: []const u8 = "",
+    callee_sym_raw: u64 = 0,
 };
 
 pub const StubMem = struct {

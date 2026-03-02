@@ -1,0 +1,4 @@
+dot_id=habu-nqueens-bench-0-e42d3cd8
+timestamp=20260302_093256
+perf_micro_cmd=zig build -Duse-hoist=true bench-comp -- --json --iters 80 --bench nqueens10
+perf_real_cmd=/tmp/validate-real-maxima.sh

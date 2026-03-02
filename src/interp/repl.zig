@@ -3091,12 +3091,22 @@ pub const Repl = struct {
     fn populateKnownFns(self: *Repl, known_fns: *std.StringHashMap(jit_backend.KnownFn)) !void {
         for (self.vm.jit_fns.items) |entry| {
             const cfn = entry.compiled;
+            var callee_sym_raw: u64 = 0;
+            const live_chunk_val = self.vm.resolveForwardedValue(entry.chunk);
+            if (live_chunk_val.isChunk()) {
+                const chunk = live_chunk_val.toPtr(runtime.objects.Chunk);
+                const live_name = self.vm.resolveForwardedValue(chunk.name);
+                if (live_name.isSymbol()) {
+                    callee_sym_raw = live_name.raw;
+                }
+            }
             try known_fns.put(cfn.name, .{
                 .fn_ptr = @intFromPtr(cfn.fn_ptr),
                 .arity = cfn.arity,
                 .ir_body = cfn.ir_body,
                 .param_names = cfn.param_names,
                 .callee_name = cfn.name,
+                .callee_sym_raw = callee_sym_raw,
             });
         }
     }
