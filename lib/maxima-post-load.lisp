@@ -1,0 +1,124 @@
+;; Bootstrap-only Maxima post-load wiring.
+;; This file must not change upstream Maxima semantics.
+
+(in-package :maxima)
+
+(defparameter *habu-maxima-topdir-candidates*
+  '("../maxima/" "/Users/joel/Work/maxima/"))
+
+(defparameter *habu-maxima-srcdir-candidates*
+  '("../maxima/src/" "/Users/joel/Work/maxima/src/"))
+
+(defparameter *habu-maxima-sharedir-candidates*
+  '("../maxima/share/" "/Users/joel/Work/maxima/share/"))
+
+(defparameter *habu-maxima-demodir-candidates*
+  '("../maxima/demo/" "/Users/joel/Work/maxima/demo/"))
+
+(defparameter *habu-maxima-docdir-candidates*
+  '("../maxima/doc/" "/Users/joel/Work/maxima/doc/"))
+
+(defparameter *habu-maxima-testsdir-candidates*
+  '("../maxima/tests/" "/Users/joel/Work/maxima/tests/"))
+
+(defun habu-detect-maxima-topdir ()
+  (find-if (lambda (dir)
+             (probe-file (concatenate 'string dir "configure.ac")))
+           *habu-maxima-topdir-candidates*))
+
+(defun habu-detect-maxima-srcdir ()
+  (find-if (lambda (dir)
+             (probe-file (concatenate 'string dir "mload.lisp")))
+           *habu-maxima-srcdir-candidates*))
+
+(defun habu-detect-maxima-sharedir ()
+  (find-if (lambda (dir)
+             (probe-file (concatenate 'string dir "stringproc/stringproc.lisp")))
+           *habu-maxima-sharedir-candidates*))
+
+(defun habu-detect-maxima-demodir ()
+  (find-if (lambda (dir)
+             (probe-file (concatenate 'string dir "manual.demo")))
+           *habu-maxima-demodir-candidates*))
+
+(defun habu-detect-maxima-docdir ()
+  (find-if (lambda (dir)
+             (or (probe-file (concatenate 'string dir "share/romberg.usg"))
+                 (probe-file (concatenate 'string dir "info"))))
+           *habu-maxima-docdir-candidates*))
+
+(defun habu-detect-maxima-testsdir ()
+  (find-if (lambda (dir)
+             (probe-file (concatenate 'string dir "rtest1.mac")))
+           *habu-maxima-testsdir-candidates*))
+
+(defun habu-default-maxima-userdir ()
+  (handler-case
+      (concatenate 'string (namestring (user-homedir-pathname)) ".maxima/")
+    (condition () nil)))
+
+(defun habu-build-patterns (dir extensions &optional recursivep)
+  (when dir
+    (mapcar (lambda (ext)
+              (pathname (if recursivep
+                            (concatenate 'string dir "**/*." ext)
+                            (concatenate 'string dir "*." ext))))
+            extensions)))
+
+(defun habu-search-mlist (&rest pattern-groups)
+  (cons '(mlist) (remove nil (apply #'append (remove nil pattern-groups)))))
+
+(let ((topdir (habu-detect-maxima-topdir))
+      (srcdir (habu-detect-maxima-srcdir))
+      (sharedir (habu-detect-maxima-sharedir))
+      (demodir (habu-detect-maxima-demodir))
+      (docdir (habu-detect-maxima-docdir))
+      (testsdir (habu-detect-maxima-testsdir))
+      (userdir (habu-default-maxima-userdir)))
+  (when topdir
+    (setf *maxima-topdir* topdir))
+  (when srcdir
+    (setf *maxima-srcdir* srcdir))
+  (when sharedir
+    (setf *maxima-sharedir* sharedir))
+  (when demodir
+    (setf *maxima-demodir* demodir))
+  (when docdir
+    (setf *maxima-docdir* docdir))
+  (when testsdir
+    (setf *maxima-testsdir* testsdir))
+  (when userdir
+    (setf *maxima-userdir* userdir)
+    (when (boundp '$maxima_userdir)
+      (setq $maxima_userdir userdir)))
+
+  (setf $file_search_lisp
+        (habu-search-mlist
+         (habu-build-patterns userdir '("lisp") t)
+         (habu-build-patterns sharedir '("lisp") t)
+         (habu-build-patterns srcdir '("lisp"))
+         (habu-build-patterns topdir '("lisp"))
+         (habu-build-patterns testsdir '("lisp"))))
+
+  (setf $file_search_maxima
+        (habu-search-mlist
+         (habu-build-patterns userdir '("mac" "wxm") t)
+         (habu-build-patterns sharedir '("mac" "wxm") t)
+         (habu-build-patterns srcdir '("mac" "wxm"))
+         (habu-build-patterns topdir '("mac" "wxm"))
+         (habu-build-patterns testsdir '("mac" "wxm"))))
+
+  (setf $file_search_demo
+        (habu-search-mlist
+         (habu-build-patterns sharedir '("demo" "dem" "dm1" "dm2" "dm3" "dmt") t)
+         (habu-build-patterns demodir '("demo" "dem" "dm1" "dm2" "dm3" "dmt"))))
+
+  (setf $file_search_usage
+        (habu-search-mlist
+         (habu-build-patterns sharedir '("usg") t)
+         (habu-build-patterns docdir '("usg") t)))
+
+  (when testsdir
+    (setf $file_search_tests
+          (habu-search-mlist
+           (habu-build-patterns testsdir '("lisp" "mac" "wxm"))))))

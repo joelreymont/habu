@@ -13,6 +13,58 @@ const Heap = runtime.Heap;
 const repl_mod = @import("interp/repl.zig");
 const Repl = repl_mod.Repl;
 
+fn appendLispStringLiteral(buf: *std.ArrayList(u8), allocator: std.mem.Allocator, bytes: []const u8) !void {
+    try buf.append(allocator, '"');
+    for (bytes) |ch| {
+        switch (ch) {
+            '\\', '"' => {
+                try buf.append(allocator, '\\');
+                try buf.append(allocator, ch);
+            },
+            else => try buf.append(allocator, ch),
+        }
+    }
+    try buf.append(allocator, '"');
+}
+
+fn appendLispStringListLiteral(
+    buf: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    items: []const []const u8,
+) !void {
+    try buf.append(allocator, '(');
+    for (items, 0..) |item, i| {
+        if (i != 0) try buf.append(allocator, ' ');
+        try appendLispStringLiteral(buf, allocator, item);
+    }
+    try buf.append(allocator, ')');
+}
+
+fn publishCommandLineArgs(repl: *Repl, allocator: std.mem.Allocator, args: []const []const u8) !void {
+    var command_line_list = std.ArrayList(u8){};
+    defer command_line_list.deinit(allocator);
+    try appendLispStringListLiteral(&command_line_list, allocator, if (args.len > 1) args[1..] else &.{});
+
+    var posix_argv_list = std.ArrayList(u8){};
+    defer posix_argv_list.deinit(allocator);
+    try appendLispStringListLiteral(&posix_argv_list, allocator, args);
+
+    var form = std.ArrayList(u8){};
+    defer form.deinit(allocator);
+    try form.appendSlice(allocator, "(progn " ++
+        "(setq *command-line-args* '");
+    try form.appendSlice(allocator, command_line_list.items);
+    try form.appendSlice(allocator, ") " ++
+        "(setq cl-user::*command-line-args* *command-line-args*) " ++
+        "(setq common-lisp::*command-line-args* *command-line-args*) " ++
+        "(setq sb-ext:*posix-argv* '");
+    try form.appendSlice(allocator, posix_argv_list.items);
+    try form.appendSlice(allocator, ") " ++
+        "*command-line-args*)");
+
+    _ = try repl.eval(form.items);
+}
+
 fn resolveHeapSize() usize {
     const default_size = 256 * 1024 * 1024;
     const heap_mb_c = std.posix.getenv("HABU_HEAP_MB") orelse return default_size;
@@ -74,22 +126,25 @@ fn mainInner() !void {
     }
     try writer.flush();
 
-    // Load files from command line arguments
+    // Script entrypoint semantics: first CLI arg is the script path, remaining
+    // args are exposed to Lisp instead of being treated as extra files.
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
+    try publishCommandLineArgs(&repl, allocator, args);
 
-    const has_files = args.len > 1;
-    for (args[1..]) |arg| {
-        if (repl.loadFile(arg, writer)) |_| {} else |err| {
-            try writer.print("Error loading {s}: {s}\n", .{ arg, @errorName(err) });
+    const has_script = args.len > 1;
+    if (has_script) {
+        const script_path = args[1];
+        if (repl.loadFile(script_path, writer)) |_| {} else |err| {
+            try writer.print("Error loading {s}: {s}\n", .{ script_path, @errorName(err) });
             try writer.flush();
             return err;
         }
         try writer.flush();
     }
 
-    // Only run interactive REPL if no files were loaded
-    if (!has_files) {
+    // Only run interactive REPL if no script was loaded
+    if (!has_script) {
         try repl.runWithFiles(fs.File.stdin(), stdout);
     }
 }

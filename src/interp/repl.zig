@@ -1294,7 +1294,7 @@ pub const Repl = struct {
         }
         var roots = std.ArrayList(Value){};
         defer roots.deinit(self.allocator);
-        try roots.ensureTotalCapacity(self.allocator, saved_ext_roots.len + 3);
+        try roots.ensureTotalCapacity(self.allocator, saved_ext_roots.len + 4);
         if (saved_ext_roots.len != 0) {
             try roots.appendSlice(self.allocator, saved_ext_roots);
         }
@@ -1317,14 +1317,17 @@ pub const Repl = struct {
         try self.setClGlobal("*ERROR-OUTPUT*", roots.items[stderr_idx]);
         roots.items[stderr_idx] = self.vm.resolveForwardedValue(roots.items[stderr_idx]);
 
+        roots.items[stdin_idx] = self.vm.resolveForwardedValue(roots.items[stdin_idx]);
         roots.items[stdout_idx] = self.vm.resolveForwardedValue(roots.items[stdout_idx]);
-        try self.setClGlobal("*QUERY-IO*", roots.items[stdout_idx]);
-        roots.items[stdout_idx] = self.vm.resolveForwardedValue(roots.items[stdout_idx]);
-        try self.setClGlobal("*DEBUG-IO*", roots.items[stdout_idx]);
+        const term_idx = roots.items.len;
+        try roots.append(self.allocator, try self.heap.allocTwoWayStream(roots.items[stdin_idx], roots.items[stdout_idx]));
+        roots.items[term_idx] = self.vm.resolveForwardedValue(roots.items[term_idx]);
+
         roots.items[stdout_idx] = self.vm.resolveForwardedValue(roots.items[stdout_idx]);
         try self.setClGlobal("*TRACE-OUTPUT*", roots.items[stdout_idx]);
-        roots.items[stdout_idx] = self.vm.resolveForwardedValue(roots.items[stdout_idx]);
-        try self.setClGlobal("*TERMINAL-IO*", roots.items[stdout_idx]);
+        try self.setClGlobal("*QUERY-IO*", roots.items[term_idx]);
+        try self.setClGlobal("*DEBUG-IO*", roots.items[term_idx]);
+        try self.setClGlobal("*TERMINAL-IO*", roots.items[term_idx]);
     }
 
     /// Callback for (load "filename") from VM
@@ -1393,7 +1396,7 @@ pub const Repl = struct {
 
         // Check if it's a builtin primitive
         if (self.compiler.builtins) |_| {
-            const dispatch_sym = try self.canonicalBuiltinFunctionSymbol(sym);
+            const dispatch_sym = self.canonicalMacroSymbol(sym);
             if (self.compiler.isBuiltinFunctionRaw(dispatch_sym)) {
                 return true;
             }
@@ -1420,9 +1423,18 @@ pub const Repl = struct {
             return fn_val;
         }
 
+        if (try self.tryAutoloadFunctionSymbol(live_sym)) {
+            if (try self.lookupCallableFunction(live_sym)) |autoloaded_fn| {
+                if (trace_fn_resolve) {
+                    std.debug.print("TRACE fn-resolve hit-autoload kind={s}\n", .{@tagName(autoloaded_fn.typeKind())});
+                }
+                return autoloaded_fn;
+            }
+        }
+
         // Lazily materialize builtin primitive wrappers.
         if (self.compiler.builtins) |_| {
-            const dispatch_sym = try self.canonicalBuiltinFunctionSymbol(live_sym);
+            const dispatch_sym = self.canonicalMacroSymbol(live_sym);
             const is_builtin = self.compiler.isBuiltinFunctionRaw(dispatch_sym);
             if (trace_fn_resolve) {
                 const dispatch_name = self.safeSymbolName(dispatch_sym) orelse "<invalid-symbol>";
@@ -1469,72 +1481,6 @@ pub const Repl = struct {
         return null;
     }
 
-    /// Resolve symbol package aliases for builtin function dispatch.
-    /// This includes internal CL names (for example `%set-symbol-plist`) which
-    /// may not be externally accessible from the current package.
-    fn canonicalBuiltinFunctionSymbol(self: *Repl, sym: Value) vm_mod.Error!Value {
-        const live_sym = self.vm.resolveForwardedValue(sym);
-        if (!live_sym.isSymbol()) return live_sym;
-        _ = self.compiler.builtins orelse return live_sym;
-
-        const direct = self.canonicalMacroSymbol(live_sym);
-        if (self.compiler.isBuiltinFunctionRaw(direct)) return direct;
-
-        const name = self.safeSymbolName(live_sym) orelse return direct;
-        if (try self.findBuiltinByName(name)) |resolved| return resolved;
-
-        // Some macro-heavy code paths refer to builtin operators through an
-        // internal '%' prefix (e.g. %ATAN). Resolve those to the base builtin
-        // name when no explicit binding exists.
-        if (name.len > 1 and name[0] == '%') {
-            const stripped = name[1..];
-            if (try self.findBuiltinByName(stripped)) |resolved| return resolved;
-        }
-
-        return direct;
-    }
-
-    fn findBuiltinByName(self: *Repl, name: []const u8) vm_mod.Error!?Value {
-        const packages = [_][]const u8{ "CL", "COMMON-LISP", "CL-USER" };
-        for (packages) |pkg| {
-            if (try self.heap.internInPackage(pkg, name)) |sym| {
-                if (self.compiler.isBuiltinFunctionRaw(sym)) return sym;
-            }
-        }
-
-        var case_buf: [256]u8 = undefined;
-        if (name.len > case_buf.len) return null;
-
-        var saw_upper = false;
-        var saw_lower = false;
-        for (name) |c| {
-            if (std.ascii.isUpper(c)) saw_upper = true;
-            if (std.ascii.isLower(c)) saw_lower = true;
-        }
-
-        if (saw_upper) {
-            for (name, 0..) |c, i| case_buf[i] = std.ascii.toLower(c);
-            const lowered = case_buf[0..name.len];
-            for (packages) |pkg| {
-                if (try self.heap.internInPackage(pkg, lowered)) |sym| {
-                    if (self.compiler.isBuiltinFunctionRaw(sym)) return sym;
-                }
-            }
-        }
-
-        if (saw_lower) {
-            for (name, 0..) |c, i| case_buf[i] = std.ascii.toUpper(c);
-            const uppered = case_buf[0..name.len];
-            for (packages) |pkg| {
-                if (try self.heap.internInPackage(pkg, uppered)) |sym| {
-                    if (self.compiler.isBuiltinFunctionRaw(sym)) return sym;
-                }
-            }
-        }
-
-        return null;
-    }
-
     fn isCallableValue(val: Value) bool {
         return switch (val.typeKind()) {
             .closure, .native_code, .generic_function => true,
@@ -1548,6 +1494,24 @@ pub const Repl = struct {
         const cell = try primitives.list.get(self.heap, sym, key);
         if (!isCallableValue(cell)) return null;
         return cell;
+    }
+
+    fn tryAutoloadFunctionSymbol(self: *Repl, sym: Value) !bool {
+        const live_sym = self.vm.resolveForwardedValue(sym);
+        if (!live_sym.isSymbol()) return false;
+
+        const autoload_key = (try self.heap.internInPackage("MAXIMA", "AUTOLOAD")) orelse return false;
+        const target_sym = live_sym;
+        var autoload_val = try primitives.list.get(self.heap, target_sym, autoload_key);
+
+        if (autoload_val.isNil()) return false;
+
+        const load_function_sym = (try self.heap.internInPackage("MAXIMA", "LOAD-FUNCTION")) orelse return false;
+        const builtins = self.compiler.builtins orelse return false;
+        const quote_form = try self.listFromSlice(&[_]Value{ builtins.quote, target_sym });
+        const form = try self.listFromSlice(&[_]Value{ load_function_sym, quote_form, Value.nil });
+        _ = try self.evalExpr(form);
+        return true;
     }
 
     fn buildPrimitiveFunctionWrapper(self: *Repl, sym: Value, arity: Compiler.PrimitiveRefArity) !Value {
@@ -1644,83 +1608,6 @@ pub const Repl = struct {
             }
             if (self.lookupCallableAtGlobalIdx(source_vm, idx)) |callable| {
                 return callable;
-            }
-        }
-        if (self.compiler.globals.lookup(local_name)) |idx| {
-            if (trace) {
-                std.debug.print("TRACE fn-lookup local={s} idx={d} kind={s}\n", .{
-                    local_name,
-                    idx,
-                    globalKindName(source_vm, idx),
-                });
-            }
-            if (self.lookupCallableAtGlobalIdx(source_vm, idx)) |callable| {
-                return callable;
-            }
-        }
-
-        var full_buf: [640]u8 = undefined;
-        const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
-        for (prefixes) |prefix| {
-            if (prefix.len + local_name.len > full_buf.len) continue;
-            @memcpy(full_buf[0..prefix.len], prefix);
-            @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
-            const candidate = full_buf[0 .. prefix.len + local_name.len];
-            if (self.compiler.globals.lookup(candidate)) |idx| {
-                if (trace) {
-                    std.debug.print("TRACE fn-lookup cand={s} idx={d} kind={s}\n", .{
-                        candidate,
-                        idx,
-                        globalKindName(source_vm, idx),
-                    });
-                }
-                if (self.lookupCallableAtGlobalIdx(source_vm, idx)) |callable| {
-                    return callable;
-                }
-            }
-        }
-        if (trace and std.mem.eql(u8, local_name, "MAPCAR")) {
-            var it = self.compiler.globals.bindings.iterator();
-            while (it.next()) |entry| {
-                if (std.mem.indexOf(u8, entry.key_ptr.*, "MAPCAR") != null) {
-                    const idx = entry.value_ptr.*;
-                    std.debug.print("TRACE fn-lookup any={s} idx={d} kind={s}\n", .{
-                        entry.key_ptr.*,
-                        idx,
-                        globalKindName(source_vm, idx),
-                    });
-                }
-            }
-        }
-
-        // Package alias fallback: if there is exactly one callable global whose
-        // local (unqualified) name matches, treat it as the function binding.
-        if (self.compiler.globals.lookupAlias(local_name)) |alias_idxs| {
-            var alias_count: usize = 0;
-            var alias_val = Value.nil;
-            for (alias_idxs) |idx_u16| {
-                const idx: usize = idx_u16;
-                const candidate_val = self.lookupCallableAtGlobalIdx(source_vm, idx) orelse continue;
-                if (!isCallableValue(candidate_val)) continue;
-                alias_count += 1;
-                alias_val = candidate_val;
-                if (alias_count > 1) break;
-            }
-            if (alias_count == 1) {
-                if (trace) {
-                    std.debug.print("TRACE fn-lookup alias-hit local={s}\n", .{local_name});
-                }
-                return alias_val;
-            }
-            if (trace) {
-                for (alias_idxs) |idx_u16| {
-                    const idx: usize = idx_u16;
-                    std.debug.print("TRACE fn-lookup alias-cand local={s} idx={d} kind={s}\n", .{
-                        local_name,
-                        idx,
-                        globalKindName(source_vm, idx),
-                    });
-                }
             }
         }
         return null;
@@ -1873,28 +1760,7 @@ pub const Repl = struct {
             std.debug.print("TRACE load: {s} [pkg={s}]\n", .{ resolved_path, self.heap.getCurrentPackageName() });
         }
 
-        // Prefer sibling source for FASL designators so macro definitions are
-        // seen by the REPL macro table during ANSI harness loads.
-        if (try self.fallbackSourcePathForFasl(resolved_path)) |fallback_path| {
-            defer self.allocator.free(fallback_path);
-            if (!self.isCurrentLoadPath(source_vm, fallback_path)) {
-                return try self.load(fallback_path);
-            }
-            return Value.t;
-        }
-
-        const content = self.readFileContent(resolved_path) catch |err| {
-            if (err == error.FileNotFound) {
-                if (try self.fallbackSourcePathForFasl(resolved_path)) |fallback_path| {
-                    defer self.allocator.free(fallback_path);
-                    if (self.isCurrentLoadPath(source_vm, fallback_path)) {
-                        return Value.t;
-                    }
-                    return try self.load(fallback_path);
-                }
-            }
-            return err;
-        };
+        const content = try self.readFileContent(resolved_path);
         defer self.allocator.free(content);
 
         const load_path = try self.loadPathnameValue(resolved_path);
@@ -1919,21 +1785,7 @@ pub const Repl = struct {
             self.syncReaderPackageFromVm(source_vm);
         }
 
-        // Evaluate all expressions and return the last value.
-        // Some ANSI harnesses hand us host-generated .fasl files; if parsing
-        // fails, fall back to sibling source file when available.
-        const result = self.evalForms(content) catch |err| {
-            if (err == error.UnexpectedToken) {
-                if (try self.fallbackSourcePathForFasl(resolved_path)) |fallback_path| {
-                    defer self.allocator.free(fallback_path);
-                    if (self.isCurrentLoadPath(source_vm, fallback_path)) {
-                        return Value.t;
-                    }
-                    return try self.load(fallback_path);
-                }
-            }
-            return err;
-        };
+        const result = try self.evalForms(content);
         if (trace_forms and (std.mem.endsWith(u8, resolved_path, "gclload1.lsp") or
             std.mem.endsWith(u8, resolved_path, "rt.lsp") or
             std.mem.endsWith(u8, resolved_path, "cl-test-package.lsp")))
@@ -1976,11 +1828,7 @@ pub const Repl = struct {
         var bindings: LoadBindings = .{};
         const names = [_][]const u8{
             "COMMON-LISP:*LOAD-PATHNAME*",
-            "CL-USER:*LOAD-PATHNAME*",
-            "*LOAD-PATHNAME*",
             "COMMON-LISP:*LOAD-TRUENAME*",
-            "CL-USER:*LOAD-TRUENAME*",
-            "*LOAD-TRUENAME*",
         };
         for (names) |name| {
             const idx = self.compiler.globals.lookup(name) orelse continue;
@@ -2030,8 +1878,6 @@ pub const Repl = struct {
     fn currentLoadTruename(self: *Repl, vm: *const Vm) ?Value {
         const names = [_][]const u8{
             "COMMON-LISP:*LOAD-TRUENAME*",
-            "CL-USER:*LOAD-TRUENAME*",
-            "*LOAD-TRUENAME*",
         };
         for (names) |name| {
             if (self.compiler.globals.lookup(name)) |idx| {
@@ -2047,9 +1893,6 @@ pub const Repl = struct {
     fn currentPackageGlobal(self: *Repl, vm: *Vm) ?Value {
         const names = [_][]const u8{
             "COMMON-LISP:*PACKAGE*",
-            "CL:*PACKAGE*",
-            "CL-USER:*PACKAGE*",
-            "*PACKAGE*",
         };
         for (names) |name| {
             if (self.compiler.globals.lookup(name)) |idx| {
@@ -2067,9 +1910,6 @@ pub const Repl = struct {
     fn setPackageGlobals(self: *Repl, vm: *Vm, pkg_val: Value) void {
         const names = [_][]const u8{
             "COMMON-LISP:*PACKAGE*",
-            "CL:*PACKAGE*",
-            "CL-USER:*PACKAGE*",
-            "*PACKAGE*",
         };
         for (names) |name| {
             if (self.compiler.globals.lookup(name)) |idx| {
@@ -2189,16 +2029,6 @@ pub const Repl = struct {
         return null;
     }
 
-    fn isCurrentLoadPath(self: *Repl, vm: *const Vm, path: []const u8) bool {
-        if (self.currentLoadTruename(vm)) |load_true| {
-            const ns = primitives.pathname.namestring(self.allocator, self.heap, &self.vm.builtins, load_true) catch return false;
-            if (ns.isString()) {
-                return std.mem.eql(u8, ns.toPtr(runtime.String).bytes(), path);
-            }
-        }
-        return false;
-    }
-
     fn fileExists(self: *Repl, path: []const u8) !bool {
         _ = self;
         if (std.fs.path.isAbsolute(path)) {
@@ -2230,9 +2060,6 @@ pub const Repl = struct {
     fn currentDefaultPathname(self: *Repl, vm: *const Vm) ?Value {
         const names = [_][]const u8{
             "COMMON-LISP:*DEFAULT-PATHNAME-DEFAULTS*",
-            "CL:*DEFAULT-PATHNAME-DEFAULTS*",
-            "CL-USER:*DEFAULT-PATHNAME-DEFAULTS*",
-            "*DEFAULT-PATHNAME-DEFAULTS*",
         };
         for (names) |name| {
             if (self.compiler.globals.lookup(name)) |idx| {
@@ -2241,21 +2068,6 @@ pub const Repl = struct {
                     if (!val.isNil()) return val;
                 }
             }
-        }
-        return null;
-    }
-
-    fn fallbackSourcePathForFasl(self: *Repl, path: []const u8) !?[]u8 {
-        const ext = std.fs.path.extension(path);
-        if (!(std.ascii.eqlIgnoreCase(ext, ".fasl") or std.ascii.eqlIgnoreCase(ext, ".hfasl"))) {
-            return null;
-        }
-        const base = path[0 .. path.len - ext.len];
-        const candidates = [_][]const u8{ ".lsp", ".lisp", ".habu" };
-        for (candidates) |cand_ext| {
-            const cand = try std.mem.concat(self.allocator, u8, &.{ base, cand_ext });
-            if (try self.fileExists(cand)) return cand;
-            self.allocator.free(cand);
         }
         return null;
     }
@@ -2854,6 +2666,11 @@ pub const Repl = struct {
                     try self.collectJitLiteralRoots(expr, roots);
                 }
             },
+            .list, .list_star => |elements| {
+                for (elements) |element| {
+                    try self.collectJitLiteralRoots(element, roots);
+                }
+            },
             .let => |l| {
                 for (l.bindings) |binding| {
                     try self.collectJitLiteralRoots(binding.value, roots);
@@ -2898,8 +2715,29 @@ pub const Repl = struct {
             .sqrt,
             .round,
             .intern,
+            .vec_len,
+            .str_len,
             => |op| try self.collectJitLiteralRoots(op.operand, roots),
             .hash_count => |h| try self.collectJitLiteralRoots(h.operand, roots),
+            .hash_capacity => |h| try self.collectJitLiteralRoots(h.operand, roots),
+            .hash_clear => |h| try self.collectJitLiteralRoots(h.operand, roots),
+            .hash_test => |h| try self.collectJitLiteralRoots(h.operand, roots),
+            .hash_keys => |h| try self.collectJitLiteralRoots(h.operand, roots),
+            .hash_alist => |h| try self.collectJitLiteralRoots(h.operand, roots),
+            .make_hash => {},
+            .vec_new => |v| {
+                try self.collectJitLiteralRoots(v.size, roots);
+                if (v.init) |init_val| try self.collectJitLiteralRoots(init_val, roots);
+            },
+            .vec_ref, .str_ref, .str_concat => |op| {
+                try self.collectJitLiteralRoots(op.left, roots);
+                try self.collectJitLiteralRoots(op.right, roots);
+            },
+            .vec_set => |v| {
+                try self.collectJitLiteralRoots(v.vec, roots);
+                try self.collectJitLiteralRoots(v.index, roots);
+                try self.collectJitLiteralRoots(v.value, roots);
+            },
             .hash_get => |h| {
                 try self.collectJitLiteralRoots(h.table, roots);
                 try self.collectJitLiteralRoots(h.key, roots);
@@ -2909,6 +2747,10 @@ pub const Repl = struct {
                 try self.collectJitLiteralRoots(h.table, roots);
                 try self.collectJitLiteralRoots(h.key, roots);
                 try self.collectJitLiteralRoots(h.value, roots);
+            },
+            .hash_rem => |h| {
+                try self.collectJitLiteralRoots(h.table, roots);
+                try self.collectJitLiteralRoots(h.key, roots);
             },
             .format => |f| {
                 try self.collectJitLiteralRoots(f.dest, roots);
@@ -2922,10 +2764,21 @@ pub const Repl = struct {
                 try self.collectJitLiteralRoots(s.index, roots);
                 try self.collectJitLiteralRoots(s.value, roots);
             },
+            .substring => |s| {
+                try self.collectJitLiteralRoots(s.str, roots);
+                try self.collectJitLiteralRoots(s.start, roots);
+                try self.collectJitLiteralRoots(s.end, roots);
+            },
             .arr_new => |a| {
                 for (a.dimensions) |dim| {
                     try self.collectJitLiteralRoots(dim, roots);
                 }
+                if (a.init) |init_ir| {
+                    try self.collectJitLiteralRoots(init_ir, roots);
+                }
+            },
+            .arr_new_dyn => |a| {
+                try self.collectJitLiteralRoots(a.dimensions, roots);
                 if (a.init) |init_ir| {
                     try self.collectJitLiteralRoots(init_ir, roots);
                 }
@@ -2935,6 +2788,13 @@ pub const Repl = struct {
                 for (a.subscripts) |sub| {
                     try self.collectJitLiteralRoots(sub, roots);
                 }
+            },
+            .arr_set => |a| {
+                try self.collectJitLiteralRoots(a.array, roots);
+                for (a.subscripts) |sub| {
+                    try self.collectJitLiteralRoots(sub, roots);
+                }
+                try self.collectJitLiteralRoots(a.value, roots);
             },
             else => {},
         }
@@ -3996,20 +3856,6 @@ pub const Repl = struct {
         return live_sym;
     }
 
-    fn lookupMacroByNameInPackage(self: *Repl, pkg: *const runtime.heap.Package, name: []const u8) ?MacroEntry {
-        if (pkg.symbols.get(name)) |pkg_sym| {
-            if (self.macros.get(pkg_sym)) |entry| return entry;
-        }
-        for (pkg.use_list.items) |used_pkg| {
-            if (used_pkg.exports.contains(name) or used_pkg.auto_export) {
-                if (used_pkg.symbols.get(name)) |used_sym| {
-                    if (self.macros.get(used_sym)) |entry| return entry;
-                }
-            }
-        }
-        return null;
-    }
-
     fn symbolPackage(self: *const Repl, sym: *const Symbol) ?*const runtime.heap.Package {
         return self.heap.symbolHomePkg(sym);
     }
@@ -4040,23 +3886,11 @@ pub const Repl = struct {
             );
         }
 
-        if (self.symbolPackage(sym_ptr)) |pkg| {
-            if (self.lookupMacroByNameInPackage(pkg, name)) |entry| {
-                if (trace_lookup) std.debug.print("TRACE macro-lookup hit-pkg name={s}\n", .{name});
-                return entry;
-            }
+        if (self.symbolPackage(sym_ptr)) |_| {
             // Respect package-qualified symbols: do not fall back to current package
-            // lookup by name, which can hijack CL:FOO with local FOO macros.
+            // or package-name lookup, which can hijack CL:FOO with local FOO macros.
             const canonical = self.canonicalMacroSymbol(sym);
             if (canonical.raw == sym.raw) {
-                // Last resort: scan by name for stale-key entries (post-GC),
-                // but scope to same package to avoid cross-package collisions
-                // (e.g. CL:FLOAT vs MAXIMA::FLOAT).
-                if (self.lookupMacroByNameInPackage2(pkg, name)) |entry| {
-                    if (trace_lookup) std.debug.print("TRACE macro-lookup hit-pkg2 name={s}\n", .{name});
-                    return entry;
-                }
-                if (trace_lookup) std.debug.print("TRACE macro-lookup miss-pkg2 name={s}\n", .{name});
                 return null;
             }
             if (self.macros.get(canonical)) |entry| {
@@ -4067,20 +3901,6 @@ pub const Repl = struct {
             return null;
         }
 
-        // Uninterned symbols can only be resolved by current package context.
-        if (self.heap.current_package) |pkg| {
-            if (self.lookupMacroByNameInPackage(pkg, name)) |entry| {
-                if (trace_lookup) std.debug.print("TRACE macro-lookup hit-curpkg name={s}\n", .{name});
-                return entry;
-            }
-        }
-        if (self.heap.cl_package) |cl_pkg| {
-            if (self.lookupMacroByNameInPackage(cl_pkg, name)) |entry| {
-                if (trace_lookup) std.debug.print("TRACE macro-lookup hit-clpkg name={s}\n", .{name});
-                return entry;
-            }
-        }
-
         const canonical = self.canonicalMacroSymbol(sym);
         if (canonical.raw != sym.raw) {
             if (self.macros.get(canonical)) |entry| {
@@ -4089,50 +3909,7 @@ pub const Repl = struct {
             }
         }
 
-        // Final fallback: scan by name for stale-key entries (post-GC)
-        if (self.lookupMacroByName(name)) |entry| {
-            if (trace_lookup) std.debug.print("TRACE macro-lookup hit-name name={s}\n", .{name});
-            return entry;
-        }
         if (trace_lookup) std.debug.print("TRACE macro-lookup miss-name name={s}\n", .{name});
-        return null;
-    }
-
-    /// Brute-force lookup: scan all macro entries comparing symbol names.
-    /// Used as fallback when GC has moved symbols, making hash keys stale.
-    fn lookupMacroByName(self: *Repl, name: []const u8) ?MacroEntry {
-        var it = self.macros.iterator();
-        while (it.next()) |entry| {
-            const k = entry.key_ptr.*;
-            if (!k.isSymbol()) continue;
-            // Stale keys may have forwarding pointers overlaying their name.
-            // Only compare names of symbols that are still in from-space.
-            if (!self.isLiveValue(k)) continue;
-            if (std.mem.eql(u8, k.toPtr(Symbol).getName(), name)) {
-                return entry.value_ptr.*;
-            }
-        }
-        return null;
-    }
-
-    /// Package-scoped brute-force lookup: scan macro entries for symbols
-    /// with matching name that belong to the given package (or its use-list).
-    /// Prevents cross-package name collisions (CL:FLOAT vs MAXIMA::FLOAT).
-    fn lookupMacroByNameInPackage2(self: *Repl, pkg: *const runtime.heap.Package, name: []const u8) ?MacroEntry {
-        var it = self.macros.iterator();
-        while (it.next()) |entry| {
-            const k = entry.key_ptr.*;
-            if (!k.isSymbol()) continue;
-            if (!self.isLiveValue(k)) continue;
-            if (!std.mem.eql(u8, k.toPtr(Symbol).getName(), name)) continue;
-            // Check that the symbol belongs to the target package
-            const sym_pkg = self.symbolPackage(k.toPtr(Symbol)) orelse continue;
-            if (sym_pkg == pkg) return entry.value_ptr.*;
-            // Also check used packages
-            for (pkg.use_list.items) |used_pkg| {
-                if (sym_pkg == used_pkg) return entry.value_ptr.*;
-            }
-        }
         return null;
     }
 
@@ -4635,7 +4412,9 @@ pub const Repl = struct {
         defer self.current_vm = saved_current_vm;
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        return try self.runVmPreserveMacroState(source_vm, chunk_ptr);
+        const result = try self.runVmPreserveMacroState(source_vm, chunk_ptr);
+        self.compiler.noteCompileTimeUnspecial(expr);
+        return result;
     }
 
     /// Desugar an expression (let* → let, cond → if, etc.)
@@ -5394,7 +5173,7 @@ test "dolist supports early return without corrupting iteration state" {
     try testing.expect(!result.isNil());
 }
 
-test "lookupCallableFunction alias cache tracks callable uniqueness" {
+test "lookupCallableFunction uses exact package-qualified global" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
@@ -5409,31 +5188,23 @@ test "lookupCallableFunction alias cache tracks callable uniqueness" {
     const fn_val = try repl.eval("(lambda () 99)");
     try testing.expect(Repl.isCallableValue(fn_val));
 
-    const sym = try repl.heap.intern("HABU-ALIAS-CACHE-TEST-FN");
-    const sym_lower = try repl.heap.intern("habu-alias-cache-test-fn");
-    const idx_a = try repl.compiler.globals.define("PKG-A:HABU-ALIAS-CACHE-TEST-FN");
-    repl.vm.globals[idx_a] = fn_val;
-    if (idx_a >= repl.vm.num_globals) repl.vm.num_globals = idx_a + 1;
+    const sym = try repl.heap.intern("HABU-EXACT-LOOKUP-TEST-FN");
+    const idx_exact = try repl.compiler.globals.define("CL-USER:HABU-EXACT-LOOKUP-TEST-FN");
+    repl.vm.globals[idx_exact] = fn_val;
+    if (idx_exact >= repl.vm.num_globals) repl.vm.num_globals = idx_exact + 1;
+
+    const idx_other = try repl.compiler.globals.define("PKG-A:HABU-EXACT-LOOKUP-TEST-FN");
+    repl.vm.globals[idx_other] = Value.nil;
+    if (idx_other >= repl.vm.num_globals) repl.vm.num_globals = idx_other + 1;
 
     const first = try repl.lookupCallableFunction(sym);
     try testing.expect(first != null);
     try testing.expect(first.?.eq(fn_val));
 
-    const first_lower = try repl.lookupCallableFunction(sym_lower);
-    try testing.expect(first_lower != null);
-    try testing.expect(first_lower.?.eq(fn_val));
-
-    const idx_b = try repl.compiler.globals.define("PKG-B:HABU-ALIAS-CACHE-TEST-FN");
-    repl.vm.globals[idx_b] = Value.nil;
-    if (idx_b >= repl.vm.num_globals) repl.vm.num_globals = idx_b + 1;
-
+    repl.vm.globals[idx_other] = fn_val;
     const second = try repl.lookupCallableFunction(sym);
     try testing.expect(second != null);
     try testing.expect(second.?.eq(fn_val));
-
-    repl.vm.globals[idx_b] = fn_val;
-    const third = try repl.lookupCallableFunction(sym);
-    try testing.expect(third == null);
 }
 
 test "eval parse error sets error info" {
@@ -5803,10 +5574,6 @@ test "load restores load pathname globals under generational GC pressure" {
     const load_globals = [_][]const u8{
         "COMMON-LISP:*LOAD-PATHNAME*",
         "COMMON-LISP:*LOAD-TRUENAME*",
-        "CL-USER:*LOAD-PATHNAME*",
-        "CL-USER:*LOAD-TRUENAME*",
-        "*LOAD-PATHNAME*",
-        "*LOAD-TRUENAME*",
     };
 
     const sentinel = try repl.loadPathnameValue("/tmp/habu-load-sentinel.lsp");
@@ -5883,10 +5650,6 @@ test "load resolves relative path with repeated directory prefix" {
     const load_globals = [_][]const u8{
         "COMMON-LISP:*LOAD-PATHNAME*",
         "COMMON-LISP:*LOAD-TRUENAME*",
-        "CL-USER:*LOAD-PATHNAME*",
-        "CL-USER:*LOAD-TRUENAME*",
-        "*LOAD-PATHNAME*",
-        "*LOAD-TRUENAME*",
     };
     for (load_globals) |name| {
         const idx = try repl.compiler.globals.define(name);

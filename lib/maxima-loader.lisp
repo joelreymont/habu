@@ -30,7 +30,7 @@
 (defparameter *maxima-files*
   '(
     ;; bootstrap
-    "lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
+    "lmdcls" "letmac" "generr" "clmacs" "commac" "mormac" "globals" "compat"
     "defcal" "maxmac" "mopers" "mforma" "mrgmac" "rzmac" "strmac"
     "displm" "safe-recursion" "ratmac" "mhayat"
     "opers"
@@ -40,8 +40,9 @@
     "sumcon" "sublis" "mformt" "outmis" "ar"
     "comm" "comm2" "mlisp" "mmacro" "buildq"
     "simp" "float" "csimp" "csimp2" "zero"
-    "logarc" "rpart" "numeric" "server" "macsys" "mload"
-    "suprv1" "mactex" "dskfn"
+    "logarc" "rpart" "numeric" "server" "macsys" "testsuite" "mload"
+    "float-properties"
+    "suprv1" "mactex" "dskfn" "mtrace" "mdebug"
 
     ;; algebraic database
     "inmis" "db"
@@ -57,28 +58,35 @@
     "transf" "troper" "trutil" "trmode" "trdata" "trpred" "transq"
     "acall" "fcall" "evalw" "trprop" "mdefun"
 
-    ;; pattern / reader / display
+    ;; pattern / reader / display / docs helpers
     "schatc" "matcom" "matrun" "nisimp" "nparse"
-    "displa" "nforma" "grind"
+    "displa" "nforma" "grind" "macdes"
 
     ;; algebra and trig
     "spgcd" "ezgcd" "trigi" "trigo" "trgred"
     "bessel" "ellipt" "airy" "intpol"
 
     ;; calculus and special functions
-    ;; defint/residu currently trigger uncatchable VM stack overflow
     "sinint" "sin" "risch" "specfn"
 
     ;; matrix / determinant / limits / solve
     "mat" "linnew" "matrix" "sprdet" "newinv" "newdet"
     "tlimit" "limit"
-    "solve" "psolve" "algsys" "sqrtdenest" "polyrz" "cpoly"
+    "solve" "psolve" "algsys" "sqrtdenest" "polyrz" "cpoly" "polynomialp"
 
     ;; misc high-traffic modules
     "scs" "asum" "optim" "marray" "mdot" "irinte" "series"
     "numth" "laplac" "pade" "homog" "combin" "nset"
+    "pois2" "pois3"
     "rand-mt19937" "maxmin" "nummod" "conjugate"
     "expintegral" "gamma" "mstuff"
+
+    ;; definite integration / residue support now load cleanly after the
+    ;; current core bootstrap; keep them late until we tighten dependency order.
+    "residu" "defint"
+
+    ;; translated packages / numerics that load cleanly in this tree
+    "desoln" "elim" "invert" "hypgeo" "hyp" "hypergeometric" "nfloat"
 
     ;; final init
     "autol" "max_ext" "init-cl"))

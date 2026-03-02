@@ -297,7 +297,7 @@ test "capture - no captures needed" {
     var builder = IrBuilder.init(alloc);
     const var_x = try builder.variable("x", 0, 0);
     const params = try alloc.dupe([]const u8, &.{"x"});
-    const lam = try builder.lambda(params, &.{}, &.{}, false, null, &.{}, var_x);
+    const lam = try builder.lambda(params, &.{}, &.{}, false, 0, null, &.{}, var_x);
 
     const analyzed = try capture(alloc, lam);
 
@@ -317,7 +317,7 @@ test "capture - variable from outer scope" {
     var builder = IrBuilder.init(alloc);
     const var_y = try builder.variable("y", 1, 0); // depth=1 means from outer scope
     const params: []const []const u8 = &.{};
-    const lam = try builder.lambda(params, &.{}, &.{}, false, null, &.{}, var_y);
+    const lam = try builder.lambda(params, &.{}, &.{}, false, 0, null, &.{}, var_y);
 
     const analyzed = try capture(alloc, lam);
 
@@ -341,7 +341,7 @@ test "capture - call captures args" {
     const args = try alloc.dupe(*const Ir, &.{ var_y });
     const call = try builder.call(var_f, args);
     const params: []const []const u8 = &.{};
-    const lam = try builder.lambda(params, &.{}, &.{}, false, null, &.{}, call);
+    const lam = try builder.lambda(params, &.{}, &.{}, false, 0, null, &.{}, call);
 
     const analyzed = try capture(alloc, lam);
 
@@ -364,7 +364,7 @@ test "capture - dedupe repeated refs" {
     const exprs = try alloc.dupe(*const Ir, &.{ var_y1, var_y2 });
     const body = try builder.progn(exprs);
     const params: []const []const u8 = &.{};
-    const lam = try builder.lambda(params, &.{}, &.{}, false, null, &.{}, body);
+    const lam = try builder.lambda(params, &.{}, &.{}, false, 0, null, &.{}, body);
 
     const analyzed = try capture(alloc, lam);
 

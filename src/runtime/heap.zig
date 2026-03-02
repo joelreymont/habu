@@ -223,6 +223,20 @@ pub const Package = struct {
         return null;
     }
 
+    pub fn findAccessibleExact(self: *const Package, name: []const u8) ?Value {
+        if (self.symbols.get(name)) |existing| {
+            return existing;
+        }
+        for (self.use_list.items) |used_pkg| {
+            if (used_pkg.exports.contains(name) or used_pkg.auto_export) {
+                if (used_pkg.symbols.get(name)) |sym| {
+                    return sym;
+                }
+            }
+        }
+        return null;
+    }
+
     pub fn findAccessible(self: *const Package, name: []const u8) error{OutOfMemory}!?Value {
         var upper_buf: [256]u8 = undefined;
         const upper = try upperNameAlloc(self.allocator, name, upper_buf[0..]);
@@ -231,24 +245,27 @@ pub const Package = struct {
     }
 
     pub fn intern(self: *Package, heap: *Heap, name: []const u8) error{OutOfMemory}!Value {
-        // Upcase name per CL spec
+        // Internal/runtime helper: normalize to uppercase before storing.
         var upper_buf: [256]u8 = undefined;
         const upper = try upperNameAlloc(self.allocator, name, upper_buf[0..]);
         defer freeUpperName(self.allocator, upper);
-        const upper_name = upper.slice;
+        return try self.internPreservingCase(heap, upper.slice);
+    }
 
-        if (self.findAccessibleUpper(upper_name)) |existing| {
+    pub fn internPreservingCase(self: *Package, heap: *Heap, name: []const u8) error{OutOfMemory}!Value {
+        if (self.findAccessibleExact(name)) |existing| {
             return existing;
         }
-        // Allocate new symbol in this package (already upcased in allocSymbol)
-        const sym = try heap.allocSymbol(upper_name);
-        // Store package pointer in symbol's reserved field
+
+        // Preserve the caller-supplied spelling exactly. This is the semantic
+        // used by CL package functions such as INTERN/FIND-SYMBOL; reader case
+        // folding happens before these APIs and is handled separately.
+        const sym = try heap.allocSymbol(name);
         const sym_ptr = sym.toPtr(Symbol);
         sym_ptr.reserved = @intFromPtr(self);
-        try self.symbols.put(upper_name, sym);
-        // Auto-export if flag is set (for CL package)
+        try self.symbols.put(name, sym);
         if (self.auto_export) {
-            const persistent_export_name = try self.allocator.dupe(u8, upper_name);
+            const persistent_export_name = try self.allocator.dupe(u8, name);
             try self.exports.put(self.allocator, persistent_export_name, {});
         }
         return sym;
@@ -396,7 +413,7 @@ pub const Heap = struct {
     backing_allocator: std.mem.Allocator,
     /// Statistics
     stats: Stats,
-    /// Interned symbol table (legacy, for backward compat - use packages)
+    /// Bootstrap-only symbol table used before native package objects exist.
     symbols: SymbolTable,
     /// Interned keyword table
     keywords: SymbolTable,
@@ -2478,7 +2495,7 @@ pub const Heap = struct {
         const stream = try self.alloc(objects.Stream);
         stream.* = .{
             .kind = .stream,
-            .direction = .input, // can be used for both
+            .direction = .io, // bidirectional
             .stream_type = .two_way,
             .closed = false,
             .position = 0,
@@ -3252,22 +3269,19 @@ pub const Heap = struct {
         return ht.remove(kw);
     }
 
-    /// Intern a symbol (same name = same Value)
-    /// Returns existing symbol if already interned, otherwise creates new one
-    /// Uses current package if available, otherwise legacy global table
+    /// Intern a symbol in the current package (same name = same Value).
+    /// Returns existing symbol if already interned, otherwise creates new one.
     pub fn intern(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
-        // Use current package if available
         if (self.resolveCurrentPackageForIntern()) |pkg| {
             return pkg.intern(self, name);
         }
 
-        // Upcase name per CL spec
+        // Bootstrap-only path before package objects exist.
         var upper_buf: [256]u8 = undefined;
         const upper = try upperNameAlloc(self.backing_allocator, name, upper_buf[0..]);
         defer freeUpperName(self.backing_allocator, upper);
         const upper_name = upper.slice;
 
-        // Fallback to legacy global table
         if (self.symbols.get(upper_name)) |existing| {
             return existing;
         }
@@ -3307,7 +3321,17 @@ pub const Heap = struct {
     }
 
     fn resolveCurrentPackageForIntern(self: *Heap) ?*Package {
-        const pkg = self.current_package orelse return null;
+        const pkg = self.current_package orelse {
+            if (self.cl_user_package) |user_pkg| {
+                self.current_package = user_pkg;
+                return user_pkg;
+            }
+            if (self.cl_package) |cl_pkg| {
+                self.current_package = cl_pkg;
+                return cl_pkg;
+            }
+            return null;
+        };
         if (self.hasNativePackagePtr(pkg)) return pkg;
 
         std.log.err("stale current package pointer 0x{x}; resetting package context", .{@intFromPtr(pkg)});
@@ -3321,6 +3345,13 @@ pub const Heap = struct {
         }
         self.current_package = null;
         return null;
+    }
+
+    /// Intern a symbol in the current package, preserving the caller-supplied
+    /// symbol-name spelling while still doing case-insensitive package lookup.
+    pub fn internCurrentPackagePreservingCase(self: *Heap, name: []const u8) !Value {
+        const pkg = self.resolveCurrentPackageForIntern() orelse return error.InvalidArgument;
+        return try pkg.internPreservingCase(self, name);
     }
 
     /// Intern a symbol in a specific package by name
@@ -4657,7 +4688,7 @@ test "heap intern handles t and nil in packages" {
     try testing.expectEqual(@as(u64, Value.nil.raw), nil_pkg.raw);
 }
 
-test "heap intern fallback uses symbol table" {
+test "heap intern defaults to CL-USER package" {
     const testing = std.testing;
 
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
@@ -4666,7 +4697,9 @@ test "heap intern fallback uses symbol table" {
 
     const sym1 = try heap.intern("foo");
     const sym2 = try heap.intern("FOO");
+    const sym3 = (try heap.internInPackage("CL-USER", "FOO")) orelse return error.TestUnexpectedResult;
     try testing.expectEqual(@as(u64, sym1.raw), sym2.raw);
+    try testing.expectEqual(@as(u64, sym1.raw), sym3.raw);
 }
 
 test "heap intern uppercases long names" {

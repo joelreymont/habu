@@ -49,6 +49,16 @@ pub const UpperName = heap.UpperName;
 pub const upperNameAlloc = heap.upperNameAlloc;
 pub const freeUpperName = heap.freeUpperName;
 pub const GC = gc.GC;
+
+var g_heap_context: ?*Heap = null;
+
+pub fn setHeapContext(h: *Heap) void {
+    g_heap_context = h;
+}
+
+pub fn heapContext() ?*Heap {
+    return g_heap_context;
+}
 pub const Interner = interner.Interner;
 pub const RootRange = roots.RootRange;
 pub const RootSet = roots.RootSet;

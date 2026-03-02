@@ -15,6 +15,17 @@ You keep track of what works and what doesn't in `LESSONS.md`.
 - No compatibility fallbacks.
 - Remove replaced code paths instead of keeping dual behavior.
 
+## Planning Before Fixes (Blocking)
+
+- For every non-trivial fix or feature, write the fix plan first.
+- Put the plan in `PLAN.md` or update the relevant section before coding.
+- Review the plan critically before implementation:
+  - verify it attacks root causes,
+  - remove shortcuts, fallbacks, and patch layers,
+  - split the work into concrete dots,
+  - confirm tests and proof steps exist.
+- Only implement after the plan has been reviewed and tightened.
+
 ## LESSONS.md Discipline (Required)
 
 - Read `LESSONS.md` before starting any new dot.

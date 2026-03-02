@@ -126,18 +126,32 @@ pub fn div(heap: *Heap, a: Value, b: Value) Error!Value {
 
 /// Modulo operation
 pub fn mod(a: Value, b: Value) Error!Value {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const divisor = b.toFixnum();
-    if (divisor == 0) return error.DivisionByZero;
-    return Value.makeFixnum(@mod(a.toFixnum(), divisor));
+    if (a.isFixnum() and b.isFixnum()) {
+        const divisor = b.toFixnum();
+        if (divisor == 0) return error.DivisionByZero;
+        return Value.makeFixnum(@mod(a.toFixnum(), divisor));
+    }
+
+    const dividend = try toNumber(a);
+    const divisor = try toNumber(b);
+    if (divisor == 0.0) return error.DivisionByZero;
+    const q = @floor(dividend / divisor);
+    return Value.makeFloat(dividend - q * divisor);
 }
 
 /// Remainder operation (can be negative)
 pub fn rem(a: Value, b: Value) Error!Value {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const divisor = b.toFixnum();
-    if (divisor == 0) return error.DivisionByZero;
-    return Value.makeFixnum(@rem(a.toFixnum(), divisor));
+    if (a.isFixnum() and b.isFixnum()) {
+        const divisor = b.toFixnum();
+        if (divisor == 0) return error.DivisionByZero;
+        return Value.makeFixnum(@rem(a.toFixnum(), divisor));
+    }
+
+    const dividend = try toNumber(a);
+    const divisor = try toNumber(b);
+    if (divisor == 0.0) return error.DivisionByZero;
+    const q = @trunc(dividend / divisor);
+    return Value.makeFloat(dividend - q * divisor);
 }
 
 /// Negate a fixnum
@@ -339,35 +353,104 @@ pub fn logcount(n: Value) Error!Value {
 
 /// Number of bits needed to represent integer
 pub fn integer_length(n: Value) Error!Value {
-    if (!n.isFixnum()) return error.TypeMismatch;
-    const val = n.toFixnum();
-    if (val == 0) return Value.makeFixnum(0);
-    const un: u64 = @bitCast(if (val < 0) ~val else val);
-    const bits = 64 - @clz(un);
+    if (n.isFixnum()) {
+        const val = n.toFixnum();
+        if (val == 0) return Value.makeFixnum(0);
+        const un: u64 = @bitCast(if (val < 0) ~val else val);
+        const bits = 64 - @clz(un);
+        return Value.makeFixnum(@intCast(bits));
+    }
+    if (!n.isBignum()) return error.TypeMismatch;
+
+    const bn = n.toPtr(objects.Bignum);
+    const size: usize = @intCast(@abs(bn.size));
+    if (size == 0) return Value.makeFixnum(0);
+
+    if (!bn.isNegative()) {
+        const top = bn.limbs[size - 1];
+        const bits = (size - 1) * 64 + (64 - @clz(top));
+        return Value.makeFixnum(@intCast(bits));
+    }
+
+    const width = try integerTwosWidth(n);
+    var twos: [max_bignum_limbs]u64 = [_]u64{0} ** max_bignum_limbs;
+    try integerToTwos(n, width, &twos);
+    for (0..width) |i| twos[i] = ~twos[i];
+
+    var used = width;
+    while (used > 0 and twos[used - 1] == 0) : (used -= 1) {}
+    if (used == 0) return Value.makeFixnum(0);
+
+    const bits = (used - 1) * 64 + (64 - @clz(twos[used - 1]));
     return Value.makeFixnum(@intCast(bits));
 }
 
 /// Arithmetic shift (positive = left, negative = right)
 pub fn ash(val: Value, count: Value) Error!Value {
-    if (!val.isFixnum() or !count.isFixnum()) return error.TypeMismatch;
+    if ((!val.isFixnum() and !val.isBignum()) or !count.isFixnum()) return error.TypeMismatch;
 
-    const v = val.toFixnum();
     const c = count.toFixnum();
+    if (val.isFixnum()) {
+        const v = val.toFixnum();
+        if (c >= 0 and c < 62) {
+            const uc: u6 = @intCast(@as(u64, @intCast(c)));
+            const shifted = v << uc;
+            if (shifted <= max_fixnum_i64 and shifted >= min_fixnum_i64) {
+                return Value.makeFixnum(shifted);
+            }
+        } else if (c < 0) {
+            const neg_c: u64 = @intCast(-c);
+            if (neg_c >= 64) {
+                return Value.makeFixnum(if (v < 0) -1 else 0);
+            }
+            const uc: u6 = @intCast(neg_c);
+            return Value.makeFixnum(v >> uc);
+        }
+    }
+
+    const heap = if (@import("../runtime.zig").heapContext()) |h| h else return error.OutOfMemory;
+    const base_width = try integerTwosWidth(val);
+    const shift_mag: usize = @intCast(if (c < 0) -c else c);
+    const limb_shift = shift_mag / 64;
+    const bit_shift: u6 = @intCast(shift_mag % 64);
+    const width = if (c >= 0)
+        @min(max_bignum_limbs, base_width + limb_shift + 1)
+    else
+        base_width;
+
+    var in_twos: [max_bignum_limbs]u64 = [_]u64{0} ** max_bignum_limbs;
+    var out_twos: [max_bignum_limbs]u64 = [_]u64{0} ** max_bignum_limbs;
+    try integerToTwos(val, width, &in_twos);
+
+    const sign_fill: u64 = if ((in_twos[width - 1] & (@as(u64, 1) << 63)) != 0) std.math.maxInt(u64) else 0;
 
     if (c >= 0) {
-        // Left shift
-        if (c >= 64) return Value.makeFixnum(0);
-        const uc: u6 = @intCast(@as(u64, @intCast(c)));
-        return Value.makeFixnum(v << uc);
-    } else {
-        // Right shift (arithmetic)
-        const neg_c: u64 = @intCast(-c);
-        if (neg_c >= 64) {
-            return Value.makeFixnum(if (v < 0) -1 else 0);
+        for (0..width) |i| out_twos[i] = 0;
+        for (0..base_width) |i| {
+            const dst = i + limb_shift;
+            if (dst >= width) break;
+            out_twos[dst] |= in_twos[i] << bit_shift;
+            if (bit_shift != 0 and dst + 1 < width) {
+                const carry_shift: u6 = @intCast(@as(u7, 64) - @as(u7, bit_shift));
+                out_twos[dst + 1] |= in_twos[i] >> carry_shift;
+            }
         }
-        const uc: u6 = @intCast(neg_c);
-        return Value.makeFixnum(v >> uc);
+    } else {
+        for (0..width) |i| out_twos[i] = sign_fill;
+        for (0..width) |i| {
+            const src_idx = i + limb_shift;
+            const low = if (src_idx < width) in_twos[src_idx] else sign_fill;
+            if (bit_shift == 0) {
+                out_twos[i] = low;
+            } else {
+                const high = if (src_idx + 1 < width) in_twos[src_idx + 1] else sign_fill;
+                const carry_shift: u6 = @intCast(@as(u7, 64) - @as(u7, bit_shift));
+                out_twos[i] = (low >> bit_shift) | (high << carry_shift);
+            }
+        }
     }
+
+    return twosToInteger(heap, &out_twos, width);
 }
 
 /// Check if value is zero
@@ -402,9 +485,18 @@ pub fn oddp(a: Value) bool {
 
 /// Absolute value
 pub fn abs_val(a: Value) Error!Value {
-    if (!a.isFixnum()) return error.TypeMismatch;
-    const n = a.toFixnum();
-    return Value.makeFixnum(if (n < 0) -n else n);
+    if (a.isFixnum()) {
+        const n = a.toFixnum();
+        return Value.makeFixnum(if (n < 0) -n else n);
+    }
+    if (!a.isBignum()) return error.TypeMismatch;
+
+    const bn = a.toPtr(objects.Bignum);
+    if (!bn.isNegative()) return a;
+
+    const heap = if (@import("../runtime.zig").heapContext()) |h| h else return error.OutOfMemory;
+    const size: usize = @intCast(@abs(bn.size));
+    return heap.allocBignumFromLimbs(bn.limbs[0..size], false);
 }
 
 /// Maximum of two values
@@ -899,7 +991,7 @@ pub fn sqrt_val(a: Value) Error!Value {
     const af = try toNumber(a);
     if (af < 0) {
         const complex_mod = @import("complex.zig");
-        const heap = if (@import("../heap.zig").threadLocalHeap()) |val| val else return error.OutOfMemory;
+        const heap = if (@import("../runtime.zig").heapContext()) |val| val else return error.OutOfMemory;
         return complex_mod.makeComplex(heap, 0.0, @sqrt(-af));
     }
     return Value.makeFloat(@sqrt(af));
@@ -1003,20 +1095,19 @@ pub fn pow_val(x: Value, y: Value) Error!Value {
     return Value.makeFloat(std.math.pow(f64, xf, yf));
 }
 
-/// Decode-float: returns (significand, exponent, sign) as multiple values
+/// Decode-float: returns (significand, exponent, sign) as raw values
 /// Such that (= f (* sign significand (expt 2 exponent)))
 /// significand is between 0.5 (inclusive) and 1.0 (exclusive) for non-zero
-pub fn decodeFloat(heap: *Heap, a: Value) Error!Value {
+pub fn decodeFloat(a: Value) Error![3]Value {
     const f = try toNumber(a);
 
     // Handle special cases
     if (f == 0.0) {
-        const vals = [_]Value{
+        return .{
             Value.makeFloat(0.0),
             Value.makeFixnum(0),
             Value.makeFloat(1.0),
         };
-        return list_prim.list(heap, &vals);
     }
 
     const sign: f64 = if (f < 0) -1.0 else 1.0;
@@ -1026,28 +1117,26 @@ pub fn decodeFloat(heap: *Heap, a: Value) Error!Value {
     // frexp returns (significand, exponent) where 0.5 <= |sig| < 1.0
     const frexp_result = std.math.frexp(abs_f);
 
-    const vals = [_]Value{
+    return .{
         Value.makeFloat(frexp_result.significand),
         Value.makeFixnum(frexp_result.exponent),
         Value.makeFloat(sign),
     };
-    return list_prim.list(heap, &vals);
 }
 
 /// Integer-decode-float: returns (significand, exponent, sign) as integers
 /// Such that (= f (* sign significand (expt 2 exponent)))
 /// significand is an integer representing the mantissa bits
-pub fn integerDecodeFloat(heap: *Heap, a: Value) Error!Value {
+pub fn integerDecodeFloat(a: Value) Error![3]Value {
     const f = try toNumber(a);
 
     // Handle special cases
     if (f == 0.0) {
-        const vals = [_]Value{
+        return .{
             Value.makeFixnum(0),
             Value.makeFixnum(0),
             Value.makeFixnum(1),
         };
-        return list_prim.list(heap, &vals);
     }
 
     // Extract bits from the IEEE 754 representation
@@ -1077,12 +1166,11 @@ pub fn integerDecodeFloat(heap: *Heap, a: Value) Error!Value {
         exponent += 1;
     }
 
-    const vals = [_]Value{
+    return .{
         Value.makeFixnum(@intCast(mantissa)),
         Value.makeFixnum(exponent),
         Value.makeFixnum(sign),
     };
-    return list_prim.list(heap, &vals);
 }
 
 /// Float-radix: returns the radix of floating-point representation (always 2)

@@ -783,6 +783,7 @@ pub const Emitter = struct {
             .disassemble => |s| try self.emitUnaryOp(s.operand, .disassemble),
             .read_char_stream => |s| try self.emitUnaryOp(s.operand, .read_char_stream),
             .peek_char_stream => |s| try self.emitUnaryOp(s.operand, .peek_char_stream),
+            .unread_char_stream => |op| try self.emitBinaryOp(op, .unread_char_stream),
             .open_file => |op| try self.emitBinaryOp(op, .open_file),
             .close_stream => |s| try self.emitUnaryOp(s.operand, .close_stream),
             .pathname_host => |p| try self.emitUnaryOp(p.operand, .pathname_host),
@@ -1144,6 +1145,7 @@ pub const Emitter = struct {
             .read_byte => |op| try self.emitUnaryOp(op.operand, .read_byte),
             .write_byte => |op| try self.emitBinaryOp(op, .write_byte),
             .file_position => |op| try self.emitUnaryOp(op.operand, .file_position),
+            .set_file_position => |op| try self.emitBinaryOp(op, .set_file_position),
             .file_length => |op| try self.emitUnaryOp(op.operand, .file_length),
             .finish_output => |op| try self.emitUnaryOp(op.operand, .finish_output),
             .force_output => |op| try self.emitUnaryOp(op.operand, .force_output),
@@ -1577,7 +1579,15 @@ pub const Emitter = struct {
         // num_locals = max of (param slots, max local index used in body + 1)
         const rest_count: u8 = if (lam.rest_param != null) 1 else 0;
         const key_pair_slots: u8 = key_count * 2; // max space for keyword-value pairs
-        const param_slots: u8 = arity + optional_count + key_count + key_pair_slots + rest_count;
+        // Count supplied-p slots for &optional and &key params
+        var supplied_p_count: u8 = 0;
+        for (lam.optional_params) |op| {
+            if (op.supplied_p_idx != null) supplied_p_count += 1;
+        }
+        for (lam.key_params) |kp| {
+            if (kp.supplied_p_idx != null) supplied_p_count += 1;
+        }
+        const param_slots: u8 = arity + optional_count + key_count + key_pair_slots + rest_count + supplied_p_count;
         // Compute max local index used in the body (for let bindings)
         const body_max_idx = computeMaxLocalIndex(lam.body);
         // num_locals must be at least param_slots, but also cover any let bindings
@@ -1594,6 +1604,13 @@ pub const Emitter = struct {
             try lambda_emitter.emitOp(.push_i32);
             try lambda_emitter.emitI32(@as(i32, slot_index));
             try lambda_emitter.emitOp(.gt);
+
+            // Store the provided-flag into supplied-p slot before branching
+            if (opt_param.supplied_p_idx) |sp_idx| {
+                try lambda_emitter.emitOp(.dup);
+                try lambda_emitter.emitOp(.store_local);
+                try lambda_emitter.emitU8(@intCast(sp_idx));
+            }
 
             // Jump over default assignment if arg was provided
             const skip_jump = try lambda_emitter.emitJump(.jmp_not_nil);
@@ -1628,6 +1645,13 @@ pub const Emitter = struct {
                 // Swap so value is below, found_flag on top for jmp_nil
                 try lambda_emitter.emitOp(.swap);
                 // Stack: ..., value, found_flag
+
+                // Store the found-flag into supplied-p slot before branching
+                if (key_param.supplied_p_idx) |sp_idx| {
+                    try lambda_emitter.emitOp(.dup);
+                    try lambda_emitter.emitOp(.store_local);
+                    try lambda_emitter.emitU8(@intCast(sp_idx));
+                }
 
                 // Jump to use_default if found_flag is nil
                 const use_default_jump = try lambda_emitter.emitJump(.jmp_nil);
@@ -1689,6 +1713,7 @@ pub const Emitter = struct {
         } else lam.name;
         chunk.name = self.resolveForwardedValue(lambda_name);
         chunk.allow_other_keys = if (lam.allow_other_keys) 1 else 0;
+        chunk.key_temp_start = @intCast(lam.key_temp_start);
         if (lam.key_params.len > 0) {
             if (lambda_emitter.heap) |heap| {
                 var kw_list = Value.nil;
@@ -2976,9 +3001,9 @@ test "emit lambda key params" {
     const body = try builder.lit(Value.nil);
 
     const key_params = [_]ir.Ir.KeyParam{
-        .{ .keyword = "foo", .name = "foo", .default = null },
+        .{ .keyword = "foo", .name = "foo", .default = null, .supplied_p = null },
     };
-    const lam = try builder.lambda(&[_][]const u8{}, &[_]ir.Ir.OptionalParam{}, &key_params, false, null, &[_]ir.Ir.Capture{}, body);
+    const lam = try builder.lambda(&[_][]const u8{}, &[_]ir.Ir.OptionalParam{}, &key_params, false, @intCast(key_params.len), null, &[_]ir.Ir.Capture{}, body);
 
     try emitter.emit(lam);
 

@@ -98,6 +98,8 @@ pub const Ir = union(enum) {
         key_params: []const KeyParam,
         /// Whether &allow-other-keys was present
         allow_other_keys: bool = false,
+        /// Absolute local-slot index where temporary keyword/value pairs begin.
+        key_temp_start: u16 = 0,
         /// Rest parameter name (for dotted param lists like (a b . rest))
         rest_param: ?[]const u8,
         /// Free variables captured from enclosing scope
@@ -668,6 +670,7 @@ pub const Ir = union(enum) {
     disassemble: UnaryOp, // disassemble a function
     read_char_stream: UnaryOp, // read character from stream
     peek_char_stream: UnaryOp, // peek character from stream
+    unread_char_stream: BinaryOp, // push character back to a stream
     open_file: BinaryOp, // open file (filename, direction)
     close_stream: UnaryOp, // close a stream
 
@@ -952,6 +955,7 @@ pub const Ir = union(enum) {
     read_byte: UnaryOp, // (read-byte stream)
     write_byte: BinaryOp, // (write-byte stream byte)
     file_position: UnaryOp, // (file-position stream)
+    set_file_position: BinaryOp, // (file-position stream pos)
     file_length: UnaryOp, // (file-length stream)
     finish_output: UnaryOp, // (finish-output stream)
     force_output: UnaryOp, // (force-output stream)
@@ -1109,6 +1113,8 @@ pub const Ir = union(enum) {
     pub const OptionalParam = struct {
         name: []const u8,
         default: ?*const Ir, // null means nil default
+        supplied_p: ?[]const u8, // supplied-p variable name, or null
+        supplied_p_idx: ?u16 = null, // local slot index for supplied-p, set by compiler
     };
 
     /// Keyword parameter with default value
@@ -1118,6 +1124,8 @@ pub const Ir = union(enum) {
         /// The parameter name (may differ from keyword)
         name: []const u8,
         default: ?*const Ir, // null means nil default
+        supplied_p: ?[]const u8, // supplied-p variable name, or null
+        supplied_p_idx: ?u16 = null, // local slot index for supplied-p, set by compiler
     };
 
     // ========================================================================
@@ -1316,7 +1324,7 @@ pub const IrBuilder = struct {
         return node;
     }
 
-    pub fn lambda(self: IrBuilder, params: []const []const u8, optional_params: []const Ir.OptionalParam, key_params: []const Ir.KeyParam, allow_other_keys: bool, rest_param: ?[]const u8, captures: []const Ir.Capture, body: *const Ir) !*Ir {
+    pub fn lambda(self: IrBuilder, params: []const []const u8, optional_params: []const Ir.OptionalParam, key_params: []const Ir.KeyParam, allow_other_keys: bool, key_temp_start: u16, rest_param: ?[]const u8, captures: []const Ir.Capture, body: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         // Copy params
         var params_copy = try self.allocator.alloc([]const u8, params.len);
@@ -1329,6 +1337,8 @@ pub const IrBuilder = struct {
             opt_copy[i] = .{
                 .name = try self.allocator.dupe(u8, op.name),
                 .default = op.default,
+                .supplied_p = if (op.supplied_p) |sp| try self.allocator.dupe(u8, sp) else null,
+                .supplied_p_idx = op.supplied_p_idx,
             };
         }
         // Copy key params
@@ -1338,6 +1348,8 @@ pub const IrBuilder = struct {
                 .keyword = try self.allocator.dupe(u8, kp.keyword),
                 .name = try self.allocator.dupe(u8, kp.name),
                 .default = kp.default,
+                .supplied_p = if (kp.supplied_p) |sp| try self.allocator.dupe(u8, sp) else null,
+                .supplied_p_idx = kp.supplied_p_idx,
             };
         }
         const captures_copy = try self.allocator.dupe(Ir.Capture, captures);
@@ -1347,6 +1359,7 @@ pub const IrBuilder = struct {
             .optional_params = opt_copy,
             .key_params = key_copy,
             .allow_other_keys = allow_other_keys,
+            .key_temp_start = key_temp_start,
             .rest_param = rest_copy,
             .captures = captures_copy,
             .body = body,
@@ -2086,6 +2099,12 @@ pub const IrBuilder = struct {
     pub fn unreadChar(self: IrBuilder, char: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .unread_char = .{ .operand = char } };
+        return node;
+    }
+
+    pub fn unreadCharStream(self: IrBuilder, char: *const Ir, stream: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .unread_char_stream = .{ .left = char, .right = stream } };
         return node;
     }
 
@@ -3030,6 +3049,8 @@ pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) anyerror!*const 
                 new_optional[i] = .{
                     .name = try allocator.dupe(u8, param.name),
                     .default = try deepCopyOptionalIr(allocator, param.default),
+                    .supplied_p = if (param.supplied_p) |sp| try allocator.dupe(u8, sp) else null,
+                    .supplied_p_idx = param.supplied_p_idx,
                 };
             }
 
@@ -3039,6 +3060,8 @@ pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) anyerror!*const 
                     .keyword = try allocator.dupe(u8, param.keyword),
                     .name = try allocator.dupe(u8, param.name),
                     .default = try deepCopyOptionalIr(allocator, param.default),
+                    .supplied_p = if (param.supplied_p) |sp| try allocator.dupe(u8, sp) else null,
+                    .supplied_p_idx = param.supplied_p_idx,
                 };
             }
 
@@ -3056,6 +3079,7 @@ pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) anyerror!*const 
                 .optional_params = new_optional,
                 .key_params = new_key,
                 .allow_other_keys = lam.allow_other_keys,
+                .key_temp_start = lam.key_temp_start,
                 .rest_param = if (lam.rest_param) |rest_param| try allocator.dupe(u8, rest_param) else null,
                 .captures = new_captures,
                 .body = try deepCopyIr(allocator, lam.body),
@@ -3244,7 +3268,7 @@ test "ir lambda" {
     const body = try builder.lit(Value.nil);
     const params = [_][]const u8{ "x", "y" };
     const captures = [_]Ir.Capture{};
-    const lam = try builder.lambda(&params, &.{}, &.{}, false, null, &captures, body);
+    const lam = try builder.lambda(&params, &.{}, &.{}, false, 0, null, &captures, body);
 
     try std.testing.expectEqual(Ir.lambda, std.meta.activeTag(lam.*));
     try std.testing.expectEqual(@as(usize, 2), lam.lambda.params.len);

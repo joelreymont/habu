@@ -187,45 +187,71 @@ pub fn arrayDisplacement(val: Value) Value {
     return Value.nil;
 }
 
-/// Adjust vector to new size
-/// For vectors: resizes to new-size
-/// Preserves fill-pointer and adjustable flag
-/// Initializes new elements with fill_value
+/// Adjust 1D array storage to new size.
+/// Supports vectors and rank-1 arrays.
+/// Preserves vector fill-pointer/adjustable metadata.
+/// Initializes new elements with fill_value.
 pub fn adjustArray(heap: *Heap, val: Value, new_size: u64, fill_value: Value) !Value {
-    if (!val.isVector()) return val;
+    switch (val.typeKind()) {
+        .vector => {
+            const old_vec = val.toPtr(objects.Vector);
+            const old_fp = old_vec.getFillPointer();
+            const old_adj = old_vec.isAdjustable();
 
-    const old_vec = val.toPtr(objects.Vector);
-    const old_fp = old_vec.getFillPointer();
-    const old_adj = old_vec.isAdjustable();
+            const new_vec = try heap.allocVector(new_size, new_size);
+            const new_obj = new_vec.toPtr(objects.Vector);
 
-    // Create new vector with new size
-    const new_vec = try heap.allocVector(new_size, new_size);
-    const new_obj = new_vec.toPtr(objects.Vector);
+            const copy_len = @min(old_vec.length, new_size);
+            @memcpy(new_obj.data[0..copy_len], old_vec.data[0..copy_len]);
 
-    // Copy existing data
-    const copy_len = @min(old_vec.length, new_size);
-    @memcpy(new_obj.data[0..copy_len], old_vec.data[0..copy_len]);
+            for (copy_len..new_size) |i| {
+                new_obj.data[i] = fill_value;
+            }
 
-    // Fill new slots with fill_value
-    for (copy_len..new_size) |i| {
-        new_obj.data[i] = fill_value;
+            if (old_fp) |fp| {
+                new_obj.setFillPointer(@min(fp, new_size));
+            }
+            new_obj.setAdjustable(old_adj);
+
+            old_vec.data = new_obj.data;
+            old_vec.length = new_obj.length;
+            old_vec.capacity = new_obj.capacity;
+            old_vec.fill_pointer = new_obj.fill_pointer;
+            return val;
+        },
+        .array => {
+            const old_arr = val.toPtr(objects.Array);
+            if (old_arr.rank != 1) return val;
+
+            const total_bytes = @sizeOf(objects.Array) + new_size * @sizeOf(Value);
+            const ptr = try heap.allocRaw(total_bytes);
+            const new_arr: *objects.Array = @ptrCast(@alignCast(ptr));
+            const new_data: [*]Value = @ptrCast(@alignCast(ptr + @sizeOf(objects.Array)));
+            const old_data: [*]Value = @ptrFromInt(old_arr.data_ptr);
+            const copy_len = @min(old_arr.total_size, new_size);
+
+            @memcpy(new_data[0..copy_len], old_data[0..copy_len]);
+            for (copy_len..new_size) |i| {
+                new_data[i] = fill_value;
+            }
+
+            new_arr.* = .{
+                .kind = .array,
+                .rank = 1,
+                .dimensions = old_arr.dimensions,
+                .total_size = new_size,
+                .data_ptr = @intFromPtr(new_data),
+            };
+            new_arr.dimensions[0] = new_size;
+
+            old_arr.rank = new_arr.rank;
+            old_arr.dimensions = new_arr.dimensions;
+            old_arr.total_size = new_arr.total_size;
+            old_arr.data_ptr = new_arr.data_ptr;
+            return val;
+        },
+        else => return val,
     }
-
-    // Preserve fill-pointer (clamped to new size)
-    if (old_fp) |fp| {
-        new_obj.setFillPointer(@min(fp, new_size));
-    }
-
-    // Preserve adjustable flag
-    new_obj.setAdjustable(old_adj);
-
-    // Update original vector to point to new storage
-    old_vec.data = new_obj.data;
-    old_vec.length = new_obj.length;
-    old_vec.capacity = new_obj.capacity;
-    old_vec.fill_pointer = new_obj.fill_pointer;
-
-    return val;
 }
 
 /// Check if subscripts are in bounds
@@ -304,7 +330,12 @@ pub fn vectorSet(val: Value, index: usize, new_val: Value) bool {
 
 /// Check if value is a vector
 pub fn vectorp(val: Value) bool {
-    return val.isVector();
+    if (val.isVector()) return true;
+    if (val.isArray()) {
+        const arr = val.toPtr(objects.Array);
+        return arr.rank == 1;
+    }
+    return false;
 }
 
 /// Get vector as slice
@@ -369,12 +400,17 @@ pub fn vectorPushExtend(heap: *Heap, val: Value, element: Value, extension: u64)
     if (!val.isVector()) return -1;
     const vec = val.toPtr(objects.Vector);
 
-    const fp = vec.getFillPointer() orelse vec.length;
+    const old_fp = vec.getFillPointer();
+    const fp = old_fp orelse vec.length;
 
     if (fp < vec.capacity) {
         vec.data[fp] = element;
         heap.writeBarrier(val, element);
-        vec.setFillPointer(fp + 1);
+        if (old_fp != null) {
+            vec.setFillPointer(fp + 1);
+        } else {
+            vec.length = fp + 1;
+        }
         return @intCast(fp);
     }
 
@@ -382,9 +418,10 @@ pub fn vectorPushExtend(heap: *Heap, val: Value, element: Value, extension: u64)
     if (!vec.isAdjustable()) return -1;
     const ext = if (extension == 0) @max(vec.capacity, 1) else extension;
     const new_cap = vec.capacity + ext;
+    const new_len = if (old_fp != null) new_cap else fp + 1;
 
     // Allocate new vector
-    const new_vec = try heap.allocVector(fp + 1, new_cap);
+    const new_vec = try heap.allocVector(new_len, new_cap);
     const new_obj = new_vec.toPtr(objects.Vector);
 
     // Copy existing data
@@ -395,7 +432,9 @@ pub fn vectorPushExtend(heap: *Heap, val: Value, element: Value, extension: u64)
     heap.writeBarrier(new_vec, element);
 
     // Preserve fill-pointer and adjustable flag
-    new_obj.setFillPointer(fp + 1);
+    if (old_fp != null) {
+        new_obj.setFillPointer(fp + 1);
+    }
     new_obj.setAdjustable(true);
 
     // Update original vector to point to new storage
@@ -403,7 +442,9 @@ pub fn vectorPushExtend(heap: *Heap, val: Value, element: Value, extension: u64)
     vec.data = new_obj.data;
     vec.length = new_obj.length;
     vec.capacity = new_obj.capacity;
-    vec.setFillPointer(fp + 1);
+    if (old_fp != null) {
+        vec.setFillPointer(fp + 1);
+    }
 
     return @intCast(fp);
 }

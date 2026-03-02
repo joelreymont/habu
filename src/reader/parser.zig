@@ -275,9 +275,11 @@ pub const Parser = struct {
         // Check for dotted pair
         if (self.current.kind == .dot) {
             self.advance(); // consume '.'
-            const second = self.parseExpr() catch |err| switch (err) {
-                error.SkipForm => return error.UnexpectedToken,
-                else => return err,
+            const second = while (true) {
+                break self.parseExpr() catch |err| switch (err) {
+                    error.SkipForm => continue,
+                    else => return err,
+                };
             };
 
             if (self.current.kind != .rparen) {
@@ -305,9 +307,11 @@ pub const Parser = struct {
 
         if (self.current.kind == .dot) {
             self.advance();
-            const cdr = self.parseExpr() catch |err| switch (err) {
-                error.SkipForm => return error.UnexpectedToken,
-                else => return err,
+            const cdr = while (true) {
+                break self.parseExpr() catch |err| switch (err) {
+                    error.SkipForm => continue,
+                    else => return err,
+                };
             };
             if (self.current.kind != .rparen) {
                 return error.UnexpectedToken;

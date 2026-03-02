@@ -108,7 +108,7 @@ fn writeFixnum(n: i64, w: anytype) !void {
     }
 }
 
-fn formatIntBase(n: i64, base: u8, buf: []u8) usize {
+pub fn formatIntBase(n: i64, base: u8, buf: []u8) usize {
     const digits = "0123456789abcdefghijklmnopqrstuvwxyz";
     var val: u64 = if (n < 0) @as(u64, @intCast(-n)) else @as(u64, @intCast(n));
     var i: usize = buf.len;
@@ -828,7 +828,20 @@ pub fn writeBytesToStream(stream: Value, bytes: []const u8) !void {
             }
             if (!list.isNil()) return error.InvalidArgument;
         },
-        .synonym, .echo, .two_way => return error.NotImplemented,
+        .two_way => {
+            // Write to the output component of the two-way stream
+            const pair = s.source_value.toPtr(objects.Cons);
+            try writeBytesToStream(pair.cdr, bytes);
+        },
+        .synonym => {
+            // Follow the synonym to the underlying stream
+            try writeBytesToStream(s.source_value, bytes);
+        },
+        .echo => {
+            // Write to the output component of the echo stream
+            const pair = s.source_value.toPtr(objects.Cons);
+            try writeBytesToStream(pair.cdr, bytes);
+        },
         .stdin, .concatenated => return error.TypeError,
         .byte => return error.NotImplemented,
     }
@@ -1674,8 +1687,44 @@ pub fn fileLength(stream: Value) !Value {
 pub fn makeStringInputStream(heap: *heap_mod.Heap, str: Value, start: ?Value, end: ?Value) !Value {
     _ = start;
     _ = end;
-    if (!str.isString()) return error.TypeError;
-    return try heap.allocStringInputStream(str);
+    if (str.isString()) return try heap.allocStringInputStream(str);
+    if (str.isString32()) {
+        const str32 = str.toPtr(objects.String32);
+        var buf: [4096]u8 = undefined;
+        var pos: usize = 0;
+        for (str32.codepoints()) |cp| {
+            if (cp > std.math.maxInt(u21)) return error.TypeError;
+            var char_buf: [4]u8 = undefined;
+            const char_len = std.unicode.utf8Encode(@intCast(cp), &char_buf) catch return error.TypeError;
+            if (pos + char_len > buf.len) return error.TypeError;
+            @memcpy(buf[pos..][0..char_len], char_buf[0..char_len]);
+            pos += char_len;
+        }
+        const coerced = try heap.allocBaseString(buf[0..pos]);
+        return try heap.allocStringInputStream(coerced);
+    }
+    // CL: strings are vectors of characters — accept vectors and coerce
+    if (str.isVector()) {
+        const vec = str.toPtr(objects.Vector);
+        const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
+        var buf: [4096]u8 = undefined;
+        var pos: usize = 0;
+        for (0..len) |i| {
+            const elem = vec.get(i);
+            if (elem.isCharacter()) {
+                var char_buf: [4]u8 = undefined;
+                const char_len = std.unicode.utf8Encode(elem.toCharacter(), &char_buf) catch return error.TypeError;
+                if (pos + char_len > buf.len) return error.TypeError; // too long
+                @memcpy(buf[pos..][0..char_len], char_buf[0..char_len]);
+                pos += char_len;
+            } else {
+                return error.TypeError;
+            }
+        }
+        const coerced = try heap.allocBaseString(buf[0..pos]);
+        return try heap.allocStringInputStream(coerced);
+    }
+    return error.TypeError;
 }
 
 /// Create a string output stream
@@ -1709,10 +1758,77 @@ fn setPushback(s: *objects.Stream, ch: u8) !void {
     s.pushback_char = ch;
 }
 
+fn streamInputComponent(s: *objects.Stream) !Value {
+    return switch (s.stream_type) {
+        .echo, .two_way => blk: {
+            if (!s.source_value.isCons()) return error.InvalidArgument;
+            break :blk s.source_value.toPtr(objects.Cons).car;
+        },
+        .synonym => if (s.source_value.isStream()) s.source_value else error.NotImplemented,
+        else => error.InvalidArgument,
+    };
+}
+
+fn streamOutputComponent(s: *objects.Stream) !Value {
+    return switch (s.stream_type) {
+        .echo, .two_way => blk: {
+            if (!s.source_value.isCons()) return error.InvalidArgument;
+            break :blk s.source_value.toPtr(objects.Cons).cdr;
+        },
+        .synonym => if (s.source_value.isStream()) s.source_value else error.NotImplemented,
+        else => error.InvalidArgument,
+    };
+}
+
+fn currentConcatenatedInput(s: *objects.Stream) !?Value {
+    while (true) {
+        if (s.source_value.isNil()) return null;
+        if (!s.source_value.isCons()) return error.InvalidArgument;
+        const cons = s.source_value.toPtr(objects.Cons);
+        if (!cons.car.isStream()) return error.TypeError;
+        return cons.car;
+    }
+}
+
+fn advanceConcatenatedInput(s: *objects.Stream) !void {
+    if (!s.source_value.isCons()) return error.InvalidArgument;
+    s.source_value = s.source_value.toPtr(objects.Cons).cdr;
+}
+
+fn echoFixnumRead(s: *objects.Stream, ch: Value) !void {
+    if (ch.isNil()) return;
+    const byte = std.math.cast(u8, ch.toFixnum()) orelse return error.InvalidArgument;
+    var buf = [_]u8{byte};
+    try writeBytesToStream(try streamOutputComponent(s), &buf);
+}
+
+fn echoCharacterRead(s: *objects.Stream, ch: Value) !void {
+    if (ch.isNil()) return;
+    const byte = std.math.cast(u8, ch.toCharacter()) orelse return error.InvalidArgument;
+    var buf = [_]u8{byte};
+    try writeBytesToStream(try streamOutputComponent(s), &buf);
+}
+
+fn readLineViaChars(heap: *heap_mod.Heap, stream: Value) !Value {
+    var line = std.ArrayList(u8){};
+    defer line.deinit(heap.backing_allocator);
+
+    var read_any = false;
+    while (true) {
+        const ch_val = try readChar(stream, null, null);
+        if (ch_val.isNil()) break;
+        read_any = true;
+        const ch = std.math.cast(u8, ch_val.toFixnum()) orelse return error.InvalidArgument;
+        if (ch == '\n') break;
+        try line.append(heap.backing_allocator, ch);
+    }
+
+    if (!read_any and line.items.len == 0) return Value.nil;
+    return try heap.allocBaseString(line.items);
+}
+
 /// Read one character from stream
 pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
-    _ = eof_error;
-    _ = eof_value;
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (!s.isInput()) return error.TypeError;
@@ -1736,7 +1852,23 @@ pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
             if (n == 0) return Value.nil;
             return Value.makeFixnum(@intCast(buf[0]));
         },
-        .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
+        .concatenated => {
+            while (true) {
+                const input = try currentConcatenatedInput(s) orelse return Value.nil;
+                const ch = try readChar(input, eof_error, eof_value);
+                if (ch.isNil()) {
+                    try advanceConcatenatedInput(s);
+                    continue;
+                }
+                return ch;
+            }
+        },
+        .echo => {
+            const ch = try readChar(try streamInputComponent(s), eof_error, eof_value);
+            try echoFixnumRead(s, ch);
+            return ch;
+        },
+        .synonym, .two_way => return try readChar(try streamInputComponent(s), eof_error, eof_value),
         .broadcast, .stdout, .stderr => return error.TypeError,
         .byte => return error.NotImplemented,
     }
@@ -1762,7 +1894,11 @@ pub fn unreadChar(char: Value, stream: Value) !void {
             s.position -= 1;
         },
         .file, .stdin => try setPushback(s, @intCast(cp)),
-        .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
+        .concatenated => {
+            const input = try currentConcatenatedInput(s) orelse return error.InvalidArgument;
+            try unreadChar(char, input);
+        },
+        .echo, .synonym, .two_way => try unreadChar(char, try streamInputComponent(s)),
         .broadcast, .stdout, .stderr => return error.TypeError,
         .byte => return error.NotImplemented,
     }
@@ -1770,7 +1906,6 @@ pub fn unreadChar(char: Value, stream: Value) !void {
 
 /// Peek at next character without consuming
 pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
-    _ = peek_type;
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (!s.isInput()) return error.TypeError;
@@ -1793,7 +1928,18 @@ pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
             try setPushback(s, buf[0]);
             return Value.makeFixnum(@intCast(buf[0]));
         },
-        .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
+        .concatenated => {
+            while (true) {
+                const input = try currentConcatenatedInput(s) orelse return Value.nil;
+                const ch = try peekChar(peek_type, input);
+                if (ch.isNil()) {
+                    try advanceConcatenatedInput(s);
+                    continue;
+                }
+                return ch;
+            }
+        },
+        .echo, .synonym, .two_way => return try peekChar(peek_type, try streamInputComponent(s)),
         .broadcast, .stdout, .stderr => return error.TypeError,
         .byte => return error.NotImplemented,
     }
@@ -1819,9 +1965,22 @@ pub fn listen(stream: Value) !Value {
             const ready = try std.posix.poll(&pollfd, 0);
             return if (ready > 0) Value.t else Value.nil;
         },
+        .concatenated => {
+            while (true) {
+                const input = try currentConcatenatedInput(s) orelse return Value.nil;
+                const ready = try listen(input);
+                if (!ready.isNil()) return ready;
+                const peeked = try peekChar(null, input);
+                if (peeked.isNil()) {
+                    try advanceConcatenatedInput(s);
+                    continue;
+                }
+                return Value.t;
+            }
+        },
+        .echo, .synonym, .two_way => return try listen(try streamInputComponent(s)),
         .byte => return error.NotImplemented,
         .broadcast, .stdout, .stderr => return error.TypeError,
-        .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
@@ -1857,12 +2016,26 @@ pub fn readCharNoHang(stream: Value) !Value {
             if (n == 0) return Value.nil;
             return Value.makeCharacter(buf[0]);
         },
-        .stdout, .stderr, .broadcast => return error.TypeError, // Output streams, not input
-        // Compound streams: delegate or return nil for now
-        .concatenated, .echo, .synonym, .two_way => {
-            // TODO: Implement proper delegation to underlying streams
-            return Value.nil;
+        .concatenated => {
+            while (true) {
+                const input = try currentConcatenatedInput(s) orelse return Value.nil;
+                const ch = try readCharNoHang(input);
+                if (ch.isNil()) {
+                    if ((try peekChar(null, input)).isNil()) {
+                        try advanceConcatenatedInput(s);
+                        continue;
+                    }
+                }
+                return ch;
+            }
         },
+        .echo => {
+            const ch = try readCharNoHang(try streamInputComponent(s));
+            try echoCharacterRead(s, ch);
+            return ch;
+        },
+        .synonym, .two_way => return try readCharNoHang(try streamInputComponent(s)),
+        .stdout, .stderr, .broadcast => return error.TypeError,
         .byte => return error.NotImplemented,
     }
 }
@@ -1880,6 +2053,7 @@ pub fn readLine(heap: *heap_mod.Heap, stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (!s.isInput()) return error.TypeError;
+    if (s.closed) return error.StreamClosed;
 
     switch (s.stream_type) {
         .string => {
@@ -1916,9 +2090,9 @@ pub fn readLine(heap: *heap_mod.Heap, stream: Value) !Value {
             if (!read_any and line.items.len == 0) return Value.nil;
             return try heap.allocBaseString(line.items);
         },
+        .concatenated, .echo, .synonym, .two_way => return try readLineViaChars(heap, stream),
         .byte => return error.NotImplemented,
         .broadcast, .stdout, .stderr => return error.TypeError,
-        .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
@@ -1981,7 +2155,15 @@ pub fn finishOutput(stream: Value) !void {
         },
         .byte => return error.NotImplemented,
         .stdin, .concatenated => return error.TypeError,
-        .echo, .synonym, .two_way => return error.NotImplemented,
+        .two_way => {
+            const pair = s.source_value.toPtr(objects.Cons);
+            try finishOutput(pair.cdr);
+        },
+        .synonym => try finishOutput(s.source_value),
+        .echo => {
+            const pair = s.source_value.toPtr(objects.Cons);
+            try finishOutput(pair.cdr);
+        },
     }
 }
 
@@ -2006,9 +2188,9 @@ pub fn forceOutput(stream: Value) !void {
             }
             if (!list.isNil()) return error.InvalidArgument;
         },
+        .echo, .synonym, .two_way => try forceOutput(try streamOutputComponent(s)),
         .byte => return error.NotImplemented,
         .stdin, .concatenated => return error.TypeError,
-        .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
@@ -2033,9 +2215,9 @@ pub fn clearOutput(stream: Value) !void {
             }
             if (!list.isNil()) return error.InvalidArgument;
         },
+        .echo, .synonym, .two_way => try clearOutput(try streamOutputComponent(s)),
         .byte => return error.NotImplemented,
         .stdin, .concatenated => return error.TypeError,
-        .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
@@ -2044,6 +2226,7 @@ pub fn clearInput(stream: Value) !void {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (!s.isInput()) return error.TypeError;
+    s.pushback_char = 0xFF;
 
     switch (s.stream_type) {
         .string => {
@@ -2060,9 +2243,14 @@ pub fn clearInput(stream: Value) !void {
                 if (n == 0) break;
             }
         },
+        .concatenated => {
+            if (try currentConcatenatedInput(s)) |input| {
+                try clearInput(input);
+            }
+        },
+        .echo, .synonym, .two_way => try clearInput(try streamInputComponent(s)),
         .byte => return error.NotImplemented,
         .broadcast, .stdout, .stderr => return error.TypeError,
-        .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
@@ -2090,10 +2278,10 @@ pub fn freshLine(stream: Value) !Value {
             try writeChar(Value.makeFixnum('\n'), stream);
             return Value.t;
         },
-        .byte => return error.NotImplemented,
         .broadcast => return error.NotImplemented,
+        .echo, .synonym, .two_way => return try freshLine(try streamOutputComponent(s)),
+        .byte => return error.NotImplemented,
         .stdin, .concatenated => return error.TypeError,
-        .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
@@ -2105,7 +2293,7 @@ pub fn filePosition(heap: *heap_mod.Heap, stream: Value, pos: ?Value) !Value {
     if (pos == null) {
         // Get current position
         switch (s.stream_type) {
-            .string => return Value.makeFixnum(@intCast(s.length)),
+            .string => return Value.makeFixnum(@intCast(if (s.direction == .output) s.length else s.position)),
             .file, .stdin, .stdout, .stderr => {
                 const fd: std.posix.fd_t = @intCast(s.file_fd);
                 const cur = try std.posix.lseek_CUR_get(fd);
@@ -2298,6 +2486,87 @@ fn scanDirectoryForPattern(
     }
 }
 
+const DirPatternTag = enum {
+    literal,
+    single,
+    recursive,
+};
+
+const DirPatternComponent = struct {
+    tag: DirPatternTag,
+    text: []const u8 = "",
+};
+
+fn joinDirPath(allocator: std.mem.Allocator, base: []const u8, component: []const u8) ![]u8 {
+    if (std.mem.eql(u8, base, ".")) return try allocator.dupe(u8, component);
+    if (std.mem.eql(u8, base, "/")) return try std.fmt.allocPrint(allocator, "/{s}", .{component});
+    return try std.fmt.allocPrint(allocator, "{s}/{s}", .{ base, component });
+}
+
+fn searchDirectoryPattern(
+    heap: *heap_mod.Heap,
+    allocator: std.mem.Allocator,
+    dir_path: []const u8,
+    components: []const DirPatternComponent,
+    index: usize,
+    name_wild: bool,
+    name_pat: []const u8,
+    type_wild: bool,
+    type_pat: []const u8,
+    result: *Value,
+) !void {
+    if (index >= components.len) {
+        try scanDirectoryForPattern(heap, dir_path, name_wild, name_pat, type_wild, type_pat, result);
+        return;
+    }
+
+    const component = components[index];
+    switch (component.tag) {
+        .literal => {
+            const next_path = try joinDirPath(allocator, dir_path, component.text);
+            defer allocator.free(next_path);
+            try searchDirectoryPattern(heap, allocator, next_path, components, index + 1, name_wild, name_pat, type_wild, type_pat, result);
+        },
+        .single => {
+            var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| {
+                return switch (err) {
+                    error.FileNotFound, error.NotDir => {},
+                    else => err,
+                };
+            };
+            defer dir.close();
+
+            var iter = dir.iterate();
+            while (try iter.next()) |entry| {
+                if (entry.kind != .directory) continue;
+                if (!wildcardMatchCaseInsensitive(entry.name, component.text)) continue;
+                const next_path = try joinDirPath(allocator, dir_path, entry.name);
+                defer allocator.free(next_path);
+                try searchDirectoryPattern(heap, allocator, next_path, components, index + 1, name_wild, name_pat, type_wild, type_pat, result);
+            }
+        },
+        .recursive => {
+            try searchDirectoryPattern(heap, allocator, dir_path, components, index + 1, name_wild, name_pat, type_wild, type_pat, result);
+
+            var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| {
+                return switch (err) {
+                    error.FileNotFound, error.NotDir => {},
+                    else => err,
+                };
+            };
+            defer dir.close();
+
+            var iter = dir.iterate();
+            while (try iter.next()) |entry| {
+                if (entry.kind != .directory) continue;
+                const next_path = try joinDirPath(allocator, dir_path, entry.name);
+                defer allocator.free(next_path);
+                try searchDirectoryPattern(heap, allocator, next_path, components, index, name_wild, name_pat, type_wild, type_pat, result);
+            }
+        },
+    }
+}
+
 /// List files in a directory matching pathname
 pub fn listDirectory(heap: *heap_mod.Heap, pathname: Value) !Value {
     var result = Value.nil;
@@ -2306,11 +2575,8 @@ pub fn listDirectory(heap: *heap_mod.Heap, pathname: Value) !Value {
     var base_dir_buf = std.ArrayList(u8){};
     defer base_dir_buf.deinit(allocator);
 
-    var suffix_components = std.ArrayList([]const u8){};
-    defer suffix_components.deinit(allocator);
-
-    var target_buf = std.ArrayList(u8){};
-    defer target_buf.deinit(allocator);
+    var dir_pattern_components = std.ArrayList(DirPatternComponent){};
+    defer dir_pattern_components.deinit(allocator);
 
     var name_wild = true;
     var type_wild = true;
@@ -2360,20 +2626,37 @@ pub fn listDirectory(heap: *heap_mod.Heap, pathname: Value) !Value {
                     dir = dir.toPtr(objects.Cons).cdr;
                 }
 
-                var saw_wild = false;
+                var saw_pattern = false;
                 while (dir.isCons()) {
                     const cons = dir.toPtr(objects.Cons);
                     const elem = cons.car;
 
-                    if (try valueIsWildcard(heap, elem)) {
-                        saw_wild = true;
+                    if (try valueIsKeywordNamed(heap, elem, "wild-inferiors")) {
+                        try dir_pattern_components.append(allocator, .{ .tag = .recursive });
+                        saw_pattern = true;
+                        dir_has_wild = true;
+                    } else if (try valueIsKeywordNamed(heap, elem, "wild")) {
+                        try dir_pattern_components.append(allocator, .{ .tag = .single, .text = "*" });
+                        saw_pattern = true;
                         dir_has_wild = true;
                     } else if (elem.isString()) {
                         const comp = elem.toPtr(objects.String).bytes();
-                        if (!saw_wild) {
+                        const is_recursive = std.mem.eql(u8, comp, "**");
+                        const is_wild = std.mem.indexOfAny(u8, comp, "*?") != null;
+
+                        if (!saw_pattern and !is_wild) {
                             try appendPathComponent(&base_dir_buf, allocator, comp);
                         } else {
-                            try suffix_components.append(allocator, comp);
+                            if (is_recursive) {
+                                try dir_pattern_components.append(allocator, .{ .tag = .recursive });
+                                dir_has_wild = true;
+                            } else if (is_wild) {
+                                try dir_pattern_components.append(allocator, .{ .tag = .single, .text = comp });
+                                dir_has_wild = true;
+                            } else {
+                                try dir_pattern_components.append(allocator, .{ .tag = .literal, .text = comp });
+                            }
+                            saw_pattern = true;
                         }
                     }
                     dir = cons.cdr;
@@ -2385,34 +2668,11 @@ pub fn listDirectory(heap: *heap_mod.Heap, pathname: Value) !Value {
 
     const base_dir = if (base_dir_buf.items.len == 0) "." else base_dir_buf.items;
     if (!dir_has_wild) {
-        try target_buf.appendSlice(allocator, base_dir);
-        for (suffix_components.items) |comp| {
-            try appendPathComponent(&target_buf, allocator, comp);
-        }
-        try scanDirectoryForPattern(heap, target_buf.items, name_wild, name_pat, type_wild, type_pat, &result);
+        try searchDirectoryPattern(heap, allocator, base_dir, dir_pattern_components.items, 0, name_wild, name_pat, type_wild, type_pat, &result);
         return result;
     }
 
-    var base_dir_handle = std.fs.cwd().openDir(base_dir, .{ .iterate = true }) catch |err| {
-        return switch (err) {
-            error.FileNotFound, error.NotDir => Value.nil,
-            else => err,
-        };
-    };
-    defer base_dir_handle.close();
-
-    var iter = base_dir_handle.iterate();
-    while (try iter.next()) |entry| {
-        if (entry.kind != .directory) continue;
-        target_buf.clearRetainingCapacity();
-        try target_buf.appendSlice(allocator, base_dir);
-        try appendPathComponent(&target_buf, allocator, entry.name);
-        for (suffix_components.items) |comp| {
-            try appendPathComponent(&target_buf, allocator, comp);
-        }
-        try scanDirectoryForPattern(heap, target_buf.items, name_wild, name_pat, type_wild, type_pat, &result);
-    }
-
+    try searchDirectoryPattern(heap, allocator, base_dir, dir_pattern_components.items, 0, name_wild, name_pat, type_wild, type_pat, &result);
     return result;
 }
 
@@ -2571,6 +2831,54 @@ test "listDirectory pathname wildcard filters by type" {
     try testing.expect(saw_nested);
 }
 
+test "listDirectory pathname wildcard supports recursive **" {
+    const testing = std.testing;
+    var heap = try heap_mod.Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.makeDir("sub");
+    try tmp.dir.makeDir("sub/deeper");
+    (try tmp.dir.createFile("top.fasl", .{})).close();
+    (try tmp.dir.createFile("sub/mid.fasl", .{})).close();
+    (try tmp.dir.createFile("sub/deeper/deep.fasl", .{})).close();
+    (try tmp.dir.createFile("sub/deeper/drop.lsp", .{})).close();
+
+    const tmp_path = try tmp.parent_dir.realpathAlloc(testing.allocator, &tmp.sub_path);
+    defer testing.allocator.free(tmp_path);
+
+    const recursive_pat_s = try std.fmt.allocPrint(testing.allocator, "{s}/**/*.fasl", .{tmp_path});
+    defer testing.allocator.free(recursive_pat_s);
+    const recursive_pat_v = try heap.allocBaseString(recursive_pat_s);
+    const recursive_pat = try pathname_prim.parseNamestring(testing.allocator, &heap, recursive_pat_v);
+    const recursive_res = try listDirectory(&heap, recursive_pat);
+
+    var count: usize = 0;
+    var saw_top = false;
+    var saw_mid = false;
+    var saw_deep = false;
+    var cur_recursive = recursive_res;
+    while (cur_recursive.isCons()) {
+        const cons = cur_recursive.toPtr(objects.Cons);
+        const pn = cons.car.toPtr(objects.Pathname);
+        try testing.expect(pn.name.isString());
+        try testing.expect(pn.type.isString());
+        const name = pn.name.toPtr(objects.String).bytes();
+        if (std.ascii.eqlIgnoreCase("top", name)) saw_top = true;
+        if (std.ascii.eqlIgnoreCase("mid", name)) saw_mid = true;
+        if (std.ascii.eqlIgnoreCase("deep", name)) saw_deep = true;
+        try testing.expect(std.ascii.eqlIgnoreCase("fasl", pn.type.toPtr(objects.String).bytes()));
+        count += 1;
+        cur_recursive = cons.cdr;
+    }
+    try testing.expectEqual(@as(usize, 3), count);
+    try testing.expect(saw_top);
+    try testing.expect(saw_mid);
+    try testing.expect(saw_deep);
+}
+
 test "pathnameMatchP matches string and pathname" {
     const testing = std.testing;
     var heap = try heap_mod.Heap.init(testing.allocator, .{});
@@ -2716,6 +3024,56 @@ test "readLine returns empty string after newline pushback" {
     const line2 = try readLine(&heap, stream);
     try testing.expect(line2.isString());
     try testing.expect(std.mem.eql(u8, line2.toPtr(objects.String).bytes(), "X"));
+}
+
+test "composite streams delegate input and echo operations" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const s1 = try makeStringInputStream(&heap, try heap.allocBaseString("a"), null, null);
+    const s2 = try makeStringInputStream(&heap, try heap.allocBaseString("bc"), null, null);
+    const cat_tail = try heap.allocCons(s2, Value.nil);
+    const cat_list = try heap.allocCons(s1, cat_tail);
+    const cat = try heap.allocConcatenatedStream(cat_list);
+
+    const peek = try peekChar(null, cat);
+    try testing.expect(peek.isFixnum());
+    try testing.expectEqual(@as(i64, 'a'), peek.toFixnum());
+
+    const a = try readChar(cat, null, null);
+    try testing.expect(a.isFixnum());
+    try testing.expectEqual(@as(i64, 'a'), a.toFixnum());
+    try unreadChar(Value.makeCharacter('a'), cat);
+    const a_again = try readChar(cat, null, null);
+    try testing.expectEqual(@as(i64, 'a'), a_again.toFixnum());
+    const b = try readChar(cat, null, null);
+    const c = try readChar(cat, null, null);
+    try testing.expectEqual(@as(i64, 'b'), b.toFixnum());
+    try testing.expectEqual(@as(i64, 'c'), c.toFixnum());
+    try testing.expect((try readChar(cat, null, null)).isNil());
+
+    const echo_in = try makeStringInputStream(&heap, try heap.allocBaseString("xy\n"), null, null);
+    const echo_out = try makeStringOutputStream(&heap);
+    const echo = try heap.allocEchoStream(echo_in, echo_out);
+    const echoed_line = try readLine(&heap, echo);
+    try testing.expect(echoed_line.isString());
+    try testing.expect(std.mem.eql(u8, echoed_line.toPtr(objects.String).bytes(), "xy"));
+    const echoed = try getOutputStreamString(&heap, echo_out);
+    try testing.expect(echoed.isString());
+    try testing.expect(std.mem.eql(u8, echoed.toPtr(objects.String).bytes(), "xy\n"));
+
+    const two_way_in = try makeStringInputStream(&heap, try heap.allocBaseString("q"), null, null);
+    const two_way_out = try makeStringOutputStream(&heap);
+    const two_way = try heap.allocTwoWayStream(two_way_in, two_way_out);
+    const q = try readCharNoHang(two_way);
+    try testing.expect(q.isCharacter());
+    try testing.expectEqual(@as(u21, 'q'), q.toCharacter());
+    try writeChar(Value.makeFixnum('!'), two_way);
+    const out = try getOutputStreamString(&heap, two_way_out);
+    try testing.expect(out.isString());
+    try testing.expect(std.mem.eql(u8, out.toPtr(objects.String).bytes(), "!"));
 }
 
 test "sysReadLine returns empty string after newline pushback" {

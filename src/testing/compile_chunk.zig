@@ -122,6 +122,11 @@ fn collectJitLiteralRoots(
                 try collectJitLiteralRoots(vm, heap, expr, roots);
             }
         },
+        .list, .list_star => |elements| {
+            for (elements) |element| {
+                try collectJitLiteralRoots(vm, heap, element, roots);
+            }
+        },
         .let => |l| {
             for (l.bindings) |binding| {
                 try collectJitLiteralRoots(vm, heap, binding.value, roots);
@@ -175,6 +180,7 @@ fn collectJitLiteralRoots(
         .hash_test => |h| try collectJitLiteralRoots(vm, heap, h.operand, roots),
         .hash_keys => |h| try collectJitLiteralRoots(vm, heap, h.operand, roots),
         .hash_alist => |h| try collectJitLiteralRoots(vm, heap, h.operand, roots),
+        .make_hash => {},
         .vec_new => |v| {
             try collectJitLiteralRoots(vm, heap, v.size, roots);
             if (v.init) |init_val| try collectJitLiteralRoots(vm, heap, init_val, roots);

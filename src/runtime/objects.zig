@@ -796,6 +796,8 @@ pub const Chunk = extern struct {
     has_rest: u8, // bool as u8 for alignment
     /// Allow unknown keywords
     allow_other_keys: u8 = 0, // bool as u8 for alignment
+    /// First local slot index used for temporary keyword/value pairs
+    key_temp_start: u8 = 0,
     /// Number of local variables
     num_locals: u8,
     /// Optimize speed level (0-3)

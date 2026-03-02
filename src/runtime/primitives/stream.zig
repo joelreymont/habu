@@ -332,8 +332,7 @@ pub fn primWriteByte(heap: *Heap, args: []const Value) !Value {
 }
 
 pub fn primFilePosition(heap: *Heap, args: []const Value) !Value {
-    _ = heap;
-    if (args.len < 1) return error.InvalidArgument;
+    if (args.len < 1 or args.len > 2) return error.InvalidArgument;
 
     const stream_val = args[0];
     if (!stream_val.isStream()) return error.InvalidArgument;
@@ -344,9 +343,26 @@ pub fn primFilePosition(heap: *Heap, args: []const Value) !Value {
     if (stream.stream_type != .file) return error.InvalidArgument;
 
     const file = std.fs.File{ .handle = stream.file_fd };
-    const pos = try file.getPos();
+    if (args.len == 1) {
+        const pos = try file.getPos();
+        return Value.makeFixnum(@intCast(pos));
+    }
 
-    return Value.makeFixnum(@intCast(pos));
+    const pos_val = args[1];
+    const new_pos: u64 = switch (pos_val.typeKind()) {
+        .keyword => blk: {
+            const kw_start = try heap.internKeyword("start");
+            const kw_end = try heap.internKeyword("end");
+            if (pos_val.raw == kw_start.raw) break :blk 0;
+            if (pos_val.raw == kw_end.raw) break :blk try file.getEndPos();
+            return error.InvalidArgument;
+        },
+        .fixnum => std.math.cast(u64, pos_val.toFixnum()) orelse return error.InvalidArgument,
+        else => return error.InvalidArgument,
+    };
+
+    try file.seekTo(new_pos);
+    return Value.t;
 }
 
 pub fn primFileLength(heap: *Heap, args: []const Value) !Value {

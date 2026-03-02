@@ -285,7 +285,7 @@ pub const Lifter = struct {
         const empty_opt: []const Ir.OptionalParam = &.{};
         const empty_key: []const Ir.KeyParam = &.{};
 
-        return try self.builder.lambda(params_slice, empty_opt, empty_key, false, null, empty_captures, body_ir);
+        return try self.builder.lambda(params_slice, empty_opt, empty_key, false, 0, null, empty_captures, body_ir);
     }
 
     /// Lift (define name value)

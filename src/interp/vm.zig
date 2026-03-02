@@ -719,6 +719,7 @@ pub const Vm = struct {
     pending_block_name: Value,
     pending_block_value: Value,
     is_returning_from_block: bool,
+    
 
     /// Random number generator state
     prng: std.Random.DefaultPrng,
@@ -840,14 +841,17 @@ pub const Vm = struct {
 
     const STACK_SIZE = 8192;
     const MAX_SECONDARY_VALUES = 20;
-    const MAX_FRAMES = 1024;
+    const MAX_FRAMES = 2048;
     const MAX_GLOBALS = 16384;
-    const MAX_CATCHES = 32;
-    const MAX_UNWINDS = 32;
-    const MAX_RESTARTS = 64;
+    // Real macro/batch workloads can build very deep dynamic-control stacks.
+    // Keep these fixed-size stacks generous until/if we move them to dynamic
+    // storage with root-scanned backing buffers.
+    const MAX_CATCHES = 256;
+    const MAX_UNWINDS = 256;
+    const MAX_RESTARTS = 128;
     const MAX_BLOCKS = MAX_FRAMES;
-    const MAX_PROGVS = 256;
-    const MAX_HANDLERS = 64;
+    const MAX_PROGVS = 2048;
+    const MAX_HANDLERS = 128;
     const MAX_SAVED_CHUNKS = 1024;
     const MAX_COMPILE_ROOTS = 4096;
     const MAX_EXT_ROOT_SNAPSHOTS = 256;
@@ -1294,10 +1298,12 @@ pub const Vm = struct {
             .builtins = try BuiltinSymbols.init(heap),
             .type_syms = try type_mod.TypeSymbols.init(heap),
         };
-        // Initialize globals to nil
+        // Initialize globals to unbound so function-only names and declared-but-unset
+        // variables do not appear value-bound.
         for (&vm.globals) |*g| {
-            g.* = Value.nil;
+            g.* = Value.unbound;
         }
+        runtime.setHeapContext(heap);
         return vm;
     }
 
@@ -2431,70 +2437,75 @@ pub const Vm = struct {
 
     fn handleSpecialVarLoad(self: *Vm, idx: u16) !Value {
         if (self.global_env) |env| {
-            if (env.lookup("*print-escape*")) |esc_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-ESCAPE*")) |esc_idx| {
                 if (idx == esc_idx) return io.getPrintEscape();
             }
-            if (env.lookup("*print-case*")) |case_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-CASE*")) |case_idx| {
                 if (idx == case_idx) return try io.getPrintCase(self.heap);
             }
-            if (env.lookup("*print-readably*")) |read_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-READABLY*")) |read_idx| {
                 if (idx == read_idx) return io.getPrintReadably();
             }
-            if (env.lookup("*print-base*")) |base_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-BASE*")) |base_idx| {
                 if (idx == base_idx) return io.getPrintBase();
             }
-            if (env.lookup("*print-radix*")) |radix_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-RADIX*")) |radix_idx| {
                 if (idx == radix_idx) return io.getPrintRadix();
             }
-            if (env.lookup("*print-gensym*")) |gensym_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-GENSYM*")) |gensym_idx| {
                 if (idx == gensym_idx) return io.getPrintGensym();
             }
-            if (env.lookup("*print-array*")) |array_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-ARRAY*")) |array_idx| {
                 if (idx == array_idx) return io.getPrintArray();
             }
         }
         return self.globals[idx];
     }
 
+    /// Look up a special CL variable by exact global name.
+    fn lookupSpecialVar(env: *const @import("../compiler/compile.zig").GlobalEnv, name: []const u8) ?u16 {
+        return env.lookup(name);
+    }
+
     fn handleSpecialVarStore(self: *Vm, idx: u16, val: Value) !void {
         if (self.global_env) |env| {
-            if (env.lookup("*print-escape*")) |esc_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-ESCAPE*")) |esc_idx| {
                 if (idx == esc_idx) {
                     io.setPrintEscape(val);
                     return;
                 }
             }
-            if (env.lookup("*print-case*")) |case_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-CASE*")) |case_idx| {
                 if (idx == case_idx) {
                     try io.setPrintCase(&self.builtins, val);
                     return;
                 }
             }
-            if (env.lookup("*print-readably*")) |read_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-READABLY*")) |read_idx| {
                 if (idx == read_idx) {
                     io.setPrintReadably(val);
                     return;
                 }
             }
-            if (env.lookup("*print-base*")) |base_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-BASE*")) |base_idx| {
                 if (idx == base_idx) {
                     try io.setPrintBase(val);
                     return;
                 }
             }
-            if (env.lookup("*print-radix*")) |radix_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-RADIX*")) |radix_idx| {
                 if (idx == radix_idx) {
                     io.setPrintRadix(val);
                     return;
                 }
             }
-            if (env.lookup("*print-gensym*")) |gensym_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-GENSYM*")) |gensym_idx| {
                 if (idx == gensym_idx) {
                     io.setPrintGensym(val);
                     return;
                 }
             }
-            if (env.lookup("*print-array*")) |array_idx| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*PRINT-ARRAY*")) |array_idx| {
                 if (idx == array_idx) {
                     io.setPrintArray(val);
                     return;
@@ -3571,7 +3582,8 @@ pub const Vm = struct {
                 // Try to convert Zig error to CL condition (type-error etc.).
                 // If a handler-case / handler-bind / catch handles it,
                 // doThrow sets up the handler call and we continue the loop.
-                if (self.trySignalCondition(err)) continue;
+                // NestedNonLocalExit propagates to cross the call barrier.
+                if (try self.trySignalCondition(err)) continue;
                 return self.doError(err);
             }
         }
@@ -3847,10 +3859,9 @@ pub const Vm = struct {
                 const frame = if (self.fp > 0) &self.frames[self.fp - 1] else null;
                 if (frame) |f| {
                     const chunk: *const Chunk = f.closure.?.code.toPtr(Chunk);
-                    // Layout: [positional] [key params] [keyword pairs]
-                    // Keyword pairs start after positional + key param slots
-                    const max_positional = chunk.arity + chunk.opt_count;
-                    const kw_pair_start: usize = max_positional + chunk.key_count;
+                    // Layout: [positional/key locals...] [keyword pairs]
+                    // Keyword pairs start at the chunk's reserved key-temp region.
+                    const kw_pair_start: usize = chunk.key_temp_start;
                     const total_argc = f.argc;
                     const positional_count = f.positional_argc;
                     const kw_pair_count = total_argc - positional_count;
@@ -3912,9 +3923,17 @@ pub const Vm = struct {
                 const a = try self.pop();
                 try self.push(try primitives.arith.div(self.heap, a, b));
             },
-            .mod => try self.binaryOp(binaryMod),
+            .mod => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(try primitives.arith.mod(a, b));
+            },
             .quot => try self.binaryOp(binaryQuot),
-            .rem => try self.binaryOp(binaryRem),
+            .rem => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(try primitives.arith.rem(a, b));
+            },
             .neg => {
                 const a = try self.pop();
                 if (!a.isFixnum()) return error.TypeMismatch;
@@ -4100,25 +4119,63 @@ pub const Vm = struct {
 
             .list_reverse => {
                 if (self.sp < 1) return error.StackUnderflow;
-                const list_idx = self.sp - 1;
-                try self.push(Value.nil); // reversed
-                const rev_idx = self.sp - 1;
+                const seq = try self.pop();
+                switch (seq.typeKind()) {
+                    .string => {
+                        const str = seq.toPtr(runtime.String);
+                        const bytes = str.bytes();
+                        const out = try self.allocString(bytes);
+                        const dest = out.toPtr(runtime.String).mutableBytes();
+                        var i: usize = 0;
+                        while (i < bytes.len) : (i += 1) {
+                            dest[i] = bytes[bytes.len - 1 - i];
+                        }
+                        try self.push(out);
+                    },
+                    .string32 => {
+                        const src = seq.toPtr(runtime.String32).codepoints();
+                        const out = try self.heap.allocString32Uninitialized(src.len);
+                        const dest = out.toPtr(runtime.String32).mutableCodepoints();
+                        var i: usize = 0;
+                        while (i < src.len) : (i += 1) {
+                            dest[i] = src[src.len - 1 - i];
+                        }
+                        try self.push(out);
+                    },
+                    .vector => {
+                        const vec = seq.toPtr(runtime.Vector);
+                        const items = vec.items();
+                        const out = try self.heap.allocVector(@intCast(items.len), @intCast(items.len));
+                        const dest = out.toPtr(runtime.Vector).items();
+                        var i: usize = 0;
+                        while (i < items.len) : (i += 1) {
+                            dest[i] = items[items.len - 1 - i];
+                        }
+                        try self.push(out);
+                    },
+                    else => {
+                        const list_idx = self.sp;
+                        try self.push(seq);
+                        try self.push(Value.nil); // reversed
+                        const rev_idx = self.sp - 1;
 
-                while (self.stack[list_idx].isCons()) {
-                    const curr_val = self.stack[list_idx];
-                    const c = curr_val.toPtr(Cons);
-                    const car = c.car;
-                    const next = c.cdr;
-                    self.stack[list_idx] = next; // root across allocCons GC
+                        while (self.stack[list_idx].isCons()) {
+                            const curr_val = self.stack[list_idx];
+                            const c = curr_val.toPtr(Cons);
+                            const car = c.car;
+                            const next = c.cdr;
+                            self.stack[list_idx] = next; // root across allocCons GC
 
-                    const rev = self.stack[rev_idx];
-                    self.stack[rev_idx] = try self.allocCons(car, rev);
+                            const rev = self.stack[rev_idx];
+                            self.stack[rev_idx] = try self.allocCons(car, rev);
+                        }
+                        if (self.stack[list_idx] != Value.nil) return error.TypeMismatch;
+
+                        const result = self.stack[rev_idx];
+                        self.sp = list_idx;
+                        try self.push(result);
+                    },
                 }
-                if (self.stack[list_idx] != Value.nil) return error.TypeMismatch;
-
-                const result = self.stack[rev_idx];
-                self.sp = list_idx;
-                try self.push(result);
             },
 
             .list_nth => {
@@ -4283,7 +4340,15 @@ pub const Vm = struct {
             },
             .vectorp => {
                 const a = try self.pop();
-                try self.push(if (a.isVector()) Value.t else Value.nil);
+                const is_vector_like = switch (a.typeKind()) {
+                    .vector => true,
+                    .array => blk: {
+                        const arr = a.toPtr(runtime.Array);
+                        break :blk arr.rank == 1;
+                    },
+                    else => false,
+                };
+                try self.push(if (is_vector_like) Value.t else Value.nil);
             },
             .closurep => {
                 const a = try self.pop();
@@ -4364,27 +4429,53 @@ pub const Vm = struct {
             .vec_ref => {
                 const idx_val = try self.pop();
                 const vec_val = try self.pop();
-                if (!vec_val.isVector() or !idx_val.isFixnum()) return error.TypeMismatch;
-                const vec = vec_val.toPtr(runtime.Vector);
+                if (!idx_val.isFixnum()) return error.TypeMismatch;
                 const idx_signed = idx_val.toFixnum();
                 if (idx_signed < 0) return error.TypeMismatch;
                 const idx: usize = @intCast(idx_signed);
-                if (idx >= vec.length) return error.TypeMismatch;
-                try self.push(vec.get(idx));
+                switch (vec_val.typeKind()) {
+                    .vector => {
+                        const vec = vec_val.toPtr(runtime.Vector);
+                        if (idx >= vec.length) return error.TypeMismatch;
+                        try self.push(vec.get(idx));
+                    },
+                    .array => {
+                        const arr = vec_val.toPtr(runtime.Array);
+                        if (arr.rank != 1) return error.TypeMismatch;
+                        if (idx >= arr.dimensions[0]) return error.TypeMismatch;
+                        const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                        try self.push(data[idx]);
+                    },
+                    else => return error.TypeMismatch,
+                }
             },
             .vec_set => {
                 const val = try self.pop();
                 const idx_val = try self.pop();
                 const vec_val = try self.pop();
-                if (!vec_val.isVector() or !idx_val.isFixnum()) return error.TypeMismatch;
-                const vec = vec_val.toPtr(runtime.Vector);
+                if (!idx_val.isFixnum()) return error.TypeMismatch;
                 const idx_signed = idx_val.toFixnum();
                 if (idx_signed < 0) return error.TypeMismatch;
                 const idx: usize = @intCast(idx_signed);
-                if (idx >= vec.length) return error.TypeMismatch;
-                vec.set(idx, val);
-                self.writeBarrierStore(vec_val, val);
-                try self.push(val); // Return the value that was set
+                switch (vec_val.typeKind()) {
+                    .vector => {
+                        const vec = vec_val.toPtr(runtime.Vector);
+                        if (idx >= vec.length) return error.TypeMismatch;
+                        vec.set(idx, val);
+                        self.writeBarrierStore(vec_val, val);
+                        try self.push(val);
+                    },
+                    .array => {
+                        const arr = vec_val.toPtr(runtime.Array);
+                        if (arr.rank != 1) return error.TypeMismatch;
+                        if (idx >= arr.dimensions[0]) return error.TypeMismatch;
+                        const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                        data[idx] = val;
+                        self.writeBarrierStore(vec_val, val);
+                        try self.push(val);
+                    },
+                    else => return error.TypeMismatch,
+                }
             },
             .elt_set => {
                 // Polymorphic: set element in vector or list
@@ -4696,6 +4787,22 @@ pub const Vm = struct {
                         if (idx >= str32.length) return error.TypeMismatch;
                         try self.push(Value.makeCharacter(@intCast(str32.codepoints()[idx])));
                     },
+                    .array => {
+                        const arr = str_val.toPtr(runtime.Array);
+                        if (arr.rank != 1) return error.TypeMismatch;
+                        if (idx >= arr.dimensions[0]) return error.TypeMismatch;
+                        const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                        const ch = data[idx];
+                        switch (ch.typeKind()) {
+                            .char => try self.push(ch),
+                            .fixnum => {
+                                const cp = ch.toFixnum();
+                                if (cp < 0 or cp > std.math.maxInt(u21)) return error.TypeMismatch;
+                                try self.push(Value.makeCharacter(@intCast(cp)));
+                            },
+                            else => return error.TypeMismatch,
+                        }
+                    },
                     else => return error.TypeMismatch,
                 }
             },
@@ -4739,6 +4846,14 @@ pub const Vm = struct {
                         if (idx >= str32.length) return error.TypeMismatch;
                         if (char_int > std.math.maxInt(u21)) return error.TypeMismatch;
                         str32.mutableCodepoints()[idx] = @intCast(char_int);
+                    },
+                    .array => {
+                        const arr = str_val.toPtr(runtime.Array);
+                        if (arr.rank != 1) return error.TypeMismatch;
+                        if (idx >= arr.dimensions[0]) return error.TypeMismatch;
+                        if (char_int > std.math.maxInt(u21)) return error.TypeMismatch;
+                        const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                        data[idx] = Value.makeCharacter(@intCast(char_int));
                     },
                     else => return error.TypeMismatch,
                 }
@@ -5130,17 +5245,8 @@ pub const Vm = struct {
             .ash => {
                 const count_val = try self.pop();
                 const n_val = try self.pop();
-                if (!n_val.isFixnum() or !count_val.isFixnum()) return error.TypeMismatch;
-                const n = n_val.toFixnum();
-                const count = count_val.toFixnum();
-                const result = if (count >= 0)
-                    n << @intCast(@min(count, 63))
-                else if (count == std.math.minInt(i64))
-                    // -minInt overflows; shift by 63+ zeros everything
-                    if (n >= 0) @as(i64, 0) else @as(i64, -1)
-                else
-                    n >> @intCast(@min(-count, 63));
-                try self.push(Value.makeFixnum(result));
+                const result = try arith.ash(n_val, count_val);
+                try self.push(result);
             },
             .lognand => {
                 const b = try self.pop();
@@ -5371,19 +5477,28 @@ pub const Vm = struct {
                 const len_signed = len_val.toFixnum();
                 if (len_signed < 0) return error.TypeMismatch;
                 const len: usize = @intCast(len_signed);
-                // If char provided, use it; otherwise use space
-                const fill_char: u8 = if (char_val.isCharacter()) blk: {
+
+                if (char_val.isCharacter()) {
                     const cp = char_val.toCharacter();
-                    if (cp > 255) return error.TypeMismatch;
-                    break :blk @intCast(cp);
-                } else if (char_val == Value.nil)
-                    ' '
-                else
+                    if (cp <= 255) {
+                        const str = try self.allocStringUninitialized(len);
+                        const str_obj = str.toPtr(String);
+                        @memset(str_obj.data[0..len], @intCast(cp));
+                        try self.push(str);
+                    } else {
+                        const str = try self.heap.allocString32Uninitialized(len);
+                        const str_obj = str.toPtr(runtime.String32);
+                        @memset(str_obj.mutableCodepoints(), cp);
+                        try self.push(str);
+                    }
+                } else if (char_val == Value.nil) {
+                    const str = try self.allocStringUninitialized(len);
+                    const str_obj = str.toPtr(String);
+                    @memset(str_obj.data[0..len], ' ');
+                    try self.push(str);
+                } else {
                     return error.TypeMismatch;
-                const str = try self.allocStringUninitialized(len);
-                const str_obj = str.toPtr(String);
-                @memset(str_obj.data[0..len], fill_char);
-                try self.push(str);
+                }
             },
             .math_ext => {
                 const sub_op_byte = self.readU8();
@@ -5526,19 +5641,34 @@ pub const Vm = struct {
             },
             .intern => {
                 const name_val = self.resolveForwardedValue(try self.pop());
-                const sym = switch (name_val.typeKind()) {
-                    .string => try self.intern(name_val.toPtr(String).bytes()),
-                    .symbol => try self.intern(name_val.toPtr(Symbol).getName()),
-                    .keyword => try self.intern(name_val.toPtr(runtime.Keyword).getName()),
-                    .nil => try self.intern("nil"),
-                    .t => try self.intern("t"),
+                const name_bytes: []const u8 = switch (name_val.typeKind()) {
+                    .string => name_val.toPtr(String).bytes(),
+                    .symbol => name_val.toPtr(Symbol).getName(),
+                    .keyword => name_val.toPtr(runtime.Keyword).getName(),
+                    .nil => "nil",
+                    .t => "t",
                     .char => blk: {
                         const cp = name_val.toCharacter();
                         if (cp > 0xFF) return error.TypeMismatch;
                         const byte = [_]u8{@intCast(cp)};
-                        break :blk try self.intern(&byte);
+                        break :blk &byte;
                     },
                     else => return error.TypeMismatch,
+                };
+                const sym = if (self.heap.internCurrentPackagePreservingCase(name_bytes)) |val|
+                    val
+                else |_| blk: {
+                    var tmp: ?[]u8 = null;
+                    defer if (tmp) |b| self.allocator.free(b);
+                    var stable = name_bytes;
+                    if (self.bytesInHeap(name_bytes)) {
+                        const copy = try self.allocator.alloc(u8, name_bytes.len);
+                        @memcpy(copy, name_bytes);
+                        tmp = copy;
+                        stable = copy;
+                    }
+                    _ = try self.collectGarbage();
+                    break :blk try self.heap.internCurrentPackagePreservingCase(stable);
                 };
                 try self.push(sym);
                 // Secondary value: status keyword (:internal)
@@ -5754,7 +5884,15 @@ pub const Vm = struct {
             },
             .check_vector => {
                 const val = try self.peek(0);
-                if (!val.isVector()) return error.TypeMismatch;
+                const is_vector_like = switch (val.typeKind()) {
+                    .vector => true,
+                    .array => blk: {
+                        const arr = val.toPtr(runtime.Array);
+                        break :blk arr.rank == 1;
+                    },
+                    else => false,
+                };
+                if (!is_vector_like) return error.TypeMismatch;
             },
             .check_closure => {
                 const val = try self.peek(0);
@@ -5898,7 +6036,21 @@ pub const Vm = struct {
                     var disasm_buf = std.ArrayList(u8){};
                     defer disasm_buf.deinit(self.allocator);
                     if (disasm.disassembleRuntime(self.chunk, disasm_buf.writer(self.allocator))) {
-                        std.debug.print("TRACE progv disasm begin ip={d}\n{s}TRACE progv disasm end\n", .{ self.ip, disasm_buf.items });
+                        std.debug.print("TRACE progv disasm begin ip={d}\n{s}", .{ self.ip, disasm_buf.items });
+                        const consts = self.chunk.getConstants();
+                        std.debug.print("TRACE progv constants ({d}):\n", .{consts.len});
+                        for (consts, 0..) |c, ci| {
+                            switch (c.typeKind()) {
+                                .nil => std.debug.print("  [{d}] nil\n", .{ci}),
+                                .t => std.debug.print("  [{d}] t\n", .{ci}),
+                                .fixnum => std.debug.print("  [{d}] fixnum {d}\n", .{ ci, c.toFixnum() }),
+                                .symbol => std.debug.print("  [{d}] symbol {s}\n", .{ ci, c.toPtr(Symbol).getName() }),
+                                .keyword => std.debug.print("  [{d}] keyword {s}\n", .{ ci, c.toPtr(runtime.Keyword).getName() }),
+                                .string => std.debug.print("  [{d}] string \"{s}\"\n", .{ ci, c.toPtr(String).bytes() }),
+                                else => std.debug.print("  [{d}] {s} raw=0x{x:0>16}\n", .{ ci, @tagName(c.typeKind()), c.raw }),
+                            }
+                        }
+                        std.debug.print("TRACE progv disasm end\n", .{});
                     } else |derr| {
                         std.debug.print("TRACE progv disasm error={s}\n", .{@errorName(derr)});
                     }
@@ -5990,6 +6142,7 @@ pub const Vm = struct {
 
             .pop_unwind => {
                 _ = self.readI16(); // Skip unused operand
+                
                 // For normal exit, pop the unwind frame (doThrow/doError/doReturnFrom already popped for unwind case)
                 if (!self.is_unwinding and !self.is_returning_from_block and self.unwind_sp > 0) {
                     self.unwind_sp -= 1;
@@ -6013,11 +6166,11 @@ pub const Vm = struct {
                 } else if (self.is_returning_from_block) {
                     self.is_returning_from_block = false;
 
-                    // Continue return-from
                     const name_raw = self.pending_block_name;
                     const value = self.pending_block_value;
                     self.pending_block_name = Value.nil;
                     self.pending_block_value = Value.nil;
+
                     try self.doReturnFrom(name_raw, value);
                 }
             },
@@ -6439,13 +6592,19 @@ pub const Vm = struct {
             },
             .decode_float => {
                 const val = try self.pop();
-                const result = try arith.decodeFloat(self.heap, val);
-                try self.push(result);
+                const result = try arith.decodeFloat(val);
+                try self.push(result[0]);
+                self.secondary_values[0] = result[1];
+                self.secondary_values[1] = result[2];
+                self.secondary_values_count = 2;
             },
             .integer_decode_float => {
                 const val = try self.pop();
-                const result = try arith.integerDecodeFloat(self.heap, val);
-                try self.push(result);
+                const result = try arith.integerDecodeFloat(val);
+                try self.push(result[0]);
+                self.secondary_values[0] = result[1];
+                self.secondary_values[1] = result[2];
+                self.secondary_values_count = 2;
             },
             .float_radix => {
                 const val = try self.pop();
@@ -6926,6 +7085,12 @@ pub const Vm = struct {
                 const result = try io.peekChar(null, stream);
                 try self.push(result);
             },
+            .unread_char_stream => {
+                const stream = try self.pop();
+                const ch = try self.pop();
+                try io.unreadChar(ch, stream);
+                try self.push(Value.nil);
+            },
             .open_file => {
                 const direction = try self.pop();
                 const filename = try self.pop();
@@ -6939,8 +7104,7 @@ pub const Vm = struct {
             },
             .make_string_input_stream => {
                 const str = try self.pop();
-                if (!str.isString()) return error.TypeMismatch;
-                const stream = try self.heap.allocStringInputStream(str);
+                const stream = try io.makeStringInputStream(self.heap, str, null, null);
                 try self.push(stream);
             },
             .make_string_output_stream => {
@@ -7093,6 +7257,13 @@ pub const Vm = struct {
             .file_position => {
                 const stream_val = try self.pop();
                 const result = try primitives.stream.primFilePosition(self.heap, &[_]Value{stream_val});
+                try self.push(result);
+            },
+
+            .set_file_position => {
+                const pos_val = try self.pop();
+                const stream_val = try self.pop();
+                const result = try primitives.stream.primFilePosition(self.heap, &[_]Value{ stream_val, pos_val });
                 try self.push(result);
             },
 
@@ -8024,7 +8195,7 @@ pub const Vm = struct {
                         const names = [_][]const u8{ "COMMON-LISP:*READ-SUPPRESS*", "CL:*READ-SUPPRESS*", "*READ-SUPPRESS*" };
                         for (names) |gname| {
                             if (ge.lookup(gname)) |idx| {
-                                if (idx < self.num_globals and !self.globals[idx].isNil()) break :blk true;
+                                if (idx < self.num_globals and self.globals[idx].raw != Value.nil.raw and self.globals[idx].raw != Value.unbound.raw) break :blk true;
                             }
                         }
                     }
@@ -8304,11 +8475,9 @@ pub const Vm = struct {
             // Numeric predicates
             .abs => {
                 const val = try self.pop();
-                if (val.isFixnum()) {
-                    const n = val.toFixnum();
-                    // abs(minInt) overflows
-                    if (n == std.math.minInt(i64)) return error.TypeMismatch;
-                    try self.push(Value.makeFixnum(if (n < 0) -n else n));
+                if (val.isFixnum() or val.isBignum()) {
+                    const result = try arith.abs_val(val);
+                    try self.push(result);
                 } else if (val.isFloat()) {
                     try self.push(Value.makeFloat(@abs(val.toFloat())));
                 } else if (val.typeKind() == .rational) {
@@ -8553,7 +8722,7 @@ pub const Vm = struct {
         // - Consumes multiple values (mv_list, mv_bind — they clear it themselves)
         // - Returns from a function (ret — caller may need secondary values)
         switch (op) {
-            .values, .values_list, .ret, .get_decoded_time, .decode_universal_time, .function_lambda_expression, .jmp, .jmp_nil, .jmp_not_nil, .push_block, .pop_block, .mv_list, .mv_bind, .floor, .ceiling, .round, .call, .tail_call, .read_from_string, .hash_get, .intern => {},
+            .values, .values_list, .ret, .get_decoded_time, .decode_universal_time, .decode_float, .integer_decode_float, .function_lambda_expression, .jmp, .jmp_nil, .jmp_not_nil, .push_block, .pop_block, .mv_list, .mv_bind, .floor, .ceiling, .round, .call, .tail_call, .read_from_string, .hash_get, .intern, .pop_progv, .pop_catch, .pop_unwind, .push_progv, .push_catch, .push_unwind => {},
             else => {
                 self.secondary_values_count = 0;
             },
@@ -8590,31 +8759,59 @@ pub const Vm = struct {
             std.debug.print("\n", .{});
         }
 
-        // First, check if there's an unwind-protect that needs cleanup
-        // Unwind frames take precedence - we must run cleanup before continuing
+        // Check if there's an unwind-protect that needs cleanup.
+        // Before running cleanup, check if a matching catch exists INSIDE the
+        // unwind scope. If so, the catch should handle the throw directly —
+        // cleanup only runs when the throw CROSSES the unwind-protect boundary
+        // (i.e., the matching catch is OUTSIDE the unwind scope).
+        //
+        // This is required for CL semantics:
+        //   (unwind-protect (catch 'tag (throw 'tag val)) cleanup)
+        // The catch is inside the unwind-protect, so cleanup should NOT run
+        // during the throw — only on normal exit or when throw crosses outward.
         if (self.unwind_sp > 0) {
-            // Pop the unwind frame
-            self.unwind_sp -= 1;
-            const unwind_frame = self.unwind_stack[self.unwind_sp];
+            const current_unwind = self.unwind_sp - 1;
+            var skip_unwind = false;
 
-            // Save throw state for after cleanup
-            self.pending_throw_tag = tag;
-            self.pending_throw_value = value;
-            self.is_unwinding = true;
-
-            // Jump to cleanup code with saved stack/frame state
-            self.chunk = unwind_frame.chunk;
-            self.ip = unwind_frame.cleanup_ip;
-            // Restore sp/fp to the state when push_unwind was executed
-            // so cleanup runs with the correct stack context
-            // Validate before restore to guard against corruption
-            if (unwind_frame.unwind_sp > STACK_SIZE or unwind_frame.unwind_fp > MAX_FRAMES) {
-                return self.invalidOpcode("throw.unwind-stack-corrupt");
+            // Search catch frames for a matching tag established INSIDE the unwind frame
+            {
+                var ci = self.catch_sp;
+                while (ci > 0) {
+                    ci -= 1;
+                    const cf = self.catch_stack[ci];
+                    if (tag.raw == cf.tag.raw) {
+                        // This catch matches. If it was established AFTER the unwind
+                        // frame (i.e., it's nested inside it), then the catch should
+                        // handle the throw before the unwind cleanup runs.
+                        if (cf.unwind_depth > current_unwind) {
+                            skip_unwind = true;
+                        }
+                        break;
+                    }
+                }
             }
-            self.sp = unwind_frame.unwind_sp;
-            self.fp = unwind_frame.unwind_fp;
-            // pop_unwind will re-throw after cleanup completes
-            return;
+
+            if (!skip_unwind) {
+                // Pop the unwind frame and run cleanup
+                self.unwind_sp -= 1;
+                const unwind_frame = self.unwind_stack[self.unwind_sp];
+
+                // Save throw state for after cleanup
+                self.pending_throw_tag = tag;
+                self.pending_throw_value = value;
+                self.is_unwinding = true;
+
+                // Jump to cleanup code with saved stack/frame state
+                self.chunk = unwind_frame.chunk;
+                self.ip = unwind_frame.cleanup_ip;
+                if (unwind_frame.unwind_sp > STACK_SIZE or unwind_frame.unwind_fp > MAX_FRAMES) {
+                    return self.invalidOpcode("throw.unwind-stack-corrupt");
+                }
+                self.sp = unwind_frame.unwind_sp;
+                self.fp = unwind_frame.unwind_fp;
+                // pop_unwind will re-throw after cleanup completes
+                return;
+            }
         }
 
         // Handler-bind dispatch for signaled conditions.
@@ -8976,7 +9173,9 @@ pub const Vm = struct {
                         if (idx_signed >= 0) {
                             const idx: usize = @intCast(idx_signed);
                             if (idx < MAX_GLOBALS) {
-                                self.globals[idx] = old_value;
+                                // Use storeGlobal to trigger handleSpecialVarStore
+                                // so Zig-level print settings stay in sync
+                                try self.storeGlobal(@intCast(idx), old_value);
                             }
                         }
                     },
@@ -8998,63 +9197,87 @@ pub const Vm = struct {
         }
     }
 
+    /// Jump to a block frame by index, restoring all state.
+    fn jumpToBlock(self: *Vm, bi: usize, value: Value) Error!void {
+        const frame = self.block_stack[bi];
+        self.block_sp = bi;
+        try self.restoreControlDepths(
+            frame.catch_depth,
+            frame.unwind_depth,
+            frame.restart_depth,
+            frame.progv_depth,
+            frame.handler_depth,
+            null,
+        );
+        self.pending_handler_restore_depth = null;
+        if (frame.block_sp > STACK_SIZE or frame.block_fp > MAX_FRAMES) {
+            return self.invalidOpcode("return-from.block-stack-corrupt");
+        }
+        self.chunk = frame.chunk;
+        self.ip = frame.exit_ip;
+        self.sp = frame.block_sp;
+        self.fp = frame.block_fp;
+        try self.push(value);
+    }
+
     fn doReturnFrom(self: *Vm, name_raw: Value, value: Value) Error!void {
-        // First, check if there's an unwind-protect that needs cleanup
-        // Unwind frames take precedence - we must run cleanup before continuing
-        if (self.unwind_sp > 0) {
-            // Pop the unwind frame
-            self.unwind_sp -= 1;
-            const unwind_frame = self.unwind_stack[self.unwind_sp];
-
-            // Save return-from state for after cleanup
-            self.pending_block_name = name_raw;
-            self.pending_block_value = value;
-            self.is_returning_from_block = true;
-
-            // Jump to cleanup code with saved stack/frame state
-            self.chunk = unwind_frame.chunk;
-            self.ip = unwind_frame.cleanup_ip;
-            if (unwind_frame.unwind_sp > STACK_SIZE or unwind_frame.unwind_fp > MAX_FRAMES) {
-                return self.invalidOpcode("return-from.unwind-stack-corrupt");
+        // Search for matching block frame first
+        var target_block: ?usize = null;
+        {
+            var i = self.block_sp;
+            while (i > 0) {
+                i -= 1;
+                const frame = self.block_stack[i];
+                if (name_raw == frame.name_raw) {
+                    target_block = i;
+                    break;
+                }
             }
-            self.sp = unwind_frame.unwind_sp;
-            self.fp = unwind_frame.unwind_fp;
-            // pop_unwind will re-invoke return-from after cleanup completes
+        }
+
+        if (self.trace_block_miss and self.unwind_sp > 0) {
+            const req_name = if (name_raw.isSymbol()) name_raw.toPtr(@import("../runtime/objects.zig").Symbol).getName() else if (name_raw.isNil()) "nil" else @tagName(name_raw.typeKind());
+            const target_uwdepth: usize = if (target_block) |bi| self.block_stack[bi].unwind_depth else 999;
+            std.debug.print(
+                "TRACE rfb: name={s} target={?d} uwdepth={d} block_sp={d} unwind_sp={d} fp={d} chunk={s} is_rfb={}\n",
+                .{ req_name, target_block, target_uwdepth, self.block_sp, self.unwind_sp, self.fp, chunkTraceName(self.chunk), self.is_returning_from_block },
+            );
+        }
+
+
+
+        // If we found a matching block, check unwind-protect interaction
+        if (target_block) |bi| {
+            if (self.unwind_sp > 0) {
+                const current_unwind = self.unwind_sp - 1;
+                // Block is INSIDE the unwind scope — skip cleanup, jump directly
+                if (self.block_stack[bi].unwind_depth > current_unwind) {
+                    self.jumpToBlock(bi, value) catch |e| return e;
+                    return;
+                }
+                // Block is OUTSIDE the unwind scope — run cleanup first
+                self.unwind_sp -= 1;
+                const unwind_frame = self.unwind_stack[current_unwind];
+
+                self.pending_block_name = name_raw;
+                self.pending_block_value = value;
+                self.is_returning_from_block = true;
+
+                self.chunk = unwind_frame.chunk;
+                self.ip = unwind_frame.cleanup_ip;
+                if (unwind_frame.unwind_sp > STACK_SIZE or unwind_frame.unwind_fp > MAX_FRAMES) {
+                    return self.invalidOpcode("return-from.unwind-stack-corrupt");
+                }
+                self.sp = unwind_frame.unwind_sp;
+                self.fp = unwind_frame.unwind_fp;
+                return;
+            }
+            // No unwind frames — jump directly
+            self.jumpToBlock(bi, value) catch |e| return e;
             return;
         }
 
-        // No unwind frames - search for matching block frame.
-        // Scan non-destructively so trace paths can report the full block stack.
-        var i = self.block_sp;
-        while (i > 0) {
-            i -= 1;
-            const frame = self.block_stack[i];
-
-            // Check if name matches (using raw value identity)
-            if (name_raw == frame.name_raw) {
-                self.block_sp = i;
-                try self.restoreControlDepths(
-                    frame.catch_depth,
-                    frame.unwind_depth,
-                    frame.restart_depth,
-                    frame.progv_depth,
-                    frame.handler_depth,
-                    null,
-                );
-                self.pending_handler_restore_depth = null;
-                // Found matching block - restore state and jump
-                if (frame.block_sp > STACK_SIZE or frame.block_fp > MAX_FRAMES) {
-                    return self.invalidOpcode("return-from.block-stack-corrupt");
-                }
-                self.chunk = frame.chunk;
-                self.ip = frame.exit_ip;
-                self.sp = frame.block_sp;
-                self.fp = frame.block_fp;
-                // Push the return value as result
-                try self.push(value);
-                return;
-            }
-        }
+        // No matching block found — error
         if (self.trace_block_miss or self.trace_error_context) {
             const req_name = if (name_raw.isSymbol()) name_raw.toPtr(Symbol).getName() else @tagName(name_raw.typeKind());
             std.debug.print(
@@ -9091,9 +9314,9 @@ pub const Vm = struct {
                 );
             }
         }
-        // Keep prior behavior: exhausted search pops all block frames.
-        self.block_sp = 0;
-        // No matching block found
+        // No matching block found — do NOT clear block_sp as that would destroy
+        // outer blocks (e.g., test-loop) that are unrelated to this return-from.
+        // The error will be caught by trySignalCondition/handler-case.
         return error.NoMatchingBlock;
     }
 
@@ -9131,33 +9354,45 @@ pub const Vm = struct {
     }
 
     /// Map Zig VM errors to CL condition type symbols.
+    /// Uses anyerror because errors arrive from many subsystems (primitives, compiler, I/O).
+    /// Unmapped errors (Halt, OutOfMemory, etc.) return null and propagate as Zig errors.
     fn zigErrorToConditionSym(self: *const Vm, err: anyerror) ?Value {
         const b = self.builtins;
-        if (err == error.TypeMismatch) return b.sym_type_error;
-        if (err == error.InvalidTypeSpecifier) return b.sym_type_error;
-        if (err == error.InvalidArgument) return b.sym_program_error;
-        if (err == error.DivisionByZero) return b.sym_division_by_zero;
-        if (err == error.UnboundSymbol) return b.sym_unbound_variable;
-        if (err == error.FileNotFound) return b.sym_file_error;
-        if (err == error.InvalidSyntax) return b.sym_parse_error;
-        if (err == error.StackOverflow) return b.sym_control_error;
-        if (err == error.Overflow) return b.sym_arithmetic_error;
-        if (err == error.UserError) return b.sym_simple_error;
-        // Don't map internal VM errors — these must propagate as Zig errors
-        return null;
+        return switch (err) {
+            error.TypeMismatch, error.TypeError, error.InvalidTypeSpecifier, error.UnknownTypeSpecifier => b.sym_type_error,
+            error.DivisionByZero => b.sym_division_by_zero,
+            error.Overflow => b.sym_arithmetic_error,
+            error.UnboundSymbol, error.UnboundSlot => b.sym_unbound_variable,
+            error.InvalidArgument, error.InvalidOpcode, error.InvalidConstant, error.InvalidRange, error.OutOfRange => b.sym_program_error,
+            error.StackOverflow, error.NoMatchingBlock => b.sym_control_error,
+            error.FileNotFound, error.InvalidPath => b.sym_file_error,
+            error.StreamClosed, error.NotOutputStreamError, error.NotInputStreamError => b.sym_stream_error,
+            error.PackageExists, error.InvalidPackage, error.SymConflict => b.sym_package_error,
+            error.InvalidSyntax => b.sym_parse_error,
+            error.UserError, error.NotImplemented => b.sym_simple_error,
+            else => null,
+        };
     }
 
     /// Try to signal a Zig error as a CL condition via doThrow.
     /// Returns true if a handler/catch was found and execution should continue.
-    fn trySignalCondition(self: *Vm, err: anyerror) bool {
+    fn trySignalCondition(self: *Vm, err: anyerror) !bool {
         if (self.catch_sp == 0 and self.handler_sp == 0) return false;
         const condition_type = self.zigErrorToConditionSym(err) orelse return false;
         // Build condition pair: (type . (error-name . nil))
-        const err_name_str = self.allocString(@errorName(err)) catch return false;
-        const payload = self.allocCons(err_name_str, Value.nil) catch return false;
-        const condition_pair = self.allocCons(condition_type, payload) catch return false;
-        self.doThrow(self.builtins.sym_condition_tag, condition_pair) catch return false;
-        return true;
+        const err_name_str = try self.allocString(@errorName(err));
+        const payload = try self.allocCons(err_name_str, Value.nil);
+        const condition_pair = try self.allocCons(condition_type, payload);
+        // doThrow may return NestedNonLocalExit when the matching handler is
+        // across a call barrier.  That MUST propagate so callFromStack can
+        // relay the throw.  ControlTransfer means doThrow found a handler and
+        // set up the jump — the execute loop should continue.
+        self.doThrow(self.builtins.sym_condition_tag, condition_pair) catch |e| {
+            if (e == error.ControlTransfer) return true;
+            if (e == error.NestedNonLocalExit) return e;
+            return e;
+        };
+        return false;
     }
 
     fn mapError(self: *Vm, err: anyerror) Error {
@@ -9368,6 +9603,25 @@ pub const Vm = struct {
     // ========================================================================
     // Format string support
     // ========================================================================
+
+    /// Look up *standard-output*. Returns the stream value if bound, otherwise
+    /// falls back to nil (caller should use system stdout).
+    fn lookupStandardOutput(self: *Vm) Value {
+        // Intern *STANDARD-OUTPUT* in the CL package and look up its value
+        const sym_opt: ?Value = if (self.heap.internInPackage("COMMON-LISP", "*STANDARD-OUTPUT*")) |val_opt|
+            val_opt
+        else |_|
+            null;
+        if (sym_opt) |s| {
+            if (self.lookupSymbolValueCell(s)) |val_opt| {
+                if (val_opt) |val| {
+                    if (val.isStream()) return val;
+                }
+            } else |_| {}
+        }
+        // Fallback: return nil (caller will use system stdout)
+        return Value.nil;
+    }
 
     fn doFormat(self: *Vm, dest: Value, control: Value, args: []const Value) Error!Value {
         const control_str = control.toPtr(runtime.String);
@@ -9638,87 +9892,16 @@ pub const Vm = struct {
                     },
                     '(' => {
                         // Case conversion: ~(...~)
-                        // Find matching ~)
                         const start = scan_idx + 1;
-                        var depth: usize = 1;
-                        var end = start;
-                        while (end < fmt.len and depth > 0) {
-                            if (end + 1 < fmt.len and fmt[end] == '~') {
-                                if (fmt[end + 1] == '(') {
-                                    depth += 1;
-                                    end += 2;
-                                } else if (fmt[end + 1] == ')') {
-                                    depth -= 1;
-                                    if (depth == 0) break;
-                                    end += 2;
-                                } else {
-                                    end += 1;
-                                }
-                            } else {
-                                end += 1;
-                            }
-                        }
-                        if (depth != 0) {
-                            // Unmatched ~(, skip it
+                        const end = self.findMatchingFormatDirective(fmt, start, '(', ')') orelse {
                             i += 2;
                             continue;
-                        }
+                        };
 
                         const body = fmt[start..end];
-
-                        // Recursively format the body — process directives inline
                         const body_start_len = result.items.len;
-                        var bj: usize = 0;
-                        while (bj < body.len) {
-                            if (body[bj] == '~' and bj + 1 < body.len) {
-                                switch (body[bj + 1]) {
-                                    'A', 'a' => {
-                                        if (arg_idx < args.len) {
-                                            try self.formatValueAesthetic(args[arg_idx], &result);
-                                            arg_idx += 1;
-                                        }
-                                        bj += 2;
-                                    },
-                                    'S', 's' => {
-                                        if (arg_idx < args.len) {
-                                            // Write value with escape (prin1 style)
-                                            var buf: [256]u8 = undefined;
-                                            var fbs = std.io.fixedBufferStream(&buf);
-                                            try io.writeValueToBuffer(args[arg_idx], fbs.writer().any());
-                                            try result.appendSlice(self.allocator, fbs.getWritten());
-                                            arg_idx += 1;
-                                        }
-                                        bj += 2;
-                                    },
-                                    'D', 'd' => {
-                                        if (arg_idx < args.len) {
-                                            try self.formatValueAesthetic(args[arg_idx], &result);
-                                            arg_idx += 1;
-                                        }
-                                        bj += 2;
-                                    },
-                                    '%' => {
-                                        try result.append(self.allocator, '\n');
-                                        bj += 2;
-                                    },
-                                    else => {
-                                        try result.append(self.allocator, body[bj]);
-                                        bj += 1;
-                                    },
-                                }
-                            } else {
-                                try result.append(self.allocator, body[bj]);
-                                bj += 1;
-                            }
-                        }
-
-                        // Apply case conversion to the added segment
-                        const segment = result.items[body_start_len..];
-                        for (segment) |*c| {
-                            if (c.* >= 'A' and c.* <= 'Z') {
-                                c.* = c.* + ('a' - 'A');
-                            }
-                        }
+                        _ = try self.formatFragment(body, args, &arg_idx, &result, false);
+                        self.applyCaseConversion(result.items[body_start_len..], has_colon, has_at);
 
                         i = end + 2; // Skip past ~)
                     },
@@ -10178,27 +10361,8 @@ pub const Vm = struct {
                         i = end + 2;
                     },
                     'F', 'f' => {
-                        // Fixed-format floating-point
                         if (arg_idx < args.len) {
-                            const val = args[arg_idx];
-                            const fval: f64 = if (val.isFixnum())
-                                @floatFromInt(val.toFixnum())
-                            else if (val.isFloat())
-                                val.toFloat()
-                            else if (val.typeKind() == .rational) blk: {
-                                const rat = val.toPtr(runtime.Rational);
-                                break :blk @as(f64, @floatFromInt(rat.numerator)) / @as(f64, @floatFromInt(rat.denominator));
-                            } else 0.0;
-                            // Use shortest representation via Zig's float formatting
-                            var buf: [64]u8 = undefined;
-                            const formatted = try std.fmt.bufPrint(&buf, "{d:.6}", .{fval});
-                            // Trim trailing zeros after decimal point
-                            var flen = formatted.len;
-                            if (std.mem.indexOf(u8, formatted, ".")) |_| {
-                                while (flen > 1 and formatted[flen - 1] == '0') flen -= 1;
-                                if (flen > 0 and formatted[flen - 1] == '.') flen += 1; // Keep at least one decimal
-                            }
-                            try result.appendSlice(self.allocator, formatted[0..flen]);
+                            try self.formatFixedFloatDirective(args[arg_idx], fmt[i + 1 .. scan_idx], &result);
                             arg_idx += 1;
                         }
                         i = scan_idx + 1;
@@ -10320,36 +10484,10 @@ pub const Vm = struct {
                         i = fn_end + 1;
                     },
                     'R', 'r' => {
-                        // Radix: ~R prints in English, ~nR prints in base n
                         if (arg_idx < args.len) {
                             const val = args[arg_idx];
                             if (val.isFixnum()) {
-                                const n = val.toFixnum();
-                                // Check if there's a radix parameter
-                                const param_str = fmt[i + 1 .. scan_idx];
-                                var has_radix = false;
-                                var colon_mod = false;
-                                for (param_str) |ch| {
-                                    if (ch >= '0' and ch <= '9') has_radix = true;
-                                    if (ch == ':') colon_mod = true;
-                                }
-                                if (has_radix) {
-                                    // ~nR: print in base n
-                                    var radix: u8 = 10;
-                                    var ps = param_str;
-                                    // Strip modifiers
-                                    while (ps.len > 0 and (ps[ps.len - 1] == ':' or ps[ps.len - 1] == '@')) ps = ps[0 .. ps.len - 1];
-                                    if (ps.len > 0) {
-                                        radix = std.fmt.parseInt(u8, ps, 10) catch 10;
-                                    }
-                                    try self.formatFixnumRadix(n, radix, &result);
-                                } else if (colon_mod) {
-                                    // ~:R ordinal (1st, 2nd, etc.)
-                                    try self.formatOrdinal(n, &result);
-                                } else {
-                                    // ~R cardinal English
-                                    try self.formatCardinal(n, &result);
-                                }
+                                try self.formatRadixDirective(val.toFixnum(), fmt[i + 1 .. scan_idx], has_colon, has_at, &result);
                             }
                             arg_idx += 1;
                         }
@@ -10376,13 +10514,20 @@ pub const Vm = struct {
             try primitives.io.writeBytesToStream(dest, result.items);
             return Value.nil;
         } else {
-            // Print to stdout (dest = t or unrecognized)
-            const stdout_file = std.fs.File.stdout();
-            var buf: [4096]u8 = undefined;
-            var file_writer = stdout_file.writer(&buf);
-            const w = &file_writer.interface;
-            try w.writeAll(result.items);
-            try w.flush();
+            // dest = t means *standard-output*
+            // Look up *standard-output* and use it if it's a stream
+            const stdout_val = self.lookupStandardOutput();
+            if (stdout_val.isStream()) {
+                try primitives.io.writeBytesToStream(stdout_val, result.items);
+            } else {
+                // Fallback to system stdout
+                const stdout_file = std.fs.File.stdout();
+                var buf: [4096]u8 = undefined;
+                var file_writer = stdout_file.writer(&buf);
+                const w = &file_writer.interface;
+                try w.writeAll(result.items);
+                try w.flush();
+            }
             return Value.nil;
         }
     }
@@ -10393,9 +10538,31 @@ pub const Vm = struct {
             .t => try result.appendSlice(self.allocator, "t"),
             .unbound => try result.appendSlice(self.allocator, "#<unbound>"),
             .fixnum => {
-                var buf: [32]u8 = undefined;
-                const num_str = try std.fmt.bufPrint(&buf, "{d}", .{val.toFixnum()});
-                try result.appendSlice(self.allocator, num_str);
+                // Respect *print-base* (io.print_base)
+                var buf: [65]u8 = undefined;
+                const base = io.print_base;
+                switch (base) {
+                    2 => {
+                        const num_str = try std.fmt.bufPrint(&buf, "{b}", .{val.toFixnum()});
+                        try result.appendSlice(self.allocator, num_str);
+                    },
+                    8 => {
+                        const num_str = try std.fmt.bufPrint(&buf, "{o}", .{val.toFixnum()});
+                        try result.appendSlice(self.allocator, num_str);
+                    },
+                    10 => {
+                        const num_str = try std.fmt.bufPrint(&buf, "{d}", .{val.toFixnum()});
+                        try result.appendSlice(self.allocator, num_str);
+                    },
+                    16 => {
+                        const num_str = try std.fmt.bufPrint(&buf, "{x}", .{val.toFixnum()});
+                        try result.appendSlice(self.allocator, num_str);
+                    },
+                    else => {
+                        const len = io.formatIntBase(val.toFixnum(), base, &buf);
+                        try result.appendSlice(self.allocator, buf[0..len]);
+                    },
+                }
             },
             .float => {
                 var buf: [400]u8 = undefined;
@@ -10419,7 +10586,15 @@ pub const Vm = struct {
                     try result.append(self.allocator, @as(u8, @intCast(cp)));
                 }
             },
-            .string, .string32 => try result.appendSlice(self.allocator, val.toPtr(runtime.String).bytes()),
+            .string => try result.appendSlice(self.allocator, val.toPtr(runtime.String).bytes()),
+            .string32 => {
+                const cps = val.toPtr(runtime.String32).codepoints();
+                for (cps) |cp| {
+                    var buf: [4]u8 = undefined;
+                    const len = try std.unicode.utf8Encode(@intCast(cp), &buf);
+                    try result.appendSlice(self.allocator, buf[0..len]);
+                }
+            },
             .symbol => try result.appendSlice(self.allocator, val.toPtr(Symbol).getName()),
             .keyword => {
                 try result.append(self.allocator, ':');
@@ -10468,6 +10643,349 @@ pub const Vm = struct {
             // Everything else same as aesthetic
             try self.formatValueAesthetic(val, result);
         }
+    }
+
+    fn findMatchingFormatDirective(_: *Vm, fmt: []const u8, start: usize, open: u8, close: u8) ?usize {
+        var depth: usize = 1;
+        var end = start;
+        while (end < fmt.len and depth > 0) {
+            if (end + 1 < fmt.len and fmt[end] == '~') {
+                if (fmt[end + 1] == open) {
+                    depth += 1;
+                    end += 2;
+                } else if (fmt[end + 1] == close) {
+                    depth -= 1;
+                    if (depth == 0) return end;
+                    end += 2;
+                } else {
+                    end += 1;
+                }
+            } else {
+                end += 1;
+            }
+        }
+        return null;
+    }
+
+    fn isFormatWordChar(ch: u8) bool {
+        return (ch >= 'A' and ch <= 'Z') or
+            (ch >= 'a' and ch <= 'z') or
+            (ch >= '0' and ch <= '9');
+    }
+
+    fn lowercaseAscii(segment: []u8) void {
+        for (segment) |*c| {
+            if (c.* >= 'A' and c.* <= 'Z') c.* += 'a' - 'A';
+        }
+    }
+
+    fn uppercaseAscii(segment: []u8) void {
+        for (segment) |*c| {
+            if (c.* >= 'a' and c.* <= 'z') c.* -= 'a' - 'A';
+        }
+    }
+
+    fn titleCaseAscii(segment: []u8, all_words: bool) void {
+        var capitalize_next = true;
+        var capitalized_first = false;
+        for (segment) |*c| {
+            if (isFormatWordChar(c.*)) {
+                if (capitalize_next and (all_words or !capitalized_first)) {
+                    if (c.* >= 'a' and c.* <= 'z') c.* -= 'a' - 'A';
+                    capitalized_first = true;
+                } else {
+                    if (c.* >= 'A' and c.* <= 'Z') c.* += 'a' - 'A';
+                }
+                capitalize_next = false;
+            } else {
+                capitalize_next = true;
+            }
+        }
+    }
+
+    fn applyCaseConversion(_: *Vm, segment: []u8, has_colon: bool, has_at: bool) void {
+        if (has_colon and has_at) {
+            uppercaseAscii(segment);
+        } else if (has_colon) {
+            titleCaseAscii(segment, true);
+        } else if (has_at) {
+            titleCaseAscii(segment, false);
+        } else {
+            lowercaseAscii(segment);
+        }
+    }
+
+    fn coerceFormatFloat(val: Value) ?f64 {
+        return if (val.isFixnum())
+            @as(f64, @floatFromInt(val.toFixnum()))
+        else if (val.isFloat())
+            val.toFloat()
+        else if (val.typeKind() == .rational) blk: {
+            const rat = val.toPtr(runtime.Rational);
+            break :blk @as(f64, @floatFromInt(rat.numerator)) / @as(f64, @floatFromInt(rat.denominator));
+        } else null;
+    }
+
+    fn parseFormatFloatParams(_: *Vm, params_in: []const u8) struct { width: ?usize, digits: ?usize } {
+        var params = params_in;
+        while (params.len > 0 and (params[params.len - 1] == ':' or params[params.len - 1] == '@')) {
+            params = params[0 .. params.len - 1];
+        }
+        if (params.len == 0) return .{ .width = null, .digits = null };
+
+        if (std.mem.indexOfScalar(u8, params, ',')) |comma| {
+            const left = params[0..comma];
+            const right = params[comma + 1 ..];
+            return .{
+                .width = if (left.len > 0) std.fmt.parseInt(usize, left, 10) catch null else null,
+                .digits = if (right.len > 0) std.fmt.parseInt(usize, right, 10) catch null else null,
+            };
+        }
+
+        return .{
+            .width = std.fmt.parseInt(usize, params, 10) catch null,
+            .digits = null,
+        };
+    }
+
+    fn appendPadded(self: *Vm, result: *std.ArrayList(u8), text: []const u8, min_width: ?usize) Error!void {
+        const width = min_width orelse 0;
+        if (width > text.len) {
+            var pad: usize = width - text.len;
+            while (pad > 0) : (pad -= 1) {
+                try result.append(self.allocator, ' ');
+            }
+        }
+        try result.appendSlice(self.allocator, text);
+    }
+
+    fn formatFixedFloatDirective(self: *Vm, val: Value, params: []const u8, result: *std.ArrayList(u8)) Error!void {
+        const fval = coerceFormatFloat(val) orelse return;
+        const spec = parseFormatFloatParams(self, params);
+
+        const abs_val = @abs(fval);
+        const int_part = @floor(abs_val);
+        var int_digits: usize = 1;
+        if (int_part >= 1.0) {
+            int_digits = @as(usize, @intFromFloat(@floor(std.math.log10(int_part)))) + 1;
+        }
+        const sign_chars: usize = if (fval < 0) 1 else 0;
+
+        const explicit_digits = spec.digits != null;
+        const precision: usize = if (spec.digits) |digits|
+            digits
+        else if (spec.width) |width|
+            if (width > sign_chars + int_digits) width - sign_chars - int_digits - 1 else 0
+        else
+            6;
+
+        var buf: [96]u8 = undefined;
+        const formatted = try std.fmt.bufPrint(&buf, "{d:.[1]}", .{ fval, precision });
+        var end = formatted.len;
+        if (!explicit_digits) {
+            if (std.mem.indexOfScalar(u8, formatted, '.')) |_| {
+                while (end > 0 and formatted[end - 1] == '0') end -= 1;
+                if (end > 0 and formatted[end - 1] == '.') {
+                    if (precision == 0 and spec.width != null) {
+                        // Keep trailing dot for CL-style width-only ~wF cases like ~4F => 123.
+                    } else {
+                        end -= 1;
+                    }
+                }
+            }
+        }
+        try self.appendPadded(result, formatted[0..end], spec.width);
+    }
+
+    fn formatRoman(self: *Vm, n: i64, uppercase: bool, result: *std.ArrayList(u8)) Error!void {
+        if (n == 0) {
+            try result.append(self.allocator, '0');
+            return;
+        }
+        if (n < 0) {
+            try result.append(self.allocator, '-');
+            try self.formatRoman(-n, uppercase, result);
+            return;
+        }
+
+        const Entry = struct { value: i64, numeral: []const u8 };
+        const upper = [_]Entry{
+            .{ .value = 1000, .numeral = "M" },
+            .{ .value = 900, .numeral = "CM" },
+            .{ .value = 500, .numeral = "D" },
+            .{ .value = 400, .numeral = "CD" },
+            .{ .value = 100, .numeral = "C" },
+            .{ .value = 90, .numeral = "XC" },
+            .{ .value = 50, .numeral = "L" },
+            .{ .value = 40, .numeral = "XL" },
+            .{ .value = 10, .numeral = "X" },
+            .{ .value = 9, .numeral = "IX" },
+            .{ .value = 5, .numeral = "V" },
+            .{ .value = 4, .numeral = "IV" },
+            .{ .value = 1, .numeral = "I" },
+        };
+        const lower = [_]Entry{
+            .{ .value = 1000, .numeral = "m" },
+            .{ .value = 900, .numeral = "cm" },
+            .{ .value = 500, .numeral = "d" },
+            .{ .value = 400, .numeral = "cd" },
+            .{ .value = 100, .numeral = "c" },
+            .{ .value = 90, .numeral = "xc" },
+            .{ .value = 50, .numeral = "l" },
+            .{ .value = 40, .numeral = "xl" },
+            .{ .value = 10, .numeral = "x" },
+            .{ .value = 9, .numeral = "ix" },
+            .{ .value = 5, .numeral = "v" },
+            .{ .value = 4, .numeral = "iv" },
+            .{ .value = 1, .numeral = "i" },
+        };
+        const table = if (uppercase) &upper else &lower;
+
+        var remaining = n;
+        for (table) |entry| {
+            while (remaining >= entry.value) {
+                try result.appendSlice(self.allocator, entry.numeral);
+                remaining -= entry.value;
+            }
+        }
+    }
+
+    fn formatRadixDirective(self: *Vm, n: i64, params: []const u8, has_colon: bool, has_at: bool, result: *std.ArrayList(u8)) Error!void {
+        var trimmed = params;
+        while (trimmed.len > 0 and (trimmed[trimmed.len - 1] == ':' or trimmed[trimmed.len - 1] == '@')) {
+            trimmed = trimmed[0 .. trimmed.len - 1];
+        }
+        if (trimmed.len > 0) {
+            const radix = std.fmt.parseInt(u8, trimmed, 10) catch 10;
+            try self.formatFixnumRadix(n, radix, result);
+            return;
+        }
+        if (has_at) {
+            try self.formatRoman(n, true, result);
+        } else if (has_colon) {
+            try self.formatOrdinal(n, result);
+        } else {
+            try self.formatCardinal(n, result);
+        }
+    }
+
+    fn formatFragment(self: *Vm, fmt: []const u8, args: []const Value, arg_idx: *usize, result: *std.ArrayList(u8), escape_on_exhausted: bool) Error!bool {
+        var i: usize = 0;
+        while (i < fmt.len) {
+            if (fmt[i] == '~' and i + 1 < fmt.len) {
+                var scan_idx = i + 1;
+                var has_colon = false;
+                var has_at = false;
+                while (scan_idx < fmt.len) {
+                    const ch = fmt[scan_idx];
+                    if ((ch >= '0' and ch <= '9') or ch == ',') {
+                        scan_idx += 1;
+                    } else if (ch == ':' ) {
+                        has_colon = true;
+                        scan_idx += 1;
+                    } else if (ch == '@') {
+                        has_at = true;
+                        scan_idx += 1;
+                    } else {
+                        break;
+                    }
+                }
+                const directive = if (scan_idx < fmt.len) fmt[scan_idx] else fmt[i + 1];
+                switch (directive) {
+                    'A', 'a' => {
+                        if (arg_idx.* < args.len) {
+                            try self.formatValueAesthetic(args[arg_idx.*], result);
+                            arg_idx.* += 1;
+                        }
+                        i = scan_idx + 1;
+                    },
+                    'S', 's' => {
+                        if (arg_idx.* < args.len) {
+                            try self.formatValueStandard(args[arg_idx.*], result);
+                            arg_idx.* += 1;
+                        }
+                        i = scan_idx + 1;
+                    },
+                    'D', 'd' => {
+                        if (arg_idx.* < args.len) {
+                            try self.formatFixnumDecimal(args[arg_idx.*], has_colon, result);
+                            arg_idx.* += 1;
+                        }
+                        i = scan_idx + 1;
+                    },
+                    'F', 'f' => {
+                        if (arg_idx.* < args.len) {
+                            try self.formatFixedFloatDirective(args[arg_idx.*], fmt[i + 1 .. scan_idx], result);
+                            arg_idx.* += 1;
+                        }
+                        i = scan_idx + 1;
+                    },
+                    'R', 'r' => {
+                        if (arg_idx.* < args.len) {
+                            const val = args[arg_idx.*];
+                            if (val.isFixnum()) {
+                                try self.formatRadixDirective(val.toFixnum(), fmt[i + 1 .. scan_idx], has_colon, has_at, result);
+                            }
+                            arg_idx.* += 1;
+                        }
+                        i = scan_idx + 1;
+                    },
+                    '%' => {
+                        try result.append(self.allocator, '\n');
+                        i = scan_idx + 1;
+                    },
+                    '~' => {
+                        try result.append(self.allocator, '~');
+                        i = scan_idx + 1;
+                    },
+                    '^' => {
+                        i = scan_idx + 1;
+                        if (escape_on_exhausted and arg_idx.* >= args.len) return false;
+                    },
+                    '{' => {
+                        const start = scan_idx + 1;
+                        const end = self.findMatchingFormatDirective(fmt, start, '{', '}') orelse {
+                            i += 2;
+                            continue;
+                        };
+                        const body = fmt[start..end];
+                        if (has_at) {
+                            var remaining_list = Value.nil;
+                            var j2: usize = args.len;
+                            while (j2 > arg_idx.*) {
+                                j2 -= 1;
+                                remaining_list = try self.heap.allocCons(args[j2], remaining_list);
+                            }
+                            try self.formatIteration(remaining_list, body, result);
+                            arg_idx.* = args.len;
+                        } else if (arg_idx.* < args.len) {
+                            const list_arg = args[arg_idx.*];
+                            arg_idx.* += 1;
+                            if (has_colon) {
+                                var current = list_arg;
+                                var iter_count: usize = 0;
+                                while (current.isCons() and iter_count < MAX_FORMAT_DEPTH) : (iter_count += 1) {
+                                    const cons = current.toPtr(runtime.Cons);
+                                    try self.formatIteration(cons.car, body, result);
+                                    current = cons.cdr;
+                                }
+                            } else {
+                                try self.formatIteration(list_arg, body, result);
+                            }
+                        }
+                        i = end + 2;
+                    },
+                    else => {
+                        try result.append(self.allocator, fmt[i]);
+                        i += 1;
+                    },
+                }
+            } else {
+                try result.append(self.allocator, fmt[i]);
+                i += 1;
+            }
+        }
+        return true;
     }
 
     /// Parse numeric width from format parameter string (e.g., "10" from "~10A")
@@ -10656,9 +11174,8 @@ pub const Vm = struct {
     }
 
     /// Format iteration: process body for each element of a list
-    /// Handles ~^ (escape) directive within the body
+    /// Handles nested ~{...~} and ~^ escape within the body.
     fn formatIteration(self: *Vm, list: Value, body: []const u8, result: *std.ArrayList(u8)) Error!void {
-        // Collect list elements into array for indexed access
         var elems = std.ArrayList(Value){};
         defer elems.deinit(self.allocator);
         var current = list;
@@ -10670,81 +11187,11 @@ pub const Vm = struct {
 
         var elem_idx: usize = 0;
         var depth: usize = 0;
-
         while (elem_idx < elems.items.len) {
             depth += 1;
             if (depth > MAX_FORMAT_DEPTH) break;
-
-            // Process body, consuming elements from the flat list
-            var i: usize = 0;
-            while (i < body.len) {
-                if (body[i] == '~' and i + 1 < body.len) {
-                    const directive = body[i + 1];
-                    switch (directive) {
-                        'A', 'a' => {
-                            if (elem_idx < elems.items.len) {
-                                try self.formatValueAesthetic(elems.items[elem_idx], result);
-                                elem_idx += 1;
-                            }
-                            i += 2;
-                        },
-                        'S', 's' => {
-                            if (elem_idx < elems.items.len) {
-                                try self.formatValueStandard(elems.items[elem_idx], result);
-                                elem_idx += 1;
-                            }
-                            i += 2;
-                        },
-                        'D', 'd' => {
-                            if (elem_idx < elems.items.len) {
-                                const elem = elems.items[elem_idx];
-                                elem_idx += 1;
-                                if (elem.isFixnum()) {
-                                    var buf: [32]u8 = undefined;
-                                    const num_str = try std.fmt.bufPrint(&buf, "{d}", .{elem.toFixnum()});
-                                    try result.appendSlice(self.allocator, num_str);
-                                }
-                            }
-                            i += 2;
-                        },
-                        '%' => {
-                            try result.append(self.allocator, '\n');
-                            i += 2;
-                        },
-                        '~' => {
-                            try result.append(self.allocator, '~');
-                            i += 2;
-                        },
-                        '^' => {
-                            // Escape: exit iteration if no more elements
-                            if (elem_idx >= elems.items.len) {
-                                return; // Exit iteration
-                            }
-                            i += 2;
-                        },
-                        ':' => {
-                            // Handle ~:^ (colon modifier + caret)
-                            if (i + 2 < body.len and body[i + 2] == '^') {
-                                // ~:^ - exit iteration if no more elements
-                                if (elem_idx >= elems.items.len) {
-                                    return;
-                                }
-                                i += 3;
-                            } else {
-                                try result.append(self.allocator, body[i]);
-                                i += 1;
-                            }
-                        },
-                        else => {
-                            try result.append(self.allocator, body[i]);
-                            i += 1;
-                        },
-                    }
-                } else {
-                    try result.append(self.allocator, body[i]);
-                    i += 1;
-                }
-            }
+            const keep_iterating = try self.formatFragment(body, elems.items, &elem_idx, result, true);
+            if (!keep_iterating) break;
         }
     }
 
@@ -11779,12 +12226,12 @@ pub const Vm = struct {
 
             if (key_count > 0) {
                 // For key args, layout is:
-                // [required + optional args] [key params (nil)] [keyword pairs]
-                // Use actual_positional to handle omitted optionals before keywords
+                // [required + optional args] [key params (nil)] [other param locals]
+                // [keyword pairs temp area]
                 const positional_args: u8 = @min(actual_positional, max_positional);
                 const kw_pair_count: u8 = argc - actual_positional;
                 const key_slot_start = max_positional;
-                const kw_pair_start = max_positional + key_count;
+                const kw_pair_start = callee_chunk.key_temp_start;
 
                 // Copy positional args first so keyword-pair relocation cannot clobber
                 // positional sources when stack ranges overlap in tail-call reuse.
@@ -11800,8 +12247,9 @@ pub const Vm = struct {
                     kw_count_usize,
                 );
 
-                // Initialize key param slots to nil
-                for (0..key_count) |k| {
+                // Initialize key param slots and any intermediate param-local
+                // slots (for supplied-p/rest locals) to nil.
+                for (0..(kw_pair_start - key_slot_start)) |k| {
                     self.stack[current_bp + key_slot_start + k] = Value.nil;
                 }
 
@@ -11831,10 +12279,10 @@ pub const Vm = struct {
             }
 
             // Reserve space for additional locals.
-            // For keyword lambdas, keyword-pair slots live above positional/key slots.
+            // For keyword lambdas, keyword-pair slots live at chunk.key_temp_start.
             const used_slots: usize = if (key_count > 0) blk: {
                 const kw_pair_count: u8 = argc - actual_positional;
-                break :blk @as(usize, max_positional) + @as(usize, key_count) + @as(usize, kw_pair_count);
+                break :blk @as(usize, callee_chunk.key_temp_start) + @as(usize, kw_pair_count);
             } else @as(usize, actual_argc);
             const used_locals: usize = used_slots + @as(usize, if (has_rest) @as(u8, 1) else @as(u8, 0));
             var i: usize = used_locals;
@@ -11872,12 +12320,12 @@ pub const Vm = struct {
 
             if (key_count > 0) {
                 // For key args, layout is:
-                // [required + optional args] [key params (nil)] [keyword pairs]
-                // Use actual_positional to handle omitted optionals before keywords
+                // [required + optional args] [key params (nil)] [other param locals]
+                // [keyword pairs temp area]
                 const positional_args: u8 = @min(actual_positional, max_positional);
                 const kw_pair_count: u8 = argc - actual_positional;
                 const key_slot_start = max_positional;
-                const kw_pair_start = max_positional + key_count;
+                const kw_pair_start = callee_chunk.key_temp_start;
 
                 // First, move keyword pairs to their slots (overlap-safe).
                 // Keyword pairs are the last kw_pair_count args.
@@ -11893,8 +12341,9 @@ pub const Vm = struct {
                     self.stack[new_bp + j] = self.stack[new_bp + 1 + j];
                 }
 
-                // Initialize key param slots to nil
-                for (0..key_count) |k| {
+                // Initialize key param slots and any intermediate param-local
+                // slots (for supplied-p/rest locals) to nil.
+                for (0..(kw_pair_start - key_slot_start)) |k| {
                     self.stack[new_bp + key_slot_start + k] = Value.nil;
                 }
 
@@ -11920,10 +12369,10 @@ pub const Vm = struct {
             self.ip = 0;
 
             // Reserve space for additional locals.
-            // For keyword lambdas, keyword-pair slots live above positional/key slots.
+            // For keyword lambdas, keyword-pair slots live at chunk.key_temp_start.
             const used_slots: usize = if (key_count > 0) blk: {
                 const kw_pair_count: u8 = argc - actual_positional;
-                break :blk @as(usize, max_positional) + @as(usize, key_count) + @as(usize, kw_pair_count);
+                break :blk @as(usize, callee_chunk.key_temp_start) + @as(usize, kw_pair_count);
             } else @as(usize, actual_argc);
             const used: usize = used_slots + @as(usize, if (has_rest) @as(u8, 1) else @as(u8, 0));
             var i: usize = used;

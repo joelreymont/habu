@@ -400,6 +400,18 @@
     ((characterp x) (make-string 1 :initial-element x))
     (t (error "string: cannot coerce ~S" x))))
 
+; character - coerce object to character designator
+(defun character (x)
+  (cond
+    ((characterp x) x)
+    ((and (stringp x) (= (length x) 1)) (char x 0))
+    ((symbolp x)
+     (let ((name (symbol-name x)))
+       (if (= (length name) 1)
+           (char name 0)
+           (error "character: cannot coerce ~S" x))))
+    (t (error "character: cannot coerce ~S" x))))
+
 ; Boolean operations
 (defun not (x) (if x nil t))
 
@@ -415,6 +427,17 @@
 (defun zerop (n) (= n 0))
 (defun plusp (n) (> n 0))
 (defun minusp (n) (< n 0))
+(defun signp (test number)
+  (case test
+    ((l lt) (< number 0))
+    ((le) (<= number 0))
+    ((g gt) (> number 0))
+    ((ge) (>= number 0))
+    ((e eq zerop) (= number 0))
+    ((ne) (/= number 0))
+    ((plusp) (plusp number))
+    ((minusp) (minusp number))
+    (t (error "Unknown signp predicate"))))
 (defun /= (a b) (not (= a b)))
 (defun evenp (n) (= (mod n 2) 0))
 (defun oddp (n) (= (mod n 2) 1))
@@ -665,6 +688,23 @@
 (defun upgraded-array-element-type (typespec &optional environment)
   (declare (ignore typespec environment))
   't)
+
+; %make-vector-with-fp - create a vector with fill-pointer and adjustable flags
+; Used by compiler for (make-array N :fill-pointer FP :adjustable ADJ)
+(defun %make-vector-with-fp (size init-elem fill-pointer-val adjustable-val)
+  (let ((v (make-vector size init-elem)))
+    ;; Set fill-pointer: if T, use size; if fixnum, use that value; if NIL, don't set
+    (cond
+      ((eq fill-pointer-val t)
+       (%set-fill-pointer v size))
+      ((integerp fill-pointer-val)
+       (%set-fill-pointer v fill-pointer-val))
+      ;; nil or other: leave as-is (no fill-pointer)
+      )
+    ;; Set adjustable flag
+    (when adjustable-val
+      (%set-adjustable v t))
+    v))
 
 ; fill-pointer - get fill pointer
 (defun fill-pointer (vector)
@@ -997,13 +1037,25 @@
     (append (car lists) (flatten1 (cdr lists)))))
 
 ; Reverse (iterative for deep lists)
-(defun reverse (lst)
-  (let ((acc nil))
-    (block nil
-      (while t
-        (when (null lst) (return-from nil acc))
-        (setq acc (cons (car lst) acc))
-        (setq lst (cdr lst))))))
+(defun reverse (seq)
+  (cond
+    ((stringp seq)
+     (let* ((len (length seq))
+            (out (make-string len #\Space)))
+       (dotimes (i len out)
+         (setf (char out i) (char seq (- len i 1))))))
+    ((vectorp seq)
+     (let* ((len (length seq))
+            (out (make-vector len nil)))
+       (dotimes (i len out)
+         (setf (svref out i) (aref seq (- len i 1))))))
+    (t
+     (let ((acc nil))
+       (block nil
+         (while t
+           (when (null seq) (return-from nil acc))
+           (setq acc (cons (car seq) acc))
+           (setq seq (cdr seq))))))))
 
 ; Mapc - like mapcar but for side effects, returns first list
 (defun mapc (fn list &rest more-lists)
@@ -1745,9 +1797,20 @@
 
 ; intern with optional package designator (current backend interns in current package)
 (setf (fdefinition '%intern-core) #'intern)
-(defun intern (name &optional package)
-  (declare (ignore package))
-  (funcall #'%intern-core (string name)))
+(defun intern (name &optional (package *package*))
+  ;; The compiler maps (intern str) [single arg] to the raw .intern opcode.
+  ;; This defun handles the 2-arg case by switching *package* via progv.
+  ;; IMPORTANT: we use (intern str) [direct opcode call] inside progv,
+  ;; NOT (funcall #'%intern-core ...) which would go through the function
+  ;; cell and cause infinite recursion.
+  (let ((str (string name))
+        (pkg (if (packagep package) package (find-package package))))
+    (if (or (null pkg) (eq pkg *package*))
+        ;; Same package: direct opcode call
+        (%intern str)
+        ;; Cross-package: switch *package* then use opcode
+        (progv (list '*package*) (list pkg)
+          (%intern str)))))
 
 (defun find-symbol (name &optional (package *package*))
   (%find-symbol name (%ensure-package package)))
@@ -1886,15 +1949,24 @@
 ;; ============================================================
 
 ; remove-if - remove elements satisfying predicate
-(defun remove-if (pred lst)
-  (cond
-    ((null lst) nil)
-    ((funcall pred (car lst)) (remove-if pred (cdr lst)))
-    (t (cons (car lst) (remove-if pred (cdr lst))))))
+(defun remove-if (pred lst &key count key)
+  (let ((effective-pred (if key (lambda (x) (funcall pred (funcall key x))) pred)))
+    (if count
+        (let ((n 0) (result nil))
+          (dolist (x (if (stringp lst) (coerce lst 'list) lst))
+            (if (and (< n count) (funcall effective-pred x))
+                (setq n (+ n 1))
+                (push x result)))
+          (nreverse result))
+        (let ((items (if (stringp lst) (coerce lst 'list) lst)))
+          (cond
+            ((null items) nil)
+            ((funcall effective-pred (car items)) (remove-if effective-pred (cdr items)))
+            (t (cons (car items) (remove-if effective-pred (cdr items)))))))))
 
 ; remove-if-not - remove elements NOT satisfying predicate
-(defun remove-if-not (pred lst)
-  (remove-if (lambda (x) (not (funcall pred x))) lst))
+(defun remove-if-not (pred lst &key count key)
+  (remove-if (lambda (x) (not (funcall pred x))) lst :count count :key key))
 
 ; find-if - find first element satisfying predicate
 (defun find-if-aux (pred lst)
@@ -1921,20 +1993,20 @@
   (find-if (lambda (x) (not (funcall pred x))) lst))
 
 ; position-if - find position of first element satisfying predicate
-(defun position-if-aux (pred lst n)
+(defun position-if-aux (pred lst n key end)
   (cond
     ((null lst) nil)
-    ((funcall pred (car lst)) n)
-    (t (position-if-aux pred (cdr lst) (+ n 1)))))
+    ((and end (>= n end)) nil)
+    ((funcall pred (if key (funcall key (car lst)) (car lst))) n)
+    (t (position-if-aux pred (cdr lst) (+ n 1) key end))))
 
-(defun position-if (pred seq)
-  (if (stringp seq)
-      (position-if-aux pred (coerce seq 'list) 0)
-      (position-if-aux pred seq 0)))
+(defun position-if (pred seq &key (start 0) end key)
+  (let ((items (if (stringp seq) (coerce seq 'list) seq)))
+    (position-if-aux pred (nthcdr start items) start key end)))
 
 ; position-if-not - find position of first element NOT satisfying predicate
-(defun position-if-not (pred lst)
-  (position-if (lambda (x) (not (funcall pred x))) lst))
+(defun position-if-not (pred seq &key (start 0) end key)
+  (position-if (lambda (x) (not (funcall pred x))) seq :start start :end end :key key))
 
 ; count-if - count elements satisfying predicate
 (defun count-if-aux (pred lst n)
@@ -2406,9 +2478,39 @@
       seq
       (sort-with-key-internal (copy-list seq) pred key)))
 
+(defun %string-test-needs-strings-p (test)
+  (and (symbolp test)
+       (let* ((raw (string-upcase (symbol-name test)))
+              (name (if (and (> (length raw) 0) (char= (char raw 0) #\$))
+                        (subseq raw 1)
+                        raw)))
+         (member name
+                 '("SEQUAL" "SEQUALIGNORE"
+                   "SLESSP" "SGREATERP" "SLESSPIGNORE" "SGREATERPIGNORE")
+                 :test #'string=))))
+
+(defun %string-to-comparison-list (str pred)
+  (let ((chars (coerce str 'list)))
+    (if (%string-test-needs-strings-p pred)
+        (mapcar #'string chars)
+        chars)))
+
+(defun %comparison-list-to-string (items)
+  (if (null items)
+      ""
+      (if (stringp (car items))
+          (reduce #'(lambda (s0 s1) (concatenate 'string s0 s1)) items :initial-value "")
+          (coerce items 'string))))
+
 ; sort - merge sort (stable), with optional :key
 (defun sort (seq pred &key key)
-  (sort-with-key seq pred key))
+  (cond
+    ((stringp seq)
+     (%comparison-list-to-string (sort-with-key (%string-to-comparison-list seq pred) pred key)))
+    ((or (consp seq) (null seq))
+     (sort-with-key seq pred key))
+    (t
+     (coerce (sort-with-key (coerce seq 'list) pred key) 'vector))))
 
 ; stable-sort - same as sort (merge sort is stable)
 (defun stable-sort (seq pred &key key)
@@ -2640,42 +2742,55 @@
 ;; Search and Fill Functions
 ;; ============================================================
 
+(defun %seq-test-item (seq idx test)
+  (let ((item (elt seq idx)))
+    (if (and (stringp seq) (%string-test-needs-strings-p test))
+        (string item)
+        item)))
+
 ; search - find subsequence in sequence
-(defun search (seq1 seq2 &key (test #'eql) (start1 0) (start2 0))
-  (let ((len1 (- (length seq1) start1))
-        (len2 (- (length seq2) start2)))
+(defun search (seq1 seq2 &key (test #'eql) (start1 0) end1 (start2 0) end2)
+  (let* ((stop1 (or end1 (length seq1)))
+         (stop2 (or end2 (length seq2)))
+         (len1 (- stop1 start1))
+         (len2 (- stop2 start2)))
     (if (> len1 len2)
         nil
-        (search-aux seq1 seq2 start1 start2 len1 test))))
+        (search-aux seq1 seq2 start1 stop1 start2 stop2 len1 test))))
 
-(defun search-aux (seq1 seq2 s1 s2 len1 test)
+(defun search-aux (seq1 seq2 s1 stop1 s2 stop2 len1 test)
+  (declare (ignore stop1))
   (cond
-    ((> (+ s2 len1) (length seq2)) nil)
+    ((> (+ s2 len1) stop2) nil)
     ((search-match seq1 seq2 s1 s2 len1 test) s2)
-    (t (search-aux seq1 seq2 s1 (+ s2 1) len1 test))))
+    (t (search-aux seq1 seq2 s1 stop1 (+ s2 1) stop2 len1 test))))
 
 (defun search-match (seq1 seq2 s1 s2 len test)
   (if (= len 0)
       t
-      (and (funcall test (elt seq1 s1) (elt seq2 s2))
+      (and (funcall test (%seq-test-item seq1 s1 test) (%seq-test-item seq2 s2 test))
            (search-match seq1 seq2 (+ s1 1) (+ s2 1) (- len 1) test))))
 
 ; mismatch - find first position where sequences differ
-(defun mismatch (seq1 seq2 &key (test #'eql) (start1 0) (start2 0))
-  (mismatch-aux seq1 seq2 start1 start2 test))
+(defun mismatch (seq1 seq2 &key (test #'eql) (start1 0) end1 (start2 0) end2)
+  (mismatch-aux seq1 seq2 start1 (or end1 (length seq1)) start2 (or end2 (length seq2)) test))
 
-(defun mismatch-aux (seq1 seq2 i1 i2 test)
+(defun mismatch-aux (seq1 seq2 i1 stop1 i2 stop2 test)
   (cond
-    ((>= i1 (length seq1))
-     (if (>= i2 (length seq2)) nil i1))
-    ((>= i2 (length seq2)) i1)
-    ((not (funcall test (elt seq1 i1) (elt seq2 i2))) i1)
-    (t (mismatch-aux seq1 seq2 (+ i1 1) (+ i2 1) test))))
+    ((>= i1 stop1)
+     (if (>= i2 stop2) nil i1))
+    ((>= i2 stop2) i1)
+    ((not (funcall test (%seq-test-item seq1 i1 test) (%seq-test-item seq2 i2 test))) i1)
+    (t (mismatch-aux seq1 seq2 (+ i1 1) stop1 (+ i2 1) stop2 test))))
 
 ; fill - fill sequence with value
 (defun fill (seq item &key (start 0) end)
-  (let ((real-end (or end (length seq))))
-    (if (or (vectorp seq) (arrayp seq))
+  (let* ((real-end (or end (length seq)))
+         (arrayish (or (typep seq 'array)
+                       (typep seq 'vector)
+                       (vectorp seq)
+                       (arrayp seq))))
+    (if arrayish
         (dotimes (i (- real-end start) seq)
           (setf (aref seq (+ start i)) item))
         ; For lists, destructively modify in place
@@ -3667,7 +3782,7 @@
 
 ; alphanumericp - check if char is alphanumeric
 (defun alphanumericp (c)
-  (or (alpha-char-p c) (digit-char-p c)))
+  (or (alpha-char-p c) (not (null (digit-char-p c)))))
 
 ; graphic-char-p - check if char is graphic (printable)
 (defun graphic-char-p (c)
@@ -3875,19 +3990,65 @@
       nil
       (cons initial-element (make-list (- size 1) :initial-element initial-element))))
 
-; delete - destructive remove (for now, same as remove)
-; delete - remove all occurrences of item from sequence
-; Note: uses remove-if to support variable test functions
-(defun delete (item sequence &key (test #'eql))
-  (remove-if (lambda (x) (let ((r (funcall test x item))) r)) sequence))
+; %delete-from-list - helper: delete from list with full keyword support
+; Returns a new list with matching elements removed.
+; When from-end is true and count is given, removes last N matches.
+(defun %delete-from-list (pred lst count from-end)
+  (if (and count from-end)
+      ;; from-end + count: reverse, delete count from front, reverse back
+      (nreverse (%delete-from-list pred (reverse lst) count nil))
+      ;; Destructive in-place deletion by splicing out matching elements
+      (let ((n 0)
+            (max-count (or count most-positive-fixnum)))
+        ;; Skip matching elements at the head
+        (do ()
+            ((or (null lst) (>= n max-count) (not (funcall pred (car lst)))))
+          (setq lst (cdr lst))
+          (incf n))
+        ;; Now splice out matching elements from the rest
+        (when lst
+          (let ((prev lst)
+                (curr (cdr lst)))
+            (do ()
+                ((or (null curr) (>= n max-count)))
+              (if (funcall pred (car curr))
+                  (progn
+                    (rplacd prev (cdr curr))
+                    (setq curr (cdr curr))
+                    (incf n))
+                  (progn
+                    (setq prev curr)
+                    (setq curr (cdr curr)))))))
+        lst)))
 
-; delete-if - destructive remove-if
-(defun delete-if (pred sequence)
-  (remove-if pred sequence))
+; delete - destructive remove with full CL keyword support
+; Supports :test, :key, :count, :from-end on lists, strings, and vectors.
+(defun delete (item sequence &key (test #'eql) key count from-end)
+  (let ((pred (lambda (x) (funcall test (if key (funcall key x) x) item))))
+    (cond
+      ((listp sequence)
+       (%delete-from-list pred sequence count from-end))
+      ((stringp sequence)
+       (coerce (%delete-from-list pred (coerce sequence 'list) count from-end) 'string))
+      ((vectorp sequence)
+       (coerce (%delete-from-list pred (coerce sequence 'list) count from-end) 'vector))
+      (t (error "delete: not a sequence: ~A" sequence)))))
 
-; delete-if-not - destructive remove-if-not
-(defun delete-if-not (pred sequence)
-  (remove-if-not pred sequence))
+; delete-if - destructive remove-if with full CL keyword support
+(defun delete-if (pred sequence &key key count from-end)
+  (let ((effective-pred (if key (lambda (x) (funcall pred (funcall key x))) pred)))
+    (cond
+      ((listp sequence)
+       (%delete-from-list effective-pred sequence count from-end))
+      ((stringp sequence)
+       (coerce (%delete-from-list effective-pred (coerce sequence 'list) count from-end) 'string))
+      ((vectorp sequence)
+       (coerce (%delete-from-list effective-pred (coerce sequence 'list) count from-end) 'vector))
+      (t (error "delete-if: not a sequence: ~A" sequence)))))
+
+; delete-if-not - destructive remove-if-not with full CL keyword support
+(defun delete-if-not (pred sequence &key key count from-end)
+  (delete-if (lambda (x) (not (funcall pred x))) sequence :key key :count count :from-end from-end))
 
 ; delete-duplicates - remove duplicate elements
 ; remove-duplicates-with-key - helper with key support
@@ -4326,22 +4487,42 @@
 (defun putf (plist indicator value)
   (cons indicator (cons value plist)))
 
-; adjust-array - resize array (creates new array, copies elements)
+; adjust-array - resize rank-1 vectors/arrays via VM primitive, fallback otherwise
 (defun adjust-array (array new-dimensions &rest args)
-  (let ((init-elem (getf args :initial-element nil))
-        (old-size (array-total-size array))
-        (new-size (if (numberp new-dimensions) new-dimensions (car new-dimensions))))
-    (let ((new-arr (make-array new-size :initial-element init-elem))
-          (copy-len (min old-size new-size)))
-      (dotimes (i copy-len)
-        (setf (aref new-arr i) (aref array i)))
-      new-arr)))
+  (let* ((init-supplied (member :initial-element args))
+         (init-elem (getf args :initial-element nil))
+         (old-size (array-total-size array))
+         (new-size (if (numberp new-dimensions) new-dimensions (car new-dimensions)))
+         (ty (type-of array))
+         (rank1-resizable
+           (or (eq ty 'vector)
+               (eq ty 'simple-vector)
+               (and (or (eq ty 'array) (eq ty 'simple-array))
+                    (= (array-rank array) 1))))
+         (fill-value
+           (if init-supplied
+               init-elem
+               (if (and (> old-size 0)
+                        (numberp (aref array 0))
+                        (= (aref array 0) 0))
+                   0
+                   nil))))
+    (cond
+      (rank1-resizable
+       (%adjust-array array new-size fill-value))
+      (t
+       (let ((new-arr (make-array new-size :initial-element init-elem))
+             (copy-len (min old-size new-size)))
+         (dotimes (i copy-len)
+           (setf (aref new-arr i) (aref array i)))
+         new-arr)))))
 
 ; string-upcase - with optional :start/:end
 (defun string-upcase (str &rest args)
   (let* ((s (string str))
          (start (getf args :start 0))
-         (end (getf args :end (length s))))
+         (end-arg (getf args :end nil))
+         (end (if end-arg end-arg (length s))))
     (if (and (= start 0) (= end (length s)))
         (%string-upcase s)
         (concatenate 'string
@@ -4353,7 +4534,8 @@
 (defun string-downcase (str &rest args)
   (let* ((s (string str))
          (start (getf args :start 0))
-         (end (getf args :end (length s))))
+         (end-arg (getf args :end nil))
+         (end (if end-arg end-arg (length s))))
     (if (and (= start 0) (= end (length s)))
         (%string-downcase s)
         (concatenate 'string
@@ -4525,7 +4707,9 @@
   "Return T if X is a simple bit vector."
   (bit-vector-p x))
 
-; adjustable-array-p - no adjustable arrays yet (all static)
+; adjustable-array-p - check if array/vector is adjustable
+; Note: currently returns nil (no opcode to read adjustable flag).
+; The flag IS stored and used by vector-push-extend internally.
 (defun adjustable-array-p (x)
   (declare (ignore x))
   nil)
@@ -4766,11 +4950,34 @@
 
 ; Helper: rewrite LOOP-FINISH forms once block-name is known
 (defun loop-rewrite-control-form (form block-name result-expr)
-  (if (and (consp form)
-           (eq (loop-kw-canon (car form)) :loop-finish)
-           (null (cdr form)))
-      (list 'return-from block-name result-expr)
-    form))
+  (cond
+    ((and (consp form)
+          (eq (loop-kw-canon (car form)) :loop-finish)
+          (null (cdr form)))
+     (list 'return-from block-name result-expr))
+    ((atom form) form)
+    ((and (symbolp (car form))
+          (or (eq (car form) 'quote)
+              (eq (car form) 'function)))
+     form)
+    ((and (symbolp (car form))
+          (eq (car form) 'cond))
+     (cons 'cond
+           (mapcar (lambda (clause)
+                     (if (consp clause)
+                         (mapcar (lambda (x)
+                                   (loop-rewrite-control-form x block-name result-expr))
+                                 clause)
+                       clause))
+                   (cdr form))))
+    ((and (symbolp (car form))
+          (member (car form) '(progn when unless if and or let let* setq)
+                  :test #'eq))
+     (cons (car form)
+           (mapcar (lambda (x)
+                     (loop-rewrite-control-form x block-name result-expr))
+                   (cdr form))))
+    (t form)))
 
 ; Helper: convert action (:do f1 f2 ...) into one executable form
 (defun loop-do-action-form (action block-name result-expr)
@@ -4805,6 +5012,7 @@
          (has-never (not (null never-forms)))
          (has-thereis (not (null thereis-forms)))
          (loop-body nil)
+         (loop-inner-blk nil)
          (result-expr nil))
 
     ; Add accumulator variables
@@ -4849,9 +5057,16 @@
               (has-min min-var)
               (t nil)))
 
-      ; Build loop body using nested binary appends
-      (let ((end-test-forms (when end-test
-                              (list (list 'when end-test (list 'return-from block-name result-expr)))))
+      ; When finally forms exist, end-test exits an inner block (not the loop
+      ; block), so finally forms run after the while exits.  Explicit (return ...)
+      ; still exits the outer loop block, skipping finally.
+      ; Compute inner-block OUTSIDE the let* to avoid deep nesting scope issue.
+      (setq loop-inner-blk (if finally-forms (gensym "LOOP-BODY-") nil))
+      (let* ((end-test-forms (when end-test
+                               (list (list 'when end-test
+                                           (if finally-forms
+                                               (list 'return-from loop-inner-blk nil)
+                                             (list 'return-from block-name result-expr))))))
             (main-body (mapcar (lambda (form)
                                  (loop-rewrite-control-form form block-name result-expr))
                                body-forms))
@@ -4978,13 +5193,22 @@
           (setq loop-code (cons 'progn (append initially-forms (list loop-code)))))
 
         ; Build the block with let* bindings (sequential for dependent vars)
-        (list 'block block-name
-              (list 'let* all-vars
-                    (if finally-forms
-                        (list 'unwind-protect
-                              loop-code
-                              (cons 'progn (append finally-forms
-                                                   (list (list 'return-from block-name result-expr)))))
+        (if finally-forms
+            ; CL LOOP finally: executes after normal termination (iterator
+            ; exhausted), NOT on abnormal exit (explicit return/throw/error).
+            ; Strategy: outer block has the loop name. End-test does
+            ; (return-from loop-inner-blk) to exit while but stay in outer block.
+            ; Explicit (return ...) does (return-from block-name) skipping finally.
+            ; loop-inner-blk is already bound in the enclosing let* (from gensym above).
+            (let ((result (list 'block block-name
+                               (list 'let* all-vars
+                                     (cons 'progn
+                                           (cons (list 'block loop-inner-blk loop-code)
+                                                 (append finally-forms
+                                                         (list (list 'return-from block-name result-expr)))))))))
+              result)
+          (list 'block block-name
+                (list 'let* all-vars
                       (list 'progn loop-code (list 'return-from block-name result-expr)))))))))
 
 
@@ -5153,32 +5377,34 @@
 
                ; FOR var = expr [THEN step-expr]
                ((:=)
-                (let ((init-expr (cadr for-rest))
-                      (then-rest (cddr for-rest)))
+                (let* ((init-expr (cadr for-rest))
+                       (then-rest (cddr for-rest))
+                       (has-then (and (consp then-rest)
+                                      (eq (loop-kw-canon (car then-rest)) :then))))
                   (if (consp var)
                       (let* ((tmp-var (gensym "tmp"))
                              (bindings (destructuring-bind-impl var tmp-var))
                              (assign-forms (loop-binding-setq-forms bindings))
-                             (step-expr (if (and (consp then-rest)
-                                                 (eq (loop-kw-canon (car then-rest)) :then))
-                                            (cadr then-rest)
-                                            init-expr)))
-                        (push (list tmp-var init-expr) vars)
+                             (step-expr (if has-then (cadr then-rest) init-expr)))
+                        (push (list tmp-var (if has-then init-expr nil)) vars)
                         (setq vars (loop-ensure-vars-from-bindings bindings vars))
-                        (setq body-forms (append assign-forms body-forms))
-                        (push (list 'setq tmp-var step-expr) step-forms)
-                        (setq rest (if (and (consp then-rest)
-                                            (eq (loop-kw-canon (car then-rest)) :then))
-                                       (cddr then-rest)
-                                       then-rest)))
-                    (if (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :then))
+                        (if has-then
+                            (progn
+                              (setq body-forms (append assign-forms body-forms))
+                              (push (list 'setq tmp-var step-expr) step-forms))
+                          (setq body-forms
+                                (append body-forms
+                                        (list (list 'setq tmp-var init-expr))
+                                        assign-forms)))
+                        (setq rest (if has-then (cddr then-rest) then-rest)))
+                    (if has-then
                         (progn
                           (push (list var init-expr) vars)
                           (push (list 'setq var (cadr then-rest)) step-forms)
                           (setq rest (cddr then-rest)))
                       (progn
-                        (push (list var init-expr) vars)
-                        (push (list 'setq var init-expr) step-forms)
+                        (push (list var nil) vars)
+                        (setq body-forms (append body-forms (list (list 'setq var init-expr))))
                         (setq rest then-rest))))))
 
                ; FOR var ACROSS vector
@@ -5500,7 +5726,9 @@
                ; THEN action on true predicate
                (case (loop-kw-canon (car then-action))
                  ((:do)
-                  (push (list 'when test (loop-do-action-form then-action block-name result-expr)) body-forms))
+                  (setq body-forms
+                        (append body-forms
+                                (list (list 'when test (loop-do-action-form then-action block-name result-expr))))))
                  ((:collect :collecting)
                   (let ((into-var (when (and (>= (length then-action) 4)
                                              (eq (loop-kw-canon (caddr then-action)) :into))
@@ -5539,7 +5767,9 @@
                     (setq min-var (gensym "min")))
                   (push (list 'when test (cadr then-action)) min-forms))
                  ((:return)
-                  (push (list 'when test (list 'return-from block-name (cadr then-action))) body-forms)))
+                  (setq body-forms
+                        (append body-forms
+                                (list (list 'when test (list 'return-from block-name (cadr then-action))))))))
 
                ; ELSE routes
                (dolist (route else-routes)
@@ -5547,7 +5777,9 @@
                        (action (cadr route)))
                    (case (loop-kw-canon (car action))
                      ((:do)
-                      (push (list 'when guard (loop-do-action-form action block-name result-expr)) body-forms))
+                      (setq body-forms
+                            (append body-forms
+                                    (list (list 'when guard (loop-do-action-form action block-name result-expr))))))
                      ((:collect :collecting)
                       (let ((into-var (when (and (>= (length action) 4)
                                                  (eq (loop-kw-canon (caddr action)) :into))
@@ -5702,7 +5934,9 @@
 
                (case (loop-kw-canon (car then-action))
                  ((:do)
-                  (push (list 'unless test (loop-do-action-form then-action block-name result-expr)) body-forms))
+                  (setq body-forms
+                        (append body-forms
+                                (list (list 'unless test (loop-do-action-form then-action block-name result-expr))))))
                  ((:collect :collecting)
                   (let ((into-var (when (and (>= (length then-action) 4)
                                              (eq (loop-kw-canon (caddr then-action)) :into))
@@ -5734,14 +5968,18 @@
                   (unless min-var (setq min-var (gensym "min")))
                   (push (list 'unless test (cadr then-action)) min-forms))
                  ((:return)
-                  (push (list 'unless test (list 'return-from block-name (cadr then-action))) body-forms)))
+                  (setq body-forms
+                        (append body-forms
+                                (list (list 'unless test (list 'return-from block-name (cadr then-action))))))))
 
                (dolist (route else-routes)
                  (let ((guard (car route))
                        (action (cadr route)))
                    (case (loop-kw-canon (car action))
                      ((:do)
-                      (push (list 'when guard (loop-do-action-form action block-name result-expr)) body-forms))
+                      (setq body-forms
+                            (append body-forms
+                                    (list (list 'when guard (loop-do-action-form action block-name result-expr))))))
                      ((:collect :collecting)
                       (let ((into-var (when (and (>= (length action) 4)
                                                  (eq (loop-kw-canon (caddr action)) :into))
@@ -5841,7 +6079,9 @@
 
           ; RETURN expr
           ((:return)
-           (push (list 'return-from block-name (cadr rest)) body-forms)
+           (setq body-forms
+                 (append body-forms
+                         (list (list 'return-from block-name (cadr rest)))))
            (setq rest (cddr rest)))
 
           ; NAMED name - set block name for return-from
@@ -5941,11 +6181,7 @@
     (if (not (loop-keyword-p (car clauses)))
         ; Simple loop - body forms, wrap in block with while t
         (let ((simple-body (mapcar (lambda (form)
-                                     (if (and (consp form)
-                                              (eq (loop-kw-canon (car form)) :loop-finish)
-                                              (null (cdr form)))
-                                         '(return-from nil nil)
-                                       form))
+                                     (loop-rewrite-control-form form nil nil))
                                    clauses)))
           (list 'block nil (cons 'while (cons t simple-body))))
       ; Extended loop with clauses
@@ -6084,14 +6320,59 @@
 
 ; open - open a file stream
 ; (open filename &key direction if-exists if-does-not-exist)
-(defun open (filename &key (direction :input) if-exists if-does-not-exist)
-  (declare (ignore if-exists if-does-not-exist))
-  (%open-file filename direction))
+(defun open (filename &key (direction :input)
+                               (if-exists nil if-exists-supplied-p)
+                               (if-does-not-exist nil if-does-not-exist-supplied-p))
+  (let* ((path (if (pathnamep filename) (namestring filename) filename))
+         (exists (probe-file path))
+         (if-exists-mode (if if-exists-supplied-p
+                             if-exists
+                             (if (eq direction :output) :supersede nil)))
+         (if-does-not-exist-mode (if if-does-not-exist-supplied-p
+                                     if-does-not-exist
+                                     (if (or (eq direction :output) (eq direction :io)) :create :error))))
+    (cond
+      ((eq direction :input)
+       (cond (exists
+              (%open-file path direction))
+             ((null if-does-not-exist-mode)
+              nil)
+             (t
+              (%open-file path direction))))
+      ((eq direction :output)
+       (cond
+         ((and exists (null if-exists-mode))
+          nil)
+         ((and (null exists) (null if-does-not-exist-mode))
+          nil)
+         ((eq if-exists-mode :append)
+          (let ((stream (%open-file path :io)))
+            (file-position stream :end)
+            stream))
+         (t
+          (%open-file path direction))))
+      ((eq direction :io)
+       (cond ((and (null exists) (null if-does-not-exist-mode))
+              nil)
+             (t
+              (%open-file path direction))))
+      (t
+       (%open-file path direction)))))
 
 ; close - close a stream
 (defun close (stream &optional abort)
   (declare (ignore abort))
   (%close-stream stream))
+
+; file-position - get or set file position
+(defun file-position (stream &optional position)
+  (if position
+      (%set-file-position stream position)
+      (%file-position stream)))
+
+; file-length - get stream length
+(defun file-length (stream)
+  (%file-length stream))
 
 ; write-char - write a character to stream (or *standard-output*)
 (defun write-char (character &optional stream)
@@ -6113,6 +6394,10 @@
       (let ((code (%peek-char-from-stream stream)))
         (if code (code-char code) eof-value))
       (%peek-char)))
+
+; unread-char - push a character back to a stream (defaults to *standard-input*)
+(defun unread-char (character &optional stream)
+  (%unread-char-from-stream character (or stream *standard-input*)))
 
 ; read-char-no-hang - non-blocking read when a character is available
 (defun read-char-no-hang (&optional stream eof-error-p eof-value recursive-p)
@@ -6139,6 +6424,7 @@
         (abort (gensym "ABORT")))
     ;; Check for :if-does-not-exist nil
     (let ((if-dne (getf options :if-does-not-exist :signal))
+          (appendp (eq (getf options :if-exists) :append))
           (clean-options options))
       ;; Remove :if-does-not-exist from options passed to open
       (when (not (eq if-dne :signal))
@@ -6155,6 +6441,8 @@
           `(let ((,stream (handler-case (open ,filespec ,@clean-options)
                             (file-error (c) nil)))
                  (,abort t))
+             (when (and ,stream ,appendp)
+               (file-position ,stream :end))
              (unwind-protect
                  (let ((,var ,stream))
                    (setq ,abort nil)
@@ -6163,6 +6451,8 @@
           ;; Normal case
           `(let* ((,stream (open ,filespec ,@clean-options))
                   (,abort t))
+             (when (and ,stream ,appendp)
+               (file-position ,stream :end))
              (unwind-protect
                  (progn
                    (let ((,var ,stream))

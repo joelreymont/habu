@@ -276,6 +276,8 @@ pub const Builtins = struct {
     @"char>": Value,
     @"%read-char": Value,
     @"%peek-char": Value,
+    @"%unread-char": Value,
+    @"%unread-char-from-stream": Value,
     @"unread-char": Value,
     listen: Value,
     @"upgraded-complex-part-type": Value,
@@ -303,6 +305,7 @@ pub const Builtins = struct {
     subtypep: Value,
     @"type-of": Value,
     intern: Value,
+    @"%intern": Value,
     @"%make-symbol": Value,
     @"%error": Value,
     @"%floor": Value,
@@ -401,6 +404,7 @@ pub const Builtins = struct {
     @"%read-byte": Value,
     @"%write-byte": Value,
     @"%file-position": Value,
+    @"%set-file-position": Value,
     @"%file-length": Value,
     @"%finish-output": Value,
     @"%force-output": Value,
@@ -908,6 +912,8 @@ pub const Builtins = struct {
             .@"char>" = try heap.intern("char>"),
             .@"%read-char" = try heap.intern("%read-char"),
             .@"%peek-char" = try heap.intern("%peek-char"),
+            .@"%unread-char" = try heap.intern("%unread-char"),
+            .@"%unread-char-from-stream" = try heap.intern("%unread-char-from-stream"),
             .@"unread-char" = try heap.intern("unread-char"),
             .listen = try heap.intern("listen"),
             .@"upgraded-complex-part-type" = try heap.intern("upgraded-complex-part-type"),
@@ -934,6 +940,7 @@ pub const Builtins = struct {
             .subtypep = try heap.intern("subtypep"),
             .@"type-of" = try heap.intern("type-of"),
             .intern = try heap.intern("intern"),
+            .@"%intern" = try heap.intern("%intern"),
             .@"%make-symbol" = try heap.intern("%make-symbol"),
             .@"%error" = try heap.intern("%error"),
             .@"%floor" = try heap.intern("%floor"),
@@ -1028,6 +1035,7 @@ pub const Builtins = struct {
             .@"%read-byte" = try heap.intern("%read-byte"),
             .@"%write-byte" = try heap.intern("%write-byte"),
             .@"%file-position" = try heap.intern("%file-position"),
+            .@"%set-file-position" = try heap.intern("%set-file-position"),
             .@"%file-length" = try heap.intern("%file-length"),
             .@"%finish-output" = try heap.intern("%finish-output"),
             .@"%force-output" = try heap.intern("%force-output"),
@@ -1353,11 +1361,11 @@ pub const Builtins = struct {
         "not",                        "characterp",                 "floatp",                    "listp",                       "atom",
         // Character operations
                       "char-code",              "code-char",             "char=",                "char<",
-        "char>",                      "%read-char",                 "%peek-char",                "read",                        "%read",              "read-from-string",       "load",                  "unread-char",          "listen",
+        "char>",                      "%read-char",                 "%peek-char",                "%unread-char",               "%unread-char-from-stream", "read",               "%read",                 "read-from-string",       "load",                  "unread-char",          "listen",
         "upgraded-complex-part-type", "eval",                       "gensym",                    "macroexpand",                 "macroexpand-1",
         // Symbol operations
              "boundp",                 "fboundp",               "symbol-value",         "symbol-function",
-        "symbol-plist",               "function-lambda-expression", "typep",                     "type-of",                     "intern",             "symbol-name",            "symbol-package",        "copy-symbol",          "makunbound",
+        "symbol-plist",               "function-lambda-expression", "typep",                     "type-of",                     "intern",             "%intern",               "symbol-name",            "symbol-package",        "copy-symbol",          "makunbound",
         "set",                        "copy-structure",             "get",                       "put",                         "remprop",            "%set-symbol-value",      "%set-symbol-plist",
         // Numeric
             "abs",                  "zerop",
@@ -1596,6 +1604,15 @@ pub const Env = struct {
         const hidden_name = try std.fmt.allocPrint(self.allocator, "__fn_slot_{d}", .{abs_index});
         try self.bindings.put(.{ .pkg_ptr = 0, .uid = 0, .name = hidden_name }, abs_index);
         return abs_index;
+    }
+
+    fn reserveHiddenSlots(self: *Env, count: u16) error{OutOfMemory}!u16 {
+        const start = self.localCount();
+        var i: u16 = 0;
+        while (i < count) : (i += 1) {
+            _ = try self.bindHiddenSlot();
+        }
+        return start;
     }
 
     /// Add a function binding for a symbol in the function namespace.
@@ -1902,6 +1919,27 @@ pub const DeclEnv = struct {
         return false;
     }
 
+    pub fn removeDecl(self: *DeclEnv, name: []const u8, spec: DeclSpec) void {
+        const list = self.decls.getPtr(name) orelse return;
+        var write_i: usize = 0;
+        var read_i: usize = 0;
+        while (read_i < list.items.len) : (read_i += 1) {
+            const info = list.items[read_i];
+            if (info.spec != spec) {
+                if (write_i != read_i) list.items[write_i] = info;
+                write_i += 1;
+            }
+        }
+        if (write_i == list.items.len) return;
+        list.shrinkRetainingCapacity(write_i);
+        if (write_i != 0) return;
+        if (self.decls.fetchOrderedRemove(name)) |removed| {
+            var removed_list = removed.value;
+            removed_list.deinit(self.allocator);
+            self.allocator.free(removed.key);
+        }
+    }
+
     /// Get type declaration for variable if present
     pub fn getTypeDecl(self: *const DeclEnv, name: []const u8) ?Value {
         if (self.decls.get(name)) |infos| {
@@ -1913,35 +1951,9 @@ pub const DeclEnv = struct {
     }
 };
 
-/// Global environment for top-level definitions
-const GlobalAliasCtx = struct {
-    pub fn hash(_: @This(), key: []const u8) u64 {
-        var hasher = std.hash.Wyhash.init(0);
-        var i: usize = 0;
-        while (i < key.len) : (i += 1) {
-            const upper = std.ascii.toUpper(key[i]);
-            hasher.update(&[_]u8{upper});
-        }
-        return hasher.final();
-    }
-
-    pub fn eql(_: @This(), a: []const u8, b: []const u8) bool {
-        return std.ascii.eqlIgnoreCase(a, b);
-    }
-};
-
-const GlobalAliasMap = std.HashMap(
-    []const u8,
-    std.ArrayListUnmanaged(u16),
-    GlobalAliasCtx,
-    std.hash_map.default_max_load_percentage,
-);
-
 pub const GlobalEnv = struct {
     /// Map from name to global index
     bindings: std.StringHashMap(u16),
-    /// Map from unqualified local name to global indices (case-insensitive).
-    aliases: GlobalAliasMap,
     /// Reverse map from global index to canonical name.
     names_by_index: std.ArrayListUnmanaged(?[]const u8),
     /// Next available index
@@ -1951,7 +1963,6 @@ pub const GlobalEnv = struct {
     pub fn init(allocator: std.mem.Allocator) GlobalEnv {
         return .{
             .bindings = std.StringHashMap(u16).init(allocator),
-            .aliases = GlobalAliasMap.init(allocator),
             .names_by_index = .{},
             .next_index = 0,
             .allocator = allocator,
@@ -1959,11 +1970,6 @@ pub const GlobalEnv = struct {
     }
 
     pub fn deinit(self: *GlobalEnv) void {
-        var alias_it = self.aliases.iterator();
-        while (alias_it.next()) |entry| {
-            entry.value_ptr.deinit(self.allocator);
-        }
-        self.aliases.deinit();
         self.names_by_index.deinit(self.allocator);
 
         // Free all allocated name strings
@@ -1972,26 +1978,6 @@ pub const GlobalEnv = struct {
             self.allocator.free(key.*);
         }
         self.bindings.deinit();
-    }
-
-    fn localName(name: []const u8) []const u8 {
-        if (std.mem.lastIndexOfScalar(u8, name, ':')) |split| {
-            return name[split + 1 ..];
-        }
-        return name;
-    }
-
-    fn registerAlias(self: *GlobalEnv, name: []const u8, idx: u16) !void {
-        const local = localName(name);
-        if (self.aliases.getPtr(local)) |list| {
-            try list.append(self.allocator, idx);
-            return;
-        }
-
-        var list = std.ArrayListUnmanaged(u16){};
-        errdefer list.deinit(self.allocator);
-        try list.append(self.allocator, idx);
-        try self.aliases.put(local, list);
     }
 
     fn setNameIndex(self: *GlobalEnv, idx: u16, name: []const u8) !void {
@@ -2018,7 +2004,6 @@ pub const GlobalEnv = struct {
         errdefer self.allocator.free(name_copy);
         try self.bindings.put(name_copy, idx);
         errdefer _ = self.bindings.remove(name_copy);
-        try self.registerAlias(name_copy, idx);
         try self.setNameIndex(idx, name_copy);
         self.next_index += 1;
         return idx;
@@ -2032,7 +2017,6 @@ pub const GlobalEnv = struct {
         errdefer self.allocator.free(name_copy);
         try self.bindings.put(name_copy, idx);
         errdefer _ = self.bindings.remove(name_copy);
-        try self.registerAlias(name_copy, idx);
         try self.setNameIndex(idx, name_copy);
         if (idx >= self.next_index) self.next_index = idx + 1;
     }
@@ -2040,12 +2024,6 @@ pub const GlobalEnv = struct {
     /// Lookup a global, returns index or null
     pub fn lookup(self: *const GlobalEnv, name: []const u8) ?u16 {
         return self.bindings.get(name);
-    }
-
-    /// Lookup all globals sharing the same local (unqualified) name.
-    pub fn lookupAlias(self: *const GlobalEnv, local_name: []const u8) ?[]const u16 {
-        const list = self.aliases.get(local_name) orelse return null;
-        return list.items;
     }
 
     /// Lookup global name by index.
@@ -2404,8 +2382,60 @@ pub const Compiler = struct {
         try self.insertSpecialSym(&self.global_special_syms, self.globals.allocator, sym_val);
     }
 
+    fn unmarkGlobalSpecialSym(self: *Compiler, sym_val: Value) void {
+        const key = self.specialKeyFromSym(sym_val) orelse return;
+        if (self.global_special_syms.fetchRemove(key)) |removed| {
+            if (removed.key.uid == 0) self.globals.allocator.free(removed.key.name);
+        }
+        const name = sym_val.getSymbolName();
+        self.global_decls.removeDecl(name, .special);
+    }
+
     fn isGloballySpecialSym(self: *const Compiler, sym_val: Value) bool {
         return self.specialSetContainsSym(&self.global_special_syms, sym_val);
+    }
+
+    fn quotedSymbolArg(form: Value) ?Value {
+        if (!form.isCons()) return null;
+        const quote_cons = form.toPtr(Cons);
+        const quote_head = quote_cons.car;
+        if (!quote_head.isSymbol()) return null;
+        if (!std.ascii.eqlIgnoreCase(quote_head.toPtr(Symbol).getName(), "QUOTE")) return null;
+        if (!quote_cons.cdr.isCons()) return null;
+        const arg_cons = quote_cons.cdr.toPtr(Cons);
+        if (!arg_cons.cdr.isNil()) return null;
+        const sym = arg_cons.car;
+        if (!sym.isSymbolLike()) return null;
+        return sym;
+    }
+
+    pub fn noteCompileTimeUnspecial(self: *Compiler, expr: Value) void {
+        const live_expr = self.resolveForwardedValue(expr);
+        if (!live_expr.isCons()) return;
+        const cons = live_expr.toPtr(Cons);
+        const head = self.resolveForwardedValue(cons.car);
+        if (!head.isSymbol()) return;
+        const head_name = head.toPtr(Symbol).getName();
+        if (std.ascii.eqlIgnoreCase(head_name, "PROGN")) {
+            var rest = cons.cdr;
+            while (rest.isCons()) {
+                const rest_cons = rest.toPtr(Cons);
+                self.noteCompileTimeUnspecial(rest_cons.car);
+                rest = rest_cons.cdr;
+            }
+            return;
+        }
+        if (!std.ascii.eqlIgnoreCase(head_name, "REMPROP")) return;
+        if (!cons.cdr.isCons()) return;
+        const arg1_cons = cons.cdr.toPtr(Cons);
+        if (!arg1_cons.cdr.isCons()) return;
+        const arg2_cons = arg1_cons.cdr.toPtr(Cons);
+        if (!arg2_cons.cdr.isNil()) return;
+        const target_sym = quotedSymbolArg(arg1_cons.car) orelse return;
+        const indicator_sym = quotedSymbolArg(arg2_cons.car) orelse return;
+        const indicator_name = indicator_sym.getSymbolName();
+        if (!std.ascii.eqlIgnoreCase(indicator_name, "SPECIAL")) return;
+        self.unmarkGlobalSpecialSym(target_sym);
     }
 
     fn freePersistentSlotSpecs(self: *Compiler, specs: []const SlotSpec) void {
@@ -3567,7 +3597,6 @@ pub const Compiler = struct {
         if (!sym_val.isSymbol()) return error.InvalidSyntax;
 
         const sym = sym_val.toPtr(Symbol);
-        const name = sym.getName();
 
         // Check globals - use qualified name if symbol has package
         var qual_buf: [256]u8 = undefined;
@@ -3580,24 +3609,6 @@ pub const Compiler = struct {
         if (self.globals.lookup(qname)) |idx| {
             return try self.builder.globalRef(qname, idx);
         }
-        if (self.allowLegacyGlobalFallbackSym(sym)) {
-            if (self.globals.lookup(name)) |idx| {
-                return try self.builder.globalRef(name, idx);
-            }
-
-            const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
-            var full_buf: [640]u8 = undefined;
-            for (prefixes) |prefix| {
-                if (prefix.len + name.len > full_buf.len) continue;
-                @memcpy(full_buf[0..prefix.len], prefix);
-                @memcpy(full_buf[prefix.len .. prefix.len + name.len], name);
-                const candidate = full_buf[0 .. prefix.len + name.len];
-                if (self.globals.lookup(candidate)) |idx| {
-                    return try self.builder.globalRef(candidate, idx);
-                }
-            }
-        }
-
         // Allow forward references: allocate slot if still not found.
         const idx = try self.globals.define(qname);
         return try self.builder.globalRef(qname, idx);
@@ -3999,7 +4010,7 @@ pub const Compiler = struct {
         // Share macro table so nested macros (like prog1) work in macro bodies
         var iter = self.macro_table.iterator();
         while (iter.next()) |entry| {
-            try macro_compiler.macro_table.put(entry.key_ptr.*, entry.value_ptr.*);
+            try macro_compiler.putMacroMapValue(&macro_compiler.macro_table, entry.key_ptr.*, entry.value_ptr.*);
         }
         // Share global bindings so builtins like 'list' are accessible
         // CRITICAL: Copy both name AND index so references resolve correctly
@@ -4212,14 +4223,14 @@ pub const Compiler = struct {
         var i: usize = 0;
         while (i < macro_count) : (i += 1) {
             const base = macro_start + (i * 2);
-            try self.macro_table.put(roots[base], roots[base + 1]);
+            try self.putMacroMapValue(&self.macro_table, roots[base], roots[base + 1]);
         }
 
         self.symbol_macros.clearRetainingCapacity();
         i = 0;
         while (i < symbol_count) : (i += 1) {
             const base = symbol_start + (i * 2);
-            try self.symbol_macros.put(roots[base], roots[base + 1]);
+            try self.putMacroMapValue(&self.symbol_macros, roots[base], roots[base + 1]);
         }
     }
 
@@ -4312,7 +4323,21 @@ pub const Compiler = struct {
         param_name: []const u8,
         param_sym: ?Value,
         default_expr: ?Value,
+        supplied_p_sym: ?Value,
+        supplied_p_name: ?[]const u8,
     };
+
+    /// Extract supplied-p sym/name from the third element of a key/optional param spec.
+    /// Given the cdr of the param list (after default), returns the supplied-p sym and name.
+    fn extractSuppliedP(rest_after_default: Value) struct { sym: ?Value, name: ?[]const u8 } {
+        if (!rest_after_default.isCons()) return .{ .sym = null, .name = null };
+        const sp_cons = rest_after_default.toPtr(Cons);
+        const sp_val = sp_cons.car;
+        if (sp_val.typeKind() == .symbol) {
+            return .{ .sym = sp_val, .name = sp_val.toPtr(@import("../runtime/objects.zig").Symbol).getName() };
+        }
+        return .{ .sym = null, .name = null };
+    }
 
     fn parseKeyParamSpec(item: Value) ?KeyParamSpec {
         switch (item.typeKind()) {
@@ -4323,15 +4348,24 @@ pub const Compiler = struct {
                     .param_name = name,
                     .param_sym = if (item.typeKind() == .symbol) item else null,
                     .default_expr = null,
+                    .supplied_p_sym = null,
+                    .supplied_p_name = null,
                 };
             },
             .cons => {
                 const item_cons = item.toPtr(Cons);
                 const param_spec = item_cons.car;
-                const default_expr = if (item_cons.cdr.isCons())
-                    item_cons.cdr.toPtr(Cons).car
+                const default_and_rest = item_cons.cdr;
+                const default_expr = if (default_and_rest.isCons())
+                    default_and_rest.toPtr(Cons).car
                 else
                     null;
+                // Extract supplied-p (third element)
+                const rest_after_default = if (default_and_rest.isCons())
+                    default_and_rest.toPtr(Cons).cdr
+                else
+                    Value.nil;
+                const sp = extractSuppliedP(rest_after_default);
 
                 switch (param_spec.typeKind()) {
                     .symbol, .keyword, .t, .nil => {
@@ -4341,6 +4375,8 @@ pub const Compiler = struct {
                             .param_name = name,
                             .param_sym = if (param_spec.typeKind() == .symbol) param_spec else null,
                             .default_expr = default_expr,
+                            .supplied_p_sym = sp.sym,
+                            .supplied_p_name = sp.name,
                         };
                     },
                     .cons => {
@@ -4361,6 +4397,8 @@ pub const Compiler = struct {
                             .param_name = param_name,
                             .param_sym = if (var_designator.typeKind() == .symbol) var_designator else null,
                             .default_expr = default_expr,
+                            .supplied_p_sym = sp.sym,
+                            .supplied_p_name = sp.name,
                         };
                     },
                     else => return null,
@@ -4412,6 +4450,22 @@ pub const Compiler = struct {
 
         var key_params = std.ArrayList(Ir.KeyParam){};
         defer key_params.deinit(self.allocator);
+
+        const PendingOptionalSupplied = struct {
+            optional_index: usize,
+            name: []const u8,
+            sym: ?Value,
+        };
+        var pending_optional_supplied = std.ArrayList(PendingOptionalSupplied){};
+        defer pending_optional_supplied.deinit(self.allocator);
+
+        const PendingKeySupplied = struct {
+            key_index: usize,
+            name: []const u8,
+            sym: ?Value,
+        };
+        var pending_key_supplied = std.ArrayList(PendingKeySupplied){};
+        defer pending_key_supplied.deinit(self.allocator);
 
         var aux_bindings = std.ArrayList(Ir.Binding){};
         defer aux_bindings.deinit(self.allocator);
@@ -4566,12 +4620,16 @@ pub const Compiler = struct {
                             .value = nil_ir,
                             .index = abs_idx,
                         });
+                        if (param_item.typeKind() == .symbol and self.isSpecialBindingSym(param_item)) {
+                            try appendSpecialParam(self, &special_params, param_item, name, abs_idx);
+                        }
                     } else if (in_key) {
                         // Key parameter with nil default, keyword = name
                         try key_params.append(self.allocator, .{
                             .keyword = name,
                             .name = name,
                             .default = null,
+                            .supplied_p = null,
                         });
                         var idx: u16 = 0;
                         if (param_item.typeKind() == .symbol) {
@@ -4587,6 +4645,7 @@ pub const Compiler = struct {
                         try optional_params.append(self.allocator, .{
                             .name = name,
                             .default = null,
+                            .supplied_p = null,
                         });
                         var idx: u16 = 0;
                         if (param_item.typeKind() == .symbol) {
@@ -4657,10 +4716,16 @@ pub const Compiler = struct {
                             // with prior params already visible.
                             default_ir = try self.compile(default_expr, &lambda_env);
                         }
+                        // Handle supplied-p for &key params
+                        var key_sp_name: ?[]const u8 = null;
+                        if (spec.supplied_p_name) |sp_name| {
+                            key_sp_name = try self.allocator.dupe(u8, sp_name);
+                        }
                         try key_params.append(self.allocator, .{
                             .keyword = keyword_name,
                             .name = param_name,
                             .default = default_ir,
+                            .supplied_p = key_sp_name,
                         });
                         var idx: u16 = 0;
                         if (spec.param_sym) |param_sym| {
@@ -4672,18 +4737,42 @@ pub const Compiler = struct {
                         } else {
                             idx = try lambda_env.bindName(param_name);
                         }
+                        // Bind supplied-p variables for &key only after all key
+                        // parameter names are bound, so supplied-p slots cannot
+                        // overlap later key parameter slots when trailing keys are omitted.
+                        if (spec.supplied_p_name) |sp_name| {
+                            try pending_key_supplied.append(self.allocator, .{
+                                .key_index = key_params.items.len - 1,
+                                .name = sp_name,
+                                .sym = spec.supplied_p_sym,
+                            });
+                        }
                     } else if (in_optional) {
-                        // Optional parameter: (name default-expr)
+                        // Optional parameter: (name default-expr) or (name default-expr supplied-p)
                         // CL lambda-list defaults evaluate in lambda env,
                         // with prior params already visible.
                         var default_ir: ?*const Ir = null;
+                        var supplied_p_name: ?[]const u8 = null;
+                        var supplied_p_sym_val: ?Value = null;
                         if (typed_cdr.isCons()) {
                             const default_cons = typed_cdr.toPtr(Cons);
                             default_ir = try self.compile(default_cons.car, &lambda_env);
+                            // Check for supplied-p parameter (third element)
+                            const rest_after_default = self.resolveForwardedValue(default_cons.cdr);
+                            if (rest_after_default.isCons()) {
+                                const sp_cons = rest_after_default.toPtr(Cons);
+                                const sp_sym = self.resolveForwardedValue(sp_cons.car);
+                                if (sp_sym.typeKind() == .symbol) {
+                                    const sp_name = try self.allocator.dupe(u8, sp_sym.toPtr(@import("../runtime/objects.zig").Symbol).getName());
+                                    supplied_p_name = sp_name;
+                                    supplied_p_sym_val = sp_sym;
+                                }
+                            }
                         }
                         try optional_params.append(self.allocator, .{
                             .name = name,
                             .default = default_ir,
+                            .supplied_p = supplied_p_name,
                         });
                         var idx: u16 = 0;
                         const typed_car_live = self.resolveForwardedValue(typed_car);
@@ -4694,6 +4783,16 @@ pub const Compiler = struct {
                             }
                         } else {
                             idx = try lambda_env.bindName(name);
+                        }
+                        // Bind supplied-p variables for &optional only after all
+                        // positional parameter names are bound so supplied-p
+                        // slots cannot overlap later optional parameter slots.
+                        if (supplied_p_name) |sp_name| {
+                            try pending_optional_supplied.append(self.allocator, .{
+                                .optional_index = optional_params.items.len - 1,
+                                .name = sp_name,
+                                .sym = supplied_p_sym_val,
+                            });
                         }
                     } else {
                         // Typed parameter: (name type-expr)
@@ -4737,6 +4836,28 @@ pub const Compiler = struct {
             }
         }
 
+        for (pending_optional_supplied.items) |pending| {
+            const sp_idx = if (pending.sym) |sp_sym| blk: {
+                const live_sp = self.resolveForwardedValue(sp_sym);
+                if (live_sp.typeKind() == .symbol) {
+                    break :blk try lambda_env.bindSym(live_sp);
+                }
+                break :blk try lambda_env.bindName(pending.name);
+            } else try lambda_env.bindName(pending.name);
+            optional_params.items[pending.optional_index].supplied_p_idx = sp_idx;
+        }
+
+        for (pending_key_supplied.items) |pending| {
+            const sp_idx = if (pending.sym) |sp_sym| blk: {
+                const live_sp = self.resolveForwardedValue(sp_sym);
+                if (live_sp.typeKind() == .symbol) {
+                    break :blk try lambda_env.bindSym(live_sp);
+                }
+                break :blk try lambda_env.bindName(pending.name);
+            } else try lambda_env.bindName(pending.name);
+            key_params.items[pending.key_index].supplied_p_idx = sp_idx;
+        }
+
         // Filter out declare forms from body
         const filtered_body = try self.filterDeclares(body_exprs, &lambda_env);
         lambda_env.optimize = self.optimize_current;
@@ -4746,8 +4867,65 @@ pub const Compiler = struct {
 
         try self.collectFreeVars(filtered_body, &lambda_env, &capture_set);
 
-        // Compile body (implicit progn) - body is in tail position
-        var body_ir = try self.compileBodyWithTail(filtered_body, &lambda_env, true);
+        // Also collect free vars from optional/key parameter default expressions.
+        // Default expressions may reference outer variables that are not in the
+        // lambda body — these must also be captured.
+        // We scan defaults using a TEMPORARY env that has the lambda's parent
+        // scope but NOT the lambda's own parameters. This ensures that
+        // (&optional (y y)) correctly detects the default y as an outer variable.
+        {
+            var scan_env = Env.init(self.allocator, env);
+            defer scan_env.deinit();
+            scan_env.new_frame = true; // This is a lambda boundary
+
+            var param_scan = params_expr;
+            var scan_opt = false;
+            var scan_key = false;
+            while (param_scan.isCons()) : (param_scan = param_scan.toPtr(Cons).cdr) {
+                const item = param_scan.toPtr(Cons).car;
+                // Check for &optional / &key markers
+                if (item.isSymbol()) {
+                    const builtins = self.builtins orelse continue;
+                    if (item.raw == builtins.@"&optional".raw) { scan_opt = true; scan_key = false; continue; }
+                    if (item.raw == builtins.@"&key".raw) { scan_key = true; scan_opt = false; continue; }
+                    if (item.raw == builtins.@"&rest".raw or item.raw == builtins.@"&body".raw or
+                        item.raw == builtins.@"&aux".raw or item.raw == builtins.@"&allow-other-keys".raw)
+                    { scan_opt = false; scan_key = false; continue; }
+                }
+                if ((scan_opt or scan_key) and item.isCons()) {
+                    // (param default-expr) or ((kw param) default-expr)
+                    const item_cons = item.toPtr(Cons);
+                    if (item_cons.cdr.isCons()) {
+                        const default_expr = item_cons.cdr.toPtr(Cons).car;
+                        try self.collectFreeVars(default_expr, &scan_env, &capture_set);
+                    }
+                    // After scanning, bind this param in scan_env so subsequent
+                    // defaults can see it (CL semantics: defaults evaluate left-to-right)
+                    const param_name_val = if (item_cons.car.isCons())
+                        item_cons.car.toPtr(Cons).cdr.toPtr(Cons).car // ((kw param) ...)
+                    else
+                        item_cons.car; // (param ...)
+                    if (param_name_val.isSymbol()) {
+                        _ = scan_env.bindName(param_name_val.toPtr(Symbol).getName()) catch {};
+                    }
+                } else if (item.isSymbol()) {
+                    // Plain optional/key param without default - bind it
+                    _ = scan_env.bindName(item.toPtr(Symbol).getName()) catch {};
+                }
+            }
+        }
+
+        const key_pair_slots: u16 = @intCast(key_params.items.len * 2);
+        const key_temp_start: u16 = if (key_pair_slots != 0)
+            try lambda_env.reserveHiddenSlots(key_pair_slots)
+        else
+            lambda_env.localCount();
+
+        // Compile body (implicit progn) - body is in tail position UNLESS
+        // the lambda has special parameter bindings that will wrap body in progv.
+        // progv body must NOT be in tail position because pop_progv must execute after it.
+        const has_special_params = special_params.items.len > 0;
+        var body_ir = try self.compileBodyWithTail(filtered_body, &lambda_env, !has_special_params);
 
         // Bidirectional type checking (when enabled)
         if (self.type_checking_enabled) {
@@ -4884,7 +5062,7 @@ pub const Compiler = struct {
             }
         }
 
-        const lam_ir = try self.builder.lambda(params.items, opt_params, kp_params, allow_other_keys, rest_param, captures, body_ir);
+        const lam_ir = try self.builder.lambda(params.items, opt_params, kp_params, allow_other_keys, key_temp_start, rest_param, captures, body_ir);
 
         // Propagate per-lambda optimize declarations into IR.
         lam_ir.lambda.speed = self.optimize_current.speed;
@@ -5352,6 +5530,69 @@ pub const Compiler = struct {
         }
     }
 
+    fn collectLocalFunctionMutationsAndCaptures(
+        self: *Compiler,
+        defs: Value,
+        binding_syms: []const Value,
+        mutated: *std.AutoHashMap(Value, void),
+        captured: *std.AutoHashMap(Value, void),
+    ) error{OutOfMemory}!void {
+        var current = defs;
+        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
+            const def_cons = current.toPtr(Cons);
+            const def = def_cons.car;
+            if (!def.isCons()) continue;
+            const f = def.toPtr(Cons);
+            if (!f.cdr.isCons()) continue;
+            try self.collectLambdaCaptures(f.cdr, binding_syms, captured);
+            const lam_cons = f.cdr.toPtr(Cons);
+            try self.collectMutationsAndCapturesInList(lam_cons.cdr, binding_syms, mutated, captured);
+        }
+    }
+
+    fn collectLocalFunctionFreeVarRefs(
+        self: *Compiler,
+        defs: Value,
+        binding_syms: []const Value,
+        params: *std.AutoHashMap(Value, void),
+        captured: *std.AutoHashMap(Value, void),
+    ) error{OutOfMemory}!void {
+        var current = defs;
+        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
+            const def_cons = current.toPtr(Cons);
+            const def = def_cons.car;
+            if (!def.isCons()) continue;
+            const f = def.toPtr(Cons);
+            if (!f.cdr.isCons()) continue;
+            const lambda_args = f.cdr;
+            const lam_cons = lambda_args.toPtr(Cons);
+            const lam_params = lam_cons.car;
+            const lam_body = lam_cons.cdr;
+
+            var nested_params = std.AutoHashMap(Value, void).init(self.allocator);
+            defer nested_params.deinit();
+
+            var iter = params.keyIterator();
+            while (iter.next()) |k| {
+                try nested_params.put(k.*, {});
+            }
+
+            var param_list = self.resolveForwardedValue(lam_params);
+            while (param_list.isCons()) {
+                param_list = self.resolveForwardedValue(param_list);
+                const param_cons = param_list.toPtr(Cons);
+                const param_item = self.resolveForwardedValue(param_cons.car);
+                const next_param = self.resolveForwardedValue(param_cons.cdr);
+                if (param_item.isSymbol()) {
+                    try nested_params.put(param_item, {});
+                }
+                param_list = next_param;
+            }
+
+            try self.collectFreeVarRefs(lam_body, binding_syms, &nested_params, captured);
+        }
+    }
+
     /// Recursively collect mutations (set!) and lambda captures in an expression
     fn collectMutationsAndCaptures(
         self: *Compiler,
@@ -5447,6 +5688,16 @@ pub const Compiler = struct {
                     const lam_cons = tail.toPtr(Cons);
                     // Skip params, recurse into body
                     try self.collectMutationsAndCapturesInList(lam_cons.cdr, binding_syms, mutated, captured);
+                }
+                return;
+            }
+
+            // Check LABELS/FLET local function bodies for captures and mutations.
+            if (head.raw == b.labels.raw or head.raw == b.flet.raw) {
+                if (tail.isCons()) {
+                    const local_cons = tail.toPtr(Cons);
+                    try self.collectLocalFunctionMutationsAndCaptures(local_cons.car, binding_syms, mutated, captured);
+                    try self.collectMutationsAndCapturesInList(local_cons.cdr, binding_syms, mutated, captured);
                 }
                 return;
             }
@@ -5578,6 +5829,15 @@ pub const Compiler = struct {
 
                     // Recurse with extended params
                     try self.collectFreeVarRefsInList(lam_body, binding_syms, &nested_params, captured);
+                }
+                return;
+            }
+
+            if (head.raw == b.labels.raw or head.raw == b.flet.raw) {
+                if (cons.cdr.isCons()) {
+                    const local_cons = cons.cdr.toPtr(Cons);
+                    try self.collectLocalFunctionFreeVarRefs(local_cons.car, binding_syms, params, captured);
+                    try self.collectFreeVarRefsInList(local_cons.cdr, binding_syms, params, captured);
                 }
                 return;
             }
@@ -5810,10 +6070,13 @@ pub const Compiler = struct {
     fn isSpecialBindingSym(self: *Compiler, sym: Value) bool {
         const live_sym = self.resolveForwardedValue(sym);
         if (!live_sym.isSymbolLike()) return false;
-        if (self.isGloballySpecialSym(live_sym)) return true;
+        if (self.isGloballySpecialSym(live_sym)) {
+            return true;
+        }
         const name = live_sym.getSymbolName();
         if (self.global_decls.hasDecl(name, .special)) return true;
-        return name.len >= 2 and name[0] == '*' and name[name.len - 1] == '*';
+        if (name.len >= 2 and name[0] == '*' and name[name.len - 1] == '*') return true;
+        return false;
     }
 
     fn buildIrList(self: *Compiler, items: []const *const Ir) !*Ir {
@@ -5937,6 +6200,7 @@ pub const Compiler = struct {
 
             const live_sym = self.resolveForwardedValue(sym);
             const is_local_special = self.specialSetContainsSym(&local_special_syms, live_sym);
+
             if (self.isSpecialBindingSym(live_sym) or is_local_special) {
                 const temp_sym = try prims.gensym(heap, null);
                 const init_tail = try heap.allocCons(init_expr, Value.nil);
@@ -6000,7 +6264,8 @@ pub const Compiler = struct {
                 const sym_list = try self.listFromSlice(sym_slice);
                 const symbols_ir = try self.builder.lit(sym_list);
                 const values_ir = try self.buildIrList(vals);
-                const body_ir = try self.compileBodyWithTail(self.resolveForwardedValue(body_exprs), env, in_tail);
+                // NEVER compile progv body in tail position — pop_progv must run after body.
+                const body_ir = try self.compileBodyWithTail(self.resolveForwardedValue(body_exprs), env, false);
                 return try self.builder.progv(symbols_ir, values_ir, body_ir);
             }
 
@@ -6010,7 +6275,8 @@ pub const Compiler = struct {
             const sym_list = try self.listFromSlice(special_syms.items);
             const symbols_ir = try self.builder.lit(sym_list);
             const values_ir = try self.buildIrList(vals);
-            const body_ir = try self.compileBodyWithTail(self.resolveForwardedValue(body_exprs), env, in_tail);
+            // NEVER compile progv body in tail position — pop_progv must run after body.
+            const body_ir = try self.compileBodyWithTail(self.resolveForwardedValue(body_exprs), env, false);
             return try self.builder.progv(symbols_ir, values_ir, body_ir);
         }
 
@@ -6804,7 +7070,6 @@ pub const Compiler = struct {
         if (!var_val.isSymbol()) return error.InvalidSet;
         const var_sym = var_val.toPtr(Symbol);
         const local_name = var_sym.getName();
-
         // First check local environment
         if (env.lookupSym(var_val)) |binding| {
             // If this variable is boxed, use box-set! instead
@@ -6826,28 +7091,8 @@ pub const Compiler = struct {
         defer if (q.owned) self.allocator.free(q.name);
         const global_name = q.name;
 
-        var name = global_name;
-        var idx_opt = self.globals.lookup(name);
-        if (idx_opt == null and self.allowLegacyGlobalFallbackSym(var_sym)) {
-            if (self.globals.lookup(local_name)) |idx| {
-                idx_opt = idx;
-                name = local_name;
-            } else {
-                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
-                var full_buf: [640]u8 = undefined;
-                for (prefixes) |prefix| {
-                    if (prefix.len + local_name.len > full_buf.len) continue;
-                    @memcpy(full_buf[0..prefix.len], prefix);
-                    @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
-                    const candidate = full_buf[0 .. prefix.len + local_name.len];
-                    if (self.globals.lookup(candidate)) |idx| {
-                        idx_opt = idx;
-                        name = candidate;
-                        break;
-                    }
-                }
-            }
-        }
+        const name = global_name;
+        const idx_opt = self.globals.lookup(name);
 
         // CL semantics: top-level setq creates a global binding when absent.
         const idx = idx_opt orelse try self.globals.define(name);
@@ -6902,7 +7147,7 @@ pub const Compiler = struct {
 
         // If place is a symbol, check for symbol macro
         if (place.isSymbol()) {
-            if (self.symbol_macros.get(place)) |expansion| {
+            if (self.lookupSymbolMacro(place)) |expansion| {
                 // Symbol macro expands to compound form - apply setf to expansion
                 if (expansion.isCons()) {
                     // Rebuild (setf expanded-place value) and recompile
@@ -6934,29 +7179,8 @@ pub const Compiler = struct {
                     var qual_buf: [256]u8 = undefined;
                     const q = try self.getQualifiedName(exp_sym, &qual_buf);
                     defer if (q.owned) self.allocator.free(q.name);
-                    const global_name = q.name;
-                    var name = global_name;
-                    var idx_opt = self.globals.lookup(name);
-                    if (idx_opt == null and self.allowLegacyGlobalFallbackSym(exp_sym)) {
-                        if (self.globals.lookup(exp_name)) |idx| {
-                            idx_opt = idx;
-                            name = exp_name;
-                        } else {
-                            const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
-                            var full_buf: [640]u8 = undefined;
-                            for (prefixes) |prefix| {
-                                if (prefix.len + exp_name.len > full_buf.len) continue;
-                                @memcpy(full_buf[0..prefix.len], prefix);
-                                @memcpy(full_buf[prefix.len .. prefix.len + exp_name.len], exp_name);
-                                const candidate = full_buf[0 .. prefix.len + exp_name.len];
-                                if (self.globals.lookup(candidate)) |idx| {
-                                    idx_opt = idx;
-                                    name = candidate;
-                                    break;
-                                }
-                            }
-                        }
-                    }
+                    const name = q.name;
+                    const idx_opt = self.globals.lookup(name);
                     if (idx_opt) |idx| return try self.builder.define(name, idx, val_ir);
                     return error.UnboundVariable;
                 }
@@ -7346,14 +7570,8 @@ pub const Compiler = struct {
                     const val_ir = try self.compile(value_expr, env);
 
                     const setter_candidates = [_][]const u8{
-                        "SET-LOGICAL-PATHNAME-TRANSLATIONS",
-                        "set-logical-pathname-translations",
                         "COMMON-LISP:SET-LOGICAL-PATHNAME-TRANSLATIONS",
                         "COMMON-LISP:set-logical-pathname-translations",
-                        "CL:SET-LOGICAL-PATHNAME-TRANSLATIONS",
-                        "CL:set-logical-pathname-translations",
-                        "CL-USER:SET-LOGICAL-PATHNAME-TRANSLATIONS",
-                        "CL-USER:set-logical-pathname-translations",
                     };
 
                     for (setter_candidates) |name| {
@@ -7506,7 +7724,7 @@ pub const Compiler = struct {
                     return set_ir;
                 }
 
-                // Accept both canonical "(SETF ...)" and legacy "(setf ...)" names.
+                // Accept both canonical "(SETF ...)" and package-qualified "(setf ...)" names.
                 const setf_name_upper = try std.fmt.allocPrint(self.allocator, "(SETF {s})", .{func_name});
                 defer self.allocator.free(setf_name_upper);
                 if (self.globals.lookup(setf_name_upper)) |idx| {
@@ -7520,40 +7738,13 @@ pub const Compiler = struct {
                     return try self.compileSetfGlobalCall(env, value_expr, place_args, q_upper.name, idx);
                 }
 
-                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
-                var prefixed_upper_buf: [768]u8 = undefined;
-                for (prefixes) |prefix| {
-                    if (prefix.len + setf_name_upper.len > prefixed_upper_buf.len) continue;
-                    @memcpy(prefixed_upper_buf[0..prefix.len], prefix);
-                    @memcpy(prefixed_upper_buf[prefix.len .. prefix.len + setf_name_upper.len], setf_name_upper);
-                    const candidate = prefixed_upper_buf[0 .. prefix.len + setf_name_upper.len];
-                    if (self.globals.lookup(candidate)) |idx| {
-                        return try self.compileSetfGlobalCall(env, value_expr, place_args, candidate, idx);
-                    }
-                }
-
+                var qual_lower_buf: [512]u8 = undefined;
                 const setf_name_lower = try std.fmt.allocPrint(self.allocator, "(setf {s})", .{func_name});
                 defer self.allocator.free(setf_name_lower);
-                if (self.globals.lookup(setf_name_lower)) |idx| {
-                    return try self.compileSetfGlobalCall(env, value_expr, place_args, setf_name_lower, idx);
-                }
-
-                var qual_lower_buf: [512]u8 = undefined;
                 const q_lower = try self.qualifyName(setf_name_lower, &qual_lower_buf);
                 defer if (q_lower.owned) self.allocator.free(q_lower.name);
                 if (self.globals.lookup(q_lower.name)) |idx| {
                     return try self.compileSetfGlobalCall(env, value_expr, place_args, q_lower.name, idx);
-                }
-
-                var prefixed_lower_buf: [768]u8 = undefined;
-                for (prefixes) |prefix| {
-                    if (prefix.len + setf_name_lower.len > prefixed_lower_buf.len) continue;
-                    @memcpy(prefixed_lower_buf[0..prefix.len], prefix);
-                    @memcpy(prefixed_lower_buf[prefix.len .. prefix.len + setf_name_lower.len], setf_name_lower);
-                    const candidate = prefixed_lower_buf[0 .. prefix.len + setf_name_lower.len];
-                    if (self.globals.lookup(candidate)) |idx| {
-                        return try self.compileSetfGlobalCall(env, value_expr, place_args, candidate, idx);
-                    }
                 }
             }
         }
@@ -7861,21 +8052,6 @@ pub const Compiler = struct {
                                     return try self.builder.globalRef(q_lower.name, idx);
                                 }
 
-                                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
-                                for (prefixes) |prefix| {
-                                    const q_name = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ prefix, setf_name });
-                                    defer self.allocator.free(q_name);
-                                    if (self.globals.lookup(q_name)) |idx| {
-                                        return try self.builder.globalRef(q_name, idx);
-                                    }
-
-                                    const q_name_lower = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ prefix, setf_name_lower });
-                                    defer self.allocator.free(q_name_lower);
-                                    if (self.globals.lookup(q_name_lower)) |idx| {
-                                        return try self.builder.globalRef(q_name_lower, idx);
-                                    }
-                                }
-
                                 const heap = if (self.heap) |h| h else return error.InvalidSyntax;
                                 const setf_sym = try heap.intern(setf_name);
                                 return try self.builder.symbolFunction(try self.builder.lit(setf_sym));
@@ -7966,7 +8142,7 @@ pub const Compiler = struct {
         const b_ref = try self.builder.variable("b", 0, 1);
         const prim_call = try buildFn(self.builder, a_ref, b_ref);
         const params = [_][]const u8{ "a", "b" };
-        return try self.builder.lambda(&params, &.{}, &.{}, false, null, &.{}, prim_call);
+        return try self.builder.lambda(&params, &.{}, &.{}, false, 0, null, &.{}, prim_call);
     }
 
     fn makeUnaryWrapper(self: *Compiler, buildFn: *const fn (IrBuilder, *const Ir) std.mem.Allocator.Error!*Ir) anyerror!*Ir {
@@ -7974,7 +8150,7 @@ pub const Compiler = struct {
         const a_ref = try self.builder.variable("a", 0, 0);
         const prim_call = try buildFn(self.builder, a_ref);
         const params = [_][]const u8{"a"};
-        return try self.builder.lambda(&params, &.{}, &.{}, false, null, &.{}, prim_call);
+        return try self.builder.lambda(&params, &.{}, &.{}, false, 0, null, &.{}, prim_call);
     }
 
     fn makeUnaryPrimitiveWrapper(self: *Compiler, comptime tag: std.meta.Tag(Ir)) anyerror!*Ir {
@@ -7986,7 +8162,7 @@ pub const Compiler = struct {
             else => unreachable,
         };
         const params = [_][]const u8{"a"};
-        return try self.builder.lambda(&params, &.{}, &.{}, false, null, &.{}, prim_call);
+        return try self.builder.lambda(&params, &.{}, &.{}, false, 0, null, &.{}, prim_call);
     }
 
     fn makeMakeArrayWrapper(self: *Compiler) anyerror!*Ir {
@@ -7994,14 +8170,14 @@ pub const Compiler = struct {
         const dims_ref = try self.builder.variable("dimensions", 0, 0);
         const prim_call = try self.builder.arrNewDynamic(dims_ref, null);
         const params = [_][]const u8{"dimensions"};
-        return try self.builder.lambda(&params, &.{}, &.{}, false, null, &.{}, prim_call);
+        return try self.builder.lambda(&params, &.{}, &.{}, false, 0, null, &.{}, prim_call);
     }
 
     fn makeValuesWrapper(self: *Compiler) anyerror!*Ir {
         // (lambda (&rest args) (values-list args))
         const args_ref = try self.builder.variable("args", 0, 0);
         const body = try self.builder.valuesList(args_ref);
-        return try self.builder.lambda(&.{}, &.{}, &.{}, false, "args", &.{}, body);
+        return try self.builder.lambda(&.{}, &.{}, &.{}, false, 0, "args", &.{}, body);
     }
 
     fn makeInternWrapper(self: *Compiler) anyerror!*Ir {
@@ -8011,11 +8187,11 @@ pub const Compiler = struct {
         const name_ref = try self.builder.variable("name", 0, 0);
         const nil_lit = try self.builder.lit(Value.nil);
         const optional = [_]Ir.OptionalParam{
-            .{ .name = "package", .default = nil_lit },
+            .{ .name = "package", .default = nil_lit, .supplied_p = null },
         };
         const body = try self.allocator.create(Ir);
         body.* = .{ .intern = .{ .operand = name_ref } };
-        return try self.builder.lambda(&.{"name"}, &optional, &.{}, false, null, &.{}, body);
+        return try self.builder.lambda(&.{"name"}, &optional, &.{}, false, 0, null, &.{}, body);
     }
 
     fn makeVariadicAddWrapper(self: *Compiler) anyerror!*Ir {
@@ -8107,7 +8283,7 @@ pub const Compiler = struct {
         // Outer if: (if (null args) 0 <inner>)
         const outer_if = try b.ifExpr(null_args, zero, inner_if);
 
-        return try self.builder.lambda(&.{}, &.{}, &.{}, false, "args", &.{}, outer_if);
+        return try self.builder.lambda(&.{}, &.{}, &.{}, false, 0, "args", &.{}, outer_if);
     }
 
     fn makeVariadicDivWrapper(self: *Compiler) anyerror!*Ir {
@@ -8159,7 +8335,7 @@ pub const Compiler = struct {
         const inner_if = try b.ifExpr(null_cdr, recip_result, acc_let);
         const outer_if = try b.ifExpr(null_args, one, inner_if);
 
-        return try self.builder.lambda(&.{}, &.{}, &.{}, false, "args", &.{}, outer_if);
+        return try self.builder.lambda(&.{}, &.{}, &.{}, false, 0, "args", &.{}, outer_if);
     }
 
     /// Helper to build a simple fold wrapper for + and *
@@ -8195,7 +8371,7 @@ pub const Compiler = struct {
         const init_val = try b.lit(Value.makeFixnum(identity));
         const let_node = try b.let1("acc", 1, init_val, let_body);
 
-        return try self.builder.lambda(&.{}, &.{}, &.{}, false, "args", &.{}, let_node);
+        return try self.builder.lambda(&.{}, &.{}, &.{}, false, 0, "args", &.{}, let_node);
     }
 
     /// Compile quasiquote (backquote)
@@ -8457,8 +8633,9 @@ pub const Compiler = struct {
         const cons = args.toPtr(Cons);
         const protected = cons.car;
 
-        // Protected form can be in tail position
-        const protected_ir = try self.compileWithTail(protected, env, in_tail);
+        // Protected form must NOT be in tail position — cleanup forms must execute after it.
+        _ = in_tail;
+        const protected_ir = try self.compile(protected, env);
 
         // Cleanup forms are never in tail position (value discarded)
         const cleanup_ir = try self.compileBody(cons.cdr, env);
@@ -8476,8 +8653,9 @@ pub const Compiler = struct {
         // Tag is evaluated at runtime
         const tag_ir = try self.compile(tag, env);
 
-        // Body can be in tail position
-        const body_ir = try self.compileBodyWithTail(cons.cdr, env, in_tail);
+        // Body must NOT be in tail position — pop_catch must execute after it.
+        _ = in_tail;
+        const body_ir = try self.compileBody(cons.cdr, env);
 
         return try self.builder.@"catch"(tag_ir, body_ir);
     }
@@ -8749,8 +8927,8 @@ pub const Compiler = struct {
             handler_ir = try self.buildHandlerClause(handler, cond_name, cond_idx, handler_ir, &handler_env, in_tail);
         }
 
-        // Compile protected expression
-        const protected_ir = try self.compileWithTail(protected_expr, env, in_tail);
+        // Protected expression must NOT be in tail position — catch handler must remain active.
+        const protected_ir = try self.compile(protected_expr, env);
 
         // Build catch with %condition% tag
         // The handler_ir is the dispatch code that runs when a condition is caught
@@ -9091,28 +9269,8 @@ pub const Compiler = struct {
         const q = try self.getQualifiedName(name_sym, &qual_buf);
         defer if (q.owned) self.allocator.free(q.name);
         const local_name = name_sym.getName();
-        var name = q.name;
-        var idx_opt = self.globals.lookup(name);
-        if (idx_opt == null and self.allowLegacyGlobalFallbackSym(name_sym)) {
-            if (self.globals.lookup(local_name)) |idx| {
-                idx_opt = idx;
-                name = local_name;
-            } else {
-                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
-                var full_buf: [640]u8 = undefined;
-                for (prefixes) |prefix| {
-                    if (prefix.len + local_name.len > full_buf.len) continue;
-                    @memcpy(full_buf[0..prefix.len], prefix);
-                    @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
-                    const candidate = full_buf[0 .. prefix.len + local_name.len];
-                    if (self.globals.lookup(candidate)) |idx| {
-                        idx_opt = idx;
-                        name = candidate;
-                        break;
-                    }
-                }
-            }
-        }
+        const name = q.name;
+        const idx_opt = self.globals.lookup(name);
 
         // Pre-register global for recursive definitions
         const idx = idx_opt orelse try self.globals.define(name);
@@ -9224,32 +9382,7 @@ pub const Compiler = struct {
             name = q.name;
         }
 
-        const allow_legacy_fallback = if (name_sym_saved) |sym|
-            self.allowLegacyGlobalFallbackSym(sym)
-        else
-            self.allowLegacyGlobalFallbackCurrentPackage();
-
-        var idx_opt = self.globals.lookup(name);
-        if (idx_opt == null and allow_legacy_fallback) {
-            if (self.globals.lookup(local_name)) |idx| {
-                idx_opt = idx;
-                name = local_name;
-            } else {
-                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
-                var full_buf: [640]u8 = undefined;
-                for (prefixes) |prefix| {
-                    if (prefix.len + local_name.len > full_buf.len) continue;
-                    @memcpy(full_buf[0..prefix.len], prefix);
-                    @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
-                    const candidate = full_buf[0 .. prefix.len + local_name.len];
-                    if (self.globals.lookup(candidate)) |idx| {
-                        idx_opt = idx;
-                        name = candidate;
-                        break;
-                    }
-                }
-            }
-        }
+        const idx_opt = self.globals.lookup(name);
         const idx = idx_opt orelse try self.globals.define(name);
 
         // Rest is (params...) body...
@@ -9529,7 +9662,7 @@ pub const Compiler = struct {
         const transformed = try self.transformDestructuredParams(lambda_args);
 
         // Store in macro_table: symbol -> transformed-lambda-args
-        try self.macro_table.put(name_val, transformed);
+        try self.putMacroMapValue(&self.macro_table, name_val, transformed);
 
         // defmacro has no runtime effect - return nil
         return try self.builder.lit(Value.nil);
@@ -9564,7 +9697,7 @@ pub const Compiler = struct {
             if (!name.isSymbol()) return error.InvalidSyntax;
 
             // Save old definition (if any)
-            const old_def = self.macro_table.get(name);
+            const old_def = self.lookupMacroMapValue(&self.macro_table, name);
             try saved_macros.append(self.allocator, .{ .name = name, .def = old_def });
 
             // Rest is ((params...) body...)
@@ -9575,7 +9708,7 @@ pub const Compiler = struct {
             const transformed = try self.transformDestructuredParams(lambda_args);
 
             // Add to macro table
-            try self.macro_table.put(name, transformed);
+            try self.putMacroMapValue(&self.macro_table, name, transformed);
         }
 
         // Compile body with local macros in effect
@@ -9584,9 +9717,9 @@ pub const Compiler = struct {
         // Restore old macro definitions
         for (saved_macros.items) |saved| {
             if (saved.def) |def| {
-                try self.macro_table.put(saved.name, def);
+                try self.putMacroMapValue(&self.macro_table, saved.name, def);
             } else {
-                _ = self.macro_table.remove(saved.name);
+                _ = self.removeMacroMapValue(&self.macro_table, saved.name);
             }
         }
 
@@ -9627,11 +9760,11 @@ pub const Compiler = struct {
             const expansion = rest.toPtr(Cons).car;
 
             // Save old definition (if any)
-            const old_def = self.symbol_macros.get(name);
+            const old_def = self.lookupMacroMapValue(&self.symbol_macros, name);
             try saved_syms.append(self.allocator, .{ .name = name, .def = old_def });
 
             // Add to symbol macro table
-            try self.symbol_macros.put(name, expansion);
+            try self.putMacroMapValue(&self.symbol_macros, name, expansion);
         }
 
         // Compile body with local symbol macros in effect
@@ -9640,9 +9773,9 @@ pub const Compiler = struct {
         // Restore old symbol macro definitions
         for (saved_syms.items) |saved| {
             if (saved.def) |def| {
-                try self.symbol_macros.put(saved.name, def);
+                try self.putMacroMapValue(&self.symbol_macros, saved.name, def);
             } else {
-                _ = self.symbol_macros.remove(saved.name);
+                _ = self.removeMacroMapValue(&self.symbol_macros, saved.name);
             }
         }
 
@@ -10029,7 +10162,8 @@ pub const Compiler = struct {
         const situations = cons1.car;
         const body = cons1.cdr;
 
-        // Check situations for :execute (or :load-toplevel)
+        // Check situations for :compile-toplevel and :execute (or :load-toplevel)
+        var compile_toplevel = false;
         var execute = false;
         var sit = situations;
         while (sit.isCons()) {
@@ -10039,14 +10173,24 @@ pub const Compiler = struct {
             if (situation.isKeyword()) {
                 const b = self.builtins.?;
                 // Compare by identity with pre-interned keywords
-                if (situation.raw == b.kw_execute.raw or
+                if (situation.raw == b.@"kw_compile-toplevel".raw) {
+                    compile_toplevel = true;
+                } else if (situation.raw == b.kw_execute.raw or
                     situation.raw == b.@"kw_load-toplevel".raw)
                 {
                     execute = true;
-                    break;
                 }
             }
             sit = sit_cons.cdr;
+        }
+
+        if (compile_toplevel) {
+            var forms = body;
+            while (forms.isCons()) {
+                const form_cons = forms.toPtr(Cons);
+                self.noteCompileTimeUnspecial(form_cons.car);
+                forms = form_cons.cdr;
+            }
         }
 
         // If :execute, compile body as progn
@@ -10084,7 +10228,7 @@ pub const Compiler = struct {
         // Copy macro table for consistency
         var iter = self.macro_table.iterator();
         while (iter.next()) |entry| {
-            try eval_compiler.macro_table.put(entry.key_ptr.*, entry.value_ptr.*);
+            try eval_compiler.putMacroMapValue(&eval_compiler.macro_table, entry.key_ptr.*, entry.value_ptr.*);
         }
 
         var empty_env = Env.init(arena_alloc, null);
@@ -10097,6 +10241,7 @@ pub const Compiler = struct {
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             false,
+            0,
             null,
             &[_]Ir.Capture{},
             form_ir,
@@ -10481,23 +10626,6 @@ pub const Compiler = struct {
         return qual_name.qualSymWithHeap(self.allocator, self.heap, sym, buf);
     }
 
-    fn isLegacyFallbackPackageName(pkg_name: []const u8) bool {
-        return std.mem.eql(u8, pkg_name, "CL-USER") or
-            std.mem.eql(u8, pkg_name, "COMMON-LISP-USER");
-    }
-
-    fn allowLegacyGlobalFallbackSym(self: *const Compiler, sym: *const Symbol) bool {
-        const heap = self.heap orelse return true;
-        const pkg = heap.symbolHomePkg(sym) orelse return true;
-        return isLegacyFallbackPackageName(pkg.name);
-    }
-
-    fn allowLegacyGlobalFallbackCurrentPackage(self: *const Compiler) bool {
-        const heap = self.heap orelse return true;
-        const pkg = heap.current_package orelse return true;
-        return isLegacyFallbackPackageName(pkg.name);
-    }
-
     /// Build qualified name from plain name using current package
     fn qualifyName(self: *Compiler, name: []const u8, buf: []u8) !qual_name.QualName {
         const heap = if (self.heap) |val| val else return .{ .name = name, .owned = false };
@@ -10516,18 +10644,7 @@ pub const Compiler = struct {
     }
 
     fn lookupGlobalIdxWithFallback(self: *const Compiler, name: []const u8) ?u16 {
-        if (self.globals.lookup(name)) |idx| return idx;
-
-        const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
-        var full_buf: [640]u8 = undefined;
-        for (prefixes) |prefix| {
-            if (prefix.len + name.len > full_buf.len) continue;
-            @memcpy(full_buf[0..prefix.len], prefix);
-            @memcpy(full_buf[prefix.len .. prefix.len + name.len], name);
-            const candidate = full_buf[0 .. prefix.len + name.len];
-            if (self.globals.lookup(candidate)) |idx| return idx;
-        }
-        return null;
+        return self.globals.lookup(name);
     }
 
     // ========================================================================
@@ -11221,11 +11338,13 @@ pub const Compiler = struct {
             optional_params[i] = .{
                 .name = opt_names[i],
                 .default = opt_default,
+                .supplied_p = null,
             };
             key_params[i] = .{
                 .keyword = spec.name,
                 .name = key_names[i],
                 .default = unbound_lit,
+                .supplied_p = null,
             };
         }
 
@@ -11276,6 +11395,7 @@ pub const Compiler = struct {
             optional_params,
             key_params,
             false,
+            @intCast(optional_params.len + key_params.len),
             null,
             &[_]Ir.Capture{},
             body_ir,
@@ -11769,6 +11889,7 @@ pub const Compiler = struct {
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             false,
+            0,
             null,
             &[_]Ir.Capture{},
             body_ir,
@@ -11819,6 +11940,7 @@ pub const Compiler = struct {
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             false,
+            0,
             null,
             &[_]Ir.Capture{},
             body_ir,
@@ -11853,6 +11975,7 @@ pub const Compiler = struct {
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             false,
+            0,
             null,
             &[_]Ir.Capture{},
             body_ir,
@@ -11878,6 +12001,7 @@ pub const Compiler = struct {
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             false,
+            0,
             null,
             &[_]Ir.Capture{},
             copy_ir,
@@ -13177,6 +13301,7 @@ pub const Compiler = struct {
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             false,
+            0,
             null,
             captures,
             body_ir,
@@ -13426,6 +13551,7 @@ pub const Compiler = struct {
                     &[_]Ir.OptionalParam{},
                     &[_]Ir.KeyParam{},
                     false,
+                    0,
                     null,
                     lambda_captures,
                     next_method,
@@ -13454,7 +13580,7 @@ pub const Compiler = struct {
         const opt_params = try self.allocator.alloc(Ir.OptionalParam, dispatch_params.len);
         const nil_ir = try self.builder.lit(Value.nil);
         for (dispatch_params, 0..) |pname, opt_idx| {
-            opt_params[opt_idx] = .{ .name = pname, .default = nil_ir };
+            opt_params[opt_idx] = .{ .name = pname, .default = nil_ir, .supplied_p = null };
         }
 
         const dispatcher = try self.builder.lambda(
@@ -13462,6 +13588,7 @@ pub const Compiler = struct {
             opt_params,
             &[_]Ir.KeyParam{},
             false,
+            0,
             null,
             &[_]Ir.Capture{}, // No captures - methods are stored as IR
             dispatch_body,
@@ -13506,6 +13633,7 @@ pub const Compiler = struct {
                 &[_]Ir.OptionalParam{},
                 &[_]Ir.KeyParam{},
                 false,
+                0,
                 null,
                 lambda_captures,
                 body,
@@ -14952,6 +15080,7 @@ pub const Compiler = struct {
             empty_opt,
             empty_key,
             false,
+            0,
             null,
             empty_cap,
             predicate_body,
@@ -15407,6 +15536,7 @@ pub const Compiler = struct {
         disassemble,
         read_char_stream,
         peek_char_stream,
+        unread_char_stream,
         open_file,
         close_stream,
         // Pathnames
@@ -15553,6 +15683,7 @@ pub const Compiler = struct {
         "%read-byte",
         "%write-byte",
         "%file-position",
+        "%set-file-position",
         "%file-length",
         "%finish-output",
         "%force-output",
@@ -15644,7 +15775,7 @@ pub const Compiler = struct {
         .{ .field = "atom", .tag = .atom },
         .{ .field = "char-code", .tag = .char_code },
         .{ .field = "code-char", .tag = .code_char },
-        .{ .field = "unread-char", .tag = .unread_char },
+        .{ .field = "%unread-char", .tag = .unread_char },
         .{ .field = "listen", .tag = .listen },
         .{ .field = "upgraded-complex-part-type", .tag = .upgraded_complex_part_type },
         .{ .field = "read-from-string", .tag = .read_from_string },
@@ -15663,6 +15794,7 @@ pub const Compiler = struct {
         .{ .field = "function-lambda-expression", .tag = .function_lambda_expression },
         .{ .field = "type-of", .tag = .type_of },
         .{ .field = "intern", .tag = .intern },
+        .{ .field = "%intern", .tag = .intern },
         .{ .field = "%make-symbol", .tag = .make_symbol },
         .{ .field = "symbol-name", .tag = .sym_name },
         .{ .field = "makunbound", .tag = .makunbound },
@@ -15888,6 +16020,7 @@ pub const Compiler = struct {
         .{ .field = "pathname-match-p", .tag = .pathname_match_p },
         .{ .field = "%make-echo-stream", .tag = .make_echo_stream },
         .{ .field = "%make-two-way-stream", .tag = .make_two_way_stream },
+        .{ .field = "%unread-char-from-stream", .tag = .unread_char_stream },
         .{ .field = "%open-file", .tag = .open_file },
     };
 
@@ -16055,6 +16188,7 @@ pub const Compiler = struct {
         return cl_pkg.findAccessibleUpper(name) orelse live;
     }
 
+
     fn safeSymbolName(self: *Compiler, sym: Value) ?[]const u8 {
         const live = self.resolveForwardedValue(sym);
         if (!live.isSymbol()) return null;
@@ -16091,73 +16225,41 @@ pub const Compiler = struct {
         return @ptrFromInt(bits);
     }
 
-    fn packageCanSeeSymbolNameFrom(
-        target_pkg: *const runtime.heap.Package,
-        owner_pkg: *const runtime.heap.Package,
-        name: []const u8,
-    ) bool {
-        if (target_pkg == owner_pkg) return true;
-        for (target_pkg.use_list.items) |used_pkg| {
-            if (used_pkg != owner_pkg) continue;
-            return owner_pkg.auto_export or owner_pkg.exports.contains(name);
-        }
-        return false;
-    }
-
-    fn lookupMacroDefByName(self: *Compiler, target_sym: Value) ?Value {
-        const live_target = self.resolveForwardedValue(target_sym);
-        if (!live_target.isSymbol()) return null;
-        const target_name = self.safeSymbolName(live_target) orelse return null;
-        const target_pkg = symbolHomePackage(self, live_target);
-
-        var it = self.macro_table.iterator();
-        while (it.next()) |entry| {
-            const key_live = self.resolveForwardedValue(entry.key_ptr.*);
-            if (!key_live.isSymbol()) continue;
-            const key_name = self.safeSymbolName(key_live) orelse continue;
-            if (!std.mem.eql(u8, key_name, target_name)) continue;
-            if (target_pkg) |pkg| {
-                const key_pkg = symbolHomePackage(self, key_live) orelse continue;
-                if (!packageCanSeeSymbolNameFrom(pkg, key_pkg, target_name)) continue;
-            }
-            return self.resolveForwardedValue(entry.value_ptr.*);
+    fn lookupMacroMapValue(
+        self: *Compiler,
+        table: *const std.AutoHashMap(Value, Value),
+        sym: Value,
+    ) ?Value {
+        const live_sym = self.resolveForwardedValue(sym);
+        if (!live_sym.isSymbol()) return null;
+        if (table.get(live_sym)) |val| return self.resolveForwardedValue(val);
+        const canonical = self.canonicalBuiltinSymbol(live_sym);
+        if (canonical.raw != live_sym.raw) {
+            if (table.get(canonical)) |val| return self.resolveForwardedValue(val);
         }
         return null;
     }
 
-    fn lookupSymbolMacroByName(self: *Compiler, target_sym: Value) ?Value {
-        const live_target = self.resolveForwardedValue(target_sym);
-        if (!live_target.isSymbol()) return null;
-        const target_name = self.safeSymbolName(live_target) orelse return null;
-        const target_pkg = symbolHomePackage(self, live_target);
+    fn putMacroMapValue(
+        self: *Compiler,
+        table: *std.AutoHashMap(Value, Value),
+        key_raw: Value,
+        val_raw: Value,
+    ) !void {
+        const key = self.resolveForwardedValue(key_raw);
+        const val = self.resolveForwardedValue(val_raw);
+        try table.put(key, val);
+    }
 
-        var it = self.symbol_macros.iterator();
-        while (it.next()) |entry| {
-            const key_live = self.resolveForwardedValue(entry.key_ptr.*);
-            if (!key_live.isSymbol()) continue;
-            const key_name = self.safeSymbolName(key_live) orelse continue;
-            if (!std.mem.eql(u8, key_name, target_name)) continue;
-            if (target_pkg) |pkg| {
-                const key_pkg = symbolHomePackage(self, key_live) orelse continue;
-                if (!packageCanSeeSymbolNameFrom(pkg, key_pkg, target_name)) continue;
-            }
-            return self.resolveForwardedValue(entry.value_ptr.*);
-        }
-        return null;
+    fn removeMacroMapValue(self: *Compiler, table: *std.AutoHashMap(Value, Value), key_raw: Value) bool {
+        const key = self.resolveForwardedValue(key_raw);
+        return table.remove(key);
     }
 
     fn lookupMacroDef(self: *Compiler, sym: Value) ?Value {
         const live_sym = self.resolveForwardedValue(sym);
         if (!live_sym.isSymbol()) return null;
-        if (self.macro_table.get(live_sym)) |def| return self.resolveForwardedValue(def);
-        const canonical = self.canonicalBuiltinSymbol(live_sym);
-        if (canonical.raw != live_sym.raw) {
-            if (self.macro_table.get(canonical)) |def| return self.resolveForwardedValue(def);
-        }
-        if (self.lookupMacroDefByName(live_sym)) |def| return def;
-        if (canonical.raw != live_sym.raw) {
-            if (self.lookupMacroDefByName(canonical)) |def| return def;
-        }
+        if (self.lookupMacroMapValue(&self.macro_table, live_sym)) |def| return def;
         // Also check symbol property list for macro-function (set via setf)
         if (live_sym.isSymbol()) {
             const sym_ptr = live_sym.toPtr(Symbol);
@@ -16201,16 +16303,7 @@ pub const Compiler = struct {
     fn lookupSymbolMacro(self: *Compiler, sym: Value) ?Value {
         const live_sym = self.resolveForwardedValue(sym);
         if (!live_sym.isSymbol()) return null;
-        if (self.symbol_macros.get(live_sym)) |expansion| return self.resolveForwardedValue(expansion);
-        const canonical = self.canonicalBuiltinSymbol(live_sym);
-        if (canonical.raw != live_sym.raw) {
-            if (self.symbol_macros.get(canonical)) |expansion| return self.resolveForwardedValue(expansion);
-        }
-        if (self.lookupSymbolMacroByName(live_sym)) |expansion| return expansion;
-        if (canonical.raw != live_sym.raw) {
-            if (self.lookupSymbolMacroByName(canonical)) |expansion| return expansion;
-        }
-        return null;
+        return self.lookupMacroMapValue(&self.symbol_macros, live_sym);
     }
 
     fn compilePrimitive(self: *Compiler, sym: Value, args: Value, env: *const Env) anyerror!*Ir {
@@ -16348,13 +16441,38 @@ pub const Compiler = struct {
         if (s == b.princ.raw) return self.compilePrinc(args, env);
         if (s == b.@"encode-universal-time".raw) return self.compileEncodeUniversalTime(args, env);
         if (s == b.@"%make-pathname".raw) return self.compileMakePathname(args, env);
-        if (s == b.@"set-macro-character".raw) return self.compileSetMacroCharacter(args, env);
-        if (s == b.@"make-hash-table".raw) return self.compileMakeHash(args);
-        if (s == b.gethash.raw) return self.compileGethash(args, env);
-        if (s == b.puthash.raw) return self.compileSethash(args, env);
-        if (s == b.remhash.raw) return self.compileRemhash(args, env);
-        if (s == b.@"hash-table-count".raw) return self.compileHashTableCount(args, env);
-        if (s == b.@"hash-table-capacity".raw) return self.compileHashTableCapacity(args, env);
+        const builtin_hash_dispatch = [_]struct {
+            raw: u64,
+            which: enum {
+                set_macro_character,
+                make_hash_table,
+                gethash,
+                puthash,
+                remhash,
+                hash_table_count,
+                hash_table_capacity,
+            },
+        }{
+            .{ .raw = b.@"set-macro-character".raw, .which = .set_macro_character },
+            .{ .raw = b.@"make-hash-table".raw, .which = .make_hash_table },
+            .{ .raw = b.gethash.raw, .which = .gethash },
+            .{ .raw = b.puthash.raw, .which = .puthash },
+            .{ .raw = b.remhash.raw, .which = .remhash },
+            .{ .raw = b.@"hash-table-count".raw, .which = .hash_table_count },
+            .{ .raw = b.@"hash-table-capacity".raw, .which = .hash_table_capacity },
+        };
+        for (builtin_hash_dispatch) |entry| {
+            if (s != entry.raw) continue;
+            return switch (entry.which) {
+                .set_macro_character => self.compileSetMacroCharacter(args, env),
+                .make_hash_table => self.compileMakeHash(args),
+                .gethash => self.compileGethash(args, env),
+                .puthash => self.compileSethash(args, env),
+                .remhash => self.compileRemhash(args, env),
+                .hash_table_count => self.compileHashTableCount(args, env),
+                .hash_table_capacity => self.compileHashTableCapacity(args, env),
+            };
+        }
 
         // Stream I/O operations - inline handling
         if (s == b.@"%open".raw) {
@@ -16429,12 +16547,21 @@ pub const Compiler = struct {
             node.* = .{ .write_byte = .{ .left = stream_ir, .right = byte_ir } };
             return node;
         }
-        if (s == b.@"%file-position".raw) {
+        if (s == b.@"%file-position".raw or s == b.@"%set-file-position".raw) {
             if (!args.isCons()) return error.InvalidSyntax;
             const cons1 = args.toPtr(Cons);
             const stream_ir = try self.compile(cons1.car, env);
+            if (cons1.cdr.isNil()) {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .file_position = .{ .operand = stream_ir } };
+                return node;
+            }
+            if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+            const cons2 = cons1.cdr.toPtr(Cons);
+            if (!cons2.cdr.isNil()) return error.InvalidSyntax;
+            const pos_ir = try self.compile(cons2.car, env);
             const node = try self.allocator.create(Ir);
-            node.* = .{ .file_position = .{ .operand = stream_ir } };
+            node.* = .{ .set_file_position = .{ .left = stream_ir, .right = pos_ir } };
             return node;
         }
         if (s == b.@"%file-length".raw) {
@@ -16798,6 +16925,11 @@ pub const Compiler = struct {
             .make_two_way_stream => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .make_two_way_stream = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .unread_char_stream => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .unread_char_stream = .{ .left = left, .right = right } };
                 break :blk node;
             },
             .open_file => blk: {
@@ -17409,6 +17541,7 @@ pub const Compiler = struct {
                 node.* = .{ .peek_char_stream = .{ .operand = operand } };
                 break :blk node;
             },
+            .unread_char_stream => return error.InvalidSyntax,
             .close_stream => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .close_stream = .{ .operand = operand } };
@@ -18136,9 +18269,12 @@ pub const Compiler = struct {
             dynamic_dimensions = try self.compile(dims_val, env);
         }
 
-        // Optional initial element - handle keyword args (:initial-element/:initial-contents)
+        // Optional initial element - handle keyword args (:initial-element/:initial-contents/:fill-pointer/:adjustable)
         var init_ir: ?*const Ir = null;
         var initial_contents: ?Value = null;
+        var fill_pointer_ir: ?*const Ir = null;
+        var has_fill_pointer = false;
+        var adjustable_ir: ?*const Ir = null;
         var rest = cons1.cdr;
         while (rest.isCons()) {
             rest = self.resolveForwardedValue(rest);
@@ -18157,11 +18293,13 @@ pub const Compiler = struct {
                 if (kw_raw == b4.kw_initial_contents.raw) {
                     // Store raw value for post-construction fill
                     initial_contents = val;
-                } else if (kw_raw == b4.kw_element_type.raw or
-                    kw_raw == b4.kw_adjustable.raw or
-                    kw_raw == b4.kw_fill_pointer.raw)
-                {
-                    // ignore for now
+                } else if (kw_raw == b4.kw_fill_pointer.raw) {
+                    has_fill_pointer = true;
+                    fill_pointer_ir = try self.compile(val, env);
+                } else if (kw_raw == b4.kw_adjustable.raw) {
+                    adjustable_ir = try self.compile(val, env);
+                } else if (kw_raw == b4.kw_element_type.raw) {
+                    // element-type: ignored (all vectors store Value)
                 } else {
                     init_ir = try self.compile(val, env);
                 }
@@ -18182,6 +18320,58 @@ pub const Compiler = struct {
             const dim_val = cons1.car;
             const form = try h.allocCons(helper_sym, try h.allocCons(dim_val, try h.allocCons(contents_val, Value.nil)));
             return self.compile(form, env);
+        }
+
+        // When :fill-pointer is specified for a 1D array, create a Vector instead of Array.
+        // This is required because fill-pointer/vector-push/vector-push-extend
+        // operate on Vector objects, not Array objects.
+        if (has_fill_pointer) {
+            // Must be 1D
+            const is_1d = if (static_dimensions) |sd| sd.len == 1 else dynamic_dimensions != null;
+            if (is_1d) {
+                // Build Lisp form: (%make-vector-with-fp dim-expr init-expr fp-expr adj-expr)
+                // and compile it. We need the raw source expressions, which we extract
+                // from the original args by re-walking keyword args.
+                const h = self.heap orelse return error.InvalidSyntax;
+                const helper_sym = try h.intern("%make-vector-with-fp");
+                // dim-expr is the first argument
+                const dim_expr = cons1.car;
+                // Find raw keyword values by re-walking
+                var init_expr: Value = Value.nil;
+                var fp_expr: Value = Value.nil;
+                var adj_expr: Value = Value.nil;
+                var kw_rest = cons1.cdr;
+                while (kw_rest.isCons()) {
+                    kw_rest = self.resolveForwardedValue(kw_rest);
+                    const kw_cons = kw_rest.toPtr(Cons);
+                    if (kw_cons.car.isKeyword()) {
+                        if (!kw_cons.cdr.isCons()) break;
+                        const kw_val_cons = kw_cons.cdr.toPtr(Cons);
+                        const kw_val = self.resolveForwardedValue(kw_val_cons.car);
+                        const b5 = self.builtins orelse return error.UninitializedBuiltins;
+                        const kw_r = kw_cons.car.raw;
+                        if (kw_r == b5.@"kw_initial-element".raw) {
+                            init_expr = kw_val;
+                        } else if (kw_r == b5.kw_fill_pointer.raw) {
+                            fp_expr = kw_val;
+                        } else if (kw_r == b5.kw_adjustable.raw) {
+                            adj_expr = kw_val;
+                        }
+                        kw_rest = self.resolveForwardedValue(kw_val_cons.cdr);
+                    } else {
+                        // Non-keyword = initial element (legacy)
+                        init_expr = kw_cons.car;
+                        kw_rest = self.resolveForwardedValue(kw_cons.cdr);
+                    }
+                }
+                // Build: (%make-vector-with-fp dim init fp adj)
+                const form = try h.allocCons(helper_sym,
+                    try h.allocCons(dim_expr,
+                        try h.allocCons(init_expr,
+                            try h.allocCons(fp_expr,
+                                try h.allocCons(adj_expr, Value.nil)))));
+                return self.compile(form, env);
+            }
         }
 
         if (dynamic_dimensions) |dyn| {
@@ -19832,7 +20022,7 @@ test "defmacro with destructured params" {
     try testing.expect(defmacro_ir.* == .lit);
 
     // Macro should be in table with transformed params
-    const stored = compiler.macro_table.get(name_sym).?;
+    const stored = compiler.lookupMacroDef(name_sym).?;
     try testing.expect(stored.isCons());
 
     // First element should be params (now transformed with gensym)
@@ -19860,7 +20050,7 @@ test "macro expansion restores VM chunk_pool" {
     const m_sym = try heap.intern("m");
     const body = try heap.allocCons(Value.makeFixnum(42), Value.nil);
     const macro_def = try heap.allocCons(Value.nil, body);
-    try compiler.macro_table.put(m_sym, macro_def);
+    try compiler.putMacroMapValue(&compiler.macro_table, m_sym, macro_def);
 
     const call_expr = try heap.allocCons(m_sym, Value.nil);
     const ir_node = try compiler.compile(call_expr, &env);
@@ -19896,7 +20086,7 @@ test "macro expansion restores VM global_env" {
     const m_sym = try heap.intern("m");
     const body = try heap.allocCons(Value.makeFixnum(42), Value.nil);
     const macro_def = try heap.allocCons(Value.nil, body);
-    try compiler.macro_table.put(m_sym, macro_def);
+    try compiler.putMacroMapValue(&compiler.macro_table, m_sym, macro_def);
 
     const call_expr = try heap.allocCons(m_sym, Value.nil);
     const ir_node = try compiler.compile(call_expr, &env);
@@ -19909,7 +20099,7 @@ test "macro expansion restores VM global_env" {
     _ = try vm.collectGarbage();
 }
 
-test "global env keeps alias and reverse index maps in sync" {
+test "global env keeps reverse index map in sync" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
@@ -19923,20 +20113,12 @@ test "global env keeps alias and reverse index maps in sync" {
     try testing.expectEqual(@as(u16, 0), idx_a);
     try testing.expectEqual(@as(u16, 1), idx_b);
 
-    const alias = globals.lookupAlias("foo") orelse return error.TestUnexpectedResult;
-    try testing.expectEqual(@as(usize, 2), alias.len);
-    try testing.expectEqual(idx_a, alias[0]);
-    try testing.expectEqual(idx_b, alias[1]);
-
     const name_a = globals.nameForIndex(idx_a) orelse return error.TestUnexpectedResult;
     const name_b = globals.nameForIndex(idx_b) orelse return error.TestUnexpectedResult;
     try testing.expect(std.mem.eql(u8, name_a, "PKG-A:FOO"));
     try testing.expect(std.mem.eql(u8, name_b, "pkg-b:foo"));
 
     try globals.defineKnown("COMMON-LISP:BAR", 9);
-    const alias_bar = globals.lookupAlias("bar") orelse return error.TestUnexpectedResult;
-    try testing.expectEqual(@as(usize, 1), alias_bar.len);
-    try testing.expectEqual(@as(u16, 9), alias_bar[0]);
     const name_bar = globals.nameForIndex(9) orelse return error.TestUnexpectedResult;
     try testing.expect(std.mem.eql(u8, name_bar, "COMMON-LISP:BAR"));
 }
@@ -19965,7 +20147,7 @@ test "macro expansion preserves dotted rest params" {
     const params = try heap.allocCons(a_sym, try heap.allocCons(b_sym, rest_sym));
     const body = try heap.allocCons(Value.makeFixnum(42), Value.nil);
     const macro_def = try heap.allocCons(params, body);
-    try compiler.macro_table.put(m_sym, macro_def);
+    try compiler.putMacroMapValue(&compiler.macro_table, m_sym, macro_def);
 
     // (m 1 2 3 4) should expand successfully despite extra args.
     const call_args = try heap.allocCons(

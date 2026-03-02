@@ -573,7 +573,7 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
     const pkg_name = try packageNameBytes(p);
     const native_pkg = if (heap.findPackage(pkg_name)) |val| val else return error.InvalidPackage;
 
-    if (try native_pkg.findAccessible(name_str)) |sym| {
+    if (native_pkg.findAccessibleExact(name_str)) |sym| {
         // Found in internal table - check if exported
         if (p.symbols.raw != Value.nil.raw) {
             const found_sym = hashTableLookup(p.symbols, sym);
@@ -596,8 +596,10 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
         }
     }
 
-    // Not found - intern new symbol in native package
-    const new_sym = try native_pkg.intern(heap, name_str);
+    // Not found - intern new symbol in native package, preserving the
+    // caller-supplied spelling in the symbol-name while keeping package
+    // lookup case-insensitive.
+    const new_sym = try native_pkg.internPreservingCase(heap, name_str);
 
     // Add to symbols table (create if needed)
     if (p.symbols.raw == Value.nil.raw) {
@@ -668,7 +670,7 @@ pub fn findSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
     const name_str = try nameBytesWithKeyword(name);
     const native_pkg = try nativePkgFor(heap, resolved_pkg);
 
-    if (try native_pkg.findAccessible(name_str)) |sym| {
+    if (native_pkg.findAccessibleExact(name_str)) |sym| {
         // Check if symbol exists in internal table
         if (p.symbols.raw != Value.nil.raw) {
             const found_sym = hashTableLookup(p.symbols, sym);
@@ -1203,6 +1205,35 @@ test "intern and find symbol" {
     try testing.expect(found.isCons());
     const found_sym = found.toPtr(objects.Cons).car;
     try testing.expect(found_sym.raw == sym.raw);
+}
+
+test "intern preserves mixed-case symbol names and package lookup stays exact" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const pkg = try makePackage(&heap, try heap.allocBaseString("TEST-PKG"), null, null);
+    const mixed_name = try heap.allocBaseString("A_i");
+    const upper_name = try heap.allocBaseString("A_I");
+    const lower_name = try heap.allocBaseString("a_i");
+
+    const result = try internSymbol(&heap, mixed_name, pkg);
+    try testing.expect(result.isCons());
+    const sym = result.toPtr(objects.Cons).car;
+    try testing.expect(sym.isSymbol());
+    try testing.expectEqualStrings("A_i", sym.toPtr(objects.Symbol).getName());
+
+    const found_exact = try findSymbol(&heap, mixed_name, pkg);
+    try testing.expect(found_exact.isCons());
+    try testing.expect(found_exact.toPtr(objects.Cons).car.eq(sym));
+
+    const found_upper = try findSymbol(&heap, upper_name, pkg);
+    try testing.expect(found_upper.isCons());
+    try testing.expect(found_upper.toPtr(objects.Cons).car.isNil());
+
+    const found_lower = try findSymbol(&heap, lower_name, pkg);
+    try testing.expect(found_lower.isCons());
+    try testing.expect(found_lower.toPtr(objects.Cons).car.isNil());
 }
 
 test "export and import symbols" {

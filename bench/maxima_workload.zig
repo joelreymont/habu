@@ -398,6 +398,7 @@ fn loadMaxima(timer: *std.time.Timer, repl: *Repl) !LoaderStats {
     const loaded = try repl.eval(
         \\(multiple-value-bind (ok total fail missing attempted)
         \\    (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (load \"lib/maxima-post-load.lisp\")
         \\  (list ok total fail attempted (if missing (length missing) 0)))
     );
     const t1 = timer.read();

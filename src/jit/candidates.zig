@@ -245,6 +245,7 @@ test "ineligibleReason: lambda with optional params" {
     const opt = [_]ir.Ir.OptionalParam{.{
         .name = "y",
         .default = &body_storage.body,
+        .supplied_p = null,
     }};
     var lambda_ir = makeLambdaIr(&.{}, &opt, &.{}, null);
     lambda_ir.lambda.speed = 3;
@@ -555,8 +556,8 @@ test "findMatchingChunk: optional/key/rest signature dimensions must match" {
     defer heap.deinit();
 
     var body: Ir = .{ .lit = Value.nil };
-    const opt_params = [_]ir.Ir.OptionalParam{.{ .name = "opt", .default = null }};
-    const key_params = [_]ir.Ir.KeyParam{.{ .keyword = "k", .name = "k", .default = null }};
+    const opt_params = [_]ir.Ir.OptionalParam{.{ .name = "opt", .default = null, .supplied_p = null }};
+    const key_params = [_]ir.Ir.KeyParam{.{ .keyword = "k", .name = "k", .default = null, .supplied_p = null }};
     var lambda_ir = makeLambdaIrWithParams(&.{}, &opt_params, &key_params, "rest");
     lambda_ir.lambda.body = &body;
 

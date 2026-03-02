@@ -1351,6 +1351,10 @@ pub const Op = enum(u16) {
     /// ( stream -- fixnum )
     file_position = 0x3B,
 
+    /// Set file position
+    /// ( stream pos -- t )
+    set_file_position = 0x196,
+
     /// Get file length
     /// ( stream -- fixnum )
     file_length = 0x3C,
@@ -1607,6 +1611,10 @@ pub const Op = enum(u16) {
     /// Peek a character from a stream without consuming
     /// ( stream -- char )
     peek_char_stream = 0x189,
+
+    /// Push a character back to a stream
+    /// ( char stream -- nil )
+    unread_char_stream = 0x195,
 
     /// Open a file stream
     /// ( filename direction -- stream )
@@ -1947,6 +1955,7 @@ pub const Op = enum(u16) {
             .read_byte,
             .write_byte,
             .file_position,
+            .set_file_position,
             .file_length,
             .finish_output,
             .force_output,
@@ -2200,6 +2209,7 @@ pub const Op = enum(u16) {
             .disassemble,
             .read_char_stream,
             .peek_char_stream,
+            .unread_char_stream,
             .open_file,
             .close_stream,
             .fixnum_add,

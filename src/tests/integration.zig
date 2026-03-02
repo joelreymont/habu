@@ -1043,6 +1043,40 @@ test "compileChunk JIT nested cons preserves car and cdr values" {
     try testing.expect(inner.cdr.isNil());
 }
 
+test "compileChunk JIT admits list and list* symbol literals" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    const before = vm.jit_fns.items.len;
+    vm.resetJitAdm();
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(progn\n" ++
+            "  (defun jit-list-lits () (declare (optimize (speed 3) (safety 0))) (list 'foo 'bar))\n" ++
+            "  (defun jit-list*-lits () (declare (optimize (speed 3) (safety 0))) (list* 'foo 'bar nil)))",
+    ));
+    try testing.expect(vm.jit_fns.items.len >= before + 2);
+    try testing.expect(vm.jit_adm.comp >= 2);
+}
+
 test "compileChunk JIT generic float arithmetic and compare stay correct" {
     if (!build_options.use_hoist) return;
 
@@ -2271,6 +2305,64 @@ test "char and schar return character objects" {
     const c3 = c2.cdr.toPtr(Cons);
     try testing.expect(c3.car.isFixnum());
     try testing.expectEqual(@as(i64, 'o'), c3.car.toFixnum());
+
+    try testing.expect(c3.cdr.isNil());
+}
+
+test "character coerces one-char string and symbol designators" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const got = try repl.eval(
+        "(list (character #\\Z)\n" ++
+            "      (character \"A\")\n" ++
+            "      (character 'b))",
+    );
+
+    const c0 = got.toPtr(Cons);
+    try testing.expect(c0.car.isCharacter());
+    try testing.expectEqual(@as(u21, 'Z'), c0.car.toCharacter());
+
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isCharacter());
+    try testing.expectEqual(@as(u21, 'A'), c1.car.toCharacter());
+
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isCharacter());
+    try testing.expectEqual(@as(u21, 'B'), c2.car.toCharacter());
+
+    try testing.expect(c2.cdr.isNil());
+}
+
+test "alphanumericp returns boolean for digits" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(list (alphanumericp #\\2) (alphanumericp #\\A) (alphanumericp #\\Space))");
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expect(c0.car.eq(Value.t));
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.eq(Value.t));
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isNil());
+    try testing.expect(c2.cdr.isNil());
 }
 
 test "array reader keeps terminal cons and symbol literals" {
@@ -2514,6 +2606,79 @@ test "keyword arg validation" {
 
     const ok2 = try repl.eval("(f :b 2 :allow-other-keys t)");
     try testing.expect(ok2.isNil());
+}
+
+test "optional supplied-p stays aligned with later optional values" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        "(progn " ++
+            "(defun f (&optional (a :da a-p) (b :db b-p)) (list a a-p b b-p)) " ++
+            "(f :aa :bb))",
+    );
+
+    try testing.expect(result.isCons());
+    const r0 = result.toPtr(runtime.Cons);
+    try testing.expect(r0.car.isKeyword());
+    try testing.expectEqualStrings("AA", r0.car.toPtr(runtime.Keyword).getName());
+
+    try testing.expect(r0.cdr.isCons());
+    const r1 = r0.cdr.toPtr(runtime.Cons);
+    try testing.expect(r1.car.eq(Value.t));
+
+    try testing.expect(r1.cdr.isCons());
+    const r2 = r1.cdr.toPtr(runtime.Cons);
+    try testing.expect(r2.car.isKeyword());
+    try testing.expectEqualStrings("BB", r2.car.toPtr(runtime.Keyword).getName());
+
+    try testing.expect(r2.cdr.isCons());
+    const r3 = r2.cdr.toPtr(runtime.Cons);
+    try testing.expect(r3.car.eq(Value.t));
+    try testing.expect(r3.cdr.isNil());
+}
+
+test "keyword supplied-p stays correct when later keys are omitted" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        "(progn " ++
+            "(defun f (&key (a :da a-p) (b :db b-p)) (list a a-p b b-p)) " ++
+            "(f :a :append))",
+    );
+
+    try testing.expect(result.isCons());
+    const r0 = result.toPtr(runtime.Cons);
+    try testing.expect(r0.car.isKeyword());
+    try testing.expectEqualStrings("APPEND", r0.car.toPtr(runtime.Keyword).getName());
+
+    try testing.expect(r0.cdr.isCons());
+    const r1 = r0.cdr.toPtr(runtime.Cons);
+    try testing.expect(r1.car.eq(Value.t));
+
+    try testing.expect(r1.cdr.isCons());
+    const r2 = r1.cdr.toPtr(runtime.Cons);
+    try testing.expect(r2.car.isKeyword());
+    try testing.expectEqualStrings("DB", r2.car.toPtr(runtime.Keyword).getName());
+
+    try testing.expect(r2.cdr.isCons());
+    const r3 = r2.cdr.toPtr(runtime.Cons);
+    try testing.expect(r3.car.isNil());
 }
 
 test "keyword optional boundary handles odd and paired tails" {
@@ -3786,6 +3951,30 @@ test "labels mutual recursion" {
     try testing.expect(!cons.cdr.isNil()); // is-odd 5 = t
 }
 
+test "labels mutating captured lexical boxes outer variable" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(let ((acc nil))
+        \\  (labels ((collect () (push 2 acc)))
+        \\    (collect)
+        \\    acc))
+    );
+    try testing.expect(result.isCons());
+    const out = result.toPtr(@import("../runtime/objects.zig").Cons);
+    try testing.expect(out.car.isFixnum());
+    try testing.expectEqual(@as(i64, 2), out.car.toFixnum());
+    try testing.expect(out.cdr.isNil());
+}
+
 // ============================================================================
 // block/return-from tests
 // ============================================================================
@@ -4571,6 +4760,12 @@ test "format ~R cardinal ordinal and radix" {
     );
     try testing.expect(radix.isString());
     try testing.expectEqualStrings("FF", try asString(radix));
+
+    const roman = try repl.eval(
+        \\(format nil "~@R" 144)
+    );
+    try testing.expect(roman.isString());
+    try testing.expectEqualStrings("CXLIV", try asString(roman));
 }
 
 test "format ~F ~E ~G floating directives" {
@@ -4589,6 +4784,18 @@ test "format ~F ~E ~G floating directives" {
     );
     try testing.expect(fixed.isString());
     try testing.expectEqualStrings("12.5", try asString(fixed));
+
+    const fixed_width = try repl.eval(
+        \\(format nil "~4F" 1.234)
+    );
+    try testing.expect(fixed_width.isString());
+    try testing.expectEqualStrings("1.23", try asString(fixed_width));
+
+    const fixed_matrix = try repl.eval(
+        \\(format nil "~9,1F" 2)
+    );
+    try testing.expect(fixed_matrix.isString());
+    try testing.expectEqualStrings("      2.0", try asString(fixed_matrix));
 
     const exp = try repl.eval(
         \\(format nil "~E" 12.5)
@@ -4638,6 +4845,51 @@ test "format ~P plural and ~[ conditional directives" {
     );
     try testing.expect(cond_bool.isString());
     try testing.expectEqualStrings("yes", try asString(cond_bool));
+}
+
+test "format iteration supports radix and nested lists" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const words = try repl.eval(
+        \\(format nil "~{~R ~}" '(1 2 3))
+    );
+    try testing.expect(words.isString());
+    try testing.expectEqualStrings("one two three ", try asString(words));
+
+    const matrix = try repl.eval(
+        \\(format nil "~{~{~9,1F ~}~%~}" '((1.1 2 3.33) (4 5 6) (7 8.88 9)))
+    );
+    try testing.expect(matrix.isString());
+    try testing.expectEqualStrings(
+        "      1.1       2.0       3.3 \n      4.0       5.0       6.0 \n      7.0       8.9       9.0 \n",
+        try asString(matrix),
+    );
+}
+
+test "format case conversion works with nested radix directives" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(format nil "~:(~R~) bird~P ~[is~;are~] singing." 2 2 1)
+    );
+    try testing.expect(result.isString());
+    try testing.expectEqualStrings("Two birds are singing.", try asString(result));
 }
 
 test "format ~* argument navigation" {
@@ -5540,6 +5792,22 @@ test "listen reports input availability on stream" {
     try testing.expect(cons3.cdr.isNil());
 }
 
+test "unread-char supports explicit stream argument" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(
+        allocator,
+        &heap,
+        "(let ((s (make-string-input-stream \"ab\"))) (%read-char-from-stream s) (%unread-char-from-stream #\\a s) (%read-char-from-stream s))",
+    );
+
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 'a'), result.toFixnum());
+}
+
 test "copy-structure copies defstruct instance" {
     const allocator = testing.allocator;
 
@@ -6205,6 +6473,27 @@ test "ansi repro intern function designator accepts optional package arg" {
     try testing.expect(result.isSymbol());
 }
 
+test "intern preserves caller spelling and package lookup uses exact names" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const preserved = try repl.eval("(string= (symbol-name (intern \"A_i\" :cl-user)) \"A_i\")");
+    try testing.expect(preserved.isT());
+
+    const exact_lookup = try repl.eval("(eq (intern \"A_i\" :cl-user) (find-symbol \"A_i\" :cl-user))");
+    try testing.expect(exact_lookup.isT());
+
+    const lower_lookup = try repl.eval("(null (find-symbol \"a_i\" :cl-user))");
+    try testing.expect(lower_lookup.isT());
+}
+
 test "ansi repro equal.13 equal.14 nil vectors are string-like" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -6321,6 +6610,23 @@ test "ansi repro loop for with fixnum type in equals clauses" {
 
     const result = try repl.eval(
         "(= (loop for v fixnum = 0 then (1+ v) repeat 5 sum v) 10)",
+    );
+    try testing.expect(!result.isNil());
+}
+
+test "ansi repro loop for equals without then sees current parallel bindings" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(equal (loop for (a b) on '(x 10 y 20) by #'cddr for q = b collect q) '(10 20))",
     );
     try testing.expect(!result.isNil());
 }
@@ -7260,6 +7566,25 @@ test "concatenate delegates to stdlib for sequence coercion" {
     try testing.expect(!result.isNil());
 }
 
+test "string-upcase and string-downcase treat explicit :end nil as full length" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(and
+        \\  (string= (string-upcase "e" :start 0 :end nil) "E")
+        \\  (string= (string-downcase "E" :start 0 :end nil) "e"))
+    );
+    try testing.expect(!result.isNil());
+}
+
 test "setf the strips type declaration" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -7490,6 +7815,31 @@ test "initReplWithStdlib keeps moved repl callable" {
     try testing.expect(out.isCons());
     try testing.expectEqual(@as(i64, 3), out.toPtr(Cons).car.toFixnum());
     try testing.expectEqual(@as(i64, 2), out.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+}
+
+test "Repl JIT roots str_len literal via production collector" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const before = repl.vm.jit_fns.items.len;
+    _ = try repl.eval(
+        \\(defun repl-jit-string-len ()
+        \\  (declare (optimize (speed 3) (safety 0)))
+        \\  (length "abcdef"))
+    );
+    try testing.expect(repl.vm.jit_fns.items.len > before);
+
+    const result = try repl.eval("(repl-jit-string-len)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 6), result.toFixnum());
 }
 
 test "mv: values through if (then branch)" {
@@ -8590,6 +8940,46 @@ test "def%tr-style top-level form survives generational GC pressure" {
     try testing.expect(!prop_val.isNil());
 }
 
+test "declare-top unspecial clears compile-time special binding state" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defparameter *macro-file* nil)");
+    _ = try repl.eval(
+        \\(defmacro declare-top (&rest decl-specs)
+        \\  `(eval-when
+        \\    ,(cond (*macro-file* '(:compile-toplevel :load-toplevel :execute))
+        \\           (t '(:compile-toplevel :execute)))
+        \\    ,@(loop for v in decl-specs
+        \\             unless (member (car v) '(special unspecial)) nconc nil
+        \\             else
+        \\             when (eql (car v) 'unspecial)
+        \\             collect `(progn
+        \\                        ,@(loop for w in (cdr v)
+        \\                                 collect `(remprop ',w 'special)))
+        \\             else collect `(proclaim ',v))))
+    );
+    _ = try repl.eval("(proclaim '(special p))");
+    _ = try repl.eval("(setq p 7)");
+    _ = try repl.eval("(declare-top (unspecial p))");
+    _ = try repl.eval(
+        \\(defun make-p-closure ()
+        \\  (let ((p 42))
+        \\    (lambda () p)))
+    );
+    _ = try repl.eval("(setq f (make-p-closure))");
+
+    const result = try repl.eval("(funcall f)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
 test "eval-when compile-toplevel keeps body cursor rooted across GC" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
@@ -8927,6 +9317,59 @@ test "maxima integrate dependency chain binds matcher and partition symbols" {
     try testing.expectEqual(@as(i64, 1), got[7]);
     try testing.expectEqual(@as(i64, 1), got[8]);
     try testing.expectEqual(@as(i64, 1), got[9]);
+}
+
+test "maxima loader binds residu and defint after core bootstrap" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 384 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("defint-residu-script.lsp", .{});
+        defer file.close();
+        try file.writeAll(
+            "(load \"lib/stdlib.habu\")\n" ++
+                "(load \"lib/maxima-loader.lisp\")\n" ++
+                "(maxima-load-all :verbose nil)\n" ++
+                "(setq *defint-residu-status*\n" ++
+                "      (list\n" ++
+                "        (if (assoc \"residu\" *maxima-failed* :test #'equal) 1 0)\n" ++
+                "        (if (assoc \"defint\" *maxima-failed* :test #'equal) 1 0)\n" ++
+                "        (if (fboundp 'maxima::$residue) 1 0)\n" ++
+                "        (if (fboundp 'maxima::$defint) 1 0)))\n",
+        );
+    }
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const script_abs = try std.fs.path.join(allocator, &.{ base, "defint-residu-script.lsp" });
+    defer allocator.free(script_abs);
+
+    var buf: [1024]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try repl.loadFile(script_abs, stream.writer());
+
+    const status = try repl.eval("*defint-residu-status*");
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 0, 0, 1, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
 }
 
 test "maxima e2e operation readiness status" {
@@ -9295,6 +9738,38 @@ test "symbol value cells handle uninterned and fresh interned symbols" {
         cur = cell.cdr;
     }
     try testing.expect(cur.isNil());
+}
+
+test "defun creates function binding without value binding" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (when (boundp 'defun-value-probe) (makunbound 'defun-value-probe))
+        \\  (defun defun-value-probe (x) x)
+        \\  (list (boundp 'defun-value-probe)
+        \\        (fboundp 'defun-value-probe)
+        \\        (funcall #'defun-value-probe 7)))
+    );
+
+    try testing.expect(out.isCons());
+    const first = out.toPtr(Cons);
+    try testing.expect(first.car.isNil());
+    try testing.expect(first.cdr.isCons());
+    const second = first.cdr.toPtr(Cons);
+    try testing.expect(second.car.isT());
+    try testing.expect(second.cdr.isCons());
+    const third = second.cdr.toPtr(Cons);
+    try testing.expect(third.car.isFixnum());
+    try testing.expectEqual(@as(i64, 7), third.car.toFixnum());
+    try testing.expect(third.cdr.isNil());
 }
 
 test "numeric predicates support generic numeric tower values" {
