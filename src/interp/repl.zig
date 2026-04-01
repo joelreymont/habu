@@ -5189,7 +5189,7 @@ test "lookupCallableFunction uses exact package-qualified global" {
     try testing.expect(Repl.isCallableValue(fn_val));
 
     const sym = try repl.heap.intern("HABU-EXACT-LOOKUP-TEST-FN");
-    const idx_exact = try repl.compiler.globals.define("CL-USER:HABU-EXACT-LOOKUP-TEST-FN");
+    const idx_exact = try repl.compiler.globals.define("COMMON-LISP-USER:HABU-EXACT-LOOKUP-TEST-FN");
     repl.vm.globals[idx_exact] = fn_val;
     if (idx_exact >= repl.vm.num_globals) repl.vm.num_globals = idx_exact + 1;
 

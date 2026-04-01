@@ -1513,7 +1513,7 @@ test "delete-package rejects protected packages" {
     defer heap.deinit();
 
     const cl_name = try heap.allocBaseString("COMMON-LISP");
-    const cl_user_name = try heap.allocBaseString("CL-USER");
+    const cl_user_name = try heap.allocBaseString("COMMON-LISP-USER");
     const kw_name = try heap.allocBaseString("KEYWORD");
     const cl_pkg = (try findPackage(&heap, cl_name)).?;
     const cl_user_pkg = (try findPackage(&heap, cl_user_name)).?;

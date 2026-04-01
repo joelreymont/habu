@@ -425,7 +425,7 @@ pub const Heap = struct {
     current_package: ?*Package,
     /// The COMMON-LISP package (primitives)
     cl_package: ?*Package,
-    /// The CL-USER package (default user package)
+    /// The COMMON-LISP-USER package (default user package; CL-USER nickname)
     cl_user_package: ?*Package,
     /// Gensym counter for unique symbol generation
     gensym_counter: u64,
@@ -856,7 +856,7 @@ pub const Heap = struct {
         // Create keyword plist registry (keyword -> plist)
         heap.keyword_plists = try heap.allocHashTable(64, .eq);
 
-        // Create Lisp-visible Package objects for CL and CL-USER
+        // Create Lisp-visible Package objects for CL and COMMON-LISP-USER.
         {
             // COMMON-LISP package
             const cl_name = try heap.allocBaseString("COMMON-LISP");
@@ -866,13 +866,14 @@ pub const Heap = struct {
             try heap.putLispPackage(cl_name, cl_pkg);
             try heap.putLispPackage(cl_nickname, cl_pkg);
 
-            // CL-USER package (uses CL)
-            const cl_user_name = try heap.allocBaseString("CL-USER");
-            const cl_user_alias = try heap.allocBaseString("COMMON-LISP-USER");
+            // COMMON-LISP-USER package (uses CL, nickname CL-USER)
+            const cl_user_name = try heap.allocBaseString("COMMON-LISP-USER");
+            const cl_user_nickname = try heap.allocBaseString("CL-USER");
+            const cl_user_nicknames = try heap.allocCons(cl_user_nickname, Value.nil);
             const cl_user_uses = try heap.allocCons(cl_pkg, Value.nil);
-            const cl_user_pkg = try heap.allocPackage(cl_user_name, Value.nil, cl_user_uses, false);
+            const cl_user_pkg = try heap.allocPackage(cl_user_name, cl_user_nicknames, cl_user_uses, false);
             try heap.putLispPackage(cl_user_name, cl_user_pkg);
-            try heap.putLispPackage(cl_user_alias, cl_user_pkg);
+            try heap.putLispPackage(cl_user_nickname, cl_user_pkg);
 
             // KEYWORD package
             const kw_name = try heap.allocBaseString("KEYWORD");
@@ -889,24 +890,24 @@ pub const Heap = struct {
         const cl_alias_key = try allocator.dupe(u8, "CL");
         errdefer allocator.free(cl_alias_key);
         try heap.package_aliases.put(allocator, cl_alias_key, heap.cl_package.?);
-        // Create CL-USER package (uses CL)
-        heap.cl_user_package = try Package.init(allocator, "CL-USER");
+        // Create COMMON-LISP-USER package (uses CL, nickname CL-USER)
+        heap.cl_user_package = try Package.init(allocator, "COMMON-LISP-USER");
         try heap.cl_user_package.?.usePackage(heap.cl_package.?);
-        const cl_user_key = try allocator.dupe(u8, "CL-USER");
+        const cl_user_key = try allocator.dupe(u8, "COMMON-LISP-USER");
         errdefer allocator.free(cl_user_key);
         try heap.packages.put(allocator, cl_user_key, heap.cl_user_package.?);
-        const cl_user_alias_key = try allocator.dupe(u8, "COMMON-LISP-USER");
+        const cl_user_alias_key = try allocator.dupe(u8, "CL-USER");
         errdefer allocator.free(cl_user_alias_key);
         try heap.package_aliases.put(allocator, cl_user_alias_key, heap.cl_user_package.?);
 
         // Start in CL package so primitives get interned there
-        // VM will switch to CL-USER after primitive registration
+        // VM will switch to COMMON-LISP-USER after primitive registration.
         heap.current_package = heap.cl_package;
 
         // Create built-in classes for primitive types (must be after CL package exists)
         try heap.createBuiltInClasses();
 
-        // Cache condition symbols/keywords while current_package is CL so CL-USER resolves them.
+        // Cache condition symbols/keywords while current_package is CL so COMMON-LISP-USER resolves them.
         heap.sym_simple_warning = try heap.intern("simple-warning");
         heap.kw_format_control = try heap.internKeyword("format-control");
         heap.kw_format_arguments = try heap.internKeyword("format-arguments");
@@ -3245,7 +3246,7 @@ pub const Heap = struct {
             defer if (qual.owned) self.backing_allocator.free(qual.name);
             if (self.class_metadata.get(qual.name)) |slot_names| return slot_names;
         }
-        return self.class_metadata.get(sym_name);
+        return null;
     }
 
     pub fn getKeywordPlist(self: *Heap, kw: Value) Value {
@@ -3409,7 +3410,7 @@ pub const Heap = struct {
         if (self.current_package) |pkg| {
             if (self.hasNativePackagePtr(pkg)) return pkg.name;
         }
-        return "CL-USER";
+        return "COMMON-LISP-USER";
     }
 
     /// Allocate a keyword in the heap
@@ -4688,7 +4689,7 @@ test "heap intern handles t and nil in packages" {
     try testing.expectEqual(@as(u64, Value.nil.raw), nil_pkg.raw);
 }
 
-test "heap intern defaults to CL-USER package" {
+test "heap intern defaults to COMMON-LISP-USER package" {
     const testing = std.testing;
 
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
@@ -4697,7 +4698,7 @@ test "heap intern defaults to CL-USER package" {
 
     const sym1 = try heap.intern("foo");
     const sym2 = try heap.intern("FOO");
-    const sym3 = (try heap.internInPackage("CL-USER", "FOO")) orelse return error.TestUnexpectedResult;
+    const sym3 = (try heap.internInPackage("COMMON-LISP-USER", "FOO")) orelse return error.TestUnexpectedResult;
     try testing.expectEqual(@as(u64, sym1.raw), sym2.raw);
     try testing.expectEqual(@as(u64, sym1.raw), sym3.raw);
 }

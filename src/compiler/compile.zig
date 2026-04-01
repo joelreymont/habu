@@ -12057,8 +12057,6 @@ pub const Compiler = struct {
     }
 
     fn lookupClassMetadataByName(self: *Compiler, class_name: []const u8) error{ OutOfMemory, Overflow }!?[]const SlotSpec {
-        if (self.class_metadata.get(class_name)) |specs| return specs;
-
         if (self.heap) |heap| {
             if (heap.current_package) |pkg| {
                 var current_buf: [256]u8 = undefined;
@@ -12067,31 +12065,6 @@ pub const Compiler = struct {
                 if (self.class_metadata.get(current_qualified.slice)) |specs| return specs;
             }
         }
-
-        var qual_buf: [256]u8 = undefined;
-        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
-        for (prefixes) |prefix| {
-            const qualified = try self.makeQualifiedName(&qual_buf, prefix, class_name);
-            defer if (qualified.owned) self.allocator.free(qualified.slice);
-            if (self.class_metadata.get(qualified.slice)) |specs| return specs;
-        }
-
-        // Package aliases can point at symbols whose native package qualifier does
-        // not match the package used when class metadata was recorded (for example
-        // BIGFLOAT-IMPL symbol package vs BIGFLOAT class metadata keys). Fall back
-        // to local-name matching when it is unambiguous.
-        var local_match: ?[]const SlotSpec = null;
-        var local_hits: usize = 0;
-        var it = self.class_metadata.iterator();
-        while (it.next()) |entry| {
-            const key = entry.key_ptr.*;
-            const local = if (std.mem.lastIndexOfScalar(u8, key, ':')) |sep| key[sep + 1 ..] else key;
-            if (!std.mem.eql(u8, local, class_name)) continue;
-            local_hits += 1;
-            if (local_hits == 1) local_match = entry.value_ptr.*;
-            if (local_hits > 1) break;
-        }
-        if (local_hits == 1) return local_match;
 
         return null;
     }
@@ -12116,7 +12089,7 @@ pub const Compiler = struct {
             }
         }
 
-        return try self.lookupClassMetadataByName(class_name);
+        return null;
     }
 
     // ========================================================================
@@ -12174,9 +12147,7 @@ pub const Compiler = struct {
                 const super_name_val = super_cons.car;
 
                 if (super_name_val.isSymbol()) {
-                    const super_name = super_name_val.toPtr(Symbol).getName();
-
-                    const parent_specs = try self.lookupClassMetadataByName(super_name);
+                    const parent_specs = try self.lookupClassMetadataBySymbol(super_name_val.toPtr(Symbol));
 
                     if (parent_specs) |specs| {
                         // Inherit slots from parent
@@ -20361,7 +20332,7 @@ test "compile defun typed name" {
     try testing.expect(ir_def.set_symbol_function.left.* == .lit);
     try testing.expectEqual(foo_sym.raw, ir_def.set_symbol_function.left.lit.raw);
     try testing.expect(ir_def.set_symbol_function.right.* == .lambda);
-    try testing.expect(compiler.globals.lookup("CL-USER:FOO") != null);
+    try testing.expect(compiler.globals.lookup("COMMON-LISP-USER:FOO") != null);
     switch (ir_def.set_symbol_function.right.lambda.body.*) {
         .assert_fixnum => {},
         .block => |blk| try testing.expect(blk.body.* == .assert_fixnum),
