@@ -1684,44 +1684,69 @@ pub fn fileLength(stream: Value) !Value {
 }
 
 /// Create a string input stream
+const SliceBounds = struct {
+    start: usize,
+    end: usize,
+};
+
+fn sliceBounds(total: usize, start: ?Value, end: ?Value) !SliceBounds {
+    var start_idx: usize = 0;
+    if (start) |s| {
+        if (!s.isFixnum()) return error.TypeError;
+        start_idx = std.math.cast(usize, s.toFixnum()) orelse return error.InvalidArgument;
+    }
+
+    var end_idx = total;
+    if (end) |e| {
+        if (!e.isFixnum()) return error.TypeError;
+        end_idx = std.math.cast(usize, e.toFixnum()) orelse return error.InvalidArgument;
+    }
+
+    if (start_idx > end_idx or end_idx > total) return error.InvalidArgument;
+    return .{ .start = start_idx, .end = end_idx };
+}
+
+fn appendUtf8(out: *std.ArrayList(u8), alloc: std.mem.Allocator, cp: u32) !void {
+    if (cp > std.math.maxInt(u21)) return error.TypeError;
+    var char_buf: [4]u8 = undefined;
+    const char_len = std.unicode.utf8Encode(@intCast(cp), &char_buf) catch return error.TypeError;
+    try out.appendSlice(alloc, char_buf[0..char_len]);
+}
+
 pub fn makeStringInputStream(heap: *heap_mod.Heap, str: Value, start: ?Value, end: ?Value) !Value {
-    _ = start;
-    _ = end;
-    if (str.isString()) return try heap.allocStringInputStream(str);
+    if (str.isString()) {
+        const bytes = str.toPtr(objects.String).bytes();
+        const bounds = try sliceBounds(bytes.len, start, end);
+        return try heap.allocStringInputStreamRange(str, bounds.start, bounds.end);
+    }
     if (str.isString32()) {
         const str32 = str.toPtr(objects.String32);
-        var buf: [4096]u8 = undefined;
-        var pos: usize = 0;
-        for (str32.codepoints()) |cp| {
-            if (cp > std.math.maxInt(u21)) return error.TypeError;
-            var char_buf: [4]u8 = undefined;
-            const char_len = std.unicode.utf8Encode(@intCast(cp), &char_buf) catch return error.TypeError;
-            if (pos + char_len > buf.len) return error.TypeError;
-            @memcpy(buf[pos..][0..char_len], char_buf[0..char_len]);
-            pos += char_len;
+        const codepoints = str32.codepoints();
+        const bounds = try sliceBounds(codepoints.len, start, end);
+        var out = std.ArrayList(u8){};
+        defer out.deinit(heap.backing_allocator);
+        for (codepoints[bounds.start..bounds.end]) |cp| {
+            try appendUtf8(&out, heap.backing_allocator, cp);
         }
-        const coerced = try heap.allocBaseString(buf[0..pos]);
+        const coerced = try heap.allocBaseString(out.items);
         return try heap.allocStringInputStream(coerced);
     }
     // CL: strings are vectors of characters — accept vectors and coerce
     if (str.isVector()) {
         const vec = str.toPtr(objects.Vector);
         const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
-        var buf: [4096]u8 = undefined;
-        var pos: usize = 0;
-        for (0..len) |i| {
+        const bounds = try sliceBounds(len, start, end);
+        var out = std.ArrayList(u8){};
+        defer out.deinit(heap.backing_allocator);
+        for (bounds.start..bounds.end) |i| {
             const elem = vec.get(i);
             if (elem.isCharacter()) {
-                var char_buf: [4]u8 = undefined;
-                const char_len = std.unicode.utf8Encode(elem.toCharacter(), &char_buf) catch return error.TypeError;
-                if (pos + char_len > buf.len) return error.TypeError; // too long
-                @memcpy(buf[pos..][0..char_len], char_buf[0..char_len]);
-                pos += char_len;
+                try appendUtf8(&out, heap.backing_allocator, elem.toCharacter());
             } else {
                 return error.TypeError;
             }
         }
-        const coerced = try heap.allocBaseString(buf[0..pos]);
+        const coerced = try heap.allocBaseString(out.items);
         return try heap.allocStringInputStream(coerced);
     }
     return error.TypeError;
@@ -3074,6 +3099,52 @@ test "composite streams delegate input and echo operations" {
     const out = try getOutputStreamString(&heap, two_way_out);
     try testing.expect(out.isString());
     try testing.expect(std.mem.eql(u8, out.toPtr(objects.String).bytes(), "!"));
+}
+
+test "makeStringInputStream respects string bounds" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const str = try heap.allocBaseString("ABCDE");
+    const stream = try makeStringInputStream(&heap, str, Value.makeFixnum(1), Value.makeFixnum(4));
+    try testing.expectEqual(@as(i64, 'B'), (try readChar(stream, null, null)).toFixnum());
+    try testing.expectEqual(@as(i64, 'C'), (try readChar(stream, null, null)).toFixnum());
+    try testing.expectEqual(@as(i64, 'D'), (try readChar(stream, null, null)).toFixnum());
+    try testing.expect((try readChar(stream, null, null)).isNil());
+}
+
+test "makeStringInputStream respects vector fill pointer and bounds" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const vec = try heap.allocVector(4, 4);
+    const v = vec.toPtr(objects.Vector);
+    v.setAdjustable(true);
+    v.set(0, Value.makeCharacter('A'));
+    v.set(1, Value.makeCharacter('B'));
+    v.set(2, Value.makeCharacter('C'));
+    v.set(3, Value.makeCharacter('D'));
+    v.setFillPointer(3);
+
+    const stream = try makeStringInputStream(&heap, vec, Value.makeFixnum(1), null);
+    try testing.expectEqual(@as(i64, 'B'), (try readChar(stream, null, null)).toFixnum());
+    try testing.expectEqual(@as(i64, 'C'), (try readChar(stream, null, null)).toFixnum());
+    try testing.expect((try readChar(stream, null, null)).isNil());
+}
+
+test "makeStringInputStream rejects invalid bounds" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const str = try heap.allocBaseString("ABC");
+    try testing.expectError(error.InvalidArgument, makeStringInputStream(&heap, str, Value.makeFixnum(2), Value.makeFixnum(1)));
+    try testing.expectError(error.InvalidArgument, makeStringInputStream(&heap, str, null, Value.makeFixnum(4)));
 }
 
 test "sysReadLine returns empty string after newline pushback" {

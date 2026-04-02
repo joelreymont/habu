@@ -1,9 +1,11 @@
 ---
 title: Fix string input stream slicing
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.206095+02:00"
+created-at: "\"2026-04-01T22:06:02.206095+02:00\""
+closed-at: "2026-04-02T17:51:32.507577+02:00"
+close-reason: done (zig build; zig build test back to known 5-error baseline)
 blocks:
   - habu-add-maxima-reader-192066c9
 ---

@@ -16267,6 +16267,8 @@ pub const Compiler = struct {
             const base_log = try self.builder.log_fn(base_ir);
             return try self.builder.div(x_log, base_log);
         }
+        if (s == b.@"make-string-input-stream".raw) return self.compileMakeStringInputStream(args, env);
+        if (s == b.subseq.raw) return self.compileSubseq(args, env);
 
         // Table-driven dispatch for unary primitives
         inline for (unary_dispatch) |entry| {
@@ -16357,7 +16359,6 @@ pub const Compiler = struct {
         if (s == b.@"make-array".raw) return self.compileMakeArray(args, env);
         if (s == b.char.raw or s == b.schar.raw) return self.compileBinaryPrim(args, env, .str_ref);
         if (s == b.substring.raw) return self.compileSubstring(args, env);
-        // subseq: handled by stdlib (supports strings, vectors, and lists)
         if (s == b.concatenate.raw) return self.compileConcatenate(args, env);
         if (s == b.format.raw) return self.compileFormat(args, env);
         if (s == b.print.raw) return self.compilePrint(args, env);
@@ -17599,6 +17600,7 @@ pub const Compiler = struct {
         // End is optional - if not provided, use string-length
         const end_ir = if (cons2.cdr.isCons()) blk: {
             const cons3 = cons2.cdr.toPtr(Cons);
+            if (!cons3.cdr.isNil()) return error.InvalidSyntax;
             break :blk try self.compile(cons3.car, env);
         } else blk: {
             // Use string-length as default end
@@ -17608,6 +17610,16 @@ pub const Compiler = struct {
         const node = try self.allocator.create(Ir);
         node.* = .{ .substring = .{ .str = seq_ir, .start = start_ir, .end = end_ir } };
         return node;
+    }
+
+    fn compileMakeStringInputStream(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        if (cons1.cdr.isNil()) {
+            return self.compileUnaryPrim(args, env, .make_string_input_stream);
+        }
+        const sliced = try self.compileSubseq(args, env);
+        return try self.builder.makeStringInputStream(sliced);
     }
 
     fn compileConcatenate(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {

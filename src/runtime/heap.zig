@@ -2296,8 +2296,8 @@ pub const Heap = struct {
 
     /// Allocate a string input stream
     pub fn allocStringInputStream(self: *Heap, str: Value) error{OutOfMemory}!Value {
-        const stream = try self.alloc(objects.Stream);
         const str_obj = str.toPtr(objects.String);
+        const stream = try self.alloc(objects.Stream);
         stream.* = .{
             .kind = .stream,
             .direction = .input,
@@ -2306,6 +2306,25 @@ pub const Heap = struct {
             .position = 0,
             .data_ptr = @intFromPtr(str_obj.data),
             .length = str_obj.length,
+            .file_fd = -1,
+            .source_value = str,
+        };
+        try self.trackStream(stream);
+        return Value.makeStream(stream);
+    }
+
+    pub fn allocStringInputStreamRange(self: *Heap, str: Value, start: usize, end: usize) error{ OutOfMemory, InvalidArgument }!Value {
+        const stream = try self.alloc(objects.Stream);
+        const str_obj = str.toPtr(objects.String);
+        if (start > end or end > str_obj.length) return error.InvalidArgument;
+        stream.* = .{
+            .kind = .stream,
+            .direction = .input,
+            .stream_type = .string,
+            .closed = false,
+            .position = 0,
+            .data_ptr = @intFromPtr(str_obj.data + start),
+            .length = end - start,
             .file_fd = -1,
             .source_value = str,
         };

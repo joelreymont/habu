@@ -6883,6 +6883,36 @@ test "read-char-no-hang is bound and works on string streams" {
     try testing.expect(!result.isNil());
 }
 
+test "make-string-input-stream accepts start and end" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(let ((s (make-string-input-stream "ABCDE" 1 4)))
+        \\  (list (%read-char-from-stream s)
+        \\        (%read-char-from-stream s)
+        \\        (%read-char-from-stream s)
+        \\        (%read-char-from-stream s)))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(result.isCons());
+    const a = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 'B'), a.car.toFixnum());
+    const b = a.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 'C'), b.car.toFixnum());
+    const c = b.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 'D'), c.car.toFixnum());
+    const d = c.cdr.toPtr(Cons);
+    try testing.expect(d.car.isNil());
+}
+
 test "write-char supports optional stream argument" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
