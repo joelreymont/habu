@@ -3139,6 +3139,30 @@ pub const Heap = struct {
         return Value.makePathname(pn);
     }
 
+    fn packageLookupUpper(self: *const Heap, name: Value, buf: []u8) error{ OutOfMemory, TypeError }!UpperName {
+        const raw_name = switch (name.typeKind()) {
+            .string => name.toPtr(objects.String).bytes(),
+            .symbol => name.toPtr(objects.Symbol).getName(),
+            .keyword => name.toPtr(objects.Keyword).getName(),
+            else => return error.TypeError,
+        };
+        return try upperNameAlloc(self.backing_allocator, raw_name, buf);
+    }
+
+    fn findLispPackageUpper(self: *const Heap, upper_name: []const u8) ?Value {
+        if (self.lisp_packages.raw == Value.nil.raw) return null;
+        const ht = self.lisp_packages.toPtr(objects.HashTable);
+        const cap: usize = @intCast(ht.capacity);
+        for (0..cap) |i| {
+            const key = ht.getKey(i);
+            if (objects.HashTable.isAvailableKey(key) or !key.isKeyword()) continue;
+            if (std.mem.eql(u8, key.toPtr(objects.Keyword).getName(), upper_name)) {
+                return ht.getValue(i);
+            }
+        }
+        return null;
+    }
+
     pub fn packageKey(self: *Heap, name: Value) error{ OutOfMemory, TypeError }!Value {
         return switch (name.typeKind()) {
             .string => try self.internKeyword(name.toPtr(objects.String).bytes()),
@@ -3150,10 +3174,10 @@ pub const Heap = struct {
 
     /// Find a Lisp-level package by name
     pub fn findLispPackage(self: *Heap, name: Value) error{ OutOfMemory, TypeError }!?Value {
-        if (self.lisp_packages.raw == Value.nil.raw) return null;
-        const ht = self.lisp_packages.toPtr(objects.HashTable);
-        const key = try self.packageKey(name);
-        return ht.get(key);
+        var upper_buf: [256]u8 = undefined;
+        const upper = try self.packageLookupUpper(name, upper_buf[0..]);
+        defer freeUpperName(self.backing_allocator, upper);
+        return self.findLispPackageUpper(upper.slice);
     }
 
     /// Register a Lisp package
@@ -3386,6 +3410,11 @@ pub const Heap = struct {
             return pkg;
         }
         return self.package_aliases.get(name);
+    }
+
+    pub fn lookupInPackage(self: *Heap, pkg_name: []const u8, sym_name: []const u8) !?Value {
+        const pkg = self.findPackage(pkg_name) orelse return null;
+        return pkg.findAccessibleExact(sym_name);
     }
 
     /// Create or find a package
@@ -4669,6 +4698,19 @@ test "heap findPackage handles CL alias" {
     const pkg = heap.findPackage("CL");
     try testing.expect(pkg != null);
     try testing.expect(pkg.? == heap.cl_package.?);
+}
+
+test "heap findLispPackage does not intern lookup keywords" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const before = heap.keywords.map.count();
+    const name = try heap.allocBaseString("cl-user");
+    const found = try heap.findLispPackage(name);
+    try testing.expect(found != null);
+    try testing.expectEqual(before, heap.keywords.map.count());
 }
 
 test "heap intern handles t and nil in packages" {

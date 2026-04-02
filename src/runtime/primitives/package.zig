@@ -1724,6 +1724,24 @@ test "findSymbol uses native exports for inherited status" {
     try testing.expectEqualStrings("INHERITED", found_status.toPtr(objects.Keyword).getName());
 }
 
+test "findSymbol package designator lookup is read-only" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const pkg_name = try heap.allocBaseString("READ-ONLY-PKG");
+    const pkg = try makePackage(&heap, pkg_name, null, null);
+    _ = pkg;
+
+    const before_keywords = heap.keywords.map.count();
+    const sym_name = try heap.allocBaseString("MISSING");
+    const pkg_designator = try heap.allocBaseString("read-only-pkg");
+    const found = try findSymbol(&heap, sym_name, pkg_designator);
+    try testing.expect(found.isCons());
+    try testing.expect(found.toPtr(Cons).car.isNil());
+    try testing.expectEqual(before_keywords, heap.keywords.map.count());
+}
+
 test "packageSymbolsList accepts keyword name" {
     const testing = std.testing;
     var heap = try Heap.init(testing.allocator, .{});

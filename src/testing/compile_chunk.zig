@@ -22,26 +22,26 @@ const Parser = reader.Parser;
 const Op = bytecode.Op;
 const Emitter = bytecode.Emitter;
 
-fn internGlobalRefSymbol(heap: *Heap, qname: []const u8) !?runtime.Value {
+fn lookupGlobalRefSymbol(heap: *Heap, qname: []const u8) !?runtime.Value {
     if (std.mem.indexOf(u8, qname, "::")) |sep| {
-        return try internPackageSymbol(heap, qname[0..sep], qname[sep + 2 ..]);
+        return try lookupPackageSymbol(heap, qname[0..sep], qname[sep + 2 ..]);
     }
     if (std.mem.indexOfScalar(u8, qname, ':')) |sep| {
-        return try internPackageSymbol(heap, qname[0..sep], qname[sep + 1 ..]);
+        return try lookupPackageSymbol(heap, qname[0..sep], qname[sep + 1 ..]);
     }
-    return try heap.intern(qname);
+    return heap.symbols.get(qname);
 }
 
-fn internPackageSymbol(heap: *Heap, pkg_name: []const u8, sym_name: []const u8) !?runtime.Value {
+fn lookupPackageSymbol(heap: *Heap, pkg_name: []const u8, sym_name: []const u8) !?runtime.Value {
     if (sym_name.len == 0) return null;
-    if (try heap.internInPackage(pkg_name, sym_name)) |sym| return sym;
+    if (try heap.lookupInPackage(pkg_name, sym_name)) |sym| return sym;
 
     if (pkg_name.len <= 128 and sym_name.len <= 256) {
         var pkg_buf: [128]u8 = undefined;
         var sym_buf: [256]u8 = undefined;
         for (pkg_name, 0..) |ch, i| pkg_buf[i] = std.ascii.toUpper(ch);
         for (sym_name, 0..) |ch, i| sym_buf[i] = std.ascii.toUpper(ch);
-        return try heap.internInPackage(pkg_buf[0..pkg_name.len], sym_buf[0..sym_name.len]);
+        return try heap.lookupInPackage(pkg_buf[0..pkg_name.len], sym_buf[0..sym_name.len]);
     }
     return null;
 }
@@ -57,7 +57,7 @@ const literal_root_ops = struct {
     }
 
     pub fn onGlobalRef(ctx: LiteralRootCtx, ir_node: *const Ir, roots: *jit_backend.LiteralRoots, qname: []const u8) !void {
-        const sym = (try internGlobalRefSymbol(ctx.heap, qname)) orelse return error.UnsupportedIrNode;
+        const sym = (try lookupGlobalRefSymbol(ctx.heap, qname)) orelse return error.UnsupportedIrNode;
         try jit_literal_roots.rootValue(ctx.vm, ir_node, roots, sym);
     }
 

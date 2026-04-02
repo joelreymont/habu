@@ -1,9 +1,11 @@
 ---
 title: Make lookup APIs read-only
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.053669+02:00"
+created-at: "\"2026-04-01T22:06:02.053669+02:00\""
+closed-at: "2026-04-02T16:45:00.122895+02:00"
+close-reason: done; package lookup is read-only, zig build ok, zig build test unchanged 5-error baseline
 blocks:
   - habu-remove-legacy-lookup-e81bb093
 ---

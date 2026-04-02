@@ -1495,13 +1495,13 @@ pub const Repl = struct {
         const live_sym = self.vm.resolveForwardedValue(sym);
         if (!live_sym.isSymbol()) return false;
 
-        const autoload_key = (try self.heap.internInPackage("MAXIMA", "AUTOLOAD")) orelse return false;
+        const autoload_key = (try self.heap.lookupInPackage("MAXIMA", "AUTOLOAD")) orelse return false;
         const target_sym = live_sym;
         var autoload_val = try primitives.list.get(self.heap, target_sym, autoload_key);
 
         if (autoload_val.isNil()) return false;
 
-        const load_function_sym = (try self.heap.internInPackage("MAXIMA", "LOAD-FUNCTION")) orelse return false;
+        const load_function_sym = (try self.heap.lookupInPackage("MAXIMA", "LOAD-FUNCTION")) orelse return false;
         const builtins = self.compiler.builtins orelse return false;
         const quote_form = try self.listFromSlice(&[_]Value{ builtins.quote, target_sym });
         const form = try self.listFromSlice(&[_]Value{ load_function_sym, quote_form, Value.nil });
@@ -2608,26 +2608,26 @@ pub const Repl = struct {
         return try passes.specialize.specialize(self.compiler.allocator, ir_node);
     }
 
-    fn internGlobalRefSymbol(self: *Repl, qname: []const u8) !?Value {
+    fn lookupGlobalRefSymbol(self: *Repl, qname: []const u8) !?Value {
         if (std.mem.indexOf(u8, qname, "::")) |sep| {
-            return try self.internPackageSymbol(qname[0..sep], qname[sep + 2 ..]);
+            return try self.lookupPackageSymbol(qname[0..sep], qname[sep + 2 ..]);
         }
         if (std.mem.indexOfScalar(u8, qname, ':')) |sep| {
-            return try self.internPackageSymbol(qname[0..sep], qname[sep + 1 ..]);
+            return try self.lookupPackageSymbol(qname[0..sep], qname[sep + 1 ..]);
         }
-        return try self.heap.intern(qname);
+        return self.heap.symbols.get(qname);
     }
 
-    fn internPackageSymbol(self: *Repl, pkg_name: []const u8, sym_name: []const u8) !?Value {
+    fn lookupPackageSymbol(self: *Repl, pkg_name: []const u8, sym_name: []const u8) !?Value {
         if (sym_name.len == 0) return null;
-        if (try self.heap.internInPackage(pkg_name, sym_name)) |sym| return sym;
+        if (try self.heap.lookupInPackage(pkg_name, sym_name)) |sym| return sym;
 
         if (pkg_name.len <= 128 and sym_name.len <= 256) {
             var pkg_buf: [128]u8 = undefined;
             var sym_buf: [256]u8 = undefined;
             for (pkg_name, 0..) |ch, i| pkg_buf[i] = std.ascii.toUpper(ch);
             for (sym_name, 0..) |ch, i| sym_buf[i] = std.ascii.toUpper(ch);
-            return try self.heap.internInPackage(pkg_buf[0..pkg_name.len], sym_buf[0..sym_name.len]);
+            return try self.heap.lookupInPackage(pkg_buf[0..pkg_name.len], sym_buf[0..sym_name.len]);
         }
         return null;
     }
@@ -2642,7 +2642,7 @@ pub const Repl = struct {
         }
 
         pub fn onGlobalRef(ctx: LiteralRootCtx, ir_node: *const Ir, roots: *jit_backend.LiteralRoots, qname: []const u8) !void {
-            const sym = (try ctx.repl.internGlobalRefSymbol(qname)) orelse return error.UnsupportedIrNode;
+            const sym = (try ctx.repl.lookupGlobalRefSymbol(qname)) orelse return error.UnsupportedIrNode;
             try jit_literal_roots.rootValue(&ctx.repl.vm, ir_node, roots, sym);
         }
 
