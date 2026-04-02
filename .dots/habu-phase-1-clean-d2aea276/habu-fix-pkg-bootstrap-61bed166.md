@@ -1,9 +1,11 @@
 ---
 title: Fix package bootstrap and reader qualification
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.097404+02:00"
+created-at: "\"2026-04-01T22:06:02.097404+02:00\""
+closed-at: "2026-04-02T17:04:46.787734+02:00"
+close-reason: done (zig build; zig build test blocked by known 5-error baseline)
 blocks:
   - habu-unify-maxima-manifest-702701ab
 ---

@@ -3180,6 +3180,13 @@ pub const Heap = struct {
         return self.findLispPackageUpper(upper.slice);
     }
 
+    pub fn findLispPackageBytes(self: *Heap, name: []const u8) error{OutOfMemory}!?Value {
+        var upper_buf: [256]u8 = undefined;
+        const upper = try upperNameAlloc(self.backing_allocator, name, upper_buf[0..]);
+        defer freeUpperName(self.backing_allocator, upper);
+        return self.findLispPackageUpper(upper.slice);
+    }
+
     /// Register a Lisp package
     pub fn putLispPackage(self: *Heap, name: Value, pkg: Value) !void {
         if (self.lisp_packages.raw == Value.nil.raw) return error.RegistryNotInitialized;

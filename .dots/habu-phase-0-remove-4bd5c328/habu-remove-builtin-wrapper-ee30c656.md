@@ -1,9 +1,11 @@
 ---
 title: Remove builtin wrapper synthesis
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.074447+02:00"
+created-at: "\"2026-04-01T22:06:02.074447+02:00\""
+closed-at: "2026-04-02T17:05:03.853375+02:00"
+close-reason: duplicate of a15f0f31 Replace eval builtin wrappers
 blocks:
   - habu-make-lookup-apis-32266bf5
 ---

@@ -4653,41 +4653,7 @@ pub const Repl = struct {
             const arg_cons = form_cons.cdr.toPtr(Cons);
             if (!arg_cons.cdr.isNil()) return error.InvalidSyntax;
 
-            var pkg_val_opt = try primitives.package.findPackage(self.heap, arg_cons.car);
-            if (pkg_val_opt == null) {
-                const pkg_name = switch (arg_cons.car.typeKind()) {
-                    .symbol => arg_cons.car.toPtr(runtime.Symbol).getName(),
-                    .string => arg_cons.car.toPtr(runtime.String).bytes(),
-                    .keyword => arg_cons.car.toPtr(runtime.Keyword).getName(),
-                    else => null,
-                };
-                if (pkg_name) |name| {
-                    if (self.heap.findPackage(name)) |native_pkg| {
-                        const name_val = try self.heap.allocBaseString(native_pkg.name);
-                        pkg_val_opt = if (try self.heap.findLispPackage(name_val)) |existing|
-                            existing
-                        else blk: {
-                            const created = try self.heap.allocPackage(name_val, Value.nil, Value.nil, native_pkg.auto_export);
-                            try self.heap.putLispPackage(name_val, created);
-                            break :blk created;
-                        };
-                    } else {
-                        // Package doesn't exist — auto-create with CL use-list.
-                        // CL spec says in-package should signal package-error,
-                        // but auto-creation is more practical for file loading.
-                        const native_pkg = try self.heap.findOrCreatePackage(name);
-                        // Add CL to use-list so standard symbols are accessible
-                        if (self.heap.cl_package) |cl_pkg| {
-                            try native_pkg.usePackage(cl_pkg);
-                        }
-                        const name_val = try self.heap.allocBaseString(native_pkg.name);
-                        const created = try self.heap.allocPackage(name_val, Value.nil, Value.nil, false);
-                        try self.heap.putLispPackage(name_val, created);
-                        pkg_val_opt = created;
-                    }
-                }
-            }
-            const pkg_val = pkg_val_opt orelse {
+            const pkg_val = (try primitives.package.findPackage(self.heap, arg_cons.car)) orelse {
                 if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
                     const arg = arg_cons.car;
                     const pkg_name_opt = switch (arg.typeKind()) {
@@ -4723,15 +4689,14 @@ pub const Repl = struct {
                         );
                     }
                 }
-                return error.UnboundVariable;
+                return error.InvalidPackage;
             };
             if (!pkg_val.isPackage()) return error.TypeMismatch;
 
             const target_vm = self.current_vm orelse &self.vm;
             const pkg_name = self.packageNameBytesLive(target_vm, pkg_val) orelse return error.TypeMismatch;
-            if (self.heap.findPackage(pkg_name)) |native_pkg| {
-                self.heap.setCurrentPackage(native_pkg);
-            }
+            const native_pkg = self.heap.findPackage(pkg_name) orelse return error.InvalidPackage;
+            self.heap.setCurrentPackage(native_pkg);
             self.setPackageGlobals(target_vm, pkg_val);
             self.syncReaderPackageFromVm(target_vm);
             return pkg_val;

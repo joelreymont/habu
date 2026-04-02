@@ -31,6 +31,8 @@ pub const Error = error{
     TooManySlots,
     OutOfMemory,
     TypeMismatch,
+    InvalidPackage,
+    SymbolNotExternal,
     Overflow,
 };
 
@@ -1019,7 +1021,8 @@ pub const Parser = struct {
                 const pkg_name_raw = text[0..colon_pos];
                 // Skip one or two colons
                 var sym_start = colon_pos + 1;
-                if (sym_start < text.len and text[sym_start] == ':') {
+                const external_only = !(sym_start < text.len and text[sym_start] == ':');
+                if (!external_only) {
                     sym_start += 1;
                 }
                 if (sym_start >= text.len) {
@@ -1037,7 +1040,7 @@ pub const Parser = struct {
                         .{ text, pkg_name.slice, sym_name.slice },
                     );
                 }
-                return self.internSymbolInPackage(pkg_name.slice, sym_name.slice);
+                return self.internSymbolInPackage(pkg_name.slice, sym_name.slice, external_only);
             }
         }
 
@@ -1159,31 +1162,38 @@ pub const Parser = struct {
     }
 
     /// Intern a symbol in a specific package
-    fn internSymbolInPackage(self: *Parser, pkg_name: []const u8, sym_name: []const u8) Error!Value {
-        // Uppercase package name for CL-spec case-insensitivity
-        var upper_buf: [128]u8 = undefined;
-        const upper = try runtime.upperNameAlloc(self.alloc, pkg_name, upper_buf[0..]);
-        defer runtime.freeUpperName(self.alloc, upper);
-        const pkg_name_val = try self.heap.allocBaseString(upper.slice);
-        const pkg_val = (self.heap.findLispPackage(pkg_name_val) catch |err| switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            error.TypeError => return error.UnexpectedToken,
-        });
-        const native_pkg = if (pkg_val) |val| blk: {
-            if (!val.isPackage()) return error.UnexpectedToken;
-            const pkg_obj = val.toPtr(objects.Package);
-            const native_name = switch (pkg_obj.name.typeKind()) {
-                .symbol => pkg_obj.name.toPtr(runtime.Symbol).getName(),
-                .string => pkg_obj.name.toPtr(runtime.String).bytes(),
-                .keyword => pkg_obj.name.toPtr(runtime.Keyword).getName(),
-                else => return error.UnexpectedToken,
-            };
-            break :blk (self.heap.findPackage(native_name) orelse return error.UnexpectedToken);
-        } else blk: {
-            // Auto-create missing packages for forward references (e.g., intl:gettext).
-            break :blk try self.heap.findOrCreatePackage(upper.slice);
+    fn packageNativeName(pkg_name: Value) Error![]const u8 {
+        return switch (pkg_name.typeKind()) {
+            .symbol => pkg_name.toPtr(runtime.Symbol).getName(),
+            .string => pkg_name.toPtr(runtime.String).bytes(),
+            .keyword => pkg_name.toPtr(runtime.Keyword).getName(),
+            else => error.TypeMismatch,
         };
-        return try native_pkg.intern(self.heap, sym_name);
+    }
+
+    fn internSymbolInPackage(
+        self: *Parser,
+        pkg_name: []const u8,
+        sym_name: []const u8,
+        external_only: bool,
+    ) Error!Value {
+        const pkg_val = try self.heap.findLispPackageBytes(pkg_name) orelse return error.InvalidPackage;
+        if (!pkg_val.isPackage()) return error.TypeMismatch;
+
+        const native_name = try packageNativeName(pkg_val.toPtr(objects.Package).name);
+        const native_pkg = self.heap.findPackage(native_name) orelse return error.InvalidPackage;
+
+        if (!external_only) {
+            return try native_pkg.intern(self.heap, sym_name);
+        }
+
+        if (native_pkg.auto_export) {
+            return native_pkg.symbols.get(sym_name) orelse error.SymbolNotExternal;
+        }
+        if (native_pkg.exports.get(sym_name) != null) {
+            return native_pkg.symbols.get(sym_name) orelse error.SymbolNotExternal;
+        }
+        return error.SymbolNotExternal;
     }
 
     /// Intern a keyword (same name = same Value)
@@ -2570,4 +2580,46 @@ test "parse quoted symbol with escaped colon" {
     const escaped_sym = rest.toPtr(objects.Cons).car;
     try testing.expect(escaped_sym.isSymbol());
     try testing.expectEqualStrings("FORMAT.:_.1", escaped_sym.toPtr(runtime.Symbol).getName());
+}
+
+test "parse package-qualified symbol requires package to exist" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    var parser = try Parser.init(testing.allocator, &heap, "missing::foo", &vm.builtins);
+    defer parser.deinit();
+
+    try testing.expectError(error.InvalidPackage, parser.parse());
+    try testing.expect(heap.findPackage("MISSING") == null);
+}
+
+test "parse package-qualified symbol with single colon requires export" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    const pkg = try primitives.package.makePackage(&heap, try heap.allocBaseString("TEST-PKG"), null, null);
+    _ = try primitives.package.internSymbol(&heap, try heap.allocBaseString("FOO"), pkg);
+
+    var parser = try Parser.init(testing.allocator, &heap, "test-pkg:foo", &vm.builtins);
+    defer parser.deinit();
+    try testing.expectError(error.SymbolNotExternal, parser.parse());
+
+    const result = try primitives.package.internSymbol(&heap, try heap.allocBaseString("BAR"), pkg);
+    try primitives.package.exportSymbols(&heap, result.toPtr(objects.Cons).car, pkg);
+
+    var parser2 = try Parser.init(testing.allocator, &heap, "test-pkg:bar", &vm.builtins);
+    defer parser2.deinit();
+    const val = try parser2.parse();
+    try testing.expect(val.isSymbol());
+    try testing.expectEqualStrings("BAR", val.toPtr(runtime.Symbol).getName());
 }

@@ -7451,6 +7451,21 @@ test "load in-package updates reader package for following forms" {
     try testing.expect(!result.isNil());
 }
 
+test "in-package rejects missing package" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try testing.expectError(error.InvalidPackage, repl.eval("(in-package \"NO-SUCH-PKG\")"));
+    try testing.expect(try repl.heap.findLispPackage(try repl.heap.allocBaseString("NO-SUCH-PKG")) == null);
+}
+
 test "defpackage supports import-from and shadowing-import-from" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
