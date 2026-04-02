@@ -7329,7 +7329,7 @@
       nil)))
 
 (defun load-logical-pathname-translations (host)
-  "Load HOST translations from default path or ./HOST.translations.lisp."
+  "Load HOST translations from *DEFAULT-PATHNAME-DEFAULTS*."
   (let* ((host-key (%logical-pathname-host-key host))
          (filename (concatenate 'string host-key ".translations.lisp"))
          (base (if *default-pathname-defaults*
@@ -7338,13 +7338,10 @@
          (default-candidate
           (if base
               (namestring (merge-pathnames (pathname filename) base))
-            nil))
-         (cwd-candidate
-          (namestring (merge-pathnames (pathname filename) (pathname "./")))))
+            nil)))
     (or (if default-candidate
             (%load-logical-translations-candidate host default-candidate)
           nil)
-        (%load-logical-translations-candidate host cwd-candidate)
         nil)))
 
 ; logical-pathname - coerce to logical pathname (stub)

@@ -1,7 +1,7 @@
 ;; Authoritative Maxima source manifest for Habu.
 
 (defparameter *habu-maxima-root-candidates*
-  '("../maxima/" "/Users/joel/Work/maxima/" "/tmp/maxima/"))
+  '("../maxima/"))
 
 (defparameter *habu-maxima-files*
   '(

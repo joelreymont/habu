@@ -115,6 +115,7 @@ pub const Repl = struct {
     macros: std.AutoHashMap(Value, MacroEntry),
     /// GC roots that must survive across VM runs (macro definitions, etc).
     persistent_roots: std.ArrayList(Value),
+    trusted_load_root: []u8,
     /// Line editor for interactive input
     line_editor: LineEditor,
     /// Current VM being used (for nested loads)
@@ -149,6 +150,7 @@ pub const Repl = struct {
             .chunk_pool = std.ArrayList(Value){},
             .macros = std.AutoHashMap(Value, MacroEntry).init(allocator),
             .persistent_roots = std.ArrayList(Value){},
+            .trusted_load_root = undefined,
             .line_editor = LineEditor.init(allocator),
             .current_vm = null,
             .active_root_ctx = null,
@@ -158,8 +160,10 @@ pub const Repl = struct {
         errdefer self.chunk_pool.deinit(allocator);
         errdefer self.macros.deinit();
         errdefer self.persistent_roots.deinit(allocator);
+        errdefer allocator.free(self.trusted_load_root);
         errdefer self.line_editor.deinit();
 
+        self.trusted_load_root = try std.process.getCwdAlloc(allocator);
         self.vm = try Vm.init(allocator, heap);
         errdefer self.vm.deinit();
         self.vm.setChunkPoolOwned(&self.chunk_pool);
@@ -2055,7 +2059,10 @@ pub const Repl = struct {
                 }
             }
         }
-        return try self.allocator.dupe(u8, path);
+        if (try self.resolveRelativeLoadPath(self.trusted_load_root, path)) |resolved| {
+            return resolved;
+        }
+        return error.FileNotFound;
     }
 
     fn resolveRelativeLoadPath(self: *Repl, base: []const u8, path: []const u8) !?[]u8 {
@@ -2065,31 +2072,41 @@ pub const Repl = struct {
         };
         for (candidates) |root| {
             if (root.len == 0) continue;
-            const primary = try std.fs.path.join(self.allocator, &.{ root, path });
-            if (try self.fileExists(primary)) return primary;
-            self.allocator.free(primary);
-
-            const base_name = std.fs.path.basename(root);
-            if (path.len > base_name.len + 1 and std.mem.eql(u8, path[0..base_name.len], base_name) and path[base_name.len] == '/') {
-                const trimmed = path[base_name.len + 1 ..];
-                const trimmed_join = try std.fs.path.join(self.allocator, &.{ root, trimmed });
-                if (try self.fileExists(trimmed_join)) return trimmed_join;
-                self.allocator.free(trimmed_join);
-            }
+            if (try self.resolveTrustedPath(root, path)) |resolved| return resolved;
         }
         return null;
     }
 
+    fn resolveTrustedPath(self: *Repl, root: []const u8, path: []const u8) !?[]u8 {
+        const root_abs = try self.resolveBasePath(root);
+        defer self.allocator.free(root_abs);
+        const candidate = try std.fs.path.resolve(self.allocator, &.{ root_abs, path });
+        errdefer self.allocator.free(candidate);
+        if (!self.pathWithinRoot(root_abs, candidate)) return null;
+        if (!try self.fileExists(candidate)) return null;
+        return candidate;
+    }
+
+    fn resolveBasePath(self: *Repl, base: []const u8) ![]u8 {
+        if (std.fs.path.isAbsolute(base)) {
+            return try std.fs.path.resolve(self.allocator, &.{base});
+        }
+        return try std.fs.path.resolve(self.allocator, &.{ self.trusted_load_root, base });
+    }
+
+    fn pathWithinRoot(self: *Repl, root: []const u8, path: []const u8) bool {
+        _ = self;
+        if (!std.mem.startsWith(u8, path, root)) return false;
+        if (path.len == root.len) return true;
+        if (root.len == 0) return false;
+        const sep = std.fs.path.sep;
+        return root[root.len - 1] == sep or path[root.len] == sep;
+    }
+
     fn fileExists(self: *Repl, path: []const u8) !bool {
         _ = self;
-        if (std.fs.path.isAbsolute(path)) {
-            std.fs.accessAbsolute(path, .{}) catch |err| switch (err) {
-                error.FileNotFound => return false,
-                else => return err,
-            };
-            return true;
-        }
-        std.fs.cwd().access(path, .{}) catch |err| switch (err) {
+        if (!std.fs.path.isAbsolute(path)) return false;
+        std.fs.accessAbsolute(path, .{}) catch |err| switch (err) {
             error.FileNotFound => return false,
             else => return err,
         };
@@ -2599,6 +2616,7 @@ pub const Repl = struct {
         self.chunk_pool.deinit(self.allocator);
         self.macros.deinit();
         self.persistent_roots.deinit(self.allocator);
+        self.allocator.free(self.trusted_load_root);
     }
 
     /// Run specialization pass on IR, replacing generic ops with
@@ -5522,7 +5540,7 @@ test "load restores load pathname globals under generational GC pressure" {
     }
 }
 
-test "load resolves relative path with repeated directory prefix" {
+test "load rejects repeated directory prefix fallback" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
@@ -5565,7 +5583,7 @@ test "load resolves relative path with repeated directory prefix" {
 
     var out_buf: [256]u8 = undefined;
     var stream = std.io.fixedBufferStream(&out_buf);
-    try repl.loadFile(load_abs, stream.writer());
+    try testing.expectError(error.FileNotFound, repl.loadFile(load_abs, stream.writer()));
 }
 
 test "showType reports compile error" {
