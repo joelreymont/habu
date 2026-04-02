@@ -45,6 +45,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - `src/reader/parser.zig:1018-1195` needed an explicit split between `pkg:sym` and `pkg::sym`; treating both markers as the same `intern-in-package` path hid two separate CL contracts. The right cutover is: missing package is `error.InvalidPackage`, single-colon requires native export visibility, and only double-colon is allowed to intern.
 - `src/interp/repl.zig:4656-4717` should not synthesize Lisp package objects from native placeholders or auto-create packages for `(in-package ...)`. Once the reader/package system is canonical, `in-package` either resolves an existing package object or fails with `error.InvalidPackage`.
 - `src/runtime/heap.zig:3176-3187` benefits from a byte-slice `findLispPackageBytes` helper. It keeps parser/package designator reads case-folded and read-only without allocating temporary string designators or mutating keyword state.
+- For `src/interp/repl.zig:1919-1931`, a fixed `readToEndAlloc(..., 1024 * 1024)` ceiling is the wrong abstraction. The correct cutover is to derive the read bound from `file.stat().size` so large source files fail only on real size/allocator limits, not an arbitrary loader cap.
 
 ### Did Not Work
 - The REPL startup `load "lib/stdlib.habu"` failure is not caused by the relative-path resolver alone. Even after the trusted-root hardening in `src/interp/repl.zig`, `./zig-out/bin/habu` still dies early with `Cannot open 'lib/stdlib.habu': UnboundSymbol`, so there is another startup-stage bug outside the normal `Repl.loadFile` path.
@@ -58,6 +59,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Baking condition subtype knowledge into both `src/compiler/compile.zig:9008-9036` and `src/interp/vm.zig:9016-9066` was false progress. The minute a user-defined condition subclass appeared, `handler-case` and `handler-bind` diverged from CLOS/type semantics.
 - Trying to keep unsupported variadic pseudo-builtins callable via the old generic wrapper would have preserved fake progress. The right cutover was to delete the eval wrapper and only keep entries with a real runtime implementation.
 - Auto-creating missing reader packages for forward references in `src/reader/parser.zig:1162-1184` was false progress. It let `pkg:sym` syntax appear to work while silently mutating global package state and bypassing external-only enforcement.
+- A hardcoded loader byte cap is just another fallback in disguise. It turns legitimate upstream files into fake “too big” failures even though the parser and evaluator can already handle the content once it is in memory.
 - `zig build test` is still blocked by the pre-existing 5-error baseline (`src/bytecode/disasm.zig:68`, `src/bytecode/emit.zig:3093`, `src/compiler/passes/p04_resolve.zig:269`, `src/compiler/passes/p05_capture.zig:117`, `src/types/erasure.zig:109`), so `zig build` is the only whole-repo validation path available for this batch.
 
 ---

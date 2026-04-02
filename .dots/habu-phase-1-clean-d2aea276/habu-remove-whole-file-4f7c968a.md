@@ -1,9 +1,11 @@
 ---
 title: Remove whole-file load caps
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.122575+02:00"
+created-at: "\"2026-04-01T22:06:02.122575+02:00\""
+closed-at: "2026-04-02T17:07:46.754192+02:00"
+close-reason: done (zig build; zig build test blocked by known 5-error baseline)
 blocks:
   - habu-harden-trusted-root-0a2b245c
 ---

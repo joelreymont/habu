@@ -1927,7 +1927,9 @@ pub const Repl = struct {
             try std.fs.cwd().openFile(path, .{});
         defer file.close();
 
-        return try file.readToEndAlloc(self.allocator, 1024 * 1024);
+        const stat = try file.stat();
+        const max_bytes = std.math.cast(usize, stat.size) orelse return error.FileTooBig;
+        return try file.readToEndAlloc(self.allocator, max_bytes);
     }
 
     fn currentLoadTruename(self: *Repl, vm: *const Vm) ?Value {

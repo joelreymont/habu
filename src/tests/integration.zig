@@ -7466,6 +7466,36 @@ test "in-package rejects missing package" {
     try testing.expect(try repl.heap.findLispPackage(try repl.heap.allocBaseString("NO-SUCH-PKG")) == null);
 }
 
+test "load accepts source files larger than 1 MiB" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 32 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    var content = std.ArrayList(u8){};
+    defer content.deinit(allocator);
+
+    while (content.items.len <= 1024 * 1024) {
+        try content.appendSlice(allocator, "(quote big-load-marker)\n");
+    }
+    try content.appendSlice(allocator, "42\n");
+
+    try std.fs.cwd().writeFile(.{
+        .sub_path = "tmp_big_load.lsp",
+        .data = content.items,
+    });
+    defer std.fs.cwd().deleteFile("tmp_big_load.lsp") catch {};
+
+    const result = try repl.eval("(load \"tmp_big_load.lsp\")");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
 test "defpackage supports import-from and shadowing-import-from" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
