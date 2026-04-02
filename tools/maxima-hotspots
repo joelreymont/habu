@@ -15,6 +15,25 @@ DEFAULT_WORKLOADS = [
     "determinant",
 ]
 
+ADM_FIELDS = [
+    ("cand", "cand"),
+    ("elig", "elig"),
+    ("comp", "comp"),
+    ("sk_speed", "sk_speed"),
+    ("sk_safety", "sk_safety"),
+    ("sk_assert", "sk_assert"),
+    ("sk_caps", "sk_caps"),
+    ("sk_opt", "sk_opt"),
+    ("sk_key", "sk_key"),
+    ("sk_rest", "sk_rest"),
+    ("sk_chunk", "sk_chunk"),
+    ("fail_unsupported", "fail_unsup"),
+    ("fail_other", "fail_other"),
+    ("cache_comp", "cache_comp"),
+    ("cache_unsupported", "cache_unsup"),
+    ("cache_failed", "cache_fail"),
+]
+
 
 def parse_json_tail(text: str, label: str) -> dict:
     m = re.search(r"\{.*\}\s*$", text, re.S)
@@ -170,6 +189,13 @@ def evaluate_gate(summary: dict, min_interp_jit: float, min_jit_wins: int, min_j
     }
 
 
+def format_adm_pair(jit_adm: dict, interp_adm: dict) -> str:
+    parts = []
+    for key, label in ADM_FIELDS:
+        parts.append(f"{label}={jit_adm.get(key, 0)}/{interp_adm.get(key, 0)}")
+    return " ".join(parts)
+
+
 def format_text(summary: dict) -> str:
     lines = []
     lines.append("name               jit_ns        interp_ns     interp/jit")
@@ -190,32 +216,7 @@ def format_text(summary: dict) -> str:
     if isinstance(summary.get("jit_adm"), dict):
         j = summary.get("jit_adm", {})
         i = summary.get("interp_adm", {})
-        lines.append(
-            "jit_adm cand={jc}/{ic} elig={je}/{ie} comp={jp}/{ip} sk_speed={jss}/{iss} sk_safety={jsf}/{isf} sk_chunk={jsc}/{isc} fail_unsup={jfu}/{ifu} fail_other={jfo}/{ifo} cache_comp={jcc}/{icc} cache_unsup={jcu}/{icu} cache_fail={jcf}/{icf}".format(
-                jc=j.get("cand", 0),
-                ic=i.get("cand", 0),
-                je=j.get("elig", 0),
-                ie=i.get("elig", 0),
-                jp=j.get("comp", 0),
-                ip=i.get("comp", 0),
-                jss=j.get("sk_speed", 0),
-                iss=i.get("sk_speed", 0),
-                jsf=j.get("sk_safety", 0),
-                isf=i.get("sk_safety", 0),
-                jsc=j.get("sk_chunk", 0),
-                isc=i.get("sk_chunk", 0),
-                jfu=j.get("fail_unsupported", 0),
-                ifu=i.get("fail_unsupported", 0),
-                jfo=j.get("fail_other", 0),
-                ifo=i.get("fail_other", 0),
-                jcc=j.get("cache_comp", 0),
-                icc=i.get("cache_comp", 0),
-                jcu=j.get("cache_unsupported", 0),
-                icu=i.get("cache_unsupported", 0),
-                jcf=j.get("cache_failed", 0),
-                icf=i.get("cache_failed", 0),
-            )
-        )
+        lines.append(f"jit_adm {format_adm_pair(j, i)}")
     if isinstance(summary.get("jit_call_shape"), dict):
         j = summary.get("jit_call_shape", {})
         i = summary.get("interp_call_shape", {})
@@ -282,32 +283,8 @@ def format_markdown(summary: dict, scale: int, heap_mb: int, nursery_mb: int, pr
     if isinstance(summary.get("jit_adm"), dict):
         j = summary.get("jit_adm", {})
         i = summary.get("interp_adm", {})
-        lines.append(
-            "- jit_adm: cand=`{jc}/{ic}`, elig=`{je}/{ie}`, comp=`{jp}/{ip}`, sk_speed=`{jss}/{iss}`, sk_safety=`{jsf}/{isf}`, sk_chunk=`{jsc}/{isc}`, fail_unsup=`{jfu}/{ifu}`, fail_other=`{jfo}/{ifo}`, cache_comp=`{jcc}/{icc}`, cache_unsup=`{jcu}/{icu}`, cache_fail=`{jcf}/{icf}`".format(
-                jc=j.get("cand", 0),
-                ic=i.get("cand", 0),
-                je=j.get("elig", 0),
-                ie=i.get("elig", 0),
-                jp=j.get("comp", 0),
-                ip=i.get("comp", 0),
-                jss=j.get("sk_speed", 0),
-                iss=i.get("sk_speed", 0),
-                jsf=j.get("sk_safety", 0),
-                isf=i.get("sk_safety", 0),
-                jsc=j.get("sk_chunk", 0),
-                isc=i.get("sk_chunk", 0),
-                jfu=j.get("fail_unsupported", 0),
-                ifu=i.get("fail_unsupported", 0),
-                jfo=j.get("fail_other", 0),
-                ifo=i.get("fail_other", 0),
-                jcc=j.get("cache_comp", 0),
-                icc=i.get("cache_comp", 0),
-                jcu=j.get("cache_unsupported", 0),
-                icu=i.get("cache_unsupported", 0),
-                jcf=j.get("cache_failed", 0),
-                icf=i.get("cache_failed", 0),
-            )
-        )
+        parts = [f"{label}=`{j.get(key, 0)}/{i.get(key, 0)}`" for key, label in ADM_FIELDS]
+        lines.append("- jit_adm: " + ", ".join(parts))
     if isinstance(summary.get("jit_call_shape"), dict):
         j = summary.get("jit_call_shape", {})
         i = summary.get("interp_call_shape", {})

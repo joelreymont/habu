@@ -29,6 +29,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-02)
 
 ### Worked Well
+- For reporting-only perf dots, validate the formatter with a mocked payload instead of waiting on a full benchmark run. Loading `tools/maxima-hotspots` through `SourceFileLoader` and exercising `format_text` / `format_markdown` proved the new `jit_adm` fields were all surfaced without paying the Maxima load cost.
 - Making `src/runtime/heap.zig:3152-3170` scan the Lisp package registry by uppercased designator bytes instead of calling `packageKey` is the right fix for read-only package resolution. The old `findLispPackage -> packageKey -> internKeyword` path mutated the keyword table on every lookup, so innocent `find-package` / `find-symbol` reads were allocating and changing heap state.
 - Adding `Heap.lookupInPackage` in `src/runtime/heap.zig:3407-3410` and switching JIT/rooting and autoload read paths in `src/interp/repl.zig:1498-1505,2616-2631` and `src/testing/compile_chunk.zig:24-45` away from `internInPackage` removes symbol-table mutation from lookup-only flows without weakening package-qualified resolution.
 - Extracting JIT literal-root collection into a single shared module in `src/jit/literal_roots.zig`, then driving both `src/interp/repl.zig:2845-2860` and `src/testing/compile_chunk.zig:275-290` through it, is the right structural fix for backend/collector drift. One traversal plus an explicit `ensureCoverage` check turns silent divergence into a hard compile rejection.
@@ -40,6 +41,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Driving the direct dispatch through existing runtime helpers exposed a real latent bug in `src/runtime/primitives/hash.zig:14-20`: `primMakeHashTable` was storing error unions from `heap.intern*` instead of values. Direct execution made the broken path compile, and fixing it removed a hidden blocker.
 
 ### Did Not Work
+- Manually duplicating the `jit_adm` field list in multiple formatter branches is brittle. Centralizing the field list in `tools/maxima-hotspots` keeps the text and markdown outputs from drifting when new counters are added to `Vm.JitAdmStats`.
 - Reusing `packageKey` for registry lookup was the wrong abstraction. It is correct for package registration/removal because those operations own mutation, but it is wrong for `findLispPackage` because keyword interning is itself a write.
 - In Zig comptime-dispatched helper structs, cross-file callback entry points must be `pub`. The first pass at `src/testing/compile_chunk.zig:54-63` and `src/interp/repl.zig:2639-2658` compiled locally in the defining file shape but failed once `src/jit/literal_roots.zig` invoked `ops.onLit`/`onGlobalRef`/`onLambda` from another module.
 - `Repl.vm` is stored by value, not pointer. Shared helper extraction must pass `&ctx.repl.vm` into APIs expecting `*Vm`; using `ctx.repl.vm` directly broke `zig build` immediately at the new shared literal-root call sites in `src/interp/repl.zig:2641-2657`.
