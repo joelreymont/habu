@@ -7077,6 +7077,23 @@ test "ansi repro compute-restarts.1 returns restart objects" {
     try testing.expect(!result.isNil());
 }
 
+test "compute-restarts returns first-class restart objects" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src =
+        \\(restart-case
+        \\  (let ((r (car (compute-restarts))))
+        \\    (and (typep r 'restart)
+        \\         (not (symbolp r))
+        \\         (eq (restart-name r) 'foo)))
+        \\  (foo () nil))
+    ;
+    const result = try evalExpr(allocator, &heap, src);
+    try testing.expect(!result.isNil());
+}
+
 test "ansi repro compute-restarts.3 find-restart returns restart object" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
@@ -7118,6 +7135,32 @@ test "restart-bind establishes callable restart handlers" {
     try testing.expect(!c0.car.isNil());
     const c1 = c0.cdr.toPtr(Cons);
     try testing.expect(!c1.car.isNil());
+}
+
+test "invoke-restart uses exact restart object, not just name" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(let ((outer nil))
+        \\  (restart-case
+        \\    (progn
+        \\      (setq outer (find-restart 'foo))
+        \\      (restart-case
+        \\        (invoke-restart outer 17)
+        \\        (foo () :inner)))
+        \\    (foo (v) v)))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 17), result.toFixnum());
 }
 
 test "ansi repro cerror.6 continue restart resumes" {

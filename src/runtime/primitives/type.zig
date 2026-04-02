@@ -276,8 +276,11 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
         }
         // random-state is implemented as an integer in Habu
         if (sym.eq(syms.random_state)) return obj.isFixnum();
-        // restart objects aren't first-class - always false for typep
-        if (sym.eq(syms.restart)) return false;
+        if (sym.eq(syms.restart)) {
+            if (!obj.isVector()) return false;
+            const vec = obj.toPtr(objects.Vector);
+            return vec.length > 0 and vec.data[0].eq(syms.restart);
+        }
         // method-combination isn't implemented as separate type
         if (sym.eq(syms.method_combination)) return false;
         // values is a type specifier for multiple return values, not for typep

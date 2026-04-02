@@ -190,6 +190,8 @@ pub const BlockFrame = struct {
 pub const RestartFrame = struct {
     /// Restart name (interned symbol)
     name: Value,
+    /// Stable dynamic-extent identity for restart objects.
+    id: u64,
     /// Chunk containing the restart handler
     chunk: *const Chunk,
     /// IP of restart handler code
@@ -743,6 +745,7 @@ pub const Vm = struct {
     restart_stack: [MAX_RESTARTS]RestartFrame,
     /// Restart stack pointer
     restart_sp: usize,
+    restart_next_id: u64,
 
     /// Block stack for block/return-from
     block_stack: [MAX_BLOCKS]BlockFrame,
@@ -1262,6 +1265,7 @@ pub const Vm = struct {
             .unwind_sp = 0,
             .restart_stack = undefined,
             .restart_sp = 0,
+            .restart_next_id = 1,
             .block_stack = undefined,
             .block_sp = 0,
             .handler_stack = undefined,
@@ -6250,6 +6254,7 @@ pub const Vm = struct {
                 if (self.restart_sp >= MAX_RESTARTS) return error.StackOverflow;
                 self.restart_stack[self.restart_sp] = .{
                     .name = name,
+                    .id = self.restart_next_id,
                     .chunk = self.chunk,
                     .handler_ip = handler_ip,
                     .restart_sp = self.sp,
@@ -6260,6 +6265,8 @@ pub const Vm = struct {
                     .progv_depth = self.progv_sp,
                     .handler_depth = self.handler_sp,
                 };
+                self.restart_next_id +%= 1;
+                if (self.restart_next_id == 0) self.restart_next_id = 1;
                 self.restart_sp += 1;
             },
 
@@ -6276,17 +6283,11 @@ pub const Vm = struct {
             },
 
             .find_restart => {
-                const name = try self.pop();
-                // Search for restart by name
-                var found = Value.nil;
-                var i = self.restart_sp;
-                while (i > 0) {
-                    i -= 1;
-                    if (self.restart_stack[i].name.raw == name.raw) {
-                        found = self.restart_stack[i].name;
-                        break;
-                    }
-                }
+                const designator = try self.pop();
+                const found = if (try self.findRestartIndex(designator)) |idx|
+                    try self.makeRestartObject(&self.restart_stack[idx])
+                else
+                    Value.nil;
                 try self.push(found);
             },
 
@@ -6578,21 +6579,20 @@ pub const Vm = struct {
                 try self.push(result);
             },
             .compute_restarts => {
-                // Build list of active restart names from restart stack
+                // Build list of active restart objects from restart stack.
                 var result = Value.nil;
                 var i: usize = self.restart_sp;
                 while (i > 0) {
                     i -= 1;
-                    const restart_sym = self.restart_stack[i].name;
-                    result = try self.allocCons(restart_sym, result);
+                    const restart_obj = try self.makeRestartObject(&self.restart_stack[i]);
+                    result = try self.allocCons(restart_obj, result);
                 }
                 try self.push(result);
             },
             .restart_name => {
-                // In our simplified implementation, restarts are just symbols
                 const restart = try self.pop();
-                // Return the symbol itself as the name
-                try self.push(restart);
+                const name = (try self.restartNameValue(restart)) orelse return error.TypeMismatch;
+                try self.push(name);
             },
             .directory => {
                 const pathname = try self.pop();
@@ -9537,44 +9537,97 @@ pub const Vm = struct {
         return err;
     }
 
-    fn doInvokeRestart(self: *Vm, name: Value, value: Value) Error!void {
-        // Search for restart by name (most recent first)
+    fn restartTypeSymbol(self: *Vm) Error!Value {
+        return (try self.heap.internInPackage("COMMON-LISP", "RESTART")) orelse error.UnboundSymbol;
+    }
+
+    fn makeRestartObject(self: *Vm, frame: *const RestartFrame) Error!Value {
+        const restart_obj = try self.allocVector(3, 3);
+        const vec = restart_obj.toPtr(Vector);
+        vec.data[0] = try self.restartTypeSymbol();
+        vec.data[1] = self.resolveForwardedValue(frame.name);
+        vec.data[2] = Value.makeFixnum(@intCast(frame.id));
+        return restart_obj;
+    }
+
+    fn restartNameValue(self: *Vm, designator: Value) Error!?Value {
+        const live = self.resolveForwardedValue(designator);
+        if (live.isSymbol()) return live;
+        if (!live.isVector()) return null;
+
+        const vec = live.toPtr(Vector);
+        if (vec.length < 3) return null;
+
+        const restart_sym = try self.restartTypeSymbol();
+        if (self.resolveForwardedValue(vec.data[0]).raw != restart_sym.raw) return null;
+
+        const name = self.resolveForwardedValue(vec.data[1]);
+        if (!name.isSymbol()) return null;
+        return name;
+    }
+
+    fn restartObjectId(self: *Vm, designator: Value) Error!?u64 {
+        const live = self.resolveForwardedValue(designator);
+        if (!live.isVector()) return null;
+
+        const vec = live.toPtr(Vector);
+        if (vec.length < 3) return null;
+
+        const restart_sym = try self.restartTypeSymbol();
+        if (self.resolveForwardedValue(vec.data[0]).raw != restart_sym.raw) return null;
+
+        const id_val = self.resolveForwardedValue(vec.data[2]);
+        if (!id_val.isFixnum()) return null;
+        const id = id_val.toFixnum();
+        if (id <= 0) return null;
+        return @intCast(id);
+    }
+
+    fn findRestartIndex(self: *Vm, designator: Value) Error!?usize {
+        if (try self.restartObjectId(designator)) |target_id| {
+            var i = self.restart_sp;
+            while (i > 0) {
+                i -= 1;
+                if (self.restart_stack[i].id == target_id) return i;
+            }
+            return null;
+        }
+
+        const target_name = (try self.restartNameValue(designator)) orelse return null;
         var i = self.restart_sp;
         while (i > 0) {
             i -= 1;
-            const frame = self.restart_stack[i];
-            if (frame.name.raw == name.raw) {
-                // Found matching restart - restore state
-                if (frame.block_depth > MAX_BLOCKS) {
-                    return self.invalidOpcode("invoke-restart.block-depth-corrupt");
-                }
-                self.block_sp = frame.block_depth;
-                try self.restoreControlDepths(
-                    frame.catch_depth,
-                    frame.unwind_depth,
-                    i,
-                    frame.progv_depth,
-                    frame.handler_depth,
-                    null,
-                );
-                // Pop this restart and all more recent ones
-                self.pending_handler_restore_depth = null;
-
-                // Restore execution state
-                if (frame.restart_sp > STACK_SIZE or frame.restart_fp > MAX_FRAMES) {
-                    return self.invalidOpcode("invoke-restart.stack-corrupt");
-                }
-                self.chunk = frame.chunk;
-                self.ip = frame.handler_ip;
-                self.sp = frame.restart_sp;
-                self.fp = frame.restart_fp;
-                // Push the value as result of restart handler
-                try self.push(value);
-                return;
-            }
+            if (self.restart_stack[i].name.raw == target_name.raw) return i;
         }
-        // No matching restart found
-        return error.RestartNotFound;
+        return null;
+    }
+
+    fn doInvokeRestart(self: *Vm, designator: Value, value: Value) Error!void {
+        const idx = (try self.findRestartIndex(designator)) orelse return error.RestartNotFound;
+        const frame = self.restart_stack[idx];
+
+        if (frame.block_depth > MAX_BLOCKS) {
+            return self.invalidOpcode("invoke-restart.block-depth-corrupt");
+        }
+        self.block_sp = frame.block_depth;
+        try self.restoreControlDepths(
+            frame.catch_depth,
+            frame.unwind_depth,
+            idx,
+            frame.progv_depth,
+            frame.handler_depth,
+            null,
+        );
+        self.pending_handler_restore_depth = null;
+
+        if (frame.restart_sp > STACK_SIZE or frame.restart_fp > MAX_FRAMES) {
+            return self.invalidOpcode("invoke-restart.stack-corrupt");
+        }
+        self.chunk = frame.chunk;
+        self.ip = frame.handler_ip;
+        self.sp = frame.restart_sp;
+        self.fp = frame.restart_fp;
+        try self.push(value);
     }
 
     // ========================================================================
@@ -14795,6 +14848,7 @@ test "vm collectGarbage relocates chunk pointers" {
     vm.block_sp = 1;
     vm.restart_stack[0] = .{
         .name = Value.nil,
+        .id = 1,
         .chunk = restart_ptr,
         .handler_ip = 0,
         .restart_sp = 0,
@@ -15366,6 +15420,7 @@ test "vm invoke-restart restores dynamic depths and progv" {
     vm.handler_sp = 4;
     vm.restart_stack[0] = .{
         .name = restart_name,
+        .id = 1,
         .chunk = &halt_chunk,
         .handler_ip = 99,
         .restart_sp = 0,

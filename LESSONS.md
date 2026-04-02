@@ -29,6 +29,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-02)
 
 ### Worked Well
+- Giving restarts stable dynamic-extent IDs and returning first-class restart objects from `compute-restarts`/`find-restart` in `src/interp/vm.zig:6245-6290,9541-9648` fixes the generic CL semantics that symbol-only restart lookup could not express. The old implementation could not distinguish nested same-name restarts, so `(invoke-restart (find-restart ...))` was only accidentally correct when names were unique.
 - Replacing the compiler/VM's duplicated hardcoded condition hierarchy with runtime `subtypep` checks in `src/compiler/compile.zig:9008-9020`, `src/interp/vm.zig:8891-8942`, and `src/runtime/primitives/type.zig:490-500` fixes custom condition dispatch generically. The old tables only knew about a few built-in relationships, so `handler-case`/`handler-bind` failed on valid subclasses such as user-defined warnings.
 - Replacing the variadic builtin `(eval (cons 'sym args))` path with first-class `native_code` callable handles in `src/interp/repl.zig:1447-1467` and direct VM dispatch in `src/interp/vm.zig:9721-10094,12516-12529` removed the last eval-based function-designator shortcut without needing Maxima-specific exceptions.
 - Treating unsupported pseudo-builtins as not-callable-before-stdlib is safer than synthesizing fake wrappers. Trimming `vector`, `concatenate`, and `set-macro-character` from `src/compiler/compile.zig:15618-15674` stops `fboundp`/`symbol-function` from claiming runtime support that only exists after stdlib loads.
@@ -36,6 +37,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Driving the direct dispatch through existing runtime helpers exposed a real latent bug in `src/runtime/primitives/hash.zig:14-20`: `primMakeHashTable` was storing error unions from `heap.intern*` instead of values. Direct execution made the broken path compile, and fixing it removed a hidden blocker.
 
 ### Did Not Work
+- Treating restart objects as plain symbols was false progress. `src/interp/vm.zig:6258-6288,9541-9572` could only re-find by name, so nested same-name restarts had no exact identity and `typep 'restart` was permanently false in `src/runtime/primitives/type.zig:280`.
 - Baking condition subtype knowledge into both `src/compiler/compile.zig:9008-9036` and `src/interp/vm.zig:9016-9066` was false progress. The minute a user-defined condition subclass appeared, `handler-case` and `handler-bind` diverged from CLOS/type semantics.
 - Trying to keep unsupported variadic pseudo-builtins callable via the old generic wrapper would have preserved fake progress. The right cutover was to delete the eval wrapper and only keep entries with a real runtime implementation.
 - `zig build test` is still blocked by the pre-existing 5-error baseline (`src/bytecode/disasm.zig:68`, `src/bytecode/emit.zig:3093`, `src/compiler/passes/p04_resolve.zig:269`, `src/compiler/passes/p05_capture.zig:117`, `src/types/erasure.zig:109`), so `zig build` is the only whole-repo validation path available for this batch.
