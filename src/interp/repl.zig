@@ -18,6 +18,7 @@ const IrBuilder = ir.IrBuilder;
 const passes = @import("../compiler/passes/passes.zig");
 const jit_backend = @import("../jit/backend_api.zig");
 const jit_candidates = @import("../jit/candidates.zig");
+const jit_literal_roots = @import("../jit/literal_roots.zig");
 const bytecode = @import("../bytecode/bytecode.zig");
 const Emitter = bytecode.Emitter;
 const Op = bytecode.Op;
@@ -2607,10 +2608,6 @@ pub const Repl = struct {
         return try passes.specialize.specialize(self.compiler.allocator, ir_node);
     }
 
-    fn shouldRootJitLiteral(v: Value) bool {
-        return v.isPointer() and !v.isMagicSymbol();
-    }
-
     fn internGlobalRefSymbol(self: *Repl, qname: []const u8) !?Value {
         if (std.mem.indexOf(u8, qname, "::")) |sep| {
             return try self.internPackageSymbol(qname[0..sep], qname[sep + 2 ..]);
@@ -2635,220 +2632,31 @@ pub const Repl = struct {
         return null;
     }
 
-    fn collectJitLiteralRoots(
-        self: *Repl,
-        ir_node: *const Ir,
-        roots: *jit_backend.LiteralRoots,
-    ) !void {
-        switch (ir_node.*) {
-            .lit => |v| {
-                if (shouldRootJitLiteral(v)) {
-                    const key = @intFromPtr(ir_node);
-                    if (!roots.contains(key)) {
-                        const slot = try self.vm.registerJitLiteral(v);
-                        try roots.put(key, slot);
-                    }
-                }
-            },
-            .global_ref => |gr| {
-                const key = @intFromPtr(ir_node);
-                if (!roots.contains(key)) {
-                    const sym = (try self.internGlobalRefSymbol(gr.name)) orelse return error.UnsupportedIrNode;
-                    const slot = try self.vm.registerJitLiteral(sym);
-                    try roots.put(key, slot);
-                }
-            },
-            .lambda => |lam| {
-                if (lam.captures.len != 0) return error.UnsupportedIrNode;
-                if (lam.optional_params.len != 0) return error.UnsupportedIrNode;
-                if (lam.key_params.len != 0) return error.UnsupportedIrNode;
-                if (lam.rest_param != null) return error.UnsupportedIrNode;
-                if (lam.lambda_expr.isNil()) return error.UnsupportedIrNode;
+    const LiteralRootCtx = struct {
+        repl: *Repl,
+    };
 
-                const key = @intFromPtr(ir_node);
-                if (!roots.contains(key)) {
-                    const closure_val = try self.evalExpr(lam.lambda_expr);
-                    if (!closure_val.isClosure()) return error.TypeMismatch;
-                    const slot = try self.vm.registerJitLiteral(closure_val);
-                    try roots.put(key, slot);
-                }
-                try self.collectJitLiteralRoots(lam.body, roots);
-            },
-            .fixnum_add, .fixnum_sub, .add, .sub => |op| {
-                try self.collectJitLiteralRoots(op.left, roots);
-                try self.collectJitLiteralRoots(op.right, roots);
-            },
-            .fixnum_le,
-            .fixnum_lt,
-            .fixnum_gt,
-            .fixnum_ge,
-            .fixnum_eq,
-            .le,
-            .lt,
-            .gt,
-            .ge,
-            .num_eq,
-            .fixnum_mul,
-            .mul,
-            .eq,
-            .cons,
-            .logand,
-            .mod,
-            .rem,
-            .append,
-            .assoc,
-            .make_string,
-            .position,
-            .position_eq,
-            .position_equal,
-            => |op| {
-                try self.collectJitLiteralRoots(op.left, roots);
-                try self.collectJitLiteralRoots(op.right, roots);
-            },
-            .@"if" => |f| {
-                try self.collectJitLiteralRoots(f.cond, roots);
-                try self.collectJitLiteralRoots(f.then_branch, roots);
-                try self.collectJitLiteralRoots(f.else_branch, roots);
-            },
-            .block => |b| try self.collectJitLiteralRoots(b.body, roots),
-            .progn => |exprs| {
-                for (exprs) |expr| {
-                    try self.collectJitLiteralRoots(expr, roots);
-                }
-            },
-            .list, .list_star => |elements| {
-                for (elements) |element| {
-                    try self.collectJitLiteralRoots(element, roots);
-                }
-            },
-            .let => |l| {
-                for (l.bindings) |binding| {
-                    try self.collectJitLiteralRoots(binding.value, roots);
-                }
-                try self.collectJitLiteralRoots(l.body, roots);
-            },
-            .set => |s| try self.collectJitLiteralRoots(s.value, roots),
-            .loop => |l| {
-                try self.collectJitLiteralRoots(l.cond, roots);
-                try self.collectJitLiteralRoots(l.body, roots);
-            },
-            .progv => |p| {
-                try self.collectJitLiteralRoots(p.symbols, roots);
-                try self.collectJitLiteralRoots(p.values, roots);
-                try self.collectJitLiteralRoots(p.body, roots);
-            },
-            .assert_fixnum => |op| try self.collectJitLiteralRoots(op.operand, roots),
-            .call => |c| {
-                try self.collectJitLiteralRoots(c.func, roots);
-                for (c.args) |arg| {
-                    try self.collectJitLiteralRoots(arg, roots);
-                }
-            },
-            .tailcall => |tc| {
-                try self.collectJitLiteralRoots(tc.func, roots);
-                for (tc.args) |arg| {
-                    try self.collectJitLiteralRoots(arg, roots);
-                }
-            },
-            .nilp,
-            .not,
-            .consp,
-            .abs,
-            .zerop,
-            .oddp,
-            .evenp,
-            .car,
-            .cdr,
-            .unsafe_car,
-            .unsafe_cdr,
-            .length,
-            .sqrt,
-            .round,
-            .intern,
-            .vec_len,
-            .str_len,
-            => |op| try self.collectJitLiteralRoots(op.operand, roots),
-            .hash_count => |h| try self.collectJitLiteralRoots(h.operand, roots),
-            .hash_capacity => |h| try self.collectJitLiteralRoots(h.operand, roots),
-            .hash_clear => |h| try self.collectJitLiteralRoots(h.operand, roots),
-            .hash_test => |h| try self.collectJitLiteralRoots(h.operand, roots),
-            .hash_keys => |h| try self.collectJitLiteralRoots(h.operand, roots),
-            .hash_alist => |h| try self.collectJitLiteralRoots(h.operand, roots),
-            .make_hash => {},
-            .vec_new => |v| {
-                try self.collectJitLiteralRoots(v.size, roots);
-                if (v.init) |init_val| try self.collectJitLiteralRoots(init_val, roots);
-            },
-            .vec_ref, .str_ref, .str_concat => |op| {
-                try self.collectJitLiteralRoots(op.left, roots);
-                try self.collectJitLiteralRoots(op.right, roots);
-            },
-            .vec_set => |v| {
-                try self.collectJitLiteralRoots(v.vec, roots);
-                try self.collectJitLiteralRoots(v.index, roots);
-                try self.collectJitLiteralRoots(v.value, roots);
-            },
-            .hash_get => |h| {
-                try self.collectJitLiteralRoots(h.table, roots);
-                try self.collectJitLiteralRoots(h.key, roots);
-                if (h.default) |d| try self.collectJitLiteralRoots(d, roots);
-            },
-            .hash_set => |h| {
-                try self.collectJitLiteralRoots(h.table, roots);
-                try self.collectJitLiteralRoots(h.key, roots);
-                try self.collectJitLiteralRoots(h.value, roots);
-            },
-            .hash_rem => |h| {
-                try self.collectJitLiteralRoots(h.table, roots);
-                try self.collectJitLiteralRoots(h.key, roots);
-            },
-            .format => |f| {
-                try self.collectJitLiteralRoots(f.dest, roots);
-                try self.collectJitLiteralRoots(f.control, roots);
-                for (f.args) |arg| {
-                    try self.collectJitLiteralRoots(arg, roots);
-                }
-            },
-            .str_set => |s| {
-                try self.collectJitLiteralRoots(s.str, roots);
-                try self.collectJitLiteralRoots(s.index, roots);
-                try self.collectJitLiteralRoots(s.value, roots);
-            },
-            .substring => |s| {
-                try self.collectJitLiteralRoots(s.str, roots);
-                try self.collectJitLiteralRoots(s.start, roots);
-                try self.collectJitLiteralRoots(s.end, roots);
-            },
-            .arr_new => |a| {
-                for (a.dimensions) |dim| {
-                    try self.collectJitLiteralRoots(dim, roots);
-                }
-                if (a.init) |init_ir| {
-                    try self.collectJitLiteralRoots(init_ir, roots);
-                }
-            },
-            .arr_new_dyn => |a| {
-                try self.collectJitLiteralRoots(a.dimensions, roots);
-                if (a.init) |init_ir| {
-                    try self.collectJitLiteralRoots(init_ir, roots);
-                }
-            },
-            .arr_ref => |a| {
-                try self.collectJitLiteralRoots(a.array, roots);
-                for (a.subscripts) |sub| {
-                    try self.collectJitLiteralRoots(sub, roots);
-                }
-            },
-            .arr_set => |a| {
-                try self.collectJitLiteralRoots(a.array, roots);
-                for (a.subscripts) |sub| {
-                    try self.collectJitLiteralRoots(sub, roots);
-                }
-                try self.collectJitLiteralRoots(a.value, roots);
-            },
-            else => {},
+    const literal_root_ops = struct {
+        pub fn onLit(ctx: LiteralRootCtx, ir_node: *const Ir, roots: *jit_backend.LiteralRoots, v: Value) !void {
+            try jit_literal_roots.rootLiteral(&ctx.repl.vm, ir_node, roots, v);
         }
-    }
+
+        pub fn onGlobalRef(ctx: LiteralRootCtx, ir_node: *const Ir, roots: *jit_backend.LiteralRoots, qname: []const u8) !void {
+            const sym = (try ctx.repl.internGlobalRefSymbol(qname)) orelse return error.UnsupportedIrNode;
+            try jit_literal_roots.rootValue(&ctx.repl.vm, ir_node, roots, sym);
+        }
+
+        pub fn onLambda(ctx: LiteralRootCtx, ir_node: *const Ir, roots: *jit_backend.LiteralRoots, lam: anytype) !void {
+            if (lam.lambda_expr.isNil()) return error.UnsupportedIrNode;
+
+            const key = @intFromPtr(ir_node);
+            if (roots.contains(key)) return;
+
+            const closure_val = try ctx.repl.evalExpr(lam.lambda_expr);
+            if (!closure_val.isClosure()) return error.TypeMismatch;
+            try jit_literal_roots.rootValue(&ctx.repl.vm, ir_node, roots, closure_val);
+        }
+    };
 
     fn tryHoistCompileLambdas(
         self: *Repl,
@@ -3037,9 +2845,20 @@ pub const Repl = struct {
         var literal_roots = jit_backend.LiteralRoots.init(self.allocator);
         defer literal_roots.deinit();
         if (lambda_ir.* == .lambda) {
-            self.collectJitLiteralRoots(lambda_ir.lambda.body, &literal_roots) catch |err| {
+            jit_literal_roots.collect(
+                lambda_ir.lambda.body,
+                &literal_roots,
+                LiteralRootCtx{ .repl = self },
+                literal_root_ops,
+            ) catch |err| {
                 if (trace) {
                     std.debug.print("JIT: literal root prep failed for '{s}': {s}\n", .{ name, @errorName(err) });
+                }
+                return .failed;
+            };
+            jit_literal_roots.ensureCoverage(lambda_ir.lambda.body, &literal_roots) catch |err| {
+                if (trace) {
+                    std.debug.print("JIT: literal root coverage failed for '{s}': {s}\n", .{ name, @errorName(err) });
                 }
                 return .failed;
             };

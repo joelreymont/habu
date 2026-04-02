@@ -8,6 +8,7 @@ const interp = @import("../interp/interp.zig");
 const specialize = @import("../compiler/passes/p07c_specialize.zig");
 const jit_backend = @import("../jit/backend_api.zig");
 const jit_candidates = @import("../jit/candidates.zig");
+const jit_literal_roots = @import("../jit/literal_roots.zig");
 const Ir = compiler_mod.ir.Ir;
 
 const Heap = runtime.Heap;
@@ -20,10 +21,6 @@ const IrBuilder = compiler_mod.IrBuilder;
 const Parser = reader.Parser;
 const Op = bytecode.Op;
 const Emitter = bytecode.Emitter;
-
-fn shouldRootJitLiteral(v: runtime.Value) bool {
-    return v.isPointer() and !v.isMagicSymbol();
-}
 
 fn internGlobalRefSymbol(heap: *Heap, qname: []const u8) !?runtime.Value {
     if (std.mem.indexOf(u8, qname, "::")) |sep| {
@@ -49,212 +46,23 @@ fn internPackageSymbol(heap: *Heap, pkg_name: []const u8, sym_name: []const u8) 
     return null;
 }
 
-fn collectJitLiteralRoots(
+const LiteralRootCtx = struct {
     vm: *Vm,
     heap: *Heap,
-    ir_node: *const Ir,
-    roots: *jit_backend.LiteralRoots,
-) !void {
-    switch (ir_node.*) {
-        .lit => |v| {
-            if (shouldRootJitLiteral(v)) {
-                const key = @intFromPtr(ir_node);
-                if (!roots.contains(key)) {
-                    const slot = try vm.registerJitLiteral(v);
-                    try roots.put(key, slot);
-                }
-            }
-        },
-        .global_ref => |gr| {
-            const key = @intFromPtr(ir_node);
-            if (!roots.contains(key)) {
-                const sym = (try internGlobalRefSymbol(heap, gr.name)) orelse return error.UnsupportedIrNode;
-                const slot = try vm.registerJitLiteral(sym);
-                try roots.put(key, slot);
-            }
-        },
-        .lambda => |lam| {
-            if (lam.captures.len != 0) return error.UnsupportedIrNode;
-            if (lam.optional_params.len != 0) return error.UnsupportedIrNode;
-            if (lam.key_params.len != 0) return error.UnsupportedIrNode;
-            if (lam.rest_param != null) return error.UnsupportedIrNode;
-            try collectJitLiteralRoots(vm, heap, lam.body, roots);
-        },
-        .fixnum_add,
-        .fixnum_sub,
-        .add,
-        .sub,
-        .fixnum_le,
-        .fixnum_lt,
-        .fixnum_gt,
-        .fixnum_ge,
-        .fixnum_eq,
-        .le,
-        .lt,
-        .gt,
-        .ge,
-        .num_eq,
-        .fixnum_mul,
-        .mul,
-        .eq,
-        .cons,
-        .logand,
-        .mod,
-        .rem,
-        .append,
-        .assoc,
-        .make_string,
-        .position,
-        .position_eq,
-        .position_equal,
-        => |op| {
-            try collectJitLiteralRoots(vm, heap, op.left, roots);
-            try collectJitLiteralRoots(vm, heap, op.right, roots);
-        },
-        .@"if" => |f| {
-            try collectJitLiteralRoots(vm, heap, f.cond, roots);
-            try collectJitLiteralRoots(vm, heap, f.then_branch, roots);
-            try collectJitLiteralRoots(vm, heap, f.else_branch, roots);
-        },
-        .block => |b| try collectJitLiteralRoots(vm, heap, b.body, roots),
-        .progn => |exprs| {
-            for (exprs) |expr| {
-                try collectJitLiteralRoots(vm, heap, expr, roots);
-            }
-        },
-        .list, .list_star => |elements| {
-            for (elements) |element| {
-                try collectJitLiteralRoots(vm, heap, element, roots);
-            }
-        },
-        .let => |l| {
-            for (l.bindings) |binding| {
-                try collectJitLiteralRoots(vm, heap, binding.value, roots);
-            }
-            try collectJitLiteralRoots(vm, heap, l.body, roots);
-        },
-        .set => |s| try collectJitLiteralRoots(vm, heap, s.value, roots),
-        .loop => |l| {
-            try collectJitLiteralRoots(vm, heap, l.cond, roots);
-            try collectJitLiteralRoots(vm, heap, l.body, roots);
-        },
-        .progv => |p| {
-            try collectJitLiteralRoots(vm, heap, p.symbols, roots);
-            try collectJitLiteralRoots(vm, heap, p.values, roots);
-            try collectJitLiteralRoots(vm, heap, p.body, roots);
-        },
-        .assert_fixnum => |op| try collectJitLiteralRoots(vm, heap, op.operand, roots),
-        .call => |c| {
-            try collectJitLiteralRoots(vm, heap, c.func, roots);
-            for (c.args) |arg| {
-                try collectJitLiteralRoots(vm, heap, arg, roots);
-            }
-        },
-        .tailcall => |tc| {
-            try collectJitLiteralRoots(vm, heap, tc.func, roots);
-            for (tc.args) |arg| {
-                try collectJitLiteralRoots(vm, heap, arg, roots);
-            }
-        },
-        .nilp,
-        .not,
-        .consp,
-        .abs,
-        .zerop,
-        .oddp,
-        .evenp,
-        .car,
-        .cdr,
-        .unsafe_car,
-        .unsafe_cdr,
-        .length,
-        .sqrt,
-        .round,
-        .intern,
-        .vec_len,
-        .str_len,
-        => |op| try collectJitLiteralRoots(vm, heap, op.operand, roots),
-        .hash_count => |h| try collectJitLiteralRoots(vm, heap, h.operand, roots),
-        .hash_capacity => |h| try collectJitLiteralRoots(vm, heap, h.operand, roots),
-        .hash_clear => |h| try collectJitLiteralRoots(vm, heap, h.operand, roots),
-        .hash_test => |h| try collectJitLiteralRoots(vm, heap, h.operand, roots),
-        .hash_keys => |h| try collectJitLiteralRoots(vm, heap, h.operand, roots),
-        .hash_alist => |h| try collectJitLiteralRoots(vm, heap, h.operand, roots),
-        .make_hash => {},
-        .vec_new => |v| {
-            try collectJitLiteralRoots(vm, heap, v.size, roots);
-            if (v.init) |init_val| try collectJitLiteralRoots(vm, heap, init_val, roots);
-        },
-        .vec_ref, .str_ref, .str_concat => |op| {
-            try collectJitLiteralRoots(vm, heap, op.left, roots);
-            try collectJitLiteralRoots(vm, heap, op.right, roots);
-        },
-        .vec_set => |v| {
-            try collectJitLiteralRoots(vm, heap, v.vec, roots);
-            try collectJitLiteralRoots(vm, heap, v.index, roots);
-            try collectJitLiteralRoots(vm, heap, v.value, roots);
-        },
-        .hash_get => |h| {
-            try collectJitLiteralRoots(vm, heap, h.table, roots);
-            try collectJitLiteralRoots(vm, heap, h.key, roots);
-            if (h.default) |d| try collectJitLiteralRoots(vm, heap, d, roots);
-        },
-        .hash_set => |h| {
-            try collectJitLiteralRoots(vm, heap, h.table, roots);
-            try collectJitLiteralRoots(vm, heap, h.key, roots);
-            try collectJitLiteralRoots(vm, heap, h.value, roots);
-        },
-        .hash_rem => |h| {
-            try collectJitLiteralRoots(vm, heap, h.table, roots);
-            try collectJitLiteralRoots(vm, heap, h.key, roots);
-        },
-        .format => |f| {
-            try collectJitLiteralRoots(vm, heap, f.dest, roots);
-            try collectJitLiteralRoots(vm, heap, f.control, roots);
-            for (f.args) |arg| {
-                try collectJitLiteralRoots(vm, heap, arg, roots);
-            }
-        },
-        .str_set => |s| {
-            try collectJitLiteralRoots(vm, heap, s.str, roots);
-            try collectJitLiteralRoots(vm, heap, s.index, roots);
-            try collectJitLiteralRoots(vm, heap, s.value, roots);
-        },
-        .substring => |s| {
-            try collectJitLiteralRoots(vm, heap, s.str, roots);
-            try collectJitLiteralRoots(vm, heap, s.start, roots);
-            try collectJitLiteralRoots(vm, heap, s.end, roots);
-        },
-        .arr_new => |a| {
-            for (a.dimensions) |dim| {
-                try collectJitLiteralRoots(vm, heap, dim, roots);
-            }
-            if (a.init) |init_ir| {
-                try collectJitLiteralRoots(vm, heap, init_ir, roots);
-            }
-        },
-        .arr_new_dyn => |a| {
-            try collectJitLiteralRoots(vm, heap, a.dimensions, roots);
-            if (a.init) |init_ir| {
-                try collectJitLiteralRoots(vm, heap, init_ir, roots);
-            }
-        },
-        .arr_ref => |a| {
-            try collectJitLiteralRoots(vm, heap, a.array, roots);
-            for (a.subscripts) |sub| {
-                try collectJitLiteralRoots(vm, heap, sub, roots);
-            }
-        },
-        .arr_set => |a| {
-            try collectJitLiteralRoots(vm, heap, a.array, roots);
-            for (a.subscripts) |sub| {
-                try collectJitLiteralRoots(vm, heap, sub, roots);
-            }
-            try collectJitLiteralRoots(vm, heap, a.value, roots);
-        },
-        else => {},
+};
+
+const literal_root_ops = struct {
+    pub fn onLit(ctx: LiteralRootCtx, ir_node: *const Ir, roots: *jit_backend.LiteralRoots, v: runtime.Value) !void {
+        try jit_literal_roots.rootLiteral(ctx.vm, ir_node, roots, v);
     }
-}
+
+    pub fn onGlobalRef(ctx: LiteralRootCtx, ir_node: *const Ir, roots: *jit_backend.LiteralRoots, qname: []const u8) !void {
+        const sym = (try internGlobalRefSymbol(ctx.heap, qname)) orelse return error.UnsupportedIrNode;
+        try jit_literal_roots.rootValue(ctx.vm, ir_node, roots, sym);
+    }
+
+    pub fn onLambda(_: LiteralRootCtx, _: *const Ir, _: *jit_backend.LiteralRoots, _: anytype) !void {}
+};
 
 fn patchChunkIndices(chunk: *Chunk, base: u16) !void {
     const code = chunk.getCode();
@@ -467,7 +275,18 @@ fn tryHoistCompile(
         var literal_roots = jit_backend.LiteralRoots.init(allocator);
         defer literal_roots.deinit();
         if (candidate.lambda_ir.* == .lambda) {
-            collectJitLiteralRoots(vm, heap, candidate.lambda_ir.lambda.body, &literal_roots) catch |err| {
+            jit_literal_roots.collect(
+                candidate.lambda_ir.lambda.body,
+                &literal_roots,
+                LiteralRootCtx{ .vm = vm, .heap = heap },
+                literal_root_ops,
+            ) catch |err| {
+                vm.jit_adm.fail_other += 1;
+                try vm.noteJitCompileStatus(chunk_ptr, .failed);
+                if (trace) std.debug.print("JIT bench: literal roots fail '{s}' {s}\n", .{ compile_name, @errorName(err) });
+                continue;
+            };
+            jit_literal_roots.ensureCoverage(candidate.lambda_ir.lambda.body, &literal_roots) catch |err| {
                 vm.jit_adm.fail_other += 1;
                 try vm.noteJitCompileStatus(chunk_ptr, .failed);
                 if (trace) std.debug.print("JIT bench: literal roots fail '{s}' {s}\n", .{ compile_name, @errorName(err) });
