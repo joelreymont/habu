@@ -7167,6 +7167,44 @@ test "signal without handlers returns nil and handler-case can catch" {
     try testing.expectEqual(@as(i64, 42), handled.toFixnum());
 }
 
+test "handler-case catches custom warning via runtime subtype dispatch" {
+    const allocator = testing.allocator;
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
+
+    const result = try state.repl.eval(
+        \\(progn
+        \\  (define-condition my-warning (simple-warning) ())
+        \\  (handler-case
+        \\      (signal 'my-warning (make-condition 'my-warning))
+        \\    (warning (c)
+        \\      (declare (ignore c))
+        \\      :caught)))
+    );
+    try testing.expect(result.isKeyword());
+    try testing.expectEqualStrings("CAUGHT", result.toPtr(runtime.Keyword).getName());
+}
+
+test "handler-bind catches custom warning via runtime subtype dispatch" {
+    const allocator = testing.allocator;
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
+
+    const result = try state.repl.eval(
+        \\(progn
+        \\  (define-condition my-warning-bind (simple-warning) ())
+        \\  (let ((seen nil))
+        \\    (handler-bind
+        \\        ((warning #'(lambda (c)
+        \\                     (declare (ignore c))
+        \\                     (setq seen :caught))))
+        \\      (signal 'my-warning-bind (make-condition 'my-warning-bind)))
+        \\    seen))
+    );
+    try testing.expect(result.isKeyword());
+    try testing.expectEqualStrings("CAUGHT", result.toPtr(runtime.Keyword).getName());
+}
+
 test "ansi repro pathname-host.1 accepts pathname designator" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

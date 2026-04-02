@@ -1,9 +1,11 @@
 ---
 title: Implement handler dispatch
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.182188+02:00"
+created-at: "\"2026-04-01T22:06:02.182188+02:00\""
+closed-at: "2026-04-02T11:14:22.674283+02:00"
+close-reason: "done: handler-case/handler-bind now use runtime subtype dispatch; validation: zig build, zig build test baseline unchanged"
 blocks:
   - habu-propagate-cond-failures-3368b68f
 ---

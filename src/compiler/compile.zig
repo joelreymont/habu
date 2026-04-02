@@ -9004,37 +9004,11 @@ pub const Compiler = struct {
             return let_ir;
         }
 
-        // Build: (if (match-condition-type (car cond) 'type) (let ((var (cdr cond))) body...) else)
-
-        // (car cond)
+        // Build: (if (car (subtypep (car cond) 'type)) body else)
         const cond_var_ir = try self.builder.variable(cond_name, 0, cond_idx);
         const car_cond = try self.builder.car(cond_var_ir);
-
-        const b = self.builtins.?;
-        const canonical_type = self.canonicalBuiltinSymbol(condition_type);
-
-        // CONDITION, ERROR, SERIOUS-CONDITION are catch-all supertypes: match any condition
-        if (canonical_type.raw == b.@"error".raw or
-            canonical_type.raw == b.condition.raw or
-            canonical_type.raw == b.@"serious-condition".raw)
-        {
-            // Always match (non-nil car means a condition was thrown)
-            const nil_ir = try self.builder.lit(Value.nil);
-            const test_ir = try self.builder.not(try self.builder.eq(car_cond, nil_ir));
-            return try self.builder.ifExpr(test_ir, let_ir, else_ir);
-        }
-
-        // Build type test including subtypes from the CL condition hierarchy.
-        // Start with exact match, then add subtypes.
-        var test_ir = try self.builder.eq(car_cond, try self.builder.lit(condition_type));
-
-        // Add subtype checks based on CL hierarchy
-        const subtypes = self.getConditionSubtypes(canonical_type);
-        for (subtypes) |subtype_sym| {
-            const sub_ir = try self.builder.eq(car_cond, try self.builder.lit(subtype_sym));
-            // (or test sub) = (if test t sub)
-            test_ir = try self.builder.ifExpr(test_ir, try self.builder.lit(Value.t), sub_ir);
-        }
+        const subtype_ir = try self.builder.subtypep(car_cond, try self.builder.lit(condition_type));
+        const test_ir = try self.builder.car(subtype_ir);
 
         // Build if node
         return try self.builder.ifExpr(test_ir, let_ir, else_ir);
@@ -16072,25 +16046,6 @@ pub const Compiler = struct {
     pub fn isBuiltinFunctionRaw(self: *const Compiler, sym: Value) bool {
         const live_sym = self.resolveForwardedValue(sym);
         return self.builtin_fn_syms.contains(live_sym.raw);
-    }
-
-    /// Return the subtypes of a condition type for handler-case dispatch.
-    /// Used to compile (handler-case ... (arithmetic-error (c) ...)) so it
-    /// also catches division-by-zero, floating-point-overflow, etc.
-    fn getConditionSubtypes(self: *Compiler, condition_type: Value) []const Value {
-        const b = self.builtins orelse return &.{};
-        // Table-driven: each entry is (supertype, list of subtypes)
-        const Entry = struct { super: Value, subs: []const Value };
-        const table = [_]Entry{
-            .{ .super = b.@"arithmetic-error", .subs = &.{b.@"division-by-zero"} },
-            .{ .super = b.@"cell-error", .subs = &.{ b.@"unbound-variable", b.@"undefined-function" } },
-            .{ .super = b.@"stream-error", .subs = &.{b.@"end-of-file"} },
-            .{ .super = b.warning, .subs = &.{b.@"simple-warning"} },
-        };
-        for (&table) |entry| {
-            if (condition_type.raw == entry.super.raw) return entry.subs;
-        }
-        return &.{};
     }
 
     fn resolveForwardedValue(self: *const Compiler, val: Value) Value {

@@ -495,6 +495,10 @@ pub fn subtypep(heap: *Heap, type1: Value, type2: Value) !Value {
     return list;
 }
 
+pub fn isSubtype(heap: *Heap, type1: Value, type2: Value) !bool {
+    return (try subtypepCheck(heap, type1, type2)).is_subtype;
+}
+
 const SubtypeResult = struct {
     is_subtype: bool,
     certain: bool,

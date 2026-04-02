@@ -8889,17 +8889,8 @@ pub const Vm = struct {
 
         // Handler-bind dispatch for signaled conditions.
         if (tag.raw == self.builtins.sym_condition_tag.raw and self.handler_sp > 0) {
-            var condition_type = Value.nil;
-            var condition_object = value;
-            if (value.isCons()) {
-                const pair = value.toPtr(Cons);
-                condition_type = pair.car;
-            } else if (value.isSymbol()) {
-                // Allow signaling with a bare condition type symbol to avoid
-                // heap allocation on low-memory paths.
-                condition_type = value;
-                condition_object = value;
-            }
+            const condition_type = self.conditionTypeSymbol(value) orelse Value.nil;
+            const condition_object = value;
             if (self.trace_error_context) {
                 std.debug.print(
                     "TRACE condition dispatch: type={s} raw=0x{x} handlers={d}\n",
@@ -8917,7 +8908,7 @@ pub const Vm = struct {
                         .{ i, @tagName(frame.condition_type.typeKind()), @tagName(frame.handler_fn.typeKind()) },
                     );
                 }
-                if (self.handlerTypeMatches(frame.condition_type, condition_type)) {
+                if (try self.handlerTypeMatches(frame.condition_type, condition_object)) {
                     if (self.sp + 2 > STACK_SIZE) return error.StackOverflow;
                     const saved_handler_sp = self.handler_sp;
                     // Prevent recursive re-entry into this handler while it runs.
@@ -9009,82 +9000,41 @@ pub const Vm = struct {
         return error.UnhandledThrow;
     }
 
-    fn handlerTypeMatches(self: *const Vm, handler_type: Value, condition_type: Value) bool {
-        if (handler_type.raw == Value.t.raw) return true;
-        if (handler_type.raw == condition_type.raw) return true;
-
-        // CL condition type hierarchy:
-        //   condition
-        //     serious-condition
-        //       error
-        //         simple-error, type-error, cell-error, arithmetic-error,
-        //         program-error, control-error, package-error, stream-error,
-        //         file-error, parse-error, print-not-readable
-        //       storage-condition
-        //     warning
-        //       simple-warning, style-warning
-        //     simple-condition
-        //   arithmetic-error > division-by-zero, floating-point-*
-        //   cell-error > unbound-variable, undefined-function, unbound-slot
-        const b = self.builtins;
-
-        // error catches all error subtypes
-        if (handler_type.raw == b.sym_error.raw) {
-            return self.isErrorSubtype(condition_type);
-        }
-        // condition catches everything
-        if (handler_type.raw == b.sym_condition.raw) return true;
-        // serious-condition catches all errors
-        if (handler_type.raw == b.sym_serious_condition.raw) {
-            return self.isErrorSubtype(condition_type);
-        }
-        // arithmetic-error catches division-by-zero
-        if (handler_type.raw == b.sym_arithmetic_error.raw) {
-            return condition_type.raw == b.sym_division_by_zero.raw or
-                condition_type.raw == b.sym_arithmetic_error.raw;
-        }
-        // cell-error catches unbound-variable, undefined-function
-        if (handler_type.raw == b.sym_cell_error.raw) {
-            return condition_type.raw == b.sym_unbound_variable.raw or
-                condition_type.raw == b.sym_undefined_function.raw or
-                condition_type.raw == b.sym_cell_error.raw;
-        }
-        // warning catches simple-warning
-        if (handler_type.raw == b.sym_warning.raw) {
-            return condition_type.raw == b.sym_warning.raw or
-                condition_type.raw == b.sym_simple_warning.raw;
-        }
-
-        // List of types: match any
-        if (handler_type.isCons()) {
-            var list = handler_type;
-            while (list.isCons()) {
-                const cell = list.toPtr(Cons);
-                if (self.handlerTypeMatches(cell.car, condition_type)) return true;
-                list = cell.cdr;
-            }
-        }
-        return false;
+    fn normalizeConditionTypeSpec(_: *Vm, typ: Value) Value {
+        if (typ.isClass()) return typ.toPtr(runtime.Class).name;
+        return typ;
     }
 
-    /// Check if condition_type is a subtype of ERROR in the CL hierarchy.
-    fn isErrorSubtype(self: *const Vm, condition_type: Value) bool {
-        const b = self.builtins;
-        return condition_type.raw == b.sym_error.raw or
-            condition_type.raw == b.sym_simple_error.raw or
-            condition_type.raw == b.sym_type_error.raw or
-            condition_type.raw == b.sym_program_error.raw or
-            condition_type.raw == b.sym_control_error.raw or
-            condition_type.raw == b.sym_arithmetic_error.raw or
-            condition_type.raw == b.sym_division_by_zero.raw or
-            condition_type.raw == b.sym_cell_error.raw or
-            condition_type.raw == b.sym_unbound_variable.raw or
-            condition_type.raw == b.sym_undefined_function.raw or
-            condition_type.raw == b.sym_package_error.raw or
-            condition_type.raw == b.sym_stream_error.raw or
-            condition_type.raw == b.sym_file_error.raw or
-            condition_type.raw == b.sym_parse_error.raw or
-            condition_type.raw == b.sym_end_of_file.raw;
+    fn conditionTypeSymbol(self: *Vm, condition: Value) ?Value {
+        const live = self.resolveForwardedValue(condition);
+        switch (live.typeKind()) {
+            .symbol => return live,
+            .condition => return live.toPtr(runtime.objects.Condition).type_sym,
+            .cons => {
+                const cell = live.toPtr(Cons);
+                if (cell.car.isSymbol()) return self.resolveForwardedValue(cell.car);
+                return null;
+            },
+            .vector => {
+                const vec = live.toPtr(runtime.Vector);
+                if (vec.length > 0 and vec.data[0].isSymbol()) {
+                    return self.resolveForwardedValue(vec.data[0]);
+                }
+                return null;
+            },
+            .class => return live.toPtr(runtime.Class).name,
+            else => return null,
+        }
+    }
+
+    fn handlerTypeMatches(self: *Vm, handler_type_raw: Value, condition: Value) Error!bool {
+        const handler_type = self.normalizeConditionTypeSpec(self.resolveForwardedValue(handler_type_raw));
+        if (handler_type.raw == Value.t.raw) return true;
+
+        const condition_type = self.conditionTypeSymbol(condition) orelse return false;
+        if (handler_type.raw == condition_type.raw) return true;
+
+        return try type_mod.isSubtype(self.heap, condition_type, handler_type);
     }
 
     /// Handle return-from by searching for matching block frame and jumping to it
