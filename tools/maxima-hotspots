@@ -132,6 +132,20 @@ def summarize(jit: dict, interp: dict, workloads: list[str]) -> dict:
                 out[k] = int(v)
         return out
 
+    def unsupported_tags(payload: dict) -> dict:
+        items = payload.get("unsupported_tags", [])
+        if not isinstance(items, list):
+            return {}
+        out = {}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            tag = item.get("tag")
+            count = item.get("count")
+            if isinstance(tag, str) and isinstance(count, int):
+                out[tag] = int(count)
+        return out
+
     return {
         "workloads": rows,
         "jit_loader_ns": int(jit.get("loader", {}).get("ns", 0)),
@@ -142,6 +156,8 @@ def summarize(jit: dict, interp: dict, workloads: list[str]) -> dict:
         "jit_direct_calls_interp": int(interp.get("jit_direct_calls", 0)),
         "jit_adm": {k: int(v) for k, v in jit_adm.items() if isinstance(v, int)},
         "interp_adm": {k: int(v) for k, v in interp_adm.items() if isinstance(v, int)},
+        "jit_unsupported_tags": unsupported_tags(jit),
+        "interp_unsupported_tags": unsupported_tags(interp),
         "jit_call_shape": run_call_shape(jit),
         "interp_call_shape": run_call_shape(interp),
     }
@@ -196,6 +212,13 @@ def format_adm_pair(jit_adm: dict, interp_adm: dict) -> str:
     return " ".join(parts)
 
 
+def format_tag_hist(jit_tags: dict, interp_tags: dict) -> str:
+    keys = sorted(set(jit_tags) | set(interp_tags))
+    if not keys:
+        return "none"
+    return " ".join(f"{k}={jit_tags.get(k, 0)}/{interp_tags.get(k, 0)}" for k in keys)
+
+
 def format_text(summary: dict) -> str:
     lines = []
     lines.append("name               jit_ns        interp_ns     interp/jit")
@@ -217,6 +240,10 @@ def format_text(summary: dict) -> str:
         j = summary.get("jit_adm", {})
         i = summary.get("interp_adm", {})
         lines.append(f"jit_adm {format_adm_pair(j, i)}")
+    if isinstance(summary.get("jit_unsupported_tags"), dict):
+        j = summary.get("jit_unsupported_tags", {})
+        i = summary.get("interp_unsupported_tags", {})
+        lines.append(f"unsupported_tags {format_tag_hist(j, i)}")
     if isinstance(summary.get("jit_call_shape"), dict):
         j = summary.get("jit_call_shape", {})
         i = summary.get("interp_call_shape", {})
@@ -285,6 +312,14 @@ def format_markdown(summary: dict, scale: int, heap_mb: int, nursery_mb: int, pr
         i = summary.get("interp_adm", {})
         parts = [f"{label}=`{j.get(key, 0)}/{i.get(key, 0)}`" for key, label in ADM_FIELDS]
         lines.append("- jit_adm: " + ", ".join(parts))
+    if isinstance(summary.get("jit_unsupported_tags"), dict):
+        j = summary.get("jit_unsupported_tags", {})
+        i = summary.get("interp_unsupported_tags", {})
+        if j or i:
+            parts = [f"{k}=`{j.get(k, 0)}/{i.get(k, 0)}`" for k in sorted(set(j) | set(i))]
+            lines.append("- unsupported_tags: " + ", ".join(parts))
+        else:
+            lines.append("- unsupported_tags: none")
     if isinstance(summary.get("jit_call_shape"), dict):
         j = summary.get("jit_call_shape", {})
         i = summary.get("interp_call_shape", {})

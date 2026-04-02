@@ -54,6 +54,11 @@ const JsonBench = struct {
     @"error": ?[]const u8 = null,
 };
 
+const JsonTagCount = struct {
+    tag: []const u8,
+    count: u64,
+};
+
 const GcSnap = struct {
     gc_count: usize,
     gc_minor_count: usize,
@@ -609,6 +614,21 @@ fn runBench(allocator: std.mem.Allocator, timer: *std.time.Timer, repl: *Repl, d
     };
 }
 
+fn collectUnsupportedTags(allocator: std.mem.Allocator, vm: *const Vm) ![]JsonTagCount {
+    var out = std.ArrayList(JsonTagCount){};
+    errdefer out.deinit(allocator);
+    inline for (std.meta.fields(Vm.IrTag), 0..) |field, i| {
+        const n = vm.unsupported_tags[i];
+        if (n != 0) {
+            try out.append(allocator, .{
+                .tag = field.name,
+                .count = n,
+            });
+        }
+    }
+    return out.toOwnedSlice(allocator);
+}
+
 const bench_defs = [_]BenchDef{
     .{
         .name = "simplifya",
@@ -819,6 +839,8 @@ pub fn main() !void {
     const jit_compiled = repl.vm.jit_fns.items.len;
     const jit_adm = repl.vm.jit_adm;
     const jit_direct_calls = repl.vm.jit_direct_calls;
+    const unsupported_tags = try collectUnsupportedTags(allocator, &repl.vm);
+    defer allocator.free(unsupported_tags);
     const gc_after_run = gcSnap(&heap);
     const call_shape_after_run = callShapeSnap(&repl);
     const gc_load = gcDelta(gc_start, gc_after_load);
@@ -853,6 +875,7 @@ pub fn main() !void {
             .jit_compiled = jit_compiled,
             .jit_direct_calls = jit_direct_calls,
             .jit_adm = jit_adm,
+            .unsupported_tags = unsupported_tags,
             .loader = .{
                 .ok = loader.ok,
                 .total = loader.total,
@@ -907,6 +930,15 @@ pub fn main() !void {
             jit_adm.cache_failed,
         },
     );
+    if (unsupported_tags.len == 0) {
+        try w.print("  unsupported_tags: none\n", .{});
+    } else {
+        try w.print("  unsupported_tags:", .{});
+        for (unsupported_tags) |entry| {
+            try w.print(" {s}={d}", .{ entry.tag, entry.count });
+        }
+        try w.print("\n", .{});
+    }
     try w.print(
         "  loader: ok={d}/{d}, fail={d}, attempted={d}, missing={d}, {d:.3} ms\n",
         .{ loader.ok, loader.total, loader.fail, loader.attempted, loader.missing, @as(f64, @floatFromInt(loader.ns)) / 1e6 },

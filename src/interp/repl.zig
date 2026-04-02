@@ -2842,6 +2842,7 @@ pub const Repl = struct {
         self.populateKnownFns(&known_fns) catch return .failed;
 
         const trace = std.posix.getenv("HABU_TRACE_JIT") != null;
+        const body_ir = if (lambda_ir.* == .lambda) lambda_ir.lambda.body else lambda_ir;
         var literal_roots = jit_backend.LiteralRoots.init(self.allocator);
         defer literal_roots.deinit();
         if (lambda_ir.* == .lambda) {
@@ -2854,11 +2855,23 @@ pub const Repl = struct {
                 if (trace) {
                     std.debug.print("JIT: literal root prep failed for '{s}': {s}\n", .{ name, @errorName(err) });
                 }
+                if (err == error.UnsupportedIrNode) {
+                    if (jit_backend.IrTranslator.firstUnsupportedTagWithLiteralRoots(body_ir, null)) |tag| {
+                        self.vm.noteUnsupportedTag(tag);
+                    }
+                    return .unsupported;
+                }
                 return .failed;
             };
             jit_literal_roots.ensureCoverage(lambda_ir.lambda.body, &literal_roots) catch |err| {
                 if (trace) {
                     std.debug.print("JIT: literal root coverage failed for '{s}': {s}\n", .{ name, @errorName(err) });
+                }
+                if (err == error.UnsupportedIrNode) {
+                    if (jit_backend.IrTranslator.firstUnsupportedTagWithLiteralRoots(body_ir, &literal_roots)) |tag| {
+                        self.vm.noteUnsupportedTag(tag);
+                    }
+                    return .unsupported;
                 }
                 return .failed;
             };
@@ -2875,13 +2888,17 @@ pub const Repl = struct {
             if (trace) {
                 std.debug.print("JIT: hoist compile failed for '{s}': {s}\n", .{ name, @errorName(err) });
                 if (err == error.UnsupportedIrNode) {
-                    const body_ir = if (lambda_ir.* == .lambda) lambda_ir.lambda.body else lambda_ir;
                     if (jit_backend.IrTranslator.firstUnsupportedTagWithLiteralRoots(body_ir, literal_roots_ptr)) |tag| {
                         std.debug.print("JIT: first unsupported tag for '{s}' is {s}\n", .{ name, @tagName(tag) });
                     }
                 }
             }
-            if (err == error.UnsupportedIrNode) return .unsupported;
+            if (err == error.UnsupportedIrNode) {
+                if (jit_backend.IrTranslator.firstUnsupportedTagWithLiteralRoots(body_ir, literal_roots_ptr)) |tag| {
+                    self.vm.noteUnsupportedTag(tag);
+                }
+                return .unsupported;
+            }
             return .failed;
         };
         const persistent = self.allocator.create(jit_backend.CompiledFn) catch {

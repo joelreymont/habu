@@ -603,6 +603,9 @@ fn jitInvokeCompiledFn(ctx_ptr: *anyopaque) callconv(.c) u64 {
 }
 
 pub const Vm = struct {
+    pub const IrTag = std.meta.Tag(compiler.ir.Ir);
+    const IR_TAG_N = std.meta.fields(IrTag).len;
+
     pub const JitAdmStats = struct {
         cand: u64 = 0,
         elig: u64 = 0,
@@ -858,6 +861,7 @@ pub const Vm = struct {
     /// Stable host-root slots for JIT literal Values.
     jit_literal_roots: std.ArrayList(*Value),
     jit_adm: JitAdmStats,
+    unsupported_tags: [IR_TAG_N]u64,
     jit_direct_calls: u64,
     /// Number of times JIT execution fell back to interpreter due to OOM.
     jit_fallback_oom_count: u64,
@@ -1324,6 +1328,7 @@ pub const Vm = struct {
             .jit_fns = std.ArrayList(JitFnEntry){},
             .jit_literal_roots = std.ArrayList(*Value){},
             .jit_adm = .{},
+            .unsupported_tags = [_]u64{0} ** IR_TAG_N,
             .jit_direct_calls = 0,
             .jit_fallback_oom_count = 0,
             .call_shape = .{},
@@ -1397,6 +1402,11 @@ pub const Vm = struct {
 
     pub fn resetJitAdm(self: *Vm) void {
         self.jit_adm = .{};
+        self.unsupported_tags = [_]u64{0} ** IR_TAG_N;
+    }
+
+    pub fn noteUnsupportedTag(self: *Vm, tag: IrTag) void {
+        self.unsupported_tags[@intFromEnum(tag)] +%= 1;
     }
 
     pub fn resetJitDirectCalls(self: *Vm) void {
