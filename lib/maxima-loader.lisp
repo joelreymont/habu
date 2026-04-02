@@ -1,23 +1,13 @@
 ;; Maxima source loader for Habu.
-;;
-;; Loads a broad ordered subset of Maxima source files with per-file
-;; error reporting so we can iteratively raise compatibility.
 
-(defparameter *maxima-source-candidates*
-  '("../maxima/src/" "../maxima/src/src/" "../maxima/"
-    "/tmp/maxima/src/" "/tmp/maxima/src/src/" "/tmp/maxima/"))
+(load "lib/maxima-manifest.lisp")
 
 (defun maxima-source-has-core-p (dir)
   (and dir
        (probe-file (concatenate 'string dir "lmdcls.lisp"))))
 
-(defun detect-maxima-source-dir ()
-  (find-if #'maxima-source-has-core-p *maxima-source-candidates*))
-
-(defparameter *maxima-source-dir* (detect-maxima-source-dir))
-(defparameter *maxima-package-init*
-  (and *maxima-source-dir*
-       (concatenate 'string *maxima-source-dir* "maxima-package.lisp")))
+(defparameter *maxima-source-dir* (habu-maxima-manifest-value :srcdir))
+(defparameter *maxima-package-init* (habu-maxima-manifest-value :package-init))
 
 ;; Prefer upstream package definitions when available so package semantics
 ;; match Maxima source without local rewrites.
@@ -27,69 +17,7 @@
 
 (load "lib/maxima-stubs.lisp")
 
-(defparameter *maxima-files*
-  '(
-    ;; bootstrap
-    "lmdcls" "letmac" "generr" "clmacs" "commac" "mormac" "globals" "compat"
-    "defcal" "maxmac" "mopers" "mforma" "mrgmac" "rzmac" "strmac"
-    "displm" "safe-recursion" "ratmac" "mhayat"
-    "opers"
-    "utils" "merror" "mutils"
-
-    ;; core language/runtime
-    "sumcon" "sublis" "mformt" "outmis" "ar"
-    "comm" "comm2" "mlisp" "mmacro" "buildq"
-    "simp" "float" "csimp" "csimp2" "zero"
-    "logarc" "rpart" "numeric" "server" "macsys" "testsuite" "mload"
-    "float-properties"
-    "suprv1" "mactex" "dskfn" "mtrace" "mdebug"
-
-    ;; algebraic database
-    "inmis" "db"
-
-    ;; factoring / rational
-    "compar" "askp" "lesfac" "factor" "algfac" "nalgfa" "ufact"
-    "ifactor" "rat3a" "rat3b" "rat3c" "rat3d" "rat3e" "nrat4"
-    "ratout" "result"
-
-    ;; translator and evaluator support
-    ;; transl.lisp depends on DEF%TR from transm.lisp.
-    "transm" "transl" "transs" "trans1" "trans2" "trans3" "trans4" "trans5"
-    "transf" "troper" "trutil" "trmode" "trdata" "trpred" "transq"
-    "acall" "fcall" "evalw" "trprop" "mdefun"
-
-    ;; pattern / reader / display / docs helpers
-    "schatc" "matcom" "matrun" "nisimp" "nparse"
-    "displa" "nforma" "grind" "macdes"
-
-    ;; algebra and trig
-    "spgcd" "ezgcd" "trigi" "trigo" "trgred"
-    "bessel" "ellipt" "airy" "intpol"
-
-    ;; calculus and special functions
-    "sinint" "sin" "risch" "specfn"
-
-    ;; matrix / determinant / limits / solve
-    "mat" "linnew" "matrix" "sprdet" "newinv" "newdet"
-    "tlimit" "limit"
-    "solve" "psolve" "algsys" "sqrtdenest" "polyrz" "cpoly" "polynomialp"
-
-    ;; misc high-traffic modules
-    "scs" "asum" "optim" "marray" "mdot" "irinte" "series"
-    "numth" "laplac" "pade" "homog" "combin" "nset"
-    "pois2" "pois3"
-    "rand-mt19937" "maxmin" "nummod" "conjugate"
-    "expintegral" "gamma" "mstuff"
-
-    ;; definite integration / residue support now load cleanly after the
-    ;; current core bootstrap; keep them late until we tighten dependency order.
-    "residu" "defint"
-
-    ;; translated packages / numerics that load cleanly in this tree
-    "desoln" "elim" "invert" "hypgeo" "hyp" "hypergeometric" "nfloat"
-
-    ;; final init
-    "autol" "max_ext" "init-cl"))
+(defparameter *maxima-files* *habu-maxima-files*)
 
 (defvar *maxima-ok-count* 0)
 (defvar *maxima-failed* nil)
@@ -151,10 +79,11 @@
                 nil))
       (when verbose
         (format t "~%=== Maxima Loader Summary ===~%")
+        (format t "root: ~A~%" (habu-maxima-manifest-value :root))
         (format t "source: ~A~%" source-dir)
         (format t "loaded: 0/~D~%" total)
         (format t "failed: ~D~%" total)
-        (format t "missing source root: expected lmdcls.lisp under one of ~S~%" *maxima-source-candidates*))
+        (format t "missing source root: candidates ~S~%" (habu-maxima-manifest-value :root-candidates)))
       (return-from maxima-load-all
         (values 0 total total *maxima-last-missing-bindings* 0))))
   (setq *maxima-ok-count* 0)
@@ -187,7 +116,9 @@
         (fail (length *maxima-failed*)))
     (when verbose
       (format t "~%=== Maxima Loader Summary ===~%")
+      (format t "root: ~A~%" (habu-maxima-manifest-value :root))
       (format t "source: ~A~%" source-dir)
+      (format t "modules: ~D~%" (habu-maxima-manifest-value :module-count))
       (format t "loaded: ~D/~D~%" *maxima-ok-count* total)
       (format t "attempted: ~D~%" *maxima-attempted-count*)
       (format t "failed: ~D~%" fail)

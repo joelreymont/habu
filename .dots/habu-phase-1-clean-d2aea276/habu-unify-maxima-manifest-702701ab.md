@@ -1,9 +1,11 @@
 ---
 title: Unify Maxima manifest
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.085681+02:00"
+created-at: "\"2026-04-01T22:06:02.085681+02:00\""
+closed-at: "2026-04-02T16:54:22.950975+02:00"
+close-reason: done; loader, post-load, rtest, and bench now share lib/maxima-manifest.lisp; zig build ok, zig build test unchanged 5-error baseline; direct Lisp probe blocked by existing startup load-path regression
 blocks:
   - habu-delete-maxima-semantic-37a32126
 ---

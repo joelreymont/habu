@@ -10,6 +10,7 @@
 ;;   (maxima::run-rtest "rtest12")
 
 (load "lib/stdlib.habu")
+(load "lib/maxima-manifest.lisp")
 (load "lib/maxima-loader.lisp")
 (maxima-load-all :verbose nil)
 (load "lib/maxima-post-load.lisp")
@@ -40,12 +41,14 @@
                  (cdr $share_testsuite_files)))))
 
 (defun habu-resolve-rtest-path (name)
-  (let ((target (habu-normalize-test-name name)))
+  (let* ((target (habu-normalize-test-name name))
+         (testsdir (habu-maxima-manifest-value :testsdir)))
     (or (handler-case ($file_search target $file_search_tests)
           (condition (e) nil))
         (handler-case ($file_search target $file_search_maxima)
           (condition (e) nil))
-        (format nil "../maxima/tests/~A.mac" target))))
+        (and testsdir
+             (format nil "~A~A.mac" testsdir target)))))
 
 (defun run-rtest (name &key (show-all nil) (show-known-bugs nil) (showtime nil) (answers-from-file t))
   (let* ((entry (habu-find-testsuite-entry name))

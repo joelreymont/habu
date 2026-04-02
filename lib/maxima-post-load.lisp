@@ -1,56 +1,10 @@
 ;; Bootstrap-only Maxima post-load wiring.
 ;; This file must not change upstream Maxima semantics.
 
+(unless (boundp '*habu-maxima-manifest*)
+  (load "lib/maxima-manifest.lisp"))
+
 (in-package :maxima)
-
-(defparameter *habu-maxima-topdir-candidates*
-  '("../maxima/" "/Users/joel/Work/maxima/"))
-
-(defparameter *habu-maxima-srcdir-candidates*
-  '("../maxima/src/" "/Users/joel/Work/maxima/src/"))
-
-(defparameter *habu-maxima-sharedir-candidates*
-  '("../maxima/share/" "/Users/joel/Work/maxima/share/"))
-
-(defparameter *habu-maxima-demodir-candidates*
-  '("../maxima/demo/" "/Users/joel/Work/maxima/demo/"))
-
-(defparameter *habu-maxima-docdir-candidates*
-  '("../maxima/doc/" "/Users/joel/Work/maxima/doc/"))
-
-(defparameter *habu-maxima-testsdir-candidates*
-  '("../maxima/tests/" "/Users/joel/Work/maxima/tests/"))
-
-(defun habu-detect-maxima-topdir ()
-  (find-if (lambda (dir)
-             (probe-file (concatenate 'string dir "configure.ac")))
-           *habu-maxima-topdir-candidates*))
-
-(defun habu-detect-maxima-srcdir ()
-  (find-if (lambda (dir)
-             (probe-file (concatenate 'string dir "mload.lisp")))
-           *habu-maxima-srcdir-candidates*))
-
-(defun habu-detect-maxima-sharedir ()
-  (find-if (lambda (dir)
-             (probe-file (concatenate 'string dir "stringproc/stringproc.lisp")))
-           *habu-maxima-sharedir-candidates*))
-
-(defun habu-detect-maxima-demodir ()
-  (find-if (lambda (dir)
-             (probe-file (concatenate 'string dir "manual.demo")))
-           *habu-maxima-demodir-candidates*))
-
-(defun habu-detect-maxima-docdir ()
-  (find-if (lambda (dir)
-             (or (probe-file (concatenate 'string dir "share/romberg.usg"))
-                 (probe-file (concatenate 'string dir "info"))))
-           *habu-maxima-docdir-candidates*))
-
-(defun habu-detect-maxima-testsdir ()
-  (find-if (lambda (dir)
-             (probe-file (concatenate 'string dir "rtest1.mac")))
-           *habu-maxima-testsdir-candidates*))
 
 (defun habu-default-maxima-userdir ()
   (handler-case
@@ -68,12 +22,12 @@
 (defun habu-search-mlist (&rest pattern-groups)
   (cons '(mlist) (remove nil (apply #'append (remove nil pattern-groups)))))
 
-(let ((topdir (habu-detect-maxima-topdir))
-      (srcdir (habu-detect-maxima-srcdir))
-      (sharedir (habu-detect-maxima-sharedir))
-      (demodir (habu-detect-maxima-demodir))
-      (docdir (habu-detect-maxima-docdir))
-      (testsdir (habu-detect-maxima-testsdir))
+(let ((topdir (habu-maxima-manifest-value :root))
+      (srcdir (habu-maxima-manifest-value :srcdir))
+      (sharedir (habu-maxima-manifest-value :sharedir))
+      (demodir (habu-maxima-manifest-value :demodir))
+      (docdir (habu-maxima-manifest-value :docdir))
+      (testsdir (habu-maxima-manifest-value :testsdir))
       (userdir (habu-default-maxima-userdir)))
   (when topdir
     (setf *maxima-topdir* topdir))

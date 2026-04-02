@@ -375,29 +375,11 @@ fn countCorruptGlobalSymbols(vm: *Vm) usize {
     return bad;
 }
 
-const maxima_files_expr =
-    \\(setq *maxima-files*
-    \\  '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
-    \\    "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "rzmac" "ratmac" "mhayat" "combin" "opers"
-    \\    "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
-    \\    "comm" "comm2" "mlisp" "mmacro" "buildq"
-    \\    "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
-    \\    "suprv1" "inmis" "db"
-    \\    "compar" "lesfac" "factor" "algfac" "nalgfa" "ufact" "ifactor" "rat3a" "rat3b" "rat3c"
-    \\    "rat3d" "rat3e" "nrat4" "ratout" "acall"
-    \\    "mat" "linnew" "matrix" "sprdet" "newinv" "newdet"
-    \\    "schatc" "matcom" "matrun" "nisimp" "nparse" "displm" "displa" "nforma" "grind"
-    \\    "nset" "sinint" "sin" "trigi" "trigo" "trgred"
-    \\    "tlimit" "limit"
-    \\    "solve" "psolve" "algsys" "sqrtdenest" "polyrz" "cpoly"))
-;
-
 fn loadMaxima(timer: *std.time.Timer, repl: *Repl) !LoaderStats {
     var stats = LoaderStats{};
 
     try repl.loadFile("lib/stdlib.habu", std.io.null_writer);
     _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
-    _ = try repl.eval(maxima_files_expr);
 
     const t0 = timer.read();
     const loaded = try repl.eval(

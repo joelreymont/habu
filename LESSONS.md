@@ -29,6 +29,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-02)
 
 ### Worked Well
+- A single `lib/maxima-manifest.lisp` is the right boundary for Maxima provenance. Deriving `:srcdir`, `:sharedir`, `:testsdir`, and the authoritative module list from one detected root removes duplicated `../maxima` / `/tmp/maxima` guesses from `lib/maxima-loader.lisp`, `lib/maxima-post-load.lisp`, `tools/maxima-rtest.lisp`, and `bench/maxima_workload.zig`.
 - Unsupported-IR telemetry should live at the same level as `jit_adm`, not only in trace prints. Keeping a fixed `Vm.unsupported_tags` counter array keyed by `std.meta.Tag(Ir)` and emitting non-zero `{tag,count}` entries from `bench/maxima_workload.zig` makes unsupported-shape pressure available to normal benchmark tooling.
 - For reporting-only perf dots, validate the formatter with a mocked payload instead of waiting on a full benchmark run. Loading `tools/maxima-hotspots` through `SourceFileLoader` and exercising `format_text` / `format_markdown` proved the new `jit_adm` fields were all surfaced without paying the Maxima load cost.
 - Making `src/runtime/heap.zig:3152-3170` scan the Lisp package registry by uppercased designator bytes instead of calling `packageKey` is the right fix for read-only package resolution. The old `findLispPackage -> packageKey -> internKeyword` path mutated the keyword table on every lookup, so innocent `find-package` / `find-symbol` reads were allocating and changing heap state.
@@ -42,6 +43,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Driving the direct dispatch through existing runtime helpers exposed a real latent bug in `src/runtime/primitives/hash.zig:14-20`: `primMakeHashTable` was storing error unions from `heap.intern*` instead of values. Direct execution made the broken path compile, and fixing it removed a hidden blocker.
 
 ### Did Not Work
+- Validating Lisp loader changes through `./zig-out/bin/habu` is still blocked by the existing startup path bug: the binary tries to `load "lib/stdlib.habu"` relative to startup state and dies with `UnboundSymbol` before stdin/file probes can exercise the changed Lisp files. Treat that as a separate validation blocker, not as evidence against the manifest change.
 - `inline for` is the wrong tool when the body needs runtime filtering with `continue`. In `bench/maxima_workload.zig`, the unsupported-tag collector had to use an `if (n != 0)` guard inside the `inline for` body instead of a runtime `continue`.
 - Manually duplicating the `jit_adm` field list in multiple formatter branches is brittle. Centralizing the field list in `tools/maxima-hotspots` keeps the text and markdown outputs from drifting when new counters are added to `Vm.JitAdmStats`.
 - Reusing `packageKey` for registry lookup was the wrong abstraction. It is correct for package registration/removal because those operations own mutation, but it is wrong for `findLispPackage` because keyword interning is itself a write.
