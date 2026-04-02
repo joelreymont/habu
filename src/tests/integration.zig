@@ -19,6 +19,7 @@ const Compiler = compiler.Compiler;
 
 const interp = @import("../interp/interp.zig");
 const Vm = interp.Vm;
+const Parser = @import("../reader/parser.zig").Parser;
 
 const compile_chunk = @import("../testing/compile_chunk.zig");
 const OhSnap = @import("ohsnap");
@@ -8686,6 +8687,54 @@ fn ensureMaximaSources() !void {
     return error.SkipZigTest;
 }
 
+fn maximaSrcDirAlloc(allocator: std.mem.Allocator) ![]u8 {
+    const rel = [_][]const u8{
+        "../maxima/src",
+        "../maxima/src/src",
+        "../maxima",
+    };
+    for (rel) |dir| {
+        const probe = try std.fs.path.join(allocator, &.{ dir, "lmdcls.lisp" });
+        defer allocator.free(probe);
+        if (std.fs.cwd().access(probe, .{})) |_| {
+            return try std.fs.cwd().realpathAlloc(allocator, dir);
+        } else |_| {}
+    }
+
+    const abs = [_][]const u8{
+        "/tmp/maxima/src",
+        "/tmp/maxima/src/src",
+        "/tmp/maxima",
+    };
+    for (abs) |dir| {
+        const probe = try std.fs.path.join(allocator, &.{ dir, "lmdcls.lisp" });
+        defer allocator.free(probe);
+        if (std.fs.accessAbsolute(probe, .{})) |_| {
+            return try allocator.dupe(u8, dir);
+        } else |_| {}
+    }
+
+    return error.SkipZigTest;
+}
+
+fn parseAllFile(allocator: std.mem.Allocator, heap: *Heap, vm: *Vm, path: []const u8) !usize {
+    const file = try std.fs.openFileAbsolute(path, .{});
+    defer file.close();
+
+    const stat = try file.stat();
+    const max_bytes = std.math.cast(usize, stat.size) orelse return error.FileTooBig;
+    const content = try file.readToEndAlloc(allocator, max_bytes);
+    defer allocator.free(content);
+
+    var parser = try Parser.init(allocator, heap, content, &vm.builtins);
+    defer parser.deinit();
+
+    var forms = std.ArrayList(Value){};
+    defer forms.deinit(allocator);
+    try parser.parseAll(allocator, &forms);
+    return forms.items.len;
+}
+
 test "maxima core subset loader binds CAS entrypoints" {
     try ensureMaximaSources();
     const allocator = testing.allocator;
@@ -8755,6 +8804,42 @@ test "maxima core subset loader binds CAS entrypoints" {
         cur = cell.cdr;
     }
     try testing.expect(cur.isNil());
+}
+
+test "maxima reader stage parses selected upstream modules" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    const srcdir = try maximaSrcDirAlloc(allocator);
+    defer allocator.free(srcdir);
+
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const pkg_init = try std.fs.path.join(allocator, &.{ srcdir, "maxima-package.lisp" });
+    defer allocator.free(pkg_init);
+    try repl.loadFile(pkg_init, std.io.null_writer);
+
+    const modules = [_][]const u8{
+        "float.lisp",
+        "nparse.lisp",
+        "transs.lisp",
+        "limit.lisp",
+    };
+
+    for (modules) |file_name| {
+        const path = try std.fs.path.join(allocator, &.{ srcdir, file_name });
+        defer allocator.free(path);
+        const form_count = try parseAllFile(allocator, &heap, &vm, path);
+        try testing.expect(form_count > 0);
+    }
 }
 
 test "maxima generational loader reaches ifactor without OOM" {

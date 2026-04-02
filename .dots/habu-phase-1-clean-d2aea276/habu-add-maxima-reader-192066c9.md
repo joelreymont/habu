@@ -1,9 +1,11 @@
 ---
 title: Add Maxima reader conformance stage
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-04-01T22:06:02.134652+02:00"
+created-at: "\"2026-04-01T22:06:02.134652+02:00\""
+closed-at: "2026-04-02T17:12:19.823990+02:00"
+close-reason: done (zig build; zig build test blocked by known 5-error baseline)
 blocks:
   - habu-remove-whole-file-4f7c968a
 ---
