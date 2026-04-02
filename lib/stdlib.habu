@@ -4648,11 +4648,11 @@
 
 ; functionp - check if callable
 (defun functionp (x)
-  (or (closurep x) (symbolp x)))
+  (or (closurep x) (symbolp x) (compiled-function-p x) (typep x 'generic-function)))
 
 ; compiled-function-p - check if compiled
 (defun compiled-function-p (x)
-  (closurep x))
+  (typep x 'compiled-function))
 
 ; constantp - check if form is constant (self-evaluating)
 (defun constantp (form)

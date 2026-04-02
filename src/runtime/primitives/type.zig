@@ -233,7 +233,7 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
         if (sym.eq(syms.list)) return obj.isNil() or obj.isCons();
         if (sym.eq(syms.sequence)) return obj.isNil() or obj.isCons() or obj.isVector() or obj.isString();
         if (sym.eq(syms.function)) return obj.isClosure() or obj.isChunk();
-        if (sym.eq(syms.compiled_function)) return obj.isChunk();
+        if (sym.eq(syms.compiled_function)) return obj.isChunk() or obj.typeKind() == .native_code;
         if (sym.eq(syms.keyword)) return obj.isKeyword();
         if (sym.eq(syms.hash_table)) return obj.isHashTable();
         if (sym.eq(syms.stream)) return obj.isStream();

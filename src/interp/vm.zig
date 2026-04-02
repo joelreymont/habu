@@ -40,6 +40,73 @@ const jit_backend = @import("../jit/backend_api.zig");
 
 pub const Error = anyerror;
 
+pub const BuiltinCallableTag = enum(usize) {
+    add,
+    sub,
+    mul,
+    div,
+    log,
+    gensym,
+    atan,
+    list,
+    make_broadcast_stream,
+    make_concatenated_stream,
+    class_of,
+    floor,
+    ceiling,
+    round,
+    truncate,
+    aref,
+    make_string,
+    make_vector,
+    svset,
+    aset,
+    set_slot_value,
+    sset,
+    make_unbound,
+    class_of_internal,
+    make_array,
+    char,
+    schar,
+    format,
+    print,
+    princ,
+    encode_universal_time,
+    make_pathname,
+    make_hash_table,
+    gethash,
+    puthash,
+    remhash,
+    hash_table_count,
+    hash_table_capacity,
+    open,
+    close_internal,
+    close,
+    read_line,
+    write_line,
+    write_string,
+    read_byte,
+    write_byte,
+    file_position,
+    set_file_position,
+    file_length,
+    finish_output,
+    force_output,
+    clear_input,
+    clear_output,
+    class_direct_superclasses,
+    class_precedence_list,
+    class_direct_slots,
+    class_slots,
+    slot_definition_name,
+    slot_definition_initform,
+    slot_definition_initargs,
+    slot_definition_readers,
+    slot_definition_writers,
+    slot_definition_allocation,
+    slot_definition_type,
+};
+
 const empty_consts = [_]Value{};
 const halt_code = [_]u8{
     @truncate(@intFromEnum(Op.halt) & 0xFF),
@@ -8454,6 +8521,12 @@ pub const Vm = struct {
                         self.secondary_values[1] = gf.name;
                         self.secondary_values_count = 2;
                     },
+                    .native_code => {
+                        try self.push(Value.nil);
+                        self.secondary_values[0] = Value.nil;
+                        self.secondary_values[1] = Value.nil;
+                        self.secondary_values_count = 2;
+                    },
                     else => return error.TypeMismatch,
                 }
             },
@@ -9621,6 +9694,400 @@ pub const Vm = struct {
         }
         // Fallback: return nil (caller will use system stdout)
         return Value.nil;
+    }
+
+    fn lookupClStreamVar(self: *Vm, name: []const u8) Value {
+        const sym_opt: ?Value = if (self.heap.internInPackage("COMMON-LISP", name)) |val_opt|
+            val_opt
+        else |_|
+            null;
+        if (sym_opt) |sym| {
+            if (self.lookupSymbolValueCell(sym)) |val_opt| {
+                if (val_opt) |val| {
+                    if (val.isStream()) return val;
+                }
+            } else |_| {}
+        }
+        return Value.nil;
+    }
+
+    fn defaultOutputStream(self: *Vm) Value {
+        return self.lookupClStreamVar("*STANDARD-OUTPUT*");
+    }
+
+    fn defaultInputStream(self: *Vm) Value {
+        return self.lookupClStreamVar("*STANDARD-INPUT*");
+    }
+
+    fn argsList(self: *Vm, args: []const Value) Error!Value {
+        return try primitives.list.list(self.heap, args);
+    }
+
+    fn requireArgCount(args: []const Value, min: usize, max: usize) Error!void {
+        if (args.len < min or args.len > max) return error.TypeMismatch;
+    }
+
+    fn builtinResultToCallFrame(self: *Vm, fn_slot: usize, result: Value) Error!void {
+        self.stack[fn_slot] = result;
+        self.sp = fn_slot + 1;
+    }
+
+    fn makeVectorFromArgs(self: *Vm, args: []const Value) Error!Value {
+        const vec = try self.heap.allocVector(args.len, args.len);
+        const obj = vec.toPtr(runtime.Vector);
+        for (args, 0..) |arg, i| {
+            obj.data[i] = arg;
+        }
+        return vec;
+    }
+
+    fn nthArgStringSubscript(args: []const Value, idx: usize) Error!usize {
+        if (idx >= args.len) return error.TypeMismatch;
+        if (!args[idx].isFixnum()) return error.TypeMismatch;
+        const n = args[idx].toFixnum();
+        if (n < 0) return error.TypeMismatch;
+        return @intCast(n);
+    }
+
+    fn doBuiltinCallable(self: *Vm, tag: BuiltinCallableTag, args: []const Value) Error!Value {
+        switch (tag) {
+            .add => {
+                var out = Value.makeFixnum(0);
+                for (args) |arg| out = try arith.add(self.heap, out, arg);
+                return out;
+            },
+            .sub => {
+                if (args.len == 0) return error.TypeMismatch;
+                var out = args[0];
+                if (args.len == 1) return try arith.negate(out);
+                for (args[1..]) |arg| out = try arith.sub(self.heap, out, arg);
+                return out;
+            },
+            .mul => {
+                var out = Value.makeFixnum(1);
+                for (args) |arg| out = try arith.mul(self.heap, out, arg);
+                return out;
+            },
+            .div => {
+                if (args.len == 0) return error.TypeMismatch;
+                var out = args[0];
+                if (args.len == 1) return try arith.div(self.heap, Value.makeFixnum(1), out);
+                for (args[1..]) |arg| out = try arith.div(self.heap, out, arg);
+                return out;
+            },
+            .log => {
+                try requireArgCount(args, 1, 2);
+                if (args.len == 1) return try arith.log_val(args[0]);
+                if (!args[0].isNumber() or !args[1].isNumber()) return error.TypeMismatch;
+                const num = if (args[0].isFloat()) args[0].toFloat() else @as(f64, @floatFromInt(args[0].toFixnum()));
+                const base = if (args[1].isFloat()) args[1].toFloat() else @as(f64, @floatFromInt(args[1].toFixnum()));
+                return Value.makeFloat(std.math.log(f64, base, num));
+            },
+            .gensym => {
+                try requireArgCount(args, 0, 1);
+                return try primitives.symbol.gensym(self.heap, if (args.len == 0) null else args[0]);
+            },
+            .atan => {
+                try requireArgCount(args, 1, 2);
+                return if (args.len == 1)
+                    try arith.atan_val(args[0])
+                else
+                    try arith.atan2_val(args[0], args[1]);
+            },
+            .list => return try primitives.list.list(self.heap, args),
+            .make_broadcast_stream => return try self.heap.allocBroadcastStream(try self.argsList(args)),
+            .make_concatenated_stream => return try self.heap.allocConcatenatedStream(try self.argsList(args)),
+            .class_of, .class_of_internal => return try primitives.classOf(self.heap, try self.argsList(args)),
+            .floor => {
+                try requireArgCount(args, 1, 2);
+                return try arith.floor_val(self.heap, args[0], if (args.len == 2) args[1] else Value.makeFixnum(1));
+            },
+            .ceiling => {
+                try requireArgCount(args, 1, 2);
+                return try arith.ceil_val(self.heap, args[0], if (args.len == 2) args[1] else Value.makeFixnum(1));
+            },
+            .round => {
+                try requireArgCount(args, 1, 2);
+                return try arith.round_val(self.heap, args[0], if (args.len == 2) args[1] else Value.makeFixnum(1));
+            },
+            .truncate => {
+                try requireArgCount(args, 1, 2);
+                return try arith.trunc_val(self.heap, args[0], if (args.len == 2) args[1] else Value.makeFixnum(1));
+            },
+            .aref => {
+                if (args.len < 2 or args.len > 9) return error.TypeMismatch;
+                const arr_val = args[0];
+                if (arr_val.isVector()) {
+                    if (args.len != 2) return error.TypeMismatch;
+                    const idx = try nthArgStringSubscript(args, 1);
+                    const vec = arr_val.toPtr(runtime.Vector);
+                    if (idx >= vec.length) return error.TypeMismatch;
+                    return vec.get(idx);
+                }
+                if (arr_val.isString()) {
+                    if (args.len != 2) return error.TypeMismatch;
+                    const idx = try nthArgStringSubscript(args, 1);
+                    const str = arr_val.toPtr(runtime.String);
+                    if (idx >= str.length) return error.TypeMismatch;
+                    return Value.makeCharacter(@intCast(str.bytes()[idx]));
+                }
+                if (arr_val.isString32()) {
+                    if (args.len != 2) return error.TypeMismatch;
+                    const idx = try nthArgStringSubscript(args, 1);
+                    const str = arr_val.toPtr(runtime.String32);
+                    if (idx >= str.length) return error.TypeMismatch;
+                    return Value.makeCharacter(@intCast(str.codepoints()[idx]));
+                }
+                if (!arr_val.isArray()) return error.TypeMismatch;
+                var subs: [8]u64 = undefined;
+                for (args[1..], 0..) |sub, i| {
+                    if (!sub.isFixnum()) return error.TypeMismatch;
+                    const n = sub.toFixnum();
+                    if (n < 0) return error.TypeMismatch;
+                    subs[i] = @intCast(n);
+                }
+                return (try primitives.vector.arrayRef(arr_val, subs[0 .. args.len - 1])) orelse error.TypeMismatch;
+            },
+            .make_string => {
+                if (args.len == 0) return error.TypeMismatch;
+                if (!args[0].isFixnum()) return error.TypeMismatch;
+                const n = args[0].toFixnum();
+                if (n < 0) return error.TypeMismatch;
+                const init_val = if (args.len >= 2) args[1] else Value.makeCharacter(' ');
+                if (!init_val.isCharacter()) return error.TypeMismatch;
+                const cp = init_val.toCharacter();
+                if (cp > 0xFF) return error.TypeMismatch;
+                const len: usize = @intCast(n);
+                const buf = try self.allocator.alloc(u8, len);
+                defer self.allocator.free(buf);
+                @memset(buf, @intCast(cp));
+                return try self.heap.allocBaseString(buf);
+            },
+            .make_vector => {
+                if (args.len == 0 or args.len > 2) return error.TypeMismatch;
+                if (!args[0].isFixnum()) return error.TypeMismatch;
+                const n = args[0].toFixnum();
+                if (n < 0) return error.TypeMismatch;
+                return if (args.len == 2)
+                    try primitives.vector.makeVectorFill(self.heap, @intCast(n), args[1])
+                else
+                    try primitives.vector.makeVector(self.heap, @intCast(n));
+            },
+            .svset => {
+                try requireArgCount(args, 3, 3);
+                const vec_val = args[0];
+                const idx_val = args[1];
+                const val = args[2];
+                if (!idx_val.isFixnum()) return error.TypeMismatch;
+                const idx_signed = idx_val.toFixnum();
+                if (idx_signed < 0) return error.TypeMismatch;
+                const idx: usize = @intCast(idx_signed);
+                if (!vec_val.isVector()) return error.TypeMismatch;
+                const vec = vec_val.toPtr(runtime.Vector);
+                if (idx >= vec.length) return error.TypeMismatch;
+                vec.set(idx, val);
+                self.writeBarrierStore(vec_val, val);
+                return val;
+            },
+            .aset => {
+                if (args.len < 3) return error.TypeMismatch;
+                const arr_val = args[0];
+                const val = args[args.len - 1];
+                var subs: [8]u64 = undefined;
+                if (args.len - 2 > subs.len) return error.TypeMismatch;
+                for (args[1 .. args.len - 1], 0..) |sub, i| {
+                    if (!sub.isFixnum()) return error.TypeMismatch;
+                    const n = sub.toFixnum();
+                    if (n < 0) return error.TypeMismatch;
+                    subs[i] = @intCast(n);
+                }
+                if (!(try primitives.vector.arraySet(arr_val, subs[0 .. args.len - 2], val))) return error.TypeMismatch;
+                self.writeBarrierStore(arr_val, val);
+                return val;
+            },
+            .set_slot_value => return try primitives.setSlotValue(self.heap, try self.argsList(args)),
+            .sset => {
+                try requireArgCount(args, 3, 3);
+                const str_val = args[0];
+                const idx_val = args[1];
+                const val = args[2];
+                if (!idx_val.isFixnum()) return error.TypeMismatch;
+                const idx_signed = idx_val.toFixnum();
+                if (idx_signed < 0) return error.TypeMismatch;
+                const idx: usize = @intCast(idx_signed);
+                if (!str_val.isString() or !val.isCharacter()) return error.TypeMismatch;
+                const str = str_val.toPtr(runtime.String);
+                if (idx >= str.length) return error.TypeMismatch;
+                const cp = val.toCharacter();
+                if (cp > 0xFF) return error.TypeMismatch;
+                str.mutableBytes()[idx] = @intCast(cp);
+                return val;
+            },
+            .make_unbound => return try primitives.makeUnbound(self.heap, try self.argsList(args)),
+            .make_array => {
+                try requireArgCount(args, 1, 1);
+                const dims = args[0];
+                if (dims.isFixnum()) {
+                    const n = dims.toFixnum();
+                    if (n < 0) return error.TypeMismatch;
+                    return try primitives.vector.makeArray(self.heap, &[_]u64{@intCast(n)});
+                }
+                if (!dims.isCons()) return error.TypeMismatch;
+                var buf: [8]u64 = undefined;
+                var count: usize = 0;
+                var cur = dims;
+                while (cur.isCons()) {
+                    if (count >= buf.len) return error.TypeMismatch;
+                    const cell = cur.toPtr(runtime.Cons);
+                    if (!cell.car.isFixnum()) return error.TypeMismatch;
+                    const n = cell.car.toFixnum();
+                    if (n < 0) return error.TypeMismatch;
+                    buf[count] = @intCast(n);
+                    count += 1;
+                    cur = cell.cdr;
+                }
+                if (!cur.isNil()) return error.TypeMismatch;
+                return try primitives.vector.makeArray(self.heap, buf[0..count]);
+            },
+            .char, .schar => {
+                try requireArgCount(args, 2, 2);
+                if (!args[1].isFixnum()) return error.TypeMismatch;
+                const idx_signed = args[1].toFixnum();
+                if (idx_signed < 0) return error.TypeMismatch;
+                const idx: usize = @intCast(idx_signed);
+                if (!args[0].isString()) return error.TypeMismatch;
+                const str = args[0].toPtr(runtime.String);
+                if (idx >= str.length) return error.TypeMismatch;
+                return Value.makeCharacter(@intCast(str.bytes()[idx]));
+            },
+            .format => {
+                if (args.len < 2) return error.TypeMismatch;
+                if (!args[1].isString()) return error.TypeMismatch;
+                return try self.doFormat(args[0], args[1], args[2..]);
+            },
+            .print => {
+                try requireArgCount(args, 1, 2);
+                const stream = if (args.len == 2) args[1] else self.defaultOutputStream();
+                return try io.print(args[0], stream);
+            },
+            .princ => {
+                try requireArgCount(args, 1, 2);
+                const stream = if (args.len == 2) args[1] else self.defaultOutputStream();
+                return try io.princ(args[0], stream);
+            },
+            .encode_universal_time => {
+                if (args.len < 6 or args.len > 7) return error.TypeMismatch;
+                inline for (0..6) |i| {
+                    if (!args[i].isFixnum()) return error.TypeMismatch;
+                }
+                const zone = if (args.len == 7) blk: {
+                    if (!args[6].isFixnum()) return error.TypeMismatch;
+                    break :blk args[6].toFixnum();
+                } else null;
+                return Value.makeFixnum(io.encodeUniversalTime(
+                    args[0].toFixnum(),
+                    args[1].toFixnum(),
+                    args[2].toFixnum(),
+                    args[3].toFixnum(),
+                    args[4].toFixnum(),
+                    args[5].toFixnum(),
+                    zone,
+                ));
+            },
+            .make_pathname => {
+                var host = Value.nil;
+                var device = Value.nil;
+                var directory = Value.nil;
+                var name = Value.nil;
+                var ty = Value.nil;
+                var version = Value.nil;
+                if (args.len % 2 != 0) return error.TypeMismatch;
+                var i: usize = 0;
+                while (i < args.len) : (i += 2) {
+                    const key = args[i];
+                    const val = args[i + 1];
+                    if (key.raw == self.builtins.kw_host.raw) host = val else if (key.raw == self.builtins.kw_device.raw) device = val else if (key.raw == self.builtins.kw_directory.raw) directory = val else if (key.raw == self.builtins.kw_name.raw) name = val else if (key.raw == self.builtins.kw_type.raw) ty = val else if (key.raw == self.builtins.kw_version.raw) version = val else return error.TypeMismatch;
+                }
+                return try primitives.pathname.makePathname(self.allocator, self.heap, host, device, directory, name, ty, version);
+            },
+            .make_hash_table => return try hash_prims.primMakeHashTable(self.heap, args),
+            .gethash => return try hash_prims.primGethash(self.heap, args),
+            .puthash => return try hash_prims.primPuthash(self.heap, args),
+            .remhash => return try hash_prims.primRemhash(self.heap, args),
+            .hash_table_count => return try hash_prims.primHashTableCount(self.heap, args),
+            .hash_table_capacity => return try hash_prims.primHashTableCapacity(self.heap, args),
+            .open => return try primitives.stream.primOpen(self.heap, args, &self.builtins),
+            .close_internal, .close => return try primitives.stream.primClose(self.heap, args),
+            .read_line => {
+                const stream = if (args.len == 0) self.defaultInputStream() else args[0];
+                return try primitives.stream.primReadLine(self.heap, &[_]Value{stream});
+            },
+            .write_line => {
+                try requireArgCount(args, 1, 2);
+                const stream = if (args.len == 2) args[1] else self.defaultOutputStream();
+                return try primitives.stream.primWriteLine(self.heap, &[_]Value{ stream, args[0] });
+            },
+            .write_string => {
+                if (args.len < 1 or args.len > 4) return error.TypeMismatch;
+                const stream = if (args.len >= 2) args[1] else self.defaultOutputStream();
+                const start = if (args.len >= 3) args[2] else null;
+                const end = if (args.len == 4) args[3] else null;
+                try io.writeString(args[0], stream, start, end);
+                return args[0];
+            },
+            .read_byte => {
+                const stream = if (args.len == 0) self.defaultInputStream() else args[0];
+                return try primitives.stream.primReadByte(self.heap, &[_]Value{stream});
+            },
+            .write_byte => {
+                try requireArgCount(args, 1, 2);
+                const stream = if (args.len == 2) args[1] else self.defaultOutputStream();
+                return try primitives.stream.primWriteByte(self.heap, &[_]Value{ stream, args[0] });
+            },
+            .file_position => {
+                try requireArgCount(args, 1, 1);
+                return try io.filePosition(self.heap, args[0], null);
+            },
+            .set_file_position => {
+                try requireArgCount(args, 2, 2);
+                return try io.filePosition(self.heap, args[0], args[1]);
+            },
+            .file_length => {
+                try requireArgCount(args, 1, 1);
+                return try io.fileLength(args[0]);
+            },
+            .finish_output => {
+                const stream = if (args.len == 0) self.defaultOutputStream() else args[0];
+                try io.finishOutput(stream);
+                return Value.nil;
+            },
+            .force_output => {
+                const stream = if (args.len == 0) self.defaultOutputStream() else args[0];
+                try io.forceOutput(stream);
+                return Value.nil;
+            },
+            .clear_input => {
+                const stream = if (args.len == 0) self.defaultInputStream() else args[0];
+                try io.clearInput(stream);
+                return Value.nil;
+            },
+            .clear_output => {
+                const stream = if (args.len == 0) self.defaultOutputStream() else args[0];
+                try io.clearOutput(stream);
+                return Value.nil;
+            },
+            .class_direct_superclasses => return try primitives.classDirectSuperclasses(self.heap, try self.argsList(args)),
+            .class_precedence_list => return try primitives.classPrecedenceList(self.heap, try self.argsList(args)),
+            .class_direct_slots => return try primitives.classDirectSlots(self.heap, try self.argsList(args)),
+            .class_slots => return try primitives.classSlots(self.heap, try self.argsList(args)),
+            .slot_definition_name => return try primitives.slotDefinitionName(self.heap, try self.argsList(args)),
+            .slot_definition_initform => return try primitives.slotDefinitionInitform(self.heap, try self.argsList(args)),
+            .slot_definition_initargs => return try primitives.slotDefinitionInitargs(self.heap, try self.argsList(args)),
+            .slot_definition_readers => return try primitives.slotDefinitionReaders(self.heap, try self.argsList(args)),
+            .slot_definition_writers => return try primitives.slotDefinitionWriters(self.heap, try self.argsList(args)),
+            .slot_definition_allocation => return try primitives.slotDefinitionAllocation(self.heap, try self.argsList(args)),
+            .slot_definition_type => return try primitives.slotDefinitionType(self.heap, try self.argsList(args)),
+        }
     }
 
     fn doFormat(self: *Vm, dest: Value, control: Value, args: []const Value) Error!Value {
@@ -12053,6 +12520,14 @@ pub const Vm = struct {
             self.stack[fn_slot] = fn_val;
         }
 
+        if (fn_val.typeKind() == .native_code) {
+            const nc = fn_val.toPtr(runtime.NativeCode);
+            const tag: BuiltinCallableTag = @enumFromInt(nc.entry);
+            const result = try self.doBuiltinCallable(tag, self.stack[fn_slot + 1 .. fn_slot + 1 + argc]);
+            try self.builtinResultToCallFrame(fn_slot, result);
+            return;
+        }
+
         if (!fn_val.isClosure()) {
             if (self.trace_call_mismatch and fn_designator.isSymbol()) {
                 const sym = fn_designator.toPtr(Symbol);
@@ -12455,7 +12930,7 @@ pub const Vm = struct {
             callable = gf.dispatcher;
         }
 
-        if (!callable.isClosure()) {
+        if (!callable.isClosure() and callable.typeKind() != .native_code) {
             if (trace_do_apply) {
                 std.debug.print("CALL_MISMATCH DO_APPLY non-closure kind={s}\n", .{@tagName(callable.typeKind())});
                 std.debug.print("CALL_MISMATCH DO_APPLY fn-val-kind={s}\n", .{@tagName(fn_val.typeKind())});

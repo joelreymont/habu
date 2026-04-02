@@ -1459,18 +1459,12 @@ pub const Repl = struct {
                         std.debug.print("TRACE fn-resolve wrapper kind={s}\n", .{@tagName(wrapper_val.typeKind())});
                     }
                     if (isCallableValue(wrapper_val)) return wrapper_val;
-                } else {
-                    // Generic fallback for builtin primitives without fixed arity metadata:
-                    // (lambda (&rest args) (eval (cons 'sym args)))
-                    const wrapper_form = try self.buildEvalDispatchWrapper(dispatch_sym);
-                    const wrapper_val = try self.evalExpr(wrapper_form);
+                } else if (self.builtinCallableTag(dispatch_sym)) |tag| {
+                    const builtin_val = try self.heap.allocNativeCode(@intFromEnum(tag));
                     if (trace_fn_resolve) {
-                        std.debug.print(
-                            "TRACE fn-resolve eval-wrapper kind={s}\n",
-                            .{@tagName(wrapper_val.typeKind())},
-                        );
+                        std.debug.print("TRACE fn-resolve native kind={s}\n", .{@tagName(builtin_val.typeKind())});
                     }
-                    if (isCallableValue(wrapper_val)) return wrapper_val;
+                    return builtin_val;
                 }
             }
         }
@@ -1547,24 +1541,80 @@ pub const Repl = struct {
         return self.listFromSlice(&lambda_items);
     }
 
-    fn buildEvalDispatchWrapper(self: *Repl, sym: Value) !Value {
-        const builtins = self.compiler.builtins orelse return error.InvalidSyntax;
-        const sym_args = try self.heap.intern("ARGS");
+    fn builtinCallableTag(self: *const Repl, sym: Value) ?vm_mod.BuiltinCallableTag {
+        const b = self.compiler.builtins orelse return null;
+        const Entry = struct { field: []const u8, tag: vm_mod.BuiltinCallableTag };
+        const table = [_]Entry{
+            .{ .field = "+", .tag = .add },
+            .{ .field = "-", .tag = .sub },
+            .{ .field = "*", .tag = .mul },
+            .{ .field = "/", .tag = .div },
+            .{ .field = "log", .tag = .log },
+            .{ .field = "gensym", .tag = .gensym },
+            .{ .field = "atan", .tag = .atan },
+            .{ .field = "list", .tag = .list },
+            .{ .field = "%make-broadcast-stream", .tag = .make_broadcast_stream },
+            .{ .field = "%make-concatenated-stream", .tag = .make_concatenated_stream },
+            .{ .field = "class-of", .tag = .class_of },
+            .{ .field = "floor", .tag = .floor },
+            .{ .field = "ceiling", .tag = .ceiling },
+            .{ .field = "round", .tag = .round },
+            .{ .field = "truncate", .tag = .truncate },
+            .{ .field = "aref", .tag = .aref },
+            .{ .field = "make-string", .tag = .make_string },
+            .{ .field = "make-vector", .tag = .make_vector },
+            .{ .field = "%svset", .tag = .svset },
+            .{ .field = "%aset", .tag = .aset },
+            .{ .field = "%set-slot-value", .tag = .set_slot_value },
+            .{ .field = "%sset", .tag = .sset },
+            .{ .field = "%make-unbound", .tag = .make_unbound },
+            .{ .field = "%class-of", .tag = .class_of_internal },
+            .{ .field = "make-array", .tag = .make_array },
+            .{ .field = "char", .tag = .char },
+            .{ .field = "schar", .tag = .schar },
+            .{ .field = "format", .tag = .format },
+            .{ .field = "print", .tag = .print },
+            .{ .field = "princ", .tag = .princ },
+            .{ .field = "encode-universal-time", .tag = .encode_universal_time },
+            .{ .field = "%make-pathname", .tag = .make_pathname },
+            .{ .field = "make-hash-table", .tag = .make_hash_table },
+            .{ .field = "gethash", .tag = .gethash },
+            .{ .field = "puthash", .tag = .puthash },
+            .{ .field = "remhash", .tag = .remhash },
+            .{ .field = "hash-table-count", .tag = .hash_table_count },
+            .{ .field = "hash-table-capacity", .tag = .hash_table_capacity },
+            .{ .field = "%open", .tag = .open },
+            .{ .field = "%close", .tag = .close_internal },
+            .{ .field = "close", .tag = .close },
+            .{ .field = "%read-line", .tag = .read_line },
+            .{ .field = "%write-line", .tag = .write_line },
+            .{ .field = "%write-string", .tag = .write_string },
+            .{ .field = "%read-byte", .tag = .read_byte },
+            .{ .field = "%write-byte", .tag = .write_byte },
+            .{ .field = "%file-position", .tag = .file_position },
+            .{ .field = "%set-file-position", .tag = .set_file_position },
+            .{ .field = "%file-length", .tag = .file_length },
+            .{ .field = "%finish-output", .tag = .finish_output },
+            .{ .field = "%force-output", .tag = .force_output },
+            .{ .field = "%clear-input", .tag = .clear_input },
+            .{ .field = "%clear-output", .tag = .clear_output },
+            .{ .field = "class-direct-superclasses", .tag = .class_direct_superclasses },
+            .{ .field = "class-precedence-list", .tag = .class_precedence_list },
+            .{ .field = "class-direct-slots", .tag = .class_direct_slots },
+            .{ .field = "class-slots", .tag = .class_slots },
+            .{ .field = "slot-definition-name", .tag = .slot_definition_name },
+            .{ .field = "slot-definition-initform", .tag = .slot_definition_initform },
+            .{ .field = "slot-definition-initargs", .tag = .slot_definition_initargs },
+            .{ .field = "slot-definition-readers", .tag = .slot_definition_readers },
+            .{ .field = "slot-definition-writers", .tag = .slot_definition_writers },
+            .{ .field = "slot-definition-allocation", .tag = .slot_definition_allocation },
+            .{ .field = "slot-definition-type", .tag = .slot_definition_type },
+        };
 
-        const params_items = [_]Value{ builtins.@"&rest", sym_args };
-        const params_list = try self.listFromSlice(&params_items);
-
-        const quote_sym_items = [_]Value{ builtins.quote, sym };
-        const quote_sym_form = try self.listFromSlice(&quote_sym_items);
-
-        const cons_items = [_]Value{ builtins.cons, quote_sym_form, sym_args };
-        const cons_form = try self.listFromSlice(&cons_items);
-
-        const eval_items = [_]Value{ builtins.eval, cons_form };
-        const eval_form = try self.listFromSlice(&eval_items);
-
-        const lambda_items = [_]Value{ builtins.lambda, params_list, eval_form };
-        return self.listFromSlice(&lambda_items);
+        inline for (table) |entry| {
+            if (sym.raw == @field(b, entry.field).raw) return entry.tag;
+        }
+        return null;
     }
 
     fn listFromSlice(self: *Repl, items: []const Value) !Value {

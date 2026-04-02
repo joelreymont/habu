@@ -26,6 +26,18 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Leaving one old reference behind after deleting a retry ladder is easy to miss and shows up only as a plain compile break, not a semantic test failure. The stale `for (prefixes)` block in `src/compiler/compile.zig:7804-7811` survived the earlier lookup cleanup until `zig build test` caught it.
 - Keeping class-metadata fallback search in place after package canonicalization is counterproductive. `lookupClassMetadataByName` broad-prefix probing and local-name matching in `src/compiler/compile.zig:12059-12096` were only compensating for earlier package-identity loss; once superclass lookup uses `lookupClassMetadataBySymbol`, those heuristics become liability, not safety.
 
+## Session Notes (2026-04-02)
+
+### Worked Well
+- Replacing the variadic builtin `(eval (cons 'sym args))` path with first-class `native_code` callable handles in `src/interp/repl.zig:1447-1467` and direct VM dispatch in `src/interp/vm.zig:9721-10094,12516-12529` removed the last eval-based function-designator shortcut without needing Maxima-specific exceptions.
+- Treating unsupported pseudo-builtins as not-callable-before-stdlib is safer than synthesizing fake wrappers. Trimming `vector`, `concatenate`, and `set-macro-character` from `src/compiler/compile.zig:15618-15674` stops `fboundp`/`symbol-function` from claiming runtime support that only exists after stdlib loads.
+- Extending `compiled-function-p` / runtime `typep` to include `native_code` in `lib/stdlib.habu:4650-4655` and `src/runtime/primitives/type.zig:236` keeps first-class builtin callables visible to Lisp without reintroducing wrapper closures.
+- Driving the direct dispatch through existing runtime helpers exposed a real latent bug in `src/runtime/primitives/hash.zig:14-20`: `primMakeHashTable` was storing error unions from `heap.intern*` instead of values. Direct execution made the broken path compile, and fixing it removed a hidden blocker.
+
+### Did Not Work
+- Trying to keep unsupported variadic pseudo-builtins callable via the old generic wrapper would have preserved fake progress. The right cutover was to delete the eval wrapper and only keep entries with a real runtime implementation.
+- `zig build test` is still blocked by the pre-existing 5-error baseline (`src/bytecode/disasm.zig:68`, `src/bytecode/emit.zig:3093`, `src/compiler/passes/p04_resolve.zig:269`, `src/compiler/passes/p05_capture.zig:117`, `src/types/erasure.zig:109`), so `zig build` is the only whole-repo validation path available for this batch.
+
 ---
 
 ## Session Notes (2026-03-07)

@@ -13,12 +13,12 @@ const HashTest = objects.HashTest;
 /// size: initial capacity (default 16)
 pub fn primMakeHashTable(heap: *Heap, args: []const Value) !Value {
     // Intern keywords and symbols once
-    const kw_test = heap.internKeyword("test");
-    const kw_size = heap.internKeyword("size");
-    const sym_eq = heap.intern("eq");
-    const sym_eql = heap.intern("eql");
-    const sym_equal = heap.intern("equal");
-    const sym_equalp = heap.intern("equalp");
+    const kw_test = try heap.internKeyword("test");
+    const kw_size = try heap.internKeyword("size");
+    const sym_eq = try heap.intern("eq");
+    const sym_eql = try heap.intern("eql");
+    const sym_equal = try heap.intern("equal");
+    const sym_equalp = try heap.intern("equalp");
 
     var test_type = HashTest.eq;
     var size: usize = 16;

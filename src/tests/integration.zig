@@ -1923,7 +1923,7 @@ test "stdlib sort designator path works from speed-3 caller" {
     try testing.expect(result.raw == Value.t.raw);
 }
 
-test "stdlib symbol-function eval-dispatch wrapper encode-universal-time" {
+test "stdlib symbol-function direct builtin encode-universal-time" {
     const allocator = testing.allocator;
 
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -1941,6 +1941,10 @@ test "stdlib symbol-function eval-dispatch wrapper encode-universal-time" {
         .closure, .native_code, .generic_function => true,
         else => false,
     });
+    const compiled = try repl.eval(
+        \\(compiled-function-p (symbol-function 'encode-universal-time))
+    );
+    try testing.expect(compiled.raw == Value.t.raw);
 }
 
 test "compiler primitiveRefArity ash is binary" {
