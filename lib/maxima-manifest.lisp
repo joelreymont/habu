@@ -6,7 +6,8 @@
 (defparameter *habu-maxima-files*
   '(
     ;; bootstrap
-    "lmdcls" "letmac" "generr" "clmacs" "commac" "mormac" "globals" "compat"
+    "lmdcls" "letmac" "generr" "clmacs" "defmfun-check" "float-properties"
+    "commac" "mormac" "globals" "compat"
     "defcal" "maxmac" "mopers" "mforma" "mrgmac" "rzmac" "strmac"
     "displm" "safe-recursion" "ratmac" "mhayat"
     "opers"
@@ -17,7 +18,6 @@
     "comm" "comm2" "mlisp" "mmacro" "buildq"
     "simp" "float" "csimp" "csimp2" "zero"
     "logarc" "rpart" "numeric" "server" "macsys" "testsuite" "mload"
-    "float-properties"
     "suprv1" "mactex" "dskfn" "mtrace" "mdebug"
 
     ;; algebraic database

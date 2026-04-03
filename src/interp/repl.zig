@@ -5705,6 +5705,24 @@ test "reader accepts exact maxima-style COMMON-LISP conditional" {
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
+test "stdlib bootstrap helper does not capture unresolved WHEN" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 32 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try repl.loadFile("lib/stdlib.habu", std.io.null_writer);
+
+    const result = try repl.eval("(let ((v (%make-vector-with-fp 4 0 2 t))) (fill-pointer v))");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 2), result.toFixnum());
+}
+
 test "load rejects repeated directory prefix fallback" {
     const testing = std.testing;
     const allocator = testing.allocator;

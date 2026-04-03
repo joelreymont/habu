@@ -689,6 +689,47 @@
   (declare (ignore typespec environment))
   't)
 
+; Bootstrap macros used by early stdlib helpers before the full macro section.
+(defmacro when (test &rest body)
+  (list 'if test (cons 'progn body)))
+
+(defmacro unless (test &rest body)
+  (list 'if test nil (cons 'progn body)))
+
+(defmacro return (&optional value)
+  (list 'return-from nil value))
+
+(defmacro dolist (spec &rest body)
+  (let ((var (car spec))
+        (lst (cadr spec))
+        (result (caddr spec))
+        (list-var (gensym "list"))
+        (loop-tag (gensym "dolist-loop")))
+    (list 'let (list (list list-var lst))
+          (list 'block nil
+                (list 'tagbody
+                      loop-tag
+                      (list 'when (list 'null list-var)
+                            (list 'return-from nil (list 'let (list (list var nil)) result)))
+                      (list 'let (list (list var (list 'car list-var)))
+                            (cons 'progn body))
+                      (list 'setq list-var (list 'cdr list-var))
+                      (list 'go loop-tag))))))
+
+(defmacro dotimes (spec &rest body)
+  (let ((var (car spec))
+        (count (cadr spec))
+        (result (caddr spec))
+        (n (gensym)))
+    (list 'let (list (list n count))
+          (list 'let (list (list var 0))
+                (list 'block nil
+                      (list 'loop
+                            (list 'when (list '>= var n)
+                                  (list 'return-from nil result))
+                            (cons 'progn body)
+                            (list 'setq var (list '+ var 1))))))))
+
 ; %make-vector-with-fp - create a vector with fill-pointer and adjustable flags
 ; Used by compiler for (make-array N :fill-pointer FP :adjustable ADJ)
 (defun %make-vector-with-fp (size init-elem fill-pointer-val adjustable-val)
@@ -1328,55 +1369,6 @@
 ; ============================================================================
 ; Macros
 ; ============================================================================
-
-; when - execute body if test is true
-(defmacro when (test &rest body)
-  (list 'if test (cons 'progn body)))
-
-; unless - execute body if test is false
-(defmacro unless (test &rest body)
-  (list 'if test nil (cons 'progn body)))
-
-; return - shorthand for (return-from nil value)
-; Used to exit from block with name nil (implicit in loop, dolist, dotimes)
-(defmacro return (&optional value)
-  (list 'return-from nil value))
-
-; dolist - iterate over list elements
-; (dolist (var list [result]) body...) => result (with var bound to nil)
-(defmacro dolist (spec &rest body)
-  (let ((var (car spec))
-        (lst (cadr spec))
-        (result (caddr spec))
-        (list-var (gensym "list"))
-        (loop-tag (gensym "dolist-loop")))
-    (list 'let (list (list list-var lst))
-          (list 'block nil
-                (list 'tagbody
-                      loop-tag
-                      (list 'when (list 'null list-var)
-                            (list 'return-from nil (list 'let (list (list var nil)) result)))
-                      (list 'let (list (list var (list 'car list-var)))
-                            (cons 'progn body))
-                      (list 'setq list-var (list 'cdr list-var))
-                      (list 'go loop-tag))))))
-
-; dotimes - iterate n times
-; (dotimes (var n [result]) body...) => result (with var bound to n)
-(defmacro dotimes (spec &rest body)
-  (let ((var (car spec))
-        (count (cadr spec))
-        (result (caddr spec))
-        (n (gensym)))
-    ; Bind count once to avoid multiple evaluation
-    (list 'let (list (list n count))
-          (list 'let (list (list var 0))
-                (list 'block nil
-                      (list 'loop
-                            (list 'when (list '>= var n)
-                                  (list 'return-from nil result))
-                            (cons 'progn body)
-                            (list 'setq var (list '+ var 1))))))))
 
 ; psetq-collect - helper to collect vars/vals/tmps from pairs
 (defun psetq-collect (pairs vars vals tmps)

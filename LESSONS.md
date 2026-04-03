@@ -2030,3 +2030,10 @@ also `(set alias-target y)` (with assign validator).
 
 ### Did Not Work
 - The earlier focused test command used a single `-Dtest-filter` string with `|` separators, which Zig treats as one literal substring, so it did not prove those named tests were actually running. Use one concrete filter per proof run.
+
+### Worked Well
+- Early stdlib helpers must not depend on macros defined later in the same file. Moving the small bootstrap macro set (`when`, `unless`, `return`, `dolist`, `dotimes`) ahead of `%make-vector-with-fp` in `lib/stdlib.habu` fixed a real latent runtime bug where the helper had been compiled with `WHEN` as an ordinary function call.
+- A loader manifest is executable semantics. Aligning `lib/maxima-manifest.lisp` with upstream `../maxima/src/maxima.system` by loading `defmfun-check` and `float-properties` before `commac`/`mormac`/`compat` immediately converted a fake `DEFMFUN`-missing failure into the next real compiler gap.
+
+### Did Not Work
+- Chasing the earlier `InvalidPrintCase` surface error would have been wasted motion. The decisive evidence came from the Maxima form trace: the actual blockers were stdlib bootstrap macro ordering and manifest dependency order, not the printer.
