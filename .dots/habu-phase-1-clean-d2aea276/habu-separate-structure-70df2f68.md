@@ -1,9 +1,11 @@
 ---
 title: Separate structure representation
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.140377+02:00"
+created-at: "\"2026-04-01T22:06:02.140377+02:00\""
+closed-at: "2026-04-03T14:53:00.653209+02:00"
+close-reason: "done: boxed Structure runtime, generic slot/class protocol, defstruct cutover, zig build green; binary smoke still blocked by separate stdlib bootstrap bug"
 blocks:
   - habu-canonicalize-pkg-state-4641836b
 ---

@@ -262,8 +262,8 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
         if (sym.eq(syms.standard_generic_function)) return obj.isGenericFunction();
         if (sym.eq(syms.method)) return obj.isMethod();
         if (sym.eq(syms.standard_method)) return obj.isMethod();
-        if (sym.eq(syms.standard_object)) return obj.isVector(); // instances are vectors
-        if (sym.eq(syms.structure_object)) return obj.isVector(); // structs are vectors
+        if (sym.eq(syms.standard_object)) return obj.isVector();
+        if (sym.eq(syms.structure_object)) return obj.isStructure();
         if (sym.eq(syms.file_stream)) {
             if (!obj.isStream()) return false;
             const stream = obj.toPtr(@import("../objects.zig").Stream);
@@ -289,29 +289,26 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
         const maybe_class = heap.findLispClass(type_spec);
 
         // Check if it's a class name (instance type check)
-        if (obj.isVector()) {
-            const vec = obj.toPtr(@import("../objects.zig").Vector);
-            if (vec.length > 0 and vec.data[0].isSymbol()) {
-                // Direct class name match
-                if (vec.data[0].eq(type_spec)) return true;
-
-                // Check class hierarchy via CPL
-                if (heap.findLispClass(vec.data[0])) |class_val| {
-                    if (class_val.isClass()) {
-                        const class = class_val.toPtr(@import("../objects.zig").Class);
-                        // Check if type_spec is in the CPL
-                        var cpl = class.cpl;
-                        while (cpl.isCons()) {
-                            const cons = cpl.toPtr(@import("../objects.zig").Cons);
-                            // CPL contains class objects or symbols - check both
-                            if (cons.car.eq(type_spec)) return true;
-                            if (cons.car.isClass()) {
-                                const cpl_class = cons.car.toPtr(@import("../objects.zig").Class);
-                                if (cpl_class.name.eq(type_spec)) return true;
-                            }
-                            cpl = cons.cdr;
-                        }
+        if (obj.isVector() or obj.isStructure()) {
+            const class_val = blk: {
+                if (obj.isStructure()) break :blk obj.toPtr(objects.Structure).class;
+                const vec = obj.toPtr(objects.Vector);
+                if (vec.length == 0 or !vec.data[0].isSymbol()) break :blk Value.nil;
+                break :blk heap.findLispClass(vec.data[0]) orelse Value.nil;
+            };
+            if (!class_val.isNil()) {
+                if (class_val.eq(maybe_class orelse Value.nil)) return true;
+                const class = class_val.toPtr(@import("../objects.zig").Class);
+                if (class.name.eq(type_spec)) return true;
+                var cpl = class.cpl;
+                while (cpl.isCons()) {
+                    const cons = cpl.toPtr(@import("../objects.zig").Cons);
+                    if (cons.car.eq(type_spec)) return true;
+                    if (cons.car.isClass()) {
+                        const cpl_class = cons.car.toPtr(@import("../objects.zig").Class);
+                        if (cpl_class.name.eq(type_spec)) return true;
                     }
+                    cpl = cons.cdr;
                 }
                 return false;
             }
@@ -731,6 +728,13 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
                 return vec.data[0];
             }
             return heap.intern("vector");
+        },
+        .structure => {
+            const obj = val.toPtr(@import("../objects.zig").Structure);
+            if (obj.class.isClass()) {
+                return obj.class.toPtr(@import("../objects.zig").Class).name;
+            }
+            return heap.intern("structure-object");
         },
         .string => heap.intern("string"),
         .string32 => heap.intern("string"),

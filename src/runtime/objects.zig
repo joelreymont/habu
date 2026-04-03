@@ -336,7 +336,8 @@ pub const BoxedKind = enum(u64) {
     generic_function = 13,
     method = 14,
     native_code = 15,
-    macro_env = 16,
+    structure = 16,
+    macro_env = 17,
 };
 
 /// Stream direction
@@ -934,6 +935,10 @@ pub fn objectSize(val: Value) usize {
                 .generic_function => @sizeOf(GenericFunction),
                 .method => @sizeOf(Method),
                 .native_code => @sizeOf(NativeCode),
+                .structure => {
+                    const obj = val.toPtr(Structure);
+                    break :blk @sizeOf(Structure) + obj.length * @sizeOf(Value);
+                },
                 .macro_env => @sizeOf(MacroEnv),
                 .chunk => {
                     const chunk = val.toPtr(Chunk);
@@ -1076,6 +1081,13 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
                     callback(env.macros);
                     callback(env.symbol_macros);
                 },
+                .structure => {
+                    const obj = val.toPtr(Structure);
+                    callback(obj.class);
+                    for (obj.slots[0..obj.length]) |slot_val| {
+                        callback(slot_val);
+                    }
+                },
                 .string32, .rational, .complex, .stream, .bignum, .pathname, .array, .native_code => {
                     // No internal Values to scan
                 },
@@ -1195,6 +1207,13 @@ pub const Class = extern struct {
     _pad: u32 = 0,
     /// Pointer to shared slot values array
     shared_slots: [*]Value,
+};
+
+pub const Structure = extern struct {
+    kind: BoxedKind align(16),
+    class: Value,
+    length: u64,
+    slots: [*]Value,
 };
 
 pub const SlotDefinition = extern struct {

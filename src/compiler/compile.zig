@@ -2717,6 +2717,7 @@ pub const Compiler = struct {
                 .generic_function => &types.t_any, // Generic function objects
                 .method => &types.t_any, // Method objects
                 .native_code => &types.t_any, // Native code handles are internal
+                .structure => &types.t_any, // Structure objects
                 .macro_env => &types.t_any, // Macro environment objects
             },
             .@"var" => |v| {
@@ -7794,23 +7795,6 @@ pub const Compiler = struct {
         const arg_cons = place_args.toPtr(Cons);
         if (!arg_cons.cdr.isNil()) return null;
 
-        if (self.struct_accessors.get(accessor_name)) |slot_idx| {
-            const obj_ir = try self.compile(arg_cons.car, env);
-            const idx_ir = try self.builder.lit(Value.makeFixnum(@intCast(slot_idx + 1)));
-            const val_ir = try self.compile(value_expr, env);
-            return try self.builder.vecSet(obj_ir, idx_ir, val_ir);
-        }
-
-        var qual_buf: [512]u8 = undefined;
-        const q = try self.qualifyName(accessor_name, &qual_buf);
-        defer if (q.owned) self.allocator.free(q.name);
-        if (self.struct_accessors.get(q.name)) |slot_idx| {
-            const obj_ir = try self.compile(arg_cons.car, env);
-            const idx_ir = try self.builder.lit(Value.makeFixnum(@intCast(slot_idx + 1)));
-            const val_ir = try self.compile(value_expr, env);
-            return try self.builder.vecSet(obj_ir, idx_ir, val_ir);
-        }
-
         // Accessor format: STRUCT-FIELD where FIELD may contain dashes.
         const dash_idx = std.mem.indexOfScalar(u8, accessor_name, '-') orelse return null;
         if (dash_idx == 0 or dash_idx + 1 >= accessor_name.len) return null;
@@ -7856,9 +7840,9 @@ pub const Compiler = struct {
         if (slot_idx_opt == null) return null;
 
         const obj_ir = try self.compile(arg_cons.car, env);
-        const idx_ir = try self.builder.lit(Value.makeFixnum(@intCast(slot_idx_opt.? + 1)));
         const val_ir = try self.compile(value_expr, env);
-        return try self.builder.vecSet(obj_ir, idx_ir, val_ir);
+        const slot_sym = try self.builder.quoteSym(field_name);
+        return try self.builder.setSlotValue(obj_ir, slot_sym, val_ir);
     }
 
     fn compileSetfCxr(
@@ -10933,14 +10917,8 @@ pub const Compiler = struct {
 
         // Register a runtime class entry so TYPEP/TYPECASE recognize DEFSTRUCT
         // type names even when the tested object is not a struct instance.
-        const struct_class = try self.allocateClass(heap, name_sym_val, Value.nil, slot_specs.items);
+        const struct_class = try self.allocateClass(heap, name_sym_val, Value.nil, slot_specs.items, heap.structure_class);
         try heap.putLispClass(name_sym_val, struct_class);
-
-        // Extract slot names for constructor params
-        var slot_names = try self.allocator.alloc([]const u8, slot_specs.items.len);
-        for (slot_specs.items, 0..) |spec, i| {
-            slot_names[i] = spec.name;
-        }
 
         // Compute number of definitions: accessors + writers + name_lit
         // + optional constructor + optional predicate + optional copier
@@ -10974,20 +10952,20 @@ pub const Compiler = struct {
                 try self.allocator.dupe(u8, spec.name)
             else
                 try self.concatStrings(accessor_prefix, spec.name);
-            defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, struct_name, i);
+            defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, spec.name, struct_name);
             try self.registerStructAccessor(accessor_name, i);
             def_idx += 1;
         }
 
         // 3. Writers: (defun (setf name-slotN) (val obj) ...)
-        for (slot_specs.items, 0..) |spec, i| {
+        for (slot_specs.items) |spec| {
             const accessor_name = if (accessor_prefix.len == 0)
                 try self.allocator.dupe(u8, spec.name)
             else
                 try self.concatStrings(accessor_prefix, spec.name);
             const setf_name = try self.concatStrings("(setf ", accessor_name);
             const setf_full = try self.concatStrings(setf_name, ")");
-            defs[def_idx] = try self.generateStructWriter(heap, setf_full, struct_name, i);
+            defs[def_idx] = try self.generateStructWriter(heap, setf_full, spec.name);
             def_idx += 1;
         }
 
@@ -10997,7 +10975,7 @@ pub const Compiler = struct {
                 try self.allocator.dupe(u8, n)
             else
                 try self.concatStrings(struct_name, "-P");
-            defs[def_idx] = try self.generateStructPredicate(heap, pred_name, struct_name);
+            defs[def_idx] = try self.generateStructPredicate(pred_name, struct_name);
             def_idx += 1;
 
             // Register predicate for occurrence typing
@@ -11041,7 +11019,7 @@ pub const Compiler = struct {
     };
 
     /// Allocate Class object and compute CPL
-    fn allocateClass(self: *Compiler, heap: *Heap, name: Value, superclasses: Value, slot_specs: []const SlotSpec) !Value {
+    fn allocateClass(self: *Compiler, heap: *Heap, name: Value, superclasses: Value, slot_specs: []const SlotSpec, metaclass: Value) !Value {
         const objects = @import("../runtime/objects.zig");
 
         // Convert superclasses list to array and resolve symbols to Class objects
@@ -11107,7 +11085,7 @@ pub const Compiler = struct {
             .cpl = Value.nil,
             .direct_slots = Value.nil,
             .slots = Value.nil,
-            .metaclass = heap.standard_class,
+            .metaclass = metaclass,
             .num_shared = 0,
             .shared_slots = undefined,
         };
@@ -11271,7 +11249,7 @@ pub const Compiler = struct {
         return cls.toPtr(runtime.Class).cpl;
     }
 
-    /// Generate constructor: creates a closure that takes args, checks types, returns vector
+    /// Generate constructor: creates a closure that takes args, checks types, returns instance
     fn generateStructConstructor(
         self: *Compiler,
         heap: *Heap,
@@ -11338,19 +11316,24 @@ pub const Compiler = struct {
             if (!spec.field_type.isAny()) num_assertions += 1;
         }
 
-        // Pre-allocate vector args: name_sym + one per slot
-        const vec_args = try self.allocator.alloc(*Ir, 1 + slot_count);
+        const make_instance_idx = self.globals.lookup("make-instance") orelse
+            self.globals.lookup("COMMON-LISP:MAKE-INSTANCE") orelse
+            self.globals.lookup("CL:MAKE-INSTANCE") orelse
+            return error.InvalidSyntax;
+        const make_instance_ref = try self.builder.globalRef("make-instance", make_instance_idx);
+        const ctor_args = try self.allocator.alloc(*Ir, 1 + (slot_count * 2));
         const name_sym = try heap.intern(struct_name);
-        vec_args[0] = try self.builder.lit(name_sym);
-        for (slots, 0..) |_, i| {
-            vec_args[1 + i] = merged_values[i];
+        ctor_args[0] = try self.builder.lit(name_sym);
+        for (slots, 0..) |spec, i| {
+            const kw = try heap.internKeyword(spec.name);
+            ctor_args[1 + (i * 2)] = try self.builder.lit(kw);
+            ctor_args[1 + (i * 2) + 1] = merged_values[i];
         }
-        const vec_ir = try self.builder.vec(vec_args);
+        const make_instance_ir = try self.buildCallIr(make_instance_ref, ctor_args, false);
 
-        // If no type assertions needed, just return the vector
-        var body_ir: *Ir = vec_ir;
+        var body_ir: *Ir = make_instance_ir;
         if (num_assertions > 0) {
-            // Build progn with type assertions followed by vector
+            // Build progn with type assertions followed by instance construction
             const progn_items = try self.allocator.alloc(*Ir, num_assertions + 1);
             var idx: usize = 0;
             for (slots, 0..) |spec, i| {
@@ -11360,7 +11343,7 @@ pub const Compiler = struct {
                     idx += 1;
                 }
             }
-            progn_items[num_assertions] = vec_ir;
+            progn_items[num_assertions] = make_instance_ir;
             body_ir = try self.builder.progn(progn_items);
         }
 
@@ -11809,12 +11792,7 @@ pub const Compiler = struct {
         return try self.type_checker.builder.makeArrow(domain_types.items, return_type);
     }
 
-    /// Generate accessor with runtime type check:
-    /// (lambda (obj)
-    ///   (if (and (vectorp obj) (eq (vec-ref obj 0) 'struct-name))
-    ///       (vec-ref obj slot_idx+1)
-    ///       (error "type error")))
-    fn generateStructAccessor(self: *Compiler, heap: *Heap, accessor_name: []const u8, struct_name: []const u8, slot_idx: usize) anyerror!*Ir {
+    fn generateStructAccessor(self: *Compiler, _: *Heap, accessor_name: []const u8, slot_name: []const u8, _: []const u8) anyerror!*Ir {
         // Qualify the accessor name with current package
         var qual_buf: [512]u8 = undefined;
         const q = try self.qualifyName(accessor_name, &qual_buf);
@@ -11828,34 +11806,9 @@ pub const Compiler = struct {
             self.removeGenericFunctionMeta(accessor_name);
         }
 
-        // Variable reference for obj parameter
         const obj_ref = try self.builder.variable("obj", 0, 0);
-
-        // Build condition: (if (vectorp obj) (eq (vec-ref obj 0) 'name) nil)
-        const vectorp_ir = try self.builder.vectorp(obj_ref);
-        const idx0 = try self.builder.lit(Value.makeFixnum(0));
-        // Need fresh obj_ref for second use (IR nodes are consumed)
-        const obj_ref2 = try self.builder.variable("obj", 0, 0);
-        const vecref0 = try self.builder.vecRef(obj_ref2, idx0);
-        const name_sym = try heap.intern(struct_name);
-        const name_lit = try self.builder.lit(name_sym);
-        const eq_ir = try self.builder.eq(vecref0, name_lit);
-        const nil_ir = try self.builder.lit(Value.nil);
-        const type_check = try self.builder.ifExpr(vectorp_ir, eq_ir, nil_ir);
-
-        // Then branch: (vec-ref obj slot_idx+1)
-        const obj_ref3 = try self.builder.variable("obj", 0, 0);
-        const idx_lit = try self.builder.lit(Value.makeFixnum(@intCast(slot_idx + 1)));
-        const vecref_ir = try self.builder.vecRef(obj_ref3, idx_lit);
-
-        // Else branch: (error "type error: expected struct-name")
-        const error_msg = try self.concatStrings3("type error: expected ", struct_name, "");
-        const error_str = try heap.allocBaseString(error_msg);
-        const error_lit = try self.builder.lit(error_str);
-        const error_call = try self.builder.errorUser(error_lit);
-
-        // Full body: (if type-check (vec-ref obj idx) (error ...))
-        const body_ir = try self.builder.ifExpr(type_check, vecref_ir, error_call);
+        const slot_sym = try self.builder.quoteSym(slot_name);
+        const body_ir = try self.builder.slotValue(obj_ref, slot_sym);
 
         // Lambda with 1 param named "obj"
         const lambda_ir = try self.builder.lambda(
@@ -11872,8 +11825,7 @@ pub const Compiler = struct {
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
 
-    /// Generate writer: (lambda (val obj) (if type-check (setf (vec-ref obj idx) val) (error)))
-    fn generateStructWriter(self: *Compiler, heap: *Heap, writer_name: []const u8, struct_name: []const u8, slot_idx: usize) anyerror!*Ir {
+    fn generateStructWriter(self: *Compiler, _: *Heap, writer_name: []const u8, slot_name: []const u8) anyerror!*Ir {
         var qual_buf: [512]u8 = undefined;
         const q = try self.qualifyName(writer_name, &qual_buf);
         defer if (q.owned) self.allocator.free(q.name);
@@ -11886,28 +11838,10 @@ pub const Compiler = struct {
             self.removeGenericFunctionMeta(writer_name);
         }
 
-        const obj_ref = try self.builder.variable("obj", 0, 1);
-        const vectorp_ir = try self.builder.vectorp(obj_ref);
-        const idx0 = try self.builder.lit(Value.makeFixnum(0));
-        const obj_ref2 = try self.builder.variable("obj", 0, 1);
-        const vecref0 = try self.builder.vecRef(obj_ref2, idx0);
-        const name_sym = try heap.intern(struct_name);
-        const name_lit = try self.builder.lit(name_sym);
-        const eq_ir = try self.builder.eq(vecref0, name_lit);
-        const nil_ir = try self.builder.lit(Value.nil);
-        const type_check = try self.builder.ifExpr(vectorp_ir, eq_ir, nil_ir);
-
-        const obj_ref3 = try self.builder.variable("obj", 0, 1);
-        const idx_lit = try self.builder.lit(Value.makeFixnum(@intCast(slot_idx + 1)));
         const val_ref = try self.builder.variable("val", 0, 0);
-        const setf_ir = try self.builder.vecSet(obj_ref3, idx_lit, val_ref);
-
-        const error_msg = try self.concatStrings3("type error: expected ", struct_name, "");
-        const error_str = try heap.allocBaseString(error_msg);
-        const error_lit = try self.builder.lit(error_str);
-        const error_call = try self.builder.errorUser(error_lit);
-
-        const body_ir = try self.builder.ifExpr(type_check, setf_ir, error_call);
+        const obj_ref = try self.builder.variable("obj", 0, 1);
+        const slot_sym = try self.builder.quoteSym(slot_name);
+        const body_ir = try self.builder.setSlotValue(obj_ref, slot_sym, val_ref);
 
         const lambda_ir = try self.builder.lambda(
             &[_][]const u8{ "val", "obj" },
@@ -11923,8 +11857,7 @@ pub const Compiler = struct {
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
 
-    /// Generate predicate: checks if obj is a vector with correct type tag
-    fn generateStructPredicate(self: *Compiler, heap: *Heap, pred_name: []const u8, struct_name: []const u8) anyerror!*Ir {
+    fn generateStructPredicate(self: *Compiler, pred_name: []const u8, struct_name: []const u8) anyerror!*Ir {
         // Qualify the predicate name with current package
         var qual_buf: [512]u8 = undefined;
         const q = try self.qualifyName(pred_name, &qual_buf);
@@ -11932,17 +11865,9 @@ pub const Compiler = struct {
         const qualified_name = q.name;
         const global_idx = try self.globals.define(qualified_name);
 
-        // Body: (if (vectorp obj) (eq (vec-ref obj 0) 'name) nil)
         const obj_ref = try self.builder.variable("obj", 0, 0);
-        const vectorp_ir = try self.builder.vectorp(obj_ref);
-        const idx0 = try self.builder.lit(Value.makeFixnum(0));
-        const obj_ref2 = try self.builder.variable("obj", 0, 0);
-        const vecref0 = try self.builder.vecRef(obj_ref2, idx0);
-        const name_sym = try heap.intern(struct_name);
-        const name_lit = try self.builder.lit(name_sym);
-        const eq_ir = try self.builder.eq(vecref0, name_lit);
-        const nil_ir = try self.builder.lit(Value.nil);
-        const body_ir = try self.builder.ifExpr(vectorp_ir, eq_ir, nil_ir);
+        const type_sym = try self.builder.quoteSym(struct_name);
+        const body_ir = try self.builder.typep(obj_ref, type_sym);
 
         const lambda_ir = try self.builder.lambda(
             &[_][]const u8{"obj"},
@@ -12464,7 +12389,7 @@ pub const Compiler = struct {
         }
 
         // Allocate Class object and compute CPL, then register in class registry
-        const class_obj = try self.allocateClass(heap, name_val, superclasses, slot_specs.items);
+        const class_obj = try self.allocateClass(heap, name_val, superclasses, slot_specs.items, heap.standard_class);
         try heap.putLispClass(name_val, class_obj);
 
         // Build defclass expansion forms with exact pre-counting.
@@ -12501,7 +12426,7 @@ pub const Compiler = struct {
 
         // 2. Predicate: (defun class-name-p (obj) (and (vectorp obj) (eq (aref obj 0) 'class-name)))
         const pred_name = try self.concatStrings(class_name, "-p");
-        defs[def_idx] = try self.generateStructPredicate(heap, pred_name, class_name);
+        defs[def_idx] = try self.generateStructPredicate(pred_name, class_name);
         def_idx += 1;
 
         // Register predicate for occurrence typing (use qualified name to match globals table)
@@ -12513,17 +12438,17 @@ pub const Compiler = struct {
         // 3. Default accessors: (defun class-name-slot (obj) (if (class-name-p obj) (aref obj N+1) (error)))
         for (slot_specs.items, 0..) |spec, i| {
             const accessor_name = try self.concatStrings3(class_name, "-", spec.name);
-            defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, class_name, i);
+            defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, spec.name, class_name);
             def_idx += 1;
             try self.registerStructAccessor(accessor_name, i);
         }
 
         // 4. Default writers: (defun (setf class-name-slot) (val obj) ...)
-        for (slot_specs.items, 0..) |spec, i| {
+        for (slot_specs.items) |spec| {
             const accessor_name = try self.concatStrings3(class_name, "-", spec.name);
             const setf_name = try self.concatStrings("(setf ", accessor_name);
             const setf_full = try self.concatStrings(setf_name, ")");
-            defs[def_idx] = try self.generateStructWriter(heap, setf_full, class_name, i);
+            defs[def_idx] = try self.generateStructWriter(heap, setf_full, spec.name);
             def_idx += 1;
         }
 
@@ -12533,7 +12458,7 @@ pub const Compiler = struct {
                 if (!reader_val.isSymbol()) continue;
                 const reader_sym = reader_val.toPtr(Symbol);
                 const reader_name = reader_sym.getName();
-                defs[def_idx] = try self.generateStructAccessor(heap, reader_name, class_name, i);
+                defs[def_idx] = try self.generateStructAccessor(heap, reader_name, spec.name, class_name);
                 def_idx += 1;
                 var writable_reader = false;
                 for (spec.writers.items) |writer_val| {
@@ -12550,14 +12475,14 @@ pub const Compiler = struct {
         }
 
         // 6. Writers: (defun (setf writer-name) (val obj) (if (class-name-p obj) (setf (aref obj N+1) val) (error)))
-        for (slot_specs.items, 0..) |spec, i| {
+        for (slot_specs.items) |spec| {
             for (spec.writers.items) |writer_val| {
                 if (!writer_val.isSymbol()) continue;
                 const writer_sym = writer_val.toPtr(Symbol);
                 const writer_name = writer_sym.getName();
                 const setf_name = try self.concatStrings("(setf ", writer_name);
                 const setf_full = try self.concatStrings(setf_name, ")");
-                defs[def_idx] = try self.generateStructWriter(heap, setf_full, class_name, i);
+                defs[def_idx] = try self.generateStructWriter(heap, setf_full, spec.name);
                 def_idx += 1;
             }
         }

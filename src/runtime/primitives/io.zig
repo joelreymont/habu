@@ -481,6 +481,14 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
                 try w.writeByte(')');
             }
         },
+        .structure => {
+            const obj = val.toPtr(objects.Structure);
+            if (obj.class.isClass() and obj.class.toPtr(objects.Class).name.isSymbol()) {
+                try w.print("#<structure {s}>", .{obj.class.toPtr(objects.Class).name.toPtr(objects.Symbol).getName()});
+            } else {
+                try w.writeAll("#<structure>");
+            }
+        },
         .hashtable => try w.print("#<hash-table count={d}>", .{val.toPtr(objects.HashTable).count}),
         .rational => {
             const rat = val.toPtr(objects.Rational);
@@ -679,6 +687,14 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
                 }
             }
             try w.writeByte(')');
+        },
+        .structure => {
+            const obj = val.toPtr(objects.Structure);
+            if (obj.class.isClass() and obj.class.toPtr(objects.Class).name.isSymbol()) {
+                try w.print("#<structure {s}>", .{obj.class.toPtr(objects.Class).name.toPtr(objects.Symbol).getName()});
+            } else {
+                try w.writeAll("#<structure>");
+            }
         },
         .hashtable => try w.print("#<hash-table count={d}>", .{val.toPtr(objects.HashTable).count}),
         .rational => {

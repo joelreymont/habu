@@ -529,8 +529,14 @@ pub fn vectorCopy(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value {
 }
 
 /// COPY-STRUCTURE (ANSI CL): shallow copy of a structure object.
-/// Habu represents structures as vectors with a type tag symbol in slot 0.
 pub fn copyStructure(heap: *Heap, val: Value) error{OutOfMemory, Overflow, TypeMismatch}!Value {
+    if (val.isStructure()) {
+        const src = val.toPtr(objects.Structure);
+        const dst_val = try heap.allocStructure(src.class, src.length);
+        const dst = dst_val.toPtr(objects.Structure);
+        @memcpy(dst.slots[0..src.length], src.slots[0..src.length]);
+        return dst_val;
+    }
     if (!val.isVector()) return error.TypeMismatch;
     const src = val.toPtr(objects.Vector);
     if (src.length == 0) return error.TypeMismatch;

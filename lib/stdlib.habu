@@ -6241,19 +6241,23 @@
 
       ; Generate forms
       (list 'progn
-            ; Constructor: (defun make-NAME (&key slot1 slot2 ...) (vector 'NAME slot1 slot2 ...))
+            ; Constructor: (defun make-NAME (&key slot1 slot2 ...) (make-instance 'NAME :slot1 slot1 ...))
             (if constructor-name
                 (list 'defun constructor-name constructor-args
-                      (cons 'vector (cons (list 'quote name) slot-names)))
+                      (cons 'make-instance
+                            (cons (list 'quote name)
+                                  (apply 'append
+                                         (mapcar (lambda (slot)
+                                                   (list (intern (string-upcase (symbol-name slot)) "KEYWORD")
+                                                         slot))
+                                                 slot-names)))))
               nil)
 
-            ; Predicate: (defun NAME-p (obj) (and (vectorp obj) (> (length obj) 0) (eq (svref obj 0) 'NAME)))
+            ; Predicate: (defun NAME-p (obj) (typep obj 'NAME))
             (list 'defun predicate-name '(obj)
-                  (list 'and '(vectorp obj)
-                        (list '> '(length obj) 0)
-                        (list 'eq '(svref obj 0) (list 'quote name))))
+                  (list 'typep 'obj (list 'quote name)))
 
-            ; Accessors: (defun NAME-SLOT (obj) (svref obj N))
+            ; Accessors: (defun NAME-SLOT (obj) (slot-value obj 'slot))
             (cons 'progn
                   (let ((i 1))
                     (mapcar (lambda (slot)
@@ -6263,7 +6267,7 @@
                                     (index i))
                                 (setq i (+ i 1))
                                 (list 'defun accessor-name (list 'obj)
-                                      (list 'svref 'obj index))))
+                                      (list 'slot-value 'obj (list 'quote slot)))))
                             slot-names)))
 
             ; Copier: (defun COPY-NAME (obj) (copy-structure obj))
@@ -6285,7 +6289,7 @@
                                       (list 'fdefinition (list 'quote (list 'setf accessor-name)))
                                       (list 'function
                                             (list 'lambda (list 'val 'obj)
-                                                  (list 'setf (list 'svref 'obj index) 'val))))))
+                                                  (list '%set-slot-value 'obj (list 'quote slot) 'val))))))
                             slot-names)))))))
 
 ;;; ============================================================================

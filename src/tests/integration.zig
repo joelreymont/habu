@@ -6021,9 +6021,9 @@ test "defstruct with character conc-name coerces to string prefix" {
 
     const result = try evalExpr(allocator, &heap, "(progn\n" ++
         "  (defstruct (entry-char-prefix (:conc-name #\\X)) foo)\n" ++
-        "  (let ((x (vector 'entry-char-prefix 7)))\n" ++
+        "  (let ((x (make-entry-char-prefix :foo 7)))\n" ++
         "    (and (fboundp 'xfoo)\n" ++
-        "         (= (xfoo x) 7))))");
+         "         (= (xfoo x) 7))))");
 
     try testing.expect(result.eq(Value.t));
 }

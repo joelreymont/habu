@@ -66,6 +66,7 @@ pub const TypeKind = enum {
     generic_function,
     method,
     native_code,
+    structure,
     macro_env,
 };
 
@@ -258,6 +259,12 @@ pub const Value = packed struct {
         return kind_ptr.* == .slotdef;
     }
 
+    pub inline fn isStructure(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .structure;
+    }
+
     pub inline fn isGenericFunction(self: Value) bool {
         if (!self.isBoxed()) return false;
         const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
@@ -331,6 +338,7 @@ pub const Value = packed struct {
                     .generic_function => .generic_function,
                     .method => .method,
                     .native_code => .native_code,
+                    .structure => .structure,
                     .macro_env => .macro_env,
                 };
             },
@@ -534,6 +542,10 @@ pub const Value = packed struct {
 
     /// Create a native code handle (boxed object)
     pub inline fn makeNativeCode(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
+    pub inline fn makeStructure(ptr: anytype) Value {
         return makePtr(ptr, .boxed);
     }
 

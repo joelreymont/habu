@@ -835,6 +835,7 @@ fn hashValueEqualp(val: Value, depth: usize) u64 {
             for (0..n) |j| h = hashMix(h, hashValueEqualp(data[j], depth + 1));
             break :blk h;
         },
+        .structure => val.raw,
 
         else => hashValue(val),
     };
@@ -927,6 +928,6 @@ pub fn hashValue(val: Value) u64 {
             }
             break :blk h;
         },
-        .closure, .hashtable, .stream, .array, .pathname, .package, .chunk, .condition, .class, .slotdef, .generic_function, .method, .native_code, .macro_env => val.raw,
+        .closure, .hashtable, .stream, .array, .pathname, .package, .chunk, .condition, .class, .slotdef, .generic_function, .method, .native_code, .structure, .macro_env => val.raw,
     };
 }

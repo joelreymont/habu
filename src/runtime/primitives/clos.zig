@@ -15,9 +15,44 @@ fn lookupClassMetadata(heap: *Heap, class_val: Value) !?[]const Value {
     return try heap.lookupClassMetadata(class_val);
 }
 
+fn unquoteSymbol(val: Value) !Value {
+    if (!val.isCons()) return val;
+    const quote_cons = val.toPtr(Cons);
+    if (!quote_cons.cdr.isCons()) return error.InvalidArgument;
+    return quote_cons.cdr.toPtr(Cons).car;
+}
+
+const SlotView = struct {
+    class: Value,
+    slots: []Value,
+};
+
+fn getSlotView(heap: *Heap, obj: Value) !SlotView {
+    if (obj.isStructure()) {
+        const st = obj.toPtr(objects.Structure);
+        return .{ .class = st.class, .slots = st.slots[0..st.length] };
+    }
+    if (obj.isVector()) {
+        const vec = obj.toPtr(Vector);
+        if (vec.length == 0) return error.InvalidArgument;
+        const class_name = vec.data[0];
+        if (!class_name.isSymbol()) return error.InvalidArgument;
+        const class_val = heap.findLispClass(class_name) orelse return error.InvalidArgument;
+        return .{ .class = class_val, .slots = vec.data[1..vec.length] };
+    }
+    return error.InvalidArgument;
+}
+
+fn findSlotIndex(heap: *Heap, class_val: Value, slot_name: Value) !usize {
+    const slot_names = if (try lookupClassMetadata(heap, class_val)) |names| names else return error.InvalidArgument;
+    for (slot_names, 0..) |name, idx| {
+        if (name.eq(slot_name)) return idx;
+    }
+    return error.InvalidArgument;
+}
+
 /// make-instance: (make-instance 'class-name :slot1 val1 :slot2 val2 ...)
-/// Creates an instance of a class by allocating a vector #('class-name slot1-val slot2-val ...)
-/// For now, this is a simplified version that requires slots to be provided in definition order
+/// Creates an instance of a class using class metadata order.
 pub fn makeInstance(heap: *Heap, args: Value) !Value {
     // Parse: ('class-name :slot1 val1 :slot2 val2 ...)
     if (!args.isCons()) return error.InvalidArgument;
@@ -25,18 +60,15 @@ pub fn makeInstance(heap: *Heap, args: Value) !Value {
     const class_name_val = cons1.car;
 
     // Class name should be a quoted symbol or symbol
-    const class_name = if (class_name_val.isCons()) blk: {
-        const quote_cons = class_name_val.toPtr(Cons);
-        if (!quote_cons.cdr.isCons()) return error.InvalidArgument;
-        const cdr_cons = quote_cons.cdr.toPtr(Cons);
-        break :blk cdr_cons.car;
-    } else class_name_val;
+    const class_name = try unquoteSymbol(class_name_val);
 
     if (!class_name.isSymbol()) return error.InvalidArgument;
+    const class_val = heap.findLispClass(class_name) orelse return error.InvalidArgument;
+    const slot_names = if (try lookupClassMetadata(heap, class_val)) |names| names else return error.InvalidArgument;
 
-    // Collect keyword arguments into a list
-    var slot_values = std.ArrayList(Value){};
-    defer slot_values.deinit(heap.backing_allocator);
+    const slot_values = try heap.backing_allocator.alloc(Value, slot_names.len);
+    defer heap.backing_allocator.free(slot_values);
+    for (slot_values) |*slot| slot.* = Value.unbound;
 
     var rest = cons1.cdr;
     while (rest.isCons()) {
@@ -51,21 +83,28 @@ pub fn makeInstance(heap: *Heap, args: Value) !Value {
         const val_cons = kw_cons.cdr.toPtr(Cons);
         const val = val_cons.car;
 
-        try slot_values.append(heap.backing_allocator, val);
+        const idx = blk: {
+            const kw_name = kw.toPtr(Keyword).getName();
+            for (slot_names, 0..) |slot_name, i| {
+                if (std.ascii.eqlIgnoreCase(slot_name.getSymbolName(), kw_name)) break :blk i;
+            }
+            return error.InvalidArgument;
+        };
+        slot_values[idx] = val;
         rest = val_cons.cdr;
     }
 
-    // Create vector: #('class-name slot1-val slot2-val ...)
-    const vec_size = 1 + slot_values.items.len;
-    const vec_val = try heap.allocVector(vec_size, vec_size);
-    const vec = vec_val.toPtr(Vector);
-    vec.data[0] = class_name;
-    for (slot_values.items, 0..) |val, i| {
-        vec.data[1 + i] = val;
+    if (class_val.toPtr(Class).metaclass.eq(heap.structure_class)) {
+        const st_val = try heap.allocStructure(class_val, slot_names.len);
+        const st = st_val.toPtr(objects.Structure);
+        for (slot_values, 0..) |val, i| st.slots[i] = val;
+        return st_val;
     }
 
-    // Call initialize-instance if available
-    // For now, just return the instance - initialize-instance hook will be added via generic functions
+    const vec_val = try heap.allocVector(1 + slot_names.len, 1 + slot_names.len);
+    const vec = vec_val.toPtr(Vector);
+    vec.data[0] = class_name;
+    for (slot_values, 0..) |val, i| vec.data[1 + i] = val;
     return vec_val;
 }
 
@@ -81,40 +120,15 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
 
     if (!cons1.cdr.isCons()) return error.InvalidArgument;
     const cons2 = cons1.cdr.toPtr(Cons);
-    var slot_name_val = cons2.car;
-
-    // Handle quoted symbol: 'name -> name
-    if (slot_name_val.isCons()) {
-        const quote_cons = slot_name_val.toPtr(Cons);
-        if (!quote_cons.cdr.isCons()) return error.InvalidArgument;
-        const cdr_cons = quote_cons.cdr.toPtr(Cons);
-        slot_name_val = cdr_cons.car;
-    }
+    const slot_name_val = try unquoteSymbol(cons2.car);
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_name = slot_name_val;
-
-    // Instance format: #(class-name slot1-val slot2-val ...)
-    const vec = obj.toPtr(Vector);
-    if (vec.length == 0) return error.InvalidArgument;
-
-    const class_name_val = vec.data[0];
-    if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_names = if (try lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
-
-    for (slot_names, 0..) |name, idx| {
-        if (name.eq(slot_name)) {
-            // Slot index in vector is idx+1 (since data[0] is class name)
-            const vec_idx = idx + 1;
-            if (vec_idx >= vec.length) return error.InvalidArgument;
-            const val = vec.data[vec_idx];
-            if (val.isUnbound()) return error.UnboundSlot;
-            return val;
-        }
-    }
-
-    // Slot not found
-    return error.InvalidArgument;
+    const view = try getSlotView(heap, obj);
+    const idx = try findSlotIndex(heap, view.class, slot_name_val);
+    if (idx >= view.slots.len) return error.InvalidArgument;
+    const val = view.slots[idx];
+    if (val.isUnbound()) return error.UnboundSlot;
+    return val;
 }
 
 /// (setf (slot-value obj 'slot) value)
@@ -129,45 +143,21 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
 
     if (!cons1.cdr.isCons()) return error.InvalidArgument;
     const cons2 = cons1.cdr.toPtr(Cons);
-    var slot_name_val = cons2.car;
-
-    // Handle quoted symbol: 'name -> name
-    if (slot_name_val.isCons()) {
-        const quote_cons = slot_name_val.toPtr(Cons);
-        if (!quote_cons.cdr.isCons()) return error.InvalidArgument;
-        const cdr_cons = quote_cons.cdr.toPtr(Cons);
-        slot_name_val = cdr_cons.car;
-    }
+    const slot_name_val = try unquoteSymbol(cons2.car);
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_name = slot_name_val;
 
     // Get the value to set
     if (!cons2.cdr.isCons()) return error.InvalidArgument;
     const cons3 = cons2.cdr.toPtr(Cons);
     const new_value = cons3.car;
 
-    // Instance format: #(class-name slot1-val slot2-val ...)
-    const vec = obj.toPtr(Vector);
-    if (vec.length == 0) return error.InvalidArgument;
-
-    const class_name_val = vec.data[0];
-    if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_names = if (try lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
-
-    for (slot_names, 0..) |name, idx| {
-        if (name.eq(slot_name)) {
-            // Slot index in vector is idx+1 (since data[0] is class name)
-            const vec_idx = idx + 1;
-            if (vec_idx >= vec.length) return error.InvalidArgument;
-            vec.data[vec_idx] = new_value;
-            heap.writeBarrier(obj, new_value);
-            return new_value;
-        }
-    }
-
-    // Slot not found
-    return error.InvalidArgument;
+    const view = try getSlotView(heap, obj);
+    const idx = try findSlotIndex(heap, view.class, slot_name_val);
+    if (idx >= view.slots.len) return error.InvalidArgument;
+    view.slots[idx] = new_value;
+    heap.writeBarrier(obj, new_value);
+    return new_value;
 }
 
 /// class-of: (class-of obj)
@@ -194,6 +184,9 @@ pub fn classOf(heap: *Heap, args: Value) !Value {
     if (obj.isSlotDefinition()) {
         const type_sym = (try heap.internInPackage("CL", "slot-definition")) orelse return error.InvalidArgument;
         return heap.findLispClass(type_sym) orelse error.InvalidArgument;
+    }
+    if (obj.isStructure()) {
+        return obj.toPtr(objects.Structure).class;
     }
 
     // Built-in types: lookup class from registry
@@ -229,6 +222,7 @@ pub fn classOf(heap: *Heap, args: Value) !Value {
         .package => "package",
         .chunk => "chunk",
         .native_code => "chunk",
+        .structure => unreachable,
         .condition => "condition",
         .slotdef => "slot-definition",
         .generic_function => unreachable, // handled above
@@ -247,36 +241,15 @@ pub fn slotExistsP(heap: *Heap, args: Value) !Value {
     const cons1 = args.toPtr(Cons);
     const obj = cons1.car;
 
-    if (!obj.isVector()) return Value.nil;
+    if (!obj.isVector() and !obj.isStructure()) return Value.nil;
 
     if (!cons1.cdr.isCons()) return error.InvalidArgument;
     const cons2 = cons1.cdr.toPtr(Cons);
-    var slot_name_val = cons2.car;
-
-    if (slot_name_val.isCons()) {
-        const quote_cons = slot_name_val.toPtr(Cons);
-        if (!quote_cons.cdr.isCons()) return error.InvalidArgument;
-        const cdr_cons = quote_cons.cdr.toPtr(Cons);
-        slot_name_val = cdr_cons.car;
-    }
+    const slot_name_val = try unquoteSymbol(cons2.car);
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_name = slot_name_val;
-
-    const vec = obj.toPtr(Vector);
-    if (vec.length == 0) return Value.nil;
-
-    const class_name_val = vec.data[0];
-    if (!class_name_val.isSymbol()) return Value.nil;
-    const slot_names = (try lookupClassMetadata(heap, class_name_val)) orelse return Value.nil;
-
-    for (slot_names) |name| {
-        if (name.eq(slot_name)) {
-            return Value.t;
-        }
-    }
-
-    return Value.nil;
+    _ = findSlotIndex(heap, (try getSlotView(heap, obj)).class, slot_name_val) catch return Value.nil;
+    return Value.t;
 }
 
 /// slot-boundp: (slot-boundp obj 'slot-name)
@@ -286,43 +259,17 @@ pub fn slotBoundp(heap: *Heap, args: Value) !Value {
     const cons1 = args.toPtr(Cons);
     const obj = cons1.car;
 
-    if (!obj.isVector()) return error.InvalidArgument;
+    if (!obj.isVector() and !obj.isStructure()) return error.InvalidArgument;
 
     if (!cons1.cdr.isCons()) return error.InvalidArgument;
     const cons2 = cons1.cdr.toPtr(Cons);
-    var slot_name_val = cons2.car;
-
-    if (slot_name_val.isCons()) {
-        const quote_cons = slot_name_val.toPtr(Cons);
-        if (!quote_cons.cdr.isCons()) return error.InvalidArgument;
-        const cdr_cons = quote_cons.cdr.toPtr(Cons);
-        slot_name_val = cdr_cons.car;
-    }
+    const slot_name_val = try unquoteSymbol(cons2.car);
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_name = slot_name_val;
-
-    const vec = obj.toPtr(Vector);
-    if (vec.length == 0) return error.InvalidArgument;
-
-    const class_name_val = vec.data[0];
-    if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_names = if (try lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
-
-    for (slot_names, 0..) |name, idx| {
-        if (name.eq(slot_name)) {
-            const vec_idx = idx + 1;
-            if (vec_idx >= vec.length) return error.InvalidArgument;
-            const val = vec.data[vec_idx];
-            if (val.isUnbound()) {
-                return Value.nil;
-            } else {
-                return Value.t;
-            }
-        }
-    }
-
-    return error.InvalidArgument;
+    const view = try getSlotView(heap, obj);
+    const idx = try findSlotIndex(heap, view.class, slot_name_val);
+    if (idx >= view.slots.len) return error.InvalidArgument;
+    return if (view.slots[idx].isUnbound()) Value.nil else Value.t;
 }
 
 /// slot-makunbound: (slot-makunbound obj 'slot-name)
@@ -332,40 +279,19 @@ pub fn slotMakunbound(heap: *Heap, args: Value) !Value {
     const cons1 = args.toPtr(Cons);
     const obj = cons1.car;
 
-    if (!obj.isVector()) return error.InvalidArgument;
+    if (!obj.isVector() and !obj.isStructure()) return error.InvalidArgument;
 
     if (!cons1.cdr.isCons()) return error.InvalidArgument;
     const cons2 = cons1.cdr.toPtr(Cons);
-    var slot_name_val = cons2.car;
-
-    if (slot_name_val.isCons()) {
-        const quote_cons = slot_name_val.toPtr(Cons);
-        if (!quote_cons.cdr.isCons()) return error.InvalidArgument;
-        const cdr_cons = quote_cons.cdr.toPtr(Cons);
-        slot_name_val = cdr_cons.car;
-    }
+    const slot_name_val = try unquoteSymbol(cons2.car);
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_name = slot_name_val;
-
-    const vec = obj.toPtr(Vector);
-    if (vec.length == 0) return error.InvalidArgument;
-
-    const class_name_val = vec.data[0];
-    if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_names = if (try lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
-
-    for (slot_names, 0..) |name, idx| {
-        if (name.eq(slot_name)) {
-            const vec_idx = idx + 1;
-            if (vec_idx >= vec.length) return error.InvalidArgument;
-            vec.data[vec_idx] = Value.unbound;
-            heap.writeBarrier(obj, Value.unbound);
-            return obj;
-        }
-    }
-
-    return error.InvalidArgument;
+    const view = try getSlotView(heap, obj);
+    const idx = try findSlotIndex(heap, view.class, slot_name_val);
+    if (idx >= view.slots.len) return error.InvalidArgument;
+    view.slots[idx] = Value.unbound;
+    heap.writeBarrier(obj, Value.unbound);
+    return obj;
 }
 
 /// call-next-method: (call-next-method &rest args)

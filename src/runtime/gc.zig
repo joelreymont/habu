@@ -1314,6 +1314,7 @@ pub const GC = struct {
             .slotdef,
             .generic_function,
             .method,
+            .structure,
             .macro_env,
             .chunk,
             => true,
@@ -1992,6 +1993,11 @@ pub const GC = struct {
                         const old_ptr = @intFromPtr(s32.data);
                         s32.data = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
                     },
+                    .structure => {
+                        const obj: *objects.Structure = @ptrFromInt(new_addr);
+                        const old_ptr = @intFromPtr(obj.slots);
+                        obj.slots = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
+                    },
                     .hashtable, .rational, .complex, .stream, .bignum, .pathname, .package, .condition, .class, .slotdef, .generic_function, .method, .native_code, .macro_env => {
                         // No interior pointers to repair
                     },
@@ -2275,6 +2281,17 @@ pub const GC = struct {
                             cls.metaclass = try self.copyValue(heap, cls.metaclass, alloc_ptr);
                         }
                         for (cls.shared_slots[0..cls.num_shared]) |*slot_val| {
+                            if (slot_val.isPointer() and !slot_val.isNil()) {
+                                slot_val.* = try self.copyValue(heap, slot_val.*, alloc_ptr);
+                            }
+                        }
+                    },
+                    .structure => {
+                        const obj: *objects.Structure = @ptrFromInt(addr);
+                        if (obj.class.isPointer() and !obj.class.isNil()) {
+                            obj.class = try self.copyValue(heap, obj.class, alloc_ptr);
+                        }
+                        for (obj.slots[0..obj.length]) |*slot_val| {
                             if (slot_val.isPointer() and !slot_val.isNil()) {
                                 slot_val.* = try self.copyValue(heap, slot_val.*, alloc_ptr);
                             }

@@ -2027,6 +2027,7 @@ pub const Heap = struct {
         if (T == objects.Pathname) return .pathname;
         if (T == objects.Condition) return .condition;
         if (T == objects.NativeCode) return .native_code;
+        if (T == objects.Structure) return .other;
         if (T == objects.Rational) return .rational;
         if (T == objects.Complex) return .complex;
         if (T == objects.Bignum) return .bignum;
@@ -2102,6 +2103,7 @@ pub const Heap = struct {
             .chunk => .chunk,
             .condition => .condition,
             .native_code => .native_code,
+            .structure => .other,
             .macro_env => .macro_env,
             else => .other,
         };
@@ -3082,6 +3084,35 @@ pub const Heap = struct {
         return Value.makeNativeCode(nc);
     }
 
+    pub fn allocStructure(self: *Heap, class: Value, length: usize) error{ OutOfMemory, Overflow }!Value {
+        const slots_size = try std.math.mul(usize, length, @sizeOf(Value));
+        const total_size = try std.math.add(usize, @sizeOf(objects.Structure), slots_size);
+
+        const aligned_size = std.mem.alignForward(usize, total_size, ALIGNMENT);
+        const use_los = self.shouldAllocLos(aligned_size);
+        const ptr = if (use_los) try self.allocLosRaw(aligned_size) else try self.allocRaw(total_size);
+        const obj: *objects.Structure = @ptrCast(@alignCast(ptr));
+        const slots_ptr: [*]Value = @ptrCast(@alignCast(ptr + @sizeOf(objects.Structure)));
+
+        for (0..length) |i| slots_ptr[i] = Value.unbound;
+
+        obj.* = .{
+            .kind = .structure,
+            .class = class,
+            .length = length,
+            .slots = slots_ptr,
+        };
+
+        if (use_los) {
+            const owner_addr = @intFromPtr(ptr);
+            try self.recordLosObject(owner_addr, .boxed, aligned_size);
+            self.markCardForOwnerAddr(owner_addr);
+        }
+        self.noteAllocSample(.other, aligned_size);
+
+        return Value.makeStructure(obj);
+    }
+
     fn nextSymUidBits(self: *Heap) error{OutOfMemory}!u64 {
         const uid = self.sym_uid_counter;
         if (uid == 0 or uid > (std.math.maxInt(u64) >> 1)) return error.OutOfMemory;
@@ -3287,10 +3318,14 @@ pub const Heap = struct {
     }
 
     pub fn lookupClassMetadata(self: *Heap, class_name: Value) error{ OutOfMemory, Overflow }!?[]const Value {
-        if (!class_name.isSymbol()) return null;
-        const sym = class_name.toPtr(objects.Symbol);
-        const sym_name = sym.getName();
-        if (self.symbolHomePkg(sym)) |pkg| {
+        const sym = if (class_name.isClass())
+            class_name.toPtr(objects.Class).name
+        else
+            class_name;
+        if (!sym.isSymbol()) return null;
+        const sym_obj = sym.toPtr(objects.Symbol);
+        const sym_name = sym_obj.getName();
+        if (self.symbolHomePkg(sym_obj)) |pkg| {
             var qual_buf: [256]u8 = undefined;
             const qual = try self.makeClassMetadataKey(&qual_buf, pkg.name, sym_name);
             defer if (qual.owned) self.backing_allocator.free(qual.name);

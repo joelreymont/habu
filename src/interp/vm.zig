@@ -10963,6 +10963,7 @@ pub const Vm = struct {
             .cons => try self.formatListAesthetic(val, result),
             .closure => try result.appendSlice(self.allocator, "#<closure>"),
             .vector => try result.appendSlice(self.allocator, "#<vector>"),
+            .structure => try result.appendSlice(self.allocator, "#<structure>"),
             .hashtable => try result.appendSlice(self.allocator, "#<hash-table>"),
             .rational => {
                 const rat = val.toPtr(runtime.Rational);

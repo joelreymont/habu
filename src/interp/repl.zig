@@ -545,6 +545,15 @@ pub const Repl = struct {
                     .generic_function => within(addr, @sizeOf(runtime.objects.GenericFunction), end),
                     .method => within(addr, @sizeOf(runtime.objects.Method), end),
                     .native_code => within(addr, @sizeOf(runtime.NativeCode), end),
+                    .structure => blk: {
+                        if (!within(addr, @sizeOf(runtime.objects.Structure), end)) break :blk false;
+                        const obj = val.toPtr(runtime.objects.Structure);
+                        const data_size = std.math.mul(usize, @intCast(obj.length), @sizeOf(Value)) catch break :blk false;
+                        const data_start = std.math.add(usize, addr, @sizeOf(runtime.objects.Structure)) catch break :blk false;
+                        const data_end = std.math.add(usize, data_start, data_size) catch break :blk false;
+                        if (data_end > end) break :blk false;
+                        break :blk @intFromPtr(obj.slots) == data_start;
+                    },
                     .macro_env => within(addr, @sizeOf(runtime.MacroEnv), end),
                 };
             },
@@ -3471,6 +3480,7 @@ pub const Repl = struct {
             },
             .closure => try writer.writeAll("#<closure>"),
             .vector => try self.printVector(val, writer),
+            .structure => try writer.writeAll("#<structure>"),
             .hashtable => try writer.print("#<hash-table count={d}>", .{val.toPtr(runtime.HashTable).count}),
             .rational => {
                 const rat = val.toPtr(runtime.Rational);
