@@ -947,7 +947,7 @@ pub const Repl = struct {
 
         const result = if (vm.isExecuting()) blk: {
             const chunk_val = Value.makeChunk(chunk_ptr);
-            const closure = try self.heap.allocClosure(chunk_val, chunk_ptr.arity, &[_]Value{});
+            const closure = try vm.allocClosureWithGC(chunk_val, chunk_ptr.arity, &[_]Value{});
             const call_base = vm.sp;
             break :blk vm.callFromStackAt(call_base, closure, &[_]Value{}) catch |run_err| {
                 const gc_after = self.heap.stats.gc_count;
@@ -1801,7 +1801,7 @@ pub const Repl = struct {
         // the caller VM's stack/locals across GC while evaluating runtime EVAL.
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         try patchChunkIndices(chunk_ptr, chunk_base);
-        const closure = try self.heap.allocClosure(chunk, chunk_ptr.arity, &[_]Value{});
+        const closure = try source_vm.allocClosureWithGC(chunk, chunk_ptr.arity, &[_]Value{});
         return try source_vm.callFromStackAt(source_vm.sp, closure, &[_]Value{});
     }
 
@@ -5840,6 +5840,34 @@ test "repl chunk pool survives GC between evals" {
     const result = try repl.eval("(f)");
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "nested eval keeps transient chunk rooted across GC" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 2 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval(
+        "(defun hold-and-eval (n acc)\n" ++
+            "  (if (= n 0)\n" ++
+            "      (eval '(+ 20 22))\n" ++
+            "      (hold-and-eval (- n 1) (cons n acc))))",
+    );
+
+    const result1 = try repl.eval("(hold-and-eval 2000 nil)");
+    try testing.expect(result1.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result1.toFixnum());
+
+    const result2 = try repl.eval("(hold-and-eval 2000 nil)");
+    try testing.expect(result2.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result2.toFixnum());
 }
 
 test "handler-case catches type-error from symbol-package" {

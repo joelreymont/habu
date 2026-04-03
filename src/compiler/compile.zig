@@ -4135,7 +4135,7 @@ pub const Compiler = struct {
         }
 
         const chunk_ptr = macro_roots.items[root_chunk_idx].toPtr(Chunk);
-        const compile_closure = try heap.allocClosure(
+        const compile_closure = try vm.allocClosureWithGC(
             macro_roots.items[root_chunk_idx],
             chunk_ptr.arity,
             &[_]Value{},
@@ -10292,7 +10292,7 @@ pub const Compiler = struct {
         }
 
         const chunk_ptr = chunk_val.toPtr(Chunk);
-        const thunk_factory = try heap.allocClosure(chunk_val, chunk_ptr.arity, &[_]Value{});
+        const thunk_factory = try vm.allocClosureWithGC(chunk_val, chunk_ptr.arity, &[_]Value{});
         const thunk_val = try vm.callFromStackAt(vm.sp, thunk_factory, &[_]Value{});
         if (!thunk_val.isClosure()) return error.InvalidSyntax;
         const result = try vm.callFromStackAt(vm.sp, thunk_val, &[_]Value{});

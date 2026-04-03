@@ -128,7 +128,7 @@ pub const Expander = struct {
 
         // Execute to get closure and call it without clobbering active VM frames.
         const chunk_ptr = chunk_val.toPtr(Chunk);
-        const closure_val = try self.heap.allocClosure(chunk_val, chunk_ptr.arity, &[_]Value{});
+        const closure_val = try vm.allocClosureWithGC(chunk_val, chunk_ptr.arity, &[_]Value{});
 
         var call_args = std.ArrayList(Value){};
         defer call_args.deinit(self.allocator);

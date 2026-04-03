@@ -1,9 +1,11 @@
 ---
 title: Make long loads GC-stable
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.128585+02:00"
+created-at: "\"2026-04-01T22:06:02.128585+02:00\""
+closed-at: "2026-04-03T10:13:00.320824+02:00"
+close-reason: done (zig build ok; zig build test unchanged 5-error baseline; direct habu probe blocked by pre-existing stdlib bootstrap UnboundSymbol)
 blocks:
   - habu-remove-whole-file-4f7c968a
 ---
