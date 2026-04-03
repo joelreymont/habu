@@ -1498,14 +1498,14 @@ pub const Repl = struct {
     fn tryAutoloadFunctionSymbol(self: *Repl, sym: Value) !bool {
         const live_sym = self.vm.resolveForwardedValue(sym);
         if (!live_sym.isSymbol()) return false;
+        const sym_ptr = live_sym.toPtr(Symbol);
+        const home_pkg = self.heap.symbolHomePkg(sym_ptr) orelse return false;
 
-        const autoload_key = (try self.heap.lookupInPackage("MAXIMA", "AUTOLOAD")) orelse return false;
+        const autoload_key = home_pkg.findAccessibleUpper("AUTOLOAD") orelse return false;
+        const load_function_sym = home_pkg.findAccessibleUpper("LOAD-FUNCTION") orelse return false;
         const target_sym = live_sym;
         var autoload_val = try primitives.list.get(self.heap, target_sym, autoload_key);
-
         if (autoload_val.isNil()) return false;
-
-        const load_function_sym = (try self.heap.lookupInPackage("MAXIMA", "LOAD-FUNCTION")) orelse return false;
         const builtins = self.compiler.builtins orelse return false;
         const quote_form = try self.listFromSlice(&[_]Value{ builtins.quote, target_sym });
         const form = try self.listFromSlice(&[_]Value{ load_function_sym, quote_form, Value.nil });
@@ -5057,6 +5057,41 @@ test "lookupCallableFunction uses exact package-qualified global" {
     const second = try repl.lookupCallableFunction(sym);
     try testing.expect(second != null);
     try testing.expect(second.?.eq(fn_val));
+}
+
+test "function resolver autoload is package-generic" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try repl.loadFile("lib/stdlib.habu", std.io.null_writer);
+
+    _ = try repl.eval("(defpackage \"AUTO-PKG\" (:use \"COMMON-LISP\") (:export \"AUTO-TARGET\"))");
+    _ = try repl.eval("(in-package \"AUTO-PKG\")");
+    _ = try repl.eval(
+        "(defun load-function (fn mexprp) " ++
+            "(declare (ignore mexprp)) " ++
+            "(setf (symbol-function fn) (lambda () 42)) " ++
+            "t)",
+    );
+    _ = try repl.eval("(setf (get 'auto-target 'autoload) '(\"auto-pkg-loader\"))");
+    _ = try repl.eval("(in-package \"CL-USER\")");
+
+    const sym = (try repl.heap.lookupInPackage("AUTO-PKG", "AUTO-TARGET")) orelse return error.TestUnexpectedResult;
+    try testing.expect(try repl.lookupCallableFunction(sym) == null);
+
+    const resolved = try Repl.functionResolveCallback(sym, @ptrCast(&repl));
+    try testing.expect(resolved != null);
+    try testing.expect(Repl.isCallableValue(resolved.?));
+
+    const result = try repl.eval("(auto-pkg:auto-target)");
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
 test "eval parse error sets error info" {

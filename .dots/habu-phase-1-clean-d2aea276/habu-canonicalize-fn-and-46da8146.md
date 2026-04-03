@@ -1,9 +1,11 @@
 ---
 title: Canonicalize function and macro lookup
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.116387+02:00"
+created-at: "\"2026-04-01T22:06:02.116387+02:00\""
+closed-at: "2026-04-03T10:06:30.486164+02:00"
+close-reason: done (zig build; zig build test back to known 5-error baseline; no MAXIMA autoload special case remains in repl resolver)
 blocks:
   - habu-canonicalize-loader-specials-4fcbd54f
 ---
