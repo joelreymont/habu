@@ -4241,6 +4241,48 @@ test "nested unwind-protect" {
     try testing.expectEqual(@as(i64, 100), result.toFixnum());
 }
 
+test "unwind-protect cleanup can override protected return-from" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(block done
+        \\  (unwind-protect
+        \\      (return-from done 1)
+        \\    (return-from done 2)))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 2), result.toFixnum());
+}
+
+test "unwind-protect cleanup same-name block does not retarget return-from" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(block done
+        \\  (unwind-protect
+        \\      (return-from done 11)
+        \\    (block done 22)))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 11), result.toFixnum());
+}
+
 // NOTE: Error handling in unwind-protect is not yet fully implemented
 // The VM needs to be enhanced to run cleanup forms when errors occur
 // See: src/interp/vm.zig - doError function needs to check unwind stack

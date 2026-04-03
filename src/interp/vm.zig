@@ -292,7 +292,7 @@ pub const State = struct {
     jit_gc_forbidden_depth: usize,
     pending_error: ?anyerror,
     is_unwinding: bool,
-    pending_block_name: Value,
+    pending_block_idx: ?usize,
     pending_block_value: Value,
     is_returning_from_block: bool,
     secondary_values_count: usize,
@@ -326,7 +326,7 @@ pub const State = struct {
             .jit_gc_forbidden_depth = vm.jit_gc_forbidden_depth,
             .pending_error = vm.pending_error,
             .is_unwinding = vm.is_unwinding,
-            .pending_block_name = vm.pending_block_name,
+            .pending_block_idx = vm.pending_block_idx,
             .pending_block_value = vm.pending_block_value,
             .is_returning_from_block = vm.is_returning_from_block,
             .secondary_values_count = vm.secondary_values_count,
@@ -361,7 +361,7 @@ pub const State = struct {
         vm.jit_gc_forbidden_depth = self.jit_gc_forbidden_depth;
         vm.pending_error = self.pending_error;
         vm.is_unwinding = self.is_unwinding;
-        vm.pending_block_name = self.pending_block_name;
+        vm.pending_block_idx = self.pending_block_idx;
         vm.pending_block_value = self.pending_block_value;
         vm.is_returning_from_block = self.is_returning_from_block;
         vm.secondary_values_count = self.secondary_values_count;
@@ -787,7 +787,7 @@ pub const Vm = struct {
     last_error_value: Value,
 
     /// Saved return-from state for unwinding through unwind-protect
-    pending_block_name: Value,
+    pending_block_idx: ?usize,
     pending_block_value: Value,
     is_returning_from_block: bool,
     
@@ -1287,7 +1287,7 @@ pub const Vm = struct {
             .pending_error = null,
             .is_unwinding = false,
             .last_error_value = Value.nil,
-            .pending_block_name = Value.nil,
+            .pending_block_idx = null,
             .pending_block_value = Value.nil,
             .is_returning_from_block = false,
             .prng = std.Random.DefaultPrng.init(0),
@@ -2795,7 +2795,6 @@ pub const Vm = struct {
 
         self.gc_slots.appendAssumeCapacity(&self.pending_throw_tag);
         self.gc_slots.appendAssumeCapacity(&self.pending_throw_value);
-        self.gc_slots.appendAssumeCapacity(&self.pending_block_name);
         self.gc_slots.appendAssumeCapacity(&self.pending_block_value);
         var uninterned_it = self.uninterned_values.valueIterator();
         while (uninterned_it.next()) |slot| {
@@ -6243,12 +6242,13 @@ pub const Vm = struct {
                 } else if (self.is_returning_from_block) {
                     self.is_returning_from_block = false;
 
-                    const name_raw = self.pending_block_name;
+                    const block_idx = self.pending_block_idx orelse return error.NoMatchingBlock;
                     const value = self.pending_block_value;
-                    self.pending_block_name = Value.nil;
+                    self.pending_block_idx = null;
                     self.pending_block_value = Value.nil;
 
-                    try self.doReturnFrom(name_raw, value);
+                    if (block_idx >= self.block_sp) return error.NoMatchingBlock;
+                    try self.jumpToBlock(block_idx, value);
                 }
             },
 
@@ -8679,6 +8679,11 @@ pub const Vm = struct {
     }
 
     fn doThrow(self: *Vm, tag: Value, value: Value) Error!void {
+        self.pending_error = null;
+        self.is_unwinding = false;
+        self.pending_block_idx = null;
+        self.pending_block_value = Value.nil;
+        self.is_returning_from_block = false;
         const trace_throw = self.trace_throw;
         if (trace_throw) {
             std.debug.print(
@@ -9084,6 +9089,13 @@ pub const Vm = struct {
     /// Jump to a block frame by index, restoring all state.
     fn jumpToBlock(self: *Vm, bi: usize, value: Value) Error!void {
         const frame = self.block_stack[bi];
+        self.pending_error = null;
+        self.is_unwinding = false;
+        self.pending_throw_tag = Value.nil;
+        self.pending_throw_value = Value.nil;
+        self.pending_block_idx = null;
+        self.pending_block_value = Value.nil;
+        self.is_returning_from_block = false;
         self.block_sp = bi;
         try self.restoreControlDepths(
             frame.catch_depth,
@@ -9105,6 +9117,13 @@ pub const Vm = struct {
     }
 
     fn doReturnFrom(self: *Vm, name_raw: Value, value: Value) Error!void {
+        self.pending_error = null;
+        self.is_unwinding = false;
+        self.pending_throw_tag = Value.nil;
+        self.pending_throw_value = Value.nil;
+        self.pending_block_idx = null;
+        self.pending_block_value = Value.nil;
+        self.is_returning_from_block = false;
         // Search for matching block frame first
         var target_block: ?usize = null;
         {
@@ -9143,7 +9162,7 @@ pub const Vm = struct {
                 self.unwind_sp -= 1;
                 const unwind_frame = self.unwind_stack[current_unwind];
 
-                self.pending_block_name = name_raw;
+                self.pending_block_idx = bi;
                 self.pending_block_value = value;
                 self.is_returning_from_block = true;
 
@@ -9466,6 +9485,13 @@ pub const Vm = struct {
     fn doInvokeRestart(self: *Vm, designator: Value, value: Value) Error!void {
         const idx = (try self.findRestartIndex(designator)) orelse return error.RestartNotFound;
         const frame = self.restart_stack[idx];
+        self.pending_error = null;
+        self.is_unwinding = false;
+        self.pending_throw_tag = Value.nil;
+        self.pending_throw_value = Value.nil;
+        self.pending_block_idx = null;
+        self.pending_block_value = Value.nil;
+        self.is_returning_from_block = false;
 
         if (frame.block_depth > MAX_BLOCKS) {
             return self.invalidOpcode("invoke-restart.block-depth-corrupt");
@@ -15578,13 +15604,12 @@ test "vm collectGarbage roots slot-tracked values" {
 
     const a = try heap.allocCons(Value.makeFixnum(1), Value.nil);
     const b = try heap.allocCons(Value.makeFixnum(2), Value.nil);
-    const c = try heap.allocCons(Value.makeFixnum(3), Value.nil);
     const d = try heap.allocCons(Value.makeFixnum(4), Value.nil);
     const h = try heap.allocCons(Value.makeFixnum(8), Value.nil);
 
     vm.pending_throw_tag = a;
     vm.pending_throw_value = b;
-    vm.pending_block_name = c;
+    vm.pending_block_idx = 7;
     vm.pending_block_value = d;
     vm.handler_stack[0] = .{
         .condition_type = h,
@@ -15599,7 +15624,6 @@ test "vm collectGarbage roots slot-tracked values" {
 
     const raw_a = a.raw;
     const raw_b = b.raw;
-    const raw_c = c.raw;
     const raw_d = d.raw;
     const raw_h = h.raw;
 
@@ -15611,7 +15635,6 @@ test "vm collectGarbage roots slot-tracked values" {
     const vals = [_]Value{
         vm.pending_throw_tag,
         vm.pending_throw_value,
-        vm.pending_block_name,
         vm.pending_block_value,
         vm.handler_stack[0].condition_type,
         vm.handler_stack[0].handler_fn,
@@ -15625,7 +15648,7 @@ test "vm collectGarbage roots slot-tracked values" {
 
     try testing.expect(vm.pending_throw_tag.raw != raw_a);
     try testing.expect(vm.pending_throw_value.raw != raw_b);
-    try testing.expect(vm.pending_block_name.raw != raw_c);
+    try testing.expectEqual(@as(?usize, 7), vm.pending_block_idx);
     try testing.expect(vm.pending_block_value.raw != raw_d);
     try testing.expect(vm.handler_stack[0].condition_type.raw != raw_h);
 }
