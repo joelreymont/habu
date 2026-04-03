@@ -101,30 +101,7 @@ pub fn namestring(allocator: std.mem.Allocator, heap: *Heap, builtins: *const Bu
         try writer.writeAll("/");
     }
 
-    // directory - list like (:absolute "foo" "bar") or (:relative "baz")
-    if (!p.directory.isNil() and p.directory.isCons()) {
-        var dir = p.directory;
-        const first_cons = dir.toPtr(objects.Cons);
-        const first = first_cons.car;
-        dir = first_cons.cdr;
-
-        // :absolute starts with /, :relative has no prefix
-        if (first.raw == builtins.kw_absolute.raw) {
-            try writer.writeByte('/');
-        }
-
-        while (!dir.isNil()) {
-            if (!dir.isCons()) break;
-            const cons = dir.toPtr(objects.Cons);
-            const component = cons.car;
-            if (component.isString()) {
-                const comp_str = component.toPtr(objects.String);
-                try writer.writeAll(comp_str.bytes());
-                dir = cons.cdr;
-                if (!dir.isNil()) try writer.writeByte('/');
-            } else break;
-        }
-    }
+    try writeDirectoryTo(writer, builtins, p.directory, p.name.isNil());
 
     if (!p.name.isNil()) {
         if (buf.items.len > 0 and buf.items[buf.items.len - 1] != '/') {
@@ -361,33 +338,7 @@ pub fn directoryNamestring(allocator: std.mem.Allocator, heap: *Heap, builtins: 
     var buf = std.ArrayList(u8){};
     defer buf.deinit(allocator);
     const writer = buf.writer(allocator);
-
-    // directory - list like (:absolute "foo" "bar") or (:relative "baz")
-    if (!p.directory.isNil() and p.directory.isCons()) {
-        var dir = p.directory;
-        const first = dir.toPtr(objects.Cons).car;
-        dir = dir.toPtr(objects.Cons).cdr;
-
-        if (first.raw == builtins.kw_absolute.raw) {
-            try writer.writeByte('/');
-        }
-
-        while (!dir.isNil() and dir.isCons()) {
-            const cons = dir.toPtr(objects.Cons);
-            const component = cons.car;
-            if (component.isString()) {
-                const comp_str = component.toPtr(objects.String);
-                try writer.writeAll(comp_str.bytes());
-                dir = cons.cdr;
-                if (!dir.isNil()) try writer.writeByte('/');
-            } else break;
-        }
-
-        // Add trailing slash for directory
-        if (buf.items.len > 0 and buf.items[buf.items.len - 1] != '/') {
-            try writer.writeByte('/');
-        }
-    }
+    try writeDirectoryTo(writer, builtins, p.directory, true);
 
     return try heap.allocBaseString(buf.items);
 }
@@ -547,33 +498,7 @@ fn pathnameToString(allocator: std.mem.Allocator, builtins: *const BuiltinSymbol
     defer buf.deinit(allocator);
     const writer = buf.writer(allocator);
 
-    // Build path from directory
-    if (pn.directory.isCons()) {
-        var dir = pn.directory;
-        var first_component = true;
-
-        while (dir.isCons()) {
-            const cons = dir.toPtr(objects.Cons);
-            const part = cons.car;
-
-            switch (part.typeKind()) {
-                .keyword => {
-                    if (part.raw == builtins.kw_absolute.raw) {
-                        try writer.writeByte('/');
-                    }
-                },
-                .string => {
-                    if (!first_component) try writer.writeByte('/');
-                    const s = part.toPtr(objects.String);
-                    try writer.writeAll(s.bytes());
-                    first_component = false;
-                },
-                else => {},
-            }
-
-            dir = cons.cdr;
-        }
-    }
+    try writeDirectoryTo(writer, builtins, pn.directory, pn.name.isNil());
 
     // Add name
     if (pn.name.isString()) {
@@ -592,6 +517,43 @@ fn pathnameToString(allocator: std.mem.Allocator, builtins: *const BuiltinSymbol
     }
 
     return try buf.toOwnedSlice(allocator);
+}
+
+fn writeDirectoryTo(writer: anytype, builtins: *const BuiltinSymbols, dir_val: Value, keep_trailing: bool) !void {
+    if (dir_val.isNil() or !dir_val.isCons()) return;
+
+    var dir = dir_val;
+    const first_cons = dir.toPtr(objects.Cons);
+    const first = first_cons.car;
+    dir = first_cons.cdr;
+
+    var wrote_any = false;
+    var ends_with_sep = false;
+
+    if (first.raw == builtins.kw_absolute.raw) {
+        try writer.writeByte('/');
+        wrote_any = true;
+        ends_with_sep = true;
+    }
+
+    while (dir.isCons()) {
+        const cons = dir.toPtr(objects.Cons);
+        const component = cons.car;
+        if (!component.isString()) break;
+        const comp_str = component.toPtr(objects.String);
+        try writer.writeAll(comp_str.bytes());
+        wrote_any = true;
+        ends_with_sep = false;
+        dir = cons.cdr;
+        if (dir.isCons()) {
+            try writer.writeByte('/');
+            ends_with_sep = true;
+        }
+    }
+
+    if (keep_trailing and wrote_any and !ends_with_sep) {
+        try writer.writeByte('/');
+    }
 }
 
 /// Check if pathname contains wildcards
@@ -772,4 +734,30 @@ test "pathnameDirectory nil returns nil" {
 
     const dir = try pathnameDirectory(testing.allocator, &heap, Value.nil);
     try testing.expect(dir.isNil());
+}
+
+test "namestring preserves trailing slash for directory-only absolute pathnames" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+    const builtins = try BuiltinSymbols.init(&heap);
+
+    const input = try heap.allocBaseString("/tmp/foo/");
+    const pn = try parseNamestring(testing.allocator, &heap, input);
+    const out = try namestring(testing.allocator, &heap, &builtins, pn);
+    try testing.expectEqualStrings("/tmp/foo/", out.toPtr(objects.String).bytes());
+}
+
+test "namestring preserves trailing slash for directory-only relative pathnames" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+    const builtins = try BuiltinSymbols.init(&heap);
+
+    const input = try heap.allocBaseString("foo/bar/");
+    const pn = try parseNamestring(testing.allocator, &heap, input);
+    const out = try namestring(testing.allocator, &heap, &builtins, pn);
+    try testing.expectEqualStrings("foo/bar/", out.toPtr(objects.String).bytes());
 }
