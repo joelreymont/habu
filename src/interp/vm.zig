@@ -8681,6 +8681,8 @@ pub const Vm = struct {
     fn doThrow(self: *Vm, tag: Value, value: Value) Error!void {
         self.pending_error = null;
         self.is_unwinding = false;
+        self.pending_throw_tag = Value.nil;
+        self.pending_throw_value = Value.nil;
         self.pending_block_idx = null;
         self.pending_block_value = Value.nil;
         self.is_returning_from_block = false;

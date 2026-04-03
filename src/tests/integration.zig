@@ -4283,6 +4283,50 @@ test "unwind-protect cleanup same-name block does not retarget return-from" {
     try testing.expectEqual(@as(i64, 11), result.toFixnum());
 }
 
+test "unwind-protect cleanup throw overrides pending return-from" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(catch 'cleanup
+        \\  (block done
+        \\    (unwind-protect
+        \\        (return-from done 1)
+        \\      (throw 'cleanup 2))))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 2), result.toFixnum());
+}
+
+test "unwind-protect cleanup return-from overrides pending throw" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(block done
+        \\  (catch 'cleanup
+        \\    (unwind-protect
+        \\        (throw 'cleanup 1)
+        \\      (return-from done 2))))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 2), result.toFixnum());
+}
+
 // NOTE: Error handling in unwind-protect is not yet fully implemented
 // The VM needs to be enhanced to run cleanup forms when errors occur
 // See: src/interp/vm.zig - doError function needs to check unwind stack
