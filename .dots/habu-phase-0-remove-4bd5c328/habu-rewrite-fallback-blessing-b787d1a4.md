@@ -1,9 +1,11 @@
 ---
 title: Rewrite fallback-blessing tests
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-04-01T22:06:02.059330+02:00"
+created-at: "\"2026-04-01T22:06:02.059330+02:00\""
+closed-at: "2026-04-03T23:49:18.321162+02:00"
+close-reason: "done: lookup/package cutover regressions now assert exact CL-USER aliasing and exact per-package lookup without fallback drift"
 blocks:
   - habu-make-lookup-apis-32266bf5
 ---

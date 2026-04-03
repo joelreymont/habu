@@ -4769,6 +4769,21 @@ test "heap findPackage handles CL alias" {
     try testing.expect(pkg.? == heap.cl_package.?);
 }
 
+test "heap findPackage handles CL-USER alias exactly" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const canonical = heap.findPackage("COMMON-LISP-USER");
+    const alias = heap.findPackage("CL-USER");
+    try testing.expect(canonical != null);
+    try testing.expect(alias != null);
+    try testing.expect(canonical.? == heap.cl_user_package.?);
+    try testing.expect(alias.? == heap.cl_user_package.?);
+    try testing.expect(heap.findPackage("LISP-USER") == null);
+}
+
 test "heap findLispPackage does not intern lookup keywords" {
     const testing = std.testing;
 
@@ -4780,6 +4795,25 @@ test "heap findLispPackage does not intern lookup keywords" {
     const found = try heap.findLispPackage(name);
     try testing.expect(found != null);
     try testing.expectEqual(before, heap.keywords.map.count());
+}
+
+test "heap lookupInPackage stays in requested package" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const pkg_a = try heap.findOrCreatePackage("PKG-A");
+    const pkg_b = try heap.findOrCreatePackage("PKG-B");
+    const sym_a = try pkg_a.intern(&heap, "SAME");
+    const sym_b = try pkg_b.intern(&heap, "SAME");
+
+    const got_a = (try heap.lookupInPackage("PKG-A", "SAME")) orelse return error.TestUnexpectedResult;
+    const got_b = (try heap.lookupInPackage("PKG-B", "SAME")) orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(sym_a.raw, got_a.raw);
+    try testing.expectEqual(sym_b.raw, got_b.raw);
+    try testing.expect(sym_a.raw != sym_b.raw);
+    try testing.expect((try heap.lookupInPackage("PKG-C", "SAME")) == null);
 }
 
 test "heap intern handles t and nil in packages" {
