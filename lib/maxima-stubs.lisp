@@ -10,13 +10,6 @@
                #:*default-domain* #:read-translatable-string))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (unless (find-package :pregexp)
-    (defpackage :pregexp
-      (:use :common-lisp)
-      (:export #:pregexp #:pregexp-match-positions #:pregexp-match
-               #:pregexp-replace #:pregexp-quote))))
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
   (unless (find-package :bigfloat-impl)
     (defpackage :bigfloat-impl
       (:use :common-lisp)

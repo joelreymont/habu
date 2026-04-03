@@ -6,7 +6,7 @@
 (defparameter *habu-maxima-files*
   '(
     ;; bootstrap
-    "globals" "lmdcls" "letmac" "generr" "clmacs" "defmfun-check" "float-properties"
+    "pregexp" "globals" "lmdcls" "letmac" "generr" "clmacs" "defmfun-check" "float-properties"
     "commac" "mormac" "compat"
     "defcal" "maxmac" "mopers" "mforma" "mrgmac" "rzmac" "strmac"
     "displm" "safe-recursion" "ratmac" "mhayat"

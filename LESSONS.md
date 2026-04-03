@@ -9,6 +9,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-03)
 
 ### Worked Well
+- If upstream ships the dependency source, load that source and delete the bootstrap fake. Adding `pregexp` to `lib/maxima-manifest.lisp` and removing the `:pregexp` stub from `lib/maxima-stubs.lisp` let `commac.lisp` execute its compile-time regex readers on the real implementation instead of an empty package shell.
 - Maxima bootstrap order has to follow the upstream dependency graph, not a convenient local prefix. Moving `globals` ahead of `lmdcls`/`float-properties` in `lib/maxima-manifest.lisp` made the real `defmvar` macro run and eliminated the fake `MAXIMA:ASSIGN` blocker.
 - Legacy CLTL `eval-when` situation names still matter in real code. Teaching `src/interp/repl.zig:4219-4246` and `src/compiler/compile.zig:10412-10441` to recognize `COMMON-LISP:COMPILE`, `COMMON-LISP:LOAD`, and `COMMON-LISP:EVAL` made `../maxima/src/defmfun-check.lisp` install `parse-lambda-list` before `float-properties` expands its first `defmfun`.
 - Reader `pkg:sym` lookup must resolve exported names through the package's accessible namespace, not only the local symbol table. Switching `src/reader/parser.zig:1203-1209` to `findAccessibleExact` fixed re-exported inherited externals such as `BIGFLOAT:BIGFLOAT`, which Maxima gets from `../maxima/src/maxima-package.lisp` via `do-external-symbols` + `export`.

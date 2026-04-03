@@ -9468,6 +9468,65 @@ test "maxima manifest loads globals before float properties" {
     try testing.expect(cur.isNil());
 }
 
+test "maxima manifest loads pregexp before commac" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    const srcdir = try maximaSrcDirAlloc(allocator);
+    defer allocator.free(srcdir);
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(progn
+        \\  (let ((pp (position "pregexp" *maxima-files* :test #'string=))
+        \\        (pc (position "commac" *maxima-files* :test #'string=)))
+        \\    (unless pp (error "pregexp missing from Maxima manifest"))
+        \\    (unless pc (error "commac missing from Maxima manifest"))
+        \\    (let* ((mods '("pregexp" "globals" "lmdcls" "letmac" "generr" "clmacs" "defmfun-check" "float-properties" "commac"))
+        \\           (ok 0)
+        \\           (pregexp-pkg (find-package "PREGEXP"))
+        \\           (pregexp-sym (nth-value 0 (find-symbol "PREGEXP" pregexp-pkg)))
+        \\           (maxima-pkg (find-package "MAXIMA"))
+        \\           (strip-sym (nth-value 0 (find-symbol "STRIP-FLOAT-ZEROS" maxima-pkg))))
+        \\      (dolist (m mods)
+        \\        (unless (maxima-try-load "{s}/" m :verbose nil)
+        \\          (error "failed to load ~A" m))
+        \\        (setq ok (+ ok 1)))
+        \\      (list
+        \\        (if (< pp pc) 1 0)
+        \\        ok
+        \\        ok
+        \\        (if (fboundp pregexp-sym) 1 0)
+        \\        (if (fboundp strip-sym) 1 0)
+        \\        (if (equal (funcall strip-sym "1.2300") "1.23") 1 0)))))
+    ,
+        .{srcdir},
+    );
+    defer allocator.free(form);
+
+    const status = try repl.eval(form);
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 1, 9, 9, 1, 1, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "maxima generational loader reaches nparse without OOM" {
     try ensureMaximaSources();
     const allocator = testing.allocator;
