@@ -16,13 +16,9 @@ const BuiltinSymbols = @import("../builtins.zig").BuiltinSymbols;
 pub fn primOpen(heap: *Heap, args: []const Value, builtins: *const BuiltinSymbols) !Value {
     if (args.len < 2) return error.InvalidArgument;
 
-    const path_val = if (args[0].isPathname())
-        try pathname_prim.namestring(heap.backing_allocator, heap, builtins, args[0])
-    else
-        args[0];
+    const path_val = args[0];
     const mode_val = args[1];
 
-    if (!path_val.isString()) return error.InvalidArgument;
     if (!mode_val.isKeyword()) return error.InvalidArgument;
 
     const is_read = mode_val.raw == builtins.kw_read.raw;
@@ -34,7 +30,7 @@ pub fn primOpen(heap: *Heap, args: []const Value, builtins: *const BuiltinSymbol
     const kw_input = try heap.internKeyword("input");
     const kw_output = try heap.internKeyword("output");
     const direction = if (is_read) kw_input else if (is_io or is_append) builtins.kw_io else kw_output;
-    const stream = try io.openFile(heap, path_val, direction, null, null);
+    const stream = try io.openFile(heap.backing_allocator, heap, builtins, path_val, direction, null, null);
     if (is_append) {
         _ = try io.filePosition(heap, stream, try heap.internKeyword("end"));
     }

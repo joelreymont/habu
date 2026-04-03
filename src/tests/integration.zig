@@ -6551,6 +6551,72 @@ test "ansi repro delete-file accepts pathname designator" {
     try testing.expect(result.isNil());
 }
 
+test "ansi repro rename-file accepts pathname designators" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+    const old_path = try std.fs.path.join(allocator, &.{ root, "old.txt" });
+    defer allocator.free(old_path);
+    const new_path = try std.fs.path.join(allocator, &.{ root, "new.txt" });
+    defer allocator.free(new_path);
+
+    const src = try std.fmt.allocPrint(
+        allocator,
+        \\(progn
+        \\  (with-open-file (s (pathname "{s}") :direction :output :if-exists :supersede :if-does-not-exist :create)
+        \\    (write-string "x" s))
+        \\  (rename-file (pathname "{s}") (pathname "{s}"))
+        \\  (namestring (probe-file (pathname "{s}"))))
+    , .{ old_path, old_path, new_path, new_path });
+    defer allocator.free(src);
+
+    const result = try repl.eval(src);
+    try testing.expectEqualStrings(new_path, try asString(result));
+}
+
+test "ansi repro ensure-directories-exist accepts string designator" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+    const target = try std.fs.path.join(allocator, &.{ root, "mk", "deep", "file.txt" });
+    defer allocator.free(target);
+
+    const src = try std.fmt.allocPrint(
+        allocator,
+        \\(namestring (ensure-directories-exist "{s}"))
+    , .{target});
+    defer allocator.free(src);
+
+    const result = try repl.eval(src);
+    try testing.expectEqualStrings(target, try asString(result));
+
+    var dir = try std.fs.openDirAbsolute(root, .{});
+    defer dir.close();
+    try dir.access("mk/deep", .{});
+}
+
 test "probe-file returns canonical truename pathname" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

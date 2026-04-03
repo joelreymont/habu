@@ -78,6 +78,30 @@ pub fn pathname(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
     return try parseNamestring(allocator, heap, val);
 }
 
+pub fn pathDesignatorString(
+    allocator: std.mem.Allocator,
+    heap: *Heap,
+    builtins: *const BuiltinSymbols,
+    val: Value,
+) !Value {
+    return switch (val.typeKind()) {
+        .string => val,
+        .pathname => try namestring(allocator, heap, builtins, val),
+        else => error.TypeMismatch,
+    };
+}
+
+pub fn pathDesignatorBytes(
+    allocator: std.mem.Allocator,
+    heap: *Heap,
+    builtins: *const BuiltinSymbols,
+    val: Value,
+) ![]const u8 {
+    const str_val = try pathDesignatorString(allocator, heap, builtins, val);
+    if (!str_val.isString()) return error.TypeMismatch;
+    return str_val.toPtr(objects.String).bytes();
+}
+
 /// Convert pathname to namestring
 pub fn namestring(allocator: std.mem.Allocator, heap: *Heap, builtins: *const BuiltinSymbols, val: Value) !Value {
     _ = allocator;
@@ -423,21 +447,7 @@ pub fn userHomedirPathname(allocator: std.mem.Allocator, heap: *Heap) !Value {
 /// Get the canonical (truename) of a pathname.
 /// Returns the resolved absolute path and propagates missing-file failure.
 pub fn truename(allocator: std.mem.Allocator, heap: *Heap, builtins: *const BuiltinSymbols, val: Value) !Value {
-    // Get the namestring from the pathname or string
-    var needs_free = false;
-    const path_str = switch (val.typeKind()) {
-        .pathname => blk: {
-            const pn = val.toPtr(Pathname);
-            needs_free = true;
-            break :blk try pathnameToString(allocator, builtins, pn);
-        },
-        .string => blk: {
-            const s = val.toPtr(objects.String);
-            break :blk s.bytes();
-        },
-        else => return error.TypeMismatch,
-    };
-    defer if (needs_free) allocator.free(path_str);
+    const path_str = try pathDesignatorBytes(allocator, heap, builtins, val);
 
     // Use realpath to get the canonical path
     var buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -459,13 +469,8 @@ pub fn ensureDirectoriesExist(
     builtins: *const BuiltinSymbols,
     val: Value,
 ) !struct { pathname: Value, created: bool } {
-    _ = heap;
-    // Get the pathname
-    const pn = switch (val.typeKind()) {
-        .pathname => val.toPtr(Pathname),
-        .string => return error.TypeMismatch, // Need to parse first
-        else => return error.TypeMismatch,
-    };
+    const pn_val = try pathname(allocator, heap, val);
+    const pn = pn_val.toPtr(Pathname);
 
     // Get the directory string
     const path_str = try pathnameToString(allocator, builtins, pn);
@@ -479,7 +484,7 @@ pub fn ensureDirectoriesExist(
 
     if (dir_end == 0) {
         // No directory component
-        return .{ .pathname = val, .created = false };
+        return .{ .pathname = pn_val, .created = false };
     }
 
     const dir_path = path_str[0..dir_end];
@@ -487,7 +492,7 @@ pub fn ensureDirectoriesExist(
     // Create directories
     const status = try std.fs.cwd().makePathStatus(dir_path);
     return .{
-        .pathname = val,
+        .pathname = pn_val,
         .created = status == .created,
     };
 }
@@ -705,6 +710,31 @@ test "ensureDirectoriesExist reports created" {
 
     const res2 = try ensureDirectoriesExist(testing.allocator, &heap, &builtins, pn);
     try testing.expect(!res2.created);
+}
+
+test "ensureDirectoriesExist accepts string designator" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+    const builtins = try BuiltinSymbols.init(&heap);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var base_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const base_path = try tmp.dir.realpath(".", &base_buf);
+    const full_path = try std.fmt.allocPrint(testing.allocator, "{s}/{s}", .{ base_path, "c/d/file.txt" });
+    defer testing.allocator.free(full_path);
+
+    const path_str = try heap.allocBaseString(full_path);
+    const res = try ensureDirectoriesExist(testing.allocator, &heap, &builtins, path_str);
+    try testing.expect(res.pathname.isPathname());
+    try testing.expect(res.created);
+
+    var dir = try std.fs.openDirAbsolute(base_path, .{});
+    defer dir.close();
+    try dir.access("c/d", .{});
 }
 
 test "truename missing path signals file-not-found" {

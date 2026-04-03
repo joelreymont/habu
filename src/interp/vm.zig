@@ -1916,15 +1916,7 @@ pub const Vm = struct {
     }
 
     fn pathDesignatorBytes(self: *Vm, val: Value) ![]const u8 {
-        return switch (val.typeKind()) {
-            .string => val.toPtr(String).bytes(),
-            .pathname => blk: {
-                const ns = try primitives.pathname.namestring(self.allocator, self.heap, &self.builtins, val);
-                if (!ns.isString()) return error.TypeMismatch;
-                break :blk ns.toPtr(String).bytes();
-            },
-            else => error.TypeMismatch,
-        };
+        return try primitives.pathname.pathDesignatorBytes(self.allocator, self.heap, &self.builtins, val);
     }
 
     pub fn setExtRoots(self: *Vm, roots: []Value) void {
@@ -7159,7 +7151,7 @@ pub const Vm = struct {
             .open_file => {
                 const direction = try self.pop();
                 const filename = try self.pop();
-                const result = try io.openFile(self.heap, filename, direction, null, null);
+                const result = try io.openFile(self.allocator, self.heap, &self.builtins, filename, direction, null, null);
                 try self.push(result);
             },
             .close_stream => {

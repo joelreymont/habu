@@ -1,9 +1,11 @@
 ---
 title: Canonize file create mutate and directory ops
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.236422+02:00"
+created-at: "\"2026-04-01T22:06:02.236422+02:00\""
+closed-at: "2026-04-03T23:47:50.734327+02:00"
+close-reason: "done: shared path-designator surface now drives open/truename/ensure-directories-exist/listDirectory/VM file ops; focused runtime regressions added"
 blocks:
   - habu-close-pathname-algebra-be27460c
 ---

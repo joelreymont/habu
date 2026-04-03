@@ -2470,25 +2470,31 @@ pub fn filePosition(heap: *heap_mod.Heap, stream: Value, pos: ?Value) !Value {
 }
 
 /// Open a file stream
-pub fn openFile(heap: *heap_mod.Heap, filename: Value, direction: ?Value, if_exists: ?Value, if_does_not_exist: ?Value) !Value {
+pub fn openFile(
+    allocator: std.mem.Allocator,
+    heap: *heap_mod.Heap,
+    builtins: *const builtins_mod.BuiltinSymbols,
+    filename: Value,
+    direction: ?Value,
+    if_exists: ?Value,
+    if_does_not_exist: ?Value,
+) !Value {
     _ = if_exists;
     _ = if_does_not_exist;
-    if (!filename.isString()) return error.TypeError;
-
-    const fname = filename.toPtr(objects.String);
+    const fname = try pathname_prim.pathDesignatorBytes(allocator, heap, builtins, filename);
     const kw_input = try heap.internKeyword("input");
     const kw_output = try heap.internKeyword("output");
     const kw_io = try heap.internKeyword("io");
     const dir = if (direction) |d| d else kw_input;
 
     if (dir.eq(kw_output)) {
-        const fd = try std.posix.open(fname.bytes(), .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, 0o644);
+        const fd = try std.posix.open(fname, .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, 0o644);
         return try heap.allocFileOutputStream(fd);
     } else if (dir.eq(kw_io)) {
-        const fd = try std.posix.open(fname.bytes(), .{ .ACCMODE = .RDWR, .CREAT = true }, 0o644);
+        const fd = try std.posix.open(fname, .{ .ACCMODE = .RDWR, .CREAT = true }, 0o644);
         return try heap.allocStream(.io, .file, fd);
     } else {
-        const fd = try std.posix.open(fname.bytes(), .{ .ACCMODE = .RDONLY }, 0);
+        const fd = try std.posix.open(fname, .{ .ACCMODE = .RDONLY }, 0);
         return try heap.allocFileInputStream(fd);
     }
 }
@@ -2705,86 +2711,69 @@ pub fn listDirectory(heap: *heap_mod.Heap, pathname: Value) !Value {
     var type_pat: []const u8 = "";
     var dir_has_wild = false;
 
-    switch (pathname.typeKind()) {
-        .string => {
-            const path_str = pathname.toPtr(objects.String).bytes();
-            var dir_path = path_str;
-            if (std.mem.endsWith(u8, dir_path, "*.*") or std.mem.endsWith(u8, dir_path, "*")) {
-                if (std.mem.lastIndexOf(u8, dir_path, "/")) |idx| {
-                    dir_path = dir_path[0..idx];
+    const pn_val = try pathname_prim.pathname(allocator, heap, pathname);
+    const pn = pn_val.toPtr(objects.Pathname);
+
+    if (try valueIsWildcard(heap, pn.name)) {
+        name_wild = true;
+    } else if (pn.name.isString()) {
+        name_wild = false;
+        name_pat = pn.name.toPtr(objects.String).bytes();
+    }
+
+    if (try valueIsWildcard(heap, pn.type)) {
+        type_wild = true;
+    } else if (pn.type.isString()) {
+        type_wild = false;
+        type_pat = pn.type.toPtr(objects.String).bytes();
+    }
+
+    if (pn.directory.isCons()) {
+        var dir = pn.directory;
+
+        if (dir.isCons() and dir.toPtr(objects.Cons).car.isKeyword()) {
+            const tag = dir.toPtr(objects.Cons).car;
+            if (try valueIsKeywordNamed(heap, tag, "absolute")) {
+                try base_dir_buf.append(allocator, '/');
+            }
+            dir = dir.toPtr(objects.Cons).cdr;
+        }
+
+        var saw_pattern = false;
+        while (dir.isCons()) {
+            const cons = dir.toPtr(objects.Cons);
+            const elem = cons.car;
+
+            if (try valueIsKeywordNamed(heap, elem, "wild-inferiors")) {
+                try dir_pattern_components.append(allocator, .{ .tag = .recursive });
+                saw_pattern = true;
+                dir_has_wild = true;
+            } else if (try valueIsKeywordNamed(heap, elem, "wild")) {
+                try dir_pattern_components.append(allocator, .{ .tag = .single, .text = "*" });
+                saw_pattern = true;
+                dir_has_wild = true;
+            } else if (elem.isString()) {
+                const comp = elem.toPtr(objects.String).bytes();
+                const is_recursive = std.mem.eql(u8, comp, "**");
+                const is_wild = std.mem.indexOfAny(u8, comp, "*?") != null;
+
+                if (!saw_pattern and !is_wild) {
+                    try appendPathComponent(&base_dir_buf, allocator, comp);
                 } else {
-                    dir_path = ".";
-                }
-            }
-            try scanDirectoryForPattern(heap, dir_path, true, "", true, "", &result);
-            return result;
-        },
-        .pathname => {
-            const pn = pathname.toPtr(objects.Pathname);
-
-            if (try valueIsWildcard(heap, pn.name)) {
-                name_wild = true;
-            } else if (pn.name.isString()) {
-                name_wild = false;
-                name_pat = pn.name.toPtr(objects.String).bytes();
-            }
-
-            if (try valueIsWildcard(heap, pn.type)) {
-                type_wild = true;
-            } else if (pn.type.isString()) {
-                type_wild = false;
-                type_pat = pn.type.toPtr(objects.String).bytes();
-            }
-
-            if (pn.directory.isCons()) {
-                var dir = pn.directory;
-
-                if (dir.isCons() and dir.toPtr(objects.Cons).car.isKeyword()) {
-                    const tag = dir.toPtr(objects.Cons).car;
-                    if (try valueIsKeywordNamed(heap, tag, "absolute")) {
-                        try base_dir_buf.append(allocator, '/');
-                    }
-                    dir = dir.toPtr(objects.Cons).cdr;
-                }
-
-                var saw_pattern = false;
-                while (dir.isCons()) {
-                    const cons = dir.toPtr(objects.Cons);
-                    const elem = cons.car;
-
-                    if (try valueIsKeywordNamed(heap, elem, "wild-inferiors")) {
+                    if (is_recursive) {
                         try dir_pattern_components.append(allocator, .{ .tag = .recursive });
-                        saw_pattern = true;
                         dir_has_wild = true;
-                    } else if (try valueIsKeywordNamed(heap, elem, "wild")) {
-                        try dir_pattern_components.append(allocator, .{ .tag = .single, .text = "*" });
-                        saw_pattern = true;
+                    } else if (is_wild) {
+                        try dir_pattern_components.append(allocator, .{ .tag = .single, .text = comp });
                         dir_has_wild = true;
-                    } else if (elem.isString()) {
-                        const comp = elem.toPtr(objects.String).bytes();
-                        const is_recursive = std.mem.eql(u8, comp, "**");
-                        const is_wild = std.mem.indexOfAny(u8, comp, "*?") != null;
-
-                        if (!saw_pattern and !is_wild) {
-                            try appendPathComponent(&base_dir_buf, allocator, comp);
-                        } else {
-                            if (is_recursive) {
-                                try dir_pattern_components.append(allocator, .{ .tag = .recursive });
-                                dir_has_wild = true;
-                            } else if (is_wild) {
-                                try dir_pattern_components.append(allocator, .{ .tag = .single, .text = comp });
-                                dir_has_wild = true;
-                            } else {
-                                try dir_pattern_components.append(allocator, .{ .tag = .literal, .text = comp });
-                            }
-                            saw_pattern = true;
-                        }
+                    } else {
+                        try dir_pattern_components.append(allocator, .{ .tag = .literal, .text = comp });
                     }
-                    dir = cons.cdr;
+                    saw_pattern = true;
                 }
             }
-        },
-        else => return error.TypeError,
+            dir = cons.cdr;
+        }
     }
 
     const base_dir = if (base_dir_buf.items.len == 0) "." else base_dir_buf.items;
@@ -3000,6 +2989,42 @@ test "listDirectory pathname wildcard supports recursive **" {
     try testing.expect(saw_deep);
 }
 
+test "listDirectory string wildcard uses pathname semantics" {
+    const testing = std.testing;
+    var heap = try heap_mod.Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.makeDir("sub");
+    (try tmp.dir.createFile("keep.fasl", .{})).close();
+    (try tmp.dir.createFile("drop.lsp", .{})).close();
+    (try tmp.dir.createFile("sub/nested.fasl", .{})).close();
+
+    const tmp_path = try tmp.parent_dir.realpathAlloc(testing.allocator, &tmp.sub_path);
+    defer testing.allocator.free(tmp_path);
+
+    const pattern = try std.fmt.allocPrint(testing.allocator, "{s}/*.fasl", .{tmp_path});
+    defer testing.allocator.free(pattern);
+    const pattern_val = try heap.allocBaseString(pattern);
+    const result = try listDirectory(&heap, pattern_val);
+
+    var count: usize = 0;
+    var saw_keep = false;
+    var cur = result;
+    while (cur.isCons()) {
+        const cons = cur.toPtr(objects.Cons);
+        const pn = cons.car.toPtr(objects.Pathname);
+        const name = pn.name.toPtr(objects.String).bytes();
+        if (std.ascii.eqlIgnoreCase("keep", name)) saw_keep = true;
+        count += 1;
+        cur = cons.cdr;
+    }
+    try testing.expectEqual(@as(usize, 1), count);
+    try testing.expect(saw_keep);
+}
+
 test "pathnameMatchP matches string and pathname" {
     const testing = std.testing;
     var heap = try heap_mod.Heap.init(testing.allocator, .{});
@@ -3070,10 +3095,11 @@ test "openFile :io supports read and write" {
 
     var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
+    const builtins = try builtins_mod.BuiltinSymbols.init(&heap);
 
     const name_val = try heap.allocBaseString(path);
     const kw_io = try heap.internKeyword("io");
-    const stream = try openFile(&heap, name_val, kw_io, null, null);
+    const stream = try openFile(testing.allocator, &heap, &builtins, name_val, kw_io, null, null);
 
     try writeChar(Value.makeFixnum('Z'), stream);
     _ = try filePosition(&heap, stream, Value.makeFixnum(0));
@@ -3081,6 +3107,32 @@ test "openFile :io supports read and write" {
     try testing.expectEqual(@as(i64, 'Z'), ch.toFixnum());
 
     try closeStream(stream, null);
+}
+
+test "openFile accepts pathname designator" {
+    const testing = std.testing;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realpathAlloc(testing.allocator, ".");
+    defer testing.allocator.free(root);
+    const path = try std.fs.path.join(testing.allocator, &.{ root, "pathname-open.txt" });
+    defer testing.allocator.free(path);
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    const builtins = try builtins_mod.BuiltinSymbols.init(&heap);
+
+    const name_val = try heap.allocBaseString(path);
+    const pn = try pathname_prim.parseNamestring(testing.allocator, &heap, name_val);
+    const kw_output = try heap.internKeyword("output");
+    const stream = try openFile(testing.allocator, &heap, &builtins, pn, kw_output, null, null);
+
+    try writeBytesToStream(stream, "ok");
+    try finishOutput(stream);
+    try closeStream(stream, null);
+    try testing.expect(try fileExists(path));
 }
 
 test "readLine honors unread-char for file streams" {

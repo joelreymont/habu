@@ -1,9 +1,11 @@
 ---
 title: Close pathname algebra
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.230361+02:00"
+created-at: "\"2026-04-01T22:06:02.230361+02:00\""
+closed-at: "2026-04-03T23:47:50.739457+02:00"
+close-reason: "done: pathname roundtrip, truename/probe-file, directory-only namestrings, and canonical file-op designators verified"
 blocks:
   - habu-make-probe-file-e2125665
 ---
