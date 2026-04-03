@@ -116,8 +116,6 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
     const cons1 = args.toPtr(Cons);
     const obj = cons1.car;
 
-    if (!obj.isVector()) return error.InvalidArgument;
-
     if (!cons1.cdr.isCons()) return error.InvalidArgument;
     const cons2 = cons1.cdr.toPtr(Cons);
     const slot_name_val = try unquoteSymbol(cons2.car);
@@ -138,8 +136,6 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
     if (!args.isCons()) return error.InvalidArgument;
     const cons1 = args.toPtr(Cons);
     const obj = cons1.car;
-
-    if (!obj.isVector()) return error.InvalidArgument;
 
     if (!cons1.cdr.isCons()) return error.InvalidArgument;
     const cons2 = cons1.cdr.toPtr(Cons);
@@ -763,6 +759,44 @@ test "slot-value uses symbol metadata" {
     try testing.expectEqual(@as(i64, 42), res.toFixnum());
 }
 
+test "slot-value accepts boxed structure objects" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const class_sym = try heap.intern("BOXED-STRUCT");
+    const class_ptr = try heap.alloc(objects.Class);
+    class_ptr.* = .{
+        .kind = .class,
+        .name = class_sym,
+        .direct_supers = Value.nil,
+        .cpl = Value.nil,
+        .direct_slots = Value.nil,
+        .slots = Value.nil,
+        .metaclass = heap.structure_class,
+        .num_shared = 0,
+        .shared_slots = undefined,
+    };
+    const class_val = Value.makeClass(class_ptr);
+    try heap.putLispClass(class_sym, class_val);
+
+    const slot_sym = try heap.intern("BAR");
+    const slot_names = try heap.backing_allocator.alloc(Value, 1);
+    slot_names[0] = slot_sym;
+    try heap.setClassMetadata("COMMON-LISP:BOXED-STRUCT", slot_names);
+
+    const st_val = try heap.allocStructure(class_val, 1);
+    const st = st_val.toPtr(objects.Structure);
+    st.slots[0] = Value.makeFixnum(42);
+
+    const args_tail = try heap.allocCons(slot_sym, Value.nil);
+    const args = try heap.allocCons(st_val, args_tail);
+    const res = try slotValue(&heap, args);
+    try testing.expect(res.isFixnum());
+    try testing.expectEqual(@as(i64, 42), res.toFixnum());
+}
+
 test "slot-value errors without class metadata" {
     const testing = std.testing;
 
@@ -793,4 +827,29 @@ test "slot-exists-p returns nil for non-vector" {
     const args = try heap.allocCons(Value.makeFixnum(1), args_tail);
     const res = try slotExistsP(&heap, args);
     try testing.expect(res.isNil());
+}
+
+test "slot-value rejects non-slot object" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const slot_sym = try heap.intern("SLOT");
+    const args_tail = try heap.allocCons(slot_sym, Value.nil);
+    const args = try heap.allocCons(Value.makeFixnum(1), args_tail);
+    try testing.expectError(error.InvalidArgument, slotValue(&heap, args));
+}
+
+test "slot-value rejects condition payload object" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const slot_sym = try heap.intern("FORMAT-CONTROL");
+    const cond = try heap.allocCondition(try heap.intern("SIMPLE-CONDITION"), Value.nil, Value.nil);
+    const args_tail = try heap.allocCons(slot_sym, Value.nil);
+    const args = try heap.allocCons(cond, args_tail);
+    try testing.expectError(error.InvalidArgument, slotValue(&heap, args));
 }

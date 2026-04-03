@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-01)
 
 ### Worked Well
+- Removing the stale `obj.isVector()` front-gate from `src/runtime/primitives/clos.zig:116-149` was the right root-cause fix for the generic slot split. `getSlotView` was already the canonical representation boundary for boxed structures versus vector-backed standard objects; keeping an earlier vector-only guard made boxed `defstruct` instances fail even though the slot protocol beneath them was already representation-aware.
+- Locking the slot split with both runtime-unit and integration coverage is worth doing even when `zig build test` is baseline-blocked. The new focused regressions in `src/runtime/primitives/clos.zig:762-814` and `src/tests/integration.zig:5962-5978` make the intended boundary explicit: boxed structures are valid slot-bearing objects, fixnums and raw condition payload boxes are not.
 - Removing the `.fasl` sibling-source substitution from `src/interp/repl.zig:1792-1824` was the right cutover. It immediately turns fake compile-file/load success back into an explicit loader failure instead of silently exercising source paths.
 - Tightening `trySignalCondition` in `src/interp/vm.zig:9368-9381` to propagate allocation/runtime failures and only translate `ControlTransfer` into success removed a real error-masking pattern without changing the non-local-exit contract.
 - Switching special-variable runtime lookup to exact canonical names in `src/interp/vm.zig:2437-2513` makes `*PRINT-*` semantics depend on real global bindings instead of legacy unqualified retry order.
@@ -21,6 +23,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - For DEFCLASS inheritance, resolving parent metadata by symbol package identity (`src/compiler/compile.zig:12173-12192`) is materially safer than stripping to `getName()` and running name-prefix heuristics. The string-only path was what forced `lookupClassMetadataByName` to keep broad package-prefix and local-name fallbacks around.
 
 ### Did Not Work
+- Reaching for a nonexistent heap helper in a new test (`allocClass` in `src/runtime/primitives/clos.zig`, trial state) was a self-inflicted detour. For runtime unit tests, allocate `objects.Class` directly and initialize the minimal fields explicitly instead of assuming a convenience API exists.
 - Widening `heap.intern` to `anyerror` was the wrong move. It exploded error-set coercions across `emit`, parser, desugar, and runtime callsites. Keep the public error surface narrow and confine any non-package interning path to explicit internal bootstrap logic only.
 - Raw `zig test path/to/file.zig` is not a useful validation path in this repo for cross-module files such as `src/interp/vm.zig`, `src/interp/repl.zig`, and `src/compiler/compile.zig`; it fails on import-root layout before it tells you anything about the change. Use the real repo entrypoint (`zig build test`) for build validation.
 - Leaving one old reference behind after deleting a retry ladder is easy to miss and shows up only as a plain compile break, not a semantic test failure. The stale `for (prefixes)` block in `src/compiler/compile.zig:7804-7811` survived the earlier lookup cleanup until `zig build test` caught it.

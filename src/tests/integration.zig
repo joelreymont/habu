@@ -5963,6 +5963,24 @@ test "copy-structure copies defstruct instance" {
     try testing.expect(cur.isNil());
 }
 
+test "slot protocol works on boxed defstruct instance" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct slot-box x y)\n" ++
+        "  (let ((obj (make-slot-box :x 1 :y 2)))\n" ++
+        "    (and (= (slot-value obj 'x) 1)\n" ++
+        "         (eql (%set-slot-value obj 'x 7) 7)\n" ++
+        "         (= (slot-value obj 'x) 7)\n" ++
+        "         (slot-boundp obj 'x)\n" ++
+        "         (progn (slot-makunbound obj 'x) (not (slot-boundp obj 'x))))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
 test "defstruct constructor accepts keyword initargs" {
     const allocator = testing.allocator;
 
