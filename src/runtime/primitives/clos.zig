@@ -27,7 +27,7 @@ const SlotView = struct {
     slots: []Value,
 };
 
-fn getSlotView(heap: *Heap, obj: Value) !SlotView {
+fn getSlotView(obj: Value) !SlotView {
     if (obj.isStructure()) {
         const st = obj.toPtr(objects.Structure);
         return .{ .class = st.class, .slots = st.slots[0..st.length] };
@@ -37,8 +37,7 @@ fn getSlotView(heap: *Heap, obj: Value) !SlotView {
         if (vec.length == 0) return error.InvalidArgument;
         const class_name = vec.data[0];
         if (!class_name.isSymbol()) return error.InvalidArgument;
-        const class_val = heap.findLispClass(class_name) orelse return error.InvalidArgument;
-        return .{ .class = class_val, .slots = vec.data[1..vec.length] };
+        return .{ .class = class_name, .slots = vec.data[1..vec.length] };
     }
     return error.InvalidArgument;
 }
@@ -121,7 +120,7 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
     const slot_name_val = try unquoteSymbol(cons2.car);
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const view = try getSlotView(heap, obj);
+    const view = try getSlotView(obj);
     const idx = try findSlotIndex(heap, view.class, slot_name_val);
     if (idx >= view.slots.len) return error.InvalidArgument;
     const val = view.slots[idx];
@@ -148,7 +147,7 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
     const cons3 = cons2.cdr.toPtr(Cons);
     const new_value = cons3.car;
 
-    const view = try getSlotView(heap, obj);
+    const view = try getSlotView(obj);
     const idx = try findSlotIndex(heap, view.class, slot_name_val);
     if (idx >= view.slots.len) return error.InvalidArgument;
     view.slots[idx] = new_value;
@@ -244,7 +243,7 @@ pub fn slotExistsP(heap: *Heap, args: Value) !Value {
     const slot_name_val = try unquoteSymbol(cons2.car);
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    _ = findSlotIndex(heap, (try getSlotView(heap, obj)).class, slot_name_val) catch return Value.nil;
+    _ = findSlotIndex(heap, (try getSlotView(obj)).class, slot_name_val) catch return Value.nil;
     return Value.t;
 }
 
@@ -262,7 +261,7 @@ pub fn slotBoundp(heap: *Heap, args: Value) !Value {
     const slot_name_val = try unquoteSymbol(cons2.car);
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const view = try getSlotView(heap, obj);
+    const view = try getSlotView(obj);
     const idx = try findSlotIndex(heap, view.class, slot_name_val);
     if (idx >= view.slots.len) return error.InvalidArgument;
     return if (view.slots[idx].isUnbound()) Value.nil else Value.t;
@@ -282,7 +281,7 @@ pub fn slotMakunbound(heap: *Heap, args: Value) !Value {
     const slot_name_val = try unquoteSymbol(cons2.car);
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const view = try getSlotView(heap, obj);
+    const view = try getSlotView(obj);
     const idx = try findSlotIndex(heap, view.class, slot_name_val);
     if (idx >= view.slots.len) return error.InvalidArgument;
     view.slots[idx] = Value.unbound;
@@ -745,7 +744,7 @@ test "slot-value uses symbol metadata" {
 
     const slot_names = try heap.backing_allocator.alloc(Value, 1);
     slot_names[0] = slot_sym;
-    try heap.setClassMetadata("COMMON-LISP:FOO-CLASS", slot_names);
+    try heap.setClassMetadataForSymbol(class_sym, slot_names);
 
     const vec = try heap.allocVector(2, 2);
     const vec_obj = vec.toPtr(Vector);
@@ -757,6 +756,35 @@ test "slot-value uses symbol metadata" {
     const res = try slotValue(&heap, args);
     try testing.expect(res.isFixnum());
     try testing.expectEqual(@as(i64, 42), res.toFixnum());
+}
+
+test "set-slot-value uses symbol metadata for vector-backed objects" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const class_sym = try heap.intern("WRITER-CLASS");
+    const slot_sym = try heap.intern("BAR");
+
+    const slot_names = try heap.backing_allocator.alloc(Value, 1);
+    slot_names[0] = slot_sym;
+    try heap.setClassMetadataForSymbol(class_sym, slot_names);
+
+    const vec = try heap.allocVector(2, 2);
+    const vec_obj = vec.toPtr(Vector);
+    vec_obj.data[0] = class_sym;
+    vec_obj.data[1] = Value.makeFixnum(7);
+
+    const new_val = Value.makeFixnum(99);
+    const tail2 = try heap.allocCons(new_val, Value.nil);
+    const tail1 = try heap.allocCons(slot_sym, tail2);
+    const args = try heap.allocCons(vec, tail1);
+
+    const res = try setSlotValue(&heap, args);
+    try testing.expect(res.isFixnum());
+    try testing.expectEqual(@as(i64, 99), res.toFixnum());
+    try testing.expectEqual(@as(i64, 99), vec_obj.data[1].toFixnum());
 }
 
 test "slot-value accepts boxed structure objects" {
@@ -785,7 +813,7 @@ test "slot-value accepts boxed structure objects" {
     const slot_sym = try heap.intern("BAR");
     const slot_names = try heap.backing_allocator.alloc(Value, 1);
     slot_names[0] = slot_sym;
-    try heap.setClassMetadata("COMMON-LISP:BOXED-STRUCT", slot_names);
+    try heap.setClassMetadataForSymbol(class_sym, slot_names);
 
     const st_val = try heap.allocStructure(class_val, 1);
     const st = st_val.toPtr(objects.Structure);

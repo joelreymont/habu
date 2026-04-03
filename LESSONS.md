@@ -9,6 +9,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-03)
 
 ### Worked Well
+- Class-metadata writes need the same canonical symbol path as reads. Adding `Heap.setClassMetadataForSymbol` in `src/runtime/heap.zig:3297-3313` and switching CLOS slot tests in `src/runtime/primitives/clos.zig:747,772,816` to use symbol-qualified writes fixed the vector-backed metadata-only slot path without reintroducing guessed package strings.
 - Directory-only pathname fidelity belongs in the shared renderer, not in scattered call-site fixes. Extracting `writeDirectoryTo` in `src/runtime/primitives/pathname.zig:82-111,355-383,544-564` and reusing it from `namestring`, `directory-namestring`, and `pathnameToString` fixed both absolute and relative trailing-slash roundtrips in one place.
 - Synonym streams needed to resolve through VM-owned value cells, not through fake symbol object state. Adding a runtime-level symbol-value resolver hook in `src/runtime/runtime.zig`, installing it around VM entrypoints in `src/interp/vm.zig:3166-3547`, and routing synonym stream delegation through that resolver in `src/runtime/primitives/io.zig:868-869,1874-1899,2283` fixes stream truthfulness without inventing a second binding store.
 - `src/runtime/heap.zig:2501` needed synonym streams to be allocated as `.io`, not `.input`. Otherwise output-capable synonym streams fail the top-level direction gate before delegation even gets a chance to resolve the real target.
@@ -16,6 +17,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - For runtime-level validation when `zig build test` is baseline-blocked and `./zig-out/bin/habu` is still broken on stdlib bootstrap, a repo-local throwaway `zig test` probe works. Running a temporary in-repo probe reproduced the exact synonym retargeting path and showed the new stream tests in `src/runtime/primitives/io.zig:3200-3271` pass under execution.
 
 ### Did Not Work
+- Writing class metadata with hardcoded package strings is brittle in tests and runtime scaffolding. `Heap.init` starts in `COMMON-LISP`, so a guessed `COMMON-LISP-USER:...` key can silently test the wrong thing even when the lookup path is correct.
 - Repo-local runtime probes that import `src/runtime/**` still pull the existing `src/runtime/primitives/clos.zig:40,124,757` failure into the run. Treat that as a standing runtime-test blocker; do not misattribute it to pathname or stream work.
 - Trying to “mirror” symbol values into `objects.Symbol` was the wrong direction. `src/runtime/objects.zig:156-165` has no value slot, so any attempt to push binding state into symbol objects is architectural drift, not a fix.
 - Raw `zig test src/runtime/primitives/io.zig` still is not a useful validation command in this repo. Module-path rules reject those relative imports immediately; use `zig build`, `zig build test` baseline comparison, or an in-repo temporary probe instead.

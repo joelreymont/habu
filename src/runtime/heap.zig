@@ -3294,6 +3294,25 @@ pub const Heap = struct {
         self.gc_root_sig_valid = false;
     }
 
+    pub fn setClassMetadataForSymbol(
+        self: *Heap,
+        class_name: Value,
+        slot_names: []const Value,
+    ) error{ OutOfMemory, Overflow, InvalidArgument }!void {
+        const sym = if (class_name.isClass())
+            class_name.toPtr(objects.Class).name
+        else
+            class_name;
+        if (!sym.isSymbol()) return error.InvalidArgument;
+        const sym_obj = sym.toPtr(objects.Symbol);
+        const sym_name = sym_obj.getName();
+        const pkg = self.symbolHomePkg(sym_obj) orelse return error.InvalidArgument;
+        var qual_buf: [256]u8 = undefined;
+        const qual = try self.makeClassMetadataKey(&qual_buf, pkg.name, sym_name);
+        defer if (qual.owned) self.backing_allocator.free(qual.name);
+        try self.setClassMetadata(qual.name, slot_names);
+    }
+
     const ClassMetadataKey = struct {
         name: []const u8,
         owned: bool,
