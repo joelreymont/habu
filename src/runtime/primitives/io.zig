@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const fs = std.fs;
+const runtime_mod = @import("../runtime.zig");
 const Value = @import("../value.zig").Value;
 const objects = @import("../objects.zig");
 const heap_mod = @import("../heap.zig");
@@ -865,8 +866,7 @@ pub fn writeBytesToStream(stream: Value, bytes: []const u8) !void {
             try writeBytesToStream(pair.cdr, bytes);
         },
         .synonym => {
-            // Follow the synonym to the underlying stream
-            try writeBytesToStream(s.source_value, bytes);
+            try writeBytesToStream(try resolveSynonymTarget(s), bytes);
         },
         .echo => {
             // Write to the output component of the echo stream
@@ -1701,20 +1701,36 @@ pub fn streamp(val: Value) bool {
 pub fn inputStreamP(stream: Value) bool {
     if (!stream.isStream()) return false;
     const s = stream.toPtr(objects.Stream);
-    return s.isInput();
+    return switch (s.stream_type) {
+        .synonym => blk: {
+            const target = resolveSynonymTarget(s) catch return false;
+            break :blk inputStreamP(target);
+        },
+        else => s.isInput(),
+    };
 }
 
 /// Check if stream is output stream
 pub fn outputStreamP(stream: Value) bool {
     if (!stream.isStream()) return false;
     const s = stream.toPtr(objects.Stream);
-    return s.isOutput();
+    return switch (s.stream_type) {
+        .synonym => blk: {
+            const target = resolveSynonymTarget(s) catch return false;
+            break :blk outputStreamP(target);
+        },
+        else => s.isOutput(),
+    };
 }
 
 /// Check if stream is interactive (tty)
 pub fn interactiveStreamP(stream: Value) bool {
     if (!stream.isStream()) return false;
     const s = stream.toPtr(objects.Stream);
+    if (s.stream_type == .synonym) {
+        const target = resolveSynonymTarget(s) catch return false;
+        return interactiveStreamP(target);
+    }
     if (s.stream_type != .file and s.stream_type != .stdin and s.stream_type != .stdout and s.stream_type != .stderr) return false;
     const fd: std.posix.fd_t = @intCast(s.file_fd);
     return std.posix.isatty(fd);
@@ -1855,13 +1871,21 @@ fn setPushback(s: *objects.Stream, ch: u8) !void {
     s.pushback_char = ch;
 }
 
+fn resolveSynonymTarget(s: *objects.Stream) !Value {
+    if (s.stream_type != .synonym) return error.InvalidArgument;
+    if (!s.source_value.isSymbol()) return error.TypeError;
+    const target = (try runtime_mod.lookupSymbolValue(s.source_value)) orelse return error.UnboundSymbol;
+    if (!target.isStream()) return error.TypeError;
+    return target;
+}
+
 fn streamInputComponent(s: *objects.Stream) !Value {
     return switch (s.stream_type) {
         .echo, .two_way => blk: {
             if (!s.source_value.isCons()) return error.InvalidArgument;
             break :blk s.source_value.toPtr(objects.Cons).car;
         },
-        .synonym => if (s.source_value.isStream()) s.source_value else error.NotImplemented,
+        .synonym => resolveSynonymTarget(s),
         else => error.InvalidArgument,
     };
 }
@@ -1872,7 +1896,7 @@ fn streamOutputComponent(s: *objects.Stream) !Value {
             if (!s.source_value.isCons()) return error.InvalidArgument;
             break :blk s.source_value.toPtr(objects.Cons).cdr;
         },
-        .synonym => if (s.source_value.isStream()) s.source_value else error.NotImplemented,
+        .synonym => resolveSynonymTarget(s),
         else => error.InvalidArgument,
     };
 }
@@ -2256,7 +2280,7 @@ pub fn finishOutput(stream: Value) !void {
             const pair = s.source_value.toPtr(objects.Cons);
             try finishOutput(pair.cdr);
         },
-        .synonym => try finishOutput(s.source_value),
+        .synonym => try finishOutput(try resolveSynonymTarget(s)),
         .echo => {
             const pair = s.source_value.toPtr(objects.Cons);
             try finishOutput(pair.cdr);
@@ -3171,6 +3195,80 @@ test "composite streams delegate input and echo operations" {
     const out = try getOutputStreamString(&heap, two_way_out);
     try testing.expect(out.isString());
     try testing.expect(std.mem.eql(u8, out.toPtr(objects.String).bytes(), "!"));
+}
+
+test "synonym streams follow symbol value and retarget dynamically" {
+    const testing = std.testing;
+    const ResolverCtx = struct {
+        map: std.AutoHashMap(u64, Value),
+    };
+    const resolver = struct {
+        fn lookup(sym: Value, ctx: *anyopaque) anyerror!?Value {
+            const r: *ResolverCtx = @ptrCast(@alignCast(ctx));
+            return r.map.get(sym.raw);
+        }
+    }.lookup;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var ctx = ResolverCtx{ .map = std.AutoHashMap(u64, Value).init(testing.allocator) };
+    defer ctx.map.deinit();
+    const saved_resolver = runtime_mod.setSymbolValueResolver(&resolver, @ptrCast(&ctx));
+    defer runtime_mod.restoreSymbolValueResolver(saved_resolver);
+
+    const sym = try heap.intern("SYN-STREAM");
+    const out1 = try makeStringOutputStream(&heap);
+    const out2 = try makeStringOutputStream(&heap);
+    try ctx.map.put(sym.raw, out1);
+
+    const syn = try heap.allocSynonymStream(sym);
+    try testing.expect(inputStreamP(syn) == false);
+    try testing.expect(outputStreamP(syn));
+
+    try writeChar(Value.makeFixnum('A'), syn);
+    const first = try getOutputStreamString(&heap, out1);
+    try testing.expect(first.isString());
+    try testing.expect(std.mem.eql(u8, first.toPtr(objects.String).bytes(), "A"));
+
+    try ctx.map.put(sym.raw, out2);
+    try writeChar(Value.makeFixnum('B'), syn);
+    const second = try getOutputStreamString(&heap, out2);
+    try testing.expect(second.isString());
+    try testing.expect(std.mem.eql(u8, second.toPtr(objects.String).bytes(), "B"));
+}
+
+test "synonym streams delegate input operations through symbol value" {
+    const testing = std.testing;
+    const ResolverCtx = struct {
+        map: std.AutoHashMap(u64, Value),
+    };
+    const resolver = struct {
+        fn lookup(sym: Value, ctx: *anyopaque) anyerror!?Value {
+            const r: *ResolverCtx = @ptrCast(@alignCast(ctx));
+            return r.map.get(sym.raw);
+        }
+    }.lookup;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var ctx = ResolverCtx{ .map = std.AutoHashMap(u64, Value).init(testing.allocator) };
+    defer ctx.map.deinit();
+    const saved_resolver = runtime_mod.setSymbolValueResolver(&resolver, @ptrCast(&ctx));
+    defer runtime_mod.restoreSymbolValueResolver(saved_resolver);
+
+    const sym = try heap.intern("SYN-IN");
+    const in = try makeStringInputStream(&heap, try heap.allocBaseString("xy"), null, null);
+    try ctx.map.put(sym.raw, in);
+
+    const syn = try heap.allocSynonymStream(sym);
+    try testing.expect(inputStreamP(syn));
+    try testing.expect(outputStreamP(syn) == false);
+    try testing.expectEqual(@as(i64, 'x'), (try peekChar(null, syn)).toFixnum());
+    try testing.expectEqual(@as(i64, 'x'), (try readChar(syn, null, null)).toFixnum());
+    try unreadChar(Value.makeCharacter('x'), syn);
+    try testing.expectEqual(@as(i64, 'x'), (try readChar(syn, null, null)).toFixnum());
+    try testing.expectEqual(@as(i64, 'y'), (try readChar(syn, null, null)).toFixnum());
+    try testing.expect((try readChar(syn, null, null)).isNil());
 }
 
 test "makeStringInputStream respects string bounds" {

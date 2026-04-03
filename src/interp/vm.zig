@@ -1550,6 +1550,11 @@ pub const Vm = struct {
         return self.lookupSymbolLocalValueCell(sym);
     }
 
+    pub fn runtimeLookupSymbolValue(sym: Value, ctx: *anyopaque) anyerror!?Value {
+        const self: *Vm = @ptrCast(@alignCast(ctx));
+        return try self.lookupSymbolValueCell(sym);
+    }
+
     fn setSymbolValueCell(self: *Vm, sym_val: Value, val: Value) Error!void {
         const live_sym_val = self.resolveForwardedValue(sym_val);
         if (!live_sym_val.isSymbol()) return error.TypeMismatch;
@@ -3159,6 +3164,8 @@ pub const Vm = struct {
 
     /// Call function with arguments provided as a slice
     pub fn callFromStack(self: *Vm, fn_val: Value, args: []const Value) Error!Value {
+        const saved_resolver = runtime.setSymbolValueResolver(&runtimeLookupSymbolValue, @ptrCast(self));
+        defer runtime.restoreSymbolValueResolver(saved_resolver);
         if (self.isExecuting()) {
             return self.callFromStackAt(self.sp, fn_val, args);
         }
@@ -3200,6 +3207,8 @@ pub const Vm = struct {
     /// Call function with arguments provided as a slice, using stack slots starting at `base`.
     /// This preserves any values below `base` without copying.
     pub fn callFromStackAt(self: *Vm, base: usize, fn_val: Value, args: []const Value) Error!Value {
+        const saved_resolver = runtime.setSymbolValueResolver(&runtimeLookupSymbolValue, @ptrCast(self));
+        defer runtime.restoreSymbolValueResolver(saved_resolver);
         const saved_state = State.save(self);
 
         const saved_idx = self.saved_chunk_sp;
@@ -3293,6 +3302,8 @@ pub const Vm = struct {
     /// Like callFromStackAt, but checks for JIT code on the callee and
     /// calls it directly, bypassing the interpreter loop.
     pub fn callFromStackAtFast(self: *Vm, base: usize, fn_val: Value, args: []const Value) Error!Value {
+        const saved_resolver = runtime.setSymbolValueResolver(&runtimeLookupSymbolValue, @ptrCast(self));
+        defer runtime.restoreSymbolValueResolver(saved_resolver);
         const saved_state = State.save(self);
 
         const saved_idx = self.saved_chunk_sp;
@@ -3395,6 +3406,8 @@ pub const Vm = struct {
 
     /// Apply function with args list provided as a value
     pub fn applyFromStack(self: *Vm, fn_val: Value, args_list: Value) Error!Value {
+        const saved_resolver = runtime.setSymbolValueResolver(&runtimeLookupSymbolValue, @ptrCast(self));
+        defer runtime.restoreSymbolValueResolver(saved_resolver);
         if (self.isExecuting()) {
             return self.applyFromStackAt(self.sp, fn_val, args_list);
         }
@@ -3433,6 +3446,8 @@ pub const Vm = struct {
     /// Apply function with args list provided as a value, using stack slots starting at `base`.
     /// This preserves any values below `base` without copying.
     pub fn applyFromStackAt(self: *Vm, base: usize, fn_val: Value, args_list: Value) Error!Value {
+        const saved_resolver = runtime.setSymbolValueResolver(&runtimeLookupSymbolValue, @ptrCast(self));
+        defer runtime.restoreSymbolValueResolver(saved_resolver);
         const saved_state = State.save(self);
 
         const saved_idx = self.saved_chunk_sp;
@@ -3522,6 +3537,8 @@ pub const Vm = struct {
 
     /// Run a chunk to completion
     pub fn run(self: *Vm, chunk: *const Chunk) Error!Value {
+        const saved_resolver = runtime.setSymbolValueResolver(&runtimeLookupSymbolValue, @ptrCast(self));
+        defer runtime.restoreSymbolValueResolver(saved_resolver);
         self.chunk = chunk;
         self.ip = 0;
         self.sp = 0;
@@ -6943,21 +6960,11 @@ pub const Vm = struct {
             },
             .input_stream_p => {
                 const val = try self.pop();
-                if (!val.isStream()) {
-                    try self.push(Value.nil);
-                } else {
-                    const stream = val.toPtr(runtime.Stream);
-                    try self.push(if (stream.isInput()) Value.t else Value.nil);
-                }
+                try self.push(if (io.inputStreamP(val)) Value.t else Value.nil);
             },
             .output_stream_p => {
                 const val = try self.pop();
-                if (!val.isStream()) {
-                    try self.push(Value.nil);
-                } else {
-                    const stream = val.toPtr(runtime.Stream);
-                    try self.push(if (stream.isOutput()) Value.t else Value.nil);
-                }
+                try self.push(if (io.outputStreamP(val)) Value.t else Value.nil);
             },
             .open_stream_p => {
                 const val = try self.pop();
@@ -6970,16 +6977,7 @@ pub const Vm = struct {
             },
             .interactive_stream_p => {
                 const val = try self.pop();
-                if (!val.isStream()) {
-                    try self.push(Value.nil);
-                } else {
-                    const stream = val.toPtr(runtime.Stream);
-                    // stdin, stdout, stderr are interactive
-                    const is_interactive = stream.stream_type == .stdin or
-                        stream.stream_type == .stdout or
-                        stream.stream_type == .stderr;
-                    try self.push(if (is_interactive) Value.t else Value.nil);
-                }
+                try self.push(if (io.interactiveStreamP(val)) Value.t else Value.nil);
             },
             .stream_element_type => {
                 const val = try self.pop();

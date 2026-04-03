@@ -51,6 +51,13 @@ pub const freeUpperName = heap.freeUpperName;
 pub const GC = gc.GC;
 
 var g_heap_context: ?*Heap = null;
+var g_symbol_value_resolver: ?*const fn (Value, *anyopaque) anyerror!?Value = null;
+var g_symbol_value_resolver_ctx: ?*anyopaque = null;
+
+pub const SymbolValueResolverState = struct {
+    cb: ?*const fn (Value, *anyopaque) anyerror!?Value,
+    ctx: ?*anyopaque,
+};
 
 pub fn setHeapContext(h: *Heap) void {
     g_heap_context = h;
@@ -58,6 +65,30 @@ pub fn setHeapContext(h: *Heap) void {
 
 pub fn heapContext() ?*Heap {
     return g_heap_context;
+}
+
+pub fn setSymbolValueResolver(
+    cb: ?*const fn (Value, *anyopaque) anyerror!?Value,
+    ctx: ?*anyopaque,
+) SymbolValueResolverState {
+    const prev = SymbolValueResolverState{
+        .cb = g_symbol_value_resolver,
+        .ctx = g_symbol_value_resolver_ctx,
+    };
+    g_symbol_value_resolver = cb;
+    g_symbol_value_resolver_ctx = ctx;
+    return prev;
+}
+
+pub fn restoreSymbolValueResolver(state: SymbolValueResolverState) void {
+    g_symbol_value_resolver = state.cb;
+    g_symbol_value_resolver_ctx = state.ctx;
+}
+
+pub fn lookupSymbolValue(sym: Value) anyerror!?Value {
+    const cb = g_symbol_value_resolver orelse return null;
+    const ctx = g_symbol_value_resolver_ctx orelse return null;
+    return try cb(sym, ctx);
 }
 pub const Interner = interner.Interner;
 pub const RootRange = roots.RootRange;

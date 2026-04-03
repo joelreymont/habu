@@ -1,9 +1,11 @@
 ---
 title: Finish synonym and composite streams
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.217927+02:00"
+created-at: "\"2026-04-01T22:06:02.217927+02:00\""
+closed-at: "2026-04-03T23:31:01.570170+02:00"
+close-reason: "done: synonym streams resolve through VM value cells; build green; runtime probe passed; full test build still blocked by known 5-error baseline"
 blocks:
   - habu-unify-stream-and-a262987a
 ---

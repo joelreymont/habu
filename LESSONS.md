@@ -6,6 +6,21 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ---
 
+## Session Notes (2026-04-03)
+
+### Worked Well
+- Synonym streams needed to resolve through VM-owned value cells, not through fake symbol object state. Adding a runtime-level symbol-value resolver hook in `src/runtime/runtime.zig`, installing it around VM entrypoints in `src/interp/vm.zig:3166-3547`, and routing synonym stream delegation through that resolver in `src/runtime/primitives/io.zig:868-869,1874-1899,2283` fixes stream truthfulness without inventing a second binding store.
+- `src/runtime/heap.zig:2501` needed synonym streams to be allocated as `.io`, not `.input`. Otherwise output-capable synonym streams fail the top-level direction gate before delegation even gets a chance to resolve the real target.
+- Stream predicates must follow the delegated target too. Moving `input-stream-p`, `output-stream-p`, and `interactive-stream-p` onto the runtime helpers in `src/runtime/primitives/io.zig:1701-1736` and using those helpers from `src/interp/vm.zig:6961-6980` keeps synonym streams observationally consistent with the stream they name.
+- For runtime-level validation when `zig build test` is baseline-blocked and `./zig-out/bin/habu` is still broken on stdlib bootstrap, a repo-local throwaway `zig test` probe works. Running a temporary in-repo probe reproduced the exact synonym retargeting path and showed the new stream tests in `src/runtime/primitives/io.zig:3200-3271` pass under execution.
+
+### Did Not Work
+- Trying to “mirror” symbol values into `objects.Symbol` was the wrong direction. `src/runtime/objects.zig:156-165` has no value slot, so any attempt to push binding state into symbol objects is architectural drift, not a fix.
+- Raw `zig test src/runtime/primitives/io.zig` still is not a useful validation command in this repo. Module-path rules reject those relative imports immediately; use `zig build`, `zig build test` baseline comparison, or an in-repo temporary probe instead.
+- The repo-local runtime probe pulled in the existing unrelated `src/runtime/primitives/clos.zig:40,124,757` failure (`slot-value uses symbol metadata`). Treat that as separate debt; it is not caused by the synonym-stream fix.
+
+---
+
 ## Session Notes (2026-04-01)
 
 ### Worked Well

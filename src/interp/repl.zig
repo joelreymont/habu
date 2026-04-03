@@ -1062,10 +1062,7 @@ pub const Repl = struct {
     fn setGlobal(self: *Repl, name: []const u8, value: Value) !void {
         const idx = try self.compiler.globals.define(name);
         if (idx >= self.vm.globals.len) return error.InvalidConstant;
-        self.vm.globals[idx] = value;
-        if (idx >= self.vm.num_globals) {
-            self.vm.num_globals = idx + 1;
-        }
+        try self.vm.storeGlobal(idx, value);
     }
 
     fn ensureLoadFormRootGlobal(self: *Repl) !u16 {
@@ -1896,8 +1893,7 @@ pub const Repl = struct {
             if (idx >= vm.globals.len) continue;
             const prev = if (idx < vm.num_globals) vm.globals[idx] else Value.nil;
             try pushRootValue(vm, root_idx, stack_idx, prev);
-            vm.globals[idx] = path;
-            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+            try vm.storeGlobal(idx, path);
             std.debug.assert(bindings.len < bindings.idxs.len);
             bindings.idxs[bindings.len] = idx;
             bindings.len += 1;
