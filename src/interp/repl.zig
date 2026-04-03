@@ -116,6 +116,7 @@ pub const Repl = struct {
     /// GC roots that must survive across VM runs (macro definitions, etc).
     persistent_roots: std.ArrayList(Value),
     trusted_load_root: []u8,
+    trusted_load_roots: std.ArrayList([]u8),
     /// Line editor for interactive input
     line_editor: LineEditor,
     /// Current VM being used (for nested loads)
@@ -151,6 +152,7 @@ pub const Repl = struct {
             .macros = std.AutoHashMap(Value, MacroEntry).init(allocator),
             .persistent_roots = std.ArrayList(Value){},
             .trusted_load_root = undefined,
+            .trusted_load_roots = std.ArrayList([]u8){},
             .line_editor = LineEditor.init(allocator),
             .current_vm = null,
             .active_root_ctx = null,
@@ -160,10 +162,12 @@ pub const Repl = struct {
         errdefer self.chunk_pool.deinit(allocator);
         errdefer self.macros.deinit();
         errdefer self.persistent_roots.deinit(allocator);
+        errdefer self.trusted_load_roots.deinit(allocator);
         errdefer allocator.free(self.trusted_load_root);
         errdefer self.line_editor.deinit();
 
         self.trusted_load_root = try std.process.getCwdAlloc(allocator);
+        try self.trusted_load_roots.append(allocator, try allocator.dupe(u8, self.trusted_load_root));
         self.vm = try Vm.init(allocator, heap);
         errdefer self.vm.deinit();
         self.vm.setChunkPoolOwned(&self.chunk_pool);
@@ -1036,6 +1040,7 @@ pub const Repl = struct {
         self.vm.setGlobalEnv(&self.compiler.globals);
         // Set up load callback
         self.vm.setLoadCallback(&loadCallback, @ptrCast(self));
+        self.vm.setTrustedLoadRootCallback(&addTrustedLoadRootCallback, @ptrCast(self));
         // Set up eval callback
         self.vm.setEvalCallback(&evalCallback, @ptrCast(self));
         // Set up macroexpand callbacks
@@ -1266,7 +1271,10 @@ pub const Repl = struct {
         defer self.vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext_roots.len);
 
         // Intern symbol in CL package so it's found when CL-USER code references it
-        _ = try self.heap.internInPackage("COMMON-LISP", sym_name);
+        const cl_sym = (try self.heap.internInPackage("COMMON-LISP", sym_name)) orelse return error.PackageNotFound;
+        const cl_pkg_name = try self.heap.intern("COMMON-LISP");
+        const cl_pkg = (try self.heap.findLispPackage(cl_pkg_name)) orelse return error.PackageNotFound;
+        try primitives.package.exportSymbols(self.heap, cl_sym, cl_pkg);
         const live_value = self.vm.resolveForwardedValue(roots.items[value_idx]);
         roots.items[value_idx] = live_value;
         // Define global with qualified name
@@ -1345,6 +1353,36 @@ pub const Repl = struct {
     fn loadCallback(filename: []const u8, context: *anyopaque) vm_mod.Error!Value {
         const self: *Repl = @ptrCast(@alignCast(context));
         return self.load(filename);
+    }
+
+    fn addTrustedLoadRootCallback(path: []const u8, context: *anyopaque) vm_mod.Error!Value {
+        const self: *Repl = @ptrCast(@alignCast(context));
+        try self.addTrustedLoadRoot(path);
+        return Value.t;
+    }
+
+    fn addTrustedLoadRoot(self: *Repl, path: []const u8) !void {
+        const root = try self.resolveDeclaredTrustedRoot(path);
+        errdefer self.allocator.free(root);
+        for (self.trusted_load_roots.items) |existing| {
+            if (std.mem.eql(u8, existing, root)) return;
+        }
+        try self.trusted_load_roots.append(self.allocator, root);
+    }
+
+    fn resolveDeclaredTrustedRoot(self: *Repl, path: []const u8) ![]u8 {
+        const candidate = if (std.fs.path.isAbsolute(path))
+            try std.fs.path.resolve(self.allocator, &.{path})
+        else
+            try std.fs.path.resolve(self.allocator, &.{ self.trusted_load_root, path });
+        errdefer self.allocator.free(candidate);
+
+        var buf: [std.fs.max_path_bytes]u8 = undefined;
+        const real = try std.posix.realpath(candidate, &buf);
+        self.allocator.free(candidate);
+        var dir = try std.fs.openDirAbsolute(real, .{});
+        dir.close();
+        return try self.allocator.dupe(u8, real);
     }
 
     /// Callback for (eval expr) from VM
@@ -1455,6 +1493,13 @@ pub const Repl = struct {
                 );
             }
             if (is_builtin) {
+                if (self.builtinCallableTag(dispatch_sym)) |tag| {
+                    const builtin_val = try self.heap.allocNativeCode(@intFromEnum(tag));
+                    if (trace_fn_resolve) {
+                        std.debug.print("TRACE fn-resolve native kind={s}\n", .{@tagName(builtin_val.typeKind())});
+                    }
+                    return builtin_val;
+                }
                 const arity_opt = self.compiler.primitiveRefArity(dispatch_sym);
                 if (trace_fn_resolve) {
                     if (arity_opt) |arity| {
@@ -1470,12 +1515,6 @@ pub const Repl = struct {
                         std.debug.print("TRACE fn-resolve wrapper kind={s}\n", .{@tagName(wrapper_val.typeKind())});
                     }
                     if (isCallableValue(wrapper_val)) return wrapper_val;
-                } else if (self.builtinCallableTag(dispatch_sym)) |tag| {
-                    const builtin_val = try self.heap.allocNativeCode(@intFromEnum(tag));
-                    if (trace_fn_resolve) {
-                        std.debug.print("TRACE fn-resolve native kind={s}\n", .{@tagName(builtin_val.typeKind())});
-                    }
-                    return builtin_val;
                 }
             }
         }
@@ -1560,10 +1599,18 @@ pub const Repl = struct {
             .{ .field = "-", .tag = .sub },
             .{ .field = "*", .tag = .mul },
             .{ .field = "/", .tag = .div },
+            .{ .field = "append", .tag = .append },
             .{ .field = "log", .tag = .log },
             .{ .field = "gensym", .tag = .gensym },
             .{ .field = "atan", .tag = .atan },
             .{ .field = "list", .tag = .list },
+            .{ .field = "member", .tag = .member },
+            .{ .field = "assoc", .tag = .assoc },
+            .{ .field = "find", .tag = .find },
+            .{ .field = "position", .tag = .position },
+            .{ .field = "count", .tag = .count },
+            .{ .field = "remove", .tag = .remove },
+            .{ .field = "intern", .tag = .intern },
             .{ .field = "%make-broadcast-stream", .tag = .make_broadcast_stream },
             .{ .field = "%make-concatenated-stream", .tag = .make_concatenated_stream },
             .{ .field = "class-of", .tag = .class_of },
@@ -1583,6 +1630,7 @@ pub const Repl = struct {
             .{ .field = "make-array", .tag = .make_array },
             .{ .field = "char", .tag = .char },
             .{ .field = "schar", .tag = .schar },
+            .{ .field = "substring", .tag = .substring },
             .{ .field = "format", .tag = .format },
             .{ .field = "print", .tag = .print },
             .{ .field = "princ", .tag = .princ },
@@ -1605,6 +1653,7 @@ pub const Repl = struct {
             .{ .field = "%file-position", .tag = .file_position },
             .{ .field = "%set-file-position", .tag = .set_file_position },
             .{ .field = "%file-length", .tag = .file_length },
+            .{ .field = "%add-trusted-load-root", .tag = .add_trusted_load_root },
             .{ .field = "%finish-output", .tag = .finish_output },
             .{ .field = "%force-output", .tag = .force_output },
             .{ .field = "%clear-input", .tag = .clear_input },
@@ -2038,7 +2087,7 @@ pub const Repl = struct {
 
     fn resolveLoadPath(self: *Repl, vm: *const Vm, path: []const u8) ![]u8 {
         if (std.fs.path.isAbsolute(path)) {
-            return try self.allocator.dupe(u8, path);
+            return (try self.resolveAbsoluteTrustedPath(path)) orelse error.FileNotFound;
         }
         if (self.currentDefaultPathname(vm)) |defaults| {
             if (try self.pathnameDesignatorToOwnedString(defaults)) |base| {
@@ -2056,10 +2105,22 @@ pub const Repl = struct {
                 }
             }
         }
-        if (try self.resolveRelativeLoadPath(self.trusted_load_root, path)) |resolved| {
-            return resolved;
+        for (self.trusted_load_roots.items) |root| {
+            if (try self.resolveRelativeLoadPath(root, path)) |resolved| return resolved;
         }
         return error.FileNotFound;
+    }
+
+    fn resolveAbsoluteTrustedPath(self: *Repl, path: []const u8) !?[]u8 {
+        const candidate = try std.fs.path.resolve(self.allocator, &.{path});
+        errdefer self.allocator.free(candidate);
+        for (self.trusted_load_roots.items) |root| {
+            if (self.pathWithinRoot(root, candidate)) {
+                if (!try self.fileExists(candidate)) return null;
+                return candidate;
+            }
+        }
+        return null;
     }
 
     fn resolveRelativeLoadPath(self: *Repl, base: []const u8, path: []const u8) !?[]u8 {
@@ -2079,8 +2140,14 @@ pub const Repl = struct {
         defer self.allocator.free(root_abs);
         const candidate = try std.fs.path.resolve(self.allocator, &.{ root_abs, path });
         errdefer self.allocator.free(candidate);
-        if (!self.pathWithinRoot(root_abs, candidate)) return null;
-        if (!try self.fileExists(candidate)) return null;
+        if (!self.pathWithinRoot(root_abs, candidate)) {
+            self.allocator.free(candidate);
+            return null;
+        }
+        if (!try self.fileExists(candidate)) {
+            self.allocator.free(candidate);
+            return null;
+        }
         return candidate;
     }
 
@@ -2605,6 +2672,8 @@ pub const Repl = struct {
         self.chunk_pool.deinit(self.allocator);
         self.macros.deinit();
         self.persistent_roots.deinit(self.allocator);
+        for (self.trusted_load_roots.items) |root| self.allocator.free(root);
+        self.trusted_load_roots.deinit(self.allocator);
         self.allocator.free(self.trusted_load_root);
     }
 
@@ -5579,6 +5648,61 @@ test "nested load restores package and binds default pathname defaults" {
     try testing.expectEqualStrings("COMMON-LISP-USER", c1.car.toPtr(runtime.String).bytes());
     const c2 = c1.cdr.toPtr(runtime.Cons);
     try testing.expect(!c2.car.isNil());
+}
+
+test "load accepts explicitly trusted external root" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 32 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{ .sub_path = "external-load.lsp", .data = "42\n" });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const script_abs = try std.fs.path.join(allocator, &.{ base, "external-load.lsp" });
+    defer allocator.free(script_abs);
+
+    const denied = try std.fmt.allocPrint(allocator, "(load \"{s}\")", .{script_abs});
+    defer allocator.free(denied);
+    try testing.expectError(error.FileNotFound, repl.eval(denied));
+
+    const trust = try std.fmt.allocPrint(allocator, "(%add-trusted-load-root \"{s}\")", .{base});
+    defer allocator.free(trust);
+    const trusted = try repl.eval(trust);
+    try testing.expect(trusted.isT());
+
+    const loaded = try repl.eval(denied);
+    try testing.expect(loaded.isFixnum());
+    try testing.expectEqual(@as(i64, 42), loaded.toFixnum());
+}
+
+test "reader accepts exact maxima-style COMMON-LISP conditional" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        "#+#.(cl:if (cl:and (cl:member :cmu cl:*features*) (cl:find-package '#:intl)) '(or) '(and)) 42",
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
 test "load rejects repeated directory prefix fallback" {

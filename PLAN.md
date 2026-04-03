@@ -156,6 +156,7 @@ This plan is done only when:
 - Work:
   - represent builtins as first-class callable values or direct VM dispatch,
   - delete wrapper lambdas that call `eval`,
+  - close the remaining direct-callable gap for nullary/variadic/optional builtins so `symbol-function`/`fdefinition` work before stdlib bootstrap for forms such as `intern`, `append`, `member`, `assoc`, `find`, `position`, `count`, `remove`, and `substring`,
   - delete compiler-side builtin lambda synthesis and function-position symbol-designator fallback that postpones canonical callable resolution to runtime.
 - Acceptance:
   - builtin/function designators resolve canonically without runtime-generated wrappers,
@@ -163,6 +164,22 @@ This plan is done only when:
 - Risk:
   - impacts `funcall`, `apply`, symbol-function, and compiler callable lowering.
 - Effort: L
+
+#### 0.10 Remove JIT bridge OOM fallback semantics
+- Goal: G1, G3, G4
+- Files: `src/interp/vm.zig:2173-2240`, `src/tests/integration.zig:10826-10910`, `tools/validate-session:188-199`
+- Depends on: 0.5, 0.8
+- Work:
+  - make JIT bridge OOM/error results explicit instead of returning interpreted fallback,
+  - delete fallback counters and fallback-oriented test expectations,
+  - make validation profiles assert clean JIT eligibility/behavior without blessing fallback execution.
+- Acceptance:
+  - JIT bridge runtime never degrades to interpreted execution on OOM,
+  - tests and validation fail if fallback semantics reappear,
+  - Maxima validation profiles no longer depend on fallback-behavior checks.
+- Risk:
+  - exposes real JIT heap/bridge/root pressure that fallback used to hide.
+- Effort: M
 
 #### 0.9 Remove condition error masking
 - Goal: G1, G2

@@ -9,6 +9,7 @@ comptime {
 
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const bytecode = @import("../bytecode/bytecode.zig");
 const disasm = @import("../bytecode/disasm.zig");
 const opcodes = @import("../bytecode/opcodes.zig");
@@ -45,10 +46,19 @@ pub const BuiltinCallableTag = enum(usize) {
     sub,
     mul,
     div,
+    append,
     log,
     gensym,
     atan,
     list,
+    member,
+    assoc,
+    find,
+    position,
+    count,
+    remove,
+    intern,
+    add_trusted_load_root,
     make_broadcast_stream,
     make_concatenated_stream,
     class_of,
@@ -68,6 +78,7 @@ pub const BuiltinCallableTag = enum(usize) {
     make_array,
     char,
     schar,
+    substring,
     format,
     print,
     princ,
@@ -808,6 +819,8 @@ pub const Vm = struct {
     /// Callback for (load "filename") - set by REPL
     load_callback: ?*const fn ([]const u8, *anyopaque) Error!Value,
     load_context: ?*anyopaque,
+    trusted_load_root_callback: ?*const fn ([]const u8, *anyopaque) Error!Value,
+    trusted_load_root_context: ?*anyopaque,
 
     /// Callback for (eval expr) - set by REPL
     eval_callback: ?*const fn (Value, *anyopaque) Error!Value,
@@ -862,8 +875,6 @@ pub const Vm = struct {
     jit_adm: JitAdmStats,
     unsupported_tags: [IR_TAG_N]u64,
     jit_direct_calls: u64,
-    /// Number of times JIT execution fell back to interpreter due to OOM.
-    jit_fallback_oom_count: u64,
     call_shape: CallShapeStats,
     track_call_shape: bool,
 
@@ -1298,6 +1309,8 @@ pub const Vm = struct {
             .global_env = null,
             .load_callback = null,
             .load_context = null,
+            .trusted_load_root_callback = null,
+            .trusted_load_root_context = null,
             .eval_callback = null,
             .eval_context = null,
             .macroexpand_callback = null,
@@ -1328,7 +1341,6 @@ pub const Vm = struct {
             .jit_adm = .{},
             .unsupported_tags = [_]u64{0} ** IR_TAG_N,
             .jit_direct_calls = 0,
-            .jit_fallback_oom_count = 0,
             .call_shape = .{},
             .track_call_shape = std.posix.getenv("HABU_TRACK_CALL_SHAPES") != null,
             .trace_jit_call = std.posix.getenv("HABU_TRACE_JIT_CALL") != null,
@@ -1411,10 +1423,6 @@ pub const Vm = struct {
         self.jit_direct_calls = 0;
     }
 
-    pub fn resetJitFallbackOomCount(self: *Vm) void {
-        self.jit_fallback_oom_count = 0;
-    }
-
     pub fn resetCallShapeStats(self: *Vm) void {
         self.call_shape = .{};
     }
@@ -1463,6 +1471,11 @@ pub const Vm = struct {
     pub fn setLoadCallback(self: *Vm, callback: *const fn ([]const u8, *anyopaque) Error!Value, context: *anyopaque) void {
         self.load_callback = callback;
         self.load_context = context;
+    }
+
+    pub fn setTrustedLoadRootCallback(self: *Vm, callback: *const fn ([]const u8, *anyopaque) Error!Value, context: *anyopaque) void {
+        self.trusted_load_root_callback = callback;
+        self.trusted_load_root_context = context;
     }
 
     /// Set the eval callback for (eval expr)
@@ -2206,11 +2219,6 @@ pub const Vm = struct {
             refreshJitHeap(self);
             if (trace_jit_call) {
                 std.debug.print("JIT_CALL abort {s} err={s}\n", .{ compiled.name, @errorName(err) });
-            }
-            if (err == error.OutOfMemory) {
-                self.jit_fallback_oom_count +%= 1;
-                _ = try self.collectGarbage();
-                return null;
             }
             return err;
         }
@@ -9684,6 +9692,16 @@ pub const Vm = struct {
                 for (args[1..]) |arg| out = try arith.div(self.heap, out, arg);
                 return out;
             },
+            .append => {
+                if (args.len == 0) return Value.nil;
+                var out = args[args.len - 1];
+                var i = args.len - 1;
+                while (i > 0) {
+                    i -= 1;
+                    out = try primitives.list.append(self.heap, args[i], out);
+                }
+                return out;
+            },
             .log => {
                 try requireArgCount(args, 1, 2);
                 if (args.len == 1) return try arith.log_val(args[0]);
@@ -9704,6 +9722,19 @@ pub const Vm = struct {
                     try arith.atan2_val(args[0], args[1]);
             },
             .list => return try primitives.list.list(self.heap, args),
+            .member => return try self.memberBuiltin(args),
+            .assoc => return try self.assocBuiltin(args),
+            .find => return try self.findBuiltin(args),
+            .position => return try self.positionBuiltin(args),
+            .count => return try self.countBuiltin(args),
+            .remove => return try self.removeBuiltin(args),
+            .intern => return try self.internBuiltin(args),
+            .add_trusted_load_root => {
+                try requireArgCount(args, 1, 1);
+                const cb = self.trusted_load_root_callback orelse return error.UnboundSymbol;
+                const path = try primitives.pathname.pathDesignatorBytes(self.allocator, self.heap, &self.builtins, args[0]);
+                return try cb(path, self.trusted_load_root_context.?);
+            },
             .make_broadcast_stream => return try self.heap.allocBroadcastStream(try self.argsList(args)),
             .make_concatenated_stream => return try self.heap.allocConcatenatedStream(try self.argsList(args)),
             .class_of, .class_of_internal => return try primitives.classOf(self.heap, try self.argsList(args)),
@@ -9869,6 +9900,14 @@ pub const Vm = struct {
                 if (idx >= str.length) return error.TypeMismatch;
                 return Value.makeCharacter(@intCast(str.bytes()[idx]));
             },
+            .substring => {
+                try requireArgCount(args, 3, 3);
+                if (!args[1].isFixnum() or !args[2].isFixnum()) return error.TypeMismatch;
+                const start_signed = args[1].toFixnum();
+                const end_signed = args[2].toFixnum();
+                if (start_signed < 0 or end_signed < 0) return error.TypeMismatch;
+                return try stringPrims.substring(self.heap, args[0], @intCast(start_signed), @intCast(end_signed));
+            },
             .format => {
                 if (args.len < 2) return error.TypeMismatch;
                 if (!args[1].isString()) return error.TypeMismatch;
@@ -10007,6 +10046,299 @@ pub const Vm = struct {
                 return printer;
             },
         }
+    }
+
+    const SeqTest = union(enum) {
+        fast: runtime.HashTest,
+        callable: Value,
+    };
+
+    fn seqTestKeyword(self: *Vm) Error!Value {
+        return try self.heap.internKeyword("test");
+    }
+
+    fn decodeSeqTest(self: *Vm, test_val: Value, default_cmp: runtime.HashTest) Error!SeqTest {
+        const live = self.resolveForwardedValue(test_val);
+        if (live.isNil()) return .{ .fast = default_cmp };
+        if (live.isSymbol()) {
+            if (live.raw == self.builtins.sym_eq.raw) return .{ .fast = .eq };
+            if (live.raw == self.builtins.sym_equal.raw) return .{ .fast = .equal };
+            const eql_sym = try self.heap.intern("eql");
+            if (live.raw == eql_sym.raw) return .{ .fast = .eql };
+        }
+        return .{ .callable = live };
+    }
+
+    fn parseSeqTestOption(self: *Vm, args: []const Value, positional: usize, default_cmp: runtime.HashTest) Error!SeqTest {
+        if (args.len == positional) return .{ .fast = default_cmp };
+        if (args.len < positional or ((args.len - positional) & 1) != 0) return error.InvalidArgument;
+        const kw_test = try self.seqTestKeyword();
+        var seq_test = SeqTest{ .fast = default_cmp };
+        var i = positional;
+        while (i < args.len) : (i += 2) {
+            const key = self.resolveForwardedValue(args[i]);
+            if (key.raw != kw_test.raw) return error.InvalidArgument;
+            seq_test = try self.decodeSeqTest(args[i + 1], default_cmp);
+        }
+        return seq_test;
+    }
+
+    fn seqTestMatches(self: *Vm, seq_test: SeqTest, lhs: Value, rhs: Value) Error!bool {
+        return switch (seq_test) {
+            .fast => |cmp| hashKeyEqualWithTest(lhs, rhs, cmp),
+            .callable => |callable| blk: {
+                const result = try self.callFromStackAtFast(self.sp, callable, &[_]Value{ lhs, rhs });
+                break :blk !result.isNil();
+            },
+        };
+    }
+
+    fn memberBuiltin(self: *Vm, args: []const Value) Error!Value {
+        if (args.len < 2) return error.TypeMismatch;
+        const item = args[0];
+        const list = args[1];
+        const seq_test = try self.parseSeqTestOption(args, 2, .eq);
+        var curr = list;
+        while (curr.isCons()) {
+            const c = curr.toPtr(Cons);
+            if (try self.seqTestMatches(seq_test, item, c.car)) return curr;
+            curr = c.cdr;
+        }
+        if (!curr.isNil()) return error.TypeMismatch;
+        return Value.nil;
+    }
+
+    fn assocBuiltin(self: *Vm, args: []const Value) Error!Value {
+        if (args.len < 2) return error.TypeMismatch;
+        const key = args[0];
+        const alist = args[1];
+        const seq_test = try self.parseSeqTestOption(args, 2, .eq);
+        var curr = alist;
+        while (curr.isCons()) {
+            const c = curr.toPtr(Cons);
+            if (c.car.isCons()) {
+                const pair = c.car.toPtr(Cons);
+                if (try self.seqTestMatches(seq_test, key, pair.car)) return c.car;
+            }
+            curr = c.cdr;
+        }
+        if (!curr.isNil()) return error.TypeMismatch;
+        return Value.nil;
+    }
+
+    fn findBuiltin(self: *Vm, args: []const Value) Error!Value {
+        if (args.len < 2) return error.TypeMismatch;
+        const seq_test = try self.parseSeqTestOption(args, 2, .eql);
+        return switch (seq_test) {
+            .fast => |cmp| try self.findInSeq(args[0], args[1], cmp),
+            .callable => try self.findInSeqCallable(args[0], args[1], seq_test),
+        };
+    }
+
+    fn positionBuiltin(self: *Vm, args: []const Value) Error!Value {
+        if (args.len < 2) return error.TypeMismatch;
+        const seq_test = try self.parseSeqTestOption(args, 2, .eql);
+        return switch (seq_test) {
+            .fast => |cmp| try self.positionInSeq(args[0], args[1], cmp),
+            .callable => try self.positionInSeqCallable(args[0], args[1], seq_test),
+        };
+    }
+
+    fn countBuiltin(self: *Vm, args: []const Value) Error!Value {
+        if (args.len < 2) return error.TypeMismatch;
+        const seq_test = try self.parseSeqTestOption(args, 2, .eql);
+        return switch (seq_test) {
+            .fast => |cmp| try self.countInSeq(args[0], args[1], cmp),
+            .callable => try self.countInSeqCallable(args[0], args[1], seq_test),
+        };
+    }
+
+    fn removeBuiltin(self: *Vm, args: []const Value) Error!Value {
+        if (args.len < 2) return error.TypeMismatch;
+        const seq_test = try self.parseSeqTestOption(args, 2, .eql);
+        return switch (seq_test) {
+            .fast => |cmp| try self.listRemoveWithTest(args[0], args[1], cmp),
+            .callable => try self.listRemoveWithCallable(args[0], args[1], seq_test),
+        };
+    }
+
+    fn internBuiltin(self: *Vm, args: []const Value) Error!Value {
+        try requireArgCount(args, 1, 2);
+        if (args.len == 1) {
+            const name_val = self.resolveForwardedValue(args[0]);
+            const name_bytes: []const u8 = switch (name_val.typeKind()) {
+                .string => name_val.toPtr(String).bytes(),
+                .symbol => name_val.toPtr(Symbol).getName(),
+                .keyword => name_val.toPtr(runtime.Keyword).getName(),
+                .nil => "nil",
+                .t => "t",
+                .char => blk: {
+                    const cp = name_val.toCharacter();
+                    if (cp > 0xFF) return error.TypeMismatch;
+                    const byte = [_]u8{@intCast(cp)};
+                    break :blk &byte;
+                },
+                else => return error.TypeMismatch,
+            };
+            const sym = if (self.heap.internCurrentPackagePreservingCase(name_bytes)) |val|
+                val
+            else |_| blk: {
+                var tmp: ?[]u8 = null;
+                defer if (tmp) |buf| self.allocator.free(buf);
+                var stable = name_bytes;
+                if (self.bytesInHeap(name_bytes)) {
+                    const copy = try self.allocator.alloc(u8, name_bytes.len);
+                    @memcpy(copy, name_bytes);
+                    tmp = copy;
+                    stable = copy;
+                }
+                _ = try self.collectGarbage();
+                break :blk try self.heap.internCurrentPackagePreservingCase(stable);
+            };
+            self.secondary_values[0] = try self.heap.internKeyword("internal");
+            self.secondary_values_count = 1;
+            return sym;
+        }
+
+        const pkg = switch (self.resolveForwardedValue(args[1]).typeKind()) {
+            .package => self.resolveForwardedValue(args[1]),
+            .symbol, .string, .keyword => if (try self.heap.findLispPackage(args[1])) |pkg| pkg else return error.InvalidPackage,
+            else => return error.TypeMismatch,
+        };
+        const result = try primitives.package.internSymbol(self.heap, args[0], pkg);
+        if (!result.isCons()) return error.TypeMismatch;
+        const c1 = result.toPtr(Cons);
+        if (!c1.cdr.isCons()) return error.TypeMismatch;
+        const c2 = c1.cdr.toPtr(Cons);
+        self.secondary_values[0] = c2.car;
+        self.secondary_values_count = 1;
+        return c1.car;
+    }
+
+    fn findInSeqCallable(self: *Vm, item: Value, seq: Value, seq_test: SeqTest) Error!Value {
+        if (seq.isString()) {
+            const str = seq.toPtr(runtime.String).bytes();
+            for (str) |c| {
+                const elem = Value.makeCharacter(@intCast(c));
+                if (try self.seqTestMatches(seq_test, item, elem)) return elem;
+            }
+            return Value.nil;
+        }
+        if (seq.isVector()) {
+            const vec = seq.toPtr(runtime.Vector);
+            for (0..vec.length) |i| {
+                const elem = vec.get(i);
+                if (try self.seqTestMatches(seq_test, item, elem)) return elem;
+            }
+            return Value.nil;
+        }
+        var curr = seq;
+        while (curr.isCons()) {
+            const c = curr.toPtr(Cons);
+            if (try self.seqTestMatches(seq_test, item, c.car)) return c.car;
+            curr = c.cdr;
+        }
+        if (!curr.isNil()) return error.TypeMismatch;
+        return Value.nil;
+    }
+
+    fn positionInSeqCallable(self: *Vm, item: Value, seq: Value, seq_test: SeqTest) Error!Value {
+        if (seq.isString()) {
+            const str = seq.toPtr(runtime.String).bytes();
+            for (str, 0..) |c, i| {
+                if (try self.seqTestMatches(seq_test, item, Value.makeCharacter(@intCast(c)))) {
+                    return Value.makeFixnum(@intCast(i));
+                }
+            }
+            return Value.nil;
+        }
+        if (seq.isVector()) {
+            const vec = seq.toPtr(runtime.Vector);
+            for (0..vec.length) |i| {
+                if (try self.seqTestMatches(seq_test, item, vec.get(i))) {
+                    return Value.makeFixnum(@intCast(i));
+                }
+            }
+            return Value.nil;
+        }
+        var curr = seq;
+        var idx: i64 = 0;
+        while (curr.isCons()) {
+            const c = curr.toPtr(Cons);
+            if (try self.seqTestMatches(seq_test, item, c.car)) return Value.makeFixnum(idx);
+            curr = c.cdr;
+            idx += 1;
+        }
+        if (!curr.isNil()) return error.TypeMismatch;
+        return Value.nil;
+    }
+
+    fn countInSeqCallable(self: *Vm, item: Value, seq: Value, seq_test: SeqTest) Error!Value {
+        var n: i64 = 0;
+        if (seq.isString()) {
+            const str = seq.toPtr(runtime.String).bytes();
+            for (str) |c| {
+                if (try self.seqTestMatches(seq_test, item, Value.makeCharacter(@intCast(c)))) n += 1;
+            }
+            return Value.makeFixnum(n);
+        }
+        if (seq.isVector()) {
+            const vec = seq.toPtr(runtime.Vector);
+            for (0..vec.length) |i| {
+                if (try self.seqTestMatches(seq_test, item, vec.get(i))) n += 1;
+            }
+            return Value.makeFixnum(n);
+        }
+        var curr = seq;
+        while (curr.isCons()) {
+            const c = curr.toPtr(Cons);
+            if (try self.seqTestMatches(seq_test, item, c.car)) n += 1;
+            curr = c.cdr;
+        }
+        if (!curr.isNil()) return error.TypeMismatch;
+        return Value.makeFixnum(n);
+    }
+
+    fn listRemoveWithCallable(self: *Vm, item: Value, seq: Value, seq_test: SeqTest) Error!Value {
+        const saved_sp = self.sp;
+        errdefer self.sp = saved_sp;
+
+        if (self.sp + 4 > STACK_SIZE) return error.StackOverflow;
+        const item_idx = self.sp;
+        const seq_idx = self.sp + 1;
+        const result_idx = self.sp + 2;
+        const tail_idx = self.sp + 3;
+
+        self.stack[item_idx] = item;
+        self.stack[seq_idx] = seq;
+        self.stack[result_idx] = Value.nil;
+        self.stack[tail_idx] = Value.nil;
+        self.sp += 4;
+
+        while (self.stack[seq_idx].isCons()) {
+            const curr_val = self.stack[seq_idx];
+            const c = curr_val.toPtr(Cons);
+            const car = c.car;
+            self.stack[seq_idx] = c.cdr;
+
+            if (try self.seqTestMatches(seq_test, self.stack[item_idx], car)) continue;
+
+            const new_cons = try self.allocCons(car, Value.nil);
+            const tail_val = self.stack[tail_idx];
+            if (tail_val.isCons()) {
+                tail_val.toPtr(Cons).cdr = new_cons;
+                self.writeBarrierStore(tail_val, new_cons);
+            } else {
+                self.stack[result_idx] = new_cons;
+            }
+            self.stack[tail_idx] = new_cons;
+        }
+
+        if (self.stack[seq_idx] != Value.nil) return error.TypeMismatch;
+
+        const result = self.stack[result_idx];
+        self.sp = saved_sp;
+        return result;
     }
 
     fn doFormat(self: *Vm, dest: Value, control: Value, args: []const Value) Error!Value {
@@ -14976,6 +15308,49 @@ test "vm jit bridge lifecycle tracks owner vm" {
     try testing.expect(jit_backend.callBridgeContext() == null);
     try testing.expect(jit_backend.errorBridgeContext() == null);
     try testing.expect(jit_backend.globalBridgeContext() == null);
+}
+
+test "vm runJitCompiled propagates bridge OutOfMemory" {
+    if (!build_options.use_hoist) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    const code = [_]u8{};
+    const consts = [_]Value{};
+    const chunk_val = try heap.allocChunk(&code, &consts, 0, 0, 0, false, 0);
+    const chunk = chunk_val.toPtr(Chunk);
+
+    const Relay = struct {
+        threadlocal var target_vm: ?*Vm = null;
+
+        fn oom() callconv(.c) i64 {
+            const vm_ptr = target_vm.?;
+            vm_ptr.jit_bridge_error = error.OutOfMemory;
+            jit_backend.bridgeThrow();
+            std.debug.panic("jit bridge throw returned", .{});
+        }
+    };
+
+    Relay.target_vm = &vm;
+    defer Relay.target_vm = null;
+
+    var compiled = jit_backend.CompiledFn{
+        .mem = undefined,
+        .fn_ptr = @ptrCast(@alignCast(&Relay.oom)),
+        .arity = 0,
+        .allocator = allocator,
+        .name = "jit-oom-relay",
+    };
+
+    try testing.expectError(error.OutOfMemory, vm.runJitCompiled(&compiled, chunk, chunk, &.{}));
+    try testing.expect(vm.jit_bridge_error == null);
 }
 
 test "vm state restore refreshes owned chunk pool slice" {

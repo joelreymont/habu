@@ -9,6 +9,10 @@
 (defparameter *maxima-source-dir* (habu-maxima-manifest-value :srcdir))
 (defparameter *maxima-package-init* (habu-maxima-manifest-value :package-init))
 
+(let ((root (habu-maxima-manifest-value :root)))
+  (when root
+    (%add-trusted-load-root root)))
+
 ;; Prefer upstream package definitions when available so package semantics
 ;; match Maxima source without local rewrites.
 (when (and *maxima-package-init*

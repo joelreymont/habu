@@ -6942,9 +6942,11 @@
   (declare (ignore initargs class))
   nil)
 
+(export 'make-instance)
+
 ;; Ensure CL package entry point is present even when stdlib loads in CL-USER.
-(unless (eq 'make-instance 'common-lisp:make-instance)
-  (setf (fdefinition 'common-lisp:make-instance) #'make-instance))
+(unless (eq 'make-instance 'common-lisp::make-instance)
+  (setf (fdefinition 'common-lisp::make-instance) #'make-instance))
 
 (defun allocate-instance (class &rest initargs)
   "Allocate storage for an instance (stub)"

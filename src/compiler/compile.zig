@@ -490,6 +490,7 @@ pub const Builtins = struct {
     @"probe-file": Value,
     @"file-write-date": Value,
     @"file-author": Value,
+    @"%add-trusted-load-root": Value,
     @"file-string-length": Value,
     @"get-universal-time": Value,
     @"get-internal-real-time": Value,
@@ -1114,6 +1115,7 @@ pub const Builtins = struct {
             .@"probe-file" = try heap.intern("probe-file"),
             .@"file-write-date" = try heap.intern("file-write-date"),
             .@"file-author" = try heap.intern("file-author"),
+            .@"%add-trusted-load-root" = try heap.intern("%add-trusted-load-root"),
             .@"file-string-length" = try heap.intern("file-string-length"),
             .@"get-universal-time" = try heap.intern("get-universal-time"),
             .@"get-internal-real-time" = try heap.intern("get-internal-real-time"),
@@ -11400,11 +11402,8 @@ pub const Compiler = struct {
 
         const ctor_ir = switch (repr) {
             .object => blk: {
-                const make_instance_idx = self.globals.lookup("make-instance") orelse
-                    self.globals.lookup("COMMON-LISP:MAKE-INSTANCE") orelse
-                    self.globals.lookup("CL:MAKE-INSTANCE") orelse
-                    return error.InvalidSyntax;
-                const make_instance_ref = try self.builder.globalRef("make-instance", make_instance_idx);
+                const make_instance_sym = try heap.intern("make-instance");
+                const make_instance_ref = try self.builder.lit(make_instance_sym);
                 const ctor_args = try self.allocator.alloc(*Ir, 1 + (slot_count * 2));
                 const name_sym = try heap.intern(struct_name);
                 ctor_args[0] = try self.builder.lit(name_sym);
@@ -15865,6 +15864,7 @@ pub const Compiler = struct {
         "%file-position",
         "%set-file-position",
         "%file-length",
+        "%add-trusted-load-root",
         "%finish-output",
         "%force-output",
         "%clear-input",

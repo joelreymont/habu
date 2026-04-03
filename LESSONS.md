@@ -2015,3 +2015,18 @@ also `(set alias-target y)` (with assign validator).
 - Trying to validate the structure cutover through the main binary still runs into the pre-existing stdlib bootstrap failure before user code executes. That path is not evidence against the structure work; it is a separate startup blocker.
 - Ad hoc Zig smoke binaries created outside the module root are rejected by Zig's module-path rules. If a direct harness is needed again, add it under the repo module root and remove it immediately after use.
 - Structure lattice helpers must intern CL type symbols in the `COMMON-LISP` package, never in the ambient current package. Replacing package-sensitive `heap.intern(...)` calls in `src/runtime/primitives/type.zig:72-154,507-607,714-759` with canonical `COMMON-LISP` symbol lookup fixed `structure-object` / `structure-class` behavior after `(in-package ...)`.
+
+### Worked Well
+- JIT bridge OOM behavior needs a direct bridge-path proof, not a workload-shaped integration test. `src/interp/vm.zig` now tests `runJitCompiled` with a bridge-thrown `error.OutOfMemory`, which stays stable even when the supported JIT surface changes.
+- Fallback-blessing tests hide real bridge contracts. Removing `jit_fallback_oom_count` and rewriting `tools/validate-session` to require explicit `OutOfMemory` relay makes JIT pressure failures observable instead of silently re-entering the interpreter.
+
+### Did Not Work
+- Using workload-shaped JIT OOM tests in `src/tests/integration.zig` was brittle. Current `make-array`, recursive `cons`, and similar allocation-heavy forms are not all in the live JIT-supported subset, so those tests rot into false blockers unrelated to the bridge contract.
+
+### Worked Well
+- The real `maxima-package.lisp` blocker was reader case folding, not another Maxima-specific patch. `src/reader/parser.zig:1115-1157` now uppercases unescaped symbol/package token bytes before package-qualified lookup, which is the missing generic CL reader rule that upstream lowercase `cl:...` forms depend on.
+- A focused exact-shape regression is better than an approximate reader smoke test. `src/interp/repl.zig:5689-5706` now uses the actual Maxima-style `#+#.(cl:if (cl:and ...))` conditional, which caught the package-qualified reader bug immediately.
+- When adding a no-allocation fast path, verify lifetime, not just content. Returning `upperNameAlloc(...).slice` from a stack-backed buffer in `src/reader/parser.zig` produced a correct transformation with invalid storage; the fix is to return the original slice when no folding is needed and heap-owned storage otherwise.
+
+### Did Not Work
+- The earlier focused test command used a single `-Dtest-filter` string with `|` separators, which Zig treats as one literal substring, so it did not prove those named tests were actually running. Use one concrete filter per proof run.

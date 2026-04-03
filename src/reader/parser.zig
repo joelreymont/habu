@@ -1114,7 +1114,22 @@ pub const Parser = struct {
 
     fn decodeSymbolToken(self: *Parser, raw: []const u8) Error!DecodedTokenName {
         if (std.mem.indexOfAny(u8, raw, "\\|") == null) {
-            return .{ .slice = raw, .owned = null };
+            var has_lower = false;
+            for (raw) |ch| {
+                if (ch >= 'a' and ch <= 'z') {
+                    has_lower = true;
+                    break;
+                }
+            }
+            if (!has_lower) {
+                return .{ .slice = raw, .owned = null };
+            }
+            const buf = try self.alloc.alloc(u8, raw.len);
+            errdefer self.alloc.free(buf);
+            for (raw, 0..) |ch, i| {
+                buf[i] = std.ascii.toUpper(ch);
+            }
+            return .{ .slice = buf, .owned = buf };
         }
         const buf = try self.alloc.alloc(u8, raw.len);
         errdefer self.alloc.free(buf);
@@ -1153,7 +1168,7 @@ pub const Parser = struct {
                 i += 1;
                 continue;
             }
-            buf[out_i] = c;
+            buf[out_i] = std.ascii.toUpper(c);
             out_i += 1;
             i += 1;
         }

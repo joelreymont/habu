@@ -190,7 +190,7 @@ run_maxima_macro_hang_profile() {
 
   local tests=(
     "stdlib append function designators stay variadic"
-    "compileChunk JIT OOM relay falls back to interpreted execution"
+    "compileChunk JIT OOM relay propagates OutOfMemory"
     "translateVar remap hit returns scoped local"
     "jit hash helpers handle non-table and table entry paths"
     "findMatchingChunk"

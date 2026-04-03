@@ -1716,6 +1716,33 @@ test "stdlib symbol-function primitive wrapper count" {
     try testing.expectEqual(@as(i64, 2), result.toFixnum());
 }
 
+test "builtin function designators resolve before stdlib bootstrap" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(and
+        \\  (multiple-value-bind (sym status) (funcall #'intern "PRELUDE-DOT")
+        \\    (and (eq sym 'prelude-dot) (eq status :internal)))
+        \\  (equal (funcall #'append '(a) '(b) '(c)) '(a b c))
+        \\  (equal (funcall #'member 'b '(a b c) :test #'eq) '(b c))
+        \\  (equal (funcall #'assoc 'b '((a . 1) (b . 2)) :test #'eq) '(b . 2))
+        \\  (eq (funcall #'find 'b '(a b c) :test #'eq) 'b)
+        \\  (= (funcall #'position 'b '(a b c) :test #'eq) 1)
+        \\  (= (funcall #'count 'b '(a b b c) :test #'eq) 2)
+        \\  (equal (funcall #'remove 'b '(a b c b) :test #'eq) '(a c))
+        \\  (string= (funcall #'substring "abcd" 1 3) "bc"))
+    );
+    try testing.expect(result.raw == Value.t.raw);
+}
+
 test "stdlib append function designators stay variadic" {
     const allocator = testing.allocator;
 
@@ -10794,106 +10821,4 @@ test "maxima letmac destructuring-let expands and runs" {
     try testing.expect(c0.cdr.isCons());
     const c1 = c0.cdr.toPtr(Cons);
     try testing.expectEqual(@as(i64, 2), c1.car.toFixnum());
-}
-
-test "compileChunk JIT OOM relay falls back to interpreted execution" {
-    if (!build_options.use_hoist) return;
-
-    const allocator = testing.allocator;
-    // Small heap to force JIT no-GC path pressure while keeping interpreter fallback viable.
-    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 });
-    defer heap.deinit();
-
-    var vm = try Vm.init(allocator, &heap);
-    defer vm.deinit();
-
-    var comp = try Compiler.initWithHeap(allocator, &vm);
-    defer comp.deinit();
-    vm.setGlobalEnv(&comp.globals);
-
-    var chunk_pool = std.ArrayList(Value){};
-    defer chunk_pool.deinit(allocator);
-    vm.setChunkPoolOwned(&chunk_pool);
-
-    const jit_before = vm.jit_fns.items.len;
-
-    // Define optimized function so hoist/JIT can compile it.
-    _ = try vm.run(try compile_chunk.compileChunk(
-        allocator,
-        &heap,
-        &vm,
-        &comp,
-        &chunk_pool,
-        "(defun jit-alloc-loop (n)" ++
-            " (declare (optimize (speed 3) (safety 0)))" ++
-            " (let ((acc 0) (i 0))" ++
-            "   (while (< i n)" ++
-            "     (setq acc (+ acc (length (make-string 1024))))" ++
-            "     (setq i (+ i 1)))" ++
-            "   acc))",
-    ));
-
-    // JIT-attempt evidence: optimized defun should register a compiled fn.
-    try testing.expect(vm.jit_fns.items.len > jit_before);
-
-    vm.resetJitFallbackOomCount();
-
-    // No-OOM control: small allocation must not use fallback counter.
-    const control = try vm.run(try compile_chunk.compileChunk(
-        allocator,
-        &heap,
-        &vm,
-        &comp,
-        &chunk_pool,
-        "(jit-alloc-loop 8)",
-    ));
-    try testing.expect(control.isFixnum());
-    try testing.expectEqual(@as(i64, 8 * 1024), control.toFixnum());
-    try testing.expectEqual(@as(u64, 0), vm.jit_fallback_oom_count);
-
-    // Fallback evidence contract:
-    // - JIT attempted (asserted above)
-    // - OOM during JIT triggers fallback counter + GC
-    // - Result semantics remain correct
-    const gc_before = heap.stats.gc_count;
-    const fallback_before = vm.jit_fallback_oom_count;
-
-    // Escalate pressure until we observe at least one JIT OOM fallback.
-    const pressure_sizes = [_]i64{ 64, 128, 256, 512 };
-    var saw_fallback = false;
-    for (pressure_sizes) |n| {
-        var expr_buf: [96]u8 = undefined;
-        const expr = try std.fmt.bufPrint(&expr_buf, "(jit-alloc-loop {d})", .{n});
-        const pressure = try vm.run(try compile_chunk.compileChunk(
-            allocator,
-            &heap,
-            &vm,
-            &comp,
-            &chunk_pool,
-            expr,
-        ));
-        try testing.expect(pressure.isFixnum());
-        try testing.expectEqual(n * 1024, pressure.toFixnum());
-        if (vm.jit_fallback_oom_count > fallback_before) {
-            saw_fallback = true;
-            break;
-        }
-    }
-
-    try testing.expect(saw_fallback);
-    try testing.expect(heap.stats.gc_count >= gc_before + 1);
-
-    // Repeated stability after pressure.
-    inline for (0..3) |_| {
-        const stable = try vm.run(try compile_chunk.compileChunk(
-            allocator,
-            &heap,
-            &vm,
-            &comp,
-            &chunk_pool,
-            "(jit-alloc-loop 16)",
-        ));
-        try testing.expect(stable.isFixnum());
-        try testing.expectEqual(@as(i64, 16 * 1024), stable.toFixnum());
-    }
 }
