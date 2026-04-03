@@ -1981,3 +1981,4 @@ also `(set alias-target y)` (with assign validator).
 ### Did Not Work
 - Trying to validate the structure cutover through the main binary still runs into the pre-existing stdlib bootstrap failure before user code executes. That path is not evidence against the structure work; it is a separate startup blocker.
 - Ad hoc Zig smoke binaries created outside the module root are rejected by Zig's module-path rules. If a direct harness is needed again, add it under the repo module root and remove it immediately after use.
+- Structure lattice helpers must intern CL type symbols in the `COMMON-LISP` package, never in the ambient current package. Replacing package-sensitive `heap.intern(...)` calls in `src/runtime/primitives/type.zig:72-154,507-607,714-759` with canonical `COMMON-LISP` symbol lookup fixed `structure-object` / `structure-class` behavior after `(in-package ...)`.

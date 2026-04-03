@@ -1,9 +1,11 @@
 ---
 title: Fix canonical structure types
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.146100+02:00"
+created-at: "\"2026-04-01T22:06:02.146100+02:00\""
+closed-at: "2026-04-03T14:57:35.825546+02:00"
+close-reason: "done: canonical COMMON-LISP structure/class symbols in type lattice; regression added for non-CL package behavior; zig build green; zig build test still blocked by existing baseline"
 blocks:
   - habu-separate-structure-70df2f68
 ---

@@ -79,80 +79,84 @@ pub const TypeSymbols = struct {
 
     pub fn init(heap: *Heap) !TypeSymbols {
         return .{
-            .cons = try heap.intern("cons"),
-            .symbol = try heap.intern("symbol"),
-            .null = try heap.intern("null"),
-            .boolean = try heap.intern("boolean"),
-            .integer = try heap.intern("integer"),
-            .fixnum = try heap.intern("fixnum"),
-            .bignum = try heap.intern("bignum"),
-            .float = try heap.intern("float"),
-            .real = try heap.intern("real"),
-            .rational = try heap.intern("rational"),
-            .ratio = try heap.intern("ratio"),
-            .number = try heap.intern("number"),
-            .complex = try heap.intern("complex"),
-            .character = try heap.intern("character"),
-            .string = try heap.intern("string"),
-            .vector = try heap.intern("vector"),
-            .array = try heap.intern("array"),
-            .list = try heap.intern("list"),
-            .sequence = try heap.intern("sequence"),
-            .function = try heap.intern("function"),
-            .compiled_function = try heap.intern("compiled-function"),
-            .closure = try heap.intern("closure"),
-            .keyword = try heap.intern("keyword"),
-            .hash_table = try heap.intern("hash-table"),
-            .stream = try heap.intern("stream"),
-            .pathname = try heap.intern("pathname"),
-            .package = try heap.intern("package"),
-            .atom = try heap.intern("atom"),
-            .base_char = try heap.intern("base-char"),
-            .standard_char = try heap.intern("standard-char"),
-            .extended_char = try heap.intern("extended-char"),
-            .base_string = try heap.intern("base-string"),
-            .simple_string = try heap.intern("simple-string"),
-            .simple_base_string = try heap.intern("simple-base-string"),
-            .simple_vector = try heap.intern("simple-vector"),
-            .simple_array = try heap.intern("simple-array"),
-            .bit_vector = try heap.intern("bit-vector"),
-            .simple_bit_vector = try heap.intern("simple-bit-vector"),
-            .single_float = try heap.intern("single-float"),
-            .double_float = try heap.intern("double-float"),
-            .short_float = try heap.intern("short-float"),
-            .long_float = try heap.intern("long-float"),
-            .class = try heap.intern("class"),
-            .standard_class = try heap.intern("standard-class"),
-            .built_in_class = try heap.intern("built-in-class"),
-            .structure_class = try heap.intern("structure-class"),
-            .generic_function = try heap.intern("generic-function"),
-            .standard_generic_function = try heap.intern("standard-generic-function"),
-            .method = try heap.intern("method"),
-            .standard_method = try heap.intern("standard-method"),
-            .standard_object = try heap.intern("standard-object"),
-            .structure_object = try heap.intern("structure-object"),
-            .file_stream = try heap.intern("file-stream"),
-            .string_stream = try heap.intern("string-stream"),
-            .random_state = try heap.intern("random-state"),
-            .restart = try heap.intern("restart"),
-            .method_combination = try heap.intern("method-combination"),
-            .values = try heap.intern("values"),
-            .@"or" = try heap.intern("or"),
-            .@"and" = try heap.intern("and"),
-            .@"not" = try heap.intern("not"),
-            .satisfies = try heap.intern("satisfies"),
-            .star = try heap.intern("*"),
-            .eql = try heap.intern("eql"),
-            .member = try heap.intern("member"),
-            .mod = try heap.intern("mod"),
-            .signed_byte = try heap.intern("signed-byte"),
-            .unsigned_byte = try heap.intern("unsigned-byte"),
-            .t = try heap.intern("t"),
-            .nil = try heap.intern("nil"),
+            .cons = try clSym(heap, "cons"),
+            .symbol = try clSym(heap, "symbol"),
+            .null = try clSym(heap, "null"),
+            .boolean = try clSym(heap, "boolean"),
+            .integer = try clSym(heap, "integer"),
+            .fixnum = try clSym(heap, "fixnum"),
+            .bignum = try clSym(heap, "bignum"),
+            .float = try clSym(heap, "float"),
+            .real = try clSym(heap, "real"),
+            .rational = try clSym(heap, "rational"),
+            .ratio = try clSym(heap, "ratio"),
+            .number = try clSym(heap, "number"),
+            .complex = try clSym(heap, "complex"),
+            .character = try clSym(heap, "character"),
+            .string = try clSym(heap, "string"),
+            .vector = try clSym(heap, "vector"),
+            .array = try clSym(heap, "array"),
+            .list = try clSym(heap, "list"),
+            .sequence = try clSym(heap, "sequence"),
+            .function = try clSym(heap, "function"),
+            .compiled_function = try clSym(heap, "compiled-function"),
+            .closure = try clSym(heap, "closure"),
+            .keyword = try clSym(heap, "keyword"),
+            .hash_table = try clSym(heap, "hash-table"),
+            .stream = try clSym(heap, "stream"),
+            .pathname = try clSym(heap, "pathname"),
+            .package = try clSym(heap, "package"),
+            .atom = try clSym(heap, "atom"),
+            .base_char = try clSym(heap, "base-char"),
+            .standard_char = try clSym(heap, "standard-char"),
+            .extended_char = try clSym(heap, "extended-char"),
+            .base_string = try clSym(heap, "base-string"),
+            .simple_string = try clSym(heap, "simple-string"),
+            .simple_base_string = try clSym(heap, "simple-base-string"),
+            .simple_vector = try clSym(heap, "simple-vector"),
+            .simple_array = try clSym(heap, "simple-array"),
+            .bit_vector = try clSym(heap, "bit-vector"),
+            .simple_bit_vector = try clSym(heap, "simple-bit-vector"),
+            .single_float = try clSym(heap, "single-float"),
+            .double_float = try clSym(heap, "double-float"),
+            .short_float = try clSym(heap, "short-float"),
+            .long_float = try clSym(heap, "long-float"),
+            .class = try clSym(heap, "class"),
+            .standard_class = try clSym(heap, "standard-class"),
+            .built_in_class = try clSym(heap, "built-in-class"),
+            .structure_class = try clSym(heap, "structure-class"),
+            .generic_function = try clSym(heap, "generic-function"),
+            .standard_generic_function = try clSym(heap, "standard-generic-function"),
+            .method = try clSym(heap, "method"),
+            .standard_method = try clSym(heap, "standard-method"),
+            .standard_object = try clSym(heap, "standard-object"),
+            .structure_object = try clSym(heap, "structure-object"),
+            .file_stream = try clSym(heap, "file-stream"),
+            .string_stream = try clSym(heap, "string-stream"),
+            .random_state = try clSym(heap, "random-state"),
+            .restart = try clSym(heap, "restart"),
+            .method_combination = try clSym(heap, "method-combination"),
+            .values = try clSym(heap, "values"),
+            .@"or" = try clSym(heap, "or"),
+            .@"and" = try clSym(heap, "and"),
+            .@"not" = try clSym(heap, "not"),
+            .satisfies = try clSym(heap, "satisfies"),
+            .star = try clSym(heap, "*"),
+            .eql = try clSym(heap, "eql"),
+            .member = try clSym(heap, "member"),
+            .mod = try clSym(heap, "mod"),
+            .signed_byte = try clSym(heap, "signed-byte"),
+            .unsigned_byte = try clSym(heap, "unsigned-byte"),
+            .t = try clSym(heap, "t"),
+            .nil = try clSym(heap, "nil"),
             .unbound = try heap.intern("%unbound%"),
         };
     }
 };
+
+fn clSym(heap: *Heap, name: []const u8) !Value {
+    return (try heap.internInPackage("COMMON-LISP", name)) orelse error.InvalidArgument;
+}
 
 /// Check if two values are eql (eq for most types, numeric for numbers)
 fn valueEql(a: Value, b: Value) bool {
@@ -515,7 +519,7 @@ fn subtypepCheck(heap: *Heap, type1: Value, type2: Value) !SubtypeResult {
         }
         if (type2.isCons()) {
             const head = type2.toPtr(@import("../objects.zig").Cons).car;
-            if (head.eq(try heap.intern("and"))) {
+            if (head.eq(try clSym(heap, "and"))) {
                 var rest = type2.toPtr(@import("../objects.zig").Cons).cdr;
                 while (rest.isCons()) {
                     const spec = rest.toPtr(@import("../objects.zig").Cons).car;
@@ -530,7 +534,7 @@ fn subtypepCheck(heap: *Heap, type1: Value, type2: Value) !SubtypeResult {
 
     if (type1.isCons()) {
         const head = type1.toPtr(@import("../objects.zig").Cons).car;
-        if (head.eq(try heap.intern("and"))) {
+        if (head.eq(try clSym(heap, "and"))) {
             var rest = type1.toPtr(@import("../objects.zig").Cons).cdr;
             while (rest.isCons()) {
                 const spec = rest.toPtr(@import("../objects.zig").Cons).car;
@@ -540,7 +544,7 @@ fn subtypepCheck(heap: *Heap, type1: Value, type2: Value) !SubtypeResult {
             }
             return .{ .is_subtype = true, .certain = true };
         }
-        if (head.eq(try heap.intern("or"))) {
+        if (head.eq(try clSym(heap, "or"))) {
             var rest = type1.toPtr(@import("../objects.zig").Cons).cdr;
             while (rest.isCons()) {
                 const spec = rest.toPtr(@import("../objects.zig").Cons).car;
@@ -550,13 +554,13 @@ fn subtypepCheck(heap: *Heap, type1: Value, type2: Value) !SubtypeResult {
             }
             return .{ .is_subtype = true, .certain = true };
         }
-        if (head.eq(try heap.intern("not"))) {
+        if (head.eq(try clSym(heap, "not"))) {
             const inner_cons = type1.toPtr(@import("../objects.zig").Cons).cdr;
             if (!inner_cons.isCons()) return .{ .is_subtype = false, .certain = false };
             const inner = inner_cons.toPtr(@import("../objects.zig").Cons).car;
             if (type2.isCons()) {
                 const head2 = type2.toPtr(@import("../objects.zig").Cons).car;
-                if (head2.eq(try heap.intern("not"))) {
+                if (head2.eq(try clSym(heap, "not"))) {
                     const inner_cons2 = type2.toPtr(@import("../objects.zig").Cons).cdr;
                     if (!inner_cons2.isCons()) return .{ .is_subtype = false, .certain = false };
                     const inner2 = inner_cons2.toPtr(@import("../objects.zig").Cons).car;
@@ -569,7 +573,7 @@ fn subtypepCheck(heap: *Heap, type1: Value, type2: Value) !SubtypeResult {
 
     if (type2.isCons()) {
         const head = type2.toPtr(@import("../objects.zig").Cons).car;
-        if (head.eq(try heap.intern("or"))) {
+        if (head.eq(try clSym(heap, "or"))) {
             var rest = type2.toPtr(@import("../objects.zig").Cons).cdr;
             while (rest.isCons()) {
                 const spec = rest.toPtr(@import("../objects.zig").Cons).car;
@@ -579,7 +583,7 @@ fn subtypepCheck(heap: *Heap, type1: Value, type2: Value) !SubtypeResult {
             }
             return .{ .is_subtype = false, .certain = true };
         }
-        if (head.eq(try heap.intern("not"))) {
+        if (head.eq(try clSym(heap, "not"))) {
             return .{ .is_subtype = false, .certain = false };
         }
     }
@@ -588,23 +592,27 @@ fn subtypepCheck(heap: *Heap, type1: Value, type2: Value) !SubtypeResult {
 }
 
 fn checkSymbolSubtype(heap: *Heap, t1: Value, t2: Value) !SubtypeResult {
-    const fixnum_sym = try heap.intern("fixnum");
-    const integer_sym = try heap.intern("integer");
-    const rational_sym = try heap.intern("rational");
-    const real_sym = try heap.intern("real");
-    const number_sym = try heap.intern("number");
-    const float_sym = try heap.intern("float");
-    const bignum_sym = try heap.intern("bignum");
-    const ratio_sym = try heap.intern("ratio");
-    const complex_sym = try heap.intern("complex");
-    const null_sym = try heap.intern("null");
-    const symbol_sym = try heap.intern("symbol");
-    const cons_sym = try heap.intern("cons");
-    const list_sym = try heap.intern("list");
-    const sequence_sym = try heap.intern("sequence");
-    const vector_sym = try heap.intern("vector");
-    const string_sym = try heap.intern("string");
-    const array_sym = try heap.intern("array");
+    const fixnum_sym = try clSym(heap, "fixnum");
+    const integer_sym = try clSym(heap, "integer");
+    const rational_sym = try clSym(heap, "rational");
+    const real_sym = try clSym(heap, "real");
+    const number_sym = try clSym(heap, "number");
+    const float_sym = try clSym(heap, "float");
+    const bignum_sym = try clSym(heap, "bignum");
+    const ratio_sym = try clSym(heap, "ratio");
+    const complex_sym = try clSym(heap, "complex");
+    const null_sym = try clSym(heap, "null");
+    const symbol_sym = try clSym(heap, "symbol");
+    const cons_sym = try clSym(heap, "cons");
+    const list_sym = try clSym(heap, "list");
+    const sequence_sym = try clSym(heap, "sequence");
+    const vector_sym = try clSym(heap, "vector");
+    const string_sym = try clSym(heap, "string");
+    const array_sym = try clSym(heap, "array");
+    const class_sym = try clSym(heap, "class");
+    const standard_class_sym = try clSym(heap, "standard-class");
+    const built_in_class_sym = try clSym(heap, "built-in-class");
+    const structure_class_sym = try clSym(heap, "structure-class");
 
     if (t1.eq(fixnum_sym)) {
         if (t2.eq(integer_sym) or t2.eq(rational_sym) or t2.eq(real_sym) or t2.eq(number_sym)) {
@@ -684,6 +692,10 @@ fn checkSymbolSubtype(heap: *Heap, t1: Value, t2: Value) !SubtypeResult {
         return .{ .is_subtype = false, .certain = true };
     }
 
+    if ((t1.eq(standard_class_sym) or t1.eq(built_in_class_sym) or t1.eq(structure_class_sym)) and t2.eq(class_sym)) {
+        return .{ .is_subtype = true, .certain = true };
+    }
+
     if (t1.eq(t2)) {
         return .{ .is_subtype = true, .certain = true };
     }
@@ -713,48 +725,48 @@ fn checkSymbolSubtype(heap: *Heap, t1: Value, t2: Value) !SubtypeResult {
 
 pub fn typeOf(heap: *Heap, val: Value) !Value {
     return switch (val.typeKind()) {
-        .nil => heap.intern("nil"),
-        .t => heap.intern("boolean"),
-        .unbound => heap.intern("symbol"),
-        .fixnum => heap.intern("fixnum"),
-        .float => heap.intern("double-float"),
-        .char => heap.intern("character"),
-        .cons => heap.intern("cons"),
-        .symbol => heap.intern("symbol"),
+        .nil => clSym(heap, "nil"),
+        .t => clSym(heap, "boolean"),
+        .unbound => clSym(heap, "symbol"),
+        .fixnum => clSym(heap, "fixnum"),
+        .float => clSym(heap, "double-float"),
+        .char => clSym(heap, "character"),
+        .cons => clSym(heap, "cons"),
+        .symbol => clSym(heap, "symbol"),
         .vector => {
             // Check if this is a class/struct instance (first element is class name symbol)
             const vec = val.toPtr(@import("../objects.zig").Vector);
             if (vec.length > 0 and vec.data[0].isSymbol()) {
                 return vec.data[0];
             }
-            return heap.intern("vector");
+            return clSym(heap, "vector");
         },
         .structure => {
             const obj = val.toPtr(@import("../objects.zig").Structure);
             if (obj.class.isClass()) {
                 return obj.class.toPtr(@import("../objects.zig").Class).name;
             }
-            return heap.intern("structure-object");
+            return clSym(heap, "structure-object");
         },
-        .string => heap.intern("string"),
-        .string32 => heap.intern("string"),
-        .closure => heap.intern("closure"),
-        .keyword => heap.intern("keyword"),
-        .hashtable => heap.intern("hash-table"),
-        .rational => heap.intern("ratio"),
-        .complex => heap.intern("complex"),
-        .stream => heap.intern("stream"),
-        .bignum => heap.intern("bignum"),
-        .array => heap.intern("array"),
-        .pathname => heap.intern("pathname"),
-        .package => heap.intern("package"),
-        .chunk => heap.intern("compiled-function"),
-        .condition => heap.intern("condition"),
-        .class => heap.intern("standard-class"),
-        .slotdef => heap.intern("slot-definition"),
-        .generic_function => heap.intern("generic-function"),
-        .method => heap.intern("method"),
-        .native_code => heap.intern("compiled-function"),
+        .string => clSym(heap, "string"),
+        .string32 => clSym(heap, "string"),
+        .closure => clSym(heap, "closure"),
+        .keyword => clSym(heap, "keyword"),
+        .hashtable => clSym(heap, "hash-table"),
+        .rational => clSym(heap, "ratio"),
+        .complex => clSym(heap, "complex"),
+        .stream => clSym(heap, "stream"),
+        .bignum => clSym(heap, "bignum"),
+        .array => clSym(heap, "array"),
+        .pathname => clSym(heap, "pathname"),
+        .package => clSym(heap, "package"),
+        .chunk => clSym(heap, "compiled-function"),
+        .condition => clSym(heap, "condition"),
+        .class => clSym(heap, "standard-class"),
+        .slotdef => clSym(heap, "slot-definition"),
+        .generic_function => clSym(heap, "generic-function"),
+        .method => clSym(heap, "method"),
+        .native_code => clSym(heap, "compiled-function"),
         .macro_env => heap.intern("macro-env"),
     };
 }

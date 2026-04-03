@@ -6161,6 +6161,26 @@ test "defstruct typecase handles non-struct values" {
     try testing.expect(result.eq(Value.t));
 }
 
+test "defstruct uses canonical structure types across packages" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defpackage #:tmp-struct-pkg (:use #:common-lisp))\n" ++
+        "  (in-package #:tmp-struct-pkg)\n" ++
+        "  (defstruct foo a)\n" ++
+        "  (let ((x (make-foo :a 1)))\n" ++
+        "    (and (typep x 'structure-object)\n" ++
+        "         (not (typep (vector 1 2) 'structure-object))\n" ++
+        "         (eq (type-of x) 'foo)\n" ++
+        "         (typep (class-of x) 'structure-class)\n" ++
+        "         (car (subtypep 'structure-class 'class)))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
 test "defvar without init defaults to nil" {
     const allocator = testing.allocator;
 
