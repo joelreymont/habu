@@ -5998,6 +5998,50 @@ test "defstruct constructor accepts keyword initargs" {
     try testing.expect(result.eq(Value.t));
 }
 
+test "defstruct :type list uses list representation" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct (disp-hack-ob (:conc-name nil) (:type list)) left-ob right-ob)\n" ++
+        "  (let* ((x (make-disp-hack-ob :left-ob 'a :right-ob 'b))\n" ++
+        "         (y (copy-disp-hack-ob x)))\n" ++
+        "    (and (listp x)\n" ++
+        "         (equal x '(a b))\n" ++
+        "         (eq (left-ob x) 'a)\n" ++
+        "         (eq (right-ob x) 'b)\n" ++
+        "         (eql (setf (left-ob x) 'c) 'c)\n" ++
+        "         (equal x '(c b))\n" ++
+        "         (equal y '(a b))\n" ++
+        "         (disp-hack-ob-p x))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
+test "defstruct :type list :named prefixes type symbol" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct (s-var (:type list) :named (:conc-name sv-)) a b)\n" ++
+        "  (let* ((x (make-s-var :a 1 :b 2))\n" ++
+        "         (y (copy-s-var x)))\n" ++
+        "    (and (equal x '(s-var 1 2))\n" ++
+        "         (s-var-p x)\n" ++
+        "         (= (sv-a x) 1)\n" ++
+        "         (= (sv-b x) 2)\n" ++
+        "         (eql (setf (sv-a x) 9) 9)\n" ++
+        "         (equal x '(s-var 9 2))\n" ++
+        "         (equal y '(s-var 1 2))\n" ++
+        "         (not (s-var-p '(1 2))))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
 test "defstruct :constructor option defines custom constructor name" {
     const allocator = testing.allocator;
 

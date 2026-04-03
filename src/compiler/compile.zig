@@ -10609,6 +10609,11 @@ pub const Compiler = struct {
     // Structure Definition (defstruct)
     // ========================================================================
 
+    const DefstructRepr = enum {
+        object,
+        list,
+    };
+
     /// Compile defstruct: (defstruct name slot1 slot2 ...)
     /// Generates: constructor (make-name), accessors (name-slot), predicate (name-p), copier (copy-name)
     /// Runtime representation: #(name slot1-val slot2-val ...)
@@ -10638,6 +10643,8 @@ pub const Compiler = struct {
         var copier_name_override: ?[]const u8 = null;
         var emit_predicate = true;
         var predicate_name_override: ?[]const u8 = null;
+        var repr: DefstructRepr = .object;
+        var named = false;
 
         if (name_spec.isSymbol() or name_spec.isKeyword()) {
             name_sym_val = name_spec;
@@ -10684,6 +10691,8 @@ pub const Compiler = struct {
                         if (accessor_prefix_owned) self.allocator.free(accessor_prefix);
                         accessor_prefix = "";
                         accessor_prefix_owned = false;
+                    } else if (std.ascii.eqlIgnoreCase(key_name, "named")) {
+                        named = true;
                     }
                     // Bare :copier, :predicate, :constructor = use defaults (no-op)
                     options = opt_cell.cdr;
@@ -10782,6 +10791,22 @@ pub const Compiler = struct {
                                 } else {
                                     return error.InvalidSyntax;
                                 }
+                            }
+                        } else if (std.ascii.eqlIgnoreCase(key_name, "type")) {
+                            if (!opt_cons.cdr.isCons()) return error.InvalidSyntax;
+                            const type_val = opt_cons.cdr.toPtr(Cons).car;
+                            const type_name = self.getStringOrSymbolName(type_val) orelse return error.InvalidSyntax;
+                            if (std.ascii.eqlIgnoreCase(type_name, "list")) {
+                                repr = .list;
+                            } else {
+                                return error.InvalidSyntax;
+                            }
+                        } else if (std.ascii.eqlIgnoreCase(key_name, "named")) {
+                            if (opt_cons.cdr.isNil()) {
+                                named = true;
+                            } else {
+                                const value = opt_cons.cdr.toPtr(Cons).car;
+                                named = !value.isNil();
                             }
                         }
                         // Other options (:include, :type, etc.) silently skipped for now
@@ -10900,25 +10925,28 @@ pub const Compiler = struct {
             rest = c.cdr;
         }
 
-        // Create struct fields from specs
-        const struct_fields = try self.allocator.alloc(types.StructField, slot_specs.items.len);
-        defer {
-            for (struct_fields) |field| self.allocator.free(field.name);
-            self.allocator.free(struct_fields);
-        }
-        for (slot_specs.items, 0..) |spec, i| {
-            struct_fields[i] = .{
-                .name = try self.allocator.dupe(u8, spec.name),
-                .type = spec.field_type,
-            };
-        }
-        const struct_type = try self.type_checker.builder.makeStruct(struct_name, struct_fields);
-        try self.registerStructType(struct_name, struct_type);
+        var struct_type: ?*const types.Type = null;
+        if (repr == .object) {
+            const struct_fields = try self.allocator.alloc(types.StructField, slot_specs.items.len);
+            defer {
+                for (struct_fields) |field| self.allocator.free(field.name);
+                self.allocator.free(struct_fields);
+            }
+            for (slot_specs.items, 0..) |spec, i| {
+                struct_fields[i] = .{
+                    .name = try self.allocator.dupe(u8, spec.name),
+                    .type = spec.field_type,
+                };
+            }
+            const ty = try self.type_checker.builder.makeStruct(struct_name, struct_fields);
+            struct_type = ty;
+            try self.registerStructType(struct_name, ty);
 
-        // Register a runtime class entry so TYPEP/TYPECASE recognize DEFSTRUCT
-        // type names even when the tested object is not a struct instance.
-        const struct_class = try self.allocateClass(heap, name_sym_val, Value.nil, slot_specs.items, heap.structure_class);
-        try heap.putLispClass(name_sym_val, struct_class);
+            // Register a runtime class entry so TYPEP/TYPECASE recognize DEFSTRUCT
+            // type names even when the tested object is not a struct instance.
+            const struct_class = try self.allocateClass(heap, name_sym_val, Value.nil, slot_specs.items, heap.structure_class);
+            try heap.putLispClass(name_sym_val, struct_class);
+        }
 
         // Compute number of definitions: accessors + writers + name_lit
         // + optional constructor + optional predicate + optional copier
@@ -10942,6 +10970,8 @@ pub const Compiler = struct {
                 slot_specs.items,
                 env,
                 try self.builder.lit(Value.nil),
+                repr,
+                named,
             );
             def_idx += 1;
         }
@@ -10952,20 +10982,20 @@ pub const Compiler = struct {
                 try self.allocator.dupe(u8, spec.name)
             else
                 try self.concatStrings(accessor_prefix, spec.name);
-            defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, spec.name, struct_name);
-            try self.registerStructAccessor(accessor_name, i);
+            defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, spec.name, struct_name, repr, named, i);
+            if (repr == .object) try self.registerStructAccessor(accessor_name, i);
             def_idx += 1;
         }
 
         // 3. Writers: (defun (setf name-slotN) (val obj) ...)
-        for (slot_specs.items) |spec| {
+        for (slot_specs.items, 0..) |spec, i| {
             const accessor_name = if (accessor_prefix.len == 0)
                 try self.allocator.dupe(u8, spec.name)
             else
                 try self.concatStrings(accessor_prefix, spec.name);
             const setf_name = try self.concatStrings("(setf ", accessor_name);
             const setf_full = try self.concatStrings(setf_name, ")");
-            defs[def_idx] = try self.generateStructWriter(heap, setf_full, spec.name);
+            defs[def_idx] = try self.generateStructWriter(heap, setf_full, spec.name, repr, named, i);
             def_idx += 1;
         }
 
@@ -10975,11 +11005,11 @@ pub const Compiler = struct {
                 try self.allocator.dupe(u8, n)
             else
                 try self.concatStrings(struct_name, "-P");
-            defs[def_idx] = try self.generateStructPredicate(pred_name, struct_name);
+            defs[def_idx] = try self.generateStructPredicate(pred_name, struct_name, repr, named);
             def_idx += 1;
 
             // Register predicate for occurrence typing
-            try self.registerStructPredicate(pred_name, struct_type);
+            if (struct_type) |ty| try self.registerStructPredicate(pred_name, ty);
         }
 
         // 5. Copier (unless suppressed)
@@ -10988,7 +11018,7 @@ pub const Compiler = struct {
                 try self.allocator.dupe(u8, n)
             else
                 try self.concatStrings("COPY-", struct_name);
-            defs[def_idx] = try self.generateStructCopier(copy_name);
+            defs[def_idx] = try self.generateStructCopier(copy_name, slot_specs.items.len, struct_name, repr, named);
             def_idx += 1;
         }
 
@@ -11258,6 +11288,8 @@ pub const Compiler = struct {
         slots: []const SlotSpec,
         env: *const Env,
         missing_slot_default: *Ir,
+        repr: DefstructRepr,
+        named: bool,
     ) anyerror!*Ir {
         // Qualify the constructor name with current package
         var qual_buf: [512]u8 = undefined;
@@ -11316,22 +11348,36 @@ pub const Compiler = struct {
             if (!spec.field_type.isAny()) num_assertions += 1;
         }
 
-        const make_instance_idx = self.globals.lookup("make-instance") orelse
-            self.globals.lookup("COMMON-LISP:MAKE-INSTANCE") orelse
-            self.globals.lookup("CL:MAKE-INSTANCE") orelse
-            return error.InvalidSyntax;
-        const make_instance_ref = try self.builder.globalRef("make-instance", make_instance_idx);
-        const ctor_args = try self.allocator.alloc(*Ir, 1 + (slot_count * 2));
-        const name_sym = try heap.intern(struct_name);
-        ctor_args[0] = try self.builder.lit(name_sym);
-        for (slots, 0..) |spec, i| {
-            const kw = try heap.internKeyword(spec.name);
-            ctor_args[1 + (i * 2)] = try self.builder.lit(kw);
-            ctor_args[1 + (i * 2) + 1] = merged_values[i];
-        }
-        const make_instance_ir = try self.buildCallIr(make_instance_ref, ctor_args, false);
+        const ctor_ir = switch (repr) {
+            .object => blk: {
+                const make_instance_idx = self.globals.lookup("make-instance") orelse
+                    self.globals.lookup("COMMON-LISP:MAKE-INSTANCE") orelse
+                    self.globals.lookup("CL:MAKE-INSTANCE") orelse
+                    return error.InvalidSyntax;
+                const make_instance_ref = try self.builder.globalRef("make-instance", make_instance_idx);
+                const ctor_args = try self.allocator.alloc(*Ir, 1 + (slot_count * 2));
+                const name_sym = try heap.intern(struct_name);
+                ctor_args[0] = try self.builder.lit(name_sym);
+                for (slots, 0..) |spec, i| {
+                    const kw = try heap.internKeyword(spec.name);
+                    ctor_args[1 + (i * 2)] = try self.builder.lit(kw);
+                    ctor_args[1 + (i * 2) + 1] = merged_values[i];
+                }
+                break :blk try self.buildCallIr(make_instance_ref, ctor_args, false);
+            },
+            .list => blk: {
+                const prefix_len: usize = if (named) 1 else 0;
+                const items = try self.allocator.alloc(*Ir, slot_count + prefix_len);
+                if (named) {
+                    const name_sym = try heap.intern(struct_name);
+                    items[0] = try self.builder.lit(name_sym);
+                }
+                for (merged_values, 0..) |val, i| items[prefix_len + i] = val;
+                break :blk try self.builder.list(items);
+            },
+        };
 
-        var body_ir: *Ir = make_instance_ir;
+        var body_ir: *Ir = ctor_ir;
         if (num_assertions > 0) {
             // Build progn with type assertions followed by instance construction
             const progn_items = try self.allocator.alloc(*Ir, num_assertions + 1);
@@ -11343,7 +11389,7 @@ pub const Compiler = struct {
                     idx += 1;
                 }
             }
-            progn_items[num_assertions] = make_instance_ir;
+            progn_items[num_assertions] = ctor_ir;
             body_ir = try self.builder.progn(progn_items);
         }
 
@@ -11359,6 +11405,19 @@ pub const Compiler = struct {
         );
 
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
+    }
+
+    fn buildListStructCell(self: *Compiler, obj_ir: *Ir, idx: usize) anyerror!*Ir {
+        var cell = obj_ir;
+        var i: usize = 0;
+        while (i < idx) : (i += 1) {
+            cell = try self.builder.cdr(cell);
+        }
+        return cell;
+    }
+
+    fn buildListStructSlot(self: *Compiler, obj_ir: *Ir, idx: usize) anyerror!*Ir {
+        return try self.builder.car(try self.buildListStructCell(obj_ir, idx));
     }
 
     /// Generate a type assertion IR node
@@ -11792,7 +11851,16 @@ pub const Compiler = struct {
         return try self.type_checker.builder.makeArrow(domain_types.items, return_type);
     }
 
-    fn generateStructAccessor(self: *Compiler, _: *Heap, accessor_name: []const u8, slot_name: []const u8, _: []const u8) anyerror!*Ir {
+    fn generateStructAccessor(
+        self: *Compiler,
+        _: *Heap,
+        accessor_name: []const u8,
+        slot_name: []const u8,
+        _: []const u8,
+        repr: DefstructRepr,
+        named: bool,
+        slot_idx: usize,
+    ) anyerror!*Ir {
         // Qualify the accessor name with current package
         var qual_buf: [512]u8 = undefined;
         const q = try self.qualifyName(accessor_name, &qual_buf);
@@ -11807,8 +11875,14 @@ pub const Compiler = struct {
         }
 
         const obj_ref = try self.builder.variable("obj", 0, 0);
-        const slot_sym = try self.builder.quoteSym(slot_name);
-        const body_ir = try self.builder.slotValue(obj_ref, slot_sym);
+        const list_slot_idx = slot_idx + @as(usize, if (named) 1 else 0);
+        const body_ir = switch (repr) {
+            .object => blk: {
+                const slot_sym = try self.builder.quoteSym(slot_name);
+                break :blk try self.builder.slotValue(obj_ref, slot_sym);
+            },
+            .list => try self.buildListStructSlot(obj_ref, list_slot_idx),
+        };
 
         // Lambda with 1 param named "obj"
         const lambda_ir = try self.builder.lambda(
@@ -11825,7 +11899,15 @@ pub const Compiler = struct {
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
 
-    fn generateStructWriter(self: *Compiler, _: *Heap, writer_name: []const u8, slot_name: []const u8) anyerror!*Ir {
+    fn generateStructWriter(
+        self: *Compiler,
+        _: *Heap,
+        writer_name: []const u8,
+        slot_name: []const u8,
+        repr: DefstructRepr,
+        named: bool,
+        slot_idx: usize,
+    ) anyerror!*Ir {
         var qual_buf: [512]u8 = undefined;
         const q = try self.qualifyName(writer_name, &qual_buf);
         defer if (q.owned) self.allocator.free(q.name);
@@ -11840,8 +11922,18 @@ pub const Compiler = struct {
 
         const val_ref = try self.builder.variable("val", 0, 0);
         const obj_ref = try self.builder.variable("obj", 0, 1);
-        const slot_sym = try self.builder.quoteSym(slot_name);
-        const body_ir = try self.builder.setSlotValue(obj_ref, slot_sym, val_ref);
+        const list_slot_idx = slot_idx + @as(usize, if (named) 1 else 0);
+        const body_ir = switch (repr) {
+            .object => blk: {
+                const slot_sym = try self.builder.quoteSym(slot_name);
+                break :blk try self.builder.setSlotValue(obj_ref, slot_sym, val_ref);
+            },
+            .list => blk: {
+                const cell = try self.buildListStructCell(obj_ref, list_slot_idx);
+                const set_ir = try self.builder.rplaca(cell, val_ref);
+                break :blk try self.builder.progn(&[_]*Ir{ set_ir, val_ref });
+            },
+        };
 
         const lambda_ir = try self.builder.lambda(
             &[_][]const u8{ "val", "obj" },
@@ -11857,7 +11949,13 @@ pub const Compiler = struct {
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
 
-    fn generateStructPredicate(self: *Compiler, pred_name: []const u8, struct_name: []const u8) anyerror!*Ir {
+    fn generateStructPredicate(
+        self: *Compiler,
+        pred_name: []const u8,
+        struct_name: []const u8,
+        repr: DefstructRepr,
+        named: bool,
+    ) anyerror!*Ir {
         // Qualify the predicate name with current package
         var qual_buf: [512]u8 = undefined;
         const q = try self.qualifyName(pred_name, &qual_buf);
@@ -11866,8 +11964,18 @@ pub const Compiler = struct {
         const global_idx = try self.globals.define(qualified_name);
 
         const obj_ref = try self.builder.variable("obj", 0, 0);
-        const type_sym = try self.builder.quoteSym(struct_name);
-        const body_ir = try self.builder.typep(obj_ref, type_sym);
+        const body_ir = switch (repr) {
+            .object => blk: {
+                const type_sym = try self.builder.quoteSym(struct_name);
+                break :blk try self.builder.typep(obj_ref, type_sym);
+            },
+            .list => if (named) blk: {
+                const consp_ir = try self.builder.consp(obj_ref);
+                const name_sym = try self.builder.quoteSym(struct_name);
+                const eq_ir = try self.builder.eq(try self.builder.car(obj_ref), name_sym);
+                break :blk try self.builder.ifExpr(consp_ir, eq_ir, try self.builder.lit(Value.nil));
+            } else try self.builder.listp(obj_ref),
+        };
 
         const lambda_ir = try self.builder.lambda(
             &[_][]const u8{"obj"},
@@ -11884,7 +11992,14 @@ pub const Compiler = struct {
     }
 
     /// Generate copier: (lambda (obj) (copy-structure obj))
-    fn generateStructCopier(self: *Compiler, copy_name: []const u8) anyerror!*Ir {
+    fn generateStructCopier(
+        self: *Compiler,
+        copy_name: []const u8,
+        slot_count: usize,
+        struct_name: []const u8,
+        repr: DefstructRepr,
+        named: bool,
+    ) anyerror!*Ir {
         // Qualify the copier name with current package
         var qual_buf: [512]u8 = undefined;
         const q = try self.qualifyName(copy_name, &qual_buf);
@@ -11893,7 +12008,19 @@ pub const Compiler = struct {
         const global_idx = try self.globals.define(qualified_name);
 
         const obj_ref = try self.builder.variable("obj", 0, 0);
-        const copy_ir = try self.builder.copyStructure(obj_ref);
+        const copy_ir = switch (repr) {
+            .object => try self.builder.copyStructure(obj_ref),
+            .list => blk: {
+                const prefix_len: usize = if (named) 1 else 0;
+                const items = try self.allocator.alloc(*Ir, slot_count + prefix_len);
+                if (named) items[0] = try self.builder.quoteSym(struct_name);
+                var i: usize = 0;
+                while (i < slot_count) : (i += 1) {
+                    items[prefix_len + i] = try self.buildListStructSlot(obj_ref, prefix_len + i);
+                }
+                break :blk try self.builder.list(items);
+            },
+        };
 
         const lambda_ir = try self.builder.lambda(
             &[_][]const u8{"obj"},
@@ -12421,12 +12548,14 @@ pub const Compiler = struct {
             slot_specs.items,
             env,
             try self.builder.lit(Value.unbound),
+            .object,
+            false,
         );
         def_idx += 1;
 
         // 2. Predicate: (defun class-name-p (obj) (and (vectorp obj) (eq (aref obj 0) 'class-name)))
         const pred_name = try self.concatStrings(class_name, "-p");
-        defs[def_idx] = try self.generateStructPredicate(pred_name, class_name);
+        defs[def_idx] = try self.generateStructPredicate(pred_name, class_name, .object, false);
         def_idx += 1;
 
         // Register predicate for occurrence typing (use qualified name to match globals table)
@@ -12438,17 +12567,17 @@ pub const Compiler = struct {
         // 3. Default accessors: (defun class-name-slot (obj) (if (class-name-p obj) (aref obj N+1) (error)))
         for (slot_specs.items, 0..) |spec, i| {
             const accessor_name = try self.concatStrings3(class_name, "-", spec.name);
-            defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, spec.name, class_name);
+            defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, spec.name, class_name, .object, false, i);
             def_idx += 1;
             try self.registerStructAccessor(accessor_name, i);
         }
 
         // 4. Default writers: (defun (setf class-name-slot) (val obj) ...)
-        for (slot_specs.items) |spec| {
+        for (slot_specs.items, 0..) |spec, i| {
             const accessor_name = try self.concatStrings3(class_name, "-", spec.name);
             const setf_name = try self.concatStrings("(setf ", accessor_name);
             const setf_full = try self.concatStrings(setf_name, ")");
-            defs[def_idx] = try self.generateStructWriter(heap, setf_full, spec.name);
+            defs[def_idx] = try self.generateStructWriter(heap, setf_full, spec.name, .object, false, i);
             def_idx += 1;
         }
 
@@ -12458,7 +12587,7 @@ pub const Compiler = struct {
                 if (!reader_val.isSymbol()) continue;
                 const reader_sym = reader_val.toPtr(Symbol);
                 const reader_name = reader_sym.getName();
-                defs[def_idx] = try self.generateStructAccessor(heap, reader_name, spec.name, class_name);
+                defs[def_idx] = try self.generateStructAccessor(heap, reader_name, spec.name, class_name, .object, false, i);
                 def_idx += 1;
                 var writable_reader = false;
                 for (spec.writers.items) |writer_val| {
@@ -12475,14 +12604,14 @@ pub const Compiler = struct {
         }
 
         // 6. Writers: (defun (setf writer-name) (val obj) (if (class-name-p obj) (setf (aref obj N+1) val) (error)))
-        for (slot_specs.items) |spec| {
+        for (slot_specs.items, 0..) |spec, i| {
             for (spec.writers.items) |writer_val| {
                 if (!writer_val.isSymbol()) continue;
                 const writer_sym = writer_val.toPtr(Symbol);
                 const writer_name = writer_sym.getName();
                 const setf_name = try self.concatStrings("(setf ", writer_name);
                 const setf_full = try self.concatStrings(setf_name, ")");
-                defs[def_idx] = try self.generateStructWriter(heap, setf_full, spec.name);
+                defs[def_idx] = try self.generateStructWriter(heap, setf_full, spec.name, .object, false, i);
                 def_idx += 1;
             }
         }
