@@ -775,6 +775,7 @@ test "slot-value accepts boxed structure objects" {
         .direct_slots = Value.nil,
         .slots = Value.nil,
         .metaclass = heap.structure_class,
+        .printer = Value.nil,
         .num_shared = 0,
         .shared_slots = undefined,
     };

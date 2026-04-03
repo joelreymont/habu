@@ -7432,6 +7432,47 @@ test "invoke-restart uses exact restart object, not just name" {
     try testing.expectEqual(@as(i64, 17), result.toFixnum());
 }
 
+test "defstruct print-function symbol customizes write-to-string" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 * 64 });
+    defer heap.deinit();
+
+    const result = try evalExpr(
+        allocator,
+        &heap,
+        "(progn " ++
+            "  (defstruct (gf-data (:print-function gf-data-short-print)) char) " ++
+            "  (defun gf-data-short-print (obj stream depth) " ++
+            "    (declare (ignore obj depth)) " ++
+            "    (format stream \"Structure [GF-DATA]\")) " ++
+            "  (write-to-string (make-gf-data :char 3)))",
+    );
+    try testing.expect(result.isString());
+    try testing.expectEqualStrings("Structure [GF-DATA]", result.toPtr(runtime.String).bytes());
+}
+
+test "defstruct print-function lambda customizes nested structure output" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 * 64 });
+    defer heap.deinit();
+
+    const result = try evalExpr(
+        allocator,
+        &heap,
+        "(progn " ++
+            "  (defstruct (graph (:print-function " ++
+            "                     (lambda (obj stream depth) " ++
+            "                       (declare (ignore depth)) " ++
+            "                       (format stream \"GRAPH(~A)\" (graph-order obj))))) " ++
+            "    (order 0)) " ++
+            "  (write-to-string (list (make-graph :order 4))))",
+    );
+    try testing.expect(result.isString());
+    try testing.expectEqualStrings("(GRAPH(4))", result.toPtr(runtime.String).bytes());
+}
+
 test "ansi repro cerror.6 continue restart resumes" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

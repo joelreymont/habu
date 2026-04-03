@@ -463,6 +463,7 @@ pub const Builtins = struct {
     // Primitives - String/number conversion
     @"parse-integer": Value,
     @"write-to-string": Value,
+    @"%set-class-printer": Value,
 
     // Primitives - Bitwise operations
     logand: Value,
@@ -1088,6 +1089,7 @@ pub const Builtins = struct {
             // Primitives - String/number conversion
             .@"parse-integer" = try heap.intern("parse-integer"),
             .@"write-to-string" = try heap.intern("write-to-string"),
+            .@"%set-class-printer" = try heap.intern("%set-class-printer"),
             // Primitives - Bitwise operations
             .logand = try heap.intern("logand"),
             .logior = try heap.intern("logior"),
@@ -1385,7 +1387,7 @@ pub const Builtins = struct {
         // Character functions
                             "char-upcase",               "char-downcase",               "digit-char-p",       "alpha-char-p",
         // String/number conversion
-                  "parse-integer",         "write-to-string",
+                  "parse-integer",         "write-to-string",           "%set-class-printer",
         // Bitwise operations
              "logand",
         "logior",                     "logxor",                     "lognot",                    "ash",                         "lognand",            "lognor",                 "logandc1",              "logandc2",             "logorc1",
@@ -10645,6 +10647,7 @@ pub const Compiler = struct {
         var predicate_name_override: ?[]const u8 = null;
         var repr: DefstructRepr = .object;
         var named = false;
+        var print_fn_spec: ?Value = null;
 
         if (name_spec.isSymbol() or name_spec.isKeyword()) {
             name_sym_val = name_spec;
@@ -10808,6 +10811,9 @@ pub const Compiler = struct {
                                 const value = opt_cons.cdr.toPtr(Cons).car;
                                 named = !value.isNil();
                             }
+                        } else if (std.ascii.eqlIgnoreCase(key_name, "print-function")) {
+                            if (!opt_cons.cdr.isCons()) return error.InvalidSyntax;
+                            print_fn_spec = opt_cons.cdr.toPtr(Cons).car;
                         }
                         // Other options (:include, :type, etc.) silently skipped for now
                     }
@@ -10953,7 +10959,8 @@ pub const Compiler = struct {
         const ctor_count: usize = if (emit_constructor) 1 else 0;
         const pred_count: usize = if (emit_predicate) 1 else 0;
         const copier_count: usize = if (emit_copier) 1 else 0;
-        const num_defs = 1 + ctor_count + pred_count + copier_count + (slot_specs.items.len * 2);
+        const printer_count: usize = if (repr == .object and print_fn_spec != null) 1 else 0;
+        const num_defs = 1 + ctor_count + pred_count + copier_count + printer_count + (slot_specs.items.len * 2);
         const defs = try self.allocator.alloc(*Ir, num_defs);
         var def_idx: usize = 0;
 
@@ -11020,6 +11027,13 @@ pub const Compiler = struct {
                 try self.concatStrings("COPY-", struct_name);
             defs[def_idx] = try self.generateStructCopier(copy_name, slot_specs.items.len, struct_name, repr, named);
             def_idx += 1;
+        }
+
+        if (repr == .object) {
+            if (print_fn_spec) |print_fn| {
+                defs[def_idx] = try self.generateStructPrinterInstall(struct_name, print_fn, env);
+                def_idx += 1;
+            }
         }
 
         // 6. Return struct name
@@ -11116,6 +11130,7 @@ pub const Compiler = struct {
             .direct_slots = Value.nil,
             .slots = Value.nil,
             .metaclass = metaclass,
+            .printer = Value.nil,
             .num_shared = 0,
             .shared_slots = undefined,
         };
@@ -11418,6 +11433,23 @@ pub const Compiler = struct {
 
     fn buildListStructSlot(self: *Compiler, obj_ir: *Ir, idx: usize) anyerror!*Ir {
         return try self.builder.car(try self.buildListStructCell(obj_ir, idx));
+    }
+
+    fn generateStructPrinterInstall(
+        self: *Compiler,
+        struct_name: []const u8,
+        print_fn: Value,
+        env: *const Env,
+    ) anyerror!*Ir {
+        const setter_idx = self.globals.lookup("%set-class-printer") orelse
+            try self.globals.define("%set-class-printer");
+        const setter_ref = try self.builder.globalRef("%set-class-printer", setter_idx);
+        const class_name = try self.builder.quoteSym(struct_name);
+        const printer_ir = if (print_fn.isSymbol())
+            try self.builder.lit(print_fn)
+        else
+            try self.compile(print_fn, env);
+        return try self.buildCallIr(setter_ref, &[_]*Ir{ class_name, printer_ir }, false);
     }
 
     /// Generate a type assertion IR node
@@ -15696,6 +15728,7 @@ pub const Compiler = struct {
         "slot-definition-writers",
         "slot-definition-allocation",
         "slot-definition-type",
+        "%set-class-printer",
     };
 
     fn rebuildBuiltinCallableCaches(self: *Compiler) !void {

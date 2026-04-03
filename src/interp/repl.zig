@@ -1623,6 +1623,7 @@ pub const Repl = struct {
             .{ .field = "slot-definition-writers", .tag = .slot_definition_writers },
             .{ .field = "slot-definition-allocation", .tag = .slot_definition_allocation },
             .{ .field = "slot-definition-type", .tag = .slot_definition_type },
+            .{ .field = "%set-class-printer", .tag = .set_class_printer },
         };
 
         inline for (table) |entry| {

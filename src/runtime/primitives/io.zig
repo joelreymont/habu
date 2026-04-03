@@ -58,6 +58,11 @@ pub var print_gensym: bool = true;
 /// *print-array* controls whether to print array contents
 pub var print_array: bool = true;
 
+pub const StructPrintHook = struct {
+    ctx: *anyopaque,
+    write_fn: *const fn (*anyopaque, Value, Value, usize) anyerror!bool,
+};
+
 pub fn writeFixnumTo(n: i64, w: anytype) !void {
     try writeFixnum(n, w);
 }
@@ -392,11 +397,11 @@ pub fn princValue(val: Value) !void {
     var file_writer = stdout_file.writer(&buf);
     const w = &file_writer.interface;
 
-    try princValueTo(val, w, 0);
+    try princValueTo(val, w, 0, null, null);
     try w.flush();
 }
 
-fn princValueTo(val: Value, w: anytype, level: usize) !void {
+fn princValueTo(val: Value, w: anytype, level: usize, stream: ?Value, hook: ?StructPrintHook) !void {
     if (print_level) |max_level| {
         if (level >= max_level) {
             try w.writeByte('#');
@@ -435,13 +440,13 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
                 if (!first) try w.writeByte(' ');
                 first = false;
                 const cons = current.toPtr(objects.Cons);
-                try princValueTo(cons.car, w, level + 1);
+                try princValueTo(cons.car, w, level + 1, stream, hook);
                 current = cons.cdr;
                 count += 1;
             }
             if (!current.isNil() and (print_length == null or count < print_length.?)) {
                 try w.writeAll(" . ");
-                try princValueTo(current, w, level + 1);
+                try princValueTo(current, w, level + 1, stream, hook);
             }
             try w.writeByte(')');
         },
@@ -471,7 +476,7 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
                 const max_count = if (print_length) |max_len| @min(max_len, items.len) else items.len;
                 for (0..max_count) |i| {
                     if (i > 0) try w.writeByte(' ');
-                    try princValueTo(items[i], w, level + 1);
+                    try princValueTo(items[i], w, level + 1, stream, hook);
                 }
                 if (print_length) |max_len| {
                     if (items.len > max_len) {
@@ -482,6 +487,11 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
             }
         },
         .structure => {
+            if (stream) |out_stream| {
+                if (hook) |printer| {
+                    if (try printer.write_fn(printer.ctx, val, out_stream, level)) return;
+                }
+            }
             const obj = val.toPtr(objects.Structure);
             if (obj.class.isClass() and obj.class.toPtr(objects.Class).name.isSymbol()) {
                 try w.print("#<structure {s}>", .{obj.class.toPtr(objects.Class).name.toPtr(objects.Symbol).getName()});
@@ -499,13 +509,13 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
             try w.print("#C({d} {d})", .{ cplx.real, cplx.imag });
         },
         .stream => {
-            const stream = val.toPtr(objects.Stream);
-            const dir = switch (stream.direction) {
+            const stream_obj = val.toPtr(objects.Stream);
+            const dir = switch (stream_obj.direction) {
                 .input => "input",
                 .output => "output",
                 .io => "io",
             };
-            const kind = switch (stream.stream_type) {
+            const kind = switch (stream_obj.stream_type) {
                 .string => "string",
                 .file => "file",
                 .stdin => "stdin",
@@ -563,28 +573,28 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
 
 /// Write value to any writer (for write-to-string)
 pub fn writeValueToBuffer(val: Value, w: anytype) !void {
-    try printValueTo(val, w);
+    try printValueTo(val, w, null, null);
 }
 
 /// Convert value to string (write-to-string primitive)
 pub fn writeToString(heap: *heap_mod.Heap, val: Value) !Value {
     var buf = std.ArrayList(u8){};
     const w = buf.writer(heap.backing_allocator);
-    try printValueTo(val, w.any());
+    try printValueTo(val, w.any(), null, null);
     const bytes = try buf.toOwnedSlice(heap.backing_allocator);
     defer heap.backing_allocator.free(bytes);
     return try heap.allocBaseString(bytes);
 }
 
-fn printValueTo(val: Value, w: anytype) !void {
+fn printValueTo(val: Value, w: anytype, stream: ?Value, hook: ?StructPrintHook) !void {
     if (print_readably or print_escape) {
-        return printEscapedTo(val, w, 0);
+        return printEscapedTo(val, w, 0, stream, hook);
     } else {
-        return princValueTo(val, w, 0);
+        return princValueTo(val, w, 0, stream, hook);
     }
 }
 
-fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
+fn printEscapedTo(val: Value, w: anytype, level: usize, stream: ?Value, hook: ?StructPrintHook) !void {
     if (!print_readably) {
         if (print_level) |max_level| {
             if (level >= max_level) {
@@ -633,14 +643,14 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
                 if (!first) try w.writeByte(' ');
                 first = false;
                 const cons = current.toPtr(objects.Cons);
-                try printEscapedTo(cons.car, w, level + 1);
+                try printEscapedTo(cons.car, w, level + 1, stream, hook);
                 current = cons.cdr;
                 count += 1;
             }
             if (!current.isNil()) {
                 if (print_readably or print_length == null or count < print_length.?) {
                     try w.writeAll(" . ");
-                    try printEscapedTo(current, w, level + 1);
+                    try printEscapedTo(current, w, level + 1, stream, hook);
                 }
             }
             try w.writeByte(')');
@@ -677,7 +687,7 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
                 items.len;
             for (0..max_count) |i| {
                 if (i > 0) try w.writeByte(' ');
-                try printEscapedTo(items[i], w, level + 1);
+                try printEscapedTo(items[i], w, level + 1, stream, hook);
             }
             if (!print_readably) {
                 if (print_length) |max_len| {
@@ -689,6 +699,11 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
             try w.writeByte(')');
         },
         .structure => {
+            if (stream) |out_stream| {
+                if (hook) |printer| {
+                    if (try printer.write_fn(printer.ctx, val, out_stream, level)) return;
+                }
+            }
             const obj = val.toPtr(objects.Structure);
             if (obj.class.isClass() and obj.class.toPtr(objects.Class).name.isSymbol()) {
                 try w.print("#<structure {s}>", .{obj.class.toPtr(objects.Class).name.toPtr(objects.Symbol).getName()});
@@ -706,13 +721,13 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
             try w.print("#C({d} {d})", .{ cplx.real, cplx.imag });
         },
         .stream => {
-            const stream = val.toPtr(objects.Stream);
-            const dir = switch (stream.direction) {
+            const stream_obj = val.toPtr(objects.Stream);
+            const dir = switch (stream_obj.direction) {
                 .input => "input",
                 .output => "output",
                 .io => "io",
             };
-            const kind = switch (stream.stream_type) {
+            const kind = switch (stream_obj.stream_type) {
                 .string => "string",
                 .file => "file",
                 .stdin => "stdin",
@@ -880,13 +895,54 @@ fn withOutputWriter(stream: Value, buf: *[IO_BUF]u8, val: Value, f: anytype) !vo
 }
 
 fn writeImpl(w: anytype, val: Value) !void {
-    try printValueTo(val, w);
+    try printValueTo(val, w, null, null);
 }
 
 fn printImpl(w: anytype, val: Value) !void {
     try w.writeByte('\n');
-    try printValueTo(val, w);
+    try printValueTo(val, w, null, null);
     try w.writeByte(' ');
+}
+
+pub fn writeWithHook(val: Value, stream: Value, hook: StructPrintHook) !Value {
+    const old_escape = print_escape;
+    defer print_escape = old_escape;
+    print_escape = true;
+    if (!stream.isStream()) return error.TypeError;
+    var sink = StreamSink{ .stream = stream };
+    try printValueTo(val, &sink, stream, hook);
+    try sink.flush();
+    return val;
+}
+
+pub fn princWithHook(val: Value, stream: Value, hook: StructPrintHook) !Value {
+    const old_escape = print_escape;
+    defer print_escape = old_escape;
+    print_escape = false;
+    if (!stream.isStream()) return error.TypeError;
+    var sink = StreamSink{ .stream = stream };
+    try printValueTo(val, &sink, stream, hook);
+    try sink.flush();
+    return val;
+}
+
+pub fn printWithHook(val: Value, stream: Value, hook: StructPrintHook) !Value {
+    const old_escape = print_escape;
+    defer print_escape = old_escape;
+    print_escape = true;
+    if (!stream.isStream()) return error.TypeError;
+    var sink = StreamSink{ .stream = stream };
+    try sink.writeByte('\n');
+    try printValueTo(val, &sink, stream, hook);
+    try sink.writeByte(' ');
+    try sink.flush();
+    return val;
+}
+
+pub fn writeToStringWithHook(heap: *heap_mod.Heap, val: Value, hook: StructPrintHook) !Value {
+    const stream = try heap.allocStringOutputStream();
+    _ = try writeWithHook(val, stream, hook);
+    return try getOutputStreamString(heap, stream);
 }
 
 /// write object &optional stream - output with *print-escape* = t (readable)
@@ -3202,5 +3258,5 @@ test "princValueTo reports invalid unicode" {
 
     const w = buf.writer(testing.allocator);
     const val = Value.makeCharacter(0xD800);
-    try testing.expectError(error.Utf8CannotEncodeSurrogateHalf, princValueTo(val, w.any(), 0));
+    try testing.expectError(error.Utf8CannotEncodeSurrogateHalf, princValueTo(val, w.any(), 0, null, null));
 }

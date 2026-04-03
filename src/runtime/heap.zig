@@ -3793,6 +3793,7 @@ pub const Heap = struct {
             .cpl = Value.nil,
             .direct_slots = Value.nil,
             .slots = Value.nil,
+            .printer = Value.nil,
             .num_shared = 0,
             .shared_slots = undefined,
             .metaclass = metaclass,
@@ -3820,6 +3821,7 @@ pub const Heap = struct {
             .direct_slots = Value.nil,
             .slots = Value.nil,
             .metaclass = Value.nil,
+            .printer = Value.nil,
             .num_shared = 0,
             .shared_slots = undefined,
         };
@@ -3886,6 +3888,7 @@ pub const Heap = struct {
                 .direct_slots = Value.nil,
                 .slots = Value.nil,
                 .metaclass = self.built_in_class,
+                .printer = Value.nil,
                 .num_shared = 0,
                 .shared_slots = undefined,
             };
@@ -3927,6 +3930,7 @@ pub const Heap = struct {
             .direct_slots = Value.nil,
             .slots = Value.nil,
             .metaclass = self.standard_class,
+            .printer = Value.nil,
             .num_shared = 0,
             .shared_slots = undefined,
         };

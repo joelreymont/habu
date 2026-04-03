@@ -1202,6 +1202,8 @@ pub const Class = extern struct {
     slots: Value,
     /// Metaclass (class of this class)
     metaclass: Value,
+    /// DEFSTRUCT printer function designator or nil
+    printer: Value,
     /// Number of shared slots
     num_shared: u32,
     _pad: u32 = 0,

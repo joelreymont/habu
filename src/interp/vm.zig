@@ -105,6 +105,7 @@ pub const BuiltinCallableTag = enum(usize) {
     slot_definition_writers,
     slot_definition_allocation,
     slot_definition_type,
+    set_class_printer,
 };
 
 const empty_consts = [_]Value{};
@@ -5179,19 +5180,19 @@ pub const Vm = struct {
             .write => {
                 const val = try self.pop();
                 try self.syncPrintGlobals();
-                const result = try io.write(val, Value.nil);
+                const result = try io.writeWithHook(val, self.defaultOutputStream(), self.ioPrintHook());
                 try self.push(result);
             },
             .print => {
                 const val = try self.pop();
                 try self.syncPrintGlobals();
-                const result = try io.print(val, Value.nil);
+                const result = try io.printWithHook(val, self.defaultOutputStream(), self.ioPrintHook());
                 try self.push(result);
             },
             .princ => {
                 const val = try self.pop();
                 try self.syncPrintGlobals();
-                const result = try io.princ(val, Value.nil);
+                const result = try io.princWithHook(val, self.defaultOutputStream(), self.ioPrintHook());
                 try self.push(result);
             },
             .terpri => {
@@ -5287,12 +5288,7 @@ pub const Vm = struct {
             },
             .write_to_string => {
                 const val = try self.pop();
-                // Convert value to string representation
-                var buf: [256]u8 = undefined;
-                var fbs = std.io.fixedBufferStream(&buf);
-                try io.writeValueToBuffer(val, fbs.writer().any());
-                const written = fbs.getWritten();
-                const result = try self.allocString(written);
+                const result = try io.writeToStringWithHook(self.heap, val, self.ioPrintHook());
                 try self.push(result);
             },
             .logand => {
@@ -9639,6 +9635,39 @@ pub const Vm = struct {
         return @intCast(n);
     }
 
+    fn resolveClassDesignator(self: *Vm, designator: Value) Error!Value {
+        const live = self.resolveForwardedValue(designator);
+        if (live.isClass()) return live;
+        if (!live.isSymbol()) return error.TypeMismatch;
+        return self.heap.findLispClass(live) orelse error.UndefinedClass;
+    }
+
+    fn structPrintHook(ctx: *anyopaque, obj: Value, stream: Value, level: usize) anyerror!bool {
+        const self: *Vm = @ptrCast(@alignCast(ctx));
+        if (!obj.isStructure()) return false;
+        const class_val = self.resolveForwardedValue(obj.toPtr(runtime.objects.Structure).class);
+        if (!class_val.isClass()) return false;
+        const printer_designator = self.resolveForwardedValue(class_val.toPtr(runtime.Class).printer);
+        if (printer_designator.isNil()) return false;
+
+        var callable = printer_designator;
+        if (callable.isSymbol()) {
+            callable = (try self.resolveFunctionValue(callable)) orelse return error.UnboundSymbol;
+        }
+        switch (callable.typeKind()) {
+            .closure, .native_code, .generic_function => {},
+            else => return error.TypeMismatch,
+        }
+
+        const args = [_]Value{ obj, stream, Value.makeFixnum(@intCast(level)) };
+        _ = try self.callFromStackAtFast(self.sp, callable, &args);
+        return true;
+    }
+
+    fn ioPrintHook(self: *Vm) io.StructPrintHook {
+        return .{ .ctx = self, .write_fn = structPrintHook };
+    }
+
     fn doBuiltinCallable(self: *Vm, tag: BuiltinCallableTag, args: []const Value) Error!Value {
         switch (tag) {
             .add => {
@@ -9858,12 +9887,12 @@ pub const Vm = struct {
             .print => {
                 try requireArgCount(args, 1, 2);
                 const stream = if (args.len == 2) args[1] else self.defaultOutputStream();
-                return try io.print(args[0], stream);
+                return try io.printWithHook(args[0], stream, self.ioPrintHook());
             },
             .princ => {
                 try requireArgCount(args, 1, 2);
                 const stream = if (args.len == 2) args[1] else self.defaultOutputStream();
-                return try io.princ(args[0], stream);
+                return try io.princWithHook(args[0], stream, self.ioPrintHook());
             },
             .encode_universal_time => {
                 if (args.len < 6 or args.len > 7) return error.TypeMismatch;
@@ -9978,6 +10007,15 @@ pub const Vm = struct {
             .slot_definition_writers => return try primitives.slotDefinitionWriters(self.heap, try self.argsList(args)),
             .slot_definition_allocation => return try primitives.slotDefinitionAllocation(self.heap, try self.argsList(args)),
             .slot_definition_type => return try primitives.slotDefinitionType(self.heap, try self.argsList(args)),
+            .set_class_printer => {
+                try requireArgCount(args, 2, 2);
+                const class_val = try self.resolveClassDesignator(args[0]);
+                const printer = self.resolveForwardedValue(args[1]);
+                const class_obj = class_val.toPtr(runtime.Class);
+                class_obj.printer = printer;
+                self.writeBarrierStore(class_val, printer);
+                return printer;
+            },
         }
     }
 
@@ -14638,7 +14676,7 @@ test "vm typep propagates invalid type spec" {
     try testing.expectError(error.InvalidTypeSpecifier, vm.executeOp(.typep));
 }
 
-test "vm write_to_string propagates buffer errors" {
+test "vm write_to_string handles long strings" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
@@ -14653,7 +14691,10 @@ test "vm write_to_string propagates buffer errors" {
     const str = try heap.allocBaseString(&bytes);
     try vm.push(str);
 
-    try testing.expectError(error.NoSpaceLeft, vm.executeOp(.write_to_string));
+    try vm.executeOp(.write_to_string);
+    const out = try vm.pop();
+    try testing.expect(out.isString());
+    try testing.expectEqual(@as(usize, bytes.len + 2), out.toPtr(runtime.String).bytes().len);
 }
 
 test "vm collectGarbage relocates chunk pointers" {

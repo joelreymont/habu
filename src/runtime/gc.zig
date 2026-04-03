@@ -2280,6 +2280,9 @@ pub const GC = struct {
                         if (cls.metaclass.isPointer() and !cls.metaclass.isNil()) {
                             cls.metaclass = try self.copyValue(heap, cls.metaclass, alloc_ptr);
                         }
+                        if (cls.printer.isPointer() and !cls.printer.isNil()) {
+                            cls.printer = try self.copyValue(heap, cls.printer, alloc_ptr);
+                        }
                         for (cls.shared_slots[0..cls.num_shared]) |*slot_val| {
                             if (slot_val.isPointer() and !slot_val.isNil()) {
                                 slot_val.* = try self.copyValue(heap, slot_val.*, alloc_ptr);
@@ -2637,6 +2640,7 @@ test "gc scans class metaclass" {
         .direct_slots = Value.nil,
         .slots = Value.nil,
         .metaclass = heap.standard_class,
+        .printer = Value.nil,
         .num_shared = 0,
         // num_shared=0 => must still be non-null per Zig pointer rules.
         .shared_slots = @ptrFromInt(@as(usize, @alignOf(Value))),
