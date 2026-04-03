@@ -1954,3 +1954,13 @@ Maxima aliases `$ibase` → `*read-base*`, `$obase` → `*print-base*` via plist
 'alias. But `mset` only sets the Maxima symbol value via `(setf (symbol-value x) y)`.
 Override wraps original mset: when 'alias property exists and target is boundp,
 also `(set alias-target y)` (with assign validator).
+
+## Session Notes (2026-04-03)
+
+### Worked Well
+- Package lookup status should come from one backing package table, not from whichever mirror happens to be populated. Rewriting `findSymbol`/`findInheritedSymbol` in `src/runtime/primitives/package.zig:642-690` to classify `:internal`/`:external`/`:inherited` from the native package's local/export/use tables removes reliance on drifting Lisp-side hash tables.
+- Current-package corruption should fail explicitly at the invariant boundary, not silently “heal” to `CL-USER`. Tightening `src/runtime/heap.zig:3374-3452` so `resolveCurrentPackageForIntern` and `getCurrentPackageName` assert a valid registered package pointer, plus making `deletePackage` reject the active package in `src/runtime/primitives/package.zig:978-1028`, removes a forbidden silent-reset path.
+- Removing dead package state is worth doing immediately once the real owner is clear. Dropping `Vm.current_package` from `src/interp/vm.zig` simplified GC roots and removed one more mutable package slot that never drove semantics.
+
+### Did Not Work
+- Keeping package-context recovery inside `Heap.resolveCurrentPackageForIntern` was false progress. The old `src/runtime/heap.zig:3374-3398` path logged a stale pointer and rewrote package state to `CL-USER`/`CL`/`null`, which hid real corruption instead of making the owner of package context consistent.

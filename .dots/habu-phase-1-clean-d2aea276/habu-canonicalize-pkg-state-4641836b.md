@@ -1,9 +1,11 @@
 ---
 title: Canonicalize package state
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.103695+02:00"
+created-at: "\"2026-04-01T22:06:02.103695+02:00\""
+closed-at: "2026-04-03T09:07:08.168997+02:00"
+close-reason: done (zig build; zig build test back to known 5-error baseline)
 blocks:
   - habu-fix-pkg-bootstrap-61bed166
 ---

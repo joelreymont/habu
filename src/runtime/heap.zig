@@ -3372,29 +3372,12 @@ pub const Heap = struct {
     }
 
     fn resolveCurrentPackageForIntern(self: *Heap) ?*Package {
-        const pkg = self.current_package orelse {
-            if (self.cl_user_package) |user_pkg| {
-                self.current_package = user_pkg;
-                return user_pkg;
-            }
-            if (self.cl_package) |cl_pkg| {
-                self.current_package = cl_pkg;
-                return cl_pkg;
-            }
-            return null;
-        };
-        if (self.hasNativePackagePtr(pkg)) return pkg;
-
-        std.log.err("stale current package pointer 0x{x}; resetting package context", .{@intFromPtr(pkg)});
-        if (self.cl_user_package) |user_pkg| {
-            self.current_package = user_pkg;
-            return user_pkg;
+        if (self.current_package) |pkg| {
+            std.debug.assert(self.hasNativePackagePtr(pkg));
+            return pkg;
         }
-        if (self.cl_package) |cl_pkg| {
-            self.current_package = cl_pkg;
-            return cl_pkg;
-        }
-        self.current_package = null;
+        if (self.cl_user_package) |user_pkg| return user_pkg;
+        if (self.cl_package) |cl_pkg| return cl_pkg;
         return null;
     }
 
@@ -3457,13 +3440,15 @@ pub const Heap = struct {
 
     /// Set current package
     pub fn setCurrentPackage(self: *Heap, pkg: *Package) void {
+        std.debug.assert(self.hasNativePackagePtr(pkg));
         self.current_package = pkg;
     }
 
     /// Get current package name
     pub fn getCurrentPackageName(self: *const Heap) []const u8 {
         if (self.current_package) |pkg| {
-            if (self.hasNativePackagePtr(pkg)) return pkg.name;
+            std.debug.assert(self.hasNativePackagePtr(pkg));
+            return pkg.name;
         }
         return "COMMON-LISP-USER";
     }

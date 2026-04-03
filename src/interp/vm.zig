@@ -716,8 +716,6 @@ pub const Vm = struct {
     /// Number of defined globals
     num_globals: usize,
 
-    /// Current package (special variable)
-    current_package: Value,
     /// Compiler-retained values that must survive compile->emit GC windows.
     comp_retain_vals: std.ArrayList(Value),
     comp_root_stack: [MAX_COMPILE_ROOTS]Value,
@@ -1254,7 +1252,6 @@ pub const Vm = struct {
             .safepoint_batch_bytes = 0,
             .globals = undefined,
             .num_globals = 0,
-            .current_package = Value.nil,
             .comp_retain_vals = std.ArrayList(Value){},
             .comp_root_stack = [_]Value{Value.nil} ** MAX_COMPILE_ROOTS,
             .comp_root_sp = 0,
@@ -2800,7 +2797,6 @@ pub const Vm = struct {
         self.gc_slots.appendAssumeCapacity(&self.pending_throw_value);
         self.gc_slots.appendAssumeCapacity(&self.pending_block_name);
         self.gc_slots.appendAssumeCapacity(&self.pending_block_value);
-        self.gc_slots.appendAssumeCapacity(&self.current_package);
         var uninterned_it = self.uninterned_values.valueIterator();
         while (uninterned_it.next()) |slot| {
             self.gc_slots.appendAssumeCapacity(slot);
@@ -15728,15 +15724,12 @@ test "vm collectGarbage roots slot-tracked values" {
     const b = try heap.allocCons(Value.makeFixnum(2), Value.nil);
     const c = try heap.allocCons(Value.makeFixnum(3), Value.nil);
     const d = try heap.allocCons(Value.makeFixnum(4), Value.nil);
-    const e = try heap.allocCons(Value.makeFixnum(5), Value.nil);
     const h = try heap.allocCons(Value.makeFixnum(8), Value.nil);
 
     vm.pending_throw_tag = a;
     vm.pending_throw_value = b;
     vm.pending_block_name = c;
     vm.pending_block_value = d;
-    vm.current_package = e;
-
     vm.handler_stack[0] = .{
         .condition_type = h,
         .handler_fn = a,
@@ -15752,7 +15745,6 @@ test "vm collectGarbage roots slot-tracked values" {
     const raw_b = b.raw;
     const raw_c = c.raw;
     const raw_d = d.raw;
-    const raw_e = e.raw;
     const raw_h = h.raw;
 
     _ = try vm.collectGarbage();
@@ -15765,7 +15757,6 @@ test "vm collectGarbage roots slot-tracked values" {
         vm.pending_throw_value,
         vm.pending_block_name,
         vm.pending_block_value,
-        vm.current_package,
         vm.handler_stack[0].condition_type,
         vm.handler_stack[0].handler_fn,
         vm.progv_stack[0].saved_bindings,
@@ -15780,7 +15771,6 @@ test "vm collectGarbage roots slot-tracked values" {
     try testing.expect(vm.pending_throw_value.raw != raw_b);
     try testing.expect(vm.pending_block_name.raw != raw_c);
     try testing.expect(vm.pending_block_value.raw != raw_d);
-    try testing.expect(vm.current_package.raw != raw_e);
     try testing.expect(vm.handler_stack[0].condition_type.raw != raw_h);
 }
 

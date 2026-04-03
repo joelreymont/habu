@@ -590,7 +590,7 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
             }
         }
 
-        if (try findInheritedSymbol(heap, p, sym)) |found| {
+        if (findInheritedSymbol(native_pkg, sym)) |found| {
             const status = try heap.internKeyword("INHERITED");
             return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
         }
@@ -639,24 +639,13 @@ fn insertHashTable(heap: *Heap, table: Value, key: Value, value: Value) !void {
     }
 }
 
-fn findInheritedSymbol(heap: *Heap, p: *objects.Package, sym: Value) !?Value {
+fn findInheritedSymbol(native_pkg: *heap_mod.Package, sym: Value) ?Value {
     if (!sym.isSymbol()) return null;
     const sym_name = sym.toPtr(objects.Symbol).getName();
-    var use = p.use_list;
-    while (use.raw != Value.nil.raw) {
-        if (!use.isCons()) break;
-        const used_pkg = use.toPtr(objects.Cons).car;
-        if (used_pkg.isPackage()) {
-            const up = used_pkg.toPtr(objects.Package);
-            if (up.exports.raw != Value.nil.raw) {
-                const found = hashTableLookup(up.exports, sym);
-                if (found.raw != Value.nil.raw) return found;
-            }
-            if (nativePkgFor(heap, used_pkg)) |native_use| {
-                if (native_use.exports.get(sym_name) != null) return sym;
-            } else |_| {}
+    for (native_pkg.use_list.items) |native_use| {
+        if (native_use.auto_export or native_use.exports.get(sym_name) != null) {
+            if (native_use.symbols.get(sym_name)) |found| return found;
         }
-        use = use.toPtr(objects.Cons).cdr;
     }
     return null;
 }
@@ -665,30 +654,16 @@ fn findInheritedSymbol(heap: *Heap, p: *objects.Package, sym: Value) !?Value {
 /// Returns (values symbol status) where status is :internal/:external/:inherited/nil
 pub fn findSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
     const resolved_pkg = try resolvePkg(heap, pkg);
-    const p = resolved_pkg.toPtr(objects.Package);
-
     const name_str = try nameBytesWithKeyword(name);
     const native_pkg = try nativePkgFor(heap, resolved_pkg);
 
-    if (native_pkg.findAccessibleExact(name_str)) |sym| {
-        // Check if symbol exists in internal table
-        if (p.symbols.raw != Value.nil.raw) {
-            const found_sym = hashTableLookup(p.symbols, sym);
-            if (found_sym.raw != Value.nil.raw) {
-                // Found in internal table - check if exported
-                if (p.exports.raw != Value.nil.raw) {
-                    const exported = hashTableLookup(p.exports, found_sym);
-                    if (exported.raw != Value.nil.raw) {
-                        const status = try heap.internKeyword("EXTERNAL");
-                        return try heap.allocCons(found_sym, try heap.allocCons(status, Value.nil));
-                    }
-                }
-                const status = try heap.internKeyword("INTERNAL");
-                return try heap.allocCons(found_sym, try heap.allocCons(status, Value.nil));
-            }
-        }
+    if (native_pkg.symbols.get(name_str)) |local_sym| {
+        const status = try heap.internKeyword(if (native_pkg.auto_export or native_pkg.exports.contains(name_str)) "EXTERNAL" else "INTERNAL");
+        return try heap.allocCons(local_sym, try heap.allocCons(status, Value.nil));
+    }
 
-        if (try findInheritedSymbol(heap, p, sym)) |found| {
+    if (native_pkg.findAccessibleExact(name_str)) |sym| {
+        if (findInheritedSymbol(native_pkg, sym)) |found| {
             const status = try heap.internKeyword("INHERITED");
             return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
         }
@@ -987,6 +962,7 @@ pub fn deletePackage(heap: *Heap, designator: Value) !bool {
         // Protect core packages; deleting them leaves stale compiler/runtime assumptions.
         return error.InvalidPackage;
     }
+    if (heap.current_package == native_pkg) return error.PackageInUse;
     const rm_list = try heap.allocCons(pkg, Value.nil);
 
     if (heap.lisp_packages.raw != Value.nil.raw) {
@@ -1046,18 +1022,6 @@ pub fn deletePackage(heap: *Heap, designator: Value) !bool {
     p.exports = Value.nil;
     p.use_list = Value.nil;
     p.shadowing = Value.nil;
-
-    if (heap.current_package) |cur| {
-        if (cur == native_pkg) {
-            if (heap.cl_user_package) |user| {
-                heap.current_package = user;
-            } else if (heap.cl_package) |cl| {
-                heap.current_package = cl;
-            } else {
-                heap.current_package = null;
-            }
-        }
-    }
 
     try purgeNativePackageEntries(heap, native_pkg);
     native_pkg.deinit();
@@ -1525,6 +1489,21 @@ test "delete-package rejects protected packages" {
 
     _ = try heap.intern("IF");
     _ = try heap.intern("NIL");
+}
+
+test "delete-package rejects current package" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const name = try heap.allocBaseString("CUR-DELETE");
+    const pkg = try makePackage(&heap, name, null, null);
+    const native_pkg = try nativePkgFor(&heap, pkg);
+    heap.setCurrentPackage(native_pkg);
+
+    try testing.expectError(error.PackageInUse, deletePackage(&heap, pkg));
+    try testing.expect(heap.current_package == native_pkg);
+    try testing.expect((try findPackage(&heap, name)) != null);
 }
 
 test "delete-package purges stray native aliases" {

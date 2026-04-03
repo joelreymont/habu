@@ -1834,7 +1834,6 @@ pub const Repl = struct {
             const saved_pkg_live = source_vm.globals[form_root_idx];
             self.heap.current_package = saved_pkg_native;
             if (saved_pkg_live.isPackage()) {
-                source_vm.current_package = saved_pkg_live;
                 self.setPackageGlobals(source_vm, saved_pkg_live);
             }
             self.syncReaderPackageFromVm(source_vm);
