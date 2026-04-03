@@ -9,6 +9,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-03)
 
 ### Worked Well
+- File-backed streams need rooted pathname metadata if higher layers recover load context from the stream itself. Storing `(pathname . truename)` in `src/runtime/primitives/io.zig` file streams and teaching `src/runtime/primitives/pathname.zig:446-450` to accept stream designators made `probe-file`/`truename` on batch streams truthful without special-casing Maxima.
 - Pathname/file helpers need one shared designator surface. Adding `pathDesignatorString` / `pathDesignatorBytes` in `src/runtime/primitives/pathname.zig:75-96`, then routing `truename`, `ensureDirectoriesExist`, `Vm.pathDesignatorBytes`, `io.openFile`, `stream.primOpen`, and string-based `listDirectory` through that same path removed ad hoc string special cases and made file/directory operations agree on pathname semantics.
 - Class-metadata writes need the same canonical symbol path as reads. Adding `Heap.setClassMetadataForSymbol` in `src/runtime/heap.zig:3297-3313` and switching CLOS slot tests in `src/runtime/primitives/clos.zig:747,772,816` to use symbol-qualified writes fixed the vector-backed metadata-only slot path without reintroducing guessed package strings.
 - Directory-only pathname fidelity belongs in the shared renderer, not in scattered call-site fixes. Extracting `writeDirectoryTo` in `src/runtime/primitives/pathname.zig:82-111,355-383,544-564` and reusing it from `namestring`, `directory-namestring`, and `pathnameToString` fixed both absolute and relative trailing-slash roundtrips in one place.
@@ -18,6 +19,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - For runtime-level validation when `zig build test` is baseline-blocked and `./zig-out/bin/habu` is still broken on stdlib bootstrap, a repo-local throwaway `zig test` probe works. Running a temporary in-repo probe reproduced the exact synonym retargeting path and showed the new stream tests in `src/runtime/primitives/io.zig:3200-3271` pass under execution.
 
 ### Did Not Work
+- Leaving file streams with `source_value = nil` discards real provenance. Higher-level code like `batch-stream` can only recover truthful load pathname/truename if the stream carries that metadata across the open/read boundary.
 - Letting string-based directory helpers bypass pathname parsing creates semantic drift fast. The old `listDirectory` string branch in `src/runtime/primitives/io.zig` hand-trimmed `*` suffixes and skipped the pathname wildcard parser entirely, which is exactly how pathname and string designators drift apart.
 - Writing class metadata with hardcoded package strings is brittle in tests and runtime scaffolding. `Heap.init` starts in `COMMON-LISP`, so a guessed `COMMON-LISP-USER:...` key can silently test the wrong thing even when the lookup path is correct.
 - Repo-local runtime probes that import `src/runtime/**` still pull the existing `src/runtime/primitives/clos.zig:40,124,757` failure into the run. Treat that as a standing runtime-test blocker; do not misattribute it to pathname or stream work.

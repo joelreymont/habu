@@ -2489,13 +2489,19 @@ pub fn openFile(
 
     if (dir.eq(kw_output)) {
         const fd = try std.posix.open(fname, .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, 0o644);
-        return try heap.allocFileOutputStream(fd);
+        const stream = try heap.allocFileOutputStream(fd);
+        try attachFileStreamPathMetadata(allocator, heap, builtins, stream, filename);
+        return stream;
     } else if (dir.eq(kw_io)) {
         const fd = try std.posix.open(fname, .{ .ACCMODE = .RDWR, .CREAT = true }, 0o644);
-        return try heap.allocStream(.io, .file, fd);
+        const stream = try heap.allocStream(.io, .file, fd);
+        try attachFileStreamPathMetadata(allocator, heap, builtins, stream, filename);
+        return stream;
     } else {
         const fd = try std.posix.open(fname, .{ .ACCMODE = .RDONLY }, 0);
-        return try heap.allocFileInputStream(fd);
+        const stream = try heap.allocFileInputStream(fd);
+        try attachFileStreamPathMetadata(allocator, heap, builtins, stream, filename);
+        return stream;
     }
 }
 
@@ -2564,6 +2570,49 @@ fn appendPathComponent(buf: *std.ArrayList(u8), allocator: std.mem.Allocator, co
         try buf.append(allocator, '/');
     }
     try buf.appendSlice(allocator, component);
+}
+
+fn streamFilePathMetadata(
+    allocator: std.mem.Allocator,
+    heap: *heap_mod.Heap,
+    builtins: *const builtins_mod.BuiltinSymbols,
+    filename: Value,
+) !Value {
+    const pathname = try pathname_prim.pathname(allocator, heap, filename);
+    const truename = pathname_prim.truename(allocator, heap, builtins, pathname) catch |err| switch (err) {
+        error.FileNotFound => Value.nil,
+        else => return err,
+    };
+    return try heap.allocCons(pathname, truename);
+}
+
+fn attachFileStreamPathMetadata(
+    allocator: std.mem.Allocator,
+    heap: *heap_mod.Heap,
+    builtins: *const builtins_mod.BuiltinSymbols,
+    stream: Value,
+    filename: Value,
+) !void {
+    const metadata = try streamFilePathMetadata(allocator, heap, builtins, filename);
+    const s = stream.toPtr(objects.Stream);
+    s.source_value = metadata;
+    heap.writeBarrier(stream, metadata);
+}
+
+pub fn fileStreamPathname(stream: Value) !?Value {
+    if (!stream.isStream()) return null;
+    const s = stream.toPtr(objects.Stream);
+    if (s.stream_type != .file or s.source_value.isNil()) return null;
+    if (!s.source_value.isCons()) return error.InvalidArgument;
+    return s.source_value.toPtr(objects.Cons).car;
+}
+
+pub fn fileStreamTruename(stream: Value) !?Value {
+    if (!stream.isStream()) return null;
+    const s = stream.toPtr(objects.Stream);
+    if (s.stream_type != .file or s.source_value.isNil()) return null;
+    if (!s.source_value.isCons()) return error.InvalidArgument;
+    return s.source_value.toPtr(objects.Cons).cdr;
 }
 
 fn appendPathnameResult(heap: *heap_mod.Heap, full_path: []const u8, result: *Value) !void {
@@ -3133,6 +3182,38 @@ test "openFile accepts pathname designator" {
     try finishOutput(stream);
     try closeStream(stream, null);
     try testing.expect(try fileExists(path));
+}
+
+test "openFile stores file stream pathname metadata" {
+    const testing = std.testing;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("meta.txt", .{ .read = true, .truncate = true });
+        defer file.close();
+        try file.writeAll("x");
+    }
+
+    const path = try tmp.dir.realpathAlloc(testing.allocator, "meta.txt");
+    defer testing.allocator.free(path);
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    const builtins = try builtins_mod.BuiltinSymbols.init(&heap);
+
+    const name_val = try heap.allocBaseString(path);
+    const kw_input = try heap.internKeyword("input");
+    const stream = try openFile(testing.allocator, &heap, &builtins, name_val, kw_input, null, null);
+    defer closeStream(stream, null) catch {};
+
+    const pathname_val = (try fileStreamPathname(stream)) orelse return error.TestUnexpectedResult;
+    const truename_val = (try fileStreamTruename(stream)) orelse return error.TestUnexpectedResult;
+    const pathname_ns = try pathname_prim.namestring(testing.allocator, &heap, &builtins, pathname_val);
+    const truename_ns = try pathname_prim.namestring(testing.allocator, &heap, &builtins, truename_val);
+    try testing.expectEqualStrings(path, pathname_ns.toPtr(objects.String).bytes());
+    try testing.expectEqualStrings(path, truename_ns.toPtr(objects.String).bytes());
 }
 
 test "readLine honors unread-char for file streams" {

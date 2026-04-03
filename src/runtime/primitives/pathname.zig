@@ -4,6 +4,7 @@ const Value = runtime.Value;
 const Heap = runtime.Heap;
 const BuiltinSymbols = @import("../builtins.zig").BuiltinSymbols;
 const objects = @import("../objects.zig");
+const io = @import("io.zig");
 const Pathname = objects.Pathname;
 
 /// Create a pathname from components
@@ -447,6 +448,10 @@ pub fn userHomedirPathname(allocator: std.mem.Allocator, heap: *Heap) !Value {
 /// Get the canonical (truename) of a pathname.
 /// Returns the resolved absolute path and propagates missing-file failure.
 pub fn truename(allocator: std.mem.Allocator, heap: *Heap, builtins: *const BuiltinSymbols, val: Value) !Value {
+    if (try io.fileStreamTruename(val)) |stream_truename| {
+        if (!stream_truename.isNil()) return stream_truename;
+        if (try io.fileStreamPathname(val)) |stream_pathname| return stream_pathname;
+    }
     const path_str = try pathDesignatorBytes(allocator, heap, builtins, val);
 
     // Use realpath to get the canonical path
@@ -754,6 +759,33 @@ test "truename missing path signals file-not-found" {
 
     const path_val = try heap.allocBaseString(missing_path);
     try testing.expectError(error.FileNotFound, truename(testing.allocator, &heap, &builtins, path_val));
+}
+
+test "truename accepts file stream metadata" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+    const builtins = try BuiltinSymbols.init(&heap);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("stream-path.txt", .{ .read = true, .truncate = true });
+        defer file.close();
+        try file.writeAll("x");
+    }
+
+    const path = try tmp.dir.realpathAlloc(testing.allocator, "stream-path.txt");
+    defer testing.allocator.free(path);
+    const path_val = try heap.allocBaseString(path);
+    const stream = try io.openFile(testing.allocator, &heap, &builtins, path_val, try heap.internKeyword("input"), null, null);
+    defer io.closeStream(stream, null) catch {};
+
+    const result = try truename(testing.allocator, &heap, &builtins, stream);
+    const result_ns = try namestring(testing.allocator, &heap, &builtins, result);
+    try testing.expectEqualStrings(path, result_ns.toPtr(objects.String).bytes());
 }
 
 test "pathnameDirectory nil returns nil" {

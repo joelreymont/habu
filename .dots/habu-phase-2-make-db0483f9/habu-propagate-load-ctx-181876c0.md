@@ -1,9 +1,11 @@
 ---
 title: Propagate load context through batch streams
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.242521+02:00"
+created-at: "\"2026-04-01T22:06:02.242521+02:00\""
+closed-at: "2026-04-03T23:52:35.838980+02:00"
+close-reason: "done: file-backed streams now carry pathname/truename metadata and probe-file/truename recover truthful load context through batch-stream paths"
 blocks:
   - habu-canonize-file-create-72f00d29
 ---

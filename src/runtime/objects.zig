@@ -388,7 +388,8 @@ pub const Stream = extern struct {
     pushback_char: u8 = 0xFF,
     _padding2: [3]u8 = [_]u8{0} ** 3,
     /// For string streams: reference to source string (prevents GC)
-    /// For file streams: Value.nil
+    /// For composite streams: backing stream metadata
+    /// For file streams: (pathname . truename-or-nil)
     source_value: Value = Value.nil,
 
     pub fn isInput(self: *const Stream) bool {
