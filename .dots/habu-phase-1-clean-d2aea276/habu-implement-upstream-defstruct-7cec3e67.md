@@ -1,9 +1,11 @@
 ---
 title: Implement upstream defstruct options
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.152041+02:00"
+created-at: "\"2026-04-01T22:06:02.152041+02:00\""
+closed-at: "2026-04-03T16:12:44.177106+02:00"
+close-reason: children done
 blocks:
   - habu-separate-structure-70df2f68
 ---

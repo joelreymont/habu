@@ -10640,7 +10640,11 @@ pub const Compiler = struct {
         var accessor_prefix: []const u8 = undefined;
         var accessor_prefix_owned = true;
         var emit_constructor = true;
-        var constructor_name_override: ?[]const u8 = null;
+        var custom_ctors = std.ArrayList(CustomCtor){};
+        defer {
+            for (custom_ctors.items) |ctor| self.allocator.free(ctor.name);
+            custom_ctors.deinit(self.allocator);
+        }
         var emit_copier = true;
         var copier_name_override: ?[]const u8 = null;
         var emit_predicate = true;
@@ -10764,18 +10768,31 @@ pub const Compiler = struct {
                                 }
                             }
                         } else if (std.ascii.eqlIgnoreCase(key_name, "constructor")) {
-                            // (:constructor) = default, (:constructor nil) = suppress,
-                            // (:constructor name [lambda-list]) = custom name.
+                            // (:constructor) = keep default constructor.
+                            // (:constructor nil) = suppress default constructor.
+                            // (:constructor name) = add custom constructor with default lambda list.
+                            // (:constructor name lambda-list) = add custom BOA constructor.
                             if (!opt_cons.cdr.isCons()) {
                                 emit_constructor = true;
                             } else {
-                                const value = opt_cons.cdr.toPtr(Cons).car;
-                                if (value.isNil()) {
+                                const name_val = opt_cons.cdr.toPtr(Cons).car;
+                                if (name_val.isNil()) {
                                     emit_constructor = false;
-                                } else if (self.getStringOrSymbolName(value)) |name| {
-                                    emit_constructor = true;
-                                    if (constructor_name_override) |n| self.allocator.free(n);
-                                    constructor_name_override = try self.allocator.dupe(u8, name);
+                                } else if (self.getStringOrSymbolName(name_val)) |name| {
+                                    const ctor_name = try self.allocator.dupe(u8, name);
+                                    var lambda_list: ?Value = null;
+                                    const rest_ctor = opt_cons.cdr.toPtr(Cons).cdr;
+                                    if (rest_ctor.isCons()) {
+                                        const ll_cell = rest_ctor.toPtr(Cons);
+                                        lambda_list = ll_cell.car;
+                                        if (!ll_cell.cdr.isNil()) return error.InvalidSyntax;
+                                    } else if (!rest_ctor.isNil()) {
+                                        return error.InvalidSyntax;
+                                    }
+                                    try custom_ctors.append(self.allocator, .{
+                                        .name = ctor_name,
+                                        .lambda_list = lambda_list,
+                                    });
                                 } else {
                                     return error.InvalidSyntax;
                                 }
@@ -10827,7 +10844,6 @@ pub const Compiler = struct {
             return error.InvalidSyntax;
         }
         defer if (accessor_prefix_owned) self.allocator.free(accessor_prefix);
-        defer if (constructor_name_override) |n| self.allocator.free(n);
         defer if (copier_name_override) |n| self.allocator.free(n);
         defer if (predicate_name_override) |n| self.allocator.free(n);
 
@@ -10956,7 +10972,7 @@ pub const Compiler = struct {
 
         // Compute number of definitions: accessors + writers + name_lit
         // + optional constructor + optional predicate + optional copier
-        const ctor_count: usize = if (emit_constructor) 1 else 0;
+        const ctor_count: usize = @as(usize, if (emit_constructor) 1 else 0) + custom_ctors.items.len;
         const pred_count: usize = if (emit_predicate) 1 else 0;
         const copier_count: usize = if (emit_copier) 1 else 0;
         const printer_count: usize = if (repr == .object and print_fn_spec != null) 1 else 0;
@@ -10966,10 +10982,7 @@ pub const Compiler = struct {
 
         // 1. Constructor (unless suppressed): (defun make-name (...) ...)
         if (emit_constructor) {
-            const ctor_name = if (constructor_name_override) |n|
-                try self.allocator.dupe(u8, n)
-            else
-                try self.concatStrings("MAKE-", struct_name);
+            const ctor_name = try self.concatStrings("MAKE-", struct_name);
             defs[def_idx] = try self.generateStructConstructor(
                 heap,
                 ctor_name,
@@ -10980,6 +10993,23 @@ pub const Compiler = struct {
                 repr,
                 named,
             );
+            def_idx += 1;
+        }
+
+        for (custom_ctors.items) |ctor| {
+            defs[def_idx] = if (ctor.lambda_list) |lambda_list|
+                try self.generateBoaStructConstructor(heap, ctor.name, lambda_list, struct_name, slot_specs.items, env, repr, named)
+            else
+                try self.generateStructConstructor(
+                    heap,
+                    ctor.name,
+                    struct_name,
+                    slot_specs.items,
+                    env,
+                    try self.builder.lit(Value.nil),
+                    repr,
+                    named,
+                );
             def_idx += 1;
         }
 
@@ -11046,6 +11076,11 @@ pub const Compiler = struct {
     const Allocation = enum {
         instance, // :allocation :instance (default)
         class, // :allocation :class (shared across all instances)
+    };
+
+    const CustomCtor = struct {
+        name: []const u8,
+        lambda_list: ?Value,
     };
 
     /// Slot specification with name, type, and optional init form
@@ -11420,6 +11455,123 @@ pub const Compiler = struct {
         );
 
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
+    }
+
+    fn generateBoaStructConstructor(
+        self: *Compiler,
+        heap: *Heap,
+        ctor_name: []const u8,
+        lambda_list: Value,
+        struct_name: []const u8,
+        slots: []const SlotSpec,
+        env: *const Env,
+        repr: DefstructRepr,
+        named: bool,
+    ) anyerror!*Ir {
+        const ctor_form = try self.buildBoaStructConstructorForm(heap, ctor_name, lambda_list, struct_name, slots, repr, named);
+        return try self.compile(ctor_form, env);
+    }
+
+    fn buildBoaStructConstructorForm(
+        self: *Compiler,
+        heap: *Heap,
+        ctor_name: []const u8,
+        lambda_list: Value,
+        struct_name: []const u8,
+        slots: []const SlotSpec,
+        repr: DefstructRepr,
+        named: bool,
+    ) anyerror!Value {
+        const defun_sym = try heap.intern("defun");
+        const ctor_sym = try heap.intern(ctor_name);
+        const body = try self.buildBoaStructConstructorBody(heap, lambda_list, struct_name, slots, repr, named);
+        return try self.listFromValues(heap, &[_]Value{ defun_sym, ctor_sym, lambda_list, body });
+    }
+
+    fn buildBoaStructConstructorBody(
+        self: *Compiler,
+        heap: *Heap,
+        lambda_list: Value,
+        struct_name: []const u8,
+        slots: []const SlotSpec,
+        repr: DefstructRepr,
+        named: bool,
+    ) anyerror!Value {
+        return switch (repr) {
+            .object => blk: {
+                const make_instance_sym = try heap.intern("make-instance");
+                const class_name = try self.quoteValue(heap, try heap.intern(struct_name));
+                const args = try self.allocator.alloc(Value, 2 + (slots.len * 2));
+                args[0] = make_instance_sym;
+                args[1] = class_name;
+                for (slots, 0..) |spec, i| {
+                    args[2 + (i * 2)] = try heap.internKeyword(spec.name);
+                    args[2 + (i * 2) + 1] = try self.boaSlotInitValue(heap, lambda_list, spec);
+                }
+                break :blk try self.listFromValues(heap, args);
+            },
+            .list => blk: {
+                const list_sym = try heap.intern("list");
+                const prefix_len: usize = if (named) 1 else 0;
+                const args = try self.allocator.alloc(Value, 1 + prefix_len + slots.len);
+                args[0] = list_sym;
+                if (named) args[1] = try self.quoteValue(heap, try heap.intern(struct_name));
+                for (slots, 0..) |spec, i| {
+                    args[1 + prefix_len + i] = try self.boaSlotInitValue(heap, lambda_list, spec);
+                }
+                break :blk try self.listFromValues(heap, args);
+            },
+        };
+    }
+
+    fn boaSlotInitValue(self: *Compiler, heap: *Heap, lambda_list: Value, spec: SlotSpec) anyerror!Value {
+        if (try self.lambdaListBindsSlot(lambda_list, spec.name)) {
+            if (spec.sym.isSymbol()) return spec.sym;
+            return try heap.intern(spec.name);
+        }
+        return spec.initform orelse Value.nil;
+    }
+
+    fn lambdaListBindsSlot(self: *Compiler, lambda_list: Value, slot_name: []const u8) anyerror!bool {
+        var current = lambda_list;
+        while (current.isCons()) {
+            const cell = current.toPtr(Cons);
+            const entry = cell.car;
+            if (entry.isSymbol()) {
+                const name = entry.toPtr(Symbol).getName();
+                if (std.mem.startsWith(u8, name, "&")) {
+                    current = cell.cdr;
+                    continue;
+                }
+                if (std.mem.eql(u8, name, slot_name)) return true;
+            } else if (entry.isCons()) {
+                const spec_cons = entry.toPtr(Cons);
+                const var_val = if (spec_cons.car.isCons()) blk: {
+                    const head_cons = spec_cons.car.toPtr(Cons);
+                    break :blk head_cons.cdr.toPtr(Cons).car;
+                } else spec_cons.car;
+                if (self.getStringOrSymbolName(var_val)) |name| {
+                    if (std.mem.eql(u8, name, slot_name)) return true;
+                }
+            }
+            current = cell.cdr;
+        }
+        return false;
+    }
+
+    fn quoteValue(self: *Compiler, heap: *Heap, val: Value) anyerror!Value {
+        const b = self.builtins orelse return error.UninitializedBuiltins;
+        return try self.listFromValues(heap, &[_]Value{ b.quote, val });
+    }
+
+    fn listFromValues(_: *Compiler, heap: *Heap, vals: []const Value) anyerror!Value {
+        var out = Value.nil;
+        var i = vals.len;
+        while (i > 0) {
+            i -= 1;
+            out = try heap.allocCons(vals[i], out);
+        }
+        return out;
     }
 
     fn buildListStructCell(self: *Compiler, obj_ir: *Ir, idx: usize) anyerror!*Ir {

@@ -6194,6 +6194,7 @@
 ; defstruct - define structure type
 ; Usage: (defstruct name slot1 slot2 ...)
 ;        (defstruct (name (:constructor make-name)) slot1 slot2)
+;        (defstruct (name (:constructor make-name (a &optional b &aux c))) slot1 slot2)
 ; Creates: make-NAME constructor, NAME-p predicate, NAME-SLOT accessors
 (defmacro defstruct (name-and-options &rest slots)
   (let* ((name (if (consp name-and-options)

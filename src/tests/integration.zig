@@ -7432,6 +7432,56 @@ test "invoke-restart uses exact restart object, not just name" {
     try testing.expectEqual(@as(i64, 17), result.toFixnum());
 }
 
+test "defstruct BOA constructor lambda list initializes slots" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 * 64 });
+    defer heap.deinit();
+
+    const result = try evalExpr(
+        allocator,
+        &heap,
+        "(progn " ++
+            "  (defstruct (pair (:constructor make-pair (first second &aux (sum (+ first second))))) " ++
+            "    first second (sum 0 :type fixnum)) " ++
+            "  (let ((p (make-pair 2 5))) " ++
+            "    (list (pair-first p) (pair-second p) (pair-sum p))))",
+    );
+    try testing.expect(result.isCons());
+    const a = result.toPtr(runtime.Cons);
+    const b = a.cdr.toPtr(runtime.Cons);
+    const c = b.cdr.toPtr(runtime.Cons);
+    try testing.expectEqual(@as(i64, 2), a.car.toFixnum());
+    try testing.expectEqual(@as(i64, 5), b.car.toFixnum());
+    try testing.expectEqual(@as(i64, 7), c.car.toFixnum());
+    try testing.expect(c.cdr.isNil());
+}
+
+test "defstruct supports multiple explicit constructors" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 * 64 });
+    defer heap.deinit();
+
+    const result = try evalExpr(
+        allocator,
+        &heap,
+        "(progn " ++
+            "  (defstruct (poly " ++
+            "               (:constructor make-poly-from-termlist (termlist &optional (sugar (length termlist)))) " ++
+            "               (:constructor make-poly-zero (&aux (termlist nil) (sugar -1)))) " ++
+            "    (termlist nil) (sugar -1 :type fixnum)) " ++
+            "  (list (poly-sugar (make-poly-from-termlist '(a b c))) " ++
+            "        (poly-sugar (make-poly-zero))))",
+    );
+    try testing.expect(result.isCons());
+    const a = result.toPtr(runtime.Cons);
+    const b = a.cdr.toPtr(runtime.Cons);
+    try testing.expectEqual(@as(i64, 3), a.car.toFixnum());
+    try testing.expectEqual(@as(i64, -1), b.car.toFixnum());
+    try testing.expect(b.cdr.isNil());
+}
+
 test "defstruct print-function symbol customizes write-to-string" {
     const allocator = testing.allocator;
 
