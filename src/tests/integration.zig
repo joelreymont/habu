@@ -6551,6 +6551,76 @@ test "ansi repro delete-file accepts pathname designator" {
     try testing.expect(result.isNil());
 }
 
+test "probe-file returns canonical truename pathname" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "probe-hit.txt", .data = "x" });
+    const abs_path = try tmp.dir.realpathAlloc(allocator, "probe-hit.txt");
+    defer allocator.free(abs_path);
+
+    const form = try std.fmt.allocPrint(allocator, "(namestring (probe-file \"{s}\"))", .{abs_path});
+    defer allocator.free(form);
+    const result = try repl.eval(form);
+    try testing.expectEqualStrings(abs_path, try asString(result));
+}
+
+test "probe-file returns nil for missing path" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const abs_path = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(abs_path);
+    const missing = try std.fs.path.join(allocator, &[_][]const u8{ abs_path, "probe-miss.txt" });
+    defer allocator.free(missing);
+
+    const form = try std.fmt.allocPrint(allocator, "(probe-file \"{s}\")", .{missing});
+    defer allocator.free(form);
+    const result = try repl.eval(form);
+    try testing.expect(result.isNil());
+}
+
+test "truename signals on missing path" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const abs_path = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(abs_path);
+    const missing = try std.fs.path.join(allocator, &[_][]const u8{ abs_path, "truename-miss.txt" });
+    defer allocator.free(missing);
+
+    const form = try std.fmt.allocPrint(allocator, "(truename \"{s}\")", .{missing});
+    defer allocator.free(form);
+    try testing.expectError(error.FileNotFound, repl.eval(form));
+}
+
 test "ansi repro write-to-string.3 honors allow-other-keys" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

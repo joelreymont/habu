@@ -1,9 +1,11 @@
 ---
 title: Make probe-file and truename truthful
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.224250+02:00"
+created-at: "\"2026-04-01T22:06:02.224250+02:00\""
+closed-at: "2026-04-03T15:38:01.231553+02:00"
+close-reason: done (zig build; zig build test still blocked by known 5-error baseline)
 blocks:
   - habu-unify-stream-and-a262987a
 ---

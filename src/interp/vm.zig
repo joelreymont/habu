@@ -5399,13 +5399,11 @@ pub const Vm = struct {
             },
             .probe_file => {
                 const path_val = try self.pop();
-                const path_str = try self.pathDesignatorBytes(path_val);
-                if (try io.probeFile(path_str)) {
-                    // Return the path as truename
-                    try self.push(path_val);
-                } else {
-                    try self.push(Value.nil);
-                }
+                const result = primitives.pathname.truename(self.allocator, self.heap, &self.builtins, path_val) catch |err| switch (err) {
+                    error.FileNotFound => Value.nil,
+                    else => return err,
+                };
+                try self.push(result);
             },
             .file_write_date => {
                 const path_val = try self.pop();
