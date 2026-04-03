@@ -1964,3 +1964,4 @@ also `(set alias-target y)` (with assign validator).
 
 ### Did Not Work
 - Keeping package-context recovery inside `Heap.resolveCurrentPackageForIntern` was false progress. The old `src/runtime/heap.zig:3374-3398` path logged a stale pointer and rewrote package state to `CL-USER`/`CL`/`null`, which hid real corruption instead of making the owner of package context consistent.
+- Saving loader package context in both `heap.current_package` and `COMMON-LISP:*PACKAGE*` during `load` was unnecessary drift. Rebinding the special directly in `src/interp/repl.zig:1828-1838` and letting `syncReaderPackageFromVm` derive the reader/native package from that single special state is the cleaner cutover.

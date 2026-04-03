@@ -1,9 +1,11 @@
 ---
 title: Canonicalize loader specials
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.109977+02:00"
+created-at: "\"2026-04-01T22:06:02.109977+02:00\""
+closed-at: "2026-04-03T09:12:25.923317+02:00"
+close-reason: done (zig build; zig build test back to known 5-error baseline)
 blocks:
   - habu-canonicalize-pkg-state-4641836b
 ---

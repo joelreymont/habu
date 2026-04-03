@@ -1825,17 +1825,13 @@ pub const Repl = struct {
         const load_bindings = try self.bindLoadGlobals(source_vm, load_path, form_root_idx, form_stack_idx);
         defer self.restoreLoadGlobals(source_vm, load_bindings, form_root_idx, form_stack_idx);
 
-        // CL spec: *PACKAGE* is rebound by LOAD — save and restore after.
-        const saved_pkg_native = self.heap.current_package;
-        const saved_pkg_global = self.currentPackageGlobal(source_vm) orelse Value.nil;
+        // CL spec: *PACKAGE* is dynamically rebound by LOAD and restored after.
+        const saved_pkg_global = self.globalValue(source_vm, "COMMON-LISP:*PACKAGE*") orelse Value.nil;
         try pushRootValue(source_vm, form_root_idx, form_stack_idx, saved_pkg_global);
         defer popRootValue(source_vm, form_root_idx, form_stack_idx);
         defer {
             const saved_pkg_live = source_vm.globals[form_root_idx];
-            self.heap.current_package = saved_pkg_native;
-            if (saved_pkg_live.isPackage()) {
-                self.setPackageGlobals(source_vm, saved_pkg_live);
-            }
+            self.setGlobalValue(source_vm, "COMMON-LISP:*PACKAGE*", saved_pkg_live);
             self.syncReaderPackageFromVm(source_vm);
         }
 
@@ -1883,6 +1879,7 @@ pub const Repl = struct {
         const names = [_][]const u8{
             "COMMON-LISP:*LOAD-PATHNAME*",
             "COMMON-LISP:*LOAD-TRUENAME*",
+            "COMMON-LISP:*DEFAULT-PATHNAME-DEFAULTS*",
         };
         for (names) |name| {
             const idx = self.compiler.globals.lookup(name) orelse continue;
@@ -1932,48 +1929,41 @@ pub const Repl = struct {
     }
 
     fn currentLoadTruename(self: *Repl, vm: *const Vm) ?Value {
-        const names = [_][]const u8{
-            "COMMON-LISP:*LOAD-TRUENAME*",
-        };
-        for (names) |name| {
-            if (self.compiler.globals.lookup(name)) |idx| {
-                if (idx < vm.num_globals) {
-                    const val = vm.globals[idx];
-                    if (!val.isNil()) return val;
-                }
+        if (self.globalValue(@constCast(vm), "COMMON-LISP:*LOAD-TRUENAME*")) |val| {
+            if (!val.isNil()) return val;
+        }
+        return null;
+    }
+
+    fn globalValue(self: *Repl, vm: *Vm, name: []const u8) ?Value {
+        if (self.compiler.globals.lookup(name)) |idx| {
+            if (idx < vm.num_globals) {
+                const raw = vm.globals[idx];
+                const val = vm.resolveForwardedValue(raw);
+                if (val.raw != raw.raw) vm.globals[idx] = val;
+                return val;
             }
         }
         return null;
     }
 
+    fn setGlobalValue(self: *Repl, vm: *Vm, name: []const u8, val: Value) void {
+        if (self.compiler.globals.lookup(name)) |idx| {
+            if (idx >= vm.globals.len) return;
+            vm.globals[idx] = val;
+            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+        }
+    }
+
     fn currentPackageGlobal(self: *Repl, vm: *Vm) ?Value {
-        const names = [_][]const u8{
-            "COMMON-LISP:*PACKAGE*",
-        };
-        for (names) |name| {
-            if (self.compiler.globals.lookup(name)) |idx| {
-                if (idx < vm.num_globals) {
-                    const raw = vm.globals[idx];
-                    const val = vm.resolveForwardedValue(raw);
-                    if (val.raw != raw.raw) vm.globals[idx] = val;
-                    if (val.isPackage()) return val;
-                }
-            }
+        if (self.globalValue(vm, "COMMON-LISP:*PACKAGE*")) |val| {
+            if (val.isPackage()) return val;
         }
         return null;
     }
 
     fn setPackageGlobals(self: *Repl, vm: *Vm, pkg_val: Value) void {
-        const names = [_][]const u8{
-            "COMMON-LISP:*PACKAGE*",
-        };
-        for (names) |name| {
-            if (self.compiler.globals.lookup(name)) |idx| {
-                if (idx >= vm.globals.len) continue;
-                vm.globals[idx] = pkg_val;
-                if (idx >= vm.num_globals) vm.num_globals = idx + 1;
-            }
-        }
+        self.setGlobalValue(vm, "COMMON-LISP:*PACKAGE*", pkg_val);
     }
 
     fn syncReaderPackageFromVm(self: *Repl, vm: *Vm) void {
@@ -2127,16 +2117,8 @@ pub const Repl = struct {
     }
 
     fn currentDefaultPathname(self: *Repl, vm: *const Vm) ?Value {
-        const names = [_][]const u8{
-            "COMMON-LISP:*DEFAULT-PATHNAME-DEFAULTS*",
-        };
-        for (names) |name| {
-            if (self.compiler.globals.lookup(name)) |idx| {
-                if (idx < vm.num_globals) {
-                    const val = vm.globals[idx];
-                    if (!val.isNil()) return val;
-                }
-            }
+        if (self.globalValue(@constCast(vm), "COMMON-LISP:*DEFAULT-PATHNAME-DEFAULTS*")) |val| {
+            if (!val.isNil()) return val;
         }
         return null;
     }
@@ -5444,6 +5426,7 @@ test "load restores load pathname globals under generational GC pressure" {
     const load_globals = [_][]const u8{
         "COMMON-LISP:*LOAD-PATHNAME*",
         "COMMON-LISP:*LOAD-TRUENAME*",
+        "COMMON-LISP:*DEFAULT-PATHNAME-DEFAULTS*",
     };
 
     const sentinel = try repl.loadPathnameValue("/tmp/habu-load-sentinel.lsp");
@@ -5504,6 +5487,56 @@ test "load restores load pathname globals under generational GC pressure" {
         try testing.expect(got_ns.isString());
         try testing.expect(std.mem.eql(u8, sentinel_ns, got_ns.toPtr(runtime.String).bytes()));
     }
+}
+
+test "nested load restores package and binds default pathname defaults" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 32 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try repl.loadFile("lib/stdlib.habu", std.io.null_writer);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var inner = try tmp.dir.createFile("inner.lsp", .{});
+        defer inner.close();
+        try inner.writeAll(
+            "(in-package \"COMMON-LISP\")\n" ++
+                "17\n",
+        );
+    }
+    {
+        var outer = try tmp.dir.createFile("outer.lsp", .{});
+        defer outer.close();
+        try outer.writeAll(
+            "(in-package \"CL-USER\")\n" ++
+                "(list (progn (load \"inner.lsp\") (package-name *package*))\n" ++
+                "      (pathnamep *default-pathname-defaults*))\n",
+        );
+    }
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const outer_abs = try std.fs.path.join(allocator, &.{ base, "outer.lsp" });
+    defer allocator.free(outer_abs);
+
+    const form = try std.fmt.allocPrint(allocator, "(load \"{s}\")", .{outer_abs});
+    defer allocator.free(form);
+    const result = try repl.eval(form);
+    try testing.expect(result.isCons());
+    const c1 = result.toPtr(runtime.Cons);
+    try testing.expect(c1.car.isString());
+    try testing.expectEqualStrings("COMMON-LISP-USER", c1.car.toPtr(runtime.String).bytes());
+    const c2 = c1.cdr.toPtr(runtime.Cons);
+    try testing.expect(!c2.car.isNil());
 }
 
 test "load rejects repeated directory prefix fallback" {
