@@ -7696,32 +7696,24 @@ pub const Vm = struct {
 
             // Pathname operations
             .make_pathname => {
-                // Operand flags: bit 0=host, 1=device, 2=directory, 3=name, 4=type, 5=version
                 const flags = self.readU8();
-
-                // Pop components from stack (in reverse order of bits)
                 const version = if ((flags & 0x20) != 0) try self.pop() else Value.nil;
                 const type_comp = if ((flags & 0x10) != 0) try self.pop() else Value.nil;
                 const name = if ((flags & 0x08) != 0) try self.pop() else Value.nil;
                 const directory = if ((flags & 0x04) != 0) try self.pop() else Value.nil;
                 const device = if ((flags & 0x02) != 0) try self.pop() else Value.nil;
                 const host = if ((flags & 0x01) != 0) try self.pop() else Value.nil;
-
-                // Allocate pathname object
-                const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
-                const pn: *runtime.Pathname = @ptrCast(@alignCast(bytes));
-
-                pn.* = .{
-                    .kind = .pathname,
-                    .host = host,
-                    .device = device,
-                    .directory = directory,
-                    .name = name,
-                    .type = type_comp,
-                    .version = version,
-                };
-
-                try self.push(Value.makePathname(pn));
+                const result = try primitives.pathname.makePathname(
+                    self.allocator,
+                    self.heap,
+                    host,
+                    device,
+                    directory,
+                    name,
+                    type_comp,
+                    version,
+                );
+                try self.push(result);
             },
 
             .pathname => {
@@ -7732,160 +7724,23 @@ pub const Vm = struct {
 
             .parse_namestring => {
                 const str_val = try self.pop();
-                if (!str_val.isString()) return error.TypeMismatch;
-
-                const str = str_val.toPtr(runtime.String);
-                const path = str.bytes();
-
-                // Parse the path into components
-                const host = Value.nil;
-                const device = Value.nil;
-                var directory = Value.nil;
-                var name = Value.nil;
-                var type_comp = Value.nil;
-                const version = Value.nil;
-
-                if (path.len == 0) {
-                    // Empty path - all components nil
-                } else {
-                    // Check if absolute (starts with /)
-                    const is_absolute = path[0] == '/';
-                    const start_idx: usize = if (is_absolute) 1 else 0;
-
-                    // Split path by '/'
-                    var components = std.ArrayList(Value){};
-                    defer components.deinit(self.allocator);
-
-                    var i: usize = start_idx;
-                    while (i < path.len) {
-                        var j = i;
-                        while (j < path.len and path[j] != '/') : (j += 1) {}
-
-                        if (j > i) {
-                            const component = path[i..j];
-                            const comp_str = try self.allocString(component);
-                            try components.append(self.allocator, comp_str);
-                        }
-
-                        i = j + 1;
-                    }
-
-                    // Last component is the filename
-                    if (components.items.len > 0) {
-                        const filename_val = components.pop().?;
-                        const filename = filename_val.toPtr(runtime.String);
-                        const fname = filename.bytes();
-
-                        // Split filename into name and type (extension)
-                        if (std.mem.lastIndexOf(u8, fname, ".")) |dot_pos| {
-                            if (dot_pos > 0) {
-                                // Has extension
-                                name = try self.allocString(fname[0..dot_pos]);
-                                type_comp = try self.allocString(fname[dot_pos + 1 ..]);
-                            } else {
-                                // Starts with dot (hidden file on Unix)
-                                name = filename_val;
-                            }
-                        } else {
-                            // No extension
-                            name = filename_val;
-                        }
-                    }
-
-                    // Build directory list
-                    if (components.items.len > 0 or is_absolute) {
-                        // Start with :absolute or :relative keyword
-                        const dir_type = if (is_absolute)
-                            try self.heap.intern("absolute")
-                        else
-                            try self.heap.intern("relative");
-
-                        var dir_list = Value.nil;
-                        // Add components in reverse order to build list
-                        var k: usize = components.items.len;
-                        while (k > 0) {
-                            k -= 1;
-                            dir_list = try self.allocCons(components.items[k], dir_list);
-                        }
-                        // Add directory type at front
-                        directory = try self.allocCons(dir_type, dir_list);
-                    }
-                }
-
-                // Allocate pathname object
-                const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
-                const pn: *runtime.Pathname = @ptrCast(@alignCast(bytes));
-
-                pn.* = .{
-                    .kind = .pathname,
-                    .host = host,
-                    .device = device,
-                    .directory = directory,
-                    .name = name,
-                    .type = type_comp,
-                    .version = version,
-                };
-
-                try self.push(Value.makePathname(pn));
+                const result = try primitives.pathname.parseNamestring(
+                    self.allocator,
+                    self.heap,
+                    str_val,
+                );
+                try self.push(result);
             },
 
             .namestring => {
                 const pn_val = try self.pop();
-                if (!pn_val.isPathname()) return error.TypeMismatch;
-
-                const pn = pn_val.toPtr(runtime.Pathname);
-
-                // Build namestring from components
-                var result = std.ArrayList(u8){};
-                defer result.deinit(self.allocator);
-
-                // Process directory
-                if (pn.directory != Value.nil) {
-                    var dir_list = pn.directory;
-
-                    // Skip first element if it's :absolute or :relative keyword
-                    if (dir_list.isCons()) {
-                        const first = dir_list.toPtr(runtime.Cons).car;
-                        if (first.raw == self.builtins.kw_absolute.raw) {
-                            try result.append(self.allocator, '/');
-                            dir_list = dir_list.toPtr(runtime.Cons).cdr;
-                        } else if (first.raw == self.builtins.kw_relative.raw) {
-                            dir_list = dir_list.toPtr(runtime.Cons).cdr;
-                        }
-                    }
-
-                    // Add directory components
-                    while (dir_list != Value.nil) {
-                        if (!dir_list.isCons()) break;
-                        const cons = dir_list.toPtr(runtime.Cons);
-                        const component = cons.car;
-
-                        if (component.isString()) {
-                            const comp_str = component.toPtr(runtime.String);
-                            try result.appendSlice(self.allocator, comp_str.bytes());
-                            try result.append(self.allocator, '/');
-                        }
-
-                        dir_list = cons.cdr;
-                    }
-                }
-
-                // Add name component
-                if (pn.name != Value.nil and pn.name.isString()) {
-                    const name_str = pn.name.toPtr(runtime.String);
-                    try result.appendSlice(self.allocator, name_str.bytes());
-                }
-
-                // Add type component (extension)
-                if (pn.type != Value.nil and pn.type.isString()) {
-                    try result.append(self.allocator, '.');
-                    const type_str = pn.type.toPtr(runtime.String);
-                    try result.appendSlice(self.allocator, type_str.bytes());
-                }
-
-                // Create string from result
-                const result_str = try self.allocString(result.items);
-                try self.push(result_str);
+                const result = try primitives.pathname.namestring(
+                    self.allocator,
+                    self.heap,
+                    &self.builtins,
+                    pn_val,
+                );
+                try self.push(result);
             },
 
             .directory_namestring => {
@@ -10039,6 +9894,9 @@ pub const Vm = struct {
             .write_string => {
                 if (args.len < 1 or args.len > 4) return error.TypeMismatch;
                 const stream = if (args.len >= 2) args[1] else self.defaultOutputStream();
+                if (args.len == 2) {
+                    return try primitives.stream.primWriteString(self.heap, &[_]Value{ args[0], stream });
+                }
                 const start = if (args.len >= 3) args[2] else null;
                 const end = if (args.len == 4) args[3] else null;
                 try io.writeString(args[0], stream, start, end);
@@ -10055,25 +9913,23 @@ pub const Vm = struct {
             },
             .file_position => {
                 try requireArgCount(args, 1, 1);
-                return try io.filePosition(self.heap, args[0], null);
+                return try primitives.stream.primFilePosition(self.heap, &[_]Value{args[0]});
             },
             .set_file_position => {
                 try requireArgCount(args, 2, 2);
-                return try io.filePosition(self.heap, args[0], args[1]);
+                return try primitives.stream.primFilePosition(self.heap, &[_]Value{ args[0], args[1] });
             },
             .file_length => {
                 try requireArgCount(args, 1, 1);
-                return try io.fileLength(args[0]);
+                return try primitives.stream.primFileLength(self.heap, &[_]Value{args[0]});
             },
             .finish_output => {
                 const stream = if (args.len == 0) self.defaultOutputStream() else args[0];
-                try io.finishOutput(stream);
-                return Value.nil;
+                return try primitives.stream.primFinishOutput(self.heap, &[_]Value{stream});
             },
             .force_output => {
                 const stream = if (args.len == 0) self.defaultOutputStream() else args[0];
-                try io.forceOutput(stream);
-                return Value.nil;
+                return try primitives.stream.primForceOutput(self.heap, &[_]Value{stream});
             },
             .clear_input => {
                 const stream = if (args.len == 0) self.defaultInputStream() else args[0];

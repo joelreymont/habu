@@ -1,9 +1,11 @@
 ---
 title: Unify stream and path primitive surface
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.211997+02:00"
+created-at: "\"2026-04-01T22:06:02.211997+02:00\""
+closed-at: "2026-04-03T10:17:58.251179+02:00"
+close-reason: done (zig build ok; zig build test unchanged 5-error baseline)
 blocks:
   - habu-canonicalize-loader-specials-4fcbd54f
 ---

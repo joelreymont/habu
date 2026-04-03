@@ -3,6 +3,7 @@ const std = @import("std");
 const Value = @import("../value.zig").Value;
 const Heap = @import("../heap.zig").Heap;
 const io = @import("io.zig");
+const pathname_prim = @import("pathname.zig");
 const Vector = @import("../objects.zig").Vector;
 const String = @import("../objects.zig").String;
 const String32 = @import("../objects.zig").String32;
@@ -15,38 +16,29 @@ const BuiltinSymbols = @import("../builtins.zig").BuiltinSymbols;
 pub fn primOpen(heap: *Heap, args: []const Value, builtins: *const BuiltinSymbols) !Value {
     if (args.len < 2) return error.InvalidArgument;
 
-    const path_val = args[0];
+    const path_val = if (args[0].isPathname())
+        try pathname_prim.namestring(heap.backing_allocator, heap, builtins, args[0])
+    else
+        args[0];
     const mode_val = args[1];
 
     if (!path_val.isString()) return error.InvalidArgument;
     if (!mode_val.isKeyword()) return error.InvalidArgument;
 
-    const path_str = path_val.toPtr(String);
-    const path = path_str.data[0..path_str.length];
-
-    // Parse mode keyword using identity: :read, :write, :append
     const is_read = mode_val.raw == builtins.kw_read.raw;
     const is_write = mode_val.raw == builtins.kw_write.raw;
     const is_io = mode_val.raw == builtins.kw_io.raw;
     const is_append = mode_val.raw == builtins.kw_append.raw;
-
     if (!is_read and !is_write and !is_io and !is_append) return error.InvalidArgument;
 
-    const direction: StreamDirection = if (is_read) .input else if (is_io) .io else .output;
-
-    // Open the file with appropriate flags
-    const file = if (is_read)
-        try std.fs.cwd().openFile(path, .{ .mode = .read_only })
-    else if (is_append)
-        try std.fs.cwd().createFile(path, .{ .truncate = false })
-    else if (is_io)
-        try std.fs.cwd().createFile(path, .{ .truncate = false, .read = true })
-    else
-        try std.fs.cwd().createFile(path, .{ .truncate = true });
-
-    const fd = file.handle;
-
-    return try heap.allocStream(direction, .file, fd);
+    const kw_input = try heap.internKeyword("input");
+    const kw_output = try heap.internKeyword("output");
+    const direction = if (is_read) kw_input else if (is_io or is_append) builtins.kw_io else kw_output;
+    const stream = try io.openFile(heap, path_val, direction, null, null);
+    if (is_append) {
+        _ = try io.filePosition(heap, stream, try heap.internKeyword("end"));
+    }
+    return stream;
 }
 
 pub fn primClose(_: *Heap, args: []const Value) !Value {
@@ -60,67 +52,7 @@ pub fn primClose(_: *Heap, args: []const Value) !Value {
 
 pub fn primReadLine(heap: *Heap, args: []const Value) !Value {
     if (args.len < 1) return error.InvalidArgument;
-
-    const stream_val = args[0];
-    if (!stream_val.isStream()) return error.InvalidArgument;
-
-    const stream = stream_val.toPtr(Stream);
-
-    if (stream.closed) return error.StreamClosed;
-    if (!stream.isInput()) return error.NotInputStreamError;
-
-    // Handle string input streams
-    if (stream.stream_type == .string) {
-        if (stream.data_ptr == 0) return error.InvalidArgument;
-        const data: [*]const u8 = @ptrFromInt(stream.data_ptr);
-        const len = stream.length;
-        const pos = stream.position;
-
-        if (pos >= len) {
-            return try heap.allocBaseString("");
-        }
-
-        var line_end = pos;
-        while (line_end < len and data[line_end] != '\n') : (line_end += 1) {}
-
-        const line = data[pos..line_end];
-        stream.position = if (line_end < len) line_end + 1 else line_end;
-
-        return try heap.allocBaseString(line);
-    }
-
-    if (stream.stream_type != .file and stream.stream_type != .stdin)
-        return error.InvalidArgument;
-
-    const file = std.fs.File{ .handle = stream.file_fd };
-
-    // Simple line reading: read until newline
-    var buffer: [4096]u8 = undefined;
-    var index: usize = 0;
-    while (index < buffer.len) {
-        const byte_opt: ?u8 = if (stream.pushback_char != 0xFF) blk: {
-            const ch = stream.pushback_char;
-            stream.pushback_char = 0xFF;
-            break :blk ch;
-        } else blk: {
-            var byte: [1]u8 = undefined;
-            const bytes_read = try file.read(&byte);
-            if (bytes_read == 0) break :blk null;
-            break :blk byte[0];
-        };
-
-        if (byte_opt == null) {
-            if (index == 0) return Value.nil;
-            break;
-        }
-
-        const byte = byte_opt.?;
-        if (byte == '\n') break;
-        buffer[index] = byte;
-        index += 1;
-    }
-
-    return try heap.allocBaseString(buffer[0..index]);
+    return try io.readLine(heap, args[0]);
 }
 
 test "primReadLine returns nil on EOF" {
@@ -212,26 +144,7 @@ test "primOpen supports :io" {
 pub fn primWriteLine(heap: *Heap, args: []const Value) !Value {
     _ = heap;
     if (args.len < 2) return error.InvalidArgument;
-
-    const stream_val = args[0];
-    const line_val = args[1];
-
-    if (!stream_val.isStream()) return error.InvalidArgument;
-    if (!line_val.isString()) return error.InvalidArgument;
-
-    const stream = stream_val.toPtr(Stream);
-    const line_str = line_val.toPtr(String);
-
-    if (stream.closed) return error.StreamClosed;
-    if (!stream.isOutput()) return error.NotOutputStreamError;
-    if (stream.stream_type != .file) return error.InvalidArgument;
-
-    const file = std.fs.File{ .handle = stream.file_fd };
-
-    try file.writeAll(line_str.data[0..line_str.length]);
-    const newline = [_]u8{'\n'};
-    try file.writeAll(&newline);
-
+    try io.writeLine(args[1], args[0]);
     return Value.t;
 }
 
@@ -333,130 +246,35 @@ pub fn primWriteByte(heap: *Heap, args: []const Value) !Value {
 
 pub fn primFilePosition(heap: *Heap, args: []const Value) !Value {
     if (args.len < 1 or args.len > 2) return error.InvalidArgument;
-
-    const stream_val = args[0];
-    if (!stream_val.isStream()) return error.InvalidArgument;
-
-    const stream = stream_val.toPtr(Stream);
-
-    if (stream.closed) return error.StreamClosed;
-    if (stream.stream_type != .file) return error.InvalidArgument;
-
-    const file = std.fs.File{ .handle = stream.file_fd };
-    if (args.len == 1) {
-        const pos = try file.getPos();
-        return Value.makeFixnum(@intCast(pos));
-    }
-
-    const pos_val = args[1];
-    const new_pos: u64 = switch (pos_val.typeKind()) {
-        .keyword => blk: {
-            const kw_start = try heap.internKeyword("start");
-            const kw_end = try heap.internKeyword("end");
-            if (pos_val.raw == kw_start.raw) break :blk 0;
-            if (pos_val.raw == kw_end.raw) break :blk try file.getEndPos();
-            return error.InvalidArgument;
-        },
-        .fixnum => std.math.cast(u64, pos_val.toFixnum()) orelse return error.InvalidArgument,
-        else => return error.InvalidArgument,
-    };
-
-    try file.seekTo(new_pos);
-    return Value.t;
+    const pos = if (args.len == 2) args[1] else null;
+    return try io.filePosition(heap, args[0], pos);
 }
 
 pub fn primFileLength(heap: *Heap, args: []const Value) !Value {
-    _ = heap;
     if (args.len < 1) return error.InvalidArgument;
-
-    const stream_val = args[0];
-    if (!stream_val.isStream()) return error.InvalidArgument;
-
-    const stream = stream_val.toPtr(Stream);
-
-    if (stream.closed) return error.StreamClosed;
-    if (stream.stream_type != .file) return error.InvalidArgument;
-
-    const file = std.fs.File{ .handle = stream.file_fd };
-    const stat = try file.stat();
-
-    return Value.makeFixnum(@intCast(stat.size));
+    _ = heap;
+    return try io.fileLength(args[0]);
 }
 
 pub fn primFinishOutput(heap: *Heap, args: []const Value) !Value {
     _ = heap;
     if (args.len < 1) return error.InvalidArgument;
-
-    const stream_val = args[0];
-    // ANSI stream designators: NIL and T are both accepted.
-    if (stream_val.isNil() or stream_val.isT()) return Value.nil;
-    if (!stream_val.isStream()) return error.TypeError;
-
-    const stream = stream_val.toPtr(Stream);
-
-    if (stream.closed) return error.StreamClosed;
-    if (!stream.isOutput()) return error.NotOutputStreamError;
-
-    // Streams are already unbuffered at this layer, so finish-output is a no-op.
-
+    try io.finishOutput(args[0]);
     return Value.nil;
 }
 
 pub fn primForceOutput(heap: *Heap, args: []const Value) !Value {
     _ = heap;
     if (args.len < 1) return error.InvalidArgument;
-
-    const stream_val = args[0];
-    // ANSI stream designators: NIL and T are both accepted.
-    if (stream_val.isNil() or stream_val.isT()) return Value.nil;
-    if (!stream_val.isStream()) return error.TypeError;
-
-    const stream = stream_val.toPtr(Stream);
-
-    if (stream.closed) return error.StreamClosed;
-    if (!stream.isOutput()) return error.NotOutputStreamError;
-
+    try io.forceOutput(args[0]);
     return Value.nil;
 }
 
 /// Write a string to an output stream (file or string output stream)
 pub fn primWriteString(_: *Heap, args: []const Value) !Value {
     if (args.len < 2) return error.InvalidArgument;
-
-    const str_val = args[0];
-    const stream_val = args[1];
-
-    if (!str_val.isString() and !str_val.isString32()) return error.InvalidArgument;
-    if (!stream_val.isStream()) return error.InvalidArgument;
-
-    const stream = stream_val.toPtr(Stream);
-
-    if (stream.closed) return error.StreamClosed;
-    if (!stream.isOutput()) return error.NotOutputStreamError;
-
-    // Convert to UTF-8 bytes for output, then route through shared stream writer.
-    // This keeps stream-type support centralized (stdout/stderr/broadcast/etc).
-    if (str_val.isString()) {
-        const str = str_val.toPtr(String);
-        const data = str.data[0..str.length];
-        try io.writeBytesToStream(stream_val, data);
-    } else {
-        // String32 - encode to UTF-8
-        const s32 = str_val.toPtr(String32);
-        var utf8_buf: [4096]u8 = undefined;
-        var fbs = std.io.fixedBufferStream(&utf8_buf);
-        const w = fbs.writer();
-
-        for (s32.codepoints()) |cp| {
-            var cp_buf: [4]u8 = undefined;
-            const len = try std.unicode.utf8Encode(@intCast(cp), &cp_buf);
-            try w.writeAll(cp_buf[0..len]);
-        }
-
-        try io.writeBytesToStream(stream_val, fbs.getWritten());
-    }
-
-    return str_val;
+    try io.writeString(args[0], args[1], null, null);
+    return args[0];
 }
 
 /// Write bytes to a string output stream, growing buffer if needed
@@ -493,20 +311,5 @@ fn streamWriteBytes(_: *Heap, stream: *Stream, data: []const u8) !void {
 /// Get the accumulated string from a string output stream
 pub fn primGetOutputStreamString(heap: *Heap, args: []const Value) !Value {
     if (args.len < 1) return error.InvalidArgument;
-
-    const stream_val = args[0];
-    if (!stream_val.isStream()) return error.InvalidArgument;
-
-    const stream = stream_val.toPtr(Stream);
-
-    if (stream.stream_type != .string or !stream.isOutput()) {
-        return error.InvalidArgument;
-    }
-
-    if (stream.data_ptr == 0 or stream.length == 0) {
-        return try heap.allocBaseString("");
-    }
-
-    const buf: [*]u8 = @ptrFromInt(stream.data_ptr);
-    return try heap.allocBaseString(buf[0..stream.length]);
+    return try io.getOutputStreamString(heap, args[0]);
 }
