@@ -1203,10 +1203,10 @@ pub const Parser = struct {
         }
 
         if (native_pkg.auto_export) {
-            return native_pkg.symbols.get(sym_name) orelse error.SymbolNotExternal;
+            return native_pkg.findAccessibleExact(sym_name) orelse error.SymbolNotExternal;
         }
         if (native_pkg.exports.get(sym_name) != null) {
-            return native_pkg.symbols.get(sym_name) orelse error.SymbolNotExternal;
+            return native_pkg.findAccessibleExact(sym_name) orelse error.SymbolNotExternal;
         }
         return error.SymbolNotExternal;
     }
@@ -2637,4 +2637,29 @@ test "parse package-qualified symbol with single colon requires export" {
     const val = try parser2.parse();
     try testing.expect(val.isSymbol());
     try testing.expectEqualStrings("BAR", val.toPtr(runtime.Symbol).getName());
+}
+
+test "parse package-qualified symbol accepts re-exported inherited symbol" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    const pkg_a = try primitives.package.makePackage(&heap, try heap.allocBaseString("PKG-A"), null, null);
+    const pkg_b = try primitives.package.makePackage(&heap, try heap.allocBaseString("PKG-B"), null, null);
+
+    const result = try primitives.package.internSymbol(&heap, try heap.allocBaseString("BAZ"), pkg_a);
+    const sym = result.toPtr(objects.Cons).car;
+    try primitives.package.exportSymbols(&heap, sym, pkg_a);
+    try primitives.package.usePackage(&heap, pkg_a, pkg_b);
+    try primitives.package.exportSymbols(&heap, sym, pkg_b);
+
+    var parser = try Parser.init(testing.allocator, &heap, "pkg-b:baz", &vm.builtins);
+    defer parser.deinit();
+    const val = try parser.parse();
+    try testing.expect(val.isSymbol());
+    try testing.expect(val.raw == sym.raw);
 }

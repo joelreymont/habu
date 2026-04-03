@@ -10410,7 +10410,13 @@ pub const Compiler = struct {
         const situations = cons1.car;
         const body = cons1.cdr;
 
-        // Check situations for :compile-toplevel and :execute (or :load-toplevel)
+        const heap = self.heap orelse return error.InvalidPackage;
+        const cl_compile = (try heap.internInPackage("COMMON-LISP", "COMPILE")) orelse return error.InvalidPackage;
+        const cl_load = (try heap.internInPackage("COMMON-LISP", "LOAD")) orelse return error.InvalidPackage;
+        const cl_eval = (try heap.internInPackage("COMMON-LISP", "EVAL")) orelse return error.InvalidPackage;
+
+        // Check situations for :compile-toplevel/:load-toplevel/:execute and
+        // legacy CLTL COMPILE/LOAD/EVAL names still used in upstream systems.
         var compile_toplevel = false;
         var execute = false;
         var sit = situations;
@@ -10426,6 +10432,12 @@ pub const Compiler = struct {
                 } else if (situation.raw == b.kw_execute.raw or
                     situation.raw == b.@"kw_load-toplevel".raw)
                 {
+                    execute = true;
+                }
+            } else if (situation.isSymbol()) {
+                if (situation.raw == cl_compile.raw) {
+                    compile_toplevel = true;
+                } else if (situation.raw == cl_load.raw or situation.raw == cl_eval.raw) {
                     execute = true;
                 }
             }

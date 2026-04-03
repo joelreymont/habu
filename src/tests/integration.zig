@@ -9402,6 +9402,72 @@ test "maxima generational loader reaches ifactor without OOM" {
     try testing.expect(cur.isNil());
 }
 
+test "maxima manifest loads globals before float properties" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    const srcdir = try maximaSrcDirAlloc(allocator);
+    defer allocator.free(srcdir);
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(progn
+        \\  (let ((pg (position "globals" *maxima-files* :test #'string=))
+        \\        (pl (position "lmdcls" *maxima-files* :test #'string=))
+        \\        (pf (position "float-properties" *maxima-files* :test #'string=)))
+        \\    (unless pg (error "globals missing from Maxima manifest"))
+        \\    (unless pl (error "lmdcls missing from Maxima manifest"))
+        \\    (unless pf (error "float-properties missing from Maxima manifest"))
+        \\    (let* ((mods '("globals" "lmdcls" "letmac" "generr" "clmacs" "defmfun-check" "float-properties"))
+        \\           (ok 0)
+        \\           (pkg (find-package "MAXIMA"))
+        \\           (defmvar-sym (nth-value 0 (find-symbol "DEFMVAR" pkg)))
+        \\           (float-sym (nth-value 0 (find-symbol "$MOST_POSITIVE_FLOAT" pkg)))
+        \\           (assign-sym (nth-value 0 (find-symbol "ASSIGN" pkg)))
+        \\           (neverset-sym (nth-value 0 (find-symbol "NEVERSET" pkg))))
+        \\      (dolist (m mods)
+        \\        (unless (maxima-try-load "{s}/" m :verbose nil)
+        \\          (error "failed to load ~A" m))
+        \\        (setq ok (+ ok 1)))
+        \\      (list
+        \\        (if (< pg pl) 1 0)
+        \\        (if (< pg pf) 1 0)
+        \\        ok
+        \\        ok
+        \\        (if (macro-function defmvar-sym) 1 0)
+        \\        (if (boundp float-sym) 1 0)
+        \\        (if (eq (get float-sym assign-sym)
+        \\                neverset-sym)
+        \\            1
+        \\            0)))))
+    ,
+        .{srcdir},
+    );
+    defer allocator.free(form);
+
+    const status = try repl.eval(form);
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 1, 1, 7, 7, 1, 1, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "maxima generational loader reaches nparse without OOM" {
     try ensureMaximaSources();
     const allocator = testing.allocator;
@@ -9744,6 +9810,26 @@ test "eval-when compile-toplevel keeps body cursor rooted across GC" {
     const result = try repl.eval("*evw-count*");
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 10), result.toFixnum());
+}
+
+test "eval-when accepts legacy compile load eval situations" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval(
+        \\(eval-when (compile load eval)
+        \\  (defun legacy-eval-when-fn (x) (+ x 1)))
+    );
+
+    const result = try repl.eval("(legacy-eval-when-fn 41)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
 test "defun-prop keeps and/or pair metadata intact" {
