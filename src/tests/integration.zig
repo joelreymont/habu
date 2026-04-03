@@ -6339,6 +6339,64 @@ test "ansi repro destructuring-bind.error.10 rejects nil binder" {
     try testing.expectError(error.InvalidSyntax, evalExpr(allocator, &heap, src));
 }
 
+test "destructuring-bind supports &key defaults" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src =
+        \\(destructuring-bind (name &key properties (deprecated-p '$none))
+        \\    '($foo :properties ((evfun t)))
+        \\  (list name properties deprecated-p))
+    ;
+
+    const result = try evalExpr(allocator, &heap, src);
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expect(c0.car.isSymbol());
+    try testing.expectEqualStrings("$FOO", c0.car.toPtr(Symbol).getName());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isCons());
+    try testing.expect(c1.cdr.isCons());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isSymbol());
+    try testing.expectEqualStrings("$NONE", c2.car.toPtr(Symbol).getName());
+    try testing.expect(c2.cdr.isNil());
+}
+
+test "maxima-style def-simplifier macro shape expands" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src =
+        \\(progn
+        \\  (defmacro test-def-simplifier (base-name-and-options lambda-list &body body)
+        \\    (declare (ignore lambda-list body))
+        \\    (destructuring-bind (base-name &key (simpcheck :default) (subfun-arglist nil))
+        \\        (if (symbolp base-name-and-options)
+        \\            (list base-name-and-options)
+        \\            base-name-and-options)
+        \\      `(list ',base-name ',simpcheck ',subfun-arglist)))
+        \\  (test-def-simplifier (foo :simpcheck :custom :subfun-arglist (s)) (x) 42))
+    ;
+
+    const result = try evalExpr(allocator, &heap, src);
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expect(c0.car.isSymbol());
+    try testing.expectEqualStrings("FOO", c0.car.toPtr(Symbol).getName());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isKeyword());
+    try testing.expectEqualStrings("CUSTOM", c1.car.toPtr(runtime.Keyword).getName());
+    try testing.expect(c1.cdr.isCons());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isCons());
+    try testing.expect(c2.cdr.isNil());
+}
+
 test "ansi repro macrolet.36 supports whole destructuring pattern" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });

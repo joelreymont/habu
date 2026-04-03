@@ -1,6 +1,6 @@
 # PLAN — Generic Common Lisp Closure For Maxima
 
-Last updated: 2026-04-01
+Last updated: 2026-04-03
 Owner: Habu runtime/compiler/reader/VM/JIT
 Review baseline: round 1 findings incorporated
 
@@ -354,16 +354,17 @@ This plan is done only when:
   - touches object identity, type dispatch, copying, and printing.
 - Effort: XL
 
-#### 1.8 Close current `mforma` / `DEFUN-MACLISP` blockers generically
+#### 1.8 Close current `defmfun-check` / later `mforma` blockers generically
 - Goal: G1, G2
-- Files: actual failing paths from current RCA dot, primarily `../maxima/src/mforma.lisp`, related compiler/runtime sites
+- Files: actual failing paths from current RCA dot, currently `../maxima/src/defmfun-check.lisp` and later `../maxima/src/mforma.lisp`, plus the related Habu reader/compiler/runtime sites proved by RCA
 - Depends on: 1.4, 1.6, 1.7, 1.7a
 - Work:
   - re-run current failing form under the cleaned loader path,
   - prove root cause in Habu semantics,
   - fix generically in reader/compiler/runtime/VM.
 - Acceptance:
-  - blocker loads with no Maxima-local patch file,
+  - current `defmfun-check` blocker loads with no Maxima-local patch file,
+  - the load path then continues through the next upstream blocker without reintroducing patch layers,
   - proof includes failing form, root cause, fix, and regression.
 - Risk:
   - this may split into several independent core-language defects.

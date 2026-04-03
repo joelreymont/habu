@@ -9747,49 +9747,335 @@ pub const Compiler = struct {
     /// Compile destructuring-bind: (destructuring-bind pattern expr &rest body)
     /// Binds pattern to expr and evaluates body with those bindings.
     fn compileDestructuringBind(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        // Parse: (pattern expr body...)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
         const pattern = cons1.car;
-
-        const rest1 = cons1.cdr;
-        if (!rest1.isCons()) return error.InvalidSyntax;
-        const cons2 = rest1.toPtr(Cons);
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
         const expr = cons2.car;
         const body = cons2.cdr;
-
-        // Strategy: (destructuring-bind (a b) expr body...)
-        // => (let ((#t expr)) (let ((a (car #t)) (b (cadr #t))) body...))
-
-        // Compile expr in current env
         const expr_ir = try self.compile(expr, env);
 
-        // Create temp var for expr result
-        const temp_name = "#destruct-temp";
         var temp_env = Env.initLet(self.allocator, env);
         defer temp_env.deinit();
-        const temp_idx = try temp_env.bindName(temp_name);
+        const temp_idx = try temp_env.bindName("#destruct-temp");
 
-        // Generate bindings from pattern, using temp var
-        const bindings = try self.genDestructBindings(pattern, temp_name, temp_idx);
-
-        // Compile body with all bindings in scope
         var body_env = Env.initLet(self.allocator, &temp_env);
         defer body_env.deinit();
-        var ir_bindings = try self.allocator.alloc(Ir.Binding, bindings.items.len);
-        defer self.allocator.free(ir_bindings);
-        for (bindings.items, 0..) |b, i| {
-            const idx = try body_env.bindSym(b.sym);
-            ir_bindings[i] = .{ .name = b.name, .index = idx, .value = b.init };
-        }
+
+        var bindings = std.ArrayList(Ir.Binding){};
+        defer bindings.deinit(self.allocator);
+        try self.appendDestructuringIrBindings(&bindings, &body_env, pattern, try self.builder.variable("#destruct-temp", 0, temp_idx));
+
         const body_ir = try self.compileProgn(body, &body_env);
-
-        // Build nested let: (let ((temp expr)) (let ((a ...) (b ...)) body))
-        const inner_let = try self.builder.letExpr(ir_bindings, body_ir);
-
-        // Outer let binds temp
-        const temp_binding = [_]Ir.Binding{.{ .name = temp_name, .index = temp_idx, .value = expr_ir }};
+        const inner_let = try self.builder.letExpr(bindings.items, body_ir);
+        const temp_binding = [_]Ir.Binding{.{ .name = "#destruct-temp", .index = temp_idx, .value = expr_ir }};
         return try self.builder.letExpr(&temp_binding, inner_let);
+    }
+
+    fn bindDestructuringIrSymbol(self: *Compiler, bindings: *std.ArrayList(Ir.Binding), env: *Env, sym: Value, init_ir: *const Ir) anyerror!void {
+        if (!sym.isSymbol()) return error.InvalidSyntax;
+        const name = sym.toPtr(Symbol).getName();
+        if (std.mem.eql(u8, name, "_")) return;
+        const idx = try env.bindSym(sym);
+        try bindings.append(self.allocator, .{
+            .name = try self.allocator.dupe(u8, name),
+            .index = idx,
+            .value = init_ir,
+        });
+    }
+
+    fn buildKeyLookupIr(self: *Compiler, env: *Env, plist_ir: *const Ir, keyword: Value, default_ir: *const Ir) anyerror!*const Ir {
+        const kw_ir = try self.builder.lit(keyword);
+        const member_ir = blk: {
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .member = .{ .left = kw_ir, .right = plist_ir } };
+            break :blk node;
+        };
+
+        const hit_idx = try env.bindHiddenSlot();
+        const hit_name = try std.fmt.allocPrint(self.allocator, "__db_hit_{d}", .{hit_idx});
+        const hit_ref = try self.builder.variable(hit_name, 0, hit_idx);
+
+        const tail_idx = try env.bindHiddenSlot();
+        const tail_name = try std.fmt.allocPrint(self.allocator, "__db_tail_{d}", .{tail_idx});
+        const tail_ref = try self.builder.variable(tail_name, 0, tail_idx);
+
+        const value_if = try self.builder.ifExpr(tail_ref, try self.builder.car(tail_ref), default_ir);
+        const tail_let = try self.builder.let1(tail_name, tail_idx, try self.builder.cdr(hit_ref), value_if);
+        return try self.builder.let1(hit_name, hit_idx, member_ir, try self.builder.ifExpr(hit_ref, tail_let, default_ir));
+    }
+
+    fn appendDestructuringIrBindings(self: *Compiler, bindings: *std.ArrayList(Ir.Binding), env: *Env, pattern: Value, expr_ir: *const Ir) anyerror!void {
+        const b = self.builtins orelse return error.UninitializedBuiltins;
+
+        switch (pattern.typeKind()) {
+            .nil, .t => return error.InvalidSyntax,
+            .symbol => {
+                const marker = self.canonicalBuiltinSymbol(pattern);
+                if (marker.raw == b.@"&rest".raw or marker.raw == b.@"&body".raw or marker.raw == b.@"&optional".raw or marker.raw == b.@"&key".raw or marker.raw == b.@"&allow-other-keys".raw) {
+                    return error.InvalidSyntax;
+                }
+                return self.bindDestructuringIrSymbol(bindings, env, pattern, expr_ir);
+            },
+            .cons => {
+                const pat = pattern.toPtr(Cons);
+                const head = self.resolveForwardedValue(pat.car);
+                if (head.isSymbol()) {
+                    const marker = self.canonicalBuiltinSymbol(head);
+                    if (marker.raw == b.@"&rest".raw or marker.raw == b.@"&body".raw) {
+                        if (!pat.cdr.isCons()) return error.InvalidSyntax;
+                        const rest_cons = pat.cdr.toPtr(Cons);
+                        if (!rest_cons.cdr.isNil()) return error.InvalidSyntax;
+                        return self.appendDestructuringIrBindings(bindings, env, rest_cons.car, expr_ir);
+                    }
+                    if (marker.raw == b.@"&optional".raw) {
+                        return self.appendOptionalDestructuringIrBindings(bindings, env, pat.cdr, expr_ir);
+                    }
+                    if (marker.raw == b.@"&key".raw) {
+                        return self.appendKeyDestructuringIrBindings(bindings, env, pat.cdr, expr_ir);
+                    }
+                    if (marker.raw == b.@"&allow-other-keys".raw) return;
+                }
+
+                try self.appendDestructuringIrBindings(bindings, env, pat.car, try self.builder.car(expr_ir));
+                if (pat.cdr.isNil()) return;
+                try self.appendDestructuringIrBindings(bindings, env, pat.cdr, try self.builder.cdr(expr_ir));
+            },
+            else => return error.InvalidSyntax,
+        }
+    }
+
+    fn appendOptionalDestructuringIrBindings(self: *Compiler, bindings: *std.ArrayList(Ir.Binding), env: *Env, params: Value, expr_ir: *const Ir) anyerror!void {
+        const b = self.builtins orelse return error.UninitializedBuiltins;
+        var rest = params;
+        var cur_expr = expr_ir;
+        while (rest.isCons()) {
+            const rest_cons = rest.toPtr(Cons);
+            const item = self.resolveForwardedValue(rest_cons.car);
+            if (item.isSymbol()) {
+                const marker = self.canonicalBuiltinSymbol(item);
+                if (marker.raw == b.@"&rest".raw or marker.raw == b.@"&body".raw) {
+                    return self.appendDestructuringIrBindings(bindings, env, rest_cons.car, cur_expr);
+                }
+                if (marker.raw == b.@"&key".raw) {
+                    return self.appendKeyDestructuringIrBindings(bindings, env, rest_cons.cdr, cur_expr);
+                }
+                if (marker.raw == b.@"&allow-other-keys".raw) {
+                    rest = rest_cons.cdr;
+                    continue;
+                }
+            }
+
+            if (item.isSymbol()) {
+                const init_ir = try self.builder.ifExpr(cur_expr, try self.builder.car(cur_expr), try self.builder.lit(Value.nil));
+                try self.bindDestructuringIrSymbol(bindings, env, item, init_ir);
+            } else if (item.isCons()) {
+                const item_cons = item.toPtr(Cons);
+                const var_val = self.resolveForwardedValue(item_cons.car);
+                if (!var_val.isSymbol()) return error.InvalidSyntax;
+                const default_expr = if (item_cons.cdr.isCons()) item_cons.cdr.toPtr(Cons).car else Value.nil;
+                const default_ir = try self.compile(default_expr, env);
+                const init_ir = try self.builder.ifExpr(cur_expr, try self.builder.car(cur_expr), default_ir);
+                try self.bindDestructuringIrSymbol(bindings, env, var_val, init_ir);
+            } else {
+                return error.InvalidSyntax;
+            }
+
+            cur_expr = try self.builder.cdr(cur_expr);
+            rest = rest_cons.cdr;
+        }
+        if (!rest.isNil()) return error.InvalidSyntax;
+    }
+
+    fn appendKeyDestructuringIrBindings(self: *Compiler, bindings: *std.ArrayList(Ir.Binding), env: *Env, params: Value, plist_ir: *const Ir) anyerror!void {
+        const heap = self.heap orelse return error.InvalidSyntax;
+        const b = self.builtins orelse return error.UninitializedBuiltins;
+        var rest = params;
+        while (rest.isCons()) {
+            const rest_cons = rest.toPtr(Cons);
+            const item = self.resolveForwardedValue(rest_cons.car);
+            if (item.isSymbol()) {
+                const marker = self.canonicalBuiltinSymbol(item);
+                if (marker.raw == b.@"&allow-other-keys".raw) {
+                    rest = rest_cons.cdr;
+                    continue;
+                }
+            }
+
+            const spec = parseKeyParamSpec(item) orelse return error.InvalidSyntax;
+            const param_sym = spec.param_sym orelse return error.InvalidSyntax;
+            const keyword = try heap.internKeyword(spec.keyword_name);
+            const default_expr = spec.default_expr orelse Value.nil;
+            const default_ir = try self.compile(default_expr, env);
+            const init_ir = try self.buildKeyLookupIr(env, plist_ir, keyword, default_ir);
+            try self.bindDestructuringIrSymbol(bindings, env, param_sym, init_ir);
+            rest = rest_cons.cdr;
+        }
+        if (!rest.isNil()) return error.InvalidSyntax;
+    }
+
+    fn clSymValue(self: *Compiler, name: []const u8) anyerror!Value {
+        const heap = self.heap orelse return error.InvalidSyntax;
+        return (try heap.internInPackage("COMMON-LISP", name)) orelse error.InvalidSyntax;
+    }
+
+    fn buildCallForm(self: *Compiler, func: Value, args: []const Value) anyerror!Value {
+        const heap = self.heap orelse return error.InvalidSyntax;
+        var form = Value.nil;
+        var i = args.len;
+        while (i > 0) {
+            i -= 1;
+            form = try heap.allocCons(args[i], form);
+        }
+        return try heap.allocCons(func, form);
+    }
+
+    fn buildBindingForm(self: *Compiler, var_sym: Value, init_form: Value) anyerror!Value {
+        if (!var_sym.isSymbol()) return error.InvalidSyntax;
+        return self.listFromSlice(&[_]Value{ var_sym, init_form });
+    }
+
+    fn buildCarForm(self: *Compiler, expr_form: Value) anyerror!Value {
+        return self.buildCallForm(try self.clSymValue("CAR"), &[_]Value{expr_form});
+    }
+
+    fn buildCdrForm(self: *Compiler, expr_form: Value) anyerror!Value {
+        return self.buildCallForm(try self.clSymValue("CDR"), &[_]Value{expr_form});
+    }
+
+    fn buildIfForm(self: *Compiler, test_form: Value, then_form: Value, else_form: Value) anyerror!Value {
+        return self.buildCallForm(try self.clSymValue("IF"), &[_]Value{ test_form, then_form, else_form });
+    }
+
+    fn buildGetfForm(self: *Compiler, plist_form: Value, indicator: Value, default_form: Value) anyerror!Value {
+        return self.buildCallForm(try self.clSymValue("GETF"), &[_]Value{ plist_form, indicator, default_form });
+    }
+
+    fn appendDestructuringBindings(self: *Compiler, bindings: *std.ArrayList(Value), pattern: Value, expr_form: Value) anyerror!void {
+        const heap = self.heap orelse return error.InvalidSyntax;
+        const b = self.builtins orelse return error.UninitializedBuiltins;
+
+        switch (pattern.typeKind()) {
+            .nil, .t => return error.InvalidSyntax,
+            .symbol => {
+                const sym = pattern.toPtr(Symbol);
+                const marker = self.canonicalBuiltinSymbol(pattern);
+                if (marker.raw == b.@"&rest".raw or marker.raw == b.@"&body".raw or marker.raw == b.@"&optional".raw or marker.raw == b.@"&key".raw or marker.raw == b.@"&allow-other-keys".raw) {
+                    return error.InvalidSyntax;
+                }
+                if (std.mem.eql(u8, sym.getName(), "_")) return;
+                try bindings.append(self.allocator, try self.buildBindingForm(pattern, expr_form));
+            },
+            .cons => {
+                const pat = pattern.toPtr(Cons);
+                const head = self.resolveForwardedValue(pat.car);
+                if (head.isSymbol()) {
+                    const marker = self.canonicalBuiltinSymbol(head);
+                    if (marker.raw == b.@"&rest".raw or marker.raw == b.@"&body".raw) {
+                        if (!pat.cdr.isCons()) return error.InvalidSyntax;
+                        const rest_cons = pat.cdr.toPtr(Cons);
+                        if (!rest_cons.cdr.isNil()) return error.InvalidSyntax;
+                        return self.appendDestructuringBindings(bindings, rest_cons.car, expr_form);
+                    }
+                    if (marker.raw == b.@"&optional".raw) {
+                        return self.appendOptionalDestructuringBindings(bindings, pat.cdr, expr_form);
+                    }
+                    if (marker.raw == b.@"&key".raw) {
+                        return self.appendKeyDestructuringBindings(bindings, pat.cdr, expr_form);
+                    }
+                    if (marker.raw == b.@"&allow-other-keys".raw) {
+                        return;
+                    }
+                }
+
+                try self.appendDestructuringBindings(bindings, pat.car, try self.buildCarForm(expr_form));
+                if (pat.cdr.isNil()) return;
+                try self.appendDestructuringBindings(bindings, pat.cdr, try self.buildCdrForm(expr_form));
+            },
+            else => return error.InvalidSyntax,
+        }
+        _ = heap;
+    }
+
+    fn appendOptionalDestructuringBindings(self: *Compiler, bindings: *std.ArrayList(Value), params: Value, expr_form: Value) anyerror!void {
+        const b = self.builtins orelse return error.UninitializedBuiltins;
+        var rest = params;
+        var cur_expr = expr_form;
+        while (rest.isCons()) {
+            const rest_cons = rest.toPtr(Cons);
+            const item = self.resolveForwardedValue(rest_cons.car);
+            if (item.isSymbol()) {
+                const marker = self.canonicalBuiltinSymbol(item);
+                if (marker.raw == b.@"&rest".raw or marker.raw == b.@"&body".raw) {
+                    return self.appendDestructuringBindings(bindings, rest_cons.car, cur_expr);
+                }
+                if (marker.raw == b.@"&key".raw) {
+                    return self.appendKeyDestructuringBindings(bindings, rest_cons.cdr, cur_expr);
+                }
+                if (marker.raw == b.@"&allow-other-keys".raw) {
+                    rest = rest_cons.cdr;
+                    continue;
+                }
+            }
+
+            if (item.isSymbol()) {
+                try bindings.append(self.allocator, try self.buildBindingForm(item, try self.buildIfForm(cur_expr, try self.buildCarForm(cur_expr), Value.nil)));
+            } else if (item.isCons()) {
+                const item_cons = item.toPtr(Cons);
+                const var_val = self.resolveForwardedValue(item_cons.car);
+                if (!var_val.isSymbol()) return error.InvalidSyntax;
+                const default_form = if (item_cons.cdr.isCons()) item_cons.cdr.toPtr(Cons).car else Value.nil;
+                try bindings.append(self.allocator, try self.buildBindingForm(var_val, try self.buildIfForm(cur_expr, try self.buildCarForm(cur_expr), default_form)));
+            } else {
+                return error.InvalidSyntax;
+            }
+
+            cur_expr = try self.buildCdrForm(cur_expr);
+            rest = rest_cons.cdr;
+        }
+        if (!rest.isNil()) return error.InvalidSyntax;
+    }
+
+    fn appendKeyDestructuringBindings(self: *Compiler, bindings: *std.ArrayList(Value), params: Value, expr_form: Value) anyerror!void {
+        const heap = self.heap orelse return error.InvalidSyntax;
+        const b = self.builtins orelse return error.UninitializedBuiltins;
+        var rest = params;
+        while (rest.isCons()) {
+            const rest_cons = rest.toPtr(Cons);
+            const item = self.resolveForwardedValue(rest_cons.car);
+            if (item.isSymbol()) {
+                const marker = self.canonicalBuiltinSymbol(item);
+                if (marker.raw == b.@"&allow-other-keys".raw) {
+                    rest = rest_cons.cdr;
+                    continue;
+                }
+            }
+
+            const spec = parseKeyParamSpec(item) orelse return error.InvalidSyntax;
+            const param_sym = spec.param_sym orelse return error.InvalidSyntax;
+            const keyword = try heap.internKeyword(spec.keyword_name);
+            const default_form = spec.default_expr orelse Value.nil;
+            try bindings.append(self.allocator, try self.buildBindingForm(param_sym, try self.buildGetfForm(expr_form, keyword, default_form)));
+            rest = rest_cons.cdr;
+        }
+        if (!rest.isNil()) return error.InvalidSyntax;
+    }
+
+    fn buildDestructuringBindExpansion(self: *Compiler, pattern: Value, expr: Value, body: Value) anyerror!Value {
+        const heap = self.heap orelse return error.InvalidSyntax;
+        const temp = try prims.gensym(heap, null);
+        const temp_binding = try self.listFromSlice(&[_]Value{temp, expr});
+
+        var inner_bindings = std.ArrayList(Value){};
+        defer inner_bindings.deinit(self.allocator);
+        try self.appendDestructuringBindings(&inner_bindings, pattern, temp);
+
+        const outer_bindings = try self.listFromSlice(&[_]Value{temp_binding});
+        const inner_bindings_list = try self.listFromSlice(inner_bindings.items);
+        const let_sym = try self.clSymValue("LET");
+        const inner_let = try heap.allocCons(let_sym, try heap.allocCons(inner_bindings_list, body));
+        return try heap.allocCons(let_sym, try heap.allocCons(outer_bindings, try heap.allocCons(inner_let, Value.nil)));
     }
 
     const PatBinding = struct {

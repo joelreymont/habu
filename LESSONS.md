@@ -2034,6 +2034,8 @@ also `(set alias-target y)` (with assign validator).
 ### Worked Well
 - Early stdlib helpers must not depend on macros defined later in the same file. Moving the small bootstrap macro set (`when`, `unless`, `return`, `dolist`, `dotimes`) ahead of `%make-vector-with-fp` in `lib/stdlib.habu` fixed a real latent runtime bug where the helper had been compiled with `WHEN` as an ordinary function call.
 - A loader manifest is executable semantics. Aligning `lib/maxima-manifest.lisp` with upstream `../maxima/src/maxima.system` by loading `defmfun-check` and `float-properties` before `commac`/`mormac`/`compat` immediately converted a fake `DEFMFUN`-missing failure into the next real compiler gap.
+- `defmfun-check.lisp` was blocked by Habu's own partial `destructuring-bind` lowering, not by Maxima. Replacing the compiler's source-level `GETF` shortcut with a compiler-native `member`-based plist search in `src/compiler/compile.zig`, and extending `lib/stdlib.habu`'s `destructuring-bind-impl` to cover `&key`, moved clean load past `defmfun-check` and exposed the next upstream file honestly.
 
 ### Did Not Work
 - Chasing the earlier `InvalidPrintCase` surface error would have been wasted motion. The decisive evidence came from the Maxima form trace: the actual blockers were stdlib bootstrap macro ordering and manifest dependency order, not the printer.
+- Lowering `destructuring-bind` `&key` through source-level `COMMON-LISP:GETF` was the wrong fix. The integration tests compile without stdlib bootstrapped, so any lowering that depends on `GETF` being fbound reintroduces a bootstrap-order lie instead of closing the compiler gap.

@@ -2141,7 +2141,8 @@
 ;; ============================================================
 
 ; destructuring-bind - bind pattern to value and evaluate body
-; Supports: symbols, (a b c), (a . rest), (a b &rest rest), (a &optional b)
+; Supports: symbols, (a b c), (a . rest), (a b &rest rest), (a &optional b),
+; and lambda-list style &key destructuring.
 ; Uses labels for mutual recursion between bindings and optional helpers
 (defun destructuring-bind-impl (pattern expr)
   (labels
@@ -2161,6 +2162,8 @@
                    (error "Invalid &rest pattern")))
               ((eq first '&optional)
                (optionals rest ex))
+              ((eq first '&key)
+               (keys rest ex))
               (t (if (symbolp first)
                      (if (symbolp rest)
                          (if rest
@@ -2187,7 +2190,28 @@
                 (cons (list var (list 'if ex (list 'car ex) default))
                       (optionals rest (list 'cdr ex)))))
              (t (error "Invalid &optional parameter")))))))
-    (bindings pattern expr)))
+     (keys (params ex)
+       (if (null params) nil
+         (let ((param (car params)) (rest (cdr params)))
+           (cond
+             ((eq param '&allow-other-keys)
+              (keys rest ex))
+             ((symbolp param)
+              (cons (list param (list 'getf ex (intern (symbol-name param) :keyword) nil))
+                    (keys rest ex)))
+             ((consp param)
+              (let* ((spec (car param))
+                     (default (cadr param))
+                     (var (if (consp spec) (cadr spec) spec))
+                     (key (if (consp spec)
+                              (car spec)
+                              (intern (symbol-name spec) :keyword))))
+                (unless (symbolp var)
+                  (error "Invalid &key parameter"))
+                (cons (list var (list 'getf ex key default))
+                      (keys rest ex))))
+             (t (error "Invalid &key parameter")))))))
+    (bindings pattern expr))
 
 (defmacro destructuring-bind (pattern expr &rest body)
   (let ((temp (gensym "EXPR")))
