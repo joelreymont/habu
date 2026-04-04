@@ -2189,7 +2189,7 @@
               (let ((var (car param)) (default (cadr param)))
                 (cons (list var (list 'if ex (list 'car ex) default))
                       (optionals rest (list 'cdr ex)))))
-             (t (error "Invalid &optional parameter")))))))
+             (t (error "Invalid &optional parameter"))))))
      (keys (params ex)
        (if (null params) nil
          (let ((param (car params)) (rest (cdr params)))
@@ -2211,7 +2211,7 @@
                 (cons (list var (list 'getf ex key default))
                       (keys rest ex))))
              (t (error "Invalid &key parameter")))))))
-    (bindings pattern expr))
+    (bindings pattern expr)))
 
 (defmacro destructuring-bind (pattern expr &rest body)
   (let ((temp (gensym "EXPR")))

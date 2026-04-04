@@ -6,6 +6,17 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ---
 
+## Session Notes (2026-04-04)
+
+### Worked Well
+- When one local function in a `labels` cluster mysteriously fails to resolve while its siblings work, check the source form shape before touching the compiler. The `loop`/`destructuring-bind` blocker turned out to be a malformed binding list in `lib/stdlib.habu:2179-2214`: `optionals` closed the `labels` function-definition list one form too early, so `keys` was parsed as a body form instead of a local function.
+- A tiny direct regression plus the real workload regression is the right proof pair. `src/tests/integration.zig:4003` now proves `labels` can bind a local function literally named `keys`, while `src/tests/integration.zig:7065` and `src/tests/integration.zig:7082` prove the real `loop ... on ... by #'cddr` destructuring path and the Maxima `csimp` inverse-property loop both work again.
+- For structural Lisp bugs, paren-depth inspection can beat deeper compiler speculation. Counting depth across `lib/stdlib.habu:2147-2214` exposed that the file was balanced overall but the `labels` binding list and body boundary were wrong, which exactly matched the compiler trace pattern (`BINDINGS`/`OPTIONALS` bound, `KEYS` missing).
+
+### Did Not Work
+- Treating the `UnhandledThrow`/`symbol(KEYS)` failure as a VM NLX problem was wasted motion. The throw was downstream from a plain `not-closure` call mismatch because the source never actually bound `KEYS` as a local function.
+- Global file balance is not enough when auditing Lisp forms by eye. After the first fix, `lib/stdlib.habu` still parsed with `defmacro destructuring-bind` nested inside `destructuring-bind-impl`; the important check was the local depth returning to zero at the end of the `defun`, not only EOF balance.
+
 ## Session Notes (2026-04-03)
 
 ### Worked Well

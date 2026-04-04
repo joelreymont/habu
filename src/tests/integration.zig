@@ -3983,6 +3983,54 @@ test "labels mutual recursion" {
     try testing.expect(!cons.cdr.isNil()); // is-odd 5 = t
 }
 
+test "labels with three mutually recursive locals" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(labels ((a (n) (if (= n 0) 1 (b (- n 1))))
+        \\         (b (n) (if (= n 0) 2 (c (- n 1))))
+        \\         (c (n) (if (= n 0) 3 (a (- n 1)))))
+        \\  (list (a 3) (b 3) (c 3)))
+    );
+    try testing.expect(result.isCons());
+}
+
+test "labels local function named keys resolves lexically" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(labels ((bindings () 1)
+        \\         (optionals () 2)
+        \\         (keys () 3))
+        \\  (list (bindings) (optionals) (keys)))
+    );
+    try testing.expect(result.isCons());
+    const a = result.toPtr(@import("../runtime/objects.zig").Cons);
+    try testing.expectEqual(@as(i64, 1), a.car.toFixnum());
+    try testing.expect(a.cdr.isCons());
+    const b = a.cdr.toPtr(@import("../runtime/objects.zig").Cons);
+    try testing.expectEqual(@as(i64, 2), b.car.toFixnum());
+    try testing.expect(b.cdr.isCons());
+    const c = b.cdr.toPtr(@import("../runtime/objects.zig").Cons);
+    try testing.expectEqual(@as(i64, 3), c.car.toFixnum());
+}
+
 test "labels mutating captured lexical boxes outer variable" {
     const allocator = testing.allocator;
 
@@ -7022,6 +7070,25 @@ test "ansi repro loop for equals without then sees current parallel bindings" {
     const result = try repl.eval(
         "(equal (loop for (a b) on '(x 10 y 20) by #'cddr for q = b collect q) '(10 20))",
     );
+    try testing.expect(!result.isNil());
+}
+
+test "ansi repro csimp inverse loop" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval(
+        "(loop for (a b) on '(%sin %asin %cos %acos %tan %atan %cot %acot) by #'cddr do (putprop a b '$inverse) (putprop b a '$inverse))",
+    );
+
+    const result = try repl.eval("(and (eq (get '%sin '$inverse) '%asin) (eq (get '%asin '$inverse) '%sin))");
     try testing.expect(!result.isNil());
 }
 
