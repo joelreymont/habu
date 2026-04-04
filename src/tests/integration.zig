@@ -4031,6 +4031,63 @@ test "labels local function named keys resolves lexically" {
     try testing.expectEqual(@as(i64, 3), c.car.toFixnum());
 }
 
+test "maxima style bigfloat defun compiles" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defpackage #:bigfloat (:use #:common-lisp))");
+    _ = try repl.eval("(in-package #:bigfloat)");
+    _ = try repl.eval("(defun intofp (re) re)");
+    _ = try repl.eval("(defclass numeric () ())");
+    _ = try repl.eval("(defclass bigfloat (numeric) ((real :initarg :real)))");
+    _ = try repl.eval("(defclass complex-bigfloat (numeric) ((real :initarg :real) (imag :initarg :imag)))");
+    _ = try repl.eval(
+        \\(defun bigfloat (re &optional im)
+        \\  (cond (im
+        \\         (make-instance 'complex-bigfloat
+        \\                        :real (intofp re)
+        \\                        :imag (intofp im)))
+        \\        ((cl:realp re)
+        \\         (make-instance 'bigfloat :real (intofp re)))
+        \\        ((cl:complexp re)
+        \\         (make-instance 'complex-bigfloat
+        \\                        :real (intofp (cl:realpart re))
+        \\                        :imag (intofp (cl:imagpart re))))
+        \\        (t
+        \\         (make-instance 'bigfloat :real (intofp re)))))
+    );
+
+    const result = try repl.eval("(typep (bigfloat 3 4) 'complex-bigfloat)");
+    try testing.expect(!result.isNil());
+}
+
+test "maxima loader exports cl-user build time" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    const result = try repl.eval(
+        "(multiple-value-bind (sym status) (find-symbol \"*MAXIMA-BUILD-TIME*\" \"CL-USER\") (and sym (eq status :external) (boundp sym)))",
+    );
+    try testing.expect(!result.isNil());
+}
+
 test "labels mutating captured lexical boxes outer variable" {
     const allocator = testing.allocator;
 

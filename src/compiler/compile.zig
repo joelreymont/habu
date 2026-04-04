@@ -12563,6 +12563,26 @@ pub const Compiler = struct {
         return .{ .slice = slice, .owned = true };
     }
 
+    fn qualifiedNameForSymbol(self: *Compiler, buf: *[256]u8, sym: *const Symbol) error{ OutOfMemory, Overflow }!QualName {
+        const name = sym.getName();
+        if (self.heap) |heap| {
+            if (heap.symbolHomePkg(sym)) |pkg| {
+                return self.makePkgQualifiedName(buf, pkg.name, name);
+            }
+            if (heap.current_package) |pkg| {
+                return self.makePkgQualifiedName(buf, pkg.name, name);
+            }
+            return .{ .slice = name, .owned = false };
+        }
+
+        const pkg_bits: u64 = sym.reserved;
+        if (pkg_bits != 0 and (pkg_bits & 1) == 0) {
+            const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_bits);
+            return self.makePkgQualifiedName(buf, pkg.name, name);
+        }
+        return .{ .slice = name, .owned = false };
+    }
+
     fn lookupClassMetadataByName(self: *Compiler, class_name: []const u8) error{ OutOfMemory, Overflow }!?[]const SlotSpec {
         if (self.heap) |heap| {
             if (heap.current_package) |pkg| {
@@ -12577,25 +12597,10 @@ pub const Compiler = struct {
     }
 
     fn lookupClassMetadataBySymbol(self: *Compiler, class_sym: *const Symbol) error{ OutOfMemory, Overflow }!?[]const SlotSpec {
-        const class_name = class_sym.getName();
-        if (self.heap) |heap| {
-            if (heap.symbolHomePkg(class_sym)) |pkg| {
-                var qual_buf: [256]u8 = undefined;
-                const qualified = try self.makePkgQualifiedName(&qual_buf, pkg.name, class_name);
-                defer if (qualified.owned) self.allocator.free(qualified.slice);
-                if (self.class_metadata.get(qualified.slice)) |specs| return specs;
-            }
-        } else {
-            const pkg_bits: u64 = class_sym.reserved;
-            if (pkg_bits != 0 and (pkg_bits & 1) == 0) {
-                const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_bits);
-                var qual_buf: [256]u8 = undefined;
-                const qualified = try self.makePkgQualifiedName(&qual_buf, pkg.name, class_name);
-                defer if (qualified.owned) self.allocator.free(qualified.slice);
-                if (self.class_metadata.get(qualified.slice)) |specs| return specs;
-            }
-        }
-
+        var qual_buf: [256]u8 = undefined;
+        const qualified = try self.qualifiedNameForSymbol(&qual_buf, class_sym);
+        defer if (qualified.owned) self.allocator.free(qualified.slice);
+        if (self.class_metadata.get(qualified.slice)) |specs| return specs;
         return null;
     }
 
@@ -12983,9 +12988,9 @@ pub const Compiler = struct {
             };
         }
         var qual_buf: [256]u8 = undefined;
-        const q = try self.qualifyName(class_name, &qual_buf);
-        defer if (q.owned) self.allocator.free(q.name);
-        try self.setClassMetadata(q.name, persistent_specs);
+        const q = try self.qualifiedNameForSymbol(&qual_buf, name_val.toPtr(Symbol));
+        defer if (q.owned) self.allocator.free(q.slice);
+        try self.setClassMetadata(q.slice, persistent_specs);
 
         // Also store in heap for runtime slot-value lookup
         {
@@ -12993,7 +12998,7 @@ pub const Compiler = struct {
             for (slot_specs.items, 0..) |spec, i| {
                 heap_slot_names[i] = try heap.intern(spec.name);
             }
-            try heap.setClassMetadata(q.name, heap_slot_names);
+            try heap.setClassMetadataForSymbol(name_val, heap_slot_names);
         }
 
         // Allocate Class object and compute CPL, then register in class registry

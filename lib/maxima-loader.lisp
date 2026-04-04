@@ -21,6 +21,16 @@
 
 (load "lib/maxima-stubs.lisp")
 
+(defun maxima-bootstrap-cl-user-state ()
+  (let* ((pkg (find-package :cl-user))
+         (sym (and pkg (intern "*MAXIMA-BUILD-TIME*" pkg))))
+    (when sym
+      (unless (boundp sym)
+        (set sym (multiple-value-list (get-decoded-time))))
+      (export sym pkg))))
+
+(maxima-bootstrap-cl-user-state)
+
 (defparameter *maxima-files* *habu-maxima-files*)
 
 (defvar *maxima-ok-count* 0)
