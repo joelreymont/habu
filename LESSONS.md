@@ -9,6 +9,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-04)
 
 ### Worked Well
+- When canonical execution advances, the plan must be rewritten around the new front-door blocker immediately. `PLAN.md:55-65,470-517,687-689` now names the real `rtest6` parser/operator floor, the downstream `rtest6` callable semantics floor, the `rtest6b` successor slice, and blocks Phase 4 on Phase 3 instead of the older, looser dependency.
 - When a read-time literal starts failing only after you remove a fake wrapper, check whether the reader has been returning executable forms instead of self-evaluating objects. `src/reader/parser.zig:705-715,876-905` was turning `#p"..."` into `(PARSE-NAMESTRING ...)`, which looked fine at the REPL because it got evaluated immediately, but it leaked cons cells into quoted constants and DEFVAR initforms like `INTL:*LOCALE-DIRECTORIES*`.
 - Reader cutover and compiler cutover have to land together for self-evaluating boxed literals. After fixing `#p` to allocate pathname objects at read time, `src/compiler/compile.zig:3105-3118` still rejected those pathname objects as `InvalidSyntax` because pathname literals were missing from the self-evaluating literal set. Adding both halves moved `../maxima/src/intl.lisp` from fake `merge-pathnames` type failures to real `rtest6` execution.
 - A tiny quoted-literal probe is the fastest proof for reader honesty. `(let ((x '(#p\"/usr/share/locale/\"))) (list (pathnamep (car x)) (type-of (car x))))` immediately distinguished “REPL eval works” from “constants are still wrong,” and the same pattern exposed `INTL:*LOCALE-DIRECTORIES*` holding cons forms instead of pathnames.
@@ -31,6 +32,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - When raw source loading skips the upstream system loader, copy the upstream pre-source environment exactly instead of weakening semantics. `lib/maxima-loader.lisp` now seeds and exports `CL-USER:*MAXIMA-BUILD-TIME*` before module loading because `../maxima/src/maxima.system`/`../maxima/src/maxima.asd` do that before `macsys.lisp` reads `cl-user:*maxima-build-time*`.
 
 ### Did Not Work
+- Leaving the plan at a higher abstraction level than the current blocker was wrong. Once canonical `rtest6` reached `../maxima/tests/rtest6.mac:110`, broad bullets like “remove compiler/runtime blockers next” were no longer sufficient; the plan needed explicit numbered closure items for operator-read visibility, the early wrong-answer cluster, and immediate successor files.
 - Treating `#p` as “good enough because evaluating `#p\"...\"` prints a pathname” was wrong. The old reader path only worked in immediate evaluation contexts; it broke quoted literals, DEFSTRUCT initforms, and upstream constants by leaving `(PARSE-NAMESTRING ...)` data structures in the heap.
 - Fixing only the VM side of `get-macro-character` was incomplete. The opcode contract bug in `src/interp/vm.zig:7804-7818` was real, but `get-macro-character` still hung until `src/compiler/compile.zig:18090-18120` actually emitted the dedicated IR/opcode instead of falling back to the generic call path.
 - Treating `upfrom` as the only missing piece in `loop` was incomplete. Once the parser accepted the keyword, the old execution order still evaluated `while` guards before `as` bindings, so the failing `intl.lisp` form silently returned `nil` instead of exposing the actual next loader blocker.
@@ -2081,3 +2083,10 @@ also `(set alias-target y)` (with assign validator).
 ### Did Not Work
 - Chasing the earlier `InvalidPrintCase` surface error would have been wasted motion. The decisive evidence came from the Maxima form trace: the actual blockers were stdlib bootstrap macro ordering and manifest dependency order, not the printer.
 - Lowering `destructuring-bind` `&key` through source-level `COMMON-LISP:GETF` was the wrong fix. The integration tests compile without stdlib bootstrapped, so any lowering that depends on `GETF` being fbound reintroduces a bootstrap-order lie instead of closing the compiler gap.
+
+### Worked Well
+- The only stable way to converge `review-plan` was to keep freezing a `PLAN.md` baseline, launch six fresh adversarial agents against disjoint surfaces, patch once, and repeat until two consecutive clean rounds. Anything less kept missing real authority/provenance holes in `PLAN.md`.
+- The plan had to model authoritative identity as data, not prose. Requiring exact loader-policy/bootstrap-helper/upstream-tree fingerprints in `PLAN.md` was what finally stopped recurring “same path, different semantics” false positives.
+
+### Did Not Work
+- Treating “trusted root” or “repo-pinned path” as sufficient was too weak. Review only converged after the plan explicitly covered regular-file checks, race-free open/load/write semantics, and content identity for both repo helpers and the external `../maxima` tree.
