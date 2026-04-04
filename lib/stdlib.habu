@@ -4807,6 +4807,7 @@
           ((string= name "INITIALLY") :initially)
           ((string= name "RETURN") :return)
           ((string= name "FROM") :from)
+          ((string= name "UPFROM") :upfrom)
           ((string= name "DOWNFROM") :downfrom)
           ((string= name "TO") :to)
           ((string= name "UPTO") :upto)
@@ -4878,7 +4879,7 @@
 (defun cddddr (x) (cdr (cdddr x)))
 
 ; Helper: Parse FOR clause - returns (var init step-form end-test remaining-clauses)
-; Supports: FROM/TO/BELOW/ABOVE/DOWNFROM/DOWNTO/BY
+; Supports: FROM/UPFROM/TO/BELOW/ABOVE/DOWNFROM/DOWNTO/BY
 (defun parse-loop-for-arithmetic (var clauses)
   (let ((from-val 0)
         (to-val nil)
@@ -4887,9 +4888,12 @@
         (downp nil)
         (rest clauses))
     ; Parse modifiers using while loop
-    (while (and rest (member (loop-kw-canon (car rest)) '(:from :downfrom :to :upto :below :downto :above :by)))
+    (while (and rest (member (loop-kw-canon (car rest)) '(:from :upfrom :downfrom :to :upto :below :downto :above :by)))
       (case (loop-kw-canon (car rest))
         ((:from)
+         (setq from-val (cadr rest))
+         (setq rest (cddr rest)))
+        ((:upfrom)
          (setq from-val (cadr rest))
          (setq rest (cddr rest)))
         ((:downfrom)
@@ -4931,7 +4935,7 @@
       (list var from-val step-expr end-test rest))))
 
 (defun loop-for-start-keyword-p (kw)
-  (member kw '(:from :downfrom :to :upto :below :downto :above
+  (member kw '(:from :upfrom :downfrom :to :upto :below :downto :above
                :in :on := :across :being)))
 
 (defun loop-skip-var-type-spec (rest start-kws)
@@ -5014,7 +5018,7 @@
                   (list (list 'go loop-tag))))))
 
 ; Generate loop code from parsed components
-(defun loop-generate-code (vars step-forms end-tests body-forms
+(defun loop-generate-code (vars step-forms iter-tests guard-tests iter-forms body-forms
                            collect-var collect-forms named-collects
                            sum-var sum-forms
                            count-var count-forms
@@ -5059,12 +5063,18 @@
     (when has-min
       (push (list min-var nil) all-vars))
 
-    ; Build end test
-    (let ((end-test (if (null end-tests)
-                        nil
-                      (if (= (length end-tests) 1)
-                          (car end-tests)
-                        (cons 'or (nreverse end-tests))))))
+      ; Build iteration and guard tests separately so clause-generated bindings
+      ; are visible to WHILE/UNTIL but do not run after iterator exhaustion.
+      (let ((iter-test (if (null iter-tests)
+                         nil
+                       (if (= (length iter-tests) 1)
+                           (car iter-tests)
+                         (cons 'or (nreverse iter-tests)))))
+            (guard-test (if (null guard-tests)
+                          nil
+                        (if (= (length guard-tests) 1)
+                            (car guard-tests)
+                          (cons 'or (nreverse guard-tests))))))
 
       ; Determine result expression first (needed for end-test)
       ; Priority: always/never/thereis > collect > append > nconc > sum > count > max > min
@@ -5087,11 +5097,19 @@
       ; still exits the outer loop block, skipping finally.
       ; Compute inner-block OUTSIDE the let* to avoid deep nesting scope issue.
       (setq loop-inner-blk (if finally-forms (gensym "LOOP-BODY-") nil))
-      (let* ((end-test-forms (when end-test
-                               (list (list 'when end-test
-                                           (if finally-forms
-                                               (list 'return-from loop-inner-blk nil)
-                                             (list 'return-from block-name result-expr))))))
+      (let* ((iter-test-forms (when iter-test
+                                (list (list 'when iter-test
+                                            (if finally-forms
+                                                (list 'return-from loop-inner-blk nil)
+                                              (list 'return-from block-name result-expr))))))
+            (iter-body (mapcar (lambda (form)
+                                 (loop-rewrite-control-form form block-name result-expr))
+                               iter-forms))
+            (guard-test-forms (when guard-test
+                                (list (list 'when guard-test
+                                            (if finally-forms
+                                                (list 'return-from loop-inner-blk nil)
+                                              (list 'return-from block-name result-expr))))))
             (main-body (mapcar (lambda (form)
                                  (loop-rewrite-control-form form block-name result-expr))
                                body-forms))
@@ -5198,8 +5216,10 @@
                                   (nreverse thereis-forms)))
             (step-body (loop-group-parallel-steps (nreverse step-forms))))
         (setq loop-body
-              (append end-test-forms
-                      (append main-body
+              (append iter-test-forms
+                      (append iter-body
+                              (append guard-test-forms
+                                      (append main-body
                               (append collect-body
                                       (append append-body
                                               (append nconc-body
@@ -5209,7 +5229,7 @@
                                                                               (append min-body
                                                                                       (append always-body
                                                                                               (append never-body
-                                                                                                      (append thereis-body step-body))))))))))))))
+                                                                                                      (append thereis-body step-body)))))))))))))))
 
       ; Build final code directly with TAGBODY/GO so LOOP expansion never
       ; re-enters through a package-local WHILE macro.
@@ -5235,7 +5255,7 @@
               result)
           (list 'block block-name
                 (list 'let* all-vars
-                      (list 'progn loop-code (list 'return-from block-name result-expr)))))))))
+                      (list 'progn loop-code (list 'return-from block-name result-expr))))))))))
 
 
 ; loop-finish - exit loop normally, running finally clause
@@ -5282,7 +5302,9 @@
 (defun loop-expand (clauses)
   (let ((vars nil)           ; ((var init) ...)
         (step-forms nil)     ; (setq var step-expr) ...
-        (end-tests nil)      ; test expressions for termination
+        (iter-tests nil)     ; iterator exhaustion tests
+        (guard-tests nil)    ; WHILE/UNTIL guard tests
+        (iter-forms nil)     ; clause-generated per-iteration bindings
         (body-forms nil)     ; do/doing body
         (collect-var nil)    ; variable for default collect
         (collect-forms nil)  ; collected expressions for default
@@ -5323,17 +5345,17 @@
            (let* ((var (cadr rest))
                   (for-rest (loop-skip-var-type-spec
                               (cddr rest)
-                              '(:from :downfrom :to :upto :below :downto :above
+                              '(:from :upfrom :downfrom :to :upto :below :downto :above
                                 :in :on := :across :being)))
                   (next-kw (loop-kw-canon (car for-rest))))
              (case next-kw
                ; FOR var FROM/DOWNFROM ... TO/BELOW/ABOVE ...
-               ((:from :downfrom :to :upto :below :downto :above)
+               ((:from :upfrom :downfrom :to :upto :below :downto :above)
                 (let ((parsed (parse-loop-for-arithmetic var for-rest)))
                   (push (list (car parsed) (cadr parsed)) vars)
                   (push (list 'setq (car parsed) (caddr parsed)) step-forms)
                   (when (cadddr parsed)
-                    (push (cadddr parsed) end-tests))
+                    (push (cadddr parsed) iter-tests))
                   (setq rest (car (cddddr parsed)))))
 
                ; FOR var IN list [BY step-fn]
@@ -5355,12 +5377,12 @@
                                (assign-forms (loop-binding-setq-forms bindings)))
                           (push (list tmp-var nil) vars)
                           (setq vars (loop-ensure-vars-from-bindings bindings vars))
-                          (setq body-forms
+                          (setq iter-forms
                                 (append (list (list 'setq tmp-var (list 'car list-var)))
                                         assign-forms
-                                        body-forms)))
+                                        iter-forms)))
                         (push (list 'setq list-var (list step-fn list-var)) step-forms)
-                        (push (list 'null list-var) end-tests)
+                        (push (list 'null list-var) iter-tests)
                         (setq rest in-rest))
                     ; Simple case: for x in list
                     (progn
@@ -5369,7 +5391,7 @@
                       (push (list var (list 'car list-var)) vars)
                       (push (list 'setq list-var (list step-fn list-var)) step-forms)
                       (push (list 'setq var (list 'car list-var)) step-forms)
-                      (push (list 'null list-var) end-tests)
+                      (push (list 'null list-var) iter-tests)
                       (setq rest in-rest)))))
 
                ; FOR var ON list [BY step-fn]
@@ -5388,17 +5410,17 @@
                         (push (list list-var list-expr) vars)
                         (push (list tmp-var nil) vars)
                         (setq vars (loop-ensure-vars-from-bindings bindings vars))
-                        (setq body-forms
+                        (setq iter-forms
                               (append (list (list 'setq tmp-var list-var))
                                       assign-forms
-                                      body-forms))
+                                      iter-forms))
                         (push (list 'setq list-var (list step-fn list-var)) step-forms)
-                        (push (list 'null list-var) end-tests)
+                        (push (list 'null list-var) iter-tests)
                         (setq rest by-rest))
                     (progn
                       (push (list var list-expr) vars)
                       (push (list 'setq var (list step-fn var)) step-forms)
-                      (push (list 'null var) end-tests)
+                      (push (list 'null var) iter-tests)
                       (setq rest by-rest)))))
 
                ; FOR var = expr [THEN step-expr]
@@ -5416,12 +5438,12 @@
                         (setq vars (loop-ensure-vars-from-bindings bindings vars))
                         (if has-then
                             (progn
-                              (setq body-forms (append assign-forms body-forms))
+                              (setq iter-forms (append assign-forms iter-forms))
                               (push (list 'setq tmp-var step-expr) step-forms))
-                          (setq body-forms
-                                (append body-forms
-                                        (list (list 'setq tmp-var init-expr))
-                                        assign-forms)))
+                          (setq iter-forms
+                                (append (list (list 'setq tmp-var init-expr))
+                                        assign-forms
+                                        iter-forms)))
                         (setq rest (if has-then (cddr then-rest) then-rest)))
                     (if has-then
                         (progn
@@ -5430,7 +5452,7 @@
                           (setq rest (cddr then-rest)))
                       (progn
                         (push (list var nil) vars)
-                        (setq body-forms (append body-forms (list (list 'setq var init-expr))))
+                        (setq iter-forms (append (list (list 'setq var init-expr)) iter-forms))
                         (setq rest then-rest))))))
 
                ; FOR var ACROSS vector
@@ -5449,16 +5471,16 @@
                              (assign-forms (loop-binding-setq-forms bindings)))
                         (push (list tmp-var nil) vars)
                         (setq vars (loop-ensure-vars-from-bindings bindings vars))
-                        (setq body-forms
+                        (setq iter-forms
                               (append (list (list 'setq tmp-var (list 'aref vec-var idx-var)))
                                       assign-forms
-                                      body-forms)))
+                                      iter-forms)))
                     ; Simple case: for x across vec
                     (progn
                       (push (list var nil) vars)
-                      (push (list 'setq var (list 'aref vec-var idx-var)) body-forms)))
+                      (push (list 'setq var (list 'aref vec-var idx-var)) iter-forms)))
                   (push (list 'setq idx-var (list '+ idx-var 1)) step-forms)
-                  (push (list '>= idx-var len-var) end-tests)
+                  (push (list '>= idx-var len-var) iter-tests)
                   (setq rest (cddr for-rest))))
 
                ; FOR var BEING THE/EACH HASH-KEYS/HASH-VALUES/SYMBOLS OF hash/package [USING (...)]
@@ -5508,17 +5530,17 @@
                                  (unless other-var
                                    (setq init-forms (append init-forms
                                                             (list (list 'setq val-var tmp-var)))))
-                                 (setq body-forms (append init-forms assign-forms body-forms)))
+                                 (setq iter-forms (append init-forms assign-forms iter-forms)))
                              ; Simple: var is symbol
                              (progn
                                (push (list var nil) vars)
                                (when other-var
                                  (push (list other-var nil) vars))
-                               (push (list 'setq var (list 'car keys-var)) body-forms)
+                               (push (list 'setq var (list 'car keys-var)) iter-forms)
                                (when other-var
-                                 (push (list 'setq other-var (list 'gethash var hash-var)) body-forms))))
+                                 (push (list 'setq other-var (list 'gethash var hash-var)) iter-forms))))
                            (push (list 'setq keys-var (list 'cdr keys-var)) step-forms)
-                           (push (list 'null keys-var) end-tests)))
+                           (push (list 'null keys-var) iter-tests)))
                         ((:hash-values :hash-value)
                          (let ((keys-var (gensym "keys"))
                                (hash-var (gensym "hash"))
@@ -5532,45 +5554,45 @@
                                (let* ((tmp-var (gensym "tmp"))
                                       (bindings (destructuring-bind-impl var tmp-var))
                                       (assign-forms (loop-binding-setq-forms bindings))
-                                      (init-forms (list (list 'setq key-var (list 'car keys-var))
-                                                        (list 'setq tmp-var (list 'gethash key-var hash-var)))))
+                                 (init-forms (list (list 'setq key-var (list 'car keys-var))
+                                                       (list 'setq tmp-var (list 'gethash key-var hash-var)))))
                                  (push (list tmp-var nil) vars)
                                  (setq vars (loop-ensure-vars-from-bindings bindings vars))
-                                 (setq body-forms (append init-forms assign-forms body-forms)))
+                                 (setq iter-forms (append init-forms assign-forms iter-forms)))
                              ; Simple: var is symbol
                              (progn
                                (push (list var nil) vars)
-                               (push (list 'setq key-var (list 'car keys-var)) body-forms)
-                               (push (list 'setq var (list 'gethash key-var hash-var)) body-forms)))
+                               (push (list 'setq key-var (list 'car keys-var)) iter-forms)
+                               (push (list 'setq var (list 'gethash key-var hash-var)) iter-forms)))
                            (push (list 'setq keys-var (list 'cdr keys-var)) step-forms)
-                           (push (list 'null keys-var) end-tests)))
+                           (push (list 'null keys-var) iter-tests)))
                         ((:symbols :symbol)
                          (let ((syms-var (gensym "syms"))
                                (pkg-var (gensym "pkg")))
                            (push (list pkg-var target-expr) vars)
                            (push (list syms-var (list '%package-symbols-list pkg-var)) vars)
                            (push (list var nil) vars)
-                           (push (list 'setq var (list 'car syms-var)) body-forms)
+                           (push (list 'setq var (list 'car syms-var)) iter-forms)
                            (push (list 'setq syms-var (list 'cdr syms-var)) step-forms)
-                           (push (list 'null syms-var) end-tests)))
+                           (push (list 'null syms-var) iter-tests)))
                         ((:present-symbols :present-symbol)
                          (let ((syms-var (gensym "syms"))
                                (pkg-var (gensym "pkg")))
                            (push (list pkg-var target-expr) vars)
                            (push (list syms-var (list '%package-symbols-list pkg-var)) vars)
                            (push (list var nil) vars)
-                           (push (list 'setq var (list 'car syms-var)) body-forms)
+                           (push (list 'setq var (list 'car syms-var)) iter-forms)
                            (push (list 'setq syms-var (list 'cdr syms-var)) step-forms)
-                           (push (list 'null syms-var) end-tests)))
+                           (push (list 'null syms-var) iter-tests)))
                         ((:external-symbols :external-symbol)
                          (let ((syms-var (gensym "syms"))
                                (pkg-var (gensym "pkg")))
                            (push (list pkg-var target-expr) vars)
                            (push (list syms-var (list '%package-exports-list pkg-var)) vars)
                            (push (list var nil) vars)
-                           (push (list 'setq var (list 'car syms-var)) body-forms)
+                           (push (list 'setq var (list 'car syms-var)) iter-forms)
                            (push (list 'setq syms-var (list 'cdr syms-var)) step-forms)
-                           (push (list 'null syms-var) end-tests)))
+                           (push (list 'null syms-var) iter-tests)))
                         (t (error (format nil "Unknown iteration type: ~a" iter-type))))
                       (setq rest using-rest)))))
 
@@ -5616,17 +5638,17 @@
            (let ((cnt-var (gensym "count")))
              (push (list cnt-var (cadr rest)) vars)
              (push (list 'setq cnt-var (list '- cnt-var 1)) step-forms)
-             (push (list '<= cnt-var 0) end-tests)
+             (push (list '<= cnt-var 0) iter-tests)
              (setq rest (cddr rest))))
 
           ; WHILE test
           ((:while)
-           (push (list 'not (cadr rest)) end-tests)
+           (push (list 'not (cadr rest)) guard-tests)
            (setq rest (cddr rest)))
 
           ; UNTIL test
           ((:until)
-           (push (cadr rest) end-tests)
+           (push (cadr rest) guard-tests)
            (setq rest (cddr rest)))
 
           ; DO/DOING body...
@@ -6187,7 +6209,7 @@
                (error (format nil "Unknown loop keyword: ~a" kw)))))))
 
     ; Generate the loop code
-    (loop-generate-code vars step-forms end-tests body-forms
+    (loop-generate-code vars step-forms iter-tests guard-tests iter-forms body-forms
                         collect-var collect-forms named-collects
                         sum-var sum-forms
                         count-var count-forms

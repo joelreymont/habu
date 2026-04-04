@@ -248,18 +248,18 @@ pub const Repl = struct {
     }
 
     fn appendToVmExtRootOwner(self: *Repl, vm: *Vm, vals: []const Value) !void {
-        const owner = vm.ext_roots_owner orelse return;
-        if (owner == &self.persistent_roots) return;
-
         var ctx_opt = self.active_root_ctx;
         while (ctx_opt) |ctx| {
-            if (ctx.vm == vm and ctx.roots == owner) {
-                vm.setExtRootsOwned(owner);
+            if (ctx.vm == vm) {
+                try ctx.roots.appendSlice(self.allocator, vals);
+                vm.setExtRootsOwned(ctx.roots);
                 return;
             }
             ctx_opt = ctx.prev;
         }
 
+        const owner = vm.ext_roots_owner orelse return;
+        if (owner == &self.persistent_roots) return;
         try owner.appendSlice(self.allocator, vals);
         vm.setExtRootsOwned(owner);
     }
@@ -282,18 +282,18 @@ pub const Repl = struct {
     }
 
     fn upsertVmExtRootOwnerPair(self: *Repl, vm: *Vm, key: Value, val: Value) !void {
-        const owner = vm.ext_roots_owner orelse return;
-        if (owner == &self.persistent_roots) return;
-
         var ctx_opt = self.active_root_ctx;
         while (ctx_opt) |ctx| {
-            if (ctx.vm == vm and ctx.roots == owner) {
-                vm.setExtRootsOwned(owner);
+            if (ctx.vm == vm) {
+                try upsertRootPair(ctx.roots, key, val, self.allocator);
+                vm.setExtRootsOwned(ctx.roots);
                 return;
             }
             ctx_opt = ctx.prev;
         }
 
+        const owner = vm.ext_roots_owner orelse return;
+        if (owner == &self.persistent_roots) return;
         try upsertRootPair(owner, key, val, self.allocator);
         vm.setExtRootsOwned(owner);
     }
@@ -1421,9 +1421,11 @@ pub const Repl = struct {
 
     fn addTrustedLoadRoot(self: *Repl, path: []const u8) !void {
         const root = try self.resolveDeclaredTrustedRoot(path);
-        errdefer self.allocator.free(root);
         for (self.trusted_load_roots.items) |existing| {
-            if (std.mem.eql(u8, existing, root)) return;
+            if (std.mem.eql(u8, existing, root)) {
+                self.allocator.free(root);
+                return;
+            }
         }
         try self.trusted_load_roots.append(self.allocator, root);
     }
@@ -5825,6 +5827,11 @@ test "load accepts explicitly trusted external root" {
     defer allocator.free(trust);
     const trusted = try repl.eval(trust);
     try testing.expect(trusted.isT());
+    try testing.expectEqual(@as(usize, 2), repl.trusted_load_roots.items.len);
+
+    const trusted_again = try repl.eval(trust);
+    try testing.expect(trusted_again.isT());
+    try testing.expectEqual(@as(usize, 2), repl.trusted_load_roots.items.len);
 
     const loaded = try repl.eval(denied);
     try testing.expect(loaded.isFixnum());

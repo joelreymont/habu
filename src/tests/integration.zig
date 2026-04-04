@@ -7391,6 +7391,23 @@ test "ansi repro loop with of-type initializer" {
     try testing.expect(!result.isNil());
 }
 
+test "ansi repro loop upfrom as while" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(equal (loop for i upfrom 1 below 4 as c = (* i 10) while (< c 30) collect c) '(10 20))",
+    );
+    try testing.expect(!result.isNil());
+}
+
 test "ansi repro logand accepts bignum intermediate integer" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

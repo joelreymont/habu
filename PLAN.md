@@ -376,6 +376,21 @@ This plan is done only when:
   - touches object identity, type dispatch, copying, and printing.
 - Effort: XL
 
+#### 1.7b Remove borrowed-slice IR from compiler-generated call nodes
+- Goal: G1, G2, G3
+- Files: `src/compiler/compile.zig:19074-19080`, `src/compiler/ir.zig:1508-1518`, crash witness `../maxima/src/numth.lisp` form 151 `DEFSTRUCT (GF-DATA (:PRINT-FUNCTION ...))`
+- Depends on: 1.7a
+- Work:
+  - make every compiler-generated `call`/`tailcall` own its arg slice instead of borrowing stack-backed arrays,
+  - audit helper builders that bypass `IrBuilder.call` / `IrBuilder.tailcall`,
+  - add a focused regression that proves `DEFSTRUCT` printer-install compilation survives specialization on the clean Maxima path.
+- Acceptance:
+  - canonical `tools/maxima-rtest.lisp rtest1` no longer dies with exit `132` / `EXC_BAD_ACCESS` in `p07c_specialize`,
+  - no helper constructs `call`/`tailcall` nodes with borrowed arg slices.
+- Risk:
+  - the same bug class can silently corrupt other compiler-generated call sites until the helper cutover is complete.
+- Effort: M
+
 #### 1.8 Close current `defmfun-check` / later `mforma` blockers generically
 - Goal: G1, G2
 - Files: actual failing paths from current RCA dot, currently `../maxima/src/defmfun-check.lisp` and later `../maxima/src/mforma.lisp`, plus the related Habu reader/compiler/runtime sites proved by RCA

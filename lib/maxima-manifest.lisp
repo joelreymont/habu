@@ -6,6 +6,7 @@
 (defparameter *habu-maxima-files*
   '(
     ;; bootstrap
+    "intl"
     "pregexp"
     "numerical/f2cl-package" "numerical/slatec" "numerical/f2cl-lib"
     "globals" "lmdcls" "letmac" "generr" "clmacs" "defmfun-check" "float-properties"

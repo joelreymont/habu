@@ -6321,17 +6321,30 @@ pub const Compiler = struct {
 
         const LetrecBinding = struct {
             name: []const u8,
-            val_expr: Value,
             idx: u16,
         };
         const bindings = try self.allocator.alloc(LetrecBinding, binding_count);
         defer self.allocator.free(bindings);
 
         var binding_list = bindings_expr;
+        var binding_tok: ?CompileRootToken = null;
+        var binding_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, binding_list);
+            binding_tok = tok;
+            binding_vm = vm;
+            binding_list = vm.globals[tok.root_idx];
+        }
+        defer if (binding_tok) |tok| {
+            popCompileRoot(binding_vm.?, tok.root_idx);
+        };
         var idx: usize = 0;
-        while (binding_list.isCons()) : (binding_list = binding_list.toPtr(Cons).cdr) {
+        while (self.resolveForwardedValue(binding_list).isCons()) {
+            if (binding_tok) |tok| binding_list = binding_vm.?.globals[tok.root_idx];
+            binding_list = self.resolveForwardedValue(binding_list);
             const binding_cons = binding_list.toPtr(Cons);
-            const binding = binding_cons.car;
+            const binding = self.resolveForwardedValue(binding_cons.car);
+            const next_binding = self.resolveForwardedValue(binding_cons.cdr);
 
             if (!binding.isCons()) return error.InvalidLet;
             const b = binding.toPtr(Cons);
@@ -6346,25 +6359,50 @@ pub const Compiler = struct {
             const name = try self.allocator.dupe(u8, q.name);
 
             if (!b.cdr.isCons()) return error.InvalidLet;
-            const val_cons = b.cdr.toPtr(Cons);
 
             // Pre-register global for recursive visibility
             const global_idx = try self.globals.define(name);
             bindings[idx] = .{
                 .name = name,
-                .val_expr = val_cons.car,
                 .idx = global_idx,
             };
             idx += 1;
+            if (binding_tok) |tok| {
+                binding_vm.?.globals[tok.root_idx] = next_binding;
+                binding_list = binding_vm.?.globals[tok.root_idx];
+            } else {
+                binding_list = next_binding;
+            }
         }
         defer for (bindings[0..idx]) |b| {
             self.allocator.free(b.name);
         };
 
         const exprs = try self.allocator.alloc(*const Ir, binding_count + 1);
+        binding_list = bindings_expr;
+        if (binding_tok) |tok| {
+            binding_vm.?.globals[tok.root_idx] = self.resolveForwardedValue(bindings_expr);
+            binding_list = binding_vm.?.globals[tok.root_idx];
+        }
         for (bindings[0..idx], 0..) |b, i| {
-            const val_ir = try self.compile(b.val_expr, env);
+            if (binding_tok) |tok| binding_list = binding_vm.?.globals[tok.root_idx];
+            binding_list = self.resolveForwardedValue(binding_list);
+            if (!binding_list.isCons()) return error.InvalidLet;
+            const binding_cons = binding_list.toPtr(Cons);
+            const binding = self.resolveForwardedValue(binding_cons.car);
+            const next_binding = self.resolveForwardedValue(binding_cons.cdr);
+            if (!binding.isCons()) return error.InvalidLet;
+            const bind_pair = binding.toPtr(Cons);
+            if (!bind_pair.cdr.isCons()) return error.InvalidLet;
+            const val_cons = bind_pair.cdr.toPtr(Cons);
+            const val_ir = try self.compile(val_cons.car, env);
             exprs[i] = try self.builder.define(b.name, b.idx, val_ir);
+            if (binding_tok) |tok| {
+                binding_vm.?.globals[tok.root_idx] = next_binding;
+                binding_list = binding_vm.?.globals[tok.root_idx];
+            } else {
+                binding_list = next_binding;
+            }
         }
 
         // Compile body (in tail position if letrec is)
@@ -6405,9 +6443,23 @@ pub const Compiler = struct {
 
         // Parse function definitions and create lambda bindings
         var binding_list = bindings_expr;
-        while (binding_list.isCons()) : (binding_list = binding_list.toPtr(Cons).cdr) {
+        var binding_tok: ?CompileRootToken = null;
+        var binding_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, binding_list);
+            binding_tok = tok;
+            binding_vm = vm;
+            binding_list = vm.globals[tok.root_idx];
+        }
+        defer if (binding_tok) |tok| {
+            popCompileRoot(binding_vm.?, tok.root_idx);
+        };
+        while (self.resolveForwardedValue(binding_list).isCons()) {
+            if (binding_tok) |tok| binding_list = binding_vm.?.globals[tok.root_idx];
+            binding_list = self.resolveForwardedValue(binding_list);
             const binding_cons = binding_list.toPtr(Cons);
-            const fdef = binding_cons.car;
+            const fdef = self.resolveForwardedValue(binding_cons.car);
+            const next_binding = self.resolveForwardedValue(binding_cons.cdr);
 
             // Each fdef is (fname (params) body...)
             if (!fdef.isCons()) return error.InvalidLet;
@@ -6433,6 +6485,12 @@ pub const Compiler = struct {
 
             bindings[filled] = .{ .name = name, .value = lambda_ir, .index = index };
             filled += 1;
+            if (binding_tok) |tok| {
+                binding_vm.?.globals[tok.root_idx] = next_binding;
+                binding_list = binding_vm.?.globals[tok.root_idx];
+            } else {
+                binding_list = next_binding;
+            }
         }
 
         // Compile body in new environment
@@ -6469,22 +6527,34 @@ pub const Compiler = struct {
 
         const LabelBinding = struct {
             name: []const u8,
-            lambda_args: Value,
             index: u16,
-            sym_val: Value,
         };
         const entries = try self.allocator.alloc(LabelBinding, binding_count);
         defer self.allocator.free(entries);
 
         // First pass: pre-bind all function names so lambdas can see each other.
         var binding_list = bindings_expr;
+        var binding_tok: ?CompileRootToken = null;
+        var binding_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, binding_list);
+            binding_tok = tok;
+            binding_vm = vm;
+            binding_list = vm.globals[tok.root_idx];
+        }
+        defer if (binding_tok) |tok| {
+            popCompileRoot(binding_vm.?, tok.root_idx);
+        };
         var filled: usize = 0;
         errdefer for (entries[0..filled]) |entry| {
             self.allocator.free(entry.name);
         };
-        while (binding_list.isCons()) : (binding_list = binding_list.toPtr(Cons).cdr) {
+        while (self.resolveForwardedValue(binding_list).isCons()) {
+            if (binding_tok) |tok| binding_list = binding_vm.?.globals[tok.root_idx];
+            binding_list = self.resolveForwardedValue(binding_list);
             const binding_cons = binding_list.toPtr(Cons);
-            const fdef = binding_cons.car;
+            const fdef = self.resolveForwardedValue(binding_cons.car);
+            const next_binding = self.resolveForwardedValue(binding_cons.cdr);
 
             // Each fdef is (fname (params) body...)
             if (!fdef.isCons()) return error.InvalidLet;
@@ -6498,11 +6568,15 @@ pub const Compiler = struct {
 
             entries[filled] = .{
                 .name = name,
-                .lambda_args = f.cdr,
                 .index = idx,
-                .sym_val = f.car,
             };
             filled += 1;
+            if (binding_tok) |tok| {
+                binding_vm.?.globals[tok.root_idx] = next_binding;
+                binding_list = binding_vm.?.globals[tok.root_idx];
+            } else {
+                binding_list = next_binding;
+            }
         }
 
         const boxed_fn = try self.allocator.create(BoxingSet);
@@ -6511,8 +6585,9 @@ pub const Compiler = struct {
             boxed_fn.deinit();
             self.allocator.destroy(boxed_fn);
         }
+        const heap = self.heap orelse return error.InvalidSyntax;
         for (entries[0..filled]) |entry| {
-            try boxed_fn.add(entry.sym_val);
+            try boxed_fn.add(try heap.intern(entry.name));
         }
 
         const saved_boxed_fn = self.boxed_fn_syms;
@@ -6533,13 +6608,27 @@ pub const Compiler = struct {
         // each slot's box content.
         const init_forms = try self.allocator.alloc(*const Ir, filled + 1);
         errdefer self.allocator.free(init_forms);
+        binding_list = bindings_expr;
+        if (binding_tok) |tok| {
+            binding_vm.?.globals[tok.root_idx] = self.resolveForwardedValue(bindings_expr);
+            binding_list = binding_vm.?.globals[tok.root_idx];
+        }
         for (entries[0..filled], 0..) |entry, i| {
-            const lambda_ir = try self.compileLambda(entry.lambda_args, &labels_env);
+            if (binding_tok) |tok| binding_list = binding_vm.?.globals[tok.root_idx];
+            binding_list = self.resolveForwardedValue(binding_list);
+            if (!binding_list.isCons()) return error.InvalidLet;
+            const binding_cons = binding_list.toPtr(Cons);
+            const fdef = self.resolveForwardedValue(binding_cons.car);
+            const next_binding = self.resolveForwardedValue(binding_cons.cdr);
+            if (!fdef.isCons()) return error.InvalidLet;
+            const f = fdef.toPtr(Cons);
+            if (!f.cdr.isCons()) return error.InvalidLet;
+            const lambda_ir = try self.compileLambda(self.resolveForwardedValue(f.cdr), &labels_env);
             if (lambda_ir.* == .lambda) {
-                const lambda_name = if (self.heap) |heap|
-                    try heap.intern(entry.name)
+                const lambda_name = if (self.heap) |label_heap|
+                    try label_heap.intern(entry.name)
                 else
-                    self.resolveForwardedValue(entry.sym_val);
+                    Value.nil;
                 try self.setLambdaName(lambda_ir, lambda_name);
             }
 
@@ -6548,6 +6637,12 @@ pub const Compiler = struct {
             const box_set = try self.allocator.create(Ir);
             box_set.* = .{ .box_set = .{ .left = slot_ref, .right = lambda_ir } };
             init_forms[i] = box_set;
+            if (binding_tok) |tok| {
+                binding_vm.?.globals[tok.root_idx] = next_binding;
+                binding_list = binding_vm.?.globals[tok.root_idx];
+            } else {
+                binding_list = next_binding;
+            }
         }
 
         const body_ir = try self.compileBodyWithTail(body_exprs, &labels_env, in_tail);
@@ -11369,7 +11464,7 @@ pub const Compiler = struct {
 
         if (repr == .object) {
             if (print_fn_spec) |print_fn| {
-                defs[def_idx] = try self.generateStructPrinterInstall(struct_name, print_fn, env);
+                defs[def_idx] = try self.generateStructPrinterInstall(heap, struct_name, print_fn, env);
                 def_idx += 1;
             }
         }
@@ -11894,13 +11989,12 @@ pub const Compiler = struct {
 
     fn generateStructPrinterInstall(
         self: *Compiler,
+        heap: *Heap,
         struct_name: []const u8,
         print_fn: Value,
         env: *const Env,
     ) anyerror!*Ir {
-        const setter_idx = self.globals.lookup("%set-class-printer") orelse
-            try self.globals.define("%set-class-printer");
-        const setter_ref = try self.builder.globalRef("%set-class-printer", setter_idx);
+        const setter_ref = try self.builder.lit(try heap.intern("%set-class-printer"));
         const class_name = try self.builder.quoteSym(struct_name);
         const printer_ir = if (print_fn.isSymbol())
             try self.builder.lit(print_fn)
@@ -19073,10 +19167,11 @@ pub const Compiler = struct {
 
     fn buildCallIr(self: *Compiler, func_ir: *const Ir, call_args: []const *const Ir, in_tail: bool) !*Ir {
         const node = try self.allocator.create(Ir);
+        const args_copy = try self.allocator.dupe(*const Ir, call_args);
         if (in_tail) {
-            node.* = .{ .tailcall = .{ .func = func_ir, .args = call_args } };
+            node.* = .{ .tailcall = .{ .func = func_ir, .args = args_copy } };
         } else {
-            node.* = .{ .call = .{ .func = func_ir, .args = call_args } };
+            node.* = .{ .call = .{ .func = func_ir, .args = args_copy } };
         }
         return node;
     }
@@ -21036,6 +21131,39 @@ test "compile defstruct typed slot" {
     const last = ir_def.progn[ir_def.progn.len - 1];
     try testing.expect(last.* == .lit);
     try testing.expect(last.lit.eq(foo_sym));
+}
+
+test "buildCallIr copies arg slices" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    const a = try compiler.builder.lit(Value.makeFixnum(1));
+    const b = try compiler.builder.lit(Value.makeFixnum(2));
+    const f = try compiler.builder.lit(try heap.intern("foo"));
+
+    var args = [_]*Ir{ a, b };
+    const call_ir = try compiler.buildCallIr(f, &args, false);
+
+    args[0] = b;
+    args[1] = a;
+
+    try testing.expectEqual(Ir.call, std.meta.activeTag(call_ir.*));
+    try testing.expectEqual(@as(usize, 2), call_ir.call.args.len);
+    try testing.expect(@intFromPtr(call_ir.call.args.ptr) != @intFromPtr(&args[0]));
+    try testing.expect(call_ir.call.args[0] == a);
+    try testing.expect(call_ir.call.args[1] == b);
 }
 
 test "compile defclass slot list" {

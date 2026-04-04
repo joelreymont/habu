@@ -22,12 +22,12 @@
 (defun habu-search-mlist (&rest pattern-groups)
   (cons '(mlist) (remove nil (apply #'append (remove nil pattern-groups)))))
 
-(let ((topdir (habu-maxima-manifest-value :root))
-      (srcdir (habu-maxima-manifest-value :srcdir))
-      (sharedir (habu-maxima-manifest-value :sharedir))
-      (demodir (habu-maxima-manifest-value :demodir))
-      (docdir (habu-maxima-manifest-value :docdir))
-      (testsdir (habu-maxima-manifest-value :testsdir))
+(let ((topdir (cl-user::habu-maxima-manifest-value :root))
+      (srcdir (cl-user::habu-maxima-manifest-value :srcdir))
+      (sharedir (cl-user::habu-maxima-manifest-value :sharedir))
+      (demodir (cl-user::habu-maxima-manifest-value :demodir))
+      (docdir (cl-user::habu-maxima-manifest-value :docdir))
+      (testsdir (cl-user::habu-maxima-manifest-value :testsdir))
       (userdir (habu-default-maxima-userdir)))
   (when topdir
     (setf *maxima-topdir* topdir))

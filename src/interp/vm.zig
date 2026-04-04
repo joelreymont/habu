@@ -1263,7 +1263,7 @@ pub const Vm = struct {
             .gc_slots = std.ArrayList(*Value){},
             .safepoint_batch_ops = 0,
             .safepoint_batch_bytes = 0,
-            .globals = undefined,
+            .globals = [_]Value{Value.unbound} ** MAX_GLOBALS,
             .num_globals = 0,
             .comp_retain_vals = std.ArrayList(Value){},
             .comp_root_stack = [_]Value{Value.nil} ** MAX_COMPILE_ROOTS,
@@ -15655,6 +15655,20 @@ test "vm restore caller frame pops progv bindings" {
     const restored = try vm.loadGlobal(idx);
     try testing.expect(restored.isFixnum());
     try testing.expectEqual(@as(i64, 10), restored.toFixnum());
+}
+
+test "vm globals start unbound" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    const val = try vm.loadGlobal(214);
+    try testing.expectEqual(Value.unbound.raw, val.raw);
 }
 
 test "vm return-from restores dynamic depths and progv" {
