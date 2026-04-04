@@ -5004,6 +5004,15 @@
         (car forms)
       (cons 'progn forms))))
 
+; Build LOOP's primitive execution form without depending on the public WHILE
+; extension, which user packages may shadow with their own macro.
+(defun loop-build-tagbody (body-forms)
+  (let ((loop-tag (gensym "LOOP-TAG-")))
+    (cons 'tagbody
+          (append (list loop-tag)
+                  body-forms
+                  (list (list 'go loop-tag))))))
+
 ; Generate loop code from parsed components
 (defun loop-generate-code (vars step-forms end-tests body-forms
                            collect-var collect-forms named-collects
@@ -5202,8 +5211,9 @@
                                                                                               (append never-body
                                                                                                       (append thereis-body step-body))))))))))))))
 
-      ; Build final code using (while t ...) instead of (loop ...) to avoid a bug
-      (let ((loop-code (list* 'while t loop-body)))
+      ; Build final code directly with TAGBODY/GO so LOOP expansion never
+      ; re-enters through a package-local WHILE macro.
+      (let ((loop-code (loop-build-tagbody loop-body)))
         ; Wrap with initially if present
         (when initially-forms
           (setq loop-code (cons 'progn (append initially-forms (list loop-code)))))
@@ -6192,14 +6202,14 @@
 ; Main LOOP macro
 (defmacro loop (&rest clauses)
   (if (null clauses)
-      ; Simple infinite loop - use block with while t
-      '(block nil (while t))
+      ; Simple infinite loop - use block with primitive TAGBODY/GO
+      (list 'block nil (loop-build-tagbody nil))
     (if (not (loop-keyword-p (car clauses)))
-        ; Simple loop - body forms, wrap in block with while t
+        ; Simple loop - body forms, wrap in block with primitive TAGBODY/GO
         (let ((simple-body (mapcar (lambda (form)
                                      (loop-rewrite-control-form form nil nil))
                                    clauses)))
-          (list 'block nil (cons 'while (cons t simple-body))))
+          (list 'block nil (loop-build-tagbody simple-body)))
       ; Extended loop with clauses
       (loop-expand clauses))))
 
@@ -6952,17 +6962,7 @@
 ;; CLOS initialization protocol
 ;; NOTE: Using defun for now - proper generic functions TODO
 
-; Simple stubs for CLOS initialization
-(defun make-instance (class &rest initargs)
-  "Create an instance of CLASS (stub)"
-  (declare (ignore initargs class))
-  nil)
-
 (export 'make-instance)
-
-;; Ensure CL package entry point is present even when stdlib loads in CL-USER.
-(unless (eq 'make-instance 'common-lisp::make-instance)
-  (setf (fdefinition 'common-lisp::make-instance) #'make-instance))
 
 (defun allocate-instance (class &rest initargs)
   "Allocate storage for an instance (stub)"

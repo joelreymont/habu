@@ -61,6 +61,7 @@ pub const BuiltinCallableTag = enum(usize) {
     add_trusted_load_root,
     make_broadcast_stream,
     make_concatenated_stream,
+    make_instance,
     class_of,
     floor,
     ceiling,
@@ -3266,7 +3267,7 @@ pub const Vm = struct {
                 };
                 self.relay_throw_tag = Value.nil;
                 self.relay_throw_value = Value.nil;
-                return error.ControlTransfer;
+                return self.execute();
             }
             return call_err;
         };
@@ -3293,7 +3294,7 @@ pub const Vm = struct {
                 };
                 self.relay_throw_tag = Value.nil;
                 self.relay_throw_value = Value.nil;
-                return error.ControlTransfer;
+                return self.execute();
             }
             return run_err;
         };
@@ -3361,7 +3362,7 @@ pub const Vm = struct {
                 };
                 self.relay_throw_tag = Value.nil;
                 self.relay_throw_value = Value.nil;
-                return error.ControlTransfer;
+                return self.execute();
             }
             return call_err;
         };
@@ -3398,7 +3399,7 @@ pub const Vm = struct {
                 };
                 self.relay_throw_tag = Value.nil;
                 self.relay_throw_value = Value.nil;
-                return error.ControlTransfer;
+                return self.execute();
             }
             return run_err;
         };
@@ -3502,7 +3503,7 @@ pub const Vm = struct {
                 };
                 self.relay_throw_tag = Value.nil;
                 self.relay_throw_value = Value.nil;
-                return error.ControlTransfer;
+                return self.execute();
             }
             return apply_err;
         };
@@ -3529,7 +3530,7 @@ pub const Vm = struct {
                 };
                 self.relay_throw_tag = Value.nil;
                 self.relay_throw_value = Value.nil;
-                return error.ControlTransfer;
+                return self.execute();
             }
             return run_err;
         };
@@ -8395,6 +8396,17 @@ pub const Vm = struct {
                 const type2 = try self.pop();
                 const type1 = try self.pop();
                 const result = try primitives.subtypep(self.heap, type1, type2);
+                if (self.trace_error_context and type1.isSymbol() and type2.isSymbol()) {
+                    const pair = result.toPtr(runtime.Cons);
+                    std.debug.print(
+                        "TRACE vm subtypep: {s} <: {s} => {}\n",
+                        .{
+                            type1.toPtr(Symbol).getName(),
+                            type2.toPtr(Symbol).getName(),
+                            !pair.car.isNil(),
+                        },
+                    );
+                }
                 try self.push(result);
             },
 
@@ -8894,7 +8906,18 @@ pub const Vm = struct {
         const condition_type = self.conditionTypeSymbol(condition) orelse return false;
         if (handler_type.raw == condition_type.raw) return true;
 
-        return try type_mod.isSubtype(self.heap, condition_type, handler_type);
+        const matched = try type_mod.isSubtype(self.heap, condition_type, handler_type);
+        if (self.trace_error_context and handler_type.isSymbol() and condition_type.isSymbol()) {
+            std.debug.print(
+                "TRACE handler subtype: cond={s} handler={s} matched={}\n",
+                .{
+                    condition_type.toPtr(Symbol).getName(),
+                    handler_type.toPtr(Symbol).getName(),
+                    matched,
+                },
+            );
+        }
+        return matched;
     }
 
     /// Handle return-from by searching for matching block frame and jumping to it
@@ -9274,8 +9297,23 @@ pub const Vm = struct {
     /// Try to signal a Zig error as a CL condition via doThrow.
     /// Returns true if a handler/catch was found and execution should continue.
     fn trySignalCondition(self: *Vm, err: anyerror) !bool {
+        if (self.trace_error_context) {
+            std.debug.print(
+                "TRACE try-signal: err={s} catch_sp={d} handler_sp={d}\n",
+                .{ @errorName(err), self.catch_sp, self.handler_sp },
+            );
+        }
         if (self.catch_sp == 0 and self.handler_sp == 0) return false;
-        const condition_type = self.zigErrorToConditionSym(err) orelse return false;
+        const condition_type = self.zigErrorToConditionSym(err) orelse {
+            if (self.trace_error_context) std.debug.print("TRACE try-signal: unmapped err={s}\n", .{@errorName(err)});
+            return false;
+        };
+        if (self.trace_error_context and condition_type.isSymbol()) {
+            std.debug.print(
+                "TRACE try-signal: cond-type={s}\n",
+                .{condition_type.toPtr(Symbol).getName()},
+            );
+        }
         // Build condition pair: (type . (error-name . nil))
         const err_name_str = try self.allocString(@errorName(err));
         const payload = try self.allocCons(err_name_str, Value.nil);
@@ -9287,9 +9325,11 @@ pub const Vm = struct {
         self.doThrow(self.builtins.sym_condition_tag, condition_pair) catch |e| {
             if (e == error.ControlTransfer) return true;
             if (e == error.NestedNonLocalExit) return e;
+            if (self.trace_error_context) std.debug.print("TRACE try-signal: doThrow err={s}\n", .{@errorName(e)});
             return e;
         };
-        return false;
+        if (self.trace_error_context) std.debug.print("TRACE try-signal: transferred via catch\n", .{});
+        return true;
     }
 
     fn mapError(self: *Vm, err: anyerror) Error {
@@ -9737,6 +9777,7 @@ pub const Vm = struct {
             },
             .make_broadcast_stream => return try self.heap.allocBroadcastStream(try self.argsList(args)),
             .make_concatenated_stream => return try self.heap.allocConcatenatedStream(try self.argsList(args)),
+            .make_instance => return try primitives.makeInstance(self.heap, try self.argsList(args)),
             .class_of, .class_of_internal => return try primitives.classOf(self.heap, try self.argsList(args)),
             .floor => {
                 try requireArgCount(args, 1, 2);

@@ -2261,10 +2261,7 @@ pub fn finishOutput(stream: Value) !void {
 
     switch (s.stream_type) {
         .string => {}, // No-op for string streams
-        .file, .stdout, .stderr => {
-            const fd: std.posix.fd_t = @intCast(s.file_fd);
-            try std.posix.fsync(fd);
-        },
+        .file, .stdout, .stderr => {}, // Writes are already pushed at each write call
         .broadcast => {
             var list = s.source_value;
             while (list.isCons()) {

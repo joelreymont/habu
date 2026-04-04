@@ -387,6 +387,7 @@ pub const Heap = struct {
     promote_threshold_max: usize,
     /// Metadata for promoted tenured objects (for remembered-set scans).
     tenured_objs: std.ArrayList(TenuredObj),
+    tenured_idx: std.AutoHashMap(usize, usize),
     /// Free spans reclaimed by tenured sweep (non-moving reuse).
     tenured_free: std.ArrayList(FreeSpan),
     /// Segregated tenured free bins for reuse fast-path allocation.
@@ -398,6 +399,7 @@ pub const Heap = struct {
     los_threshold_max: usize,
     los_target_pause_ns: u64,
     los_objs: std.ArrayList(TenuredObj),
+    los_idx: std.AutoHashMap(usize, usize),
     los_free: std.ArrayList(FreeSpan),
     los_free_bins: [TENURED_FREE_BIN_N]std.ArrayList(FreeSpan),
     profile_mutator: bool,
@@ -787,6 +789,7 @@ pub const Heap = struct {
             .promote_threshold_min = promote_min,
             .promote_threshold_max = promote_max,
             .tenured_objs = std.ArrayList(TenuredObj){},
+            .tenured_idx = std.AutoHashMap(usize, usize).init(allocator),
             .tenured_free = std.ArrayList(FreeSpan){},
             .tenured_free_bins = [_]std.ArrayList(FreeSpan){std.ArrayList(FreeSpan){}} ** TENURED_FREE_BIN_N,
             .los_alloc_ptr = if (layout.los) |r| r.start else null,
@@ -795,6 +798,7 @@ pub const Heap = struct {
             .los_threshold_max = los_threshold_max,
             .los_target_pause_ns = 10_000_000,
             .los_objs = std.ArrayList(TenuredObj){},
+            .los_idx = std.AutoHashMap(usize, usize).init(allocator),
             .los_free = std.ArrayList(FreeSpan){},
             .los_free_bins = [_]std.ArrayList(FreeSpan){std.ArrayList(FreeSpan){}} ** TENURED_FREE_BIN_N,
             .profile_mutator = profile_mutator,
@@ -962,11 +966,13 @@ pub const Heap = struct {
         self.backing_allocator.free(self.survivor_age_cur);
         self.backing_allocator.free(self.survivor_age_next);
         self.tenured_objs.deinit(self.backing_allocator);
+        self.tenured_idx.deinit();
         self.tenured_free.deinit(self.backing_allocator);
         for (&self.tenured_free_bins) |*bin| {
             bin.deinit(self.backing_allocator);
         }
         self.los_objs.deinit(self.backing_allocator);
+        self.los_idx.deinit();
         self.los_free.deinit(self.backing_allocator);
         for (&self.los_free_bins) |*bin| {
             bin.deinit(self.backing_allocator);
@@ -1453,6 +1459,7 @@ pub const Heap = struct {
             .promote_success_recorded = false,
         };
         try self.tenured_objs.append(self.backing_allocator, item);
+        try self.tenured_idx.put(addr, self.tenured_objs.items.len - 1);
     }
 
     pub fn clearTenuredMarks(self: *Heap) void {
@@ -1464,14 +1471,33 @@ pub const Heap = struct {
     pub fn markTenuredObject(self: *Heap, addr: usize) MarkResult {
         const tenured = self.layout.tenured orelse return .none;
         if (addr < @intFromPtr(tenured.start) or addr >= @intFromPtr(tenured.end)) return .none;
-        for (self.tenured_objs.items) |*obj| {
-            if (obj.addr == addr) {
-                if (obj.marked) return .already;
-                obj.marked = true;
-                return .newly;
-            }
+        const idx = self.tenured_idx.get(addr) orelse return .none;
+        const obj = &self.tenured_objs.items[idx];
+        if (obj.marked) return .already;
+        obj.marked = true;
+        return .newly;
+    }
+
+    fn rebuildTenuredIdx(self: *Heap) !void {
+        self.tenured_idx.clearRetainingCapacity();
+        try self.tenured_idx.ensureUnusedCapacity(std.math.cast(u32, self.tenured_objs.items.len) orelse return error.OutOfMemory);
+        for (self.tenured_objs.items, 0..) |obj, idx| {
+            try self.tenured_idx.put(obj.addr, idx);
         }
-        return .none;
+    }
+
+    fn trackedTenuredSwapRemove(self: *Heap, idx: usize) void {
+        const last_idx = self.tenured_objs.items.len - 1;
+        const removed_addr = self.tenured_objs.items[idx].addr;
+        _ = self.tenured_idx.remove(removed_addr);
+        if (idx != last_idx) {
+            const moved_addr = self.tenured_objs.items[last_idx].addr;
+            _ = self.tenured_objs.swapRemove(idx);
+            const moved_idx = self.tenured_idx.getPtr(moved_addr) orelse return;
+            moved_idx.* = idx;
+            return;
+        }
+        _ = self.tenured_objs.swapRemove(idx);
     }
 
     fn coalesceTenuredFree(self: *Heap) !void {
@@ -1513,6 +1539,7 @@ pub const Heap = struct {
             self.tenured_free.appendAssumeCapacity(.{ .addr = obj.addr, .size = obj.size });
         }
         self.tenured_objs.items.len = write;
+        try self.rebuildTenuredIdx();
         try self.coalesceTenuredFree();
     }
 
@@ -1555,7 +1582,7 @@ pub const Heap = struct {
             }
 
             self.tenured_free.appendAssumeCapacity(.{ .addr = obj.addr, .size = obj.size });
-            _ = self.tenured_objs.swapRemove(idx);
+            self.trackedTenuredSwapRemove(idx);
         }
 
         if (cursor.* < self.tenured_objs.items.len) return .{ .done = false, .scanned = scanned };
@@ -1638,6 +1665,7 @@ pub const Heap = struct {
     pub fn recordLosObject(self: *Heap, addr: usize, tag: Tag, size: usize) !void {
         const item: TenuredObj = .{ .addr = addr, .tag = tag, .size = size, .marked = false };
         try self.los_objs.append(self.backing_allocator, item);
+        try self.los_idx.put(addr, self.los_objs.items.len - 1);
     }
 
     pub fn clearLosMarks(self: *Heap) void {
@@ -1655,14 +1683,33 @@ pub const Heap = struct {
     pub fn markLosObject(self: *Heap, addr: usize) MarkResult {
         const los = self.layout.los orelse return .none;
         if (addr < @intFromPtr(los.start) or addr >= @intFromPtr(los.end)) return .none;
-        for (self.los_objs.items) |*obj| {
-            if (obj.addr == addr) {
-                if (obj.marked) return .already;
-                obj.marked = true;
-                return .newly;
-            }
+        const idx = self.los_idx.get(addr) orelse return .none;
+        const obj = &self.los_objs.items[idx];
+        if (obj.marked) return .already;
+        obj.marked = true;
+        return .newly;
+    }
+
+    fn rebuildLosIdx(self: *Heap) !void {
+        self.los_idx.clearRetainingCapacity();
+        try self.los_idx.ensureUnusedCapacity(std.math.cast(u32, self.los_objs.items.len) orelse return error.OutOfMemory);
+        for (self.los_objs.items, 0..) |obj, idx| {
+            try self.los_idx.put(obj.addr, idx);
         }
-        return .none;
+    }
+
+    fn trackedLosSwapRemove(self: *Heap, idx: usize) void {
+        const last_idx = self.los_objs.items.len - 1;
+        const removed_addr = self.los_objs.items[idx].addr;
+        _ = self.los_idx.remove(removed_addr);
+        if (idx != last_idx) {
+            const moved_addr = self.los_objs.items[last_idx].addr;
+            _ = self.los_objs.swapRemove(idx);
+            const moved_idx = self.los_idx.getPtr(moved_addr) orelse return;
+            moved_idx.* = idx;
+            return;
+        }
+        _ = self.los_objs.swapRemove(idx);
     }
 
     fn coalesceLosFree(self: *Heap) !void {
@@ -1698,6 +1745,7 @@ pub const Heap = struct {
             self.los_free.appendAssumeCapacity(.{ .addr = obj.addr, .size = obj.size });
         }
         self.los_objs.items.len = write;
+        try self.rebuildLosIdx();
         try self.coalesceLosFree();
     }
 
@@ -1730,7 +1778,7 @@ pub const Heap = struct {
             }
 
             self.los_free.appendAssumeCapacity(.{ .addr = obj.addr, .size = obj.size });
-            _ = self.los_objs.swapRemove(idx);
+            self.trackedLosSwapRemove(idx);
         }
 
         if (cursor.* < self.los_objs.items.len) return .{ .done = false, .scanned = scanned };
@@ -3336,19 +3384,65 @@ pub const Heap = struct {
         return .{ .name = key, .owned = true };
     }
 
-    pub fn lookupClassMetadata(self: *Heap, class_name: Value) error{ OutOfMemory, Overflow }!?[]const Value {
-        const sym = if (class_name.isClass())
-            class_name.toPtr(objects.Class).name
-        else
-            class_name;
+    fn classMetadataKeyForSymbol(
+        self: *Heap,
+        sym: Value,
+        buf: *[256]u8,
+    ) error{ OutOfMemory, Overflow }!?ClassMetadataKey {
         if (!sym.isSymbol()) return null;
         const sym_obj = sym.toPtr(objects.Symbol);
-        const sym_name = sym_obj.getName();
-        if (self.symbolHomePkg(sym_obj)) |pkg| {
-            var qual_buf: [256]u8 = undefined;
-            const qual = try self.makeClassMetadataKey(&qual_buf, pkg.name, sym_name);
+        const pkg = self.symbolHomePkg(sym_obj) orelse return null;
+        return try self.makeClassMetadataKey(buf, pkg.name, sym_obj.getName());
+    }
+
+    fn synthesizeClassMetadata(self: *Heap, class_val: Value) error{ OutOfMemory, Overflow }!?[]const Value {
+        if (!class_val.isClass()) return null;
+        const class_obj = class_val.toPtr(objects.Class);
+        var cur = class_obj.slots;
+        var count: usize = 0;
+        while (cur.isCons()) {
+            const cons = cur.toPtr(objects.Cons);
+            if (!cons.car.isSlotDefinition()) return null;
+            count += 1;
+            cur = cons.cdr;
+        }
+        if (!cur.isNil()) return null;
+
+        const slot_names = try self.backing_allocator.alloc(Value, count);
+        cur = class_obj.slots;
+        var idx: usize = 0;
+        while (cur.isCons()) {
+            const cons = cur.toPtr(objects.Cons);
+            const slot_def = cons.car.toPtr(objects.SlotDefinition);
+            slot_names[idx] = slot_def.name;
+            idx += 1;
+            cur = cons.cdr;
+        }
+        return slot_names;
+    }
+
+    pub fn lookupClassMetadata(self: *Heap, class_name: Value) error{ OutOfMemory, Overflow }!?[]const Value {
+        const class_val = if (class_name.isClass())
+            class_name
+        else if (class_name.isSymbol())
+            self.findLispClass(class_name) orelse Value.nil
+        else
+            Value.nil;
+        const sym = if (class_val.isClass())
+            class_val.toPtr(objects.Class).name
+        else
+            class_name;
+        var qual_buf: [256]u8 = undefined;
+        if (try self.classMetadataKeyForSymbol(sym, &qual_buf)) |qual| {
             defer if (qual.owned) self.backing_allocator.free(qual.name);
-            if (self.class_metadata.get(qual.name)) |slot_names| return slot_names;
+            if (self.class_metadata.get(qual.name)) |slot_names| {
+                return slot_names;
+            }
+            if (class_val.isClass()) {
+                const slot_names = if (try self.synthesizeClassMetadata(class_val)) |names| names else return null;
+                try self.setClassMetadata(qual.name, slot_names);
+                return self.class_metadata.get(qual.name);
+            }
         }
         return null;
     }
@@ -4989,4 +5083,74 @@ test "heap space swap" {
 
     try testing.expectEqual(original_to, heap.from_start);
     try testing.expectEqual(original_from, heap.to_start);
+}
+
+test "heap tenured index survives swapRemove sweep" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .promote_threshold = 64,
+        },
+    });
+    defer heap.deinit();
+
+    const tenured = heap.tenuredRegion().?;
+    const base = @intFromPtr(tenured.start);
+    const a = base + ALIGNMENT * 2;
+    const b = base + ALIGNMENT * 4;
+    const c = base + ALIGNMENT * 6;
+    try heap.recordTenuredObject(a, .boxed, ALIGNMENT, 1);
+    try heap.recordTenuredObject(b, .boxed, ALIGNMENT, 1);
+    try heap.recordTenuredObject(c, .boxed, ALIGNMENT, 1);
+
+    try testing.expectEqual(Heap.MarkResult.newly, heap.markTenuredObject(a));
+    try testing.expectEqual(Heap.MarkResult.newly, heap.markTenuredObject(c));
+
+    var cursor: usize = 0;
+    const slice = try heap.sweepTenuredSlice(&cursor, 8);
+    try testing.expect(slice.done);
+    try testing.expectEqual(@as(usize, 2), heap.tenured_objs.items.len);
+    try testing.expectEqual(@as(?usize, null), heap.tenured_idx.get(b));
+    try testing.expectEqual(Heap.MarkResult.newly, heap.markTenuredObject(a));
+    try testing.expectEqual(Heap.MarkResult.newly, heap.markTenuredObject(c));
+}
+
+test "heap los index survives swapRemove sweep" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .promote_threshold = 64,
+        },
+    });
+    defer heap.deinit();
+
+    const los = heap.layout.los.?;
+    const base = @intFromPtr(los.start);
+    const a = base + ALIGNMENT * 2;
+    const b = base + ALIGNMENT * 4;
+    const c = base + ALIGNMENT * 6;
+    try heap.recordLosObject(a, .boxed, ALIGNMENT);
+    try heap.recordLosObject(b, .boxed, ALIGNMENT);
+    try heap.recordLosObject(c, .boxed, ALIGNMENT);
+
+    try testing.expectEqual(Heap.MarkResult.newly, heap.markLosObject(a));
+    try testing.expectEqual(Heap.MarkResult.newly, heap.markLosObject(c));
+
+    var cursor: usize = 0;
+    const slice = try heap.sweepLosSlice(&cursor, 8);
+    try testing.expect(slice.done);
+    try testing.expectEqual(@as(usize, 2), heap.los_objs.items.len);
+    try testing.expectEqual(@as(?usize, null), heap.los_idx.get(b));
+    try testing.expectEqual(Heap.MarkResult.newly, heap.markLosObject(a));
+    try testing.expectEqual(Heap.MarkResult.newly, heap.markLosObject(c));
 }

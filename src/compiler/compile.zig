@@ -10610,6 +10610,7 @@ pub const Compiler = struct {
         var shadow_rev = Value.nil;
         var import_from_rev = Value.nil;
         var shadowing_import_from_rev = Value.nil;
+        const kw_documentation = try heap.internKeyword("documentation");
 
         const b = self.builtins.?;
         var options = cons1.cdr;
@@ -10634,6 +10635,11 @@ pub const Compiler = struct {
                 try self.collectDefpackageFromOptionRev(&import_from_rev, opt_list.cdr);
             } else if (kw.raw == b.@"kw_shadowing-import-from".raw) {
                 try self.collectDefpackageFromOptionRev(&shadowing_import_from_rev, opt_list.cdr);
+            } else if (kw.raw == kw_documentation.raw) {
+                if (!opt_list.cdr.isCons()) return error.InvalidSyntax;
+                const doc_cons = opt_list.cdr.toPtr(Cons);
+                if (!doc_cons.car.isString()) return error.InvalidSyntax;
+                if (!doc_cons.cdr.isNil()) return error.InvalidSyntax;
             } else {
                 return error.InvalidSyntax;
             }
@@ -11173,6 +11179,7 @@ pub const Compiler = struct {
                         .initargs = std.ArrayList(Value){},
                         .readers = std.ArrayList(Value){},
                         .writers = std.ArrayList(Value){},
+                        .is_direct = true,
                     });
                 },
                 .string => {
@@ -11238,6 +11245,7 @@ pub const Compiler = struct {
                         .initargs = std.ArrayList(Value){},
                         .readers = std.ArrayList(Value){},
                         .writers = std.ArrayList(Value){},
+                        .is_direct = true,
                     });
                 },
                 else => {
@@ -12996,7 +13004,7 @@ pub const Compiler = struct {
         {
             const heap_slot_names = try heap.backing_allocator.alloc(Value, slot_specs.items.len);
             for (slot_specs.items, 0..) |spec, i| {
-                heap_slot_names[i] = try heap.intern(spec.name);
+                heap_slot_names[i] = spec.sym;
             }
             try heap.setClassMetadataForSymbol(name_val, heap_slot_names);
         }
@@ -16127,6 +16135,7 @@ pub const Compiler = struct {
         "list",
         "%make-broadcast-stream",
         "%make-concatenated-stream",
+        "make-instance",
         "class-of",
         "floor",
         "ceiling",
@@ -20943,6 +20952,17 @@ test "compile defpackage names" {
     try testing.expect(ir_kw.lit.isSymbol());
     try testing.expectEqualStrings("MY-PKG", ir_kw.lit.toPtr(Symbol).getName());
     try testing.expect((try primitives.package.findPackage(&heap, kw_pkg)) != null);
+
+    const doc_kw = try heap.internKeyword("documentation");
+    const doc_str = try heap.allocBaseString("docs");
+    const doc_opt = try heap.allocCons(doc_kw, try heap.allocCons(doc_str, Value.nil));
+    const doc_name = try heap.allocBaseString("doc-pkg");
+    const args_doc = try heap.allocCons(doc_name, try heap.allocCons(doc_opt, Value.nil));
+    const ir_doc = try compiler.compileDefpackage(args_doc);
+    defer arena_alloc.destroy(ir_doc);
+    try testing.expect(ir_doc.* == .lit);
+    try testing.expectEqualStrings("DOC-PKG", ir_doc.lit.toPtr(Symbol).getName());
+    try testing.expect((try primitives.package.findPackage(&heap, doc_name)) != null);
 }
 
 test "parseTypeExpr function type" {

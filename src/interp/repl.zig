@@ -885,6 +885,7 @@ pub const Repl = struct {
                 val.* = vm.resolveForwardedValue(val.*);
             }
         }
+        const chunk_root = vm.resolveForwardedValue(Value.makeChunk(chunk_ptr));
 
         var compiler_macros = std.ArrayList(MacroMapPair){};
         defer compiler_macros.deinit(self.allocator);
@@ -898,7 +899,8 @@ pub const Repl = struct {
         defer repl_macros.deinit(self.allocator);
         try self.collectReplMacroPairs(&repl_macros);
 
-        const total_roots = saved_ext_roots.len +
+        const total_roots = 1 +
+            saved_ext_roots.len +
             (compiler_macros.items.len * 2) +
             (symbol_macros.items.len * 2) +
             (repl_macros.items.len * 2);
@@ -918,6 +920,8 @@ pub const Repl = struct {
         var roots = std.ArrayList(Value){};
         defer roots.deinit(self.allocator);
         try roots.ensureTotalCapacity(self.allocator, total_roots);
+
+        try roots.append(self.allocator, chunk_root);
 
         if (saved_ext_roots.len > 0) {
             try roots.appendSlice(self.allocator, saved_ext_roots);
@@ -1457,6 +1461,7 @@ pub const Repl = struct {
     /// Returns a callable Value for globals or lazily materialized primitive wrappers.
     fn functionResolveCallback(sym: Value, context: *anyopaque) vm_mod.Error!?Value {
         const self: *Repl = @ptrCast(@alignCast(context));
+        try self.compiler.refreshBuiltins();
         const live_sym = self.vm.resolveForwardedValue(sym);
         if (!live_sym.isSymbol()) return null;
         const trace_fn_resolve = self.trace_fn_resolve;
@@ -1484,7 +1489,7 @@ pub const Repl = struct {
         // Lazily materialize builtin primitive wrappers.
         if (self.compiler.builtins) |_| {
             const dispatch_sym = self.canonicalMacroSymbol(live_sym);
-            const is_builtin = self.compiler.isBuiltinFunctionRaw(dispatch_sym);
+            const is_builtin = self.compiler.isBuiltinFunctionSymbol(dispatch_sym);
             if (trace_fn_resolve) {
                 const dispatch_name = self.safeSymbolName(dispatch_sym) orelse "<invalid-symbol>";
                 std.debug.print(
@@ -1613,6 +1618,7 @@ pub const Repl = struct {
             .{ .field = "intern", .tag = .intern },
             .{ .field = "%make-broadcast-stream", .tag = .make_broadcast_stream },
             .{ .field = "%make-concatenated-stream", .tag = .make_concatenated_stream },
+            .{ .field = "make-instance", .tag = .make_instance },
             .{ .field = "class-of", .tag = .class_of },
             .{ .field = "floor", .tag = .floor },
             .{ .field = "ceiling", .tag = .ceiling },
@@ -2538,6 +2544,7 @@ pub const Repl = struct {
                 }
             }
         }
+        const trace_eval_parsed_phases = std.posix.getenv("HABU_TRACE_EVAL_PARSED_PHASES") != null;
 
         // Check for defmacro - handle specially like main eval
         if (self.isDefmacro(expr)) {
@@ -2604,12 +2611,15 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
+        if (trace_eval_parsed_phases) std.debug.print("TRACE eval-parsed phase=compile form={any}\n", .{form_index});
         const ir_node = if (self.compileExprRooted(vm, expr, &env)) |node| node else |err| {
             return err;
         };
+        if (trace_eval_parsed_phases) std.debug.print("TRACE eval-parsed phase=specialize form={any}\n", .{form_index});
         const specialized = try self.specializeIr(ir_node);
 
         // Emit bytecode
+        if (trace_eval_parsed_phases) std.debug.print("TRACE eval-parsed phase=emit form={any}\n", .{form_index});
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
@@ -2662,7 +2672,10 @@ pub const Repl = struct {
             std.debug.print("TRACE form disasm end\n", .{});
         }
 
-        return try self.runVmPreserveMacroState(vm, chunk_ptr);
+        if (trace_eval_parsed_phases) std.debug.print("TRACE eval-parsed phase=run form={any}\n", .{form_index});
+        const result = try self.runVmPreserveMacroState(vm, chunk_ptr);
+        if (trace_eval_parsed_phases) std.debug.print("TRACE eval-parsed phase=done form={any}\n", .{form_index});
+        return result;
     }
 
     pub fn deinit(self: *Repl) void {
@@ -4226,6 +4239,10 @@ pub const Repl = struct {
         // legacy CLTL COMPILE/LOAD/EVAL names still used by large upstream codebases.
         var compile_toplevel = false;
         var execute = false;
+        const source_vm = self.activeVm();
+        const body_root_idx = try self.ensureLoadFormRootGlobal();
+        const body_stack_idx = try self.ensureLoadFormRootStackGlobal();
+        const trace_eval_when = std.posix.getenv("HABU_TRACE_EVAL_WHEN_PHASES") != null;
 
         var sit = situations;
         while (sit.isCons()) {
@@ -4251,17 +4268,29 @@ pub const Repl = struct {
             sit = sit_cons.cdr;
         }
 
+        try pushRootValue(source_vm, body_root_idx, body_stack_idx, body);
+        defer popRootValue(source_vm, body_root_idx, body_stack_idx);
+        var live_body = source_vm.resolveForwardedValue(source_vm.globals[body_root_idx]);
+        source_vm.globals[body_root_idx] = live_body;
+
         // If :compile-toplevel, evaluate each form now
         // Use a single shared VM for the entire body so closures from earlier
         // forms are available when called by later forms (e.g., defun + setf macro-function).
         if (compile_toplevel) {
-            try self.evalCompileToplevel(body, arena_alloc);
+            if (trace_eval_when) std.debug.print("TRACE eval-when phase=compile-toplevel\n", .{});
+            try self.evalCompileToplevel(live_body, arena_alloc);
+            if (trace_eval_when) std.debug.print("TRACE eval-when phase=compile-toplevel-done\n", .{});
+            live_body = source_vm.resolveForwardedValue(source_vm.globals[body_root_idx]);
+            source_vm.globals[body_root_idx] = live_body;
         }
 
         // If :execute, return progn of body for runtime execution
         if (execute) {
+            if (trace_eval_when) std.debug.print("TRACE eval-when phase=build-progn\n", .{});
             const progn_sym = try self.heap.intern("progn");
-            return try self.heap.allocCons(progn_sym, body);
+            const result = try self.heap.allocCons(progn_sym, live_body);
+            if (trace_eval_when) std.debug.print("TRACE eval-when phase=build-progn-done\n", .{});
+            return result;
         }
 
         // Neither - return nil
@@ -4274,12 +4303,16 @@ pub const Repl = struct {
         const source_vm = self.activeVm();
         const form_root_idx = try self.ensureLoadFormRootGlobal();
         const form_stack_idx = try self.ensureLoadFormRootStackGlobal();
+        const trace_compile_toplevel = std.posix.getenv("HABU_TRACE_COMPILE_TOPLEVEL") != null;
         try pushRootValue(source_vm, form_root_idx, form_stack_idx, body);
         defer popRootValue(source_vm, form_root_idx, form_stack_idx);
 
         while (true) {
             const form_live = source_vm.resolveForwardedValue(source_vm.globals[form_root_idx]);
             source_vm.globals[form_root_idx] = form_live;
+            if (trace_compile_toplevel) {
+                std.debug.print("TRACE compile-toplevel list-kind={s}\n", .{@tagName(form_live.typeKind())});
+            }
             if (!form_live.isCons()) {
                 if (!form_live.isNil()) return error.CompileError;
                 return;
@@ -4287,22 +4320,45 @@ pub const Repl = struct {
 
             const form_cons = form_live.toPtr(Cons);
             const expr = form_cons.car;
+            if (trace_compile_toplevel and expr.isCons()) {
+                const head = expr.toPtr(Cons).car;
+                if (head.isSymbol()) {
+                    std.debug.print("TRACE compile-toplevel expr-head={s}\n", .{head.toPtr(Symbol).getName()});
+                } else {
+                    std.debug.print("TRACE compile-toplevel expr-head-kind={s}\n", .{@tagName(head.typeKind())});
+                }
+            }
             // Root the tail before evaluating this form. evalSingleExpr can
             // allocate/GC and move the body list between iterations.
             source_vm.globals[form_root_idx] = form_cons.cdr;
-            _ = try self.evalSingleExpr(expr, arena_alloc);
+            _ = self.evalSingleExpr(expr, arena_alloc) catch |err| {
+                if (trace_compile_toplevel) {
+                    std.debug.print("TRACE compile-toplevel expr-error={s}\n", .{@errorName(err)});
+                }
+                return err;
+            };
         }
     }
 
     /// Evaluate a single expression (used by eval-when for compile-time evaluation)
     fn evalSingleExpr(self: *Repl, expr_val: Value, arena_alloc: std.mem.Allocator) ReplError!Value {
         var expr = expr_val;
-        try self.compiler.refreshBuiltins();
         const trace_eval_single = std.posix.getenv("HABU_TRACE_EVAL_SINGLE") != null;
+        const trace_eval_single_phases = std.posix.getenv("HABU_TRACE_EVAL_SINGLE_PHASES") != null;
+        if (trace_eval_single_phases) std.debug.print("TRACE eval-single phase=enter\n", .{});
+        self.compiler.refreshBuiltins() catch |err| {
+            if (trace_eval_single_phases) std.debug.print("TRACE eval-single phase=refresh-error err={s}\n", .{@errorName(err)});
+            return err;
+        };
+        if (trace_eval_single_phases) std.debug.print("TRACE eval-single phase=refresh-done\n", .{});
         const source_vm = self.activeVm();
         const form_root_idx = try self.ensureLoadFormRootGlobal();
         const form_stack_idx = try self.ensureLoadFormRootStackGlobal();
-        try pushRootValue(source_vm, form_root_idx, form_stack_idx, expr);
+        pushRootValue(source_vm, form_root_idx, form_stack_idx, expr) catch |err| {
+            if (trace_eval_single_phases) std.debug.print("TRACE eval-single phase=push-error err={s}\n", .{@errorName(err)});
+            return err;
+        };
+        if (trace_eval_single_phases) std.debug.print("TRACE eval-single phase=push-done\n", .{});
         defer popRootValue(source_vm, form_root_idx, form_stack_idx);
         expr = source_vm.resolveForwardedValue(source_vm.globals[form_root_idx]);
 
@@ -4334,6 +4390,7 @@ pub const Repl = struct {
                 std.debug.print("TRACE eval-single head-kind={s}\n", .{@tagName(head.typeKind())});
             }
         }
+        if (trace_eval_single_phases) std.debug.print("TRACE eval-single phase=compile\n", .{});
 
         // Compile
         const saved_builder = self.compiler.builder;
@@ -4356,9 +4413,11 @@ pub const Repl = struct {
         // Compile-time EVAL-WHEN execution should follow dynamic REPL semantics.
         // Running nanopass inference here rejects valid ANSI helper forms.
         // But we still run specialization for performance.
+        if (trace_eval_single_phases) std.debug.print("TRACE eval-single phase=specialize\n", .{});
         const specialized = try self.specializeIr(ir_node);
 
         // Emit bytecode
+        if (trace_eval_single_phases) std.debug.print("TRACE eval-single phase=emit\n", .{});
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
@@ -4386,7 +4445,9 @@ pub const Repl = struct {
         defer self.current_vm = saved_current_vm;
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        if (trace_eval_single_phases) std.debug.print("TRACE eval-single phase=run\n", .{});
         const result = try self.runVmPreserveMacroState(source_vm, chunk_ptr);
+        if (trace_eval_single_phases) std.debug.print("TRACE eval-single phase=done\n", .{});
         self.compiler.noteCompileTimeUnspecial(expr);
         return result;
     }
@@ -5381,6 +5442,25 @@ test "script handler-case load does not resume failed file" {
     const after = try repl.eval("*script-load-after*");
     try testing.expect(after.isFixnum());
     try testing.expectEqual(@as(i64, 42), after.toFixnum());
+}
+
+test "stdlib while stays a special form, not a macro" {
+    const allocator = std.testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try repl.loadFile("lib/stdlib.habu", std.io.null_writer);
+
+    const loop_sym = try heap.intern("loop");
+    const while_sym = try heap.intern("while");
+
+    try std.testing.expect(repl.lookupMacroEntry(loop_sym) != null);
+    try std.testing.expect(repl.lookupMacroEntry(while_sym) == null);
 }
 
 test "handler-case load aborts file after first signaled condition" {

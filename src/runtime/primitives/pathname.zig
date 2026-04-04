@@ -72,9 +72,20 @@ pub fn pathnamep(val: Value) Value {
     return Value.fromBool(val.isPathname());
 }
 
+fn streamPathnameDesignator(val: Value) !?Value {
+    if (try io.fileStreamTruename(val)) |stream_truename| {
+        if (!stream_truename.isNil()) return stream_truename;
+    }
+    if (try io.fileStreamPathname(val)) |stream_pathname| {
+        if (!stream_pathname.isNil()) return stream_pathname;
+    }
+    return null;
+}
+
 /// Convert string or pathname to pathname
 pub fn pathname(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
     if (val.isPathname()) return val;
+    if (try streamPathnameDesignator(val)) |stream_path| return stream_path;
     if (!val.isString()) return error.TypeMismatch;
     return try parseNamestring(allocator, heap, val);
 }
@@ -88,6 +99,10 @@ pub fn pathDesignatorString(
     return switch (val.typeKind()) {
         .string => val,
         .pathname => try namestring(allocator, heap, builtins, val),
+        .stream => blk: {
+            const stream_path = (try streamPathnameDesignator(val)) orelse break :blk error.TypeMismatch;
+            break :blk try namestring(allocator, heap, builtins, stream_path);
+        },
         else => error.TypeMismatch,
     };
 }
@@ -105,7 +120,10 @@ pub fn pathDesignatorBytes(
 
 /// Convert pathname to namestring
 pub fn namestring(allocator: std.mem.Allocator, heap: *Heap, builtins: *const BuiltinSymbols, val: Value) !Value {
-    _ = allocator;
+    if (try streamPathnameDesignator(val)) |stream_path| {
+        return try namestring(allocator, heap, builtins, stream_path);
+    }
+    if (val.isString()) return val;
     if (!val.isPathname()) return error.TypeMismatch;
     const p = val.toPtr(Pathname);
 
@@ -786,6 +804,32 @@ test "truename accepts file stream metadata" {
     const result = try truename(testing.allocator, &heap, &builtins, stream);
     const result_ns = try namestring(testing.allocator, &heap, &builtins, result);
     try testing.expectEqualStrings(path, result_ns.toPtr(objects.String).bytes());
+}
+
+test "namestring accepts file stream metadata" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+    const builtins = try BuiltinSymbols.init(&heap);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("stream-namestring.txt", .{ .read = true, .truncate = true });
+        defer file.close();
+        try file.writeAll("x");
+    }
+
+    const path = try tmp.dir.realpathAlloc(testing.allocator, "stream-namestring.txt");
+    defer testing.allocator.free(path);
+    const path_val = try heap.allocBaseString(path);
+    const stream = try io.openFile(testing.allocator, &heap, &builtins, path_val, try heap.internKeyword("input"), null, null);
+    defer io.closeStream(stream, null) catch {};
+
+    const result = try namestring(testing.allocator, &heap, &builtins, stream);
+    try testing.expectEqualStrings(path, result.toPtr(objects.String).bytes());
 }
 
 test "pathnameDirectory nil returns nil" {

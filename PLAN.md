@@ -157,6 +157,7 @@ This plan is done only when:
   - represent builtins as first-class callable values or direct VM dispatch,
   - delete wrapper lambdas that call `eval`,
   - close the remaining direct-callable gap for nullary/variadic/optional builtins so `symbol-function`/`fdefinition` work before stdlib bootstrap for forms such as `intern`, `append`, `member`, `assoc`, `find`, `position`, `count`, `remove`, and `substring`,
+  - close the remaining direct-callable gap for exact package-qualified compiler-recognized operators such as `COMMON-LISP:MAKE-INSTANCE` so reflective CLOS paths (`symbol-function`, `apply`, `make-condition`) use the same canonical callable surface as direct calls,
   - delete compiler-side builtin lambda synthesis and function-position symbol-designator fallback that postpones canonical callable resolution to runtime.
 - Acceptance:
   - builtin/function designators resolve canonically without runtime-generated wrappers,
@@ -288,6 +289,23 @@ This plan is done only when:
   - this is on the critical path for `mforma`, loader, and interactive evaluation.
 - Effort: L
 
+#### 1.4a Make `LOOP` expansion terminate on canonical `WHILE`/control IR
+- Goal: G1, G2
+- Files: `lib/stdlib.habu:4787-6202`, `src/interp/repl.zig:4479-4596`, `src/compiler/compile.zig:8520-8574`, `../maxima/src/globals.lisp:362-368`
+- Depends on: 1.4
+- Work:
+  - prove whether `WHILE` is being treated as a macro, aliased macro key, or recursively reintroduced control form during `LOOP` expansion,
+  - remove the `LOOP`/`WHILE` expansion cycle at the real boundary instead of capping recursion or special-casing Maxima forms,
+  - make `LOOP ... WHILE ... DO ...` lower once onto canonical `WHILE`/block/tagbody control and stop there,
+  - add focused regression coverage for the exact `effective-flonum-epsilon` shape and a minimal `LOOP WHILE DO` expansion/load path.
+- Acceptance:
+  - `(loop while test do form)` expands/compiles without recursive `LOOP`/`WHILE` macro re-entry,
+  - `../maxima/src/globals.lisp` advances past `effective-flonum-epsilon` on the clean loader path,
+  - no recursion-depth guard, argument cap workaround, or Maxima-local patch is involved.
+- Risk:
+  - the same expansion bug can hide behind other control macros and must be fixed at the generic expansion boundary.
+- Effort: M
+
 #### 1.5 Remove whole-file loader caps and make load scalable
 - Goal: G1, G2
 - Files: `src/interp/repl.zig:2096`
@@ -308,8 +326,10 @@ This plan is done only when:
 - Work:
   - audit long-load roots for forms, chunks, literals, macros, symbols, and JIT metadata,
   - remove stale-key/root corruption during large module loads.
+  - replace linear tenured/LOS metadata scans in GC marking with address-indexed metadata so promotion-heavy defmacro loads do not degrade to O(n^2) mark work.
 - Acceptance:
   - repeated large-load runs do not rely on name scans, stale pointers, or accidental stability.
+  - promotion-heavy Maxima loads do not spend the majority of sampled time in `markTenuredObject` / linear tenure metadata scans.
 - Risk:
   - failures may manifest as unrelated parser/compiler errors.
 - Effort: L
@@ -334,6 +354,7 @@ This plan is done only when:
   - move `defstruct` closure onto the clean-load critical path,
   - implement a distinct generic structure representation or structure-type tag path that does not alias vector/CLOS heuristics,
   - make runtime type/class predicates use canonical `COMMON-LISP` type symbols rather than current-package interning,
+  - derive runtime slot metadata from the owning `defstruct` package symbol so package-local accessors and `slot-value` agree on canonical slot identity instead of silently interning slots into `COMMON-LISP-USER`,
   - implement options actually used upstream, including `:type list`, `:named`, `:print-function`, and BOA `:constructor` lambda-lists,
   - implement slot initform/default semantics, constructor defaulting, and multiple explicit constructor forms without silent option skips,
   - implement representation-correct readers, `setf` writers, copier behavior, and printer dispatch for each supported struct kind,
@@ -342,6 +363,7 @@ This plan is done only when:
   - make `class-of` / `type-of` / `typep` / `subtypep` distinguish structures, vectors, and CLOS instances correctly, including the `structure-object` / `structure-class` lattice.
 - Acceptance:
   - upstream `defstruct` forms load on the clean path with correct constructor/accessor/predicate/type behavior,
+  - package-local `defstruct` accessors and `slot-value` resolve the same slot symbols across non-`COMMON-LISP-USER` packages,
   - slot defaults/initforms apply correctly,
   - `copy-structure` and writer paths follow the declared representation,
   - structure printing reaches the declared print function or correct default structure printer,

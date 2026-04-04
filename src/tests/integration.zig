@@ -5615,6 +5615,46 @@ test "make-instance initarg matches keyword" {
     try testing.expectEqual(@as(i64, 7), result.toFixnum());
 }
 
+test "make-instance still constructs objects after stdlib loads" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defclass test-class-stdlib () ((my-slot :initarg :my-slot)))");
+    _ = try repl.eval("(defvar obj-stdlib (make-instance 'test-class-stdlib :my-slot 9))");
+    const result = try repl.eval("(slot-value obj-stdlib 'my-slot)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 9), result.toFixnum());
+}
+
+test "symbol-function and apply support common-lisp make-instance" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defclass test-class-apply () ((my-slot :initarg :my-slot)))");
+
+    const fbound = try repl.eval("(if (symbol-function 'common-lisp:make-instance) t nil)");
+    try testing.expect(fbound.isT());
+
+    _ = try repl.eval("(defvar obj-apply (apply #'common-lisp:make-instance 'test-class-apply '(:my-slot 11)))");
+    const result = try repl.eval("(slot-value obj-apply 'my-slot)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 11), result.toFixnum());
+}
+
 test "slot-definition-readers and writers" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
@@ -6127,6 +6167,98 @@ test "defstruct constructor accepts keyword initargs" {
         "         (= (instream-line x) 0)\n" ++
         "         (string= (instream-stream-name x) \"stdin\"))))");
 
+    try testing.expect(result.eq(Value.t));
+}
+
+test "defstruct constructor accepts nil keyword value" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct instream stream (line 0 :type fixnum) stream-name)\n" ++
+        "  (let ((x (make-instream :stream 42 :stream-name nil)))\n" ++
+        "    (and (instream-p x)\n" ++
+        "         (eql (instream-stream x) 42)\n" ++
+        "         (= (instream-line x) 0)\n" ++
+        "         (null (instream-stream-name x)))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
+test "package-local defstruct slot accessors use the same slot identity" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defpackage #:probe (:use #:cl))\n" ++
+        "  (in-package #:probe)\n" ++
+        "  (defstruct instream stream (line 0 :type fixnum) stream-name)\n" ++
+        "  (let ((x (make-instream :stream 42 :stream-name \"stdin\")))\n" ++
+        "    (and (instream-p x)\n" ++
+        "         (eql (instream-stream x) 42)\n" ++
+        "         (= (instream-line x) 0)\n" ++
+        "         (string= (instream-stream-name x) \"stdin\")\n" ++
+        "         (eql (slot-value x 'stream) 42)\n" ++
+        "         (string= (slot-value x 'stream-name) \"stdin\"))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
+test "errset plus setq cons path returns new stream entry" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct instream stream (line 0 :type fixnum) stream-name)\n" ++
+        "  (defvar *stream-alist* nil)\n" ++
+        "  (let ((s (make-string-input-stream \"x\")))\n" ++
+        "    (let (name errset)\n" ++
+        "      (errset (setq name (namestring s)))\n" ++
+        "      (let ((st (car (setq *stream-alist*\n" ++
+        "                           (cons (make-instream :stream s :stream-name name)\n" ++
+        "                                 *stream-alist*)))))\n" ++
+        "        (and st\n" ++
+        "             (eql (instream-line st) 0)\n" ++
+        "             (eq (instream-stream st) s))))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
+test "defstruct runtime metadata cache rebuilds from class object" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defpackage #:probe (:use #:cl))");
+    _ = try repl.eval("(in-package #:probe)");
+    _ = try repl.eval("(defstruct instream stream (line 0 :type fixnum) stream-name)");
+
+    const class_sym = (try heap.lookupInPackage("PROBE", "INSTREAM")) orelse return error.InvalidArgument;
+    try testing.expect((try heap.lookupClassMetadata(class_sym)) != null);
+    try testing.expect(heap.class_metadata.remove("PROBE:INSTREAM"));
+    try testing.expect((try heap.lookupClassMetadata(class_sym)) != null);
+
+    const result = try repl.eval(
+        "(let ((x (make-instream :stream 42 :stream-name nil))) " ++
+            "  (and (instream-p x) " ++
+            "       (eql (instream-stream x) 42) " ++
+            "       (= (instream-line x) 0) " ++
+            "       (null (instream-stream-name x)) " ++
+            "       (eq (slot-value x 'stream) 42)))",
+    );
     try testing.expect(result.eq(Value.t));
 }
 
@@ -7096,6 +7228,99 @@ test "ansi repro loop collecting and do separator" {
     try testing.expect(c1.cdr.isNil());
 }
 
+test "loop expansion does not capture user while macro" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(progn " ++
+            "(defmacro while (cond &rest body) `(loop (if (not ,cond) (return t)) ,@body)) " ++
+            "(defun loop-while-probe (xs) " ++
+            "  (let ((cur xs) (n 0)) " ++
+            "    (loop while cur do (setq n (+ n 1)) (setq cur (cdr cur))) " ++
+            "    n)) " ++
+            "(loop-while-probe '(a b c)))",
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 3), result.toFixnum());
+}
+
+test "finish-output on standard output is non-erroring" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(progn (finish-output *standard-output*) t)");
+    try testing.expect(!result.isNil());
+}
+
+test "errset catches namestring type-error on non-file stream" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(let ((s (make-string-input-stream \"abc\"))) (errset (namestring s)))",
+    );
+    try testing.expect(result.isNil());
+}
+
+test "condition subtype lattice includes type-error under error" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(subtypep 'type-error 'error)");
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expect(!c0.car.isNil());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(!c1.car.isNil());
+}
+
+test "handler-case error catches namestring type-error on non-file stream" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(let ((s (make-string-input-stream \"abc\"))) (handler-case (namestring s) (error (c) (declare (ignore c)) :caught)))",
+    );
+    try testing.expect(result.isKeyword());
+}
+
 test "ansi repro loop for with fixnum type in equals clauses" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -7522,6 +7747,199 @@ test "dispatch macro character executes during read-from-string" {
     try testing.expect(!result.isNil());
 }
 
+test "dispatch macro callback preserves errset result flow" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(progn
+        \\  (defstruct instream stream (line 0 :type fixnum) stream-name)
+        \\  (defvar *stream-alist* nil)
+        \\  (setq *habu-disp-line* nil)
+        \\  (defun habu-test-errset-reader (stream sub-char arg)
+        \\    (declare (ignore sub-char arg))
+        \\    (let (name errset)
+        \\      (errset (setq name (namestring stream)))
+        \\      (let ((st (car (setq *stream-alist*
+        \\                           (cons (make-instream :stream stream :stream-name name)
+        \\                                 *stream-alist*)))))
+        \\        (setq *habu-disp-line* (and st (instream-line st)))
+        \\        (read-char stream)
+        \\        (read-char stream)
+        \\        (read-char stream)
+        \\        (read-char stream)
+        \\        'abc)))
+        \\  (set-dispatch-macro-character #\# #\$ #'habu-test-errset-reader)
+        \\  (setq *habu-disp-line* nil)
+        \\  (eval (read-from-string "#$abc$" t nil :start 0))
+        \\  *habu-disp-line*)
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 0), result.toFixnum());
+}
+
+test "dispatch macro callback preserves get-instream through add-lineinfo" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(progn
+        \\  (defstruct instream stream (line 0 :type fixnum) stream-name)
+        \\  (defvar *stream-alist* nil)
+        \\  (defvar *parse-string-input-stream* nil)
+        \\  (defvar *parse-stream* nil)
+        \\  (defvar *parse-window* nil)
+        \\  (defvar *current-line-info* '(0 "boot" src))
+        \\  (defun find-stream (stream)
+        \\    (dolist (v *stream-alist*)
+        \\      (cond ((eq stream (instream-stream v))
+        \\             (return v)))))
+        \\  (defun get-instream (str)
+        \\    (or (dolist (v *stream-alist*)
+        \\          (cond ((eq str (instream-stream v))
+        \\                 (return v))))
+        \\        (let (name errset)
+        \\          (errset (setq name (namestring str)))
+        \\          (car (setq *stream-alist*
+        \\                     (cons (make-instream :stream str :stream-name name)
+        \\                           *stream-alist*))))))
+        \\  (defun add-lineinfo (lis)
+        \\    (if (or (atom lis)
+        \\            (eq *parse-stream* *parse-string-input-stream*)
+        \\            (and (eq *parse-window* *standard-input*)
+        \\                 (not (find-stream *parse-stream*))))
+        \\        lis
+        \\        (let* ((st (get-instream *parse-stream*))
+        \\               (n (instream-line st))
+        \\               (nam (or (instream-stream-name st)
+        \\                        (namestring (instream-stream st)))))
+        \\          (or nam (return-from add-lineinfo lis))
+        \\          (setq *current-line-info*
+        \\                (cond ((eq (cadr *current-line-info*) nam)
+        \\                       (cond ((eql (car *current-line-info*) n)
+        \\                              *current-line-info*)
+        \\                             (t (cons n (cdr *current-line-info*)))))
+        \\                      (t (list n nam 'src))))
+        \\          (cond ((null (cdr lis))
+        \\                 (list (car lis) *current-line-info*))
+        \\                (t (append lis (list *current-line-info*)))))))
+        \\  (setq *habu-disp-lineinfo* nil)
+        \\  (defun habu-test-add-lineinfo-reader (stream sub-char arg)
+        \\    (declare (ignore sub-char arg))
+        \\    (let ((*parse-stream* stream)
+        \\          (*parse-string-input-stream* nil)
+        \\          (*parse-window* nil))
+        \\      (setq *habu-disp-lineinfo* (add-lineinfo '(foo)))
+        \\      (read-char stream)
+        \\      (read-char stream)
+        \\      (read-char stream)
+        \\      (read-char stream)
+        \\      'abc))
+        \\  (set-dispatch-macro-character #\# #\$ #'habu-test-add-lineinfo-reader)
+        \\  (setq *habu-disp-lineinfo* nil)
+        \\  (eval (read-from-string "#$abc$" t nil :start 0))
+        \\  *habu-disp-lineinfo*)
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(result.isCons());
+}
+
+test "load path preserves get-instream through dispatch macro callback" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    {
+        var file = try tmp.dir.createFile("dispatch-load.lisp", .{});
+        defer file.close();
+        try file.writeAll("#$abc$");
+    }
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+    const path = try std.fs.path.join(allocator, &.{ root, "dispatch-load.lisp" });
+    defer allocator.free(path);
+
+    const src = try std.fmt.allocPrint(
+        allocator,
+        \\(progn
+        \\  (defstruct instream stream (line 0 :type fixnum) stream-name)
+        \\  (defvar *stream-alist* nil)
+        \\  (defvar *parse-string-input-stream* nil)
+        \\  (defvar *parse-stream* nil)
+        \\  (defvar *parse-window* nil)
+        \\  (defvar *current-line-info* '(0 "boot" src))
+        \\  (defun find-stream (stream)
+        \\    (dolist (v *stream-alist*)
+        \\      (cond ((eq stream (instream-stream v))
+        \\             (return v)))))
+        \\  (defun get-instream (str)
+        \\    (or (dolist (v *stream-alist*)
+        \\          (cond ((eq str (instream-stream v))
+        \\                 (return v))))
+        \\        (let (name errset)
+        \\          (errset (setq name (namestring str)))
+        \\          (car (setq *stream-alist*
+        \\                     (cons (make-instream :stream str :stream-name name)
+        \\                           *stream-alist*))))))
+        \\  (defun add-lineinfo (lis)
+        \\    (if (or (atom lis)
+        \\            (eq *parse-stream* *parse-string-input-stream*)
+        \\            (and (eq *parse-window* *standard-input*)
+        \\                 (not (find-stream *parse-stream*))))
+        \\        lis
+        \\        (let* ((st (get-instream *parse-stream*))
+        \\               (n (instream-line st))
+        \\               (nam (or (instream-stream-name st)
+        \\                        (namestring (instream-stream st)))))
+        \\          (or nam (return-from add-lineinfo lis))
+        \\          (setq *current-line-info* (list n nam 'src))
+        \\          (list (car lis) *current-line-info*))))
+        \\  (setq *habu-disp-lineinfo* nil)
+        \\  (defun habu-test-load-reader (stream sub-char arg)
+        \\    (declare (ignore sub-char arg))
+        \\    (let ((*parse-stream* stream)
+        \\          (*parse-string-input-stream* nil)
+        \\          (*parse-window* nil))
+        \\      (setq *habu-disp-lineinfo* (add-lineinfo '(foo)))
+        \\      (read-char stream)
+        \\      (read-char stream)
+        \\      (read-char stream)
+        \\      (read-char stream)
+        \\      'abc))
+        \\  (set-dispatch-macro-character #\# #\$ #'habu-test-load-reader)
+        \\  (setq *habu-disp-lineinfo* nil)
+        \\  (load "{s}")
+        \\  *habu-disp-lineinfo*)
+    , .{path});
+    defer allocator.free(src);
+
+    const result = try repl.eval(src);
+    try testing.expect(result.isCons());
+}
+
 test "ansi repro read-suppress.sharp-dot.1 ignores #. when suppressed" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -7863,6 +8281,34 @@ test "handler-case catches custom warning via runtime subtype dispatch" {
     try testing.expectEqualStrings("CAUGHT", result.toPtr(runtime.Keyword).getName());
 }
 
+test "make-condition uses callable common-lisp make-instance" {
+    const allocator = testing.allocator;
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
+
+    const result = try state.repl.eval(
+        \\(progn
+        \\  (define-condition my-warning-make (simple-warning) ((payload :initarg :payload)))
+        \\  (slot-value (make-condition 'my-warning-make :payload 17) 'payload))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 17), result.toFixnum());
+}
+
+test "warn uses callable common-lisp make-instance" {
+    const allocator = testing.allocator;
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
+
+    const result = try state.repl.eval(
+        \\(handler-case
+        \\  (progn (warn 'simple-warning) :ok)
+        \\  (error (c) (list :err (condition-type c))))
+    );
+    try testing.expect(result.isKeyword());
+    try testing.expectEqualStrings("OK", result.toPtr(runtime.Keyword).getName());
+}
+
 test "handler-bind catches custom warning via runtime subtype dispatch" {
     const allocator = testing.allocator;
     const state = try initReplWithStdlib(allocator);
@@ -8099,6 +8545,68 @@ test "in-package rejects missing package" {
 
     try testing.expectError(error.InvalidPackage, repl.eval("(in-package \"NO-SUCH-PKG\")"));
     try testing.expect(try repl.heap.findLispPackage(try repl.heap.allocBaseString("NO-SUCH-PKG")) == null);
+}
+
+test "setq imported common-lisp special in used package" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defpackage \"PKG-SETQ\" (:use \"COMMON-LISP\"))");
+    _ = try repl.eval("(in-package \"PKG-SETQ\")");
+    const result = try repl.eval("(progn (setq *read-default-float-format* 'double-float) *read-default-float-format*)");
+    try testing.expect(result.isSymbol());
+    try testing.expectEqualStrings("DOUBLE-FLOAT", result.toPtr(Symbol).getName());
+}
+
+test "eval-when compile-time setq imported common-lisp special in used package" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defpackage \"PKG-EVAL-WHEN-SETQ\" (:use \"COMMON-LISP\"))");
+    _ = try repl.eval("(in-package \"PKG-EVAL-WHEN-SETQ\")");
+    const result = try repl.eval("(eval-when (:compile-toplevel :load-toplevel :execute) (setq *read-default-float-format* 'double-float) *read-default-float-format*)");
+    try testing.expect(result.isSymbol());
+    try testing.expectEqualStrings("DOUBLE-FLOAT", result.toPtr(Symbol).getName());
+}
+
+test "load eval-when compile-time setq imported common-lisp special in used package" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    try std.fs.cwd().writeFile(.{
+        .sub_path = "tmp_load_eval_when_setq.lsp",
+        .data = "(defpackage \"PKG-LOAD-EVAL-WHEN-SETQ\" (:use \"COMMON-LISP\"))\n" ++
+            "(in-package \"PKG-LOAD-EVAL-WHEN-SETQ\")\n" ++
+            "(eval-when (:compile-toplevel :load-toplevel :execute)\n" ++
+            "  (setq *read-default-float-format* 'double-float)\n" ++
+            "  *read-default-float-format*)\n",
+    });
+    defer std.fs.cwd().deleteFile("tmp_load_eval_when_setq.lsp") catch {};
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const loaded = try repl.eval("(load \"tmp_load_eval_when_setq.lsp\")");
+    try testing.expect(loaded.isSymbol());
+    try testing.expectEqualStrings("DOUBLE-FLOAT", loaded.toPtr(Symbol).getName());
 }
 
 test "load accepts source files larger than 1 MiB" {
@@ -9406,6 +9914,10 @@ test "maxima core subset loader binds CAS entrypoints" {
         \\          (if (fboundp 'maxima::$expand) 1 0)
         \\          (if (handler-case (progn (maxima::$factor 1) t) (error () nil)) 1 0))))
     );
+    var trace_buf = std.ArrayList(u8){};
+    defer trace_buf.deinit(allocator);
+    try repl.printValue(status, trace_buf.writer(allocator));
+    std.debug.print("TRACE slatec-status={s}\n", .{trace_buf.items});
 
     try testing.expect(status.isCons());
     var cur = status;
@@ -9516,10 +10028,13 @@ test "maxima generational loader reaches ifactor without OOM" {
     try testing.expect(status.isCons());
     var cur = status;
     const expected = [_]i64{ 48, 48, 0, 48, 0 };
-    for (expected) |want| {
+    for (expected, 0..) |want, i| {
         try testing.expect(cur.isCons());
         const cell = cur.toPtr(Cons);
         try testing.expect(cell.car.isFixnum());
+        if (cell.car.toFixnum() != want) {
+            std.debug.print("TRACE slatec-status idx={d} got={d} want={d}\n", .{ i, cell.car.toFixnum(), want });
+        }
         try testing.expectEqual(want, cell.car.toFixnum());
         cur = cell.cdr;
     }
@@ -9641,6 +10156,56 @@ test "maxima manifest loads pregexp before commac" {
     try testing.expect(status.isCons());
     var cur = status;
     const expected = [_]i64{ 1, 9, 9, 1, 1, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
+test "maxima manifest loads slatec package before bessel" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 512 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (let ((pf2 (position "numerical/f2cl-package" *maxima-files* :test #'string=))
+        \\        (psl (position "numerical/slatec" *maxima-files* :test #'string=))
+        \\        (pfl (position "numerical/f2cl-lib" *maxima-files* :test #'string=))
+        \\        (pbs (position "bessel" *maxima-files* :test #'string=)))
+        \\    (unless pf2 (error "numerical/f2cl-package missing from Maxima manifest"))
+        \\    (unless psl (error "numerical/slatec missing from Maxima manifest"))
+        \\    (unless pfl (error "numerical/f2cl-lib missing from Maxima manifest"))
+        \\    (unless pbs (error "bessel missing from Maxima manifest"))
+        \\    (setq *maxima-files* (subseq *maxima-files* 0 (1+ pbs)))
+        \\    (multiple-value-bind (ok total fail)
+        \\        (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\      (multiple-value-bind (sym status) (find-symbol "DBESJ0" "SLATEC")
+        \\        (list
+        \\          (if (< pf2 pbs) 1 0)
+        \\          (if (< psl pbs) 1 0)
+        \\          (if (< pfl pbs) 1 0)
+        \\          (if (= ok total) 1 0)
+        \\          fail
+        \\          (if (eq status :external) 1 0)
+        \\          (if (fboundp 'maxima::bessel-j) 1 0)))))))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 1, 1, 1, 1, 0, 1, 1 };
     for (expected) |want| {
         try testing.expect(cur.isCons());
         const cell = cur.toPtr(Cons);
