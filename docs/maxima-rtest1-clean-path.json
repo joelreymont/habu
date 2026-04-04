@@ -1,0 +1,128 @@
+{
+  "source_test": "../maxima/tests/rtest1.mac",
+  "inventory_kind": "clean-path-failure-classification",
+  "coarse_buckets": [
+    "reader",
+    "package",
+    "compiler",
+    "conditions",
+    "streams/pathnames",
+    "numeric tower",
+    "CLOS/MOP",
+    "GC/JIT"
+  ],
+  "entries": [
+    {
+      "problem": 125,
+      "bucket": "compiler",
+      "subsystem": "noun/list operator lowering",
+      "input_line": 438,
+      "expect_line": 439,
+      "input": "block([simp:false], ?cons(?list('?mplus,'?foo, '?bar),?cdr([1,5,3])), string(%%))",
+      "expect": "\"1+5+3\""
+    },
+    {
+      "problem": 128,
+      "bucket": "numeric tower",
+      "subsystem": "compar/orderlessp string ordering",
+      "input_line": 449,
+      "expect_line": 450,
+      "input": "orderlessp (\"Aa\", \"B1\")",
+      "expect": "true"
+    },
+    {
+      "problem": 129,
+      "bucket": "numeric tower",
+      "subsystem": "compar/orderlessp string ordering",
+      "input_line": 452,
+      "expect_line": 453,
+      "input": "orderlessp (\"Aa\", \"Ba\")",
+      "expect": "true"
+    },
+    {
+      "problem": 130,
+      "bucket": "numeric tower",
+      "subsystem": "compar/orderlessp symbol ordering setup",
+      "input_line": 455,
+      "expect_line": 456,
+      "input": "kill (A1, B1, Aa, Ba)",
+      "expect": "done"
+    },
+    {
+      "problem": 131,
+      "bucket": "numeric tower",
+      "subsystem": "compar/orderlessp symbol ordering",
+      "input_line": 458,
+      "expect_line": 459,
+      "input": "orderlessp (A1, B1)",
+      "expect": "true"
+    },
+    {
+      "problem": 150,
+      "bucket": "numeric tower",
+      "subsystem": "compar/orderlessp additive canonicalization",
+      "input_line": 529,
+      "expect_line": 530,
+      "input": "(q+r+s)-(q+s+r)",
+      "expect": "0"
+    },
+    {
+      "problem": 190,
+      "bucket": "reader",
+      "subsystem": "nparse unicode whitespace",
+      "input_line": 746,
+      "expect_line": 747,
+      "input": "errcatch (parse_string (\"ex: \u200b23;\"))",
+      "expect": "[ex: 23]"
+    },
+    {
+      "problem": 191,
+      "bucket": "reader",
+      "subsystem": "nparse for..in..thru grammar",
+      "input_line": 751,
+      "expect_line": 752,
+      "input": "errcatch (parse_string (\"for i in [1, 2, 3, 4] thru 3 do print (i)\"))",
+      "expect": "[]"
+    },
+    {
+      "problem": 192,
+      "bucket": "reader",
+      "subsystem": "nparse thru-prefix grammar",
+      "input_line": 753,
+      "expect_line": 754,
+      "input": "errcatch (parse_string (\"thru 3 for i in [1, 2, 3, 4] do print (i)\"))",
+      "expect": "[]"
+    },
+    {
+      "problem": 193,
+      "bucket": "reader",
+      "subsystem": "nparse ibase transition",
+      "input_line": 758,
+      "expect_line": 759,
+      "input": "ibase: 16.",
+      "expect": "16."
+    },
+    {
+      "problem": 194,
+      "bucket": "reader",
+      "subsystem": "nparse unicode whitespace table",
+      "input_line": 762,
+      "expect_line": 764,
+      "input": "(space_chars: map (unicode, [ 00A0, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 200A, 200B, 202F, 205F ]), ibase: 10.)",
+      "expect": "10."
+    },
+    {
+      "problem": 195,
+      "bucket": "reader",
+      "subsystem": "nparse unicode whitespace list parsing",
+      "input_line": 766,
+      "expect_line": 769,
+      "input": "(nn: makelist (100 + i, i, 1, length (space_chars)), apply (sconcat, flatten (append ([\"[\", 100], map (lambda ([s, n], [\",\", s, n]), space_chars, nn), [\"];\"]))), parse_string (%%))",
+      "expect": "''(cons (100, nn))"
+    }
+  ],
+  "notes": [
+    "Residual problem ids come from the focused clean-path residue set tracked in .dots/habu-finish-curr-maxima-51d5d460.md.",
+    "Problem ids 196 and 199 are not present in the current direct pair-count of ../maxima/tests/rtest1.mac and need renumber reconciliation before any further problem-id-specific fix dot is opened."
+  ]
+}

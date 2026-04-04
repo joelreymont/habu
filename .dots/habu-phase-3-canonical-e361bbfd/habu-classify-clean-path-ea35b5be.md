@@ -1,9 +1,11 @@
 ---
 title: Classify clean-path rtest1 failures
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.266993+02:00"
+created-at: "\"2026-04-01T22:06:02.266993+02:00\""
+closed-at: "2026-04-04T17:43:59.818372+02:00"
+close-reason: "done: added docs/maxima-rtest1-clean-path.json with concrete problem ids, source lines, coarse buckets, and subsystem owners; also surfaced stale historical ids 196/199 for renumber reconciliation"
 blocks:
   - habu-make-test-batch-57fe1a9d
 ---
