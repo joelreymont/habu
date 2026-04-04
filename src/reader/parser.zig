@@ -34,6 +34,7 @@ pub const Error = error{
     InvalidPackage,
     SymbolNotExternal,
     Overflow,
+    InvalidArgument,
 };
 
 pub const Parser = struct {
@@ -702,12 +703,15 @@ pub const Parser = struct {
     }
 
     fn parsePathname(self: *Parser) Error!Value {
-        const path_str = try self.parseString();
+        const text = self.current.text;
+        self.advance();
 
-        // Build (parse-namestring "path")
-        const parse_namestring_sym = try self.internSymbol("parse-namestring");
-        const args = try self.heap.allocCons(path_str, Value.nil);
-        return try self.heap.allocCons(parse_namestring_sym, args);
+        if (text.len < 4 or text[0] != '#' or (text[1] != 'P' and text[1] != 'p') or text[2] != '"') {
+            return error.UnexpectedToken;
+        }
+
+        const path_str = try self.allocStringLiteral(text[3 .. text.len - 1]);
+        return try primitives.pathname.parseNamestring(self.alloc, self.heap, path_str);
     }
 
     fn parseQuote(self: *Parser, quote_name: []const u8) Error!Value {
@@ -883,6 +887,11 @@ pub const Parser = struct {
         if (text.len >= 2) {
             text = text[1 .. text.len - 1];
         }
+
+        return try self.allocStringLiteral(text);
+    }
+
+    fn allocStringLiteral(self: *Parser, text: []const u8) Error!Value {
 
         // Check if we need to decode escapes or if string has non-ASCII
         const has_escape = std.mem.indexOf(u8, text, "\\") != null;
@@ -2357,16 +2366,39 @@ test "parse #P pathname" {
     var vm = try Vm.init(testing.allocator, &heap);
     defer vm.deinit();
 
-    // #P"/path/to/file" -> (parse-namestring "/path/to/file")
+    // #P"/path/to/file" -> pathname object
     var parser = try Parser.init(testing.allocator, &heap, "#P\"/path/to/file\"", &vm.builtins);
+    defer parser.deinit();
+
+    const result = try parser.parse();
+    try testing.expect(result.isPathname());
+
+    const ns = try primitives.pathname.namestring(testing.allocator, &heap, &vm.builtins, result);
+    try testing.expectEqualStrings("/path/to/file", ns.toPtr(objects.String).bytes());
+}
+
+test "parse quoted #P pathname remains pathname constant" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    var parser = try Parser.init(testing.allocator, &heap, "'(#P\"/path/to/file\")", &vm.builtins);
     defer parser.deinit();
 
     const result = try parser.parse();
     try testing.expect(result.isCons());
 
-    const cons = result.toPtr(objects.Cons);
-    const sym = cons.car.toPtr(objects.Symbol);
-    try testing.expectEqualStrings("PARSE-NAMESTRING", sym.getName());
+    const outer = result.toPtr(objects.Cons);
+    try testing.expect(outer.car.isSymbol());
+    try testing.expectEqualStrings("QUOTE", outer.car.toPtr(objects.Symbol).getName());
+
+    const quoted = outer.cdr.toPtr(objects.Cons).car;
+    try testing.expect(quoted.isCons());
+    try testing.expect(quoted.toPtr(objects.Cons).car.isPathname());
 }
 
 test "parse #C complex number" {

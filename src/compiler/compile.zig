@@ -3112,6 +3112,11 @@ pub const Compiler = struct {
             return try self.builder.lit(live_expr);
         }
 
+        // Pathname literals are self-evaluating.
+        if (live_expr.isPathname()) {
+            return try self.builder.lit(live_expr);
+        }
+
         // Symbol (variable reference or symbol macro)
         if (live_expr.isSymbol()) {
             // Check for symbol macros first

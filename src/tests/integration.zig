@@ -6962,6 +6962,37 @@ test "probe-file returns canonical truename pathname" {
     try testing.expectEqualStrings(abs_path, try asString(result));
 }
 
+test "quoted #p literal stays a pathname object" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(pathnamep (car '(#p\"/tmp/habu\")))");
+    try testing.expect(result.isT());
+}
+
+test "defstruct accepts pathname initform literal" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defstruct pn-holder (path #p\"/tmp/habu\" :type pathname))");
+    const result = try repl.eval("(pathnamep (pn-holder-path (make-pn-holder)))");
+    try testing.expect(result.isT());
+}
+
 test "probe-file returns nil for missing path" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

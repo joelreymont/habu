@@ -468,6 +468,7 @@ This plan is done only when:
   - make stream/path query results use canonical `COMMON-LISP` type/designator symbols,
   - make `probe-file` / `truename` semantics canonical and truthful at the primitive path layer, with distinct CL failure contracts,
   - close pathname object algebra and component fidelity: roundtrip semantics for `namestring`/`parse-namestring`, canonical `merge-pathnames` composition, component accessors, wildcard predicates, and homedir/host handling,
+  - make `#p` reader literals allocate pathname objects at read time instead of leaking `(parse-namestring ...)` forms into constants and defaults,
   - use one canonical pathname-designator serialization path across `namestring`, `truename`, directory creation, and filesystem primitives,
   - make primitive `open`/file-create/designator operations consume canonical pathname designators instead of raw cwd-relative strings,
   - bring ordinary file query/read/write helpers under the same canonical/trusted-root contract as `open`,
