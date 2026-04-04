@@ -18100,6 +18100,11 @@ pub const Compiler = struct {
                 node.* = .{ .disassemble = .{ .operand = operand } };
                 break :blk node;
             },
+            .get_macro_character => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .get_macro_character = .{ .operand = operand } };
+                break :blk node;
+            },
             .read_char_stream => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .read_char_stream = .{ .operand = operand } };

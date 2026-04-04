@@ -7808,17 +7808,19 @@ pub const Vm = struct {
                 const char_code = char_val.toCharacter();
                 if (char_code > 255) {
                     try self.push(Value.nil);
-                    try self.push(Value.nil);
+                    self.secondary_values[0] = Value.nil;
+                    self.secondary_values_count = 1;
                 } else {
                     const byte: u8 = @intCast(char_code);
                     const entry = self.heap.readtable.get(byte);
                     if (entry) |e| {
                         try self.push(e.function);
-                        try self.push(if (e.non_terminating) Value.t else Value.nil);
+                        self.secondary_values[0] = if (e.non_terminating) Value.t else Value.nil;
                     } else {
                         try self.push(Value.nil);
-                        try self.push(Value.nil);
+                        self.secondary_values[0] = Value.nil;
                     }
+                    self.secondary_values_count = 1;
                 }
             },
 
@@ -8660,7 +8662,7 @@ pub const Vm = struct {
         // - Consumes multiple values (mv_list, mv_bind — they clear it themselves)
         // - Returns from a function (ret — caller may need secondary values)
         switch (op) {
-            .values, .values_list, .ret, .get_decoded_time, .decode_universal_time, .decode_float, .integer_decode_float, .function_lambda_expression, .jmp, .jmp_nil, .jmp_not_nil, .push_block, .pop_block, .mv_list, .mv_bind, .floor, .ceiling, .round, .call, .tail_call, .read_from_string, .hash_get, .intern, .pop_progv, .pop_catch, .pop_unwind, .push_progv, .push_catch, .push_unwind => {},
+            .values, .values_list, .ret, .get_decoded_time, .decode_universal_time, .decode_float, .integer_decode_float, .function_lambda_expression, .jmp, .jmp_nil, .jmp_not_nil, .push_block, .pop_block, .mv_list, .mv_bind, .floor, .ceiling, .round, .call, .tail_call, .read_from_string, .hash_get, .intern, .get_macro_character, .pop_progv, .pop_catch, .pop_unwind, .push_progv, .push_catch, .push_unwind => {},
             else => {
                 self.secondary_values_count = 0;
             },

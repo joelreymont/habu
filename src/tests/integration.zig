@@ -7764,6 +7764,32 @@ test "dispatch macro character executes during read-from-string" {
     try testing.expect(!result.isNil());
 }
 
+test "get-macro-character returns primary and secondary values" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(progn
+        \\  (defun habu-test-reader (stream char)
+        \\    (declare (ignore stream char))
+        \\    'ok)
+        \\  (set-macro-character #\_ #'habu-test-reader t)
+        \\  (let ((vals (multiple-value-list (get-macro-character #\_))))
+        \\    (and (= (length vals) 2)
+        \\         (functionp (car vals))
+        \\         (eq (cadr vals) t))))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(!result.isNil());
+}
+
 test "dispatch macro callback preserves errset result flow" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

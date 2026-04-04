@@ -306,6 +306,23 @@ This plan is done only when:
   - the same expansion bug can hide behind other control macros and must be fixed at the generic expansion boundary.
 - Effort: M
 
+#### 1.4b Make `LOOP` clause ordering match ANSI per-iteration semantics
+- Goal: G1, G2
+- Files: `lib/stdlib.habu:4877-6202`, `src/tests/integration.zig`, `../maxima/src/intl.lisp:104-106`
+- Depends on: 1.4a
+- Work:
+  - keep iterator exhaustion tests separate from `WHILE`/`UNTIL` guard tests,
+  - run clause-generated per-iteration bindings such as `AS var = expr` before later guards consume them,
+  - prove the exact upstream `intl.lisp` shape `loop for i upfrom ... below ... as c = ... while ...` terminates and returns,
+  - keep the fix generic to all `LOOP` users.
+- Acceptance:
+  - `(loop for i upfrom 1 below 4 as c = (* i 10) while (< c 30) collect c)` returns `(10 20)`,
+  - `maxima-try-load "../maxima/src/" "intl"` returns instead of failing or stalling,
+  - no Maxima-local patching or loop-shape special casing is introduced.
+- Risk:
+  - additional `LOOP` clause-order bugs may surface immediately once `intl.lisp` completes.
+- Effort: M
+
 #### 1.5 Remove whole-file loader caps and make load scalable
 - Goal: G1, G2
 - Files: `src/interp/repl.zig:2096`
