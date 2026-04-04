@@ -1,0 +1,7 @@
+(load "lib/maxima-manifest.lisp")
+(load "lib/maxima-loader.lisp")
+(maxima-load-all :verbose nil)
+(load "lib/maxima-post-load.lisp")
+(in-package :maxima)
+(format t "RES=~S~%" '((q+r+s)-(q+s+r)))
+(format t "SIMP=~S~%" '((q+r+s)-(q+s+r), ratsimp((q+r+s)-(q+s+r)), is(((q+r+s)-(q+s+r))=0), orderlessp("Aa","B1"), orderlessp("Aa","Ba"), (kill(A1,B1,Aa,Ba), orderlessp(A1,B1))))
