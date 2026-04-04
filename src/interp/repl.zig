@@ -1287,6 +1287,60 @@ pub const Repl = struct {
         try self.setGlobal(qname, live_value);
     }
 
+    fn setPackageGlobal(
+        self: *Repl,
+        pkg_name: []const u8,
+        sym_name: []const u8,
+        value: Value,
+    ) !bool {
+        if ((try self.heap.findLispPackageBytes(pkg_name)) == null) return false;
+        _ = (try self.heap.internInPackage(pkg_name, sym_name)) orelse return false;
+        var buf: [256]u8 = undefined;
+        const qname = try std.fmt.bufPrint(&buf, "{s}:{s}", .{ pkg_name, sym_name });
+        try self.setGlobal(qname, value);
+        return true;
+    }
+
+    fn allocStringListRooted(self: *Repl, roots: *std.ArrayList(Value), items: []const []const u8) !Value {
+        const start = roots.items.len;
+        for (items) |item| {
+            try roots.append(self.allocator, try self.vm.allocString(item));
+        }
+        return try self.heap.listFromSlice(roots.items[start..]);
+    }
+
+    pub fn publishCommandLineArgs(self: *Repl, script_args: []const []const u8, posix_argv: []const []const u8) !void {
+        const saved_ext = try self.vm.saveExtRoots();
+        const saved_ext_roots = saved_ext.roots;
+        if (saved_ext_roots.len != 0) {
+            for (saved_ext_roots) |*val| {
+                val.* = self.vm.resolveForwardedValue(val.*);
+            }
+        }
+
+        var roots = std.ArrayList(Value){};
+        defer roots.deinit(self.allocator);
+        try roots.ensureTotalCapacity(self.allocator, saved_ext_roots.len + script_args.len + posix_argv.len + 2);
+        if (saved_ext_roots.len != 0) {
+            try roots.appendSlice(self.allocator, saved_ext_roots);
+        }
+        self.vm.setExtRootsOwned(&roots);
+        defer self.vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext_roots.len);
+
+        const script_list = try self.allocStringListRooted(&roots, script_args);
+        const script_args_idx = roots.items.len;
+        try roots.append(self.allocator, script_list);
+        const posix_list = try self.allocStringListRooted(&roots, posix_argv);
+        const posix_argv_idx = roots.items.len;
+        try roots.append(self.allocator, posix_list);
+
+        _ = try self.setPackageGlobal("COMMON-LISP-USER", "*COMMAND-LINE-ARGS*", roots.items[script_args_idx]);
+        roots.items[script_args_idx] = self.vm.resolveForwardedValue(roots.items[script_args_idx]);
+        _ = try self.setPackageGlobal("COMMON-LISP", "*COMMAND-LINE-ARGS*", roots.items[script_args_idx]);
+        _ = try self.setPackageGlobal("SB-EXT", "*POSIX-ARGV*", roots.items[posix_argv_idx]);
+        roots.items[posix_argv_idx] = self.vm.resolveForwardedValue(roots.items[posix_argv_idx]);
+    }
+
     fn createFeaturesGlobal(self: *Repl) !void {
         const b = self.compiler.builtins.?;
         var features = Value.nil;

@@ -12,13 +12,30 @@
 (load "lib/stdlib.habu")
 (load "lib/maxima-manifest.lisp")
 (load "lib/maxima-loader.lisp")
-(maxima-load-all :verbose nil)
+
+(defun habu-rtest-count (x)
+  (cond ((null x) 0)
+        ((consp x) (length (cdr x)))
+        (t 0)))
+
+(defun habu-ensure-clean-loader ()
+  (multiple-value-bind (ok total fail missing attempted)
+      (maxima-load-all :verbose nil)
+    (when (or (/= fail 0)
+              (/= attempted total)
+              *maxima-failed*
+              missing)
+      (error "[HABU-RTEST] refusing dirty loader state: ok=~A total=~A fail=~A attempted=~A missing=~S failed=~S"
+             ok total fail attempted missing *maxima-failed*))
+    (values ok total fail attempted)))
+
+(habu-ensure-clean-loader)
 (load "lib/maxima-post-load.lisp")
 (in-package :maxima)
 
 (defun habu-normalize-test-name (name)
   (cond ((stringp name) name)
-        ((symbolp name) (subseq (print-invert-case name) 1))
+        ((symbolp name) (string-downcase (symbol-name name)))
         (t (format nil "~A" name))))
 
 (defun habu-testsuite-entry-name (entry)
@@ -40,29 +57,26 @@
                    (equal (habu-testsuite-entry-name entry) target))
                  (cdr $share_testsuite_files)))))
 
-(defun habu-resolve-rtest-path (name)
-  (let* ((target (habu-normalize-test-name name))
-         (testsdir (habu-maxima-manifest-value :testsdir)))
+(defun habu-resolve-rtest-path (entry)
+  (let ((target (habu-testsuite-entry-name entry)))
     (or (handler-case ($file_search target $file_search_tests)
           (condition (e) nil))
         (handler-case ($file_search target $file_search_maxima)
-          (condition (e) nil))
-        (and testsdir
-             (format nil "~A~A.mac" testsdir target)))))
+          (condition (e) nil)))))
 
 (defun run-rtest (name &key (show-all nil) (show-known-bugs nil) (showtime nil) (answers-from-file t))
   (let* ((entry (habu-find-testsuite-entry name))
-         (expected-failures (if entry
-                                (habu-testsuite-entry-expected-failures entry)
-                                nil))
-         (path (habu-resolve-rtest-path name))
+         (expected-failures (and entry
+                                 (habu-testsuite-entry-expected-failures entry)))
+         (path (and entry (habu-resolve-rtest-path entry)))
          (filename nil)
          (diff nil)
          (unexpected-pass nil)
          (total nil))
+    (unless entry
+      (error "[HABU-RTEST] unknown canonical test ~A" name))
     (unless path
-      (format t "Cannot resolve ~A~%" name)
-      (return-from run-rtest nil))
+      (error "[HABU-RTEST] cannot resolve canonical test path for ~A" name))
     (let (($batch_answers_from_file answers-from-file))
       (declare (special $batch_answers_from_file))
       (or (errset
@@ -71,14 +85,16 @@
                           :show-expected show-known-bugs
                           :show-all show-all
                           :showtime showtime)))
-          (progn
-            (format t "~%[HABU-RTEST] canonical test-batch hit an error break for ~A~%" path)
-            (return-from run-rtest nil)))
-      (format t "~%[HABU-RTEST] file=~A total=~A diffs=~A unexpected-pass=~A~%"
-              filename
-              total
-              (length (cdr diff))
-              (length (cdr unexpected-pass)))
+          (error "[HABU-RTEST] canonical test-batch hit an error break for ~A" path))
+      (let ((diff-count (habu-rtest-count diff))
+            (unexpected-pass-count (habu-rtest-count unexpected-pass)))
+        (format t "~%[HABU-RTEST] file=~A total=~A diffs=~A unexpected-pass=~A~%"
+                filename
+                total
+                diff-count
+                unexpected-pass-count)
+        (when (or (> diff-count 0) (> unexpected-pass-count 0))
+          (error "[HABU-RTEST] canonical test-batch failed for ~A" filename)))
       (values filename diff unexpected-pass total))))
 
 (let* ((args (and (boundp '*command-line-args*) *command-line-args*))

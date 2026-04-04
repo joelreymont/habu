@@ -1,9 +1,11 @@
 ---
 title: Finish structure defaults and accessors
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.158300+02:00"
+created-at: "\"2026-04-01T22:06:02.158300+02:00\""
+closed-at: "2026-04-04T17:09:45.098380+02:00"
+close-reason: "done earlier: default initforms, copy-structure, BOA/multiple constructors, accessors/setf, and print-function coverage are in tree; see src/tests/integration.zig defstruct regressions and lib/stdlib.habu/src/compiler/compile.zig cutover"
 blocks:
   - habu-implement-upstream-defstruct-7cec3e67
 ---
