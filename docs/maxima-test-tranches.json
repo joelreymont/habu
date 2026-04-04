@@ -1,0 +1,326 @@
+{
+  "source": "../maxima/src/testsuite.lisp",
+  "kind": "maxima-test-tranches",
+  "core": [
+    {
+      "id": "core-01",
+      "owner": "core-01",
+      "expected_runtime": "medium",
+      "tests": [
+        "rtest_ask1",
+        "rtest_sqdnst",
+        "rtest_extensions",
+        "rtest_rules",
+        "rtestnset",
+        "rtest1",
+        "rtest1a",
+        "rtest2"
+      ]
+    },
+    {
+      "id": "core-02",
+      "owner": "core-02",
+      "expected_runtime": "medium",
+      "tests": [
+        "rtest4",
+        "rtest5",
+        "rtest6",
+        "rtest6a",
+        "rtest6b",
+        "rtest7",
+        "rtest9",
+        "rtest9a"
+      ]
+    },
+    {
+      "id": "core-03",
+      "owner": "core-03",
+      "expected_runtime": "long",
+      "tests": [
+        "rtest10",
+        "rtest11",
+        "rtest13",
+        "rtest13s",
+        "rtest14",
+        "rtest15",
+        "rtest16",
+        "rtestode"
+      ]
+    },
+    {
+      "id": "core-04",
+      "owner": "core-04",
+      "expected_runtime": "long",
+      "tests": [
+        "rtestode_zp",
+        "rtest3",
+        "rtest8",
+        "rtest12",
+        "rexamples",
+        "rtesthyp",
+        "rtest_hypgeo",
+        "rtestmt19937"
+      ]
+    },
+    {
+      "id": "core-05",
+      "owner": "core-05",
+      "expected_runtime": "medium",
+      "tests": [
+        "rtest_allnummod",
+        "rtest_maxmin",
+        "rtestconjugate",
+        "rtestsum",
+        "rtest_trig",
+        "rtest_zeta",
+        "rtest_diff_invtrig",
+        "rtest_scalarp"
+      ]
+    },
+    {
+      "id": "core-06",
+      "owner": "core-06",
+      "expected_runtime": "medium",
+      "tests": [
+        "rtest_everysome",
+        "rtestint",
+        "rtest_numth",
+        "rtestifactor",
+        "rtest_equal",
+        "rtest_abs",
+        "rtest_taylor",
+        "rtest_dot"
+      ]
+    },
+    {
+      "id": "core-07",
+      "owner": "core-07",
+      "expected_runtime": "long",
+      "tests": [
+        "rtest_mset",
+        "rtest_boolean",
+        "rtest_round",
+        "rtest_map",
+        "rtest_sign",
+        "rtest_algebraic",
+        "rtest_gamma",
+        "rtest_expintegral"
+      ]
+    },
+    {
+      "id": "core-08",
+      "owner": "core-08",
+      "expected_runtime": "long",
+      "tests": [
+        "rtest_signum",
+        "rtest_lambert_w",
+        "rtest_elliptic",
+        "rtest_integrate",
+        "rtest_integrate_special",
+        "rtest_sqrt",
+        "rtest_carg",
+        "rtest_log"
+      ]
+    },
+    {
+      "id": "core-09",
+      "owner": "core-09",
+      "expected_runtime": "long",
+      "tests": [
+        "rtest_power",
+        "rtestdefstruct",
+        "rtest_limit",
+        "rtest_powerseries",
+        "rtest_laplace",
+        "rtest_plotoptions",
+        "rtest_algsys",
+        "rtest_trace"
+      ]
+    },
+    {
+      "id": "core-10",
+      "owner": "core-10",
+      "expected_runtime": "long",
+      "tests": [
+        "rtest_polynomialp",
+        "rtest_limit_extra",
+        "rtest_limit_gruntz",
+        "rtest_limit_wester",
+        "rtest_gcd",
+        "rtest_hg",
+        "rtest_nfloat",
+        "rtest_ilt"
+      ]
+    },
+    {
+      "id": "core-11",
+      "owner": "core-11",
+      "expected_runtime": "short",
+      "tests": [
+        "ulp_tests",
+        "rtest_unicode_display",
+        "rtest_setvar"
+      ]
+    }
+  ],
+  "share": [
+    {
+      "id": "share-01",
+      "owner": "share-01",
+      "expected_runtime": "short",
+      "tests": [
+        "rtest_facexp",
+        "rtest_orthopoly",
+        "rtest_pslq",
+        "rtestflatten",
+        "rtest_z_transform",
+        "rtest_zeilberger_extreme"
+      ]
+    },
+    {
+      "id": "share-02",
+      "owner": "share-02",
+      "expected_runtime": "short",
+      "tests": [
+        "rtest_zeilberger",
+        "rtest_boolsimp",
+        "rtest_eigen",
+        "rtest_lsquares",
+        "rtest_pytranslate",
+        "rtest_odelin"
+      ]
+    },
+    {
+      "id": "share-03",
+      "owner": "share-03",
+      "expected_runtime": "short",
+      "tests": [
+        "rtestezunits",
+        "rtest_numericalio",
+        "rtest_simplify_sum",
+        "rtest_solve_rec",
+        "rtest_stringproc",
+        "rtest_md5sum"
+      ]
+    },
+    {
+      "id": "share-04",
+      "owner": "share-04",
+      "expected_runtime": "short",
+      "tests": [
+        "rtest_opproperties",
+        "rtest_stats",
+        "rtest_distrib",
+        "rtest_descriptive",
+        "rtest_interpol",
+        "rtest_levin"
+      ]
+    },
+    {
+      "id": "share-05",
+      "owner": "share-05",
+      "expected_runtime": "long",
+      "tests": [
+        "rtest_fractals",
+        "rtest_bernstein",
+        "rtest_atensor",
+        "rtest_ctensor",
+        "rtest_itensor",
+        "rtest_dgemm"
+      ]
+    },
+    {
+      "id": "share-06",
+      "owner": "share-06",
+      "expected_runtime": "long",
+      "tests": [
+        "rtest_dgeqrf",
+        "rtest_dgesv",
+        "rtest_dlsode",
+        "rtest_fourier_elim",
+        "rtest_sequence",
+        "rtest_cholesky"
+      ]
+    },
+    {
+      "id": "share-07",
+      "owner": "share-07",
+      "expected_runtime": "short",
+      "tests": [
+        "rtest_eigens_by_jacobi",
+        "rtest_lu",
+        "rtest_linalg",
+        "rtest_matrixexp",
+        "rtest_romberg",
+        "rtest_wilcoxon"
+      ]
+    },
+    {
+      "id": "share-08",
+      "owner": "share-08",
+      "expected_runtime": "short",
+      "tests": [
+        "rtest_bitwise",
+        "rtest_gf",
+        "rtest_arag",
+        "rtest_pdiff",
+        "rtest_to_poly",
+        "rtestprintf"
+      ]
+    },
+    {
+      "id": "share-09",
+      "owner": "share-09",
+      "expected_runtime": "short",
+      "tests": [
+        "rtest_simplex",
+        "rtest_graphs",
+        "rtest_abs_integrate",
+        "rtest_pochhammer",
+        "rtest_to_poly_solve",
+        "rtest_sym"
+      ]
+    },
+    {
+      "id": "share-10",
+      "owner": "share-10",
+      "expected_runtime": "short",
+      "tests": [
+        "rtest_mnewton",
+        "rtest_solve_rat_ineq",
+        "rtest_vect",
+        "rtest_antid",
+        "rtest_bffac",
+        "rtest_diff_form"
+      ]
+    },
+    {
+      "id": "share-11",
+      "owner": "share-11",
+      "expected_runtime": "short",
+      "tests": [
+        "rtest_grobner",
+        "rtest_finance",
+        "rtest_fft",
+        "rtest_rfft",
+        "rtest_wrstcse",
+        "rtest_draw"
+      ]
+    },
+    {
+      "id": "share-12",
+      "owner": "share-12",
+      "expected_runtime": "short",
+      "tests": [
+        "rtest_engineering_format",
+        "rtest_raddenest",
+        "rtest_decfp"
+      ]
+    }
+  ],
+  "notes": [
+    "Tranches preserve upstream testsuite order exactly; no local reordering.",
+    "owner is an explicit deterministic tranche token for follow-on dot ownership.",
+    "expected_runtime is derived from tranche membership in a maintained heavy-test set plus tranche size."
+  ]
+}
