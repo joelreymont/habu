@@ -11,9 +11,11 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const use_hoist = b.option(bool, "use-hoist", "Enable Hoist JIT backend") orelse true;
+    const project_root = b.pathFromRoot(".");
 
     const build_opts = b.addOptions();
     build_opts.addOption(bool, "use_hoist", use_hoist);
+    build_opts.addOption([]const u8, "project_root", project_root);
 
     // Main executable
     const exe = b.addExecutable(.{

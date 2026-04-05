@@ -1,7 +1,13 @@
 ;; Authoritative Maxima source manifest for Habu.
 
+(defun habu-manifest-base-dir ()
+  (let ((path (or *load-truename* *load-pathname*)))
+    (unless path
+      (error "maxima manifest requires *LOAD-TRUENAME* or *LOAD-PATHNAME*"))
+    (directory-namestring path)))
+
 (defparameter *habu-maxima-root-candidates*
-  '("../maxima/"))
+  (list (concatenate 'string (habu-manifest-base-dir) "../../maxima/")))
 
 (defparameter *habu-maxima-files*
   '(

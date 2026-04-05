@@ -57,7 +57,6 @@
     (symbol-function sym)))
 
 (defun habu-load-testsuite-registry ()
-  (%add-trusted-load-root (habu-absolute-maxima-root))
   (load (habu-maxima-package-init-file))
   (load "lib/maxima-stubs.lisp")
   (load (habu-maxima-testsuite-file)))

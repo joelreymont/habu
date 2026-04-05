@@ -58,7 +58,6 @@ pub const BuiltinCallableTag = enum(usize) {
     count,
     remove,
     intern,
-    add_trusted_load_root,
     make_broadcast_stream,
     make_concatenated_stream,
     make_instance,
@@ -820,8 +819,6 @@ pub const Vm = struct {
     /// Callback for (load "filename") - set by REPL
     load_callback: ?*const fn ([]const u8, *anyopaque) Error!Value,
     load_context: ?*anyopaque,
-    trusted_load_root_callback: ?*const fn ([]const u8, *anyopaque) Error!Value,
-    trusted_load_root_context: ?*anyopaque,
 
     /// Callback for (eval expr) - set by REPL
     eval_callback: ?*const fn (Value, *anyopaque) Error!Value,
@@ -1310,8 +1307,6 @@ pub const Vm = struct {
             .global_env = null,
             .load_callback = null,
             .load_context = null,
-            .trusted_load_root_callback = null,
-            .trusted_load_root_context = null,
             .eval_callback = null,
             .eval_context = null,
             .macroexpand_callback = null,
@@ -1472,11 +1467,6 @@ pub const Vm = struct {
     pub fn setLoadCallback(self: *Vm, callback: *const fn ([]const u8, *anyopaque) Error!Value, context: *anyopaque) void {
         self.load_callback = callback;
         self.load_context = context;
-    }
-
-    pub fn setTrustedLoadRootCallback(self: *Vm, callback: *const fn ([]const u8, *anyopaque) Error!Value, context: *anyopaque) void {
-        self.trusted_load_root_callback = callback;
-        self.trusted_load_root_context = context;
     }
 
     /// Set the eval callback for (eval expr)
@@ -9771,12 +9761,6 @@ pub const Vm = struct {
             .count => return try self.countBuiltin(args),
             .remove => return try self.removeBuiltin(args),
             .intern => return try self.internBuiltin(args),
-            .add_trusted_load_root => {
-                try requireArgCount(args, 1, 1);
-                const cb = self.trusted_load_root_callback orelse return error.UnboundSymbol;
-                const path = try primitives.pathname.pathDesignatorBytes(self.allocator, self.heap, &self.builtins, args[0]);
-                return try cb(path, self.trusted_load_root_context.?);
-            },
             .make_broadcast_stream => return try self.heap.allocBroadcastStream(try self.argsList(args)),
             .make_concatenated_stream => return try self.heap.allocConcatenatedStream(try self.argsList(args)),
             .make_instance => return try primitives.makeInstance(self.heap, try self.argsList(args)),

@@ -8,6 +8,17 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ## Session Notes (2026-04-04)
 
+## Session Notes (2026-04-05)
+
+### Worked Well
+- Sealing trusted load roots in Zig is the right cutover. `src/interp/repl.zig:118-119,162-183,218,1464-1471` now seeds trust from a compiled-in project root plus the validated sibling `../maxima` tree instead of launch CWD, and `src/main.zig:89-97` opts script directories in explicitly before script load.
+- Removing the Lisp-visible trust mutator is safe once bootstrap owns the roots. Cutting `%add-trusted-load-root` out of `src/interp/vm.zig:44-60,816-821,1471-1478,9768-9778`, `src/compiler/compile.zig:482-490,1110-1118,16268-16290`, `lib/maxima-loader.lisp:9-15`, and `tools/maxima-rtest.lisp:58-63` removed a runtime trust-widening path instead of trying to paper over it.
+- Manifest root candidates need to derive from the manifest file location, not ambient CWD. `lib/maxima-manifest.lisp:3-10` now anchors `../maxima` off `*LOAD-TRUENAME*` / `*LOAD-PATHNAME*`, which is the correct boundary for authoritative Maxima source discovery.
+- Canonical path containment must compare real paths, not mixed alias spellings. `src/interp/repl.zig:2202-2248` now canonicalizes existing file paths before trusted-root containment, which fixes the `/tmp` vs `/private/tmp` mismatch that made explicit host-side root opt-in look broken on macOS.
+
+### Did Not Work
+- Treating `zig build` success plus one `/tmp` script proof as full closure was premature. Absolute script loads from repo subdirectories still hit a generic `NotDir` path after the root-contract cutover (`src/interp/repl.zig` load path), so authoritative repo-subdir script entrypoints still need a focused follow-up before this area is fully closed.
+
 ### Worked Well
 - When canonical execution advances, the plan must be rewritten around the new front-door blocker immediately. `PLAN.md:55-65,470-517,687-689` now names the real `rtest6` parser/operator floor, the downstream `rtest6` callable semantics floor, the `rtest6b` successor slice, and blocks Phase 4 on Phase 3 instead of the older, looser dependency.
 - When a read-time literal starts failing only after you remove a fake wrapper, check whether the reader has been returning executable forms instead of self-evaluating objects. `src/reader/parser.zig:705-715,876-905` was turning `#p"..."` into `(PARSE-NAMESTRING ...)`, which looked fine at the REPL because it got evaluated immediately, but it leaked cons cells into quoted constants and DEFVAR initforms like `INTL:*LOCALE-DIRECTORIES*`.

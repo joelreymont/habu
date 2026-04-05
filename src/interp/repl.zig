@@ -7,6 +7,7 @@
 //! - VM (bytecode execution)
 
 const std = @import("std");
+const build_options = @import("build_options");
 const reader = @import("../reader/reader.zig");
 const Parser = reader.Parser;
 const compiler = @import("../compiler/compiler.zig");
@@ -135,6 +136,54 @@ pub const Repl = struct {
         return std.fmt.parseInt(usize, raw, 10) catch null;
     }
 
+    fn appendTrustedRootUnique(self: *Repl, root: []u8) !void {
+        for (self.trusted_load_roots.items) |existing| {
+            if (std.mem.eql(u8, existing, root)) {
+                self.allocator.free(root);
+                return;
+            }
+        }
+        try self.trusted_load_roots.append(self.allocator, root);
+    }
+
+    fn canonicalDirPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+        const candidate = try std.fs.path.resolve(allocator, &.{path});
+        errdefer allocator.free(candidate);
+
+        var buf: [std.fs.max_path_bytes]u8 = undefined;
+        const real = try std.posix.realpath(candidate, &buf);
+        allocator.free(candidate);
+
+        var dir = try std.fs.openDirAbsolute(real, .{});
+        defer dir.close();
+        return try allocator.dupe(u8, real);
+    }
+
+    fn appendDefaultTrustedRoots(self: *Repl) !void {
+        self.trusted_load_root = try canonicalDirPath(self.allocator, build_options.project_root);
+        try self.appendTrustedRootUnique(try self.allocator.dupe(u8, self.trusted_load_root));
+
+        const parent = std.fs.path.dirname(self.trusted_load_root) orelse return;
+        const maxima_candidate = try std.fs.path.resolve(self.allocator, &.{ parent, "maxima" });
+        defer self.allocator.free(maxima_candidate);
+
+        const maxima_root = canonicalDirPath(self.allocator, maxima_candidate) catch |err| switch (err) {
+            error.FileNotFound, error.NotDir => return,
+            else => return err,
+        };
+        errdefer self.allocator.free(maxima_root);
+
+        const configure_ac = try std.fs.path.join(self.allocator, &.{ maxima_root, "configure.ac" });
+        defer self.allocator.free(configure_ac);
+        const lmdcls = try std.fs.path.join(self.allocator, &.{ maxima_root, "src", "lmdcls.lisp" });
+        defer self.allocator.free(lmdcls);
+        if (!try self.fileExists(configure_ac) or !try self.fileExists(lmdcls)) {
+            self.allocator.free(maxima_root);
+            return;
+        }
+        try self.appendTrustedRootUnique(maxima_root);
+    }
+
     pub fn init(self: *Repl, allocator: std.mem.Allocator, heap: *Heap, config: Config) !void {
         // NOTE: Repl must be initialized in-place so Compiler subcomponents can
         // safely keep pointers into vm (builtins, etc) without a move.
@@ -166,8 +215,7 @@ pub const Repl = struct {
         errdefer allocator.free(self.trusted_load_root);
         errdefer self.line_editor.deinit();
 
-        self.trusted_load_root = try std.process.getCwdAlloc(allocator);
-        try self.trusted_load_roots.append(allocator, try allocator.dupe(u8, self.trusted_load_root));
+        try self.appendDefaultTrustedRoots();
         self.vm = try Vm.init(allocator, heap);
         errdefer self.vm.deinit();
         self.vm.setChunkPoolOwned(&self.chunk_pool);
@@ -1044,7 +1092,6 @@ pub const Repl = struct {
         self.vm.setGlobalEnv(&self.compiler.globals);
         // Set up load callback
         self.vm.setLoadCallback(&loadCallback, @ptrCast(self));
-        self.vm.setTrustedLoadRootCallback(&addTrustedLoadRootCallback, @ptrCast(self));
         // Set up eval callback
         self.vm.setEvalCallback(&evalCallback, @ptrCast(self));
         // Set up macroexpand callbacks
@@ -1413,36 +1460,16 @@ pub const Repl = struct {
         return self.load(filename);
     }
 
-    fn addTrustedLoadRootCallback(path: []const u8, context: *anyopaque) vm_mod.Error!Value {
-        const self: *Repl = @ptrCast(@alignCast(context));
-        try self.addTrustedLoadRoot(path);
-        return Value.t;
+    pub fn addTrustedLoadRoot(self: *Repl, path: []const u8) !void {
+        const root = try canonicalDirPath(self.allocator, path);
+        try self.appendTrustedRootUnique(root);
     }
 
-    fn addTrustedLoadRoot(self: *Repl, path: []const u8) !void {
-        const root = try self.resolveDeclaredTrustedRoot(path);
-        for (self.trusted_load_roots.items) |existing| {
-            if (std.mem.eql(u8, existing, root)) {
-                self.allocator.free(root);
-                return;
-            }
-        }
-        try self.trusted_load_roots.append(self.allocator, root);
-    }
-
-    fn resolveDeclaredTrustedRoot(self: *Repl, path: []const u8) ![]u8 {
-        const candidate = if (std.fs.path.isAbsolute(path))
-            try std.fs.path.resolve(self.allocator, &.{path})
-        else
-            try std.fs.path.resolve(self.allocator, &.{ self.trusted_load_root, path });
-        errdefer self.allocator.free(candidate);
-
-        var buf: [std.fs.max_path_bytes]u8 = undefined;
-        const real = try std.posix.realpath(candidate, &buf);
-        self.allocator.free(candidate);
-        var dir = try std.fs.openDirAbsolute(real, .{});
-        dir.close();
-        return try self.allocator.dupe(u8, real);
+    pub fn addTrustedLoadRootForFile(self: *Repl, path: []const u8) !void {
+        const resolved = try std.fs.path.resolve(self.allocator, &.{path});
+        defer self.allocator.free(resolved);
+        const dir = std.fs.path.dirname(resolved) orelse return error.FileNotFound;
+        try self.addTrustedLoadRoot(dir);
     }
 
     /// Callback for (eval expr) from VM
@@ -1715,7 +1742,6 @@ pub const Repl = struct {
             .{ .field = "%file-position", .tag = .file_position },
             .{ .field = "%set-file-position", .tag = .set_file_position },
             .{ .field = "%file-length", .tag = .file_length },
-            .{ .field = "%add-trusted-load-root", .tag = .add_trusted_load_root },
             .{ .field = "%finish-output", .tag = .finish_output },
             .{ .field = "%force-output", .tag = .force_output },
             .{ .field = "%clear-input", .tag = .clear_input },
@@ -2174,14 +2200,14 @@ pub const Repl = struct {
     }
 
     fn resolveAbsoluteTrustedPath(self: *Repl, path: []const u8) !?[]u8 {
-        const candidate = try std.fs.path.resolve(self.allocator, &.{path});
+        const candidate = (try self.canonicalExistingPath(path)) orelse return null;
         errdefer self.allocator.free(candidate);
         for (self.trusted_load_roots.items) |root| {
             if (self.pathWithinRoot(root, candidate)) {
-                if (!try self.fileExists(candidate)) return null;
                 return candidate;
             }
         }
+        self.allocator.free(candidate);
         return null;
     }
 
@@ -2202,15 +2228,25 @@ pub const Repl = struct {
         defer self.allocator.free(root_abs);
         const candidate = try std.fs.path.resolve(self.allocator, &.{ root_abs, path });
         errdefer self.allocator.free(candidate);
-        if (!self.pathWithinRoot(root_abs, candidate)) {
+        const real = (try self.canonicalExistingPath(candidate)) orelse {
             self.allocator.free(candidate);
             return null;
-        }
-        if (!try self.fileExists(candidate)) {
-            self.allocator.free(candidate);
+        };
+        self.allocator.free(candidate);
+        if (!self.pathWithinRoot(root_abs, real)) {
+            self.allocator.free(real);
             return null;
         }
-        return candidate;
+        return real;
+    }
+
+    fn canonicalExistingPath(self: *Repl, path: []const u8) !?[]u8 {
+        var buf: [std.fs.max_path_bytes]u8 = undefined;
+        const real = std.posix.realpath(path, &buf) catch |err| switch (err) {
+            error.FileNotFound => return null,
+            else => return err,
+        };
+        return try self.allocator.dupe(u8, real);
     }
 
     fn resolveBasePath(self: *Repl, base: []const u8) ![]u8 {
@@ -5823,15 +5859,12 @@ test "load accepts explicitly trusted external root" {
     defer allocator.free(denied);
     try testing.expectError(error.FileNotFound, repl.eval(denied));
 
-    const trust = try std.fmt.allocPrint(allocator, "(%add-trusted-load-root \"{s}\")", .{base});
-    defer allocator.free(trust);
-    const trusted = try repl.eval(trust);
-    try testing.expect(trusted.isT());
-    try testing.expectEqual(@as(usize, 2), repl.trusted_load_roots.items.len);
+    const before = repl.trusted_load_roots.items.len;
+    try repl.addTrustedLoadRoot(base);
+    try testing.expectEqual(before + 1, repl.trusted_load_roots.items.len);
 
-    const trusted_again = try repl.eval(trust);
-    try testing.expect(trusted_again.isT());
-    try testing.expectEqual(@as(usize, 2), repl.trusted_load_roots.items.len);
+    try repl.addTrustedLoadRoot(base);
+    try testing.expectEqual(before + 1, repl.trusted_load_roots.items.len);
 
     const loaded = try repl.eval(denied);
     try testing.expect(loaded.isFixnum());

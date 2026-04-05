@@ -89,6 +89,7 @@ fn mainInner() !void {
     const has_script = args.len > 1;
     if (has_script) {
         const script_path = args[1];
+        try repl.addTrustedLoadRootForFile(script_path);
         if (repl.loadFile(script_path, writer)) |_| {} else |err| {
             try writer.print("Error loading {s}: {s}\n", .{ script_path, @errorName(err) });
             try writer.flush();
