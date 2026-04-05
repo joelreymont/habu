@@ -12,8 +12,9 @@
 (defparameter *habu-maxima-files*
   '(
     ;; bootstrap
+    "autoconf-variables"
     "intl"
-    "pregexp"
+    "pregexp" "cl-info"
     "numerical/f2cl-package" "numerical/slatec" "numerical/f2cl-lib"
     "globals" "lmdcls" "letmac" "generr" "clmacs" "defmfun-check" "float-properties"
     "commac" "mormac" "compat"

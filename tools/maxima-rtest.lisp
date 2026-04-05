@@ -56,6 +56,11 @@
       (error "[HABU-RTEST] MAXIMA function not bound ~A" name))
     (symbol-function sym)))
 
+(defmacro habu-with-maxima-package (&body body)
+  `(let ((*package* (or (find-package :maxima)
+                        (error "[HABU-RTEST] MAXIMA package missing"))))
+     ,@body))
+
 (defun habu-load-testsuite-registry ()
   (load (habu-maxima-package-init-file))
   (load "lib/maxima-stubs.lisp")
@@ -100,12 +105,13 @@
 (defun habu-resolve-rtest-path (entry)
   (let* ((target (habu-testsuite-entry-name entry))
          (file-search (habu-maxima-fdefinition "$FILE_SEARCH")))
-    (or (handler-case
-            (funcall file-search target (habu-maxima-value "$FILE_SEARCH_TESTS"))
-          (condition (e) nil))
-        (handler-case
-            (funcall file-search target (habu-maxima-value "$FILE_SEARCH_MAXIMA"))
-          (condition (e) nil)))))
+    (habu-with-maxima-package
+      (or (handler-case
+              (funcall file-search target (habu-maxima-value "$FILE_SEARCH_TESTS"))
+            (condition (e) nil))
+          (handler-case
+              (funcall file-search target (habu-maxima-value "$FILE_SEARCH_MAXIMA"))
+            (condition (e) nil))))))
 
 (defparameter *habu-rtest-name* nil)
 (setq *habu-rtest-name* (habu-cli-test-name))
@@ -134,23 +140,24 @@
       (error "[HABU-RTEST] unknown canonical test ~A" name))
     (unless path
       (error "[HABU-RTEST] cannot resolve canonical test path for ~A" name))
-    (progv (list answers-var) (list answers-from-file)
-      (or (errset
-            (multiple-value-setq (filename diff unexpected-pass total)
-              (funcall test-batch path expected-failures
-                       :show-expected show-known-bugs
-                       :show-all show-all
-                       :showtime showtime)))
-          (error "[HABU-RTEST] canonical test-batch hit an error break for ~A" path))
-      (let ((diff-count (habu-rtest-count diff))
-            (unexpected-pass-count (habu-rtest-count unexpected-pass)))
-        (format t "~%[HABU-RTEST] file=~A total=~A diffs=~A unexpected-pass=~A~%"
-                filename
-                total
-                diff-count
-                unexpected-pass-count)
-        (when (or (> diff-count 0) (> unexpected-pass-count 0))
-          (error "[HABU-RTEST] canonical test-batch failed for ~A" filename)))
-      (values filename diff unexpected-pass total))))
+    (habu-with-maxima-package
+      (progv (list answers-var) (list answers-from-file)
+        (or (errset
+              (multiple-value-setq (filename diff unexpected-pass total)
+                (funcall test-batch path expected-failures
+                         :show-expected show-known-bugs
+                         :show-all show-all
+                         :showtime showtime)))
+            (error "[HABU-RTEST] canonical test-batch hit an error break for ~A" path))
+        (let ((diff-count (habu-rtest-count diff))
+              (unexpected-pass-count (habu-rtest-count unexpected-pass)))
+          (format t "~%[HABU-RTEST] file=~A total=~A diffs=~A unexpected-pass=~A~%"
+                  filename
+                  total
+                  diff-count
+                  unexpected-pass-count)
+          (when (or (> diff-count 0) (> unexpected-pass-count 0))
+            (error "[HABU-RTEST] canonical test-batch failed for ~A" filename)))
+        (values filename diff unexpected-pass total)))))
 
 (run-rtest *habu-rtest-name*)
