@@ -41,6 +41,7 @@ fn mainImpl() void {
         var stderr_writer = stderr.writer(&buf);
         stderr_writer.interface.print("Fatal error: {s}\n", .{@errorName(err)}) catch {};
         stderr_writer.interface.flush() catch {};
+        std.process.exit(1);
     };
 }
 

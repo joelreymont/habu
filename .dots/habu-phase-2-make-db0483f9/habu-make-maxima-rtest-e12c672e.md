@@ -1,9 +1,9 @@
 ---
 title: Make maxima-rtest fail closed
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-04-05T11:37:31.490799+02:00"
+created-at: "\"2026-04-05T11:37:31.490799+02:00\""
 blocks:
   - habu-canonicalize-maxima-root-32d71ea3
 ---
