@@ -6071,6 +6071,76 @@ test "unread-char supports explicit stream argument" {
     try testing.expectEqual(@as(i64, 'a'), result.toFixnum());
 }
 
+test "read returns successive forms from string stream" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src =
+        "(let ((s (make-string-input-stream \";lead\\n(foo 1)\\nbar ;tail\\n nil\"))) " ++
+        "  (list (read s nil :eof) (read s nil :eof) (read s nil :eof) (read s nil :eof)))";
+    const result = try evalExpr(allocator, &heap, src);
+
+    try testing.expect(result.isCons());
+    const a = result.toPtr(Cons);
+    try testing.expect(a.car.isCons());
+    const foo = a.car.toPtr(Cons);
+    try testing.expect(foo.car.isSymbol());
+
+    const b = a.cdr.toPtr(Cons);
+    try testing.expect(b.car.isSymbol());
+
+    const c = b.cdr.toPtr(Cons);
+    try testing.expect(c.car.isNil());
+
+    const d = c.cdr.toPtr(Cons);
+    try testing.expect(d.car.isKeyword());
+    try testing.expect(d.cdr.isNil());
+}
+
+test "read returns successive forms from file stream" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const path = try std.fs.path.join(allocator, &.{ "/tmp", "habu-read-forms.lisp" });
+    defer allocator.free(path);
+    try std.fs.cwd().writeFile(.{
+        .sub_path = path,
+        .data = ";a\n(foo 1)\nbar\nnil\n",
+    });
+
+    const src = try std.fmt.allocPrint(
+        allocator,
+        "(with-open-file (s \"{s}\") (list (read s nil :eof) (read s nil :eof) (read s nil :eof) (read s nil :eof)))",
+        .{path},
+    );
+    defer allocator.free(src);
+
+    const result = try repl.eval(src);
+    try testing.expect(result.isCons());
+    const a = result.toPtr(Cons);
+    try testing.expect(a.car.isCons());
+
+    const b = a.cdr.toPtr(Cons);
+    try testing.expect(b.car.isSymbol());
+
+    const c = b.cdr.toPtr(Cons);
+    try testing.expect(c.car.isNil());
+
+    const d = c.cdr.toPtr(Cons);
+    try testing.expect(d.car.isKeyword());
+    try testing.expect(d.cdr.isNil());
+}
+
 test "copy-structure copies defstruct instance" {
     const allocator = testing.allocator;
 

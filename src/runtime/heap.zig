@@ -2357,6 +2357,8 @@ pub const Heap = struct {
             .data_ptr = @intFromPtr(str_obj.data),
             .length = str_obj.length,
             .file_fd = -1,
+            .unread_value = Value.nil,
+            .unread_pos = 0,
             .source_value = str,
         };
         try self.trackStream(stream);
@@ -2376,6 +2378,8 @@ pub const Heap = struct {
             .data_ptr = @intFromPtr(str_obj.data + start),
             .length = end - start,
             .file_fd = -1,
+            .unread_value = Value.nil,
+            .unread_pos = 0,
             .source_value = str,
         };
         try self.trackStream(stream);
@@ -2397,6 +2401,8 @@ pub const Heap = struct {
             .file_fd = -1,
             .pushback_char = 0xFF,
             ._padding2 = [_]u8{0} ** 3,
+            .unread_value = Value.nil,
+            .unread_pos = 0,
             .source_value = Value.nil,
         };
         try self.trackStream(stream);

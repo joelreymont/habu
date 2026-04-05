@@ -4258,21 +4258,12 @@
 (defun read (&optional stream (eof-error-p t) eof-value recursive-p)
   (declare (ignore recursive-p))
   (if stream
-      ;; Read from stream: collect chars until we have a complete form
-      (let ((chars nil)
-            (done nil))
-        (loop
-          (let ((c (read-char stream nil nil)))
-            (when (null c)
-              (setq done t)
-              (return))
-            (push c chars)))
-        (if chars
-            (let ((str (coerce (nreverse chars) 'string)))
-              (read-from-string str))
+      (multiple-value-bind (obj eofp) (%read-stream stream)
+        (if eofp
             (if eof-error-p
                 (error "End of file on stream")
-                eof-value)))
+                eof-value)
+            obj))
       ;; Read from stdin (use primitive)
       (%read)))
 

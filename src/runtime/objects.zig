@@ -387,6 +387,10 @@ pub const Stream = extern struct {
     /// Pushback buffer for unread-char (0xFF = none)
     pushback_char: u8 = 0xFF,
     _padding2: [3]u8 = [_]u8{0} ** 3,
+    /// Parser unread tail, stored as a GC-managed string.
+    unread_value: Value = Value.nil,
+    /// Current offset into unread_value.
+    unread_pos: u64 = 0,
     /// For string streams: reference to source string (prevents GC)
     /// For composite streams: backing stream metadata
     /// For file streams: (pathname . truename-or-nil)
@@ -420,6 +424,8 @@ pub const Stream = extern struct {
             self.position = 0;
         }
 
+        self.unread_value = Value.nil;
+        self.unread_pos = 0;
         self.closed = true;
     }
 
@@ -434,6 +440,8 @@ pub const Stream = extern struct {
             .length = 0,
             .file_fd = file_fd,
             .pushback_char = 0xFF,
+            .unread_value = Value.nil,
+            .unread_pos = 0,
         };
     }
 
@@ -448,6 +456,8 @@ pub const Stream = extern struct {
             .length = length,
             .file_fd = -1,
             .pushback_char = 0xFF,
+            .unread_value = Value.nil,
+            .unread_pos = 0,
         };
     }
 };

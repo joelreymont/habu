@@ -982,6 +982,10 @@ pub const Op = enum(u16) {
     /// ( string -- value )
     read_from_string = 0xDA,
 
+    /// Read S-expression from stream
+    /// ( stream -- value ) + eofp secondary
+    read_stream = 0x197,
+
     /// Evaluate expression at runtime
     /// ( expr -- result )
     eval = 0xDB,
@@ -2031,6 +2035,7 @@ pub const Op = enum(u16) {
             .read,
             .load,
             .read_from_string,
+            .read_stream,
             .eval,
             .gensym,
             .macroexpand,

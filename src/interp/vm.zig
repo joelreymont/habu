@@ -471,6 +471,61 @@ fn macroCharacterBridge(
     return result;
 }
 
+const ParsedRead = struct {
+    value: Value,
+    next: usize,
+};
+
+fn tryParseReadBytes(vm: *Vm, bytes: []const u8, final: bool) Error!?ParsedRead {
+    var parser = try Parser.init(vm.allocator, vm.heap, bytes, &vm.builtins);
+    defer parser.deinit();
+    if (parser.current.kind == .eof) return null;
+
+    var dm_ctx = DispatchMacroBridge{ .vm = vm };
+    parser.setDispatchMacroHook(@ptrCast(&dm_ctx), dispatchMacroBridge);
+    parser.setMacroCharacterHook(@ptrCast(&dm_ctx), macroCharacterBridge);
+    var re_ctx = ReadEvalBridge{ .callback = vm.eval_callback, .context = vm.eval_context };
+    if (vm.eval_callback != null) {
+        parser.setReadEvalHook(@ptrCast(&re_ctx), readEvalBridge);
+    }
+
+    const value = parseWithHookError(&parser) catch |err| switch (err) {
+        error.UnterminatedList, error.UnexpectedToken => {
+            if (final) return err;
+            return null;
+        },
+        else => return err,
+    };
+    return .{ .value = value, .next = parser.lexer.token_start };
+}
+
+fn readSexpFromStream(vm: *Vm, stream: Value) Error!struct { value: Value, eof: bool } {
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(vm.allocator);
+
+    while (true) {
+        if (buf.items.len > 0) {
+            if (try tryParseReadBytes(vm, buf.items, false)) |parsed| {
+                try io.setUnreadTail(vm.heap, stream, buf.items[parsed.next..]);
+                return .{ .value = parsed.value, .eof = false };
+            }
+        }
+
+        const ch = try io.readChar(stream, null, null);
+        if (ch.isNil()) {
+            if (buf.items.len == 0) return .{ .value = Value.nil, .eof = true };
+            if (try tryParseReadBytes(vm, buf.items, true)) |parsed| {
+                try io.setUnreadTail(vm.heap, stream, buf.items[parsed.next..]);
+                return .{ .value = parsed.value, .eof = false };
+            }
+            return .{ .value = Value.nil, .eof = true };
+        }
+        if (!ch.isFixnum()) return error.TypeMismatch;
+        const byte = std.math.cast(u8, ch.toFixnum()) orelse return error.InvalidArgument;
+        try buf.append(vm.allocator, byte);
+    }
+}
+
 fn traceJitBridgeValue(v: Value) void {
     switch (v.typeKind()) {
         .nil => std.debug.print("nil", .{}),
@@ -8259,6 +8314,14 @@ pub const Vm = struct {
                 }
             },
 
+            .read_stream => {
+                const stream = try self.pop();
+                const result = try readSexpFromStream(self, stream);
+                try self.push(result.value);
+                self.secondary_values[0] = if (result.eof) Value.t else Value.nil;
+                self.secondary_values_count = 1;
+            },
+
             .eval => {
                 // Evaluate expression at runtime
                 const expr = try self.pop();
@@ -8755,7 +8818,7 @@ pub const Vm = struct {
         // - Consumes multiple values (mv_list, mv_bind — they clear it themselves)
         // - Returns from a function (ret — caller may need secondary values)
         switch (op) {
-            .values, .values_list, .ret, .get_decoded_time, .decode_universal_time, .decode_float, .integer_decode_float, .function_lambda_expression, .jmp, .jmp_nil, .jmp_not_nil, .push_block, .pop_block, .mv_list, .mv_bind, .floor, .ceiling, .round, .call, .tail_call, .read_from_string, .hash_get, .intern, .get_macro_character, .pop_progv, .pop_catch, .pop_unwind, .push_progv, .push_catch, .push_unwind => {},
+            .values, .values_list, .ret, .get_decoded_time, .decode_universal_time, .decode_float, .integer_decode_float, .function_lambda_expression, .jmp, .jmp_nil, .jmp_not_nil, .push_block, .pop_block, .mv_list, .mv_bind, .floor, .ceiling, .round, .call, .tail_call, .read_from_string, .read_stream, .hash_get, .intern, .get_macro_character, .pop_progv, .pop_catch, .pop_unwind, .push_progv, .push_catch, .push_unwind => {},
             else => {
                 self.secondary_values_count = 0;
             },

@@ -1859,6 +1859,33 @@ fn hasPushback(s: *const objects.Stream) bool {
     return s.pushback_char != 0xFF;
 }
 
+fn hasUnreadTail(s: *const objects.Stream) bool {
+    if (!s.unread_value.isString()) return false;
+    const unread = s.unread_value.toPtr(objects.String);
+    return s.unread_pos < unread.length;
+}
+
+fn unreadTailLen(s: *const objects.Stream) usize {
+    if (!hasUnreadTail(s)) return 0;
+    const unread = s.unread_value.toPtr(objects.String);
+    return unread.length - @as(usize, @intCast(s.unread_pos));
+}
+
+fn clearUnreadTail(s: *objects.Stream) void {
+    s.unread_value = Value.nil;
+    s.unread_pos = 0;
+}
+
+fn takeUnreadTailByte(s: *objects.Stream) ?u8 {
+    if (!hasUnreadTail(s)) return null;
+    const unread = s.unread_value.toPtr(objects.String);
+    const idx: usize = @intCast(s.unread_pos);
+    const ch = unread.bytes()[idx];
+    s.unread_pos += 1;
+    if (s.unread_pos >= unread.length) clearUnreadTail(s);
+    return ch;
+}
+
 fn takePushback(s: *objects.Stream) ?u8 {
     if (s.pushback_char == 0xFF) return null;
     const ch = s.pushback_char;
@@ -1869,6 +1896,19 @@ fn takePushback(s: *objects.Stream) ?u8 {
 fn setPushback(s: *objects.Stream, ch: u8) !void {
     if (s.pushback_char != 0xFF) return error.InvalidArgument;
     s.pushback_char = ch;
+}
+
+pub fn setUnreadTail(heap: *heap_mod.Heap, stream: Value, bytes: []const u8) !void {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (bytes.len == 0) {
+        clearUnreadTail(s);
+        return;
+    }
+    const unread = try heap.allocBaseString(bytes);
+    s.unread_value = unread;
+    s.unread_pos = 0;
+    heap.writeBarrier(stream, unread);
 }
 
 fn resolveSynonymTarget(s: *objects.Stream) !Value {
@@ -1955,6 +1995,7 @@ pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
     if (!s.isInput()) return error.TypeError;
     if (s.closed) return error.StreamClosed;
     if (takePushback(s)) |ch| return Value.makeFixnum(@intCast(ch));
+    if (takeUnreadTailByte(s)) |ch| return Value.makeFixnum(@intCast(ch));
 
     switch (s.stream_type) {
         .string => {
@@ -2005,6 +2046,11 @@ pub fn unreadChar(char: Value, stream: Value) !void {
     const cp = char.toCharacter();
     if (cp > 0xFF) return error.InvalidArgument;
 
+    if (hasUnreadTail(s)) {
+        try setPushback(s, @intCast(cp));
+        return;
+    }
+
     switch (s.stream_type) {
         .string => {
             if (s.data_ptr == 0) return error.StreamClosed;
@@ -2032,6 +2078,11 @@ pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
     if (!s.isInput()) return error.TypeError;
     if (s.closed) return error.StreamClosed;
     if (hasPushback(s)) return Value.makeFixnum(@intCast(s.pushback_char));
+    if (hasUnreadTail(s)) {
+        const unread = s.unread_value.toPtr(objects.String);
+        const idx: usize = @intCast(s.unread_pos);
+        return Value.makeFixnum(@intCast(unread.bytes()[idx]));
+    }
 
     switch (s.stream_type) {
         .string => {
@@ -2076,11 +2127,11 @@ pub fn listen(stream: Value) !Value {
     switch (s.stream_type) {
         .string => {
             if (s.data_ptr == 0) return error.StreamClosed;
-            if (hasPushback(s)) return Value.t;
+            if (hasPushback(s) or hasUnreadTail(s)) return Value.t;
             return if (s.position >= s.length) Value.nil else Value.t;
         },
         .file, .stdin => {
-            if (hasPushback(s)) return Value.t;
+            if (hasPushback(s) or hasUnreadTail(s)) return Value.t;
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             var pollfd = [_]std.posix.pollfd{.{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 }};
             const ready = try std.posix.poll(&pollfd, 0);
@@ -2112,6 +2163,7 @@ pub fn readCharNoHang(stream: Value) !Value {
     if (!s.isInput()) return error.TypeError;
     if (s.closed) return error.StreamClosed;
     if (takePushback(s)) |ch| return Value.makeCharacter(ch);
+    if (takeUnreadTailByte(s)) |ch| return Value.makeCharacter(ch);
 
     switch (s.stream_type) {
         .string => {
@@ -2345,6 +2397,7 @@ pub fn clearInput(stream: Value) !void {
     const s = stream.toPtr(objects.Stream);
     if (!s.isInput()) return error.TypeError;
     s.pushback_char = 0xFF;
+    clearUnreadTail(s);
 
     switch (s.stream_type) {
         .string => {
@@ -2411,11 +2464,20 @@ pub fn filePosition(heap: *heap_mod.Heap, stream: Value, pos: ?Value) !Value {
     if (pos == null) {
         // Get current position
         switch (s.stream_type) {
-            .string => return Value.makeFixnum(@intCast(if (s.direction == .output) s.length else s.position)),
+            .string => {
+                const base = if (s.direction == .output) s.length else s.position;
+                const unread = unreadTailLen(s);
+                const pushback = if (s.isInput() and hasPushback(s)) @as(usize, 1) else 0;
+                const adj = if (s.isInput() and base >= unread + pushback) base - unread - pushback else base;
+                return Value.makeFixnum(@intCast(adj));
+            },
             .file, .stdin, .stdout, .stderr => {
                 const fd: std.posix.fd_t = @intCast(s.file_fd);
                 const cur = try std.posix.lseek_CUR_get(fd);
-                const adj = if (s.isInput() and hasPushback(s) and cur > 0) cur - 1 else cur;
+                const unread = unreadTailLen(s);
+                const pushback = if (s.isInput() and hasPushback(s)) @as(usize, 1) else 0;
+                const rewind = unread + pushback;
+                const adj = if (s.isInput() and cur >= rewind) cur - rewind else cur;
                 return Value.makeFixnum(@intCast(adj));
             },
             else => return error.NotImplemented,
@@ -2450,6 +2512,8 @@ pub fn filePosition(heap: *heap_mod.Heap, stream: Value, pos: ?Value) !Value {
                 } else {
                     return error.InvalidArgument;
                 }
+                s.pushback_char = 0xFF;
+                clearUnreadTail(s);
                 return Value.t;
             },
             .file, .stdin, .stdout, .stderr => {
@@ -2459,6 +2523,8 @@ pub fn filePosition(heap: *heap_mod.Heap, stream: Value, pos: ?Value) !Value {
                 } else {
                     try std.posix.lseek_SET(fd, @intCast(new_pos));
                 }
+                s.pushback_char = 0xFF;
+                clearUnreadTail(s);
                 return Value.t;
             },
             else => return error.NotImplemented,

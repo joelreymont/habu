@@ -671,6 +671,7 @@ pub const Ir = union(enum) {
     read_char_stream: UnaryOp, // read character from stream
     peek_char_stream: UnaryOp, // peek character from stream
     unread_char_stream: BinaryOp, // push character back to a stream
+    read_stream: UnaryOp, // read one form from stream
     open_file: BinaryOp, // open file (filename, direction)
     close_stream: UnaryOp, // close a stream
 
@@ -2093,6 +2094,12 @@ pub const IrBuilder = struct {
     pub fn readFromString(self: IrBuilder, str: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .read_from_string = .{ .operand = str } };
+        return node;
+    }
+
+    pub fn readStream(self: IrBuilder, stream: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .read_stream = .{ .operand = stream } };
         return node;
     }
 

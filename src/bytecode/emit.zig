@@ -914,6 +914,7 @@ pub const Emitter = struct {
             .upgraded_complex_part_type => |op| try self.emitUnaryOp(op.operand, .upgraded_complex_part_type),
             .read => try self.emitOp(.read),
             .read_from_string => |op| try self.emitUnaryOp(op.operand, .read_from_string),
+            .read_stream => |op| try self.emitUnaryOp(op.operand, .read_stream),
             .load => |op| try self.emitUnaryOp(op.operand, .load),
             .eval => |op| try self.emitUnaryOp(op.operand, .eval),
             .gensym => |op| {

@@ -320,6 +320,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .read,
         .load,
         .read_from_string,
+        .read_stream,
         .eval,
         .gensym,
         .macroexpand,

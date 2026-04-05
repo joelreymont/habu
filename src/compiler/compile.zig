@@ -283,6 +283,7 @@ pub const Builtins = struct {
     @"upgraded-complex-part-type": Value,
     read: Value,
     @"%read": Value,
+    @"%read-stream": Value,
     @"read-from-string": Value,
     load: Value,
     eval: Value,
@@ -920,6 +921,7 @@ pub const Builtins = struct {
             .@"upgraded-complex-part-type" = try heap.intern("upgraded-complex-part-type"),
             .read = try heap.intern("read"),
             .@"%read" = try heap.intern("%read"),
+            .@"%read-stream" = try heap.intern("%read-stream"),
             .@"read-from-string" = try heap.intern("read-from-string"),
             .load = try heap.intern("load"),
             .eval = try heap.intern("eval"),
@@ -1363,7 +1365,7 @@ pub const Builtins = struct {
         "not",                        "characterp",                 "floatp",                    "listp",                       "atom",
         // Character operations
                       "char-code",              "code-char",             "char=",                "char<",
-        "char>",                      "%read-char",                 "%peek-char",                "%unread-char",               "%unread-char-from-stream", "read",               "%read",                 "read-from-string",       "load",                  "unread-char",          "listen",
+        "char>",                      "%read-char",                 "%peek-char",                "%unread-char",               "%unread-char-from-stream", "read",               "%read",                 "%read-stream",          "read-from-string",       "load",                  "unread-char",          "listen",
         "upgraded-complex-part-type", "eval",                       "gensym",                    "macroexpand",                 "macroexpand-1",
         // Symbol operations
              "boundp",                 "fboundp",               "symbol-value",         "symbol-function",
@@ -15984,6 +15986,7 @@ pub const Compiler = struct {
         // Read/eval
         read,
         read_from_string,
+        read_stream,
         load,
         eval,
         gensym,
@@ -16368,6 +16371,7 @@ pub const Compiler = struct {
         .{ .field = "listen", .tag = .listen },
         .{ .field = "upgraded-complex-part-type", .tag = .upgraded_complex_part_type },
         .{ .field = "read-from-string", .tag = .read_from_string },
+        .{ .field = "%read-stream", .tag = .read_stream },
         .{ .field = "load", .tag = .load },
         .{ .field = "eval", .tag = .eval },
         .{ .field = "macroexpand", .tag = .macroexpand },
@@ -17749,6 +17753,7 @@ pub const Compiler = struct {
             },
             .load => try self.builder.load(operand),
             .read_from_string => try self.builder.readFromString(operand),
+            .read_stream => try self.builder.readStream(operand),
             .eval => try self.builder.eval(operand),
             .gensym => blk: {
                 const node = try self.allocator.create(Ir);

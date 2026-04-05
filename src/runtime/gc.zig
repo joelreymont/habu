@@ -2301,8 +2301,11 @@ pub const GC = struct {
                         }
                     },
                     .stream => {
-                        // Scan source_value if present
+                        // Scan stream-owned Value references.
                         const stream: *objects.Stream = @ptrFromInt(addr);
+                        if (!stream.unread_value.isNil() and stream.unread_value.isPointer()) {
+                            stream.unread_value = try self.copyValue(heap, stream.unread_value, alloc_ptr);
+                        }
                         if (!stream.source_value.isNil() and stream.source_value.isPointer()) {
                             stream.source_value = try self.copyValue(heap, stream.source_value, alloc_ptr);
                             // Recompute data_ptr from relocated string
