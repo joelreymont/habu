@@ -11,6 +11,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-05)
 
 ### Worked Well
+- Host-backed VM callbacks must not synthesize normal returns after a non-local exit crosses their call barrier. `src/interp/vm.zig:3240-3287,3335-3392,3476-3523` now rethrows across the saved barrier and returns `error.ControlTransfer` instead of executing to a value, which fixes `(handler-case (load ...))` continuing at the wrong IP.
+- The right regression for nested load NLX is a top-level file whose first form is `(setq *x* (handler-case (load ...) ...))` followed by a second top-level form. `src/interp/repl.zig:5557-5604` now proves the load catch path preserves continuation instead of corrupting the outer form.
+- Top-level script/load bridges should surface uncaught CL conditions as user errors, not raw VM throw names. `src/interp/repl.zig:3392-3403,3841-3852` now reuses `last_error_value` for file/script loads so `/tmp/habu-toperr.lisp` prints `"boom"` and `tools/maxima-rtest.lisp definitely-not-a-real-rtest` prints the canonical unknown-test message.
 - Sealing trusted load roots in Zig is the right cutover. `src/interp/repl.zig:118-119,162-183,218,1464-1471` now seeds trust from a compiled-in project root plus the validated sibling `../maxima` tree instead of launch CWD, and `src/main.zig:89-97` opts script directories in explicitly before script load.
 - Removing the Lisp-visible trust mutator is safe once bootstrap owns the roots. Cutting `%add-trusted-load-root` out of `src/interp/vm.zig:44-60,816-821,1471-1478,9768-9778`, `src/compiler/compile.zig:482-490,1110-1118,16268-16290`, `lib/maxima-loader.lisp:9-15`, and `tools/maxima-rtest.lisp:58-63` removed a runtime trust-widening path instead of trying to paper over it.
 - Manifest root candidates need to derive from the manifest file location, not ambient CWD. `lib/maxima-manifest.lisp:3-10` now anchors `../maxima` off `*LOAD-TRUENAME*` / `*LOAD-PATHNAME*`, which is the correct boundary for authoritative Maxima source discovery.
@@ -19,6 +22,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Process-level failure needs an explicit nonzero exit in `src/main.zig:34-41`. Printing `Fatal error: ...` from the worker thread without `std.process.exit(1)` left authoritative script/test runners reporting `EXIT=0` even on fatal load/runtime errors.
 
 ### Did Not Work
+- Returning `self.execute()` from `callFromStackAt` after relaying `NestedNonLocalExit` was wrong. That let inner `load`/`eval` callbacks steal the outer `handler-case` completion and later blow up with `execute.ip-oob` on the stale caller chunk.
 - Treating an absolute script pathname as a search root was wrong. Nested `(load "foo.lisp")` from an absolute script like `/Users/.../tools/maxima-rtest.lisp` went through `realpath` on `.../maxima-rtest.lisp/foo.lisp` and surfaced as `NotDir`; the correct fix was to canonicalize search roots to directories, not to special-case particular scripts.
 
 ### Worked Well

@@ -3394,18 +3394,7 @@ pub const Repl = struct {
         const result = if (self.evalCapturingError(source, &err_info)) |value| value else |err| {
             if (err_info) |info| {
                 // For user errors / unhandled throws, try to show the actual message
-                if (info.kind == .runtime_user_error and !self.vm.last_error_value.isNil()) {
-                    const msg = self.vm.last_error_value;
-                    self.vm.last_error_value = Value.nil;
-                    if (msg.isString()) {
-                        try writer.print("\x1b[1;31merror\x1b[0m: ", .{});
-                        try self.printValue(msg, writer);
-                        try writer.writeAll("\n");
-                    } else {
-                        try writer.print("\x1b[1;31merror\x1b[0m: ", .{});
-                        try self.printValue(msg, writer);
-                        try writer.writeAll("\n");
-                    }
+                if (info.kind == .runtime_user_error and try self.printStoredRuntimeUserError(writer)) {
                 } else {
                     try self.printDiagnostic(source, info, writer);
                 }
@@ -3424,6 +3413,16 @@ pub const Repl = struct {
             }
             self.vm.secondary_values_count = 0;
         }
+    }
+
+    fn printStoredRuntimeUserError(self: *Repl, writer: anytype) !bool {
+        if (self.vm.last_error_value.isNil()) return false;
+        const msg = self.vm.last_error_value;
+        self.vm.last_error_value = Value.nil;
+        try writer.print("\x1b[1;31merror\x1b[0m: ", .{});
+        try self.printValue(msg, writer);
+        try writer.writeAll("\n");
+        return true;
     }
 
     fn printDiagnostic(self: *Repl, source: []const u8, info: ErrorInfo, writer: anytype) !void {
@@ -3835,6 +3834,11 @@ pub const Repl = struct {
     /// Load and evaluate a file.
     pub fn loadFile(self: *Repl, path: []const u8, writer: anytype) !void {
         _ = if (self.load(path)) |value| value else |err| {
+            if (err == error.UnhandledThrow or err == error.UserError) {
+                if (try self.printStoredRuntimeUserError(writer)) return error.UserError;
+                try writer.print("Error in '{s}': {s}\n", .{ path, @errorName(err) });
+                return error.UserError;
+            }
             try writer.print("Cannot open '{s}': {s}\n", .{ path, @errorName(err) });
             return err;
         };
@@ -5550,6 +5554,61 @@ test "script handler-case load does not resume failed file" {
     const after = try repl.eval("*script-load-after*");
     try testing.expect(after.isFixnum());
     try testing.expectEqual(@as(i64, 42), after.toFixnum());
+}
+
+test "top-level handler-case around load preserves continuation" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 32 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var err_file = try tmp.dir.createFile("errfile-top.lsp", .{});
+        defer err_file.close();
+        try err_file.writeAll("(error \"boom\")\n");
+    }
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const err_abs = try std.fs.path.join(allocator, &.{ base, "errfile-top.lsp" });
+    defer allocator.free(err_abs);
+
+    const wrapper_src = try std.fmt.allocPrint(
+        allocator,
+        "(setq *top-load-probe* (handler-case (load \"{s}\") (condition (c) (declare (ignore c)) :caught)))\n" ++
+            "(setq *top-load-after* 9)\n",
+        .{err_abs},
+    );
+    defer allocator.free(wrapper_src);
+
+    {
+        var wrapper = try tmp.dir.createFile("wrapper-top.lsp", .{});
+        defer wrapper.close();
+        try wrapper.writeAll(wrapper_src);
+    }
+
+    const wrapper_abs = try std.fs.path.join(allocator, &.{ base, "wrapper-top.lsp" });
+    defer allocator.free(wrapper_abs);
+
+    var buf: [1024]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try repl.loadFile(wrapper_abs, stream.writer());
+
+    const caught = try repl.eval("(eq *top-load-probe* :caught)");
+    try testing.expect(caught.isT());
+
+    const after = try repl.eval("*top-load-after*");
+    try testing.expect(after.isFixnum());
+    try testing.expectEqual(@as(i64, 9), after.toFixnum());
 }
 
 test "stdlib while stays a special form, not a macro" {

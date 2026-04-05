@@ -1,9 +1,9 @@
 ---
 title: Fix NLX control transfers
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-04-01T22:06:02.193948+02:00"
+created-at: "\"2026-04-01T22:06:02.193948+02:00\""
 blocks:
   - habu-implement-restart-lookup-c7501041
 ---

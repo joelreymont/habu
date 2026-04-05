@@ -345,7 +345,7 @@ pub const State = struct {
         };
     }
 
-    pub fn restore(self: State, vm: *Vm) void {
+pub fn restore(self: State, vm: *Vm) void {
         vm.chunk = self.chunk;
         vm.ip = self.ip;
         vm.fp = self.fp;
@@ -379,6 +379,34 @@ pub const State = struct {
         vm.secondary_values_count = self.secondary_values_count;
     }
 };
+
+fn hostCallbackMovedControl(vm: *const Vm, saved: State) bool {
+    return vm.chunk != saved.chunk or
+        vm.ip != saved.ip or
+        vm.fp != saved.fp or
+        vm.sp != saved.sp or
+        vm.scope_sp != saved.scope_sp or
+        vm.catch_sp != saved.catch_sp or
+        vm.unwind_sp != saved.unwind_sp or
+        vm.restart_sp != saved.restart_sp or
+        vm.block_sp != saved.block_sp or
+        vm.handler_sp != saved.handler_sp or
+        vm.progv_sp != saved.progv_sp or
+        vm.pending_handler_restore_depth != saved.pending_handler_restore_depth or
+        vm.current_closure != saved.current_closure or
+        vm.current_argc != saved.current_argc or
+        vm.pending_throw_tag.raw != saved.pending_throw_tag.raw or
+        vm.pending_throw_value.raw != saved.pending_throw_value.raw or
+        vm.throw_barrier_depth != saved.throw_barrier_depth or
+        vm.relay_throw_tag.raw != saved.relay_throw_tag.raw or
+        vm.relay_throw_value.raw != saved.relay_throw_value.raw or
+        vm.pending_error != saved.pending_error or
+        vm.is_unwinding != saved.is_unwinding or
+        vm.pending_block_idx != saved.pending_block_idx or
+        vm.pending_block_value.raw != saved.pending_block_value.raw or
+        vm.is_returning_from_block != saved.is_returning_from_block or
+        vm.secondary_values_count != saved.secondary_values_count;
+}
 
 /// Virtual Machine
 /// Bridge between the VM's eval callback and the parser's ReadEvalFn.
@@ -3257,7 +3285,7 @@ pub const Vm = struct {
                 };
                 self.relay_throw_tag = Value.nil;
                 self.relay_throw_value = Value.nil;
-                return self.execute();
+                return error.ControlTransfer;
             }
             return call_err;
         };
@@ -3284,7 +3312,7 @@ pub const Vm = struct {
                 };
                 self.relay_throw_tag = Value.nil;
                 self.relay_throw_value = Value.nil;
-                return self.execute();
+                return error.ControlTransfer;
             }
             return run_err;
         };
@@ -3352,7 +3380,7 @@ pub const Vm = struct {
                 };
                 self.relay_throw_tag = Value.nil;
                 self.relay_throw_value = Value.nil;
-                return self.execute();
+                return error.ControlTransfer;
             }
             return call_err;
         };
@@ -3389,7 +3417,7 @@ pub const Vm = struct {
                 };
                 self.relay_throw_tag = Value.nil;
                 self.relay_throw_value = Value.nil;
-                return self.execute();
+                return error.ControlTransfer;
             }
             return run_err;
         };
@@ -3493,7 +3521,7 @@ pub const Vm = struct {
                 };
                 self.relay_throw_tag = Value.nil;
                 self.relay_throw_value = Value.nil;
-                return self.execute();
+                return error.ControlTransfer;
             }
             return apply_err;
         };
@@ -3520,7 +3548,7 @@ pub const Vm = struct {
                 };
                 self.relay_throw_tag = Value.nil;
                 self.relay_throw_value = Value.nil;
-                return self.execute();
+                return error.ControlTransfer;
             }
             return run_err;
         };
@@ -8090,7 +8118,9 @@ pub const Vm = struct {
 
                 // Call the load callback if set
                 if (self.load_callback) |callback| {
+                    const saved = State.save(self);
                     const result = try callback(filename, self.load_context.?);
+                    if (hostCallbackMovedControl(self, saved)) return error.ControlTransfer;
                     try self.push(result);
                 } else {
                     // No callback set - return nil
@@ -8168,7 +8198,9 @@ pub const Vm = struct {
 
                 // Call the eval callback if set
                 if (self.eval_callback) |callback| {
+                    const saved = State.save(self);
                     const result = try callback(expr, self.eval_context.?);
+                    if (hostCallbackMovedControl(self, saved)) return error.ControlTransfer;
                     try self.push(result);
                 } else {
                     // No callback set - return nil
@@ -8189,7 +8221,9 @@ pub const Vm = struct {
 
                 // Call the macroexpand callback if set
                 if (self.macroexpand_callback) |callback| {
+                    const saved = State.save(self);
                     const result = try callback(expr, self.macroexpand_context.?);
+                    if (hostCallbackMovedControl(self, saved)) return error.ControlTransfer;
                     try self.push(result);
                 } else {
                     // No callback set - return the expression unchanged
@@ -8203,7 +8237,9 @@ pub const Vm = struct {
 
                 // Call the macroexpand-1 callback if set
                 if (self.macroexpand_1_callback) |callback| {
+                    const saved = State.save(self);
                     const result = try callback(expr, self.macroexpand_1_context.?);
+                    if (hostCallbackMovedControl(self, saved)) return error.ControlTransfer;
                     try self.push(result);
                 } else {
                     // No callback set - return the expression unchanged
