@@ -5887,6 +5887,41 @@ test "load accepts explicitly trusted external root" {
     try testing.expectEqual(@as(i64, 42), loaded.toFixnum());
 }
 
+test "absolute script load resolves nested relative load from parent dir" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 32 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{ .sub_path = "dep.lisp", .data = "41\n" });
+    try tmp.dir.writeFile(.{
+        .sub_path = "main.lisp",
+        .data = "(+ 1 (load \"dep.lisp\"))\n",
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const script_abs = try std.fs.path.join(allocator, &.{ base, "main.lisp" });
+    defer allocator.free(script_abs);
+
+    try repl.addTrustedLoadRootForFile(script_abs);
+
+    const form = try std.fmt.allocPrint(allocator, "(load \"{s}\")", .{script_abs});
+    defer allocator.free(form);
+    const loaded = try repl.eval(form);
+    try testing.expect(loaded.isFixnum());
+    try testing.expectEqual(@as(i64, 42), loaded.toFixnum());
+}
+
 test "reader accepts exact maxima-style COMMON-LISP conditional" {
     const testing = std.testing;
     const allocator = testing.allocator;
