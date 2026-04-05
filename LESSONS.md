@@ -11,6 +11,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-05)
 
 ### Worked Well
+- `lib/maxima-loader.lisp` must hard-cut to `(in-package :cl-user)` at file entry. Loading it while `*package*` is `MAXIMA` was otherwise defining `*maxima-source-dir*`, `maxima-load-all`, and `maxima-try-load` in the ambient package, which made tool/probe behavior depend on caller state instead of a canonical API surface. The right proof is to load `maxima-package.lisp`, bind `*package*` to `MAXIMA`, load `lib/maxima-loader.lisp`, and assert the `cl-user::` bindings still exist.
 - Host-backed VM callbacks must not synthesize normal returns after a non-local exit crosses their call barrier. `src/interp/vm.zig:3240-3287,3335-3392,3476-3523` now rethrows across the saved barrier and returns `error.ControlTransfer` instead of executing to a value, which fixes `(handler-case (load ...))` continuing at the wrong IP.
 - The right regression for nested load NLX is a top-level file whose first form is `(setq *x* (handler-case (load ...) ...))` followed by a second top-level form. `src/interp/repl.zig:5557-5604` now proves the load catch path preserves continuation instead of corrupting the outer form.
 - Top-level script/load bridges should surface uncaught CL conditions as user errors, not raw VM throw names. `src/interp/repl.zig:3392-3403,3841-3852` now reuses `last_error_value` for file/script loads so `/tmp/habu-toperr.lisp` prints `"boom"` and `tools/maxima-rtest.lisp definitely-not-a-real-rtest` prints the canonical unknown-test message.
@@ -22,6 +23,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Process-level failure needs an explicit nonzero exit in `src/main.zig:34-41`. Printing `Fatal error: ...` from the worker thread without `std.process.exit(1)` left authoritative script/test runners reporting `EXIT=0` even on fatal load/runtime errors.
 
 ### Did Not Work
+- Treating the earlier `intl.lisp` failure as a real loader/runtime blocker was wrong. The failing probe had loaded `lib/maxima-loader.lisp` while `*package*` was `MAXIMA` and then inspected `cl-user::*maxima-source-dir*`, so the resulting unbound variable and downstream `coerce` failure were artifacts of package-unstable loader definitions, not a true Maxima load defect.
 - Returning `self.execute()` from `callFromStackAt` after relaying `NestedNonLocalExit` was wrong. That let inner `load`/`eval` callbacks steal the outer `handler-case` completion and later blow up with `execute.ip-oob` on the stale caller chunk.
 - Treating an absolute script pathname as a search root was wrong. Nested `(load "foo.lisp")` from an absolute script like `/Users/.../tools/maxima-rtest.lisp` went through `realpath` on `.../maxima-rtest.lisp/foo.lisp` and surfaced as `NotDir`; the correct fix was to canonicalize search roots to directories, not to special-case particular scripts.
 

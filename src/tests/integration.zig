@@ -7826,6 +7826,33 @@ test "ordinary macro character executes during read-from-string" {
     try testing.expect(!result.isNil());
 }
 
+test "maxima loader binds canonical cl-user package even when loaded from maxima" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(progn
+        \\  (load "lib/maxima-manifest.lisp")
+        \\  (load (concatenate 'string (habu-maxima-manifest-value :srcdir) "maxima-package.lisp"))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-loader.lisp"))
+        \\  (and (boundp 'cl-user::*maxima-source-dir*)
+        \\       (stringp cl-user::*maxima-source-dir*)
+        \\       (fboundp 'cl-user::maxima-load-all)
+        \\       (fboundp 'cl-user::maxima-try-load)))
+    ;
+
+    const result = try repl.eval(src);
+    try testing.expect(!result.isNil());
+}
+
 test "get-macro-character returns primary and secondary values" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

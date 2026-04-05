@@ -1,5 +1,7 @@
 ;; Maxima source loader for Habu.
 
+(in-package :cl-user)
+
 (load "lib/maxima-manifest.lisp")
 
 (defun maxima-source-has-core-p (dir)
