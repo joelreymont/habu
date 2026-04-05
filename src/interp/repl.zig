@@ -148,11 +148,10 @@ pub const Repl = struct {
 
     fn canonicalDirPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
         const candidate = try std.fs.path.resolve(allocator, &.{path});
-        errdefer allocator.free(candidate);
+        defer allocator.free(candidate);
 
         var buf: [std.fs.max_path_bytes]u8 = undefined;
         const real = try std.posix.realpath(candidate, &buf);
-        allocator.free(candidate);
 
         var dir = try std.fs.openDirAbsolute(real, .{});
         defer dir.close();
@@ -2224,26 +2223,43 @@ pub const Repl = struct {
     }
 
     fn resolveTrustedPath(self: *Repl, root: []const u8, path: []const u8) !?[]u8 {
-        const root_abs = try self.resolveBasePath(root);
-        defer self.allocator.free(root_abs);
-        const candidate = try std.fs.path.resolve(self.allocator, &.{ root_abs, path });
+        const root_dir = (try self.resolveSearchRoot(root)) orelse return null;
+        defer self.allocator.free(root_dir);
+        const candidate = try std.fs.path.resolve(self.allocator, &.{ root_dir, path });
         errdefer self.allocator.free(candidate);
         const real = (try self.canonicalExistingPath(candidate)) orelse {
             self.allocator.free(candidate);
             return null;
         };
         self.allocator.free(candidate);
-        if (!self.pathWithinRoot(root_abs, real)) {
+        if (!self.pathWithinRoot(root_dir, real)) {
             self.allocator.free(real);
             return null;
         }
         return real;
     }
 
+    fn resolveSearchRoot(self: *Repl, base: []const u8) !?[]u8 {
+        const root_abs = try self.resolveBasePath(base);
+        defer self.allocator.free(root_abs);
+
+        const as_dir = canonicalDirPath(self.allocator, root_abs) catch |err| switch (err) {
+            error.FileNotFound, error.NotDir => null,
+            else => return err,
+        };
+        if (as_dir) |dir| return dir;
+
+        const parent = std.fs.path.dirname(root_abs) orelse return null;
+        return canonicalDirPath(self.allocator, parent) catch |err| switch (err) {
+            error.FileNotFound, error.NotDir => null,
+            else => return err,
+        };
+    }
+
     fn canonicalExistingPath(self: *Repl, path: []const u8) !?[]u8 {
         var buf: [std.fs.max_path_bytes]u8 = undefined;
         const real = std.posix.realpath(path, &buf) catch |err| switch (err) {
-            error.FileNotFound => return null,
+            error.FileNotFound, error.NotDir => return null,
             else => return err,
         };
         return try self.allocator.dupe(u8, real);
