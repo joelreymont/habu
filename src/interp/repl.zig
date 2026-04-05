@@ -2319,6 +2319,35 @@ pub const Repl = struct {
         vm: *Vm,
     };
 
+    fn parserMacroCharacter(
+        ctx: *anyopaque,
+        function: Value,
+        char: u8,
+        stream: Value,
+    ) anyerror!?Value {
+        const hook: *DispatchMacroCtx = @ptrCast(@alignCast(ctx));
+        const args = [_]Value{ stream, Value.makeCharacter(char) };
+        const result = hook.vm.callFromStackAt(hook.vm.sp, function, &args) catch |err| {
+            if (std.posix.getenv("HABU_TRACE_MACRO_CHARACTER") != null) {
+                const fn_kind = @tagName(function.typeKind());
+                if (function.isSymbol()) {
+                    std.debug.print(
+                        "TRACE macro-character error={s} fn={s} kind={s} char={c}\n",
+                        .{ @errorName(err), function.toPtr(Symbol).getName(), fn_kind, char },
+                    );
+                } else {
+                    std.debug.print(
+                        "TRACE macro-character error={s} kind={s} char={c}\n",
+                        .{ @errorName(err), fn_kind, char },
+                    );
+                }
+            }
+            return err;
+        };
+        if (hook.vm.zero_values_returned) return null;
+        return result;
+    }
+
     fn parseWithHookError(parser: *Parser) anyerror!Value {
         return parser.parse() catch |parse_err| {
             if (parse_err == error.UnexpectedToken) {
@@ -2357,12 +2386,12 @@ pub const Repl = struct {
         sub_char: u8,
         arg: ?u32,
         stream: Value,
-    ) anyerror!Value {
+    ) anyerror!?Value {
         _ = disp_char;
         const hook: *DispatchMacroCtx = @ptrCast(@alignCast(ctx));
         const arg_val = if (arg) |n| Value.makeFixnum(@intCast(n)) else Value.nil;
         const args = [_]Value{ stream, Value.makeCharacter(sub_char), arg_val };
-        return hook.vm.callFromStackAt(hook.vm.sp, function, &args) catch |err| {
+        const result = hook.vm.callFromStackAt(hook.vm.sp, function, &args) catch |err| {
             if (std.posix.getenv("HABU_TRACE_DISPATCH_MACRO") != null) {
                 const fn_kind = @tagName(function.typeKind());
                 const has_resolver = hook.vm.function_resolve_callback != null;
@@ -2380,6 +2409,8 @@ pub const Repl = struct {
             }
             return err;
         };
+        if (hook.vm.zero_values_returned) return null;
+        return result;
     }
 
     /// Evaluate multiple forms in the active VM context.
@@ -2412,6 +2443,7 @@ pub const Repl = struct {
         var dispatch_ctx = DispatchMacroCtx{ .vm = source_vm };
         parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
         parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
+        parser.setMacroCharacterHook(@ptrCast(&dispatch_ctx), parserMacroCharacter);
 
         while (parser.current.kind != .eof) {
             self.syncReaderPackageFromVm(source_vm);
@@ -2604,6 +2636,7 @@ pub const Repl = struct {
         var dispatch_ctx = DispatchMacroCtx{ .vm = vm };
         parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
         parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
+        parser.setMacroCharacterHook(@ptrCast(&dispatch_ctx), parserMacroCharacter);
         const expr = try parseWithHookError(&parser);
 
         return self.evalParsedWithVm(expr, vm, arena_alloc, null);
@@ -3496,6 +3529,7 @@ pub const Repl = struct {
         var dispatch_ctx = DispatchMacroCtx{ .vm = &self.vm };
         parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
         parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
+        parser.setMacroCharacterHook(@ptrCast(&dispatch_ctx), parserMacroCharacter);
 
         var expr = if (parseWithHookError(&parser)) |parsed| parsed else |err| {
             const loc = parser.getErrorLocation();
@@ -5002,6 +5036,7 @@ pub const Repl = struct {
         defer parser.deinit();
         var dispatch_ctx = DispatchMacroCtx{ .vm = &self.vm };
         parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
+        parser.setMacroCharacterHook(@ptrCast(&dispatch_ctx), parserMacroCharacter);
         const expr = try parseWithHookError(&parser);
         if (expr.isNil()) {
             try writer.writeAll("Empty expression\n");

@@ -2107,3 +2107,6 @@ also `(set alias-target y)` (with assign validator).
 
 ### Did Not Work
 - Treating “trusted root” or “repo-pinned path” as sufficient was too weak. Review only converged after the plan explicitly covered regular-file checks, race-free open/load/write semantics, and content identity for both repo helpers and the external `../maxima` tree.
+- `read-from-string` and `%read` must install the same ordinary reader-macro hook surface as the REPL parser. Wiring only dispatch and `#.` hooks in `src/interp/vm.zig:8105-8115,8154-8188` made `_N"..."` parse as plain symbols in string-backed reads while top-level file loads used a different path.
+- Reader-macro callbacks need an explicit zero-values channel; treating `(values)` as a literal `nil` object is wrong. `src/reader/parser.zig:42-55,198-223,260-280`, `src/interp/vm.zig:440-470,3239-3330,3408-3436,6360-6464`, and `src/interp/repl.zig:2322-2413` now preserve host-call multiple-value metadata well enough for ordinary reader macros to suppress objects and continue scanning.
+- Probe scripts must use the package where the binding actually lives. `lib/maxima-loader.lisp:9` binds `*maxima-source-dir*` in the current `MAXIMA` package, so probing `cl-user::*maxima-source-dir*` manufactured a fake `intl.lisp` blocker with `#<unbound>` and misled the investigation.

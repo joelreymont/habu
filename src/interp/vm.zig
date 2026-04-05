@@ -308,6 +308,7 @@ pub const State = struct {
     pending_block_value: Value,
     is_returning_from_block: bool,
     secondary_values_count: usize,
+    zero_values_returned: bool,
 
     pub fn save(vm: *const Vm) State {
         return .{
@@ -342,6 +343,7 @@ pub const State = struct {
             .pending_block_value = vm.pending_block_value,
             .is_returning_from_block = vm.is_returning_from_block,
             .secondary_values_count = vm.secondary_values_count,
+            .zero_values_returned = vm.zero_values_returned,
         };
     }
 
@@ -377,6 +379,7 @@ pub fn restore(self: State, vm: *Vm) void {
         vm.pending_block_value = self.pending_block_value;
         vm.is_returning_from_block = self.is_returning_from_block;
         vm.secondary_values_count = self.secondary_values_count;
+        vm.zero_values_returned = self.zero_values_returned;
     }
 };
 
@@ -405,7 +408,8 @@ fn hostCallbackMovedControl(vm: *const Vm, saved: State) bool {
         vm.pending_block_idx != saved.pending_block_idx or
         vm.pending_block_value.raw != saved.pending_block_value.raw or
         vm.is_returning_from_block != saved.is_returning_from_block or
-        vm.secondary_values_count != saved.secondary_values_count;
+        vm.secondary_values_count != saved.secondary_values_count or
+        vm.zero_values_returned != saved.zero_values_returned;
 }
 
 /// Virtual Machine
@@ -444,12 +448,27 @@ fn dispatchMacroBridge(
     sub_char: u8,
     arg: ?u32,
     stream: Value,
-) Error!Value {
+) Error!?Value {
     _ = disp_char;
     const bridge: *DispatchMacroBridge = @ptrCast(@alignCast(ctx));
     const arg_val = if (arg) |n| Value.makeFixnum(@intCast(n)) else Value.nil;
     const args = [_]Value{ stream, Value.makeCharacter(sub_char), arg_val };
-    return bridge.vm.callFromStackAt(bridge.vm.sp, function, &args);
+    const result = try bridge.vm.callFromStackAt(bridge.vm.sp, function, &args);
+    if (bridge.vm.zero_values_returned) return null;
+    return result;
+}
+
+fn macroCharacterBridge(
+    ctx: *anyopaque,
+    function: Value,
+    macro_char: u8,
+    stream: Value,
+) Error!?Value {
+    const bridge: *DispatchMacroBridge = @ptrCast(@alignCast(ctx));
+    const args = [_]Value{ stream, Value.makeCharacter(macro_char) };
+    const result = try bridge.vm.callFromStackAt(bridge.vm.sp, function, &args);
+    if (bridge.vm.zero_values_returned) return null;
+    return result;
 }
 
 fn traceJitBridgeValue(v: Value) void {
@@ -840,6 +859,8 @@ pub const Vm = struct {
     secondary_values: [MAX_SECONDARY_VALUES]Value,
     /// Number of secondary values currently available
     secondary_values_count: usize,
+    /// True only when the last produced result was exactly zero values.
+    zero_values_returned: bool,
 
     /// Global environment for boundp/fboundp lookups
     global_env: ?*GlobalEnv,
@@ -1332,6 +1353,7 @@ pub const Vm = struct {
             .prng_seeded = false,
             .secondary_values = undefined,
             .secondary_values_count = 0,
+            .zero_values_returned = false,
             .global_env = null,
             .load_callback = null,
             .load_context = null,
@@ -3289,7 +3311,7 @@ pub const Vm = struct {
             }
             return call_err;
         };
-        return self.execute() catch |run_err| {
+        const result = self.execute() catch |run_err| {
             if (run_err == error.NestedNonLocalExit) {
                 const relay_tag = self.relay_throw_tag;
                 const relay_value = self.relay_throw_value;
@@ -3316,6 +3338,23 @@ pub const Vm = struct {
             }
             return run_err;
         };
+        const chunk_val = self.saved_chunks[saved_idx];
+        const mv_count = self.secondary_values_count;
+        var mv: [MAX_SECONDARY_VALUES]Value = undefined;
+        if (mv_count != 0) @memcpy(mv[0..mv_count], self.secondary_values[0..mv_count]);
+        const zero_values = self.zero_values_returned;
+        self.saved_chunk_sp = saved_idx;
+        saved_state.restore(self);
+        if (!chunk_val.isNil()) {
+            if (self.chunkFromValue(chunk_val)) |chunk| {
+                self.chunk = chunk;
+            }
+        }
+        self.secondary_values_count = mv_count;
+        if (mv_count != 0) @memcpy(self.secondary_values[0..mv_count], mv[0..mv_count]);
+        self.zero_values_returned = zero_values;
+        should_restore = false;
+        return result;
     }
 
     /// Like callFromStackAt, but checks for JIT code on the callee and
@@ -3394,7 +3433,7 @@ pub const Vm = struct {
             return result;
         }
 
-        return self.execute() catch |run_err| {
+        const result = self.execute() catch |run_err| {
             if (run_err == error.NestedNonLocalExit) {
                 const relay_tag = self.relay_throw_tag;
                 const relay_value = self.relay_throw_value;
@@ -3421,6 +3460,23 @@ pub const Vm = struct {
             }
             return run_err;
         };
+        const chunk_val = self.saved_chunks[saved_idx];
+        const mv_count = self.secondary_values_count;
+        var mv: [MAX_SECONDARY_VALUES]Value = undefined;
+        if (mv_count != 0) @memcpy(mv[0..mv_count], self.secondary_values[0..mv_count]);
+        const zero_values = self.zero_values_returned;
+        self.saved_chunk_sp = saved_idx;
+        saved_state.restore(self);
+        if (!chunk_val.isNil()) {
+            if (self.chunkFromValue(chunk_val)) |chunk| {
+                self.chunk = chunk;
+            }
+        }
+        self.secondary_values_count = mv_count;
+        if (mv_count != 0) @memcpy(self.secondary_values[0..mv_count], mv[0..mv_count]);
+        self.zero_values_returned = zero_values;
+        should_restore = false;
+        return result;
     }
 
     /// Apply function with args list provided as a value
@@ -6340,6 +6396,7 @@ pub const Vm = struct {
                     // (values) returns nil
                     try self.push(Value.nil);
                     self.secondary_values_count = 0;
+                    self.zero_values_returned = true;
                 } else {
                     // Pop all values, store secondary values, push primary
                     // Values are on stack in order: v1 v2 ... vN (vN on top)
@@ -6354,6 +6411,7 @@ pub const Vm = struct {
                         self.secondary_values[idx] = try self.pop();
                     }
                     self.secondary_values_count = secondary_count;
+                    self.zero_values_returned = false;
                     // Primary value remains on stack
                 }
             },
@@ -6412,6 +6470,7 @@ pub const Vm = struct {
                         // Empty list -> return nil with no secondary values
                         self.secondary_values_count = 0;
                         try self.push(Value.nil);
+                        self.zero_values_returned = true;
                     },
                     .cons => {
                         // Walk the list, extract elements
@@ -6436,6 +6495,7 @@ pub const Vm = struct {
                         if (overflow) return error.StackOverflow;
                         self.secondary_values_count = if (count > 1) count - 1 else 0;
                         try self.push(first);
+                        self.zero_values_returned = false;
                     },
                     else => return error.TypeMismatch,
                 }
@@ -8107,6 +8167,11 @@ pub const Vm = struct {
                 defer parser.deinit();
                 var dm_ctx = DispatchMacroBridge{ .vm = self };
                 parser.setDispatchMacroHook(@ptrCast(&dm_ctx), dispatchMacroBridge);
+                parser.setMacroCharacterHook(@ptrCast(&dm_ctx), macroCharacterBridge);
+                var re_ctx = ReadEvalBridge{ .callback = self.eval_callback, .context = self.eval_context };
+                if (self.eval_callback != null) {
+                    parser.setReadEvalHook(@ptrCast(&re_ctx), readEvalBridge);
+                }
                 const result = try parseWithHookError(&parser);
                 try self.push(result);
             },
@@ -8156,6 +8221,7 @@ pub const Vm = struct {
                     defer parser.deinit();
                     var dm_ctx = DispatchMacroBridge{ .vm = self };
                     parser.setDispatchMacroHook(@ptrCast(&dm_ctx), dispatchMacroBridge);
+                    parser.setMacroCharacterHook(@ptrCast(&dm_ctx), macroCharacterBridge);
                     // Enable #. read-eval via the VM's eval callback
                     var re_ctx = ReadEvalBridge{ .callback = self.eval_callback, .context = self.eval_context };
                     if (self.eval_callback != null) {
@@ -8179,6 +8245,7 @@ pub const Vm = struct {
                     defer parser.deinit();
                     var dm_ctx32 = DispatchMacroBridge{ .vm = self };
                     parser.setDispatchMacroHook(@ptrCast(&dm_ctx32), dispatchMacroBridge);
+                    parser.setMacroCharacterHook(@ptrCast(&dm_ctx32), macroCharacterBridge);
                     var re_ctx32 = ReadEvalBridge{ .callback = self.eval_callback, .context = self.eval_context };
                     if (self.eval_callback != null) {
                         parser.setReadEvalHook(@ptrCast(&re_ctx32), readEvalBridge);
@@ -8692,6 +8759,10 @@ pub const Vm = struct {
             else => {
                 self.secondary_values_count = 0;
             },
+        }
+        switch (op) {
+            .values, .values_list, .ret, .jmp, .jmp_nil, .jmp_not_nil, .push_block, .pop_block, .mv_bind, .call, .tail_call, .pop_progv, .pop_catch, .pop_unwind, .push_progv, .push_catch, .push_unwind => {},
+            else => self.zero_values_returned = false,
         }
     }
 

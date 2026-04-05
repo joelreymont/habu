@@ -7795,6 +7795,37 @@ test "dispatch macro character executes during read-from-string" {
     try testing.expect(!result.isNil());
 }
 
+test "ordinary macro character executes during read-from-string" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(progn
+        \\  (setq *habu-ordinary-hit* nil)
+        \\  (defun habu-test-underscore-reader (stream char)
+        \\    (declare (ignore char))
+        \\    (read-char stream)
+        \\    (setq *habu-ordinary-hit* t)
+        \\    'abc)
+        \\  (set-macro-character #\_ #'habu-test-underscore-reader t)
+        \\  (setq *habu-ordinary-hit* nil)
+        \\  (let ((vals (multiple-value-list (read-from-string "_x" t nil :start 0))))
+        \\    (and (= (length vals) 2)
+        \\         (eq (car vals) 'abc)
+        \\         (= (cadr vals) 2)
+        \\         *habu-ordinary-hit*)))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(!result.isNil());
+}
+
 test "get-macro-character returns primary and secondary values" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

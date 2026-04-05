@@ -46,7 +46,13 @@ pub const Parser = struct {
         sub_char: u8,
         arg: ?u32,
         stream: Value,
-    ) anyerror!Value;
+    ) anyerror!?Value;
+    pub const MacroCharacterFn = *const fn (
+        ctx: *anyopaque,
+        function: Value,
+        char: u8,
+        stream: Value,
+    ) anyerror!?Value;
 
     lexer: Lexer,
     heap: *Heap,
@@ -61,6 +67,8 @@ pub const Parser = struct {
     read_eval_fn: ?ReadEvalFn,
     dispatch_ctx: ?*anyopaque,
     dispatch_fn: ?DispatchMacroFn,
+    macro_ctx: ?*anyopaque,
+    macro_fn: ?MacroCharacterFn,
     hook_error: ?anyerror,
 
     pub fn init(alloc: std.mem.Allocator, heap: *Heap, source: []const u8, builtins: *const builtins_mod.BuiltinSymbols) Error!Parser {
@@ -86,6 +94,8 @@ pub const Parser = struct {
             .read_eval_fn = null,
             .dispatch_ctx = null,
             .dispatch_fn = null,
+            .macro_ctx = null,
+            .macro_fn = null,
             .hook_error = null,
         };
     }
@@ -103,6 +113,11 @@ pub const Parser = struct {
     pub fn setDispatchMacroHook(self: *Parser, ctx: *anyopaque, hook: DispatchMacroFn) void {
         self.dispatch_ctx = ctx;
         self.dispatch_fn = hook;
+    }
+
+    pub fn setMacroCharacterHook(self: *Parser, ctx: *anyopaque, hook: MacroCharacterFn) void {
+        self.macro_ctx = ctx;
+        self.macro_fn = hook;
     }
 
     pub fn takeHookError(self: *Parser) ?anyerror {
@@ -145,6 +160,7 @@ pub const Parser = struct {
     }
 
     fn parseExpr(self: *Parser) Error!Value {
+        if (try self.tryMacroCharacter()) |expr| return expr;
         switch (self.current.kind) {
             .lparen => return self.parseList(),
             .vector_open => return self.parseVector(),
@@ -177,6 +193,33 @@ pub const Parser = struct {
             .rparen, .dot => return error.UnexpectedToken,
             .err => return error.UnexpectedToken,
         }
+    }
+
+    fn tryMacroCharacter(self: *Parser) Error!?Value {
+        const hook = self.macro_fn orelse return null;
+        const ctx = self.macro_ctx orelse return null;
+        if (self.current.text.len == 0) return null;
+        const c = self.current.text[0];
+        const entry = self.heap.readtable.get(c) orelse return null;
+        const tok_start = self.lexer.token_start;
+        if (tok_start >= self.lexer.source.len) return error.UnexpectedToken;
+
+        const tail = self.lexer.source[tok_start + 1 ..];
+        const tail_str = try self.heap.allocBaseString(tail);
+        const stream = try self.heap.allocStringInputStream(tail_str);
+        const result = hook(ctx, entry.function, c, stream) catch |hook_err| {
+            self.hook_error = hook_err;
+            return error.UnexpectedToken;
+        };
+
+        const consumed_u64 = stream.toPtr(runtime.Stream).position;
+        const consumed = std.math.cast(usize, consumed_u64) orelse return error.UnexpectedToken;
+        self.lexer.pos = tok_start + 1;
+        self.lexer.line = self.current.line;
+        self.lexer.column = self.current.column + 1;
+        self.advanceSource(consumed);
+        self.current = self.lexer.next();
+        return result;
     }
 
     fn parseReadEval(self: *Parser) Error!Value {
@@ -235,7 +278,8 @@ pub const Parser = struct {
         if (consumed == 0 or consumed > tail.len) return error.UnexpectedToken;
         self.advanceSource(consumed);
         self.current = self.lexer.next();
-        return result;
+        if (result) |expr| return expr;
+        return try self.parseExpr();
     }
 
     fn parseLabelId(text: []const u8) Error!u32 {
@@ -1415,6 +1459,11 @@ const DispatchTestCtx = struct {
     expected_arg: ?u32,
 };
 
+const MacroTestCtx = struct {
+    expected_fn: Value,
+    expected_char: u8,
+};
+
 fn parserDispatchCount(
     ctx: *anyopaque,
     function: Value,
@@ -1422,7 +1471,7 @@ fn parserDispatchCount(
     sub_char: u8,
     arg: ?u32,
     stream: Value,
-) Error!Value {
+) Error!?Value {
     const hook: *DispatchTestCtx = @ptrCast(@alignCast(ctx));
     if (disp_char != '#') return error.UnexpectedToken;
     if (function.raw != hook.expected_fn.raw) return error.UnexpectedToken;
@@ -1434,6 +1483,24 @@ fn parserDispatchCount(
     const data: [*]const u8 = @ptrFromInt(s.data_ptr);
     while (s.position < s.length and data[s.position] != '$') : (s.position += 1) {}
     if (s.position < s.length and data[s.position] == '$') s.position += 1;
+    return Value.makeFixnum(@intCast(s.position));
+}
+
+fn parserMacroCount(
+    ctx: *anyopaque,
+    function: Value,
+    char: u8,
+    stream: Value,
+) Error!?Value {
+    const hook: *MacroTestCtx = @ptrCast(@alignCast(ctx));
+    if (function.raw != hook.expected_fn.raw) return error.UnexpectedToken;
+    if (char != hook.expected_char) return error.UnexpectedToken;
+    if (!stream.isStream()) return error.UnexpectedToken;
+    const s = stream.toPtr(runtime.Stream);
+    if (s.stream_type != .string) return error.UnexpectedToken;
+    const data: [*]const u8 = @ptrFromInt(s.data_ptr);
+    while (s.position < s.length and data[s.position] != '"') : (s.position += 1) {}
+    if (s.position < s.length and data[s.position] == '"') s.position += 1;
     return Value.makeFixnum(@intCast(s.position));
 }
 
@@ -1979,6 +2046,42 @@ test "parse dispatch macro hook consumes stream" {
     const second = try parser.parse();
     try testing.expect(second.isFixnum());
     try testing.expectEqual(@as(i64, 7), second.toFixnum());
+}
+
+test "parse ordinary macro character hook consumes stream" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    const marker_fn = vm.builtins.sym_quote;
+    try heap.readtable.put(testing.allocator, '_', .{
+        .function = marker_fn,
+        .non_terminating = true,
+    });
+
+    var parser = try Parser.init(testing.allocator, &heap, "_N\"abc\" 7", &vm.builtins);
+    defer parser.deinit();
+    var macro_ctx = MacroTestCtx{
+        .expected_fn = marker_fn,
+        .expected_char = '_',
+    };
+    parser.setMacroCharacterHook(@ptrCast(&macro_ctx), parserMacroCount);
+
+    const first = try parser.parse();
+    try testing.expect(first.isFixnum());
+    try testing.expectEqual(@as(i64, 2), first.toFixnum());
+
+    const second = try parser.parse();
+    try testing.expect(second.isString());
+    try testing.expectEqualStrings("abc", second.toPtr(objects.String).bytes());
+
+    const third = try parser.parse();
+    try testing.expect(third.isFixnum());
+    try testing.expectEqual(@as(i64, 7), third.toFixnum());
 }
 
 test "parse comma dot as unquote-splicing" {

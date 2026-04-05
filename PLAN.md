@@ -487,9 +487,11 @@ Do the remaining work in this order:
 - Files: `src/reader/parser.zig:179-190`, `src/reader/parser.zig:1233-1338`, `../maxima/src/nparse.lisp:42-43`, `../maxima/src/nparse.lisp:169-184`, `../maxima/src/float.lisp:92`, `../maxima/src/transs.lisp:99`
 - Depends on: 1.2, 1.5
 - Work:
-  - validate feature-conditionals, dispatch characters, read-time eval, dotted-pair skip semantics, and parser-facing Unicode/string behavior on actual Maxima sources.
+  - validate feature-conditionals, ordinary macro characters, dispatch characters, read-time eval, dotted-pair skip semantics, and parser-facing Unicode/string behavior on actual Maxima sources.
+  - make the active readtable's ordinary macro characters visible on the canonical load path instead of consulting only dispatch macro state.
 - Acceptance:
-  - real Maxima source modules named in the manifest parse without local source patches.
+  - real Maxima source modules named in the manifest parse without local source patches,
+  - `intl.lisp` can install and use `_` via `set-macro-character` on the real load path.
 - Risk:
   - reader bugs often appear later as false compiler/runtime failures.
 - Effort: M
