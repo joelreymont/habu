@@ -1359,75 +1359,75 @@ pub const Builtins = struct {
     /// Comptime list of primitive function field names (not special forms)
     const primitive_fields = [_][]const u8{
         // Arithmetic
-        "+",                          "-",                          "*",                         "/",                           "mod",                "%",                      "quot",                  "truncate",             "rem",
+        "+",                  "-",                      "*",                     "/",                          "mod",                        "%",                      "quot",                     "truncate",                  "rem",
         // Comparison
-        "eq",                         "equal",                      "eql",                       "equalp",                      "<",                  ">",                      "<=",                    ">=",                   "=",
+        "eq",                 "equal",                  "eql",                   "equalp",                     "<",                          ">",                      "<=",                       ">=",                        "=",
         // List operations
-        "cons",                       "car",                        "cdr",                       "first",                       "rest",               "caar",                   "cadr",                  "cdar",                 "cddr",
-        "caaar",                      "caadr",                      "cadar",                     "caddr",                       "cdaar",              "cdadr",                  "cddar",                 "cdddr",                "second",
-        "third",                      "fourth",                     "append",                    "length",                      "reverse",            "nth",                    "nthcdr",                "last",                 "member",
-        "assoc",                      "find",                       "position",                  "count",                       "remove",             "list",                   "rplaca",                "rplacd",
+        "cons",               "car",                    "cdr",                   "first",                      "rest",                       "caar",                   "cadr",                     "cdar",                      "cddr",
+        "caaar",              "caadr",                  "cadar",                 "caddr",                      "cdaar",                      "cdadr",                  "cddar",                    "cdddr",                     "second",
+        "third",              "fourth",                 "append",                "length",                     "reverse",                    "nth",                    "nthcdr",                   "last",                      "member",
+        "assoc",              "find",                   "position",              "count",                      "remove",                     "list",                   "rplaca",                   "rplacd",
         // Type predicates
-                      "consp",
-        "symbolp",                    "numberp",                    "integerp",                  "realp",                       "stringp",            "vectorp",                "closurep",              "keywordp",             "null",
-        "not",                        "characterp",                 "floatp",                    "listp",                       "atom",
+                           "consp",
+        "symbolp",            "numberp",                "integerp",              "realp",                      "stringp",                    "vectorp",                "closurep",                 "keywordp",                  "null",
+        "not",                "characterp",             "floatp",                "listp",                      "atom",
         // Character operations
-                      "char-code",              "code-char",             "char=",                "char<",
-        "char>",                      "%read-char",                 "%peek-char",                "%unread-char",               "%unread-char-from-stream", "read",               "%read",                 "%read-stream",          "read-from-string",       "load",                  "unread-char",          "listen",
-        "upgraded-complex-part-type", "eval",                       "gensym",                    "macroexpand",                 "macroexpand-1",
+                              "char-code",              "code-char",                "char=",                     "char<",
+        "char>",              "%read-char",             "%peek-char",            "%unread-char",               "%unread-char-from-stream",   "read",                   "%read",                    "%read-stream",              "read-from-string",
+        "load",               "unread-char",            "listen",                "upgraded-complex-part-type", "eval",                       "gensym",                 "macroexpand",              "macroexpand-1",
         // Symbol operations
-             "boundp",                 "fboundp",               "symbol-value",         "symbol-function",
-        "symbol-plist",               "function-lambda-expression", "typep",                     "type-of",                     "intern",             "%intern",               "symbol-name",            "symbol-package",        "copy-symbol",          "makunbound",
-        "set",                        "copy-structure",             "get",                       "put",                         "remprop",            "%set-symbol-value",      "%set-symbol-plist",
+                    "boundp",
+        "fboundp",            "symbol-value",           "symbol-function",       "symbol-plist",               "function-lambda-expression", "typep",                  "type-of",                  "intern",                    "%intern",
+        "symbol-name",        "symbol-package",         "copy-symbol",           "makunbound",                 "set",                        "copy-structure",         "get",                      "put",                       "remprop",
+        "%set-symbol-value",  "%set-symbol-plist",
         // Numeric
-            "abs",                  "zerop",
-        "plusp",                      "minusp",                     "evenp",                     "oddp",
+             "abs",                   "zerop",                      "plusp",                      "minusp",                 "evenp",                    "oddp",
         // Math functions
-                               "sqrt",               "sin",                    "cos",                   "tan",                  "exp",
-        "log",                        "floor",                      "ceiling",                   "round",
+                             "sqrt",
+        "sin",                "cos",                    "tan",                   "exp",                        "log",                        "floor",                  "ceiling",                  "round",
         // Vector operations
-                              "aref",               "svref",                  "vector-length",         "make-vector",          "vector",
-        "make-array",
+                            "aref",
+        "svref",              "vector-length",          "make-vector",           "vector",                     "make-array",
         // String operations
-                        "char",                       "schar",                     "string-length",               "string-concat",      "string=",                "string<",               "string>",              "string<=",
-        "string>=",                   "substring",                  "subseq",
+                        "char",                   "schar",                    "string-length",             "string-concat",
+        "string=",            "string<",                "string>",               "string<=",                   "string>=",                   "substring",              "subseq",
         // I/O
-                           "write",                       "print",              "princ",                  "terpri",                "write-char",           "random",
-        "random-seed",                "format",
+                          "write",                     "print",
+        "princ",              "terpri",                 "write-char",            "random",                     "random-seed",                "format",
         // Character functions
-                            "char-upcase",               "char-downcase",               "digit-char-p",       "alpha-char-p",
+                        "char-upcase",              "char-downcase",             "digit-char-p",
+        "alpha-char-p",
         // String/number conversion
-                  "parse-integer",         "write-to-string",           "%set-class-printer",
+              "parse-integer",          "write-to-string",       "%set-class-printer",
         // Bitwise operations
-             "logand",
-        "logior",                     "logxor",                     "lognot",                    "ash",                         "lognand",            "lognor",                 "logandc1",              "logandc2",             "logorc1",
-        "logorc2",                    "logeqv",                     "logbitp",                   "logcount",                    "integer-length",
+                "logand",                     "logior",                 "logxor",                   "lognot",                    "ash",
+        "lognand",            "lognor",                 "logandc1",              "logandc2",                   "logorc1",                    "logorc2",                "logeqv",                   "logbitp",                   "logcount",
+        "integer-length",
         // File I/O
-            "read-file",              "write-file",            "delete-file",          "rename-file",
-        "probe-file",                 "file-write-date",            "file-author",               "file-string-length",          "get-universal-time", "get-internal-real-time", "get-internal-run-time", "get-decoded-time",     "decode-universal-time",
-        "encode-universal-time",      "room",                       "lisp-implementation-type",  "lisp-implementation-version", "software-type",      "machine-type",           "machine-instance",      "machine-version",      "software-version",
-        "short-site-name",            "long-site-name",             "user-homedir-pathname",
+            "read-file",              "write-file",            "delete-file",                "rename-file",                "probe-file",             "file-write-date",          "file-author",               "file-string-length",
+        "get-universal-time", "get-internal-real-time", "get-internal-run-time", "get-decoded-time",           "decode-universal-time",      "encode-universal-time",  "room",                     "lisp-implementation-type",  "lisp-implementation-version",
+        "software-type",      "machine-type",           "machine-instance",      "machine-version",            "software-version",           "short-site-name",        "long-site-name",           "user-homedir-pathname",
         // String construction
-            "make-string",                 "string-to-list",     "list-to-string",         "string-upcase",         "string-downcase",      "concatenate",
-        "%string-upcase",             "%string-downcase",
+            "make-string",
+        "string-to-list",     "list-to-string",         "string-upcase",         "string-downcase",            "concatenate",                "%string-upcase",         "%string-downcase",
         // Hash tables
-                  "make-hash-table",           "gethash",                     "puthash",            "remhash",                "hash-table-count",      "hash-table-capacity",  "clrhash",
-        "hash-table-test",            "hash-table-p",               "hash-table-keys",           "hash-table-alist",            "sxhash",
+                "make-hash-table",           "gethash",
+        "puthash",            "remhash",                "hash-table-count",      "hash-table-capacity",        "clrhash",                    "hash-table-test",        "hash-table-p",             "hash-table-keys",           "hash-table-alist",
+        "sxhash",
         // Numeric types
-                    "rationalp",              "complexp",              "make-complex",         "real-part",
-        "imag-part",                  "numerator",                  "denominator",
+                    "rationalp",              "complexp",              "make-complex",               "real-part",                  "imag-part",              "numerator",                "denominator",
         // Streams
-                      "streamp",                     "input-stream-p",     "output-stream-p",        "open-stream-p",         "interactive-stream-p", "stream-element-type",
-        "stream-external-format",     "make-string-input-stream",   "make-string-output-stream", "get-output-stream-string",    "write-to-stream",
+                      "streamp",
+        "input-stream-p",     "output-stream-p",        "open-stream-p",         "interactive-stream-p",       "stream-element-type",        "stream-external-format", "make-string-input-stream", "make-string-output-stream", "get-output-stream-string",
+        "write-to-stream",
         // Pathname primitives
-           "pathname-host",          "pathname-device",       "pathname-directory",   "pathname-name",
-        "pathname-type",              "pathname-version",           "truename",                  "ensure-directories-exist",    "pathname",           "parse-namestring",       "namestring",            "merge-pathnames",      "directory-namestring",
-        "file-namestring",            "host-namestring",            "wild-pathname-p",
+           "pathname-host",          "pathname-device",       "pathname-directory",         "pathname-name",              "pathname-type",          "pathname-version",         "truename",                  "ensure-directories-exist",
+        "pathname",           "parse-namestring",       "namestring",            "merge-pathnames",            "directory-namestring",       "file-namestring",        "host-namestring",          "wild-pathname-p",
         // Also callable
-                  "funcall",                     "apply",              "values",                 "values-list",
+                  "funcall",
+        "apply",              "values",                 "values-list",
         // Internal setters used by setf expanders and bootstrap fdefinition wiring
-                  "%aset",                "%svset",
-        "%sset",
+                  "%aset",                      "%svset",                     "%sset",
     };
 
     /// Check if a symbol is a builtin function (not special form)
@@ -4488,6 +4488,9 @@ pub const Compiler = struct {
         var aux_bindings = std.ArrayList(Ir.Binding){};
         defer aux_bindings.deinit(self.allocator);
 
+        var lambda_shadow_syms = std.ArrayList(Value){};
+        defer lambda_shadow_syms.deinit(self.allocator);
+
         const SpecialParam = struct {
             sym_pkg_ptr: usize,
             sym_uid: u64,
@@ -4533,6 +4536,17 @@ pub const Compiler = struct {
             }
         }.run;
 
+        const appendLambdaShadowSym = struct {
+            fn run(comp: *Compiler, syms: *std.ArrayList(Value), sym: Value) !void {
+                const live_sym = comp.resolveForwardedValue(sym);
+                if (!live_sym.isSymbol()) return;
+                for (syms.items) |existing| {
+                    if (BoxingSet.sameLexicalSymbol(existing, live_sym)) return;
+                }
+                try syms.append(comp.allocator, live_sym);
+            }
+        }.run;
+
         // Bind params as we parse to preserve symbol identity (package) and avoid
         // stashing GC-movable pointers into auxiliary arrays/maps.
         var lambda_env = Env.init(self.allocator, env);
@@ -4574,6 +4588,7 @@ pub const Compiler = struct {
                         var rest_idx: u16 = 0;
                         if (rest_item.typeKind() == .symbol) {
                             rest_idx = try lambda_env.bindSym(rest_item);
+                            try appendLambdaShadowSym(self, &lambda_shadow_syms, rest_item);
                             if (self.isSpecialBindingSym(rest_item)) {
                                 try appendSpecialParam(self, &special_params, rest_item, rest_name, rest_idx);
                             }
@@ -4652,6 +4667,7 @@ pub const Compiler = struct {
                         var idx: u16 = 0;
                         if (param_item.typeKind() == .symbol) {
                             idx = try lambda_env.bindSym(param_item);
+                            try appendLambdaShadowSym(self, &lambda_shadow_syms, param_item);
                             if (self.isSpecialBindingSym(param_item)) {
                                 try appendSpecialParam(self, &special_params, param_item, name, idx);
                             }
@@ -4668,6 +4684,7 @@ pub const Compiler = struct {
                         var idx: u16 = 0;
                         if (param_item.typeKind() == .symbol) {
                             idx = try lambda_env.bindSym(param_item);
+                            try appendLambdaShadowSym(self, &lambda_shadow_syms, param_item);
                             if (self.isSpecialBindingSym(param_item)) {
                                 try appendSpecialParam(self, &special_params, param_item, name, idx);
                             }
@@ -4676,10 +4693,11 @@ pub const Compiler = struct {
                         }
                     } else {
                         // Untyped parameter: just a symbol
-                        const idx = if (param_item.typeKind() == .symbol)
-                            try lambda_env.bindSym(param_item)
-                        else
-                            try lambda_env.bindName(name);
+                        const idx = if (param_item.typeKind() == .symbol) blk: {
+                            const bound_idx = try lambda_env.bindSym(param_item);
+                            try appendLambdaShadowSym(self, &lambda_shadow_syms, param_item);
+                            break :blk bound_idx;
+                        } else try lambda_env.bindName(name);
                         try params.append(self.allocator, name);
                         try typed_params.append(self.allocator, .{
                             .name = name,
@@ -4710,10 +4728,11 @@ pub const Compiler = struct {
                             init_ir = try self.compile(init_cons.car, &lambda_env);
                         }
                         const typed_car_live = self.resolveForwardedValue(typed_car);
-                        const abs_idx = if (typed_car_live.typeKind() == .symbol)
-                            try lambda_env.bindSym(typed_car_live)
-                        else
-                            try lambda_env.bindName(name);
+                        const abs_idx = if (typed_car_live.typeKind() == .symbol) blk: {
+                            const bound_idx = try lambda_env.bindSym(typed_car_live);
+                            try appendLambdaShadowSym(self, &lambda_shadow_syms, typed_car_live);
+                            break :blk bound_idx;
+                        } else try lambda_env.bindName(name);
                         try aux_bindings.append(self.allocator, .{
                             .name = name,
                             .value = init_ir,
@@ -4749,6 +4768,7 @@ pub const Compiler = struct {
                         if (spec.param_sym) |param_sym| {
                             const live_param_sym = self.resolveForwardedValue(param_sym);
                             idx = try lambda_env.bindSym(live_param_sym);
+                            try appendLambdaShadowSym(self, &lambda_shadow_syms, live_param_sym);
                             if (self.isSpecialBindingSym(live_param_sym)) {
                                 try appendSpecialParam(self, &special_params, live_param_sym, param_name, idx);
                             }
@@ -4796,6 +4816,7 @@ pub const Compiler = struct {
                         const typed_car_live = self.resolveForwardedValue(typed_car);
                         if (typed_car_live.typeKind() == .symbol) {
                             idx = try lambda_env.bindSym(typed_car_live);
+                            try appendLambdaShadowSym(self, &lambda_shadow_syms, typed_car_live);
                             if (self.isSpecialBindingSym(typed_car_live)) {
                                 try appendSpecialParam(self, &special_params, typed_car_live, name, idx);
                             }
@@ -4816,10 +4837,11 @@ pub const Compiler = struct {
                         // Typed parameter: (name type-expr)
                         if (!typed_cdr.isCons()) return error.InvalidLambda;
                         const type_val = typed_cdr.toPtr(Cons).car;
-                        const idx = if (typed_car.typeKind() == .symbol)
-                            try lambda_env.bindSym(typed_car)
-                        else
-                            try lambda_env.bindName(name);
+                        const idx = if (typed_car.typeKind() == .symbol) blk: {
+                            const bound_idx = try lambda_env.bindSym(typed_car);
+                            try appendLambdaShadowSym(self, &lambda_shadow_syms, typed_car);
+                            break :blk bound_idx;
+                        } else try lambda_env.bindName(name);
                         try params.append(self.allocator, name);
                         try typed_params.append(self.allocator, .{
                             .name = name,
@@ -4846,6 +4868,7 @@ pub const Compiler = struct {
             var rest_idx: u16 = 0;
             if (param_list.typeKind() == .symbol) {
                 rest_idx = try lambda_env.bindSym(param_list);
+                try appendLambdaShadowSym(self, &lambda_shadow_syms, param_list);
                 if (self.isSpecialBindingSym(param_list)) {
                     try appendSpecialParam(self, &special_params, param_list, rest_name, rest_idx);
                 }
@@ -4858,7 +4881,9 @@ pub const Compiler = struct {
             const sp_idx = if (pending.sym) |sp_sym| blk: {
                 const live_sp = self.resolveForwardedValue(sp_sym);
                 if (live_sp.typeKind() == .symbol) {
-                    break :blk try lambda_env.bindSym(live_sp);
+                    const bound_idx = try lambda_env.bindSym(live_sp);
+                    try appendLambdaShadowSym(self, &lambda_shadow_syms, live_sp);
+                    break :blk bound_idx;
                 }
                 break :blk try lambda_env.bindName(pending.name);
             } else try lambda_env.bindName(pending.name);
@@ -4869,7 +4894,9 @@ pub const Compiler = struct {
             const sp_idx = if (pending.sym) |sp_sym| blk: {
                 const live_sp = self.resolveForwardedValue(sp_sym);
                 if (live_sp.typeKind() == .symbol) {
-                    break :blk try lambda_env.bindSym(live_sp);
+                    const bound_idx = try lambda_env.bindSym(live_sp);
+                    try appendLambdaShadowSym(self, &lambda_shadow_syms, live_sp);
+                    break :blk bound_idx;
                 }
                 break :blk try lambda_env.bindName(pending.name);
             } else try lambda_env.bindName(pending.name);
@@ -4904,11 +4931,23 @@ pub const Compiler = struct {
                 // Check for &optional / &key markers
                 if (item.isSymbol()) {
                     const builtins = self.builtins orelse continue;
-                    if (item.raw == builtins.@"&optional".raw) { scan_opt = true; scan_key = false; continue; }
-                    if (item.raw == builtins.@"&key".raw) { scan_key = true; scan_opt = false; continue; }
+                    if (item.raw == builtins.@"&optional".raw) {
+                        scan_opt = true;
+                        scan_key = false;
+                        continue;
+                    }
+                    if (item.raw == builtins.@"&key".raw) {
+                        scan_key = true;
+                        scan_opt = false;
+                        continue;
+                    }
                     if (item.raw == builtins.@"&rest".raw or item.raw == builtins.@"&body".raw or
                         item.raw == builtins.@"&aux".raw or item.raw == builtins.@"&allow-other-keys".raw)
-                    { scan_opt = false; scan_key = false; continue; }
+                    {
+                        scan_opt = false;
+                        scan_key = false;
+                        continue;
+                    }
                 }
                 if ((scan_opt or scan_key) and item.isCons()) {
                     // (param default-expr) or ((kw param) default-expr)
@@ -4943,6 +4982,34 @@ pub const Compiler = struct {
         // the lambda has special parameter bindings that will wrap body in progv.
         // progv body must NOT be in tail position because pop_progv must execute after it.
         const has_special_params = special_params.items.len > 0;
+        const saved_boxed = self.boxed_vars;
+        var shadowed_boxed: ?*BoxingSet = null;
+        defer {
+            self.boxed_vars = saved_boxed;
+            if (shadowed_boxed) |set| {
+                set.deinit();
+                self.allocator.destroy(set);
+            }
+        }
+        if (saved_boxed) |outer_boxed| {
+            if (lambda_shadow_syms.items.len != 0) {
+                const filtered = try self.allocator.create(BoxingSet);
+                filtered.* = BoxingSet.init(self.allocator);
+                var it = outer_boxed.names.keyIterator();
+                while (it.next()) |existing| {
+                    var shadowed = false;
+                    for (lambda_shadow_syms.items) |bound_sym| {
+                        if (BoxingSet.sameLexicalSymbol(existing.*, bound_sym)) {
+                            shadowed = true;
+                            break;
+                        }
+                    }
+                    if (!shadowed) try filtered.add(existing.*);
+                }
+                shadowed_boxed = filtered;
+                self.boxed_vars = filtered;
+            }
+        }
         var body_ir = try self.compileBodyWithTail(filtered_body, &lambda_env, !has_special_params);
 
         // Bidirectional type checking (when enabled)
@@ -10188,7 +10255,7 @@ pub const Compiler = struct {
     fn buildDestructuringBindExpansion(self: *Compiler, pattern: Value, expr: Value, body: Value) anyerror!Value {
         const heap = self.heap orelse return error.InvalidSyntax;
         const temp = try prims.gensym(heap, null);
-        const temp_binding = try self.listFromSlice(&[_]Value{temp, expr});
+        const temp_binding = try self.listFromSlice(&[_]Value{ temp, expr });
 
         var inner_bindings = std.ArrayList(Value){};
         defer inner_bindings.deinit(self.allocator);
@@ -16790,7 +16857,6 @@ pub const Compiler = struct {
         return cl_pkg.findAccessibleUpper(name) orelse live;
     }
 
-
     fn safeSymbolName(self: *Compiler, sym: Value) ?[]const u8 {
         const live = self.resolveForwardedValue(sym);
         if (!live.isSymbol()) return null;
@@ -18999,10 +19065,7 @@ pub const Compiler = struct {
                 }
             }
             const helper_args = if (has_fill_pointer or adjustable_ir != null)
-                try h.allocCons(dim_expr,
-                    try h.allocCons(init_expr,
-                        try h.allocCons(fp_expr,
-                            try h.allocCons(adj_expr, Value.nil))))
+                try h.allocCons(dim_expr, try h.allocCons(init_expr, try h.allocCons(fp_expr, try h.allocCons(adj_expr, Value.nil))))
             else
                 try h.allocCons(dim_expr, try h.allocCons(init_expr, Value.nil));
             const form = try h.allocCons(helper_sym, helper_args);
@@ -19052,11 +19115,7 @@ pub const Compiler = struct {
                     }
                 }
                 // Build: (%make-vector-with-fp dim init fp adj)
-                const form = try h.allocCons(helper_sym,
-                    try h.allocCons(dim_expr,
-                        try h.allocCons(init_expr,
-                            try h.allocCons(fp_expr,
-                                try h.allocCons(adj_expr, Value.nil)))));
+                const form = try h.allocCons(helper_sym, try h.allocCons(dim_expr, try h.allocCons(init_expr, try h.allocCons(fp_expr, try h.allocCons(adj_expr, Value.nil)))));
                 return self.compile(form, env);
             }
         }

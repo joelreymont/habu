@@ -2677,6 +2677,39 @@ test "optional supplied-p stays aligned with later optional values" {
     try testing.expect(r3.cdr.isNil());
 }
 
+test "local optional defaults shadow outer boxed vars" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        "(let ((x 1) (y 2)) " ++
+            "(labels ((touch-x () (setq x 10)) " ++
+            "(touch-y () (setq y 20)) " ++
+            "(give-up (&optional (x x) (y y)) (list x y))) " ++
+            "(touch-x) " ++
+            "(touch-y) " ++
+            "(give-up)))",
+    );
+
+    try testing.expect(result.isCons());
+    const r0 = result.toPtr(runtime.Cons);
+    try testing.expect(r0.car.isFixnum());
+    try testing.expectEqual(@as(i64, 10), r0.car.toFixnum());
+
+    try testing.expect(r0.cdr.isCons());
+    const r1 = r0.cdr.toPtr(runtime.Cons);
+    try testing.expect(r1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 20), r1.car.toFixnum());
+    try testing.expect(r1.cdr.isNil());
+}
+
 test "keyword supplied-p stays correct when later keys are omitted" {
     const allocator = testing.allocator;
 
@@ -6459,7 +6492,7 @@ test "defstruct with character conc-name coerces to string prefix" {
         "  (defstruct (entry-char-prefix (:conc-name #\\X)) foo)\n" ++
         "  (let ((x (make-entry-char-prefix :foo 7)))\n" ++
         "    (and (fboundp 'xfoo)\n" ++
-         "         (= (xfoo x) 7))))");
+        "         (= (xfoo x) 7))))");
 
     try testing.expect(result.eq(Value.t));
 }
@@ -7062,8 +7095,7 @@ test "ansi repro rename-file accepts pathname designators" {
     const new_path = try std.fs.path.join(allocator, &.{ root, "new.txt" });
     defer allocator.free(new_path);
 
-    const src = try std.fmt.allocPrint(
-        allocator,
+    const src = try std.fmt.allocPrint(allocator,
         \\(progn
         \\  (with-open-file (s (pathname "{s}") :direction :output :if-exists :supersede :if-does-not-exist :create)
         \\    (write-string "x" s))
@@ -7094,8 +7126,7 @@ test "ansi repro ensure-directories-exist accepts string designator" {
     const target = try std.fs.path.join(allocator, &.{ root, "mk", "deep", "file.txt" });
     defer allocator.free(target);
 
-    const src = try std.fmt.allocPrint(
-        allocator,
+    const src = try std.fmt.allocPrint(allocator,
         \\(namestring (ensure-directories-exist "{s}"))
     , .{target});
     defer allocator.free(src);
@@ -8206,8 +8237,7 @@ test "load path preserves get-instream through dispatch macro callback" {
     const path = try std.fs.path.join(allocator, &.{ root, "dispatch-load.lisp" });
     defer allocator.free(path);
 
-    const src = try std.fmt.allocPrint(
-        allocator,
+    const src = try std.fmt.allocPrint(allocator,
         \\(progn
         \\  (defstruct instream stream (line 0 :type fixnum) stream-name)
         \\  (defvar *stream-alist* nil)
