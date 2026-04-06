@@ -8,8 +8,141 @@ const Tag = @import("../value.zig").Tag;
 const objects = @import("../objects.zig");
 const Heap = @import("../heap.zig").Heap;
 
+pub const DesignatorBytes = struct {
+    slice: []const u8,
+    owned: bool = false,
+
+    pub fn deinit(self: DesignatorBytes, allocator: std.mem.Allocator) void {
+        if (self.owned) allocator.free(self.slice);
+    }
+};
+
 fn isCharacterVector(val: Value) bool {
     return val.isVector() and val.toPtr(objects.Vector).isCharacterVector();
+}
+
+fn designatorCodepoint(val: Value) ?u21 {
+    return switch (val.typeKind()) {
+        .char => val.toCharacter(),
+        .fixnum => blk: {
+            const cp = val.toFixnum();
+            if (cp < 0 or cp > std.math.maxInt(u21)) return null;
+            break :blk @intCast(cp);
+        },
+        else => null,
+    };
+}
+
+fn utf8LenForCodepoint(cp: u21) error{TypeError}!usize {
+    return std.unicode.utf8CodepointSequenceLength(cp) catch error.TypeError;
+}
+
+fn encodeCodepointSlice(
+    allocator: std.mem.Allocator,
+    codepoints: anytype,
+    scratch: []u8,
+) error{OutOfMemory, TypeError}!DesignatorBytes {
+    var need: usize = 0;
+    for (codepoints) |cp_raw| {
+        const cp: u21 = @intCast(cp_raw);
+        need += try utf8LenForCodepoint(cp);
+    }
+
+    const out = if (need <= scratch.len)
+        scratch[0..need]
+    else
+        try allocator.alloc(u8, need);
+    errdefer if (need > scratch.len) allocator.free(out);
+
+    var off: usize = 0;
+    for (codepoints) |cp_raw| {
+        const cp: u21 = @intCast(cp_raw);
+        off += std.unicode.utf8Encode(cp, out[off..]) catch return error.TypeError;
+    }
+
+    return .{ .slice = out, .owned = need > scratch.len };
+}
+
+fn encodeCharVector(
+    allocator: std.mem.Allocator,
+    vec: *const objects.Vector,
+    scratch: []u8,
+) error{OutOfMemory, TypeError}!DesignatorBytes {
+    const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
+    var need: usize = 0;
+    var i: usize = 0;
+    while (i < len) : (i += 1) {
+        const cp = designatorCodepoint(vec.data[i]) orelse return error.TypeError;
+        need += try utf8LenForCodepoint(cp);
+    }
+
+    const out = if (need <= scratch.len)
+        scratch[0..need]
+    else
+        try allocator.alloc(u8, need);
+    errdefer if (need > scratch.len) allocator.free(out);
+
+    var off: usize = 0;
+    i = 0;
+    while (i < len) : (i += 1) {
+        const cp = designatorCodepoint(vec.data[i]) orelse return error.TypeError;
+        off += std.unicode.utf8Encode(cp, out[off..]) catch return error.TypeError;
+    }
+
+    return .{ .slice = out, .owned = need > scratch.len };
+}
+
+fn encodeCharArray(
+    allocator: std.mem.Allocator,
+    arr: *const objects.Array,
+    scratch: []u8,
+) error{OutOfMemory, TypeError}!DesignatorBytes {
+    if (arr.rank != 1) return error.TypeError;
+    if (arr.total_size == 0) return .{ .slice = "" };
+
+    const data: [*]const Value = @ptrFromInt(arr.data_ptr);
+    var need: usize = 0;
+    for (0..arr.total_size) |i| {
+        const cp = designatorCodepoint(data[i]) orelse return error.TypeError;
+        need += try utf8LenForCodepoint(cp);
+    }
+
+    const out = if (need <= scratch.len)
+        scratch[0..need]
+    else
+        try allocator.alloc(u8, need);
+    errdefer if (need > scratch.len) allocator.free(out);
+
+    var off: usize = 0;
+    for (0..arr.total_size) |i| {
+        const cp = designatorCodepoint(data[i]) orelse return error.TypeError;
+        off += std.unicode.utf8Encode(cp, out[off..]) catch return error.TypeError;
+    }
+
+    return .{ .slice = out, .owned = need > scratch.len };
+}
+
+pub fn designatorBytes(
+    allocator: std.mem.Allocator,
+    val: Value,
+    scratch: []u8,
+) error{OutOfMemory, TypeError}!DesignatorBytes {
+    return switch (val.typeKind()) {
+        .nil => .{ .slice = "nil" },
+        .t => .{ .slice = "t" },
+        .string => .{ .slice = val.toPtr(objects.String).bytes() },
+        .symbol => .{ .slice = val.toPtr(objects.Symbol).getName() },
+        .keyword => .{ .slice = val.toPtr(objects.Keyword).getName() },
+        .char => encodeCodepointSlice(allocator, [_]u21{val.toCharacter()}, scratch),
+        .string32 => encodeCodepointSlice(allocator, val.toPtr(objects.String32).codepoints(), scratch),
+        .vector => blk: {
+            const vec = val.toPtr(objects.Vector);
+            if (!vec.isCharacterVector()) return error.TypeError;
+            break :blk try encodeCharVector(allocator, vec, scratch);
+        },
+        .array => encodeCharArray(allocator, val.toPtr(objects.Array), scratch),
+        else => error.TypeError,
+    };
 }
 
 fn stringLen(val: Value) ?usize {

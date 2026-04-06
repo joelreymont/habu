@@ -8,36 +8,25 @@ const objects = @import("../objects.zig");
 const heap_mod = @import("../heap.zig");
 const Heap = heap_mod.Heap;
 const Cons = objects.Cons;
-const String = objects.String;
-const Vector = objects.Vector;
+const string_prims = @import("string.zig");
 
-fn nameBytes(name: Value) ![]const u8 {
-    return switch (name.typeKind()) {
-        .string => name.toPtr(objects.String).bytes(),
-        .symbol => name.toPtr(objects.Symbol).getName(),
-        else => error.TypeError,
-    };
+const NameBytes = string_prims.DesignatorBytes;
+
+fn nameBytes(name: Value) !NameBytes {
+    var scratch: [0]u8 = .{};
+    return string_prims.designatorBytes(std.heap.page_allocator, name, scratch[0..]);
 }
 
-fn nameBytesWithKeyword(name: Value) ![]const u8 {
-    return switch (name.typeKind()) {
-        .string => name.toPtr(objects.String).bytes(),
-        .symbol => name.toPtr(objects.Symbol).getName(),
-        .keyword => name.toPtr(objects.Keyword).getName(),
-        else => error.TypeError,
-    };
+fn nameBytesWithKeyword(name: Value) !NameBytes {
+    var scratch: [0]u8 = .{};
+    return string_prims.designatorBytes(std.heap.page_allocator, name, scratch[0..]);
 }
 
-fn packageNameBytes(pkg: *objects.Package) ![]const u8 {
-    return switch (pkg.name.typeKind()) {
-        .symbol => pkg.name.toPtr(objects.Symbol).getName(),
-        .string => pkg.name.toPtr(objects.String).bytes(),
-        .keyword => pkg.name.toPtr(objects.Keyword).getName(),
-        else => error.TypeError,
-    };
+fn packageNameBytes(pkg: *objects.Package) !NameBytes {
+    return nameBytesWithKeyword(pkg.name);
 }
 
-fn packageNameFromValue(pkg_val: Value) ![]const u8 {
+fn packageNameFromValue(pkg_val: Value) !NameBytes {
     return switch (pkg_val.typeKind()) {
         .package => packageNameBytes(pkg_val.toPtr(objects.Package)),
         .string, .symbol, .keyword => nameBytesWithKeyword(pkg_val),
@@ -104,7 +93,8 @@ fn nativePkgFor(heap: *Heap, pkg: Value) !*heap_mod.Package {
     if (!pkg.isPackage()) return error.TypeError;
     const p = pkg.toPtr(objects.Package);
     const pkg_name = try packageNameBytes(p);
-    return if (heap.findPackage(pkg_name)) |found| found else return error.InvalidPackage;
+    defer pkg_name.deinit(std.heap.page_allocator);
+    return if (heap.findPackage(pkg_name.slice)) |found| found else return error.InvalidPackage;
 }
 
 fn listContainsValue(list: Value, value: Value) bool {
@@ -283,10 +273,11 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
     }
 
     const pkg_name = try nameBytesWithKeyword(name);
+    defer pkg_name.deinit(std.heap.page_allocator);
     if (try heap.findLispPackage(name)) |_| return error.PackageExists;
 
-    const existing_native = heap.findPackage(pkg_name);
-    const direct_native = heap.packages.get(pkg_name);
+    const existing_native = heap.findPackage(pkg_name.slice);
+    const direct_native = heap.packages.get(pkg_name.slice);
     if (existing_native != null and direct_native == null) return error.PackageExists;
     const reused_native = if (existing_native) |native| native else null;
 
@@ -301,7 +292,8 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
             }
             if (try heap.findLispPackage(nick)) |_| return error.PackageExists;
             const nick_name = try nameBytesWithKeyword(nick);
-            if (heap.findPackage(nick_name)) |existing_nick_pkg| {
+            defer nick_name.deinit(std.heap.page_allocator);
+            if (heap.findPackage(nick_name.slice)) |existing_nick_pkg| {
                 if (reused_native) |native| {
                     if (existing_nick_pkg != native) return error.PackageExists;
                 } else {
@@ -313,7 +305,7 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
     }
 
     const resolved_use_list = if (use_list) |ul| try resolvePkgList(heap, ul) else Value.nil;
-    const native_pkg = if (reused_native) |native| native else try heap.findOrCreatePackage(pkg_name);
+    const native_pkg = if (reused_native) |native| native else try heap.findOrCreatePackage(pkg_name.slice);
     errdefer if (reused_native == null) {
         purgeNativePackageEntries(heap, native_pkg) catch {};
         native_pkg.deinit();
@@ -350,10 +342,11 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
                 _ = heap.removeLispPackageKey(nick_key);
             }
             const nick_name = try nameBytesWithKeyword(nick);
-            if (heap.package_aliases.get(nick_name)) |existing_alias| {
+            defer nick_name.deinit(std.heap.page_allocator);
+            if (heap.package_aliases.get(nick_name.slice)) |existing_alias| {
                 if (existing_alias != native_pkg) return error.PackageExists;
             } else {
-                const alias_key = try heap.backing_allocator.dupe(u8, nick_name);
+                const alias_key = try heap.backing_allocator.dupe(u8, nick_name.slice);
                 errdefer heap.backing_allocator.free(alias_key);
                 try heap.package_aliases.put(heap.backing_allocator, alias_key, native_pkg);
                 errdefer _ = heap.package_aliases.remove(alias_key);
@@ -450,8 +443,9 @@ pub fn packageExports(pkg: Value) !Value {
 /// Find symbol in all packages, return list
 pub fn findAllSymbols(heap: *Heap, name: Value) !Value {
     const name_str = try nameBytesWithKeyword(name);
+    defer name_str.deinit(std.heap.page_allocator);
     var upper_buf: [256]u8 = undefined;
-    const upper = try heap_mod.upperNameAlloc(heap.backing_allocator, name_str, upper_buf[0..]);
+    const upper = try heap_mod.upperNameAlloc(heap.backing_allocator, name_str.slice, upper_buf[0..]);
     defer heap_mod.freeUpperName(heap.backing_allocator, upper);
     const upper_name = upper.slice;
 
@@ -475,6 +469,7 @@ pub fn findAllSymbols(heap: *Heap, name: Value) !Value {
 /// Find all symbols whose name contains the given substring
 pub fn aproposSymbols(heap: *Heap, substring: Value) !Value {
     const substr = try nameBytes(substring);
+    defer substr.deinit(std.heap.page_allocator);
 
     var result = Value.nil;
     var seen = std.AutoHashMap(u64, void).init(heap.backing_allocator);
@@ -500,7 +495,7 @@ pub fn aproposSymbols(heap: *Heap, substring: Value) !Value {
                 // Check if name contains substring
                 const sym = entry_key.toPtr(objects.Symbol);
                 const sym_name = sym.getName();
-                if (std.mem.indexOf(u8, sym_name, substr) != null) {
+                if (std.mem.indexOf(u8, sym_name, substr.slice) != null) {
                     // Avoid duplicates
                     if (seen.get(entry_key.raw) == null) {
                         try seen.put(entry_key.raw, {});
@@ -530,9 +525,10 @@ pub fn listAllPackages(heap: *Heap) !Value {
 /// Takes package name string, keyword, symbol, or Lisp package object
 pub fn packageSymbolsList(heap: *Heap, pkg_val: Value) !Value {
     const pkg_name = try packageNameFromValue(pkg_val);
+    defer pkg_name.deinit(std.heap.page_allocator);
 
     // Find native package
-    const native_pkg = if (heap.findPackage(pkg_name)) |val| val else return Value.nil;
+    const native_pkg = if (heap.findPackage(pkg_name.slice)) |val| val else return Value.nil;
 
     // Iterate over native SymbolTable
     var result = Value.nil;
@@ -547,9 +543,10 @@ pub fn packageSymbolsList(heap: *Heap, pkg_val: Value) !Value {
 /// Takes package name string, keyword, symbol, or Lisp package object
 pub fn packageExportsList(heap: *Heap, pkg_val: Value) !Value {
     const pkg_name = try packageNameFromValue(pkg_val);
+    defer pkg_name.deinit(std.heap.page_allocator);
 
     // Find native package
-    const native_pkg = if (heap.findPackage(pkg_name)) |val| val else return Value.nil;
+    const native_pkg = if (heap.findPackage(pkg_name.slice)) |val| val else return Value.nil;
 
     // Iterate over exports hash map
     var result = Value.nil;
@@ -570,10 +567,12 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
     const p = pkg.toPtr(objects.Package);
 
     const name_str = try nameBytesWithKeyword(name);
+    defer name_str.deinit(std.heap.page_allocator);
     const pkg_name = try packageNameBytes(p);
-    const native_pkg = if (heap.findPackage(pkg_name)) |val| val else return error.InvalidPackage;
+    defer pkg_name.deinit(std.heap.page_allocator);
+    const native_pkg = if (heap.findPackage(pkg_name.slice)) |val| val else return error.InvalidPackage;
 
-    if (native_pkg.findAccessibleExact(name_str)) |sym| {
+    if (native_pkg.findAccessibleExact(name_str.slice)) |sym| {
         // Found in internal table - check if exported
         if (p.symbols.raw != Value.nil.raw) {
             const found_sym = hashTableLookup(p.symbols, sym);
@@ -599,7 +598,7 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
     // Not found - intern new symbol in native package, preserving the
     // caller-supplied spelling in the symbol-name while keeping package
     // lookup case-insensitive.
-    const new_sym = try native_pkg.internPreservingCase(heap, name_str);
+    const new_sym = try native_pkg.internPreservingCase(heap, name_str.slice);
 
     // Add to symbols table (create if needed)
     if (p.symbols.raw == Value.nil.raw) {
@@ -655,14 +654,15 @@ fn findInheritedSymbol(native_pkg: *heap_mod.Package, sym: Value) ?Value {
 pub fn findSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
     const resolved_pkg = try resolvePkg(heap, pkg);
     const name_str = try nameBytesWithKeyword(name);
+    defer name_str.deinit(std.heap.page_allocator);
     const native_pkg = try nativePkgFor(heap, resolved_pkg);
 
-    if (native_pkg.symbols.get(name_str)) |local_sym| {
-        const status = try heap.internKeyword(if (native_pkg.auto_export or native_pkg.exports.contains(name_str)) "EXTERNAL" else "INTERNAL");
+    if (native_pkg.symbols.get(name_str.slice)) |local_sym| {
+        const status = try heap.internKeyword(if (native_pkg.auto_export or native_pkg.exports.contains(name_str.slice)) "EXTERNAL" else "INTERNAL");
         return try heap.allocCons(local_sym, try heap.allocCons(status, Value.nil));
     }
 
-    if (native_pkg.findAccessibleExact(name_str)) |sym| {
+    if (native_pkg.findAccessibleExact(name_str.slice)) |sym| {
         if (findInheritedSymbol(native_pkg, sym)) |found| {
             const status = try heap.internKeyword("INHERITED");
             return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
@@ -752,7 +752,8 @@ pub fn shadowSymbols(heap: *Heap, names: Value, pkg: Value) !void {
     switch (names.typeKind()) {
         .symbol, .string, .keyword => {
             const name = try nameBytesWithKeyword(names);
-            const sym = try ensureLocalShadowSymbol(heap, native_pkg, name);
+            defer name.deinit(std.heap.page_allocator);
+            const sym = try ensureLocalShadowSymbol(heap, native_pkg, name.slice);
             try insertHashTable(heap, p.symbols, sym, sym);
             try addShadowingSymbol(heap, p, sym);
         },
@@ -767,7 +768,8 @@ pub fn shadowSymbols(heap: *Heap, names: Value, pkg: Value) !void {
                     else => return error.TypeError,
                 }
                 const name_str = try nameBytesWithKeyword(name);
-                const sym = try ensureLocalShadowSymbol(heap, native_pkg, name_str);
+                defer name_str.deinit(std.heap.page_allocator);
+                const sym = try ensureLocalShadowSymbol(heap, native_pkg, name_str.slice);
                 try insertHashTable(heap, p.symbols, sym, sym);
                 try addShadowingSymbol(heap, p, sym);
                 list = list.toPtr(objects.Cons).cdr;
@@ -954,7 +956,8 @@ pub fn deletePackage(heap: *Heap, designator: Value) !bool {
     const pkg = try resolvePkg(heap, designator);
     const p = pkg.toPtr(objects.Package);
     const pkg_name = try packageNameBytes(p);
-    const native_pkg = if (heap.findPackage(pkg_name)) |found| found else return error.InvalidPackage;
+    defer pkg_name.deinit(std.heap.page_allocator);
+    const native_pkg = if (heap.findPackage(pkg_name.slice)) |found| found else return error.InvalidPackage;
     if ((heap.cl_package != null and native_pkg == heap.cl_package.?) or
         (heap.cl_user_package != null and native_pkg == heap.cl_user_package.?) or
         (heap.keyword_package != null and native_pkg == heap.keyword_package.?))
@@ -1011,7 +1014,8 @@ pub fn deletePackage(heap: *Heap, designator: Value) !bool {
         const nick = nicks.toPtr(Cons).car;
         _ = try heap.removeLispPackage(nick);
         const nick_name = try nameBytesWithKeyword(nick);
-        if (heap.package_aliases.fetchRemove(nick_name)) |removed| {
+        defer nick_name.deinit(std.heap.page_allocator);
+        if (heap.package_aliases.fetchRemove(nick_name.slice)) |removed| {
             heap.backing_allocator.free(removed.key);
         }
         nicks = nicks.toPtr(Cons).cdr;
@@ -1045,7 +1049,8 @@ pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?V
     }
 
     const new_name_bytes = try nameBytesWithKeyword(new_name);
-    if (heap.findPackage(new_name_bytes)) |existing_native| {
+    defer new_name_bytes.deinit(std.heap.page_allocator);
+    if (heap.findPackage(new_name_bytes.slice)) |existing_native| {
         if (existing_native != native_pkg) return error.PackageExists;
     }
 
@@ -1062,7 +1067,8 @@ pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?V
                 if (existing_pkg.raw != pkg.raw) return error.PackageExists;
             }
             const nick_name = try nameBytesWithKeyword(nick);
-            if (heap.findPackage(nick_name)) |existing_native| {
+            defer nick_name.deinit(std.heap.page_allocator);
+            if (heap.findPackage(nick_name.slice)) |existing_native| {
                 if (existing_native != native_pkg) return error.PackageExists;
             }
             nicks = nicks.toPtr(Cons).cdr;
@@ -1070,15 +1076,16 @@ pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?V
     }
 
     const old_name_bytes = try packageNameBytes(p);
-    if (!std.mem.eql(u8, new_name_bytes, old_name_bytes)) {
-        const new_key = try heap.backing_allocator.dupe(u8, new_name_bytes);
+    defer old_name_bytes.deinit(std.heap.page_allocator);
+    if (!std.mem.eql(u8, new_name_bytes.slice, old_name_bytes.slice)) {
+        const new_key = try heap.backing_allocator.dupe(u8, new_name_bytes.slice);
         try heap.packages.put(heap.backing_allocator, new_key, native_pkg);
 
-        if (heap.packages.fetchRemove(old_name_bytes)) |removed| {
+        if (heap.packages.fetchRemove(old_name_bytes.slice)) |removed| {
             heap.backing_allocator.free(removed.key);
         }
 
-        const new_name_copy = try native_pkg.allocator.dupe(u8, new_name_bytes);
+        const new_name_copy = try native_pkg.allocator.dupe(u8, new_name_bytes.slice);
         const old_name_copy = native_pkg.name;
         native_pkg.name = new_name_copy;
         native_pkg.allocator.free(old_name_copy);
@@ -1094,7 +1101,8 @@ pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?V
             const nick = old_nicks.toPtr(Cons).car;
             _ = try heap.removeLispPackage(nick);
             const nick_name = try nameBytesWithKeyword(nick);
-            if (heap.package_aliases.fetchRemove(nick_name)) |removed| {
+            defer nick_name.deinit(std.heap.page_allocator);
+            if (heap.package_aliases.fetchRemove(nick_name.slice)) |removed| {
                 heap.backing_allocator.free(removed.key);
             }
             old_nicks = old_nicks.toPtr(Cons).cdr;
@@ -1108,7 +1116,8 @@ pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?V
             const nick = nicks.toPtr(Cons).car;
             try heap.putLispPackage(nick, pkg);
             const nick_name = try nameBytesWithKeyword(nick);
-            const alias_key = try heap.backing_allocator.dupe(u8, nick_name);
+            defer nick_name.deinit(std.heap.page_allocator);
+            const alias_key = try heap.backing_allocator.dupe(u8, nick_name.slice);
             try heap.package_aliases.put(heap.backing_allocator, alias_key, native_pkg);
             nicks = nicks.toPtr(Cons).cdr;
         }
@@ -1148,6 +1157,16 @@ test "findPackage accepts symbol and string designators" {
     const found_str = try findPackage(&heap, name);
     try testing.expect(found_str != null);
     try testing.expect(found_str.?.eq(pkg));
+
+    const chars = try heap.allocVector(15, 15);
+    const vec = chars.toPtr(objects.Vector);
+    vec.setCharacterVector(true);
+    for ("TEST-DESIGNATOR", 0..) |ch, i| {
+        vec.set(i, Value.makeCharacter(ch));
+    }
+    const found_vec = try findPackage(&heap, chars);
+    try testing.expect(found_vec != null);
+    try testing.expect(found_vec.?.eq(pkg));
 }
 
 test "intern and find symbol" {

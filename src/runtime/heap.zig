@@ -16,6 +16,7 @@ const Symbol = objects.Symbol;
 const gc_mod = @import("gc.zig");
 const GC = gc_mod.GC;
 const roots_mod = @import("roots.zig");
+const string_prims = @import("primitives/string.zig");
 
 pub const ALIGNMENT: usize = 16;
 pub const CARD_SHIFT: u6 = 9; // 512-byte cards
@@ -3353,13 +3354,10 @@ pub const Heap = struct {
     }
 
     fn packageLookupUpper(self: *const Heap, name: Value, buf: []u8) error{ OutOfMemory, TypeError }!UpperName {
-        const raw_name = switch (name.typeKind()) {
-            .string => name.toPtr(objects.String).bytes(),
-            .symbol => name.toPtr(objects.Symbol).getName(),
-            .keyword => name.toPtr(objects.Keyword).getName(),
-            else => return error.TypeError,
-        };
-        return try upperNameAlloc(self.backing_allocator, raw_name, buf);
+        var scratch: [256]u8 = undefined;
+        const raw_name = try string_prims.designatorBytes(self.backing_allocator, name, scratch[0..]);
+        defer raw_name.deinit(self.backing_allocator);
+        return try upperNameAlloc(self.backing_allocator, raw_name.slice, buf);
     }
 
     fn findLispPackageUpper(self: *const Heap, upper_name: []const u8) ?Value {
@@ -3377,12 +3375,11 @@ pub const Heap = struct {
     }
 
     pub fn packageKey(self: *Heap, name: Value) error{ OutOfMemory, TypeError }!Value {
-        return switch (name.typeKind()) {
-            .string => try self.internKeyword(name.toPtr(objects.String).bytes()),
-            .symbol => try self.internKeyword(name.toPtr(objects.Symbol).getName()),
-            .keyword => name,
-            else => error.TypeError,
-        };
+        if (name.isKeyword()) return name;
+        var scratch: [256]u8 = undefined;
+        const raw_name = try string_prims.designatorBytes(self.backing_allocator, name, scratch[0..]);
+        defer raw_name.deinit(self.backing_allocator);
+        return try self.internKeyword(raw_name.slice);
     }
 
     /// Find a Lisp-level package by name

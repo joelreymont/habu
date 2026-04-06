@@ -6630,4 +6630,18 @@ test "make-array character buffer stays string-like" {
             " (let ((x (copy-seq s))) (and (stringp x) (vectorp x) (equal x \"abc\"))))",
     );
     try testing.expect(!copy.isNil());
+
+    const designators = try repl.eval(
+        "(let ((s (make-array 7 :element-type 'character :fill-pointer 0 :adjustable t)))" ++
+            " (vector-push-extend #\\i s)" ++
+            " (vector-push-extend #\\n s)" ++
+            " (vector-push-extend #\\f s)" ++
+            " (vector-push-extend #\\i s)" ++
+            " (vector-push-extend #\\x s)" ++
+            " (vector-push-extend #\\i s)" ++
+            " (vector-push-extend #\\e s)" ++
+            " (and (string= (symbol-name (make-symbol s)) \"infixie\")" ++
+            "      (eq (intern s) (find-symbol \"infixie\" *package*))))",
+    );
+    try testing.expect(!designators.isNil());
 }

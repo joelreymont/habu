@@ -7,6 +7,7 @@ const Value = @import("../value.zig").Value;
 const Heap = @import("../heap.zig").Heap;
 const objects = @import("../objects.zig");
 const list_prims = @import("list.zig");
+const string_prims = @import("string.zig");
 
 const NameBuf = struct {
     name: []const u8,
@@ -47,23 +48,10 @@ pub fn gensym(heap: *Heap, prefix: ?Value) !Value {
 
 /// Create uninterned symbol with given name
 pub fn makeSymbol(heap: *Heap, name: Value) !Value {
-    const name_bytes: []const u8 = switch (name.typeKind()) {
-        .string => name.toPtr(objects.String).bytes(),
-        .symbol => name.toPtr(objects.Symbol).getName(),
-        .char => blk: {
-            var buf: [4]u8 = undefined;
-            const cp: u21 = @intCast(name.toCharacter());
-            const n = try std.unicode.utf8Encode(cp, &buf);
-            break :blk buf[0..n];
-        },
-        .array => blk: {
-            const arr = name.toPtr(objects.Array);
-            if (arr.rank != 1 or arr.total_size != 0) return error.TypeError;
-            break :blk "";
-        },
-        else => return error.TypeError,
-    };
-    return try heap.allocSymbol(name_bytes);
+    var scratch: [256]u8 = undefined;
+    const bytes = try string_prims.designatorBytes(heap.backing_allocator, name, scratch[0..]);
+    defer bytes.deinit(heap.backing_allocator);
+    return try heap.allocSymbol(bytes.slice);
 }
 
 /// Copy symbol optionally copying properties

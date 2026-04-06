@@ -2495,15 +2495,10 @@ pub const Vm = struct {
     }
 
     /// Allocate an uninitialized string, running GC if needed
-    /// Get string bytes from a string designator (string, symbol, or character).
-    fn getStringDesignator(self: *Vm, val: Value) Error![]const u8 {
-        const live = self.resolveForwardedValue(val);
-        return switch (live.typeKind()) {
-            .string => live.toPtr(String).bytes(),
-            .symbol => live.toPtr(runtime.Symbol).getName(),
-            .keyword => live.toPtr(runtime.Keyword).getName(),
-            .char => error.TypeMismatch, // TODO: support character designators
-            else => error.TypeMismatch,
+    fn getStringDesignator(self: *Vm, val: Value, scratch: []u8) Error!stringPrims.DesignatorBytes {
+        return stringPrims.designatorBytes(self.allocator, self.resolveForwardedValue(val), scratch) catch |err| switch (err) {
+            error.TypeError => error.TypeMismatch,
+            error.OutOfMemory => error.OutOfMemory,
         };
     }
 
@@ -5890,9 +5885,11 @@ pub const Vm = struct {
                 const str_idx = self.sp - 1;
                 var scratch: ?[]u8 = null;
                 defer if (scratch) |buf| self.allocator.free(buf);
+                var designator_buf: [256]u8 = undefined;
                 const str_val = self.resolveForwardedValue(self.stack[str_idx]);
-                const src_bytes_raw = try self.getStringDesignator(str_val);
-                const src_bytes = try self.stabilizeHeapBytes(src_bytes_raw, &scratch);
+                const src_bytes_raw = try self.getStringDesignator(str_val, designator_buf[0..]);
+                defer src_bytes_raw.deinit(self.allocator);
+                const src_bytes = try self.stabilizeHeapBytes(src_bytes_raw.slice, &scratch);
                 const src_len = src_bytes.len;
                 const result = try self.allocStringUninitialized(src_len);
                 const dst = result.toPtr(String);
@@ -5907,9 +5904,11 @@ pub const Vm = struct {
                 const str_idx = self.sp - 1;
                 var scratch: ?[]u8 = null;
                 defer if (scratch) |buf| self.allocator.free(buf);
+                var designator_buf: [256]u8 = undefined;
                 const str_val = self.resolveForwardedValue(self.stack[str_idx]);
-                const src_bytes_dc_raw = try self.getStringDesignator(str_val);
-                const src_bytes_dc = try self.stabilizeHeapBytes(src_bytes_dc_raw, &scratch);
+                const src_bytes_dc_raw = try self.getStringDesignator(str_val, designator_buf[0..]);
+                defer src_bytes_dc_raw.deinit(self.allocator);
+                const src_bytes_dc = try self.stabilizeHeapBytes(src_bytes_dc_raw.slice, &scratch);
                 const src_len_dc = src_bytes_dc.len;
                 const result = try self.allocStringUninitialized(src_len_dc);
                 const dst = result.toPtr(String);
@@ -5931,29 +5930,18 @@ pub const Vm = struct {
             },
             .intern => {
                 const name_val = self.resolveForwardedValue(try self.pop());
-                const name_bytes: []const u8 = switch (name_val.typeKind()) {
-                    .string => name_val.toPtr(String).bytes(),
-                    .symbol => name_val.toPtr(Symbol).getName(),
-                    .keyword => name_val.toPtr(runtime.Keyword).getName(),
-                    .nil => "nil",
-                    .t => "t",
-                    .char => blk: {
-                        const cp = name_val.toCharacter();
-                        if (cp > 0xFF) return error.TypeMismatch;
-                        const byte = [_]u8{@intCast(cp)};
-                        break :blk &byte;
-                    },
-                    else => return error.TypeMismatch,
-                };
-                const sym = if (self.heap.internCurrentPackagePreservingCase(name_bytes)) |val|
+                var designator_buf: [256]u8 = undefined;
+                const name_bytes = try self.getStringDesignator(name_val, designator_buf[0..]);
+                defer name_bytes.deinit(self.allocator);
+                const sym = if (self.heap.internCurrentPackagePreservingCase(name_bytes.slice)) |val|
                     val
                 else |_| blk: {
                     var tmp: ?[]u8 = null;
                     defer if (tmp) |b| self.allocator.free(b);
-                    var stable = name_bytes;
-                    if (self.bytesInHeap(name_bytes)) {
-                        const copy = try self.allocator.alloc(u8, name_bytes.len);
-                        @memcpy(copy, name_bytes);
+                    var stable = name_bytes.slice;
+                    if (self.bytesInHeap(name_bytes.slice)) {
+                        const copy = try self.allocator.alloc(u8, name_bytes.slice.len);
+                        @memcpy(copy, name_bytes.slice);
                         tmp = copy;
                         stable = copy;
                     }
@@ -10442,29 +10430,18 @@ pub const Vm = struct {
         try requireArgCount(args, 1, 2);
         if (args.len == 1) {
             const name_val = self.resolveForwardedValue(args[0]);
-            const name_bytes: []const u8 = switch (name_val.typeKind()) {
-                .string => name_val.toPtr(String).bytes(),
-                .symbol => name_val.toPtr(Symbol).getName(),
-                .keyword => name_val.toPtr(runtime.Keyword).getName(),
-                .nil => "nil",
-                .t => "t",
-                .char => blk: {
-                    const cp = name_val.toCharacter();
-                    if (cp > 0xFF) return error.TypeMismatch;
-                    const byte = [_]u8{@intCast(cp)};
-                    break :blk &byte;
-                },
-                else => return error.TypeMismatch,
-            };
-            const sym = if (self.heap.internCurrentPackagePreservingCase(name_bytes)) |val|
+            var designator_buf: [256]u8 = undefined;
+            const name_bytes = try self.getStringDesignator(name_val, designator_buf[0..]);
+            defer name_bytes.deinit(self.allocator);
+            const sym = if (self.heap.internCurrentPackagePreservingCase(name_bytes.slice)) |val|
                 val
             else |_| blk: {
                 var tmp: ?[]u8 = null;
                 defer if (tmp) |buf| self.allocator.free(buf);
-                var stable = name_bytes;
-                if (self.bytesInHeap(name_bytes)) {
-                    const copy = try self.allocator.alloc(u8, name_bytes.len);
-                    @memcpy(copy, name_bytes);
+                var stable = name_bytes.slice;
+                if (self.bytesInHeap(name_bytes.slice)) {
+                    const copy = try self.allocator.alloc(u8, name_bytes.slice.len);
+                    @memcpy(copy, name_bytes.slice);
                     tmp = copy;
                     stable = copy;
                 }
