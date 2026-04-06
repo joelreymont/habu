@@ -116,46 +116,63 @@ fn plistLooksLikeAList(plist: Value) bool {
     return first.car.isCons();
 }
 
-fn alistToFlat(heap: *Heap, plist: Value) !Value {
-    var elems = std.ArrayList(Value){};
-    defer elems.deinit(heap.backing_allocator);
+fn allocConsRooted(heap: *Heap, car_val: Value, cdr_val: Value, roots: []Value) !Value {
+    const cons = try heap.allocWithGC(objects.Cons, roots);
+    cons.* = objects.Cons.init(car_val, cdr_val);
+    return Value.makeCons(cons);
+}
 
+fn reverseProperList(heap: *Heap, list: Value) Value {
+    var prev = Value.nil;
+    var cur = list;
+    while (cur.isCons()) {
+        const cell = cur.toPtr(objects.Cons);
+        const next = cell.cdr;
+        cell.cdr = prev;
+        heap.writeBarrier(cur, prev);
+        prev = cur;
+        cur = next;
+    }
+    return prev;
+}
+
+fn alistToFlat(heap: *Heap, plist: Value) !Value {
     var cur = plist;
+    var out = Value.nil;
     while (cur.isCons()) {
         const node = cur.toPtr(objects.Cons);
         const entry = node.car;
+        const next = node.cdr;
 
+        var indicator = entry;
+        var value = Value.nil;
         if (entry.isCons()) {
             const pair = entry.toPtr(objects.Cons);
-            try elems.append(heap.backing_allocator, pair.car);
-            try elems.append(heap.backing_allocator, pair.cdr);
-        } else {
-            try elems.append(heap.backing_allocator, entry);
-            try elems.append(heap.backing_allocator, Value.nil);
+            indicator = pair.car;
+            value = pair.cdr;
         }
 
-        cur = node.cdr;
+        var roots = [_]Value{ cur, out, indicator, value };
+        const ind_cell = try allocConsRooted(heap, roots[2], roots[1], roots[0..]);
+        roots[1] = ind_cell;
+        const val_cell = try allocConsRooted(heap, roots[3], roots[1], roots[0..]);
+        out = val_cell;
+        cur = next;
     }
 
     if (!cur.isNil()) {
-        try elems.append(heap.backing_allocator, cur);
-        try elems.append(heap.backing_allocator, Value.nil);
+        var roots = [_]Value{ cur, out };
+        const ind_cell = try allocConsRooted(heap, roots[0], roots[1], roots[0..]);
+        roots[1] = ind_cell;
+        out = try allocConsRooted(heap, Value.nil, roots[1], roots[0..]);
     }
 
-    var out = Value.nil;
-    var i = elems.items.len;
-    while (i > 0) {
-        i -= 1;
-        out = try heap.allocCons(elems.items[i], out);
-    }
-    return out;
+    return reverseProperList(heap, out);
 }
 
 fn flatToAList(heap: *Heap, plist: Value) !Value {
-    var entries = std.ArrayList(Value){};
-    defer entries.deinit(heap.backing_allocator);
-
     var cur = plist;
+    var out = Value.nil;
     while (cur.isCons()) {
         const ind_cell = cur.toPtr(objects.Cons);
         const indicator = ind_cell.car;
@@ -168,23 +185,22 @@ fn flatToAList(heap: *Heap, plist: Value) !Value {
             next = val_cell.cdr;
         }
 
-        const pair = try heap.allocCons(indicator, value);
-        try entries.append(heap.backing_allocator, pair);
+        var roots = [_]Value{ cur, out, indicator, value };
+        const pair = try allocConsRooted(heap, roots[2], roots[3], roots[0..]);
+        roots[1] = out;
+        roots[2] = pair;
+        out = try allocConsRooted(heap, roots[2], roots[1], roots[0..3]);
         cur = next;
     }
 
     if (!cur.isNil()) {
-        const pair = try heap.allocCons(cur, Value.nil);
-        try entries.append(heap.backing_allocator, pair);
+        var roots = [_]Value{ cur, out };
+        const pair = try allocConsRooted(heap, roots[0], Value.nil, roots[0..]);
+        roots[0] = pair;
+        out = try allocConsRooted(heap, roots[0], roots[1], roots[0..]);
     }
 
-    var out = Value.nil;
-    var i = entries.items.len;
-    while (i > 0) {
-        i -= 1;
-        out = try heap.allocCons(entries.items[i], out);
-    }
-    return out;
+    return reverseProperList(heap, out);
 }
 
 /// Get symbol's property list
@@ -240,7 +256,9 @@ pub fn setSymbolPlist(heap: *Heap, sym: Value, plist: Value) !void {
         if (plist.isNil() or !plist.isCons() or plistLooksLikeAList(plist)) {
             try heap.setKeywordPlist(sym, plist);
         } else {
-            try heap.setKeywordPlist(sym, try flatToAList(heap, plist));
+            const roots = [_]Value{ sym, plist };
+            const alist = try flatToAList(heap, roots[1]);
+            try heap.setKeywordPlist(roots[0], alist);
         }
         return;
     }
@@ -264,8 +282,17 @@ pub fn setSymbolPlist(heap: *Heap, sym: Value, plist: Value) !void {
         return;
     }
 
-    plist_ptr.* = try flatToAList(heap, plist);
-    if (sym.isSymbol()) heap.writeBarrier(sym, plist_ptr.*);
+    const roots = [_]Value{ sym, plist };
+    const alist = try flatToAList(heap, roots[1]);
+    const sym_live = roots[0];
+    const plist_ptr_live = if (sym_live.isNil())
+        &heap.nil_symbol_plist
+    else if (sym_live.isT())
+        &heap.t_symbol_plist
+    else
+        &sym_live.toPtr(objects.Symbol).plist;
+    plist_ptr_live.* = alist;
+    if (sym_live.isSymbol()) heap.writeBarrier(sym_live, alist);
 }
 
 /// Test if symbol has value binding

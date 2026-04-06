@@ -10,6 +10,12 @@ const Symbol = objects.Symbol;
 const Cons = objects.Cons;
 const Heap = @import("../heap.zig").Heap;
 
+fn allocConsRooted(heap: *Heap, car_val: Value, cdr_val: Value, roots: []Value) error{OutOfMemory}!Value {
+    const cell = try heap.allocWithGC(Cons, roots);
+    cell.* = Cons.init(car_val, cdr_val);
+    return Value.makeCons(cell);
+}
+
 /// Create a cons cell
 pub fn cons(heap: *Heap, car_val: Value, cdr_val: Value) error{OutOfMemory}!Value {
     return try heap.allocCons(car_val, cdr_val);
@@ -380,7 +386,7 @@ fn getFlatHeadPlist(target: Value, indicator: Value) Value {
 }
 
 fn putFlatHeadPlist(heap: *Heap, target: Value, indicator: Value, value: Value) !Value {
-    const head = target.toPtr(Cons);
+    var head = target.toPtr(Cons);
     var tail = head.cdr;
     while (tail.isCons()) {
         const ind_cell = tail.toPtr(Cons);
@@ -396,10 +402,17 @@ fn putFlatHeadPlist(heap: *Heap, target: Value, indicator: Value, value: Value) 
         tail = value_cell.cdr;
     }
 
-    const new_value_cell = try heap.allocCons(value, head.cdr);
-    const new_ind_cell = try heap.allocCons(indicator, new_value_cell);
+    var roots = [_]Value{ target, indicator, value, head.cdr };
+    const new_value_cell = try allocConsRooted(heap, roots[2], roots[3], roots[0..]);
+    const target_live = roots[0];
+    const indicator_live = roots[1];
+    head = target_live.toPtr(Cons);
+    roots[2] = new_value_cell;
+    roots[3] = head.cdr;
+    const new_ind_cell = try allocConsRooted(heap, indicator_live, new_value_cell, roots[0..]);
+    head = roots[0].toPtr(Cons);
     head.cdr = new_ind_cell;
-    heap.writeBarrier(target, new_ind_cell);
+    heap.writeBarrier(roots[0], new_ind_cell);
     return value;
 }
 
@@ -466,9 +479,12 @@ pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
             const pair_cons = pair.toPtr(Cons);
             if (pair_cons.car.eq(indicator)) {
                 // Found - update value (modify cdr of pair)
-                const new_pair = try heap.allocCons(indicator, value);
-                entry.car = new_pair;
-                heap.writeBarrier(current, new_pair);
+                var roots = [_]Value{ sym, current, indicator, value };
+                const new_pair = try allocConsRooted(heap, roots[2], roots[3], roots[0..]);
+                const current_live = roots[1];
+                const entry_live = current_live.toPtr(Cons);
+                entry_live.car = new_pair;
+                heap.writeBarrier(current_live, new_pair);
                 return value;
             }
         }
@@ -477,9 +493,12 @@ pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
     }
 
     // Not found - add new entry at front
-    const new_pair = try heap.allocCons(indicator, value);
-    const new_entry = try heap.allocCons(new_pair, plist);
-    try storePlist(heap, sym, new_entry);
+    var roots = [_]Value{ sym, indicator, value, plist };
+    const new_pair = try allocConsRooted(heap, roots[1], roots[2], roots[0..]);
+    roots[1] = new_pair;
+    roots[2] = roots[3];
+    const new_entry = try allocConsRooted(heap, roots[1], roots[2], roots[0..3]);
+    try storePlist(heap, roots[0], new_entry);
 
     return value;
 }

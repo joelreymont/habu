@@ -11848,6 +11848,44 @@ test "symbol value cells handle uninterned and fresh interned symbols" {
     try testing.expect(cur.isNil());
 }
 
+test "gensym plist survives GC pressure" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (let ((s (gensym "X")))
+        \\    (putprop s 'foo 'disrep)
+        \\    (dotimes (i 4000) (make-string 128 :initial-element #\a))
+        \\    (let ((flat (symbol-plist s)))
+        \\      (dotimes (i 4000) (make-string 128 :initial-element #\b))
+        \\      (setf (symbol-plist s) flat)
+        \\      (dotimes (i 4000) (make-string 128 :initial-element #\c))
+        \\      (list
+        \\        (if (eq (get s 'disrep) 'foo) 1 0)
+        \\        (if (equal flat '(disrep foo)) 1 0)
+        \\        (if (equal (symbol-plist s) '(disrep foo)) 1 0))))))
+    );
+
+    try testing.expect(out.isCons());
+    var cur = out;
+    var i: usize = 0;
+    while (i < 3) : (i += 1) {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(@as(i64, 1), cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "defun creates function binding without value binding" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
