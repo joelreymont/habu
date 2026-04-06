@@ -10304,6 +10304,55 @@ test "maxima core subset loader binds CAS entrypoints" {
     try testing.expect(cur.isNil());
 }
 
+test "maxima buildq lambda executes through mqapply" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\    (declare (ignore ok total))
+        \\    (let ((*package* (find-package :maxima)))
+        \\      (let* ((form (with-input-from-string
+        \\                       (s "block([a,l], a : make_array(fixnum, 3), l : buildq([a], lambda([x], a[x])), l(0));")
+        \\                     (maxima::mread s 'maxima::$eof)))
+        \\             (value (maxima::meval form)))
+        \\      (list
+        \\        fail
+        \\        (if *maxima-failed* 1 0)
+        \\        (if (fboundp 'maxima::mread) 1 0)
+        \\        (if (and (consp value)
+        \\                 (equal (third value) 0))
+        \\            1
+        \\            0))))))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    var got: [4]i64 = undefined;
+    for (0..got.len) |idx| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        got[idx] = cell.car.toFixnum();
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+    const expected = [_]i64{ 0, 0, 1, 1 };
+    for (expected, 0..) |want, idx| {
+        try testing.expectEqual(want, got[idx]);
+    }
+}
+
 test "maxima reader stage parses selected upstream modules" {
     try ensureMaximaSources();
     const allocator = testing.allocator;
