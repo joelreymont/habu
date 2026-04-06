@@ -9034,6 +9034,34 @@ test "package-local functionp does not override cl:functionp" {
     try testing.expect(c3.car.isNil());
 }
 
+test "cl functionp only accepts fbound symbols" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(list (cl:functionp 'car) (cl:functionp 'apply) (cl:functionp 'habu-no-such-function))",
+    );
+
+    try testing.expect(result.isCons());
+    const c1 = result.toPtr(Cons);
+    try testing.expect(!c1.car.isNil());
+    try testing.expect(c1.cdr.isCons());
+
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(!c2.car.isNil());
+    try testing.expect(c2.cdr.isCons());
+
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expect(c3.car.isNil());
+}
+
 test "package iteration macros produce symbols and iterator values" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });

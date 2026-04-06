@@ -4671,7 +4671,13 @@
 
 ; functionp - check if callable
 (defun functionp (x)
-  (or (closurep x) (symbolp x) (compiled-function-p x) (typep x 'generic-function)))
+  (or (closurep x)
+      (compiled-function-p x)
+      (typep x 'generic-function)
+      (and (symbolp x) (fboundp x))
+      (and (consp x)
+           (eq (car x) 'setf)
+           (fboundp x))))
 
 ; compiled-function-p - check if compiled
 (defun compiled-function-p (x)
