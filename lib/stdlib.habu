@@ -2664,6 +2664,9 @@
     ((and (eq rtype :list) (listp object)) object)
     ((and (eq rtype :vector) (vectorp object)) object)
     ((and (eq rtype :string) (stringp object)) object)
+    ; String to list
+    ((and (eq rtype :list) (stringp object))
+     (string-to-list object))
     ; List to vector
     ((and (eq rtype :vector) (listp object))
      (let* ((len (length object))
@@ -2678,9 +2681,6 @@
            (len (length object)))
        (dotimes (i len (nreverse lst))
          (push (svref object i) lst))))
-    ; String to list
-    ((and (eq rtype :list) (stringp object))
-     (string-to-list object))
     ; List to string
     ((and (eq rtype :string) (listp object))
      (list-to-string object))

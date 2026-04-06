@@ -10490,6 +10490,43 @@ test "maxima manifest loads pregexp before commac" {
     try testing.expect(cur.isNil());
 }
 
+test "maxima loader reaches mforma without failures" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (setq *maxima-files*
+        \\    '("intl" "clmacs" "mormac" "compat" "macsys" "merror" "float-properties"
+        \\      "commac" "comm" "llang" "cl-info" "numth" "syntax" "csimp" "csimp2"
+        \\      "zero" "logarc" "rpart" "numeric" "rates" "defcal" "maxmac" "mopers" "mforma"))
+        \\  (multiple-value-bind (ok total fail missing attempted)
+        \\      (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\    (list ok total fail attempted (if missing (length missing) 0) (if *maxima-failed* 1 0))))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 24, 24, 0, 24, 0, 0 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "maxima manifest loads slatec package before bessel" {
     try ensureMaximaSources();
     const allocator = testing.allocator;
