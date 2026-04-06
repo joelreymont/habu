@@ -10527,6 +10527,51 @@ test "maxima loader reaches mforma without failures" {
     try testing.expect(cur.isNil());
 }
 
+test "maxima post-load seeds reset state for maxima userdir" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (load "lib/maxima-loader.lisp")
+        \\  (maxima-load-all :verbose nil)
+        \\  (load "lib/maxima-post-load.lisp")
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (multiple-value-bind (v foundp) (gethash '$maxima_userdir *variable-initial-values*)
+        \\      (list
+        \\        (if foundp 1 0)
+        \\        (if (stringp v) 1 0)
+        \\        (if (handler-case
+        \\                (progn
+        \\                  (with-input-from-string (s "(reset(), kill(all),0);")
+        \\                    (meval (mread s :eof)))
+        \\                  t)
+        \\              (error () nil))
+        \\            1
+        \\            0)
+        \\        (if (stringp $maxima_userdir) 1 0)))))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 1, 1, 1, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "maxima manifest loads slatec package before bessel" {
     try ensureMaximaSources();
     const allocator = testing.allocator;

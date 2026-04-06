@@ -44,7 +44,9 @@
   (when userdir
     (setf *maxima-userdir* userdir)
     (when (boundp '$maxima_userdir)
-      (setq $maxima_userdir userdir)))
+      (setq $maxima_userdir userdir))
+    (when (boundp '*variable-initial-values*)
+      (setf (gethash '$maxima_userdir *variable-initial-values*) userdir)))
 
   (setf $file_search_lisp
         (habu-search-mlist
