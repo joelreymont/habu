@@ -747,6 +747,22 @@
       (%set-adjustable v t))
     v))
 
+(defun %make-char-vector (size init-elem)
+  (let ((v (make-vector size init-elem)))
+    (%set-character-vector v t)
+    v))
+
+(defun %make-char-vector-with-fp (size init-elem fill-pointer-val adjustable-val)
+  (let ((v (%make-char-vector size init-elem)))
+    (cond
+      ((eq fill-pointer-val t)
+       (%set-fill-pointer v size))
+      ((integerp fill-pointer-val)
+       (%set-fill-pointer v fill-pointer-val)))
+    (when adjustable-val
+      (%set-adjustable v t))
+    v))
+
 ; fill-pointer - get fill pointer
 (defun fill-pointer (vector)
   (let ((fp (%fill-pointer vector)))

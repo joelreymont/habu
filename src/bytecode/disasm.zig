@@ -424,6 +424,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .vec_pop,
         .vec_set_fill_ptr,
         .vec_set_adjustable,
+        .vec_set_character,
         .vec_adjust,
         // Compound stream opcodes (no operand)
         .make_echo_stream,

@@ -4595,11 +4595,12 @@ pub const Vm = struct {
             },
             .stringp => {
                 const a = try self.pop();
-                try self.push(if (a.isString() or a.isString32()) Value.t else Value.nil);
+                try self.push(if (stringPrims.stringp(a) or a.isString32()) Value.t else Value.nil);
             },
             .vectorp => {
                 const a = try self.pop();
                 const is_vector_like = switch (a.typeKind()) {
+                    .string, .string32 => true,
                     .vector => true,
                     .array => blk: {
                         const arr = a.toPtr(runtime.Array);
@@ -4846,6 +4847,13 @@ pub const Vm = struct {
                 const ok = primitives.vector.setAdjustable(vec_val, !bool_val.isNil());
                 try self.push(if (ok) Value.t else Value.nil);
             },
+            .vec_set_character => {
+                const bool_val = try self.pop();
+                const vec_val = try self.pop();
+                if (!vec_val.isVector()) return error.TypeMismatch;
+                vec_val.toPtr(runtime.Vector).setCharacterVector(!bool_val.isNil());
+                try self.push(Value.t);
+            },
 
             .vec_adjust => {
                 const fill_val = try self.pop();
@@ -5046,6 +5054,22 @@ pub const Vm = struct {
                         if (idx >= str32.length) return error.TypeMismatch;
                         try self.push(Value.makeCharacter(@intCast(str32.codepoints()[idx])));
                     },
+                    .vector => {
+                        const vec = str_val.toPtr(runtime.Vector);
+                        if (!vec.isCharacterVector()) return error.TypeMismatch;
+                        const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
+                        if (idx >= len) return error.TypeMismatch;
+                        const ch = vec.data[idx];
+                        switch (ch.typeKind()) {
+                            .char => try self.push(ch),
+                            .fixnum => {
+                                const cp = ch.toFixnum();
+                                if (cp < 0 or cp > std.math.maxInt(u21)) return error.TypeMismatch;
+                                try self.push(Value.makeCharacter(@intCast(cp)));
+                            },
+                            else => return error.TypeMismatch,
+                        }
+                    },
                     .array => {
                         const arr = str_val.toPtr(runtime.Array);
                         if (arr.rank != 1) return error.TypeMismatch;
@@ -5075,6 +5099,11 @@ pub const Vm = struct {
                     .string32 => {
                         const str32 = str_val.toPtr(runtime.String32);
                         try self.push(Value.makeFixnum(@intCast(str32.length)));
+                    },
+                    .vector => {
+                        const vec = str_val.toPtr(runtime.Vector);
+                        if (!vec.isCharacterVector()) return error.TypeMismatch;
+                        try self.push(Value.makeFixnum(@intCast(vec.getFillPointer() orelse vec.length)));
                     },
                     else => return error.TypeMismatch,
                 }
@@ -5113,6 +5142,14 @@ pub const Vm = struct {
                         if (char_int > std.math.maxInt(u21)) return error.TypeMismatch;
                         const data: [*]Value = @ptrFromInt(arr.data_ptr);
                         data[idx] = Value.makeCharacter(@intCast(char_int));
+                    },
+                    .vector => {
+                        const vec = str_val.toPtr(runtime.Vector);
+                        if (!vec.isCharacterVector()) return error.TypeMismatch;
+                        const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
+                        if (idx >= len) return error.TypeMismatch;
+                        if (char_int > std.math.maxInt(u21)) return error.TypeMismatch;
+                        vec.data[idx] = Value.makeCharacter(@intCast(char_int));
                     },
                     else => return error.TypeMismatch,
                 }
@@ -9988,9 +10025,16 @@ pub const Vm = struct {
                 if (arr_val.isString()) {
                     if (args.len != 2) return error.TypeMismatch;
                     const idx = try nthArgStringSubscript(args, 1);
-                    const str = arr_val.toPtr(runtime.String);
-                    if (idx >= str.length) return error.TypeMismatch;
-                    return Value.makeCharacter(@intCast(str.bytes()[idx]));
+                    const ch = stringPrims.stringRef(arr_val, idx);
+                    if (ch < 0) return error.TypeMismatch;
+                    return Value.makeCharacter(@intCast(ch));
+                }
+                if (arr_val.isVector() and arr_val.toPtr(runtime.Vector).isCharacterVector()) {
+                    if (args.len != 2) return error.TypeMismatch;
+                    const idx = try nthArgStringSubscript(args, 1);
+                    const ch = stringPrims.stringRef(arr_val, idx);
+                    if (ch < 0) return error.TypeMismatch;
+                    return Value.makeCharacter(@intCast(ch));
                 }
                 if (arr_val.isString32()) {
                     if (args.len != 2) return error.TypeMismatch;
@@ -10076,12 +10120,10 @@ pub const Vm = struct {
                 const idx_signed = idx_val.toFixnum();
                 if (idx_signed < 0) return error.TypeMismatch;
                 const idx: usize = @intCast(idx_signed);
-                if (!str_val.isString() or !val.isCharacter()) return error.TypeMismatch;
-                const str = str_val.toPtr(runtime.String);
-                if (idx >= str.length) return error.TypeMismatch;
+                if (!stringPrims.stringp(str_val) or !val.isCharacter()) return error.TypeMismatch;
                 const cp = val.toCharacter();
                 if (cp > 0xFF) return error.TypeMismatch;
-                str.mutableBytes()[idx] = @intCast(cp);
+                if (!stringPrims.stringSet(str_val, idx, @intCast(cp))) return error.TypeMismatch;
                 return val;
             },
             .make_unbound => return try primitives.makeUnbound(self.heap, try self.argsList(args)),
@@ -10116,10 +10158,9 @@ pub const Vm = struct {
                 const idx_signed = args[1].toFixnum();
                 if (idx_signed < 0) return error.TypeMismatch;
                 const idx: usize = @intCast(idx_signed);
-                if (!args[0].isString()) return error.TypeMismatch;
-                const str = args[0].toPtr(runtime.String);
-                if (idx >= str.length) return error.TypeMismatch;
-                return Value.makeCharacter(@intCast(str.bytes()[idx]));
+                const ch = stringPrims.stringRef(args[0], idx);
+                if (ch < 0) return error.TypeMismatch;
+                return Value.makeCharacter(@intCast(ch));
             },
             .substring => {
                 try requireArgCount(args, 3, 3);
@@ -11555,7 +11596,21 @@ pub const Vm = struct {
             },
             .cons => try self.formatListAesthetic(val, result),
             .closure => try result.appendSlice(self.allocator, "#<closure>"),
-            .vector => try result.appendSlice(self.allocator, "#<vector>"),
+            .vector => {
+                const vec = val.toPtr(runtime.Vector);
+                if (vec.isCharacterVector()) {
+                    const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
+                    for (0..len) |i| {
+                        const ch = vec.data[i];
+                        if (!ch.isCharacter()) return error.TypeMismatch;
+                        var buf: [4]u8 = undefined;
+                        const n = try std.unicode.utf8Encode(ch.toCharacter(), &buf);
+                        try result.appendSlice(self.allocator, buf[0..n]);
+                    }
+                } else {
+                    try result.appendSlice(self.allocator, "#<vector>");
+                }
+            },
             .structure => try result.appendSlice(self.allocator, "#<structure>"),
             .hashtable => try result.appendSlice(self.allocator, "#<hash-table>"),
             .rational => {
@@ -11593,6 +11648,18 @@ pub const Vm = struct {
             try result.append(self.allocator, '"');
             const str = val.toPtr(runtime.String);
             try result.appendSlice(self.allocator, str.bytes());
+            try result.append(self.allocator, '"');
+        } else if (val.isVector() and val.toPtr(runtime.Vector).isCharacterVector()) {
+            try result.append(self.allocator, '"');
+            const vec = val.toPtr(runtime.Vector);
+            const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
+            for (0..len) |i| {
+                const ch = vec.data[i];
+                if (!ch.isCharacter()) return error.TypeMismatch;
+                var buf: [4]u8 = undefined;
+                const n = try std.unicode.utf8Encode(ch.toCharacter(), &buf);
+                try result.appendSlice(self.allocator, buf[0..n]);
+            }
             try result.append(self.allocator, '"');
         } else {
             // Everything else same as aesthetic

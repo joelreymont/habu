@@ -1058,6 +1058,7 @@ pub const Emitter = struct {
             .vec_fill_ptr => |op| try self.emitUnaryOp(op.operand, .vec_fill_ptr),
             .vec_set_fill_ptr => |op| try self.emitBinaryOp(op, .vec_set_fill_ptr),
             .vec_set_adjustable => |op| try self.emitBinaryOp(op, .vec_set_adjustable),
+            .vec_set_character => |op| try self.emitBinaryOp(op, .vec_set_character),
             .vec_push => |op| try self.emitBinaryOp(op, .vec_push),
             .vec_push_ext => |op| try self.emitTernaryOp(op, .vec_push_ext),
             .vec_pop => |op| try self.emitUnaryOp(op.operand, .vec_pop),

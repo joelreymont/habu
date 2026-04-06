@@ -158,6 +158,10 @@ fn clSym(heap: *Heap, name: []const u8) !Value {
     return (try heap.internInPackage("COMMON-LISP", name)) orelse error.InvalidArgument;
 }
 
+fn isCharacterVector(obj: Value) bool {
+    return obj.isVector() and obj.toPtr(objects.Vector).isCharacterVector();
+}
+
 /// Check if two values are eql (eq for most types, numeric for numbers)
 fn valueEql(a: Value, b: Value) bool {
     if (a.raw == b.raw) return true;
@@ -231,9 +235,9 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
         if (sym.eq(syms.number)) return obj.isFixnum() or obj.isBignum() or obj.isFloat() or obj.isRational() or obj.isComplex();
         if (sym.eq(syms.complex)) return obj.isComplex();
         if (sym.eq(syms.character)) return obj.isCharacter();
-        if (sym.eq(syms.string)) return obj.isString();
+        if (sym.eq(syms.string)) return obj.isString() or isCharacterVector(obj);
         if (sym.eq(syms.vector)) return obj.isVector();
-        if (sym.eq(syms.array)) return obj.isArray() or obj.isVector() or obj.isString();
+        if (sym.eq(syms.array)) return obj.isArray() or obj.isVector() or obj.isString() or isCharacterVector(obj);
         if (sym.eq(syms.list)) return obj.isNil() or obj.isCons();
         if (sym.eq(syms.sequence)) return obj.isNil() or obj.isCons() or obj.isVector() or obj.isString();
         if (sym.eq(syms.function)) return obj.isClosure() or obj.isChunk();
@@ -247,8 +251,8 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
         if (sym.eq(syms.base_char)) return obj.isCharacter();
         if (sym.eq(syms.standard_char)) return obj.isCharacter();
         if (sym.eq(syms.extended_char)) return false; // no extended chars
-        if (sym.eq(syms.base_string)) return obj.isString();
-        if (sym.eq(syms.simple_string)) return obj.isString();
+        if (sym.eq(syms.base_string)) return obj.isString() or isCharacterVector(obj);
+        if (sym.eq(syms.simple_string)) return obj.isString() or isCharacterVector(obj);
         if (sym.eq(syms.simple_base_string)) return obj.isString();
         if (sym.eq(syms.simple_vector)) return obj.isVector();
         if (sym.eq(syms.simple_array)) return obj.isVector() or obj.isString() or obj.isArray();
@@ -734,6 +738,9 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
         .cons => clSym(heap, "cons"),
         .symbol => clSym(heap, "symbol"),
         .vector => {
+            if (val.toPtr(@import("../objects.zig").Vector).isCharacterVector()) {
+                return clSym(heap, "string");
+            }
             // Check if this is a class/struct instance (first element is class name symbol)
             const vec = val.toPtr(@import("../objects.zig").Vector);
             if (vec.length > 0 and vec.data[0].isSymbol()) {

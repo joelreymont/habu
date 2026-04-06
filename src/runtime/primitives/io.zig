@@ -481,6 +481,15 @@ fn princValueTo(val: Value, w: anytype, level: usize, stream: ?Value, hook: ?Str
         },
         .vector => {
             const vec = val.toPtr(objects.Vector);
+            if (vec.isCharacterVector()) {
+                const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
+                for (0..len) |i| {
+                    const ch = vec.data[i];
+                    if (!ch.isCharacter()) return error.TypeMismatch;
+                    try w.writeByte(@intCast(ch.toCharacter()));
+                }
+                return;
+            }
             if (!print_array) {
                 try w.print("#<VECTOR {d}>", .{vec.length});
             } else {
@@ -693,6 +702,17 @@ fn printEscapedTo(val: Value, w: anytype, level: usize, stream: ?Value, hook: ?S
         },
         .vector => {
             const vec = val.toPtr(objects.Vector);
+            if (vec.isCharacterVector()) {
+                try w.writeByte('"');
+                const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
+                for (0..len) |i| {
+                    const ch = vec.data[i];
+                    if (!ch.isCharacter()) return error.TypeMismatch;
+                    try w.writeByte(@intCast(ch.toCharacter()));
+                }
+                try w.writeByte('"');
+                return;
+            }
             try w.writeAll("#(");
             const items = vec.items();
             const max_count = if (!print_readably and print_length != null)

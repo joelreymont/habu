@@ -8,37 +8,72 @@ const Tag = @import("../value.zig").Tag;
 const objects = @import("../objects.zig");
 const Heap = @import("../heap.zig").Heap;
 
+fn isCharacterVector(val: Value) bool {
+    return val.isVector() and val.toPtr(objects.Vector).isCharacterVector();
+}
+
+fn stringLen(val: Value) ?usize {
+    if (val.isString()) return val.toPtr(objects.String).length;
+    if (isCharacterVector(val)) {
+        const vec = val.toPtr(objects.Vector);
+        return @intCast(vec.getFillPointer() orelse vec.length);
+    }
+    return null;
+}
+
+fn stringCharAt(val: Value, index: usize) ?u8 {
+    if (val.isString()) {
+        const str = val.toPtr(objects.String);
+        if (index >= str.length) return null;
+        return str.data[index];
+    }
+    if (isCharacterVector(val)) {
+        const vec = val.toPtr(objects.Vector);
+        const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
+        if (index >= len) return null;
+        const ch = vec.data[index];
+        if (!ch.isCharacter()) return null;
+        const cp = ch.toCharacter();
+        if (cp > 0xFF) return null;
+        return @intCast(cp);
+    }
+    return null;
+}
+
 /// Get string length
 pub fn stringLength(val: Value) i64 {
-    if (!val.isString()) return -1;
-    const str = val.toPtr(objects.String);
-    return @intCast(str.length);
+    return if (stringLen(val)) |len| @intCast(len) else -1;
 }
 
 /// Get character at index (0-indexed)
 /// Returns -1 on error (not a string, out of bounds)
 pub fn stringRef(val: Value, index: usize) i64 {
-    if (!val.isString()) return -1;
-    const str = val.toPtr(objects.String);
-    if (index >= str.length) return -1;
-    return @intCast(str.data[index]);
+    return if (stringCharAt(val, index)) |b| @intCast(b) else -1;
 }
 
 /// Set character at index
 /// Returns false on error
 pub fn stringSet(val: Value, index: usize, char: u8) bool {
-    if (!val.isString()) return false;
-    const str = val.toPtr(objects.String);
-    if (index >= str.length) return false;
-    str.data[index] = char;
-    return true;
+    if (val.isString()) {
+        const str = val.toPtr(objects.String);
+        if (index >= str.length) return false;
+        str.data[index] = char;
+        return true;
+    }
+    if (isCharacterVector(val)) {
+        const vec = val.toPtr(objects.Vector);
+        const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
+        if (index >= len) return false;
+        vec.data[index] = Value.makeCharacter(char);
+        return true;
+    }
+    return false;
 }
 
 /// Get bytes as a slice
 pub fn stringBytes(val: Value) ?[]const u8 {
-    if (!val.isString()) return null;
-    const str = val.toPtr(objects.String);
-    return str.bytes();
+    if (val.isString()) return val.toPtr(objects.String).bytes();
+    return null;
 }
 
 /// Get symbol name as string value
@@ -73,7 +108,7 @@ pub fn symbolNameBytes(val: Value) ?[]const u8 {
 
 /// Check if value is a string
 pub fn stringp(val: Value) bool {
-    return val.isString();
+    return val.isString() or isCharacterVector(val);
 }
 
 /// Check if value is a symbol (includes nil and t as per CL)
@@ -83,106 +118,90 @@ pub fn symbolp(val: Value) bool {
 
 /// String equality
 pub fn stringEqual(a: Value, b: Value) bool {
-    if (!a.isString() or !b.isString()) return false;
-
-    const str_a = a.toPtr(objects.String);
-    const str_b = b.toPtr(objects.String);
-
-    if (str_a.length != str_b.length) return false;
-    // String comparison needed: comparing actual string content (not symbols)
-    return std.mem.eql(u8, str_a.bytes(), str_b.bytes());
+    const len_a = stringLen(a) orelse return false;
+    const len_b = stringLen(b) orelse return false;
+    if (len_a != len_b) return false;
+    var i: usize = 0;
+    while (i < len_a) : (i += 1) {
+        if (stringCharAt(a, i).? != stringCharAt(b, i).?) return false;
+    }
+    return true;
 }
 
 /// String less than (lexicographic)
 pub fn stringLt(a: Value, b: Value) bool {
-    if (!a.isString() or !b.isString()) return false;
-
-    const str_a = a.toPtr(objects.String);
-    const str_b = b.toPtr(objects.String);
-
-    return std.mem.order(u8, str_a.bytes(), str_b.bytes()) == .lt;
+    const len_a = stringLen(a) orelse return false;
+    const len_b = stringLen(b) orelse return false;
+    const min_len = @min(len_a, len_b);
+    var i: usize = 0;
+    while (i < min_len) : (i += 1) {
+        const ca = stringCharAt(a, i).?;
+        const cb = stringCharAt(b, i).?;
+        if (ca < cb) return true;
+        if (ca > cb) return false;
+    }
+    return len_a < len_b;
 }
 
 /// String greater than (lexicographic)
 pub fn stringGt(a: Value, b: Value) bool {
-    if (!a.isString() or !b.isString()) return false;
-
-    const str_a = a.toPtr(objects.String);
-    const str_b = b.toPtr(objects.String);
-
-    return std.mem.order(u8, str_a.bytes(), str_b.bytes()) == .gt;
+    const len_a = stringLen(a) orelse return false;
+    const len_b = stringLen(b) orelse return false;
+    const min_len = @min(len_a, len_b);
+    var i: usize = 0;
+    while (i < min_len) : (i += 1) {
+        const ca = stringCharAt(a, i).?;
+        const cb = stringCharAt(b, i).?;
+        if (ca > cb) return true;
+        if (ca < cb) return false;
+    }
+    return len_a > len_b;
 }
 
 /// String less than or equal (lexicographic)
 pub fn stringLe(a: Value, b: Value) bool {
-    if (!a.isString() or !b.isString()) return false;
-
-    const str_a = a.toPtr(objects.String);
-    const str_b = b.toPtr(objects.String);
-
-    const ord = std.mem.order(u8, str_a.bytes(), str_b.bytes());
-    return ord == .lt or ord == .eq;
+    return stringLt(a, b) or stringEqual(a, b);
 }
 
 /// String greater than or equal (lexicographic)
 pub fn stringGe(a: Value, b: Value) bool {
-    if (!a.isString() or !b.isString()) return false;
-
-    const str_a = a.toPtr(objects.String);
-    const str_b = b.toPtr(objects.String);
-
-    const ord = std.mem.order(u8, str_a.bytes(), str_b.bytes());
-    return ord == .gt or ord == .eq;
+    return stringGt(a, b) or stringEqual(a, b);
 }
 
 /// Concatenate two strings
 pub fn stringConcat(heap: *Heap, a: Value, b: Value) error{OutOfMemory, Overflow}!Value {
-    if (!a.isString() or !b.isString()) return Value.nil;
-
-    const str_a = a.toPtr(objects.String);
-    const str_b = b.toPtr(objects.String);
-
-    // Use checked addition to prevent overflow
-    const new_len = try std.math.add(usize, str_a.length, str_b.length);
-    const aligned_len = std.mem.alignForward(usize, new_len, 8);
-    const total_size = @sizeOf(objects.String) + aligned_len;
-
-    const ptr = try heap.allocRaw(total_size);
-    const str: *objects.String = @ptrCast(@alignCast(ptr));
-    const data_ptr: [*]u8 = @ptrCast(ptr + @sizeOf(objects.String));
-
-    // Copy bytes from both strings
-    @memcpy(data_ptr[0..str_a.length], str_a.bytes());
-    @memcpy(data_ptr[str_a.length..new_len], str_b.bytes());
-
-    str.* = .{
-        .length = new_len,
-        .data = data_ptr,
-    };
-
-    return Value.makeString(str);
+    const len_a = stringLen(a) orelse return Value.nil;
+    const len_b = stringLen(b) orelse return Value.nil;
+    const new_len = try std.math.add(usize, len_a, len_b);
+    const out = try heap.allocStringUninitialized(new_len);
+    const str = out.toPtr(objects.String);
+    var i: usize = 0;
+    while (i < len_a) : (i += 1) str.data[i] = stringCharAt(a, i).?;
+    var j: usize = 0;
+    while (j < len_b) : (j += 1) str.data[len_a + j] = stringCharAt(b, j).?;
+    return out;
 }
 
 /// Create substring
 pub fn substring(heap: *Heap, val: Value, start: usize, end: usize) error{OutOfMemory, Overflow}!Value {
-    if (!val.isString()) return Value.nil;
-
-    const str = val.toPtr(objects.String);
-    if (start > end or end > str.length) return Value.nil;
-
-    const slice = str.bytes()[start..end];
-    return try heap.allocBaseString(slice);
+    const len = stringLen(val) orelse return Value.nil;
+    if (start > end or end > len) return Value.nil;
+    const out = try heap.allocStringUninitialized(end - start);
+    const str = out.toPtr(objects.String);
+    var i: usize = 0;
+    while (i < end - start) : (i += 1) str.data[i] = stringCharAt(val, start + i).?;
+    return out;
 }
 
 /// Convert string to uppercase
 pub fn stringUpcase(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value {
-    if (!val.isString()) return Value.nil;
-
-    const str = val.toPtr(objects.String);
-    const new_str = try heap.allocBaseString(str.bytes());
+    const len = stringLen(val) orelse return Value.nil;
+    const new_str = try heap.allocStringUninitialized(len);
 
     const new_str_obj = new_str.toPtr(objects.String);
-    for (new_str_obj.data[0..new_str_obj.length]) |*c| {
+    for (0..new_str_obj.length) |i| {
+        new_str_obj.data[i] = stringCharAt(val, i).?;
+        const c = &new_str_obj.data[i];
         if (c.* >= 'a' and c.* <= 'z') {
             c.* -= 32;
         }
@@ -193,13 +212,13 @@ pub fn stringUpcase(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value 
 
 /// Convert string to lowercase
 pub fn stringDowncase(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value {
-    if (!val.isString()) return Value.nil;
-
-    const str = val.toPtr(objects.String);
-    const new_str = try heap.allocBaseString(str.bytes());
+    const len = stringLen(val) orelse return Value.nil;
+    const new_str = try heap.allocStringUninitialized(len);
 
     const new_str_obj = new_str.toPtr(objects.String);
-    for (new_str_obj.data[0..new_str_obj.length]) |*c| {
+    for (0..new_str_obj.length) |i| {
+        new_str_obj.data[i] = stringCharAt(val, i).?;
+        const c = &new_str_obj.data[i];
         if (c.* >= 'A' and c.* <= 'Z') {
             c.* += 32;
         }

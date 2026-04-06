@@ -330,6 +330,7 @@ pub fn vectorSet(val: Value, index: usize, new_val: Value) bool {
 
 /// Check if value is a vector
 pub fn vectorp(val: Value) bool {
+    if (val.isString() or val.isString32()) return true;
     if (val.isVector()) return true;
     if (val.isArray()) {
         const arr = val.toPtr(objects.Array);

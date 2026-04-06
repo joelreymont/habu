@@ -420,6 +420,7 @@ pub const Builtins = struct {
     @"%fill-pointer": Value,
     @"%set-fill-pointer": Value,
     @"%set-adjustable": Value,
+    @"%set-character-vector": Value,
     @"%vector-push": Value,
     @"%vector-push-extend": Value,
     @"%vector-pop": Value,
@@ -1055,6 +1056,7 @@ pub const Builtins = struct {
             .@"%fill-pointer" = try heap.intern("%fill-pointer"),
             .@"%set-fill-pointer" = try heap.intern("%set-fill-pointer"),
             .@"%set-adjustable" = try heap.intern("%set-adjustable"),
+            .@"%set-character-vector" = try heap.intern("%set-character-vector"),
             .@"%vector-push" = try heap.intern("%vector-push"),
             .@"%vector-push-extend" = try heap.intern("%vector-push-extend"),
             .@"%vector-pop" = try heap.intern("%vector-pop"),
@@ -15940,6 +15942,7 @@ pub const Compiler = struct {
         vec_fill_ptr,
         vec_set_fill_ptr,
         vec_set_adjustable,
+        vec_set_character,
         vec_push,
         vec_push_ext,
         vec_pop,
@@ -16603,6 +16606,7 @@ pub const Compiler = struct {
         .{ .field = "%vector-push", .tag = .vec_push },
         .{ .field = "%set-fill-pointer", .tag = .vec_set_fill_ptr },
         .{ .field = "%set-adjustable", .tag = .vec_set_adjustable },
+        .{ .field = "%set-character-vector", .tag = .vec_set_character },
         .{ .field = "string-concat", .tag = .str_concat },
         .{ .field = "string=", .tag = .str_eq },
         .{ .field = "string<", .tag = .str_lt },
@@ -17509,6 +17513,11 @@ pub const Compiler = struct {
             .vec_set_adjustable => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .vec_set_adjustable = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .vec_set_character => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .vec_set_character = .{ .left = left, .right = right } };
                 break :blk node;
             },
             .vec_push => blk: {
@@ -18891,6 +18900,7 @@ pub const Compiler = struct {
         var fill_pointer_ir: ?*const Ir = null;
         var has_fill_pointer = false;
         var adjustable_ir: ?*const Ir = null;
+        var wants_character_vector = false;
         var rest = cons1.cdr;
         while (rest.isCons()) {
             rest = self.resolveForwardedValue(rest);
@@ -18915,7 +18925,19 @@ pub const Compiler = struct {
                 } else if (kw_raw == b4.kw_adjustable.raw) {
                     adjustable_ir = try self.compile(val, env);
                 } else if (kw_raw == b4.kw_element_type.raw) {
-                    // element-type: ignored (all vectors store Value)
+                    var elem_ty = val;
+                    if (elem_ty.isCons()) {
+                        const quote_cons = elem_ty.toPtr(Cons);
+                        if (quote_cons.car.raw == b4.quote.raw and quote_cons.cdr.isCons()) {
+                            elem_ty = quote_cons.cdr.toPtr(Cons).car;
+                        }
+                    }
+                    if (elem_ty.isSymbol()) {
+                        const sym = elem_ty.toPtr(Symbol);
+                        const name = sym.getName();
+                        wants_character_vector = std.mem.eql(u8, name, "CHARACTER") or
+                            std.mem.eql(u8, name, "BASE-CHAR");
+                    }
                 } else {
                     init_ir = try self.compile(val, env);
                 }
@@ -18935,6 +18957,55 @@ pub const Compiler = struct {
             const helper_sym = try h.intern("%make-array-contents");
             const dim_val = cons1.car;
             const form = try h.allocCons(helper_sym, try h.allocCons(dim_val, try h.allocCons(contents_val, Value.nil)));
+            return self.compile(form, env);
+        }
+
+        // Rank-1 character arrays need vector semantics plus string semantics.
+        // Build them through stdlib helpers so the runtime constructor stays generic.
+        if (wants_character_vector) {
+            const is_1d = if (static_dimensions) |sd| sd.len == 1 else dynamic_dimensions != null;
+            if (!is_1d) return error.InvalidSyntax;
+            const h = self.heap orelse return error.InvalidSyntax;
+            const helper_name = if (has_fill_pointer or adjustable_ir != null)
+                "%make-char-vector-with-fp"
+            else
+                "%make-char-vector";
+            const helper_sym = try h.intern(helper_name);
+            const dim_expr = cons1.car;
+            var init_expr: Value = Value.makeCharacter(' ');
+            var fp_expr: Value = Value.nil;
+            var adj_expr: Value = Value.nil;
+            var kw_rest = cons1.cdr;
+            while (kw_rest.isCons()) {
+                kw_rest = self.resolveForwardedValue(kw_rest);
+                const kw_cons = kw_rest.toPtr(Cons);
+                if (kw_cons.car.isKeyword()) {
+                    if (!kw_cons.cdr.isCons()) break;
+                    const kw_val_cons = kw_cons.cdr.toPtr(Cons);
+                    const kw_val = self.resolveForwardedValue(kw_val_cons.car);
+                    const b5 = self.builtins orelse return error.UninitializedBuiltins;
+                    const kw_r = kw_cons.car.raw;
+                    if (kw_r == b5.@"kw_initial-element".raw) {
+                        init_expr = kw_val;
+                    } else if (kw_r == b5.kw_fill_pointer.raw) {
+                        fp_expr = kw_val;
+                    } else if (kw_r == b5.kw_adjustable.raw) {
+                        adj_expr = kw_val;
+                    }
+                    kw_rest = self.resolveForwardedValue(kw_val_cons.cdr);
+                } else {
+                    init_expr = kw_cons.car;
+                    kw_rest = self.resolveForwardedValue(kw_cons.cdr);
+                }
+            }
+            const helper_args = if (has_fill_pointer or adjustable_ir != null)
+                try h.allocCons(dim_expr,
+                    try h.allocCons(init_expr,
+                        try h.allocCons(fp_expr,
+                            try h.allocCons(adj_expr, Value.nil))))
+            else
+                try h.allocCons(dim_expr, try h.allocCons(init_expr, Value.nil));
+            const form = try h.allocCons(helper_sym, helper_args);
             return self.compile(form, env);
         }
 

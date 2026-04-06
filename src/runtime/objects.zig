@@ -177,10 +177,17 @@ pub const Vector = extern struct {
     capacity: u64,
     /// Pointer to element data (array of Values)
     data: [*]Value,
-    /// Optional fill-pointer (0xFFFFFFFFFFFFFFFF = none)
-    /// Low 63 bits: fill-pointer value
-    /// High bit: adjustable flag
+    /// Optional fill-pointer state.
+    /// 0xFFFF... means no fill-pointer and no vector subtype flags.
+    /// Low 62 bits: fill-pointer value
+    /// Bit 62: character-vector flag
+    /// Bit 63: adjustable flag
     fill_pointer: u64,
+
+    const fill_none: u64 = 0xFFFFFFFFFFFFFFFF;
+    const fill_value_mask: u64 = 0x3FFFFFFFFFFFFFFF;
+    const fill_char_bit: u64 = 0x4000000000000000;
+    const fill_adjustable_bit: u64 = 0x8000000000000000;
 
     pub fn get(self: *const Vector, index: usize) Value {
         std.debug.assert(index < self.length);
@@ -197,35 +204,49 @@ pub const Vector = extern struct {
     }
 
     pub fn hasFillPointer(self: *const Vector) bool {
-        return self.fill_pointer != 0xFFFFFFFFFFFFFFFF;
+        return self.fill_pointer != fill_none;
     }
 
     pub fn getFillPointer(self: *const Vector) ?u64 {
-        if (self.fill_pointer == 0xFFFFFFFFFFFFFFFF) return null;
-        return self.fill_pointer & 0x7FFFFFFFFFFFFFFF;
+        if (self.fill_pointer == fill_none) return null;
+        return self.fill_pointer & fill_value_mask;
     }
 
     pub fn setFillPointer(self: *Vector, fp: ?u64) void {
         if (fp) |p| {
-            const adj_bit = if (self.fill_pointer == 0xFFFFFFFFFFFFFFFF)
+            const flags = if (self.fill_pointer == fill_none)
                 0
             else
-                self.fill_pointer & 0x8000000000000000;
-            self.fill_pointer = (p & 0x7FFFFFFFFFFFFFFF) | adj_bit;
+                self.fill_pointer & ~fill_value_mask;
+            self.fill_pointer = (p & fill_value_mask) | flags;
         } else {
-            self.fill_pointer = 0xFFFFFFFFFFFFFFFF;
+            self.fill_pointer = fill_none;
         }
     }
 
     pub fn isAdjustable(self: *const Vector) bool {
-        return (self.fill_pointer & 0x8000000000000000) != 0;
+        return (self.fill_pointer & fill_adjustable_bit) != 0;
     }
 
     pub fn setAdjustable(self: *Vector, adj: bool) void {
         if (adj) {
-            self.fill_pointer |= 0x8000000000000000;
+            if (self.fill_pointer == fill_none) self.fill_pointer = 0;
+            self.fill_pointer |= fill_adjustable_bit;
         } else {
-            self.fill_pointer &= 0x7FFFFFFFFFFFFFFF;
+            if (self.fill_pointer != fill_none) self.fill_pointer &= ~fill_adjustable_bit;
+        }
+    }
+
+    pub fn isCharacterVector(self: *const Vector) bool {
+        return (self.fill_pointer & fill_char_bit) != 0;
+    }
+
+    pub fn setCharacterVector(self: *Vector, yes: bool) void {
+        if (yes) {
+            if (self.fill_pointer == fill_none) self.fill_pointer = 0;
+            self.fill_pointer |= fill_char_bit;
+        } else {
+            if (self.fill_pointer != fill_none) self.fill_pointer &= ~fill_char_bit;
         }
     }
 };

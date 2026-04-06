@@ -3711,7 +3711,21 @@ pub const Repl = struct {
                 try writer.writeAll(val.toPtr(runtime.Keyword).getName());
             },
             .closure => try writer.writeAll("#<closure>"),
-            .vector => try self.printVector(val, writer),
+            .vector => {
+                const vec = val.toPtr(runtime.Vector);
+                if (vec.isCharacterVector()) {
+                    try writer.writeByte('"');
+                    const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
+                    for (0..len) |i| {
+                        const ch = vec.data[i];
+                        if (!ch.isCharacter()) return error.TypeMismatch;
+                        try writer.writeByte(@intCast(ch.toCharacter()));
+                    }
+                    try writer.writeByte('"');
+                } else {
+                    try self.printVector(val, writer);
+                }
+            },
             .structure => try writer.writeAll("#<structure>"),
             .hashtable => try writer.print("#<hash-table count={d}>", .{val.toPtr(runtime.HashTable).count}),
             .rational => {
@@ -6587,4 +6601,33 @@ test "repl stream globals survive repeated gc" {
             try testing.expectEqual(@as(u64, @intFromEnum(runtime.objects.BoxedKind.stream)), kind_raw);
         }
     }
+}
+
+test "make-array character buffer stays string-like" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try repl.loadFile("lib/stdlib.habu", std.io.null_writer);
+
+    const ctor = try repl.eval(
+        "(let ((x (make-array 3 :element-type 'character :fill-pointer 0 :adjustable t)))" ++
+            " (and (stringp x) (vectorp x) (arrayp x) (eql 0 (fill-pointer x))))",
+    );
+    try testing.expect(!ctor.isNil());
+
+    const copy = try repl.eval(
+        "(let* ((s (make-array 3 :element-type 'character :fill-pointer 0 :adjustable t)))" ++
+            " (vector-push-extend #\\a s)" ++
+            " (vector-push-extend #\\b s)" ++
+            " (vector-push-extend #\\c s)" ++
+            " (let ((x (copy-seq s))) (and (stringp x) (vectorp x) (equal x \"abc\"))))",
+    );
+    try testing.expect(!copy.isNil());
 }

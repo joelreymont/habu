@@ -481,6 +481,10 @@ pub const Op = enum(u16) {
     /// ( vec bool -- t|nil )
     vec_set_adjustable = 0x173,
 
+    /// Set character-vector flag
+    /// ( vec bool -- t|nil )
+    vec_set_character = 0x198,
+
     // ========================================================================
     // String operations
     // ========================================================================
@@ -2194,6 +2198,7 @@ pub const Op = enum(u16) {
             .vec_fill_ptr,
             .vec_set_fill_ptr,
             .vec_set_adjustable,
+            .vec_set_character,
             .vec_push,
             .vec_push_ext,
             .vec_pop,
