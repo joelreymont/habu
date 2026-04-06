@@ -221,20 +221,101 @@ fn upperAsciiCp(cp: u32) u32 {
     return if (cp >= 'a' and cp <= 'z') cp - 32 else cp;
 }
 
-fn bytesEqualp(a: []const u8, b: []const u8) bool {
-    if (a.len != b.len) return false;
-    for (a, b) |ca, cb| {
-        if (std.ascii.toUpper(ca) != std.ascii.toUpper(cb)) return false;
+fn isCharacterVector(val: Value) bool {
+    return val.isVector() and val.toPtr(objects.Vector).isCharacterVector();
+}
+
+fn isStringLike(val: Value) bool {
+    return val.isString() or val.isString32() or isCharacterVector(val);
+}
+
+fn stringLikeLen(val: Value) ?usize {
+    return switch (val.typeKind()) {
+        .string => val.toPtr(objects.String).length,
+        .string32 => val.toPtr(objects.String32).length,
+        .vector => blk: {
+            const vec = val.toPtr(objects.Vector);
+            if (!vec.isCharacterVector()) break :blk null;
+            break :blk @intCast(vec.getFillPointer() orelse vec.length);
+        },
+        else => null,
+    };
+}
+
+fn stringLikeCodepointAt(val: Value, idx: usize) ?u32 {
+    return switch (val.typeKind()) {
+        .string => blk: {
+            const s = val.toPtr(objects.String);
+            if (idx >= s.length) break :blk null;
+            break :blk s.data[idx];
+        },
+        .string32 => blk: {
+            const s = val.toPtr(objects.String32);
+            if (idx >= s.length) break :blk null;
+            break :blk s.codepoints()[idx];
+        },
+        .vector => blk: {
+            const vec = val.toPtr(objects.Vector);
+            if (!vec.isCharacterVector()) break :blk null;
+            const len: usize = @intCast(vec.getFillPointer() orelse vec.length);
+            if (idx >= len) break :blk null;
+            const ch = vec.data[idx];
+            break :blk switch (ch.typeKind()) {
+                .char => ch.toCharacter(),
+                .fixnum => blk2: {
+                    const cp = ch.toFixnum();
+                    if (cp < 0 or cp > std.math.maxInt(u21)) break :blk2 null;
+                    break :blk2 @intCast(cp);
+                },
+                else => null,
+            };
+        },
+        else => null,
+    };
+}
+
+fn stringLikeEqual(a: Value, b: Value) bool {
+    const len_a = stringLikeLen(a) orelse return false;
+    const len_b = stringLikeLen(b) orelse return false;
+    if (len_a != len_b) return false;
+    for (0..len_a) |i| {
+        const ca = stringLikeCodepointAt(a, i) orelse return false;
+        const cb = stringLikeCodepointAt(b, i) orelse return false;
+        if (ca != cb) return false;
     }
     return true;
 }
 
-fn cpsEqualp(a: []const u32, b: []const u32) bool {
-    if (a.len != b.len) return false;
-    for (a, b) |ca, cb| {
+fn stringLikeEqualp(a: Value, b: Value) bool {
+    const len_a = stringLikeLen(a) orelse return false;
+    const len_b = stringLikeLen(b) orelse return false;
+    if (len_a != len_b) return false;
+    for (0..len_a) |i| {
+        const ca = stringLikeCodepointAt(a, i) orelse return false;
+        const cb = stringLikeCodepointAt(b, i) orelse return false;
         if (upperAsciiCp(ca) != upperAsciiCp(cb)) return false;
     }
     return true;
+}
+
+fn hashStringLike(val: Value) u64 {
+    const len = stringLikeLen(val) orelse return 0;
+    var h: u64 = 0;
+    for (0..len) |i| {
+        const cp = stringLikeCodepointAt(val, i) orelse return 0;
+        h = h *% 31 +% cp;
+    }
+    return h;
+}
+
+fn hashStringLikeEqualp(val: Value) u64 {
+    const len = stringLikeLen(val) orelse return 0;
+    var h: u64 = 0;
+    for (0..len) |i| {
+        const cp = stringLikeCodepointAt(val, i) orelse return 0;
+        h = hashMix(h, upperAsciiCp(cp));
+    }
+    return h;
 }
 
 fn bignumEq(a: *const objects.Bignum, b: *const objects.Bignum) bool {
@@ -523,11 +604,15 @@ fn valueEqualWithDepth(a: Value, b: Value, depth: usize) bool {
     const ta = a.typeKind();
     const tb = b.typeKind();
 
+    if (isStringLike(a) and isStringLike(b)) {
+        return stringLikeEqual(a, b);
+    }
+
     // ANSI compatibility: a zero-length rank-1 array compares equal to an empty string.
-    if ((ta == .array and tb == .string) or (ta == .string and tb == .array)) {
+    if ((ta == .array and isStringLike(b)) or (isStringLike(a) and tb == .array)) {
         const arr = if (ta == .array) a.toPtr(objects.Array) else b.toPtr(objects.Array);
-        const str = if (ta == .string) a.toPtr(objects.String) else b.toPtr(objects.String);
-        return arr.rank == 1 and arr.total_size == 0 and str.length == 0;
+        const str = if (ta == .array) b else a;
+        return arr.rank == 1 and arr.total_size == 0 and stringLikeLen(str) == 0;
     }
 
     if (ta != tb) return false;
@@ -538,16 +623,7 @@ fn valueEqualWithDepth(a: Value, b: Value, depth: usize) bool {
             const cb = b.toPtr(objects.Cons);
             break :blk valueEqualWithDepth(ca.car, cb.car, depth + 1) and valueEqualWithDepth(ca.cdr, cb.cdr, depth + 1);
         },
-        .string => blk: {
-            const sa = a.toPtr(objects.String);
-            const sb = b.toPtr(objects.String);
-            break :blk std.mem.eql(u8, sa.bytes(), sb.bytes());
-        },
-        .string32 => blk: {
-            const sa = a.toPtr(objects.String32);
-            const sb = b.toPtr(objects.String32);
-            break :blk std.mem.eql(u32, sa.codepoints(), sb.codepoints());
-        },
+        .string, .string32 => stringLikeEqual(a, b),
         .vector => blk: {
             const va = a.toPtr(objects.Vector);
             const vb = b.toPtr(objects.Vector);
@@ -601,24 +677,10 @@ fn valueEqualpWithDepth(a: Value, b: Value, depth: usize) bool {
         return upperAsciiCp(ca) == upperAsciiCp(cb);
     }
 
-    // Strings: case-insensitive, allow base-string <-> string32 comparison.
     const ta = a.typeKind();
     const tb = b.typeKind();
-    if ((ta == .string or ta == .string32) and (tb == .string or tb == .string32)) {
-        if (ta == .string and tb == .string) {
-            return bytesEqualp(a.toPtr(objects.String).bytes(), b.toPtr(objects.String).bytes());
-        }
-        if (ta == .string32 and tb == .string32) {
-            return cpsEqualp(a.toPtr(objects.String32).codepoints(), b.toPtr(objects.String32).codepoints());
-        }
-        // Cross-type.
-        const s8 = if (ta == .string) a.toPtr(objects.String).bytes() else b.toPtr(objects.String).bytes();
-        const s32 = if (ta == .string32) a.toPtr(objects.String32).codepoints() else b.toPtr(objects.String32).codepoints();
-        if (s8.len != s32.len) return false;
-        for (s8, s32) |c8, c32| {
-            if (upperAsciiCp(c32) != @as(u32, std.ascii.toUpper(c8))) return false;
-        }
-        return true;
+    if (isStringLike(a) and isStringLike(b)) {
+        return stringLikeEqualp(a, b);
     }
 
     if (ta != tb) return false;
@@ -661,22 +723,6 @@ fn valueEqualpWithDepth(a: Value, b: Value, depth: usize) bool {
 
 fn hashMix(h: u64, x: u64) u64 {
     return h *% 31 +% x;
-}
-
-fn hashBytesFoldUpper(bytes: []const u8) u64 {
-    var h: u64 = 0;
-    for (bytes) |b| {
-        h = hashMix(h, std.ascii.toUpper(b));
-    }
-    return h;
-}
-
-fn hashCpsFoldUpper(cps: []const u32) u64 {
-    var h: u64 = 0;
-    for (cps) |cp| {
-        h = hashMix(h, upperAsciiCp(cp));
-    }
-    return h;
 }
 
 fn hashIntCanonical(neg: bool, limbs: []const u64) u64 {
@@ -809,8 +855,7 @@ fn hashValueEqualp(val: Value, depth: usize) u64 {
             break :blk h;
         },
 
-        .string => hashBytesFoldUpper(val.toPtr(objects.String).bytes()),
-        .string32 => hashCpsFoldUpper(val.toPtr(objects.String32).codepoints()),
+        .string, .string32 => hashStringLikeEqualp(val),
 
         .cons => blk: {
             const c = val.toPtr(objects.Cons);
@@ -820,6 +865,7 @@ fn hashValueEqualp(val: Value, depth: usize) u64 {
         },
         .vector => blk: {
             const v = val.toPtr(objects.Vector);
+            if (v.isCharacterVector()) break :blk hashStringLikeEqualp(val);
             var h: u64 = 0;
             for (v.items()) |item| h = hashMix(h, hashValueEqualp(item, depth + 1));
             break :blk h;
@@ -880,24 +926,10 @@ pub fn hashValue(val: Value) u64 {
             break :blk h;
         },
         .keyword => val.toPtr(objects.Keyword).hash,
-        .string => blk: {
-            const s = val.toPtr(objects.String);
-            var h: u64 = 0;
-            for (s.bytes()) |b| {
-                h = h *% 31 +% b;
-            }
-            break :blk h;
-        },
-        .string32 => blk: {
-            const s32 = val.toPtr(objects.String32);
-            var h: u64 = 0;
-            for (s32.codepoints()) |cp| {
-                h = h *% 31 +% cp;
-            }
-            break :blk h;
-        },
+        .string, .string32 => hashStringLike(val),
         .vector => blk: {
             const v = val.toPtr(objects.Vector);
+            if (v.isCharacterVector()) break :blk hashStringLike(val);
             var h: u64 = 0;
             for (v.items()) |item| {
                 h = h *% 31 +% hashValue(item);
@@ -930,4 +962,39 @@ pub fn hashValue(val: Value) u64 {
         },
         .closure, .hashtable, .stream, .array, .pathname, .package, .readtable, .chunk, .condition, .class, .slotdef, .generic_function, .method, .native_code, .structure, .macro_env => val.raw,
     };
+}
+
+test "equal treats base strings and character vectors identically" {
+    const heap_mod = @import("../heap.zig");
+    var heap = try heap_mod.Heap.init(std.testing.allocator);
+    defer heap.deinit();
+
+    const s = try heap.allocBaseString("infixie");
+    const v = try heap.allocVector(7);
+    const vec = v.toPtr(objects.Vector);
+    for ("infixie", 0..) |ch, i| {
+        vec.data[i] = Value.makeCharacter(ch);
+    }
+
+    try std.testing.expect(valueEqual(s, v));
+    try std.testing.expect(valueEqual(v, s));
+    try std.testing.expectEqual(hashValue(s), hashValue(v));
+}
+
+test "equal hash tables match base strings against character vectors" {
+    const heap_mod = @import("../heap.zig");
+    var heap = try heap_mod.Heap.init(std.testing.allocator);
+    defer heap.deinit();
+
+    const ht_val = try heap.allocHashTable(8, .equal);
+    const ht = ht_val.toPtr(objects.HashTable);
+    const s = try heap.allocBaseString("infixie");
+    const v = try heap.allocVector(7);
+    const vec = v.toPtr(objects.Vector);
+    for ("infixie", 0..) |ch, i| {
+        vec.data[i] = Value.makeCharacter(ch);
+    }
+
+    try ht.put(v, Value.t);
+    try std.testing.expectEqual(Value.t.raw, (ht.get(s) orelse Value.nil).raw);
 }
