@@ -215,6 +215,7 @@ pub fn classOf(heap: *Heap, args: Value) !Value {
         .pathname => "pathname",
         .class => unreachable, // handled above
         .package => "package",
+        .readtable => "readtable",
         .chunk => "chunk",
         .native_code => "chunk",
         .structure => unreachable,

@@ -460,6 +460,9 @@ pub const Builtins = struct {
     @"get-macro-character": Value,
     @"set-dispatch-macro-character": Value,
     @"get-dispatch-macro-character": Value,
+    @"%copy-readtable": Value,
+    @"%readtable-case": Value,
+    @"%set-readtable-case": Value,
 
     // Primitives - String/number conversion
     @"parse-integer": Value,
@@ -1084,10 +1087,13 @@ pub const Builtins = struct {
             .@"digit-char-p" = try heap.intern("digit-char-p"),
             .@"alpha-char-p" = try heap.intern("alpha-char-p"),
             // Primitives - Reader macros
-            .@"set-macro-character" = try heap.intern("set-macro-character"),
-            .@"get-macro-character" = try heap.intern("get-macro-character"),
-            .@"set-dispatch-macro-character" = try heap.intern("set-dispatch-macro-character"),
-            .@"get-dispatch-macro-character" = try heap.intern("get-dispatch-macro-character"),
+            .@"set-macro-character" = try heap.intern("%set-macro-character"),
+            .@"get-macro-character" = try heap.intern("%get-macro-character"),
+            .@"set-dispatch-macro-character" = try heap.intern("%set-dispatch-macro-character"),
+            .@"get-dispatch-macro-character" = try heap.intern("%get-dispatch-macro-character"),
+            .@"%copy-readtable" = try heap.intern("%copy-readtable"),
+            .@"%readtable-case" = try heap.intern("%readtable-case"),
+            .@"%set-readtable-case" = try heap.intern("%set-readtable-case"),
             // Primitives - String/number conversion
             .@"parse-integer" = try heap.intern("parse-integer"),
             .@"write-to-string" = try heap.intern("write-to-string"),
@@ -9370,10 +9376,20 @@ pub const Compiler = struct {
             cons1.cdr.toPtr(Cons).car
         else
             Value.nil;
+        const name_sym = cons1.car.toPtr(Symbol);
+        var qual_buf: [256]u8 = undefined;
+        const q = try self.getQualifiedName(name_sym, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
 
-        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
-        const def_tail = try heap.allocCons(cons1.car, try heap.allocCons(init_expr, Value.nil));
-        return self.compileDefine(def_tail, env);
+        const idx = self.globals.lookup(q.name) orelse try self.globals.define(q.name);
+        const cur_ir = try self.builder.globalRef(q.name, idx);
+        const unbound_ir = try self.builder.lit(Value.unbound);
+        const needs_init = try self.builder.eq(cur_ir, unbound_ir);
+        const value_ir = try self.compile(init_expr, env);
+        const store_ir = try self.builder.define(q.name, idx, value_ir);
+        const sym_ir = try self.builder.lit(cons1.car);
+        const init_then = try self.builder.progn(&[_]*const Ir{ store_ir, sym_ir });
+        return try self.builder.ifExpr(needs_init, init_then, sym_ir);
     }
 
     fn compileDefun(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -16297,6 +16313,9 @@ pub const Compiler = struct {
         "slot-definition-allocation",
         "slot-definition-type",
         "%set-class-printer",
+        "%copy-readtable",
+        "%readtable-case",
+        "%set-readtable-case",
     };
 
     fn rebuildBuiltinCallableCaches(self: *Compiler) !void {

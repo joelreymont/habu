@@ -928,6 +928,6 @@ pub fn hashValue(val: Value) u64 {
             }
             break :blk h;
         },
-        .closure, .hashtable, .stream, .array, .pathname, .package, .chunk, .condition, .class, .slotdef, .generic_function, .method, .native_code, .structure, .macro_env => val.raw,
+        .closure, .hashtable, .stream, .array, .pathname, .package, .readtable, .chunk, .condition, .class, .slotdef, .generic_function, .method, .native_code, .structure, .macro_env => val.raw,
     };
 }

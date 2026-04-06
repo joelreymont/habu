@@ -59,6 +59,7 @@ pub const TypeKind = enum {
     array,
     pathname,
     package,
+    readtable,
     chunk,
     condition,
     class,
@@ -220,6 +221,12 @@ pub const Value = packed struct {
         return kind_ptr.* == .package;
     }
 
+    pub inline fn isReadtable(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .readtable;
+    }
+
     /// Check if value is an array
     pub inline fn isArray(self: Value) bool {
         if (!self.isBoxed()) return false;
@@ -330,6 +337,7 @@ pub const Value = packed struct {
                     .array => .array,
                     .pathname => .pathname,
                     .package => .package,
+                    .readtable => .readtable,
                     .chunk => .chunk,
                     .condition => .condition,
                     .class => .class,
@@ -502,6 +510,11 @@ pub const Value = packed struct {
 
     /// Create a package value (boxed object)
     pub inline fn makePackage(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
+    /// Create a readtable value (boxed object)
+    pub inline fn makeReadtable(ptr: anytype) Value {
         return makePtr(ptr, .boxed);
     }
 

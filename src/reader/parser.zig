@@ -63,6 +63,7 @@ pub const Parser = struct {
     labels: std.AutoHashMap(u32, Value),
     alloc: std.mem.Allocator,
     builtins: *const builtins_mod.BuiltinSymbols,
+    readtable: Value,
     read_eval_ctx: ?*anyopaque,
     read_eval_fn: ?ReadEvalFn,
     dispatch_ctx: ?*anyopaque,
@@ -90,6 +91,7 @@ pub const Parser = struct {
             .labels = labels,
             .alloc = alloc,
             .builtins = builtins,
+            .readtable = heap.defaultReadtable(),
             .read_eval_ctx = null,
             .read_eval_fn = null,
             .dispatch_ctx = null,
@@ -118,6 +120,11 @@ pub const Parser = struct {
     pub fn setMacroCharacterHook(self: *Parser, ctx: *anyopaque, hook: MacroCharacterFn) void {
         self.macro_ctx = ctx;
         self.macro_fn = hook;
+    }
+
+    pub fn setReadtable(self: *Parser, rt: Value) Error!void {
+        if (!rt.isReadtable()) return error.TypeMismatch;
+        self.readtable = rt;
     }
 
     pub fn takeHookError(self: *Parser) ?anyerror {
@@ -200,7 +207,7 @@ pub const Parser = struct {
         const ctx = self.macro_ctx orelse return null;
         if (self.current.text.len == 0) return null;
         const c = self.current.text[0];
-        const entry = self.heap.readtable.get(c) orelse return null;
+        const entry = self.heap.getReadtableMacroEntry(self.readtable, c) orelse return null;
         const tok_start = self.lexer.token_start;
         if (tok_start >= self.lexer.source.len) return error.UnexpectedToken;
 
@@ -262,8 +269,8 @@ pub const Parser = struct {
         const ctx = self.dispatch_ctx orelse return error.UnexpectedToken;
         const header = try parseDispatchHeader(self.current.text);
 
-        const sub_table = self.heap.dispatch_readtable.get(header.disp_char) orelse return error.UnexpectedToken;
-        const function = sub_table.get(header.sub_char) orelse return error.UnexpectedToken;
+        const function = self.heap.getReadtableDispatchFn(self.readtable, header.disp_char, header.sub_char) orelse
+            return error.UnexpectedToken;
 
         const tail = self.lexer.source[self.lexer.pos..];
         const tail_str = try self.heap.allocBaseString(tail);
@@ -2023,11 +2030,7 @@ test "parse dispatch macro hook consumes stream" {
     defer vm.deinit();
 
     const marker_fn = vm.builtins.sym_quote;
-    const gop = try heap.dispatch_readtable.getOrPut(testing.allocator, '#');
-    if (!gop.found_existing) {
-        gop.value_ptr.* = .{};
-    }
-    try gop.value_ptr.put(testing.allocator, '$', marker_fn);
+    try heap.setReadtableDispatchFn(heap.defaultReadtable(), '#', '$', marker_fn);
 
     var parser = try Parser.init(testing.allocator, &heap, "#12$abc$ 7", &vm.builtins);
     defer parser.deinit();
@@ -2058,7 +2061,7 @@ test "parse ordinary macro character hook consumes stream" {
     defer vm.deinit();
 
     const marker_fn = vm.builtins.sym_quote;
-    try heap.readtable.put(testing.allocator, '_', .{
+    try heap.setReadtableMacroEntry(heap.defaultReadtable(), '_', .{
         .function = marker_fn,
         .non_terminating = true,
     });

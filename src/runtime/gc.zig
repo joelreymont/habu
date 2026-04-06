@@ -1309,6 +1309,7 @@ pub const GC = struct {
             .stream,
             .pathname,
             .package,
+            .readtable,
             .condition,
             .class,
             .slotdef,
@@ -1998,7 +1999,7 @@ pub const GC = struct {
                         const old_ptr = @intFromPtr(obj.slots);
                         obj.slots = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
                     },
-                    .hashtable, .rational, .complex, .stream, .bignum, .pathname, .package, .condition, .class, .slotdef, .generic_function, .method, .native_code, .macro_env => {
+                    .hashtable, .rational, .complex, .stream, .bignum, .pathname, .package, .readtable, .condition, .class, .slotdef, .generic_function, .method, .native_code, .macro_env => {
                         // No interior pointers to repair
                     },
                 }
@@ -2123,6 +2124,15 @@ pub const GC = struct {
                         }
                         if (pkg.shadowing.isPointer() and !pkg.shadowing.isNil()) {
                             pkg.shadowing = try self.copyValue(heap, pkg.shadowing, alloc_ptr);
+                        }
+                    },
+                    .readtable => {
+                        const rt: *objects.Readtable = @ptrFromInt(addr);
+                        if (rt.macro_chars.isPointer() and !rt.macro_chars.isNil()) {
+                            rt.macro_chars = try self.copyValue(heap, rt.macro_chars, alloc_ptr);
+                        }
+                        if (rt.dispatch_chars.isPointer() and !rt.dispatch_chars.isNil()) {
+                            rt.dispatch_chars = try self.copyValue(heap, rt.dispatch_chars, alloc_ptr);
                         }
                     },
                     .macro_env => {

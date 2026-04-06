@@ -6632,6 +6632,65 @@ test "defvar without init defaults to nil" {
     try testing.expect(result.isNil());
 }
 
+test "defvar does not clobber preinitialized readtable special" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(let ((rt *readtable*))
+        \\  (list (readtablep rt)
+        \\        (eq rt *readtable*)
+        \\        (readtablep (copy-readtable nil))))
+    );
+
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expect(c0.car.eq(Value.t));
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.eq(Value.t));
+    try testing.expect(c1.cdr.isCons());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.eq(Value.t));
+    try testing.expect(c2.cdr.isNil());
+}
+
+test "dynamic *print-case* binding restores through authoritative special value" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(list
+        \\  (let ((*print-case* :downcase))
+        \\    (princ-to-string 'abc))
+        \\  (princ-to-string 'abc))
+    );
+
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expect(c0.car.isString());
+    try testing.expectEqualStrings("abc", c0.car.toStringSlice());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isString());
+    try testing.expectEqualStrings("ABC", c1.car.toStringSlice());
+    try testing.expect(c1.cdr.isNil());
+}
+
 test "ansi repro define-compiler-macro.8 does not crash" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -7170,6 +7229,29 @@ test "ansi repro write-to-string.3 honors allow-other-keys" {
     const result = try repl.eval(src);
     try testing.expect(result.isString());
     try testing.expectEqualStrings("3", result.toPtr(runtime.String).bytes());
+}
+
+test "princ-to-string honors readtable-case invert" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(let ((rt (copy-readtable nil)))
+        \\  (setf (readtable-case rt) :invert)
+        \\  (let ((*readtable* rt)
+        \\        (*print-case* :upcase))
+        \\    (princ-to-string '$abc)))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(result.isString());
+    try testing.expectEqualStrings("$abc", result.toPtr(runtime.String).bytes());
 }
 
 test "ansi repro make-symbol.11 nil vector string designator" {

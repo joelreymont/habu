@@ -328,16 +328,24 @@ pub const BoxedKind = enum(u64) {
     array = 5,
     pathname = 6,
     package = 7,
-    chunk = 8,
-    condition = 9,
-    class = 10,
-    string32 = 11,
-    slotdef = 12,
-    generic_function = 13,
-    method = 14,
-    native_code = 15,
-    structure = 16,
-    macro_env = 17,
+    readtable = 8,
+    chunk = 9,
+    condition = 10,
+    class = 11,
+    string32 = 12,
+    slotdef = 13,
+    generic_function = 14,
+    method = 15,
+    native_code = 16,
+    structure = 17,
+    macro_env = 18,
+};
+
+pub const ReadtableCase = enum(u64) {
+    upcase = 0,
+    downcase = 1,
+    preserve = 2,
+    invert = 3,
 };
 
 /// Stream direction
@@ -762,6 +770,13 @@ pub const Package = extern struct {
     shadowing: Value,
 };
 
+pub const Readtable = extern struct {
+    kind: BoxedKind = .readtable,
+    case_mode: ReadtableCase = .upcase,
+    macro_chars: Value,
+    dispatch_chars: Value,
+};
+
 /// Macro environment object for &environment
 pub const MacroEnv = extern struct {
     kind: BoxedKind align(16) = .macro_env,
@@ -937,6 +952,7 @@ pub fn objectSize(val: Value) usize {
                 .bignum => @sizeOf(Bignum),
                 .pathname => @sizeOf(Pathname),
                 .package => @sizeOf(Package),
+                .readtable => @sizeOf(Readtable),
                 .condition => @sizeOf(Condition),
                 .class => {
                     const cls = val.toPtr(Class);
@@ -1077,6 +1093,11 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
                     callback(pkg.exports);
                     callback(pkg.symbols);
                     callback(pkg.shadowing);
+                },
+                .readtable => {
+                    const rt = val.toPtr(Readtable);
+                    callback(rt.macro_chars);
+                    callback(rt.dispatch_chars);
                 },
                 .chunk => {
                     const chunk = val.toPtr(Chunk);

@@ -4759,8 +4759,7 @@
 
 ; readtablep - no readtable objects
 (defun readtablep (x)
-  (declare (ignore x))
-  nil)
+  (eq (type-of x) 'readtable))
 
 ;;; ============================================================================
 ;;; CL LOOP Macro
@@ -7281,11 +7280,30 @@
   (declare (ignore type-specifier function priority table))
   nil)
 
+; current readtable
+(defvar *readtable* nil)
+
+; reader macro functions operate on the active dynamic readtable
+(defun set-macro-character (char function &optional non-terminating-p (readtable *readtable*))
+  (let ((*readtable* readtable))
+    (%set-macro-character char function non-terminating-p)))
+
+(defun get-macro-character (char &optional (readtable *readtable*))
+  (let ((*readtable* readtable))
+    (%get-macro-character char)))
+
+(defun set-dispatch-macro-character (disp-char sub-char function &optional (readtable *readtable*))
+  (let ((*readtable* readtable))
+    (%set-dispatch-macro-character disp-char sub-char function)))
+
+(defun get-dispatch-macro-character (disp-char sub-char &optional (readtable *readtable*))
+  (let ((*readtable* readtable))
+    (%get-dispatch-macro-character disp-char sub-char)))
+
 ; copy-readtable - copy readtable
 (defun copy-readtable (&optional from-readtable to-readtable)
   "Copy FROM-READTABLE to TO-READTABLE"
-  (declare (ignore to-readtable))
-  (or from-readtable *readtable*))
+  (%copy-readtable (or from-readtable *readtable*) to-readtable))
 
 ; make-dispatch-macro-character - make char dispatch (stub)
 (defun make-dispatch-macro-character (char &optional non-terminating-p readtable)
@@ -7293,19 +7311,13 @@
   (declare (ignore char non-terminating-p readtable))
   t)
 
-; readtable-case - get readtable case
-(defvar *readtable-case-mode* :upcase)
-
 (defun readtable-case (readtable)
   "Return the case of READTABLE"
-  (declare (ignore readtable))
-  *readtable-case-mode*)
+  (%readtable-case readtable))
 
 (defun set-readtable-case (readtable new-case)
   "Set READTABLE case mode."
-  (declare (ignore readtable))
-  (setq *readtable-case-mode* new-case)
-  new-case)
+  (%set-readtable-case readtable new-case))
 
 (put 'readtable-case 'setf-function 'set-readtable-case)
 (setf (fdefinition '(setf readtable-case)) #'set-readtable-case)

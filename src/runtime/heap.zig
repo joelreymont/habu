@@ -450,12 +450,8 @@ pub const Heap = struct {
     /// Class metadata for CLOS slot-value lookup
     /// Maps qualified class name to slot symbol array
     class_metadata: std.StringHashMapUnmanaged([]const Value),
-    /// Readtable for reader macros
-    /// Maps character (u8) to macro function and flags
-    readtable: std.AutoHashMapUnmanaged(u8, ReadtableEntry),
-    /// Dispatch macro readtable for #X dispatch
-    /// Maps dispatch char (u8) to sub-char table (HashMap(u8, Value))
-    dispatch_readtable: std.AutoHashMapUnmanaged(u8, std.AutoHashMapUnmanaged(u8, Value)),
+    /// Canonical default readtable object for parser and printer state.
+    default_readtable: Value,
     /// Streams allocated in heap (for finalization)
     stream_list: std.ArrayList(*objects.Stream),
     /// Warning handler for warn primitive (optional)
@@ -608,9 +604,7 @@ pub const Heap = struct {
         packages: usize = 0,
         package_ptr_sum: usize = 0,
         pkg_symbols_ver: u64 = 0,
-        readtable: usize = 0,
-        dispatch_tables: usize = 0,
-        dispatch_entries: usize = 0,
+        readtable: u64 = 0,
         class_metadata: usize = 0,
 
         fn eql(a: GcRootSig, b: GcRootSig) bool {
@@ -620,8 +614,6 @@ pub const Heap = struct {
                 a.package_ptr_sum == b.package_ptr_sum and
                 a.pkg_symbols_ver == b.pkg_symbols_ver and
                 a.readtable == b.readtable and
-                a.dispatch_tables == b.dispatch_tables and
-                a.dispatch_entries == b.dispatch_entries and
                 a.class_metadata == b.class_metadata;
         }
     };
@@ -829,8 +821,7 @@ pub const Heap = struct {
             .built_in_class = Value.nil,
             .structure_class = Value.nil,
             .class_metadata = .{},
-            .readtable = .{},
-            .dispatch_readtable = .{},
+            .default_readtable = Value.nil,
             .stream_list = std.ArrayList(*objects.Stream){},
             .warn_handler = null,
             .warn_ctx = null,
@@ -859,6 +850,7 @@ pub const Heap = struct {
         heap.lisp_classes = try heap.allocHashTable(128, .eql);
         // Create keyword plist registry (keyword -> plist)
         heap.keyword_plists = try heap.allocHashTable(64, .eq);
+        heap.default_readtable = try heap.allocReadtable();
 
         // Create Lisp-visible Package objects for CL and COMMON-LISP-USER.
         {
@@ -942,13 +934,6 @@ pub const Heap = struct {
             self.backing_allocator.free(entry.value_ptr.*);
         }
         self.class_metadata.deinit(self.backing_allocator);
-        self.readtable.deinit(self.backing_allocator);
-        // Free dispatch_readtable nested hashmaps
-        var disp_iter = self.dispatch_readtable.valueIterator();
-        while (disp_iter.next()) |sub_table| {
-            sub_table.deinit(self.backing_allocator);
-        }
-        self.dispatch_readtable.deinit(self.backing_allocator);
         for (self.stream_list.items) |stream| {
             // Free string output stream buffers before finalize
             if (stream.stream_type == .string and stream.direction == .output and stream.data_ptr != 0 and stream.position > 0) {
@@ -3221,6 +3206,130 @@ pub const Heap = struct {
         return Value.makePackage(pkg);
     }
 
+    pub fn allocReadtable(self: *Heap) !Value {
+        const macro_chars = try self.allocHashTable(16, .eql);
+        const dispatch_chars = try self.allocHashTable(8, .eql);
+        const rt = try self.alloc(objects.Readtable);
+        rt.* = .{
+            .kind = .readtable,
+            .case_mode = .upcase,
+            .macro_chars = macro_chars,
+            .dispatch_chars = dispatch_chars,
+        };
+        return Value.makeReadtable(rt);
+    }
+
+    pub fn defaultReadtable(self: *Heap) Value {
+        return self.default_readtable;
+    }
+
+    fn copyHashTableValue(self: *Heap, src_val: Value) !Value {
+        if (!src_val.isHashTable()) return error.TypeError;
+        const src = src_val.toPtr(objects.HashTable);
+        const dst_val = try self.allocHashTable(@intCast(src.capacity), src.test_type);
+        const dst = dst_val.toPtr(objects.HashTable);
+        const cap: usize = @intCast(src.capacity);
+        for (0..cap) |i| {
+            const key = src.getKey(i);
+            if (objects.HashTable.isAvailableKey(key)) continue;
+            try self.putHashTableAutoGrow(dst, key, src.getValue(i));
+        }
+        return dst_val;
+    }
+
+    fn copyDispatchTableValue(self: *Heap, src_val: Value) !Value {
+        if (!src_val.isHashTable()) return error.TypeError;
+        const src = src_val.toPtr(objects.HashTable);
+        const dst_val = try self.allocHashTable(@intCast(src.capacity), src.test_type);
+        const dst = dst_val.toPtr(objects.HashTable);
+        const cap: usize = @intCast(src.capacity);
+        for (0..cap) |i| {
+            const key = src.getKey(i);
+            if (objects.HashTable.isAvailableKey(key)) continue;
+            const sub_val = src.getValue(i);
+            if (!sub_val.isHashTable()) return error.TypeError;
+            const sub_copy = try self.copyHashTableValue(sub_val);
+            try self.putHashTableAutoGrow(dst, key, sub_copy);
+        }
+        return dst_val;
+    }
+
+    pub fn copyReadtable(self: *Heap, from: Value, to: Value) !Value {
+        const src_val = if (from.isNil()) self.defaultReadtable() else from;
+        if (!src_val.isReadtable()) return error.TypeError;
+        const dst_val = if (to.isNil()) try self.allocReadtable() else to;
+        if (!dst_val.isReadtable()) return error.TypeError;
+
+        const src = src_val.toPtr(objects.Readtable);
+        const dst = dst_val.toPtr(objects.Readtable);
+        dst.case_mode = src.case_mode;
+        dst.macro_chars = try self.copyHashTableValue(src.macro_chars);
+        dst.dispatch_chars = try self.copyDispatchTableValue(src.dispatch_chars);
+        return dst_val;
+    }
+
+    pub fn readtableCase(self: *Heap, rt_val: Value) !objects.ReadtableCase {
+        _ = self;
+        if (!rt_val.isReadtable()) return error.TypeError;
+        return rt_val.toPtr(objects.Readtable).case_mode;
+    }
+
+    pub fn setReadtableCase(self: *Heap, rt_val: Value, case_mode: objects.ReadtableCase) !void {
+        _ = self;
+        if (!rt_val.isReadtable()) return error.TypeError;
+        rt_val.toPtr(objects.Readtable).case_mode = case_mode;
+    }
+
+    pub fn getReadtableMacroEntry(self: *Heap, rt_val: Value, byte: u8) ?ReadtableEntry {
+        _ = self;
+        if (!rt_val.isReadtable()) return null;
+        const table_val = rt_val.toPtr(objects.Readtable).macro_chars;
+        if (!table_val.isHashTable()) return null;
+        const key = Value.makeCharacter(byte);
+        const pair_val = table_val.toPtr(objects.HashTable).get(key) orelse return null;
+        if (!pair_val.isCons()) return null;
+        const pair = pair_val.toPtr(objects.Cons);
+        return .{
+            .function = pair.car,
+            .non_terminating = !pair.cdr.isNil(),
+        };
+    }
+
+    pub fn setReadtableMacroEntry(self: *Heap, rt_val: Value, byte: u8, entry: ReadtableEntry) !void {
+        if (!rt_val.isReadtable()) return error.TypeError;
+        const table_val = rt_val.toPtr(objects.Readtable).macro_chars;
+        if (!table_val.isHashTable()) return error.TypeError;
+        const pair = try self.allocCons(entry.function, if (entry.non_terminating) Value.t else Value.nil);
+        const key = Value.makeCharacter(byte);
+        try self.putHashTableAutoGrow(table_val.toPtr(objects.HashTable), key, pair);
+    }
+
+    pub fn getReadtableDispatchFn(self: *Heap, rt_val: Value, disp_byte: u8, sub_byte: u8) ?Value {
+        _ = self;
+        if (!rt_val.isReadtable()) return null;
+        const table_val = rt_val.toPtr(objects.Readtable).dispatch_chars;
+        if (!table_val.isHashTable()) return null;
+        const disp_key = Value.makeCharacter(disp_byte);
+        const subtable_val = table_val.toPtr(objects.HashTable).get(disp_key) orelse return null;
+        if (!subtable_val.isHashTable()) return null;
+        return subtable_val.toPtr(objects.HashTable).get(Value.makeCharacter(sub_byte));
+    }
+
+    pub fn setReadtableDispatchFn(self: *Heap, rt_val: Value, disp_byte: u8, sub_byte: u8, function: Value) !void {
+        if (!rt_val.isReadtable()) return error.TypeError;
+        const table_val = rt_val.toPtr(objects.Readtable).dispatch_chars;
+        if (!table_val.isHashTable()) return error.TypeError;
+        const table = table_val.toPtr(objects.HashTable);
+        const disp_key = Value.makeCharacter(disp_byte);
+        var subtable_val = table.get(disp_key) orelse Value.nil;
+        if (subtable_val.isNil()) {
+            subtable_val = try self.allocHashTable(8, .eql);
+            try self.putHashTableAutoGrow(table, disp_key, subtable_val);
+        }
+        if (!subtable_val.isHashTable()) return error.TypeError;
+        try self.putHashTableAutoGrow(subtable_val.toPtr(objects.HashTable), Value.makeCharacter(sub_byte), function);
+    }
+
     /// Allocate a Pathname object on the heap
     pub fn allocPathname(
         self: *Heap,
@@ -3685,21 +3794,13 @@ pub const Heap = struct {
             package_ptr_sum +%= @intFromPtr(pkg.*);
         }
 
-        var dispatch_entries: usize = 0;
-        var drt_it = self.dispatch_readtable.valueIterator();
-        while (drt_it.next()) |sub_table| {
-            dispatch_entries +%= sub_table.count();
-        }
-
         return .{
             .symbols_ver = self.symbols.version,
             .keywords_ver = self.keywords.version,
             .packages = self.packages.count(),
             .package_ptr_sum = package_ptr_sum,
             .pkg_symbols_ver = pkg_symbols_ver,
-            .readtable = self.readtable.count(),
-            .dispatch_tables = self.dispatch_readtable.count(),
-            .dispatch_entries = dispatch_entries,
+            .readtable = self.default_readtable.raw,
             .class_metadata = self.class_metadata.count(),
         };
     }
@@ -3732,19 +3833,8 @@ pub const Heap = struct {
             }
         }
 
-        // Readtable function values.
-        var rt_it = self.readtable.valueIterator();
-        while (rt_it.next()) |entry| {
-            try self.gc_internal_slots.append(self.backing_allocator, &entry.function);
-        }
-
-        // Dispatch readtable function values.
-        var drt_it = self.dispatch_readtable.valueIterator();
-        while (drt_it.next()) |sub_table| {
-            var sub_it = sub_table.valueIterator();
-            while (sub_it.next()) |fn_val| {
-                try self.gc_internal_slots.append(self.backing_allocator, fn_val);
-            }
+        if (self.default_readtable.raw != Value.nil.raw) {
+            try self.gc_internal_slots.append(self.backing_allocator, &self.default_readtable);
         }
 
         // Lisp package/class registries and cached symbols.
@@ -3983,6 +4073,7 @@ pub const Heap = struct {
             "array",
             "pathname",
             "package",
+            "readtable",
             "chunk",
             "condition",
             "class",

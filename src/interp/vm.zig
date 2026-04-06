@@ -117,6 +117,9 @@ pub const BuiltinCallableTag = enum(usize) {
     slot_definition_allocation,
     slot_definition_type,
     set_class_printer,
+    copy_readtable,
+    readtable_case,
+    set_readtable_case,
 };
 
 const empty_consts = [_]Value{};
@@ -480,6 +483,7 @@ fn tryParseReadBytes(vm: *Vm, bytes: []const u8, final: bool) Error!?ParsedRead 
     var parser = try Parser.init(vm.allocator, vm.heap, bytes, &vm.builtins);
     defer parser.deinit();
     if (parser.current.kind == .eof) return null;
+    try parser.setReadtable(try vm.currentReadtable());
 
     var dm_ctx = DispatchMacroBridge{ .vm = vm };
     parser.setDispatchMacroHook(@ptrCast(&dm_ctx), dispatchMacroBridge);
@@ -2613,6 +2617,7 @@ pub const Vm = struct {
                 }
             }
         }
+        io.setReadtableCase(try self.heap.readtableCase(try self.currentReadtable()));
     }
 
     fn handleSpecialVarLoad(self: *Vm, idx: u16) !Value {
@@ -2645,6 +2650,36 @@ pub const Vm = struct {
     /// Look up a special CL variable by exact global name.
     fn lookupSpecialVar(env: *const @import("../compiler/compile.zig").GlobalEnv, name: []const u8) ?u16 {
         return env.lookup(name);
+    }
+
+    pub fn currentReadtable(self: *Vm) !Value {
+        if (self.global_env) |env| {
+            if (lookupSpecialVar(env, "COMMON-LISP:*READTABLE*")) |idx| {
+                const val = try self.loadGlobal(idx);
+                if (val.isReadtable()) return val;
+                if (!val.isNil() and !val.isUnbound()) return error.TypeMismatch;
+            }
+        }
+        return self.heap.defaultReadtable();
+    }
+
+    fn readtableCaseFromKeyword(val: Value) Error!runtime.ReadtableCase {
+        if (!val.isKeyword()) return error.TypeMismatch;
+        const name = val.toPtr(runtime.Keyword).getName();
+        if (std.mem.eql(u8, name, "UPCASE")) return .upcase;
+        if (std.mem.eql(u8, name, "DOWNCASE")) return .downcase;
+        if (std.mem.eql(u8, name, "PRESERVE")) return .preserve;
+        if (std.mem.eql(u8, name, "INVERT")) return .invert;
+        return error.TypeMismatch;
+    }
+
+    fn readtableCaseKeyword(self: *Vm, mode: runtime.ReadtableCase) Error!Value {
+        return switch (mode) {
+            .upcase => try self.heap.internKeyword("UPCASE"),
+            .downcase => try self.heap.internKeyword("DOWNCASE"),
+            .preserve => try self.heap.internKeyword("PRESERVE"),
+            .invert => try self.heap.internKeyword("INVERT"),
+        };
     }
 
     fn handleSpecialVarStore(self: *Vm, idx: u16, val: Value) !void {
@@ -5435,6 +5470,7 @@ pub const Vm = struct {
             },
             .write_to_string => {
                 const val = try self.pop();
+                try self.syncPrintGlobals();
                 const result = try io.writeToStringWithHook(self.heap, val, self.ioPrintHook());
                 try self.push(result);
             },
@@ -7930,7 +7966,7 @@ pub const Vm = struct {
                     .function = function,
                     .non_terminating = !non_term.isNil(),
                 };
-                try self.heap.readtable.put(self.allocator, byte, entry);
+                try self.heap.setReadtableMacroEntry(try self.currentReadtable(), byte, entry);
                 try self.push(Value.nil);
             },
 
@@ -7945,7 +7981,7 @@ pub const Vm = struct {
                     self.secondary_values_count = 1;
                 } else {
                     const byte: u8 = @intCast(char_code);
-                    const entry = self.heap.readtable.get(byte);
+                    const entry = self.heap.getReadtableMacroEntry(try self.currentReadtable(), byte);
                     if (entry) |e| {
                         try self.push(e.function);
                         self.secondary_values[0] = if (e.non_terminating) Value.t else Value.nil;
@@ -7972,15 +8008,7 @@ pub const Vm = struct {
 
                 const disp_byte: u8 = @intCast(disp_code);
                 const sub_byte: u8 = @intCast(sub_code);
-
-                // Get or create sub-table for dispatch character
-                const gop = try self.heap.dispatch_readtable.getOrPut(self.allocator, disp_byte);
-                if (!gop.found_existing) {
-                    gop.value_ptr.* = .{};
-                }
-
-                // Store function in sub-table
-                try gop.value_ptr.put(self.allocator, sub_byte, function);
+                try self.heap.setReadtableDispatchFn(try self.currentReadtable(), disp_byte, sub_byte, function);
                 try self.push(Value.nil);
             },
 
@@ -7999,14 +8027,7 @@ pub const Vm = struct {
                 } else {
                     const disp_byte: u8 = @intCast(disp_code);
                     const sub_byte: u8 = @intCast(sub_code);
-
-                    const sub_table = self.heap.dispatch_readtable.get(disp_byte);
-                    if (sub_table) |table| {
-                        const func = table.get(sub_byte);
-                        try self.push(func orelse Value.nil);
-                    } else {
-                        try self.push(Value.nil);
-                    }
+                    try self.push(self.heap.getReadtableDispatchFn(try self.currentReadtable(), disp_byte, sub_byte) orelse Value.nil);
                 }
             },
 
@@ -8220,6 +8241,7 @@ pub const Vm = struct {
                 // Parse the S-expression
                 var parser = try Parser.init(self.allocator, self.heap, buffer[0..len], &self.builtins);
                 defer parser.deinit();
+                try parser.setReadtable(try self.currentReadtable());
                 var dm_ctx = DispatchMacroBridge{ .vm = self };
                 parser.setDispatchMacroHook(@ptrCast(&dm_ctx), dispatchMacroBridge);
                 parser.setMacroCharacterHook(@ptrCast(&dm_ctx), macroCharacterBridge);
@@ -8274,6 +8296,7 @@ pub const Vm = struct {
                     const str = str_val.toPtr(String);
                     var parser = try Parser.init(self.allocator, self.heap, str.bytes(), &self.builtins);
                     defer parser.deinit();
+                    try parser.setReadtable(try self.currentReadtable());
                     var dm_ctx = DispatchMacroBridge{ .vm = self };
                     parser.setDispatchMacroHook(@ptrCast(&dm_ctx), dispatchMacroBridge);
                     parser.setMacroCharacterHook(@ptrCast(&dm_ctx), macroCharacterBridge);
@@ -8298,6 +8321,7 @@ pub const Vm = struct {
                     }
                     var parser = try Parser.init(self.allocator, self.heap, utf8.items, &self.builtins);
                     defer parser.deinit();
+                    try parser.setReadtable(try self.currentReadtable());
                     var dm_ctx32 = DispatchMacroBridge{ .vm = self };
                     parser.setDispatchMacroHook(@ptrCast(&dm_ctx32), dispatchMacroBridge);
                     parser.setMacroCharacterHook(@ptrCast(&dm_ctx32), macroCharacterBridge);
@@ -9124,7 +9148,7 @@ pub const Vm = struct {
 
             if (try self.lookupSymbolGlobalIndex(sym_ptr)) |idx| {
                 old_value = if (idx < self.num_globals)
-                    self.resolveForwardedValue(self.globals[idx])
+                    self.resolveForwardedValue(try self.loadGlobal(@intCast(idx)))
                 else
                     Value.unbound;
                 if (idx < MAX_GLOBALS) {
@@ -10241,6 +10265,20 @@ pub const Vm = struct {
                 class_obj.printer = printer;
                 self.writeBarrierStore(class_val, printer);
                 return printer;
+            },
+            .copy_readtable => {
+                try requireArgCount(args, 1, 2);
+                return try self.heap.copyReadtable(args[0], if (args.len == 2) args[1] else Value.nil);
+            },
+            .readtable_case => {
+                try requireArgCount(args, 1, 1);
+                return try self.readtableCaseKeyword(try self.heap.readtableCase(args[0]));
+            },
+            .set_readtable_case => {
+                try requireArgCount(args, 2, 2);
+                const mode = try readtableCaseFromKeyword(args[1]);
+                try self.heap.setReadtableCase(args[0], mode);
+                return args[1];
             },
         }
     }
@@ -11537,6 +11575,7 @@ pub const Vm = struct {
             .array => try result.appendSlice(self.allocator, "#<array>"),
             .pathname => try result.appendSlice(self.allocator, "#<pathname>"),
             .package => try result.appendSlice(self.allocator, "#<package>"),
+            .readtable => try result.appendSlice(self.allocator, "#<readtable>"),
             .chunk => try result.appendSlice(self.allocator, "#<chunk>"),
             .condition => try result.appendSlice(self.allocator, "#<condition>"),
             .class => try result.appendSlice(self.allocator, "#<class>"),
@@ -14103,7 +14142,7 @@ fn hashValueWithTest(val: Value, test_type: runtime.HashTest) u64 {
                 .keyword => fnvHash(val.toPtr(runtime.Keyword).getName()),
                 .string, .string32 => fnvHash(val.toPtr(runtime.String).bytes()),
                 // Reference types: hash address (NOT stable across GC)
-                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .chunk, .condition, .class, .slotdef, .generic_function, .method, .native_code => fnvHashU64(val.raw),
+                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .readtable, .chunk, .condition, .class, .slotdef, .generic_function, .method, .native_code => fnvHashU64(val.raw),
             };
         },
     }

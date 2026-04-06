@@ -10,6 +10,16 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ## Session Notes (2026-04-05)
 
+## Session Notes (2026-04-06)
+
+### Worked Well
+- `defvar` must not be lowered as unconditional `define`. `src/compiler/compile.zig:9367-9392` was clobbering preinitialized specials, which broke the new `COMMON-LISP:*READTABLE*` object by resetting it to `nil` during stdlib load. Lowering `defvar` to “store only if current global is `unbound`” fixed `*readtable*` without reintroducing fallback state.
+- Internal `%...` helpers used by stdlib wrappers must still be part of the compiler's builtin-function cache. `src/compiler/compile.zig:16231-16308` was missing `%copy-readtable`, `%readtable-case`, and `%set-readtable-case`, so direct wrapper calls fell off the builtin path and failed at runtime even though VM native-call tags already existed.
+- Dynamic special binding must snapshot authoritative special values, not raw global slots. `src/interp/vm.zig:9148-9155` was saving `self.globals[idx]` before `progv` rebinding; that is wrong for specials mirrored into Zig-side state like `*PRINT-CASE*`. Using `loadGlobal(idx)` fixed `(let ((*print-case* :upcase)) nil)` and the nested `princ-to-string`/`*readtable*` proof path.
+
+### Did Not Work
+- Proving behavior against `./zig-out/bin/habu` while `zig build` is still running gives false negatives from the old binary. Wait for the build to exit before trusting probe output; the earlier `copy-readtable` and `*print-case*` failures were stale-binary artifacts.
+
 ### Worked Well
 - Nested `labels` must inherit outer boxed function bindings, not replace them. `src/compiler/compile.zig:6598-6614` was resetting `self.boxed_fn_syms` to only the current `labels` cluster, so inner `labels` bodies compiled outer lexical function references like `f` as raw box values instead of `box_ref` callables. The tiny repros `(labels ((f (x) x)) (labels ((g () (f 1))) (g)))` and `(labels ((f (x) x)) (labels ((g () nil)) (funcall (function f) 1)))` both failed until the inner set inherited the outer boxed function symbols; after that, `pregexp:pregexp-match-positions` on `("abc" "abc")` started returning `((0 . 3))`.
 - `lib/maxima-loader.lisp` must hard-cut to `(in-package :cl-user)` at file entry. Loading it while `*package*` is `MAXIMA` was otherwise defining `*maxima-source-dir*`, `maxima-load-all`, and `maxima-try-load` in the ambient package, which made tool/probe behavior depend on caller state instead of a canonical API surface. The right proof is to load `maxima-package.lisp`, bind `*package*` to `MAXIMA`, load `lib/maxima-loader.lisp`, and assert the `cl-user::` bindings still exist.

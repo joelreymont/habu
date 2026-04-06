@@ -34,6 +34,9 @@ pub const PrintCase = enum {
 /// :capitalize - Abc
 pub var print_case: PrintCase = .upcase;
 
+/// readtable-case affects how symbol names are printed for read/print symmetry.
+pub var readtable_case: runtime_mod.ReadtableCase = .upcase;
+
 /// *print-readably* controls readable output
 /// When true, printer must output in a way that read can reconstruct
 /// When false (default), output may be abbreviated or truncated
@@ -140,7 +143,16 @@ pub fn formatIntBase(n: i64, base: u8, buf: []u8) usize {
 }
 
 fn writeCaseSymbol(name: []const u8, w: anytype) !void {
-    switch (print_case) {
+    const eff_case: PrintCase = switch (readtable_case) {
+        .invert => switch (print_case) {
+            .upcase => .downcase,
+            .downcase => .upcase,
+            .capitalize => .capitalize,
+        },
+        else => print_case,
+    };
+
+    switch (eff_case) {
         .upcase => {
             for (name) |c| {
                 try w.writeByte(std.ascii.toUpper(c));
@@ -545,6 +557,7 @@ fn princValueTo(val: Value, w: anytype, level: usize, stream: ?Value, hook: ?Str
             const name_sym = pkg.name.toPtr(objects.Symbol);
             try w.print("#<package {s}>", .{name_sym.getName()});
         },
+        .readtable => try w.writeAll("#<readtable>"),
         .chunk => try w.writeAll("#<chunk>"),
         .condition => {
             const cond = val.toPtr(objects.Condition);
@@ -757,6 +770,7 @@ fn printEscapedTo(val: Value, w: anytype, level: usize, stream: ?Value, hook: ?S
             const name_sym = pkg.name.toPtr(objects.Symbol);
             try w.print("#<package {s}>", .{name_sym.getName()});
         },
+        .readtable => try w.writeAll("#<readtable>"),
         .chunk => try w.writeAll("#<chunk>"),
         .condition => {
             const cond = val.toPtr(objects.Condition);
@@ -1017,6 +1031,10 @@ pub fn setPrintCase(builtins: *const builtins_mod.BuiltinSymbols, val: Value) !v
     } else {
         return error.InvalidPrintCase;
     }
+}
+
+pub fn setReadtableCase(mode: runtime_mod.ReadtableCase) void {
+    readtable_case = mode;
 }
 
 /// Get *print-readably* value
@@ -1592,6 +1610,30 @@ test "symbol printing with *print-case*" {
 
     // Reset
     print_case = .upcase;
+    readtable_case = .upcase;
+}
+
+test "symbol printing honors readtable-case invert" {
+    const testing = std.testing;
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(testing.allocator);
+
+    print_case = .upcase;
+    readtable_case = .invert;
+    const w_inv = buf.writer(testing.allocator);
+    try writeCaseSymbol("$ABC", w_inv.any());
+    try testing.expectEqualStrings("$abc", buf.items);
+
+    buf.clearRetainingCapacity();
+    print_case = .downcase;
+    readtable_case = .invert;
+    const w_inv2 = buf.writer(testing.allocator);
+    try writeCaseSymbol("$abc", w_inv2.any());
+    try testing.expectEqualStrings("$ABC", buf.items);
+
+    print_case = .upcase;
+    readtable_case = .upcase;
 }
 
 test "*print-base*/*print-radix* flags" {

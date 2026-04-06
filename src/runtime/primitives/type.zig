@@ -760,6 +760,7 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
         .array => clSym(heap, "array"),
         .pathname => clSym(heap, "pathname"),
         .package => clSym(heap, "package"),
+        .readtable => clSym(heap, "readtable"),
         .chunk => clSym(heap, "compiled-function"),
         .condition => clSym(heap, "condition"),
         .class => clSym(heap, "standard-class"),

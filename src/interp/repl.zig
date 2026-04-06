@@ -568,6 +568,7 @@ pub const Repl = struct {
                     },
                     .pathname => within(addr, @sizeOf(runtime.Pathname), end),
                     .package => within(addr, @sizeOf(runtime.Package), end),
+                    .readtable => within(addr, @sizeOf(runtime.Readtable), end),
                     .chunk => blk: {
                         if (!within(addr, @sizeOf(runtime.Chunk), end)) break :blk false;
                         const chunk = val.toPtr(runtime.Chunk);
@@ -1109,6 +1110,7 @@ pub const Repl = struct {
         try self.createFeaturesGlobal();
         // Create print control globals
         try self.createPrintGlobals();
+        try self.createReadtableGlobal();
         // Create standard stream globals
         try self.createStreamGlobals();
     }
@@ -1405,6 +1407,10 @@ pub const Repl = struct {
     fn createPrintGlobals(self: *Repl) !void {
         try self.setClGlobal("*PRINT-LENGTH*", Value.nil);
         try self.setClGlobal("*PRINT-LEVEL*", Value.nil);
+    }
+
+    fn createReadtableGlobal(self: *Repl) !void {
+        try self.setClGlobal("*READTABLE*", self.heap.defaultReadtable());
     }
 
     fn createStreamGlobals(self: *Repl) !void {
@@ -1757,6 +1763,9 @@ pub const Repl = struct {
             .{ .field = "slot-definition-allocation", .tag = .slot_definition_allocation },
             .{ .field = "slot-definition-type", .tag = .slot_definition_type },
             .{ .field = "%set-class-printer", .tag = .set_class_printer },
+            .{ .field = "%copy-readtable", .tag = .copy_readtable },
+            .{ .field = "%readtable-case", .tag = .readtable_case },
+            .{ .field = "%set-readtable-case", .tag = .set_readtable_case },
         };
 
         inline for (table) |entry| {
@@ -2439,6 +2448,7 @@ pub const Repl = struct {
 
         var parser = try Parser.init(parse_alloc, self.heap, content, &self.vm.builtins);
         defer parser.deinit();
+        try parser.setReadtable(try source_vm.currentReadtable());
         var read_eval_ctx = ReadEvalCtx{ .repl = self, .vm = source_vm };
         var dispatch_ctx = DispatchMacroCtx{ .vm = source_vm };
         parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
@@ -2632,6 +2642,7 @@ pub const Repl = struct {
         // Parse
         var parser = try Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
         defer parser.deinit();
+        try parser.setReadtable(try vm.currentReadtable());
         var read_eval_ctx = ReadEvalCtx{ .repl = self, .vm = vm };
         var dispatch_ctx = DispatchMacroCtx{ .vm = vm };
         parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
@@ -3525,6 +3536,7 @@ pub const Repl = struct {
         // Parse
         var parser = try Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
         defer parser.deinit();
+        try parser.setReadtable(try self.vm.currentReadtable());
         var read_eval_ctx = ReadEvalCtx{ .repl = self, .vm = &self.vm };
         var dispatch_ctx = DispatchMacroCtx{ .vm = &self.vm };
         parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
@@ -3746,6 +3758,7 @@ pub const Repl = struct {
                 const name_sym = pkg.name.toPtr(Symbol);
                 try writer.print("#<package {s}>", .{name_sym.getName()});
             },
+            .readtable => try writer.writeAll("#<readtable>"),
             .chunk => try writer.writeAll("#<chunk>"),
             .condition => try writer.writeAll("#<condition>"),
             .class => try writer.writeAll("#<class>"),
@@ -5034,6 +5047,7 @@ pub const Repl = struct {
         // Parse expression
         var parser = try @import("../reader/parser.zig").Parser.init(self.allocator, self.heap, expr_str, &self.vm.builtins);
         defer parser.deinit();
+        try parser.setReadtable(try self.vm.currentReadtable());
         var dispatch_ctx = DispatchMacroCtx{ .vm = &self.vm };
         parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
         parser.setMacroCharacterHook(@ptrCast(&dispatch_ctx), parserMacroCharacter);
