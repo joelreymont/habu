@@ -6584,18 +6584,23 @@ pub const Compiler = struct {
             }
         }
 
+        const saved_boxed_fn = self.boxed_fn_syms;
         const boxed_fn = try self.allocator.create(BoxingSet);
         boxed_fn.* = BoxingSet.init(self.allocator);
         defer {
             boxed_fn.deinit();
             self.allocator.destroy(boxed_fn);
         }
+        if (saved_boxed_fn) |outer_boxed_fn| {
+            var it = outer_boxed_fn.names.keyIterator();
+            while (it.next()) |sym| {
+                try boxed_fn.add(sym.*);
+            }
+        }
         const heap = self.heap orelse return error.InvalidSyntax;
         for (entries[0..filled]) |entry| {
             try boxed_fn.add(try heap.intern(entry.name));
         }
-
-        const saved_boxed_fn = self.boxed_fn_syms;
         self.boxed_fn_syms = boxed_fn;
         defer self.boxed_fn_syms = saved_boxed_fn;
 

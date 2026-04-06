@@ -4031,6 +4031,46 @@ test "labels local function named keys resolves lexically" {
     try testing.expectEqual(@as(i64, 3), c.car.toFixnum());
 }
 
+test "nested labels call outer lexical function" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(labels ((f (x) x))
+        \\  (labels ((g () (f 1)))
+        \\    (g)))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 1), result.toFixnum());
+}
+
+test "nested labels function designator sees outer lexical function" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(labels ((f (x) x))
+        \\  (labels ((g () nil))
+        \\    (funcall (function f) 1)))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 1), result.toFixnum());
+}
+
 test "maxima style bigfloat defun compiles" {
     const allocator = testing.allocator;
 
