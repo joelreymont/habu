@@ -1422,6 +1422,20 @@ pub const Emitter = struct {
         }
     }
 
+    fn emitSingleProgvBinding(self: *Emitter, sym: Value, idx: u16) Error!void {
+        try self.emitLiteral(sym);
+        try self.emitOp(.push_nil);
+        try self.emitOp(.cons);
+
+        try self.noteLocal(idx);
+        try self.emitOp(.load_local);
+        try self.emitU8(@intCast(idx));
+        try self.emitOp(.push_nil);
+        try self.emitOp(.cons);
+
+        try self.emitOp(.push_progv);
+    }
+
     fn emitQuoteSym(self: *Emitter, name: []const u8) Error!void {
         if (self.heap) |heap| {
             // Intern symbol and add to constant pool
@@ -1596,6 +1610,13 @@ pub const Emitter = struct {
         lambda_emitter.num_locals = @max(param_slots, body_max_idx);
         // Pass captures so emitVar knows which variables to load from capture array
         lambda_emitter.captures = lam.captures;
+        var special_depth: usize = 0;
+
+        for (lam.special_bindings) |binding| {
+            if (binding.stage != .required) continue;
+            try lambda_emitter.emitSingleProgvBinding(binding.sym, binding.idx);
+            special_depth += 1;
+        }
 
         // Emit preamble for optional parameters: check argc and fill defaults
         for (lam.optional_params, 0..) |opt_param, i| {
@@ -1628,6 +1649,21 @@ pub const Emitter = struct {
 
             // Patch jump to skip default
             try lambda_emitter.patchJump(skip_jump);
+
+            for (lam.special_bindings) |binding| {
+                if (binding.stage != .optional or binding.idx != slot_index) continue;
+                try lambda_emitter.emitSingleProgvBinding(binding.sym, binding.idx);
+                special_depth += 1;
+            }
+        }
+
+        if (lam.rest_param != null) {
+            const rest_slot: u8 = arity + optional_count + key_count + key_pair_slots;
+            for (lam.special_bindings) |binding| {
+                if (binding.stage != .rest or binding.idx != rest_slot) continue;
+                try lambda_emitter.emitSingleProgvBinding(binding.sym, binding.idx);
+                special_depth += 1;
+            }
         }
 
         // Emit preamble for keyword parameters: find keyword in args and fill defaults
@@ -1690,10 +1726,19 @@ pub const Emitter = struct {
                 try lambda_emitter.emitOp(.store_local);
                 try lambda_emitter.emitU8(slot_index);
             }
+
+            for (lam.special_bindings) |binding| {
+                if (binding.stage != .key or binding.idx != slot_index) continue;
+                try lambda_emitter.emitSingleProgvBinding(binding.sym, binding.idx);
+                special_depth += 1;
+            }
         }
 
         // Emit body
         try lambda_emitter.emit(lam.body);
+        while (special_depth > 0) : (special_depth -= 1) {
+            try lambda_emitter.emitOp(.pop_progv);
+        }
 
         // Finalize lambda chunk (GC Value)
         const chunk_val = try lambda_emitter.finalize();

@@ -102,6 +102,8 @@ pub const Ir = union(enum) {
         key_temp_start: u16 = 0,
         /// Rest parameter name (for dotted param lists like (a b . rest))
         rest_param: ?[]const u8,
+        /// Ordered special bindings activated as parameter slots become live.
+        special_bindings: []const SpecialBinding = &.{},
         /// Free variables captured from enclosing scope
         captures: []const Capture,
         body: *const Ir,
@@ -1130,6 +1132,19 @@ pub const Ir = union(enum) {
         supplied_p_idx: ?u16 = null, // local slot index for supplied-p, set by compiler
     };
 
+    pub const SpecialBindingStage = enum(u8) {
+        required,
+        optional,
+        rest,
+        key,
+    };
+
+    pub const SpecialBinding = struct {
+        sym: Value,
+        idx: u16,
+        stage: SpecialBindingStage,
+    };
+
     // ========================================================================
     // Predicates
     // ========================================================================
@@ -1364,6 +1379,7 @@ pub const IrBuilder = struct {
             .allow_other_keys = allow_other_keys,
             .key_temp_start = key_temp_start,
             .rest_param = rest_copy,
+            .special_bindings = &.{},
             .captures = captures_copy,
             .body = body,
         } };
@@ -3083,6 +3099,15 @@ pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) anyerror!*const 
                 };
             }
 
+            const new_specials = try allocator.alloc(Ir.SpecialBinding, lam.special_bindings.len);
+            for (lam.special_bindings, 0..) |binding, i| {
+                new_specials[i] = .{
+                    .sym = binding.sym,
+                    .idx = binding.idx,
+                    .stage = binding.stage,
+                };
+            }
+
             break :blk .{ .lambda = .{
                 .params = new_params,
                 .optional_params = new_optional,
@@ -3090,6 +3115,7 @@ pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) anyerror!*const 
                 .allow_other_keys = lam.allow_other_keys,
                 .key_temp_start = lam.key_temp_start,
                 .rest_param = if (lam.rest_param) |rest_param| try allocator.dupe(u8, rest_param) else null,
+                .special_bindings = new_specials,
                 .captures = new_captures,
                 .body = try deepCopyIr(allocator, lam.body),
                 .lambda_expr = lam.lambda_expr,

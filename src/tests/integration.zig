@@ -11730,6 +11730,57 @@ test "proclaimed special lambda params are dynamically visible in callees" {
     try testing.expectEqual(@as(i64, 42), out.toFixnum());
 }
 
+test "proclaimed special lambda param setq updates dynamic binding" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (proclaim '(special foo))
+        \\  (defun inner-special-param-setq () foo)
+        \\  (defun outer-special-param-setq (foo)
+        \\    (setq foo 99)
+        \\    (list foo (inner-special-param-setq)))
+        \\  (outer-special-param-setq 42))
+    );
+
+    try testing.expect(out.isCons());
+    const c0 = out.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 99), c0.car.toFixnum());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 99), c1.car.toFixnum());
+}
+
+test "proclaimed special lambda params are visible during optional defaults" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (proclaim '(special foo))
+        \\  (defun current-special-foo () foo)
+        \\  (defun outer-special-optional (foo &optional (bar (current-special-foo)))
+        \\    bar)
+        \\  (outer-special-optional 42))
+    );
+
+    try testing.expect(out.isFixnum());
+    try testing.expectEqual(@as(i64, 42), out.toFixnum());
+}
+
 test "defvar makes prog bindings dynamically visible" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });

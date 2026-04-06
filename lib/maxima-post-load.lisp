@@ -6,6 +6,8 @@
 
 (in-package :maxima)
 
+(defvar *habu-runtime-globals-initialized* nil)
+
 (defun habu-default-maxima-userdir ()
   (handler-case
       (concatenate 'string (namestring (user-homedir-pathname)) ".maxima/")
@@ -78,3 +80,7 @@
     (setf $file_search_tests
           (habu-search-mlist
            (habu-build-patterns testsdir '("lisp" "mac" "wxm"))))))
+
+(unless *habu-runtime-globals-initialized*
+  (initialize-runtime-globals)
+  (setq *habu-runtime-globals-initialized* t))
