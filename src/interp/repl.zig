@@ -6631,6 +6631,21 @@ test "make-array character buffer stays string-like" {
     );
     try testing.expect(!copy.isNil());
 
+    const aet = try repl.eval(
+        "(let* ((et (array-element-type \"a\"))" ++
+            " (s (make-array 3 :element-type et :fill-pointer 0 :adjustable t)))" ++
+            " (vector-push-extend #\\a s)" ++
+            " (vector-push-extend #\\b s)" ++
+            " (vector-push-extend #\\c s)" ++
+            " (let ((x (copy-seq s)))" ++
+            "   (and (eq et 'character)" ++
+            "        (eq (upgraded-array-element-type 'base-char) 'character)" ++
+            "        (stringp s)" ++
+            "        (stringp x)" ++
+            "        (equal x \"abc\"))))",
+    );
+    try testing.expect(!aet.isNil());
+
     const designators = try repl.eval(
         "(let ((s (make-array 7 :element-type 'character :fill-pointer 0 :adjustable t)))" ++
             " (vector-push-extend #\\i s)" ++

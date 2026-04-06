@@ -628,10 +628,29 @@
 (defun array-total-size (array)
   (%array-total-size array))
 
+; %character-array-typespec-p - detect character-string array element types
+(defun %character-array-typespec-p (typespec)
+  (cond
+    ((eq typespec 'character) t)
+    ((eq typespec 'base-char) t)
+    ((eq typespec 'standard-char) t)
+    ((eq typespec 'string) t)
+    ((eq typespec 'simple-string) t)
+    ((eq typespec 'base-string) t)
+    ((eq typespec 'simple-base-string) t)
+    ((consp typespec)
+     (case (car typespec)
+       ((string simple-string base-string simple-base-string) t)
+       ((vector simple-vector array simple-array)
+        (%character-array-typespec-p (cadr typespec)))
+       (t nil)))
+    (t nil)))
+
 ; array-element-type - element type
 (defun array-element-type (array)
-  (declare (ignore array))
-  't)
+  (if (stringp array)
+      'character
+      't))
 
 ; array-row-major-index - convert indices to linear index
 (defun array-row-major-index (array &rest subscripts)
@@ -686,8 +705,10 @@
 
 ; upgraded-array-element-type - actual element type used
 (defun upgraded-array-element-type (typespec &optional environment)
-  (declare (ignore typespec environment))
-  't)
+  (declare (ignore environment))
+  (if (%character-array-typespec-p typespec)
+      'character
+      't))
 
 ; Bootstrap macros used by early stdlib helpers before the full macro section.
 (defmacro when (test &rest body)
