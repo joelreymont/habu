@@ -366,7 +366,66 @@ fn storePlist(heap: *Heap, sym: Value, plist: Value) !void {
     if (sym.isSymbol()) heap.writeBarrier(sym, plist);
 }
 
+fn getFlatHeadPlist(target: Value, indicator: Value) Value {
+    var tail = target.toPtr(Cons).cdr;
+    while (tail.isCons()) {
+        const ind_cell = tail.toPtr(Cons);
+        const rest = ind_cell.cdr;
+        if (!rest.isCons()) break;
+        const value_cell = rest.toPtr(Cons);
+        if (ind_cell.car.eq(indicator)) return value_cell.car;
+        tail = value_cell.cdr;
+    }
+    return Value.nil;
+}
+
+fn putFlatHeadPlist(heap: *Heap, target: Value, indicator: Value, value: Value) !Value {
+    const head = target.toPtr(Cons);
+    var tail = head.cdr;
+    while (tail.isCons()) {
+        const ind_cell = tail.toPtr(Cons);
+        const rest = ind_cell.cdr;
+        if (!rest.isCons()) break;
+        const value_cell_val = rest;
+        const value_cell = value_cell_val.toPtr(Cons);
+        if (ind_cell.car.eq(indicator)) {
+            value_cell.car = value;
+            heap.writeBarrier(value_cell_val, value);
+            return value;
+        }
+        tail = value_cell.cdr;
+    }
+
+    const new_value_cell = try heap.allocCons(value, head.cdr);
+    const new_ind_cell = try heap.allocCons(indicator, new_value_cell);
+    head.cdr = new_ind_cell;
+    heap.writeBarrier(target, new_ind_cell);
+    return value;
+}
+
+fn rempropFlatHeadPlist(heap: *Heap, target: Value, indicator: Value) !Value {
+    var prev = target;
+    var tail = target.toPtr(Cons).cdr;
+    while (tail.isCons()) {
+        const ind_cell = tail.toPtr(Cons);
+        const rest = ind_cell.cdr;
+        if (!rest.isCons()) break;
+        const value_cell_val = rest;
+        const value_cell = value_cell_val.toPtr(Cons);
+        if (ind_cell.car.eq(indicator)) {
+            const prev_cons = prev.toPtr(Cons);
+            prev_cons.cdr = value_cell.cdr;
+            heap.writeBarrier(prev, value_cell.cdr);
+            return Value.t;
+        }
+        prev = value_cell_val;
+        tail = value_cell.cdr;
+    }
+    return Value.nil;
+}
+
 pub fn get(heap: *Heap, sym: Value, indicator: Value) !Value {
+    if (sym.isCons()) return getFlatHeadPlist(sym, indicator);
     if (!sym.isSymbolLike()) return error.TypeMismatch;
     var plist = try loadPlist(heap, sym);
 
@@ -392,6 +451,7 @@ pub fn get(heap: *Heap, sym: Value, indicator: Value) !Value {
 /// Set property in symbol's property list
 /// (put symbol indicator value) -> value
 pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
+    if (sym.isCons()) return putFlatHeadPlist(heap, sym, indicator, value);
     if (!sym.isSymbolLike()) return error.TypeMismatch;
 
     // Search for existing entry
@@ -427,6 +487,7 @@ pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
 /// Remove property from symbol's property list
 /// (remprop symbol indicator) -> t if removed, nil otherwise
 pub fn remprop(heap: *Heap, sym: Value, indicator: Value) !Value {
+    if (sym.isCons()) return rempropFlatHeadPlist(heap, sym, indicator);
     if (!sym.isSymbolLike()) return error.TypeMismatch;
     var plist = try loadPlist(heap, sym);
 
@@ -487,4 +548,26 @@ test "put preserves existing plist entries" {
 
     try testing.expectEqual(@as(i64, 7), (try get(&heap, sym, fn_key)).toFixnum());
     try testing.expectEqual(@as(i64, 9), (try get(&heap, sym, meta_key)).toFixnum());
+}
+
+test "put/get/remprop support Maxima-style head cons plists" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const head = try heap.allocCons(Value.nil, Value.nil);
+    const k1 = try heap.intern("MFEXPR*");
+    const k2 = try heap.intern("OPERATORS");
+
+    _ = try put(&heap, head, k1, Value.makeFixnum(7));
+    _ = try put(&heap, head, k2, Value.makeFixnum(9));
+    try testing.expectEqual(@as(i64, 7), (try get(&heap, head, k1)).toFixnum());
+    try testing.expectEqual(@as(i64, 9), (try get(&heap, head, k2)).toFixnum());
+
+    _ = try put(&heap, head, k1, Value.makeFixnum(11));
+    try testing.expectEqual(@as(i64, 11), (try get(&heap, head, k1)).toFixnum());
+    try testing.expect((try remprop(&heap, head, k2)).isT());
+    try testing.expect((try get(&heap, head, k2)).isNil());
+    try testing.expect((try remprop(&heap, head, k2)).isNil());
 }
