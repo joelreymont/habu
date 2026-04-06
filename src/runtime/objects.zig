@@ -225,7 +225,7 @@ pub const Vector = extern struct {
     }
 
     pub fn isAdjustable(self: *const Vector) bool {
-        return (self.fill_pointer & fill_adjustable_bit) != 0;
+        return self.fill_pointer != fill_none and (self.fill_pointer & fill_adjustable_bit) != 0;
     }
 
     pub fn setAdjustable(self: *Vector, adj: bool) void {
@@ -238,7 +238,7 @@ pub const Vector = extern struct {
     }
 
     pub fn isCharacterVector(self: *const Vector) bool {
-        return (self.fill_pointer & fill_char_bit) != 0;
+        return self.fill_pointer != fill_none and (self.fill_pointer & fill_char_bit) != 0;
     }
 
     pub fn setCharacterVector(self: *Vector, yes: bool) void {

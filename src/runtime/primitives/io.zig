@@ -1446,6 +1446,25 @@ test "write/princ/print respect stream argument" {
     try closeStream(stream, null);
 }
 
+test "write-to-string prints ordinary vectors" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const vec = try heap.allocVector(2, 2);
+    const v = vec.toPtr(objects.Vector);
+    v.set(0, Value.makeFixnum(1));
+    v.set(1, Value.makeFixnum(2));
+
+    try testing.expect(!v.isCharacterVector());
+    try testing.expect(!v.isAdjustable());
+
+    const out = try writeToString(&heap, vec);
+    try testing.expect(out.isString());
+    try testing.expect(std.mem.eql(u8, out.toPtr(objects.String).bytes(), "#(1 2)"));
+}
+
 test "string output stream length and position" {
     const testing = std.testing;
 
