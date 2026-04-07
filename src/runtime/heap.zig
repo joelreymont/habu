@@ -16,6 +16,7 @@ const Symbol = objects.Symbol;
 const gc_mod = @import("gc.zig");
 const GC = gc_mod.GC;
 const roots_mod = @import("roots.zig");
+const qual_name = @import("qual_name.zig");
 const string_prims = @import("primitives/string.zig");
 
 pub const ALIGNMENT: usize = 16;
@@ -5247,4 +5248,31 @@ test "heap los index survives swapRemove sweep" {
     try testing.expectEqual(@as(?usize, null), heap.los_idx.get(b));
     try testing.expectEqual(Heap.MarkResult.newly, heap.markLosObject(a));
     try testing.expectEqual(Heap.MarkResult.newly, heap.markLosObject(c));
+}
+
+test "gc preserves interned symbol home package qualification" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 64 * 1024 });
+    defer heap.deinit();
+
+    const pkg = try heap.findOrCreatePackage("PKG");
+    const sym = try pkg.intern(&heap, "FOO");
+
+    var roots = [_]Value{sym};
+    var i: usize = 0;
+    while (i < 256) : (i += 1) {
+        _ = try heap.allocCons(Value.makeFixnum(@intCast(i)), Value.nil);
+    }
+    _ = try heap.collectGarbage(roots[0..]);
+
+    const live_sym = roots[0];
+    const home_pkg = heap.symbolHomePkg(live_sym.toPtr(objects.Symbol));
+    try testing.expect(home_pkg != null);
+    try testing.expectEqualStrings("PKG", home_pkg.?.name);
+
+    var buf: [64]u8 = undefined;
+    const q = try qual_name.qualSymWithHeap(testing.allocator, &heap, live_sym.toPtr(objects.Symbol), &buf);
+    defer if (q.owned) testing.allocator.free(q.name);
+    try testing.expectEqualStrings("PKG:FOO", q.name);
 }

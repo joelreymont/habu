@@ -2038,6 +2038,13 @@ pub const GC = struct {
                 if (sym.plist.isPointer() and !sym.plist.isNil()) {
                     sym.plist = try self.copyValue(heap, sym.plist, alloc_ptr);
                 }
+                const pkg_bits = sym.reserved;
+                if (pkg_bits != 0 and (pkg_bits & 1) == 0) {
+                    const pkg_ptr: *objects.Package = @ptrFromInt(pkg_bits);
+                    const pkg_val = Value.makePackage(pkg_ptr);
+                    const live_pkg = try self.copyValue(heap, pkg_val, alloc_ptr);
+                    sym.reserved = live_pkg.toPtrAddr();
+                }
             },
             .vector => {
                 // Scan all elements

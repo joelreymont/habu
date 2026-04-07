@@ -12,6 +12,14 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ## Session Notes (2026-04-06)
 
+## Session Notes (2026-04-08)
+
+### Worked Well
+- Interned symbol home-package identity cannot live only in `Symbol.reserved` unless GC rewrites it. `src/runtime/gc.zig:2038-2047` previously copied only `plist` for `.symbol` objects, so moving GC left `reserved` pointing at stale package addresses. That made `src/runtime/qual_name.zig:29-64`, `src/runtime/heap.zig:3623-3631`, and VM/compiler global lookup silently fall back from `MAXIMA::*DB*`-style qualified names to unqualified names after enough GC pressure. Rooting and forwarding the package object through GC fixed the real Maxima `QUEUE+P` / `*DB*` floor and restored canonical `rtest6` execution to semantic diffs instead of the old line-11 `TypeMismatch`.
+
+### Did Not Work
+- Treating the `QUEUE+P` failure as a pure special-variable store/load mismatch was too narrow. The decisive signal was that direct small-package `defvar`/`setq` probes passed while long Maxima runs failed only after substantial allocation pressure; the missing GC rewrite of interned symbol package pointers was the shared root cause.
+
 ### Worked Well
 - `multiple-value-bind` needs the same special-variable treatment as lambda parameters. In `MAXIMA`, locals like `q` inside `cquotient` were globally special enough that `src/compiler/compile.zig:9360-9406` bound them to lexical slots, but body refs still went through the dynamic/global path, so `(multiple-value-bind (q r) (floor 1 1) ...)` produced `(#<unbound> 0)` in `MAXIMA` even though it was `(1 0)` in `CL-USER`. Carrying `special_bindings` on `mv_bind` in `src/compiler/ir.zig:248-253,1500-1504`, then emitting `push_progv`/`pop_progv` around the `mv_bind` body in `src/bytecode/emit.zig:2461-2481`, fixed the real Maxima arithmetic floor: `cquotient(-1,1) => -1`, `pgcda(-1,1,t) => (1 -1 1)`, and `fpgcdco(-1,1) => (1 -1 1)`.
 - Proclaimed special lambda parameters cannot be implemented as “lexical slot + body-only `progv` wrapper.” `src/compiler/compile.zig:3138-3161,7260-7286,4518-5165` was letting reads and `setq` hit the local slot while nested callees still observed the entry-time dynamic binding. The direct proof is `/tmp/special_setq_repro.lisp`, which used to return `(UPDATED PARAM)` and now returns `(UPDATED UPDATED)`. The correct cutover is two-part: compile special refs/sets through the dynamic/global path, and emit staged `push_progv` binds in `src/bytecode/emit.zig:1422-1434,1587-1710` as required/optional/rest/key parameter slots become live. That removes the fake `radcan1` local-success/global-stale split and leaves canonical `tools/maxima-rtest.lisp rtest6` on the real semantic diffs at lines `11, 13, 15, 17, 20, 22`.
