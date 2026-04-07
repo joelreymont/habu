@@ -1937,10 +1937,10 @@ pub const Vm = struct {
         self.fn_resolve_cache[idx] = .{};
     }
 
-    fn lookupFunctionCellLive(self: *Vm, live_sym_val: Value) ?Value {
+    fn lookupFunctionCellLive(self: *Vm, live_sym_val: Value) Error!?Value {
         if (!live_sym_val.isSymbol()) return null;
         const key = self.builtins.sym_function_cell;
-        const cell = primitives.list.get(self.heap, live_sym_val, key) catch return null;
+        const cell = try primitives.list.get(self.heap, live_sym_val, key);
         if (!isCallableFunctionValue(cell)) return null;
         return cell;
     }
@@ -1979,7 +1979,7 @@ pub const Vm = struct {
                 return cached_fn;
             }
         }
-        if (self.lookupFunctionCellLive(live_sym_val)) |fn_cell| {
+        if (try self.lookupFunctionCellLive(live_sym_val)) |fn_cell| {
             self.storeFnResolveCacheLive(live_sym_val, fn_cell);
             return fn_cell;
         }
