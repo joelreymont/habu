@@ -7084,10 +7084,29 @@ pub const Compiler = struct {
 
     fn compileFuncall(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (funcall fn arg1 arg2 ...) - fn is evaluated in value namespace
-        if (!args.isCons()) return error.InvalidSyntax;
+        var live_args = self.resolveForwardedValue(args);
+        var args_tok: ?CompileRootToken = null;
+        var args_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, live_args);
+            args_tok = tok;
+            args_vm = vm;
+            live_args = vm.globals[tok.root_idx];
+        }
+        defer if (args_tok) |tok| {
+            popCompileRoot(args_vm.?, tok.root_idx);
+        };
 
-        const cons1 = args.toPtr(Cons);
+        live_args = self.resolveForwardedValue(live_args);
+        if (!live_args.isCons()) return error.InvalidSyntax;
+        var cons1 = live_args.toPtr(Cons);
         const fn_ir = try self.compile(cons1.car, env);
+        if (args_tok) |tok| {
+            if (args_vm) |vm| live_args = vm.globals[tok.root_idx];
+        }
+        live_args = self.resolveForwardedValue(live_args);
+        if (!live_args.isCons()) return error.InvalidSyntax;
+        cons1 = live_args.toPtr(Cons);
         const call_args = try self.compileCallArgsSlice(cons1.cdr, env);
         return try self.buildCallIr(fn_ir, call_args, false);
     }
@@ -19373,6 +19392,19 @@ pub const Compiler = struct {
     }
 
     fn compileCallWithTail(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
+        var live_args_expr = self.resolveForwardedValue(args_expr);
+        var args_tok: ?CompileRootToken = null;
+        var args_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, live_args_expr);
+            args_tok = tok;
+            args_vm = vm;
+            live_args_expr = vm.globals[tok.root_idx];
+        }
+        defer if (args_tok) |tok| {
+            popCompileRoot(args_vm.?, tok.root_idx);
+        };
+
         const live_func_expr = self.resolveForwardedValue(func_expr);
         // Check for struct predicate calls (for occurrence typing)
         // If calling a known struct predicate like point-p, generate struct_p IR
@@ -19390,8 +19422,12 @@ pub const Compiler = struct {
                     sym_name;
 
                 // Compile the single argument
-                if (!args_expr.isCons()) return error.InvalidSyntax;
-                const arg_cons = args_expr.toPtr(Cons);
+                if (args_tok) |tok| {
+                    if (args_vm) |vm| live_args_expr = vm.globals[tok.root_idx];
+                }
+                live_args_expr = self.resolveForwardedValue(live_args_expr);
+                if (!live_args_expr.isCons()) return error.InvalidSyntax;
+                const arg_cons = live_args_expr.toPtr(Cons);
                 if (!arg_cons.cdr.isNil()) return error.InvalidSyntax; // Must have exactly 1 arg
                 const arg_ir = try self.compile(arg_cons.car, env);
 
@@ -19411,7 +19447,11 @@ pub const Compiler = struct {
             break :blk try self.builder.lit(live_func_expr);
         } else try self.compile(live_func_expr, env);
 
-        const call_args = try self.compileCallArgsSlice(args_expr, env);
+        if (args_tok) |tok| {
+            if (args_vm) |vm| live_args_expr = vm.globals[tok.root_idx];
+        }
+        live_args_expr = self.resolveForwardedValue(live_args_expr);
+        const call_args = try self.compileCallArgsSlice(live_args_expr, env);
         return try self.buildCallIr(func_ir, call_args, in_tail);
     }
 
