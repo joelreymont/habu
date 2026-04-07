@@ -250,6 +250,7 @@ pub const Ir = union(enum) {
         start_index: u16, // absolute local index of first variable
         expr: *const Ir,
         body: *const Ir,
+        special_bindings: []const SpecialBinding = &.{},
     },
 
     /// Multiple-value-list: (multiple-value-list expr)
@@ -1499,7 +1500,7 @@ pub const IrBuilder = struct {
     pub fn mvBind(self: IrBuilder, vars: []const []const u8, start_index: u16, expr: *const Ir, body: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         const vars_copy = try self.allocator.dupe([]const u8, vars);
-        node.* = .{ .mv_bind = .{ .vars = vars_copy, .start_index = start_index, .expr = expr, .body = body } };
+        node.* = .{ .mv_bind = .{ .vars = vars_copy, .start_index = start_index, .expr = expr, .body = body, .special_bindings = &.{} } };
         return node;
     }
 

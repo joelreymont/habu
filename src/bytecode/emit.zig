@@ -2471,8 +2471,17 @@ pub const Emitter = struct {
         try self.emitU8(@intCast(m.vars.len));
         try self.emitU8(@intCast(m.start_index));
 
+        var special_depth: usize = 0;
+        for (m.special_bindings) |binding| {
+            try self.emitSingleProgvBinding(binding.sym, binding.idx);
+            special_depth += 1;
+        }
+
         // Emit body - variables are now bound to locals by VM
         try self.emit(m.body);
+        while (special_depth > 0) : (special_depth -= 1) {
+            try self.emitOp(.pop_progv);
+        }
     }
 
     fn emitMvList(self: *Emitter, m: anytype) Error!void {

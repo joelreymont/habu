@@ -9373,6 +9373,8 @@ pub const Compiler = struct {
         if (!scan.isNil()) return error.InvalidSyntax;
 
         const vars = try self.allocator.alloc([]const u8, var_count);
+        var special_bindings = std.ArrayList(Ir.SpecialBinding){};
+        defer special_bindings.deinit(self.allocator);
         var var_list = cons1.car;
         var start_index: u16 = 0;
         var first = true;
@@ -9384,6 +9386,13 @@ pub const Compiler = struct {
             vars[name_idx] = try self.allocator.dupe(u8, sym.getName());
             name_idx += 1;
             const idx = try let_env.bindSym(sym_val);
+            if (self.isSpecialBindingSym(sym_val)) {
+                try special_bindings.append(self.allocator, .{
+                    .sym = sym_val,
+                    .idx = idx,
+                    .stage = .required,
+                });
+            }
             if (first) {
                 start_index = idx;
                 first = false;
@@ -9400,7 +9409,11 @@ pub const Compiler = struct {
         // Compile body forms
         const body_ir = try self.compileBody(cons2.cdr, &let_env);
 
-        return try self.builder.mvBind(vars, start_index, expr_ir, body_ir);
+        const mv_bind_ir = try self.builder.mvBind(vars, start_index, expr_ir, body_ir);
+        if (special_bindings.items.len != 0) {
+            mv_bind_ir.mv_bind.special_bindings = try self.allocator.dupe(Ir.SpecialBinding, special_bindings.items);
+        }
+        return mv_bind_ir;
     }
 
     fn compileMvCall(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
