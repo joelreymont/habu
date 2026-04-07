@@ -175,16 +175,12 @@ fn plistToFlat(heap: *Heap, plist: Value) !Value {
     var cur = plist;
     var out = Value.nil;
     while (nextPlistEntry(cur)) |entry| {
-        const indicator = entry.indicator;
-        const value = entry.value;
-        const next = entry.next;
-
-        var roots = [_]Value{ cur, out, indicator, value };
+        var roots = [_]Value{ cur, out, entry.indicator, entry.value, entry.next };
         const ind_cell = try allocConsRooted(heap, roots[2], roots[1], roots[0..]);
         roots[1] = ind_cell;
         const val_cell = try allocConsRooted(heap, roots[3], roots[1], roots[0..]);
         out = val_cell;
-        cur = next;
+        cur = roots[4];
     }
 
     if (!cur.isNil()) {
@@ -202,8 +198,6 @@ fn flatToAList(heap: *Heap, plist: Value) !Value {
     var out = Value.nil;
     while (cur.isCons()) {
         const ind_cell = cur.toPtr(objects.Cons);
-        const indicator = ind_cell.car;
-
         var value = Value.nil;
         var next = Value.nil;
         if (ind_cell.cdr.isCons()) {
@@ -212,12 +206,12 @@ fn flatToAList(heap: *Heap, plist: Value) !Value {
             next = val_cell.cdr;
         }
 
-        var roots = [_]Value{ cur, out, indicator, value };
+        var roots = [_]Value{ cur, out, ind_cell.car, value, next };
         const pair = try allocConsRooted(heap, roots[2], roots[3], roots[0..]);
         roots[1] = out;
         roots[2] = pair;
         out = try allocConsRooted(heap, roots[2], roots[1], roots[0..3]);
-        cur = next;
+        cur = roots[4];
     }
 
     if (!cur.isNil()) {
@@ -411,6 +405,42 @@ test "symbol-plist exposes flat plist for CL consumers" {
     const got_k2 = try list_prims.get(&heap, sym, k2);
     try testing.expectEqual(@as(i64, 11), got_k1.toFixnum());
     try testing.expectEqual(@as(i64, 22), got_k2.toFixnum());
+}
+
+test "symbol plist round-trip roots cons values across GC" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 8 * 1024 });
+    defer heap.deinit();
+
+    const sym = try heap.intern("GC-PLIST-SYM");
+    const k_modes = try heap.intern("MODES");
+    const k_other = try heap.intern("OTHER");
+    const cl_sym = try heap.intern("CL");
+    const type_sym = try heap.intern("TYPE");
+    const atom_sym = try heap.intern("ATOM");
+
+    const pair_type = try allocConsRooted(&heap, type_sym, atom_sym, &[_]Value{ sym, type_sym, atom_sym });
+    const pair_cl = try allocConsRooted(&heap, cl_sym, atom_sym, &[_]Value{ sym, cl_sym, atom_sym, pair_type });
+    const tail = try allocConsRooted(&heap, pair_type, Value.nil, &[_]Value{ sym, pair_cl, pair_type });
+    const modes = try allocConsRooted(&heap, pair_cl, tail, &[_]Value{ sym, pair_cl, pair_type, tail });
+
+    _ = try list_prims.put(&heap, sym, k_modes, modes);
+
+    var i: usize = 0;
+    while (i < 64) : (i += 1) {
+        _ = try list_prims.put(&heap, sym, k_other, try allocConsRooted(&heap, Value.makeFixnum(@intCast(i)), Value.nil, &[_]Value{ sym, k_other }));
+        const got = try list_prims.get(&heap, sym, k_modes);
+        try testing.expect(got.isCons());
+        try testing.expect(got.toPtr(objects.Cons).car.isCons());
+        try testing.expect(got.toPtr(objects.Cons).cdr.isCons());
+        const flat = try symbolPlist(&heap, sym);
+        try setSymbolPlist(&heap, sym, flat);
+        const got_again = try list_prims.get(&heap, sym, k_modes);
+        try testing.expect(got_again.isCons());
+        try testing.expect(got_again.toPtr(objects.Cons).car.isCons());
+        try testing.expect(got_again.toPtr(objects.Cons).cdr.isCons());
+    }
 }
 
 test "plist ops support NIL and T symbols" {
