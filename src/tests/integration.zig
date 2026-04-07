@@ -10383,6 +10383,62 @@ test "maxima buildq lambda executes through mqapply" {
     }
 }
 
+test "maxima gradef remains callable through mfexpr plist lookup" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\    (declare (ignore ok total))
+        \\    (let ((*package* (find-package :maxima)))
+        \\      (list
+        \\        fail
+        \\        (if (get '$gradef 'mfexpr*) 1 0)
+        \\        (let* ((form (with-input-from-string
+        \\                       (s "gradef(q(x),sin(x^2));")
+        \\                     (maxima::mread s 'maxima::$eof)))
+        \\               (value (maxima::meval form)))
+        \\          (if (and (consp value)
+        \\                   (equal (third value) '((maxima::$q simp) maxima::$x)))
+        \\              1
+        \\              0))
+        \\        (let* ((form (with-input-from-string
+        \\                       (s "diff(log(q(r(x))),x);")
+        \\                     (maxima::mread s 'maxima::$eof)))
+        \\               (value (maxima::meval form)))
+        \\          (if (and (consp value)
+        \\                   (equal (third value)
+        \\                          '((mtimes simp)
+        \\                            ((mexpt simp) ((maxima::$q simp) ((maxima::$r simp) maxima::$x)) -1)
+        \\                            ((%derivative simp) ((maxima::$r simp) maxima::$x) maxima::$x 1)
+        \\                            ((%sin simp) ((mexpt simp) ((maxima::$r simp) maxima::$x) 2)))))
+        \\              1
+        \\              0))))))
+    );
+
+    try testing.expect(out.isCons());
+    var cur = out;
+    const expected = [_]i64{ 0, 1, 1, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "maxima reader stage parses selected upstream modules" {
     try ensureMaximaSources();
     const allocator = testing.allocator;

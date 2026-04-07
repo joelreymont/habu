@@ -116,6 +116,41 @@ fn plistLooksLikeAList(plist: Value) bool {
     return first.car.isCons();
 }
 
+const PlistEntry = struct {
+    indicator: Value,
+    value: Value,
+    next: Value,
+};
+
+fn nextPlistEntry(cur: Value) ?PlistEntry {
+    if (!cur.isCons()) return null;
+    const cell = cur.toPtr(objects.Cons);
+
+    if (cell.car.isCons()) {
+        const pair = cell.car.toPtr(objects.Cons);
+        return .{
+            .indicator = pair.car,
+            .value = pair.cdr,
+            .next = cell.cdr,
+        };
+    }
+
+    if (cell.cdr.isCons()) {
+        const value_cell = cell.cdr.toPtr(objects.Cons);
+        return .{
+            .indicator = cell.car,
+            .value = value_cell.car,
+            .next = value_cell.cdr,
+        };
+    }
+
+    return .{
+        .indicator = cell.car,
+        .value = Value.nil,
+        .next = Value.nil,
+    };
+}
+
 fn allocConsRooted(heap: *Heap, car_val: Value, cdr_val: Value, roots: []Value) !Value {
     const cons = try heap.allocWithGC(objects.Cons, roots);
     cons.* = objects.Cons.init(car_val, cdr_val);
@@ -136,21 +171,13 @@ fn reverseProperList(heap: *Heap, list: Value) Value {
     return prev;
 }
 
-fn alistToFlat(heap: *Heap, plist: Value) !Value {
+fn plistToFlat(heap: *Heap, plist: Value) !Value {
     var cur = plist;
     var out = Value.nil;
-    while (cur.isCons()) {
-        const node = cur.toPtr(objects.Cons);
-        const entry = node.car;
-        const next = node.cdr;
-
-        var indicator = entry;
-        var value = Value.nil;
-        if (entry.isCons()) {
-            const pair = entry.toPtr(objects.Cons);
-            indicator = pair.car;
-            value = pair.cdr;
-        }
+    while (nextPlistEntry(cur)) |entry| {
+        const indicator = entry.indicator;
+        const value = entry.value;
+        const next = entry.next;
 
         var roots = [_]Value{ cur, out, indicator, value };
         const ind_cell = try allocConsRooted(heap, roots[2], roots[1], roots[0..]);
@@ -215,7 +242,7 @@ pub fn symbolPlist(heap: *Heap, sym: Value) !Value {
     else
         sym.toPtr(objects.Symbol).plist;
     if (plist.isNil()) return Value.nil;
-    if (plistLooksLikeAList(plist)) return try alistToFlat(heap, plist);
+    if (plist.isCons()) return try plistToFlat(heap, plist);
     return plist;
 }
 

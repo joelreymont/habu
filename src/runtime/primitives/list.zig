@@ -9,6 +9,7 @@ const objects = @import("../objects.zig");
 const Symbol = objects.Symbol;
 const Cons = objects.Cons;
 const Heap = @import("../heap.zig").Heap;
+const symbol_prims = @import("symbol.zig");
 
 fn allocConsRooted(heap: *Heap, car_val: Value, cdr_val: Value, roots: []Value) error{OutOfMemory}!Value {
     const cell = try heap.allocWithGC(Cons, roots);
@@ -362,6 +363,77 @@ fn loadPlist(heap: *Heap, sym: Value) !Value {
     return plist_ptr.*;
 }
 
+fn loadFlatSymbolPlist(heap: *Heap, sym: Value) !Value {
+    return try symbol_prims.symbolPlist(heap, sym);
+}
+
+fn flatGet(plist: Value, indicator: Value) Value {
+    var tail = plist;
+    while (tail.isCons()) {
+        const ind_cell = tail.toPtr(Cons);
+        const rest = ind_cell.cdr;
+        if (!rest.isCons()) break;
+        const value_cell = rest.toPtr(Cons);
+        if (ind_cell.car.eq(indicator)) return value_cell.car;
+        tail = value_cell.cdr;
+    }
+    return Value.nil;
+}
+
+fn flatPut(heap: *Heap, plist: Value, indicator: Value, value: Value) !Value {
+    var tail = plist;
+    while (tail.isCons()) {
+        const ind_cell_val = tail;
+        const ind_cell = ind_cell_val.toPtr(Cons);
+        const rest = ind_cell.cdr;
+        if (!rest.isCons()) break;
+        const value_cell_val = rest;
+        const value_cell = value_cell_val.toPtr(Cons);
+        if (ind_cell.car.eq(indicator)) {
+            value_cell.car = value;
+            heap.writeBarrier(value_cell_val, value);
+            return plist;
+        }
+        tail = value_cell.cdr;
+    }
+
+    var roots = [_]Value{ plist, indicator, value };
+    const value_cell = try allocConsRooted(heap, roots[2], roots[0], roots[0..]);
+    roots[0] = value_cell;
+    return try allocConsRooted(heap, roots[1], roots[0], roots[0..]);
+}
+
+fn flatRemprop(heap: *Heap, plist: Value, indicator: Value) !struct { plist: Value, removed: bool } {
+    if (!plist.isCons()) return .{ .plist = plist, .removed = false };
+
+    const first = plist.toPtr(Cons);
+    if (first.cdr.isCons()) {
+        const value_cell = first.cdr.toPtr(Cons);
+        if (first.car.eq(indicator)) {
+            return .{ .plist = value_cell.cdr, .removed = true };
+        }
+    }
+
+    var prev = plist;
+    while (prev.isCons()) {
+        const prev_cons = prev.toPtr(Cons);
+        if (!prev_cons.cdr.isCons()) break;
+        const ind_cell_val = prev_cons.cdr;
+        const ind_cell = ind_cell_val.toPtr(Cons);
+        if (!ind_cell.cdr.isCons()) break;
+        const value_cell_val = ind_cell.cdr;
+        const value_cell = value_cell_val.toPtr(Cons);
+        if (ind_cell.car.eq(indicator)) {
+            prev_cons.cdr = value_cell.cdr;
+            heap.writeBarrier(prev, value_cell.cdr);
+            return .{ .plist = plist, .removed = true };
+        }
+        prev = value_cell_val;
+    }
+
+    return .{ .plist = plist, .removed = false };
+}
+
 fn storePlist(heap: *Heap, sym: Value, plist: Value) !void {
     if (sym.isKeyword()) {
         try heap.setKeywordPlist(sym, plist);
@@ -440,25 +512,8 @@ fn rempropFlatHeadPlist(heap: *Heap, target: Value, indicator: Value) !Value {
 pub fn get(heap: *Heap, sym: Value, indicator: Value) !Value {
     if (sym.isCons()) return getFlatHeadPlist(sym, indicator);
     if (!sym.isSymbolLike()) return error.TypeMismatch;
-    var plist = try loadPlist(heap, sym);
-
-    // Search alist for indicator
-    while (plist.isCons()) {
-        const entry = plist.toPtr(Cons);
-        const pair = entry.car;
-
-        if (pair.isCons()) {
-            const pair_cons = pair.toPtr(Cons);
-            if (pair_cons.car.eq(indicator)) {
-                // Found it - return cdr of pair (the value)
-                return pair_cons.cdr;
-            }
-        }
-
-        plist = entry.cdr;
-    }
-
-    return Value.nil;
+    const plist = try loadFlatSymbolPlist(heap, sym);
+    return flatGet(plist, indicator);
 }
 
 /// Set property in symbol's property list
@@ -466,40 +521,9 @@ pub fn get(heap: *Heap, sym: Value, indicator: Value) !Value {
 pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
     if (sym.isCons()) return putFlatHeadPlist(heap, sym, indicator, value);
     if (!sym.isSymbolLike()) return error.TypeMismatch;
-
-    // Search for existing entry
-    const plist = try loadPlist(heap, sym);
-    var current = plist;
-
-    while (current.isCons()) {
-        const entry = current.toPtr(Cons);
-        const pair = entry.car;
-
-        if (pair.isCons()) {
-            const pair_cons = pair.toPtr(Cons);
-            if (pair_cons.car.eq(indicator)) {
-                // Found - update value (modify cdr of pair)
-                var roots = [_]Value{ sym, current, indicator, value };
-                const new_pair = try allocConsRooted(heap, roots[2], roots[3], roots[0..]);
-                const current_live = roots[1];
-                const entry_live = current_live.toPtr(Cons);
-                entry_live.car = new_pair;
-                heap.writeBarrier(current_live, new_pair);
-                return value;
-            }
-        }
-
-        current = entry.cdr;
-    }
-
-    // Not found - add new entry at front
-    var roots = [_]Value{ sym, indicator, value, plist };
-    const new_pair = try allocConsRooted(heap, roots[1], roots[2], roots[0..]);
-    roots[1] = new_pair;
-    roots[2] = roots[3];
-    const new_entry = try allocConsRooted(heap, roots[1], roots[2], roots[0..3]);
-    try storePlist(heap, roots[0], new_entry);
-
+    const plist = try loadFlatSymbolPlist(heap, sym);
+    const new_plist = try flatPut(heap, plist, indicator, value);
+    try symbol_prims.setSymbolPlist(heap, sym, new_plist);
     return value;
 }
 
@@ -508,48 +532,11 @@ pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
 pub fn remprop(heap: *Heap, sym: Value, indicator: Value) !Value {
     if (sym.isCons()) return rempropFlatHeadPlist(heap, sym, indicator);
     if (!sym.isSymbolLike()) return error.TypeMismatch;
-    var plist = try loadPlist(heap, sym);
-
-    // Handle first entry specially
-    if (plist.isCons()) {
-        const first = plist.toPtr(Cons);
-        const pair = first.car;
-
-        if (pair.isCons()) {
-            const pair_cons = pair.toPtr(Cons);
-            if (pair_cons.car.eq(indicator)) {
-                // Remove first entry
-                try storePlist(heap, sym, first.cdr);
-                return Value.t;
-            }
-        }
-    }
-
-    // Search rest of list
-    var prev = plist;
-    while (prev.isCons()) {
-        const prev_cons = prev.toPtr(Cons);
-        const current = prev_cons.cdr;
-
-        if (current.isCons()) {
-            const curr_cons = current.toPtr(Cons);
-            const pair = curr_cons.car;
-
-            if (pair.isCons()) {
-                const pair_cons = pair.toPtr(Cons);
-                if (pair_cons.car.eq(indicator)) {
-                    // Remove by skipping over current
-                    prev_cons.cdr = curr_cons.cdr;
-                    heap.writeBarrier(prev, curr_cons.cdr);
-                    return Value.t;
-                }
-            }
-        }
-
-        prev = current;
-    }
-
-    return Value.nil;
+    const plist = try loadFlatSymbolPlist(heap, sym);
+    const result = try flatRemprop(heap, plist, indicator);
+    if (!result.removed) return Value.nil;
+    try symbol_prims.setSymbolPlist(heap, sym, result.plist);
+    return Value.t;
 }
 
 test "put preserves existing plist entries" {
@@ -589,4 +576,36 @@ test "put/get/remprop support Maxima-style head cons plists" {
     try testing.expect((try remprop(&heap, head, k2)).isT());
     try testing.expect((try get(&heap, head, k2)).isNil());
     try testing.expect((try remprop(&heap, head, k2)).isNil());
+}
+
+test "get/put/remprop handle mixed symbol plists" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const sym = try heap.intern("MIXED-PLIST");
+    const ka = try heap.intern("A");
+    const kb = try heap.intern("B");
+    const kc = try heap.intern("C");
+
+    const pair_a = try allocConsRooted(&heap, ka, Value.makeFixnum(1), &[_]Value{ sym, ka });
+    const flat_b_val = try allocConsRooted(&heap, Value.makeFixnum(2), Value.nil, &[_]Value{ sym, kb });
+    const flat_b = try allocConsRooted(&heap, kb, flat_b_val, &[_]Value{ sym, kb, flat_b_val });
+    const mixed = try allocConsRooted(&heap, pair_a, flat_b, &[_]Value{ sym, pair_a, flat_b });
+    try symbol_prims.setSymbolPlist(&heap, sym, mixed);
+
+    try testing.expectEqual(@as(i64, 1), (try get(&heap, sym, ka)).toFixnum());
+    try testing.expectEqual(@as(i64, 2), (try get(&heap, sym, kb)).toFixnum());
+
+    _ = try put(&heap, sym, kc, Value.makeFixnum(3));
+    try testing.expectEqual(@as(i64, 3), (try get(&heap, sym, kc)).toFixnum());
+
+    try testing.expect((try remprop(&heap, sym, kb)).isT());
+    try testing.expect((try get(&heap, sym, kb)).isNil());
+
+    const flat = try symbol_prims.symbolPlist(&heap, sym);
+    try testing.expect(flat.isCons());
+    try testing.expectEqual(@as(i64, 1), (try get(&heap, sym, ka)).toFixnum());
+    try testing.expectEqual(@as(i64, 3), (try get(&heap, sym, kc)).toFixnum());
 }

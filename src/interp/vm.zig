@@ -1940,23 +1940,9 @@ pub const Vm = struct {
     fn lookupFunctionCellLive(self: *Vm, live_sym_val: Value) ?Value {
         if (!live_sym_val.isSymbol()) return null;
         const key = self.builtins.sym_function_cell;
-        const sym = live_sym_val.toPtr(Symbol);
-
-        var plist = sym.plist;
-        while (plist.isCons()) {
-            const entry = plist.toPtr(Cons);
-            const pair_val = entry.car;
-            if (pair_val.isCons()) {
-                const pair = pair_val.toPtr(Cons);
-                if (pair.car.eq(key)) {
-                    const cell = pair.cdr;
-                    if (!isCallableFunctionValue(cell)) return null;
-                    return cell;
-                }
-            }
-            plist = entry.cdr;
-        }
-        return null;
+        const cell = primitives.list.get(self.heap, live_sym_val, key) catch return null;
+        if (!isCallableFunctionValue(cell)) return null;
+        return cell;
     }
 
     fn storeFunctionCell(self: *Vm, sym_val: Value, fn_val: Value) Error!void {

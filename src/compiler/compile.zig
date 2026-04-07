@@ -16970,40 +16970,14 @@ pub const Compiler = struct {
         if (self.lookupMacroMapValue(&self.macro_table, live_sym)) |def| return def;
         // Also check symbol property list for macro-function (set via setf)
         if (live_sym.isSymbol()) {
-            const sym_ptr = live_sym.toPtr(Symbol);
-            if (sym_ptr.plist.isCons()) {
-                var macro_entry_val: ?Value = null;
-                var macro_fn_val: ?Value = null;
-                // Search plist for 'macro-function key
-                // Plist stored as alist: ((key . val) (key . val) ...)
-                var plist = sym_ptr.plist;
-                while (plist.isCons()) {
-                    const pc = plist.toPtr(Cons);
-                    const entry = pc.car;
-                    if (entry.isCons()) {
-                        const entry_cons = entry.toPtr(Cons);
-                        if (entry_cons.car.isSymbol()) {
-                            const b3 = self.builtins orelse {
-                                plist = pc.cdr;
-                                continue;
-                            };
-                            if (entry_cons.car.raw == b3.habu_macro_entry.raw) {
-                                const val = entry_cons.cdr;
-                                if (self.decodeCompiledMacroEntry(val) != null) {
-                                    macro_entry_val = val;
-                                }
-                            }
-                            if (entry_cons.car.raw == b3.macro_function.raw) {
-                                const val = entry_cons.cdr;
-                                if (val.isClosure()) macro_fn_val = val;
-                            }
-                        }
-                    }
-                    plist = pc.cdr;
-                }
-                if (macro_entry_val) |val| return val;
-                if (macro_fn_val) |val| return val;
-            }
+            const b3 = self.builtins orelse return null;
+            const heap = self.heap orelse return null;
+            if (primitives.list.get(heap, live_sym, b3.habu_macro_entry)) |val| {
+                if (self.decodeCompiledMacroEntry(val) != null) return val;
+            } else |_| {}
+            if (primitives.list.get(heap, live_sym, b3.macro_function)) |val| {
+                if (val.isClosure()) return val;
+            } else |_| {}
         }
         return null;
     }
