@@ -414,7 +414,7 @@ fn flatRemprop(heap: *Heap, plist: Value, indicator: Value) !struct { plist: Val
         }
     }
 
-    var prev = plist;
+    var prev = first.cdr;
     while (prev.isCons()) {
         const prev_cons = prev.toPtr(Cons);
         if (!prev_cons.cdr.isCons()) break;
@@ -589,10 +589,14 @@ test "get/put/remprop handle mixed symbol plists" {
     const kb = try heap.intern("B");
     const kc = try heap.intern("C");
 
-    const pair_a = try allocConsRooted(&heap, ka, Value.makeFixnum(1), &[_]Value{ sym, ka });
-    const flat_b_val = try allocConsRooted(&heap, Value.makeFixnum(2), Value.nil, &[_]Value{ sym, kb });
-    const flat_b = try allocConsRooted(&heap, kb, flat_b_val, &[_]Value{ sym, kb, flat_b_val });
-    const mixed = try allocConsRooted(&heap, pair_a, flat_b, &[_]Value{ sym, pair_a, flat_b });
+    var roots_a = [_]Value{ sym, ka };
+    const pair_a = try allocConsRooted(&heap, ka, Value.makeFixnum(1), roots_a[0..]);
+    var roots_b_val = [_]Value{ sym, kb };
+    const flat_b_val = try allocConsRooted(&heap, Value.makeFixnum(2), Value.nil, roots_b_val[0..]);
+    var roots_b = [_]Value{ sym, kb, flat_b_val };
+    const flat_b = try allocConsRooted(&heap, kb, flat_b_val, roots_b[0..]);
+    var roots_mixed = [_]Value{ sym, pair_a, flat_b };
+    const mixed = try allocConsRooted(&heap, pair_a, flat_b, roots_mixed[0..]);
     try symbol_prims.setSymbolPlist(&heap, sym, mixed);
 
     try testing.expectEqual(@as(i64, 1), (try get(&heap, sym, ka)).toFixnum());
@@ -608,4 +612,26 @@ test "get/put/remprop handle mixed symbol plists" {
     try testing.expect(flat.isCons());
     try testing.expectEqual(@as(i64, 1), (try get(&heap, sym, ka)).toFixnum());
     try testing.expectEqual(@as(i64, 3), (try get(&heap, sym, kc)).toFixnum());
+}
+
+test "remprop removes non-head key from flat plist" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const sym = try heap.intern("FLAT-REM-SYM");
+    const ka = try heap.intern("A");
+    const kb = try heap.intern("B");
+
+    _ = try put(&heap, sym, ka, Value.makeFixnum(1));
+    _ = try put(&heap, sym, kb, Value.makeFixnum(2));
+    _ = try put(&heap, sym, ka, Value.makeFixnum(3));
+
+    try testing.expectEqual(@as(i64, 3), (try get(&heap, sym, ka)).toFixnum());
+    try testing.expectEqual(@as(i64, 2), (try get(&heap, sym, kb)).toFixnum());
+
+    try testing.expect((try remprop(&heap, sym, ka)).isT());
+    try testing.expect((try get(&heap, sym, ka)).isNil());
+    try testing.expectEqual(@as(i64, 2), (try get(&heap, sym, kb)).toFixnum());
 }

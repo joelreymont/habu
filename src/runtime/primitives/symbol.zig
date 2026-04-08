@@ -236,7 +236,9 @@ pub fn symbolPlist(heap: *Heap, sym: Value) !Value {
     else
         sym.toPtr(objects.Symbol).plist;
     if (plist.isNil()) return Value.nil;
-    if (plist.isCons()) return try plistToFlat(heap, plist);
+    if (plist.isCons()) {
+        return try plistToFlat(heap, plist);
+    }
     return plist;
 }
 
@@ -263,16 +265,7 @@ pub fn setSymbolValue(sym: Value, val: Value) !void {
 
 /// Set symbol's property list
 pub fn setSymbolPlist(heap: *Heap, sym: Value, plist: Value) !void {
-    if (!sym.isSymbolLike()) {
-        if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
-            std.debug.print("TRACE setSymbolPlist type-mismatch kind={s} raw=0x{x} plist_raw=0x{x}\n", .{
-                @tagName(sym.typeKind()),
-                sym.raw,
-                plist.raw,
-            });
-        }
-        return error.TypeError;
-    }
+    if (!sym.isSymbolLike()) return error.TypeError;
     if (sym.isKeyword()) {
         if (plist.isNil() or !plist.isCons() or plistLooksLikeAList(plist)) {
             try heap.setKeywordPlist(sym, plist);
@@ -420,16 +413,21 @@ test "symbol plist round-trip roots cons values across GC" {
     const type_sym = try heap.intern("TYPE");
     const atom_sym = try heap.intern("ATOM");
 
-    const pair_type = try allocConsRooted(&heap, type_sym, atom_sym, &[_]Value{ sym, type_sym, atom_sym });
-    const pair_cl = try allocConsRooted(&heap, cl_sym, atom_sym, &[_]Value{ sym, cl_sym, atom_sym, pair_type });
-    const tail = try allocConsRooted(&heap, pair_type, Value.nil, &[_]Value{ sym, pair_cl, pair_type });
-    const modes = try allocConsRooted(&heap, pair_cl, tail, &[_]Value{ sym, pair_cl, pair_type, tail });
+    var roots_pair_type = [_]Value{ sym, type_sym, atom_sym };
+    const pair_type = try allocConsRooted(&heap, type_sym, atom_sym, roots_pair_type[0..]);
+    var roots_pair_cl = [_]Value{ sym, cl_sym, atom_sym, pair_type };
+    const pair_cl = try allocConsRooted(&heap, cl_sym, atom_sym, roots_pair_cl[0..]);
+    var roots_tail = [_]Value{ sym, pair_cl, pair_type };
+    const tail = try allocConsRooted(&heap, pair_type, Value.nil, roots_tail[0..]);
+    var roots_modes = [_]Value{ sym, pair_cl, pair_type, tail };
+    const modes = try allocConsRooted(&heap, pair_cl, tail, roots_modes[0..]);
 
     _ = try list_prims.put(&heap, sym, k_modes, modes);
 
     var i: usize = 0;
     while (i < 64) : (i += 1) {
-        _ = try list_prims.put(&heap, sym, k_other, try allocConsRooted(&heap, Value.makeFixnum(@intCast(i)), Value.nil, &[_]Value{ sym, k_other }));
+        var roots_other = [_]Value{ sym, k_other };
+        _ = try list_prims.put(&heap, sym, k_other, try allocConsRooted(&heap, Value.makeFixnum(@intCast(i)), Value.nil, roots_other[0..]));
         const got = try list_prims.get(&heap, sym, k_modes);
         try testing.expect(got.isCons());
         try testing.expect(got.toPtr(objects.Cons).car.isCons());
