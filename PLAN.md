@@ -58,6 +58,7 @@ Live blockers proven right now from the current runner path, which is still prov
 - performance work remains explicitly blocked on clean canonical execution.
 - Current `rtest6` floor is no longer the old generic `unwind-protect` cleanup bug. That part is fixed in `src/interp/vm.zig` by switching condition-transfer detection to full `Vm.State` snapshots, with proof from the generic unwind regression and the Maxima `meval*` cleanup regression.
 - The live `rtest6` blocker is now a global-state mismatch on Maxima's `+labs` bookkeeping: after `errcatch` around `integrate`, `symbol-plist` on `*Z*` contains `(+LABS $ZERO)` while `symbol-value` of `MAXIMA::+LABS` is still `nil`. `compar.lisp:dmark` writes both surfaces together, so the remaining root cause belongs in Habu's qualified global-slot identity/synchronization path (`src/interp/vm.zig`, `src/interp/repl.zig`, `src/compiler/compile.zig`), not in another Maxima semantic patch.
+- Short-circuit compiler walkers must root their live list tails across recursive sub-compilation. `src/compiler/compile.zig:7030-7145` currently keeps `and`/`or` rest lists in raw locals while compiling the head clause, so moving GC can invalidate the recursive tail and crash in later cons dereferences before the real `+labs` floor is even observable.
 
 ## 4.2 Remaining Execution Order
 

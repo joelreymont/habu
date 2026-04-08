@@ -7029,23 +7029,45 @@ pub const Compiler = struct {
 
     fn compileAnd(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (and a b) -> (if a b nil)
-        if (!args.isCons()) return error.InvalidSyntax;
+        var live_args = self.resolveForwardedValue(args);
+        var args_tok: ?CompileRootToken = null;
+        var args_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, live_args);
+            args_tok = tok;
+            args_vm = vm;
+            live_args = vm.globals[tok.root_idx];
+        }
+        defer if (args_tok) |tok| {
+            popCompileRoot(args_vm.?, tok.root_idx);
+        };
 
-        const cons1 = args.toPtr(Cons);
-        const first = cons1.car;
-        const rest = cons1.cdr;
+        live_args = self.resolveForwardedValue(live_args);
+        if (!live_args.isCons()) return error.InvalidSyntax;
+
+        var cons1 = live_args.toPtr(Cons);
+        const first = self.resolveForwardedValue(cons1.car);
+        var rest = self.resolveForwardedValue(cons1.cdr);
 
         if (rest.isNil()) {
             return self.compile(first, env);
         }
 
         if (!rest.isCons()) return error.InvalidSyntax;
-        const cons2 = rest.toPtr(Cons);
-        const second = cons2.car;
+        var cons2 = rest.toPtr(Cons);
 
         // Handle variadic: (and a b c ...) -> (and a (and b c ...))
         if (!cons2.cdr.isNil()) {
             const first_ir = try self.compile(first, env);
+            if (args_tok) |tok| {
+                if (args_vm) |vm| live_args = vm.globals[tok.root_idx];
+            }
+            live_args = self.resolveForwardedValue(live_args);
+            if (!live_args.isCons()) return error.InvalidSyntax;
+            cons1 = live_args.toPtr(Cons);
+            rest = self.resolveForwardedValue(cons1.cdr);
+            if (!rest.isCons()) return error.InvalidSyntax;
+            cons2 = rest.toPtr(Cons);
 
             // Check for type predicate to enable occurrence typing in nested and
             const pred_info = extractPredicateInfo(first_ir);
@@ -7070,6 +7092,16 @@ pub const Compiler = struct {
         }
 
         const first_ir = try self.compile(first, env);
+        if (args_tok) |tok| {
+            if (args_vm) |vm| live_args = vm.globals[tok.root_idx];
+        }
+        live_args = self.resolveForwardedValue(live_args);
+        if (!live_args.isCons()) return error.InvalidSyntax;
+        cons1 = live_args.toPtr(Cons);
+        rest = self.resolveForwardedValue(cons1.cdr);
+        if (!rest.isCons()) return error.InvalidSyntax;
+        cons2 = rest.toPtr(Cons);
+        const second = self.resolveForwardedValue(cons2.car);
 
         // Check for type predicate to enable occurrence typing in second expr
         const pred_info = extractPredicateInfo(first_ir);
@@ -7096,11 +7128,25 @@ pub const Compiler = struct {
 
     fn compileOr(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (or a b) -> (let ((tmp a)) (if tmp tmp b))
-        if (!args.isCons()) return error.InvalidSyntax;
+        var live_args = self.resolveForwardedValue(args);
+        var args_tok: ?CompileRootToken = null;
+        var args_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, live_args);
+            args_tok = tok;
+            args_vm = vm;
+            live_args = vm.globals[tok.root_idx];
+        }
+        defer if (args_tok) |tok| {
+            popCompileRoot(args_vm.?, tok.root_idx);
+        };
 
-        const cons1 = args.toPtr(Cons);
-        const first = cons1.car;
-        const rest = cons1.cdr;
+        live_args = self.resolveForwardedValue(live_args);
+        if (!live_args.isCons()) return error.InvalidSyntax;
+
+        var cons1 = live_args.toPtr(Cons);
+        const first = self.resolveForwardedValue(cons1.car);
+        var rest = self.resolveForwardedValue(cons1.cdr);
 
         if (rest.isNil()) {
             return self.compile(first, env);
@@ -7109,6 +7155,14 @@ pub const Compiler = struct {
         if (!rest.isCons()) return error.InvalidSyntax;
 
         const first_ir = try self.compile(first, env);
+        if (args_tok) |tok| {
+            if (args_vm) |vm| live_args = vm.globals[tok.root_idx];
+        }
+        live_args = self.resolveForwardedValue(live_args);
+        if (!live_args.isCons()) return error.InvalidSyntax;
+        cons1 = live_args.toPtr(Cons);
+        rest = self.resolveForwardedValue(cons1.cdr);
+        if (!rest.isCons()) return error.InvalidSyntax;
 
         // Create let binding for tmp
         const tmp_name = "__or_tmp";

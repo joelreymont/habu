@@ -2143,6 +2143,51 @@ test "stdlib define-setf-expander registers" {
     try testing.expect(!result.isNil());
 }
 
+fn evalGcLogicalChain(repl: *Repl, allocator: std.mem.Allocator, op: []const u8, filler: []const u8, tail: []const u8, count: usize) !Value {
+    var src = std.ArrayList(u8){};
+    defer src.deinit(allocator);
+    try src.append(allocator, '(');
+    try src.appendSlice(allocator, op);
+    for (0..count) |_| {
+        try src.append(allocator, ' ');
+        try src.appendSlice(allocator, filler);
+    }
+    try src.append(allocator, ' ');
+    try src.appendSlice(allocator, tail);
+    try src.append(allocator, ')');
+    return repl.eval(src.items);
+}
+
+test "variadic and survives moving-gc compilation" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try evalGcLogicalChain(&repl, allocator, "and", "t", "42", 256);
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "variadic or survives moving-gc compilation" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try evalGcLogicalChain(&repl, allocator, "or", "nil", "42", 256);
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
 test "stdlib get-setf-expansion snapshots" {
     const allocator = testing.allocator;
 
