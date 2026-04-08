@@ -6417,6 +6417,30 @@ test "symbol-package on keyword returns KEYWORD package" {
     try testing.expectEqualStrings("KEYWORD", str.bytes());
 }
 
+test "dynamic *PACKAGE* controls reader package for read-from-string" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    _ = try repl.eval("(load \"lib/stdlib.habu\")");
+
+    const result = try repl.eval(
+        "(progn (if (find-package \"READ-PKG\") nil (make-package \"READ-PKG\")) " ++
+            "(let ((*package* (find-package \"READ-PKG\"))) " ++
+            "(and (multiple-value-bind (sym pos) (read-from-string \"foo\") " ++
+            "(declare (ignore pos)) " ++
+            "(and (eq (symbol-package sym) (find-package \"READ-PKG\")) " ++
+            "(eq sym (find-symbol \"FOO\" \"READ-PKG\")))))))",
+    );
+    try testing.expect(result.raw == Value.t.raw);
+}
+
 test "specialize pass produces fixnum_add for (the fixnum) operands" {
     // Verify that (+ (the fixnum a) (the fixnum b)) uses fixnum_add at runtime
     const testing = std.testing;
