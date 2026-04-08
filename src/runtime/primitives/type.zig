@@ -214,12 +214,99 @@ fn integerUpperOk(obj: Value, bound: IntBound) !bool {
     };
 }
 
+fn isBuiltinTypeDispatchSymbol(heap: *Heap, sym: Value) !bool {
+    const builtins = [_][]const u8{
+        "cons",
+        "symbol",
+        "null",
+        "boolean",
+        "integer",
+        "fixnum",
+        "bignum",
+        "float",
+        "real",
+        "rational",
+        "ratio",
+        "number",
+        "complex",
+        "character",
+        "string",
+        "vector",
+        "array",
+        "list",
+        "sequence",
+        "function",
+        "compiled-function",
+        "keyword",
+        "hash-table",
+        "stream",
+        "pathname",
+        "package",
+        "atom",
+        "base-char",
+        "standard-char",
+        "extended-char",
+        "base-string",
+        "simple-string",
+        "simple-base-string",
+        "simple-vector",
+        "simple-array",
+        "bit-vector",
+        "simple-bit-vector",
+        "single-float",
+        "double-float",
+        "short-float",
+        "long-float",
+        "class",
+        "standard-class",
+        "built-in-class",
+        "structure-class",
+        "generic-function",
+        "standard-generic-function",
+        "method",
+        "standard-method",
+        "standard-object",
+        "structure-object",
+        "file-stream",
+        "string-stream",
+        "random-state",
+        "restart",
+        "method-combination",
+        "values",
+        "or",
+        "and",
+        "not",
+        "satisfies",
+        "*",
+        "eql",
+        "member",
+        "mod",
+        "signed-byte",
+        "unsigned-byte",
+        "t",
+        "nil",
+    };
+    inline for (builtins) |name| {
+        if (sym.eq(try clSym(heap, name))) return true;
+    }
+    return false;
+}
+
+fn resolveBuiltinTypeSymbol(heap: *Heap, sym: Value) !Value {
+    if (!sym.isSymbol()) return sym;
+    if (try isBuiltinTypeDispatchSymbol(heap, sym)) return sym;
+
+    const cl_sym = (try heap.lookupInPackage("COMMON-LISP", sym.toPtr(objects.Symbol).getName())) orelse return sym;
+    if (!try isBuiltinTypeDispatchSymbol(heap, cl_sym)) return sym;
+    return cl_sym;
+}
+
 pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value) !bool {
     if (type_spec.isT()) return true;
     if (type_spec.isNil()) return false;
 
     if (type_spec.isSymbol() or type_spec.isT() or type_spec.isNil()) {
-        const sym = type_spec;
+        const sym = try resolveBuiltinTypeSymbol(heap, type_spec);
 
         if (sym.eq(syms.cons)) return obj.isCons();
         if (sym.eq(syms.symbol)) return obj.isSymbolLike();
@@ -294,7 +381,7 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
         // values is a type specifier for multiple return values, not for typep
         if (sym.eq(syms.values)) return false;
 
-        const maybe_class = heap.findLispClass(type_spec);
+        const maybe_class = heap.findLispClass(sym);
 
         // Check if it's a class name (instance type check)
         if (obj.isVector() or obj.isStructure()) {
@@ -307,14 +394,14 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
             if (!class_val.isNil()) {
                 if (class_val.eq(maybe_class orelse Value.nil)) return true;
                 const class = class_val.toPtr(@import("../objects.zig").Class);
-                if (class.name.eq(type_spec)) return true;
+                if (class.name.eq(sym)) return true;
                 var cpl = class.cpl;
                 while (cpl.isCons()) {
                     const cons = cpl.toPtr(@import("../objects.zig").Cons);
-                    if (cons.car.eq(type_spec)) return true;
+                    if (cons.car.eq(sym)) return true;
                     if (cons.car.isClass()) {
                         const cpl_class = cons.car.toPtr(@import("../objects.zig").Class);
-                        if (cpl_class.name.eq(type_spec)) return true;
+                        if (cpl_class.name.eq(sym)) return true;
                     }
                     cpl = cons.cdr;
                 }
@@ -330,10 +417,10 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
                 var cpl = obj.toPtr(@import("../objects.zig").Class).cpl;
                 while (cpl.isCons()) {
                     const cons = cpl.toPtr(@import("../objects.zig").Cons);
-                    if (cons.car.eq(class_val) or cons.car.eq(type_spec)) return true;
+                    if (cons.car.eq(class_val) or cons.car.eq(sym)) return true;
                     if (cons.car.isClass()) {
                         const cpl_class = cons.car.toPtr(@import("../objects.zig").Class);
-                        if (cpl_class.name.eq(type_spec)) return true;
+                        if (cpl_class.name.eq(sym)) return true;
                     }
                     cpl = cons.cdr;
                 }
@@ -341,12 +428,11 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
             // Non-instance values are not of this class; return false instead of signaling unknown spec.
             return false;
         }
-
         return error.UnknownTypeSpecifier;
     }
 
     if (type_spec.isCons()) {
-        const head = type_spec.toPtr(@import("../objects.zig").Cons).car;
+        const head = try resolveBuiltinTypeSymbol(heap, type_spec.toPtr(@import("../objects.zig").Cons).car);
 
         if (head.eq(syms.@"or")) {
             var rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
@@ -513,21 +599,23 @@ const SubtypeResult = struct {
 };
 
 fn subtypepCheck(heap: *Heap, type1: Value, type2: Value) !SubtypeResult {
-    if (type2.eq(Value.t)) return .{ .is_subtype = true, .certain = true };
-    if (type1.eq(Value.nil)) return .{ .is_subtype = false, .certain = true };
-    if (type1.eq(type2)) return .{ .is_subtype = true, .certain = true };
+    const lhs = if (type1.isSymbol()) try resolveBuiltinTypeSymbol(heap, type1) else type1;
+    const rhs = if (type2.isSymbol()) try resolveBuiltinTypeSymbol(heap, type2) else type2;
+    if (rhs.eq(Value.t)) return .{ .is_subtype = true, .certain = true };
+    if (lhs.eq(Value.nil)) return .{ .is_subtype = false, .certain = true };
+    if (lhs.eq(rhs)) return .{ .is_subtype = true, .certain = true };
 
-    if (type1.isSymbol() or type1.isT()) {
-        if (type2.isSymbol() or type2.isT()) {
-            return try checkSymbolSubtype(heap, type1, type2);
+    if (lhs.isSymbol() or lhs.isT()) {
+        if (rhs.isSymbol() or rhs.isT()) {
+            return try checkSymbolSubtype(heap, lhs, rhs);
         }
-        if (type2.isCons()) {
-            const head = type2.toPtr(@import("../objects.zig").Cons).car;
+        if (rhs.isCons()) {
+            const head = try resolveBuiltinTypeSymbol(heap, rhs.toPtr(@import("../objects.zig").Cons).car);
             if (head.eq(try clSym(heap, "and"))) {
-                var rest = type2.toPtr(@import("../objects.zig").Cons).cdr;
+                var rest = rhs.toPtr(@import("../objects.zig").Cons).cdr;
                 while (rest.isCons()) {
                     const spec = rest.toPtr(@import("../objects.zig").Cons).car;
-                    const sub = try subtypepCheck(heap, type1, spec);
+                    const sub = try subtypepCheck(heap, lhs, spec);
                     if (sub.is_subtype) return .{ .is_subtype = true, .certain = sub.certain };
                     rest = rest.toPtr(@import("../objects.zig").Cons).cdr;
                 }
@@ -536,36 +624,36 @@ fn subtypepCheck(heap: *Heap, type1: Value, type2: Value) !SubtypeResult {
         }
     }
 
-    if (type1.isCons()) {
-        const head = type1.toPtr(@import("../objects.zig").Cons).car;
+    if (lhs.isCons()) {
+        const head = try resolveBuiltinTypeSymbol(heap, lhs.toPtr(@import("../objects.zig").Cons).car);
         if (head.eq(try clSym(heap, "and"))) {
-            var rest = type1.toPtr(@import("../objects.zig").Cons).cdr;
+            var rest = lhs.toPtr(@import("../objects.zig").Cons).cdr;
             while (rest.isCons()) {
                 const spec = rest.toPtr(@import("../objects.zig").Cons).car;
-                const sub = try subtypepCheck(heap, spec, type2);
+                const sub = try subtypepCheck(heap, spec, rhs);
                 if (!sub.is_subtype) return .{ .is_subtype = false, .certain = sub.certain };
                 rest = rest.toPtr(@import("../objects.zig").Cons).cdr;
             }
             return .{ .is_subtype = true, .certain = true };
         }
         if (head.eq(try clSym(heap, "or"))) {
-            var rest = type1.toPtr(@import("../objects.zig").Cons).cdr;
+            var rest = lhs.toPtr(@import("../objects.zig").Cons).cdr;
             while (rest.isCons()) {
                 const spec = rest.toPtr(@import("../objects.zig").Cons).car;
-                const sub = try subtypepCheck(heap, spec, type2);
+                const sub = try subtypepCheck(heap, spec, rhs);
                 if (!sub.is_subtype) return .{ .is_subtype = false, .certain = sub.certain };
                 rest = rest.toPtr(@import("../objects.zig").Cons).cdr;
             }
             return .{ .is_subtype = true, .certain = true };
         }
         if (head.eq(try clSym(heap, "not"))) {
-            const inner_cons = type1.toPtr(@import("../objects.zig").Cons).cdr;
+            const inner_cons = lhs.toPtr(@import("../objects.zig").Cons).cdr;
             if (!inner_cons.isCons()) return .{ .is_subtype = false, .certain = false };
             const inner = inner_cons.toPtr(@import("../objects.zig").Cons).car;
-            if (type2.isCons()) {
-                const head2 = type2.toPtr(@import("../objects.zig").Cons).car;
+            if (rhs.isCons()) {
+                const head2 = try resolveBuiltinTypeSymbol(heap, rhs.toPtr(@import("../objects.zig").Cons).car);
                 if (head2.eq(try clSym(heap, "not"))) {
-                    const inner_cons2 = type2.toPtr(@import("../objects.zig").Cons).cdr;
+                    const inner_cons2 = rhs.toPtr(@import("../objects.zig").Cons).cdr;
                     if (!inner_cons2.isCons()) return .{ .is_subtype = false, .certain = false };
                     const inner2 = inner_cons2.toPtr(@import("../objects.zig").Cons).car;
                     return try subtypepCheck(heap, inner2, inner);
@@ -575,13 +663,13 @@ fn subtypepCheck(heap: *Heap, type1: Value, type2: Value) !SubtypeResult {
         }
     }
 
-    if (type2.isCons()) {
-        const head = type2.toPtr(@import("../objects.zig").Cons).car;
+    if (rhs.isCons()) {
+        const head = try resolveBuiltinTypeSymbol(heap, rhs.toPtr(@import("../objects.zig").Cons).car);
         if (head.eq(try clSym(heap, "or"))) {
-            var rest = type2.toPtr(@import("../objects.zig").Cons).cdr;
+            var rest = rhs.toPtr(@import("../objects.zig").Cons).cdr;
             while (rest.isCons()) {
                 const spec = rest.toPtr(@import("../objects.zig").Cons).car;
-                const sub = try subtypepCheck(heap, type1, spec);
+                const sub = try subtypepCheck(heap, lhs, spec);
                 if (sub.is_subtype) return .{ .is_subtype = true, .certain = sub.certain };
                 rest = rest.toPtr(@import("../objects.zig").Cons).cdr;
             }
@@ -1048,4 +1136,20 @@ test "subtypep sequence hierarchy" {
     const result4 = try subtypep(&heap, try heap.intern("vector"), try heap.intern("sequence"));
     const r4_car = result4.toPtr(@import("../objects.zig").Cons).car;
     try testing.expect(r4_car.isT());
+}
+
+test "shadowed builtin float symbol still resolves in type dispatch" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var syms = try TypeSymbols.init(&heap);
+
+    const cl_pkg = heap.findPackage("COMMON-LISP").?;
+    const shadow_pkg = try heap.findOrCreatePackage("SHADOW-TYPE");
+    try shadow_pkg.usePackage(cl_pkg);
+    const shadow_float = try heap.shadowInPackage(shadow_pkg, "FLOAT");
+
+    try testing.expect(!shadow_float.eq(try clSym(&heap, "float")));
+    try testing.expect(try typep(&heap, &syms, Value.makeFloat(1.0), shadow_float));
+    try testing.expect(try isSubtype(&heap, shadow_float, try clSym(&heap, "real")));
 }

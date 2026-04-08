@@ -9089,6 +9089,28 @@ test "package-local quot shadows primitive lowering" {
     );
 }
 
+test "shadowed builtin float type name still resolves" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defpackage \"PKG-TYPE-FLOAT\" (:use \"COMMON-LISP\") (:shadow \"FLOAT\"))");
+    _ = try repl.eval("(in-package \"PKG-TYPE-FLOAT\")");
+
+    try snap.expectEval(
+        @src(),
+        &repl,
+        "(list (eq 'float 'cl:float) (typep 1.0 'float) (multiple-value-list (subtypep 'float 'real)))",
+        \\(nil t ((t t)))
+    );
+}
+
 test "cl functionp only accepts fbound symbols" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
