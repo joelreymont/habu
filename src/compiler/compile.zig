@@ -4493,6 +4493,13 @@ pub const Compiler = struct {
         var lambda_shadow_syms = std.ArrayList(Value){};
         defer lambda_shadow_syms.deinit(self.allocator);
 
+        const LambdaBinding = struct {
+            sym: Value,
+            idx: u16,
+        };
+        var lambda_bindings = std.ArrayList(LambdaBinding){};
+        defer lambda_bindings.deinit(self.allocator);
+
         const SpecialParamKind = enum(u8) {
             required,
             optional,
@@ -4601,6 +4608,7 @@ pub const Compiler = struct {
                         var rest_idx: u16 = 0;
                         if (rest_item.typeKind() == .symbol) {
                             rest_idx = try lambda_env.bindSym(rest_item);
+                            try lambda_bindings.append(self.allocator, .{ .sym = rest_item, .idx = rest_idx });
                             try appendLambdaShadowSym(self, &lambda_shadow_syms, rest_item);
                             if (self.isSpecialBindingSym(rest_item)) {
                                 try appendSpecialParam(self, &special_params, rest_item, rest_name, rest_idx, .rest);
@@ -4680,6 +4688,7 @@ pub const Compiler = struct {
                         var idx: u16 = 0;
                         if (param_item.typeKind() == .symbol) {
                             idx = try lambda_env.bindSym(param_item);
+                            try lambda_bindings.append(self.allocator, .{ .sym = param_item, .idx = idx });
                             try appendLambdaShadowSym(self, &lambda_shadow_syms, param_item);
                             if (self.isSpecialBindingSym(param_item)) {
                                 try appendSpecialParam(self, &special_params, param_item, name, idx, .key);
@@ -4697,6 +4706,7 @@ pub const Compiler = struct {
                         var idx: u16 = 0;
                         if (param_item.typeKind() == .symbol) {
                             idx = try lambda_env.bindSym(param_item);
+                            try lambda_bindings.append(self.allocator, .{ .sym = param_item, .idx = idx });
                             try appendLambdaShadowSym(self, &lambda_shadow_syms, param_item);
                             if (self.isSpecialBindingSym(param_item)) {
                                 try appendSpecialParam(self, &special_params, param_item, name, idx, .optional);
@@ -4708,6 +4718,7 @@ pub const Compiler = struct {
                         // Untyped parameter: just a symbol
                         const idx = if (param_item.typeKind() == .symbol) blk: {
                             const bound_idx = try lambda_env.bindSym(param_item);
+                            try lambda_bindings.append(self.allocator, .{ .sym = param_item, .idx = bound_idx });
                             try appendLambdaShadowSym(self, &lambda_shadow_syms, param_item);
                             break :blk bound_idx;
                         } else try lambda_env.bindName(name);
@@ -4781,6 +4792,7 @@ pub const Compiler = struct {
                         if (spec.param_sym) |param_sym| {
                             const live_param_sym = self.resolveForwardedValue(param_sym);
                             idx = try lambda_env.bindSym(live_param_sym);
+                            try lambda_bindings.append(self.allocator, .{ .sym = live_param_sym, .idx = idx });
                             try appendLambdaShadowSym(self, &lambda_shadow_syms, live_param_sym);
                             if (self.isSpecialBindingSym(live_param_sym)) {
                                 try appendSpecialParam(self, &special_params, live_param_sym, param_name, idx, .key);
@@ -4829,6 +4841,7 @@ pub const Compiler = struct {
                         const typed_car_live = self.resolveForwardedValue(typed_car);
                         if (typed_car_live.typeKind() == .symbol) {
                             idx = try lambda_env.bindSym(typed_car_live);
+                            try lambda_bindings.append(self.allocator, .{ .sym = typed_car_live, .idx = idx });
                             try appendLambdaShadowSym(self, &lambda_shadow_syms, typed_car_live);
                             if (self.isSpecialBindingSym(typed_car_live)) {
                                 try appendSpecialParam(self, &special_params, typed_car_live, name, idx, .optional);
@@ -4852,6 +4865,7 @@ pub const Compiler = struct {
                         const type_val = typed_cdr.toPtr(Cons).car;
                         const idx = if (typed_car.typeKind() == .symbol) blk: {
                             const bound_idx = try lambda_env.bindSym(typed_car);
+                            try lambda_bindings.append(self.allocator, .{ .sym = typed_car, .idx = bound_idx });
                             try appendLambdaShadowSym(self, &lambda_shadow_syms, typed_car);
                             break :blk bound_idx;
                         } else try lambda_env.bindName(name);
@@ -4881,6 +4895,7 @@ pub const Compiler = struct {
             var rest_idx: u16 = 0;
             if (param_list.typeKind() == .symbol) {
                 rest_idx = try lambda_env.bindSym(param_list);
+                try lambda_bindings.append(self.allocator, .{ .sym = param_list, .idx = rest_idx });
                 try appendLambdaShadowSym(self, &lambda_shadow_syms, param_list);
                 if (self.isSpecialBindingSym(param_list)) {
                     try appendSpecialParam(self, &special_params, param_list, rest_name, rest_idx, .rest);
@@ -4895,6 +4910,7 @@ pub const Compiler = struct {
                 const live_sp = self.resolveForwardedValue(sp_sym);
                 if (live_sp.typeKind() == .symbol) {
                     const bound_idx = try lambda_env.bindSym(live_sp);
+                    try lambda_bindings.append(self.allocator, .{ .sym = live_sp, .idx = bound_idx });
                     try appendLambdaShadowSym(self, &lambda_shadow_syms, live_sp);
                     break :blk bound_idx;
                 }
@@ -4908,6 +4924,7 @@ pub const Compiler = struct {
                 const live_sp = self.resolveForwardedValue(sp_sym);
                 if (live_sp.typeKind() == .symbol) {
                     const bound_idx = try lambda_env.bindSym(live_sp);
+                    try lambda_bindings.append(self.allocator, .{ .sym = live_sp, .idx = bound_idx });
                     try appendLambdaShadowSym(self, &lambda_shadow_syms, live_sp);
                     break :blk bound_idx;
                 }
@@ -4991,6 +5008,38 @@ pub const Compiler = struct {
         else
             lambda_env.localCount();
 
+        const lambda_boxed = try self.allocator.create(BoxingSet);
+        lambda_boxed.* = BoxingSet.init(self.allocator);
+        defer {
+            lambda_boxed.deinit();
+            self.allocator.destroy(lambda_boxed);
+        }
+        if (lambda_bindings.items.len != 0) {
+            const lambda_binding_syms = try self.allocator.alloc(Value, lambda_bindings.items.len);
+            defer self.allocator.free(lambda_binding_syms);
+            for (lambda_bindings.items, 0..) |binding, i| {
+                lambda_binding_syms[i] = binding.sym;
+            }
+            try self.findBoxedVars(filtered_body, lambda_binding_syms, lambda_boxed);
+        }
+        const boxed_slot_indices = blk: {
+            var slots = std.ArrayList(u16){};
+            defer slots.deinit(self.allocator);
+            for (lambda_bindings.items) |binding| {
+                if (!lambda_boxed.contains(binding.sym)) continue;
+                if (self.isSpecialBindingSym(binding.sym)) continue;
+                var found = false;
+                for (slots.items) |slot_idx| {
+                    if (slot_idx == binding.idx) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) try slots.append(self.allocator, binding.idx);
+            }
+            break :blk try self.allocator.dupe(u16, slots.items);
+        };
+
         // Compile body (implicit progn) - body is in tail position UNLESS
         // the lambda has special parameter bindings that will wrap body in progv.
         // progv body must NOT be in tail position because pop_progv must execute after it.
@@ -5005,7 +5054,7 @@ pub const Compiler = struct {
             }
         }
         if (saved_boxed) |outer_boxed| {
-            if (lambda_shadow_syms.items.len != 0) {
+            if (lambda_shadow_syms.items.len != 0 or lambda_boxed.names.count() > 0) {
                 const filtered = try self.allocator.create(BoxingSet);
                 filtered.* = BoxingSet.init(self.allocator);
                 var it = outer_boxed.names.keyIterator();
@@ -5019,9 +5068,15 @@ pub const Compiler = struct {
                     }
                     if (!shadowed) try filtered.add(existing.*);
                 }
+                var local_it = lambda_boxed.names.keyIterator();
+                while (local_it.next()) |sym| {
+                    try filtered.add(sym.*);
+                }
                 shadowed_boxed = filtered;
                 self.boxed_vars = filtered;
             }
+        } else if (lambda_boxed.names.count() > 0) {
+            self.boxed_vars = lambda_boxed;
         }
         var body_ir = try self.compileBodyWithTail(filtered_body, &lambda_env, !has_special_params);
 
@@ -5050,7 +5105,14 @@ pub const Compiler = struct {
                 }
 
                 if (type_sym_to_check) |type_sym| {
-                    const var_ir = try self.builder.variable(param_name, 0, tp.idx);
+                    var var_ir = try self.builder.variable(param_name, 0, tp.idx);
+                    if (tp.sym) |param_sym| {
+                        if (lambda_boxed.contains(param_sym) and !self.isSpecialBindingSym(param_sym)) {
+                            const box_ref = try self.allocator.create(Ir);
+                            box_ref.* = .{ .box_ref = .{ .operand = var_ir } };
+                            var_ir = box_ref;
+                        }
+                    }
                     const assert_ir = try self.makeTypeAssertionSym(var_ir, type_sym);
                     if (assert_ir) |assert_node| {
                         assertions[assertion_count] = assert_node;
@@ -5151,6 +5213,7 @@ pub const Compiler = struct {
         }
 
         const lam_ir = try self.builder.lambda(params.items, opt_params, kp_params, allow_other_keys, key_temp_start, rest_param, captures, body_ir);
+        lam_ir.lambda.boxed_slots = boxed_slot_indices;
         if (special_params.items.len > 0) {
             const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
             var lambda_special_bindings = std.ArrayList(Ir.SpecialBinding){};

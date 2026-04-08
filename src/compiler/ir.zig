@@ -104,6 +104,8 @@ pub const Ir = union(enum) {
         rest_param: ?[]const u8,
         /// Ordered special bindings activated as parameter slots become live.
         special_bindings: []const SpecialBinding = &.{},
+        /// Current-frame local slots that must become boxes before body execution.
+        boxed_slots: []const u16 = &.{},
         /// Free variables captured from enclosing scope
         captures: []const Capture,
         body: *const Ir,
@@ -1381,6 +1383,7 @@ pub const IrBuilder = struct {
             .key_temp_start = key_temp_start,
             .rest_param = rest_copy,
             .special_bindings = &.{},
+            .boxed_slots = &.{},
             .captures = captures_copy,
             .body = body,
         } };
@@ -3108,6 +3111,7 @@ pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) anyerror!*const 
                     .stage = binding.stage,
                 };
             }
+            const new_boxed_slots = try allocator.dupe(u16, lam.boxed_slots);
 
             break :blk .{ .lambda = .{
                 .params = new_params,
@@ -3117,6 +3121,7 @@ pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) anyerror!*const 
                 .key_temp_start = lam.key_temp_start,
                 .rest_param = if (lam.rest_param) |rest_param| try allocator.dupe(u8, rest_param) else null,
                 .special_bindings = new_specials,
+                .boxed_slots = new_boxed_slots,
                 .captures = new_captures,
                 .body = try deepCopyIr(allocator, lam.body),
                 .lambda_expr = lam.lambda_expr,

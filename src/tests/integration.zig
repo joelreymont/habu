@@ -4174,7 +4174,7 @@ test "labels mutating captured lexical boxes outer variable" {
 
     const result = try repl.eval(
         \\(let ((acc nil))
-        \\  (labels ((collect () (push 2 acc)))
+        \\  (labels ((collect () (setq acc (cons 2 acc))))
         \\    (collect)
         \\    acc))
     );
@@ -4183,6 +4183,36 @@ test "labels mutating captured lexical boxes outer variable" {
     try testing.expect(out.car.isFixnum());
     try testing.expectEqual(@as(i64, 2), out.car.toFixnum());
     try testing.expect(out.cdr.isNil());
+}
+
+test "labels mutating captured lambda param updates outer param" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (defun param-labels (x)
+        \\    (labels ((f () (setq x '(a)) 0))
+        \\      (list (f) x)))
+        \\  (param-labels nil))
+    );
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 0), c0.car.toFixnum());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isCons());
+    const inner = c1.car.toPtr(Cons);
+    try testing.expect(inner.car.isSymbol());
+    try testing.expectEqualStrings("A", inner.car.toPtr(Symbol).getName());
+    try testing.expect(inner.cdr.isNil());
 }
 
 // ============================================================================

@@ -1734,6 +1734,16 @@ pub const Emitter = struct {
             }
         }
 
+        for (lam.boxed_slots) |slot_idx| {
+            if (slot_idx > 255) return error.TooManyLocals;
+            try lambda_emitter.noteLocal(slot_idx);
+            try lambda_emitter.emitOp(.load_local);
+            try lambda_emitter.emitU8(@intCast(slot_idx));
+            try lambda_emitter.emitOp(.make_box);
+            try lambda_emitter.emitOp(.store_local);
+            try lambda_emitter.emitU8(@intCast(slot_idx));
+        }
+
         // Emit body
         try lambda_emitter.emit(lam.body);
         while (special_depth > 0) : (special_depth -= 1) {
