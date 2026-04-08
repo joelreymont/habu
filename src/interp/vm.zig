@@ -480,6 +480,7 @@ const ParsedRead = struct {
 };
 
 fn tryParseReadBytes(vm: *Vm, bytes: []const u8, final: bool) Error!?ParsedRead {
+    try vm.syncReaderPackageFromSpecial();
     var parser = try Parser.init(vm.allocator, vm.heap, bytes, &vm.builtins);
     defer parser.deinit();
     if (parser.current.kind == .eof) return null;
@@ -2625,12 +2626,49 @@ pub const Vm = struct {
                 if (idx == array_idx) return io.getPrintArray();
             }
         }
-        return self.globals[idx];
+        const val = self.globals[idx];
+        if (!val.isUnbound()) return val;
+        return try self.loadSysconstGlobal(idx);
     }
 
     /// Look up a special CL variable by exact global name.
     fn lookupSpecialVar(env: *const @import("../compiler/compile.zig").GlobalEnv, name: []const u8) ?u16 {
         return env.lookup(name);
+    }
+
+    fn lookupPackageSymbolByName(self: *Vm, pkg_name: []const u8, sym_name: []const u8) !?Value {
+        if (sym_name.len == 0) return null;
+        if (try self.heap.lookupInPackage(pkg_name, sym_name)) |sym| return sym;
+
+        if (pkg_name.len <= 128 and sym_name.len <= 256) {
+            var pkg_buf: [128]u8 = undefined;
+            var sym_buf: [256]u8 = undefined;
+            for (pkg_name, 0..) |ch, i| pkg_buf[i] = std.ascii.toUpper(ch);
+            for (sym_name, 0..) |ch, i| sym_buf[i] = std.ascii.toUpper(ch);
+            return try self.heap.lookupInPackage(pkg_buf[0..pkg_name.len], sym_buf[0..sym_name.len]);
+        }
+        return null;
+    }
+
+    fn lookupGlobalSymbolByName(self: *Vm, qname: []const u8) !?Value {
+        if (std.mem.indexOf(u8, qname, "::")) |sep| {
+            return try self.lookupPackageSymbolByName(qname[0..sep], qname[sep + 2 ..]);
+        }
+        if (std.mem.indexOfScalar(u8, qname, ':')) |sep| {
+            return try self.lookupPackageSymbolByName(qname[0..sep], qname[sep + 1 ..]);
+        }
+        return self.heap.symbols.get(qname);
+    }
+
+    fn loadSysconstGlobal(self: *Vm, idx: u16) !Value {
+        const qname = self.globalNameForIndex(idx) orelse return Value.unbound;
+        const sym = (try self.lookupGlobalSymbolByName(qname)) orelse return Value.unbound;
+        if (!sym.isSymbol()) return Value.unbound;
+        const pkg = self.heap.symbolHomePkg(sym.toPtr(Symbol)) orelse return Value.unbound;
+        const sysconst = (try self.lookupPackageSymbolByName(pkg.name, "SYSCONST")) orelse return Value.unbound;
+        const prop = try primitives.list.get(self.heap, sym, sysconst);
+        if (!prop.isNil() and !prop.isUnbound()) return sym;
+        return Value.unbound;
     }
 
     pub fn currentReadtable(self: *Vm) !Value {
@@ -2642,6 +2680,47 @@ pub const Vm = struct {
             }
         }
         return self.heap.defaultReadtable();
+    }
+
+    fn currentPackageSpecial(self: *Vm) Error!?Value {
+        if (self.global_env) |env| {
+            const names = [_][]const u8{
+                "COMMON-LISP:*PACKAGE*",
+                "CL:*PACKAGE*",
+                "*PACKAGE*",
+            };
+            for (names) |name| {
+                if (lookupSpecialVar(env, name)) |idx| {
+                    if (idx < self.num_globals) {
+                        const live = try self.loadGlobal(idx);
+                        if (live.isPackage()) return live;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    fn syncReaderPackageFromSpecial(self: *Vm) Error!void {
+        const pkg_val = (try self.currentPackageSpecial()) orelse return;
+        const pkg_obj = pkg_val.toPtr(runtime.objects.Package);
+        const raw_name = pkg_obj.name;
+        const live_name = self.resolveForwardedValue(raw_name);
+        if (live_name.raw != raw_name.raw) {
+            pkg_obj.name = live_name;
+            self.heap.writeBarrier(pkg_val, live_name);
+        }
+
+        const pkg_name = switch (live_name.typeKind()) {
+            .symbol => live_name.toPtr(runtime.Symbol).getName(),
+            .string => live_name.toPtr(runtime.String).bytes(),
+            .keyword => live_name.toPtr(runtime.Keyword).getName(),
+            else => return,
+        };
+
+        if (self.heap.findPackage(pkg_name)) |native_pkg| {
+            self.heap.setCurrentPackage(native_pkg);
+        }
     }
 
     fn readtableCaseFromKeyword(val: Value) Error!runtime.ReadtableCase {
@@ -2754,18 +2833,63 @@ pub const Vm = struct {
         return env.nameForIndex(idx);
     }
 
+    fn traceNamedGlobalAccess(self: *Vm, action: []const u8, idx: u16, val: Value) void {
+        const raw_filter = std.posix.getenv("HABU_TRACE_GLOBAL_NAME") orelse return;
+        const filter = std.mem.sliceTo(raw_filter, 0);
+        const name = self.globalNameForIndex(idx) orelse return;
+        if (std.mem.indexOf(u8, name, filter) == null) return;
+
+        std.debug.print(
+            "TRACE global-{s} idx={d} name={s} kind={s} raw=0x{x}",
+            .{ action, idx, name, @tagName(val.typeKind()), val.raw },
+        );
+        std.debug.print("\n", .{});
+    }
+
+    fn traceNamedGlobalStore(self: *Vm, idx: u16, old: Value, new: Value) void {
+        const raw_filter = std.posix.getenv("HABU_TRACE_GLOBAL_NAME") orelse return;
+        const filter = std.mem.sliceTo(raw_filter, 0);
+        const name = self.globalNameForIndex(idx) orelse return;
+        if (std.mem.indexOf(u8, name, filter) == null) return;
+
+        const chunk_name = switch (self.chunk.name.typeKind()) {
+            .symbol => self.chunk.name.toPtr(Symbol).getName(),
+            .string => self.chunk.name.toPtr(runtime.String).bytes(),
+            else => "<anon>",
+        };
+        std.debug.print(
+            "TRACE global-store chunk={s} idx={d} name={s} old-kind={s} old-raw=0x{x}",
+            .{ chunk_name, idx, name, @tagName(old.typeKind()), old.raw },
+        );
+        if (old.isCons()) {
+            const head = old.toPtr(Cons).car;
+            std.debug.print(" old-head-kind={s} old-head-raw=0x{x}", .{
+                @tagName(head.typeKind()),
+                head.raw,
+            });
+        }
+        std.debug.print(" new-kind={s} new-raw=0x{x}\n", .{
+            @tagName(new.typeKind()),
+            new.raw,
+        });
+    }
+
     pub fn loadGlobal(self: *Vm, idx: u16) Error!Value {
         if (idx >= MAX_GLOBALS) return error.InvalidConstant;
-        return self.handleSpecialVarLoad(idx);
+        const val = try self.handleSpecialVarLoad(idx);
+        self.traceNamedGlobalAccess("load", idx, val);
+        return val;
     }
 
     pub fn storeGlobal(self: *Vm, idx: u16, val: Value) Error!void {
         if (idx >= MAX_GLOBALS) return error.InvalidConstant;
+        const old = self.globals[idx];
         self.globals[idx] = val;
         if (idx >= self.num_globals) {
             self.num_globals = idx + 1;
         }
         try self.handleSpecialVarStore(idx, val);
+        self.traceNamedGlobalStore(idx, old, val);
     }
 
     inline fn writeBarrierStore(self: *Vm, owner: Value, stored: Value) void {
@@ -3824,7 +3948,8 @@ pub const Vm = struct {
                 // doThrow sets up the handler call and we continue the loop.
                 // NestedNonLocalExit propagates to cross the call barrier.
                 if (try self.trySignalCondition(err)) continue;
-                return self.doError(err);
+                if (try self.doError(err)) continue;
+                unreachable;
             }
         }
     }
@@ -4136,6 +4261,13 @@ pub const Vm = struct {
             .add => {
                 const b = try self.pop();
                 const a = try self.pop();
+                if (std.posix.getenv("HABU_TRACE_CPLUS_ADD") != null and std.mem.eql(u8, chunkTraceName(self.chunk), "CPLUS")) {
+                    std.debug.print("TRACE cplus add a=", .{});
+                    tracePrintValue(a);
+                    std.debug.print(" b=", .{});
+                    tracePrintValue(b);
+                    std.debug.print("\n", .{});
+                }
                 try self.push(try primitives.arith.add(self.heap, a, b));
             },
             .sub => {
@@ -4156,6 +4288,13 @@ pub const Vm = struct {
             .mul => {
                 const b = try self.pop();
                 const a = try self.pop();
+                if (std.posix.getenv("HABU_TRACE_CTIMES_MUL") != null and std.mem.eql(u8, chunkTraceName(self.chunk), "CTIMES")) {
+                    std.debug.print("TRACE ctimes mul a=", .{});
+                    tracePrintValue(a);
+                    std.debug.print(" b=", .{});
+                    tracePrintValue(b);
+                    std.debug.print("\n", .{});
+                }
                 try self.push(try primitives.arith.mul(self.heap, a, b));
             },
             .div => {
@@ -5919,6 +6058,7 @@ pub const Vm = struct {
                 var designator_buf: [256]u8 = undefined;
                 const name_bytes = try self.getStringDesignator(name_val, designator_buf[0..]);
                 defer name_bytes.deinit(self.allocator);
+                try self.syncReaderPackageFromSpecial();
                 const sym = if (self.heap.internCurrentPackagePreservingCase(name_bytes.slice)) |val|
                     val
                 else |_| blk: {
@@ -8304,6 +8444,7 @@ pub const Vm = struct {
                     self.secondary_values[0] = Value.makeFixnum(0);
                     self.secondary_values_count = 1;
                 } else if (str_val.isString()) {
+                    try self.syncReaderPackageFromSpecial();
                     const str = str_val.toPtr(String);
                     var parser = try Parser.init(self.allocator, self.heap, str.bytes(), &self.builtins);
                     defer parser.deinit();
@@ -8321,6 +8462,7 @@ pub const Vm = struct {
                     self.secondary_values[0] = Value.makeFixnum(@intCast(parser.lexer.token_start));
                     self.secondary_values_count = 1;
                 } else if (str_val.isString32()) {
+                    try self.syncReaderPackageFromSpecial();
                     const s32 = str_val.toPtr(runtime.String32);
                     var utf8 = std.ArrayList(u8){};
                     defer utf8.deinit(self.allocator);
@@ -9440,7 +9582,7 @@ pub const Vm = struct {
     /// Handle an error by running unwind-protect cleanup if needed.
     /// Note: trySignalCondition is called FIRST by the execute loop (line ~1487).
     /// doError is only reached for errors that no handler caught.
-    fn doError(self: *Vm, err: anyerror) Error {
+    fn doError(self: *Vm, err: anyerror) Error!bool {
         // Check if there's an unwind-protect that needs cleanup
         if (self.unwind_sp > 0) {
             // Pop the unwind frame
@@ -9461,9 +9603,7 @@ pub const Vm = struct {
             }
             self.sp = unwind_frame.unwind_sp;
             self.fp = unwind_frame.unwind_fp;
-
-            // Return appropriate error
-            return self.mapError(err);
+            return true;
         }
 
         // No unwind frames - propagate error normally
@@ -10419,6 +10559,7 @@ pub const Vm = struct {
             var designator_buf: [256]u8 = undefined;
             const name_bytes = try self.getStringDesignator(name_val, designator_buf[0..]);
             defer name_bytes.deinit(self.allocator);
+            try self.syncReaderPackageFromSpecial();
             const sym = if (self.heap.internCurrentPackagePreservingCase(name_bytes.slice)) |val|
                 val
             else |_| blk: {
@@ -12757,10 +12898,7 @@ pub const Vm = struct {
         if (!self.hasCatchTag(self.builtins.sym_condition_tag)) return false;
         const saved_handler_sp = self.handler_sp;
         const saved_pending_restore = self.pending_handler_restore_depth;
-        const prev_chunk = self.chunk;
-        const prev_ip = self.ip;
-        const prev_sp = self.sp;
-        const prev_fp = self.fp;
+        const saved = State.save(self);
         self.handler_sp = 0;
         self.pending_handler_restore_depth = null;
         errdefer {
@@ -12768,11 +12906,7 @@ pub const Vm = struct {
             self.pending_handler_restore_depth = saved_pending_restore;
         }
         try self.signalConditionValue(condition_type, datum, expected_type);
-        const transferred =
-            self.chunk != prev_chunk or
-            self.ip != prev_ip or
-            self.sp != prev_sp or
-            self.fp != prev_fp;
+        const transferred = hostCallbackMovedControl(self, saved);
         if (!transferred) {
             self.handler_sp = saved_handler_sp;
             self.pending_handler_restore_depth = saved_pending_restore;
@@ -12781,12 +12915,10 @@ pub const Vm = struct {
     }
 
     fn signalTypeErrorDatumExpected(self: *Vm, datum: Value, expected_type: Value) Error!void {
-        const prev_chunk = self.chunk;
-        const prev_ip = self.ip;
-        const prev_sp = self.sp;
+        const saved = State.save(self);
         try self.signalConditionValue(self.builtins.sym_type_error, datum, expected_type);
         // If throw transferred control to a catch frame, continue there.
-        if (self.chunk != prev_chunk or self.ip != prev_ip or self.sp != prev_sp) return;
+        if (hostCallbackMovedControl(self, saved)) return;
         // Handler-bind may consume the first signal in-place. If a handler-case
         // catch is active, rethrow with handlers masked so catch dispatch runs.
         if (try self.rethrowConditionToCatch(self.builtins.sym_type_error, datum, expected_type)) return;
@@ -12910,6 +13042,10 @@ pub const Vm = struct {
     }
 
     fn enterFixedArityCall(self: *Vm, closure: *runtime.Closure, callee_chunk: *const Chunk, argc: u8, tail: bool) Error!void {
+        const trace_pctimes1 = std.posix.getenv("HABU_TRACE_PCTIMES1") != null and std.mem.eql(u8, chunkTraceName(callee_chunk), "PCTIMES1");
+        const trace_ptimes_nil = std.posix.getenv("HABU_TRACE_PTIMES_NIL") != null and std.mem.eql(u8, chunkTraceName(callee_chunk), "PTIMES");
+        const trace_everysubst2 = std.posix.getenv("HABU_TRACE_EVERYSUBST2") != null and std.mem.eql(u8, chunkTraceName(callee_chunk), "EVERYSUBST2");
+        const trace_everysubst_nil = std.posix.getenv("HABU_TRACE_EVERYSUBST_NIL") != null and std.mem.eql(u8, chunkTraceName(callee_chunk), "EVERYSUBST");
         if (tail) {
             const current_bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
             const arg_start = self.sp - argc;
@@ -12921,6 +13057,38 @@ pub const Vm = struct {
                 self.stack[current_bp + i] = self.stack[arg_start + i];
             }
             self.sp = current_bp + argc;
+            if (trace_pctimes1) {
+                std.debug.print("TRACE pctimes1-call tail argc={d}", .{argc});
+                for (0..argc) |i| {
+                    std.debug.print(" arg[{d}]=", .{i});
+                    tracePrintValue(self.stack[current_bp + i]);
+                }
+                std.debug.print("\n", .{});
+            }
+            if (trace_ptimes_nil and argc >= 2 and (self.stack[current_bp].isNil() or self.stack[current_bp + 1].isNil())) {
+                std.debug.print("TRACE ptimes-call tail caller={s} argc={d}", .{ chunkTraceName(self.chunk), argc });
+                for (0..argc) |i| {
+                    std.debug.print(" arg[{d}]=", .{i});
+                    tracePrintValue(self.stack[current_bp + i]);
+                }
+                std.debug.print("\n", .{});
+            }
+            if (trace_everysubst2) {
+                std.debug.print("TRACE everysubst2-call tail caller={s} argc={d}", .{ chunkTraceName(self.chunk), argc });
+                for (0..argc) |i| {
+                    std.debug.print(" arg[{d}]=", .{i});
+                    tracePrintValue(self.stack[current_bp + i]);
+                }
+                std.debug.print("\n", .{});
+            }
+            if (trace_everysubst_nil and argc >= 2 and self.stack[current_bp + 1].isNil()) {
+                std.debug.print("TRACE everysubst-call tail caller={s} argc={d}", .{ chunkTraceName(self.chunk), argc });
+                for (0..argc) |i| {
+                    std.debug.print(" arg[{d}]=", .{i});
+                    tracePrintValue(self.stack[current_bp + i]);
+                }
+                std.debug.print("\n", .{});
+            }
 
             self.chunk = callee_chunk;
             self.ip = 0;
@@ -12963,6 +13131,38 @@ pub const Vm = struct {
         }
         self.sp = new_bp + argc;
         self.frames[self.fp - 1].bp = new_bp;
+        if (trace_pctimes1) {
+            std.debug.print("TRACE pctimes1-call argc={d}", .{argc});
+            for (0..argc) |i| {
+                std.debug.print(" arg[{d}]=", .{i});
+                tracePrintValue(self.stack[new_bp + i]);
+            }
+            std.debug.print("\n", .{});
+        }
+        if (trace_ptimes_nil and argc >= 2 and (self.stack[new_bp].isNil() or self.stack[new_bp + 1].isNil())) {
+            std.debug.print("TRACE ptimes-call caller={s} argc={d}", .{ chunkTraceName(self.chunk), argc });
+            for (0..argc) |i| {
+                std.debug.print(" arg[{d}]=", .{i});
+                tracePrintValue(self.stack[new_bp + i]);
+            }
+            std.debug.print("\n", .{});
+        }
+        if (trace_everysubst2) {
+            std.debug.print("TRACE everysubst2-call caller={s} argc={d}", .{ chunkTraceName(self.chunk), argc });
+            for (0..argc) |i| {
+                std.debug.print(" arg[{d}]=", .{i});
+                tracePrintValue(self.stack[new_bp + i]);
+            }
+            std.debug.print("\n", .{});
+        }
+        if (trace_everysubst_nil and argc >= 2 and self.stack[new_bp + 1].isNil()) {
+            std.debug.print("TRACE everysubst-call caller={s} argc={d}", .{ chunkTraceName(self.chunk), argc });
+            for (0..argc) |i| {
+                std.debug.print(" arg[{d}]=", .{i});
+                tracePrintValue(self.stack[new_bp + i]);
+            }
+            std.debug.print("\n", .{});
+        }
 
         self.chunk = callee_chunk;
         self.ip = 0;
