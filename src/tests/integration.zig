@@ -5925,6 +5925,29 @@ test "method-specializers" {
     );
 }
 
+test "defmethod helpers do not collide on later specializers" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defgeneric helper-collision-gf (a b))");
+    _ = try repl.eval("(defmethod helper-collision-gf ((a number) (b number)) :nn)");
+    _ = try repl.eval("(defmethod helper-collision-gf ((a number) (b cons)) :nc)");
+
+    try snap.expectEval(
+        @src(),
+        &repl,
+        "(list (helper-collision-gf 1 2) (helper-collision-gf 1 '(x)))",
+        \\(:NN :NC)
+    );
+}
+
 test "method-function" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });

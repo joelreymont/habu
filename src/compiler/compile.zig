@@ -2531,13 +2531,34 @@ pub const Compiler = struct {
         return try self.allocator.dupe(u8, q.name);
     }
 
-    fn methodSpecializerLabel(name: []const u8) []const u8 {
-        if (std.mem.lastIndexOfScalar(u8, name, ':')) |idx| {
-            var start = idx + 1;
-            if (start < name.len and name[start] == ':') start += 1;
-            if (start < name.len) return name[start..];
+    fn buildMethodSpecializerKey(self: *Compiler, specializers: []const MethodSpecializer) ![]u8 {
+        var buf = std.ArrayList(u8){};
+        errdefer buf.deinit(self.allocator);
+
+        if (specializers.len == 0) {
+            try buf.appendSlice(self.allocator, "none");
+            return try buf.toOwnedSlice(self.allocator);
         }
-        return name;
+
+        for (specializers) |spec| {
+            switch (spec) {
+                .any => try buf.appendSlice(self.allocator, "a;"),
+                .class_name => |name| {
+                    const prefix = try std.fmt.allocPrint(self.allocator, "c{d}:", .{name.len});
+                    defer self.allocator.free(prefix);
+                    try buf.appendSlice(self.allocator, prefix);
+                    try buf.appendSlice(self.allocator, name);
+                    try buf.append(self.allocator, ';');
+                },
+                .eql_obj => |obj| {
+                    const prefix = try std.fmt.allocPrint(self.allocator, "e{x};", .{obj.raw});
+                    defer self.allocator.free(prefix);
+                    try buf.appendSlice(self.allocator, prefix);
+                },
+            }
+        }
+
+        return try buf.toOwnedSlice(self.allocator);
     }
 
     fn methodDefMatches(method: MethodDef, qualifier: MethodQualifier, specializers: []const MethodSpecializer) bool {
@@ -14045,21 +14066,9 @@ pub const Compiler = struct {
             .after => "a",
             .around => "r",
         };
-        var spec_owned: ?[]u8 = null;
-        defer if (spec_owned) |s| self.allocator.free(s);
-        const spec_str = if (specializers.items.len > 0) blk: {
-            const spec_val = specializers.items[0];
-            switch (spec_val) {
-                .any => break :blk "t",
-                .class_name => |class_name| break :blk methodSpecializerLabel(class_name),
-                .eql_obj => |eql_obj| {
-                    const txt = try std.fmt.allocPrint(self.allocator, "eql_{x}", .{eql_obj.raw});
-                    spec_owned = txt;
-                    break :blk txt;
-                },
-            }
-        } else "t";
-        const method_name = try std.fmt.allocPrint(self.allocator, "{s}${s}${s}", .{ simple_name, qual_str, spec_str });
+        const spec_key = try self.buildMethodSpecializerKey(specializers.items);
+        defer self.allocator.free(spec_key);
+        const method_name = try std.fmt.allocPrint(self.allocator, "{s}${s}${s}", .{ simple_name, qual_str, spec_key });
 
         // Define method global slot
         const method_global_idx = try self.globals.define(method_name);
