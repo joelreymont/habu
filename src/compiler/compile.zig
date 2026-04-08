@@ -17074,7 +17074,10 @@ pub const Compiler = struct {
         // Heap GC can move interned symbols while compiling; refresh identity-based
         // builtin handles before symbol.raw dispatch.
         try self.refreshBuiltins();
-        const dispatch_sym = self.canonicalBuiltinSymbol(sym);
+        // Primitive lowering must respect symbol identity. A package-local symbol
+        // that merely shares a pname with a CL primitive must still compile as a
+        // normal function call, not as the CL primitive opcode.
+        const dispatch_sym = self.resolveForwardedValue(sym);
         const s = dispatch_sym.raw;
         const b = if (self.builtins) |val| val else return error.InvalidSyntax;
 
