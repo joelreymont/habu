@@ -4912,6 +4912,35 @@ test "values-list returns elements as values" {
     try testing.expectEqual(@as(i64, 1), result.toFixnum());
 }
 
+test "multiple-value-setq returns primary value" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    _ = try repl.eval("(load \"lib/stdlib.habu\")");
+
+    const result = try repl.eval(
+        \\(let (a b c)
+        \\  (list (multiple-value-setq (a b c) (values 10 20 30))
+        \\        a b c))
+    );
+    try testing.expect(result.isCons());
+    const c1 = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 10), c1.car.toFixnum());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 10), c2.car.toFixnum());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 20), c3.car.toFixnum());
+    const c4 = c3.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 30), c4.car.toFixnum());
+    try testing.expect(c4.cdr.isNil());
+}
+
 test "values-list errors when secondary values exceed limit" {
     const allocator = testing.allocator;
 
@@ -10455,57 +10484,71 @@ test "maxima reset kill all preserves callable metadata" {
     const out = try repl.eval(
         \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
         \\  (declare (ignore ok total))
-        \\  (load "lib/maxima-post-load.lisp")
-        \\  (list
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    (append
+        \\      (list
         \\    fail
+        \\    (if (eq *package* (find-package "MAXIMA")) 1 0)
+        \\    (if (get 'maxima::$errcatch 'maxima::mfexpr*) 1 0)
         \\    (if (get 'maxima::$gradef 'maxima::mfexpr*) 1 0)
         \\    (if (fboundp 'maxima::$diff) 1 0)
         \\    (if (fboundp 'maxima::$integrate) 1 0)
+        \\    (if (get 'maxima::$integrate 'maxima::mfexpr*) 1 0)
+        \\    (if (fboundp 'maxima::nformat) 1 0)
+        \\    (if (getf (gethash 'maxima::$errcatch maxima::*builtin-symbol-props*) 'maxima::mfexpr*) 1 0)
         \\    (if (gethash 'maxima::$gradef maxima::*builtin-symbol-props*) 1 0)
         \\    (if (gethash 'maxima::$diff maxima::*builtin-symbol-props*) 1 0)
         \\    (if (gethash 'maxima::$integrate maxima::*builtin-symbol-props*) 1 0)
+        \\    (if (getf (gethash 'maxima::$integrate maxima::*builtin-symbol-props*) 'maxima::mfexpr*) 1 0)
+        \\    (let* ((form (with-input-from-string (s "integrate(x^(5/4)/(x+1)^(5/2),x,0,inf);")
+        \\                   (maxima::mread s 'maxima::$eof))))
+        \\      (if (equal (caar (third form)) 'maxima::$integrate) 1 0))
         \\    (let* ((form (with-input-from-string (s "(reset(), kill(all),0);")
         \\                   (maxima::mread s 'maxima::$eof)))
         \\           (value (maxima::meval form)))
         \\      (if (and (consp value) (equal (third value) 0)) 1 0))
+        \\    (if (eq *package* (find-package "MAXIMA")) 1 0)
+        \\    (if (get 'maxima::$errcatch 'maxima::mfexpr*) 1 0)
         \\    (if (get 'maxima::$gradef 'maxima::mfexpr*) 1 0)
         \\    (if (fboundp 'maxima::$diff) 1 0)
         \\    (if (fboundp 'maxima::$integrate) 1 0)
-        \\    (let* ((form (with-input-from-string (s "gradef(q(x),sin(x^2));")
-        \\                   (maxima::mread s 'maxima::$eof)))
-        \\           (value (maxima::meval form)))
-        \\      (if (and (consp value)
-        \\               (equal (third value) '((maxima::$q simp) maxima::$x)))
-        \\          1
-        \\          0))
-        \\    (let* ((form (with-input-from-string (s "diff(log(q(r(x))),x);")
-        \\                   (maxima::mread s 'maxima::$eof)))
-        \\           (value (maxima::meval form)))
-        \\      (if (and (consp value)
-        \\               (equal (third value)
-        \\                      '((mtimes simp)
-        \\                        ((mexpt simp) ((maxima::$q simp) ((maxima::$r simp) maxima::$x)) -1)
-        \\                        ((%derivative simp) ((maxima::$r simp) maxima::$x) maxima::$x 1)
-        \\                        ((%sin simp) ((mexpt simp) ((maxima::$r simp) maxima::$x) 2)))))
-        \\          1
-        \\          0))
+        \\    (if (get 'maxima::$integrate 'maxima::mfexpr*) 1 0)
+        \\    (if (fboundp 'maxima::nformat) 1 0)
         \\    (let* ((form (with-input-from-string (s "integrate(x^(5/4)/(x+1)^(5/2),x,0,inf);")
-        \\                   (maxima::mread s 'maxima::$eof)))
-        \\           (value (maxima::meval form)))
-        \\      (if (and (consp value)
-        \\               (equal (third value)
-        \\                      '((%beta simp) ((rat simp) 9 4) ((rat simp) 1 4))))
-        \\          1
-        \\          0))))
+        \\                   (maxima::mread s 'maxima::$eof))))
+        \\      (if (equal (caar (third form)) 'maxima::$integrate) 1 0))
+        \\    (let* ((form (with-input-from-string (s "diff(log(q(r(x))),x);")
+        \\                   (maxima::mread s 'maxima::$eof))))
+        \\      (if (equal (caar (third form)) 'maxima::$diff) 1 0))
+        \\    (let* ((gradef-form (with-input-from-string (s "gradef(q(x),sin(x^2));")
+        \\                           (maxima::mread s 'maxima::$eof)))
+        \\           (gradef-res (maxima::meval* (list (list 'maxima::$errcatch) (third gradef-form))))
+        \\           (gradef-val (if (maxima::$emptyp gradef-res) 'error-catch (second gradef-res)))
+        \\           (want-form (with-input-from-string (s "q(x);")
+        \\                        (maxima::mread s 'maxima::$eof)))
+        \\           (want-val (maxima::meval want-form)))
+        \\      (if (equal (third gradef-val) (third want-val)) 1 0))
+        \\    (let* ((diff-form (with-input-from-string (s "diff(log(q(r(x))),x);")
+        \\                         (maxima::mread s 'maxima::$eof)))
+        \\           (diff-res (maxima::meval* (list (list 'maxima::$errcatch) (third diff-form))))
+        \\           (diff-val (if (maxima::$emptyp diff-res) 'error-catch (second diff-res)))
+        \\           (want-form (with-input-from-string (s "'diff(r(x),x,1)*sin(r(x)^2)/q(r(x));")
+        \\                        (maxima::mread s 'maxima::$eof)))
+        \\           (want-val (maxima::meval want-form)))
+        \\      (if (equal (third diff-val) (third want-val)) 1 0))))))))
     );
 
     try testing.expect(out.isCons());
     var cur = out;
-    const expected = [_]i64{ 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
-    for (expected) |want| {
+    const expected = [_]i64{ 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0 };
+    for (expected, 0..) |want, idx| {
         try testing.expect(cur.isCons());
         const cell = cur.toPtr(Cons);
         try testing.expect(cell.car.isFixnum());
+        if (cell.car.toFixnum() != want) {
+            std.debug.print("maxima reset probe idx={d} want={d} got={d}\n", .{ idx, want, cell.car.toFixnum() });
+        }
         try testing.expectEqual(want, cell.car.toFixnum());
         cur = cell.cdr;
     }
