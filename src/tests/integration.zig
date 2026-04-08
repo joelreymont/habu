@@ -3227,19 +3227,12 @@ test "do binding normalizer accepts symbol shorthand" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const normalized = try repl.eval("(%do-normalize-binding 'fact)");
-    try testing.expect(normalized.isCons());
-    const c0 = normalized.toPtr(Cons);
-    try testing.expect(c0.car.isSymbol());
-    try testing.expectEqualStrings("FACT", c0.car.toPtr(Symbol).getName());
-    try testing.expect(c0.cdr.isCons());
-    const c1 = c0.cdr.toPtr(Cons);
-    try testing.expect(c1.car.isNil());
-    try testing.expect(c1.cdr.isCons());
-    const c2 = c1.cdr.toPtr(Cons);
-    try testing.expect(c2.car.isSymbol());
-    try testing.expectEqualStrings("FACT", c2.car.toPtr(Symbol).getName());
-    try testing.expect(c2.cdr.isNil());
+    try snap.expectEval(
+        @src(),
+        &repl,
+        "(%do-normalize-binding 'fact)",
+        "(FACT nil FACT)",
+    );
 }
 
 test "declare optimize safety controls type assertions" {
@@ -4287,28 +4280,17 @@ test "cond test-only clause returns test value" {
     defer repl.deinit();
     try repl.wireGlobalEnv();
 
-    const result = try repl.eval(
+    try snap.expectEval(
+        @src(),
+        &repl,
         \\(let ((n 0))
         \\  (list
         \\    (cond ((progn (setq n (+ n 1)) (list 'ok n)))
         \\          (t 'bad))
         \\    n))
+        ,
+        \\((OK 1) 1)
     );
-    try testing.expect(result.isCons());
-    const c0 = result.toPtr(Cons);
-    try testing.expect(c0.car.isCons());
-    const payload = c0.car.toPtr(Cons);
-    try testing.expect(payload.car.isSymbol());
-    try testing.expectEqualStrings("OK", payload.car.toPtr(Symbol).getName());
-    try testing.expect(payload.cdr.isCons());
-    const payload2 = payload.cdr.toPtr(Cons);
-    try testing.expect(payload2.car.isFixnum());
-    try testing.expectEqual(@as(i64, 1), payload2.car.toFixnum());
-    try testing.expect(c0.cdr.isCons());
-    const c1 = c0.cdr.toPtr(Cons);
-    try testing.expect(c1.car.isFixnum());
-    try testing.expectEqual(@as(i64, 1), c1.car.toFixnum());
-    try testing.expect(c1.cdr.isNil());
 }
 
 test "cond with many clauses still resolves final match" {
@@ -7690,20 +7672,14 @@ test "ansi repro logand accepts bignum intermediate integer" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const result = try repl.eval(
+    try snap.expectEval(
+        @src(),
+        &repl,
         "(let* ((prev #xffffffff)\n" ++
             "       (x (+ (* 1812433253 (logxor prev (ash prev -30))) 1)))\n" ++
             "  (list (type-of x) (logand x #xffffffff)))",
+        "(BIGNUM 1340201581)",
     );
-    try testing.expect(result.isCons());
-    const head = result.toPtr(Cons);
-    try testing.expect(head.car.isSymbol());
-    try testing.expectEqualStrings("BIGNUM", head.car.toPtr(Symbol).getName());
-    try testing.expect(head.cdr.isCons());
-    const tail = head.cdr.toPtr(Cons);
-    try testing.expect(tail.car.isFixnum());
-    try testing.expectEqual(@as(i64, 1340201581), tail.car.toFixnum());
-    try testing.expect(tail.cdr.isNil());
 }
 
 test "generational loop for-and arithmetic stays bounded" {
