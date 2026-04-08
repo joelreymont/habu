@@ -22,7 +22,7 @@ const Vm = interp.Vm;
 const Parser = @import("../reader/parser.zig").Parser;
 
 const compile_chunk = @import("../testing/compile_chunk.zig");
-const OhSnap = @import("ohsnap");
+const snap = @import("../testing/snapshot.zig");
 
 /// Test helper: parse, compile, emit, run and return result
 fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
@@ -1614,13 +1614,6 @@ fn loadStdlib(repl: *Repl) !void {
     try repl.evalFile(content, null_writer);
 }
 
-fn asString(val: Value) ![]const u8 {
-    switch (val.typeKind()) {
-        .string => return val.toPtr(runtime.String).bytes(),
-        else => return error.TypeMismatch,
-    }
-}
-
 test "eval define simple" {
     const allocator = testing.allocator;
 
@@ -2175,11 +2168,9 @@ test "stdlib get-setf-expansion snapshots" {
         \\      (list (length (first e)) (length (second e)) (length (third e))
         \\            (car (fourth e)) (car (fifth e))))))
     );
-    const got_str = try asString(got);
-    const oh = OhSnap{};
-    try oh.snap(@src(),
+    try snap.expectValue(@src(), got,
         \\((1 1 1 PROGN CAR) (2 2 1 PROGN AREF) (2 2 1 PROGN GETHASH))
-    ).diff(got_str, true);
+    );
 }
 
 test "stdlib setf custom expander integration" {
@@ -3379,7 +3370,7 @@ test "defgeneric and defmethod accept setf function names" {
         "(let ((obj (make-instance 'doc-setf-test))) (setf (doc-setf-test-accessor obj) \"ok\") (doc-setf-test-accessor obj))",
     );
     try testing.expect(result.isString());
-    try testing.expectEqualStrings("ok", try asString(result));
+    try testing.expectEqualStrings("ok", try snap.asString(result));
 }
 
 // ============================================================================
@@ -4172,17 +4163,16 @@ test "labels mutating captured lexical boxes outer variable" {
     defer repl.deinit();
     try repl.wireGlobalEnv();
 
-    const result = try repl.eval(
+    try snap.expectEval(
+        @src(),
+        &repl,
         \\(let ((acc nil))
         \\  (labels ((collect () (setq acc (cons 2 acc))))
         \\    (collect)
         \\    acc))
+        ,
+        \\(2)
     );
-    try testing.expect(result.isCons());
-    const out = result.toPtr(@import("../runtime/objects.zig").Cons);
-    try testing.expect(out.car.isFixnum());
-    try testing.expectEqual(@as(i64, 2), out.car.toFixnum());
-    try testing.expect(out.cdr.isNil());
 }
 
 test "labels mutating captured lambda param updates outer param" {
@@ -4196,23 +4186,17 @@ test "labels mutating captured lambda param updates outer param" {
     defer repl.deinit();
     try repl.wireGlobalEnv();
 
-    const result = try repl.eval(
+    try snap.expectEval(
+        @src(),
+        &repl,
         \\(progn
         \\  (defun param-labels (x)
         \\    (labels ((f () (setq x '(a)) 0))
         \\      (list (f) x)))
         \\  (param-labels nil))
+        ,
+        \\(0 (A))
     );
-    try testing.expect(result.isCons());
-    const c0 = result.toPtr(Cons);
-    try testing.expectEqual(@as(i64, 0), c0.car.toFixnum());
-    try testing.expect(c0.cdr.isCons());
-    const c1 = c0.cdr.toPtr(Cons);
-    try testing.expect(c1.car.isCons());
-    const inner = c1.car.toPtr(Cons);
-    try testing.expect(inner.car.isSymbol());
-    try testing.expectEqualStrings("A", inner.car.toPtr(Symbol).getName());
-    try testing.expect(inner.cdr.isNil());
 }
 
 // ============================================================================
@@ -5025,7 +5009,7 @@ test "format ~D decimal" {
         \\(format nil "Value is ~D" 42)
     );
     try testing.expect(result.isString());
-    try testing.expectEqualStrings("Value is 42", try asString(result));
+    try testing.expectEqualStrings("Value is 42", try snap.asString(result));
 }
 
 test "format ~:D grouped decimal" {
@@ -5043,13 +5027,13 @@ test "format ~:D grouped decimal" {
         \\(format nil "~:D" 1234567)
     );
     try testing.expect(pos.isString());
-    try testing.expectEqualStrings("1,234,567", try asString(pos));
+    try testing.expectEqualStrings("1,234,567", try snap.asString(pos));
 
     const neg = try repl.eval(
         \\(format nil "~:D" -1234567)
     );
     try testing.expect(neg.isString());
-    try testing.expectEqualStrings("-1,234,567", try asString(neg));
+    try testing.expectEqualStrings("-1,234,567", try snap.asString(neg));
 }
 
 test "format ~% newline" {
@@ -5102,25 +5086,25 @@ test "format ~R cardinal ordinal and radix" {
         \\(format nil "~R" 42)
     );
     try testing.expect(cardinal.isString());
-    try testing.expectEqualStrings("forty-two", try asString(cardinal));
+    try testing.expectEqualStrings("forty-two", try snap.asString(cardinal));
 
     const ordinal = try repl.eval(
         \\(format nil "~:R" 21)
     );
     try testing.expect(ordinal.isString());
-    try testing.expectEqualStrings("21st", try asString(ordinal));
+    try testing.expectEqualStrings("21st", try snap.asString(ordinal));
 
     const radix = try repl.eval(
         \\(format nil "~16R" 255)
     );
     try testing.expect(radix.isString());
-    try testing.expectEqualStrings("FF", try asString(radix));
+    try testing.expectEqualStrings("FF", try snap.asString(radix));
 
     const roman = try repl.eval(
         \\(format nil "~@R" 144)
     );
     try testing.expect(roman.isString());
-    try testing.expectEqualStrings("CXLIV", try asString(roman));
+    try testing.expectEqualStrings("CXLIV", try snap.asString(roman));
 }
 
 test "format ~F ~E ~G floating directives" {
@@ -5138,32 +5122,32 @@ test "format ~F ~E ~G floating directives" {
         \\(format nil "~F" 12.5)
     );
     try testing.expect(fixed.isString());
-    try testing.expectEqualStrings("12.5", try asString(fixed));
+    try testing.expectEqualStrings("12.5", try snap.asString(fixed));
 
     const fixed_width = try repl.eval(
         \\(format nil "~4F" 1.234)
     );
     try testing.expect(fixed_width.isString());
-    try testing.expectEqualStrings("1.23", try asString(fixed_width));
+    try testing.expectEqualStrings("1.23", try snap.asString(fixed_width));
 
     const fixed_matrix = try repl.eval(
         \\(format nil "~9,1F" 2)
     );
     try testing.expect(fixed_matrix.isString());
-    try testing.expectEqualStrings("      2.0", try asString(fixed_matrix));
+    try testing.expectEqualStrings("      2.0", try snap.asString(fixed_matrix));
 
     const exp = try repl.eval(
         \\(format nil "~E" 12.5)
     );
     try testing.expect(exp.isString());
-    try testing.expect(std.mem.indexOf(u8, try asString(exp), "e") != null);
+    try testing.expect(std.mem.indexOf(u8, try snap.asString(exp), "e") != null);
 
     const general = try repl.eval(
         \\(format nil "~G" 0.00000012)
     );
     try testing.expect(general.isString());
-    try testing.expect((std.mem.indexOf(u8, try asString(general), "e") != null) or
-        (std.mem.indexOf(u8, try asString(general), "E") != null));
+    try testing.expect((std.mem.indexOf(u8, try snap.asString(general), "e") != null) or
+        (std.mem.indexOf(u8, try snap.asString(general), "E") != null));
 }
 
 test "format ~P plural and ~[ conditional directives" {
@@ -5181,25 +5165,25 @@ test "format ~P plural and ~[ conditional directives" {
         \\(format nil "~D item~P" 1)
     );
     try testing.expect(plural1.isString());
-    try testing.expectEqualStrings("1 item", try asString(plural1));
+    try testing.expectEqualStrings("1 item", try snap.asString(plural1));
 
     const plural2 = try repl.eval(
         \\(format nil "~D item~P" 2)
     );
     try testing.expect(plural2.isString());
-    try testing.expectEqualStrings("2 items", try asString(plural2));
+    try testing.expectEqualStrings("2 items", try snap.asString(plural2));
 
     const cond_idx = try repl.eval(
         \\(format nil "~[zero~;one~;many~]" 1)
     );
     try testing.expect(cond_idx.isString());
-    try testing.expectEqualStrings("one", try asString(cond_idx));
+    try testing.expectEqualStrings("one", try snap.asString(cond_idx));
 
     const cond_bool = try repl.eval(
         \\(format nil "~:[no~;yes~]" t)
     );
     try testing.expect(cond_bool.isString());
-    try testing.expectEqualStrings("yes", try asString(cond_bool));
+    try testing.expectEqualStrings("yes", try snap.asString(cond_bool));
 }
 
 test "format iteration supports radix and nested lists" {
@@ -5217,7 +5201,7 @@ test "format iteration supports radix and nested lists" {
         \\(format nil "~{~R ~}" '(1 2 3))
     );
     try testing.expect(words.isString());
-    try testing.expectEqualStrings("one two three ", try asString(words));
+    try testing.expectEqualStrings("one two three ", try snap.asString(words));
 
     const matrix = try repl.eval(
         \\(format nil "~{~{~9,1F ~}~%~}" '((1.1 2 3.33) (4 5 6) (7 8.88 9)))
@@ -5225,7 +5209,7 @@ test "format iteration supports radix and nested lists" {
     try testing.expect(matrix.isString());
     try testing.expectEqualStrings(
         "      1.1       2.0       3.3 \n      4.0       5.0       6.0 \n      7.0       8.9       9.0 \n",
-        try asString(matrix),
+        try snap.asString(matrix),
     );
 }
 
@@ -5244,7 +5228,7 @@ test "format case conversion works with nested radix directives" {
         \\(format nil "~:(~R~) bird~P ~[is~;are~] singing." 2 2 1)
     );
     try testing.expect(result.isString());
-    try testing.expectEqualStrings("Two birds are singing.", try asString(result));
+    try testing.expectEqualStrings("Two birds are singing.", try snap.asString(result));
 }
 
 test "format ~* argument navigation" {
@@ -5262,13 +5246,13 @@ test "format ~* argument navigation" {
         \\(format nil "~A ~*~A" "x" "skip" "y")
     );
     try testing.expect(skipped.isString());
-    try testing.expectEqualStrings("x y", try asString(skipped));
+    try testing.expectEqualStrings("x y", try snap.asString(skipped));
 
     const skipped2 = try repl.eval(
         \\(format nil "~A ~2*~A" "a" "b" "c" "d")
     );
     try testing.expect(skipped2.isString());
-    try testing.expectEqualStrings("a d", try asString(skipped2));
+    try testing.expectEqualStrings("a d", try snap.asString(skipped2));
 }
 
 test "format ~/ function directive" {
@@ -5292,7 +5276,7 @@ test "format ~/ function directive" {
         \\  (format nil "~/fmt-wrap/" 42))
     );
     try testing.expect(local.isString());
-    try testing.expectEqualStrings("[42]", try asString(local));
+    try testing.expectEqualStrings("[42]", try snap.asString(local));
 
     const qualified = try repl.eval(
         \\(progn
@@ -5305,7 +5289,7 @@ test "format ~/ function directive" {
         \\  (format nil "~/fmtpkg::wrap/" 7))
     );
     try testing.expect(qualified.isString());
-    try testing.expectEqualStrings("<7>", try asString(qualified));
+    try testing.expectEqualStrings("<7>", try snap.asString(qualified));
 }
 
 // ============================================================================
@@ -7107,10 +7091,10 @@ test "compile-file-pathname keeps explicit input name over defaults" {
     );
     try testing.expect(result.isCons());
     const c1 = result.toPtr(Cons);
-    try testing.expectEqualStrings("rt", try asString(c1.car));
+    try testing.expectEqualStrings("rt", try snap.asString(c1.car));
     try testing.expect(c1.cdr.isCons());
     const c2 = c1.cdr.toPtr(Cons);
-    try testing.expectEqualStrings("fasl", try asString(c2.car));
+    try testing.expectEqualStrings("fasl", try snap.asString(c2.car));
 }
 
 test "ansi repro delete-file accepts pathname designator" {
@@ -7164,7 +7148,7 @@ test "ansi repro rename-file accepts pathname designators" {
     defer allocator.free(src);
 
     const result = try repl.eval(src);
-    try testing.expectEqualStrings(new_path, try asString(result));
+    try testing.expectEqualStrings(new_path, try snap.asString(result));
 }
 
 test "ansi repro ensure-directories-exist accepts string designator" {
@@ -7191,7 +7175,7 @@ test "ansi repro ensure-directories-exist accepts string designator" {
     defer allocator.free(src);
 
     const result = try repl.eval(src);
-    try testing.expectEqualStrings(target, try asString(result));
+    try testing.expectEqualStrings(target, try snap.asString(result));
 
     var dir = try std.fs.openDirAbsolute(root, .{});
     defer dir.close();
@@ -7218,7 +7202,7 @@ test "probe-file returns canonical truename pathname" {
     const form = try std.fmt.allocPrint(allocator, "(namestring (probe-file \"{s}\"))", .{abs_path});
     defer allocator.free(form);
     const result = try repl.eval(form);
-    try testing.expectEqualStrings(abs_path, try asString(result));
+    try testing.expectEqualStrings(abs_path, try snap.asString(result));
 }
 
 test "quoted #p literal stays a pathname object" {
@@ -9108,19 +9092,35 @@ test "package-local functionp does not override cl:functionp" {
         \\  (cond ((symbolp x) nil)
         \\        ((cl:functionp x))))
     );
-    const result = try repl.eval("(list (functionp #'car) (cl:functionp #'car) (functionp 'car))");
+    try snap.expectEval(
+        @src(),
+        &repl,
+        "(list (functionp #'car) (cl:functionp #'car) (functionp 'car))",
+        \\(t t nil)
+    );
+}
 
-    try testing.expect(result.isCons());
-    const c1 = result.toPtr(Cons);
-    try testing.expect(!c1.car.isNil());
-    try testing.expect(c1.cdr.isCons());
+test "package-local quot shadows primitive lowering" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
 
-    const c2 = c1.cdr.toPtr(Cons);
-    try testing.expect(!c2.car.isNil());
-    try testing.expect(c2.cdr.isCons());
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
 
-    const c3 = c2.cdr.toPtr(Cons);
-    try testing.expect(c3.car.isNil());
+    _ = try repl.eval("(defpackage \"PKG-QUOT\" (:use \"COMMON-LISP\") (:shadow \"QUOT\"))");
+    _ = try repl.eval("(in-package \"PKG-QUOT\")");
+    _ = try repl.eval("(defun quot (a b) (list 'shadow a b))");
+
+    try snap.expectEval(
+        @src(),
+        &repl,
+        "(list (quot 1 2) (funcall #'quot 3 4))",
+        \\((SHADOW 1 2) (SHADOW 3 4))
+    );
 }
 
 test "cl functionp only accepts fbound symbols" {
@@ -9134,21 +9134,12 @@ test "cl functionp only accepts fbound symbols" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const result = try repl.eval(
+    try snap.expectEval(
+        @src(),
+        &repl,
         "(list (cl:functionp 'car) (cl:functionp 'apply) (cl:functionp 'habu-no-such-function))",
+        \\(t t nil)
     );
-
-    try testing.expect(result.isCons());
-    const c1 = result.toPtr(Cons);
-    try testing.expect(!c1.car.isNil());
-    try testing.expect(c1.cdr.isCons());
-
-    const c2 = c1.cdr.toPtr(Cons);
-    try testing.expect(!c2.car.isNil());
-    try testing.expect(c2.cdr.isCons());
-
-    const c3 = c2.cdr.toPtr(Cons);
-    try testing.expect(c3.car.isNil());
 }
 
 test "package iteration macros produce symbols and iterator values" {

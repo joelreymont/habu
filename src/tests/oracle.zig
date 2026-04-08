@@ -8,9 +8,8 @@ const testing = std.testing;
 
 const runtime = @import("../runtime/runtime.zig");
 const Heap = runtime.Heap;
-const Cons = runtime.Cons;
-const Symbol = runtime.Symbol;
 const harness = @import("../testing/harness.zig");
+const snap = @import("../testing/snapshot.zig");
 
 // ============================================================================
 // Oracle Tests - Self-Contained Expressions
@@ -144,24 +143,7 @@ test "oracle: defclass CPL includes transitive supers" {
         \\    (class-name (car (cdr (cdr (class-precedence-list (find-class 'C))))))))
     ;
 
-    const result = try harness.eval(allocator, &heap, expr);
-    try testing.expect(result.isCons());
-
-    const first = result.toPtr(Cons).car;
-    try testing.expect(first.isSymbol());
-    try testing.expectEqualStrings("C", first.toPtr(Symbol).getName());
-
-    const rest1 = result.toPtr(Cons).cdr;
-    try testing.expect(rest1.isCons());
-    const second = rest1.toPtr(Cons).car;
-    try testing.expect(second.isSymbol());
-    try testing.expectEqualStrings("B", second.toPtr(Symbol).getName());
-
-    const rest2 = rest1.toPtr(Cons).cdr;
-    try testing.expect(rest2.isCons());
-    const third = rest2.toPtr(Cons).car;
-    try testing.expect(third.isSymbol());
-    try testing.expectEqualStrings("A", third.toPtr(Symbol).getName());
+    try snap.expectHarnessEval(@src(), allocator, &heap, expr, "(C B A)");
 }
 
 test "oracle: class-slots includes inherited slots" {
@@ -178,18 +160,7 @@ test "oracle: class-slots includes inherited slots" {
         \\    (slot-definition-name (car (cdr (class-slots (find-class 'B)))))))
     ;
 
-    const result = try harness.eval(allocator, &heap, expr);
-    try testing.expect(result.isCons());
-
-    const first = result.toPtr(Cons).car;
-    try testing.expect(first.isSymbol());
-    try testing.expectEqualStrings("Y", first.toPtr(Symbol).getName());
-
-    const rest1 = result.toPtr(Cons).cdr;
-    try testing.expect(rest1.isCons());
-    const second = rest1.toPtr(Cons).car;
-    try testing.expect(second.isSymbol());
-    try testing.expectEqualStrings("X", second.toPtr(Symbol).getName());
+    try snap.expectHarnessEval(@src(), allocator, &heap, expr, "(Y X)");
 }
 
 test "oracle: list construction" {
