@@ -2288,30 +2288,15 @@ test "char and schar return character objects" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const got = try repl.eval(
+    try snap.expectEval(
+        @src(),
+        &repl,
         "(list (char \"hello\" 0)\n" ++
             "      (char-code (char \"hello\" 0))\n" ++
             "      (schar \"world\" 1)\n" ++
             "      (char-code (schar \"world\" 1)))",
+        "(#\\h 104 #\\o 111)",
     );
-
-    const c0 = got.toPtr(Cons);
-    try testing.expect(c0.car.isCharacter());
-    try testing.expectEqual(@as(u21, 'h'), c0.car.toCharacter());
-
-    const c1 = c0.cdr.toPtr(Cons);
-    try testing.expect(c1.car.isFixnum());
-    try testing.expectEqual(@as(i64, 'h'), c1.car.toFixnum());
-
-    const c2 = c1.cdr.toPtr(Cons);
-    try testing.expect(c2.car.isCharacter());
-    try testing.expectEqual(@as(u21, 'o'), c2.car.toCharacter());
-
-    const c3 = c2.cdr.toPtr(Cons);
-    try testing.expect(c3.car.isFixnum());
-    try testing.expectEqual(@as(i64, 'o'), c3.car.toFixnum());
-
-    try testing.expect(c3.cdr.isNil());
 }
 
 test "character coerces one-char string and symbol designators" {
@@ -2326,25 +2311,14 @@ test "character coerces one-char string and symbol designators" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const got = try repl.eval(
+    try snap.expectEval(
+        @src(),
+        &repl,
         "(list (character #\\Z)\n" ++
             "      (character \"A\")\n" ++
             "      (character 'b))",
+        "(#\\Z #\\A #\\B)",
     );
-
-    const c0 = got.toPtr(Cons);
-    try testing.expect(c0.car.isCharacter());
-    try testing.expectEqual(@as(u21, 'Z'), c0.car.toCharacter());
-
-    const c1 = c0.cdr.toPtr(Cons);
-    try testing.expect(c1.car.isCharacter());
-    try testing.expectEqual(@as(u21, 'A'), c1.car.toCharacter());
-
-    const c2 = c1.cdr.toPtr(Cons);
-    try testing.expect(c2.car.isCharacter());
-    try testing.expectEqual(@as(u21, 'B'), c2.car.toCharacter());
-
-    try testing.expect(c2.cdr.isNil());
 }
 
 test "alphanumericp returns boolean for digits" {
@@ -2359,15 +2333,12 @@ test "alphanumericp returns boolean for digits" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const result = try repl.eval("(list (alphanumericp #\\2) (alphanumericp #\\A) (alphanumericp #\\Space))");
-    try testing.expect(result.isCons());
-    const c0 = result.toPtr(Cons);
-    try testing.expect(c0.car.eq(Value.t));
-    const c1 = c0.cdr.toPtr(Cons);
-    try testing.expect(c1.car.eq(Value.t));
-    const c2 = c1.cdr.toPtr(Cons);
-    try testing.expect(c2.car.isNil());
-    try testing.expect(c2.cdr.isNil());
+    try snap.expectEval(
+        @src(),
+        &repl,
+        "(list (alphanumericp #\\2) (alphanumericp #\\A) (alphanumericp #\\Space))",
+        "(t t nil)",
+    );
 }
 
 test "array reader keeps terminal cons and symbol literals" {
