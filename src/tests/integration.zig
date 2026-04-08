@@ -2196,16 +2196,15 @@ test "stdlib setf custom expander integration" {
             "              `(car ,g)))))",
     );
 
-    const got = try repl.eval(
+    try snap.expectEval(
+        @src(),
+        &repl,
         "(let ((a (cons 1 nil))\n" ++
             "      (b (cons 2 nil)))\n" ++
             "  (setf (cell-val a) 9 (car b) 8)\n" ++
             "  (list (car a) (car b)))",
+        "(9 8)",
     );
-    const cons = got.toPtr(Cons);
-    try testing.expectEqual(@as(i64, 9), cons.car.toFixnum());
-    const tail = cons.cdr.toPtr(Cons);
-    try testing.expectEqual(@as(i64, 8), tail.car.toFixnum());
 }
 
 test "stdlib setf bit and sbit places" {
@@ -2220,19 +2219,14 @@ test "stdlib setf bit and sbit places" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const got = try repl.eval(
+    try snap.expectEval(
+        @src(),
+        &repl,
         "(let ((v (vector 0 0 0 0)))\n" ++
             "  (setf (sbit v 1) 1 (bit v 2) 1)\n" ++
             "  (list (sbit v 1) (bit v 2) (svref v 1) (aref v 2)))",
+        "(1 1 1 1)",
     );
-    const c0 = got.toPtr(Cons);
-    try testing.expectEqual(@as(i64, 1), c0.car.toFixnum());
-    const c1 = c0.cdr.toPtr(Cons);
-    try testing.expectEqual(@as(i64, 1), c1.car.toFixnum());
-    const c2 = c1.cdr.toPtr(Cons);
-    try testing.expectEqual(@as(i64, 1), c2.car.toFixnum());
-    const c3 = c2.cdr.toPtr(Cons);
-    try testing.expectEqual(@as(i64, 1), c3.car.toFixnum());
 }
 
 test "stdlib setf supports fifth through eighth places" {
@@ -2247,26 +2241,14 @@ test "stdlib setf supports fifth through eighth places" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const got = try repl.eval(
+    try snap.expectEval(
+        @src(),
+        &repl,
         "(let ((x '(a b c d e f g h i j)))\n" ++
             "  (setf (fifth x) 'u (sixth x) 'v (seventh x) 'w (eighth x) 'z)\n" ++
             "  (list (fifth x) (sixth x) (seventh x) (eighth x) (nth 7 x)))",
+        "(U V W Z Z)",
     );
-    const c0 = got.toPtr(Cons);
-    try testing.expect(c0.car.isSymbol());
-    try testing.expectEqualStrings("U", c0.car.toPtr(runtime.Symbol).getName());
-    const c1 = c0.cdr.toPtr(Cons);
-    try testing.expect(c1.car.isSymbol());
-    try testing.expectEqualStrings("V", c1.car.toPtr(runtime.Symbol).getName());
-    const c2 = c1.cdr.toPtr(Cons);
-    try testing.expect(c2.car.isSymbol());
-    try testing.expectEqualStrings("W", c2.car.toPtr(runtime.Symbol).getName());
-    const c3 = c2.cdr.toPtr(Cons);
-    try testing.expect(c3.car.isSymbol());
-    try testing.expectEqualStrings("Z", c3.car.toPtr(runtime.Symbol).getName());
-    const c4 = c3.cdr.toPtr(Cons);
-    try testing.expect(c4.car.isSymbol());
-    try testing.expectEqualStrings("Z", c4.car.toPtr(runtime.Symbol).getName());
 }
 
 test "aref supports strings with character semantics" {
@@ -2400,24 +2382,16 @@ test "array reader keeps terminal cons and symbol literals" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const got = try repl.eval(
+    try snap.expectEval(
+        @src(),
+        &repl,
         "(let ((a #2A((4 (17)) (9 (a)) ((b) 0))))\n" ++
             "  (list (consp (aref a 0 1))\n" ++
             "        (car (aref a 0 1))\n" ++
             "        (car (aref a 1 1))\n" ++
             "        (car (aref a 2 0))))",
+        "(T 17 A B)",
     );
-
-    const c0 = got.toPtr(Cons);
-    try testing.expect(c0.car.isT());
-    const c1 = c0.cdr.toPtr(Cons);
-    try testing.expectEqual(@as(i64, 17), c1.car.toFixnum());
-    const c2 = c1.cdr.toPtr(Cons);
-    try testing.expect(c2.car.isSymbol());
-    try testing.expectEqualStrings("A", c2.car.toPtr(runtime.Symbol).getName());
-    const c3 = c2.cdr.toPtr(Cons);
-    try testing.expect(c3.car.isSymbol());
-    try testing.expectEqualStrings("B", c3.car.toPtr(runtime.Symbol).getName());
 }
 
 test "nested array literals read as nested array objects" {
@@ -11332,7 +11306,9 @@ test "defun-prop keeps and/or pair metadata intact" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const value = try repl.eval(
+    try snap.expectEval(
+        @src(),
+        &repl,
         \\(progn
         \\  (defmacro defun-prop (f arg &body body)
         \\    (assert (listp f))
@@ -11344,26 +11320,9 @@ test "defun-prop keeps and/or pair metadata intact" {
         \\  (list
         \\    (funcall (get 'and 'free-lisp-vars) '(and a b c))
         \\    (funcall (get 'or 'free-lisp-vars) '(or x y))))
+        ,
+        \\((A B C) (X Y))
     );
-
-    try testing.expect(value.isCons());
-    const outer = value.toPtr(Cons);
-    try testing.expect(outer.car.isCons());
-    try testing.expect(outer.cdr.isCons());
-    const outer2 = outer.cdr.toPtr(Cons);
-    try testing.expect(outer2.car.isCons());
-
-    const and_tail = outer.car;
-    try testing.expectEqualStrings("A", and_tail.toPtr(Cons).car.toPtr(Symbol).getName());
-    try testing.expect(and_tail.toPtr(Cons).cdr.isCons());
-    try testing.expectEqualStrings("B", and_tail.toPtr(Cons).cdr.toPtr(Cons).car.toPtr(Symbol).getName());
-    try testing.expect(and_tail.toPtr(Cons).cdr.toPtr(Cons).cdr.isCons());
-    try testing.expectEqualStrings("C", and_tail.toPtr(Cons).cdr.toPtr(Cons).cdr.toPtr(Cons).car.toPtr(Symbol).getName());
-
-    const or_tail = outer2.car;
-    try testing.expectEqualStrings("X", or_tail.toPtr(Cons).car.toPtr(Symbol).getName());
-    try testing.expect(or_tail.toPtr(Cons).cdr.isCons());
-    try testing.expectEqualStrings("Y", or_tail.toPtr(Cons).cdr.toPtr(Cons).car.toPtr(Symbol).getName());
 }
 
 test "maxima loader accepts internal keyword controls" {
