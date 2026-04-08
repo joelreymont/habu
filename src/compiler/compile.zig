@@ -2504,6 +2504,42 @@ pub const Compiler = struct {
         };
     }
 
+    fn resolveQualifiedSymbolName(self: *Compiler, name: []const u8) !Value {
+        const heap = self.heap orelse return error.CompilerNotInitialized;
+        if (std.mem.indexOfScalar(u8, name, ':')) |colon_idx| {
+            const pkg_name = name[0..colon_idx];
+            var sym_start = colon_idx + 1;
+            if (sym_start < name.len and name[sym_start] == ':') {
+                sym_start += 1;
+            }
+            if (sym_start < name.len) {
+                if (heap.findPackage(pkg_name)) |pkg| {
+                    return try pkg.intern(heap, name[sym_start..]);
+                }
+            }
+        }
+        return try heap.intern(name);
+    }
+
+    fn methodSpecializerStorageName(self: *Compiler, sym: Value) ![]u8 {
+        const live = self.resolveForwardedValue(sym);
+        if (!live.isSymbol()) return error.InvalidSyntax;
+
+        var buf: [256]u8 = undefined;
+        const q = try self.getQualifiedName(live.toPtr(Symbol), &buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        return try self.allocator.dupe(u8, q.name);
+    }
+
+    fn methodSpecializerLabel(name: []const u8) []const u8 {
+        if (std.mem.lastIndexOfScalar(u8, name, ':')) |idx| {
+            var start = idx + 1;
+            if (start < name.len and name[start] == ':') start += 1;
+            if (start < name.len) return name[start..];
+        }
+        return name;
+    }
+
     fn methodDefMatches(method: MethodDef, qualifier: MethodQualifier, specializers: []const MethodSpecializer) bool {
         if (method.qualifier != qualifier) return false;
         if (method.specializers.len != specializers.len) return false;
@@ -13946,7 +13982,8 @@ pub const Compiler = struct {
                     if (spec_cons.cdr.isCons()) {
                         const class_cons = spec_cons.cdr.toPtr(Cons);
                         if (class_cons.car.isSymbol()) {
-                            const class_name = class_cons.car.toPtr(Symbol).getName();
+                            const class_sym = self.canonicalBuiltinSymbol(class_cons.car);
+                            const class_name = try self.methodSpecializerStorageName(class_sym);
                             try specializers.append(self.allocator, .{
                                 .class_name = class_name,
                             });
@@ -14014,7 +14051,7 @@ pub const Compiler = struct {
             const spec_val = specializers.items[0];
             switch (spec_val) {
                 .any => break :blk "t",
-                .class_name => |class_name| break :blk class_name,
+                .class_name => |class_name| break :blk methodSpecializerLabel(class_name),
                 .eql_obj => |eql_obj| {
                     const txt = try std.fmt.allocPrint(self.allocator, "eql_{x}", .{eql_obj.raw});
                     spec_owned = txt;
@@ -14036,7 +14073,7 @@ pub const Compiler = struct {
             spec_i -= 1;
             const spec_val: Value = switch (specializers.items[spec_i]) {
                 .any => Value.t,
-                .class_name => |class_name| try heap.intern(class_name),
+                .class_name => |class_name| try self.resolveQualifiedSymbolName(class_name),
                 .eql_obj => |eql_obj| blk: {
                     const eql_tail = try heap.allocCons(eql_obj, Value.nil);
                     break :blk try heap.allocCons(builtins.ty_eql, eql_tail);
@@ -14724,8 +14761,7 @@ pub const Compiler = struct {
                 break :blk try self.builder.eql(arg_ir, eql_obj_ir);
             },
             .class_name => |class_name| blk: {
-                const heap = if (self.heap) |val| val else return error.CompilerNotInitialized;
-                const class_sym = try heap.intern(class_name);
+                const class_sym = try self.resolveQualifiedSymbolName(class_name);
                 const class_ir = try self.builder.lit(class_sym);
                 break :blk try self.builder.typep(arg_ir, class_ir);
             },
@@ -14733,9 +14769,8 @@ pub const Compiler = struct {
     }
 
     fn compareClassSpecificityByName(self: *Compiler, class_a_name: []const u8, class_b_name: []const u8) !SpecificityOrder {
-        const heap = if (self.heap) |val| val else return .equal;
-        const class_a = try heap.intern(class_a_name);
-        const class_b = try heap.intern(class_b_name);
+        const class_a = try self.resolveQualifiedSymbolName(class_a_name);
+        const class_b = try self.resolveQualifiedSymbolName(class_b_name);
         return self.compareClassSpecificity(class_a, class_b);
     }
 

@@ -5917,10 +5917,12 @@ test "method-specializers" {
     _ = try repl.eval("(defgeneric bar (x y))");
     _ = try repl.eval("(defmethod bar ((x fixnum) (y cons)) 1)");
 
-    const specs = try repl.eval("(method-specializers (car (generic-function-methods (symbol-function 'bar))))");
-    try testing.expect(specs.isCons());
-    const len = try repl.eval("(length (method-specializers (car (generic-function-methods (symbol-function 'bar)))))");
-    try testing.expectEqual(@as(i64, 2), len.toFixnum());
+    try snap.expectEval(
+        @src(),
+        &repl,
+        "(list (method-specializers (car (generic-function-methods (symbol-function 'bar)))) (length (method-specializers (car (generic-function-methods (symbol-function 'bar))))))",
+        \\((FIXNUM CONS) 2)
+    );
 }
 
 test "method-function" {
@@ -9108,6 +9110,30 @@ test "shadowed builtin float type name still resolves" {
         &repl,
         "(list (eq 'float 'cl:float) (typep 1.0 'float) (multiple-value-list (subtypep 'float 'real)))",
         \\(nil t ((t t)))
+    );
+}
+
+test "shadowed builtin number specializer still dispatches" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defpackage \"PKG-TYPE-NUMBER\" (:use \"COMMON-LISP\") (:shadow \"NUMBER\"))");
+    _ = try repl.eval("(in-package \"PKG-TYPE-NUMBER\")");
+    _ = try repl.eval("(defgeneric pkg-num-gf (x))");
+    _ = try repl.eval("(defmethod pkg-num-gf ((x number)) :shadow-number)");
+
+    try snap.expectEval(
+        @src(),
+        &repl,
+        "(list (eq 'number 'cl:number) (pkg-num-gf 7) (method-specializers (car (generic-function-methods (symbol-function 'pkg-num-gf)))))",
+        \\(nil :SHADOW-NUMBER (NUMBER))
     );
 }
 
