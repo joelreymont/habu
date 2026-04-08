@@ -56,6 +56,8 @@ Live blockers proven right now from the current runner path, which is still prov
 - `rtest6` still has an older compiler-stage dot for real macro/destructuring failure once the parser/operator floor is lifted: `habu-fix-rtest6-macro-de33e2c1`.
 - NLX correctness remains open and must be treated as a likely shared cause for later `test-batch`/error paths: `habu-fix-nlx-control-dcb701b2`.
 - performance work remains explicitly blocked on clean canonical execution.
+- Current `rtest6` floor is no longer the old generic `unwind-protect` cleanup bug. That part is fixed in `src/interp/vm.zig` by switching condition-transfer detection to full `Vm.State` snapshots, with proof from the generic unwind regression and the Maxima `meval*` cleanup regression.
+- The live `rtest6` blocker is now a global-state mismatch on Maxima's `+labs` bookkeeping: after `errcatch` around `integrate`, `symbol-plist` on `*Z*` contains `(+LABS $ZERO)` while `symbol-value` of `MAXIMA::+LABS` is still `nil`. `compar.lisp:dmark` writes both surfaces together, so the remaining root cause belongs in Habu's qualified global-slot identity/synchronization path (`src/interp/vm.zig`, `src/interp/repl.zig`, `src/compiler/compile.zig`), not in another Maxima semantic patch.
 
 ## 4.2 Remaining Execution Order
 
@@ -366,6 +368,7 @@ Do the remaining work in this order:
   - make `load` dynamically and canonically bind `*LOAD-PATHNAME*`, `*LOAD-TRUENAME*`, `*DEFAULT-PATHNAME-DEFAULTS*`, and `*PACKAGE*`,
   - remove alias writes and cwd heuristics used in place of true dynamic special binding,
   - make VM `*PACKAGE*` and native reader package state reconcile atomically and fail closed when the VM package object cannot be mapped back to the canonical native package,
+  - make VM reader entrypoints such as `read`, `read-from-string`, and stream-backed reader loops resync native reader package state from dynamic `*PACKAGE*` before interning any symbols,
   - save and restore package state by canonical package designator semantics rather than stale package-object reuse,
   - make nested loads and logical-pathname translation loading depend only on this contract,
   - make logical pathname translation loading fail explicitly on real translation-load errors instead of masking them or falling through to unrelated candidates,
@@ -374,6 +377,7 @@ Do the remaining work in this order:
   - nested `load`/autoload/batch flows get truthful dynamic special bindings,
   - path/package context is derived from loader state, not post-hoc alias repair,
   - package restoration updates both VM and reader package state or aborts the load,
+  - reader entrypoints never intern into stale `CL-USER`/previous-package state while dynamic `*PACKAGE*` names some other canonical package,
   - stale, deleted, or recreated package objects cannot be silently restored into VM or reader state,
   - translation loading has no error-masking cross-candidate fallback after a real load failure.
 - Risk:
