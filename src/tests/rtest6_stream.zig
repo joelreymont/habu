@@ -318,3 +318,55 @@ test "rtest6 integrate does not leak *z* sign marks across errcatch" {
     try testing.expectEqual(@as(i64, 1), local_clear);
     try testing.expectEqual(@as(i64, 0), caught);
 }
+
+test "rtest6 test-batch sink behavior stays inside handler-case" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const out = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    (let* ((root (namestring (truename (habu-maxima-manifest-value :root))))
+        \\           (path (concatenate 'string root "/tests/rtest6.mac"))
+        \\           (sink-str (make-string-output-stream))
+        \\           (nil-ok (handler-case (progn (let ((*collect-errors* nil)
+        \\                                              (maxima::$batch_answers_from_file t))
+        \\                                          (test-batch path nil))
+        \\                                        1)
+        \\                     (condition (c) (declare (ignore c)) 0)))
+        \\           (str-ok (handler-case (progn (let ((*collect-errors* sink-str)
+        \\                                              (maxima::$batch_answers_from_file t))
+        \\                                          (test-batch path nil))
+        \\                                        1)
+        \\                     (condition (c) (declare (ignore c)) 0)))
+        \\           (t-ok (handler-case (progn (let ((*collect-errors* t)
+        \\                                            (maxima::$batch_answers_from_file t))
+        \\                                        (test-batch path nil))
+        \\                                      1)
+        \\                   (condition (c) (declare (ignore c)) 0))))
+        \\      (list fail nil-ok str-ok t-ok))))
+    );
+
+    const fail = try consFixnumAt(out, 0);
+    const nil_ok = try consFixnumAt(out, 1);
+    const str_ok = try consFixnumAt(out, 2);
+    const t_ok = try consFixnumAt(out, 3);
+
+    try testing.expectEqual(@as(i64, 0), fail);
+    try testing.expectEqual(@as(i64, 1), nil_ok);
+    try testing.expectEqual(@as(i64, 1), str_ok);
+    try testing.expectEqual(@as(i64, 1), t_ok);
+}

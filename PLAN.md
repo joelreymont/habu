@@ -1,6 +1,6 @@
 # PLAN — Generic Common Lisp Closure For Maxima
 
-Last updated: 2026-04-04
+Last updated: 2026-04-09
 Owner: Habu runtime/compiler/reader/VM/JIT
 Review baseline: round 1 findings incorporated
 
@@ -61,6 +61,7 @@ Live blockers proven right now from the current runner path, which is still prov
 - Short-circuit compiler walkers must root their live list tails across recursive sub-compilation. `src/compiler/compile.zig:7030-7145` currently keeps `and`/`or` rest lists in raw locals while compiling the head clause, so moving GC can invalidate the recursive tail and crash in later cons dereferences before the real `+labs` floor is even observable.
 - Built-in type dispatch must canonicalize same-pname package symbols back to the canonical `COMMON-LISP` type symbol before `typep`/`subtypep` matching. `MAXIMA` legitimately shadows `FLOAT` for its function namespace, but real upstream code still uses `'float` as a type designator in `../maxima/src/hypergeometric.lisp`, so Habu must resolve the built-in type symbol generically instead of treating `MAXIMA::FLOAT` as unknown.
 - The old `BIGFLOAT` loader gate is closed. After fixing generic dispatcher helper-name collision in `src/compiler/compile.zig`, the narrowed repro now proves `(method-function ...)` for the `(NUMBER NUMBER)` method and generic `(bigfloat::two-arg-/ 1 2)` both return `1/2`, and canonical `tools/maxima-rtest.lisp rtest6` advances past the dirty-loader refusal into the real `test-batch` floor at problem 2 line 11.
+- The current `test-batch` front-door break is no longer an `errset` mystery. The exact runner shape shows `errset` returning `nil` because `test-batch` really does signal an `ERROR`, and the reduced repro is `copy-seq` on a fill-pointer string buffer from `../maxima/src/nparse.lisp:324-333`. Habu's `length` primitive in `src/interp/vm.zig` is using vector capacity instead of fill pointer for sequence length, so `copy-seq` iterates past live characters, `char` faults on uninitialized tail slots, and canonical `rtest6` falls over while scanning later string forms.
 
 ## 4.2 Remaining Execution Order
 
