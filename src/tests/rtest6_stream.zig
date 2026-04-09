@@ -418,3 +418,62 @@ test "rtest6 scientific float strings round-trip through maxima forms" {
     try testing.expectEqual(@as(i64, 1), s4);
     try testing.expectEqual(@as(i64, 1), roundtrip);
 }
+
+test "rtest6 problem 47 isolated test-batch path stays clean" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p47.mac",
+        .data =
+            \\(reset (fpprintprec), 0);
+            \\0;
+            \\is (parse_string (string (most_positive_float)) = most_positive_float);
+            \\true;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p47.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    (let ((*collect-errors* nil)
+        \\          (maxima::$batch_answers_from_file t))
+        \\      (handler-case
+        \\          (progn
+        \\            (test-batch "{s}" nil)
+        \\            '(ok))
+        \\        (condition (c)
+        \\          (list fail (write-to-string c)))))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    try testing.expect(out.isCons());
+    const cell = out.toPtr(Cons);
+    try testing.expect(cell.car.isSymbol());
+    try testing.expectEqualStrings("OK", cell.car.toPtr(runtime.Symbol).getName());
+}
