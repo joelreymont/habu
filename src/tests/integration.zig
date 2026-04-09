@@ -12044,6 +12044,82 @@ test "proclaimed special lambda params are visible during optional defaults" {
     try testing.expectEqual(@as(i64, 42), out.toFixnum());
 }
 
+test "local special lambda params are dynamically visible in callees" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try snap.expectEval(@src(), &repl,
+        \\(progn
+        \\  (defun inner-local-special-param () foo)
+        \\  (defun outer-local-special-param (foo)
+        \\    (declare (special foo))
+        \\    (inner-local-special-param))
+        \\  (outer-local-special-param 42))
+    , "42");
+}
+
+test "local special lambda param setq updates dynamic binding" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try snap.expectEval(@src(), &repl,
+        \\(progn
+        \\  (defun inner-local-special-param-setq () foo)
+        \\  (defun outer-local-special-param-setq (foo)
+        \\    (declare (special foo))
+        \\    (setq foo 99)
+        \\    (list foo (inner-local-special-param-setq)))
+        \\  (outer-local-special-param-setq 42))
+    , "(99 99)");
+}
+
+test "local special lambda params are visible during optional defaults" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try snap.expectEval(@src(), &repl,
+        \\(progn
+        \\  (defun current-local-special-foo () foo)
+        \\  (defun outer-local-special-optional (foo &optional (bar (current-local-special-foo)))
+        \\    (declare (special foo))
+        \\    bar)
+        \\  (outer-local-special-optional 42))
+    , "42");
+}
+
+test "eval lambda local special params bind dynamically" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try snap.expectEval(@src(), &repl,
+        \\(funcall (eval '(lambda (x y z) (declare (special x y z)) x)) '(a) 2 3)
+    , "(A)");
+}
+
 test "defvar makes prog bindings dynamically visible" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });

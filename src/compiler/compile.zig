@@ -1486,6 +1486,8 @@ pub const Env = struct {
     fn_bindings: VarMap,
     /// Lexical type declarations keyed by symbol identity
     type_decls: TypeDeclMap,
+    /// Lexical special declarations keyed by symbol identity
+    special_decls: SpecialSymSet,
     /// Parent environment (for closures)
     parent: ?*const Env,
     /// Depth from root (0 = top level)
@@ -1505,6 +1507,7 @@ pub const Env = struct {
             .bindings = VarMap.init(allocator),
             .fn_bindings = VarMap.init(allocator),
             .type_decls = TypeDeclMap.init(allocator),
+            .special_decls = SpecialSymSet.init(allocator),
             .parent = parent,
             .depth = if (parent) |p| p.depth + 1 else 0,
             .new_frame = true,
@@ -1520,6 +1523,7 @@ pub const Env = struct {
             .bindings = VarMap.init(allocator),
             .fn_bindings = VarMap.init(allocator),
             .type_decls = TypeDeclMap.init(allocator),
+            .special_decls = SpecialSymSet.init(allocator),
             .parent = parent,
             .depth = parent.depth, // Same depth - same frame
             .new_frame = false,
@@ -1549,6 +1553,12 @@ pub const Env = struct {
             if (key.uid == 0) self.allocator.free(key.name);
         }
         self.type_decls.deinit();
+
+        var special_it = self.special_decls.keyIterator();
+        while (special_it.next()) |key| {
+            if (key.uid == 0) self.allocator.free(key.name);
+        }
+        self.special_decls.deinit();
     }
 
     /// Get total local count in this frame
@@ -1645,6 +1655,15 @@ pub const Env = struct {
         gop.value_ptr.* = type_expr;
     }
 
+    pub fn bindSpecialDeclSym(self: *Env, sym_val: Value) error{OutOfMemory}!void {
+        const key = try keyOwnedFromSym(self.allocator, sym_val);
+        errdefer if (key.uid == 0) self.allocator.free(key.name);
+        const gop = try self.special_decls.getOrPut(key);
+        if (gop.found_existing and key.uid == 0) {
+            self.allocator.free(key.name);
+        }
+    }
+
     fn lookupKey(self: *const Env, key: VarKey) ?Binding {
         if (self.bindings.get(key)) |index| {
             return .{ .depth = 0, .index = index };
@@ -1738,6 +1757,18 @@ pub const Env = struct {
     pub fn lookupTypeDeclSym(self: *const Env, sym_val: Value) ?Value {
         const key = keyFromSym(sym_val) orelse return null;
         return self.lookupTypeDeclKey(key);
+    }
+
+    fn lookupSpecialDeclKey(self: *const Env, key: VarKey) bool {
+        if (self.special_decls.contains(key)) return true;
+        if (self.bindings.contains(key)) return false;
+        if (self.parent) |parent| return parent.lookupSpecialDeclKey(key);
+        return false;
+    }
+
+    pub fn lookupSpecialDeclSym(self: *const Env, sym_val: Value) bool {
+        const key = keyFromSym(sym_val) orelse return false;
+        return self.lookupSpecialDeclKey(key);
     }
 
     /// Look up any lexical symbol by case-insensitive symbol name.
@@ -3193,7 +3224,7 @@ pub const Compiler = struct {
             const sym = sym_val.toPtr(Symbol);
             const name = sym.getName();
 
-            if (!self.isSpecialBindingSym(sym_val)) {
+            if (!self.isSpecialBindingInEnv(env, sym_val)) {
                 if (env.lookupSym(sym_val)) |binding| {
                     const result_ir = try self.builder.variable(name, binding.depth, binding.index);
 
@@ -4632,6 +4663,7 @@ pub const Compiler = struct {
         self.optimize_current = self.effectiveOptimizeForEnv(env);
         defer self.optimize_current = saved_optimize;
         lambda_env.optimize = self.optimize_current;
+        try self.seedLocalSpecialDecls(body_exprs, &lambda_env);
 
         var rest_param: ?[]const u8 = null;
         var allow_other_keys = false;
@@ -4667,7 +4699,7 @@ pub const Compiler = struct {
                             rest_idx = try lambda_env.bindSym(rest_item);
                             try lambda_bindings.append(self.allocator, .{ .sym = rest_item, .idx = rest_idx });
                             try appendLambdaShadowSym(self, &lambda_shadow_syms, rest_item);
-                            if (self.isSpecialBindingSym(rest_item)) {
+                            if (self.isSpecialBindingInEnv(&lambda_env, rest_item)) {
                                 try appendSpecialParam(self, &special_params, rest_item, rest_name, rest_idx, .rest);
                             }
                         } else {
@@ -4731,7 +4763,7 @@ pub const Compiler = struct {
                             .value = nil_ir,
                             .index = abs_idx,
                         });
-                        if (param_item.typeKind() == .symbol and self.isSpecialBindingSym(param_item)) {
+                        if (param_item.typeKind() == .symbol and self.isSpecialBindingInEnv(&lambda_env, param_item)) {
                             try appendSpecialParam(self, &special_params, param_item, name, abs_idx, .aux);
                         }
                     } else if (in_key) {
@@ -4747,7 +4779,7 @@ pub const Compiler = struct {
                             idx = try lambda_env.bindSym(param_item);
                             try lambda_bindings.append(self.allocator, .{ .sym = param_item, .idx = idx });
                             try appendLambdaShadowSym(self, &lambda_shadow_syms, param_item);
-                            if (self.isSpecialBindingSym(param_item)) {
+                            if (self.isSpecialBindingInEnv(&lambda_env, param_item)) {
                                 try appendSpecialParam(self, &special_params, param_item, name, idx, .key);
                             }
                         } else {
@@ -4765,7 +4797,7 @@ pub const Compiler = struct {
                             idx = try lambda_env.bindSym(param_item);
                             try lambda_bindings.append(self.allocator, .{ .sym = param_item, .idx = idx });
                             try appendLambdaShadowSym(self, &lambda_shadow_syms, param_item);
-                            if (self.isSpecialBindingSym(param_item)) {
+                            if (self.isSpecialBindingInEnv(&lambda_env, param_item)) {
                                 try appendSpecialParam(self, &special_params, param_item, name, idx, .optional);
                             }
                         } else {
@@ -4786,7 +4818,7 @@ pub const Compiler = struct {
                             .type_sym = null,
                             .idx = idx,
                         });
-                        if (param_item.typeKind() == .symbol and self.isSpecialBindingSym(param_item)) {
+                        if (param_item.typeKind() == .symbol and self.isSpecialBindingInEnv(&lambda_env, param_item)) {
                             try appendSpecialParam(self, &special_params, param_item, name, idx, .required);
                         }
                     }
@@ -4819,7 +4851,7 @@ pub const Compiler = struct {
                             .value = init_ir,
                             .index = abs_idx,
                         });
-                        if (typed_car_live.typeKind() == .symbol and self.isSpecialBindingSym(typed_car_live)) {
+                        if (typed_car_live.typeKind() == .symbol and self.isSpecialBindingInEnv(&lambda_env, typed_car_live)) {
                             try appendSpecialParam(self, &special_params, typed_car_live, name, abs_idx, .aux);
                         }
                     } else if (in_key) {
@@ -4851,7 +4883,7 @@ pub const Compiler = struct {
                             idx = try lambda_env.bindSym(live_param_sym);
                             try lambda_bindings.append(self.allocator, .{ .sym = live_param_sym, .idx = idx });
                             try appendLambdaShadowSym(self, &lambda_shadow_syms, live_param_sym);
-                            if (self.isSpecialBindingSym(live_param_sym)) {
+                            if (self.isSpecialBindingInEnv(&lambda_env, live_param_sym)) {
                                 try appendSpecialParam(self, &special_params, live_param_sym, param_name, idx, .key);
                             }
                         } else {
@@ -4900,7 +4932,7 @@ pub const Compiler = struct {
                             idx = try lambda_env.bindSym(typed_car_live);
                             try lambda_bindings.append(self.allocator, .{ .sym = typed_car_live, .idx = idx });
                             try appendLambdaShadowSym(self, &lambda_shadow_syms, typed_car_live);
-                            if (self.isSpecialBindingSym(typed_car_live)) {
+                            if (self.isSpecialBindingInEnv(&lambda_env, typed_car_live)) {
                                 try appendSpecialParam(self, &special_params, typed_car_live, name, idx, .optional);
                             }
                         } else {
@@ -4933,7 +4965,7 @@ pub const Compiler = struct {
                             .type_sym = type_val,
                             .idx = idx,
                         });
-                        if (typed_car.typeKind() == .symbol and self.isSpecialBindingSym(typed_car)) {
+                        if (typed_car.typeKind() == .symbol and self.isSpecialBindingInEnv(&lambda_env, typed_car)) {
                             try appendSpecialParam(self, &special_params, typed_car, name, idx, .required);
                         }
                     }
@@ -4954,7 +4986,7 @@ pub const Compiler = struct {
                 rest_idx = try lambda_env.bindSym(param_list);
                 try lambda_bindings.append(self.allocator, .{ .sym = param_list, .idx = rest_idx });
                 try appendLambdaShadowSym(self, &lambda_shadow_syms, param_list);
-                if (self.isSpecialBindingSym(param_list)) {
+                if (self.isSpecialBindingInEnv(&lambda_env, param_list)) {
                     try appendSpecialParam(self, &special_params, param_list, rest_name, rest_idx, .rest);
                 }
             } else {
@@ -5084,7 +5116,7 @@ pub const Compiler = struct {
             defer slots.deinit(self.allocator);
             for (lambda_bindings.items) |binding| {
                 if (!lambda_boxed.contains(binding.sym)) continue;
-                if (self.isSpecialBindingSym(binding.sym)) continue;
+                if (self.isSpecialBindingInEnv(&lambda_env, binding.sym)) continue;
                 var found = false;
                 for (slots.items) |slot_idx| {
                     if (slot_idx == binding.idx) {
@@ -5164,7 +5196,7 @@ pub const Compiler = struct {
                 if (type_sym_to_check) |type_sym| {
                     var var_ir = try self.builder.variable(param_name, 0, tp.idx);
                     if (tp.sym) |param_sym| {
-                        if (lambda_boxed.contains(param_sym) and !self.isSpecialBindingSym(param_sym)) {
+                        if (lambda_boxed.contains(param_sym) and !self.isSpecialBindingInEnv(&lambda_env, param_sym)) {
                             const box_ref = try self.allocator.create(Ir);
                             box_ref.* = .{ .box_ref = .{ .operand = var_ir } };
                             var_ir = box_ref;
@@ -6207,6 +6239,7 @@ pub const Compiler = struct {
             .bindings = VarMap.init(self.allocator),
             .fn_bindings = VarMap.init(self.allocator),
             .type_decls = TypeDeclMap.init(self.allocator),
+            .special_decls = SpecialSymSet.init(self.allocator),
             .parent = env,
             .depth = env.depth,
             .new_frame = false,
@@ -6307,6 +6340,12 @@ pub const Compiler = struct {
         return false;
     }
 
+    fn isSpecialBindingInEnv(self: *Compiler, env: *const Env, sym: Value) bool {
+        const live_sym = self.resolveForwardedValue(sym);
+        if (!live_sym.isSymbolLike()) return false;
+        return env.lookupSpecialDeclSym(live_sym) or self.isSpecialBindingSym(live_sym);
+    }
+
     fn buildIrList(self: *Compiler, items: []const *const Ir) !*Ir {
         var out = try self.builder.lit(Value.nil);
         var i = items.len;
@@ -6341,6 +6380,40 @@ pub const Compiler = struct {
                             if (var_val.isSymbol()) {
                                 try self.insertSpecialSym(out, self.allocator, var_val);
                             }
+                            vars = vars.toPtr(Cons).cdr;
+                        }
+                    }
+                }
+                specs = specs.toPtr(Cons).cdr;
+            }
+
+            forms = forms.toPtr(Cons).cdr;
+        }
+    }
+
+    fn seedLocalSpecialDecls(self: *Compiler, body_exprs: Value, env: *Env) !void {
+        const heap = self.heap orelse return;
+        const declare_sym = try heap.intern("declare");
+        const special_sym = try heap.intern("special");
+
+        var forms = body_exprs;
+        while (forms.isCons()) {
+            const form = forms.toPtr(Cons).car;
+            if (!form.isCons()) break;
+            const form_cons = form.toPtr(Cons);
+            if (!form_cons.car.eq(declare_sym)) break;
+
+            var specs = form_cons.cdr;
+            while (specs.isCons()) {
+                const spec = specs.toPtr(Cons).car;
+                if (spec.isCons()) {
+                    const spec_cons = spec.toPtr(Cons);
+                    if (spec_cons.car.eq(special_sym)) {
+                        var vars = spec_cons.cdr;
+                        while (vars.isCons()) {
+                            const var_val = vars.toPtr(Cons).car;
+                            if (!var_val.isSymbol()) return error.InvalidSyntax;
+                            try env.bindSpecialDeclSym(var_val);
                             vars = vars.toPtr(Cons).cdr;
                         }
                     }
@@ -7472,7 +7545,7 @@ pub const Compiler = struct {
         const var_sym = var_val.toPtr(Symbol);
         const local_name = var_sym.getName();
         // First check local environment
-        if (!self.isSpecialBindingSym(var_val)) {
+        if (!self.isSpecialBindingInEnv(env, var_val)) {
             if (env.lookupSym(var_val)) |binding| {
                 // If this variable is boxed, use box-set! instead
                 if (self.boxed_vars) |bv| {
@@ -7566,7 +7639,7 @@ pub const Compiler = struct {
                     const val_ir = try self.compile(value_expr, env);
 
                     // Check local environment
-                    if (!self.isSpecialBindingSym(exp_val)) {
+                    if (!self.isSpecialBindingInEnv(env, exp_val)) {
                         if (env.lookupSym(exp_val)) |binding| {
                             if (self.boxed_vars) |bv| {
                                 if (bv.contains(exp_val)) {
@@ -15550,7 +15623,18 @@ pub const Compiler = struct {
             try self.addSimpleDecls(spec_args, .ignorable);
         } else if (spec_name.eq(special_sym)) {
             // (special var1 var2 ...)
-            try self.addSimpleDecls(spec_args, .special);
+            if (env) |scope_env| {
+                var vars = spec_args;
+                while (vars.isCons()) {
+                    const cons = vars.toPtr(Cons);
+                    const var_val = cons.car;
+                    if (!var_val.isSymbol()) return error.InvalidSyntax;
+                    try scope_env.bindSpecialDeclSym(var_val);
+                    vars = cons.cdr;
+                }
+            } else {
+                try self.addSimpleDecls(spec_args, .special);
+            }
         } else if (spec_name.eq(dynamic_extent_sym)) {
             // (dynamic-extent var1 var2 ...)
             try self.addSimpleDecls(spec_args, .dynamic_extent);
