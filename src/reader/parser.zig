@@ -436,27 +436,11 @@ pub const Parser = struct {
         }
         self.advance(); // consume ')'
 
-        // Convert to floats - validate both parts are real numbers
-        const real = try toReal(real_val);
-        const imag = try toReal(imag_val);
-
         // CL reader canonicalizes #C(x 0) to x.
-        if (imag == 0.0) {
+        if (primitives.arith.numEq(imag_val, Value.makeFixnum(0))) {
             return real_val;
         }
-        return primitives.complex.makeComplex(self.heap, real, imag);
-    }
-
-    fn toReal(val: Value) Error!f64 {
-        return switch (val.typeKind()) {
-            .fixnum => @floatFromInt(val.toFixnum()),
-            .float => val.toFloat(),
-            .rational => blk: {
-                const rat = val.toPtr(objects.Rational);
-                break :blk @as(f64, @floatFromInt(rat.numerator)) / @as(f64, @floatFromInt(rat.denominator));
-            },
-            else => error.TypeMismatch,
-        };
+        return primitives.complex.makeComplex(self.heap, real_val, imag_val);
     }
 
     fn parseStruct(self: *Parser) Error!Value {
@@ -2522,8 +2506,8 @@ test "parse #C complex number" {
     const val1 = try parser1.parse();
     try testing.expect(val1.typeKind() == .complex);
     const c1 = val1.toPtr(objects.Complex);
-    try testing.expectApproxEqAbs(@as(f64, 3.0), c1.real, 0.0001);
-    try testing.expectApproxEqAbs(@as(f64, 4.0), c1.imag, 0.0001);
+    try testing.expectEqual(@as(i64, 3), c1.real.toFixnum());
+    try testing.expectEqual(@as(i64, 4), c1.imag.toFixnum());
 
     // #C(1.5 2.5) = 1.5+2.5i
     var parser2 = try Parser.init(testing.allocator, &heap, "#C(1.5 2.5)", &vm.builtins);
@@ -2531,8 +2515,8 @@ test "parse #C complex number" {
     const val2 = try parser2.parse();
     try testing.expect(val2.typeKind() == .complex);
     const c2 = val2.toPtr(objects.Complex);
-    try testing.expectApproxEqAbs(@as(f64, 1.5), c2.real, 0.0001);
-    try testing.expectApproxEqAbs(@as(f64, 2.5), c2.imag, 0.0001);
+    try testing.expectApproxEqAbs(@as(f64, 1.5), c2.real.toFloat(), 0.0001);
+    try testing.expectApproxEqAbs(@as(f64, 2.5), c2.imag.toFloat(), 0.0001);
 
     // #C(0 -1) = -i
     var parser3 = try Parser.init(testing.allocator, &heap, "#C(0 -1)", &vm.builtins);
@@ -2540,8 +2524,8 @@ test "parse #C complex number" {
     const val3 = try parser3.parse();
     try testing.expect(val3.typeKind() == .complex);
     const c3 = val3.toPtr(objects.Complex);
-    try testing.expectApproxEqAbs(@as(f64, 0.0), c3.real, 0.0001);
-    try testing.expectApproxEqAbs(@as(f64, -1.0), c3.imag, 0.0001);
+    try testing.expectEqual(@as(i64, 0), c3.real.toFixnum());
+    try testing.expectEqual(@as(i64, -1), c3.imag.toFixnum());
 
     // #C(1/2 1/3) = 0.5+0.333...i (rational parts)
     var parser4 = try Parser.init(testing.allocator, &heap, "#C(1/2 1/3)", &vm.builtins);
@@ -2549,8 +2533,12 @@ test "parse #C complex number" {
     const val4 = try parser4.parse();
     try testing.expect(val4.typeKind() == .complex);
     const c4 = val4.toPtr(objects.Complex);
-    try testing.expectApproxEqAbs(@as(f64, 0.5), c4.real, 0.0001);
-    try testing.expectApproxEqAbs(@as(f64, 0.3333), c4.imag, 0.0001);
+    try testing.expect(c4.real.isRational());
+    try testing.expect(c4.imag.isRational());
+    try testing.expectEqual(@as(i64, 1), c4.real.toPtr(objects.Rational).numerator);
+    try testing.expectEqual(@as(i64, 2), c4.real.toPtr(objects.Rational).denominator);
+    try testing.expectEqual(@as(i64, 1), c4.imag.toPtr(objects.Rational).numerator);
+    try testing.expectEqual(@as(i64, 3), c4.imag.toPtr(objects.Rational).denominator);
 
     // #C(1 0) canonicalizes to the real part.
     var parser5 = try Parser.init(testing.allocator, &heap, "#C(1 0)", &vm.builtins);
@@ -2565,8 +2553,8 @@ test "parse #C complex number" {
     const val6 = try parser6.parse();
     try testing.expect(val6.typeKind() == .complex);
     const c6 = val6.toPtr(objects.Complex);
-    try testing.expectApproxEqAbs(@as(f64, 1.0), c6.real, 0.0001);
-    try testing.expectApproxEqAbs(@as(f64, 1.0), c6.imag, 0.0001);
+    try testing.expectEqual(@as(i64, 1), c6.real.toFixnum());
+    try testing.expectEqual(@as(i64, 1), c6.imag.toFixnum());
 
     // #C("x" 1) is invalid
     var parser_bad = try Parser.init(testing.allocator, &heap, "#C(\"x\" 1)", &vm.builtins);

@@ -1999,9 +1999,10 @@ pub const GC = struct {
                         const old_ptr = @intFromPtr(obj.slots);
                         obj.slots = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
                     },
-                    .hashtable, .rational, .complex, .stream, .bignum, .pathname, .package, .readtable, .condition, .class, .slotdef, .generic_function, .method, .native_code, .macro_env => {
+                    .hashtable, .rational, .stream, .bignum, .pathname, .package, .readtable, .condition, .class, .slotdef, .generic_function, .method, .native_code, .macro_env => {
                         // No interior pointers to repair
                     },
+                    .complex => {},
                 }
             },
             .cons, .forwarding => {
@@ -2260,8 +2261,17 @@ pub const GC = struct {
                             }
                         }
                     },
-                    .rational, .complex, .bignum, .native_code => {
+                    .rational, .bignum, .native_code => {
                         // No Value references to scan
+                    },
+                    .complex => {
+                        const cplx: *objects.Complex = @ptrFromInt(addr);
+                        if (cplx.real.isPointer() and !cplx.real.isNil()) {
+                            cplx.real = try self.copyValue(heap, cplx.real, alloc_ptr);
+                        }
+                        if (cplx.imag.isPointer() and !cplx.imag.isNil()) {
+                            cplx.imag = try self.copyValue(heap, cplx.imag, alloc_ptr);
+                        }
                     },
                     .condition => {
                         // Scan condition Value references

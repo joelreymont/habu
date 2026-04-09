@@ -519,10 +519,9 @@ pub fn min_val(a: Value, b: Value) Error!Value {
 pub fn numEq(a: Value, b: Value) bool {
     // Complex comparison
     if (a.typeKind() == .complex or b.typeKind() == .complex) {
-        if (a.typeKind() != .complex or b.typeKind() != .complex) return false;
-        const ca = a.toPtr(objects.Complex);
-        const cb = b.toPtr(objects.Complex);
-        return ca.real == cb.real and ca.imag == cb.imag;
+        const ca = complexParts(a) orelse return false;
+        const cb = complexParts(b) orelse return false;
+        return numEq(ca.real, cb.real) and numEq(ca.imag, cb.imag);
     }
 
     // Float comparison (contagion)
@@ -932,7 +931,7 @@ test "comparisons" {
 // ============================================================================
 
 /// Helper: convert Value to f64
-fn toNumber(v: Value) Error!f64 {
+pub fn toNumber(v: Value) Error!f64 {
     return switch (v.typeKind()) {
         .float => v.toFloat(),
         .fixnum => @floatFromInt(v.toFixnum()),
@@ -992,7 +991,7 @@ pub fn sqrt_val(a: Value) Error!Value {
     if (af < 0) {
         const complex_mod = @import("complex.zig");
         const heap = if (@import("../runtime.zig").heapContext()) |val| val else return error.OutOfMemory;
-        return complex_mod.makeComplex(heap, 0.0, @sqrt(-af));
+        return complex_mod.makeComplex(heap, Value.makeFixnum(0), Value.makeFloat(@sqrt(-af)));
     }
     return Value.makeFloat(@sqrt(af));
 }
@@ -1418,57 +1417,58 @@ fn divRational(heap: *Heap, a: Value, b: Value) Error!Value {
 // ============================================================================
 
 /// Helper: convert Value to complex (real, imag)
-fn toComplex(v: Value) Error!struct { real: f64, imag: f64 } {
+fn complexParts(v: Value) ?struct { real: Value, imag: Value } {
     switch (v.typeKind()) {
         .complex => {
             const cplx = v.toPtr(objects.Complex);
             return .{ .real = cplx.real, .imag = cplx.imag };
         },
-        .float => return .{ .real = v.toFloat(), .imag = 0.0 },
-        .fixnum => return .{ .real = @floatFromInt(v.toFixnum()), .imag = 0.0 },
-        .rational => {
-            const rat = v.toPtr(objects.Rational);
-            const real: f64 = @as(f64, @floatFromInt(rat.numerator)) / @as(f64, @floatFromInt(rat.denominator));
-            return .{ .real = real, .imag = 0.0 };
-        },
-        else => return error.TypeMismatch,
+        .float, .fixnum, .rational, .bignum => return .{ .real = v, .imag = Value.makeFixnum(0) },
+        else => return null,
     }
 }
 
 /// Complex addition: supports mixed types
 fn addComplex(heap: *Heap, a: Value, b: Value) Error!Value {
-    const ca = try toComplex(a);
-    const cb = try toComplex(b);
-    return heap.allocComplex(ca.real + cb.real, ca.imag + cb.imag);
+    const ca = complexParts(a) orelse return error.TypeMismatch;
+    const cb = complexParts(b) orelse return error.TypeMismatch;
+    return heap.allocComplex(try add(heap, ca.real, cb.real), try add(heap, ca.imag, cb.imag));
 }
 
 /// Complex subtraction: supports mixed types
 fn subComplex(heap: *Heap, a: Value, b: Value) Error!Value {
-    const ca = try toComplex(a);
-    const cb = try toComplex(b);
-    return heap.allocComplex(ca.real - cb.real, ca.imag - cb.imag);
+    const ca = complexParts(a) orelse return error.TypeMismatch;
+    const cb = complexParts(b) orelse return error.TypeMismatch;
+    return heap.allocComplex(try sub(heap, ca.real, cb.real), try sub(heap, ca.imag, cb.imag));
 }
 
 /// Complex multiplication: supports mixed types
 fn mulComplex(heap: *Heap, a: Value, b: Value) Error!Value {
-    const ca = try toComplex(a);
-    const cb = try toComplex(b);
-    // (a + bi)(c + di) = (ac - bd) + (ad + bc)i
-    const real = ca.real * cb.real - ca.imag * cb.imag;
-    const imag = ca.real * cb.imag + ca.imag * cb.real;
-    return heap.allocComplex(real, imag);
+    const ca = complexParts(a) orelse return error.TypeMismatch;
+    const cb = complexParts(b) orelse return error.TypeMismatch;
+    const ac = try mul(heap, ca.real, cb.real);
+    const bd = try mul(heap, ca.imag, cb.imag);
+    const ad = try mul(heap, ca.real, cb.imag);
+    const bc = try mul(heap, ca.imag, cb.real);
+    return heap.allocComplex(try sub(heap, ac, bd), try add(heap, ad, bc));
 }
 
 /// Complex division: supports mixed types
 fn divComplex(heap: *Heap, a: Value, b: Value) Error!Value {
-    const ca = try toComplex(a);
-    const cb = try toComplex(b);
-    // (a + bi)/(c + di) = [(ac + bd) + (bc - ad)i] / (c² + d²)
-    const denom = cb.real * cb.real + cb.imag * cb.imag;
-    if (denom == 0.0) return error.DivisionByZero;
-    const real = (ca.real * cb.real + ca.imag * cb.imag) / denom;
-    const imag = (ca.imag * cb.real - ca.real * cb.imag) / denom;
-    return heap.allocComplex(real, imag);
+    const ca = complexParts(a) orelse return error.TypeMismatch;
+    const cb = complexParts(b) orelse return error.TypeMismatch;
+    const cc = try mul(heap, cb.real, cb.real);
+    const dd = try mul(heap, cb.imag, cb.imag);
+    const denom = try add(heap, cc, dd);
+    if (numEq(denom, Value.makeFixnum(0))) return error.DivisionByZero;
+    const ac = try mul(heap, ca.real, cb.real);
+    const bd = try mul(heap, ca.imag, cb.imag);
+    const bc = try mul(heap, ca.imag, cb.real);
+    const ad = try mul(heap, ca.real, cb.imag);
+    return heap.allocComplex(
+        try div(heap, try add(heap, ac, bd), denom),
+        try div(heap, try sub(heap, bc, ad), denom),
+    );
 }
 
 // ============================================================================

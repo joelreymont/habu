@@ -445,7 +445,7 @@ pub fn princValue(val: Value) !void {
     try w.flush();
 }
 
-fn princValueTo(val: Value, w: anytype, level: usize, stream: ?Value, hook: ?StructPrintHook) !void {
+fn princValueTo(val: Value, w: anytype, level: usize, stream: ?Value, hook: ?StructPrintHook) anyerror!void {
     if (print_level) |max_level| {
         if (level >= max_level) {
             try w.writeByte('#');
@@ -559,7 +559,11 @@ fn princValueTo(val: Value, w: anytype, level: usize, stream: ?Value, hook: ?Str
         },
         .complex => {
             const cplx = val.toPtr(objects.Complex);
-            try w.print("#C({d} {d})", .{ cplx.real, cplx.imag });
+            try w.writeAll("#C(");
+            try printValueTo(cplx.real, w, stream, hook);
+            try w.writeAll(" ");
+            try printValueTo(cplx.imag, w, stream, hook);
+            try w.writeAll(")");
         },
         .stream => {
             const stream_obj = val.toPtr(objects.Stream);
@@ -640,7 +644,7 @@ pub fn writeToString(heap: *heap_mod.Heap, val: Value) !Value {
     return try heap.allocBaseString(bytes);
 }
 
-fn printValueTo(val: Value, w: anytype, stream: ?Value, hook: ?StructPrintHook) !void {
+fn printValueTo(val: Value, w: anytype, stream: ?Value, hook: ?StructPrintHook) anyerror!void {
     if (print_readably or print_escape) {
         return printEscapedTo(val, w, 0, stream, hook);
     } else {
@@ -648,7 +652,7 @@ fn printValueTo(val: Value, w: anytype, stream: ?Value, hook: ?StructPrintHook) 
     }
 }
 
-fn printEscapedTo(val: Value, w: anytype, level: usize, stream: ?Value, hook: ?StructPrintHook) !void {
+fn printEscapedTo(val: Value, w: anytype, level: usize, stream: ?Value, hook: ?StructPrintHook) anyerror!void {
     if (!print_readably) {
         if (print_level) |max_level| {
             if (level >= max_level) {
@@ -783,7 +787,11 @@ fn printEscapedTo(val: Value, w: anytype, level: usize, stream: ?Value, hook: ?S
         },
         .complex => {
             const cplx = val.toPtr(objects.Complex);
-            try w.print("#C({d} {d})", .{ cplx.real, cplx.imag });
+            try w.writeAll("#C(");
+            try printValueTo(cplx.real, w, stream, hook);
+            try w.writeAll(" ");
+            try printValueTo(cplx.imag, w, stream, hook);
+            try w.writeAll(")");
         },
         .stream => {
             const stream_obj = val.toPtr(objects.Stream);

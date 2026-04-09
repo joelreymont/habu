@@ -529,45 +529,11 @@ pub const Rational = extern struct {
 /// Complex number (real + imag*i)
 pub const Complex = extern struct {
     kind: BoxedKind, // Must be first - discriminator
-    real: f64,
-    imag: f64,
+    real: Value,
+    imag: Value,
 
-    pub fn make(real: f64, imag: f64) Complex {
+    pub fn make(real: Value, imag: Value) Complex {
         return .{ .kind = .complex, .real = real, .imag = imag };
-    }
-
-    pub fn add(a: Complex, b: Complex) Complex {
-        return make(a.real + b.real, a.imag + b.imag);
-    }
-
-    pub fn sub(a: Complex, b: Complex) Complex {
-        return make(a.real - b.real, a.imag - b.imag);
-    }
-
-    pub fn mul(a: Complex, b: Complex) Complex {
-        // (a + bi)(c + di) = (ac - bd) + (ad + bc)i
-        return make(
-            a.real * b.real - a.imag * b.imag,
-            a.real * b.imag + a.imag * b.real,
-        );
-    }
-
-    pub fn div(a: Complex, b: Complex) Complex {
-        // (a + bi)/(c + di) = ((ac + bd) + (bc - ad)i) / (c² + d²)
-        const denom = b.real * b.real + b.imag * b.imag;
-        if (denom == 0) return make(0, 0);
-        return make(
-            (a.real * b.real + a.imag * b.imag) / denom,
-            (a.imag * b.real - a.real * b.imag) / denom,
-        );
-    }
-
-    pub fn abs(self: Complex) f64 {
-        return @sqrt(self.real * self.real + self.imag * self.imag);
-    }
-
-    pub fn conjugate(self: Complex) Complex {
-        return make(self.real, -self.imag);
     }
 };
 

@@ -743,7 +743,7 @@ fn jitSqrt(a_raw: u64) callconv(.c) u64 {
     const a = Value{ .raw = a_raw };
     const f = jitToFloat(a) orelse jitRelayError(error.TypeMismatch);
     if (f < 0) {
-        const cplx = jitRequireHeap().allocComplex(0.0, @sqrt(-f)) catch |err| jitRelayError(err);
+        const cplx = jitRequireHeap().allocComplex(Value.makeFixnum(0), Value.makeFloat(@sqrt(-f))) catch |err| jitRelayError(err);
         return cplx.raw;
     }
     return Value.makeFloat(@sqrt(f)).raw;

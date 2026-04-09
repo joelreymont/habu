@@ -7908,8 +7908,8 @@ test "ansi repro syntax.sharp-c.1 read-time complex helper" {
     const result = try repl.eval(src);
     try testing.expect(result.typeKind() == .complex);
     const cplx = result.toPtr(runtime.Complex);
-    try testing.expectApproxEqAbs(@as(f64, 1.0), cplx.real, 0.0001);
-    try testing.expectApproxEqAbs(@as(f64, 1.0), cplx.imag, 0.0001);
+    try testing.expectEqual(@as(i64, 1), cplx.real.toFixnum());
+    try testing.expectEqual(@as(i64, 1), cplx.imag.toFixnum());
 }
 
 test "ansi repro syntax.sharp-c.4 read-time complex helper rational part" {
@@ -7927,8 +7927,28 @@ test "ansi repro syntax.sharp-c.4 read-time complex helper rational part" {
     const result = try repl.eval(src);
     try testing.expect(result.typeKind() == .complex);
     const cplx = result.toPtr(runtime.Complex);
-    try testing.expectApproxEqAbs(@as(f64, -0.5), cplx.real, 0.0001);
-    try testing.expectApproxEqAbs(@as(f64, 1.0), cplx.imag, 0.0001);
+    try testing.expect(cplx.real.isRational());
+    try testing.expectEqual(@as(i64, -1), cplx.real.toPtr(runtime.Rational).numerator);
+    try testing.expectEqual(@as(i64, 2), cplx.real.toPtr(runtime.Rational).denominator);
+    try testing.expectEqual(@as(i64, 1), cplx.imag.toFixnum());
+}
+
+test "complex preserves exact parts" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try snap.expectEval(@src(), &repl,
+        \\(list (realpart (complex 1 2))
+        \\      (imagpart (complex 1 2))
+        \\      (write-to-string (complex 1/2 1/3)))
+    , "(1 2 \"#C(1/2 1/3)\")");
 }
 
 test "read-char-no-hang is bound and works on string streams" {

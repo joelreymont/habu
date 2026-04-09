@@ -474,22 +474,8 @@ fn floatEqualsRational(f: f64, rat: *const objects.Rational) bool {
 fn numberEqualp(a: Value, b: Value) bool {
     // Complex handling: compare as complex; complex with 0 imag equals real.
     if (a.typeKind() == .complex or b.typeKind() == .complex) {
-        if (a.typeKind() == .complex and b.typeKind() == .complex) {
-            const ca = a.toPtr(objects.Complex);
-            const cb = b.toPtr(objects.Complex);
-            return floatEql(ca.real, cb.real) and floatEql(ca.imag, cb.imag);
-        }
-        const c = if (a.typeKind() == .complex) a.toPtr(objects.Complex) else b.toPtr(objects.Complex);
-        const r = if (a.typeKind() == .complex) b else a;
-        if (!floatEql(c.imag, 0.0)) return false;
-        // Compare real part (float) to r.
-        return switch (r.typeKind()) {
-            .float => floatEql(c.real, r.toFloat()),
-            .fixnum => floatEqualsI64(c.real, r.toFixnum()),
-            .bignum => floatEqualsBignum(c.real, r.toPtr(objects.Bignum)),
-            .rational => floatEqualsRational(c.real, r.toPtr(objects.Rational)),
-            else => false,
-        };
+        const arith = @import("arith.zig");
+        return arith.numEq(a, b);
     }
 
     // Fast path: same raw value.
@@ -579,7 +565,7 @@ fn valueEql(a: Value, b: Value) bool {
         .complex => blk: {
             const ca = a.toPtr(objects.Complex);
             const cb = b.toPtr(objects.Complex);
-            break :blk floatEql(ca.real, cb.real) and floatEql(ca.imag, cb.imag);
+            break :blk valueEql(ca.real, cb.real) and valueEql(ca.imag, cb.imag);
         },
         else => false,
     };
@@ -816,10 +802,10 @@ fn hashNumberEqualp(val: Value) u64 {
         .float => hashFloatCanonical(val.toFloat()),
         .complex => blk: {
             const c = val.toPtr(objects.Complex);
-            if (floatEql(c.imag, 0.0)) break :blk hashFloatCanonical(c.real);
+            if (numberEqualp(c.imag, Value.makeFixnum(0))) break :blk hashNumberEqualp(c.real);
             var h: u64 = 0x6370_6C78_0000_0000; // "cplx"
-            h = hashMix(h, hashFloatCanonical(c.real));
-            h = hashMix(h, hashFloatCanonical(c.imag));
+            h = hashMix(h, hashNumberEqualp(c.real));
+            h = hashMix(h, hashNumberEqualp(c.imag));
             break :blk h;
         },
         else => hashValue(val),
@@ -946,8 +932,8 @@ pub fn hashValue(val: Value) u64 {
         .complex => blk: {
             const c = val.toPtr(objects.Complex);
             var h: u64 = 0;
-            h = h *% 31 +% normalizeFloatForHash(c.real);
-            h = h *% 31 +% normalizeFloatForHash(c.imag);
+            h = h *% 31 +% hashValue(c.real);
+            h = h *% 31 +% hashValue(c.imag);
             break :blk h;
         },
         .bignum => blk: {

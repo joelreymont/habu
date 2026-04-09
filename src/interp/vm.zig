@@ -7218,22 +7218,20 @@ pub const Vm = struct {
             .make_complex => {
                 const imag = try self.pop();
                 const real = try self.pop();
-                const real_f = try valToFloat(real);
-                const imag_f = try valToFloat(imag);
-                const cplx = try self.heap.allocComplex(real_f, imag_f);
+                const cplx = try primitives.complex.makeComplex(self.heap, real, imag);
                 try self.push(cplx);
             },
             .real_part => {
                 const val = try self.pop();
                 if (!val.isComplex()) return error.TypeMismatch;
                 const cplx = val.toPtr(runtime.Complex);
-                try self.push(Value.makeFloat(cplx.real));
+                try self.push(cplx.real);
             },
             .imag_part => {
                 const val = try self.pop();
                 if (!val.isComplex()) return error.TypeMismatch;
                 const cplx = val.toPtr(runtime.Complex);
-                try self.push(Value.makeFloat(cplx.imag));
+                try self.push(cplx.imag);
             },
 
             .numerator => {
@@ -8576,7 +8574,7 @@ pub const Vm = struct {
 
             .upgraded_complex_part_type => {
                 _ = try self.pop(); // typespec (ignored)
-                // Our complex numbers use double-float for both parts
+                // Our complex numbers preserve generic real-valued parts
                 try self.push(try self.heap.intern("real"));
             },
 
@@ -8774,7 +8772,8 @@ pub const Vm = struct {
                     .rational => val.toPtr(runtime.Rational).numerator == 0,
                     .complex => blk: {
                         const c = val.toPtr(runtime.Complex);
-                        break :blk c.real == 0.0 and c.imag == 0.0;
+                        break :blk primitives.arith.numEq(c.real, Value.makeFixnum(0)) and
+                            primitives.arith.numEq(c.imag, Value.makeFixnum(0));
                     },
                     else => return error.TypeMismatch,
                 };
@@ -8818,7 +8817,7 @@ pub const Vm = struct {
                 const val = try self.pop();
                 const f = try valToFloat(val);
                 if (f < 0) {
-                    const cplx = try self.heap.allocComplex(0.0, @sqrt(-f));
+                    const cplx = try primitives.complex.makeComplex(self.heap, Value.makeFixnum(0), Value.makeFloat(@sqrt(-f)));
                     try self.push(cplx);
                 } else {
                     try self.push(Value.makeFloat(@sqrt(f)));
@@ -11726,9 +11725,11 @@ pub const Vm = struct {
             },
             .complex => {
                 const cplx = val.toPtr(runtime.Complex);
-                var buf: [128]u8 = undefined;
-                const cplx_str = try std.fmt.bufPrint(&buf, "#C({d} {d})", .{ cplx.real, cplx.imag });
-                try result.appendSlice(self.allocator, cplx_str);
+                try result.appendSlice(self.allocator, "#C(");
+                try self.formatValueAesthetic(cplx.real, result);
+                try result.appendSlice(self.allocator, " ");
+                try self.formatValueAesthetic(cplx.imag, result);
+                try result.appendSlice(self.allocator, ")");
             },
             .stream => try result.appendSlice(self.allocator, "#<stream>"),
             .bignum => try result.appendSlice(self.allocator, "#<bignum>"),
@@ -14585,8 +14586,9 @@ test "vm make_complex" {
     const result = try vm.run(&chunk);
     try testing.expect(result.typeKind() == .complex);
     const cplx = result.toPtr(runtime.Complex);
-    try testing.expectApproxEqAbs(@as(f64, 1.5), cplx.real, 0.0001);
-    try testing.expectApproxEqAbs(@as(f64, 2.0), cplx.imag, 0.0001);
+    try testing.expect(cplx.real.isFloat());
+    try testing.expectApproxEqAbs(@as(f64, 1.5), cplx.real.toFloat(), 0.0001);
+    try testing.expectEqual(@as(i64, 2), cplx.imag.toFixnum());
 }
 
 test "vm sym_name" {

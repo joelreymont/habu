@@ -2283,7 +2283,7 @@ pub const Heap = struct {
     }
 
     /// Allocate a complex number
-    pub fn allocComplex(self: *Heap, real: f64, imag: f64) error{OutOfMemory}!Value {
+    pub fn allocComplex(self: *Heap, real: Value, imag: Value) error{OutOfMemory}!Value {
         const cplx = try self.alloc(objects.Complex);
         cplx.* = objects.Complex.make(real, imag);
         return Value.makeComplex(cplx);

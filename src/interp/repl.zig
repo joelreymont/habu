@@ -3734,7 +3734,11 @@ pub const Repl = struct {
             },
             .complex => {
                 const cplx = val.toPtr(runtime.Complex);
-                try writer.print("#C({d} {d})", .{ cplx.real, cplx.imag });
+                try writer.writeAll("#C(");
+                try self.printValue(cplx.real, writer);
+                try writer.writeAll(" ");
+                try self.printValue(cplx.imag, writer);
+                try writer.writeAll(")");
             },
             .stream => {
                 const stream = val.toPtr(runtime.Stream);
