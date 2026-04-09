@@ -76,7 +76,38 @@ pub fn writeFloatTo(f: f64, w: anytype) !void {
     return writeFloat(f, w);
 }
 
+const scientific_hi = 1.0e7;
+const scientific_lo = 1.0e-3;
+
+fn useScientificFloat(f: f64) bool {
+    if (std.math.isNan(f) or std.math.isInf(f)) return false;
+    const mag = @abs(f);
+    return mag != 0.0 and (mag >= scientific_hi or mag < scientific_lo);
+}
+
+fn writeScientificFloat(f: f64, w: anytype) !void {
+    var buf: [400]u8 = undefined;
+    const formatted = std.fmt.bufPrint(&buf, "{e}", .{f}) catch "0.0e0";
+    if (std.mem.indexOfScalar(u8, formatted, '.')) |_| {
+        try w.writeAll(formatted);
+        return;
+    }
+
+    const exp_idx = std.mem.indexOfAny(u8, formatted, "eE") orelse {
+        try w.writeAll(formatted);
+        return;
+    };
+    try w.writeAll(formatted[0..exp_idx]);
+    try w.writeAll(".0");
+    try w.writeAll(formatted[exp_idx..]);
+}
+
 fn writeFloat(f: f64, w: anytype) !void {
+    if (useScientificFloat(f)) {
+        try writeScientificFloat(f, w);
+        return;
+    }
+
     var buf: [400]u8 = undefined;
     const formatted = std.fmt.bufPrint(&buf, "{d}", .{f}) catch blk: {
         // Fall back to scientific notation for very large values

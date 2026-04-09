@@ -14,6 +14,14 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ## Session Notes (2026-04-08)
 
+## Session Notes (2026-04-09)
+
+### Worked Well
+- Generic float printing needs `%g`-style magnitude cutover, not plain fixed-point with an overflow fallback. `src/runtime/primitives/io.zig:75-120` was only switching to `{e}` when `{d}` ran out of buffer space, so canonical Maxima forms like `string(2e7)`, `string(1/1024.0)`, and `parse_string(string(most_positive_float))` used long fixed-point spellings that either failed `rtest6` string expectations or stopped round-tripping through the reader. Cutting finite float output over to scientific notation for magnitudes `>= 1e7` or `< 1e-3`, while forcing a decimal point into integer mantissas like `2e7 -> 2.0e7`, removed the whole `rtest6` `42/43/44/45` cluster and moved canonical residue to the remaining real semantic failures `2, 6, 20, 39, 47`.
+
+### Did Not Work
+- The `mprogn` suspicion was a false lead. The line-163 shape `(string(...), %% = ... or %% ...)` returns the string itself when all comparisons fail, so seeing `"20000000.0"` as the final value did not prove sequence execution was broken; it proved the scientific-format comparisons were false. Re-ground on the exact failing source form before chasing Maxima control-flow machinery.
+
 ### Worked Well
 - Sequence `length` must honor vector fill pointers, not raw capacity. `src/interp/vm.zig:4465-4491` was returning `vec.length` for the lowered `length` primitive, which is correct for simple vectors but wrong for fill-pointer vectors and Maxima string buffers. The minimal repro was `(copy-seq (let ((buf (make-array 50 :element-type #.(array-element-type "a") :fill-pointer 0 :adjustable t))) (vector-push-extend #\\+ buf) buf))`, which crashed because `copy-seq` used `length => 50` and then `char` faulted on the uninitialized tail. Switching the primitive to `vec.getFillPointer() orelse vec.length` fixes the root cause generically and moves canonical `tools/maxima-rtest.lisp rtest6` from the old front-door parser break to the later real semantic diffs at problems `2, 6, 20, 39, 42, 43, 44, 45, 47`.
 - `defmethod` helper globals must encode the full specializer vector, not just the first specializer. `src/compiler/compile.zig:2529-2554,14063-14067` now builds a collision-free key across every specializer when naming the synthesized method closure globals. The direct proof is `src/tests/integration.zig:5928-5946`, where `(NUMBER NUMBER)` and `(NUMBER CONS)` methods on the same generic now dispatch independently. The workload proof is `BIGFLOAT::TWO-ARG-/`: after the Maxima prefix load, `(method-function ...)` for the `(NUMBER NUMBER)` method still returned `1/2`, but the generic call failed until the helper-name collision was removed. With the fix, generic `(bigfloat::two-arg-/ 1 2)` returns `1/2` and canonical `tools/maxima-rtest.lisp rtest6` moves past the old dirty-loader gate.

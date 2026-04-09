@@ -5122,6 +5122,32 @@ test "format ~F ~E ~G floating directives" {
         (std.mem.indexOf(u8, try snap.asString(general), "E") != null));
 }
 
+test "write-to-string uses scientific notation for readback-sized floats" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    try snap.expectEval(
+        @src(),
+        &repl,
+        \\(list
+        \\  (write-to-string 25.0)
+        \\  (write-to-string 2e7)
+        \\  (write-to-string 2e-7)
+        \\  (write-to-string 12345000000.0)
+        \\  (write-to-string (/ 1.0 1024.0))
+        \\  (write-to-string 1.7976931348623157e308))
+    ,
+        \\("25.0" "2.0e7" "2.0e-7" "1.2345e10" "9.765625e-4" "1.7976931348623143e308")
+    );
+}
+
 test "format ~P plural and ~[ conditional directives" {
     const allocator = testing.allocator;
 

@@ -370,3 +370,51 @@ test "rtest6 test-batch sink behavior stays inside handler-case" {
     try testing.expectEqual(@as(i64, 1), str_ok);
     try testing.expectEqual(@as(i64, 1), t_ok);
 }
+
+test "rtest6 scientific float strings round-trip through maxima forms" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const out = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    (flet ((okp (src)
+        \\             (let* ((form (with-input-from-string (s src)
+        \\                            (maxima::mread s 'maxima::$eof)))
+        \\                    (val (maxima::meval form)))
+        \\               (if (eq val 'maxima::$true) 1 0))))
+        \\      (list fail
+        \\            (okp "(string(2e7), %% = \"2.0e+7\" or %% = \"2.0E+7\" or %% = \"2.0e7\" or %% = \"2.0E7\" or %%);")
+        \\            (okp "(string(2e-7), %% = \"2.0e-7\" or %% = \"2.0E-7\" or %%);")
+        \\            (okp "(string(12345000000.0), %% = \"1.2345e+10\" or %% = \"1.2345E+10\" or %% = \"1.2345e10\" or %% = \"1.2345E10\" or %%);")
+        \\            (okp "(string(1/1024.0), %% = \"9.765625e-4\" or %% = \"9.765625E-4\" or %%);")
+        \\            (okp "is(parse_string(string(most_positive_float)) = most_positive_float);")))))
+    );
+
+    const fail = try consFixnumAt(out, 0);
+    const s1 = try consFixnumAt(out, 1);
+    const s2 = try consFixnumAt(out, 2);
+    const s3 = try consFixnumAt(out, 3);
+    const s4 = try consFixnumAt(out, 4);
+    const roundtrip = try consFixnumAt(out, 5);
+
+    try testing.expectEqual(@as(i64, 0), fail);
+    try testing.expectEqual(@as(i64, 1), s1);
+    try testing.expectEqual(@as(i64, 1), s2);
+    try testing.expectEqual(@as(i64, 1), s3);
+    try testing.expectEqual(@as(i64, 1), s4);
+    try testing.expectEqual(@as(i64, 1), roundtrip);
+}
