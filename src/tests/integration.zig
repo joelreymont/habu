@@ -12243,6 +12243,27 @@ test "progv supports deep dynamic nesting" {
     try testing.expect(out.isT());
 }
 
+test "progv restores dynamic binding across return-from" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try snap.expectEval(@src(), &repl,
+        \\(progn
+        \\  (defvar *progv-return-probe* 10)
+        \\  (list
+        \\    (block out
+        \\      (progv '(*progv-return-probe*) '(nil)
+        \\        (return-from out :ok)))
+        \\    *progv-return-probe*))
+    , "(:OK 10)");
+}
+
 test "symbol value cells handle uninterned and fresh interned symbols" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });

@@ -28,13 +28,6 @@ pub const Error = error{
     InvalidBytecode,
 };
 
-/// Block info for tracking named exits
-const BlockInfo = struct {
-    name: Value,
-    /// Pending jump locations to patch when block ends
-    pending_exits: std.ArrayList(usize),
-};
-
 /// Pending go jump entry
 const PendingGoJump = struct {
     tag_idx: usize,
@@ -50,6 +43,9 @@ const ControlEntry = union(enum) {
     unwind_protect: struct {
         cleanup: *const Ir,
     },
+    progv_scope,
+    catch_scope,
+    restart_scope,
     tagbody: struct {
         /// Tag names
         tags: []const Value,
@@ -171,6 +167,7 @@ pub const Emitter = struct {
             switch (entry.*) {
                 .block => |*b| b.pending_exits.deinit(self.allocator),
                 .unwind_protect => {},
+                .progv_scope, .catch_scope, .restart_scope => {},
                 .tagbody => |*tb| {
                     self.allocator.free(tb.tag_offsets);
                     tb.pending_jumps.deinit(self.allocator);
@@ -1981,8 +1978,7 @@ pub const Emitter = struct {
         // Emit body
         try self.emit(b.body);
 
-        // Emit pop_block for normal exit. Compile-time return-from jumps should
-        // land on this instruction so the block stack is popped in normal control flow.
+        // Emit pop_block for normal exit.
         const pop_block_loc = self.currentOffset();
         try self.emitOp(.pop_block);
 
@@ -1993,16 +1989,16 @@ pub const Emitter = struct {
         self.code.items[exit_offset_loc] = @truncate(@as(u16, @bitCast(offset)));
         self.code.items[exit_offset_loc + 1] = @truncate(@as(u16, @bitCast(offset)) >> 8);
 
-        // Pop block from control stack and patch any compile-time exits (for same-chunk return-from)
+        // Pop block from control stack and patch any compile-time exits.
         var popped = self.control_stack.pop().?;
         switch (popped) {
             .block => |*blk| {
                 for (blk.pending_exits.items) |jump_loc| {
-                    try self.patchJumpToOffset(jump_loc, pop_block_loc);
+                    try self.patchJumpTo(jump_loc, pop_block_loc);
                 }
                 blk.pending_exits.deinit(self.allocator);
             },
-            .unwind_protect, .tagbody => unreachable,
+            .unwind_protect, .progv_scope, .catch_scope, .restart_scope, .tagbody => unreachable,
         }
     }
 
@@ -2011,45 +2007,25 @@ pub const Emitter = struct {
         try self.emit(r.value);
         const return_name = self.resolveForwardedValue(r.name);
 
-        // Check if block is in current chunk with NO intervening unwind-protect
-        // If there's an unwind_protect between us and the block, we must use runtime
-        // return_from so the VM can properly handle cleanup (which may contain
-        // additional non-local exits)
         var i = self.control_stack.items.len;
         while (i > 0) {
             i -= 1;
             switch (self.control_stack.items[i]) {
                 .block => |*blk| {
                     if (self.resolveForwardedValue(blk.name).raw == return_name.raw) {
-                        // Found target block in same chunk with no unwind-protect between
-                        // Use compile-time jump
                         const jump_loc = try self.emitJump(.jmp);
                         try blk.pending_exits.append(self.allocator, jump_loc);
                         return;
                     }
-                    // Not our target block, keep searching
                 },
-                .unwind_protect => {
-                    // Crossing an unwind-protect - must use runtime return_from
-                    // The VM will run cleanup code properly (which may itself
-                    // contain non-local exits that replace the original return)
-                    break;
-                },
-                .tagbody => {
-                    // Crossing a tagbody - no cleanup, just continue
-                },
+                .unwind_protect, .progv_scope, .catch_scope, .restart_scope => break,
+                .tagbody => {},
             }
         }
 
-        // Block not in current chunk or crosses unwind-protect
-        // Emit runtime return_from opcode for proper cleanup handling
         const name_idx = try self.addValueConstant(return_name);
         try self.emitOp(.return_from);
         try self.emitU16(name_idx);
-    }
-
-    fn patchJumpToOffset(self: *Emitter, jump_loc: usize, target_offset: usize) Error!void {
-        try self.patchJumpTo(jump_loc, target_offset);
     }
 
     fn emitUnwindProtect(self: *Emitter, u: anytype) Error!void {
@@ -2097,8 +2073,12 @@ pub const Emitter = struct {
         // push_catch pops tag and saves catch frame
         const catch_jump = try self.emitJump(.push_catch);
 
+        try self.control_stack.append(self.allocator, .catch_scope);
+
         // Emit body
         try self.emit(c.body);
+
+        _ = self.control_stack.pop();
 
         // Normal exit: pop catch frame
         try self.emitOp(.pop_catch);
@@ -2123,12 +2103,21 @@ pub const Emitter = struct {
 
         // Push progv frame (pops symbols and values, establishes bindings)
         try self.emitOp(.push_progv);
+        try self.control_stack.append(self.allocator, .progv_scope);
+
+        // PROGV bindings must be restored on non-local exits too, not only on
+        // lexical fallthrough. Lower it like a tiny unwind-protect whose
+        // cleanup only restores the dynamic bindings.
+        const unwind_jump = try self.emitJump(.push_unwind);
 
         // Emit body
         try self.emit(p.body);
 
-        // Pop progv frame (restore previous bindings)
+        _ = self.control_stack.pop();
+        try self.patchJump(unwind_jump);
         try self.emitOp(.pop_progv);
+        try self.emitOp(.pop_unwind);
+        try self.code.appendSlice(self.allocator, &[_]u8{ 0, 0 });
     }
 
     fn emitHandlerCase(self: *Emitter, hc: anytype) Error!void {
@@ -2141,8 +2130,12 @@ pub const Emitter = struct {
         // Emit push_catch with forward jump to handler
         const catch_jump = try self.emitJump(.push_catch);
 
+        try self.control_stack.append(self.allocator, .catch_scope);
+
         // Emit protected body
         try self.emit(hc.body);
+
+        _ = self.control_stack.pop();
 
         // Normal exit: pop catch frame
         try self.emitOp(.pop_catch);
@@ -2239,8 +2232,12 @@ pub const Emitter = struct {
             try self.emitI16(0); // Placeholder offset to handler
         }
 
+        try self.control_stack.append(self.allocator, .restart_scope);
+
         // Emit body
         try self.emit(rc.body);
+
+        _ = self.control_stack.pop();
 
         // Pop all restarts on normal exit
         try self.emitOp(.pop_restarts);
@@ -2450,6 +2447,9 @@ pub const Emitter = struct {
                     },
                     .block => |blk| std.debug.print("  stack[{d}]=block name=0x{x}\n", .{ idx, blk.name.raw }),
                     .unwind_protect => std.debug.print("  stack[{d}]=unwind-protect\n", .{idx}),
+                    .progv_scope => std.debug.print("  stack[{d}]=progv\n", .{idx}),
+                    .catch_scope => std.debug.print("  stack[{d}]=catch\n", .{idx}),
+                    .restart_scope => std.debug.print("  stack[{d}]=restart\n", .{idx}),
                 }
             }
         }

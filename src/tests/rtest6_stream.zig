@@ -1061,3 +1061,113 @@ test "rtest6 canonical runner exact main script path repro with allocated argv" 
     try testing.expect(std.mem.indexOf(u8, out, "[HABU-RTEST] file=") != null);
     try testing.expect(std.mem.indexOf(u8, out, "canonical test-batch failed") == null);
 }
+
+test "rtest6 problem 2 direct script_run path returns beta" {
+    try ensureMaximaSources();
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "p2-direct.lisp",
+        .data =
+            \\(load "lib/maxima-loader.lisp")
+            \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+            \\  (declare (ignore ok total fail))
+            \\  (let ((*package* (find-package :maxima)))
+            \\    (load "lib/maxima-post-load.lisp")
+            \\    (with-input-from-string (s "integrate(x^(5/4)/(x+1)^(5/2),x,0,inf);")
+            \\      (let* ((form (maxima::mread s 'maxima::$eof))
+            \\             (res (maxima::meval* (list (list 'maxima::$errcatch) (third form))))
+            \\             (val (if (maxima::$emptyp res) 'error-catch (second res))))
+            \\        (format t "VAL ~S~%" val)))))
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const script_abs = try std.fs.path.join(allocator, &.{ base, "p2-direct.lisp" });
+    defer allocator.free(script_abs);
+
+    var buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try script_run.run(
+        allocator,
+        256 * 1024 * 1024,
+        &.{ "./zig-out/bin/habu", script_abs },
+        stream.writer(),
+    );
+
+    const out = stream.getWritten();
+    try testing.expect(std.mem.indexOf(u8, out, "ERROR-CATCH") == null);
+    try testing.expect(std.mem.indexOf(u8, out, "BETA") != null);
+}
+
+test "rtest6 problem 2 direct script_run path returns beta on spawned thread" {
+    const Ctx = struct {
+        err: ?anyerror = null,
+
+        fn run(self: *@This()) void {
+            self.runInner() catch |err| {
+                self.err = err;
+            };
+        }
+
+        fn runInner(self: *@This()) !void {
+            _ = self;
+            try ensureMaximaSources();
+
+            var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+            defer _ = gpa.deinit();
+            const allocator = gpa.allocator();
+
+            var tmp = testing.tmpDir(.{});
+            defer tmp.cleanup();
+
+            try tmp.dir.writeFile(.{
+                .sub_path = "p2-direct-thread.lisp",
+                .data =
+                    \\(load "lib/maxima-loader.lisp")
+                    \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+                    \\  (declare (ignore ok total fail))
+                    \\  (let ((*package* (find-package :maxima)))
+                    \\    (load "lib/maxima-post-load.lisp")
+                    \\    (with-input-from-string (s "integrate(x^(5/4)/(x+1)^(5/2),x,0,inf);")
+                    \\      (let* ((form (maxima::mread s 'maxima::$eof))
+                    \\             (res (maxima::meval* (list (list 'maxima::$errcatch) (third form))))
+                    \\             (val (if (maxima::$emptyp res) 'error-catch (second res))))
+                    \\        (format t "VAL ~S~%" val)))))
+                    \\
+                ,
+            });
+
+            const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+            defer allocator.free(base);
+            const script_abs = try std.fs.path.join(allocator, &.{ base, "p2-direct-thread.lisp" });
+            defer allocator.free(script_abs);
+
+            var buf: [4096]u8 = undefined;
+            var stream = std.io.fixedBufferStream(&buf);
+            try script_run.run(
+                allocator,
+                256 * 1024 * 1024,
+                &.{ "./zig-out/bin/habu", script_abs },
+                stream.writer(),
+            );
+
+            const out = stream.getWritten();
+            try testing.expect(std.mem.indexOf(u8, out, "ERROR-CATCH") == null);
+            try testing.expect(std.mem.indexOf(u8, out, "BETA") != null);
+        }
+    };
+
+    var ctx = Ctx{};
+    const thread = try std.Thread.spawn(.{ .stack_size = 512 * 1024 * 1024 }, Ctx.run, .{&ctx});
+    thread.join();
+    if (ctx.err) |err| return err;
+}
