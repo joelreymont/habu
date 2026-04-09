@@ -784,6 +784,16 @@
       (%set-adjustable v t))
     v))
 
+(defun %make-array-1d-with-et (size init-elem fill-pointer-val adjustable-val element-type)
+  (if (%character-array-typespec-p element-type)
+      (let ((init (if init-elem init-elem #\Space)))
+        (if (or fill-pointer-val adjustable-val)
+            (%make-char-vector-with-fp size init fill-pointer-val adjustable-val)
+            (%make-char-vector size init)))
+      (if (or fill-pointer-val adjustable-val)
+          (%make-vector-with-fp size init-elem fill-pointer-val adjustable-val)
+          (make-array size :initial-element init-elem))))
+
 ; fill-pointer - get fill pointer
 (defun fill-pointer (vector)
   (let ((fp (%fill-pointer vector)))

@@ -19247,6 +19247,12 @@ pub const Compiler = struct {
         var fill_pointer_ir: ?*const Ir = null;
         var has_fill_pointer = false;
         var adjustable_ir: ?*const Ir = null;
+        var init_form = Value.nil;
+        var has_init_form = false;
+        var fill_pointer_form = Value.nil;
+        var adjustable_form = Value.nil;
+        var element_type_form = Value.nil;
+        var has_element_type = false;
         var wants_character_vector = false;
         var rest = cons1.cdr;
         while (rest.isCons()) {
@@ -19268,10 +19274,14 @@ pub const Compiler = struct {
                     initial_contents = val;
                 } else if (kw_raw == b4.kw_fill_pointer.raw) {
                     has_fill_pointer = true;
+                    fill_pointer_form = val;
                     fill_pointer_ir = try self.compile(val, env);
                 } else if (kw_raw == b4.kw_adjustable.raw) {
+                    adjustable_form = val;
                     adjustable_ir = try self.compile(val, env);
                 } else if (kw_raw == b4.kw_element_type.raw) {
+                    has_element_type = true;
+                    element_type_form = val;
                     var elem_ty = val;
                     if (elem_ty.isCons()) {
                         const quote_cons = elem_ty.toPtr(Cons);
@@ -19286,11 +19296,15 @@ pub const Compiler = struct {
                             std.mem.eql(u8, name, "BASE-CHAR");
                     }
                 } else {
+                    has_init_form = true;
+                    init_form = val;
                     init_ir = try self.compile(val, env);
                 }
                 rest = next_rest_kw;
             } else {
                 // Non-keyword arg is the initial element (legacy support)
+                has_init_form = true;
+                init_form = kv_cons.car;
                 init_ir = try self.compile(kv_cons.car, env);
                 rest = next_rest_non_kw;
             }
@@ -19307,10 +19321,32 @@ pub const Compiler = struct {
             return self.compile(form, env);
         }
 
+        const is_1d = if (static_dimensions) |sd| sd.len == 1 else dynamic_dimensions != null;
+
+        if (has_element_type and is_1d and !wants_character_vector) {
+            const h = self.heap orelse return error.InvalidSyntax;
+            const helper_sym = try h.intern("%make-array-1d-with-et");
+            const dim_expr = cons1.car;
+            const init_expr = if (has_init_form) init_form else Value.nil;
+            const form = try h.allocCons(
+                helper_sym,
+                try h.allocCons(
+                    dim_expr,
+                    try h.allocCons(
+                        init_expr,
+                        try h.allocCons(
+                            fill_pointer_form,
+                            try h.allocCons(adjustable_form, try h.allocCons(element_type_form, Value.nil)),
+                        ),
+                    ),
+                ),
+            );
+            return self.compile(form, env);
+        }
+
         // Rank-1 character arrays need vector semantics plus string semantics.
         // Build them through stdlib helpers so the runtime constructor stays generic.
         if (wants_character_vector) {
-            const is_1d = if (static_dimensions) |sd| sd.len == 1 else dynamic_dimensions != null;
             if (!is_1d) return error.InvalidSyntax;
             const h = self.heap orelse return error.InvalidSyntax;
             const helper_name = if (has_fill_pointer or adjustable_ir != null)
@@ -19319,34 +19355,9 @@ pub const Compiler = struct {
                 "%make-char-vector";
             const helper_sym = try h.intern(helper_name);
             const dim_expr = cons1.car;
-            var init_expr: Value = Value.makeCharacter(' ');
-            var fp_expr: Value = Value.nil;
-            var adj_expr: Value = Value.nil;
-            var kw_rest = cons1.cdr;
-            while (kw_rest.isCons()) {
-                kw_rest = self.resolveForwardedValue(kw_rest);
-                const kw_cons = kw_rest.toPtr(Cons);
-                if (kw_cons.car.isKeyword()) {
-                    if (!kw_cons.cdr.isCons()) break;
-                    const kw_val_cons = kw_cons.cdr.toPtr(Cons);
-                    const kw_val = self.resolveForwardedValue(kw_val_cons.car);
-                    const b5 = self.builtins orelse return error.UninitializedBuiltins;
-                    const kw_r = kw_cons.car.raw;
-                    if (kw_r == b5.@"kw_initial-element".raw) {
-                        init_expr = kw_val;
-                    } else if (kw_r == b5.kw_fill_pointer.raw) {
-                        fp_expr = kw_val;
-                    } else if (kw_r == b5.kw_adjustable.raw) {
-                        adj_expr = kw_val;
-                    }
-                    kw_rest = self.resolveForwardedValue(kw_val_cons.cdr);
-                } else {
-                    init_expr = kw_cons.car;
-                    kw_rest = self.resolveForwardedValue(kw_cons.cdr);
-                }
-            }
+            const init_expr = if (has_init_form) init_form else Value.makeCharacter(' ');
             const helper_args = if (has_fill_pointer or adjustable_ir != null)
-                try h.allocCons(dim_expr, try h.allocCons(init_expr, try h.allocCons(fp_expr, try h.allocCons(adj_expr, Value.nil))))
+                try h.allocCons(dim_expr, try h.allocCons(init_expr, try h.allocCons(fill_pointer_form, try h.allocCons(adjustable_form, Value.nil))))
             else
                 try h.allocCons(dim_expr, try h.allocCons(init_expr, Value.nil));
             const form = try h.allocCons(helper_sym, helper_args);
@@ -19358,7 +19369,6 @@ pub const Compiler = struct {
         // operate on Vector objects, not Array objects.
         if (has_fill_pointer) {
             // Must be 1D
-            const is_1d = if (static_dimensions) |sd| sd.len == 1 else dynamic_dimensions != null;
             if (is_1d) {
                 // Build Lisp form: (%make-vector-with-fp dim-expr init-expr fp-expr adj-expr)
                 // and compile it. We need the raw source expressions, which we extract
@@ -19367,36 +19377,17 @@ pub const Compiler = struct {
                 const helper_sym = try h.intern("%make-vector-with-fp");
                 // dim-expr is the first argument
                 const dim_expr = cons1.car;
-                // Find raw keyword values by re-walking
-                var init_expr: Value = Value.nil;
-                var fp_expr: Value = Value.nil;
-                var adj_expr: Value = Value.nil;
-                var kw_rest = cons1.cdr;
-                while (kw_rest.isCons()) {
-                    kw_rest = self.resolveForwardedValue(kw_rest);
-                    const kw_cons = kw_rest.toPtr(Cons);
-                    if (kw_cons.car.isKeyword()) {
-                        if (!kw_cons.cdr.isCons()) break;
-                        const kw_val_cons = kw_cons.cdr.toPtr(Cons);
-                        const kw_val = self.resolveForwardedValue(kw_val_cons.car);
-                        const b5 = self.builtins orelse return error.UninitializedBuiltins;
-                        const kw_r = kw_cons.car.raw;
-                        if (kw_r == b5.@"kw_initial-element".raw) {
-                            init_expr = kw_val;
-                        } else if (kw_r == b5.kw_fill_pointer.raw) {
-                            fp_expr = kw_val;
-                        } else if (kw_r == b5.kw_adjustable.raw) {
-                            adj_expr = kw_val;
-                        }
-                        kw_rest = self.resolveForwardedValue(kw_val_cons.cdr);
-                    } else {
-                        // Non-keyword = initial element (legacy)
-                        init_expr = kw_cons.car;
-                        kw_rest = self.resolveForwardedValue(kw_cons.cdr);
-                    }
-                }
                 // Build: (%make-vector-with-fp dim init fp adj)
-                const form = try h.allocCons(helper_sym, try h.allocCons(dim_expr, try h.allocCons(init_expr, try h.allocCons(fp_expr, try h.allocCons(adj_expr, Value.nil)))));
+                const form = try h.allocCons(
+                    helper_sym,
+                    try h.allocCons(
+                        dim_expr,
+                        try h.allocCons(
+                            if (has_init_form) init_form else Value.nil,
+                            try h.allocCons(fill_pointer_form, try h.allocCons(adjustable_form, Value.nil)),
+                        ),
+                    ),
+                );
                 return self.compile(form, env);
             }
         }

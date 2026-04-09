@@ -6688,3 +6688,24 @@ test "make-array character buffer stays string-like" {
     );
     try testing.expect(!designators.isNil());
 }
+
+test "make-array fixed character vectors retain full length" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try repl.loadFile("lib/stdlib.habu", std.io.null_writer);
+
+    const fixed = try repl.eval(
+        "(let ((x (make-array 3 :element-type 'character :initial-element #\\0)))" ++
+            " (setf (char x 0) #\\A)" ++
+            " (and (stringp x) (vectorp x) (arrayp x) (equal x \"A00\") (eql 3 (length x))))",
+    );
+    try testing.expect(!fixed.isNil());
+}

@@ -2592,7 +2592,7 @@ pub const Heap = struct {
             .length = length,
             .capacity = capacity,
             .data = data_ptr,
-            .fill_pointer = 0xFFFFFFFFFFFFFFFF, // no fill-pointer by default
+            .fill_pointer = 0x3FFFFFFFFFFFFFFF, // no fill-pointer by default
         };
 
         if (use_los) {
