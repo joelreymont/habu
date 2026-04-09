@@ -45,15 +45,10 @@ fn mainInner() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Print banner
     const stdout = fs.File.stdout();
     var buf: [4096]u8 = undefined;
     var stdout_writer = stdout.writer(&buf);
     const writer = &stdout_writer.interface;
-
-    try writer.print("🐍 Habu Lisp v0.1.0\n", .{});
-    try writer.print("Type expressions to evaluate, :h for help, :q to quit\n\n", .{});
-    try writer.flush();
 
     // Script entrypoint semantics: first CLI arg is the script path, remaining
     // args are exposed to Lisp instead of being treated as extra files.
@@ -71,6 +66,11 @@ fn mainInner() !void {
         try writer.flush();
         return;
     }
+
+    // Print banner for interactive mode only.
+    try writer.print("🐍 Habu Lisp v0.1.0\n", .{});
+    try writer.print("Type expressions to evaluate, :h for help, :q to quit\n\n", .{});
+    try writer.flush();
 
     // Initialize heap (256MB default, overridable via HABU_HEAP_MB)
     var heap = try Heap.init(allocator, .{ .total_size = resolveHeapSize() });

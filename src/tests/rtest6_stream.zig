@@ -917,3 +917,147 @@ test "rtest6 canonical runner exact main script path repro" {
     try testing.expect(std.mem.indexOf(u8, out, "[HABU-RTEST] file=") != null);
     try testing.expect(std.mem.indexOf(u8, out, "canonical test-batch failed") == null);
 }
+
+test "rtest6 canonical runner exact main script path repro on spawned thread" {
+    const Ctx = struct {
+        err: ?anyerror = null,
+
+        fn run(self: *@This()) void {
+            self.runInner() catch |err| {
+                self.err = err;
+            };
+        }
+
+        fn runInner(self: *@This()) !void {
+            _ = self;
+            try ensureMaximaSources();
+
+            var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+            defer _ = gpa.deinit();
+            const allocator = gpa.allocator();
+
+            var buf: [4096]u8 = undefined;
+            var stream = std.io.fixedBufferStream(&buf);
+            try script_run.run(
+                allocator,
+                256 * 1024 * 1024,
+                &.{ "habu", "tools/maxima-rtest.lisp", "rtest6" },
+                stream.writer(),
+            );
+
+            const out = stream.getWritten();
+            try testing.expect(std.mem.indexOf(u8, out, "[HABU-RTEST] file=") != null);
+            try testing.expect(std.mem.indexOf(u8, out, "canonical test-batch failed") == null);
+        }
+    };
+
+    var ctx = Ctx{};
+    const thread = try std.Thread.spawn(.{ .stack_size = 512 * 1024 * 1024 }, Ctx.run, .{&ctx});
+    thread.join();
+    if (ctx.err) |err| return err;
+}
+
+test "rtest6 canonical runner full main script mode repro" {
+    try ensureMaximaSources();
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var outer_heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer outer_heap.deinit();
+
+    var outer_repl: Repl = undefined;
+    try outer_repl.init(allocator, &outer_heap, .{});
+    defer outer_repl.deinit();
+    try outer_repl.wireGlobalEnv();
+
+    var outer_buf: [4096]u8 = undefined;
+    var outer_stream = std.io.fixedBufferStream(&outer_buf);
+    try outer_repl.loadFile("lib/stdlib.habu", outer_stream.writer());
+
+    var buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try script_run.run(
+        allocator,
+        256 * 1024 * 1024,
+        &.{ "habu", "tools/maxima-rtest.lisp", "rtest6" },
+        stream.writer(),
+    );
+
+    const out = stream.getWritten();
+    try testing.expect(std.mem.indexOf(u8, out, "[HABU-RTEST] file=") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "canonical test-batch failed") == null);
+}
+
+test "rtest6 canonical runner exact main script path repro with external argv0" {
+    try ensureMaximaSources();
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try script_run.run(
+        allocator,
+        256 * 1024 * 1024,
+        &.{ "./zig-out/bin/habu", "tools/maxima-rtest.lisp", "rtest6" },
+        stream.writer(),
+    );
+
+    const out = stream.getWritten();
+    try testing.expect(std.mem.indexOf(u8, out, "[HABU-RTEST] file=") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "canonical test-batch failed") == null);
+}
+
+test "rtest6 canonical runner exact main script path repro on tight heap" {
+    try ensureMaximaSources();
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try script_run.run(
+        allocator,
+        16 * 1024 * 1024,
+        &.{ "./zig-out/bin/habu", "tools/maxima-rtest.lisp", "rtest6" },
+        stream.writer(),
+    );
+
+    const out = stream.getWritten();
+    try testing.expect(std.mem.indexOf(u8, out, "[HABU-RTEST] file=") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "canonical test-batch failed") == null);
+}
+
+test "rtest6 canonical runner exact main script path repro with allocated argv" {
+    try ensureMaximaSources();
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    const argv = try allocator.alloc([]const u8, 3);
+    defer allocator.free(argv);
+    argv[0] = try allocator.dupe(u8, "./zig-out/bin/habu");
+    defer allocator.free(argv[0]);
+    argv[1] = try allocator.dupe(u8, "tools/maxima-rtest.lisp");
+    defer allocator.free(argv[1]);
+    argv[2] = try allocator.dupe(u8, "rtest6");
+    defer allocator.free(argv[2]);
+
+    var buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try script_run.run(
+        allocator,
+        256 * 1024 * 1024,
+        argv,
+        stream.writer(),
+    );
+
+    const out = stream.getWritten();
+    try testing.expect(std.mem.indexOf(u8, out, "[HABU-RTEST] file=") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "canonical test-batch failed") == null);
+}

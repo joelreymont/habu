@@ -68,6 +68,7 @@ Live blockers proven right now from the current runner path, which is still prov
 - The old problem-47 `stringproc` load break is closed. The remaining `rtest6` residue is down to the real semantic failures at problems `2` and `39`; keep the `stringproc`/float-roundtrip probes as regressions, but stop treating `parse_string(string(most_positive_float))` as a live blocker.
 - Problems `2` and `39` now have focused `test-batch` slices in `src/tests/rtest6_stream.zig`, and both pass in-process, including GPA-backed and absolute-`load` canonical-runner probes. The remaining gap is therefore narrowed to the standalone `./zig-out/bin/habu tools/maxima-rtest.lisp rtest6` path, not ordinary `Repl` execution.
 - The next proof step is to factor the executable script-startup sequence into a reusable helper and run that exact path under `zig build test`; if the failure still does not reproduce, the remaining delta is outside ordinary startup semantics and belongs to the true external-process boundary.
+- Shared script startup is now factored through `src/app/script_run.zig`, and in-process probes cover the exact script helper on the main thread, a spawned thread, the full `main` script-mode shape, allocated argv storage, external-style `argv[0]`, and a tight heap. All still pass. The standalone `./zig-out/bin/habu` process still fails, so the remaining gap is below ordinary startup/argv/thread/heap-shape semantics and is tied to the fresh executable boundary itself.
 
 ## 4.2 Remaining Execution Order
 
