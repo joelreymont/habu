@@ -8021,6 +8021,28 @@ test "with-output-to-string returns primary string value cleanly" {
     try testing.expectEqualStrings("test", text.toPtr(runtime.String).bytes());
 }
 
+test "length and copy-seq honor string fill pointers" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try snap.expectEval(
+        @src(),
+        &repl,
+        \\(let ((buf (make-array 50 :element-type #.(array-element-type "a") :fill-pointer 0 :adjustable t)))
+        \\  (vector-push-extend #\+ buf)
+        \\  (list (string-length buf) (length buf) (copy-seq buf)))
+        ,
+        \\(1 1 "+")
+    );
+}
+
 test "dispatch macro character executes during read-from-string" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

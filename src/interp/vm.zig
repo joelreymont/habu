@@ -4476,7 +4476,8 @@ pub const Vm = struct {
                     },
                     .vector => {
                         const vec = seq.toPtr(runtime.Vector);
-                        try self.push(Value.makeFixnum(@intCast(vec.length)));
+                        const len = vec.getFillPointer() orelse vec.length;
+                        try self.push(Value.makeFixnum(@intCast(len)));
                     },
                     .string => {
                         const str = seq.toPtr(runtime.String);
