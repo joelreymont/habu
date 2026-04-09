@@ -2296,6 +2296,30 @@ test "stdlib setf supports fifth through eighth places" {
     );
 }
 
+test "stdlib multipair setf survives compiler gc" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    var src = std.ArrayList(u8){};
+    defer src.deinit(allocator);
+
+    try src.appendSlice(allocator, "(progn (setf");
+    for (0..512) |i| {
+        try src.writer(allocator).print(" g{d} {d}", .{ i, i });
+    }
+    try src.appendSlice(allocator, ") (list g0 g255 g511))");
+
+    try snap.expectEval(@src(), &repl, src.items, "(0 255 511)");
+}
+
 test "aref supports strings with character semantics" {
     const allocator = testing.allocator;
 

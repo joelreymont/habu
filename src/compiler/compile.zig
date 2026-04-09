@@ -7589,6 +7589,10 @@ pub const Compiler = struct {
         if (!cons2.cdr.isNil()) {
             // Multi-place setf: compile each pair in sequence and return last value.
             const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+            const SetfPair = struct {
+                place: Value,
+                value: Value,
+            };
 
             var pair_count: usize = 0;
             var count_cur = args;
@@ -7598,19 +7602,30 @@ pub const Compiler = struct {
                 pair_count += 1;
                 count_cur = pair1.cdr.toPtr(Cons).cdr;
             }
+            if (!count_cur.isNil()) return error.InvalidSyntax;
 
+            const pairs = try self.allocator.alloc(SetfPair, pair_count);
             const items = try self.allocator.alloc(*const Ir, pair_count);
-            var p = args;
-            var idx: usize = 0;
-            while (p.isCons()) {
-                const pair1 = p.toPtr(Cons);
+            var collect_cur = args;
+            var pair_idx: usize = 0;
+            while (collect_cur.isCons()) {
+                const pair1 = collect_cur.toPtr(Cons);
                 if (!pair1.cdr.isCons()) return error.InvalidSyntax;
                 const pair2 = pair1.cdr.toPtr(Cons);
+                pairs[pair_idx] = .{
+                    .place = pair1.car,
+                    .value = pair2.car,
+                };
+                pair_idx += 1;
+                collect_cur = pair2.cdr;
+            }
+            if (!collect_cur.isNil()) return error.InvalidSyntax;
 
-                const one = try heap.allocCons(pair1.car, try heap.allocCons(pair2.car, Value.nil));
+            for (pairs, 0..) |pair, idx| {
+                const place_live = self.resolveForwardedValue(pair.place);
+                const value_live = self.resolveForwardedValue(pair.value);
+                const one = try heap.allocCons(place_live, try heap.allocCons(value_live, Value.nil));
                 items[idx] = try self.compileSetf(one, env);
-                idx += 1;
-                p = pair2.cdr;
             }
 
             if (items.len == 0) return error.InvalidSyntax;
