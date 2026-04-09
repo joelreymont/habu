@@ -12,12 +12,7 @@ const runtime = @import("runtime/runtime.zig");
 const Heap = runtime.Heap;
 const repl_mod = @import("interp/repl.zig");
 const Repl = repl_mod.Repl;
-
-fn publishCommandLineArgs(repl: *Repl, allocator: std.mem.Allocator, args: []const []const u8) !void {
-    _ = allocator;
-    const script_args = if (args.len > 2) args[2..] else &.{};
-    try repl.publishCommandLineArgs(script_args, args);
-}
+const script_run = @import("app/script_run.zig");
 
 fn resolveHeapSize() usize {
     const default_size = 256 * 1024 * 1024;
@@ -50,10 +45,6 @@ fn mainInner() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Initialize heap (256MB default, overridable via HABU_HEAP_MB)
-    var heap = try Heap.init(allocator, .{ .total_size = resolveHeapSize() });
-    defer heap.deinit();
-
     // Print banner
     const stdout = fs.File.stdout();
     var buf: [4096]u8 = undefined;
@@ -63,6 +54,27 @@ fn mainInner() !void {
     try writer.print("🐍 Habu Lisp v0.1.0\n", .{});
     try writer.print("Type expressions to evaluate, :h for help, :q to quit\n\n", .{});
     try writer.flush();
+
+    // Script entrypoint semantics: first CLI arg is the script path, remaining
+    // args are exposed to Lisp instead of being treated as extra files.
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
+    const has_script = args.len > 1;
+    if (has_script) {
+        const script_path = args[1];
+        if (script_run.run(allocator, resolveHeapSize(), args, writer)) |_| {} else |err| {
+            try writer.print("Error loading {s}: {s}\n", .{ script_path, @errorName(err) });
+            try writer.flush();
+            return err;
+        }
+        try writer.flush();
+        return;
+    }
+
+    // Initialize heap (256MB default, overridable via HABU_HEAP_MB)
+    var heap = try Heap.init(allocator, .{ .total_size = resolveHeapSize() });
+    defer heap.deinit();
 
     // Run REPL
     var repl: Repl = undefined;
@@ -81,26 +93,7 @@ fn mainInner() !void {
     }
     try writer.flush();
 
-    // Script entrypoint semantics: first CLI arg is the script path, remaining
-    // args are exposed to Lisp instead of being treated as extra files.
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
-    try publishCommandLineArgs(&repl, allocator, args);
-
-    const has_script = args.len > 1;
-    if (has_script) {
-        const script_path = args[1];
-        try repl.addTrustedLoadRootForFile(script_path);
-        if (repl.loadFile(script_path, writer)) |_| {} else |err| {
-            try writer.print("Error loading {s}: {s}\n", .{ script_path, @errorName(err) });
-            try writer.flush();
-            return err;
-        }
-        try writer.flush();
-    }
-
     // Only run interactive REPL if no script was loaded
-    if (!has_script) {
-        try repl.runWithFiles(fs.File.stdin(), stdout);
-    }
+    try repl.publishCommandLineArgs(&.{}, args);
+    try repl.runWithFiles(fs.File.stdin(), stdout);
 }

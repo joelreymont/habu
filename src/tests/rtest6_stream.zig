@@ -3,6 +3,7 @@ const testing = std.testing;
 
 const Heap = @import("../runtime/heap.zig").Heap;
 const Repl = @import("../interp/repl.zig").Repl;
+const script_run = @import("../app/script_run.zig");
 const runtime = @import("../runtime/runtime.zig");
 const Value = runtime.Value;
 const Cons = runtime.Cons;
@@ -476,4 +477,443 @@ test "rtest6 problem 47 isolated test-batch path stays clean" {
     const cell = out.toPtr(Cons);
     try testing.expect(cell.car.isSymbol());
     try testing.expectEqualStrings("OK", cell.car.toPtr(runtime.Symbol).getName());
+}
+
+test "rtest6 problem 2 isolated test-batch path stays clean" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p2.mac",
+        .data =
+            \\(reset(), kill(all),0);
+            \\0;
+            \\
+            \\integrate(x^(5/4)/(x+1)^(5/2),x,0,inf);
+            \\beta(9/4,1/4);
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p2.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    (let ((*collect-errors* nil)
+        \\          (maxima::$batch_answers_from_file t))
+        \\      (handler-case
+        \\          (progn
+        \\            (test-batch "{s}" nil)
+        \\            '(ok))
+        \\        (condition (c)
+        \\          (list fail (write-to-string c)))))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    try testing.expect(out.isCons());
+    const cell = out.toPtr(Cons);
+    try testing.expect(cell.car.isSymbol());
+    try testing.expectEqualStrings("OK", cell.car.toPtr(runtime.Symbol).getName());
+}
+
+test "rtest6 problem 2 isolated path after testsuite bootstrap stays clean" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-manifest.lisp\")");
+    _ = try repl.eval("(load \"../maxima/src/maxima-package.lisp\")");
+    _ = try repl.eval("(load \"lib/maxima-stubs.lisp\")");
+    _ = try repl.eval("(load \"../maxima/src/testsuite.lisp\")");
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p2-bootstrap.mac",
+        .data =
+            \\(reset(), kill(all),0);
+            \\0;
+            \\
+            \\integrate(x^(5/4)/(x+1)^(5/2),x,0,inf);
+            \\beta(9/4,1/4);
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p2-bootstrap.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    (let ((*collect-errors* nil)
+        \\          (maxima::$batch_answers_from_file t))
+        \\      (handler-case
+        \\          (progn
+        \\            (test-batch "{s}" nil)
+        \\            '(ok))
+        \\        (condition (c)
+        \\          (list fail (write-to-string c)))))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    try testing.expect(out.isCons());
+    const cell = out.toPtr(Cons);
+    try testing.expect(cell.car.isSymbol());
+    try testing.expectEqualStrings("OK", cell.car.toPtr(runtime.Symbol).getName());
+}
+
+test "rtest6 problem 39 isolated test-batch path stays clean" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p39.mac",
+        .data =
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p39.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    (let ((*collect-errors* nil)
+        \\          (maxima::$batch_answers_from_file t))
+        \\      (handler-case
+        \\          (progn
+        \\            (test-batch "{s}" nil)
+        \\            '(ok))
+        \\        (condition (c)
+        \\          (list fail (write-to-string c)))))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    try testing.expect(out.isCons());
+    const cell = out.toPtr(Cons);
+    try testing.expect(cell.car.isSymbol());
+    try testing.expectEqualStrings("OK", cell.car.toPtr(runtime.Symbol).getName());
+}
+
+test "rtest6 canonical runner harness repro" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(let ((*command-line-args* '("rtest6")))
+        \\  (handler-case
+        \\      (progn
+        \\        (load "tools/maxima-rtest.lisp")
+        \\        '(ok))
+        \\    (condition (c)
+        \\      (list 'err (write-to-string c)))))
+    );
+
+    try testing.expect(out.isCons());
+    const cell = out.toPtr(Cons);
+    try testing.expect(cell.car.isSymbol());
+    try testing.expectEqualStrings("OK", cell.car.toPtr(runtime.Symbol).getName());
+}
+
+test "rtest6 canonical runner direct loadFile repro" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try repl.loadFile("lib/stdlib.habu", stream.writer());
+    try repl.publishCommandLineArgs(
+        &.{ "rtest6" },
+        &.{ "habu", "tools/maxima-rtest.lisp", "rtest6" },
+    );
+    try repl.addTrustedLoadRootForFile("tools/maxima-rtest.lisp");
+    try repl.loadFile("tools/maxima-rtest.lisp", stream.writer());
+    const written = stream.getWritten();
+    try testing.expect(std.mem.indexOf(u8, written, "[HABU-RTEST] file=") != null);
+    try testing.expect(std.mem.indexOf(u8, written, "canonical test-batch failed") == null);
+    const name = try repl.eval("*habu-rtest-name*");
+    try testing.expect(name.isString());
+    try testing.expectEqualStrings("rtest6", name.toPtr(runtime.String).bytes());
+}
+
+test "rtest6 canonical runner direct loadFile repro on gpa" {
+    try ensureMaximaSources();
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try repl.loadFile("lib/stdlib.habu", stream.writer());
+    try repl.publishCommandLineArgs(
+        &.{ "rtest6" },
+        &.{ "habu", "tools/maxima-rtest.lisp", "rtest6" },
+    );
+    try repl.addTrustedLoadRootForFile("tools/maxima-rtest.lisp");
+    try repl.loadFile("tools/maxima-rtest.lisp", stream.writer());
+    const written = stream.getWritten();
+    try testing.expect(std.mem.indexOf(u8, written, "[HABU-RTEST] file=") != null);
+    try testing.expect(std.mem.indexOf(u8, written, "canonical test-batch failed") == null);
+    const name = try repl.eval("*habu-rtest-name*");
+    try testing.expect(name.isString());
+    try testing.expectEqualStrings("rtest6", name.toPtr(runtime.String).bytes());
+}
+
+test "rtest6 canonical runner wrapper loadFile repro" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try repl.loadFile("lib/stdlib.habu", stream.writer());
+    try repl.publishCommandLineArgs(
+        &.{ "rtest6" },
+        &.{ "habu", "wrapper.lisp", "rtest6" },
+    );
+
+    const root = try std.process.getCwdAlloc(allocator);
+    defer allocator.free(root);
+    const target = try std.fs.path.join(allocator, &.{ root, "tools", "maxima-rtest.lisp" });
+    defer allocator.free(target);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const wrapper_src = try std.fmt.allocPrint(allocator, "(load \"{s}\")\n", .{target});
+    defer allocator.free(wrapper_src);
+    try tmp.dir.writeFile(.{
+        .sub_path = "wrapper.lisp",
+        .data = wrapper_src,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const wrapper_abs = try std.fs.path.join(allocator, &.{ base, "wrapper.lisp" });
+    defer allocator.free(wrapper_abs);
+
+    try repl.addTrustedLoadRoot(".");
+    try repl.addTrustedLoadRootForFile(wrapper_abs);
+    try repl.loadFile(wrapper_abs, stream.writer());
+    const name = try repl.eval("*habu-rtest-name*");
+    try testing.expect(name.isString());
+    try testing.expectEqualStrings("rtest6", name.toPtr(runtime.String).bytes());
+}
+
+test "rtest6 canonical runner wrapper loadFile repro on spawned thread" {
+    const Ctx = struct {
+        err: ?anyerror = null,
+
+        fn run(self: *@This()) void {
+            self.runInner() catch |err| {
+                self.err = err;
+            };
+        }
+
+        fn runInner(self: *@This()) !void {
+            _ = self;
+            try ensureMaximaSources();
+
+            const allocator = testing.allocator;
+            var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+            defer heap.deinit();
+
+            var repl: Repl = undefined;
+            try repl.init(allocator, &heap, .{});
+            defer repl.deinit();
+            try repl.wireGlobalEnv();
+
+            var buf: [4096]u8 = undefined;
+            var stream = std.io.fixedBufferStream(&buf);
+            try repl.loadFile("lib/stdlib.habu", stream.writer());
+            try repl.publishCommandLineArgs(
+                &.{ "rtest6" },
+                &.{ "habu", "wrapper.lisp", "rtest6" },
+            );
+
+            const root = try std.process.getCwdAlloc(allocator);
+            defer allocator.free(root);
+            const target = try std.fs.path.join(allocator, &.{ root, "tools", "maxima-rtest.lisp" });
+            defer allocator.free(target);
+
+            var tmp = testing.tmpDir(.{});
+            defer tmp.cleanup();
+            const wrapper_src = try std.fmt.allocPrint(allocator, "(load \"{s}\")\n", .{target});
+            defer allocator.free(wrapper_src);
+            try tmp.dir.writeFile(.{
+                .sub_path = "wrapper.lisp",
+                .data = wrapper_src,
+            });
+
+            const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+            defer allocator.free(base);
+            const wrapper_abs = try std.fs.path.join(allocator, &.{ base, "wrapper.lisp" });
+            defer allocator.free(wrapper_abs);
+
+            try repl.addTrustedLoadRoot(".");
+            try repl.addTrustedLoadRootForFile(wrapper_abs);
+            try repl.loadFile(wrapper_abs, stream.writer());
+            const name = try repl.eval("*habu-rtest-name*");
+            try testing.expect(name.isString());
+            try testing.expectEqualStrings("rtest6", name.toPtr(runtime.String).bytes());
+        }
+    };
+
+    var ctx = Ctx{};
+    const thread = try std.Thread.spawn(.{ .stack_size = 512 * 1024 * 1024 }, Ctx.run, .{&ctx});
+    thread.join();
+    if (ctx.err) |err| return err;
+}
+
+test "rtest6 canonical runner absolute load repro" {
+    try ensureMaximaSources();
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try repl.loadFile("lib/stdlib.habu", stream.writer());
+    try repl.publishCommandLineArgs(
+        &.{ "rtest6" },
+        &.{ "habu", "tools/maxima-rtest.lisp", "rtest6" },
+    );
+    try repl.addTrustedLoadRootForFile("tools/maxima-rtest.lisp");
+
+    const abs = try std.fs.path.resolve(allocator, &.{"tools/maxima-rtest.lisp"});
+    defer allocator.free(abs);
+    const form = try std.fmt.allocPrint(allocator, "(load \"{s}\")", .{abs});
+    defer allocator.free(form);
+    _ = try repl.eval(form);
+
+    const out = stream.getWritten();
+    try testing.expect(std.mem.indexOf(u8, out, "[HABU-RTEST] file=") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "canonical test-batch failed") == null);
+}
+
+test "rtest6 canonical runner exact main script path repro" {
+    try ensureMaximaSources();
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try script_run.run(
+        allocator,
+        256 * 1024 * 1024,
+        &.{ "habu", "tools/maxima-rtest.lisp", "rtest6" },
+        stream.writer(),
+    );
+
+    const out = stream.getWritten();
+    try testing.expect(std.mem.indexOf(u8, out, "[HABU-RTEST] file=") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "canonical test-batch failed") == null);
 }
