@@ -2894,17 +2894,40 @@
 ;; Prog Special Forms
 ;; ============================================================
 
+; Extract initial declaration forms from a body for prog/prog* expansion
+(defun %prog-decl-forms (body)
+  (if (and body
+           (consp (car body))
+           (eq (caar body) 'declare))
+      (cons (car body) (%prog-decl-forms (cdr body)))
+      nil))
+
+(defun %prog-tagbody-forms (body)
+  (if (and body
+           (consp (car body))
+           (eq (caar body) 'declare))
+      (%prog-tagbody-forms (cdr body))
+      body))
+
 ; prog - sequential execution with local bindings and tags
 (defmacro prog (bindings &rest body)
-  (list 'block nil
-        (list 'let bindings
-              (cons 'tagbody body))))
+  (let ((decls (%prog-decl-forms body))
+        (forms (%prog-tagbody-forms body)))
+    (list 'block nil
+          (cons 'let
+                (cons bindings
+                      (append decls
+                              (list (cons 'tagbody forms))))))))
 
 ; prog* - like prog but bindings are sequential
 (defmacro prog* (bindings &rest body)
-  (list 'block nil
-        (list 'let* bindings
-              (cons 'tagbody body))))
+  (let ((decls (%prog-decl-forms body))
+        (forms (%prog-tagbody-forms body)))
+    (list 'block nil
+          (cons 'let*
+                (cons bindings
+                      (append decls
+                              (list (cons 'tagbody forms))))))))
 
 ; prog1 - evaluate forms, return first value
 (defmacro prog1 (first &rest rest)

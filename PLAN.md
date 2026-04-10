@@ -1173,3 +1173,5 @@ No implementation starts until the leaf dot exists and is ready.
 ### Known open risk
 
 - Removing the false-progress layers will likely make the current load path look worse before it gets better. That is expected and required.
+
+- Live blocker narrowing (2026-04-10): Maxima `tellsimp` rule poisoning is now traced to `lib/stdlib.habu:2898-2906`. `prog`/`prog*` macro expansion drops initial declaration semantics by wrapping the whole body in `tagbody`, so declarations like `(declare (special $yy $xx ...))` inside generated matcher `prog` forms are compiled as ordinary `declare` special forms and leak into `src/compiler/compile.zig` global special state for later compilations. Proof came from `src/tests/rtest6_stream.zig` closure dumps: the poisoned matcher gained extra `progv` bindings for `$xx/$yy` and compiled the fallback branch against the prior operator chain. Fix the macro expansion, not Maxima.

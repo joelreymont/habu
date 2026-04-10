@@ -6531,6 +6531,12 @@ pub const Compiler = struct {
 
         // Fast path: all bindings are special.
         if (!has_lexical) {
+            var special_body_env = Env.initLet(self.allocator, env);
+            defer special_body_env.deinit();
+            for (special_syms.items) |sym| {
+                try special_body_env.bindSpecialDeclSym(sym);
+            }
+            const filtered_body = try self.filterDeclares(self.resolveForwardedValue(body_exprs), &special_body_env);
             const vals = try self.allocator.alloc(*const Ir, special_inits.items.len);
             defer self.allocator.free(vals);
 
@@ -6566,7 +6572,7 @@ pub const Compiler = struct {
                 const symbols_ir = try self.builder.lit(sym_list);
                 const values_ir = try self.buildIrList(vals);
                 // NEVER compile progv body in tail position — pop_progv must run after body.
-                const body_ir = try self.compileBodyWithTail(self.resolveForwardedValue(body_exprs), env, false);
+                const body_ir = try self.compileBodyWithTail(filtered_body, &special_body_env, false);
                 return try self.builder.progv(symbols_ir, values_ir, body_ir);
             }
 
@@ -6577,7 +6583,7 @@ pub const Compiler = struct {
             const symbols_ir = try self.builder.lit(sym_list);
             const values_ir = try self.buildIrList(vals);
             // NEVER compile progv body in tail position — pop_progv must run after body.
-            const body_ir = try self.compileBodyWithTail(self.resolveForwardedValue(body_exprs), env, false);
+            const body_ir = try self.compileBodyWithTail(filtered_body, &special_body_env, false);
             return try self.builder.progv(symbols_ir, values_ir, body_ir);
         }
 

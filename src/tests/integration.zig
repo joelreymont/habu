@@ -12187,6 +12187,54 @@ test "defvar makes prog bindings dynamically visible" {
     try testing.expectEqual(@as(i64, 3), out.toFixnum());
 }
 
+test "prog local declare special uses dynamic binding and restores outer" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try snap.expectEval(@src(), &repl,
+        \\(progn
+        \\  (defvar ans 7)
+        \\  (defun use-ans () ans)
+        \\  (let ((ans 99))
+        \\    (declare (special ans))
+        \\    (list
+        \\      (prog ((ans 42))
+        \\        (declare (special ans))
+        \\        (return (use-ans)))
+        \\      ans)))
+    , "(42 99)");
+}
+
+test "prog local declare special does not leak into later eval" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval(
+        \\(prog (xx)
+        \\  (declare (special xx))
+        \\  (setq xx 1)
+        \\  (return xx))
+    );
+
+    try snap.expectEval(@src(), &repl,
+        \\(progn
+        \\  (set 'xx 42)
+        \\  (funcall (funcall (eval '(lambda (xx) (lambda () xx))) 7)))
+    , "7");
+}
+
 test "let declare special uses dynamic binding and restores global" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
@@ -12197,7 +12245,7 @@ test "let declare special uses dynamic binding and restores global" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    const out = try repl.eval(
+    try snap.expectEval(@src(), &repl,
         \\(progn
         \\  (defvar ans 7)
         \\  (defun use-ans () ans)
@@ -12207,17 +12255,30 @@ test "let declare special uses dynamic binding and restores global" {
         \\      (setq ans 42)
         \\      (use-ans))
         \\    ans))
+    , "(42 7)");
+}
+
+test "let local declare special does not leak into later eval" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval(
+        \\(let ((xx 1))
+        \\  (declare (special xx))
+        \\  xx)
     );
 
-    try testing.expect(out.isCons());
-    const c0 = out.toPtr(Cons);
-    try testing.expect(c0.car.isFixnum());
-    try testing.expectEqual(@as(i64, 42), c0.car.toFixnum());
-    try testing.expect(c0.cdr.isCons());
-    const c1 = c0.cdr.toPtr(Cons);
-    try testing.expect(c1.car.isFixnum());
-    try testing.expectEqual(@as(i64, 7), c1.car.toFixnum());
-    try testing.expect(c1.cdr.isNil());
+    try snap.expectEval(@src(), &repl,
+        \\(progn
+        \\  (set 'xx 42)
+        \\  (funcall (funcall (eval '(lambda (xx) (lambda () xx))) 7)))
+    , "7");
 }
 
 test "progv supports deep dynamic nesting" {
