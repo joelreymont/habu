@@ -19,6 +19,12 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-10)
 
 ### Worked Well
+- Replaying the already-read printed `testsuite.lisp` `defparameter $testsuite_files ...` form is a decisive split test. `src/tests/rtest6_stream.zig` now proves that `with-open-file/read/write-to-string/read-from-string/eval` still poisons the later `rtest6` `20..39` slice even after resetting back to plain `"rtest6"`, so the remaining floor is not in reader conditional handling; it is in ordinary evaluation / top-level state mutation of that form.
+
+### Did Not Work
+- Treating the remaining `testsuite.lisp` poison as a read-time `#+` / `#-` bug was wrong. Once the exact second form is round-tripped through `write-to-string` and `read-from-string`, the same `test-batch` failure remains, so further reader-conditional probes were not buying information.
+
+### Worked Well
 - `src/runtime/primitives/symbol.zig:248-382,515-540` needed the same whole-operation rooting discipline as the public plist mutators. `setSymbolPlist` was still converting flat plists back to alists with only raw `sym` locals live, so a GC inside that conversion could write the rebuilt plist through a stale symbol pointer. Rooting the target symbol through `flatToAListRooted` closes that generic stale-writeback hole and is worth keeping even though it did not move the later Maxima `tellsimp` floor.
 
 ### Did Not Work
