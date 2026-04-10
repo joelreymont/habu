@@ -16,6 +16,14 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ## Session Notes (2026-04-09)
 
+## Session Notes (2026-04-10)
+
+### Worked Well
+- Symbol plist read-modify-write helpers must root the target symbol across every allocating phase, not just inside `setSymbolPlist`. `src/runtime/primitives/list.zig` was calling `symbolPlist`/`flatPut` and then `setSymbolPlist` with a raw `sym`, so any GC during plist flattening or flat plist growth could leave the caller holding a stale symbol while the helper kept going. Adding rooted variants in `src/runtime/primitives/symbol.zig` and `src/runtime/primitives/list.zig`, plus the explicit-GC regression in `src/runtime/primitives/list.zig`, closes that class of stale-plist writeback bug generically.
+
+### Did Not Work
+- The `rtest6` problem-22 `tellsimp` failure was not caused by plist mutation alone. Even after the rooted plist fix, canonical `./zig-out/bin/habu tools/maxima-rtest.lisp rtest6` still reports problems `20`, `22`, `39`, and downstream `54`, so keep chasing the rule-install/function-install path instead of assuming missing `operators`/`oldrules` writes were the whole failure.
+
 ### Worked Well
 - Same-chunk `return-from` lowering has to distinguish lexical exits from cleanup-crossing exits. `src/bytecode/emit.zig` now keeps the compile-time jump fast path for plain blocks, but treats `progv`, `catch`/`handler-case`, `restart-case`, and `unwind-protect` as control-stack barriers that force runtime `return_from`. That fixed the real special-binding leak in `(block out (progv '(*p*) '(nil) (return-from out :ok)))`, where the standalone repro `/tmp/progv_nlx_repro.lisp` used to print `RETURN (:OK nil)` and now prints `RETURN (:OK 10)`, while preserving ordinary `loop`/`return` code such as the external `pregexp:pregexp` path used by `../maxima/src/commac.lisp`.
 - Character-vector metadata cannot be encoded by fabricating a zero fill pointer. `src/runtime/objects.zig:187-260` now treats the low 62 bits of `Vector.fill_pointer` as either a real fill value or the sentinel `fill_value_none`, so `%set-character-vector` / `%set-adjustable` can set flags without implicitly changing sequence length. With the matching helper/runtime cutover in `src/runtime/heap.zig:2590-2595`, `lib/stdlib.habu:770-777`, and `src/compiler/compile.zig:19243-19378`, fixed-size `(make-array n :element-type 'character ...)` vectors stay string-like at full length while dynamic element-type cases like `(let ((et (array-element-type \"a\"))) (make-array 3 :element-type et :fill-pointer 0 :adjustable t))` still route through the character-vector helper. The direct proof is `src/interp/repl.zig:6694-6711`. The workload proof is canonical `./zig-out/bin/habu tools/maxima-rtest.lisp rtest6`, where problem `47` disappears and residue drops from `(2 39 47)` to `(2 39)`.

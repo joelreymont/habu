@@ -193,6 +193,30 @@ fn plistToFlat(heap: *Heap, plist: Value) !Value {
     return reverseProperList(heap, out);
 }
 
+fn plistToFlatRooted(heap: *Heap, sym: *Value, plist: Value) !Value {
+    var cur = plist;
+    var out = Value.nil;
+    while (nextPlistEntry(cur)) |entry| {
+        var roots = [_]Value{ sym.*, cur, out, entry.indicator, entry.value, entry.next };
+        const ind_cell = try allocConsRooted(heap, roots[3], roots[2], roots[0..]);
+        roots[2] = ind_cell;
+        const val_cell = try allocConsRooted(heap, roots[4], roots[2], roots[0..]);
+        sym.* = roots[0];
+        out = val_cell;
+        cur = roots[5];
+    }
+
+    if (!cur.isNil()) {
+        var roots = [_]Value{ sym.*, cur, out };
+        const ind_cell = try allocConsRooted(heap, roots[1], roots[2], roots[0..]);
+        roots[2] = ind_cell;
+        out = try allocConsRooted(heap, Value.nil, roots[2], roots[0..]);
+        sym.* = roots[0];
+    }
+
+    return reverseProperList(heap, out);
+}
+
 fn flatToAList(heap: *Heap, plist: Value) !Value {
     var cur = plist;
     var out = Value.nil;
@@ -238,6 +262,24 @@ pub fn symbolPlist(heap: *Heap, sym: Value) !Value {
     if (plist.isNil()) return Value.nil;
     if (plist.isCons()) {
         return try plistToFlat(heap, plist);
+    }
+    return plist;
+}
+
+pub fn symbolPlistRooted(heap: *Heap, sym: *Value) !Value {
+    const live_sym = sym.*;
+    if (!live_sym.isSymbolLike()) return error.TypeError;
+    const plist = if (live_sym.isNil())
+        heap.nil_symbol_plist
+    else if (live_sym.isT())
+        heap.t_symbol_plist
+    else if (live_sym.isKeyword())
+        heap.getKeywordPlist(live_sym)
+    else
+        live_sym.toPtr(objects.Symbol).plist;
+    if (plist.isNil()) return Value.nil;
+    if (plist.isCons()) {
+        return try plistToFlatRooted(heap, sym, plist);
     }
     return plist;
 }

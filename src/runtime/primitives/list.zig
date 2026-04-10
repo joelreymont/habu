@@ -363,8 +363,8 @@ fn loadPlist(heap: *Heap, sym: Value) !Value {
     return plist_ptr.*;
 }
 
-fn loadFlatSymbolPlist(heap: *Heap, sym: Value) !Value {
-    return try symbol_prims.symbolPlist(heap, sym);
+fn loadFlatSymbolPlistRooted(heap: *Heap, sym: *Value) !Value {
+    return try symbol_prims.symbolPlistRooted(heap, sym);
 }
 
 fn flatGet(plist: Value, indicator: Value) Value {
@@ -401,6 +401,31 @@ fn flatPut(heap: *Heap, plist: Value, indicator: Value, value: Value) !Value {
     const value_cell = try allocConsRooted(heap, roots[2], roots[0], roots[0..]);
     roots[0] = value_cell;
     return try allocConsRooted(heap, roots[1], roots[0], roots[0..]);
+}
+
+fn flatPutRooted(heap: *Heap, sym: *Value, plist: Value, indicator: Value, value: Value) !Value {
+    var tail = plist;
+    while (tail.isCons()) {
+        const ind_cell_val = tail;
+        const ind_cell = ind_cell_val.toPtr(Cons);
+        const rest = ind_cell.cdr;
+        if (!rest.isCons()) break;
+        const value_cell_val = rest;
+        const value_cell = value_cell_val.toPtr(Cons);
+        if (ind_cell.car.eq(indicator)) {
+            value_cell.car = value;
+            heap.writeBarrier(value_cell_val, value);
+            return plist;
+        }
+        tail = value_cell.cdr;
+    }
+
+    var roots = [_]Value{ sym.*, plist, indicator, value };
+    const value_cell = try allocConsRooted(heap, roots[3], roots[1], roots[0..]);
+    roots[1] = value_cell;
+    const new_plist = try allocConsRooted(heap, roots[2], roots[1], roots[0..]);
+    sym.* = roots[0];
+    return new_plist;
 }
 
 fn flatRemprop(heap: *Heap, plist: Value, indicator: Value) !struct { plist: Value, removed: bool } {
@@ -512,7 +537,8 @@ fn rempropFlatHeadPlist(heap: *Heap, target: Value, indicator: Value) !Value {
 pub fn get(heap: *Heap, sym: Value, indicator: Value) !Value {
     if (sym.isCons()) return getFlatHeadPlist(sym, indicator);
     if (!sym.isSymbolLike()) return error.TypeMismatch;
-    const plist = try loadFlatSymbolPlist(heap, sym);
+    var live_sym = sym;
+    const plist = try loadFlatSymbolPlistRooted(heap, &live_sym);
     return flatGet(plist, indicator);
 }
 
@@ -521,9 +547,10 @@ pub fn get(heap: *Heap, sym: Value, indicator: Value) !Value {
 pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
     if (sym.isCons()) return putFlatHeadPlist(heap, sym, indicator, value);
     if (!sym.isSymbolLike()) return error.TypeMismatch;
-    const plist = try loadFlatSymbolPlist(heap, sym);
-    const new_plist = try flatPut(heap, plist, indicator, value);
-    try symbol_prims.setSymbolPlist(heap, sym, new_plist);
+    var live_sym = sym;
+    const plist = try loadFlatSymbolPlistRooted(heap, &live_sym);
+    const new_plist = try flatPutRooted(heap, &live_sym, plist, indicator, value);
+    try symbol_prims.setSymbolPlist(heap, live_sym, new_plist);
     return value;
 }
 
@@ -532,10 +559,11 @@ pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
 pub fn remprop(heap: *Heap, sym: Value, indicator: Value) !Value {
     if (sym.isCons()) return rempropFlatHeadPlist(heap, sym, indicator);
     if (!sym.isSymbolLike()) return error.TypeMismatch;
-    const plist = try loadFlatSymbolPlist(heap, sym);
+    var live_sym = sym;
+    const plist = try loadFlatSymbolPlistRooted(heap, &live_sym);
     const result = try flatRemprop(heap, plist, indicator);
     if (!result.removed) return Value.nil;
-    try symbol_prims.setSymbolPlist(heap, sym, result.plist);
+    try symbol_prims.setSymbolPlist(heap, live_sym, result.plist);
     return Value.t;
 }
 
@@ -634,4 +662,47 @@ test "remprop removes non-head key from flat plist" {
     try testing.expect((try remprop(&heap, sym, ka)).isT());
     try testing.expect((try get(&heap, sym, ka)).isNil());
     try testing.expectEqual(@as(i64, 2), (try get(&heap, sym, kb)).toFixnum());
+}
+
+test "rooted plist mutation survives explicit GC between phases" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 256 * 1024 });
+    defer heap.deinit();
+
+    const sym_name = "GC-PLIST-SYM";
+    var sym = try heap.intern(sym_name);
+    var ka = try heap.intern("GC-A");
+    var kb = try heap.intern("GC-B");
+
+    _ = try put(&heap, sym, ka, Value.makeFixnum(1));
+
+    sym = try heap.intern(sym_name);
+    const put_plist = try loadFlatSymbolPlistRooted(&heap, &sym);
+    var put_roots = [_]Value{ sym, put_plist, kb, Value.makeFixnum(2) };
+    _ = try heap.collectGarbage(&put_roots);
+    const new_plist = try flatPutRooted(&heap, &put_roots[0], put_roots[1], put_roots[2], put_roots[3]);
+    try symbol_prims.setSymbolPlist(&heap, put_roots[0], new_plist);
+
+    sym = try heap.intern(sym_name);
+    ka = try heap.intern("GC-A");
+    kb = try heap.intern("GC-B");
+    const ka_after_put = try get(&heap, sym, ka);
+    const kb_after_put = try get(&heap, sym, kb);
+    try testing.expectEqual(@as(i64, 1), ka_after_put.toFixnum());
+    try testing.expectEqual(@as(i64, 2), kb_after_put.toFixnum());
+
+    sym = try heap.intern(sym_name);
+    const rem_plist = try loadFlatSymbolPlistRooted(&heap, &sym);
+    var rem_roots = [_]Value{ sym, rem_plist, kb };
+    _ = try heap.collectGarbage(&rem_roots);
+    const rem = try flatRemprop(&heap, rem_roots[1], rem_roots[2]);
+    try testing.expect(rem.removed);
+    try symbol_prims.setSymbolPlist(&heap, rem_roots[0], rem.plist);
+
+    sym = try heap.intern(sym_name);
+    ka = try heap.intern("GC-A");
+    kb = try heap.intern("GC-B");
+    try testing.expectEqual(@as(i64, 1), (try get(&heap, sym, ka)).toFixnum());
+    try testing.expect((try get(&heap, sym, kb)).isNil());
 }
