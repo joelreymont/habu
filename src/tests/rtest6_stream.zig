@@ -3354,6 +3354,395 @@ test "rtest6 problems 20 through 39 slice after exact rtest5 testsuite fragment 
     try testing.expectEqual(@as(i64, 3), total);
 }
 
+test "rtest6 problems 20 through 39 slice after testsuite preload then reset reproduces failure" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval("(load \"../maxima/src/testsuite.lisp\")");
+    _ = try repl.eval(
+        \\(progn
+        \\  (setq maxima::$testsuite_files '((maxima::mlist maxima::simp) "rtest6"))
+        \\  (setq maxima::$share_testsuite_files '((maxima::mlist maxima::simp)))
+        \\  t)
+    );
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    t))
+    );
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-39-testsuite-reset.mac",
+        .data =
+            \\(kill (f),
+            \\ matchdeclare (xx, integerp),
+            \\ tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))),
+            \\ [f(1), f(1)(y)]);
+            \\[lambda ([a], a - 1), y - 1];
+            \\
+            \\(remrule (f, all), 0);
+            \\0;
+            \\
+            \\(matchdeclare ([xx, yy], integerp),
+            \\ tellsimp (f(xx)(yy), yy*xx),
+            \\ [f(2), f(2)(3)]);
+            \\[f(2), 6];
+            \\
+            \\kill (rules);
+            \\done;
+            \\
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p20-39-testsuite-reset.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(let ((*package* (find-package :maxima))
+        \\      (*collect-errors* nil)
+        \\      (maxima::$batch_answers_from_file t))
+        \\  (handler-case
+        \\      (multiple-value-bind (filename diff unexpected-pass total)
+        \\          (test-batch "{s}" nil)
+        \\        (declare (ignore filename unexpected-pass))
+        \\        (list 'ok diff total))
+        \\    (condition (c)
+        \\      (list 'err (write-to-string c)))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    const tag = try consAt(out, 0);
+    try testing.expect(tag.isSymbol());
+    const name = tag.toPtr(runtime.Symbol).getName();
+    if (std.mem.eql(u8, name, "OK")) {
+        const diff = try consAt(out, 1);
+        const total = try consFixnumAt(out, 2);
+        try testing.expect(!diff.isNil());
+        try testing.expectEqual(@as(i64, 3), total);
+        return;
+    }
+    try testing.expectEqualStrings("ERR", name);
+    const msg = try consAt(out, 1);
+    try testing.expect(msg.isString());
+}
+
+test "rtest6 problems 20 through 39 slice after exact testsuite_files form then reset reproduces failure" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(with-open-file (s "../maxima/src/testsuite.lisp")
+        \\  (eval (read s nil nil))
+        \\  (eval (read s nil nil))
+        \\  t)
+    );
+    _ = try repl.eval(
+        \\(progn
+        \\  (setq maxima::$testsuite_files '((maxima::mlist maxima::simp) "rtest6"))
+        \\  (setq maxima::$share_testsuite_files '((maxima::mlist maxima::simp)))
+        \\  t)
+    );
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    t))
+    );
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-39-testsuite-files-form.mac",
+        .data =
+            \\(kill (f),
+            \\ matchdeclare (xx, integerp),
+            \\ tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))),
+            \\ [f(1), f(1)(y)]);
+            \\[lambda ([a], a - 1), y - 1];
+            \\
+            \\(remrule (f, all), 0);
+            \\0;
+            \\
+            \\(matchdeclare ([xx, yy], integerp),
+            \\ tellsimp (f(xx)(yy), yy*xx),
+            \\ [f(2), f(2)(3)]);
+            \\[f(2), 6];
+            \\
+            \\kill (rules);
+            \\done;
+            \\
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p20-39-testsuite-files-form.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(let ((*package* (find-package :maxima))
+        \\      (*collect-errors* nil)
+        \\      (maxima::$batch_answers_from_file t))
+        \\  (handler-case
+        \\      (multiple-value-bind (filename diff unexpected-pass total)
+        \\          (test-batch "{s}" nil)
+        \\        (declare (ignore filename unexpected-pass))
+        \\        (list 'ok diff total))
+        \\    (condition (c)
+        \\      (list 'err (write-to-string c)))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    const tag = try consAt(out, 0);
+    try testing.expect(tag.isSymbol());
+    const name = tag.toPtr(runtime.Symbol).getName();
+    if (std.mem.eql(u8, name, "OK")) {
+        const diff = try consAt(out, 1);
+        const total = try consFixnumAt(out, 2);
+        try testing.expect(!diff.isNil());
+        try testing.expectEqual(@as(i64, 3), total);
+        return;
+    }
+    try testing.expectEqualStrings("ERR", name);
+    const msg = try consAt(out, 1);
+    try testing.expect(msg.isString());
+}
+
+test "rtest6 problems 20 through 39 slice after exact rtest12 testsuite fragment stays clean" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(progn
+        \\  (setq maxima::$testsuite_files
+        \\        '((maxima::mlist maxima::simp)
+        \\          ((maxima::mlist) "rtest12" 68 69 70)
+        \\          "rtest6"))
+        \\  (setq maxima::$share_testsuite_files '((maxima::mlist maxima::simp)))
+        \\  t)
+    );
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    t))
+    );
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-39-rtest12-frag.mac",
+        .data =
+            \\(kill (f),
+            \\ matchdeclare (xx, integerp),
+            \\ tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))),
+            \\ [f(1), f(1)(y)]);
+            \\[lambda ([a], a - 1), y - 1];
+            \\
+            \\(remrule (f, all), 0);
+            \\0;
+            \\
+            \\(matchdeclare ([xx, yy], integerp),
+            \\ tellsimp (f(xx)(yy), yy*xx),
+            \\ [f(2), f(2)(3)]);
+            \\[f(2), 6];
+            \\
+            \\kill (rules);
+            \\done;
+            \\
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p20-39-rtest12-frag.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(let ((*package* (find-package :maxima))
+        \\      (*collect-errors* nil)
+        \\      (maxima::$batch_answers_from_file t))
+        \\  (handler-case
+        \\      (multiple-value-bind (filename diff unexpected-pass total)
+        \\          (test-batch "{s}" nil)
+        \\        (declare (ignore filename unexpected-pass))
+        \\        (list 'ok diff total))
+        \\    (condition (c)
+        \\      (list 'err (write-to-string c)))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    const tag = try consAt(out, 0);
+    try testing.expect(tag.isSymbol());
+    try testing.expectEqualStrings("OK", tag.toPtr(runtime.Symbol).getName());
+    const diff = try consAt(out, 1);
+    const total = try consFixnumAt(out, 2);
+    try testing.expect(diff.isNil());
+    try testing.expectEqual(@as(i64, 3), total);
+}
+
+test "rtest6 problems 20 through 39 slice after exact rtest_limit_extra fragment stays clean" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(progn
+        \\  (setq maxima::$testsuite_files
+        \\        '((maxima::mlist maxima::simp)
+        \\          ((maxima::mlist maxima::simp) "rtest_limit_extra"
+        \\           ((maxima::mlist maxima::simp)
+        \\            42 59 61 82 83 84 89
+        \\            96 104 111
+        \\            124 125 126 127 132 133 135 136 137
+        \\            224 238
+        \\            239 240 241 242 243 244 245 246 249
+        \\            259 261 262 267 268 269 270 271 272
+        \\            280 281 282))
+        \\          ((maxima::mlist maxima::simp) "rtest_limit_gruntz"
+        \\           ((maxima::mlist maxima::simp) 20 25 28 29 30 36 37 38 39 86 96))
+        \\          ((maxima::mlist maxima::simp) "rtest_limit_wester"
+        \\           ((maxima::mlist maxima::simp) 12 13))
+        \\          "rtest6"))
+        \\  (setq maxima::$share_testsuite_files '((maxima::mlist maxima::simp)))
+        \\  t)
+    );
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    t))
+    );
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-39-rtest-limit-extra-frag.mac",
+        .data =
+            \\(kill (f),
+            \\ matchdeclare (xx, integerp),
+            \\ tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))),
+            \\ [f(1), f(1)(y)]);
+            \\[lambda ([a], a - 1), y - 1];
+            \\
+            \\(remrule (f, all), 0);
+            \\0;
+            \\
+            \\(matchdeclare ([xx, yy], integerp),
+            \\ tellsimp (f(xx)(yy), yy*xx),
+            \\ [f(2), f(2)(3)]);
+            \\[f(2), 6];
+            \\
+            \\kill (rules);
+            \\done;
+            \\
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p20-39-rtest-limit-extra-frag.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(let ((*package* (find-package :maxima))
+        \\      (*collect-errors* nil)
+        \\      (maxima::$batch_answers_from_file t))
+        \\  (handler-case
+        \\      (multiple-value-bind (filename diff unexpected-pass total)
+        \\          (test-batch "{s}" nil)
+        \\        (declare (ignore filename unexpected-pass))
+        \\        (list 'ok diff total))
+        \\    (condition (c)
+        \\      (list 'err (write-to-string c)))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    const tag = try consAt(out, 0);
+    try testing.expect(tag.isSymbol());
+    try testing.expectEqualStrings("OK", tag.toPtr(runtime.Symbol).getName());
+    const diff = try consAt(out, 1);
+    const total = try consFixnumAt(out, 2);
+    try testing.expect(diff.isNil());
+    try testing.expectEqual(@as(i64, 3), total);
+}
+
 test "rtest6 problems 42 through 54 slice reproduces current failure" {
     try ensureMaximaSources();
 
