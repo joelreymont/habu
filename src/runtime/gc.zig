@@ -1841,10 +1841,13 @@ pub const GC = struct {
                 kw.name_ptr = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
             },
             .vector => {
-                // Vector.data points to inline element array after header
+                // Inline vectors relocate their payload with the header. Vectors that
+                // retargeted to backing storage keep data repaired from storage during scan.
                 const vec: *objects.Vector = @ptrFromInt(new_addr);
-                const old_ptr = @intFromPtr(vec.data);
-                vec.data = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
+                if (vec.storage.isNil()) {
+                    const old_ptr = @intFromPtr(vec.data);
+                    vec.data = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
+                }
             },
             .string => {
                 // String.data points to inline byte data after header
@@ -1938,8 +1941,12 @@ pub const GC = struct {
                 }
             },
             .vector => {
-                // Scan all elements
                 const vec: *objects.Vector = @ptrFromInt(addr);
+                if (vec.storage.isPointer() and !vec.storage.isNil()) {
+                    vec.storage = try self.copyValue(heap, vec.storage, alloc_ptr);
+                    const backing = vec.storage.toPtr(objects.Vector);
+                    vec.data = backing.data;
+                }
                 const scan_len = @min(vec.length, vec.capacity);
                 for (vec.data[0..scan_len]) |*item| {
                     if (item.isPointer() and !item.isNil()) {

@@ -2591,7 +2591,9 @@ pub const Heap = struct {
         vec.* = .{
             .length = length,
             .capacity = capacity,
+            .owned_capacity = capacity,
             .data = data_ptr,
+            .storage = Value.nil,
             .fill_pointer = 0x3FFFFFFFFFFFFFFF, // no fill-pointer by default
         };
 

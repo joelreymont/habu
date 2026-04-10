@@ -213,10 +213,12 @@ pub fn adjustArray(heap: *Heap, val: Value, new_size: u64, fill_value: Value) !V
             }
             new_obj.setAdjustable(old_adj);
 
+            old_vec.storage = new_vec;
             old_vec.data = new_obj.data;
             old_vec.length = new_obj.length;
             old_vec.capacity = new_obj.capacity;
             old_vec.fill_pointer = new_obj.fill_pointer;
+            heap.writeBarrier(val, new_vec);
             return val;
         },
         .array => {
@@ -439,13 +441,15 @@ pub fn vectorPushExtend(heap: *Heap, val: Value, element: Value, extension: u64)
     new_obj.setAdjustable(true);
 
     // Update original vector to point to new storage
-    // CRITICAL: This modifies the Vector struct in place
+    // Preserve object identity by retargeting through GC-owned backing storage.
+    vec.storage = new_vec;
     vec.data = new_obj.data;
     vec.length = new_obj.length;
     vec.capacity = new_obj.capacity;
     if (old_fp != null) {
         vec.setFillPointer(fp + 1);
     }
+    heap.writeBarrier(val, new_vec);
 
     return @intCast(fp);
 }
@@ -1173,6 +1177,70 @@ test "vector push extend non-adjustable" {
     // Non-adjustable vector returns error when full
     _ = try vectorPushExtend(&heap, vec, Value.makeFixnum(20), 0);
     try testing.expectEqual(@as(i64, -1), try vectorPushExtend(&heap, vec, Value.makeFixnum(30), 0));
+}
+
+test "vector push extend grown backing survives GC" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const vec = try makeVectorWithCapacity(&heap, 0, 2);
+    const vec_obj = vec.toPtr(objects.Vector);
+    vec_obj.setFillPointer(0);
+    vec_obj.setAdjustable(true);
+
+    _ = try vectorPushExtend(&heap, vec, Value.makeFixnum(10), 0);
+    _ = try vectorPushExtend(&heap, vec, Value.makeFixnum(20), 0);
+    _ = try vectorPushExtend(&heap, vec, Value.makeFixnum(30), 0);
+
+    try testing.expect(vec_obj.storage.isVector());
+    try testing.expectEqual(@as(u64, 2), vec_obj.owned_capacity);
+    try testing.expectEqual(@as(u64, 4), vec_obj.capacity);
+
+    var roots = [_]Value{ vec, vec };
+    _ = try heap.collectGarbage(&roots);
+
+    const live = roots[0];
+    const live_obj = live.toPtr(objects.Vector);
+    try testing.expect(live_obj.storage.isVector());
+    try testing.expectEqual(live.raw, roots[1].raw);
+    try testing.expectEqual(@as(u64, 2), live_obj.owned_capacity);
+    try testing.expectEqual(@as(u64, 4), live_obj.capacity);
+    try testing.expectEqual(@as(i64, 10), vectorRef(live, 0).toFixnum());
+    try testing.expectEqual(@as(i64, 20), vectorRef(live, 1).toFixnum());
+    try testing.expectEqual(@as(i64, 30), vectorRef(live, 2).toFixnum());
+}
+
+test "adjust-array grown backing survives GC" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const vec = try makeVectorWithCapacity(&heap, 2, 2);
+    const vec_obj = vec.toPtr(objects.Vector);
+    vec_obj.setAdjustable(true);
+    _ = vectorSet(vec, 0, Value.makeFixnum(1));
+    _ = vectorSet(vec, 1, Value.makeFixnum(2));
+
+    const grown = try adjustArray(&heap, vec, 5, Value.makeFixnum(9));
+    const grown_obj = grown.toPtr(objects.Vector);
+    try testing.expect(grown_obj.storage.isVector());
+    try testing.expectEqual(@as(u64, 2), grown_obj.owned_capacity);
+    try testing.expectEqual(@as(u64, 5), grown_obj.capacity);
+
+    var roots = [_]Value{ grown, grown };
+    _ = try heap.collectGarbage(&roots);
+
+    const live = roots[0];
+    const live_obj = live.toPtr(objects.Vector);
+    try testing.expect(live_obj.storage.isVector());
+    try testing.expectEqual(live.raw, roots[1].raw);
+    try testing.expectEqual(@as(i64, 1), vectorRef(live, 0).toFixnum());
+    try testing.expectEqual(@as(i64, 2), vectorRef(live, 1).toFixnum());
+    try testing.expectEqual(@as(i64, 9), vectorRef(live, 2).toFixnum());
+    try testing.expectEqual(@as(i64, 9), vectorRef(live, 4).toFixnum());
 }
 
 test "fill vector" {

@@ -175,8 +175,14 @@ pub const Vector = extern struct {
     length: u64,
     /// Capacity (for resizable vectors)
     capacity: u64,
+    /// Capacity physically owned by this header allocation.
+    /// This stays fixed after allocation even if the vector retargets to
+    /// out-of-line backing storage.
+    owned_capacity: u64,
     /// Pointer to element data (array of Values)
     data: [*]Value,
+    /// Optional GC-owned backing vector when data no longer points inline.
+    storage: Value,
     /// Optional fill-pointer state.
     /// 0xFFFF... means no fill-pointer and no vector subtype flags.
     /// Low 62 bits: fill-pointer value
@@ -904,7 +910,7 @@ pub fn objectSize(val: Value) usize {
         .vector => blk: {
             const vec = val.toPtr(Vector);
             // Header + data array
-            break :blk @sizeOf(Vector) + vec.capacity * @sizeOf(Value);
+            break :blk @sizeOf(Vector) + vec.owned_capacity * @sizeOf(Value);
         },
         .string => blk: {
             const str = val.toPtr(String);
@@ -997,9 +1003,15 @@ pub fn forwardingTargetLooksValid(tag: Tag, addr: usize, forwarded_size: usize) 
         },
         .vector => blk: {
             const vec: *const Vector = @ptrFromInt(addr);
-            if (@intFromPtr(vec.data) != addr + @sizeOf(Vector)) break :blk false;
             if (vec.length > vec.capacity) break :blk false;
-            const cap = asUsize(vec.capacity) orelse break :blk false;
+            if (vec.owned_capacity == 0 or vec.owned_capacity > vec.capacity) break :blk false;
+            if (vec.storage.isNil()) {
+                if (@intFromPtr(vec.data) != addr + @sizeOf(Vector)) break :blk false;
+            } else {
+                if (!vec.storage.isVector()) break :blk false;
+                if (@intFromPtr(vec.data) == 0) break :blk false;
+            }
+            const cap = asUsize(vec.owned_capacity) orelse break :blk false;
             const payload = std.math.mul(usize, cap, @sizeOf(Value)) catch break :blk false;
             const total = std.math.add(usize, @sizeOf(Vector), payload) catch break :blk false;
             const expected = std.mem.alignForward(usize, total, 16);
@@ -1056,6 +1068,7 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
         },
         .vector => {
             const vec = val.toPtr(Vector);
+            if (!vec.storage.isNil()) callback(vec.storage);
             for (vec.items()) |item| {
                 callback(item);
             }
