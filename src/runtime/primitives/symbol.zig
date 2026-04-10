@@ -248,6 +248,40 @@ fn flatToAList(heap: *Heap, plist: Value) !Value {
     return reverseProperList(heap, out);
 }
 
+fn flatToAListRooted(heap: *Heap, sym: *Value, plist: Value) !Value {
+    var cur = plist;
+    var out = Value.nil;
+    while (cur.isCons()) {
+        const ind_cell = cur.toPtr(objects.Cons);
+        var value = Value.nil;
+        var next = Value.nil;
+        if (ind_cell.cdr.isCons()) {
+            const val_cell = ind_cell.cdr.toPtr(objects.Cons);
+            value = val_cell.car;
+            next = val_cell.cdr;
+        }
+
+        var roots = [_]Value{ sym.*, cur, out, ind_cell.car, value, next };
+        const pair = try allocConsRooted(heap, roots[3], roots[4], roots[0..]);
+        roots[2] = out;
+        roots[3] = pair;
+        out = try allocConsRooted(heap, roots[3], roots[2], roots[0..4]);
+        sym.* = roots[0];
+        cur = roots[5];
+    }
+
+    if (!cur.isNil()) {
+        var roots = [_]Value{ sym.*, cur, out };
+        const pair = try allocConsRooted(heap, roots[1], Value.nil, roots[0..]);
+        roots[2] = out;
+        roots[1] = pair;
+        out = try allocConsRooted(heap, roots[1], roots[2], roots[0..]);
+        sym.* = roots[0];
+    }
+
+    return reverseProperList(heap, out);
+}
+
 /// Get symbol's property list
 pub fn symbolPlist(heap: *Heap, sym: Value) !Value {
     if (!sym.isSymbolLike()) return error.TypeError;
@@ -308,47 +342,45 @@ pub fn setSymbolValue(sym: Value, val: Value) !void {
 /// Set symbol's property list
 pub fn setSymbolPlist(heap: *Heap, sym: Value, plist: Value) !void {
     if (!sym.isSymbolLike()) return error.TypeError;
-    if (sym.isKeyword()) {
+    var live_sym = sym;
+    if (live_sym.isKeyword()) {
         if (plist.isNil() or !plist.isCons() or plistLooksLikeAList(plist)) {
-            try heap.setKeywordPlist(sym, plist);
+            try heap.setKeywordPlist(live_sym, plist);
         } else {
-            const roots = [_]Value{ sym, plist };
-            const alist = try flatToAList(heap, roots[1]);
-            try heap.setKeywordPlist(roots[0], alist);
+            const alist = try flatToAListRooted(heap, &live_sym, plist);
+            try heap.setKeywordPlist(live_sym, alist);
         }
         return;
     }
 
-    const plist_ptr = if (sym.isNil())
+    const plist_ptr = if (live_sym.isNil())
         &heap.nil_symbol_plist
-    else if (sym.isT())
+    else if (live_sym.isT())
         &heap.t_symbol_plist
     else
-        &sym.toPtr(objects.Symbol).plist;
+        &live_sym.toPtr(objects.Symbol).plist;
 
     if (plist.isNil() or !plist.isCons()) {
         plist_ptr.* = plist;
-        if (sym.isSymbol()) heap.writeBarrier(sym, plist);
+        if (live_sym.isSymbol()) heap.writeBarrier(live_sym, plist);
         return;
     }
 
     if (plistLooksLikeAList(plist)) {
         plist_ptr.* = plist;
-        if (sym.isSymbol()) heap.writeBarrier(sym, plist);
+        if (live_sym.isSymbol()) heap.writeBarrier(live_sym, plist);
         return;
     }
 
-    const roots = [_]Value{ sym, plist };
-    const alist = try flatToAList(heap, roots[1]);
-    const sym_live = roots[0];
-    const plist_ptr_live = if (sym_live.isNil())
+    const alist = try flatToAListRooted(heap, &live_sym, plist);
+    const plist_ptr_live = if (live_sym.isNil())
         &heap.nil_symbol_plist
-    else if (sym_live.isT())
+    else if (live_sym.isT())
         &heap.t_symbol_plist
     else
-        &sym_live.toPtr(objects.Symbol).plist;
+        &live_sym.toPtr(objects.Symbol).plist;
     plist_ptr_live.* = alist;
-    if (sym_live.isSymbol()) heap.writeBarrier(sym_live, alist);
+    if (live_sym.isSymbol()) heap.writeBarrier(live_sym, alist);
 }
 
 /// Test if symbol has value binding
@@ -445,7 +477,7 @@ test "symbol-plist exposes flat plist for CL consumers" {
 test "symbol plist round-trip roots cons values across GC" {
     const testing = std.testing;
 
-    var heap = try Heap.init(testing.allocator, .{ .total_size = 8 * 1024 });
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 256 * 1024 });
     defer heap.deinit();
 
     const sym = try heap.intern("GC-PLIST-SYM");
@@ -481,6 +513,32 @@ test "symbol plist round-trip roots cons values across GC" {
         try testing.expect(got_again.toPtr(objects.Cons).car.isCons());
         try testing.expect(got_again.toPtr(objects.Cons).cdr.isCons());
     }
+}
+
+test "setSymbolPlist survives GC after flat plist round-trip" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 256 * 1024 });
+    defer heap.deinit();
+
+    var sym = try heap.intern("SET-PLIST-GC-SYM");
+    var k1 = try heap.intern("SET-PLIST-K1");
+    var k2 = try heap.intern("SET-PLIST-K2");
+
+    _ = try list_prims.put(&heap, sym, k1, Value.makeFixnum(11));
+    _ = try list_prims.put(&heap, sym, k2, Value.makeFixnum(22));
+
+    const flat = try symbolPlist(&heap, sym);
+    try setSymbolPlist(&heap, sym, flat);
+
+    var roots = [_]Value{ sym, k1, k2 };
+    _ = try heap.collectGarbage(&roots);
+    sym = roots[0];
+    k1 = roots[1];
+    k2 = roots[2];
+
+    try testing.expectEqual(@as(i64, 11), (try list_prims.get(&heap, sym, k1)).toFixnum());
+    try testing.expectEqual(@as(i64, 22), (try list_prims.get(&heap, sym, k2)).toFixnum());
 }
 
 test "plist ops support NIL and T symbols" {

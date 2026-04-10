@@ -19,6 +19,12 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-10)
 
 ### Worked Well
+- `src/runtime/primitives/symbol.zig:248-382,515-540` needed the same whole-operation rooting discipline as the public plist mutators. `setSymbolPlist` was still converting flat plists back to alists with only raw `sym` locals live, so a GC inside that conversion could write the rebuilt plist through a stale symbol pointer. Rooting the target symbol through `flatToAListRooted` closes that generic stale-writeback hole and is worth keeping even though it did not move the later Maxima `tellsimp` floor.
+
+### Did Not Work
+- Treating the remaining `rtest6` `tellsimp` failures as “still another plist persistence bug” was wrong after the `setSymbolPlist` hardening landed. The decisive repro is now direct in-process rule invocation: after the problem-20 setup from `../maxima/tests/rtest6.mac:73-76`, `(funcall '$frule1 '(($f simp) 1) 1 t)` still throws `TypeMismatch` while simpler runtime-built `definitely-so` / special-binding probes pass. That moves the live root cause into the generated rule-function path, not the property write path.
+
+### Worked Well
 - Symbol plist read-modify-write helpers must root the target symbol across every allocating phase, not just inside `setSymbolPlist`. `src/runtime/primitives/list.zig` was calling `symbolPlist`/`flatPut` and then `setSymbolPlist` with a raw `sym`, so any GC during plist flattening or flat plist growth could leave the caller holding a stale symbol while the helper kept going. Adding rooted variants in `src/runtime/primitives/symbol.zig` and `src/runtime/primitives/list.zig`, plus the explicit-GC regression in `src/runtime/primitives/list.zig`, closes that class of stale-plist writeback bug generically.
 
 ### Did Not Work
