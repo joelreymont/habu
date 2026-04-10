@@ -4951,6 +4951,29 @@ test "multiple-value-setq returns primary value" {
     try testing.expect(c4.cdr.isNil());
 }
 
+test "prog special return preserves multiple values" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(write-to-string
+        \\  (multiple-value-list
+        \\    (prog (x)
+        \\      (declare (special x))
+        \\      (setq x 1)
+        \\      (return (values x t)))))
+    );
+    try snap.expectValue(@src(), out, "(1 t)");
+}
+
 test "values-list errors when secondary values exceed limit" {
     const allocator = testing.allocator;
 
@@ -12362,6 +12385,35 @@ test "symbol value cells handle uninterned and fresh interned symbols" {
         cur = cell.cdr;
     }
     try testing.expect(cur.isNil());
+}
+
+test "primitive boundp and makunbound share the runtime value-cell surface" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try snap.expectEval(@src(), &repl,
+        \\(progn
+        \\  (makunbound 'q)
+        \\  (let ((q '(mplus 1 2)))
+        \\    (declare (special q))
+        \\    (list
+        \\      (funcall #'boundp 'q)
+        \\      (funcall #'symbol-value 'q)
+        \\      (funcall #'(lambda (s)
+        \\                   (and (symbolp s)
+        \\                        (boundp s)
+        \\                        (symbol-value s)))
+        \\               'q)
+        \\      (progn
+        \\        (funcall #'makunbound 'q)
+        \\        (funcall #'boundp 'q)))))
+    , "(t (MPLUS 1 2) (MPLUS 1 2) nil)");
 }
 
 test "gensym plist survives GC pressure" {

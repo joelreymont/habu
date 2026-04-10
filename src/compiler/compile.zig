@@ -3249,6 +3249,9 @@ pub const Compiler = struct {
                     return result_ir;
                 }
             }
+            if (self.isSpecialBindingInEnv(env, sym_val)) {
+                return self.compileSpecialSymbolRef(sym_val);
+            }
             return self.compileGlobalSymbolRef(sym_val);
         }
 
@@ -3720,6 +3723,18 @@ pub const Compiler = struct {
         // Allow forward references: allocate slot if still not found.
         const idx = try self.globals.define(qname);
         return try self.builder.globalRef(qname, idx);
+    }
+
+    fn compileSpecialSymbolRef(self: *Compiler, sym_val: Value) anyerror!*Ir {
+        const sym_ir = try self.builder.lit(sym_val);
+        return try self.builder.symbolValue(sym_ir);
+    }
+
+    fn compileSpecialSymbolSet(self: *Compiler, sym_val: Value, val_ir: *Ir) anyerror!*Ir {
+        const sym_ir = try self.builder.lit(sym_val);
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .set_sym_val = .{ .left = sym_ir, .right = val_ir } };
+        return node;
     }
 
     fn patchChunkClosureIndices(chunk: *Chunk, base: u16) !void {
@@ -7567,6 +7582,10 @@ pub const Compiler = struct {
             }
         }
 
+        if (self.isSpecialBindingInEnv(env, var_val)) {
+            return try self.compileSpecialSymbolSet(var_val, val_ir);
+        }
+
         // Check globals - use qualified name for package-aware lookup
         var qual_buf: [256]u8 = undefined;
         const q = try self.getQualifiedName(var_sym, &qual_buf);
@@ -7672,6 +7691,10 @@ pub const Compiler = struct {
                             }
                             return try self.builder.set(exp_name, binding.depth, binding.index, val_ir);
                         }
+                    }
+
+                    if (self.isSpecialBindingInEnv(env, exp_val)) {
+                        return try self.compileSpecialSymbolSet(exp_val, val_ir);
                     }
 
                     // Check globals
@@ -22963,6 +22986,78 @@ test "compile all-special let lowers to progv" {
     const ir_node = try compiler.compile(expr, &env);
 
     try testing.expect(ir_node.* == .progv);
+}
+
+test "inner lambda param shadows outer local special decl" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const q = try heap.intern("q");
+    try env.bindSpecialDeclSym(q);
+
+    var parser = try Parser.init(arena_alloc, &heap, "(lambda (q) q)", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .lambda);
+    try testing.expectEqual(@as(usize, 0), ir_node.lambda.special_bindings.len);
+}
+
+test "local special decl does not leak into later top-level lambda" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser1 = try Parser.init(
+        arena_alloc,
+        &heap,
+        "(defun leak-one () (let ((q 1)) (declare (special q)) q))",
+        &vm.builtins,
+    );
+    defer parser1.deinit();
+    const expr1 = try parser1.parse();
+    const ir1 = try compiler.compile(expr1, &env);
+    try testing.expect(ir1.* == .define);
+
+    var parser2 = try Parser.init(arena_alloc, &heap, "(lambda (q) q)", &vm.builtins);
+    defer parser2.deinit();
+    const expr2 = try parser2.parse();
+    const ir2 = try compiler.compile(expr2, &env);
+
+    try testing.expect(ir2.* == .lambda);
+    try testing.expectEqual(@as(usize, 0), ir2.lambda.special_bindings.len);
 }
 
 test "compile values preserves all operands" {

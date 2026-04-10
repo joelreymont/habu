@@ -6,6 +6,7 @@ const std = @import("std");
 const Value = @import("../value.zig").Value;
 const Heap = @import("../heap.zig").Heap;
 const objects = @import("../objects.zig");
+const runtime = @import("../runtime.zig");
 const list_prims = @import("list.zig");
 const string_prims = @import("string.zig");
 
@@ -328,13 +329,16 @@ pub fn symbolFunction(sym: Value) !Value {
 /// Get symbol's dynamic value binding
 pub fn symbolValue(sym: Value) !Value {
     if (!sym.isSymbol()) return error.TypeError;
+    if (try runtime.lookupSymbolValue(sym)) |val| return val;
     const s = sym.toPtr(objects.Symbol);
+    if (s.value.raw == Value.unbound.raw) return error.UnboundSymbol;
     return s.value;
 }
 
 /// Set symbol's value (for special variables)
 pub fn setSymbolValue(sym: Value, val: Value) !void {
     if (!sym.isSymbol()) return error.TypeError;
+    if (try runtime.storeSymbolValue(sym, val)) return;
     const s = sym.toPtr(objects.Symbol);
     s.value = val;
 }
@@ -384,10 +388,17 @@ pub fn setSymbolPlist(heap: *Heap, sym: Value, plist: Value) !void {
 }
 
 /// Test if symbol has value binding
-pub fn boundp(sym: Value) bool {
-    if (!sym.isSymbol()) return false;
-    const s = sym.toPtr(objects.Symbol);
-    return !s.value.isNil();
+pub fn boundp(sym: Value) !bool {
+    switch (sym.typeKind()) {
+        .nil, .t => return true,
+        .symbol => {},
+        else => return error.TypeError,
+    }
+
+    if (try runtime.lookupSymbolValue(sym)) |val| {
+        return val.raw != Value.unbound.raw;
+    }
+    return false;
 }
 
 // ============================================================================
@@ -578,9 +589,14 @@ pub fn fboundp(sym: Value) bool {
 
 /// Remove symbol's value binding
 pub fn makunbound(sym: Value) !Value {
-    if (!sym.isSymbol()) return error.TypeError;
+    switch (sym.typeKind()) {
+        .nil, .t => return error.TypeError,
+        .symbol => {},
+        else => return error.TypeError,
+    }
+    if (try runtime.storeSymbolValue(sym, Value.unbound)) return sym;
     const s = sym.toPtr(objects.Symbol);
-    s.value = Value.nil;
+    s.value = Value.unbound;
     return sym;
 }
 

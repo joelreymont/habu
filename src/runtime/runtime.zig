@@ -55,9 +55,16 @@ pub const GC = gc.GC;
 var g_heap_context: ?*Heap = null;
 var g_symbol_value_resolver: ?*const fn (Value, *anyopaque) anyerror!?Value = null;
 var g_symbol_value_resolver_ctx: ?*anyopaque = null;
+var g_symbol_value_setter: ?*const fn (Value, Value, *anyopaque) anyerror!void = null;
+var g_symbol_value_setter_ctx: ?*anyopaque = null;
 
 pub const SymbolValueResolverState = struct {
     cb: ?*const fn (Value, *anyopaque) anyerror!?Value,
+    ctx: ?*anyopaque,
+};
+
+pub const SymbolValueSetterState = struct {
+    cb: ?*const fn (Value, Value, *anyopaque) anyerror!void,
     ctx: ?*anyopaque,
 };
 
@@ -87,10 +94,35 @@ pub fn restoreSymbolValueResolver(state: SymbolValueResolverState) void {
     g_symbol_value_resolver_ctx = state.ctx;
 }
 
+pub fn setSymbolValueSetter(
+    cb: ?*const fn (Value, Value, *anyopaque) anyerror!void,
+    ctx: ?*anyopaque,
+) SymbolValueSetterState {
+    const prev = SymbolValueSetterState{
+        .cb = g_symbol_value_setter,
+        .ctx = g_symbol_value_setter_ctx,
+    };
+    g_symbol_value_setter = cb;
+    g_symbol_value_setter_ctx = ctx;
+    return prev;
+}
+
+pub fn restoreSymbolValueSetter(state: SymbolValueSetterState) void {
+    g_symbol_value_setter = state.cb;
+    g_symbol_value_setter_ctx = state.ctx;
+}
+
 pub fn lookupSymbolValue(sym: Value) anyerror!?Value {
     const cb = g_symbol_value_resolver orelse return null;
     const ctx = g_symbol_value_resolver_ctx orelse return null;
     return try cb(sym, ctx);
+}
+
+pub fn storeSymbolValue(sym: Value, val: Value) anyerror!bool {
+    const cb = g_symbol_value_setter orelse return false;
+    const ctx = g_symbol_value_setter_ctx orelse return false;
+    try cb(sym, val, ctx);
+    return true;
 }
 pub const Interner = interner.Interner;
 pub const RootRange = roots.RootRange;

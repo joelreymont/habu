@@ -1669,6 +1669,11 @@ pub const Vm = struct {
         return try self.lookupSymbolValueCell(sym);
     }
 
+    pub fn runtimeStoreSymbolValue(sym: Value, val: Value, ctx: *anyopaque) anyerror!void {
+        const self: *Vm = @ptrCast(@alignCast(ctx));
+        try self.setSymbolValueCell(sym, val);
+    }
+
     fn setSymbolValueCell(self: *Vm, sym_val: Value, val: Value) Error!void {
         const live_sym_val = self.resolveForwardedValue(sym_val);
         if (!live_sym_val.isSymbol()) return error.TypeMismatch;
@@ -1694,7 +1699,7 @@ pub const Vm = struct {
         const sym = live_sym_val.toPtr(Symbol);
         if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
             if (idx < MAX_GLOBALS) {
-                self.globals[idx] = Value.unbound;
+                try self.storeGlobal(idx, Value.unbound);
             }
             return;
         }
@@ -3401,7 +3406,9 @@ pub const Vm = struct {
     /// Call function with arguments provided as a slice
     pub fn callFromStack(self: *Vm, fn_val: Value, args: []const Value) Error!Value {
         const saved_resolver = runtime.setSymbolValueResolver(&runtimeLookupSymbolValue, @ptrCast(self));
+        const saved_setter = runtime.setSymbolValueSetter(&runtimeStoreSymbolValue, @ptrCast(self));
         defer runtime.restoreSymbolValueResolver(saved_resolver);
+        defer runtime.restoreSymbolValueSetter(saved_setter);
         if (self.isExecuting()) {
             return self.callFromStackAt(self.sp, fn_val, args);
         }
@@ -3444,7 +3451,9 @@ pub const Vm = struct {
     /// This preserves any values below `base` without copying.
     pub fn callFromStackAt(self: *Vm, base: usize, fn_val: Value, args: []const Value) Error!Value {
         const saved_resolver = runtime.setSymbolValueResolver(&runtimeLookupSymbolValue, @ptrCast(self));
+        const saved_setter = runtime.setSymbolValueSetter(&runtimeStoreSymbolValue, @ptrCast(self));
         defer runtime.restoreSymbolValueResolver(saved_resolver);
+        defer runtime.restoreSymbolValueSetter(saved_setter);
         const saved_state = State.save(self);
 
         const saved_idx = self.saved_chunk_sp;
@@ -3556,7 +3565,9 @@ pub const Vm = struct {
     /// calls it directly, bypassing the interpreter loop.
     pub fn callFromStackAtFast(self: *Vm, base: usize, fn_val: Value, args: []const Value) Error!Value {
         const saved_resolver = runtime.setSymbolValueResolver(&runtimeLookupSymbolValue, @ptrCast(self));
+        const saved_setter = runtime.setSymbolValueSetter(&runtimeStoreSymbolValue, @ptrCast(self));
         defer runtime.restoreSymbolValueResolver(saved_resolver);
+        defer runtime.restoreSymbolValueSetter(saved_setter);
         const saved_state = State.save(self);
 
         const saved_idx = self.saved_chunk_sp;
@@ -3677,7 +3688,9 @@ pub const Vm = struct {
     /// Apply function with args list provided as a value
     pub fn applyFromStack(self: *Vm, fn_val: Value, args_list: Value) Error!Value {
         const saved_resolver = runtime.setSymbolValueResolver(&runtimeLookupSymbolValue, @ptrCast(self));
+        const saved_setter = runtime.setSymbolValueSetter(&runtimeStoreSymbolValue, @ptrCast(self));
         defer runtime.restoreSymbolValueResolver(saved_resolver);
+        defer runtime.restoreSymbolValueSetter(saved_setter);
         if (self.isExecuting()) {
             return self.applyFromStackAt(self.sp, fn_val, args_list);
         }
@@ -3717,7 +3730,9 @@ pub const Vm = struct {
     /// This preserves any values below `base` without copying.
     pub fn applyFromStackAt(self: *Vm, base: usize, fn_val: Value, args_list: Value) Error!Value {
         const saved_resolver = runtime.setSymbolValueResolver(&runtimeLookupSymbolValue, @ptrCast(self));
+        const saved_setter = runtime.setSymbolValueSetter(&runtimeStoreSymbolValue, @ptrCast(self));
         defer runtime.restoreSymbolValueResolver(saved_resolver);
+        defer runtime.restoreSymbolValueSetter(saved_setter);
         const saved_state = State.save(self);
 
         const saved_idx = self.saved_chunk_sp;
