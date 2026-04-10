@@ -1599,6 +1599,192 @@ test "rtest6 problem 20 child process preserves tellsimp state" {
     try testing.expect(std.mem.indexOf(u8, run.stdout, "RULE nil") == null);
 }
 
+test "rtest6 problems 20 through 39 exact runner child process probe" {
+    try ensureMaximaSources();
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-39.mac",
+        .data =
+            \\(kill (f),
+            \\ matchdeclare (xx, integerp),
+            \\ tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))),
+            \\ [f(1), f(1)(y)]);
+            \\[lambda ([a], a - 1), y - 1];
+            \\
+            \\(remrule (f, all), 0);
+            \\0;
+            \\
+            \\(matchdeclare ([xx, yy], integerp),
+            \\ tellsimp (f(xx)(yy), yy*xx),
+            \\ [f(2), f(2)(3)]);
+            \\[f(2), 6];
+            \\
+            \\kill (rules);
+            \\done;
+            \\
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p20-39.mac" });
+    defer allocator.free(path);
+
+    const script_src = try std.fmt.allocPrint(
+        allocator,
+        \\(load "lib/stdlib.habu")
+        \\(load "lib/maxima-manifest.lisp")
+        \\(load (concatenate 'string (habu-maxima-manifest-value :srcdir) "maxima-package.lisp"))
+        \\(load "lib/maxima-stubs.lisp")
+        \\(load (concatenate 'string (habu-maxima-manifest-value :srcdir) "testsuite.lisp"))
+        \\(load "lib/maxima-loader.lisp")
+        \\(multiple-value-bind (ok total fail missing attempted)
+        \\    (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail missing attempted)))
+        \\(load "lib/maxima-post-load.lisp")
+        \\(let ((*package* (find-package :maxima))
+        \\      (*collect-errors* nil)
+        \\      (maxima::$batch_answers_from_file t))
+        \\  (multiple-value-bind (filename diff unexpected-pass total)
+        \\      (test-batch "{s}" nil)
+        \\    (format t "FILE ~S~%" filename)
+        \\    (format t "DIFF ~S~%" diff)
+        \\    (format t "UPASS ~S~%" unexpected-pass)
+        \\    (format t "TOTAL ~S~%" total)))
+        \\
+    ,
+        .{path},
+    );
+    defer allocator.free(script_src);
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "runner.lisp",
+        .data = script_src,
+    });
+
+    const script = try std.fs.path.join(allocator, &.{ base, "runner.lisp" });
+    defer allocator.free(script);
+
+    const run = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "./zig-out/bin/habu", script },
+        .cwd = ".",
+        .max_output_bytes = 32 * 1024,
+    });
+    defer allocator.free(run.stdout);
+    defer allocator.free(run.stderr);
+
+    try testing.expectEqual(.Exited, std.meta.activeTag(run.term));
+    try testing.expectEqual(@as(u8, 0), run.term.Exited);
+    try testing.expect(std.mem.indexOf(u8, run.stdout, "FILE ") != null);
+    try testing.expect(std.mem.indexOf(u8, run.stdout, "DIFF (") != null);
+    try testing.expect(std.mem.indexOf(u8, run.stdout, "UPASS NIL") != null);
+    try testing.expect(std.mem.indexOf(u8, run.stdout, "TOTAL 3") != null);
+}
+
+test "rtest6 problems 20 through 39 exact runner in-process reproduces failure" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-39.mac",
+        .data =
+            \\(kill (f),
+            \\ matchdeclare (xx, integerp),
+            \\ tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))),
+            \\ [f(1), f(1)(y)]);
+            \\[lambda ([a], a - 1), y - 1];
+            \\
+            \\(remrule (f, all), 0);
+            \\0;
+            \\
+            \\(matchdeclare ([xx, yy], integerp),
+            \\ tellsimp (f(xx)(yy), yy*xx),
+            \\ [f(2), f(2)(3)]);
+            \\[f(2), 6];
+            \\
+            \\kill (rules);
+            \\done;
+            \\
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p20-39.mac" });
+    defer allocator.free(path);
+
+    _ = try repl.eval("(load \"lib/maxima-manifest.lisp\")");
+    _ = try repl.eval("(load (concatenate 'string (habu-maxima-manifest-value :srcdir) \"maxima-package.lisp\"))");
+    _ = try repl.eval("(load \"lib/maxima-stubs.lisp\")");
+    _ = try repl.eval("(load (concatenate 'string (habu-maxima-manifest-value :srcdir) \"testsuite.lisp\"))");
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail missing attempted)
+        \\    (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail missing attempted))
+        \\  t)
+    );
+    _ = try repl.eval("(load \"lib/maxima-post-load.lisp\")");
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(let ((*package* (find-package :maxima))
+        \\      (*collect-errors* nil)
+        \\      (maxima::$batch_answers_from_file t))
+        \\  (handler-case
+        \\      (multiple-value-bind (filename diff unexpected-pass total)
+        \\          (test-batch "{s}" nil)
+        \\        (declare (ignore filename unexpected-pass))
+        \\        (list 'ok diff total))
+        \\    (condition (c)
+        \\      (list 'err (write-to-string c)))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    const tag = try consAt(out, 0);
+    try testing.expect(tag.isSymbol());
+    const name = tag.toPtr(runtime.Symbol).getName();
+    if (std.mem.eql(u8, name, "OK")) {
+        const diff = try consAt(out, 1);
+        const total = try consFixnumAt(out, 2);
+        try testing.expect(!diff.isNil());
+        try testing.expectEqual(@as(i64, 3), total);
+        return;
+    }
+    try testing.expectEqualStrings("ERR", name);
+    const msg = try consAt(out, 1);
+    try testing.expect(msg.isString());
+}
+
 test "rtest6 problem 39 isolated test-batch path stays clean" {
     try ensureMaximaSources();
 
@@ -2368,6 +2554,98 @@ test "rtest6 problems 22 through 39 slice stays clean" {
     try testing.expectEqualStrings("OK", cell.car.toPtr(runtime.Symbol).getName());
 }
 
+test "rtest6 problems 20 through 39 slice after testsuite bootstrap reproduces failure" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-manifest.lisp\")");
+    _ = try repl.eval("(load \"../maxima/src/maxima-package.lisp\")");
+    _ = try repl.eval("(load \"lib/maxima-stubs.lisp\")");
+    _ = try repl.eval("(load \"../maxima/src/testsuite.lisp\")");
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    t))
+    );
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-39-bootstrap.mac",
+        .data =
+            \\(kill (f),
+            \\ matchdeclare (xx, integerp),
+            \\ tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))),
+            \\ [f(1), f(1)(y)]);
+            \\[lambda ([a], a - 1), y - 1];
+            \\
+            \\(remrule (f, all), 0);
+            \\0;
+            \\
+            \\(matchdeclare ([xx, yy], integerp),
+            \\ tellsimp (f(xx)(yy), yy*xx),
+            \\ [f(2), f(2)(3)]);
+            \\[f(2), 6];
+            \\
+            \\kill (rules);
+            \\done;
+            \\
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p20-39-bootstrap.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(let ((*package* (find-package :maxima))
+        \\      (*collect-errors* nil)
+        \\      (maxima::$batch_answers_from_file t))
+        \\  (handler-case
+        \\      (multiple-value-bind (filename diff unexpected-pass total)
+        \\          (test-batch "{s}" nil)
+        \\        (declare (ignore filename unexpected-pass))
+        \\        (list 'ok diff total))
+        \\    (condition (c)
+        \\      (list 'err (write-to-string c)))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    const tag = try consAt(out, 0);
+    try testing.expect(tag.isSymbol());
+    const name = tag.toPtr(runtime.Symbol).getName();
+    if (std.mem.eql(u8, name, "OK")) {
+        const diff = try consAt(out, 1);
+        const total = try consFixnumAt(out, 2);
+        try testing.expect(!diff.isNil());
+        try testing.expectEqual(@as(i64, 3), total);
+        return;
+    }
+    try testing.expectEqualStrings("ERR", name);
+    const msg = try consAt(out, 1);
+    try testing.expect(msg.isString());
+}
+
 test "rtest6 problems 42 through 54 slice reproduces current failure" {
     try ensureMaximaSources();
 
@@ -3041,6 +3319,250 @@ test "rtest6 problems 39 through 54 slice reproduces current failure" {
     const cell = out.toPtr(Cons);
     try testing.expect(cell.car.isFixnum());
     try testing.expectEqual(@as(i64, 54), cell.car.toFixnum());
+}
+
+test "rtest6 problem 54 custom batch loop trace" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    fail))
+    );
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p42-54-trace.mac",
+        .data =
+            \\string (25.0);
+            \\"25.0";
+            \\
+            \\string(1/16.0);
+            \\"0.0625";
+            \\
+            \\(string(2e7), %% = "2.0e+7" or %% = "2.0E+7" or %% = "2.0e7" or %% = "2.0E7" or %%);
+            \\true;
+            \\
+            \\(string(2e-7), %% = "2.0e-7" or %% = "2.0E-7" or %%);
+            \\true;
+            \\
+            \\(string(12345000000.0), %% = "1.2345e+10" or %% = "1.2345E+10" or %% = "1.2345e10" or %% = "1.2345E10" or %%);
+            \\true;
+            \\
+            \\(string(1/1024.0), %% = "9.765625e-4" or %% = "9.765625E-4" or %%);
+            \\true;
+            \\
+            \\(reset (fpprintprec), 0);
+            \\0;
+            \\
+            \\is (parse_string (string (most_positive_float)) = most_positive_float);
+            \\true;
+            \\
+            \\is (parse_string (string (least_positive_float)) = least_positive_float);
+            \\true;
+            \\
+            \\is (parse_string (string (least_positive_normalized_float)) = least_positive_normalized_float);
+            \\true;
+            \\
+            \\is (parse_string (string (most_negative_float)) = most_negative_float);
+            \\true;
+            \\
+            \\is (parse_string (string (least_negative_float)) = least_negative_float);
+            \\true;
+            \\
+            \\is (parse_string (string (least_negative_normalized_float)) = least_negative_normalized_float);
+            \\true;
+            \\
+            \\is (parse_string (string (float_eps ())) = float_eps ());
+            \\true;
+            \\
+            \\(kill (all),
+            \\SPEL([rest])::= buildq(
+            \\  [rest],
+            \\  buildq(splice(rest)) ),
+            \\game_action(command,subj,obj,place,[rest])::= SPEL(
+            \\  [command,subj,obj,place,rest],
+            \\  block(
+            \\     infix(command),
+            \\     command(subject,object):= block(
+            \\        if location = place
+            \\           and subject = subj
+            \\           and object = obj
+            \\           and have(subj) then apply(sconcat,rest)
+            \\        else sconcat("you cannot ",command," like that. ") ))),
+            \\game_action("weld",chain,bucket,attic,
+            \\  if have(bucket)
+            \\  and not chain_welded then (
+            \\     chain_welded: true,
+            \\     "the chain is now securely welded to the bucket. " )
+            \\  else "you do not have a bucket. "),
+            \\0);
+            \\0;
+            \\
+            \\chain weld bucket;
+            \\"you cannot weld like that. ";
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p42-54-trace.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(write-to-string
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (let ((*collect-errors* nil)
+        \\          (maxima::$batch_answers_from_file t))
+        \\      (handler-case
+        \\          (multiple-value-list (test-batch "{s}" nil))
+        \\        (condition (c)
+        \\          (list 'err (write-to-string c)))))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    try snap.expectValue(@src(), out, "X");
+}
+
+test "p54batchtuple" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    t))
+    );
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p54-batch-tuple.mac",
+        .data =
+            \\string (25.0);
+            \\"25.0";
+            \\
+            \\string(1/16.0);
+            \\"0.0625";
+            \\
+            \\(string(2e7), %% = "2.0e+7" or %% = "2.0E+7" or %% = "2.0e7" or %% = "2.0E7" or %%);
+            \\true;
+            \\
+            \\(string(2e-7), %% = "2.0e-7" or %% = "2.0E-7" or %%);
+            \\true;
+            \\
+            \\(string(12345000000.0), %% = "1.2345e+10" or %% = "1.2345E+10" or %% = "1.2345e10" or %% = "1.2345E10" or %%);
+            \\true;
+            \\
+            \\(string(1/1024.0), %% = "9.765625e-4" or %% = "9.765625E-4" or %%);
+            \\true;
+            \\
+            \\(reset (fpprintprec), 0);
+            \\0;
+            \\
+            \\is (parse_string (string (most_positive_float)) = most_positive_float);
+            \\true;
+            \\
+            \\is (parse_string (string (least_positive_float)) = least_positive_float);
+            \\true;
+            \\
+            \\is (parse_string (string (least_positive_normalized_float)) = least_positive_normalized_float);
+            \\true;
+            \\
+            \\is (parse_string (string (most_negative_float)) = most_negative_float);
+            \\true;
+            \\
+            \\is (parse_string (string (least_negative_float)) = least_negative_float);
+            \\true;
+            \\
+            \\is (parse_string (string (least_negative_normalized_float)) = least_negative_normalized_float);
+            \\true;
+            \\
+            \\is (parse_string (string (float_eps ())) = float_eps ());
+            \\true;
+            \\
+            \\(kill (all),
+            \\SPEL([rest])::= buildq(
+            \\  [rest],
+            \\  buildq(splice(rest)) ),
+            \\game_action(command,subj,obj,place,[rest])::= SPEL(
+            \\  [command,subj,obj,place,rest],
+            \\  block(
+            \\     infix(command),
+            \\     command(subject,object):= block(
+            \\        if location = place
+            \\           and subject = subj
+            \\           and object = obj
+            \\           and have(subj) then apply(sconcat,rest)
+            \\        else sconcat("you cannot ",command," like that. ") ))),
+            \\game_action("weld",chain,bucket,attic,
+            \\  if have(bucket)
+            \\  and not chain_welded then (
+            \\     chain_welded: true,
+            \\     "the chain is now securely welded to the bucket. " )
+            \\  else "you do not have a bucket. "),
+            \\0);
+            \\0;
+            \\
+            \\chain weld bucket;
+            \\"you cannot weld like that. ";
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p54-batch-tuple.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(write-to-string
+        \\  (let ((*package* (find-package :maxima))
+        \\        (*collect-errors* nil)
+        \\        (maxima::$batch_answers_from_file t))
+        \\    (handler-case
+        \\        (multiple-value-list (test-batch "{s}" nil))
+        \\      (condition (c)
+        \\        (list 'err (write-to-string c))))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    try snap.expectValue(@src(), out, "X");
 }
 
 test "rtest6 canonical runner harness repro" {
