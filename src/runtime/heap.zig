@@ -4852,6 +4852,39 @@ test "heap collectGarbageRootSet updates multi-range" {
     try testing.expect(c1.cdr.isNil());
 }
 
+test "heap semispace duplicate symbol roots survive forwarding-like header" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const sym_name = "AAAAAAAAAAAAAA";
+    try testing.expectEqual(@as(usize, 14), sym_name.len);
+
+    var roots = [_]Value{
+        try heap.intern(sym_name),
+        try heap.intern(sym_name),
+    };
+    const raw_before = roots[0].raw;
+
+    try testing.expect(roots[0].isSymbol());
+    try testing.expectEqual(roots[0].raw, roots[1].raw);
+
+    var ranges = [_]roots_mod.RootRange{
+        .{ .ptr = roots[0..].ptr, .len = roots.len },
+    };
+    _ = try heap.collectGarbageRootSet(.{
+        .ranges = ranges[0..],
+        .slots = &[_]*Value{},
+    });
+
+    try testing.expect(roots[0].isSymbol());
+    try testing.expect(roots[1].isSymbol());
+    try testing.expectEqual(roots[0].raw, roots[1].raw);
+    try testing.expect(roots[0].raw != raw_before);
+    try testing.expectEqualStrings(sym_name, roots[0].toPtr(objects.Symbol).getName());
+}
+
 test "heap gc telemetry counters are monotonic" {
     const testing = std.testing;
 

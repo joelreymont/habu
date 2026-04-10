@@ -1344,141 +1344,68 @@ pub const GC = struct {
     }
 
     fn resolveStaleForwardedValue(self: *GC, heap: *const heap_mod.Heap, val: Value, obj_addr: usize) ?Value {
-        const stale_start = @intFromPtr(heap.to_start);
-        const stale_end = stale_start + heap.space_size;
-        if (obj_addr < stale_start or obj_addr >= stale_end) return null;
+        var cur = val;
+        var cur_addr = obj_addr;
+        var last_size: usize = 0;
+        var hops: u8 = 0;
+        while (hops < 16) : (hops += 1) {
+            if (!heap.containsAddrForDebug(cur_addr)) return null;
+            const first_word: *const Value = @ptrFromInt(cur_addr);
+            if (!first_word.isForwarding()) break;
 
-        const first_word: *const Value = @ptrFromInt(obj_addr);
-        if (!first_word.isForwarding()) return null;
+            const new_addr = first_word.toPtrAddr();
+            // Current-cycle to-space objects can have header words that alias the
+            // forwarding tag bits (for example symbol name_len=14). If the
+            // "forwarding target" is not even inside heap memory, treat this as a
+            // regular object header, not stale forwarding metadata.
+            if (!heap.containsAddrForDebug(new_addr)) break;
+            const forwarded_size_ptr: *const usize = @ptrFromInt(cur_addr + @sizeOf(Value));
+            const forwarded_size = forwarded_size_ptr.*;
+            const forwarded_size_ok = forwarded_size > 0 and
+                forwarded_size <= heap.space_size and
+                std.mem.isAligned(forwarded_size, heap_mod.ALIGNMENT);
 
-        const new_addr = first_word.toPtrAddr();
-        // Current-cycle to-space objects can have header words that alias the
-        // forwarding tag bits (for example symbol name_len=14). If the
-        // "forwarding target" is not even inside heap memory, treat this as a
-        // regular object header, not stale forwarding metadata.
-        if (!heap.containsAddrForDebug(new_addr)) return null;
-        const forwarded_size_ptr: *const usize = @ptrFromInt(obj_addr + @sizeOf(Value));
-        const forwarded_size = forwarded_size_ptr.*;
-        const forwarded_size_ok = forwarded_size > 0 and
-            forwarded_size <= heap.space_size and
-            std.mem.isAligned(forwarded_size, heap_mod.ALIGNMENT);
-
-        const from_start = @intFromPtr(heap.from_start);
-        const from_end = @intFromPtr(heap.from_end);
-        const in_from_addr = new_addr >= from_start and new_addr < from_end;
-
-        var in_tenured_addr = false;
-        if (heap.gcLayoutMode() == .generational) {
-            if (heap.tenuredRegion()) |tenured| {
-                const ten_start = @intFromPtr(tenured.start);
-                const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
-                in_tenured_addr = new_addr >= ten_start and new_addr < ten_used_end;
-            }
-        }
-        if (!forwarded_size_ok) {
-            if (self.trace_stale_resolve) {
-                std.debug.print(
-                    "TRACE stale-resolve reject-size val=0x{x} obj=0x{x} fw=0x{x} sz={d} stale=[0x{x},0x{x}) scan=0x{x}:{s} parent=0x{x}:{s} grand=0x{x}:{s} origin={s}:{d}:{d}\n",
-                    .{
-                        val.raw,
-                        obj_addr,
-                        first_word.raw,
-                        forwarded_size,
-                        stale_start,
-                        stale_end,
-                        self.debug_scan_addr,
-                        @tagName(self.debug_scan_tag),
-                        self.debug_parent_addr,
-                        @tagName(self.debug_parent_tag),
-                        self.debug_grand_addr,
-                        @tagName(self.debug_grand_tag),
-                        @tagName(self.debug_origin_kind),
-                        self.debug_origin_a,
-                        self.debug_origin_b,
-                    },
-                );
-                if (val.getTag() == .symbol) {
-                    const sym: *const objects.Symbol = @ptrFromInt(obj_addr);
-                    const name_ptr = @intFromPtr(sym.name_ptr);
-                    const sym_name = blk: {
-                        if (sym.name_len == 0 or sym.name_len > 128) break :blk "<bad-len>";
-                        const n: usize = @intCast(sym.name_len);
-                        if (name_ptr != obj_addr + @sizeOf(objects.Symbol)) break :blk "<bad-ptr>";
-                        break :blk sym.name_ptr[0..n];
-                    };
+            if (!forwarded_size_ok) {
+                if (self.trace_stale_resolve) {
                     std.debug.print(
-                        "TRACE stale-resolve reject-size symbol obj=0x{x} len={d} name_ptr=0x{x} name={s} plist=0x{x}\n",
-                        .{ obj_addr, sym.name_len, name_ptr, sym_name, sym.plist.raw },
+                        "TRACE stale-resolve reject-size val=0x{x} obj=0x{x} fw=0x{x} sz={d} scan=0x{x}:{s} parent=0x{x}:{s} grand=0x{x}:{s} origin={s}:{d}:{d}\n",
+                        .{
+                            cur.raw,
+                            cur_addr,
+                            first_word.raw,
+                            forwarded_size,
+                            self.debug_scan_addr,
+                            @tagName(self.debug_scan_tag),
+                            self.debug_parent_addr,
+                            @tagName(self.debug_parent_tag),
+                            self.debug_grand_addr,
+                            @tagName(self.debug_grand_tag),
+                            @tagName(self.debug_origin_kind),
+                            self.debug_origin_a,
+                            self.debug_origin_b,
+                        },
                     );
-                    if (!std.mem.eql(u8, sym_name, "<bad-len>") and !std.mem.eql(u8, sym_name, "<bad-ptr>")) {
-                        if (heap.symbols.get(sym_name)) |global_sym| {
-                            std.debug.print(
-                                "TRACE stale-resolve reject-size symbol global-hit name={s} raw=0x{x}\n",
-                                .{ sym_name, global_sym.raw },
-                            );
-                        }
-                        var pkg_it = heap.packages.valueIterator();
-                        while (pkg_it.next()) |pkg| {
-                            if (pkg.*.symbols.get(sym_name)) |pkg_sym| {
-                                std.debug.print(
-                                    "TRACE stale-resolve reject-size symbol pkg-hit pkg={s} name={s} raw=0x{x}\n",
-                                    .{ pkg.*.name, sym_name, pkg_sym.raw },
-                                );
-                            }
-                        }
-                    }
                 }
+                if (self.trap_stale_resolve_reject) @panic("stale resolve reject-size");
+                return null;
             }
-            if (self.trap_stale_resolve_reject) @panic("stale resolve reject-size");
-            return null;
+
+            const next = Value{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
+            if (next.raw == cur.raw) return null;
+            cur = next;
+            cur_addr = new_addr;
+            last_size = forwarded_size;
         }
 
-        const in_from = in_from_addr and forwarded_size <= from_end - new_addr;
-        var in_tenured = false;
-        if (in_tenured_addr) {
-            if (heap.tenuredRegion()) |tenured| {
-                const ten_start = @intFromPtr(tenured.start);
-                const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
-                in_tenured = forwarded_size <= ten_used_end - new_addr;
-            }
-        }
-        if (!(in_from or in_tenured)) {
+        if (cur.raw == val.raw or last_size == 0) return null;
+        if (!objects.forwardingTargetLooksValid(val.getTag(), cur_addr, last_size)) {
             if (self.trace_stale_resolve) {
                 std.debug.print(
-                    "TRACE stale-resolve reject-range val=0x{x} obj=0x{x} fw=0x{x} new=0x{x} sz={d} from=[0x{x},0x{x}) scan=0x{x}:{s} parent=0x{x}:{s} grand=0x{x}:{s} origin={s}:{d}:{d}\n",
+                    "TRACE stale-resolve reject-layout val=0x{x} final=0x{x} sz={d} tag={s} scan=0x{x}:{s} parent=0x{x}:{s} grand=0x{x}:{s} origin={s}:{d}:{d}\n",
                     .{
                         val.raw,
-                        obj_addr,
-                        first_word.raw,
-                        new_addr,
-                        forwarded_size,
-                        from_start,
-                        from_end,
-                        self.debug_scan_addr,
-                        @tagName(self.debug_scan_tag),
-                        self.debug_parent_addr,
-                        @tagName(self.debug_parent_tag),
-                        self.debug_grand_addr,
-                        @tagName(self.debug_grand_tag),
-                        @tagName(self.debug_origin_kind),
-                        self.debug_origin_a,
-                        self.debug_origin_b,
-                    },
-                );
-            }
-            if (self.trap_stale_resolve_reject) @panic("stale resolve reject-range");
-            return null;
-        }
-        if (!objects.forwardingTargetLooksValid(val.getTag(), new_addr, forwarded_size)) {
-            if (self.trace_stale_resolve) {
-                std.debug.print(
-                    "TRACE stale-resolve reject-layout val=0x{x} obj=0x{x} fw=0x{x} new=0x{x} sz={d} tag={s} scan=0x{x}:{s} parent=0x{x}:{s} grand=0x{x}:{s} origin={s}:{d}:{d}\n",
-                    .{
-                        val.raw,
-                        obj_addr,
-                        first_word.raw,
-                        new_addr,
-                        forwarded_size,
+                        cur_addr,
+                        last_size,
                         @tagName(val.getTag()),
                         self.debug_scan_addr,
                         @tagName(self.debug_scan_tag),
@@ -1495,14 +1422,7 @@ pub const GC = struct {
             if (self.trap_stale_resolve_reject) @panic("stale resolve reject-layout");
             return null;
         }
-        if (self.trace_stale_resolve) {
-            std.debug.print(
-                "TRACE stale-resolve ok val=0x{x} obj=0x{x} fw=0x{x} sz={d} from=[0x{x},0x{x})\n",
-                .{ val.raw, obj_addr, first_word.raw, forwarded_size, from_start, from_end },
-            );
-        }
-
-        return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
+        return cur;
     }
 
     fn rememberScanStore(self: *GC, heap: *heap_mod.Heap, out: Value) Value {
@@ -1563,43 +1483,6 @@ pub const GC = struct {
             }
             // Object is not in from-space (might be static), don't copy
             return self.rememberScanStore(heap, live);
-        }
-
-        // Check if already has forwarding pointer
-        const first_word: *Value = @ptrFromInt(obj_addr);
-        if (first_word.isForwarding()) {
-            // Already copied, return new address with original tag.
-            //
-            // NOTE: Many Habu objects do not have a Value header word (e.g. strings start with
-            // length). Those header words can coincidentally look like a forwarding Value, so we
-            // validate both forwarding target and stored object size.
-            const new_addr = first_word.toPtrAddr();
-            const to_start = @intFromPtr(heap.to_start);
-            const to_end = to_start + heap.space_size;
-            const forwarded_size_ptr: *const usize = @ptrFromInt(obj_addr + @sizeOf(Value));
-            const forwarded_size = forwarded_size_ptr.*;
-            const forwarded_size_ok = forwarded_size > 0 and
-                forwarded_size <= heap.space_size and
-                std.mem.isAligned(forwarded_size, heap_mod.ALIGNMENT);
-            const from_start_cur = @intFromPtr(heap.from_start);
-            const from_end_cur = @intFromPtr(heap.from_end);
-            const in_from_space = new_addr >= from_start_cur and new_addr < from_end_cur and forwarded_size <= from_end_cur - new_addr;
-            const in_to_space = new_addr >= to_start and new_addr <= to_end and forwarded_size <= to_end - new_addr;
-            var in_tenured = false;
-            if (heap.gcLayoutMode() == .generational) {
-                if (heap.tenuredRegion()) |tenured| {
-                    const ten_start = @intFromPtr(tenured.start);
-                    const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
-                    in_tenured = new_addr >= ten_start and new_addr <= ten_used_end and
-                        forwarded_size <= ten_used_end - new_addr;
-                }
-            }
-            const forwarded_range_ok = in_from_space or in_to_space or in_tenured;
-            if (forwarded_size_ok and forwarded_range_ok and
-                objects.forwardingTargetLooksValid(live.getTag(), new_addr, forwarded_size))
-            {
-                return self.rememberScanStore(heap, .{ .raw = new_addr | @as(u64, @intFromEnum(live.getTag())) });
-            }
         }
 
         // Copy object to to-space
@@ -1891,6 +1774,12 @@ pub const GC = struct {
                     return err;
                 });
             }
+            if (self.trace_gc_oom) {
+                std.debug.print(
+                    "TRACE gc-copy-oom promote={any} tag={s} size={d} aligned={d} val=0x{x} obj=0x{x} to_cur=0x{x} to_end=0x{x}\n",
+                    .{ false, @tagName(tag), size, aligned_size, live.raw, obj_addr, to_cur, to_end },
+                );
+            }
             return error.OutOfMemory;
         };
 
@@ -1917,6 +1806,7 @@ pub const GC = struct {
         // Install forwarding pointer in old location
         // Store the forwarding pointer in first word and size in second word
         // This allows finalizeUnreachable to skip past forwarded objects
+        const first_word: *Value = @ptrFromInt(obj_addr);
         first_word.* = Value.makeForwarding(@as(*u8, @ptrFromInt(new_addr)));
         const size_ptr: *usize = @ptrFromInt(obj_addr + @sizeOf(Value));
         size_ptr.* = aligned_size;
