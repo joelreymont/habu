@@ -2823,6 +2823,443 @@ test "rtest6 problems 20 through 39 slice after tiny testsuite assignment stays 
     try testing.expectEqual(@as(i64, 3), total);
 }
 
+test "rtest6 problems 20 through 39 slice after tiny conditional testsuite assignment stays clean" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(progn
+        \\  (setq maxima::$testsuite_files
+        \\        '((maxima::mlist maxima::simp)
+        \\          "rtest6"
+        \\          #+allegro ((maxima::mlist maxima::simp) "rtest_bad" ((maxima::mlist maxima::simp) 1))
+        \\          #-(or allegro) ((maxima::mlist maxima::simp) "rtest1" ((maxima::mlist maxima::simp) 183))))
+        \\  (setq maxima::$share_testsuite_files '((maxima::mlist maxima::simp)))
+        \\  t)
+    );
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    t))
+    );
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-39-tiny-conditional-testsuite.mac",
+        .data =
+            \\(kill (f),
+            \\ matchdeclare (xx, integerp),
+            \\ tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))),
+            \\ [f(1), f(1)(y)]);
+            \\[lambda ([a], a - 1), y - 1];
+            \\
+            \\(remrule (f, all), 0);
+            \\0;
+            \\
+            \\(matchdeclare ([xx, yy], integerp),
+            \\ tellsimp (f(xx)(yy), yy*xx),
+            \\ [f(2), f(2)(3)]);
+            \\[f(2), 6];
+            \\
+            \\kill (rules);
+            \\done;
+            \\
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p20-39-tiny-conditional-testsuite.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(let ((*package* (find-package :maxima))
+        \\      (*collect-errors* nil)
+        \\      (maxima::$batch_answers_from_file t))
+        \\  (handler-case
+        \\      (multiple-value-bind (filename diff unexpected-pass total)
+        \\          (test-batch "{s}" nil)
+        \\        (declare (ignore filename unexpected-pass))
+        \\        (list 'ok diff total))
+        \\    (condition (c)
+        \\      (list 'err (write-to-string c)))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    const tag = try consAt(out, 0);
+    try testing.expect(tag.isSymbol());
+    try testing.expectEqualStrings("OK", tag.toPtr(runtime.Symbol).getName());
+    const diff = try consAt(out, 1);
+    const total = try consFixnumAt(out, 2);
+    try testing.expect(diff.isNil());
+    try testing.expectEqual(@as(i64, 3), total);
+}
+
+test "rtest6 problems 20 through 39 slice after large synthetic testsuite literal stays clean" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    var list_buf = std.ArrayList(u8){};
+    defer list_buf.deinit(allocator);
+    try list_buf.appendSlice(allocator, "'((maxima::mlist maxima::simp)");
+    for (0..256) |i| {
+        const item = try std.fmt.allocPrint(allocator, " \"rt{d}\"", .{i});
+        defer allocator.free(item);
+        try list_buf.appendSlice(allocator, item);
+    }
+    try list_buf.append(allocator, ')');
+    const testsuite_literal = try list_buf.toOwnedSlice(allocator);
+    defer allocator.free(testsuite_literal);
+
+    const assign_form = try std.fmt.allocPrint(
+        allocator,
+        \\(progn
+        \\  (setq maxima::$testsuite_files {s})
+        \\  (setq maxima::$share_testsuite_files '((maxima::mlist maxima::simp)))
+        \\  t)
+    ,
+        .{testsuite_literal},
+    );
+    defer allocator.free(assign_form);
+    _ = try repl.eval(assign_form);
+
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    t))
+    );
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-39-large-synth-testsuite.mac",
+        .data =
+            \\(kill (f),
+            \\ matchdeclare (xx, integerp),
+            \\ tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))),
+            \\ [f(1), f(1)(y)]);
+            \\[lambda ([a], a - 1), y - 1];
+            \\
+            \\(remrule (f, all), 0);
+            \\0;
+            \\
+            \\(matchdeclare ([xx, yy], integerp),
+            \\ tellsimp (f(xx)(yy), yy*xx),
+            \\ [f(2), f(2)(3)]);
+            \\[f(2), 6];
+            \\
+            \\kill (rules);
+            \\done;
+            \\
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p20-39-large-synth-testsuite.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(let ((*package* (find-package :maxima))
+        \\      (*collect-errors* nil)
+        \\      (maxima::$batch_answers_from_file t))
+        \\  (handler-case
+        \\      (multiple-value-bind (filename diff unexpected-pass total)
+        \\          (test-batch "{s}" nil)
+        \\        (declare (ignore filename unexpected-pass))
+        \\        (list 'ok diff total))
+        \\    (condition (c)
+        \\      (list 'err (write-to-string c)))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    const tag = try consAt(out, 0);
+    try testing.expect(tag.isSymbol());
+    try testing.expectEqualStrings("OK", tag.toPtr(runtime.Symbol).getName());
+    const diff = try consAt(out, 1);
+    const total = try consFixnumAt(out, 2);
+    try testing.expect(diff.isNil());
+    try testing.expectEqual(@as(i64, 3), total);
+}
+
+test "rtest6 problems 20 through 39 slice after large synthetic nested testsuite literal stays clean" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    var list_buf = std.ArrayList(u8){};
+    defer list_buf.deinit(allocator);
+    try list_buf.appendSlice(allocator, "'((maxima::mlist maxima::simp)");
+    for (0..128) |i| {
+        const item = if ((i % 2) == 0)
+            try std.fmt.allocPrint(allocator, " \"rt{d}\"", .{i})
+        else
+            try std.fmt.allocPrint(
+                allocator,
+                " ((maxima::mlist maxima::simp) \"rt{d}\" ((maxima::mlist maxima::simp) {d} {d}))",
+                .{ i, i, i + 1 },
+            );
+        defer allocator.free(item);
+        try list_buf.appendSlice(allocator, item);
+    }
+    try list_buf.append(allocator, ')');
+    const testsuite_literal = try list_buf.toOwnedSlice(allocator);
+    defer allocator.free(testsuite_literal);
+
+    const assign_form = try std.fmt.allocPrint(
+        allocator,
+        \\(progn
+        \\  (setq maxima::$testsuite_files {s})
+        \\  (setq maxima::$share_testsuite_files '((maxima::mlist maxima::simp)))
+        \\  t)
+    ,
+        .{testsuite_literal},
+    );
+    defer allocator.free(assign_form);
+    _ = try repl.eval(assign_form);
+
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    t))
+    );
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-39-large-nested-testsuite.mac",
+        .data =
+            \\(kill (f),
+            \\ matchdeclare (xx, integerp),
+            \\ tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))),
+            \\ [f(1), f(1)(y)]);
+            \\[lambda ([a], a - 1), y - 1];
+            \\
+            \\(remrule (f, all), 0);
+            \\0;
+            \\
+            \\(matchdeclare ([xx, yy], integerp),
+            \\ tellsimp (f(xx)(yy), yy*xx),
+            \\ [f(2), f(2)(3)]);
+            \\[f(2), 6];
+            \\
+            \\kill (rules);
+            \\done;
+            \\
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p20-39-large-nested-testsuite.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(let ((*package* (find-package :maxima))
+        \\      (*collect-errors* nil)
+        \\      (maxima::$batch_answers_from_file t))
+        \\  (handler-case
+        \\      (multiple-value-bind (filename diff unexpected-pass total)
+        \\          (test-batch "{s}" nil)
+        \\        (declare (ignore filename unexpected-pass))
+        \\        (list 'ok diff total))
+        \\    (condition (c)
+        \\      (list 'err (write-to-string c)))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    const tag = try consAt(out, 0);
+    try testing.expect(tag.isSymbol());
+    try testing.expectEqualStrings("OK", tag.toPtr(runtime.Symbol).getName());
+    const diff = try consAt(out, 1);
+    const total = try consFixnumAt(out, 2);
+    try testing.expect(diff.isNil());
+    try testing.expectEqual(@as(i64, 3), total);
+}
+
+test "rtest6 problems 20 through 39 slice after synthetic backquoted testsuite stays clean" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    var list_buf = std.ArrayList(u8){};
+    defer list_buf.deinit(allocator);
+    try list_buf.appendSlice(allocator, "`((maxima::mlist maxima::simp)");
+    for (0..64) |i| {
+        if ((i % 16) == 0) {
+            const item = try std.fmt.allocPrint(
+                allocator,
+                " ,@(list \"rt{d}a\" \"rt{d}b\")",
+                .{ i, i },
+            );
+            defer allocator.free(item);
+            try list_buf.appendSlice(allocator, item);
+            continue;
+        }
+        const item = if ((i % 2) == 0)
+            try std.fmt.allocPrint(allocator, " \"rt{d}\"", .{i})
+        else
+            try std.fmt.allocPrint(
+                allocator,
+                " ((maxima::mlist maxima::simp) \"rt{d}\" ((maxima::mlist maxima::simp) {d} {d}))",
+                .{ i, i, i + 1 },
+            );
+        defer allocator.free(item);
+        try list_buf.appendSlice(allocator, item);
+    }
+    try list_buf.append(allocator, ')');
+    const testsuite_literal = try list_buf.toOwnedSlice(allocator);
+    defer allocator.free(testsuite_literal);
+
+    const assign_form = try std.fmt.allocPrint(
+        allocator,
+        \\(progn
+        \\  (setq maxima::$testsuite_files {s})
+        \\  (setq maxima::$share_testsuite_files '((maxima::mlist maxima::simp)))
+        \\  t)
+    ,
+        .{testsuite_literal},
+    );
+    defer allocator.free(assign_form);
+    _ = try repl.eval(assign_form);
+
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    t))
+    );
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-39-backquoted-testsuite.mac",
+        .data =
+            \\(kill (f),
+            \\ matchdeclare (xx, integerp),
+            \\ tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))),
+            \\ [f(1), f(1)(y)]);
+            \\[lambda ([a], a - 1), y - 1];
+            \\
+            \\(remrule (f, all), 0);
+            \\0;
+            \\
+            \\(matchdeclare ([xx, yy], integerp),
+            \\ tellsimp (f(xx)(yy), yy*xx),
+            \\ [f(2), f(2)(3)]);
+            \\[f(2), 6];
+            \\
+            \\kill (rules);
+            \\done;
+            \\
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p20-39-backquoted-testsuite.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(let ((*package* (find-package :maxima))
+        \\      (*collect-errors* nil)
+        \\      (maxima::$batch_answers_from_file t))
+        \\  (handler-case
+        \\      (multiple-value-bind (filename diff unexpected-pass total)
+        \\          (test-batch "{s}" nil)
+        \\        (declare (ignore filename unexpected-pass))
+        \\        (list 'ok diff total))
+        \\    (condition (c)
+        \\      (list 'err (write-to-string c)))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    const tag = try consAt(out, 0);
+    try testing.expect(tag.isSymbol());
+    try testing.expectEqualStrings("OK", tag.toPtr(runtime.Symbol).getName());
+    const diff = try consAt(out, 1);
+    const total = try consFixnumAt(out, 2);
+    try testing.expect(diff.isNil());
+    try testing.expectEqual(@as(i64, 3), total);
+}
+
 test "rtest6 problems 42 through 54 slice reproduces current failure" {
     try ensureMaximaSources();
 
