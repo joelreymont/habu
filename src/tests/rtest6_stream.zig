@@ -2646,6 +2646,95 @@ test "rtest6 problems 20 through 39 slice after testsuite bootstrap reproduces f
     try testing.expect(msg.isString());
 }
 
+test "rtest6 problems 20 through 39 slice after testsuite-only preload reproduces failure" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval("(load \"../maxima/src/testsuite.lisp\")");
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    t))
+    );
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-39-testsuite-only.mac",
+        .data =
+            \\(kill (f),
+            \\ matchdeclare (xx, integerp),
+            \\ tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))),
+            \\ [f(1), f(1)(y)]);
+            \\[lambda ([a], a - 1), y - 1];
+            \\
+            \\(remrule (f, all), 0);
+            \\0;
+            \\
+            \\(matchdeclare ([xx, yy], integerp),
+            \\ tellsimp (f(xx)(yy), yy*xx),
+            \\ [f(2), f(2)(3)]);
+            \\[f(2), 6];
+            \\
+            \\kill (rules);
+            \\done;
+            \\
+            \\(kill(t, R), integrate(sqrt(sin(t)^2*R^2+(1-cos(t))^2*R^2),t,0,2*%pi));
+            \\8*R;
+            \\
+        ,
+    });
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, "p20-39-testsuite-only.mac" });
+    defer allocator.free(path);
+
+    const form = try std.fmt.allocPrint(
+        allocator,
+        \\(let ((*package* (find-package :maxima))
+        \\      (*collect-errors* nil)
+        \\      (maxima::$batch_answers_from_file t))
+        \\  (handler-case
+        \\      (multiple-value-bind (filename diff unexpected-pass total)
+        \\          (test-batch "{s}" nil)
+        \\        (declare (ignore filename unexpected-pass))
+        \\        (list 'ok diff total))
+        \\    (condition (c)
+        \\      (list 'err (write-to-string c)))))
+    ,
+        .{path},
+    );
+    defer allocator.free(form);
+
+    const out = try repl.eval(form);
+    const tag = try consAt(out, 0);
+    try testing.expect(tag.isSymbol());
+    const name = tag.toPtr(runtime.Symbol).getName();
+    if (std.mem.eql(u8, name, "OK")) {
+        const diff = try consAt(out, 1);
+        const total = try consFixnumAt(out, 2);
+        try testing.expect(!diff.isNil());
+        try testing.expectEqual(@as(i64, 3), total);
+        return;
+    }
+    try testing.expectEqualStrings("ERR", name);
+    const msg = try consAt(out, 1);
+    try testing.expect(msg.isString());
+}
+
 test "rtest6 problems 42 through 54 slice reproduces current failure" {
     try ensureMaximaSources();
 
