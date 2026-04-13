@@ -1111,6 +1111,7 @@ pub const Repl = struct {
         // Create print control globals
         try self.createPrintGlobals();
         try self.createReadtableGlobal();
+        try self.createPackageGlobal();
         // Create standard stream globals
         try self.createStreamGlobals();
     }
@@ -1411,6 +1412,13 @@ pub const Repl = struct {
 
     fn createReadtableGlobal(self: *Repl) !void {
         try self.setClGlobal("*READTABLE*", self.heap.defaultReadtable());
+    }
+
+    fn createPackageGlobal(self: *Repl) !void {
+        const cl_user_native = self.heap.cl_user_package orelse return error.PackageNotFound;
+        const cl_user = (try self.heap.findLispPackageBytes("COMMON-LISP-USER")) orelse return error.PackageNotFound;
+        self.heap.setCurrentPackage(cl_user_native);
+        try self.setClGlobal("*PACKAGE*", cl_user);
     }
 
     fn createStreamGlobals(self: *Repl) !void {
@@ -5836,6 +5844,25 @@ test "load preserves package global across generational GC pressure" {
     try testing.expect(pkg_after_gc.isPackage());
     const pkg_after_gc_name = repl.packageNameBytesLive(&repl.vm, pkg_after_gc) orelse return error.TestUnexpectedResult;
     try testing.expect(std.mem.eql(u8, pkg_name_before, pkg_after_gc_name));
+}
+
+test "wireGlobalEnv starts in CL-USER package" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const pkg = repl.currentPackageGlobal(&repl.vm) orelse return error.TestUnexpectedResult;
+    try testing.expect(pkg.isPackage());
+    const pkg_name = repl.packageNameBytesLive(&repl.vm, pkg) orelse return error.TestUnexpectedResult;
+    try testing.expect(std.mem.eql(u8, pkg_name, "COMMON-LISP-USER"));
+    try testing.expect(std.mem.eql(u8, repl.heap.getCurrentPackageName(), "COMMON-LISP-USER"));
 }
 
 test "load restores load pathname globals under generational GC pressure" {
