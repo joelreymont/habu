@@ -410,9 +410,7 @@ fn hostCallbackMovedControl(vm: *const Vm, saved: State) bool {
         vm.is_unwinding != saved.is_unwinding or
         vm.pending_block_idx != saved.pending_block_idx or
         vm.pending_block_value.raw != saved.pending_block_value.raw or
-        vm.is_returning_from_block != saved.is_returning_from_block or
-        vm.secondary_values_count != saved.secondary_values_count or
-        vm.zero_values_returned != saved.zero_values_returned;
+        vm.is_returning_from_block != saved.is_returning_from_block;
 }
 
 /// Virtual Machine

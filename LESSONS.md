@@ -19,6 +19,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-04-10)
 
 ### Worked Well
+- `src/interp/vm.zig:389-410,8515-8525` must not treat multiple-values buffer changes as control transfer. `read-from-string` legitimately leaves one secondary value (the parse position), and nested `eval` legitimately replaces that with its own return-value state. Comparing `secondary_values_count` / `zero_values_returned` inside `hostCallbackMovedControl` turned ordinary `(let ((*package* ...)) (eval (read-from-string \"(progn 1)\")))` into a fake `ControlTransfer`, so the caller fell through to `ret` with an empty stack and raised `StackUnderflow`. Restricting the callback movement check to actual control state fixes the generic repro and the Maxima `testsuite.lisp` `defparameter $testsuite_files ...` path.
+
+### Worked Well
 - Replaying the already-read printed `testsuite.lisp` `defparameter $testsuite_files ...` form is a decisive split test. `src/tests/rtest6_stream.zig` now proves that `with-open-file/read/write-to-string/read-from-string/eval` still poisons the later `rtest6` `20..39` slice even after resetting back to plain `"rtest6"`, so the remaining floor is not in reader conditional handling; it is in ordinary evaluation / top-level state mutation of that form.
 
 ### Did Not Work

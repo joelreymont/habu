@@ -6381,6 +6381,49 @@ test "nested eval keeps transient chunk rooted across GC" {
     try testing.expectEqual(@as(i64, 42), result2.toFixnum());
 }
 
+test "eval after read-from-string does not fake control transfer on mv count change" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 2 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        "(let ((*package* (find-package :cl-user))) " ++
+            "(eval (read-from-string \"(progn 1)\")))",
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 1), result.toFixnum());
+}
+
+test "eval after read-from-string can run defparameter under dynamic package" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 2 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        "(let ((*package* (find-package :cl-user))) " ++
+            "(eval (read-from-string \"(defparameter *eval-cb-x* 1)\")))",
+    );
+    try testing.expect(result.isSymbol());
+
+    const bound = try repl.eval("*eval-cb-x*");
+    try testing.expect(bound.isFixnum());
+    try testing.expectEqual(@as(i64, 1), bound.toFixnum());
+}
+
 test "handler-case catches type-error from symbol-package" {
     const testing = std.testing;
     const allocator = testing.allocator;
