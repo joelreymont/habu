@@ -80,7 +80,7 @@ test "rtest6 integrate matches for file and string streams" {
     try ensureMaximaSources();
 
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 512 * 1024 * 1024 });
     defer heap.deinit();
 
     var repl: Repl = undefined;
@@ -151,7 +151,7 @@ test "rtest6 integrate parse stays in maxima symbol space" {
     try ensureMaximaSources();
 
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 512 * 1024 * 1024 });
     defer heap.deinit();
 
     var repl: Repl = undefined;
@@ -205,7 +205,7 @@ test "maxima sysconst globals self-evaluate" {
     try ensureMaximaSources();
 
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 512 * 1024 * 1024 });
     defer heap.deinit();
 
     var repl: Repl = undefined;
@@ -239,7 +239,7 @@ test "maxima meval* clears temporary sign facts on error" {
     try ensureMaximaSources();
 
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 512 * 1024 * 1024 });
     defer heap.deinit();
 
     var repl: Repl = undefined;
@@ -348,7 +348,7 @@ test "rtest6 test-batch sink behavior stays inside handler-case" {
     _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
 
     const out = try repl.eval(
-        \\(multiple-value-bind (ok total fail) (cl-user::maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
         \\  (declare (ignore ok total fail))
         \\  (let ((*package* (find-package :maxima)))
         \\    (load "lib/maxima-post-load.lisp")
@@ -635,7 +635,8 @@ test "rtest6 problem 20 isolated tellsimp path stays clean" {
         \\  (declare (ignore ok total))
         \\  (let ((*package* (find-package :maxima)))
         \\    (load "lib/maxima-post-load.lisp")
-        \\    (let* ((form
+        \\    (handler-case
+        \\        (let* ((form
         \\             (with-input-from-string
         \\               (s "(kill (f), matchdeclare (xx, integerp), tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))), [f(1), f(1)(y)]);")
         \\               (maxima::mread s 'maxima::$eof)))
@@ -1536,6 +1537,72 @@ test "rtest6 problem 20 script wrapper preserves tellsimp state" {
     try testing.expect(std.mem.indexOf(u8, out, "OPS nil") == null);
     try testing.expect(std.mem.indexOf(u8, out, "RULEOF nil") == null);
     try testing.expect(std.mem.indexOf(u8, out, "RULE nil") == null);
+}
+
+test "rtest6 problem 20 eval and loadFile avoid stale type decl crash" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 512 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const body =
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total fail))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    (let* ((form
+        \\             (with-input-from-string
+        \\               (s "(kill (f), matchdeclare (xx, integerp), tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))), [f(1), f(1)(y)]);")
+        \\               (maxima::mread s 'maxima::$eof)))
+        \\           (res (maxima::meval* (third form)))
+        \\           (expected
+        \\             (third
+        \\               (with-input-from-string
+        \\                 (s "[lambda ([a], a - 1), y - 1];")
+        \\                 (maxima::mread s 'maxima::$eof)))))
+        \\      (if (maxima::batch-equal-check expected res) 1 0)))
+    ;
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    const eval_form = try std.fmt.allocPrint(
+        allocator,
+        \\(setq common-lisp-user::*p20-eval-ok* {s})
+        \\)
+    ,
+        .{body},
+    );
+    defer allocator.free(eval_form);
+    _ = try repl.eval(eval_form);
+    const eval_ok = try repl.eval("common-lisp-user::*p20-eval-ok*");
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{
+        .sub_path = "p20-loadfile-repro.lisp",
+        .data =
+            \\(load "lib/maxima-loader.lisp")
+            \\(setq common-lisp-user::*p20-loadfile-ok*
+            ++ body ++ "))\n",
+    });
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const script = try std.fs.path.join(allocator, &.{ base, "p20-loadfile-repro.lisp" });
+    defer allocator.free(script);
+    try repl.addTrustedLoadRootForFile(script);
+    try repl.loadFile(script, std.io.null_writer);
+    const file_ok = try repl.eval("common-lisp-user::*p20-loadfile-ok*");
+
+    try testing.expect(eval_ok.isFixnum());
+    try testing.expect(file_ok.isFixnum());
+    try testing.expectEqual(@as(i64, 0), eval_ok.toFixnum());
+    try testing.expectEqual(@as(i64, 0), file_ok.toFixnum());
 }
 
 test "rtest6 problem 20 script wrapper preserves tellsimp state on spawned thread" {
@@ -3792,6 +3859,179 @@ test "rtest6 problem 20 direct meval is dirty after exact testsuite_files form t
     try testing.expectEqual(@as(i64, 1), fboundp_ok);
     try testing.expectEqual(@as(i64, 0), equal_ok);
     try testing.expectEqual(@as(i64, 0), batch_equal_ok);
+}
+
+test "rtest6 problem 20 poisoned rule probe after exact testsuite_files form then reset" {
+    try ensureMaximaSources();
+
+    const byte_disasm = @import("../bytecode/disasm.zig");
+    const io_prims = runtime.primitives.io;
+    const list_prims = runtime.primitives.list;
+
+    const allocator = testing.allocator;
+
+    const Probe = struct {
+        fn ruleFn(repl: *Repl) !Value {
+            const pkg = repl.heap.findPackage("MAXIMA") orelse return error.TestUnexpectedResult;
+            const fn_key = try repl.heap.intern("%FUNCTION-CELL");
+            var rule_sym = Value.nil;
+            var it = pkg.symbols.map.iterator();
+            while (it.next()) |entry| {
+                if (std.mem.indexOf(u8, entry.key_ptr.*, "RULE") != null) {
+                    const probe_fn = try list_prims.get(repl.heap, entry.value_ptr.*, fn_key);
+                    std.debug.print(
+                        "P20-CAND {s} kind={s}\n",
+                        .{ entry.key_ptr.*, @tagName(probe_fn.typeKind()) },
+                    );
+                }
+                if (std.mem.indexOf(u8, entry.key_ptr.*, "RULE1") == null) continue;
+                const candidate = entry.value_ptr.*;
+                const fn_val_ = try list_prims.get(repl.heap, candidate, fn_key);
+                if (!fn_val_.isClosure()) continue;
+                rule_sym = candidate;
+                break;
+            }
+            try testing.expect(rule_sym.isSymbol());
+            const fn_val = try list_prims.get(repl.heap, rule_sym, fn_key);
+            try testing.expect(fn_val.isClosure());
+            return fn_val;
+        }
+
+        fn setup(repl: *Repl, poison: bool) !void {
+            _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+            if (poison) {
+                _ = try repl.eval(
+                    \\(with-open-file (s "../maxima/src/testsuite.lisp")
+                    \\  (eval (read s nil nil))
+                    \\  (eval (read s nil nil))
+                    \\  t)
+                );
+                _ = try repl.eval(
+                    \\(progn
+                    \\  (setq maxima::$testsuite_files '((maxima::mlist maxima::simp) "rtest6"))
+                    \\  (setq maxima::$share_testsuite_files '((maxima::mlist maxima::simp)))
+                    \\  t)
+                );
+            }
+            _ = try repl.eval(
+                \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+                \\  (declare (ignore ok total fail))
+                \\  (let ((*package* (find-package :maxima)))
+                \\    (load "lib/maxima-post-load.lisp")
+                \\    (let* ((form
+                \\             (with-input-from-string
+                \\               (s "(kill (f), matchdeclare (xx, integerp), tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))), [f(1), f(1)(y)]);")
+                \\               (maxima::mread s 'maxima::$eof))))
+                \\      (maxima::meval* (third form))
+                \\      t)))
+            );
+        }
+
+        fn snapshot(allocator_: std.mem.Allocator, repl: *Repl) !struct { name: []u8, dis: []u8, lam: []u8, consts: []u8, plists: []u8 } {
+            const fn_val = try ruleFn(repl);
+            const pkg = repl.heap.findPackage("MAXIMA") orelse return error.TestUnexpectedResult;
+            const fn_key = try repl.heap.intern("%FUNCTION-CELL");
+            var rule_sym = Value.nil;
+            var it = pkg.symbols.map.iterator();
+            while (it.next()) |entry| {
+                const probe_fn = try list_prims.get(repl.heap, entry.value_ptr.*, fn_key);
+                if (probe_fn.raw == fn_val.raw) {
+                    rule_sym = entry.value_ptr.*;
+                    break;
+                }
+            }
+            try testing.expect(rule_sym.isSymbol());
+            const chunk = fn_val.toPtr(runtime.Closure).code.toPtr(runtime.Chunk);
+
+            var dis_buf = std.ArrayList(u8){};
+            defer dis_buf.deinit(allocator_);
+            try byte_disasm.disassembleRuntime(chunk, dis_buf.writer(allocator_));
+            const dis = try dis_buf.toOwnedSlice(allocator_);
+
+            const lam_val = try io_prims.writeToString(repl.heap, chunk.lambda_expr);
+            try testing.expect(lam_val.isString());
+            const lam = try allocator_.dupe(u8, lam_val.toPtr(runtime.String).bytes());
+            var const_buf = std.ArrayList(u8){};
+            defer const_buf.deinit(allocator_);
+            for (chunk.getConstants(), 0..) |c, i| {
+                const text = try io_prims.writeToString(repl.heap, c);
+                try testing.expect(text.isString());
+                try const_buf.writer(allocator_).print("[{d}] {s}\n", .{ i, text.toPtr(runtime.String).bytes() });
+            }
+            const consts = try const_buf.toOwnedSlice(allocator_);
+            var plist_buf = std.ArrayList(u8){};
+            defer plist_buf.deinit(allocator_);
+            const sym_idxs = [_]usize{ 0, 1, 2, 5, 12, 16, 20, 21, 26 };
+            for (sym_idxs) |idx| {
+                const sym = chunk.getConstants()[idx];
+                if (!sym.isSymbol()) continue;
+                const name_txt = try io_prims.writeToString(repl.heap, sym);
+                const plist_txt = try io_prims.writeToString(repl.heap, try runtime.primitives.symbol.symbolPlist(repl.heap, sym));
+                try testing.expect(name_txt.isString());
+                try testing.expect(plist_txt.isString());
+                try plist_buf.writer(allocator_).print(
+                    "[{d}] {s} => {s}\n",
+                    .{ idx, name_txt.toPtr(runtime.String).bytes(), plist_txt.toPtr(runtime.String).bytes() },
+                );
+            }
+            const plists = try plist_buf.toOwnedSlice(allocator_);
+            const name = try allocator_.dupe(u8, rule_sym.toPtr(runtime.Symbol).getName());
+
+            return .{ .name = name, .dis = dis, .lam = lam, .consts = consts, .plists = plists };
+        }
+
+        fn execRule(allocator_: std.mem.Allocator, repl: *Repl) ![]u8 {
+            const fn_val = try ruleFn(repl);
+            const arg0 = try repl.eval("(let ((*package* (find-package :maxima))) '(($f simp) 1))");
+            const args = [_]Value{ arg0, Value.makeFixnum(1), Value.t };
+            const result = repl.vm.callFromStackAt(repl.vm.sp, fn_val, &args) catch |err| {
+                return try std.fmt.allocPrint(allocator_, "ERR {s}", .{@errorName(err)});
+            };
+            const text = try io_prims.writeToString(repl.heap, result);
+            try testing.expect(text.isString());
+            return try allocator_.dupe(u8, text.toPtr(runtime.String).bytes());
+        }
+    };
+
+    var clean_heap = try Heap.init(allocator, .{ .total_size = 512 * 1024 * 1024 });
+    defer clean_heap.deinit();
+    var clean_repl: Repl = undefined;
+    try clean_repl.init(allocator, &clean_heap, .{});
+    defer clean_repl.deinit();
+    try clean_repl.wireGlobalEnv();
+    try loadStdlib(&clean_repl);
+    try Probe.setup(&clean_repl, false);
+    const clean = try Probe.snapshot(allocator, &clean_repl);
+    const clean_call = try Probe.execRule(allocator, &clean_repl);
+    defer allocator.free(clean.name);
+    defer allocator.free(clean.dis);
+    defer allocator.free(clean.lam);
+    defer allocator.free(clean.consts);
+    defer allocator.free(clean.plists);
+    defer allocator.free(clean_call);
+
+    var dirty_heap = try Heap.init(allocator, .{ .total_size = 512 * 1024 * 1024 });
+    defer dirty_heap.deinit();
+    var dirty_repl: Repl = undefined;
+    try dirty_repl.init(allocator, &dirty_heap, .{});
+    defer dirty_repl.deinit();
+    try dirty_repl.wireGlobalEnv();
+    try loadStdlib(&dirty_repl);
+    try Probe.setup(&dirty_repl, true);
+    const dirty = try Probe.snapshot(allocator, &dirty_repl);
+    const dirty_call = try Probe.execRule(allocator, &dirty_repl);
+    defer allocator.free(dirty.name);
+    defer allocator.free(dirty.dis);
+    defer allocator.free(dirty.lam);
+    defer allocator.free(dirty.consts);
+    defer allocator.free(dirty.plists);
+    defer allocator.free(dirty_call);
+
+    std.debug.print(
+        "P20-CHUNK clean-name={s} dirty-name={s}\nclean-call={s}\ndirty-call={s}\nclean-lam={s}\ndirty-lam={s}\nCLEAN-CONSTS\n{s}\nDIRTY-CONSTS\n{s}\nCLEAN-PLISTS\n{s}\nDIRTY-PLISTS\n{s}\nCLEAN\n{s}\nDIRTY\n{s}\n",
+        .{ clean.name, dirty.name, clean_call, dirty_call, clean.lam, dirty.lam, clean.consts, dirty.consts, clean.plists, dirty.plists, clean.dis, dirty.dis },
+    );
+    try testing.expect(true);
 }
 
 test "rtest6 problems 20 through 39 slice after replaying printed testsuite_files form then reset reproduces failure" {

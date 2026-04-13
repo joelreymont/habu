@@ -1853,6 +1853,29 @@ pub const BoxingSet = struct {
         }
         return false;
     }
+
+    fn sameLexicalKey(sym: Value, key: VarKey) bool {
+        if (!sym.isSymbol()) return false;
+
+        const sym_ptr = sym.toPtr(Symbol);
+        const bits = sym_ptr.reserved;
+        if ((bits & 1) != 0) {
+            return key.uid != 0 and (bits >> 1) == key.uid;
+        }
+
+        if (key.uid != 0) return false;
+        const pkg_ptr: usize = if (bits != 0) @intCast(bits) else 0;
+        if (pkg_ptr != key.pkg_ptr) return false;
+        return std.mem.eql(u8, sym_ptr.getName(), key.name);
+    }
+
+    pub fn containsKey(self: *const BoxingSet, key: VarKey) bool {
+        var it = self.names.keyIterator();
+        while (it.next()) |existing| {
+            if (sameLexicalKey(existing.*, key)) return true;
+        }
+        return false;
+    }
 };
 
 /// Capture analysis result
@@ -2184,6 +2207,9 @@ pub const Compiler = struct {
         name: []const u8,
         sym: ?Value = null,
         type_sym: ?Value, // null for untyped, otherwise the type symbol
+        sym_key: ?VarKey = null,
+        type_idx: ?u32 = null,
+        boxed: bool = false,
         /// Local slot index in the lambda frame
         idx: u16,
     };
@@ -2747,9 +2773,13 @@ pub const Compiler = struct {
 
         // Add parameters to context
         for (typed_params) |tp| {
-            if (tp.type_sym) |type_sym| {
+            const type_sym = if (tp.type_idx) |idx|
+                self.lookupRetainedCompileValue(self.vm.?, idx)
+            else
+                tp.type_sym;
+            if (type_sym) |ty_sym| {
                 // Parse type from symbol
-                const param_type = (try self.parseTypeExpr(type_sym)) orelse &types.t_any;
+                const param_type = (try self.parseTypeExpr(ty_sym)) orelse &types.t_any;
                 try ctx.bind(tp.name, param_type, .many);
             } else {
                 // Untyped parameter - bind as any
@@ -4619,7 +4649,14 @@ pub const Compiler = struct {
         defer params.deinit(self.allocator);
 
         var typed_params = std.ArrayList(TypedParam){};
-        defer typed_params.deinit(self.allocator);
+        defer {
+            for (typed_params.items) |tp| {
+                if (tp.sym_key) |key| {
+                    if (key.uid == 0) self.allocator.free(key.name);
+                }
+            }
+            typed_params.deinit(self.allocator);
+        }
 
         var optional_params = std.ArrayList(Ir.OptionalParam){};
         defer optional_params.deinit(self.allocator);
@@ -4883,6 +4920,7 @@ pub const Compiler = struct {
                             .name = name,
                             .sym = if (param_item.typeKind() == .symbol) param_item else null,
                             .type_sym = null,
+                            .sym_key = if (param_item.typeKind() == .symbol) try Env.keyOwnedFromSym(self.allocator, param_item) else null,
                             .idx = idx,
                         });
                         if (param_item.typeKind() == .symbol and self.isSpecialBindingInEnv(&lambda_env, param_item)) {
@@ -5030,6 +5068,8 @@ pub const Compiler = struct {
                             .name = name,
                             .sym = if (typed_car.typeKind() == .symbol) typed_car else null,
                             .type_sym = type_val,
+                            .sym_key = if (typed_car.typeKind() == .symbol) try Env.keyOwnedFromSym(self.allocator, typed_car) else null,
+                            .type_idx = if (self.vm) |vm| try self.retainCompileValue(vm, type_val) else null,
                             .idx = idx,
                         });
                         if (typed_car.typeKind() == .symbol and self.isSpecialBindingInEnv(&lambda_env, typed_car)) {
@@ -5234,6 +5274,21 @@ pub const Compiler = struct {
         } else if (lambda_boxed.names.count() > 0) {
             self.boxed_vars = lambda_boxed;
         }
+        for (typed_params.items) |*tp| {
+            if (tp.type_sym == null) {
+                if (tp.sym_key) |key| {
+                    if (lambda_env.lookupTypeDeclKey(key)) |decl_type| {
+                        tp.type_sym = decl_type;
+                        if (tp.type_idx == null) {
+                            if (self.vm) |vm| tp.type_idx = try self.retainCompileValue(vm, decl_type);
+                        }
+                    }
+                }
+            }
+            if (tp.sym_key) |key| {
+                tp.boxed = lambda_boxed.containsKey(key) and !lambda_env.lookupSpecialDeclKey(key);
+            }
+        }
         var body_ir = try self.compileBodyWithTail(filtered_body, &lambda_env, !has_special_params);
 
         // Bidirectional type checking (when enabled)
@@ -5250,24 +5305,17 @@ pub const Compiler = struct {
             var assertion_count: usize = 0;
             for (typed_params.items) |tp| {
                 const param_name = tp.name;
-                var type_sym_to_check: ?Value = null;
-
-                if (tp.type_sym) |type_sym| {
-                    type_sym_to_check = type_sym;
-                } else if (tp.sym) |param_sym| {
-                    if (lambda_env.lookupTypeDeclSym(param_sym)) |decl_type| {
-                        type_sym_to_check = decl_type;
-                    }
-                }
+                const type_sym_to_check = if (tp.type_idx) |idx|
+                    self.lookupRetainedCompileValue(self.vm.?, idx)
+                else
+                    tp.type_sym;
 
                 if (type_sym_to_check) |type_sym| {
                     var var_ir = try self.builder.variable(param_name, 0, tp.idx);
-                    if (tp.sym) |param_sym| {
-                        if (lambda_boxed.contains(param_sym) and !self.isSpecialBindingInEnv(&lambda_env, param_sym)) {
-                            const box_ref = try self.allocator.create(Ir);
-                            box_ref.* = .{ .box_ref = .{ .operand = var_ir } };
-                            var_ir = box_ref;
-                        }
+                    if (tp.boxed) {
+                        const box_ref = try self.allocator.create(Ir);
+                        box_ref.* = .{ .box_ref = .{ .operand = var_ir } };
+                        var_ir = box_ref;
                     }
                     const assert_ir = try self.makeTypeAssertionSym(var_ir, type_sym);
                     if (assert_ir) |assert_node| {
@@ -15104,14 +15152,17 @@ pub const Compiler = struct {
         const type_name_val = cons1.car;
         if (!type_name_val.isSymbol()) return error.InvalidSyntax;
         const type_name_raw = type_name_val.toPtr(Symbol).getName();
-        const type_name = try self.globals.allocator.dupe(u8, type_name_raw);
 
         // Rest is (lambda-list body...) - store for later expansion
         const lambda_args = cons1.cdr;
         if (!lambda_args.isCons()) return error.InvalidSyntax;
 
         // Store in type_aliases: name -> (lambda-list body...)
-        try self.type_aliases.put(type_name, lambda_args);
+        const gop = try self.type_aliases.getOrPut(type_name_raw);
+        if (!gop.found_existing) {
+            gop.key_ptr.* = try self.globals.allocator.dupe(u8, type_name_raw);
+        }
+        gop.value_ptr.* = lambda_args;
 
         // deftype has no runtime effect - return nil
         return try self.builder.lit(Value.nil);

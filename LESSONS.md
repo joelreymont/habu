@@ -18,6 +18,15 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ## Session Notes (2026-04-10)
 
+## Session Notes (2026-04-13)
+
+### Worked Well
+- `src/compiler/compile.zig:2183-2190,4618-4626,5241-5274` must not keep raw symbol/type `Value`s from lambda params across body compilation. `compileLambdaCore` was storing parameter symbols and type expressions in `TypedParam`, then later hashing them via `Env.type_decls` after nested loads and GC. The reduced proof is `src/tests/rtest6_stream.zig:1542-1605`, where the `rtest6` problem-20 eval/loadFile split used to segfault in `lookupTypeDeclKey` and now runs to completion. The correct fix is stable lexical keys plus retained compile values, not another stale-root bandaid.
+- `src/compiler/compile.zig:15143-15165` `compileDeftype` must not leak duplicate `type_aliases` keys on repeated loads. Using `getOrPut` and only duplicating the key on first insert fixes the allocator leak that the new focused `rtest6` crash regression exposed.
+
+### Did Not Work
+- The initial `rtest6` eval/loadFile split probe was invalid in three different ways: it parsed `MAXIMA::` before loader setup on the eval side, left generated `setq` wrappers unterminated, and used an unqualified probe variable that followed leaked `*PACKAGE*` state. Until the probe itself was corrected, it was only measuring harness mistakes.
+
 ### Worked Well
 - `src/interp/vm.zig:389-410,8515-8525` must not treat multiple-values buffer changes as control transfer. `read-from-string` legitimately leaves one secondary value (the parse position), and nested `eval` legitimately replaces that with its own return-value state. Comparing `secondary_values_count` / `zero_values_returned` inside `hostCallbackMovedControl` turned ordinary `(let ((*package* ...)) (eval (read-from-string \"(progn 1)\")))` into a fake `ControlTransfer`, so the caller fell through to `ret` with an empty stack and raised `StackUnderflow`. Restricting the callback movement check to actual control state fixes the generic repro and the Maxima `testsuite.lisp` `defparameter $testsuite_files ...` path.
 
