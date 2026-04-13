@@ -3058,6 +3058,56 @@ pub const Compiler = struct {
         }
     }
 
+    fn copySourceTree(self: *Compiler, expr: Value) !Value {
+        const live_expr = self.resolveForwardedValue(expr);
+        if (!live_expr.isCons()) return live_expr;
+
+        const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
+        if (self.vm) |vm| {
+            const expr_tok = try self.pushCompileRoot(vm, live_expr);
+            defer popCompileRoot(vm, expr_tok.root_idx);
+
+            const rooted_expr = self.resolveForwardedValue(vm.globals[expr_tok.root_idx]);
+            const cons = rooted_expr.toPtr(Cons);
+            const copied_car = try self.copySourceTree(cons.car);
+            const copied_cdr = try self.copySourceTree(cons.cdr);
+
+            const car_tok = try self.pushCompileRoot(vm, copied_car);
+            defer popCompileRoot(vm, car_tok.root_idx);
+            const cdr_tok = try self.pushCompileRoot(vm, copied_cdr);
+            defer popCompileRoot(vm, cdr_tok.root_idx);
+
+            return self.resolveForwardedValue(try heap.allocCons(
+                self.resolveForwardedValue(vm.globals[car_tok.root_idx]),
+                self.resolveForwardedValue(vm.globals[cdr_tok.root_idx]),
+            ));
+        }
+
+        const cons = live_expr.toPtr(Cons);
+        const copied_car = try self.copySourceTree(cons.car);
+        const copied_cdr = try self.copySourceTree(cons.cdr);
+        return try heap.allocCons(copied_car, copied_cdr);
+    }
+
+    fn snapshotLambdaExpr(self: *Compiler, lambda_sym: Value, lambda_args: Value) !Value {
+        const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
+        const live_lambda_sym = self.resolveForwardedValue(lambda_sym);
+        const live_lambda_args = self.resolveForwardedValue(lambda_args);
+
+        if (self.vm) |vm| {
+            const args_tok = try self.pushCompileRoot(vm, live_lambda_args);
+            defer popCompileRoot(vm, args_tok.root_idx);
+
+            const wrapper = try heap.allocCons(live_lambda_sym, self.resolveForwardedValue(vm.globals[args_tok.root_idx]));
+            const wrapper_tok = try self.pushCompileRoot(vm, wrapper);
+            defer popCompileRoot(vm, wrapper_tok.root_idx);
+
+            return try self.copySourceTree(vm.globals[wrapper_tok.root_idx]);
+        }
+
+        return try self.copySourceTree(try heap.allocCons(live_lambda_sym, live_lambda_args));
+    }
+
     fn setLambdaName(self: *Compiler, lam_ir: *Ir, name: Value) !void {
         lam_ir.lambda.name = self.resolveForwardedValue(name);
         lam_ir.lambda.name_idx = null;
@@ -4561,6 +4611,9 @@ pub const Compiler = struct {
         const params_expr = cons.car;
         const body_exprs = cons.cdr;
 
+        const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+        const lambda_expr_source = try self.snapshotLambdaExpr(b.lambda, lambda_args);
+
         // Parse parameters (supports typed and untyped)
         var params = std.ArrayList([]const u8){};
         defer params.deinit(self.allocator);
@@ -4695,7 +4748,6 @@ pub const Compiler = struct {
 
             switch (param_item.typeKind()) {
                 .symbol, .keyword, .t, .nil => {
-                    const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
                     const marker = self.canonicalBuiltinSymbol(param_item);
 
                     // Check for &rest/&body keyword (use symbol identity)
@@ -5343,18 +5395,7 @@ pub const Compiler = struct {
         lam_ir.lambda.speed = self.optimize_current.speed;
         lam_ir.lambda.safety = self.optimize_current.safety;
 
-        // Preserve source lambda expression for FUNCTION-LAMBDA-EXPRESSION.
-        const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
-        const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
-        const live_lambda_args = if (self.vm) |vm| blk: {
-            if (lambda_args_tok) |tok| {
-                break :blk self.resolveForwardedValue(vm.globals[tok.root_idx]);
-            }
-            break :blk self.resolveForwardedValue(lambda_args);
-        } else self.resolveForwardedValue(lambda_args);
-        const lambda_sym = self.resolveForwardedValue(b.lambda);
-        const lambda_expr = try heap.allocCons(lambda_sym, live_lambda_args);
-        try self.setLambdaExpr(lam_ir, lambda_expr);
+        try self.setLambdaExpr(lam_ir, lambda_expr_source);
         return lam_ir;
     }
 

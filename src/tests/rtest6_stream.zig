@@ -348,7 +348,7 @@ test "rtest6 test-batch sink behavior stays inside handler-case" {
     _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
 
     const out = try repl.eval(
-        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\(multiple-value-bind (ok total fail) (cl-user::maxima-load-all :verbose nil :habu-stop-on-error t)
         \\  (declare (ignore ok total fail))
         \\  (let ((*package* (find-package :maxima)))
         \\    (load "lib/maxima-post-load.lisp")
@@ -660,7 +660,15 @@ test "rtest6 problem 20 isolated tellsimp path stays clean" {
         \\                    lambda-expr)))
         \\           (raw-call (and r (funcall r '((maxima::$f) 1) 1 nil)))
         \\           (simp-call (and r (funcall r '((maxima::$f simp) 1) 1 nil)))
-        \\           (simp-call-dosimp (and r (funcall r '((maxima::$f simp) 1) 1 t))))
+        \\           (simp-call-dosimp (and r (funcall r '((maxima::$f simp) 1) 1 t)))
+        \\           (fresh-eval (and rule-lambda (eval rule-lambda)))
+        \\           (fresh-coerce (and rule-lambda (coerce (copy-tree rule-lambda) 'function)))
+        \\           (fresh-eval-raw (and fresh-eval (funcall fresh-eval '((maxima::$f) 1) 1 nil)))
+        \\           (fresh-eval-simp (and fresh-eval (funcall fresh-eval '((maxima::$f simp) 1) 1 nil)))
+        \\           (fresh-eval-dosimp (and fresh-eval (funcall fresh-eval '((maxima::$f simp) 1) 1 t)))
+        \\           (fresh-coerce-raw (and fresh-coerce (funcall fresh-coerce '((maxima::$f) 1) 1 nil)))
+        \\           (fresh-coerce-simp (and fresh-coerce (funcall fresh-coerce '((maxima::$f simp) 1) 1 nil)))
+        \\           (fresh-coerce-dosimp (and fresh-coerce (funcall fresh-coerce '((maxima::$f simp) 1) 1 t))))
         \\      (list fail
         \\            (if (get 'maxima::$f 'maxima::operators) 1 0)
         \\            (if (and r (eq (get 'maxima::$f 'maxima::operators) r)) 1 0)
@@ -682,15 +690,14 @@ test "rtest6 problem 20 isolated tellsimp path stays clean" {
         \\            (if (and r (equal raw-call lam1)) 1 0)
         \\            (if (and r (equal simp-call lam1)) 1 0)
         \\            (if (and r (equal simp-call-dosimp lam1)) 1 0)
+        \\            (if (and fresh-eval (equal fresh-eval-raw lam1)) 1 0)
+        \\            (if (and fresh-eval (equal fresh-eval-simp lam1)) 1 0)
+        \\            (if (and fresh-eval (equal fresh-eval-dosimp lam1)) 1 0)
+        \\            (if (and fresh-coerce (equal fresh-coerce-raw lam1)) 1 0)
+        \\            (if (and fresh-coerce (equal fresh-coerce-simp lam1)) 1 0)
+        \\            (if (and fresh-coerce (equal fresh-coerce-dosimp lam1)) 1 0)
         \\            (if (equal expected res) 1 0)
-        \\            (if (maxima::batch-equal-check expected res) 1 0)
-        \\            (symbol-name r)
-        \\            (write-to-string rule-lambda)
-        \\            (write-to-string raw-call)
-        \\            (write-to-string simp-call)
-        \\            (write-to-string simp-call-dosimp)
-        \\            (write-to-string res)
-        \\            (write-to-string expected)))))
+        \\            (if (maxima::batch-equal-check expected res) 1 0)))))
     );
 
     const fail = try consFixnumAt(out, 0);
@@ -708,44 +715,14 @@ test "rtest6 problem 20 isolated tellsimp path stays clean" {
     const raw_ok = try consFixnumAt(out, 12);
     const simp_ok = try consFixnumAt(out, 13);
     const simp_dosimp_ok = try consFixnumAt(out, 14);
-    const equal_ok = try consFixnumAt(out, 15);
-    const result_ok = try consFixnumAt(out, 16);
-    const rule_name = try consAt(out, 17);
-    const lambda_str = try consAt(out, 18);
-    const raw_str = try consAt(out, 19);
-    const simp_str = try consAt(out, 20);
-    const simp_dosimp_str = try consAt(out, 21);
-    const res_str = try consAt(out, 22);
-    const expected_str = try consAt(out, 23);
-
-    std.debug.print(
-        "p20 flags ops={d} ops_eq={d} oldrules={d} eq={d} pkg={d} ruleof={d} rule={d} fboundp={d} int={d} maybe={d} symv={d} raw={d} simp={d} simp_t={d} equal={d} result={d} name={s} lambda={s} raw-res={s} simp-res={s} simp-t-res={s} res={s} expected={s}\n",
-        .{
-            operators_ok,
-            operators_eq_rule_ok,
-            oldrules_ok,
-            rule_eq_ok,
-            rule_pkg_ok,
-            ruleof_ok,
-            rule_ok,
-            fboundp_ok,
-            int_ok,
-            maybe_ok,
-            symv_ok,
-            raw_ok,
-            simp_ok,
-            simp_dosimp_ok,
-            equal_ok,
-            result_ok,
-            rule_name.toPtr(runtime.String).bytes(),
-            lambda_str.toPtr(runtime.String).bytes(),
-            raw_str.toPtr(runtime.String).bytes(),
-            simp_str.toPtr(runtime.String).bytes(),
-            simp_dosimp_str.toPtr(runtime.String).bytes(),
-            res_str.toPtr(runtime.String).bytes(),
-            expected_str.toPtr(runtime.String).bytes(),
-        },
-    );
+    const fresh_eval_raw_ok = try consFixnumAt(out, 15);
+    const fresh_eval_simp_ok = try consFixnumAt(out, 16);
+    const fresh_eval_dosimp_ok = try consFixnumAt(out, 17);
+    const fresh_coerce_raw_ok = try consFixnumAt(out, 18);
+    const fresh_coerce_simp_ok = try consFixnumAt(out, 19);
+    const fresh_coerce_dosimp_ok = try consFixnumAt(out, 20);
+    const equal_ok = try consFixnumAt(out, 21);
+    const result_ok = try consFixnumAt(out, 22);
 
     try testing.expectEqual(@as(i64, 0), fail);
     try testing.expectEqual(@as(i64, 1), operators_ok);
@@ -762,6 +739,12 @@ test "rtest6 problem 20 isolated tellsimp path stays clean" {
     try testing.expectEqual(@as(i64, 1), raw_ok);
     try testing.expectEqual(@as(i64, 1), simp_ok);
     try testing.expectEqual(@as(i64, 1), simp_dosimp_ok);
+    try testing.expectEqual(@as(i64, 1), fresh_eval_raw_ok);
+    try testing.expectEqual(@as(i64, 1), fresh_eval_simp_ok);
+    try testing.expectEqual(@as(i64, 1), fresh_eval_dosimp_ok);
+    try testing.expectEqual(@as(i64, 1), fresh_coerce_raw_ok);
+    try testing.expectEqual(@as(i64, 1), fresh_coerce_simp_ok);
+    try testing.expectEqual(@as(i64, 1), fresh_coerce_dosimp_ok);
     try testing.expectEqual(@as(i64, 1), equal_ok);
     try testing.expectEqual(@as(i64, 1), result_ok);
 }
@@ -1108,6 +1091,193 @@ test "maxima tellsimp inner prog fragment stays clean" {
         \\                 (return (values $xx t))))))))))
     );
     try snap.expectValue(@src(), out, "(1 t)");
+}
+
+test "maxima tellsimp inner prog with $integerp stays clean" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    fail))
+    );
+
+    const out = try repl.eval(
+        \\(write-to-string
+        \\  (let ((g (gensym "TR-G")))
+        \\    (list
+        \\      (maxima::definitely-so '(($integerp) 1))
+        \\      (funcall
+        \\        (eval
+        \\          `(lambda (x a2 a3)
+        \\             (declare (special x a2 a3))
+        \\             (prog ($xx ,g)
+        \\               (declare (special $xx ,g))
+        \\               (setq ,g 1)
+        \\               (return
+        \\                 (list
+        \\                   (maxima::definitely-so '(($integerp) ,g))
+        \\                   (maxima::definitely-so '((integerp) ,g))
+        \\                   (cond ((maxima::definitely-so '(($integerp) ,g))
+        \\                          (msetq $xx ,g))
+        \\                         (t nil))
+        \\                   $xx)))))
+        \\        'dummy 1 nil))))
+    );
+    try snap.expectValue(@src(), out, "(t (t t 1 1))");
+}
+
+test "maxima tellsimp exact $integerp lambda stays clean" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    fail))
+    );
+
+    const out = try repl.eval(
+        \\(write-to-string
+        \\  (let ((lam
+        \\          (eval
+        \\            '(lambda (x a2 a3)
+        \\               (declare (special x a2 a3))
+        \\               (prog (ans tr-gensym12170 rule-hit)
+        \\                 (declare (special ans tr-gensym12170))
+        \\                 (setq x
+        \\                       (cons (car x)
+        \\                             (setq tr-gensym12170
+        \\                                   (cond (a3 (cdr x))
+        \\                                         (t (mapcar #'(lambda (h) (simplifya h a3))
+        \\                                                    (cdr x)))))))
+        \\                 (multiple-value-setq
+        \\                     (ans rule-hit)
+        \\                   (catch 'match
+        \\                     (prog ($xx tr-gensym12171)
+        \\                       (declare (special $xx tr-gensym12171))
+        \\                       (when (member 'array (kar x)) (matcherr))
+        \\                       (setq tr-gensym12171 (kar tr-gensym12170))
+        \\                       (cond ((definitely-so '(($integerp) tr-gensym12171))
+        \\                              (msetq $xx tr-gensym12171))
+        \\                             ((matcherr)))
+        \\                       (cond ((nthkdr tr-gensym12170 1) (matcherr)))
+        \\                       (return
+        \\                         (values
+        \\                           (meval
+        \\                             '((($substitute simp)
+        \\                                ((mequal simp) ((mquote simp) $xx) $xx)
+        \\                                ((lambda simp) ((mlist) $a)
+        \\                                 ((mplus) $a ((mminus) $xx)))))
+        \\                           t)))))
+        \\                 (return
+        \\                   (cond (rule-hit ans)
+        \\                         ((and (not dosimp) (member 'simp (cdar x) :test #'eq)) x)
+        \\                         (t (eqtest x x)))))))))
+        \\        (list
+        \\          (funcall lam '((maxima::$f) 1) 1 nil)
+        \\          (funcall lam '((maxima::$f simp) 1) 1 nil)
+        \\          (funcall lam '((maxima::$f simp) 1) 1 t)))))
+    );
+    try snap.expectValue(@src(), out, "(((LAMBDA) ((MLIST) $A) ((MPLUS) $A ((MMINUS) 1))) ((LAMBDA) ((MLIST) $A) ((MPLUS) $A ((MMINUS) 1))) ((LAMBDA) ((MLIST) $A) ((MPLUS) $A ((MMINUS) 1))))");
+}
+
+test "maxima tellsimp exact $integerp lambda survives coerce and fdefinition" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    fail))
+    );
+
+    const out = try repl.eval(
+        \\(write-to-string
+        \\  (let* ((def
+        \\           (copy-tree
+        \\             '(lambda (x a2 a3)
+        \\                (declare (special x a2 a3))
+        \\                (prog (ans tr-gensym12170 rule-hit)
+        \\                  (declare (special ans tr-gensym12170))
+        \\                  (setq x
+        \\                        (cons (car x)
+        \\                              (setq tr-gensym12170
+        \\                                    (cond (a3 (cdr x))
+        \\                                          (t (mapcar #'(lambda (h) (simplifya h a3))
+        \\                                                     (cdr x)))))))
+        \\                  (multiple-value-setq
+        \\                      (ans rule-hit)
+        \\                    (catch 'match
+        \\                      (prog ($xx tr-gensym12171)
+        \\                        (declare (special $xx tr-gensym12171))
+        \\                        (when (member 'array (kar x)) (matcherr))
+        \\                        (setq tr-gensym12171 (kar tr-gensym12170))
+        \\                        (cond ((definitely-so '(($integerp) tr-gensym12171))
+        \\                               (msetq $xx tr-gensym12171))
+        \\                              ((matcherr)))
+        \\                        (cond ((nthkdr tr-gensym12170 1) (matcherr)))
+        \\                        (return
+        \\                          (values
+        \\                            (meval
+        \\                              '((($substitute simp)
+        \\                                 ((mequal simp) ((mquote simp) $xx) $xx)
+        \\                                 ((lambda simp) ((mlist) $a)
+        \\                                  ((mplus) $a ((mminus) $xx)))))
+        \\                            t)))))
+        \\                  (return
+        \\                    (cond (rule-hit ans)
+        \\                          ((and (not dosimp) (member 'simp (cdar x) :test #'eq)) x)
+        \\                          (t (eqtest x x))))))))
+        \\         (fn (coerce def 'function)))
+        \\    (setf (fdefinition 'maxima::$probe_rule) fn)
+        \\    (let ((named (symbol-function 'maxima::$probe_rule)))
+        \\      (list
+        \\        (funcall fn '((maxima::$f) 1) 1 nil)
+        \\        (funcall named '((maxima::$f) 1) 1 nil)
+        \\        (funcall fn '((maxima::$f simp) 1) 1 nil)
+        \\        (funcall named '((maxima::$f simp) 1) 1 nil)
+        \\        (funcall fn '((maxima::$f simp) 1) 1 t)
+        \\        (funcall named '((maxima::$f simp) 1) 1 t)))))
+    );
+    try snap.expectValue(@src(), out, "(((LAMBDA) ((MLIST) $A) ((MPLUS) $A ((MMINUS) 1))) ((LAMBDA) ((MLIST) $A) ((MPLUS) $A ((MMINUS) 1))) ((LAMBDA) ((MLIST) $A) ((MPLUS) $A ((MMINUS) 1))) ((LAMBDA) ((MLIST) $A) ((MPLUS) $A ((MMINUS) 1))) ((LAMBDA) ((MLIST) $A) ((MPLUS) $A ((MMINUS) 1))) ((LAMBDA) ((MLIST) $A) ((MPLUS) $A ((MMINUS) 1))))");
 }
 
 test "prog return preserves multiple values" {
@@ -2573,7 +2743,7 @@ test "rtest6 problems 20 through 39 slice after testsuite bootstrap reproduces f
     _ = try repl.eval("(load \"../maxima/src/testsuite.lisp\")");
     _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
     _ = try repl.eval(
-        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\(multiple-value-bind (ok total fail) (cl-user::maxima-load-all :verbose nil :habu-stop-on-error t)
         \\  (declare (ignore ok total fail))
         \\  (let ((*package* (find-package :maxima)))
         \\    (load "lib/maxima-post-load.lisp")
@@ -3549,6 +3719,81 @@ test "rtest6 problems 20 through 39 slice after exact testsuite_files form then 
     try testing.expect(msg.isString());
 }
 
+test "rtest6 problem 20 direct meval is dirty after exact testsuite_files form then reset" {
+    try ensureMaximaSources();
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(with-open-file (s "../maxima/src/testsuite.lisp")
+        \\  (eval (read s nil nil))
+        \\  (eval (read s nil nil))
+        \\  t)
+    );
+    _ = try repl.eval(
+        \\(progn
+        \\  (setq maxima::$testsuite_files '((maxima::mlist maxima::simp) "rtest6"))
+        \\  (setq maxima::$share_testsuite_files '((maxima::mlist maxima::simp)))
+        \\  t)
+    );
+
+    const out = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (cl-user::maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total))
+        \\  (let ((*package* (find-package :maxima)))
+        \\    (load "lib/maxima-post-load.lisp")
+        \\    (let* ((form
+        \\             (with-input-from-string
+        \\               (s "(kill (f), matchdeclare (xx, integerp), tellsimp (f(xx), subst ('xx = xx, lambda ([a], a - xx))), [f(1), f(1)(y)]);")
+        \\               (maxima::mread s 'maxima::$eof)))
+        \\           (res (maxima::meval* (third form)))
+        \\           (expected
+        \\             (third
+        \\               (with-input-from-string
+        \\                 (s "[lambda ([a], a - 1), y - 1];")
+        \\                 (maxima::mread s 'maxima::$eof))))
+        \\           (oldrules (maxima::mget 'maxima::$f 'maxima::oldrules))
+        \\           (r (and oldrules (car oldrules))))
+        \\      (list fail
+        \\            (if (get 'maxima::$f 'maxima::operators) 1 0)
+        \\            (if oldrules 1 0)
+        \\            (if (and r (maxima::mget r 'maxima::ruleof)) 1 0)
+        \\            (if (and r (maxima::mget r 'maxima::$rule)) 1 0)
+        \\            (if (and r (fboundp r)) 1 0)
+        \\            (if (equal expected res) 1 0)
+        \\            (if (maxima::batch-equal-check expected res) 1 0)
+        \\            (write-to-string res)
+        \\            (write-to-string expected)))))
+    );
+
+    const fail = try consFixnumAt(out, 0);
+    const operators_ok = try consFixnumAt(out, 1);
+    const oldrules_ok = try consFixnumAt(out, 2);
+    const ruleof_ok = try consFixnumAt(out, 3);
+    const rule_ok = try consFixnumAt(out, 4);
+    const fboundp_ok = try consFixnumAt(out, 5);
+    const equal_ok = try consFixnumAt(out, 6);
+    const batch_equal_ok = try consFixnumAt(out, 7);
+
+    try testing.expectEqual(@as(i64, 0), fail);
+    try testing.expectEqual(@as(i64, 1), operators_ok);
+    try testing.expectEqual(@as(i64, 1), oldrules_ok);
+    try testing.expectEqual(@as(i64, 1), ruleof_ok);
+    try testing.expectEqual(@as(i64, 1), rule_ok);
+    try testing.expectEqual(@as(i64, 1), fboundp_ok);
+    try testing.expectEqual(@as(i64, 0), equal_ok);
+    try testing.expectEqual(@as(i64, 0), batch_equal_ok);
+}
+
 test "rtest6 problems 20 through 39 slice after replaying printed testsuite_files form then reset reproduces failure" {
     try ensureMaximaSources();
 
@@ -3579,7 +3824,7 @@ test "rtest6 problems 20 through 39 slice after replaying printed testsuite_file
         \\  t)
     );
     _ = try repl.eval(
-        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\(multiple-value-bind (ok total fail) (cl-user::maxima-load-all :verbose nil :habu-stop-on-error t)
         \\  (declare (ignore ok total fail))
         \\  (let ((*package* (find-package :maxima)))
         \\    (load "lib/maxima-post-load.lisp")

@@ -5955,6 +5955,38 @@ test "function-lambda-expression" {
     try testing.expect(!named_ok.isNil());
 }
 
+test "function-lambda-expression preserves mutable lambda source" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const ok = try repl.eval(
+        \\(let* ((f (compile nil '(lambda (v x)
+        \\                         (setf (aref v 0) x)
+        \\                         v))))
+        \\  (multiple-value-bind (lambda-expr closure-p name)
+        \\      (function-lambda-expression f)
+        \\    (declare (ignore closure-p name))
+        \\    (let* ((g (eval lambda-expr))
+        \\           (v1 (vector 0))
+        \\           (v2 (vector 0)))
+        \\      (funcall f v1 7)
+        \\      (funcall g v2 9)
+        \\      (and (= (svref v1 0) 7)
+        \\           (= (svref v2 0) 9)
+        \\           (equal lambda-expr '(lambda (v x)
+        \\                                 (setf (aref v 0) x)
+        \\                                 v))))))
+    );
+    try testing.expect(!ok.isNil());
+}
+
 test "method-qualifiers" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
