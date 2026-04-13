@@ -294,6 +294,27 @@ pub const Repl = struct {
         }
     }
 
+    fn pushChunkRoots(
+        self: *Repl,
+        vm: *Vm,
+        roots: *std.ArrayList(Value),
+        chunk: Value,
+        child_chunks: []const Value,
+    ) !Vm.ExtRootsSnapshot {
+        const saved_ext = try vm.saveExtRoots();
+        const saved_ext_roots = saved_ext.roots;
+        try roots.ensureTotalCapacity(self.allocator, saved_ext_roots.len + 1 + child_chunks.len);
+        for (saved_ext_roots) |val| {
+            try roots.append(self.allocator, vm.resolveForwardedValue(val));
+        }
+        try roots.append(self.allocator, vm.resolveForwardedValue(chunk));
+        for (child_chunks) |child_chunk| {
+            try roots.append(self.allocator, vm.resolveForwardedValue(child_chunk));
+        }
+        vm.setExtRootsOwned(roots);
+        return saved_ext;
+    }
+
     fn appendToVmExtRootOwner(self: *Repl, vm: *Vm, vals: []const Value) !void {
         var ctx_opt = self.active_root_ctx;
         while (ctx_opt) |ctx| {
@@ -1942,12 +1963,20 @@ pub const Repl = struct {
         const chunk = try emitter.finalize();
         const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
+        var roots = std.ArrayList(Value){};
+        defer roots.deinit(self.allocator);
+        const saved_ext = try self.pushChunkRoots(source_vm, &roots, chunk, child_chunks);
+        defer source_vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext.roots.len);
+        const chunk_root_idx = saved_ext.roots.len;
+        const child_root_start = chunk_root_idx + 1;
+        const rooted_child_chunks = roots.items[child_root_start..];
 
         // Record base before appending
         const chunk_base: u16 = @intCast(self.chunk_pool.items.len);
 
         // Patch child chunks to use absolute indices
-        for (child_chunks) |c| {
+        for (rooted_child_chunks) |*c| {
+            c.* = source_vm.resolveForwardedValue(c.*);
             const chunk_ptr = c.toPtr(runtime.objects.Chunk);
             try patchChunkIndices(chunk_ptr, chunk_base);
         }
@@ -1955,13 +1984,15 @@ pub const Repl = struct {
         // Store child chunks for closures and sync all VM views immediately.
         // tryHoistCompileLambdas and runtime eval can allocate/GC; chunk_pool
         // slices must already point at the current owner storage.
-        try self.appendChildChunksAndSync(source_vm, child_chunks);
+        try self.appendChildChunksAndSync(source_vm, rooted_child_chunks);
 
         // Run through the same VM using a nested call frame. This preserves
         // the caller VM's stack/locals across GC while evaluating runtime EVAL.
-        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        const live_chunk = source_vm.resolveForwardedValue(roots.items[chunk_root_idx]);
+        roots.items[chunk_root_idx] = live_chunk;
+        const chunk_ptr = live_chunk.toPtr(runtime.objects.Chunk);
         try patchChunkIndices(chunk_ptr, chunk_base);
-        const closure = try source_vm.allocClosureWithGC(chunk, chunk_ptr.arity, &[_]Value{});
+        const closure = try source_vm.allocClosureWithGC(live_chunk, chunk_ptr.arity, &[_]Value{});
         return try source_vm.callFromStackAt(source_vm.sp, closure, &[_]Value{});
     }
 
@@ -2789,24 +2820,34 @@ pub const Repl = struct {
         const chunk = try emitter.finalize();
         const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
+        var roots = std.ArrayList(Value){};
+        defer roots.deinit(self.allocator);
+        const saved_ext = try self.pushChunkRoots(vm, &roots, chunk, child_chunks);
+        defer vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext.roots.len);
+        const chunk_root_idx = saved_ext.roots.len;
+        const child_root_start = chunk_root_idx + 1;
+        const rooted_child_chunks = roots.items[child_root_start..];
 
         // Record base before appending
         const chunk_base: u16 = @intCast(self.chunk_pool.items.len);
 
         // Patch child chunks to use absolute indices
-        for (child_chunks) |child_chunk| {
+        for (rooted_child_chunks) |*child_chunk| {
+            child_chunk.* = vm.resolveForwardedValue(child_chunk.*);
             try patchChunkIndices(child_chunk.toPtr(runtime.objects.Chunk), chunk_base);
         }
 
         // Store chunks persistently and sync owner-backed VM slices before any
         // operation that may allocate/GC (JIT, patching, disasm, run).
-        try self.appendChildChunksAndSync(vm, child_chunks);
+        try self.appendChildChunksAndSync(vm, rooted_child_chunks);
 
         // Try hoist SSA JIT compilation for eligible lambda nodes
-        _ = try self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
+        _ = try self.tryHoistCompileLambdas(specialized, rooted_child_chunks, chunk_base);
 
         // Patch main chunk to use absolute chunk indices
-        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        const live_chunk = vm.resolveForwardedValue(roots.items[chunk_root_idx]);
+        roots.items[chunk_root_idx] = live_chunk;
+        const chunk_ptr = live_chunk.toPtr(runtime.objects.Chunk);
         try patchChunkIndices(chunk_ptr, chunk_base);
 
         const trace_form_disasm = std.posix.getenv("HABU_TRACE_FORM_DISASM") != null;
@@ -3626,28 +3667,38 @@ pub const Repl = struct {
         try emitter.emit(specialized);
         const chunk = try emitter.finalize();
         const child_chunks = try emitter.getChildChunks();
+        var roots = std.ArrayList(Value){};
+        defer roots.deinit(self.allocator);
+        const saved_ext = try self.pushChunkRoots(&self.vm, &roots, chunk, child_chunks);
+        defer self.vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext.roots.len);
+        const chunk_root_idx = saved_ext.roots.len;
+        const child_root_start = chunk_root_idx + 1;
+        const rooted_child_chunks = roots.items[child_root_start..];
 
         // Record base before appending
         const chunk_base: u16 = @intCast(self.chunk_pool.items.len);
 
         // Patch wrapper chunk AND child chunks to use absolute indices
-        const wrapper_chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        const live_chunk = self.vm.resolveForwardedValue(roots.items[chunk_root_idx]);
+        roots.items[chunk_root_idx] = live_chunk;
+        const wrapper_chunk_ptr = live_chunk.toPtr(runtime.objects.Chunk);
         try patchChunkIndices(wrapper_chunk_ptr, chunk_base);
-        for (child_chunks) |c| {
+        for (rooted_child_chunks) |*c| {
+            c.* = self.vm.resolveForwardedValue(c.*);
             try patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
         }
 
         // Store child chunks persistently and sync VM chunk-pool slices before
         // any JIT/GC-capable work.
-        try self.appendChildChunksAndSync(&self.vm, child_chunks);
+        try self.appendChildChunksAndSync(&self.vm, rooted_child_chunks);
 
         // Try hoist SSA JIT compilation for eligible lambda nodes
-        _ = try self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
+        _ = try self.tryHoistCompileLambdas(specialized, rooted_child_chunks, chunk_base);
 
         // Free child chunk array (now owned by persistent storage)
         self.allocator.free(child_chunks);
 
-        const result = if (self.runVmPreserveMacroState(&self.vm, chunk.toPtr(runtime.objects.Chunk))) |value| value else |err| {
+        const result = if (self.runVmPreserveMacroState(&self.vm, wrapper_chunk_ptr)) |value| value else |err| {
             const kind: ErrorKind = if (err == error.UserError or err == error.UnhandledThrow)
                 .runtime_user_error
             else
@@ -4244,19 +4295,29 @@ pub const Repl = struct {
         const chunk = try emitter.finalize();
         const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
+        var roots = std.ArrayList(Value){};
+        defer roots.deinit(self.allocator);
+        const saved_ext = try self.pushChunkRoots(source_vm, &roots, chunk, child_chunks);
+        defer source_vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext.roots.len);
+        const chunk_root_idx = saved_ext.roots.len;
+        const child_root_start = chunk_root_idx + 1;
+        const rooted_child_chunks = roots.items[child_root_start..];
 
         // Record base before appending
         const chunk_base: u16 = @intCast(self.chunk_pool.items.len);
 
         // Patch wrapper chunk AND child chunks to use absolute indices
-        const wrapper_chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        const live_chunk = source_vm.resolveForwardedValue(roots.items[chunk_root_idx]);
+        roots.items[chunk_root_idx] = live_chunk;
+        const wrapper_chunk_ptr = live_chunk.toPtr(runtime.objects.Chunk);
         try patchChunkIndices(wrapper_chunk_ptr, chunk_base);
-        for (child_chunks) |c| {
+        for (rooted_child_chunks) |*c| {
+            c.* = source_vm.resolveForwardedValue(c.*);
             try patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
         }
 
         // Add child chunks and sync VM chunk-pool slices immediately.
-        try self.appendChildChunksAndSync(source_vm, child_chunks);
+        try self.appendChildChunksAndSync(source_vm, rooted_child_chunks);
         const saved_current_vm = self.current_vm;
         self.current_vm = source_vm;
         defer self.current_vm = saved_current_vm;
@@ -4612,24 +4673,34 @@ pub const Repl = struct {
         const chunk = try emitter.finalize();
         const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
+        var roots = std.ArrayList(Value){};
+        defer roots.deinit(self.allocator);
+        const saved_ext = try self.pushChunkRoots(source_vm, &roots, chunk, child_chunks);
+        defer source_vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext.roots.len);
+        const chunk_root_idx = saved_ext.roots.len;
+        const child_root_start = chunk_root_idx + 1;
+        const rooted_child_chunks = roots.items[child_root_start..];
 
         // Record base before appending
         const chunk_base: u16 = @intCast(self.chunk_pool.items.len);
 
         // Patch child chunks AND main chunk to use absolute indices
-        for (child_chunks) |c| {
+        for (rooted_child_chunks) |*c| {
+            c.* = source_vm.resolveForwardedValue(c.*);
             try patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
         }
-        try patchChunkIndices(chunk.toPtr(runtime.objects.Chunk), chunk_base);
+        const live_chunk = source_vm.resolveForwardedValue(roots.items[chunk_root_idx]);
+        roots.items[chunk_root_idx] = live_chunk;
+        const chunk_ptr = live_chunk.toPtr(runtime.objects.Chunk);
+        try patchChunkIndices(chunk_ptr, chunk_base);
 
         // Add child chunks and sync VM chunk-pool slices immediately.
-        try self.appendChildChunksAndSync(source_vm, child_chunks);
+        try self.appendChildChunksAndSync(source_vm, rooted_child_chunks);
 
         const saved_current_vm = self.current_vm;
         self.current_vm = source_vm;
         defer self.current_vm = saved_current_vm;
 
-        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         if (trace_eval_single_phases) std.debug.print("TRACE eval-single phase=run\n", .{});
         const result = try self.runVmPreserveMacroState(source_vm, chunk_ptr);
         if (trace_eval_single_phases) std.debug.print("TRACE eval-single phase=done\n", .{});
