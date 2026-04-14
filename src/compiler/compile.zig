@@ -2123,6 +2123,7 @@ pub const Compiler = struct {
     bi_gc: usize,
     bi_cl_pkg: usize,
     bi_cl_ver: u64,
+    macro_gc: usize,
     /// Current occurrence context for type narrowing (set during if compilation)
     occ: ?*const OccurrenceCtx,
     /// Variables that need boxing (mutable + captured) - set during let compilation
@@ -2229,6 +2230,7 @@ pub const Compiler = struct {
             .bi_gc = 0,
             .bi_cl_pkg = 0,
             .bi_cl_ver = 0,
+            .macro_gc = 0,
             .occ = null,
             .boxed_vars = null,
             .boxed_fn_syms = null,
@@ -2273,6 +2275,7 @@ pub const Compiler = struct {
             .bi_gc = vm.heap.stats.gc_count,
             .bi_cl_pkg = bi_epoch.cl_pkg,
             .bi_cl_ver = bi_epoch.cl_ver,
+            .macro_gc = vm.heap.stats.gc_count,
             .occ = null,
             .boxed_vars = null,
             .boxed_fn_syms = null,
@@ -2316,6 +2319,7 @@ pub const Compiler = struct {
             .bi_gc = vm.heap.stats.gc_count,
             .bi_cl_pkg = bi_epoch.cl_pkg,
             .bi_cl_ver = bi_epoch.cl_ver,
+            .macro_gc = vm.heap.stats.gc_count,
             .occ = null,
             .boxed_vars = null,
             .boxed_fn_syms = null,
@@ -2349,6 +2353,7 @@ pub const Compiler = struct {
         self.bi_gc = 0;
         self.bi_cl_pkg = 0;
         self.bi_cl_ver = 0;
+        self.macro_gc = 0;
     }
 
     fn initBuiltinsCanonical(heap: *Heap) !Builtins {
@@ -2398,6 +2403,78 @@ pub const Compiler = struct {
         self.bi_cl_pkg = bi_epoch.cl_pkg;
         self.bi_cl_ver = bi_epoch.cl_ver;
         try self.rebuildBuiltinCallableCaches();
+    }
+
+    fn refreshMacroMap(self: *Compiler, table: *std.AutoHashMap(Value, Value)) !void {
+        var pairs = std.ArrayList(struct { key: Value, val: Value }){};
+        defer pairs.deinit(self.allocator);
+        try pairs.ensureTotalCapacity(self.allocator, table.count());
+
+        var it = table.iterator();
+        while (it.next()) |entry| {
+            const key = self.resolveForwardedValue(entry.key_ptr.*);
+            const val = self.resolveForwardedValue(entry.value_ptr.*);
+            if (!key.isSymbol()) continue;
+            try pairs.append(self.allocator, .{ .key = key, .val = val });
+        }
+
+        table.clearRetainingCapacity();
+        for (pairs.items) |pair| {
+            try table.put(pair.key, pair.val);
+        }
+    }
+
+    fn refreshMacroMaps(self: *Compiler) !void {
+        const heap = self.heap orelse return;
+        if (self.macro_gc == heap.stats.gc_count) return;
+        try self.refreshMacroMap(&self.macro_table);
+        try self.refreshMacroMap(&self.symbol_macros);
+        self.macro_gc = heap.stats.gc_count;
+    }
+
+    const MacroRootSpan = struct {
+        start: usize,
+        len: usize,
+    };
+
+    fn pushMacroRoots(self: *Compiler, vm: *Vm) !MacroRootSpan {
+        const macro_count = self.macro_table.count();
+        const symbol_macro_count = self.symbol_macros.count();
+        const total = (macro_count * 2) + (symbol_macro_count * 2);
+        if (vm.comp_root_sp + total > vm.comp_root_stack.len) return error.StackOverflow;
+
+        const start = vm.comp_root_sp;
+        errdefer {
+            var i = start;
+            while (i < vm.comp_root_sp) : (i += 1) vm.comp_root_stack[i] = Value.nil;
+            vm.comp_root_sp = start;
+        }
+
+        var macro_iter = self.macro_table.iterator();
+        while (macro_iter.next()) |entry| {
+            vm.comp_root_stack[vm.comp_root_sp] = self.resolveForwardedValue(entry.key_ptr.*);
+            vm.comp_root_stack[vm.comp_root_sp + 1] = self.resolveForwardedValue(entry.value_ptr.*);
+            vm.comp_root_sp += 2;
+        }
+        var sym_iter = self.symbol_macros.iterator();
+        while (sym_iter.next()) |entry| {
+            vm.comp_root_stack[vm.comp_root_sp] = self.resolveForwardedValue(entry.key_ptr.*);
+            vm.comp_root_stack[vm.comp_root_sp + 1] = self.resolveForwardedValue(entry.value_ptr.*);
+            vm.comp_root_sp += 2;
+        }
+        return .{ .start = start, .len = total };
+    }
+
+    fn popMacroRoots(vm: *Vm, span: MacroRootSpan) void {
+        const end = span.start + span.len;
+        if (end > vm.comp_root_stack.len) return;
+        var i = span.start;
+        while (i < end) : (i += 1) vm.comp_root_stack[i] = Value.nil;
+        if (vm.comp_root_sp >= end) vm.comp_root_sp = span.start;
+    }
+
+    fn macroRootSlice(vm: *Vm, span: MacroRootSpan) []const Value {
+        return vm.comp_root_stack[span.start .. span.start + span.len];
     }
 
     fn specialKeyFromSym(self: *const Compiler, sym_val: Value) ?VarKey {
@@ -3296,7 +3373,7 @@ pub const Compiler = struct {
         // Symbol (variable reference or symbol macro)
         if (live_expr.isSymbol()) {
             // Check for symbol macros first
-            if (self.lookupSymbolMacro(live_expr)) |expansion| {
+            if (try self.lookupSymbolMacro(live_expr)) |expansion| {
                 return self.compileWithTail(expansion, env, in_tail);
             }
 
@@ -3714,7 +3791,7 @@ pub const Compiler = struct {
             }
 
             // Check for macros - expand at compile time if VM is available
-            const macro_def_opt = self.lookupMacroDef(head);
+            const macro_def_opt = try self.lookupMacroDef(head);
             if (std.posix.getenv("HABU_TRACE_PROG_LOOKUP") != null and std.mem.eql(u8, name, "PROG")) {
                 const home_pkg = symbolHomePackage(self, head);
                 const home_name = if (home_pkg) |pkg| pkg.name else "<none>";
@@ -3879,14 +3956,15 @@ pub const Compiler = struct {
         }
         const macro_count = self.macro_table.count();
         const symbol_macro_count = self.symbol_macros.count();
+        const root_symbol_start = macro_count * 2;
+        const snap = try self.pushMacroRoots(vm);
+        defer popMacroRoots(vm, snap);
 
         const root_closure_idx = saved_ext_roots.len;
         const root_args_idx = saved_ext_roots.len + 1;
         const root_whole_idx = saved_ext_roots.len + 2;
         const root_env_idx = saved_ext_roots.len + 3;
-        const root_macro_start = saved_ext_roots.len + 4;
-        const root_symbol_start = root_macro_start + (macro_count * 2);
-        const total_roots = saved_ext_roots.len + 4 + (macro_count * 2) + (symbol_macro_count * 2);
+        const total_roots = saved_ext_roots.len + 4;
         var roots = std.ArrayList(Value){};
         defer roots.deinit(self.allocator);
         try roots.ensureTotalCapacity(self.allocator, total_roots);
@@ -3898,17 +3976,6 @@ pub const Compiler = struct {
         try roots.append(self.allocator, self.resolveForwardedValue(args));
         try roots.append(self.allocator, self.resolveForwardedValue(whole_form));
         try roots.append(self.allocator, Value.nil);
-
-        var macro_iter = self.macro_table.iterator();
-        while (macro_iter.next()) |entry| {
-            try roots.append(self.allocator, entry.key_ptr.*);
-            try roots.append(self.allocator, entry.value_ptr.*);
-        }
-        var sym_iter = self.symbol_macros.iterator();
-        while (sym_iter.next()) |entry| {
-            try roots.append(self.allocator, entry.key_ptr.*);
-            try roots.append(self.allocator, entry.value_ptr.*);
-        }
 
         vm.setExtRootsOwned(&roots);
         defer vm.restoreExtRootsSynced(saved_ext, roots.items, saved_ext_roots.len);
@@ -4028,8 +4095,9 @@ pub const Compiler = struct {
 
         const call_result = vm.callFromStack(roots.items[root_closure_idx], call_args) catch |err| {
             try self.restoreMacroTablesFromRoots(
-                roots.items,
-                root_macro_start,
+                "call-macro-err",
+                macroRootSlice(vm, snap),
+                0,
                 macro_count,
                 root_symbol_start,
                 symbol_macro_count,
@@ -4039,8 +4107,9 @@ pub const Compiler = struct {
         };
 
         try self.restoreMacroTablesFromRoots(
-            roots.items,
-            root_macro_start,
+            "call-macro-ok",
+            macroRootSlice(vm, snap),
+            0,
             macro_count,
             root_symbol_start,
             symbol_macro_count,
@@ -4253,6 +4322,9 @@ pub const Compiler = struct {
         const saved_pool = saved_state.chunk_pool;
         const macro_count = self.macro_table.count();
         const symbol_macro_count = self.symbol_macros.count();
+        const root_symbol_start = macro_count * 2;
+        const snap = try self.pushMacroRoots(vm);
+        defer popMacroRoots(vm, snap);
 
         const ext_prefix = saved_ext_roots.len;
         const root_chunk_idx = ext_prefix + saved_pool.len;
@@ -4260,9 +4332,7 @@ pub const Compiler = struct {
         const root_args_idx = ext_prefix + saved_pool.len + 2;
         const root_whole_idx = ext_prefix + saved_pool.len + 3;
         const root_env_idx = ext_prefix + saved_pool.len + 4;
-        const root_macro_start = ext_prefix + saved_pool.len + 5;
-        const root_symbol_start = root_macro_start + (macro_count * 2);
-        const macro_root_count = ext_prefix + saved_pool.len + 5 + (macro_count * 2) + (symbol_macro_count * 2);
+        const macro_root_count = ext_prefix + saved_pool.len + 5;
         var macro_roots = std.ArrayList(Value){};
         defer macro_roots.deinit(self.allocator);
         try macro_roots.ensureTotalCapacity(self.allocator, macro_root_count);
@@ -4280,16 +4350,6 @@ pub const Compiler = struct {
         try macro_roots.append(self.allocator, self.resolveForwardedValue(args));
         try macro_roots.append(self.allocator, self.resolveForwardedValue(whole_form));
         try macro_roots.append(self.allocator, Value.nil);
-        var macro_iter = self.macro_table.iterator();
-        while (macro_iter.next()) |entry| {
-            try macro_roots.append(self.allocator, entry.key_ptr.*);
-            try macro_roots.append(self.allocator, entry.value_ptr.*);
-        }
-        var sym_iter = self.symbol_macros.iterator();
-        while (sym_iter.next()) |entry| {
-            try macro_roots.append(self.allocator, entry.key_ptr.*);
-            try macro_roots.append(self.allocator, entry.value_ptr.*);
-        }
         const macro_chunk_base: u16 = @intCast(saved_pool.len);
         if (macro_chunk_base > 0) {
             try patchChunkClosureIndices(macro_roots.items[root_chunk_idx].toPtr(Chunk), macro_chunk_base);
@@ -4393,8 +4453,9 @@ pub const Compiler = struct {
 
         const call_result = vm.callFromStack(closure_val, call_args) catch |err| {
             try self.restoreMacroTablesFromRoots(
-                macro_roots.items,
-                root_macro_start,
+                "expand-macro-err",
+                macroRootSlice(vm, snap),
+                0,
                 macro_count,
                 root_symbol_start,
                 symbol_macro_count,
@@ -4404,8 +4465,9 @@ pub const Compiler = struct {
         };
 
         try self.restoreMacroTablesFromRoots(
-            macro_roots.items,
-            root_macro_start,
+            "expand-macro-ok",
+            macroRootSlice(vm, snap),
+            0,
             macro_count,
             root_symbol_start,
             symbol_macro_count,
@@ -4416,12 +4478,14 @@ pub const Compiler = struct {
 
     fn restoreMacroTablesFromRoots(
         self: *Compiler,
+        tag: []const u8,
         roots: []const Value,
         macro_start: usize,
         macro_count: usize,
         symbol_start: usize,
         symbol_count: usize,
     ) !void {
+        _ = tag;
         self.macro_table.clearRetainingCapacity();
         var i: usize = 0;
         while (i < macro_count) : (i += 1) {
@@ -7752,7 +7816,7 @@ pub const Compiler = struct {
 
         // If place is a symbol, check for symbol macro
         if (place.isSymbol()) {
-            if (self.lookupSymbolMacro(place)) |expansion| {
+            if (try self.lookupSymbolMacro(place)) |expansion| {
                 // Symbol macro expands to compound form - apply setf to expansion
                 if (expansion.isCons()) {
                     // Rebuild (setf expanded-place value) and recompile
@@ -7811,7 +7875,7 @@ pub const Compiler = struct {
                 // If the place head is a macro, expand it and retry setf.
                 // E.g., (setf (symbol-array x) v) where symbol-array is a macro
                 //   expanding to (get x 'array) -> (setf (get x 'array) v)
-                if (self.lookupMacroDef(head)) |macro_def| {
+                if (try self.lookupMacroDef(head)) |macro_def| {
                     if (!macro_def.isNil()) {
                         if (self.vm) |vm| {
                             const heap = if (self.heap) |val| val else return error.InvalidSyntax;
@@ -8375,7 +8439,7 @@ pub const Compiler = struct {
         const b = self.builtins orelse return null;
         const whole_form = try heap.allocCons(b.setf, args);
 
-        if (self.lookupMacroDef(b.setf)) |macro_def| {
+        if (try self.lookupMacroDef(b.setf)) |macro_def| {
             const expanded = try self.expandMacro(macro_def, args, whole_form, vm);
             if (expanded.raw != whole_form.raw) {
                 return try self.compileWithTail(expanded, env, false);
@@ -9160,7 +9224,7 @@ pub const Compiler = struct {
         // (FOR/COLLECT/...) must macroexpand instead of taking special-form path.
         // Prefer compiler-local macro table first so file loads do not depend on
         // REPL macroexpand callbacks being wired.
-        if (self.lookupMacroDef(head)) |macro_def| {
+        if (try self.lookupMacroDef(head)) |macro_def| {
             if (self.vm) |vm| {
                 const expanded = try self.expandMacro(macro_def, args, whole_form, vm);
                 return self.compileWithTail(expanded, env, in_tail);
@@ -10262,6 +10326,7 @@ pub const Compiler = struct {
     /// Compile macrolet: (macrolet ((name (params) body)...) forms...)
     /// Establishes local macro definitions for the duration of body evaluation.
     fn compileMacrolet(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        try self.refreshMacroMaps();
         // Parse: (((name1 (params1) body1) (name2 (params2) body2)...) forms...)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -10320,6 +10385,7 @@ pub const Compiler = struct {
     /// Compile symbol-macrolet: (symbol-macrolet ((sym expansion)...) forms...)
     /// Establishes local symbol macros for the duration of body evaluation.
     fn compileSymbolMacrolet(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        try self.refreshMacroMaps();
         // Parse: (((sym1 expansion1) (sym2 expansion2)...) forms...)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -17361,10 +17427,14 @@ pub const Compiler = struct {
 
     fn removeMacroMapValue(self: *Compiler, table: *std.AutoHashMap(Value, Value), key_raw: Value) bool {
         const key = self.resolveForwardedValue(key_raw);
-        return table.remove(key);
+        if (table.remove(key)) return true;
+        const canonical = self.canonicalBuiltinSymbol(key);
+        if (canonical.raw != key.raw and table.remove(canonical)) return true;
+        return false;
     }
 
-    fn lookupMacroDef(self: *Compiler, sym: Value) ?Value {
+    fn lookupMacroDef(self: *Compiler, sym: Value) !?Value {
+        try self.refreshMacroMaps();
         const live_sym = self.resolveForwardedValue(sym);
         if (!live_sym.isSymbol()) return null;
         if (self.lookupMacroMapValue(&self.macro_table, live_sym)) |def| return def;
@@ -17382,7 +17452,8 @@ pub const Compiler = struct {
         return null;
     }
 
-    fn lookupSymbolMacro(self: *Compiler, sym: Value) ?Value {
+    fn lookupSymbolMacro(self: *Compiler, sym: Value) !?Value {
+        try self.refreshMacroMaps();
         const live_sym = self.resolveForwardedValue(sym);
         if (!live_sym.isSymbol()) return null;
         return self.lookupMacroMapValue(&self.symbol_macros, live_sym);
@@ -21198,7 +21269,7 @@ test "defmacro with destructured params" {
     try testing.expect(defmacro_ir.* == .lit);
 
     // Macro should be in table with transformed params
-    const stored = compiler.lookupMacroDef(name_sym).?;
+    const stored = (try compiler.lookupMacroDef(name_sym)).?;
     try testing.expect(stored.isCons());
 
     // First element should be params (now transformed with gensym)
@@ -21339,6 +21410,81 @@ test "macro expansion preserves dotted rest params" {
 
     try testing.expectEqual(Ir.lit, std.meta.activeTag(ir_node.*));
     try testing.expectEqual(@as(i64, 42), ir_node.lit.toFixnum());
+}
+
+test "compiler refreshes macro table keys after GC" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(allocator, null);
+    defer env.deinit();
+
+    var ext_roots = std.ArrayList(Value){};
+    defer ext_roots.deinit(allocator);
+    vm.setExtRootsOwned(&ext_roots);
+
+    const m_sym = try heap.intern("m");
+    const body = try heap.allocCons(Value.makeFixnum(42), Value.nil);
+    const macro_def = try heap.allocCons(Value.nil, body);
+    try compiler.putMacroMapValue(&compiler.macro_table, m_sym, macro_def);
+    try ext_roots.append(allocator, m_sym);
+    try ext_roots.append(allocator, macro_def);
+
+    const key_before = ext_roots.items[0];
+    _ = try vm.collectGarbage();
+    const key_after = vm.resolveForwardedValue(ext_roots.items[0]);
+    ext_roots.items[0] = key_after;
+    ext_roots.items[1] = vm.resolveForwardedValue(ext_roots.items[1]);
+    try testing.expect(key_after.raw != key_before.raw);
+
+    const call_expr = try heap.allocCons(key_after, Value.nil);
+    const ir_node = try compiler.compile(call_expr, &env);
+    defer allocator.destroy(ir_node);
+    try testing.expectEqual(Ir.lit, std.meta.activeTag(ir_node.*));
+    try testing.expectEqual(@as(i64, 42), ir_node.lit.toFixnum());
+}
+
+test "compiler macro snapshot roots survive nested compile roots and GC" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    const m_sym = try heap.intern("m");
+    const body = try heap.allocCons(Value.makeFixnum(42), Value.nil);
+    const macro_def = try heap.allocCons(Value.nil, body);
+    try compiler.putMacroMapValue(&compiler.macro_table, m_sym, macro_def);
+
+    const span = try compiler.pushMacroRoots(&vm);
+    defer Compiler.popMacroRoots(&vm, span);
+
+    const tmp_root = try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2));
+    const tok = try compiler.pushCompileRoot(&vm, tmp_root);
+    defer Compiler.popCompileRoot(&vm, tok.root_idx);
+
+    _ = try vm.collectGarbage();
+
+    const roots = Compiler.macroRootSlice(&vm, span);
+    try testing.expectEqual(@as(usize, 2), roots.len);
+    const live_key = vm.resolveForwardedValue(roots[0]);
+    const live_val = vm.resolveForwardedValue(roots[1]);
+    try testing.expect(live_key.isSymbol());
+    try testing.expectEqualStrings("M", live_key.toPtr(Symbol).getName());
+    try testing.expect(live_val.isCons());
 }
 
 test "load-time-value restores VM chunk_pool" {
