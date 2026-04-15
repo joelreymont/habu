@@ -6899,8 +6899,8 @@ pub const Compiler = struct {
             }
         }
 
-        // Compile body in new environment
-        const body_ir = try self.compileBodyWithTail(body_exprs, &flet_env, in_tail);
+        // Compile body in new environment with local declaration scope.
+        const body_ir = try self.compileScopedBodyWithTail(body_exprs, &flet_env, in_tail);
         const node = try self.allocator.create(Ir);
         node.* = .{ .let = .{ .bindings = bindings, .body = body_ir } };
         return node;
@@ -7056,7 +7056,7 @@ pub const Compiler = struct {
             }
         }
 
-        const body_ir = try self.compileBodyWithTail(body_exprs, &labels_env, in_tail);
+        const body_ir = try self.compileScopedBodyWithTail(body_exprs, &labels_env, in_tail);
         init_forms[filled] = body_ir;
 
         const seq_ir = try self.allocator.create(Ir);
@@ -9192,8 +9192,8 @@ pub const Compiler = struct {
             else => return error.InvalidSyntax,
         };
 
-        // Compile body
-        const body_ir = try self.compileBodyWithTail(cons.cdr, env, in_tail);
+        // Compile body with local declaration scope.
+        const body_ir = try self.compileScopedBodyWithTail(cons.cdr, env, in_tail);
 
         return try self.builder.block(name, body_ir);
     }
@@ -9249,7 +9249,7 @@ pub const Compiler = struct {
 
         // Body must NOT be in tail position — pop_catch must execute after it.
         _ = in_tail;
-        const body_ir = try self.compileBody(cons.cdr, env);
+        const body_ir = try self.compileScopedBody(cons.cdr, env);
 
         return try self.builder.@"catch"(tag_ir, body_ir);
     }
@@ -9283,7 +9283,7 @@ pub const Compiler = struct {
 
         const symbols_ir = try self.compile(symbols, env);
         const values_ir = try self.compile(values, env);
-        const body_ir = try self.compileBody(cons2.cdr, env);
+        const body_ir = try self.compileScopedBody(cons2.cdr, env);
 
         return try self.builder.progv(symbols_ir, values_ir, body_ir);
     }
@@ -9586,8 +9586,8 @@ pub const Compiler = struct {
         else
             try inner_env.bindName(var_name);
 
-        // Compile body
-        const body_ir = try self.compileBodyWithTail(body, &inner_env, in_tail);
+        // Compile body with local declaration scope.
+        const body_ir = try self.compileScopedBodyWithTail(body, &inner_env, in_tail);
 
         // Build let node
         const let_ir = try self.builder.let1(var_name, var_idx, cond_var_ir2, body_ir);
@@ -9805,8 +9805,8 @@ pub const Compiler = struct {
         // Compile the expression that produces multiple values
         const expr_ir = try self.compile(cons2.car, env);
 
-        // Compile body forms
-        const body_ir = try self.compileBody(cons2.cdr, &let_env);
+        // Compile body forms with local declaration scope.
+        const body_ir = try self.compileScopedBody(cons2.cdr, &let_env);
 
         const mv_bind_ir = try self.builder.mvBind(vars, start_index, expr_ir, body_ir);
         if (special_bindings.items.len != 0) {
@@ -10302,8 +10302,8 @@ pub const Compiler = struct {
             try self.putMacroMapValue(&self.macro_table, name, transformed);
         }
 
-        // Compile body with local macros in effect
-        const body_ir = try self.compileBody(body, env);
+        // Compile body with local macros in effect and local declaration scope.
+        const body_ir = try self.compileScopedBody(body, env);
 
         // Restore old macro definitions
         for (saved_macros.items) |saved| {
@@ -10358,8 +10358,8 @@ pub const Compiler = struct {
             try self.putMacroMapValue(&self.symbol_macros, name, expansion);
         }
 
-        // Compile body with local symbol macros in effect
-        const body_ir = try self.compileBody(body, env);
+        // Compile body with local symbol macros in effect and local declaration scope.
+        const body_ir = try self.compileScopedBody(body, env);
 
         // Restore old symbol macro definitions
         for (saved_syms.items) |saved| {
@@ -10396,7 +10396,7 @@ pub const Compiler = struct {
         defer bindings.deinit(self.allocator);
         try self.appendDestructuringIrBindings(&bindings, &body_env, pattern, try self.builder.variable("#destruct-temp", 0, temp_idx));
 
-        const body_ir = try self.compileProgn(body, &body_env);
+        const body_ir = try self.compileScopedBody(body, &body_env);
         const inner_let = try self.builder.letExpr(bindings.items, body_ir);
         const temp_binding = [_]Ir.Binding{.{ .name = "#destruct-temp", .index = temp_idx, .value = expr_ir }};
         return try self.builder.letExpr(&temp_binding, inner_let);
@@ -16264,6 +16264,17 @@ pub const Compiler = struct {
 
     fn compileBody(self: *Compiler, exprs: Value, env: *const Env) anyerror!*Ir {
         return self.compileBodyWithTail(exprs, env, false);
+    }
+
+    fn compileScopedBody(self: *Compiler, exprs: Value, env: *const Env) anyerror!*Ir {
+        return self.compileScopedBodyWithTail(exprs, env, false);
+    }
+
+    fn compileScopedBodyWithTail(self: *Compiler, exprs: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
+        var body_env = Env.initLet(self.allocator, env);
+        defer body_env.deinit();
+        const filtered = try self.filterDeclares(exprs, &body_env);
+        return self.compileBodyWithTail(filtered, &body_env, in_tail);
     }
 
     fn compileBodyWithTail(self: *Compiler, exprs: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -23142,6 +23153,121 @@ test "local special decl does not leak into later top-level lambda" {
     const expr1 = try parser1.parse();
     const ir1 = try compiler.compile(expr1, &env);
     try testing.expect(ir1.* == .define);
+
+    var parser2 = try Parser.init(arena_alloc, &heap, "(lambda (q) q)", &vm.builtins);
+    defer parser2.deinit();
+    const expr2 = try parser2.parse();
+    const ir2 = try compiler.compile(expr2, &env);
+
+    try testing.expect(ir2.* == .lambda);
+    try testing.expectEqual(@as(usize, 0), ir2.lambda.special_bindings.len);
+}
+
+test "block body declare does not leak into later top-level lambda" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser1 = try Parser.init(arena_alloc, &heap, "(block nil (declare (special q)) q)", &vm.builtins);
+    defer parser1.deinit();
+    const expr1 = try parser1.parse();
+    _ = try compiler.compile(expr1, &env);
+    try testing.expect(!compiler.global_decls.hasDecl("Q", .special));
+
+    var parser2 = try Parser.init(arena_alloc, &heap, "(lambda (q) q)", &vm.builtins);
+    defer parser2.deinit();
+    const expr2 = try parser2.parse();
+    const ir2 = try compiler.compile(expr2, &env);
+
+    try testing.expect(ir2.* == .lambda);
+    try testing.expectEqual(@as(usize, 0), ir2.lambda.special_bindings.len);
+}
+
+test "flet body declare does not leak into later top-level lambda" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser1 = try Parser.init(
+        arena_alloc,
+        &heap,
+        "(flet ((id (x) x)) (declare (special q)) (id q))",
+        &vm.builtins,
+    );
+    defer parser1.deinit();
+    const expr1 = try parser1.parse();
+    _ = try compiler.compile(expr1, &env);
+    try testing.expect(!compiler.global_decls.hasDecl("Q", .special));
+
+    var parser2 = try Parser.init(arena_alloc, &heap, "(lambda (q) q)", &vm.builtins);
+    defer parser2.deinit();
+    const expr2 = try parser2.parse();
+    const ir2 = try compiler.compile(expr2, &env);
+
+    try testing.expect(ir2.* == .lambda);
+    try testing.expectEqual(@as(usize, 0), ir2.lambda.special_bindings.len);
+}
+
+test "multiple-value-bind body declare does not leak into later top-level lambda" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser1 = try Parser.init(
+        arena_alloc,
+        &heap,
+        "(multiple-value-bind (x) 1 (declare (special q)) (list x q))",
+        &vm.builtins,
+    );
+    defer parser1.deinit();
+    const expr1 = try parser1.parse();
+    _ = try compiler.compile(expr1, &env);
+    try testing.expect(!compiler.global_decls.hasDecl("Q", .special));
 
     var parser2 = try Parser.init(arena_alloc, &heap, "(lambda (q) q)", &vm.builtins);
     defer parser2.deinit();
