@@ -99,3 +99,63 @@ per-file tests can pass while the combined `all.fs` suite fails. Rules:
 - **Scheme persistence:** a scheme is a canonical signature **string** (DB holds
   strings); `INST`=re-parse (fresh vars by name per call → polymorphism for free),
   `GENERALIZE`=render. Sidesteps copying terms out of the per-check arena.
+
+## Codegen Phase 0.3 — speed gate (MARGINAL; benchmark was wrong shape, 2026-06-10)
+
+Serial scalar LCG (`x = x*A + C`, 1e9 iters; `bench/inner-loop.{fs,s}` +
+`bench/run.sh`). **Native baseline must be hand-written ARM64** (`inner-loop.s` —
+the exact `mul; add` caf emits), NOT clang `-O2` C: clang unrolled/scheduled to
+0.97 ns/iter, flattering native; the faithful naive loop is **1.26 ns/iter** and
+**unroll-8 is identical (1.26)** → the loop is **latency-bound** (mul→add serial
+chain; unrolling buys nothing).
+
+| Build | ns/iter | native advantage |
+| ----- | ------- | ---------------- |
+| native (hand ARM64, real floor) | 1.26 | — |
+| gforth-fast | 2.08 | **1.66×** |
+| gforth threaded (= caf today) | 5.98 | **4.76×** |
+
+**Two lessons.** (1) **Don't measure the native ceiling with C** — clang's
+optimizer ≠ what caf emits; use hand-asm. (2) **The LCG is the WRONG gate
+benchmark**: it's latency-bound (2 serial ops, `mul` latency irreducible and
+shared by both engines), so native's real win — eliminating per-op threading
+dispatch — is a small fraction → only 1.66× over gforth-fast. The plan specified a
+**dispatch-bound** loop ("decoder/VM step, arith + `@`/`c@` + a branch") where
+gforth pays NEXT per cheap op and native collapses them to register ops → expect
+3–10×. **Gate is PENDING a dispatch-bound re-bench.** Decisive even now: **4.76×
+over the threaded engine caf actually uses**; the 2× bar is only contested vs
+gforth-fast (an engine caf doesn't use) on an unfavorable loop.
+
+**asm gotcha:** in clang's integrated ARM assembler **`;` is a comment**, not a
+statement separator — `mul …; add …` silently drops the `add`. Put one
+instruction per line. (Caught a fake "0.16 ns/iter, 8× speedup" = dead muls.)
+
+### Dispatch-bound bench — gforth-fast IS a native engine (2026-06-10)
+
+`bench/dispatch.{fs,s}`: xorshift byte-mix over 64KB × 15000 (~10 cheap ops/byte),
+ns/byte (all three agree, low byte 203):
+
+| Build | ns/byte |
+| ----- | ------- |
+| native (hand ARM64) | 2.28 |
+| gforth-fast | 2.21 (**parity with native**) |
+| gforth threaded (plain) | 23.69 (10.4× slower) |
+
+**gforth-fast uses dynamic superinstructions / native-code copying — it compiles
+to native (~0.2ns/op << one NEXT).** So hand-asm is at PARITY, not ahead. Hard
+consequences:
+- **caf-checked words are gforth colon words → running caf under `gforth-fast`
+  already gives native speed for free, no backend.** A backend that only matches
+  gforth-fast adds nothing on speed.
+- The "unboxing" win doesn't apply vs gforth: gforth cells are raw/untagged
+  (nothing to unbox — that was a *habu* fixnum-tag cost, not gforth's).
+- Even register-kept accumulator (asm) = parity; gforth-fast's stack ops are
+  L1-cheap.
+
+**Reframe the speed gate:** "≥2× over gforth-fast" was wrong — gforth-fast is a
+native engine, not a threaded strawman. The backend's justification is the
+committed **self-host / standalone (gforth dropped)** goal, which needs native
+codegen regardless of speed; parity-with-gforth-fast + 10× over threaded is a
+fine target for a standalone. Beating gforth-fast is a later *bonus* (cross-word
+regalloc, type-specialized width — look modest here), not a gate. Don't bank the
+project on outrunning gforth-fast.
