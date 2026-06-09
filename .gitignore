@@ -1,0 +1,7 @@
+# Gforth saved images / build scratch
+*.fi
+*.o
+/tmp/
+
+# local task state
+.dots/
