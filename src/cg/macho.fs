@@ -66,21 +66,27 @@ create SCODE 8192 allot
    2 m32  $054C0000 m32  $00010000 m32     \ ts=2, cur=1356.0.0, compat=1.0.0
    s" /usr/lib/libSystem.B.dylib" dup >r bounds ?do i c@ m8 loop  56 24 - r> - m-zeros ;
 
-: MH-HDR, ( ncmds sizeofcmds -- )
+32 constant MH-HDR-SZ                 \ mach_header_64 size
+variable NCMDS                        \ load commands counted as emitted
+: LC+ ( -- )  1 NCMDS +! ;            \ each LC emitter calls this
+: MH-HDR, ( -- )                      \ ncmds/sizeofcmds back-patched later
    MH-MAGIC64 m32  CPU-ARM64 m32  0 m32  MH-EXECUTE m32
-   swap m32  m32  MH-FLAGS m32  0 m32 ;
+   0 m32  0 m32  MH-FLAGS m32  0 m32 ;
+: PATCH-HDR ( -- )                    \ fill ncmds + sizeofcmds from what was emitted
+   NCMDS @  MBUF 16 +  l!
+   m-here MH-HDR-SZ -  MBUF 20 +  l! ;
 
 : BUILD-MACHO ( -- )                 \ assumes ICODE holds the program
-   ASM-CODE  M-RESET
-   6 408 MH-HDR,
-   s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,
-   s" __TEXT" VMBASE MPAGE 0 MPAGE 5 1 80 SEG,
+   ASM-CODE  M-RESET  0 NCMDS !
+   MH-HDR,
+   s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
+   s" __TEXT" VMBASE MPAGE 0 MPAGE 5 1 80 SEG,  LC+
       s" __text" s" __TEXT" VMBASE CODE-OFF + CODELEN @ CODE-OFF 2 $80000400 SECT,
-   s" __LINKEDIT" VMBASE MPAGE + MPAGE MPAGE 0 1 0 0 SEG,
-   DYLINKER,
-   CODE-OFF MAIN,
-   DYLIB,
-   CODE-OFF m-pad                    \ header slack
+   s" __LINKEDIT" VMBASE MPAGE + MPAGE MPAGE 0 1 0 0 SEG,  LC+
+   DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
+   PATCH-HDR                          \ derive ncmds/sizeofcmds (no frozen magic)
+   CODELEN @  MPAGE CODE-OFF -  > abort" cg: emitted code exceeds __TEXT page"
+   CODE-OFF m-pad                    \ header slack (for codesign's LC)
    SCODE  MP @  CODELEN @  move      \ copy assembled code
    CODELEN @ MP +!
    MPAGE m-pad                        \ pad file to one page
