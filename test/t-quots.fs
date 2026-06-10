@@ -23,3 +23,15 @@ T{ ' Q-BAD catch -> E-MISMATCH }T
 \ tick an unknown word -> E-UNCHECKED
 : Q-UK   s" QUK" s" R -- R" s" ' NOSUCH EXECUTE" CHECK-DEF ;
 T{ ' Q-UK catch -> E-UNCHECKED }T
+
+\ ?DUP-IF — fused, typeable form of `?DUP IF … THEN`. Quotation consumes the
+\ value; run (nonzero) and skip (zero) paths both converge to R.
+: Q-QDIF  s" QDIF"  s" R i64 -- R" s" [: . ;] ?DUP-IF"    CHECK-DEF ;
+T{ ' Q-QDIF catch -> 0 }T
+: Q-QDIF2 s" QDIF2" s" R a -- R"   s" [: DROP ;] ?DUP-IF" CHECK-DEF ;
+T{ ' Q-QDIF2 catch -> 0 }T
+
+\ non-converging quotation (leaves an extra item) -> rejected: the output row
+\ would have to contain itself, so the occurs-check fires.
+: Q-QDBAD s" QDBAD" s" R i64 -- R i64" s" [: 1+ ;] ?DUP-IF" CHECK-DEF ;
+T{ ' Q-QDBAD catch -> E-OCCURS }T

@@ -49,7 +49,14 @@ R>     ( R -- R a | S a -- S )
 EXECUTE( R [ R -- S ] -- S )       \ run a quotation
 DIP    ( R a [ R -- S ] -- S a )   \ run a quotation under the top item
 TIMES  ( R i64 [ R -- R ] -- R )   \ counted iterate (quotation effect-neutral)
+?DUP-IF( R a [ R a -- R ] -- R )   \ typeable fusion of `?DUP IF … THEN`
 ```
+
+`?DUP-IF` is the checkable form of the idiom `?DUP IF … THEN`: it consumes the
+value and a quotation over it, and the run (nonzero) and skip (zero) paths both
+converge to `R`. The naked `?DUP` stays untypeable (its arity depends on the
+runtime value). A quotation that leaves an extra item is rejected by the
+occurs-check (the output row would have to contain itself).
 
 User-level: `: ABSV ( i64 -- i64 ) DUP 0< IF NEGATE THEN ;` — the surface form
 omits the leading `R` and the return clause; the checker supplies fresh rows.

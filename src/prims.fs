@@ -87,6 +87,10 @@ s" R -- R a | S a -- S a" s" R@" PRIM
 s" R [ R -- S ] -- S"     s" EXECUTE" PRIM
 s" R a [ R -- S ] -- S a" s" DIP"     PRIM
 s" R a [ R a -- S ] -- S a" s" KEEP"  PRIM
+\ ?DUP-IF — the typeable fused form of `?DUP IF … THEN`. Naked ?DUP is untypeable
+\ (value-dependent 0/2 arity); this consumes the value and a quotation over it,
+\ both the run (nonzero) and skip (zero) paths converging to R. See docs/effects.md.
+s" R a [ R a -- R ] -- R" s" ?DUP-IF" PRIM
 
 \ --- char literals ---
 s" R -- R char" s" CHAR"    PRIM
