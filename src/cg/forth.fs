@@ -7,6 +7,7 @@
 
 require exec.fs
 require templ.fs           \ g-push/g-pop, XDS(=19)
+require rt.fs              \ g-print9 (shared signed-decimal printer)
 
 20 constant RBASE   21 constant INP   22 constant INE   23 constant TKA   24 constant TKL
 
@@ -32,20 +33,8 @@ variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  
 : bdup  A g-pop  A g-push  A g-push ;
 : bdrop XDS XDS 8 SUBI, ;
 : bswap A g-pop  B g-pop  A g-push  B g-push ;
-\ `.` : pop, print signed decimal + newline (itoa + write), then RET
-: bdot
-   A g-pop  SP SP 32 SUBI,  12 SP 32 ADDI,
-   13 10 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,        \ '\n'
-   14 0 MOVZ,  A 0 CMPI,
-   NEWLBL {: lp :}  C-GE lp BCOND,
-   14 1 MOVZ,  A SP A SUB,  lp LBL,
-   10 10 MOVZ,
-   NEWLBL {: ll :}  ll LBL,
-   11 A 10 SDIV,  13 11 10 MUL,  13 A 13 SUB,  13 13 48 ADDI,
-   12 12 1 SUBI,  13 12 0 STRB,  A 11 0 ADDI,  A ll CBNZ,
-   NEWLBL {: ls :}  14 ls CBZ,  13 45 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,  ls LBL,
-   0 1 MOVZ,  1 12 0 ADDI,  2 SP 32 ADDI,  2 2 12 SUB,  16 4 MOVZ,  $80 SVC,
-   SP SP 32 ADDI, ;
+\ `.` : pop into x9(=A), print signed decimal + newline (shared rt.fs printer)
+: bdot  A g-pop  g-print9 ;
 
 : emit-prims ( -- )
    s" +"    ['] b+    FPRIM   s" -"    ['] b-    FPRIM   s" *"    ['] b*    FPRIM
