@@ -107,3 +107,12 @@ s" : F 1 2 3 throw ; : T ['] F catch . ; T"           NF  T{ s\" 3\n"  NF= -> tr
 \ nested: inner catches, outer sees normal completion (exc 0)
 s" : BAD 42 throw ; : INNER ['] BAD catch ; : T ['] INNER catch . ; T"
    NF  T{ s\" 0\n"  NF= -> true }T
+
+\ --- locals {: a b :} (self-host 4): machine-stack frame, slot 0 = first name;
+\ references resolve to a load; frame torn down at ';'; coexists with catch ---
+s" : SQ {: x :} x x * ; 7 SQ ."                       NF  T{ s\" 49\n"  NF= -> true }T
+s" : SUB3 {: a b :} a b - ; 10 3 SUB3 ."             NF  T{ s\" 7\n"   NF= -> true }T
+s" : H {: a b :} a a * b b * + ; 3 4 H ."            NF  T{ s\" 25\n"  NF= -> true }T
+s" : F {: x :} x 0 < IF x NEGATE ELSE x THEN ; -5 F ."  NF  T{ s\" 5\n"   NF= -> true }T
+s" : G {: n :} 0 BEGIN 1 + DUP n >= UNTIL ; 5 G ."   NF  T{ s\" 5\n"   NF= -> true }T
+s" : BAD 99 throw ; : T {: x :} ['] BAD catch x + ; 5 T ."  NF  T{ s\" 104\n" NF= -> true }T

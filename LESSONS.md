@@ -20,6 +20,13 @@ mistakes, or insights. Lessons only — no API reference or code snippets (→ `
 - **No forward references** in the single-pass standalone: `['] FOO` before FOO is
   defined silently emits nothing (FIND fails, the guard skips `c-lit`), leaving a
   garbage xt → `catch`/`EXECUTE` jumps to it and faults. Define before use.
+- **Locals `{: a b :}`** (completes dot 4): a data-region header holds the
+  per-word locals table (count, frame size, name records). `{:` records the names,
+  carves an `sp` frame, and pops the declared values into slots (slot 0 = first
+  name; pop top→highest slot). A body token is matched against the table
+  (`Lloc-find`) BEFORE FIND → resolves to `ldr x9,[sp,#slot*8]`. `;` tears down the
+  frame before RET. Locals coexist with catch: the locals frame sits below catch's
+  handler frames, so `throw` unwinds to the catch and the locals stay readable.
 
 ## Crash diagnostics — in-binary register dump (2026-06-10)
 

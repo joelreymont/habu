@@ -32,9 +32,18 @@ $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 \ x20 (RBASE) is dead after startup, so it doubles as DATA: the data-space base.
 \ [x20] holds DP (next-free pointer); usable space is [x20+8 .. x20+DATA-SIZE).
 20 constant DATA
+\ data-region header (all at [x20]): DP, HND (catch chain), and the locals table
+\ for the word being compiled — LOC-N count, LOC-F frame bytes, then 16 name slots
+\ (len + up to 16 name bytes, 24 B each). User data (DP) starts past the header.
+0   constant DP-CELL    8  constant HND-CELL
+16  constant LOCN-CELL   24 constant LOCF-CELL    32 constant LOCNAMES
+24  constant LOC-REC      \ bytes per local name record (len + 16 name)
+$200 constant DATA-START  \ DP initial offset (past the header)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create TICK-KW   39 c,          \ '  (0x27)
 create BTICK-KW  91 c, 39 c, 93 c,   \ ['] = [ ' ]  (0x5b 0x27 0x5d)
+create LBRACE-KW 123 c, 58 c,   \ {:  (0x7b 0x3a)
+create ENDLOC-KW 58 c, 125 c,   \ :}  (0x3a 0x7d)
 variable STDIN?   STDIN? off   \ source mode: baked Lsrc (off) vs read from stdin (on)
 
 \ runtime instruction-word constants the JIT compiler stamps out (verified encodings)
@@ -69,6 +78,7 @@ variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp
 variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
+variable Lkwlbrace variable Lkwendloc variable Lloc-find
 
 9 constant A   10 constant B   11 constant C
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
@@ -337,6 +347,26 @@ variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwb
       kyes LBL,  0 1 MOVZ,  RET,
       kno  LBL,  0 0 MOVZ,  RET, ;
 
+\ Lloc-find ( -- x0 = local slot index, or -1 ) : exact-match TKA/TKL against the
+\ locals table ([x20+LOCNAMES], LOC-N records of {len, 16 name bytes}).
+: emit-loc-find ( -- )
+   Lloc-find @ LBL,
+   9 DATA LOCN-CELL LDR,  10 0 MOVZ,                 \ x9=N  x10=i
+   NEWLBL {: ll :}  NEWLBL {: lmiss :}  NEWLBL {: lhit :}
+   NEWLBL {: lcmp :}  NEWLBL {: lnext :}
+   ll LBL,  10 9 CMP,  C-GE lmiss BCOND,
+      12 LOC-REC MOVZ,  11 10 12 MUL,  11 11 LOCNAMES ADDI,  11 DATA 11 ADD,   \ entry
+      12 11 0 LDR,  12 TKL CMP,  C-NE lnext BCOND,   \ len mismatch
+      13 0 MOVZ,                                     \ j
+      lcmp LBL,  13 TKL CMP,  C-GE lhit BCOND,
+         14 11 13 ADD,  14 14 8 ADDI,  14 14 0 LDRB, \ entry.name[j]
+         15 TKA 13 ADD,  15 15 0 LDRB,               \ tok[j]
+         14 15 CMP,  C-NE lnext BCOND,
+         13 13 1 ADDI,  lcmp B,
+      lhit LBL,  0 10 0 ADDI,  RET,                  \ slot = i
+      lnext LBL,  10 10 1 ADDI,  ll B,
+   lmiss LBL,  0 0 MOVN,  RET, ;                     \ -1
+
 \ keyword bytes (lower-case) at known labels; ADR reaches them PC-relative
 : emit-kwdata ( -- )
    Lkwif @ LBL,     s" if"     BYTES,    Lkwthen @ LBL,   s" then"   BYTES,
@@ -345,7 +375,8 @@ variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwb
    Lkwwhile @ LBL,  s" while"  BYTES,    Lkwrepeat @ LBL, s" repeat" BYTES,
    Lkwcreate @ LBL, s" create" BYTES,    Lkwvar @ LBL,    s" variable" BYTES,
    Lkwsq @ LBL,     SQ-KW 2 BYTES,                         \ the 2 bytes  s "
-   Lkwtick @ LBL,   TICK-KW 1 BYTES,    Lkwbtick @ LBL,  BTICK-KW 3 BYTES, ;
+   Lkwtick @ LBL,   TICK-KW 1 BYTES,    Lkwbtick @ LBL,  BTICK-KW 3 BYTES,
+   Lkwlbrace @ LBL, LBRACE-KW 2 BYTES,  Lkwendloc @ LBL, ENDLOC-KW 2 BYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
@@ -396,6 +427,38 @@ variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwb
 : c-btick ( -- )
    Ltok @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
    NEWLBL {: bk :}  13 bk CBZ,  c-lit  bk LBL, ;
+
+\ {: a b :} (compile): record the names in the locals table, carve a machine-stack
+\ frame, and pop the declared values into slots (slot 0 = first/deepest name). The
+\ frame is torn down at ';'. Local references are resolved by Lloc-find -> a load.
+: c-lbrace ( -- )
+   9 0 MOVZ,  9 DATA LOCN-CELL STR,           \ N = 0
+   NEWLBL {: nl :}  NEWLBL {: nd :}  NEWLBL {: nstore :}  NEWLBL {: ncp :}  NEWLBL {: ncd :}
+   nl LBL,
+      Ltok @ BL,  0 nd CBZ,
+      0 Lkwendloc @ ADR,  1 2 MOVZ,  Lkwcmp @ BL,  0 nstore CBZ,  nd B,   \ ":}" -> done
+      nstore LBL,
+      11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  11 11 LOCNAMES ADDI,  11 DATA 11 ADD,
+      TKL 11 0 STR,                           \ entry.len
+      12 11 8 ADDI,  13 TKA 0 ADDI,  14 TKL 0 ADDI,    \ copy name bytes
+      ncp LBL,  14 ncd CBZ,  15 13 0 LDRB, 15 12 0 STRB, 12 12 1 ADDI, 13 13 1 ADDI, 14 14 1 SUBI, ncp B,
+      ncd LBL,
+      11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR,   \ N++
+      nl B,
+   nd LBL,
+   11 DATA LOCN-CELL LDR,                     \ x11 = N
+   12 11 3 LSLI,  12 12 15 ADDI,  5 -16 LIT64,  12 12 5 AND,   \ framesize = (N*8+15)&~15
+   12 DATA LOCF-CELL STR,
+   9 $D10003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ emit sub sp,sp,#framesize
+   13 11 1 SUBI,                              \ i = N-1
+   NEWLBL {: pl :}  NEWLBL {: pd :}
+   11 pd CBZ,
+   pl LBL,
+      9 $D1002273 LIT64,  Lcemit @ BL,        \ sub x19,#8
+      9 $F9400269 LIT64,  Lcemit @ BL,        \ ldr x9,[x19]
+      9 $F90003E9 LIT64,  14 13 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ str x9,[sp,#i*8]
+      13 pd CBZ,  13 13 1 SUBI,  pl B,
+   pd LBL, ;
 
 \ S" string" (compile mode): emit  B over the bytes ; <bytes> ; push abs-addr ;
 \ push len. Bytes live in the RX code image; the absolute address is known at
@@ -450,8 +513,8 @@ variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwb
    \ separate always-RW data region (x20 is free after the seed copy); [x20]=DP=x20+8
    0 0 MOVZ,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
    16 197 MOVZ,  $80 SVC,  DATA 0 0 ADDI,
-   7 DATA 16 ADDI,  7 DATA 0 STR,                     \ DP = base+16 ([base]=DP, [base+8]=HND)
-   9 0 MOVZ,  9 DATA 8 STR,                           \ HND (catch handler chain) = 0
+   7 DATA DATA-START ADDI,  7 DATA DP-CELL STR,       \ DP = base + header
+   9 0 MOVZ,  9 DATA HND-CELL STR,                    \ HND (catch handler chain) = 0
    g-install-crash                                    \ self-diagnosing crash (register dump)
    emit-source                                        \ INP/INE <- baked Lsrc or stdin
    PEND 0 MOVZ,                                       \ interpret mode
@@ -475,6 +538,7 @@ variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwb
             10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncopy B,
          ncd LBL,
          5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,   \ reset CFSP
+         12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,      \ reset locals
          lmain B,
       lnotcolon LBL,
       \ interpret-mode defining words + tick
@@ -493,6 +557,9 @@ variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwb
       NEWLBL {: lnotsemi :}
       TKL 1 CMPI,  C-NE lnotsemi BCOND,
       9 TKA 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,       \ ';'
+         12 DATA LOCF-CELL LDR,  NEWLBL {: notd :}  12 notd CBZ,   \ tear down locals frame
+            9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ add sp,sp,#frame
+         notd LBL,
          9 W-RET LIT64,  Lcemit @ BL,                       \ emit RET
          9 PEND 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 PEND 8 STR,  \ clen
          NDICT NDICT 1 ADDI,                                \ publish word
@@ -511,6 +578,13 @@ variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwb
       lmain Lkwrepeat 6 ['] c-repeat cf-entry
       lmain Lkwsq     2 ['] c-sdq    cf-entry            \ S" string"
       lmain Lkwbtick  3 ['] c-btick  cf-entry            \ ['] NAME
+      lmain Lkwlbrace 2 ['] c-lbrace cf-entry            \ {: a b :} locals
+      \ local-name reference -> load from its frame slot, push
+      Lloc-find @ BL,  NEWLBL {: notloc :}  0 0 CMPI,  C-LT notloc BCOND,
+         9 $F94003E9 LIT64,  14 0 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ ldr x9,[sp,#slot*8]
+         9 W-PUSH0 LIT64,  Lcemit @ BL,  9 W-PUSH1 LIT64,  Lcemit @ BL,
+         lmain B,
+      notloc LBL,
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,             \ NUMBER? -> literal
       NEWLBL {: lcnotnum :}
       12 lcnotnum CBZ,  c-lit  lmain B,
@@ -531,10 +605,11 @@ variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwb
    NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !
    NEWLBL Lkwcreate !  NEWLBL Lkwvar !  NEWLBL Lkwsq !
    NEWLBL Lkwtick !  NEWLBL Lkwbtick !
+   NEWLBL Lkwlbrace !  NEWLBL Lkwendloc !  NEWLBL Lloc-find !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
-   emit-cf-helpers  emit-kwdata  emit-crash-handler  emit-hex
+   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-crash-handler  emit-hex
    emit-dict                                              \ after #PL is final
    Lsrc @ LBL,  r> SRCN @ BYTES, ;
 
