@@ -128,6 +128,11 @@ get-current  CG-VS set-current
 : !  v-popr {: p :} v-popr {: v :}  v p 0 STR,   p r-free v r-free ;
 : c! v-popr {: p :} v-popr {: v :}  v p 0 STRB,  p r-free v r-free ;
 : +! v-popr {: p :} v-popr {: n :}  r-alloc {: t :}  t p 0 LDR, t t n ADD, t p 0 STR,  p r-free n r-free t r-free ;
+\ bump heap (HP = next-free pointer, set by g-heap-init at the program entry)
+: HERE   r-alloc {: r :}  r HP 0 ADDI,  r v-pushr ;          \ push current HP
+: ALLOT  v-popr {: n :}  HP HP n ADD,  n r-free ;            \ HP += n
+: ,      v-popr {: x :}  x HP 0 STR,   HP HP 8 ADDI,  x r-free ;   \ store cell, HP += 8
+: C,     v-popr {: x :}  x HP 0 STRB,  HP HP 1 ADDI,  x r-free ;   \ store byte, HP += 1
 
 : LSHIFT
    v-2con? if  v-popc {: s :} v-popc {: v :}  v s lshift v-pushc exit then

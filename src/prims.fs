@@ -70,6 +70,12 @@ s" R ptr u8 -- R u8"      s" c@"  PRIM
 s" R u8 ptr u8 -- R"      s" c!"  PRIM
 s" R i64 ptr i64 -- R"    s" +!"  PRIM
 
+\ --- bump heap (codegen: mmap'd arena; HERE returns a ptr you can @/!) ---
+s" R -- R ptr i64"  s" HERE"  PRIM
+s" R i64 -- R"      s" ALLOT" PRIM
+s" R i64 -- R"      s" ,"      PRIM
+s" R u8 -- R"       s" C,"     PRIM
+
 \ --- pointer arithmetic ---
 s" R ptr a -- R ptr a" s" CELL+" PRIM
 s" R ptr a -- R ptr a" s" CHAR+" PRIM

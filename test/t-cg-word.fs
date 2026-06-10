@@ -86,3 +86,12 @@ T{ s" [: 1+ ;] EXECUTE"        5 NATIVE-EVAL ->  6 }T
 T{ s" [: DUP * ;] EXECUTE"     7 NATIVE-EVAL -> 49 }T
 T{ s" [: 2 * ;] EXECUTE 1+"    4 NATIVE-EVAL ->  9 }T               \ inlined quot + following op
 T{ s" 10 [: 1+ ;] DIP DROP"    5 NATIVE-EVAL ->  6 }T               \ DIP runs under the top
+
+\ --- bump heap (HERE/ALLOT/,/C,) + memory round-trips ---
+T{ s" HERE 42 OVER ! @"            0 NATIVE-EVAL -> 42 }T
+T{ s" HERE 10 OVER ! 5 OVER +! @"  0 NATIVE-EVAL -> 15 }T           \ +!
+T{ s" HERE 7 OVER ! 8 ALLOT HERE 99 OVER ! DROP @"  0 NATIVE-EVAL -> 7 }T  \ ALLOT separates cells
+\ u8 width correct by construction: c! truncates the low byte (= gforth truncate-at-store)
+T{ s" HERE 200 OVER C! C@"         0 NATIVE-EVAL -> 200 }T
+T{ s" HERE 300 OVER C! C@"         0 NATIVE-EVAL -> 44 }T           \ 300 & 0xFF
+T{ s" HERE 511 OVER C! C@"         0 NATIVE-EVAL -> 255 }T          \ 511 & 0xFF

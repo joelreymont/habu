@@ -50,6 +50,7 @@ defer EMIT-CALL   ( a u -- handled? )
 : COMPILE-WORD {: ba bu input -- :}
    ICODE-RESET  cf-reset  cgl-reset  q-reset
    512 g-prologue
+   g-heap-init                          \ entry: mmap the bump heap (HP); callees inherit it
    input g-lit
    NEWLBL EPILOG !        \ EXIT branches here
    ba bu WALK-BODY

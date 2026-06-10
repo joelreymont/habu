@@ -7,7 +7,15 @@
 require asm.fs
 
  9 constant T0   10 constant T1   11 constant T2
-19 constant XDS  31 constant SP   25 constant RSP
+19 constant XDS  31 constant SP   25 constant RSP   26 constant HP
+
+\ Bump heap (HERE/ALLOT/,/C,): an mmap'd RW arena whose next-free pointer lives in
+\ HP (x26 — outside the VS pool, so it survives spills and calls). g-heap-init runs
+\ once at the program ENTRY (COMPILE-WORD); callees inherit HP.
+$100000 constant HEAPSZ
+: g-heap-init ( -- )
+   0 0 MOVZ,  1 HEAPSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
+   16 197 MOVZ,  $80 SVC,  HP 0 0 ADDI, ;     \ mmap RW; HP = base
 
 \ data-stack ops (Xds points just past TOS; full-ascending)
 : g-push ( reg -- )  XDS 0 STR,  XDS XDS 8 ADDI, ;
