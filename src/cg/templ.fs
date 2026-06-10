@@ -51,8 +51,8 @@ $100000 constant HEAPSZ
 
 \ control-flow stack (compile-time, holds label ids)
 variable CF-SP   create CF-STK 64 cells allot
-variable EPILOG
-: cf-reset ( -- )  0 CF-SP ! ;
+variable EPILOG  variable LOOP-DEPTH
+: cf-reset ( -- )  0 CF-SP !  0 LOOP-DEPTH ! ;
 : cf-push ( x -- )  CF-STK CF-SP @ cells + !  1 CF-SP +! ;
 : cf-pop  ( -- x )  -1 CF-SP +!  CF-STK CF-SP @ cells + @ ;
 
@@ -65,20 +65,26 @@ variable EPILOG
 : c-while T0 g-pop  NEWLBL dup T0 swap CBZ,  cf-push ;
 : c-repeat cf-pop  cf-pop B,  LBL, ;            \ ( Lexit Lbegin -- ) B Lbegin; place Lexit
 \ DO/?DO/LOOP/I keep index+limit on the return stack, so loops nest.
-: c-do    T0 g-pop  T1 g-pop  T1 g-rpush  T0 g-rpush     \ push limit, then index
+\ Loop index/limit live in REGISTERS (LIDX=x27, LLIM=x28 — outside the VS pool, so
+\ they survive the body's spills), not on the return stack: the per-iteration
+\ increment/compare is register-only (the big loop win). Nesting saves/restores the
+\ enclosing loop's pair on the return stack at entry/exit (not per iteration).
+27 constant LIDX   28 constant LLIM
+: loop-save ( -- )  LOOP-DEPTH @ if  LLIM g-rpush  LIDX g-rpush  then  1 LOOP-DEPTH +! ;
+: loop-rest ( -- )  LOOP-DEPTH @ 1 > if  LIDX g-rpop  LLIM g-rpop  then  -1 LOOP-DEPTH +! ;
+: c-do    loop-save  LIDX g-pop  LLIM g-pop              \ index->x27, limit->x28
           NEWLBL {: lexit :}  NEWLBL {: ltop :}  ltop LBL,
           lexit cf-push  ltop cf-push ;
-: c-qdo   T0 g-pop  T1 g-pop  T1 g-rpush  T0 g-rpush
-          NEWLBL {: lexit :}  T0 T1 CMP,
-          NEWLBL {: lenter :}  C-LT lenter BCOND,         \ start<limit -> enter
-          RSP RSP 16 ADDI,  lexit B,                      \ else drop both, skip
+: c-qdo   loop-save  LIDX g-pop  LLIM g-pop
+          NEWLBL {: lexit :}  LIDX LLIM CMP,
+          NEWLBL {: lenter :}  C-LT lenter BCOND,         \ index<limit -> enter
+          lexit B,                                        \ else skip (lexit does the restore)
           lenter LBL,  NEWLBL {: ltop :}  ltop LBL,
           lexit cf-push  ltop cf-push ;
 : c-loop  cf-pop {: ltop :}  cf-pop {: lexit :}
-          T0 RSP 0 LDR,  T0 T0 1 ADDI,  T0 RSP 0 STR,     \ ++index in place
-          T1 RSP 8 LDR,  T0 T1 CMP,  C-LT ltop BCOND,     \ index<limit -> loop
-          RSP RSP 16 ADDI,  lexit LBL, ;                  \ drop index+limit
-: c-i     T0 RSP 0 LDR,  T0 g-push ;
+          LIDX LIDX 1 ADDI,  LIDX LLIM CMP,  C-LT ltop BCOND,   \ ++index; index<limit -> loop
+          lexit LBL,  loop-rest ;
+: c-i     LIDX g-push ;
 : p->r    T0 g-pop   T0 g-rpush ;
 : p-r>    T0 g-rpop  T0 g-push ;
 : p-r@    T0 RSP 0 LDR,  T0 g-push ;
