@@ -220,3 +220,31 @@ Gotchas hit:
 **Still gforth-hosted:** the COMPILER runs on gforth. Fully standalone (compiler
 self-hosts, gforth dropped) needs Part F — a native Forth runtime (interpreter +
 dictionary + evaluate). That remains the long pole.
+
+## Part F — standalone native Forth interpreter (2026-06-10)
+
+`src/cg/forth.fs` emits a **standalone native Forth** (no gforth, no C): a Mach-O
+with a dictionary + subroutine-threaded primitives + an outer interpreter that
+parses an embedded source line, number-pushes, FINDs, and EXECUTEs. Proven
+(`test/t-cg-forth.fs`): `2 3 + .`→5, `10 20 + 5 * .`→150, `8 3 swap - .`→-5.
+
+Design choices that worked:
+- **PC-relative throughout** (PIE-safe): non-PIE binaries still get ASLR'd on this
+  macOS (load base ≠ VMBASE — measured), so bake nothing absolute. Code base
+  `RBASE = ADR(anchor)` at startup; dict stores **code byte-offsets**, EXECUTE =
+  `RBASE + offset` → BLR. Data (strings, dict) embedded via new ICode pseudo-ops
+  `BYTES,`/`DCQ,`/`DLBL,` (DLBL = a cell holding a label's byte offset), reached
+  by `ADR`.
+- **Subroutine-threaded**: primitives are native routines ending in `RET`;
+  EXECUTE is `BLR`. No IP/NEXT/DOCOL engine needed.
+- Bug that cost time: a routine that **bakes a count must run after the thing it
+  counts** — `emit-find` baked `#PRIMS` but ran before `emit-prims` → baked 0 →
+  FIND looped zero records → silent no-op. Emit prims first.
+
+Registers: x19=DSP, x20=RBASE, x21/x22=input ptr/end, x23/x24=tok addr/len.
+
+**Stage 2 (runtime `:`/`;`)** — designed, prerequisites in place (`STRW/LDRW`
+encoders for emitting instruction words at runtime). It needs a runtime
+mini-assembler (emit BL/literal-push/RET into an mmap'd region), W^X toggling
+(`mprotect` RW↔RX + emitted `IC IVAU` flush), a growable runtime dictionary, and
+a compile-mode state machine. Substantial; not yet built.

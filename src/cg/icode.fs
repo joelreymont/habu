@@ -23,6 +23,7 @@ IOP: IOP-LDR   IOP: IOP-STR   IOP: IOP-LDRB  IOP: IOP-STRB
 IOP: IOP-LDRPO IOP: IOP-STRPR IOP: IOP-LDPPO IOP: IOP-STPPR
 IOP: IOP-SVC   IOP: IOP-NOP   IOP: IOP-ICIV  IOP: IOP-DSB   IOP: IOP-ISB
 IOP: IOP-LABEL IOP: IOP-DEAD  IOP: IOP-BYTES IOP: IOP-DCQ  IOP: IOP-DLBL
+IOP: IOP-LDRW  IOP: IOP-STRW
 IOP# @ constant #IOPS
 
 \ --- condition codes (B.cond / CSET) ---
@@ -100,6 +101,8 @@ variable #LBL
 : STR,  ( rt rn off -- )   0 IOP-STR IC, ;
 : LDRB, ( rt rn off -- )   0 IOP-LDRB IC, ;     \ off: 0..4095
 : STRB, ( rt rn off -- )   0 IOP-STRB IC, ;
+: LDRW, ( rt rn off -- )   0 IOP-LDRW IC, ;     \ 32-bit, off 0..16380 (/4)
+: STRW, ( rt rn off -- )   0 IOP-STRW IC, ;
 : LDR-POST, ( rt rn off -- ) 0 IOP-LDRPO IC, ;  \ off: -256..255
 : STR-PRE,  ( rt rn off -- ) 0 IOP-STRPR IC, ;
 : LDP-POST, ( rt1 rt2 rn off -- ) IOP-LDPPO IC, ; \ off: -512..504, 8-aligned

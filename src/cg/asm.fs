@@ -88,6 +88,9 @@ variable ABUF  variable WPOS
 : ENC-STR  ( i -- )  >r $F9000000 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?SC8 10 lshift or EMITW ;
 : ENC-LDRB ( i -- )  >r $39400000 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?IMM12 10 lshift or EMITW ;
 : ENC-STRB ( i -- )  >r $39000000 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?IMM12 10 lshift or EMITW ;
+: ?SC4 ( off -- imm12 )  dup 0 16381 within 0=  over 3 and 0<> or  if E-IMM-RANGE throw then  2 rshift ;
+: ENC-LDRW ( i -- )  >r $B9400000 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?SC4 10 lshift or EMITW ;
+: ENC-STRW ( i -- )  >r $B9000000 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?SC4 10 lshift or EMITW ;
 : ENC-LDRPO ( i -- )  >r $F8400400 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?IMM9 12 lshift or EMITW ;
 : ENC-STRPR ( i -- )  >r $F8000C00 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?IMM9 12 lshift or EMITW ;
 : ENC-LDPPO ( i -- )  >r $A8C00000 r@ IC-A or r@ IC-B 10 lshift or r@ IC-C 5 lshift or
@@ -146,6 +149,7 @@ INIT-TABLES
 ' ENC-ICIV IOP-ICIV ENC!   ' ENC-DSB  IOP-DSB  ENC!   ' ENC-ISB  IOP-ISB  ENC!
 ' ENC-NONE IOP-LABEL ENC!  ' ENC-NONE IOP-DEAD ENC!
 ' ENC-BYTES IOP-BYTES ENC!  ' ENC-DCQ IOP-DCQ ENC!  ' ENC-DLBL IOP-DLBL ENC!
+' ENC-LDRW IOP-LDRW ENC!    ' ENC-STRW IOP-STRW ENC!
 ' LENLIT IOP-LIT LEN!    ' LEN0 IOP-LABEL LEN!    ' LEN0 IOP-DEAD LEN!
 ' LEN-BYTES IOP-BYTES LEN!   ' LEN-DCQ IOP-DCQ LEN!   ' LEN-DLBL IOP-DLBL LEN!
 
