@@ -2,15 +2,10 @@
 \ containing a dictionary + outer interpreter; it parses an embedded source line,
 \ number-pushes, FINDs primitives, EXECUTEs them. Slow; run explicitly:
 \   gforth test/t-cg-forth.fs -e bye
-require ../src/cg/forth.fs
+require nf.fs                                    \ NF-RUN / NF= build+run+capture harness
 require test/tester.fs
 
-2variable FO
-: NF ( src-a src-u -- )                          \ build native Forth on src, capture stdout
-   s" /tmp/t-nf" FORTH-EXE
-   s" /tmp/t-nf > /tmp/t-nfout 2>/dev/null" system
-   s" /tmp/t-nfout" slurp-file FO 2! ;
-: NF= ( a u -- f )  FO 2@ compare 0= ;
+: NF ( src-a src-u -- )  NF-RUN ;                \ alias used by the cases below
 
 s" 2 3 + ."       NF  T{ s\" 5\n"   NF= -> true }T
 s" 10 20 + 5 * ." NF  T{ s\" 150\n" NF= -> true }T

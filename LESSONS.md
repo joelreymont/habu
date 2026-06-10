@@ -51,6 +51,30 @@ mistakes, or insights. Lessons only — no API reference or code snippets (→ `
   review. **How to apply:** when a file's description lists "X + Y + Z" of
   distinct kinds, that's a smell — make X, Y, Z separate files with explicit deps.
 
+## Debugging — never diagnose at the gforth interpret level (BLOCKING)
+
+The single biggest time-sink in the Stage-2 build was **broken diagnostics**, not
+broken codegen. Compile-only constructs read GARBAGE when typed at the REPL /
+`gforth -e`, silently, with no error:
+- `[']` is compile-only → use `'` interpretively (or wrap in a `:` def).
+- `i`/`j` and `{: … :}` locals only work inside a colon definition.
+- `>r … r@ … rdrop` straddling a `do … loop` returns the **loop index** from
+  `r@`, not your saved value (the loop owns the return stack).
+
+Each of these made a probe "prove" a codegen bug that did not exist (mis-bound
+label offsets, missing prim bodies). **Rules:** (1) wrap any multi-step
+diagnostic in a `:` definition and call it; (2) prefer the dogfooded inspectors
+in **`src/cg/inspect.fs`** (`ICDUMP`, `ICSCAN`, `?LBL`, `ICAT`) and the
+**`test/nf.fs`** harness (`NFX` = build+run+show, `NF-RUN`/`NF=`) over hand-rolled
+one-liners; (3) for ground truth on an emitted binary, use the EXTERNAL oracle
+`otool -tV <file>` — it has no caf-tooling bugs. **Don't fight caf's tooling;
+improve it** — when a one-liner is awkward, add a tested word to `inspect.fs`.
+
+The type checker would NOT have caught these: it checks the stack *effect* of caf
+source, not the *value* semantics of a return-stack/`do-loop` interleaving, and
+throwaway `gforth -e` snippets are never run through it at all. The fix is
+discipline + reliable tooling, not a new checker feature.
+
 ## Case-insensitivity (gforth, and caf itself)
 
 - **gforth is case-insensitive**, so a `{: decl :}` local collides with a
@@ -243,11 +267,33 @@ Design choices that worked:
 
 Registers: x19=DSP, x20=RBASE, x21/x22=input ptr/end, x23/x24=tok addr/len.
 
-**Stage 2 (runtime `:`/`;`)** — designed, prerequisites in place (`STRW/LDRW`
-encoders for emitting instruction words at runtime). It needs a runtime
-mini-assembler (emit BL/literal-push/RET into an mmap'd region), W^X toggling
-(`mprotect` RW↔RX + emitted `IC IVAU` flush), a growable runtime dictionary, and
-a compile-mode state machine. Substantial; not yet built.
+**Stage 2 (runtime `:`/`;`) — BUILT & working.** The emitted Forth JITs new words
+into an `mmap`'d region by INLINING stencils: each token's machine code (a
+primitive's body, or a prior word's, both minus the trailing `RET`) is copied
+into the new word, so compiled words are fully flattened/leaf — no calls, no
+`x30` save needed, and BL-range to `__TEXT` never matters. Literals compile to a
+`movz/movk` + push stencil. `5 SQ .`→25, 4-level nesting (`C=B B`,`B=A A`,
+`A=DUP *`: 2→65536) all pass (`test/t-cg-forth.fs`).
+
+- **JIT memory on Apple Silicon: W^X, pure syscalls.** Plain `RWX` mmap (`prot=7`)
+  faults on execute (verified: exit 0/garbage). `MAP_JIT` needs the jit
+  entitlement + a libSystem call (`pthread_jit_write_protect_np`) — avoided. The
+  working recipe (proven by a probe → exit 25): `mmap` **RW** (`prot=3`,
+  `MAP_ANON|MAP_PRIVATE=0x1002`) → write code → `mprotect` **RX** (`prot=5`) →
+  flush → execute. No entitlement, no C, no `pthread_*`.
+- **Cache flush is mandatory & ordered:** per 64-byte line `DC CVAU` (clean
+  dcache to PoU — new `DCCVAU,` op, `0xD50B7B20|Rt`), then `DSB ISH`, then
+  `IC IVAU` per line, `DSB ISH`, `ISB`. Do it AFTER the `mprotect` RX.
+- **W^X re-toggle bug:** the runtime dict lives in the same region as the code.
+  After `;` makes the region RX, the NEXT `:` must `mprotect` **RW _before_**
+  writing the new dict slot — else the slot store hits read-only memory. (Cost a
+  while: a single def worked, the second produced empty output.)
+- **Case-insensitivity bites the emitted FIND.** caf source is UPPER-CASE
+  (`DUP`); `emit-prims` registers lower-case (`dup`); a raw byte `FIND` matched
+  `+ - *` (no letters) but not `DUP/DROP/SWAP`. Stage-1 tests only ever used
+  lower-case source, so it hid for ages. Fix: fold `A–Z→a–z` on BOTH bytes in
+  FIND's compare (branchless: `sub #'A'; cmp #26; cset cc; lsl #5; orr`). The
+  native Forth must be case-insensitive like gforth + caf itself.
 
 ## Type checker — capability vs. coverage (2026-06-10)
 
