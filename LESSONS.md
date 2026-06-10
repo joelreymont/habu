@@ -124,24 +124,27 @@ per-file tests can pass while the combined `all.fs` suite fails. Rules:
   strings); `INST`=re-parse (fresh vars by name per call → polymorphism for free),
   `GENERALIZE`=render. Sidesteps copying terms out of the per-check arena.
 
-## Speed gate CLOSED — dispatch-bound bench (2026-06-10)
+## Speed gate CLOSED — the bar is LLVM, not gforth (2026-06-10)
 
-The PENDING gate is settled. `bench/dispatch.{fs,s}` — a dispatch-bound byte-mix
-(load + add + 3× `dup <<n xor`, ~10 cheap ops/byte, 983 M iters), the fair shape
-(vs the latency-bound LCG below). Measured on this M-series box:
+gforth performance is not the competition; **LLVM (`clang -O3`) is the bar** a
+native backend must rival. `bench/dispatch.{fs,s,c}` — a dispatch-bound byte-mix
+(load + add + 3× `dup <<n xor`, ~10 cheap ops/byte, 983 M iters); the serial
+xorshift chain is latency-bound so NEITHER side can vectorize — a fair
+head-to-head. Measured on this M-series box:
 
-| engine | ns/iter | vs native |
-| ------ | ------- | --------- |
-| native (hand ARM64 = what caf targets) | 2.25 | — |
-| gforth **threaded** (= caf-checked runs on) | 23.87 | **10.6× slower** |
-| gforth-fast (its own native codegen) | 2.27 | 1.01× (parity) |
+| build | ns/iter | note |
+| ----- | ------- | ---- |
+| **clang -O3 (LLVM — the bar)** | **2.252** | optimized C |
+| hand ARM64 (what caf targets) | 2.256 | LLVM **parity** (same exit 203) |
+| clang -O0 (unoptimized C) | 7.21 | — |
+| gforth-fast (its own native codegen) | 2.27 | parity too |
+| gforth threaded (caf-checked runs on) | 23.87 | 10.6× slower — irrelevant baseline |
 
-**Verdict: the 2–10× goal is MET — native AOT is 10.6× over the threaded engine
-caf actually uses.** The 2× bar is only contested vs gforth-fast, which is itself
-a native-code engine (not what caf-checked uses). Caveat: the *hand* baseline
-fuses `dup <<n xor` into one shifted-EOR; caf's current backend emits separate
-shift+xor through the stack, so caf's real output sits above 2.25 — a
-shifted-operand-fusion peephole (rep. as a dot) would close that last gap.
+**Verdict: caf's native target matches LLVM -O3** on this loop. Caveat: the hand
+baseline fuses `dup <<n xor` into one shifted-EOR; caf's current backend emits
+separate shift+xor through the stack, so caf's *real* output sits above 2.25 —
+the shifted-operand-fusion peephole (dot) closes that last gap to LLVM. Always
+measure against LLVM `-O3`, never gforth.
 
 **Constant folding (`src/cg/walk.fs`).** Literal arithmetic folds at compile time
 via a compile-time value stack: numbers are deferred (not emitted); a foldable op
