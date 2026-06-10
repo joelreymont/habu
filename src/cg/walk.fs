@@ -1,0 +1,42 @@
+\ walk.fs — tokenize a Forth word BODY and drive the ICode generators in
+\ templ.fs, then wrap it as a runnable Mach-O. Numbers emit a literal push; every
+\ other token is looked up in CG-PRIMS. The bridge: checked-Forth source ->
+\ ARM64 machine code -> native Mac executable.
+
+require templ.fs
+require exec.fs
+
+: EMIT-PRIM ( a u -- )
+   2dup CG-PRIMS search-wordlist ?dup if
+      drop nip nip execute
+   else  cr ." cg: unknown word: " type cr  E-NO-ENC throw  then ;
+
+: EMIT-TOKEN ( a u -- )
+   2dup s>number? if  2>r 2drop 2r> d>s g-lit
+   else  2drop EMIT-PRIM  then ;
+
+: WALK-BODY {: a u | end cur ts :}
+   a u + to end   a to cur
+   begin
+      begin cur end < cur c@ bl = and while cur 1+ to cur repeat
+      cur end <
+   while
+      cur to ts
+      begin cur end < cur c@ bl <> and while cur 1+ to cur repeat
+      ts  cur ts -  EMIT-TOKEN
+   repeat ;
+
+\ Compile a body with one i64 input pushed first; the body's TOS becomes exit().
+: COMPILE-WORD {: ba bu input -- :}
+   ICODE-RESET  cf-reset
+   SP SP 256 SUBI,        \ reserve a 256B data stack on the machine stack
+   XDS SP 0 ADDI,         \ Xds = sp
+   input g-lit
+   NEWLBL EPILOG !        \ EXIT branches here
+   ba bu WALK-BODY
+   EPILOG @ LBL,
+   0 g-pop                \ x0 = TOS  (exit status = x0 & 0xff)
+   16 1 MOVZ,  $80 SVC, ;
+
+: NATIVE-EVAL ( ba bu input -- exit-code )
+   COMPILE-WORD  s" /tmp/caf-word" RUN-EXE ;

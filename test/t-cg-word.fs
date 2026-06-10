@@ -3,7 +3,7 @@
 \ code. Slow (codesign+exec per case); run explicitly, not in all.fs:
 \   gforth test/t-cg-word.fs -e bye
 require tester.fs
-require ../src/cg/templ.fs
+require ../src/cg/walk.fs
 \ NATIVE-EVAL ( body-addr body-u input -- exit-code )
 
 T{ s" DUP *"          7 NATIVE-EVAL -> 49 }T   \ square
