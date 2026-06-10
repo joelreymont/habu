@@ -156,18 +156,35 @@ register is redefined (the correctness lynchpin — backstopped by the different
 native-exe suite). Real wins on multi-value shuffles: `OVER +` 13→9, `SWAP OVER -`
 18→14, `DUP ROT * +` 22→18 (~20-30%).
 
-**But the dup-heavy hot loop (xorshift) doesn't improve — the register-reuse
-wall.** `DUP 13 LSHIFT XOR` compiles to: load `h`→x9, **store `h`** (the dup),
-`LSLI x9,x9,#13` (now x9=h<<13), **reload `h`** from the stack, `EOR`. Store-
-forwarding *correctly cannot* forward the reload, because the `LSLI` reused x9, so
-`h` survives only in memory. The hand-asm/LLVM keep `h` in its own register and do
-`eor x10,x10,x10,lsl#13` (one instr). The root cause: every primitive in
-`templ.fs` hardcodes `T0/T1/T2` (x9/x10/x11), so distinct live values collide and
-spill. **The real fix is an abstract register stack** (allocate a fresh pool
-register per live value, spill only at boundaries) — a `templ.fs` rewrite, the
-genuine Factor/Mu-class allocator. Store-forwarding is a correct foundation that
-hits this ceiling; it cannot be peephole'd past register reuse. Measured, proven,
-documented — don't claim the dispatch win until the abstract stack exists.
+The dup-heavy hot loop (xorshift) didn't improve under store-forwarding — the
+**register-reuse wall**: `DUP 13 LSHIFT XOR` loaded `h`→x9, stored the dup, then
+`LSLI x9` reused x9, so the dup'd `h` survived only in memory; forwarding the
+reload was (correctly) impossible. Root cause: every `templ.fs` primitive
+hardcodes `T0/T1/T2`, so distinct live values collide.
+
+**Fixed — abstract register stack (`src/cg/regstack.fs`).** A compile-time value
+stack whose entries are POOL registers (`x13-x15,x20-x24`) or CONSTANTS; pure
+arithmetic/shuffle primitives operate on it with NO memory traffic (DUP copies to
+a fresh register, so the copy survives later ops). `walk.fs` SPILLS the whole VS
+to memory before anything that isn't a VS primitive (control flow, calls, return-
+stack ops, `>R`, unsupported words) — so those keep the proven memory path
+unchanged; correctness is isolation-by-spill + the checker's branch balance. The
+VS folds constants and selects immediate shifts itself (subsumes the old `CTS`).
+Result: `DUP 13 LSHIFT XOR DUP 7 RSHIFT XOR DUP 17 LSHIFT XOR` **25→13** ops (and
+pre-opt == post-opt — the allocator emits near-optimal code directly); `DUP DUP *
+*` 15→8, `DUP *` 8→6. Full differential suite green (control flow, recursion, CLI).
+
+- **Wordlist-collision footgun:** the VS comparison helper was first named `g-cmp`
+  — but `templ.fs` already defines `g-cmp` in the FORTH wordlist, and a CG-VS word
+  referencing `g-cmp` resolves it via the SEARCH order (which has templ's, not
+  CG-VS's), silently calling the old memory version. Renamed to `vcmp`/`vcmp0`.
+  When a new wordlist's words call helpers, give the helpers names that aren't
+  shadowed in the search order.
+- **Invariant:** no two VS entries name the same register (DUP/OVER emit a copy),
+  so reusing a popped operand register as an op's result is always safe.
+- Remaining to reach full hand-asm/LLVM parity on the loop: keep loop-carried
+  values in registers across the back-edge (loop-invariant allocation), and fuse
+  the immediate shift into the next ALU op (`eor x,x,x,lsl#13` — dot B3).
 
 ## Speed gate CLOSED — the bar is LLVM, not gforth (2026-06-10)
 

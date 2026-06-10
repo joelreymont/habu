@@ -4,6 +4,7 @@
 \ ARM64 machine code -> native Mac executable.
 
 require templ.fs
+require regstack.fs                      \ abstract value stack (register allocation)
 require opt.fs
 require exec.fs
 
@@ -17,58 +18,18 @@ defer EMIT-CALL   ( a u -- handled? )
    2dup EMIT-CALL if  2drop exit  then
    2drop E-NO-ENC throw ;
 
-\ --- compile-time constant folding -------------------------------------------
-\ Numeric literals are DEFERRED onto a compile-time value stack instead of
-\ emitted; a foldable op over two (or one) pending constants folds them at
-\ compile time. Any other token first FLUSHES the pending constants (emits a
-\ g-lit each, bottom-first) so the data stack is materialised before it runs —
-\ so runtime values never get mixed up with deferred ones. Only ops whose gforth
-\ semantics match the emitted ARM64 exactly are foldable (no /,MOD,2/: division
-\ rounding / shift signedness differ).
-32 constant MAXCTS
-create CTS MAXCTS cells allot   variable #CTS
-: CTS-RESET ( -- )  0 #CTS ! ;
-: CTS-FLUSH ( -- )  #CTS @ 0 ?do  CTS i cells + @ g-lit  loop  CTS-RESET ;
-: CTS-PUSH  ( n -- )  #CTS @ MAXCTS >= if CTS-FLUSH then
-   CTS #CTS @ cells + !  1 #CTS +! ;
-: CTS-POP   ( -- n )  -1 #CTS +!  CTS #CTS @ cells + @ ;
-
-: FOLD2 ( xt -- f )   \ a b OP -> fold if both pending; else leave for normal emit
-   #CTS @ 2 < if drop false exit then
-   CTS-POP CTS-POP swap rot execute CTS-PUSH true ;
-: FOLD1 ( xt -- f )   \ n OP -> fold if pending
-   #CTS @ 1 < if drop false exit then
-   CTS-POP swap execute CTS-PUSH true ;
-
-\ Constant SHIFT amount with a runtime value below → emit an IMMEDIATE shift
-\ (LSL/LSR #k) instead of materialising k and using a register shift (LSLV/LSRV).
-\ One pending const = the shift amount (a runtime value sits on the data stack
-\ below it; the checker guarantees it). Two pending = both const → plain fold.
-: P-LSHI ( k -- )  T0 g-pop  T0 T0 rot LSLI,  T0 g-push ;
-: P-RSHI ( k -- )  T0 g-pop  T0 T0 rot LSRI,  T0 g-push ;
-: FOLD-SH ( imm-gen folding-xt -- f )
-   #CTS @ 2 >= if  nip FOLD2  exit then        \ both const → fold the value
-   #CTS @ 1  =  if  drop CTS-POP swap execute true  exit then  \ const shift → immediate
-   2drop false ;                               \ runtime shift → normal (register) emit
-
-wordlist constant CG-FOLD               \ foldable token -> folder (returns f)
-get-current  CG-FOLD set-current
-: + ['] + FOLD2 ;       : - ['] - FOLD2 ;       : * ['] * FOLD2 ;
-: AND ['] and FOLD2 ;   : OR ['] or FOLD2 ;     : XOR ['] xor FOLD2 ;
-: LSHIFT ['] P-LSHI ['] lshift FOLD-SH ;  : RSHIFT ['] P-RSHI ['] rshift FOLD-SH ;
-: 1+ ['] 1+ FOLD1 ;     : 1- ['] 1- FOLD1 ;     : NEGATE ['] negate FOLD1 ;
-: INVERT ['] invert FOLD1 ;  : 2* ['] 2* FOLD1 ;
-set-current
-: FOLD-OP ( a u -- f )  CG-FOLD search-wordlist if execute else false then ;
-
+\ A numeric literal pushes a VS constant; a VS primitive runs on the register
+\ stack; anything else (control flow, calls, return-stack ops, unsupported words)
+\ first SPILLS the VS to memory, then takes the proven memory path. The VS folds
+\ constants and selects immediate shifts itself, so no separate folding here.
 : EMIT-TOKEN ( a u -- )
-   2dup s>number? if  2>r 2drop 2r> d>s CTS-PUSH  exit then   \ defer the constant
-   2drop                                                      \ discard the failed-parse double
-   2dup FOLD-OP if  2drop exit then                           \ folded a const op
-   CTS-FLUSH  EMIT-PRIM ;                                     \ else materialise + emit
+   2dup s>number? if  2>r 2drop 2r> d>s v-pushc  exit then    \ literal -> VS constant
+   2drop
+   2dup CG-VS search-wordlist ?dup if  drop nip nip execute  exit  then   \ VS primitive
+   v-spill  EMIT-PRIM ;                                       \ spill, then memory-path op
 
 : WALK-BODY {: a u | end cur ts :}
-   CTS-RESET
+   v-reset
    a u + to end   a to cur
    begin
       begin cur end < cur c@ bl = and while cur 1+ to cur repeat
@@ -78,7 +39,7 @@ set-current
       begin cur end < cur c@ bl <> and while cur 1+ to cur repeat
       ts  cur ts -  EMIT-TOKEN
    repeat
-   CTS-FLUSH ;                            \ emit any trailing constants
+   v-spill ;                             \ materialise the register stack to memory
 
 \ Compile a body with one i64 input pushed first; the body's TOS becomes exit().
 : COMPILE-WORD {: ba bu input -- :}
