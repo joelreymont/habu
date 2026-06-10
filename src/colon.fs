@@ -6,6 +6,12 @@ variable RE-EMIT?
 variable CHECKING-ON?   CHECKING-ON? on   \ toggle: off → `:` is exactly native
 ' : constant NCOLON                      \ the native colon, saved before override
 
+\ Outcome of the most recent checked `:` (for the REPL/tools to read):
+\   -2 = not a checked def (native colon)   0 = checked OK
+\   E-UNCHECKED/E-UNSAFE = escaped checking   else = the type-error code.
+-2 constant CK-NONE
+variable CHECK-CODE   CK-NONE CHECK-CODE !
+
 create NM-BUF 128 chars allot   variable NM-LEN
 create EF-BUF 256 chars allot   variable EF-LEN
 : NM! ( a u -- )  128 min dup NM-LEN !  NM-BUF swap move ;
@@ -77,10 +83,12 @@ variable RB-A   variable RB-U   variable IN-LOC
       \ words the checker doesn't model (E-UNCHECKED) or disallows (E-UNSAFE)
       \ falls back to the native colon so existing code still compiles.
       ['] CHECK-CUR catch {: code :}
+      code CHECK-CODE !                          \ record outcome for the REPL/tools
       code 0= if RE-EVAL-SAFE CODEGEN-HOOK exit then
       code E-UNCHECKED = code E-UNSAFE = or if
          code WARN-UNCHECKED  RE-EVAL-SAFE  CODEGEN-HOOK  exit  \ escaped checking — say so
       then
       code DIAG-CODE!  DIAG-REPORT  exit   \ real type error → report, refuse
    then
+   CK-NONE CHECK-CODE !                          \ unchecked native colon
    save >in !  NCOLON execute ;                \ no effect → native colon
