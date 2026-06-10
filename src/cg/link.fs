@@ -1,0 +1,85 @@
+\ link.fs — multi-word programs with a subroutine ABI. Each caf word becomes a
+\ native subroutine over the shared data stack (Xds=x19, threaded through calls);
+\ words call each other with BL, RECURSE calls self, non-leaf words save/restore
+\ x30. BUILD-PROGRAM collects a root word's transitive callees, lays them out in
+\ one __TEXT with a MAIN entry, and (via RUN-EXE) emits a runnable Mach-O.
+
+require walk.fs
+
+30 constant LR
+
+\ --- CODE-TABLE: name -> [ label | len | body-bytes ] ---
+wordlist constant CODE-TABLE
+: CG-RECORD ( na nu ba bu -- )
+   2swap nextname
+   get-current >r  CODE-TABLE set-current  create  r> set-current
+   -1 ,                                    \ +0: label (assigned per build)
+   dup ,                                   \ +1: body length
+   here >r  dup allot  r> swap move ;      \ +2: body bytes
+: WORD-PFA  ( a u -- pfa | 0 )  CODE-TABLE search-wordlist if execute else 0 then ;
+: PFA>LABEL ( pfa -- addr )  ;
+: PFA>BODY  ( pfa -- ba bu )  dup 2 cells + swap cell+ @ ;
+
+\ --- token iteration (no emission) ---
+: FOR-TOKENS {: a u xt | end cur ts -- :}
+   a u + to end  a to cur
+   begin
+      begin cur end < cur c@ bl = and while cur 1+ to cur repeat
+      cur end <
+   while
+      cur to ts
+      begin cur end < cur c@ bl <> and while cur 1+ to cur repeat
+      ts  cur ts -  xt execute
+   repeat ;
+
+\ --- transitive dependency collection ---
+create DEPS 256 cells allot   variable #DEPS
+: dep-has? ( pfa -- f )  #DEPS @ 0 ?do  dup DEPS i cells + @ = if drop true unloop exit then  loop drop false ;
+: dep-add  ( pfa -- )  dup dep-has? if drop else DEPS #DEPS @ cells + !  1 #DEPS +! then ;
+: scan-tok ( ta tu -- )  WORD-PFA ?dup if dep-add then ;
+: COLLECT ( root-pfa -- )
+   0 #DEPS !  dep-add
+   0 begin dup #DEPS @ < while
+      dup cells DEPS + @ PFA>BODY ['] scan-tok FOR-TOKENS  1+
+   repeat drop ;
+
+\ --- leaf detection (body has any call?) ---
+variable LEAF?
+: leaf-tok ( ta tu -- )
+   2dup s" RECURSE" compare 0= if 2drop LEAF? off
+   else  WORD-PFA if LEAF? off then  then ;
+: NON-LEAF? ( pfa -- f )  LEAF? on  PFA>BODY ['] leaf-tok FOR-TOKENS  LEAF? @ 0= ;
+
+\ --- call emission (drives walk.fs EMIT-CALL) ---
+variable CUR-PFA
+:noname ( a u -- handled? )
+   2dup s" RECURSE" compare 0= if
+      2drop  CUR-PFA @ ?dup if PFA>LABEL @ else 0 then  BL,  true   \ 0 = placeholder (validation walk)
+   else  WORD-PFA ?dup if  PFA>LABEL @ BL,  true  else  false  then  then ;
+is EMIT-CALL
+
+\ --- emit one word as a subroutine ---
+: EMIT-WORD ( pfa -- )
+   dup CUR-PFA !
+   dup PFA>LABEL @ LBL,
+   dup NON-LEAF? {: nl :}
+   nl if  LR SP -16 STR-PRE,  then
+   PFA>BODY WALK-BODY
+   nl if  LR SP 16 LDR-POST,  then
+   RET, ;
+
+\ --- build a whole program rooted at `root`, with one i64 input ---
+: BUILD-PROGRAM {: root input -- :}
+   ICODE-RESET  cf-reset
+   root COLLECT
+   #DEPS @ 0 ?do  NEWLBL  DEPS i cells + @ PFA>LABEL !  loop
+   SP SP 256 SUBI,  XDS SP 0 ADDI,        \ MAIN: data stack
+   input g-lit
+   root PFA>LABEL @ BL,                   \ call the root word
+   0 g-pop  16 1 MOVZ,  $80 SVC,          \ exit(result)
+   #DEPS @ 0 ?do  DEPS i cells + @ EMIT-WORD  loop ;
+
+: RUN-NATIVE ( input "name" -- exit-code )
+   parse-name WORD-PFA dup 0= if E-NO-ENC throw then
+   swap BUILD-PROGRAM
+   s" /tmp/caf-prog" RUN-EXE ;

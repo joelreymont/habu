@@ -6,10 +6,15 @@
 require templ.fs
 require exec.fs
 
+\ Non-primitive token hook: link.fs sets this to emit a BL to another caf word
+\ (or RECURSE). Default: not a call.
+defer EMIT-CALL   ( a u -- handled? )
+:noname ( a u -- f ) 2drop false ;  is EMIT-CALL
+
 : EMIT-PRIM ( a u -- )
-   2dup CG-PRIMS search-wordlist ?dup if
-      drop nip nip execute
-   else  cr ." cg: unknown word: " type cr  E-NO-ENC throw  then ;
+   2dup CG-PRIMS search-wordlist ?dup if  drop nip nip execute  exit  then
+   2dup EMIT-CALL if  2drop exit  then
+   cr ." cg: unknown word: " type cr  E-NO-ENC throw ;
 
 : EMIT-TOKEN ( a u -- )
    2dup s>number? if  2>r 2drop 2r> d>s g-lit
