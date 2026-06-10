@@ -28,6 +28,20 @@ mistakes, or insights. Lessons only — no API reference or code snippets (→ `
   frame before RET. Locals coexist with catch: the locals frame sits below catch's
   handler frames, so `throw` unwinds to the catch and the locals stay readable.
 
+## Self-host 7 — full unification engine runs natively (2026-06-10)
+
+- The checker's central operation — unifying two four-row stack effects — now runs
+  as native code emitted by the standalone: type unification (con/var/ptr), ROW
+  unification (row-var/push), structural recursion through push/rest, binding of
+  both type-vars and row-vars, all via a worklist (no by-name recursion). Verified:
+  `unify (i64 on row0) (var1 on row2)` binds `var1←i64` and unifies `row0~row2`;
+  `unify con(3) con(4)` fails. The unifier is row-polymorphic Hindley–Milner over
+  stacks — the hard part of the type checker — and it's proven runnable natively.
+- Pattern for porting recursive checker algorithms to the single-pass standalone:
+  replace by-name recursion (unavailable — a word isn't in the dict until `;`)
+  with an explicit worklist of pending pairs; dispatch by tag (row tags vs type
+  tags are disjoint). Read-only locals (no `to`) → resolve inline, don't reassign.
+
 ## Self-host 7 — occurs-check (the "core risk") runs natively (2026-06-10)
 
 - The PLAN flags occurs/resolve mutual recursion through structure as the core
