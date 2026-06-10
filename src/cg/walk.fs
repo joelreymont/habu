@@ -11,10 +11,10 @@ require exec.fs
 defer EMIT-CALL   ( a u -- handled? )
 :noname ( a u -- f ) 2drop false ;  is EMIT-CALL
 
-: EMIT-PRIM ( a u -- )
+: EMIT-PRIM ( a u -- )                  \ throws E-NO-ENC on an unmodeled word
    2dup CG-PRIMS search-wordlist ?dup if  drop nip nip execute  exit  then
    2dup EMIT-CALL if  2drop exit  then
-   cr ." cg: unknown word: " type cr  E-NO-ENC throw ;
+   2drop E-NO-ENC throw ;
 
 : EMIT-TOKEN ( a u -- )
    2dup s>number? if  2>r 2drop 2r> d>s g-lit
