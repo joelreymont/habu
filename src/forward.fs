@@ -12,6 +12,7 @@ defer CHECK-CONTROL  ( c-addr u -- f )   \ handled a control word? (IF/loops/…
 defer CHECK-LOCAL    ( c-addr u -- f )   \ handled a locals clause?
 defer CHECK-QUOT     ( c-addr u -- f )   \ handled a quotation/combinator token?
 defer CHECK-PARSE    ( c-addr u -- f )   \ handled a parsing word? (S" CHAR …)
+defer CHECK-PICK     ( c-addr u -- f )   \ folded a literal-arg PICK/ROLL?
 defer CHECK-RESET    ( -- )              \ reset per-definition feature state
 
 \ Default each hook to "not handled" so the checker runs before the feature
@@ -19,7 +20,8 @@ defer CHECK-RESET    ( -- )              \ reset per-definition feature state
 :noname ( c-addr u -- f ) 2drop false ;  dup is CHECK-CONTROL
                                           dup is CHECK-LOCAL
                                           dup is CHECK-QUOT
-                                              is CHECK-PARSE
+                                          dup is CHECK-PARSE
+                                              is CHECK-PICK
 :noname ( -- ) ;  is CHECK-RESET
 
 \ Codegen seam: fired by colon.fs after a checked definition is re-emitted, with

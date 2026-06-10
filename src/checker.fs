@@ -22,6 +22,12 @@ create CUR-SIG-BUF 256 chars allot   variable CUR-SIG-LEN
 : APPLY-SCHEME  ( sa su -- )   PARSE-SIG APPLY-EFFECT ;   \ INST (fresh) + apply
 : PUSH-DTYPE    ( t -- )       DCUR @ swap MK-PUSH DCUR ! ;
 
+\ Last-literal tracking, so CHECK-PICK can fold `N PICK`/`N ROLL` at check time.
+\ PREV-LIT? / PREV-LIT-VAL are set when a token is an integer literal; CHECK-WORD
+\ snapshots the PREVIOUS token's value into CUR-PREV?/CUR-PREV-VAL on entry.
+variable PREV-LIT?   variable PREV-LIT-VAL
+variable CUR-PREV?   variable CUR-PREV-VAL
+
 \ --- classification helpers ---
 : NUMBER?    ( c-addr u -- f )   s>number? nip nip ;       \ integer under BASE
 : DEFINED?   ( c-addr u -- f )   find-name 0<> ;
@@ -42,11 +48,16 @@ s" ]" find-name constant NT-RBRACK
 \ Check one body token, in classification order.
 : CHECK-WORD  ( c-addr u -- )
    2dup CUR-TOKEN!
+   PREV-LIT? @ CUR-PREV? !  PREV-LIT-VAL @ CUR-PREV-VAL !   \ snapshot previous token
+   PREV-LIT? off                                            \ this token: assume non-literal
    2dup CHECK-CONTROL if 2drop exit then
    2dup CHECK-QUOT    if 2drop exit then
    2dup CHECK-PARSE   if 2drop exit then
+   2dup CHECK-PICK    if 2drop exit then            \ fold N PICK / N ROLL (needs CUR-PREV?)
    2dup CHECK-LOCAL   if 2drop exit then
-   2dup NUMBER?       if 2drop TC-I64 MK-CON PUSH-DTYPE exit then
+   2dup NUMBER?       if
+      2dup s>number? drop d>s PREV-LIT-VAL !  PREV-LIT? on   \ remember the value for PICK/ROLL
+      2drop TC-I64 MK-CON PUSH-DTYPE exit then
    2dup EFFECT-OF dup 0= if              \ not charted
       drop
       2dup FORBIDDEN? if 2drop E-UNSAFE throw then
@@ -73,7 +84,7 @@ variable B>A   variable B>U
    {: na nu sa su ba bu :}
    na nu CUR-WORD!
    sa su CUR-SIG!
-   ARENA-RESET  TV-RESET  RV-RESET  CHECK-RESET
+   ARENA-RESET  TV-RESET  RV-RESET  CHECK-RESET  PREV-LIT? off
    sa su PARSE-SIG {: deff :}
    deff DECL !
    deff EFF>DIN DCUR !

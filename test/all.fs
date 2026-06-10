@@ -26,6 +26,7 @@ require t-diag.fs
 require t-control.fs
 require t-locals.fs
 require t-quots.fs
+require t-pickroll.fs
 require t-defining.fs
 require t-parsing.fs
 require t-cg-asm.fs

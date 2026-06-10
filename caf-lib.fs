@@ -20,6 +20,7 @@ require src/diag.fs
 require src/control.fs
 require src/locals.fs
 require src/quots.fs
+require src/pickroll.fs
 require src/parsing.fs
 require src/defining.fs
 require src/capture.fs

@@ -76,6 +76,11 @@ equal effect; loop bodies must be stack-neutral.
 - To chart an **already-defined** word's effect (so the checker can use it as a
   leaf) without redefining it: `eff-str name-str CHART` after `PARSE-SIG`. caf's
   own codegen dogfoods this — see `src/cg/asm.fs`'s `CHART-EFF`.
+- **Literal-argument `PICK`/`ROLL` are folded** to a concrete shuffle at check
+  time: `0 PICK`≡`DUP`, `1 PICK`≡`OVER`, `2 PICK ( a b c -- a b c a )`;
+  `1 ROLL`≡`SWAP`, `2 ROLL`≡`ROT`. A **dynamic** (runtime-computed) index can't be
+  folded and stays untypeable → `E-UNCHECKED` (native fallback) or behind
+  `TRUSTED:`. See `src/pickroll.fs`.
 - Words the checker can't type (variadic `?DUP`, dynamic `PICK`/`ROLL`/`DEPTH`)
   must stay outside checked code or behind `TRUSTED:`.
 
