@@ -25,6 +25,8 @@ require rt.fs              \ g-print9 (shared signed-decimal printer)
 $100000 constant REGION       \ mmap region size (1 MB)
 $10000  constant DICT-SIZE     \ dict area at region+0 (64 KB); code area follows
 40      constant DREC          \ dict record: addr(8) clen(8) namelen(8) name(16)
+$100000 constant IBUFSZ        \ stdin read buffer (1 MB)
+variable STDIN?   STDIN? off   \ source mode: baked Lsrc (off) vs read from stdin (on)
 
 \ runtime instruction-word constants the JIT compiler stamps out (verified encodings)
 $D65F03C0 constant W-RET
@@ -78,14 +80,14 @@ variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncou
    Ltok @ LBL,
    NEWLBL {: tskip :}  NEWLBL {: thas :}  NEWLBL {: tscan :}
    NEWLBL {: tgot :}   NEWLBL {: tnone :}
-   tskip LBL,
+   tskip LBL,                                          \ skip whitespace (any byte <= 32)
       INP INE CMP,  C-GE tnone BCOND,
-      9 INP 0 LDRB,  9 32 CMPI,  C-NE thas BCOND,
+      9 INP 0 LDRB,  9 32 CMPI,  C-HI thas BCOND,      \ c > 32 -> token start
       INP INP 1 ADDI,  tskip B,
    thas LBL,  TKA INP 0 ADDI,
-   tscan LBL,
+   tscan LBL,                                          \ scan to next whitespace
       INP INE CMP,  C-GE tgot BCOND,
-      9 INP 0 LDRB,  9 32 CMPI,  C-EQ tgot BCOND,
+      9 INP 0 LDRB,  9 32 CMPI,  C-LS tgot BCOND,      \ c <= 32 -> token end
       INP INP 1 ADDI,  tscan B,
    tgot LBL,  TKL INP TKA SUB,  0 1 MOVZ,  RET,
    tnone LBL,  0 0 MOVZ,  RET, ;
@@ -179,6 +181,28 @@ variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncou
             10 cl CBNZ,
    cd LBL, ;
 
+\ ---- source setup: point INP/INE at either the baked Lsrc or stdin ----
+\ stdin mode reads all of fd 0 into a fresh RW mmap buffer, then interprets it
+\ (batch REPL: `echo ': SQ DUP * ; 5 SQ .' | ./forth`). Clobbers x0-x5,x9,x11,x16.
+: emit-source ( -- )
+   STDIN? @ if
+      0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
+      16 197 MOVZ,  $80 SVC,                       \ mmap RW input buffer -> x0
+      11 0 0 ADDI,  9 0 0 ADDI,                    \ x11 = base, x9 = write ptr
+      NEWLBL {: rl :}  NEWLBL {: rd :}
+      rl LBL,
+         0 0 MOVZ,  1 9 0 ADDI,                    \ read(fd=0, buf=ptr, …)
+         2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,   \ count = base+SZ-ptr
+         2 rd CBZ,                                 \ buffer full -> done
+         16 3 MOVZ,  $80 SVC,                      \ -> x0 = n
+         0 rd CBZ,                                 \ EOF (n=0) -> done
+         9 9 0 ADD,  rl B,                         \ ptr += n
+      rd LBL,
+      INP 11 0 ADDI,  INE 9 0 ADDI,                \ INP=base, INE=ptr
+   else
+      INP Lsrc @ ADR,  INE Lsrc @ ADR,  INE INE SRCN @ ADDI,
+   then ;
+
 \ ---- MAIN: startup (data stack + mmap + seed dict) then the outer interpreter ----
 : emit-main ( -- )
    Lanchor @ LBL,
@@ -202,7 +226,7 @@ variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncou
       5 9 24 LDR,  5 10 24 STR,  5 9 32 LDR,  5 10 32 STR,  \ name[0..15]
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL,
-   INP Lsrc @ ADR,  INE Lsrc @ ADR,  INE INE SRCN @ ADDI,
+   emit-source                                        \ INP/INE <- baked Lsrc or stdin
    PEND 0 MOVZ,                                       \ interpret mode
    NEWLBL {: lmain :}  NEWLBL {: lexit :}  NEWLBL {: lcompile :}
    lmain LBL,
@@ -267,3 +291,9 @@ variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncou
 \ Build a standalone native Forth that interprets `src`, write it to `outfile`.
 : FORTH-EXE ( src-a src-u out-a out-u -- )
    2>r  EMIT-FORTH  2r> EMIT-EXE ;
+
+\ Build a standalone native Forth that reads its program from STDIN (batch REPL),
+\ write it to `outfile`:  echo ': SQ DUP * ; 5 SQ .' | ./outfile
+: FORTH-REPL-EXE ( out-a out-u -- )
+   STDIN? on  s" "  ['] EMIT-FORTH catch  STDIN? off  throw  \ restore mode even on error
+   EMIT-EXE ;

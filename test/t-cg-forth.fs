@@ -26,3 +26,8 @@ s" : A1 DUP * ; : A2 7 ; 3 A2 ."       NF  T{ s\" 7\n"     NF= -> true }T
 \ user word inlined into another (transitive stencil copy), 4 levels deep
 s" : A DUP * ; : B A A ; : C B B ; 2 C ."  NF  T{ s\" 65536\n" NF= -> true }T
 s" : OCT QUAD DUP + ; : QUAD DUP * ; 3 QUAD ."  NF  T{ s\" 9\n" NF= -> true }T
+
+\ --- Stage 3: read program from STDIN (batch REPL), incl. multi-line input ---
+s\" : DOUBLE DUP + ;\n: QUAD DOUBLE DOUBLE ;\n7 QUAD .\n2 3 + .\n"
+   NF-REPL  T{ s\" 28\n5\n" NF= -> true }T
+s" : SQ DUP * ; 9 SQ ."  NF-REPL  T{ s\" 81\n" NF= -> true }T

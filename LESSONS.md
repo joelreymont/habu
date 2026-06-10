@@ -295,6 +295,17 @@ into the new word, so compiled words are fully flattened/leaf — no calls, no
   FIND's compare (branchless: `sub #'A'; cmp #26; cset cc; lsl #5; orr`). The
   native Forth must be case-insensitive like gforth + caf itself.
 
+**Stage 3 (read program from STDIN) — built.** `FORTH-REPL-EXE` emits a Forth
+with no baked source: it `mmap`s a 1 MB RW buffer and loops `read(fd=0,…)` until
+EOF, then runs the same outer interpreter over it. `echo ': SQ DUP * ; 5 SQ .' |
+./forth` → 25; multi-line works.
+- **Tokenizer must treat newline as whitespace.** Stage-1/2 split tokens on
+  **space (32) only**; baked single-line tests never contained `\n`, so it hid.
+  Piped/multi-line stdin has `\n` (and `echo` appends one) → tokens glued, FIND
+  failed, empty output. Fix: any byte **≤ 32** is a delimiter (`CMP #32` →
+  `C-HI` starts a token, `C-LS` ends it). Probe the syscall in isolation first
+  (`read` round-trips fine) to localize the bug to the tokenizer, not `read`.
+
 ## Type checker — capability vs. coverage (2026-06-10)
 
 When dogfooding the codegen (`src/cg/`) as typed caf, the question arose whether
