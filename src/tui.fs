@@ -84,18 +84,22 @@ create LBUF LMAX allot   variable LLEN   variable LCUR
 
 : TTY? ( -- f )  s" test -t 0 2>/dev/null" system $? 0= ;
 
+\ Key source is indirected so tests can feed a scripted sequence and capture the
+\ rendered output (like pz drives its TUI into an in-memory frame). Default = the
+\ terminal; t-tui.fs rebinds it.
+defer TKEY ( -- c )   ' key is TKEY
+
 : KEY-ESC ( -- )                                 \ ESC: arrows ESC [ A/B/C/D
-   key 91 <> if exit then  key
+   TKEY 91 <> if exit then  TKEY
    dup 67 = if drop L-RIGHT exit then            \ →
    dup 68 = if drop L-LEFT  exit then            \ ←
    drop ;                                         \ ↑/↓ (history) — ignored for now
 
-: RUN-TUI ( -- )
-   TTY? 0= if cr ." caf-tui needs a terminal (try: gforth caf-tui.fs -e RUN-TUI)" cr exit then
-   s" stty raw -echo" system  L-RESET
-   cr +C ." caf TUI" -X ."  — edit a checked def; effect shows live. Ctrl-D quits." cr
+\ The render+key loop, free of terminal setup so it is drivable + capturable.
+: TUI-LOOP ( -- )
+   L-RESET
    begin
-      RENDER  key
+      RENDER  TKEY
       dup 4 =  over 3 = or if drop true                       \ Ctrl-D / Ctrl-C
       else
          dup 13 = over 10 = or if drop COMMIT false
@@ -104,7 +108,13 @@ create LBUF LMAX allot   variable LLEN   variable LCUR
          else dup 32 >= over 126 <= and if L-INS false
          else drop false then then then then
       then
-   until
+   until ;
+
+: RUN-TUI ( -- )
+   TTY? 0= if cr ." caf-tui needs a terminal (try: gforth caf-tui.fs -e RUN-TUI)" cr exit then
+   s" stty raw -echo" system
+   cr +C ." caf TUI" -X ."  — edit a checked def; effect shows live. Ctrl-D quits." cr
+   TUI-LOOP
    s" stty sane" system  cr +D ." bye" -X cr ;
 
 CHECKING-ON? on            \ committed defs (COMMIT's EVALUATE) are checked caf
