@@ -159,3 +159,31 @@ codegen regardless of speed; parity-with-gforth-fast + 10× over threaded is a
 fine target for a standalone. Beating gforth-fast is a later *bonus* (cross-word
 regalloc, type-specialized width — look modest here), not a gate. Don't bank the
 project on outrunning gforth-fast.
+
+## Codegen working end-to-end (2026-06-10)
+
+caf generates ARM64 machine code on the Mac, in Forth, no C. Pipeline:
+Forth body → `cg/templ.fs` (tokenize, stack-op generators over Xds=x19) →
+`cg/icode.fs` IR → `cg/opt.fs` peephole → `cg/asm.fs` encoders → `cg/macho.fs`
+(dynamic Mach-O in a buffer) → `cg/exec.fs` (write + `codesign -f -s -` +
+`system`-run). Proven: `test/t-cg-exe.fs` (exit/add/mul/loop/stdout),
+`test/t-cg-word.fs` (`DUP *`→square, `3 + 2 *`, `DUP OVER + +`, …).
+
+Mach-O / exec findings:
+- gforth `$?` is the raw **wait status**; exit code = `8 rshift $FF and`.
+- `codesign -f -s -` adds the ad-hoc `LC_CODE_SIGNATURE` into **header slack** —
+  leave the entry at file offset 0x1000 (cmds end ~440) so there's room; it also
+  extends `__LINKEDIT` (segment at 0x4000, file padded to one page).
+- libSystem LC_LOAD_DYLIB: ts=2, current=1356.0.0 (`$054C0000`), compat=1.0.0
+  (`$00010000`); dylinker `/usr/lib/dyld`; `__text` flags `$80000400`; header
+  flags `$00200085` (incl. PIE). Static binaries are SIGKILLed — dynamic only.
+- Data-stack model: reserve on the machine stack (`sub sp,sp,#256; add x19,sp,#0`),
+  push=`str reg,[x19]; add x19,x19,#8`, pop=`sub x19,x19,#8; ldr reg,[x19]`.
+  `mov xN,sp` must be `add xN,sp,#0` (reg 31 = SP only as ldr/str/add base; it is
+  XZR for `mov`/logical).
+
+**Remaining for fully-standalone (gforth dropped):** wire `CODEGEN-HOOK` so live
+`:` definitions auto-compile (read `CAP$`); broaden the op set (control flow,
+combinators, locals); then Part F — a native Forth runtime (interpreter +
+dictionary + `evaluate`) so the artifact self-compiles without gforth (the
+stage2≡stage3 fixpoint). Part F is the genuine long pole.
