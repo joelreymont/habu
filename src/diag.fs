@@ -32,6 +32,7 @@ variable DLEN
    dup TC-CHAR = if drop s" char" exit then
    dup TC-STR = if drop s" str"  exit then
    dup TC-ADDR = if drop s" addr" exit then
+   dup TC-F64 = if drop s" f64"  exit then
    drop s" ?" ;
 
 \ Render a single type term into the diag buffer (concrete fully; var/ptr/quot terse).

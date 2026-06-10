@@ -95,3 +95,20 @@ T{ s" HERE 7 OVER ! 8 ALLOT HERE 99 OVER ! DROP @"  0 NATIVE-EVAL -> 7 }T  \ ALL
 T{ s" HERE 200 OVER C! C@"         0 NATIVE-EVAL -> 200 }T
 T{ s" HERE 300 OVER C! C@"         0 NATIVE-EVAL -> 44 }T           \ 300 & 0xFF
 T{ s" HERE 511 OVER C! C@"         0 NATIVE-EVAL -> 255 }T          \ 511 & 0xFF
+
+\ --- floating point (f64 bits on the data stack; FP ops via D-regs) ---
+T{ s" 2.0 3.0 F* F>S"            0 NATIVE-EVAL ->  6 }T
+T{ s" 2.5 3.5 F+ F>S"            0 NATIVE-EVAL ->  6 }T
+T{ s" 10.0 3.0 F- F>S"           0 NATIVE-EVAL ->  7 }T
+T{ s" 12.0 4.0 F/ F>S"           0 NATIVE-EVAL ->  3 }T
+T{ s" 16.0 FSQRT F>S"            0 NATIVE-EVAL ->  4 }T
+T{ s" 5.0 FNEGATE F>S NEGATE"    0 NATIVE-EVAL ->  5 }T   \ -(-5)=5
+T{ s" 5.0 FNEGATE FABS F>S"      0 NATIVE-EVAL ->  5 }T
+T{ s" 7 S>F 2.0 F* F>S"          0 NATIVE-EVAL -> 14 }T   \ int->float round-trip
+T{ s" 2.0 3.0 F< NEGATE"         0 NATIVE-EVAL ->  1 }T   \ 2<3 true (flag 0/-1, NEGATE->1)
+T{ s" 3.0 2.0 F< NEGATE"         0 NATIVE-EVAL ->  0 }T
+T{ s" 3.0 2.0 F> NEGATE"         0 NATIVE-EVAL ->  1 }T
+T{ s" 3.0 3.0 F= NEGATE"         0 NATIVE-EVAL ->  1 }T
+T{ s" 5.0 FNEGATE F0< NEGATE"    0 NATIVE-EVAL ->  1 }T
+T{ s" 0.0 F0= NEGATE"            0 NATIVE-EVAL ->  1 }T
+T{ s" 1.5e1 F>S"                 0 NATIVE-EVAL -> 15 }T   \ exponent literal

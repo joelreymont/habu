@@ -50,3 +50,23 @@ T{ ' DEF-EV catch -> E-UNSAFE }T
 \ ( -- ) 1+ must be REJECTED (the declared prefix is rigid, can't be extended)
 : DEF-MD  s" MD" s" R -- R" s" 1+" CHECK-DEF ;
 T{ ' DEF-MD catch -> E-UNDERFLOW }T
+
+\ --- floating point: f64 type-checks, literals classify, mismatches reject ---
+\ HAVF ( -- f64 ) 2.0  — float literal pushes one f64
+: DEF-HAVF  s" HAVF" s" R -- R f64" s" 2.0" CHECK-DEF ;
+T{ ' DEF-HAVF catch -> 0 }T
+\ FAREA ( f64 f64 -- f64 ) F*  — composes the charted F* effect
+: DEF-FAREA  s" FAREA" s" R f64 f64 -- R f64" s" F*" CHECK-DEF ;
+T{ ' DEF-FAREA catch -> 0 }T
+\ S>F / F>S bridge integers and floats
+: DEF-FBRIDGE  s" FBRIDGE" s" R i64 -- R i64" s" S>F F>S" CHECK-DEF ;
+T{ ' DEF-FBRIDGE catch -> 0 }T
+\ FCMP ( f64 f64 -- bool ) F<  — comparison yields bool
+: DEF-FLT  s" FLT" s" R f64 f64 -- R bool" s" F<" CHECK-DEF ;
+T{ ' DEF-FLT catch -> 0 }T
+\ FAIL: feed an i64 to F* (wants f64) -> type mismatch
+: DEF-FBAD  s" FBAD" s" R i64 i64 -- R f64" s" F*" CHECK-DEF ;
+T{ ' DEF-FBAD catch -> E-MISMATCH }T
+\ FAIL: float literal where an i64 is declared out -> mismatch
+: DEF-FBAD2  s" FBAD2" s" R -- R i64" s" 2.0" CHECK-DEF ;
+T{ ' DEF-FBAD2 catch -> E-MISMATCH }T

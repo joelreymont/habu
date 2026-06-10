@@ -122,3 +122,18 @@ T{ ' GEN-UNDEF catch E-UNDEF-LBL = -> true }T    \ unplaced label
 T{ ' GEN-BIGOFF catch E-IMM-RANGE = -> true }T   \ offset > imm12 range
 : GEN-MISALIGN ( -- n )  ICODE-RESET 0 1 12 LDR, CODEBUF ASSEMBLE ;
 T{ ' GEN-MISALIGN catch E-IMM-RANGE = -> true }T \ unaligned scaled offset
+
+\ --- floating point (D-register file) ---
+T{ ICODE-RESET 5 3 FMOVXD,  V1 -> $9E670065 }T   \ fmov d5, x3   (bits GPR->FP)
+T{ ICODE-RESET 3 5 FMOVDX,  V1 -> $9E6600A3 }T   \ fmov x3, d5   (bits FP->GPR)
+T{ ICODE-RESET 0 1 2 FADD,  V1 -> $1E622820 }T   \ fadd d0, d1, d2
+T{ ICODE-RESET 0 1 2 FSUB,  V1 -> $1E623820 }T   \ fsub d0, d1, d2
+T{ ICODE-RESET 0 1 2 FMUL,  V1 -> $1E620820 }T   \ fmul d0, d1, d2
+T{ ICODE-RESET 0 1 2 FDIV,  V1 -> $1E621820 }T   \ fdiv d0, d1, d2
+T{ ICODE-RESET 0 1 FNEG,    V1 -> $1E614020 }T   \ fneg d0, d1
+T{ ICODE-RESET 0 1 FABS,    V1 -> $1E60C020 }T   \ fabs d0, d1
+T{ ICODE-RESET 0 1 FSQRT,   V1 -> $1E61C020 }T   \ fsqrt d0, d1
+T{ ICODE-RESET 1 2 FCMP,    V1 -> $1E622020 }T   \ fcmp d1, d2
+T{ ICODE-RESET 1 FCMP0,     V1 -> $1E602028 }T   \ fcmp d1, #0.0
+T{ ICODE-RESET 0 3 SCVTF,   V1 -> $9E620060 }T   \ scvtf d0, x3
+T{ ICODE-RESET 3 0 FCVTZS,  V1 -> $9E780003 }T   \ fcvtzs x3, d0

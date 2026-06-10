@@ -101,6 +101,22 @@ create VTAG VMAX cells allot   create VVAL VMAX cells allot   variable VSP
    v-pop {: td vd :} v-pop {: tc vc :} v-pop {: tb vb :} v-pop {: ta va :}
    tc vc v-pushx td vd v-pushx ta va v-pushx tb vb v-pushx ;
 
+\ floating point: each f64 is one data-stack cell holding the IEEE-754 bits. FP
+\ prims move the bits X->D (FMOVXD), compute in the D-register file, and move the
+\ result D->X (FMOVDX) back into a pool register. D0/D1 are scratch FP regs.
+: vfbin {: emit -- :}                 \ emit:(Dd Dn Dm) e.g. ['] FADD,
+   v-popr {: xb :} v-popr {: xa :}
+   0 xa FMOVXD,  1 xb FMOVXD,  0 0 1 emit execute  xa 0 FMOVDX,
+   xb r-free  xa v-pushr ;
+: vfun {: emit -- :}                  \ emit:(Dd Dn) e.g. ['] FNEG,
+   v-popr {: xa :}  0 xa FMOVXD,  0 0 emit execute  xa 0 FMOVDX,  xa v-pushr ;
+: vfcmp {: cond -- :}                 \ FCMP a,b then flag 0/-1 (cond per FP semantics)
+   v-popr {: xb :} v-popr {: xa :}
+   0 xa FMOVXD,  1 xb FMOVXD,  0 1 FCMP,  xa cond CSET,  xa SP xa SUB,
+   xb r-free  xa v-pushr ;
+: vfcmp0 {: cond -- :}                \ FCMP a,#0.0 then flag 0/-1
+   v-popr {: xa :}  0 xa FMOVXD,  0 FCMP0,  xa cond CSET,  xa SP xa SUB,  xa v-pushr ;
+
 wordlist constant CG-VS
 get-current  CG-VS set-current
 
@@ -146,5 +162,13 @@ get-current  CG-VS set-current
 : < C-LT vcmp ;  : > C-GT vcmp ;  : = C-EQ vcmp ;  : <= C-LE vcmp ;  : >= C-GE vcmp ;  : <> C-NE vcmp ;
 : U< C-CC vcmp ; : U> C-HI vcmp ;
 : 0= C-EQ vcmp0 ; : 0< C-LT vcmp0 ; : 0> C-GT vcmp0 ; : 0<> C-NE vcmp0 ;
+
+\ floating point (f64 bits in a data cell; F< uses MI, F> GT, F= EQ — FP flag semantics)
+: F+ ['] FADD, vfbin ;  : F- ['] FSUB, vfbin ;  : F* ['] FMUL, vfbin ;  : F/ ['] FDIV, vfbin ;
+: FNEGATE ['] FNEG, vfun ;  : FABS ['] FABS, vfun ;  : FSQRT ['] FSQRT, vfun ;
+: F< C-MI vfcmp ;  : F> C-GT vfcmp ;  : F= C-EQ vfcmp ;
+: F0< C-MI vfcmp0 ;  : F0= C-EQ vfcmp0 ;
+: S>F v-popr {: x :}  0 x SCVTF,  x 0 FMOVDX,  x v-pushr ;
+: F>S v-popr {: x :}  0 x FMOVXD,  x 0 FCVTZS,  x v-pushr ;
 
 set-current

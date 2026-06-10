@@ -73,6 +73,7 @@ variable RV-SEEN                      \ distinct row vars named so far
      TC-CHAR of  s" char" endof
      TC-STR  of  s" str"  endof
      TC-ADDR of  s" addr" endof
+     TC-F64  of  s" f64"  endof
      E-BADTYPE throw
    endcase ;
 : EMIT-CODE ( code -- )   CODE$ EMIT$ ;

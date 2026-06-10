@@ -70,6 +70,22 @@ s" R ptr u8 -- R u8"      s" c@"  PRIM
 s" R u8 ptr u8 -- R"      s" c!"  PRIM
 s" R i64 ptr i64 -- R"    s" +!"  PRIM
 
+\ --- floating point (f64 on the data stack; one cell, FP ops use D-regs) ---
+s" R f64 f64 -- R f64"  s" F+"  PRIM
+s" R f64 f64 -- R f64"  s" F-"  PRIM
+s" R f64 f64 -- R f64"  s" F*"  PRIM
+s" R f64 f64 -- R f64"  s" F/"  PRIM
+s" R f64 -- R f64"      s" FNEGATE" PRIM
+s" R f64 -- R f64"      s" FABS"    PRIM
+s" R f64 -- R f64"      s" FSQRT"   PRIM
+s" R f64 f64 -- R bool" s" F<"  PRIM
+s" R f64 f64 -- R bool" s" F>"  PRIM
+s" R f64 f64 -- R bool" s" F="  PRIM
+s" R f64 -- R bool"     s" F0<" PRIM
+s" R f64 -- R bool"     s" F0=" PRIM
+s" R i64 -- R f64"      s" S>F" PRIM    \ int -> float (SCVTF)
+s" R f64 -- R i64"      s" F>S" PRIM    \ float -> int, truncate (FCVTZS)
+
 \ --- bump heap (codegen: mmap'd arena; HERE returns a ptr you can @/!) ---
 s" R -- R ptr i64"  s" HERE"  PRIM
 s" R i64 -- R"      s" ALLOT" PRIM

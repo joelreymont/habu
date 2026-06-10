@@ -136,6 +136,22 @@ CHECKING-ON? off
 : ENC-ICIV ( i -- )  IC-A $D50B7520 or EMITW ;
 : ENC-DCCV ( i -- )  IC-A $D50B7B20 or EMITW ;
 : ENC-BRK  ( i -- )  drop $D4200000 EMITW ;       \ brk #0 — traps (SIGILL)
+\ FP (double): Rd=IC-A Rn=IC-B Rm=IC-C, in the D-register file
+: FRR ( base i -- word )  >r  r@ IC-A or  r@ IC-B 5 lshift or  r> IC-C 16 lshift or ;
+: FRD ( base i -- word )  >r  r@ IC-A or  r> IC-B 5 lshift or ;
+: ENC-FMOVXD ( i -- )  $9E670000 swap FRD EMITW ;
+: ENC-FMOVDX ( i -- )  $9E660000 swap FRD EMITW ;
+: ENC-FADD ( i -- )  $1E602800 swap FRR EMITW ;
+: ENC-FSUB ( i -- )  $1E603800 swap FRR EMITW ;
+: ENC-FMUL ( i -- )  $1E600800 swap FRR EMITW ;
+: ENC-FDIV ( i -- )  $1E601800 swap FRR EMITW ;
+: ENC-FNEG ( i -- )  $1E614000 swap FRD EMITW ;
+: ENC-FABS ( i -- )  $1E60C000 swap FRD EMITW ;
+: ENC-FSQRT ( i -- ) $1E61C000 swap FRD EMITW ;
+: ENC-FCMP ( i -- )  >r $1E602000 r@ IC-A 5 lshift or r> IC-B 16 lshift or EMITW ;
+: ENC-FCMP0 ( i -- ) IC-A 5 lshift $1E602008 or EMITW ;
+: ENC-SCVTF ( i -- ) $9E620000 swap FRD EMITW ;
+: ENC-FCVTZS ( i -- ) $9E780000 swap FRD EMITW ;
 : ENC-DSB  ( i -- )  drop $D5033B9F EMITW ;
 : ENC-ISB  ( i -- )  drop $D5033FDF EMITW ;
 : ENC-NONE ( i -- )  drop ;
@@ -186,6 +202,12 @@ INIT-TABLES
 ' ENC-DCCV IOP-DCCV ENC!
 ' ENC-BRK  IOP-BRK  ENC!
 ' ENC-ANDI IOP-ANDI ENC!   ' ENC-ORRI IOP-ORRI ENC!   ' ENC-EORI IOP-EORI ENC!
+' ENC-FMOVXD IOP-FMOVXD ENC!  ' ENC-FMOVDX IOP-FMOVDX ENC!
+' ENC-FADD IOP-FADD ENC!   ' ENC-FSUB IOP-FSUB ENC!
+' ENC-FMUL IOP-FMUL ENC!   ' ENC-FDIV IOP-FDIV ENC!
+' ENC-FNEG IOP-FNEG ENC!   ' ENC-FABS IOP-FABS ENC!   ' ENC-FSQRT IOP-FSQRT ENC!
+' ENC-FCMP IOP-FCMP ENC!   ' ENC-FCMP0 IOP-FCMP0 ENC!
+' ENC-SCVTF IOP-SCVTF ENC!  ' ENC-FCVTZS IOP-FCVTZS ENC!
 ' ENC-NONE IOP-LABEL ENC!  ' ENC-NONE IOP-DEAD ENC!
 ' ENC-BYTES IOP-BYTES ENC!  ' ENC-DCQ IOP-DCQ ENC!  ' ENC-DLBL IOP-DLBL ENC!
 ' ENC-LDRW IOP-LDRW ENC!    ' ENC-STRW IOP-STRW ENC!

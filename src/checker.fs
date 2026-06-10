@@ -32,6 +32,19 @@ variable CUR-PREV?   variable CUR-PREV-VAL
 : NUMBER?    ( c-addr u -- f )   s>number? nip nip ;       \ integer under BASE
 : DEFINED?   ( c-addr u -- f )   find-name 0<> ;
 
+\ Float literal: a token carrying an FP marker ('.', 'e', 'E') that gforth's
+\ >float accepts. Checked BEFORE NUMBER? since "2.0" parses as a double there.
+\ Models as one TC-F64 cell (IEEE bits live on the data stack — see prims.fs).
+: FP-MARK?   ( c-addr u -- f )
+   over + swap ?do
+      i c@ dup [char] . =  over [char] e = or  swap [char] E = or
+      if true unloop exit then
+   loop false ;
+: CHECK-FLOAT ( c-addr u -- f )
+   2dup FP-MARK? 0= if 2drop false exit then
+   2dup >float if  fdrop 2drop  TC-F64 MK-CON PUSH-DTYPE  true
+              else 2drop false then ;
+
 \ Forbidden = compiler-manipulating words (need TRUSTED:). Compared by name
 \ token so matching is case-insensitive (find-name is CI), like Forth itself.
 s" EVALUATE" find-name constant NT-EVALUATE
@@ -55,6 +68,7 @@ s" ]" find-name constant NT-RBRACK
    2dup CHECK-PARSE   if 2drop exit then
    2dup CHECK-PICK    if 2drop exit then            \ fold N PICK / N ROLL (needs CUR-PREV?)
    2dup CHECK-LOCAL   if 2drop exit then
+   2dup CHECK-FLOAT   if 2drop exit then
    2dup NUMBER?       if
       2dup s>number? drop d>s PREV-LIT-VAL !  PREV-LIT? on   \ remember the value for PICK/ROLL
       2drop TC-I64 MK-CON PUSH-DTYPE exit then

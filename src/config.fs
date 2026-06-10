@@ -32,6 +32,7 @@
 6 constant TC-CHAR
 7 constant TC-STR
 8 constant TC-ADDR
+9 constant TC-F64           \ IEEE-754 double (one data-stack cell; FP ops use D-regs)
 
 \ --- THROW codes (private range) ---
 -2000 constant E-UNDERFLOW

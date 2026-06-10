@@ -20,6 +20,15 @@ defer EMIT-CALL   ( a u -- handled? )
    2dup EMIT-CALL if  2drop exit  then
    2drop E-NO-ENC throw ;
 
+\ Float literal -> VS constant holding the f64's IEEE-754 bits (the native code
+\ keeps floats as data-stack cells; FP prims move them X<->D). Reinterpret via a
+\ scratch float store. FP-MARK? (checker.fs) gates so plain ints fall through.
+create FBUF 1 floats allot
+: EMIT-FLOAT ( a u -- f )
+   2dup FP-MARK? 0= if 2drop false exit then
+   2dup >float if  FBUF f!  2drop  FBUF @ v-pushc  true
+              else 2drop false then ;
+
 \ A numeric literal pushes a VS constant; a VS primitive runs on the register
 \ stack; anything else (control flow, calls, return-stack ops, unsupported words)
 \ first SPILLS the VS to memory, then takes the proven memory path. The VS folds
@@ -27,6 +36,7 @@ defer EMIT-CALL   ( a u -- handled? )
 : EMIT-TOKEN ( a u -- )
    2dup CHECK-QUOT-CG  if  2drop exit then                    \ [: … ;] capture / EXECUTE / DIP
    2dup CHECK-LOCAL-CG if  2drop exit then                    \ {: a b :} / local-name ref
+   2dup EMIT-FLOAT     if  2drop exit then                    \ float literal -> f64-bits VS const
    2dup s>number? if  2>r 2drop 2r> d>s v-pushc  exit then    \ literal -> VS constant
    2drop
    2dup CG-VS search-wordlist ?dup if  drop nip nip execute  exit  then   \ VS primitive

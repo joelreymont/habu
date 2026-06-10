@@ -3,6 +3,27 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Floating point — floats on the data stack (2026-06-10)
+
+- **One model decision unlocked everything: an f64 is ONE data-stack cell holding
+  the IEEE-754 bits** — no separate FP stack (unlike hosted gforth). DUP/DROP/
+  SWAP/@/!/literals all "just work" on floats for free; only the arithmetic prims
+  (F+ F- F* F/ FNEGATE FABS FSQRT, the compares, S>F/F>S) are new. They move the
+  cell bits X→D (`FMOVXD`), compute in the D-register file, move back D→X
+  (`FMOVDX`) into a pool register. D0/D1 are scratch FP regs.
+- **Float literals MUST be classified BEFORE `NUMBER?`.** `s>number?` parses
+  "2.0" as a *double* (n=2), so `NUMBER? nip nip` is truthy and would steal it as
+  i64. Gate on an FP marker ('.', 'e', 'E') + `>float` success, ahead of the
+  integer clause, in BOTH the checker (`CHECK-FLOAT`) and codegen
+  (`EMIT-FLOAT`). Reinterpret bits via a scratch `f!` then `@`.
+- **FP condition codes differ from integer.** After `FCMP`: F< → `MI` (N set),
+  F> → `GT`, F= → `EQ`; F0< → `MI`, F0= → `EQ`. (Integer `<` uses `LT`.)
+- **Adding a TC-* type touches FOUR renderers or CHART throws 1495
+  (E-BADTYPE):** sigparse `CON-CODE`, render `CODE$`, diag `TY-NAME`, plus the
+  config code itself. Miss `render.fs CODE$` and even `PRIM` fails at chart time
+  (it renders the canonical sig). No gforth-FP oracle exists for our model, so
+  test via `F>S`→int exit codes.
+
 ## Environment
 
 - Homebrew ships Gforth **0.7.3** only; "0.7.9" is the unreleased dev branch and

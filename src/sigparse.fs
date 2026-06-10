@@ -119,6 +119,7 @@ variable IMP-RROW       \ implicit return-row id+1 for the current scope (0=none
    2dup s" char" CI= if 2drop TC-CHAR exit then
    2dup s" str"  CI= if 2drop TC-STR  exit then
    2dup s" addr" CI= if 2drop TC-ADDR exit then
+   2dup s" f64"  CI= if 2drop TC-F64  exit then
    2drop UNBOUND ;
 
 \ Stack delimiters: end-of-string, ], --, |
