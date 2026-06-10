@@ -22,54 +22,20 @@ require asm.fs
 : g-exit-tos ( -- )  0 g-pop  16 1 MOVZ,  $80 SVC, ;     \ exit(TOS)
 : g-exit0    ( -- )  0 0 MOVZ,  16 1 MOVZ,  $80 SVC, ;   \ exit(0)
 
-\ arithmetic / stack
-: p-dup   T0 g-pop  T0 g-push  T0 g-push ;
-: p-drop  XDS XDS 8 SUBI, ;
-: p-swap  T0 g-pop  T1 g-pop  T0 g-push  T1 g-push ;
-: p-over  T0 g-pop  T1 g-pop  T1 g-push  T0 g-push  T1 g-push ;
-: p-nip   T0 g-pop  T1 g-pop  T0 g-push ;
-: p-add   T1 g-pop  T0 g-pop  T0 T0 T1 ADD,  T0 g-push ;
-: p-sub   T1 g-pop  T0 g-pop  T0 T0 T1 SUB,  T0 g-push ;
-: p-mul   T1 g-pop  T0 g-pop  T0 T0 T1 MUL,  T0 g-push ;
+\ Spill-path primitives — ONLY the ops not handled by the register-allocated
+\ CG-VS (regstack.fs); arith/shuffle/compare/logical/shift moved there. These run
+\ after a v-spill, so they use the memory data stack via g-pop/g-push.
 \ Native SDIV by 0 silently yields 0; gforth THROWS. Trap on a zero divisor so a
 \ miscompile can't pass off wrong data as a result (exact gforth exit code isn't
 \ matched — both error, different mechanism). T1 holds the divisor here.
 : g-div0? ( -- )  NEWLBL {: lok :}  T1 lok CBNZ,  BRK,  lok LBL, ;
 : p-div   T1 g-pop  T0 g-pop  g-div0?  T0 T0 T1 SDIV, T0 g-push ;
 : p-mod   T1 g-pop  T0 g-pop  g-div0?  T2 T0 T1 SDIV,  T2 T2 T1 MUL,  T0 T0 T2 SUB,  T0 g-push ;
-: p-1+    T0 g-pop  T0 T0 1 ADDI,  T0 g-push ;
-: p-1-    T0 g-pop  T0 T0 1 SUBI,  T0 g-push ;
-: p-neg   T0 g-pop  T0 SP T0 SUB,  T0 g-push ;
-: p-and   T1 g-pop  T0 g-pop  T0 T0 T1 AND,  T0 g-push ;
-: p-or    T1 g-pop  T0 g-pop  T0 T0 T1 ORR,  T0 g-push ;
-: p-xor   T1 g-pop  T0 g-pop  T0 T0 T1 EOR,  T0 g-push ;
-
-\ comparisons -> Forth flag (0 / -1). cset gives 0/1, negate to 0/-1.
-: g-cmp ( cond -- )  T1 g-pop  T0 g-pop  T0 T1 CMP,  T0 swap CSET,  T0 SP T0 SUB,  T0 g-push ;
-: g-cmp0 ( cond -- ) T0 g-pop  T0 0 CMPI,  T0 swap CSET,  T0 SP T0 SUB,  T0 g-push ;
-: p-lt  C-LT g-cmp ;  : p-gt  C-GT g-cmp ;  : p-eq  C-EQ g-cmp ;
-: p-le  C-LE g-cmp ;  : p-ge  C-GE g-cmp ;  : p-ne  C-NE g-cmp ;
-: p-0=  C-EQ g-cmp0 ; : p-0<  C-LT g-cmp0 ; : p-0>  C-GT g-cmp0 ;
-: p-0<> C-NE g-cmp0 ; : p-u<  C-CC g-cmp ;  : p-u>  C-HI g-cmp ;
-
-\ more stack ops
-: p-rot  T0 g-pop  T1 g-pop  T2 g-pop  T1 g-push  T0 g-push  T2 g-push ;
-: p-mrot T0 g-pop  T1 g-pop  T2 g-pop  T0 g-push  T2 g-push  T1 g-push ;
-: p-2dup T0 g-pop  T1 g-pop  T1 g-push  T0 g-push  T1 g-push  T0 g-push ;
-: p-2drop XDS XDS 16 SUBI, ;
-: p-tuck T0 g-pop  T1 g-pop  T0 g-push  T1 g-push  T0 g-push ;
 : p-qdup T0 g-pop  T0 g-push  NEWLBL {: l :}  T0 l CBZ,  T0 g-push  l LBL, ;
-: p-2swap T0 g-pop T1 g-pop T2 g-pop 12 g-pop  T1 g-push T0 g-push 12 g-push T2 g-push ;
-
-\ more arithmetic
 : p-abs  T0 g-pop  T0 0 CMPI,  NEWLBL {: l :}  C-GE l BCOND,  T0 SP T0 SUB,  l LBL,  T0 g-push ;
 : p-min  T1 g-pop  T0 g-pop  T0 T1 CMP,  NEWLBL {: l :}  C-LE l BCOND,  T0 T1 0 ADDI,  l LBL,  T0 g-push ;
 : p-max  T1 g-pop  T0 g-pop  T0 T1 CMP,  NEWLBL {: l :}  C-GE l BCOND,  T0 T1 0 ADDI,  l LBL,  T0 g-push ;
-: p-inv  T0 g-pop  T1 0 MOVN,  T0 T0 T1 EOR,  T0 g-push ;
-: p-2*   T0 g-pop  T0 T0 1 LSLI,  T0 g-push ;
 : p-2/   T0 g-pop  T0 T0 1 ASRI,  T0 g-push ;
-: p-lsh  T1 g-pop  T0 g-pop  T0 T0 T1 LSLV,  T0 g-push ;
-: p-rsh  T1 g-pop  T0 g-pop  T0 T0 T1 LSRV,  T0 g-push ;
 : p-/mod T1 g-pop  T0 g-pop  g-div0?  T2 T0 T1 SDIV,  12 T2 T1 MUL,  12 T0 12 SUB,  12 g-push  T2 g-push ;
 
 \ control-flow stack (compile-time, holds label ids)
@@ -110,16 +76,11 @@ variable EPILOG
 \ token -> generator (own wordlist; gforth lookups are case-insensitive)
 wordlist constant CG-PRIMS
 get-current  CG-PRIMS set-current
-: DUP p-dup ;  : DROP p-drop ;  : SWAP p-swap ;  : OVER p-over ;  : NIP p-nip ;
-: + p-add ;  : - p-sub ;  : * p-mul ;  : / p-div ;  : MOD p-mod ;
-: 1+ p-1+ ;  : 1- p-1- ;  : NEGATE p-neg ;
-: AND p-and ;  : OR p-or ;  : XOR p-xor ;
-: < p-lt ;  : > p-gt ;  : = p-eq ;  : <= p-le ;  : >= p-ge ;  : <> p-ne ;
-: 0= p-0= ;  : 0< p-0< ;  : 0> p-0> ;  : 0<> p-0<> ;  : U< p-u< ;  : U> p-u> ;
-: ROT p-rot ;  : -ROT p-mrot ;  : 2DUP p-2dup ;  : 2DROP p-2drop ;
-: TUCK p-tuck ;  : ?DUP p-qdup ;  : 2SWAP p-2swap ;
-: ABS p-abs ;  : MIN p-min ;  : MAX p-max ;  : INVERT p-inv ;
-: 2* p-2* ;  : 2/ p-2/ ;  : LSHIFT p-lsh ;  : RSHIFT p-rsh ;  : /MOD p-/mod ;
+\ Only ops NOT in the register-allocated CG-VS (regstack.fs) reach here — walk.fs
+\ routes the rest to CG-VS first. So this list is the spill-path remainder:
+\ division, ?DUP, ABS/MIN/MAX, 2/, and control flow / return stack below.
+: / p-div ;  : MOD p-mod ;  : /MOD p-/mod ;  : 2/ p-2/ ;
+: ?DUP p-qdup ;  : ABS p-abs ;  : MIN p-min ;  : MAX p-max ;
 : IF c-if ;  : ELSE c-else ;  : THEN c-then ;
 : BEGIN c-begin ;  : UNTIL c-until ;  : AGAIN c-again ;  : WHILE c-while ;  : REPEAT c-repeat ;
 : DO c-do ;  : ?DO c-qdo ;  : LOOP c-loop ;  : I c-i ;  : EXIT c-exit ;
