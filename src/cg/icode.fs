@@ -22,6 +22,7 @@ IOP: IOP-BR    IOP: IOP-BLR   IOP: IOP-RET   IOP: IOP-ADR
 IOP: IOP-LDR   IOP: IOP-STR   IOP: IOP-LDRB  IOP: IOP-STRB
 IOP: IOP-LDRPO IOP: IOP-STRPR IOP: IOP-LDPPO IOP: IOP-STPPR
 IOP: IOP-SVC   IOP: IOP-NOP   IOP: IOP-ICIV  IOP: IOP-DSB   IOP: IOP-ISB
+IOP: IOP-DCCV
 IOP: IOP-LABEL IOP: IOP-DEAD  IOP: IOP-BYTES IOP: IOP-DCQ  IOP: IOP-DLBL
 IOP: IOP-LDRW  IOP: IOP-STRW
 IOP# @ constant #IOPS
@@ -113,5 +114,6 @@ variable #LBL
 : DCQ,  ( x -- )           0 0 0 IOP-DCQ IC, ;    \ embed one 64-bit cell (8 bytes)
 : DLBL, ( lbl -- )         0 0 0 IOP-DLBL IC, ;   \ embed cell = label's byte offset
 : ICIVAU, ( rt -- )        0 0 0 IOP-ICIV IC, ;
+: DCCVAU, ( rt -- )        0 0 0 IOP-DCCV IC, ;   \ clean dcache to PoU (JIT coherency)
 : DSB-ISH, ( -- )          0 0 0 0 IOP-DSB IC, ;
 : ISB,  ( -- )             0 0 0 0 IOP-ISB IC, ;
