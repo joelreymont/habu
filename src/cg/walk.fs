@@ -8,6 +8,7 @@ require regstack.fs                      \ abstract value stack (register alloca
 require opt.fs
 require exec.fs
 require cglocals.fs                      \ compile-time locals ({: a b :})
+require cgquot.fs                        \ AOT quotation/combinator inlining
 
 \ Non-primitive token hook: link.fs sets this to emit a BL to another caf word
 \ (or RECURSE). Default: not a call.
@@ -24,6 +25,7 @@ defer EMIT-CALL   ( a u -- handled? )
 \ first SPILLS the VS to memory, then takes the proven memory path. The VS folds
 \ constants and selects immediate shifts itself, so no separate folding here.
 : EMIT-TOKEN ( a u -- )
+   2dup CHECK-QUOT-CG  if  2drop exit then                    \ [: … ;] capture / EXECUTE / DIP
    2dup CHECK-LOCAL-CG if  2drop exit then                    \ {: a b :} / local-name ref
    2dup s>number? if  2>r 2drop 2r> d>s v-pushc  exit then    \ literal -> VS constant
    2drop
@@ -42,10 +44,11 @@ defer EMIT-CALL   ( a u -- handled? )
       ts  cur ts -  EMIT-TOKEN
    repeat
    v-spill ;                             \ materialise the register stack to memory
+' WALK-BODY is WALK-INLINE               \ let cgquot.fs inline quotation bodies
 
 \ Compile a body with one i64 input pushed first; the body's TOS becomes exit().
 : COMPILE-WORD {: ba bu input -- :}
-   ICODE-RESET  cf-reset  cgl-reset
+   ICODE-RESET  cf-reset  cgl-reset  q-reset
    512 g-prologue
    input g-lit
    NEWLBL EPILOG !        \ EXIT branches here

@@ -80,3 +80,9 @@ T{ s" {: a :} 10 a -"           3 NATIVE-EVAL ->  7 }T
 T{ s" {: x :} x 0< IF x NEGATE ELSE x THEN" -5 NATIVE-EVAL -> 5 }T   \ local read across IF/ELSE
 T{ s" {: x :} x 0< IF x NEGATE ELSE x THEN"  6 NATIVE-EVAL -> 6 }T
 T{ s" {: x :} 0 5 0 ?DO x + LOOP"  3 NATIVE-EVAL -> 15 }T            \ local read inside a loop (0 + 5×3)
+
+\ --- AOT quotation/combinator inlining ([: … ;] EXECUTE / DIP, no execute) ---
+T{ s" [: 1+ ;] EXECUTE"        5 NATIVE-EVAL ->  6 }T
+T{ s" [: DUP * ;] EXECUTE"     7 NATIVE-EVAL -> 49 }T
+T{ s" [: 2 * ;] EXECUTE 1+"    4 NATIVE-EVAL ->  9 }T               \ inlined quot + following op
+T{ s" 10 [: 1+ ;] DIP DROP"    5 NATIVE-EVAL ->  6 }T               \ DIP runs under the top
