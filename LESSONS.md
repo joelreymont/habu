@@ -28,6 +28,14 @@ mistakes, or insights. Lessons only — no API reference or code snippets (→ `
   Keyword dispatch is a tiny `Lkwcmp` (case-folded) over embedded lowercase
   keyword bytes. Verified through the standalone REPL: ABS, SGN (nested IF/ELSE),
   counted BEGIN/UNTIL, and BEGIN/WHILE/REPEAT sums all compute correctly.
+- **Milestone 2 (memory + data space) landed.** `@ ! c@ c! cells here allot , c,`
+  as stencils, plus CREATE/VARIABLE as interpret-mode defining words (reuse the
+  `:` slot pattern + `c-lit` to emit a push-address body). **Key gotcha:** the
+  data space CANNOT live in the code mmap — `;` mprotects the whole region to RX,
+  so a later `!` to data bus-errors (writing an executable page). Data needs a
+  SEPARATE always-RW mmap. x20 (RBASE) is dead after the startup seed-dict copy,
+  so it's repurposed as the data base; `[x20]` holds DP. Verified: variables,
+  arrays via `create…cells allot`, and read-modify-write all compute correctly.
 
 ## Register-resident DO..LOOP — caf ties clang -O3 (2026-06-10)
 

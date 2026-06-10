@@ -75,3 +75,15 @@ s" : CNT 0 BEGIN 1 + DUP 5 >= UNTIL ; 0 CNT ."  NF  T{ s\" 5\n"  NF= -> true }T
 s" : SUMN 0 SWAP BEGIN DUP 0 > WHILE DUP -ROT + SWAP 1 - REPEAT DROP ; 5 SUMN ."
    NF  T{ s\" 15\n" NF= -> true }T
 s" : F 0 BEGIN 1 + DUP 3 < WHILE REPEAT ; 0 F ."  NF  T{ s\" 3\n"  NF= -> true }T
+
+\ --- memory + data space (self-host 2): @ ! c@ c! cells here allot , c,
+\ + CREATE/VARIABLE defining words (separate always-RW data mmap) ---
+s" here 42 over ! @ ."                NF  T{ s\" 42\n" NF= -> true }T
+s" 5 cells ."                         NF  T{ s\" 40\n" NF= -> true }T
+s" here 100 , 200 , drop here 8 - @ ."  NF  T{ s\" 200\n" NF= -> true }T
+s" here 65 over c! c@ ."              NF  T{ s\" 65\n"  NF= -> true }T
+s" variable v  42 v !  v @ ."         NF  T{ s\" 42\n" NF= -> true }T
+s" variable a variable b  1 a !  2 b !  a @ b @ + ."  NF  T{ s\" 3\n" NF= -> true }T
+s" create arr 3 cells allot  10 arr !  20 arr 8 + !  arr @ arr 8 + @ + ."
+   NF  T{ s\" 30\n" NF= -> true }T
+s" variable v  5 v !  v @ 1 + v !  v @ ."  NF  T{ s\" 6\n" NF= -> true }T

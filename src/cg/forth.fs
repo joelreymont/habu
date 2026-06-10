@@ -26,7 +26,11 @@ $100000 constant REGION       \ mmap region size (1 MB)
 $10000  constant DICT-SIZE     \ dict area at region+0 (64 KB); code area follows
 40      constant DREC          \ dict record: addr(8) clen(8) namelen(8) name(16)
 $F000   constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
+$80000  constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
 $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
+\ x20 (RBASE) is dead after startup, so it doubles as DATA: the data-space base.
+\ [x20] holds DP (next-free pointer); usable space is [x20+8 .. x20+DATA-SIZE).
+20 constant DATA
 variable STDIN?   STDIN? off   \ source mode: baked Lsrc (off) vs read from stdin (on)
 
 \ runtime instruction-word constants the JIT compiler stamps out (verified encodings)
@@ -60,6 +64,7 @@ variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncou
 variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp
 variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
+variable Lkwcreate variable Lkwvar
 
 9 constant A   10 constant B   11 constant C
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
@@ -95,6 +100,17 @@ variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 : bmrot C g-pop B g-pop A g-pop  C g-push A g-push B g-push ;
 : b2dup B g-pop A g-pop  A g-push B g-push A g-push B g-push ;
 : b2drop XDS XDS 16 SUBI, ;
+\ memory access (absolute addresses on the stack)
+: bfetch  A g-pop  A A 0 LDR,  A g-push ;
+: bstore  B g-pop A g-pop  A B 0 STR, ;               \ ( val addr -- )
+: bcfetch A g-pop  A A 0 LDRB, A g-push ;
+: bcstore B g-pop A g-pop  A B 0 STRB, ;
+: bcells  A g-pop  A A 3 LSLI, A g-push ;             \ n*8
+\ data space: DP cell is [x20]; HERE/ALLOT/,/C, bump it (x20 region is always RW)
+: bhere   7 DATA 0 LDR,  7 g-push ;
+: ballot  A g-pop  7 DATA 0 LDR,  7 7 A ADD,  7 DATA 0 STR, ;
+: bcomma  A g-pop  7 DATA 0 LDR,  A 7 0 STR,  7 7 8 ADDI,  7 DATA 0 STR, ;
+: bccomma A g-pop  7 DATA 0 LDR,  A 7 0 STRB, 7 7 1 ADDI,  7 DATA 0 STR, ;
 
 : emit-prims ( -- )
    s" +"    ['] b+    FPRIM   s" -"    ['] b-    FPRIM   s" *"    ['] b*    FPRIM
@@ -109,7 +125,12 @@ variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
    s" /"    ['] bdiv  FPRIM   s" mod"  ['] bmod  FPRIM
    s" nip"  ['] bnip  FPRIM   s" over" ['] bover FPRIM   s" tuck" ['] btuck FPRIM
    s" rot"  ['] brot  FPRIM   s" -rot" ['] bmrot FPRIM
-   s" 2dup" ['] b2dup FPRIM   s" 2drop" ['] b2drop FPRIM ;
+   s" 2dup" ['] b2dup FPRIM   s" 2drop" ['] b2drop FPRIM
+   s" @"    ['] bfetch FPRIM   s" !"    ['] bstore FPRIM
+   s" c@"   ['] bcfetch FPRIM  s" c!"   ['] bcstore FPRIM
+   s" cells" ['] bcells FPRIM
+   s" here" ['] bhere  FPRIM   s" allot" ['] ballot FPRIM
+   s" ,"    ['] bcomma FPRIM   s" c,"   ['] bccomma FPRIM ;
 
 \ ---- CEMIT ( x9=word -- ) : str w9,[x28] ; CP += 4 ----
 : emit-cemit ( -- )
@@ -281,7 +302,8 @@ variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
    Lkwif @ LBL,     s" if"     BYTES,    Lkwthen @ LBL,   s" then"   BYTES,
    Lkwelse @ LBL,   s" else"   BYTES,    Lkwbegin @ LBL,  s" begin"  BYTES,
    Lkwuntil @ LBL,  s" until"  BYTES,    Lkwagain @ LBL,  s" again"  BYTES,
-   Lkwwhile @ LBL,  s" while"  BYTES,    Lkwrepeat @ LBL, s" repeat" BYTES, ;
+   Lkwwhile @ LBL,  s" while"  BYTES,    Lkwrepeat @ LBL, s" repeat" BYTES,
+   Lkwcreate @ LBL, s" create" BYTES,    Lkwvar @ LBL,    s" variable" BYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
@@ -300,6 +322,29 @@ variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 : c-while c-popflag  c-pushcp  $B4000009 c-emitw ;
 : c-repeat Lcfpop @ BL,  14 9 0 ADDI,  Lcfpop @ BL,  $14000000 $3FFFFFF c-bback
    9 14 0 ADDI,  Lpat @ BL, ;
+
+\ CREATE/VARIABLE (interpret-mode defining words): make a dict word whose body
+\ pushes the current DP (a data-space address). Reuses the `:` slot pattern + the
+\ c-lit emitter (with x11 = DP) for the literal-push body.
+: c-create ( -- )
+   2 3 MOVZ,  Lprot @ BL,                               \ region -> RW
+   Ltok @ BL,                                            \ read NAME
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot
+   CP 9 0 STR,  TKL 9 16 STR,                            \ slot.addr=CP, namelen
+   10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,         \ copy name
+   NEWLBL {: ncp :}  NEWLBL {: ncpd :}
+   ncp LBL,  12 ncpd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
+      10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncp B,
+   ncpd LBL,
+   11 DATA 0 LDR,                                        \ x11 = DP (body pushes it)
+   c-lit                                                 \ emit movz/movk x9=DP + push
+   9 W-RET LIT64,  Lcemit @ BL,                          \ emit RET
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot again
+   10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,        \ clen = CP-addr-4
+   NDICT NDICT 1 ADDI,
+   2 5 MOVZ,  Lprot @ BL,  Lflush @ BL, ;               \ region -> RX + flush
+: c-variable ( -- )  c-create
+   7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;          \ reserve 1 cell
 
 \ emit one compile-mode keyword case: if TKA/TKL == kw, run handler then back to lmain
 : cf-entry {: lmainlbl kwvar kwlen hxt -- :}
@@ -331,6 +376,10 @@ variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
       5 9 24 LDR,  5 10 24 STR,  5 9 32 LDR,  5 10 32 STR,  \ name[0..15]
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL,
+   \ separate always-RW data region (x20 is free after the seed copy); [x20]=DP=x20+8
+   0 0 MOVZ,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
+   16 197 MOVZ,  $80 SVC,  DATA 0 0 ADDI,
+   7 DATA 8 ADDI,  7 DATA 0 STR,
    emit-source                                        \ INP/INE <- baked Lsrc or stdin
    PEND 0 MOVZ,                                       \ interpret mode
    NEWLBL {: lmain :}  NEWLBL {: lexit :}  NEWLBL {: lcompile :}
@@ -355,6 +404,9 @@ variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
          5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,   \ reset CFSP
          lmain B,
       lnotcolon LBL,
+      \ interpret-mode defining words
+      lmain Lkwcreate 6 ['] c-create   cf-entry
+      lmain Lkwvar    8 ['] c-variable cf-entry
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,             \ NUMBER?
       NEWLBL {: lnotnum :}
       12 lnotnum CBZ,  11 g-push  lmain B,
@@ -401,6 +453,7 @@ variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
    NEWLBL Lcfpush !  NEWLBL Lcfpop !  NEWLBL Lpat !  NEWLBL Lkwcmp !
    NEWLBL Lkwif !  NEWLBL Lkwthen !  NEWLBL Lkwelse !  NEWLBL Lkwbegin !
    NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !
+   NEWLBL Lkwcreate !  NEWLBL Lkwvar !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
    emit-cf-helpers  emit-kwdata
