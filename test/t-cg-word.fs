@@ -62,3 +62,13 @@ T{ s" 255 AND"  4660 NATIVE-EVAL -> 52 }T      \ 0x1234 & 0xFF
 T{ s" 240 AND"   171 NATIVE-EVAL -> 160 }T     \ 0xAB & 0xF0
 T{ s" 8 OR"        5 NATIVE-EVAL -> 13 }T       \ 5 | 8
 T{ s" 10 XOR"     12 NATIVE-EVAL -> 6 }T        \ 12 ^ 10  (10 not encodable -> register, still correct)
+
+\ --- optimizer output locked by instruction count (regression guard) ---
+: LIVE-IC ( -- n )  0 #IC @ 0 ?do i IC-OP IOP-DEAD <> if 1+ then loop ;
+: BODY-IC ( a u -- n )  ICODE-RESET cf-reset WALK-BODY OPTIMIZE LIVE-IC ;
+T{ s" DUP *"                 BODY-IC -> 5 }T   \ load,mul,store + framing (register-resident)
+T{ s" DUP 13 LSHIFT XOR DUP 7 RSHIFT XOR DUP 17 LSHIFT XOR" BODY-IC -> 7 }T  \ fused EORs (LLVM)
+
+\ --- register-pool exhaustion ABORTS (never silently miscompiles) ---
+: DEEP ( -- )  s" DUP DUP DUP DUP DUP DUP DUP DUP DUP" 5 COMPILE-WORD ;
+T{ ' DEEP catch 0<> -> true }T                 \ too deep for the 8-reg pool -> clean abort

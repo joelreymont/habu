@@ -40,6 +40,20 @@ T{ ICODE-RESET 0 1 2 UDIV,   V1 -> $9AC20820 }T  \ udiv x0,x1,x2
 T{ ICODE-RESET 0 1 2 AND,    V1 -> $8A020020 }T  \ and x0,x1,x2
 T{ ICODE-RESET 0 1 2 ORR,    V1 -> $AA020020 }T  \ orr x0,x1,x2
 T{ ICODE-RESET 0 1 2 EOR,    V1 -> $CA020020 }T  \ eor x0,x1,x2
+
+\ --- logical-immediate encoder (encodeBitMasks) + AND/ORR/EOR #imm + BRK ---
+T{ $FF               ENC-LOGIMM -> $1007 true }T   \ 8-bit run at bottom
+T{ $FF00             ENC-LOGIMM -> $1E07 true }T   \ rotated run (immr=56)
+T{ $FFFF             ENC-LOGIMM -> $100F true }T
+T{ $F0               ENC-LOGIMM -> $1F03 true }T
+T{ $FFFFFFFFFFFFFF00 ENC-LOGIMM -> $1E37 true }T   \ wrapping run
+T{ $5555555555555555 ENC-LOGIMM -> $5555555555555555 false }T  \ period-2: not encodable
+T{ 0                 ENC-LOGIMM -> 0 false }T
+T{ -1                ENC-LOGIMM -> -1 false }T
+T{ ICODE-RESET 0 0 $1007 ANDI, V1 -> $92401C00 }T  \ and x0,x0,#0xFF
+T{ ICODE-RESET 0 0 $1007 ORRI, V1 -> $B2401C00 }T  \ orr x0,x0,#0xFF
+T{ ICODE-RESET 0 0 $1007 EORI, V1 -> $D2401C00 }T  \ eor x0,x0,#0xFF
+T{ ICODE-RESET BRK,            V1 -> $D4200000 }T  \ brk #0
 T{ ICODE-RESET 0 1 1 LSLI,   V1 -> $D37FF820 }T  \ lsl x0,x1,#1
 T{ ICODE-RESET 0 1 13 LSLI,  V1 -> $D373C820 }T  \ lsl x0,x1,#13
 T{ ICODE-RESET 0 1 7 LSRI,   V1 -> $D347FC20 }T  \ lsr x0,x1,#7

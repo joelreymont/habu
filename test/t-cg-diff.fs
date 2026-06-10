@@ -48,3 +48,8 @@ s" DUP 1 RSHIFT XOR"             ALL
 s" 7 * 3 +"                      ALL    \ const-operand immediates
 s" DUP DUP * *"                  ALL    \ cube — sign + overflow
 s" DUP DUP + +"                  ALL    \ 3x — ROT/dup paths
+s" 255 AND"                      ALL    \ logical-immediate masking, full 64-bit
+s" 65535 AND 7 OR"               ALL    \ mask then set bits
+s" DUP 2 LSHIFT + 5 +"           ALL    \ fused shifted-add + const-immediate
+s" DUP NEGATE +"                 ALL    \ always 0 (sign edge cases)
+s" 100 - DUP * "                 ALL    \ (x-100)^2 — subtract-immediate + square
