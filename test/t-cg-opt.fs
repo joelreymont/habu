@@ -43,6 +43,18 @@ T{ 9 9 GEN-PP -> 0 }T                      \ same reg -> nothing
 \ a lone push (no following pop) is left intact
 T{ ICODE-RESET 9 19 0 STR, 19 19 8 ADDI, OPTIMIZE OASM -> 8 }T
 
+\ --- STORE-FWD + DSE: a store overwritten before it's observed is killed; a
+\ later load of the slot forwards to a MOV from the live store's register ---
+: GEN-SF ( -- nbytes )                       \ STR x9; STR x10 (overwrites); LDR x11
+   ICODE-RESET  9 19 0 STR,  10 19 0 STR,  11 19 0 LDR,  OPTIMIZE OASM ;
+T{ GEN-SF -> 8 }T                            \ dead STR x9 killed -> STR x10 + MOV x11,x10
+T{ 0 O@ -> $F900026A }T                      \ str x10,[x19]
+T{ 1 O@ -> $AA0A03EB }T                      \ mov x11,x10
+
+\ --- X19-CANCEL: orphaned inverse x19 add/sub (nothing between) is removed ---
+: GEN-X19 ( -- nbytes )  ICODE-RESET  19 19 8 ADDI,  19 19 8 SUBI,  NOP,  OPTIMIZE OASM ;
+T{ GEN-X19 -> 4 }T                           \ +8/-8 cancel, only the nop remains
+
 \ --- killed records don't break label binding: B over a killed MOV ---
 : GEN-BOVER ( -- nbytes )
    ICODE-RESET NEWLBL dup B, 3 3 MOV, LBL, RET, OPTIMIZE OASM ;

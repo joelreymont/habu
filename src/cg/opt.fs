@@ -73,7 +73,113 @@ create OPT-RULES
    ' OPT-SELF-MOV ,  ' OPT-ARITH0 ,  ' OPT-DEAD-LIT ,  ' OPT-B-NEXT ,  ' OPT-PUSHPOP ,
 5 constant #OPT-RULES
 
+\ --- block-local store-forwarding + dead-store elimination -------------------
+\ The biggest cost in stack-machine code is round-tripping values through the
+\ x19 data stack (STR/LDR). This pass tracks the symbolic x19 offset and, per
+\ stack slot, the register that last stored it. A LDR from a known slot is
+\ forwarded to a MOV from that register; a store overwritten before it is
+\ observed (read from memory / crosses a boundary) is killed (DSE). Boundaries:
+\ HARD (label/call/uncond-branch/ret) reset everything; SOFT (cond branch) keeps
+\ registers for the fall-through but forces pending stores live; MEM (any non-x19
+\ memory op) drops register forwarding (it may alias the stack) and forces stores
+\ live. Correctness rests on clobbering a slot's forward-register whenever that
+\ register is redefined — the differential native-exe suite is the backstop.
+512 constant NSLOT   256 constant SLOT-BIAS
+create SLOT-REG   NSLOT cells allot      \ reg holding each slot's value, -1 = unknown
+create SLOT-STIDX NSLOT cells allot      \ IC index of the killable store, -1 = none/observed
+variable SF-XOFF                          \ x19 offset (BYTES) from block origin
+: SF-RESET ( -- )  0 SF-XOFF !
+   NSLOT 0 ?do  -1 SLOT-REG i cells + !  -1 SLOT-STIDX i cells + !  loop ;
+: SF-FWD-FLUSH ( -- )  NSLOT 0 ?do  -1 SLOT-REG   i cells + !  loop ;
+: SF-ST-LIVE   ( -- )  NSLOT 0 ?do  -1 SLOT-STIDX i cells + !  loop ;  \ pending stores observed
+: SF-HARD ( -- )  SF-FWD-FLUSH SF-ST-LIVE  0 SF-XOFF ! ;
+: SF-SOFT ( -- )  SF-ST-LIVE ;
+: SF-MEM  ( -- )  SF-FWD-FLUSH SF-ST-LIVE ;
+: SF-CLOBBER ( r -- )                     \ a register was redefined: drop slots that forward it
+   NSLOT 0 ?do  dup SLOT-REG i cells + @ = if -1 SLOT-REG i cells + ! then  loop  drop ;
+: SF-SLOT ( ix -- s|-1 )                  \ slot index for a [x19,#off] access, -1 if out of range
+   IC-C SF-XOFF @ +  8 /  SLOT-BIAS +  dup 0 NSLOT within 0= if drop -1 then ;
+
+: SF-STORE {: ix -- :}
+   ix SF-SLOT dup 0< if drop exit then  {: s :}
+   SLOT-STIDX s cells + @ dup 0>= if IC-KILL else drop then   \ DSE the overwritten store
+   ix    SLOT-STIDX s cells + !
+   ix IC-A  SLOT-REG s cells + ! ;
+: SF-LOAD {: ix -- :}
+   ix SF-SLOT dup 0< if drop ix IC-A SF-CLOBBER exit then  {: s :}
+   ix IC-A {: rB :}
+   SLOT-REG s cells + @ dup 0>= if          {: fr :}    \ forward: LDR -> MOV rB, fr
+      fr ix IC-B!  IOP-MOV ix IC-OP!  rB SF-CLOBBER
+   else drop
+      -1 SLOT-STIDX s cells + !             \ memory read observes the store (keep it)
+      rB SF-CLOBBER  rB SLOT-REG s cells + !
+   then ;
+: SF-DEFINES? ( op -- f )                   \ op writes IC-A as a value register?
+   dup IOP-CMP = over IOP-CMPI = or swap IOP-NOP = or 0= ;
+
+\ op category for the boundary classes (STR/LDR/ADDI/SUBI handled inline)
+0 constant CAT-OTHER  1 constant CAT-HARD  2 constant CAT-SOFT  3 constant CAT-MEM
+create OPCAT #IOPS cells allot
+: CAT! ( cat iop -- )  cells OPCAT + ! ;
+: OPCAT-INIT ( -- )  #IOPS 0 ?do  CAT-OTHER i cells OPCAT + !  loop
+   CAT-HARD IOP-LABEL CAT!  CAT-HARD IOP-BL CAT!  CAT-HARD IOP-BLR CAT!
+   CAT-HARD IOP-BR CAT!  CAT-HARD IOP-RET CAT!  CAT-HARD IOP-B CAT!
+   CAT-SOFT IOP-BCOND CAT!  CAT-SOFT IOP-CBZ CAT!  CAT-SOFT IOP-CBNZ CAT!
+   CAT-MEM IOP-LDRB CAT!  CAT-MEM IOP-STRB CAT!  CAT-MEM IOP-LDRW CAT!  CAT-MEM IOP-STRW CAT!
+   CAT-MEM IOP-LDRPO CAT!  CAT-MEM IOP-STRPR CAT!  CAT-MEM IOP-LDPPO CAT!  CAT-MEM IOP-STPPR CAT!
+   CAT-MEM IOP-SVC CAT!  CAT-MEM IOP-ICIV CAT!  CAT-MEM IOP-DCCV CAT!
+   CAT-MEM IOP-DSB CAT!  CAT-MEM IOP-ISB CAT!
+   CAT-MEM IOP-BYTES CAT!  CAT-MEM IOP-DCQ CAT!  CAT-MEM IOP-DLBL CAT! ;
+OPCAT-INIT
+
+: STORE-FWD ( -- )
+   SF-RESET
+   #IC @ 0 ?do
+      i IC-OP {: op :}
+      op IOP-DEAD = if  \ skip
+      else op IOP-ADDI = i IC-A 19 = and i IC-B 19 = and if  i IC-C SF-XOFF +!
+      else op IOP-SUBI = i IC-A 19 = and i IC-B 19 = and if  i IC-C negate SF-XOFF +!
+      else op IOP-STR = i IC-B 19 = and if  i SF-STORE
+      else op IOP-LDR = i IC-B 19 = and if  i SF-LOAD
+      else
+         op cells OPCAT + @ {: cat :}
+         cat CAT-HARD = if SF-HARD
+         else cat CAT-SOFT = if SF-SOFT
+         else cat CAT-MEM  = if SF-MEM
+         else  op SF-DEFINES? if i IC-A SF-CLOBBER then    \ OTHER value op: clobber its dest
+         then then then
+      then then then then then
+   loop ;
+
+\ --- x19 churn cancellation -------------------------------------------------
+\ Once store-forwarding has removed the stack STR/LDR, the ADDI/SUBI x19 that
+\ bracketed them are often adjacent (skipping dead records) and inverse (+k then
+\ -k). Such a pair is a pointless pointer excursion with nothing between it and no
+\ later dependence on the intermediate offset — kill both. Iterate to a fixpoint.
+: NEXT-LIVE ( i -- j|-1 )
+   begin 1+ dup #IC @ < while  dup IC-OP IOP-DEAD <> if exit then  repeat  drop -1 ;
+: X19-DELTA ( i -- delta )                 \ signed x19 change; 0 if not an x19 add/sub
+   dup IC-A 19 = over IC-B 19 = and 0= if drop 0 exit then
+   dup IC-OP IOP-ADDI = if IC-C exit then
+   dup IC-OP IOP-SUBI = if IC-C negate exit then  drop 0 ;
+variable X19-CHG
+: X19-CANCEL-PASS ( -- changed? )
+   X19-CHG off
+   #IC @ 0 ?do
+      i X19-DELTA {: d :}  d if
+         i NEXT-LIVE {: j :}  j 0>= if
+            j X19-DELTA {: e :}  e 0<>  d e + 0=  and if
+               i IC-KILL  j IC-KILL  X19-CHG on
+            then
+         then
+      then
+   loop  X19-CHG @ ;
+: X19-CANCEL ( -- )  begin X19-CANCEL-PASS 0= until ;
+
 : OPTIMIZE ( -- )
    #IC @ 0 ?do
       #OPT-RULES 0 ?do  j OPT-RULES i cells + @ execute  loop
-   loop ;
+   loop
+   STORE-FWD
+   #IC @ 0 ?do  i OPT-SELF-MOV  loop   \ clean MOV rd,rd from forwarding
+   X19-CANCEL ;                        \ drop the orphaned stack-pointer churn

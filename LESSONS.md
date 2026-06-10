@@ -146,6 +146,29 @@ Two front-ends, both Forth (no C/Zig — the Zig `~/Work/pz` is reference only):
   `system`/`$?`) and fall back to a message on a pipe. Test the parser +
   `CHECK-DRY` (no tty needed); the key loop is thin glue exercised by hand.
 
+## Register allocation — store-forwarding, and the register-reuse wall (2026-06-10)
+
+`opt.fs` gained two block-local passes (`STORE-FWD`, `X19-CANCEL`): forward
+`STR→LDR` to register MOVs, kill overwritten/unobserved stores (DSE), then cancel
+the orphaned inverse `ADDI/SUBI x19` pairs. Boundaries (label/call/branch/generic
+memory op) flush tracking; a slot's forward-register is dropped whenever that
+register is redefined (the correctness lynchpin — backstopped by the differential
+native-exe suite). Real wins on multi-value shuffles: `OVER +` 13→9, `SWAP OVER -`
+18→14, `DUP ROT * +` 22→18 (~20-30%).
+
+**But the dup-heavy hot loop (xorshift) doesn't improve — the register-reuse
+wall.** `DUP 13 LSHIFT XOR` compiles to: load `h`→x9, **store `h`** (the dup),
+`LSLI x9,x9,#13` (now x9=h<<13), **reload `h`** from the stack, `EOR`. Store-
+forwarding *correctly cannot* forward the reload, because the `LSLI` reused x9, so
+`h` survives only in memory. The hand-asm/LLVM keep `h` in its own register and do
+`eor x10,x10,x10,lsl#13` (one instr). The root cause: every primitive in
+`templ.fs` hardcodes `T0/T1/T2` (x9/x10/x11), so distinct live values collide and
+spill. **The real fix is an abstract register stack** (allocate a fresh pool
+register per live value, spill only at boundaries) — a `templ.fs` rewrite, the
+genuine Factor/Mu-class allocator. Store-forwarding is a correct foundation that
+hits this ceiling; it cannot be peephole'd past register reuse. Measured, proven,
+documented — don't claim the dispatch win until the abstract stack exists.
+
 ## Speed gate CLOSED — the bar is LLVM, not gforth (2026-06-10)
 
 gforth performance is not the competition; **LLVM (`clang -O3`) is the bar** a
