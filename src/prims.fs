@@ -92,6 +92,10 @@ s" R a [ R a -- S ] -- S a" s" KEEP"  PRIM
 \ both the run (nonzero) and skip (zero) paths converging to R. See docs/effects.md.
 s" R a [ R a -- R ] -- R" s" ?DUP-IF" PRIM
 
+\ --- number parsing (the double result is modeled as one i64; honest enough to
+\ catch the branch-imbalance bug class that bit the codegen — see LESSONS.md) ---
+s" R str -- R i64 bool" s" S>NUMBER?" PRIM   \ ( c-addr u -- d flag ), d as i64
+
 \ --- char literals ---
 s" R -- R char" s" CHAR"    PRIM
 s" R -- R char" s" [CHAR]"  PRIM

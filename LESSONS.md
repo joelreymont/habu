@@ -229,8 +229,18 @@ shift into the next `EOR`/`ADD`/… — the last gap to LLVM on the dispatch loo
 needs ICode ALU records to carry a shift field — a bigger IR change (dot B3).
 **Footgun:** `s>number?`
 leaves its double on the stack *even on failure* — the non-number path must
-`2drop` it or a garbage "token" reaches the encoder (E-NO-ENC). Folders live in a
-`CG-FOLD` wordlist, mirroring `CG-PRIMS` (no if-chain dispatch).
+`2drop` it or a garbage "token" reaches the encoder (E-NO-ENC).
+
+**Dogfooding the codegen (the honest limit).** The codegen proper (`EMIT-TOKEN`,
+the value stack) is metaprogramming — `s>number?`, `search-wordlist`, `execute`,
+raw stacks — so it cannot be written as fully *checked* caf. But the bug class
+that actually bit the build IS catchable: chart `s>number?` as `( R str -- R i64
+bool )` (the double modeled as one i64) and the checker's "both IF arms must
+leave equal stacks" rule rejects the exact mistake — a branch that consumes the
+flag but forgets the value — with `E-BRANCH` (`test/t-dogfood.fs` proves
+`S>NUMBER? IF DROP THEN` is refused, `S>NUMBER? IF THEN` accepted). So: the
+codegen stays trusted, but the *failure mode* is now expressible and demonstrably
+caught — which is the real value the dot asked for.
 
 ## Codegen Phase 0.3 — speed gate (superseded by the dispatch bench above)
 
