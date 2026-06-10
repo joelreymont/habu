@@ -2,8 +2,12 @@
 \ Pure bit-field recipes (ported from habu src/ir/arm64.zig + src/jit/
 \ stencils.zig). Two passes: PASS1 sizes records and binds labels; PASS2
 \ encodes via a table indexed by op tag. Branches and immediates are
-\ range-checked — out of range throws, never wraps. TRUSTED:.
+\ range-checked — out of range throws, never wraps. The pure register-form
+\ recipes are dogfooded: written as TYPED caf and verified by caf's own checker;
+\ the return-stack/memory/table machinery stays TRUSTED (unchecked).
 
+require ../../caf.fs        \ the checker, so we can check our own recipes
+CHECKING-ON? off            \ metaprogramming (IR mutators, tables, memory) is unchecked
 require icode.fs
 
 s" cg: branch out of range"    exception constant E-BRANCH-RANGE
@@ -46,30 +50,38 @@ variable ABUF  variable WPOS
 : LBL@ ( lbl -- w )  cells LBLPOS + @  dup 0< if E-UNDEF-LBL throw then ;
 : BDELTA ( i -- d )  IC-A LBL@ WPOS @ - ;   \ words, branch-relative
 
-\ --- per-op encoders ( i -- ) ---
-: RRR ( i base -- u32 )  swap >r  r@ IC-A or  r@ IC-B 5 lshift or  r> IC-C 16 lshift or ;
+\ --- dogfood: register-form recipes as TYPED caf, checked by caf itself ---
+\ Chart the trusted leaves the checked recipes call (they do memory/pointer work).
+: CHART-EFF ( eff-a eff-u na nu -- )  2>r ARENA-RESET PARSE-SIG 2r> CHART ;
+s" R i64 -- R i64" s" IC-A"  CHART-EFF    s" R i64 -- R i64" s" IC-B" CHART-EFF
+s" R i64 -- R i64" s" IC-C"  CHART-EFF    s" R i64 -- R i64" s" IC-D" CHART-EFF
+s" R i64 -- R"     s" EMITW" CHART-EFF
+CHECKING-ON? on
+: RRR      ( R i64 i64 -- R i64 )  swap >r  r@ IC-A or  r@ IC-B 5 LSHIFT or  r> IC-C 16 LSHIFT or ;
+: ENC-ADD  ( R i64 -- R )  $8B000000 RRR EMITW ;
+: ENC-SUB  ( R i64 -- R )  $CB000000 RRR EMITW ;
+: ENC-MUL  ( R i64 -- R )  $9B007C00 RRR EMITW ;
+: ENC-SDIV ( R i64 -- R )  $9AC00C00 RRR EMITW ;
+: ENC-UDIV ( R i64 -- R )  $9AC00800 RRR EMITW ;
+: ENC-AND  ( R i64 -- R )  $8A000000 RRR EMITW ;
+: ENC-ORR  ( R i64 -- R )  $AA000000 RRR EMITW ;
+: ENC-EOR  ( R i64 -- R )  $CA000000 RRR EMITW ;
+: ENC-LSLV ( R i64 -- R )  $9AC02000 RRR EMITW ;
+: ENC-LSRV ( R i64 -- R )  $9AC02400 RRR EMITW ;
+: ENC-ASRV ( R i64 -- R )  $9AC02800 RRR EMITW ;
+CHECKING-ON? off
+\ --- remaining encoders (return-stack juggling; not yet in the checkable subset) ---
 : ENC-MOVZ ( i -- )  >r r@ IC-A r> IC-B 0 MOVZHW EMITW ;
 : ENC-MOVK ( i -- )  >r r@ IC-A r@ IC-B r> IC-C 16 / MOVKHW EMITW ;
 : ENC-MOVN ( i -- )  >r r@ IC-A r> IC-B 0 MOVNHW EMITW ;
 : ENC-MOV  ( i -- )  >r $AA0003E0 r@ IC-A or r> IC-B 16 lshift or EMITW ;
 : ENC-LIT  ( i -- )  >r r@ IC-A r> IC-B dup MOVN-SHORTER? if LIT-N else LIT-Z then ;
-: ENC-ADD  ( i -- )  $8B000000 RRR EMITW ;
 : ENC-ADDI ( i -- )  >r $91000000 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?IMM12 10 lshift or EMITW ;
-: ENC-SUB  ( i -- )  $CB000000 RRR EMITW ;
 : ENC-SUBI ( i -- )  >r $D1000000 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?IMM12 10 lshift or EMITW ;
-: ENC-MUL  ( i -- )  $9B007C00 RRR EMITW ;
-: ENC-SDIV ( i -- )  $9AC00C00 RRR EMITW ;
-: ENC-UDIV ( i -- )  $9AC00800 RRR EMITW ;
-: ENC-AND  ( i -- )  $8A000000 RRR EMITW ;
-: ENC-ORR  ( i -- )  $AA000000 RRR EMITW ;
-: ENC-EOR  ( i -- )  $CA000000 RRR EMITW ;
 : ENC-LSLI ( i -- )  >r $D3400000 r@ IC-A or r@ IC-B 5 lshift or
    r@ IC-C 64 swap - 63 and 16 lshift or  r> IC-C 63 swap - 10 lshift or EMITW ;
 : ENC-LSRI ( i -- )  >r $D340FC00 r@ IC-A or r@ IC-B 5 lshift or r> IC-C 16 lshift or EMITW ;
 : ENC-ASRI ( i -- )  >r $9340FC00 r@ IC-A or r@ IC-B 5 lshift or r> IC-C 16 lshift or EMITW ;
-: ENC-LSLV ( i -- )  $9AC02000 RRR EMITW ;
-: ENC-LSRV ( i -- )  $9AC02400 RRR EMITW ;
-: ENC-ASRV ( i -- )  $9AC02800 RRR EMITW ;
 : ENC-CMP  ( i -- )  >r $EB00001F r@ IC-A 5 lshift or r> IC-B 16 lshift or EMITW ;
 : ENC-CMPI ( i -- )  >r $F100001F r@ IC-A 5 lshift or r> IC-B ?IMM12 10 lshift or EMITW ;
 : ENC-CSET ( i -- )  >r $9A9F07E0 r@ IC-A or r> IC-B 1 xor 12 lshift or EMITW ;
