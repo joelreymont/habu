@@ -25,6 +25,7 @@ require rt.fs              \ g-print9 (shared signed-decimal printer)
 $100000 constant REGION       \ mmap region size (1 MB)
 $10000  constant DICT-SIZE     \ dict area at region+0 (64 KB); code area follows
 40      constant DREC          \ dict record: addr(8) clen(8) namelen(8) name(16)
+$F000   constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
 $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 variable STDIN?   STDIN? off   \ source mode: baked Lsrc (off) vs read from stdin (on)
 
@@ -55,6 +56,10 @@ create PNPOOL 1024 chars allot   variable PNP   variable #PL
 \ shared label ids (forward refs)
 variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  variable SRCN
 variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncount
+\ control-flow JIT helpers + keyword data labels (self-host 1b)
+variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp
+variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
+variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 
 9 constant A   10 constant B   11 constant C
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
@@ -238,6 +243,71 @@ variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncou
       INP Lsrc @ ADR,  INE Lsrc @ ADR,  INE INE SRCN @ ADDI,
    then ;
 
+\ ---- control-flow JIT: a CF stack (region+CFSTK-OFF) of placeholder branch
+\ addresses; THEN/ELSE/REPEAT patch the recorded branch's relative offset. ----
+\ Lcfpush(x9=val), Lcfpop(->x9), Lpat(x9=addr: patch CBZ/B to current CP),
+\ Lkwcmp(x0=kwaddr x1=kwlen -> x0=match? vs TKA/TKL, case-folded).
+: emit-cf-helpers ( -- )
+   Lcfpush @ LBL,
+      5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,
+      12 11 3 LSLI,  12 12 10 ADD,  12 12 8 ADDI,  9 12 0 STR,
+      11 11 1 ADDI,  11 10 0 STR,  RET,
+   Lcfpop @ LBL,
+      5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 11 1 SUBI,  11 10 0 STR,
+      12 11 3 LSLI,  12 12 10 ADD,  12 12 8 ADDI,  9 12 0 LDR,  RET,
+   Lpat @ LBL,                                       \ patch imm19 (CBZ) / imm26 (B)
+      11 9 0 LDRW,  10 CP 9 SUB,  10 10 2 ASRI,
+      5 $80000000 LIT64,  13 11 5 AND,
+      NEWLBL {: pisb :}  NEWLBL {: pdone :}
+      13 pisb CBZ,                                    \ bit31==0 -> B (imm26)
+         5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,  pdone B,
+      pisb LBL,  5 $3FFFFFF LIT64,  10 10 5 AND,
+      pdone LBL,  11 11 10 ORR,  11 9 0 STRW,  RET,
+   Lkwcmp @ LBL,
+      NEWLBL {: kno :}  NEWLBL {: kyes :}  NEWLBL {: kchk :}
+      TKL 1 CMP,  C-NE kno BCOND,
+      2 0 MOVZ,  3 $20 MOVZ,
+      kchk LBL,
+         2 1 CMP,  C-GE kyes BCOND,
+         4 TKA 2 ADD,  4 4 0 LDRB,  4 4 3 ORR,        \ fold token byte to lower
+         5 0 2 ADD,    5 5 0 LDRB,                    \ keyword byte (stored lower)
+         4 5 CMP,  C-NE kno BCOND,
+         2 2 1 ADDI,  kchk B,
+      kyes LBL,  0 1 MOVZ,  RET,
+      kno  LBL,  0 0 MOVZ,  RET, ;
+
+\ keyword bytes (lower-case) at known labels; ADR reaches them PC-relative
+: emit-kwdata ( -- )
+   Lkwif @ LBL,     s" if"     BYTES,    Lkwthen @ LBL,   s" then"   BYTES,
+   Lkwelse @ LBL,   s" else"   BYTES,    Lkwbegin @ LBL,  s" begin"  BYTES,
+   Lkwuntil @ LBL,  s" until"  BYTES,    Lkwagain @ LBL,  s" again"  BYTES,
+   Lkwwhile @ LBL,  s" while"  BYTES,    Lkwrepeat @ LBL, s" repeat" BYTES, ;
+
+\ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
+: c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
+: c-popflag ( -- )  $D1002273 c-emitw  $F9400269 c-emitw ;     \ sub x19,#8 ; ldr x9,[x19]
+: c-pushcp ( -- )   9 CP 0 ADDI,  Lcfpush @ BL, ;              \ push current CP
+: c-bback {: opc mask -- :}                                    \ branch opc back to x9 target
+   10 9 CP SUB,  10 10 2 ASRI,  5 mask LIT64,  10 10 5 AND,  9 opc LIT64,  9 9 10 ORR,  Lcemit @ BL, ;
+: c-if    c-popflag  c-pushcp  $B4000009 c-emitw ;             \ pop flag; cbz fwd (patched by THEN)
+: c-then  Lcfpop @ BL,  Lpat @ BL, ;
+: c-else  Lcfpop @ BL,  14 9 0 ADDI,  c-pushcp  $14000000 c-emitw  9 14 0 ADDI,  Lpat @ BL, ;
+: c-begin c-pushcp ;
+: c-again Lcfpop @ BL,  $14000000 $3FFFFFF c-bback ;
+: c-until Lcfpop @ BL,  14 9 0 ADDI,  c-popflag
+   10 14 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
+   9 $B4000009 LIT64,  9 9 10 ORR,  Lcemit @ BL, ;
+: c-while c-popflag  c-pushcp  $B4000009 c-emitw ;
+: c-repeat Lcfpop @ BL,  14 9 0 ADDI,  Lcfpop @ BL,  $14000000 $3FFFFFF c-bback
+   9 14 0 ADDI,  Lpat @ BL, ;
+
+\ emit one compile-mode keyword case: if TKA/TKL == kw, run handler then back to lmain
+: cf-entry {: lmainlbl kwvar kwlen hxt -- :}
+   0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
+   NEWLBL {: skip :}  0 skip CBZ,
+   hxt execute  lmainlbl B,
+   skip LBL, ;
+
 \ ---- MAIN: startup (data stack + mmap + seed dict) then the outer interpreter ----
 : emit-main ( -- )
    Lanchor @ LBL,
@@ -282,6 +352,7 @@ variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncou
             13 11 0 LDRB,  13 10 0 STRB,
             10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncopy B,
          ncd LBL,
+         5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,   \ reset CFSP
          lmain B,
       lnotcolon LBL,
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,             \ NUMBER?
@@ -303,6 +374,15 @@ variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncou
          2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,               \ region -> RX + flush
          lmain B,
       lnotsemi LBL,
+      \ control-flow keywords (compile-only): emit/patch JIT branches, then loop
+      lmain Lkwif     2 ['] c-if     cf-entry
+      lmain Lkwthen   4 ['] c-then   cf-entry
+      lmain Lkwelse   4 ['] c-else   cf-entry
+      lmain Lkwbegin  5 ['] c-begin  cf-entry
+      lmain Lkwuntil  5 ['] c-until  cf-entry
+      lmain Lkwagain  5 ['] c-again  cf-entry
+      lmain Lkwwhile  5 ['] c-while  cf-entry
+      lmain Lkwrepeat 6 ['] c-repeat cf-entry
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,             \ NUMBER? -> literal
       NEWLBL {: lcnotnum :}
       12 lcnotnum CBZ,  c-lit  lmain B,
@@ -318,8 +398,12 @@ variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncou
    ICODE-RESET  cf-reset  0 #PL !  0 PNP !
    NEWLBL Lanchor !  NEWLBL Lfind !  NEWLBL Lnum !  NEWLBL Ldict !  NEWLBL Lsrc !
    NEWLBL Lcemit !  NEWLBL Ltok !  NEWLBL Lprot !  NEWLBL Lflush !  NEWLBL Lncount !
+   NEWLBL Lcfpush !  NEWLBL Lcfpop !  NEWLBL Lpat !  NEWLBL Lkwcmp !
+   NEWLBL Lkwif !  NEWLBL Lkwthen !  NEWLBL Lkwelse !  NEWLBL Lkwbegin !
+   NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
+   emit-cf-helpers  emit-kwdata
    emit-dict                                              \ after #PL is final
    Lsrc @ LBL,  r> SRCN @ BYTES, ;
 

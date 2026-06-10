@@ -60,3 +60,18 @@ s" 1 2 3 -rot . . ." NF T{ s\" 2\n1\n3\n" NF= -> true }T   \ -rot: 1 2 3 -> 3 1 
 s" 5 6 2dup + . + ." NF  T{ s\" 11\n11\n" NF= -> true }T   \ 2dup: 5 6 -> 5 6 5 6; 5+6=11 .; 5+6=11 .
 \ a checked-style word using the new set: a SQUARED that also compares
 s" : SQ DUP * ; 4 SQ 16 = ."  NF  T{ s\" -1\n" NF= -> true }T
+
+\ --- control flow (self-host 1b): IF/ELSE/THEN + BEGIN/UNTIL/WHILE/REPEAT, all
+\ compiled inside : definitions via JIT forward/backward branch patching ---
+s" : ABS DUP 0 < IF NEGATE THEN ; -5 ABS ."  NF  T{ s\" 5\n"  NF= -> true }T
+s" : ABS DUP 0 < IF NEGATE THEN ; 7 ABS ."   NF  T{ s\" 7\n"  NF= -> true }T
+s" : SGN DUP 0 < IF DROP -1 ELSE 0 > IF 1 ELSE 0 THEN THEN ; -3 SGN ."
+   NF  T{ s\" -1\n" NF= -> true }T
+s" : SGN DUP 0 < IF DROP -1 ELSE 0 > IF 1 ELSE 0 THEN THEN ; 8 SGN ."
+   NF  T{ s\" 1\n"  NF= -> true }T
+s" : SGN DUP 0 < IF DROP -1 ELSE 0 > IF 1 ELSE 0 THEN THEN ; 0 SGN ."
+   NF  T{ s\" 0\n"  NF= -> true }T
+s" : CNT 0 BEGIN 1 + DUP 5 >= UNTIL ; 0 CNT ."  NF  T{ s\" 5\n"  NF= -> true }T
+s" : SUMN 0 SWAP BEGIN DUP 0 > WHILE DUP -ROT + SWAP 1 - REPEAT DROP ; 5 SUMN ."
+   NF  T{ s\" 15\n" NF= -> true }T
+s" : F 0 BEGIN 1 + DUP 3 < WHILE REPEAT ; 0 F ."  NF  T{ s\" 3\n"  NF= -> true }T

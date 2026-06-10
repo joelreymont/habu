@@ -18,6 +18,16 @@ mistakes, or insights. Lessons only — no API reference or code snippets (→ `
   set this way — golden-tested through the standalone's own REPL (NF/NF=). Control
   flow (IF/THEN/BEGIN) is the harder remaining piece: the stencil JIT must patch
   relative branches across inlined copies.
+- **Milestone 1b (control flow) landed.** The standalone's `:` compiler now emits
+  IF/ELSE/THEN + BEGIN/UNTIL/AGAIN/WHILE/REPEAT by keeping a control-flow stack at
+  a reserved region offset (CFSTK-OFF) and patching each branch's relative offset:
+  forward branches (IF/WHILE) emit a CBZ placeholder and record its address;
+  THEN/REPEAT compute `(CP-addr)/4` and OR it into the recorded word. One `Lpat`
+  routine auto-detects CBZ (imm19, bit31 set) vs B (imm26) so it patches both.
+  Backward branches (UNTIL/AGAIN/REPEAT) emit the offset directly (target known).
+  Keyword dispatch is a tiny `Lkwcmp` (case-folded) over embedded lowercase
+  keyword bytes. Verified through the standalone REPL: ABS, SGN (nested IF/ELSE),
+  counted BEGIN/UNTIL, and BEGIN/WHILE/REPEAT sums all compute correctly.
 
 ## Register-resident DO..LOOP — caf ties clang -O3 (2026-06-10)
 
