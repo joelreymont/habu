@@ -57,7 +57,8 @@ s" R i64 -- R i64" s" IC-A"  CHART-EFF    s" R i64 -- R i64" s" IC-B" CHART-EFF
 s" R i64 -- R i64" s" IC-C"  CHART-EFF    s" R i64 -- R i64" s" IC-D" CHART-EFF
 s" R i64 -- R"     s" EMITW" CHART-EFF
 CHECKING-ON? on
-: RRR      ( R i64 i64 -- R i64 )  swap >r  r@ IC-A or  r@ IC-B 5 LSHIFT or  r> IC-C 16 LSHIFT or ;
+: RRR      ( R i64 i64 -- R i64 )  swap >r  r@ IC-A or  r@ IC-B 5 LSHIFT or  r@ IC-C 16 LSHIFT or
+   r> IC-D  dup 6 RSHIFT 22 LSHIFT  swap 63 AND 10 LSHIFT or  or ;
 : ENC-ADD  ( R i64 -- R )  $8B000000 RRR EMITW ;
 : ENC-SUB  ( R i64 -- R )  $CB000000 RRR EMITW ;
 : ENC-MUL  ( R i64 -- R )  $9B007C00 RRR EMITW ;

@@ -182,9 +182,17 @@ pre-opt == post-opt — the allocator emits near-optimal code directly); `DUP DU
   shadowed in the search order.
 - **Invariant:** no two VS entries name the same register (DUP/OVER emit a copy),
   so reusing a popped operand register as an op's result is always safe.
-- Remaining to reach full hand-asm/LLVM parity on the loop: keep loop-carried
-  values in registers across the back-edge (loop-invariant allocation), and fuse
-  the immediate shift into the next ALU op (`eor x,x,x,lsl#13` — dot B3).
+- **Shifted-operand fusion (B3, done).** With values register-resident, an
+  in-place immediate shift feeding an ALU op (`LSLI rd,rd,#k ; EOR rx,ry,rd`, rd
+  dead after) fuses to `EOR rx,ry,rd,LSL #k` — one instruction, matching LLVM.
+  Mechanism: `SHIFT,` packs (type,amount) into the ALU record's `IC-D`; the `RRR`
+  encoder ORs in bits [23:22] (type) + [15:10] (amount); `d=0` = `LSL #0` so
+  unshifted ops are unaffected. Done as an opt.fs peephole (`OPT-SHIFT-FUSE`,
+  reusing the store-forwarding liveness/boundary machinery) rather than threading
+  a shifted-register kind through the value stack — far less surface. Result:
+  xorshift chain **13→10** (full pipeline **54→10**, ~5.4×). Remaining gap to
+  hand-asm (~6): coalesce the DUP's `MOV` into the ALU operand (`x ^= x<<k`
+  in-place) and loop-invariant allocation across the back-edge — both follow-ons.
 
 ## Speed gate CLOSED — the bar is LLVM, not gforth (2026-06-10)
 

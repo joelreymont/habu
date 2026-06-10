@@ -113,6 +113,11 @@ variable #LBL
 : BYTES, ( addr u -- )     0 0 IOP-BYTES IC, ;   \ embed raw bytes (padded to 4)
 : DCQ,  ( x -- )           0 0 0 IOP-DCQ IC, ;    \ embed one 64-bit cell (8 bytes)
 : DLBL, ( lbl -- )         0 0 0 IOP-DLBL IC, ;   \ embed cell = label's byte offset
+\ Fuse a register-operand shift onto the LAST-emitted ALU op (ADD/SUB/AND/ORR/EOR):
+\ rewrites its IC-D so the encoder emits e.g. `EOR rd,rn,rm,LSL #k`. d=0 (the
+\ default) means LSL #0 = no shift, so unshifted ops are unaffected.
+0 constant SH-LSL   1 constant SH-LSR   2 constant SH-ASR
+: SHIFT, ( shtype shamt -- )  swap 6 lshift or  #IC @ 1- IC-ADDR 4 cells + ! ;
 : ICIVAU, ( rt -- )        0 0 0 IOP-ICIV IC, ;
 : DCCVAU, ( rt -- )        0 0 0 IOP-DCCV IC, ;   \ clean dcache to PoU (JIT coherency)
 : DSB-ISH, ( -- )          0 0 0 0 IOP-DSB IC, ;

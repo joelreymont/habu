@@ -176,10 +176,44 @@ variable X19-CHG
    loop  X19-CHG @ ;
 : X19-CANCEL ( -- )  begin X19-CANCEL-PASS 0= until ;
 
+\ --- shifted-operand fusion -------------------------------------------------
+\ With values register-resident, an in-place immediate shift feeding an ALU op
+\   LSLI/LSRI rd,rd,#k ;  <ALU> rx,ry,rd      (rd dead after the ALU)
+\ fuses to the ARM shifted-register form  <ALU> rx,ry,rd,LSL/LSR #k  (one instr,
+\ matching LLVM). The shift is killed; the ALU keeps rd as rm (now holding the
+\ PRE-shift value) and gets the shift in IC-D.
+: ALU-SHIFTABLE? ( op -- f )                  \ ADD/SUB/AND/ORR/EOR take a shifted rm
+   dup IOP-ADD = over IOP-SUB = or over IOP-AND = or over IOP-ORR = or swap IOP-EOR = or ;
+: SHIFT-AT ( shtype amt j -- )  >r  swap 6 lshift or  r> IC-ADDR 4 cells + ! ;
+: REG-DEAD-AFTER? {: j rd -- f :}             \ rd not read before written/boundary after j
+   j 1+ {: k :}
+   begin k #IC @ < while
+      k IC-OP {: op :}
+      op IOP-DEAD <> if
+         op cells OPCAT + @ dup CAT-HARD = swap dup CAT-SOFT = swap CAT-MEM = or or if true exit then
+         k IC-B rd =  k IC-C rd = or  op IOP-STR = k IC-A rd = and or if false exit then
+         op SF-DEFINES? k IC-A rd = and if true exit then
+      then
+   1 +to k repeat  true ;
+: OPT-SHIFT-FUSE {: i -- :}
+   i IC-OP {: op :}
+   op IOP-LSLI = op IOP-LSRI = or 0= if exit then
+   i IC-A i IC-B <> if exit then              \ in-place shift only (rd==rn)
+   i IC-A {: rd :}
+   i NEXT-LIVE {: j :}  j 0< if exit then
+   j IC-OP ALU-SHIFTABLE? 0= if exit then
+   j IC-C rd <> if exit then                  \ ALU's rm must be the shifted reg
+   j IC-A rd =  j IC-B rd = or if exit then   \ rd must be ONLY the rm
+   j rd REG-DEAD-AFTER? 0= if exit then
+   op IOP-LSRI = if SH-LSR else SH-LSL then  i IC-C  j SHIFT-AT   \ fuse shift into the ALU
+   i IC-KILL ;
+: SHIFT-FUSE ( -- )  #IC @ 0 ?do  i OPT-SHIFT-FUSE  loop ;
+
 : OPTIMIZE ( -- )
    #IC @ 0 ?do
       #OPT-RULES 0 ?do  j OPT-RULES i cells + @ execute  loop
    loop
+   SHIFT-FUSE                          \ fuse immediate shift into the next ALU op
    STORE-FWD
    #IC @ 0 ?do  i OPT-SELF-MOV  loop   \ clean MOV rd,rd from forwarding
    X19-CANCEL ;                        \ drop the orphaned stack-pointer churn

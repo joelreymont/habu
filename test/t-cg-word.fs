@@ -25,5 +25,7 @@ T{ s" 1 7 LSHIFT"     0 NATIVE-EVAL -> 128 }T  \ 1<<7 folded (exit is low byte)
 \ const shift amount + runtime value -> immediate shift (LSL/LSR #k), not register
 T{ s" 3 LSHIFT"       5 NATIVE-EVAL -> 40 }T   \ 5<<3 via lsl #3
 T{ s" 1 RSHIFT"      40 NATIVE-EVAL -> 20 }T   \ 40>>1 via lsr #1
-T{ s" DUP 2 LSHIFT +" 5 NATIVE-EVAL -> 25 }T   \ 5 + (5<<2) = 25
+T{ s" DUP 2 LSHIFT +" 5 NATIVE-EVAL -> 25 }T   \ 5 + (5<<2) = 25 — fused ADD,…,lsl#2
+T{ s" DUP 1 RSHIFT XOR" 6 NATIVE-EVAL -> 5 }T  \ 6 ^ (6>>1) = 6^3 = 5 — fused EOR,…,lsr#1
+T{ s" DUP 3 LSHIFT XOR" 1 NATIVE-EVAL -> 9 }T  \ 1 ^ (1<<3) = 1^8 = 9 — fused EOR,…,lsl#3
 T{ s" 5 + 3 *"        4 NATIVE-EVAL -> 27 }T   \ mixes runtime input with consts: (4+5)*3
