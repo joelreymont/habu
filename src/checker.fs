@@ -80,7 +80,9 @@ variable B>A   variable B>U
 \ Check a definition: seed current from declared inputs, walk the body, then the
 \ inferred output must unify with the declared output. Charts the scheme on
 \ success. Throws (E-MISMATCH/E-ARITY/E-OCCURS/E-UNKNOWN/…) on failure.
-: CHECK-DEF  ( name-a name-u sig-a sig-u body-a body-u -- )
+\ Check the def and return the unified declared effect; throws on any error.
+\ Does NOT chart — the caller decides (CHECK-DEF charts, CHECK-DRY discards).
+: CHECK-CORE  ( name-a name-u sig-a sig-u body-a body-u -- deff )
    {: na nu sa su ba bu :}
    na nu CUR-WORD!
    sa su CUR-SIG!
@@ -96,4 +98,11 @@ variable B>A   variable B>U
    RCUR @ STACK-ARITY  deff EFF>ROUT STACK-ARITY  <> if E-ARITY throw then
    DCUR @ deff EFF>DOUT UNIFY-ROW
    RCUR @ deff EFF>ROUT UNIFY-ROW
-   deff na nu CHART ;
+   deff ;
+
+: CHECK-DEF  ( name-a name-u sig-a sig-u body-a body-u -- )
+   {: na nu sa su ba bu :}
+   na nu sa su ba bu CHECK-CORE  na nu CHART ;
+
+\ Live preview: check without charting (for the TUI's as-you-type feedback).
+: CHECK-DRY  ( name-a name-u sig-a sig-u body-a body-u -- )  CHECK-CORE drop ;

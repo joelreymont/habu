@@ -124,6 +124,28 @@ per-file tests can pass while the combined `all.fs` suite fails. Rules:
   strings); `INST`=re-parse (fresh vars by name per call → polymorphism for free),
   `GENERALIZE`=render. Sidesteps copying terms out of the per-check arena.
 
+## caf REPL + TUI (Forth, dogfoods the checker, 2026-06-10)
+
+Two front-ends, both Forth (no C/Zig — the Zig `~/Work/pz` is reference only):
+- **`src/repl.fs`** (`caf-repl.fs`) — line REPL. Enter a checked def → `✓ NAME (
+  effect )` or the caf diagnostic; non-def lines `EVALUATE`. Reads stdin via
+  `stdin read-line` (NOT `refill`, which reads the `-e` eval source and hits EOF).
+- **`src/tui.fs`** (`caf-tui.fs`) — full-screen TUI with **as-you-type** feedback:
+  `RUN-TUI` raw-modes the terminal (`stty raw -echo`, restore `stty sane`),
+  single-line live editor (`caf> <buf>   <status>`, horizontal positioning only —
+  robust everywhere), and on each keystroke shows the inferred effect / diagnostic
+  via **`CHECK-DRY`** (checks WITHOUT charting — refactored `CHECK-DEF` into a
+  non-charting `CHECK-CORE`; else every keystroke pollutes the effect DB).
+
+- A new `CHECK-CODE` var in `colon.fs` lets the REPL read the last `:`-outcome
+  (-2 none / 0 ok / err code) so success shows the effect; failures self-report.
+- Define REPL/TUI infra with **`CHECKING-ON? off`** then re-enable at file end —
+  `( -- )` parses as a valid sig, so otherwise the helper words chart themselves
+  as `R -- R` and clutter `WORDS`.
+- The raw key loop needs a real tty; gate it behind `TTY?` (`test -t 0` via
+  `system`/`$?`) and fall back to a message on a pipe. Test the parser +
+  `CHECK-DRY` (no tty needed); the key loop is thin glue exercised by hand.
+
 ## Speed gate CLOSED — the bar is LLVM, not gforth (2026-06-10)
 
 gforth performance is not the competition; **LLVM (`clang -O3`) is the bar** a
