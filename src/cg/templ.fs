@@ -31,8 +31,12 @@ require asm.fs
 : p-add   T1 g-pop  T0 g-pop  T0 T0 T1 ADD,  T0 g-push ;
 : p-sub   T1 g-pop  T0 g-pop  T0 T0 T1 SUB,  T0 g-push ;
 : p-mul   T1 g-pop  T0 g-pop  T0 T0 T1 MUL,  T0 g-push ;
-: p-div   T1 g-pop  T0 g-pop  T0 T0 T1 SDIV, T0 g-push ;
-: p-mod   T1 g-pop  T0 g-pop  T2 T0 T1 SDIV,  T2 T2 T1 MUL,  T0 T0 T2 SUB,  T0 g-push ;
+\ Native SDIV by 0 silently yields 0; gforth THROWS. Trap on a zero divisor so a
+\ miscompile can't pass off wrong data as a result (exact gforth exit code isn't
+\ matched — both error, different mechanism). T1 holds the divisor here.
+: g-div0? ( -- )  NEWLBL {: lok :}  T1 lok CBNZ,  BRK,  lok LBL, ;
+: p-div   T1 g-pop  T0 g-pop  g-div0?  T0 T0 T1 SDIV, T0 g-push ;
+: p-mod   T1 g-pop  T0 g-pop  g-div0?  T2 T0 T1 SDIV,  T2 T2 T1 MUL,  T0 T0 T2 SUB,  T0 g-push ;
 : p-1+    T0 g-pop  T0 T0 1 ADDI,  T0 g-push ;
 : p-1-    T0 g-pop  T0 T0 1 SUBI,  T0 g-push ;
 : p-neg   T0 g-pop  T0 SP T0 SUB,  T0 g-push ;
@@ -66,7 +70,7 @@ require asm.fs
 : p-2/   T0 g-pop  T0 T0 1 ASRI,  T0 g-push ;
 : p-lsh  T1 g-pop  T0 g-pop  T0 T0 T1 LSLV,  T0 g-push ;
 : p-rsh  T1 g-pop  T0 g-pop  T0 T0 T1 LSRV,  T0 g-push ;
-: p-/mod T1 g-pop  T0 g-pop  T2 T0 T1 SDIV,  12 T2 T1 MUL,  12 T0 12 SUB,  12 g-push  T2 g-push ;
+: p-/mod T1 g-pop  T0 g-pop  g-div0?  T2 T0 T1 SDIV,  12 T2 T1 MUL,  12 T0 12 SUB,  12 g-push  T2 g-push ;
 
 \ control-flow stack (compile-time, holds label ids)
 variable CF-SP   create CF-STK 64 cells allot

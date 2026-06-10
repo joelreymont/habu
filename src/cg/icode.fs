@@ -24,7 +24,7 @@ IOP: IOP-LDRPO IOP: IOP-STRPR IOP: IOP-LDPPO IOP: IOP-STPPR
 IOP: IOP-SVC   IOP: IOP-NOP   IOP: IOP-ICIV  IOP: IOP-DSB   IOP: IOP-ISB
 IOP: IOP-DCCV
 IOP: IOP-LABEL IOP: IOP-DEAD  IOP: IOP-BYTES IOP: IOP-DCQ  IOP: IOP-DLBL
-IOP: IOP-LDRW  IOP: IOP-STRW
+IOP: IOP-LDRW  IOP: IOP-STRW  IOP: IOP-BRK
 IOP# @ constant #IOPS
 
 \ --- condition codes (B.cond / CSET) ---
@@ -109,6 +109,7 @@ variable #LBL
 : LDP-POST, ( rt1 rt2 rn off -- ) IOP-LDPPO IC, ; \ off: -512..504, 8-aligned
 : STP-PRE,  ( rt1 rt2 rn off -- ) IOP-STPPR IC, ;
 : SVC,  ( imm16 -- )       0 0 0 IOP-SVC IC, ;
+: BRK,  ( -- )             0 0 0 0 IOP-BRK IC, ;   \ trap (e.g. on divide-by-zero)
 : NOP,  ( -- )             0 0 0 0 IOP-NOP IC, ;
 : BYTES, ( addr u -- )     0 0 IOP-BYTES IC, ;   \ embed raw bytes (padded to 4)
 : DCQ,  ( x -- )           0 0 0 IOP-DCQ IC, ;    \ embed one 64-bit cell (8 bytes)

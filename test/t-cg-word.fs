@@ -48,3 +48,11 @@ T{ s" DUP @"   COMPILES? -> true }T
 T{ s" SWAP !"  COMPILES? -> true }T
 T{ s" DUP c@"  COMPILES? -> true }T
 T{ s" SWAP +!" COMPILES? -> true }T
+
+\ --- division: correct result, and ÷0 TRAPS (killed by signal) not silent 0 ---
+T{ s" 3 /"   12 NATIVE-EVAL -> 4 }T            \ 12/3
+T{ s" 5 MOD" 17 NATIVE-EVAL -> 2 }T            \ 17 mod 5
+: DIVZ-WSTAT ( -- wstat )                      \ build `0 /`, run, return raw wait-status
+   s" 0 /" 10 COMPILE-WORD  s" /tmp/caf-divz" 2dup EMIT-EXE
+   cmd( [char] ' c+ cs+ [char] ' c+ )run ;
+T{ DIVZ-WSTAT $7F and 0<> -> true }T           \ low 7 bits set = killed by a signal (trapped)
