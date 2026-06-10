@@ -3,6 +3,22 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Self-host is the real frontier — decomposed, not faked (2026-06-10)
+
+- The standalone `src/cg/forth.fs` is a 300-line stencil-JIT native Forth with
+  only `+ - * dup drop swap .` + int literals. "Standalone IS caf" (run the full
+  checker + ICode codegen natively, stage2==stage3, drop gforth) is a multi-week
+  bootstrap, not one increment. Decomposed into 10 ordered sub-dots (core words →
+  memory → strings → locals/catch → wordlists → port arena/types → port checker →
+  port codegen → in-process code-allocator → stage2==stage3). Don't fake a fixpoint.
+- **Adding standalone primitives is cheap because they ARE caf ICode.** Each prim
+  is a niladic word emitting icode.fs mnemonics on the x19 data stack (`b+` =
+  `B g-pop A g-pop A A B ADD, A g-push`); FPRIM registers start/RET/end labels for
+  stencil inlining. Milestone 1 added the comparison/logic/shift/`/`/`mod`/shuffle
+  set this way — golden-tested through the standalone's own REPL (NF/NF=). Control
+  flow (IF/THEN/BEGIN) is the harder remaining piece: the stencil JIT must patch
+  relative branches across inlined copies.
+
 ## Register-resident DO..LOOP — caf ties clang -O3 (2026-06-10)
 
 - **The spill was NEVER the loop bottleneck — the missing back-edge register

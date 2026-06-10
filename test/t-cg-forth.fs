@@ -31,3 +31,32 @@ s" : OCT QUAD DUP + ; : QUAD DUP * ; 3 QUAD ."  NF  T{ s\" 9\n" NF= -> true }T
 s\" : DOUBLE DUP + ;\n: QUAD DOUBLE DOUBLE ;\n7 QUAD .\n2 3 + .\n"
    NF-REPL  T{ s\" 28\n5\n" NF= -> true }T
 s" : SQ DUP * ; 9 SQ ."  NF-REPL  T{ s\" 81\n" NF= -> true }T
+
+\ --- expanded core word set (self-host milestone 1): comparisons, logic,
+\ shifts, /, mod, and the deeper stack shuffles, all as native stencils ---
+s" 3 3 = ."          NF  T{ s\" -1\n" NF= -> true }T
+s" 3 4 = ."          NF  T{ s\" 0\n"  NF= -> true }T
+s" 3 4 <> ."         NF  T{ s\" -1\n" NF= -> true }T
+s" 2 5 < ."          NF  T{ s\" -1\n" NF= -> true }T
+s" 5 2 > ."          NF  T{ s\" -1\n" NF= -> true }T
+s" 2 2 <= ."         NF  T{ s\" -1\n" NF= -> true }T
+s" 3 2 >= ."         NF  T{ s\" -1\n" NF= -> true }T
+s" 0 0= ."           NF  T{ s\" -1\n" NF= -> true }T
+s" 5 0= ."           NF  T{ s\" 0\n"  NF= -> true }T
+s" 12 10 and ."      NF  T{ s\" 8\n"  NF= -> true }T
+s" 12 3 or ."        NF  T{ s\" 15\n" NF= -> true }T
+s" 12 10 xor ."      NF  T{ s\" 6\n"  NF= -> true }T
+s" 0 invert ."       NF  T{ s\" -1\n" NF= -> true }T
+s" 5 negate ."       NF  T{ s\" -5\n" NF= -> true }T
+s" 1 4 lshift ."     NF  T{ s\" 16\n" NF= -> true }T
+s" 64 2 rshift ."    NF  T{ s\" 16\n" NF= -> true }T
+s" 20 3 / ."         NF  T{ s\" 6\n"  NF= -> true }T
+s" 20 3 mod ."       NF  T{ s\" 2\n"  NF= -> true }T
+s" 1 2 nip ."        NF  T{ s\" 2\n"  NF= -> true }T
+s" 7 9 over - ."     NF  T{ s\" 2\n"  NF= -> true }T   \ 7 9 over=7; 9-7=2 (top), then . prints top
+s" 1 2 tuck - + ."   NF  T{ s\" 1\n"  NF= -> true }T   \ tuck: 1 2 -> 2 1 2; 1-2=-1; 2+-1=1
+s" 1 2 3 rot . . ." NF  T{ s\" 1\n3\n2\n" NF= -> true }T   \ rot: 1 2 3 -> 2 3 1; prints 1,3,2
+s" 1 2 3 -rot . . ." NF T{ s\" 2\n1\n3\n" NF= -> true }T   \ -rot: 1 2 3 -> 3 1 2; prints 2,1,3
+s" 5 6 2dup + . + ." NF  T{ s\" 11\n11\n" NF= -> true }T   \ 2dup: 5 6 -> 5 6 5 6; 5+6=11 .; 5+6=11 .
+\ a checked-style word using the new set: a SQUARED that also compares
+s" : SQ DUP * ; 4 SQ 16 = ."  NF  T{ s\" -1\n" NF= -> true }T

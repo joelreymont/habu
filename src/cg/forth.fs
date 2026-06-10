@@ -66,10 +66,45 @@ variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncou
 : bswap A g-pop  B g-pop  A g-push  B g-push ;
 : bdot  A g-pop  g-print9 ;          \ pop x9, print signed decimal + newline
 
+\ comparisons -> Forth flag 0/-1 (CSET 0/1 then negate via the zero register SP)
+: (cmp) {: cond -- :}  B g-pop  A g-pop  A B CMP,  A cond CSET,  A SP A SUB,  A g-push ;
+: b=  C-EQ (cmp) ;   : b<> C-NE (cmp) ;   : b<  C-LT (cmp) ;   : b>  C-GT (cmp) ;
+: b<= C-LE (cmp) ;   : b>= C-GE (cmp) ;
+: b0= A g-pop  A 0 CMPI,  A C-EQ CSET,  A SP A SUB,  A g-push ;
+\ bitwise / logic
+: band B g-pop A g-pop  A A B AND, A g-push ;
+: bor  B g-pop A g-pop  A A B ORR, A g-push ;
+: bxor B g-pop A g-pop  A A B EOR, A g-push ;
+: binv A g-pop  B 0 MOVN,  A A B EOR,  A g-push ;     \ A ^ -1
+: bneg A g-pop  A SP A SUB,  A g-push ;               \ 0 - A
+\ shifts (variable count); /, mod via SDIV/MUL
+: blsh B g-pop A g-pop  A A B LSLV, A g-push ;
+: brsh B g-pop A g-pop  A A B LSRV, A g-push ;
+: bdiv B g-pop A g-pop  A A B SDIV, A g-push ;
+: bmod B g-pop A g-pop  C A B SDIV,  C C B MUL,  A A C SUB,  A g-push ;
+\ stack shuffles (memory on x19)
+: bnip  A g-pop  XDS XDS 8 SUBI,  A g-push ;
+: bover B g-pop A g-pop  A g-push B g-push A g-push ;
+: btuck B g-pop A g-pop  B g-push A g-push B g-push ;
+: brot  C g-pop B g-pop A g-pop  B g-push C g-push A g-push ;
+: bmrot C g-pop B g-pop A g-pop  C g-push A g-push B g-push ;
+: b2dup B g-pop A g-pop  A g-push B g-push A g-push B g-push ;
+: b2drop XDS XDS 16 SUBI, ;
+
 : emit-prims ( -- )
    s" +"    ['] b+    FPRIM   s" -"    ['] b-    FPRIM   s" *"    ['] b*    FPRIM
    s" dup"  ['] bdup  FPRIM   s" drop" ['] bdrop FPRIM   s" swap" ['] bswap FPRIM
-   s" ."    ['] bdot  FPRIM ;
+   s" ."    ['] bdot  FPRIM
+   s" ="    ['] b=    FPRIM   s" <>"   ['] b<>   FPRIM   s" <"    ['] b<    FPRIM
+   s" >"    ['] b>    FPRIM   s" <="   ['] b<=   FPRIM   s" >="   ['] b>=   FPRIM
+   s" 0="   ['] b0=   FPRIM
+   s" and"  ['] band  FPRIM   s" or"   ['] bor   FPRIM   s" xor"  ['] bxor  FPRIM
+   s" invert" ['] binv FPRIM  s" negate" ['] bneg FPRIM
+   s" lshift" ['] blsh FPRIM  s" rshift" ['] brsh FPRIM
+   s" /"    ['] bdiv  FPRIM   s" mod"  ['] bmod  FPRIM
+   s" nip"  ['] bnip  FPRIM   s" over" ['] bover FPRIM   s" tuck" ['] btuck FPRIM
+   s" rot"  ['] brot  FPRIM   s" -rot" ['] bmrot FPRIM
+   s" 2dup" ['] b2dup FPRIM   s" 2drop" ['] b2drop FPRIM ;
 
 \ ---- CEMIT ( x9=word -- ) : str w9,[x28] ; CP += 4 ----
 : emit-cemit ( -- )
