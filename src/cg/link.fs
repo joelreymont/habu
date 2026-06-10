@@ -11,15 +11,15 @@ require rt.fs
 
 \ --- CODE-TABLE: name -> [ label | len | body-bytes ] ---
 wordlist constant CODE-TABLE
-: CG-RECORD ( na nu ba bu -- )
+: CG-RECORD ( na nu ba bu arity -- )       \ entry: [ label | arity | len | bytes ]
+   {: ar :}
    2swap nextname
    get-current >r  CODE-TABLE set-current  create  r> set-current
-   -1 ,                                    \ +0: label (assigned per build)
-   dup ,                                   \ +1: body length
-   here >r  dup allot  r> swap move ;      \ +2: body bytes
+   -1 ,  ar ,  dup ,  here >r  dup allot  r> swap move ;
 : WORD-PFA  ( a u -- pfa | 0 )  CODE-TABLE search-wordlist if execute else 0 then ;
 : PFA>LABEL ( pfa -- addr )  ;
-: PFA>BODY  ( pfa -- ba bu )  dup 2 cells + swap cell+ @ ;
+: PFA>ARITY ( pfa -- n )  cell+ @ ;
+: PFA>BODY  ( pfa -- ba bu )  dup 3 cells + swap 2 cells + @ ;
 
 \ --- token iteration (no emission) ---
 : FOR-TOKENS {: a u xt | end cur ts -- :}
@@ -93,15 +93,15 @@ is EMIT-CALL
 
 \ --- standalone CLI: read argv[1], call the word, print the result, exit 0 ---
 22 constant ARGV
-: BUILD-CLI {: root -- :}
+: BUILD-CLI {: root | ar -- :}
+   root PFA>ARITY to ar
    ICODE-RESET  cf-reset  USES-DOT off
    root COLLECT
    #DEPS @ 0 ?do  NEWLBL  DEPS i cells + @ PFA>LABEL !  loop
    NEWLBL DOT-LBL !   NEWLBL ATOI-LBL !
    ARGV 1 0 ADDI,                         \ x22 = argv  (entry: x0=argc, x1=argv)
    SP SP 256 SUBI,  XDS SP 0 ADDI,        \ data stack
-   9 ARGV 8 LDR,                          \ x9 = argv[1]
-   ATOI-LBL @ BL,                         \ push atoi(argv[1])
+   ar 0 ?do  9 ARGV i 1+ 8 *  LDR,  ATOI-LBL @ BL,  loop  \ push atoi(argv[1..ar])
    root PFA>LABEL @ BL,                   \ call the word
    DOT-LBL @ BL,                          \ print the result
    0 0 MOVZ,  16 1 MOVZ,  $80 SVC,        \ exit(0)

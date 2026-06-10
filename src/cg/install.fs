@@ -11,9 +11,13 @@ variable CODEGEN-ON?   CODEGEN-ON? off
 
 : TRY-WALK ( ba bu -- )  ICODE-RESET cf-reset  WALK-BODY ;
 
+\ input arity from the declared effect (EF@); default 1 if it won't parse.
+: TRY-ARITY ( -- n )  ARENA-RESET  EF@ PARSE-SIG EFF>DIN STACK-ARITY ;
+: BODY-ARITY ( -- n )  ['] TRY-ARITY catch if 1 else ( n ) then ;
+
 : DO-CODEGEN ( -- )
    CODEGEN-ON? @ 0= if exit then
    CAP$  ['] TRY-WALK catch if  2drop exit then   \ uncompilable → skip
-   NM@ CAP$ CG-RECORD ;
+   NM@ CAP$ BODY-ARITY CG-RECORD ;
 
 ' DO-CODEGEN is CODEGEN-HOOK
