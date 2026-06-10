@@ -90,3 +90,27 @@ is EMIT-CALL
    parse-name WORD-PFA dup 0= if E-NO-ENC throw then
    swap BUILD-PROGRAM
    s" /tmp/caf-prog" RUN-EXE ;
+
+\ --- standalone CLI: read argv[1], call the word, print the result, exit 0 ---
+22 constant ARGV
+: BUILD-CLI {: root -- :}
+   ICODE-RESET  cf-reset  USES-DOT off
+   root COLLECT
+   #DEPS @ 0 ?do  NEWLBL  DEPS i cells + @ PFA>LABEL !  loop
+   NEWLBL DOT-LBL !   NEWLBL ATOI-LBL !
+   ARGV 1 0 ADDI,                         \ x22 = argv  (entry: x0=argc, x1=argv)
+   SP SP 256 SUBI,  XDS SP 0 ADDI,        \ data stack
+   9 ARGV 8 LDR,                          \ x9 = argv[1]
+   ATOI-LBL @ BL,                         \ push atoi(argv[1])
+   root PFA>LABEL @ BL,                   \ call the word
+   DOT-LBL @ BL,                          \ print the result
+   0 0 MOVZ,  16 1 MOVZ,  $80 SVC,        \ exit(0)
+   #DEPS @ 0 ?do  DEPS i cells + @ EMIT-WORD  loop
+   EMIT-DOT  EMIT-ATOI ;
+
+\ Emit a standalone CLI executable `outfile` for a recorded word `name`.
+\ Usage:  s" /tmp/sq" CAF-EXE SQUARE   then   ./sq 7
+: CAF-EXE ( outfile-a outfile-u "name" -- )
+   parse-name WORD-PFA dup 0= if E-NO-ENC throw then
+   BUILD-CLI
+   EMIT-EXE ;
