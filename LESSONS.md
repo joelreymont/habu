@@ -187,3 +187,36 @@ Mach-O / exec findings:
 combinators, locals); then Part F — a native Forth runtime (interpreter +
 dictionary + `evaluate`) so the artifact self-compiles without gforth (the
 stage2≡stage3 fixpoint). Part F is the genuine long pole.
+
+## caf is a working native AOT compiler (2026-06-10)
+
+caf (hosted on gforth) compiles checked Forth to **standalone ARM64 macOS CLI
+executables** — no gforth at runtime, no C, no LLVM. `src/cg/`:
+`icode` (IR+mnemonics) → `opt` (peephole) → `asm` (encoders) → `templ` (prim/
+control generators) → `walk` (tokenize body) → `link` (subroutine ABI, deps,
+multi-word + MAIN) → `rt` (`.`/atoi runtimes) → `macho`/`exec` (emit+sign+run).
+Wired to the checker via `CODEGEN-HOOK` (`forward.fs`/`colon.fs:80`), gated by
+`CODEGEN-ON?`. Front door: `s" /tmp/sq" CAF-EXE SQUARE` → `./sq 12` prints 144.
+
+Supported subset (tested, `test/t-cg-*.fs`): DUP DROP SWAP OVER NIP, + - * / MOD
+1+ 1- NEGATE, AND OR XOR, < > = <= >= <> 0= 0< 0>, IF/ELSE/THEN,
+BEGIN/UNTIL/AGAIN/WHILE/REPEAT, ?DO/DO/LOOP/I, EXIT, RECURSE, word→word calls,
+`.` (signed-decimal print). Verified standalone: `rfact 7`=5040, `sumto 100`=5050.
+
+Gotchas hit:
+- **Non-leaf detection must count every BL-emitting token** (`.`, RECURSE, a
+  callee), else x30 isn't saved and the word's `RET` jumps to itself → infinite
+  loop. (Disasm caught it.)
+- **`mov xN, sp` is `add xN, sp, #0`** — reg 31 is SP only as a ldr/str/add base;
+  it's XZR for mov/logical.
+- **Load cg under `CHECKING-ON? off`** — its `( idx -- u32 )` comments parse as
+  caf sigs and locals confuse the override; cg is infra, not checked caf.
+- **`EMIT-PRIM` must throw silently** (no diagnostic print) — the codegen hook
+  validates by catching it, so printing leaks during normal skips.
+- **Subroutine ABI:** Xds (x19) is a global threaded through calls (push/pop
+  mutate it, never restored); non-leaf words save/restore x30; args/results live
+  on the Xds data stack; CLI entry gets x0=argc, x1=argv (save argv in x22).
+
+**Still gforth-hosted:** the COMPILER runs on gforth. Fully standalone (compiler
+self-hosts, gforth dropped) needs Part F — a native Forth runtime (interpreter +
+dictionary + evaluate). That remains the long pole.

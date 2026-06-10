@@ -11,6 +11,16 @@ fixpoint** (stage1 emits stage2, and stage2 ≡ stage3), with **gforth dropped**
 gforth is the **bootstrap host and the differential oracle only**. Self-hosting
 requires building a small Forth runtime (Part F) — accepted as the long pole.
 
+> **STATUS (2026-06-10): Parts A–E substantially DONE and tested.** caf (on
+> gforth) is a working AOT compiler: checked Forth → **standalone ARM64 macOS CLI
+> executables**, no C, no LLVM. ICode IR + peephole + encoders + Mach-O emit +
+> exec all work (`src/cg/`, `docs/codegen.md`). Wired to the checker
+> (`CODEGEN-HOOK`); front door `CAF-EXE`. Subset: arith/stack/compare/logical/
+> div-mod, IF/loops/`?DO`, calls, RECURSE, `.` output, argv input
+> (`./rfact 7`→5040 standalone). **Remaining: Part F** — a native Forth runtime
+> so the *compiler itself* runs without gforth (the fixpoint). That is the long
+> pole and is not yet started.
+
 ## Foundational principle: everything in Forth, no C
 
 **No authored C. No compiled C shim. No `libcc`-generated wrapper.** Proven on
