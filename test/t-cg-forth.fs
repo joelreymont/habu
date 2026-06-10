@@ -93,3 +93,17 @@ s" variable v  5 v !  v @ 1 + v !  v @ ."  NF  T{ s\" 6\n" NF= -> true }T
 s\" : HI S\" hello\" TYPE ; HI"             NF  T{ s\" hello" NF= -> true }T
 s\" : G S\" abc\" TYPE S\" de\" TYPE ; G"   NF  T{ s\" abcde" NF= -> true }T
 s\" : LEN S\" hello\" NIP . ; LEN"          NF  T{ s\" 5\n"   NF= -> true }T
+
+\ --- execution tokens + catch/throw (self-host 4 part): ' ['] EXECUTE, and
+\ catch/throw (machine-stack handler frames; resume via PC-relative ADR) ---
+s" : SQ DUP * ; : D ['] SQ EXECUTE ; 5 D ."           NF  T{ s\" 25\n" NF= -> true }T
+s" : SQ DUP * ; 6 ' SQ EXECUTE ."                     NF  T{ s\" 36\n" NF= -> true }T
+s" : BAD 99 throw ; : T ['] BAD catch . ; T"          NF  T{ s\" 99\n" NF= -> true }T
+s" : GOOD ; : T ['] GOOD catch . ; T"                 NF  T{ s\" 0\n"  NF= -> true }T
+s" : BAD 7 throw ; : T ['] BAD catch 0= IF 111 ELSE 222 THEN . ; T"
+   NF  T{ s\" 222\n" NF= -> true }T
+\ data stack is restored to the catch point on throw (the 1 2 are discarded)
+s" : F 1 2 3 throw ; : T ['] F catch . ; T"           NF  T{ s\" 3\n"  NF= -> true }T
+\ nested: inner catches, outer sees normal completion (exc 0)
+s" : BAD 42 throw ; : INNER ['] BAD catch ; : T ['] INNER catch . ; T"
+   NF  T{ s\" 0\n"  NF= -> true }T

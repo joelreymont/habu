@@ -3,6 +3,24 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Self-host milestone 4 — execution tokens + catch/throw (2026-06-10)
+
+- Standalone now has `'`/`[']`/`EXECUTE` and `catch`/`throw`. `[']` bakes the
+  found word's code address as a literal push (via the existing `c-lit` emitter,
+  x11=addr); `EXECUTE` saves x30 around `BLR` (the enclosing word still needs its
+  link). `catch`/`throw` chain 48-byte handler frames through a data-region cell
+  `[x20+8]` (HND): the frame saves prev-HND, data-sp(x19), machine-sp, link, and a
+  **resume address from an ADR inside the catch stencil** — PC-relative, so it
+  survives the memcpy that inlines the stencil into a word; `throw` restores all
+  four and `br`s to it. Verified: throw returns the code, no-throw returns 0, the
+  data stack is restored to the catch point, nesting + sequencing work.
+- **`Lkwcmp` must fold only A–Z**, not `|0x20` unconditionally, or symbol
+  keywords (`'`, `[']`, `s"`) never match (`'['|0x20` = `'{'`). Keywords are
+  stored literally; only uppercase-letter source bytes are lowered.
+- **No forward references** in the single-pass standalone: `['] FOO` before FOO is
+  defined silently emits nothing (FIND fails, the guard skips `c-lit`), leaving a
+  garbage xt → `catch`/`EXECUTE` jumps to it and faults. Define before use.
+
 ## Crash diagnostics — in-binary register dump (2026-06-10)
 
 - caf-built binaries (NATIVE-EVAL exes + the standalone) install an in-binary

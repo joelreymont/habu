@@ -33,6 +33,8 @@ $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 \ [x20] holds DP (next-free pointer); usable space is [x20+8 .. x20+DATA-SIZE).
 20 constant DATA
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
+create TICK-KW   39 c,          \ '  (0x27)
+create BTICK-KW  91 c, 39 c, 93 c,   \ ['] = [ ' ]  (0x5b 0x27 0x5d)
 variable STDIN?   STDIN? off   \ source mode: baked Lsrc (off) vs read from stdin (on)
 
 \ runtime instruction-word constants the JIT compiler stamps out (verified encodings)
@@ -66,7 +68,7 @@ variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncou
 variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp
 variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
-variable Lkwcreate variable Lkwvar variable Lkwsq
+variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
 
 9 constant A   10 constant B   11 constant C
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
@@ -114,6 +116,36 @@ variable Lkwcreate variable Lkwvar variable Lkwsq
 : bcomma  A g-pop  7 DATA 0 LDR,  A 7 0 STR,  7 7 8 ADDI,  7 DATA 0 STR, ;
 : bccomma A g-pop  7 DATA 0 LDR,  A 7 0 STRB, 7 7 1 ADDI,  7 DATA 0 STR, ;
 : btype   2 g-pop  1 g-pop  0 1 MOVZ,  16 4 MOVZ,  $80 SVC, ;   \ ( addr len -- ) write(1,..)
+: bexec   A g-pop  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
+\ catch ( xt -- exc ) / throw ( exc -- ). Handler frames chain through [x20+8]
+\ (=HND). A frame (48 B on the machine stack) saves: prev-HND, data-sp(x19),
+\ machine-sp, resume-pc (an ADR within this stencil — PC-relative, survives the
+\ memcpy that inlines the stencil), and the link register.
+: bcatch
+   A g-pop                               \ xt -> x9
+   SP SP 48 SUBI,
+   30 SP 32 STR,                         \ save link
+   11 DATA 8 LDR,  11 SP 0 STR,          \ prev HND
+   19 SP 8 STR,                          \ data sp
+   13 SP 48 ADDI,  13 SP 16 STR,         \ machine sp to restore (= frame+48)
+   NEWLBL {: lres :}  NEWLBL {: lpush :}
+   12 lres ADR,  12 SP 24 STR,           \ resume pc
+   14 SP 0 ADDI,  14 DATA 8 STR,         \ HND = this frame
+   9 BLR,                                \ run xt (may throw)
+   11 SP 0 LDR,  11 DATA 8 STR,          \ normal: HND = prev
+   30 SP 32 LDR,  SP SP 48 ADDI,         \ restore link, pop frame
+   9 0 MOVZ,  lpush B,                   \ exc = 0
+   lres LBL,                             \ throw lands here (x9=exc, sp/HND/lr restored)
+   lpush LBL,  9 g-push ;                \ push exc (0 normal / exc on throw)
+: bthrow
+   A g-pop                               \ exc -> x9
+   11 DATA 8 LDR,                        \ HND
+   NEWLBL {: lnoh :}  11 lnoh CBZ,
+   19 11 8 LDR,                          \ restore data sp
+   10 11 0 LDR,  10 DATA 8 STR,          \ HND = prev
+   30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,   \ link, resume pc, machine sp
+   SP 13 0 ADDI,  12 BR,                 \ restore sp; jump to catch's resume
+   lnoh LBL,  0 9 0 ADDI,  16 1 MOVZ,  $80 SVC, ;   \ no handler -> exit(exc)
 
 : emit-prims ( -- )
    s" +"    ['] b+    FPRIM   s" -"    ['] b-    FPRIM   s" *"    ['] b*    FPRIM
@@ -134,7 +166,8 @@ variable Lkwcreate variable Lkwvar variable Lkwsq
    s" cells" ['] bcells FPRIM
    s" here" ['] bhere  FPRIM   s" allot" ['] ballot FPRIM
    s" ,"    ['] bcomma FPRIM   s" c,"   ['] bccomma FPRIM
-   s" type" ['] btype  FPRIM ;
+   s" type" ['] btype  FPRIM   s" execute" ['] bexec FPRIM
+   s" catch" ['] bcatch FPRIM   s" throw" ['] bthrow FPRIM ;
 
 \ ---- CEMIT ( x9=word -- ) : str w9,[x28] ; CP += 4 ----
 : emit-cemit ( -- )
@@ -294,8 +327,11 @@ variable Lkwcreate variable Lkwvar variable Lkwsq
       2 0 MOVZ,  3 $20 MOVZ,
       kchk LBL,
          2 1 CMP,  C-GE kyes BCOND,
-         4 TKA 2 ADD,  4 4 0 LDRB,  4 4 3 ORR,        \ fold token byte to lower
-         5 0 2 ADD,    5 5 0 LDRB,                    \ keyword byte (stored lower)
+         4 TKA 2 ADD,  4 4 0 LDRB,                    \ token byte
+         NEWLBL {: knf :}                             \ fold ONLY A-Z (symbols stay literal)
+         4 $41 CMPI,  C-LT knf BCOND,  4 $5A CMPI,  C-GT knf BCOND,  4 4 3 ORR,
+         knf LBL,
+         5 0 2 ADD,    5 5 0 LDRB,                    \ keyword byte (stored lower-case / literal)
          4 5 CMP,  C-NE kno BCOND,
          2 2 1 ADDI,  kchk B,
       kyes LBL,  0 1 MOVZ,  RET,
@@ -308,7 +344,8 @@ variable Lkwcreate variable Lkwvar variable Lkwsq
    Lkwuntil @ LBL,  s" until"  BYTES,    Lkwagain @ LBL,  s" again"  BYTES,
    Lkwwhile @ LBL,  s" while"  BYTES,    Lkwrepeat @ LBL, s" repeat" BYTES,
    Lkwcreate @ LBL, s" create" BYTES,    Lkwvar @ LBL,    s" variable" BYTES,
-   Lkwsq @ LBL,     SQ-KW 2 BYTES, ;                       \ the 2 bytes  s "
+   Lkwsq @ LBL,     SQ-KW 2 BYTES,                         \ the 2 bytes  s "
+   Lkwtick @ LBL,   TICK-KW 1 BYTES,    Lkwbtick @ LBL,  BTICK-KW 3 BYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
@@ -350,6 +387,15 @@ variable Lkwcreate variable Lkwvar variable Lkwsq
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL, ;               \ region -> RX + flush
 : c-variable ( -- )  c-create
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;          \ reserve 1 cell
+
+\ ' NAME (interpret): find NAME, push its code address. ['] NAME (compile): bake
+\ the address as a literal push into the word being compiled (via c-lit, x11=addr).
+: c-tick ( -- )
+   Ltok @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
+   NEWLBL {: tk :}  13 tk CBZ,  11 g-push  tk LBL, ;
+: c-btick ( -- )
+   Ltok @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
+   NEWLBL {: bk :}  13 bk CBZ,  c-lit  bk LBL, ;
 
 \ S" string" (compile mode): emit  B over the bytes ; <bytes> ; push abs-addr ;
 \ push len. Bytes live in the RX code image; the absolute address is known at
@@ -404,7 +450,8 @@ variable Lkwcreate variable Lkwvar variable Lkwsq
    \ separate always-RW data region (x20 is free after the seed copy); [x20]=DP=x20+8
    0 0 MOVZ,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
    16 197 MOVZ,  $80 SVC,  DATA 0 0 ADDI,
-   7 DATA 8 ADDI,  7 DATA 0 STR,
+   7 DATA 16 ADDI,  7 DATA 0 STR,                     \ DP = base+16 ([base]=DP, [base+8]=HND)
+   9 0 MOVZ,  9 DATA 8 STR,                           \ HND (catch handler chain) = 0
    g-install-crash                                    \ self-diagnosing crash (register dump)
    emit-source                                        \ INP/INE <- baked Lsrc or stdin
    PEND 0 MOVZ,                                       \ interpret mode
@@ -430,9 +477,10 @@ variable Lkwcreate variable Lkwvar variable Lkwsq
          5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,   \ reset CFSP
          lmain B,
       lnotcolon LBL,
-      \ interpret-mode defining words
+      \ interpret-mode defining words + tick
       lmain Lkwcreate 6 ['] c-create   cf-entry
       lmain Lkwvar    8 ['] c-variable cf-entry
+      lmain Lkwtick   1 ['] c-tick     cf-entry
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,             \ NUMBER?
       NEWLBL {: lnotnum :}
       12 lnotnum CBZ,  11 g-push  lmain B,
@@ -462,6 +510,7 @@ variable Lkwcreate variable Lkwvar variable Lkwsq
       lmain Lkwwhile  5 ['] c-while  cf-entry
       lmain Lkwrepeat 6 ['] c-repeat cf-entry
       lmain Lkwsq     2 ['] c-sdq    cf-entry            \ S" string"
+      lmain Lkwbtick  3 ['] c-btick  cf-entry            \ ['] NAME
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,             \ NUMBER? -> literal
       NEWLBL {: lcnotnum :}
       12 lcnotnum CBZ,  c-lit  lmain B,
@@ -481,6 +530,7 @@ variable Lkwcreate variable Lkwvar variable Lkwsq
    NEWLBL Lkwif !  NEWLBL Lkwthen !  NEWLBL Lkwelse !  NEWLBL Lkwbegin !
    NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !
    NEWLBL Lkwcreate !  NEWLBL Lkwvar !  NEWLBL Lkwsq !
+   NEWLBL Lkwtick !  NEWLBL Lkwbtick !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
