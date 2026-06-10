@@ -87,3 +87,9 @@ s" variable a variable b  1 a !  2 b !  a @ b @ + ."  NF  T{ s\" 3\n" NF= -> tru
 s" create arr 3 cells allot  10 arr !  20 arr 8 + !  arr @ arr 8 + @ + ."
    NF  T{ s\" 30\n" NF= -> true }T
 s" variable v  5 v !  v @ 1 + v !  v @ ."  NF  T{ s\" 6\n" NF= -> true }T
+
+\ --- string literals + TYPE (self-host 3): S" embeds bytes in the code image,
+\ jumps over them, pushes (abs-addr, len); TYPE is the write(2) syscall ---
+s\" : HI S\" hello\" TYPE ; HI"             NF  T{ s\" hello" NF= -> true }T
+s\" : G S\" abc\" TYPE S\" de\" TYPE ; G"   NF  T{ s\" abcde" NF= -> true }T
+s\" : LEN S\" hello\" NIP . ; LEN"          NF  T{ s\" 5\n"   NF= -> true }T

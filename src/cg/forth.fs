@@ -31,6 +31,7 @@ $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 \ x20 (RBASE) is dead after startup, so it doubles as DATA: the data-space base.
 \ [x20] holds DP (next-free pointer); usable space is [x20+8 .. x20+DATA-SIZE).
 20 constant DATA
+create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 variable STDIN?   STDIN? off   \ source mode: baked Lsrc (off) vs read from stdin (on)
 
 \ runtime instruction-word constants the JIT compiler stamps out (verified encodings)
@@ -64,7 +65,7 @@ variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncou
 variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp
 variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
-variable Lkwcreate variable Lkwvar
+variable Lkwcreate variable Lkwvar variable Lkwsq
 
 9 constant A   10 constant B   11 constant C
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
@@ -111,6 +112,7 @@ variable Lkwcreate variable Lkwvar
 : ballot  A g-pop  7 DATA 0 LDR,  7 7 A ADD,  7 DATA 0 STR, ;
 : bcomma  A g-pop  7 DATA 0 LDR,  A 7 0 STR,  7 7 8 ADDI,  7 DATA 0 STR, ;
 : bccomma A g-pop  7 DATA 0 LDR,  A 7 0 STRB, 7 7 1 ADDI,  7 DATA 0 STR, ;
+: btype   2 g-pop  1 g-pop  0 1 MOVZ,  16 4 MOVZ,  $80 SVC, ;   \ ( addr len -- ) write(1,..)
 
 : emit-prims ( -- )
    s" +"    ['] b+    FPRIM   s" -"    ['] b-    FPRIM   s" *"    ['] b*    FPRIM
@@ -130,7 +132,8 @@ variable Lkwcreate variable Lkwvar
    s" c@"   ['] bcfetch FPRIM  s" c!"   ['] bcstore FPRIM
    s" cells" ['] bcells FPRIM
    s" here" ['] bhere  FPRIM   s" allot" ['] ballot FPRIM
-   s" ,"    ['] bcomma FPRIM   s" c,"   ['] bccomma FPRIM ;
+   s" ,"    ['] bcomma FPRIM   s" c,"   ['] bccomma FPRIM
+   s" type" ['] btype  FPRIM ;
 
 \ ---- CEMIT ( x9=word -- ) : str w9,[x28] ; CP += 4 ----
 : emit-cemit ( -- )
@@ -303,7 +306,8 @@ variable Lkwcreate variable Lkwvar
    Lkwelse @ LBL,   s" else"   BYTES,    Lkwbegin @ LBL,  s" begin"  BYTES,
    Lkwuntil @ LBL,  s" until"  BYTES,    Lkwagain @ LBL,  s" again"  BYTES,
    Lkwwhile @ LBL,  s" while"  BYTES,    Lkwrepeat @ LBL, s" repeat" BYTES,
-   Lkwcreate @ LBL, s" create" BYTES,    Lkwvar @ LBL,    s" variable" BYTES, ;
+   Lkwcreate @ LBL, s" create" BYTES,    Lkwvar @ LBL,    s" variable" BYTES,
+   Lkwsq @ LBL,     SQ-KW 2 BYTES, ;                       \ the 2 bytes  s "
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
@@ -345,6 +349,26 @@ variable Lkwcreate variable Lkwvar
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL, ;               \ region -> RX + flush
 : c-variable ( -- )  c-create
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;          \ reserve 1 cell
+
+\ S" string" (compile mode): emit  B over the bytes ; <bytes> ; push abs-addr ;
+\ push len. Bytes live in the RX code image; the absolute address is known at
+\ compile time, so c-lit pushes it (no PC-relative ADR needed).
+: c-sdq ( -- )
+   INP INP 1 ADDI,  13 INP 0 ADDI,                      \ skip one space; x13 = start
+   NEWLBL {: sl :}  NEWLBL {: sd :}
+   sl LBL,  9 INP 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  INP INP 1 ADDI,  sl B,
+   sd LBL,  10 INP 13 SUB,  INP INP 1 ADDI,             \ x10 = len; skip closing "
+   15 CP 0 ADDI,  9 $14000000 LIT64,  Lcemit @ BL,      \ x15 = B addr; emit B placeholder
+   12 CP 0 ADDI,                                        \ x12 = byte addr (after the B)
+   11 13 0 ADDI,  9 10 0 ADDI,                          \ copy x10 bytes start->CP
+   NEWLBL {: cl :}  NEWLBL {: cd :}
+   cl LBL,  9 cd CBZ,
+      14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
+   cd LBL,
+   28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,             \ pad CP to 4
+   9 15 0 ADDI,  15 10 0 ADDI,  Lpat @ BL,              \ x9=B addr; save len in x15; patch B->here
+   11 12 0 ADDI,  c-lit                                 \ push byte addr (x12)
+   11 15 0 ADDI,  c-lit ;                               \ push len (x15)
 
 \ emit one compile-mode keyword case: if TKA/TKL == kw, run handler then back to lmain
 : cf-entry {: lmainlbl kwvar kwlen hxt -- :}
@@ -435,6 +459,7 @@ variable Lkwcreate variable Lkwvar
       lmain Lkwagain  5 ['] c-again  cf-entry
       lmain Lkwwhile  5 ['] c-while  cf-entry
       lmain Lkwrepeat 6 ['] c-repeat cf-entry
+      lmain Lkwsq     2 ['] c-sdq    cf-entry            \ S" string"
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,             \ NUMBER? -> literal
       NEWLBL {: lcnotnum :}
       12 lcnotnum CBZ,  c-lit  lmain B,
@@ -453,7 +478,7 @@ variable Lkwcreate variable Lkwvar
    NEWLBL Lcfpush !  NEWLBL Lcfpop !  NEWLBL Lpat !  NEWLBL Lkwcmp !
    NEWLBL Lkwif !  NEWLBL Lkwthen !  NEWLBL Lkwelse !  NEWLBL Lkwbegin !
    NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !
-   NEWLBL Lkwcreate !  NEWLBL Lkwvar !
+   NEWLBL Lkwcreate !  NEWLBL Lkwvar !  NEWLBL Lkwsq !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
    emit-cf-helpers  emit-kwdata

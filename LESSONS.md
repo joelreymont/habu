@@ -36,6 +36,14 @@ mistakes, or insights. Lessons only — no API reference or code snippets (→ `
   SEPARATE always-RW mmap. x20 (RBASE) is dead after the startup seed-dict copy,
   so it's repurposed as the data base; `[x20]` holds DP. Verified: variables,
   arrays via `create…cells allot`, and read-modify-write all compute correctly.
+- **Milestone 3 (strings) landed.** `S" …"` (compile mode) parses the string from
+  the input cursor (not the whitespace tokenizer), embeds the bytes in the code
+  image, emits a `B` over them, and pushes the bytes' ABSOLUTE address (known at
+  compile time — no PC-relative ADR needed) + length via `c-lit`. `TYPE` is the
+  `write(2)` syscall (#4). Gotcha that cost a debug cycle: `Lpat` clobbers x10, so
+  keeping `len` there made the length push garbage — stash live values in
+  registers the callee (Lpat/c-lit) doesn't touch, and patch the B BEFORE the
+  literals are emitted (its target is the push site) while preserving len in x15.
 
 ## Register-resident DO..LOOP — caf ties clang -O3 (2026-06-10)
 
