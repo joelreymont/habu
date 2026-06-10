@@ -7,7 +7,7 @@
 
 require asm.fs
 
-$8000 constant MSIZE
+$20000 constant MSIZE
 create MBUF MSIZE allot
 variable MP
 variable MLEN
@@ -35,10 +35,10 @@ $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $100000000 constant VMBASE
 $1000     constant CODE-OFF          \ entry file offset (slack below for codesign)
-$4000     constant MPAGE              \ __TEXT file/vm size; __LINKEDIT starts here
+$10000    constant MPAGE              \ __TEXT file/vm size; __LINKEDIT starts here
 
 variable CODELEN
-create SCODE 8192 allot
+create SCODE $18000 allot             \ assembled-code scratch (grows with the standalone)
 : ASM-CODE ( -- )  SCODE ASSEMBLE CODELEN ! ;
 
 : SEG, ( name$ vmaddr vmsize fileoff filesize prot nsects extrasz -- )

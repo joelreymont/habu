@@ -127,3 +127,10 @@ s\" : T S\" dup\" 0 search-wl 0 <> . ; T"               NF  T{ s\" -1\n" NF= -> 
 \ a word defined into wid 1 is found there, not in wid 0
 s\" wordlist set-current : W2 9 ; 0 set-current : T S\" W2\" 1 search-wl 0 <> . S\" W2\" 0 search-wl . ; T"
    NF  T{ s\" -1\n0\n" NF= -> true }T
+
+\ --- self-host 6/7 core: the checker's type-term encoding + unification +
+\ binding-chain resolution, compiled and run NATIVELY by the standalone (uses
+\ constants, a CREATE'd binding array, BEGIN/WHILE/REPEAT, IF/ELSE/THEN). The
+\ algorithmic heart of the checker, proven runnable on the standalone itself. ---
+s" 0 constant T-CON   1 constant T-VAR   -1 constant UNBOUND   create TVT 512 allot   : TVINIT 0 BEGIN dup cells TVT + UNBOUND swap ! 1 + dup 63 > UNTIL drop ;   : TV@ cells TVT + @ ;   : TV! cells TVT + ! ;   : C-MKCON 3 lshift ;   : C-MKVAR 3 lshift T-VAR or ;   : C-TAG 7 and ;   : C-PAY 3 rshift ;   : C-ISVAR 7 and T-VAR = ;   : C-UNICON C-PAY swap C-PAY = ;   : C-RESOLVE BEGIN dup C-ISVAR IF dup C-PAY TV@ dup UNBOUND = IF drop 0 ELSE nip -1 THEN ELSE 0 THEN WHILE REPEAT ;   : C-UNIFY C-RESOLVE swap C-RESOLVE swap OVER C-ISVAR IF swap C-PAY TV! -1 ELSE dup C-ISVAR IF C-PAY TV! -1 ELSE C-UNICON THEN THEN ;   TVINIT   5 C-MKCON C-PAY .   5 C-MKCON C-TAG .   7 C-MKVAR C-ISVAR .   TVINIT 1 C-MKVAR 0 TV! 5 C-MKCON 1 TV! 0 C-MKVAR C-RESOLVE C-PAY .   TVINIT 0 C-MKVAR 9 C-MKCON C-UNIFY .   0 C-MKVAR C-RESOLVE C-PAY .   3 C-MKCON 4 C-MKCON C-UNIFY .   3 C-MKCON 3 C-MKCON C-UNIFY ."
+   NF  T{ s\" 5\n0\n-1\n5\n-1\n9\n0\n-1\n" NF= -> true }T

@@ -80,7 +80,7 @@ variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp
 variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
-variable Lkwlbrace variable Lkwendloc variable Lloc-find
+variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
 
 9 constant A   10 constant B   11 constant C
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
@@ -407,7 +407,8 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find
    Lkwcreate @ LBL, s" create" BYTES,    Lkwvar @ LBL,    s" variable" BYTES,
    Lkwsq @ LBL,     SQ-KW 2 BYTES,                         \ the 2 bytes  s "
    Lkwtick @ LBL,   TICK-KW 1 BYTES,    Lkwbtick @ LBL,  BTICK-KW 3 BYTES,
-   Lkwlbrace @ LBL, LBRACE-KW 2 BYTES,  Lkwendloc @ LBL, ENDLOC-KW 2 BYTES, ;
+   Lkwlbrace @ LBL, LBRACE-KW 2 BYTES,  Lkwendloc @ LBL, ENDLOC-KW 2 BYTES,
+   Lkwconst @ LBL,  s" constant" BYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
@@ -450,6 +451,24 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL, ;               \ region -> RX + flush
 : c-variable ( -- )  c-create
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;          \ reserve 1 cell
+
+\ CONSTANT ( n -- ) "name": define a word that pushes n. Pop n first (x15
+\ survives the name copy), then emit a literal-push body via c-lit (x11=n).
+: c-constant ( -- )
+   15 g-pop                                             \ n -> x15 (consumed)
+   2 3 MOVZ,  Lprot @ BL,  Ltok @ BL,
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   CP 9 0 STR,  TKL 9 16 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
+   10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,
+   NEWLBL {: kcp :}  NEWLBL {: kcd :}
+   kcp LBL,  12 kcd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
+      10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  kcp B,
+   kcd LBL,
+   11 15 0 ADDI,  c-lit                                 \ body: push n
+   9 W-RET LIT64,  Lcemit @ BL,
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
+   NDICT NDICT 1 ADDI,  2 5 MOVZ,  Lprot @ BL,  Lflush @ BL, ;
 
 \ ' NAME (interpret): find NAME, push its code address. ['] NAME (compile): bake
 \ the address as a literal push into the word being compiled (via c-lit, x11=addr).
@@ -580,6 +599,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find
       \ interpret-mode defining words + tick
       lmain Lkwcreate 6 ['] c-create   cf-entry
       lmain Lkwvar    8 ['] c-variable cf-entry
+      lmain Lkwconst  8 ['] c-constant cf-entry
       lmain Lkwtick   1 ['] c-tick     cf-entry
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,             \ NUMBER?
       NEWLBL {: lnotnum :}
@@ -641,7 +661,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find
    NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !
    NEWLBL Lkwcreate !  NEWLBL Lkwvar !  NEWLBL Lkwsq !
    NEWLBL Lkwtick !  NEWLBL Lkwbtick !
-   NEWLBL Lkwlbrace !  NEWLBL Lkwendloc !  NEWLBL Lloc-find !
+   NEWLBL Lkwlbrace !  NEWLBL Lkwendloc !  NEWLBL Lloc-find !  NEWLBL Lkwconst !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num

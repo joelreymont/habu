@@ -28,6 +28,21 @@ mistakes, or insights. Lessons only — no API reference or code snippets (→ `
   frame before RET. Locals coexist with catch: the locals frame sits below catch's
   handler frames, so `throw` unwinds to the catch and the locals stay readable.
 
+## Self-host 6/7 — checker core runs natively (2026-06-10)
+
+- `CONSTANT` added (defining word: pop the value, emit a `c-lit` push body). With
+  constants + the existing `CREATE`/`@`/`!`/`cells` + `BEGIN/WHILE/REPEAT` +
+  `IF/ELSE/THEN`, the checker's **algorithmic core** — type-term encode/decode,
+  occurs-style checks, **unification, and binding-chain resolution** — compiles
+  and runs as native code emitted by the standalone (verified end to end:
+  2-link var→var→con resolves, unify binds and a re-resolve sees it, con≠con
+  fails). The heart of dots 6/7, proven runnable on the standalone itself.
+- **Buffer sizes are real limits as the standalone grows:** `SCODE` (assembled-
+  code scratch) was 8 KB and the standalone hit 8504 B → `EMITW` wrote past it →
+  gforth `-9` (invalid memory address) inside ASSEMBLE, not a clean throw. Bumped
+  `SCODE`→96 KB, `MPAGE` (__TEXT)→64 KB, `MSIZE` (Mach-O buf)→128 KB. Watch these
+  when porting more code natively.
+
 ## Self-host milestone 5 — wordlists (2026-06-10)
 
 - Each dict record carries a wordlist id (DREC 40→48, wid at +40; seed prims = 0 =
