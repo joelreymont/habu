@@ -124,7 +124,36 @@ per-file tests can pass while the combined `all.fs` suite fails. Rules:
   strings); `INST`=re-parse (fresh vars by name per call → polymorphism for free),
   `GENERALIZE`=render. Sidesteps copying terms out of the per-check arena.
 
-## Codegen Phase 0.3 — speed gate (MARGINAL; benchmark was wrong shape, 2026-06-10)
+## Speed gate CLOSED — dispatch-bound bench (2026-06-10)
+
+The PENDING gate is settled. `bench/dispatch.{fs,s}` — a dispatch-bound byte-mix
+(load + add + 3× `dup <<n xor`, ~10 cheap ops/byte, 983 M iters), the fair shape
+(vs the latency-bound LCG below). Measured on this M-series box:
+
+| engine | ns/iter | vs native |
+| ------ | ------- | --------- |
+| native (hand ARM64 = what caf targets) | 2.25 | — |
+| gforth **threaded** (= caf-checked runs on) | 23.87 | **10.6× slower** |
+| gforth-fast (its own native codegen) | 2.27 | 1.01× (parity) |
+
+**Verdict: the 2–10× goal is MET — native AOT is 10.6× over the threaded engine
+caf actually uses.** The 2× bar is only contested vs gforth-fast, which is itself
+a native-code engine (not what caf-checked uses). Caveat: the *hand* baseline
+fuses `dup <<n xor` into one shifted-EOR; caf's current backend emits separate
+shift+xor through the stack, so caf's real output sits above 2.25 — a
+shifted-operand-fusion peephole (rep. as a dot) would close that last gap.
+
+**Constant folding (`src/cg/walk.fs`).** Literal arithmetic folds at compile time
+via a compile-time value stack: numbers are deferred (not emitted); a foldable op
+over pending constants folds them; any other token first flushes them as g-lits
+(so runtime values never mix with deferred ones). `3 4 + 5 *` → one `LIT 35`.
+Only ops whose gforth semantics match the emitted ARM64 are folded (NOT `/`,`MOD`,
+`2/` — division rounding / shift signedness differ). **Footgun:** `s>number?`
+leaves its double on the stack *even on failure* — the non-number path must
+`2drop` it or a garbage "token" reaches the encoder (E-NO-ENC). Folders live in a
+`CG-FOLD` wordlist, mirroring `CG-PRIMS` (no if-chain dispatch).
+
+## Codegen Phase 0.3 — speed gate (superseded by the dispatch bench above)
 
 Serial scalar LCG (`x = x*A + C`, 1e9 iters; `bench/inner-loop.{fs,s}` +
 `bench/run.sh`). **Native baseline must be hand-written ARM64** (`inner-loop.s` —

@@ -15,3 +15,11 @@ T{ s" DUP DUP * SWAP DROP" 4 NATIVE-EVAL -> 16 }T   \ keep the square
 T{ s" 7 *"            6 NATIVE-EVAL -> 42 }T   \ literal in body
 T{ s" 3 + 2 *"       20 NATIVE-EVAL -> 46 }T   \ (20+3)*2
 T{ s" DUP OVER + +"   8 NATIVE-EVAL -> 24 }T   \ 8 -> 8 8 8; + + -> 24
+
+\ --- constant folding: all-literal arithmetic folds at compile time ---
+T{ s" 3 4 +"          0 NATIVE-EVAL ->  7 }T   \ 3+4 folded
+T{ s" 2 3 4 * +"      0 NATIVE-EVAL -> 14 }T   \ 2 + (3*4) folded
+T{ s" 5 1+ 1+ 2*"     0 NATIVE-EVAL -> 14 }T   \ ((5+1+1)*2) folded
+T{ s" 10 3 - 2 *"     9 NATIVE-EVAL -> 14 }T   \ (10-3)*2; runtime input 9 ignored
+T{ s" 1 7 LSHIFT"     0 NATIVE-EVAL -> 128 }T  \ 1<<7 folded (exit is low byte)
+T{ s" 5 + 3 *"        4 NATIVE-EVAL -> 27 }T   \ mixes runtime input with consts: (4+5)*3
