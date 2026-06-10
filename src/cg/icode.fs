@@ -25,6 +25,7 @@ IOP: IOP-SVC   IOP: IOP-NOP   IOP: IOP-ICIV  IOP: IOP-DSB   IOP: IOP-ISB
 IOP: IOP-DCCV
 IOP: IOP-LABEL IOP: IOP-DEAD  IOP: IOP-BYTES IOP: IOP-DCQ  IOP: IOP-DLBL
 IOP: IOP-LDRW  IOP: IOP-STRW  IOP: IOP-BRK
+IOP: IOP-ANDI  IOP: IOP-ORRI  IOP: IOP-EORI
 IOP# @ constant #IOPS
 
 \ --- condition codes (B.cond / CSET) ---
@@ -80,6 +81,9 @@ variable #LBL
 : AND,  ( rd rn rm -- )    0 IOP-AND IC, ;
 : ORR,  ( rd rn rm -- )    0 IOP-ORR IC, ;
 : EOR,  ( rd rn rm -- )    0 IOP-EOR IC, ;
+: ANDI, ( rd rn nis -- )   0 IOP-ANDI IC, ;   \ logical immediate (nis = N<<12|immr<<6|imms)
+: ORRI, ( rd rn nis -- )   0 IOP-ORRI IC, ;
+: EORI, ( rd rn nis -- )   0 IOP-EORI IC, ;
 : LSLI, ( rd rn sh -- )    0 IOP-LSLI IC, ;
 : LSRI, ( rd rn sh -- )    0 IOP-LSRI IC, ;
 : ASRI, ( rd rn sh -- )    0 IOP-ASRI IC, ;

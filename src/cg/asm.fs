@@ -67,6 +67,27 @@ CHECKING-ON? on
 : ENC-AND  ( R i64 -- R )  $8A000000 RRR EMITW ;
 : ENC-ORR  ( R i64 -- R )  $AA000000 RRR EMITW ;
 : ENC-EOR  ( R i64 -- R )  $CA000000 RRR EMITW ;
+CHECKING-ON? off   \ logical-immediate encode/encoders are metaprogramming (bit math, loops)
+\ logical immediate: IC-C = nis = N<<12|immr<<6|imms.  base | N<<22|immr<<16|imms<<10|rn<<5|rd
+: RRI ( i base -- word )  swap {: ic :}              \ ic = record index (like RRR's convention)
+   ic IC-A or  ic IC-B 5 lshift or  {: w :}
+   ic IC-C {: nis :}
+   w  nis 12 rshift 22 lshift or  nis 6 rshift 63 and 16 lshift or  nis 63 and 10 lshift or ;
+: ENC-ANDI ( i -- )  $92000000 RRI EMITW ;
+: ENC-ORRI ( i -- )  $B2000000 RRI EMITW ;
+: ENC-EORI ( i -- )  $D2000000 RRI EMITW ;
+\ encodeBitMasks: element-size-64 single contiguous run (rotated/wrapping ok);
+\ rejects period-<64 patterns. regstack.fs uses it to pick AND/ORR/EOR #imm.
+: ROR64 ( x r -- x' )  63 and dup 0= if drop exit then  {: r :}  dup r rshift  swap 64 r - lshift  or ;
+: POPC64 ( x -- n )  0 swap  begin dup while  swap over 1 and +  swap 1 rshift  repeat  drop ;
+: ENC-LOGIMM ( x -- nis true | x false )
+   dup 0= over -1 = or if false exit then
+   dup dup 1 ROR64 xor POPC64 2 <> if false exit then          \ not a single run
+   dup POPC64 {: ones :}  1 ones lshift 1- {: bottom :}
+   64 0 ?do  dup i ROR64 bottom = if
+      drop  $1000  64 i - 63 and 6 lshift or  ones 1- or  true  unloop exit  then  loop
+   false ;
+CHECKING-ON? on
 : ENC-LSLV ( R i64 -- R )  $9AC02000 RRR EMITW ;
 : ENC-LSRV ( R i64 -- R )  $9AC02400 RRR EMITW ;
 : ENC-ASRV ( R i64 -- R )  $9AC02800 RRR EMITW ;
@@ -164,6 +185,7 @@ INIT-TABLES
 ' ENC-ICIV IOP-ICIV ENC!   ' ENC-DSB  IOP-DSB  ENC!   ' ENC-ISB  IOP-ISB  ENC!
 ' ENC-DCCV IOP-DCCV ENC!
 ' ENC-BRK  IOP-BRK  ENC!
+' ENC-ANDI IOP-ANDI ENC!   ' ENC-ORRI IOP-ORRI ENC!   ' ENC-EORI IOP-EORI ENC!
 ' ENC-NONE IOP-LABEL ENC!  ' ENC-NONE IOP-DEAD ENC!
 ' ENC-BYTES IOP-BYTES ENC!  ' ENC-DCQ IOP-DCQ ENC!  ' ENC-DLBL IOP-DLBL ENC!
 ' ENC-LDRW IOP-LDRW ENC!    ' ENC-STRW IOP-STRW ENC!

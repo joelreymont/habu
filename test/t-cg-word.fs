@@ -56,3 +56,9 @@ T{ s" 5 MOD" 17 NATIVE-EVAL -> 2 }T            \ 17 mod 5
    s" 0 /" 10 COMPILE-WORD  s" /tmp/caf-divz" 2dup EMIT-EXE
    cmd( [char] ' c+ cs+ [char] ' c+ )run ;
 T{ DIVZ-WSTAT $7F and 0<> -> true }T           \ low 7 bits set = killed by a signal (trapped)
+
+\ --- logical-immediate AND/OR/XOR (const operand -> AND/ORR/EOR #imm) ---
+T{ s" 255 AND"  4660 NATIVE-EVAL -> 52 }T      \ 0x1234 & 0xFF
+T{ s" 240 AND"   171 NATIVE-EVAL -> 160 }T     \ 0xAB & 0xF0
+T{ s" 8 OR"        5 NATIVE-EVAL -> 13 }T       \ 5 | 8
+T{ s" 10 XOR"     12 NATIVE-EVAL -> 6 }T        \ 12 ^ 10  (10 not encodable -> register, still correct)

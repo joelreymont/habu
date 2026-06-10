@@ -73,6 +73,14 @@ create VTAG VMAX cells allot   create VVAL VMAX cells allot   variable VSP
       v-popc {: k :} v-popr {: a :}  a a k igen execute  a v-pushr  exit then then
    v-popr {: b :} v-popr {: a :}  a a b rgen execute  b r-free  a v-pushr ;
 
+\ AND/OR/EOR with a const operand that's a valid ARM logical immediate -> #imm form.
+: vlogic {: rgen igen fold -- :}
+   v-2con? if  v-popc {: b :} v-popc {: a :}  a b fold execute v-pushc exit then
+   v-top-tag V-CON = if  v-top-val ENC-LOGIMM if  {: nis :}
+      v-popc drop  v-popr {: a :}  a a nis igen execute  a v-pushr  exit
+   else drop then then
+   v-popr {: b :} v-popr {: a :}  a a b rgen execute  b r-free  a v-pushr ;
+
 \ shuffle helpers (FORTH wordlist so CG-VS words can compose them — calling a
 \ CG-VS word by NAME from inside CG-VS would resolve to gforth's builtin instead).
 : v-drop1 ( -- )
@@ -98,7 +106,7 @@ get-current  CG-VS set-current
 
 : + ['] ADD, ['] ADDI, ['] + vaddsub ;    : - ['] SUB, ['] SUBI, ['] - vaddsub ;
 : * ['] MUL, ['] * vbin ;
-: AND ['] AND, ['] and vbin ; : OR ['] ORR, ['] or vbin ; : XOR ['] EOR, ['] xor vbin ;
+: AND ['] AND, ['] ANDI, ['] and vlogic ;  : OR ['] ORR, ['] ORRI, ['] or vlogic ;  : XOR ['] EOR, ['] EORI, ['] xor vlogic ;
 
 : 1+ [: 1 ADDI, ;] ['] 1+ vun ;
 : 1- [: 1 SUBI, ;] ['] 1- vun ;
