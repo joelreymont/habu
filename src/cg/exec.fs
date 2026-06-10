@@ -32,7 +32,26 @@ s" cg: chmod failed"     exception constant E-CHMOD
    2dup CHMODX
    ADHOC-SIGN ;
 
+\ --- crash diagnostics: caf-built binaries install an in-binary signal handler
+\ (crash.fs) that dumps the faulting registers to stderr and exit(134), so a crash
+\ self-diagnoses. If a binary dies from a signal anyway (handler not installed, or
+\ a re-fault), name the signal so it isn't a silent exit-0. ---
+: SIG-NAME ( sig -- a u )
+   dup  4 = if drop s" SIGILL"  exit then
+   dup 11 = if drop s" SIGSEGV" exit then
+   dup 10 = if drop s" SIGBUS"  exit then
+   dup  5 = if drop s" SIGTRAP" exit then
+   dup  6 = if drop s" SIGABRT" exit then
+   dup  8 = if drop s" SIGFPE"  exit then
+   drop s" signal" ;
+: CRASH-CHECK {: pa pu ws -- ws :}         \ name the signal if ws says killed by one
+   ws $7F and {: sig :}
+   sig if
+      cr ." *** caf-built binary killed by " sig SIG-NAME type ."  (signal " sig 0 .r ." )"
+      ."  path=" pa pu type cr
+   then  ws ;
+
 \ Build + run, returning the decoded process exit code (0..255).
 : RUN-EXE ( addr u -- code )
-   2dup EMIT-EXE
-   cmd(  [char] ' c+  cs+  [char] ' c+  )run  WSTAT>RC ;
+   2dup EMIT-EXE  2dup {: pa pu :}
+   cmd(  [char] ' c+  pa pu cs+  [char] ' c+  )run  pa pu rot CRASH-CHECK  WSTAT>RC ;

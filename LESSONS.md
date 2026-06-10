@@ -3,6 +3,27 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Crash diagnostics — in-binary register dump (2026-06-10)
+
+- caf-built binaries (NATIVE-EVAL exes + the standalone) install an in-binary
+  signal handler (`crash.fs`) for SIGILL/TRAP/BUS/SEGV that dumps the faulting
+  registers (sig, x0..x28, fp, lr, sp, pc) as hex to stderr and `exit(134)`. caf
+  itself dumps codegen state (`#IC`/`VSP`/`CARRY-N`/`LOOP-DEPTH`/token pos) on a
+  codegen throw. No external debugger — **lldb can't launch our minimal Mach-O in
+  this sandbox** (its batch `-o run` hangs even on a normal C binary; debugger
+  task-port acquisition is denied), so self-contained is the only robust path.
+- **macOS arm64 signal ABI without libc:** `sigaction(#46)` with a
+  `struct __sigaction { sa_handler, sa_tramp, sa_mask, sa_flags }`. Set BOTH
+  sa_handler and sa_tramp to the handler — the kernel enters sa_tramp directly
+  with x2=sig, x4=ucontext (no libc `_sigtramp` needed). `mcontext = [ucontext+48]`;
+  `__ss.__x[0]` at `mcontext+16`, then x0..x28, fp(+248), lr(+256), sp(+264),
+  pc(+272). `SA_SIGINFO`=0x40.
+- **Reg-31 footgun (cost two debug cycles):** in the shifted-register ALU forms
+  (`ADD/MOV/ORR rd,rn,rm`) register 31 is **XZR**, but in immediate/load-store
+  forms (`ADDI`, `LDR/STR [rn,#off]`) it is **SP**. `ADD x15, sp, x11` silently
+  used XZR → garbage address → handler faulted → re-entered → hung. To get SP into
+  a GP reg use `ADDI rd, sp, #0`, never `MOV`/`ADD`-register.
+
 ## Self-host is the real frontier — decomposed, not faked (2026-06-10)
 
 - The standalone `src/cg/forth.fs` is a 300-line stencil-JIT native Forth with

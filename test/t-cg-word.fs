@@ -140,3 +140,12 @@ T{ s" 10 20 30 1 0 ?DO ROT LOOP"           0 NATIVE-EVAL ->  10 }T   \ 3-cycle p
 T{ s" 10 20 30 3 0 ?DO ROT LOOP"           0 NATIVE-EVAL ->  30 }T   \ ROT^3 = identity
 T{ s" 1 2 5 0 ?DO SWAP LOOP +"             0 NATIVE-EVAL ->   3 }T   \ swap-carry, odd trips
 T{ s" 1 SWAP 0 ?DO DUP 13 LSHIFT XOR DUP 7 RSHIFT XOR DUP 17 LSHIFT XOR LOOP" 20 NATIVE-EVAL ->  92 }T  \ xorshift, 20 iters (cross-checked vs C)
+
+\ --- in-binary crash handler: a faulting word is caught by the installed signal
+\ handler, which dumps registers to stderr and exit(134) (not a silent signal
+\ death). Stderr is redirected here so the suite stays quiet. ---
+: CRASH-CODE ( a u -- code )
+   10 COMPILE-WORD  s" /tmp/caf-crash" 2dup EMIT-EXE
+   cmd(  [char] ' c+  cs+  [char] ' c+  s"  2>/dev/null" cs+  )run  WSTAT>RC ;
+T{ s" 0 @"        CRASH-CODE -> 134 }T          \ load from NULL -> SIGSEGV -> handler
+T{ s" 5"          CRASH-CODE ->   5 }T          \ non-crashing path unaffected

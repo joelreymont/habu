@@ -18,6 +18,7 @@
 require exec.fs
 require templ.fs           \ g-push, XDS(=19)
 require rt.fs              \ g-print9 (shared signed-decimal printer)
+require crash.fs           \ in-binary crash handler (register dump on signal)
 
 20 constant RBASE   21 constant INP    22 constant INE   23 constant TKA   24 constant TKL
 25 constant PEND    26 constant DBASE  27 constant NDICT  28 constant CP
@@ -404,6 +405,7 @@ variable Lkwcreate variable Lkwvar variable Lkwsq
    0 0 MOVZ,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
    16 197 MOVZ,  $80 SVC,  DATA 0 0 ADDI,
    7 DATA 8 ADDI,  7 DATA 0 STR,
+   g-install-crash                                    \ self-diagnosing crash (register dump)
    emit-source                                        \ INP/INE <- baked Lsrc or stdin
    PEND 0 MOVZ,                                       \ interpret mode
    NEWLBL {: lmain :}  NEWLBL {: lexit :}  NEWLBL {: lcompile :}
@@ -479,9 +481,10 @@ variable Lkwcreate variable Lkwvar variable Lkwsq
    NEWLBL Lkwif !  NEWLBL Lkwthen !  NEWLBL Lkwelse !  NEWLBL Lkwbegin !
    NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !
    NEWLBL Lkwcreate !  NEWLBL Lkwvar !  NEWLBL Lkwsq !
+   NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
-   emit-cf-helpers  emit-kwdata
+   emit-cf-helpers  emit-kwdata  emit-crash-handler  emit-hex
    emit-dict                                              \ after #PL is final
    Lsrc @ LBL,  r> SRCN @ BYTES, ;
 

@@ -10,6 +10,7 @@ require exec.fs
 require cglocals.fs                      \ compile-time locals ({: a b :})
 require cgquot.fs                        \ AOT quotation/combinator inlining
 require cgloop.fs                        \ register-resident DO..LOOP mechanism
+require crash.fs                         \ in-binary crash handler (register dump)
 
 \ Non-primitive token hook: link.fs sets this to emit a BL to another caf word
 \ (or RECURSE). Default: not a call.
@@ -132,14 +133,25 @@ defer LOOP-HOOK   ( a u -- f )
 \ Compile a body with one i64 input pushed first; the body's TOS becomes exit().
 : COMPILE-WORD {: ba bu input -- :}
    ICODE-RESET  cf-reset  cgl-reset  q-reset  PIN-RESET
+   NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    512 g-prologue
    g-heap-init                          \ entry: mmap the bump heap (HP); callees inherit it
+   g-install-crash                      \ self-diagnosing crash (register dump to stderr)
    input g-lit
    NEWLBL EPILOG !        \ EXIT branches here
    ba bu WALK-BODY
    EPILOG @ LBL,
    g-exit-tos
-   OPTIMIZE ;             \ peephole the complete IR
+   OPTIMIZE               \ peephole the complete IR
+   emit-crash-handler  emit-hex ;       \ append the handler/printer (after OPTIMIZE)
+
+\ On a codegen throw, dump the generator's state (it's otherwise opaque — the
+\ failing token, IR size, and VS/loop bookkeeping pinpoint where it broke).
+: CG-DIAG ( -- )
+   cr ." *** caf codegen state:  #IC=" #IC @ .  ." VSP=" VSP @ .
+   ." CARRY-N=" CARRY-N @ .  ." LOOP-DEPTH=" LOOP-DEPTH @ .
+   ." WB-pos=" WB-CUR @ WB-END @ - . cr ;
 
 : NATIVE-EVAL ( ba bu input -- exit-code )
-   COMPILE-WORD  s" /tmp/caf-word" RUN-EXE ;
+   ['] COMPILE-WORD catch ?dup if  CG-DIAG  throw  then
+   s" /tmp/caf-word" RUN-EXE ;
