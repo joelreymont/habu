@@ -137,3 +137,4 @@ T{ ICODE-RESET 1 2 FCMP,    V1 -> $1E622020 }T   \ fcmp d1, d2
 T{ ICODE-RESET 1 FCMP0,     V1 -> $1E602028 }T   \ fcmp d1, #0.0
 T{ ICODE-RESET 0 3 SCVTF,   V1 -> $9E620060 }T   \ scvtf d0, x3
 T{ ICODE-RESET 3 0 FCVTZS,  V1 -> $9E780003 }T   \ fcvtzs x3, d0
+T{ ICODE-RESET 0 1 FMOVDD,  V1 -> $1E604020 }T   \ fmov d0, d1   (FP reg-reg copy)

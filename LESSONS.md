@@ -16,6 +16,15 @@ mistakes, or insights. Lessons only — no API reference or code snippets (→ `
   i64. Gate on an FP marker ('.', 'e', 'E') + `>float` success, ahead of the
   integer clause, in BOTH the checker (`CHECK-FLOAT`) and codegen
   (`EMIT-FLOAT`). Reinterpret bits via a scratch `f!` then `@`.
+- **FP-register residency, not a second stack, is the perf answer.** caf is
+  statically typed, so the checker already separates `f64` from `i64` — the job a
+  classic Forth FP stack does at runtime. Keep the unified data stack; add a third
+  VS tag `V-FREG` (value lives in a D-register) so chained ops (`F+ F* F-`) stay
+  in the D-file. `v-popd` FMOVs a non-resident operand in; results push V-FREG;
+  `v-popr`/`v-spill` FMOV out only at a GP consumer or control-flow boundary.
+  Measured: `2.0 3.0 F+ 4.0 F* F>S` emits 0 FMOVDX (down from 2) — only the
+  unavoidable literal loads remain. The shuffle/spill words must each free/copy
+  the right pool (`d-free`/`FMOVDD` for V-FREG) or floats leak D-regs.
 - **FP condition codes differ from integer.** After `FCMP`: F< → `MI` (N set),
   F> → `GT`, F= → `EQ`; F0< → `MI`, F0= → `EQ`. (Integer `<` uses `LT`.)
 - **Adding a TC-* type touches FOUR renderers or CHART throws 1495

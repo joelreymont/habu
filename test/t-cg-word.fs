@@ -112,3 +112,13 @@ T{ s" 3.0 3.0 F= NEGATE"         0 NATIVE-EVAL ->  1 }T
 T{ s" 5.0 FNEGATE F0< NEGATE"    0 NATIVE-EVAL ->  1 }T
 T{ s" 0.0 F0= NEGATE"            0 NATIVE-EVAL ->  1 }T
 T{ s" 1.5e1 F>S"                 0 NATIVE-EVAL -> 15 }T   \ exponent literal
+
+\ --- FP register residency: chained ops stay in the D-file; floats survive
+\ shuffles and control-flow spills (V-FREG <-> memory round-trips) ---
+T{ s" 2.0 3.0 F+ 4.0 F* F>S"     0 NATIVE-EVAL -> 20 }T   \ (2+3)*4, chained D-resident
+T{ s" 1.0 2.0 3.0 F+ F+ F>S"     0 NATIVE-EVAL ->  6 }T   \ deep chain
+T{ s" 3.0 DUP F* F>S"            0 NATIVE-EVAL ->  9 }T   \ DUP copies an FP-resident value
+T{ s" 2.0 3.0 SWAP F- F>S"       0 NATIVE-EVAL ->  1 }T   \ SWAP then 3-2
+T{ s" 2.0 3.0 OVER F+ F+ F>S"    0 NATIVE-EVAL ->  7 }T   \ OVER: 2 + (3+2)
+T{ s" 5.0 F>S 0 > IF 2.0 ELSE 3.0 THEN F>S"  0 NATIVE-EVAL -> 2 }T  \ float built after a spill
+T{ s" 2.0 3.0 F* 0 5 0 ?DO DROP 2.0 LOOP F>S"  0 NATIVE-EVAL -> 2 }T \ float spilled across a loop

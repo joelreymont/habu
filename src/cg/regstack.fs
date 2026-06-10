@@ -22,14 +22,29 @@ create RFREE #RPOOL cells allot
 : r-free ( r -- )
    #RPOOL 0 ?do  RPOOL i cells + @ over = if  1 RFREE i cells + !  then  loop  drop ;
 
-\ --- abstract value stack: entries are (tag,val); tag REG holds a register, CON a constant
+\ --- FP register pool (D0..D7; the whole program is one entry, so any D-reg is
+\ ours to clobber). FP-resident values live here, avoiding GP<->FP round-trips
+\ between chained float ops. ---
+create DPOOL  0 , 1 , 2 , 3 , 4 , 5 , 6 , 7 ,
+8 constant #DPOOL
+create DFREE #DPOOL cells allot
+: dp-reset ( -- )  #DPOOL 0 ?do  1 DFREE i cells + !  loop ;
+: d-alloc ( -- d )
+   #DPOOL 0 ?do  DFREE i cells + @ if  0 DFREE i cells + !  DPOOL i cells + @  unloop exit  then  loop
+   1 abort" cg: FP register pool exhausted (float stack too deep for the allocator)" ;
+: d-free ( d -- )
+   #DPOOL 0 ?do  DPOOL i cells + @ over = if  1 DFREE i cells + !  then  loop  drop ;
+
+\ --- abstract value stack: entries are (tag,val). REG=a GP register, CON=a
+\ compile-time constant, FREG=a D (FP) register holding an f64's bits.
 64 constant VMAX
 create VTAG VMAX cells allot   create VVAL VMAX cells allot   variable VSP
-0 constant V-REG   1 constant V-CON
-: v-reset ( -- )  0 VSP !  rp-reset ;
+0 constant V-REG   1 constant V-CON   2 constant V-FREG
+: v-reset ( -- )  0 VSP !  rp-reset  dp-reset ;
 : v-pushx ( tag val -- )  VVAL VSP @ cells + !  VTAG VSP @ cells + !  1 VSP +! ;
 : v-pushr ( r -- )  V-REG swap v-pushx ;
 : v-pushc ( n -- )  V-CON swap v-pushx ;
+: v-pushf ( d -- )  V-FREG swap v-pushx ;
 : v-top-tag ( -- tag )  VSP @ 1- cells VTAG + @ ;
 : v-top-val ( -- v )    VSP @ 1- cells VVAL + @ ;
 : v-2con? ( -- f )
@@ -40,15 +55,28 @@ create VTAG VMAX cells allot   create VVAL VMAX cells allot   variable VSP
 : v-pop ( -- tag val )
    VSP @ 0= if  V-REG  r-alloc dup g-pop  exit then
    -1 VSP +!  VTAG VSP @ cells + @  VVAL VSP @ cells + @ ;
-\ pop, materialising the value into a register (CON -> LIT, empty -> memory load)
+\ pop, materialising the value into a GP register. CON -> LIT, empty -> memory
+\ load, FREG -> FMOVDX the bits out of the D-register (freeing it).
 : v-popr ( -- r )
-   v-pop over V-REG = if  nip  else  ( V-CON n ) nip  r-alloc tuck swap LIT64,  then ;
+   v-pop {: t v :}
+   t V-REG  = if  v exit then
+   t V-FREG = if  r-alloc {: r :}  r v FMOVDX,  v d-free  r exit then
+   r-alloc {: r :}  r v LIT64,  r ;       \ V-CON
 : v-popc ( -- n )  -1 VSP +!  VVAL VSP @ cells + @ ;     \ pop a known CON
+\ pop, materialising into a D (FP) register. FREG is already there; REG/CON/empty
+\ get FMOVXD'd in (the bits become a float in the D-file).
+: v-popd ( -- d )
+   v-top-tag V-FREG = VSP @ 0> and if  v-popc exit then    \ val IS the d-reg
+   v-popr {: x :}  d-alloc {: d :}  d x FMOVXD,  x r-free  d ;
 
-\ spill the whole VS to memory (bottom..top), then empty it
+\ spill the whole VS to memory (bottom..top), then empty it. FP-resident entries
+\ are moved D->GP first (FMOVDX into a scratch GP reg) so the bits reach memory.
 : v-spill ( -- )
    VSP @ 0 ?do
-      VTAG i cells + @ V-REG = if  VVAL i cells + @ g-push  else  VVAL i cells + @ g-lit  then
+      VTAG i cells + @ {: t :}  VVAL i cells + @ {: v :}
+      t V-REG  = if  v g-push  else
+      t V-FREG = if  r-alloc {: r :}  r v FMOVDX,  r g-push  r r-free  v d-free  else
+      v g-lit  then then
    loop  v-reset ;
 
 \ --- primitives (own wordlist; walk.fs prefers these, else spills + old prims) ---
@@ -85,37 +113,44 @@ create VTAG VMAX cells allot   create VVAL VMAX cells allot   variable VSP
 \ CG-VS word by NAME from inside CG-VS would resolve to gforth's builtin instead).
 : v-drop1 ( -- )
    VSP @ 0= if  XDS XDS 8 SUBI,  exit then
-   v-top-tag V-REG = if  v-popr r-free  else  v-popc drop  then ;
+   v-top-tag {: t :}
+   t V-REG  = if  v-popr r-free  exit then
+   t V-FREG = if  v-popc d-free  exit then
+   v-popc drop ;                                  \ V-CON
 : v-dup1 ( -- )
    VSP @ 0= if  r-alloc {: r :} r g-pop  r v-pushr  r-alloc {: r2 :} r2 r MOV, r2 v-pushr  exit then
-   v-top-tag V-CON = if  v-top-val v-pushc exit then
+   v-top-tag {: t :}
+   t V-CON  = if  v-top-val v-pushc exit then
+   t V-FREG = if  v-top-val {: d :}  d-alloc {: d2 :} d2 d FMOVDD,  d2 v-pushf  exit then
    v-top-val {: r :}  r-alloc {: r2 :} r2 r MOV,  r2 v-pushr ;
 : v-swap1 ( -- )  v-pop 2>r  v-pop 2r>  v-pushx  v-pushx ;
-: v-nip1  ( -- )  v-pop {: tb vb :}  v-pop {: ta va :}  ta V-REG = if va r-free then  tb vb v-pushx ;
+: v-nip1  ( -- )  v-pop {: tb vb :}  v-pop {: ta va :}
+   ta V-REG = if va r-free then  ta V-FREG = if va d-free then  tb vb v-pushx ;
 : v-over1 ( -- )
    v-pop {: tb vb :}  v-pop {: ta va :}  ta va v-pushx  tb vb v-pushx
-   ta V-CON = if  va v-pushc  else  r-alloc {: r :} r va MOV, r v-pushr  then ;
+   ta V-CON  = if  va v-pushc exit then
+   ta V-FREG = if  d-alloc {: d :} d va FMOVDD,  d v-pushf  exit then
+   r-alloc {: r :} r va MOV, r v-pushr ;
 : v-rot1  ( -- )  v-pop {: tc vc :} v-pop {: tb vb :} v-pop {: ta va :}  tb vb v-pushx tc vc v-pushx ta va v-pushx ;
 : v-mrot1 ( -- )  v-pop {: tc vc :} v-pop {: tb vb :} v-pop {: ta va :}  tc vc v-pushx ta va v-pushx tb vb v-pushx ;
 : v-2swap1 ( -- )
    v-pop {: td vd :} v-pop {: tc vc :} v-pop {: tb vb :} v-pop {: ta va :}
    tc vc v-pushx td vd v-pushx ta va v-pushx tb vb v-pushx ;
 
-\ floating point: each f64 is one data-stack cell holding the IEEE-754 bits. FP
-\ prims move the bits X->D (FMOVXD), compute in the D-register file, and move the
-\ result D->X (FMOVDX) back into a pool register. D0/D1 are scratch FP regs.
+\ floating point: each f64 is one data-stack cell of IEEE-754 bits. FP prims keep
+\ results FP-resident (V-FREG, in a D-register) so chained ops (F+ F* F-) stay in
+\ the D-file with no GP round-trips; v-popd FMOVs a non-resident operand in, the
+\ result pushes as V-FREG, and v-popr/v-spill FMOV the bits out only when a GP
+\ consumer or control-flow boundary needs them.
 : vfbin {: emit -- :}                 \ emit:(Dd Dn Dm) e.g. ['] FADD,
-   v-popr {: xb :} v-popr {: xa :}
-   0 xa FMOVXD,  1 xb FMOVXD,  0 0 1 emit execute  xa 0 FMOVDX,
-   xb r-free  xa v-pushr ;
+   v-popd {: db :} v-popd {: da :}  da da db emit execute  db d-free  da v-pushf ;
 : vfun {: emit -- :}                  \ emit:(Dd Dn) e.g. ['] FNEG,
-   v-popr {: xa :}  0 xa FMOVXD,  0 0 emit execute  xa 0 FMOVDX,  xa v-pushr ;
-: vfcmp {: cond -- :}                 \ FCMP a,b then flag 0/-1 (cond per FP semantics)
-   v-popr {: xb :} v-popr {: xa :}
-   0 xa FMOVXD,  1 xb FMOVXD,  0 1 FCMP,  xa cond CSET,  xa SP xa SUB,
-   xb r-free  xa v-pushr ;
-: vfcmp0 {: cond -- :}                \ FCMP a,#0.0 then flag 0/-1
-   v-popr {: xa :}  0 xa FMOVXD,  0 FCMP0,  xa cond CSET,  xa SP xa SUB,  xa v-pushr ;
+   v-popd {: da :}  da da emit execute  da v-pushf ;
+: vfcmp {: cond -- :}                 \ FCMP a,b -> GP flag 0/-1 (cond per FP semantics)
+   v-popd {: db :} v-popd {: da :}  da db FCMP,
+   r-alloc {: r :}  r cond CSET,  r SP r SUB,  da d-free db d-free  r v-pushr ;
+: vfcmp0 {: cond -- :}                \ FCMP a,#0.0 -> GP flag 0/-1
+   v-popd {: da :}  da FCMP0,  r-alloc {: r :}  r cond CSET,  r SP r SUB,  da d-free  r v-pushr ;
 
 wordlist constant CG-VS
 get-current  CG-VS set-current
@@ -168,7 +203,7 @@ get-current  CG-VS set-current
 : FNEGATE ['] FNEG, vfun ;  : FABS ['] FABS, vfun ;  : FSQRT ['] FSQRT, vfun ;
 : F< C-MI vfcmp ;  : F> C-GT vfcmp ;  : F= C-EQ vfcmp ;
 : F0< C-MI vfcmp0 ;  : F0= C-EQ vfcmp0 ;
-: S>F v-popr {: x :}  0 x SCVTF,  x 0 FMOVDX,  x v-pushr ;
-: F>S v-popr {: x :}  0 x FMOVXD,  x 0 FCVTZS,  x v-pushr ;
+: S>F v-popr {: x :}  d-alloc {: d :}  d x SCVTF,  x r-free  d v-pushf ;   \ int(GP) -> float(D)
+: F>S v-popd {: d :}  r-alloc {: x :}  x d FCVTZS,  d d-free  x v-pushr ;  \ float(D) -> int(GP)
 
 set-current

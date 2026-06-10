@@ -26,7 +26,8 @@ IOP: IOP-DCCV
 IOP: IOP-LABEL IOP: IOP-DEAD  IOP: IOP-BYTES IOP: IOP-DCQ  IOP: IOP-DLBL
 IOP: IOP-LDRW  IOP: IOP-STRW  IOP: IOP-BRK
 IOP: IOP-ANDI  IOP: IOP-ORRI  IOP: IOP-EORI
-IOP: IOP-FMOVXD IOP: IOP-FMOVDX IOP: IOP-FADD IOP: IOP-FSUB IOP: IOP-FMUL IOP: IOP-FDIV
+IOP: IOP-FMOVXD IOP: IOP-FMOVDX IOP: IOP-FMOVDD
+IOP: IOP-FADD IOP: IOP-FSUB IOP: IOP-FMUL IOP: IOP-FDIV
 IOP: IOP-FNEG  IOP: IOP-FABS  IOP: IOP-FSQRT IOP: IOP-FCMP IOP: IOP-FCMP0
 IOP: IOP-SCVTF IOP: IOP-FCVTZS
 IOP# @ constant #IOPS
@@ -120,6 +121,7 @@ variable #LBL
 \ floating point (D-registers): operands are register numbers 0..31 of the FP regs
 : FMOVXD, ( Dd Xn -- )     0 0 IOP-FMOVXD IC, ;    \ fmov Dd, Xn (bits GPR->FP)
 : FMOVDX, ( Xd Dn -- )     0 0 IOP-FMOVDX IC, ;    \ fmov Xd, Dn (bits FP->GPR)
+: FMOVDD, ( Dd Dn -- )     0 0 IOP-FMOVDD IC, ;    \ fmov Dd, Dn (FP reg-reg copy)
 : FADD,   ( Dd Dn Dm -- )  0 IOP-FADD IC, ;
 : FSUB,   ( Dd Dn Dm -- )  0 IOP-FSUB IC, ;
 : FMUL,   ( Dd Dn Dm -- )  0 IOP-FMUL IC, ;
