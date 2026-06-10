@@ -1,4 +1,4 @@
-# caf — Native Backend: Self-Hosting Stencil Codegen Plan
+# caf — Native Backend: Self-Hosting ICode Codegen Plan
 
 A typed native ARM64 code generator for caf, building toward a **standalone,
 self-hosting native compiler**. caf's checked, row-polymorphic stack effects are
@@ -77,11 +77,11 @@ unqualified `jit.zig` would wrongly resolve to a 191-line `bench/jit.zig` decoy.
   (`src/jit/stencils.zig:33-50`). We **assemble stencils at load with our own
   Forth encoders** (Phase 1) — golden-tested, ctx offsets as named Forth
   constants (a load-time assertion replaces habu's lost `@offsetOf` guard).
-  Encoder-built stencils can be **parameterized on registers** (Phase 5), which
-  habu's frozen bytes cannot.
+  Under ICode, registers are IR operand fields — parameterization habu's frozen
+  bytes cannot do.
 - **Five hole types, pure bit-math** (`src/jit/stencils.zig:19-30`, patchers
   `src/jit/patch.zig:226-288`): `imm64`, `imm32`, `rel26`, `rel19`, `rel14`. A
-  **`reg` hole is not among them — Phase 5 adds one.** **Position-independence
+  **`reg` hole is not among them — moot under ICode: registers are IR fields.** **Position-independence
   note:** prefer `rel*`/`adrp+add` (PC-relative) over `imm64` absolute holes in
   `__TEXT`, so the fixpoint (Phase 7) is reachable (§Goal).
 - **habu's private VM-stack ABI ports cleanly** (`src/jit/stencils.zig:305-330,
@@ -211,20 +211,34 @@ Files (`src/cg/`, `require`d at end of `caf.fs` after `src/colon.fs`;
 `defer CODEGEN-HOOK` in `src/forward.fs`; `cg/install.fs` runs
 `' DO-CODEGEN is CODEGEN-HOOK` **last**, after the bank is assembled+asserted):
 
-- `cg/asm.fs` — ARM64 encoders + `svc`/cache-flush/`adrp` encodings. **TRUSTED:**.
+**Code generation is ICode (SwiftForth-style "assembly in Forth"), DONE for the
+core op set:** mnemonics append abstract instructions (5-cell records — op +
+register/immediate/label *fields*) to an IR buffer; a peephole optimizer rewrites
+the IR; encoders then emit machine code. This subsumes the original
+byte-stencils-with-holes design: "holes" are just IR operand fields, "stencils"
+become per-prim ICode generator words, and the Phase-5 "register hole" problem
+disappears (registers were never frozen into bytes).
+
+- `cg/icode.fs` — **DONE.** ICode IR: records, labels, ~45 mnemonics incl.
+  `svc`/cache-flush/`adr`. **TRUSTED:**.
+- `cg/opt.fs` — **DONE (seed rules).** Peephole over IR records (self-mov,
+  arith-0, dead-LIT, branch-to-next); killed records never break labels.
+- `cg/asm.fs` — **DONE.** ARM64 encoders IR→u32, table-dispatched; labels bound
+  in PASS1; branches/immediates **range-checked, throw, never wrap**; `LIT64,`
+  synthesizes minimal MOVZ/MOVN+MOVK chains. Golden-tested
+  (`test/t-cg-asm.fs`, `t-cg-opt.fs`; in `test/all.fs`). **TRUSTED:**.
 - `cg/macho.fs` — Mach-O emit: the minimal **test stub template** (Phase 0.1) and
   the full multi-word linker (Part G). **TRUSTED:**.
 - `cg/exec.fs` — write + `codesign` + `system`-run a Mach-O, capture output.
 - `cg/abi.fs` — caf register/stack ABI; frame/offset named constants (asserted).
 - `cg/rt.fs` — minimal native runtime: stack arenas, bump memory arena, syscall
   I/O routines, entry/exit, runtime code-allocator. **TRUSTED:**.
-- `cg/stencil.fs` — stencil model, hole types + range-checked patchers, inline
-  composition, branch fixups, transactional compile. **TRUSTED:**.
 - `cg/walk.fs` — `WALK-OPS`+`OP-ARITY`, `ANNOTATE-TYPES`, `[: … ;]` spans.
-- `cg/templ.fs` — the sparse stencil bank, assembled at load via `cg/asm.fs`.
-- `cg/sel.fs` — selection: typed op → stencil variant (generic / not-yet).
+- `cg/templ.fs` — per-prim **ICode generator words** (append IR), not byte blobs.
+- `cg/sel.fs` — selection: typed op → ICode generator variant (generic / not-yet).
 - `cg/install.fs` — the `CODE-TABLE` (a dedicated wordlist mirroring `EFFECTS`,
-  entry body = native entry + length + holes), allow-list, hook wiring.
+  entry body = native entry + length; plus an insertion-ordered array for
+  deterministic Part-G emission), allow-list, hook wiring.
 
 ## Build order & dependency spine (critical path)
 
@@ -316,28 +330,29 @@ forward-depends on a later one: I/O prims are hand-emitted runtime routines in A
 
 ## Part B — Correct native codegen
 
-### Phase 3 — Stencil engine + untyped MVP end-to-end
+### Phase 3 — ICode pipeline + untyped MVP end-to-end
 
-3.1 `cg/stencil.fs` (**TRUSTED:**): stencil model, 5 hole types + range-checked
-    patchers (`src/jit/patch.zig:226-288`), inline composition with a `labels`
-    map + `pending-jumps` resolved after layout
-    (`src/jit/jit.zig:483-538,1000-1010`), **transactional compile** (snapshot
-    `pos`; on `throw` restore + skip the word + continue; model the cleanup on
-    `RE-EVAL-SAFE`'s `catch`, `src/colon.fs:47-51`). *Accept:* compose two canned
-    stencils (imm64 + forward branch); bytes match golden; a mid-compose `throw`
-    leaves state restored and the next word compiles.
+3.1 **ICode engine — DONE** (`cg/icode.fs`, `cg/opt.fs`, `cg/asm.fs`): IR records
+    with labels, peephole optimizer, table-dispatched encoders, range-checked
+    branches/immediates, `LIT64,` minimal constant synthesis. Golden-tested
+    (`test/t-cg-asm.fs`, `test/t-cg-opt.fs`; wired into `test/all.fs`).
+    Remaining 3.1 work: **transactional compile** at the word level (on `throw`
+    mid-generation: `ICODE-RESET`, skip the word, continue; model the cleanup on
+    `RE-EVAL-SAFE`'s `catch`, `src/colon.fs:47-51`). *Accept:* a mid-generation
+    `throw` leaves the next word compiling correctly.
 3.2 `cg/walk.fs` `WALK-OPS` + `OP-ARITY` = `EFFECT-OF` (`src/db.fs:21`, yields a
     scheme *string*, not a number) → `PARSE-SIG` (`src/sigparse.fs:203`) →
     `EFF>DIN`/`EFF>DOUT` (`src/effects-repr.fs:12-13`) → `STACK-ARITY`
-    (`src/rows.fs:61`). `cg/templ.fs`: generic width-cell stencils for
-    `DUP/DROP/SWAP/+/-/*/1+/@/!/c@/c!` + literal push, assembled at load.
-    `cg/install.fs`: record `NAME→{bytes,holes,entry}` in the `CODE-TABLE`
-    (dedicated wordlist; `nextname create` the entry, body = entry addr + len +
-    hole list) **and** append it to an **insertion-ordered array** (definition
-    index) — Part-G emission traverses that array, never wordlist hash order, so
-    the fixpoint stays deterministic (§Goal e); the wordlist is for lookup only; the **native allow-list** (prims-with-stencils + control words +
-    Phase-6.2 combinators) gates eligibility; `TRUSTED:` words carry a positive
-    marker (tag `src/defining.fs:38`) and are never compiled. *Accept:*
+    (`src/rows.fs:61`). `cg/templ.fs`: generic width-cell **ICode generators** for
+    `DUP/DROP/SWAP/+/-/*/1+/@/!/c@/c!` + literal push (`LIT64,`).
+    `cg/install.fs`: record `NAME→{entry,len}` in the `CODE-TABLE`
+    (dedicated wordlist; `nextname create` the entry) **and** append it to an
+    **insertion-ordered array** (definition index) — Part-G emission traverses
+    that array, never wordlist hash order, so the fixpoint stays deterministic
+    (§Goal e); the wordlist is for lookup only; the **native allow-list**
+    (prims-with-generators + control words + Phase-6.2 combinators) gates
+    eligibility; `TRUSTED:` words carry a positive marker (tag
+    `src/defining.fs:38`) and are never compiled. *Accept:*
     `: SQUARE ( i64 -- i64 ) DUP * ;` records a native entry; its Mach-O test stub
     prints `49` for input 7 ≡ threaded.
 3.3 **Differential harness — early tier** (per-word stub vs in-gforth threaded
@@ -383,15 +398,16 @@ forward-depends on a later one: I/O prims are hand-emitted runtime routines in A
 
 ### Phase 5 — Register caching & allocation (from scratch; habu has neither)
 
-5.1 Add a **`reg` hole type** + patcher (rewrite Rd/Rn/Rm) + golden tests.
-    *Accept:* `test/t-reg-hole.fs` patches a register field.
-5.2 Parameterize encoder-based stencils on registers. *Accept:* one stencil emits
-    for several register assignments; corpus differential ≡.
-5.3 **TOS-in-register**, then keep the top N data-stack cells in registers across a
+> 5.1/5.2 of the old stencil design ("reg hole type", register-parameterized
+> stencils) are **obsolete — ICode already carries registers as IR fields**;
+> generators take register arguments for free. Phase 5 is now purely the
+> allocator.
+
+5.1 **TOS-in-register**, then keep the top N data-stack cells in registers across a
     basic block; spill only at block boundaries/calls (effect arity bounds N).
     *Accept:* `SQUARE` emits **zero memory traffic** for its body (assert non-zero
     buffer for empty/pure-juggle bodies); differential ≡.
-5.4 Liveness → linear-scan allocation; degrade to memory under pressure (never
+5.2 Liveness → linear-scan allocation; degrade to memory under pressure (never
     miscompile). *Accept:* a 6-slot loop body compiles without spills;
     differential ≡.
 
@@ -479,7 +495,7 @@ phase spikes a piece before integrating.
 | Bit-identical to threaded (4 observables, corpus)   | B · 3.3 + every "differential ≡" |
 | Use effect *types* for unboxing/width/untagging     | C · 4.2 (payoff)|
 | Don't break trapping-op semantics                   | C · 4.2         |
-| Eliminate data-stack traffic                        | D · 5.3, 5.4    |
+| Eliminate data-stack traffic                        | D · 5.1, 5.2    |
 | Control flow / combinators / locals native          | E · 6           |
 | Forth runtime substrate for the standalone          | F · 7           |
 | Standalone executable, gforth dropped               | G · 8.1         |

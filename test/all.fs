@@ -28,6 +28,8 @@ require t-locals.fs
 require t-quots.fs
 require t-defining.fs
 require t-parsing.fs
+require t-cg-asm.fs
+require t-cg-opt.fs
 
 CHECKING-ON? on                 \ now actually check defined-with-effect code
 require t-colon.fs
