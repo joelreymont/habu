@@ -101,6 +101,19 @@ variable ABUF  variable WPOS
 : ENC-ISB  ( i -- )  drop $D5033FDF EMITW ;
 : ENC-NONE ( i -- )  drop ;
 : ENC-NO-ENC ( i -- )  drop E-NO-ENC throw ;
+\ embedded data: copy bytes into the buffer, pad to a 4-byte word
+: ENC-BYTES ( i -- )
+   dup IC-A swap IC-B {: src u :}
+   ABUF @ WPOS @ 4 * +  {: dst :}
+   src dst u move
+   u 3 + -4 and {: padded :}
+   padded u ?do  0  dst i + c!  loop          \ zero the pad tail
+   padded 4 / WPOS +! ;
+: LEN-BYTES ( i -- n )  IC-B 3 + -4 and 4 / ;
+: ENC-DCQ ( i -- )  IC-A  ABUF @ WPOS @ 4 * +  !  2 WPOS +! ;
+: LEN-DCQ ( i -- 2 )  drop 2 ;
+: ENC-DLBL ( i -- )  IC-A LBL@ 4 *  ABUF @ WPOS @ 4 * +  !  2 WPOS +! ;  \ cell = label byte-offset
+: LEN-DLBL ( i -- 2 )  drop 2 ;
 
 \ --- dispatch tables (indexed by op tag) ---
 create ENCODERS #IOPS cells allot
@@ -132,7 +145,9 @@ INIT-TABLES
 ' ENC-SVC  IOP-SVC  ENC!   ' ENC-NOP  IOP-NOP  ENC!
 ' ENC-ICIV IOP-ICIV ENC!   ' ENC-DSB  IOP-DSB  ENC!   ' ENC-ISB  IOP-ISB  ENC!
 ' ENC-NONE IOP-LABEL ENC!  ' ENC-NONE IOP-DEAD ENC!
+' ENC-BYTES IOP-BYTES ENC!  ' ENC-DCQ IOP-DCQ ENC!  ' ENC-DLBL IOP-DLBL ENC!
 ' LENLIT IOP-LIT LEN!    ' LEN0 IOP-LABEL LEN!    ' LEN0 IOP-DEAD LEN!
+' LEN-BYTES IOP-BYTES LEN!   ' LEN-DCQ IOP-DCQ LEN!   ' LEN-DLBL IOP-DLBL LEN!
 
 \ --- assembly: size + bind labels, then encode ---
 : IC-LEN ( i -- n )  dup IC-OP cells LENXTS + @ execute ;

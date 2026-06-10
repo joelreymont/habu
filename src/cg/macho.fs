@@ -25,7 +25,10 @@ variable MLEN
 $FEEDFACF constant MH-MAGIC64
 $0100000C constant CPU-ARM64
 2         constant MH-EXECUTE
-$00200085 constant MH-FLAGS          \ NOUNDEFS|DYLDLINK|TWOLEVEL|PIE
+$00000085 constant MH-FLAGS-BASE     \ NOUNDEFS|DYLDLINK|TWOLEVEL
+$00200000 constant MH-PIE
+variable PIE?   PIE? on
+: MH-FLAGS ( -- f )  MH-FLAGS-BASE  PIE? @ if MH-PIE or then ;
 $19       constant LC-SEG64
 $0E       constant LC-DYLINKER
 $80000028 constant LC-MAIN

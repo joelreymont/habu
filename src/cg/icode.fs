@@ -22,7 +22,7 @@ IOP: IOP-BR    IOP: IOP-BLR   IOP: IOP-RET   IOP: IOP-ADR
 IOP: IOP-LDR   IOP: IOP-STR   IOP: IOP-LDRB  IOP: IOP-STRB
 IOP: IOP-LDRPO IOP: IOP-STRPR IOP: IOP-LDPPO IOP: IOP-STPPR
 IOP: IOP-SVC   IOP: IOP-NOP   IOP: IOP-ICIV  IOP: IOP-DSB   IOP: IOP-ISB
-IOP: IOP-LABEL IOP: IOP-DEAD
+IOP: IOP-LABEL IOP: IOP-DEAD  IOP: IOP-BYTES IOP: IOP-DCQ  IOP: IOP-DLBL
 IOP# @ constant #IOPS
 
 \ --- condition codes (B.cond / CSET) ---
@@ -106,6 +106,9 @@ variable #LBL
 : STP-PRE,  ( rt1 rt2 rn off -- ) IOP-STPPR IC, ;
 : SVC,  ( imm16 -- )       0 0 0 IOP-SVC IC, ;
 : NOP,  ( -- )             0 0 0 0 IOP-NOP IC, ;
+: BYTES, ( addr u -- )     0 0 IOP-BYTES IC, ;   \ embed raw bytes (padded to 4)
+: DCQ,  ( x -- )           0 0 0 IOP-DCQ IC, ;    \ embed one 64-bit cell (8 bytes)
+: DLBL, ( lbl -- )         0 0 0 IOP-DLBL IC, ;   \ embed cell = label's byte offset
 : ICIVAU, ( rt -- )        0 0 0 IOP-ICIV IC, ;
 : DSB-ISH, ( -- )          0 0 0 0 IOP-DSB IC, ;
 : ISB,  ( -- )             0 0 0 0 IOP-ISB IC, ;
