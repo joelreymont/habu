@@ -173,7 +173,13 @@ via a compile-time value stack: numbers are deferred (not emitted); a foldable o
 over pending constants folds them; any other token first flushes them as g-lits
 (so runtime values never mix with deferred ones). `3 4 + 5 *` → one `LIT 35`.
 Only ops whose gforth semantics match the emitted ARM64 are folded (NOT `/`,`MOD`,
-`2/` — division rounding / shift signedness differ). **Footgun:** `s>number?`
+`2/` — division rounding / shift signedness differ). A **constant shift amount**
+over a runtime value (one pending const at `LSHIFT`/`RSHIFT`) emits an *immediate*
+shift (`lsl/lsr #k`, a UBFM alias — the disassembler shows raw `.word`) instead
+of materialising `k` + a register shift. Full shifted-operand *fusion* (fold the
+shift into the next `EOR`/`ADD`/… — the last gap to LLVM on the dispatch loop)
+needs ICode ALU records to carry a shift field — a bigger IR change (dot B3).
+**Footgun:** `s>number?`
 leaves its double on the stack *even on failure* — the non-number path must
 `2drop` it or a garbage "token" reaches the encoder (E-NO-ENC). Folders live in a
 `CG-FOLD` wordlist, mirroring `CG-PRIMS` (no if-chain dispatch).

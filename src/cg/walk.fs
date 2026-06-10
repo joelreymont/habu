@@ -40,11 +40,22 @@ create CTS MAXCTS cells allot   variable #CTS
    #CTS @ 1 < if drop false exit then
    CTS-POP swap execute CTS-PUSH true ;
 
+\ Constant SHIFT amount with a runtime value below → emit an IMMEDIATE shift
+\ (LSL/LSR #k) instead of materialising k and using a register shift (LSLV/LSRV).
+\ One pending const = the shift amount (a runtime value sits on the data stack
+\ below it; the checker guarantees it). Two pending = both const → plain fold.
+: P-LSHI ( k -- )  T0 g-pop  T0 T0 rot LSLI,  T0 g-push ;
+: P-RSHI ( k -- )  T0 g-pop  T0 T0 rot LSRI,  T0 g-push ;
+: FOLD-SH ( imm-gen folding-xt -- f )
+   #CTS @ 2 >= if  nip FOLD2  exit then        \ both const → fold the value
+   #CTS @ 1  =  if  drop CTS-POP swap execute true  exit then  \ const shift → immediate
+   2drop false ;                               \ runtime shift → normal (register) emit
+
 wordlist constant CG-FOLD               \ foldable token -> folder (returns f)
 get-current  CG-FOLD set-current
 : + ['] + FOLD2 ;       : - ['] - FOLD2 ;       : * ['] * FOLD2 ;
 : AND ['] and FOLD2 ;   : OR ['] or FOLD2 ;     : XOR ['] xor FOLD2 ;
-: LSHIFT ['] lshift FOLD2 ;  : RSHIFT ['] rshift FOLD2 ;
+: LSHIFT ['] P-LSHI ['] lshift FOLD-SH ;  : RSHIFT ['] P-RSHI ['] rshift FOLD-SH ;
 : 1+ ['] 1+ FOLD1 ;     : 1- ['] 1- FOLD1 ;     : NEGATE ['] negate FOLD1 ;
 : INVERT ['] invert FOLD1 ;  : 2* ['] 2* FOLD1 ;
 set-current
