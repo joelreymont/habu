@@ -79,7 +79,7 @@ is EMIT-CALL
    root COLLECT
    #DEPS @ 0 ?do  NEWLBL  DEPS i cells + @ PFA>LABEL !  loop
    USES-DOT @ if  NEWLBL DOT-LBL !  then
-   SP SP 256 SUBI,  XDS SP 0 ADDI,        \ MAIN: data stack
+   SP SP 512 SUBI,  XDS SP 0 ADDI,  RSP SP 0 ADDI,  RSP RSP 512 ADDI,        \ MAIN: data stack
    input g-lit
    root PFA>LABEL @ BL,                   \ call the root word
    0 g-pop  16 1 MOVZ,  $80 SVC,          \ exit(result)
@@ -100,7 +100,7 @@ is EMIT-CALL
    #DEPS @ 0 ?do  NEWLBL  DEPS i cells + @ PFA>LABEL !  loop
    NEWLBL DOT-LBL !   NEWLBL ATOI-LBL !
    ARGV 1 0 ADDI,                         \ x22 = argv  (entry: x0=argc, x1=argv)
-   SP SP 256 SUBI,  XDS SP 0 ADDI,        \ data stack
+   SP SP 512 SUBI,  XDS SP 0 ADDI,  RSP SP 0 ADDI,  RSP RSP 512 ADDI,        \ data stack
    ar 0 ?do  9 ARGV i 1+ 8 *  LDR,  ATOI-LBL @ BL,  loop  \ push atoi(argv[1..ar])
    root PFA>LABEL @ BL,                   \ call the word
    DOT-LBL @ BL,                          \ print the result

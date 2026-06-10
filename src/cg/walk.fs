@@ -34,8 +34,9 @@ defer EMIT-CALL   ( a u -- handled? )
 \ Compile a body with one i64 input pushed first; the body's TOS becomes exit().
 : COMPILE-WORD {: ba bu input -- :}
    ICODE-RESET  cf-reset
-   SP SP 256 SUBI,        \ reserve a 256B data stack on the machine stack
-   XDS SP 0 ADDI,         \ Xds = sp
+   SP SP 512 SUBI,        \ reserve data + return stacks on the machine stack
+   XDS SP 0 ADDI,         \ Xds = sp (data stack, grows up)
+   RSP SP 0 ADDI,  RSP RSP 512 ADDI,   \ return stack top (grows down)
    input g-lit
    NEWLBL EPILOG !        \ EXIT branches here
    ba bu WALK-BODY
