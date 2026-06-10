@@ -206,4 +206,7 @@ get-current  CG-VS set-current
 : S>F v-popr {: x :}  d-alloc {: d :}  d x SCVTF,  x r-free  d v-pushf ;   \ int(GP) -> float(D)
 : F>S v-popd {: d :}  r-alloc {: x :}  x d FCVTZS,  d d-free  x v-pushr ;  \ float(D) -> int(GP)
 
+\ loop index -> fresh VS register (register-resident loops keep the index in LIDX)
+: I  r-alloc {: r :}  r LIDX MOV,  r v-pushr ;
+
 set-current

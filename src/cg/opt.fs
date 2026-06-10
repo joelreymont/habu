@@ -16,6 +16,17 @@ require icode.fs
 
 19 constant XDS-R     \ data-stack pointer register (matches templ.fs XDS)
 
+\ Pinned registers: loop-carried values (the index/limit and a register-resident
+\ loop's carry homes) whose live ranges WRAP the back-edge. This linear optimizer
+\ models straight-line liveness only, so it must never prove a pinned register
+\ dead or coalesce a copy into it — that would drop a definition the back-edge
+\ re-reads. walk.fs pins x27/x28 and the carry homes around each register loop.
+create PINNED 32 cells allot
+: PIN-RESET ( -- )   32 0 ?do  0 PINNED i cells + !  loop ;
+: REG-PIN   ( r -- ) dup 0 32 within if  1 swap cells PINNED + !  else drop then ;
+: REG-PINNED? ( r -- f )  dup 0 32 within if  cells PINNED + @ 0<>  else drop false then ;
+PIN-RESET
+
 \ MOV rd,rd — no-op
 : OPT-SELF-MOV ( i -- )
    dup IC-OP IOP-MOV = if
@@ -187,6 +198,7 @@ variable X19-CHG
    dup IOP-ADD = over IOP-SUB = or over IOP-AND = or over IOP-ORR = or swap IOP-EOR = or ;
 : SHIFT-AT ( shtype amt j -- )  >r  swap 6 lshift or  r> IC-ADDR 4 cells + ! ;
 : REG-DEAD-AFTER? {: j rd -- f :}             \ rd not read before written/boundary after j
+   rd REG-PINNED? if false exit then          \ loop-carried: never provably dead (back-edge)
    j 1+ {: k :}
    begin k #IC @ < while
       k IC-OP {: op :}
@@ -218,6 +230,7 @@ variable X19-CHG
 : OPT-COPY-PROP {: i -- :}
    i IC-OP IOP-MOV <> if exit then
    i IC-A {: rd :}  i IC-B {: rs :}  rd rs = if exit then
+   rd REG-PINNED? if exit then                \ never coalesce a copy into a loop-carried reg
    i 1+ {: k :}
    begin  k #IC @ < while
       k IC-OP {: op :}

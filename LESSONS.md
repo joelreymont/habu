@@ -3,6 +3,34 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Register-resident DO..LOOP — caf ties clang -O3 (2026-06-10)
+
+- **The spill was NEVER the loop bottleneck — the missing back-edge register
+  liveness was.** The memory-path loop spilled the carry every iteration, but
+  that store/load was hidden under the xorshift latency chain; making the carry
+  register-resident alone changed nothing. caf stayed at 1.94× clang until the
+  carry actually stayed in a register *across the back-edge*. Then it tied clang
+  -O3 (0.20s/1e8 iters, exit 221). Measure the real critical path, don't assume.
+- **Mechanism:** pre-scan the body; if every token is VS-safe (a CG-VS prim, `I`,
+  or a literal) and there's no nested loop, pin the carry into fixed register
+  homes at loop entry (`carry-snap`), walk the body register-resident, and at the
+  back-edge parallel-move the carry-out regs back into those homes (`carry-recon`,
+  cycle-safe via a T0 scratch — handles SWAP/ROT carries). Anything else (IF,
+  `.`, `>R`, nested DO) makes the body non-straight-line → speculative
+  `cg-snapshot`/`cg-rollback` cleanly reverts to the proven memory path.
+- **A linear peephole optimizer is UNSOUND across a loop back-edge.** COPY-PROP +
+  `REG-DEAD-AFTER?` treated the loop-top LABEL as "register dead after here," so
+  it killed `mov x28,limit` while the back-edge `cmp x27,x28` still read x28 →
+  loop ran ~0 times, wrong result, silently (correct-looking on tiny inputs).
+  Fix: PIN the loop-carried regs (x27/x28 + carry homes); pinned regs are never
+  proven dead and never have a copy coalesced into them. The same boundary-as-
+  dead assumption was already latent-unsound for forward fall-through.
+- **Correct results do NOT prove the fast path ran.** Both paths are correct;
+  only disassembly (`otool -tv`) or an op-count probe shows whether the carry is
+  register-resident. A stack-underflow bug in the `?DO`/`DO` guard (`2over` on a
+  3-item stack) silently sent every loop to the memory path while all tests
+  passed. Verify the generated code, not just the answer.
+
 ## Floating point — floats on the data stack (2026-06-10)
 
 - **One model decision unlocked everything: an f64 is ONE data-stack cell holding

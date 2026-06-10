@@ -122,3 +122,21 @@ T{ s" 2.0 3.0 SWAP F- F>S"       0 NATIVE-EVAL ->  1 }T   \ SWAP then 3-2
 T{ s" 2.0 3.0 OVER F+ F+ F>S"    0 NATIVE-EVAL ->  7 }T   \ OVER: 2 + (3+2)
 T{ s" 5.0 F>S 0 > IF 2.0 ELSE 3.0 THEN F>S"  0 NATIVE-EVAL -> 2 }T  \ float built after a spill
 T{ s" 2.0 3.0 F* 0 5 0 ?DO DROP 2.0 LOOP F>S"  0 NATIVE-EVAL -> 2 }T \ float spilled across a loop
+
+\ --- register-resident DO..LOOP: straight-line carry stays in registers across
+\ the back-edge (no per-iteration memory traffic); reconciliation handles SWAP;
+\ ?DO skip and the memory-path fallback (non-VS body token) stay correct ---
+T{ s" 0 10 0 ?DO 1+ LOOP"                    0 NATIVE-EVAL ->  10 }T   \ acc in a register
+T{ s" 0 100 0 ?DO 1+ LOOP"                   0 NATIVE-EVAL -> 100 }T
+T{ s" 0 5 0 ?DO I + LOOP"                    0 NATIVE-EVAL ->  10 }T   \ 0+1+2+3+4
+T{ s" 0 5 1 ?DO I + LOOP"                    0 NATIVE-EVAL ->  10 }T   \ ?DO start=1
+T{ s" 1 5 0 ?DO 2 * LOOP"                    0 NATIVE-EVAL ->  32 }T   \ 2^5
+T{ s" 0 0 5 0 ?DO 1+ SWAP 1+ SWAP LOOP +"    0 NATIVE-EVAL ->  10 }T   \ depth-2 carry + SWAP recon
+T{ s" 7 3 3 ?DO 1+ LOOP"                     0 NATIVE-EVAL ->   7 }T   \ ?DO skip (3>=3)
+T{ s" 9 0 0 ?DO 1+ LOOP"                     0 NATIVE-EVAL ->   9 }T   \ DO 0..0 skips body? (0>=0 for ?DO is skip; DO runs 0)
+T{ s" 0 3 0 ?DO 0 5 0 ?DO 1+ LOOP LOOP"      0 NATIVE-EVAL ->  15 }T   \ nested: inner reg, outer mem fallback
+T{ s" 0 4 0 ?DO 1+ I 0> IF 1+ THEN LOOP"     0 NATIVE-EVAL ->   7 }T   \ inner IF -> memory-path fallback
+T{ s" 10 20 30 1 0 ?DO ROT LOOP"           0 NATIVE-EVAL ->  10 }T   \ 3-cycle parallel move (1 ROT)
+T{ s" 10 20 30 3 0 ?DO ROT LOOP"           0 NATIVE-EVAL ->  30 }T   \ ROT^3 = identity
+T{ s" 1 2 5 0 ?DO SWAP LOOP +"             0 NATIVE-EVAL ->   3 }T   \ swap-carry, odd trips
+T{ s" 1 SWAP 0 ?DO DUP 13 LSHIFT XOR DUP 7 RSHIFT XOR DUP 17 LSHIFT XOR LOOP" 20 NATIVE-EVAL ->  92 }T  \ xorshift, 20 iters (cross-checked vs C)
