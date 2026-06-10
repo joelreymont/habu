@@ -16,6 +16,11 @@ require asm.fs
 \ return stack (grows down; RSP points at top; [RSP]=index, [RSP+8]=limit)
 : g-rpush ( reg -- )  RSP RSP 8 SUBI,  RSP 0 STR, ;
 : g-rpop  ( reg -- )  RSP 0 LDR,  RSP RSP 8 ADDI, ;
+\ carve the data stack (Xds=sp, up) + return stack (RSP=sp+n, down) on the machine
+\ stack. n must hold both peaks; data and return grow toward each other (no guard).
+: g-prologue {: n -- :}  SP SP n SUBI,  XDS SP 0 ADDI,  RSP SP 0 ADDI,  RSP RSP n ADDI, ;
+: g-exit-tos ( -- )  0 g-pop  16 1 MOVZ,  $80 SVC, ;     \ exit(TOS)
+: g-exit0    ( -- )  0 0 MOVZ,  16 1 MOVZ,  $80 SVC, ;   \ exit(0)
 
 \ arithmetic / stack
 : p-dup   T0 g-pop  T0 g-push  T0 g-push ;

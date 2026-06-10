@@ -58,8 +58,8 @@ variable LEAF?
 variable CUR-PFA
 :noname ( a u -- handled? )
    2dup s" ." compare 0= if  2drop  DOT-LBL @ BL,  true  exit  then
-   2dup s" RECURSE" compare 0= if
-      2drop  CUR-PFA @ ?dup if PFA>LABEL @ else 0 then  BL,  true   \ 0 = placeholder (validation walk)
+   2dup s" RECURSE" compare 0= if         \ self-call (CUR-PFA unset during validation walk)
+      2drop  CUR-PFA @ ?dup if PFA>LABEL @ else 0 then  BL,  true
    else  WORD-PFA ?dup if  PFA>LABEL @ BL,  true  else  false  then  then ;
 is EMIT-CALL
 
@@ -79,12 +79,13 @@ is EMIT-CALL
    root COLLECT
    #DEPS @ 0 ?do  NEWLBL  DEPS i cells + @ PFA>LABEL !  loop
    USES-DOT @ if  NEWLBL DOT-LBL !  then
-   SP SP 512 SUBI,  XDS SP 0 ADDI,  RSP SP 0 ADDI,  RSP RSP 512 ADDI,        \ MAIN: data stack
+   512 g-prologue                         \ MAIN: data + return stacks
    input g-lit
    root PFA>LABEL @ BL,                   \ call the root word
-   0 g-pop  16 1 MOVZ,  $80 SVC,          \ exit(result)
+   g-exit-tos                             \ exit(result)
    #DEPS @ 0 ?do  DEPS i cells + @ EMIT-WORD  loop
-   USES-DOT @ if  EMIT-DOT  then ;
+   USES-DOT @ if  EMIT-DOT  then
+   OPTIMIZE ;
 
 : RUN-NATIVE ( input "name" -- exit-code )
    parse-name WORD-PFA dup 0= if E-NO-ENC throw then
@@ -100,13 +101,13 @@ is EMIT-CALL
    #DEPS @ 0 ?do  NEWLBL  DEPS i cells + @ PFA>LABEL !  loop
    NEWLBL DOT-LBL !   NEWLBL ATOI-LBL !
    ARGV 1 0 ADDI,                         \ x22 = argv  (entry: x0=argc, x1=argv)
-   SP SP 512 SUBI,  XDS SP 0 ADDI,  RSP SP 0 ADDI,  RSP RSP 512 ADDI,        \ data stack
+   512 g-prologue                         \ data + return stacks
    ar 0 ?do  9 ARGV i 1+ 8 *  LDR,  ATOI-LBL @ BL,  loop  \ push atoi(argv[1..ar])
    root PFA>LABEL @ BL,                   \ call the word
    DOT-LBL @ BL,                          \ print the result
-   0 0 MOVZ,  16 1 MOVZ,  $80 SVC,        \ exit(0)
+   g-exit0
    #DEPS @ 0 ?do  DEPS i cells + @ EMIT-WORD  loop
-   EMIT-DOT  EMIT-ATOI ;
+   EMIT-DOT  EMIT-ATOI  OPTIMIZE ;
 
 \ Emit a standalone CLI executable `outfile` for a recorded word `name`.
 \ Usage:  s" /tmp/sq" CAF-EXE SQUARE   then   ./sq 7

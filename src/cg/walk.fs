@@ -4,6 +4,7 @@
 \ ARM64 machine code -> native Mac executable.
 
 require templ.fs
+require opt.fs
 require exec.fs
 
 \ Non-primitive token hook: link.fs sets this to emit a BL to another caf word
@@ -34,15 +35,13 @@ defer EMIT-CALL   ( a u -- handled? )
 \ Compile a body with one i64 input pushed first; the body's TOS becomes exit().
 : COMPILE-WORD {: ba bu input -- :}
    ICODE-RESET  cf-reset
-   SP SP 512 SUBI,        \ reserve data + return stacks on the machine stack
-   XDS SP 0 ADDI,         \ Xds = sp (data stack, grows up)
-   RSP SP 0 ADDI,  RSP RSP 512 ADDI,   \ return stack top (grows down)
+   512 g-prologue
    input g-lit
    NEWLBL EPILOG !        \ EXIT branches here
    ba bu WALK-BODY
    EPILOG @ LBL,
-   0 g-pop                \ x0 = TOS  (exit status = x0 & 0xff)
-   16 1 MOVZ,  $80 SVC, ;
+   g-exit-tos
+   OPTIMIZE ;             \ peephole the complete IR
 
 : NATIVE-EVAL ( ba bu input -- exit-code )
    COMPILE-WORD  s" /tmp/caf-word" RUN-EXE ;

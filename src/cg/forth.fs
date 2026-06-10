@@ -21,11 +21,6 @@ create PNPOOL 1024 chars allot   variable PNP   variable #PL
 : FPRIM {: na nu xt -- :}            \ define+register a primitive
    NEWLBL {: lbl :}  na nu lbl reg-prim  lbl LBL,  xt execute  RET, ;
 
-\ branch helpers (cond to a fresh fwd label captured in a var, placed later)
-: B>  ( -- lbl )  NEWLBL dup B, ;
-: ?>  ( cond -- lbl )  NEWLBL dup >r BCOND, r> ;   \ ( cond -- lbl ) branch if cond
-: cbz>  ( rt -- lbl )  NEWLBL dup >r swap CBZ, r> ;
-
 \ shared label ids (forward refs)
 variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  variable SRCN
 
