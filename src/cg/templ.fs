@@ -16,9 +16,12 @@ require asm.fs
 \ return stack (grows down; RSP points at top; [RSP]=index, [RSP+8]=limit)
 : g-rpush ( reg -- )  RSP RSP 8 SUBI,  RSP 0 STR, ;
 : g-rpop  ( reg -- )  RSP 0 LDR,  RSP RSP 8 ADDI, ;
-\ carve the data stack (Xds=sp, up) + return stack (RSP=sp+n, down) on the machine
-\ stack. n must hold both peaks; data and return grow toward each other (no guard).
-: g-prologue {: n -- :}  SP SP n SUBI,  XDS SP 0 ADDI,  RSP SP 0 ADDI,  RSP RSP n ADDI, ;
+\ carve a locals frame (LOCSZ, addressed [sp,#slot*8]) + the data stack (Xds, up)
+\ + return stack (RSP=Xds+n, down) on the machine stack. Layout low→high:
+\ [sp .. sp+LOCSZ) locals | [Xds .. ) data ↑ | return ↓ from Xds+n.
+256 constant LOCSZ                       \ 32 local slots × 8 bytes
+: g-prologue {: n -- :}
+   SP SP n LOCSZ + SUBI,  XDS SP LOCSZ ADDI,  RSP XDS 0 ADDI,  RSP RSP n ADDI, ;
 : g-exit-tos ( -- )  0 g-pop  16 1 MOVZ,  $80 SVC, ;     \ exit(TOS)
 : g-exit0    ( -- )  0 0 MOVZ,  16 1 MOVZ,  $80 SVC, ;   \ exit(0)
 

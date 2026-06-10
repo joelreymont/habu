@@ -72,3 +72,11 @@ T{ s" DUP 13 LSHIFT XOR DUP 7 RSHIFT XOR DUP 17 LSHIFT XOR" BODY-IC -> 7 }T  \ f
 \ --- register-pool exhaustion ABORTS (never silently miscompiles) ---
 : DEEP ( -- )  s" DUP DUP DUP DUP DUP DUP DUP DUP DUP" 5 COMPILE-WORD ;
 T{ ' DEEP catch 0<> -> true }T                 \ too deep for the 8-reg pool -> clean abort
+
+\ --- locals {: a b :} (frame slots; survive control flow / spills) ---
+T{ s" {: x :} x x *"            7 NATIVE-EVAL -> 49 }T
+T{ s" {: x :} x x + x +"        5 NATIVE-EVAL -> 15 }T
+T{ s" {: a :} 10 a -"           3 NATIVE-EVAL ->  7 }T
+T{ s" {: x :} x 0< IF x NEGATE ELSE x THEN" -5 NATIVE-EVAL -> 5 }T   \ local read across IF/ELSE
+T{ s" {: x :} x 0< IF x NEGATE ELSE x THEN"  6 NATIVE-EVAL -> 6 }T
+T{ s" {: x :} 0 5 0 ?DO x + LOOP"  3 NATIVE-EVAL -> 15 }T            \ local read inside a loop (0 + 5×3)

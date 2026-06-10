@@ -201,6 +201,27 @@ pre-opt == post-opt — the allocator emits near-optimal code directly); `DUP DU
   load/store framing = LLVM hand-asm parity; full pipeline **54→7**, ~7.7×). The
   last lever is loop-invariant allocation across the back-edge.
 
+## AOT locals + the u8/u32 "typed payoff" reality (2026-06-10)
+
+- **Locals (`src/cg/cglocals.fs`) — done.** `{: a b :}` lowers to a per-word
+  FRAME (`LOCSZ` bytes carved BELOW the data stack in `g-prologue`, addressed
+  `[sp,#slot*8]`). At the opener: spill the VS, pop the named inputs into slots;
+  a name use LDRs its slot onto the VS. Because locals are in memory (not the VS),
+  they **survive spills** — so they read correctly across IF/ELSE and loops (the
+  key correctness property; tested). Hooked into `EMIT-TOKEN` before the
+  number/prim classification via `CHECK-LOCAL-CG`; reuses the checker's
+  `BRACE-OPEN?`/`NAME-PART`/`CI=`. Inputs-only (v0), matching the checker.
+  **Layout gotcha:** locals at `[sp,…)` would alias the data stack (`Xds=sp`) —
+  `g-prologue` now sets `Xds = sp+LOCSZ` so the frame sits below the data stack.
+- **u8/u32 width is correct by construction — no typed selector needed.** The
+  plan assumed fixnum tags/boxing and a typed-stencil bank; caf never had tags
+  (values are full 64-bit cells, like gforth), and the register allocator makes
+  registers IR fields (no frozen stencils to specialise). gforth's model is
+  "full-cell arithmetic, truncate only at a byte store" — caf matches it exactly:
+  `c@`/`c!` use `LDRB`/`STRB` (zero-extend / low-byte). So the "typed payoff"
+  (unboxing) is free, and width truncation happens at the right point already. No
+  `UXTB`/`UXTW` in registers required for correctness.
+
 ## Speed gate CLOSED — the bar is LLVM, not gforth (2026-06-10)
 
 gforth performance is not the competition; **LLVM (`clang -O3`) is the bar** a
