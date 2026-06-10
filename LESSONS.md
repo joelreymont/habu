@@ -28,6 +28,17 @@ mistakes, or insights. Lessons only — no API reference or code snippets (→ `
   frame before RET. Locals coexist with catch: the locals frame sits below catch's
   handler frames, so `throw` unwinds to the catch and the locals stay readable.
 
+## Self-host 7 — type-checking a word body runs natively (2026-06-10)
+
+- Capstone: the checker's full pipeline — build effects, compose them
+  (`APPLY` = unify the word's `din` against the current stack, thread `dout`
+  forward), infer — runs natively. Demonstrated by type-checking `DUP *`: the
+  composition forces the duplicated value to `i64` and yields `i64`, computed
+  entirely by standalone-emitted machine code. With the unifier + composition
+  native, the checker's *algorithmic core* is self-hosted. What remains for a full
+  dot-6/7 port is the surface plumbing (sigparse string→effect, the prim table,
+  render, the body tokenizer) — large but mechanical relative to the engine.
+
 ## Self-host 7 — full unification engine runs natively (2026-06-10)
 
 - The checker's central operation — unifying two four-row stack effects — now runs

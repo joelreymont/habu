@@ -151,3 +151,12 @@ s" 0 constant T-CON 1 constant T-VAR 2 constant T-PTR 3 constant S-ROW 4 constan
 -1
 0
 " NF= -> true }T
+
+\ --- self-host 7 capstone: TYPE-CHECK a word body natively. Compose the DUP
+\ and * effects (APPLY = unify din + thread dout) over a polymorphic stack;
+\ the checker infers the input must be i64 (code 1) and the result is i64 —
+\ the full checker pipeline (build effects -> unify+compose -> infer) native. ---
+s" 0 constant T-CON 1 constant T-VAR 2 constant T-PTR 3 constant S-ROW 4 constant S-PUSH -1 constant UNBOUND create TVT 512 allot create RVT 512 allot : TVINIT 0 BEGIN dup cells TVT + UNBOUND swap ! dup cells RVT + UNBOUND swap ! 1 + dup 63 > UNTIL drop ; : TAG 7 and ; : PAY 3 rshift ; : MK-CON 3 lshift ; : MK-VAR 3 lshift T-VAR or ; : MK-ROW 3 lshift S-ROW or ; : TV@ cells TVT + @ ; : TV! cells TVT + ! ; : RV@ cells RVT + @ ; : RV! cells RVT + ! ; create SPA 1024 allot variable SPN : MK-PUSH SPN @ 2 * cells SPA + {: a :} a 8 + ! a ! SPN @ 3 lshift S-PUSH or SPN @ 1 + SPN ! ; : P>TYPE PAY 2 * cells SPA + @ ; : P>REST PAY 2 * cells SPA + 8 + @ ; : ISVAR TAG T-VAR = ; : ISROW TAG S-ROW = ; : T-RES BEGIN dup ISVAR IF dup PAY TV@ dup UNBOUND = IF drop 0 ELSE nip -1 THEN ELSE 0 THEN WHILE REPEAT ; : R-RES BEGIN dup ISROW IF dup PAY RV@ dup UNBOUND = IF drop 0 ELSE nip -1 THEN ELSE 0 THEN WHILE REPEAT ; create UWL 512 allot variable USP variable UOK : U-PUSH USP @ cells UWL + ! USP @ 1 + USP ! ; : U-POP USP @ 1 - USP ! USP @ cells UWL + @ ; : PAIR swap U-PUSH U-PUSH ; : UNPAIR U-POP U-POP swap ; : U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE over ISROW IF swap PAY RV! ELSE dup ISROW IF PAY RV! ELSE 2dup P>TYPE swap P>TYPE swap PAIR P>REST swap P>REST swap PAIR THEN THEN THEN ; : U-TYPE T-RES swap T-RES swap 2dup = IF 2drop ELSE over ISVAR IF swap PAY TV! ELSE dup ISVAR IF PAY TV! ELSE over PAY over PAY = IF 2drop ELSE 2drop 0 UOK ! THEN THEN THEN THEN ; : UNIFY 0 USP ! -1 UOK ! PAIR BEGIN USP @ UOK @ and WHILE UNPAIR over TAG dup S-ROW = swap S-PUSH = or IF U-ROW ELSE U-TYPE THEN REPEAT UOK @ ; : APPLY {: din dout :} din UNIFY drop dout ; TVINIT 0 SPN ! 0 USP ! 0 MK-ROW 10 MK-VAR 11 MK-ROW MK-PUSH 10 MK-VAR 10 MK-VAR 11 MK-ROW MK-PUSH MK-PUSH APPLY 1 MK-CON 1 MK-CON 20 MK-ROW MK-PUSH MK-PUSH 1 MK-CON 20 MK-ROW MK-PUSH APPLY P>TYPE T-RES PAY . 10 MK-VAR T-RES PAY ."
+   NF  T{ s\" 1
+1
+" NF= -> true }T
