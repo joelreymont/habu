@@ -116,3 +116,14 @@ s" : H {: a b :} a a * b b * + ; 3 4 H ."            NF  T{ s\" 25\n"  NF= -> tr
 s" : F {: x :} x 0 < IF x NEGATE ELSE x THEN ; -5 F ."  NF  T{ s\" 5\n"   NF= -> true }T
 s" : G {: n :} 0 BEGIN 1 + DUP n >= UNTIL ; 5 G ."   NF  T{ s\" 5\n"   NF= -> true }T
 s" : BAD 99 throw ; : T {: x :} ['] BAD catch x + ; 5 T ."  NF  T{ s\" 104\n" NF= -> true }T
+
+\ --- wordlists + search order (self-host 5): per-record wid; WORDLIST hands out
+\ fresh ids; get/set-current pick the wordlist for new defs; search-wl filters ---
+s" wordlist set-current get-current ."                  NF  T{ s\" 1\n"  NF= -> true }T
+s" wordlist set-current : BAR 42 ; 0 set-current BAR ." NF  T{ s\" 42\n" NF= -> true }T
+s\" : SQ DUP * ; : T S\" SQ\" 0 search-wl 0 <> . ; T"   NF  T{ s\" -1\n" NF= -> true }T
+s\" : T S\" NOPE\" 0 search-wl . ; T"                   NF  T{ s\" 0\n"  NF= -> true }T
+s\" : T S\" dup\" 0 search-wl 0 <> . ; T"               NF  T{ s\" -1\n" NF= -> true }T
+\ a word defined into wid 1 is found there, not in wid 0
+s\" wordlist set-current : W2 9 ; 0 set-current : T S\" W2\" 1 search-wl 0 <> . S\" W2\" 0 search-wl . ; T"
+   NF  T{ s\" -1\n0\n" NF= -> true }T

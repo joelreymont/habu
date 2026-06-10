@@ -28,6 +28,18 @@ mistakes, or insights. Lessons only — no API reference or code snippets (→ `
   frame before RET. Locals coexist with catch: the locals frame sits below catch's
   handler frames, so `throw` unwinds to the catch and the locals stay readable.
 
+## Self-host milestone 5 — wordlists (2026-06-10)
+
+- Each dict record carries a wordlist id (DREC 40→48, wid at +40; seed prims = 0 =
+  FORTH). A data-region header cell holds CURRENT (new defs take it) and a WIDNEXT
+  counter. `WORDLIST` hands out fresh ids; `get-current`/`set-current` pick the
+  target; `search-wl ( a u wid -- addr|0 )` is FIND restricted to one wid
+  (case-folded). The interpreter's FIND stays wid-agnostic (so the standalone can
+  always call its own words); wordlist scoping is opt-in via `search-wl` — exactly
+  what the codegen dispatch port needs (CG-VS vs FORTH).
+- `S"` is compile-only — testing `search-wl` at the top level silently fed it a
+  garbage string (S" skipped as unknown in interpret mode). Exercise it inside `:`.
+
 ## Crash diagnostics — in-binary register dump (2026-06-10)
 
 - caf-built binaries (NATIVE-EVAL exes + the standalone) install an in-binary

@@ -25,7 +25,7 @@ require crash.fs           \ in-binary crash handler (register dump on signal)
 
 $100000 constant REGION       \ mmap region size (1 MB)
 $10000  constant DICT-SIZE     \ dict area at region+0 (64 KB); code area follows
-40      constant DREC          \ dict record: addr(8) clen(8) namelen(8) name(16)
+48      constant DREC          \ dict record: addr(8) clen(8) namelen(8) name(16) wid(8)
 $F000   constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
 $80000  constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
 $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
@@ -38,6 +38,8 @@ $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 0   constant DP-CELL    8  constant HND-CELL
 16  constant LOCN-CELL   24 constant LOCF-CELL    32 constant LOCNAMES
 24  constant LOC-REC      \ bytes per local name record (len + 16 name)
+$1A0 constant CUR-CELL    \ get/set-current wordlist id (new defs go here)
+$1A8 constant WIDN-CELL   \ next fresh wordlist id (WORDLIST hands these out)
 $200 constant DATA-START  \ DP initial offset (past the header)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create TICK-KW   39 c,          \ '  (0x27)
@@ -156,6 +158,32 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,   \ link, resume pc, machine sp
    SP 13 0 ADDI,  12 BR,                 \ restore sp; jump to catch's resume
    lnoh LBL,  0 9 0 ADDI,  16 1 MOVZ,  $80 SVC, ;   \ no handler -> exit(exc)
+\ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
+: bwordlist  9 DATA WIDN-CELL LDR,  9 g-push  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
+: bgetcur    9 DATA CUR-CELL LDR,  9 g-push ;                                       \ ( -- wid )
+: bsetcur    A g-pop  A DATA CUR-CELL STR, ;                                        \ ( wid -- )
+\ search-wl ( a u wid -- addr|0 ): find name (a,u) in wordlist wid (case-folded)
+: bswl
+   2 g-pop  1 g-pop  0 g-pop                      \ wid=x2, u=x1, a=x0
+   3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,   \ fold mask, rec, count, result
+   NEWLBL {: wl :} NEWLBL {: wend :} NEWLBL {: wnext :} NEWLBL {: wcmp :}
+   NEWLBL {: wmatch :} NEWLBL {: wf1 :} NEWLBL {: wf2 :}
+   wl LBL,  6 wend CBZ,
+      9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,    \ wid mismatch
+      9 5 16 LDR,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
+      7 0 MOVZ,
+      wcmp LBL,  7 1 CMP,  C-GE wmatch BCOND,
+         9 5 24 ADDI,  9 9 7 ADD,  9 9 0 LDRB,    \ rec.name[j]
+         9 $41 CMPI,  C-LT wf1 BCOND,  9 $5A CMPI,  C-GT wf1 BCOND,  9 9 3 ORR,
+         wf1 LBL,
+         10 0 7 ADD,  10 10 0 LDRB,               \ a[j]
+         10 $41 CMPI,  C-LT wf2 BCOND,  10 $5A CMPI,  C-GT wf2 BCOND,  10 10 3 ORR,
+         wf2 LBL,
+         9 10 CMP,  C-NE wnext BCOND,
+         7 7 1 ADDI,  wcmp B,
+      wmatch LBL,  11 5 0 LDR,  wend B,           \ result = rec.addr
+      wnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  wl B,
+   wend LBL,  11 g-push ;
 
 : emit-prims ( -- )
    s" +"    ['] b+    FPRIM   s" -"    ['] b-    FPRIM   s" *"    ['] b*    FPRIM
@@ -177,7 +205,9 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find
    s" here" ['] bhere  FPRIM   s" allot" ['] ballot FPRIM
    s" ,"    ['] bcomma FPRIM   s" c,"   ['] bccomma FPRIM
    s" type" ['] btype  FPRIM   s" execute" ['] bexec FPRIM
-   s" catch" ['] bcatch FPRIM   s" throw" ['] bthrow FPRIM ;
+   s" catch" ['] bcatch FPRIM   s" throw" ['] bthrow FPRIM
+   s" wordlist" ['] bwordlist FPRIM   s" get-current" ['] bgetcur FPRIM
+   s" set-current" ['] bsetcur FPRIM  s" search-wl" ['] bswl FPRIM ;
 
 \ ---- CEMIT ( x9=word -- ) : str w9,[x28] ; CP += 4 ----
 : emit-cemit ( -- )
@@ -270,6 +300,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find
       i cells PLEN + @ DCQ,                                 \ +16 name length
       i cells PNAM + @  i cells PLEN + @  BYTES,            \ +24 name (padded to 4)
       16  i cells PLEN + @  3 + -4 and  -  ?dup if  PNPOOL  swap BYTES, then
+      0 DCQ,                                               \ +40 wid (seed prims = 0 = FORTH)
    loop ;
 
 \ ---- compile-mode literal: emit movz/movk x9=val then the push stencil ----
@@ -404,6 +435,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find
    Ltok @ BL,                                            \ read NAME
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot
    CP 9 0 STR,  TKL 9 16 STR,                            \ slot.addr=CP, namelen
+   14 DATA CUR-CELL LDR,  14 9 40 STR,                   \ slot.wid = CURRENT
    10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,         \ copy name
    NEWLBL {: ncp :}  NEWLBL {: ncpd :}
    ncp LBL,  12 ncpd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
@@ -508,6 +540,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find
       6 6 5 SUB,  6 6 4 SUBI,  6 10 8 STR,            \ clen = endoff-startoff-4
       5 9 16 LDR,  5 10 16 STR,                       \ namelen
       5 9 24 LDR,  5 10 24 STR,  5 9 32 LDR,  5 10 32 STR,  \ name[0..15]
+      5 9 40 LDR,  5 10 40 STR,                       \ wid
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL,
    \ separate always-RW data region (x20 is free after the seed copy); [x20]=DP=x20+8
@@ -515,6 +548,8 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find
    16 197 MOVZ,  $80 SVC,  DATA 0 0 ADDI,
    7 DATA DATA-START ADDI,  7 DATA DP-CELL STR,       \ DP = base + header
    9 0 MOVZ,  9 DATA HND-CELL STR,                    \ HND (catch handler chain) = 0
+   9 0 MOVZ,  9 DATA CUR-CELL STR,                    \ CURRENT wordlist = 0 (FORTH)
+   9 1 MOVZ,  9 DATA WIDN-CELL STR,                   \ next fresh wid = 1
    g-install-crash                                    \ self-diagnosing crash (register dump)
    emit-source                                        \ INP/INE <- baked Lsrc or stdin
    PEND 0 MOVZ,                                       \ interpret mode
@@ -531,6 +566,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find
          9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,  \ slot
          PEND 9 0 ADDI,
          CP 9 0 STR,  TKL 9 16 STR,                         \ slot.addr=CP, slot.namelen
+         14 DATA CUR-CELL LDR,  14 9 40 STR,                \ slot.wid = CURRENT
          10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,      \ copy name
          NEWLBL {: ncopy :}  NEWLBL {: ncd :}
          ncopy LBL,  12 ncd CBZ,
