@@ -8,6 +8,13 @@ require icode.fs
 : IC-KILL ( i -- )  IC-ADDR IOP-DEAD swap ! ;
 : NEXT-OP ( i -- op|-1 )  1+ dup #IC @ < if IC-OP else drop -1 then ;
 
+\ field setters (rewrite a record in place — register allocation, peepholes)
+: IC-OP! ( op i -- )  IC-ADDR ! ;
+: IC-A!  ( v i -- )   IC-ADDR cell+ ! ;
+: IC-B!  ( v i -- )   IC-ADDR 2 cells + ! ;
+
+19 constant XDS-R     \ data-stack pointer register (matches templ.fs XDS)
+
 \ MOV rd,rd — no-op
 : OPT-SELF-MOV ( i -- )
    dup IC-OP IOP-MOV = if
@@ -36,9 +43,35 @@ require icode.fs
       then
    then drop ;
 
+\ TOS-in-register: a g-push reg immediately followed by a g-pop reg round-trips
+\ a value through data-stack memory. The four records are
+\   STR rA,[Xds,0]  ADDI Xds,Xds,8   SUBI Xds,Xds,8   LDR rB,[Xds,0]
+\ Net Xds change is zero and [Xds] is above TOS (dead), so the pair is exactly
+\ MOV rB,rA — or nothing when rA==rB. Collapsing it keeps the value in a register
+\ across adjacent inlined primitives (a branch/BL between them breaks the match,
+\ so it never crosses a control-flow edge). Returns ( rA rB f ).
+: PUSHPOP? {: i -- rA rB f :}
+   i 3 + #IC @ < 0= if 0 0 false exit then
+   i      IC-OP IOP-STR  =
+   i      IC-B XDS-R = and   i      IC-C 0= and
+   i 1+   IC-OP IOP-ADDI = and   i 1+ IC-A XDS-R = and   i 1+ IC-B XDS-R = and   i 1+ IC-C 8 = and
+   i 2 +  IC-OP IOP-SUBI = and   i 2 + IC-A XDS-R = and   i 2 + IC-B XDS-R = and   i 2 + IC-C 8 = and
+   i 3 +  IC-OP IOP-LDR  = and   i 3 + IC-B XDS-R = and   i 3 + IC-C 0= and
+   if  i IC-A   i 3 + IC-A   true  else  0 0 false  then ;
+
+: OPT-PUSHPOP {: i -- :}
+   i PUSHPOP? {: rA rB ok :}
+   ok 0= if exit then
+   rA rB = if
+      i IC-KILL  i 1+ IC-KILL  i 2 + IC-KILL  i 3 + IC-KILL
+   else
+      rB i IC-A!   rA i IC-B!   IOP-MOV i IC-OP!
+      i 1+ IC-KILL  i 2 + IC-KILL  i 3 + IC-KILL
+   then ;
+
 create OPT-RULES
-   ' OPT-SELF-MOV ,  ' OPT-ARITH0 ,  ' OPT-DEAD-LIT ,  ' OPT-B-NEXT ,
-4 constant #OPT-RULES
+   ' OPT-SELF-MOV ,  ' OPT-ARITH0 ,  ' OPT-DEAD-LIT ,  ' OPT-B-NEXT ,  ' OPT-PUSHPOP ,
+5 constant #OPT-RULES
 
 : OPTIMIZE ( -- )
    #IC @ 0 ?do
