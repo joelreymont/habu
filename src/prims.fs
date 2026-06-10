@@ -48,6 +48,20 @@ s" R i64 i64 -- R bool" s" <"   PRIM
 s" R i64 i64 -- R bool" s" >"   PRIM
 s" R i64 i64 -- R bool" s" <="  PRIM
 s" R i64 i64 -- R bool" s" >="  PRIM
+s" R i64 -- R bool"     s" 0<"  PRIM
+s" R i64 -- R bool"     s" 0>"  PRIM
+s" R i64 -- R bool"     s" 0<>" PRIM
+s" R i64 i64 -- R bool" s" U<"  PRIM
+s" R i64 i64 -- R bool" s" U>"  PRIM
+s" R i64 i64 i64 -- R bool" s" WITHIN" PRIM   \ ( n lo hi -- f )
+
+\ --- min/max, /mod, double-cell stack (codegen subset) ---
+s" R i64 i64 -- R i64"     s" MIN"   PRIM
+s" R i64 i64 -- R i64"     s" MAX"   PRIM
+s" R i64 i64 -- R i64 i64" s" /MOD"  PRIM    \ ( a b -- rem quot )
+s" R a b -- R a b a b"     s" 2DUP"  PRIM
+s" R a b -- R"             s" 2DROP" PRIM
+s" R a b c d -- R c d a b" s" 2SWAP" PRIM
 
 \ --- memory ---
 s" R ptr a -- R a"        s" @"   PRIM

@@ -248,3 +248,27 @@ encoders for emitting instruction words at runtime). It needs a runtime
 mini-assembler (emit BL/literal-push/RET into an mmap'd region), W^X toggling
 (`mprotect` RW↔RX + emitted `IC IVAU` flush), a growable runtime dictionary, and
 a compile-mode state machine. Substantial; not yet built.
+
+## Type checker — capability vs. coverage (2026-06-10)
+
+When dogfooding the codegen (`src/cg/`) as typed caf, the question arose whether
+the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
+
+- The checker ENGINE is capable: `src/control.fs` already models `IF/ELSE/THEN`,
+  `BEGIN/UNTIL/AGAIN/WHILE/REPEAT`, `DO/?DO/LOOP/+LOOP`, `I`/`J` (depth-tracked),
+  `EXIT`, `RECURSE`; `src/prims.fs` charts the return stack (`>R/R>/R@/2>R/…`) and
+  combinators (`DIP/KEEP/BI/TIMES/EACH/MAP/FOLD`). A `?DO … LOOP` word checks
+  cleanly; the earlier review claim that counted loops were unmodeled was wrong —
+  verify by test, not by assumption.
+- What lagged: the codegen-supported words `MIN MAX 0< 0> 0<> U< U> WITHIN 2DUP
+  2DROP 2SWAP /MOD` were **not charted**, so any program using them escaped to
+  `E-UNCHECKED` (compiled native, unverified). Fixed by extending `src/prims.fs`.
+  Lesson: the checker's reach = the prim DB; keep it in step with what the
+  codegen accepts, or checkable code silently slips to unchecked.
+- Genuinely untypeable (stay out of checked code): `?DUP` (variadic 0/2 outputs),
+  `PICK`/`ROLL`/`DEPTH` (runtime depth). Not worth special-casing yet.
+- Dogfooding payoff is real: the session's bugs (encoder `drop` arity, CF-stack
+  order) are exactly stack-effect errors the checker rejects. Charting more prims
+  widens how much of our own code caf can verify. Effect syntax → `docs/effects.md`.
+- Smell noted: `EFFECT-OF` returns `( a u -- ea eu )` when found but a single `0`
+  when absent — asymmetric stack effect; callers must `dup 0= if drop …`.
