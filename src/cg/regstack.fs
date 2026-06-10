@@ -64,10 +64,40 @@ create VTAG VMAX cells allot   create VVAL VMAX cells allot   variable VSP
 : vcmp  ( cond -- )  v-popr {: b :} v-popr {: a :}  a b CMP,  a swap CSET,  a SP a SUB,  b r-free  a v-pushr ;
 : vcmp0 ( cond -- )  v-popr {: a :}  a 0 CMPI,  a swap CSET,  a SP a SUB,  a v-pushr ;
 
+\ ADD/SUB with a SMALL constant top operand -> immediate (ADDI/SUBI #imm12), no
+\ materialisation. (igen = ['] ADDI, etc.)
+4096 constant IMM12-MAX
+: vaddsub {: rgen igen fold -- :}
+   v-2con? if  v-popc {: b :} v-popc {: a :}  a b fold execute v-pushc exit then
+   v-top-tag V-CON = if  v-top-val 0 IMM12-MAX within if
+      v-popc {: k :} v-popr {: a :}  a a k igen execute  a v-pushr  exit then then
+   v-popr {: b :} v-popr {: a :}  a a b rgen execute  b r-free  a v-pushr ;
+
+\ shuffle helpers (FORTH wordlist so CG-VS words can compose them — calling a
+\ CG-VS word by NAME from inside CG-VS would resolve to gforth's builtin instead).
+: v-drop1 ( -- )
+   VSP @ 0= if  XDS XDS 8 SUBI,  exit then
+   v-top-tag V-REG = if  v-popr r-free  else  v-popc drop  then ;
+: v-dup1 ( -- )
+   VSP @ 0= if  r-alloc {: r :} r g-pop  r v-pushr  r-alloc {: r2 :} r2 r MOV, r2 v-pushr  exit then
+   v-top-tag V-CON = if  v-top-val v-pushc exit then
+   v-top-val {: r :}  r-alloc {: r2 :} r2 r MOV,  r2 v-pushr ;
+: v-swap1 ( -- )  v-pop 2>r  v-pop 2r>  v-pushx  v-pushx ;
+: v-nip1  ( -- )  v-pop {: tb vb :}  v-pop {: ta va :}  ta V-REG = if va r-free then  tb vb v-pushx ;
+: v-over1 ( -- )
+   v-pop {: tb vb :}  v-pop {: ta va :}  ta va v-pushx  tb vb v-pushx
+   ta V-CON = if  va v-pushc  else  r-alloc {: r :} r va MOV, r v-pushr  then ;
+: v-rot1  ( -- )  v-pop {: tc vc :} v-pop {: tb vb :} v-pop {: ta va :}  tb vb v-pushx tc vc v-pushx ta va v-pushx ;
+: v-mrot1 ( -- )  v-pop {: tc vc :} v-pop {: tb vb :} v-pop {: ta va :}  tc vc v-pushx ta va v-pushx tb vb v-pushx ;
+: v-2swap1 ( -- )
+   v-pop {: td vd :} v-pop {: tc vc :} v-pop {: tb vb :} v-pop {: ta va :}
+   tc vc v-pushx td vd v-pushx ta va v-pushx tb vb v-pushx ;
+
 wordlist constant CG-VS
 get-current  CG-VS set-current
 
-: + ['] ADD, ['] + vbin ;    : - ['] SUB, ['] - vbin ;    : * ['] MUL, ['] * vbin ;
+: + ['] ADD, ['] ADDI, ['] + vaddsub ;    : - ['] SUB, ['] SUBI, ['] - vaddsub ;
+: * ['] MUL, ['] * vbin ;
 : AND ['] AND, ['] and vbin ; : OR ['] ORR, ['] or vbin ; : XOR ['] EOR, ['] xor vbin ;
 
 : 1+ [: 1 ADDI, ;] ['] 1+ vun ;
@@ -80,19 +110,16 @@ get-current  CG-VS set-current
    v-top-tag V-CON = VSP @ 0> and if  v-popc invert v-pushc
    else  v-popr {: r :}  12 0 MOVN,  r r 12 EOR,  r v-pushr  then ;
 
-: DUP
-   VSP @ 0= if  r-alloc {: r :} r g-pop  r v-pushr  r-alloc {: r2 :} r2 r MOV, r2 v-pushr exit then
-   v-top-tag V-CON = if  v-top-val v-pushc exit then
-   v-top-val {: r :}  r-alloc {: r2 :} r2 r MOV,  r2 v-pushr ;
-: DROP
-   VSP @ 0= if  XDS XDS 8 SUBI,  exit then
-   v-top-tag V-REG = if  v-popr r-free  else  v-popc drop  then ;
-: SWAP  v-pop 2>r  v-pop 2r>  v-pushx  v-pushx ;     \ pop b,a; push b then a
-: NIP   v-pop {: tb vb :}  v-pop {: ta va :}  ta V-REG = if va r-free then  tb vb v-pushx ;
-: OVER
-   v-pop {: tb vb :}  v-pop {: ta va :}
-   ta va v-pushx  tb vb v-pushx
-   ta V-CON = if  va v-pushc  else  r-alloc {: r :} r va MOV, r v-pushr  then ;
+: DUP v-dup1 ;   : DROP v-drop1 ;   : SWAP v-swap1 ;   : NIP v-nip1 ;   : OVER v-over1 ;
+: ROT v-rot1 ;   : -ROT v-mrot1 ;   : 2SWAP v-2swap1 ;
+: 2DUP v-over1 v-over1 ;   : 2DROP v-drop1 v-drop1 ;   : TUCK v-swap1 v-over1 ;
+
+\ memory: pointer in a register, LDR/STR; reuse the popped register for the result.
+: @  v-popr {: p :} p p 0 LDR,  p v-pushr ;
+: c@ v-popr {: p :} p p 0 LDRB, p v-pushr ;
+: !  v-popr {: p :} v-popr {: v :}  v p 0 STR,   p r-free v r-free ;
+: c! v-popr {: p :} v-popr {: v :}  v p 0 STRB,  p r-free v r-free ;
+: +! v-popr {: p :} v-popr {: n :}  r-alloc {: t :}  t p 0 LDR, t t n ADD, t p 0 STR,  p r-free n r-free t r-free ;
 
 : LSHIFT
    v-2con? if  v-popc {: s :} v-popc {: v :}  v s lshift v-pushc exit then

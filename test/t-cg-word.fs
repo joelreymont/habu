@@ -29,3 +29,22 @@ T{ s" DUP 2 LSHIFT +" 5 NATIVE-EVAL -> 25 }T   \ 5 + (5<<2) = 25 — fused ADD,�
 T{ s" DUP 1 RSHIFT XOR" 6 NATIVE-EVAL -> 5 }T  \ 6 ^ (6>>1) = 6^3 = 5 — fused EOR,…,lsr#1
 T{ s" DUP 3 LSHIFT XOR" 1 NATIVE-EVAL -> 9 }T  \ 1 ^ (1<<3) = 1^8 = 9 — fused EOR,…,lsl#3
 T{ s" 5 + 3 *"        4 NATIVE-EVAL -> 27 }T   \ mixes runtime input with consts: (4+5)*3
+
+\ --- register-allocated stack shuffles (ROT/-ROT/2DUP/2DROP/TUCK) ---
+T{ s" 10 20 ROT - -"  5 NATIVE-EVAL -> 251 }T \ 5 10 20 -> ROT 10 20 5 -> (-5) low byte
+T{ s" 7 TUCK - -"     5 NATIVE-EVAL ->  9 }T  \ 5 7 -> TUCK 7 5 7 -> 7-(5-7)=9
+T{ s" 3 2DUP + + +"   4 NATIVE-EVAL -> 14 }T  \ 4+3+4+3 = 14
+T{ s" 1 2 2DROP"      5 NATIVE-EVAL ->  5 }T  \ drop the two literals
+T{ s" 10 20 -ROT"     5 NATIVE-EVAL -> 10 }T  \ 5 10 20 -> -ROT 20 5 10 -> TOS 10
+\ --- const-operand immediate ADD/SUB (ADDI/SUBI #imm, no materialisation) ---
+T{ s" 5 +"           10 NATIVE-EVAL -> 15 }T  \ x + 5 via ADDI #5
+T{ s" 30 -"          50 NATIVE-EVAL -> 20 }T  \ x - 30 via SUBI #30
+
+\ --- memory ops compile (LDR/STR emission; runtime round-trip in the corpus) ---
+2variable CW-SRC
+: CW-RUN ( -- )  CW-SRC 2@ 0 COMPILE-WORD ;
+: COMPILES? ( a u -- f )  CW-SRC 2!  ['] CW-RUN catch 0= ;
+T{ s" DUP @"   COMPILES? -> true }T
+T{ s" SWAP !"  COMPILES? -> true }T
+T{ s" DUP c@"  COMPILES? -> true }T
+T{ s" SWAP +!" COMPILES? -> true }T
