@@ -12,6 +12,7 @@ require icode.fs
 : IC-OP! ( op i -- )  IC-ADDR ! ;
 : IC-A!  ( v i -- )   IC-ADDR cell+ ! ;
 : IC-B!  ( v i -- )   IC-ADDR 2 cells + ! ;
+: IC-C!  ( v i -- )   IC-ADDR 3 cells + ! ;
 
 19 constant XDS-R     \ data-stack pointer register (matches templ.fs XDS)
 
@@ -209,11 +210,37 @@ variable X19-CHG
    i IC-KILL ;
 : SHIFT-FUSE ( -- )  #IC @ 0 ?do  i OPT-SHIFT-FUSE  loop ;
 
+\ --- copy propagation / MOV coalescing ---------------------------------------
+\ `MOV rd,rs ; … <op …,rd,…>` where rs is unchanged up to the use and rd is dead
+\ after it → rewrite the use rd→rs and kill the MOV. Turns the DUP-copy of an
+\ in-place self-op (`MOV r2,r ; EOR r,r,r2,LSL#k`) into `EOR r,r,r,LSL#k` (LLVM).
+\ Handles the first reader only (enough for the self-op pattern); safe partial.
+: OPT-COPY-PROP {: i -- :}
+   i IC-OP IOP-MOV <> if exit then
+   i IC-A {: rd :}  i IC-B {: rs :}  rd rs = if exit then
+   i 1+ {: k :}
+   begin  k #IC @ < while
+      k IC-OP {: op :}
+      op IOP-DEAD <> if
+         op cells OPCAT + @ dup CAT-HARD = swap dup CAT-SOFT = swap CAT-MEM = or or if exit then
+         k IC-B rd =  k IC-C rd = or  op IOP-STR = k IC-A rd = and or if   \ READER (handle first:
+            k IC-B rd = if rs k IC-B! then                    \  reads use the OLD value, even if
+            k IC-C rd = if rs k IC-C! then                    \  this op also rewrites rs)
+            op IOP-STR = k IC-A rd = and if rs k IC-A! then
+            k rd REG-DEAD-AFTER? if i IC-KILL then  exit
+         then
+         op SF-DEFINES? k IC-A rs = and if exit then          \ rs redefined before a read: copy stale
+         op SF-DEFINES? k IC-A rd = and if exit then          \ rd redefined before any read
+      then
+   1 +to k repeat ;
+: COPY-PROP ( -- )  #IC @ 0 ?do  i OPT-COPY-PROP  loop ;
+
 : OPTIMIZE ( -- )
    #IC @ 0 ?do
       #OPT-RULES 0 ?do  j OPT-RULES i cells + @ execute  loop
    loop
    SHIFT-FUSE                          \ fuse immediate shift into the next ALU op
+   COPY-PROP                           \ coalesce DUP-copy MOVs into the ALU operand
    STORE-FWD
    #IC @ 0 ?do  i OPT-SELF-MOV  loop   \ clean MOV rd,rd from forwarding
    X19-CANCEL ;                        \ drop the orphaned stack-pointer churn

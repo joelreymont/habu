@@ -190,9 +190,16 @@ pre-opt == post-opt — the allocator emits near-optimal code directly); `DUP DU
   unshifted ops are unaffected. Done as an opt.fs peephole (`OPT-SHIFT-FUSE`,
   reusing the store-forwarding liveness/boundary machinery) rather than threading
   a shifted-register kind through the value stack — far less surface. Result:
-  xorshift chain **13→10** (full pipeline **54→10**, ~5.4×). Remaining gap to
-  hand-asm (~6): coalesce the DUP's `MOV` into the ALU operand (`x ^= x<<k`
-  in-place) and loop-invariant allocation across the back-edge — both follow-ons.
+  xorshift chain **13→10**.
+- **MOV-coalescing / copy propagation (done).** `OPT-COPY-PROP` turns the DUP-copy
+  of an in-place self-op (`MOV r2,r ; EOR r,r,r2,LSL#k`) into `EOR r,r,r,LSL#k` —
+  propagate the copy into the reader, kill the MOV when the copy is dead after.
+  **Footgun:** the reader of the copy is often *also* the instruction that
+  redefines the copy's source (`EOR r,r,r2` writes `r`=source) — that's a
+  read-before-write, so check the reader case BEFORE the "source redefined → stop"
+  guard, or it never fires. Result: **xorshift 10→7** (`eor r,r,r,lsl#k` ×3 +
+  load/store framing = LLVM hand-asm parity; full pipeline **54→7**, ~7.7×). The
+  last lever is loop-invariant allocation across the back-edge.
 
 ## Speed gate CLOSED — the bar is LLVM, not gforth (2026-06-10)
 
