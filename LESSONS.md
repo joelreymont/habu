@@ -28,6 +28,19 @@ mistakes, or insights. Lessons only — no API reference or code snippets (→ `
   frame before RET. Locals coexist with catch: the locals frame sits below catch's
   handler frames, so `throw` unwinds to the catch and the locals stay readable.
 
+## Self-host 7 — occurs-check (the "core risk") runs natively (2026-06-10)
+
+- The PLAN flags occurs/resolve mutual recursion through structure as the core
+  risk. Done iteratively (a worklist instead of recursion, which the single-pass
+  standalone can't do by-name): `OCCURS` resolves each term and pushes a `ptr`'s
+  inner onto the worklist. Verified natively: `var0 ∈ ptr(ptr(var0))` → true,
+  `var0 ∈ ptr(var1)`/`ptr(con)` → false. Adds `T-PTR` + a CREATE'd arena for ptr
+  inners. This is the hardest checker algorithm, proven runnable on the standalone.
+- **Standalone limitation: one `{: :}` block per word.** `c-lbrace` resets the
+  locals table on each `{:`, so a second block in the same word wipes the first
+  (bit `MK-PTR` when it used `{: inner :} … {: idx :}`). Use a single block, or no
+  locals. (A real fix would accumulate across blocks + grow the frame.)
+
 ## Self-host 6/7 — checker core runs natively (2026-06-10)
 
 - `CONSTANT` added (defining word: pop the value, emit a `c-lit` push body). With
