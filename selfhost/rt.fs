@@ -3,9 +3,7 @@
 \ same instruction sequences via mnem.fs (golden-tested word-for-word in
 \ test/t-sh-rt.fs). Labels are allocated in ONE locals group per word (the
 \ standalone mis-reads a second {: :} group).
-9 constant T0   10 constant T1   11 constant T2
-19 constant XDS  31 constant SP
-\ data-stack ops (XDS points just past TOS; full-ascending)
+\ data-stack ops (XDS points just past TOS; full-ascending); regs live in mnem.fs
 : g-push {: reg :}  reg XDS 0 STR,  XDS XDS 8 ADDI, ;
 : g-pop  {: reg :}  XDS XDS 8 SUBI,  reg XDS 0 LDR, ;
 variable DOT-LBL  variable ATOI-LBL

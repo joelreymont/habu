@@ -1,6 +1,8 @@
 \ mnem.fs — icode-style mnemonic layer over the selfhost encoders: `19 19 8 ADDI,`
 \ reads like src/cg source, so the engine-builder port stays a near-transcription.
 \ Needs asm.fs + icode.fs (EMITW). One concern: mnemonic -> encode+emit.
+9 constant T0   10 constant T1   11 constant T2
+19 constant XDS  31 constant SP
  0 constant C-EQ   1 constant C-NE   2 constant C-CS   3 constant C-CC
  4 constant C-MI   5 constant C-PL   6 constant C-VS   7 constant C-VC
  8 constant C-HI   9 constant C-LS  10 constant C-GE  11 constant C-LT
