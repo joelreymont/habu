@@ -475,7 +475,7 @@ variable SRCA
    NEWLBL Lkweq2 !  NEWLBL Lkwne2 !  NEWLBL Lkwlt2 !
    NEWLBL Lkwgt2 !  NEWLBL Lkwle2 !  NEWLBL Lkwge2 !
    emit-main
-   emit-prims  emit-prof-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
+   emit-prims  emit-prof-prims  emit-fp-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
    emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-cmpkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict

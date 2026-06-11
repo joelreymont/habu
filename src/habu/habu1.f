@@ -38,8 +38,8 @@ $F2A00009 constant W-MOVK1
 $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3
 \ --- primitive registry (build-side, for the seed dictionary) ---
-create PLBL 64 cells allot   create PEL 64 cells allot
-create PLEN 64 cells allot   create PNAM 64 cells allot
+create PLBL 96 cells allot   create PEL 96 cells allot
+create PLEN 96 cells allot   create PNAM 96 cells allot
 create PNPOOL 1024 allot   variable PNP   variable #PL
 variable RPD
 : reg-prim {: na nu lbl elbl :}
@@ -206,6 +206,31 @@ variable Lkwdo variable Lkwloop variable Lkwi
    s" wordlist" ['] bwordlist FPRIM-L   s" get-current" ['] bgetcur FPRIM-L
    s" set-current" ['] bsetcur FPRIM-L  s" search-wl" ['] bswl FPRIM-L
    s" set-check" ['] bsetcheck FPRIM-L ;
+\ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
+\ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
+: bf+    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FADD,  A 0 FMOVDX,  A g-push ;
+: bf-    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FSUB,  A 0 FMOVDX,  A g-push ;
+: bf*    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FMUL,  A 0 FMOVDX,  A g-push ;
+: bf/    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FDIV,  A 0 FMOVDX,  A g-push ;
+: bfneg  A g-pop  0 A FMOVXD,  0 0 FNEG,   A 0 FMOVDX,  A g-push ;
+: bfabs  A g-pop  0 A FMOVXD,  0 0 FABS,   A 0 FMOVDX,  A g-push ;
+: bfsqrt A g-pop  0 A FMOVXD,  0 0 FSQRT,  A 0 FMOVDX,  A g-push ;
+: (fcmp) {: cond :}  B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 1 FCMP,
+   A cond CSET,  A SP A SUB,  A g-push ;
+: bf<  C-MI (fcmp) ;   : bf>  C-GT (fcmp) ;   : bf=  C-EQ (fcmp) ;
+: (fcmp0) {: cond :}  A g-pop  0 A FMOVXD,  0 FCMP0,
+   A cond CSET,  A SP A SUB,  A g-push ;
+: bf0< C-MI (fcmp0) ;  : bf0= C-EQ (fcmp0) ;
+: bs>f  A g-pop  0 A SCVTF,   A 0 FMOVDX,  A g-push ;
+: bf>s  A g-pop  0 A FMOVXD,  A 0 FCVTZS,  A g-push ;
+: emit-fp-prims
+   s" f+" ['] bf+ FPRIM-L   s" f-" ['] bf- FPRIM-L   s" f*" ['] bf* FPRIM-L
+   s" f/" ['] bf/ FPRIM-L   s" fnegate" ['] bfneg FPRIM-L
+   s" fabs" ['] bfabs FPRIM-L  s" fsqrt" ['] bfsqrt FPRIM-L
+   s" f<" ['] bf< FPRIM-L   s" f>" ['] bf> FPRIM-L   s" f=" ['] bf= FPRIM-L
+   s" f0<" ['] bf0< FPRIM-L  s" f0=" ['] bf0= FPRIM-L
+   s" s>f" ['] bs>f FPRIM-L  s" f>s" ['] bf>s FPRIM-L ;
+
 : emit-cemit
    Lcemit @ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
 : emit-tok

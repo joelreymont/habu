@@ -47,3 +47,17 @@
 : DCCVAU, {: rt :}  rt ENC-DCCVAU EMITW ;
 : DSB-ISH,  ENC-DSB-ISH EMITW ;
 : ISB,      ENC-ISB EMITW ;
+: FMOVXD, {: d n :}  d n ENC-FMOVXD EMITW ;
+: FMOVDX, {: d n :}  d n ENC-FMOVDX EMITW ;
+: FMOVDD, {: d n :}  d n ENC-FMOVDD EMITW ;
+: FADD,  {: d n m :}  d n m ENC-FADD EMITW ;
+: FSUB,  {: d n m :}  d n m ENC-FSUB EMITW ;
+: FMUL,  {: d n m :}  d n m ENC-FMUL EMITW ;
+: FDIV,  {: d n m :}  d n m ENC-FDIV EMITW ;
+: FNEG,  {: d n :}  d n ENC-FNEG EMITW ;
+: FABS,  {: d n :}  d n ENC-FABS EMITW ;
+: FSQRT, {: d n :}  d n ENC-FSQRT EMITW ;
+: FCMP,  {: n m :}  n m ENC-FCMP EMITW ;
+: FCMP0, {: n :}  n ENC-FCMP0 EMITW ;
+: SCVTF, {: d n :}  d n ENC-SCVTF EMITW ;
+: FCVTZS, {: d n :}  d n ENC-FCVTZS EMITW ;

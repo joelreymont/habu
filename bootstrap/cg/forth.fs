@@ -68,8 +68,8 @@ $F2C00009 constant W-MOVK2     \ movk x9,#0,lsl#32
 $F2E00009 constant W-MOVK3     \ movk x9,#0,lsl#48
 
 \ --- primitive registry (host-side, to build the seed dictionary) ---
-create PLBL 64 cells allot   create PEL 64 cells allot
-create PLEN 64 cells allot   create PNAM 64 cells allot
+create PLBL 96 cells allot   create PEL 96 cells allot
+create PLEN 96 cells allot   create PNAM 96 cells allot
 create PNPOOL 1024 chars allot   variable PNP   variable #PL
 : reg-prim {: na nu lbl elbl -- :}
    lbl  #PL @ cells PLBL + !
@@ -259,6 +259,31 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    s" set-check" ['] bsetcheck FPRIM-L ;
 
 \ ---- CEMIT ( x9=word -- ) : str w9,[x28] ; CP += 4 ----
+\ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
+\ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
+: bf+    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FADD,  A 0 FMOVDX,  A g-push ;
+: bf-    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FSUB,  A 0 FMOVDX,  A g-push ;
+: bf*    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FMUL,  A 0 FMOVDX,  A g-push ;
+: bf/    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FDIV,  A 0 FMOVDX,  A g-push ;
+: bfneg  A g-pop  0 A FMOVXD,  0 0 FNEG,   A 0 FMOVDX,  A g-push ;
+: bfabs  A g-pop  0 A FMOVXD,  0 0 FABS,   A 0 FMOVDX,  A g-push ;
+: bfsqrt A g-pop  0 A FMOVXD,  0 0 FSQRT,  A 0 FMOVDX,  A g-push ;
+: (fcmp) {: cond :}  B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 1 FCMP,
+   A cond CSET,  A SP A SUB,  A g-push ;
+: bf<  C-MI (fcmp) ;   : bf>  C-GT (fcmp) ;   : bf=  C-EQ (fcmp) ;
+: (fcmp0) {: cond :}  A g-pop  0 A FMOVXD,  0 FCMP0,
+   A cond CSET,  A SP A SUB,  A g-push ;
+: bf0< C-MI (fcmp0) ;  : bf0= C-EQ (fcmp0) ;
+: bs>f  A g-pop  0 A SCVTF,   A 0 FMOVDX,  A g-push ;
+: bf>s  A g-pop  0 A FMOVXD,  A 0 FCVTZS,  A g-push ;
+: emit-fp-prims ( -- )
+   s" f+" ['] bf+ FPRIM-L   s" f-" ['] bf- FPRIM-L   s" f*" ['] bf* FPRIM-L
+   s" f/" ['] bf/ FPRIM-L   s" fnegate" ['] bfneg FPRIM-L
+   s" fabs" ['] bfabs FPRIM-L  s" fsqrt" ['] bfsqrt FPRIM-L
+   s" f<" ['] bf< FPRIM-L   s" f>" ['] bf> FPRIM-L   s" f=" ['] bf= FPRIM-L
+   s" f0<" ['] bf0< FPRIM-L  s" f0=" ['] bf0= FPRIM-L
+   s" s>f" ['] bs>f FPRIM-L  s" f>s" ['] bf>s FPRIM-L ;
+
 : emit-cemit ( -- )
    Lcemit @ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
 
@@ -908,7 +933,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NEWLBL Lkweq2 !  NEWLBL Lkwne2 !  NEWLBL Lkwlt2 !
    NEWLBL Lkwgt2 !  NEWLBL Lkwle2 !  NEWLBL Lkwge2 !
    emit-main                                              \ entry @ offset 0
-   emit-prims  emit-prof-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
+   emit-prims  emit-prof-prims  emit-fp-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
    emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-cmpkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict                                              \ after #PL is final
