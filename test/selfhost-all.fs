@@ -8,6 +8,7 @@ require t-sh-asm.fs
 require t-sh-cg.fs
 require t-sh-walk.fs
 require t-sh-undef.fs
+require t-sh-disasm.fs
 require t-sh-debug.fs
 require t-sh-sha.fs
 require t-sh-sign.fs
