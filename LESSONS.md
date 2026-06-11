@@ -3,6 +3,25 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## The engine became a register-allocating JIT — incrementally, gate-green (2026-06-11)
+
+vs.fs's allocator model now lives INSIDE the standalone's `:` compiler, landed as five
+gate-green increments (A: VS state + spill helpers, inert; B: literal folding +
+spill-at-every-consumer; C: con-entry shuffles — a dropped literal emits nothing;
+D: register binops/comparisons + locals loaded straight into registers; E: adversarial
+sweep t-sh-vsjit). Tags: con (no code yet) / reg (x9..x15); after Lvspill the VS is
+simply EMPTY — no vs.fs "mem" tag; spilled values are ordinary [x19] cells, so every
+existing consumer (calls, keywords, locals, `;`, the check hook) stays correct by
+spilling first. 30M iterations of a locals-word call: 0.165s. Bugs the increments
+caught: an UNALLOCATED label variable (Lvtop1c) read as label 0 = the ANCHOR, silently
+re-basing RBASE and corrupting every dict address — allocate every label before any
+LBL,; Lvspill's loop counter in x5 clobbered by its own callee (keep loop state in the
+frame across BLs); Lvlitpush materializing constants through x9 — a POOLED register
+that may hold a LIVE later entry (spill constants via x16/IP0, never pooled); and the
+movz/movk templates carry x9 in their rd bits — mask before re-targeting. Probe
+discipline: behavior probes must be stack-BALANCED or they report phantom leaks (two
+"miscompiles" were my own unbalanced test programs — .s settles it immediately).
+
 ## Build the tool: the profiler found in one run what bisection circled (2026-06-11)
 
 The dogfooded self-compile hung (90 s, 100% CPU). File-bisection localized it to

@@ -30,6 +30,7 @@ require t-sh-die.fs
 require t-sh-catch.fs
 require t-sh-prof.fs
 require t-sh-fold.fs
+require t-sh-vsjit.fs
 require t-sh-bodycap.fs
 require t-sh-disasm.fs
 require t-sh-debug.fs
