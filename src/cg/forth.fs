@@ -2,9 +2,9 @@
 \ PC-relative (PIE-safe). Stage 1: a dictionary of native primitives + an outer
 \ interpreter that number-pushes / FINDs+EXECUTEs tokens from an embedded source.
 \ Stage 2 (this file): a runtime `:`/`;` compiler that JITs new words into an
-\ mmap'd region by INLINING stencils — each token's machine code (a primitive's
-\ body, or a prior word's body, both minus their trailing RET) is memcpy'd into
-\ the new word, so compiled words are fully flattened/leaf and need no calls.
+\ mmap'd region. Every word carries an x30 frame (prologue/epilogue); a token
+\ compiles to an absolute `movz/movk x16 + blr x16` CALL, except small leaf
+\ bodies (no BL/BLR/BR/RET/ADR inside, meat <= INL-MAX) which are inlined.
 \ Literals compile to a movz/movk + push stencil. W^X: the region is mmap'd RW,
 \ toggled RW->RX at `;` (mprotect + DC CVAU / IC IVAU flush) so the word is
 \ callable, and back to RW at the next `:`.  See docs/forth.md, LESSONS.md.

@@ -6,14 +6,19 @@
 create S2P 32 allot   create O2P 32 allot
 : PATHZ {: a u d :}
    0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;
-variable SBUF  variable SLEN
+variable SBUF  variable SLEN  variable SFD  variable SRD
+$40000 constant SMAX
 : READ-SRC
    s" /tmp/stage2-src" S2P PATHZ
-   S2P 0 0 open
-   here SBUF !  $40000 allot
-   dup SBUF @ $40000 read SLEN !
-   close
-   SLEN @ 0 > 0= IF s" stage2: empty source" 74 die THEN ;
+   S2P 0 0 open SFD !
+   here SBUF !  SMAX allot  0 SLEN !
+   BEGIN                                                 \ loop: read() may return short
+     SFD @  SBUF @ SLEN @ +  SMAX SLEN @ -  read SRD !
+     SRD @ 0 >
+   WHILE  SLEN @ SRD @ + SLEN !  REPEAT
+   SFD @ close
+   SLEN @ 0 > 0= IF s" stage2: empty source" 74 die THEN
+   SLEN @ SMAX = IF s" stage2: source exceeds buffer" 74 die THEN ;
 : GO
    READ-SRC
    SBUF @ SLEN @ EMIT-FORTH
