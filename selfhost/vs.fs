@@ -21,6 +21,7 @@ variable SPK  variable SPR
 : R-SPILL-DEEPEST  -1 SPK !  0 RAI !
    BEGIN RAI @ VSP @ < SPK @ -1 = and WHILE
      VTAG RAI @ + c@ 0= IF RAI @ SPK ! THEN  RAI @ 1 + RAI ! REPEAT
+   SPK @ -1 = IF s" vs: no spillable reg" 72 die THEN
    VVAL SPK @ cells + @ SPR !
    SPR @ 19 SPK @ 8 * ENC-STR EMITW  2 VTAG SPK @ + c!  SPR @ ;
 : R-ALLOC  -1 RRES !  0 RAI !
@@ -82,19 +83,27 @@ variable U1R  variable CMR
 : G-0<  VSP @ 1 - V-REG CMR !
    CMR @ 0 ENC-CMPI EMITW  CMR @ 11 ENC-CSET EMITW  CMR @ 31 CMR @ ENC-SUB EMITW ;
 \ control flow: IF/THEN. Spill VS to canonical memory at the boundary so both paths
-\ agree; pop the flag and cbz past the body. CF stack holds the merge label.
-create CFLBL 32 cells allot   variable CFSP
+\ agree; pop the flag and cbz past the body. CF stack holds the merge label AND the
+\ depth at the split: an IF body that nets a push/pop would make the canonical slots
+\ disagree between the paths — a silent miscompile — so G-THEN checks and dies.
+create CFLBL 32 cells allot   create CFDEP 32 cells allot   variable CFSP
 variable IFR
 : G-IF   VSP @ 1 - V-REG IFR !  VSP @ 1 - VSP !  V-SPILL-ALL  IFR @ R-FREE
-   NEWLBL {: lend :}  IFR @ lend CBZ,  lend CFLBL CFSP @ cells + !  CFSP @ 1 + CFSP ! ;
-: G-THEN  V-SPILL-ALL  CFSP @ 1 - CFSP !  CFLBL CFSP @ cells + @ LBL, ;
+   NEWLBL {: lend :}  IFR @ lend CBZ,  lend CFLBL CFSP @ cells + !
+   VSP @ CFDEP CFSP @ cells + !  CFSP @ 1 + CFSP ! ;
+: G-THEN  CFSP @ 0 = IF s" vs: then without if" 72 die THEN
+   V-SPILL-ALL  CFSP @ 1 - CFSP !  CFLBL CFSP @ cells + @ LBL,
+   CFDEP CFSP @ cells + @ VSP @ <> IF s" vs: if body unbalanced" 72 die THEN ;
 : G-0=  VSP @ 1 - V-REG CMR !
    CMR @ 0 ENC-CMPI EMITW  CMR @ 0 ENC-CSET EMITW  CMR @ 31 CMR @ ENC-SUB EMITW ;
 \ BEGIN/UNTIL: spill to canonical memory at the loop top and the back-edge (so the
 \ layout is invariant); UNTIL pops the flag and cbz's back to BEGIN while it is false.
-: G-BEGIN  V-SPILL-ALL  NEWLBL {: lb :}  lb LBL,  lb CFLBL CFSP @ cells + !  CFSP @ 1 + CFSP ! ;
-: G-UNTIL  VSP @ 1 - V-REG IFR !  VSP @ 1 - VSP !  V-SPILL-ALL
-   CFSP @ 1 - CFSP !  IFR @ CFLBL CFSP @ cells + @ CBZ,  IFR @ R-FREE ;
+: G-BEGIN  V-SPILL-ALL  NEWLBL {: lb :}  lb LBL,  lb CFLBL CFSP @ cells + !
+   VSP @ CFDEP CFSP @ cells + !  CFSP @ 1 + CFSP ! ;
+: G-UNTIL  CFSP @ 0 = IF s" vs: until without begin" 72 die THEN
+   VSP @ 1 - V-REG IFR !  VSP @ 1 - VSP !  V-SPILL-ALL
+   CFSP @ 1 - CFSP !  IFR @ CFLBL CFSP @ cells + @ CBZ,  IFR @ R-FREE
+   CFDEP CFSP @ cells + @ VSP @ <> IF s" vs: loop body unbalanced" 72 die THEN ;
 \ memory ops (use variables, not 2nd-group locals). @ c@ are in-place; ! c! pop 2.
 \ HERE pushes a scratch buffer at x19+256 (above the spill slots, which use 0..~7).
 variable MRA  variable MRV
