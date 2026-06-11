@@ -152,6 +152,10 @@ variable Lkwdo variable Lkwloop variable Lkwi
 : bcomma  A g-pop  7 DATA 0 LDR,  A 7 0 STR,  7 7 8 ADDI,  7 DATA 0 STR, ;
 : bccomma A g-pop  7 DATA 0 LDR,  A 7 0 STRB, 7 7 1 ADDI,  7 DATA 0 STR, ;
 : btype   2 g-pop  1 g-pop  0 1 MOVZ,  16 4 MOVZ,  $80 SVC, ;   \ ( addr len -- ) write(1,..)
+\ die ( a u code -- noreturn ): msg to stderr, exit(code). The in-subset abort for
+\ compiler invariant violations — better a loud death than silent memory corruption.
+: bdie    7 g-pop  2 g-pop  1 g-pop  0 2 MOVZ,  16 4 MOVZ,  $80 SVC,
+          0 7 0 ADDI,  16 1 MOVZ,  $80 SVC, ;
 \ file I/O (path must be NUL-terminated by the caller)
 : bopen   2 g-pop  1 g-pop  0 g-pop  16 5 MOVZ,  $80 SVC,  0 g-push ;   \ ( pathz flags mode -- fd )
 : bwrite  2 g-pop  1 g-pop  0 g-pop  16 4 MOVZ,  $80 SVC,  0 g-push ;   \ ( fd buf len -- n )
@@ -236,6 +240,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
    s" here" ['] bhere  FPRIM   s" allot" ['] ballot FPRIM
    s" ,"    ['] bcomma FPRIM   s" c,"   ['] bccomma FPRIM
    s" type" ['] btype  FPRIM   s" execute" ['] bexec FPRIM
+   s" die"  ['] bdie   FPRIM
    s" open" ['] bopen FPRIM   s" write" ['] bwrite FPRIM   s" close" ['] bclose FPRIM
    s" rbase" ['] brbase FPRIM
    s" catch" ['] bcatch FPRIM   s" throw" ['] bthrow FPRIM
