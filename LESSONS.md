@@ -19,6 +19,20 @@ gforth case-folds `S0`/`s0` (use BSIG0/SSIG0); a local named `i` shadows the loo
 index inside `?DO`; declaring `{: :}` locals inside a loop corrupts the return
 stack (factor the loop body into its own word); `?DO` is `( limit start -- )`.
 
+## Checked toolchain + standalone disassembler (2026-06-11)
+
+The debugging tools are built and dogfooded: a Forth disassembler (src/cg/disasm.fs)
+whose decode math (disasm-core.fs) and the encoders (asm-checked.fs) are CHECKED typed
+Forth — caf certifies them (CHECK-CODE=0). Caveat: caf type vars are SINGLE letters, so
+sigs must read `( a b c -- d )` (multi-char like `( rd rn rm -- w )` -> E-UNCHECKED), and
+sign-extend must be branchless (`(f^sign)-sign`; an IF version didn't certify). A STEP
+single-stepper (stepper.fs) traces a snippet token-by-token with the stack. And the
+standalone now disassembles its OWN generated code (selfhost/disasm.fs, data-table
+driven) — self-hosted debugging, zero gforth/python. Two more standalone footguns hit:
+locals declared INSIDE a BEGIN/WHILE loop corrupt the frame (use variables for row
+fields); and a test bug — `,` stores 8-byte CELLS, but ARM64 instructions are 4-byte
+u32s, so a `create P n , n ,` buffer is double-spaced (build code with `c,` LE bytes).
+
 ## Standalone errors on undefined words; token compiler; Forth disassembler (2026-06-11)
 
 The standalone now COMPILES Forth source bodies to native code (selfhost/walk.fs:
