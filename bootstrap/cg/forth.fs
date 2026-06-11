@@ -358,10 +358,10 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  NEWLBL {: nohex :}  C-NE nohex BCOND,  \ '$' prefix
       6 16 MOVZ,  14 14 1 ADDI,
    nohex LBL,
+   2 0 MOVZ,                                                    \ frac mode off
    14 10 CMP,  C-GE ldone BCOND,                                \ nothing after sign/$ -> fail
    NEWLBL {: lloop :}  NEWLBL {: lok :}  NEWLBL {: gotd :}  NEWLBL {: nd :}  NEWLBL {: nuc :}
    NEWLBL {: ndot :}  NEWLBL {: isfrac :}  NEWLBL {: lint :}  NEWLBL {: fpos :}
-   2 0 MOVZ,                                                    \ frac mode off
    lloop LBL,
    14 10 CMP,  C-GE lok BCOND,
    5 9 14 ADD,  15 5 0 LDRB,                                    \ c = next byte
