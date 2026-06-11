@@ -3,6 +3,19 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Tools that pay rent: probe.sh and parity-lint (2026-06-11)
+
+Two frictions recurred enough to deserve checked-in tools. tools/probe.sh builds a
+one-off habu binary from a program string and runs it (optionally asserting output) —
+replaces the ad-hoc bash function retyped a dozen times per debugging session.
+tools/parity-lint.py token-diffs every paired emitter definition between the bootstrap
+builder and the habu-side port (case-folded, label-normalized, with an allowlist for
+the legitimately-different idiom words) — the recurring bug class here is silent
+builder divergence (instruction order, template constants), and the goldens only say
+"bytes differ" while the lint names the word and the first divergent token. It runs in
+test/run.sh before the suite. Rule of thumb earned twice now (profiler, lint): when
+the same diagnostic dance happens three times, stop and build the tool.
+
 ## The gate was abort-blind — exit codes, not grep pipelines (2026-06-11)
 
 For some stretch of commits the combined gate LIED: a gforth exception while loading
