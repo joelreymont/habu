@@ -20,6 +20,7 @@ require t-sh-coload.fs
 require t-sh-undef.fs
 require t-sh-die.fs
 require t-sh-catch.fs
+require t-sh-bodycap.fs
 require t-sh-disasm.fs
 require t-sh-debug.fs
 require t-sh-sha.fs

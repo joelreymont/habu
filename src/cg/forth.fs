@@ -46,9 +46,11 @@ $1C0 constant RBASE-CELL  \ saved __TEXT load base (RBASE) for the self-rebuild
 $1C8 constant LOOPSP-CELL \ DO/LOOP frame stack depth
 $1D0 constant S0-CELL     \ saved data-stack base (initial XDS) for the `.s` inspector
 $1D8 constant SSCR-CELL   \ `.s` loop-pointer scratch (survives g-print9's x9..x15 clobber)
-$200 constant BODYBUF-OFF \ captured body text (space-joined tokens), 1 KB
 $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
-$800 constant DATA-START  \ DP initial offset (past header + body buffer + loop stack)
+                           \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
+$800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
+8000 constant BODYBUF-CAP \ fatal above this (truncation would let the checker certify unseen code)
+$2800 constant DATA-START \ DP initial offset (past header + loop stack + body buffer)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create TICK-KW   39 c,          \ '  (0x27)
 create BTICK-KW  91 c, 39 c, 93 c,   \ ['] = [ ' ]  (0x5b 0x27 0x5d)
@@ -650,7 +652,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
    20 0 RBASE-CELL STR,                               \ save RBASE (x20=__TEXT base) into the data region
    DATA 0 0 ADDI,
    XDS DATA S0-CELL STR,                              \ save data-stack base for `.s`
-   7 DATA DATA-START ADDI,  7 DATA DP-CELL STR,       \ DP = base + header
+   5 DATA-START MOVZ,  7 DATA 5 ADD,  7 DATA DP-CELL STR,   \ DP = base + header ($2800 > imm12)
    9 0 MOVZ,  9 DATA HND-CELL STR,                    \ HND (catch handler chain) = 0
    9 0 MOVZ,  9 DATA CUR-CELL STR,                    \ CURRENT wordlist = 0 (FORTH)
    9 1 MOVZ,  9 DATA WIDN-CELL STR,                   \ next fresh wid = 1
@@ -735,8 +737,14 @@ variable Lkwdo variable Lkwloop variable Lkwi
          PEND 0 MOVZ,                                      \ leave compile mode
          lmain B,
       lnotsemi LBL,
-      \ capture the token into the body buffer (for the check hook); space-joined
-      14 DATA BODYLEN-CELL LDR,  NEWLBL {: bovf :}  14 900 CMPI,  C-GE bovf BCOND,
+      \ capture the token into the body buffer (for the check hook); space-joined.
+      \ overflow is FATAL (exit 71): a truncated capture would let the check hook
+      \ certify code it never saw.
+      14 DATA BODYLEN-CELL LDR,  NEWLBL {: bcap :}
+      5 BODYBUF-CAP MOVZ,  14 5 CMP,  C-LT bcap BCOND,
+         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,   \ write(2, name)
+         0 71 MOVZ,  16 1 MOVZ,  $80 SVC,                                \ exit(71)
+      bcap LBL,
          15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,           \ dst = buf + len
          11 TKA 0 ADDI,  12 TKL 0 ADDI,                     \ src, count
          NEWLBL {: bcp :}  NEWLBL {: bcd :}
@@ -744,7 +752,6 @@ variable Lkwdo variable Lkwloop variable Lkwi
             15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  bcp B,
          bcd LBL,  13 32 MOVZ,  13 15 0 STRB,               \ space separator
          14 14 TKL ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,   \ len += TKL+1
-      bovf LBL,
       \ control-flow keywords (compile-only): emit/patch JIT branches, then loop
       lmain Lkwif     2 ['] j-if     cf-entry
       lmain Lkwthen   4 ['] j-then   cf-entry
