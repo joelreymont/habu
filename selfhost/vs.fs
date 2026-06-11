@@ -3,8 +3,8 @@
 \ (just relabel), arithmetic is reg->reg, and there is NO ldr/str traffic until the
 \ pool spills. `5 dup *` becomes ~5 instructions instead of 16. Needs asm.fs + icode.fs.
 \ Emitters are dispatched by xt (execute) from a table, so the dispatcher stays tiny.
-create OPN 3 c, 100 c, 117 c, 112 c, 0 c, 4 c, 100 c, 114 c, 111 c, 112 c, 1 c, 4 c, 115 c, 119 c, 97 c, 112 c, 2 c, 4 c, 111 c, 118 c, 101 c, 114 c, 3 c, 3 c, 110 c, 105 c, 112 c, 4 c, 1 c, 43 c, 5 c, 1 c, 45 c, 6 c, 1 c, 42 c, 7 c, 3 c, 97 c, 110 c, 100 c, 8 c, 2 c, 111 c, 114 c, 9 c, 3 c, 120 c, 111 c, 114 c, 10 c, 6 c, 110 c, 101 c, 103 c, 97 c, 116 c, 101 c, 11 c, 2 c, 48 c, 60 c, 12 c, 2 c, 105 c, 102 c, 13 c, 4 c, 116 c, 104 c, 101 c, 110 c, 14 c, 2 c, 48 c, 61 c, 15 c, 5 c, 98 c, 101 c, 103 c, 105 c, 110 c, 16 c, 5 c, 117 c, 110 c, 116 c, 105 c, 108 c, 17 c, 0 c, 
-18 constant NOPS
+create OPN 3 c, 100 c, 117 c, 112 c, 0 c, 4 c, 100 c, 114 c, 111 c, 112 c, 1 c, 4 c, 115 c, 119 c, 97 c, 112 c, 2 c, 4 c, 111 c, 118 c, 101 c, 114 c, 3 c, 3 c, 110 c, 105 c, 112 c, 4 c, 1 c, 43 c, 5 c, 1 c, 45 c, 6 c, 1 c, 42 c, 7 c, 3 c, 97 c, 110 c, 100 c, 8 c, 2 c, 111 c, 114 c, 9 c, 3 c, 120 c, 111 c, 114 c, 10 c, 6 c, 110 c, 101 c, 103 c, 97 c, 116 c, 101 c, 11 c, 2 c, 48 c, 60 c, 12 c, 2 c, 105 c, 102 c, 13 c, 4 c, 116 c, 104 c, 101 c, 110 c, 14 c, 2 c, 48 c, 61 c, 15 c, 5 c, 98 c, 101 c, 103 c, 105 c, 110 c, 16 c, 5 c, 117 c, 110 c, 116 c, 105 c, 108 c, 17 c, 1 c, 64 c, 18 c, 1 c, 33 c, 19 c, 2 c, 99 c, 64 c, 20 c, 2 c, 99 c, 33 c, 21 c, 4 c, 104 c, 101 c, 114 c, 101 c, 22 c, 0 c, 
+23 constant NOPS
 \ register pool x9..x15 (scratch in a leaf body — no calls)
 create RPOOL 9 c, 10 c, 11 c, 12 c, 13 c, 14 c, 15 c,
 7 constant NRP
@@ -86,6 +86,16 @@ variable IFR
 : G-BEGIN  V-SPILL-ALL  NEWLBL {: lb :}  lb LBL,  lb CFLBL CFSP @ cells + !  CFSP @ 1 + CFSP ! ;
 : G-UNTIL  VSP @ 1 - V-REG IFR !  VSP @ 1 - VSP !  V-SPILL-ALL
    CFSP @ 1 - CFSP !  IFR @ CFLBL CFSP @ cells + @ CBZ,  IFR @ R-FREE ;
+\ memory ops (use variables, not 2nd-group locals). @ c@ are in-place; ! c! pop 2.
+\ HERE pushes a scratch buffer at x19+256 (above the spill slots, which use 0..~7).
+variable MRA  variable MRV
+: G-@   VSP @ 1 - V-REG MRA !  MRA @ MRA @ 0 ENC-LDR  EMITW ;
+: G-C@  VSP @ 1 - V-REG MRA !  MRA @ MRA @ 0 ENC-LDRB EMITW ;
+: G-!   VSP @ 1 - V-REG MRA !  VSP @ 2 - V-REG MRV !
+   MRV @ MRA @ 0 ENC-STR  EMITW  MRA @ R-FREE  MRV @ R-FREE  VSP @ 2 - VSP ! ;
+: G-C!  VSP @ 1 - V-REG MRA !  VSP @ 2 - V-REG MRV !
+   MRV @ MRA @ 0 ENC-STRB EMITW  MRA @ R-FREE  MRV @ R-FREE  VSP @ 2 - VSP ! ;
+: G-HERE  R-ALLOC MRA !  MRA @ 19 256 ENC-ADDI EMITW  MRA @ V-PUSHR ;
 \ dispatch table: index -> emitter xt
 create XTS 32 cells allot
 : VS-SETUP
@@ -95,7 +105,9 @@ create XTS 32 cells allot
    ['] G-OR 9 cells XTS + !  ['] G-XOR 10 cells XTS + !
    ['] G-NEGATE 11 cells XTS + !  ['] G-0< 12 cells XTS + !
    ['] G-IF 13 cells XTS + !  ['] G-THEN 14 cells XTS + !
-   ['] G-0= 15 cells XTS + !  ['] G-BEGIN 16 cells XTS + !  ['] G-UNTIL 17 cells XTS + ! ;
+   ['] G-0= 15 cells XTS + !  ['] G-BEGIN 16 cells XTS + !  ['] G-UNTIL 17 cells XTS + !
+   ['] G-@ 18 cells XTS + !  ['] G-! 19 cells XTS + !  ['] G-C@ 20 cells XTS + !
+   ['] G-C! 21 cells XTS + !  ['] G-HERE 22 cells XTS + ! ;
 VS-SETUP
 \ find op (a,u) in OPN -> index, or -1
 variable VFI  variable VFP  variable VFNL
