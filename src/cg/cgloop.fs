@@ -12,8 +12,6 @@ require regstack.fs
 
 CHECKING-ON? @  CHECKING-ON? off          \ IR mutation / bit math / loops = unchecked
 
-s" cg: not a register loop" exception constant E-RLOOP
-
 \ Force VS entry i to a GP register (CON -> LIT, FREG -> FMOVDX), rewriting the
 \ entry in place; return the register. Idempotent on an already-REG entry.
 : vs-force ( i -- r )
@@ -51,11 +49,13 @@ create PM-DONE 16 cells allot  variable PM-N
       pm-find dup 0>= if  pm-emit  else  drop  pm-break  then
    repeat ;
 
-\ Reconcile carry-out (current VS) into the carry homes. A depth change means this
-\ was never a register loop (the body touched memory below the VS) -> E-RLOOP, and
-\ walk.fs rolls back to the memory path.
+\ Reconcile carry-out (current VS) into the carry homes. RL-FAIL (set when the body
+\ touched memory below the carry) or a net depth change means this was never a
+\ register loop; signal it (no parallel move) and walk.fs rolls back to memory.
+\ Flag, don't throw: gforth 0.7.9 faults unwinding `throw` across emit-rloop's locals.
 : carry-recon ( -- )
-   VSP @ CARRY-N @ <> if E-RLOOP throw then
+   VSP @ CARRY-N @ <> if  RL-FAIL on  then
+   RL-FAIL @ if exit then
    CARRY-N @ 0 ?do  i vs-force  PM-SRC i cells + !  CARRY-R i cells + @  PM-DST i cells + !  loop
    CARRY-N @ PM-N !  pm-run ;
 

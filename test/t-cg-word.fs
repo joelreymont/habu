@@ -55,7 +55,9 @@ T{ s" 5 MOD" 17 NATIVE-EVAL -> 2 }T            \ 17 mod 5
 : DIVZ-WSTAT ( -- wstat )                      \ build `0 /`, run, return raw wait-status
    s" 0 /" 10 COMPILE-WORD  s" /tmp/caf-divz" 2dup EMIT-EXE
    cmd( [char] ' c+ cs+ [char] ' c+ )run ;
-T{ DIVZ-WSTAT $7F and 0<> -> true }T           \ low 7 bits set = killed by a signal (trapped)
+\ Div-by-zero traps (SIGTRAP); the in-binary crash handler (crash.fs) catches it
+\ and exit(134)s, so the OS sees a clean exit 134, not a signal-kill.
+T{ DIVZ-WSTAT WSTAT>RC -> 134 }T
 
 \ --- logical-immediate AND/OR/XOR (const operand -> AND/ORR/EOR #imm) ---
 T{ s" 255 AND"  4660 NATIVE-EVAL -> 52 }T      \ 0x1234 & 0xFF
@@ -134,8 +136,10 @@ T{ s" 1 5 0 ?DO 2 * LOOP"                    0 NATIVE-EVAL ->  32 }T   \ 2^5
 T{ s" 0 0 5 0 ?DO 1+ SWAP 1+ SWAP LOOP +"    0 NATIVE-EVAL ->  10 }T   \ depth-2 carry + SWAP recon
 T{ s" 7 3 3 ?DO 1+ LOOP"                     0 NATIVE-EVAL ->   7 }T   \ ?DO skip (3>=3)
 T{ s" 9 0 0 ?DO 1+ LOOP"                     0 NATIVE-EVAL ->   9 }T   \ DO 0..0 skips body? (0>=0 for ?DO is skip; DO runs 0)
-T{ s" 0 3 0 ?DO 0 5 0 ?DO 1+ LOOP LOOP"      0 NATIVE-EVAL ->  15 }T   \ nested: inner reg, outer mem fallback
+T{ s" 0 3 0 ?DO 5 0 ?DO 1+ LOOP LOOP"        0 NATIVE-EVAL ->  15 }T   \ nested loops -> both memory path; 3*5 increments
+T{ s" 0 3 0 ?DO 0 5 0 ?DO 1+ LOOP LOOP"      0 NATIVE-EVAL ->   5 }T   \ inner resets acc each outer trip (matches gforth)
 T{ s" 0 4 0 ?DO 1+ I 0> IF 1+ THEN LOOP"     0 NATIVE-EVAL ->   7 }T   \ inner IF -> memory-path fallback
+T{ s" 5 0 ?DO 1+ LOOP"                       7 NATIVE-EVAL ->  12 }T   \ body reads acc from memory: register attempt fails (RL-FAIL), clean memory fallback
 T{ s" 10 20 30 1 0 ?DO ROT LOOP"           0 NATIVE-EVAL ->  10 }T   \ 3-cycle parallel move (1 ROT)
 T{ s" 10 20 30 3 0 ?DO ROT LOOP"           0 NATIVE-EVAL ->  30 }T   \ ROT^3 = identity
 T{ s" 1 2 5 0 ?DO SWAP LOOP +"             0 NATIVE-EVAL ->   3 }T   \ swap-carry, odd trips

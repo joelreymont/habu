@@ -41,6 +41,15 @@ create DFREE #DPOOL cells allot
 create VTAG VMAX cells allot   create VVAL VMAX cells allot   variable VSP
 0 constant V-REG   1 constant V-CON   2 constant V-FREG
 : v-reset ( -- )  0 VSP !  rp-reset  dp-reset ;
+
+\ --- register-loop eligibility (cgloop.fs) ---
+\ A register-resident loop body must keep its loop-carried values in registers and
+\ never reach below the carry into memory. RL-ACTIVE is set while emitting such a
+\ body; any empty-VS memory access then trips RL-FAIL, marking the loop ineligible
+\ (cgloop.fs rolls back to the memory path). This is sound where the old VSP-delta
+\ check was not: a body that underflows but nets back to the same depth is caught.
+variable RL-ACTIVE   variable RL-FAIL
+: rl-mem ( -- )  RL-ACTIVE @ if  RL-FAIL on  then ;   \ memory touched below the carry
 : v-pushx ( tag val -- )  VVAL VSP @ cells + !  VTAG VSP @ cells + !  1 VSP +! ;
 : v-pushr ( r -- )  V-REG swap v-pushx ;
 : v-pushc ( n -- )  V-CON swap v-pushx ;
@@ -53,7 +62,7 @@ create VTAG VMAX cells allot   create VVAL VMAX cells allot   variable VSP
 
 \ pop the top as a (tag,val) pair; an empty VS loads the memory TOS into a fresh reg
 : v-pop ( -- tag val )
-   VSP @ 0= if  V-REG  r-alloc dup g-pop  exit then
+   VSP @ 0= if  rl-mem  V-REG  r-alloc dup g-pop  exit then
    -1 VSP +!  VTAG VSP @ cells + @  VVAL VSP @ cells + @ ;
 \ pop, materialising the value into a GP register. CON -> LIT, empty -> memory
 \ load, FREG -> FMOVDX the bits out of the D-register (freeing it).
@@ -112,13 +121,13 @@ create VTAG VMAX cells allot   create VVAL VMAX cells allot   variable VSP
 \ shuffle helpers (FORTH wordlist so CG-VS words can compose them — calling a
 \ CG-VS word by NAME from inside CG-VS would resolve to gforth's builtin instead).
 : v-drop1 ( -- )
-   VSP @ 0= if  XDS XDS 8 SUBI,  exit then
+   VSP @ 0= if  rl-mem  XDS XDS 8 SUBI,  exit then
    v-top-tag {: t :}
    t V-REG  = if  v-popr r-free  exit then
    t V-FREG = if  v-popc d-free  exit then
    v-popc drop ;                                  \ V-CON
 : v-dup1 ( -- )
-   VSP @ 0= if  r-alloc {: r :} r g-pop  r v-pushr  r-alloc {: r2 :} r2 r MOV, r2 v-pushr  exit then
+   VSP @ 0= if  rl-mem  r-alloc {: r :} r g-pop  r v-pushr  r-alloc {: r2 :} r2 r MOV, r2 v-pushr  exit then
    v-top-tag {: t :}
    t V-CON  = if  v-top-val v-pushc exit then
    t V-FREG = if  v-top-val {: d :}  d-alloc {: d2 :} d2 d FMOVDD,  d2 v-pushf  exit then

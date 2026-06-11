@@ -94,8 +94,9 @@ defer LOOP-HOOK   ( a u -- f )
 
 \ --- register-resident DO..LOOP ---
 \ Emit a loop whose carry stays in registers across the back-edge. ( qdo? ba bu );
-\ ba bu is the body span. Throws E-RLOOP if the body turns out to touch memory
-\ below the VS (depth mismatch) — the caller then rolls back to the memory path.
+\ ba bu is the body span. If the body touches memory below the carry, carry-recon
+\ sets RL-FAIL and emit-rloop bails; CHECK-LOOP-CG then rolls back to the memory
+\ path. (Flag, not throw: gforth 0.7.9 faults unwinding throw across the locals.)
 : walk-span {: a u -- :}                 \ walk a token span with a local cursor (no WB-CUR)
    a u + {: e :}  a {: c :}
    begin
@@ -113,21 +114,27 @@ defer LOOP-HOOK   ( a u -- f )
    NEWLBL {: lexit :}
    qdo? if  LIDX LLIM CMP,  C-GE lexit BCOND,  then   \ ?DO: skip body if index>=limit
    NEWLBL {: ltop :}  ltop LBL,
-   ba bu walk-span
-   carry-recon                                    \ carry-out -> homes (or E-RLOOP)
+   RL-ACTIVE on  ba bu walk-span  RL-ACTIVE off
+   carry-recon                                    \ carry-out -> homes (or RL-FAIL)
+   RL-FAIL @ if exit then                         \ ineligible: bail, caller rolls back
    LIDX LIDX 1 ADDI,  LIDX LLIM CMP,  C-LT ltop BCOND,
    lexit LBL,  loop-rest  carry-restore ;
 
 : CHECK-LOOP-CG ( a u -- f )
    2dup s" DO" CI=  >r  2dup s" ?DO" CI=  r> or  0= if  2drop false exit then
+   \ Nested loop -> memory path. Register residency pins the carry across THIS
+   \ loop's back-edge only; under an enclosing loop the optimizer could still hoist
+   \ the carry's init out of the outer back-edge (miscompile). The memory path is
+   \ uniformly correct, so any loop inside another goes to memory.
+   LOOP-DEPTH @ 0> if  2drop false exit then
    WB-CUR @ {: savecur :}
    2dup s" ?DO" CI= {: qdo :}  2drop
    body-straight? 0= if  savecur WB-CUR !  false exit then    ( ba bu )
-   cg-snapshot
+   cg-snapshot  RL-FAIL off  RL-ACTIVE off
    2>r  qdo if 1 else 0 then  2r>                 ( qdo ba bu )
-   ['] emit-rloop catch ?dup if
-      E-RLOOP = if  cg-rollback  savecur WB-CUR !  false exit then  throw
-   then  true ;
+   emit-rloop
+   RL-FAIL @ if  cg-rollback  savecur WB-CUR !  false exit then
+   true ;
 ' CHECK-LOOP-CG is LOOP-HOOK
 
 \ Compile a body with one i64 input pushed first; the body's TOS becomes exit().
