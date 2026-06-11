@@ -40,7 +40,10 @@ $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 24  constant LOC-REC      \ bytes per local name record (len + 16 name)
 $1A0 constant CUR-CELL    \ get/set-current wordlist id (new defs go here)
 $1A8 constant WIDN-CELL   \ next fresh wordlist id (WORDLIST hands these out)
-$200 constant DATA-START  \ DP initial offset (past the header)
+$1B0 constant HOOK-CELL   \ check hook: a word addr run on each : body (0 = none)
+$1B8 constant BODYLEN-CELL \ length of the captured body of the def in progress
+$200 constant BODYBUF-OFF \ captured body text (space-joined tokens), 1 KB
+$600 constant DATA-START  \ DP initial offset (past the header + body buffer)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create TICK-KW   39 c,          \ '  (0x27)
 create BTICK-KW  91 c, 39 c, 93 c,   \ ['] = [ ' ]  (0x5b 0x27 0x5d)
@@ -162,6 +165,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
 : bwordlist  9 DATA WIDN-CELL LDR,  9 g-push  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
 : bgetcur    9 DATA CUR-CELL LDR,  9 g-push ;                                       \ ( -- wid )
 : bsetcur    A g-pop  A DATA CUR-CELL STR, ;                                        \ ( wid -- )
+: bsetcheck  A g-pop  A DATA HOOK-CELL STR, ;                                       \ ( xt -- ): install check hook
 \ search-wl ( a u wid -- addr|0 ): find name (a,u) in wordlist wid (case-folded)
 : bswl
    2 g-pop  1 g-pop  0 g-pop                      \ wid=x2, u=x1, a=x0
@@ -207,7 +211,8 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
    s" type" ['] btype  FPRIM   s" execute" ['] bexec FPRIM
    s" catch" ['] bcatch FPRIM   s" throw" ['] bthrow FPRIM
    s" wordlist" ['] bwordlist FPRIM   s" get-current" ['] bgetcur FPRIM
-   s" set-current" ['] bsetcur FPRIM  s" search-wl" ['] bswl FPRIM ;
+   s" set-current" ['] bsetcur FPRIM  s" search-wl" ['] bswl FPRIM
+   s" set-check" ['] bsetcheck FPRIM ;
 
 \ ---- CEMIT ( x9=word -- ) : str w9,[x28] ; CP += 4 ----
 : emit-cemit ( -- )
@@ -569,6 +574,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
    9 0 MOVZ,  9 DATA HND-CELL STR,                    \ HND (catch handler chain) = 0
    9 0 MOVZ,  9 DATA CUR-CELL STR,                    \ CURRENT wordlist = 0 (FORTH)
    9 1 MOVZ,  9 DATA WIDN-CELL STR,                   \ next fresh wid = 1
+   9 0 MOVZ,  9 DATA HOOK-CELL STR,                   \ check hook = none
    g-install-crash                                    \ self-diagnosing crash (register dump)
    emit-source                                        \ INP/INE <- baked Lsrc or stdin
    PEND 0 MOVZ,                                       \ interpret mode
@@ -594,6 +600,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
          ncd LBL,
          5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,   \ reset CFSP
          12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,      \ reset locals
+         12 0 MOVZ,  12 DATA BODYLEN-CELL STR,                           \ reset body capture
          lmain B,
       lnotcolon LBL,
       \ interpret-mode defining words + tick
@@ -618,11 +625,30 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
          notd LBL,
          9 W-RET LIT64,  Lcemit @ BL,                       \ emit RET
          9 PEND 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 PEND 8 STR,  \ clen
-         NDICT NDICT 1 ADDI,                                \ publish word
-         PEND 0 MOVZ,                                       \ leave compile mode
-         2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,               \ region -> RX + flush
+         2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,               \ region -> RX + flush (callable now)
+         \ run the check hook on the captured body; publish only if it returns nonzero
+         NEWLBL {: nohook :}  NEWLBL {: rejected :}
+         9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+            10 DATA BODYBUF-OFF ADDI,  10 g-push           \ ( body-addr )
+            10 DATA BODYLEN-CELL LDR,  10 g-push           \ ( body-len )
+            SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
+            10 g-pop  10 rejected CBZ,                     \ ok==0 -> don't publish
+         nohook LBL,
+            NDICT NDICT 1 ADDI,                            \ publish word
+         rejected LBL,
+         PEND 0 MOVZ,                                      \ leave compile mode
          lmain B,
       lnotsemi LBL,
+      \ capture the token into the body buffer (for the check hook); space-joined
+      14 DATA BODYLEN-CELL LDR,  NEWLBL {: bovf :}  14 900 CMPI,  C-GE bovf BCOND,
+         15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,           \ dst = buf + len
+         11 TKA 0 ADDI,  12 TKL 0 ADDI,                     \ src, count
+         NEWLBL {: bcp :}  NEWLBL {: bcd :}
+         bcp LBL,  12 bcd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
+            15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  bcp B,
+         bcd LBL,  13 32 MOVZ,  13 15 0 STRB,               \ space separator
+         14 14 TKL ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,   \ len += TKL+1
+      bovf LBL,
       \ control-flow keywords (compile-only): emit/patch JIT branches, then loop
       lmain Lkwif     2 ['] c-if     cf-entry
       lmain Lkwthen   4 ['] c-then   cf-entry

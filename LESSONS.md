@@ -700,3 +700,17 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   and `CHECKED:` wired into the standalone's `:`.
 - Recurring trap: `S"` is COMPILE-ONLY. Any S"-driven test at the top level feeds
   the callee garbage (S" is skipped as unknown in interpret mode). Wrap in a `:`.
+
+## Self-host 6/7/9 — checked compilation wired in (2026-06-11)
+
+- The standalone is now a SELF-HOSTING CHECKED Forth: a `set-check` primitive
+  installs a hook (a word `( body-addr body-len -- ok )`); the `:` compiler
+  captures the body tokens (space-joined) into a data-region buffer, and at `;`
+  runs the hook and PUBLISHES the word only if it returns nonzero. Wiring the
+  native type-checker (CHECK) as the hook: `: SQ dup * ;` checks ok and is
+  published; `: BAD dup 0= + ;` is rejected (not published, `dup 0= +` is a type
+  error); `7 SQ` → 49. The standalone checks AND compiles natively — dot 9's
+  codegen-hook in spirit, with the stencil JIT as the in-process code allocator.
+- Order at `;`: flush region to RX BEFORE calling the hook (so the hook, a
+  compiled word, is callable), and publish (NDICT++) AFTER, gated on the verdict.
+  Save x30 around the hook BLR (the compiler loop needs its link).
