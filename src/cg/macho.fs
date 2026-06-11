@@ -1,9 +1,11 @@
 \ macho.fs — emit a minimal dynamic macOS ARM64 Mach-O executable, in Forth.
 \ Layout: header + 6 load commands (PAGEZERO, TEXT+__text, LINKEDIT, DYLINKER,
 \ MAIN, LOAD_DYLIB libSystem), header slack to 0x1000, the ICode-assembled code
-\ at 0x1000, padded to one page (0x4000). `codesign -s -` (applied by exec.fs)
-\ adds the ad-hoc LC_CODE_SIGNATURE into the slack + __LINKEDIT. Static binaries
-\ are SIGKILLed (AMFI); this is dynamic, dyld-loaded, zero C. See docs/macho.md.
+\ at 0x1000, padded to one page (MPAGE). This is the canonical UNSIGNED binary;
+\ sign.fs is a post-pass that rewrites the header to add LC_CODE_SIGNATURE + an
+\ embedded ad-hoc signature (replacing external `codesign`), exactly as codesign
+\ does. The drift guard compares this unsigned artifact. Static binaries are
+\ SIGKILLed (AMFI); this is dynamic, dyld-loaded, zero C. See docs/macho.md.
 
 require asm.fs
 
@@ -40,6 +42,8 @@ $10000    constant MPAGE              \ __TEXT file/vm size; __LINKEDIT starts h
 variable CODELEN
 create SCODE $18000 allot             \ assembled-code scratch (grows with the standalone)
 : ASM-CODE ( -- )  SCODE ASSEMBLE CODELEN ! ;
+
+variable LE-OFF                       \ file offset of the __LINKEDIT LC (for sign.fs post-pass)
 
 : SEG, ( name$ vmaddr vmsize fileoff filesize prot nsects extrasz -- )
    {: addr u vma vmsz foff fsz prot nsects extra :}
@@ -82,11 +86,12 @@ variable NCMDS                        \ load commands counted as emitted
    s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
    s" __TEXT" VMBASE MPAGE 0 MPAGE 5 1 80 SEG,  LC+
       s" __text" s" __TEXT" VMBASE CODE-OFF + CODELEN @ CODE-OFF 2 $80000400 SECT,
+   m-here LE-OFF !                    \ remember __LINKEDIT LC offset for the sign post-pass
    s" __LINKEDIT" VMBASE MPAGE + MPAGE MPAGE 0 1 0 0 SEG,  LC+
    DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
    PATCH-HDR                          \ derive ncmds/sizeofcmds (no frozen magic)
    CODELEN @  MPAGE CODE-OFF -  > abort" cg: emitted code exceeds __TEXT page"
-   CODE-OFF m-pad                    \ header slack (for codesign's LC)
+   CODE-OFF m-pad                    \ header slack (room for the post-pass LC_CODE_SIGNATURE)
    SCODE  MP @  CODELEN @  move      \ copy assembled code
    CODELEN @ MP +!
    MPAGE m-pad                        \ pad file to one page

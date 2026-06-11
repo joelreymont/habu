@@ -1,7 +1,8 @@
 \ exec.fs — write the in-memory Mach-O to disk, ad-hoc sign it, and (optionally)
-\ run it. Pure Forth + gforth's built-in file I/O and `system` — no FFI, no C.
+\ run it. Pure Forth + gforth's built-in file I/O and `system` — no FFI, no C,
+\ and no external `codesign` (sign.fs embeds the ad-hoc CodeDirectory itself).
 
-require macho.fs
+require sign.fs
 
 create CMD$ 512 allot   variable CMD#
 : c+ ( c -- )  CMD$ CMD# @ + c!  1 CMD# +! ;
@@ -15,22 +16,25 @@ create CMD$ 512 allot   variable CMD#
    MBUF MLEN @ r@ write-file throw
    r> close-file throw ;
 
-s" cg: codesign failed"  exception constant E-CODESIGN
 s" cg: chmod failed"     exception constant E-CHMOD
-
-: ADHOC-SIGN ( addr u -- )           \ ad-hoc sign; throw on failure (no silent fallback)
-   cmd(  s" codesign -f -s - '" cs+  cs+  s" ' 2>/dev/null" cs+  )run
-   if E-CODESIGN throw then ;
 
 : CHMODX ( addr u -- )
    cmd(  s" chmod +x '" cs+  cs+  s" '" cs+  )run  if E-CHMOD throw then ;
 
-\ Build current ICODE -> signed runnable executable at `filename`.
+: BASENAME ( a u -- a2 u2 )          \ strip directory: text after the last '/'
+   {: a u :}  a u + {: e :}  a {: s :}
+   a begin dup e < while
+        dup c@ [char] / = if  dup 1+ to s  then  1+
+     repeat drop
+   s  e s - ;
+
+\ Build current ICODE -> self-signed runnable executable at `filename`.
 : EMIT-EXE ( addr u -- )
-   BUILD-MACHO
+   2dup BASENAME SIG-ID 2!            \ ad-hoc identifier = binary basename
+   BUILD-MACHO                        \ reserves the signature area in __LINKEDIT
+   CODESIG                            \ fill it: embedded ad-hoc CodeDirectory
    2dup WRITE-EXE
-   2dup CHMODX
-   ADHOC-SIGN ;
+   CHMODX ;
 
 \ --- crash diagnostics: caf-built binaries install an in-binary signal handler
 \ (crash.fs) that dumps the faulting registers to stderr and exit(134), so a crash
@@ -53,5 +57,5 @@ s" cg: chmod failed"     exception constant E-CHMOD
 
 \ Build + run, returning the decoded process exit code (0..255).
 : RUN-EXE ( addr u -- code )
-   2dup EMIT-EXE  2dup {: pa pu :}
+   2dup {: pa pu :} EMIT-EXE          \ EMIT-EXE consumes addr u; keep pa pu for the run
    cmd(  [char] ' c+  pa pu cs+  [char] ' c+  )run  pa pu rot CRASH-CHECK  WSTAT>RC ;
