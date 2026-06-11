@@ -19,5 +19,5 @@ create CBUF 131072 allot   variable CL
    CBUF CL @ NF-RUN  NFOUT 2@ ;
 : RC ( -- n )  s" /tmp/sh-vs-bin; echo $? > /tmp/sh-vs-rc" system
    s" /tmp/sh-vs-rc" slurp-file  s>number? 2drop ;
-T{ GEN  s\" 5\n" compare 0= -> true }T     \ register-allocated + constant-folded: 5 instructions (no ldr/str)
+T{ GEN  s\" 6\n" compare 0= -> true }T     \ register+folded: 6 instructions (incl. frame setup) (no ldr/str)
 T{ RC -> 25 }T                              \ correct (5*5)

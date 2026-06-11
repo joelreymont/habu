@@ -50,3 +50,5 @@
 : ENC-FADD {: d n m :} 509618176 d or  n 5 lshift or  m 16 lshift or MSK ;
 : ENC-FSUB {: d n m :} 509622272 d or  n 5 lshift or  m 16 lshift or MSK ;
 : ENC-FMUL {: d n m :} 509609984 d or  n 5 lshift or  m 16 lshift or MSK ;
+\ conditional set ( rd cond -- w ): cset = csinc rd, xzr, xzr, invert(cond)
+: ENC-CSET {: rd cond :}  2594113504 rd or  cond 1 xor 12 lshift or MSK ;

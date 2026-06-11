@@ -19,6 +19,22 @@ gforth case-folds `S0`/`s0` (use BSIG0/SSIG0); a local named `i` shadows the loo
 index inside `?DO`; declaring `{: :}` locals inside a loop corrupts the return
 stack (factor the loop body into its own word); `?DO` is `( limit start -- )`.
 
+## Standalone codegen gets CONTROL FLOW — and the leaf-only inlining wall (2026-06-11)
+
+The register-allocating codegen now compiles IF/THEN: pop the flag to a reg, SPILL the
+whole VS to canonical memory slots ([x19,#k*8]) so both branch paths agree, `cbz` past
+the body, re-spill at the merge. Compiles abs() on a runtime input (`negate dup 0< if
+negate then`) — verified both signs (t-sh-if). The HARD part wasn't the algorithm, it
+was the standalone's **leaf-only stencil-inlining model**: `:` INLINES every colon word
+(memcpy of body-minus-RET), so a deep helper chain (V-FORCE->V-REG->V-SPILL-ALL + a
+register-exhaustion spill path) explodes the compiled body and crashes. Tried adding a
+"BL if large" path to the engine (forth.fs) — but a BL'd word that itself BLs clobbers
+LR (x30), and inlined words can't carry LR save/restore; the two models are
+incompatible without a frame-based redesign. The working fix: keep the helpers SMALL —
+drop the register-exhaustion spill (shallow bodies don't need it), keep only the
+canonical V-SPILL-ALL at boundaries. So IF/THEN works for stacks <=7 deep; deeper
+register spilling still needs the engine's call mechanism reworked.
+
 ## Standalone register allocator — the real codegen win (2026-06-11)
 
 The peephole (16->15) was barely worth it; the VS ALLOCATOR is the real win. Ported

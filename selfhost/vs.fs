@@ -3,8 +3,8 @@
 \ (just relabel), arithmetic is reg->reg, and there is NO ldr/str traffic until the
 \ pool spills. `5 dup *` becomes ~5 instructions instead of 16. Needs asm.fs + icode.fs.
 \ Emitters are dispatched by xt (execute) from a table, so the dispatcher stays tiny.
-create OPN 3 c, 100 c, 117 c, 112 c, 0 c, 4 c, 100 c, 114 c, 111 c, 112 c, 1 c, 4 c, 115 c, 119 c, 97 c, 112 c, 2 c, 4 c, 111 c, 118 c, 101 c, 114 c, 3 c, 3 c, 110 c, 105 c, 112 c, 4 c, 1 c, 43 c, 5 c, 1 c, 45 c, 6 c, 1 c, 42 c, 7 c, 3 c, 97 c, 110 c, 100 c, 8 c, 2 c, 111 c, 114 c, 9 c, 3 c, 120 c, 111 c, 114 c, 10 c, 0 c, 
-11 constant NOPS
+create OPN 3 c, 100 c, 117 c, 112 c, 0 c, 4 c, 100 c, 114 c, 111 c, 112 c, 1 c, 4 c, 115 c, 119 c, 97 c, 112 c, 2 c, 4 c, 111 c, 118 c, 101 c, 114 c, 3 c, 3 c, 110 c, 105 c, 112 c, 4 c, 1 c, 43 c, 5 c, 1 c, 45 c, 6 c, 1 c, 42 c, 7 c, 3 c, 97 c, 110 c, 100 c, 8 c, 2 c, 111 c, 114 c, 9 c, 3 c, 120 c, 111 c, 114 c, 10 c, 6 c, 110 c, 101 c, 103 c, 97 c, 116 c, 101 c, 11 c, 2 c, 48 c, 60 c, 12 c, 2 c, 105 c, 102 c, 13 c, 4 c, 116 c, 104 c, 101 c, 110 c, 14 c, 0 c, 
+15 constant NOPS
 \ register pool x9..x15 (scratch in a leaf body — no calls)
 create RPOOL 9 c, 10 c, 11 c, 12 c, 13 c, 14 c, 15 c,
 7 constant NRP
@@ -25,12 +25,20 @@ create VTAG 64 allot   create VVAL 64 cells allot   variable VSP
 : GMOV {: d s :}  d 31 s ENC-ORR EMITW ;               \ mov d, s  (orr d, xzr, s)
 \ materialise VS[k] into a register if it is a constant (movz/movk); idempotent.
 variable VFR  variable VFN
-: V-FORCE {: k :}  VTAG k + c@ IF
-     VVAL k cells + @ VFN !  R-ALLOC VFR !
+: V-FORCE {: k :}                                       \ tag 1=con (movz/movk), 2=mem (ldr slot)
+   VTAG k + c@ 1 = IF  VVAL k cells + @ VFN !  R-ALLOC VFR !
      VFR @ VFN @ 65535 and 0 MOVZHW EMITW  VFR @ VFN @ 16 rshift 65535 and 1 MOVKHW EMITW
+     0 VTAG k + c!  VFR @ VVAL k cells + !  THEN
+   VTAG k + c@ 2 = IF  R-ALLOC VFR !  VFR @ 19 k 8 * ENC-LDR EMITW
      0 VTAG k + c!  VFR @ VVAL k cells + !  THEN ;
 : V-REG {: k :}  k V-FORCE  VVAL k cells + @ ;          \ force + return register
 : REG-COPY {: s :}  R-ALLOC {: r :}  r s GMOV  r V-PUSHR ;
+\ spill the whole VS to canonical memory slots [x19,#k*8] (at control-flow boundaries).
+variable SAI  variable SAR
+: V-SPILL-ALL  0 SAI ! BEGIN SAI @ VSP @ < WHILE
+     VTAG SAI @ + c@ 2 <> IF  SAI @ V-REG SAR !
+       SAR @ 19 SAI @ 8 * ENC-STR EMITW  SAR @ R-FREE  2 VTAG SAI @ + c! THEN
+     SAI @ 1 + SAI ! REPEAT ;
 \ emitters
 : G-LIT {: n :}  n V-PUSHC ;                            \ record the constant — no code yet
 : G-DUP   VSP @ 1 - {: k :}
@@ -58,13 +66,28 @@ variable RBB  variable RAA
 : G-AND  BOTH-CON? IF AV BV and FOLD2 ELSE ['] ENC-AND REGOP THEN ;
 : G-OR   BOTH-CON? IF AV BV or  FOLD2 ELSE ['] ENC-ORR REGOP THEN ;
 : G-XOR  BOTH-CON? IF AV BV xor FOLD2 ELSE ['] ENC-EOR REGOP THEN ;
+\ negate (in-place, fold if constant) and 0< -> Forth flag 0/-1 in the top register
+variable U1R  variable CMR
+: G-NEGATE  VSP @ 1 - {: k :} VTAG k + c@ 1 = IF VVAL k cells + @ negate VVAL k cells + !
+   ELSE k V-REG U1R ! U1R @ 31 U1R @ ENC-SUB EMITW THEN ;
+: G-0<  VSP @ 1 - V-REG CMR !
+   CMR @ 0 ENC-CMPI EMITW  CMR @ 11 ENC-CSET EMITW  CMR @ 31 CMR @ ENC-SUB EMITW ;
+\ control flow: IF/THEN. Spill VS to canonical memory at the boundary so both paths
+\ agree; pop the flag and cbz past the body. CF stack holds the merge label.
+create CFLBL 32 cells allot   variable CFSP
+variable IFR
+: G-IF   VSP @ 1 - V-REG IFR !  VSP @ 1 - VSP !  V-SPILL-ALL  IFR @ R-FREE
+   NEWLBL {: lend :}  IFR @ lend CBZ,  lend CFLBL CFSP @ cells + !  CFSP @ 1 + CFSP ! ;
+: G-THEN  V-SPILL-ALL  CFSP @ 1 - CFSP !  CFLBL CFSP @ cells + @ LBL, ;
 \ dispatch table: index -> emitter xt
-create XTS 16 cells allot
+create XTS 32 cells allot
 : VS-SETUP
    ['] G-DUP 0 cells XTS + !  ['] G-DROP 1 cells XTS + !  ['] G-SWAP 2 cells XTS + !
    ['] G-OVER 3 cells XTS + !  ['] G-NIP 4 cells XTS + !  ['] G-ADD 5 cells XTS + !
    ['] G-SUB 6 cells XTS + !  ['] G-MUL 7 cells XTS + !  ['] G-AND 8 cells XTS + !
-   ['] G-OR 9 cells XTS + !  ['] G-XOR 10 cells XTS + ! ;
+   ['] G-OR 9 cells XTS + !  ['] G-XOR 10 cells XTS + !
+   ['] G-NEGATE 11 cells XTS + !  ['] G-0< 12 cells XTS + !
+   ['] G-IF 13 cells XTS + !  ['] G-THEN 14 cells XTS + ! ;
 VS-SETUP
 \ find op (a,u) in OPN -> index, or -1
 variable VFI  variable VFP  variable VFNL
@@ -80,12 +103,18 @@ variable VNV  variable VNI
 : VNUM {: a u :} 0 VNV ! 0 VNI ! BEGIN VNI @ u < WHILE VNV @ 10 * a VNI @ + c@ 48 - + VNV ! VNI @ 1 + VNI ! REPEAT VNV @ ;
 : GEN-VS-TOK {: a u :}  a u ALLDG? IF a u VNUM G-LIT ELSE a u VFIND dup 0 >= IF cells XTS + @ execute ELSE drop THEN THEN ;
 variable VB  variable VL  variable VI  variable VSS
-: GEN-VS {: a u :}
-   RP-RESET 0 VSP !  a VB !  u VL !  0 VI !
+: VS-INIT  RP-RESET 0 VSP !  0 CFSP !  19 31 512 ENC-SUBI EMITW ;   \ frame: x19 = sp-512
+: VS-WALK {: a u :}  a VB !  u VL !  0 VI !
    BEGIN VI @ VL @ < WHILE
      BEGIN VI @ VL @ < VB @ VI @ + c@ 32 = and WHILE VI @ 1 + VI ! REPEAT
      VI @ VL @ < IF VB @ VI @ + VSS !
        BEGIN VI @ VL @ < VB @ VI @ + c@ 32 <> and WHILE VI @ 1 + VI ! REPEAT
        VSS @ VB @ VI @ + VSS @ - GEN-VS-TOK THEN
-   REPEAT
-   VSP @ 1 - V-REG {: r :}  0 r GMOV  16 1 0 MOVZHW EMITW  0 ENC-SVC EMITW ;
+   REPEAT ;
+: VS-EXIT  VSP @ 1 - V-REG {: r :}  0 r GMOV  16 1 0 MOVZHW EMITW  0 ENC-SVC EMITW ;
+: GEN-VS {: a u :}  VS-INIT  a u VS-WALK  VS-EXIT ;
+\ runtime input pushed as a REGISTER (so conditionals aren't folded away)
+variable GVN
+: GEN-VS-N {: a u input :}  VS-INIT
+   R-ALLOC GVN !  GVN @ input 65535 and 0 MOVZHW EMITW  GVN @ input 16 rshift 65535 and 1 MOVKHW EMITW
+   GVN @ V-PUSHR  a u VS-WALK  VS-EXIT ;
