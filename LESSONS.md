@@ -33,7 +33,12 @@ LR (x30), and inlined words can't carry LR save/restore; the two models are
 incompatible without a frame-based redesign. The working fix: keep the helpers SMALL —
 drop the register-exhaustion spill (shallow bodies don't need it), keep only the
 canonical V-SPILL-ALL at boundaries. So IF/THEN works for stacks <=7 deep; deeper
-register spilling still needs the engine's call mechanism reworked.
+register spilling still needs the engine's call mechanism reworked. BEGIN/UNTIL loops
+followed the same pattern (spill at the loop top + the back-edge so the layout is
+invariant) — a countdown that exits 42 verifies it. The codegen now handles arithmetic,
+stack ops, comparisons, IF/THEN, and loops — real programs. Still NOT in the codegen:
+locals, create/variables, memory ops, strings, FP — which the compiler's OWN source
+uses heavily, so the standalone can't yet compile its compiler (the fixpoint gap).
 
 ## Standalone register allocator — the real codegen win (2026-06-11)
 
