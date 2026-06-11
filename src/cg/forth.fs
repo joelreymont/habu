@@ -496,7 +496,13 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
 \ frame, and pop the declared values into slots (slot 0 = first/deepest name). The
 \ frame is torn down at ';'. Local references are resolved by Lloc-find -> a load.
 : c-lbrace ( -- )
-   9 0 MOVZ,  9 DATA LOCN-CELL STR,           \ N = 0
+   \ first {: of the word carves a fixed 16-slot (128-byte) frame; later blocks
+   \ append to the locals table and pop into the next slots (no second carve).
+   12 DATA LOCF-CELL LDR,  NEWLBL {: havef :}  12 havef CBNZ,
+      9 $D10203FF LIT64,  Lcemit @ BL,        \ sub sp,sp,#128
+      9 128 MOVZ,  9 DATA LOCF-CELL STR,      \ LOC-F = 128
+   havef LBL,
+   6 DATA LOCN-CELL LDR,                      \ x6 = start slot for this block (= current N)
    NEWLBL {: nl :}  NEWLBL {: nd :}  NEWLBL {: nstore :}  NEWLBL {: ncp :}  NEWLBL {: ncd :}
    nl LBL,
       Ltok @ BL,  0 nd CBZ,
@@ -510,18 +516,15 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
       11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR,   \ N++
       nl B,
    nd LBL,
-   11 DATA LOCN-CELL LDR,                     \ x11 = N
-   12 11 3 LSLI,  12 12 15 ADDI,  5 -16 LIT64,  12 12 5 AND,   \ framesize = (N*8+15)&~15
-   12 DATA LOCF-CELL STR,
-   9 $D10003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ emit sub sp,sp,#framesize
-   13 11 1 SUBI,                              \ i = N-1
+   \ pop this block's values into slots [start .. N-1] (top -> highest slot)
+   13 DATA LOCN-CELL LDR,  13 13 1 SUBI,      \ i = N-1
    NEWLBL {: pl :}  NEWLBL {: pd :}
-   11 pd CBZ,
    pl LBL,
+      13 6 CMP,  C-LT pd BCOND,               \ i < start -> done
       9 $D1002273 LIT64,  Lcemit @ BL,        \ sub x19,#8
       9 $F9400269 LIT64,  Lcemit @ BL,        \ ldr x9,[x19]
       9 $F90003E9 LIT64,  14 13 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ str x9,[sp,#i*8]
-      13 pd CBZ,  13 13 1 SUBI,  pl B,
+      13 13 1 SUBI,  pl B,
    pd LBL, ;
 
 \ S" string" (compile mode): emit  B over the bytes ; <bytes> ; push abs-addr ;

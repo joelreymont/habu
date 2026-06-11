@@ -232,3 +232,7 @@ T{ STANDALONE-EMITS-EXE -> 42 }T
    s" codesign -f -s - /tmp/se2-out 2>/dev/null && chmod +x /tmp/se2-out && /tmp/se2-out; echo $? > /tmp/se2-rc" system
    s" /tmp/se2-rc" slurp-file s>number? 2drop ;
 T{ CODEGEN-EXE -> 42 }T
+
+\ --- multiple {: :} blocks per word (fixed-frame locals) ---
+s" : T4 {: a b :} {: c d :} a b + c + d + ; 1 2 3 4 T4 ." NF  T{ s\" 10\n" NF= -> true }T
+s" variable Z 5 Z !  : MK {: inner :} Z @ {: idx :} idx inner + ; 100 MK ." NF  T{ s\" 105\n" NF= -> true }T
