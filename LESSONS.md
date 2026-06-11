@@ -19,6 +19,18 @@ gforth case-folds `S0`/`s0` (use BSIG0/SSIG0); a local named `i` shadows the loo
 index inside `?DO`; declaring `{: :}` locals inside a loop corrupts the return
 stack (factor the loop body into its own word); `?DO` is `( limit start -- )`.
 
+## Standalone register allocator — the real codegen win (2026-06-11)
+
+The peephole (16->15) was barely worth it; the VS ALLOCATOR is the real win. Ported
+caf's register-allocating model to the standalone (selfhost/vs.fs): the data stack
+lives in REGISTERS (x9..x15), tracked by an abstract value stack. `swap`/`over` become
+free relabels, arithmetic is reg->reg, literals load straight into a reg — ZERO ldr/str
+until the pool spills. `5 dup *` compiles to 7 instructions (movz/movk/mov/mul/mov + exit)
+vs 16 for the memory model, with no memory traffic at all. Emitters dispatch by xt from
+a table (`['] G-DUP … XTS !` then `execute`) so the dispatcher stays tiny despite the
+standalone inlining colon words. Verified correct across arithmetic/dup/swap/over/nip.
+Still straight-line only (control flow + FP + spill are the remaining "full codegen" work).
+
 ## Standalone peephole optimizer + the `i`-local footgun (2026-06-11)
 
 Ported the first optimizer pass to the standalone (selfhost/opt.fs): store-to-load
