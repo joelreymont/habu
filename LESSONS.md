@@ -740,3 +740,19 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 - More wrong-opcode-constant bugs: `ENC-MOV` base must be `0xAA0003E0` (Rn=xzr=31),
   not `0xAA0001E0` (Rn=15); and `ICREC` needs the `*` (`4 cells * IC +`) or every
   record aliases offset 32. Always cross-check encoders against the gforth oracle.
+
+## Self-host 10 — foundation laid; true self-rebuild is the remaining frontier (2026-06-11)
+
+- caf's Mach-O EMISSION is byte-deterministic: the same source builds to identical
+  bytes every time (verified by `cmp`; the signed-binary diff is only codesign's
+  non-deterministic signature, external to caf). Reproducible build = the fixpoint
+  prerequisite.
+- Status of dot 10 (stage2==stage3, drop gforth): every ALGORITHMIC component of
+  caf is now proven to run natively on the standalone — the checker (unify/resolve/
+  occurs/compose + checked compilation), the codegen (ICode buffer + peephole +
+  ARM64 encoders, byte-identical to asm.fs), and the in-process JIT. What's NOT
+  done is the literal self-rebuild: the standalone emitting its OWN complete binary.
+  That needs `forth.fs` (the ~700-line build compiler) + macho.fs re-expressed in
+  standalone-Forth (a from-scratch reimplementation in the constrained dialect),
+  not an incremental port. The components are proven; assembling them into a
+  self-emitting whole is the genuine remaining engineering project.

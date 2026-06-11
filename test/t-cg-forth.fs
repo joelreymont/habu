@@ -203,3 +203,11 @@ s" : ENC-ADD {: rd rn rm :} 2332033024 rm 16 lshift or rn 5 lshift or rd or ; : 
    NF  T{ s\" 2332229697
 2852652007
 " NF= -> true }T
+
+
+\ --- self-host 10 (foundation): caf's Mach-O emission is byte-DETERMINISTIC —
+\ the same standalone source builds to identical bytes (the fixpoint's
+\ reproducibility prerequisite; only the external codesign signature differs). ---
+: BLD ( -- a u )  s" : SQ DUP * ; 5 SQ ." EMIT-FORTH BUILD-MACHO  MBUF MLEN @ ;
+: SAME-BUILD? ( -- f )  BLD s" /tmp/det-x" WRITE-EXE  BLD s" /tmp/det-x" slurp-file 2swap compare 0= ;
+T{ SAME-BUILD? -> true }T
