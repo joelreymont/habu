@@ -39,8 +39,8 @@
 : ENC-LDRW {: rd rn off :} 3107979264 rd or  rn 5 lshift or  off 4 / 10 lshift or MSK ;
 : ENC-STRW {: rd rn off :} 3103784960 rd or  rn 5 lshift or  off 4 / 10 lshift or MSK ;
 \ branches: delta is in WORDS (instruction-relative), sign-handled by the caller's mask.
-: ENC-B     {: d26 :}     335544320  d26 16777215 and or MSK ;
-: ENC-BL    {: d26 :}     2483027968 d26 16777215 and or MSK ;
+: ENC-B     {: d26 :}     335544320  d26 $3FFFFFF and or MSK ;
+: ENC-BL    {: d26 :}     2483027968 d26 $3FFFFFF and or MSK ;
 : ENC-BCOND {: d19 cond :} 1409286144 d19 524287 and 5 lshift or  cond or MSK ;
 : ENC-CBZ   {: rt d19 :}  3019898880 d19 524287 and 5 lshift or  rt or MSK ;
 : ENC-CBNZ  {: rt d19 :}  3036676096 d19 524287 and 5 lshift or  rt or MSK ;

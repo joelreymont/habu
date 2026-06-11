@@ -25,7 +25,7 @@ create FXS 2048 cells allot   create FXL 2048 cells allot   create FXK 2048 cell
 : FX+ {: site lbl kind :}  FX?                       \ record a forward fixup
    site NFX @ cells FXS + !  lbl NFX @ cells FXL + !  kind NFX @ cells FXK + !  NFX @ 1 + NFX ! ;
 \ encode a word delta into the branch word for a kind
-: D26  16777215 and ;                                \ B/BL: bits 0..25
+: D26  $3FFFFFF and ;                               \ B/BL: bits 0..25 (26-bit field)
 : D19  524287 and 5 lshift ;                         \ cond/CBZ: bits 5..23
 \ emit a branch (base already encoded with delta=0) to a label; resolve or defer
 variable BBASE  variable BKIND
