@@ -3,6 +3,23 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## THE FIXPOINT: the standalone compiles its own compiler (2026-06-11)
+
+t-sh-stage2 closes the self-hosting loop: stage1 (gforth-built standalone whose baked
+program is the complete ported compiler — asm/icode/mnem/util/walk/rt/crash/macho/
+engine/engine2 + the stage2 driver) READS that same source from a file (new `read`
+prim), compiles it with the ported EMIT-FORTH, wraps it with the ported BUILD-MACHO,
+and the result is BYTE-IDENTICAL to the gforth-built engine image. Compiler fixpoint,
+from source — not image copying. Enablers: real calls + selective inlining (deep helper
+chains compile), 8KB body capture (engine words are long), $hex literals, the `read`
+prim (added to BOTH src/cg/forth.fs and the engine.fs port in lockstep — the goldens
+enforce parity), __TEXT grown to $20000 and DATA-SIZE to $200000 (baked source + build
+buffers; macho-min/rebuild/sign NCSLOT updated together). Last port bug: a {: :} locals
+group INSIDE an IF branch (emit-source) — the documented frame-corruption footgun;
+probes that hoisted it passed, pinpointing it. The engine-port goldens (t-sh-engine,
+t-sh-engine2: 2893 words identical) plus t-sh-stage2 now gate every engine change on
+both sides staying in lockstep.
+
 ## The engine port: golden byte-parity is the only test that matters (2026-06-11)
 
 Porting src/cg (gforth-hosted) emitters into the subset (selfhost/): the working
