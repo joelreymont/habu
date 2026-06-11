@@ -3,7 +3,21 @@
 \ (just relabel), arithmetic is reg->reg, and there is NO ldr/str traffic until the
 \ pool spills. `5 dup *` becomes ~5 instructions instead of 16. Needs asm.fs + icode.fs.
 \ Emitters are dispatched by xt (execute) from a table, so the dispatcher stays tiny.
-create OPN 3 c, 100 c, 117 c, 112 c, 0 c, 4 c, 100 c, 114 c, 111 c, 112 c, 1 c, 4 c, 115 c, 119 c, 97 c, 112 c, 2 c, 4 c, 111 c, 118 c, 101 c, 114 c, 3 c, 3 c, 110 c, 105 c, 112 c, 4 c, 1 c, 43 c, 5 c, 1 c, 45 c, 6 c, 1 c, 42 c, 7 c, 3 c, 97 c, 110 c, 100 c, 8 c, 2 c, 111 c, 114 c, 9 c, 3 c, 120 c, 111 c, 114 c, 10 c, 6 c, 110 c, 101 c, 103 c, 97 c, 116 c, 101 c, 11 c, 2 c, 48 c, 60 c, 12 c, 2 c, 105 c, 102 c, 13 c, 4 c, 116 c, 104 c, 101 c, 110 c, 14 c, 2 c, 48 c, 61 c, 15 c, 5 c, 98 c, 101 c, 103 c, 105 c, 110 c, 16 c, 5 c, 117 c, 110 c, 116 c, 105 c, 108 c, 17 c, 1 c, 64 c, 18 c, 1 c, 33 c, 19 c, 2 c, 99 c, 64 c, 20 c, 2 c, 99 c, 33 c, 21 c, 4 c, 104 c, 101 c, 114 c, 101 c, 22 c, 1 c, 61 c, 23 c, 1 c, 60 c, 24 c, 1 c, 62 c, 25 c, 2 c, 49 c, 43 c, 26 c, 2 c, 49 c, 45 c, 27 c, 0 c,
+\ op-name table: records of [nlen, name-bytes, op-index], 0-terminated. Built at load
+\ time from readable strings (OP+ keeps the terminator as it appends).
+create OPN 300 allot  variable OPP  variable OPD
+: OP+ {: a u ix :}
+   u OPP @ c!  OPP @ 1 + OPD !
+   0 BEGIN dup u < WHILE  dup a + c@  over OPD @ + c!  1 + REPEAT drop
+   ix OPD @ u + c!  OPD @ u + 1 + OPP !  0 OPP @ c! ;
+: OPS  OPN OPP !  0 OPN c!
+   s" dup" 0 OP+   s" drop" 1 OP+   s" swap" 2 OP+   s" over" 3 OP+   s" nip" 4 OP+
+   s" +" 5 OP+     s" -" 6 OP+      s" *" 7 OP+      s" and" 8 OP+    s" or" 9 OP+
+   s" xor" 10 OP+  s" negate" 11 OP+  s" 0<" 12 OP+  s" if" 13 OP+   s" then" 14 OP+
+   s" 0=" 15 OP+   s" begin" 16 OP+  s" until" 17 OP+  s" @" 18 OP+  s" !" 19 OP+
+   s" c@" 20 OP+   s" c!" 21 OP+   s" here" 22 OP+   s" =" 23 OP+    s" <" 24 OP+
+   s" >" 25 OP+    s" 1+" 26 OP+   s" 1-" 27 OP+ ;
+OPS
 28 constant NOPS
 \ register pool x9..x15 (scratch in a leaf body — no calls)
 create RPOOL 9 c, 10 c, 11 c, 12 c, 13 c, 14 c, 15 c,

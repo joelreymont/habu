@@ -4,7 +4,33 @@
 \ x9/x10 scratch. Each op's fixed instruction sequence is a DATA template (GTAB) so
 \ the dispatcher stays small (the standalone inlines colon words -> a big switch would
 \ overflow). Literals are emitted directly. Needs asm.fs + icode.fs loaded first.
-create GTAB 3 c, 100 c, 117 c, 112 c, 3 c, 105 c, 2 c, 64 c, 249 c, 115 c, 34 c, 0 c, 209 c, 105 c, 2 c, 0 c, 249 c, 4 c, 100 c, 114 c, 111 c, 112 c, 1 c, 115 c, 34 c, 0 c, 145 c, 4 c, 115 c, 119 c, 97 c, 112 c, 4 c, 105 c, 2 c, 64 c, 249 c, 106 c, 6 c, 64 c, 249 c, 106 c, 2 c, 0 c, 249 c, 105 c, 6 c, 0 c, 249 c, 4 c, 111 c, 118 c, 101 c, 114 c, 3 c, 105 c, 6 c, 64 c, 249 c, 115 c, 34 c, 0 c, 209 c, 105 c, 2 c, 0 c, 249 c, 1 c, 43 c, 5 c, 106 c, 2 c, 64 c, 249 c, 115 c, 34 c, 0 c, 145 c, 105 c, 2 c, 64 c, 249 c, 41 c, 1 c, 10 c, 139 c, 105 c, 2 c, 0 c, 249 c, 1 c, 45 c, 5 c, 106 c, 2 c, 64 c, 249 c, 115 c, 34 c, 0 c, 145 c, 105 c, 2 c, 64 c, 249 c, 41 c, 1 c, 10 c, 203 c, 105 c, 2 c, 0 c, 249 c, 1 c, 42 c, 5 c, 106 c, 2 c, 64 c, 249 c, 115 c, 34 c, 0 c, 145 c, 105 c, 2 c, 64 c, 249 c, 41 c, 125 c, 10 c, 155 c, 105 c, 2 c, 0 c, 249 c, 3 c, 97 c, 110 c, 100 c, 5 c, 106 c, 2 c, 64 c, 249 c, 115 c, 34 c, 0 c, 145 c, 105 c, 2 c, 64 c, 249 c, 41 c, 1 c, 10 c, 138 c, 105 c, 2 c, 0 c, 249 c, 2 c, 111 c, 114 c, 5 c, 106 c, 2 c, 64 c, 249 c, 115 c, 34 c, 0 c, 145 c, 105 c, 2 c, 64 c, 249 c, 41 c, 1 c, 10 c, 170 c, 105 c, 2 c, 0 c, 249 c, 3 c, 120 c, 111 c, 114 c, 5 c, 106 c, 2 c, 64 c, 249 c, 115 c, 34 c, 0 c, 145 c, 105 c, 2 c, 64 c, 249 c, 41 c, 1 c, 10 c, 202 c, 105 c, 2 c, 0 c, 249 c, 0 c, 
+\ GTAB: records of [nlen, name, count, u32-words(LE)], 0-terminated. Built at load time
+\ from the encoders (asm.fs) instead of a baked byte blob: GT< starts a record, GW+
+\ appends one encoded instruction (count byte and 0 terminator maintained as it goes).
+create GTAB 400 allot  variable GTP  variable GTN
+: GT< {: a u :}
+   u GTP @ c!
+   0 BEGIN dup u < WHILE  dup a + c@  over GTP @ + 1 + c!  1 + REPEAT drop
+   GTP @ 1 + u +  GTN !  0 GTN @ c!  GTN @ 1 + GTP !  0 GTP @ c! ;
+: GW+ {: w :}
+   w $FF and GTP @ c!  w 8 rshift $FF and GTP @ 1 + c!
+   w 16 rshift $FF and GTP @ 2 + c!  w 24 rshift $FF and GTP @ 3 + c!
+   GTP @ 4 + GTP !  GTN @ c@ 1 + GTN @ c!  0 GTP @ c! ;
+: GPOP9   10 19 0 ENC-LDR GW+  19 19 8 ENC-ADDI GW+  9 19 0 ENC-LDR GW+ ;  \ x10=top, x9=next
+: GPUSH9  9 19 0 ENC-STR GW+ ;                                             \ [x19]=x9 (in place)
+: GTABLES  GTAB GTP !  0 GTAB c!
+   s" dup"  GT<  9 19 0 ENC-LDR GW+  19 19 8 ENC-SUBI GW+  9 19 0 ENC-STR GW+
+   s" drop" GT<  19 19 8 ENC-ADDI GW+
+   s" swap" GT<  9 19 0 ENC-LDR GW+  10 19 8 ENC-LDR GW+
+                 10 19 0 ENC-STR GW+  9 19 8 ENC-STR GW+
+   s" over" GT<  9 19 8 ENC-LDR GW+  19 19 8 ENC-SUBI GW+  9 19 0 ENC-STR GW+
+   s" +"    GT<  GPOP9  9 9 10 ENC-ADD GW+  GPUSH9
+   s" -"    GT<  GPOP9  9 9 10 ENC-SUB GW+  GPUSH9
+   s" *"    GT<  GPOP9  9 9 10 ENC-MUL GW+  GPUSH9
+   s" and"  GT<  GPOP9  9 9 10 ENC-AND GW+  GPUSH9
+   s" or"   GT<  GPOP9  9 9 10 ENC-ORR GW+  GPUSH9
+   s" xor"  GT<  GPOP9  9 9 10 ENC-EOR GW+  GPUSH9 ;
+GTABLES
 \ read a little-endian u32 from byte addr p
 variable RDP
 : RD32 {: p :}  p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
