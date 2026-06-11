@@ -13,3 +13,9 @@ T{ s" : GO 1 2 3 + if 9 . then . ; GO"            OUT s\" 9\n1\n" compare 0= -> 
 T{ s" : GO 1 2 3 4 5 6 7 + + + + + + . ; GO"      OUT s\" 28\n"  compare 0= -> true }T
 T{ s" : F 6 7 * ; : GO F F + . ; GO"              OUT s\" 84\n"  compare 0= -> true }T
 T{ s" : GO 10 20 30 swap drop + . ; GO"           OUT s\" 40\n"  compare 0= -> true }T
+\ VS shuffles (vsjit C): relabels on constant entries; dead literals vanish
+T{ s" : GO 5 drop 6 7 * . ; GO"                   OUT s\" 42\n"  compare 0= -> true }T
+T{ s" : GO 1 2 swap - . ; GO"                     OUT s\" 1\n"   compare 0= -> true }T
+T{ s" : GO 10 20 over + + . ; GO"                 OUT s\" 40\n"  compare 0= -> true }T
+T{ s" : GO 1 2 nip . ; GO"                        OUT s\" 2\n"   compare 0= -> true }T
+T{ s" : GO 7 dup . . ; GO"                        OUT s\" 7\n7\n" compare 0= -> true }T

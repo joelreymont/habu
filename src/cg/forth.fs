@@ -840,6 +840,12 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       lmain Lkwand2  3 ['] fand  fold-entry
       lmain Lkwor2   2 ['] for2  fold-entry
       lmain Lkwxor2  3 ['] fxor2 fold-entry
+      lmain Lkwdup2  3 ['] sdup  shuf1-entry
+      lmain Lkwdrop2 4 ['] sdrop shuf1-entry
+      lmain Lkwswap2 4 ['] sswap shuf2-entry
+      lmain Lkwover2 4 ['] sover shuf2-entry
+      lmain Lkwnip2  3 ['] snip  shuf2-entry
+
       Lvspill @ BL,                                          \ VS -> memory before a call
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,            \ FIND -> inline stencil
       13 lundef CBZ,                                         \ undefined word in a : body -> error
@@ -867,12 +873,14 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !
-   NEWLBL Lvtop2c !  NEWLBL Lvfoldput !
+   NEWLBL Lvtop2c !  NEWLBL Lvfoldput !  NEWLBL Lvtop1c !
    NEWLBL Lkwplus !  NEWLBL Lkwminus !  NEWLBL Lkwstar !
    NEWLBL Lkwand2 !  NEWLBL Lkwor2 !  NEWLBL Lkwxor2 !
+   NEWLBL Lkwdup2 !  NEWLBL Lkwdrop2 !  NEWLBL Lkwswap2 !
+   NEWLBL Lkwover2 !  NEWLBL Lkwnip2 !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-prof-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
-   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-crash-handler  emit-hex
+   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict                                              \ after #PL is final
    Lsrc @ LBL,  r> SRCN @ BYTES, ;

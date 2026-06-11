@@ -410,6 +410,11 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
       Lmain @ Lkwand2  3 ['] fand  fold-entry
       Lmain @ Lkwor2   2 ['] for2  fold-entry
       Lmain @ Lkwxor2  3 ['] fxor2 fold-entry
+      Lmain @ Lkwdup2  3 ['] sdup  shuf1-entry
+      Lmain @ Lkwdrop2 4 ['] sdrop shuf1-entry
+      Lmain @ Lkwswap2 4 ['] sswap shuf2-entry
+      Lmain @ Lkwover2 4 ['] sover shuf2-entry
+      Lmain @ Lkwnip2  3 ['] snip  shuf2-entry
       Lvspill @ BL,
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
       13 Lundef @ CBZ,
@@ -438,12 +443,14 @@ variable SRCA
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !
-   NEWLBL Lvtop2c !  NEWLBL Lvfoldput !
+   NEWLBL Lvtop2c !  NEWLBL Lvfoldput !  NEWLBL Lvtop1c !
    NEWLBL Lkwplus !  NEWLBL Lkwminus !  NEWLBL Lkwstar !
    NEWLBL Lkwand2 !  NEWLBL Lkwor2 !  NEWLBL Lkwxor2 !
+   NEWLBL Lkwdup2 !  NEWLBL Lkwdrop2 !  NEWLBL Lkwswap2 !
+   NEWLBL Lkwover2 !  NEWLBL Lkwnip2 !
    emit-main
    emit-prims  emit-prof-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
-   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-crash-handler  emit-hex
+   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict
    Lsrc @ LBL,  SRCA @ SRCN @ BYTES, ;

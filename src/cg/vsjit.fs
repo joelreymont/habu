@@ -108,4 +108,46 @@ variable FESK
    Lkwplus @ LBL,  s" +" BYTES,    Lkwminus @ LBL,  s" -" BYTES,
    Lkwstar @ LBL,  s" *" BYTES,    Lkwand2 @ LBL,   s" and" BYTES,
    Lkwor2 @ LBL,   s" or" BYTES,   Lkwxor2 @ LBL,   s" xor" BYTES, ;
-: emit-vsjit ( -- )  emit-vlitpush  emit-vspill  emit-vpushc  emit-vtop2c  emit-vfoldput ;
+variable Lvtop1c
+\ Lvtop1c ( -- x13=ok x11=top ) : is the top VS entry a constant? (no pop)
+: emit-vtop1c
+   Lvtop1c @ LBL,
+   NEWLBL {: no :}
+   13 0 MOVZ,
+   6 DATA VSP-CELL LDR,  6 1 CMPI,  C-LT no BCOND,
+   5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,  7 1 CMPI,  C-NE no BCOND,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
+   13 1 MOVZ,
+   no LBL,  RET, ;
+variable Lkwdup2  variable Lkwdrop2  variable Lkwswap2  variable Lkwover2  variable Lkwnip2
+\ shuf entries: VS-resident stack ops on constant entries (no code emitted at all —
+\ a dropped literal vanishes; swap/over/nip are relabels). Non-con falls through.
+: shuf1-entry {: lmainlbl kwvar kwlen sxt :}
+   NEWLBL FESK !
+   0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
+   0 FESK @ CBZ,
+   Lvtop1c @ BL,  13 FESK @ CBZ,
+   sxt execute
+   lmainlbl B,
+   FESK @ LBL, ;
+: shuf2-entry {: lmainlbl kwvar kwlen sxt :}
+   NEWLBL FESK !
+   0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
+   0 FESK @ CBZ,
+   Lvtop2c @ BL,  13 FESK @ CBZ,
+   sxt execute
+   lmainlbl B,
+   FESK @ LBL, ;
+: sdup   Lvpushc @ BL, ;                                  \ x11 = top from Lvtop1c
+: sdrop  6 DATA VSP-CELL LDR,  6 6 1 SUBI,  6 DATA VSP-CELL STR, ;
+: sswap                                                   \ x11=a x12=b -> store b a
+   6 DATA VSP-CELL LDR,
+   5 6 1 SUBI,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 STR,
+   5 6 2 SUBI,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 STR, ;
+: sover  Lvpushc @ BL, ;                                  \ x11 = a (deep) from Lvtop2c
+: snip   11 12 0 ADDI,  Lvfoldput @ BL, ;                 \ keep top, drop deep
+: emit-shufkw
+   Lkwdup2 @ LBL,   s" dup" BYTES,    Lkwdrop2 @ LBL,  s" drop" BYTES,
+   Lkwswap2 @ LBL,  s" swap" BYTES,   Lkwover2 @ LBL,  s" over" BYTES,
+   Lkwnip2 @ LBL,   s" nip" BYTES, ;
+: emit-vsjit ( -- )  emit-vlitpush  emit-vspill  emit-vpushc  emit-vtop2c  emit-vfoldput  emit-vtop1c ;
