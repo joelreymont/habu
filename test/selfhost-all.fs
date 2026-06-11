@@ -9,6 +9,7 @@ require t-sh-asm2.fs
 require t-sh-rt.fs
 require t-sh-crash.fs
 require t-sh-macho.fs
+require t-sh-engine.fs
 require t-sh-cg.fs
 require t-sh-walk.fs
 require t-sh-opt.fs
