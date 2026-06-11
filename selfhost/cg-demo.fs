@@ -1,7 +1,7 @@
 \ cg-demo.fs — the standalone GENERATES native code with its own encoders+assembler:
 \ assembles a loop computing exit(5+4+3+2+1=15), emits a self-signed Mach-O to
 \ /tmp/sh-cg-bin. Proves encoder + assembler (labels/branches) + Mach-O + sign end to
-\ end. Concatenated after sha256.fs macho-min.fs sign.fs asm.fs icode.fs.
+\ end. Concatenated after sha256.fs macho.fs sign.fs asm.fs icode.fs.
 : ASM-PROG
   ASM-INIT
   0 0 0 MOVZHW EMITW            \ mov x0, #0   (acc)
@@ -14,9 +14,6 @@
   0 ENC-SVC EMITW ;             \ svc #0  -> exit(x0)
 : GO
   ASM-PROG
-  ASM-LEN HDR
-  0 BEGIN dup ASM-LEN < WHILE dup CODE + c@ M8 1 + REPEAT drop
-  MPAGE MPAD
-  CODESIG
-  s" /tmp/sh-cg-bin" PSET PB 1537 493 open dup MSTART @ MOFF write drop close ;
+  BUILD-MACHO  s" sh" SET-SIGID CODESIG2
+  s" /tmp/sh-cg-bin" PATH0 1537 493 open dup MBUF MLEN @ write drop close ;
 GO

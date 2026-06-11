@@ -4,7 +4,7 @@
 \ body still compiles (covered by t-sh-if). Run: gforth test/t-sh-balance.fs -e bye
 require sh-driver.fs
 : CG+ ( -- )  0 CL !
-   s" selfhost/sha256.fs" +F  s" selfhost/macho-min.fs" +F  s" selfhost/sign.fs" +F
+   s" selfhost/sha256.fs" +F  s" selfhost/macho.fs" +F  s" selfhost/sign.fs" +F
    s" selfhost/util.fs" +F  s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F  s" selfhost/walk.fs" +F
    s" selfhost/vs.fs" +F ;
 : GEN-RC ( frag-a frag-u -- code )         \ codegen stack + fragment -> build+run, exit code

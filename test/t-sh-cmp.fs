@@ -6,8 +6,6 @@ require sh-driver.fs
 : GEN {: sa su input -- :}
    0 CL !
    s" selfhost/sha256.fs"   slurp-file +B   s"  " +B
-   s" selfhost/macho-min.fs" slurp-file +B   s"  " +B
-   s" selfhost/sign.fs"     slurp-file +B   s"  " +B
    s" selfhost/asm.fs"      slurp-file +B   s"  " +B
    s" selfhost/icode.fs"    slurp-file +B   s"  " +B
    s" selfhost/util.fs"    slurp-file +B   s"  " +B
@@ -15,6 +13,8 @@ require sh-driver.fs
    s" selfhost/vs.fs"       slurp-file +B   s"  " +B
    s" : INPUTVAL " +B  input 0 <# #s #> +B  s"  ; " +B
    s\" : SRC$ s\" " +B  sa su +B  s\" \" ; " +B
+   s" selfhost/macho.fs"    slurp-file +B   s"  " +B
+   s" selfhost/sign2.fs"    slurp-file +B   s"  " +B
    s" selfhost/cmp-demo.fs" slurp-file +B
    CBUF CL @ NF-RUN ;
 : RC ( -- n )  s" /tmp/sh-cmp-bin; echo $? > /tmp/sh-cmp-rc" system

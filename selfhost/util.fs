@@ -5,3 +5,5 @@ variable SEQ
 \ NUL-terminated path helper for open: copy (a,u) to d, append NUL.
 : PATHZ {: a u d :}
    0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;
+create PZB 32 allot
+: PATH0 {: a u :}  a u PZB PATHZ  PZB ;     \ ( a u -- pathz ) shared scratch

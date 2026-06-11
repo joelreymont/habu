@@ -4,8 +4,6 @@
 : GO
   ASM-INIT  s" 5 dup *" GEN-VS
   CP @ .                                   \ instruction count (8, no memory traffic)
-  ASM-LEN HDR
-  0 BEGIN dup ASM-LEN < WHILE dup CODE + c@ M8 1 + REPEAT drop
-  MPAGE MPAD  CODESIG
-  s" /tmp/sh-vs-bin" PSET PB 1537 493 open dup MSTART @ MOFF write drop close ;
+  BUILD-MACHO  s" sh" SET-SIGID CODESIG2
+  s" /tmp/sh-vs-bin" PATH0 1537 493 open dup MBUF MLEN @ write drop close ;
 GO
