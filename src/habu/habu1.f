@@ -223,13 +223,41 @@ variable Lkwdo variable Lkwloop variable Lkwi
 : bf0< C-MI (fcmp0) ;  : bf0= C-EQ (fcmp0) ;
 : bs>f  A g-pop  0 A SCVTF,   A 0 FMOVDX,  A g-push ;
 : bf>s  A g-pop  0 A FMOVXD,  A 0 FCVTZS,  A g-push ;
+: bfdot
+   NEWLBL NEWLBL NEWLBL {: fl il sd :}
+   A g-pop  15 A 0 ADDI,                               \ bits (sign test later)
+   SP SP 48 SUBI,
+   12 SP 48 ADDI,
+   13 10 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,           \ newline
+   0 15 FMOVXD,  1 0 FABS,                             \ d1 = |x|
+   9 1 FCVTZS,                                         \ x9 = int part
+   2 9 SCVTF,  3 1 2 FSUB,                             \ d3 = frac
+   14 $F4240 LIT64,  2 14 SCVTF,  3 3 2 FMUL,
+   14 3 FCVTZS,                                        \ x14 = frac * 1e6
+   10 10 MOVZ,  5 6 MOVZ,
+   fl LBL,                                             \ six zero-padded frac digits
+     11 14 10 SDIV,  13 11 10 MUL,  13 14 13 SUB,
+     13 13 48 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
+     14 11 0 ADDI,  5 5 1 SUBI,  5 fl CBNZ,
+   13 46 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,           \ '.'
+   il LBL,                                             \ int digits (do-while)
+     11 9 10 SDIV,  13 11 10 MUL,  13 9 13 SUB,
+     13 13 48 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
+     9 11 0 ADDI,  9 il CBNZ,
+   15 15 63 LSRI,  15 sd CBZ,
+     13 45 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,         \ '-'
+   sd LBL,
+   0 1 MOVZ,  1 12 0 ADDI,  2 SP 48 ADDI,  2 2 12 SUB,
+   16 4 MOVZ,  $80 SVC,
+   SP SP 48 ADDI, ;
 : emit-fp-prims
    s" f+" ['] bf+ FPRIM-L   s" f-" ['] bf- FPRIM-L   s" f*" ['] bf* FPRIM-L
    s" f/" ['] bf/ FPRIM-L   s" fnegate" ['] bfneg FPRIM-L
    s" fabs" ['] bfabs FPRIM-L  s" fsqrt" ['] bfsqrt FPRIM-L
    s" f<" ['] bf< FPRIM-L   s" f>" ['] bf> FPRIM-L   s" f=" ['] bf= FPRIM-L
    s" f0<" ['] bf0< FPRIM-L  s" f0=" ['] bf0= FPRIM-L
-   s" s>f" ['] bs>f FPRIM-L  s" f>s" ['] bf>s FPRIM-L ;
+   s" s>f" ['] bs>f FPRIM-L  s" f>s" ['] bf>s FPRIM-L
+   s" f." ['] bfdot FPRIM-L ;
 
 : emit-cemit
    Lcemit @ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
