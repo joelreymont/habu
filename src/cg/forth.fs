@@ -429,16 +429,16 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
 : c-pushcp ( -- )   9 CP 0 ADDI,  Lcfpush @ BL, ;              \ push current CP
 : c-bback {: opc mask -- :}                                    \ branch opc back to x9 target
    10 9 CP SUB,  10 10 2 ASRI,  5 mask LIT64,  10 10 5 AND,  9 opc LIT64,  9 9 10 ORR,  Lcemit @ BL, ;
-: c-if    c-popflag  c-pushcp  $B4000009 c-emitw ;             \ pop flag; cbz fwd (patched by THEN)
-: c-then  Lcfpop @ BL,  Lpat @ BL, ;
-: c-else  Lcfpop @ BL,  14 9 0 ADDI,  c-pushcp  $14000000 c-emitw  9 14 0 ADDI,  Lpat @ BL, ;
-: c-begin c-pushcp ;
-: c-again Lcfpop @ BL,  $14000000 $3FFFFFF c-bback ;
-: c-until Lcfpop @ BL,  14 9 0 ADDI,  c-popflag
+: j-if    c-popflag  c-pushcp  $B4000009 c-emitw ;             \ pop flag; cbz fwd (patched by THEN)
+: j-then  Lcfpop @ BL,  Lpat @ BL, ;
+: j-else  Lcfpop @ BL,  14 9 0 ADDI,  c-pushcp  $14000000 c-emitw  9 14 0 ADDI,  Lpat @ BL, ;
+: j-begin c-pushcp ;
+: j-again Lcfpop @ BL,  $14000000 $3FFFFFF c-bback ;
+: j-until Lcfpop @ BL,  14 9 0 ADDI,  c-popflag
    10 14 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $B4000009 LIT64,  9 9 10 ORR,  Lcemit @ BL, ;
-: c-while c-popflag  c-pushcp  $B4000009 c-emitw ;
-: c-repeat Lcfpop @ BL,  14 9 0 ADDI,  Lcfpop @ BL,  $14000000 $3FFFFFF c-bback
+: j-while c-popflag  c-pushcp  $B4000009 c-emitw ;
+: j-repeat Lcfpop @ BL,  14 9 0 ADDI,  Lcfpop @ BL,  $14000000 $3FFFFFF c-bback
    9 14 0 ADDI,  Lpat @ BL, ;
 
 \ CREATE/VARIABLE (interpret-mode defining words): make a dict word whose body
@@ -663,14 +663,14 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
          14 14 TKL ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,   \ len += TKL+1
       bovf LBL,
       \ control-flow keywords (compile-only): emit/patch JIT branches, then loop
-      lmain Lkwif     2 ['] c-if     cf-entry
-      lmain Lkwthen   4 ['] c-then   cf-entry
-      lmain Lkwelse   4 ['] c-else   cf-entry
-      lmain Lkwbegin  5 ['] c-begin  cf-entry
-      lmain Lkwuntil  5 ['] c-until  cf-entry
-      lmain Lkwagain  5 ['] c-again  cf-entry
-      lmain Lkwwhile  5 ['] c-while  cf-entry
-      lmain Lkwrepeat 6 ['] c-repeat cf-entry
+      lmain Lkwif     2 ['] j-if     cf-entry
+      lmain Lkwthen   4 ['] j-then   cf-entry
+      lmain Lkwelse   4 ['] j-else   cf-entry
+      lmain Lkwbegin  5 ['] j-begin  cf-entry
+      lmain Lkwuntil  5 ['] j-until  cf-entry
+      lmain Lkwagain  5 ['] j-again  cf-entry
+      lmain Lkwwhile  5 ['] j-while  cf-entry
+      lmain Lkwrepeat 6 ['] j-repeat cf-entry
       lmain Lkwsq     2 ['] c-sdq    cf-entry            \ S" string"
       lmain Lkwbtick  3 ['] c-btick  cf-entry            \ ['] NAME
       lmain Lkwlbrace 2 ['] c-lbrace cf-entry            \ {: a b :} locals
