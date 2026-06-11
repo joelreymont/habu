@@ -726,3 +726,17 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 - Watch hand-entered hex→decimal opcode constants: `0x9B007C00` is `2600500224`,
   not the `2600988672` I first typed — a wrong base silently produces wrong (but
   plausible) machine words. Always cross-check the encoder against the oracle.
+
+## Self-host 8 — full codegen pipeline runs natively (2026-06-11)
+
+- The whole codegen pipeline now runs natively on the standalone: an ICode record
+  buffer (4-cell records in a CREATE'd array), a peephole optimizer (kills a
+  self-move `MOV x5,x5` by marking the record DEAD), and ARM64 encoding — output
+  byte-identical to caf's `asm.fs`. `[MOV x5,x5; ADD x1,x2,x3; MOV x7,x8]` →
+  optimize → encode yields exactly the ADD and the live MOV. ICode + asm + a
+  peephole, self-hosted — dot 8's substance. The remaining mechanical work is
+  porting the *rest* of the encoders/rules (same patterns) and the VS register
+  allocator.
+- More wrong-opcode-constant bugs: `ENC-MOV` base must be `0xAA0003E0` (Rn=xzr=31),
+  not `0xAA0001E0` (Rn=15); and `ICREC` needs the `*` (`4 cells * IC +`) or every
+  record aliases offset 32. Always cross-check encoders against the gforth oracle.

@@ -194,3 +194,12 @@ s" : ENC-ADD {: rd rn rm :} 2332033024 rm 16 lshift or rn 5 lshift or rd or ; : 
 3531605312
 3531604016
 " NF= -> true }T
+
+\ --- self-host 8: the full CODEGEN PIPELINE runs natively — an ICode record
+\ buffer, a peephole optimizer (kills self-move MOV x5,x5), and ARM64 encoding.
+\ Input [MOV x5,x5; ADD x1,x2,x3; MOV x7,x8] -> optimize -> encode yields the ADD
+\ and the live MOV (self-move dropped), byte-identical to caf's asm.fs. ---
+s" : ENC-ADD {: rd rn rm :} 2332033024 rm 16 lshift or rn 5 lshift or rd or ; : ENC-MOV {: rd rm :} 2852127712 rm 16 lshift or rd or ; create IC 256 cells allot variable ICN : ICREC 4 cells * IC + ; : IC4 {: op a b c :} ICN @ ICREC op over ! a over 8 + ! b over 16 + ! c swap 24 + ! ICN @ 1 + ICN ! ; : ICOP {: i :} i ICREC @ ; : ICA {: i :} i ICREC 8 + @ ; : ICB {: i :} i ICREC 16 + @ ; : ICC {: i :} i ICREC 24 + @ ; : KILL {: i :} 0 i ICREC ! ; : OPT 0 BEGIN dup ICN @ < WHILE dup ICOP 1 = IF dup dup ICA swap ICB = IF dup KILL THEN THEN 1 + REPEAT drop ; : GEN 0 BEGIN dup ICN @ < WHILE dup ICOP 1 = IF dup ICA over ICB ENC-MOV . THEN dup ICOP 2 = IF dup ICA over ICB over ICC ENC-ADD . THEN 1 + REPEAT drop ; 0 ICN ! 1 5 5 0 IC4 2 1 2 3 IC4 1 7 8 0 IC4 OPT GEN"
+   NF  T{ s\" 2332229697
+2852652007
+" NF= -> true }T
