@@ -596,6 +596,13 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ frame, and pop the declared values into slots (slot 0 = first/deepest name). The
 \ frame is torn down at ';'. Local references are resolved by Lloc-find -> a load.
 : c-lbrace ( -- )
+   \ FOOTGUN GUARD 1: {: inside IF/BEGIN/DO corrupts the frame (the CF stack is
+   \ non-empty while compiling control flow) — refuse loudly: token + exit(75).
+   NEWLBL {: cfok :}
+   5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
+      0 75 MOVZ,  16 1 MOVZ,  $80 SVC,
+   cfok LBL,
    \ first {: of the word carves a fixed 16-slot (128-byte) frame; later blocks
    \ append to the locals table and pop into the next slots (no second carve).
    12 DATA LOCF-CELL LDR,  NEWLBL {: havef :}  12 havef CBNZ,
@@ -608,6 +615,13 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       Ltok @ BL,  0 nd CBZ,
       0 Lkwendloc @ ADR,  1 2 MOVZ,  Lkwcmp @ BL,  0 nstore CBZ,  nd B,   \ ":}" -> done
       nstore LBL,
+      \ FOOTGUN GUARD 2: a local named i/I is shadowed by the loop-index keyword
+      NEWLBL {: noti :}
+      TKL 1 CMPI,  C-NE noti BCOND,
+      13 TKA 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
+         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
+         0 75 MOVZ,  16 1 MOVZ,  $80 SVC,
+      noti LBL,
       11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  11 11 LOCNAMES ADDI,  11 DATA 11 ADD,
       TKL 11 0 STR,                           \ entry.len
       12 11 8 ADDI,  13 TKA 0 ADDI,  14 TKL 0 ADDI,    \ copy name bytes
