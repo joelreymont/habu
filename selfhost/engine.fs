@@ -55,6 +55,10 @@ variable FPL  variable FPE
    na nu FPL @ FPE @ reg-prim
    FPL @ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    xt execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE @ LBL, ;
+: FPRIM-L {: na nu xt :}               \ LEAF prim: no BL/BLR in body -> no x30 frame
+   NEWLBL FPL !  NEWLBL FPE !
+   na nu FPL @ FPE @ reg-prim
+   FPL @ LBL,  xt execute  RET,  FPE @ LBL, ;
 \ shared label ids (forward refs)
 variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  variable SRCN
 variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncount
@@ -174,34 +178,34 @@ variable Lkwdo variable Lkwloop variable Lkwi
       wnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  wl B,
    wend LBL,  11 g-push ;
 : emit-prims
-   s" +"    ['] b+    FPRIM   s" -"    ['] b-    FPRIM   s" *"    ['] b*    FPRIM
-   s" dup"  ['] bdup  FPRIM   s" drop" ['] bdrop FPRIM   s" swap" ['] bswap FPRIM
-   s" ."    ['] bdot  FPRIM   s" .s"   ['] b.s   FPRIM
-   s" ="    ['] b=    FPRIM   s" <>"   ['] b<>   FPRIM   s" <"    ['] b<    FPRIM
-   s" >"    ['] b>    FPRIM   s" <="   ['] b<=   FPRIM   s" >="   ['] b>=   FPRIM
-   s" 0="   ['] b0=   FPRIM   s" 0<"   ['] b0<   FPRIM
-   s" 1+"   ['] b1+   FPRIM   s" 1-"   ['] b1-   FPRIM
-   s" and"  ['] band  FPRIM   s" or"   ['] bor   FPRIM   s" xor"  ['] bxor  FPRIM
-   s" invert" ['] binv FPRIM  s" negate" ['] bneg FPRIM
-   s" lshift" ['] blsh FPRIM  s" rshift" ['] brsh FPRIM
-   s" /"    ['] bdiv  FPRIM   s" mod"  ['] bmod  FPRIM
-   s" nip"  ['] bnip  FPRIM   s" over" ['] bover FPRIM   s" tuck" ['] btuck FPRIM
-   s" rot"  ['] brot  FPRIM   s" -rot" ['] bmrot FPRIM
-   s" 2dup" ['] b2dup FPRIM   s" 2drop" ['] b2drop FPRIM
-   s" @"    ['] bfetch FPRIM   s" !"    ['] bstore FPRIM
-   s" c@"   ['] bcfetch FPRIM  s" c!"   ['] bcstore FPRIM
-   s" cells" ['] bcells FPRIM
-   s" here" ['] bhere  FPRIM   s" allot" ['] ballot FPRIM
-   s" ,"    ['] bcomma FPRIM   s" c,"   ['] bccomma FPRIM
-   s" type" ['] btype  FPRIM   s" execute" ['] bexec FPRIM
-   s" die"  ['] bdie   FPRIM
-   s" open" ['] bopen FPRIM   s" write" ['] bwrite FPRIM   s" read" ['] bread FPRIM
-   s" close" ['] bclose FPRIM
-   s" rbase" ['] brbase FPRIM
-   s" catch" ['] bcatch FPRIM   s" throw" ['] bthrow FPRIM
-   s" wordlist" ['] bwordlist FPRIM   s" get-current" ['] bgetcur FPRIM
-   s" set-current" ['] bsetcur FPRIM  s" search-wl" ['] bswl FPRIM
-   s" set-check" ['] bsetcheck FPRIM ;
+   s" +"    ['] b+    FPRIM-L   s" -"    ['] b-    FPRIM-L   s" *"    ['] b*    FPRIM-L
+   s" dup"  ['] bdup  FPRIM-L   s" drop" ['] bdrop FPRIM-L   s" swap" ['] bswap FPRIM-L
+   s" ."    ['] bdot  FPRIM-L   s" .s"   ['] b.s   FPRIM-L
+   s" ="    ['] b=    FPRIM-L   s" <>"   ['] b<>   FPRIM-L   s" <"    ['] b<    FPRIM-L
+   s" >"    ['] b>    FPRIM-L   s" <="   ['] b<=   FPRIM-L   s" >="   ['] b>=   FPRIM-L
+   s" 0="   ['] b0=   FPRIM-L   s" 0<"   ['] b0<   FPRIM-L
+   s" 1+"   ['] b1+   FPRIM-L   s" 1-"   ['] b1-   FPRIM-L
+   s" and"  ['] band  FPRIM-L   s" or"   ['] bor   FPRIM-L   s" xor"  ['] bxor  FPRIM-L
+   s" invert" ['] binv FPRIM-L  s" negate" ['] bneg FPRIM-L
+   s" lshift" ['] blsh FPRIM-L  s" rshift" ['] brsh FPRIM-L
+   s" /"    ['] bdiv  FPRIM-L   s" mod"  ['] bmod  FPRIM-L
+   s" nip"  ['] bnip  FPRIM-L   s" over" ['] bover FPRIM-L   s" tuck" ['] btuck FPRIM-L
+   s" rot"  ['] brot  FPRIM-L   s" -rot" ['] bmrot FPRIM-L
+   s" 2dup" ['] b2dup FPRIM-L   s" 2drop" ['] b2drop FPRIM-L
+   s" @"    ['] bfetch FPRIM-L   s" !"    ['] bstore FPRIM-L
+   s" c@"   ['] bcfetch FPRIM-L  s" c!"   ['] bcstore FPRIM-L
+   s" cells" ['] bcells FPRIM-L
+   s" here" ['] bhere  FPRIM-L   s" allot" ['] ballot FPRIM-L
+   s" ,"    ['] bcomma FPRIM-L   s" c,"   ['] bccomma FPRIM-L
+   s" type" ['] btype  FPRIM-L   s" execute" ['] bexec FPRIM
+   s" die"  ['] bdie   FPRIM-L
+   s" open" ['] bopen FPRIM-L   s" write" ['] bwrite FPRIM-L   s" read" ['] bread FPRIM-L
+   s" close" ['] bclose FPRIM-L
+   s" rbase" ['] brbase FPRIM-L
+   s" catch" ['] bcatch FPRIM   s" throw" ['] bthrow FPRIM-L
+   s" wordlist" ['] bwordlist FPRIM-L   s" get-current" ['] bgetcur FPRIM-L
+   s" set-current" ['] bsetcur FPRIM-L  s" search-wl" ['] bswl FPRIM-L
+   s" set-check" ['] bsetcheck FPRIM-L ;
 : emit-cemit
    Lcemit @ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
 : emit-tok
