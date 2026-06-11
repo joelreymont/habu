@@ -3,8 +3,8 @@
 \ (just relabel), arithmetic is reg->reg, and there is NO ldr/str traffic until the
 \ pool spills. `5 dup *` becomes ~5 instructions instead of 16. Needs asm.fs + icode.fs.
 \ Emitters are dispatched by xt (execute) from a table, so the dispatcher stays tiny.
-create OPN 3 c, 100 c, 117 c, 112 c, 0 c, 4 c, 100 c, 114 c, 111 c, 112 c, 1 c, 4 c, 115 c, 119 c, 97 c, 112 c, 2 c, 4 c, 111 c, 118 c, 101 c, 114 c, 3 c, 3 c, 110 c, 105 c, 112 c, 4 c, 1 c, 43 c, 5 c, 1 c, 45 c, 6 c, 1 c, 42 c, 7 c, 3 c, 97 c, 110 c, 100 c, 8 c, 2 c, 111 c, 114 c, 9 c, 3 c, 120 c, 111 c, 114 c, 10 c, 6 c, 110 c, 101 c, 103 c, 97 c, 116 c, 101 c, 11 c, 2 c, 48 c, 60 c, 12 c, 2 c, 105 c, 102 c, 13 c, 4 c, 116 c, 104 c, 101 c, 110 c, 14 c, 2 c, 48 c, 61 c, 15 c, 5 c, 98 c, 101 c, 103 c, 105 c, 110 c, 16 c, 5 c, 117 c, 110 c, 116 c, 105 c, 108 c, 17 c, 1 c, 64 c, 18 c, 1 c, 33 c, 19 c, 2 c, 99 c, 64 c, 20 c, 2 c, 99 c, 33 c, 21 c, 4 c, 104 c, 101 c, 114 c, 101 c, 22 c, 0 c, 
-23 constant NOPS
+create OPN 3 c, 100 c, 117 c, 112 c, 0 c, 4 c, 100 c, 114 c, 111 c, 112 c, 1 c, 4 c, 115 c, 119 c, 97 c, 112 c, 2 c, 4 c, 111 c, 118 c, 101 c, 114 c, 3 c, 3 c, 110 c, 105 c, 112 c, 4 c, 1 c, 43 c, 5 c, 1 c, 45 c, 6 c, 1 c, 42 c, 7 c, 3 c, 97 c, 110 c, 100 c, 8 c, 2 c, 111 c, 114 c, 9 c, 3 c, 120 c, 111 c, 114 c, 10 c, 6 c, 110 c, 101 c, 103 c, 97 c, 116 c, 101 c, 11 c, 2 c, 48 c, 60 c, 12 c, 2 c, 105 c, 102 c, 13 c, 4 c, 116 c, 104 c, 101 c, 110 c, 14 c, 2 c, 48 c, 61 c, 15 c, 5 c, 98 c, 101 c, 103 c, 105 c, 110 c, 16 c, 5 c, 117 c, 110 c, 116 c, 105 c, 108 c, 17 c, 1 c, 64 c, 18 c, 1 c, 33 c, 19 c, 2 c, 99 c, 64 c, 20 c, 2 c, 99 c, 33 c, 21 c, 4 c, 104 c, 101 c, 114 c, 101 c, 22 c, 1 c, 61 c, 23 c, 1 c, 60 c, 24 c, 1 c, 62 c, 25 c, 2 c, 49 c, 43 c, 26 c, 2 c, 49 c, 45 c, 27 c, 0 c,
+28 constant NOPS
 \ register pool x9..x15 (scratch in a leaf body — no calls)
 create RPOOL 9 c, 10 c, 11 c, 12 c, 13 c, 14 c, 15 c,
 7 constant NRP
@@ -105,6 +105,20 @@ variable MRA  variable MRV
 : G-C!  VSP @ 1 - V-REG MRA !  VSP @ 2 - V-REG MRV !
    MRV @ MRA @ 0 ENC-STRB EMITW  MRA @ R-FREE  MRV @ R-FREE  VSP @ 2 - VSP ! ;
 : G-HERE  R-ALLOC MRA !  MRA @ 19 256 ENC-ADDI EMITW  MRA @ V-PUSHR ;
+\ binary comparisons ( a b -- flag ): cmp a,b; cset cond; 0-reg -> Forth flag 0/-1.
+\ Fold path must match the runtime flag: host = / < / > already yield 0/-1 (no negate).
+variable GCB  variable GCA
+: GCMP {: cond :}  VSP @ 1 - V-REG GCB !  VSP @ 2 - V-REG GCA !
+   GCA @ GCB @ ENC-CMP EMITW  GCA @ cond ENC-CSET EMITW  GCA @ 31 GCA @ ENC-SUB EMITW
+   GCB @ R-FREE  VSP @ 2 - VSP !  GCA @ V-PUSHR ;
+: G-EQ  BOTH-CON? IF AV BV = FOLD2 ELSE 0 GCMP THEN ;
+: G-LT  BOTH-CON? IF AV BV < FOLD2 ELSE 11 GCMP THEN ;
+: G-GT  BOTH-CON? IF AV BV > FOLD2 ELSE 12 GCMP THEN ;
+\ 1+ / 1- : in-place fold if constant, else addi/subi on the forced register
+: G-1+  VSP @ 1 - {: k :} VTAG k + c@ 1 = IF VVAL k cells + @ 1 + VVAL k cells + !
+   ELSE k V-REG U1R !  U1R @ U1R @ 1 ENC-ADDI EMITW THEN ;
+: G-1-  VSP @ 1 - {: k :} VTAG k + c@ 1 = IF VVAL k cells + @ 1 - VVAL k cells + !
+   ELSE k V-REG U1R !  U1R @ U1R @ 1 ENC-SUBI EMITW THEN ;
 \ dispatch table: index -> emitter xt
 create XTS 32 cells allot
 : VS-SETUP
@@ -116,7 +130,9 @@ create XTS 32 cells allot
    ['] G-IF 13 cells XTS + !  ['] G-THEN 14 cells XTS + !
    ['] G-0= 15 cells XTS + !  ['] G-BEGIN 16 cells XTS + !  ['] G-UNTIL 17 cells XTS + !
    ['] G-@ 18 cells XTS + !  ['] G-! 19 cells XTS + !  ['] G-C@ 20 cells XTS + !
-   ['] G-C! 21 cells XTS + !  ['] G-HERE 22 cells XTS + ! ;
+   ['] G-C! 21 cells XTS + !  ['] G-HERE 22 cells XTS + !
+   ['] G-EQ 23 cells XTS + !  ['] G-LT 24 cells XTS + !  ['] G-GT 25 cells XTS + !
+   ['] G-1+ 26 cells XTS + !  ['] G-1- 27 cells XTS + ! ;
 VS-SETUP
 \ find op (a,u) in OPN -> index, or -1
 variable VFI  variable VFP  variable VFNL

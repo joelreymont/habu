@@ -12,6 +12,7 @@ require t-sh-vs.fs
 require t-sh-if.fs
 require t-sh-loop.fs
 require t-sh-mem.fs
+require t-sh-cmp.fs
 require t-sh-spill.fs
 require t-sh-hex.fs
 require t-sh-coload.fs
