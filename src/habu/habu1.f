@@ -282,7 +282,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
    fdone LBL,  RET, ;
 : emit-num
    Lnum @ LBL,
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: ldone ndoll nohex lloop lok gotd nd nuc :}
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: ldone ndoll nohex lloop lok gotd nd nuc ndot isfrac lint fpos :}
    11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ,
    10 ldone CBZ,
    15 9 0 LDRB,  15 45 CMPI,  C-NE ndoll BCOND,
@@ -292,10 +292,17 @@ variable Lkwdo variable Lkwloop variable Lkwi
    5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  C-NE nohex BCOND,
       6 16 MOVZ,  14 14 1 ADDI,
    nohex LBL,
+   2 0 MOVZ,                                                    \ frac mode off
    14 10 CMP,  C-GE ldone BCOND,
    lloop LBL,
    14 10 CMP,  C-GE lok BCOND,
    5 9 14 ADD,  15 5 0 LDRB,
+   15 46 CMPI,  C-NE ndot BCOND,                                \ '.' -> frac mode
+      6 10 CMPI,  C-NE ldone BCOND,                             \ only base 10
+      2 ldone CBNZ,                                             \ second dot -> fail
+      2 1 MOVZ,  4 0 MOVZ,  3 1 MOVZ,                           \ frac=0 scale=1
+      14 14 1 ADDI,  lloop B,
+   ndot LBL,
    15 48 CMPI,  C-LT ldone BCOND,
    15 57 CMPI,  C-GT nd BCOND,
       7 15 48 SUBI,  gotd B,
@@ -307,9 +314,20 @@ variable Lkwdo variable Lkwloop variable Lkwi
    15 65 CMPI,  C-LT ldone BCOND,  15 70 CMPI,  C-GT ldone BCOND,
       7 15 55 SUBI,
    gotd LBL,
+   2 isfrac CBNZ,
    11 11 6 MUL,  11 11 7 ADD,
    14 14 1 ADDI,  lloop B,
-   lok LBL,  11 11 13 MUL,  12 1 MOVZ,
+   isfrac LBL,                                                  \ frac digit: f=f*10+d, k*=10
+   5 10 MOVZ,  4 4 5 MUL,  4 4 7 ADD,  3 3 5 MUL,
+   14 14 1 ADDI,  lloop B,
+   lok LBL,
+   2 lint CBZ,
+   3 1 CMPI,  C-EQ ldone BCOND,                                 \ "1." (no frac digits) -> fail
+   0 11 SCVTF,  1 4 SCVTF,  2 3 SCVTF,                          \ int, frac, scale
+   1 1 2 FDIV,  0 0 1 FADD,
+   13 0 CMPI,  C-GE fpos BCOND,  0 0 FNEG,
+   fpos LBL,  11 0 FMOVDX,  12 1 MOVZ,  RET,
+   lint LBL,  11 11 13 MUL,  12 1 MOVZ,
    ldone LBL,  RET, ;
 : emit-dict
    Lncount @ LBL,  #PL @ DCQ,

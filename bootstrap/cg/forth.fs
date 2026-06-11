@@ -360,9 +360,17 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    nohex LBL,
    14 10 CMP,  C-GE ldone BCOND,                                \ nothing after sign/$ -> fail
    NEWLBL {: lloop :}  NEWLBL {: lok :}  NEWLBL {: gotd :}  NEWLBL {: nd :}  NEWLBL {: nuc :}
+   NEWLBL {: ndot :}  NEWLBL {: isfrac :}  NEWLBL {: lint :}  NEWLBL {: fpos :}
+   2 0 MOVZ,                                                    \ frac mode off
    lloop LBL,
    14 10 CMP,  C-GE lok BCOND,
    5 9 14 ADD,  15 5 0 LDRB,                                    \ c = next byte
+   15 46 CMPI,  C-NE ndot BCOND,                                \ '.' -> frac mode
+      6 10 CMPI,  C-NE ldone BCOND,
+      2 ldone CBNZ,
+      2 1 MOVZ,  4 0 MOVZ,  3 1 MOVZ,
+      14 14 1 ADDI,  lloop B,
+   ndot LBL,
    15 48 CMPI,  C-LT ldone BCOND,                               \ < '0' -> fail
    15 57 CMPI,  C-GT nd BCOND,
       7 15 48 SUBI,  gotd B,                                    \ '0'..'9' -> c-48
@@ -374,9 +382,20 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    15 65 CMPI,  C-LT ldone BCOND,  15 70 CMPI,  C-GT ldone BCOND,
       7 15 55 SUBI,                                             \ 'A'..'F' -> c-55
    gotd LBL,
+   2 isfrac CBNZ,
    11 11 6 MUL,  11 11 7 ADD,                                   \ val = val*base + digit
    14 14 1 ADDI,  lloop B,
-   lok LBL,  11 11 13 MUL,  12 1 MOVZ,
+   isfrac LBL,                                                  \ frac digit: f=f*10+d, k*=10
+   5 10 MOVZ,  4 4 5 MUL,  4 4 7 ADD,  3 3 5 MUL,
+   14 14 1 ADDI,  lloop B,
+   lok LBL,
+   2 lint CBZ,
+   3 1 CMPI,  C-EQ ldone BCOND,                                 \ "1." (no frac digits) -> fail
+   0 11 SCVTF,  1 4 SCVTF,  2 3 SCVTF,                          \ int, frac, scale
+   1 1 2 FDIV,  0 0 1 FADD,
+   13 0 CMPI,  C-GE fpos BCOND,  0 0 FNEG,
+   fpos LBL,  11 0 FMOVDX,  12 1 MOVZ,  RET,
+   lint LBL,  11 11 13 MUL,  12 1 MOVZ,
    ldone LBL,  RET, ;
 
 \ ---- seed dictionary: NPRIMS records of [startoff(8) endoff(8) namelen(8) name(16)] ----
