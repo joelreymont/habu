@@ -1,0 +1,71 @@
+# The self-hosting Forth subset
+
+The bootstrap target: the minimal Forth the **standalone** (the native engine built by
+`src/cg/forth.fs`) must accept so that it can compile its **own compiler's source**. This
+document defines that subset and records the proof that the current compiler source lives
+inside it.
+
+## Why it matters
+
+Self-hosting = the standalone compiles the Forth program that *is* the compiler
+(codegen + checker + Mach-O emitter + self-signer), then that output compiles the same
+source again to a byte-identical binary (the fixpoint). For that to even start, every
+word the compiler source uses must be one the standalone already provides or one the
+source defines itself. If the source reached for a word the standalone lacks, the
+bootstrap is impossible. So the subset is a *closure* property, not a wish list.
+
+## The subset
+
+**Number literals** — signed decimal and `$hex` (e.g. `255`, `$FF`, `-$2A`,
+`$deadBEEF`; hex is case-insensitive). The standalone's `NUMBER?` (`emit-num`) parses
+both, so source may use whichever reads best.
+
+**Defining words** — `:` … `;`, `VARIABLE`, `CONSTANT`, `CREATE`, `ALLOT`, `,`, `C,`,
+and `{: a b :}` read-only locals.
+
+**Control flow** (case-folded, so UPPER-CASE source matches) — `IF` `THEN` `ELSE`,
+`BEGIN` `UNTIL` `AGAIN` `WHILE` `REPEAT`, `DO` `LOOP` `I`.
+
+**String / tick** — `S" …"`, `['] NAME`.
+
+**Primitives** (registered in `emit-prims`, `forth.fs`):
+`+ - * / MOD`, `1+ 1-`, `AND OR XOR INVERT NEGATE LSHIFT RSHIFT`,
+`= <> < > <= >= 0= 0<`,
+`DUP DROP SWAP NIP OVER TUCK ROT -ROT 2DUP 2DROP`,
+`@ ! C@ C! CELLS HERE ALLOT , C,`,
+`. .S TYPE EXECUTE`,
+`OPEN WRITE CLOSE RBASE`,
+`CATCH THROW`,
+`WORDLIST GET-CURRENT SET-CURRENT SEARCH-WL SET-CHECK`.
+
+Everything else a source file uses is defined *within* that file (or an earlier file in
+the load order) as a `:`/`VARIABLE`/`CONSTANT`/`CREATE` word.
+
+## What is deliberately NOT in the subset
+
+`." …"` (dot-quote), `MOVE`, `FILL`, `EMIT`, `+!`, `2@`, `2!`, `>R`/`R>`,
+`?DUP`, `MIN`/`MAX`/`ABS`, `U<`, `WITHIN`, floating point. The compiler source avoids all
+of these — where a primitive is missing it is open-coded (e.g. a store-then-reload
+instead of `+!`, an explicit byte loop instead of `MOVE`).
+
+## Proof the source is closed under the subset
+
+Tokenise every compiler-source file, strip comments and string bodies, remove decimal
+literals, remove names the file defines (`:`/`VARIABLE`/`CONSTANT`/`CREATE`/locals), and
+remove the subset words above. The remainder must be empty.
+
+Files checked: `sha256.fs macho-min.fs sign.fs asm.fs icode.fs walk.fs vs.fs
+checker.fs render.fs disasm.fs` — **408 defined words, residual gap = 0**.
+
+The guard lives at `selfhost/subset-check.fs` (a gforth script that re-runs the closure
+check and `THROW`s on any out-of-subset word), wired into `test/selfhost-all.fs` so a
+future edit that reaches outside the subset fails the gate immediately.
+
+## Remaining work toward the fixpoint
+
+The subset is closed for the codegen + emitter layer. The standalone now emits real
+calls (BL + x30 frame, no inlining), so the deep call chains in the compiler source no
+longer explode the compiled code. The open work is *driving* the bootstrap: load the
+compiler source under the standalone and have it emit the next-stage compiler binary,
+then compare against the gforth-built one (the drift guard, extended to the full
+compiler). That is dot `caf-31c0b877` (standalone compiles its compiler from source).
