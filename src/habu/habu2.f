@@ -202,7 +202,7 @@ create ENDLOC-KW 58 c, 125 c,
    Ltok @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
    13 bk CBZ,  c-lit  bk LBL, ;
 : c-lbrace
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: cfok havef nl nd nstore noti ncp ncd pl pd :}
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: cfok havef nl nd nstore nlok noti ncp ncd pl pd :}
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
       0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
       0 75 MOVZ,  16 1 MOVZ,  $80 SVC,
@@ -216,6 +216,10 @@ create ENDLOC-KW 58 c, 125 c,
       Ltok @ BL,  0 nd CBZ,
       0 Lkwendloc @ ADR,  1 2 MOVZ,  Lkwcmp @ BL,  0 nstore CBZ,  nd B,
       nstore LBL,
+      11 DATA LOCN-CELL LDR,  11 16 CMPI,  C-LT nlok BCOND,
+         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
+         0 75 MOVZ,  16 1 MOVZ,  $80 SVC,
+      nlok LBL,
       TKL 1 CMPI,  C-NE noti BCOND,
       13 TKA 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
          0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
@@ -266,7 +270,7 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
    NEWLBL NEWLBL {: scopy scdone :}
    Lanchor @ LBL,
    RBASE Lanchor @ ADR,
-   SP SP 2048 SUBI,  XDS SP 0 ADDI,
+   SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  XDS SP 0 ADDI,
    0 0 MOVZ,  1 REGION LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
    16 197 MOVZ,  $80 SVC,
    DBASE 0 0 ADDI,
@@ -312,10 +316,18 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
       notcom LBL,
       PEND Lcompile @ CBNZ, ;
 : em-interpret
-   NEWLBL NEWLBL NEWLBL NEWLBL {: lnotcolon ncopy ncd lnotnum :}
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotcolon ncopy ncd lnotnum cpok ndok :}
    TKL 1 CMPI,  C-NE lnotcolon BCOND,
    9 TKA 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,
       2 3 MOVZ,  Lprot @ BL,
+      9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
+         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
+         0 76 MOVZ,  16 1 MOVZ,  $80 SVC,
+      cpok LBL,
+      9 1300 MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
+         0 77 MOVZ,  16 1 MOVZ,  $80 SVC,
+      ndok LBL,
       Ltok @ BL,
       9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
       PEND 9 0 ADDI,

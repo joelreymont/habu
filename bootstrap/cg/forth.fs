@@ -621,6 +621,12 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       Ltok @ BL,  0 nd CBZ,
       0 Lkwendloc @ ADR,  1 2 MOVZ,  Lkwcmp @ BL,  0 nstore CBZ,  nd B,   \ ":}" -> done
       nstore LBL,
+      \ cap: 16 local slots (the frame is fixed); a 17th overflows LOCNAMES
+      NEWLBL {: nlok :}
+      11 DATA LOCN-CELL LDR,  11 16 CMPI,  C-LT nlok BCOND,
+         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
+         0 75 MOVZ,  16 1 MOVZ,  $80 SVC,
+      nlok LBL,
       \ FOOTGUN GUARD 2: a local named i/I is shadowed by the loop-index keyword
       NEWLBL {: noti :}
       TKL 1 CMPI,  C-NE noti BCOND,
@@ -679,7 +685,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 : emit-main ( -- )
    Lanchor @ LBL,
    RBASE Lanchor @ ADR,                              \ x20 = __TEXT base
-   SP SP 2048 SUBI,  XDS SP 0 ADDI,                  \ data stack on machine sp
+   SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  XDS SP 0 ADDI,                  \ data stack on machine sp
    \ mmap(0, REGION, PROT_READ|WRITE=3, MAP_ANON|MAP_PRIVATE=0x1002, -1, 0)
    0 0 MOVZ,  1 REGION LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
    16 197 MOVZ,  $80 SVC,
@@ -734,6 +740,15 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       TKL 1 CMPI,  C-NE lnotcolon BCOND,
       9 TKA 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,     \ ':'
          2 3 MOVZ,  Lprot @ BL,                             \ region -> RW *before* any write
+         NEWLBL {: cpok :}  NEWLBL {: ndok :}
+         9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
+            0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
+            0 76 MOVZ,  16 1 MOVZ,  $80 SVC,                    \ code region full
+         cpok LBL,
+         9 1300 MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+            0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
+            0 77 MOVZ,  16 1 MOVZ,  $80 SVC,                    \ dictionary full
+         ndok LBL,
          Ltok @ BL,                                         \ read NAME
          9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,  \ slot
          PEND 9 0 ADDI,

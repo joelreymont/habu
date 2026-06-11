@@ -24,6 +24,7 @@ require t-sh-hex.fs
 require t-sh-coload.fs
 require t-sh-undef.fs
 require t-sh-locguard.fs
+require t-sh-guards.fs
 require t-sh-flow.fs
 require t-sh-repl.fs
 require t-sh-die.fs
