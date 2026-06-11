@@ -19,6 +19,21 @@ gforth case-folds `S0`/`s0` (use BSIG0/SSIG0); a local named `i` shadows the loo
 index inside `?DO`; declaring `{: :}` locals inside a loop corrupts the return
 stack (factor the loop body into its own word); `?DO` is `( limit start -- )`.
 
+## Standalone self-signs — and a dictionary-search bug it exposed (2026-06-11)
+
+The standalone now SELF-SIGNS a Mach-O with zero gforth and zero external codesign:
+selfhost/sign.fs is the ad-hoc CodeDirectory post-pass (SHA-256 page hashes from
+sha256.fs) over the unsigned image macho-min.fs builds. Apple's `codesign -v`
+validates the result and it runs (test/t-sh-sign.fs builds+signs exit(42) entirely
+inside the standalone). Getting there exposed a real standalone bug: **its dictionary
+search returned the OLDEST definition of a redefined word, not the newest** —
+`: M32 …(mask) : M32 …(writer)` left BUILD calling the mask. Forth requires LIFO
+(newest shadows). emit-find / search-wl (forth.fs) scanned oldest→newest and broke on
+the first match; fix is to keep scanning and take the LAST match. (Standalone binds
+calls EARLY — at compile time — so already-compiled words keep their original target;
+only later lookups see the new shadowing. That's why sha256's own `M32` still meant
+mask while BUILD, compiled later, correctly picked the writer.)
+
 ## Standalone SHA-256 + the do-while DO gotcha (2026-06-11)
 
 Ported SHA-256 into the standalone's own Forth (selfhost/sha256.fs) — the first step

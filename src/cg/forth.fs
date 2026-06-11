@@ -194,7 +194,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
          wf2 LBL,
          9 10 CMP,  C-NE wnext BCOND,
          7 7 1 ADDI,  wcmp B,
-      wmatch LBL,  11 5 0 LDR,  wend B,           \ result = rec.addr
+      wmatch LBL,  11 5 0 LDR,  wnext B,          \ keep scanning -> LAST (newest) match wins
       wnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  wl B,
    wend LBL,  11 g-push ;
 
@@ -281,8 +281,8 @@ variable Lkwdo variable Lkwloop variable Lkwi
          3 4 $41 SUBI,   3 26 CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,     \ fold A-Z->a-z
          15 4 CMP,  C-NE fnext BCOND,
          7 7 1 ADDI,  fcmp B,
-      fmatch LBL,
-         11 5 0 LDR,  12 5 8 LDR,  13 1 MOVZ,  fdone B,    \ addr, clen, found=1
+      fmatch LBL,                                          \ keep scanning: take the LAST
+         11 5 0 LDR,  12 5 8 LDR,  13 1 MOVZ,  fnext B,    \ (newest) match -> redefs shadow
       fnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  floop B,
    fdone LBL,  RET, ;
 

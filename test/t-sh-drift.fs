@@ -7,7 +7,12 @@ require nf.fs
 require tester.fs
 \ caf's unsigned Mach-O for exit(42)
 ICODE-RESET 0 42 MOVZ, 16 1 MOVZ, $80 SVC, BUILD-MACHO  s" /tmp/caf42" WRITE-EXE
-\ standalone's: run selfhost/exit42.fs -> writes /tmp/se-out
-s" selfhost/exit42.fs" slurp-file NF-RUN
+\ standalone's: macho-min.fs (BUILD) + exit42.fs (SAVE) -> writes /tmp/se-out
+create DBUF 16384 allot   variable DLN
+: D+ {: a u -- }  a  DBUF DLN @ +  u move  u DLN +! ;
+0 DLN !
+s" selfhost/macho-min.fs" slurp-file D+   s"  " D+
+s" selfhost/exit42.fs"    slurp-file D+
+DBUF DLN @ NF-RUN
 : DRIFT? ( -- f )  s" /tmp/caf42" slurp-file  s" /tmp/se-out" slurp-file  compare 0= ;
 T{ DRIFT? -> true }T
