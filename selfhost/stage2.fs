@@ -23,6 +23,7 @@ $40000 constant SMAX
    READ-SRC
    SBUF @ SLEN @ EMIT-FORTH
    BUILD-MACHO
+   s" stage2" SET-SIGID  CODESIG2
    s" /tmp/stage2-got" O2P PATHZ
    O2P 1537 493 open  dup MBUF MLEN @ write drop  close ;
 GO
