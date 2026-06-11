@@ -236,3 +236,9 @@ T{ CODEGEN-EXE -> 42 }T
 \ --- multiple {: :} blocks per word (fixed-frame locals) ---
 s" : T4 {: a b :} {: c d :} a b + c + d + ; 1 2 3 4 T4 ." NF  T{ s\" 10\n" NF= -> true }T
 s" variable Z 5 Z !  : MK {: inner :} Z @ {: idx :} idx inner + ; 100 MK ." NF  T{ s\" 105\n" NF= -> true }T
+
+\ --- comments + DO/LOOP/I (loop index/limit in a data-region frame stack) ---
+s" : SUM 0 5 0 DO I + LOOP ; SUM ."              NF  T{ s\" 10\n" NF= -> true }T
+s" : FACT 1 5 1 DO I * LOOP ; FACT ."            NF  T{ s\" 24\n" NF= -> true }T
+s" : NEST 0 3 0 DO 3 0 DO 1 + LOOP LOOP ; NEST ."  NF  T{ s\" 9\n"  NF= -> true }T
+s\" \\ comment\n2 3 + ( inline ) 4 * ."          NF  T{ s\" 20\n" NF= -> true }T

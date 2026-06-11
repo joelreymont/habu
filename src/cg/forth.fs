@@ -43,8 +43,10 @@ $1A8 constant WIDN-CELL   \ next fresh wordlist id (WORDLIST hands these out)
 $1B0 constant HOOK-CELL   \ check hook: a word addr run on each : body (0 = none)
 $1B8 constant BODYLEN-CELL \ length of the captured body of the def in progress
 $1C0 constant RBASE-CELL  \ saved __TEXT load base (RBASE) for the self-rebuild
+$1C8 constant LOOPSP-CELL \ DO/LOOP frame stack depth
 $200 constant BODYBUF-OFF \ captured body text (space-joined tokens), 1 KB
-$600 constant DATA-START  \ DP initial offset (past the header + body buffer)
+$600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
+$800 constant DATA-START  \ DP initial offset (past header + body buffer + loop stack)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create TICK-KW   39 c,          \ '  (0x27)
 create BTICK-KW  91 c, 39 c, 93 c,   \ ['] = [ ' ]  (0x5b 0x27 0x5d)
@@ -85,6 +87,7 @@ variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
 variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
+variable Lkwdo variable Lkwloop variable Lkwi
 
 9 constant A   10 constant B   11 constant C
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
@@ -421,7 +424,8 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
    Lkwsq @ LBL,     SQ-KW 2 BYTES,                         \ the 2 bytes  s "
    Lkwtick @ LBL,   TICK-KW 1 BYTES,    Lkwbtick @ LBL,  BTICK-KW 3 BYTES,
    Lkwlbrace @ LBL, LBRACE-KW 2 BYTES,  Lkwendloc @ LBL, ENDLOC-KW 2 BYTES,
-   Lkwconst @ LBL,  s" constant" BYTES, ;
+   Lkwconst @ LBL,  s" constant" BYTES,
+   Lkwdo @ LBL,  s" do" BYTES,    Lkwloop @ LBL,  s" loop" BYTES,    Lkwi @ LBL,  s" i" BYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
@@ -440,6 +444,26 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
 : j-while c-popflag  c-pushcp  $B4000009 c-emitw ;
 : j-repeat Lcfpop @ BL,  14 9 0 ADDI,  Lcfpop @ BL,  $14000000 $3FFFFFF c-bback
    9 14 0 ADDI,  Lpat @ BL, ;
+
+\ DO/LOOP/I — loop index/limit live in a data-region frame stack ([x20+LOOP-STK-OFF],
+\ depth [x20+LOOPSP-CELL]) since x27/x28 are the compiler's NDICT/CP. Fixed encodings
+\ (computed offline). j-do pushes a frame + records loop-top; j-loop increments the
+\ index, compares, b.lt back, then pops the frame on exit; j-i pushes the index.
+: j-do  ( limit start DO )
+   3506446963 c-emitw  4181721705 c-emitw  3506446963 c-emitw  4181721706 c-emitw
+   4181780107 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
+   4177527177 c-emitw  4177528202 c-emitw  2432697707 c-emitw  4177585803 c-emitw
+   c-pushcp ;
+: j-loop
+   4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
+   4181721481 c-emitw  4181722506 c-emitw  2432697641 c-emitw  4177527177 c-emitw  3943301439 c-emitw
+   Lcfpop @ BL,                                        \ x9 = loop-top
+   10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
+   9 $5400000B LIT64,  9 9 10 ORR,  Lcemit @ BL,       \ b.lt loop-top
+   4181780107 c-emitw  3506439531 c-emitw  4177585803 c-emitw ;   \ pop frame
+: j-i
+   4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
+   4181721481 c-emitw  4177527401 c-emitw  2432705139 c-emitw ;
 
 \ CREATE/VARIABLE (interpret-mode defining words): make a dict word whose body
 \ pushes the current DP (a data-space address). Reuses the `:` slot pattern + the
@@ -588,12 +612,24 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
    9 0 MOVZ,  9 DATA CUR-CELL STR,                    \ CURRENT wordlist = 0 (FORTH)
    9 1 MOVZ,  9 DATA WIDN-CELL STR,                   \ next fresh wid = 1
    9 0 MOVZ,  9 DATA HOOK-CELL STR,                   \ check hook = none
+   9 0 MOVZ,  9 DATA LOOPSP-CELL STR,                 \ DO/LOOP frame depth = 0
    g-install-crash                                    \ self-diagnosing crash (register dump)
    emit-source                                        \ INP/INE <- baked Lsrc or stdin
    PEND 0 MOVZ,                                       \ interpret mode
    NEWLBL {: lmain :}  NEWLBL {: lexit :}  NEWLBL {: lcompile :}
    lmain LBL,
       Ltok @ BL,  0 lexit CBZ,
+      \ skip comments (both modes): \ to end-of-line, ( to ')'
+      NEWLBL {: notcom :}  NEWLBL {: skln :}  NEWLBL {: skpar :}
+      TKL 1 CMPI,  C-NE notcom BCOND,
+      9 TKA 0 LDRB,
+      9 92 CMPI,  C-EQ skln BCOND,                       \ '\'
+      9 40 CMPI,  C-NE notcom BCOND,                     \ '('
+      skpar LBL,  INP INE CMP,  C-GE lmain BCOND,
+         9 INP 0 LDRB,  INP INP 1 ADDI,  9 41 CMPI,  C-NE skpar BCOND,  lmain B,
+      skln LBL,   INP INE CMP,  C-GE lmain BCOND,
+         9 INP 0 LDRB,  INP INP 1 ADDI,  9 10 CMPI,  C-NE skln BCOND,  lmain B,
+      notcom LBL,
       PEND lcompile CBNZ,
       \ ---------------- INTERPRET ----------------
       NEWLBL {: lnotcolon :}
@@ -673,6 +709,9 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
       lmain Lkwrepeat 6 ['] j-repeat cf-entry
       lmain Lkwsq     2 ['] c-sdq    cf-entry            \ S" string"
       lmain Lkwbtick  3 ['] c-btick  cf-entry            \ ['] NAME
+      lmain Lkwdo     2 ['] j-do     cf-entry            \ DO
+      lmain Lkwloop   4 ['] j-loop   cf-entry            \ LOOP
+      lmain Lkwi      1 ['] j-i      cf-entry            \ I
       lmain Lkwlbrace 2 ['] c-lbrace cf-entry            \ {: a b :} locals
       \ local-name reference -> load from its frame slot, push
       Lloc-find @ BL,  NEWLBL {: notloc :}  0 0 CMPI,  C-LT notloc BCOND,
@@ -701,6 +740,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
    NEWLBL Lkwcreate !  NEWLBL Lkwvar !  NEWLBL Lkwsq !
    NEWLBL Lkwtick !  NEWLBL Lkwbtick !
    NEWLBL Lkwlbrace !  NEWLBL Lkwendloc !  NEWLBL Lloc-find !  NEWLBL Lkwconst !
+   NEWLBL Lkwdo !  NEWLBL Lkwloop !  NEWLBL Lkwi !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num

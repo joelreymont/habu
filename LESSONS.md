@@ -805,3 +805,12 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 - Drift guard: the standalone's hand-transcribed encoders + Mach-O builder are
   cross-checked byte-identical to caf's asm.fs/macho.fs (both emit exit(42), cmp).
   test/selfhost-all.fs is the gate: sound checker + drift + the self-rebuild fixpoint.
+
+## Standalone — comments + DO/LOOP/I (2026-06-11)
+
+- `\` (to end-of-line) and `( )` comments now skipped in the main loop, both modes.
+- DO/?DO/LOOP/I: index/limit can't use x27/x28 (the compiler's NDICT/CP), so they
+  live in a data-region frame stack ([x20+LOOP-STK-OFF], depth at [x20+LOOPSP-CELL]).
+  j-do pushes a frame + records loop-top; j-loop bumps the index, compares, b.lt back,
+  pops the frame on exit; j-i pushes the index. Nesting works (frame stack). Encodings
+  computed offline and emitted as fixed words — verified with sum/factorial/nested.
