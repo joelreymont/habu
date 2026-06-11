@@ -39,3 +39,9 @@ T{ s" : T {: a :} a negate . a invert . ; 9 T"    OUT s\" -9\n-10\n" compare 0= 
 T{ s" : T {: a :} a 1+ 1+ negate . ; 3 T"         OUT s\" -5\n"    compare 0= -> true }T
 T{ s" : T {: a b :} a 1+ b 1- * . ; 4 7 T"        OUT s\" 30\n"    compare 0= -> true }T
 T{ s" : T 1+ . ; 5 T"                             OUT s\" 6\n"     compare 0= -> true }T
+\ minimal literal chains (Lvmovk): movz/movn form + skipped chunks, all shapes
+T{ s" : T 0 . 0 1 - . ; T"                        OUT s\" 0\n-1\n"  compare 0= -> true }T
+T{ s" : T 65536 . $123456789ABC . ; T"           OUT s\" 65536\n20015998343868\n" compare 0= -> true }T
+T{ s" : T 0 2 - {: a :} a 7 * . ; T"              OUT s\" -14\n"    compare 0= -> true }T
+T{ s" : T $FFFF0000FFFF0000 $FFFF and . ; T"      OUT s\" 0\n"      compare 0= -> true }T
+T{ s" : T {: a :} $100000001 a + . ; 1 T"         OUT s\" 4294967298\n" compare 0= -> true }T

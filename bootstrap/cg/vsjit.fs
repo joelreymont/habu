@@ -124,15 +124,49 @@ variable Lkwdup2  variable Lkwdrop2  variable Lkwswap2  variable Lkwover2  varia
    rgot LBL,
       7 1 MOVZ,  7 7 5 LSLV,  6 6 7 EOR,  6 DATA VRFREE-CELL STR,
       14 5 9 ADDI,  RET, ;
-\ Lvmovk ( x11=val x14=rd ) : emit movz/movk chain targeting rd (no push)
+\ Lvmovk ( x11=val x14=rd ) : emit a MINIMAL movz/movn + movk chain targeting rd —
+\ movn form when $FFFF chunks dominate; chunks the base op already set are skipped.
+\ x5=k x6=val x7=nz/started x8=nf/chunk x9=instr x10=form x12=$FFFF (Lcemit saves all).
 : emit-vmovk
    Lvmovk @ LBL,
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL
+   {: cl cd ml mk mn mset mnext md mz1 mout :}
    SP SP 16 SUBI,  30 SP 0 STR,
-   6 11 0 ADDI,  5 $FFFF MOVZ,
-   7 6 5 AND,    7 7 5 LSLI,  8 $D2800000 LIT64,  8 8 14 ORR,  9 8 7 ORR,  Lcemit @ BL,
-   7 6 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00000 LIT64,  8 8 14 ORR,  9 8 7 ORR,  Lcemit @ BL,
-   7 6 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00000 LIT64,  8 8 14 ORR,  9 8 7 ORR,  Lcemit @ BL,
-   7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2E00000 LIT64,  8 8 14 ORR,  9 8 7 ORR,  Lcemit @ BL,
+   6 11 0 ADDI,  12 $FFFF MOVZ,
+   7 0 MOVZ,  8 0 MOVZ,  5 0 MOVZ,
+   cl LBL,
+      5 4 CMPI,  C-GE cd BCOND,
+      9 5 4 LSLI,  10 6 9 LSRV,  10 10 12 AND,
+      10 0 CMPI,  9 1 CSET,  7 7 9 ADD,
+      10 12 CMP,  9 1 CSET,  8 8 9 ADD,
+      5 5 1 ADDI,  cl B,
+   cd LBL,
+   8 7 CMP,  10 11 CSET,
+   7 0 MOVZ,  5 0 MOVZ,
+   ml LBL,
+      5 4 CMPI,  C-GE md BCOND,
+      9 5 4 LSLI,  8 6 9 LSRV,  8 8 12 AND,
+      9 12 10 MUL,  8 9 CMP,  C-EQ mnext BCOND,
+      7 mk CBNZ,
+      10 mn CBNZ,
+         9 5 21 LSLI,  8 8 5 LSLI,  9 9 8 ORR,  9 9 14 ORR,
+         8 $D2800000 LIT64,  9 9 8 ORR,  Lcemit @ BL,  mset B,
+      mn LBL,
+         8 8 12 EOR,
+         9 5 21 LSLI,  8 8 5 LSLI,  9 9 8 ORR,  9 9 14 ORR,
+         8 $92800000 LIT64,  9 9 8 ORR,  Lcemit @ BL,
+      mset LBL,  7 1 MOVZ,  mnext B,
+      mk LBL,
+         9 5 21 LSLI,  8 8 5 LSLI,  9 9 8 ORR,  9 9 14 ORR,
+         8 $F2800000 LIT64,  9 9 8 ORR,  Lcemit @ BL,
+   mnext LBL,  5 5 1 ADDI,  ml B,
+   md LBL,
+   7 mout CBNZ,
+   10 mz1 CBNZ,
+      8 $D2800000 LIT64,  9 8 14 ORR,  Lcemit @ BL,  mout B,
+   mz1 LBL,
+      8 $92800000 LIT64,  9 8 14 ORR,  Lcemit @ BL,
+   mout LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 \ Lvforcek ( x5=k -- x14=reg | 0 ) : force VS entry k into a register, in place.
 \ Atomic: an allocation failure mutates nothing.
