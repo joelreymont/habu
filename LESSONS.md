@@ -19,6 +19,19 @@ gforth case-folds `S0`/`s0` (use BSIG0/SSIG0); a local named `i` shadows the loo
 index inside `?DO`; declaring `{: :}` locals inside a loop corrupts the return
 stack (factor the loop body into its own word); `?DO` is `( limit start -- )`.
 
+## Standalone render — and a second-locals-group bug (2026-06-11)
+
+Added RENDER to the standalone (selfhost/render.fs): walks the checker's inferred
+residual stack (DCUR) and prints types as canonical letters a,b,c (bottom-to-top),
+int=n, flag=f — the 'render' half of the native sigparse/checker (test/t-sh-render).
+No recursion (the JIT would inline-explode) and no emit/+! (absent) — a collect-loop
++ a 1-byte type buffer. Finding it exposed a latent bug: `VAR-OF`'s second locals
+group (`{: c :} c 97 - {: i :}`) mis-read its slot, collapsing EVERY type var to one.
+Harmless to pass/fail verdicts (vars unify with anything) so the prim tests still
+passed — but rendering exposed `swap` as "a a" not "a b". Fix: compute the slot on
+the stack, no 2nd group. Lesson: a second `{: :}` group whose value is computed
+between groups is unreliable in the standalone; prefer one group or stack/vars.
+
 ## Standalone checker — generic sigparse + data-table prims (2026-06-11)
 
 Replaced the standalone checker's 4-token hardcode (dup/+/*/0=) with a generic

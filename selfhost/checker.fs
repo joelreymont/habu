@@ -44,7 +44,9 @@ create NMAP 26 cells allot
 : LOWER? {: c :} c 96 > c 123 < and ;
 variable NRES
 : ALLDIG? {: a u :} u 0= IF 0 NRES ! ELSE -1 NRES ! 0 BEGIN dup u < WHILE dup a + c@ DIGIT? 0= IF 0 NRES ! THEN 1 + REPEAT drop THEN NRES @ ;
-: VAR-OF {: c :} c 97 - {: i :} i cells NMAP + @ UNBOUND = IF FRESH i cells NMAP + ! THEN i cells NMAP + @ MK-VAR ;
+\ NB: avoid a 2nd {: :} group here — `{: c :} … {: i :}` mis-reads the slot in the
+\ standalone, collapsing every var to one. Compute the slot address on the stack.
+: VAR-OF {: c :}  c 97 - cells NMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-VAR ;
 \ NB: declare locals at word top, never inside IF/loop (corrupts the locals frame).
 : TOK-TYPE {: a u :}  a c@ {: c :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> int (con 1)

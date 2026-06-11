@@ -3,6 +3,7 @@
 \ codesign + exec). Run: gforth test/selfhost-all.fs -e bye
 require t-sh-check.fs
 require t-sh-prims.fs
+require t-sh-render.fs
 require t-sh-sha.fs
 require t-sh-sign.fs
 require t-sh-drift.fs
