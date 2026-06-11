@@ -1,4 +1,4 @@
-\ src/caf.fs — load the complete checked Forth (engine + `:` override).
-\ Same as the root caf.fs; provided so `gforth src/caf.fs …` resolves too.
-require ../caf-lib.fs
+\ src/habu.fs — load the complete checked Forth (engine + `:` override).
+\ Same as the root habu.fs; provided so `gforth src/habu.fs …` resolves too.
+require ../habu-lib.fs
 require colon.fs

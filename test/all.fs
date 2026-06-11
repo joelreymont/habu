@@ -1,11 +1,11 @@
-\ all.fs — run the whole caf test suite; exit nonzero on any failure.
-\ Works with either:   gforth test/all.fs     or     gforth src/caf.fs test/all.fs
+\ all.fs — run the whole habu test suite; exit nonzero on any failure.
+\ Works with either:   gforth test/all.fs     or     gforth src/habu.fs test/all.fs
 \
 \ The internal-API tests call the checker's arena/PARSE-SIG directly, so they
 \ must compile with the NATIVE colon — we toggle CHECKING-ON? off while loading
 \ them, then on for the tests that exercise checked *definitions*.
 
-require ../src/caf.fs           \ engine + `:` override
+require ../src/habu.fs           \ engine + `:` override
 
 CHECKING-ON? off                \ infra + internal-API tests compile natively
 require tester.fs
@@ -40,5 +40,5 @@ require t-asm-checked.fs
 require t-disasm-core.fs
 require t-stepper.fs
 
-cr ." caf test suite: " #ERRORS @ . ." failure(s)" cr
+cr ." habu test suite: " #ERRORS @ . ." failure(s)" cr
 #ERRORS @ 0<> negate (bye)      \ exit 1 if any failures, else 0 (no IF: interpret mode)

@@ -2,7 +2,7 @@
 \ compile them (and their callees) to native Mac executables and run them.
 \ Proves source → check → ARM64 → multi-word Mach-O → native. Slow (exec per
 \ case); run explicitly:  gforth test/t-cg-hook.fs -e bye
-require ../caf-cg.fs
+require ../habu-cg.fs
 CHECKING-ON? off  require test/tester.fs  CHECKING-ON? on   \ tester is infra
 CODEGEN-ON? on
 decimal

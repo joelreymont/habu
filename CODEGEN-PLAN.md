@@ -1,21 +1,21 @@
-# caf — Native Backend: Self-Hosting ICode Codegen Plan
+# habu — Native Backend: Self-Hosting ICode Codegen Plan
 
-A typed native ARM64 code generator for caf, building toward a **standalone,
-self-hosting native compiler**. caf's checked, row-polymorphic stack effects are
+A typed native ARM64 code generator for habu, building toward a **standalone,
+self-hosting native compiler**. habu's checked, row-polymorphic stack effects are
 type information the codegen exploits: they let the selector pick *untagged,
 width-correct, unboxed* code that an untyped Forth JIT cannot emit soundly.
 
-**End-state (committed):** a standalone macOS ARM64 caf executable that compiles
+**End-state (committed):** a standalone macOS ARM64 habu executable that compiles
 its own checker + codegen sources to native and reaches a **self-compile
 fixpoint** (stage1 emits stage2, and stage2 ≡ stage3), with **gforth dropped**.
 gforth is the **bootstrap host and the differential oracle only**. Self-hosting
 requires building a small Forth runtime (Part F) — accepted as the long pole.
 
-> **STATUS (2026-06-10): Parts A–E substantially DONE and tested.** caf (on
+> **STATUS (2026-06-10): Parts A–E substantially DONE and tested.** habu (on
 > gforth) is a working AOT compiler: checked Forth → **standalone ARM64 macOS CLI
 > executables**, no C, no LLVM. ICode IR + peephole + encoders + Mach-O emit +
 > exec all work (`src/cg/`, `docs/codegen.md`). Wired to the checker
-> (`CODEGEN-HOOK`); front door `CAF-EXE`. Subset: arith/stack/compare/logical/
+> (`CODEGEN-HOOK`); front door `HABU-EXE`. Subset: arith/stack/compare/logical/
 > div-mod, IF/loops/`?DO`, calls, RECURSE, `.` output, argv input
 > (`./rfact 7`→5040 standalone). **Remaining: Part F** — a native Forth runtime
 > so the *compiler itself* runs without gforth (the fixpoint). That is the long
@@ -36,9 +36,9 @@ is:
   **invokes it** via gforth's *built-in* `system` — no FFI, no `libcc`, no
   authored C. The payload grows across the plan: early it is a **minimal Mach-O
   test stub** (fixed load commands + one patchable `__TEXT` slot, Phase 0.1); at
-  self-host it is **the new Forth itself** — a complete invokable caf (Part F).
+  self-host it is **the new Forth itself** — a complete invokable habu (Part F).
   Differential testing follows the same loop: early, per-word stubs (Part B);
-  once the new Forth exists, **invoke it on caf's own `T{ … -> … }T` corpus** and
+  once the new Forth exists, **invoke it on habu's own `T{ … -> … }T` corpus** and
   diff transcripts against gforth (stack comparison stays in-process inside each
   Forth, as the tester already does) — no per-word spawns, no bespoke serializer.
 - **Mach-O is dynamic, never static.** Fully-static dyld-less binaries are
@@ -71,7 +71,7 @@ optimism. gforth 0.7.9_20260513 arm64, macOS 26.5.
 | `mmap` RW → `mprotect` RX (no `MAP_JIT`) | **CORRECT** — executed; writing the RX page faults, so W^X is genuinely enforced (the 0.1 probe won't pass vacuously). |
 | emitted `IC IVAU/DSB ISH/ISB` from EL0 | **CORRECT** — no trap. |
 | self-emitted **static** Mach-O, ad-hoc signed | **SIGKILL (rc 137)** even signed. A **dynamic** Mach-O (`LC_LOAD_DYLINKER`+`LC_MAIN`+libSystem) with svc-only code **runs, returns 42**. |
-| caf's own sources are stencil-emittable | **NO** — they are ~entirely metaprogramming (`evaluate`, `parse`, `wordlist`, `find-name`, `defer`/`is`, `catch`/`throw`, `{: :}` locals). Self-host needs a Forth runtime (Part F). |
+| habu's own sources are stencil-emittable | **NO** — they are ~entirely metaprogramming (`evaluate`, `parse`, `wordlist`, `find-name`, `defer`/`is`, `catch`/`throw`, `{: :}` locals). Self-host needs a Forth runtime (Part F). |
 
 ## Why stencils, and what ports from habu
 
@@ -95,10 +95,10 @@ unqualified `jit.zig` would wrongly resolve to a 191-line `bench/jit.zig` decoy.
   note:** prefer `rel*`/`adrp+add` (PC-relative) over `imm64` absolute holes in
   `__TEXT`, so the fixpoint (Phase 7) is reachable (§Goal).
 - **habu's private VM-stack ABI ports cleanly** (`src/jit/stencils.zig:305-330,
-  586-650`): caf owns its stacks (`Xds`/`Xrs`) over its own arenas.
+  586-650`): habu owns its stacks (`Xds`/`Xrs`) over its own arenas.
 
 Not taken: habu's bytecode dispatcher (`src/interp/vm.zig:597-652`), its fixnum
-tagging / overflow slow-paths (`src/jit/jit.zig:908-937` — caf's types delete the
+tagging / overflow slow-paths (`src/jit/jit.zig:908-937` — habu's types delete the
 tag), Zig comptime authoring, the unused SSA scaffolding
 (`src/jit/ir.zig`,`verify.zig`). Golden vectors are thin (5,
 `src/ir/arm64.zig:607-624`); several encoders live in `stencils.zig` or only as
@@ -107,14 +107,14 @@ implement `decodeBitMasks` if needed.
 
 ## Goal & success condition
 
-**Goal:** caf-checked words run as native ARM64, **faster than gforth-fast** on a
+**Goal:** habu-checked words run as native ARM64, **faster than gforth-fast** on a
 real inner loop, **bit-identical** to the gforth-threaded reference for every
-checked word and example, culminating in a **standalone self-compiling caf**.
+checked word and example, culminating in a **standalone self-compiling habu**.
 
 **Bit-identical, two tiers.** Comparison is always over *what is observed across a
 process boundary*, never a raw in-memory diff of the subprocess.
-- **Mature (once the new Forth exists, Part F):** run caf's own `T{ … -> … }T`
-  corpus under both gforth-threaded and the new caf Forth; the tester compares
+- **Mature (once the new Forth exists, Part F):** run habu's own `T{ … -> … }T`
+  corpus under both gforth-threaded and the new habu Forth; the tester compares
   stack results *in-process inside each Forth*, so the cross-process diff is just
   the test transcript + stdout. This is the primary, trusted path.
 - **Early (Parts B–E, before the new Forth):** the per-word test stub's epilogue
@@ -135,7 +135,7 @@ in a **stable sorted order**; (e) traverse `CODE-TABLE` for emission in a
 order); (f) no arena base address in `__DATA` *initial* contents (only
 dyld-rebased fixup offsets). Success = **stage2 ≡ stage3 byte-identical** on the
 *normalized file image* (excluding `LC_CODE_SIGNATURE` **and** `LC_UUID`), where
-stage1 = gforth-hosted caf emits the native caf; stage2 = native caf emits itself;
+stage1 = gforth-hosted habu emits the native habu; stage2 = native habu emits itself;
 stage3 = stage2 emits itself. stage1 ≠ stage2 is expected (different host); only
 stage2 ≡ stage3 must hold.
 
@@ -186,10 +186,10 @@ Paths repo-relative; sources under `src/`.
    `checker.fs:88` site is wrong (stale colon-owned `NM@/EF@`). Gated by
    `CODEGEN-ON?` defaulting **off**.
 
-## ABI (caf owns it — no host coupling)
+## ABI (habu owns it — no host coupling)
 
 `Xds` = data-stack ptr, `Xrs` = return-stack ptr, `Xtos` = TOS accumulator,
-scratch `X9–X13`, `X16` = syscall number. Stacks/arenas are caf-owned (Phase 2).
+scratch `X9–X13`, `X16` = syscall number. Stacks/arenas are habu-owned (Phase 2).
 A compiled word is **position-independent**: it materializes its own arena bases
 from a rebased `__DATA` slot (dyld-bound), not from baked absolute addresses.
 Syscalls: `x16`, `svc #0x80`, carry = error. Native words call native words
@@ -206,7 +206,7 @@ checked def ──CHECK-DEF──▶ charted scheme (unchanged) ─── gforth
                                           │  transactional: snapshot pos; on throw restore + skip
                                      inline-compose stencils + patch holes (range-checked, PC-rel)
                                           │
-                                     record NAME→{bytes,holes,entry} in the caf CODE-TABLE
+                                     record NAME→{bytes,holes,entry} in the habu CODE-TABLE
                                           │
               bootstrap differential: emit NAME's Mach-O test stub → run via `system`
                                        → compare 4 observables vs threaded oracle (one process pair)
@@ -217,7 +217,7 @@ checked def ──CHECK-DEF──▶ charted scheme (unchanged) ─── gforth
 not emitted yet. For the **standalone build every word must emit**, or the build
 fails loudly. Codegen never overwrites the threaded oracle.
 
-Files (`src/cg/`, `require`d at end of `caf.fs` after `src/colon.fs`;
+Files (`src/cg/`, `require`d at end of `habu.fs` after `src/colon.fs`;
 `defer CODEGEN-HOOK` in `src/forward.fs`; `cg/install.fs` runs
 `' DO-CODEGEN is CODEGEN-HOOK` **last**, after the bank is assembled+asserted):
 
@@ -240,7 +240,7 @@ disappears (registers were never frozen into bytes).
 - `cg/macho.fs` — Mach-O emit: the minimal **test stub template** (Phase 0.1) and
   the full multi-word linker (Part G). **TRUSTED:**.
 - `cg/exec.fs` — write + `codesign` + `system`-run a Mach-O, capture output.
-- `cg/abi.fs` — caf register/stack ABI; frame/offset named constants (asserted).
+- `cg/abi.fs` — habu register/stack ABI; frame/offset named constants (asserted).
 - `cg/rt.fs` — minimal native runtime: stack arenas, bump memory arena, syscall
   I/O routines, entry/exit, runtime code-allocator. **TRUSTED:**.
 - `cg/walk.fs` — `WALK-OPS`+`OP-ARITY`, `ANNOTATE-TYPES`, `[: … ;]` spans.
@@ -286,7 +286,7 @@ forward-depends on a later one: I/O prims are hand-emitted runtime routines in A
     `0x2000000` mask) → `LESSONS.md` + named constants. *Accept:* the stub prints
     a known string and exits; bytes verified.
 0.3 **The speed gap is real.** Inner loop (arith + `@`/`c@` + a branch) three
-    ways: checked-caf (threaded), gforth-fast, hand-written native. Files
+    ways: checked-habu (threaded), gforth-fast, hand-written native. Files
     `bench/inner-loop.{fs,s}`, `bench/run.sh`; specify timing (iterations,
     `utime`, warmup, ns/op). *Accept:* ns/op table; native ≥2× over gforth-fast →
     proceed; else write the finding and **stop**.
@@ -321,7 +321,7 @@ forward-depends on a later one: I/O prims are hand-emitted runtime routines in A
     `src/ir/arm64.zig:305-320`'s unchecked mask. *Accept:* assembles a back-edge +
     forward branch; out-of-range → `E-BRANCH-RANGE`, never a wrap.
 
-### Phase 2 — Minimal native runtime (caf-owned, no C)
+### Phase 2 — Minimal native runtime (habu-owned, no C)
 
 2.1 `cg/rt.fs` + `cg/abi.fs`: stack arenas + a bump **memory arena** via emitted
     `mmap`; `Xds/Xrs` materialized from rebased `__DATA` (PC-relative, not baked).
@@ -331,7 +331,7 @@ forward-depends on a later one: I/O prims are hand-emitted runtime routines in A
     across the arena boundary; assertion passes.
 2.2 **I/O as native runtime routines** (hand-emitted via `cg/asm.fs`, called by
     `BL` — not stencils, no engine dep): `EMIT/TYPE/./CR` via `write`; `exit`.
-    *Accept:* an emitted program prints via the caf runtime (not gforth) and
+    *Accept:* an emitted program prints via the habu runtime (not gforth) and
     exits; stdout matches. (Memory-access prims `@ ! c@ c!` are Part-B inline
     stencils by design — the Part-A runtime owns stacks+arena+I/O, not arena
     *access*.)
@@ -423,7 +423,7 @@ forward-depends on a later one: I/O prims are hand-emitted runtime routines in A
 
 ---
 
-## Part E — Completeness (all of checkable caf)
+## Part E — Completeness (all of checkable habu)
 
 ### Phase 6 — Control flow, combinators, locals
 
@@ -449,7 +449,7 @@ forward-depends on a later one: I/O prims are hand-emitted runtime routines in A
 
 ## Part F — Build the new Forth (runtime substrate; the long pole)
 
-The standalone artifact *is a Forth* — a complete, invokable caf — since caf's own
+The standalone artifact *is a Forth* — a complete, invokable habu — since habu's own
 sources are metaprogramming (Proven facts). This Part builds that new Forth; the
 self-host loop is then **compose its Mach-O in memory → write → invoke it**. Each
 phase spikes a piece before integrating.
@@ -458,7 +458,7 @@ phase spikes a piece before integrating.
     `refill`/`source`/`>in`/`parse`/`parse-name`. *Accept:* the standalone reads a
     `.fs` line and echoes parsed tokens.
 7.2 **Dictionary + headers:** `wordlist`/`get-current`/`set-current`/
-    `search-wordlist`/`nextname`/`create`/`>body`/`find-name` over caf-owned
+    `search-wordlist`/`nextname`/`create`/`>body`/`find-name` over habu-owned
     memory. *Accept:* define and find a word at runtime in the standalone.
 7.3 **Native `evaluate` + the `:` seam:** a native colon that captures a body,
     invokes `CODEGEN-HOOK`, and installs via the **runtime code-allocator** (2.1)
@@ -467,9 +467,9 @@ phase spikes a piece before integrating.
     `evaluate`s `: SQ DUP * ; 7 SQ .` and prints 49.
 7.4 **Re-host the checker:** ensure the checker + codegen sources, with
     `TRUSTED:` annotations on the substrate words (7.1–7.3 routines), pass the
-    checker and compile. *Accept:* the gforth-hosted caf composes-in-memory →
+    checker and compile. *Accept:* the gforth-hosted habu composes-in-memory →
     writes → the new Forth binary (= stage1) with no un-emittable op remaining;
-    invoking stage1 on caf's `T{ }T` corpus matches gforth (the mature
+    invoking stage1 on habu's `T{ }T` corpus matches gforth (the mature
     differential path replaces per-word stubs from here on).
 
 ---
@@ -478,9 +478,9 @@ phase spikes a piece before integrating.
 
 8.1 **Full Mach-O linker** (`cg/macho.fs` beyond the stub): lay all native words +
     runtime + dyld load commands + ad-hoc signature into a multi-word dynamic
-    executable; **position-independent** `__TEXT`. *Accept:* a multi-word caf
+    executable; **position-independent** `__TEXT`. *Accept:* a multi-word habu
     program builds and runs standalone.
-8.2 **Stage 2 — caf compiles caf.** Run stage1 (native caf) on caf's own sources →
+8.2 **Stage 2 — habu compiles habu.** Run stage1 (native habu) on habu's own sources →
     stage2. *Accept:* stage2 compiles the corpus with output ≡ stage1's.
 8.3 **Fixpoint — stage 3.** stage2 emits stage3; assert **stage2 ≡ stage3 on the
     normalized image** (exclude `LC_CODE_SIGNATURE` and `LC_UUID`; addresses
@@ -500,7 +500,7 @@ phase spikes a piece before integrating.
 | OS via emitted syscalls / dyld-bound calls (no C)   | A · 0.2, 2; G · 8.1 |
 | Native is worth it (≥2×)                            | A · 0.3 (gate)  |
 | Emit correct ARM64 (golden, range-checked, PC-rel)  | A · 1           |
-| caf-owned minimal runtime (stacks, arena, I/O)      | A · 2           |
+| habu-owned minimal runtime (stacks, arena, I/O)      | A · 2           |
 | Working native end-to-end (untyped)                 | B · 3           |
 | Bit-identical to threaded (4 observables, corpus)   | B · 3.3 + every "differential ≡" |
 | Use effect *types* for unboxing/width/untagging     | C · 4.2 (payoff)|

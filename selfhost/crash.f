@@ -4,7 +4,7 @@
 \ sig + x0..x28 + fp/lr/sp/pc as hex lines to stderr and exit(134).
 variable Lcrashh   variable Lhex   variable Lhdr
 create CRH 80 allot  variable CRHL
-: CRH-INIT  s" caf-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: a u :}
+: CRH-INIT  s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: a u :}
    0 BEGIN dup u < WHILE  dup a + c@  over CRH + c!  1 + REPEAT drop
    10 CRH u + c!  u 1 + CRHL ! ;
 CRH-INIT

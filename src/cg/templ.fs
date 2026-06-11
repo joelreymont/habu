@@ -1,4 +1,4 @@
-\ templ.fs — ICode generators for caf primitives and control structures. caf's
+\ templ.fs — ICode generators for habu primitives and control structures. habu's
 \ data stack lives in memory at Xds (x19); each word here appends ICode that
 \ operates on it. The CG-PRIMS wordlist maps a body token to its generator;
 \ walk.fs drives it. One concern: source-token -> ICode. (Generators only —

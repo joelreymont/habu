@@ -1,5 +1,5 @@
 \ sha256.fs — SHA-256 in Forth (32-bit math masked into 64-bit cells). Used to
-\ self-sign Mach-O binaries (ad-hoc CodeDirectory) so caf needs no external
+\ self-sign Mach-O binaries (ad-hoc CodeDirectory) so habu needs no external
 \ codesign. Verified against the FIPS-180 "abc" vector. TRUSTED (bit math).
 \ Names are distinct under gforth's case-folding: big sigma BSIG0/1, small SSIG0/1.
 $FFFFFFFF constant W32

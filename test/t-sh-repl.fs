@@ -1,5 +1,5 @@
 \ t-sh-repl.fs — the ported builder's STDIN mode (emit-source's read-from-fd-0
-\ branch): (1) golden — standalone EMIT-FORTH with STDIN? on matches caf's word for
+\ branch): (1) golden — standalone EMIT-FORTH with STDIN? on matches habu's word for
 \ word; (2) behavioral — the standalone BUILDS a signed stdin engine with the ported
 \ toolchain, and piping a program into it works. Run: gforth test/t-sh-repl.fs -e bye
 require ../src/cg/forth.fs
@@ -16,10 +16,10 @@ create EB 786432 allot  variable EL
    RBUF ASSEMBLE 4 /  0 ?do i w@ n+ loop ;
 : GEN ( -- a u )
    0 CL !
-   s" selfhost/sha256.fs" +F  s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F
-   s" selfhost/mnem.fs" +F  s" selfhost/util.fs" +F  s" selfhost/walk.fs" +F
-   s" selfhost/rt.fs" +F  s" selfhost/crash.fs" +F  s" selfhost/macho.fs" +F
-   s" selfhost/sign2.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/prof.fs" +F  s" selfhost/vsjit.fs" +F  s" selfhost/engine2.fs" +F
+   s" selfhost/sha256.f" +F  s" selfhost/asm.f" +F  s" selfhost/icode.f" +F
+   s" selfhost/mnem.f" +F  s" selfhost/util.f" +F  s" selfhost/walk.f" +F
+   s" selfhost/rt.f" +F  s" selfhost/crash.f" +F  s" selfhost/macho.f" +F
+   s" selfhost/sign2.f" +F  s" selfhost/habu1.f" +F  s" selfhost/prof.f" +F  s" selfhost/vsjit.f" +F  s" selfhost/habu2.f" +F
    s" -1 STDIN? ! : GO here 0 EMIT-FORTH " +B
    s" 0 BEGIN dup ASM-LEN 4 / < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;
@@ -28,10 +28,10 @@ T{ GEN  EB EL @ compare 0= -> true }T
 \ behavioral: the standalone builds a signed stdin engine; pipe a program through it
 : GEN2 ( -- )
    0 CL !
-   s" selfhost/sha256.fs" +F  s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F
-   s" selfhost/mnem.fs" +F  s" selfhost/util.fs" +F  s" selfhost/walk.fs" +F
-   s" selfhost/rt.fs" +F  s" selfhost/crash.fs" +F  s" selfhost/macho.fs" +F
-   s" selfhost/sign2.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/prof.fs" +F  s" selfhost/vsjit.fs" +F  s" selfhost/engine2.fs" +F
+   s" selfhost/sha256.f" +F  s" selfhost/asm.f" +F  s" selfhost/icode.f" +F
+   s" selfhost/mnem.f" +F  s" selfhost/util.f" +F  s" selfhost/walk.f" +F
+   s" selfhost/rt.f" +F  s" selfhost/crash.f" +F  s" selfhost/macho.f" +F
+   s" selfhost/sign2.f" +F  s" selfhost/habu1.f" +F  s" selfhost/prof.f" +F  s" selfhost/vsjit.f" +F  s" selfhost/habu2.f" +F
    s" create PZ2 32 allot " +B
    s" : PZ! s" +B  s\" \" /tmp/sh-repl-bin\"" +B
    s"  {: a u :} 0 BEGIN dup u < WHILE dup a + c@ over PZ2 + c! 1 + REPEAT drop 0 PZ2 u + c! ; " +B

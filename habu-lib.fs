@@ -1,6 +1,6 @@
-\ caf-lib.fs — the checker engine (everything except the `:` override).
+\ habu-lib.fs — the checker engine (everything except the `:` override).
 \ Load this to get CHECK-DEF / PARSE-SIG / the DB etc. with NATIVE `:` intact.
-\ caf.fs adds the override on top; test infrastructure loads the lib alone.
+\ habu.fs adds the override on top; test infrastructure loads the lib alone.
 
 require src/config.fs
 require src/forward.fs

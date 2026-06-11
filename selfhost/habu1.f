@@ -1,9 +1,9 @@
-\ engine.fs — the ENGINE BUILDER ported to the subset (from src/cg/forth.fs):
+\ habu1.f — the ENGINE BUILDER ported to the subset (from src/cg/forth.fs):
 \ emits the standalone native Forth's primitives, helper routines, and seed
-\ dictionary. Golden word-for-word vs caf in test/t-sh-engine.fs. Needs asm.fs +
+\ dictionary. Golden word-for-word vs habu in test/t-sh-habu1.fs. Needs asm.fs +
 \ icode.fs + mnem.fs + rt.fs (g-push/g-pop/g-print9) + crash.fs + macho.fs.
 \ Part 1: prims + tok/find/num/prot/flush/cemit + dict. The interpreter main
-\ loop, keyword JIT and EMIT-FORTH follow in part 2 (engine2.fs).
+\ loop, keyword JIT and EMIT-FORTH follow in part 2 (habu2.f).
 20 constant RBASE   21 constant INP    22 constant INE   23 constant TKA   24 constant TKL
 25 constant PEND    26 constant DBASE  27 constant NDICT  28 constant CP
 $100000 constant REGION

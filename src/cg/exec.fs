@@ -36,7 +36,7 @@ s" cg: chmod failed"     exception constant E-CHMOD
    2dup WRITE-EXE
    CHMODX ;
 
-\ --- crash diagnostics: caf-built binaries install an in-binary signal handler
+\ --- crash diagnostics: habu-built binaries install an in-binary signal handler
 \ (crash.fs) that dumps the faulting registers to stderr and exit(134), so a crash
 \ self-diagnoses. If a binary dies from a signal anyway (handler not installed, or
 \ a re-fault), name the signal so it isn't a silent exit-0. ---
@@ -51,7 +51,7 @@ s" cg: chmod failed"     exception constant E-CHMOD
 : CRASH-CHECK {: pa pu ws -- ws :}         \ name the signal if ws says killed by one
    ws $7F and {: sig :}
    sig if
-      cr ." *** caf-built binary killed by " sig SIG-NAME type ."  (signal " sig 0 .r ." )"
+      cr ." *** habu-built binary killed by " sig SIG-NAME type ."  (signal " sig 0 .r ." )"
       ."  path=" pa pu type cr
    then  ws ;
 

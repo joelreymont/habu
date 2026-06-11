@@ -1,7 +1,7 @@
 \ t-cg-prims.fs — broadened AOT prim set: stack/arith/compare ops, nested
 \ ?DO/LOOP (return-stack based), and >R/R@/R>. Compiles each to a native exe and
 \ checks the result. Slow; run explicitly:  gforth test/t-cg-prims.fs -e bye
-require ../caf-cg.fs
+require ../habu-cg.fs
 CHECKING-ON? off  require test/tester.fs  CHECKING-ON? on
 CODEGEN-ON? on
 decimal

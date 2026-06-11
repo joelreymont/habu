@@ -1,5 +1,5 @@
 \ asm-demo.fs — print a fixed set of ARM64 encodings (decimal u32, one per line) for
-\ test/t-sh-asm.fs to verify against caf's encoders. Needs asm.fs.
+\ test/t-sh-asm.fs to verify against habu's encoders. Needs asm.fs.
 : GO
   5 42 0 MOVZHW .   5 7 2 MOVKHW .   3 1 0 MOVNHW .
   1 2 3 ENC-ADD .   1 2 3 ENC-SUB .   1 2 3 ENC-AND .

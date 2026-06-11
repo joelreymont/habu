@@ -2,7 +2,7 @@
 \ FORWARDING. A `ldr Rd,[x19]` immediately after a `str Rd,[x19]` is redundant (Rd still
 \ holds the value) — drop it. Sound for the branchless arithmetic bodies walk.fs emits
 \ (no branch can target the dropped ldr). Compacts CODE in place. Needs icode.fs + walk.fs
-\ (CODE, CP, RD32). First step of porting caf's optimizer (opt.fs) to the standalone.
+\ (CODE, CP, RD32). First step of porting habu's optimizer (opt.fs) to the standalone.
 4290772992 constant STRMASK    \ 0xFFC00000  (str/ldr opcode + size bits)
 4177526784 constant STRVAL     \ 0xF9000000  (str x?,[x?,#?])
 4194304    constant LDRBIT     \ 0x00400000  (ldr = str | this)

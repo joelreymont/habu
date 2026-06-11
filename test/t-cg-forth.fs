@@ -1,4 +1,4 @@
-\ t-cg-forth.fs — a STANDALONE native Forth (no gforth, no C). caf emits a Mach-O
+\ t-cg-forth.fs — a STANDALONE native Forth (no gforth, no C). habu emits a Mach-O
 \ containing a dictionary + outer interpreter; it parses an embedded source line,
 \ number-pushes, FINDs primitives, EXECUTEs them. Slow; run explicitly:
 \   gforth test/t-cg-forth.fs -e bye
@@ -185,7 +185,7 @@ s" 0 constant T-CON 1 constant T-VAR 2 constant T-PTR 3 constant S-ROW 4 constan
 " NF= -> true }T
 
 \ --- self-host 8: the ARM64 instruction ENCODERS run natively on the standalone
-\ and produce byte-identical machine words to caf's own asm.fs (cross-checked
+\ and produce byte-identical machine words to habu's own asm.fs (cross-checked
 \ against the gforth oracle): add/sub/mul/orr/movz. Pure bit-math codegen native. ---
 s" : ENC-ADD {: rd rn rm :} 2332033024 rm 16 lshift or rn 5 lshift or rd or ; : ENC-SUB {: rd rn rm :} 3405774848 rm 16 lshift or rn 5 lshift or rd or ; : ENC-MUL {: rd rn rm :} 2600500224 rm 16 lshift or rn 5 lshift or rd or ; : ENC-ORR {: rd rn rm :} 2852126720 rm 16 lshift or rn 5 lshift or rd or ; : ENC-MOVZ {: rd imm :} 3531603968 imm 5 lshift or rd or ; 0 1 2 ENC-ADD . 3 4 5 ENC-SUB . 0 1 2 ENC-MUL . 7 8 9 ENC-ORR . 0 42 ENC-MOVZ . 16 1 ENC-MOVZ ."
    NF  T{ s\" 2332164128
@@ -199,14 +199,14 @@ s" : ENC-ADD {: rd rn rm :} 2332033024 rm 16 lshift or rn 5 lshift or rd or ; : 
 \ --- self-host 8: the full CODEGEN PIPELINE runs natively — an ICode record
 \ buffer, a peephole optimizer (kills self-move MOV x5,x5), and ARM64 encoding.
 \ Input [MOV x5,x5; ADD x1,x2,x3; MOV x7,x8] -> optimize -> encode yields the ADD
-\ and the live MOV (self-move dropped), byte-identical to caf's asm.fs. ---
+\ and the live MOV (self-move dropped), byte-identical to habu's asm.fs. ---
 s" : ENC-ADD {: rd rn rm :} 2332033024 rm 16 lshift or rn 5 lshift or rd or ; : ENC-MOV {: rd rm :} 2852127712 rm 16 lshift or rd or ; create IC 256 cells allot variable ICN : ICREC 4 cells * IC + ; : IC4 {: op a b c :} ICN @ ICREC op over ! a over 8 + ! b over 16 + ! c swap 24 + ! ICN @ 1 + ICN ! ; : ICOP {: i :} i ICREC @ ; : ICA {: i :} i ICREC 8 + @ ; : ICB {: i :} i ICREC 16 + @ ; : ICC {: i :} i ICREC 24 + @ ; : KILL {: i :} 0 i ICREC ! ; : OPT 0 BEGIN dup ICN @ < WHILE dup ICOP 1 = IF dup dup ICA swap ICB = IF dup KILL THEN THEN 1 + REPEAT drop ; : GEN 0 BEGIN dup ICN @ < WHILE dup ICOP 1 = IF dup ICA over ICB ENC-MOV . THEN dup ICOP 2 = IF dup ICA over ICB over ICC ENC-ADD . THEN 1 + REPEAT drop ; 0 ICN ! 1 5 5 0 IC4 2 1 2 3 IC4 1 7 8 0 IC4 OPT GEN"
    NF  T{ s\" 2332229697
 2852652007
 " NF= -> true }T
 
 
-\ --- self-host 10 (foundation): caf's Mach-O emission is byte-DETERMINISTIC —
+\ --- self-host 10 (foundation): habu's Mach-O emission is byte-DETERMINISTIC —
 \ the same standalone source builds to identical bytes (the fixpoint's
 \ reproducibility prerequisite; only the external codesign signature differs). ---
 : BLD ( -- a u )  s" : SQ DUP * ; 5 SQ ." EMIT-FORTH BUILD-MACHO  MBUF MLEN @ ;
@@ -215,7 +215,7 @@ T{ SAME-BUILD? -> true }T
 
 \ --- self-host 10: the standalone EMITS A RUNNABLE NATIVE EXECUTABLE itself —
 \ builds the Mach-O (header + load commands), encodes exit(42), writes the file
-\ via syscalls. After the same external ad-hoc codesign caf uses, the OS runs it
+\ via syscalls. After the same external ad-hoc codesign habu uses, the OS runs it
 \ and it exits 42. gforth is dropped from emission — the standalone produces
 \ native binaries on its own (checker + codegen + ICode + encoders + Mach-O + IO).
 : STANDALONE-EMITS-EXE ( -- rc )
@@ -226,7 +226,7 @@ T{ STANDALONE-EMITS-EXE -> 42 }T
 
 \ --- self-host 8+10: the standalone GENERATES a program's code via its own native
 \ encoders (movz/mul/svc to compute 6*7) and emits it as a runnable Mach-O. After
-\ the external codesign caf uses, the OS runs it and it exits 42 — the standalone's
+\ the external codesign habu uses, the OS runs it and it exits 42 — the standalone's
 \ native codegen -> native executable, end to end, no gforth.
 : CODEGEN-EXE ( -- rc )
    s" 4294967296 constant VMBASE 65536 constant MPAGE 4096 constant CODEOFF variable MSTART : MOFF here MSTART @ - ; : M8 c, ; : M32 {: w :} w 255 and M8 w 8 rshift 255 and M8 w 16 rshift 255 and M8 w 24 rshift 255 and M8 ; : M64 {: x :} x M32 x 32 rshift M32 ; : SPAD {: a u total :} 0 BEGIN dup total < WHILE dup u < IF dup a + c@ M8 ELSE 0 M8 THEN 1 + REPEAT drop ; : MNAME 16 SPAD ; : MPAD {: target :} BEGIN MOFF target < WHILE 0 M8 REPEAT ; : P32 {: w a :} w 255 and a c! w 8 rshift 255 and a 1 + c! w 16 rshift 255 and a 2 + c! w 24 rshift 255 and a 3 + c! ; : ENC-MOVZ {: rd imm :} 3531603968 imm 5 lshift or rd or ; : ENC-MUL {: rd rn rm :} 2600500224 rm 16 lshift or rn 5 lshift or rd or ; : ENC-SVC {: imm :} 3556769793 imm 5 lshift or ; create PB 64 allot variable PL : PSET 0 PL ! BEGIN dup PL @ > WHILE over PL @ + c@ PB PL @ + c! PL @ 1 + PL ! REPEAT 2drop 0 PB PL @ + c! ; : BUILD here MSTART ! 4277009103 M32 16777228 M32 0 M32 2 M32 0 M32 0 M32 2097285 M32 0 M32 25 M32 72 M32 s\" __PAGEZERO\" MNAME 0 M64 VMBASE M64 0 M64 0 M64 0 M32 0 M32 0 M32 0 M32 25 M32 152 M32 s\" __TEXT\" MNAME VMBASE M64 MPAGE M64 0 M64 MPAGE M64 5 M32 5 M32 1 M32 0 M32 s\" __text\" MNAME s\" __TEXT\" MNAME VMBASE CODEOFF + M64 20 M64 CODEOFF M32 2 M32 0 M32 0 M32 2147484160 M32 0 M32 0 M32 0 M32 25 M32 72 M32 s\" __LINKEDIT\" MNAME VMBASE MPAGE + M64 MPAGE M64 MPAGE M64 0 M64 1 M32 1 M32 0 M32 0 M32 14 M32 32 M32 12 M32 s\" /usr/lib/dyld\" 20 SPAD 2147483688 M32 24 M32 CODEOFF M64 0 M64 12 M32 56 M32 24 M32 2 M32 88866816 M32 65536 M32 s\" /usr/lib/libSystem.B.dylib\" 32 SPAD 6 MSTART @ 16 + P32 MOFF 32 - MSTART @ 20 + P32 CODEOFF MPAD 0 6 ENC-MOVZ M32 1 7 ENC-MOVZ M32 0 0 1 ENC-MUL M32 16 1 ENC-MOVZ M32 128 ENC-SVC M32 MPAGE MPAD ; : SAVE s\" /tmp/se2-out\" PSET BUILD PB 1537 493 open {: fd :} fd MSTART @ MOFF write drop fd close ; SAVE" NF-REPL

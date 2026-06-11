@@ -1,12 +1,12 @@
-\ tui.fs — full-screen TUI REPL for caf, in Forth (patterns from ~/Work/pz: raw
+\ tui.fs — full-screen TUI REPL for habu, in Forth (patterns from ~/Work/pz: raw
 \ termios via stty, ANSI render, as-you-type feedback). Live: as you edit a
 \ `: NAME ( eff ) body ;` line, the status row shows the inferred effect (✓) or
-\ the caf diagnostic (✗) — WITHOUT defining (CHECK-DRY). Enter commits the def.
+\ the habu diagnostic (✗) — WITHOUT defining (CHECK-DRY). Enter commits the def.
 \ The parser + live-status core is plain Forth and unit-tested; the raw key loop
-\ is thin glue. Launch:  gforth caf-tui.fs -e RUN-TUI
+\ is thin glue. Launch:  gforth habu-tui.fs -e RUN-TUI
 
-require caf.fs
-CHECKING-ON? off          \ TUI infrastructure is not itself checked caf
+require habu.fs
+CHECKING-ON? off          \ TUI infrastructure is not itself checked habu
 
 \ --- ANSI ---
 : ESC ( -- )  27 emit ;
@@ -53,12 +53,12 @@ variable >P   variable >E
    then ;
 
 \ --- raw-mode interactive loop (thin glue over the tested core above) ---------
-\ Single-line live editor: `caf> <buffer>    <live status>`, cursor inside the
+\ Single-line live editor: `habu> <buffer>    <live status>`, cursor inside the
 \ buffer. Horizontal positioning only — robust across terminals. Enter commits
 \ (EVALUATE → real definition); the line scrolls up as history.
 512 constant LMAX
 create LBUF LMAX allot   variable LLEN   variable LCUR
-5 constant PROMPT-W                              \ width of "caf> "
+5 constant PROMPT-W                              \ width of "habu> "
 : L-RESET ( -- )  0 LLEN !  0 LCUR ! ;
 : CSI-G ( col -- )  CSI 0 .r [char] G emit ;     \ absolute column (1-based)
 
@@ -74,7 +74,7 @@ create LBUF LMAX allot   variable LLEN   variable LCUR
 : L-RIGHT ( -- )  LCUR @ LLEN @ <  if  1 LCUR +! then ;
 
 : RENDER ( -- )
-   CR CLR-EOL  +C ." caf> " -X  LBUF LLEN @ type
+   CR CLR-EOL  +C ." habu> " -X  LBUF LLEN @ type
    ."     "  LBUF LLEN @ LIVE-STATUS              \ live status trails the buffer
    CR  PROMPT-W LCUR @ + 1+ CSI-G ;               \ cursor back into the buffer
 
@@ -111,10 +111,10 @@ defer TKEY ( -- c )   ' key is TKEY
    until ;
 
 : RUN-TUI ( -- )
-   TTY? 0= if cr ." caf-tui needs a terminal (try: gforth caf-tui.fs -e RUN-TUI)" cr exit then
+   TTY? 0= if cr ." habu-tui needs a terminal (try: gforth habu-tui.fs -e RUN-TUI)" cr exit then
    s" stty raw -echo" system
-   cr +C ." caf TUI" -X ."  — edit a checked def; effect shows live. Ctrl-D quits." cr
+   cr +C ." habu TUI" -X ."  — edit a checked def; effect shows live. Ctrl-D quits." cr
    TUI-LOOP
    s" stty sane" system  cr +D ." bye" -X cr ;
 
-CHECKING-ON? on            \ committed defs (COMMIT's EVALUATE) are checked caf
+CHECKING-ON? on            \ committed defs (COMMIT's EVALUATE) are checked habu

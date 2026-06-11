@@ -9,14 +9,14 @@ create SBUF 65536 allot   variable SLN
 : S+ {: a u -- }  a  SBUF SLN @ +  u move  u SLN +! ;
 : BUILD-SIGNED-STANDALONE ( -- )
    0 SLN !
-   s" selfhost/sha256.fs"   slurp-file S+   s"  " S+
-   s" selfhost/asm.fs"      slurp-file S+   s"  " S+
-   s" selfhost/icode.fs"    slurp-file S+   s"  " S+
-   s" selfhost/mnem.fs"     slurp-file S+   s"  " S+
-   s" selfhost/util.fs"     slurp-file S+   s"  " S+
-   s" selfhost/macho.fs"    slurp-file S+   s"  " S+
-   s" selfhost/sign2.fs"    slurp-file S+   s"  " S+
-   s" selfhost/sign2-demo.fs"  slurp-file S+
+   s" selfhost/sha256.f"   slurp-file S+   s"  " S+
+   s" selfhost/asm.f"      slurp-file S+   s"  " S+
+   s" selfhost/icode.f"    slurp-file S+   s"  " S+
+   s" selfhost/mnem.f"     slurp-file S+   s"  " S+
+   s" selfhost/util.f"     slurp-file S+   s"  " S+
+   s" selfhost/macho.f"    slurp-file S+   s"  " S+
+   s" selfhost/sign2.f"    slurp-file S+   s"  " S+
+   s" selfhost/sign2-demo.f"  slurp-file S+
    SBUF SLN @ NF-RUN ;
 BUILD-SIGNED-STANDALONE
 \ codesign valid?  (exit 0 = valid)

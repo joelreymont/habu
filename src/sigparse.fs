@@ -99,7 +99,7 @@ variable IMP-RROW       \ implicit return-row id+1 for the current scope (0=none
 : LOWER?   ( c -- f )     dup [char] a >=  swap [char] z <=  and ;
 : UPPER?   ( c -- f )     dup [char] A >=  swap [char] Z <=  and ;
 
-\ caf is case-insensitive (like Forth) for keywords/type names. Single-letter
+\ habu is case-insensitive (like Forth) for keywords/type names. Single-letter
 \ vars stay case-distinguished (lc=type, uc=row) — unambiguous since type names
 \ are >=2 chars.
 : UPC  ( c -- C )  dup [char] a [char] z 1+ within if [char] a - [char] A + then ;

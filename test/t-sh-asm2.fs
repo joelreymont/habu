@@ -1,7 +1,7 @@
-\ t-sh-asm2.fs — the engine-ISA encoder extension, golden against caf. Three parts:
-\ (1) LIT64, minimal movz/movn+movk sequences must match caf's REAL assembler
+\ t-sh-asm2.fs — the engine-ISA encoder extension, golden against habu. Three parts:
+\ (1) LIT64, minimal movz/movn+movk sequences must match habu's REAL assembler
 \     (src/cg LIT-Z/LIT-N) word for word — stage2 byte-identity hinges on this;
-\ (2) the new encoders (divides/shifts/logical-imm/blr/cache/adr) match caf's
+\ (2) the new encoders (divides/shifts/logical-imm/blr/cache/adr) match habu's
 \     encode-pass constants; (3) ADR, forward-ref patching + DCQ, data cells.
 \ Run: gforth test/t-sh-asm2.fs -e bye
 require ../src/cg/icode.fs
@@ -17,20 +17,20 @@ create EB 65536 allot  variable EL
 : w@ ( i -- u32 )  4 * RBUF +  dup c@  over 1+ c@ 8 lshift or
    over 2 + c@ 16 lshift or  swap 3 + c@ 24 lshift or ;
 : u+ ( u -- )  0 <# #s #> +B s"  " +B ;          \ unsigned decimal into CBUF (wraps back)
-\ part 1: LIT64 sequences — caf reference via the real assembler
+\ part 1: LIT64 sequences — habu reference via the real assembler
 : LITREF ( -- )  0 EL !  ICODE-RESET
    NV 0 ?do  9 VALS i cells + @ LIT64,  loop
    RBUF ASSEMBLE 4 /  0 ?do i w@ n+ loop ;
 : LITGEN ( -- a u )
    0 CL !
-   s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F  s" selfhost/util.fs" +F  s" selfhost/walk.fs" +F
+   s" selfhost/asm.f" +F  s" selfhost/icode.f" +F  s" selfhost/util.f" +F  s" selfhost/walk.f" +F
    s" : GO ASM-INIT " +B
    NV 0 ?do  s" 9 " +B  VALS i cells + @ u+  s" LIT64, " +B  loop
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;
 LITREF
 T{ LITGEN  EB EL @ compare 0= -> true }T
-\ part 2: new encoders — formula reference (caf's encode-pass constants)
+\ part 2: new encoders — formula reference (habu's encode-pass constants)
 : ENCREF ( -- )  0 EL !
    $9AC00C00 5 or 1 5 lshift or 2 16 lshift or n+   \ sdiv x5,x1,x2
    $9AC00800 5 or 1 5 lshift or 2 16 lshift or n+   \ udiv
@@ -49,7 +49,7 @@ T{ LITGEN  EB EL @ compare 0= -> true }T
    $10000000 5 or -8 3 and 29 lshift or -8 4 / $7FFFF and 5 lshift or n+ ;  \ adr x5,.-8
 : ENCGEN ( -- a u )
    0 CL !
-   s" selfhost/asm.fs" +F
+   s" selfhost/asm.f" +F
    s" : GO 5 1 2 ENC-SDIV . 5 1 2 ENC-UDIV . 5 1 2 ENC-LSLV . 5 1 2 ENC-LSRV . " +B
    s" 5 1 2 ENC-ASRV . 5 1 2 ENC-ASRI . 5 1 $1234 ENC-ANDI . 5 1 $1234 ENC-ORRI . " +B
    s" 5 1 $1234 ENC-EORI . 7 ENC-BLR . 7 ENC-BR . ENC-BRK . ENC-NOP . " +B
@@ -63,7 +63,7 @@ T{ ENCGEN  EB EL @ compare 0= -> true }T
    $55667788 n+  $11223344 n+ ;                                          \ dcq LE halves
 : P3GEN ( -- a u )
    0 CL !
-   s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F  s" selfhost/util.fs" +F  s" selfhost/walk.fs" +F
+   s" selfhost/asm.f" +F  s" selfhost/icode.f" +F  s" selfhost/util.f" +F  s" selfhost/walk.f" +F
    s" : GO ASM-INIT NEWLBL dup 5 swap ADR, LBL, $1122334455667788 DCQ, " +B
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;

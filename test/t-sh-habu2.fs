@@ -1,7 +1,7 @@
-\ t-sh-engine2.fs — engine-builder port, part 2: the standalone's EMIT-FORTH builds
+\ t-sh-habu2.fs — engine-builder port, part 2: the standalone's EMIT-FORTH builds
 \ the COMPLETE engine image (main loop + JIT keywords + prims + helpers + dict +
-\ baked source) word-for-word identical to caf's src/cg/forth.fs EMIT-FORTH for the
-\ same source. Run: gforth test/t-sh-engine2.fs -e bye
+\ baked source) word-for-word identical to habu's src/cg/forth.fs EMIT-FORTH for the
+\ same source. Run: gforth test/t-sh-habu2.fs -e bye
 require ../src/cg/forth.fs
 require sh-driver.fs
 create RBUF 131072 allot
@@ -15,9 +15,9 @@ create EB 786432 allot  variable EL
    RBUF ASSEMBLE 4 /  0 ?do i w@ n+ loop ;
 : GEN ( -- a u )
    0 CL !
-   s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F  s" selfhost/mnem.fs" +F
-   s" selfhost/util.fs" +F  s" selfhost/walk.fs" +F  s" selfhost/rt.fs" +F
-   s" selfhost/crash.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/prof.fs" +F  s" selfhost/vsjit.fs" +F  s" selfhost/engine2.fs" +F
+   s" selfhost/asm.f" +F  s" selfhost/icode.f" +F  s" selfhost/mnem.f" +F
+   s" selfhost/util.f" +F  s" selfhost/walk.f" +F  s" selfhost/rt.f" +F
+   s" selfhost/crash.f" +F  s" selfhost/habu1.f" +F  s" selfhost/prof.f" +F  s" selfhost/vsjit.f" +F  s" selfhost/habu2.f" +F
    s" : SRC$ s" +B  s\" \" 6 7 * .\" ;" +B  s"  " +B
    s" : GO SRC$ EMIT-FORTH " +B
    s" 0 BEGIN dup ASM-LEN 4 / < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B

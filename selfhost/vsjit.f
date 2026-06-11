@@ -2,7 +2,7 @@
 \ src/cg/vsjit.fs for the engine-builder port (lockstep; goldens enforce parity).
 \ Tag 1 = constant (no code yet), tag 0 = live register; Lvspill materializes all
 \ entries as [x19] pushes bottom-up and empties the VS. State in DATA header cells.
-\ Load after prof.fs, before engine2.fs.
+\ Load after prof.fs, before habu2.f.
 variable Lvspill   variable Lvlitpush   variable Lvpushc
 variable Lvtop2c   variable Lvfoldput
 variable Lvralloc  variable Lvmovk  variable Lvforcek  variable Lvbinprep  variable Lvpushr

@@ -1,4 +1,4 @@
-# caf stack-effect syntax
+# habu stack-effect syntax
 
 A checked definition declares its effect in the `( … )` immediately after the
 name: `: SQUARE ( i64 -- i64 ) DUP * ;`. The checker infers the body's effect and
@@ -74,7 +74,7 @@ equal effect; loop bodies must be stack-neutral.
   the body, then compile it normally. For metaprogramming words (`evaluate`,
   parsing, dictionary ops, raw memory) the checker can't follow.
 - To chart an **already-defined** word's effect (so the checker can use it as a
-  leaf) without redefining it: `eff-str name-str CHART` after `PARSE-SIG`. caf's
+  leaf) without redefining it: `eff-str name-str CHART` after `PARSE-SIG`. habu's
   own codegen dogfoods this — see `src/cg/asm.fs`'s `CHART-EFF`.
 - **Literal-argument `PICK`/`ROLL` are folded** to a concrete shuffle at check
   time: `0 PICK`≡`DUP`, `1 PICK`≡`OVER`, `2 PICK ( a b c -- a b c a )`;
@@ -87,7 +87,7 @@ equal effect; loop bodies must be stack-neutral.
 ## Notes
 
 - `CHECKING-ON?` toggles the override; with it off, `:` is the plain native colon
-  (used to load infrastructure that isn't checkable caf).
+  (used to load infrastructure that isn't checkable habu).
 - A body using a word with no charted effect raises `E-UNCHECKED` and falls back
   to the native colon (a warning, not a refusal) — so unmodeled code still
   compiles, it just isn't verified. A genuine type error **refuses** the def.

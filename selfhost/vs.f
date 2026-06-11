@@ -1,4 +1,4 @@
-\ vs.fs — a register-allocating code generator for the standalone (caf's VS allocator,
+\ vs.fs — a register-allocating code generator for the standalone (habu's VS allocator,
 \ ported): the data stack lives in REGISTERS (x9..x15), not memory. swap/over are free
 \ (just relabel), arithmetic is reg->reg, and there is NO ldr/str traffic until the
 \ pool spills. `5 dup *` becomes ~5 instructions instead of 16. Needs asm.fs + icode.fs.

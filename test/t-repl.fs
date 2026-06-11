@@ -1,4 +1,4 @@
-\ t-repl.fs — smoke test for the interactive caf REPL. Pipes a session through a
+\ t-repl.fs — smoke test for the interactive habu REPL. Pipes a session through a
 \ real gforth subprocess and checks the captured stdout (ANSI stripped). Slow;
 \ run explicitly:  gforth test/t-repl.fs -e bye
 require test/tester.fs
@@ -7,7 +7,7 @@ require test/tester.fs
 : SESSION ( a u -- )                       \ run the session text through the REPL
    s" /tmp/repl-in" w/o create-file throw {: fh :}
    fh write-file throw  fh close-file throw
-   s" ~/.local/bin/gforth caf-repl.fs -e REPL < /tmp/repl-in 2>/dev/null | perl -pe 's/\e\[[0-9]*m//g' > /tmp/repl-out" system  \ strip ANSI
+   s" ~/.local/bin/gforth habu-repl.fs -e REPL < /tmp/repl-in 2>/dev/null | perl -pe 's/\e\[[0-9]*m//g' > /tmp/repl-out" system  \ strip ANSI
    s" /tmp/repl-out" slurp-file RO 2! ;
 : HAS ( a u -- f )  RO 2@ 2swap search nip nip ;
 

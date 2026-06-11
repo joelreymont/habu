@@ -2,7 +2,7 @@
 \ the engine-builder port (lockstep; the engine goldens enforce parity). `n prof-on`
 \ = SIGALRM + 1 ms timer; ticks map the interrupted pc to its dict word and count;
 \ at the limit: dump "name count" + exit(99). prof-report dumps on demand.
-\ Load after engine.fs (uses DATA/DBASE/NDICT/DREC/A/FPRIM-L), before engine2.fs.
+\ Load after habu1.f (uses DATA/DBASE/NDICT/DREC/A/FPRIM-L), before habu2.f.
 variable Lprofh   variable Lprofdump
 $1E0 constant PROF-TOT
 $1E8 constant PROF-LIM

@@ -13,17 +13,17 @@ create DBUF 300 chars allot   variable DLEN
 2variable NOUT   2variable GOUT
 : NATIVE-OUT {: in -- :}                 ( ba bu )    \ compile "body .", run, capture stdout
    BODY+. in COMPILE-WORD
-   s" /tmp/caf-diff" EMIT-EXE
-   s" /tmp/caf-diff > /tmp/caf-diffo 2>/dev/null" system
-   s" /tmp/caf-diffo" slurp-file NOUT 2! ;
+   s" /tmp/habu-diff" EMIT-EXE
+   s" /tmp/habu-diff > /tmp/habu-diffo 2>/dev/null" system
+   s" /tmp/habu-diffo" slurp-file NOUT 2! ;
 
 2variable OSRC   variable OIN
 : ORACLE-RUN ( -- )  OIN @  OSRC 2@ evaluate ;        \ push input, interpret "body ."
 : ORACLE-OUT {: in -- :}                 ( ba bu )    \ gforth runs the same; capture stdout
    BODY+. OSRC 2!  in OIN !
-   s" /tmp/caf-gora" w/o create-file throw {: fh :}
+   s" /tmp/habu-gora" w/o create-file throw {: fh :}
    ['] ORACLE-RUN fh outfile-execute  fh close-file throw
-   s" /tmp/caf-gora" slurp-file GOUT 2! ;
+   s" /tmp/habu-gora" slurp-file GOUT 2! ;
 
 : DIFF? {: ba bu in -- f :}              \ native output ≡ oracle output ?
    ba bu in NATIVE-OUT  ba bu in ORACLE-OUT  NOUT 2@ GOUT 2@ compare 0= ;

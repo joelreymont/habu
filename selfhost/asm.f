@@ -1,7 +1,7 @@
 \ asm.fs — ARM64 instruction encoders in the STANDALONE's Forth (operands -> u32).
 \ Ported from src/cg/asm.fs (decimal constants; same bit layout). First step of the
 \ codegen port: the standalone can now ENCODE ARM64, not just run baked code. Verified
-\ byte-for-byte against caf in test/t-sh-asm.fs.
+\ byte-for-byte against habu in test/t-sh-asm.fs.
 4294967295 constant W32
 : MSK W32 and ;
 \ move-wide: rd imm16 hw -> u32
@@ -31,7 +31,7 @@
 \ svc #imm  ; ret
 : ENC-SVC  {: imm :} 3556769793 imm 5 lshift or MSK ;
 : ENC-RET  3596551104 ;
-\ load/store, unsigned offset. caf scales: x-regs by 8 (?SC8), w by 4, byte by 1.
+\ load/store, unsigned offset. habu scales: x-regs by 8 (?SC8), w by 4, byte by 1.
 : ENC-LDR  {: rd rn off :} 4181721088 rd or  rn 5 lshift or  off 8 / 10 lshift or MSK ;
 : ENC-STR  {: rd rn off :} 4177526784 rd or  rn 5 lshift or  off 8 / 10 lshift or MSK ;
 : ENC-LDRB {: rd rn off :} 960495616  rd or  rn 5 lshift or  off 10 lshift or MSK ;

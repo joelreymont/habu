@@ -1,7 +1,7 @@
-\ t-cg-cli.fs — caf emits STANDALONE CLI executables (no gforth) that read an
+\ t-cg-cli.fs — habu emits STANDALONE CLI executables (no gforth) that read an
 \ integer argv[1], compute, and print. Emits each, runs it via the shell with an
 \ argument, and checks stdout. Slow; run explicitly:  gforth test/t-cg-cli.fs -e bye
-require ../caf-cg.fs
+require ../habu-cg.fs
 CHECKING-ON? off  require test/tester.fs  CHECKING-ON? on
 CODEGEN-ON? on
 decimal
@@ -12,11 +12,11 @@ decimal
 : SUMTO  ( i64 -- i64 ) 0 SWAP 1+ 1 ?DO I + LOOP ;
 : GCD    ( i64 i64 -- i64 ) DUP 0= IF DROP ELSE SWAP OVER MOD RECURSE THEN ;
 
-s" /tmp/t-sq"    CAF-EXE SQUARE
-s" /tmp/t-cube"  CAF-EXE CUBE
-s" /tmp/t-rfact" CAF-EXE RFACT
-s" /tmp/t-sumto" CAF-EXE SUMTO
-s" /tmp/t-gcd"   CAF-EXE GCD
+s" /tmp/t-sq"    HABU-EXE SQUARE
+s" /tmp/t-cube"  HABU-EXE CUBE
+s" /tmp/t-rfact" HABU-EXE RFACT
+s" /tmp/t-sumto" HABU-EXE SUMTO
+s" /tmp/t-gcd"   HABU-EXE GCD
 
 2variable CLIO
 : ,arg ( n -- )  s>d <# #s #> cs+ ;             \ append " n" to the command

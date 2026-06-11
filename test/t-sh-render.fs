@@ -4,9 +4,9 @@
 require sh-driver.fs
 : RENDER-OUT ( -- a u )
    0 CL !
-   s" selfhost/util.fs"    slurp-file +B   s"  " +B
-   s" selfhost/checker.fs"     slurp-file +B   s"  " +B
-   s" selfhost/render.fs"      slurp-file +B   s"  " +B
-   s" selfhost/render-demo.fs" slurp-file +B
+   s" selfhost/util.f"    slurp-file +B   s"  " +B
+   s" selfhost/checker.f"     slurp-file +B   s"  " +B
+   s" selfhost/render.f"      slurp-file +B   s"  " +B
+   s" selfhost/render-demo.f" slurp-file +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;
 T{ RENDER-OUT s" a a |a b |a b a |a b c |n |" compare 0= -> true }T

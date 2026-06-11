@@ -1,4 +1,4 @@
-\ sign.fs — ad-hoc self-signing POST-PASS for caf's Mach-O. Operates on the
+\ sign.fs — ad-hoc self-signing POST-PASS for habu's Mach-O. Operates on the
 \ finished unsigned binary in MBUF (built by macho.fs): rewrites the header to
 \ add an LC_CODE_SIGNATURE load command (into the header slack), grows __LINKEDIT,
 \ and appends an embedded signature — a CSMAGIC_EMBEDDED_SIGNATURE SuperBlob

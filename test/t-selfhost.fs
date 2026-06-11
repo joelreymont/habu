@@ -12,7 +12,7 @@ ARENA-RESET s" R -- R i64" PARSE-SIG s" S-ROW"  CHART
 ARENA-RESET s" R -- R i64" PARSE-SIG s" S-PUSH" CHART
 
 \ The COMPLETE term-encoding layer of types.fs + rows.fs, re-checked through
-\ caf's own `:` — both type-term and stack-term encodings.
+\ habu's own `:` — both type-term and stack-term encodings.
 : C-TAG    ( i64 -- i64 )   7 and ;
 : C-PAY    ( i64 -- i64 )   3 rshift ;
 : C-MKCON  ( i64 -- i64 )   3 lshift T-CON or ;
@@ -36,7 +36,7 @@ T{ 3 C-MKROW -> 3 MK-ROW }T               \ stack-term encoding matches rows.fs
 T{ 3 C-MKROW C-ISROW -> true }T
 T{ 3 C-MKROW C-ISPUSH -> false }T
 
-\ --- algorithmic core, re-checked through caf (host array access trusted) ---
+\ --- algorithmic core, re-checked through habu (host array access trusted) ---
 ARENA-RESET s" R i64 -- R i64" PARSE-SIG s" TV@"      CHART   \ id -> bound term
 ARENA-RESET s" R -- R i64"     PARSE-SIG s" UNBOUND"  CHART
 
@@ -59,7 +59,7 @@ T{ TC-I64 MK-CON  TC-BOOL MK-CON C-UNICON -> false }T    \ i64 ≁ bool
 T{ TV-RESET TC-I64 MK-CON 0 TV!  0 MK-VAR C-RESOLVE1 -> TC-I64 MK-CON }T
 T{ TC-BOOL MK-CON C-RESOLVE1 -> TC-BOOL MK-CON }T        \ concrete stays put
 
-\ the FULL looping RESOLVE-TYPE, re-checked through caf (BEGIN/WHILE/REPEAT):
+\ the FULL looping RESOLVE-TYPE, re-checked through habu (BEGIN/WHILE/REPEAT):
 \ chase bindings until a concrete or unbound term.
 : C-RESOLVE ( i64 -- i64 )
    BEGIN

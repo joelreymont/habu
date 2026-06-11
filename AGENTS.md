@@ -1,4 +1,4 @@
-# caf — Checked Forth
+# habu — Checked Forth
 
 A checked stack-effect system for Forth, hosted by Gforth. LLM-generated Forth is
 verified by a checker (typed, row-polymorphic stack effects) rather than trusting

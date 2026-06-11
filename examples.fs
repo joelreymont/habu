@@ -1,7 +1,7 @@
 \ examples.fs — checked Forth programs. Each `: NAME ( typed-effect ) … ;` is
 \ type-checked at definition time, then runs as ordinary Gforth.
 \   Run:  gforth examples.fs
-require caf.fs
+require habu.fs
 
 \ --- arithmetic ---
 : SQUARE ( i64 -- i64 )        DUP * ;
@@ -25,7 +25,7 @@ require caf.fs
 \ --- polymorphic (works at any type) ---
 : DUP2   ( a -- a a )          DUP ;
 
-cr ." caf examples:" cr
+cr ." habu examples:" cr
 ." 7 SQUARE      = " 7 SQUARE . cr
 ." 3 4 HYP2      = " 3 4 HYP2 . cr
 ." -9 ABSV       = " -9 ABSV . cr

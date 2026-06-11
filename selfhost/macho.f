@@ -2,7 +2,7 @@
 \ engine-builder port: header + 6 load commands (PAGEZERO, TEXT+__text, LINKEDIT,
 \ DYLINKER, MAIN, DYLIB libSystem), slack to $1000, code at $1000, padded to one
 \ page. Canonical UNSIGNED artifact; sign.fs post-pass adds the ad-hoc signature.
-\ Golden byte-for-byte vs caf in test/t-sh-macho.fs. Code comes from icode's CODE.
+\ Golden byte-for-byte vs habu in test/t-sh-macho.fs. Code comes from icode's CODE.
 $40000 constant MSIZE
 create MBUF MSIZE allot
 variable MP

@@ -1,5 +1,5 @@
 \ nf.fs — native-Forth (Part F) build/run/capture harness. Reusable by tests and
-\ from the REPL. Builds a standalone Mach-O from a caf source line, runs it, and
+\ from the REPL. Builds a standalone Mach-O from a habu source line, runs it, and
 \ captures stdout. Use NFX interactively; NF-RUN + NF= in T{ … }T tests.
 
 require ../src/cg/forth.fs

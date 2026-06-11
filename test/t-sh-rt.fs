@@ -1,5 +1,5 @@
-\ t-sh-rt.fs — the runtime-routine port (selfhost/rt.fs): the standalone emits
-\ EMIT-DOT + EMIT-ATOI and the words must match caf's src/cg/rt.fs output word for
+\ t-sh-rt.fs — the runtime-routine port (selfhost/rt.f): the standalone emits
+\ EMIT-DOT + EMIT-ATOI and the words must match habu's src/cg/rt.fs output word for
 \ word (same encoders, same labels, same layout). Run: gforth test/t-sh-rt.fs -e bye
 require ../src/cg/templ.fs
 require ../src/cg/rt.fs
@@ -15,8 +15,8 @@ create EB 65536 allot  variable EL
    RBUF ASSEMBLE 4 /  0 ?do i w@ n+ loop ;
 : GEN ( -- a u )
    0 CL !
-   s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F  s" selfhost/mnem.fs" +F
-   s" selfhost/util.fs" +F  s" selfhost/walk.fs" +F  s" selfhost/rt.fs" +F
+   s" selfhost/asm.f" +F  s" selfhost/icode.f" +F  s" selfhost/mnem.f" +F
+   s" selfhost/util.f" +F  s" selfhost/walk.f" +F  s" selfhost/rt.f" +F
    s" : GO ASM-INIT NEWLBL DOT-LBL ! EMIT-DOT NEWLBL ATOI-LBL ! EMIT-ATOI " +B
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;

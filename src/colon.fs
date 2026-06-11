@@ -53,13 +53,13 @@ variable RB-A   variable RB-U   variable IN-LOC
 : RE-EVAL-SAFE ( -- )
    ['] RE-EVAL catch if
       RE-EMIT? off
-      cr ." caf: " NM@ type ."  — checker accepted but native colon rejected it" cr
+      cr ." habu: " NM@ type ."  — checker accepted but native colon rejected it" cr
    then ;
 
 \ A definition that escaped checking must SAY SO — never silently pass an
 \ unverified typed signature as if it were checked.
 : WARN-UNCHECKED ( code -- )
-   cr ." caf: WARNING: " NM@ type ."  was NOT type-checked ("
+   cr ." habu: WARNING: " NM@ type ."  was NOT type-checked ("
    E-UNSAFE = if ." forbidden" else ." unmodeled" then ."  word in body) — compiled natively" cr ;
 
 \ Does the captured effect text parse as a typed signature? (Throws if not — a

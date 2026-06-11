@@ -9,7 +9,7 @@ require t-sh-asm2.fs
 require t-sh-rt.fs
 require t-sh-crash.fs
 require t-sh-macho.fs
-require t-sh-engine.fs
+require t-sh-habu1.fs
 require t-sh-cg.fs
 require t-sh-walk.fs
 require t-sh-opt.fs
@@ -36,5 +36,5 @@ require t-sh-disasm.fs
 require t-sh-debug.fs
 require t-sh-sha.fs
 require t-sh-sign.fs
-require t-sh-engine2.fs
+require t-sh-habu2.fs
 require t-sh-stage2.fs

@@ -25,7 +25,7 @@ discipline: behavior probes must be stack-BALANCED or they report phantom leaks 
 ## Build the tool: the profiler found in one run what bisection circled (2026-06-11)
 
 The dogfooded self-compile hung (90 s, 100% CPU). File-bisection localized it to
-engine2.fs bodies; then a SAMPLING PROFILER built into the engine (prof.fs both sides,
+habu2.f bodies; then a SAMPLING PROFILER built into the engine (prof.fs both sides,
 ~100 lines: SIGALRM + setitimer 1 ms, handler reads pc from the ucontext like crash.fs,
 maps pc -> dict word by addr/clen, counts; at a sample limit dumps "name count" +
 exit(99) — a hang diagnoser by construction) named the culprit immediately:
@@ -60,12 +60,12 @@ prim), compiles it with the ported EMIT-FORTH, wraps it with the ported BUILD-MA
 and the result is BYTE-IDENTICAL to the gforth-built engine image. Compiler fixpoint,
 from source — not image copying. Enablers: real calls + selective inlining (deep helper
 chains compile), 8KB body capture (engine words are long), $hex literals, the `read`
-prim (added to BOTH src/cg/forth.fs and the engine.fs port in lockstep — the goldens
+prim (added to BOTH src/cg/forth.fs and the habu1.f port in lockstep — the goldens
 enforce parity), __TEXT grown to $20000 and DATA-SIZE to $200000 (baked source + build
 buffers; macho-min/rebuild/sign NCSLOT updated together). Last port bug: a {: :} locals
 group INSIDE an IF branch (emit-source) — the documented frame-corruption footgun;
 probes that hoisted it passed, pinpointing it. The engine-port goldens (t-sh-engine,
-t-sh-engine2: 2893 words identical) plus t-sh-stage2 now gate every engine change on
+t-sh-habu2: 2893 words identical) plus t-sh-stage2 now gate every engine change on
 both sides staying in lockstep.
 
 ## The engine port: golden byte-parity is the only test that matters (2026-06-11)
@@ -75,7 +75,7 @@ method is a GOLDEN test per file — gforth emits via its real assembler, the st
 emits via the ported one, compare word-for-word (or byte-for-byte files for Mach-O).
 This caught, in one day: the selfhost D26 branch mask was 24-bit not 26 (every backward
 B/BL mis-encoded — never seen because vs/walk only emit backward CBZ/BCOND); a
-zero-looping m-zeros; and `28 constant CP` in engine.fs shadowing icode's CP variable
+zero-looping m-zeros; and `28 constant CP` in habu1.f shadowing icode's CP variable
 (compile-time binding protects earlier callers, but later code reading `CP @` loads
 from address 28 — SIGSEGV that the in-binary crash handler diagnosed). Port rules that
 keep transcription mechanical: a mnemonic layer (mnem.fs) so lines read identically to
@@ -142,7 +142,7 @@ own source is far too large to inline). The "leaf-only wall" note below is now h
 
 ## Self-signing replaces external codesign (2026-06-11)
 
-caf now ad-hoc-signs its own Mach-O — no external `codesign`. SHA-256 in Forth
+habu now ad-hoc-signs its own Mach-O — no external `codesign`. SHA-256 in Forth
 (sha256.fs, FIPS-180 vectors), then a POST-PASS (sign.fs) that rewrites the finished
 unsigned binary: insert LC_CODE_SIGNATURE into header slack, grow __LINKEDIT, append
 a CSMAGIC_EMBEDDED_SIGNATURE SuperBlob with one version-0x20400 CodeDirectory
@@ -180,7 +180,7 @@ uses heavily, so the standalone can't yet compile its compiler (the fixpoint gap
 ## Standalone register allocator — the real codegen win (2026-06-11)
 
 The peephole (16->15) was barely worth it; the VS ALLOCATOR is the real win. Ported
-caf's register-allocating model to the standalone (selfhost/vs.fs): the data stack
+habu's register-allocating model to the standalone (selfhost/vs.f): the data stack
 lives in REGISTERS (x9..x15), tracked by an abstract value stack. `swap`/`over` become
 free relabels, arithmetic is reg->reg, literals load straight into a reg — ZERO ldr/str
 until the pool spills. `5 dup *` compiles to 7 instructions (movz/movk/mov/mul/mov + exit)
@@ -195,7 +195,7 @@ compiler. Still straight-line only (control flow + FP + spill are the remaining 
 
 ## Standalone peephole optimizer + the `i`-local footgun (2026-06-11)
 
-Ported the first optimizer pass to the standalone (selfhost/opt.fs): store-to-load
+Ported the first optimizer pass to the standalone (selfhost/opt.f): store-to-load
 FORWARDING drops a `ldr Rd,[x19]` right after a `str Rd,[x19]` (Rd still holds it) —
 sound for the branchless arithmetic bodies walk.fs emits. `5 dup *` goes 16 -> 15
 instructions and still computes 25. RECURRING FOOTGUN that cost time again here: a
@@ -209,11 +209,11 @@ str/ldr pair, and `.s` to catch WSET/WGET returning the same value — the tools
 
 The debugging tools are built and dogfooded: a Forth disassembler (src/cg/disasm.fs)
 whose decode math (disasm-core.fs) and the encoders (asm-checked.fs) are CHECKED typed
-Forth — caf certifies them (CHECK-CODE=0). Caveat: caf type vars are SINGLE letters, so
+Forth — habu certifies them (CHECK-CODE=0). Caveat: habu type vars are SINGLE letters, so
 sigs must read `( a b c -- d )` (multi-char like `( rd rn rm -- w )` -> E-UNCHECKED), and
 sign-extend must be branchless (`(f^sign)-sign`; an IF version didn't certify). A STEP
 single-stepper (stepper.fs) traces a snippet token-by-token with the stack. And the
-standalone now disassembles its OWN generated code (selfhost/disasm.fs, data-table
+standalone now disassembles its OWN generated code (selfhost/disasm.f, data-table
 driven) — self-hosted debugging, zero gforth/python. Two more standalone footguns hit:
 locals declared INSIDE a BEGIN/WHILE loop corrupt the frame (use variables for row
 fields); and a test bug — `,` stores 8-byte CELLS, but ARM64 instructions are 4-byte
@@ -221,7 +221,7 @@ u32s, so a `create P n , n ,` buffer is double-spaced (build code with `c,` LE b
 
 ## Standalone errors on undefined words; token compiler; Forth disassembler (2026-06-11)
 
-The standalone now COMPILES Forth source bodies to native code (selfhost/walk.fs:
+The standalone now COMPILES Forth source bodies to native code (selfhost/walk.f:
 tokenize -> per-op instruction templates in a DATA table + literals + encoders +
 assembler -> self-signed binary; `7 dup *` -> exit 49). And it finally ERRORS on an
 undefined word in a `:` body (writes the name to stderr, exit 70) — the old silent
@@ -237,8 +237,8 @@ missing `require`d helper compiles to nothing — make it loud.
 ## Standalone GENERATES native code — encoders + assembler + a runnable binary (2026-06-11)
 
 Major codegen-port milestone: the standalone now has runnable ARM64 encoders
-(selfhost/asm.fs, verified byte-for-byte vs caf in t-sh-asm) and a single-pass
-assembler with labels + branch backpatching (selfhost/icode.fs). It assembles a loop
+(selfhost/asm.f, verified byte-for-byte vs habu in t-sh-asm) and a single-pass
+assembler with labels + branch backpatching (selfhost/icode.f). It assembles a loop
 (exit 5+4+3+2+1=15) and emits a self-signed Mach-O that runs with ZERO external tools
 (t-sh-cg). Standalone gotchas hit and fixed: `{: x -- }` (a `--` inside a locals decl)
 isn't parsed — drop the `--`; `0<` is NOT a standalone prim (only `0=`/`<`/`>`) and an
@@ -249,12 +249,12 @@ should error on undefined words); a SECOND `{: :}` locals group mis-reads its sl
 the kernel SIGKILLs even a later VALID binary at that same path/inode. codesign -v
 passes, page hashes match, but it won't run. Fix: write to a fresh path (or rm+rewrite).
 This is why a binary that ran after external re-sign still died self-signed at the old
-path. Tooling: lldb works on caf binaries now (revealed load-time vs runtime kills);
+path. Tooling: lldb works on habu binaries now (revealed load-time vs runtime kills);
 python+otool disassemble.
 
 ## Standalone render — and a second-locals-group bug (2026-06-11)
 
-Added RENDER to the standalone (selfhost/render.fs): walks the checker's inferred
+Added RENDER to the standalone (selfhost/render.f): walks the checker's inferred
 residual stack (DCUR) and prints types as canonical letters a,b,c (bottom-to-top),
 int=n, flag=f — the 'render' half of the native sigparse/checker (test/t-sh-render).
 No recursion (the JIT would inline-explode) and no emit/+! (absent) — a collect-loop
@@ -282,7 +282,7 @@ drivers in a word.
 ## Standalone self-signs — and a dictionary-search bug it exposed (2026-06-11)
 
 The standalone now SELF-SIGNS a Mach-O with zero gforth and zero external codesign:
-selfhost/sign.fs is the ad-hoc CodeDirectory post-pass (SHA-256 page hashes from
+selfhost/sign.f is the ad-hoc CodeDirectory post-pass (SHA-256 page hashes from
 sha256.fs) over the unsigned image macho-min.fs builds. Apple's `codesign -v`
 validates the result and it runs (test/t-sh-sign.fs builds+signs exit(42) entirely
 inside the standalone). Getting there exposed a real standalone bug: **its dictionary
@@ -296,7 +296,7 @@ mask while BUILD, compiled later, correctly picked the writer.)
 
 ## Standalone SHA-256 + the do-while DO gotcha (2026-06-11)
 
-Ported SHA-256 into the standalone's own Forth (selfhost/sha256.fs) — the first step
+Ported SHA-256 into the standalone's own Forth (selfhost/sha256.f) — the first step
 to the standalone self-signing without gforth or codesign. Matches FIPS-180 vectors
 (abc, 56-char, 64/100-byte) run natively (test/t-sh-sha.fs). Standalone porting
 gotchas vs gforth: **the number parser is decimal-only** (no `$` hex — decimalize
@@ -417,9 +417,9 @@ by `catch` is dead weight until a test actually drives it through the throw.
 
 ## Crash diagnostics — in-binary register dump (2026-06-10)
 
-- caf-built binaries (NATIVE-EVAL exes + the standalone) install an in-binary
+- habu-built binaries (NATIVE-EVAL exes + the standalone) install an in-binary
   signal handler (`crash.fs`) for SIGILL/TRAP/BUS/SEGV that dumps the faulting
-  registers (sig, x0..x28, fp, lr, sp, pc) as hex to stderr and `exit(134)`. caf
+  registers (sig, x0..x28, fp, lr, sp, pc) as hex to stderr and `exit(134)`. habu
   itself dumps codegen state (`#IC`/`VSP`/`CARRY-N`/`LOOP-DEPTH`/token pos) on a
   codegen throw. No external debugger — **lldb can't launch our minimal Mach-O in
   this sandbox** (its batch `-o run` hangs even on a normal C binary; debugger
@@ -439,12 +439,12 @@ by `catch` is dead weight until a test actually drives it through the throw.
 ## Self-host is the real frontier — decomposed, not faked (2026-06-10)
 
 - The standalone `src/cg/forth.fs` is a 300-line stencil-JIT native Forth with
-  only `+ - * dup drop swap .` + int literals. "Standalone IS caf" (run the full
+  only `+ - * dup drop swap .` + int literals. "Standalone IS habu" (run the full
   checker + ICode codegen natively, stage2==stage3, drop gforth) is a multi-week
   bootstrap, not one increment. Decomposed into 10 ordered sub-dots (core words →
   memory → strings → locals/catch → wordlists → port arena/types → port checker →
   port codegen → in-process code-allocator → stage2==stage3). Don't fake a fixpoint.
-- **Adding standalone primitives is cheap because they ARE caf ICode.** Each prim
+- **Adding standalone primitives is cheap because they ARE habu ICode.** Each prim
   is a niladic word emitting icode.fs mnemonics on the x19 data stack (`b+` =
   `B g-pop A g-pop A A B ADD, A g-push`); FPRIM registers start/RET/end labels for
   stencil inlining. Milestone 1 added the comparison/logic/shift/`/`/`mod`/shuffle
@@ -478,12 +478,12 @@ by `catch` is dead weight until a test actually drives it through the throw.
   registers the callee (Lpat/c-lit) doesn't touch, and patch the B BEFORE the
   literals are emitted (its target is the push site) while preserving len in x15.
 
-## Register-resident DO..LOOP — caf ties clang -O3 (2026-06-10)
+## Register-resident DO..LOOP — habu ties clang -O3 (2026-06-10)
 
 - **The spill was NEVER the loop bottleneck — the missing back-edge register
   liveness was.** The memory-path loop spilled the carry every iteration, but
   that store/load was hidden under the xorshift latency chain; making the carry
-  register-resident alone changed nothing. caf stayed at 1.94× clang until the
+  register-resident alone changed nothing. habu stayed at 1.94× clang until the
   carry actually stayed in a register *across the back-edge*. Then it tied clang
   -O3 (0.20s/1e8 iters, exit 221). Measure the real critical path, don't assume.
 - **Mechanism:** pre-scan the body; if every token is VS-safe (a CG-VS prim, `I`,
@@ -519,7 +519,7 @@ by `catch` is dead weight until a test actually drives it through the throw.
   i64. Gate on an FP marker ('.', 'e', 'E') + `>float` success, ahead of the
   integer clause, in BOTH the checker (`CHECK-FLOAT`) and codegen
   (`EMIT-FLOAT`). Reinterpret bits via a scratch `f!` then `@`.
-- **FP-register residency, not a second stack, is the perf answer.** caf is
+- **FP-register residency, not a second stack, is the perf answer.** habu is
   statically typed, so the checker already separates `f64` from `i64` — the job a
   classic Forth FP stack does at runtime. Keep the unified data stack; add a third
   VS tag `V-FREG` (value lives in a D-register) so chained ops (`F+ F* F-`) stay
@@ -540,7 +540,7 @@ by `catch` is dead weight until a test actually drives it through the throw.
 
 - Homebrew ships Gforth **0.7.3** only; "0.7.9" is the unreleased dev branch and
   needs a source build from git.
-- **caf targets 0.7.9**, built from `git://git.savannah.gnu.org/gforth.git`
+- **habu targets 0.7.9**, built from `git://git.savannah.gnu.org/gforth.git`
   (version `0.7.9_20260513`), installed at `~/.local/bin/gforth`. 0.7.3 also
   present at `/opt/homebrew/bin/gforth` — ensure `~/.local/bin` precedes it on PATH.
 
@@ -600,20 +600,20 @@ diagnostic in a `:` definition and call it; (2) prefer the dogfooded inspectors
 in **`src/cg/inspect.fs`** (`ICDUMP`, `ICSCAN`, `?LBL`, `ICAT`) and the
 **`test/nf.fs`** harness (`NFX` = build+run+show, `NF-RUN`/`NF=`) over hand-rolled
 one-liners; (3) for ground truth on an emitted binary, use the EXTERNAL oracle
-`otool -tV <file>` — it has no caf-tooling bugs. **Don't fight caf's tooling;
+`otool -tV <file>` — it has no habu-tooling bugs. **Don't fight habu's tooling;
 improve it** — when a one-liner is awkward, add a tested word to `inspect.fs`.
 
-The type checker would NOT have caught these: it checks the stack *effect* of caf
+The type checker would NOT have caught these: it checks the stack *effect* of habu
 source, not the *value* semantics of a return-stack/`do-loop` interleaving, and
 throwaway `gforth -e` snippets are never run through it at all. The fix is
 discipline + reliable tooling, not a new checker feature.
 
-## Case-insensitivity (gforth, and caf itself)
+## Case-insensitivity (gforth, and habu itself)
 
 - **gforth is case-insensitive**, so a `{: decl :}` local collides with a
   `variable DECL` — `decl DECL !` stored at the local's value (a type term) →
   "Invalid memory address". Never name a local the same as a global ignoring case.
-- **caf should be case-insensitive too** (it checks Forth). Word/type lookups go
+- **habu should be case-insensitive too** (it checks Forth). Word/type lookups go
   through `search-wordlist`/`find-name` (already CI). Keyword/type-name matching
   must use a CI compare, not `compare`. The ONE case-meaningful element is the
   single-letter signature var: lowercase = type var, uppercase = row var — and
@@ -657,15 +657,15 @@ per-file tests can pass while the combined `all.fs` suite fails. Rules:
   strings); `INST`=re-parse (fresh vars by name per call → polymorphism for free),
   `GENERALIZE`=render. Sidesteps copying terms out of the per-check arena.
 
-## caf REPL + TUI (Forth, dogfoods the checker, 2026-06-10)
+## habu REPL + TUI (Forth, dogfoods the checker, 2026-06-10)
 
 Two front-ends, both Forth (no C/Zig — the Zig `~/Work/pz` is reference only):
-- **`src/repl.fs`** (`caf-repl.fs`) — line REPL. Enter a checked def → `✓ NAME (
-  effect )` or the caf diagnostic; non-def lines `EVALUATE`. Reads stdin via
+- **`src/repl.fs`** (`habu-repl.fs`) — line REPL. Enter a checked def → `✓ NAME (
+  effect )` or the habu diagnostic; non-def lines `EVALUATE`. Reads stdin via
   `stdin read-line` (NOT `refill`, which reads the `-e` eval source and hits EOF).
-- **`src/tui.fs`** (`caf-tui.fs`) — full-screen TUI with **as-you-type** feedback:
+- **`src/tui.fs`** (`habu-tui.fs`) — full-screen TUI with **as-you-type** feedback:
   `RUN-TUI` raw-modes the terminal (`stty raw -echo`, restore `stty sane`),
-  single-line live editor (`caf> <buf>   <status>`, horizontal positioning only —
+  single-line live editor (`habu> <buf>   <status>`, horizontal positioning only —
   robust everywhere), and on each keystroke shows the inferred effect / diagnostic
   via **`CHECK-DRY`** (checks WITHOUT charting — refactored `CHECK-DEF` into a
   non-charting `CHECK-CORE`; else every keystroke pollutes the effect DB).
@@ -747,10 +747,10 @@ pre-opt == post-opt — the allocator emits near-optimal code directly); `DUP DU
   **Layout gotcha:** locals at `[sp,…)` would alias the data stack (`Xds=sp`) —
   `g-prologue` now sets `Xds = sp+LOCSZ` so the frame sits below the data stack.
 - **u8/u32 width is correct by construction — no typed selector needed.** The
-  plan assumed fixnum tags/boxing and a typed-stencil bank; caf never had tags
+  plan assumed fixnum tags/boxing and a typed-stencil bank; habu never had tags
   (values are full 64-bit cells, like gforth), and the register allocator makes
   registers IR fields (no frozen stencils to specialise). gforth's model is
-  "full-cell arithmetic, truncate only at a byte store" — caf matches it exactly:
+  "full-cell arithmetic, truncate only at a byte store" — habu matches it exactly:
   `c@`/`c!` use `LDRB`/`STRB` (zero-extend / low-byte). So the "typed payoff"
   (unboxing) is free, and width truncation happens at the right point already. No
   `UXTB`/`UXTW` in registers required for correctness.
@@ -766,14 +766,14 @@ head-to-head. Measured on this M-series box:
 | build | ns/iter | note |
 | ----- | ------- | ---- |
 | **clang -O3 (LLVM — the bar)** | **2.252** | optimized C |
-| hand ARM64 (what caf targets) | 2.256 | LLVM **parity** (same exit 203) |
+| hand ARM64 (what habu targets) | 2.256 | LLVM **parity** (same exit 203) |
 | clang -O0 (unoptimized C) | 7.21 | — |
 | gforth-fast (its own native codegen) | 2.27 | parity too |
-| gforth threaded (caf-checked runs on) | 23.87 | 10.6× slower — irrelevant baseline |
+| gforth threaded (habu-checked runs on) | 23.87 | 10.6× slower — irrelevant baseline |
 
-**Verdict: caf's native target matches LLVM -O3** on this loop. Caveat: the hand
-baseline fuses `dup <<n xor` into one shifted-EOR; caf's current backend emits
-separate shift+xor through the stack, so caf's *real* output sits above 2.25 —
+**Verdict: habu's native target matches LLVM -O3** on this loop. Caveat: the hand
+baseline fuses `dup <<n xor` into one shifted-EOR; habu's current backend emits
+separate shift+xor through the stack, so habu's *real* output sits above 2.25 —
 the shifted-operand-fusion peephole (dot) closes that last gap to LLVM. Always
 measure against LLVM `-O3`, never gforth.
 
@@ -794,7 +794,7 @@ leaves its double on the stack *even on failure* — the non-number path must
 
 **Dogfooding the codegen (the honest limit).** The codegen proper (`EMIT-TOKEN`,
 the value stack) is metaprogramming — `s>number?`, `search-wordlist`, `execute`,
-raw stacks — so it cannot be written as fully *checked* caf. But the bug class
+raw stacks — so it cannot be written as fully *checked* habu. But the bug class
 that actually bit the build IS catchable: chart `s>number?` as `( R str -- R i64
 bool )` (the double modeled as one i64) and the checker's "both IF arms must
 leave equal stacks" rule rejects the exact mistake — a branch that consumes the
@@ -807,7 +807,7 @@ caught — which is the real value the dot asked for.
 
 Serial scalar LCG (`x = x*A + C`, 1e9 iters; `bench/inner-loop.{fs,s}` +
 `bench/run.sh`). **Native baseline must be hand-written ARM64** (`inner-loop.s` —
-the exact `mul; add` caf emits), NOT clang `-O2` C: clang unrolled/scheduled to
+the exact `mul; add` habu emits), NOT clang `-O2` C: clang unrolled/scheduled to
 0.97 ns/iter, flattering native; the faithful naive loop is **1.26 ns/iter** and
 **unroll-8 is identical (1.26)** → the loop is **latency-bound** (mul→add serial
 chain; unrolling buys nothing).
@@ -816,18 +816,18 @@ chain; unrolling buys nothing).
 | ----- | ------- | ---------------- |
 | native (hand ARM64, real floor) | 1.26 | — |
 | gforth-fast | 2.08 | **1.66×** |
-| gforth threaded (= caf today) | 5.98 | **4.76×** |
+| gforth threaded (= habu today) | 5.98 | **4.76×** |
 
 **Two lessons.** (1) **Don't measure the native ceiling with C** — clang's
-optimizer ≠ what caf emits; use hand-asm. (2) **The LCG is the WRONG gate
+optimizer ≠ what habu emits; use hand-asm. (2) **The LCG is the WRONG gate
 benchmark**: it's latency-bound (2 serial ops, `mul` latency irreducible and
 shared by both engines), so native's real win — eliminating per-op threading
 dispatch — is a small fraction → only 1.66× over gforth-fast. The plan specified a
 **dispatch-bound** loop ("decoder/VM step, arith + `@`/`c@` + a branch") where
 gforth pays NEXT per cheap op and native collapses them to register ops → expect
 3–10×. **Gate is PENDING a dispatch-bound re-bench.** Decisive even now: **4.76×
-over the threaded engine caf actually uses**; the 2× bar is only contested vs
-gforth-fast (an engine caf doesn't use) on an unfavorable loop.
+over the threaded engine habu actually uses**; the 2× bar is only contested vs
+gforth-fast (an engine habu doesn't use) on an unfavorable loop.
 
 **asm gotcha:** in clang's integrated ARM assembler **`;` is a comment**, not a
 statement separator — `mul …; add …` silently drops the `add`. Put one
@@ -847,7 +847,7 @@ ns/byte (all three agree, low byte 203):
 **gforth-fast uses dynamic superinstructions / native-code copying — it compiles
 to native (~0.2ns/op << one NEXT).** So hand-asm is at PARITY, not ahead. Hard
 consequences:
-- **caf-checked words are gforth colon words → running caf under `gforth-fast`
+- **habu-checked words are gforth colon words → running habu under `gforth-fast`
   already gives native speed for free, no backend.** A backend that only matches
   gforth-fast adds nothing on speed.
 - The "unboxing" win doesn't apply vs gforth: gforth cells are raw/untagged
@@ -865,7 +865,7 @@ project on outrunning gforth-fast.
 
 ## Codegen working end-to-end (2026-06-10)
 
-caf generates ARM64 machine code on the Mac, in Forth, no C. Pipeline:
+habu generates ARM64 machine code on the Mac, in Forth, no C. Pipeline:
 Forth body → `cg/templ.fs` (tokenize, stack-op generators over Xds=x19) →
 `cg/icode.fs` IR → `cg/opt.fs` peephole → `cg/asm.fs` encoders → `cg/macho.fs`
 (dynamic Mach-O in a buffer) → `cg/exec.fs` (write + `codesign -f -s -` +
@@ -891,15 +891,15 @@ combinators, locals); then Part F — a native Forth runtime (interpreter +
 dictionary + `evaluate`) so the artifact self-compiles without gforth (the
 stage2≡stage3 fixpoint). Part F is the genuine long pole.
 
-## caf is a working native AOT compiler (2026-06-10)
+## habu is a working native AOT compiler (2026-06-10)
 
-caf (hosted on gforth) compiles checked Forth to **standalone ARM64 macOS CLI
+habu (hosted on gforth) compiles checked Forth to **standalone ARM64 macOS CLI
 executables** — no gforth at runtime, no C, no LLVM. `src/cg/`:
 `icode` (IR+mnemonics) → `opt` (peephole) → `asm` (encoders) → `templ` (prim/
 control generators) → `walk` (tokenize body) → `link` (subroutine ABI, deps,
 multi-word + MAIN) → `rt` (`.`/atoi runtimes) → `macho`/`exec` (emit+sign+run).
 Wired to the checker via `CODEGEN-HOOK` (`forward.fs`/`colon.fs:80`), gated by
-`CODEGEN-ON?`. Front door: `s" /tmp/sq" CAF-EXE SQUARE` → `./sq 12` prints 144.
+`CODEGEN-ON?`. Front door: `s" /tmp/sq" HABU-EXE SQUARE` → `./sq 12` prints 144.
 
 Supported subset (tested, `test/t-cg-*.fs`): DUP DROP SWAP OVER NIP, + - * / MOD
 1+ 1- NEGATE, AND OR XOR, < > = <= >= <> 0= 0< 0>, IF/ELSE/THEN,
@@ -913,7 +913,7 @@ Gotchas hit:
 - **`mov xN, sp` is `add xN, sp, #0`** — reg 31 is SP only as a ldr/str/add base;
   it's XZR for mov/logical.
 - **Load cg under `CHECKING-ON? off`** — its `( idx -- u32 )` comments parse as
-  caf sigs and locals confuse the override; cg is infra, not checked caf.
+  habu sigs and locals confuse the override; cg is infra, not checked habu.
 - **`EMIT-PRIM` must throw silently** (no diagnostic print) — the codegen hook
   validates by catching it, so printing leaks during normal skips.
 - **Subroutine ABI:** Xds (x19) is a global threaded through calls (push/pop
@@ -967,12 +967,12 @@ into the new word, so compiled words are fully flattened/leaf — no calls, no
   After `;` makes the region RX, the NEXT `:` must `mprotect` **RW _before_**
   writing the new dict slot — else the slot store hits read-only memory. (Cost a
   while: a single def worked, the second produced empty output.)
-- **Case-insensitivity bites the emitted FIND.** caf source is UPPER-CASE
+- **Case-insensitivity bites the emitted FIND.** habu source is UPPER-CASE
   (`DUP`); `emit-prims` registers lower-case (`dup`); a raw byte `FIND` matched
   `+ - *` (no letters) but not `DUP/DROP/SWAP`. Stage-1 tests only ever used
   lower-case source, so it hid for ages. Fix: fold `A–Z→a–z` on BOTH bytes in
   FIND's compare (branchless: `sub #'A'; cmp #26; cset cc; lsl #5; orr`). The
-  native Forth must be case-insensitive like gforth + caf itself.
+  native Forth must be case-insensitive like gforth + habu itself.
 
 **Stage 3 (read program from STDIN) — built.** `FORTH-REPL-EXE` emits a Forth
 with no baked source: it `mmap`s a 1 MB RW buffer and loops `read(fd=0,…)` until
@@ -987,7 +987,7 @@ EOF, then runs the same outer interpreter over it. `echo ': SQ DUP * ; 5 SQ .' |
 
 ## Type checker — capability vs. coverage (2026-06-10)
 
-When dogfooding the codegen (`src/cg/`) as typed caf, the question arose whether
+When dogfooding the codegen (`src/cg/`) as typed habu, the question arose whether
 the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 
 - The checker ENGINE is capable: `src/control.fs` already models `IF/ELSE/THEN`,
@@ -1005,7 +1005,7 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   `PICK`/`ROLL`/`DEPTH` (runtime depth). Not worth special-casing yet.
 - Dogfooding payoff is real: the session's bugs (encoder `drop` arity, CF-stack
   order) are exactly stack-effect errors the checker rejects. Charting more prims
-  widens how much of our own code caf can verify. Effect syntax → `docs/effects.md`.
+  widens how much of our own code habu can verify. Effect syntax → `docs/effects.md`.
 - Smell noted: `EFFECT-OF` returns `( a u -- ea eu )` when found but a single `0`
   when absent — asymmetric stack effect; callers must `dup 0= if drop …`.
 
@@ -1044,7 +1044,7 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   operands) and cross-checked against gforth's `asm.fs`: byte-identical machine
   words. So the standalone can encode ARM64 itself — the heart of dot 8. With the
   native checker (6/7), the stencil JIT as in-process allocator (9), and native
-  encoders (8), every algorithmic piece of caf is proven runnable on the standalone.
+  encoders (8), every algorithmic piece of habu is proven runnable on the standalone.
 - Watch hand-entered hex→decimal opcode constants: `0x9B007C00` is `2600500224`,
   not the `2600988672` I first typed — a wrong base silently produces wrong (but
   plausible) machine words. Always cross-check the encoder against the oracle.
@@ -1054,7 +1054,7 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 - The whole codegen pipeline now runs natively on the standalone: an ICode record
   buffer (4-cell records in a CREATE'd array), a peephole optimizer (kills a
   self-move `MOV x5,x5` by marking the record DEAD), and ARM64 encoding — output
-  byte-identical to caf's `asm.fs`. `[MOV x5,x5; ADD x1,x2,x3; MOV x7,x8]` →
+  byte-identical to habu's `asm.fs`. `[MOV x5,x5; ADD x1,x2,x3; MOV x7,x8]` →
   optimize → encode yields exactly the ADD and the live MOV. ICode + asm + a
   peephole, self-hosted — dot 8's substance. The remaining mechanical work is
   porting the *rest* of the encoders/rules (same patterns) and the VS register
@@ -1065,12 +1065,12 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 
 ## Self-host 10 — foundation laid; true self-rebuild is the remaining frontier (2026-06-11)
 
-- caf's Mach-O EMISSION is byte-deterministic: the same source builds to identical
+- habu's Mach-O EMISSION is byte-deterministic: the same source builds to identical
   bytes every time (verified by `cmp`; the signed-binary diff is only codesign's
-  non-deterministic signature, external to caf). Reproducible build = the fixpoint
+  non-deterministic signature, external to habu). Reproducible build = the fixpoint
   prerequisite.
 - Status of dot 10 (stage2==stage3, drop gforth): every ALGORITHMIC component of
-  caf is now proven to run natively on the standalone — the checker (unify/resolve/
+  habu is now proven to run natively on the standalone — the checker (unify/resolve/
   occurs/compose + checked compilation), the codegen (ICode buffer + peephole +
   ARM64 encoders, byte-identical to asm.fs), and the in-process JIT. What's NOT
   done is the literal self-rebuild: the standalone emitting its OWN complete binary.
@@ -1085,7 +1085,7 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   Mach-O executable ITSELF. Added file-I/O syscalls (open/write/close) and ported
   macho.fs to standalone source: it builds the header + 6 load commands, encodes
   the program (exit(42): movz x0,#42; movz x16,#1; svc), and writes the file. After
-  the same external ad-hoc `codesign` caf already shells out to, the OS runs it and
+  the same external ad-hoc `codesign` habu already shells out to, the OS runs it and
   it exits 42. NO gforth in the emission path — the standalone is a self-contained
   native code emitter (checker + codegen + ICode + encoders + Mach-O + file I/O).
 - What this does NOT yet do: emit the WHOLE standalone (the literal stage2==stage3
@@ -1099,8 +1099,8 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 - ACHIEVED: stage2 == stage3, byte-identical. gforth builds the standalone
   (stage2); stage2, run, re-emits its OWN binary (stage3) byte-for-byte; a third
   iteration (stage4) matches too — a stable fixpoint. gforth is dropped from the
-  rebuild loop (only macOS's `codesign` stays, which caf already shells out to).
-- How: `REBUILD` (in the embedded source, selfhost/rebuild.fs) deterministically
+  rebuild loop (only macOS's `codesign` stays, which habu already shells out to).
+- How: `REBUILD` (in the embedded source, selfhost/rebuild.f) deterministically
   rebuilds the Mach-O (header + 6 load commands — a deterministic linker) and
   copies its compiled code from its OWN loaded image. A `rbase` primitive returns
   the saved __TEXT load base (x20 at startup, stored before x20 is repurposed as
@@ -1113,7 +1113,7 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   range"; use `LIT64`. (2) the one-`{:`-block-per-word limit again: REBUILD's
   `{: rb :} … {: clen :} … {: fd :}` wiped earlier locals → it copied zeros. Single
   block (`{: rb clen :}`) + keep `fd` on the stack. Cross-checking the emitted
-  Mach-O against caf's `asm.fs` byte-for-byte (after fixing the `$80000400`
+  Mach-O against habu's `asm.fs` byte-for-byte (after fixing the `$80000400`
   section-flag constant) was what made the fixpoint reachable.
 
 ## Self-host hardening — sound checker + drift guard + gate (2026-06-11)
@@ -1123,9 +1123,9 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   any token that isn't a known prim (control flow, literal, unknown word) sets an
   UNCHECKABLE flag; CHECK returns 1 (uncheckable, published but NOT certified)
   distinct from -1 (well-typed) and 0 (type error). It no longer claims to have
-  checked what it can't. The checker lives in selfhost/checker.fs now (not inline).
+  checked what it can't. The checker lives in selfhost/checker.f now (not inline).
 - Drift guard: the standalone's hand-transcribed encoders + Mach-O builder are
-  cross-checked byte-identical to caf's asm.fs/macho.fs (both emit exit(42), cmp).
+  cross-checked byte-identical to habu's asm.fs/macho.fs (both emit exit(42), cmp).
   test/selfhost-all.fs is the gate: sound checker + drift + the self-rebuild fixpoint.
 
 ## Standalone — comments + DO/LOOP/I (2026-06-11)

@@ -1,5 +1,5 @@
 \ t-pickroll.fs — literal-argument PICK/ROLL fold to a concrete shuffle; dynamic
-\ index stays untypeable (E-UNCHECKED). Loaded by all.fs (after caf.fs).
+\ index stays untypeable (E-UNCHECKED). Loaded by all.fs (after habu.fs).
 
 \ N PICK copies the N-deep item:  0 PICK = DUP, 1 PICK = OVER, 2 PICK = third
 : P-DUP   s" PDUP"  s" R a -- R a a"       s" 0 PICK" CHECK-DEF ;

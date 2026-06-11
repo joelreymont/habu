@@ -1,4 +1,4 @@
-\ walk.fs — token-driven code GENERATOR in the standalone (caf's memory-path):
+\ walk.fs — token-driven code GENERATOR in the standalone (habu's memory-path):
 \ compiles a Forth body string to native ARM64 using asm.fs encoders + icode.fs.
 \ Data stack lives below sp in the generated code: x19=DSP (grows down, top at [x19]);
 \ x9/x10 scratch. Each op's fixed instruction sequence is a DATA template (GTAB) so

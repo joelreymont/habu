@@ -1,4 +1,4 @@
-\ crash.fs — in-binary crash handler for caf-built binaries. Installs a signal
+\ crash.fs — in-binary crash handler for habu-built binaries. Installs a signal
 \ handler (SIGILL/TRAP/BUS/SEGV) that dumps the faulting registers (from the
 \ signal ucontext) to stderr and exits, so a crash in generated code is
 \ self-diagnosing — no external debugger (lldb can't launch our minimal Mach-O
@@ -13,7 +13,7 @@
 require asm.fs                 \ icode mnemonics (ADR, STR, SVC, ...)
 
 variable Lcrashh   variable Lhex   variable Lhdr
-s\" caf-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR-HDR
+s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR-HDR
 
 40 constant SA-SIGINFO
 48 constant MCTX-OFF           \ ucontext -> mcontext pointer offset (macOS arm64)

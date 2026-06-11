@@ -9,13 +9,13 @@ require ../src/cg/forth.fs
 require ../src/cg/exec.fs
 require sh-driver.fs
 : SRC+ ( -- )  0 CL !
-   s" selfhost/sha256.fs" +F  s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F
-   s" selfhost/mnem.fs" +F  s" selfhost/util.fs" +F  s" selfhost/checker.fs" +F
+   s" selfhost/sha256.f" +F  s" selfhost/asm.f" +F  s" selfhost/icode.f" +F
+   s" selfhost/mnem.f" +F  s" selfhost/util.f" +F  s" selfhost/checker.f" +F
    s" : HOOK CHECK ; ' HOOK set-check " +B            \ DOGFOOD: every word below is
-   s" selfhost/walk.fs" +F                            \ checked as the compiler compiles
-   s" selfhost/rt.fs" +F  s" selfhost/crash.fs" +F  s" selfhost/macho.fs" +F   \ itself;
-   s" selfhost/sign2.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/prof.fs" +F  s" selfhost/vsjit.fs" +F  s" selfhost/engine2.fs" +F
-   s" selfhost/stage2.fs" +F ;                        \ a type error rejects -> exit 70
+   s" selfhost/walk.f" +F                            \ checked as the compiler compiles
+   s" selfhost/rt.f" +F  s" selfhost/crash.f" +F  s" selfhost/macho.f" +F   \ itself;
+   s" selfhost/sign2.f" +F  s" selfhost/habu1.f" +F  s" selfhost/prof.f" +F  s" selfhost/vsjit.f" +F  s" selfhost/habu2.f" +F
+   s" selfhost/stage2.f" +F ;                        \ a type error rejects -> exit 70
 \ write SRC where stage1 will read it back as data
 : SAVE-SRC ( -- )
    s" /tmp/stage2-src" w/o create-file throw {: fd :}
@@ -23,7 +23,7 @@ require sh-driver.fs
 \ reference: gforth builds + SIGNS the engine image for SRC (same fixed identifier)
 : REF ( -- )
    CBUF CL @ EMIT-FORTH  BUILD-MACHO
-   s" stage2" SIG-ID 2!  CODESIG
+   s" hb" SIG-ID 2!  CODESIG
    s" /tmp/stage2-ref" w/o create-file throw {: fd :}
    MBUF MLEN @ fd write-file throw  fd close-file throw ;
 SRC+  SAVE-SRC  REF

@@ -12,7 +12,7 @@ require cgquot.fs                        \ AOT quotation/combinator inlining
 require cgloop.fs                        \ register-resident DO..LOOP mechanism
 require crash.fs                         \ in-binary crash handler (register dump)
 
-\ Non-primitive token hook: link.fs sets this to emit a BL to another caf word
+\ Non-primitive token hook: link.fs sets this to emit a BL to another habu word
 \ (or RECURSE). Default: not a call.
 defer EMIT-CALL   ( a u -- handled? )
 :noname ( a u -- f ) 2drop false ;  is EMIT-CALL
@@ -155,10 +155,10 @@ defer LOOP-HOOK   ( a u -- f )
 \ On a codegen throw, dump the generator's state (it's otherwise opaque — the
 \ failing token, IR size, and VS/loop bookkeeping pinpoint where it broke).
 : CG-DIAG ( -- )
-   cr ." *** caf codegen state:  #IC=" #IC @ .  ." VSP=" VSP @ .
+   cr ." *** habu codegen state:  #IC=" #IC @ .  ." VSP=" VSP @ .
    ." CARRY-N=" CARRY-N @ .  ." LOOP-DEPTH=" LOOP-DEPTH @ .
    ." WB-pos=" WB-CUR @ WB-END @ - . cr ;
 
 : NATIVE-EVAL ( ba bu input -- exit-code )
    ['] COMPILE-WORD catch ?dup if  CG-DIAG  throw  then
-   s" /tmp/caf-word" RUN-EXE ;
+   s" /tmp/habu-word" RUN-EXE ;

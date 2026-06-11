@@ -1,4 +1,4 @@
-# Forth Standards (caf)
+# Forth Standards (habu)
 
 How we write Forth in this repo. **BLOCKING** — code that violates these is wrong,
 not a matter of taste. Target is Gforth 0.7.9; gforth-specific gotchas are at the

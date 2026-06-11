@@ -4,16 +4,16 @@
 require sh-driver.fs
 : BUILD-LOOP {: input -- }
    0 CL !
-   s" selfhost/sha256.fs"   slurp-file +B   s"  " +B
-   s" selfhost/asm.fs"      slurp-file +B   s"  " +B
-   s" selfhost/icode.fs"    slurp-file +B   s"  " +B
-   s" selfhost/util.fs"    slurp-file +B   s"  " +B
-   s" selfhost/walk.fs"     slurp-file +B   s"  " +B
-   s" selfhost/vs.fs"       slurp-file +B   s"  " +B
+   s" selfhost/sha256.f"   slurp-file +B   s"  " +B
+   s" selfhost/asm.f"      slurp-file +B   s"  " +B
+   s" selfhost/icode.f"    slurp-file +B   s"  " +B
+   s" selfhost/util.f"    slurp-file +B   s"  " +B
+   s" selfhost/walk.f"     slurp-file +B   s"  " +B
+   s" selfhost/vs.f"       slurp-file +B   s"  " +B
    s" : INPUTVAL " +B  input 0 <# #s #> +B  s"  ; " +B
-   s" selfhost/macho.fs"    slurp-file +B   s"  " +B
-   s" selfhost/sign2.fs"    slurp-file +B   s"  " +B
-   s" selfhost/loop-demo.fs" slurp-file +B  s"  GO" +B
+   s" selfhost/macho.f"    slurp-file +B   s"  " +B
+   s" selfhost/sign2.f"    slurp-file +B   s"  " +B
+   s" selfhost/loop-demo.f" slurp-file +B  s"  GO" +B
    CBUF CL @ NF-RUN ;
 : RC ( -- n )  s" /tmp/sh-loop-bin; echo $? > /tmp/sh-loop-rc" system
    s" /tmp/sh-loop-rc" slurp-file  s>number? 2drop ;

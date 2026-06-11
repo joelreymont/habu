@@ -1,4 +1,4 @@
-# caf — Checked Forth: Implementation Plan
+# habu — Checked Forth: Implementation Plan
 
 A complete checked Forth, self-hosted in Gforth 0.7.9. Checked code is ordinary
 Forth that fails to compile unless its body's inferred stack effect unifies with
@@ -236,10 +236,10 @@ Every cross-file word, with its stack effect. Forward-declared in **`forward.fs`
 ## File layout & load order
 
 ```
-caf/  AGENTS.md LESSONS.md PLAN.md README.md .gitignore  docs/forth.md
+habu/  AGENTS.md LESSONS.md PLAN.md README.md .gitignore  docs/forth.md
   src/  config forward arena types rows effects-repr diag-state unify
         render sigparse db prims diag checker control locals quots defining
-        capture colon  (+ caf.fs)
+        capture colon  (+ habu.fs)
   test/ tester.fs all.fs t-<each>.fs   examples.fs
 ```
 Each file is one concern (no file bundles unrelated responsibilities — see

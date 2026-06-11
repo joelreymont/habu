@@ -1,16 +1,16 @@
-# caf native code generation
+# habu native code generation
 
-caf compiles checked Forth to **standalone ARM64 macOS executables** — entirely
+habu compiles checked Forth to **standalone ARM64 macOS executables** — entirely
 in Forth, no C and no LLVM. The compiler is hosted on gforth; its *output* is a
 self-contained, dyld-loaded, ad-hoc-signed Mach-O that runs with no gforth.
 
 ## Quick start
 
 ```forth
-gforth caf-cg.fs            \ checker + colon override + codegen
+gforth habu-cg.fs            \ checker + colon override + codegen
 CODEGEN-ON? on              \ record checked definitions for codegen
 : SQUARE ( i64 -- i64 ) DUP * ;
-s" /tmp/sq" CAF-EXE SQUARE  \ emit a standalone CLI executable
+s" /tmp/sq" HABU-EXE SQUARE  \ emit a standalone CLI executable
 bye
 ```
 ```sh
@@ -70,7 +70,7 @@ calls + recursion), `t-cg-io.fs` (`.` output), `t-cg-cli.fs` (standalone CLI).
 
 ## Not yet
 
-The compiler still runs on gforth. A **fully self-hosting** caf (the compiler
+The compiler still runs on gforth. A **fully self-hosting** habu (the compiler
 itself compiled to native, gforth dropped) needs a native Forth runtime —
 interpreter, dictionary, `evaluate` — which is the remaining long pole
 (`CODEGEN-PLAN.md` Part F).

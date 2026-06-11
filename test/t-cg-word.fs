@@ -53,7 +53,7 @@ T{ s" SWAP +!" COMPILES? -> true }T
 T{ s" 3 /"   12 NATIVE-EVAL -> 4 }T            \ 12/3
 T{ s" 5 MOD" 17 NATIVE-EVAL -> 2 }T            \ 17 mod 5
 : DIVZ-WSTAT ( -- wstat )                      \ build `0 /`, run, return raw wait-status
-   s" 0 /" 10 COMPILE-WORD  s" /tmp/caf-divz" 2dup EMIT-EXE
+   s" 0 /" 10 COMPILE-WORD  s" /tmp/habu-divz" 2dup EMIT-EXE
    cmd( [char] ' c+ cs+ [char] ' c+ )run ;
 \ Div-by-zero traps (SIGTRAP); the in-binary crash handler (crash.fs) catches it
 \ and exit(134)s, so the OS sees a clean exit 134, not a signal-kill.
@@ -149,7 +149,7 @@ T{ s" 1 SWAP 0 ?DO DUP 13 LSHIFT XOR DUP 7 RSHIFT XOR DUP 17 LSHIFT XOR LOOP" 20
 \ handler, which dumps registers to stderr and exit(134) (not a silent signal
 \ death). Stderr is redirected here so the suite stays quiet. ---
 : CRASH-CODE ( a u -- code )
-   10 COMPILE-WORD  s" /tmp/caf-crash" 2dup EMIT-EXE
+   10 COMPILE-WORD  s" /tmp/habu-crash" 2dup EMIT-EXE
    cmd(  [char] ' c+  cs+  [char] ' c+  s"  2>/dev/null" cs+  )run  WSTAT>RC ;
 T{ s" 0 @"        CRASH-CODE -> 134 }T          \ load from NULL -> SIGSEGV -> handler
 T{ s" 5"          CRASH-CODE ->   5 }T          \ non-crashing path unaffected

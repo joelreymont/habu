@@ -1,4 +1,4 @@
-# caf — Checked Forth
+# habu — Checked Forth
 
 A complete, **checked Forth** hosted by and self-hosted in Gforth. Checked code
 is ordinary Forth that fails to compile unless its body's inferred stack effect
@@ -22,7 +22,7 @@ Gforth **0.7.9** (dev). Homebrew ships 0.7.3; build 0.7.9 from source — recipe
 ## Use
 
 ```sh
-gforth caf.fs          # loads the checker + the ':' override
+gforth habu.fs          # loads the checker + the ':' override
 ```
 Then `: NAME ( typed-effect ) body ;` is checked; `: NAME body ;` (no typed
 effect) is the ordinary Forth colon, untouched.
@@ -65,7 +65,7 @@ metaprogramming).
 - [`PLAN.md`](PLAN.md) — the design (type system, unification, checking pipeline).
 - [`docs/forth.md`](docs/forth.md) — Forth coding standards for this repo.
 - [`LESSONS.md`](LESSONS.md) — build recipe + findings.
-- `src/` — one file per concern; `caf-lib.fs` is the engine, `caf.fs` adds the
+- `src/` — one file per concern; `habu-lib.fs` is the engine, `habu.fs` adds the
   `:` override. `test/` — `T{ … }T` tests, `all.fs` runs them all.
 
 ## Combinators
@@ -80,7 +80,7 @@ run:
 
 ## Self-host & trusted code
 
-Real checker logic is re-checked **through caf's own checker**
+Real checker logic is re-checked **through habu's own checker**
 (`test/t-selfhost.fs`) and verified to compute the native result:
 - the complete **term encoding** (type- and stack-term bit encodings),
 - **concrete unification** (`C-UNICON` — the concrete case of `UNIFY-TYPE`),

@@ -5,15 +5,15 @@
 require sh-driver.fs
 : GEN ( -- )
    0 CL !
-   s" selfhost/sha256.fs"   slurp-file +B   s"  " +B
-   s" selfhost/asm.fs"      slurp-file +B   s"  " +B
-   s" selfhost/icode.fs"    slurp-file +B   s"  " +B
-   s" selfhost/util.fs"    slurp-file +B   s"  " +B
-   s" selfhost/walk.fs"     slurp-file +B   s"  " +B
-   s" selfhost/vs.fs"       slurp-file +B   s"  " +B
-   s" selfhost/macho.fs"    slurp-file +B   s"  " +B
-   s" selfhost/sign2.fs"    slurp-file +B   s"  " +B
-   s" selfhost/mem-demo.fs" slurp-file +B
+   s" selfhost/sha256.f"   slurp-file +B   s"  " +B
+   s" selfhost/asm.f"      slurp-file +B   s"  " +B
+   s" selfhost/icode.f"    slurp-file +B   s"  " +B
+   s" selfhost/util.f"    slurp-file +B   s"  " +B
+   s" selfhost/walk.f"     slurp-file +B   s"  " +B
+   s" selfhost/vs.f"       slurp-file +B   s"  " +B
+   s" selfhost/macho.f"    slurp-file +B   s"  " +B
+   s" selfhost/sign2.f"    slurp-file +B   s"  " +B
+   s" selfhost/mem-demo.f" slurp-file +B
    CBUF CL @ NF-RUN ;
 : RC ( -- n )  s" /tmp/sh-mem-bin; echo $? > /tmp/sh-mem-rc" system
    s" /tmp/sh-mem-rc" slurp-file  s>number? 2drop ;

@@ -1,9 +1,9 @@
-\ t-sh-asm.fs — the standalone's ARM64 encoders (selfhost/asm.fs) match caf's, byte
-\ for byte. caf computes the reference encodings; the standalone computes its own;
+\ t-sh-asm.fs — the standalone's ARM64 encoders (selfhost/asm.f) match habu's, byte
+\ for byte. habu computes the reference encodings; the standalone computes its own;
 \ assert identical. First milestone of the codegen port. Run: gforth test/t-sh-asm.fs -e bye
 require ../src/cg/asm.fs
 require sh-driver.fs
-\ caf reference encoders (operand form; same base constants + bit layout as asm.fs)
+\ habu reference encoders (operand form; same base constants + bit layout as asm.fs)
 : R3 ( base rd rn rm -- w )  >r >r >r  r> swap r> 5 lshift or r> 16 lshift or or ;
 \ build the expected decimal-per-line string the standalone's . prints
 create EB16 65536 allot   variable EL
@@ -39,8 +39,8 @@ create EB16 65536 allot   variable EL
    $1E600800 0 or 1 5 lshift or 2 16 lshift or n+ ;
 : ASM-OUT ( -- a u )
    0 CL !
-   s" selfhost/asm.fs"      slurp-file +B   s"  " +B
-   s" selfhost/asm-demo.fs" slurp-file +B
+   s" selfhost/asm.f"      slurp-file +B   s"  " +B
+   s" selfhost/asm-demo.f" slurp-file +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;
 REF
 T{ ASM-OUT  EB16 EL @  compare 0= -> true }T

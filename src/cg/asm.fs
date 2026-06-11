@@ -3,10 +3,10 @@
 \ stencils.zig). Two passes: PASS1 sizes records and binds labels; PASS2
 \ encodes via a table indexed by op tag. Branches and immediates are
 \ range-checked — out of range throws, never wraps. The pure register-form
-\ recipes are dogfooded: written as TYPED caf and verified by caf's own checker;
+\ recipes are dogfooded: written as TYPED habu and verified by habu's own checker;
 \ the return-stack/memory/table machinery stays TRUSTED (unchecked).
 
-require ../../caf.fs        \ the checker, so we can check our own recipes
+require ../../habu.fs        \ the checker, so we can check our own recipes
 CHECKING-ON? off            \ metaprogramming (IR mutators, tables, memory) is unchecked
 require icode.fs
 
@@ -50,7 +50,7 @@ variable ABUF  variable WPOS
 : LBL@ ( lbl -- w )  cells LBLPOS + @  dup 0< if E-UNDEF-LBL throw then ;
 : BDELTA ( i -- d )  IC-A LBL@ WPOS @ - ;   \ words, branch-relative
 
-\ --- dogfood: register-form recipes as TYPED caf, checked by caf itself ---
+\ --- dogfood: register-form recipes as TYPED habu, checked by habu itself ---
 \ Chart the trusted leaves the checked recipes call (they do memory/pointer work).
 : CHART-EFF ( eff-a eff-u na nu -- )  2>r ARENA-RESET PARSE-SIG 2r> CHART ;
 s" R i64 -- R i64" s" IC-A"  CHART-EFF    s" R i64 -- R i64" s" IC-B" CHART-EFF

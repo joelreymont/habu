@@ -1,5 +1,5 @@
-\ t-sh-crash.fs — the crash-handler port (selfhost/crash.fs) emits the SAME words
-\ as caf's src/cg/crash.fs: hex printer + handler + sigaction installer, golden
+\ t-sh-crash.fs — the crash-handler port (selfhost/crash.f) emits the SAME words
+\ as habu's src/cg/crash.fs: hex printer + handler + sigaction installer, golden
 \ word-for-word. Run: gforth test/t-sh-crash.fs -e bye
 require ../src/cg/templ.fs
 require ../src/cg/crash.fs
@@ -16,8 +16,8 @@ create EB 65536 allot  variable EL
    RBUF ASSEMBLE 4 /  0 ?do i w@ n+ loop ;
 : GEN ( -- a u )
    0 CL !
-   s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F  s" selfhost/mnem.fs" +F
-   s" selfhost/util.fs" +F  s" selfhost/walk.fs" +F  s" selfhost/crash.fs" +F
+   s" selfhost/asm.f" +F  s" selfhost/icode.f" +F  s" selfhost/mnem.f" +F
+   s" selfhost/util.f" +F  s" selfhost/walk.f" +F  s" selfhost/crash.f" +F
    s" : GO ASM-INIT NEWLBL Lcrashh ! NEWLBL Lhex ! NEWLBL Lhdr ! " +B
    s" g-install-crash emit-hex emit-crash-handler " +B
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B

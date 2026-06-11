@@ -1,4 +1,4 @@
-# Minimal dynamic Mach-O for caf (macOS ARM64)
+# Minimal dynamic Mach-O for habu (macOS ARM64)
 
 Spec for `src/cg/macho.fs` (Phase 0.1). Static binaries are SIGKILLed by AMFI
 (proven); the artifact must be **dynamic** (dyld-loaded) and **ad-hoc signed**,

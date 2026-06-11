@@ -65,7 +65,7 @@ variable BYP
    BEGIN BYP @ CODE - 3 and 0 <> WHILE  0 BYP @ c!  BYP @ 1 + BYP !  REPEAT
    BYP @ CODE - 4 / CP ! ;
 \ --- 64-bit constant synthesis: minimal MOVZ/MOVN + MOVK chain (byte-parity with
-\ caf's LIT-Z/LIT-N in src/cg/asm.fs — the stage2 fixpoint depends on it) ---
+\ habu's LIT-Z/LIT-N in src/cg/asm.fs — the stage2 fixpoint depends on it) ---
 variable LCH  variable LFI  variable LCI
 : CHUNK16 {: x n :}  x n 16 * rshift $FFFF and ;
 : NZC {: x :}  0 LCH !  0 BEGIN dup 4 < WHILE

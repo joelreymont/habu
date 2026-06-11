@@ -1,4 +1,4 @@
-\ prof.fs — in-binary SAMPLING PROFILER for caf-built binaries, in Forth (like
+\ prof.fs — in-binary SAMPLING PROFILER for habu-built binaries, in Forth (like
 \ crash.fs). `n prof-on` installs a SIGALRM handler + a 1 ms interval timer; each
 \ tick maps the interrupted pc to the dict word containing it (addr <= pc <
 \ addr+clen) and bumps that word's counter. After n samples it dumps "name count"

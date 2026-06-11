@@ -1,8 +1,8 @@
 \ asm-checked.fs — the ARM64 encoder core as CHECKED, typed Forth. Each word carries a
-\ caf stack-effect signature caf's checker CERTIFIES (pure bit math: lshift/or/rshift).
-\ The encoders, written in checked Forth — dogfooding caf on its own toolchain. caf
+\ habu stack-effect signature habu's checker CERTIFIES (pure bit math: lshift/or/rshift).
+\ The encoders, written in checked Forth — dogfooding habu on its own toolchain. habu
 \ type vars are single letters, so sigs read ( a b c -- d ); operand meaning is in the
-\ name/comment. Load under caf (src/caf.fs); correctness cross-checked vs asm.fs.
+\ name/comment. Load under habu (src/habu.fs); correctness cross-checked vs asm.fs.
 \ 3-operand shifted-register ( rd rn rm -- w ): w = base | rd | rn<<5 | rm<<16
 : A-ADD  ( a b c -- d )  16 lshift swap 5 lshift or swap or 2332033024 or ;
 : A-SUB  ( a b c -- d )  16 lshift swap 5 lshift or swap or 3405774848 or ;

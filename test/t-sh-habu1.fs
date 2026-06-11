@@ -1,7 +1,7 @@
-\ t-sh-engine.fs — engine-builder port, part 1: the standalone emits the engine's
+\ t-sh-habu1.fs — engine-builder port, part 1: the standalone emits the engine's
 \ PRIMS + helper routines (cemit/tok/prot/flush/find/num) + seed DICT and the words
-\ must match caf's src/cg/forth.fs emitters exactly (same label-allocation order on
-\ both sides). Run: gforth test/t-sh-engine.fs -e bye
+\ must match habu's src/cg/forth.fs emitters exactly (same label-allocation order on
+\ both sides). Run: gforth test/t-sh-habu1.fs -e bye
 require ../src/cg/forth.fs
 require sh-driver.fs
 create RBUF 65536 allot
@@ -18,9 +18,9 @@ create EB 262144 allot  variable EL
    RBUF ASSEMBLE 4 /  0 ?do i w@ n+ loop ;
 : GEN ( -- a u )
    0 CL !
-   s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F  s" selfhost/mnem.fs" +F
-   s" selfhost/util.fs" +F  s" selfhost/walk.fs" +F  s" selfhost/rt.fs" +F
-   s" selfhost/engine.fs" +F
+   s" selfhost/asm.f" +F  s" selfhost/icode.f" +F  s" selfhost/mnem.f" +F
+   s" selfhost/util.f" +F  s" selfhost/walk.f" +F  s" selfhost/rt.f" +F
+   s" selfhost/habu1.f" +F
    s" : GO ASM-INIT " +B
    s" NEWLBL Lcemit ! NEWLBL Ltok ! NEWLBL Lprot ! NEWLBL Lflush ! " +B
    s" NEWLBL Lfind ! NEWLBL Lnum ! NEWLBL Lncount ! NEWLBL Ldict ! " +B

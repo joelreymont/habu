@@ -42,7 +42,7 @@ create KEYS 512 allot   variable #KEYS   variable KEY-IX
 
 \ type a complete, well-typed def (no Enter; Ctrl-D ends) -> live ✓ effect renders
 s\" : SQ ( i64 -- i64 ) DUP * ;" DRIVE
-T{ s" caf> "                       SHOWS -> true }T   \ prompt drawn
+T{ s" habu> "                       SHOWS -> true }T   \ prompt drawn
 T{ s" : SQ ( i64 -- i64 ) DUP * ;" SHOWS -> true }T   \ buffer echoed
 T{ s" ✓ SQ"                        SHOWS -> true }T   \ live success marker + name
 T{ s" i64 -- i64"                  SHOWS -> true }T   \ inferred effect shown

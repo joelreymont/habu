@@ -1,7 +1,7 @@
 \ disasm-core.fs — the ARM64 DECODE core as CHECKED, typed Forth: the pure field-
 \ extraction + sign-extension math behind the disassembler (the inverse of the encoder
-\ core). caf certifies each (pure shift/and/or/-). The I/O (mnemonic printing) stays in
-\ disasm.fs; this is the part that can be — and is — type-checked. Load under caf.
+\ core). habu certifies each (pure shift/and/or/-). The I/O (mnemonic printing) stays in
+\ disasm.fs; this is the part that can be — and is — type-checked. Load under habu.
 \ extract a bitfield ( word lo width -- field ):
 : D-FLD ( a b c -- d )  >r  rshift  r> 1 swap lshift 1 - and ;
 : D-RD  ( a -- b )  31 and ;                 \ bits 0..4

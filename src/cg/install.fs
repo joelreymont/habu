@@ -3,7 +3,7 @@
 \ recorded in CODE-TABLE; bodies using unmodeled words are skipped silently
 \ (all-or-nothing, never breaks the definition). RUN-NATIVE (link.fs) compiles a
 \ recorded word + its callees to a native Mac executable and runs it.
-\ Load via caf-cg.fs (after the checker + colon override).
+\ Load via habu-cg.fs (after the checker + colon override).
 
 require link.fs
 

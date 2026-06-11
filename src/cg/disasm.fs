@@ -1,7 +1,7 @@
 \ disasm.fs — a small ARM64 disassembler in Forth covering the instruction set
-\ caf emits. Decodes a u32 to readable text — used to verify emitted code (incl.
+\ habu emits. Decodes a u32 to readable text — used to verify emitted code (incl.
 \ the native Forth's runtime-emitted code) without otool. Mirrors src/cg/asm.fs.
-\ It is a debugging aid: accurate for caf's own forms, ".word" for the rest.
+\ It is a debugging aid: accurate for habu's own forms, ".word" for the rest.
 
 require asm.fs
 

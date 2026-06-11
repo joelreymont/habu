@@ -1,4 +1,4 @@
-\ config.fs — caf constants: limits, term tags, type codes, THROW codes.
+\ config.fs — habu constants: limits, term tags, type codes, THROW codes.
 \ No magic numbers elsewhere; everything symbolic/tunable lives here.
 \ Naming: TC-* type codes avoid gforth built-ins (CELL CHAR collide).
 

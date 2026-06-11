@@ -1,4 +1,4 @@
-\ link.fs — multi-word programs with a subroutine ABI. Each caf word becomes a
+\ link.fs — multi-word programs with a subroutine ABI. Each habu word becomes a
 \ native subroutine over the shared data stack (Xds=x19, threaded through calls);
 \ words call each other with BL, RECURSE calls self, non-leaf words save/restore
 \ x30. BUILD-PROGRAM collects a root word's transitive callees, lays them out in
@@ -90,7 +90,7 @@ is EMIT-CALL
 : RUN-NATIVE ( input "name" -- exit-code )
    parse-name WORD-PFA dup 0= if E-NO-ENC throw then
    swap BUILD-PROGRAM
-   s" /tmp/caf-prog" RUN-EXE ;
+   s" /tmp/habu-prog" RUN-EXE ;
 
 \ --- standalone CLI: read argv[1], call the word, print the result, exit 0 ---
 22 constant ARGV
@@ -110,8 +110,8 @@ is EMIT-CALL
    EMIT-DOT  EMIT-ATOI  OPTIMIZE ;
 
 \ Emit a standalone CLI executable `outfile` for a recorded word `name`.
-\ Usage:  s" /tmp/sq" CAF-EXE SQUARE   then   ./sq 7
-: CAF-EXE ( outfile-a outfile-u "name" -- )
+\ Usage:  s" /tmp/sq" HABU-EXE SQUARE   then   ./sq 7
+: HABU-EXE ( outfile-a outfile-u "name" -- )
    parse-name WORD-PFA dup 0= if E-NO-ENC throw then
    BUILD-CLI
    EMIT-EXE ;
