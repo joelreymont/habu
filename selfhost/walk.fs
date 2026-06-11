@@ -10,8 +10,6 @@ variable RDP
 : RD32 {: p :}  p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 \ GFIND ( a u -- ) : if token (a,u) is in GTAB, emit its template words; sets GHIT.
 variable GHIT  variable GP  variable GNL  variable GNP  variable GCNT  variable GWI
-variable SEQ
-: STR= {: a u b v :} u v = IF -1 SEQ ! 0 BEGIN dup u < WHILE dup a + c@ over b + c@ <> IF 0 SEQ ! THEN 1 + REPEAT drop ELSE 0 SEQ ! THEN SEQ @ ;
 : GFIND {: a u :}  0 GHIT !  GTAB GP !
    BEGIN GP @ c@ dup WHILE                          \ nlen != 0
      GNL !  GP @ 1 + GNP !

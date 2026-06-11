@@ -5,6 +5,7 @@
 require sh-driver.fs
 : SOUND-OUT ( -- a u )
    0 CL !
+   s" selfhost/util.fs"    slurp-file +B   s"  " +B
    s" selfhost/checker.fs"    slurp-file +B   s"  " +B
    s" selfhost/check-demo.fs" slurp-file +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;

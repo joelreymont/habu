@@ -31,8 +31,6 @@ variable FV
 variable OK   variable DCUR   variable UNCK
 : NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! FRESH MK-ROW DCUR ! ;
 : STEP {: din dout :} DCUR @ din UNIFY OK @ and OK ! dout DCUR ! ;
-variable SEQ
-: STR= {: a u b v :} u v = IF -1 SEQ ! 0 BEGIN dup u < WHILE dup a + c@ over b + c@ <> IF 0 SEQ ! THEN 1 + REPEAT drop ELSE 0 SEQ ! THEN SEQ @ ;
 
 \ --- generic signature parser: build a step effect from a textual " in -- out "
 \ stack effect. A single lowercase letter is a polymorphic type variable (shared

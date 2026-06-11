@@ -5,7 +5,7 @@
 require sh-driver.fs
 : CG+ ( -- )  0 CL !
    s" selfhost/sha256.fs" +F  s" selfhost/macho-min.fs" +F  s" selfhost/sign.fs" +F
-   s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F  s" selfhost/walk.fs" +F
+   s" selfhost/util.fs" +F  s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F  s" selfhost/walk.fs" +F
    s" selfhost/vs.fs" +F ;
 : GEN-RC ( frag-a frag-u -- code )         \ codegen stack + fragment -> build+run, exit code
    CG+ +B  CBUF CL @ s" /tmp/sh-bal-bin" FORTH-EXE

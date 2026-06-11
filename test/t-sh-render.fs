@@ -4,6 +4,7 @@
 require sh-driver.fs
 : RENDER-OUT ( -- a u )
    0 CL !
+   s" selfhost/util.fs"    slurp-file +B   s"  " +B
    s" selfhost/checker.fs"     slurp-file +B   s"  " +B
    s" selfhost/render.fs"      slurp-file +B   s"  " +B
    s" selfhost/render-demo.fs" slurp-file +B

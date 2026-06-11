@@ -10,6 +10,7 @@ require sh-driver.fs
    s" selfhost/sign.fs"     slurp-file +B   s"  " +B
    s" selfhost/asm.fs"      slurp-file +B   s"  " +B
    s" selfhost/icode.fs"    slurp-file +B   s"  " +B
+   s" selfhost/util.fs"    slurp-file +B   s"  " +B
    s" selfhost/walk.fs"     slurp-file +B   s"  " +B
    s" selfhost/vs.fs"       slurp-file +B   s"  " +B
    s" selfhost/mem-demo.fs" slurp-file +B
