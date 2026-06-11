@@ -3,6 +3,26 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## The engine port: golden byte-parity is the only test that matters (2026-06-11)
+
+Porting src/cg (gforth-hosted) emitters into the subset (selfhost/): the working
+method is a GOLDEN test per file — gforth emits via its real assembler, the standalone
+emits via the ported one, compare word-for-word (or byte-for-byte files for Mach-O).
+This caught, in one day: the selfhost D26 branch mask was 24-bit not 26 (every backward
+B/BL mis-encoded — never seen because vs/walk only emit backward CBZ/BCOND); a
+zero-looping m-zeros; and `28 constant CP` in engine.fs shadowing icode's CP variable
+(compile-time binding protects earlier callers, but later code reading `CP @` loads
+from address 28 — SIGSEGV that the in-binary crash handler diagnosed). Port rules that
+keep transcription mechanical: a mnemonic layer (mnem.fs) so lines read identically to
+src/cg; ALL `NEWLBL {: x :}` pairs merged into ONE locals group at the word top (label
+ids don't affect output bytes, only LBL,/branch pairing); `?do` -> BEGIN/WHILE with
+zero-trip guards; `>r`/`move`/`2constant`/`abort"` -> variables/byte-loops/die. LIT64's
+minimal movz/movn+movk selection is ported logic-exact and golden-tested over 15 probe
+values — stage2 byte-identity hinges on it. Done so far, all byte-identical: encoders,
+LIT64, rt (print/atoi), crash handler, FULL Mach-O builder, engine part 1 (53 prims +
+tok/find/num/prot/flush/cemit + seed dict, 1611 words). Remaining: keyword JIT +
+emit-main + EMIT-FORTH, then the stage2 byte-compare.
+
 ## Adversarial review pays: three real bugs in "green" code (2026-06-11)
 
 All tests green, then an adversarial pass found: (1) interpret-mode undefined words
