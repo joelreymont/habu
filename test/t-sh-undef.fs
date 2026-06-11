@@ -9,3 +9,5 @@ require tester.fs
    s" /tmp/nf-u-rc" slurp-file s>number? 2drop ;
 T{ s" : GO 5 zork drop ; GO"   RC-OF -> 70 }T   \ undefined zork -> exit 70
 T{ s" : GO 6 7 * . ; GO"       RC-OF ->  0 }T   \ all defined -> ok (prints 42, exit 0)
+T{ s" 1 2 zork . ."            RC-OF -> 70 }T   \ undefined in INTERPRET mode -> exit 70 too
+T{ s" variable V 9 V ! V @ ."  RC-OF ->  0 }T   \ defined interpret-mode program still runs

@@ -699,7 +699,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
       12 lnotnum CBZ,  11 g-push  lmain B,
       lnotnum LBL,
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,            \ FIND
-      13 lmain CBZ,                                          \ unknown -> skip
+      13 lundef CBZ,                                         \ unknown -> error (exit 70)
       11 BLR,  lmain B,                                      \ EXECUTE
       \ ---------------- COMPILE ----------------
    lcompile LBL,
