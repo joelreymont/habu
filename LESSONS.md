@@ -3,6 +3,29 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Adversarial review pays: three real bugs in "green" code (2026-06-11)
+
+All tests green, then an adversarial pass found: (1) interpret-mode undefined words
+were still silently SKIPPED (only compile mode errored) — making it error immediately
+caught a live bug: disasm-demo.fs comments began `\\` (2-char token, not the 1-char
+comment word), compiling to nothing for weeks. (2) c-call emitted BL for cross-region
+calls — JIT words live in a kernel-placed mmap, prims in __TEXT; BL's +-128MB imm26
+silently truncates if they land far apart. Tests passed only because this machine maps
+them close. Fixed: absolute `movz/movk x16 + blr x16` (x16 = IP0, the ABI call
+scratch). (3) NUMBER? probed byte[idx] for '$' before the idx<len bounds check — a
+bare `-` as the last token of the baked source (end of __TEXT) reads past the mapping.
+Lesson: "gate is green" tests the inputs you wrote, not the assumptions you baked in.
+Attack address-space assumptions, mode asymmetries (interpret vs compile), and
+boundary reads explicitly. Remaining holes found are dotted (frame collision, IF-depth
+balance, BODYBUF truncation, catch/throw-across-frames test gap).
+
+## Process: jj new immediately after every push (2026-06-11)
+
+Three times in one session: pushed master, kept editing, and the working-copy commit
+(@) mixed new work into the already-pushed change — forcing restore/copy dances to
+split. In jj, @ IS a commit; after `jj git push`, run `jj new` before touching any
+file. Same discipline after `jj describe` of a finished change.
+
 ## Standalone parses $hex now (2026-06-11)
 
 The standalone's `NUMBER?` (`emit-num` in forth.fs) was decimal-only, so the codegen

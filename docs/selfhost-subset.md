@@ -57,9 +57,26 @@ remove the subset words above. The remainder must be empty.
 Files checked: `sha256.fs macho-min.fs sign.fs asm.fs icode.fs walk.fs vs.fs
 checker.fs render.fs disasm.fs` — **408 defined words, residual gap = 0**.
 
-The guard lives at `selfhost/subset-check.fs` (a gforth script that re-runs the closure
-check and `THROW`s on any out-of-subset word), wired into `test/selfhost-all.fs` so a
-future edit that reaches outside the subset fails the gate immediately.
+The guard is `test/t-sh-coload.fs`, wired into `test/selfhost-all.fs`: it concatenates
+the codegen-layer sources and compiles them under the standalone itself. The standalone
+errors (exit 70) on any undefined word — in both compile and interpret mode — so a
+future edit that reaches outside the subset fails the gate immediately. The standalone
+is the enforcement, not a separate checker script.
+
+## Semantic deltas (same name, different behaviour than gforth)
+
+Vocabulary closure is necessary but not sufficient — these standalone words *behave*
+differently, and subset source must be written for the standalone's semantics:
+
+- `DO … LOOP` is do-while: a zero-trip loop (`0 0 DO`) runs once. Guard with
+  `n 0 > IF … THEN` when the count can be zero.
+- `FIND` takes the **newest** matching definition (scans to the last match), so
+  redefinition shadows correctly — but earlier callers are not retro-bound.
+- `,` lays an 8-byte cell. Instructions are 4-byte; build them with `C,` bytes.
+- A local named `i` is shadowed by the loop-index keyword `I` — name locals `ix`.
+- `{: … :}` may appear once per definition, before any `IF`/loop; locals declared
+  inside control flow corrupt the frame.
+- Number output (`.`) is decimal only; input accepts decimal and `$hex`.
 
 ## Remaining work toward the fixpoint
 
