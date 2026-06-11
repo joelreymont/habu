@@ -54,6 +54,9 @@ bottom.
 - **Named constants, no magic numbers.** Limits and codes live in `src/config.fs`.
   A literal in code is only acceptable for true primitives of the encoding
   (e.g. the `3`/`7` of the 3-bit tag, and even those get a comment).
+- **Prefer `$hex` literals** for bit masks, instruction encodings, ASCII codes, and
+  memory offsets (`$FF and`, `$D10043FF`, `$200`); plain counts/indices stay decimal.
+  Both gforth and the standalone parse `$hex` (case-insensitive, optional leading `-`).
 
 ## Testing (BLOCKING)
 

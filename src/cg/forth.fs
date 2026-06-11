@@ -368,17 +368,47 @@ variable Lkwdo variable Lkwloop variable Lkwi
    7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 LIT64,  9 8 7 ORR,  Lcemit @ BL,
    9 W-PUSH0 LIT64,  Lcemit @ BL,  9 W-PUSH1 LIT64,  Lcemit @ BL, ;
 
-\ ---- compile-mode CALL: emit `movz/movk x16,target + blr x16` (x11=target addr).
-\ Replaces inlining (which flattened bodies and exploded code size); every word now
-\ saves/restores x30, so arbitrary call nesting is safe. Absolute, not BL: the JIT
-\ region is a kernel-placed mmap and prims live in __TEXT — BL's +-128MB imm26 would
-\ silently truncate if they land far apart. x16 is IP0, the ABI call-scratch register.
-: c-call ( -- )   \ x11 = target addr (48-bit VA)
-   5 $FFFF MOVZ,
-   7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  Lcemit @ BL,  \ movz x16,lo
-   7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
-   7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
-   9 $D63F0200 LIT64,  Lcemit @ BL, ;                                        \ blr x16
+\ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
+\ Small leaf bodies are inlined (copy the meat between the x30 prologue/epilogue);
+\ everything else gets an absolute `movz/movk x16 + blr x16` call. Absolute, not BL:
+\ the JIT region is a kernel-placed mmap and prims live in __TEXT — BL's +-128MB imm26
+\ would silently truncate if they land far apart. x16 is IP0, the ABI call scratch.
+\ Inline criteria: meat <= INL-MAX bytes AND no BL/BLR/BR/RET/ADR/ADRP word in it
+\ (calls need the frame; ADR is PC-relative). Internal label branches are relative and
+\ copy safely. Bodies without the prologue (CREATE/VARIABLE/CONSTANT literal-pushes)
+\ inline whole. Dict clen: prim = end-start-4, user word = set at `;` — both excl RET.
+$28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
+: c-call ( -- )
+   NEWLBL {: lcall :}  NEWLBL {: lcopy :}  NEWLBL {: lscan :}  NEWLBL {: lsbody :}
+   NEWLBL {: lnopro :}  NEWLBL {: linl :}  NEWLBL {: ldone :}
+   9 11 0 LDRW,  8 $D10043FF LIT64,  9 8 CMP,  C-NE lnopro BCOND,
+      12 INL-MAX 16 + CMPI,  C-GT lcall BCOND,
+      13 11 8 ADDI,  14 11 12 ADD,  14 14 8 SUBI,  lscan B,   \ meat [addr+8, addr+clen-8)
+   lnopro LBL,
+      12 INL-MAX CMPI,  C-GT lcall BCOND,
+      13 11 0 ADDI,  14 11 12 ADD,                            \ whole body [addr, addr+clen)
+   lscan LBL,
+      15 13 0 ADDI,
+   lsbody LBL,  15 14 CMP,  C-GE lcopy BCOND,
+      9 15 0 LDRW,  15 15 4 ADDI,
+      8 $FC000000 LIT64,  10 9 8 AND,  8 $94000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,  \ BL
+      8 $FFFFFC1F LIT64,  10 9 8 AND,
+         8 $D63F0000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,                                \ BLR
+         8 $D61F0000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,                                \ BR
+      8 $D65F03C0 LIT64,  9 8 CMP,  C-EQ lcall BCOND,                                    \ RET
+      8 $1F000000 LIT64,  10 9 8 AND,  8 $10000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,  \ ADR/ADRP
+      lsbody B,
+   lcopy LBL,
+      15 13 0 ADDI,
+   linl LBL,  15 14 CMP,  C-GE ldone BCOND,
+      9 15 0 LDRW,  15 15 4 ADDI,  Lcemit @ BL,  linl B,
+   lcall LBL,
+      5 $FFFF MOVZ,
+      7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  Lcemit @ BL,  \ movz x16,lo
+      7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
+      7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
+      9 $D63F0200 LIT64,  Lcemit @ BL,                                          \ blr x16
+   ldone LBL, ;
 
 \ ---- source setup: point INP/INE at either the baked Lsrc or stdin ----
 \ stdin mode reads all of fd 0 into a fresh RW mmap buffer, then interprets it
