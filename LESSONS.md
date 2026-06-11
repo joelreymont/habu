@@ -3,6 +3,53 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Self-signing replaces external codesign (2026-06-11)
+
+caf now ad-hoc-signs its own Mach-O — no external `codesign`. SHA-256 in Forth
+(sha256.fs, FIPS-180 vectors), then a POST-PASS (sign.fs) that rewrites the finished
+unsigned binary: insert LC_CODE_SIGNATURE into header slack, grow __LINKEDIT, append
+a CSMAGIC_EMBEDDED_SIGNATURE SuperBlob with one version-0x20400 CodeDirectory
+(flags=adhoc, execSegFlags=MAIN_BINARY, SHA-256 of each 4 KiB page). Apple's own
+`codesign -v` validates it. Key design call: **sign as a post-pass, not in
+BUILD-MACHO** — keeps the canonical unsigned artifact byte-identical to the
+standalone's emitter, so the drift guard and self-rebuild fixpoint stay meaningful.
+Gotchas: ad-hoc signatures are deterministic (no timestamp), so the fixpoint can
+hold WITH signatures once the standalone ports the post-pass. SHA-256 footguns —
+gforth case-folds `S0`/`s0` (use BSIG0/SSIG0); a local named `i` shadows the loop
+index inside `?DO`; declaring `{: :}` locals inside a loop corrupts the return
+stack (factor the loop body into its own word); `?DO` is `( limit start -- )`.
+
+## Standalone SHA-256 + the do-while DO gotcha (2026-06-11)
+
+Ported SHA-256 into the standalone's own Forth (selfhost/sha256.fs) — the first step
+to the standalone self-signing without gforth or codesign. Matches FIPS-180 vectors
+(abc, 56-char, 64/100-byte) run natively (test/t-sh-sha.fs). Standalone porting
+gotchas vs gforth: **the number parser is decimal-only** (no `$` hex — decimalize
+all constants); **no `move`/`fill`/`emit`** (write byte-loop helpers; output via `.`,
+which appends `\n`); only plain **`DO`, not `?DO`** — and the standalone's `DO` is
+**do-while**: `0 0 DO … LOOP` runs the body ONCE, not zero times. So every loop that
+can have zero trips (here the full-block loop when nb=0, and BMOVE when n=0) MUST be
+guarded `n 0 > if … then`. ROTR/sigma/round all matched first try; the only bug was
+an unguarded `nb 0 DO` hashing a garbage block for short messages. Nested `DO` across
+a word call preserves the outer `I` correctly (the data-region loop-frame stack).
+
+## RUN-EXE stack leak + register-loop throw-fault (2026-06-11)
+
+Two bugs the self-signer work surfaced (both fixed). (1) RUN-EXE left `addr u`
+(the filename) under the exit code — `2dup EMIT-EXE 2dup {: pa pu :}` never drops
+the original; t-cg-word's 85 cases all showed WRONG NUMBER OF RESULTS. Fix:
+`2dup {: pa pu :} EMIT-EXE`. (2) The register-resident-loop speculative-rollback
+path **faulted** (gforth -9) on `E-RLOOP throw` — gforth 0.7.9 faults unwinding a
+throw across emit-rloop's `{: :}` locals. This path had NEVER been exercised by a
+passing test. Fix: flag, don't throw — RL-ACTIVE marks the body emit, any empty-VS
+memory access trips RL-FAIL (regstack.fs), emit-rloop bails and CHECK-LOOP-CG rolls
+back. The flag is also **sound** where the old VSP-delta check wasn't (a body that
+underflows but nets back to the same depth is now caught). And: register residency
+is unsound under an enclosing loop (the optimizer can hoist the carry's init out of
+the OUTER back-edge → miscompile, e.g. nested `?DO` summed to 15 not 5), so any loop
+with LOOP-DEPTH>0 takes the proven memory path. Lesson: a speculative path guarded
+by `catch` is dead weight until a test actually drives it through the throw.
+
 ## Self-host milestone 4 — execution tokens + catch/throw (2026-06-10)
 
 - Standalone now has `'`/`[']`/`EXECUTE` and `catch`/`throw`. `[']` bakes the
