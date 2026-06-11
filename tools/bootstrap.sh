@@ -26,3 +26,4 @@ cp /tmp/hb-src /tmp/stage2-src && rm -f /tmp/stage2-got
 bin/hb                                          # stage1 -> stage2
 cmp bin/hb /tmp/stage2-got || { echo "FIXPOINT BROKEN"; exit 1; }
 codesign -v bin/hb 2>/dev/null && echo "bootstrap OK: bin/hb (self-compiled, signed, fixpoint verified)"
+./tools/build.sh                                # bin/hbi (stdin engine) for probe.sh
