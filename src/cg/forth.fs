@@ -305,21 +305,35 @@ variable Lkwdo variable Lkwloop variable Lkwi
    fdone LBL,  RET, ;
 
 \ ---- NUMBER? ( x9=tka x10=tkl -- x11=val x12=ok ) ----
+\ Accepts decimal and $hex, each with an optional leading '-'.  x6=base, x7=digit.
 : emit-num ( -- )
    Lnum @ LBL,
-   11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,
+   11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ,   \ val sign idx ok base=10
    NEWLBL {: ldone :}
-   10 ldone CBZ,
-   15 9 0 LDRB,  15 45 CMPI,
-   NEWLBL {: lloop :}  C-NE lloop BCOND,
-   13 0 MOVN,  14 1 MOVZ,  14 10 CMP,  C-EQ ldone BCOND,    \ "-" only -> fail
+   10 ldone CBZ,                                                \ empty token -> fail
+   15 9 0 LDRB,  15 45 CMPI,  NEWLBL {: ndoll :}  C-NE ndoll BCOND,  \ leading '-'
+      13 0 MOVN,  14 1 MOVZ,
+   ndoll LBL,
+   5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  NEWLBL {: nohex :}  C-NE nohex BCOND,  \ '$' prefix
+      6 16 MOVZ,  14 14 1 ADDI,
+   nohex LBL,
+   14 10 CMP,  C-GE ldone BCOND,                                \ nothing after sign/$ -> fail
+   NEWLBL {: lloop :}  NEWLBL {: lok :}  NEWLBL {: gotd :}  NEWLBL {: nd :}  NEWLBL {: nuc :}
    lloop LBL,
-   NEWLBL {: lok :}
    14 10 CMP,  C-GE lok BCOND,
-   5 9 14 ADD,  15 5 0 LDRB,
-   15 48 CMPI,  C-LT ldone BCOND,
-   15 57 CMPI,  C-GT ldone BCOND,
-   15 15 48 SUBI,  5 10 MOVZ,  11 11 5 MUL,  11 11 15 ADD,
+   5 9 14 ADD,  15 5 0 LDRB,                                    \ c = next byte
+   15 48 CMPI,  C-LT ldone BCOND,                               \ < '0' -> fail
+   15 57 CMPI,  C-GT nd BCOND,
+      7 15 48 SUBI,  gotd B,                                    \ '0'..'9' -> c-48
+   nd LBL,
+   6 16 CMPI,  C-NE ldone BCOND,                                \ non-hex base -> fail
+   15 97 CMPI,  C-LT nuc BCOND,  15 102 CMPI,  C-GT ldone BCOND,
+      7 15 87 SUBI,  gotd B,                                    \ 'a'..'f' -> c-87
+   nuc LBL,
+   15 65 CMPI,  C-LT ldone BCOND,  15 70 CMPI,  C-GT ldone BCOND,
+      7 15 55 SUBI,                                             \ 'A'..'F' -> c-55
+   gotd LBL,
+   11 11 6 MUL,  11 11 7 ADD,                                   \ val = val*base + digit
    14 14 1 ADDI,  lloop B,
    lok LBL,  11 11 13 MUL,  12 1 MOVZ,
    ldone LBL,  RET, ;

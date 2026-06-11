@@ -3,6 +3,15 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Standalone parses $hex now (2026-06-11)
+
+The standalone's `NUMBER?` (`emit-num` in forth.fs) was decimal-only, so the codegen
+source was written with bare decimal magic numbers. It now parses `$hex` too (optional
+leading `-`, case-insensitive): `$FF`=255, `-$2A`=-42, `$deadBEEF`. Decimal still works
+and the dispatch order is unchanged (NUMBER? before FIND), so `0=`/`1+`/`$foo` still fall
+through to FIND. Source may now use hex where it reads better; no need to pre-convert to
+decimal. t-sh-hex covers it. Output is still decimal-only (`.`).
+
 ## Real calls break the inlining wall — the engine fix (2026-06-11)
 
 The leaf-only inlining model (below) was THE blocker for self-hosting: the standalone's
