@@ -328,6 +328,8 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
       5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
       12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
       12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
+      12 0 MOVZ,  12 DATA VSP-CELL STR,
+      12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
       9 $D10043FF LIT64,  Lcemit @ BL,
       9 $F90003FE LIT64,  Lcemit @ BL,
       Lmain @ B,
@@ -425,9 +427,10 @@ variable SRCA
    NEWLBL Lkwdo !  NEWLBL Lkwloop !  NEWLBL Lkwi !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
+   NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !
    emit-main
    emit-prims  emit-prof-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
    emit-cf-helpers  emit-loc-find  emit-kwdata  emit-crash-handler  emit-hex
-   emit-profdump  emit-prof
+   emit-profdump  emit-prof  emit-vsjit
    emit-dict
    Lsrc @ LBL,  SRCA @ SRCN @ BYTES, ;

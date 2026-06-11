@@ -14,7 +14,7 @@ require sh-driver.fs
    s" : HOOK CHECK ; ' HOOK set-check " +B            \ DOGFOOD: every word below is
    s" selfhost/walk.fs" +F                            \ checked as the compiler compiles
    s" selfhost/rt.fs" +F  s" selfhost/crash.fs" +F  s" selfhost/macho.fs" +F   \ itself;
-   s" selfhost/sign2.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/prof.fs" +F  s" selfhost/engine2.fs" +F
+   s" selfhost/sign2.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/prof.fs" +F  s" selfhost/vsjit.fs" +F  s" selfhost/engine2.fs" +F
    s" selfhost/stage2.fs" +F ;                        \ a type error rejects -> exit 70
 \ write SRC where stage1 will read it back as data
 : SAVE-SRC ( -- )

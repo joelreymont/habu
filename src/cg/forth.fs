@@ -100,6 +100,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
 
 9 constant A   10 constant B   11 constant C
 require prof.fs           \ in-binary sampling profiler (emitters + prims)
+require vsjit.fs          \ runtime abstract value stack for the : compiler
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
 : b+   B g-pop  A g-pop  A A B ADD,  A g-push ;
 : b-   B g-pop  A g-pop  A A B SUB,  A g-push ;
@@ -746,6 +747,8 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
          5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,   \ reset CFSP
          12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,      \ reset locals
          12 0 MOVZ,  12 DATA BODYLEN-CELL STR,                           \ reset body capture
+         12 0 MOVZ,  12 DATA VSP-CELL STR,                               \ reset the VS
+         12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
          9 $D10043FF LIT64,  Lcemit @ BL,                  \ prologue: sub sp,sp,#16
          9 $F90003FE LIT64,  Lcemit @ BL,                  \   str x30,[sp]  (slot.addr points here)
          lmain B,
@@ -853,10 +856,11 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NEWLBL Lkwdo !  NEWLBL Lkwloop !  NEWLBL Lkwi !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
+   NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-prof-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
    emit-cf-helpers  emit-loc-find  emit-kwdata  emit-crash-handler  emit-hex
-   emit-profdump  emit-prof
+   emit-profdump  emit-prof  emit-vsjit
    emit-dict                                              \ after #PL is final
    Lsrc @ LBL,  r> SRCN @ BYTES, ;
 
