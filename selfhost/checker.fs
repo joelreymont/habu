@@ -1,6 +1,7 @@
 0 constant T-CON  1 constant T-VAR  2 constant T-PTR  3 constant S-ROW  4 constant S-PUSH  -1 constant UNBOUND
-create TVT 512 allot   create RVT 512 allot
-: TVINIT 0 BEGIN dup cells TVT + UNBOUND swap ! dup cells RVT + UNBOUND swap ! 1 + dup 63 > UNTIL drop ;
+2048 constant MAXTV            \ typevar pool (engine-sized bodies allocate hundreds)
+create TVT MAXTV cells allot   create RVT MAXTV cells allot
+: TVINIT 0 BEGIN dup cells TVT + UNBOUND swap ! dup cells RVT + UNBOUND swap ! 1 + dup MAXTV 1 - > UNTIL drop ;
 : TAG 7 and ;
 : PAY 3 rshift ;
 : MK-CON 3 lshift ;
@@ -27,7 +28,7 @@ create UWL 512 allot   variable USP   variable UOK
 : U-TYPE T-RES swap T-RES swap 2dup = IF 2drop ELSE over ISVAR IF swap PAY TV! ELSE dup ISVAR IF PAY TV! ELSE over PAY over PAY = IF 2drop ELSE 2drop 0 UOK ! THEN THEN THEN THEN ;
 : UNIFY 0 USP ! -1 UOK ! PAIR BEGIN USP @ UOK @ and WHILE UNPAIR over TAG dup S-ROW = swap S-PUSH = or IF U-ROW ELSE U-TYPE THEN REPEAT UOK @ ;
 variable FV
-: FRESH FV @ dup 1 + FV ! ;
+: FRESH FV @ MAXTV 1 - > IF s" checker: out of typevars" 76 die THEN  FV @ dup 1 + FV ! ;
 variable OK   variable DCUR   variable UNCK
 : NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! FRESH MK-ROW DCUR ! ;
 : STEP {: din dout :} DCUR @ din UNIFY OK @ and OK ! dout DCUR ! ;

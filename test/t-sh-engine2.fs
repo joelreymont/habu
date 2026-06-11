@@ -17,7 +17,7 @@ create EB 786432 allot  variable EL
    0 CL !
    s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F  s" selfhost/mnem.fs" +F
    s" selfhost/util.fs" +F  s" selfhost/walk.fs" +F  s" selfhost/rt.fs" +F
-   s" selfhost/crash.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/engine2.fs" +F
+   s" selfhost/crash.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/prof.fs" +F  s" selfhost/engine2.fs" +F
    s" : SRC$ s" +B  s\" \" 6 7 * .\" ;" +B  s"  " +B
    s" : GO SRC$ EMIT-FORTH " +B
    s" 0 BEGIN dup ASM-LEN 4 / < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B

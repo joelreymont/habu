@@ -424,8 +424,10 @@ variable SRCA
    NEWLBL Lkwlbrace !  NEWLBL Lkwendloc !  NEWLBL Lloc-find !  NEWLBL Lkwconst !
    NEWLBL Lkwdo !  NEWLBL Lkwloop !  NEWLBL Lkwi !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
+   NEWLBL Lprofh !  NEWLBL Lprofdump !
    emit-main
-   emit-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
+   emit-prims  emit-prof-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
    emit-cf-helpers  emit-loc-find  emit-kwdata  emit-crash-handler  emit-hex
+   emit-profdump  emit-prof
    emit-dict
    Lsrc @ LBL,  SRCA @ SRCN @ BYTES, ;

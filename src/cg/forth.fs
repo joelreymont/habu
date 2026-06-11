@@ -99,6 +99,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
 variable Lkwdo variable Lkwloop variable Lkwi
 
 9 constant A   10 constant B   11 constant C
+require prof.fs           \ in-binary sampling profiler (emitters + prims)
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
 : b+   B g-pop  A g-pop  A A B ADD,  A g-push ;
 : b-   B g-pop  A g-pop  A A B SUB,  A g-push ;
@@ -851,9 +852,11 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NEWLBL Lkwlbrace !  NEWLBL Lkwendloc !  NEWLBL Lloc-find !  NEWLBL Lkwconst !
    NEWLBL Lkwdo !  NEWLBL Lkwloop !  NEWLBL Lkwi !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
+   NEWLBL Lprofh !  NEWLBL Lprofdump !
    emit-main                                              \ entry @ offset 0
-   emit-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
+   emit-prims  emit-prof-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
    emit-cf-helpers  emit-loc-find  emit-kwdata  emit-crash-handler  emit-hex
+   emit-profdump  emit-prof
    emit-dict                                              \ after #PL is final
    Lsrc @ LBL,  r> SRCN @ BYTES, ;
 

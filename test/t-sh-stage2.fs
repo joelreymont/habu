@@ -10,10 +10,12 @@ require ../src/cg/exec.fs
 require sh-driver.fs
 : SRC+ ( -- )  0 CL !
    s" selfhost/sha256.fs" +F  s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F
-   s" selfhost/mnem.fs" +F  s" selfhost/util.fs" +F  s" selfhost/walk.fs" +F
-   s" selfhost/rt.fs" +F  s" selfhost/crash.fs" +F  s" selfhost/macho.fs" +F
-   s" selfhost/sign2.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/engine2.fs" +F
-   s" selfhost/stage2.fs" +F ;
+   s" selfhost/mnem.fs" +F  s" selfhost/util.fs" +F  s" selfhost/checker.fs" +F
+   s" : HOOK CHECK ; ' HOOK set-check " +B            \ DOGFOOD: every word below is
+   s" selfhost/walk.fs" +F                            \ checked as the compiler compiles
+   s" selfhost/rt.fs" +F  s" selfhost/crash.fs" +F  s" selfhost/macho.fs" +F   \ itself;
+   s" selfhost/sign2.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/prof.fs" +F  s" selfhost/engine2.fs" +F
+   s" selfhost/stage2.fs" +F ;                        \ a type error rejects -> exit 70
 \ write SRC where stage1 will read it back as data
 : SAVE-SRC ( -- )
    s" /tmp/stage2-src" w/o create-file throw {: fd :}

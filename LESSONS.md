@@ -3,6 +3,19 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## The loop closes WITHOUT gforth: stage3 == stage2, signed (2026-06-11)
+
+t-sh-stage2 now signs stage2 (sign2.fs — the full-builder port of the ad-hoc signing
+post-pass, fixed identifier "stage2" on both sides so bytes match) and RUNS it: stage2
+compiles the same source and emits stage3; stage3 == stage2 byte-identically, and
+Apple's codesign validates the signature that the standalone-compiled compiler emitted.
+gforth is out of the loop — the toolchain sustains itself. Guards added the same round:
+c-lbrace refuses {: inside IF/BEGIN/DO and locals named i/I at compile time (exit 75) —
+the two footguns that kept biting are now errors, not LESSONS entries. Flow behavior
+(DO/LOOP/I incl. zero-trip, ELSE both arms, WHILE/REPEAT) and the stdin-mode engine
+(golden + a piped-program behavioral test) are covered. Leaf prims (everything but
+catch/execute) dropped their x30 frames — 2x cheaper when called, fully inlineable.
+
 ## THE FIXPOINT: the standalone compiles its own compiler (2026-06-11)
 
 t-sh-stage2 closes the self-hosting loop: stage1 (gforth-built standalone whose baked

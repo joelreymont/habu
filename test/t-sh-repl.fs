@@ -19,7 +19,7 @@ create EB 786432 allot  variable EL
    s" selfhost/sha256.fs" +F  s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F
    s" selfhost/mnem.fs" +F  s" selfhost/util.fs" +F  s" selfhost/walk.fs" +F
    s" selfhost/rt.fs" +F  s" selfhost/crash.fs" +F  s" selfhost/macho.fs" +F
-   s" selfhost/sign2.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/engine2.fs" +F
+   s" selfhost/sign2.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/prof.fs" +F  s" selfhost/engine2.fs" +F
    s" -1 STDIN? ! : GO here 0 EMIT-FORTH " +B
    s" 0 BEGIN dup ASM-LEN 4 / < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;
@@ -31,7 +31,7 @@ T{ GEN  EB EL @ compare 0= -> true }T
    s" selfhost/sha256.fs" +F  s" selfhost/asm.fs" +F  s" selfhost/icode.fs" +F
    s" selfhost/mnem.fs" +F  s" selfhost/util.fs" +F  s" selfhost/walk.fs" +F
    s" selfhost/rt.fs" +F  s" selfhost/crash.fs" +F  s" selfhost/macho.fs" +F
-   s" selfhost/sign2.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/engine2.fs" +F
+   s" selfhost/sign2.fs" +F  s" selfhost/engine.fs" +F  s" selfhost/prof.fs" +F  s" selfhost/engine2.fs" +F
    s" create PZ2 32 allot " +B
    s" : PZ! s" +B  s\" \" /tmp/sh-repl-bin\"" +B
    s"  {: a u :} 0 BEGIN dup u < WHILE dup a + c@ over PZ2 + c! 1 + REPEAT drop 0 PZ2 u + c! ; " +B
