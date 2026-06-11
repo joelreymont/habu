@@ -793,3 +793,15 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   block (`{: rb clen :}`) + keep `fd` on the stack. Cross-checking the emitted
   Mach-O against caf's `asm.fs` byte-for-byte (after fixing the `$80000400`
   section-flag constant) was what made the fixpoint reachable.
+
+## Self-host hardening — sound checker + drift guard + gate (2026-06-11)
+
+- Checker soundness: the native checked-compile hook used to silently PASS bodies
+  with control flow (it ignored IF/loops and composed the linear remainder). Fixed:
+  any token that isn't a known prim (control flow, literal, unknown word) sets an
+  UNCHECKABLE flag; CHECK returns 1 (uncheckable, published but NOT certified)
+  distinct from -1 (well-typed) and 0 (type error). It no longer claims to have
+  checked what it can't. The checker lives in selfhost/checker.fs now (not inline).
+- Drift guard: the standalone's hand-transcribed encoders + Mach-O builder are
+  cross-checked byte-identical to caf's asm.fs/macho.fs (both emit exit(42), cmp).
+  test/selfhost-all.fs is the gate: sound checker + drift + the self-rebuild fixpoint.

@@ -1,0 +1,6 @@
+\ selfhost-all.fs — the self-host gate. Runs the native checker, the drift guard,
+\ and the byte-identical self-rebuild fixpoint so they can't rot. Slow (builds +
+\ codesign + exec). Run: gforth test/selfhost-all.fs -e bye
+require t-sh-check.fs
+require t-sh-drift.fs
+require t-selfrebuild.fs
