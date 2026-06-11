@@ -686,3 +686,17 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   widens how much of our own code caf can verify. Effect syntax → `docs/effects.md`.
 - Smell noted: `EFFECT-OF` returns `( a u -- ea eu )` when found but a single `0`
   when absent — asymmetric stack effect; callers must `dup 0= if drop …`.
+
+## Self-host 6/7 — native type-checker over source bodies (2026-06-11)
+
+- The standalone now TYPE-CHECKS real source bodies natively: a tokenizer walks
+  the body string, each word maps to a fresh-instantiated effect (builder words
+  using a FRESH var counter), effects compose via the native unifier (threading
+  the stack state in a variable since standalone locals are read-only), and type
+  errors are detected and reported. Verified natively: `dup +` ok→i64,
+  `dup 0= +` REJECTED (`+` can't consume a bool), `dup dup + +` ok. This is the
+  checker — tokenize → lookup → unify-compose → detect — running on the self-hosted
+  Forth. Remaining for full dots 6/7: string `sigparse`, the complete prim table,
+  and `CHECKED:` wired into the standalone's `:`.
+- Recurring trap: `S"` is COMPILE-ONLY. Any S"-driven test at the top level feeds
+  the callee garbage (S" is skipped as unknown in interpret mode). Wrap in a `:`.
