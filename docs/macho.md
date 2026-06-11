@@ -1,6 +1,6 @@
 # Minimal dynamic Mach-O for habu (macOS ARM64)
 
-Spec for `src/cg/macho.fs` (Phase 0.1). Static binaries are SIGKILLed by AMFI
+Spec for `bootstrap/cg/macho.fs` (Phase 0.1). Static binaries are SIGKILLed by AMFI
 (proven); the artifact must be **dynamic** (dyld-loaded) and **ad-hoc signed**,
 but contains **zero C** — its code is emitted `svc`/native. Reference generated
 with `clang -arch arm64 -nostartfiles -e _main` over an svc-only `exit(42)` stub;

@@ -1,4 +1,4 @@
-\ habu2.f — engine-builder port, part 2 (from src/cg/forth.fs): the JIT compiler
+\ habu2.f — engine-builder port, part 2 (from bootstrap/cg/forth.fs): the JIT compiler
 \ emitters (literal/call/keywords/locals/strings/do-loop), the outer-interpreter
 \ main loop, and EMIT-FORTH. Needs habu1.f (part 1). emit-main is split into
 \ phase words sharing label VARIABLES (a giant single word would need dozens of

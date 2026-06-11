@@ -1,5 +1,5 @@
 \ sign2.fs — ad-hoc self-signing post-pass for the FULL Mach-O builder (macho.fs),
-\ transcribed from src/cg/sign.fs: insert LC_CODE_SIGNATURE into header slack, grow
+\ transcribed from bootstrap/cg/sign.fs: insert LC_CODE_SIGNATURE into header slack, grow
 \ __LINKEDIT, append a CSMAGIC_EMBEDDED_SIGNATURE SuperBlob with one CodeDirectory
 \ (v0x20400, adhoc, SHA-256 page hashes). Operates on MBUF/MLEN/LE-OFF in place.
 \ Needs sha256.fs + macho.fs. Signature ints BIG-endian; header patches LE.

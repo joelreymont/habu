@@ -5,7 +5,7 @@
 \ must compile with the NATIVE colon — we toggle CHECKING-ON? off while loading
 \ them, then on for the tests that exercise checked *definitions*.
 
-require ../src/habu.fs           \ engine + `:` override
+require ../bootstrap/src/habu.fs           \ engine + `:` override
 
 CHECKING-ON? off                \ infra + internal-API tests compile natively
 require tester.fs

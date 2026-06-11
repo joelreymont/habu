@@ -40,8 +40,8 @@ $1000     constant CODE-OFF          \ entry file offset (slack below for codesi
 $20000    constant MPAGE              \ __TEXT file/vm size; __LINKEDIT starts here
 
 variable CODELEN
-create SCODE $18000 allot             \ assembled-code scratch (grows with the standalone)
-: ASM-CODE ( -- )  SCODE ASSEMBLE CODELEN ! ;
+create SCODE $20000 allot             \ assembled-code scratch (grows with the standalone)
+: ASM-CODE ( -- )  SCODE ASSEMBLE dup $20000 > abort" cg: SCODE overflow" CODELEN ! ;
 
 variable LE-OFF                       \ file offset of the __LINKEDIT LC (for sign.fs post-pass)
 

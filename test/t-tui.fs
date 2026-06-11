@@ -2,7 +2,7 @@
 \ drive the as-you-type feedback. The raw-mode key loop needs a real terminal and
 \ is exercised by hand; this covers everything testable. Standalone:
 \   gforth test/t-tui.fs -e bye
-require ../src/tui.fs
+require ../bootstrap/src/tui.fs
 require test/tester.fs
 
 \ --- PARSE-DEF: recognises a complete `: NAME ( eff ) body ;` ---

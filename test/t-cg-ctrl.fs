@@ -2,7 +2,7 @@
 \ Real programs end-to-end. Slow (exec per case); run explicitly:
 \   gforth test/t-cg-ctrl.fs -e bye
 require tester.fs
-require ../src/cg/walk.fs
+require ../bootstrap/cg/walk.fs
 
 \ abs via IF/THEN + NEGATE
 T{ s" DUP 0< IF NEGATE THEN"   7 NATIVE-EVAL -> 7 }T

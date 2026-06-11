@@ -1,5 +1,5 @@
 \ vsjit.fs — runtime abstract value stack for the `:` compiler, transcribed from
-\ src/cg/vsjit.fs for the engine-builder port (lockstep; goldens enforce parity).
+\ bootstrap/cg/vsjit.fs for the engine-builder port (lockstep; goldens enforce parity).
 \ Tag 1 = constant (no code yet), tag 0 = live register; Lvspill materializes all
 \ entries as [x19] pushes bottom-up and empties the VS. State in DATA header cells.
 \ Load after prof.fs, before habu2.f.

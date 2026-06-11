@@ -1,5 +1,5 @@
 \ spike-exe.fs — prove the full pipeline: ICode -> ARM64 -> Mach-O -> native run.
-require ../src/cg/exec.fs
+require ../bootstrap/cg/exec.fs
 
 \ exit(42)
 ICODE-RESET  0 42 MOVZ,  16 1 MOVZ,  $80 SVC,

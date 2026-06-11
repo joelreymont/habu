@@ -5,16 +5,16 @@
 require sh-driver.fs
 : GEN {: input -- :}
    0 CL !
-   s" selfhost/sha256.f"   slurp-file +B   s"  " +B
-   s" selfhost/asm.f"      slurp-file +B   s"  " +B
-   s" selfhost/icode.f"    slurp-file +B   s"  " +B
-   s" selfhost/util.f"    slurp-file +B   s"  " +B
-   s" selfhost/walk.f"     slurp-file +B   s"  " +B
-   s" selfhost/vs.f"       slurp-file +B   s"  " +B
+   s" src/core/sha256.f"   slurp-file +B   s"  " +B
+   s" src/arch/arm64/asm.f"      slurp-file +B   s"  " +B
+   s" src/arch/arm64/icode.f"    slurp-file +B   s"  " +B
+   s" src/core/util.f"    slurp-file +B   s"  " +B
+   s" src/arch/arm64/walk.f"     slurp-file +B   s"  " +B
+   s" src/arch/arm64/vs.f"       slurp-file +B   s"  " +B
    s" : INPUTVAL " +B  input 0 <# #s #> +B  s"  ; " +B
-   s" selfhost/macho.f"    slurp-file +B   s"  " +B
-   s" selfhost/sign2.f"    slurp-file +B   s"  " +B
-   s" selfhost/spill-demo.f" slurp-file +B
+   s" src/os/macos/macho.f"    slurp-file +B   s"  " +B
+   s" src/os/macos/sign2.f"    slurp-file +B   s"  " +B
+   s" test/demos/spill-demo.f" slurp-file +B
    CBUF CL @ NF-RUN ;
 : BUILD-SPILL {: input -- }  input GEN ;
 : RC ( -- n )  s" /tmp/sh-spill-bin; echo $? > /tmp/sh-spill-rc" system

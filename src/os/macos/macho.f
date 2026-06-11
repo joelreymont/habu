@@ -1,4 +1,4 @@
-\ macho.fs — the FULL Mach-O builder, transcribed from src/cg/macho.fs for the
+\ macho.fs — the FULL Mach-O builder, transcribed from bootstrap/cg/macho.fs for the
 \ engine-builder port: header + 6 load commands (PAGEZERO, TEXT+__text, LINKEDIT,
 \ DYLINKER, MAIN, DYLIB libSystem), slack to $1000, code at $1000, padded to one
 \ page. Canonical UNSIGNED artifact; sign.fs post-pass adds the ad-hoc signature.

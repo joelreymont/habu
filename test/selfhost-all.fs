@@ -38,3 +38,5 @@ require t-sh-sha.fs
 require t-sh-sign.fs
 require t-sh-habu2.fs
 require t-sh-stage2.fs
+
+#ERRORS @ 0<> negate (bye)      \ exit 1 on any failure (abort also exits nonzero)

@@ -2,7 +2,7 @@
 \ from the REPL. Builds a standalone Mach-O from a habu source line, runs it, and
 \ captures stdout. Use NFX interactively; NF-RUN + NF= in T{ … }T tests.
 
-require ../src/cg/forth.fs
+require ../bootstrap/cg/forth.fs
 
 2variable NFOUT
 : NF-RUN ( src-a src-u -- )            \ build native Forth on src, run, capture stdout

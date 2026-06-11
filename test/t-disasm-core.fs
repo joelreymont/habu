@@ -1,7 +1,7 @@
 \ t-disasm-core.fs — the ARM64 DECODE core (disasm-core.fs) is CERTIFIED by habu's own
 \ checker (all CHECK-CODE = 0) AND decodes instruction fields correctly (inverse of the
 \ encoders). The disassembler's math, in checked Forth. Run: gforth test/t-disasm-core.fs -e bye
-require ../src/habu.fs
+require ../bootstrap/src/habu.fs
 require tester.fs
 variable WORST  0 WORST !
 : NOTE ( -- )  CHECK-CODE @ ?dup if WORST ! then ;
@@ -15,6 +15,6 @@ T{ WORST @ -> 0 }T                               \ habu certified the decode cor
 T{ 2332229697 D-RD -> 1 }T
 T{ 2332229697 D-RN -> 2 }T
 T{ 2332229697 D-RM -> 3 }T
-T{ 5 3 D-FLD -> 0 }T                             \ bits[3..5] of 5 (0b101) = 0
+T{ 5 3 3 D-FLD -> 0 }T                             \ bits[3..5] of 5 (0b101) = 0
 T{ 7 3 D-SX -> -1 }T                             \ 0b111 as signed 3-bit = -1
 T{ 3 3 D-SX -> 3 }T                              \ 0b011 as signed 3-bit = 3

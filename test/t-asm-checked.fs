@@ -1,7 +1,7 @@
 \ t-asm-checked.fs — the checked encoder core (asm-checked.fs) is CERTIFIED by habu's own
 \ checker (every word's CHECK-CODE = 0, no fallback) AND matches asm.fs machine code.
 \ The encoders, in checked Forth. Run: gforth test/t-asm-checked.fs -e bye
-require ../src/habu.fs
+require ../bootstrap/src/habu.fs
 require tester.fs
 variable WORST  0 WORST !
 : NOTE ( -- )  CHECK-CODE @ ?dup if WORST ! then ;

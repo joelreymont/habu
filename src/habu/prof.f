@@ -1,4 +1,4 @@
-\ prof.fs — the in-binary sampling profiler, transcribed from src/cg/prof.fs for
+\ prof.fs — the in-binary sampling profiler, transcribed from bootstrap/cg/prof.fs for
 \ the engine-builder port (lockstep; the engine goldens enforce parity). `n prof-on`
 \ = SIGALRM + 1 ms timer; ticks map the interrupted pc to its dict word and count;
 \ at the limit: dump "name count" + exit(99). prof-report dumps on demand.

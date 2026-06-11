@@ -14,7 +14,7 @@ requires building a small Forth runtime (Part F) — accepted as the long pole.
 > **STATUS (2026-06-10): Parts A–E substantially DONE and tested.** habu (on
 > gforth) is a working AOT compiler: checked Forth → **standalone ARM64 macOS CLI
 > executables**, no C, no LLVM. ICode IR + peephole + encoders + Mach-O emit +
-> exec all work (`src/cg/`, `docs/codegen.md`). Wired to the checker
+> exec all work (`bootstrap/cg/`, `docs/codegen.md`). Wired to the checker
 > (`CODEGEN-HOOK`); front door `HABU-EXE`. Subset: arith/stack/compare/logical/
 > div-mod, IF/loops/`?DO`, calls, RECURSE, `.` output, argv input
 > (`./rfact 7`→5040 standalone). **Remaining: Part F** — a native Forth runtime
@@ -217,7 +217,7 @@ checked def ──CHECK-DEF──▶ charted scheme (unchanged) ─── gforth
 not emitted yet. For the **standalone build every word must emit**, or the build
 fails loudly. Codegen never overwrites the threaded oracle.
 
-Files (`src/cg/`, `require`d at end of `habu.fs` after `src/colon.fs`;
+Files (`bootstrap/cg/`, `require`d at end of `habu.fs` after `src/colon.fs`;
 `defer CODEGEN-HOOK` in `src/forward.fs`; `cg/install.fs` runs
 `' DO-CODEGEN is CODEGEN-HOOK` **last**, after the bank is assembled+asserted):
 

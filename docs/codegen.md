@@ -20,7 +20,7 @@ bye
 `RUN-NATIVE` compiles + runs immediately, returning the exit code:
 `7 RUN-NATIVE SQUARE` → 49.
 
-## Pipeline (`src/cg/`)
+## Pipeline (`bootstrap/cg/`)
 
 | file | role |
 | ---- | ---- |

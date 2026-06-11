@@ -6,7 +6,7 @@
 \ recipes are dogfooded: written as TYPED habu and verified by habu's own checker;
 \ the return-stack/memory/table machinery stays TRUSTED (unchecked).
 
-require ../../habu.fs        \ the checker, so we can check our own recipes
+require ../habu.fs        \ the checker, so we can check our own recipes
 CHECKING-ON? off            \ metaprogramming (IR mutators, tables, memory) is unchecked
 require icode.fs
 

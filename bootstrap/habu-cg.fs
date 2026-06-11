@@ -6,5 +6,5 @@ require habu.fs
 \ The codegen sources are infrastructure (locals, `( idx -- u32 )` comments that
 \ are not habu type signatures) — load them with the native colon, not the checker.
 CHECKING-ON? off
-require src/cg/install.fs
+require bootstrap/cg/install.fs
 CHECKING-ON? on

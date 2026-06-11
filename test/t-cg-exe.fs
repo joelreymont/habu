@@ -3,7 +3,7 @@
 \ Slow (codesign+exec per case) and needs the macOS toolchain, so it is NOT in
 \ all.fs — run explicitly:  gforth test/t-cg-exe.fs -e bye
 require tester.fs
-require ../src/cg/exec.fs
+require ../bootstrap/cg/exec.fs
 
 : R-EXIT42 ( -- rc )  ICODE-RESET  0 42 MOVZ,  16 1 MOVZ,  $80 SVC,
    s" /tmp/habu-t42" RUN-EXE ;

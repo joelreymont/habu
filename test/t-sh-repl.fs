@@ -2,8 +2,8 @@
 \ branch): (1) golden — standalone EMIT-FORTH with STDIN? on matches habu's word for
 \ word; (2) behavioral — the standalone BUILDS a signed stdin engine with the ported
 \ toolchain, and piping a program into it works. Run: gforth test/t-sh-repl.fs -e bye
-require ../src/cg/forth.fs
-require ../src/cg/exec.fs
+require ../bootstrap/cg/forth.fs
+require ../bootstrap/cg/exec.fs
 require sh-driver.fs
 create RBUF 131072 allot
 create EB 786432 allot  variable EL
@@ -16,10 +16,10 @@ create EB 786432 allot  variable EL
    RBUF ASSEMBLE 4 /  0 ?do i w@ n+ loop ;
 : GEN ( -- a u )
    0 CL !
-   s" selfhost/sha256.f" +F  s" selfhost/asm.f" +F  s" selfhost/icode.f" +F
-   s" selfhost/mnem.f" +F  s" selfhost/util.f" +F  s" selfhost/walk.f" +F
-   s" selfhost/rt.f" +F  s" selfhost/crash.f" +F  s" selfhost/macho.f" +F
-   s" selfhost/sign2.f" +F  s" selfhost/habu1.f" +F  s" selfhost/prof.f" +F  s" selfhost/vsjit.f" +F  s" selfhost/habu2.f" +F
+   s" src/core/sha256.f" +F  s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F
+   s" src/arch/arm64/mnem.f" +F  s" src/core/util.f" +F  s" src/arch/arm64/walk.f" +F
+   s" src/habu/rt.f" +F  s" src/habu/crash.f" +F  s" src/os/macos/macho.f" +F
+   s" src/os/macos/sign2.f" +F  s" src/habu/habu1.f" +F  s" src/habu/prof.f" +F  s" src/habu/vsjit.f" +F  s" src/habu/habu2.f" +F
    s" -1 STDIN? ! : GO here 0 EMIT-FORTH " +B
    s" 0 BEGIN dup ASM-LEN 4 / < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;
@@ -28,10 +28,10 @@ T{ GEN  EB EL @ compare 0= -> true }T
 \ behavioral: the standalone builds a signed stdin engine; pipe a program through it
 : GEN2 ( -- )
    0 CL !
-   s" selfhost/sha256.f" +F  s" selfhost/asm.f" +F  s" selfhost/icode.f" +F
-   s" selfhost/mnem.f" +F  s" selfhost/util.f" +F  s" selfhost/walk.f" +F
-   s" selfhost/rt.f" +F  s" selfhost/crash.f" +F  s" selfhost/macho.f" +F
-   s" selfhost/sign2.f" +F  s" selfhost/habu1.f" +F  s" selfhost/prof.f" +F  s" selfhost/vsjit.f" +F  s" selfhost/habu2.f" +F
+   s" src/core/sha256.f" +F  s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F
+   s" src/arch/arm64/mnem.f" +F  s" src/core/util.f" +F  s" src/arch/arm64/walk.f" +F
+   s" src/habu/rt.f" +F  s" src/habu/crash.f" +F  s" src/os/macos/macho.f" +F
+   s" src/os/macos/sign2.f" +F  s" src/habu/habu1.f" +F  s" src/habu/prof.f" +F  s" src/habu/vsjit.f" +F  s" src/habu/habu2.f" +F
    s" create PZ2 32 allot " +B
    s" : PZ! s" +B  s\" \" /tmp/sh-repl-bin\"" +B
    s"  {: a u :} 0 BEGIN dup u < WHILE dup a + c@ over PZ2 + c! 1 + REPEAT drop 0 PZ2 u + c! ; " +B

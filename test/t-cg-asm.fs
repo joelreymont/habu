@@ -5,7 +5,7 @@
 \ file-relative) — or via test/all.fs.
 
 require tester.fs
-require ../src/cg/asm.fs
+require ../bootstrap/cg/asm.fs
 
 create CODEBUF 256 allot
 : ASM@ ( i -- u32 )  4 * CODEBUF + l@ ;

@@ -1,5 +1,5 @@
 \ rt.fs — native runtime routines for the ENGINE-BUILDER port, transcribed from
-\ src/cg/rt.fs + the g-push/g-pop stack templates from src/cg/templ.fs. Emits the
+\ bootstrap/cg/rt.fs + the g-push/g-pop stack templates from bootstrap/cg/templ.fs. Emits the
 \ same instruction sequences via mnem.fs (golden-tested word-for-word in
 \ test/t-sh-rt.fs). Labels are allocated in ONE locals group per word (the
 \ standalone mis-reads a second {: :} group).

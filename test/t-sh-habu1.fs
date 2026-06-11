@@ -1,8 +1,8 @@
 \ t-sh-habu1.fs — engine-builder port, part 1: the standalone emits the engine's
 \ PRIMS + helper routines (cemit/tok/prot/flush/find/num) + seed DICT and the words
-\ must match habu's src/cg/forth.fs emitters exactly (same label-allocation order on
+\ must match habu's bootstrap/cg/forth.fs emitters exactly (same label-allocation order on
 \ both sides). Run: gforth test/t-sh-habu1.fs -e bye
-require ../src/cg/forth.fs
+require ../bootstrap/cg/forth.fs
 require sh-driver.fs
 create RBUF 65536 allot
 create EB 262144 allot  variable EL
@@ -18,9 +18,9 @@ create EB 262144 allot  variable EL
    RBUF ASSEMBLE 4 /  0 ?do i w@ n+ loop ;
 : GEN ( -- a u )
    0 CL !
-   s" selfhost/asm.f" +F  s" selfhost/icode.f" +F  s" selfhost/mnem.f" +F
-   s" selfhost/util.f" +F  s" selfhost/walk.f" +F  s" selfhost/rt.f" +F
-   s" selfhost/habu1.f" +F
+   s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/arch/arm64/mnem.f" +F
+   s" src/core/util.f" +F  s" src/arch/arm64/walk.f" +F  s" src/habu/rt.f" +F
+   s" src/habu/habu1.f" +F
    s" : GO ASM-INIT " +B
    s" NEWLBL Lcemit ! NEWLBL Ltok ! NEWLBL Lprot ! NEWLBL Lflush ! " +B
    s" NEWLBL Lfind ! NEWLBL Lnum ! NEWLBL Lncount ! NEWLBL Ldict ! " +B

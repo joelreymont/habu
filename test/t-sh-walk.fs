@@ -5,14 +5,14 @@
 require sh-driver.fs
 : GEN ( -- )
    0 CL !
-   s" selfhost/sha256.f"   slurp-file +B   s"  " +B
-   s" selfhost/asm.f"      slurp-file +B   s"  " +B
-   s" selfhost/icode.f"    slurp-file +B   s"  " +B
-   s" selfhost/util.f"    slurp-file +B   s"  " +B
-   s" selfhost/walk.f"     slurp-file +B   s"  " +B
-   s" selfhost/macho.f"    slurp-file +B   s"  " +B
-   s" selfhost/sign2.f"    slurp-file +B   s"  " +B
-   s" selfhost/walk-demo.f" slurp-file +B
+   s" src/core/sha256.f"   slurp-file +B   s"  " +B
+   s" src/arch/arm64/asm.f"      slurp-file +B   s"  " +B
+   s" src/arch/arm64/icode.f"    slurp-file +B   s"  " +B
+   s" src/core/util.f"    slurp-file +B   s"  " +B
+   s" src/arch/arm64/walk.f"     slurp-file +B   s"  " +B
+   s" src/os/macos/macho.f"    slurp-file +B   s"  " +B
+   s" src/os/macos/sign2.f"    slurp-file +B   s"  " +B
+   s" test/demos/walk-demo.f" slurp-file +B
    CBUF CL @ NF-RUN ;
 : RC ( -- n )  s" /tmp/sh-walk-bin; echo $? > /tmp/sh-walk-rc" system
    s" /tmp/sh-walk-rc" slurp-file  s>number? 2drop ;

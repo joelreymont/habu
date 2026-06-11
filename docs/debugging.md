@@ -24,11 +24,11 @@ a binary that ran fine can be SIGKILLed at a path that previously held an invali
 signature. Write to a fresh path when in doubt.
 
 ## STEP — single-step debugger (gforth host)
-`src/cg/stepper.fs`: `s" 5 dup * 3 +" STEP` evaluates one token at a time, printing
+`bootstrap/cg/stepper.fs`: `s" 5 dup * 3 +" STEP` evaluates one token at a time, printing
 the token and the data stack after each step, leaving the result. The "stepper".
 
 ## Forth disassembler (preferred over python/otool)
-`src/cg/disasm.fs`: `DISASM ( addr nwords -- )` decodes habu's ARM64 subset to
+`bootstrap/cg/disasm.fs`: `DISASM ( addr nwords -- )` decodes habu's ARM64 subset to
 mnemonics. Its decode math (`disasm-core.fs`) and the encoders (`asm-checked.fs`)
 are written as CHECKED typed Forth — habu certifies them (CHECK-CODE=0). Use this to
 inspect generated code; it found the walk-dispatcher bug (undefined `STR=`) instantly.

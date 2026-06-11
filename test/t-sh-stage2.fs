@@ -5,17 +5,17 @@
 \ emit stage2. Assert: stage2 == the gforth-built engine image for the same SRC,
 \ byte for byte. The standalone compiles its own compiler — and the output is the
 \ canonical artifact. Run: gforth test/t-sh-stage2.fs -e bye
-require ../src/cg/forth.fs
-require ../src/cg/exec.fs
+require ../bootstrap/cg/forth.fs
+require ../bootstrap/cg/exec.fs
 require sh-driver.fs
 : SRC+ ( -- )  0 CL !
-   s" selfhost/sha256.f" +F  s" selfhost/asm.f" +F  s" selfhost/icode.f" +F
-   s" selfhost/mnem.f" +F  s" selfhost/util.f" +F  s" selfhost/checker.f" +F
+   s" src/core/sha256.f" +F  s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F
+   s" src/arch/arm64/mnem.f" +F  s" src/core/util.f" +F  s" src/core/checker.f" +F
    s" : HOOK CHECK ; ' HOOK set-check " +B            \ DOGFOOD: every word below is
-   s" selfhost/walk.f" +F                            \ checked as the compiler compiles
-   s" selfhost/rt.f" +F  s" selfhost/crash.f" +F  s" selfhost/macho.f" +F   \ itself;
-   s" selfhost/sign2.f" +F  s" selfhost/habu1.f" +F  s" selfhost/prof.f" +F  s" selfhost/vsjit.f" +F  s" selfhost/habu2.f" +F
-   s" selfhost/stage2.f" +F ;                        \ a type error rejects -> exit 70
+   s" src/arch/arm64/walk.f" +F                            \ checked as the compiler compiles
+   s" src/habu/rt.f" +F  s" src/habu/crash.f" +F  s" src/os/macos/macho.f" +F   \ itself;
+   s" src/os/macos/sign2.f" +F  s" src/habu/habu1.f" +F  s" src/habu/prof.f" +F  s" src/habu/vsjit.f" +F  s" src/habu/habu2.f" +F
+   s" src/habu/stage2.f" +F ;                        \ a type error rejects -> exit 70
 \ write SRC where stage1 will read it back as data
 : SAVE-SRC ( -- )
    s" /tmp/stage2-src" w/o create-file throw {: fd :}

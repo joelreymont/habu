@@ -3,7 +3,7 @@
 \ to the gforth-threaded oracle running the same body+input. FULL 64-bit compare
 \ (not the low-byte exit code), over an adversarial input set. Slow (exec per
 \ case); run explicitly:  gforth test/t-cg-diff.fs -e bye
-require ../src/cg/walk.fs
+require ../bootstrap/cg/walk.fs
 require test/tester.fs
 
 create DBUF 300 chars allot   variable DLEN

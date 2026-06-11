@@ -1,7 +1,7 @@
 # The self-hosting Forth subset
 
 The bootstrap target: the minimal Forth the **standalone** (the native engine built by
-`src/cg/forth.fs`) must accept so that it can compile its **own compiler's source**. This
+`bootstrap/cg/forth.fs`) must accept so that it can compile its **own compiler's source**. This
 document defines that subset and records the proof that the current compiler source lives
 inside it.
 

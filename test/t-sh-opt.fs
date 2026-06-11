@@ -5,15 +5,15 @@
 require sh-driver.fs
 : GEN ( -- a u )
    0 CL !
-   s" selfhost/sha256.f"   slurp-file +B   s"  " +B
-   s" selfhost/asm.f"      slurp-file +B   s"  " +B
-   s" selfhost/icode.f"    slurp-file +B   s"  " +B
-   s" selfhost/util.f"    slurp-file +B   s"  " +B
-   s" selfhost/walk.f"     slurp-file +B   s"  " +B
-   s" selfhost/opt.f"      slurp-file +B   s"  " +B
-   s" selfhost/macho.f"    slurp-file +B   s"  " +B
-   s" selfhost/sign2.f"    slurp-file +B   s"  " +B
-   s" selfhost/opt-demo.f" slurp-file +B
+   s" src/core/sha256.f"   slurp-file +B   s"  " +B
+   s" src/arch/arm64/asm.f"      slurp-file +B   s"  " +B
+   s" src/arch/arm64/icode.f"    slurp-file +B   s"  " +B
+   s" src/core/util.f"    slurp-file +B   s"  " +B
+   s" src/arch/arm64/walk.f"     slurp-file +B   s"  " +B
+   s" src/arch/arm64/opt.f"      slurp-file +B   s"  " +B
+   s" src/os/macos/macho.f"    slurp-file +B   s"  " +B
+   s" src/os/macos/sign2.f"    slurp-file +B   s"  " +B
+   s" test/demos/opt-demo.f" slurp-file +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;
 : RC ( -- n )  s" /tmp/sh-opt-bin; echo $? > /tmp/sh-opt-rc" system
    s" /tmp/sh-opt-rc" slurp-file  s>number? 2drop ;

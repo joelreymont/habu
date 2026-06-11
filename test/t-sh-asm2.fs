@@ -4,7 +4,7 @@
 \ (2) the new encoders (divides/shifts/logical-imm/blr/cache/adr) match habu's
 \     encode-pass constants; (3) ADR, forward-ref patching + DCQ, data cells.
 \ Run: gforth test/t-sh-asm2.fs -e bye
-require ../src/cg/icode.fs
+require ../bootstrap/cg/icode.fs
 require sh-driver.fs
 create VALS 0 , 1 , $FFFF , $10000 , $FFFFFFFF , $100000000 , -1 , -2 ,
    $FFFFFFFFFFFF0000 , $1234000056780000 , $FFFF00000000FFFF , 42 , -42 ,
@@ -23,7 +23,7 @@ create EB 65536 allot  variable EL
    RBUF ASSEMBLE 4 /  0 ?do i w@ n+ loop ;
 : LITGEN ( -- a u )
    0 CL !
-   s" selfhost/asm.f" +F  s" selfhost/icode.f" +F  s" selfhost/util.f" +F  s" selfhost/walk.f" +F
+   s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/core/util.f" +F  s" src/arch/arm64/walk.f" +F
    s" : GO ASM-INIT " +B
    NV 0 ?do  s" 9 " +B  VALS i cells + @ u+  s" LIT64, " +B  loop
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
@@ -49,7 +49,7 @@ T{ LITGEN  EB EL @ compare 0= -> true }T
    $10000000 5 or -8 3 and 29 lshift or -8 4 / $7FFFF and 5 lshift or n+ ;  \ adr x5,.-8
 : ENCGEN ( -- a u )
    0 CL !
-   s" selfhost/asm.f" +F
+   s" src/arch/arm64/asm.f" +F
    s" : GO 5 1 2 ENC-SDIV . 5 1 2 ENC-UDIV . 5 1 2 ENC-LSLV . 5 1 2 ENC-LSRV . " +B
    s" 5 1 2 ENC-ASRV . 5 1 2 ENC-ASRI . 5 1 $1234 ENC-ANDI . 5 1 $1234 ENC-ORRI . " +B
    s" 5 1 $1234 ENC-EORI . 7 ENC-BLR . 7 ENC-BR . ENC-BRK . ENC-NOP . " +B
@@ -63,7 +63,7 @@ T{ ENCGEN  EB EL @ compare 0= -> true }T
    $55667788 n+  $11223344 n+ ;                                          \ dcq LE halves
 : P3GEN ( -- a u )
    0 CL !
-   s" selfhost/asm.f" +F  s" selfhost/icode.f" +F  s" selfhost/util.f" +F  s" selfhost/walk.f" +F
+   s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/core/util.f" +F  s" src/arch/arm64/walk.f" +F
    s" : GO ASM-INIT NEWLBL dup 5 swap ADR, LBL, $1122334455667788 DCQ, " +B
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;

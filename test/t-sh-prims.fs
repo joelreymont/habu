@@ -6,9 +6,9 @@
 require sh-driver.fs
 : PRIMS-OUT ( -- a u )
    0 CL !
-   s" selfhost/util.f"    slurp-file +B   s"  " +B
-   s" selfhost/checker.f"   slurp-file +B   s"  " +B
-   s" selfhost/prim-demo.f" slurp-file +B
+   s" src/core/util.f"    slurp-file +B   s"  " +B
+   s" src/core/checker.f"   slurp-file +B   s"  " +B
+   s" test/demos/prim-demo.f" slurp-file +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;
 \ T1 swap drop=-1, T2 over nip=-1, T3 dup 1+ +=-1, T4 dup 0= +=0 (type error),
 \ T5 0= 1+=0, T6 5 dup +=-1 (numeric literal checkable), T7 ... if ... then=1, then 42.

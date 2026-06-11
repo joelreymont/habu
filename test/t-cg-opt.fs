@@ -3,8 +3,8 @@
 \ Run alone:  gforth test/t-cg-opt.fs -e bye   — or via test/all.fs.
 
 require tester.fs
-require ../src/cg/opt.fs
-require ../src/cg/asm.fs
+require ../bootstrap/cg/opt.fs
+require ../bootstrap/cg/asm.fs
 
 create OBUF 256 allot
 : O@ ( i -- u32 )  4 * OBUF + l@ ;

@@ -3,6 +3,20 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## The gate was abort-blind — exit codes, not grep pipelines (2026-06-11)
+
+For some stretch of commits the combined gate LIED: a gforth exception while loading
+one test file (a stale path in t-sh-balance after the Mach-O convergence) aborted the
+whole suite mid-run, and the `| grep -c INCORRECT` check counted zero — abort looks
+identical to all-green. Three things were hiding behind it: the balance file-order
+bug, a long-broken test line (`5 3 D-FLD` — two args to a three-arg word), and the
+SCODE scratch buffer sitting within ~100 bytes of overflow (the habu rename's +1-byte
+strings pushed it over; now guarded + sized to the __TEXT budget). Fixes: test/all.fs
+already exits nonzero via #ERRORS and gforth exits nonzero on aborts — USE THE EXIT
+CODE (test/run.sh), never a grep pipeline that swallows it; selfhost-all.fs got the
+same #ERRORS exit line. Lesson: a gate must fail CLOSED — verify the checker itself
+fails when the suite dies early, not just when assertions fire.
+
 ## The engine became a register-allocating JIT — incrementally, gate-green (2026-06-11)
 
 vs.fs's allocator model now lives INSIDE the standalone's `:` compiler, landed as five
@@ -60,7 +74,7 @@ prim), compiles it with the ported EMIT-FORTH, wraps it with the ported BUILD-MA
 and the result is BYTE-IDENTICAL to the gforth-built engine image. Compiler fixpoint,
 from source — not image copying. Enablers: real calls + selective inlining (deep helper
 chains compile), 8KB body capture (engine words are long), $hex literals, the `read`
-prim (added to BOTH src/cg/forth.fs and the habu1.f port in lockstep — the goldens
+prim (added to BOTH bootstrap/cg/forth.fs and the habu1.f port in lockstep — the goldens
 enforce parity), __TEXT grown to $20000 and DATA-SIZE to $200000 (baked source + build
 buffers; macho-min/rebuild/sign NCSLOT updated together). Last port bug: a {: :} locals
 group INSIDE an IF branch (emit-source) — the documented frame-corruption footgun;
@@ -180,7 +194,7 @@ uses heavily, so the standalone can't yet compile its compiler (the fixpoint gap
 ## Standalone register allocator — the real codegen win (2026-06-11)
 
 The peephole (16->15) was barely worth it; the VS ALLOCATOR is the real win. Ported
-habu's register-allocating model to the standalone (selfhost/vs.f): the data stack
+habu's register-allocating model to the standalone (src/arch/arm64/vs.f): the data stack
 lives in REGISTERS (x9..x15), tracked by an abstract value stack. `swap`/`over` become
 free relabels, arithmetic is reg->reg, literals load straight into a reg — ZERO ldr/str
 until the pool spills. `5 dup *` compiles to 7 instructions (movz/movk/mov/mul/mov + exit)
@@ -195,7 +209,7 @@ compiler. Still straight-line only (control flow + FP + spill are the remaining 
 
 ## Standalone peephole optimizer + the `i`-local footgun (2026-06-11)
 
-Ported the first optimizer pass to the standalone (selfhost/opt.f): store-to-load
+Ported the first optimizer pass to the standalone (src/arch/arm64/opt.f): store-to-load
 FORWARDING drops a `ldr Rd,[x19]` right after a `str Rd,[x19]` (Rd still holds it) —
 sound for the branchless arithmetic bodies walk.fs emits. `5 dup *` goes 16 -> 15
 instructions and still computes 25. RECURRING FOOTGUN that cost time again here: a
@@ -207,13 +221,13 @@ str/ldr pair, and `.s` to catch WSET/WGET returning the same value — the tools
 
 ## Checked toolchain + standalone disassembler (2026-06-11)
 
-The debugging tools are built and dogfooded: a Forth disassembler (src/cg/disasm.fs)
+The debugging tools are built and dogfooded: a Forth disassembler (bootstrap/cg/disasm.fs)
 whose decode math (disasm-core.fs) and the encoders (asm-checked.fs) are CHECKED typed
 Forth — habu certifies them (CHECK-CODE=0). Caveat: habu type vars are SINGLE letters, so
 sigs must read `( a b c -- d )` (multi-char like `( rd rn rm -- w )` -> E-UNCHECKED), and
 sign-extend must be branchless (`(f^sign)-sign`; an IF version didn't certify). A STEP
 single-stepper (stepper.fs) traces a snippet token-by-token with the stack. And the
-standalone now disassembles its OWN generated code (selfhost/disasm.f, data-table
+standalone now disassembles its OWN generated code (src/arch/arm64/disasm.f, data-table
 driven) — self-hosted debugging, zero gforth/python. Two more standalone footguns hit:
 locals declared INSIDE a BEGIN/WHILE loop corrupt the frame (use variables for row
 fields); and a test bug — `,` stores 8-byte CELLS, but ARM64 instructions are 4-byte
@@ -221,13 +235,13 @@ u32s, so a `create P n , n ,` buffer is double-spaced (build code with `c,` LE b
 
 ## Standalone errors on undefined words; token compiler; Forth disassembler (2026-06-11)
 
-The standalone now COMPILES Forth source bodies to native code (selfhost/walk.f:
+The standalone now COMPILES Forth source bodies to native code (src/arch/arm64/walk.f:
 tokenize -> per-op instruction templates in a DATA table + literals + encoders +
 assembler -> self-signed binary; `7 dup *` -> exit 49). And it finally ERRORS on an
 undefined word in a `:` body (writes the name to stderr, exit 70) — the old silent
 no-op hid real bugs (`0<`, `STR=`, and the walk dispatcher emitting every template
 because undefined `STR=` made the match always true). Found that last one instantly
-with the EXISTING Forth disassembler (src/cg/disasm.fs, `DISASM addr nwords`) — use it,
+with the EXISTING Forth disassembler (bootstrap/cg/disasm.fs, `DISASM addr nwords`) — use it,
 not python/otool. Making undefined-word an error required: implementing the prims the
 checker knows but the engine lacked (`1+`/`1-`/`0<`), and fixing a test that relied on
 a tolerated forward reference (define the callee first — the standalone has no forward
@@ -237,8 +251,8 @@ missing `require`d helper compiles to nothing — make it loud.
 ## Standalone GENERATES native code — encoders + assembler + a runnable binary (2026-06-11)
 
 Major codegen-port milestone: the standalone now has runnable ARM64 encoders
-(selfhost/asm.f, verified byte-for-byte vs habu in t-sh-asm) and a single-pass
-assembler with labels + branch backpatching (selfhost/icode.f). It assembles a loop
+(src/arch/arm64/asm.f, verified byte-for-byte vs habu in t-sh-asm) and a single-pass
+assembler with labels + branch backpatching (src/arch/arm64/icode.f). It assembles a loop
 (exit 5+4+3+2+1=15) and emits a self-signed Mach-O that runs with ZERO external tools
 (t-sh-cg). Standalone gotchas hit and fixed: `{: x -- }` (a `--` inside a locals decl)
 isn't parsed — drop the `--`; `0<` is NOT a standalone prim (only `0=`/`<`/`>`) and an
@@ -254,7 +268,7 @@ python+otool disassemble.
 
 ## Standalone render — and a second-locals-group bug (2026-06-11)
 
-Added RENDER to the standalone (selfhost/render.f): walks the checker's inferred
+Added RENDER to the standalone (src/core/render.f): walks the checker's inferred
 residual stack (DCUR) and prints types as canonical letters a,b,c (bottom-to-top),
 int=n, flag=f — the 'render' half of the native sigparse/checker (test/t-sh-render).
 No recursion (the JIT would inline-explode) and no emit/+! (absent) — a collect-loop
@@ -296,7 +310,7 @@ mask while BUILD, compiled later, correctly picked the writer.)
 
 ## Standalone SHA-256 + the do-while DO gotcha (2026-06-11)
 
-Ported SHA-256 into the standalone's own Forth (selfhost/sha256.f) — the first step
+Ported SHA-256 into the standalone's own Forth (src/core/sha256.f) — the first step
 to the standalone self-signing without gforth or codesign. Matches FIPS-180 vectors
 (abc, 56-char, 64/100-byte) run natively (test/t-sh-sha.fs). Standalone porting
 gotchas vs gforth: **the number parser is decimal-only** (no `$` hex — decimalize
@@ -438,7 +452,7 @@ by `catch` is dead weight until a test actually drives it through the throw.
 
 ## Self-host is the real frontier — decomposed, not faked (2026-06-10)
 
-- The standalone `src/cg/forth.fs` is a 300-line stencil-JIT native Forth with
+- The standalone `bootstrap/cg/forth.fs` is a 300-line stencil-JIT native Forth with
   only `+ - * dup drop swap .` + int literals. "Standalone IS habu" (run the full
   checker + ICode codegen natively, stage2==stage3, drop gforth) is a multi-week
   bootstrap, not one increment. Decomposed into 10 ordered sub-dots (core words →
@@ -597,7 +611,7 @@ broken codegen. Compile-only constructs read GARBAGE when typed at the REPL /
 Each of these made a probe "prove" a codegen bug that did not exist (mis-bound
 label offsets, missing prim bodies). **Rules:** (1) wrap any multi-step
 diagnostic in a `:` definition and call it; (2) prefer the dogfooded inspectors
-in **`src/cg/inspect.fs`** (`ICDUMP`, `ICSCAN`, `?LBL`, `ICAT`) and the
+in **`bootstrap/cg/inspect.fs`** (`ICDUMP`, `ICSCAN`, `?LBL`, `ICAT`) and the
 **`test/nf.fs`** harness (`NFX` = build+run+show, `NF-RUN`/`NF=`) over hand-rolled
 one-liners; (3) for ground truth on an emitted binary, use the EXTERNAL oracle
 `otool -tV <file>` — it has no habu-tooling bugs. **Don't fight habu's tooling;
@@ -695,7 +709,7 @@ The dup-heavy hot loop (xorshift) didn't improve under store-forwarding — the
 reload was (correctly) impossible. Root cause: every `templ.fs` primitive
 hardcodes `T0/T1/T2`, so distinct live values collide.
 
-**Fixed — abstract register stack (`src/cg/regstack.fs`).** A compile-time value
+**Fixed — abstract register stack (`bootstrap/cg/regstack.fs`).** A compile-time value
 stack whose entries are POOL registers (`x13-x15,x20-x24`) or CONSTANTS; pure
 arithmetic/shuffle primitives operate on it with NO memory traffic (DUP copies to
 a fresh register, so the copy survives later ops). `walk.fs` SPILLS the whole VS
@@ -736,7 +750,7 @@ pre-opt == post-opt — the allocator emits near-optimal code directly); `DUP DU
 
 ## AOT locals + the u8/u32 "typed payoff" reality (2026-06-10)
 
-- **Locals (`src/cg/cglocals.fs`) — done.** `{: a b :}` lowers to a per-word
+- **Locals (`bootstrap/cg/cglocals.fs`) — done.** `{: a b :}` lowers to a per-word
   FRAME (`LOCSZ` bytes carved BELOW the data stack in `g-prologue`, addressed
   `[sp,#slot*8]`). At the opener: spill the VS, pop the named inputs into slots;
   a name use LDRs its slot onto the VS. Because locals are in memory (not the VS),
@@ -777,7 +791,7 @@ separate shift+xor through the stack, so habu's *real* output sits above 2.25 �
 the shifted-operand-fusion peephole (dot) closes that last gap to LLVM. Always
 measure against LLVM `-O3`, never gforth.
 
-**Constant folding (`src/cg/walk.fs`).** Literal arithmetic folds at compile time
+**Constant folding (`bootstrap/cg/walk.fs`).** Literal arithmetic folds at compile time
 via a compile-time value stack: numbers are deferred (not emitted); a foldable op
 over pending constants folds them; any other token first flushes them as g-lits
 (so runtime values never mix with deferred ones). `3 4 + 5 *` → one `LIT 35`.
@@ -894,7 +908,7 @@ stage2≡stage3 fixpoint). Part F is the genuine long pole.
 ## habu is a working native AOT compiler (2026-06-10)
 
 habu (hosted on gforth) compiles checked Forth to **standalone ARM64 macOS CLI
-executables** — no gforth at runtime, no C, no LLVM. `src/cg/`:
+executables** — no gforth at runtime, no C, no LLVM. `bootstrap/cg/`:
 `icode` (IR+mnemonics) → `opt` (peephole) → `asm` (encoders) → `templ` (prim/
 control generators) → `walk` (tokenize body) → `link` (subroutine ABI, deps,
 multi-word + MAIN) → `rt` (`.`/atoi runtimes) → `macho`/`exec` (emit+sign+run).
@@ -926,7 +940,7 @@ dictionary + evaluate). That remains the long pole.
 
 ## Part F — standalone native Forth interpreter (2026-06-10)
 
-`src/cg/forth.fs` emits a **standalone native Forth** (no gforth, no C): a Mach-O
+`bootstrap/cg/forth.fs` emits a **standalone native Forth** (no gforth, no C): a Mach-O
 with a dictionary + subroutine-threaded primitives + an outer interpreter that
 parses an embedded source line, number-pushes, FINDs, and EXECUTEs. Proven
 (`test/t-cg-forth.fs`): `2 3 + .`→5, `10 20 + 5 * .`→150, `8 3 swap - .`→-5.
@@ -987,7 +1001,7 @@ EOF, then runs the same outer interpreter over it. `echo ': SQ DUP * ; 5 SQ .' |
 
 ## Type checker — capability vs. coverage (2026-06-10)
 
-When dogfooding the codegen (`src/cg/`) as typed habu, the question arose whether
+When dogfooding the codegen (`bootstrap/cg/`) as typed habu, the question arose whether
 the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 
 - The checker ENGINE is capable: `src/control.fs` already models `IF/ELSE/THEN`,
@@ -1123,7 +1137,7 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   any token that isn't a known prim (control flow, literal, unknown word) sets an
   UNCHECKABLE flag; CHECK returns 1 (uncheckable, published but NOT certified)
   distinct from -1 (well-typed) and 0 (type error). It no longer claims to have
-  checked what it can't. The checker lives in selfhost/checker.f now (not inline).
+  checked what it can't. The checker lives in src/core/checker.f now (not inline).
 - Drift guard: the standalone's hand-transcribed encoders + Mach-O builder are
   cross-checked byte-identical to habu's asm.fs/macho.fs (both emit exit(42), cmp).
   test/selfhost-all.fs is the gate: sound checker + drift + the self-rebuild fixpoint.

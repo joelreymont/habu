@@ -1,5 +1,5 @@
-\ selfhost/sha256.f — SHA-256 in the STANDALONE's Forth (decimal constants, DO/LOOP,
-\ no move/fill/hex). Ported from src/cg/sha256.fs so the standalone can self-sign its
+\ src/core/sha256.f — SHA-256 in the STANDALONE's Forth (decimal constants, DO/LOOP,
+\ no move/fill/hex). Ported from bootstrap/cg/sha256.fs so the standalone can self-sign its
 \ own Mach-O with zero gforth and zero external codesign. Verified against FIPS-180.
 4294967295 constant W32
 : M32 W32 and ;

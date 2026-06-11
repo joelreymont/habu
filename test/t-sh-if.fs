@@ -4,16 +4,16 @@
 require sh-driver.fs
 : BUILD-IF {: input -- }                       \ compile abs(-input) -> /tmp/sh-if-bin
    0 CL !
-   s" selfhost/sha256.f"   slurp-file +B   s"  " +B
-   s" selfhost/asm.f"      slurp-file +B   s"  " +B
-   s" selfhost/icode.f"    slurp-file +B   s"  " +B
-   s" selfhost/util.f"    slurp-file +B   s"  " +B
-   s" selfhost/walk.f"     slurp-file +B   s"  " +B
-   s" selfhost/vs.f"       slurp-file +B   s"  " +B
+   s" src/core/sha256.f"   slurp-file +B   s"  " +B
+   s" src/arch/arm64/asm.f"      slurp-file +B   s"  " +B
+   s" src/arch/arm64/icode.f"    slurp-file +B   s"  " +B
+   s" src/core/util.f"    slurp-file +B   s"  " +B
+   s" src/arch/arm64/walk.f"     slurp-file +B   s"  " +B
+   s" src/arch/arm64/vs.f"       slurp-file +B   s"  " +B
    s" : INPUTVAL " +B  input 0 <# #s #> +B  s"  ; " +B
-   s" selfhost/macho.f"    slurp-file +B   s"  " +B
-   s" selfhost/sign2.f"    slurp-file +B   s"  " +B
-   s" selfhost/if-demo.f"  slurp-file +B  s"  GO" +B
+   s" src/os/macos/macho.f"    slurp-file +B   s"  " +B
+   s" src/os/macos/sign2.f"    slurp-file +B   s"  " +B
+   s" test/demos/if-demo.f"  slurp-file +B  s"  GO" +B
    CBUF CL @ NF-RUN ;
 : RC ( -- n )  s" /tmp/sh-if-bin; echo $? > /tmp/sh-if-rc" system
    s" /tmp/sh-if-rc" slurp-file  s>number? 2drop ;
