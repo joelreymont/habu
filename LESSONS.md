@@ -19,6 +19,24 @@ gforth case-folds `S0`/`s0` (use BSIG0/SSIG0); a local named `i` shadows the loo
 index inside `?DO`; declaring `{: :}` locals inside a loop corrupts the return
 stack (factor the loop body into its own word); `?DO` is `( limit start -- )`.
 
+## Standalone GENERATES native code — encoders + assembler + a runnable binary (2026-06-11)
+
+Major codegen-port milestone: the standalone now has runnable ARM64 encoders
+(selfhost/asm.fs, verified byte-for-byte vs caf in t-sh-asm) and a single-pass
+assembler with labels + branch backpatching (selfhost/icode.fs). It assembles a loop
+(exit 5+4+3+2+1=15) and emits a self-signed Mach-O that runs with ZERO external tools
+(t-sh-cg). Standalone gotchas hit and fixed: `{: x -- }` (a `--` inside a locals decl)
+isn't parsed — drop the `--`; `0<` is NOT a standalone prim (only `0=`/`<`/`>`) and an
+UNDEFINED word compiles to a silent no-op (so `dup 0<` became `dup IF` — the standalone
+should error on undefined words); a SECOND `{: :}` locals group mis-reads its slot
+(BR-EMIT, EMITW, PATCH — use a variable, not a 2nd local). BIGGEST time-sink: an AMFI
+**signature cache** — once a path (/tmp/cg-out) is written with an invalid signature,
+the kernel SIGKILLs even a later VALID binary at that same path/inode. codesign -v
+passes, page hashes match, but it won't run. Fix: write to a fresh path (or rm+rewrite).
+This is why a binary that ran after external re-sign still died self-signed at the old
+path. Tooling: lldb works on caf binaries now (revealed load-time vs runtime kills);
+python+otool disassemble.
+
 ## Standalone render — and a second-locals-group bug (2026-06-11)
 
 Added RENDER to the standalone (selfhost/render.fs): walks the checker's inferred

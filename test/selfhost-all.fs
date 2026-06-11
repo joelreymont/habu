@@ -5,6 +5,7 @@ require t-sh-check.fs
 require t-sh-prims.fs
 require t-sh-render.fs
 require t-sh-asm.fs
+require t-sh-cg.fs
 require t-sh-sha.fs
 require t-sh-sign.fs
 require t-sh-drift.fs
