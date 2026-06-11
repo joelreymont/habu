@@ -78,7 +78,8 @@ create PNPOOL 1024 chars allot   variable PNP   variable #PL
 : FPRIM {: na nu xt -- :}            \ define+register a primitive (start..RET..end labels)
    NEWLBL {: lbl :}  NEWLBL {: elbl :}
    na nu lbl elbl reg-prim
-   lbl LBL,  xt execute  RET,  elbl LBL, ;
+   lbl LBL,  SP SP 16 SUBI,  30 SP 0 STR,    \ prologue: save x30 (calls now nest, not inline)
+   xt execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  elbl LBL, ;
 
 \ shared label ids (forward refs)
 variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  variable SRCN
@@ -345,13 +346,15 @@ variable Lkwdo variable Lkwloop variable Lkwi
    7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 LIT64,  9 8 7 ORR,  Lcemit @ BL,
    9 W-PUSH0 LIT64,  Lcemit @ BL,  9 W-PUSH1 LIT64,  Lcemit @ BL, ;
 
-\ ---- compile-mode inline copy: CCOPY( x9=src, x10=nbytes ) word-at-a-time ----
-: c-copy ( -- )
-   NEWLBL {: cl :}  NEWLBL {: cd :}
-   10 cd CBZ,
-   cl LBL,  11 9 0 LDRW,  11 28 0 STRW,  9 9 4 ADDI,  28 28 4 ADDI,  10 10 4 SUBI,
-            10 cl CBNZ,
-   cd LBL, ;
+\ ---- compile-mode CALL: emit one BL to the found word (x11=target addr). Replaces
+\ inlining (which flattened bodies and exploded code size); every word now saves/restores
+\ x30, so arbitrary call nesting is safe.  BL imm26 = (target-CP)>>2, masked to 26 bits.
+: c-call ( -- )   \ x11 = target addr
+   9 11 28 SUB,                        \ x9 = target - CP  (signed byte offset)
+   9 9 2 LSRI,                         \ >>2 -> instruction offset (low 26 bits valid both signs)
+   8 $03FFFFFF LIT64,  9 9 8 AND,      \ mask imm26
+   8 $94000000 LIT64,  9 9 8 ORR,      \ BL opcode
+   Lcemit @ BL, ;
 
 \ ---- source setup: point INP/INE at either the baked Lsrc or stdin ----
 \ stdin mode reads all of fd 0 into a fresh RW mmap buffer, then interprets it
@@ -668,6 +671,8 @@ variable Lkwdo variable Lkwloop variable Lkwi
          5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,   \ reset CFSP
          12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,      \ reset locals
          12 0 MOVZ,  12 DATA BODYLEN-CELL STR,                           \ reset body capture
+         9 $D10043FF LIT64,  Lcemit @ BL,                  \ prologue: sub sp,sp,#16
+         9 $F90003FE LIT64,  Lcemit @ BL,                  \   str x30,[sp]  (slot.addr points here)
          lmain B,
       lnotcolon LBL,
       \ interpret-mode defining words + tick
@@ -690,6 +695,8 @@ variable Lkwdo variable Lkwloop variable Lkwi
          12 DATA LOCF-CELL LDR,  NEWLBL {: notd :}  12 notd CBZ,   \ tear down locals frame
             9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ add sp,sp,#frame
          notd LBL,
+         9 $F94003FE LIT64,  Lcemit @ BL,                   \ epilogue: ldr x30,[sp]
+         9 $910043FF LIT64,  Lcemit @ BL,                   \   add sp,sp,#16
          9 W-RET LIT64,  Lcemit @ BL,                       \ emit RET
          9 PEND 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 PEND 8 STR,  \ clen
          2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,               \ region -> RX + flush (callable now)
@@ -743,7 +750,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
       lcnotnum LBL,
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,            \ FIND -> inline stencil
       13 lundef CBZ,                                         \ undefined word in a : body -> error
-      9 11 0 ADDI,  10 12 0 ADDI,  c-copy  lmain B,
+      c-call  lmain B,                                      \ x11=addr -> emit BL (no longer inline)
    \ undefined word during compilation: write the name to stderr and exit(70). Silently
    \ skipping it (the old behaviour) hid real bugs (e.g. `0<`, `STR=` -> no-op).
    lundef LBL,

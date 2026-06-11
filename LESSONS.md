@@ -3,6 +3,26 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Real calls break the inlining wall — the engine fix (2026-06-11)
+
+The leaf-only inlining model (below) was THE blocker for self-hosting: the standalone's
+`:` INLINED every colon body, so any reused helper or a register-exhaustion spill path
+exploded the compiled code and SIGSEGV'd at load. Proven with the Dig protocol: adding a
+spill fallback to `R-ALLOC` (called from ~8 sites) crashed vs-demo; removing just the
+*call* restored it — pure code-size, not logic. The earlier "BL if large" attempt failed
+because a BL'd word that itself BLs clobbers LR (x30). The real fix is a uniform frame:
+**every** word saves/restores x30 — prims via FPRIM (`sub sp,#16; str x30,[sp]` … `ldr
+x30,[sp]; add sp,#16; ret`), user `:` words emit the same prologue at the name and
+epilogue before RET (Lcemit raw words $D10043FF/$F90003FE … $F94003FE/$910043FF). Then
+the compiler emits ONE `BL (target-CP)>>2` per call (`c-call`) instead of inlining
+(`c-copy`, now dead and removed). Arbitrary call nesting is safe because each frame
+restores LR before returning. The data stack is in memory (x19), so nothing else needs
+saving; leaf defining-words (CREATE/CONSTANT) need no prologue. Result: register SPILL
+(>7 live values → spill deepest reg to [x19,#k*8], reload via V-FORCE) now compiles and
+runs — `dup×8 + ×8` of input 5 exits 45 (t-sh-spill). All 16 standalone tests stay
+green. This unblocks deep stacks, full codegen, and the compiler fixpoint (the compiler's
+own source is far too large to inline). The "leaf-only wall" note below is now historical.
+
 ## Self-signing replaces external codesign (2026-06-11)
 
 caf now ad-hoc-signs its own Mach-O — no external `codesign`. SHA-256 in Forth

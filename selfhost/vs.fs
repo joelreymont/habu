@@ -11,15 +11,24 @@ create RPOOL 9 c, 10 c, 11 c, 12 c, 13 c, 14 c, 15 c,
 create RFREE NRP allot
 variable RAI  variable RRES
 : RP-RESET 0 RAI ! BEGIN RAI @ NRP < WHILE 1 RAI @ RFREE + c! RAI @ 1 + RAI ! REPEAT ;
+\ abstract value stack with CONSTANT FOLDING: each entry is a register, a known
+\ compile-time constant, or a spilled memory slot. VTAG[k] 0=reg 1=con 2=mem;
+\ VVAL[k]=reg number / constant value / (slot addressed via k).
+create VTAG 64 allot   create VVAL 64 cells allot   variable VSP
+\ spill the DEEPEST reg-resident VS entry to its canonical slot [x19,#k*8] and hand back
+\ its freed register — used when the x9..x15 pool exhausts on a deep stack (>7 live).
+variable SPK  variable SPR
+: R-SPILL-DEEPEST  -1 SPK !  0 RAI !
+   BEGIN RAI @ VSP @ < SPK @ -1 = and WHILE
+     VTAG RAI @ + c@ 0= IF RAI @ SPK ! THEN  RAI @ 1 + RAI ! REPEAT
+   VVAL SPK @ cells + @ SPR !
+   SPR @ 19 SPK @ 8 * ENC-STR EMITW  2 VTAG SPK @ + c!  SPR @ ;
 : R-ALLOC  -1 RRES !  0 RAI !
    BEGIN RAI @ NRP < RRES @ -1 = and WHILE
      RAI @ RFREE + c@ IF 0 RAI @ RFREE + c!  RAI @ RPOOL + c@ RRES ! THEN  RAI @ 1 + RAI !
-   REPEAT  RRES @ ;
+   REPEAT  RRES @ -1 = IF R-SPILL-DEEPEST RRES ! THEN  RRES @ ;
 : R-FREE {: r :}  0 RAI ! BEGIN RAI @ NRP < WHILE
      RAI @ RPOOL + c@ r = IF 1 RAI @ RFREE + c! THEN  RAI @ 1 + RAI ! REPEAT ;
-\ abstract value stack with CONSTANT FOLDING: each entry is a register OR a known
-\ compile-time constant. VTAG[k] 0=reg 1=con; VVAL[k]=reg number or constant value.
-create VTAG 64 allot   create VVAL 64 cells allot   variable VSP
 : V-PUSHR {: r :}  0 VTAG VSP @ + c!  r VVAL VSP @ cells + !  VSP @ 1 + VSP ! ;
 : V-PUSHC {: n :}  1 VTAG VSP @ + c!  n VVAL VSP @ cells + !  VSP @ 1 + VSP ! ;
 : GMOV {: d s :}  d 31 s ENC-ORR EMITW ;               \ mov d, s  (orr d, xzr, s)
