@@ -281,6 +281,34 @@ variable CFSK
    CFSK @ LBL, ;
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable Lmain  variable Lexit  variable Lcompile  variable Lundef
+variable CFSK2
+\ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
+\ a REGISTER top branches directly (no spill + memory pop); con or empty falls
+\ back to the spill + pop path. hxtr gets the condition reg in x14.
+: cfb-entry {: lmainlbl kwvar kwlen hxtm hxtr :}
+   NEWLBL CFSK !  NEWLBL CFSK2 !
+   0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
+   0 CFSK @ CBZ,
+   6 DATA VSP-CELL LDR,  6 CFSK2 @ CBZ,
+   5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+   7 CFSK2 @ CBNZ,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  14 8 0 LDR,
+   SP SP 16 SUBI,  14 SP 8 STR,
+   Lvdrop @ BL,  Lvspill @ BL,
+   14 SP 8 LDR,  SP SP 16 ADDI,
+   hxtr execute
+   lmainlbl B,
+   CFSK2 @ LBL,
+   Lvspill @ BL,
+   hxtm execute
+   lmainlbl B,
+   CFSK @ LBL, ;
+: j-ifr  c-pushcp  8 $B4000000 LIT64,  9 8 14 ORR,  Lcemit @ BL, ;
+: j-whiler  j-ifr ;
+: j-untilr  Lcfpop @ BL,  15 9 0 ADDI,
+   10 15 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
+   8 $B4000000 LIT64,  9 8 14 ORR,  9 9 10 ORR,  Lcemit @ BL, ;
+
 : em-startup
    NEWLBL NEWLBL {: scopy scdone :}
    Lanchor @ LBL,
@@ -399,13 +427,13 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
          Lmain @ B,
       lnotsemi LBL,
       Lbcap @ BL,
-      Lmain @ Lkwif     2 ['] j-if     cf-entry
+      Lmain @ Lkwif     2 ['] j-if   ['] j-ifr    cfb-entry
       Lmain @ Lkwthen   4 ['] j-then   cf-entry
       Lmain @ Lkwelse   4 ['] j-else   cf-entry
       Lmain @ Lkwbegin  5 ['] j-begin  cf-entry
-      Lmain @ Lkwuntil  5 ['] j-until  cf-entry
+      Lmain @ Lkwuntil  5 ['] j-until ['] j-untilr cfb-entry
       Lmain @ Lkwagain  5 ['] j-again  cf-entry
-      Lmain @ Lkwwhile  5 ['] j-while  cf-entry
+      Lmain @ Lkwwhile  5 ['] j-while ['] j-whiler cfb-entry
       Lmain @ Lkwrepeat 6 ['] j-repeat cf-entry
       Lmain @ Lkwsq     2 ['] c-sdq    cf-entry
       Lmain @ Lkwbtick  3 ['] c-btick  cf-entry

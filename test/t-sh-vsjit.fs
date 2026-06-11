@@ -45,3 +45,8 @@ T{ s" : T 65536 . $123456789ABC . ; T"           OUT s\" 65536\n20015998343868\n
 T{ s" : T 0 2 - {: a :} a 7 * . ; T"              OUT s\" -14\n"    compare 0= -> true }T
 T{ s" : T $FFFF0000FFFF0000 $FFFF and . ; T"      OUT s\" 0\n"      compare 0= -> true }T
 T{ s" : T {: a :} $100000001 a + . ; 1 T"         OUT s\" 4294967298\n" compare 0= -> true }T
+\ fused register branches: if/until/while CBZ directly on a VS register
+T{ s" : T {: a :} a 0 > if 7 else 9 then . ; 5 T"  OUT s\" 7\n"  compare 0= -> true }T
+T{ s" : T {: a :} a 0 > if 7 else 9 then . ; 0 1 - T" OUT s\" 9\n" compare 0= -> true }T
+T{ s" : T {: a b :} a b > if a else b then . ; 3 9 T" OUT s\" 9\n" compare 0= -> true }T
+T{ s" : T 1 if 5 . then ; T"                       OUT s\" 5\n"  compare 0= -> true }T

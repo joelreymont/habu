@@ -789,6 +789,35 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    hxt execute  lmainlbl B,
    skip LBL, ;
 
+variable CFSK
+variable CFSK2
+\ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
+\ a REGISTER top branches directly (no spill + memory pop); con or empty falls
+\ back to the spill + pop path. hxtr gets the condition reg in x14.
+: cfb-entry {: lmainlbl kwvar kwlen hxtm hxtr :}
+   NEWLBL CFSK !  NEWLBL CFSK2 !
+   0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
+   0 CFSK @ CBZ,
+   6 DATA VSP-CELL LDR,  6 CFSK2 @ CBZ,
+   5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+   7 CFSK2 @ CBNZ,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  14 8 0 LDR,
+   SP SP 16 SUBI,  14 SP 8 STR,
+   Lvdrop @ BL,  Lvspill @ BL,
+   14 SP 8 LDR,  SP SP 16 ADDI,
+   hxtr execute
+   lmainlbl B,
+   CFSK2 @ LBL,
+   Lvspill @ BL,
+   hxtm execute
+   lmainlbl B,
+   CFSK @ LBL, ;
+: j-ifr  c-pushcp  8 $B4000000 LIT64,  9 8 14 ORR,  Lcemit @ BL, ;
+: j-whiler  j-ifr ;
+: j-untilr  Lcfpop @ BL,  15 9 0 ADDI,
+   10 15 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
+   8 $B4000000 LIT64,  9 8 14 ORR,  9 9 10 ORR,  Lcemit @ BL, ;
+
 \ ---- MAIN: startup (data stack + mmap + seed dict) then the outer interpreter ----
 : emit-main ( -- )
    Lanchor @ LBL,
@@ -920,13 +949,13 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       \ capture the token into the body buffer (for the check hook); space-joined.
       Lbcap @ BL,
       \ control-flow keywords (compile-only): emit/patch JIT branches, then loop
-      lmain Lkwif     2 ['] j-if     cf-entry
+      lmain Lkwif     2 ['] j-if   ['] j-ifr    cfb-entry
       lmain Lkwthen   4 ['] j-then   cf-entry
       lmain Lkwelse   4 ['] j-else   cf-entry
       lmain Lkwbegin  5 ['] j-begin  cf-entry
-      lmain Lkwuntil  5 ['] j-until  cf-entry
+      lmain Lkwuntil  5 ['] j-until ['] j-untilr cfb-entry
       lmain Lkwagain  5 ['] j-again  cf-entry
-      lmain Lkwwhile  5 ['] j-while  cf-entry
+      lmain Lkwwhile  5 ['] j-while ['] j-whiler cfb-entry
       lmain Lkwrepeat 6 ['] j-repeat cf-entry
       lmain Lkwsq     2 ['] c-sdq    cf-entry            \ S" string"
       lmain Lkwbtick  3 ['] c-btick  cf-entry            \ ['] NAME
