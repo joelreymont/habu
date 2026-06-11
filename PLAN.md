@@ -1,8 +1,10 @@
 # habu — Checked Forth: Implementation Plan
 
-A complete checked Forth, self-hosted in Gforth 0.7.9. Checked code is ordinary
-Forth that fails to compile unless its body's inferred stack effect unifies with
-its declared effect. Background notes (a chat session, not authoritative on
+A complete checked Forth, SELF-HOSTED: bin/hb compiles its own source (0.2 s,
+type-checking itself as it goes) and reproduces itself byte-for-byte — see
+tools/build.sh. Gforth 0.7.9 is BOOTSTRAP-ONLY (bootstrap/, tools/bootstrap.sh
+regenerates bin/hb from nothing). Checked code is ordinary Forth that fails to
+compile unless its body's inferred stack effect unifies with its declared effect. Background notes (a chat session, not authoritative on
 scope): `~/Downloads/forth_checked_stack_session_history.md`.
 
 ## Goal & decisions (locked)
