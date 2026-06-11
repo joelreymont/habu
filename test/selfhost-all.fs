@@ -7,6 +7,7 @@ require t-sh-render.fs
 require t-sh-asm.fs
 require t-sh-cg.fs
 require t-sh-walk.fs
+require t-sh-opt.fs
 require t-sh-undef.fs
 require t-sh-disasm.fs
 require t-sh-debug.fs
