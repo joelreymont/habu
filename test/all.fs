@@ -38,6 +38,7 @@ require t-colon.fs
 require t-selfhost.fs
 require t-asm-checked.fs
 require t-disasm-core.fs
+require t-stepper.fs
 
 cr ." caf test suite: " #ERRORS @ . ." failure(s)" cr
 #ERRORS @ 0<> negate (bye)      \ exit 1 if any failures, else 0 (no IF: interpret mode)
