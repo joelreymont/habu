@@ -756,3 +756,18 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   standalone-Forth (a from-scratch reimplementation in the constrained dialect),
   not an incremental port. The components are proven; assembling them into a
   self-emitting whole is the genuine remaining engineering project.
+
+## Self-host 10 — the standalone emits runnable native executables (2026-06-11)
+
+- BREAKTHROUGH toward "drop gforth": the standalone now produces a runnable native
+  Mach-O executable ITSELF. Added file-I/O syscalls (open/write/close) and ported
+  macho.fs to standalone source: it builds the header + 6 load commands, encodes
+  the program (exit(42): movz x0,#42; movz x16,#1; svc), and writes the file. After
+  the same external ad-hoc `codesign` caf already shells out to, the OS runs it and
+  it exits 42. NO gforth in the emission path — the standalone is a self-contained
+  native code emitter (checker + codegen + ICode + encoders + Mach-O + file I/O).
+- What this does NOT yet do: emit the WHOLE standalone (the literal stage2==stage3
+  self-rebuild). That needs forth.fs's complete emit logic (every emit-* routine +
+  all mnemonics + the dict/source embedding) re-expressed in standalone-Forth — a
+  large port. But the standalone now has every PRIMITIVE capability it requires;
+  the remaining work is assembling them into the full self-emit, not new machinery.

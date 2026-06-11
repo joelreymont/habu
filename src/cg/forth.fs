@@ -131,6 +131,10 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
 : bcomma  A g-pop  7 DATA 0 LDR,  A 7 0 STR,  7 7 8 ADDI,  7 DATA 0 STR, ;
 : bccomma A g-pop  7 DATA 0 LDR,  A 7 0 STRB, 7 7 1 ADDI,  7 DATA 0 STR, ;
 : btype   2 g-pop  1 g-pop  0 1 MOVZ,  16 4 MOVZ,  $80 SVC, ;   \ ( addr len -- ) write(1,..)
+\ file I/O (path must be NUL-terminated by the caller)
+: bopen   2 g-pop  1 g-pop  0 g-pop  16 5 MOVZ,  $80 SVC,  0 g-push ;   \ ( pathz flags mode -- fd )
+: bwrite  2 g-pop  1 g-pop  0 g-pop  16 4 MOVZ,  $80 SVC,  0 g-push ;   \ ( fd buf len -- n )
+: bclose  0 g-pop  16 6 MOVZ,  $80 SVC, ;                               \ ( fd -- )
 : bexec   A g-pop  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
 \ catch ( xt -- exc ) / throw ( exc -- ). Handler frames chain through [x20+8]
 \ (=HND). A frame (48 B on the machine stack) saves: prev-HND, data-sp(x19),
@@ -209,6 +213,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
    s" here" ['] bhere  FPRIM   s" allot" ['] ballot FPRIM
    s" ,"    ['] bcomma FPRIM   s" c,"   ['] bccomma FPRIM
    s" type" ['] btype  FPRIM   s" execute" ['] bexec FPRIM
+   s" open" ['] bopen FPRIM   s" write" ['] bwrite FPRIM   s" close" ['] bclose FPRIM
    s" catch" ['] bcatch FPRIM   s" throw" ['] bthrow FPRIM
    s" wordlist" ['] bwordlist FPRIM   s" get-current" ['] bgetcur FPRIM
    s" set-current" ['] bsetcur FPRIM  s" search-wl" ['] bswl FPRIM
