@@ -214,6 +214,7 @@ create ENDLOC-KW 58 c, 125 c,
    6 DATA LOCN-CELL LDR,
    nl LBL,
       Ltok @ BL,  0 nd CBZ,
+      Lbcap @ BL,                                          \ locals reach the checker too
       0 Lkwendloc @ ADR,  1 2 MOVZ,  Lkwcmp @ BL,  0 nstore CBZ,  nd B,
       nstore LBL,
       11 DATA LOCN-CELL LDR,  11 16 CMPI,  C-LT nlok BCOND,
@@ -316,7 +317,7 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
       notcom LBL,
       PEND Lcompile @ CBNZ, ;
 : em-interpret
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotcolon ncopy ncd lnotnum cpok ndok scp scd :}
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotcolon ncopy ncd lnotnum cpok ndok :}
    TKL 1 CMPI,  C-NE lnotcolon BCOND,
    9 TKA 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,
       2 3 MOVZ,  Lprot @ BL,
@@ -341,12 +342,7 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
       5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
       12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
       12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
-      15 DATA BODYBUF-OFF ADDI,
-      11 TKA 0 ADDI,  12 TKL 0 ADDI,
-      scp LBL,  12 scd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
-         15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  scp B,
-      scd LBL,  13 32 MOVZ,  13 15 0 STRB,
-      14 TKL 0 ADDI,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
+      Lbcap @ BL,             \ seed with the NAME (checker records certified sigs)
       12 0 MOVZ,  12 DATA VSP-CELL STR,
       12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
       9 $D10043FF LIT64,  Lcemit @ BL,
@@ -364,7 +360,7 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
    13 Lundef @ CBZ,
    11 BLR,  Lmain @ B, ;
 : em-compile
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotsemi notd nohook rejected bcap bcp bcd notloc lmem lcnotnum :}
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotsemi notd nohook rejected notloc lmem lcnotnum :}
    Lcompile @ LBL,
       TKL 1 CMPI,  C-NE lnotsemi BCOND,
       9 TKA 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
@@ -388,17 +384,7 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
          PEND 0 MOVZ,
          Lmain @ B,
       lnotsemi LBL,
-      14 DATA BODYLEN-CELL LDR,
-      5 BODYBUF-CAP MOVZ,  14 5 CMP,  C-LT bcap BCOND,
-         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
-         0 71 MOVZ,  16 1 MOVZ,  $80 SVC,
-      bcap LBL,
-         15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
-         11 TKA 0 ADDI,  12 TKL 0 ADDI,
-         bcp LBL,  12 bcd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
-            15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  bcp B,
-         bcd LBL,  13 32 MOVZ,  13 15 0 STRB,
-         14 14 TKL ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
+      Lbcap @ BL,
       Lmain @ Lkwif     2 ['] j-if     cf-entry
       Lmain @ Lkwthen   4 ['] j-then   cf-entry
       Lmain @ Lkwelse   4 ['] j-else   cf-entry
@@ -468,6 +454,7 @@ variable SRCA
    ASM-INIT  0 #PL !  0 PNP !
    NEWLBL Lanchor !  NEWLBL Lfind !  NEWLBL Lnum !  NEWLBL Ldict !  NEWLBL Lsrc !
    NEWLBL Lcemit !  NEWLBL Ltok !  NEWLBL Lprot !  NEWLBL Lflush !  NEWLBL Lncount !
+   NEWLBL Lbcap !
    NEWLBL Lcfpush !  NEWLBL Lcfpop !  NEWLBL Lpat !  NEWLBL Lkwcmp !
    NEWLBL Lkwif !  NEWLBL Lkwthen !  NEWLBL Lkwelse !  NEWLBL Lkwbegin !
    NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !
@@ -490,7 +477,7 @@ variable SRCA
    NEWLBL Lkwinc !  NEWLBL Lkwdec !  NEWLBL Lkwzeq !
    NEWLBL Lkwzlt !  NEWLBL Lkwneg2 !  NEWLBL Lkwinv2 !
    emit-main
-   emit-prims  emit-prof-prims  emit-fp-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
+   emit-prims  emit-prof-prims  emit-fp-prims  emit-cemit  emit-bcap  emit-tok  emit-prot  emit-flush  emit-find  emit-num
    emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-cmpkw  emit-unkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict

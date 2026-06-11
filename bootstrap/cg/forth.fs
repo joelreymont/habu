@@ -91,7 +91,7 @@ create PNPOOL 1024 chars allot   variable PNP   variable #PL
 variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  variable SRCN
 variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncount
 \ control-flow JIT helpers + keyword data labels (self-host 1b)
-variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp
+variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp  variable Lbcap
 variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
@@ -314,6 +314,24 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
 
 : emit-cemit ( -- )
    Lcemit @ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
+
+\ Lbcap ( -- ) : append TKA/TKL + ' ' to the body capture; FATAL (exit 71) on
+\ overflow — truncation would let the check hook certify code it never saw.
+: emit-bcap
+   Lbcap @ LBL,
+   NEWLBL NEWLBL NEWLBL {: bok bcp bcd :}
+   14 DATA BODYLEN-CELL LDR,
+   5 BODYBUF-CAP MOVZ,  14 5 CMP,  C-LT bok BCOND,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
+      0 71 MOVZ,  16 1 MOVZ,  $80 SVC,
+   bok LBL,
+   15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
+   11 TKA 0 ADDI,  12 TKL 0 ADDI,
+   bcp LBL,  12 bcd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
+      15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  bcp B,
+   bcd LBL,  13 32 MOVZ,  13 15 0 STRB,
+   14 14 TKL ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
+   RET, ;
 
 \ ---- TOK ( -- x0=have? ) : skip spaces, scan one token into TKA/TKL, advance INP ----
 : emit-tok ( -- )
@@ -691,6 +709,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NEWLBL {: nl :}  NEWLBL {: nd :}  NEWLBL {: nstore :}  NEWLBL {: ncp :}  NEWLBL {: ncd :}
    nl LBL,
       Ltok @ BL,  0 nd CBZ,
+      Lbcap @ BL,                                          \ locals reach the checker too
       0 Lkwendloc @ ADR,  1 2 MOVZ,  Lkwcmp @ BL,  0 nstore CBZ,  nd B,   \ ":}" -> done
       nstore LBL,
       \ cap: 16 local slots (the frame is fixed); a 17th overflows LOCNAMES
@@ -835,14 +854,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
          5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,   \ reset CFSP
          12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,      \ reset locals
          12 0 MOVZ,  12 DATA BODYLEN-CELL STR,                           \ reset body capture
-         \ seed the capture with the NAME token (checker records certified sigs)
-         15 DATA BODYBUF-OFF ADDI,
-         11 TKA 0 ADDI,  12 TKL 0 ADDI,
-         NEWLBL {: scp :}  NEWLBL {: scd :}
-         scp LBL,  12 scd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
-            15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  scp B,
-         scd LBL,  13 32 MOVZ,  13 15 0 STRB,
-         14 TKL 0 ADDI,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
+         Lbcap @ BL,             \ seed with the NAME (checker records certified sigs)
          12 0 MOVZ,  12 DATA VSP-CELL STR,                               \ reset the VS
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
          9 $D10043FF LIT64,  Lcemit @ BL,                  \ prologue: sub sp,sp,#16
@@ -889,20 +901,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
          lmain B,
       lnotsemi LBL,
       \ capture the token into the body buffer (for the check hook); space-joined.
-      \ overflow is FATAL (exit 71): a truncated capture would let the check hook
-      \ certify code it never saw.
-      14 DATA BODYLEN-CELL LDR,  NEWLBL {: bcap :}
-      5 BODYBUF-CAP MOVZ,  14 5 CMP,  C-LT bcap BCOND,
-         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,   \ write(2, name)
-         0 71 MOVZ,  16 1 MOVZ,  $80 SVC,                                \ exit(71)
-      bcap LBL,
-         15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,           \ dst = buf + len
-         11 TKA 0 ADDI,  12 TKL 0 ADDI,                     \ src, count
-         NEWLBL {: bcp :}  NEWLBL {: bcd :}
-         bcp LBL,  12 bcd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
-            15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  bcp B,
-         bcd LBL,  13 32 MOVZ,  13 15 0 STRB,               \ space separator
-         14 14 TKL ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,   \ len += TKL+1
+      Lbcap @ BL,
       \ control-flow keywords (compile-only): emit/patch JIT branches, then loop
       lmain Lkwif     2 ['] j-if     cf-entry
       lmain Lkwthen   4 ['] j-then   cf-entry
@@ -975,6 +974,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    ICODE-RESET  cf-reset  0 #PL !  0 PNP !
    NEWLBL Lanchor !  NEWLBL Lfind !  NEWLBL Lnum !  NEWLBL Ldict !  NEWLBL Lsrc !
    NEWLBL Lcemit !  NEWLBL Ltok !  NEWLBL Lprot !  NEWLBL Lflush !  NEWLBL Lncount !
+   NEWLBL Lbcap !
    NEWLBL Lcfpush !  NEWLBL Lcfpop !  NEWLBL Lpat !  NEWLBL Lkwcmp !
    NEWLBL Lkwif !  NEWLBL Lkwthen !  NEWLBL Lkwelse !  NEWLBL Lkwbegin !
    NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !
@@ -997,7 +997,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NEWLBL Lkwinc !  NEWLBL Lkwdec !  NEWLBL Lkwzeq !
    NEWLBL Lkwzlt !  NEWLBL Lkwneg2 !  NEWLBL Lkwinv2 !
    emit-main                                              \ entry @ offset 0
-   emit-prims  emit-prof-prims  emit-fp-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
+   emit-prims  emit-prof-prims  emit-fp-prims  emit-cemit  emit-bcap  emit-tok  emit-prot  emit-flush  emit-find  emit-num
    emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-cmpkw  emit-unkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict                                              \ after #PL is final

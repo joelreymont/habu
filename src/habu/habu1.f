@@ -62,7 +62,7 @@ variable FPL  variable FPE
 \ shared label ids (forward refs)
 variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  variable SRCN
 variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncount
-variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp
+variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp  variable Lbcap
 variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
@@ -261,6 +261,23 @@ variable Lkwdo variable Lkwloop variable Lkwi
 
 : emit-cemit
    Lcemit @ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
+\ Lbcap ( -- ) : append TKA/TKL + ' ' to the body capture; FATAL (exit 71) on
+\ overflow — truncation would let the check hook certify code it never saw.
+: emit-bcap
+   Lbcap @ LBL,
+   NEWLBL NEWLBL NEWLBL {: bok bcp bcd :}
+   14 DATA BODYLEN-CELL LDR,
+   5 BODYBUF-CAP MOVZ,  14 5 CMP,  C-LT bok BCOND,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
+      0 71 MOVZ,  16 1 MOVZ,  $80 SVC,
+   bok LBL,
+   15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
+   11 TKA 0 ADDI,  12 TKL 0 ADDI,
+   bcp LBL,  12 bcd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
+      15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  bcp B,
+   bcd LBL,  13 32 MOVZ,  13 15 0 STRB,
+   14 14 TKL ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
+   RET, ;
 : emit-tok
    Ltok @ LBL,
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: tskip thas tscan tgot tnone :}

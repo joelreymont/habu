@@ -9,6 +9,18 @@ require sh-driver.fs
    s" src/core/checker.f"    slurp-file +B   s"  " +B
    s" test/demos/check-demo.f" slurp-file +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;
-\ SQ (dup *)=-1 certified, BAD (dup 0= +)=0 rejected (type error),
-\ BR (... IF ... THEN)=1 uncheckable (sound — no false pass), then 7 SQ=49.
-T{ SOUND-OUT s\" -1\n0\n1\n49\n" compare 0= -> true }T
+\ SQ (dup *)=-1 certified, BAD (dup 1.5 +)=0 rejected (float into int +),
+\ BR (... IF ... THEN)=-1 certified (branches modeled, joins unified), 7 SQ=49.
+T{ SOUND-OUT s\" -1\n0\n-1\n49\n" compare 0= -> true }T
+\ locals + control flow modeling, and recorded user sigs enforced at call sites
+: CHK2 ( a u -- a u )  0 CL !
+   s" src/core/util.f" +F  s" src/core/checker.f" +F  s" src/core/render.f" +F
+   s" : HOOK CHECK dup . ; ' HOOK set-check " +B  +B
+   CBUF CL @ NF-RUN  NFOUT 2@ ;
+T{ s" : L1 {: a b :} a b + . ;"                    CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : BB {: a :} a 0 > if a a else a then . ;"   CHK2 s\" 0\n"  compare 0= -> true }T
+T{ s" : W1 0 begin dup 10 < while 1+ repeat . ;"   CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : D1 0 5 0 do i + loop . ;"                  CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : G 1.5 ; : B G 1 + ;"                       CHK2 s\" -1\n0\n" compare 0= -> true }T
+T{ s\" : SD s\" hi\" type ; : TK ['] SD drop ;"    CHK2 s\" -1\n-1\n" compare 0= -> true }T
+T{ s" : NG -1 $FF and . ;"                         CHK2 s\" -1\n" compare 0= -> true }T

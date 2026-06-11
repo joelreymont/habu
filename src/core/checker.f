@@ -11,20 +11,30 @@ create TVT MAXTV cells allot   create RVT MAXTV cells allot
 : TV! cells TVT + ! ;
 : RV@ cells RVT + @ ;
 : RV! cells RVT + ! ;
-create SPA 1024 allot   variable SPN
-: MK-PUSH SPN @ 2 * cells SPA + {: a :} a 8 + ! a ! SPN @ 3 lshift S-PUSH or SPN @ 1 + SPN ! ;
+2048 constant MAXPUSH          \ push records (engine-sized bodies need hundreds)
+create SPA MAXPUSH 16 * allot   variable SPN
+: MK-PUSH SPN @ MAXPUSH 1 - > IF s" checker: out of pushes" 76 die THEN
+   SPN @ 2 * cells SPA + {: a :} a 8 + ! a ! SPN @ 3 lshift S-PUSH or SPN @ 1 + SPN ! ;
 : P>TYPE PAY 2 * cells SPA + @ ;
 : P>REST PAY 2 * cells SPA + 8 + @ ;
 : ISVAR TAG T-VAR = ;
 : ISROW TAG S-ROW = ;
 : T-RES BEGIN dup ISVAR IF dup PAY TV@ dup UNBOUND = IF drop 0 ELSE nip -1 THEN ELSE 0 THEN WHILE REPEAT ;
 : R-RES BEGIN dup ISROW IF dup PAY RV@ dup UNBOUND = IF drop 0 ELSE nip -1 THEN ELSE 0 THEN WHILE REPEAT ;
-create UWL 512 allot   variable USP   variable UOK
-: U-PUSH USP @ cells UWL + ! USP @ 1 + USP ! ;
+4096 constant MAXUWL           \ unify worklist cells (deep spines queue many pairs)
+create UWL MAXUWL cells allot   variable USP   variable UOK
+: U-PUSH USP @ MAXUWL 1 - > IF s" checker: unify worklist full" 76 die THEN
+   USP @ cells UWL + ! USP @ 1 + USP ! ;
 : U-POP USP @ 1 - USP ! USP @ cells UWL + @ ;
 : PAIR swap U-PUSH U-PUSH ;
 : UNPAIR U-POP U-POP swap ;
-: U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE over ISROW IF swap PAY RV! ELSE dup ISROW IF PAY RV! ELSE 2dup P>TYPE swap P>TYPE swap PAIR P>REST swap P>REST swap PAIR THEN THEN THEN ;
+\ occurs check: binding a row var to a spine containing itself would make the
+\ row cyclic (R-RES then loops forever) — mismatched branch depths trigger this.
+: ROW-OCC? {: r s :}  s BEGIN R-RES dup TAG S-PUSH = WHILE P>REST REPEAT  r = ;
+: U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
+   over ISROW IF 2dup ROW-OCC? IF 2drop 0 UOK ! ELSE swap PAY RV! THEN ELSE
+   dup ISROW IF 2dup swap ROW-OCC? IF 2drop 0 UOK ! ELSE PAY RV! THEN ELSE
+   2dup P>TYPE swap P>TYPE swap PAIR P>REST swap P>REST swap PAIR THEN THEN THEN ;
 : U-TYPE T-RES swap T-RES swap 2dup = IF 2drop ELSE over ISVAR IF swap PAY TV! ELSE dup ISVAR IF PAY TV! ELSE over PAY over PAY = IF 2drop ELSE 2drop 0 UOK ! THEN THEN THEN THEN ;
 : UNIFY 0 USP ! -1 UOK ! PAIR BEGIN USP @ UOK @ and WHILE UNPAIR over TAG dup S-ROW = swap S-PUSH = or IF U-ROW ELSE U-TYPE THEN REPEAT UOK @ ;
 variable FV
@@ -41,15 +51,26 @@ create NMAP 26 cells allot
 : NMAP-RESET 0 BEGIN dup cells NMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
 : DIGIT? {: c :} c 47 > c 58 < and ;
 : LOWER? {: c :} c 96 > c 123 < and ;
-variable NRES
-: ALLDIG? {: a u :} u 0= IF 0 NRES ! ELSE -1 NRES ! 0 BEGIN dup u < WHILE dup a + c@ DIGIT? 0= IF 0 NRES ! THEN 1 + REPEAT drop THEN NRES @ ;
+variable NRES  variable NDI  variable NDH
+: HEXD? {: c :} c DIGIT?  c 96 > c 103 < and or  c 64 > c 71 < and or ;
+\ int literal: d+ | -d+ | $h+ | -$h+ (the engine's number tokens)
+: ALLDIG? {: a u :}
+   0 NDI !  0 NDH !
+   u 0 > IF a c@ 45 = IF 1 NDI ! THEN THEN
+   u NDI @ > IF a NDI @ + c@ 36 = IF NDI @ 1 + NDI !  1 NDH ! THEN THEN
+   u NDI @ - 0 > 0= IF 0 NRES ! ELSE -1 NRES !
+     NDI @ BEGIN dup u < WHILE
+       NDH @ IF dup a + c@ HEXD? 0= IF 0 NRES ! THEN
+       ELSE dup a + c@ DIGIT? 0= IF 0 NRES ! THEN THEN
+       1 + REPEAT drop THEN
+   NRES @ ;
 \ NB: avoid a 2nd {: :} group here — `{: c :} … {: i :}` mis-reads the slot in the
 \ standalone, collapsing every var to one. Compute the slot address on the stack.
 : VAR-OF {: c :}  c 97 - cells NMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-VAR ;
 \ NB: declare locals at word top, never inside IF/loop (corrupts the locals frame).
 : TOK-TYPE {: a u :}  a c@ {: c :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> int (con 1)
-   u 1 = c 102 = and IF 2 MK-CON ELSE          \ 'f' -> flag (con 2)
+   u 1 = c 102 = and IF 1 MK-CON ELSE          \ 'f' -> flag = int (Forth flags are -1/0)
    u 1 = c 114 = and IF 3 MK-CON ELSE          \ 'r' -> real/float (con 3)
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
    1 MK-CON THEN THEN THEN THEN ;
@@ -77,8 +98,11 @@ variable SB variable SL variable SI variable SS
 \ bodies, so a dispatch word with many PARSE-SIG calls overflows. DO-TOK stays small.
 \ prim sig table: records [nlen][name][slen][sig], 0-terminated — built from
 \ readable strings (PT+ keeps the terminator as it appends).
-create PTAB 1024 allot  variable PTP
-: PT2+ {: a u :}  u PTP @ c!
+create PTAB 2048 allot  variable PTP
+create SDQN 2 allot  115 SDQN c!  34 SDQN 1 + c!     \ the two chars of `s"`
+: PT2+ {: a u :}
+   PTP @ u + 2 + PTAB 2046 + > IF s" checker: prim table full" 76 die THEN
+   u PTP @ c!
    0 BEGIN dup u < WHILE  dup a + c@  over PTP @ + 1 + c!  1 + REPEAT drop
    PTP @ 1 + u + PTP !  0 PTP @ c! ;
 : PT+ {: na nu sa su :}  na nu PT2+  sa su PT2+ ;
@@ -108,13 +132,37 @@ create PTAB 1024 allot  variable PTP
    s" =" s" n n -- f" PT+
    s" <" s" n n -- f" PT+
    s" >" s" n n -- f" PT+
+   s" <>" s" n n -- f" PT+
+   s" <=" s" n n -- f" PT+
+   s" >=" s" n n -- f" PT+
+   s" /" s" n n -- n" PT+
+   s" mod" s" n n -- n" PT+
+   s" lshift" s" n n -- n" PT+
+   s" rshift" s" n n -- n" PT+
+   s" cells" s" n -- n" PT+
+   s" @" s" n -- n" PT+
+   s" !" s" a n --" PT+
+   s" c@" s" n -- n" PT+
+   s" c!" s" a n --" PT+
+   s" ." s" n --" PT+
+   s" .s" s" --" PT+
+   s" here" s" -- n" PT+
+   s" allot" s" n --" PT+
+   s" ," s" n --" PT+
+   s" c," s" n --" PT+
+   s" type" s" n n --" PT+
+   s" throw" s" n --" PT+
    \ floats: r = real (concrete), distinct from n (int) and f (flag)
    s" f+" s" r r -- r" PT+    s" f-" s" r r -- r" PT+
    s" f*" s" r r -- r" PT+    s" f/" s" r r -- r" PT+
    s" fnegate" s" r -- r" PT+  s" fabs" s" r -- r" PT+  s" fsqrt" s" r -- r" PT+
    s" f<" s" r r -- f" PT+    s" f>" s" r r -- f" PT+   s" f=" s" r r -- f" PT+
    s" f0<" s" r -- f" PT+     s" f0=" s" r -- f" PT+
-   s" s>f" s" n -- r" PT+     s" f>s" s" r -- n" PT+    s" f." s" r --" PT+ ;
+   s" s>f" s" n -- r" PT+     s" f>s" s" r -- n" PT+    s" f." s" r --" PT+
+   \ s" pushes addr+len; ['] pushes an xt. The engine consumes their payload
+   \ inline, so only the bare token reaches the body capture.
+   SDQN 2 PT2+  s" -- n n" PT2+
+   s" [']" s" -- n" PT+ ;
 PTABLE
 variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable FSP  variable FP
 \ user sigs: certified words recorded as [len|name|len|sig]*, 0-terminated.
@@ -150,10 +198,121 @@ variable FLD  variable FLI  variable FLO  variable FLC
    a u FIND-SIG IF FSA @ FSU @ PARSE-SIG ELSE
    a u ALLDIG? IF s" -- n" PARSE-SIG ELSE
    a u FLODIG? IF s" -- r" PARSE-SIG ELSE -1 UNCK ! THEN THEN THEN ;
+\ --- locals: {: a b :} pops and binds names to type vars; a reference pushes
+\ its binding. Groups accumulate (a later group binds only its own names).
+: CCOPY {: a d u :}  0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop ;
+create LOCNB 256 allot   create LOCLN 16 cells allot   create LOCTV 16 cells allot
+variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  variable LI  variable LRF
+: LOC-ADD {: a u :}
+   #LOC @ 15 >  u 16 >  or IF -1 UNCK ! ELSE
+     a  LOCNB #LOC @ 16 * +  u CCOPY
+     u #LOC @ cells LOCLN + !
+     FRESH MK-VAR #LOC @ cells LOCTV + !
+     #LOC @ 1 + #LOC ! THEN ;
+: LOC-BIND
+   FRESH dup LROW !  MK-ROW LCH !
+   LGRP @ BEGIN dup #LOC @ < WHILE
+     dup cells LOCTV + @  LCH @ MK-PUSH LCH !
+     1 + REPEAT drop
+   LCH @  LROW @ MK-ROW  STEP ;
+: LOC-TOK {: a u :}
+   a u s" :}" STR= IF 0 LMODE ! LOC-BIND ELSE
+   a u s" --" STR= IF -1 UNCK ! ELSE
+   a u LOC-ADD THEN THEN ;
+: LOC-REF? {: a u :}
+   0 LRF !  #LOC @ LI !
+   BEGIN LI @ 0 >  LRF @ 0=  and WHILE
+     LI @ 1 - LI !
+     a u  LOCNB LI @ 16 * +  LI @ cells LOCLN + @  STR= IF
+       LI @ cells LOCTV + @  DCUR @ MK-PUSH DCUR !  -1 LRF ! THEN
+   REPEAT  LRF @ ;
+\ --- control flow: branch states saved on a CF stack and unified at joins.
+\ kinds: 1 if  2 if+else  3 begin  4 begin+while  5 do
+create CFKND 32 cells allot   create CFSA 32 cells allot   create CFSB 32 cells allot
+variable #CFC  variable CTMP  variable CFH  variable INDO
+: CF-PUSH {: k s0 s1 :}
+   #CFC @ 31 > IF -1 UNCK ! ELSE
+     k #CFC @ cells CFKND + !  s0 #CFC @ cells CFSA + !  s1 #CFC @ cells CFSB + !
+     #CFC @ 1 + #CFC ! THEN ;
+: CF@K #CFC @ 1 - cells CFKND + @ ;
+: CF@A #CFC @ 1 - cells CFSA + @ ;
+: CF@B #CFC @ 1 - cells CFSB + @ ;
+: CF-DROP #CFC @ 1 - #CFC ! ;
+: CF-MT? #CFC @ 0 > 0= ;
+: SUNI {: s :}  DCUR @ s UNIFY OK @ and OK ! ;
+: CF-IF  s" a --" PARSE-SIG  1 DCUR @ 0 CF-PUSH ;
+: CF-ELSE
+   CF-MT? IF -1 UNCK ! ELSE CF@K 1 <> IF -1 UNCK ! ELSE
+     DCUR @ CTMP !  CF@A DCUR !
+     2 #CFC @ 1 - cells CFKND + !
+     CTMP @ #CFC @ 1 - cells CFSB + !
+   THEN THEN ;
+: CF-THEN
+   CF-MT? IF -1 UNCK ! ELSE
+     CF@K 1 = IF CF@A SUNI CF-DROP ELSE
+     CF@K 2 = IF CF@B SUNI CF-DROP ELSE -1 UNCK ! THEN THEN THEN ;
+: CF-BEGIN  3 DCUR @ 0 CF-PUSH ;
+: CF-UNTIL
+   s" a --" PARSE-SIG
+   CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
+     CF@A SUNI  CF@A DCUR !  CF-DROP THEN THEN ;
+: CF-AGAIN
+   CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
+     CF@A SUNI  CF@A DCUR !  CF-DROP THEN THEN ;
+: CF-WHILE
+   s" a --" PARSE-SIG
+   CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
+     4 #CFC @ 1 - cells CFKND + !
+     DCUR @ #CFC @ 1 - cells CFSB + !
+   THEN THEN ;
+: CF-REPEAT
+   CF-MT? IF -1 UNCK ! ELSE CF@K 4 <> IF -1 UNCK ! ELSE
+     CF@A SUNI  CF@B DCUR !  CF-DROP THEN THEN ;
+: CF-DO  s" n n --" PARSE-SIG  5 DCUR @ 0 CF-PUSH ;
+: CF-LOOP
+   CF-MT? IF -1 UNCK ! ELSE CF@K 5 <> IF -1 UNCK ! ELSE
+     CF@A SUNI  CF@A DCUR !  CF-DROP THEN THEN ;
+: CF-I
+   0 INDO !  0 BEGIN dup #CFC @ < WHILE
+     dup cells CFKND + @ 5 = IF -1 INDO ! THEN  1 + REPEAT drop
+   INDO @ IF s" -- n" PARSE-SIG ELSE -1 UNCK ! THEN ;
+: CF-TOK? {: a u :}
+   -1 CFH !
+   a u s" if" STR= IF CF-IF ELSE
+   a u s" else" STR= IF CF-ELSE ELSE
+   a u s" then" STR= IF CF-THEN ELSE
+   a u s" begin" STR= IF CF-BEGIN ELSE
+   a u s" until" STR= IF CF-UNTIL ELSE
+   a u s" again" STR= IF CF-AGAIN ELSE
+   a u s" while" STR= IF CF-WHILE ELSE
+   a u s" repeat" STR= IF CF-REPEAT ELSE
+   a u s" do" STR= IF CF-DO ELSE
+   a u s" loop" STR= IF CF-LOOP ELSE
+   a u s" i" STR= IF CF-I ELSE
+   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   CFH @ ;
 variable TBASE variable TBLEN variable TI variable TSTART
 \ first token of the checked text is the word's NAME (skipped, kept for the
 \ recorder); RECXT (installed by render.f) records certified sigs by name.
 variable NMA  variable NMU  variable TOK0  variable RECXT  0 RECXT !
-: DO-TOK1 {: a u :}  TOK0 @ IF a NMA ! u NMU ! 0 TOK0 ! ELSE a u DO-TOK THEN ;
-: CHECK {: a u :} a TBASE ! u TBLEN ! NEW 0 TI ! 1 TOK0 ! 0 NMU ! BEGIN TI @ TBLEN @ < WHILE BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 = and WHILE TI @ 1 + TI ! REPEAT TI @ TBLEN @ < IF TBASE @ TI @ + TSTART ! BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 <> and WHILE TI @ 1 + TI ! REPEAT TSTART @ TBASE @ TI @ + TSTART @ - DO-TOK1 THEN REPEAT UNCK @ IF 1 ELSE OK @ THEN
+\ the engine folds A-Z in keyword and dict matching — fold every token the same
+\ way (into a scratch copy: the source text may live in the read-only image).
+create TKF 64 allot   create NMB 64 allot   variable TFU
+: TOKFOLD {: a u :}
+   u 64 > IF 0 ELSE
+     0 BEGIN dup u < WHILE
+       dup a + c@  dup 64 >  over 91 <  and IF 32 or THEN
+       over TKF + c!  1 +
+     REPEAT drop  u TFU !  -1 THEN ;
+: DO-TOK1 {: a u :}
+   a u TOKFOLD 0= IF -1 UNCK ! ELSE
+   TOK0 @ IF TKF NMB TFU @ CCOPY  NMB NMA !  TFU @ NMU !  0 TOK0 ! ELSE
+   LMODE @ IF TKF TFU @ LOC-TOK ELSE
+   TKF TFU @ s" {:" STR= IF 1 LMODE !  #LOC @ LGRP ! ELSE
+   TKF TFU @ CF-TOK? 0= IF
+   TKF TFU @ LOC-REF? 0= IF
+   TKF TFU @ DO-TOK THEN THEN THEN THEN THEN THEN ;
+: CHECK {: a u :} a TBASE ! u TBLEN ! NEW 0 TI ! 1 TOK0 ! 0 NMU ! 0 #LOC ! 0 LMODE ! 0 #CFC ! BEGIN TI @ TBLEN @ < WHILE BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 = and WHILE TI @ 1 + TI ! REPEAT TI @ TBLEN @ < IF TBASE @ TI @ + TSTART ! BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 <> and WHILE TI @ 1 + TI ! REPEAT TSTART @ TBASE @ TI @ + TSTART @ - DO-TOK1 THEN REPEAT
+   LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
+   UNCK @ IF 1 ELSE OK @ THEN
    dup -1 = NMU @ 0 > and RECXT @ 0 <> and IF NMA @ NMU @ RECXT @ execute THEN ;
