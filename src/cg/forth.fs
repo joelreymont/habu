@@ -671,6 +671,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 : cf-entry {: lmainlbl kwvar kwlen hxt -- :}
    0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
    NEWLBL {: skip :}  0 skip CBZ,
+   Lvspill @ BL,
    hxt execute  lmainlbl B,
    skip LBL, ;
 
@@ -770,6 +771,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       NEWLBL {: lnotsemi :}
       TKL 1 CMPI,  C-NE lnotsemi BCOND,
       9 TKA 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,       \ ';'
+         Lvspill @ BL,                                       \ VS -> real pushes first
          12 DATA LOCF-CELL LDR,  NEWLBL {: notd :}  12 notd CBZ,   \ tear down locals frame
             9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ add sp,sp,#frame
          notd LBL,
@@ -823,14 +825,22 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       lmain Lkwlbrace 2 ['] c-lbrace cf-entry            \ {: a b :} locals
       \ local-name reference -> load from its frame slot, push
       Lloc-find @ BL,  NEWLBL {: notloc :}  0 0 CMPI,  C-LT notloc BCOND,
+         Lvspill @ BL,
          9 $F94003E9 LIT64,  14 0 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ ldr x9,[sp,#slot*8]
          9 W-PUSH0 LIT64,  Lcemit @ BL,  9 W-PUSH1 LIT64,  Lcemit @ BL,
          lmain B,
       notloc LBL,
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,             \ NUMBER? -> literal
       NEWLBL {: lcnotnum :}
-      12 lcnotnum CBZ,  c-lit  lmain B,
+      12 lcnotnum CBZ,  Lvpushc @ BL,  lmain B,
       lcnotnum LBL,
+      lmain Lkwplus  1 ['] f+    fold-entry
+      lmain Lkwminus 1 ['] f-    fold-entry
+      lmain Lkwstar  1 ['] f*    fold-entry
+      lmain Lkwand2  3 ['] fand  fold-entry
+      lmain Lkwor2   2 ['] for2  fold-entry
+      lmain Lkwxor2  3 ['] fxor2 fold-entry
+      Lvspill @ BL,                                          \ VS -> memory before a call
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,            \ FIND -> inline stencil
       13 lundef CBZ,                                         \ undefined word in a : body -> error
       c-call  lmain B,                                      \ x11=addr -> emit BL (no longer inline)
@@ -857,9 +867,12 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !
+   NEWLBL Lvtop2c !  NEWLBL Lvfoldput !
+   NEWLBL Lkwplus !  NEWLBL Lkwminus !  NEWLBL Lkwstar !
+   NEWLBL Lkwand2 !  NEWLBL Lkwor2 !  NEWLBL Lkwxor2 !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-prof-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
-   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-crash-handler  emit-hex
+   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict                                              \ after #PL is final
    Lsrc @ LBL,  r> SRCN @ BYTES, ;

@@ -257,6 +257,7 @@ variable CFSK
    NEWLBL CFSK !
    0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
    0 CFSK @ CBZ,
+   Lvspill @ BL,
    hxt execute  lmainlbl B,
    CFSK @ LBL, ;
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
@@ -349,6 +350,7 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
    Lcompile @ LBL,
       TKL 1 CMPI,  C-NE lnotsemi BCOND,
       9 TKA 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
+         Lvspill @ BL,
          12 DATA LOCF-CELL LDR,  12 notd CBZ,
             9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,
          notd LBL,
@@ -394,13 +396,21 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
       Lmain @ Lkwi      1 ['] j-i      cf-entry
       Lmain @ Lkwlbrace 2 ['] c-lbrace cf-entry
       Lloc-find @ BL,  0 0 CMPI,  C-LT notloc BCOND,
+         Lvspill @ BL,
          9 $F94003E9 LIT64,  14 0 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,
          9 W-PUSH0 LIT64,  Lcemit @ BL,  9 W-PUSH1 LIT64,  Lcemit @ BL,
          Lmain @ B,
       notloc LBL,
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,
-      12 lcnotnum CBZ,  c-lit  Lmain @ B,
+      12 lcnotnum CBZ,  Lvpushc @ BL,  Lmain @ B,
       lcnotnum LBL,
+      Lmain @ Lkwplus  1 ['] f+    fold-entry
+      Lmain @ Lkwminus 1 ['] f-    fold-entry
+      Lmain @ Lkwstar  1 ['] f*    fold-entry
+      Lmain @ Lkwand2  3 ['] fand  fold-entry
+      Lmain @ Lkwor2   2 ['] for2  fold-entry
+      Lmain @ Lkwxor2  3 ['] fxor2 fold-entry
+      Lvspill @ BL,
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
       13 Lundef @ CBZ,
       c-call  Lmain @ B,
@@ -428,9 +438,12 @@ variable SRCA
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !
+   NEWLBL Lvtop2c !  NEWLBL Lvfoldput !
+   NEWLBL Lkwplus !  NEWLBL Lkwminus !  NEWLBL Lkwstar !
+   NEWLBL Lkwand2 !  NEWLBL Lkwor2 !  NEWLBL Lkwxor2 !
    emit-main
    emit-prims  emit-prof-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
-   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-crash-handler  emit-hex
+   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict
    Lsrc @ LBL,  SRCA @ SRCN @ BYTES, ;
