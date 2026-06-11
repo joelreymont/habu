@@ -314,6 +314,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
    15 9 0 LDRB,  15 45 CMPI,  NEWLBL {: ndoll :}  C-NE ndoll BCOND,  \ leading '-'
       13 0 MOVN,  14 1 MOVZ,
    ndoll LBL,
+   14 10 CMP,  C-GE ldone BCOND,                                \ "-" only -> fail (before probe!)
    5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  NEWLBL {: nohex :}  C-NE nohex BCOND,  \ '$' prefix
       6 16 MOVZ,  14 14 1 ADDI,
    nohex LBL,
