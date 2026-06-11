@@ -3,6 +3,22 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Build the tool: the profiler found in one run what bisection circled (2026-06-11)
+
+The dogfooded self-compile hung (90 s, 100% CPU). File-bisection localized it to
+engine2.fs bodies; then a SAMPLING PROFILER built into the engine (prof.fs both sides,
+~100 lines: SIGALRM + setitimer 1 ms, handler reads pc from the ucontext like crash.fs,
+maps pc -> dict word by addr/clen, counts; at a sample limit dumps "name count" +
+exit(99) — a hang diagnoser by construction) named the culprit immediately:
+R-RES 1071, RV@ 729, PAY 476, ISROW 456 — the checker's typevar resolver. Root cause:
+TVT/RVT pools were 64 cells; engine-sized bodies allocate hundreds of fresh typevars;
+RV! past the pool corrupted adjacent memory into cyclic var chains that the guard-less
+R-RES followed forever. Fix: pools 2048 + FRESH dies loudly at exhaustion (exit 76).
+90 s hang -> 0.033 s. The checked self-compile now gates stage2: the compiler
+type-checks its own source while compiling itself, full fixpoint test 0.33 s.
+Lesson: when a bisect narrows to "somewhere in here", stop bisecting and build the
+measuring tool — it answers "where exactly" and stays in the toolbox.
+
 ## The loop closes WITHOUT gforth: stage3 == stage2, signed (2026-06-11)
 
 t-sh-stage2 now signs stage2 (sign2.fs — the full-builder port of the ad-hoc signing
