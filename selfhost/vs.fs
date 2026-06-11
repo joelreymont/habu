@@ -17,27 +17,47 @@ variable RAI  variable RRES
    REPEAT  RRES @ ;
 : R-FREE {: r :}  0 RAI ! BEGIN RAI @ NRP < WHILE
      RAI @ RPOOL + c@ r = IF 1 RAI @ RFREE + c! THEN  RAI @ 1 + RAI ! REPEAT ;
-\ abstract value stack: VS[k] = register holding logical item k
-create VS 64 allot   variable VSP
-: V-PUSH {: r :}  r VS VSP @ + c!  VSP @ 1 + VSP ! ;
-: V-POP   VSP @ 1 - VSP !  VS VSP @ + c@ ;
-: V-TOP   VS VSP @ 1 - + c@ ;
-: V-NOS   VS VSP @ 2 - + c@ ;
-\ emitters
+\ abstract value stack with CONSTANT FOLDING: each entry is a register OR a known
+\ compile-time constant. VTAG[k] 0=reg 1=con; VVAL[k]=reg number or constant value.
+create VTAG 64 allot   create VVAL 64 cells allot   variable VSP
+: V-PUSHR {: r :}  0 VTAG VSP @ + c!  r VVAL VSP @ cells + !  VSP @ 1 + VSP ! ;
+: V-PUSHC {: n :}  1 VTAG VSP @ + c!  n VVAL VSP @ cells + !  VSP @ 1 + VSP ! ;
 : GMOV {: d s :}  d 31 s ENC-ORR EMITW ;               \ mov d, s  (orr d, xzr, s)
-: G-LIT {: n :}  R-ALLOC {: r :}
-   r n 65535 and 0 MOVZHW EMITW  r n 16 rshift 65535 and 1 MOVKHW EMITW  r V-PUSH ;
-: G-DUP   V-TOP {: s :}  R-ALLOC {: r :}  r s GMOV  r V-PUSH ;
-: G-DROP  V-POP R-FREE ;
-: G-SWAP  V-TOP {: a :}  V-NOS {: b :}  a VS VSP @ 2 - + c!  b VS VSP @ 1 - + c! ;
-: G-OVER  V-NOS {: s :}  R-ALLOC {: r :}  r s GMOV  r V-PUSH ;
-: G-NIP   V-POP {: t :}  V-POP R-FREE  t V-PUSH ;
-: G-ADD   V-POP {: b :}  V-POP {: a :}  a a b ENC-ADD EMITW  b R-FREE  a V-PUSH ;
-: G-SUB   V-POP {: b :}  V-POP {: a :}  a a b ENC-SUB EMITW  b R-FREE  a V-PUSH ;
-: G-MUL   V-POP {: b :}  V-POP {: a :}  a a b ENC-MUL EMITW  b R-FREE  a V-PUSH ;
-: G-AND   V-POP {: b :}  V-POP {: a :}  a a b ENC-AND EMITW  b R-FREE  a V-PUSH ;
-: G-OR    V-POP {: b :}  V-POP {: a :}  a a b ENC-ORR EMITW  b R-FREE  a V-PUSH ;
-: G-XOR   V-POP {: b :}  V-POP {: a :}  a a b ENC-EOR EMITW  b R-FREE  a V-PUSH ;
+\ materialise VS[k] into a register if it is a constant (movz/movk); idempotent.
+variable VFR  variable VFN
+: V-FORCE {: k :}  VTAG k + c@ IF
+     VVAL k cells + @ VFN !  R-ALLOC VFR !
+     VFR @ VFN @ 65535 and 0 MOVZHW EMITW  VFR @ VFN @ 16 rshift 65535 and 1 MOVKHW EMITW
+     0 VTAG k + c!  VFR @ VVAL k cells + !  THEN ;
+: V-REG {: k :}  k V-FORCE  VVAL k cells + @ ;          \ force + return register
+: REG-COPY {: s :}  R-ALLOC {: r :}  r s GMOV  r V-PUSHR ;
+\ emitters
+: G-LIT {: n :}  n V-PUSHC ;                            \ record the constant — no code yet
+: G-DUP   VSP @ 1 - {: k :}
+   VTAG k + c@ IF  VVAL k cells + @ V-PUSHC  ELSE  VVAL k cells + @ REG-COPY  THEN ;
+: G-DROP  VSP @ 1 - {: k :}  VTAG k + c@ 0= IF VVAL k cells + @ R-FREE THEN  VSP @ 1 - VSP ! ;
+: G-OVER  VSP @ 2 - {: k :}
+   VTAG k + c@ IF  VVAL k cells + @ V-PUSHC  ELSE  VVAL k cells + @ REG-COPY  THEN ;
+: G-SWAP  VSP @ 1 - {: kb :}  VSP @ 2 - {: ka :}
+   VTAG ka + c@ {: ta :}  VVAL ka cells + @ {: va :}
+   VTAG kb + c@ VTAG ka + c!  VVAL kb cells + @ VVAL ka cells + !
+   ta VTAG kb + c!  va VVAL kb cells + ! ;
+: G-NIP   G-SWAP G-DROP ;
+\ binops: fold if both operands are constants, else reg-reg op (result in NOS's reg)
+: BOTH-CON?  VTAG VSP @ 1 - + c@  VTAG VSP @ 2 - + c@  and ;
+: AV  VVAL VSP @ 2 - cells + @ ;   : BV  VVAL VSP @ 1 - cells + @ ;
+: FOLD2 {: res :}  VSP @ 2 - VSP !  res V-PUSHC ;
+variable RBB  variable RAA
+: REGOP {: encxt :}
+   VSP @ 1 - V-REG RBB !   VSP @ 2 - V-REG RAA !
+   RAA @ RAA @ RBB @ encxt execute EMITW
+   RBB @ R-FREE  VSP @ 2 - VSP !  RAA @ V-PUSHR ;
+: G-ADD  BOTH-CON? IF AV BV +   FOLD2 ELSE ['] ENC-ADD REGOP THEN ;
+: G-SUB  BOTH-CON? IF AV BV -   FOLD2 ELSE ['] ENC-SUB REGOP THEN ;
+: G-MUL  BOTH-CON? IF AV BV *   FOLD2 ELSE ['] ENC-MUL REGOP THEN ;
+: G-AND  BOTH-CON? IF AV BV and FOLD2 ELSE ['] ENC-AND REGOP THEN ;
+: G-OR   BOTH-CON? IF AV BV or  FOLD2 ELSE ['] ENC-ORR REGOP THEN ;
+: G-XOR  BOTH-CON? IF AV BV xor FOLD2 ELSE ['] ENC-EOR REGOP THEN ;
 \ dispatch table: index -> emitter xt
 create XTS 16 cells allot
 : VS-SETUP
@@ -68,4 +88,4 @@ variable VB  variable VL  variable VI  variable VSS
        BEGIN VI @ VL @ < VB @ VI @ + c@ 32 <> and WHILE VI @ 1 + VI ! REPEAT
        VSS @ VB @ VI @ + VSS @ - GEN-VS-TOK THEN
    REPEAT
-   V-POP {: r :}  0 r GMOV  16 1 0 MOVZHW EMITW  0 ENC-SVC EMITW ;
+   VSP @ 1 - V-REG {: r :}  0 r GMOV  16 1 0 MOVZHW EMITW  0 ENC-SVC EMITW ;

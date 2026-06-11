@@ -29,7 +29,11 @@ until the pool spills. `5 dup *` compiles to 7 instructions (movz/movk/mov/mul/m
 vs 16 for the memory model, with no memory traffic at all. Emitters dispatch by xt from
 a table (`['] G-DUP … XTS !` then `execute`) so the dispatcher stays tiny despite the
 standalone inlining colon words. Verified correct across arithmetic/dup/swap/over/nip.
-Still straight-line only (control flow + FP + spill are the remaining "full codegen" work).
+Then added CONSTANT FOLDING: VS entries are tagged reg-or-constant; a binop with two
+constant operands folds at compile time (no code). `5 dup *` now folds to `movz x9,#25`
+— 5 instructions, the multiply gone. `2 3 4 + *` folds entirely to 14. So: 16 (memory)
+-> 7 (registers) -> 5 (folding). The standalone is now a genuinely OPTIMIZING native
+compiler. Still straight-line only (control flow + FP + spill are the remaining work).
 
 ## Standalone peephole optimizer + the `i`-local footgun (2026-06-11)
 
