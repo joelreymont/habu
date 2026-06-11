@@ -714,3 +714,15 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 - Order at `;`: flush region to RX BEFORE calling the hook (so the hook, a
   compiled word, is callable), and publish (NDICT++) AFTER, gated on the verdict.
   Save x30 around the hook BLR (the compiler loop needs its link).
+
+## Self-host 8 — ARM64 encoders run natively (2026-06-11)
+
+- The codegen's instruction encoders are pure bit-math, which the standalone does
+  natively. Ported add/sub/mul/orr/movz (`$base | rm<<16 | rn<<5 | rd`, locals for
+  operands) and cross-checked against gforth's `asm.fs`: byte-identical machine
+  words. So the standalone can encode ARM64 itself — the heart of dot 8. With the
+  native checker (6/7), the stencil JIT as in-process allocator (9), and native
+  encoders (8), every algorithmic piece of caf is proven runnable on the standalone.
+- Watch hand-entered hex→decimal opcode constants: `0x9B007C00` is `2600500224`,
+  not the `2600988672` I first typed — a wrong base silently produces wrong (but
+  plausible) machine words. Always cross-check the encoder against the oracle.

@@ -182,3 +182,15 @@ s" 0 constant T-CON 1 constant T-VAR 2 constant T-PTR 3 constant S-ROW 4 constan
 0
 49
 " NF= -> true }T
+
+\ --- self-host 8: the ARM64 instruction ENCODERS run natively on the standalone
+\ and produce byte-identical machine words to caf's own asm.fs (cross-checked
+\ against the gforth oracle): add/sub/mul/orr/movz. Pure bit-math codegen native. ---
+s" : ENC-ADD {: rd rn rm :} 2332033024 rm 16 lshift or rn 5 lshift or rd or ; : ENC-SUB {: rd rn rm :} 3405774848 rm 16 lshift or rn 5 lshift or rd or ; : ENC-MUL {: rd rn rm :} 2600500224 rm 16 lshift or rn 5 lshift or rd or ; : ENC-ORR {: rd rn rm :} 2852126720 rm 16 lshift or rn 5 lshift or rd or ; : ENC-MOVZ {: rd imm :} 3531603968 imm 5 lshift or rd or ; 0 1 2 ENC-ADD . 3 4 5 ENC-SUB . 0 1 2 ENC-MUL . 7 8 9 ENC-ORR . 0 42 ENC-MOVZ . 16 1 ENC-MOVZ ."
+   NF  T{ s\" 2332164128
+3406102659
+2600631328
+2852716807
+3531605312
+3531604016
+" NF= -> true }T
