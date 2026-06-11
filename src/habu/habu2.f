@@ -316,7 +316,7 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
       notcom LBL,
       PEND Lcompile @ CBNZ, ;
 : em-interpret
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotcolon ncopy ncd lnotnum cpok ndok :}
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotcolon ncopy ncd lnotnum cpok ndok scp scd :}
    TKL 1 CMPI,  C-NE lnotcolon BCOND,
    9 TKA 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,
       2 3 MOVZ,  Lprot @ BL,
@@ -341,6 +341,12 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
       5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
       12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
       12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
+      15 DATA BODYBUF-OFF ADDI,
+      11 TKA 0 ADDI,  12 TKL 0 ADDI,
+      scp LBL,  12 scd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
+         15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  scp B,
+      scd LBL,  13 32 MOVZ,  13 15 0 STRB,
+      14 TKL 0 ADDI,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
       12 0 MOVZ,  12 DATA VSP-CELL STR,
       12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
       9 $D10043FF LIT64,  Lcemit @ BL,

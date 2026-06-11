@@ -835,6 +835,14 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
          5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,   \ reset CFSP
          12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,      \ reset locals
          12 0 MOVZ,  12 DATA BODYLEN-CELL STR,                           \ reset body capture
+         \ seed the capture with the NAME token (checker records certified sigs)
+         15 DATA BODYBUF-OFF ADDI,
+         11 TKA 0 ADDI,  12 TKL 0 ADDI,
+         NEWLBL {: scp :}  NEWLBL {: scd :}
+         scp LBL,  12 scd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
+            15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  scp B,
+         scd LBL,  13 32 MOVZ,  13 15 0 STRB,
+         14 TKL 0 ADDI,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
          12 0 MOVZ,  12 DATA VSP-CELL STR,                               \ reset the VS
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
          9 $D10043FF LIT64,  Lcemit @ BL,                  \ prologue: sub sp,sp,#16

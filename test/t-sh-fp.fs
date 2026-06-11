@@ -18,9 +18,8 @@ T{ s" : T {: a :} a s>f 2.5 f* f>s . ; 4 T"  OUT s\" 10\n" compare 0= -> true }T
    s" : HOOK CHECK dup . ; ' HOOK set-check " +B  +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;
 T{ s" : G 1.5 2.5 f+ ; : B 1.5 2 + ; : B2 1 2 f+ ;"  CHK s\" -1\n0\n0\n" compare 0= -> true }T
-\ fp-demo: Newton sqrt vs fsqrt prim (NSQRT verdict flips to -1 once user-word
-\ sigs are recorded — checker locals/CF dot)
+\ fp-demo: Newton sqrt vs fsqrt prim — NSQRT certifies via NSTEP's recorded sig
 : DEMO ( -- a u )  0 CL !
-   s" src/core/util.f" +F  s" src/core/checker.f" +F
+   s" src/core/util.f" +F  s" src/core/checker.f" +F  s" src/core/render.f" +F
    s" test/demos/fp-demo.f" +F  CBUF CL @ NF-RUN  NFOUT 2@ ;
-T{ DEMO s\" -1\n1\n1.414213\n1.414213\n3\n-1\n" compare 0= -> true }T
+T{ DEMO s\" -1\n-1\n1.414213\n1.414213\n3\n-1\n" compare 0= -> true }T

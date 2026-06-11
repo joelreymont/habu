@@ -29,8 +29,8 @@ create UWL 512 allot   variable USP   variable UOK
 : UNIFY 0 USP ! -1 UOK ! PAIR BEGIN USP @ UOK @ and WHILE UNPAIR over TAG dup S-ROW = swap S-PUSH = or IF U-ROW ELSE U-TYPE THEN REPEAT UOK @ ;
 variable FV
 : FRESH FV @ MAXTV 1 - > IF s" checker: out of typevars" 76 die THEN  FV @ dup 1 + FV ! ;
-variable OK   variable DCUR   variable UNCK
-: NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! FRESH MK-ROW DCUR ! ;
+variable OK   variable DCUR   variable UNCK   variable BROW
+: NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! FRESH MK-ROW dup BROW ! DCUR ! ;
 : STEP {: din dout :} DCUR @ din UNIFY OK @ and OK ! dout DCUR ! ;
 
 \ --- generic signature parser: build a step effect from a textual " in -- out "
@@ -117,13 +117,22 @@ create PTAB 1024 allot  variable PTP
    s" s>f" s" n -- r" PT+     s" f>s" s" r -- n" PT+    s" f." s" r --" PT+ ;
 PTABLE
 variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable FSP  variable FP
-: FIND-SIG {: a u :}  0 FSU !  PTAB FP !
+\ user sigs: certified words recorded as [len|name|len|sig]*, 0-terminated.
+\ Appended by the renderer (RECXT hook); scanned after PTAB so later wins.
+create USIGS 8192 allot   0 USIGS c!   variable UEND   0 UEND !
+: UB! {: c :}  c USIGS UEND @ + c!  UEND @ 1 + UEND ! ;
+: UBS {: a u :}  0 BEGIN dup u < WHILE  dup a + c@ UB!  1 + REPEAT drop ;
+: USIG-ADD {: sa su na nu :}
+   UEND @ nu + su + 3 + 8190 > IF s" checker: user sigs full" 76 die THEN
+   nu UB!  na nu UBS  su UB!  sa su UBS  0 USIGS UEND @ + c! ;
+: SCAN-SIGS {: tab a u :}  tab FP !
    BEGIN FP @ c@ dup WHILE                       \ no locals inside the loop (corrupts frame)
      FNL !  FP @ 1 + FNP !
      FNP @ FNL @ + dup c@ FSL ! 1 + FSP !
      a u FNP @ FNL @ STR= IF FSP @ FSA ! FSL @ FSU ! THEN
      FSP @ FSL @ + FP !
-   REPEAT drop  FSU @ ;
+   REPEAT drop ;
+: FIND-SIG {: a u :}  0 FSU !  PTAB a u SCAN-SIGS  USIGS a u SCAN-SIGS  FSU @ ;
 variable FLD  variable FLI  variable FLO  variable FLC
 : FLODIG? {: a u :}                        \ -?d+.d+ (one interior dot) -> float literal
    0 FLD !  0 FLI !  -1 FLO !
@@ -142,4 +151,9 @@ variable FLD  variable FLI  variable FLO  variable FLC
    a u ALLDIG? IF s" -- n" PARSE-SIG ELSE
    a u FLODIG? IF s" -- r" PARSE-SIG ELSE -1 UNCK ! THEN THEN THEN ;
 variable TBASE variable TBLEN variable TI variable TSTART
-: CHECK {: a u :} a TBASE ! u TBLEN ! NEW 0 TI ! BEGIN TI @ TBLEN @ < WHILE BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 = and WHILE TI @ 1 + TI ! REPEAT TI @ TBLEN @ < IF TBASE @ TI @ + TSTART ! BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 <> and WHILE TI @ 1 + TI ! REPEAT TSTART @ TBASE @ TI @ + TSTART @ - DO-TOK THEN REPEAT UNCK @ IF 1 ELSE OK @ THEN ;
+\ first token of the checked text is the word's NAME (skipped, kept for the
+\ recorder); RECXT (installed by render.f) records certified sigs by name.
+variable NMA  variable NMU  variable TOK0  variable RECXT  0 RECXT !
+: DO-TOK1 {: a u :}  TOK0 @ IF a NMA ! u NMU ! 0 TOK0 ! ELSE a u DO-TOK THEN ;
+: CHECK {: a u :} a TBASE ! u TBLEN ! NEW 0 TI ! 1 TOK0 ! 0 NMU ! BEGIN TI @ TBLEN @ < WHILE BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 = and WHILE TI @ 1 + TI ! REPEAT TI @ TBLEN @ < IF TBASE @ TI @ + TSTART ! BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 <> and WHILE TI @ 1 + TI ! REPEAT TSTART @ TBASE @ TI @ + TSTART @ - DO-TOK1 THEN REPEAT UNCK @ IF 1 ELSE OK @ THEN
+   dup -1 = NMU @ 0 > and RECXT @ 0 <> and IF NMA @ NMU @ RECXT @ execute THEN ;
