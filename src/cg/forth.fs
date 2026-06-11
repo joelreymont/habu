@@ -42,6 +42,7 @@ $1A0 constant CUR-CELL    \ get/set-current wordlist id (new defs go here)
 $1A8 constant WIDN-CELL   \ next fresh wordlist id (WORDLIST hands these out)
 $1B0 constant HOOK-CELL   \ check hook: a word addr run on each : body (0 = none)
 $1B8 constant BODYLEN-CELL \ length of the captured body of the def in progress
+$1C0 constant RBASE-CELL  \ saved __TEXT load base (RBASE) for the self-rebuild
 $200 constant BODYBUF-OFF \ captured body text (space-joined tokens), 1 KB
 $600 constant DATA-START  \ DP initial offset (past the header + body buffer)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
@@ -135,6 +136,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
 : bopen   2 g-pop  1 g-pop  0 g-pop  16 5 MOVZ,  $80 SVC,  0 g-push ;   \ ( pathz flags mode -- fd )
 : bwrite  2 g-pop  1 g-pop  0 g-pop  16 4 MOVZ,  $80 SVC,  0 g-push ;   \ ( fd buf len -- n )
 : bclose  0 g-pop  16 6 MOVZ,  $80 SVC, ;                               \ ( fd -- )
+: brbase  9 DATA RBASE-CELL LDR,  9 g-push ;                            \ ( -- rbase ) __TEXT load base
 : bexec   A g-pop  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
 \ catch ( xt -- exc ) / throw ( exc -- ). Handler frames chain through [x20+8]
 \ (=HND). A frame (48 B on the machine stack) saves: prev-HND, data-sp(x19),
@@ -214,6 +216,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
    s" ,"    ['] bcomma FPRIM   s" c,"   ['] bccomma FPRIM
    s" type" ['] btype  FPRIM   s" execute" ['] bexec FPRIM
    s" open" ['] bopen FPRIM   s" write" ['] bwrite FPRIM   s" close" ['] bclose FPRIM
+   s" rbase" ['] brbase FPRIM
    s" catch" ['] bcatch FPRIM   s" throw" ['] bthrow FPRIM
    s" wordlist" ['] bwordlist FPRIM   s" get-current" ['] bgetcur FPRIM
    s" set-current" ['] bsetcur FPRIM  s" search-wl" ['] bswl FPRIM
@@ -349,7 +352,7 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
       rd LBL,
       INP 11 0 ADDI,  INE 9 0 ADDI,                \ INP=base, INE=ptr
    else
-      INP Lsrc @ ADR,  INE Lsrc @ ADR,  INE INE SRCN @ ADDI,
+      INP Lsrc @ ADR,  INE Lsrc @ ADR,  5 SRCN @ LIT64,  INE INE 5 ADD,
    then ;
 
 \ ---- control-flow JIT: a CF stack (region+CFSTK-OFF) of placeholder branch
@@ -574,7 +577,9 @@ variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
    scdone LBL,
    \ separate always-RW data region (x20 is free after the seed copy); [x20]=DP=x20+8
    0 0 MOVZ,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
-   16 197 MOVZ,  $80 SVC,  DATA 0 0 ADDI,
+   16 197 MOVZ,  $80 SVC,
+   20 0 RBASE-CELL STR,                               \ save RBASE (x20=__TEXT base) into the data region
+   DATA 0 0 ADDI,
    7 DATA DATA-START ADDI,  7 DATA DP-CELL STR,       \ DP = base + header
    9 0 MOVZ,  9 DATA HND-CELL STR,                    \ HND (catch handler chain) = 0
    9 0 MOVZ,  9 DATA CUR-CELL STR,                    \ CURRENT wordlist = 0 (FORTH)

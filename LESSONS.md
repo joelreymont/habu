@@ -771,3 +771,25 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   all mnemonics + the dict/source embedding) re-expressed in standalone-Forth — a
   large port. But the standalone now has every PRIMITIVE capability it requires;
   the remaining work is assembling them into the full self-emit, not new machinery.
+
+## Self-host 10 — THE FIXPOINT: the standalone rebuilds itself (2026-06-11)
+
+- ACHIEVED: stage2 == stage3, byte-identical. gforth builds the standalone
+  (stage2); stage2, run, re-emits its OWN binary (stage3) byte-for-byte; a third
+  iteration (stage4) matches too — a stable fixpoint. gforth is dropped from the
+  rebuild loop (only macOS's `codesign` stays, which caf already shells out to).
+- How: `REBUILD` (in the embedded source, selfhost/rebuild.fs) deterministically
+  rebuilds the Mach-O (header + 6 load commands — a deterministic linker) and
+  copies its compiled code from its OWN loaded image. A `rbase` primitive returns
+  the saved __TEXT load base (x20 at startup, stored before x20 is repurposed as
+  the data base); CODELEN is read from the live `__text` section-size field at
+  `[load_base+216]`; the code is copied `[rbase, +CODELEN)`. Header rebuilt fresh
+  (so it's the UNSIGNED form, matching gforth's emission — codesign only adds an LC
+  later), code reused — a deterministic re-link, byte-identical.
+- Two bugs that hid the win: (1) `emit-source` used `ADDI` for the source length
+  (imm12 max 4095) → builds with a >4 KB embedded source threw "immediate out of
+  range"; use `LIT64`. (2) the one-`{:`-block-per-word limit again: REBUILD's
+  `{: rb :} … {: clen :} … {: fd :}` wiped earlier locals → it copied zeros. Single
+  block (`{: rb clen :}`) + keep `fd` on the stack. Cross-checking the emitted
+  Mach-O against caf's `asm.fs` byte-for-byte (after fixing the `$80000400`
+  section-flag constant) was what made the fixpoint reachable.
