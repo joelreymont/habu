@@ -91,7 +91,7 @@ create PNPOOL 1024 chars allot   variable PNP   variable #PL
 variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  variable SRCN
 variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncount
 \ control-flow JIT helpers + keyword data labels (self-host 1b)
-variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp  variable Lbcap
+variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp  variable Lbcap  variable Lbcs
 variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
@@ -315,22 +315,25 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
 : emit-cemit ( -- )
    Lcemit @ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
 
-\ Lbcap ( -- ) : append TKA/TKL + ' ' to the body capture; FATAL (exit 71) on
-\ overflow — truncation would let the check hook certify code it never saw.
+\ Lbcap ( -- ) : append TKA/TKL + ' ' to the body capture. Lbcs ( x11=a x12=u )
+\ is the general entry (defining-word kind tokens). FATAL (exit 71) on overflow —
+\ truncation would let the check hook certify code it never saw.
 : emit-bcap
    Lbcap @ LBL,
+   11 TKA 0 ADDI,  12 TKL 0 ADDI,
+   Lbcs @ LBL,
    NEWLBL NEWLBL NEWLBL {: bok bcp bcd :}
+   17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
    14 DATA BODYLEN-CELL LDR,
    5 BODYBUF-CAP MOVZ,  14 5 CMP,  C-LT bok BCOND,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
+      0 2 MOVZ,  1 11 0 ADDI,  2 12 0 ADDI,  16 4 MOVZ,  $80 SVC,
       0 71 MOVZ,  16 1 MOVZ,  $80 SVC,
    bok LBL,
    15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
-   11 TKA 0 ADDI,  12 TKL 0 ADDI,
    bcp LBL,  12 bcd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
       15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  bcp B,
    bcd LBL,  13 32 MOVZ,  13 15 0 STRB,
-   14 14 TKL ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
+   14 14 17 ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
    RET, ;
 
 \ ---- TOK ( -- x0=have? ) : skip spaces, scan one token into TKA/TKL, advance INP ----
@@ -640,9 +643,20 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ CREATE/VARIABLE (interpret-mode defining words): make a dict word whose body
 \ pushes the current DP (a data-space address). Reuses the `:` slot pattern + the
 \ c-lit emitter (with x11 = DP) for the literal-push body.
+\ record defining words for the checker: append the kind token + run the hook
+\ (verdict ignored — create/variable/constant always publish).
+: c-defhook  NEWLBL {: kwv klen nohk :}
+   11 kwv @ ADR,  12 klen MOVZ,  Lbcs @ BL,
+   9 DATA HOOK-CELL LDR,  9 nohk CBZ,
+   10 DATA BODYBUF-OFF ADDI,  10 g-push
+   10 DATA BODYLEN-CELL LDR,  10 g-push
+   SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
+   10 g-pop
+   nohk LBL, ;
 : c-create ( -- )
    2 3 MOVZ,  Lprot @ BL,                               \ region -> RW
    Ltok @ BL,                                            \ read NAME
+   12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  Lbcap @ BL,   \ seed "NAME " for the hook
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot
    CP 9 0 STR,  TKL 9 16 STR,                            \ slot.addr=CP, namelen
    14 DATA CUR-CELL LDR,  14 9 40 STR,                   \ slot.wid = CURRENT
@@ -657,15 +671,17 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot again
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,        \ clen = CP-addr-4
    NDICT NDICT 1 ADDI,
-   2 5 MOVZ,  Lprot @ BL,  Lflush @ BL, ;               \ region -> RX + flush
+   2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,                 \ region -> RX + flush
+   Lkwcreate 6 c-defhook ;
 : c-variable ( -- )  c-create
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;          \ reserve 1 cell
 
 \ CONSTANT ( n -- ) "name": define a word that pushes n. Pop n first (x15
 \ survives the name copy), then emit a literal-push body via c-lit (x11=n).
 : c-constant ( -- )
-   15 g-pop                                             \ n -> x15 (consumed)
    2 3 MOVZ,  Lprot @ BL,  Ltok @ BL,
+   12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  Lbcap @ BL,   \ seed "NAME " for the hook
+   15 g-pop                                             \ n -> x15 AFTER Lbcap (it clobbers x15)
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    CP 9 0 STR,  TKL 9 16 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
    10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,
@@ -677,7 +693,8 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    9 W-RET LIT64,  Lcemit @ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
-   NDICT NDICT 1 ADDI,  2 5 MOVZ,  Lprot @ BL,  Lflush @ BL, ;
+   NDICT NDICT 1 ADDI,  2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
+   Lkwconst 8 c-defhook ;
 
 \ ' NAME (interpret): find NAME, push its code address. ['] NAME (compile): bake
 \ the address as a literal push into the word being compiled (via c-lit, x11=addr).
@@ -974,7 +991,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    ICODE-RESET  cf-reset  0 #PL !  0 PNP !
    NEWLBL Lanchor !  NEWLBL Lfind !  NEWLBL Lnum !  NEWLBL Ldict !  NEWLBL Lsrc !
    NEWLBL Lcemit !  NEWLBL Ltok !  NEWLBL Lprot !  NEWLBL Lflush !  NEWLBL Lncount !
-   NEWLBL Lbcap !
+   NEWLBL Lbcap !  NEWLBL Lbcs !
    NEWLBL Lcfpush !  NEWLBL Lcfpop !  NEWLBL Lpat !  NEWLBL Lkwcmp !
    NEWLBL Lkwif !  NEWLBL Lkwthen !  NEWLBL Lkwelse !  NEWLBL Lkwbegin !
    NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !

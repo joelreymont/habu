@@ -3,6 +3,33 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Certified dominates: the whole toolchain self-checks (2026-06-11)
+
+The checker now models locals ({: :} pops bound to type vars), control flow
+(branch states unified at then/repeat/loop joins, occurs check kills cyclic
+rows from mismatched arms), records every certified word's rendered sig (and
+every variable/create/constant via the engine's c-defhook), and srclist loads
+util/checker/render FIRST so the hook covers asm/icode/mnem too. Toolchain
+verdicts went 1 certified / 235 unchecked → **554 / 109 / 0 rejected**.
+
+Bugs found on the way, all of one species — A ROUTINE'S SCRATCH REG WAS A
+CALLER'S LIVE REG:
+- Lbcap kept token len in x6; c-lbrace keeps its locals block-start in x6
+  across the per-name capture call → locals pop-loop miscounted (x17 now).
+- Lbcap composes via x15; c-constant had already popped the VALUE into x15 →
+  every constant baked garbage (pop moved after the capture). A garbage
+  `MAXTV constant` then made TVT's allot wreck DP — the SIGBUS appeared two
+  creates later at an innocent c!. Debug recipe that worked: lldb -k on the
+  crash, file-offset the pc, dict-walk to name the prim, then ask "who CALLS
+  this prim with those registers".
+- render's SEEN was 64 cells but is indexed by typevar PAY (up to MAXTV).
+When BL-ifying inline engine code, list the caller's live registers FIRST.
+
+Also: checker buffers must be ENGINE-sized with fail-closed guards. SPA's 64
+pushes silently wrapped SPN (the variable sat right after the buffer) — big
+bodies reused live spine records, masked because homogeneous int stacks look
+alike. MK-PUSH/U-PUSH/USIG-ADD/PT2+/RSBUF all die 76 on overflow now.
+
 ## Bootstrap fixpoint needs an extra generation (2026-06-11)
 
 `tools/build.sh` reported FIXPOINT BROKEN after the reg-shuffle commit. Hours of

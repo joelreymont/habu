@@ -10,7 +10,7 @@ mkdir -p bin
 SRC=$(./tools/srclist.sh)
 # the compiler source, with the checker hooked (habu type-checks itself)
 { for f in $SRC; do
-    [ "$f" = "src/habu/rt.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
+    [ "$f" = "src/core/sha256.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
     cat "$f"; printf '\n'
   done } > /tmp/hb-src
 cat > /tmp/hb-boot.fs <<FS

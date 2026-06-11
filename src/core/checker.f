@@ -162,16 +162,21 @@ create SDQN 2 allot  115 SDQN c!  34 SDQN 1 + c!     \ the two chars of `s"`
    \ s" pushes addr+len; ['] pushes an xt. The engine consumes their payload
    \ inline, so only the bare token reaches the body capture.
    SDQN 2 PT2+  s" -- n n" PT2+
-   s" [']" s" -- n" PT+ ;
+   s" [']" s" -- n" PT+
+   \ defining-word kinds (the engine hooks "NAME create" etc. so the name gets
+   \ recorded): create/variable are addresses; a constant's cell is untyped.
+   s" create" s" -- n" PT+
+   s" variable" s" -- n" PT+
+   s" constant" s" -- a" PT+ ;
 PTABLE
 variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable FSP  variable FP
 \ user sigs: certified words recorded as [len|name|len|sig]*, 0-terminated.
 \ Appended by the renderer (RECXT hook); scanned after PTAB so later wins.
-create USIGS 8192 allot   0 USIGS c!   variable UEND   0 UEND !
+create USIGS 32768 allot   0 USIGS c!   variable UEND   0 UEND !
 : UB! {: c :}  c USIGS UEND @ + c!  UEND @ 1 + UEND ! ;
 : UBS {: a u :}  0 BEGIN dup u < WHILE  dup a + c@ UB!  1 + REPEAT drop ;
 : USIG-ADD {: sa su na nu :}
-   UEND @ nu + su + 3 + 8190 > IF s" checker: user sigs full" 76 die THEN
+   UEND @ nu + su + 3 + 32766 > IF s" checker: user sigs full" 76 die THEN
    nu UB!  na nu UBS  su UB!  sa su UBS  0 USIGS UEND @ + c! ;
 : SCAN-SIGS {: tab a u :}  tab FP !
    BEGIN FP @ c@ dup WHILE                       \ no locals inside the loop (corrupts frame)

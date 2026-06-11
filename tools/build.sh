@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 
 mksrc() {  # $1 = driver (stage2|hbi); writes /tmp/stage2-src (checker hooked)
   for f in $(./tools/srclist.sh "$1"); do
-    [ "$f" = "src/habu/rt.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
+    [ "$f" = "src/core/sha256.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
     cat "$f"; printf '\n'
   done > /tmp/stage2-src
 }

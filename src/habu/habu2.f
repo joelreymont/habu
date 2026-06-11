@@ -158,10 +158,21 @@ create ENDLOC-KW 58 c, 125 c,
    4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4181721481 c-emitw  4177527401 c-emitw  2432705139 c-emitw ;
 \ ---- interpret-mode defining words ----
+\ record defining words for the checker: append the kind token + run the hook
+\ (verdict ignored — create/variable/constant always publish).
+: c-defhook  NEWLBL {: kwv klen nohk :}
+   11 kwv @ ADR,  12 klen MOVZ,  Lbcs @ BL,
+   9 DATA HOOK-CELL LDR,  9 nohk CBZ,
+   10 DATA BODYBUF-OFF ADDI,  10 g-push
+   10 DATA BODYLEN-CELL LDR,  10 g-push
+   SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
+   10 g-pop
+   nohk LBL, ;
 : c-create
    NEWLBL NEWLBL {: ncp ncpd :}
    2 3 MOVZ,  Lprot @ BL,
    Ltok @ BL,
+   12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  Lbcap @ BL,   \ seed "NAME " for the hook
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    CP 9 0 STR,  TKL 9 16 STR,
    14 DATA CUR-CELL LDR,  14 9 40 STR,
@@ -175,13 +186,15 @@ create ENDLOC-KW 58 c, 125 c,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    NDICT NDICT 1 ADDI,
-   2 5 MOVZ,  Lprot @ BL,  Lflush @ BL, ;
+   2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
+   Lkwcreate 6 c-defhook ;
 : c-variable  c-create
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;
 : c-constant
    NEWLBL NEWLBL {: kcp kcd :}
-   15 g-pop
    2 3 MOVZ,  Lprot @ BL,  Ltok @ BL,
+   12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  Lbcap @ BL,   \ seed "NAME " for the hook
+   15 g-pop                                             \ n -> x15 AFTER Lbcap (it clobbers x15)
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    CP 9 0 STR,  TKL 9 16 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
    10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,
@@ -192,7 +205,8 @@ create ENDLOC-KW 58 c, 125 c,
    9 W-RET LIT64,  Lcemit @ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
-   NDICT NDICT 1 ADDI,  2 5 MOVZ,  Lprot @ BL,  Lflush @ BL, ;
+   NDICT NDICT 1 ADDI,  2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
+   Lkwconst 8 c-defhook ;
 : c-tick
    NEWLBL {: tk :}
    Ltok @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
@@ -454,7 +468,7 @@ variable SRCA
    ASM-INIT  0 #PL !  0 PNP !
    NEWLBL Lanchor !  NEWLBL Lfind !  NEWLBL Lnum !  NEWLBL Ldict !  NEWLBL Lsrc !
    NEWLBL Lcemit !  NEWLBL Ltok !  NEWLBL Lprot !  NEWLBL Lflush !  NEWLBL Lncount !
-   NEWLBL Lbcap !
+   NEWLBL Lbcap !  NEWLBL Lbcs !
    NEWLBL Lcfpush !  NEWLBL Lcfpop !  NEWLBL Lpat !  NEWLBL Lkwcmp !
    NEWLBL Lkwif !  NEWLBL Lkwthen !  NEWLBL Lkwelse !  NEWLBL Lkwbegin !
    NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !

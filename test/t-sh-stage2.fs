@@ -8,12 +8,13 @@
 require ../bootstrap/cg/forth.fs
 require ../bootstrap/cg/exec.fs
 require sh-driver.fs
-: SRC+ ( -- )  0 CL !
-   s" src/core/sha256.f" +F  s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F
-   s" src/arch/arm64/mnem.f" +F  s" src/core/util.f" +F  s" src/core/checker.f" +F
+: SRC+ ( -- )  0 CL !                                \ mirrors tools/srclist.sh
+   s" src/core/util.f" +F  s" src/core/checker.f" +F  s" src/core/render.f" +F
    s" : HOOK CHECK ; ' HOOK set-check " +B            \ DOGFOOD: every word below is
-                            \ checked as the compiler compiles
-   s" src/habu/rt.f" +F  s" src/habu/crash.f" +F  s" src/os/macos/macho.f" +F   \ itself;
+                            \ checked as the compiler compiles itself;
+   s" src/core/sha256.f" +F  s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F
+   s" src/arch/arm64/mnem.f" +F
+   s" src/habu/rt.f" +F  s" src/habu/crash.f" +F  s" src/os/macos/macho.f" +F
    s" src/os/macos/sign2.f" +F  s" src/habu/habu1.f" +F  s" src/habu/prof.f" +F  s" src/habu/vsjit.f" +F  s" src/habu/habu2.f" +F
    s" src/habu/stage2.f" +F ;                        \ a type error rejects -> exit 70
 \ write SRC where stage1 will read it back as data

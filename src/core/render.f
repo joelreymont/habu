@@ -15,8 +15,8 @@ variable RQM                             \ a '?' rendered = unknown tag, don't r
      RSN @ 510 > IF s" render: sig buffer full" 76 die THEN
      c RSBUF RSN @ + c!  RSN @ 1 + RSN !
    ELSE c ECH c! ECH 1 type THEN ;
-create SEEN 64 cells allot   variable NLET
-: SEEN-RESET 0 BEGIN dup cells SEEN + UNBOUND swap ! 1 + dup 63 > UNTIL drop ;
+create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PAY)
+: SEEN-RESET 0 BEGIN dup cells SEEN + UNBOUND swap ! 1 + dup MAXTV 1 - > UNTIL drop ;
 : LET-OF {: vp :}
    vp cells SEEN + @ UNBOUND = IF NLET @ vp cells SEEN + ! NLET @ 1 + NLET ! THEN
    vp cells SEEN + @ 97 + ;
