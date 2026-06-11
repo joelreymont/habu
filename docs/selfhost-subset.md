@@ -34,6 +34,8 @@ and `{: a b :}` read-only locals.
 `DUP DROP SWAP NIP OVER TUCK ROT -ROT 2DUP 2DROP`,
 `@ ! C@ C! CELLS HERE ALLOT , C,`,
 `. .S TYPE EXECUTE DIE PROF-ON PROF-REPORT`,
+`F+ F- F* F/ FNEGATE FABS FSQRT F< F> F= F0< F0= S>F F>S F.` (doubles as raw
+IEEE754 bit-cells on the data stack; literals `d.d`; checker type `r`),
 `OPEN WRITE READ CLOSE RBASE`,
 `CATCH THROW`,
 `WORDLIST GET-CURRENT SET-CURRENT SEARCH-WL SET-CHECK`.
