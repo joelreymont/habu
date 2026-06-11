@@ -33,8 +33,8 @@ and `{: a b :}` read-only locals.
 `= <> < > <= >= 0= 0<`,
 `DUP DROP SWAP NIP OVER TUCK ROT -ROT 2DUP 2DROP`,
 `@ ! C@ C! CELLS HERE ALLOT , C,`,
-`. .S TYPE EXECUTE`,
-`OPEN WRITE CLOSE RBASE`,
+`. .S TYPE EXECUTE DIE`,
+`OPEN WRITE READ CLOSE RBASE`,
 `CATCH THROW`,
 `WORDLIST GET-CURRENT SET-CURRENT SEARCH-WL SET-CHECK`.
 
@@ -78,11 +78,12 @@ differently, and subset source must be written for the standalone's semantics:
   inside control flow corrupt the frame.
 - Number output (`.`) is decimal only; input accepts decimal and `$hex`.
 
-## Remaining work toward the fixpoint
+## The fixpoint (achieved 2026-06-11)
 
-The subset is closed for the codegen + emitter layer. The standalone now emits real
-calls (BL + x30 frame, no inlining), so the deep call chains in the compiler source no
-longer explode the compiled code. The open work is *driving* the bootstrap: load the
-compiler source under the standalone and have it emit the next-stage compiler binary,
-then compare against the gforth-built one (the drift guard, extended to the full
-compiler). That is dot `caf-31c0b877` (standalone compiles its compiler from source).
+The subset proved sufficient: the complete compiler is written in it (`asm icode mnem
+util walk rt crash macho engine engine2 stage2`), and `test/t-sh-stage2.fs` is the
+standing gate — stage1 (the gforth-built standalone carrying that source as its
+program) reads the same source back as data, compiles it with the ported `EMIT-FORTH`,
+wraps it with the ported `BUILD-MACHO`, and the emitted stage2 image is byte-identical
+to gforth's build of the same source. Any edit that breaks the subset, the emitter
+parity, or the fixpoint fails the gate.
