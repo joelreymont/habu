@@ -117,6 +117,9 @@ variable Lkwdo variable Lkwloop variable Lkwi
 : b=  C-EQ (cmp) ;   : b<> C-NE (cmp) ;   : b<  C-LT (cmp) ;   : b>  C-GT (cmp) ;
 : b<= C-LE (cmp) ;   : b>= C-GE (cmp) ;
 : b0= A g-pop  A 0 CMPI,  A C-EQ CSET,  A SP A SUB,  A g-push ;
+: b0< A g-pop  A 0 CMPI,  A C-LT CSET,  A SP A SUB,  A g-push ;
+: b1+ A g-pop  A A 1 ADDI,  A g-push ;
+: b1- A g-pop  A A 1 SUBI,  A g-push ;
 \ bitwise / logic
 : band B g-pop A g-pop  A A B AND, A g-push ;
 : bor  B g-pop A g-pop  A A B ORR, A g-push ;
@@ -217,7 +220,8 @@ variable Lkwdo variable Lkwloop variable Lkwi
    s" ."    ['] bdot  FPRIM   s" .s"   ['] b.s   FPRIM
    s" ="    ['] b=    FPRIM   s" <>"   ['] b<>   FPRIM   s" <"    ['] b<    FPRIM
    s" >"    ['] b>    FPRIM   s" <="   ['] b<=   FPRIM   s" >="   ['] b>=   FPRIM
-   s" 0="   ['] b0=   FPRIM
+   s" 0="   ['] b0=   FPRIM   s" 0<"   ['] b0<   FPRIM
+   s" 1+"   ['] b1+   FPRIM   s" 1-"   ['] b1-   FPRIM
    s" and"  ['] band  FPRIM   s" or"   ['] bor   FPRIM   s" xor"  ['] bxor  FPRIM
    s" invert" ['] binv FPRIM  s" negate" ['] bneg FPRIM
    s" lshift" ['] blsh FPRIM  s" rshift" ['] brsh FPRIM
@@ -630,7 +634,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
    g-install-crash                                    \ self-diagnosing crash (register dump)
    emit-source                                        \ INP/INE <- baked Lsrc or stdin
    PEND 0 MOVZ,                                       \ interpret mode
-   NEWLBL {: lmain :}  NEWLBL {: lexit :}  NEWLBL {: lcompile :}
+   NEWLBL {: lmain :}  NEWLBL {: lexit :}  NEWLBL {: lcompile :}  NEWLBL {: lundef :}
    lmain LBL,
       Ltok @ BL,  0 lexit CBZ,
       \ skip comments (both modes): \ to end-of-line, ( to ')'
@@ -738,8 +742,13 @@ variable Lkwdo variable Lkwloop variable Lkwi
       12 lcnotnum CBZ,  c-lit  lmain B,
       lcnotnum LBL,
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,            \ FIND -> inline stencil
-      13 lmain CBZ,
+      13 lundef CBZ,                                         \ undefined word in a : body -> error
       9 11 0 ADDI,  10 12 0 ADDI,  c-copy  lmain B,
+   \ undefined word during compilation: write the name to stderr and exit(70). Silently
+   \ skipping it (the old behaviour) hid real bugs (e.g. `0<`, `STR=` -> no-op).
+   lundef LBL,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,   \ write(2, name)
+      0 70 MOVZ,  16 1 MOVZ,  $80 SVC,                       \ exit(70)
    lexit LBL,
       0 0 MOVZ,  16 1 MOVZ,  $80 SVC, ;                     \ exit(0)
 

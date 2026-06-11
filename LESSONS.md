@@ -19,6 +19,21 @@ gforth case-folds `S0`/`s0` (use BSIG0/SSIG0); a local named `i` shadows the loo
 index inside `?DO`; declaring `{: :}` locals inside a loop corrupts the return
 stack (factor the loop body into its own word); `?DO` is `( limit start -- )`.
 
+## Standalone errors on undefined words; token compiler; Forth disassembler (2026-06-11)
+
+The standalone now COMPILES Forth source bodies to native code (selfhost/walk.fs:
+tokenize -> per-op instruction templates in a DATA table + literals + encoders +
+assembler -> self-signed binary; `7 dup *` -> exit 49). And it finally ERRORS on an
+undefined word in a `:` body (writes the name to stderr, exit 70) — the old silent
+no-op hid real bugs (`0<`, `STR=`, and the walk dispatcher emitting every template
+because undefined `STR=` made the match always true). Found that last one instantly
+with the EXISTING Forth disassembler (src/cg/disasm.fs, `DISASM addr nwords`) — use it,
+not python/otool. Making undefined-word an error required: implementing the prims the
+checker knows but the engine lacked (`1+`/`1-`/`0<`), and fixing a test that relied on
+a tolerated forward reference (define the callee first — the standalone has no forward
+refs). Lesson reinforced: in a Forth with silent undefined-word skipping, a typo or a
+missing `require`d helper compiles to nothing — make it loud.
+
 ## Standalone GENERATES native code — encoders + assembler + a runnable binary (2026-06-11)
 
 Major codegen-port milestone: the standalone now has runnable ARM64 encoders
