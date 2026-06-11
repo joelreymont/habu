@@ -40,7 +40,7 @@ IOP# @ constant #IOPS
 
 \ --- IR record storage ---
 5    constant /ic
-4096 constant MAX-IC
+8192 constant MAX-IC
 create ICBUF MAX-IC /ic * cells allot
 variable #IC
 

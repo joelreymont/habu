@@ -943,6 +943,12 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       lmain Lkwgt2 1 12 vcmp-entry
       lmain Lkwle2 2 13 vcmp-entry
       lmain Lkwge2 2 10 vcmp-entry
+      lmain Lkwinc  2 ['] fu1+ ['] eu1+ vun-entry
+      lmain Lkwdec  2 ['] fu1- ['] eu1- vun-entry
+      lmain Lkwzeq  2 ['] fu0= ['] eu0= vun-entry
+      lmain Lkwzlt  2 ['] fu0< ['] eu0< vun-entry
+      lmain Lkwneg2 6 ['] funeg ['] euneg vun-entry
+      lmain Lkwinv2 6 ['] fuinv ['] euinv vun-entry
 
       Lvspill @ BL,                                          \ VS -> memory before a call
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,            \ FIND -> inline stencil
@@ -980,9 +986,11 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NEWLBL Lkwover2 !  NEWLBL Lkwnip2 !
    NEWLBL Lkweq2 !  NEWLBL Lkwne2 !  NEWLBL Lkwlt2 !
    NEWLBL Lkwgt2 !  NEWLBL Lkwle2 !  NEWLBL Lkwge2 !
+   NEWLBL Lkwinc !  NEWLBL Lkwdec !  NEWLBL Lkwzeq !
+   NEWLBL Lkwzlt !  NEWLBL Lkwneg2 !  NEWLBL Lkwinv2 !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-prof-prims  emit-fp-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
-   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-cmpkw  emit-crash-handler  emit-hex
+   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-cmpkw  emit-unkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict                                              \ after #PL is final
    Lsrc @ LBL,  r> SRCN @ BYTES, ;

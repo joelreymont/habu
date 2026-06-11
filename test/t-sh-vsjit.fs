@@ -28,3 +28,14 @@ T{ s" : T {: a :} a dup * . ; 7 T"                OUT s\" 49\n" compare 0= -> tr
 T{ s" : T {: a b :} a b swap drop dup * . ; 3 9 T" OUT s\" 81\n" compare 0= -> true }T
 T{ s" : T {: a :} a 2 over + + . ; 10 T"          OUT s\" 22\n" compare 0= -> true }T
 T{ s" : T {: a b :} a b nip dup * . ; 3 5 T"      OUT s\" 25\n" compare 0= -> true }T
+\ VS-aware unary ops: con folds at JIT time; reg gets one in-place op
+T{ s" : T 5 1+ . 5 1- . ; T"                      OUT s\" 6\n4\n"  compare 0= -> true }T
+T{ s" : T 0 0= . 7 0= . ; T"                      OUT s\" -1\n0\n" compare 0= -> true }T
+T{ s" : T 7 negate . 0 invert . ; T"              OUT s\" -7\n-1\n" compare 0= -> true }T
+T{ s" : T {: a :} a 1+ . a 1- . ; 5 T"            OUT s\" 6\n4\n"  compare 0= -> true }T
+T{ s" : T {: a :} a 0= . a 0< . ; 0 T"            OUT s\" -1\n0\n" compare 0= -> true }T
+T{ s" : T {: a :} a 0< . ; 0 7 - T"               OUT s\" -1\n"    compare 0= -> true }T
+T{ s" : T {: a :} a negate . a invert . ; 9 T"    OUT s\" -9\n-10\n" compare 0= -> true }T
+T{ s" : T {: a :} a 1+ 1+ negate . ; 3 T"         OUT s\" -5\n"    compare 0= -> true }T
+T{ s" : T {: a b :} a 1+ b 1- * . ; 4 7 T"        OUT s\" 30\n"    compare 0= -> true }T
+T{ s" : T 1+ . ; 5 T"                             OUT s\" 6\n"     compare 0= -> true }T
