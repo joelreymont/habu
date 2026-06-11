@@ -6,6 +6,7 @@ require t-sh-prims.fs
 require t-sh-render.fs
 require t-sh-asm.fs
 require t-sh-asm2.fs
+require t-sh-fp-enc.fs
 require t-sh-rt.fs
 require t-sh-crash.fs
 require t-sh-macho.fs

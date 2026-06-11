@@ -77,3 +77,13 @@
 \ adr rd, . + d  (d = BYTE offset from this instruction; word-aligned here so immlo=0)
 : ENC-ADRD {: d :}  d 3 and 29 lshift  d 4 / $7FFFF and 5 lshift or ;
 : ENC-ADR {: rd d :}  $10000000 rd or  d ENC-ADRD or MSK ;
+\ FP (double, D-register file): engine-grade set, golden vs habu in t-sh-fp-enc
+: ENC-FMOVDD {: d n :} $1E604000 d or  n 5 lshift or MSK ;
+: ENC-FDIV  {: d n m :} $1E601800 d or  n 5 lshift or  m 16 lshift or MSK ;
+: ENC-FNEG  {: d n :}  $1E614000 d or  n 5 lshift or MSK ;
+: ENC-FABS  {: d n :}  $1E60C000 d or  n 5 lshift or MSK ;
+: ENC-FSQRT {: d n :}  $1E61C000 d or  n 5 lshift or MSK ;
+: ENC-FCMP  {: n m :}  $1E602000 n 5 lshift or  m 16 lshift or MSK ;
+: ENC-FCMP0 {: n :}    $1E602008 n 5 lshift or MSK ;
+: ENC-SCVTF  {: d n :} $9E620000 d or  n 5 lshift or MSK ;
+: ENC-FCVTZS {: d n :} $9E780000 d or  n 5 lshift or MSK ;
