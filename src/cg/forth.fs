@@ -360,15 +360,17 @@ variable Lkwdo variable Lkwloop variable Lkwi
    7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 LIT64,  9 8 7 ORR,  Lcemit @ BL,
    9 W-PUSH0 LIT64,  Lcemit @ BL,  9 W-PUSH1 LIT64,  Lcemit @ BL, ;
 
-\ ---- compile-mode CALL: emit one BL to the found word (x11=target addr). Replaces
-\ inlining (which flattened bodies and exploded code size); every word now saves/restores
-\ x30, so arbitrary call nesting is safe.  BL imm26 = (target-CP)>>2, masked to 26 bits.
-: c-call ( -- )   \ x11 = target addr
-   9 11 28 SUB,                        \ x9 = target - CP  (signed byte offset)
-   9 9 2 LSRI,                         \ >>2 -> instruction offset (low 26 bits valid both signs)
-   8 $03FFFFFF LIT64,  9 9 8 AND,      \ mask imm26
-   8 $94000000 LIT64,  9 9 8 ORR,      \ BL opcode
-   Lcemit @ BL, ;
+\ ---- compile-mode CALL: emit `movz/movk x16,target + blr x16` (x11=target addr).
+\ Replaces inlining (which flattened bodies and exploded code size); every word now
+\ saves/restores x30, so arbitrary call nesting is safe. Absolute, not BL: the JIT
+\ region is a kernel-placed mmap and prims live in __TEXT — BL's +-128MB imm26 would
+\ silently truncate if they land far apart. x16 is IP0, the ABI call-scratch register.
+: c-call ( -- )   \ x11 = target addr (48-bit VA)
+   5 $FFFF MOVZ,
+   7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  Lcemit @ BL,  \ movz x16,lo
+   7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
+   7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
+   9 $D63F0200 LIT64,  Lcemit @ BL, ;                                        \ blr x16
 
 \ ---- source setup: point INP/INE at either the baked Lsrc or stdin ----
 \ stdin mode reads all of fd 0 into a fresh RW mmap buffer, then interprets it
