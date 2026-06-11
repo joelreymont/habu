@@ -44,6 +44,8 @@ $1B0 constant HOOK-CELL   \ check hook: a word addr run on each : body (0 = none
 $1B8 constant BODYLEN-CELL \ length of the captured body of the def in progress
 $1C0 constant RBASE-CELL  \ saved __TEXT load base (RBASE) for the self-rebuild
 $1C8 constant LOOPSP-CELL \ DO/LOOP frame stack depth
+$1D0 constant S0-CELL     \ saved data-stack base (initial XDS) for the `.s` inspector
+$1D8 constant SSCR-CELL   \ `.s` loop-pointer scratch (survives g-print9's x9..x15 clobber)
 $200 constant BODYBUF-OFF \ captured body text (space-joined tokens), 1 KB
 $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
 $800 constant DATA-START  \ DP initial offset (past header + body buffer + loop stack)
@@ -98,6 +100,17 @@ variable Lkwdo variable Lkwloop variable Lkwi
 : bdrop XDS XDS 8 SUBI, ;
 : bswap A g-pop  B g-pop  A g-push  B g-push ;
 : bdot  A g-pop  g-print9 ;          \ pop x9, print signed decimal + newline
+\ .s — print the whole data stack (base..top), one signed decimal per line, WITHOUT
+\ consuming it. The loop pointer lives in a DATA cell because g-print9 clobbers x9..x15.
+: b.s
+   9 DATA S0-CELL LDR,  9 DATA SSCR-CELL STR,
+   NEWLBL {: sl :}  NEWLBL {: sd :}
+   sl LBL,
+      9 DATA SSCR-CELL LDR,  9 XDS CMP,  C-GE sd BCOND,
+      9 9 0 LDR,  g-print9
+      9 DATA SSCR-CELL LDR,  9 9 8 ADDI,  9 DATA SSCR-CELL STR,
+      sl B,
+   sd LBL, ;
 
 \ comparisons -> Forth flag 0/-1 (CSET 0/1 then negate via the zero register SP)
 : (cmp) {: cond -- :}  B g-pop  A g-pop  A B CMP,  A cond CSET,  A SP A SUB,  A g-push ;
@@ -201,7 +214,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
 : emit-prims ( -- )
    s" +"    ['] b+    FPRIM   s" -"    ['] b-    FPRIM   s" *"    ['] b*    FPRIM
    s" dup"  ['] bdup  FPRIM   s" drop" ['] bdrop FPRIM   s" swap" ['] bswap FPRIM
-   s" ."    ['] bdot  FPRIM
+   s" ."    ['] bdot  FPRIM   s" .s"   ['] b.s   FPRIM
    s" ="    ['] b=    FPRIM   s" <>"   ['] b<>   FPRIM   s" <"    ['] b<    FPRIM
    s" >"    ['] b>    FPRIM   s" <="   ['] b<=   FPRIM   s" >="   ['] b>=   FPRIM
    s" 0="   ['] b0=   FPRIM
@@ -607,6 +620,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
    16 197 MOVZ,  $80 SVC,
    20 0 RBASE-CELL STR,                               \ save RBASE (x20=__TEXT base) into the data region
    DATA 0 0 ADDI,
+   XDS DATA S0-CELL STR,                              \ save data-stack base for `.s`
    7 DATA DATA-START ADDI,  7 DATA DP-CELL STR,       \ DP = base + header
    9 0 MOVZ,  9 DATA HND-CELL STR,                    \ HND (catch handler chain) = 0
    9 0 MOVZ,  9 DATA CUR-CELL STR,                    \ CURRENT wordlist = 0 (FORTH)
