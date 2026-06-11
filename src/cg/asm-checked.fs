@@ -19,3 +19,22 @@
 \ load/store unsigned-offset ( rd rn off -- w ): base | rd | rn<<5 | (off>>3)<<10
 : A-LDR  ( a b c -- d )  3 rshift 10 lshift swap 5 lshift or swap or 4181721088 or ;
 : A-STR  ( a b c -- d )  3 rshift 10 lshift swap 5 lshift or swap or 4177526784 or ;
+\ data-processing 2-source ( rd rn rm -- w ): same RRR layout, divide/shift bases
+: A-SDIV ( a b c -- d )  16 lshift swap 5 lshift or swap or $9AC00C00 or ;
+: A-UDIV ( a b c -- d )  16 lshift swap 5 lshift or swap or $9AC00800 or ;
+: A-LSLV ( a b c -- d )  16 lshift swap 5 lshift or swap or $9AC02000 or ;
+: A-LSRV ( a b c -- d )  16 lshift swap 5 lshift or swap or $9AC02400 or ;
+: A-ASRV ( a b c -- d )  16 lshift swap 5 lshift or swap or $9AC02800 or ;
+\ logical immediate ( rd rn nis -- w ): base | rd | rn<<5 | nis<<10
+: A-ANDI ( a b c -- d )  10 lshift swap 5 lshift or swap or $92000000 or ;
+: A-ORRI ( a b c -- d )  10 lshift swap 5 lshift or swap or $B2000000 or ;
+: A-EORI ( a b c -- d )  10 lshift swap 5 lshift or swap or $D2000000 or ;
+\ asr immediate (SBFM) ( rd rn sh -- w )
+: A-ASRI ( a b c -- d )  16 lshift swap 5 lshift or swap or $9340FC00 or ;
+\ indirect branches ( rn -- w ), cache maintenance ( rt -- w )
+: A-BLR  ( a -- b )  5 lshift $D63F0000 or ;
+: A-BR   ( a -- b )  5 lshift $D61F0000 or ;
+: A-ICIVAU ( a -- b )  $D50B7520 or ;
+: A-DCCVAU ( a -- b )  $D50B7B20 or ;
+\ cset ( rd cond -- w ): csinc rd,xzr,xzr,inv(cond) — branchless invert via xor 1
+: A-CSET ( a b -- c )  1 xor 12 lshift or $9A9F07E0 or ;
