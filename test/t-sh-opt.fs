@@ -2,10 +2,7 @@
 \ removes a redundant ldr from the token compiler's output (16 -> 15 instructions), and
 \ the optimized self-signed binary still computes correctly (5*5 = 25). First step of
 \ porting caf's optimizer to the standalone. Run: gforth test/t-sh-opt.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 131072 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : GEN ( -- a u )
    0 CL !
    s" selfhost/sha256.fs"   slurp-file +B   s"  " +B

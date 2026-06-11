@@ -2,10 +2,7 @@
 \ matches FIPS-180 vectors. The standalone will use this to self-sign its Mach-O
 \ (ad-hoc CodeDirectory) with zero gforth and zero external codesign.
 \ Run: gforth test/t-sh-sha.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 32768 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : SHA-OUT ( -- a u )
    0 CL !
    s" selfhost/sha256.fs"  slurp-file +B   s"  " +B

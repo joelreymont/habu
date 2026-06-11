@@ -2,10 +2,7 @@
 \ (store via str, load via ldr, HERE = scratch buffer) and the self-signed binary stores
 \ 42 then loads it back -> exit 42. Toward the compiler's own language surface (the
 \ fixpoint needs @/!). Run: gforth test/t-sh-mem.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 131072 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : GEN ( -- )
    0 CL !
    s" selfhost/sha256.fs"   slurp-file +B   s"  " +B

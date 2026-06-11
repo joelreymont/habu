@@ -2,10 +2,7 @@
 \ known prims is certified (-1) or rejected on a type error (0); a def the checker
 \ can't fully model (control flow, literals, unknown words) is UNCHECKABLE (1) —
 \ published but NOT falsely certified. Run: gforth test/t-sh-check.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 16384 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : SOUND-OUT ( -- a u )
    0 CL !
    s" selfhost/checker.fs"    slurp-file +B   s"  " +B

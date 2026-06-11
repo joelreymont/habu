@@ -2,10 +2,7 @@
 \ BOTH paths each: constant-folded (both operands known -> flag folded at compile time,
 \ must be the same 0/-1 Forth flag the runtime cset path yields) and runtime (input in
 \ a register -> cmp/cset/sub). Exit code 255 = -1 (true flag). Run: gforth test/t-sh-cmp.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 131072 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : GEN {: sa su input -- :}
    0 CL !
    s" selfhost/sha256.fs"   slurp-file +B   s"  " +B

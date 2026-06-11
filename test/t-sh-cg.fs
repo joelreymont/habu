@@ -3,10 +3,7 @@
 \ computing exit(5+4+3+2+1=15); it emits a self-signed Mach-O (macho-min + sign) with
 \ ZERO external tools. Assert the generated binary runs and exits 15.
 \ Run: gforth test/t-sh-cg.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 131072 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : GEN ( -- )                              \ build the standalone codegen + run it -> /tmp/sh-cg-bin
    0 CL !
    s" selfhost/sha256.fs"   slurp-file +B   s"  " +B

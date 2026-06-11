@@ -5,10 +5,7 @@
 \ folded constant. A clean "1806\n" proves the standalone compiled all of it (an
 \ out-of-subset word would exit 70 before the sentinel). Toward the compiler fixpoint
 \ (the standalone compiling its own compiler). Run: gforth test/t-sh-coload.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 400000 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : GEN ( -- a u )
    0 CL !
    s" selfhost/sha256.fs"   slurp-file +B   s"  " +B

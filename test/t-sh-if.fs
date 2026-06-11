@@ -1,10 +1,7 @@
 \ t-sh-if.fs — the standalone codegen with CONTROL FLOW: compiles abs() with a real
 \ runtime IF/THEN (register allocator + spill-to-memory at the branch merge), emits a
 \ self-signed binary, and it computes abs correctly. Run: gforth test/t-sh-if.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 131072 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : BUILD-IF {: input -- }                       \ compile abs(-input) -> /tmp/sh-if-bin
    0 CL !
    s" selfhost/sha256.fs"   slurp-file +B   s"  " +B

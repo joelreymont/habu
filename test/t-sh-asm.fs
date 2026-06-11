@@ -2,8 +2,7 @@
 \ for byte. caf computes the reference encodings; the standalone computes its own;
 \ assert identical. First milestone of the codegen port. Run: gforth test/t-sh-asm.fs -e bye
 require ../src/cg/asm.fs
-require nf.fs
-require tester.fs
+require sh-driver.fs
 \ caf reference encoders (operand form; same base constants + bit layout as asm.fs)
 : R3 ( base rd rn rm -- w )  >r >r >r  r> swap r> 5 lshift or r> 16 lshift or or ;
 \ build the expected decimal-per-line string the standalone's . prints
@@ -38,8 +37,6 @@ create EB16 65536 allot   variable EL
    $1E602800 0 or 1 5 lshift or 2 16 lshift or n+
    $1E603800 0 or 1 5 lshift or 2 16 lshift or n+
    $1E600800 0 or 1 5 lshift or 2 16 lshift or n+ ;
-create CBUF 32768 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
 : ASM-OUT ( -- a u )
    0 CL !
    s" selfhost/asm.fs"      slurp-file +B   s"  " +B

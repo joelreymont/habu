@@ -2,10 +2,7 @@
 \ pool (x9..x15), so R-ALLOC spills the deepest reg to its canonical x19 slot and
 \ V-FORCE reloads it. "dup x8 + x8" of a runtime input N computes 9*N; the self-signed
 \ binary exits 9*N, proving spill+reload are correct. Run: gforth test/t-sh-spill.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 131072 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : GEN {: input -- :}
    0 CL !
    s" selfhost/sha256.fs"   slurp-file +B   s"  " +B

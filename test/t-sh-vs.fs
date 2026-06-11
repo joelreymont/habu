@@ -2,10 +2,7 @@
 \ allocator ported): the data stack lives in registers (x9..x15), so "5 dup *" compiles
 \ to 5 instructions (the 5*5 multiply is folded at compile time) (the memory model needs 16), and the self-signed
 \ binary still computes 5*5 = 25. Run: gforth test/t-sh-vs.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 131072 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : GEN ( -- a u )
    0 CL !
    s" selfhost/sha256.fs"   slurp-file +B   s"  " +B

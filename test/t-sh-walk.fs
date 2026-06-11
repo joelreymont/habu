@@ -2,10 +2,7 @@
 \ turns "7 dup *" into ARM64 via the encoders+assembler, emits a self-signed binary,
 \ which runs and exits 49. Source -> native, zero external tools, no hand-assembly.
 \ Run: gforth test/t-sh-walk.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 131072 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : GEN ( -- )
    0 CL !
    s" selfhost/sha256.fs"   slurp-file +B   s"  " +B

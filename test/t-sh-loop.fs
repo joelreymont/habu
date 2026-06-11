@@ -1,10 +1,7 @@
 \ t-sh-loop.fs — the standalone codegen with LOOPS: compiles a BEGIN/UNTIL countdown
 \ (register allocator + spill at the loop top and back-edge), emits a self-signed binary
 \ that counts a runtime input down to 0 then +42 -> exit 42. Run: gforth test/t-sh-loop.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 131072 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : BUILD-LOOP {: input -- }
    0 CL !
    s" selfhost/sha256.fs"   slurp-file +B   s"  " +B

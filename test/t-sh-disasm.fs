@@ -1,10 +1,7 @@
 \ t-sh-disasm.fs — the standalone's own ARM64 disassembler (selfhost/disasm.fs) decodes
 \ a known instruction buffer to mnemonics + operands (self-hosted debugging of generated
 \ code, zero gforth/python). Run: gforth test/t-sh-disasm.fs -e bye
-require nf.fs
-require tester.fs
-create CBUF 32768 allot   variable CL
-: +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
+require sh-driver.fs
 : DIS-OUT ( -- a u )
    0 CL !
    s" selfhost/disasm.fs"      slurp-file +B   s"  " +B
