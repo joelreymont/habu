@@ -5,7 +5,7 @@
 \ The REPL driver itself uses EVALUATE/terminal I/O, so it is ordinary Forth, not
 \ checkable habu — it is the harness that RUNS habu on what you type.
 
-require habu.fs
+require ../habu.fs
 
 \ The REPL's own words are infrastructure, not habu to be checked — define them
 \ with checking off so they don't land in the effect DB (WORDS stays clean).
