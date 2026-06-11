@@ -3,6 +3,27 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Bootstrap fixpoint needs an extra generation (2026-06-11)
+
+`tools/build.sh` reported FIXPOINT BROKEN after the reg-shuffle commit. Hours of
+"which word miscompiles?" suspicion — but no compiler bug existed. bin/hb is
+engine + *embedded* builder source; a rebuild executes the OLD embedded builder,
+so gen1 = old engine + new text. Only gen1's run of the new text emits the new
+engine. Any commit that changes the emitted engine therefore needs gen2 vs gen3,
+not gen1 vs gen2 — build.sh now iterates until gen_n == gen_{n+1} (bound 4).
+Classic compiler bootstrapping; the one-rebuild check only works when the change
+doesn't touch the emitted engine.
+
+Diagnosis pattern that worked: dict-walk both images (entries are 48 bytes:
+start/end/len/name[16]/wid), compare per-word offsets — "ALL prims shifted by
+-4, dict by -0x1A8" reads as "different engine version", not "one bad word".
+
+Trap inside the trap: the gforth signer (`bootstrap/cg/sign.fs`) sets SIG-ID to
+the OUTPUT BASENAME; the self-hosted signer always signs "hb". A reference
+binary built as `/tmp/hb-ref` differs from a correct image in signature alone
+(ident "hb-ref" vs "hb"). For byte-comparisons, name the gforth reference so its
+basename is `hb`, or compare only __TEXT.
+
 ## Tools that pay rent: probe.sh and parity-lint (2026-06-11)
 
 Two frictions recurred enough to deserve checked-in tools. tools/probe.sh builds a
