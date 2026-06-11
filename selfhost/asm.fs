@@ -31,3 +31,22 @@
 \ svc #imm  ; ret
 : ENC-SVC  {: imm :} 3556769793 imm 5 lshift or MSK ;
 : ENC-RET  3596551104 ;
+\ load/store, unsigned offset. caf scales: x-regs by 8 (?SC8), w by 4, byte by 1.
+: ENC-LDR  {: rd rn off :} 4181721088 rd or  rn 5 lshift or  off 8 / 10 lshift or MSK ;
+: ENC-STR  {: rd rn off :} 4177526784 rd or  rn 5 lshift or  off 8 / 10 lshift or MSK ;
+: ENC-LDRB {: rd rn off :} 960495616  rd or  rn 5 lshift or  off 10 lshift or MSK ;
+: ENC-STRB {: rd rn off :} 956301312  rd or  rn 5 lshift or  off 10 lshift or MSK ;
+: ENC-LDRW {: rd rn off :} 3107979264 rd or  rn 5 lshift or  off 4 / 10 lshift or MSK ;
+: ENC-STRW {: rd rn off :} 3103784960 rd or  rn 5 lshift or  off 4 / 10 lshift or MSK ;
+\ branches: delta is in WORDS (instruction-relative), sign-handled by the caller's mask.
+: ENC-B     {: d26 :}     335544320  d26 16777215 and or MSK ;
+: ENC-BL    {: d26 :}     2483027968 d26 16777215 and or MSK ;
+: ENC-BCOND {: d19 cond :} 1409286144 d19 524287 and 5 lshift or  cond or MSK ;
+: ENC-CBZ   {: rt d19 :}  3019898880 d19 524287 and 5 lshift or  rt or MSK ;
+: ENC-CBNZ  {: rt d19 :}  3036676096 d19 524287 and 5 lshift or  rt or MSK ;
+\ FP (double): operands in the D-register file
+: ENC-FMOVXD {: d n :} 2657550336 d or  n 5 lshift or MSK ;   \ X->D bits
+: ENC-FMOVDX {: d n :} 2657484800 d or  n 5 lshift or MSK ;   \ D->X bits
+: ENC-FADD {: d n m :} 509618176 d or  n 5 lshift or  m 16 lshift or MSK ;
+: ENC-FSUB {: d n m :} 509622272 d or  n 5 lshift or  m 16 lshift or MSK ;
+: ENC-FMUL {: d n m :} 509609984 d or  n 5 lshift or  m 16 lshift or MSK ;

@@ -22,7 +22,22 @@ create EB16 65536 allot   variable EL
    $EB00001F 2 5 lshift or 3 16 lshift or n+
    $F100001F 2 5 lshift or 5 10 lshift or n+
    $D4000001 0 5 lshift or n+
-   $D65F03C0 n+ ;
+   $D65F03C0 n+
+   $F9400000 1 or 2 5 lshift or 16 8 / 10 lshift or n+
+   $F9000000 1 or 2 5 lshift or 16 8 / 10 lshift or n+
+   $39400000 1 or 2 5 lshift or 3 10 lshift or n+
+   $39000000 1 or 2 5 lshift or 3 10 lshift or n+
+   $B9400000 1 or 2 5 lshift or 8 4 / 10 lshift or n+
+   $B9000000 1 or 2 5 lshift or 8 4 / 10 lshift or n+
+   $14000000 5 or n+   $94000000 5 or n+
+   $54000000 3 5 lshift or 11 or n+
+   $B4000000 4 5 lshift or 9 or n+
+   $B5000000 4 5 lshift or 9 or n+
+   $9E670000 1 or 2 5 lshift or n+
+   $9E660000 1 or 2 5 lshift or n+
+   $1E602800 0 or 1 5 lshift or 2 16 lshift or n+
+   $1E603800 0 or 1 5 lshift or 2 16 lshift or n+
+   $1E600800 0 or 1 5 lshift or 2 16 lshift or n+ ;
 create CBUF 32768 allot   variable CL
 : +B {: a u -- }  a  CBUF CL @ +  u move  u CL +! ;
 : ASM-OUT ( -- a u )
