@@ -17,7 +17,7 @@ create EB 65536 allot  variable EL
 : GEN ( -- a u )
    0 CL !
    s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/arch/arm64/mnem.f" +F
-   s" src/core/util.f" +F  s" src/arch/arm64/walk.f" +F  s" src/habu/crash.f" +F
+   s" src/core/util.f" +F  s" src/habu/crash.f" +F
    s" : GO ASM-INIT NEWLBL Lcrashh ! NEWLBL Lhex ! NEWLBL Lhdr ! " +B
    s" g-install-crash emit-hex emit-crash-handler " +B
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B

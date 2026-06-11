@@ -17,7 +17,7 @@ create EB 786432 allot  variable EL
 : GEN ( -- a u )
    0 CL !
    s" src/core/sha256.f" +F  s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F
-   s" src/arch/arm64/mnem.f" +F  s" src/core/util.f" +F  s" src/arch/arm64/walk.f" +F
+   s" src/arch/arm64/mnem.f" +F  s" src/core/util.f" +F
    s" src/habu/rt.f" +F  s" src/habu/crash.f" +F  s" src/os/macos/macho.f" +F
    s" src/os/macos/sign2.f" +F  s" src/habu/habu1.f" +F  s" src/habu/prof.f" +F  s" src/habu/vsjit.f" +F  s" src/habu/habu2.f" +F
    s" -1 STDIN? ! : GO here 0 EMIT-FORTH " +B
@@ -29,7 +29,7 @@ T{ GEN  EB EL @ compare 0= -> true }T
 : GEN2 ( -- )
    0 CL !
    s" src/core/sha256.f" +F  s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F
-   s" src/arch/arm64/mnem.f" +F  s" src/core/util.f" +F  s" src/arch/arm64/walk.f" +F
+   s" src/arch/arm64/mnem.f" +F  s" src/core/util.f" +F
    s" src/habu/rt.f" +F  s" src/habu/crash.f" +F  s" src/os/macos/macho.f" +F
    s" src/os/macos/sign2.f" +F  s" src/habu/habu1.f" +F  s" src/habu/prof.f" +F  s" src/habu/vsjit.f" +F  s" src/habu/habu2.f" +F
    s" create PZ2 32 allot " +B

@@ -11,3 +11,7 @@ T{ s" : GO 1 if 1 . else 2 . then ; GO"            OUT s\" 1\n"             comp
 T{ s" : GO 0 if 1 . else 2 . then ; GO"            OUT s\" 2\n"             compare 0= -> true }T
 T{ s" : GO 3 begin dup . 1- dup 0= until drop ; GO" OUT s\" 3\n2\n1\n"      compare 0= -> true }T
 T{ s" : GO 3 begin dup 0 > while dup . 1- repeat drop ; GO" OUT s\" 3\n2\n1\n" compare 0= -> true }T
+\ memory ops at the habu level (was t-sh-mem's vs-layer coverage)
+T{ s" : GO here 42 over ! @ . ; GO"                OUT s\" 42\n" compare 0= -> true }T
+T{ s" variable V 7 V ! : GO V @ 1 + V ! V @ . ; GO" OUT s\" 8\n" compare 0= -> true }T
+T{ s" create B 8 allot : GO 65 B c! B c@ . ; GO"   OUT s\" 65\n" compare 0= -> true }T

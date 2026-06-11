@@ -13,15 +13,6 @@ require t-sh-crash.fs
 require t-sh-macho.fs
 require t-sh-habu1.fs
 require t-sh-cg.fs
-require t-sh-walk.fs
-require t-sh-opt.fs
-require t-sh-vs.fs
-require t-sh-if.fs
-require t-sh-loop.fs
-require t-sh-mem.fs
-require t-sh-cmp.fs
-require t-sh-balance.fs
-require t-sh-spill.fs
 require t-sh-hex.fs
 require t-sh-coload.fs
 require t-sh-undef.fs

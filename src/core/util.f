@@ -7,3 +7,6 @@ variable SEQ
    0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;
 create PZB 32 allot
 : PATH0 {: a u :}  a u PZB PATHZ  PZB ;     \ ( a u -- pathz ) shared scratch
+\ read a little-endian u32 from byte addr p
+variable RDP
+: RD32 {: p :}  p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;

@@ -23,7 +23,7 @@ create EB 65536 allot  variable EL
    RBUF ASSEMBLE 4 /  0 ?do i w@ n+ loop ;
 : LITGEN ( -- a u )
    0 CL !
-   s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/core/util.f" +F  s" src/arch/arm64/walk.f" +F
+   s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/core/util.f" +F
    s" : GO ASM-INIT " +B
    NV 0 ?do  s" 9 " +B  VALS i cells + @ u+  s" LIT64, " +B  loop
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
@@ -63,7 +63,7 @@ T{ ENCGEN  EB EL @ compare 0= -> true }T
    $55667788 n+  $11223344 n+ ;                                          \ dcq LE halves
 : P3GEN ( -- a u )
    0 CL !
-   s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/core/util.f" +F  s" src/arch/arm64/walk.f" +F
+   s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/core/util.f" +F
    s" : GO ASM-INIT NEWLBL dup 5 swap ADR, LBL, $1122334455667788 DCQ, " +B
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;

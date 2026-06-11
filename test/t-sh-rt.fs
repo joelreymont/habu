@@ -16,7 +16,7 @@ create EB 65536 allot  variable EL
 : GEN ( -- a u )
    0 CL !
    s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/arch/arm64/mnem.f" +F
-   s" src/core/util.f" +F  s" src/arch/arm64/walk.f" +F  s" src/habu/rt.f" +F
+   s" src/core/util.f" +F  s" src/habu/rt.f" +F
    s" : GO ASM-INIT NEWLBL DOT-LBL ! EMIT-DOT NEWLBL ATOI-LBL ! EMIT-ATOI " +B
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;

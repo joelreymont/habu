@@ -19,7 +19,7 @@ create EB 262144 allot  variable EL
 : GEN ( -- a u )
    0 CL !
    s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/arch/arm64/mnem.f" +F
-   s" src/core/util.f" +F  s" src/arch/arm64/walk.f" +F  s" src/habu/rt.f" +F
+   s" src/core/util.f" +F  s" src/habu/rt.f" +F
    s" src/habu/habu1.f" +F
    s" : GO ASM-INIT " +B
    s" NEWLBL Lcemit ! NEWLBL Ltok ! NEWLBL Lprot ! NEWLBL Lflush ! " +B
