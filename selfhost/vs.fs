@@ -30,8 +30,11 @@ variable SPK  variable SPR
    REPEAT  RRES @ -1 = IF R-SPILL-DEEPEST RRES ! THEN  RRES @ ;
 : R-FREE {: r :}  0 RAI ! BEGIN RAI @ NRP < WHILE
      RAI @ RPOOL + c@ r = IF 1 RAI @ RFREE + c! THEN  RAI @ 1 + RAI ! REPEAT ;
-: V-PUSHR {: r :}  0 VTAG VSP @ + c!  r VVAL VSP @ cells + !  VSP @ 1 + VSP ! ;
-: V-PUSHC {: n :}  1 VTAG VSP @ + c!  n VVAL VSP @ cells + !  VSP @ 1 + VSP ! ;
+\ 64-entry cap: spill slots are [x19,#k*8] for k<64 (bytes 0..504); HERE scratch
+\ starts at x19+512. Deeper would collide -> die, never corrupt.
+: V-CAP  VSP @ 63 > IF s" vs: stack too deep" 72 die THEN ;
+: V-PUSHR {: r :}  V-CAP  0 VTAG VSP @ + c!  r VVAL VSP @ cells + !  VSP @ 1 + VSP ! ;
+: V-PUSHC {: n :}  V-CAP  1 VTAG VSP @ + c!  n VVAL VSP @ cells + !  VSP @ 1 + VSP ! ;
 : GMOV {: d s :}  d 31 s ENC-ORR EMITW ;               \ mov d, s  (orr d, xzr, s)
 \ materialise VS[k] into a register if it is a constant (movz/movk); idempotent.
 variable VFR  variable VFN
@@ -105,7 +108,7 @@ variable IFR
    CFSP @ 1 - CFSP !  IFR @ CFLBL CFSP @ cells + @ CBZ,  IFR @ R-FREE
    CFDEP CFSP @ cells + @ VSP @ <> IF s" vs: loop body unbalanced" 72 die THEN ;
 \ memory ops (use variables, not 2nd-group locals). @ c@ are in-place; ! c! pop 2.
-\ HERE pushes a scratch buffer at x19+256 (above the spill slots, which use 0..~7).
+\ HERE pushes a scratch buffer at x19+512, above ALL 64 spill slots (0..504).
 variable MRA  variable MRV
 : G-@   VSP @ 1 - V-REG MRA !  MRA @ MRA @ 0 ENC-LDR  EMITW ;
 : G-C@  VSP @ 1 - V-REG MRA !  MRA @ MRA @ 0 ENC-LDRB EMITW ;
@@ -113,7 +116,7 @@ variable MRA  variable MRV
    MRV @ MRA @ 0 ENC-STR  EMITW  MRA @ R-FREE  MRV @ R-FREE  VSP @ 2 - VSP ! ;
 : G-C!  VSP @ 1 - V-REG MRA !  VSP @ 2 - V-REG MRV !
    MRV @ MRA @ 0 ENC-STRB EMITW  MRA @ R-FREE  MRV @ R-FREE  VSP @ 2 - VSP ! ;
-: G-HERE  R-ALLOC MRA !  MRA @ 19 256 ENC-ADDI EMITW  MRA @ V-PUSHR ;
+: G-HERE  R-ALLOC MRA !  MRA @ 19 512 ENC-ADDI EMITW  MRA @ V-PUSHR ;
 \ binary comparisons ( a b -- flag ): cmp a,b; cset cond; 0-reg -> Forth flag 0/-1.
 \ Fold path must match the runtime flag: host = / < / > already yield 0/-1 (no negate).
 variable GCB  variable GCA
@@ -157,7 +160,7 @@ variable VNV  variable VNI
 : VNUM {: a u :} 0 VNV ! 0 VNI ! BEGIN VNI @ u < WHILE VNV @ 10 * a VNI @ + c@ 48 - + VNV ! VNI @ 1 + VNI ! REPEAT VNV @ ;
 : GEN-VS-TOK {: a u :}  a u ALLDG? IF a u VNUM G-LIT ELSE a u VFIND dup 0 >= IF cells XTS + @ execute ELSE drop THEN THEN ;
 variable VB  variable VL  variable VI  variable VSS
-: VS-INIT  RP-RESET 0 VSP !  0 CFSP !  19 31 512 ENC-SUBI EMITW ;   \ frame: x19 = sp-512
+: VS-INIT  RP-RESET 0 VSP !  0 CFSP !  19 31 1024 ENC-SUBI EMITW ;  \ frame: x19 = sp-1024 (slots 0..504, scratch 512+)
 : VS-WALK {: a u :}  a VB !  u VL !  0 VI !
    BEGIN VI @ VL @ < WHILE
      BEGIN VI @ VL @ < VB @ VI @ + c@ 32 = and WHILE VI @ 1 + VI ! REPEAT
