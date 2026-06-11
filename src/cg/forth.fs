@@ -27,7 +27,7 @@ $100000 constant REGION       \ mmap region size (1 MB)
 $10000  constant DICT-SIZE     \ dict area at region+0 (64 KB); code area follows
 48      constant DREC          \ dict record: addr(8) clen(8) namelen(8) name(16) wid(8)
 $F000   constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
-$80000  constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
+$200000 constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
 $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 \ x20 (RBASE) is dead after startup, so it doubles as DATA: the data-space base.
 \ [x20] holds DP (next-free pointer); usable space is [x20+8 .. x20+DATA-SIZE).
@@ -161,6 +161,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
 \ file I/O (path must be NUL-terminated by the caller)
 : bopen   2 g-pop  1 g-pop  0 g-pop  16 5 MOVZ,  $80 SVC,  0 g-push ;   \ ( pathz flags mode -- fd )
 : bwrite  2 g-pop  1 g-pop  0 g-pop  16 4 MOVZ,  $80 SVC,  0 g-push ;   \ ( fd buf len -- n )
+: bread   2 g-pop  1 g-pop  0 g-pop  16 3 MOVZ,  $80 SVC,  0 g-push ;   \ ( fd buf len -- n )
 : bclose  0 g-pop  16 6 MOVZ,  $80 SVC, ;                               \ ( fd -- )
 : brbase  9 DATA RBASE-CELL LDR,  9 g-push ;                            \ ( -- rbase ) __TEXT load base
 : bexec   A g-pop  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
@@ -243,7 +244,8 @@ variable Lkwdo variable Lkwloop variable Lkwi
    s" ,"    ['] bcomma FPRIM   s" c,"   ['] bccomma FPRIM
    s" type" ['] btype  FPRIM   s" execute" ['] bexec FPRIM
    s" die"  ['] bdie   FPRIM
-   s" open" ['] bopen FPRIM   s" write" ['] bwrite FPRIM   s" close" ['] bclose FPRIM
+   s" open" ['] bopen FPRIM   s" write" ['] bwrite FPRIM   s" read" ['] bread FPRIM
+   s" close" ['] bclose FPRIM
    s" rbase" ['] brbase FPRIM
    s" catch" ['] bcatch FPRIM   s" throw" ['] bthrow FPRIM
    s" wordlist" ['] bwordlist FPRIM   s" get-current" ['] bgetcur FPRIM

@@ -32,3 +32,5 @@ require t-sh-sha.fs
 require t-sh-sign.fs
 require t-sh-drift.fs
 require t-selfrebuild.fs
+require t-sh-engine2.fs
+require t-sh-stage2.fs

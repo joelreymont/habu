@@ -10,7 +10,7 @@ $100000 constant REGION
 $10000  constant DICT-SIZE
 48      constant DREC
 $F000   constant CFSTK-OFF
-$80000  constant DATA-SIZE
+$200000 constant DATA-SIZE
 $100000 constant IBUFSZ
 20 constant DATA
 0   constant DP-CELL    8  constant HND-CELL
@@ -119,6 +119,7 @@ variable Lkwdo variable Lkwloop variable Lkwi
           0 7 0 ADDI,  16 1 MOVZ,  $80 SVC, ;
 : bopen   2 g-pop  1 g-pop  0 g-pop  16 5 MOVZ,  $80 SVC,  0 g-push ;
 : bwrite  2 g-pop  1 g-pop  0 g-pop  16 4 MOVZ,  $80 SVC,  0 g-push ;
+: bread   2 g-pop  1 g-pop  0 g-pop  16 3 MOVZ,  $80 SVC,  0 g-push ;
 : bclose  0 g-pop  16 6 MOVZ,  $80 SVC, ;
 : brbase  9 DATA RBASE-CELL LDR,  9 g-push ;
 : bexec   A g-pop  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
@@ -194,7 +195,8 @@ variable Lkwdo variable Lkwloop variable Lkwi
    s" ,"    ['] bcomma FPRIM   s" c,"   ['] bccomma FPRIM
    s" type" ['] btype  FPRIM   s" execute" ['] bexec FPRIM
    s" die"  ['] bdie   FPRIM
-   s" open" ['] bopen FPRIM   s" write" ['] bwrite FPRIM   s" close" ['] bclose FPRIM
+   s" open" ['] bopen FPRIM   s" write" ['] bwrite FPRIM   s" read" ['] bread FPRIM
+   s" close" ['] bclose FPRIM
    s" rbase" ['] brbase FPRIM
    s" catch" ['] bcatch FPRIM   s" throw" ['] bthrow FPRIM
    s" wordlist" ['] bwordlist FPRIM   s" get-current" ['] bgetcur FPRIM

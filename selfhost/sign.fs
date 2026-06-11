@@ -5,7 +5,7 @@
 \ SHA-256 of each 4 KiB page). Needs sha256.fs (SHA256) loaded first. Zero codesign.
 \ Signature integers are BIG-ENDIAN (B8/B32/B64); load commands little-endian (M/P).
 29 constant LCSIG   88 constant CDHDR   4096 constant CSPAGE   32 constant CSHASH
-16 constant NCSLOT                       \ MPAGE / CSPAGE
+32 constant NCSLOT                       \ MPAGE / CSPAGE
 create SIGID 115 c, 101 c, 45 c, 111 c, 117 c, 116 c,   \ "se-out"
 6 constant SIGIDN
 : SIGIDL SIGIDN 1 + ;                    \ identifier + NUL

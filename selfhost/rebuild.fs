@@ -1,4 +1,4 @@
-4294967296 constant VMBASE  65536 constant MPAGE  4096 constant CODEOFF
+4294967296 constant VMBASE  131072 constant MPAGE  4096 constant CODEOFF
 variable MSTART
 : MOFF here MSTART @ - ;
 : M8 c, ;

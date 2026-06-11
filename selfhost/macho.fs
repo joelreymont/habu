@@ -3,7 +3,7 @@
 \ DYLINKER, MAIN, DYLIB libSystem), slack to $1000, code at $1000, padded to one
 \ page. Canonical UNSIGNED artifact; sign.fs post-pass adds the ad-hoc signature.
 \ Golden byte-for-byte vs caf in test/t-sh-macho.fs. Code comes from icode's CODE.
-$20000 constant MSIZE
+$40000 constant MSIZE
 create MBUF MSIZE allot
 variable MP
 variable MLEN
@@ -31,7 +31,7 @@ $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $100000000 constant VMBASE
 $1000     constant CODE-OFF          \ entry file offset (slack below for codesign)
-$10000    constant MPAGE             \ __TEXT file/vm size; __LINKEDIT starts here
+$20000    constant MPAGE             \ __TEXT file/vm size; __LINKEDIT starts here
 variable CODELEN
 : ASM-CODE  ASM-LEN CODELEN ! ;      \ code already assembled in icode's CODE
 variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign post-pass)

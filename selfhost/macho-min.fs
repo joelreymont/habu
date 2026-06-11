@@ -2,7 +2,7 @@
 \ by the unsigned drift test (exit42.fs) and the self-signing demo (sign.fs). Builds
 \ the unsigned image into the dictionary at MSTART; BUILD leaves it ready to write or
 \ to post-process (sign.fs). 6 load commands, byte-identical to caf's macho.fs.
-4294967296 constant VMBASE  65536 constant MPAGE  4096 constant CODEOFF
+4294967296 constant VMBASE  131072 constant MPAGE  4096 constant CODEOFF
 variable MSTART
 : MOFF here MSTART @ - ;
 : M8 c, ;
