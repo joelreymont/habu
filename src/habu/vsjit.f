@@ -91,44 +91,7 @@ variable FESK
    Lkwplus @ LBL,  s" +" BYTES,    Lkwminus @ LBL,  s" -" BYTES,
    Lkwstar @ LBL,  s" *" BYTES,    Lkwand2 @ LBL,   s" and" BYTES,
    Lkwor2 @ LBL,   s" or" BYTES,   Lkwxor2 @ LBL,   s" xor" BYTES, ;
-variable Lvtop1c
-\ Lvtop1c ( -- x13=ok x11=top ) : is the top VS entry a constant? (no pop)
-: emit-vtop1c
-   Lvtop1c @ LBL,
-   NEWLBL {: no :}
-   13 0 MOVZ,
-   6 DATA VSP-CELL LDR,  6 1 CMPI,  C-LT no BCOND,
-   5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,  7 1 CMPI,  C-NE no BCOND,
-   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
-   13 1 MOVZ,
-   no LBL,  RET, ;
 variable Lkwdup2  variable Lkwdrop2  variable Lkwswap2  variable Lkwover2  variable Lkwnip2
-\ shuf entries: VS-resident stack ops on constant entries (no code emitted at all —
-\ a dropped literal vanishes; swap/over/nip are relabels). Non-con falls through.
-: shuf1-entry {: lmainlbl kwvar kwlen sxt :}
-   NEWLBL FESK !
-   0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
-   0 FESK @ CBZ,
-   Lvtop1c @ BL,  13 FESK @ CBZ,
-   sxt execute
-   lmainlbl B,
-   FESK @ LBL, ;
-: shuf2-entry {: lmainlbl kwvar kwlen sxt :}
-   NEWLBL FESK !
-   0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
-   0 FESK @ CBZ,
-   Lvtop2c @ BL,  13 FESK @ CBZ,
-   sxt execute
-   lmainlbl B,
-   FESK @ LBL, ;
-: sdup   Lvpushc @ BL, ;                                  \ x11 = top from Lvtop1c
-: sdrop  6 DATA VSP-CELL LDR,  6 6 1 SUBI,  6 DATA VSP-CELL STR, ;
-: sswap                                                   \ x11=a x12=b -> store b a
-   6 DATA VSP-CELL LDR,
-   5 6 1 SUBI,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 STR,
-   5 6 2 SUBI,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 STR, ;
-: sover  Lvpushc @ BL, ;                                  \ x11 = a (deep) from Lvtop2c
-: snip   11 12 0 ADDI,  Lvfoldput @ BL, ;                 \ keep top, drop deep
 : emit-shufkw
    Lkwdup2 @ LBL,   s" dup" BYTES,    Lkwdrop2 @ LBL,  s" drop" BYTES,
    Lkwswap2 @ LBL,  s" swap" BYTES,   Lkwover2 @ LBL,  s" over" BYTES,
@@ -260,5 +223,91 @@ variable Lkweq2  variable Lkwne2  variable Lkwlt2  variable Lkwgt2  variable Lkw
    Lkweq2 @ LBL,  s" =" BYTES,    Lkwne2 @ LBL,  s" <>" BYTES,
    Lkwlt2 @ LBL,  s" <" BYTES,    Lkwgt2 @ LBL,  s" >" BYTES,
    Lkwle2 @ LBL,  s" <=" BYTES,   Lkwge2 @ LBL,  s" >=" BYTES, ;
-: emit-vsjit  emit-vlitpush  emit-vspill  emit-vpushc  emit-vtop2c  emit-vfoldput  emit-vtop1c
-   emit-vralloc  emit-vmovk  emit-vforcek  emit-vbinprep  emit-vpushr ;
+variable Lvdrop  variable Lvswapx  variable Lvnipx  variable Lvcopy
+$AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
+\ Lvdrop ( -- x13=ok ) : drop ANY top entry (reg -> free, con -> forget); no code
+: emit-vdrop
+   Lvdrop @ LBL,
+   NEWLBL NEWLBL {: no fr :}
+   13 0 MOVZ,
+   6 DATA VSP-CELL LDR,  6 no CBZ,
+   5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+   7 fr CBNZ,
+      8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
+      7 11 9 SUBI,  8 1 MOVZ,  8 8 7 LSLV,
+      6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
+      6 DATA VSP-CELL LDR,
+   fr LBL,
+   6 6 1 SUBI,  6 DATA VSP-CELL STR,  13 1 MOVZ,
+   no LBL,  RET, ;
+\ Lvswapx ( -- x13=ok ) : swap ANY top two entries (pure relabel; no code)
+: emit-vswapx
+   Lvswapx @ LBL,
+   NEWLBL {: no :}
+   13 0 MOVZ,
+   6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT no BCOND,
+   5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,
+   5 6 2 SUBI,  8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,
+   9 7 0 LDRB,  10 8 0 LDRB,  10 7 0 STRB,  9 8 0 STRB,
+   5 6 1 SUBI,  7 5 3 LSLI,  7 7 VVAL-OFF ADDI,  7 DATA 7 ADD,
+   5 6 2 SUBI,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,
+   9 7 0 LDR,  10 8 0 LDR,  10 7 0 STR,  9 8 0 STR,
+   13 1 MOVZ,
+   no LBL,  RET, ;
+\ Lvnipx ( -- x13=ok ) : remove the DEEP entry (free if reg), keep top; no code
+: emit-vnipx
+   Lvnipx @ LBL,
+   NEWLBL NEWLBL {: no fr :}
+   13 0 MOVZ,
+   6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT no BCOND,
+   5 6 2 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+   7 fr CBNZ,
+      8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
+      7 11 9 SUBI,  8 1 MOVZ,  8 8 7 LSLV,
+      6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
+      6 DATA VSP-CELL LDR,
+   fr LBL,
+   5 6 1 SUBI,
+   7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  9 7 0 LDRB,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  10 8 0 LDR,
+   5 6 2 SUBI,
+   7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  9 7 0 STRB,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  10 8 0 STR,
+   6 6 1 SUBI,  6 DATA VSP-CELL STR,  13 1 MOVZ,
+   no LBL,  RET, ;
+\ Lvcopy ( x5=k -- x13=ok ) : push a copy of entry k (con free; reg = one mov)
+: emit-vcopy
+   Lvcopy @ LBL,
+   NEWLBL NEWLBL NEWLBL {: no isreg done :}
+   SP SP 32 SUBI,  30 SP 0 STR,
+   13 0 MOVZ,
+   7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
+   7 isreg CBZ,
+      Lvpushc @ BL,  13 1 MOVZ,  done B,
+   isreg LBL,
+      11 SP 8 STR,  Lvralloc @ BL,  14 no CBZ,  11 SP 8 LDR,
+      8 W-MOVRR LIT64,  9 8 14 ORR,  7 11 16 LSLI,  9 9 7 ORR,  Lcemit @ BL,
+      Lvpushr @ BL,
+      13 1 MOVZ,  done B,
+   no LBL,
+   done LBL,  30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+variable FESK3
+\ vshuf-entry: reg-aware stack ops — relabels and register moves, no memory traffic
+: vshuf-entry {: lmainlbl kwvar kwlen min sxt :}
+   NEWLBL FESK3 !
+   0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
+   0 FESK3 @ CBZ,
+   6 DATA VSP-CELL LDR,  6 min CMPI,  C-LT FESK3 @ BCOND,
+   sxt execute
+   13 FESK3 @ CBZ,
+   lmainlbl B,
+   FESK3 @ LBL, ;
+: xdup   6 DATA VSP-CELL LDR,  5 6 1 SUBI,  Lvcopy @ BL, ;
+: xover  6 DATA VSP-CELL LDR,  5 6 2 SUBI,  Lvcopy @ BL, ;
+: xdrop  Lvdrop @ BL, ;
+: xswap  Lvswapx @ BL, ;
+: xnip   Lvnipx @ BL, ;
+: emit-vsjit  emit-vlitpush  emit-vspill  emit-vpushc  emit-vtop2c  emit-vfoldput
+   emit-vralloc  emit-vmovk  emit-vforcek  emit-vbinprep  emit-vpushr
+   emit-vdrop  emit-vswapx  emit-vnipx  emit-vcopy ;

@@ -23,3 +23,8 @@ T{ s" : T {: a :} a dup * a 1 - dup * + . ; 4 T"      OUT s\" 25\n"     compare 
 : DEEP ( -- a u )  0 CL !  s" : T " +B  40 0 do s" 1 " +B loop
    39 0 do s" + " +B loop  s" . ; T" +B  CBUF CL @ NF-RUN  NFOUT 2@ ;
 T{ DEEP  s\" 40\n" compare 0= -> true }T
+\ reg-aware shuffles (REG-COPY): dup/over of a register = one mov; swap/drop/nip free
+T{ s" : T {: a :} a dup * . ; 7 T"                OUT s\" 49\n" compare 0= -> true }T
+T{ s" : T {: a b :} a b swap drop dup * . ; 3 9 T" OUT s\" 81\n" compare 0= -> true }T
+T{ s" : T {: a :} a 2 over + + . ; 10 T"          OUT s\" 22\n" compare 0= -> true }T
+T{ s" : T {: a b :} a b nip dup * . ; 3 5 T"      OUT s\" 25\n" compare 0= -> true }T

@@ -427,11 +427,11 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
       Lmain @ Lkwand2  3 ['] fand ['] eand vop-entry
       Lmain @ Lkwor2   2 ['] for2 ['] eor2 vop-entry
       Lmain @ Lkwxor2  3 ['] fxor2 ['] exor vop-entry
-      Lmain @ Lkwdup2  3 ['] sdup  shuf1-entry
-      Lmain @ Lkwdrop2 4 ['] sdrop shuf1-entry
-      Lmain @ Lkwswap2 4 ['] sswap shuf2-entry
-      Lmain @ Lkwover2 4 ['] sover shuf2-entry
-      Lmain @ Lkwnip2  3 ['] snip  shuf2-entry
+      Lmain @ Lkwdup2  3 1 ['] xdup  vshuf-entry
+      Lmain @ Lkwdrop2 4 1 ['] xdrop vshuf-entry
+      Lmain @ Lkwswap2 4 2 ['] xswap vshuf-entry
+      Lmain @ Lkwover2 4 2 ['] xover vshuf-entry
+      Lmain @ Lkwnip2  3 2 ['] xnip  vshuf-entry
       Lmain @ Lkweq2 1 0 vcmp-entry
       Lmain @ Lkwne2 2 1 vcmp-entry
       Lmain @ Lkwlt2 1 11 vcmp-entry
@@ -466,8 +466,9 @@ variable SRCA
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !
-   NEWLBL Lvtop2c !  NEWLBL Lvfoldput !  NEWLBL Lvtop1c !
+   NEWLBL Lvtop2c !  NEWLBL Lvfoldput !
    NEWLBL Lvralloc !  NEWLBL Lvmovk !  NEWLBL Lvforcek !  NEWLBL Lvbinprep !  NEWLBL Lvpushr !
+   NEWLBL Lvdrop !  NEWLBL Lvswapx !  NEWLBL Lvnipx !  NEWLBL Lvcopy !
    NEWLBL Lkwplus !  NEWLBL Lkwminus !  NEWLBL Lkwstar !
    NEWLBL Lkwand2 !  NEWLBL Lkwor2 !  NEWLBL Lkwxor2 !
    NEWLBL Lkwdup2 !  NEWLBL Lkwdrop2 !  NEWLBL Lkwswap2 !

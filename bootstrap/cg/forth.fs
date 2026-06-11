@@ -932,11 +932,11 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       lmain Lkwand2  3 ['] fand ['] eand vop-entry
       lmain Lkwor2   2 ['] for2 ['] eor2 vop-entry
       lmain Lkwxor2  3 ['] fxor2 ['] exor vop-entry
-      lmain Lkwdup2  3 ['] sdup  shuf1-entry
-      lmain Lkwdrop2 4 ['] sdrop shuf1-entry
-      lmain Lkwswap2 4 ['] sswap shuf2-entry
-      lmain Lkwover2 4 ['] sover shuf2-entry
-      lmain Lkwnip2  3 ['] snip  shuf2-entry
+      lmain Lkwdup2  3 1 ['] xdup  vshuf-entry
+      lmain Lkwdrop2 4 1 ['] xdrop vshuf-entry
+      lmain Lkwswap2 4 2 ['] xswap vshuf-entry
+      lmain Lkwover2 4 2 ['] xover vshuf-entry
+      lmain Lkwnip2  3 2 ['] xnip  vshuf-entry
       lmain Lkweq2 1 0 vcmp-entry
       lmain Lkwne2 2 1 vcmp-entry
       lmain Lkwlt2 1 11 vcmp-entry
@@ -971,8 +971,9 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !
-   NEWLBL Lvtop2c !  NEWLBL Lvfoldput !  NEWLBL Lvtop1c !
+   NEWLBL Lvtop2c !  NEWLBL Lvfoldput !
    NEWLBL Lvralloc !  NEWLBL Lvmovk !  NEWLBL Lvforcek !  NEWLBL Lvbinprep !  NEWLBL Lvpushr !
+   NEWLBL Lvdrop !  NEWLBL Lvswapx !  NEWLBL Lvnipx !  NEWLBL Lvcopy !
    NEWLBL Lkwplus !  NEWLBL Lkwminus !  NEWLBL Lkwstar !
    NEWLBL Lkwand2 !  NEWLBL Lkwor2 !  NEWLBL Lkwxor2 !
    NEWLBL Lkwdup2 !  NEWLBL Lkwdrop2 !  NEWLBL Lkwswap2 !
