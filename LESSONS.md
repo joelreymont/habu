@@ -19,6 +19,20 @@ gforth case-folds `S0`/`s0` (use BSIG0/SSIG0); a local named `i` shadows the loo
 index inside `?DO`; declaring `{: :}` locals inside a loop corrupts the return
 stack (factor the loop body into its own word); `?DO` is `( limit start -- )`.
 
+## Standalone checker — generic sigparse + data-table prims (2026-06-11)
+
+Replaced the standalone checker's 4-token hardcode (dup/+/*/0=) with a generic
+signature parser (PARSE-SIG: " a b -- b a " → a step effect; single letter = type
+var, `n`=int, `f`=flag, shared row var) and a 25-entry prim table, plus numeric
+literals as `( -- n )`. Verdicts match Forth semantics (test/t-sh-prims.fs). Two
+standalone limits shaped the design: (1) declaring `{: :}` locals inside an IF/loop
+corrupts the locals frame (read locals at word top, flat IF chain) — same class as
+the gforth gotcha; (2) **the standalone INLINES colon-word bodies**, so a big
+dispatch word with many `PARSE-SIG` calls overflows (crashes at ~3). Fix: a DATA
+table (`create … c,`, scanned by a small FIND-SIG loop) so DO-TOK calls PARSE-SIG
+just twice. Top-level `s"` doesn't work either (compile-mode only) — wrap test
+drivers in a word.
+
 ## Standalone self-signs — and a dictionary-search bug it exposed (2026-06-11)
 
 The standalone now SELF-SIGNS a Mach-O with zero gforth and zero external codesign:

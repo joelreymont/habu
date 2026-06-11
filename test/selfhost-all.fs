@@ -2,6 +2,7 @@
 \ and the byte-identical self-rebuild fixpoint so they can't rot. Slow (builds +
 \ codesign + exec). Run: gforth test/selfhost-all.fs -e bye
 require t-sh-check.fs
+require t-sh-prims.fs
 require t-sh-sha.fs
 require t-sh-sign.fs
 require t-sh-drift.fs

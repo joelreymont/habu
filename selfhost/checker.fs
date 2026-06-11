@@ -31,11 +31,59 @@ variable FV
 variable OK   variable DCUR   variable UNCK
 : NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! FRESH MK-ROW DCUR ! ;
 : STEP {: din dout :} DCUR @ din UNIFY OK @ and OK ! dout DCUR ! ;
-: DUP-E FRESH FRESH {: a s :} a MK-VAR s MK-ROW MK-PUSH a MK-VAR a MK-VAR s MK-ROW MK-PUSH MK-PUSH STEP ;
-: ADD-E FRESH {: s :} 1 MK-CON 1 MK-CON s MK-ROW MK-PUSH MK-PUSH 1 MK-CON s MK-ROW MK-PUSH STEP ;
-: ZEQ-E FRESH {: s :} 1 MK-CON s MK-ROW MK-PUSH 2 MK-CON s MK-ROW MK-PUSH STEP ;
 variable SEQ
 : STR= {: a u b v :} u v = IF -1 SEQ ! 0 BEGIN dup u < WHILE dup a + c@ over b + c@ <> IF 0 SEQ ! THEN 1 + REPEAT drop ELSE 0 SEQ ! THEN SEQ @ ;
-: DO-TOK {: a u :} a u s" dup" STR= IF DUP-E ELSE a u s" +" STR= IF ADD-E ELSE a u s" *" STR= IF ADD-E ELSE a u s" 0=" STR= IF ZEQ-E ELSE -1 UNCK ! THEN THEN THEN THEN ;
+
+\ --- generic signature parser: build a step effect from a textual " in -- out "
+\ stack effect. A single lowercase letter is a polymorphic type variable (shared
+\ across in/out within one signature); `n` = int (con 1), `f` = flag (con 2);
+\ anything else folds to int. Row variable is shared so the effect is row-polymorphic.
+create NMAP 26 cells allot
+: NMAP-RESET 0 BEGIN dup cells NMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
+: DIGIT? {: c :} c 47 > c 58 < and ;
+: LOWER? {: c :} c 96 > c 123 < and ;
+variable NRES
+: ALLDIG? {: a u :} u 0= IF 0 NRES ! ELSE -1 NRES ! 0 BEGIN dup u < WHILE dup a + c@ DIGIT? 0= IF 0 NRES ! THEN 1 + REPEAT drop THEN NRES @ ;
+: VAR-OF {: c :} c 97 - {: i :} i cells NMAP + @ UNBOUND = IF FRESH i cells NMAP + ! THEN i cells NMAP + @ MK-VAR ;
+\ NB: declare locals at word top, never inside IF/loop (corrupts the locals frame).
+: TOK-TYPE {: a u :}  a c@ {: c :}
+   u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> int (con 1)
+   u 1 = c 102 = and IF 2 MK-CON ELSE          \ 'f' -> flag (con 2)
+   u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
+   1 MK-CON THEN THEN THEN ;
+variable PHASE  variable INROW  variable OUTROW
+: SIG-TOK {: a u :}
+   a u s" --" STR= IF 1 PHASE ! ELSE
+     a u TOK-TYPE PHASE @ 0= IF INROW @ MK-PUSH INROW ! ELSE OUTROW @ MK-PUSH OUTROW ! THEN
+   THEN ;
+variable SB variable SL variable SI variable SS
+: PARSE-SIG {: a u :}
+   a SB ! u SL ! NMAP-RESET 0 PHASE !
+   FRESH {: s :} s MK-ROW INROW ! s MK-ROW OUTROW ! 0 SI !
+   BEGIN SI @ SL @ < WHILE
+     BEGIN SI @ SL @ < SB @ SI @ + c@ 32 = and WHILE SI @ 1 + SI ! REPEAT
+     SI @ SL @ < IF
+       SB @ SI @ + SS !
+       BEGIN SI @ SL @ < SB @ SI @ + c@ 32 <> and WHILE SI @ 1 + SI ! REPEAT
+       SS @ SB @ SI @ + SS @ - SIG-TOK
+     THEN
+   REPEAT
+   INROW @ OUTROW @ STEP ;
+
+\ --- prim table: name/sig pairs [nlen][name][slen][sig]...[0], scanned by FIND-SIG.
+\ A data table (not a 26-branch word) because the standalone INLINES colon-word
+\ bodies, so a dispatch word with many PARSE-SIG calls overflows. DO-TOK stays small.
+create PTAB 3 c, 100 c, 117 c, 112 c, 8 c, 97 c, 32 c, 45 c, 45 c, 32 c, 97 c, 32 c, 97 c, 4 c, 100 c, 114 c, 111 c, 112 c, 4 c, 97 c, 32 c, 45 c, 45 c, 4 c, 115 c, 119 c, 97 c, 112 c, 10 c, 97 c, 32 c, 98 c, 32 c, 45 c, 45 c, 32 c, 98 c, 32 c, 97 c, 4 c, 111 c, 118 c, 101 c, 114 c, 12 c, 97 c, 32 c, 98 c, 32 c, 45 c, 45 c, 32 c, 97 c, 32 c, 98 c, 32 c, 97 c, 3 c, 110 c, 105 c, 112 c, 8 c, 97 c, 32 c, 98 c, 32 c, 45 c, 45 c, 32 c, 98 c, 4 c, 116 c, 117 c, 99 c, 107 c, 12 c, 97 c, 32 c, 98 c, 32 c, 45 c, 45 c, 32 c, 98 c, 32 c, 97 c, 32 c, 98 c, 3 c, 114 c, 111 c, 116 c, 14 c, 97 c, 32 c, 98 c, 32 c, 99 c, 32 c, 45 c, 45 c, 32 c, 98 c, 32 c, 99 c, 32 c, 97 c, 4 c, 45 c, 114 c, 111 c, 116 c, 14 c, 97 c, 32 c, 98 c, 32 c, 99 c, 32 c, 45 c, 45 c, 32 c, 99 c, 32 c, 97 c, 32 c, 98 c, 4 c, 50 c, 100 c, 117 c, 112 c, 14 c, 97 c, 32 c, 98 c, 32 c, 45 c, 45 c, 32 c, 97 c, 32 c, 98 c, 32 c, 97 c, 32 c, 98 c, 5 c, 50 c, 100 c, 114 c, 111 c, 112 c, 6 c, 97 c, 32 c, 98 c, 32 c, 45 c, 45 c, 1 c, 43 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 1 c, 45 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 1 c, 42 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 3 c, 97 c, 110 c, 100 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 2 c, 111 c, 114 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 3 c, 120 c, 111 c, 114 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 2 c, 49 c, 43 c, 6 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 2 c, 49 c, 45 c, 6 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 6 c, 110 c, 101 c, 103 c, 97 c, 116 c, 101 c, 6 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 6 c, 105 c, 110 c, 118 c, 101 c, 114 c, 116 c, 6 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 2 c, 48 c, 61 c, 6 c, 110 c, 32 c, 45 c, 45 c, 32 c, 102 c, 2 c, 48 c, 60 c, 6 c, 110 c, 32 c, 45 c, 45 c, 32 c, 102 c, 1 c, 61 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 102 c, 1 c, 60 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 102 c, 1 c, 62 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 102 c, 0 c,
+variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable FSP  variable FP
+: FIND-SIG {: a u :}  0 FSU !  PTAB FP !
+   BEGIN FP @ c@ dup WHILE                       \ no locals inside the loop (corrupts frame)
+     FNL !  FP @ 1 + FNP !
+     FNP @ FNL @ + dup c@ FSL ! 1 + FSP !
+     a u FNP @ FNL @ STR= IF FSP @ FSA ! FSL @ FSU ! THEN
+     FSP @ FSL @ + FP !
+   REPEAT drop  FSU @ ;
+: DO-TOK {: a u :}
+   a u FIND-SIG IF FSA @ FSU @ PARSE-SIG ELSE
+   a u ALLDIG? IF s" -- n" PARSE-SIG ELSE -1 UNCK ! THEN THEN ;
 variable TBASE variable TBLEN variable TI variable TSTART
 : CHECK {: a u :} a TBASE ! u TBLEN ! NEW 0 TI ! BEGIN TI @ TBLEN @ < WHILE BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 = and WHILE TI @ 1 + TI ! REPEAT TI @ TBLEN @ < IF TBASE @ TI @ + TSTART ! BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 <> and WHILE TI @ 1 + TI ! REPEAT TSTART @ TBASE @ TI @ + TSTART @ - DO-TOK THEN REPEAT UNCK @ IF 1 ELSE OK @ THEN ;
