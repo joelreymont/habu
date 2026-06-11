@@ -19,3 +19,10 @@ T{ s" : GO 1 2 swap - . ; GO"                     OUT s\" 1\n"   compare 0= -> t
 T{ s" : GO 10 20 over + + . ; GO"                 OUT s\" 40\n"  compare 0= -> true }T
 T{ s" : GO 1 2 nip . ; GO"                        OUT s\" 2\n"   compare 0= -> true }T
 T{ s" : GO 7 dup . . ; GO"                        OUT s\" 7\n7\n" compare 0= -> true }T
+\ vsjit D: register binops/comparisons + locals-into-registers
+T{ s" : T {: p q :} 5 p 7 + q + . . ; 2 9 T"      OUT s\" 18\n5\n" compare 0= -> true }T
+T{ s" : T {: w x y z :} w x + y z + * . ; 1 2 3 4 T" OUT s\" 21\n" compare 0= -> true }T
+T{ s" : T {: a b c d e f g h :} a b + c d + e f + g h + + + + . ; 1 2 3 4 5 6 7 8 T" OUT s\" 36\n" compare 0= -> true }T
+T{ s" : T {: a :} a 5 < . a 5 > . a 5 = . ; 3 T"  OUT s\" -1\n0\n0\n" compare 0= -> true }T
+T{ s" : T {: a :} a 3 >= if 9 . then ; 7 T"       OUT s\" 9\n" compare 0= -> true }T
+T{ s" : S {: a b :} a b + a b - * ; : GO 10 3 S . ; GO" OUT s\" 91\n" compare 0= -> true }T

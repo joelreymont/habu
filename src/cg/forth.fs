@@ -824,7 +824,12 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       lmain Lkwi      1 ['] j-i      cf-entry            \ I
       lmain Lkwlbrace 2 ['] c-lbrace cf-entry            \ {: a b :} locals
       \ local-name reference -> load from its frame slot, push
-      Lloc-find @ BL,  NEWLBL {: notloc :}  0 0 CMPI,  C-LT notloc BCOND,
+      Lloc-find @ BL,  NEWLBL {: notloc :}  NEWLBL {: lmem :}  0 0 CMPI,  C-LT notloc BCOND,
+         Lvralloc @ BL,  14 lmem CBZ,                  \ local -> straight into a register
+         9 $F94003E0 LIT64,  9 9 14 ORR,  7 0 10 LSLI,  9 9 7 ORR,  Lcemit @ BL,
+         Lvpushr @ BL,
+         lmain B,
+         lmem LBL,                                     \ no free reg: classic memory push
          Lvspill @ BL,
          9 $F94003E9 LIT64,  14 0 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ ldr x9,[sp,#slot*8]
          9 W-PUSH0 LIT64,  Lcemit @ BL,  9 W-PUSH1 LIT64,  Lcemit @ BL,
@@ -834,17 +839,23 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       NEWLBL {: lcnotnum :}
       12 lcnotnum CBZ,  Lvpushc @ BL,  lmain B,
       lcnotnum LBL,
-      lmain Lkwplus  1 ['] f+    fold-entry
-      lmain Lkwminus 1 ['] f-    fold-entry
-      lmain Lkwstar  1 ['] f*    fold-entry
-      lmain Lkwand2  3 ['] fand  fold-entry
-      lmain Lkwor2   2 ['] for2  fold-entry
-      lmain Lkwxor2  3 ['] fxor2 fold-entry
+      lmain Lkwplus  1 ['] f+ ['] e+ vop-entry
+      lmain Lkwminus 1 ['] f- ['] e- vop-entry
+      lmain Lkwstar  1 ['] f* ['] e* vop-entry
+      lmain Lkwand2  3 ['] fand ['] eand vop-entry
+      lmain Lkwor2   2 ['] for2 ['] eor2 vop-entry
+      lmain Lkwxor2  3 ['] fxor2 ['] exor vop-entry
       lmain Lkwdup2  3 ['] sdup  shuf1-entry
       lmain Lkwdrop2 4 ['] sdrop shuf1-entry
       lmain Lkwswap2 4 ['] sswap shuf2-entry
       lmain Lkwover2 4 ['] sover shuf2-entry
       lmain Lkwnip2  3 ['] snip  shuf2-entry
+      lmain Lkweq2 1 0 vcmp-entry
+      lmain Lkwne2 2 1 vcmp-entry
+      lmain Lkwlt2 1 11 vcmp-entry
+      lmain Lkwgt2 1 12 vcmp-entry
+      lmain Lkwle2 2 13 vcmp-entry
+      lmain Lkwge2 2 10 vcmp-entry
 
       Lvspill @ BL,                                          \ VS -> memory before a call
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,            \ FIND -> inline stencil
@@ -874,13 +885,16 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !
    NEWLBL Lvtop2c !  NEWLBL Lvfoldput !  NEWLBL Lvtop1c !
+   NEWLBL Lvralloc !  NEWLBL Lvmovk !  NEWLBL Lvforcek !  NEWLBL Lvbinprep !  NEWLBL Lvpushr !
    NEWLBL Lkwplus !  NEWLBL Lkwminus !  NEWLBL Lkwstar !
    NEWLBL Lkwand2 !  NEWLBL Lkwor2 !  NEWLBL Lkwxor2 !
    NEWLBL Lkwdup2 !  NEWLBL Lkwdrop2 !  NEWLBL Lkwswap2 !
    NEWLBL Lkwover2 !  NEWLBL Lkwnip2 !
+   NEWLBL Lkweq2 !  NEWLBL Lkwne2 !  NEWLBL Lkwlt2 !
+   NEWLBL Lkwgt2 !  NEWLBL Lkwle2 !  NEWLBL Lkwge2 !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-prof-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
-   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-crash-handler  emit-hex
+   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-cmpkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict                                              \ after #PL is final
    Lsrc @ LBL,  r> SRCN @ BYTES, ;

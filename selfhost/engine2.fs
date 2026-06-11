@@ -346,7 +346,7 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
    13 Lundef @ CBZ,
    11 BLR,  Lmain @ B, ;
 : em-compile
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotsemi notd nohook rejected bcap bcp bcd notloc lcnotnum :}
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotsemi notd nohook rejected bcap bcp bcd notloc lmem lcnotnum :}
    Lcompile @ LBL,
       TKL 1 CMPI,  C-NE lnotsemi BCOND,
       9 TKA 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
@@ -396,6 +396,11 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
       Lmain @ Lkwi      1 ['] j-i      cf-entry
       Lmain @ Lkwlbrace 2 ['] c-lbrace cf-entry
       Lloc-find @ BL,  0 0 CMPI,  C-LT notloc BCOND,
+         Lvralloc @ BL,  14 lmem CBZ,
+         9 $F94003E0 LIT64,  9 9 14 ORR,  7 0 10 LSLI,  9 9 7 ORR,  Lcemit @ BL,
+         Lvpushr @ BL,
+         Lmain @ B,
+         lmem LBL,
          Lvspill @ BL,
          9 $F94003E9 LIT64,  14 0 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,
          9 W-PUSH0 LIT64,  Lcemit @ BL,  9 W-PUSH1 LIT64,  Lcemit @ BL,
@@ -404,17 +409,23 @@ variable Lmain  variable Lexit  variable Lcompile  variable Lundef
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,
       12 lcnotnum CBZ,  Lvpushc @ BL,  Lmain @ B,
       lcnotnum LBL,
-      Lmain @ Lkwplus  1 ['] f+    fold-entry
-      Lmain @ Lkwminus 1 ['] f-    fold-entry
-      Lmain @ Lkwstar  1 ['] f*    fold-entry
-      Lmain @ Lkwand2  3 ['] fand  fold-entry
-      Lmain @ Lkwor2   2 ['] for2  fold-entry
-      Lmain @ Lkwxor2  3 ['] fxor2 fold-entry
+      Lmain @ Lkwplus  1 ['] f+ ['] e+ vop-entry
+      Lmain @ Lkwminus 1 ['] f- ['] e- vop-entry
+      Lmain @ Lkwstar  1 ['] f* ['] e* vop-entry
+      Lmain @ Lkwand2  3 ['] fand ['] eand vop-entry
+      Lmain @ Lkwor2   2 ['] for2 ['] eor2 vop-entry
+      Lmain @ Lkwxor2  3 ['] fxor2 ['] exor vop-entry
       Lmain @ Lkwdup2  3 ['] sdup  shuf1-entry
       Lmain @ Lkwdrop2 4 ['] sdrop shuf1-entry
       Lmain @ Lkwswap2 4 ['] sswap shuf2-entry
       Lmain @ Lkwover2 4 ['] sover shuf2-entry
       Lmain @ Lkwnip2  3 ['] snip  shuf2-entry
+      Lmain @ Lkweq2 1 0 vcmp-entry
+      Lmain @ Lkwne2 2 1 vcmp-entry
+      Lmain @ Lkwlt2 1 11 vcmp-entry
+      Lmain @ Lkwgt2 1 12 vcmp-entry
+      Lmain @ Lkwle2 2 13 vcmp-entry
+      Lmain @ Lkwge2 2 10 vcmp-entry
       Lvspill @ BL,
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
       13 Lundef @ CBZ,
@@ -444,13 +455,16 @@ variable SRCA
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !
    NEWLBL Lvtop2c !  NEWLBL Lvfoldput !  NEWLBL Lvtop1c !
+   NEWLBL Lvralloc !  NEWLBL Lvmovk !  NEWLBL Lvforcek !  NEWLBL Lvbinprep !  NEWLBL Lvpushr !
    NEWLBL Lkwplus !  NEWLBL Lkwminus !  NEWLBL Lkwstar !
    NEWLBL Lkwand2 !  NEWLBL Lkwor2 !  NEWLBL Lkwxor2 !
    NEWLBL Lkwdup2 !  NEWLBL Lkwdrop2 !  NEWLBL Lkwswap2 !
    NEWLBL Lkwover2 !  NEWLBL Lkwnip2 !
+   NEWLBL Lkweq2 !  NEWLBL Lkwne2 !  NEWLBL Lkwlt2 !
+   NEWLBL Lkwgt2 !  NEWLBL Lkwle2 !  NEWLBL Lkwge2 !
    emit-main
    emit-prims  emit-prof-prims  emit-cemit  emit-tok  emit-prot  emit-flush  emit-find  emit-num
-   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-crash-handler  emit-hex
+   emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-cmpkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict
    Lsrc @ LBL,  SRCA @ SRCN @ BYTES, ;
