@@ -4,9 +4,11 @@
 set -e
 G=${GFORTH:-$HOME/.local/bin/gforth}
 cd "$(dirname "$0")/.."
+FLOAD=""
+for f in $PROBE_FILES; do FLOAD="$FLOAD s\" $f\" +F "; done
 cat > /tmp/hb-probe.fs <<FS
 require $(pwd)/test/sh-driver.fs
-0 CL ! s" $1" +B CBUF CL @ s" /tmp/hb-probe-bin" FORTH-EXE
+0 CL ! $FLOAD s" $1" +B CBUF CL @ s" /tmp/hb-probe-bin" FORTH-EXE
 FS
 rm -f /tmp/hb-probe-bin
 $G /tmp/hb-probe.fs -e bye > /tmp/hb-probe.log 2>&1 || true

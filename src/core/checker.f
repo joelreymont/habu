@@ -50,8 +50,9 @@ variable NRES
 : TOK-TYPE {: a u :}  a c@ {: c :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> int (con 1)
    u 1 = c 102 = and IF 2 MK-CON ELSE          \ 'f' -> flag (con 2)
+   u 1 = c 114 = and IF 3 MK-CON ELSE          \ 'r' -> real/float (con 3)
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
-   1 MK-CON THEN THEN THEN ;
+   1 MK-CON THEN THEN THEN THEN ;
 variable PHASE  variable INROW  variable OUTROW
 : SIG-TOK {: a u :}
    a u s" --" STR= IF 1 PHASE ! ELSE
@@ -74,7 +75,47 @@ variable SB variable SL variable SI variable SS
 \ --- prim table: name/sig pairs [nlen][name][slen][sig]...[0], scanned by FIND-SIG.
 \ A data table (not a 26-branch word) because the standalone INLINES colon-word
 \ bodies, so a dispatch word with many PARSE-SIG calls overflows. DO-TOK stays small.
-create PTAB 3 c, 100 c, 117 c, 112 c, 8 c, 97 c, 32 c, 45 c, 45 c, 32 c, 97 c, 32 c, 97 c, 4 c, 100 c, 114 c, 111 c, 112 c, 4 c, 97 c, 32 c, 45 c, 45 c, 4 c, 115 c, 119 c, 97 c, 112 c, 10 c, 97 c, 32 c, 98 c, 32 c, 45 c, 45 c, 32 c, 98 c, 32 c, 97 c, 4 c, 111 c, 118 c, 101 c, 114 c, 12 c, 97 c, 32 c, 98 c, 32 c, 45 c, 45 c, 32 c, 97 c, 32 c, 98 c, 32 c, 97 c, 3 c, 110 c, 105 c, 112 c, 8 c, 97 c, 32 c, 98 c, 32 c, 45 c, 45 c, 32 c, 98 c, 4 c, 116 c, 117 c, 99 c, 107 c, 12 c, 97 c, 32 c, 98 c, 32 c, 45 c, 45 c, 32 c, 98 c, 32 c, 97 c, 32 c, 98 c, 3 c, 114 c, 111 c, 116 c, 14 c, 97 c, 32 c, 98 c, 32 c, 99 c, 32 c, 45 c, 45 c, 32 c, 98 c, 32 c, 99 c, 32 c, 97 c, 4 c, 45 c, 114 c, 111 c, 116 c, 14 c, 97 c, 32 c, 98 c, 32 c, 99 c, 32 c, 45 c, 45 c, 32 c, 99 c, 32 c, 97 c, 32 c, 98 c, 4 c, 50 c, 100 c, 117 c, 112 c, 14 c, 97 c, 32 c, 98 c, 32 c, 45 c, 45 c, 32 c, 97 c, 32 c, 98 c, 32 c, 97 c, 32 c, 98 c, 5 c, 50 c, 100 c, 114 c, 111 c, 112 c, 6 c, 97 c, 32 c, 98 c, 32 c, 45 c, 45 c, 1 c, 43 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 1 c, 45 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 1 c, 42 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 3 c, 97 c, 110 c, 100 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 2 c, 111 c, 114 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 3 c, 120 c, 111 c, 114 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 2 c, 49 c, 43 c, 6 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 2 c, 49 c, 45 c, 6 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 6 c, 110 c, 101 c, 103 c, 97 c, 116 c, 101 c, 6 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 6 c, 105 c, 110 c, 118 c, 101 c, 114 c, 116 c, 6 c, 110 c, 32 c, 45 c, 45 c, 32 c, 110 c, 2 c, 48 c, 61 c, 6 c, 110 c, 32 c, 45 c, 45 c, 32 c, 102 c, 2 c, 48 c, 60 c, 6 c, 110 c, 32 c, 45 c, 45 c, 32 c, 102 c, 1 c, 61 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 102 c, 1 c, 60 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 102 c, 1 c, 62 c, 8 c, 110 c, 32 c, 110 c, 32 c, 45 c, 45 c, 32 c, 102 c, 0 c,
+\ prim sig table: records [nlen][name][slen][sig], 0-terminated — built from
+\ readable strings (PT+ keeps the terminator as it appends).
+create PTAB 1024 allot  variable PTP
+: PT2+ {: a u :}  u PTP @ c!
+   0 BEGIN dup u < WHILE  dup a + c@  over PTP @ + 1 + c!  1 + REPEAT drop
+   PTP @ 1 + u + PTP !  0 PTP @ c! ;
+: PT+ {: na nu sa su :}  na nu PT2+  sa su PT2+ ;
+: PTABLE  PTAB PTP !  0 PTAB c!
+   s" dup" s" a -- a a" PT+
+   s" drop" s" a --" PT+
+   s" swap" s" a b -- b a" PT+
+   s" over" s" a b -- a b a" PT+
+   s" nip" s" a b -- b" PT+
+   s" tuck" s" a b -- b a b" PT+
+   s" rot" s" a b c -- b c a" PT+
+   s" -rot" s" a b c -- c a b" PT+
+   s" 2dup" s" a b -- a b a b" PT+
+   s" 2drop" s" a b --" PT+
+   s" +" s" n n -- n" PT+
+   s" -" s" n n -- n" PT+
+   s" *" s" n n -- n" PT+
+   s" and" s" n n -- n" PT+
+   s" or" s" n n -- n" PT+
+   s" xor" s" n n -- n" PT+
+   s" 1+" s" n -- n" PT+
+   s" 1-" s" n -- n" PT+
+   s" negate" s" n -- n" PT+
+   s" invert" s" n -- n" PT+
+   s" 0=" s" n -- f" PT+
+   s" 0<" s" n -- f" PT+
+   s" =" s" n n -- f" PT+
+   s" <" s" n n -- f" PT+
+   s" >" s" n n -- f" PT+
+   \ floats: r = real (concrete), distinct from n (int) and f (flag)
+   s" f+" s" r r -- r" PT+    s" f-" s" r r -- r" PT+
+   s" f*" s" r r -- r" PT+    s" f/" s" r r -- r" PT+
+   s" fnegate" s" r -- r" PT+  s" fabs" s" r -- r" PT+  s" fsqrt" s" r -- r" PT+
+   s" f<" s" r r -- f" PT+    s" f>" s" r r -- f" PT+   s" f=" s" r r -- f" PT+
+   s" f0<" s" r -- f" PT+     s" f0=" s" r -- f" PT+
+   s" s>f" s" n -- r" PT+     s" f>s" s" r -- n" PT+    s" f." s" r --" PT+ ;
+PTABLE
 variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable FSP  variable FP
 : FIND-SIG {: a u :}  0 FSU !  PTAB FP !
    BEGIN FP @ c@ dup WHILE                       \ no locals inside the loop (corrupts frame)
@@ -83,8 +124,22 @@ variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable F
      a u FNP @ FNL @ STR= IF FSP @ FSA ! FSL @ FSU ! THEN
      FSP @ FSL @ + FP !
    REPEAT drop  FSU @ ;
+variable FLD  variable FLI  variable FLO  variable FLC
+: FLODIG? {: a u :}                        \ -?d+.d+ (one interior dot) -> float literal
+   0 FLD !  0 FLI !  -1 FLO !
+   u 3 < IF 0 FLO ! THEN
+   a c@ 45 = IF 1 FLI ! THEN
+   FLI @ BEGIN dup u < WHILE
+     a over + c@ FLC !
+     FLC @ 46 = IF FLD @ 0 > IF 0 FLO ! THEN FLD @ 1 + FLD !
+     ELSE FLC @ 47 > FLC @ 58 < and 0= IF 0 FLO ! THEN THEN
+     1 + REPEAT drop
+   FLD @ 1 = FLO @ and
+   u 0 > IF a u 1 - + c@ 46 = IF drop 0 THEN THEN
+   a FLI @ + c@ 46 = IF drop 0 THEN ;
 : DO-TOK {: a u :}
    a u FIND-SIG IF FSA @ FSU @ PARSE-SIG ELSE
-   a u ALLDIG? IF s" -- n" PARSE-SIG ELSE -1 UNCK ! THEN THEN ;
+   a u ALLDIG? IF s" -- n" PARSE-SIG ELSE
+   a u FLODIG? IF s" -- r" PARSE-SIG ELSE -1 UNCK ! THEN THEN THEN ;
 variable TBASE variable TBLEN variable TI variable TSTART
 : CHECK {: a u :} a TBASE ! u TBLEN ! NEW 0 TI ! BEGIN TI @ TBLEN @ < WHILE BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 = and WHILE TI @ 1 + TI ! REPEAT TI @ TBLEN @ < IF TBASE @ TI @ + TSTART ! BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 <> and WHILE TI @ 1 + TI ! REPEAT TSTART @ TBASE @ TI @ + TSTART @ - DO-TOK THEN REPEAT UNCK @ IF 1 ELSE OK @ THEN ;
