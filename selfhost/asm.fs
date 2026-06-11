@@ -52,3 +52,28 @@
 : ENC-FMUL {: d n m :} 509609984 d or  n 5 lshift or  m 16 lshift or MSK ;
 \ conditional set ( rd cond -- w ): cset = csinc rd, xzr, xzr, invert(cond)
 : ENC-CSET {: rd cond :}  2594113504 rd or  cond 1 xor 12 lshift or MSK ;
+\ data-processing 2-source: shift-by-register, divide
+: ENC-LSLV {: rd rn rm :} $9AC02000 rd rn rm RRR ;
+: ENC-LSRV {: rd rn rm :} $9AC02400 rd rn rm RRR ;
+: ENC-ASRV {: rd rn rm :} $9AC02800 rd rn rm RRR ;
+: ENC-SDIV {: rd rn rm :} $9AC00C00 rd rn rm RRR ;
+: ENC-UDIV {: rd rn rm :} $9AC00800 rd rn rm RRR ;
+\ arithmetic shift right immediate (SBFM)
+: ENC-ASRI {: rd rn sh :} $9340FC00 rd or  rn 5 lshift or  sh 16 lshift or MSK ;
+\ logical immediates (nis = N<<12 | immr<<6 | imms, pre-packed by the caller)
+: ENC-ANDI {: rd rn nis :} $92000000 rd or  rn 5 lshift or  nis 10 lshift or MSK ;
+: ENC-ORRI {: rd rn nis :} $B2000000 rd or  rn 5 lshift or  nis 10 lshift or MSK ;
+: ENC-EORI {: rd rn nis :} $D2000000 rd or  rn 5 lshift or  nis 10 lshift or MSK ;
+\ indirect branches, trap, nop
+: ENC-BLR {: rn :} $D63F0000 rn 5 lshift or MSK ;
+: ENC-BR  {: rn :} $D61F0000 rn 5 lshift or MSK ;
+: ENC-BRK $D4200000 ;
+: ENC-NOP $D503201F ;
+\ cache maintenance to PoU (JIT coherency) + barriers
+: ENC-ICIVAU {: rt :} $D50B7520 rt or MSK ;
+: ENC-DCCVAU {: rt :} $D50B7B20 rt or MSK ;
+: ENC-DSB-ISH $D5033B9F ;
+: ENC-ISB     $D5033FDF ;
+\ adr rd, . + d  (d = BYTE offset from this instruction; word-aligned here so immlo=0)
+: ENC-ADRD {: d :}  d 3 and 29 lshift  d 4 / $7FFFF and 5 lshift or ;
+: ENC-ADR {: rd d :}  $10000000 rd or  d ENC-ADRD or MSK ;
