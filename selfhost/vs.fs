@@ -3,8 +3,8 @@
 \ (just relabel), arithmetic is reg->reg, and there is NO ldr/str traffic until the
 \ pool spills. `5 dup *` becomes ~5 instructions instead of 16. Needs asm.fs + icode.fs.
 \ Emitters are dispatched by xt (execute) from a table, so the dispatcher stays tiny.
-create OPN 3 c, 100 c, 117 c, 112 c, 0 c, 4 c, 100 c, 114 c, 111 c, 112 c, 1 c, 4 c, 115 c, 119 c, 97 c, 112 c, 2 c, 4 c, 111 c, 118 c, 101 c, 114 c, 3 c, 3 c, 110 c, 105 c, 112 c, 4 c, 1 c, 43 c, 5 c, 1 c, 45 c, 6 c, 1 c, 42 c, 7 c, 3 c, 97 c, 110 c, 100 c, 8 c, 2 c, 111 c, 114 c, 9 c, 3 c, 120 c, 111 c, 114 c, 10 c, 6 c, 110 c, 101 c, 103 c, 97 c, 116 c, 101 c, 11 c, 2 c, 48 c, 60 c, 12 c, 2 c, 105 c, 102 c, 13 c, 4 c, 116 c, 104 c, 101 c, 110 c, 14 c, 0 c, 
-15 constant NOPS
+create OPN 3 c, 100 c, 117 c, 112 c, 0 c, 4 c, 100 c, 114 c, 111 c, 112 c, 1 c, 4 c, 115 c, 119 c, 97 c, 112 c, 2 c, 4 c, 111 c, 118 c, 101 c, 114 c, 3 c, 3 c, 110 c, 105 c, 112 c, 4 c, 1 c, 43 c, 5 c, 1 c, 45 c, 6 c, 1 c, 42 c, 7 c, 3 c, 97 c, 110 c, 100 c, 8 c, 2 c, 111 c, 114 c, 9 c, 3 c, 120 c, 111 c, 114 c, 10 c, 6 c, 110 c, 101 c, 103 c, 97 c, 116 c, 101 c, 11 c, 2 c, 48 c, 60 c, 12 c, 2 c, 105 c, 102 c, 13 c, 4 c, 116 c, 104 c, 101 c, 110 c, 14 c, 2 c, 48 c, 61 c, 15 c, 5 c, 98 c, 101 c, 103 c, 105 c, 110 c, 16 c, 5 c, 117 c, 110 c, 116 c, 105 c, 108 c, 17 c, 0 c, 
+18 constant NOPS
 \ register pool x9..x15 (scratch in a leaf body — no calls)
 create RPOOL 9 c, 10 c, 11 c, 12 c, 13 c, 14 c, 15 c,
 7 constant NRP
@@ -79,6 +79,13 @@ variable IFR
 : G-IF   VSP @ 1 - V-REG IFR !  VSP @ 1 - VSP !  V-SPILL-ALL  IFR @ R-FREE
    NEWLBL {: lend :}  IFR @ lend CBZ,  lend CFLBL CFSP @ cells + !  CFSP @ 1 + CFSP ! ;
 : G-THEN  V-SPILL-ALL  CFSP @ 1 - CFSP !  CFLBL CFSP @ cells + @ LBL, ;
+: G-0=  VSP @ 1 - V-REG CMR !
+   CMR @ 0 ENC-CMPI EMITW  CMR @ 0 ENC-CSET EMITW  CMR @ 31 CMR @ ENC-SUB EMITW ;
+\ BEGIN/UNTIL: spill to canonical memory at the loop top and the back-edge (so the
+\ layout is invariant); UNTIL pops the flag and cbz's back to BEGIN while it is false.
+: G-BEGIN  V-SPILL-ALL  NEWLBL {: lb :}  lb LBL,  lb CFLBL CFSP @ cells + !  CFSP @ 1 + CFSP ! ;
+: G-UNTIL  VSP @ 1 - V-REG IFR !  VSP @ 1 - VSP !  V-SPILL-ALL
+   CFSP @ 1 - CFSP !  IFR @ CFLBL CFSP @ cells + @ CBZ,  IFR @ R-FREE ;
 \ dispatch table: index -> emitter xt
 create XTS 32 cells allot
 : VS-SETUP
@@ -87,7 +94,8 @@ create XTS 32 cells allot
    ['] G-SUB 6 cells XTS + !  ['] G-MUL 7 cells XTS + !  ['] G-AND 8 cells XTS + !
    ['] G-OR 9 cells XTS + !  ['] G-XOR 10 cells XTS + !
    ['] G-NEGATE 11 cells XTS + !  ['] G-0< 12 cells XTS + !
-   ['] G-IF 13 cells XTS + !  ['] G-THEN 14 cells XTS + ! ;
+   ['] G-IF 13 cells XTS + !  ['] G-THEN 14 cells XTS + !
+   ['] G-0= 15 cells XTS + !  ['] G-BEGIN 16 cells XTS + !  ['] G-UNTIL 17 cells XTS + ! ;
 VS-SETUP
 \ find op (a,u) in OPN -> index, or -1
 variable VFI  variable VFP  variable VFNL

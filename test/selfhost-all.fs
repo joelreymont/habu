@@ -10,6 +10,7 @@ require t-sh-walk.fs
 require t-sh-opt.fs
 require t-sh-vs.fs
 require t-sh-if.fs
+require t-sh-loop.fs
 require t-sh-undef.fs
 require t-sh-disasm.fs
 require t-sh-debug.fs
