@@ -19,6 +19,18 @@ gforth case-folds `S0`/`s0` (use BSIG0/SSIG0); a local named `i` shadows the loo
 index inside `?DO`; declaring `{: :}` locals inside a loop corrupts the return
 stack (factor the loop body into its own word); `?DO` is `( limit start -- )`.
 
+## Standalone peephole optimizer + the `i`-local footgun (2026-06-11)
+
+Ported the first optimizer pass to the standalone (selfhost/opt.fs): store-to-load
+FORWARDING drops a `ldr Rd,[x19]` right after a `str Rd,[x19]` (Rd still holds it) —
+sound for the branchless arithmetic bodies walk.fs emits. `5 dup *` goes 16 -> 15
+instructions and still computes 25. RECURRING FOOTGUN that cost time again here: a
+local named **`i`** (or `j`) resolves to the DO-LOOP index word **I**, not the local —
+so `WGET {: i :} … i …` ignored its argument and every access hit the same slot.
+Always name index locals `ix`/`n`, never `i`/`j`. (Same class bit me in sha-round.)
+Debugged it by DOGFOODING the standalone disassembler (`CODE CP @ DISASM`) to see the
+str/ldr pair, and `.s` to catch WSET/WGET returning the same value — the tools paid off.
+
 ## Checked toolchain + standalone disassembler (2026-06-11)
 
 The debugging tools are built and dogfooded: a Forth disassembler (src/cg/disasm.fs)
