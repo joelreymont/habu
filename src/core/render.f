@@ -49,3 +49,22 @@ create RBUF 64 cells allot   variable RBN
    REND-SIG
    RQM @ 0 =  NLET @ 27 <  and  IF na nu USIG-ADD ELSE drop drop THEN ;
 ' REC-SIG RECXT !
+
+\ DIAG-PRINT ( -- ) : reject diagnostic, one line to stderr —
+\   habu: in NAME: at 'TOK' expected: <row> actual: <row>
+\ Rows render bottom-to-top with the shared var-letter naming; expected/actual
+\ only appear when the failing unify was captured (STEP/SUNI).
+: DTXT {: a u :}  0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
+: DROW {: s :}  s REND-COLLECT
+   RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
+: DIAG-PRINT
+   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !
+   s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
+   s" '" DTXT
+   DEXP @ 0 <> IF
+     s"  expected: " DTXT  DEXP @ DROW
+     s" actual: " DTXT  DACT @ DROW THEN
+   10 EMIT1
+   2 RSBUF RSN @ write drop
+   0 RDST !  0 RSN ! ;
+' DIAG-PRINT DIAGXT !

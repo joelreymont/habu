@@ -44,7 +44,13 @@ variable RCUR   variable RBROW
 : NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
-: STEP {: din dout :} DCUR @ din UNIFY OK @ and OK ! dout DCUR ! ;
+variable WAS   variable DEXP   variable DACT   variable FAILSET
+create FAILTK 64 allot   variable FAILTU
+: STEP {: din dout :}
+   DCUR @ WAS !
+   DCUR @ din UNIFY
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF din DEXP !  WAS @ DACT !  -1 FAILSET ! THEN
+   OK @ and OK !  dout DCUR ! ;
 
 \ --- return row: >r r> r@ transfer types between DCUR and RCUR. A definition
 \ must leave the return row exactly as it found it (ANS 3.2.3.3) — the final
@@ -282,7 +288,10 @@ variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
 : CF@RB #CFC @ 1 - cells CFRB + @ ;
 : CF-DROP #CFC @ 1 - #CFC ! ;
 : CF-MT? #CFC @ 0 > 0= ;
-: SUNI {: s :}  DCUR @ s UNIFY OK @ and OK ! ;
+: SUNI {: s :}
+   DCUR @ s UNIFY
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  -1 FAILSET ! THEN
+   OK @ and OK ! ;
 : RSUNI {: s :}  RCUR @ s UNIFY OK @ and OK ! ;
 : CF-IF  s" a --" PARSE-SIG  1 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 : CF-ELSE
@@ -353,6 +362,7 @@ variable TBASE variable TBLEN variable TI variable TSTART
 \ first token of the checked text is the word's NAME (skipped, kept for the
 \ recorder); RECXT (installed by render.f) records certified sigs by name.
 variable NMA  variable NMU  variable TOK0  variable RECXT  0 RECXT !
+variable DIAGXT  0 DIAGXT !              \ reject-diagnostic hook (render.f installs)
 \ the engine folds A-Z in keyword and dict matching — fold every token the same
 \ way (into a scratch copy: the source text may live in the read-only image).
 create TKF 64 allot   create NMB 64 allot   variable TFU
@@ -362,17 +372,27 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
        dup a + c@  dup 64 >  over 91 <  and IF 32 or THEN
        over TKF + c!  1 +
      REPEAT drop  u TFU !  -1 THEN ;
+\ TRUST: declare a word's effect without checking its body — the native escape
+\ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
+\ Usage:  s" myword" s" n n -- n" trust
+: trust {: na nu sa su :}
+   na nu TOKFOLD 0= IF s" trust: name too long" 76 die THEN
+   sa su  TKF TFU @  USIG-ADD ;
 : DO-TOK1 {: a u :}
    a u TOKFOLD 0= IF -1 UNCK ! ELSE
+   FAILSET @ 0= IF TKF FAILTK TFU @ CCOPY  TFU @ FAILTU ! THEN
    TOK0 @ IF TKF NMB TFU @ CCOPY  NMB NMA !  TFU @ NMU !  0 TOK0 ! ELSE
    LMODE @ IF TKF TFU @ LOC-TOK ELSE
    TKF TFU @ s" {:" STR= IF 1 LMODE !  #LOC @ LGRP ! ELSE
    TKF TFU @ CF-TOK? 0= IF
    TKF TFU @ RS-TOK? 0= IF
    TKF TFU @ LOC-REF? 0= IF
-   TKF TFU @ DO-TOK THEN THEN THEN THEN THEN THEN THEN ;
-: CHECK {: a u :} a TBASE ! u TBLEN ! NEW 0 TI ! 1 TOK0 ! 0 NMU ! 0 #LOC ! 0 LMODE ! 0 #CFC ! BEGIN TI @ TBLEN @ < WHILE BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 = and WHILE TI @ 1 + TI ! REPEAT TI @ TBLEN @ < IF TBASE @ TI @ + TSTART ! BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 <> and WHILE TI @ 1 + TI ! REPEAT TSTART @ TBASE @ TI @ + TSTART @ - DO-TOK1 THEN REPEAT
+   TKF TFU @ DO-TOK THEN THEN THEN THEN THEN THEN THEN
+   OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN ;
+: CHECK {: a u :} a TBASE ! u TBLEN ! NEW 0 TI ! 1 TOK0 ! 0 NMU ! 0 #LOC ! 0 LMODE ! 0 #CFC !
+   0 FAILSET ! 0 DEXP ! 0 DACT ! 0 FAILTU ! BEGIN TI @ TBLEN @ < WHILE BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 = and WHILE TI @ 1 + TI ! REPEAT TI @ TBLEN @ < IF TBASE @ TI @ + TSTART ! BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 <> and WHILE TI @ 1 + TI ! REPEAT TSTART @ TBASE @ TI @ + TSTART @ - DO-TOK1 THEN REPEAT
    LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
    RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN   \ return row must balance
    UNCK @ IF 1 ELSE OK @ THEN
+   dup 0 =  DIAGXT @ 0 <>  and IF DIAGXT @ execute THEN
    dup -1 = NMU @ 0 > and RECXT @ 0 <> and IF NMA @ NMU @ RECXT @ execute THEN ;

@@ -32,3 +32,7 @@ T{ s" : RX >r ;"                                  CHK2 s\" 0\n"  compare 0= -> t
 T{ s" : RY r> drop ;"                             CHK2 s\" 0\n"  compare 0= -> true }T
 T{ s" : RZ 0 begin >r 1+ dup 5 >= until drop ;"   CHK2 s\" 0\n"  compare 0= -> true }T
 T{ s" : RC 7 >r 1 if r@ else 0 then r> drop + . ;" CHK2 s\" -1\n" compare 0= -> true }T
+\ TRUST: declare a sig for a word the checker can't model — callers certify.
+\ (recurse makes MYST uncheckable=1; the trusted sig lets USES certify=-1.)
+T{ s\" : MYST dup 0 > if 1- recurse then ; s\" myst\" s\" n -- n\" trust : USES 5 MYST . ; USES"
+   CHK2 s\" 1\n-1\n0\n" compare 0= -> true }T

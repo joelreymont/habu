@@ -319,6 +319,18 @@ create ENDLOC-KW 58 c, 125 c,
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
    Lkwconst 8 c-defhook ;
+: c-isdq
+   INP INP 1 ADDI,  13 INP 0 ADDI,
+   NEWLBL NEWLBL NEWLBL NEWLBL {: sl sd cl cd :}
+   sl LBL,  9 INP 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  INP INP 1 ADDI,  sl B,
+   sd LBL,  10 INP 13 SUB,  INP INP 1 ADDI,
+   12 DATA 0 LDR,  15 12 0 ADDI,                        \ x12 = DP, x15 = string base
+   11 13 0 ADDI,  9 10 0 ADDI,
+   cl LBL,  9 cd CBZ,
+      14 11 0 LDRB,  14 12 0 STRB,  12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
+   cd LBL,
+   12 DATA 0 STR,                                       \ allot: DP advances past the copy
+   15 g-push  10 g-push ;
 : c-char   Ltok @ BL,  9 TKA 0 LDRB,  9 g-push ;
 : c-bchar  Ltok @ BL,  11 TKA 0 LDRB,  Lvpushc @ BL, ;
 : c-tick
@@ -542,6 +554,7 @@ variable CFSK2
    Lmain @ Lkwconst  8 ['] c-constant cf-entry
    Lmain @ Lkwtick   1 ['] c-tick     cf-entry
    Lmain @ Lkwchar   4 ['] c-char     cf-entry
+   Lmain @ Lkwsq     2 ['] c-isdq     cf-entry
    9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,
    12 lnotnum CBZ,  11 g-push  Lmain @ B,
    lnotnum LBL,
