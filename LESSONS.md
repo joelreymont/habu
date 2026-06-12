@@ -179,7 +179,15 @@ Attack address-space assumptions, mode asymmetries (interpret vs compile), and
 boundary reads explicitly. Remaining holes found are dotted (frame collision, IF-depth
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
-## Process: jj new immediately after every push (2026-06-11)
+## Process
+- **Mass case-rename is safe and mechanical**: gforth AND the engine dict are both
+  case-insensitive (`7 sq .` resolves SQ), so upcasing our 548 word names repo-wide
+  (2026-06: docs/forth.md conformance) needed only a token rewriter that skips
+  strings (`s" dup"` prim names, `s" fold-entry"` TRUST decls live in STRINGS — touch
+  them never) and comments. The linters were the real work: parity/clobber lint
+  compared names case-SENSITIVELY and needed .lower() at every name boundary; watch
+  for our words ending in `,` (CD-HDR,) which then satisfy mnemonic heuristics.
+: jj new immediately after every push (2026-06-11)
 
 Three times in one session: pushed master, kept editing, and the working-copy commit
 (@) mixed new work into the already-pushed change — forcing restore/copy dances to
