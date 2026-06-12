@@ -21,15 +21,31 @@ Gforth **0.7.9** (dev). Homebrew ships 0.7.3; build 0.7.9 from source — recipe
 
 ## Use
 
+Two tiers ship in this repo:
+
+**The native engine** — `bin/hb` is a standalone macOS ARM64 Forth (no gforth,
+no C) that JIT-compiles to machine code, type-checks definitions with its
+built-in checker, and **rebuilds itself byte-for-byte** (stage2 fixpoint):
+
 ```sh
-gforth habu.fs          # loads the checker + the ':' override
+./tools/bootstrap.sh   # build bin/hb from nothing but gforth (once)
+./tools/build.sh       # daily rebuild: bin/hb recompiles itself, no gforth
+echo ': SQ dup * ; 7 SQ .' | bin/hbi    # stdin engine
+```
+
+**The gforth-hosted checker** (bootstrap tier — the full row-polymorphic
+checker, quotations/combinators included):
+
+```sh
+gforth bootstrap/habu.fs       # loads the checker + the ':' override
 ```
 Then `: NAME ( typed-effect ) body ;` is checked; `: NAME body ;` (no typed
 effect) is the ordinary Forth colon, untouched.
 
 ```sh
-gforth examples.fs     # runnable checked programs
-gforth test/all.fs     # the test suite (exits nonzero on any failure)
+gforth bootstrap/examples.fs   # runnable checked programs
+gforth test/all.fs             # gforth-hosted suite
+( cd test && ./run.sh )        # the full gate: both suites + selfhost + fixpoint
 ```
 
 ## The type system
@@ -53,20 +69,37 @@ Examples: `DUP : ( R a -- R a a )`, `= : ( R a a -- R bool )`,
 `@ : ( R ptr a -- R a )`, `>R : ( R a | S -- R | S a )`,
 `EXECUTE : ( R [ R -- S ] -- S )`.
 
-Supported: typed `:` definitions, literals, the primitive set, polymorphic
-signatures, `IF/ELSE/THEN`, `BEGIN…UNTIL/WHILE…REPEAT/AGAIN`, `?DO…LOOP/+LOOP`,
-`RECURSE`/`EXIT`, typed locals (`{: a b :}`, `{ a:u8 -- }`), quotations (`[: ;]`),
-`'`/`['] ` (xt typed as quot), the return stack (`>R R> R@`), pointer/memory ops,
-and `TRUSTED:` annotations for words whose effect can't be inferred (FFI,
-metaprogramming).
+Supported (gforth-hosted checker): typed `:` definitions, literals, the
+primitive set, polymorphic signatures, `IF/ELSE/THEN`,
+`BEGIN…UNTIL/WHILE…REPEAT/AGAIN`, `?DO…LOOP/+LOOP`, `RECURSE`/`EXIT`, typed
+locals (`{: a b :}`, `{ a:u8 -- }`), quotations (`[: ;]`), `'`/`['] ` (xt typed
+as quot), the return stack (`>R R> R@`), pointer/memory ops, and `TRUSTED:`
+annotations for words whose effect can't be inferred (FFI, metaprogramming).
+
+The native engine's built-in checker models a (sound) subset today — known
+prims, literals, `IF`/`BEGIN`/`DO` joins, untyped locals — and marks the rest
+UNCHECKABLE rather than falsely certifying (554 certified / 109 uncheckable /
+0 rejected over the toolchain's own source). Closing the gap to the full
+checker is tracked in the dots.
 
 ## Layout
 
-- [`PLAN.md`](PLAN.md) — the design (type system, unification, checking pipeline).
+- [`PLAN.md`](PLAN.md) — the checker design (type system, unification, pipeline).
+- [`CODEGEN-PLAN.md`](CODEGEN-PLAN.md) — the native backend / self-host design.
 - [`docs/forth.md`](docs/forth.md) — Forth coding standards for this repo.
-- [`LESSONS.md`](LESSONS.md) — build recipe + findings.
-- `src/` — one file per concern; `habu-lib.fs` is the engine, `habu.fs` adds the
-  `:` override. `test/` — `T{ … }T` tests, `all.fs` runs them all.
+- [`LESSONS.md`](LESSONS.md) — build recipe + findings (the project's memory).
+- `bootstrap/src/` — the gforth-hosted full checker, one file per concern;
+  `bootstrap/habu.fs` adds the `:` override. `bootstrap/cg/` — the gforth-hosted
+  engine builder (ICode, encoders, Mach-O, vsjit, disassembler, profiler, crash
+  handler).
+- `src/` — the NATIVE toolchain source the engine compiles (and re-checks) when
+  rebuilding itself: `src/core/` (checker, render, sha256), `src/arch/arm64/`
+  (encoders, assembler, disassembler, mnemonics), `src/habu/` (engine builder
+  parts, vsjit, profiler, crash, stage2 driver), `src/os/macos/` (Mach-O,
+  signing).
+- `test/` — `T{ … }T` tests; `test/run.sh` is the gate (gforth suite +
+  selfhost suite + stage2 fixpoint). `tools/` — bootstrap/build/probe/imgdump/
+  jitdump/parity-lint/clobber-lint.
 
 ## Combinators
 

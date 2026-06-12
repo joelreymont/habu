@@ -237,11 +237,18 @@ Every cross-file word, with its stack effect. Forward-declared in **`forward.fs`
 
 ## File layout & load order
 
+NOTE (2026-06-12): this section describes the **gforth-hosted full checker**,
+which now lives under `bootstrap/src/` (the `src/` below = today's
+`bootstrap/src/`). The NATIVE toolchain the self-hosted engine compiles lives
+in `src/{core,arch/arm64,habu,os/macos}`; its built-in checker
+(`src/core/checker.f`) implements a sound subset of this design — closing that
+gap is tracked in the dots. See CODEGEN-PLAN.md for the engine side.
+
 ```
 habu/  AGENTS.md LESSONS.md PLAN.md README.md .gitignore  docs/forth.md
-  src/  config forward arena types rows effects-repr diag-state unify
+  bootstrap/src/  config forward arena types rows effects-repr diag-state unify
         render sigparse db prims diag checker control locals quots defining
-        capture colon  (+ habu.fs)
+        capture colon  (+ ../habu.fs)
   test/ tester.fs all.fs t-<each>.fs   examples.fs
 ```
 Each file is one concern (no file bundles unrelated responsibilities — see

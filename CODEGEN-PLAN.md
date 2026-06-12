@@ -11,15 +11,23 @@ fixpoint** (stage1 emits stage2, and stage2 ≡ stage3), with **gforth dropped**
 gforth is the **bootstrap host and the differential oracle only**. Self-hosting
 requires building a small Forth runtime (Part F) — accepted as the long pole.
 
-> **STATUS (2026-06-10): Parts A–E substantially DONE and tested.** habu (on
-> gforth) is a working AOT compiler: checked Forth → **standalone ARM64 macOS CLI
-> executables**, no C, no LLVM. ICode IR + peephole + encoders + Mach-O emit +
-> exec all work (`bootstrap/cg/`, `docs/codegen.md`). Wired to the checker
-> (`CODEGEN-HOOK`); front door `HABU-EXE`. Subset: arith/stack/compare/logical/
-> div-mod, IF/loops/`?DO`, calls, RECURSE, `.` output, argv input
-> (`./rfact 7`→5040 standalone). **Remaining: Part F** — a native Forth runtime
-> so the *compiler itself* runs without gforth (the fixpoint). That is the long
-> pole and is not yet started.
+> **STATUS (2026-06-12): the end-state is REACHED — Parts A–F DONE, fixpoint
+> holds.** `bin/hb` is a standalone macOS ARM64 Forth engine that compiles the
+> whole toolchain source (`src/`), type-checks it with its built-in checker
+> (554 certified / 109 uncheckable / 0 rejected), and **rebuilds itself
+> byte-for-byte** (stage2 ≡ stage3; `tools/build.sh` is the no-gforth daily
+> loop, `tools/bootstrap.sh` regenerates from nothing). gforth is bootstrap +
+> differential oracle only. The runtime `:` compiler JIT-allocates registers
+> (vsjit: constant folding, register ops, fused branches, loop-resident
+> registers across BEGIN loops — 30M-iteration counter loop in 0.016 s).
+> In-binary disassembler, sampling profiler, and crash handler ship inside the
+> engine; `tools/{probe,imgdump,jitdump,parity-lint,clobber-lint}` are the dev
+> loop. Known gaps live in the dots: engine control-flow words
+> (`exit recurse ?do +loop j leave >r r> r@`), user-extensible compile words
+> (`immediate postpone does>`), native checker features (trusted sigs, return
+> row, quotations, diagnostics), `decodeBitMasks`. Sections below are kept as
+> the historical design record; their "remaining/not started" markers predate
+> this status.
 
 ## Foundational principle: everything in Forth, no C
 
