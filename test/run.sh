@@ -30,7 +30,8 @@ python3 test/repl-pty.py || { echo "FAIL: tty REPL"; exit 1; }
 printf ': T 6 7 * . ;\nT\n' > $T/hb-bt.f
 ./tools/hb-build.sh $T/hb-bt.f -o $T/hb-bt >/dev/null || { echo "FAIL: hb-build"; exit 1; }
 [ "$($T/hb-bt)" = "42" ] || { echo "FAIL: hb-build output (got: $($T/hb-bt))"; exit 1; }
-echo "PASS: hb-build standalone"
+[ "$(stat -f%z $T/hb-bt)" -lt 20000 ] || { echo "FAIL: hb-build size ($(stat -f%z $T/hb-bt) >= 20000 — tree shake regressed)"; exit 1; }
+echo "PASS: hb-build standalone (shaken, $(stat -f%z $T/hb-bt) B)"
 if [ "$1" = "full" ]; then
   ./tools/oracle.sh || exit 1
 fi

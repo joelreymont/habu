@@ -101,6 +101,34 @@ create PLBL 96 cells allot   create PEL 96 cells allot
 create PLEN 96 cells allot   create PNAM 96 cells allot
 create PNPOOL 1024 chars allot   variable PNP   variable #PL
 
+
+\ --- tree shaker: with SHAKE? on (hb-build's maker), a prim is emitted and
+\ seeded ONLY if its name appears as a whitespace token in the user program
+\ (SHK-A/SHK-U). Sound over-approximation: tokens in comments/strings keep a
+\ prim alive; nothing referenced can be dropped. Default off = keep all.
+variable SHAKE?   variable SHK-A   variable SHK-U
+variable SKP  variable STS
+
+: SHK-LC ( c -- c )  dup 64 > over 91 < and IF 32 + THEN ;
+
+: SHK-TOK= {: p a u :}
+   u 0 ?do  p i + c@ SHK-LC  a i + c@  = 0 = IF unloop 0 EXIT THEN  loop  -1 ;
+
+: KEEP? {: a u :}
+   SHAKE? @ 0 = IF -1 EXIT THEN
+   0 SKP !
+   BEGIN SKP @ SHK-U @ < WHILE
+      SHK-A @ SKP @ + c@ 33 < IF
+         SKP @ 1 + SKP !
+      ELSE
+         SKP @ STS !
+         BEGIN SKP @ SHK-U @ < IF SHK-A @ SKP @ + c@ 32 > ELSE 0 THEN WHILE
+            SKP @ 1 + SKP ! REPEAT
+         SKP @ STS @ - u = IF
+            SHK-A @ STS @ +  a u SHK-TOK= IF -1 EXIT THEN THEN
+      THEN
+   REPEAT 0 ;
+
 : REG-PRIM {: na nu lbl elbl -- :}
    lbl  #PL @ cells PLBL + !
    elbl #PL @ cells PEL  + !
@@ -109,13 +137,15 @@ create PNPOOL 1024 chars allot   variable PNP   variable #PL
    na dst nu move   nu PNP +!   1 #PL +! ;
 
 : FPRIM {: na nu xt -- :}            \ define+register a primitive (start..RET..end labels)
+   na nu KEEP? 0 = IF EXIT THEN
    NEWLBL {: lbl :}  NEWLBL {: elbl :}
    na nu lbl elbl REG-PRIM
    lbl LBL,  SP SP 16 SUBI,  30 SP 0 STR,    \ prologue: save x30 (calls now nest, not inline)
    xt execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  elbl LBL, ;
 
 : FPRIM-L {: na nu xt -- :}          \ LEAF primitive: no BL/BLR in the body, so no
-   NEWLBL {: lbl :}  NEWLBL {: elbl :}   \ x30 frame — 2x cheaper calls, fully inlineable
+   na nu KEEP? 0 = IF EXIT THEN          \ x30 frame — 2x cheaper calls, fully inlineable
+   NEWLBL {: lbl :}  NEWLBL {: elbl :}
    na nu lbl elbl REG-PRIM
    lbl LBL,  xt execute  RET,  elbl LBL, ;
 

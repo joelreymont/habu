@@ -24,6 +24,7 @@ $40000 constant PMAX
 
 : GO
    READ-PROG
+   PB @ SHK-A !  PN @ SHK-U !  -1 SHAKE? !
    0 STDIN? !
    PB @ PN @ EMIT-FORTH
    BUILD-IMAGE
