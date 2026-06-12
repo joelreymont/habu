@@ -1,27 +1,30 @@
 #!/bin/sh
-# gate runner: gforth exits nonzero on test failures (#ERRORS) AND on aborts.
-# BOTH suites run: all.fs (gforth-hosted) and selfhost-all.fs (t-sh-* gates).
+# run.sh — the DEFAULT gate: habu-native, no gforth anywhere on the path.
+#   lints -> self-rebuild fixpoint -> hb-suite -> AOT snapshot -> tty REPL ->
+#   hb-build standalone.
+# The gforth differential (boot-vs-port goldens + the gforth-hosted checker
+# suite) lives in tools/oracle.sh — run it before pushing emitter changes.
+# `test/run.sh full` runs both.
 set -e
-G=${GFORTH:-$HOME/.local/bin/gforth}
 cd "$(dirname "$0")/.."
-# hermetic gforth FFI cache: exec.fs's `system` goes through libcc; the per-user
-# global cache (~/.cache/gforth) corrupts under concurrent gforths (hash
-# mismatch / missing .so). Use a gate-owned cache and prime it serially.
-export XDG_CACHE_HOME=/tmp/habu-gforth-cache
-[ -d "$XDG_CACHE_HOME/gforth" ] || gforth -e 's" true" system bye' >/dev/null 2>&1
 ./tools/parity-lint.py || { echo "FAIL: parity-lint"; exit 1; }
 ./tools/shadow-lint.py || { echo "FAIL: shadow-lint"; exit 1; }
-$G test/all.fs -e bye > /tmp/habu-gate.log 2>&1 || { tail -5 /tmp/habu-gate.log; echo "FAIL: all.fs"; exit 1; }
-$G test/selfhost-all.fs -e bye > /tmp/habu-shgate.log 2>&1 || { tail -5 /tmp/habu-shgate.log; echo "FAIL: selfhost-all.fs"; exit 1; }
-[ -x bin/hbi ] && { ./tools/test-hb.sh || exit 1; }
-[ -x bin/hbi ] && { ./tools/snap-hb.sh >/dev/null || { echo "FAIL: snap-hb"; exit 1; }
-  out=$(echo 's" w" s" n -- n" trust 7 . : Q 5 dup * . ; Q' | /tmp/hb-warm)
-  [ "$out" = "7
+./tools/clobber-lint.py || { echo "FAIL: clobber-lint"; exit 1; }
+[ -x bin/hb ] || { echo "no bin/hb — run tools/bootstrap.sh once"; exit 1; }
+./tools/build.sh > /tmp/hb-build.log 2>&1 || { tail -5 /tmp/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }
+echo "PASS: self-rebuild fixpoint"
+./tools/test-hb.sh || exit 1
+./tools/snap-hb.sh >/dev/null || { echo "FAIL: snap-hb"; exit 1; }
+out=$(echo 's" w" s" n -- n" trust 7 . : Q 5 dup * . ; Q' | /tmp/hb-warm)
+[ "$out" = "7
 25" ] || { echo "FAIL: warm snapshot (got: $out)"; exit 1; }
-  echo "PASS: AOT snapshot (warm toolchain boot)"; }
-[ -x bin/hbi ] && { python3 test/repl-pty.py || { echo "FAIL: tty REPL"; exit 1; } }
-[ -x bin/hb ] && { printf ': T 6 7 * . ;\nT\n' > /tmp/hb-bt.f
-  ./tools/hb-build.sh /tmp/hb-bt.f -o /tmp/hb-bt >/dev/null || { echo "FAIL: hb-build"; exit 1; }
-  [ "$(/tmp/hb-bt)" = "42" ] || { echo "FAIL: hb-build output (got: $(/tmp/hb-bt))"; exit 1; }
-  echo "PASS: hb-build standalone"; }
-echo "PASS: full suite (all.fs + selfhost-all.fs + hb-suite + snapshot + repl + hb-build)"
+echo "PASS: AOT snapshot (warm toolchain boot)"
+python3 test/repl-pty.py || { echo "FAIL: tty REPL"; exit 1; }
+printf ': T 6 7 * . ;\nT\n' > /tmp/hb-bt.f
+./tools/hb-build.sh /tmp/hb-bt.f -o /tmp/hb-bt >/dev/null || { echo "FAIL: hb-build"; exit 1; }
+[ "$(/tmp/hb-bt)" = "42" ] || { echo "FAIL: hb-build output (got: $(/tmp/hb-bt))"; exit 1; }
+echo "PASS: hb-build standalone"
+if [ "$1" = "full" ]; then
+  ./tools/oracle.sh || exit 1
+fi
+echo "PASS: native gate (fixpoint + hb-suite + snapshot + repl + hb-build)${1:+ + oracle}"

@@ -47,8 +47,8 @@ effect) is the ordinary Forth colon, untouched.
 
 ```sh
 gforth bootstrap/examples.fs   # runnable checked programs
-gforth test/all.fs             # gforth-hosted suite
-( cd test && ./run.sh )        # the full gate: both suites + selfhost + fixpoint
+( cd test && ./run.sh )        # default gate: habu-native, no gforth, <10 s
+( cd test && ./run.sh full )   # + tools/oracle.sh: the gforth differential
 ```
 
 ## The type system
@@ -101,9 +101,12 @@ source self-checks at **783 certified / 0 uncheckable / 0 rejected**.
   (encoders, assembler, disassembler, mnemonics), `src/habu/` (engine builder
   parts, vsjit, profiler, crash, stage2 driver), `src/os/macos/` (Mach-O,
   signing).
-- `test/` — `T{ … }T` tests; `test/run.sh` is the gate (gforth suite +
-  selfhost suite + stage2 fixpoint + the engine-run hb-suite + a warm-snapshot
-  boot). `tools/` — bootstrap/build/probe/imgdump/jitdump/parity-lint/
+- `test/` — `T{ … }T` tests. `test/run.sh` is the DEFAULT gate, habu-native
+  end to end: lints + self-rebuild fixpoint + hb-suite + warm-snapshot boot +
+  tty REPL + hb-build (runs with gforth absent). `tools/oracle.sh` is the
+  gforth differential (the gforth-hosted suite + the boot-vs-port goldens) —
+  run it before pushing emitter changes, or `run.sh full` for both. `tools/`
+  also holds bootstrap/build/hb-build/probe/imgdump/jitdump/parity-lint/
   clobber-lint/shadow-lint, and `snap-hb.sh` for the AOT snapshot binary
   (boots the whole toolchain warm in ~3 ms).
 

@@ -36,3 +36,6 @@ juggling); `throw` named codes, never silent; named constants; and a
 
 - VCS is `jj` (Jujutsu). One change per commit; 50-char imperative subject; no emoji.
 - Commit after each significant change or feature; include new files.
+- Gate: `( cd test && ./run.sh )` — habu-native, no gforth, <10 s. Before
+  pushing changes to the emitters (`bootstrap/cg/*`, `src/**`) also run
+  `tools/oracle.sh` (the gforth differential), or `./run.sh full`.
