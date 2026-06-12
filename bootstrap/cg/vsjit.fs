@@ -341,6 +341,82 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
       13 1 MOVZ,  done B,
    no LBL,
    done LBL,  30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+variable Lvsnap  variable Lvrecon
+$358 constant SNAPSP-CELL       \ BEGIN snapshot stack depth
+$360 constant SNAPSTK-OFF       \ 32 x (k, packed-regs) BEGIN nesting frames
+\ Lvsnap ( -- ) : BEGIN. VSP<=7: force every VS entry into a register (movz
+\ chains for cons emitted HERE, before the loop top) and push (k, packed regs —
+\ a nibble per slot, bottom-up) on the snapshot stack. Deep VS or a failed
+\ force: spill-all and push (0,0) — that loop runs memory-resident as before.
+: emit-vsnap
+   Lvsnap @ LBL,
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: fl fd fail spush pl pd :}
+   SP SP 16 SUBI,  30 SP 0 STR,
+   6 DATA VSP-CELL LDR,  6 8 CMPI,  C-GE fail BCOND,
+   5 0 MOVZ,
+   fl LBL,                                  \ force entry x5 (Lvforcek saves x5)
+      6 DATA VSP-CELL LDR,  5 6 CMP,  C-GE fd BCOND,
+      Lvforcek @ BL,  14 fail CBZ,
+      5 5 1 ADDI,  fl B,
+   fd LBL,                                  \ pack regs: x12 |= val[i] << 4i
+   12 0 MOVZ,  11 0 MOVZ,
+   pl LBL,
+      6 DATA VSP-CELL LDR,  11 6 CMP,  C-GE pd BCOND,
+      8 11 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  7 8 0 LDR,
+      8 11 2 LSLI,  7 7 8 LSLV,  12 12 7 ORR,
+      11 11 1 ADDI,  pl B,
+   pd LBL,
+   6 DATA VSP-CELL LDR,  13 6 0 ADDI,  spush B,
+   fail LBL,
+      Lvspill @ BL,  13 0 MOVZ,  12 0 MOVZ,
+   spush LBL,                               \ snap[SNAPSP] = (k, packed); SNAPSP++
+   6 DATA SNAPSP-CELL LDR,
+   7 6 4 LSLI,  7 7 SNAPSTK-OFF ADDI,  7 DATA 7 ADD,
+   13 7 0 STR,  12 7 8 STR,
+   6 6 1 ADDI,  6 DATA SNAPSP-CELL STR,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+\ Lvrecon ( -- ) : back edge (UNTIL/AGAIN/REPEAT). Pop the snapshot; if the VS
+\ is exactly it (k register entries, same registers, bottom-up) emit nothing.
+\ Otherwise spill-all then emit k pops into the snapshot registers (top-down)
+\ and set the VS to exactly the snapshot. Loop-carried values stay in their
+\ BEGIN registers across iterations either way.
+: emit-vrecon
+   Lvrecon @ LBL,
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: cl cd rel rl rln :}
+   SP SP 32 SUBI,  30 SP 0 STR,
+   6 DATA SNAPSP-CELL LDR,  6 6 1 SUBI,  6 DATA SNAPSP-CELL STR,
+   7 6 4 LSLI,  7 7 SNAPSTK-OFF ADDI,  7 DATA 7 ADD,
+   13 7 0 LDR,  12 7 8 LDR,                           \ x13=k x12=packed
+   6 DATA VSP-CELL LDR,  6 13 CMP,  C-NE rel BCOND,   \ depth differs -> reload
+   5 0 MOVZ,
+   cl LBL,
+      5 13 CMP,  C-GE cd BCOND,
+      7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,  7 rel CBNZ,
+      8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDR,
+      6 5 2 LSLI,  7 12 6 LSRV,  7 7 $1003 ANDI,
+      8 7 CMP,  C-NE rel BCOND,
+      5 5 1 ADDI,  cl B,
+   cd LBL,
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET,                 \ exact: emit nothing
+   rel LBL,
+   13 SP 8 STR,  12 SP 16 STR,
+   Lvspill @ BL,
+   13 SP 8 LDR,  12 SP 16 LDR,
+   11 0 MOVZ,  5 13 0 ADDI,                           \ x11=claimed bits, x5=i
+   rl LBL,
+      5 rln CBZ,
+      5 5 1 SUBI,
+      6 5 2 LSLI,  7 12 6 LSRV,  7 7 $1003 ANDI,      \ x7 = L[i]
+      9 $D1002273 LIT64,  Lcemit @ BL,                \ sub x19,#8
+      8 $F9400260 LIT64,  9 8 7 ORR,  Lcemit @ BL,    \ ldr L[i],[x19]
+      8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  6 0 MOVZ,  6 8 0 STRB,
+      8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  7 8 0 STR,
+      7 7 9 SUBI,  6 1 MOVZ,  6 6 7 LSLV,  11 11 6 ORR,
+      rl B,
+   rln LBL,
+   13 DATA VSP-CELL STR,
+   6 VRALL MOVZ,  6 6 11 EOR,  6 DATA VRFREE-CELL STR,
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 variable FESK3
 \ vshuf-entry: reg-aware stack ops — relabels and register moves, no memory traffic
 : vshuf-entry {: lmainlbl kwvar kwlen min sxt :}
@@ -398,4 +474,4 @@ variable FESK4
    Lkwneg2 @ LBL,  s" negate" BYTES,  Lkwinv2 @ LBL,  s" invert" BYTES, ;
 : emit-vsjit ( -- )  emit-vlitpush  emit-vspill  emit-vpushc  emit-vtop2c  emit-vfoldput
    emit-vralloc  emit-vmovk  emit-vforcek  emit-vbinprep  emit-vpushr
-   emit-vdrop  emit-vswapx  emit-vnipx  emit-vcopy ;
+   emit-vdrop  emit-vswapx  emit-vnipx  emit-vcopy  emit-vsnap  emit-vrecon ;

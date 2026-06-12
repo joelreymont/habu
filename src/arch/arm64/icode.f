@@ -2,13 +2,14 @@
 \ words (asm.fs encoders) into a code buffer, define labels, and resolve B/CBZ/CBNZ
 \ branches (backward immediately, forward via backpatch). Next codegen-port step
 \ after the encoders. CP counts WORDS; deltas are word-relative (ARM64 PC-relative).
-create CODE 131072 allot   variable CP
+create CODE 262144 allot   variable CP
 : ARESET 0 CP ! ;
 : CW@ {: w :}  CODE w 4 * + ;                      \ byte addr of word w
+: CP? {: n :}  CP @ n + 65535 > IF s" icode: code buffer overflow" 72 die THEN ;
 \ NB: the standalone mis-reads a SECOND {: :} locals group, so these use a variable
 \ for the byte pointer instead of a 2nd local (cf. VAR-OF / BR-EMIT bugs).
 variable EP
-: EMITW {: u :}  CP @ CW@ EP !                       \ store u LE at CODE[CP], CP++
+: EMITW {: u :}  1 CP?  CP @ CW@ EP !                \ store u LE at CODE[CP], CP++
    u 255 and EP @ c!  u 8 rshift 255 and EP @ 1 + c!  u 16 rshift 255 and EP @ 2 + c!  u 24 rshift 255 and EP @ 3 + c!
    CP @ 1 + CP ! ;
 : PATCH {: u w :}  w CW@ EP !                        \ OR u into the word already at w (delta bits)
@@ -60,7 +61,7 @@ variable LBI
 : DLBL, {: lbl :}                                            \ cell = label's byte offset
    lbl cells LBLP + @ dup 0 < IF s" icode: DLBL forward ref" 72 die THEN  4 * DCQ, ;
 variable BYP
-: BYTES, {: a u :}  CP @ 4 * CODE + BYP !                    \ raw bytes, zero-padded to 4
+: BYTES, {: a u :}  u 3 + 4 / CP?  CP @ 4 * CODE + BYP !     \ raw bytes, zero-padded to 4
    0 BEGIN dup u < WHILE  dup a + c@  BYP @ c!  BYP @ 1 + BYP !  1 + REPEAT drop
    BEGIN BYP @ CODE - 3 and 0 <> WHILE  0 BYP @ c!  BYP @ 1 + BYP !  REPEAT
    BYP @ CODE - 4 / CP ! ;

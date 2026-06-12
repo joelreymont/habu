@@ -9,7 +9,7 @@
 
 require asm.fs
 
-$40000 constant MSIZE
+$50000 constant MSIZE
 create MBUF MSIZE allot
 variable MP
 variable MLEN
@@ -37,11 +37,15 @@ $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $100000000 constant VMBASE
 $1000     constant CODE-OFF          \ entry file offset (slack below for codesign)
-$20000    constant MPAGE              \ __TEXT file/vm size; __LINKEDIT starts here
+$40000    constant MPAGE              \ __TEXT file/vm size; __LINKEDIT starts here
 
 variable CODELEN
-create SCODE $20000 allot             \ assembled-code scratch (grows with the standalone)
-: ASM-CODE ( -- )  SCODE ASSEMBLE dup $20000 > abort" cg: SCODE overflow" CODELEN ! ;
+create SCODE MPAGE allot              \ assembled-code scratch (grows with the standalone)
+\ size via PASS1 (computes WPOS without writing) BEFORE PASS2 touches SCODE —
+\ a post-write guard would segfault first on overflow
+: ASM-CODE ( -- )
+   PASS1  WPOS @ 4 *  MPAGE CODE-OFF -  > abort" cg: code exceeds __TEXT page"
+   SCODE ASSEMBLE CODELEN ! ;
 
 variable LE-OFF                       \ file offset of the __LINKEDIT LC (for sign.fs post-pass)
 

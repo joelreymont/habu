@@ -301,8 +301,9 @@ variable Lkwdo variable Lkwloop variable Lkwi
 : emit-flush
    Lflush @ LBL,
    NEWLBL NEWLBL NEWLBL NEWLBL {: fdl fdd fil fid :}
-   9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,
-   10 9 0 ADDI,
+   9 9 6 LSRI,  9 9 6 LSLI,                                 \ align start down to the
+   10 9 0 ADDI,                                             \ line, or the 64-byte
+                                                            \ stride skips the last one
    fdl LBL,  10 CP CMP,  C-GE fdd BCOND,  10 DCCVAU,  10 10 64 ADDI,  fdl B,
    fdd LBL,  DSB-ISH,
    10 9 0 ADDI,

@@ -358,12 +358,15 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    Lprot @ LBL,
    0 DBASE 0 ADDI,  1 REGION LIT64,  16 74 MOVZ,  $80 SVC,  RET, ;
 
-\ ---- FLUSH ( -- ) : DC CVAU + IC IVAU over the code area [region+DICT-SIZE, CP) ----
+\ ---- FLUSH ( x9=start -- ) : DC CVAU + IC IVAU over [x9, CP) — just the words
+\ emitted since the last flush, not the whole code area (that walk made every
+\ `;` cost O(total code), O(n^2) over a program build) ----
 : emit-flush ( -- )
    Lflush @ LBL,
-   9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,          \ x9 = code start
    NEWLBL {: fdl :}  NEWLBL {: fdd :}  NEWLBL {: fil :}  NEWLBL {: fid :}
-   10 9 0 ADDI,
+   9 9 6 LSRI,  9 9 6 LSLI,                                 \ align start down to the
+   10 9 0 ADDI,                                             \ line, or the 64-byte
+                                                            \ stride skips the last one
    fdl LBL,  10 CP CMP,  C-GE fdd BCOND,  10 DCCVAU,  10 10 64 ADDI,  fdl B,
    fdd LBL,  DSB-ISH,
    10 9 0 ADDI,
@@ -611,13 +614,21 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 : j-if    c-popflag  c-pushcp  $B4000009 c-emitw ;             \ pop flag; cbz fwd (patched by THEN)
 : j-then  Lcfpop @ BL,  Lpat @ BL, ;
 : j-else  Lcfpop @ BL,  14 9 0 ADDI,  c-pushcp  $14000000 c-emitw  9 14 0 ADDI,  Lpat @ BL, ;
-: j-begin c-pushcp ;
-: j-again Lcfpop @ BL,  $14000000 $3FFFFFF c-bback ;
-: j-until Lcfpop @ BL,  14 9 0 ADDI,  c-popflag
-   10 14 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
-   9 $B4000009 LIT64,  9 9 10 ORR,  Lcemit @ BL, ;
+\ BEGIN loops are register-resident: j-begin snapshots the VS into registers
+\ (Lvsnap), the back edges reconcile to that snapshot (Lvrecon) and branch on
+\ x17 — never a VS register, so the reconcile reload can't clobber the flag.
+: j-begin  Lvsnap @ BL,  c-pushcp ;
+: j-again  Lvrecon @ BL,  Lcfpop @ BL,  $14000000 $3FFFFFF c-bback ;
+: j-untilx ( -- )                          \ shared tail: reconcile + cbz x17,top
+   Lvrecon @ BL,
+   Lcfpop @ BL,
+   10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
+   9 $B4000011 LIT64,  9 9 10 ORR,  Lcemit @ BL, ;
+: j-until  $D1002273 c-emitw  $F9400271 c-emitw  j-untilx ;   \ pop flag -> x17
 : j-while c-popflag  c-pushcp  $B4000009 c-emitw ;
-: j-repeat Lcfpop @ BL,  14 9 0 ADDI,  Lcfpop @ BL,  $14000000 $3FFFFFF c-bback
+: j-repeat Lvrecon @ BL,  Lcfpop @ BL,  14 9 0 ADDI,  Lcfpop @ BL,  $14000000 $3FFFFFF c-bback
+   12 0 MOVZ,  12 DATA VSP-CELL STR,                  \ exit path arrives from
+   12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,           \ WHILE's spilled state
    9 14 0 ADDI,  Lpat @ BL, ;
 
 \ DO/LOOP/I — loop index/limit live in a data-region frame stack ([x20+LOOP-STK-OFF],
@@ -670,7 +681,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    9 W-RET LIT64,  Lcemit @ BL,                          \ emit RET
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot again
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,        \ clen = CP-addr-4
-   NDICT NDICT 1 ADDI,
+   NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,                 \ region -> RX + flush
    Lkwcreate 6 c-defhook ;
 : c-variable ( -- )  c-create
@@ -693,7 +704,8 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    9 W-RET LIT64,  Lcemit @ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
-   NDICT NDICT 1 ADDI,  2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
+   NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
+   2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
    Lkwconst 8 c-defhook ;
 
 \ ' NAME (interpret): find NAME, push its code address. ['] NAME (compile): bake
@@ -789,6 +801,14 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    hxt execute  lmainlbl B,
    skip LBL, ;
 
+\ cfn-entry: keyword case WITHOUT the spill — loop words manage the VS
+\ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
+: cfn-entry {: lmainlbl kwvar kwlen hxt -- :}
+   0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
+   NEWLBL {: skip :}  0 skip CBZ,
+   hxt execute  lmainlbl B,
+   skip LBL, ;
+
 variable CFSK
 variable CFSK2
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
@@ -812,11 +832,30 @@ variable CFSK2
    hxtm execute
    lmainlbl B,
    CFSK @ LBL, ;
+\ cfbn-entry: like cfb-entry but the register path neither spills nor saves —
+\ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
+\ Lvdrop (which only relabels the VS, no emission).
+: cfbn-entry {: lmainlbl kwvar kwlen hxtm hxtr :}
+   NEWLBL CFSK !  NEWLBL CFSK2 !
+   0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
+   0 CFSK @ CBZ,
+   6 DATA VSP-CELL LDR,  6 CFSK2 @ CBZ,
+   5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+   7 CFSK2 @ CBNZ,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  14 8 0 LDR,
+   Lvdrop @ BL,
+   hxtr execute
+   lmainlbl B,
+   CFSK2 @ LBL,
+   Lvspill @ BL,
+   hxtm execute
+   lmainlbl B,
+   CFSK @ LBL, ;
 : j-ifr  c-pushcp  8 $B4000000 LIT64,  9 8 14 ORR,  Lcemit @ BL, ;
 : j-whiler  j-ifr ;
-: j-untilr  Lcfpop @ BL,  15 9 0 ADDI,
-   10 15 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
-   8 $B4000000 LIT64,  9 8 14 ORR,  9 9 10 ORR,  Lcemit @ BL, ;
+: j-untilr                                 \ reg flag -> x17 first: the reconcile
+   8 $AA0003F1 LIT64,  7 14 16 LSLI,  9 8 7 ORR,  Lcemit @ BL,   \ may reload into it
+   j-untilx ;
 
 \ ---- MAIN: startup (data stack + mmap + seed dict) then the outer interpreter ----
 : emit-main ( -- )
@@ -882,7 +921,7 @@ variable CFSK2
             0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
             0 76 MOVZ,  16 1 MOVZ,  $80 SVC,                    \ code region full
          cpok LBL,
-         9 1300 MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+         9 1280 MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slot 1280 = CFSTK-OFF
             0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
             0 77 MOVZ,  16 1 MOVZ,  $80 SVC,                    \ dictionary full
          ndok LBL,
@@ -901,7 +940,7 @@ variable CFSK2
          12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,      \ reset locals
          12 0 MOVZ,  12 DATA BODYLEN-CELL STR,                           \ reset body capture
          Lbcap @ BL,             \ seed with the NAME (checker records certified sigs)
-         12 0 MOVZ,  12 DATA VSP-CELL STR,                               \ reset the VS
+         12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,     \ reset the VS
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
          9 $D10043FF LIT64,  Lcemit @ BL,                  \ prologue: sub sp,sp,#16
          9 $F90003FE LIT64,  Lcemit @ BL,                  \   str x30,[sp]  (slot.addr points here)
@@ -952,11 +991,11 @@ variable CFSK2
       lmain Lkwif     2 ['] j-if   ['] j-ifr    cfb-entry
       lmain Lkwthen   4 ['] j-then   cf-entry
       lmain Lkwelse   4 ['] j-else   cf-entry
-      lmain Lkwbegin  5 ['] j-begin  cf-entry
-      lmain Lkwuntil  5 ['] j-until ['] j-untilr cfb-entry
-      lmain Lkwagain  5 ['] j-again  cf-entry
+      lmain Lkwbegin  5 ['] j-begin  cfn-entry
+      lmain Lkwuntil  5 ['] j-until ['] j-untilr cfbn-entry
+      lmain Lkwagain  5 ['] j-again  cfn-entry
       lmain Lkwwhile  5 ['] j-while ['] j-whiler cfb-entry
-      lmain Lkwrepeat 6 ['] j-repeat cf-entry
+      lmain Lkwrepeat 6 ['] j-repeat cfn-entry
       lmain Lkwsq     2 ['] c-sdq    cf-entry            \ S" string"
       lmain Lkwbtick  3 ['] c-btick  cf-entry            \ ['] NAME
       lmain Lkwdo     2 ['] j-do     cf-entry            \ DO
@@ -1034,6 +1073,7 @@ variable CFSK2
    NEWLBL Lvtop2c !  NEWLBL Lvfoldput !
    NEWLBL Lvralloc !  NEWLBL Lvmovk !  NEWLBL Lvforcek !  NEWLBL Lvbinprep !  NEWLBL Lvpushr !
    NEWLBL Lvdrop !  NEWLBL Lvswapx !  NEWLBL Lvnipx !  NEWLBL Lvcopy !
+   NEWLBL Lvsnap !  NEWLBL Lvrecon !
    NEWLBL Lkwplus !  NEWLBL Lkwminus !  NEWLBL Lkwstar !
    NEWLBL Lkwand2 !  NEWLBL Lkwor2 !  NEWLBL Lkwxor2 !
    NEWLBL Lkwdup2 !  NEWLBL Lkwdrop2 !  NEWLBL Lkwswap2 !

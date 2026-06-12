@@ -36,7 +36,7 @@ def defs(path):
 # words whose two implementations legitimately differ structurally (gforth idioms
 # vs subset idioms: swap/?do/locals-helpers). Their OUTPUT is still byte-golden-
 # checked; the lint covers the near-transcription emitters where divergence hides.
-ALLOW = {'EMIT-FORTH','FPRIM','FPRIM-L','c-emitw','cf-entry','emit-dict','emit-main',
+ALLOW = {'EMIT-FORTH','FPRIM','FPRIM-L','c-emitw','cf-entry','cfn-entry','emit-dict','emit-main',
          'reg-prim','(sigact)','emit-crash-handler','emit-source','CRH-INIT'}
 
 fail = 0

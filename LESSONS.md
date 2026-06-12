@@ -1211,3 +1211,37 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   j-do pushes a frame + records loop-top; j-loop bumps the index, compares, b.lt back,
   pops the frame on exit; j-i pushes the index. Nesting works (frame stack). Encodings
   computed offline and emitted as fixed words — verified with sum/factorial/nested.
+
+## vsjit — loop-resident registers (2026-06-12)
+
+- BEGIN loops now keep their stack values in registers across iterations:
+  j-begin forces every VS entry into a register (Lvsnap: con->movz emitted once,
+  BEFORE the loop top) and pushes (k, packed-regs) on a snapshot stack
+  ($358/$360); the back edges (until/again/repeat) reconcile (Lvrecon): if the
+  VS is exactly the snapshot, NOTHING is emitted — zero-cost back edge; else
+  spill-all + k pops into the snapshot registers. The branch tests x17 (never
+  a VS register), so a reconcile reload can't clobber the flag. 30M-iteration
+  `0 begin 1+ dup 30000000 >= until` went 0.25s -> 0.016s (body: 8 instrs,
+  zero memory traffic). Anything that spills mid-loop (calls, if/then, do)
+  still works — the back edge reloads the snapshot from memory.
+- WHILE keeps the spill-everything exit convention (cfb-entry): the exit path
+  and body2 both see memory state; repeat reloads the snapshot for the back
+  edge and then RESETS the compile-time VS to empty, because the live exit
+  path arrives from WHILE's spilled state, not from the back edge's.
+- Cache-flush stride bug (SIGILL, nondeterministic): a DC CVAU/IC IVAU loop
+  stepping 64 from an UNALIGNED start skips the final cache line whenever
+  start+len crosses fewer strides than lines. Lflush only worked before
+  because region+DICT-SIZE was line-aligned; flushing [word-start, CP) needs
+  `start & ~63` first. Symptom: SIGILL at pc near CP, executing stale zeros;
+  appears/disappears with unrelated code-size changes.
+- Latent-overlap lesson: the dict-full guard said 1300 but CFSTK-OFF/DREC =
+  $F000/48 = 1280 — slots 1280..1299 overlay the CF stack. Survived for
+  months because the only writer (`:`'s CFSP reset) repaired cell 0 and
+  nothing READ the clobbered slots; became a SEGV the day Lflush started
+  reading slot.addr (DC CVAU on 0). A guard limit must come from the layout
+  constants, not a round number.
+- Image growth (engine + embedded source) needed MPAGE $20000 -> $40000:
+  size-check via PASS1 (computes length without writing) BEFORE PASS2 touches
+  SCODE — the old post-write guard segfaulted before it could fire. Growing
+  the image breaks tools/build.sh by design (the OLD embedded builder refuses
+  the bigger emit, exit 73) — capacity changes go through tools/bootstrap.sh.
