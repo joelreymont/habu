@@ -24,6 +24,8 @@ require crash.fs           \ in-binary crash handler (register dump on signal)
 25 constant PEND    26 constant DBASE  27 constant NDICT  28 constant CP
 
 $100000 constant REGION       \ mmap region size (1 MB)
+$300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
+$340000000 constant DATA-VA  \ FIXED data VA
 $10000  constant DICT-SIZE     \ dict area at region+0 (64 KB); code area follows
 48      constant DREC          \ dict record: addr(8) clen(8) namelen(8) name(16) wid(8)
 $F000   constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
@@ -1310,8 +1312,12 @@ variable CFSK2
    RBASE Lanchor @ ADR,                              \ x20 = __TEXT base
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  XDS SP 0 ADDI,                  \ data stack on machine sp
    \ mmap(0, REGION, PROT_READ|WRITE=3, MAP_ANON|MAP_PRIVATE=0x1002, -1, 0)
-   0 0 MOVZ,  1 REGION LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 RBASE-VA LIT64,  1 REGION LIT64,  2 3 MOVZ,  3 $1012 LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
+   5 RBASE-VA LIT64,  0 5 CMP,
+   NEWLBL {: rvok :}  C-EQ rvok BCOND,
+      0 78 MOVZ,  NR-EXIT SYS,                         \ fixed VA taken: die loudly
+   rvok LBL,
    DBASE 0 0 ADDI,                                    \ x26 = region
    CP DBASE 0 ADDI,  5 DICT-SIZE LIT64,  CP CP 5 ADD, \ x28 = region + DICT-SIZE
    \ seed runtime dict from build-time dict (convert offsets -> absolute addr + clen)
@@ -1329,8 +1335,12 @@ variable CFSK2
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL,
    \ separate always-RW data region (x20 is free after the seed copy); [x20]=DP=x20+8
-   0 0 MOVZ,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 DATA-VA LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 $1012 LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
+   5 DATA-VA LIT64,  0 5 CMP,
+   NEWLBL {: dvok :}  C-EQ dvok BCOND,
+      0 78 MOVZ,  NR-EXIT SYS,
+   dvok LBL,
    20 0 RBASE-CELL STR,                               \ save RBASE (x20=__TEXT base) into the data region
    DATA 0 0 ADDI,
    XDS DATA S0-CELL STR,                              \ save data-stack base for `.s`

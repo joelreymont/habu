@@ -7,6 +7,8 @@
 20 constant RBASE   21 constant INP    22 constant INE   23 constant TKA   24 constant TKL
 25 constant PEND    26 constant DBASE  27 constant NDICT  28 constant CP
 $100000 constant REGION
+$300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
+$340000000 constant DATA-VA  \ FIXED data VA
 $10000  constant DICT-SIZE
 48      constant DREC
 $F000   constant CFSTK-OFF

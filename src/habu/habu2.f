@@ -627,14 +627,18 @@ s" cfbn-entry" s" n n n n n --" trust
    j-untilx ;
 
 : em-startup
-   NEWLBL NEWLBL {: scopy scdone :}
+   NEWLBL NEWLBL NEWLBL NEWLBL {: scopy scdone rvok dvok :}
    Lanchor @ LBL,
    RBASE Lanchor @ ADR,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    XDS SP 0 ADDI,
-   0 0 MOVZ,  1 REGION LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 RBASE-VA LIT64,  1 REGION LIT64,  2 3 MOVZ,  3 $1012 LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
+   5 RBASE-VA LIT64,  0 5 CMP,
+   C-EQ rvok BCOND,
+      0 78 MOVZ,  NR-EXIT SYS,
+   rvok LBL,
    DBASE 0 0 ADDI,
    CP DBASE 0 ADDI,  5 DICT-SIZE LIT64,  CP CP 5 ADD,
    11 Lncount @ ADR,  11 11 0 LDR,  NDICT 11 0 ADDI,
@@ -649,8 +653,12 @@ s" cfbn-entry" s" n n n n n --" trust
       5 9 40 LDR,  5 10 40 STR,
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL,
-   0 0 MOVZ,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 DATA-VA LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 $1012 LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
+   5 DATA-VA LIT64,  0 5 CMP,
+   C-EQ dvok BCOND,
+      0 78 MOVZ,  NR-EXIT SYS,
+   dvok LBL,
    20 0 RBASE-CELL STR,
    DATA 0 0 ADDI,
    XDS DATA S0-CELL STR,
