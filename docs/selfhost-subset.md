@@ -57,7 +57,7 @@ literals, remove names the file defines (`:`/`VARIABLE`/`CONSTANT`/`CREATE`/loca
 remove the subset words above. The remainder must be empty.
 
 Files checked: `sha256.f util.f asm.f icode.f mnem.f macho.f sign2.f
-checker.f render.f disasm.f habu1.f habu2.f vsjit.f rt.f crash.f prof.f stage2.f` — **408 defined words, residual gap = 0**.
+checker.f render.f disasm.f habu1.f habu2.f jit.f rt.f crash.f prof.f stage2.f` — **408 defined words, residual gap = 0**.
 
 The guard is `test/t-sh-coload.fs`, wired into `test/selfhost-all.fs`: it concatenates
 the codegen-layer sources and compiles them under the standalone itself. The standalone

@@ -128,7 +128,7 @@ variable Lkwdoes variable Lkwquot variable Lkwsemiq
 
 9 constant A   10 constant B   11 constant C
 require prof.fs           \ in-binary sampling profiler (emitters + prims)
-require vsjit.fs          \ runtime abstract value stack for the : compiler
+require jit.fs          \ runtime abstract value stack for the : compiler
 
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
 : b+   B g-pop  A g-pop  A A B ADD,  A g-push ;
@@ -1688,7 +1688,7 @@ variable CFSK2
    emit-prims  emit-prof-prims  emit-fp-prims  emit-cemit  emit-bcap  emit-tok  emit-prot  emit-flush  emit-find  emit-num
    emit-create  emit-doespatch
    emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-cmpkw  emit-unkw  emit-crash-handler  emit-hex
-   emit-profdump  emit-prof  emit-vsjit
+   emit-profdump  emit-prof  emit-jit
    emit-dict                                              \ after #PL is final
    Lsrc @ LBL,  r> SRCN @ BYTES, ;
 

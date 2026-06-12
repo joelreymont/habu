@@ -981,7 +981,7 @@ variable SRCA
    emit-prims  emit-prof-prims  emit-fp-prims  emit-cemit  emit-bcap  emit-tok  emit-prot  emit-flush  emit-find  emit-num
    emit-create  emit-doespatch
    emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-cmpkw  emit-unkw  emit-crash-handler  emit-hex
-   emit-profdump  emit-prof  emit-vsjit
+   emit-profdump  emit-prof  emit-jit
    emit-dict
    Lsrc @ LBL,  SRCA @ SRCN @ BYTES, ;
 s" emit-forth" s" n n --" trust

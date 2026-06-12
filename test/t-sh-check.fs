@@ -54,7 +54,7 @@ T{ s" : T1 [: 7 ;] execute . ;"                   CHK2 s\" -1\n" compare 0= -> t
 T{ s" : TB 1.5 [: 1 + ;] execute . ;"             CHK2 s\" 0\n"  compare 0= -> true }T
 T{ s" : W [: dup execute ;] dup execute ;"        CHK2 s\" 0\n"  compare 0= -> true }T
 T{ s" : dip swap >r execute r> ; : T 10 3 [: 2 * ;] dip + . ; T" CHK2 s\" -1\n1\n23\n" compare 0= -> true }T
-\ regression: the vsjit fold helpers must not shadow the FLOAT prims (they
+\ regression: the jit fold helpers must not shadow the FLOAT prims (they
 \ were named f+/f-/f* once — any toolchain-loaded engine lost float ops and
 \ their checker sigs).
 T{ s" : FF 1 1 f+ . ;"   CHK2 s\" 0\n"  compare 0= -> true }T

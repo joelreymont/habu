@@ -87,7 +87,7 @@ s" /usr/bin/false" PATHZ run-rc 1 T=
 
 
 \ floats (the f+ prim must be the FLOAT op — it was once shadowed by a
-\ vsjit fold helper named f+)
+\ jit fold helper named f+)
 : TFP 1.5 2.5 f+ 4.0 f= ;
 TFP -1 T=
 : TFL 1.5 2.5 f< ;

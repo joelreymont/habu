@@ -1,27 +1,18 @@
-\ vsjit.fs — the runtime ABSTRACT VALUE STACK for the engine's `:` compiler (the
-\ vs.fs register-allocator model, re-expressed as JIT-compiler routines). While a
-\ word compiles, the top of the data stack is tracked as VS entries — tag 1 = a
-\ known CONSTANT (no code emitted yet), tag 0 = live in a REGISTER (x9..x15) — and
-\ Lvspill materializes all of them as real [x19] pushes (bottom-up) whenever a
-\ consumer needs the plain memory-stack convention (a call, control flow, `;`).
-\ After a spill the VS is simply EMPTY: no third "mem" tag — spilled values are
-\ ordinary stack cells. State lives in DATA header cells, reset at `:`.
-
-require asm.fs
-require regalloc.fs
-
+\ jit.fs — runtime abstract value stack for the `:` compiler, transcribed from
+\ bootstrap/cg/jit.fs for the engine-builder port (lockstep; goldens enforce parity).
+\ Tag 1 = constant (no code yet), tag 0 = live register; Lvspill materializes all
+\ entries as [x19] pushes bottom-up and empties the VS. State in DATA header cells.
+\ Load after prof.fs, before habu2.f.
 variable Lvspill   variable Lvlitpush   variable Lvpushc
 variable Lvtop2c   variable Lvfoldput
 variable Lvmovk  variable Lvforcek  variable Lvbinprep  variable Lvpushr
-$200 constant VSP-CELL          \ VS depth
-$210 constant VTAG-OFF          \ 32 tag bytes   (1=con, 0=reg)
-$250 constant VVAL-OFF          \ 32 value cells (constant or register number)
+$200 constant VSP-CELL
+$210 constant VTAG-OFF
+$250 constant VVAL-OFF
 32   constant VSMAX
-$F9000260 constant W-PUSHR      \ str xR,[x19]  (or with R)
+$F9000260 constant W-PUSHR
 
-\ Lvlitpush ( x11=val ) : emit movz/movk x9,val + push — the c-lit sequence as a
-\ BL-able routine (the dispatch's inline c-lit becomes a call to this).
-: emit-vlitpush ( -- )
+: emit-vlitpush
    Lvlitpush @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
    14 16 MOVZ,  Lvmovk @ BL,                            \ movz/movk x16,val (x16: never pooled)
@@ -29,11 +20,9 @@ $F9000260 constant W-PUSHR      \ str xR,[x19]  (or with R)
    9 W-PUSH1 LIT64,  Lcemit @ BL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-\ Lvspill ( -- ) : emit pushes for every VS entry bottom-up, then VS = empty and
-\ all registers free. The one bridge from register-tracked to plain memory stack.
-: emit-vspill ( -- )
+: emit-vspill
    Lvspill @ LBL,
-   NEWLBL {: vl :}  NEWLBL {: vd :}  NEWLBL {: vcon :}  NEWLBL {: vnext :}
+   NEWLBL NEWLBL NEWLBL NEWLBL {: vl vd vcon vnext :}
    SP SP 16 SUBI,  30 SP 0 STR,
    5 0 MOVZ,  5 SP 8 STR,                                   \ k (in the frame: the
    vl LBL,                                                  \ helper calls clobber x5)
@@ -51,8 +40,7 @@ $F9000260 constant W-PUSHR      \ str xR,[x19]  (or with R)
    6 VRALL MOVZ,  6 DATA VRFREE-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-\ Lvpushc ( x11=val ) : record a constant on the VS (no code); spill first if full.
-: emit-vpushc ( -- )
+: emit-vpushc
    Lvpushc @ LBL,
    NEWLBL {: room :}
    SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
@@ -65,9 +53,8 @@ $F9000260 constant W-PUSHR      \ str xR,[x19]  (or with R)
    6 6 1 ADDI,  6 DATA VSP-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-
 \ Lvtop2c ( -- x13=ok x11=a x12=b ) : are the top two VS entries constants? (no pop)
-: emit-vtop2c ( -- )
+: emit-vtop2c
    Lvtop2c @ LBL,
    NEWLBL {: no :}
    13 0 MOVZ,
@@ -80,7 +67,7 @@ $F9000260 constant W-PUSHR      \ str xR,[x19]  (or with R)
    no LBL,  RET, ;
 
 \ Lvfoldput ( x11=result ) : val[VSP-2] = result (still con), VSP--
-: emit-vfoldput ( -- )
+: emit-vfoldput
    Lvfoldput @ LBL,
    6 DATA VSP-CELL LDR,  5 6 2 SUBI,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 STR,
@@ -101,6 +88,7 @@ variable FESK
    Lvfoldput @ BL,
    lmainlbl B,
    FESK @ LBL, ;
+s" fold-entry" s" n n n n --" trust
 
 : vf+ 11 11 12 ADD, ;   \ fold helpers — NOT f+/f-/f*: those are the FLOAT prims
 
@@ -251,6 +239,7 @@ variable FESK2
       9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  Lcemit @ BL,
       lmainlbl B,
    FESK @ LBL, ;
+s" vop-entry" s" n n n n n --" trust
 
 : e+   8 $8B000000 LIT64, ;
 
@@ -451,6 +440,7 @@ variable FESK3
    13 FESK3 @ CBZ,
    lmainlbl B,
    FESK3 @ LBL, ;
+s" vshuf-entry" s" n n n n n --" trust
 
 : xdup   6 DATA VSP-CELL LDR,  5 6 1 SUBI,  Lvcopy @ BL, ;
 
@@ -483,6 +473,7 @@ variable FESK4
       emitxt execute
       lmainlbl B,
    FESK4 @ LBL, ;
+s" vun-entry" s" n n n n n --" trust
 
 : fu1+  11 11 1 ADDI, ;
 
@@ -521,6 +512,6 @@ variable FESK4
    Lkwzeq @ LBL,   s" 0=" BYTES,      Lkwzlt @ LBL,   s" 0<" BYTES,
    Lkwneg2 @ LBL,  s" negate" BYTES,  Lkwinv2 @ LBL,  s" invert" BYTES, ;
 
-: emit-vsjit ( -- )  emit-vlitpush  emit-vspill  emit-vpushc  emit-vtop2c  emit-vfoldput
+: emit-jit  emit-vlitpush  emit-vspill  emit-vpushc  emit-vtop2c  emit-vfoldput
    emit-vralloc  emit-vmovk  emit-vforcek  emit-vbinprep  emit-vpushr
    emit-vdrop  emit-vswapx  emit-vnipx  emit-vcopy  emit-vsnap  emit-vrecon ;

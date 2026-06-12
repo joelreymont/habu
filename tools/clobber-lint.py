@@ -32,9 +32,9 @@ False positives go in ALLOW with a reason.
 import re, sys, pathlib
 
 FILES = [
-    "bootstrap/cg/forth.fs", "bootstrap/cg/vsjit.fs", "bootstrap/cg/regalloc.fs", "bootstrap/cg/prof.fs",
+    "bootstrap/cg/forth.fs", "bootstrap/cg/jit.fs", "bootstrap/cg/regalloc.fs", "bootstrap/cg/prof.fs",
     "bootstrap/cg/rt.fs", "bootstrap/cg/crash.fs",
-    "src/habu/habu1.f", "src/habu/habu2.f", "src/habu/vsjit.f", "src/habu/regalloc.f",
+    "src/habu/habu1.f", "src/habu/habu2.f", "src/habu/jit.f", "src/habu/regalloc.f",
     "src/habu/prof.f", "src/habu/rt.f", "src/habu/crash.f",
 ]
 

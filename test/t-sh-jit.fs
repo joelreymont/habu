@@ -1,7 +1,7 @@
-\ t-sh-vsjit.fs — adversarial audit of the register-allocating : compiler (vsjit):
+\ t-sh-jit.fs — adversarial audit of the register-allocating : compiler (jit):
 \ every compile-mode path interacting with a LIVE VS (constants and registers):
 \ IF/ELSE arms, loops, locals pops, s"/['] baking, catch/throw, pool exhaustion,
-\ non-VS prims over live entries, VSMAX overflow. Run: gforth test/t-sh-vsjit.fs -e bye
+\ non-VS prims over live entries, VSMAX overflow. Run: gforth test/t-sh-jit.fs -e bye
 require sh-driver.fs
 : OUT ( a u -- a u )  0 CL !  +B  CBUF CL @ NF-RUN  NFOUT 2@ ;
 T{ s" : T {: a :} 5 a 0 > if 1 + then . ; 3 T"        OUT s\" 6\n"      compare 0= -> true }T

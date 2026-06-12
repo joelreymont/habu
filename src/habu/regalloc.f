@@ -4,10 +4,10 @@
 \   - VRFREE-CELL: the free bitmask in the DATA header
 \   - Lvralloc: grab a free register ( -- x14=reg | 0 )
 \ Allocator-state TOUCHPOINTS elsewhere (they or/eor the mask directly):
-\   vsjit.f: Lvspill (reset to VRALL), Lvdrop/Lvnipx (free), Lvbinprep (free
+\   jit.f: Lvspill (reset to VRALL), Lvdrop/Lvnipx (free), Lvbinprep (free
 \   rm), Lvpushr (re-claim after spill), Lvrecon (rebuild from snapshot)
 \   habu2.f: the `:` reset and j-repeat's exit-path reset (VRALL store)
-\ Load after mnem.f/sys.f, before vsjit.f.
+\ Load after mnem.f/sys.f, before jit.f.
 
 variable Lvralloc
 $208 constant VRFREE-CELL       \ free-register bitmask, bit r-9 for x9..x15
