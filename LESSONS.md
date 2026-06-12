@@ -1360,3 +1360,23 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   Prim names must avoid the DSL register/constant namespace.
 - Fixed VAs also make crashes DETERMINISTIC across runs (same pc every time) —
   worth it for debuggability alone.
+
+## Gap sweep — shadowing, raw spawn ABI, stale binaries (2026-06-12)
+
+- Prim shadowing is a CLASS: any toolchain `: name` silently replaces the
+  prim in the dict (later-wins) AND in the checker's sig scan. The vsjit fold
+  helpers named f+/f-/f* erased the float prims on every toolchain-loaded
+  engine — found only by probing a warm snapshot. tools/shadow-lint.py now
+  gates it.
+- The RAW darwin posix_spawn (syscall 244) is NOT the libc signature: FIVE
+  args (&pid, path, adesc, argv, envp) — adesc folds file_actions+attr; pass
+  libc's six and the kernel reads your argv as envp. Errors via carry OR
+  errno-in-x0 (check both); guard wait4 the same way or a failed spawn
+  "succeeds" with a garbage status read.
+- `build.sh >/dev/null` hid a build death for THREE debug cycles — the
+  engine kept running stale code while I "fixed" it (the run-rc results never
+  changed). Echo of the 15-second rule: never silence the build step while
+  debugging the thing it builds.
+- The engine's 16-locals cap bit the em-startup label group (18 names) — the
+  CFSK-style label-variable pattern is the relief valve; removing the cap
+  properly (FP-relative frames) is dot caf-6998fb7b.
