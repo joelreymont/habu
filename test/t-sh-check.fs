@@ -24,3 +24,11 @@ T{ s" : D1 0 5 0 do i + loop . ;"                  CHK2 s\" -1\n" compare 0= -> 
 T{ s" : G 1.5 ; : B G 1 + ;"                       CHK2 s\" -1\n0\n" compare 0= -> true }T
 T{ s\" : SD s\" hi\" type ; : TK ['] SD drop ;"    CHK2 s\" -1\n-1\n" compare 0= -> true }T
 T{ s" : NG -1 $FF and . ;"                         CHK2 s\" -1\n" compare 0= -> true }T
+\ return-row modeling: >r/r>/r@ typed; a definition must leave the return
+\ stack balanced (ANS 3.2.3.3) — net push, net pop, or per-iteration loop
+\ growth is a type error.
+T{ s" : RB 5 >r 3 r@ + r> + . ;"                  CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : RX >r ;"                                  CHK2 s\" 0\n"  compare 0= -> true }T
+T{ s" : RY r> drop ;"                             CHK2 s\" 0\n"  compare 0= -> true }T
+T{ s" : RZ 0 begin >r 1+ dup 5 >= until drop ;"   CHK2 s\" 0\n"  compare 0= -> true }T
+T{ s" : RC 7 >r 1 if r@ else 0 then r> drop + . ;" CHK2 s\" -1\n" compare 0= -> true }T

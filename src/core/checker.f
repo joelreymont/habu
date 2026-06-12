@@ -40,8 +40,35 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 variable FV
 : FRESH FV @ MAXTV 1 - > IF s" checker: out of typevars" 76 die THEN  FV @ dup 1 + FV ! ;
 variable OK   variable DCUR   variable UNCK   variable BROW
-: NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! FRESH MK-ROW dup BROW ! DCUR ! ;
+variable RCUR   variable RBROW
+: NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV !
+   FRESH MK-ROW dup BROW ! DCUR !
+   FRESH MK-ROW dup RBROW ! RCUR ! ;
 : STEP {: din dout :} DCUR @ din UNIFY OK @ and OK ! dout DCUR ! ;
+
+\ --- return row: >r r> r@ transfer types between DCUR and RCUR. A definition
+\ must leave the return row exactly as it found it (ANS 3.2.3.3) — the final
+\ balance check rejects net growth or borrowing; loop joins unify RCUR too.
+: RS->R                                    \ >r : data top -> return row
+   FRESH MK-VAR FRESH MK-ROW {: tv rest :}
+   DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
+   rest DCUR !  tv RCUR @ MK-PUSH RCUR ! ;
+: RSR>                                     \ r> : return top -> data row
+   FRESH MK-VAR FRESH MK-ROW {: tv rest :}
+   RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
+   rest RCUR !  tv DCUR @ MK-PUSH DCUR ! ;
+: RSR@                                     \ r@ : peek return top
+   FRESH MK-VAR FRESH MK-ROW {: tv rest :}
+   RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
+   tv DCUR @ MK-PUSH DCUR ! ;
+variable RSH
+: RS-TOK? {: a u :}
+   -1 RSH !
+   a u s" >r" STR= IF RS->R ELSE
+   a u s" r>" STR= IF RSR> ELSE
+   a u s" r@" STR= IF RSR@ ELSE
+   0 RSH ! THEN THEN THEN
+   RSH @ ;
 
 \ --- generic signature parser: build a step effect from a textual " in -- out "
 \ stack effect. A single lowercase letter is a polymorphic type variable (shared
@@ -232,51 +259,61 @@ variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  varia
        LI @ cells LOCTV + @  DCUR @ MK-PUSH DCUR !  -1 LRF ! THEN
    REPEAT  LRF @ ;
 \ --- control flow: branch states saved on a CF stack and unified at joins.
+\ Both rows are snapshot: A/B = data, RA/RB = return (PLAN: net growth on
+\ either row at a back edge is a row-occurs failure).
 \ kinds: 1 if  2 if+else  3 begin  4 begin+while  5 do
 create CFKND 32 cells allot   create CFSA 32 cells allot   create CFSB 32 cells allot
-variable #CFC  variable CTMP  variable CFH  variable INDO
-: CF-PUSH {: k s0 s1 :}
+create CFRA 32 cells allot    create CFRB 32 cells allot
+variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
+: CF-PUSH {: k s0 s1 r0 r1 :}
    #CFC @ 31 > IF -1 UNCK ! ELSE
      k #CFC @ cells CFKND + !  s0 #CFC @ cells CFSA + !  s1 #CFC @ cells CFSB + !
+     r0 #CFC @ cells CFRA + !  r1 #CFC @ cells CFRB + !
      #CFC @ 1 + #CFC ! THEN ;
 : CF@K #CFC @ 1 - cells CFKND + @ ;
 : CF@A #CFC @ 1 - cells CFSA + @ ;
 : CF@B #CFC @ 1 - cells CFSB + @ ;
+: CF@RA #CFC @ 1 - cells CFRA + @ ;
+: CF@RB #CFC @ 1 - cells CFRB + @ ;
 : CF-DROP #CFC @ 1 - #CFC ! ;
 : CF-MT? #CFC @ 0 > 0= ;
 : SUNI {: s :}  DCUR @ s UNIFY OK @ and OK ! ;
-: CF-IF  s" a --" PARSE-SIG  1 DCUR @ 0 CF-PUSH ;
+: RSUNI {: s :}  RCUR @ s UNIFY OK @ and OK ! ;
+: CF-IF  s" a --" PARSE-SIG  1 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 : CF-ELSE
    CF-MT? IF -1 UNCK ! ELSE CF@K 1 <> IF -1 UNCK ! ELSE
      DCUR @ CTMP !  CF@A DCUR !
+     RCUR @ RTMP !  CF@RA RCUR !
      2 #CFC @ 1 - cells CFKND + !
      CTMP @ #CFC @ 1 - cells CFSB + !
+     RTMP @ #CFC @ 1 - cells CFRB + !
    THEN THEN ;
 : CF-THEN
    CF-MT? IF -1 UNCK ! ELSE
-     CF@K 1 = IF CF@A SUNI CF-DROP ELSE
-     CF@K 2 = IF CF@B SUNI CF-DROP ELSE -1 UNCK ! THEN THEN THEN ;
-: CF-BEGIN  3 DCUR @ 0 CF-PUSH ;
+     CF@K 1 = IF CF@A SUNI CF@RA RSUNI CF-DROP ELSE
+     CF@K 2 = IF CF@B SUNI CF@RB RSUNI CF-DROP ELSE -1 UNCK ! THEN THEN THEN ;
+: CF-BEGIN  3 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 : CF-UNTIL
    s" a --" PARSE-SIG
    CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
-     CF@A SUNI  CF@A DCUR !  CF-DROP THEN THEN ;
+     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP THEN THEN ;
 : CF-AGAIN
    CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
-     CF@A SUNI  CF@A DCUR !  CF-DROP THEN THEN ;
+     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP THEN THEN ;
 : CF-WHILE
    s" a --" PARSE-SIG
    CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
      4 #CFC @ 1 - cells CFKND + !
      DCUR @ #CFC @ 1 - cells CFSB + !
+     RCUR @ #CFC @ 1 - cells CFRB + !
    THEN THEN ;
 : CF-REPEAT
    CF-MT? IF -1 UNCK ! ELSE CF@K 4 <> IF -1 UNCK ! ELSE
-     CF@A SUNI  CF@B DCUR !  CF-DROP THEN THEN ;
-: CF-DO  s" n n --" PARSE-SIG  5 DCUR @ 0 CF-PUSH ;
+     CF@A SUNI  CF@B DCUR !  CF@RA RSUNI  CF@RB RCUR !  CF-DROP THEN THEN ;
+: CF-DO  s" n n --" PARSE-SIG  5 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 : CF-LOOP
    CF-MT? IF -1 UNCK ! ELSE CF@K 5 <> IF -1 UNCK ! ELSE
-     CF@A SUNI  CF@A DCUR !  CF-DROP THEN THEN ;
+     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP THEN THEN ;
 : CF-I
    0 INDO !  0 BEGIN dup #CFC @ < WHILE
      dup cells CFKND + @ 5 = IF -1 INDO ! THEN  1 + REPEAT drop
@@ -315,9 +352,11 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
    LMODE @ IF TKF TFU @ LOC-TOK ELSE
    TKF TFU @ s" {:" STR= IF 1 LMODE !  #LOC @ LGRP ! ELSE
    TKF TFU @ CF-TOK? 0= IF
+   TKF TFU @ RS-TOK? 0= IF
    TKF TFU @ LOC-REF? 0= IF
-   TKF TFU @ DO-TOK THEN THEN THEN THEN THEN THEN ;
+   TKF TFU @ DO-TOK THEN THEN THEN THEN THEN THEN THEN ;
 : CHECK {: a u :} a TBASE ! u TBLEN ! NEW 0 TI ! 1 TOK0 ! 0 NMU ! 0 #LOC ! 0 LMODE ! 0 #CFC ! BEGIN TI @ TBLEN @ < WHILE BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 = and WHILE TI @ 1 + TI ! REPEAT TI @ TBLEN @ < IF TBASE @ TI @ + TSTART ! BEGIN TI @ TBLEN @ < TBASE @ TI @ + c@ 32 <> and WHILE TI @ 1 + TI ! REPEAT TSTART @ TBASE @ TI @ + TSTART @ - DO-TOK1 THEN REPEAT
    LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
+   RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN   \ return row must balance
    UNCK @ IF 1 ELSE OK @ THEN
    dup -1 = NMU @ 0 > and RECXT @ 0 <> and IF NMA @ NMU @ RECXT @ execute THEN ;
