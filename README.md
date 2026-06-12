@@ -33,7 +33,8 @@ built-in checker, and **rebuilds itself byte-for-byte** (stage2 fixpoint):
 echo ': SQ dup * ; 7 SQ .' | bin/hbi    # batch: program from stdin
 bin/hbi                                 # on a tty: interactive REPL
                                         #   (line editing, history, error recovery)
-./tools/hb-build.sh prog.f -o prog      # AOT: standalone signed binary
+./tools/hb-build.sh prog.f -o prog      # AOT: standalone signed binary (~17 KB:
+                                        #  tree-shaken to the program's words)
 ```
 
 **The gforth-hosted checker** (bootstrap tier — the full row-polymorphic

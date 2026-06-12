@@ -180,6 +180,14 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **Tree-shaking gates at the registration choke point, not per call site**:
+  every prim (incl. FP + profiler) funnels through FPRIM/FPRIM-L, so one KEEP?
+  check there shakes them all; keyword dispatch entries gate per entry in
+  EM-COMPILE (port-only — the gforth builder never shakes, and goldens always
+  compare keep-all, so boot/port stay byte-identical in the compared mode).
+  Reachability = whitespace-token search over the user program (sound
+  over-approximation; comments keep words alive, nothing used can drop).
+
 - **The engine is LC_MAIN, not LC_UNIXTHREAD**: dyld calls the entry as
   main(argc, argv, envp) in x0-x2 — the kernel start-stack layout (argc at
   [sp]) is NOT there. Capture x0-x2 at the first instructions (x13-x15 are
