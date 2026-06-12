@@ -1268,3 +1268,36 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   a single gforth test file is seconds. Cap commands at 10-20s — a generous
   timeout just delays discovering the code is hanging or the invocation is
   wrong (the "slow stage2 build" was a 0.06s path error).
+
+## Gap-closing wave — engine words, return row, trust, diagnostics (2026-06-12)
+
+- Gap analysis (PLAN/CODEGEN-PLAN/README vs code) found the real gap is the
+  NATIVE checker lagging the bootstrap checker (~11 of 16 milestones), stale
+  status docs ("Part F not started" two days after it shipped), and the
+  return stack missing from BOTH engine and checker. Verify docs against code
+  before planning — three parallel read-only agents did it in one pass.
+- ARM64 `lshift` wraps the count mod 64 (LSLV semantics) in BOTH gforth and
+  the engine: `1 64 lshift 1-` is 0, not -1 — every size-64 element mask in
+  encodeBitMasks silently zeroed. EMASK special-cases e=64. The gforth-side
+  and engine-side bug was identical; one test vector ($FFFFFFFF00000000)
+  caught it only via LROT returning -1.
+- The engine's locals parser treats `--` inside `{: :}` as a LOCAL NAME:
+  `{: x -- n :}` binds three locals and pops three stack cells. Engine-dialect
+  ports must use plain `{: x :}` + a `( x -- n )` comment. (The checker's
+  locguard even flags `--` in locals — the engine itself doesn't.)
+- Interpret-mode `s"` with a transient HERE buffer aliases consecutive
+  strings (`s" a" s" b"` — b clobbers a before a is consumed). It allots now.
+- EXIT/LEAVE forward references chain through the placeholder instruction
+  slots themselves (each placeholder word holds the previous site's code
+  offset; 0 = end), patched by one BL-able walker (Lbchain) at `;` /
+  loop-end. No side tables, nesting via per-level chain heads (LVH).
+- `trust` (the native TRUSTED: escape hatch) is just USIG-ADD exposed with
+  name folding — the checker's later-wins sig scan makes a recorded inference
+  override a trust, which is the right precedence for free.
+- The reject diagnostic hook mirrors RECXT: checker captures (token, expected
+  row, actual row) at the first failing unify; render.f installs DIAGXT and
+  prints `habu: in NAME: at 'TOK' expected: <row> actual: <row>` to stderr.
+  Failure capture must FREEZE on first failure or later tokens overwrite it.
+- gforth test strings holding embedded quotes need `s\"` with `\"` escapes —
+  a plain `s"` ends at the first inner quote and the error points at the
+  wrong word.
