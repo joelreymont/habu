@@ -6,6 +6,7 @@
 require sh-driver.fs
 : GEN ( -- )                              \ build the standalone codegen + run it -> /tmp/sh-cg-bin
    0 CL !
+   s" src/core/util.f"     slurp-file +B   s"  " +B
    s" src/core/sha256.f"   slurp-file +B   s"  " +B
    s" src/arch/arm64/asm.f"      slurp-file +B   s"  " +B
    s" src/arch/arm64/icode.f"    slurp-file +B   s"  " +B
@@ -15,5 +16,6 @@ require sh-driver.fs
    CBUF CL @ NF-RUN ;
 : RC ( -- n )  s" /tmp/sh-cg-bin; echo $? > /tmp/sh-cg-rc" system
    s" /tmp/sh-cg-rc" slurp-file  s>number? 2drop ;
+s" rm -f /tmp/sh-cg-bin /tmp/sh-cg-rc" system
 GEN
 T{ RC -> 15 }T

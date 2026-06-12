@@ -30,7 +30,7 @@ T{ GEN  EB EL @ compare 0= -> true }T
    0 CL !
    s" src/core/sha256.f" +F  s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F
    s" src/arch/arm64/mnem.f" +F  s" src/core/util.f" +F
-   s" src/os/macos/sys.f" +F  s" src/os/macos/env.f" +F  s" src/habu/rt.f" +F  s" src/habu/crash.f" +F  s" src/os/macos/macho.f" +F
+   s" src/os/macos/sys.f" +F  s" src/os/macos/env.f" +F  s" src/habu/treeshake.f" +F  s" src/habu/rt.f" +F  s" src/habu/crash.f" +F  s" src/os/macos/macho.f" +F
    s" src/os/macos/sign2.f" +F  s" src/habu/habu1.f" +F  s" src/habu/prof.f" +F  s" src/habu/regalloc.f" +F  s" src/habu/jit.f" +F  s" src/habu/habu2.f" +F
    s" create PZ2 32 allot " +B
    s" : PZ! s" +B  s\" \" /tmp/sh-repl-bin\"" +B
