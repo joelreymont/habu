@@ -13,14 +13,23 @@ $50000 constant MSIZE
 create MBUF MSIZE allot
 variable MP
 variable MLEN
+
 : M-RESET ( -- )  MBUF MP ! ;
+
 : m8  ( b -- )  MP @ c!  1 MP +! ;
+
 : m16 ( h -- )  dup m8  8 rshift m8 ;
+
 : m32 ( w -- )  dup m16  16 rshift m16 ;
+
 : m64 ( x -- )  dup m32  32 rshift m32 ;
+
 : m-here ( -- off )  MP @ MBUF - ;
+
 : m-zeros ( n -- )  0 max 0 ?do 0 m8 loop ;
+
 : m-name16 ( addr u -- )  dup >r  bounds ?do i c@ m8 loop  16 r> - m-zeros ;
+
 : m-pad ( off -- )  m-here - m-zeros ;
 
 \ Mach-O constants
@@ -30,6 +39,7 @@ $0100000C constant CPU-ARM64
 $00000085 constant MH-FLAGS-BASE     \ NOUNDEFS|DYLDLINK|TWOLEVEL
 $00200000 constant MH-PIE
 variable PIE?   PIE? on
+
 : MH-FLAGS ( -- f )  MH-FLAGS-BASE  PIE? @ if MH-PIE or then ;
 $19       constant LC-SEG64
 $0E       constant LC-DYLINKER
@@ -41,6 +51,7 @@ $40000    constant MPAGE              \ __TEXT file/vm size; __LINKEDIT starts h
 
 variable CODELEN
 create SCODE MPAGE allot              \ assembled-code scratch (grows with the standalone)
+
 \ size via PASS1 (computes WPOS without writing) BEFORE PASS2 touches SCODE —
 \ a post-write guard would segfault first on overflow
 : ASM-CODE ( -- )
@@ -76,10 +87,13 @@ variable LE-OFF                       \ file offset of the __LINKEDIT LC (for si
 
 32 constant MH-HDR-SZ                 \ mach_header_64 size
 variable NCMDS                        \ load commands counted as emitted
+
 : LC+ ( -- )  1 NCMDS +! ;            \ each LC emitter calls this
+
 : MH-HDR, ( -- )                      \ ncmds/sizeofcmds back-patched later
    MH-MAGIC64 m32  CPU-ARM64 m32  0 m32  MH-EXECUTE m32
    0 m32  0 m32  MH-FLAGS m32  0 m32 ;
+
 : PATCH-HDR ( -- )                    \ fill ncmds + sizeofcmds from what was emitted
    NCMDS @  MBUF 16 +  l!
    m-here MH-HDR-SZ -  MBUF 20 +  l! ;

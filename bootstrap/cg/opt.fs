@@ -6,12 +6,16 @@
 require icode.fs
 
 : IC-KILL ( i -- )  IC-ADDR IOP-DEAD swap ! ;
+
 : NEXT-OP ( i -- op|-1 )  1+ dup #IC @ < if IC-OP else drop -1 then ;
 
 \ field setters (rewrite a record in place — register allocation, peepholes)
 : IC-OP! ( op i -- )  IC-ADDR ! ;
+
 : IC-A!  ( v i -- )   IC-ADDR cell+ ! ;
+
 : IC-B!  ( v i -- )   IC-ADDR 2 cells + ! ;
+
 : IC-C!  ( v i -- )   IC-ADDR 3 cells + ! ;
 
 19 constant XDS-R     \ data-stack pointer register (matches templ.fs XDS)
@@ -22,8 +26,11 @@ require icode.fs
 \ dead or coalesce a copy into it — that would drop a definition the back-edge
 \ re-reads. walk.fs pins x27/x28 and the carry homes around each register loop.
 create PINNED 32 cells allot
+
 : PIN-RESET ( -- )   32 0 ?do  0 PINNED i cells + !  loop ;
+
 : REG-PIN   ( r -- ) dup 0 32 within if  1 swap cells PINNED + !  else drop then ;
+
 : REG-PINNED? ( r -- f )  dup 0 32 within if  cells PINNED + @ 0<>  else drop false then ;
 PIN-RESET
 
@@ -100,15 +107,23 @@ create OPT-RULES
 create SLOT-REG   NSLOT cells allot      \ reg holding each slot's value, -1 = unknown
 create SLOT-STIDX NSLOT cells allot      \ IC index of the killable store, -1 = none/observed
 variable SF-XOFF                          \ x19 offset (BYTES) from block origin
+
 : SF-RESET ( -- )  0 SF-XOFF !
    NSLOT 0 ?do  -1 SLOT-REG i cells + !  -1 SLOT-STIDX i cells + !  loop ;
+
 : SF-FWD-FLUSH ( -- )  NSLOT 0 ?do  -1 SLOT-REG   i cells + !  loop ;
+
 : SF-ST-LIVE   ( -- )  NSLOT 0 ?do  -1 SLOT-STIDX i cells + !  loop ;  \ pending stores observed
+
 : SF-HARD ( -- )  SF-FWD-FLUSH SF-ST-LIVE  0 SF-XOFF ! ;
+
 : SF-SOFT ( -- )  SF-ST-LIVE ;
+
 : SF-MEM  ( -- )  SF-FWD-FLUSH SF-ST-LIVE ;
+
 : SF-CLOBBER ( r -- )                     \ a register was redefined: drop slots that forward it
    NSLOT 0 ?do  dup SLOT-REG i cells + @ = if -1 SLOT-REG i cells + ! then  loop  drop ;
+
 : SF-SLOT ( ix -- s|-1 )                  \ slot index for a [x19,#off] access, -1 if out of range
    IC-C SF-XOFF @ +  8 /  SLOT-BIAS +  dup 0 NSLOT within 0= if drop -1 then ;
 
@@ -117,6 +132,7 @@ variable SF-XOFF                          \ x19 offset (BYTES) from block origin
    SLOT-STIDX s cells + @ dup 0>= if IC-KILL else drop then   \ DSE the overwritten store
    ix    SLOT-STIDX s cells + !
    ix IC-A  SLOT-REG s cells + ! ;
+
 : SF-LOAD {: ix -- :}
    ix SF-SLOT dup 0< if drop ix IC-A SF-CLOBBER exit then  {: s :}
    ix IC-A {: rB :}
@@ -126,13 +142,16 @@ variable SF-XOFF                          \ x19 offset (BYTES) from block origin
       -1 SLOT-STIDX s cells + !             \ memory read observes the store (keep it)
       rB SF-CLOBBER  rB SLOT-REG s cells + !
    then ;
+
 : SF-DEFINES? ( op -- f )                   \ op writes IC-A as a value register?
    dup IOP-CMP = over IOP-CMPI = or swap IOP-NOP = or 0= ;
 
 \ op category for the boundary classes (STR/LDR/ADDI/SUBI handled inline)
 0 constant CAT-OTHER  1 constant CAT-HARD  2 constant CAT-SOFT  3 constant CAT-MEM
 create OPCAT #IOPS cells allot
+
 : CAT! ( cat iop -- )  cells OPCAT + ! ;
+
 : OPCAT-INIT ( -- )  #IOPS 0 ?do  CAT-OTHER i cells OPCAT + !  loop
    CAT-HARD IOP-LABEL CAT!  CAT-HARD IOP-BL CAT!  CAT-HARD IOP-BLR CAT!
    CAT-HARD IOP-BR CAT!  CAT-HARD IOP-RET CAT!  CAT-HARD IOP-B CAT!
@@ -170,11 +189,13 @@ OPCAT-INIT
 \ later dependence on the intermediate offset — kill both. Iterate to a fixpoint.
 : NEXT-LIVE ( i -- j|-1 )
    begin 1+ dup #IC @ < while  dup IC-OP IOP-DEAD <> if exit then  repeat  drop -1 ;
+
 : X19-DELTA ( i -- delta )                 \ signed x19 change; 0 if not an x19 add/sub
    dup IC-A 19 = over IC-B 19 = and 0= if drop 0 exit then
    dup IC-OP IOP-ADDI = if IC-C exit then
    dup IC-OP IOP-SUBI = if IC-C negate exit then  drop 0 ;
 variable X19-CHG
+
 : X19-CANCEL-PASS ( -- changed? )
    X19-CHG off
    #IC @ 0 ?do
@@ -186,6 +207,7 @@ variable X19-CHG
          then
       then
    loop  X19-CHG @ ;
+
 : X19-CANCEL ( -- )  begin X19-CANCEL-PASS 0= until ;
 
 \ --- shifted-operand fusion -------------------------------------------------
@@ -196,7 +218,9 @@ variable X19-CHG
 \ PRE-shift value) and gets the shift in IC-D.
 : ALU-SHIFTABLE? ( op -- f )                  \ ADD/SUB/AND/ORR/EOR take a shifted rm
    dup IOP-ADD = over IOP-SUB = or over IOP-AND = or over IOP-ORR = or swap IOP-EOR = or ;
+
 : SHIFT-AT ( shtype amt j -- )  >r  swap 6 lshift or  r> IC-ADDR 4 cells + ! ;
+
 : REG-DEAD-AFTER? {: j rd -- f :}             \ rd not read before written/boundary after j
    rd REG-PINNED? if false exit then          \ loop-carried: never provably dead (back-edge)
    j 1+ {: k :}
@@ -208,6 +232,7 @@ variable X19-CHG
          op SF-DEFINES? k IC-A rd = and if true exit then
       then
    1 +to k repeat  true ;
+
 : OPT-SHIFT-FUSE {: i -- :}
    i IC-OP {: op :}
    op IOP-LSLI = op IOP-LSRI = or 0= if exit then
@@ -220,6 +245,7 @@ variable X19-CHG
    j rd REG-DEAD-AFTER? 0= if exit then
    op IOP-LSRI = if SH-LSR else SH-LSL then  i IC-C  j SHIFT-AT   \ fuse shift into the ALU
    i IC-KILL ;
+
 : SHIFT-FUSE ( -- )  #IC @ 0 ?do  i OPT-SHIFT-FUSE  loop ;
 
 \ --- copy propagation / MOV coalescing ---------------------------------------
@@ -246,6 +272,7 @@ variable X19-CHG
          op SF-DEFINES? k IC-A rd = and if exit then          \ rd redefined before any read
       then
    1 +to k repeat ;
+
 : COPY-PROP ( -- )  #IC @ 0 ?do  i OPT-COPY-PROP  loop ;
 
 : OPTIMIZE ( -- )

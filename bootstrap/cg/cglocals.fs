@@ -12,20 +12,26 @@ CHECKING-ON? @  CHECKING-ON? off          \ metaprogramming (loops, name table)
 create CGL-NAME CGL-MAX CGL-NAMESZ chars * allot
 create CGL-LEN  CGL-MAX cells allot
 variable CGL-N        variable CGL-COLLECT?
+
 : cgl-reset ( -- )  0 CGL-N !  CGL-COLLECT? off ;
+
 : cgl-name@ ( i -- a u )  dup CGL-NAMESZ chars * CGL-NAME +  swap cells CGL-LEN + @ ;
+
 : cgl-add ( a u -- )                       \ record a local name, assign the next slot
    CGL-N @ CGL-MAX >= if 1 abort" cg: too many locals" then
    CGL-N @ {: i :}
    dup i cells CGL-LEN + !
    i CGL-NAMESZ chars * CGL-NAME +  swap move
    1 CGL-N +! ;
+
 : cgl-load ( slot -- )  {: slot :}  r-alloc {: r :}  r SP slot 8 * LDR,  r v-pushr ;
+
 : cgl-emit-pops ( -- )                     \ pop declared locals (top = last) into slots
    CGL-N @ 0 ?do
       CGL-N @ 1- i -  {: slot :}
       v-popr {: r :}  r SP slot 8 * STR,  r r-free
    loop ;
+
 : cgl-find ( a u -- f )                    \ names a local? -> emit a load + true; else false
    CGL-N @ 0 ?do
       2dup i cgl-name@ CI= if  2drop  i cgl-load  true  unloop exit  then

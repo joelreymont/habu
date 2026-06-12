@@ -13,6 +13,7 @@ variable CODEGEN-ON?   CODEGEN-ON? off
 
 \ input arity from the declared effect (EF@); default 1 if it won't parse.
 : TRY-ARITY ( -- n )  ARENA-RESET  EF@ PARSE-SIG EFF>DIN STACK-ARITY ;
+
 : BODY-ARITY ( -- n )  ['] TRY-ARITY catch if 1 else ( n ) then ;
 
 : DO-CODEGEN ( -- )

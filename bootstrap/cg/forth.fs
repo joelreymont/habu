@@ -77,17 +77,20 @@ $F2E00009 constant W-MOVK3     \ movk x9,#0,lsl#48
 create PLBL 96 cells allot   create PEL 96 cells allot
 create PLEN 96 cells allot   create PNAM 96 cells allot
 create PNPOOL 1024 chars allot   variable PNP   variable #PL
+
 : reg-prim {: na nu lbl elbl -- :}
    lbl  #PL @ cells PLBL + !
    elbl #PL @ cells PEL  + !
    nu   #PL @ cells PLEN + !
    PNPOOL PNP @ +  {: dst :}   dst #PL @ cells PNAM + !
    na dst nu move   nu PNP +!   1 #PL +! ;
+
 : FPRIM {: na nu xt -- :}            \ define+register a primitive (start..RET..end labels)
    NEWLBL {: lbl :}  NEWLBL {: elbl :}
    na nu lbl elbl reg-prim
    lbl LBL,  SP SP 16 SUBI,  30 SP 0 STR,    \ prologue: save x30 (calls now nest, not inline)
    xt execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  elbl LBL, ;
+
 : FPRIM-L {: na nu xt -- :}          \ LEAF primitive: no BL/BLR in the body, so no
    NEWLBL {: lbl :}  NEWLBL {: elbl :}   \ x30 frame — 2x cheaper calls, fully inlineable
    na nu lbl elbl reg-prim
@@ -112,18 +115,30 @@ variable Lkwchar variable Lkwbchar
 9 constant A   10 constant B   11 constant C
 require prof.fs           \ in-binary sampling profiler (emitters + prims)
 require vsjit.fs          \ runtime abstract value stack for the : compiler
+
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
 : b+   B g-pop  A g-pop  A A B ADD,  A g-push ;
+
 : b-   B g-pop  A g-pop  A A B SUB,  A g-push ;
+
 : b*   B g-pop  A g-pop  A A B MUL,  A g-push ;
+
 : bdup  A g-pop  A g-push  A g-push ;
+
 : bdrop XDS XDS 8 SUBI, ;
+
 : bswap A g-pop  B g-pop  A g-push  B g-push ;
+
 : bdot  A g-pop  g-print9 ;          \ pop x9, print signed decimal + newline
+
 : bu.   A g-pop  g-printu9 ;         \ pop x9, print unsigned decimal + newline
+
 : bemit A g-pop  13 9 0 ADDI,  g-emitc ;   \ ( c -- ) write one byte
+
 : bcr   13 10 MOVZ,  g-emitc ;
+
 : bspace 13 32 MOVZ,  g-emitc ;
+
 \ .s — print the whole data stack (base..top), one signed decimal per line, WITHOUT
 \ consuming it. The loop pointer lives in a DATA cell because g-print9 clobbers x9..x15.
 : b.s
@@ -138,54 +153,102 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
 
 \ comparisons -> Forth flag 0/-1 (CSET 0/1 then negate via the zero register SP)
 : (cmp) {: cond -- :}  B g-pop  A g-pop  A B CMP,  A cond CSET,  A SP A SUB,  A g-push ;
-: b=  C-EQ (cmp) ;   : b<> C-NE (cmp) ;   : b<  C-LT (cmp) ;   : b>  C-GT (cmp) ;
-: b<= C-LE (cmp) ;   : b>= C-GE (cmp) ;
+
+: b=  C-EQ (cmp) ;
+
+: b<> C-NE (cmp) ;
+
+: b<  C-LT (cmp) ;
+
+: b>  C-GT (cmp) ;
+
+: b<= C-LE (cmp) ;
+
+: b>= C-GE (cmp) ;
+
 : b0= A g-pop  A 0 CMPI,  A C-EQ CSET,  A SP A SUB,  A g-push ;
+
 : b0< A g-pop  A 0 CMPI,  A C-LT CSET,  A SP A SUB,  A g-push ;
+
 : b1+ A g-pop  A A 1 ADDI,  A g-push ;
+
 : b1- A g-pop  A A 1 SUBI,  A g-push ;
+
 \ bitwise / logic
 : band B g-pop A g-pop  A A B AND, A g-push ;
+
 : bor  B g-pop A g-pop  A A B ORR, A g-push ;
+
 : bxor B g-pop A g-pop  A A B EOR, A g-push ;
+
 : binv A g-pop  B 0 MOVN,  A A B EOR,  A g-push ;     \ A ^ -1
+
 : bneg A g-pop  A SP A SUB,  A g-push ;               \ 0 - A
+
 \ shifts (variable count); /, mod via SDIV/MUL
 : blsh B g-pop A g-pop  A A B LSLV, A g-push ;
+
 : brsh B g-pop A g-pop  A A B LSRV, A g-push ;
+
 : bdiv B g-pop A g-pop  A A B SDIV, A g-push ;
+
 : bmod B g-pop A g-pop  C A B SDIV,  C C B MUL,  A A C SUB,  A g-push ;
+
 \ stack shuffles (memory on x19)
 : bnip  A g-pop  XDS XDS 8 SUBI,  A g-push ;
+
 : bover B g-pop A g-pop  A g-push B g-push A g-push ;
+
 : btuck B g-pop A g-pop  B g-push A g-push B g-push ;
+
 : brot  C g-pop B g-pop A g-pop  B g-push C g-push A g-push ;
+
 : bmrot C g-pop B g-pop A g-pop  C g-push A g-push B g-push ;
+
 : b2dup B g-pop A g-pop  A g-push B g-push A g-push B g-push ;
+
 : b2drop XDS XDS 16 SUBI, ;
+
 \ memory access (absolute addresses on the stack)
 : bfetch  A g-pop  A A 0 LDR,  A g-push ;
+
 : bstore  B g-pop A g-pop  A B 0 STR, ;               \ ( val addr -- )
+
 : bcfetch A g-pop  A A 0 LDRB, A g-push ;
+
 : bcstore B g-pop A g-pop  A B 0 STRB, ;
+
 : bcells  A g-pop  A A 3 LSLI, A g-push ;             \ n*8
+
 \ data space: DP cell is [x20]; HERE/ALLOT/,/C, bump it (x20 region is always RW)
 : bhere   7 DATA 0 LDR,  7 g-push ;
+
 : ballot  A g-pop  7 DATA 0 LDR,  7 7 A ADD,  7 DATA 0 STR, ;
+
 : bcomma  A g-pop  7 DATA 0 LDR,  A 7 0 STR,  7 7 8 ADDI,  7 DATA 0 STR, ;
+
 : bccomma A g-pop  7 DATA 0 LDR,  A 7 0 STRB, 7 7 1 ADDI,  7 DATA 0 STR, ;
+
 : btype   2 g-pop  1 g-pop  0 1 MOVZ,  16 4 MOVZ,  $80 SVC, ;   \ ( addr len -- ) write(1,..)
+
 \ die ( a u code -- noreturn ): msg to stderr, exit(code). The in-subset abort for
 \ compiler invariant violations — better a loud death than silent memory corruption.
 : bdie    7 g-pop  2 g-pop  1 g-pop  0 2 MOVZ,  16 4 MOVZ,  $80 SVC,
           0 7 0 ADDI,  16 1 MOVZ,  $80 SVC, ;
+
 \ file I/O (path must be NUL-terminated by the caller)
 : bopen   2 g-pop  1 g-pop  0 g-pop  16 5 MOVZ,  $80 SVC,  0 g-push ;   \ ( pathz flags mode -- fd )
+
 : bwrite  2 g-pop  1 g-pop  0 g-pop  16 4 MOVZ,  $80 SVC,  0 g-push ;   \ ( fd buf len -- n )
+
 : bread   2 g-pop  1 g-pop  0 g-pop  16 3 MOVZ,  $80 SVC,  0 g-push ;   \ ( fd buf len -- n )
+
 : bclose  0 g-pop  16 6 MOVZ,  $80 SVC, ;                               \ ( fd -- )
+
 : brbase  9 DATA RBASE-CELL LDR,  9 g-push ;                            \ ( -- rbase ) __TEXT load base
+
 : bexec   A g-pop  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
+
 \ catch ( xt -- exc ) / throw ( exc -- ). Handler frames chain through [x20+8]
 \ (=HND). A frame (48 B on the machine stack) saves: prev-HND, data-sp(x19),
 \ machine-sp, resume-pc (an ADR within this stencil — PC-relative, survives the
@@ -206,6 +269,7 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    9 0 MOVZ,  lpush B,                   \ exc = 0
    lres LBL,                             \ throw lands here (x9=exc, sp/HND/lr restored)
    lpush LBL,  9 g-push ;                \ push exc (0 normal / exc on throw)
+
 : bthrow
    A g-pop                               \ exc -> x9
    11 DATA 8 LDR,                        \ HND
@@ -215,11 +279,16 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,   \ link, resume pc, machine sp
    SP 13 0 ADDI,  12 BR,                 \ restore sp; jump to catch's resume
    lnoh LBL,  0 9 0 ADDI,  16 1 MOVZ,  $80 SVC, ;   \ no handler -> exit(exc)
+
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
 : bwordlist  9 DATA WIDN-CELL LDR,  9 g-push  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
+
 : bgetcur    9 DATA CUR-CELL LDR,  9 g-push ;                                       \ ( -- wid )
+
 : bsetcur    A g-pop  A DATA CUR-CELL STR, ;                                        \ ( wid -- )
+
 : bsetcheck  A g-pop  A DATA HOOK-CELL STR, ;                                       \ ( xt -- ): install check hook
+
 \ search-wl ( a u wid -- addr|0 ): find name (a,u) in wordlist wid (case-folded)
 : bswl
    2 g-pop  1 g-pop  0 g-pop                      \ wid=x2, u=x1, a=x0
@@ -279,20 +348,39 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
 \ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
 : bf+    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FADD,  A 0 FMOVDX,  A g-push ;
+
 : bf-    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FSUB,  A 0 FMOVDX,  A g-push ;
+
 : bf*    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FMUL,  A 0 FMOVDX,  A g-push ;
+
 : bf/    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FDIV,  A 0 FMOVDX,  A g-push ;
+
 : bfneg  A g-pop  0 A FMOVXD,  0 0 FNEG,   A 0 FMOVDX,  A g-push ;
+
 : bfabs  A g-pop  0 A FMOVXD,  0 0 FABS,   A 0 FMOVDX,  A g-push ;
+
 : bfsqrt A g-pop  0 A FMOVXD,  0 0 FSQRT,  A 0 FMOVDX,  A g-push ;
+
 : (fcmp) {: cond :}  B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 1 FCMP,
    A cond CSET,  A SP A SUB,  A g-push ;
-: bf<  C-MI (fcmp) ;   : bf>  C-GT (fcmp) ;   : bf=  C-EQ (fcmp) ;
+
+: bf<  C-MI (fcmp) ;
+
+: bf>  C-GT (fcmp) ;
+
+: bf=  C-EQ (fcmp) ;
+
 : (fcmp0) {: cond :}  A g-pop  0 A FMOVXD,  0 FCMP0,
    A cond CSET,  A SP A SUB,  A g-push ;
-: bf0< C-MI (fcmp0) ;  : bf0= C-EQ (fcmp0) ;
+
+: bf0< C-MI (fcmp0) ;
+
+: bf0= C-EQ (fcmp0) ;
+
 : bs>f  A g-pop  0 A SCVTF,   A 0 FMOVDX,  A g-push ;
+
 : bf>s  A g-pop  0 A FMOVXD,  A 0 FCVTZS,  A g-push ;
+
 : bfdot
    NEWLBL NEWLBL NEWLBL {: fl il sd :}
    A g-pop  15 A 0 ADDI,                               \ bits (sign test later)
@@ -320,6 +408,7 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    0 1 MOVZ,  1 12 0 ADDI,  2 SP 48 ADDI,  2 2 12 SUB,
    16 4 MOVZ,  $80 SVC,
    SP SP 48 ADDI, ;
+
 : emit-fp-prims ( -- )
    s" f+" ['] bf+ FPRIM-L   s" f-" ['] bf- FPRIM-L   s" f*" ['] bf* FPRIM-L
    s" f/" ['] bf/ FPRIM-L   s" fnegate" ['] bfneg FPRIM-L
@@ -499,6 +588,7 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
 \ copy safely. Bodies without the prologue (CREATE/VARIABLE/CONSTANT literal-pushes)
 \ inline whole. Dict clen: prim = end-start-4, user word = set at `;` — both excl RET.
 $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
+
 : c-call ( -- )
    NEWLBL {: lcall :}  NEWLBL {: lcopy :}  NEWLBL {: lscan :}  NEWLBL {: lsbody :}
    NEWLBL {: lnopro :}  NEWLBL {: linl :}  NEWLBL {: ldone :}
@@ -639,25 +729,37 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
+
 : c-popflag ( -- )  $D1002273 c-emitw  $F9400269 c-emitw ;     \ sub x19,#8 ; ldr x9,[x19]
+
 : c-pushcp ( -- )   9 CP 0 ADDI,  Lcfpush @ BL, ;              \ push current CP
+
 : c-bback {: opc mask -- :}                                    \ branch opc back to x9 target
    10 9 CP SUB,  10 10 2 ASRI,  5 mask LIT64,  10 10 5 AND,  9 opc LIT64,  9 9 10 ORR,  Lcemit @ BL, ;
+
 : j-if    c-popflag  c-pushcp  $B4000009 c-emitw ;             \ pop flag; cbz fwd (patched by THEN)
+
 : j-then  Lcfpop @ BL,  Lpat @ BL, ;
+
 : j-else  Lcfpop @ BL,  14 9 0 ADDI,  c-pushcp  $14000000 c-emitw  9 14 0 ADDI,  Lpat @ BL, ;
+
 \ BEGIN loops are register-resident: j-begin snapshots the VS into registers
 \ (Lvsnap), the back edges reconcile to that snapshot (Lvrecon) and branch on
 \ x17 — never a VS register, so the reconcile reload can't clobber the flag.
 : j-begin  Lvsnap @ BL,  c-pushcp ;
+
 : j-again  Lvrecon @ BL,  Lcfpop @ BL,  $14000000 $3FFFFFF c-bback ;
+
 : j-untilx ( -- )                          \ shared tail: reconcile + cbz x17,top
    Lvrecon @ BL,
    Lcfpop @ BL,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $B4000011 LIT64,  9 9 10 ORR,  Lcemit @ BL, ;
+
 : j-until  $D1002273 c-emitw  $F9400271 c-emitw  j-untilx ;   \ pop flag -> x17
+
 : j-while c-popflag  c-pushcp  $B4000009 c-emitw ;
+
 : j-repeat Lvrecon @ BL,  Lcfpop @ BL,  14 9 0 ADDI,  Lcfpop @ BL,  $14000000 $3FFFFFF c-bback
    12 0 MOVZ,  12 DATA VSP-CELL STR,                  \ exit path arrives from
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,           \ WHILE's spilled state
@@ -671,34 +773,42 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    3506446963 c-emitw  4181721705 c-emitw  3506446963 c-emitw  4181721706 c-emitw
    4181780107 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4177527177 c-emitw  4177528202 c-emitw  2432697707 c-emitw  4177585803 c-emitw ;
+
 : j-lvopen  ( -- )                       \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
    9 DATA LVD-CELL LDR,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    12 0 MOVZ,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
+
 : j-lvleave  ( -- )                      \ chain a B placeholder on the current level
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    9 10 0 LDR,
    11 CP DBASE SUB,  11 10 0 STR,
    Lcemit @ BL, ;
+
 : j-do  ( limit start DO )
    j-frame  j-lvopen  c-pushcp ;
+
 : j-?do ( limit start ?DO )              \ DO, but skip the loop when limit = start
    j-frame  j-lvopen
    $EB0A013F c-emitw                     \ cmp x9,x10  (start/limit still live)
    $54000041 c-emitw                     \ b.ne +8 (over the skip placeholder)
    j-lvleave
    c-pushcp ;
+
 : j-leave  j-lvleave ;
+
 : j-unloop                               \ pop one loop frame, no branch
    4181780107 c-emitw  3506439531 c-emitw  4177585803 c-emitw ;
+
 : j-loopend  ( -- )                      \ shared LOOP/+LOOP tail: pop frame, patch
    14 CP 0 ADDI,                         \ LEAVE/?DO skips to the pop point, LVD--
    4181780107 c-emitw  3506439531 c-emitw  4177585803 c-emitw
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,  9 DATA LVD-CELL STR,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,  9 10 0 LDR,
    Lbchain @ BL, ;
+
 : j-loop
    4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4181721481 c-emitw  4181722506 c-emitw  2432697641 c-emitw  4177527177 c-emitw  3943301439 c-emitw
@@ -706,6 +816,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $5400000B LIT64,  9 9 10 ORR,  Lcemit @ BL,       \ b.lt loop-top
    j-loopend ;
+
 : j-+loop  ( n +LOOP )                   \ index += n; loop while (old-limit) and
    $D1002273 c-emitw  $F9400269 c-emitw  \ (new-limit) agree in sign (ANS crossing)
    4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
@@ -721,9 +832,11 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $5400000A LIT64,  9 9 10 ORR,  Lcemit @ BL,       \ b.ge loop-top
    j-loopend ;
+
 : j-i
    4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4181721481 c-emitw  4177527401 c-emitw  2432705139 c-emitw ;
+
 : j-j                                    \ outer loop index: frame[LOOPSP-2]
    4181780107 c-emitw  $D100096B c-emitw 3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4181721481 c-emitw  4177527401 c-emitw  2432705139 c-emitw ;
@@ -783,6 +896,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
    10 g-pop
    nohk LBL, ;
+
 : c-create ( -- )
    2 3 MOVZ,  Lprot @ BL,                               \ region -> RW
    Ltok @ BL,                                            \ read NAME
@@ -803,6 +917,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,                 \ region -> RX + flush
    Lkwcreate 6 c-defhook ;
+
 : c-variable ( -- )  c-create
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;          \ reserve 1 cell
 
@@ -830,6 +945,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ CHAR NAME (interpret): push NAME's first byte. [CHAR] NAME (compile): bake it
 \ as a VS constant (folds like any literal).
 : c-char  ( -- )   Ltok @ BL,  9 TKA 0 LDRB,  9 g-push ;
+
 : c-bchar ( -- )   Ltok @ BL,  11 TKA 0 LDRB,  Lvpushc @ BL, ;
 
 \ ' NAME (interpret): find NAME, push its code address. ['] NAME (compile): bake
@@ -837,6 +953,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 : c-tick ( -- )
    Ltok @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
    NEWLBL {: tk :}  13 tk CBZ,  11 g-push  tk LBL, ;
+
 : c-btick ( -- )
    Ltok @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
    NEWLBL {: bk :}  13 bk CBZ,  c-lit  bk LBL, ;
@@ -958,6 +1075,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 
 variable CFSK
 variable CFSK2
+
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
 \ a REGISTER top branches directly (no spill + memory pop); con or empty falls
 \ back to the spill + pop path. hxtr gets the condition reg in x14.
@@ -979,6 +1097,7 @@ variable CFSK2
    hxtm execute
    lmainlbl B,
    CFSK @ LBL, ;
+
 \ cfbn-entry: like cfb-entry but the register path neither spills nor saves —
 \ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
 \ Lvdrop (which only relabels the VS, no emission).
@@ -998,8 +1117,11 @@ variable CFSK2
    hxtm execute
    lmainlbl B,
    CFSK @ LBL, ;
+
 : j-ifr  c-pushcp  8 $B4000000 LIT64,  9 8 14 ORR,  Lcemit @ BL, ;
+
 : j-whiler  j-ifr ;
+
 : j-untilr                                 \ reg flag -> x17 first: the reconcile
    8 $AA0003F1 LIT64,  7 14 16 LSLI,  9 8 7 ORR,  Lcemit @ BL,   \ may reload into it
    j-untilx ;

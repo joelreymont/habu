@@ -10,28 +10,40 @@ require macho.fs
 require sha256.fs
 
 2variable SIG-ID    s" a.out" SIG-ID 2!   \ binary identifier (basename), set by EMIT-EXE
+
 : SIG-IDLEN ( -- n )  SIG-ID 2@ nip 1+ ;  \ identifier string + NUL
 $1D       constant LC-CODE-SIG         \ LC_CODE_SIGNATURE
 88        constant CD-HDR              \ CodeDirectory header, version 0x20400
 $1000     constant CS-PAGE             \ code-signing page (4 KiB, independent of VM page)
 32        constant CS-HASH             \ SHA-256 digest size
 variable  SIG-DOFF                     \ signature data offset = codeLimit (file end pre-sign)
+
 : NCSLOTS  ( -- n )  SIG-DOFF @ CS-PAGE 1- +  CS-PAGE / ;   \ ceil(codeLimit/page)
+
 : HASH-OFF ( -- n )  CD-HDR SIG-IDLEN + ;
+
 : CD-SIZE  ( -- n )  HASH-OFF  NCSLOTS CS-HASH * + ;
+
 : SB-SIZE  ( -- n )  20 CD-SIZE + ;     \ SuperBlob hdr(12)+1 index(8)+CodeDirectory
+
 : ALN ( n a -- n )  1- dup >r +  r> invert and ;
 
 \ --- absolute access into MBUF (header patching); LE, not the BE blob cursor ---
 : hl@ ( off -- w )  MBUF + l@ ;        \ 32-bit fetch
+
 : hl! ( w off -- )  MBUF + l! ;        \ 32-bit store
+
 : hx! ( x off -- )  MBUF + ! ;         \ 64-bit store
 
 \ --- big-endian cursor into MBUF (the signature blob) ---
 variable SC
+
 : b8   ( c -- )    MBUF SC @ + c!  1 SC +! ;
+
 : b32  ( w -- )    dup 24 rshift b8  dup 16 rshift b8  dup 8 rshift b8  b8 ;
+
 : b64  ( x -- )    dup 32 rshift b32  b32 ;
+
 : bstr ( a u -- )  bounds ?do i c@ b8 loop ;
 
 $FADE0CC0 constant CSMAGIC-EMBEDDED

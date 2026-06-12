@@ -6,47 +6,85 @@
 require asm.fs
 
 : fld   ( u lo width -- f )  >r  rshift  r> 1 swap lshift 1- and ;
+
 \ sign-extend a width-bit field to a full cell
 : signx ( f width -- n )  >r  r@ 1- 1 swap lshift  over and if  -1 r@ lshift or  then  r> drop ;
+
 : (.)   ( n -- )  s>d  tuck dabs <# #s rot sign #> type ;
+
 : .reg  ( n -- )  dup 31 = if drop ." sp" else ." x" (.) then ;
+
 : .#    ( n -- )  ." #" (.) ;
 
-: Rd ( u -- n )  0  5 fld ;   : Rn ( u -- n )  5  5 fld ;   : Rm ( u -- n )  16 5 fld ;
+: Rd ( u -- n )  0  5 fld ;
+
+: Rn ( u -- n )  5  5 fld ;
+
+: Rm ( u -- n )  16 5 fld ;
 
 : ddd ( u name$ -- )  type space  dup Rd .reg ." ,"  dup Rn .reg ." ,"  Rm .reg ;
+
 : ddi ( u name$ -- )  type space  dup Rd .reg ." ,"  dup Rn .reg ." ,#"  10 12 fld (.) ;
+
 : .hw  ( u -- )  16 2 fld ?dup if ." ,lsl#" 4 lshift (.) then ;
+
 : d-movz ( u -- )  ." movz "  dup Rd .reg ." ,"  dup 5 16 fld .#  .hw ;
+
 : d-movk ( u -- )  ." movk "  dup Rd .reg ." ,"  dup 5 16 fld .#  .hw ;
+
 : d-movn ( u -- )  ." movn "  dup Rd .reg ." ,"  5 16 fld .# ;
+
 : d-orr  ( u -- )  dup Rn 31 = if ." mov " dup Rd .reg ." ," Rm .reg drop else s" orr" ddd then ;
+
 : d-cmp  ( u -- )  ." cmp "  dup Rn .reg ." ,"  Rm .reg ;
+
 : d-cmpi ( u -- )  ." cmp "  dup Rn .reg ." ,#"  10 12 fld (.) ;
+
 : d-cset ( u -- )  ." cset "  dup Rd .reg ." ,cc"  12 4 fld 1 xor (.) ;
+
 : d-svc  ( u -- )  ." svc #"  5 16 fld (.) ;
+
 : d-bimm ( u name$ -- )  type space ." ."  0 26 fld 26 signx 4 * dup 0< 0= if ." +" then (.) ;
+
 : d-b    ( u -- )  s" b"  d-bimm ;
+
 : d-bl   ( u -- )  s" bl" d-bimm ;
+
 : d-bcond ( u -- ) ." b.cc" dup 0 4 fld (.) ."  .+"  5 19 fld 19 signx 4 * (.) ;
+
 : d-cbz  ( u -- )  ." cbz "  dup Rd .reg ." ,.+"  5 19 fld 19 signx 4 * (.) ;
+
 : d-cbnz ( u -- )  ." cbnz " dup Rd .reg ." ,.+"  5 19 fld 19 signx 4 * (.) ;
+
 : d-blr  ( u -- )  ." blr "  Rn .reg ;
+
 : d-br   ( u -- )  ." br "   Rn .reg ;
+
 : d-ret  ( u -- )  drop ." ret" ;
+
 : d-nop  ( u -- )  drop ." nop" ;
+
 : d-adr  ( u -- )  ." adr "  dup Rd .reg ." ,.+"  dup 5 19 fld 19 over 29 2 fld swap 2 lshift or 21 signx (.) ;
+
 : .mem ( u scale -- )  >r  ." ,["  dup Rn .reg  10 12 fld r> lshift ?dup if ." ,#" (.) then ." ]" ;
+
 : d-ldr  ( u -- )  ." ldr "   dup Rd .reg  3 .mem ;
+
 : d-str  ( u -- )  ." str "   dup Rd .reg  3 .mem ;
+
 : d-ldrb ( u -- )  ." ldrb w"  dup Rd (.)  0 .mem ;
+
 : d-strb ( u -- )  ." strb w"  dup Rd (.)  0 .mem ;
+
 : d-ldrw ( u -- )  ." ldr w"   dup Rd (.)  2 .mem ;
+
 : d-strw ( u -- )  ." str w"   dup Rd (.)  2 .mem ;
+
 : d-?    ( u -- )  ." .word $"  base @ >r hex 0 <# # # # # # # # # #> type r> base ! ;
 
 \ --- dispatch table: records of [mask | match | xt]; first match wins ---
 create DTAB 192 cells allot   variable #DT   0 #DT !
+
 : D: ( mask match xt -- )
    #DT @ 3 * cells DTAB +  >r
    r@ 2 cells + !   r@ cell+ !   r> !   1 #DT +! ;
@@ -79,6 +117,7 @@ $FFE0001F $D4000001 ' d-svc D:
       dup r@ @ and  r@ cell+ @ =  if  r> 2 cells + @ execute  unloop exit  then
       r> drop
    loop  d-? ;
+
 : DISASM ( addr nwords -- )                    \ dump a code region
    0 ?do  dup i 4 * +  dup ." $" base @ >r hex 0 <# # # # # #> type r> base !
           ."   "  l@ D#  cr  loop  drop ;

@@ -11,14 +11,19 @@ require rt.fs
 
 \ --- CODE-TABLE: name -> [ label | len | body-bytes ] ---
 wordlist constant CODE-TABLE
+
 : CG-RECORD ( na nu ba bu arity -- )       \ entry: [ label | arity | len | bytes ]
    {: ar :}
    2swap nextname
    get-current >r  CODE-TABLE set-current  create  r> set-current
    -1 ,  ar ,  dup ,  here >r  dup allot  r> swap move ;
+
 : WORD-PFA  ( a u -- pfa | 0 )  CODE-TABLE search-wordlist if execute else 0 then ;
+
 : PFA>LABEL ( pfa -- addr )  ;
+
 : PFA>ARITY ( pfa -- n )  cell+ @ ;
+
 : PFA>BODY  ( pfa -- ba bu )  dup 3 cells + swap 2 cells + @ ;
 
 \ --- token iteration (no emission) ---
@@ -35,11 +40,15 @@ wordlist constant CODE-TABLE
 
 \ --- transitive dependency collection ---
 create DEPS 256 cells allot   variable #DEPS
+
 : dep-has? ( pfa -- f )  #DEPS @ 0 ?do  dup DEPS i cells + @ = if drop true unloop exit then  loop drop false ;
+
 : dep-add  ( pfa -- )  dup dep-has? if drop else DEPS #DEPS @ cells + !  1 #DEPS +! then ;
+
 : scan-tok ( ta tu -- )
    2dup s" ." compare 0= if 2drop USES-DOT on exit then
    WORD-PFA ?dup if dep-add then ;
+
 : COLLECT ( root-pfa -- )
    0 #DEPS !  dep-add
    0 begin dup #DEPS @ < while
@@ -48,10 +57,12 @@ create DEPS 256 cells allot   variable #DEPS
 
 \ --- leaf detection (body has any call?) ---
 variable LEAF?
+
 : leaf-tok ( ta tu -- )            \ any token that emits a BL makes the word non-leaf
    2dup s" RECURSE" compare 0= if 2drop LEAF? off exit then
    2dup s" ."       compare 0= if 2drop LEAF? off exit then
    WORD-PFA if LEAF? off then ;
+
 : NON-LEAF? ( pfa -- f )  LEAF? on  PFA>BODY ['] leaf-tok FOR-TOKENS  LEAF? @ 0= ;
 
 \ --- call emission (drives walk.fs EMIT-CALL) ---
@@ -94,6 +105,7 @@ is EMIT-CALL
 
 \ --- standalone CLI: read argv[1], call the word, print the result, exit 0 ---
 22 constant ARGV
+
 : BUILD-CLI {: root | ar -- :}
    root PFA>ARITY to ar
    ICODE-RESET  cf-reset  USES-DOT off

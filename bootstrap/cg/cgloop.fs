@@ -23,6 +23,7 @@ CHECKING-ON? @  CHECKING-ON? off          \ IR mutation / bit math / loops = unc
 
 \ --- carry homes: the registers the loop body expects its carry in at ltop ---
 create CARRY-R 16 cells allot   variable CARRY-N
+
 : carry-snap ( -- )                       \ all live VS entries -> regs, record homes
    VSP @ dup 16 > if 1 abort" cg: loop carry too deep for register residency" then
    dup CARRY-N !  0 ?do  i vs-force  CARRY-R i cells + !  loop ;
@@ -30,19 +31,26 @@ create CARRY-R 16 cells allot   variable CARRY-N
 \ --- parallel register move: src[i] -> dst[i], cycle-safe via T0 scratch ---
 create PM-SRC 16 cells allot   create PM-DST 16 cells allot
 create PM-DONE 16 cells allot  variable PM-N
+
 : pm-noop? ( i -- f )  cells {: o :}  PM-SRC o + @  PM-DST o + @ = ;
+
 : pm-ready? ( i -- f )                    \ pending, non-noop, dst read by no pending move
    dup cells PM-DONE + @ if  drop false exit then
    dup pm-noop? if  drop false exit then
    cells PM-DST + @ {: d :}  true
    PM-N @ 0 ?do  PM-DONE i cells + @ 0= if
       PM-SRC i cells + @ d = if  drop false  leave then  then  loop ;
+
 : pm-find ( -- i|-1 )  PM-N @ 0 ?do  i pm-ready? if  i unloop exit then  loop  -1 ;
+
 : pm-rem  ( -- n )     0 PM-N @ 0 ?do  PM-DONE i cells + @ 0= if 1+ then  loop ;
+
 : pm-emit ( i -- )  >r  PM-DST r@ cells + @  PM-SRC r@ cells + @  MOV,  1 PM-DONE r> cells + ! ;
+
 : pm-break ( -- )                         \ redirect a pending move's src through T0
    PM-N @ 0 ?do  PM-DONE i cells + @ 0= if
       T0 PM-SRC i cells + @ MOV,  T0 PM-SRC i cells + !  unloop exit then  loop ;
+
 : pm-run ( -- )
    PM-N @ 0 ?do  i pm-noop? if 1 else 0 then  PM-DONE i cells + !  loop
    begin  pm-rem 0>  while
@@ -62,6 +70,7 @@ create PM-DONE 16 cells allot  variable PM-N
 \ After the loop the live values are in the carry homes; rebuild the VS to match
 \ and fix the pool free-state so only the homes are allocated.
 : r-take ( r -- )  #RPOOL 0 ?do  RPOOL i cells + @ over = if  0 RFREE i cells + !  then  loop  drop ;
+
 : carry-restore ( -- )
    rp-reset  dp-reset  0 VSP !
    CARRY-N @ 0 ?do  CARRY-R i cells + @  dup r-take  v-pushr  loop ;
@@ -70,12 +79,14 @@ create PM-DONE 16 cells allot  variable PM-N
 create VS-STAG VMAX cells allot   create VS-SVAL VMAX cells allot   variable VS-SSP
 create RF-SAVE #RPOOL cells allot  create DF-SAVE #DPOOL cells allot
 variable ICSV  variable LBLSV  variable LDSV  variable CFSV
+
 : cg-snapshot ( -- )
    #IC @ ICSV !  #LBL @ LBLSV !  LOOP-DEPTH @ LDSV !  CF-SP @ CFSV !
    VSP @ VS-SSP !
    VSP @ 0 ?do  VTAG i cells + @ VS-STAG i cells + !  VVAL i cells + @ VS-SVAL i cells + !  loop
    #RPOOL 0 ?do  RFREE i cells + @ RF-SAVE i cells + !  loop
    #DPOOL 0 ?do  DFREE i cells + @ DF-SAVE i cells + !  loop ;
+
 : cg-rollback ( -- )
    ICSV @ #IC !  LBLSV @ #LBL !  LDSV @ LOOP-DEPTH !  CFSV @ CF-SP !
    VS-SSP @ VSP !

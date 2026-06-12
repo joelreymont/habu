@@ -4,10 +4,12 @@
 \ unsigned stage2 binary to /tmp/stage2-got. t-sh-stage2.fs asserts stage2 is
 \ byte-identical to the gforth-built engine for the same source.
 create S2P 32 allot   create O2P 32 allot
+
 : PATHZ {: a u d :}
    0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;
 variable SBUF  variable SLEN  variable SFD  variable SRD
 $40000 constant SMAX
+
 : READ-SRC
    s" /tmp/stage2-src" S2P PATHZ
    S2P 0 0 open SFD !
@@ -19,6 +21,7 @@ $40000 constant SMAX
    SFD @ close
    SLEN @ 0 > 0= IF s" stage2: empty source" 74 die THEN
    SLEN @ SMAX = IF s" stage2: source exceeds buffer" 74 die THEN ;
+
 : GO
    READ-SRC
    SBUF @ SLEN @ EMIT-FORTH

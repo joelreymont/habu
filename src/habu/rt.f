@@ -5,8 +5,10 @@
 \ standalone mis-reads a second {: :} group).
 \ data-stack ops (XDS points just past TOS; full-ascending); regs live in mnem.fs
 : g-push {: reg :}  reg XDS 0 STR,  XDS XDS 8 ADDI, ;
+
 : g-pop  {: reg :}  XDS XDS 8 SUBI,  reg XDS 0 LDR, ;
 variable DOT-LBL  variable ATOI-LBL
+
 \ print x9 as signed decimal + newline (itoa into an sp buffer, then write(1,..)).
 \ clobbers x9-x14 + 32 bytes of sp scratch; preserves XDS.
 : g-print9
@@ -26,6 +28,7 @@ variable DOT-LBL  variable ATOI-LBL
    0 1 MOVZ,  1 12 0 ADDI,  2 SP 32 ADDI,  2 2 12 SUB,
    16 4 MOVZ,  $80 SVC,
    SP SP 32 ADDI, ;
+
 : EMIT-DOT  DOT-LBL @ LBL,  XDS XDS 8 SUBI,  9 XDS 0 LDR,  g-print9  RET, ;
 
 \ Print x9 as UNSIGNED decimal + newline. Same itoa loop as g-print9 but UDIV
@@ -47,6 +50,7 @@ variable DOT-LBL  variable ATOI-LBL
    SP SP 16 SUBI,  13 SP 0 STRB,
    0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  16 4 MOVZ,  $80 SVC,
    SP SP 16 ADDI, ;
+
 \ ATOI: NUL-terminated decimal string at x9 -> push i64 (leading '-' ok). Leaf.
 : EMIT-ATOI
    ATOI-LBL @ LBL,

@@ -13,6 +13,7 @@ $250 constant VVAL-OFF
 32   constant VSMAX
 $7F  constant VRALL
 $F9000260 constant W-PUSHR
+
 : emit-vlitpush
    Lvlitpush @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
@@ -20,6 +21,7 @@ $F9000260 constant W-PUSHR
    9 $F9000270 LIT64,  Lcemit @ BL,                     \ str x16,[x19]
    9 W-PUSH1 LIT64,  Lcemit @ BL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
 : emit-vspill
    Lvspill @ LBL,
    NEWLBL NEWLBL NEWLBL NEWLBL {: vl vd vcon vnext :}
@@ -39,6 +41,7 @@ $F9000260 constant W-PUSHR
    6 0 MOVZ,  6 DATA VSP-CELL STR,
    6 VRALL MOVZ,  6 DATA VRFREE-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
 : emit-vpushc
    Lvpushc @ LBL,
    NEWLBL {: room :}
@@ -53,7 +56,7 @@ $F9000260 constant W-PUSHR
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ Lvtop2c ( -- x13=ok x11=a x12=b ) : are the top two VS entries constants? (no pop)
-: emit-vtop2c 
+: emit-vtop2c
    Lvtop2c @ LBL,
    NEWLBL {: no :}
    13 0 MOVZ,
@@ -64,8 +67,9 @@ $F9000260 constant W-PUSHR
    5 6 1 SUBI,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
    13 1 MOVZ,
    no LBL,  RET, ;
+
 \ Lvfoldput ( x11=result ) : val[VSP-2] = result (still con), VSP--
-: emit-vfoldput 
+: emit-vfoldput
    Lvfoldput @ LBL,
    6 DATA VSP-CELL LDR,  5 6 2 SUBI,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 STR,
@@ -73,6 +77,7 @@ $F9000260 constant W-PUSHR
 variable Lkwplus  variable Lkwminus  variable Lkwstar
 variable Lkwand2  variable Lkwor2   variable Lkwxor2
 variable FESK
+
 \ fold-entry: if the token is this operator AND the top two VS entries are
 \ constants, fold at JIT time (no code) and continue the main loop; else fall
 \ through to the generic dispatch (which spills + calls the prim).
@@ -85,17 +90,30 @@ variable FESK
    Lvfoldput @ BL,
    lmainlbl B,
    FESK @ LBL, ;
-: f+ 11 11 12 ADD, ;   : f- 11 11 12 SUB, ;   : f* 11 11 12 MUL, ;
-: fand 11 11 12 AND, ;  : for2 11 11 12 ORR, ;  : fxor2 11 11 12 EOR, ;
+
+: f+ 11 11 12 ADD, ;
+
+: f- 11 11 12 SUB, ;
+
+: f* 11 11 12 MUL, ;
+
+: fand 11 11 12 AND, ;
+
+: for2 11 11 12 ORR, ;
+
+: fxor2 11 11 12 EOR, ;
+
 : emit-foldkw
    Lkwplus @ LBL,  s" +" BYTES,    Lkwminus @ LBL,  s" -" BYTES,
    Lkwstar @ LBL,  s" *" BYTES,    Lkwand2 @ LBL,   s" and" BYTES,
    Lkwor2 @ LBL,   s" or" BYTES,   Lkwxor2 @ LBL,   s" xor" BYTES, ;
 variable Lkwdup2  variable Lkwdrop2  variable Lkwswap2  variable Lkwover2  variable Lkwnip2
+
 : emit-shufkw
    Lkwdup2 @ LBL,   s" dup" BYTES,    Lkwdrop2 @ LBL,  s" drop" BYTES,
    Lkwswap2 @ LBL,  s" swap" BYTES,   Lkwover2 @ LBL,  s" over" BYTES,
    Lkwnip2 @ LBL,   s" nip" BYTES, ;
+
 \ Lvralloc ( -- x14=reg | 0 ) : grab a free register from the x9..x15 bitmask
 : emit-vralloc
    Lvralloc @ LBL,
@@ -109,6 +127,7 @@ variable Lkwdup2  variable Lkwdrop2  variable Lkwswap2  variable Lkwover2  varia
    rgot LBL,
       7 1 MOVZ,  7 7 5 LSLV,  6 6 7 EOR,  6 DATA VRFREE-CELL STR,
       14 5 9 ADDI,  RET, ;
+
 \ Lvmovk ( x11=val x14=rd ) : emit a MINIMAL movz/movn + movk chain targeting rd —
 \ movn form when $FFFF chunks dominate; chunks the base op already set are skipped.
 \ x5=k x6=val x7=nz/started x8=nf/chunk x9=instr x10=form x12=$FFFF (Lcemit saves all).
@@ -153,6 +172,7 @@ variable Lkwdup2  variable Lkwdrop2  variable Lkwswap2  variable Lkwover2  varia
       8 $92800000 LIT64,  9 8 14 ORR,  Lcemit @ BL,
    mout LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
 \ Lvforcek ( x5=k -- x14=reg | 0 ) : force VS entry k into a register, in place.
 \ Atomic: an allocation failure mutates nothing.
 : emit-vforcek
@@ -172,6 +192,7 @@ variable Lkwdup2  variable Lkwdrop2  variable Lkwswap2  variable Lkwover2  varia
    fd B,
    fr LBL,  14 11 0 ADDI,
    fd LBL,  30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
 \ Lvbinprep ( -- x13=mode ) : 0 fall-through; 1 fold (x11=a x12=b, VS untouched);
 \ 2 registers ready (x14=rd result slot, x15=rm; rm freed; VSP already --).
 : emit-vbinprep
@@ -199,6 +220,7 @@ variable Lkwdup2  variable Lkwdrop2  variable Lkwswap2  variable Lkwover2  varia
    13 1 MOVZ,  b2 B,
    bno LBL,  13 0 MOVZ,
    b2 LBL,  30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
 \ Lvpushr ( x14=reg ) : push a register entry (spill-on-full keeps x14 claimed)
 : emit-vpushr
    Lvpushr @ LBL,
@@ -215,6 +237,7 @@ variable Lkwdup2  variable Lkwdrop2  variable Lkwswap2  variable Lkwover2  varia
    6 6 1 ADDI,  6 DATA VSP-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 variable FESK2
+
 \ vop-entry: fold when both con, register op when forceable, else fall through
 : vop-entry {: lmainlbl kwvar kwlen foldxt emitxt :}
    NEWLBL FESK !  NEWLBL FESK2 !
@@ -231,10 +254,20 @@ variable FESK2
       9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  Lcemit @ BL,
       lmainlbl B,
    FESK @ LBL, ;
-: e+   8 $8B000000 LIT64, ;   : e-   8 $CB000000 LIT64, ;
-: e*   8 $9B007C00 LIT64, ;   : eand 8 $8A000000 LIT64, ;
-: eor2 8 $AA000000 LIT64, ;   : exor 8 $CA000000 LIT64, ;
+
+: e+   8 $8B000000 LIT64, ;
+
+: e-   8 $CB000000 LIT64, ;
+
+: e*   8 $9B007C00 LIT64, ;
+
+: eand 8 $8A000000 LIT64, ;
+
+: eor2 8 $AA000000 LIT64, ;
+
+: exor 8 $CA000000 LIT64, ;
 variable Lkweq2  variable Lkwne2  variable Lkwlt2  variable Lkwgt2  variable Lkwle2  variable Lkwge2
+
 \ comparison entry: fold -> dispatch computes the flag; registers -> emit
 \ cmp rd,rm ; cset rd,cond ; sub rd,xzr,rd  (Forth flag 0/-1)
 : vcmp-entry {: lmainlbl kwvar kwlen cond :}
@@ -253,12 +286,14 @@ variable Lkweq2  variable Lkwne2  variable Lkwlt2  variable Lkwgt2  variable Lkw
       8 $CB0003E0 LIT64,  9 8 14 ORR,  7 14 16 LSLI,  9 9 7 ORR,  Lcemit @ BL,
       lmainlbl B,
    FESK @ LBL, ;
+
 : emit-cmpkw
    Lkweq2 @ LBL,  s" =" BYTES,    Lkwne2 @ LBL,  s" <>" BYTES,
    Lkwlt2 @ LBL,  s" <" BYTES,    Lkwgt2 @ LBL,  s" >" BYTES,
    Lkwle2 @ LBL,  s" <=" BYTES,   Lkwge2 @ LBL,  s" >=" BYTES, ;
 variable Lvdrop  variable Lvswapx  variable Lvnipx  variable Lvcopy
 $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
+
 \ Lvdrop ( -- x13=ok ) : drop ANY top entry (reg -> free, con -> forget); no code
 : emit-vdrop
    Lvdrop @ LBL,
@@ -274,6 +309,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    fr LBL,
    6 6 1 SUBI,  6 DATA VSP-CELL STR,  13 1 MOVZ,
    no LBL,  RET, ;
+
 \ Lvswapx ( -- x13=ok ) : swap ANY top two entries (pure relabel; no code)
 : emit-vswapx
    Lvswapx @ LBL,
@@ -288,6 +324,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    9 7 0 LDR,  10 8 0 LDR,  10 7 0 STR,  9 8 0 STR,
    13 1 MOVZ,
    no LBL,  RET, ;
+
 \ Lvnipx ( -- x13=ok ) : remove the DEEP entry (free if reg), keep top; no code
 : emit-vnipx
    Lvnipx @ LBL,
@@ -309,6 +346,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  10 8 0 STR,
    6 6 1 SUBI,  6 DATA VSP-CELL STR,  13 1 MOVZ,
    no LBL,  RET, ;
+
 \ Lvcopy ( x5=k -- x13=ok ) : push a copy of entry k (con free; reg = one mov)
 : emit-vcopy
    Lvcopy @ LBL,
@@ -329,6 +367,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 variable Lvsnap  variable Lvrecon
 $358 constant SNAPSP-CELL       \ BEGIN snapshot stack depth
 $360 constant SNAPSTK-OFF       \ 32 x (k, packed-regs) BEGIN nesting frames
+
 \ Lvsnap ( -- ) : BEGIN. VSP<=7: force every VS entry into a register (movz
 \ chains for cons emitted HERE, before the loop top) and push (k, packed regs —
 \ a nibble per slot, bottom-up) on the snapshot stack. Deep VS or a failed
@@ -360,6 +399,7 @@ $360 constant SNAPSTK-OFF       \ 32 x (k, packed-regs) BEGIN nesting frames
    13 7 0 STR,  12 7 8 STR,
    6 6 1 ADDI,  6 DATA SNAPSP-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
 \ Lvrecon ( -- ) : back edge (UNTIL/AGAIN/REPEAT). Pop the snapshot; if the VS
 \ is exactly it (k register entries, same registers, bottom-up) emit nothing.
 \ Otherwise spill-all then emit k pops into the snapshot registers (top-down)
@@ -403,6 +443,7 @@ $360 constant SNAPSTK-OFF       \ 32 x (k, packed-regs) BEGIN nesting frames
    6 VRALL MOVZ,  6 6 11 EOR,  6 DATA VRFREE-CELL STR,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 variable FESK3
+
 \ vshuf-entry: reg-aware stack ops — relabels and register moves, no memory traffic
 : vshuf-entry {: lmainlbl kwvar kwlen min sxt :}
    NEWLBL FESK3 !
@@ -413,14 +454,20 @@ variable FESK3
    13 FESK3 @ CBZ,
    lmainlbl B,
    FESK3 @ LBL, ;
+
 : xdup   6 DATA VSP-CELL LDR,  5 6 1 SUBI,  Lvcopy @ BL, ;
+
 : xover  6 DATA VSP-CELL LDR,  5 6 2 SUBI,  Lvcopy @ BL, ;
+
 : xdrop  Lvdrop @ BL, ;
+
 : xswap  Lvswapx @ BL, ;
+
 : xnip   Lvnipx @ BL, ;
 variable Lkwinc  variable Lkwdec  variable Lkwzeq  variable Lkwzlt
 variable Lkwneg2  variable Lkwinv2
 variable FESK4
+
 \ vun-entry: unary op on the VS top — con folds at JIT time (no code); reg gets
 \ an in-place op (rd = rs, entry unchanged); empty VS falls through to the prim.
 : vun-entry {: lmainlbl kwvar kwlen foldxt emitxt :}
@@ -439,24 +486,44 @@ variable FESK4
       emitxt execute
       lmainlbl B,
    FESK4 @ LBL, ;
-: fu1+  11 11 1 ADDI, ;     : fu1-  11 11 1 SUBI, ;
-: funeg 11 SP 11 SUB, ;     : fuinv 7 0 MOVN,  11 11 7 EOR, ;
+
+: fu1+  11 11 1 ADDI, ;
+
+: fu1-  11 11 1 SUBI, ;
+
+: funeg 11 SP 11 SUB, ;
+
+: fuinv 7 0 MOVN,  11 11 7 EOR, ;
+
 : fu0=  11 0 CMPI,  11 0 CSET,  11 SP 11 SUB, ;
+
 : fu0<  11 0 CMPI,  11 11 CSET,  11 SP 11 SUB, ;
+
 : eu2r  9 8 14 ORR,  7 14 16 LSLI,  9 9 7 ORR,  Lcemit @ BL, ;   \ base | rd | rm<<16
+
 : eu2n  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  Lcemit @ BL, ;    \ base | rd | rn<<5
+
 : eu1+  8 $91000400 LIT64,  eu2n ;
+
 : eu1-  8 $D1000400 LIT64,  eu2n ;
+
 : euneg 8 $CB0003E0 LIT64,  eu2r ;
+
 : euinv 8 $AA2003E0 LIT64,  eu2r ;
+
 : eucmp0  8 $F100001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  Lcemit @ BL, ;
+
 : eucset {: cond :}  8 $9A9F07E0 cond 1 xor 12 lshift or LIT64,  9 8 14 ORR,  Lcemit @ BL, ;
+
 : eu0=  eucmp0  0 eucset  euneg ;
+
 : eu0<  eucmp0  11 eucset  euneg ;
+
 : emit-unkw
    Lkwinc @ LBL,   s" 1+" BYTES,      Lkwdec @ LBL,   s" 1-" BYTES,
    Lkwzeq @ LBL,   s" 0=" BYTES,      Lkwzlt @ LBL,   s" 0<" BYTES,
    Lkwneg2 @ LBL,  s" negate" BYTES,  Lkwinv2 @ LBL,  s" invert" BYTES, ;
+
 : emit-vsjit  emit-vlitpush  emit-vspill  emit-vpushc  emit-vtop2c  emit-vfoldput
    emit-vralloc  emit-vmovk  emit-vforcek  emit-vbinprep  emit-vpushr
    emit-vdrop  emit-vswapx  emit-vnipx  emit-vcopy  emit-vsnap  emit-vrecon ;

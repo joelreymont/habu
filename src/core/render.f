@@ -9,6 +9,7 @@ create ECH 1 allot
 variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
 create RSBUF 512 allot   variable RSN
 variable RQM                             \ a '?' rendered = unknown tag, don't record
+
 : EMIT1 {: c :}
    c 63 = IF 1 RQM ! THEN
    RDST @ IF
@@ -16,23 +17,30 @@ variable RQM                             \ a '?' rendered = unknown tag, don't r
      c RSBUF RSN @ + c!  RSN @ 1 + RSN !
    ELSE c ECH c! ECH 1 type THEN ;
 create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PAY)
+
 : SEEN-RESET 0 BEGIN dup cells SEEN + UNBOUND swap ! 1 + dup MAXTV 1 - > UNTIL drop ;
+
 : LET-OF {: vp :}
    vp cells SEEN + @ UNBOUND = IF NLET @ vp cells SEEN + ! NLET @ 1 + NLET ! THEN
    vp cells SEEN + @ 97 + ;
+
 : CON-CH {: p :} p 1 = IF 110 ELSE p 2 = IF 102 ELSE p 3 = IF 114 ELSE 99 THEN THEN THEN ;   \ n / f / r
+
 : REND-TYPE {: t :} t T-RES {: r :}
    r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
    r TAG T-CON = IF r PAY CON-CH EMIT1 ELSE 63 EMIT1 THEN THEN ;
 create RBUF 64 cells allot   variable RBN
+
 : REND-COLLECT {: s :}  0 RBN !  s
    BEGIN R-RES dup TAG S-PUSH = WHILE          \ no locals inside the loop
      dup P>TYPE RBN @ cells RBUF + !  RBN @ 1 + RBN !
      P>REST
    REPEAT drop ;
+
 \ RENDER ( -- ) : print DCUR's residual stack bottom-to-top, space-separated.
 : RENDER  SEEN-RESET 0 NLET !  DCUR @ REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
+
 \ REND-SIG ( -- a u ) : render the just-checked word's effect "in -- out" —
 \ inputs from the base row's instantiation (BROW), outputs from DCUR.
 : REND-SIG
@@ -43,6 +51,7 @@ create RBUF 64 cells allot   variable RBN
    DCUR @ REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - 32 EMIT1 dup cells RBUF + @ REND-TYPE REPEAT drop
    0 RDST !  RSBUF RSN @ ;
+
 \ REC-SIG ( na nu -- ) : record a certified word. Refuses (conservatively, the
 \ word just stays unrecorded) on unknown tags or absurd var counts.
 : REC-SIG {: na nu :}
@@ -55,8 +64,10 @@ create RBUF 64 cells allot   variable RBN
 \ Rows render bottom-to-top with the shared var-letter naming; expected/actual
 \ only appear when the failing unify was captured (STEP/SUNI).
 : DTXT {: a u :}  0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
+
 : DROW {: s :}  s REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
+
 : DIAG-PRINT
    1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT

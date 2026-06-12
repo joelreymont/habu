@@ -66,6 +66,7 @@ s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR
 \ g-install-crash ( -- ) : install the handler for ILL/TRAP/BUS/SEGV. Builds a
 \ struct __sigaction { handler, tramp, mask, flags } on the stack and syscalls.
 : (sigact) ( signo -- )  0 swap MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  16 46 MOVZ,  $80 SVC, ;
+
 : g-install-crash ( -- )
    SP SP 32 SUBI,
    9 Lcrashh @ ADR,  9 SP 0 STR,            \ sa_handler = our handler

@@ -9,6 +9,7 @@ s" cg: label overflow" exception constant E-LBL-OVERFLOW
 
 \ --- op tags (dense; asm.fs encoder/length tables index by these) ---
 variable IOP#  0 IOP# !
+
 : IOP: ( "name" -- )  IOP# @ constant  1 IOP# +! ;
 IOP: IOP-MOVZ  IOP: IOP-MOVK  IOP: IOP-MOVN  IOP: IOP-MOV   IOP: IOP-LIT
 IOP: IOP-ADD   IOP: IOP-ADDI  IOP: IOP-SUB   IOP: IOP-SUBI
@@ -45,10 +46,15 @@ create ICBUF MAX-IC /ic * cells allot
 variable #IC
 
 : IC-ADDR ( i -- addr )  /ic * cells ICBUF + ;
+
 : IC-OP ( i -- op )  IC-ADDR @ ;
+
 : IC-A  ( i -- a )   IC-ADDR cell+ @ ;
+
 : IC-B  ( i -- b )   IC-ADDR 2 cells + @ ;
+
 : IC-C  ( i -- c )   IC-ADDR 3 cells + @ ;
+
 : IC-D  ( i -- d )   IC-ADDR 4 cells + @ ;
 
 : IC, ( a b c d op -- )
@@ -63,6 +69,7 @@ create LBLPOS MAX-LBL cells allot
 variable #LBL
 
 : NEWLBL ( -- lbl )  #LBL @ dup MAX-LBL >= if E-LBL-OVERFLOW throw then  1 #LBL +! ;
+
 : LBL, ( lbl -- )  0 0 0 IOP-LABEL IC, ;
 
 : ICODE-RESET ( -- )
@@ -115,78 +122,148 @@ s" cg: bad logical immediate" exception constant E-BADLIMM
 
 \ --- mnemonics ( … -- ); register operands are X-register numbers 0..31 ---
 : MOVZ, ( rd imm16 -- )    0 0 IOP-MOVZ IC, ;
+
 : MOVK, ( rd imm16 sh -- ) 0 IOP-MOVK IC, ;     \ sh in {0,16,32,48}
+
 : MOVN, ( rd imm16 -- )    0 0 IOP-MOVN IC, ;
+
 : MOV,  ( rd rm -- )       0 0 IOP-MOV IC, ;
+
 : LIT64,  ( rd x -- )        0 0 IOP-LIT IC, ;    \ 64-bit const, minimal sequence
+
 : ADD,  ( rd rn rm -- )    0 IOP-ADD IC, ;
+
 : ADDI, ( rd rn imm12 -- ) 0 IOP-ADDI IC, ;
+
 : SUB,  ( rd rn rm -- )    0 IOP-SUB IC, ;
+
 : SUBI, ( rd rn imm12 -- ) 0 IOP-SUBI IC, ;
+
 : MUL,  ( rd rn rm -- )    0 IOP-MUL IC, ;
+
 : SDIV, ( rd rn rm -- )    0 IOP-SDIV IC, ;
+
 : UDIV, ( rd rn rm -- )    0 IOP-UDIV IC, ;
+
 : AND,  ( rd rn rm -- )    0 IOP-AND IC, ;
+
 : ORR,  ( rd rn rm -- )    0 IOP-ORR IC, ;
+
 : EOR,  ( rd rn rm -- )    0 IOP-EOR IC, ;
+
 : ANDI, ( rd rn mask -- )  >LIMM 0 IOP-ANDI IC, ;   \ plain mask, encoded here
+
 : ORRI, ( rd rn mask -- )  >LIMM 0 IOP-ORRI IC, ;
+
 : EORI, ( rd rn mask -- )  >LIMM 0 IOP-EORI IC, ;
+
 : LSLI, ( rd rn sh -- )    0 IOP-LSLI IC, ;
+
 : LSRI, ( rd rn sh -- )    0 IOP-LSRI IC, ;
+
 : ASRI, ( rd rn sh -- )    0 IOP-ASRI IC, ;
+
 : LSLV, ( rd rn rm -- )    0 IOP-LSLV IC, ;
+
 : LSRV, ( rd rn rm -- )    0 IOP-LSRV IC, ;
+
 : ASRV, ( rd rn rm -- )    0 IOP-ASRV IC, ;
+
 : CMP,  ( rn rm -- )       0 0 IOP-CMP IC, ;
+
 : CMPI, ( rn imm12 -- )    0 0 IOP-CMPI IC, ;
+
 : CSET, ( rd cond -- )     0 0 IOP-CSET IC, ;
+
 : B,    ( lbl -- )         0 0 0 IOP-B IC, ;
+
 : BL,   ( lbl -- )         0 0 0 IOP-BL IC, ;
+
 : BCOND, ( cond lbl -- )   swap 0 0 IOP-BCOND IC, ;
+
 : CBZ,  ( rt lbl -- )      swap 0 0 IOP-CBZ IC, ;
+
 : CBNZ, ( rt lbl -- )      swap 0 0 IOP-CBNZ IC, ;
+
 : BR,   ( rn -- )          0 0 0 IOP-BR IC, ;
+
 : BLR,  ( rn -- )          0 0 0 IOP-BLR IC, ;
+
 : RET,  ( -- )             0 0 0 0 IOP-RET IC, ;
+
 : ADR,  ( rd lbl -- )      swap 0 0 IOP-ADR IC, ;
+
 : LDR,  ( rt rn off -- )   0 IOP-LDR IC, ;      \ off: 0..32760, 8-aligned
+
 : STR,  ( rt rn off -- )   0 IOP-STR IC, ;
+
 : LDRB, ( rt rn off -- )   0 IOP-LDRB IC, ;     \ off: 0..4095
+
 : STRB, ( rt rn off -- )   0 IOP-STRB IC, ;
+
 : LDRW, ( rt rn off -- )   0 IOP-LDRW IC, ;     \ 32-bit, off 0..16380 (/4)
+
 : STRW, ( rt rn off -- )   0 IOP-STRW IC, ;
+
 : LDR-POST, ( rt rn off -- ) 0 IOP-LDRPO IC, ;  \ off: -256..255
+
 : STR-PRE,  ( rt rn off -- ) 0 IOP-STRPR IC, ;
+
 : LDP-POST, ( rt1 rt2 rn off -- ) IOP-LDPPO IC, ; \ off: -512..504, 8-aligned
+
 : STP-PRE,  ( rt1 rt2 rn off -- ) IOP-STPPR IC, ;
+
 : SVC,  ( imm16 -- )       0 0 0 IOP-SVC IC, ;
+
 : BRK,  ( -- )             0 0 0 0 IOP-BRK IC, ;   \ trap (e.g. on divide-by-zero)
+
 \ floating point (D-registers): operands are register numbers 0..31 of the FP regs
 : FMOVXD, ( Dd Xn -- )     0 0 IOP-FMOVXD IC, ;    \ fmov Dd, Xn (bits GPR->FP)
+
 : FMOVDX, ( Xd Dn -- )     0 0 IOP-FMOVDX IC, ;    \ fmov Xd, Dn (bits FP->GPR)
+
 : FMOVDD, ( Dd Dn -- )     0 0 IOP-FMOVDD IC, ;    \ fmov Dd, Dn (FP reg-reg copy)
+
 : FADD,   ( Dd Dn Dm -- )  0 IOP-FADD IC, ;
+
 : FSUB,   ( Dd Dn Dm -- )  0 IOP-FSUB IC, ;
+
 : FMUL,   ( Dd Dn Dm -- )  0 IOP-FMUL IC, ;
+
 : FDIV,   ( Dd Dn Dm -- )  0 IOP-FDIV IC, ;
+
 : FNEG,   ( Dd Dn -- )     0 0 IOP-FNEG IC, ;
+
 : FABS,   ( Dd Dn -- )     0 0 IOP-FABS IC, ;
+
 : FSQRT,  ( Dd Dn -- )     0 0 IOP-FSQRT IC, ;
+
 : FCMP,   ( Dn Dm -- )     0 0 IOP-FCMP IC, ;
+
 : FCMP0,  ( Dn -- )        0 0 0 IOP-FCMP0 IC, ;   \ fcmp Dn, #0.0
+
 : SCVTF,  ( Dd Xn -- )     0 0 IOP-SCVTF IC, ;     \ signed int -> double
+
 : FCVTZS, ( Xd Dn -- )     0 0 IOP-FCVTZS IC, ;    \ double -> signed int (truncate)
+
 : NOP,  ( -- )             0 0 0 0 IOP-NOP IC, ;
+
 : BYTES, ( addr u -- )     0 0 IOP-BYTES IC, ;   \ embed raw bytes (padded to 4)
+
 : DCQ,  ( x -- )           0 0 0 IOP-DCQ IC, ;    \ embed one 64-bit cell (8 bytes)
+
 : DLBL, ( lbl -- )         0 0 0 IOP-DLBL IC, ;   \ embed cell = label's byte offset
 \ Fuse a register-operand shift onto the LAST-emitted ALU op (ADD/SUB/AND/ORR/EOR):
 \ rewrites its IC-D so the encoder emits e.g. `EOR rd,rn,rm,LSL #k`. d=0 (the
 \ default) means LSL #0 = no shift, so unshifted ops are unaffected.
 0 constant SH-LSL   1 constant SH-LSR   2 constant SH-ASR
+
 : SHIFT, ( shtype shamt -- )  swap 6 lshift or  #IC @ 1- IC-ADDR 4 cells + ! ;
+
 : ICIVAU, ( rt -- )        0 0 0 IOP-ICIV IC, ;
+
 : DCCVAU, ( rt -- )        0 0 0 IOP-DCCV IC, ;   \ clean dcache to PoU (JIT coherency)
+
 : DSB-ISH, ( -- )          0 0 0 0 IOP-DSB IC, ;
+
 : ISB,  ( -- )             0 0 0 0 IOP-ISB IC, ;

@@ -4,6 +4,7 @@
 \ sig + x0..x28 + fp/lr/sp/pc as hex lines to stderr and exit(134).
 variable Lcrashh   variable Lhex   variable Lhdr
 create CRH 80 allot  variable CRHL
+
 : CRH-INIT  s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: a u :}
    0 BEGIN dup u < WHILE  dup a + c@  over CRH + c!  1 + REPEAT drop
    10 CRH u + c!  u 1 + CRHL ! ;
@@ -11,7 +12,9 @@ CRH-INIT
 40 constant SA-SIGINFO
 48 constant MCTX-OFF           \ ucontext -> mcontext pointer offset (macOS arm64)
 16 constant SS-OFF             \ mcontext -> __ss.__x[0] offset
-\ Lhex ( x9=val ): write 16 hex digits + newline to fd 2. Leaf; clobbers x9..x15 and x0-x2/x16 (write syscall).
+
+\ Lhex ( x9=val ): write 16 hex digits + newline to fd 2. Leaf; clobbers
+\ x9..x15 and x0-x2/x16 (write syscall).
 : emit-hex
    Lhex @ LBL,
    NEWLBL NEWLBL NEWLBL {: hl hd hlet :}
@@ -31,6 +34,7 @@ CRH-INIT
    12 10 MOVZ,  12 14 16 STRB,
    0 2 MOVZ,  1 14 0 ADDI,  2 17 MOVZ,  16 4 MOVZ,  $80 SVC,
    SP SP 32 ADDI,  RET, ;
+
 : emit-crash-handler
    Lcrashh @ LBL,
    NEWLBL NEWLBL {: rl rd :}
@@ -50,7 +54,9 @@ CRH-INIT
       9 21 272 LDR,  Lhex @ BL,
       0 134 MOVZ,  16 1 MOVZ,  $80 SVC,
    Lhdr @ LBL,  CRH CRHL @ BYTES, ;
+
 : (sigact) {: signo :}  0 signo MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  16 46 MOVZ,  $80 SVC, ;
+
 : g-install-crash
    SP SP 32 SUBI,
    9 Lcrashh @ ADR,  9 SP 0 STR,

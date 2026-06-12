@@ -12,11 +12,13 @@ require asm.fs
 require disasm.fs
 
 create ICODEBUF 65536 allot   variable ICODELEN
+
 : IC-ASM ( -- addr u )  ICODEBUF ASSEMBLE dup ICODELEN !  ICODEBUF swap ;
 
 : ICDUMP ( -- )    IC-ASM 4 / DISASM ;          \ disassemble the current ICODE program
 
 variable SCAN-W
+
 : ICSCAN ( u32 -- )                              \ byte offsets where a word == u32
    SCAN-W !  IC-ASM 2drop
    ICODELEN @ 4 / 0 ?do

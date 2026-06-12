@@ -12,6 +12,7 @@ $1F0000 constant PROF-CNT
 83  constant NR-SETITIMER
 184 constant NR-SIGRETURN
 $0042 constant SA-PROF-FLAGS
+
 : emit-profdump
    Lprofdump @ LBL,
    NEWLBL NEWLBL NEWLBL NEWLBL {: dl dn dd dret :}
@@ -32,6 +33,7 @@ $0042 constant SA-PROF-FLAGS
       SP SP 16 ADDI,
       9 17 0 ADDI,  g-print9
    dret LBL,  RET, ;
+
 : emit-prof
    Lprofh @ LBL,
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: pl pnext pdone prep psig :}
@@ -52,6 +54,7 @@ $0042 constant SA-PROF-FLAGS
    psig LBL,
    0 4 0 ADDI,  16 NR-SIGRETURN MOVZ,  $80 SVC,
    prep LBL,  Lprofdump @ BL,  0 99 MOVZ,  16 1 MOVZ,  $80 SVC, ;
+
 : bprof-on
    NEWLBL NEWLBL {: zl zd :}
    A g-pop  A DATA PROF-LIM STR,
@@ -67,7 +70,9 @@ $0042 constant SA-PROF-FLAGS
    9 SP 48 STR,  10 SP 56 STR,
    0 0 MOVZ,  1 SP 32 ADDI,  2 0 MOVZ,  16 NR-SETITIMER MOVZ,  $80 SVC,
    SP SP 64 ADDI, ;
+
 : bprof-report  SP SP 16 SUBI,  30 SP 0 STR,  Lprofdump @ BL,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
+
 : emit-prof-prims
    s" prof-on" ['] bprof-on FPRIM-L  s" prof-report" ['] bprof-report FPRIM-L ;

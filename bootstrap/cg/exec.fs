@@ -5,10 +5,15 @@
 require sign.fs
 
 create CMD$ 512 allot   variable CMD#
+
 : c+ ( c -- )  CMD$ CMD# @ + c!  1 CMD# +! ;
+
 : cs+ ( addr u -- )  bounds ?do i c@ c+ loop ;
+
 : cmd( ( -- )  0 CMD# ! ;
+
 : )run ( -- wstatus )  CMD$ CMD# @ system  $? ;
+
 : WSTAT>RC ( wstatus -- code )  8 rshift $FF and ;
 
 : WRITE-EXE ( addr u -- )            \ write current MBUF[0..MLEN] to filename
@@ -48,6 +53,7 @@ s" cg: chmod failed"     exception constant E-CHMOD
    dup  6 = if drop s" SIGABRT" exit then
    dup  8 = if drop s" SIGFPE"  exit then
    drop s" signal" ;
+
 : CRASH-CHECK {: pa pu ws -- ws :}         \ name the signal if ws says killed by one
    ws $7F and {: sig :}
    sig if

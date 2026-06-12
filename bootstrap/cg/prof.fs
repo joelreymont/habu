@@ -82,6 +82,7 @@ $0042 constant SA-PROF-FLAGS    \ SA_SIGINFO|SA_RESTART
    9 SP 48 STR,  10 SP 56 STR,                                \ it_value    = 0s 1000us
    0 0 MOVZ,  1 SP 32 ADDI,  2 0 MOVZ,  16 NR-SETITIMER MOVZ,  $80 SVC,
    SP SP 64 ADDI, ;
+
 : bprof-report  SP SP 16 SUBI,  30 SP 0 STR,  Lprofdump @ BL,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 

@@ -12,11 +12,14 @@ defer WALK-INLINE ( a u -- )              \ = WALK-BODY, bound in walk.fs (forwa
 
 create QBUF 1024 chars allot   variable QLEN   variable QCAP?   variable QDEPTH
 2variable QPEND                           \ captured quotation body (a u into QBUF), or 0 0
+
 : q-reset ( -- )  QCAP? off  0 0 QPEND 2! ;
+
 : q+ ( a u -- )  QBUF QLEN @ + swap dup QLEN +! move  bl QBUF QLEN @ + c!  1 QLEN +! ;
 
 \ inline the pending quotation onto the current (already-spilled) stack
 : q-exec ( -- )  v-spill  QPEND 2@ WALK-INLINE  q-reset ;
+
 \ DIP: save TOS on the return stack, inline under it, restore
 : q-dip ( -- )
    v-spill  T0 g-pop  T0 g-rpush          \ x -> return stack; rest stays in memory

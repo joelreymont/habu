@@ -26,6 +26,7 @@ defer EMIT-CALL   ( a u -- handled? )
 \ keeps floats as data-stack cells; FP prims move them X<->D). Reinterpret via a
 \ scratch float store. FP-MARK? (checker.fs) gates so plain ints fall through.
 create FBUF 1 floats allot
+
 : EMIT-FLOAT ( a u -- f )
    2dup FP-MARK? 0= if 2drop false exit then
    2dup >float if  FBUF f!  2drop  FBUF @ v-pushc  true
@@ -34,7 +35,9 @@ create FBUF 1 floats allot
 \ --- body cursor (module-level so the DO..LOOP scanner can look ahead). Saved /
 \ restored across WALK-BODY so quotation inlining (re-entrant) is safe. ---
 variable WB-CUR   variable WB-END
+
 : WB-SKIP ( -- )  begin WB-CUR @ WB-END @ < WB-CUR @ c@ bl = and while 1 WB-CUR +! repeat ;
+
 : WB-NEXT ( -- a u )                     \ next token, or ( cur 0 ) at end
    WB-SKIP  WB-CUR @ WB-END @ >= if  WB-CUR @ 0 exit then
    WB-CUR @ {: ts :}
@@ -47,6 +50,7 @@ variable WB-CUR   variable WB-END
    2dup NUMBER? if  2drop true exit then
    2dup FP-MARK? if  2dup >float if  fdrop 2drop true exit then  then
    2drop false ;
+
 : VS-SAFE-TOK? ( a u -- f )
    2dup CG-VS find-name-in if  2drop true exit then
    2dup s" I" CI= if  2drop true exit then
@@ -56,6 +60,7 @@ variable WB-CUR   variable WB-END
 \ ( a u ) and true iff every token is VS-safe and there is no nested loop; else
 \ restores WB-CUR and returns false.
 : t= ( a u ca cu -- a u f )  {: ca cu :}  2dup ca cu CI= ;
+
 : body-straight? ( -- a u true | false )
    WB-CUR @ {: bstart :}
    begin
@@ -73,6 +78,7 @@ variable WB-CUR   variable WB-END
 \ (bound below) intercepts a register-eligible DO..LOOP before the spill.
 defer LOOP-HOOK   ( a u -- f )
 :noname ( a u -- f ) 2drop false ;  is LOOP-HOOK
+
 : EMIT-TOKEN ( a u -- )
    2dup CHECK-QUOT-CG  if  2drop exit then                    \ [: … ;] capture / EXECUTE / DIP
    2dup CHECK-LOCAL-CG if  2drop exit then                    \ {: a b :} / local-name ref
@@ -104,6 +110,7 @@ defer LOOP-HOOK   ( a u -- f )
    while
       c {: ts :}  begin c e < c c@ bl <> and while c 1+ to c repeat  ts  c ts - EMIT-TOKEN
    repeat ;
+
 : emit-rloop {: qdo? ba bu -- :}
    loop-save
    v-popr {: s :}  LIDX s MOV,  s r-free          \ index (start) -> LIDX

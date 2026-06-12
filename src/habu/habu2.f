@@ -13,6 +13,7 @@
    9 W-PUSH0 LIT64,  Lcemit @ BL,  9 W-PUSH1 LIT64,  Lcemit @ BL, ;
 \ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
 $28 constant INL-MAX
+
 : c-call
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lcall lcopy lscan lsbody lnopro linl ldone :}
    9 11 0 LDRW,  8 $D10043FF LIT64,  9 8 CMP,  C-NE lnopro BCOND,
@@ -43,6 +44,7 @@ $28 constant INL-MAX
       7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
       9 $D63F0200 LIT64,  Lcemit @ BL,
    ldone LBL, ;
+
 \ ---- source setup: baked Lsrc or stdin ----
 : emit-source
    NEWLBL NEWLBL {: rl rd :}              \ locals BEFORE the IF (frame footgun)
@@ -62,6 +64,7 @@ $28 constant INL-MAX
    ELSE
       INP Lsrc @ ADR,  INE Lsrc @ ADR,  5 SRCN @ LIT64,  INE INE 5 ADD,
    THEN ;
+
 \ ---- control-flow JIT helpers ----
 : emit-cf-helpers
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: pisb pdone kno kyes kchk knf :}
@@ -102,6 +105,7 @@ $28 constant INL-MAX
          12 10 0 STRW,
          9 11 0 ADDI,  bcl B,
       bcd LBL,  RET, ;
+
 : emit-loc-find
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: ll lmiss lhit lcmp lnext :}
    Lloc-find @ LBL,
@@ -125,6 +129,7 @@ create TICK-KW   39 c,
 create BTICK-KW  91 c, 39 c, 93 c,
 create LBRACE-KW 123 c, 58 c,
 create ENDLOC-KW 58 c, 125 c,
+
 : emit-kwdata
    Lkwif @ LBL,     s" if"     BYTES,    Lkwthen @ LBL,   s" then"   BYTES,
    Lkwelse @ LBL,   s" else"   BYTES,    Lkwbegin @ LBL,  s" begin"  BYTES,
@@ -141,63 +146,85 @@ create ENDLOC-KW 58 c, 125 c,
    Lkwqdo @ LBL,  s" ?do" BYTES,   Lkwploop @ LBL,  s" +loop" BYTES,   Lkwj @ LBL,  s" j" BYTES,
    Lkwleave @ LBL,  s" leave" BYTES,   Lkwunloop @ LBL,  s" unloop" BYTES,
    Lkwchar @ LBL,  s" char" BYTES,   Lkwbchar @ LBL,  BCHAR-KW 6 BYTES, ;
+
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : c-emitw {: w :}  9 w LIT64,  Lcemit @ BL, ;
+
 : c-popflag  $D1002273 c-emitw  $F9400269 c-emitw ;
+
 : c-pushcp   9 CP 0 ADDI,  Lcfpush @ BL, ;
+
 : c-bback {: opc mask :}
    10 9 CP SUB,  10 10 2 ASRI,  5 mask LIT64,  10 10 5 AND,  9 opc LIT64,  9 9 10 ORR,  Lcemit @ BL, ;
+
 : j-if    c-popflag  c-pushcp  $B4000009 c-emitw ;
+
 : j-then  Lcfpop @ BL,  Lpat @ BL, ;
+
 : j-else  Lcfpop @ BL,  14 9 0 ADDI,  c-pushcp  $14000000 c-emitw  9 14 0 ADDI,  Lpat @ BL, ;
+
 \ BEGIN loops are register-resident: j-begin snapshots the VS into registers
 \ (Lvsnap), the back edges reconcile to that snapshot (Lvrecon) and branch on
 \ x17 — never a VS register, so the reconcile reload can't clobber the flag.
 : j-begin  Lvsnap @ BL,  c-pushcp ;
+
 : j-again  Lvrecon @ BL,  Lcfpop @ BL,  $14000000 $3FFFFFF c-bback ;
+
 : j-untilx                                 \ shared tail: reconcile + cbz x17,top
    Lvrecon @ BL,
    Lcfpop @ BL,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $B4000011 LIT64,  9 9 10 ORR,  Lcemit @ BL, ;
+
 : j-until  $D1002273 c-emitw  $F9400271 c-emitw  j-untilx ;   \ pop flag -> x17
+
 : j-while c-popflag  c-pushcp  $B4000009 c-emitw ;
+
 : j-repeat Lvrecon @ BL,  Lcfpop @ BL,  14 9 0 ADDI,  Lcfpop @ BL,  $14000000 $3FFFFFF c-bback
    12 0 MOVZ,  12 DATA VSP-CELL STR,                  \ exit path arrives from
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,           \ WHILE's spilled state
    9 14 0 ADDI,  Lpat @ BL, ;
+
 : j-frame                                \ pop limit/start, push a loop frame
    3506446963 c-emitw  4181721705 c-emitw  3506446963 c-emitw  4181721706 c-emitw
    4181780107 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4177527177 c-emitw  4177528202 c-emitw  2432697707 c-emitw  4177585803 c-emitw ;
+
 : j-lvopen                               \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
    9 DATA LVD-CELL LDR,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    12 0 MOVZ,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
+
 : j-lvleave                              \ chain a B placeholder on the current level
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    9 10 0 LDR,
    11 CP DBASE SUB,  11 10 0 STR,
    Lcemit @ BL, ;
+
 : j-do
    j-frame  j-lvopen  c-pushcp ;
+
 : j-?do                                  \ DO, but skip the loop when limit = start
    j-frame  j-lvopen
    $EB0A013F c-emitw                     \ cmp x9,x10  (start/limit still live)
    $54000041 c-emitw                     \ b.ne +8 (over the skip placeholder)
    j-lvleave
    c-pushcp ;
+
 : j-leave  j-lvleave ;
+
 : j-unloop                               \ pop one loop frame, no branch
    4181780107 c-emitw  3506439531 c-emitw  4177585803 c-emitw ;
+
 : j-loopend                              \ shared LOOP/+LOOP tail: pop frame, patch
    14 CP 0 ADDI,                         \ LEAVE/?DO skips to the pop point, LVD--
    4181780107 c-emitw  3506439531 c-emitw  4177585803 c-emitw
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,  9 DATA LVD-CELL STR,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,  9 10 0 LDR,
    Lbchain @ BL, ;
+
 : j-loop
    4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4181721481 c-emitw  4181722506 c-emitw  2432697641 c-emitw  4177527177 c-emitw  3943301439 c-emitw
@@ -205,6 +232,7 @@ create ENDLOC-KW 58 c, 125 c,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $5400000B LIT64,  9 9 10 ORR,  Lcemit @ BL,
    j-loopend ;
+
 : j-+loop                                \ index += n; loop while (old-limit) and
    $D1002273 c-emitw  $F9400269 c-emitw  \ (new-limit) agree in sign (ANS crossing)
    4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
@@ -220,9 +248,11 @@ create ENDLOC-KW 58 c, 125 c,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $5400000A LIT64,  9 9 10 ORR,  Lcemit @ BL,       \ b.ge loop-top
    j-loopend ;
+
 : j-i
    4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4181721481 c-emitw  4177527401 c-emitw  2432705139 c-emitw ;
+
 : j-j                                    \ outer loop index: frame[LOOPSP-2]
    4181780107 c-emitw  $D100096B c-emitw 3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4181721481 c-emitw  4177527401 c-emitw  2432705139 c-emitw ;
@@ -268,6 +298,7 @@ create ENDLOC-KW 58 c, 125 c,
 
 : j-recurse
    9 PEND 0 LDR,  $94000000 $3FFFFFF c-bback ;         \ bl entry
+
 \ ---- interpret-mode defining words ----
 \ record defining words for the checker: append the kind token + run the hook
 \ (verdict ignored — create/variable/constant always publish).
@@ -279,6 +310,7 @@ create ENDLOC-KW 58 c, 125 c,
    SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
    10 g-pop
    nohk LBL, ;
+
 : c-create
    NEWLBL NEWLBL {: ncp ncpd :}
    2 3 MOVZ,  Lprot @ BL,
@@ -299,8 +331,10 @@ create ENDLOC-KW 58 c, 125 c,
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
    Lkwcreate 6 c-defhook ;
+
 : c-variable  c-create
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;
+
 : c-constant
    NEWLBL NEWLBL {: kcp kcd :}
    2 3 MOVZ,  Lprot @ BL,  Ltok @ BL,
@@ -319,6 +353,7 @@ create ENDLOC-KW 58 c, 125 c,
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
    Lkwconst 8 c-defhook ;
+
 : c-isdq
    INP INP 1 ADDI,  13 INP 0 ADDI,
    NEWLBL NEWLBL NEWLBL NEWLBL {: sl sd cl cd :}
@@ -331,18 +366,24 @@ create ENDLOC-KW 58 c, 125 c,
    cd LBL,
    12 DATA 0 STR,                                       \ allot: DP advances past the copy
    15 g-push  10 g-push ;
+
 : c-char   Ltok @ BL,  9 TKA 0 LDRB,  9 g-push ;
+
 : c-bchar  Ltok @ BL,  11 TKA 0 LDRB,  Lvpushc @ BL, ;
+
 : c-tick
    NEWLBL {: tk :}
    Ltok @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
    13 tk CBZ,  11 g-push  tk LBL, ;
+
 : c-btick
    NEWLBL {: bk :}
    Ltok @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
    13 bk CBZ,  c-lit  bk LBL, ;
+
 : c-lbrace
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: cfok xok havef nl nd nstore nlok noti ncp ncd pl pd :}
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL
+   {: cfok xok havef nl nd nstore nlok noti ncp ncd pl pd :}
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
       0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
       0 75 MOVZ,  16 1 MOVZ,  $80 SVC,
@@ -386,6 +427,7 @@ create ENDLOC-KW 58 c, 125 c,
       9 $F90003E9 LIT64,  14 13 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,
       13 13 1 SUBI,  pl B,
    pd LBL, ;
+
 : c-sdq
    NEWLBL NEWLBL NEWLBL NEWLBL {: sl sd cl cd :}
    INP INP 1 ADDI,  13 INP 0 ADDI,
@@ -402,6 +444,7 @@ create ENDLOC-KW 58 c, 125 c,
    11 12 0 ADDI,  c-lit
    11 15 0 ADDI,  c-lit ;
 variable CFSK
+
 : cf-entry {: lmainlbl kwvar kwlen hxt :}
    NEWLBL CFSK !
    0 kwvar @ ADR,  1 kwlen MOVZ,  Lkwcmp @ BL,
@@ -409,6 +452,7 @@ variable CFSK
    Lvspill @ BL,
    hxt execute  lmainlbl B,
    CFSK @ LBL, ;
+
 \ cfn-entry: keyword case WITHOUT the spill — loop words manage the VS
 \ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
 : cfn-entry {: lmainlbl kwvar kwlen hxt :}
@@ -420,6 +464,7 @@ variable CFSK
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable Lmain  variable Lexit  variable Lcompile  variable Lundef
 variable CFSK2
+
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
 \ a REGISTER top branches directly (no spill + memory pop); con or empty falls
 \ back to the spill + pop path. hxtr gets the condition reg in x14.
@@ -441,6 +486,7 @@ variable CFSK2
    hxtm execute
    lmainlbl B,
    CFSK @ LBL, ;
+
 \ cfbn-entry: like cfb-entry but the register path neither spills nor saves —
 \ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
 \ Lvdrop (which only relabels the VS, no emission).
@@ -460,8 +506,11 @@ variable CFSK2
    hxtm execute
    lmainlbl B,
    CFSK @ LBL, ;
+
 : j-ifr  c-pushcp  8 $B4000000 LIT64,  9 8 14 ORR,  Lcemit @ BL, ;
+
 : j-whiler  j-ifr ;
+
 : j-untilr                                 \ reg flag -> x17 first: the reconcile
    8 $AA0003F1 LIT64,  7 14 16 LSLI,  9 8 7 ORR,  Lcemit @ BL,   \ may reload into it
    j-untilx ;
@@ -470,7 +519,9 @@ variable CFSK2
    NEWLBL NEWLBL {: scopy scdone :}
    Lanchor @ LBL,
    RBASE Lanchor @ ADR,
-   SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  XDS SP 0 ADDI,
+   SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
+   SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
+   XDS SP 0 ADDI,
    0 0 MOVZ,  1 REGION LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
    16 197 MOVZ,  $80 SVC,
    DBASE 0 0 ADDI,
@@ -501,6 +552,7 @@ variable CFSK2
    g-install-crash
    emit-source
    PEND 0 MOVZ, ;
+
 : em-comment
    NEWLBL NEWLBL NEWLBL {: notcom skln skpar :}
    Lmain @ LBL,
@@ -515,6 +567,7 @@ variable CFSK2
          9 INP 0 LDRB,  INP INP 1 ADDI,  9 10 CMPI,  C-NE skln BCOND,  Lmain @ B,
       notcom LBL,
       PEND Lcompile @ CBNZ, ;
+
 : em-interpret
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotcolon ncopy ncd lnotnum cpok ndok :}
    TKL 1 CMPI,  C-NE lnotcolon BCOND,
@@ -561,6 +614,7 @@ variable CFSK2
    9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
    13 Lundef @ CBZ,
    11 BLR,  Lmain @ B, ;
+
 : em-compile
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotsemi notd nohook rejected notloc lmem lcnotnum :}
    Lcompile @ LBL,
@@ -659,10 +713,12 @@ variable CFSK2
       0 70 MOVZ,  16 1 MOVZ,  $80 SVC,
    Lexit @ LBL,
       0 0 MOVZ,  16 1 MOVZ,  $80 SVC, ;
+
 : emit-main
    NEWLBL Lmain !  NEWLBL Lexit !  NEWLBL Lcompile !  NEWLBL Lundef !
    em-startup  em-comment  em-interpret  em-compile ;
 variable SRCA
+
 : EMIT-FORTH {: a u :}
    u SRCN !  a SRCA !
    ASM-INIT  0 #PL !  0 PNP !
