@@ -18,7 +18,7 @@ requires building a small Forth runtime (Part F) — accepted as the long pole.
 > byte-for-byte** (stage2 ≡ stage3; `tools/build.sh` is the no-gforth daily
 > loop, `tools/bootstrap.sh` regenerates from nothing). gforth is bootstrap +
 > differential oracle only. The runtime `:` compiler JIT-allocates registers
-> (vsjit: constant folding, register ops, fused branches, loop-resident
+> (jit: constant folding, register ops, fused branches, loop-resident
 > registers across BEGIN loops — 30M-iteration counter loop in 0.016 s).
 > In-binary disassembler, sampling profiler, and crash handler ship inside the
 > engine; `tools/{probe,imgdump,jitdump,parity-lint,clobber-lint,shadow-lint}`

@@ -17,6 +17,23 @@ clobbers x9..x15. The base is saved at startup into `S0-CELL`.
 ## `.` — single value (in the standalone)
 Pop + print one signed decimal + newline. Use for a specific intermediate.
 
+## `step` — native token stepper (in the REPL, `bin/hbi` on a tty)
+`src/habu/stepper.f` is baked into `bin/hbi`. `step 5 dup * 3 +` runs the rest
+of the line one token at a time, echoing each token and printing the data stack
+after it executes — no `EVALUATE` needed: the REPL hook feeds the engine one
+token per call, so the engine's own interpret loop is the evaluator. The
+gforth-host `STEP` (`bootstrap/cg/stepper.fs`, below) is the bootstrap-tier
+equivalent.
+
+## `BP+` / `BP-` — one-shot breakpoints on compiled words (REPL)
+`src/habu/debug.f` (baked into `bin/hbi`): `' WORD BP+` plants a `BRK #0` at the
+word's entry. Hitting it prints `habu-bp:` + the pc + the data-stack top, then
+restores the original instruction and **resumes** the word; the breakpoint is
+one-shot (gone on the next call). `BP-` removes an unhit one. The engine's
+SIGTRAP handler (`EMIT-TRAPH` in `forth.fs`/`habu2.f`) does the resume via
+`sigreturn` with the trampoline token; code is patched through the `patch32`
+prim (RW→store→RX→isync, atomic from JIT-resident code).
+
 ## lldb — native stepping (habu-built binaries)
 lldb works on habu/standalone binaries (needs the admin password once). Reveals
 load-time vs runtime kills. NB: an AMFI **signature cache** keys on the path/cdhash —

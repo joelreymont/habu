@@ -43,7 +43,12 @@ instructions.
 ## ABI
 
 - `x19` (Xds) = data-stack pointer, threaded through calls (push/pop mutate it,
-  never restored).  `x20`/`x21` = `?DO` loop index/limit.  `x9`–`x14` scratch.
+  never restored).  `x20` = DATA base.  (Historical note: this doc describes the
+  early gforth-hosted codegen. The **live engine's** register map is wider — the
+  JIT register pool is 13 (`x9`–`x15`, `x29`, `x25`, `x23`, `x24`, `x21`, `x22`)
+  defined by `VRPACK`/`VRPACK2` in `regalloc.f`, plus a `d8`–`d15` float pool;
+  tokenizer state (INP/INE/TKA/TKL/PEND) and `?DO` loop frames live in DATA
+  header cells, not pinned registers. See `src/habu/regalloc.f` and `jit.f`.)
 - A word is a native subroutine: args/results on the Xds stack; non-leaf words
   save/restore `x30`; calls are `BL`, `RECURSE` calls self.
 - CLI entry: `x0`=argc, `x1`=argv; `argv[1]` parsed by `atoi`, result printed

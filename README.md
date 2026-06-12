@@ -95,12 +95,12 @@ source self-checks at **783 certified / 0 uncheckable / 0 rejected**.
 - [`LESSONS.md`](LESSONS.md) — build recipe + findings (the project's memory).
 - `bootstrap/src/` — the gforth-hosted full checker, one file per concern;
   `bootstrap/habu.fs` adds the `:` override. `bootstrap/cg/` — the gforth-hosted
-  engine builder (ICode, encoders, Mach-O, vsjit, disassembler, profiler, crash
+  engine builder (ICode, encoders, Mach-O, jit, disassembler, profiler, crash
   handler).
 - `src/` — the NATIVE toolchain source the engine compiles (and re-checks) when
   rebuilding itself: `src/core/` (checker, render, sha256), `src/arch/arm64/`
   (encoders, assembler, disassembler, mnemonics), `src/habu/` (engine builder
-  parts, vsjit, profiler, crash, stage2 driver), `src/os/macos/` (Mach-O,
+  parts, jit, profiler, crash, stage2 driver), `src/os/macos/` (Mach-O,
   signing).
 - `test/` — `T{ … }T` tests. `test/run.sh` is the DEFAULT gate, habu-native
   end to end: lints + self-rebuild fixpoint + hb-suite + warm-snapshot boot +
