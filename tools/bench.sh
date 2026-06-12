@@ -17,6 +17,10 @@ KERNELS = [
      ": K {: a :} 0 begin a + dup 100000000 < 0= until drop ; 1 K"),
     ("call      (bl/ret + spill)", 10_000_000,
      ": F 1 + ; : K 0 begin F dup 10000000 = until drop ; K"),
+    # the float accumulator round-trips the MEMORY stack every iteration —
+    # the carried chain pays store->load forwarding. The d-reg pool's target.
+    ("f-accum   (mem round-trip) ", 100_000_000,
+     ": K {: n :} 0.0 0 begin 1 + swap 1.5 f+ swap dup n = until drop f0< ; 100000000 K"),
 ]
 
 for name, iters, prog in KERNELS:
