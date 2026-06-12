@@ -50,5 +50,19 @@ re-link contract is: header rebuilt fresh from constants, code copied
     x26 DBASE dict+code region                  x27/x28 NDICT/CP
     sp        machine stack: word frames (16 B: saved x30), locals frames
 
+## 5. Processes and snapshots
+
+- `run-rc` uses the RAW kernel forms: posix_spawn(244) takes FIVE args
+  (&pid, path, adesc, argv, envp — adesc folds libc's file_actions+attr) and
+  errors surface via the CARRY flag or errno in x0; wait4(7) likewise. A
+  non-darwin port swaps the numbers and conventions in its sys.f.
+- The AOT snapshot (tools/snap-hb.sh, src/habu/snap.f, the em-startup loader)
+  relies on FIXED-VA regions: RBASE-VA $300000000 / DATA-VA $340000000 via
+  MAP_FIXED with a verify-or-die. A port needs equivalent fixed mappings (or
+  full region relocation) plus the 40-byte trailer convention (magic, old
+  text base, ndict, region len, data len) and the startup relocation of
+  engine-text references (x16 call chains + seed-prim dict slots).
+
 Documented contracts the checker/lints rely on: `tools/clobber-lint.py`
-(RETURNS/PRESERVES tables) and `docs/forth.md`.
+(RETURNS/PRESERVES tables), `tools/shadow-lint.py` (toolchain names must not
+shadow prims), and `docs/forth.md`.

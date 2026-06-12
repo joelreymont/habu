@@ -85,6 +85,30 @@ create PZB 64 allot
 s" /usr/bin/true" PATHZ run-rc 0 T=
 s" /usr/bin/false" PATHZ run-rc 1 T=
 
+
+\ floats (the f+ prim must be the FLOAT op — it was once shadowed by a
+\ vsjit fold helper named f+)
+: TFP 1.5 2.5 f+ 4.0 f= ;
+TFP -1 T=
+: TFL 1.5 2.5 f< ;
+TFL -1 T=
+
+\ exit inside a quotation targets the QUOTATION's epilogue (scoped chain)
+: TQX [: dup 0 > if exit then drop 99 ;] execute ;
+5 TQX 5 T=
+0 TQX 99 T=
+
+\ empty interpret string
+s" " nip 0 T=
+
+\ run-rc spawn failure -> -1 (not a hang or garbage status)
+s" /nonexistent-habu-x" PATHZ run-rc -1 T=
+
+\ snapshot-writer intrinsics are sane
+dbase@ $300000000 = -1 T=
+cp@ dbase@ - 0 > -1 T=
+ndict@ 0 > -1 T=
+
 \ report: count + nonzero exit on failure
 : REPORT
    #FAIL @ 0 = if [char] o emit [char] k emit cr exit then

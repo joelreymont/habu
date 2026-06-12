@@ -572,6 +572,7 @@ s" cf-entry" s" n n n n --" trust
 s" cfn-entry" s" n n n n --" trust
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable Lmain  variable Lexit  variable Lcompile  variable Lundef
+variable SNBL  variable SNOL   \ snapshot-loader labels (em-startup's locals group is at the 16 cap)
 variable CFSK2
 
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
@@ -630,6 +631,7 @@ s" cfbn-entry" s" n n n n n --" trust
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL
    NEWLBL NEWLBL NEWLBL
    {: scopy scdone rvok dvok snomag sc1 sc1d sc2 sc2d srl srn srx cwok sdl2 sdn2 sds2 :}
+   NEWLBL SNBL !  NEWLBL SNOL !
    Lanchor @ LBL,
    RBASE Lanchor @ ADR,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
@@ -678,6 +680,13 @@ s" cfbn-entry" s" n n n n n --" trust
    15 12 16 LDR,                                    \ x15 = ndict
    6 12 24 LDR,                                     \ x6 = region payload len
    7 12 32 LDR,                                     \ x7 = data payload len
+   \ corrupt/truncated trailer must never smear the regions: exit 79
+   5 REGION LIT64,  6 5 CMP,  C-GT SNBL @ BCOND,
+   5 DATA-SIZE LIT64,  7 5 CMP,  C-GT SNBL @ BCOND,
+   5 1280 MOVZ,  15 5 CMP,  C-GT SNBL @ BCOND,
+   SNOL @ B,
+   SNBL @ LBL,  0 79 MOVZ,  NR-EXIT SYS,
+   SNOL @ LBL,
    22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,       \ x22 = engine text len then
    8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
    13 DBASE 0 ADDI,  14 0 MOVZ,

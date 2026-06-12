@@ -99,8 +99,10 @@ source self-checks at **783 certified / 0 uncheckable / 0 rejected**.
   parts, vsjit, profiler, crash, stage2 driver), `src/os/macos/` (Mach-O,
   signing).
 - `test/` — `T{ … }T` tests; `test/run.sh` is the gate (gforth suite +
-  selfhost suite + stage2 fixpoint). `tools/` — bootstrap/build/probe/imgdump/
-  jitdump/parity-lint/clobber-lint.
+  selfhost suite + stage2 fixpoint + the engine-run hb-suite + a warm-snapshot
+  boot). `tools/` — bootstrap/build/probe/imgdump/jitdump/parity-lint/
+  clobber-lint/shadow-lint, and `snap-hb.sh` for the AOT snapshot binary
+  (boots the whole toolchain warm in ~3 ms).
 
 ## Combinators
 

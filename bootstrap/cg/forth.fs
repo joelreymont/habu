@@ -146,21 +146,30 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
 
 : bu.   A g-pop  g-printu9 ;         \ pop x9, print unsigned decimal + newline
 
-: brunrc  A g-pop                    \ ( pathz -- rc ) spawn + wait, exit status
+: brunrc  A g-pop                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
+   NEWLBL {: spok :}  NEWLBL {: spdn :}  NEWLBL {: spw :}
    SP SP 64 SUBI,
    9 SP 16 STR,                      \ argv[0] = path
    10 0 MOVZ,  10 SP 24 STR,         \ argv[1] = 0
    10 SP 48 STR,                     \ envp[0] = 0
    0 SP 0 ADDI,                      \ &pid
    1 9 0 ADDI,
-   2 0 MOVZ,  3 0 MOVZ,
-   4 SP 16 ADDI,  5 SP 48 ADDI,
+   2 0 MOVZ,                         \ adesc = 0 (kernel API: 5 args, not libc's 6)
+   3 SP 16 ADDI,  4 SP 48 ADDI,      \ argv, envp
    NR-SPAWN SYS,
+   9 2 CSET,  9 9 0 ORR,             \ error = carry set OR errno in x0
+   9 spok CBZ,                       \ either -> rc -1
+      9 0 MOVN,  spdn B,
+   spok LBL,
    0 SP 0 LDR,                       \ pid
    1 SP 8 ADDI,  2 0 MOVZ,  3 0 MOVZ,
    NR-WAIT4 SYS,
+   9 2 CSET,  9 spw CBZ,             \ wait4 error (no child) -> rc -1
+      9 0 MOVN,  spdn B,
+   spw LBL,
    9 SP 8 LDRW,
    9 9 8 LSRI,  9 9 $FF ANDI,        \ WEXITSTATUS
+   spdn LBL,
    9 g-push
    SP SP 64 ADDI, ;
 : bcpfetch    9 CP 0 ADDI,  A g-push ;     \ ( -- addr ) live CP (snapshot writer)
@@ -1368,6 +1377,14 @@ variable CFSK2
    15 12 16 LDR,                                    \ x15 = ndict
    6 12 24 LDR,                                     \ x6 = region payload len
    7 12 32 LDR,                                     \ x7 = data payload len
+   \ corrupt/truncated trailer must never smear the regions: exit 79
+   NEWLBL {: snbad :}  NEWLBL {: snokz :}
+   5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
+   5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
+   5 1280 MOVZ,  15 5 CMP,  C-GT snbad BCOND,
+   snokz B,
+   snbad LBL,  0 79 MOVZ,  NR-EXIT SYS,
+   snokz LBL,
    22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,       \ x22 = engine text len then
    8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
    13 DBASE 0 ADDI,  14 0 MOVZ,

@@ -113,21 +113,30 @@ variable Lkwdoes variable Lkwquot variable Lkwsemiq
 
 : bu.   A g-pop  g-printu9 ;
 
-: brunrc  A g-pop                    \ ( pathz -- rc ) spawn + wait, exit status
+: brunrc  A g-pop                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
+   NEWLBL NEWLBL NEWLBL {: spok spdn spw :}
    SP SP 64 SUBI,
    9 SP 16 STR,                      \ argv[0] = path
    10 0 MOVZ,  10 SP 24 STR,         \ argv[1] = 0
    10 SP 48 STR,                     \ envp[0] = 0
    0 SP 0 ADDI,                      \ &pid
    1 9 0 ADDI,
-   2 0 MOVZ,  3 0 MOVZ,
-   4 SP 16 ADDI,  5 SP 48 ADDI,
+   2 0 MOVZ,                         \ adesc = 0 (kernel API: 5 args, not libc's 6)
+   3 SP 16 ADDI,  4 SP 48 ADDI,      \ argv, envp
    NR-SPAWN SYS,
+   9 2 CSET,  9 9 0 ORR,             \ error = carry set OR errno in x0
+   9 spok CBZ,                       \ either -> rc -1
+      9 0 MOVN,  spdn B,
+   spok LBL,
    0 SP 0 LDR,                       \ pid
    1 SP 8 ADDI,  2 0 MOVZ,  3 0 MOVZ,
    NR-WAIT4 SYS,
+   9 2 CSET,  9 spw CBZ,             \ wait4 error (no child) -> rc -1
+      9 0 MOVN,  spdn B,
+   spw LBL,
    9 SP 8 LDRW,
    9 9 8 LSRI,  9 9 $FF ANDI,        \ WEXITSTATUS
+   spdn LBL,
    9 g-push
    SP SP 64 ADDI, ;
 
