@@ -1,0 +1,31 @@
+\ treeshake.fs — THE tree shaker: with SHAKE? on (hb-build's maker), a prim is
+\ emitted and seeded ONLY if its name appears as a whitespace token in the user
+\ program (SHK-A/SHK-U). Sound over-approximation: a token in a comment or
+\ string keeps its word alive; nothing referenced can ever be dropped.
+\ Default off = keep all (stage2/hbi/snap and the whole gforth path).
+\ GATES elsewhere: FPRIM/FPRIM-L (every prim, incl. FP + profiler) and the
+\ keyword dispatch entries in habu2's EM-COMPILE (port-only; goldens compare
+\ keep-all). build.f arms it: program text -> SHK-A/SHK-U, SHAKE? on.
+
+variable SHAKE?   variable SHK-A   variable SHK-U
+variable SKP  variable STS
+
+: SHK-LC ( c -- c )  dup 64 > over 91 < and IF 32 + THEN ;
+
+: SHK-TOK= {: p a u :}
+   u 0 ?do  p i + c@ SHK-LC  a i + c@  = 0 = IF unloop 0 EXIT THEN  loop  -1 ;
+
+: KEEP? {: a u :}
+   SHAKE? @ 0 = IF -1 EXIT THEN
+   0 SKP !
+   BEGIN SKP @ SHK-U @ < WHILE
+      SHK-A @ SKP @ + c@ 33 < IF
+         SKP @ 1 + SKP !
+      ELSE
+         SKP @ STS !
+         BEGIN SKP @ SHK-U @ < IF SHK-A @ SKP @ + c@ 32 > ELSE 0 THEN WHILE
+            SKP @ 1 + SKP ! REPEAT
+         SKP @ STS @ - u = IF
+            SHK-A @ STS @ +  a u SHK-TOK= IF -1 EXIT THEN THEN
+      THEN
+   REPEAT 0 ;
