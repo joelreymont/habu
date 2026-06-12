@@ -28,32 +28,9 @@ create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PA
 
 \ a quot type renders '?' — quot-bearing sigs are never RECORDED (the native
 \ sig grammar can't express them yet); inside one word they check fully.
-create QRBUF 32 cells allot   variable QRBN   variable QDEPTH
-
-\ render one row's types (bottom-to-top) into QRBUF, then emit space-separated.
-\ Reentrancy: QDEPTH guards against nesting a 2nd quot level (renders '?').
-: QREND-1 {: t :} t T-RES {: r :}    \ leaf render (no quot nesting): con | var | '?'
-   r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
-   r TAG T-CON = IF r PAY CON-CH EMIT1 ELSE 63 EMIT1 THEN THEN ;
-
-: QREND-ROW {: row :}  0 QRBN !  row
-   BEGIN R-RES dup TAG S-PUSH = WHILE
-     dup P>TYPE QRBN @ cells QRBUF + !  QRBN @ 1 + QRBN !
-     P>REST
-   REPEAT drop
-   QRBN @ BEGIN dup 0 > WHILE 1 - dup cells QRBUF + @ QREND-1
-     dup 0 > IF 32 EMIT1 THEN REPEAT drop ;
-
 : REND-TYPE {: t :} t T-RES {: r :}
    r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
-   r TAG T-CON = IF r PAY CON-CH EMIT1 ELSE
-   r TAG T-QUOT =  QDEPTH @ 0 =  and IF                  \ quot<effect> -> [ in -- out ]
-     1 QDEPTH !
-     91 EMIT1 32 EMIT1  r Q>DIN QREND-ROW
-     45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT QREND-ROW
-     93 EMIT1
-     0 QDEPTH !
-   ELSE 63 EMIT1 THEN THEN THEN ;
+   r TAG T-CON = IF r PAY CON-CH EMIT1 ELSE 63 EMIT1 THEN THEN ;
 create RBUF 64 cells allot   variable RBN
 
 : REND-COLLECT {: s :}  0 RBN !  s
@@ -63,13 +40,13 @@ create RBUF 64 cells allot   variable RBN
    REPEAT drop ;
 
 \ RENDER ( -- ) : print DCUR's residual stack bottom-to-top, space-separated.
-: RENDER  SEEN-RESET 0 NLET !  0 QDEPTH !  DCUR @ REND-COLLECT
+: RENDER  SEEN-RESET 0 NLET !  DCUR @ REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
 \ REND-SIG ( -- a u ) : render the just-checked word's effect "in -- out" —
 \ inputs from the base row's instantiation (BROW), outputs from DCUR.
 : REND-SIG
-   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !  0 QDEPTH !
+   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !
    BROW @ REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop
    45 EMIT1  45 EMIT1
@@ -94,7 +71,7 @@ create RBUF 64 cells allot   variable RBN
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
 : DIAG-PRINT
-   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !  0 QDEPTH !
+   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
    DEXP @ 0 <> IF
