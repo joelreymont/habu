@@ -31,6 +31,9 @@ $568 constant RSP-CELL    \ user return-stack depth (>r r> r@)
 $570 constant EXITH-CELL  \ EXIT placeholder chain head (code offset; 0 = none)
 $578 constant LVD-CELL    \ compile-time DO nesting depth (LEAVE chains)
 $580 constant LVH-OFF     \ LEAVE chain head per nesting level — 16 levels
+$560 constant LASTC-CELL  \ last CREATEd slot addr (DOES> patches it)
+$1F0 constant DOESP-CELL  \ runtime address of Ldoespatch (stored at startup)
+$230 constant CREATEP-CELL \ runtime address of Lcreate (prims must not name labels)
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
 $3000 constant DATA-START
 variable STDIN?   0 STDIN? !
@@ -73,7 +76,7 @@ s" fprim-l" s" n n n --" trust
 variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  variable SRCN
 variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncount
 variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp  variable Lbcap  variable Lbcs
-variable Lbchain
+variable Lbchain  variable Lcreate  variable Ldoespatch
 variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
@@ -84,6 +87,7 @@ variable Lkwexit variable Lkwrec
 variable Lkwqdo variable Lkwploop variable Lkwj variable Lkwleave variable Lkwunloop
 variable Lkwchar variable Lkwbchar
 variable Lkwimm variable Lkwpost variable Lkwcompc
+variable Lkwdoes
 9 constant A   10 constant B   11 constant C
 
 \ ---- primitive bodies (operate on the x19 data stack) ----
@@ -102,6 +106,9 @@ variable Lkwimm variable Lkwpost variable Lkwcompc
 : bdot  A g-pop  g-print9 ;
 
 : bu.   A g-pop  g-printu9 ;
+
+: bcreate  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
+                                     \ startup-stored cell: subsets emit prims w/o labels
 
 : bcompile  A g-pop  11 9 0 ADDI,
    SP SP 16 SUBI,  11 SP 8 STR,
@@ -301,6 +308,7 @@ variable Lkwimm variable Lkwpost variable Lkwcompc
    s" ,"    ['] bcomma FPRIM-L   s" c,"   ['] bccomma FPRIM-L
    s" type" ['] btype  FPRIM-L   s" execute" ['] bexec FPRIM
    s" compile," ['] bcompile FPRIM
+   s" create" ['] bcreate FPRIM
    s" die"  ['] bdie   FPRIM-L
    s" open" ['] bopen FPRIM-L   s" write" ['] bwrite FPRIM-L   s" read" ['] bread FPRIM-L
    s" close" ['] bclose FPRIM-L

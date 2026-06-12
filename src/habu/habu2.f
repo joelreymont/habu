@@ -147,7 +147,8 @@ create ENDLOC-KW 58 c, 125 c,
    Lkwleave @ LBL,  s" leave" BYTES,   Lkwunloop @ LBL,  s" unloop" BYTES,
    Lkwchar @ LBL,  s" char" BYTES,   Lkwbchar @ LBL,  BCHAR-KW 6 BYTES,
    Lkwimm @ LBL,  s" immediate" BYTES,   Lkwpost @ LBL,  s" postpone" BYTES,
-   Lkwcompc @ LBL,  s" compile," BYTES, ;
+   Lkwcompc @ LBL,  s" compile," BYTES,
+   Lkwdoes @ LBL,  s" does>" BYTES, ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : c-emitw {: w :}  9 w LIT64,  Lcemit @ BL, ;
@@ -301,6 +302,36 @@ create ENDLOC-KW 58 c, 125 c,
 : j-recurse
    9 PEND 0 LDR,  $94000000 $3FFFFFF c-bback ;         \ bl entry
 
+: j-does
+   NEWLBL {: dok :}
+   12 DATA LOCF-CELL LDR,  12 dok CBZ,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
+   dok LBL,
+   $1000008A c-emitw                     \ adr x10, #+16 = D (4 words ahead)
+   16 20 DOESP-CELL w-ldrx c-emitw       \ x16 = Ldoespatch runtime addr
+   $D63F0200 c-emitw                     \ blr x16
+   j-exit                                \ word 4: the defining word ends here
+   9 $D10043FF LIT64,  Lcemit @ BL,      \ D: fresh prologue for the does-body
+   9 $F90003FE LIT64,  Lcemit @ BL, ;
+
+: emit-doespatch
+   Ldoespatch @ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
+   2 3 MOVZ,  Lprot @ BL,                                \ region -> RW
+   10 SP 8 LDR,
+   11 DATA LASTC-CELL LDR,                               \ created slot
+   12 11 0 LDR,  13 11 8 LDR,  12 12 13 ADD,             \ x12 = RET addr
+   14 10 12 SUB,  14 14 2 ASRI,                          \ delta words (negative)
+   5 $3FFFFFF LIT64,  14 14 5 AND,
+   5 $14000000 LIT64,  14 14 5 ORR,                      \ b D
+   14 12 0 STRW,
+   12 SP 16 STR,
+   2 5 MOVZ,  Lprot @ BL,                                \ region -> RX
+   12 SP 16 LDR,
+   12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
 \ ---- interpret-mode defining words ----
 \ record defining words for the checker: append the kind token + run the hook
 \ (verdict ignored — create/variable/constant always publish).
@@ -313,8 +344,10 @@ create ENDLOC-KW 58 c, 125 c,
    10 g-pop
    nohk LBL, ;
 
-: c-create
+: emit-create
    NEWLBL NEWLBL {: ncp ncpd :}
+   Lcreate @ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
    2 3 MOVZ,  Lprot @ BL,
    Ltok @ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  Lbcap @ BL,   \ seed "NAME " for the hook
@@ -330,9 +363,13 @@ create ENDLOC-KW 58 c, 125 c,
    9 W-RET LIT64,  Lcemit @ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
+   9 DATA LASTC-CELL STR,
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
-   Lkwcreate 6 c-defhook ;
+   Lkwcreate 6 c-defhook
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+: c-create  Lcreate @ BL, ;
 
 : c-variable  c-create
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;
@@ -583,6 +620,8 @@ s" cfbn-entry" s" n n n n n --" trust
    9 0 MOVZ,  9 DATA HOOK-CELL STR,
    9 0 MOVZ,  9 DATA LOOPSP-CELL STR,
    g-install-crash
+   9 Ldoespatch @ ADR,  9 DATA DOESP-CELL STR,
+   9 Lcreate @ ADR,  9 DATA CREATEP-CELL STR,
    emit-source
    PEND 0 MOVZ, ;
 
@@ -689,6 +728,7 @@ s" em-interpret" s" --" trust
       Lmain @ Lkwbtick  3 ['] c-btick  cf-entry
       Lmain @ Lkwbchar  6 ['] c-bchar  cf-entry
       Lmain @ Lkwpost   8 ['] c-postpone cf-entry
+      Lmain @ Lkwdoes   5 ['] j-does     cf-entry
       Lmain @ Lkwdo     2 ['] j-do     cf-entry
       Lmain @ Lkwloop   4 ['] j-loop   cf-entry
       Lmain @ Lkwi      1 ['] j-i      cf-entry
@@ -782,8 +822,8 @@ variable SRCA
    NEWLBL Lkwexit !  NEWLBL Lkwrec !
    NEWLBL Lkwqdo !  NEWLBL Lkwploop !  NEWLBL Lkwj !  NEWLBL Lkwleave !  NEWLBL Lkwunloop !
    NEWLBL Lkwchar !  NEWLBL Lkwbchar !
-   NEWLBL Lkwimm !  NEWLBL Lkwpost !  NEWLBL Lkwcompc !
-   NEWLBL Lbchain !
+   NEWLBL Lkwimm !  NEWLBL Lkwpost !  NEWLBL Lkwcompc !  NEWLBL Lkwdoes !
+   NEWLBL Lbchain !  NEWLBL Lcreate !  NEWLBL Ldoespatch !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !
@@ -801,6 +841,7 @@ variable SRCA
    NEWLBL Lkwzlt !  NEWLBL Lkwneg2 !  NEWLBL Lkwinv2 !
    emit-main
    emit-prims  emit-prof-prims  emit-fp-prims  emit-cemit  emit-bcap  emit-tok  emit-prot  emit-flush  emit-find  emit-num
+   emit-create  emit-doespatch
    emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-cmpkw  emit-unkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict

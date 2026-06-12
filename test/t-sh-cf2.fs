@@ -29,3 +29,10 @@ T{ s" : STAR 42 emit ; immediate : T STAR ; T"                    CF2-OUT s" *" 
 T{ s\" : FOO 7 . ; : E7 ['] FOO compile, ; immediate : T E7 ; T" CF2-OUT s\" 7\n" compare 0= -> true }T
 T{ s" : FOO 9 . ; : P postpone FOO ; immediate : T P ; T"         CF2-OUT s\" 9\n" compare 0= -> true }T
 T{ s" : IM 3 . ; immediate : P2 postpone IM ; immediate : T P2 ; T" CF2-OUT s\" 3\n" compare 0= -> true }T
+\ DOES> + runtime CREATE: the defining word patches its created word into
+\ `push dfield ; b does-body` (Ldoespatch runs from engine text — the region
+\ can't un-execute the page it is running).
+T{ s" : CONST create , does> @ ; 5 CONST FIVE FIVE ."         CF2-OUT s\" 5\n"  compare 0= -> true }T
+T{ s" : CONST create , does> @ ; 5 CONST F 9 CONST N F N + ." CF2-OUT s\" 14\n" compare 0= -> true }T
+T{ s" : ARR create cells allot does> swap cells + ; 4 ARR A4 7 2 A4 ! 2 A4 @ ." CF2-OUT s\" 7\n" compare 0= -> true }T
+T{ s" : CNT create 0 , does> dup @ 1 + dup rot ! ; CNT K K . K . K ." CF2-OUT s\" 1\n2\n3\n" compare 0= -> true }T

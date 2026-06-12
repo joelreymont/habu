@@ -54,6 +54,9 @@ $568 constant RSP-CELL    \ user return-stack depth (>r r> r@)
 $570 constant EXITH-CELL  \ EXIT placeholder chain head (code offset; 0 = none)
 $578 constant LVD-CELL    \ compile-time DO nesting depth (LEAVE chains)
 $580 constant LVH-OFF     \ LEAVE chain head per nesting level — 16 levels
+$560 constant LASTC-CELL  \ last CREATEd slot addr (DOES> patches it)
+$1F0 constant DOESP-CELL  \ runtime address of Ldoespatch (stored at startup)
+$230 constant CREATEP-CELL \ runtime address of Lcreate (prims must not name labels)
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
 $3000 constant DATA-START \ DP initial offset (past header + loop stack + body buf + rstack)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
@@ -101,7 +104,7 @@ variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  
 variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncount
 \ control-flow JIT helpers + keyword data labels (self-host 1b)
 variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp  variable Lbcap  variable Lbcs
-variable Lbchain
+variable Lbchain  variable Lcreate  variable Ldoespatch
 variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
@@ -112,6 +115,7 @@ variable Lkwexit variable Lkwrec
 variable Lkwqdo variable Lkwploop variable Lkwj variable Lkwleave variable Lkwunloop
 variable Lkwchar variable Lkwbchar
 variable Lkwimm variable Lkwpost variable Lkwcompc
+variable Lkwdoes
 
 9 constant A   10 constant B   11 constant C
 require prof.fs           \ in-binary sampling profiler (emitters + prims)
@@ -133,6 +137,9 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
 : bdot  A g-pop  g-print9 ;          \ pop x9, print signed decimal + newline
 
 : bu.   A g-pop  g-printu9 ;         \ pop x9, print unsigned decimal + newline
+: bcreate  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
+                                     \ startup-stored cell: subsets emit prims w/o labels
+
 : bcompile  A g-pop  11 9 0 ADDI,    \ ( xt -- ) append `movz-chain x16 ; blr x16` at CP
    SP SP 16 SUBI,  11 SP 8 STR,
    2 3 MOVZ,  Lprot @ BL,             \ run with region RX (immediate caller) — flip RW
@@ -348,6 +355,7 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    s" ,"    ['] bcomma FPRIM-L   s" c,"   ['] bccomma FPRIM-L
    s" type" ['] btype  FPRIM-L   s" execute" ['] bexec FPRIM
    s" compile," ['] bcompile FPRIM
+   s" create" ['] bcreate FPRIM
    s" die"  ['] bdie   FPRIM-L
    s" open" ['] bopen FPRIM-L   s" write" ['] bwrite FPRIM-L   s" read" ['] bread FPRIM-L
    s" close" ['] bclose FPRIM-L
@@ -742,7 +750,8 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    Lkwleave @ LBL,  s" leave" BYTES,   Lkwunloop @ LBL,  s" unloop" BYTES,
    Lkwchar @ LBL,  s" char" BYTES,   Lkwbchar @ LBL,  BCHAR-KW 6 BYTES,
    Lkwimm @ LBL,  s" immediate" BYTES,   Lkwpost @ LBL,  s" postpone" BYTES,
-   Lkwcompc @ LBL,  s" compile," BYTES, ;
+   Lkwcompc @ LBL,  s" compile," BYTES,
+   Lkwdoes @ LBL,  s" does>" BYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
@@ -900,6 +909,43 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 : j-recurse
    9 PEND 0 LDR,  $94000000 $3FFFFFF c-bback ;         \ bl entry
 
+\ DOES> — the defining word patches its LAST create into `push dfield ; b D`,
+\ then exits; D (the does-body) follows with its own prologue and shares `;`'s
+\ epilogue. The patch itself runs in Ldoespatch (ENGINE text): flipping the
+\ region to RW would un-map EXECUTE from the page the defining word runs on.
+\ Locals BEFORE does> are refused (the shared teardown wouldn't match).
+: j-does ( -- )
+   NEWLBL {: dok :}
+   12 DATA LOCF-CELL LDR,  12 dok CBZ,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
+   dok LBL,
+   $1000008A c-emitw                     \ adr x10, #+16 = D (4 words ahead)
+   16 20 DOESP-CELL w-ldrx c-emitw       \ x16 = Ldoespatch runtime addr
+   $D63F0200 c-emitw                     \ blr x16
+   j-exit                                \ word 4: the defining word ends here
+   9 $D10043FF LIT64,  Lcemit @ BL,      \ D: fresh prologue for the does-body
+   9 $F90003FE LIT64,  Lcemit @ BL, ;
+
+\ Ldoespatch ( x10=D ): patch the last-created word's RET into `b D`.
+\ Runs from engine text, so the region RW/RX flips are safe mid-execution.
+: emit-doespatch ( -- )
+   Ldoespatch @ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
+   2 3 MOVZ,  Lprot @ BL,                                \ region -> RW
+   10 SP 8 LDR,
+   11 DATA LASTC-CELL LDR,                               \ created slot
+   12 11 0 LDR,  13 11 8 LDR,  12 12 13 ADD,             \ x12 = RET addr
+   14 10 12 SUB,  14 14 2 ASRI,                          \ delta words (negative)
+   5 $3FFFFFF LIT64,  14 14 5 AND,
+   5 $14000000 LIT64,  14 14 5 ORR,                      \ b D
+   14 12 0 STRW,
+   12 SP 16 STR,
+   2 5 MOVZ,  Lprot @ BL,                                \ region -> RX
+   12 SP 16 LDR,
+   12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
 \ CREATE/VARIABLE (interpret-mode defining words): make a dict word whose body
 \ pushes the current DP (a data-space address). Reuses the `:` slot pattern + the
 \ c-lit emitter (with x11 = DP) for the literal-push body.
@@ -914,7 +960,11 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    10 g-pop
    nohk LBL, ;
 
-: c-create ( -- )
+\ CREATE as a BL-able routine: the interpret keyword AND the runtime `create`
+\ prim share it, so defining words (`: CONST create , does> @ ;`) work.
+: emit-create ( -- )
+   Lcreate @ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
    2 3 MOVZ,  Lprot @ BL,                               \ region -> RW
    Ltok @ BL,                                            \ read NAME
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  Lbcap @ BL,   \ seed "NAME " for the hook
@@ -931,9 +981,13 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    9 W-RET LIT64,  Lcemit @ BL,                          \ emit RET
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot again
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,        \ clen = CP-addr-4
+   9 DATA LASTC-CELL STR,                               \ DOES> patches this slot
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,                 \ region -> RX + flush
-   Lkwcreate 6 c-defhook ;
+   Lkwcreate 6 c-defhook
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+: c-create ( -- )  Lcreate @ BL, ;
 
 : c-variable ( -- )  c-create
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;          \ reserve 1 cell
@@ -1213,6 +1267,8 @@ variable CFSK2
    9 0 MOVZ,  9 DATA HOOK-CELL STR,                   \ check hook = none
    9 0 MOVZ,  9 DATA LOOPSP-CELL STR,                 \ DO/LOOP frame depth = 0
    g-install-crash                                    \ self-diagnosing crash (register dump)
+   9 Ldoespatch @ ADR,  9 DATA DOESP-CELL STR,
+   9 Lcreate @ ADR,  9 DATA CREATEP-CELL STR,        \ DOES> patch routine addr
    emit-source                                        \ INP/INE <- baked Lsrc or stdin
    PEND 0 MOVZ,                                       \ interpret mode
    NEWLBL {: lmain :}  NEWLBL {: lexit :}  NEWLBL {: lcompile :}  NEWLBL {: lundef :}
@@ -1325,6 +1381,7 @@ variable CFSK2
       lmain Lkwbtick  3 ['] c-btick  cf-entry            \ ['] NAME
       lmain Lkwbchar  6 ['] c-bchar  cf-entry            \ [CHAR] X
       lmain Lkwpost   8 ['] c-postpone cf-entry           \ POSTPONE NAME
+      lmain Lkwdoes   5 ['] j-does     cf-entry           \ DOES>
       lmain Lkwdo     2 ['] j-do     cf-entry            \ DO
       lmain Lkwloop   4 ['] j-loop   cf-entry            \ LOOP
       lmain Lkwi      1 ['] j-i      cf-entry            \ I
@@ -1407,7 +1464,7 @@ variable CFSK2
    NEWLBL Lcemit !  NEWLBL Ltok !  NEWLBL Lprot !  NEWLBL Lflush !  NEWLBL Lncount !
    NEWLBL Lbcap !  NEWLBL Lbcs !
    NEWLBL Lcfpush !  NEWLBL Lcfpop !  NEWLBL Lpat !  NEWLBL Lkwcmp !
-   NEWLBL Lbchain !
+   NEWLBL Lbchain !  NEWLBL Lcreate !  NEWLBL Ldoespatch !
    NEWLBL Lkwif !  NEWLBL Lkwthen !  NEWLBL Lkwelse !  NEWLBL Lkwbegin !
    NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !
    NEWLBL Lkwcreate !  NEWLBL Lkwvar !  NEWLBL Lkwsq !
@@ -1418,7 +1475,7 @@ variable CFSK2
    NEWLBL Lkwexit !  NEWLBL Lkwrec !
    NEWLBL Lkwqdo !  NEWLBL Lkwploop !  NEWLBL Lkwj !  NEWLBL Lkwleave !  NEWLBL Lkwunloop !
    NEWLBL Lkwchar !  NEWLBL Lkwbchar !
-   NEWLBL Lkwimm !  NEWLBL Lkwpost !  NEWLBL Lkwcompc !
+   NEWLBL Lkwimm !  NEWLBL Lkwpost !  NEWLBL Lkwcompc !  NEWLBL Lkwdoes !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !
@@ -1436,6 +1493,7 @@ variable CFSK2
    NEWLBL Lkwzlt !  NEWLBL Lkwneg2 !  NEWLBL Lkwinv2 !
    emit-main                                              \ entry @ offset 0
    emit-prims  emit-prof-prims  emit-fp-prims  emit-cemit  emit-bcap  emit-tok  emit-prot  emit-flush  emit-find  emit-num
+   emit-create  emit-doespatch
    emit-cf-helpers  emit-loc-find  emit-kwdata  emit-foldkw  emit-shufkw  emit-cmpkw  emit-unkw  emit-crash-handler  emit-hex
    emit-profdump  emit-prof  emit-vsjit
    emit-dict                                              \ after #PL is final
