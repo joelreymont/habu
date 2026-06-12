@@ -180,6 +180,21 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **Recording a previously-unrecorded sig changes CALL-SITE checking**: making
+  the native renderer emit quot scheme-strings (instead of '?') was correct in
+  isolation and self-checked, but it caused quot-bearing words like `dip` to be
+  RECORDED, so their callers got checked against the recorded sig and rejected
+  (t-sh-check:56). Reverted. Lesson: render and record are coupled — a sig that
+  renders must also round-trip through PARSE-SIG identically, or combinator call
+  sites mis-unify. Don't ship the render half without the parse half.
+- **Native vs gforth checker are different guarantees**: the gforth tier
+  verifies body-vs-declared-sig (rejects); the native checker infers + checks
+  internal consistency, and (now) verifies body-vs-sig in the warm snapshot via
+  CHECK! (VSIG flag, seed DCUR from the declared inputs, final-unify against the
+  declared outputs). The hook receives the body WITHOUT the sig comment by
+  default — the colon-open handler now captures the leading `( … )` span into the
+  body so CHECK/CHECK! can parse it.
+
 - **macOS arm64 SIGTRAP resume needs the trampoline token (3rd sigreturn arg)**:
   habu installs handlers as their own sa_tramp, so the kernel enters with the
   TRAMP abi — x1=infostyle, x2=sig, x4=ucontext, x5=token. The crash dumper

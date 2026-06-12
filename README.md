@@ -87,6 +87,14 @@ locals (`{: a:n :}`), quotations (`[: ;]` + typed `execute`), `trust`
 declarations, and prints reject diagnostics to stderr. The toolchain's own
 source self-checks at **783 certified / 0 uncheckable / 0 rejected**.
 
+The warm habu environment (the AOT snapshot, `tools/snap-hb.sh`) **verifies a
+definition's body against its own declared `( in -- out )`** and rejects a
+mismatch — `: SQ ( i64 -- i64 ) dup ;` is dropped with a diagnostic, `dup *`
+is accepted. Untyped definitions stay infer-only. (Two native-grammar
+completeness items remain, both present in the gforth tier: recording
+quot-bearing sigs as scheme-strings, and named row vars `R S T` — see
+`PLAN.md`.)
+
 ## Layout
 
 - [`PLAN.md`](PLAN.md) — the checker design (type system, unification, pipeline).
