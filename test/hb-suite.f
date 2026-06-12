@@ -115,10 +115,10 @@ ndict@ 0 > -1 T=
 : TRP 1 2 3 4 5 6 7 8 9 10 11 12 13 14  + + + + + + + + + + + + + ;
 TRP 105 T=
 
-\ loop-resident registers: 8 loop-carried values (full pool incl. x29) survive
-\ a BEGIN/UNTIL back edge via the byte-packed snapshot
-: TLR 1 2 3 4 5 6 7  0 begin 1 + dup 3 = until drop  + + + + + + ;
-TLR 28 T=
+\ loop-resident registers: 12 loop-carried values + the counter (13 = the
+\ full pool) survive a BEGIN/UNTIL back edge via the two-cell packed snapshot
+: TLR 1 2 3 4 5 6 7 8 9 10 11 12  0 begin 1 + dup 3 = until drop  + + + + + + + + + + + ;
+TLR 78 T=
 
 \ report: count + nonzero exit on failure
 : REPORT
