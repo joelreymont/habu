@@ -14,20 +14,24 @@ requires building a small Forth runtime (Part F) — accepted as the long pole.
 > **STATUS (2026-06-12): the end-state is REACHED — Parts A–F DONE, fixpoint
 > holds.** `bin/hb` is a standalone macOS ARM64 Forth engine that compiles the
 > whole toolchain source (`src/`), type-checks it with its built-in checker
-> (554 certified / 109 uncheckable / 0 rejected), and **rebuilds itself
+> (783 certified / 0 uncheckable / 0 rejected), and **rebuilds itself
 > byte-for-byte** (stage2 ≡ stage3; `tools/build.sh` is the no-gforth daily
 > loop, `tools/bootstrap.sh` regenerates from nothing). gforth is bootstrap +
 > differential oracle only. The runtime `:` compiler JIT-allocates registers
 > (vsjit: constant folding, register ops, fused branches, loop-resident
 > registers across BEGIN loops — 30M-iteration counter loop in 0.016 s).
 > In-binary disassembler, sampling profiler, and crash handler ship inside the
-> engine; `tools/{probe,imgdump,jitdump,parity-lint,clobber-lint}` are the dev
-> loop. Known gaps live in the dots: engine control-flow words
-> (`exit recurse ?do +loop j leave >r r> r@`), user-extensible compile words
-> (`immediate postpone does>`), native checker features (trusted sigs, return
-> row, quotations, diagnostics), `decodeBitMasks`. Sections below are kept as
-> the historical design record; their "remaining/not started" markers predate
-> this status.
+> engine; `tools/{probe,imgdump,jitdump,parity-lint,clobber-lint,shadow-lint}`
+> are the dev loop. The 2026-06-12 wave closed the remaining gaps: full
+> control flow (`exit recurse ?do +loop j leave unloop >r r> r@`),
+> user-extensible compile words (`immediate postpone compile, create does>`),
+> quotations (`[: ;]` engine + checker types), trust declarations, reject
+> diagnostics, typed locals, encodeBitMasks, the engine-run behavior gate
+> (test/hb-suite.f via the `run-rc` spawn prim), and TRUE AOT: tools/snap-hb.sh
+> emits a dictionary-snapshot binary that boots the whole toolchain WARM in
+> ~3 ms (fixed-VA regions + startup relocation of engine-text references).
+> The toolchain self-checks 783/0/0. Sections below are the historical design
+> record; their "remaining/not started" markers predate this status.
 
 ## Foundational principle: everything in Forth, no C
 

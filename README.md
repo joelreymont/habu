@@ -76,11 +76,12 @@ locals (`{: a b :}`, `{ a:u8 -- }`), quotations (`[: ;]`), `'`/`['] ` (xt typed
 as quot), the return stack (`>R R> R@`), pointer/memory ops, and `TRUSTED:`
 annotations for words whose effect can't be inferred (FFI, metaprogramming).
 
-The native engine's built-in checker models a (sound) subset today — known
-prims, literals, `IF`/`BEGIN`/`DO` joins, untyped locals — and marks the rest
-UNCHECKABLE rather than falsely certifying (554 certified / 109 uncheckable /
-0 rejected over the toolchain's own source). Closing the gap to the full
-checker is tracked in the dots.
+The native engine's built-in checker now models the full surface its engine
+compiles: prims, literals, all control flow (`IF`/`BEGIN`/`DO`/`?DO`/`+LOOP`/
+`EXIT`/`RECURSE`), the return stack (`>R R> R@`, balance enforced), typed
+locals (`{: a:n :}`), quotations (`[: ;]` + typed `execute`), `trust`
+declarations, and prints reject diagnostics to stderr. The toolchain's own
+source self-checks at **783 certified / 0 uncheckable / 0 rejected**.
 
 ## Layout
 

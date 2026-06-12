@@ -881,9 +881,9 @@ s" em-interpret" s" --" trust
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,
       12 lcnotnum CBZ,  Lvpushc @ BL,  Lmain @ B,
       lcnotnum LBL,
-      Lmain @ Lkwplus  1 ['] f+ ['] e+ vop-entry
-      Lmain @ Lkwminus 1 ['] f- ['] e- vop-entry
-      Lmain @ Lkwstar  1 ['] f* ['] e* vop-entry
+      Lmain @ Lkwplus  1 ['] vf+ ['] e+ vop-entry
+      Lmain @ Lkwminus 1 ['] vf- ['] e- vop-entry
+      Lmain @ Lkwstar  1 ['] vf* ['] e* vop-entry
       Lmain @ Lkwand2  3 ['] fand ['] eand vop-entry
       Lmain @ Lkwor2   2 ['] for2 ['] eor2 vop-entry
       Lmain @ Lkwxor2  3 ['] fxor2 ['] exor vop-entry

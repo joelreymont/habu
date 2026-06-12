@@ -92,11 +92,11 @@ variable FESK
    FESK @ LBL, ;
 s" fold-entry" s" n n n n --" trust
 
-: f+ 11 11 12 ADD, ;
+: vf+ 11 11 12 ADD, ;   \ fold helpers — NOT f+/f-/f*: those are the FLOAT prims
 
-: f- 11 11 12 SUB, ;
+: vf- 11 11 12 SUB, ;
 
-: f* 11 11 12 MUL, ;
+: vf* 11 11 12 MUL, ;
 
 : fand 11 11 12 AND, ;
 

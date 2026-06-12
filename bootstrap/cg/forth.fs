@@ -1579,9 +1579,9 @@ variable CFSK2
       NEWLBL {: lcnotnum :}
       12 lcnotnum CBZ,  Lvpushc @ BL,  lmain B,
       lcnotnum LBL,
-      lmain Lkwplus  1 ['] f+ ['] e+ vop-entry
-      lmain Lkwminus 1 ['] f- ['] e- vop-entry
-      lmain Lkwstar  1 ['] f* ['] e* vop-entry
+      lmain Lkwplus  1 ['] vf+ ['] e+ vop-entry
+      lmain Lkwminus 1 ['] vf- ['] e- vop-entry
+      lmain Lkwstar  1 ['] vf* ['] e* vop-entry
       lmain Lkwand2  3 ['] fand ['] eand vop-entry
       lmain Lkwor2   2 ['] for2 ['] eor2 vop-entry
       lmain Lkwxor2  3 ['] fxor2 ['] exor vop-entry
