@@ -53,7 +53,7 @@ $28 constant INL-MAX
    STDIN? @ IF
       0 0 MOVZ,  1 $40487413 LIT64,  2 DATA BODYBUF-OFF ADDI,  NR-IOCTL SYS,
       0 rpipe CBNZ,
-      INP LSRC @ ADR,  INE LSRC @ ADR,  5 SRCN @ LIT64,  INE INE 5 ADD,  rgo B,
+      11 LSRC @ ADR,  11 DATA INP-CELL STR,  5 SRCN @ LIT64,  11 11 5 ADD,  11 DATA INE-CELL STR,  rgo B,
       rpipe LBL,
       0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
       NR-MMAP SYS,
@@ -66,10 +66,10 @@ $28 constant INL-MAX
          0 RD CBZ,
          9 9 0 ADD,  rl B,
       RD LBL,
-      INP 11 0 ADDI,  INE 9 0 ADDI,
+      11 DATA INP-CELL STR,  9 DATA INE-CELL STR,
       rgo LBL,
    ELSE
-      INP LSRC @ ADR,  INE LSRC @ ADR,  5 SRCN @ LIT64,  INE INE 5 ADD,
+      11 LSRC @ ADR,  11 DATA INP-CELL STR,  5 SRCN @ LIT64,  11 11 5 ADD,  11 DATA INE-CELL STR,
    THEN ;
 
 \ ---- control-flow JIT helpers ----
@@ -461,10 +461,10 @@ create ENDLOC-KW 58 c, 125 c,
    pdone LBL, ;
 
 : C-ISDQ
-   INP INP 1 ADDI,  13 INP 0 ADDI,
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
    NEWLBL NEWLBL NEWLBL NEWLBL {: sl sd cl cd :}
-   sl LBL,  9 INP 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  INP INP 1 ADDI,  sl B,
-   sd LBL,  10 INP 13 SUB,  INP INP 1 ADDI,
+   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
+   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
    12 DATA 0 LDR,  15 12 0 ADDI,                        \ x12 = DP, x15 = string base
    11 13 0 ADDI,  9 10 0 ADDI,
    cl LBL,  9 cd CBZ,
@@ -549,9 +549,9 @@ create ENDLOC-KW 58 c, 125 c,
 
 : C-SDQ
    NEWLBL NEWLBL NEWLBL NEWLBL {: sl sd cl cd :}
-   INP INP 1 ADDI,  13 INP 0 ADDI,
-   sl LBL,  9 INP 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  INP INP 1 ADDI,  sl B,
-   sd LBL,  10 INP 13 SUB,  INP INP 1 ADDI,
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
+   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
+   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
    12 CP 0 ADDI,
    11 13 0 ADDI,  9 10 0 ADDI,
@@ -781,10 +781,10 @@ s" cfbn-entry" s" n n n n n --" TRUST
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,
       9 92 CMPI,  C-EQ skln BCOND,
       9 40 CMPI,  C-NE notcom BCOND,
-      skpar LBL,  INP INE CMP,  C-GE LMAIN @ BCOND,
-         9 INP 0 LDRB,  INP INP 1 ADDI,  9 41 CMPI,  C-NE skpar BCOND,  LMAIN @ B,
-      skln LBL,   INP INE CMP,  C-GE LMAIN @ BCOND,
-         9 INP 0 LDRB,  INP INP 1 ADDI,  9 10 CMPI,  C-NE skln BCOND,  LMAIN @ B,
+      skpar LBL,  11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN @ BCOND,
+         9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 41 CMPI,  C-NE skpar BCOND,  LMAIN @ B,
+      skln LBL,   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN @ BCOND,
+         9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 10 CMPI,  C-NE skln BCOND,  LMAIN @ B,
       notcom LBL,
       9 DATA PEND-CELL LDR,  9 LCOMPILE @ CBNZ, ;
 
@@ -979,7 +979,7 @@ s" em-interpret" s" --" TRUST
       XDS XDS 8 SUBI,  10 XDS 0 LDR,
       XDS XDS 8 SUBI,  11 XDS 0 LDR,
       10 LRBYE @ CBZ,                                 \ empty = EOF
-      INP 11 0 ADDI,  INE 11 10 ADD,  LMAIN @ B,
+      11 DATA INP-CELL STR,  11 11 10 ADD,  11 DATA INE-CELL STR,  LMAIN @ B,
    LRBYE @ LBL,
       0 0 MOVZ,  NR-EXIT SYS, ;                     \ exit(0)
 s" em-compile" s" --" TRUST

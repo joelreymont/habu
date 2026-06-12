@@ -4,7 +4,7 @@
 \ icode.fs + mnem.fs + rt.fs (g-push/g-pop/g-print9) + crash.fs + macho.fs.
 \ Part 1: prims + tok/find/num/prot/flush/cemit + dict. The interpreter main
 \ loop, keyword JIT and EMIT-FORTH follow in part 2 (habu2.f).
-20 constant RBASE   21 constant INP    22 constant INE
+20 constant RBASE
 26 constant DBASE  27 constant NDICT  28 constant CP
 $100000 constant REGION
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
@@ -39,6 +39,8 @@ $3680 constant ENVP-CELL
 $3688 constant PEND-CELL   \ pending dict record ptr (0 = interpret mode; was x25)
 $3690 constant TKA-CELL    \ current token addr (was x23)
 $3698 constant TKL-CELL    \ current token len  (was x24)
+$36A0 constant INP-CELL    \ input cursor (was x21)
+$36A8 constant INE-CELL    \ input end    (was x22)
 $1D8 constant SSCR-CELL
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF
@@ -480,17 +482,19 @@ s" emit-fp-prims" s" --" TRUST
 : EMIT-TOK
    LTOK @ LBL,
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: tskip thas tscan tgot tnone :}
+   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
    tskip LBL,
-      INP INE CMP,  C-GE tnone BCOND,
-      9 INP 0 LDRB,  9 32 CMPI,  C-HI thas BCOND,
-      INP INP 1 ADDI,  tskip B,
-   thas LBL,  9 INP 0 ADDI,  9 DATA TKA-CELL STR,
+      11 12 CMP,  C-GE tnone BCOND,
+      9 11 0 LDRB,  9 32 CMPI,  C-HI thas BCOND,
+      11 11 1 ADDI,  tskip B,
+   thas LBL,  11 DATA TKA-CELL STR,
    tscan LBL,
-      INP INE CMP,  C-GE tgot BCOND,
-      9 INP 0 LDRB,  9 32 CMPI,  C-LS tgot BCOND,
-      INP INP 1 ADDI,  tscan B,
-   tgot LBL,  9 DATA TKA-CELL LDR,  9 INP 9 SUB,  9 DATA TKL-CELL STR,  0 1 MOVZ,  RET,
-   tnone LBL,  0 0 MOVZ,  RET, ;
+      11 12 CMP,  C-GE tgot BCOND,
+      9 11 0 LDRB,  9 32 CMPI,  C-LS tgot BCOND,
+      11 11 1 ADDI,  tscan B,
+   tgot LBL,  9 DATA TKA-CELL LDR,  9 11 9 SUB,  9 DATA TKL-CELL STR,
+      11 DATA INP-CELL STR,  0 1 MOVZ,  RET,
+   tnone LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
 
 : EMIT-PROT
    LPROT @ LBL,

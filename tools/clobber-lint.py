@@ -39,7 +39,7 @@ FILES = [
 ]
 
 REGNAMES = {"XDS": 19, "SP": 31, "A": 9, "B": 10, "C": 11,
-            "RBASE": 20, "INP": 21, "INE": 22,
+            "RBASE": 20,
             "DBASE": 26, "NDICT": 27, "CP": 28, "DATA": 20}
 
 CONTRACT_REGS = {28, 30, 31}   # CP / LR / SP-XZR — see module docstring
@@ -49,7 +49,7 @@ RETURNS = {
     "Lcfpop": {9},                   # ( -> x9 )
     "Lkwcmp": {0},                   # ( x0 x1 -> x0=match? )
     "Lloc-find": {0},                # ( -> x0=slot | -1 )
-    "Ltok": {0, 21},                 # ( -> x0=have? ) + INP advance (TKA/TKL in cells)
+    "Ltok": {0},                     # ( -> x0=have? ); INP/TKA/TKL all in cells
     "Lfind": {11, 12, 13},           # ( x9 x10 -> x11=addr x12=clen x13=found )
     "Lnum": {11, 12},                # ( -> x11=val x12=ok )
     "Lvralloc": {14},                # ( -> x14=reg | 0 )

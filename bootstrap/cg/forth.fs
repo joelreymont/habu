@@ -20,7 +20,7 @@ require templ.fs           \ g-push, XDS(=19)
 require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
 require crash.fs           \ in-binary crash handler (register dump on signal)
 
-20 constant RBASE   21 constant INP    22 constant INE
+20 constant RBASE
 26 constant DBASE  27 constant NDICT  28 constant CP
 
 $100000 constant REGION       \ mmap region size (1 MB)
@@ -62,6 +62,8 @@ $3680 constant ENVP-CELL
 $3688 constant PEND-CELL   \ pending dict record ptr (0 = interpret mode; was x25)
 $3690 constant TKA-CELL    \ current token addr (was x23)
 $3698 constant TKL-CELL    \ current token len  (was x24)
+$36A0 constant INP-CELL    \ input cursor (was x21)
+$36A8 constant INE-CELL    \ input end    (was x22)
 $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
                            \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
@@ -532,17 +534,19 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    LTOK @ LBL,
    NEWLBL {: tskip :}  NEWLBL {: thas :}  NEWLBL {: tscan :}
    NEWLBL {: tgot :}   NEWLBL {: tnone :}
+   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
    tskip LBL,                                          \ skip whitespace (any byte <= 32)
-      INP INE CMP,  C-GE tnone BCOND,
-      9 INP 0 LDRB,  9 32 CMPI,  C-HI thas BCOND,      \ c > 32 -> token start
-      INP INP 1 ADDI,  tskip B,
-   thas LBL,  9 INP 0 ADDI,  9 DATA TKA-CELL STR,
+      11 12 CMP,  C-GE tnone BCOND,
+      9 11 0 LDRB,  9 32 CMPI,  C-HI thas BCOND,      \ c > 32 -> token start
+      11 11 1 ADDI,  tskip B,
+   thas LBL,  11 DATA TKA-CELL STR,
    tscan LBL,                                          \ scan to next whitespace
-      INP INE CMP,  C-GE tgot BCOND,
-      9 INP 0 LDRB,  9 32 CMPI,  C-LS tgot BCOND,      \ c <= 32 -> token end
-      INP INP 1 ADDI,  tscan B,
-   tgot LBL,  9 DATA TKA-CELL LDR,  9 INP 9 SUB,  9 DATA TKL-CELL STR,  0 1 MOVZ,  RET,
-   tnone LBL,  0 0 MOVZ,  RET, ;
+      11 12 CMP,  C-GE tgot BCOND,
+      9 11 0 LDRB,  9 32 CMPI,  C-LS tgot BCOND,      \ c <= 32 -> token end
+      11 11 1 ADDI,  tscan B,
+   tgot LBL,  9 DATA TKA-CELL LDR,  9 11 9 SUB,  9 DATA TKL-CELL STR,
+      11 DATA INP-CELL STR,  0 1 MOVZ,  RET,
+   tnone LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
 
 \ ---- PROT ( x2=prot -- ) : mprotect(region, REGION, prot) ----
 : EMIT-PROT ( -- )
@@ -720,7 +724,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       \ read-to-EOF; a pipe keeps the classic batch read-all below.
       0 0 MOVZ,  1 $40487413 LIT64,  2 DATA BODYBUF-OFF ADDI,  NR-IOCTL SYS,
       0 rpipe CBNZ,
-      INP LSRC @ ADR,  INE LSRC @ ADR,  5 SRCN @ LIT64,  INE INE 5 ADD,  rgo B,
+      11 LSRC @ ADR,  11 DATA INP-CELL STR,  5 SRCN @ LIT64,  11 11 5 ADD,  11 DATA INE-CELL STR,  rgo B,
       rpipe LBL,
       0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
       NR-MMAP SYS,                       \ mmap RW input buffer -> x0
@@ -734,10 +738,10 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
          0 RD CBZ,                                 \ EOF (n=0) -> done
          9 9 0 ADD,  rl B,                         \ ptr += n
       RD LBL,
-      INP 11 0 ADDI,  INE 9 0 ADDI,                \ INP=base, INE=ptr
+      11 DATA INP-CELL STR,  9 DATA INE-CELL STR,                \ INP=base, INE=ptr
       rgo LBL,
    else
-      INP LSRC @ ADR,  INE LSRC @ ADR,  5 SRCN @ LIT64,  INE INE 5 ADD,
+      11 LSRC @ ADR,  11 DATA INP-CELL STR,  5 SRCN @ LIT64,  11 11 5 ADD,  11 DATA INE-CELL STR,
    then ;
 
 \ ---- control-flow JIT: a CF stack (region+CFSTK-OFF) of placeholder branch
@@ -1257,10 +1261,10 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ S" (interpret mode): copy the string to HERE (transient — no allot) and push
 \ ( addr len ). Compile mode bakes bytes into the code image instead (c-sdq).
 : C-ISDQ ( -- )
-   INP INP 1 ADDI,  13 INP 0 ADDI,                      \ skip one space; x13 = start
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,                      \ skip one space; x13 = start
    NEWLBL {: sl :}  NEWLBL {: sd :}
-   sl LBL,  9 INP 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  INP INP 1 ADDI,  sl B,
-   sd LBL,  10 INP 13 SUB,  INP INP 1 ADDI,             \ x10 = len; skip closing "
+   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
+   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,             \ x10 = len; skip closing "
    12 DATA 0 LDR,  15 12 0 ADDI,                        \ x12 = DP, x15 = string base
    11 13 0 ADDI,  9 10 0 ADDI,
    NEWLBL {: cl :}  NEWLBL {: cd :}
@@ -1274,10 +1278,10 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ push len. Bytes live in the RX code image; the absolute address is known at
 \ compile time, so C-LIT pushes it (no PC-relative ADR needed).
 : C-SDQ ( -- )
-   INP INP 1 ADDI,  13 INP 0 ADDI,                      \ skip one space; x13 = start
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,                      \ skip one space; x13 = start
    NEWLBL {: sl :}  NEWLBL {: sd :}
-   sl LBL,  9 INP 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  INP INP 1 ADDI,  sl B,
-   sd LBL,  10 INP 13 SUB,  INP INP 1 ADDI,             \ x10 = len; skip closing "
+   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
+   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,             \ x10 = len; skip closing "
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,      \ x15 = B addr; emit B placeholder
    12 CP 0 ADDI,                                        \ x12 = byte addr (after the B)
    11 13 0 ADDI,  9 10 0 ADDI,                          \ copy x10 bytes start->CP
@@ -1504,10 +1508,10 @@ variable CFSK2
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,
       9 92 CMPI,  C-EQ skln BCOND,                       \ '\'
       9 40 CMPI,  C-NE notcom BCOND,                     \ '('
-      skpar LBL,  INP INE CMP,  C-GE LMAIN BCOND,
-         9 INP 0 LDRB,  INP INP 1 ADDI,  9 41 CMPI,  C-NE skpar BCOND,  LMAIN B,
-      skln LBL,   INP INE CMP,  C-GE LMAIN BCOND,
-         9 INP 0 LDRB,  INP INP 1 ADDI,  9 10 CMPI,  C-NE skln BCOND,  LMAIN B,
+      skpar LBL,  11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN BCOND,
+         9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 41 CMPI,  C-NE skpar BCOND,  LMAIN B,
+      skln LBL,   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN BCOND,
+         9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 10 CMPI,  C-NE skln BCOND,  LMAIN B,
       notcom LBL,
       9 DATA PEND-CELL LDR,  9 LCOMPILE CBNZ,
       \ ---------------- INTERPRET ----------------
@@ -1714,7 +1718,7 @@ variable CFSK2
       XDS XDS 8 SUBI,  10 XDS 0 LDR,
       XDS XDS 8 SUBI,  11 XDS 0 LDR,
       10 LRBYE @ CBZ,                                 \ empty = EOF
-      INP 11 0 ADDI,  INE 11 10 ADD,  LMAIN B,
+      11 DATA INP-CELL STR,  11 11 10 ADD,  11 DATA INE-CELL STR,  LMAIN B,
    LRBYE @ LBL,
       0 0 MOVZ,  NR-EXIT SYS, ;                     \ exit(0)
 
