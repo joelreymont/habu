@@ -78,7 +78,7 @@ $00020400 constant CD-VERSION                \ supports execSeg fields
    0 B32                                                 \ spare2
    0 B32  0 B32                                          \ scatterOffset, teamOffset
    0 B32  0 B64                                          \ spare3, codeLimit64
-   0 B64  MPAGE B64  EXECSEG-MAIN B64 ;                  \ execSegBase/Limit/Flags
+   0 B64  TEXTSZ B64  EXECSEG-MAIN B64 ;                 \ execSegBase/Limit/Flags
 
 \ CODESIG ( -- ) : self-sign the finished unsigned MBUF in place. Hashes the file
 \ pages [0,codeLimit) — all strictly below the signature, so no self-reference.

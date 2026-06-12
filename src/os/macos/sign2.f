@@ -51,7 +51,7 @@ $00020400 constant CD-VERSION
 2         constant HT-SHA256
 12        constant CS-PAGE-LOG
 1         constant EXECSEG-MAIN
-variable EXECSEG-LIM   MPAGE EXECSEG-LIM !   \ snapshots override (bigger __TEXT)
+variable EXECSEG-LIM   0 EXECSEG-LIM !   \ 0 = use TEXTSZ (snapshots override: bigger __TEXT)
 
 : ADD-CODESIG-LC
    MH-HDR-SZ  20 HL@ +  {: at :}
@@ -74,7 +74,7 @@ variable EXECSEG-LIM   MPAGE EXECSEG-LIM !   \ snapshots override (bigger __TEXT
    0 B32
    0 B32  0 B32
    0 B32  0 B64
-   0 B64  EXECSEG-LIM @ B64  EXECSEG-MAIN B64 ;
+   0 B64  EXECSEG-LIM @ dup 0 = IF drop TEXTSZ THEN B64  EXECSEG-MAIN B64 ;
 variable CSI
 
 : CODESIG2

@@ -46,6 +46,10 @@ $40000    constant MPAGE             \ __TEXT file/vm size; __LINKEDIT starts he
 variable CODELEN
 
 : ASM-CODE  ASM-LEN CODELEN ! ;      \ code already assembled in icode's CODE
+
+\ __TEXT sized to CONTENT (16 KB pages), not a fixed page count: a 24 KB
+\ program is a 28 KB binary, not 264 KB. MPAGE survives as the buffer cap.
+: TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $3FFF +  $3FFF invert and ;
 variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign post-pass)
 
 : SEG, {: a u vma vmsz foff fsz prot nsects extra :}
@@ -91,16 +95,16 @@ variable PHP
    ASM-CODE  M-RESET  0 NCMDS !
    MH-HDR,
    s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
-   s" __TEXT" VMBASE MPAGE 0 MPAGE 5 1 80 SEG,  LC+
+   s" __TEXT" VMBASE TEXTSZ 0 TEXTSZ 5 1 80 SEG,  LC+
       s" __text" s" __TEXT" VMBASE CODE-OFF + CODELEN @ CODE-OFF 2 $80000400 SECT,
    M-HERE LE-OFF !
-   s" __LINKEDIT" VMBASE MPAGE + MPAGE MPAGE 0 1 0 0 SEG,  LC+
+   s" __LINKEDIT" VMBASE TEXTSZ + MPAGE TEXTSZ 0 1 0 0 SEG,  LC+
    DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
    PATCH-HDR
    CODELEN @  MPAGE CODE-OFF -  > IF s" macho: code exceeds __TEXT page" 73 die THEN
    CODE-OFF M-PAD
    CODE CODELEN @ M-BYTES
-   MPAGE M-PAD
+   TEXTSZ M-PAD
    M-HERE MLEN ! ;
 
 \ the target-neutral driver entry: another OS swaps in an ELF builder here

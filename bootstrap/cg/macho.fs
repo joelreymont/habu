@@ -58,6 +58,10 @@ create SCODE MPAGE allot              \ assembled-code scratch (grows with the s
    PASS1  WPOS @ 4 *  MPAGE CODE-OFF -  > abort" cg: code exceeds __TEXT page"
    SCODE ASSEMBLE CODELEN ! ;
 
+\ __TEXT sized to CONTENT (16 KB pages), not a fixed page count: a 24 KB
+\ program is a 28 KB binary, not 264 KB. MPAGE survives as the buffer cap.
+: TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $3FFF +  $3FFF invert and ;
+
 variable LE-OFF                       \ file offset of the __LINKEDIT LC (for sign.fs post-pass)
 
 : SEG, ( name$ vmaddr vmsize fileoff filesize prot nsects extrasz -- )
@@ -102,17 +106,17 @@ variable NCMDS                        \ load commands counted as emitted
    ASM-CODE  M-RESET  0 NCMDS !
    MH-HDR,
    s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
-   s" __TEXT" VMBASE MPAGE 0 MPAGE 5 1 80 SEG,  LC+
+   s" __TEXT" VMBASE TEXTSZ 0 TEXTSZ 5 1 80 SEG,  LC+
       s" __text" s" __TEXT" VMBASE CODE-OFF + CODELEN @ CODE-OFF 2 $80000400 SECT,
    M-HERE LE-OFF !                    \ remember __LINKEDIT LC offset for the sign post-pass
-   s" __LINKEDIT" VMBASE MPAGE + MPAGE MPAGE 0 1 0 0 SEG,  LC+
+   s" __LINKEDIT" VMBASE TEXTSZ + MPAGE TEXTSZ 0 1 0 0 SEG,  LC+
    DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
    PATCH-HDR                          \ derive ncmds/sizeofcmds (no frozen magic)
    CODELEN @  MPAGE CODE-OFF -  > abort" cg: emitted code exceeds __TEXT page"
    CODE-OFF M-PAD                    \ header slack (room for the post-pass LC_CODE_SIGNATURE)
    SCODE  MP @  CODELEN @  move      \ copy assembled code
    CODELEN @ MP +!
-   MPAGE M-PAD                        \ pad file to one page
+   TEXTSZ M-PAD                        \ pad file to one page
    M-HERE MLEN ! ;
 
 \ the target-neutral driver entry: another OS swaps in an ELF builder here
