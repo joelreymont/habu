@@ -53,13 +53,13 @@ variable ABUF  variable WPOS
 
 : 1ST-NF ( x -- i )  4 0 ?do  dup i CHUNK $FFFF <> if drop i unloop exit then  loop drop 0 ;
 
-: LIT-Z ( rd x -- )  {: rd x | f :}  x 1ST-NZ to f
-   rd x f CHUNK f MOVZHW EMITW
-   4 0 ?do  i f <> if x i CHUNK ?dup if rd swap i MOVKHW EMITW then then  loop ;
+: LIT-Z ( rd x -- )  {: RD x | f :}  x 1ST-NZ to f
+   RD x f CHUNK f MOVZHW EMITW
+   4 0 ?do  i f <> if x i CHUNK ?dup if RD swap i MOVKHW EMITW then then  loop ;
 
-: LIT-N ( rd x -- )  {: rd x | f :}  x 1ST-NF to f
-   rd x f CHUNK invert $FFFF and f MOVNHW EMITW
-   4 0 ?do  i f <> if x i CHUNK dup $FFFF <> if rd swap i MOVKHW EMITW else drop then then  loop ;
+: LIT-N ( rd x -- )  {: RD x | f :}  x 1ST-NF to f
+   RD x f CHUNK invert $FFFF and f MOVNHW EMITW
+   4 0 ?do  i f <> if x i CHUNK dup $FFFF <> if RD swap i MOVKHW EMITW else drop then then  loop ;
 
 : MOVN-SHORTER? ( x -- f )  dup NF-CHUNKS 1 max  swap NZ-CHUNKS 1 max  < ;
 

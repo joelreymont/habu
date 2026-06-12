@@ -60,10 +60,10 @@ variable BBASE  variable BKIND
 : CBNZ, {: rt lbl :}  3036676096 rt or BBASE !  1 BKIND !  lbl BR-EMIT ;
 
 \ adr rd, label: PC-relative address (kind-2 fixup when forward)
-: ADR, {: rd lbl :}
+: ADR, {: RD lbl :}
    lbl cells LBLP + @ dup 0 < IF
-     drop  CP @ lbl 2 FX+  rd 0 ENC-ADR EMITW
-   ELSE  CP @ - 4 *  rd swap ENC-ADR EMITW  THEN ;
+     drop  CP @ lbl 2 FX+  RD 0 ENC-ADR EMITW
+   ELSE  CP @ - 4 *  RD swap ENC-ADR EMITW  THEN ;
 \ define a label here; backpatch all pending fixups that target it
 variable LBI
 
@@ -111,22 +111,22 @@ variable LCH  variable LFI  variable LCI
      LFI @ 0 < IF x over CHUNK16 $FFFF <> IF dup LFI ! THEN THEN  1 + REPEAT drop
    LFI @ 0 < IF 0 ELSE LFI @ THEN ;
 
-: LITZ {: rd x :}  x 1STNZ LFI !
-   rd  x LFI @ CHUNK16  LFI @ MOVZHW EMITW
+: LITZ {: RD x :}  x 1STNZ LFI !
+   RD  x LFI @ CHUNK16  LFI @ MOVZHW EMITW
    0 LCI ! BEGIN LCI @ 4 < WHILE
      LCI @ LFI @ <> IF
        x LCI @ CHUNK16 LCH !
-       LCH @ 0 <> IF rd LCH @ LCI @ MOVKHW EMITW THEN THEN
+       LCH @ 0 <> IF RD LCH @ LCI @ MOVKHW EMITW THEN THEN
      LCI @ 1 + LCI ! REPEAT ;
 
-: LITN {: rd x :}  x 1STNF LFI !
-   rd  x LFI @ CHUNK16 invert $FFFF and  LFI @ MOVNHW EMITW
+: LITN {: RD x :}  x 1STNF LFI !
+   RD  x LFI @ CHUNK16 invert $FFFF and  LFI @ MOVNHW EMITW
    0 LCI ! BEGIN LCI @ 4 < WHILE
      LCI @ LFI @ <> IF
        x LCI @ CHUNK16 LCH !
-       LCH @ $FFFF <> IF rd LCH @ LCI @ MOVKHW EMITW THEN THEN
+       LCH @ $FFFF <> IF RD LCH @ LCI @ MOVKHW EMITW THEN THEN
      LCI @ 1 + LCI ! REPEAT ;
 
-: LIT64, {: rd x :}  x NFC MAX1  x NZC MAX1  < IF rd x LITN ELSE rd x LITZ THEN ;
+: LIT64, {: RD x :}  x NFC MAX1  x NZC MAX1  < IF RD x LITN ELSE RD x LITZ THEN ;
 
 : ASM-LEN  CP @ 4 * ;

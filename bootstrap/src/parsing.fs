@@ -12,10 +12,10 @@
 \ Consume body tokens until one ends with CH; that token closes the literal.
 \ Throws E-QUOT on an unterminated literal: end of body reached first.
 : SKIP-TO-END ( ch -- )
-   {: ch :}
+   {: CH :}
    begin
      B-NEXT dup 0= if E-QUOT throw then
-     ch ENDS-WITH? if exit then
+     CH ENDS-WITH? if exit then
    again ;
 
 \ String content closed by a double-quote, pushing nothing.

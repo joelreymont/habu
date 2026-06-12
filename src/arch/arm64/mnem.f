@@ -8,73 +8,73 @@
  8 constant C-HI   9 constant C-LS  10 constant C-GE  11 constant C-LT
 12 constant C-GT  13 constant C-LE  14 constant C-AL
 
-: MOVZ, {: rd imm :}  rd imm 0 MOVZHW EMITW ;
+: MOVZ, {: RD imm :}  RD imm 0 MOVZHW EMITW ;
 
-: MOVN, {: rd imm :}  rd imm 0 MOVNHW EMITW ;
+: MOVN, {: RD imm :}  RD imm 0 MOVNHW EMITW ;
 
-: MOVK, {: rd imm sh :}  rd imm sh 16 / MOVKHW EMITW ;
+: MOVK, {: RD imm sh :}  RD imm sh 16 / MOVKHW EMITW ;
 
-: ADD,  {: rd rn rm :}  rd rn rm ENC-ADD EMITW ;
+: ADD,  {: RD RN RM :}  RD RN RM ENC-ADD EMITW ;
 
-: ADDI, {: rd rn imm :}  rd rn imm ENC-ADDI EMITW ;
+: ADDI, {: RD RN imm :}  RD RN imm ENC-ADDI EMITW ;
 
-: SUB,  {: rd rn rm :}  rd rn rm ENC-SUB EMITW ;
+: SUB,  {: RD RN RM :}  RD RN RM ENC-SUB EMITW ;
 
-: SUBI, {: rd rn imm :}  rd rn imm ENC-SUBI EMITW ;
+: SUBI, {: RD RN imm :}  RD RN imm ENC-SUBI EMITW ;
 
-: MUL,  {: rd rn rm :}  rd rn rm ENC-MUL EMITW ;
+: MUL,  {: RD RN RM :}  RD RN RM ENC-MUL EMITW ;
 
-: SDIV, {: rd rn rm :}  rd rn rm ENC-SDIV EMITW ;
+: SDIV, {: RD RN RM :}  RD RN RM ENC-SDIV EMITW ;
 
-: UDIV, {: rd rn rm :}  rd rn rm ENC-UDIV EMITW ;
+: UDIV, {: RD RN RM :}  RD RN RM ENC-UDIV EMITW ;
 
-: AND,  {: rd rn rm :}  rd rn rm ENC-AND EMITW ;
+: AND,  {: RD RN RM :}  RD RN RM ENC-AND EMITW ;
 
-: ORR,  {: rd rn rm :}  rd rn rm ENC-ORR EMITW ;
+: ORR,  {: RD RN RM :}  RD RN RM ENC-ORR EMITW ;
 
-: EOR,  {: rd rn rm :}  rd rn rm ENC-EOR EMITW ;
+: EOR,  {: RD RN RM :}  RD RN RM ENC-EOR EMITW ;
 
-: ANDI, {: rd rn mask :}  rd rn mask >LIMM ENC-ANDI EMITW ;
+: ANDI, {: RD RN mask :}  RD RN mask >LIMM ENC-ANDI EMITW ;
 
-: ORRI, {: rd rn mask :}  rd rn mask >LIMM ENC-ORRI EMITW ;
+: ORRI, {: RD RN mask :}  RD RN mask >LIMM ENC-ORRI EMITW ;
 
-: EORI, {: rd rn mask :}  rd rn mask >LIMM ENC-EORI EMITW ;
+: EORI, {: RD RN mask :}  RD RN mask >LIMM ENC-EORI EMITW ;
 
-: LSLI, {: rd rn sh :}  rd rn sh ENC-LSLI EMITW ;
+: LSLI, {: RD RN sh :}  RD RN sh ENC-LSLI EMITW ;
 
-: LSRI, {: rd rn sh :}  rd rn sh ENC-LSRI EMITW ;
+: LSRI, {: RD RN sh :}  RD RN sh ENC-LSRI EMITW ;
 
-: ASRI, {: rd rn sh :}  rd rn sh ENC-ASRI EMITW ;
+: ASRI, {: RD RN sh :}  RD RN sh ENC-ASRI EMITW ;
 
-: LSLV, {: rd rn rm :}  rd rn rm ENC-LSLV EMITW ;
+: LSLV, {: RD RN RM :}  RD RN RM ENC-LSLV EMITW ;
 
-: LSRV, {: rd rn rm :}  rd rn rm ENC-LSRV EMITW ;
+: LSRV, {: RD RN RM :}  RD RN RM ENC-LSRV EMITW ;
 
-: CMP,  {: rn rm :}  rn rm ENC-CMP EMITW ;
+: CMP,  {: RN RM :}  RN RM ENC-CMP EMITW ;
 
-: CMPI, {: rn imm :}  rn imm ENC-CMPI EMITW ;
+: CMPI, {: RN imm :}  RN imm ENC-CMPI EMITW ;
 
-: CSET, {: rd cond :}  rd cond ENC-CSET EMITW ;
+: CSET, {: RD cond :}  RD cond ENC-CSET EMITW ;
 
-: LDR,  {: rt rn off :}  rt rn off ENC-LDR EMITW ;
+: LDR,  {: rt RN off :}  rt RN off ENC-LDR EMITW ;
 
-: STR,  {: rt rn off :}  rt rn off ENC-STR EMITW ;
+: STR,  {: rt RN off :}  rt RN off ENC-STR EMITW ;
 
-: LDRB, {: rt rn off :}  rt rn off ENC-LDRB EMITW ;
+: LDRB, {: rt RN off :}  rt RN off ENC-LDRB EMITW ;
 
-: STRB, {: rt rn off :}  rt rn off ENC-STRB EMITW ;
+: STRB, {: rt RN off :}  rt RN off ENC-STRB EMITW ;
 
-: LDRW, {: rt rn off :}  rt rn off ENC-LDRW EMITW ;
+: LDRW, {: rt RN off :}  rt RN off ENC-LDRW EMITW ;
 
-: STRW, {: rt rn off :}  rt rn off ENC-STRW EMITW ;
+: STRW, {: rt RN off :}  rt RN off ENC-STRW EMITW ;
 
 : SVC,  {: imm :}  imm ENC-SVC EMITW ;
 
 : RET,  ENC-RET EMITW ;
 
-: BLR,  {: rn :}  rn ENC-BLR EMITW ;
+: BLR,  {: RN :}  RN ENC-BLR EMITW ;
 
-: BR,   {: rn :}  rn ENC-BR EMITW ;
+: BR,   {: RN :}  RN ENC-BR EMITW ;
 
 : BRK,  ENC-BRK EMITW ;
 

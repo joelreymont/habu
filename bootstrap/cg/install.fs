@@ -9,7 +9,7 @@ require link.fs
 
 variable CODEGEN-ON?   CODEGEN-ON? off
 
-: TRY-WALK ( ba bu -- )  ICODE-RESET cf-reset  WALK-BODY ;
+: TRY-WALK ( ba bu -- )  ICODE-RESET CF-RESET  WALK-BODY ;
 
 \ input arity from the declared effect (EF@); default 1 if it won't parse.
 : TRY-ARITY ( -- n )  ARENA-RESET  EF@ PARSE-SIG EFF>DIN STACK-ARITY ;

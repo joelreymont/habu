@@ -31,14 +31,15 @@ def defs(path):
         body = re.sub(r'NEWLBL', '', body)
         body = GRP.sub('', body)
         toks = [t.lower() for t in body.split() if t not in labels]
-        out[name] = toks
+        out[name.lower()] = toks
     return out
 
 # words whose two implementations legitimately differ structurally (gforth idioms
 # vs subset idioms: swap/?do/locals-helpers). Their OUTPUT is still byte-golden-
 # checked; the lint covers the near-transcription emitters where divergence hides.
-ALLOW = {'EMIT-FORTH','FPRIM','FPRIM-L','c-emitw','cf-entry','cfn-entry','emit-dict','emit-main',
-         'reg-prim','(sigact)','emit-crash-handler','emit-source','CRH-INIT'}
+ALLOW = {a.lower() for a in (
+    'EMIT-FORTH','FPRIM','FPRIM-L','c-emitw','cf-entry','cfn-entry','emit-dict',
+    'emit-main','reg-prim','(sigact)','emit-crash-handler','emit-source','CRH-INIT')}
 
 fail = 0
 for boot, ports in PAIRS:

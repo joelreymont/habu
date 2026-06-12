@@ -35,14 +35,14 @@ create H 64 allot   create WS 512 allot   create ST 64 allot
 
 : BE32@ dup c@ 24 lshift  over 1 + c@ 16 lshift or  over 2 + c@ 8 lshift or  swap 3 + c@ or ;
 
-: STv cells ST + @ ;
+: STV cells ST + @ ;
 
 \ one compression round for schedule index ri (local named ri, not i, to keep loop-i)
 : SHA-ROUND {: ri :}
-   7 STv  4 STv BSIG1 +  4 STv 5 STv 6 STv CH +  KK ri cells + @ +  WS ri cells + @ +  M32  {: t1 :}
-   0 STv BSIG0  0 STv 1 STv 2 STv MAJ +  M32  {: t2 :}
+   7 STV  4 STV BSIG1 +  4 STV 5 STV 6 STV CH +  KK ri cells + @ +  WS ri cells + @ +  M32  {: t1 :}
+   0 STV BSIG0  0 STV 1 STV 2 STV MAJ +  M32  {: t2 :}
    7 0 DO  ST 6 i - cells + @  ST 7 i - cells + !  LOOP   \ h=g g=f f=e d=c c=b b=a
-   4 STv t1 + M32  ST 4 cells + !                          \ e = d + t1
+   4 STV t1 + M32  ST 4 cells + !                          \ e = d + t1
    t1 t2 + M32  ST 0 cells + ! ;                           \ a = t1 + t2
 
 : SHA-BLOCK ( a -- )

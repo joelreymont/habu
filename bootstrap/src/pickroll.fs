@@ -11,18 +11,18 @@
 
 26 constant MAX-PR                       \ N+1 distinct type-var letters (a..z)
 create PRBUF 256 chars allot   variable PRLEN
-: pr0  ( -- )      0 PRLEN ! ;
-: pr+  ( a u -- )  PRBUF PRLEN @ +  swap dup PRLEN +!  move ;
-: pr-let ( i -- )  [char] a +  PRBUF PRLEN @ + c!  1 PRLEN +! ;     \ append one var letter
-: pr-var ( i -- )  pr-let  bl PRBUF PRLEN @ + c!  1 PRLEN +! ;      \ … plus a space
+: PR0  ( -- )      0 PRLEN ! ;
+: PR+  ( a u -- )  PRBUF PRLEN @ +  swap dup PRLEN +!  move ;
+: PR-LET ( i -- )  [char] a +  PRBUF PRLEN @ + c!  1 PRLEN +! ;     \ append one var letter
+: PR-VAR ( i -- )  PR-LET  bl PRBUF PRLEN @ + c!  1 PRLEN +! ;      \ … plus a space
 
 \ inputs: R v0 v1 … vN i64   (v0 deepest)
-: PR-IN ( N -- )  pr0  s" R " pr+  1+ 0 ?do i pr-var loop  s" i64 -- R " pr+ ;
+: PR-IN ( N -- )  PR0  s" R " PR+  1+ 0 ?do i PR-VAR loop  s" i64 -- R " PR+ ;
 
 : PICK-SIG ( N -- a u )                   \ R v0..vN i64 -- R v0..vN v0
-   dup PR-IN  dup 1+ 0 ?do i pr-var loop  drop  0 pr-let  PRBUF PRLEN @ ;
+   dup PR-IN  dup 1+ 0 ?do i PR-VAR loop  drop  0 PR-LET  PRBUF PRLEN @ ;
 : ROLL-SIG ( N -- a u )                   \ R v0..vN i64 -- R v1..vN v0
-   dup PR-IN  dup 1+ 1 ?do i pr-var loop  drop  0 pr-let  PRBUF PRLEN @ ;
+   dup PR-IN  dup 1+ 1 ?do i PR-VAR loop  drop  0 PR-LET  PRBUF PRLEN @ ;
 
 : ?FOLD ( N xt -- f )                     \ apply sig from xt(N) if N in range
    over 0 MAX-PR within 0= if 2drop false exit then

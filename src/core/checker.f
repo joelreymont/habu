@@ -597,7 +597,7 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
 \ TRUST: declare a word's effect without checking its body — the native escape
 \ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
 \ Usage:  s" myword" s" n n -- n" trust
-: trust {: na nu sa su :}
+: TRUST {: na nu sa su :}
    na nu TOKFOLD 0= IF s" trust: name too long" 76 die THEN
    sa su  TKF TFU @  USIG-ADD ;
 

@@ -98,14 +98,20 @@ for entry in ("cf-entry", "cfb-entry", "fold-entry", "vop-entry",
               "vcmp-entry", "vshuf-entry", "vun-entry"):
     PSEUDO[entry] = (set(KWCMP_CLOB), set())
 
+# normalize: source words are UPPER-CASE now (docs/forth.md); all name keys and
+# source-derived names compare case-folded
+RETURNS = {k.lower(): v for k, v in RETURNS.items()}
+PRESERVES = {k.lower(): v for k, v in PRESERVES.items()}
+PSEUDO = {k.lower(): v for k, v in PSEUDO.items()}
+
 # (file, word, reg, callee) — verified false positives
 ALLOW = {
     # the only x1/x2 "read" after the Lhex BLs is the final exit(134) SVC;
     # the SVC model reads x0-x2/x16 but exit uses only x0/x16 — x1/x2 are dead
-    ("bootstrap/cg/crash.fs", "emit-crash-handler", 1, "Lhex"),
-    ("bootstrap/cg/crash.fs", "emit-crash-handler", 2, "Lhex"),
-    ("src/habu/crash.f", "emit-crash-handler", 1, "Lhex"),
-    ("src/habu/crash.f", "emit-crash-handler", 2, "Lhex"),
+    ("bootstrap/cg/crash.fs", "emit-crash-handler", 1, "lhex"),
+    ("bootstrap/cg/crash.fs", "emit-crash-handler", 2, "lhex"),
+    ("src/habu/crash.f", "emit-crash-handler", 1, "lhex"),
+    ("src/habu/crash.f", "emit-crash-handler", 2, "lhex"),
 }
 
 def tokens_of(path):
@@ -127,7 +133,7 @@ def parse_words(toks):
     i = 0
     while i < len(toks):
         if toks[i] == ":" and i + 1 < len(toks):
-            name = toks[i + 1]
+            name = toks[i + 1].lower()
             j = i + 2
             body = []
             while j < len(toks) and toks[j] != ";":
@@ -139,8 +145,8 @@ def parse_words(toks):
 
 def callee_of(ops):
     """`Lxxx @ BL,` call target, else None"""
-    if len(ops) >= 2 and ops[-1] == "@" and ops[-2].startswith("L"):
-        return ops[-2]
+    if len(ops) >= 2 and ops[-1] == "@" and ops[-2][:1].upper() == "L":
+        return ops[-2].lower()
     return None
 
 def instr_stream(body):
@@ -148,7 +154,7 @@ def instr_stream(body):
     ops = []
     for t in body:
         if (t.endswith(",") and t.upper() == t and not t.startswith("$")) \
-           or t in PSEUDO:
+           or t.lower() in PSEUDO:
             yield t, ops
             ops = []
         else:
@@ -177,21 +183,21 @@ def effects(mn, ops):
     elif mn == "SYS,": W |= {0, 16}; R |= {0, 1, 2}   # NR-x SYS, = movz x16 + svc
     elif mn == "RET,": R.add(30)
     elif mn == "BLR,": W |= set(range(0, 18)) | {30}; r(0)
-    elif mn in PSEUDO:
-        pw, pr = PSEUDO[mn]
+    elif mn.lower() in PSEUDO:
+        pw, pr = PSEUDO[mn.lower()]
         for x in pw:
-            if x == 0 and mn == "g-pop": w(0)
+            if x == 0 and mn.lower() == "g-pop": w(0)
             else: W.add(x)
         for x in pr:
-            if x == 0 and mn == "g-push": r(0)
+            if x == 0 and mn.lower() == "g-push": r(0)
             else: R.add(x)
-        if mn in ("g-push", "g-pop"): W.add(19); R.add(19)
+        if mn.lower() in ("g-push", "g-pop"): W.add(19); R.add(19)
     return W, R
 
 def label_openings(body):
     """token indexes k where body[k:k+3] is `Lxxx @ LBL,`"""
     return [k for k in range(len(body) - 2)
-            if body[k].startswith("L") and body[k + 1] == "@"
+            if body[k][:1].upper() == "L" and body[k + 1] == "@"
             and body[k + 2] == "LBL,"]
 
 def routine_region(body, openings, oi):
@@ -212,7 +218,7 @@ def routine_region(body, openings, oi):
             continue
         t = body[k]
         if (t.endswith(",") and t.upper() == t and not t.startswith("$")) \
-           or t in PSEUDO:
+           or t.lower() in PSEUDO:
             region.append((t, ops)); last_mn = t; ops = []
         else:
             ops.append(t)
@@ -230,7 +236,7 @@ def main():
             words.setdefault(name, []).append((f, body))
             openings = label_openings(body)
             for oi in range(len(openings)):
-                lbl = body[openings[oi]]
+                lbl = body[openings[oi]].lower()
                 ws, calls = clob.get(lbl, (set(), set()))
                 for mn, ops in routine_region(body, openings, oi):
                     c = callee_of(ops)

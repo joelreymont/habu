@@ -26,24 +26,24 @@ variable  SIG-DOFF
 \ absolute LE access into MBUF (header patching)
 variable HLP
 
-: hl@ {: off :}  MBUF off +  dup c@  over 1 + c@ 8 lshift or
+: HL@ {: off :}  MBUF off +  dup c@  over 1 + c@ 8 lshift or
    over 2 + c@ 16 lshift or  swap 3 + c@ 24 lshift or ;
 
-: hl! {: w off :}  MBUF off + HLP !
+: HL! {: w off :}  MBUF off + HLP !
    w $FF and HLP @ c!  w 8 rshift $FF and HLP @ 1 + c!
    w 16 rshift $FF and HLP @ 2 + c!  w 24 rshift $FF and HLP @ 3 + c! ;
 
-: hx! {: x off :}  x off hl!  x 32 rshift off 4 + hl! ;
+: HX! {: x off :}  x off HL!  x 32 rshift off 4 + HL! ;
 \ big-endian cursor into MBUF (the signature blob)
 variable SC
 
-: b8  {: c :}  c MBUF SC @ + c!  SC @ 1 + SC ! ;
+: B8  {: c :}  c MBUF SC @ + c!  SC @ 1 + SC ! ;
 
-: b32 {: w :}  w 24 rshift b8  w 16 rshift $FF and b8  w 8 rshift $FF and b8  w $FF and b8 ;
+: B32 {: w :}  w 24 rshift B8  w 16 rshift $FF and B8  w 8 rshift $FF and B8  w $FF and B8 ;
 
-: b64 {: x :}  x 32 rshift b32  x $FFFFFFFF and b32 ;
+: B64 {: x :}  x 32 rshift B32  x $FFFFFFFF and B32 ;
 
-: bstr {: a u :}  0 BEGIN dup u < WHILE  dup a + c@ b8  1 + REPEAT drop ;
+: BSTR {: a u :}  0 BEGIN dup u < WHILE  dup a + c@ B8  1 + REPEAT drop ;
 $FADE0CC0 constant CSMAGIC-EMBEDDED
 $FADE0C02 constant CSMAGIC-CODEDIR
 $00020400 constant CD-VERSION
@@ -53,38 +53,38 @@ $00020400 constant CD-VERSION
 1         constant EXECSEG-MAIN
 variable EXECSEG-LIM   MPAGE EXECSEG-LIM !   \ snapshots override (bigger __TEXT)
 
-: add-codesig-lc
-   MH-HDR-SZ  20 hl@ +  {: at :}
-   LC-CODE-SIG  at hl!   16  at 4 + hl!
-   SIG-DOFF @   at 8 + hl!   SB-SIZE  at 12 + hl!
-   16 hl@ 1 +  16 hl!
-   20 hl@ 16 +  20 hl! ;
+: ADD-CODESIG-LC
+   MH-HDR-SZ  20 HL@ +  {: at :}
+   LC-CODE-SIG  at HL!   16  at 4 + HL!
+   SIG-DOFF @   at 8 + HL!   SB-SIZE  at 12 + HL!
+   16 HL@ 1 +  16 HL!
+   20 HL@ 16 +  20 HL! ;
 
-: patch-linkedit
+: PATCH-LINKEDIT
    LE-OFF @ {: le :}
-   SB-SIZE $4000 ALN  le 32 + hx!
-   SB-SIZE            le 48 + hx! ;
+   SB-SIZE $4000 ALN  le 32 + HX!
+   SB-SIZE            le 48 + HX! ;
 
-: cd-hdr,
-   CSMAGIC-CODEDIR b32   CD-SIZE b32   CD-VERSION b32   CD-ADHOC b32
-   HASH-OFF b32          CD-HDR b32
-   0 b32                 NCSLOTS b32
-   SIG-DOFF @ b32
-   CS-HASH b8  HT-SHA256 b8  0 b8  CS-PAGE-LOG b8
-   0 b32
-   0 b32  0 b32
-   0 b32  0 b64
-   0 b64  EXECSEG-LIM @ b64  EXECSEG-MAIN b64 ;
+: CD-HDR,
+   CSMAGIC-CODEDIR B32   CD-SIZE B32   CD-VERSION B32   CD-ADHOC B32
+   HASH-OFF B32          CD-HDR B32
+   0 B32                 NCSLOTS B32
+   SIG-DOFF @ B32
+   CS-HASH B8  HT-SHA256 B8  0 B8  CS-PAGE-LOG B8
+   0 B32
+   0 B32  0 B32
+   0 B32  0 B64
+   0 B64  EXECSEG-LIM @ B64  EXECSEG-MAIN B64 ;
 variable CSI
 
 : CODESIG2
    MLEN @ SIG-DOFF !
-   add-codesig-lc  patch-linkedit
+   ADD-CODESIG-LC  PATCH-LINKEDIT
    SIG-DOFF @ SC !
-   CSMAGIC-EMBEDDED b32   SB-SIZE b32   1 b32
-   0 b32   20 b32
-   cd-hdr,
-   SIGA @ SIGU @ bstr  0 b8
+   CSMAGIC-EMBEDDED B32   SB-SIZE B32   1 B32
+   0 B32   20 B32
+   CD-HDR,
+   SIGA @ SIGU @ BSTR  0 B8
    0 CSI ! BEGIN CSI @ NCSLOTS < WHILE
      MBUF CSI @ CS-PAGE * +  CS-PAGE  MBUF SC @ +  SHA256  SC @ CS-HASH + SC !
      CSI @ 1 + CSI ! REPEAT

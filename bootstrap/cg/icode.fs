@@ -40,12 +40,12 @@ IOP# @ constant #IOPS
 12 constant C-GT  13 constant C-LE  14 constant C-AL
 
 \ --- IR record storage ---
-5    constant /ic
+5    constant /IC
 8192 constant MAX-IC
-create ICBUF MAX-IC /ic * cells allot
+create ICBUF MAX-IC /IC * cells allot
 variable #IC
 
-: IC-ADDR ( i -- addr )  /ic * cells ICBUF + ;
+: IC-ADDR ( i -- addr )  /IC * cells ICBUF + ;
 
 : IC-OP ( i -- op )  IC-ADDR @ ;
 

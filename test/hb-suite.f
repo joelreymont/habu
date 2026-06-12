@@ -65,8 +65,8 @@ FIVE 5 T=
 \ quotations + combinators
 : TQ1 5 [: 1 + ;] execute ;
 TQ1 6 T=
-: dip swap >r execute r> ;
-: TDIP 10 3 [: 2 * ;] dip + ;
+: DIP swap >r execute r> ;
+: TDIP 10 3 [: 2 * ;] DIP + ;
 TDIP 23 T=
 
 \ immediate / postpone / compile,

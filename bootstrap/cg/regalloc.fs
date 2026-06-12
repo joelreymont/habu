@@ -4,19 +4,19 @@
 \   - VRFREE-CELL: the free bitmask in the DATA header
 \   - Lvralloc: grab a free register ( -- x14=reg | 0 )
 \ Allocator-state TOUCHPOINTS elsewhere (they or/eor the mask directly):
-\   jit.fs: Lvspill (reset to VRALL), Lvdrop/Lvnipx (free), Lvbinprep (free
-\   rm), Lvpushr (re-claim after spill), Lvrecon (rebuild from snapshot)
+\   jit.fs: LVSPILL (reset to VRALL), Lvdrop/Lvnipx (free), LVBINPREP (free
+\   rm), LVPUSHR (re-claim after spill), LVRECON (rebuild from snapshot)
 \   forth.fs: the `:` reset and j-repeat's exit-path reset (VRALL store)
 
 require asm.fs
 
-variable Lvralloc
+variable LVRALLOC
 $208 constant VRFREE-CELL       \ free-register bitmask, bit r-9 for x9..x15
 $7F  constant VRALL             \ all seven pool registers free
 
-\ Lvralloc ( -- x14=reg | 0 ) : grab a free register from the pool bitmask
-: emit-vralloc
-   Lvralloc @ LBL,
+\ LVRALLOC ( -- x14=reg | 0 ) : grab a free register from the pool bitmask
+: EMIT-VRALLOC
+   LVRALLOC @ LBL,
    NEWLBL NEWLBL NEWLBL {: rl rgot rno :}
    6 DATA VRFREE-CELL LDR,  5 0 MOVZ,
    rl LBL,

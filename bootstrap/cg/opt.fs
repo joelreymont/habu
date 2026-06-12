@@ -62,7 +62,7 @@ PIN-RESET
       then
    then drop ;
 
-\ TOS-in-register: a g-push reg immediately followed by a g-pop reg round-trips
+\ TOS-in-register: a G-PUSH reg immediately followed by a G-POP reg round-trips
 \ a value through data-stack memory. The four records are
 \   STR rA,[Xds,0]  ADDI Xds,Xds,8   SUBI Xds,Xds,8   LDR rB,[Xds,0]
 \ Net Xds change is zero and [Xds] is above TOS (dead), so the pair is exactly
@@ -221,15 +221,15 @@ variable X19-CHG
 
 : SHIFT-AT ( shtype amt j -- )  >r  swap 6 lshift or  r> IC-ADDR 4 cells + ! ;
 
-: REG-DEAD-AFTER? {: j rd -- f :}             \ rd not read before written/boundary after j
-   rd REG-PINNED? if false exit then          \ loop-carried: never provably dead (back-edge)
+: REG-DEAD-AFTER? {: j RD -- f :}             \ rd not read before written/boundary after j
+   RD REG-PINNED? if false exit then          \ loop-carried: never provably dead (back-edge)
    j 1+ {: k :}
    begin k #IC @ < while
       k IC-OP {: op :}
       op IOP-DEAD <> if
          op cells OPCAT + @ dup CAT-HARD = swap dup CAT-SOFT = swap CAT-MEM = or or if true exit then
-         k IC-B rd =  k IC-C rd = or  op IOP-STR = k IC-A rd = and or if false exit then
-         op SF-DEFINES? k IC-A rd = and if true exit then
+         k IC-B RD =  k IC-C RD = or  op IOP-STR = k IC-A RD = and or if false exit then
+         op SF-DEFINES? k IC-A RD = and if true exit then
       then
    1 +to k repeat  true ;
 
@@ -237,12 +237,12 @@ variable X19-CHG
    i IC-OP {: op :}
    op IOP-LSLI = op IOP-LSRI = or 0= if exit then
    i IC-A i IC-B <> if exit then              \ in-place shift only (rd==rn)
-   i IC-A {: rd :}
+   i IC-A {: RD :}
    i NEXT-LIVE {: j :}  j 0< if exit then
    j IC-OP ALU-SHIFTABLE? 0= if exit then
-   j IC-C rd <> if exit then                  \ ALU's rm must be the shifted reg
-   j IC-A rd =  j IC-B rd = or if exit then   \ rd must be ONLY the rm
-   j rd REG-DEAD-AFTER? 0= if exit then
+   j IC-C RD <> if exit then                  \ ALU's rm must be the shifted reg
+   j IC-A RD =  j IC-B RD = or if exit then   \ rd must be ONLY the rm
+   j RD REG-DEAD-AFTER? 0= if exit then
    op IOP-LSRI = if SH-LSR else SH-LSL then  i IC-C  j SHIFT-AT   \ fuse shift into the ALU
    i IC-KILL ;
 
@@ -255,21 +255,21 @@ variable X19-CHG
 \ Handles the first reader only (enough for the self-op pattern); safe partial.
 : OPT-COPY-PROP {: i -- :}
    i IC-OP IOP-MOV <> if exit then
-   i IC-A {: rd :}  i IC-B {: rs :}  rd rs = if exit then
-   rd REG-PINNED? if exit then                \ never coalesce a copy into a loop-carried reg
+   i IC-A {: RD :}  i IC-B {: rs :}  RD rs = if exit then
+   RD REG-PINNED? if exit then                \ never coalesce a copy into a loop-carried reg
    i 1+ {: k :}
    begin  k #IC @ < while
       k IC-OP {: op :}
       op IOP-DEAD <> if
          op cells OPCAT + @ dup CAT-HARD = swap dup CAT-SOFT = swap CAT-MEM = or or if exit then
-         k IC-B rd =  k IC-C rd = or  op IOP-STR = k IC-A rd = and or if   \ READER (handle first:
-            k IC-B rd = if rs k IC-B! then                    \  reads use the OLD value, even if
-            k IC-C rd = if rs k IC-C! then                    \  this op also rewrites rs)
-            op IOP-STR = k IC-A rd = and if rs k IC-A! then
-            k rd REG-DEAD-AFTER? if i IC-KILL then  exit
+         k IC-B RD =  k IC-C RD = or  op IOP-STR = k IC-A RD = and or if   \ READER (handle first:
+            k IC-B RD = if rs k IC-B! then                    \  reads use the OLD value, even if
+            k IC-C RD = if rs k IC-C! then                    \  this op also rewrites rs)
+            op IOP-STR = k IC-A RD = and if rs k IC-A! then
+            k RD REG-DEAD-AFTER? if i IC-KILL then  exit
          then
          op SF-DEFINES? k IC-A rs = and if exit then          \ rs redefined before a read: copy stale
-         op SF-DEFINES? k IC-A rd = and if exit then          \ rd redefined before any read
+         op SF-DEFINES? k IC-A RD = and if exit then          \ rd redefined before any read
       then
    1 +to k repeat ;
 

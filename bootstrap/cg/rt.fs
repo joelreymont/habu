@@ -14,7 +14,7 @@ variable ATOI-LBL
 \ Shared by the AOT `.` routine (EMIT-DOT) and the native Forth `.` primitive.
 \ Clobbers x9-x14 + 32 bytes of sp scratch; preserves Xds.  registers:
 \ x9=n, x10=10, x11=q, x12=ptr, x13=digit, x14=neg.
-: g-print9 ( -- )
+: G-PRINT9 ( -- )
    SP SP 32 SUBI,  12 SP 32 ADDI,              \ x12 = end of a 32-byte sp buffer
    13 10 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,   \ *--ptr = '\n'
    14 0 MOVZ,  9 0 CMPI,
@@ -31,11 +31,11 @@ variable ATOI-LBL
    NR-WRITE SYS,                        \ write(1, ptr, len)
    SP SP 32 ADDI, ;
 
-: EMIT-DOT ( -- )  DOT-LBL @ LBL,  XDS XDS 8 SUBI,  9 XDS 0 LDR,  g-print9  RET, ;
+: EMIT-DOT ( -- )  DOT-LBL @ LBL,  XDS XDS 8 SUBI,  9 XDS 0 LDR,  G-PRINT9  RET, ;
 
-\ Print x9 as UNSIGNED decimal + newline. Same itoa loop as g-print9 but UDIV
+\ Print x9 as UNSIGNED decimal + newline. Same itoa loop as G-PRINT9 but UDIV
 \ and no sign handling. Clobbers x9-x13 + 32 bytes of sp scratch.
-: g-printu9 ( -- )
+: G-PRINTU9 ( -- )
    SP SP 32 SUBI,  12 SP 32 ADDI,
    13 10 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,
    10 10 MOVZ,
@@ -48,7 +48,7 @@ variable ATOI-LBL
    SP SP 32 ADDI, ;
 
 \ Write the single byte in x13 to stdout (emit/cr/space share it).
-: g-emitc ( -- )
+: G-EMITC ( -- )
    SP SP 16 SUBI,  13 SP 0 STRB,
    0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    SP SP 16 ADDI, ;
@@ -73,5 +73,5 @@ variable ATOI-LBL
    9 9 1 ADDI,  lloop B,                   \ ptr++
    ldone LBL,
    10 10 11 MUL,                           \ result *= sign
-   10 g-push
+   10 G-PUSH
    RET, ;

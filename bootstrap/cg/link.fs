@@ -41,29 +41,29 @@ wordlist constant CODE-TABLE
 \ --- transitive dependency collection ---
 create DEPS 256 cells allot   variable #DEPS
 
-: dep-has? ( pfa -- f )  #DEPS @ 0 ?do  dup DEPS i cells + @ = if drop true unloop exit then  loop drop false ;
+: DEP-HAS? ( pfa -- f )  #DEPS @ 0 ?do  dup DEPS i cells + @ = if drop true unloop exit then  loop drop false ;
 
-: dep-add  ( pfa -- )  dup dep-has? if drop else DEPS #DEPS @ cells + !  1 #DEPS +! then ;
+: DEP-ADD  ( pfa -- )  dup DEP-HAS? if drop else DEPS #DEPS @ cells + !  1 #DEPS +! then ;
 
-: scan-tok ( ta tu -- )
+: SCAN-TOK ( ta tu -- )
    2dup s" ." compare 0= if 2drop USES-DOT on exit then
-   WORD-PFA ?dup if dep-add then ;
+   WORD-PFA ?dup if DEP-ADD then ;
 
 : COLLECT ( root-pfa -- )
-   0 #DEPS !  dep-add
+   0 #DEPS !  DEP-ADD
    0 begin dup #DEPS @ < while
-      dup cells DEPS + @ PFA>BODY ['] scan-tok FOR-TOKENS  1+
+      dup cells DEPS + @ PFA>BODY ['] SCAN-TOK FOR-TOKENS  1+
    repeat drop ;
 
 \ --- leaf detection (body has any call?) ---
 variable LEAF?
 
-: leaf-tok ( ta tu -- )            \ any token that emits a BL makes the word non-leaf
+: LEAF-TOK ( ta tu -- )            \ any token that emits a BL makes the word non-leaf
    2dup s" RECURSE" compare 0= if 2drop LEAF? off exit then
    2dup s" ."       compare 0= if 2drop LEAF? off exit then
    WORD-PFA if LEAF? off then ;
 
-: NON-LEAF? ( pfa -- f )  LEAF? on  PFA>BODY ['] leaf-tok FOR-TOKENS  LEAF? @ 0= ;
+: NON-LEAF? ( pfa -- f )  LEAF? on  PFA>BODY ['] LEAF-TOK FOR-TOKENS  LEAF? @ 0= ;
 
 \ --- call emission (drives walk.fs EMIT-CALL) ---
 variable CUR-PFA
@@ -86,14 +86,14 @@ is EMIT-CALL
 
 \ --- build a whole program rooted at `root`, with one i64 input ---
 : BUILD-PROGRAM {: root input -- :}
-   ICODE-RESET  cf-reset  USES-DOT off
+   ICODE-RESET  CF-RESET  USES-DOT off
    root COLLECT
    #DEPS @ 0 ?do  NEWLBL  DEPS i cells + @ PFA>LABEL !  loop
    USES-DOT @ if  NEWLBL DOT-LBL !  then
-   512 g-prologue                         \ MAIN: data + return stacks
-   input g-lit
+   512 G-PROLOGUE                         \ MAIN: data + return stacks
+   input G-LIT
    root PFA>LABEL @ BL,                   \ call the root word
-   g-exit-tos                             \ exit(result)
+   G-EXIT-TOS                             \ exit(result)
    #DEPS @ 0 ?do  DEPS i cells + @ EMIT-WORD  loop
    USES-DOT @ if  EMIT-DOT  then
    OPTIMIZE ;
@@ -108,16 +108,16 @@ is EMIT-CALL
 
 : BUILD-CLI {: root | ar -- :}
    root PFA>ARITY to ar
-   ICODE-RESET  cf-reset  USES-DOT off
+   ICODE-RESET  CF-RESET  USES-DOT off
    root COLLECT
    #DEPS @ 0 ?do  NEWLBL  DEPS i cells + @ PFA>LABEL !  loop
    NEWLBL DOT-LBL !   NEWLBL ATOI-LBL !
    ARGV 1 0 ADDI,                         \ x22 = argv  (entry: x0=argc, x1=argv)
-   512 g-prologue                         \ data + return stacks
+   512 G-PROLOGUE                         \ data + return stacks
    ar 0 ?do  9 ARGV i 1+ 8 *  LDR,  ATOI-LBL @ BL,  loop  \ push atoi(argv[1..ar])
    root PFA>LABEL @ BL,                   \ call the word
    DOT-LBL @ BL,                          \ print the result
-   g-exit0
+   G-EXIT0
    #DEPS @ 0 ?do  DEPS i cells + @ EMIT-WORD  loop
    EMIT-DOT  EMIT-ATOI  OPTIMIZE ;
 

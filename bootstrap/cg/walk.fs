@@ -29,7 +29,7 @@ create FBUF 1 floats allot
 
 : EMIT-FLOAT ( a u -- f )
    2dup FP-MARK? 0= if 2drop false exit then
-   2dup >float if  FBUF f!  2drop  FBUF @ v-pushc  true
+   2dup >float if  FBUF f!  2drop  FBUF @ V-PUSHC  true
               else 2drop false then ;
 
 \ --- body cursor (module-level so the DO..LOOP scanner can look ahead). Saved /
@@ -59,16 +59,16 @@ variable WB-CUR   variable WB-END
 \ Scan from WB-CUR (just past DO/?DO) to the matching LOOP. Returns the body span
 \ ( a u ) and true iff every token is VS-safe and there is no nested loop; else
 \ restores WB-CUR and returns false.
-: t= ( a u ca cu -- a u f )  {: ca cu :}  2dup ca cu CI= ;
+: T= ( a u ca cu -- a u f )  {: ca cu :}  2dup ca cu CI= ;
 
-: body-straight? ( -- a u true | false )
+: BODY-STRAIGHT? ( -- a u true | false )
    WB-CUR @ {: bstart :}
    begin
       WB-CUR @ {: before :}
       WB-NEXT dup 0= if  2drop  bstart WB-CUR !  false exit then
-      s" LOOP" t= if  2drop  bstart  before bstart -  true exit then
-      s" DO"   t= if  2drop  bstart WB-CUR !  false exit then
-      s" ?DO"  t= if  2drop  bstart WB-CUR !  false exit then
+      s" LOOP" T= if  2drop  bstart  before bstart -  true exit then
+      s" DO"   T= if  2drop  bstart WB-CUR !  false exit then
+      s" ?DO"  T= if  2drop  bstart WB-CUR !  false exit then
       VS-SAFE-TOK? 0= if  bstart WB-CUR !  false exit then
    again ;
 
@@ -84,26 +84,26 @@ defer LOOP-HOOK   ( a u -- f )
    2dup CHECK-LOCAL-CG if  2drop exit then                    \ {: a b :} / local-name ref
    2dup LOOP-HOOK      if  2drop exit then                    \ register-resident DO..LOOP
    2dup EMIT-FLOAT     if  2drop exit then                    \ float literal -> f64-bits VS const
-   2dup s>number? if  2>r 2drop 2r> d>s v-pushc  exit then    \ literal -> VS constant
+   2dup s>number? if  2>r 2drop 2r> d>s V-PUSHC  exit then    \ literal -> VS constant
    2drop
    2dup CG-VS search-wordlist ?dup if  drop nip nip execute  exit  then   \ VS primitive
-   v-spill  EMIT-PRIM ;                                       \ spill, then memory-path op
+   V-SPILL  EMIT-PRIM ;                                       \ spill, then memory-path op
 
 : WALK-BODY {: a u | sc se :}
    WB-CUR @ to sc  WB-END @ to se         \ save cursor (re-entrant via quotation inlining)
-   v-reset
+   V-RESET
    a u + WB-END !  a WB-CUR !
    begin WB-NEXT dup 0> while EMIT-TOKEN repeat 2drop
-   v-spill                                \ materialise the register stack to memory
+   V-SPILL                                \ materialise the register stack to memory
    sc WB-CUR !  se WB-END ! ;
 ' WALK-BODY is WALK-INLINE               \ let cgquot.fs inline quotation bodies
 
 \ --- register-resident DO..LOOP ---
 \ Emit a loop whose carry stays in registers across the back-edge. ( qdo? ba bu );
-\ ba bu is the body span. If the body touches memory below the carry, carry-recon
-\ sets RL-FAIL and emit-rloop bails; CHECK-LOOP-CG then rolls back to the memory
+\ ba bu is the body span. If the body touches memory below the carry, CARRY-RECON
+\ sets RL-FAIL and EMIT-RLOOP bails; CHECK-LOOP-CG then rolls back to the memory
 \ path. (Flag, not throw: gforth 0.7.9 faults unwinding throw across the locals.)
-: walk-span {: a u -- :}                 \ walk a token span with a local cursor (no WB-CUR)
+: WALK-SPAN {: a u -- :}                 \ walk a token span with a local cursor (no WB-CUR)
    a u + {: e :}  a {: c :}
    begin
       begin c e < c c@ bl = and while c 1+ to c repeat  c e <
@@ -111,21 +111,21 @@ defer LOOP-HOOK   ( a u -- f )
       c {: ts :}  begin c e < c c@ bl <> and while c 1+ to c repeat  ts  c ts - EMIT-TOKEN
    repeat ;
 
-: emit-rloop {: qdo? ba bu -- :}
-   loop-save
-   v-popr {: s :}  LIDX s MOV,  s r-free          \ index (start) -> LIDX
-   v-popr {: l :}  LLIM l MOV,  l r-free          \ limit -> LLIM
-   carry-snap                                     \ pin carry into homes (before the skip test)
+: EMIT-RLOOP {: qdo? ba bu -- :}
+   LOOP-SAVE
+   V-POPR {: s :}  LIDX s MOV,  s R-FREE          \ index (start) -> LIDX
+   V-POPR {: l :}  LLIM l MOV,  l R-FREE          \ limit -> LLIM
+   CARRY-SNAP                                     \ pin carry into homes (before the skip test)
    LIDX REG-PIN  LLIM REG-PIN                      \ loop-control + carry regs are loop-carried:
    CARRY-N @ 0 ?do  CARRY-R i cells + @ REG-PIN  loop   \ the optimizer must not touch them
-   NEWLBL {: lexit :}
-   qdo? if  LIDX LLIM CMP,  C-GE lexit BCOND,  then   \ ?DO: skip body if index>=limit
+   NEWLBL {: LEXIT :}
+   qdo? if  LIDX LLIM CMP,  C-GE LEXIT BCOND,  then   \ ?DO: skip body if index>=limit
    NEWLBL {: ltop :}  ltop LBL,
-   RL-ACTIVE on  ba bu walk-span  RL-ACTIVE off
-   carry-recon                                    \ carry-out -> homes (or RL-FAIL)
+   RL-ACTIVE on  ba bu WALK-SPAN  RL-ACTIVE off
+   CARRY-RECON                                    \ carry-out -> homes (or RL-FAIL)
    RL-FAIL @ if exit then                         \ ineligible: bail, caller rolls back
    LIDX LIDX 1 ADDI,  LIDX LLIM CMP,  C-LT ltop BCOND,
-   lexit LBL,  loop-rest  carry-restore ;
+   LEXIT LBL,  LOOP-REST  CARRY-RESTORE ;
 
 : CHECK-LOOP-CG ( a u -- f )
    2dup s" DO" CI=  >r  2dup s" ?DO" CI=  r> or  0= if  2drop false exit then
@@ -136,28 +136,28 @@ defer LOOP-HOOK   ( a u -- f )
    LOOP-DEPTH @ 0> if  2drop false exit then
    WB-CUR @ {: savecur :}
    2dup s" ?DO" CI= {: qdo :}  2drop
-   body-straight? 0= if  savecur WB-CUR !  false exit then    ( ba bu )
-   cg-snapshot  RL-FAIL off  RL-ACTIVE off
+   BODY-STRAIGHT? 0= if  savecur WB-CUR !  false exit then    ( ba bu )
+   CG-SNAPSHOT  RL-FAIL off  RL-ACTIVE off
    2>r  qdo if 1 else 0 then  2r>                 ( qdo ba bu )
-   emit-rloop
-   RL-FAIL @ if  cg-rollback  savecur WB-CUR !  false exit then
+   EMIT-RLOOP
+   RL-FAIL @ if  CG-ROLLBACK  savecur WB-CUR !  false exit then
    true ;
 ' CHECK-LOOP-CG is LOOP-HOOK
 
 \ Compile a body with one i64 input pushed first; the body's TOS becomes exit().
 : COMPILE-WORD {: ba bu input -- :}
-   ICODE-RESET  cf-reset  cgl-reset  q-reset  PIN-RESET
-   NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
-   512 g-prologue
-   g-heap-init                          \ entry: mmap the bump heap (HP); callees inherit it
-   g-install-crash                      \ self-diagnosing crash (register dump to stderr)
-   input g-lit
+   ICODE-RESET  CF-RESET  CGL-RESET  Q-RESET  PIN-RESET
+   NEWLBL LCRASHH !  NEWLBL LHEX !  NEWLBL LHDR !
+   512 G-PROLOGUE
+   G-HEAP-INIT                          \ entry: mmap the bump heap (HP); callees inherit it
+   G-INSTALL-CRASH                      \ self-diagnosing crash (register dump to stderr)
+   input G-LIT
    NEWLBL EPILOG !        \ EXIT branches here
    ba bu WALK-BODY
    EPILOG @ LBL,
-   g-exit-tos
+   G-EXIT-TOS
    OPTIMIZE               \ peephole the complete IR
-   emit-crash-handler  emit-hex ;       \ append the handler/printer (after OPTIMIZE)
+   EMIT-CRASH-HANDLER  EMIT-HEX ;       \ append the handler/printer (after OPTIMIZE)
 
 \ On a codegen throw, dump the generator's state (it's otherwise opaque — the
 \ failing token, IR size, and VS/loop bookkeeping pinpoint where it broke).

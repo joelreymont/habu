@@ -2,7 +2,7 @@
 \ engine-builder port (golden-tested word-for-word in test/t-sh-crash.fs).
 \ sa_tramp = the handler itself: kernel enters with x2=sig, x4=ucontext; we dump
 \ sig + x0..x28 + fp/lr/sp/pc as hex lines to stderr and exit(134).
-variable Lcrashh   variable Lhex   variable Lhdr
+variable LCRASHH   variable LHEX   variable LHDR
 create CRH 80 allot  variable CRHL
 
 : CRH-INIT  s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: a u :}
@@ -13,10 +13,10 @@ CRH-INIT
 48 constant MCTX-OFF           \ ucontext -> mcontext pointer offset (macOS arm64)
 16 constant SS-OFF             \ mcontext -> __ss.__x[0] offset
 
-\ Lhex ( x9=val ): write 16 hex digits + newline to fd 2. Leaf; clobbers
+\ LHEX ( x9=val ): write 16 hex digits + newline to fd 2. Leaf; clobbers
 \ x9..x15 and x0-x2/x16 (write syscall).
-: emit-hex
-   Lhex @ LBL,
+: EMIT-HEX
+   LHEX @ LBL,
    NEWLBL NEWLBL NEWLBL {: hl hd hlet :}
    SP SP 32 SUBI,
    14 SP 0 ADDI,
@@ -35,32 +35,32 @@ CRH-INIT
    0 2 MOVZ,  1 14 0 ADDI,  2 17 MOVZ,  NR-WRITE SYS,
    SP SP 32 ADDI,  RET, ;
 
-: emit-crash-handler
-   Lcrashh @ LBL,
-   NEWLBL NEWLBL {: rl rd :}
+: EMIT-CRASH-HANDLER
+   LCRASHH @ LBL,
+   NEWLBL NEWLBL {: rl RD :}
       20 2 0 ADDI,
       19 4 0 ADDI,
-      1 Lhdr @ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,
+      1 LHDR @ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,
       21 19 MCTX-OFF LDR,
-      9 20 0 ADDI,  Lhex @ BL,
+      9 20 0 ADDI,  LHEX @ BL,
       20 0 MOVZ,
-      rl LBL,  20 29 CMPI,  C-GE rd BCOND,
-         22 20 3 LSLI,  22 22 SS-OFF ADDI,  22 21 22 ADD,  9 22 0 LDR,  Lhex @ BL,
+      rl LBL,  20 29 CMPI,  C-GE RD BCOND,
+         22 20 3 LSLI,  22 22 SS-OFF ADDI,  22 21 22 ADD,  9 22 0 LDR,  LHEX @ BL,
          20 20 1 ADDI,  rl B,
-      rd LBL,
-      9 21 248 LDR,  Lhex @ BL,
-      9 21 256 LDR,  Lhex @ BL,
-      9 21 264 LDR,  Lhex @ BL,
-      9 21 272 LDR,  Lhex @ BL,
+      RD LBL,
+      9 21 248 LDR,  LHEX @ BL,
+      9 21 256 LDR,  LHEX @ BL,
+      9 21 264 LDR,  LHEX @ BL,
+      9 21 272 LDR,  LHEX @ BL,
       0 134 MOVZ,  NR-EXIT SYS,
-   Lhdr @ LBL,  CRH CRHL @ BYTES, ;
+   LHDR @ LBL,  CRH CRHL @ BYTES, ;
 
-: (sigact) {: signo :}  0 signo MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SIGACTION SYS, ;
+: (SIGACT) {: signo :}  0 signo MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SIGACTION SYS, ;
 
-: g-install-crash
+: G-INSTALL-CRASH
    SP SP 32 SUBI,
-   9 Lcrashh @ ADR,  9 SP 0 STR,
+   9 LCRASHH @ ADR,  9 SP 0 STR,
    9 SP 8 STR,
    10 SA-SIGINFO MOVZ,  10 10 32 LSLI,  10 SP 16 STR,
-   4 (sigact)  5 (sigact)  10 (sigact)  11 (sigact)
+   4 (SIGACT)  5 (SIGACT)  10 (SIGACT)  11 (SIGACT)
    SP SP 32 ADDI, ;

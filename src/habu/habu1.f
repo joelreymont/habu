@@ -36,8 +36,8 @@ $570 constant EXITH-CELL  \ EXIT placeholder chain head (code offset; 0 = none)
 $578 constant LVD-CELL    \ compile-time DO nesting depth (LEAVE chains)
 $580 constant LVH-OFF     \ LEAVE chain head per nesting level — 16 levels
 $560 constant LASTC-CELL  \ last CREATEd slot addr (DOES> patches it)
-$1F0 constant DOESP-CELL  \ runtime address of Ldoespatch (stored at startup)
-$230 constant CREATEP-CELL \ runtime address of Lcreate (prims must not name labels)
+$1F0 constant DOESP-CELL  \ runtime address of LDOESPATCH (stored at startup)
+$230 constant CREATEP-CELL \ runtime address of LCREATE (prims must not name labels)
 $238 constant QPATCH-CELL \ [: b-over patch site (0 = not inside a quotation)
 $240 constant QENT-CELL   \ [: nested entry address (the xt ;] pushes)
 $248 constant QXH-CELL    \ saved EXIT chain head across the quotation
@@ -58,7 +58,7 @@ create PLEN 96 cells allot   create PNAM 96 cells allot
 create PNPOOL 1024 allot   variable PNP   variable #PL
 variable RPD
 
-: reg-prim {: na nu lbl elbl :}
+: REG-PRIM {: na nu lbl elbl :}
    lbl  #PL @ cells PLBL + !
    elbl #PL @ cells PEL  + !
    nu   #PL @ cells PLEN + !
@@ -69,52 +69,52 @@ variable FPL  variable FPE
 
 : FPRIM {: na nu xt :}
    NEWLBL FPL !  NEWLBL FPE !
-   na nu FPL @ FPE @ reg-prim
+   na nu FPL @ FPE @ REG-PRIM
    FPL @ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    xt execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE @ LBL, ;
-s" fprim" s" n n n --" trust
+s" fprim" s" n n n --" TRUST
 
 : FPRIM-L {: na nu xt :}               \ LEAF prim: no BL/BLR in body -> no x30 frame
    NEWLBL FPL !  NEWLBL FPE !
-   na nu FPL @ FPE @ reg-prim
+   na nu FPL @ FPE @ REG-PRIM
    FPL @ LBL,  xt execute  RET,  FPE @ LBL, ;
-s" fprim-l" s" n n n --" trust
+s" fprim-l" s" n n n --" TRUST
 \ shared label ids (forward refs)
-variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  variable SRCN
-variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncount
-variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp  variable Lbcap  variable Lbcs
-variable Lbchain  variable Lcreate  variable Ldoespatch
-variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
-variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
-variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
-variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
-variable Lkwdo variable Lkwloop variable Lkwi
-variable Lkwtor variable Lkwrfrom variable Lkwrfet
-variable Lkwexit variable Lkwrec
-variable Lkwqdo variable Lkwploop variable Lkwj variable Lkwleave variable Lkwunloop
-variable Lkwchar variable Lkwbchar
-variable Lkwimm variable Lkwpost variable Lkwcompc
-variable Lkwdoes variable Lkwquot variable Lkwsemiq
+variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
+variable LCEMIT   variable LTOK   variable LPROT  variable LFLUSH variable LNCOUNT
+variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
+variable LBCHAIN  variable LCREATE  variable LDOESPATCH
+variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
+variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
+variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWTICK variable LKWBTICK
+variable LKWLBRACE variable LKWENDLOC variable LLOC-FIND variable LKWCONST
+variable LKWDO variable LKWLOOP variable LKWI
+variable LKWTOR variable LKWRFROM variable LKWRFET
+variable LKWEXIT variable LKWREC
+variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUNLOOP
+variable LKWCHAR variable LKWBCHAR
+variable LKWIMM variable LKWPOST variable LKWCOMPC
+variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 9 constant A   10 constant B   11 constant C
 
 \ ---- primitive bodies (operate on the x19 data stack) ----
-: b+   B g-pop  A g-pop  A A B ADD,  A g-push ;
+: B+   B G-POP  A G-POP  A A B ADD,  A G-PUSH ;
 
-: b-   B g-pop  A g-pop  A A B SUB,  A g-push ;
+: B-   B G-POP  A G-POP  A A B SUB,  A G-PUSH ;
 
-: b*   B g-pop  A g-pop  A A B MUL,  A g-push ;
+: B*   B G-POP  A G-POP  A A B MUL,  A G-PUSH ;
 
-: bdup  A g-pop  A g-push  A g-push ;
+: BDUP  A G-POP  A G-PUSH  A G-PUSH ;
 
-: bdrop XDS XDS 8 SUBI, ;
+: BDROP XDS XDS 8 SUBI, ;
 
-: bswap A g-pop  B g-pop  A g-push  B g-push ;
+: BSWAP A G-POP  B G-POP  A G-PUSH  B G-PUSH ;
 
-: bdot  A g-pop  g-print9 ;
+: BDOT  A G-POP  G-PRINT9 ;
 
-: bu.   A g-pop  g-printu9 ;
+: BU.   A G-POP  G-PRINTU9 ;
 
-: brunrc  A g-pop                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
+: BRUNRC  A G-POP                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
    NEWLBL NEWLBL NEWLBL {: spok spdn spw :}
    SP SP 64 SUBI,
    9 SP 16 STR,                      \ argv[0] = path
@@ -138,136 +138,136 @@ variable Lkwdoes variable Lkwquot variable Lkwsemiq
    9 SP 8 LDRW,
    9 9 8 LSRI,  9 9 $FF ANDI,        \ WEXITSTATUS
    spdn LBL,
-   9 g-push
+   9 G-PUSH
    SP SP 64 ADDI, ;
 
-: bcpfetch    9 CP 0 ADDI,  A g-push ;     \ ( -- addr ) live CP (snapshot writer)
-: bndictfetch 9 NDICT 0 ADDI,  A g-push ;  \ ( -- n ) live dict count
-: bdbasefetch 9 DBASE 0 ADDI,  A g-push ;  \ ( -- addr ) region base
+: BCPFETCH    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
+: BNDICTFETCH 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
+: BDBASEFETCH 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
 
-: bcreate  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
+: BCREATE  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
 
-: bcompile  A g-pop  11 9 0 ADDI,
+: BCOMPILE  A G-POP  11 9 0 ADDI,
    SP SP 16 SUBI,  11 SP 8 STR,
-   2 3 MOVZ,  Lprot @ BL,
+   2 3 MOVZ,  LPROT @ BL,
    11 SP 8 LDR,
    5 $FFFF MOVZ,
-   7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
-   7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
-   7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
-   9 $D63F0200 LIT64,  Lcemit @ BL,
-   2 5 MOVZ,  Lprot @ BL,
+   7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
+   7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
+   7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
+   9 $D63F0200 LIT64,  LCEMIT @ BL,
+   2 5 MOVZ,  LPROT @ BL,
    SP SP 16 ADDI, ;
 
-: bemit A g-pop  13 9 0 ADDI,  g-emitc ;
+: BEMIT A G-POP  13 9 0 ADDI,  G-EMITC ;
 
-: bcr   13 10 MOVZ,  g-emitc ;
+: BCR   13 10 MOVZ,  G-EMITC ;
 
-: bspace 13 32 MOVZ,  g-emitc ;
+: BSPACE 13 32 MOVZ,  G-EMITC ;
 
-: b.s
+: B.S
    NEWLBL NEWLBL {: sl sd :}
    9 DATA S0-CELL LDR,  9 DATA SSCR-CELL STR,
    sl LBL,
       9 DATA SSCR-CELL LDR,  9 XDS CMP,  C-GE sd BCOND,
-      9 9 0 LDR,  g-print9
+      9 9 0 LDR,  G-PRINT9
       9 DATA SSCR-CELL LDR,  9 9 8 ADDI,  9 DATA SSCR-CELL STR,
       sl B,
    sd LBL, ;
 
-: (cmp) {: cond :}  B g-pop  A g-pop  A B CMP,  A cond CSET,  A SP A SUB,  A g-push ;
+: (CMP) {: cond :}  B G-POP  A G-POP  A B CMP,  A cond CSET,  A SP A SUB,  A G-PUSH ;
 
-: b=  C-EQ (cmp) ;
+: B=  C-EQ (CMP) ;
 
-: b<> C-NE (cmp) ;
+: B<> C-NE (CMP) ;
 
-: b<  C-LT (cmp) ;
+: B<  C-LT (CMP) ;
 
-: b>  C-GT (cmp) ;
+: B>  C-GT (CMP) ;
 
-: b<= C-LE (cmp) ;
+: B<= C-LE (CMP) ;
 
-: b>= C-GE (cmp) ;
+: B>= C-GE (CMP) ;
 
-: b0= A g-pop  A 0 CMPI,  A C-EQ CSET,  A SP A SUB,  A g-push ;
+: B0= A G-POP  A 0 CMPI,  A C-EQ CSET,  A SP A SUB,  A G-PUSH ;
 
-: b0< A g-pop  A 0 CMPI,  A C-LT CSET,  A SP A SUB,  A g-push ;
+: B0< A G-POP  A 0 CMPI,  A C-LT CSET,  A SP A SUB,  A G-PUSH ;
 
-: b1+ A g-pop  A A 1 ADDI,  A g-push ;
+: B1+ A G-POP  A A 1 ADDI,  A G-PUSH ;
 
-: b1- A g-pop  A A 1 SUBI,  A g-push ;
+: B1- A G-POP  A A 1 SUBI,  A G-PUSH ;
 
-: band B g-pop A g-pop  A A B AND, A g-push ;
+: BAND B G-POP A G-POP  A A B AND, A G-PUSH ;
 
-: bor  B g-pop A g-pop  A A B ORR, A g-push ;
+: BOR  B G-POP A G-POP  A A B ORR, A G-PUSH ;
 
-: bxor B g-pop A g-pop  A A B EOR, A g-push ;
+: BXOR B G-POP A G-POP  A A B EOR, A G-PUSH ;
 
-: binv A g-pop  B 0 MOVN,  A A B EOR,  A g-push ;
+: BINV A G-POP  B 0 MOVN,  A A B EOR,  A G-PUSH ;
 
-: bneg A g-pop  A SP A SUB,  A g-push ;
+: BNEG A G-POP  A SP A SUB,  A G-PUSH ;
 
-: blsh B g-pop A g-pop  A A B LSLV, A g-push ;
+: BLSH B G-POP A G-POP  A A B LSLV, A G-PUSH ;
 
-: brsh B g-pop A g-pop  A A B LSRV, A g-push ;
+: BRSH B G-POP A G-POP  A A B LSRV, A G-PUSH ;
 
-: bdiv B g-pop A g-pop  A A B SDIV, A g-push ;
+: BDIV B G-POP A G-POP  A A B SDIV, A G-PUSH ;
 
-: bmod B g-pop A g-pop  C A B SDIV,  C C B MUL,  A A C SUB,  A g-push ;
+: BMOD B G-POP A G-POP  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
 
-: bnip  A g-pop  XDS XDS 8 SUBI,  A g-push ;
+: BNIP  A G-POP  XDS XDS 8 SUBI,  A G-PUSH ;
 
-: bover B g-pop A g-pop  A g-push B g-push A g-push ;
+: BOVER B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH ;
 
-: btuck B g-pop A g-pop  B g-push A g-push B g-push ;
+: BTUCK B G-POP A G-POP  B G-PUSH A G-PUSH B G-PUSH ;
 
-: brot  C g-pop B g-pop A g-pop  B g-push C g-push A g-push ;
+: BROT  C G-POP B G-POP A G-POP  B G-PUSH C G-PUSH A G-PUSH ;
 
-: bmrot C g-pop B g-pop A g-pop  C g-push A g-push B g-push ;
+: BMROT C G-POP B G-POP A G-POP  C G-PUSH A G-PUSH B G-PUSH ;
 
-: b2dup B g-pop A g-pop  A g-push B g-push A g-push B g-push ;
+: B2DUP B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH B G-PUSH ;
 
-: b2drop XDS XDS 16 SUBI, ;
+: B2DROP XDS XDS 16 SUBI, ;
 
-: bfetch  A g-pop  A A 0 LDR,  A g-push ;
+: BFETCH  A G-POP  A A 0 LDR,  A G-PUSH ;
 
-: bstore  B g-pop A g-pop  A B 0 STR, ;
+: BSTORE  B G-POP A G-POP  A B 0 STR, ;
 
-: bcfetch A g-pop  A A 0 LDRB, A g-push ;
+: BCFETCH A G-POP  A A 0 LDRB, A G-PUSH ;
 
-: bcstore B g-pop A g-pop  A B 0 STRB, ;
+: BCSTORE B G-POP A G-POP  A B 0 STRB, ;
 
-: bcells  A g-pop  A A 3 LSLI, A g-push ;
+: BCELLS  A G-POP  A A 3 LSLI, A G-PUSH ;
 
-: bhere   7 DATA 0 LDR,  7 g-push ;
+: BHERE   7 DATA 0 LDR,  7 G-PUSH ;
 
-: ballot  A g-pop  7 DATA 0 LDR,  7 7 A ADD,  7 DATA 0 STR, ;
+: BALLOT  A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DATA 0 STR, ;
 
-: bcomma  A g-pop  7 DATA 0 LDR,  A 7 0 STR,  7 7 8 ADDI,  7 DATA 0 STR, ;
+: BCOMMA  A G-POP  7 DATA 0 LDR,  A 7 0 STR,  7 7 8 ADDI,  7 DATA 0 STR, ;
 
-: bccomma A g-pop  7 DATA 0 LDR,  A 7 0 STRB, 7 7 1 ADDI,  7 DATA 0 STR, ;
+: BCCOMMA A G-POP  7 DATA 0 LDR,  A 7 0 STRB, 7 7 1 ADDI,  7 DATA 0 STR, ;
 
-: btype   2 g-pop  1 g-pop  0 1 MOVZ,  NR-WRITE SYS, ;
+: BTYPE   2 G-POP  1 G-POP  0 1 MOVZ,  NR-WRITE SYS, ;
 
-: bdie    7 g-pop  2 g-pop  1 g-pop  0 2 MOVZ,  NR-WRITE SYS,
+: BDIE    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
           0 7 0 ADDI,  NR-EXIT SYS, ;
 
-: bopen   2 g-pop  1 g-pop  0 g-pop  NR-OPEN SYS,  0 g-push ;
+: BOPEN   2 G-POP  1 G-POP  0 G-POP  NR-OPEN SYS,  0 G-PUSH ;
 
-: bwrite  2 g-pop  1 g-pop  0 g-pop  NR-WRITE SYS,  0 g-push ;
+: BWRITE  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  0 G-PUSH ;
 
-: bread   2 g-pop  1 g-pop  0 g-pop  NR-READ SYS,  0 g-push ;
+: BREAD   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  0 G-PUSH ;
 
-: bclose  0 g-pop  NR-CLOSE SYS, ;
+: BCLOSE  0 G-POP  NR-CLOSE SYS, ;
 
-: brbase  9 DATA RBASE-CELL LDR,  9 g-push ;
+: BRBASE  9 DATA RBASE-CELL LDR,  9 G-PUSH ;
 
-: bexec   A g-pop  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
+: BEXEC   A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
 
-: bcatch
+: BCATCH
    NEWLBL NEWLBL {: lres lpush :}
-   A g-pop
+   A G-POP
    SP SP 48 SUBI,
    30 SP 32 STR,
    11 DATA 8 LDR,  11 SP 0 STR,
@@ -280,11 +280,11 @@ variable Lkwdoes variable Lkwquot variable Lkwsemiq
    30 SP 32 LDR,  SP SP 48 ADDI,
    9 0 MOVZ,  lpush B,
    lres LBL,
-   lpush LBL,  9 g-push ;
+   lpush LBL,  9 G-PUSH ;
 
-: bthrow
+: BTHROW
    NEWLBL {: lnoh :}
-   A g-pop
+   A G-POP
    11 DATA 8 LDR,
    11 lnoh CBZ,
    19 11 8 LDR,
@@ -293,17 +293,17 @@ variable Lkwdoes variable Lkwquot variable Lkwsemiq
    SP 13 0 ADDI,  12 BR,
    lnoh LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;
 
-: bwordlist  9 DATA WIDN-CELL LDR,  9 g-push  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
+: BWORDLIST  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
 
-: bgetcur    9 DATA CUR-CELL LDR,  9 g-push ;
+: BGETCUR    9 DATA CUR-CELL LDR,  9 G-PUSH ;
 
-: bsetcur    A g-pop  A DATA CUR-CELL STR, ;
+: BSETCUR    A G-POP  A DATA CUR-CELL STR, ;
 
-: bsetcheck  A g-pop  A DATA HOOK-CELL STR, ;
+: BSETCHECK  A G-POP  A DATA HOOK-CELL STR, ;
 
-: bswl
+: BSWL
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: wl wend wnext wcmp wmatch wf1 wf2 :}
-   2 g-pop  1 g-pop  0 g-pop
+   2 G-POP  1 G-POP  0 G-POP
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,
    wl LBL,  6 wend CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,
@@ -320,85 +320,85 @@ variable Lkwdoes variable Lkwquot variable Lkwsemiq
          7 7 1 ADDI,  wcmp B,
       wmatch LBL,  11 5 0 LDR,  wnext B,
       wnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  wl B,
-   wend LBL,  11 g-push ;
+   wend LBL,  11 G-PUSH ;
 
-: emit-prims
-   s" +"    ['] b+    FPRIM-L   s" -"    ['] b-    FPRIM-L   s" *"    ['] b*    FPRIM-L
-   s" dup"  ['] bdup  FPRIM-L   s" drop" ['] bdrop FPRIM-L   s" swap" ['] bswap FPRIM-L
-   s" ."    ['] bdot  FPRIM-L   s" .s"   ['] b.s   FPRIM-L
-   s" u."   ['] bu.   FPRIM-L   s" emit" ['] bemit FPRIM-L
-   s" cr"   ['] bcr   FPRIM-L   s" space" ['] bspace FPRIM-L
-   s" ="    ['] b=    FPRIM-L   s" <>"   ['] b<>   FPRIM-L   s" <"    ['] b<    FPRIM-L
-   s" >"    ['] b>    FPRIM-L   s" <="   ['] b<=   FPRIM-L   s" >="   ['] b>=   FPRIM-L
-   s" 0="   ['] b0=   FPRIM-L   s" 0<"   ['] b0<   FPRIM-L
-   s" 1+"   ['] b1+   FPRIM-L   s" 1-"   ['] b1-   FPRIM-L
-   s" and"  ['] band  FPRIM-L   s" or"   ['] bor   FPRIM-L   s" xor"  ['] bxor  FPRIM-L
-   s" invert" ['] binv FPRIM-L  s" negate" ['] bneg FPRIM-L
-   s" lshift" ['] blsh FPRIM-L  s" rshift" ['] brsh FPRIM-L
-   s" /"    ['] bdiv  FPRIM-L   s" mod"  ['] bmod  FPRIM-L
-   s" nip"  ['] bnip  FPRIM-L   s" over" ['] bover FPRIM-L   s" tuck" ['] btuck FPRIM-L
-   s" rot"  ['] brot  FPRIM-L   s" -rot" ['] bmrot FPRIM-L
-   s" 2dup" ['] b2dup FPRIM-L   s" 2drop" ['] b2drop FPRIM-L
-   s" @"    ['] bfetch FPRIM-L   s" !"    ['] bstore FPRIM-L
-   s" c@"   ['] bcfetch FPRIM-L  s" c!"   ['] bcstore FPRIM-L
-   s" cells" ['] bcells FPRIM-L
-   s" here" ['] bhere  FPRIM-L   s" allot" ['] ballot FPRIM-L
-   s" ,"    ['] bcomma FPRIM-L   s" c,"   ['] bccomma FPRIM-L
-   s" type" ['] btype  FPRIM-L   s" execute" ['] bexec FPRIM
-   s" compile," ['] bcompile FPRIM
-   s" create" ['] bcreate FPRIM
-   s" run-rc" ['] brunrc FPRIM-L
-   s" cp@" ['] bcpfetch FPRIM-L   s" dbase@" ['] bdbasefetch FPRIM-L
-   s" ndict@" ['] bndictfetch FPRIM-L
-   s" die"  ['] bdie   FPRIM-L
-   s" open" ['] bopen FPRIM-L   s" write" ['] bwrite FPRIM-L   s" read" ['] bread FPRIM-L
-   s" close" ['] bclose FPRIM-L
-   s" rbase" ['] brbase FPRIM-L
-   s" catch" ['] bcatch FPRIM   s" throw" ['] bthrow FPRIM-L
-   s" wordlist" ['] bwordlist FPRIM-L   s" get-current" ['] bgetcur FPRIM-L
-   s" set-current" ['] bsetcur FPRIM-L  s" search-wl" ['] bswl FPRIM-L
-   s" set-check" ['] bsetcheck FPRIM-L ;
-s" emit-prims" s" --" trust
+: EMIT-PRIMS
+   s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
+   s" dup"  ['] BDUP  FPRIM-L   s" drop" ['] BDROP FPRIM-L   s" swap" ['] BSWAP FPRIM-L
+   s" ."    ['] BDOT  FPRIM-L   s" .s"   ['] B.S   FPRIM-L
+   s" u."   ['] BU.   FPRIM-L   s" emit" ['] BEMIT FPRIM-L
+   s" cr"   ['] BCR   FPRIM-L   s" space" ['] BSPACE FPRIM-L
+   s" ="    ['] B=    FPRIM-L   s" <>"   ['] B<>   FPRIM-L   s" <"    ['] B<    FPRIM-L
+   s" >"    ['] B>    FPRIM-L   s" <="   ['] B<=   FPRIM-L   s" >="   ['] B>=   FPRIM-L
+   s" 0="   ['] B0=   FPRIM-L   s" 0<"   ['] B0<   FPRIM-L
+   s" 1+"   ['] B1+   FPRIM-L   s" 1-"   ['] B1-   FPRIM-L
+   s" and"  ['] BAND  FPRIM-L   s" or"   ['] BOR   FPRIM-L   s" xor"  ['] BXOR  FPRIM-L
+   s" invert" ['] BINV FPRIM-L  s" negate" ['] BNEG FPRIM-L
+   s" lshift" ['] BLSH FPRIM-L  s" rshift" ['] BRSH FPRIM-L
+   s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L
+   s" nip"  ['] BNIP  FPRIM-L   s" over" ['] BOVER FPRIM-L   s" tuck" ['] BTUCK FPRIM-L
+   s" rot"  ['] BROT  FPRIM-L   s" -rot" ['] BMROT FPRIM-L
+   s" 2dup" ['] B2DUP FPRIM-L   s" 2drop" ['] B2DROP FPRIM-L
+   s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L
+   s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
+   s" cells" ['] BCELLS FPRIM-L
+   s" here" ['] BHERE  FPRIM-L   s" allot" ['] BALLOT FPRIM-L
+   s" ,"    ['] BCOMMA FPRIM-L   s" c,"   ['] BCCOMMA FPRIM-L
+   s" type" ['] BTYPE  FPRIM-L   s" execute" ['] BEXEC FPRIM
+   s" compile," ['] BCOMPILE FPRIM
+   s" create" ['] BCREATE FPRIM
+   s" run-rc" ['] BRUNRC FPRIM-L
+   s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
+   s" ndict@" ['] BNDICTFETCH FPRIM-L
+   s" die"  ['] BDIE   FPRIM-L
+   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L
+   s" close" ['] BCLOSE FPRIM-L
+   s" rbase" ['] BRBASE FPRIM-L
+   s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
+   s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
+   s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
+   s" set-check" ['] BSETCHECK FPRIM-L ;
+s" emit-prims" s" --" TRUST
 
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
 \ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
-: bf+    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FADD,  A 0 FMOVDX,  A g-push ;
+: BF+    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FADD,  A 0 FMOVDX,  A G-PUSH ;
 
-: bf-    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FSUB,  A 0 FMOVDX,  A g-push ;
+: BF-    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FSUB,  A 0 FMOVDX,  A G-PUSH ;
 
-: bf*    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FMUL,  A 0 FMOVDX,  A g-push ;
+: BF*    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FMUL,  A 0 FMOVDX,  A G-PUSH ;
 
-: bf/    B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FDIV,  A 0 FMOVDX,  A g-push ;
+: BF/    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FDIV,  A 0 FMOVDX,  A G-PUSH ;
 
-: bfneg  A g-pop  0 A FMOVXD,  0 0 FNEG,   A 0 FMOVDX,  A g-push ;
+: BFNEG  A G-POP  0 A FMOVXD,  0 0 FNEG,   A 0 FMOVDX,  A G-PUSH ;
 
-: bfabs  A g-pop  0 A FMOVXD,  0 0 FABS,   A 0 FMOVDX,  A g-push ;
+: BFABS  A G-POP  0 A FMOVXD,  0 0 FABS,   A 0 FMOVDX,  A G-PUSH ;
 
-: bfsqrt A g-pop  0 A FMOVXD,  0 0 FSQRT,  A 0 FMOVDX,  A g-push ;
+: BFSQRT A G-POP  0 A FMOVXD,  0 0 FSQRT,  A 0 FMOVDX,  A G-PUSH ;
 
-: (fcmp) {: cond :}  B g-pop  A g-pop  0 A FMOVXD,  1 B FMOVXD,  0 1 FCMP,
-   A cond CSET,  A SP A SUB,  A g-push ;
+: (FCMP) {: cond :}  B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 1 FCMP,
+   A cond CSET,  A SP A SUB,  A G-PUSH ;
 
-: bf<  C-MI (fcmp) ;
+: BF<  C-MI (FCMP) ;
 
-: bf>  C-GT (fcmp) ;
+: BF>  C-GT (FCMP) ;
 
-: bf=  C-EQ (fcmp) ;
+: BF=  C-EQ (FCMP) ;
 
-: (fcmp0) {: cond :}  A g-pop  0 A FMOVXD,  0 FCMP0,
-   A cond CSET,  A SP A SUB,  A g-push ;
+: (FCMP0) {: cond :}  A G-POP  0 A FMOVXD,  0 FCMP0,
+   A cond CSET,  A SP A SUB,  A G-PUSH ;
 
-: bf0< C-MI (fcmp0) ;
+: BF0< C-MI (FCMP0) ;
 
-: bf0= C-EQ (fcmp0) ;
+: BF0= C-EQ (FCMP0) ;
 
-: bs>f  A g-pop  0 A SCVTF,   A 0 FMOVDX,  A g-push ;
+: BS>F  A G-POP  0 A SCVTF,   A 0 FMOVDX,  A G-PUSH ;
 
-: bf>s  A g-pop  0 A FMOVXD,  A 0 FCVTZS,  A g-push ;
+: BF>S  A G-POP  0 A FMOVXD,  A 0 FCVTZS,  A G-PUSH ;
 
-: bfdot
+: BFDOT
    NEWLBL NEWLBL NEWLBL {: fl il sd :}
-   A g-pop  15 A 0 ADDI,                               \ bits (sign test later)
+   A G-POP  15 A 0 ADDI,                               \ bits (sign test later)
    SP SP 48 SUBI,
    12 SP 48 ADDI,
    13 10 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,           \ newline
@@ -424,26 +424,26 @@ s" emit-prims" s" --" trust
    NR-WRITE SYS,
    SP SP 48 ADDI, ;
 
-: emit-fp-prims
-   s" f+" ['] bf+ FPRIM-L   s" f-" ['] bf- FPRIM-L   s" f*" ['] bf* FPRIM-L
-   s" f/" ['] bf/ FPRIM-L   s" fnegate" ['] bfneg FPRIM-L
-   s" fabs" ['] bfabs FPRIM-L  s" fsqrt" ['] bfsqrt FPRIM-L
-   s" f<" ['] bf< FPRIM-L   s" f>" ['] bf> FPRIM-L   s" f=" ['] bf= FPRIM-L
-   s" f0<" ['] bf0< FPRIM-L  s" f0=" ['] bf0= FPRIM-L
-   s" s>f" ['] bs>f FPRIM-L  s" f>s" ['] bf>s FPRIM-L
-   s" f." ['] bfdot FPRIM-L ;
-s" emit-fp-prims" s" --" trust
+: EMIT-FP-PRIMS
+   s" f+" ['] BF+ FPRIM-L   s" f-" ['] BF- FPRIM-L   s" f*" ['] BF* FPRIM-L
+   s" f/" ['] BF/ FPRIM-L   s" fnegate" ['] BFNEG FPRIM-L
+   s" fabs" ['] BFABS FPRIM-L  s" fsqrt" ['] BFSQRT FPRIM-L
+   s" f<" ['] BF< FPRIM-L   s" f>" ['] BF> FPRIM-L   s" f=" ['] BF= FPRIM-L
+   s" f0<" ['] BF0< FPRIM-L  s" f0=" ['] BF0= FPRIM-L
+   s" s>f" ['] BS>F FPRIM-L  s" f>s" ['] BF>S FPRIM-L
+   s" f." ['] BFDOT FPRIM-L ;
+s" emit-fp-prims" s" --" TRUST
 
-: emit-cemit
-   Lcemit @ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
+: EMIT-CEMIT
+   LCEMIT @ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
 
-\ Lbcap ( -- ) : append TKA/TKL + ' ' to the body capture. Lbcs ( x11=a x12=u )
+\ LBCAP ( -- ) : append TKA/TKL + ' ' to the body capture. LBCS ( x11=a x12=u )
 \ is the general entry (defining-word kind tokens). FATAL (exit 71) on overflow —
 \ truncation would let the check hook certify code it never saw.
-: emit-bcap
-   Lbcap @ LBL,
+: EMIT-BCAP
+   LBCAP @ LBL,
    11 TKA 0 ADDI,  12 TKL 0 ADDI,
-   Lbcs @ LBL,
+   LBCS @ LBL,
    NEWLBL NEWLBL NEWLBL {: bok bcp bcd :}
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
    14 DATA BODYLEN-CELL LDR,
@@ -458,8 +458,8 @@ s" emit-fp-prims" s" --" trust
    14 14 17 ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
    RET, ;
 
-: emit-tok
-   Ltok @ LBL,
+: EMIT-TOK
+   LTOK @ LBL,
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: tskip thas tscan tgot tnone :}
    tskip LBL,
       INP INE CMP,  C-GE tnone BCOND,
@@ -473,12 +473,12 @@ s" emit-fp-prims" s" --" trust
    tgot LBL,  TKL INP TKA SUB,  0 1 MOVZ,  RET,
    tnone LBL,  0 0 MOVZ,  RET, ;
 
-: emit-prot
-   Lprot @ LBL,
+: EMIT-PROT
+   LPROT @ LBL,
    0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET, ;
 
-: emit-flush
-   Lflush @ LBL,
+: EMIT-FLUSH
+   LFLUSH @ LBL,
    NEWLBL NEWLBL NEWLBL NEWLBL {: fdl fdd fil fid :}
    9 9 6 LSRI,  9 9 6 LSLI,                                 \ align start down to the
    10 9 0 ADDI,                                             \ line, or the 64-byte
@@ -489,8 +489,8 @@ s" emit-fp-prims" s" --" trust
    fil LBL,  10 CP CMP,  C-GE fid BCOND,  10 ICIVAU,  10 10 64 ADDI,  fil B,
    fid LBL,  DSB-ISH,  ISB,  RET, ;
 
-: emit-find
-   Lfind @ LBL,
+: EMIT-FIND
+   LFIND @ LBL,
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: floop fdone fnext fcmp fmatch :}
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  13 0 MOVZ,
    floop LBL,
@@ -512,8 +512,8 @@ s" emit-fp-prims" s" --" trust
       fnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  floop B,
    fdone LBL,  RET, ;
 
-: emit-num
-   Lnum @ LBL,
+: EMIT-NUM
+   LNUM @ LBL,
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL
    {: ldone ndoll nohex lloop lok gotd nd nuc ndot isfrac lint fpos :}
    11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ,
@@ -563,9 +563,9 @@ s" emit-fp-prims" s" --" trust
    lint LBL,  11 11 13 MUL,  12 1 MOVZ,
    ldone LBL,  RET, ;
 
-: emit-dict
-   Lncount @ LBL,  #PL @ DCQ,
-   Ldict @ LBL,
+: EMIT-DICT
+   LNCOUNT @ LBL,  #PL @ DCQ,
+   LDICT @ LBL,
    0 BEGIN dup #PL @ < WHILE
       dup cells PLBL + @ DLBL,
       dup cells PEL  + @ DLBL,

@@ -34,7 +34,7 @@ T{ s" : RZ 0 begin >r 1+ dup 5 >= until drop ;"   CHK2 s\" 0\n"  compare 0= -> t
 T{ s" : RC 7 >r 1 if r@ else 0 then r> drop + . ;" CHK2 s\" -1\n" compare 0= -> true }T
 \ TRUST: declare a sig for a word the checker can't model — callers certify.
 \ (recurse makes MYST uncheckable=1; the trusted sig lets USES certify=-1.)
-T{ s\" : MYST dup 0 > if 1- recurse then ; s\" myst\" s\" n -- n\" trust : USES 5 MYST . ; USES"
+T{ s\" : MYST dup 0 > if 1- recurse then ; s\" myst\" s\" n -- n\" TRUST : USES 5 MYST . ; USES"
    CHK2 s\" 1\n-1\n0\n" compare 0= -> true }T
 \ typed local assertions: {: a:n :} binds the local's type var to the
 \ asserted type; references use the bare name; a wrong use rejects.
@@ -44,7 +44,7 @@ T{ s" : LR {: x:r :} x f. ;"      CHK2 s\" -1\n" compare 0= -> true }T
 \ CREATE...DOES> typing: a word created INSIDE a defining word publishes
 \ UNRECORDED (its does>-patched effect is arbitrary — recording `-- n` would
 \ be unsound); the author declares it with trust, and callers certify.
-T{ s\" : ARR create cells allot does> swap cells + ; s\" a4\" s\" n -- n\" trust 4 ARR A4 : USE 2 A4 @ . ; 7 2 A4 ! USE"
+T{ s\" : ARR create cells allot does> swap cells + ; s\" a4\" s\" n -- n\" TRUST 4 ARR A4 : USE 2 A4 @ . ; 7 2 A4 ! USE"
    CHK2 s\" 1\n-1\n7\n" compare 0= -> true }T
 \ quotation typing: [: ;] infers a quot<effect> type; execute applies it; the
 \ omega combinator rejects via the occurs check (never loops); quot-bearing

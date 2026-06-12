@@ -54,11 +54,11 @@ variable SNL  variable SFTS  variable SFD
    s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
    s" __TEXT" VMBASE SFTS @ 0 SFTS @ 5 1 80 SEG,  LC+
       s" __text" s" __TEXT" VMBASE CODE-OFF + SNL @ CODE-OFF 2 $80000400 SECT,
-   m-here LE-OFF !
+   M-HERE LE-OFF !
    s" __LINKEDIT" VMBASE SFTS @ + MPAGE SFTS @ 0 1 0 0 SEG,  LC+
    DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
    PATCH-HDR
-   CODE-OFF m-pad ;
+   CODE-OFF M-PAD ;
 : SNAPGO
    SNAP-HDR
    \ trailer: magic, old text base, dict count, region length, data length

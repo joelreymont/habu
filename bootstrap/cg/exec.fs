@@ -6,13 +6,13 @@ require sign.fs
 
 create CMD$ 512 allot   variable CMD#
 
-: c+ ( c -- )  CMD$ CMD# @ + c!  1 CMD# +! ;
+: C+ ( c -- )  CMD$ CMD# @ + c!  1 CMD# +! ;
 
-: cs+ ( addr u -- )  bounds ?do i c@ c+ loop ;
+: CS+ ( addr u -- )  bounds ?do i c@ C+ loop ;
 
-: cmd( ( -- )  0 CMD# ! ;
+: CMD( ( -- )  0 CMD# ! ;
 
-: )run ( -- wstatus )  CMD$ CMD# @ system  $? ;
+: )RUN ( -- wstatus )  CMD$ CMD# @ system  $? ;
 
 : WSTAT>RC ( wstatus -- code )  8 rshift $FF and ;
 
@@ -24,7 +24,7 @@ create CMD$ 512 allot   variable CMD#
 s" cg: chmod failed"     exception constant E-CHMOD
 
 : CHMODX ( addr u -- )
-   cmd(  s" chmod +x '" cs+  cs+  s" '" cs+  )run  if E-CHMOD throw then ;
+   CMD(  s" chmod +x '" CS+  CS+  s" '" CS+  )RUN  if E-CHMOD throw then ;
 
 : BASENAME ( a u -- a2 u2 )          \ strip directory: text after the last '/'
    {: a u :}  a u + {: e :}  a {: s :}
@@ -64,4 +64,4 @@ s" cg: chmod failed"     exception constant E-CHMOD
 \ Build + run, returning the decoded process exit code (0..255).
 : RUN-EXE ( addr u -- code )
    2dup {: pa pu :} EMIT-EXE          \ EMIT-EXE consumes addr u; keep pa pu for the run
-   cmd(  [char] ' c+  pa pu cs+  [char] ' c+  )run  pa pu rot CRASH-CHECK  WSTAT>RC ;
+   CMD(  [char] ' C+  pa pu CS+  [char] ' C+  )RUN  pa pu rot CRASH-CHECK  WSTAT>RC ;

@@ -30,12 +30,12 @@ T{ ICODE-RESET 0 1 LIT64, 1 2 LIT64, OPTIMIZE OASM -> 8 }T  \ different rd: kept
 T{ GEN-BNEXT -> 4 }T
 T{ 0 O@ -> $D503201F }T                            \ just the nop
 
-\ --- OPT-PUSHPOP: g-push rA ; g-pop rB collapses to MOV rB,rA (or nothing) ---
+\ --- OPT-PUSHPOP: G-PUSH rA ; G-POP rB collapses to MOV rB,rA (or nothing) ---
 \ push reg = STR reg,[x19] ; ADDI x19,x19,8   pop reg = SUBI x19,x19,8 ; LDR reg,[x19]
 : GEN-PP ( rA rB -- nbytes )
    ICODE-RESET
-   >r  19 0 STR,  19 19 8 ADDI,            \ g-push rA  (rA already on stack as rt)
-   19 19 8 SUBI,  r> 19 0 LDR,             \ g-pop  rB
+   >r  19 0 STR,  19 19 8 ADDI,            \ G-PUSH rA  (rA already on stack as rt)
+   19 19 8 SUBI,  r> 19 0 LDR,             \ G-POP  rB
    OPTIMIZE OASM ;
 T{ 9 10 GEN-PP -> 4 }T                     \ distinct regs -> one MOV
 T{ 0 O@ -> $AA0903EA }T                    \ mov x10,x9

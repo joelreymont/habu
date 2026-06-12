@@ -11,36 +11,36 @@ require sys.fs
 19 constant XDS  31 constant SP   25 constant RSP   26 constant HP
 
 \ Bump heap (HERE/ALLOT/,/C,): an mmap'd RW arena whose next-free pointer lives in
-\ HP (x26 — outside the VS pool, so it survives spills and calls). g-heap-init runs
+\ HP (x26 — outside the VS pool, so it survives spills and calls). G-HEAP-INIT runs
 \ once at the program ENTRY (COMPILE-WORD); callees inherit HP.
 $100000 constant HEAPSZ
 
-: g-heap-init ( -- )
+: G-HEAP-INIT ( -- )
    0 0 MOVZ,  1 HEAPSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,  HP 0 0 ADDI, ;     \ mmap RW; HP = base
 
 \ data-stack ops (Xds points just past TOS; full-ascending)
-: g-push ( reg -- )  XDS 0 STR,  XDS XDS 8 ADDI, ;
+: G-PUSH ( reg -- )  XDS 0 STR,  XDS XDS 8 ADDI, ;
 
-: g-pop  ( reg -- )  XDS XDS 8 SUBI,  XDS 0 LDR, ;
+: G-POP  ( reg -- )  XDS XDS 8 SUBI,  XDS 0 LDR, ;
 
-: g-lit  ( n -- )    T0 swap LIT64,  T0 g-push ;
+: G-LIT  ( n -- )    T0 swap LIT64,  T0 G-PUSH ;
 
 \ return stack (grows down; RSP points at top; [RSP]=index, [RSP+8]=limit)
-: g-rpush ( reg -- )  RSP RSP 8 SUBI,  RSP 0 STR, ;
+: G-RPUSH ( reg -- )  RSP RSP 8 SUBI,  RSP 0 STR, ;
 
-: g-rpop  ( reg -- )  RSP 0 LDR,  RSP RSP 8 ADDI, ;
+: G-RPOP  ( reg -- )  RSP 0 LDR,  RSP RSP 8 ADDI, ;
 \ carve a locals frame (LOCSZ, addressed [sp,#slot*8]) + the data stack (Xds, up)
 \ + return stack (RSP=Xds+n, down) on the machine stack. Layout low→high:
 \ [sp .. sp+LOCSZ) locals | [Xds .. ) data ↑ | return ↓ from Xds+n.
 256 constant LOCSZ                       \ 32 local slots × 8 bytes
 
-: g-prologue {: n -- :}
+: G-PROLOGUE {: n -- :}
    SP SP n LOCSZ + SUBI,  XDS SP LOCSZ ADDI,  RSP XDS 0 ADDI,  RSP RSP n ADDI, ;
 
-: g-exit-tos ( -- )  0 g-pop  NR-EXIT SYS, ;     \ exit(TOS)
+: G-EXIT-TOS ( -- )  0 G-POP  NR-EXIT SYS, ;     \ exit(TOS)
 
-: g-exit0    ( -- )  0 0 MOVZ,  NR-EXIT SYS, ;   \ exit(0)
+: G-EXIT0    ( -- )  0 0 MOVZ,  NR-EXIT SYS, ;   \ exit(0)
 
 \ Spill-path primitives — ONLY the ops not handled by the register-allocated
 \ CG-VS (regstack.fs); arith/shuffle/compare/logical/shift moved there. These run
@@ -48,49 +48,49 @@ $100000 constant HEAPSZ
 \ Native SDIV by 0 silently yields 0; gforth THROWS. Trap on a zero divisor so a
 \ miscompile can't pass off wrong data as a result (exact gforth exit code isn't
 \ matched — both error, different mechanism). T1 holds the divisor here.
-: g-div0? ( -- )  NEWLBL {: lok :}  T1 lok CBNZ,  BRK,  lok LBL, ;
+: G-DIV0? ( -- )  NEWLBL {: lok :}  T1 lok CBNZ,  BRK,  lok LBL, ;
 
-: p-div   T1 g-pop  T0 g-pop  g-div0?  T0 T0 T1 SDIV, T0 g-push ;
+: P-DIV   T1 G-POP  T0 G-POP  G-DIV0?  T0 T0 T1 SDIV, T0 G-PUSH ;
 
-: p-mod   T1 g-pop  T0 g-pop  g-div0?  T2 T0 T1 SDIV,  T2 T2 T1 MUL,  T0 T0 T2 SUB,  T0 g-push ;
+: P-MOD   T1 G-POP  T0 G-POP  G-DIV0?  T2 T0 T1 SDIV,  T2 T2 T1 MUL,  T0 T0 T2 SUB,  T0 G-PUSH ;
 
-: p-qdup T0 g-pop  T0 g-push  NEWLBL {: l :}  T0 l CBZ,  T0 g-push  l LBL, ;
+: P-QDUP T0 G-POP  T0 G-PUSH  NEWLBL {: l :}  T0 l CBZ,  T0 G-PUSH  l LBL, ;
 
-: p-abs  T0 g-pop  T0 0 CMPI,  NEWLBL {: l :}  C-GE l BCOND,  T0 SP T0 SUB,  l LBL,  T0 g-push ;
+: P-ABS  T0 G-POP  T0 0 CMPI,  NEWLBL {: l :}  C-GE l BCOND,  T0 SP T0 SUB,  l LBL,  T0 G-PUSH ;
 
-: p-min  T1 g-pop  T0 g-pop  T0 T1 CMP,  NEWLBL {: l :}  C-LE l BCOND,  T0 T1 0 ADDI,  l LBL,  T0 g-push ;
+: P-MIN  T1 G-POP  T0 G-POP  T0 T1 CMP,  NEWLBL {: l :}  C-LE l BCOND,  T0 T1 0 ADDI,  l LBL,  T0 G-PUSH ;
 
-: p-max  T1 g-pop  T0 g-pop  T0 T1 CMP,  NEWLBL {: l :}  C-GE l BCOND,  T0 T1 0 ADDI,  l LBL,  T0 g-push ;
+: P-MAX  T1 G-POP  T0 G-POP  T0 T1 CMP,  NEWLBL {: l :}  C-GE l BCOND,  T0 T1 0 ADDI,  l LBL,  T0 G-PUSH ;
 
-: p-2/   T0 g-pop  T0 T0 1 ASRI,  T0 g-push ;
+: P-2/   T0 G-POP  T0 T0 1 ASRI,  T0 G-PUSH ;
 
-: p-/mod T1 g-pop  T0 g-pop  g-div0?  T2 T0 T1 SDIV,  12 T2 T1 MUL,  12 T0 12 SUB,  12 g-push  T2 g-push ;
+: P-/MOD T1 G-POP  T0 G-POP  G-DIV0?  T2 T0 T1 SDIV,  12 T2 T1 MUL,  12 T0 12 SUB,  12 G-PUSH  T2 G-PUSH ;
 
 \ control-flow stack (compile-time, holds label ids)
 variable CF-SP   create CF-STK 64 cells allot
 variable EPILOG  variable LOOP-DEPTH
 
-: cf-reset ( -- )  0 CF-SP !  0 LOOP-DEPTH ! ;
+: CF-RESET ( -- )  0 CF-SP !  0 LOOP-DEPTH ! ;
 
-: cf-push ( x -- )  CF-STK CF-SP @ cells + !  1 CF-SP +! ;
+: CF-PUSH ( x -- )  CF-STK CF-SP @ cells + !  1 CF-SP +! ;
 
-: cf-pop  ( -- x )  -1 CF-SP +!  CF-STK CF-SP @ cells + @ ;
+: CF-POP  ( -- x )  -1 CF-SP +!  CF-STK CF-SP @ cells + @ ;
 
-: c-if    T0 g-pop  NEWLBL dup T0 swap CBZ,  cf-push ;
+: C-IF    T0 G-POP  NEWLBL dup T0 swap CBZ,  CF-PUSH ;
 
-: c-else  NEWLBL dup B,  cf-pop LBL,  cf-push ;
+: C-ELSE  NEWLBL dup B,  CF-POP LBL,  CF-PUSH ;
 
-: c-then  cf-pop LBL, ;
+: C-THEN  CF-POP LBL, ;
 
-: c-begin NEWLBL dup LBL,  cf-push ;
+: C-BEGIN NEWLBL dup LBL,  CF-PUSH ;
 
-: c-until T0 g-pop  cf-pop T0 swap CBZ, ;
+: C-UNTIL T0 G-POP  CF-POP T0 swap CBZ, ;
 
-: c-again cf-pop B, ;
+: C-AGAIN CF-POP B, ;
 
-: c-while T0 g-pop  NEWLBL dup T0 swap CBZ,  cf-push ;
+: C-WHILE T0 G-POP  NEWLBL dup T0 swap CBZ,  CF-PUSH ;
 
-: c-repeat cf-pop  cf-pop B,  LBL, ;            \ ( Lexit Lbegin -- ) B Lbegin; place Lexit
+: C-REPEAT CF-POP  CF-POP B,  LBL, ;            \ ( LEXIT Lbegin -- ) B Lbegin; place LEXIT
 \ DO/?DO/LOOP/I keep index+limit on the return stack, so loops nest.
 \ Loop index/limit live in REGISTERS (LIDX=x27, LLIM=x28 — outside the VS pool, so
 \ they survive the body's spills), not on the return stack: the per-iteration
@@ -98,34 +98,34 @@ variable EPILOG  variable LOOP-DEPTH
 \ enclosing loop's pair on the return stack at entry/exit (not per iteration).
 27 constant LIDX   28 constant LLIM
 
-: loop-save ( -- )  LOOP-DEPTH @ if  LLIM g-rpush  LIDX g-rpush  then  1 LOOP-DEPTH +! ;
+: LOOP-SAVE ( -- )  LOOP-DEPTH @ if  LLIM G-RPUSH  LIDX G-RPUSH  then  1 LOOP-DEPTH +! ;
 
-: loop-rest ( -- )  LOOP-DEPTH @ 1 > if  LIDX g-rpop  LLIM g-rpop  then  -1 LOOP-DEPTH +! ;
+: LOOP-REST ( -- )  LOOP-DEPTH @ 1 > if  LIDX G-RPOP  LLIM G-RPOP  then  -1 LOOP-DEPTH +! ;
 
-: c-do    loop-save  LIDX g-pop  LLIM g-pop              \ index->x27, limit->x28
-          NEWLBL {: lexit :}  NEWLBL {: ltop :}  ltop LBL,
-          lexit cf-push  ltop cf-push ;
+: C-DO    LOOP-SAVE  LIDX G-POP  LLIM G-POP              \ index->x27, limit->x28
+          NEWLBL {: LEXIT :}  NEWLBL {: ltop :}  ltop LBL,
+          LEXIT CF-PUSH  ltop CF-PUSH ;
 
-: c-qdo   loop-save  LIDX g-pop  LLIM g-pop
-          NEWLBL {: lexit :}  LIDX LLIM CMP,
+: C-QDO   LOOP-SAVE  LIDX G-POP  LLIM G-POP
+          NEWLBL {: LEXIT :}  LIDX LLIM CMP,
           NEWLBL {: lenter :}  C-LT lenter BCOND,         \ index<limit -> enter
-          lexit B,                                        \ else skip (lexit does the restore)
+          LEXIT B,                                        \ else skip (lexit does the restore)
           lenter LBL,  NEWLBL {: ltop :}  ltop LBL,
-          lexit cf-push  ltop cf-push ;
+          LEXIT CF-PUSH  ltop CF-PUSH ;
 
-: c-loop  cf-pop {: ltop :}  cf-pop {: lexit :}
+: C-LOOP  CF-POP {: ltop :}  CF-POP {: LEXIT :}
           LIDX LIDX 1 ADDI,  LIDX LLIM CMP,  C-LT ltop BCOND,   \ ++index; index<limit -> loop
-          lexit LBL,  loop-rest ;
+          LEXIT LBL,  LOOP-REST ;
 
-: c-i     LIDX g-push ;
+: C-I     LIDX G-PUSH ;
 
-: p->r    T0 g-pop   T0 g-rpush ;
+: P->R    T0 G-POP   T0 G-RPUSH ;
 
-: p-r>    T0 g-rpop  T0 g-push ;
+: P-R>    T0 G-RPOP  T0 G-PUSH ;
 
-: p-r@    T0 RSP 0 LDR,  T0 g-push ;
+: P-R@    T0 RSP 0 LDR,  T0 G-PUSH ;
 
-: c-exit  EPILOG @ B, ;
+: C-EXIT  EPILOG @ B, ;
 
 \ token -> generator (own wordlist; gforth lookups are case-insensitive)
 wordlist constant CG-PRIMS
@@ -134,51 +134,51 @@ get-current  CG-PRIMS set-current
 \ Only ops NOT in the register-allocated CG-VS (regstack.fs) reach here — walk.fs
 \ routes the rest to CG-VS first. So this list is the spill-path remainder:
 \ division, ?DUP, ABS/MIN/MAX, 2/, and control flow / return stack below.
-: / p-div ;
+: / P-DIV ;
 
-: MOD p-mod ;
+: MOD P-MOD ;
 
-: /MOD p-/mod ;
+: /MOD P-/MOD ;
 
-: 2/ p-2/ ;
+: 2/ P-2/ ;
 
-: ?DUP p-qdup ;
+: ?DUP P-QDUP ;
 
-: ABS p-abs ;
+: ABS P-ABS ;
 
-: MIN p-min ;
+: MIN P-MIN ;
 
-: MAX p-max ;
+: MAX P-MAX ;
 
-: IF c-if ;
+: IF C-IF ;
 
-: ELSE c-else ;
+: ELSE C-ELSE ;
 
-: THEN c-then ;
+: THEN C-THEN ;
 
-: BEGIN c-begin ;
+: BEGIN C-BEGIN ;
 
-: UNTIL c-until ;
+: UNTIL C-UNTIL ;
 
-: AGAIN c-again ;
+: AGAIN C-AGAIN ;
 
-: WHILE c-while ;
+: WHILE C-WHILE ;
 
-: REPEAT c-repeat ;
+: REPEAT C-REPEAT ;
 
-: DO c-do ;
+: DO C-DO ;
 
-: ?DO c-qdo ;
+: ?DO C-QDO ;
 
-: LOOP c-loop ;
+: LOOP C-LOOP ;
 
-: I c-i ;
+: I C-I ;
 
-: EXIT c-exit ;
+: EXIT C-EXIT ;
 
-: >R p->r ;
+: >R P->R ;
 
-: R> p-r> ;
+: R> P-R> ;
 
-: R@ p-r@ ;
+: R@ P-R@ ;
 set-current

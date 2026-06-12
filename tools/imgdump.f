@@ -8,11 +8,11 @@ variable IFD  variable IRD
 $40000 constant IMAX
 create IPATH 32 allot
 
-: zpath {: a u d :}
+: ZPATH {: a u d :}
    0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;
 
-: read-img
-   s" /tmp/imgdump-in" IPATH zpath
+: READ-IMG
+   s" /tmp/imgdump-in" IPATH ZPATH
    IPATH 0 0 open IFD !
    here IB !  IMAX allot  0 IL !
    BEGIN
@@ -25,15 +25,15 @@ create IPATH 32 allot
 
 \ ---- hex printing ($-prefixed, lowercase) and char output ----
 create EB 4 allot
-: emitc {: c :}  c EB c!  EB 1 type ;
-: nib {: n :}  n 10 < IF n 48 + ELSE n 87 + THEN ;
+: EMITC {: c :}  c EB c!  EB 1 type ;
+: NIB {: n :}  n 10 < IF n 48 + ELSE n 87 + THEN ;
 create HB 24 allot
 variable HV  variable HP
 : h. {: u :}
    u HV !  HB 20 + HP !
    BEGIN
      HP @ 1 - HP !
-     HV @ 15 and nib HP @ c!
+     HV @ 15 and NIB HP @ c!
      HV @ 16 / HV !
      HV @ 0 =
    UNTIL
@@ -41,11 +41,11 @@ variable HV  variable HP
    HP @  HB 20 + HP @ -  type ;
 
 \ ---- dict entry fields and validation ----
-: e-s ( o -- x )  IB @ + @ ;
-: e-e ( o -- x )  8 + IB @ + @ ;
-: e-l ( o -- x )  16 + IB @ + @ ;
+: E-S ( o -- x )  IB @ + @ ;
+: E-E ( o -- x )  8 + IB @ + @ ;
+: E-L ( o -- x )  16 + IB @ + @ ;
 variable OKV
-: prn? {: a u :}                              \ a..a+u all printable ascii?
+: PRN? {: a u :}                              \ a..a+u all printable ascii?
    1 OKV !
    0 BEGIN dup u < WHILE
      dup a + c@ 32 >  OKV @ and
@@ -53,27 +53,27 @@ variable OKV
      1 +
    REPEAT drop
    OKV @ ;
-: ent? {: o :}                                \ plausible entry at o?
-   o e-s 0 >
-   o e-e o e-s >  and
-   o e-e IL @ <=  and
-   o e-l 1 >=  and
-   o e-l 16 <=  and
-   dup IF  drop  o 24 + IB @ +  o e-l  prn?  THEN ;
+: ENT? {: o :}                                \ plausible entry at o?
+   o E-S 0 >
+   o E-E o E-S >  and
+   o E-E IL @ <=  and
+   o E-L 1 >=  and
+   o E-L 16 <=  and
+   dup IF  drop  o 24 + IB @ +  o E-L  PRN?  THEN ;
 
 \ ---- find the dict: longest run of consecutive valid entries ----
 variable RUNV  variable BESTO  variable BESTN
-: run# {: o :}
+: RUN# {: o :}
    0 RUNV !
-   o BEGIN  dup IL @ 48 - <=  over ent? and  WHILE
+   o BEGIN  dup IL @ 48 - <=  over ENT? and  WHILE
      RUNV @ 1 + RUNV !  48 +
    REPEAT drop
    RUNV @ ;
-: find-dict
+: FIND-DICT
    0 BESTO !  0 BESTN !
    0 BEGIN dup IL @ 48 - <= WHILE
-     dup ent? IF
-       dup run# RUNV !
+     dup ENT? IF
+       dup RUN# RUNV !
        RUNV @ BESTN @ > IF  dup BESTO !  RUNV @ BESTN !  THEN
      THEN
      4 +
@@ -81,12 +81,12 @@ variable RUNV  variable BESTO  variable BESTN
    BESTN @ 0 = IF s" imgdump: no dict found" 74 die THEN ;
 
 \ ---- dump ----
-: .ent {: o :}
-   o 24 + IB @ +  o e-l  type  32 emitc
-   o e-s h.  32 emitc
-   o e-e o e-s - h.  10 emitc ;
-: dump-dict
+: .ENT {: o :}
+   o 24 + IB @ +  o E-L  type  32 EMITC
+   o E-S h.  32 EMITC
+   o E-E o E-S - h.  10 EMITC ;
+: DUMP-DICT
    BESTO @
-   BEGIN dup BESTO @ BESTN @ 48 * + < WHILE  dup .ent  48 + REPEAT drop ;
+   BEGIN dup BESTO @ BESTN @ 48 * + < WHILE  dup .ENT  48 + REPEAT drop ;
 
-read-img  find-dict  dump-dict
+READ-IMG  FIND-DICT  DUMP-DICT

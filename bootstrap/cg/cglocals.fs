@@ -13,38 +13,38 @@ create CGL-NAME CGL-MAX CGL-NAMESZ chars * allot
 create CGL-LEN  CGL-MAX cells allot
 variable CGL-N        variable CGL-COLLECT?
 
-: cgl-reset ( -- )  0 CGL-N !  CGL-COLLECT? off ;
+: CGL-RESET ( -- )  0 CGL-N !  CGL-COLLECT? off ;
 
-: cgl-name@ ( i -- a u )  dup CGL-NAMESZ chars * CGL-NAME +  swap cells CGL-LEN + @ ;
+: CGL-NAME@ ( i -- a u )  dup CGL-NAMESZ chars * CGL-NAME +  swap cells CGL-LEN + @ ;
 
-: cgl-add ( a u -- )                       \ record a local name, assign the next slot
+: CGL-ADD ( a u -- )                       \ record a local name, assign the next slot
    CGL-N @ CGL-MAX >= if 1 abort" cg: too many locals" then
    CGL-N @ {: i :}
    dup i cells CGL-LEN + !
    i CGL-NAMESZ chars * CGL-NAME +  swap move
    1 CGL-N +! ;
 
-: cgl-load ( slot -- )  {: slot :}  r-alloc {: r :}  r SP slot 8 * LDR,  r v-pushr ;
+: CGL-LOAD ( slot -- )  {: slot :}  R-ALLOC {: r :}  r SP slot 8 * LDR,  r V-PUSHR ;
 
-: cgl-emit-pops ( -- )                     \ pop declared locals (top = last) into slots
+: CGL-EMIT-POPS ( -- )                     \ pop declared locals (top = last) into slots
    CGL-N @ 0 ?do
       CGL-N @ 1- i -  {: slot :}
-      v-popr {: r :}  r SP slot 8 * STR,  r r-free
+      V-POPR {: r :}  r SP slot 8 * STR,  r R-FREE
    loop ;
 
-: cgl-find ( a u -- f )                    \ names a local? -> emit a load + true; else false
+: CGL-FIND ( a u -- f )                    \ names a local? -> emit a load + true; else false
    CGL-N @ 0 ?do
-      2dup i cgl-name@ CI= if  2drop  i cgl-load  true  unloop exit  then
+      2dup i CGL-NAME@ CI= if  2drop  i CGL-LOAD  true  unloop exit  then
    loop  2drop false ;
 
 \ Token hook for walk.fs EMIT-TOKEN (consumes a copy, returns handled?).
 : CHECK-LOCAL-CG ( a u -- f )
    CGL-COLLECT? @ if
-      2dup BRACE-CLOSE? if 2drop  cgl-emit-pops  CGL-COLLECT? off  true  exit then
+      2dup BRACE-CLOSE? if 2drop  CGL-EMIT-POPS  CGL-COLLECT? off  true  exit then
       2dup s" --" CI= if 2drop true exit then        \ inputs-only: skip a -- separator
-      NAME-PART cgl-add  true  exit
+      NAME-PART CGL-ADD  true  exit
    then
-   2dup BRACE-OPEN? if 2drop  v-spill  0 CGL-N !  CGL-COLLECT? on  true  exit then
-   cgl-find ;
+   2dup BRACE-OPEN? if 2drop  V-SPILL  0 CGL-N !  CGL-COLLECT? on  true  exit then
+   CGL-FIND ;
 
 CHECKING-ON? !                            \ restore

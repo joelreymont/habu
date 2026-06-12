@@ -26,8 +26,8 @@ T{ 1 2 SWP -> 2 1 }T
 T{ 5 FAC -> 120 }T
 
 \ case-insensitive: lowercase colon body + mixed type name
-: tw ( I64 -- I64 ) 2 * ;
-T{ 21 tw -> 42 }T
+: TW ( I64 -- I64 ) 2 * ;
+T{ 21 TW -> 42 }T
 
 \ typed locals: checked with the type, compiled as bare names (F3 regression)
 : DBL ( i64 -- i64 ) {: a:i64 :} a a + ;

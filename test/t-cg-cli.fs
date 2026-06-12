@@ -19,12 +19,12 @@ s" /tmp/t-sumto" HABU-EXE SUMTO
 s" /tmp/t-gcd"   HABU-EXE GCD
 
 2variable CLIO
-: ,arg ( n -- )  s>d <# #s #> cs+ ;             \ append " n" to the command
+: ,ARG ( n -- )  s>d <# #s #> CS+ ;             \ append " n" to the command
 : RUN-CLI ( n exe-a exe-u -- )                  \ run `exe n`, capture stdout
-   cmd(  cs+  s"  " cs+  ,arg  s"  > /tmp/t-cliout" cs+  )run drop
+   CMD(  CS+  s"  " CS+  ,ARG  s"  > /tmp/t-cliout" CS+  )RUN drop
    s" /tmp/t-cliout" slurp-file CLIO 2! ;
 : RUN-CLI2 ( a b exe-a exe-u -- )               \ run `exe a b`, capture stdout
-   cmd(  cs+  s"  " cs+  swap ,arg  s"  " cs+  ,arg  s"  > /tmp/t-cliout" cs+  )run drop
+   CMD(  CS+  s"  " CS+  swap ,ARG  s"  " CS+  ,ARG  s"  > /tmp/t-cliout" CS+  )RUN drop
    s" /tmp/t-cliout" slurp-file CLIO 2! ;
 : CLI= ( a u -- f )  CLIO 2@ compare 0= ;
 

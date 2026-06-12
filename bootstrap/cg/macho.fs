@@ -16,21 +16,21 @@ variable MLEN
 
 : M-RESET ( -- )  MBUF MP ! ;
 
-: m8  ( b -- )  MP @ c!  1 MP +! ;
+: M8  ( b -- )  MP @ c!  1 MP +! ;
 
-: m16 ( h -- )  dup m8  8 rshift m8 ;
+: M16 ( h -- )  dup M8  8 rshift M8 ;
 
-: m32 ( w -- )  dup m16  16 rshift m16 ;
+: M32 ( w -- )  dup M16  16 rshift M16 ;
 
-: m64 ( x -- )  dup m32  32 rshift m32 ;
+: M64 ( x -- )  dup M32  32 rshift M32 ;
 
-: m-here ( -- off )  MP @ MBUF - ;
+: M-HERE ( -- off )  MP @ MBUF - ;
 
-: m-zeros ( n -- )  0 max 0 ?do 0 m8 loop ;
+: M-ZEROS ( n -- )  0 max 0 ?do 0 M8 loop ;
 
-: m-name16 ( addr u -- )  dup >r  bounds ?do i c@ m8 loop  16 r> - m-zeros ;
+: M-NAME16 ( addr u -- )  dup >r  bounds ?do i c@ M8 loop  16 r> - M-ZEROS ;
 
-: m-pad ( off -- )  m-here - m-zeros ;
+: M-PAD ( off -- )  M-HERE - M-ZEROS ;
 
 \ Mach-O constants
 $FEEDFACF constant MH-MAGIC64
@@ -62,28 +62,28 @@ variable LE-OFF                       \ file offset of the __LINKEDIT LC (for si
 
 : SEG, ( name$ vmaddr vmsize fileoff filesize prot nsects extrasz -- )
    {: addr u vma vmsz foff fsz prot nsects extra :}
-   LC-SEG64 m32   72 extra + m32
-   addr u m-name16
-   vma m64  vmsz m64  foff m64  fsz m64
-   prot m32  prot m32  nsects m32  0 m32 ;
+   LC-SEG64 M32   72 extra + M32
+   addr u M-NAME16
+   vma M64  vmsz M64  foff M64  fsz M64
+   prot M32  prot M32  nsects M32  0 M32 ;
 
 : SECT, ( name$ seg$ addr size offset align flags -- )
    {: na nu sa su addr size off al fl :}
-   na nu m-name16   sa su m-name16
-   addr m64  size m64  off m32  al m32
-   0 m32  0 m32  fl m32  0 m32 0 m32 0 m32 ;
+   na nu M-NAME16   sa su M-NAME16
+   addr M64  size M64  off M32  al M32
+   0 M32  0 M32  fl M32  0 M32 0 M32 0 M32 ;
 
 : DYLINKER, ( -- )
-   LC-DYLINKER m32  32 m32  12 m32
-   s" /usr/lib/dyld" dup >r bounds ?do i c@ m8 loop  32 12 - r> - m-zeros ;
+   LC-DYLINKER M32  32 M32  12 M32
+   s" /usr/lib/dyld" dup >r bounds ?do i c@ M8 loop  32 12 - r> - M-ZEROS ;
 
 : MAIN, ( entryoff -- )
-   LC-MAIN m32  24 m32  m64  0 m64 ;
+   LC-MAIN M32  24 M32  M64  0 M64 ;
 
 : DYLIB, ( -- )
-   LC-DYLIB m32  56 m32  24 m32
-   2 m32  $054C0000 m32  $00010000 m32     \ ts=2, cur=1356.0.0, compat=1.0.0
-   s" /usr/lib/libSystem.B.dylib" dup >r bounds ?do i c@ m8 loop  56 24 - r> - m-zeros ;
+   LC-DYLIB M32  56 M32  24 M32
+   2 M32  $054C0000 M32  $00010000 M32     \ ts=2, cur=1356.0.0, compat=1.0.0
+   s" /usr/lib/libSystem.B.dylib" dup >r bounds ?do i c@ M8 loop  56 24 - r> - M-ZEROS ;
 
 32 constant MH-HDR-SZ                 \ mach_header_64 size
 variable NCMDS                        \ load commands counted as emitted
@@ -91,12 +91,12 @@ variable NCMDS                        \ load commands counted as emitted
 : LC+ ( -- )  1 NCMDS +! ;            \ each LC emitter calls this
 
 : MH-HDR, ( -- )                      \ ncmds/sizeofcmds back-patched later
-   MH-MAGIC64 m32  CPU-ARM64 m32  0 m32  MH-EXECUTE m32
-   0 m32  0 m32  MH-FLAGS m32  0 m32 ;
+   MH-MAGIC64 M32  CPU-ARM64 M32  0 M32  MH-EXECUTE M32
+   0 M32  0 M32  MH-FLAGS M32  0 M32 ;
 
 : PATCH-HDR ( -- )                    \ fill ncmds + sizeofcmds from what was emitted
    NCMDS @  MBUF 16 +  l!
-   m-here MH-HDR-SZ -  MBUF 20 +  l! ;
+   M-HERE MH-HDR-SZ -  MBUF 20 +  l! ;
 
 : BUILD-MACHO ( -- )                 \ assumes ICODE holds the program
    ASM-CODE  M-RESET  0 NCMDS !
@@ -104,16 +104,16 @@ variable NCMDS                        \ load commands counted as emitted
    s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
    s" __TEXT" VMBASE MPAGE 0 MPAGE 5 1 80 SEG,  LC+
       s" __text" s" __TEXT" VMBASE CODE-OFF + CODELEN @ CODE-OFF 2 $80000400 SECT,
-   m-here LE-OFF !                    \ remember __LINKEDIT LC offset for the sign post-pass
+   M-HERE LE-OFF !                    \ remember __LINKEDIT LC offset for the sign post-pass
    s" __LINKEDIT" VMBASE MPAGE + MPAGE MPAGE 0 1 0 0 SEG,  LC+
    DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
    PATCH-HDR                          \ derive ncmds/sizeofcmds (no frozen magic)
    CODELEN @  MPAGE CODE-OFF -  > abort" cg: emitted code exceeds __TEXT page"
-   CODE-OFF m-pad                    \ header slack (room for the post-pass LC_CODE_SIGNATURE)
+   CODE-OFF M-PAD                    \ header slack (room for the post-pass LC_CODE_SIGNATURE)
    SCODE  MP @  CODELEN @  move      \ copy assembled code
    CODELEN @ MP +!
-   MPAGE m-pad                        \ pad file to one page
-   m-here MLEN ! ;
+   MPAGE M-PAD                        \ pad file to one page
+   M-HERE MLEN ! ;
 
 \ the target-neutral driver entry: another OS swaps in an ELF builder here
 : BUILD-IMAGE ( -- )  BUILD-MACHO ;
