@@ -40,6 +40,13 @@ step(b'1 2 + .\n', [b'3', b' ok', b'habu> '])
 step(b'frobnicate\n', [b'frobnicate?', b'habu> '], reject=b'ok')
 step(b': SQ dup * ;\n', [b' ok'])                    # compiles fine after the error
 step(b'7 SQ .\n', [b'49', b' ok'])
+step(b'1 2 + ..\x7f\n', [b'3', b' ok'])             # backspace edits the line
+step(b'garbage\x03', [b'habu> '], reject=b'garbage?')  # ^C cancels (never interpreted)
+step(b'5 .\n', [b'5', b' ok'])
+step(b'13 .\x1b[D\x1b[D\x1b[D0\n', [b'103', b' ok'])  # arrows + mid-line insert
+step(b'\x1b[A\n', [b'103', b' ok'])                 # history up re-runs the line
+step(b'99 throw\n', [b'?', b'habu> '], reject=b'ok') # uncaught throw recovers on a tty
+step(b'6 .\n', [b'6', b' ok'])                       # still alive, state clean
 os.write(fd, b'\x04')                                # ^D
 for _ in range(50):                                  # exit may lag typed-ahead EOF
     time.sleep(0.1)

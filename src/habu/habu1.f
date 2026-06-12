@@ -31,6 +31,8 @@ $3640 constant REPLH-CELL  \ REPL line-reader xt (0 = batch; repl.f INSTALL sets
 $3648 constant RSAVCP-CELL \ line-start CP    (REPL error rollback)
 $3650 constant RSAVND-CELL \ line-start NDICT
 $3658 constant RSAVDP-CELL \ line-start DP
+$3660 constant RSAVSP-CELL \ loop-level machine SP (throw recovery unwinds to it)
+variable LRREC             \ REPL recovery entry (set in habu2's label block)
 $1D8 constant SSCR-CELL
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF
@@ -297,7 +299,10 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
    10 11 0 LDR,  10 DATA 8 STR,
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
    SP 13 0 ADDI,  12 BR,
-   lnoh LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;
+   lnoh LBL,
+   10 DATA REPLH-CELL LDR,  NEWLBL {: lnorec :}  10 lnorec CBZ,
+   LRREC @ B,
+   lnorec LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;
 
 : BWORDLIST  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
 

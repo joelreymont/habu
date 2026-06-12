@@ -54,6 +54,7 @@ $3640 constant REPLH-CELL  \ REPL line-reader xt (0 = batch; repl.f INSTALL sets
 $3648 constant RSAVCP-CELL \ line-start CP    (REPL error rollback)
 $3650 constant RSAVND-CELL \ line-start NDICT
 $3658 constant RSAVDP-CELL \ line-start DP
+$3660 constant RSAVSP-CELL \ loop-level machine SP (throw recovery unwinds to it)
 $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
                            \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
@@ -123,7 +124,7 @@ variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
 variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWTICK variable LKWBTICK
-variable LREAD  variable LRBYE  variable LRDIE  variable LQNL  variable LOKS
+variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
 variable LKWLBRACE variable LKWENDLOC variable LLOC-FIND variable LKWCONST
 variable LKWDO variable LKWLOOP variable LKWI
 variable LKWTOR variable LKWRFROM variable LKWRFET
@@ -346,7 +347,10 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    10 11 0 LDR,  10 DATA 8 STR,          \ HND = prev
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,   \ link, resume pc, machine sp
    SP 13 0 ADDI,  12 BR,                 \ restore sp; jump to catch's resume
-   lnoh LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;   \ no handler -> exit(exc)
+   lnoh LBL,
+   10 DATA REPLH-CELL LDR,  NEWLBL {: lnorec :}  10 lnorec CBZ,
+   LRREC @ B,                                \ tty REPL: recover instead of dying
+   lnorec LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;   \ no handler -> exit(exc)
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
 : BWORDLIST  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
@@ -1665,7 +1669,9 @@ variable CFSK2
    LUNDEF LBL,
       0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,   \ write(2, name)
       9 DATA REPLH-CELL LDR,  9 LRDIE @ CBZ,
-      \ REPL: "?", roll back this line's compile state, reset stacks, read again
+   LRREC @ LBL,
+      \ REPL recovery (also throw's no-handler target): "?", roll back the
+      \ line's compile state, reset stacks AND the machine SP, read again
       0 2 MOVZ,  1 LQNL @ ADR,  2 2 MOVZ,  NR-WRITE SYS,
       CP DATA RSAVCP-CELL LDR,
       NDICT DATA RSAVND-CELL LDR,
@@ -1677,6 +1683,7 @@ variable CFSK2
       9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
       PEND 0 MOVZ,
       9 VRALL MOVZ,  9 DATA VRFREE-CELL STR,
+      9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
       LREAD @ B,
    LRDIE @ LBL,
       0 70 MOVZ,  NR-EXIT SYS,                       \ exit(70)
@@ -1685,6 +1692,7 @@ variable CFSK2
       0 1 MOVZ,  1 LOKS @ ADR,  2 4 MOVZ,  NR-WRITE SYS,        \ " ok"
    LREAD @ LBL,
       \ save line-start compile state, then call RD-LINE ( -- a u )
+      9 SP 0 ADDI,  9 DATA RSAVSP-CELL STR,
       CP DATA RSAVCP-CELL STR,
       NDICT DATA RSAVND-CELL STR,
       9 DATA DP-CELL LDR,  9 DATA RSAVDP-CELL STR,
@@ -1704,7 +1712,7 @@ variable CFSK2
    NEWLBL LBCAP !  NEWLBL LBCS !
    NEWLBL LCFPUSH !  NEWLBL LCFPOP !  NEWLBL LPAT !  NEWLBL LKWCMP !
    NEWLBL LBCHAIN !  NEWLBL LCREATE !  NEWLBL LDOESPATCH !
-   NEWLBL LREAD !  NEWLBL LRBYE !  NEWLBL LRDIE !  NEWLBL LQNL !  NEWLBL LOKS !
+   NEWLBL LREAD !  NEWLBL LRBYE !  NEWLBL LRDIE !  NEWLBL LRREC !  NEWLBL LQNL !  NEWLBL LOKS !
    NEWLBL LKWIF !  NEWLBL LKWTHEN !  NEWLBL LKWELSE !  NEWLBL LKWBEGIN !
    NEWLBL LKWUNTIL !  NEWLBL LKWAGAIN !  NEWLBL LKWWHILE !  NEWLBL LKWREPEAT !
    NEWLBL LKWCREATE !  NEWLBL LKWVAR !  NEWLBL LKWSQ !

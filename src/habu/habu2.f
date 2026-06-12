@@ -942,7 +942,9 @@ s" em-interpret" s" --" TRUST
    LUNDEF @ LBL,
       0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,   \ write(2, name)
       9 DATA REPLH-CELL LDR,  9 LRDIE @ CBZ,
-      \ REPL: "?", roll back this line's compile state, reset stacks, read again
+   LRREC @ LBL,
+      \ REPL recovery (also throw's no-handler target): "?", roll back the
+      \ line's compile state, reset stacks AND the machine SP, read again
       0 2 MOVZ,  1 LQNL @ ADR,  2 2 MOVZ,  NR-WRITE SYS,
       CP DATA RSAVCP-CELL LDR,
       NDICT DATA RSAVND-CELL LDR,
@@ -954,6 +956,7 @@ s" em-interpret" s" --" TRUST
       9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
       PEND 0 MOVZ,
       9 VRALL MOVZ,  9 DATA VRFREE-CELL STR,
+      9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
       LREAD @ B,
    LRDIE @ LBL,
       0 70 MOVZ,  NR-EXIT SYS,                       \ exit(70)
@@ -962,6 +965,7 @@ s" em-interpret" s" --" TRUST
       0 1 MOVZ,  1 LOKS @ ADR,  2 4 MOVZ,  NR-WRITE SYS,        \ " ok"
    LREAD @ LBL,
       \ save line-start compile state, then call RD-LINE ( -- a u )
+      9 SP 0 ADDI,  9 DATA RSAVSP-CELL STR,
       CP DATA RSAVCP-CELL STR,
       NDICT DATA RSAVND-CELL STR,
       9 DATA DP-CELL LDR,  9 DATA RSAVDP-CELL STR,
@@ -1000,7 +1004,7 @@ variable SRCA
    NEWLBL LKWIMM !  NEWLBL LKWPOST !  NEWLBL LKWCOMPC !  NEWLBL LKWDOES !
    NEWLBL LKWQUOT !  NEWLBL LKWSEMIQ !
    NEWLBL LBCHAIN !  NEWLBL LCREATE !  NEWLBL LDOESPATCH !
-   NEWLBL LREAD !  NEWLBL LRBYE !  NEWLBL LRDIE !  NEWLBL LQNL !  NEWLBL LOKS !
+   NEWLBL LREAD !  NEWLBL LRBYE !  NEWLBL LRDIE !  NEWLBL LRREC !  NEWLBL LQNL !  NEWLBL LOKS !
    NEWLBL LCRASHH !  NEWLBL LHEX !  NEWLBL LHDR !
    NEWLBL LPROFH !  NEWLBL LPROFDUMP !
    NEWLBL LVSPILL !  NEWLBL LVLITPUSH !  NEWLBL LVPUSHC !
