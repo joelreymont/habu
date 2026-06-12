@@ -180,6 +180,17 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **A bare word name on build output = the engine's LUNDEF** (it writes the
+  unknown token to stderr before exit 70). Seeing `LQNLLQNL` mid-build meant a
+  forward reference: habu2.f uses label VARIABLES at line ~140 (EMIT-KWDATA)
+  that were declared at line ~576 — the engine compiles srclist files strictly
+  top-to-bottom, unlike gforth's forth.fs where declaration order differed.
+  Declare label variables above first use, not where the boot file has them.
+- **Don't assert REPL behavior through script(1)** — its pty capture interleaves
+  echo/output non-deterministically under piped stdin. Drive a real pty
+  (python pty.fork, test/repl-pty.py) and POLL for exit: a typed-ahead ^D can
+  lag the engine's exit by longer than any fixed sleep.
+
 - **Mass case-rename is safe and mechanical**: gforth AND the engine dict are both
   case-insensitive (`7 sq .` resolves SQ), so upcasing our 548 word names repo-wide
   (2026-06: docs/forth.md conformance) needed only a token rewriter that skips
