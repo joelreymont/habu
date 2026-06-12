@@ -149,6 +149,7 @@ variable RCUR   variable RBROW
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
+variable VSIG   variable SGSEEN   variable SGOUT
 create FAILTK 64 allot   variable FAILTU
 
 : STEP {: din dout :}
@@ -265,6 +266,21 @@ variable SB variable SL variable SI variable SS
      THEN
    REPEAT
    INROW @ OUTROW @ STEP ;
+
+\ PARSE-SIG-RAW ( a u -- din dout ) : the declared effect as two rows (no STEP),
+\ for verifying a definition's body against its own ( in -- out ).
+: PARSE-SIG-RAW {: a u :}
+   a SB ! u SL ! NMAP-RESET 0 PHASE !
+   FRESH {: s :} s MK-ROW INROW ! s MK-ROW OUTROW ! 0 SI !
+   BEGIN SI @ SL @ < WHILE
+     BEGIN SI @ SL @ < SB @ SI @ + c@ 32 = and WHILE SI @ 1 + SI ! REPEAT
+     SI @ SL @ < IF
+       SB @ SI @ + SS !
+       BEGIN SI @ SL @ < SB @ SI @ + c@ 32 <> and WHILE SI @ 1 + SI ! REPEAT
+       SS @ SB @ SI @ + SS @ - SIG-TOK
+     THEN
+   REPEAT
+   INROW @ OUTROW @ ;
 
 \ --- prim table: name/sig pairs [nlen][name][slen][sig]...[0], scanned by FIND-SIG.
 \ A data table (not a 26-branch word) because the standalone INLINES colon-word
@@ -618,17 +634,31 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !
-   0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !
+   0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !
    BEGIN TI @ TBLEN @ < WHILE
      BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
-       TBASE @ TI @ + TSTART !
-       BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
-       TSTART @  TBASE @ TI @ +  TSTART @ -  DO-TOK1
+       TBASE @ TI @ + c@ 40 = IF                 \ '(' -> the declared sig
+         TI @ 1 + TI !  TI @ TSTART !             \ sig text starts after '('
+         BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 41 <>  and WHILE TI @ 1 + TI ! REPEAT
+         VSIG @ IF
+           TBASE @ TSTART @ +  TI @ TSTART @ -  PARSE-SIG-RAW  SGOUT !  DCUR !  -1 SGSEEN !
+         THEN
+         TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
+       ELSE
+         TBASE @ TI @ + TSTART !
+         BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
+         TSTART @  TBASE @ TI @ +  TSTART @ -  DO-TOK1
+       THEN
      THEN
    REPEAT
+   VSIG @ SGSEEN @ and IF DCUR @ SGOUT @ UNIFY OK @ and OK ! THEN
    LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
    RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN   \ return row must balance
    UNCK @ IF 1 ELSE OK @ THEN
    dup 0 =  DIAGXT @ 0 <>  and IF DIAGXT @ execute THEN
    dup -1 = NMU @ 0 > and RECXT @ 0 <> and IF NMA @ NMU @ RECXT @ execute THEN ;
+
+\ CHECK! ( a u -- flag ) : like CHECK but VERIFIES the body against a leading
+\ ( in -- out ) declared sig (rejects on mismatch). The standalone REPL hook.
+: CHECK! {: a u :}  -1 VSIG !  a u CHECK  0 VSIG ! ;
