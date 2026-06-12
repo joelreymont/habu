@@ -858,6 +858,20 @@ s" cfbn-entry" s" n n n n n --" TRUST
       12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
       12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
       LBCAP @ BL,             \ seed with the NAME (checker records certified sigs)
+      \ capture an optional leading ( in -- out ) into the body, so the check
+      \ hook sees the declared sig (CHECK! verifies the body against it)
+      LBL {: nsig :}  LBL {: sigq :}  LBL {: sp1 :}  LBL {: sc2 :}  LBL {: scd :}
+      11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
+      sp1 LBL,  11 12 CMP,  C-GE nsig BCOND,
+         13 11 0 LDRB,  13 32 CMPI,  C-HI sigq BCOND,
+         11 11 1 ADDI,  sp1 B,
+      sigq LBL,  13 40 CMPI,  C-NE nsig BCOND,         \ not '(' -> no sig
+      14 11 0 ADDI,  15 11 0 ADDI,                     \ x14=start x15=cursor
+      sc2 LBL,  15 12 CMP,  C-GE scd BCOND,
+         13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE sc2 BCOND,
+      scd LBL,  15 DATA INP-CELL STR,                  \ consume through ')'
+      11 14 0 ADDI,  12 15 14 SUB,  LBCS @ BL,         \ append "( ... )" to body
+      nsig LBL,
       12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
       12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
       12 DATA QPATCH-CELL STR,

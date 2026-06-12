@@ -74,4 +74,9 @@ variable SNL  variable SFTS  variable SFD
    SFD @ TRL 40 WALL
    SFD @  SFTS @ CODE-OFF - SNL @ -  WPAD
    SFD @ close ;
+
+\ freeze the verify-on-definition hook into the warm image: the snapshot is
+\ habu fully loaded, so a typed def in its REPL is checked against its sig.
+: HOOK! CHECK! ;
+' HOOK! set-check
 SNAPGO

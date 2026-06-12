@@ -21,7 +21,12 @@ out=$(echo 's" w" s" n -- n" trust 7 . : Q 5 dup * . ; Q' | $T/hb-warm)
 25" ] || { echo "FAIL: warm snapshot (got: $out)"; exit 1; }
 out=$(echo 's" HOME" getenv nip 0 > .' | $T/hb-warm)
 [ "$out" = "-1" ] || { echo "FAIL: getenv (got: $out)"; exit 1; }
-echo "PASS: AOT snapshot (warm toolchain boot) + getenv"
+# the warm snapshot is checked-Forth: a typed def whose body violates its sig
+# is rejected (unpublished -> calling it exits 70); a correct one runs.
+out=$(printf ': SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | $T/hb-warm 2>/dev/null)
+[ "$out" = "49" ] || { echo "FAIL: snapshot good typed def (got: $out)"; exit 1; }
+printf ': SQBAD ( i64 -- i64 ) dup ;\nSQBAD\n' | $T/hb-warm >/dev/null 2>&1 && { echo "FAIL: snapshot did NOT reject bad sig"; exit 1; }
+echo "PASS: AOT snapshot (warm toolchain boot) + getenv + sig-check"
 HT=$(mktemp -d)
 HB_TMP=$HT ./tools/snap-hb.sh >/dev/null && [ -x "$HT/hb-warm" ] || { echo "FAIL: HB_TMP isolation"; exit 1; }
 rm -rf "$HT"
