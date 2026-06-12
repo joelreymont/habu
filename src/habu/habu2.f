@@ -90,11 +90,11 @@ $28 constant INL-MAX
       pisb LBL,  5 $3FFFFFF LIT64,  10 10 5 AND,
       pdone LBL,  11 11 10 ORR,  11 9 0 STRW,  RET,
    LKWCMP @ LBL,
-      TKL 1 CMP,  C-NE kno BCOND,
+      2 DATA TKL-CELL LDR,  2 1 CMP,  C-NE kno BCOND,
       2 0 MOVZ,  3 $20 MOVZ,
       kchk LBL,
          2 1 CMP,  C-GE kyes BCOND,
-         4 TKA 2 ADD,  4 4 0 LDRB,
+         4 DATA TKA-CELL LDR,  4 4 2 ADD,  4 4 0 LDRB,
          4 $41 CMPI,  C-LT knf BCOND,  4 $5A CMPI,  C-GT knf BCOND,  4 4 3 ORR,
          knf LBL,
          5 0 2 ADD,    5 5 0 LDRB,
@@ -117,13 +117,14 @@ $28 constant INL-MAX
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: ll lmiss lhit lcmp lnext :}
    LLOC-FIND @ LBL,
    9 DATA LOCN-CELL LDR,  10 0 MOVZ,
+   6 DATA TKL-CELL LDR,  7 DATA TKA-CELL LDR,
    ll LBL,  10 9 CMP,  C-GE lmiss BCOND,
       12 LOC-REC MOVZ,  11 10 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
-      12 11 0 LDR,  12 TKL CMP,  C-NE lnext BCOND,
+      12 11 0 LDR,  12 6 CMP,  C-NE lnext BCOND,
       13 0 MOVZ,
-      lcmp LBL,  13 TKL CMP,  C-GE lhit BCOND,
+      lcmp LBL,  13 6 CMP,  C-GE lhit BCOND,
          14 11 13 ADD,  14 14 8 ADDI,  14 14 0 LDRB,
-         15 TKA 13 ADD,  15 15 0 LDRB,
+         15 7 13 ADD,  15 15 0 LDRB,
          14 15 CMP,  C-NE lnext BCOND,
          13 13 1 ADDI,  lcmp B,
       lhit LBL,  0 10 0 ADDI,  RET,
@@ -319,7 +320,7 @@ create ENDLOC-KW 58 c, 125 c,
 : J-DOES
    NEWLBL {: dok :}
    12 DATA LOCF-CELL LDR,  12 dok CBZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    dok LBL,
    $1000008A C-EMITW                     \ adr x10, #+16 = D (4 words ahead)
@@ -332,7 +333,7 @@ create ENDLOC-KW 58 c, 125 c,
 : J-QUOT
    NEWLBL {: qok :}
    9 DATA QPATCH-CELL LDR,  9 qok CBZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    qok LBL,
    9 CP 0 ADDI,  9 DATA QPATCH-CELL STR,
@@ -346,7 +347,7 @@ create ENDLOC-KW 58 c, 125 c,
 : J-SEMIQUOT
    NEWLBL {: sqok :}
    9 DATA QPATCH-CELL LDR,  9 sqok CBNZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    sqok LBL,
    14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,   \ exits -> this epilogue
@@ -395,9 +396,9 @@ create ENDLOC-KW 58 c, 125 c,
    LTOK @ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   CP 9 0 STR,  TKL 9 16 STR,
+   CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,
    14 DATA CUR-CELL LDR,  14 9 40 STR,
-   10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,
+   10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    ncp LBL,  12 ncpd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
       10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncp B,
    ncpd LBL,
@@ -425,8 +426,8 @@ create ENDLOC-KW 58 c, 125 c,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
    15 G-POP                                             \ n -> x15 AFTER LBCAP (it clobbers x15)
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   CP 9 0 STR,  TKL 9 16 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
-   10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,
+   CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
+   10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    kcp LBL,  12 kcd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
       10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  kcp B,
    kcd LBL,
@@ -446,9 +447,9 @@ create ENDLOC-KW 58 c, 125 c,
 
 : C-POSTPONE
    NEWLBL NEWLBL NEWLBL {: pok pnimm pdone :}
-   LTOK @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  LFIND @ BL,
+   LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 pok CBNZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT SYS,
    pok LBL,
    14 13 2 ANDI,  14 pnimm CBZ,
@@ -472,18 +473,18 @@ create ENDLOC-KW 58 c, 125 c,
    12 DATA 0 STR,                                       \ allot: DP advances past the copy
    15 G-PUSH  10 G-PUSH ;
 
-: C-CHAR   LTOK @ BL,  9 TKA 0 LDRB,  9 G-PUSH ;
+: C-CHAR   LTOK @ BL,  9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH ;
 
-: C-BCHAR  LTOK @ BL,  11 TKA 0 LDRB,  LVPUSHC @ BL, ;
+: C-BCHAR  LTOK @ BL,  11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC @ BL, ;
 
 : C-TICK
    NEWLBL {: tk :}
-   LTOK @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  LFIND @ BL,
+   LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 tk CBZ,  11 G-PUSH  tk LBL, ;
 
 : C-BTICK
    NEWLBL {: bk :}
-   LTOK @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  LFIND @ BL,
+   LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 bk CBZ,  C-LIT  bk LBL, ;
 
 : C-LBRACE
@@ -492,15 +493,15 @@ create ENDLOC-KW 58 c, 125 c,
    NEWLBL
    {: cfok xok qlok nl nd nstore nlok noti ncp ncd pl pd tsl tsd :}
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    cfok LBL,
    11 DATA QPATCH-CELL LDR,  11 qlok CBZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    qlok LBL,
    11 DATA EXITH-CELL LDR,  11 xok CBZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    xok LBL,
    6 DATA LOCN-CELL LDR,
@@ -510,22 +511,22 @@ create ENDLOC-KW 58 c, 125 c,
       0 LKWENDLOC @ ADR,  1 2 MOVZ,  LKWCMP @ BL,  0 nstore CBZ,  nd B,
       nstore LBL,
       11 DATA LOCN-CELL LDR,  11 64 CMPI,  C-LT nlok BCOND,
-         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
          0 75 MOVZ,  NR-EXIT SYS,
       nlok LBL,
-      TKL 1 CMPI,  C-NE noti BCOND,
-      13 TKA 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
-         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      13 DATA TKL-CELL LDR,  13 1 CMPI,  C-NE noti BCOND,
+      13 DATA TKA-CELL LDR,  13 13 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
          0 75 MOVZ,  NR-EXIT SYS,
       noti LBL,
       11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
-      14 0 MOVZ,
-      tsl LBL,  14 TKL CMP,  C-GE tsd BCOND,
-         15 TKA 14 ADD,  15 15 0 LDRB,  15 58 CMPI,  C-EQ tsd BCOND,
+      14 0 MOVZ,  8 DATA TKL-CELL LDR,  10 DATA TKA-CELL LDR,
+      tsl LBL,  14 8 CMP,  C-GE tsd BCOND,
+         15 10 14 ADD,  15 15 0 LDRB,  15 58 CMPI,  C-EQ tsd BCOND,
          14 14 1 ADDI,  tsl B,
       tsd LBL,
       14 11 0 STR,
-      12 11 8 ADDI,  13 TKA 0 ADDI,
+      12 11 8 ADDI,  13 DATA TKA-CELL LDR,
       ncp LBL,  14 ncd CBZ,  15 13 0 LDRB, 15 12 0 STRB, 12 12 1 ADDI, 13 13 1 ADDI, 14 14 1 SUBI, ncp B,
       ncd LBL,
       11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR,
@@ -776,8 +777,8 @@ s" cfbn-entry" s" n n n n n --" TRUST
    NEWLBL NEWLBL NEWLBL {: notcom skln skpar :}
    LMAIN @ LBL,
       LTOK @ BL,  0 LEXIT @ CBZ,
-      TKL 1 CMPI,  C-NE notcom BCOND,
-      9 TKA 0 LDRB,
+      9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
+      9 DATA TKA-CELL LDR,  9 9 0 LDRB,
       9 92 CMPI,  C-EQ skln BCOND,
       9 40 CMPI,  C-NE notcom BCOND,
       skpar LBL,  INP INE CMP,  C-GE LMAIN @ BCOND,
@@ -789,23 +790,23 @@ s" cfbn-entry" s" n n n n n --" TRUST
 
 : EM-INTERPRET
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotcolon ncopy ncd lnotnum cpok ndok :}
-   TKL 1 CMPI,  C-NE lnotcolon BCOND,
-   9 TKA 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,
+   9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotcolon BCOND,
+   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,
       2 3 MOVZ,  LPROT @ BL,
       9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
-         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
          0 76 MOVZ,  NR-EXIT SYS,
       cpok LBL,
       9 1280 MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slot 1280 = CFSTK-OFF
-         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
          0 77 MOVZ,  NR-EXIT SYS,
       ndok LBL,
       LTOK @ BL,
       9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
       9 DATA PEND-CELL STR,
-      CP 9 0 STR,  TKL 9 16 STR,
+      CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,
       14 DATA CUR-CELL LDR,  14 9 40 STR,
-      10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,
+      10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
       ncopy LBL,  12 ncd CBZ,
          13 11 0 LDRB,  13 10 0 STRB,
          10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncopy B,
@@ -829,10 +830,10 @@ s" cfbn-entry" s" n n n n n --" TRUST
    s" char" KEEP? IF LMAIN @ LKWCHAR   4 ['] C-CHAR     CF-ENTRY THEN
    s" immediate" KEEP? IF LMAIN @ LKWIMM    9 ['] C-IMMEDIATE CF-ENTRY THEN
    LMAIN @ LKWSQ     2 ['] C-ISDQ     CF-ENTRY
-   9 TKA 0 ADDI,  10 TKL 0 ADDI,  LNUM @ BL,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,
    12 lnotnum CBZ,  11 G-PUSH  LMAIN @ B,
    lnotnum LBL,
-   9 TKA 0 ADDI,  10 TKL 0 ADDI,  LFIND @ BL,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 LUNDEF @ CBZ,
    11 BLR,  LMAIN @ B, ;
 s" em-interpret" s" --" TRUST
@@ -840,8 +841,8 @@ s" em-interpret" s" --" TRUST
 : EM-COMPILE
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotsemi notd nohook rejected notloc lmem lcnotnum notimm :}
    LCOMPILE @ LBL,
-      TKL 1 CMPI,  C-NE lnotsemi BCOND,
-      9 TKA 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
+      9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
+      9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
          LVSPILL @ BL,
          14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,
          12 DATA LOCF-CELL LDR,  12 notd CBZ,
@@ -906,7 +907,7 @@ s" em-interpret" s" --" TRUST
          9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL,
          LMAIN @ B,
       notloc LBL,
-      9 TKA 0 ADDI,  10 TKL 0 ADDI,  LNUM @ BL,
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,
       12 lcnotnum CBZ,  LVPUSHC @ BL,  LMAIN @ B,
       lcnotnum LBL,
       s" +" KEEP? IF LMAIN @ LKWPLUS  1 ['] VF+ ['] E+ VOP-ENTRY THEN
@@ -933,7 +934,7 @@ s" em-interpret" s" --" TRUST
       s" negate" KEEP? IF LMAIN @ LKWNEG2 6 ['] FUNEG ['] EUNEG VUN-ENTRY THEN
       s" invert" KEEP? IF LMAIN @ LKWINV2 6 ['] FUINV ['] EUINV VUN-ENTRY THEN
       LVSPILL @ BL,
-      9 TKA 0 ADDI,  10 TKL 0 ADDI,  LFIND @ BL,
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
       13 LUNDEF @ CBZ,
       14 13 2 ANDI,  14 notimm CBZ,
          SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
@@ -945,7 +946,7 @@ s" em-interpret" s" --" TRUST
       notimm LBL,
       C-CALL  LMAIN @ B,
    LUNDEF @ LBL,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,   \ write(2, name)
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,   \ write(2, name)
       9 DATA REPLH-CELL LDR,  9 LRDIE @ CBZ,
    LRREC @ LBL,
       \ REPL recovery (also throw's no-handler target): "?", roll back the

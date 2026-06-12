@@ -180,6 +180,18 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **Scratch-register choice inside EMITTED loops needs the WHOLE enclosing
+  region, not the visible lines**: loading TKL into x6 inside C-LBRACE's
+  name-scan looked safe (x6 unused nearby) but x6 holds the group-start
+  locals count across the loop — every multi-local word then carved a garbage
+  frame and str-imm12 overflowed into opcode bits (SIGILL on data words,
+  crash regs showing x9 = a half-built movk). clobber-lint models BL'd
+  routines, NOT inline dispatch regions — for those, read the region's full
+  header comments and register notes first. Debug recipe that worked: lldb on
+  the crashing stage1, dump words at pc (data, not instructions), then walk
+  the in-memory dict (DBASE records: addr/clen/name) to name the word (PT+,
+  4 locals), then ask what writes its frame.
+
 - **Tree-shaking gates at the registration choke point, not per call site**:
   every prim (incl. FP + profiler) funnels through FPRIM/FPRIM-L, so one KEEP?
   check there shakes them all; keyword dispatch entries gate per entry in

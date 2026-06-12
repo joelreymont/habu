@@ -21,7 +21,7 @@ require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
 require crash.fs           \ in-binary crash handler (register dump on signal)
 require treeshake.fs       \ KEEP? prim/keyword gating (hb-build's maker arms it)
 
-20 constant RBASE   21 constant INP    22 constant INE   23 constant TKA   24 constant TKL
+20 constant RBASE   21 constant INP    22 constant INE
 26 constant DBASE  27 constant NDICT  28 constant CP
 
 $100000 constant REGION       \ mmap region size (1 MB)
@@ -61,6 +61,8 @@ $3670 constant ARGC-CELL   \ dyld main(argc,argv,envp): x0-x2, captured at entry
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
 $3688 constant PEND-CELL   \ pending dict record ptr (0 = interpret mode; was x25)
+$3690 constant TKA-CELL    \ current token addr (was x23)
+$3698 constant TKL-CELL    \ current token len  (was x24)
 $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
                            \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
@@ -512,7 +514,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ truncation would let the check hook certify code it never saw.
 : EMIT-BCAP
    LBCAP @ LBL,
-   11 TKA 0 ADDI,  12 TKL 0 ADDI,
+   11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    LBCS @ LBL,
    NEWLBL NEWLBL NEWLBL {: bok bcp bcd :}
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
@@ -537,12 +539,12 @@ require jit.fs          \ runtime abstract value stack for the : compiler
       INP INE CMP,  C-GE tnone BCOND,
       9 INP 0 LDRB,  9 32 CMPI,  C-HI thas BCOND,      \ c > 32 -> token start
       INP INP 1 ADDI,  tskip B,
-   thas LBL,  TKA INP 0 ADDI,
+   thas LBL,  9 INP 0 ADDI,  9 DATA TKA-CELL STR,
    tscan LBL,                                          \ scan to next whitespace
       INP INE CMP,  C-GE tgot BCOND,
       9 INP 0 LDRB,  9 32 CMPI,  C-LS tgot BCOND,      \ c <= 32 -> token end
       INP INP 1 ADDI,  tscan B,
-   tgot LBL,  TKL INP TKA SUB,  0 1 MOVZ,  RET,
+   tgot LBL,  9 DATA TKA-CELL LDR,  9 INP 9 SUB,  9 DATA TKL-CELL STR,  0 1 MOVZ,  RET,
    tnone LBL,  0 0 MOVZ,  RET, ;
 
 \ ---- PROT ( x2=prot -- ) : mprotect(region, REGION, prot) ----
@@ -763,11 +765,11 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       pdone LBL,  11 11 10 ORR,  11 9 0 STRW,  RET,
    LKWCMP @ LBL,
       NEWLBL {: kno :}  NEWLBL {: kyes :}  NEWLBL {: kchk :}
-      TKL 1 CMP,  C-NE kno BCOND,
+      2 DATA TKL-CELL LDR,  2 1 CMP,  C-NE kno BCOND,
       2 0 MOVZ,  3 $20 MOVZ,
       kchk LBL,
          2 1 CMP,  C-GE kyes BCOND,
-         4 TKA 2 ADD,  4 4 0 LDRB,                    \ token byte
+         4 DATA TKA-CELL LDR,  4 4 2 ADD,  4 4 0 LDRB,                    \ token byte
          NEWLBL {: knf :}                             \ fold ONLY A-Z (symbols stay literal)
          4 $41 CMPI,  C-LT knf BCOND,  4 $5A CMPI,  C-GT knf BCOND,  4 4 3 ORR,
          knf LBL,
@@ -791,16 +793,17 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ locals table ([x20+LOCNAMES], LOC-N records of {len, 16 name bytes}).
 : EMIT-LOC-FIND ( -- )
    LLOC-FIND @ LBL,
-   9 DATA LOCN-CELL LDR,  10 0 MOVZ,                 \ x9=N  x10=i
+   9 DATA LOCN-CELL LDR,  10 0 MOVZ,
+   6 DATA TKL-CELL LDR,  7 DATA TKA-CELL LDR,                 \ x9=N  x10=i
    NEWLBL {: ll :}  NEWLBL {: lmiss :}  NEWLBL {: lhit :}
    NEWLBL {: lcmp :}  NEWLBL {: lnext :}
    ll LBL,  10 9 CMP,  C-GE lmiss BCOND,
       12 LOC-REC MOVZ,  11 10 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,   \ entry
-      12 11 0 LDR,  12 TKL CMP,  C-NE lnext BCOND,   \ len mismatch
+      12 11 0 LDR,  12 6 CMP,  C-NE lnext BCOND,   \ len mismatch
       13 0 MOVZ,                                     \ j
-      lcmp LBL,  13 TKL CMP,  C-GE lhit BCOND,
+      lcmp LBL,  13 6 CMP,  C-GE lhit BCOND,
          14 11 13 ADD,  14 14 8 ADDI,  14 14 0 LDRB, \ entry.name[j]
-         15 TKA 13 ADD,  15 15 0 LDRB,               \ tok[j]
+         15 7 13 ADD,  15 15 0 LDRB,               \ tok[j]
          14 15 CMP,  C-NE lnext BCOND,
          13 13 1 ADDI,  lcmp B,
       lhit LBL,  0 10 0 ADDI,  RET,                  \ slot = i
@@ -994,7 +997,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 : J-DOES ( -- )
    NEWLBL {: dok :}
    12 DATA LOCF-CELL LDR,  12 dok CBZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    dok LBL,
    $1000008A C-EMITW                     \ adr x10, #+16 = D (4 words ahead)
@@ -1011,7 +1014,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 : J-QUOT ( -- )
    NEWLBL {: qok :}
    9 DATA QPATCH-CELL LDR,  9 qok CBZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    qok LBL,
    9 CP 0 ADDI,  9 DATA QPATCH-CELL STR,
@@ -1025,7 +1028,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 : J-SEMIQUOT ( -- )
    NEWLBL {: sqok :}
    9 DATA QPATCH-CELL LDR,  9 sqok CBNZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    sqok LBL,
    14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,   \ exits -> this epilogue
@@ -1084,9 +1087,9 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    LTOK @ BL,                                            \ read NAME
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot
-   CP 9 0 STR,  TKL 9 16 STR,                            \ slot.addr=CP, namelen
+   CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,                            \ slot.addr=CP, namelen
    14 DATA CUR-CELL LDR,  14 9 40 STR,                   \ slot.wid = CURRENT
-   10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,         \ copy name
+   10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,         \ copy name
    NEWLBL {: ncp :}  NEWLBL {: ncpd :}
    ncp LBL,  12 ncpd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
       10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncp B,
@@ -1116,8 +1119,8 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
    15 G-POP                                             \ n -> x15 AFTER LBCAP (it clobbers x15)
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   CP 9 0 STR,  TKL 9 16 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
-   10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,
+   CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
+   10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    NEWLBL {: kcp :}  NEWLBL {: kcd :}
    kcp LBL,  12 kcd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
       10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  kcp B,
@@ -1142,9 +1145,9 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ xt and compile a call to the `compile,` prim (appends the call at ITS runtime).
 : C-POSTPONE ( -- )
    NEWLBL {: pok :}  NEWLBL {: pnimm :}  NEWLBL {: pdone :}
-   LTOK @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  LFIND @ BL,
+   LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 pok CBNZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT SYS,
    pok LBL,
    14 13 2 ANDI,  14 pnimm CBZ,
@@ -1157,18 +1160,18 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 
 \ CHAR NAME (interpret): push NAME's first byte. [CHAR] NAME (compile): bake it
 \ as a VS constant (folds like any literal).
-: C-CHAR  ( -- )   LTOK @ BL,  9 TKA 0 LDRB,  9 G-PUSH ;
+: C-CHAR  ( -- )   LTOK @ BL,  9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH ;
 
-: C-BCHAR ( -- )   LTOK @ BL,  11 TKA 0 LDRB,  LVPUSHC @ BL, ;
+: C-BCHAR ( -- )   LTOK @ BL,  11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC @ BL, ;
 
 \ ' NAME (interpret): find NAME, push its code address. ['] NAME (compile): bake
 \ the address as a literal push into the word being compiled (via c-lit, x11=addr).
 : C-TICK ( -- )
-   LTOK @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  LFIND @ BL,
+   LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    NEWLBL {: tk :}  13 tk CBZ,  11 G-PUSH  tk LBL, ;
 
 : C-BTICK ( -- )
-   LTOK @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  LFIND @ BL,
+   LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    NEWLBL {: bk :}  13 bk CBZ,  C-LIT  bk LBL, ;
 
 \ {: a b :} (compile): record the names in the locals table, carve a machine-stack
@@ -1179,21 +1182,21 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    \ non-empty while compiling control flow) — refuse loudly: token + exit(75).
    NEWLBL {: cfok :}
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    cfok LBL,
    \ FOOTGUN GUARD 1c: {: inside [: ;] — the locals frame belongs to the OUTER
    \ word; the quotation's epilogue would not tear it down. Refuse: exit(75).
    NEWLBL {: qlok :}
    11 DATA QPATCH-CELL LDR,  11 qlok CBZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    qlok LBL,
    \ FOOTGUN GUARD 1b: {: after EXIT — the patched epilogue would tear down a
    \ frame the exit path never carved. Refuse loudly: token + exit(75).
    NEWLBL {: xok :}
    11 DATA EXITH-CELL LDR,  11 xok CBZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    xok LBL,
    \ each {: :} group carves EXACTLY its own slots at ':}' — no fixed frame, no
@@ -1210,27 +1213,27 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       \ cap: the LOCNAMES table holds 64 records — die loudly past it
       NEWLBL {: nlok :}
       11 DATA LOCN-CELL LDR,  11 64 CMPI,  C-LT nlok BCOND,
-         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
          0 75 MOVZ,  NR-EXIT SYS,
       nlok LBL,
       \ FOOTGUN GUARD 2: a local named i/I is shadowed by the loop-index keyword
       NEWLBL {: noti :}
-      TKL 1 CMPI,  C-NE noti BCOND,
-      13 TKA 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
-         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      13 DATA TKL-CELL LDR,  13 1 CMPI,  C-NE noti BCOND,
+      13 DATA TKA-CELL LDR,  13 13 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
          0 75 MOVZ,  NR-EXIT SYS,
       noti LBL,
       11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
       \ typed local a:n — references use the BARE name; the :type suffix is
       \ checker-only (it reaches the hook via the body capture). x14 = bare len.
       NEWLBL {: tsl :}  NEWLBL {: tsd :}
-      14 0 MOVZ,
-      tsl LBL,  14 TKL CMP,  C-GE tsd BCOND,
-         15 TKA 14 ADD,  15 15 0 LDRB,  15 58 CMPI,  C-EQ tsd BCOND,
+      14 0 MOVZ,  8 DATA TKL-CELL LDR,  10 DATA TKA-CELL LDR,
+      tsl LBL,  14 8 CMP,  C-GE tsd BCOND,
+         15 10 14 ADD,  15 15 0 LDRB,  15 58 CMPI,  C-EQ tsd BCOND,
          14 14 1 ADDI,  tsl B,
       tsd LBL,
       14 11 0 STR,                            \ entry.len = bare len
-      12 11 8 ADDI,  13 TKA 0 ADDI,           \ copy bare bytes (x14 already the count)
+      12 11 8 ADDI,  13 DATA TKA-CELL LDR,           \ copy bare bytes (x14 already the count)
       ncp LBL,  14 ncd CBZ,  15 13 0 LDRB, 15 12 0 STRB, 12 12 1 ADDI, 13 13 1 ADDI, 14 14 1 SUBI, ncp B,
       ncd LBL,
       11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR,   \ N++
@@ -1500,8 +1503,8 @@ variable CFSK2
       LTOK @ BL,  0 LEXIT CBZ,
       \ skip comments (both modes): \ to end-of-line, ( to ')'
       NEWLBL {: notcom :}  NEWLBL {: skln :}  NEWLBL {: skpar :}
-      TKL 1 CMPI,  C-NE notcom BCOND,
-      9 TKA 0 LDRB,
+      9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
+      9 DATA TKA-CELL LDR,  9 9 0 LDRB,
       9 92 CMPI,  C-EQ skln BCOND,                       \ '\'
       9 40 CMPI,  C-NE notcom BCOND,                     \ '('
       skpar LBL,  INP INE CMP,  C-GE LMAIN BCOND,
@@ -1512,24 +1515,24 @@ variable CFSK2
       9 DATA PEND-CELL LDR,  9 LCOMPILE CBNZ,
       \ ---------------- INTERPRET ----------------
       NEWLBL {: lnotcolon :}
-      TKL 1 CMPI,  C-NE lnotcolon BCOND,
-      9 TKA 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,     \ ':'
+      9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotcolon BCOND,
+      9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,     \ ':'
          2 3 MOVZ,  LPROT @ BL,                             \ region -> RW *before* any write
          NEWLBL {: cpok :}  NEWLBL {: ndok :}
          9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
-            0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+            0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
             0 76 MOVZ,  NR-EXIT SYS,                    \ code region full
          cpok LBL,
          9 1280 MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slot 1280 = CFSTK-OFF
-            0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+            0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
             0 77 MOVZ,  NR-EXIT SYS,                    \ dictionary full
          ndok LBL,
          LTOK @ BL,                                         \ read NAME
          9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,  \ slot
          9 DATA PEND-CELL STR,
-         CP 9 0 STR,  TKL 9 16 STR,                         \ slot.addr=CP, slot.namelen
+         CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,                         \ slot.addr=CP, slot.namelen
          14 DATA CUR-CELL LDR,  14 9 40 STR,                \ slot.wid = CURRENT
-         10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,      \ copy name
+         10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,      \ copy name
          NEWLBL {: ncopy :}  NEWLBL {: ncd :}
          ncopy LBL,  12 ncd CBZ,
             13 11 0 LDRB,  13 10 0 STRB,
@@ -1555,18 +1558,18 @@ variable CFSK2
       LMAIN LKWCHAR   4 ['] C-CHAR     CF-ENTRY
       LMAIN LKWIMM    9 ['] C-IMMEDIATE CF-ENTRY
       LMAIN LKWSQ     2 ['] C-ISDQ     CF-ENTRY
-      9 TKA 0 ADDI,  10 TKL 0 ADDI,  LNUM @ BL,             \ NUMBER?
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,             \ NUMBER?
       NEWLBL {: lnotnum :}
       12 lnotnum CBZ,  11 G-PUSH  LMAIN B,
       lnotnum LBL,
-      9 TKA 0 ADDI,  10 TKL 0 ADDI,  LFIND @ BL,            \ FIND
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,            \ FIND
       13 LUNDEF CBZ,                                         \ unknown -> error (exit 70)
       11 BLR,  LMAIN B,                                      \ EXECUTE
       \ ---------------- COMPILE ----------------
    LCOMPILE LBL,
       NEWLBL {: lnotsemi :}
-      TKL 1 CMPI,  C-NE lnotsemi BCOND,
-      9 TKA 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,       \ ';'
+      9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
+      9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,       \ ';'
          LVSPILL @ BL,                                       \ VS -> real pushes first
          \ patch every EXIT placeholder to `b here` (epilogue, incl. teardown)
          14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,
@@ -1637,7 +1640,7 @@ variable CFSK2
          9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL,
          LMAIN B,
       notloc LBL,
-      9 TKA 0 ADDI,  10 TKL 0 ADDI,  LNUM @ BL,             \ NUMBER? -> literal
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,             \ NUMBER? -> literal
       NEWLBL {: lcnotnum :}
       12 lcnotnum CBZ,  LVPUSHC @ BL,  LMAIN B,
       lcnotnum LBL,
@@ -1666,7 +1669,7 @@ variable CFSK2
       LMAIN LKWINV2 6 ['] FUINV ['] EUINV VUN-ENTRY
 
       LVSPILL @ BL,                                          \ VS -> memory before a call
-      9 TKA 0 ADDI,  10 TKL 0 ADDI,  LFIND @ BL,            \ FIND -> inline stencil
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,            \ FIND -> inline stencil
       13 LUNDEF CBZ,                                         \ undefined word in a : body -> error
       NEWLBL {: notimm :}
       14 13 2 ANDI,  14 notimm CBZ,                          \ IMMEDIATE: execute NOW
@@ -1681,7 +1684,7 @@ variable CFSK2
    \ undefined word during compilation: write the name to stderr and exit(70). Silently
    \ skipping it (the old behaviour) hid real bugs (e.g. `0<`, `STR=` -> no-op).
    LUNDEF LBL,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,   \ write(2, name)
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,   \ write(2, name)
       9 DATA REPLH-CELL LDR,  9 LRDIE @ CBZ,
    LRREC @ LBL,
       \ REPL recovery (also throw's no-handler target): "?", roll back the

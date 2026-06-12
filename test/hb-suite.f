@@ -109,11 +109,11 @@ dbase@ $300000000 = -1 T=
 cp@ dbase@ - 0 > -1 T=
 ndict@ 0 > -1 T=
 
-\ register pool stress: 10 live VS values exceed the 9-reg pool
-\ (x9..x15,x29,x25) mid-expression -> the 10th allocation takes the spill
-\ path; sum proves no value was lost or aliased (1+2+...+10 = 55)
-: TRP 1 2 3 4 5 6 7 8 9 10  + + + + + + + + + ;
-TRP 55 T=
+\ register pool stress: 12 live VS values exceed the 11-reg pool
+\ (x9..x15,x29,x25,x23,x24) mid-expression -> the 12th allocation takes the
+\ spill path; sum proves no value was lost or aliased (1+2+...+12 = 78)
+: TRP 1 2 3 4 5 6 7 8 9 10 11 12  + + + + + + + + + + + ;
+TRP 78 T=
 
 \ loop-resident registers: 8 loop-carried values (full pool incl. x29) survive
 \ a BEGIN/UNTIL back edge via the byte-packed snapshot
