@@ -124,7 +124,8 @@ create ENDLOC-KW 58 c, 125 c,
    Lkwtick @ LBL,   TICK-KW 1 BYTES,    Lkwbtick @ LBL,  BTICK-KW 3 BYTES,
    Lkwlbrace @ LBL, LBRACE-KW 2 BYTES,  Lkwendloc @ LBL, ENDLOC-KW 2 BYTES,
    Lkwconst @ LBL,  s" constant" BYTES,
-   Lkwdo @ LBL,  s" do" BYTES,    Lkwloop @ LBL,  s" loop" BYTES,    Lkwi @ LBL,  s" i" BYTES, ;
+   Lkwdo @ LBL,  s" do" BYTES,    Lkwloop @ LBL,  s" loop" BYTES,    Lkwi @ LBL,  s" i" BYTES,
+   Lkwtor @ LBL,  s" >r" BYTES,   Lkwrfrom @ LBL,  s" r>" BYTES,   Lkwrfet @ LBL,  s" r@" BYTES, ;
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : c-emitw {: w :}  9 w LIT64,  Lcemit @ BL, ;
 : c-popflag  $D1002273 c-emitw  $F9400269 c-emitw ;
@@ -165,6 +166,36 @@ create ENDLOC-KW 58 c, 125 c,
 : j-i
    4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4181721481 c-emitw  4177527401 c-emitw  2432705139 c-emitw ;
+
+\ >R R> R@ — the user return stack lives in a data-region stack ([x20+RSTK-OFF],
+\ depth at [x20+RSP-CELL]), like the DO/LOOP frames: x25/x28 belong to the
+\ compiler, and word frames on the machine stack would unbalance the epilogue.
+: w-ldrx {: rt rn off :}                               \ ( rt rn off -- w ) ldr rt,[rn,#off]
+   $F9400000  off 8 / 10 lshift or  rn 5 lshift or  rt or ;
+
+: w-strx {: rt rn off :}                               \ ( rt rn off -- w ) str rt,[rn,#off]
+   $F9000000  off 8 / 10 lshift or  rn 5 lshift or  rt or ;
+
+: j-tor                                                \ pop data -> push RSTK
+   $D1002273 c-emitw  $F9400269 c-emitw                \ sub x19,#8 ; ldr x9,[x19]
+   10 20 RSP-CELL w-ldrx c-emitw
+   $8B0A0E8B c-emitw                                   \ add x11,x20,x10,lsl#3
+   9 11 RSTK-OFF w-strx c-emitw
+   $9100054A c-emitw                                   \ add x10,x10,#1
+   10 20 RSP-CELL w-strx c-emitw ;
+
+: j-rpop                                               \ x9 = RSTK top, x10 = RSP-1
+   10 20 RSP-CELL w-ldrx c-emitw
+   $D100054A c-emitw                                   \ sub x10,x10,#1
+   $8B0A0E8B c-emitw                                   \ add x11,x20,x10,lsl#3
+   9 11 RSTK-OFF w-ldrx c-emitw ;
+
+: j-rfrom  j-rpop                                      \ pop RSTK -> push data
+   10 20 RSP-CELL w-strx c-emitw
+   $F9000269 c-emitw  $91002273 c-emitw ;              \ str x9,[x19] ; add x19,#8
+
+: j-rfetch  j-rpop                                     \ peek RSTK -> push data
+   $F9000269 c-emitw  $91002273 c-emitw ;
 \ ---- interpret-mode defining words ----
 \ record defining words for the checker: append the kind token + run the hook
 \ (verdict ignored — create/variable/constant always publish).
@@ -476,6 +507,9 @@ variable CFSK2
       Lmain @ Lkwdo     2 ['] j-do     cf-entry
       Lmain @ Lkwloop   4 ['] j-loop   cf-entry
       Lmain @ Lkwi      1 ['] j-i      cf-entry
+      Lmain @ Lkwtor    2 ['] j-tor    cf-entry
+      Lmain @ Lkwrfrom  2 ['] j-rfrom  cf-entry
+      Lmain @ Lkwrfet   2 ['] j-rfetch cf-entry
       Lmain @ Lkwlbrace 2 ['] c-lbrace cf-entry
       Lloc-find @ BL,  0 0 CMPI,  C-LT notloc BCOND,
          Lvralloc @ BL,  14 lmem CBZ,
@@ -540,6 +574,7 @@ variable SRCA
    NEWLBL Lkwtick !  NEWLBL Lkwbtick !
    NEWLBL Lkwlbrace !  NEWLBL Lkwendloc !  NEWLBL Lloc-find !  NEWLBL Lkwconst !
    NEWLBL Lkwdo !  NEWLBL Lkwloop !  NEWLBL Lkwi !
+   NEWLBL Lkwtor !  NEWLBL Lkwrfrom !  NEWLBL Lkwrfet !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !

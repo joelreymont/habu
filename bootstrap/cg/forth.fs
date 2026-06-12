@@ -50,7 +50,9 @@ $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B ea
                            \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
 8000 constant BODYBUF-CAP \ fatal above this (truncation would let the checker certify unseen code)
-$2800 constant DATA-START \ DP initial offset (past header + loop stack + body buffer)
+$568 constant RSP-CELL    \ user return-stack depth (>r r> r@)
+$2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
+$3000 constant DATA-START \ DP initial offset (past header + loop stack + body buf + rstack)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create TICK-KW   39 c,          \ '  (0x27)
 create BTICK-KW  91 c, 39 c, 93 c,   \ ['] = [ ' ]  (0x5b 0x27 0x5d)
@@ -97,6 +99,7 @@ variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
 variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
 variable Lkwdo variable Lkwloop variable Lkwi
+variable Lkwtor variable Lkwrfrom variable Lkwrfet
 
 9 constant A   10 constant B   11 constant C
 require prof.fs           \ in-binary sampling profiler (emitters + prims)
@@ -603,7 +606,8 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    Lkwtick @ LBL,   TICK-KW 1 BYTES,    Lkwbtick @ LBL,  BTICK-KW 3 BYTES,
    Lkwlbrace @ LBL, LBRACE-KW 2 BYTES,  Lkwendloc @ LBL, ENDLOC-KW 2 BYTES,
    Lkwconst @ LBL,  s" constant" BYTES,
-   Lkwdo @ LBL,  s" do" BYTES,    Lkwloop @ LBL,  s" loop" BYTES,    Lkwi @ LBL,  s" i" BYTES, ;
+   Lkwdo @ LBL,  s" do" BYTES,    Lkwloop @ LBL,  s" loop" BYTES,    Lkwi @ LBL,  s" i" BYTES,
+   Lkwtor @ LBL,  s" >r" BYTES,   Lkwrfrom @ LBL,  s" r>" BYTES,   Lkwrfet @ LBL,  s" r@" BYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
@@ -650,6 +654,36 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 : j-i
    4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4181721481 c-emitw  4177527401 c-emitw  2432705139 c-emitw ;
+
+\ >R R> R@ — the user return stack lives in a data-region stack ([x20+RSTK-OFF],
+\ depth at [x20+RSP-CELL]), like the DO/LOOP frames: x25/x28 belong to the
+\ compiler, and word frames on the machine stack would unbalance the epilogue.
+: w-ldrx {: rt rn off -- w :}                          \ ldr rt,[rn,#off]
+   $F9400000  off 8 / 10 lshift or  rn 5 lshift or  rt or ;
+
+: w-strx {: rt rn off -- w :}                          \ str rt,[rn,#off]
+   $F9000000  off 8 / 10 lshift or  rn 5 lshift or  rt or ;
+
+: j-tor                                                \ pop data -> push RSTK
+   $D1002273 c-emitw  $F9400269 c-emitw                \ sub x19,#8 ; ldr x9,[x19]
+   10 20 RSP-CELL w-ldrx c-emitw
+   $8B0A0E8B c-emitw                                   \ add x11,x20,x10,lsl#3
+   9 11 RSTK-OFF w-strx c-emitw
+   $9100054A c-emitw                                   \ add x10,x10,#1
+   10 20 RSP-CELL w-strx c-emitw ;
+
+: j-rpop                                               \ x9 = RSTK top, x10 = RSP-1
+   10 20 RSP-CELL w-ldrx c-emitw
+   $D100054A c-emitw                                   \ sub x10,x10,#1
+   $8B0A0E8B c-emitw                                   \ add x11,x20,x10,lsl#3
+   9 11 RSTK-OFF w-ldrx c-emitw ;
+
+: j-rfrom  j-rpop                                      \ pop RSTK -> push data
+   10 20 RSP-CELL w-strx c-emitw
+   $F9000269 c-emitw  $91002273 c-emitw ;              \ str x9,[x19] ; add x19,#8
+
+: j-rfetch  j-rpop                                     \ peek RSTK -> push data
+   $F9000269 c-emitw  $91002273 c-emitw ;
 
 \ CREATE/VARIABLE (interpret-mode defining words): make a dict word whose body
 \ pushes the current DP (a data-space address). Reuses the `:` slot pattern + the
@@ -1001,6 +1035,9 @@ variable CFSK2
       lmain Lkwdo     2 ['] j-do     cf-entry            \ DO
       lmain Lkwloop   4 ['] j-loop   cf-entry            \ LOOP
       lmain Lkwi      1 ['] j-i      cf-entry            \ I
+      lmain Lkwtor    2 ['] j-tor    cf-entry            \ >R
+      lmain Lkwrfrom  2 ['] j-rfrom  cf-entry            \ R>
+      lmain Lkwrfet   2 ['] j-rfetch cf-entry            \ R@
       lmain Lkwlbrace 2 ['] c-lbrace cf-entry            \ {: a b :} locals
       \ local-name reference -> load from its frame slot, push
       Lloc-find @ BL,  NEWLBL {: notloc :}  NEWLBL {: lmem :}  0 0 CMPI,  C-LT notloc BCOND,
@@ -1067,6 +1104,7 @@ variable CFSK2
    NEWLBL Lkwtick !  NEWLBL Lkwbtick !
    NEWLBL Lkwlbrace !  NEWLBL Lkwendloc !  NEWLBL Lloc-find !  NEWLBL Lkwconst !
    NEWLBL Lkwdo !  NEWLBL Lkwloop !  NEWLBL Lkwi !
+   NEWLBL Lkwtor !  NEWLBL Lkwrfrom !  NEWLBL Lkwrfet !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !

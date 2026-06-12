@@ -27,7 +27,9 @@ $1D8 constant SSCR-CELL
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF
 8000 constant BODYBUF-CAP
-$2800 constant DATA-START
+$568 constant RSP-CELL    \ user return-stack depth (>r r> r@)
+$2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
+$3000 constant DATA-START
 variable STDIN?   0 STDIN? !
 \ runtime instruction-word constants the JIT compiler stamps out
 $D65F03C0 constant W-RET
@@ -68,6 +70,7 @@ variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
 variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
 variable Lkwdo variable Lkwloop variable Lkwi
+variable Lkwtor variable Lkwrfrom variable Lkwrfet
 9 constant A   10 constant B   11 constant C
 \ ---- primitive bodies (operate on the x19 data stack) ----
 : b+   B g-pop  A g-pop  A A B ADD,  A g-push ;
