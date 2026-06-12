@@ -20,4 +20,8 @@ $G test/selfhost-all.fs -e bye > /tmp/habu-shgate.log 2>&1 || { tail -5 /tmp/hab
 25" ] || { echo "FAIL: warm snapshot (got: $out)"; exit 1; }
   echo "PASS: AOT snapshot (warm toolchain boot)"; }
 [ -x bin/hbi ] && { python3 test/repl-pty.py || { echo "FAIL: tty REPL"; exit 1; } }
-echo "PASS: full suite (all.fs + selfhost-all.fs + hb-suite + snapshot + repl)"
+[ -x bin/hb ] && { printf ': T 6 7 * . ;\nT\n' > /tmp/hb-bt.f
+  ./tools/hb-build.sh /tmp/hb-bt.f -o /tmp/hb-bt >/dev/null || { echo "FAIL: hb-build"; exit 1; }
+  [ "$(/tmp/hb-bt)" = "42" ] || { echo "FAIL: hb-build output (got: $(/tmp/hb-bt))"; exit 1; }
+  echo "PASS: hb-build standalone"; }
+echo "PASS: full suite (all.fs + selfhost-all.fs + hb-suite + snapshot + repl + hb-build)"

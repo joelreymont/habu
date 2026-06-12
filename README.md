@@ -30,7 +30,10 @@ built-in checker, and **rebuilds itself byte-for-byte** (stage2 fixpoint):
 ```sh
 ./tools/bootstrap.sh   # build bin/hb from nothing but gforth (once)
 ./tools/build.sh       # daily rebuild: bin/hb recompiles itself, no gforth
-echo ': SQ dup * ; 7 SQ .' | bin/hbi    # stdin engine
+echo ': SQ dup * ; 7 SQ .' | bin/hbi    # batch: program from stdin
+bin/hbi                                 # on a tty: interactive REPL
+                                        #   (line editing, history, error recovery)
+./tools/hb-build.sh prog.f -o prog      # AOT: standalone signed binary
 ```
 
 **The gforth-hosted checker** (bootstrap tier — the full row-polymorphic
