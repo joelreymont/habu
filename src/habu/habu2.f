@@ -314,7 +314,7 @@ create ENDLOC-KW 58 c, 125 c,
    LCEMIT @ BL, ;
 
 : J-RECURSE
-   9 PEND 0 LDR,  $94000000 $3FFFFFF C-BBACK ;         \ bl entry
+   9 DATA PEND-CELL LDR,  9 9 0 LDR,  $94000000 $3FFFFFF C-BBACK ;   \ bl entry
 
 : J-DOES
    NEWLBL {: dok :}
@@ -770,7 +770,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
    9 LRREC @ ADR,  9 DATA RRECP-CELL STR,
    LVRINIT @ BL,                                     \ fill VRTAB/VRITAB from VRPACK
    EMIT-SOURCE
-   PEND 0 MOVZ, ;
+   9 0 MOVZ,  9 DATA PEND-CELL STR, ;
 
 : EM-COMMENT
    NEWLBL NEWLBL NEWLBL {: notcom skln skpar :}
@@ -785,7 +785,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
       skln LBL,   INP INE CMP,  C-GE LMAIN @ BCOND,
          9 INP 0 LDRB,  INP INP 1 ADDI,  9 10 CMPI,  C-NE skln BCOND,  LMAIN @ B,
       notcom LBL,
-      PEND LCOMPILE @ CBNZ, ;
+      9 DATA PEND-CELL LDR,  9 LCOMPILE @ CBNZ, ;
 
 : EM-INTERPRET
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotcolon ncopy ncd lnotnum cpok ndok :}
@@ -802,7 +802,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
       ndok LBL,
       LTOK @ BL,
       9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-      PEND 9 0 ADDI,
+      9 DATA PEND-CELL STR,
       CP 9 0 STR,  TKL 9 16 STR,
       14 DATA CUR-CELL LDR,  14 9 40 STR,
       10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,
@@ -850,7 +850,7 @@ s" em-interpret" s" --" TRUST
          9 $F94003FE LIT64,  LCEMIT @ BL,
          9 $910043FF LIT64,  LCEMIT @ BL,
          9 W-RET LIT64,  LCEMIT @ BL,
-         9 PEND 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 PEND 8 STR,
+         11 DATA PEND-CELL LDR,  9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
          2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,
          9 DATA HOOK-CELL LDR,  9 nohook CBZ,
             10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
@@ -860,7 +860,7 @@ s" em-interpret" s" --" TRUST
          nohook LBL,
             NDICT NDICT 1 ADDI,
          rejected LBL,
-         PEND 0 MOVZ,
+         9 0 MOVZ,  9 DATA PEND-CELL STR,
          LMAIN @ B,
       lnotsemi LBL,
       LBCAP @ BL,
@@ -959,7 +959,7 @@ s" em-interpret" s" --" TRUST
       9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
       9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
       9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
-      PEND 0 MOVZ,
+      9 DATA PEND-CELL STR,
       9 VRALL MOVZ,  9 DATA VRFREE-CELL STR,
       9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
       LREAD @ B,

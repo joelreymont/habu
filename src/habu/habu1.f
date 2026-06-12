@@ -5,7 +5,7 @@
 \ Part 1: prims + tok/find/num/prot/flush/cemit + dict. The interpreter main
 \ loop, keyword JIT and EMIT-FORTH follow in part 2 (habu2.f).
 20 constant RBASE   21 constant INP    22 constant INE   23 constant TKA   24 constant TKL
-25 constant PEND    26 constant DBASE  27 constant NDICT  28 constant CP
+26 constant DBASE  27 constant NDICT  28 constant CP
 $100000 constant REGION
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
@@ -36,6 +36,7 @@ $3668 constant RRECP-CELL  \ runtime addr of the REPL recovery entry (EMIT-MAIN 
 $3670 constant ARGC-CELL   \ dyld main(argc,argv,envp): x0-x2, captured at entry
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
+$3688 constant PEND-CELL   \ pending dict record ptr (0 = interpret mode; was x25)
 $1D8 constant SSCR-CELL
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF

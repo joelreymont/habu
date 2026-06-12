@@ -18,9 +18,11 @@ require asm.fs
 
 variable LVRALLOC   variable LVBIT   variable LVRINIT
 
-$1D0F0E0D0C0B0A09 constant VRPACK   \ x9..x15, x29
-: POOL# ( -- n ) VRPACK 0 BEGIN over WHILE 1 + swap 8 rshift swap REPEAT nip ;
-POOL# constant #POOL
+$1D0F0E0D0C0B0A09 constant VRPACK   \ x9..x15, x29 (byte per slot, idx 0 low)
+$19 constant VRPACK2                \ overflow table: x25 (PEND moved to a DATA cell)
+: PK# ( x -- n ) 0 BEGIN over WHILE 1 + swap 8 rshift swap REPEAT nip ;
+VRPACK PK# constant #POOL1
+#POOL1 VRPACK2 PK# + constant #POOL
 1 #POOL lshift 1 - constant VRALL
 
 $208  constant VRFREE-CELL      \ free-register bitmask, bit = pool index
@@ -39,13 +41,22 @@ $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled
       5 5 1 ADDI,  pl B,
    pd LBL,
    8 VRPACK LIT64,  5 0 MOVZ,
-   fl LBL,                                   \ walk the packed table a byte at a time
-      5 #POOL CMPI,  C-GE fd BCOND,
+   fl LBL,                                   \ walk the packed tables a byte at a time
+      5 #POOL1 CMPI,  C-GE fd BCOND,
       6 8 $FF ANDI,
       7 VRTAB-OFF LIT64,  7 DATA 7 ADD,  7 7 5 ADD,  6 7 0 STRB,
       7 VRITAB-OFF LIT64,  7 DATA 7 ADD,  7 7 6 ADD,  5 7 0 STRB,
       8 8 8 LSRI,  5 5 1 ADDI,  fl B,
-   fd LBL,  RET, ;
+   fd LBL,
+   NEWLBL {: fl2 :}  NEWLBL {: fd2 :}
+   8 VRPACK2 LIT64,
+   fl2 LBL,                                  \ the overflow table continues the index
+      5 #POOL CMPI,  C-GE fd2 BCOND,
+      6 8 $FF ANDI,
+      7 VRTAB-OFF LIT64,  7 DATA 7 ADD,  7 7 5 ADD,  6 7 0 STRB,
+      7 VRITAB-OFF LIT64,  7 DATA 7 ADD,  7 7 6 ADD,  5 7 0 STRB,
+      8 8 8 LSRI,  5 5 1 ADDI,  fl2 B,
+   fd2 LBL,  RET, ;
 
 \ LVRALLOC ( -- x14=reg | 0 ) : grab a free register from the pool bitmask
 : EMIT-VRALLOC

@@ -40,7 +40,7 @@ FILES = [
 
 REGNAMES = {"XDS": 19, "SP": 31, "A": 9, "B": 10, "C": 11,
             "RBASE": 20, "INP": 21, "INE": 22, "TKA": 23, "TKL": 24,
-            "PEND": 25, "DBASE": 26, "NDICT": 27, "CP": 28, "DATA": 20}
+            "DBASE": 26, "NDICT": 27, "CP": 28, "DATA": 20}
 
 CONTRACT_REGS = {28, 30, 31}   # CP / LR / SP-XZR — see module docstring
 

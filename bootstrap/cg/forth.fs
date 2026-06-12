@@ -22,7 +22,7 @@ require crash.fs           \ in-binary crash handler (register dump on signal)
 require treeshake.fs       \ KEEP? prim/keyword gating (hb-build's maker arms it)
 
 20 constant RBASE   21 constant INP    22 constant INE   23 constant TKA   24 constant TKL
-25 constant PEND    26 constant DBASE  27 constant NDICT  28 constant CP
+26 constant DBASE  27 constant NDICT  28 constant CP
 
 $100000 constant REGION       \ mmap region size (1 MB)
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
@@ -60,6 +60,7 @@ $3668 constant RRECP-CELL  \ runtime addr of the REPL recovery entry (EMIT-MAIN 
 $3670 constant ARGC-CELL   \ dyld main(argc,argv,envp): x0-x2, captured at entry
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
+$3688 constant PEND-CELL   \ pending dict record ptr (0 = interpret mode; was x25)
 $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
                            \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
@@ -983,7 +984,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    LCEMIT @ BL, ;
 
 : J-RECURSE
-   9 PEND 0 LDR,  $94000000 $3FFFFFF C-BBACK ;         \ bl entry
+   9 DATA PEND-CELL LDR,  9 9 0 LDR,  $94000000 $3FFFFFF C-BBACK ;   \ bl entry
 
 \ DOES> — the defining word patches its LAST create into `push dfield ; b D`,
 \ then exits; D (the does-body) follows with its own prologue and shares `;`'s
@@ -1493,7 +1494,7 @@ variable CFSK2
    9 LRREC @ ADR,  9 DATA RRECP-CELL STR,             \ throw's REPL recovery entry
    LVRINIT @ BL,                                     \ fill VRTAB/VRITAB from VRPACK
    EMIT-SOURCE                                        \ INP/INE <- baked LSRC or stdin
-   PEND 0 MOVZ,                                       \ interpret mode
+   9 0 MOVZ,  9 DATA PEND-CELL STR,                   \ interpret mode
    NEWLBL {: LMAIN :}  NEWLBL {: LEXIT :}  NEWLBL {: LCOMPILE :}  NEWLBL {: LUNDEF :}
    LMAIN LBL,
       LTOK @ BL,  0 LEXIT CBZ,
@@ -1508,7 +1509,7 @@ variable CFSK2
       skln LBL,   INP INE CMP,  C-GE LMAIN BCOND,
          9 INP 0 LDRB,  INP INP 1 ADDI,  9 10 CMPI,  C-NE skln BCOND,  LMAIN B,
       notcom LBL,
-      PEND LCOMPILE CBNZ,
+      9 DATA PEND-CELL LDR,  9 LCOMPILE CBNZ,
       \ ---------------- INTERPRET ----------------
       NEWLBL {: lnotcolon :}
       TKL 1 CMPI,  C-NE lnotcolon BCOND,
@@ -1525,7 +1526,7 @@ variable CFSK2
          ndok LBL,
          LTOK @ BL,                                         \ read NAME
          9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,  \ slot
-         PEND 9 0 ADDI,
+         9 DATA PEND-CELL STR,
          CP 9 0 STR,  TKL 9 16 STR,                         \ slot.addr=CP, slot.namelen
          14 DATA CUR-CELL LDR,  14 9 40 STR,                \ slot.wid = CURRENT
          10 9 24 ADDI,  11 TKA 0 ADDI,  12 TKL 0 ADDI,      \ copy name
@@ -1575,7 +1576,7 @@ variable CFSK2
          9 $F94003FE LIT64,  LCEMIT @ BL,                   \ epilogue: ldr x30,[sp]
          9 $910043FF LIT64,  LCEMIT @ BL,                   \   add sp,sp,#16
          9 W-RET LIT64,  LCEMIT @ BL,                       \ emit RET
-         9 PEND 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 PEND 8 STR,  \ clen
+         11 DATA PEND-CELL LDR,  9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,  \ clen
          2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,               \ region -> RX + flush (callable now)
          \ run the check hook on the captured body; publish only if it returns nonzero
          NEWLBL {: nohook :}  NEWLBL {: rejected :}
@@ -1587,7 +1588,7 @@ variable CFSK2
          nohook LBL,
             NDICT NDICT 1 ADDI,                            \ publish word
          rejected LBL,
-         PEND 0 MOVZ,                                      \ leave compile mode
+         9 0 MOVZ,  9 DATA PEND-CELL STR,                  \ leave compile mode
          LMAIN B,
       lnotsemi LBL,
       \ capture the token into the body buffer (for the check hook); space-joined.
@@ -1694,7 +1695,7 @@ variable CFSK2
       9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
       9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
       9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
-      PEND 0 MOVZ,
+      9 DATA PEND-CELL STR,
       9 VRALL MOVZ,  9 DATA VRFREE-CELL STR,
       9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
       LREAD @ B,
