@@ -17,7 +17,7 @@ CRH-INIT
 \ x9..x15 and x0-x2/x16 (write syscall).
 : EMIT-HEX
    LHEX @ LBL,
-   NEWLBL NEWLBL NEWLBL {: hl hd hlet :}
+   LBL LBL LBL {: hl hd hlet :}
    SP SP 32 SUBI,
    14 SP 0 ADDI,
    11 15 MOVZ,
@@ -37,7 +37,7 @@ CRH-INIT
 
 : EMIT-CRASH-HANDLER
    LCRASHH @ LBL,
-   NEWLBL NEWLBL {: rl RD :}
+   LBL LBL {: rl RD :}
       20 2 0 ADDI,
       19 4 0 ADDI,
       1 LHDR @ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,

@@ -154,7 +154,7 @@ zero-looping m-zeros; and `28 constant CP` in habu1.f shadowing icode's CP varia
 (compile-time binding protects earlier callers, but later code reading `CP @` loads
 from address 28 — SIGSEGV that the in-binary crash handler diagnosed). Port rules that
 keep transcription mechanical: a mnemonic layer (mnem.fs) so lines read identically to
-src/cg; ALL `NEWLBL {: x :}` pairs merged into ONE locals group at the word top (label
+src/cg; ALL `LBL {: x :}` pairs merged into ONE locals group at the word top (label
 ids don't affect output bytes, only LBL,/branch pairing); `?do` -> BEGIN/WHILE with
 zero-trip guards; `>r`/`move`/`2constant`/`abort"` -> variables/byte-loops/die. LIT64's
 minimal movz/movn+movk selection is ported logic-exact and golden-tested over 15 probe
@@ -180,6 +180,19 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **Renaming a global to a name some words use for a LOCAL is a shadow bug**:
+  NEWLBL -> LBL made boot FPRIM's second allocation (`LBL {: lbl :}  LBL ...`)
+  read the just-declared LOCAL lbl instead of calling the word (gforth and the
+  engine are both case-insensitive; locals shadow globals). Every prim's end
+  label equaled its start (seed dict clen = -4), c-call inlined garbage lengths,
+  and the toolchain leaked a cell per loop iteration until the data stack
+  overflowed its 16 KB carve (x19 walked past the entry SP). Allocate-then-bind
+  (`LBL LBL {: lbl elbl :}`) is immune. When renaming, grep `{: ... :}` groups
+  for the new name first.
+- **Measured gate durations (2026-06): bootstrap 2.7 s, build.sh 1.5 s, native
+  gate 10 s, oracle 8 s.** Timeouts at 2-3x these; an overrun means HUNG —
+  kill and RCA, never enlarge the timeout.
+
 - **Bootstrap is a ladder, not a mirror** (user directive 2026-06): bootstrap/cg
   is the minimum gforth code that builds bin/hb once. Habu features (tree shaker,
   drivers, REPL niceties) live in src/** ONLY — never port them backward "for

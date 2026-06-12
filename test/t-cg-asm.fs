@@ -79,19 +79,19 @@ T{ ICODE-RESET 29 30 31 -16 STP-PRE,  V1 -> $A9BF7BFD }T \ stp x29,x30,[sp,#-16]
 T{ ICODE-RESET 29 30 31 16 LDP-POST,  V1 -> $A8C17BFD }T \ ldp x29,x30,[sp],#16
 
 \ --- branches / labels ---
-: GEN-BBACK ( -- u32 )  ICODE-RESET NEWLBL dup LBL, NOP, B, CODEBUF ASSEMBLE drop 1 ASM@ ;
+: GEN-BBACK ( -- u32 )  ICODE-RESET LBL dup LBL, NOP, B, CODEBUF ASSEMBLE drop 1 ASM@ ;
 T{ GEN-BBACK -> $17FFFFFF }T                     \ b back -1 word
-: GEN-BFWD ( -- u32 )  ICODE-RESET NEWLBL dup B, NOP, NOP, LBL, RET, CODEBUF ASSEMBLE drop 0 ASM@ ;
+: GEN-BFWD ( -- u32 )  ICODE-RESET LBL dup B, NOP, NOP, LBL, RET, CODEBUF ASSEMBLE drop 0 ASM@ ;
 T{ GEN-BFWD -> $14000003 }T                      \ b forward +3 words
-: GEN-BL ( -- u32 )  ICODE-RESET NEWLBL dup BL, LBL, NOP, CODEBUF ASSEMBLE drop 0 ASM@ ;
+: GEN-BL ( -- u32 )  ICODE-RESET LBL dup BL, LBL, NOP, CODEBUF ASSEMBLE drop 0 ASM@ ;
 T{ GEN-BL -> $94000001 }T                        \ bl +1 word
-: GEN-BEQ ( -- u32 )  ICODE-RESET NEWLBL dup C-EQ swap BCOND, NOP, NOP, LBL, RET, CODEBUF ASSEMBLE drop 0 ASM@ ;
+: GEN-BEQ ( -- u32 )  ICODE-RESET LBL dup C-EQ swap BCOND, NOP, NOP, LBL, RET, CODEBUF ASSEMBLE drop 0 ASM@ ;
 T{ GEN-BEQ -> $54000060 }T                       \ b.eq +3 words
-: GEN-CBZ ( -- u32 )  ICODE-RESET NEWLBL dup 0 swap CBZ, NOP, LBL, RET, CODEBUF ASSEMBLE drop 0 ASM@ ;
+: GEN-CBZ ( -- u32 )  ICODE-RESET LBL dup 0 swap CBZ, NOP, LBL, RET, CODEBUF ASSEMBLE drop 0 ASM@ ;
 T{ GEN-CBZ -> $B4000040 }T                       \ cbz x0,+2
-: GEN-CBNZ ( -- u32 )  ICODE-RESET NEWLBL dup 5 swap CBNZ, NOP, LBL, RET, CODEBUF ASSEMBLE drop 0 ASM@ ;
+: GEN-CBNZ ( -- u32 )  ICODE-RESET LBL dup 5 swap CBNZ, NOP, LBL, RET, CODEBUF ASSEMBLE drop 0 ASM@ ;
 T{ GEN-CBNZ -> $B5000045 }T                      \ cbnz x5,+2
-: GEN-ADR ( -- u32 )  ICODE-RESET NEWLBL dup 0 swap ADR, NOP, LBL, RET, CODEBUF ASSEMBLE drop 0 ASM@ ;
+: GEN-ADR ( -- u32 )  ICODE-RESET LBL dup 0 swap ADR, NOP, LBL, RET, CODEBUF ASSEMBLE drop 0 ASM@ ;
 T{ GEN-ADR -> $10000040 }T                       \ adr x0,+8 bytes
 T{ ICODE-RESET 3 BR,   V1 -> $D61F0060 }T        \ br x3
 T{ ICODE-RESET 3 BLR,  V1 -> $D63F0060 }T        \ blr x3
@@ -116,7 +116,7 @@ T{ ' T-REL19-OVER catch E-BRANCH-RANGE = -> true }T
 T{ -262144 ?REL19 -> -262144 }T                  \ in-range passes through
 : T-REL26-OVER ( -- )  -33554433 ?REL26 drop ;
 T{ ' T-REL26-OVER catch E-BRANCH-RANGE = -> true }T
-: GEN-UNDEF ( -- n )  ICODE-RESET NEWLBL B, CODEBUF ASSEMBLE ;
+: GEN-UNDEF ( -- n )  ICODE-RESET LBL B, CODEBUF ASSEMBLE ;
 T{ ' GEN-UNDEF catch E-UNDEF-LBL = -> true }T    \ unplaced label
 : GEN-BIGOFF ( -- n )  ICODE-RESET 0 1 32768 LDR, CODEBUF ASSEMBLE ;
 T{ ' GEN-BIGOFF catch E-IMM-RANGE = -> true }T   \ offset > imm12 range

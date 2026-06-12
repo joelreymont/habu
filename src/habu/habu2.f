@@ -15,7 +15,7 @@
 $28 constant INL-MAX
 
 : C-CALL
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lcall lcopy lscan lsbody lnopro linl ldone :}
+   LBL LBL LBL LBL LBL LBL LBL {: lcall lcopy lscan lsbody lnopro linl ldone :}
    9 11 0 LDRW,  8 $D10043FF LIT64,  9 8 CMP,  C-NE lnopro BCOND,
       12 INL-MAX 16 + CMPI,  C-GT lcall BCOND,
       13 11 8 ADDI,  14 11 12 ADD,  14 14 8 SUBI,  lscan B,
@@ -49,7 +49,7 @@ $28 constant INL-MAX
 
 \ ---- source setup: baked LSRC or stdin ----
 : EMIT-SOURCE
-   NEWLBL NEWLBL NEWLBL NEWLBL {: rl RD rpipe rgo :}   \ locals BEFORE the IF (frame footgun)
+   LBL LBL LBL LBL {: rl RD rpipe rgo :}   \ locals BEFORE the IF (frame footgun)
    STDIN? @ IF
       0 0 MOVZ,  1 $40487413 LIT64,  2 DATA BODYBUF-OFF ADDI,  NR-IOCTL SYS,
       0 rpipe CBNZ,
@@ -74,7 +74,7 @@ $28 constant INL-MAX
 
 \ ---- control-flow JIT helpers ----
 : EMIT-CF-HELPERS
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: pisb pdone kno kyes kchk knf :}
+   LBL LBL LBL LBL LBL LBL {: pisb pdone kno kyes kchk knf :}
    LCFPUSH @ LBL,
       5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,
       12 11 3 LSLI,  12 12 10 ADD,  12 12 8 ADDI,  9 12 0 STR,
@@ -103,7 +103,7 @@ $28 constant INL-MAX
       kyes LBL,  0 1 MOVZ,  RET,
       kno  LBL,  0 0 MOVZ,  RET,
    LBCHAIN @ LBL,                                    \ patch a B-placeholder chain:
-      NEWLBL NEWLBL {: bcl bcd :}                    \ x9=head offset, x14=target;
+      LBL LBL {: bcl bcd :}                    \ x9=head offset, x14=target;
       bcl LBL,  9 bcd CBZ,                           \ clobbers x5,x10-x12
          10 DBASE 9 ADD,  11 10 0 LDRW,
          12 14 10 SUB,  12 12 2 ASRI,
@@ -114,7 +114,7 @@ $28 constant INL-MAX
       bcd LBL,  RET, ;
 
 : EMIT-LOC-FIND
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: ll lmiss lhit lcmp lnext :}
+   LBL LBL LBL LBL LBL {: ll lmiss lhit lcmp lnext :}
    LLOC-FIND @ LBL,
    9 DATA LOCN-CELL LDR,  10 0 MOVZ,
    6 DATA TKL-CELL LDR,  7 DATA TKA-CELL LDR,
@@ -318,7 +318,7 @@ create ENDLOC-KW 58 c, 125 c,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,  $94000000 $3FFFFFF C-BBACK ;   \ bl entry
 
 : J-DOES
-   NEWLBL {: dok :}
+   LBL {: dok :}
    12 DATA LOCF-CELL LDR,  12 dok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
@@ -331,7 +331,7 @@ create ENDLOC-KW 58 c, 125 c,
    9 $F90003FE LIT64,  LCEMIT @ BL, ;
 
 : J-QUOT
-   NEWLBL {: qok :}
+   LBL {: qok :}
    9 DATA QPATCH-CELL LDR,  9 qok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
@@ -345,7 +345,7 @@ create ENDLOC-KW 58 c, 125 c,
    9 $F90003FE LIT64,  LCEMIT @ BL, ;
 
 : J-SEMIQUOT
-   NEWLBL {: sqok :}
+   LBL {: sqok :}
    9 DATA QPATCH-CELL LDR,  9 sqok CBNZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
@@ -379,7 +379,7 @@ create ENDLOC-KW 58 c, 125 c,
 \ ---- interpret-mode defining words ----
 \ record defining words for the checker: append the kind token + run the hook
 \ (verdict ignored — create/variable/constant always publish).
-: C-DEFHOOK  NEWLBL {: kwv klen nohk :}
+: C-DEFHOOK  LBL {: kwv klen nohk :}
    11 kwv @ ADR,  12 klen MOVZ,  LBCS @ BL,
    9 DATA HOOK-CELL LDR,  9 nohk CBZ,
    10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
@@ -389,7 +389,7 @@ create ENDLOC-KW 58 c, 125 c,
    nohk LBL, ;
 
 : EMIT-CREATE
-   NEWLBL NEWLBL NEWLBL {: ncp ncpd nokind :}
+   LBL LBL LBL {: ncp ncpd nokind :}
    LCREATE @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  15 SP 8 STR,
    2 3 MOVZ,  LPROT @ BL,
@@ -421,7 +421,7 @@ create ENDLOC-KW 58 c, 125 c,
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;
 
 : C-CONSTANT
-   NEWLBL NEWLBL {: kcp kcd :}
+   LBL LBL {: kcp kcd :}
    2 3 MOVZ,  LPROT @ BL,  LTOK @ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
    15 G-POP                                             \ n -> x15 AFTER LBCAP (it clobbers x15)
@@ -446,7 +446,7 @@ create ENDLOC-KW 58 c, 125 c,
    2 5 MOVZ,  LPROT @ BL, ;
 
 : C-POSTPONE
-   NEWLBL NEWLBL NEWLBL {: pok pnimm pdone :}
+   LBL LBL LBL {: pok pnimm pdone :}
    LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 pok CBNZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -462,7 +462,7 @@ create ENDLOC-KW 58 c, 125 c,
 
 : C-ISDQ
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
-   NEWLBL NEWLBL NEWLBL NEWLBL {: sl sd cl cd :}
+   LBL LBL LBL LBL {: sl sd cl cd :}
    sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
    sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
    12 DATA 0 LDR,  15 12 0 ADDI,                        \ x12 = DP, x15 = string base
@@ -478,19 +478,19 @@ create ENDLOC-KW 58 c, 125 c,
 : C-BCHAR  LTOK @ BL,  11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC @ BL, ;
 
 : C-TICK
-   NEWLBL {: tk :}
+   LBL {: tk :}
    LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 tk CBZ,  11 G-PUSH  tk LBL, ;
 
 : C-BTICK
-   NEWLBL {: bk :}
+   LBL {: bk :}
    LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 bk CBZ,  C-LIT  bk LBL, ;
 
 : C-LBRACE
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL
-   NEWLBL NEWLBL
-   NEWLBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL
+   LBL
    {: cfok xok qlok nl nd nstore nlok noti ncp ncd pl pd tsl tsd :}
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -548,7 +548,7 @@ create ENDLOC-KW 58 c, 125 c,
    pd LBL, ;
 
 : C-SDQ
-   NEWLBL NEWLBL NEWLBL NEWLBL {: sl sd cl cd :}
+   LBL LBL LBL LBL {: sl sd cl cd :}
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
    sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
    sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
@@ -565,7 +565,7 @@ create ENDLOC-KW 58 c, 125 c,
 variable CFSK
 
 : CF-ENTRY {: lmainlbl kwvar kwlen hxt :}
-   NEWLBL CFSK !
+   LBL CFSK !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
    LVSPILL @ BL,
@@ -576,7 +576,7 @@ s" cf-entry" s" n n n n --" TRUST
 \ cfn-entry: keyword case WITHOUT the spill — loop words manage the VS
 \ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
 : CFN-ENTRY {: lmainlbl kwvar kwlen hxt :}
-   NEWLBL CFSK !
+   LBL CFSK !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
    hxt execute  lmainlbl B,
@@ -591,7 +591,7 @@ variable CFSK2
 \ a REGISTER top branches directly (no spill + memory pop); con or empty falls
 \ back to the spill + pop path. hxtr gets the condition reg in x14.
 : CFB-ENTRY {: lmainlbl kwvar kwlen hxtm hxtr :}
-   NEWLBL CFSK !  NEWLBL CFSK2 !
+   LBL CFSK !  LBL CFSK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
    6 DATA VSP-CELL LDR,  6 CFSK2 @ CBZ,
@@ -614,7 +614,7 @@ s" cfb-entry" s" n n n n n --" TRUST
 \ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
 \ LVDROP (which only relabels the VS, no emission).
 : CFBN-ENTRY {: lmainlbl kwvar kwlen hxtm hxtr :}
-   NEWLBL CFSK !  NEWLBL CFSK2 !
+   LBL CFSK !  LBL CFSK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
    6 DATA VSP-CELL LDR,  6 CFSK2 @ CBZ,
@@ -640,10 +640,10 @@ s" cfbn-entry" s" n n n n n --" TRUST
    J-UNTILX ;
 
 : EM-STARTUP
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL
-   NEWLBL NEWLBL NEWLBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL
    {: scopy scdone rvok dvok snomag sc1 sc1d sc2 sc2d srl srn srx cwok sdl2 sdn2 sds2 :}
-   NEWLBL SNBL !  NEWLBL SNOL !
+   LBL SNBL !  LBL SNOL !
    LANCHOR @ LBL,
    13 0 0 ADDI,  14 1 0 ADDI,  15 2 0 ADDI,
    RBASE LANCHOR @ ADR,
@@ -774,7 +774,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
 
 : EM-COMMENT
-   NEWLBL NEWLBL NEWLBL {: notcom skln skpar :}
+   LBL LBL LBL {: notcom skln skpar :}
    LMAIN @ LBL,
       LTOK @ BL,  0 LEXIT @ CBZ,
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
@@ -789,7 +789,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
       9 DATA PEND-CELL LDR,  9 LCOMPILE @ CBNZ, ;
 
 : EM-INTERPRET
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotcolon ncopy ncd lnotnum cpok ndok :}
+   LBL LBL LBL LBL LBL LBL {: lnotcolon ncopy ncd lnotnum cpok ndok :}
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotcolon BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,
       2 3 MOVZ,  LPROT @ BL,
@@ -839,7 +839,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
 s" em-interpret" s" --" TRUST
 
 : EM-COMPILE
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotsemi notd nohook rejected notloc lmem lcnotnum notimm :}
+   LBL LBL LBL LBL LBL LBL LBL LBL {: lnotsemi notd nohook rejected notloc lmem lcnotnum notimm :}
    LCOMPILE @ LBL,
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
@@ -985,7 +985,7 @@ s" em-interpret" s" --" TRUST
 s" em-compile" s" --" TRUST
 
 : EMIT-MAIN
-   NEWLBL LMAIN !  NEWLBL LEXIT !  NEWLBL LCOMPILE !  NEWLBL LUNDEF !
+   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !
    EM-STARTUP  EM-COMMENT  EM-INTERPRET  EM-COMPILE ;
 s" emit-main" s" --" TRUST
 variable SRCA
@@ -993,39 +993,39 @@ variable SRCA
 : EMIT-FORTH {: a u :}
    u SRCN !  a SRCA !
    ASM-INIT  0 #PL !  0 PNP !
-   NEWLBL LANCHOR !  NEWLBL LFIND !  NEWLBL LNUM !  NEWLBL LDICT !  NEWLBL LSRC !
-   NEWLBL LCEMIT !  NEWLBL LTOK !  NEWLBL LPROT !  NEWLBL LFLUSH !  NEWLBL LNCOUNT !
-   NEWLBL LBCAP !  NEWLBL LBCS !
-   NEWLBL LCFPUSH !  NEWLBL LCFPOP !  NEWLBL LPAT !  NEWLBL LKWCMP !
-   NEWLBL LKWIF !  NEWLBL LKWTHEN !  NEWLBL LKWELSE !  NEWLBL LKWBEGIN !
-   NEWLBL LKWUNTIL !  NEWLBL LKWAGAIN !  NEWLBL LKWWHILE !  NEWLBL LKWREPEAT !
-   NEWLBL LKWCREATE !  NEWLBL LKWVAR !  NEWLBL LKWSQ !
-   NEWLBL LKWTICK !  NEWLBL LKWBTICK !
-   NEWLBL LKWLBRACE !  NEWLBL LKWENDLOC !  NEWLBL LLOC-FIND !  NEWLBL LKWCONST !
-   NEWLBL LKWDO !  NEWLBL LKWLOOP !  NEWLBL LKWI !
-   NEWLBL LKWTOR !  NEWLBL LKWRFROM !  NEWLBL LKWRFET !
-   NEWLBL LKWEXIT !  NEWLBL LKWREC !
-   NEWLBL LKWQDO !  NEWLBL LKWPLOOP !  NEWLBL LKWJ !  NEWLBL LKWLEAVE !  NEWLBL LKWUNLOOP !
-   NEWLBL LKWCHAR !  NEWLBL LKWBCHAR !
-   NEWLBL LKWIMM !  NEWLBL LKWPOST !  NEWLBL LKWCOMPC !  NEWLBL LKWDOES !
-   NEWLBL LKWQUOT !  NEWLBL LKWSEMIQ !
-   NEWLBL LBCHAIN !  NEWLBL LCREATE !  NEWLBL LDOESPATCH !
-   NEWLBL LREAD !  NEWLBL LRBYE !  NEWLBL LRDIE !  NEWLBL LRREC !  NEWLBL LQNL !  NEWLBL LOKS !
-   NEWLBL LCRASHH !  NEWLBL LHEX !  NEWLBL LHDR !
-   NEWLBL LPROFH !  NEWLBL LPROFDUMP !
-   NEWLBL LVSPILL !  NEWLBL LVLITPUSH !  NEWLBL LVPUSHC !
-   NEWLBL LVTOP2C !  NEWLBL LVFOLDPUT !
-   NEWLBL LVRALLOC !  NEWLBL LVBIT !  NEWLBL LVRINIT !  NEWLBL LVMOVK !  NEWLBL LVFORCEK !  NEWLBL LVBINPREP !  NEWLBL LVPUSHR !
-   NEWLBL LVDROP !  NEWLBL LVSWAPX !  NEWLBL LVNIPX !  NEWLBL LVCOPY !
-   NEWLBL LVSNAP !  NEWLBL LVRECON !
-   NEWLBL LKWPLUS !  NEWLBL LKWMINUS !  NEWLBL LKWSTAR !
-   NEWLBL LKWAND2 !  NEWLBL LKWOR2 !  NEWLBL LKWXOR2 !
-   NEWLBL LKWDUP2 !  NEWLBL LKWDROP2 !  NEWLBL LKWSWAP2 !
-   NEWLBL LKWOVER2 !  NEWLBL LKWNIP2 !
-   NEWLBL LKWEQ2 !  NEWLBL LKWNE2 !  NEWLBL LKWLT2 !
-   NEWLBL LKWGT2 !  NEWLBL LKWLE2 !  NEWLBL LKWGE2 !
-   NEWLBL LKWINC !  NEWLBL LKWDEC !  NEWLBL LKWZEQ !
-   NEWLBL LKWZLT !  NEWLBL LKWNEG2 !  NEWLBL LKWINV2 !
+   LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
+   LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LFLUSH !  LBL LNCOUNT !
+   LBL LBCAP !  LBL LBCS !
+   LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !
+   LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
+   LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
+   LBL LKWCREATE !  LBL LKWVAR !  LBL LKWSQ !
+   LBL LKWTICK !  LBL LKWBTICK !
+   LBL LKWLBRACE !  LBL LKWENDLOC !  LBL LLOC-FIND !  LBL LKWCONST !
+   LBL LKWDO !  LBL LKWLOOP !  LBL LKWI !
+   LBL LKWTOR !  LBL LKWRFROM !  LBL LKWRFET !
+   LBL LKWEXIT !  LBL LKWREC !
+   LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
+   LBL LKWCHAR !  LBL LKWBCHAR !
+   LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
+   LBL LKWQUOT !  LBL LKWSEMIQ !
+   LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
+   LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
+   LBL LCRASHH !  LBL LHEX !  LBL LHDR !
+   LBL LPROFH !  LBL LPROFDUMP !
+   LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
+   LBL LVTOP2C !  LBL LVFOLDPUT !
+   LBL LVRALLOC !  LBL LVBIT !  LBL LVRINIT !  LBL LVMOVK !  LBL LVFORCEK !  LBL LVBINPREP !  LBL LVPUSHR !
+   LBL LVDROP !  LBL LVSWAPX !  LBL LVNIPX !  LBL LVCOPY !
+   LBL LVSNAP !  LBL LVRECON !
+   LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !
+   LBL LKWAND2 !  LBL LKWOR2 !  LBL LKWXOR2 !
+   LBL LKWDUP2 !  LBL LKWDROP2 !  LBL LKWSWAP2 !
+   LBL LKWOVER2 !  LBL LKWNIP2 !
+   LBL LKWEQ2 !  LBL LKWNE2 !  LBL LKWLT2 !
+   LBL LKWGT2 !  LBL LKWLE2 !  LBL LKWGE2 !
+   LBL LKWINC !  LBL LKWDEC !  LBL LKWZEQ !
+   LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 !
    EMIT-MAIN
    EMIT-PRIMS  EMIT-PROF-PRIMS  EMIT-FP-PRIMS  EMIT-CEMIT  EMIT-BCAP  EMIT-TOK  EMIT-PROT  EMIT-FLUSH  EMIT-FIND  EMIT-NUM
    EMIT-CREATE  EMIT-DOESPATCH

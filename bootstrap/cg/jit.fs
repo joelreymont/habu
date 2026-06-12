@@ -33,7 +33,7 @@ $F9000260 constant W-PUSHR      \ str xR,[x19]  (or with R)
 \ all registers free. The one bridge from register-tracked to plain memory stack.
 : EMIT-VSPILL ( -- )
    LVSPILL @ LBL,
-   NEWLBL {: vl :}  NEWLBL {: vd :}  NEWLBL {: vcon :}  NEWLBL {: vnext :}
+   LBL {: vl :}  LBL {: vd :}  LBL {: vcon :}  LBL {: vnext :}
    SP SP 16 SUBI,  30 SP 0 STR,
    5 0 MOVZ,  5 SP 8 STR,                                   \ k (in the frame: the
    vl LBL,                                                  \ helper calls clobber x5)
@@ -54,7 +54,7 @@ $F9000260 constant W-PUSHR      \ str xR,[x19]  (or with R)
 \ LVPUSHC ( x11=val ) : record a constant on the VS (no code); spill first if full.
 : EMIT-VPUSHC ( -- )
    LVPUSHC @ LBL,
-   NEWLBL {: room :}
+   LBL {: room :}
    SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
    6 DATA VSP-CELL LDR,  6 VSMAX CMPI,  C-LT room BCOND,
       LVSPILL @ BL,  6 0 MOVZ,
@@ -69,7 +69,7 @@ $F9000260 constant W-PUSHR      \ str xR,[x19]  (or with R)
 \ LVTOP2C ( -- x13=ok x11=a x12=b ) : are the top two VS entries constants? (no pop)
 : EMIT-VTOP2C ( -- )
    LVTOP2C @ LBL,
-   NEWLBL {: no :}
+   LBL {: no :}
    13 0 MOVZ,
    6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT no BCOND,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,  7 1 CMPI,  C-NE no BCOND,
@@ -93,7 +93,7 @@ variable FESK
 \ constants, fold at JIT time (no code) and continue the main loop; else fall
 \ through to the generic dispatch (which spills + calls the prim).
 : FOLD-ENTRY {: lmainlbl kwvar kwlen fxt :}
-   NEWLBL FESK !
+   LBL FESK !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK @ CBZ,
    LVTOP2C @ BL,  13 FESK @ CBZ,
@@ -130,7 +130,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 \ x5=k x6=val x7=nz/started x8=nf/chunk x9=instr x10=form x12=$FFFF (Lcemit saves all).
 : EMIT-VMOVK
    LVMOVK @ LBL,
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: cl cd ml mk mn mset mnext md mz1 mout :}
    SP SP 16 SUBI,  30 SP 0 STR,
    6 11 0 ADDI,  12 $FFFF MOVZ,
@@ -174,7 +174,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 \ Atomic: an allocation failure mutates nothing.
 : EMIT-VFORCEK
    LVFORCEK @ LBL,
-   NEWLBL NEWLBL {: fr fd :}
+   LBL LBL {: fr fd :}
    SP SP 32 SUBI,  30 SP 0 STR,  5 SP 8 STR,
    7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
@@ -194,7 +194,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 \ 2 registers ready (x14=rd result slot, x15=rm; rm freed; VSP already --).
 : EMIT-VBINPREP
    LVBINPREP @ LBL,
-   NEWLBL NEWLBL NEWLBL {: bno bfold b2 :}
+   LBL LBL LBL {: bno bfold b2 :}
    SP SP 32 SUBI,  30 SP 0 STR,
    6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT bno BCOND,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
@@ -221,7 +221,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 \ LVPUSHR ( x14=reg ) : push a register entry (spill-on-full keeps x14 claimed)
 : EMIT-VPUSHR
    LVPUSHR @ LBL,
-   NEWLBL {: pr :}
+   LBL {: pr :}
    SP SP 16 SUBI,  30 SP 0 STR,  14 SP 8 STR,
    6 DATA VSP-CELL LDR,  6 VSMAX CMPI,  C-LT pr BCOND,
       LVSPILL @ BL,
@@ -237,7 +237,7 @@ variable FESK2
 
 \ vop-entry: fold when both con, register op when forceable, else fall through
 : VOP-ENTRY {: lmainlbl kwvar kwlen foldxt emitxt :}
-   NEWLBL FESK !  NEWLBL FESK2 !
+   LBL FESK !  LBL FESK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK @ CBZ,
    LVBINPREP @ BL,
@@ -268,7 +268,7 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
 \ comparison entry: fold -> dispatch computes the flag; registers -> emit
 \ cmp rd,rm ; cset rd,cond ; sub rd,xzr,rd  (Forth flag 0/-1)
 : VCMP-ENTRY {: lmainlbl kwvar kwlen cond :}
-   NEWLBL FESK !  NEWLBL FESK2 !
+   LBL FESK !  LBL FESK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK @ CBZ,
    LVBINPREP @ BL,
@@ -294,7 +294,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 \ LVDROP ( -- x13=ok ) : drop ANY top entry (reg -> free, con -> forget); no code
 : EMIT-VDROP
    LVDROP @ LBL,
-   NEWLBL NEWLBL {: no fr :}
+   LBL LBL {: no fr :}
    SP SP 16 SUBI,  30 SP 0 STR,
    13 0 MOVZ,
    6 DATA VSP-CELL LDR,  6 no CBZ,
@@ -311,7 +311,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 \ LVSWAPX ( -- x13=ok ) : swap ANY top two entries (pure relabel; no code)
 : EMIT-VSWAPX
    LVSWAPX @ LBL,
-   NEWLBL {: no :}
+   LBL {: no :}
    13 0 MOVZ,
    6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT no BCOND,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,
@@ -326,7 +326,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 \ LVNIPX ( -- x13=ok ) : remove the DEEP entry (free if reg), keep top; no code
 : EMIT-VNIPX
    LVNIPX @ LBL,
-   NEWLBL NEWLBL {: no fr :}
+   LBL LBL {: no fr :}
    SP SP 16 SUBI,  30 SP 0 STR,
    13 0 MOVZ,
    6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT no BCOND,
@@ -349,7 +349,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 \ LVCOPY ( x5=k -- x13=ok ) : push a copy of entry k (con free; reg = one mov)
 : EMIT-VCOPY
    LVCOPY @ LBL,
-   NEWLBL NEWLBL NEWLBL {: no isreg done :}
+   LBL LBL LBL {: no isreg done :}
    SP SP 32 SUBI,  30 SP 0 STR,
    13 0 MOVZ,
    7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
@@ -373,8 +373,8 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 \ force: spill-all and push (0,0) — that loop runs memory-resident as before.
 : EMIT-VSNAP
    LVSNAP @ LBL,
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: fl fd fail spush pl pd :}
-   NEWLBL {: plo :}  NEWLBL {: pnx :}  NEWLBL {: snok :}
+   LBL LBL LBL LBL LBL LBL {: fl fd fail spush pl pd :}
+   LBL {: plo :}  LBL {: pnx :}  LBL {: snok :}
    SP SP 16 SUBI,  30 SP 0 STR,
    6 DATA SNAPSP-CELL LDR,  6 28 CMPI,  C-LT snok BCOND,
       0 75 MOVZ,  NR-EXIT SYS,              \ BEGIN nesting past the frame area
@@ -413,8 +413,8 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 \ BEGIN registers across iterations either way.
 : EMIT-VRECON
    LVRECON @ LBL,
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: cl cd rel rl rln :}
-   NEWLBL {: chi :}  NEWLBL {: cnx :}  NEWLBL {: rhi :}  NEWLBL {: rnx :}
+   LBL LBL LBL LBL LBL {: cl cd rel rl rln :}
+   LBL {: chi :}  LBL {: cnx :}  LBL {: rhi :}  LBL {: rnx :}
    SP SP 32 SUBI,  30 SP 0 STR,
    6 DATA SNAPSP-CELL LDR,  6 6 1 SUBI,  6 DATA SNAPSP-CELL STR,
    7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,  7 7 SNAPSTK-OFF ADDI,  7 DATA 7 ADD,
@@ -461,7 +461,7 @@ variable FESK3
 
 \ vshuf-entry: reg-aware stack ops — relabels and register moves, no memory traffic
 : VSHUF-ENTRY {: lmainlbl kwvar kwlen min sxt :}
-   NEWLBL FESK3 !
+   LBL FESK3 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK3 @ CBZ,
    6 DATA VSP-CELL LDR,  6 min CMPI,  C-LT FESK3 @ BCOND,
@@ -486,7 +486,7 @@ variable FESK4
 \ vun-entry: unary op on the VS top — con folds at JIT time (no code); reg gets
 \ an in-place op (rd = rs, entry unchanged); empty VS falls through to the prim.
 : VUN-ENTRY {: lmainlbl kwvar kwlen foldxt emitxt :}
-   NEWLBL FESK4 !  NEWLBL FESK2 !
+   LBL FESK4 !  LBL FESK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK4 @ CBZ,
    6 DATA VSP-CELL LDR,  6 FESK4 @ CBZ,

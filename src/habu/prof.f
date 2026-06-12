@@ -13,7 +13,7 @@ $0042 constant SA-PROF-FLAGS
 
 : EMIT-PROFDUMP
    LPROFDUMP @ LBL,
-   NEWLBL NEWLBL NEWLBL NEWLBL {: dl dn dd dret :}
+   LBL LBL LBL LBL {: dl dn dd dret :}
    5 DBASE 0 ADDI,  6 0 MOVZ,
    dl LBL,
       7 NDICT 0 ADDI,  6 7 CMP,  C-GE dd BCOND,
@@ -34,7 +34,7 @@ $0042 constant SA-PROF-FLAGS
 
 : EMIT-PROF
    LPROFH @ LBL,
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: pl pnext pdone prep psig :}
+   LBL LBL LBL LBL LBL {: pl pnext pdone prep psig :}
    21 4 MCTX-OFF LDR,  9 21 272 LDR,
    10 DATA PROF-TOT LDR,  10 10 1 ADDI,  10 DATA PROF-TOT STR,
    11 DATA PROF-LIM LDR,  10 11 CMP,  C-GE prep BCOND,
@@ -54,7 +54,7 @@ $0042 constant SA-PROF-FLAGS
    prep LBL,  LPROFDUMP @ BL,  0 99 MOVZ,  NR-EXIT SYS, ;
 
 : BPROF-ON
-   NEWLBL NEWLBL {: zl zd :}
+   LBL LBL {: zl zd :}
    A G-POP  A DATA PROF-LIM STR,
    9 0 MOVZ,  9 DATA PROF-TOT STR,  9 DATA PROF-OTHER STR,
    7 PROF-CNT LIT64,  7 DATA 7 ADD,  8 NDICT 0 ADDI,

@@ -68,7 +68,7 @@ variable #IC
 create LBLPOS MAX-LBL cells allot
 variable #LBL
 
-: NEWLBL ( -- lbl )  #LBL @ dup MAX-LBL >= if E-LBL-OVERFLOW throw then  1 #LBL +! ;
+: LBL ( -- lbl )  #LBL @ dup MAX-LBL >= if E-LBL-OVERFLOW throw then  1 #LBL +! ;
 
 : LBL, ( lbl -- )  0 0 0 IOP-LABEL IC, ;
 

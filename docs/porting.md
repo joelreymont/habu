@@ -20,7 +20,7 @@ Arg registers are x0..x5 at every call site (darwin and linux agree).
 The engine emitters speak the MNEMONIC layer only. An x86_64 port implements
 the same wordlist with the same stack contracts:
 
-- data: `DCQ, DLBL, BYTES,` labels: `NEWLBL LBL,` control: `B, BL, CBZ, CBNZ,
+- data: `DCQ, DLBL, BYTES,` labels: `LBL LBL,` control: `B, BL, CBZ, CBNZ,
   BCOND, RET, BLR, BR,` (+ `C-EQ C-NE C-LT C-GE C-GT C-LE C-CS C-CC` codes)
 - moves: `MOVZ, MOVN, MOVK, MOV, LIT64, ADR,`
 - alu: `ADD, SUB, MUL, SDIV, UDIV, ADDI, SUBI, AND, ORR, EOR,

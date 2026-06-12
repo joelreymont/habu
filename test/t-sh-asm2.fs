@@ -64,7 +64,7 @@ T{ ENCGEN  EB EL @ compare 0= -> true }T
 : P3GEN ( -- a u )
    0 CL !
    s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/core/util.f" +F
-   s" : GO ASM-INIT NEWLBL dup 5 swap ADR, LBL, $1122334455667788 DCQ, " +B
+   s" : GO ASM-INIT LBL dup 5 swap ADR, LBL, $1122334455667788 DCQ, " +B
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;
 P3REF

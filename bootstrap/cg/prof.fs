@@ -21,7 +21,7 @@ $0042 constant SA-PROF-FLAGS    \ SA_SIGINFO|SA_RESTART
 \ Clobbers x0-x2,x9-x17; loop regs x5/x6 survive G-PRINT9 (x9..x14) + syscalls.
 : EMIT-PROFDUMP ( -- )
    LPROFDUMP @ LBL,
-   NEWLBL {: dl :}  NEWLBL {: dn :}  NEWLBL {: dd :}  NEWLBL {: dret :}
+   LBL {: dl :}  LBL {: dn :}  LBL {: dd :}  LBL {: dret :}
    5 DBASE 0 ADDI,  6 0 MOVZ,                       \ rec, i
    dl LBL,
       7 NDICT 0 ADDI,  6 7 CMP,  C-GE dd BCOND,
@@ -46,7 +46,7 @@ $0042 constant SA-PROF-FLAGS    \ SA_SIGINFO|SA_RESTART
 \ so clobbering registers here is safe.
 : EMIT-PROF ( -- )
    LPROFH @ LBL,
-   NEWLBL {: pl :}  NEWLBL {: pnext :}  NEWLBL {: pdone :}  NEWLBL {: prep :}  NEWLBL {: psig :}
+   LBL {: pl :}  LBL {: pnext :}  LBL {: pdone :}  LBL {: prep :}  LBL {: psig :}
    21 4 MCTX-OFF LDR,  9 21 272 LDR,                \ x9 = interrupted pc
    10 DATA PROF-TOT LDR,  10 10 1 ADDI,  10 DATA PROF-TOT STR,
    11 DATA PROF-LIM LDR,  10 11 CMP,  C-GE prep BCOND,
@@ -67,7 +67,7 @@ $0042 constant SA-PROF-FLAGS    \ SA_SIGINFO|SA_RESTART
 
 \ prims. prof-on ( n -- ): zero counters, set limit, install handler + 1ms timer.
 : BPROF-ON
-   NEWLBL {: zl :}  NEWLBL {: zd :}
+   LBL {: zl :}  LBL {: zd :}
    A G-POP  A DATA PROF-LIM STR,
    9 0 MOVZ,  9 DATA PROF-TOT STR,  9 DATA PROF-OTHER STR,
    7 PROF-CNT LIT64,  7 DATA 7 ADD,  8 NDICT 0 ADDI,         \ zero NDICT counters

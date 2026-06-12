@@ -48,19 +48,19 @@ $100000 constant HEAPSZ
 \ Native SDIV by 0 silently yields 0; gforth THROWS. Trap on a zero divisor so a
 \ miscompile can't pass off wrong data as a result (exact gforth exit code isn't
 \ matched — both error, different mechanism). T1 holds the divisor here.
-: G-DIV0? ( -- )  NEWLBL {: lok :}  T1 lok CBNZ,  BRK,  lok LBL, ;
+: G-DIV0? ( -- )  LBL {: lok :}  T1 lok CBNZ,  BRK,  lok LBL, ;
 
 : P-DIV   T1 G-POP  T0 G-POP  G-DIV0?  T0 T0 T1 SDIV, T0 G-PUSH ;
 
 : P-MOD   T1 G-POP  T0 G-POP  G-DIV0?  T2 T0 T1 SDIV,  T2 T2 T1 MUL,  T0 T0 T2 SUB,  T0 G-PUSH ;
 
-: P-QDUP T0 G-POP  T0 G-PUSH  NEWLBL {: l :}  T0 l CBZ,  T0 G-PUSH  l LBL, ;
+: P-QDUP T0 G-POP  T0 G-PUSH  LBL {: l :}  T0 l CBZ,  T0 G-PUSH  l LBL, ;
 
-: P-ABS  T0 G-POP  T0 0 CMPI,  NEWLBL {: l :}  C-GE l BCOND,  T0 SP T0 SUB,  l LBL,  T0 G-PUSH ;
+: P-ABS  T0 G-POP  T0 0 CMPI,  LBL {: l :}  C-GE l BCOND,  T0 SP T0 SUB,  l LBL,  T0 G-PUSH ;
 
-: P-MIN  T1 G-POP  T0 G-POP  T0 T1 CMP,  NEWLBL {: l :}  C-LE l BCOND,  T0 T1 0 ADDI,  l LBL,  T0 G-PUSH ;
+: P-MIN  T1 G-POP  T0 G-POP  T0 T1 CMP,  LBL {: l :}  C-LE l BCOND,  T0 T1 0 ADDI,  l LBL,  T0 G-PUSH ;
 
-: P-MAX  T1 G-POP  T0 G-POP  T0 T1 CMP,  NEWLBL {: l :}  C-GE l BCOND,  T0 T1 0 ADDI,  l LBL,  T0 G-PUSH ;
+: P-MAX  T1 G-POP  T0 G-POP  T0 T1 CMP,  LBL {: l :}  C-GE l BCOND,  T0 T1 0 ADDI,  l LBL,  T0 G-PUSH ;
 
 : P-2/   T0 G-POP  T0 T0 1 ASRI,  T0 G-PUSH ;
 
@@ -76,19 +76,19 @@ variable EPILOG  variable LOOP-DEPTH
 
 : CF-POP  ( -- x )  -1 CF-SP +!  CF-STK CF-SP @ cells + @ ;
 
-: C-IF    T0 G-POP  NEWLBL dup T0 swap CBZ,  CF-PUSH ;
+: C-IF    T0 G-POP  LBL dup T0 swap CBZ,  CF-PUSH ;
 
-: C-ELSE  NEWLBL dup B,  CF-POP LBL,  CF-PUSH ;
+: C-ELSE  LBL dup B,  CF-POP LBL,  CF-PUSH ;
 
 : C-THEN  CF-POP LBL, ;
 
-: C-BEGIN NEWLBL dup LBL,  CF-PUSH ;
+: C-BEGIN LBL dup LBL,  CF-PUSH ;
 
 : C-UNTIL T0 G-POP  CF-POP T0 swap CBZ, ;
 
 : C-AGAIN CF-POP B, ;
 
-: C-WHILE T0 G-POP  NEWLBL dup T0 swap CBZ,  CF-PUSH ;
+: C-WHILE T0 G-POP  LBL dup T0 swap CBZ,  CF-PUSH ;
 
 : C-REPEAT CF-POP  CF-POP B,  LBL, ;            \ ( LEXIT Lbegin -- ) B Lbegin; place LEXIT
 \ DO/?DO/LOOP/I keep index+limit on the return stack, so loops nest.
@@ -103,14 +103,14 @@ variable EPILOG  variable LOOP-DEPTH
 : LOOP-REST ( -- )  LOOP-DEPTH @ 1 > if  LIDX G-RPOP  LLIM G-RPOP  then  -1 LOOP-DEPTH +! ;
 
 : C-DO    LOOP-SAVE  LIDX G-POP  LLIM G-POP              \ index->x27, limit->x28
-          NEWLBL {: LEXIT :}  NEWLBL {: ltop :}  ltop LBL,
+          LBL {: LEXIT :}  LBL {: ltop :}  ltop LBL,
           LEXIT CF-PUSH  ltop CF-PUSH ;
 
 : C-QDO   LOOP-SAVE  LIDX G-POP  LLIM G-POP
-          NEWLBL {: LEXIT :}  LIDX LLIM CMP,
-          NEWLBL {: lenter :}  C-LT lenter BCOND,         \ index<limit -> enter
+          LBL {: LEXIT :}  LIDX LLIM CMP,
+          LBL {: lenter :}  C-LT lenter BCOND,         \ index<limit -> enter
           LEXIT B,                                        \ else skip (lexit does the restore)
-          lenter LBL,  NEWLBL {: ltop :}  ltop LBL,
+          lenter LBL,  LBL {: ltop :}  ltop LBL,
           LEXIT CF-PUSH  ltop CF-PUSH ;
 
 : C-LOOP  CF-POP {: ltop :}  CF-POP {: LEXIT :}

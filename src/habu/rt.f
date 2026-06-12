@@ -12,7 +12,7 @@ variable DOT-LBL  variable ATOI-LBL
 \ print x9 as signed decimal + newline (itoa into an sp buffer, then write(1,..)).
 \ clobbers x9-x14 + 32 bytes of sp scratch; preserves XDS.
 : G-PRINT9
-   NEWLBL NEWLBL NEWLBL {: lpos lloop lns :}
+   LBL LBL LBL {: lpos lloop lns :}
    SP SP 32 SUBI,  12 SP 32 ADDI,
    13 10 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,
    14 0 MOVZ,  9 0 CMPI,
@@ -37,7 +37,7 @@ variable DOT-LBL  variable ATOI-LBL
    SP SP 32 SUBI,  12 SP 32 ADDI,
    13 10 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,
    10 10 MOVZ,
-   NEWLBL {: lloop :}  lloop LBL,
+   LBL {: lloop :}  lloop LBL,
    11 9 10 UDIV,  13 11 10 MUL,  13 9 13 SUB,
    13 13 48 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
    9 11 0 ADDI,  9 lloop CBNZ,
@@ -54,7 +54,7 @@ variable DOT-LBL  variable ATOI-LBL
 \ ATOI: NUL-terminated decimal string at x9 -> push i64 (leading '-' ok). Leaf.
 : EMIT-ATOI
    ATOI-LBL @ LBL,
-   NEWLBL NEWLBL NEWLBL {: lpos lloop ldone :}
+   LBL LBL LBL {: lpos lloop ldone :}
    10 0 MOVZ,
    11 1 MOVZ,
    12 9 0 LDRB,  12 45 CMPI,

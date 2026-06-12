@@ -88,8 +88,8 @@ is EMIT-CALL
 : BUILD-PROGRAM {: root input -- :}
    ICODE-RESET  CF-RESET  USES-DOT off
    root COLLECT
-   #DEPS @ 0 ?do  NEWLBL  DEPS i cells + @ PFA>LABEL !  loop
-   USES-DOT @ if  NEWLBL DOT-LBL !  then
+   #DEPS @ 0 ?do  LBL  DEPS i cells + @ PFA>LABEL !  loop
+   USES-DOT @ if  LBL DOT-LBL !  then
    512 G-PROLOGUE                         \ MAIN: data + return stacks
    input G-LIT
    root PFA>LABEL @ BL,                   \ call the root word
@@ -110,8 +110,8 @@ is EMIT-CALL
    root PFA>ARITY to ar
    ICODE-RESET  CF-RESET  USES-DOT off
    root COLLECT
-   #DEPS @ 0 ?do  NEWLBL  DEPS i cells + @ PFA>LABEL !  loop
-   NEWLBL DOT-LBL !   NEWLBL ATOI-LBL !
+   #DEPS @ 0 ?do  LBL  DEPS i cells + @ PFA>LABEL !  loop
+   LBL DOT-LBL !   LBL ATOI-LBL !
    ARGV 1 0 ADDI,                         \ x22 = argv  (entry: x0=argc, x1=argv)
    512 G-PROLOGUE                         \ data + return stacks
    ar 0 ?do  9 ARGV i 1+ 8 *  LDR,  ATOI-LBL @ BL,  loop  \ push atoi(argv[1..ar])

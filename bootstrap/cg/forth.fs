@@ -115,13 +115,13 @@ create PNPOOL 1024 chars allot   variable PNP   variable #PL
    na dst nu move   nu PNP +!   1 #PL +! ;
 
 : FPRIM {: na nu xt -- :}            \ define+register a primitive (start..RET..end labels)
-   NEWLBL {: lbl :}  NEWLBL {: elbl :}
-   na nu lbl elbl REG-PRIM
+   LBL LBL {: lbl elbl :}                \ both allocated BEFORE the locals bind:
+   na nu lbl elbl REG-PRIM               \ a local named lbl shadows the LBL word
    lbl LBL,  SP SP 16 SUBI,  30 SP 0 STR,    \ prologue: save x30 (calls now nest, not inline)
    xt execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  elbl LBL, ;
 
 : FPRIM-L {: na nu xt -- :}          \ LEAF primitive: no BL/BLR in the body, so no
-   NEWLBL {: lbl :}  NEWLBL {: elbl :}   \ x30 frame — 2x cheaper calls, fully inlineable
+   LBL LBL {: lbl elbl :}          \ x30 frame — 2x cheaper calls, fully inlineable
    na nu lbl elbl REG-PRIM
    lbl LBL,  xt execute  RET,  elbl LBL, ;
 
@@ -166,7 +166,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 : BU.   A G-POP  G-PRINTU9 ;         \ pop x9, print unsigned decimal + newline
 
 : BRUNRC  A G-POP                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
-   NEWLBL {: spok :}  NEWLBL {: spdn :}  NEWLBL {: spw :}
+   LBL {: spok :}  LBL {: spdn :}  LBL {: spw :}
    SP SP 64 SUBI,
    9 SP 16 STR,                      \ argv[0] = path
    10 0 MOVZ,  10 SP 24 STR,         \ argv[1] = 0
@@ -220,7 +220,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ consuming it. The loop pointer lives in a DATA cell because G-PRINT9 clobbers x9..x15.
 : B.S
    9 DATA S0-CELL LDR,  9 DATA SSCR-CELL STR,
-   NEWLBL {: sl :}  NEWLBL {: sd :}
+   LBL {: sl :}  LBL {: sd :}
    sl LBL,
       9 DATA SSCR-CELL LDR,  9 XDS CMP,  C-GE sd BCOND,
       9 9 0 LDR,  G-PRINT9
@@ -339,7 +339,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    11 DATA 8 LDR,  11 SP 0 STR,          \ prev HND
    19 SP 8 STR,                          \ data sp
    13 SP 48 ADDI,  13 SP 16 STR,         \ machine sp to restore (= frame+48)
-   NEWLBL {: lres :}  NEWLBL {: lpush :}
+   LBL {: lres :}  LBL {: lpush :}
    12 lres ADR,  12 SP 24 STR,           \ resume pc
    14 SP 0 ADDI,  14 DATA 8 STR,         \ HND = this frame
    9 BLR,                                \ run xt (may throw)
@@ -352,13 +352,13 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 : BTHROW
    A G-POP                               \ exc -> x9
    11 DATA 8 LDR,                        \ HND
-   NEWLBL {: lnoh :}  11 lnoh CBZ,
+   LBL {: lnoh :}  11 lnoh CBZ,
    19 11 8 LDR,                          \ restore data sp
    10 11 0 LDR,  10 DATA 8 STR,          \ HND = prev
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,   \ link, resume pc, machine sp
    SP 13 0 ADDI,  12 BR,                 \ restore sp; jump to catch's resume
    lnoh LBL,
-   10 DATA REPLH-CELL LDR,  NEWLBL {: lnorec :}  10 lnorec CBZ,
+   10 DATA REPLH-CELL LDR,  LBL {: lnorec :}  10 lnorec CBZ,
    10 DATA RRECP-CELL LDR,  10 BR,                                \ tty REPL: recover instead of dying
    lnorec LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;   \ no handler -> exit(exc)
 
@@ -375,8 +375,8 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 : BSWL
    2 G-POP  1 G-POP  0 G-POP                      \ wid=x2, u=x1, a=x0
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,   \ fold mask, rec, count, result
-   NEWLBL {: wl :} NEWLBL {: wend :} NEWLBL {: wnext :} NEWLBL {: wcmp :}
-   NEWLBL {: wmatch :} NEWLBL {: wf1 :} NEWLBL {: wf2 :}
+   LBL {: wl :} LBL {: wend :} LBL {: wnext :} LBL {: wcmp :}
+   LBL {: wmatch :} LBL {: wf1 :} LBL {: wf2 :}
    wl LBL,  6 wend CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,    \ wid mismatch
       9 5 16 LDR,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
@@ -469,7 +469,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 : BF>S  A G-POP  0 A FMOVXD,  A 0 FCVTZS,  A G-PUSH ;
 
 : BFDOT
-   NEWLBL NEWLBL NEWLBL {: fl il sd :}
+   LBL LBL LBL {: fl il sd :}
    A G-POP  15 A 0 ADDI,                               \ bits (sign test later)
    SP SP 48 SUBI,
    12 SP 48 ADDI,
@@ -515,7 +515,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    LBCAP @ LBL,
    11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    LBCS @ LBL,
-   NEWLBL NEWLBL NEWLBL {: bok bcp bcd :}
+   LBL LBL LBL {: bok bcp bcd :}
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
    14 DATA BODYLEN-CELL LDR,
    5 BODYBUF-CAP MOVZ,  14 5 CMP,  C-LT bok BCOND,
@@ -532,8 +532,8 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ ---- TOK ( -- x0=have? ) : skip spaces, scan one token into TKA/TKL, advance INP ----
 : EMIT-TOK ( -- )
    LTOK @ LBL,
-   NEWLBL {: tskip :}  NEWLBL {: thas :}  NEWLBL {: tscan :}
-   NEWLBL {: tgot :}   NEWLBL {: tnone :}
+   LBL {: tskip :}  LBL {: thas :}  LBL {: tscan :}
+   LBL {: tgot :}   LBL {: tnone :}
    11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
    tskip LBL,                                          \ skip whitespace (any byte <= 32)
       11 12 CMP,  C-GE tnone BCOND,
@@ -558,7 +558,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ `;` cost O(total code), O(n^2) over a program build) ----
 : EMIT-FLUSH ( -- )
    LFLUSH @ LBL,
-   NEWLBL {: fdl :}  NEWLBL {: fdd :}  NEWLBL {: fil :}  NEWLBL {: fid :}
+   LBL {: fdl :}  LBL {: fdd :}  LBL {: fil :}  LBL {: fid :}
    9 9 6 LSRI,  9 9 6 LSLI,                                 \ align start down to the
    10 9 0 ADDI,                                             \ line, or the 64-byte
                                                             \ stride skips the last one
@@ -572,8 +572,8 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 : EMIT-FIND ( -- )
    LFIND @ LBL,
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  13 0 MOVZ,           \ rec, remaining, found=0
-   NEWLBL {: floop :}  NEWLBL {: fdone :}  NEWLBL {: fnext :}
-   NEWLBL {: fcmp :}   NEWLBL {: fmatch :}
+   LBL {: floop :}  LBL {: fdone :}  LBL {: fnext :}
+   LBL {: fcmp :}   LBL {: fmatch :}
    floop LBL,
       6 fdone CBZ,
       14 5 16 LDR,  14 14 $FF ANDI,  14 10 CMP,  C-NE fnext BCOND,         \ namelen != tkl
@@ -598,19 +598,19 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 : EMIT-NUM ( -- )
    LNUM @ LBL,
    11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ,   \ val sign idx ok base=10
-   NEWLBL {: ldone :}
+   LBL {: ldone :}
    10 ldone CBZ,                                                \ empty token -> fail
-   15 9 0 LDRB,  15 45 CMPI,  NEWLBL {: ndoll :}  C-NE ndoll BCOND,  \ leading '-'
+   15 9 0 LDRB,  15 45 CMPI,  LBL {: ndoll :}  C-NE ndoll BCOND,  \ leading '-'
       13 0 MOVN,  14 1 MOVZ,
    ndoll LBL,
    14 10 CMP,  C-GE ldone BCOND,                                \ "-" only -> fail (before probe!)
-   5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  NEWLBL {: nohex :}  C-NE nohex BCOND,  \ '$' prefix
+   5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  LBL {: nohex :}  C-NE nohex BCOND,  \ '$' prefix
       6 16 MOVZ,  14 14 1 ADDI,
    nohex LBL,
    2 0 MOVZ,                                                    \ frac mode off
    14 10 CMP,  C-GE ldone BCOND,                                \ nothing after sign/$ -> fail
-   NEWLBL {: lloop :}  NEWLBL {: lok :}  NEWLBL {: gotd :}  NEWLBL {: nd :}  NEWLBL {: nuc :}
-   NEWLBL {: ndot :}  NEWLBL {: isfrac :}  NEWLBL {: lint :}  NEWLBL {: fpos :}
+   LBL {: lloop :}  LBL {: lok :}  LBL {: gotd :}  LBL {: nd :}  LBL {: nuc :}
+   LBL {: ndot :}  LBL {: isfrac :}  LBL {: lint :}  LBL {: fpos :}
    lloop LBL,
    14 10 CMP,  C-GE lok BCOND,
    5 9 14 ADD,  15 5 0 LDRB,                                    \ c = next byte
@@ -681,8 +681,8 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 
 : C-CALL ( -- )
-   NEWLBL {: lcall :}  NEWLBL {: lcopy :}  NEWLBL {: lscan :}  NEWLBL {: lsbody :}
-   NEWLBL {: lnopro :}  NEWLBL {: linl :}  NEWLBL {: ldone :}
+   LBL {: lcall :}  LBL {: lcopy :}  LBL {: lscan :}  LBL {: lsbody :}
+   LBL {: lnopro :}  LBL {: linl :}  LBL {: ldone :}
    9 11 0 LDRW,  8 $D10043FF LIT64,  9 8 CMP,  C-NE lnopro BCOND,
       12 INL-MAX 16 + CMPI,  C-GT lcall BCOND,
       13 11 8 ADDI,  14 11 12 ADD,  14 14 8 SUBI,  lscan B,   \ meat [addr+8, addr+clen-8)
@@ -719,7 +719,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ (batch REPL: `echo ': SQ DUP * ; 5 SQ .' | ./forth`). Clobbers x0-x5,x9,x11,x16.
 : EMIT-SOURCE ( -- )
    STDIN? @ if
-      NEWLBL {: rpipe :}  NEWLBL {: rgo :}
+      LBL {: rpipe :}  LBL {: rgo :}
       \ a tty? run the BAKED source (the REPL bootstrap) instead of a blocking
       \ read-to-EOF; a pipe keeps the classic batch read-all below.
       0 0 MOVZ,  1 $40487413 LIT64,  2 DATA BODYBUF-OFF ADDI,  NR-IOCTL SYS,
@@ -729,7 +729,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
       NR-MMAP SYS,                       \ mmap RW input buffer -> x0
       11 0 0 ADDI,  9 0 0 ADDI,                    \ x11 = base, x9 = write ptr
-      NEWLBL {: rl :}  NEWLBL {: RD :}
+      LBL {: rl :}  LBL {: RD :}
       rl LBL,
          0 0 MOVZ,  1 9 0 ADDI,                    \ read(fd=0, buf=ptr, …)
          2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,   \ count = base+SZ-ptr
@@ -759,19 +759,19 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    LPAT @ LBL,                                       \ patch imm19 (CBZ) / imm26 (B)
       11 9 0 LDRW,  10 CP 9 SUB,  10 10 2 ASRI,
       5 $80000000 LIT64,  13 11 5 AND,
-      NEWLBL {: pisb :}  NEWLBL {: pdone :}
+      LBL {: pisb :}  LBL {: pdone :}
       13 pisb CBZ,                                    \ bit31==0 -> B (imm26)
          5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,  pdone B,
       pisb LBL,  5 $3FFFFFF LIT64,  10 10 5 AND,
       pdone LBL,  11 11 10 ORR,  11 9 0 STRW,  RET,
    LKWCMP @ LBL,
-      NEWLBL {: kno :}  NEWLBL {: kyes :}  NEWLBL {: kchk :}
+      LBL {: kno :}  LBL {: kyes :}  LBL {: kchk :}
       2 DATA TKL-CELL LDR,  2 1 CMP,  C-NE kno BCOND,
       2 0 MOVZ,  3 $20 MOVZ,
       kchk LBL,
          2 1 CMP,  C-GE kyes BCOND,
          4 DATA TKA-CELL LDR,  4 4 2 ADD,  4 4 0 LDRB,                    \ token byte
-         NEWLBL {: knf :}                             \ fold ONLY A-Z (symbols stay literal)
+         LBL {: knf :}                             \ fold ONLY A-Z (symbols stay literal)
          4 $41 CMPI,  C-LT knf BCOND,  4 $5A CMPI,  C-GT knf BCOND,  4 4 3 ORR,
          knf LBL,
          5 0 2 ADD,    5 5 0 LDRB,                    \ keyword byte (stored lower-case / literal)
@@ -780,7 +780,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       kyes LBL,  0 1 MOVZ,  RET,
       kno  LBL,  0 0 MOVZ,  RET,
    LBCHAIN @ LBL,                                    \ patch a B-placeholder chain:
-      NEWLBL {: bcl :}  NEWLBL {: bcd :}             \ x9=head offset, x14=target;
+      LBL {: bcl :}  LBL {: bcd :}             \ x9=head offset, x14=target;
       bcl LBL,  9 bcd CBZ,                           \ clobbers x5,x10-x12
          10 DBASE 9 ADD,  11 10 0 LDRW,
          12 14 10 SUB,  12 12 2 ASRI,
@@ -796,8 +796,8 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    LLOC-FIND @ LBL,
    9 DATA LOCN-CELL LDR,  10 0 MOVZ,
    6 DATA TKL-CELL LDR,  7 DATA TKA-CELL LDR,                 \ x9=N  x10=i
-   NEWLBL {: ll :}  NEWLBL {: lmiss :}  NEWLBL {: lhit :}
-   NEWLBL {: lcmp :}  NEWLBL {: lnext :}
+   LBL {: ll :}  LBL {: lmiss :}  LBL {: lhit :}
+   LBL {: lcmp :}  LBL {: lnext :}
    ll LBL,  10 9 CMP,  C-GE lmiss BCOND,
       12 LOC-REC MOVZ,  11 10 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,   \ entry
       12 11 0 LDR,  12 6 CMP,  C-NE lnext BCOND,   \ len mismatch
@@ -996,7 +996,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ region to RW would un-map EXECUTE from the page the defining word runs on.
 \ Locals BEFORE does> are refused (the shared teardown wouldn't match).
 : J-DOES ( -- )
-   NEWLBL {: dok :}
+   LBL {: dok :}
    12 DATA LOCF-CELL LDR,  12 dok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
@@ -1013,7 +1013,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ literal in the OUTER word (xt on the stack at outer runtime). One level; the
 \ EXIT chain is scoped to the quotation; locals inside are refused.
 : J-QUOT ( -- )
-   NEWLBL {: qok :}
+   LBL {: qok :}
    9 DATA QPATCH-CELL LDR,  9 qok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
@@ -1027,7 +1027,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    9 $F90003FE LIT64,  LCEMIT @ BL, ;
 
 : J-SEMIQUOT ( -- )
-   NEWLBL {: sqok :}
+   LBL {: sqok :}
    9 DATA QPATCH-CELL LDR,  9 sqok CBNZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
@@ -1065,7 +1065,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ C-LIT emitter (with x11 = DP) for the literal-push body.
 \ record defining words for the checker: append the kind token + run the hook
 \ (verdict ignored — create/variable/constant always publish).
-: C-DEFHOOK  NEWLBL {: kwv klen nohk :}
+: C-DEFHOOK  LBL {: kwv klen nohk :}
    11 kwv @ ADR,  12 klen MOVZ,  LBCS @ BL,
    9 DATA HOOK-CELL LDR,  9 nohk CBZ,
    10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
@@ -1081,7 +1081,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ be does>-patched to any effect, so it publishes unrecorded; the author
 \ declares it with `trust`.
 : EMIT-CREATE ( -- )
-   NEWLBL {: nokind :}
+   LBL {: nokind :}
    LCREATE @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  15 SP 8 STR,
    2 3 MOVZ,  LPROT @ BL,                               \ region -> RW
@@ -1091,7 +1091,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,                            \ slot.addr=CP, namelen
    14 DATA CUR-CELL LDR,  14 9 40 STR,                   \ slot.wid = CURRENT
    10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,         \ copy name
-   NEWLBL {: ncp :}  NEWLBL {: ncpd :}
+   LBL {: ncp :}  LBL {: ncpd :}
    ncp LBL,  12 ncpd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
       10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncp B,
    ncpd LBL,
@@ -1122,7 +1122,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
    10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
-   NEWLBL {: kcp :}  NEWLBL {: kcd :}
+   LBL {: kcp :}  LBL {: kcd :}
    kcp LBL,  12 kcd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
       10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  kcp B,
    kcd LBL,
@@ -1145,7 +1145,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ POSTPONE NAME (compile): immediate -> compile the call; ordinary -> bake the
 \ xt and compile a call to the `compile,` prim (appends the call at ITS runtime).
 : C-POSTPONE ( -- )
-   NEWLBL {: pok :}  NEWLBL {: pnimm :}  NEWLBL {: pdone :}
+   LBL {: pok :}  LBL {: pnimm :}  LBL {: pdone :}
    LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 pok CBNZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -1169,11 +1169,11 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ the address as a literal push into the word being compiled (via c-lit, x11=addr).
 : C-TICK ( -- )
    LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   NEWLBL {: tk :}  13 tk CBZ,  11 G-PUSH  tk LBL, ;
+   LBL {: tk :}  13 tk CBZ,  11 G-PUSH  tk LBL, ;
 
 : C-BTICK ( -- )
    LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   NEWLBL {: bk :}  13 bk CBZ,  C-LIT  bk LBL, ;
+   LBL {: bk :}  13 bk CBZ,  C-LIT  bk LBL, ;
 
 \ {: a b :} (compile): record the names in the locals table, carve a machine-stack
 \ frame, and pop the declared values into slots (slot 0 = first/deepest name). The
@@ -1181,21 +1181,21 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 : C-LBRACE ( -- )
    \ FOOTGUN GUARD 1: {: inside IF/BEGIN/DO corrupts the frame (the CF stack is
    \ non-empty while compiling control flow) — refuse loudly: token + exit(75).
-   NEWLBL {: cfok :}
+   LBL {: cfok :}
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    cfok LBL,
    \ FOOTGUN GUARD 1c: {: inside [: ;] — the locals frame belongs to the OUTER
    \ word; the quotation's epilogue would not tear it down. Refuse: exit(75).
-   NEWLBL {: qlok :}
+   LBL {: qlok :}
    11 DATA QPATCH-CELL LDR,  11 qlok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    qlok LBL,
    \ FOOTGUN GUARD 1b: {: after EXIT — the patched epilogue would tear down a
    \ frame the exit path never carved. Refuse loudly: token + exit(75).
-   NEWLBL {: xok :}
+   LBL {: xok :}
    11 DATA EXITH-CELL LDR,  11 xok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
@@ -1205,20 +1205,20 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    \ slots shift UP by each later carve, and LOCF tracks the running total, so
    \ the offset stays compile-time computable. Teardown stays `add sp,#LOCF`.
    6 DATA LOCN-CELL LDR,                      \ x6 = start slot for this block (= current N)
-   NEWLBL {: nl :}  NEWLBL {: nd :}  NEWLBL {: nstore :}  NEWLBL {: ncp :}  NEWLBL {: ncd :}
+   LBL {: nl :}  LBL {: nd :}  LBL {: nstore :}  LBL {: ncp :}  LBL {: ncd :}
    nl LBL,
       LTOK @ BL,  0 nd CBZ,
       LBCAP @ BL,                                          \ locals reach the checker too
       0 LKWENDLOC @ ADR,  1 2 MOVZ,  LKWCMP @ BL,  0 nstore CBZ,  nd B,   \ ":}" -> done
       nstore LBL,
       \ cap: the LOCNAMES table holds 64 records — die loudly past it
-      NEWLBL {: nlok :}
+      LBL {: nlok :}
       11 DATA LOCN-CELL LDR,  11 64 CMPI,  C-LT nlok BCOND,
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
          0 75 MOVZ,  NR-EXIT SYS,
       nlok LBL,
       \ FOOTGUN GUARD 2: a local named i/I is shadowed by the loop-index keyword
-      NEWLBL {: noti :}
+      LBL {: noti :}
       13 DATA TKL-CELL LDR,  13 1 CMPI,  C-NE noti BCOND,
       13 DATA TKA-CELL LDR,  13 13 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -1227,7 +1227,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
       \ typed local a:n — references use the BARE name; the :type suffix is
       \ checker-only (it reaches the hook via the body capture). x14 = bare len.
-      NEWLBL {: tsl :}  NEWLBL {: tsd :}
+      LBL {: tsl :}  LBL {: tsd :}
       14 0 MOVZ,  8 DATA TKL-CELL LDR,  10 DATA TKA-CELL LDR,
       tsl LBL,  14 8 CMP,  C-GE tsd BCOND,
          15 10 14 ADD,  15 15 0 LDRB,  15 58 CMPI,  C-EQ tsd BCOND,
@@ -1248,7 +1248,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    15 DATA LOCF-CELL LDR,  15 15 5 ADD,  15 DATA LOCF-CELL STR,   \ (pad sits below the slots)
    12 DATA LOCF-CELL LDR,  12 12 3 LSRI,      \ x12 = total slots in the frame
    13 DATA LOCN-CELL LDR,  13 13 1 SUBI,      \ i = N-1
-   NEWLBL {: pl :}  NEWLBL {: pd :}
+   LBL {: pl :}  LBL {: pd :}
    pl LBL,
       13 6 CMP,  C-LT pd BCOND,               \ i < start -> done
       9 $D1002273 LIT64,  LCEMIT @ BL,        \ sub x19,#8
@@ -1262,12 +1262,12 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ ( addr len ). Compile mode bakes bytes into the code image instead (c-sdq).
 : C-ISDQ ( -- )
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,                      \ skip one space; x13 = start
-   NEWLBL {: sl :}  NEWLBL {: sd :}
+   LBL {: sl :}  LBL {: sd :}
    sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
    sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,             \ x10 = len; skip closing "
    12 DATA 0 LDR,  15 12 0 ADDI,                        \ x12 = DP, x15 = string base
    11 13 0 ADDI,  9 10 0 ADDI,
-   NEWLBL {: cl :}  NEWLBL {: cd :}
+   LBL {: cl :}  LBL {: cd :}
    cl LBL,  9 cd CBZ,
       14 11 0 LDRB,  14 12 0 STRB,  12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
    cd LBL,
@@ -1279,13 +1279,13 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ compile time, so C-LIT pushes it (no PC-relative ADR needed).
 : C-SDQ ( -- )
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,                      \ skip one space; x13 = start
-   NEWLBL {: sl :}  NEWLBL {: sd :}
+   LBL {: sl :}  LBL {: sd :}
    sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
    sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,             \ x10 = len; skip closing "
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,      \ x15 = B addr; emit B placeholder
    12 CP 0 ADDI,                                        \ x12 = byte addr (after the B)
    11 13 0 ADDI,  9 10 0 ADDI,                          \ copy x10 bytes start->CP
-   NEWLBL {: cl :}  NEWLBL {: cd :}
+   LBL {: cl :}  LBL {: cd :}
    cl LBL,  9 cd CBZ,
       14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
    cd LBL,
@@ -1297,7 +1297,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ emit one compile-mode keyword case: if TKA/TKL == kw, run handler then back to lmain
 : CF-ENTRY {: lmainlbl kwvar kwlen hxt -- :}
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
-   NEWLBL {: skip :}  0 skip CBZ,
+   LBL {: skip :}  0 skip CBZ,
    LVSPILL @ BL,
    hxt execute  lmainlbl B,
    skip LBL, ;
@@ -1306,7 +1306,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
 : CFN-ENTRY {: lmainlbl kwvar kwlen hxt -- :}
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
-   NEWLBL {: skip :}  0 skip CBZ,
+   LBL {: skip :}  0 skip CBZ,
    hxt execute  lmainlbl B,
    skip LBL, ;
 
@@ -1317,7 +1317,7 @@ variable CFSK2
 \ a REGISTER top branches directly (no spill + memory pop); con or empty falls
 \ back to the spill + pop path. hxtr gets the condition reg in x14.
 : CFB-ENTRY {: lmainlbl kwvar kwlen hxtm hxtr :}
-   NEWLBL CFSK !  NEWLBL CFSK2 !
+   LBL CFSK !  LBL CFSK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
    6 DATA VSP-CELL LDR,  6 CFSK2 @ CBZ,
@@ -1339,7 +1339,7 @@ variable CFSK2
 \ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
 \ LVDROP (which only relabels the VS, no emission).
 : CFBN-ENTRY {: lmainlbl kwvar kwlen hxtm hxtr :}
-   NEWLBL CFSK !  NEWLBL CFSK2 !
+   LBL CFSK !  LBL CFSK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
    6 DATA VSP-CELL LDR,  6 CFSK2 @ CBZ,
@@ -1373,7 +1373,7 @@ variable CFSK2
    0 RBASE-VA LIT64,  1 REGION LIT64,  2 3 MOVZ,  3 $1012 LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
    5 RBASE-VA LIT64,  0 5 CMP,
-   NEWLBL {: rvok :}  C-EQ rvok BCOND,
+   LBL {: rvok :}  C-EQ rvok BCOND,
       0 78 MOVZ,  NR-EXIT SYS,                         \ fixed VA taken: die loudly
    rvok LBL,
    DBASE 0 0 ADDI,                                    \ x26 = region
@@ -1381,7 +1381,7 @@ variable CFSK2
    \ seed runtime dict from build-time dict (convert offsets -> absolute addr + clen)
    11 LNCOUNT @ ADR,  11 11 0 LDR,  NDICT 11 0 ADDI,  \ x27 = NDICT = seed count
    9 LDICT @ ADR,  10 DBASE 0 ADDI,  12 11 0 ADDI,    \ src, dst, i
-   NEWLBL {: scopy :}  NEWLBL {: scdone :}
+   LBL {: scopy :}  LBL {: scdone :}
    scopy LBL,
       12 scdone CBZ,
       5 9 0 LDR,  6 9 8 LDR,                          \ startoff, endoff
@@ -1396,7 +1396,7 @@ variable CFSK2
    0 DATA-VA LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 $1012 LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
    5 DATA-VA LIT64,  0 5 CMP,
-   NEWLBL {: dvok :}  C-EQ dvok BCOND,
+   LBL {: dvok :}  C-EQ dvok BCOND,
       0 78 MOVZ,  NR-EXIT SYS,
    dvok LBL,
    20 0 RBASE-CELL STR,                               \ save RBASE (x20=__TEXT base) into the data region
@@ -1407,9 +1407,9 @@ variable CFSK2
    \ ---- AOT snapshot? (trailer at the end of our own __text). If present:
    \ restore both regions verbatim (fixed VAs keep region addresses valid),
    \ relocate engine-text call chains (the only ASLR-movers), boot WARM. ----
-   NEWLBL {: snomag :}  NEWLBL {: sc1 :}  NEWLBL {: sc1d :}
-   NEWLBL {: sc2 :}  NEWLBL {: sc2d :}
-   NEWLBL {: srl :}  NEWLBL {: srn :}  NEWLBL {: srx :}  NEWLBL {: snapdone :}
+   LBL {: snomag :}  LBL {: sc1 :}  LBL {: sc1d :}
+   LBL {: sc2 :}  LBL {: sc2d :}
+   LBL {: srl :}  LBL {: srn :}  LBL {: srx :}  LBL {: snapdone :}
    24 0 MOVZ,                                       \ x24 = snapshot flag
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,             \ x25 = live text CONTENT base
    10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
@@ -1421,7 +1421,7 @@ variable CFSK2
    6 12 24 LDR,                                     \ x6 = region payload len
    7 12 32 LDR,                                     \ x7 = data payload len
    \ corrupt/truncated trailer must never smear the regions: exit 79
-   NEWLBL {: snbad :}  NEWLBL {: snokz :}
+   LBL {: snbad :}  LBL {: snokz :}
    5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
    5 1280 MOVZ,  15 5 CMP,  C-GT snbad BCOND,
@@ -1446,7 +1446,7 @@ variable CFSK2
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
-   NEWLBL {: sdl2 :}  NEWLBL {: sdn2 :}  NEWLBL {: sds2 :}
+   LBL {: sdl2 :}  LBL {: sdn2 :}  LBL {: sds2 :}
    \ rebase seed-prim dict entries (slot.addr in the old engine text)
    9 DBASE 0 ADDI,  10 0 MOVZ,
    sdl2 LBL,  10 NDICT CMP,  C-GE sdn2 BCOND,
@@ -1486,7 +1486,7 @@ variable CFSK2
    24 1 MOVZ,
    snomag LBL,
    9 0 MOVZ,  9 DATA HND-CELL STR,                    \ HND (catch handler chain) = 0
-   NEWLBL {: cwok :}  24 cwok CBNZ,                   \ snapshot keeps warm CUR/WIDN/HOOK
+   LBL {: cwok :}  24 cwok CBNZ,                   \ snapshot keeps warm CUR/WIDN/HOOK
    9 0 MOVZ,  9 DATA CUR-CELL STR,                    \ CURRENT wordlist = 0 (FORTH)
    9 1 MOVZ,  9 DATA WIDN-CELL STR,                   \ next fresh wid = 1
    9 0 MOVZ,  9 DATA HOOK-CELL STR,                   \ check hook = none
@@ -1499,11 +1499,11 @@ variable CFSK2
    LVRINIT @ BL,                                     \ fill VRTAB/VRITAB from VRPACK
    EMIT-SOURCE                                        \ INP/INE <- baked LSRC or stdin
    9 0 MOVZ,  9 DATA PEND-CELL STR,                   \ interpret mode
-   NEWLBL {: LMAIN :}  NEWLBL {: LEXIT :}  NEWLBL {: LCOMPILE :}  NEWLBL {: LUNDEF :}
+   LBL {: LMAIN :}  LBL {: LEXIT :}  LBL {: LCOMPILE :}  LBL {: LUNDEF :}
    LMAIN LBL,
       LTOK @ BL,  0 LEXIT CBZ,
       \ skip comments (both modes): \ to end-of-line, ( to ')'
-      NEWLBL {: notcom :}  NEWLBL {: skln :}  NEWLBL {: skpar :}
+      LBL {: notcom :}  LBL {: skln :}  LBL {: skpar :}
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,
       9 92 CMPI,  C-EQ skln BCOND,                       \ '\'
@@ -1515,11 +1515,11 @@ variable CFSK2
       notcom LBL,
       9 DATA PEND-CELL LDR,  9 LCOMPILE CBNZ,
       \ ---------------- INTERPRET ----------------
-      NEWLBL {: lnotcolon :}
+      LBL {: lnotcolon :}
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotcolon BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,     \ ':'
          2 3 MOVZ,  LPROT @ BL,                             \ region -> RW *before* any write
-         NEWLBL {: cpok :}  NEWLBL {: ndok :}
+         LBL {: cpok :}  LBL {: ndok :}
          9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
             0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
             0 76 MOVZ,  NR-EXIT SYS,                    \ code region full
@@ -1534,7 +1534,7 @@ variable CFSK2
          CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,                         \ slot.addr=CP, slot.namelen
          14 DATA CUR-CELL LDR,  14 9 40 STR,                \ slot.wid = CURRENT
          10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,      \ copy name
-         NEWLBL {: ncopy :}  NEWLBL {: ncd :}
+         LBL {: ncopy :}  LBL {: ncd :}
          ncopy LBL,  12 ncd CBZ,
             13 11 0 LDRB,  13 10 0 STRB,
             10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncopy B,
@@ -1560,7 +1560,7 @@ variable CFSK2
       LMAIN LKWIMM    9 ['] C-IMMEDIATE CF-ENTRY
       LMAIN LKWSQ     2 ['] C-ISDQ     CF-ENTRY
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,             \ NUMBER?
-      NEWLBL {: lnotnum :}
+      LBL {: lnotnum :}
       12 lnotnum CBZ,  11 G-PUSH  LMAIN B,
       lnotnum LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,            \ FIND
@@ -1568,13 +1568,13 @@ variable CFSK2
       11 BLR,  LMAIN B,                                      \ EXECUTE
       \ ---------------- COMPILE ----------------
    LCOMPILE LBL,
-      NEWLBL {: lnotsemi :}
+      LBL {: lnotsemi :}
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,       \ ';'
          LVSPILL @ BL,                                       \ VS -> real pushes first
          \ patch every EXIT placeholder to `b here` (epilogue, incl. teardown)
          14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,
-         12 DATA LOCF-CELL LDR,  NEWLBL {: notd :}  12 notd CBZ,   \ tear down locals frame
+         12 DATA LOCF-CELL LDR,  LBL {: notd :}  12 notd CBZ,   \ tear down locals frame
             9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  LCEMIT @ BL,   \ add sp,sp,#frame
          notd LBL,
          9 $F94003FE LIT64,  LCEMIT @ BL,                   \ epilogue: ldr x30,[sp]
@@ -1583,7 +1583,7 @@ variable CFSK2
          11 DATA PEND-CELL LDR,  9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,  \ clen
          2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,               \ region -> RX + flush (callable now)
          \ run the check hook on the captured body; publish only if it returns nonzero
-         NEWLBL {: nohook :}  NEWLBL {: rejected :}
+         LBL {: nohook :}  LBL {: rejected :}
          9 DATA HOOK-CELL LDR,  9 nohook CBZ,
             10 DATA BODYBUF-OFF ADDI,  10 G-PUSH           \ ( body-addr )
             10 DATA BODYLEN-CELL LDR,  10 G-PUSH           \ ( body-len )
@@ -1628,7 +1628,7 @@ variable CFSK2
       LMAIN LKWUNLOOP 6 ['] J-UNLOOP  CF-ENTRY            \ UNLOOP
       LMAIN LKWLBRACE 2 ['] C-LBRACE CF-ENTRY            \ {: a b :} locals
       \ local-name reference -> load from its frame slot, push
-      LLOC-FIND @ BL,  NEWLBL {: notloc :}  NEWLBL {: lmem :}  0 0 CMPI,  C-LT notloc BCOND,
+      LLOC-FIND @ BL,  LBL {: notloc :}  LBL {: lmem :}  0 0 CMPI,  C-LT notloc BCOND,
          LVRALLOC @ BL,  14 lmem CBZ,                  \ local -> straight into a register
          7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,   \ off = total-slot-1
          9 $F94003E0 LIT64,  9 9 14 ORR,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
@@ -1642,7 +1642,7 @@ variable CFSK2
          LMAIN B,
       notloc LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,             \ NUMBER? -> literal
-      NEWLBL {: lcnotnum :}
+      LBL {: lcnotnum :}
       12 lcnotnum CBZ,  LVPUSHC @ BL,  LMAIN B,
       lcnotnum LBL,
       LMAIN LKWPLUS  1 ['] VF+ ['] E+ VOP-ENTRY
@@ -1672,7 +1672,7 @@ variable CFSK2
       LVSPILL @ BL,                                          \ VS -> memory before a call
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,            \ FIND -> inline stencil
       13 LUNDEF CBZ,                                         \ undefined word in a : body -> error
-      NEWLBL {: notimm :}
+      LBL {: notimm :}
       14 13 2 ANDI,  14 notimm CBZ,                          \ IMMEDIATE: execute NOW
          SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
          2 5 MOVZ,  LPROT @ BL,                              \ region RX to run it
@@ -1725,39 +1725,39 @@ variable CFSK2
 : EMIT-FORTH ( src-a src-u -- )
    SRCN !  >r
    ICODE-RESET  CF-RESET  0 #PL !  0 PNP !
-   NEWLBL LANCHOR !  NEWLBL LFIND !  NEWLBL LNUM !  NEWLBL LDICT !  NEWLBL LSRC !
-   NEWLBL LCEMIT !  NEWLBL LTOK !  NEWLBL LPROT !  NEWLBL LFLUSH !  NEWLBL LNCOUNT !
-   NEWLBL LBCAP !  NEWLBL LBCS !
-   NEWLBL LCFPUSH !  NEWLBL LCFPOP !  NEWLBL LPAT !  NEWLBL LKWCMP !
-   NEWLBL LBCHAIN !  NEWLBL LCREATE !  NEWLBL LDOESPATCH !
-   NEWLBL LREAD !  NEWLBL LRBYE !  NEWLBL LRDIE !  NEWLBL LRREC !  NEWLBL LQNL !  NEWLBL LOKS !
-   NEWLBL LKWIF !  NEWLBL LKWTHEN !  NEWLBL LKWELSE !  NEWLBL LKWBEGIN !
-   NEWLBL LKWUNTIL !  NEWLBL LKWAGAIN !  NEWLBL LKWWHILE !  NEWLBL LKWREPEAT !
-   NEWLBL LKWCREATE !  NEWLBL LKWVAR !  NEWLBL LKWSQ !
-   NEWLBL LKWTICK !  NEWLBL LKWBTICK !
-   NEWLBL LKWLBRACE !  NEWLBL LKWENDLOC !  NEWLBL LLOC-FIND !  NEWLBL LKWCONST !
-   NEWLBL LKWDO !  NEWLBL LKWLOOP !  NEWLBL LKWI !
-   NEWLBL LKWTOR !  NEWLBL LKWRFROM !  NEWLBL LKWRFET !
-   NEWLBL LKWEXIT !  NEWLBL LKWREC !
-   NEWLBL LKWQDO !  NEWLBL LKWPLOOP !  NEWLBL LKWJ !  NEWLBL LKWLEAVE !  NEWLBL LKWUNLOOP !
-   NEWLBL LKWCHAR !  NEWLBL LKWBCHAR !
-   NEWLBL LKWIMM !  NEWLBL LKWPOST !  NEWLBL LKWCOMPC !  NEWLBL LKWDOES !
-   NEWLBL LKWQUOT !  NEWLBL LKWSEMIQ !
-   NEWLBL LCRASHH !  NEWLBL LHEX !  NEWLBL LHDR !
-   NEWLBL LPROFH !  NEWLBL LPROFDUMP !
-   NEWLBL LVSPILL !  NEWLBL LVLITPUSH !  NEWLBL LVPUSHC !
-   NEWLBL LVTOP2C !  NEWLBL LVFOLDPUT !
-   NEWLBL LVRALLOC !  NEWLBL LVBIT !  NEWLBL LVRINIT !  NEWLBL LVMOVK !  NEWLBL LVFORCEK !  NEWLBL LVBINPREP !  NEWLBL LVPUSHR !
-   NEWLBL LVDROP !  NEWLBL LVSWAPX !  NEWLBL LVNIPX !  NEWLBL LVCOPY !
-   NEWLBL LVSNAP !  NEWLBL LVRECON !
-   NEWLBL LKWPLUS !  NEWLBL LKWMINUS !  NEWLBL LKWSTAR !
-   NEWLBL LKWAND2 !  NEWLBL LKWOR2 !  NEWLBL LKWXOR2 !
-   NEWLBL LKWDUP2 !  NEWLBL LKWDROP2 !  NEWLBL LKWSWAP2 !
-   NEWLBL LKWOVER2 !  NEWLBL LKWNIP2 !
-   NEWLBL LKWEQ2 !  NEWLBL LKWNE2 !  NEWLBL LKWLT2 !
-   NEWLBL LKWGT2 !  NEWLBL LKWLE2 !  NEWLBL LKWGE2 !
-   NEWLBL LKWINC !  NEWLBL LKWDEC !  NEWLBL LKWZEQ !
-   NEWLBL LKWZLT !  NEWLBL LKWNEG2 !  NEWLBL LKWINV2 !
+   LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
+   LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LFLUSH !  LBL LNCOUNT !
+   LBL LBCAP !  LBL LBCS !
+   LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !
+   LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
+   LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
+   LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
+   LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
+   LBL LKWCREATE !  LBL LKWVAR !  LBL LKWSQ !
+   LBL LKWTICK !  LBL LKWBTICK !
+   LBL LKWLBRACE !  LBL LKWENDLOC !  LBL LLOC-FIND !  LBL LKWCONST !
+   LBL LKWDO !  LBL LKWLOOP !  LBL LKWI !
+   LBL LKWTOR !  LBL LKWRFROM !  LBL LKWRFET !
+   LBL LKWEXIT !  LBL LKWREC !
+   LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
+   LBL LKWCHAR !  LBL LKWBCHAR !
+   LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
+   LBL LKWQUOT !  LBL LKWSEMIQ !
+   LBL LCRASHH !  LBL LHEX !  LBL LHDR !
+   LBL LPROFH !  LBL LPROFDUMP !
+   LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
+   LBL LVTOP2C !  LBL LVFOLDPUT !
+   LBL LVRALLOC !  LBL LVBIT !  LBL LVRINIT !  LBL LVMOVK !  LBL LVFORCEK !  LBL LVBINPREP !  LBL LVPUSHR !
+   LBL LVDROP !  LBL LVSWAPX !  LBL LVNIPX !  LBL LVCOPY !
+   LBL LVSNAP !  LBL LVRECON !
+   LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !
+   LBL LKWAND2 !  LBL LKWOR2 !  LBL LKWXOR2 !
+   LBL LKWDUP2 !  LBL LKWDROP2 !  LBL LKWSWAP2 !
+   LBL LKWOVER2 !  LBL LKWNIP2 !
+   LBL LKWEQ2 !  LBL LKWNE2 !  LBL LKWLT2 !
+   LBL LKWGT2 !  LBL LKWLE2 !  LBL LKWGE2 !
+   LBL LKWINC !  LBL LKWDEC !  LBL LKWZEQ !
+   LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 !
    EMIT-MAIN                                              \ entry @ offset 0
    EMIT-PRIMS  EMIT-PROF-PRIMS  EMIT-FP-PRIMS  EMIT-CEMIT  EMIT-BCAP  EMIT-TOK  EMIT-PROT  EMIT-FLUSH  EMIT-FIND  EMIT-NUM
    EMIT-CREATE  EMIT-DOESPATCH

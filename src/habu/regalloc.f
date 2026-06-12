@@ -28,7 +28,7 @@ $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled
 \ (idempotent; the warm snapshot carries the tables but re-running is harmless).
 : EMIT-VRINIT
    LVRINIT @ LBL,
-   NEWLBL {: pl :}  NEWLBL {: pd :}  NEWLBL {: fl :}  NEWLBL {: fd :}
+   LBL {: pl :}  LBL {: pd :}  LBL {: fl :}  LBL {: fd :}
    5 0 MOVZ,
    pl LBL,                                   \ poison the inverse table
       5 32 CMPI,  C-GE pd BCOND,
@@ -43,7 +43,7 @@ $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled
       7 VRITAB-OFF LIT64,  7 DATA 7 ADD,  7 7 6 ADD,  5 7 0 STRB,
       8 8 8 LSRI,  5 5 1 ADDI,  fl B,
    fd LBL,
-   NEWLBL {: fl2 :}  NEWLBL {: fd2 :}
+   LBL {: fl2 :}  LBL {: fd2 :}
    8 VRPACK2 LIT64,
    fl2 LBL,                                  \ the overflow table continues the index
       5 #POOL CMPI,  C-GE fd2 BCOND,
@@ -56,7 +56,7 @@ $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled
 \ LVRALLOC ( -- x14=reg | 0 ) : grab a free register from the pool bitmask
 : EMIT-VRALLOC
    LVRALLOC @ LBL,
-   NEWLBL NEWLBL NEWLBL {: rl rgot rno :}
+   LBL LBL LBL {: rl rgot rno :}
    6 DATA VRFREE-CELL LDR,  5 0 MOVZ,
    rl LBL,
       5 #POOL CMPI,  C-GE rno BCOND,

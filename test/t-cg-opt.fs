@@ -26,7 +26,7 @@ T{ 0 O@ -> $D2800040 }T                            \ only movz x0,#2 remains
 T{ ICODE-RESET 0 1 LIT64, 1 2 LIT64, OPTIMIZE OASM -> 8 }T  \ different rd: kept
 
 \ --- OPT-B-NEXT: branch to the immediately following label killed ---
-: GEN-BNEXT ( -- nbytes )  ICODE-RESET NEWLBL dup B, LBL, NOP, OPTIMIZE OASM ;
+: GEN-BNEXT ( -- nbytes )  ICODE-RESET LBL dup B, LBL, NOP, OPTIMIZE OASM ;
 T{ GEN-BNEXT -> 4 }T
 T{ 0 O@ -> $D503201F }T                            \ just the nop
 
@@ -57,7 +57,7 @@ T{ GEN-X19 -> 4 }T                           \ +8/-8 cancel, only the nop remain
 
 \ --- killed records don't break label binding: B over a killed MOV ---
 : GEN-BOVER ( -- nbytes )
-   ICODE-RESET NEWLBL dup B, 3 3 MOV, LBL, RET, OPTIMIZE OASM ;
+   ICODE-RESET LBL dup B, 3 3 MOV, LBL, RET, OPTIMIZE OASM ;
 T{ GEN-BOVER -> 8 }T
 T{ 0 O@ -> $14000001 }T                            \ b +1 (dead mov skipped)
 T{ 1 O@ -> $D65F03C0 }T                            \ ret at the label

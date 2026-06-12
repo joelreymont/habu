@@ -11,14 +11,14 @@ create EB 65536 allot  variable EL
 : w@ ( i -- u32 )  4 * RBUF +  dup c@  over 1+ c@ 8 lshift or
    over 2 + c@ 16 lshift or  swap 3 + c@ 24 lshift or ;
 : REF ( -- )  0 EL !  ICODE-RESET
-   NEWLBL LCRASHH !  NEWLBL LHEX !  NEWLBL LHDR !
+   LBL LCRASHH !  LBL LHEX !  LBL LHDR !
    G-INSTALL-CRASH  EMIT-HEX  EMIT-CRASH-HANDLER
    RBUF ASSEMBLE 4 /  0 ?do i w@ N+ loop ;
 : GEN ( -- a u )
    0 CL !
    s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/arch/arm64/mnem.f" +F  s" src/os/macos/sys.f" +F  s" src/os/macos/env.f" +F
    s" src/core/util.f" +F  s" src/habu/crash.f" +F
-   s" : GO ASM-INIT NEWLBL Lcrashh ! NEWLBL Lhex ! NEWLBL Lhdr ! " +B
+   s" : GO ASM-INIT LBL Lcrashh ! LBL Lhex ! LBL Lhdr ! " +B
    s" g-install-crash emit-hex emit-crash-handler " +B
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;

@@ -11,8 +11,8 @@ create EB 262144 allot  variable EL
 : w@ ( i -- u32 )  4 * RBUF +  dup c@  over 1+ c@ 8 lshift or
    over 2 + c@ 16 lshift or  swap 3 + c@ 24 lshift or ;
 : REF ( -- )  0 EL !  ICODE-RESET  0 #PL !  0 PNP !
-   NEWLBL LCEMIT !  NEWLBL LTOK !  NEWLBL LPROT !  NEWLBL LFLUSH !
-   NEWLBL LFIND !  NEWLBL LNUM !  NEWLBL LNCOUNT !  NEWLBL LDICT !
+   LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LFLUSH !
+   LBL LFIND !  LBL LNUM !  LBL LNCOUNT !  LBL LDICT !
    EMIT-PRIMS  EMIT-CEMIT  EMIT-TOK  EMIT-PROT  EMIT-FLUSH  EMIT-FIND  EMIT-NUM
    EMIT-DICT
    RBUF ASSEMBLE 4 /  0 ?do i w@ N+ loop ;
@@ -22,8 +22,8 @@ create EB 262144 allot  variable EL
    s" src/core/util.f" +F  s" src/os/macos/sys.f" +F  s" src/os/macos/env.f" +F  s" src/habu/treeshake.f" +F  s" src/habu/rt.f" +F
    s" src/habu/habu1.f" +F
    s" : GO ASM-INIT " +B
-   s" NEWLBL Lcemit ! NEWLBL Ltok ! NEWLBL Lprot ! NEWLBL Lflush ! " +B
-   s" NEWLBL Lfind ! NEWLBL Lnum ! NEWLBL Lncount ! NEWLBL Ldict ! " +B
+   s" LBL Lcemit ! LBL Ltok ! LBL Lprot ! LBL Lflush ! " +B
+   s" LBL Lfind ! LBL Lnum ! LBL Lncount ! LBL Ldict ! " +B
    s" emit-prims emit-cemit emit-tok emit-prot emit-flush emit-find emit-num " +B
    s" emit-dict " +B
    s" 0 BEGIN dup ASM-LEN 4 / < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B

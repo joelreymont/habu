@@ -11,13 +11,13 @@ create EB 65536 allot  variable EL
 : w@ ( i -- u32 )  4 * RBUF +  dup c@  over 1+ c@ 8 lshift or
    over 2 + c@ 16 lshift or  swap 3 + c@ 24 lshift or ;
 : REF ( -- )  0 EL !  ICODE-RESET
-   NEWLBL DOT-LBL !  EMIT-DOT  NEWLBL ATOI-LBL !  EMIT-ATOI
+   LBL DOT-LBL !  EMIT-DOT  LBL ATOI-LBL !  EMIT-ATOI
    RBUF ASSEMBLE 4 /  0 ?do i w@ N+ loop ;
 : GEN ( -- a u )
    0 CL !
    s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/arch/arm64/mnem.f" +F
    s" src/core/util.f" +F  s" src/os/macos/sys.f" +F  s" src/os/macos/env.f" +F  s" src/habu/rt.f" +F
-   s" : GO ASM-INIT NEWLBL DOT-LBL ! EMIT-DOT NEWLBL ATOI-LBL ! EMIT-ATOI " +B
+   s" : GO ASM-INIT LBL DOT-LBL ! EMIT-DOT LBL ATOI-LBL ! EMIT-ATOI " +B
    s" 0 BEGIN dup CP @ < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B
    CBUF CL @ NF-RUN  NFOUT 2@ ;
 REF

@@ -14,7 +14,7 @@ PAIRS = [
     ('bootstrap/cg/rt.fs',    ['src/habu/rt.f']),
     ('bootstrap/cg/crash.fs', ['src/habu/crash.f']),
 ]
-LBL = re.compile(r'NEWLBL \{: (\w[\w-]*) :\}')
+LBL = re.compile(r'LBL \{: (\w[\w-]*) :\}')
 GRP = re.compile(r'\{:([^}]*):\}')
 
 def defs(path):
@@ -28,7 +28,7 @@ def defs(path):
         for g in GRP.findall(body):
             labels.update(w for w in g.split() if w != '--')
         body = LBL.sub('', body)
-        body = re.sub(r'NEWLBL', '', body)
+        body = re.sub(r'LBL', '', body)
         body = GRP.sub('', body)
         toks = [t.lower() for t in body.split() if t not in labels]
         out[name.lower()] = toks

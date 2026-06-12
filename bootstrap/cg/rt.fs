@@ -18,14 +18,14 @@ variable ATOI-LBL
    SP SP 32 SUBI,  12 SP 32 ADDI,              \ x12 = end of a 32-byte sp buffer
    13 10 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,   \ *--ptr = '\n'
    14 0 MOVZ,  9 0 CMPI,
-   NEWLBL {: lpos :}  C-GE lpos BCOND,         \ n>=0 ? skip negate
+   LBL {: lpos :}  C-GE lpos BCOND,         \ n>=0 ? skip negate
    14 1 MOVZ,  9 SP 9 SUB,  lpos LBL,          \ neg=1 ; n = -n
    10 10 MOVZ,
-   NEWLBL {: lloop :}  lloop LBL,
+   LBL {: lloop :}  lloop LBL,
    11 9 10 SDIV,  13 11 10 MUL,  13 9 13 SUB,  \ q=n/10 ; r=n-q*10
    13 13 48 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
    9 11 0 ADDI,  9 lloop CBNZ,                 \ n=q ; while n!=0
-   NEWLBL {: lns :}  14 lns CBZ,
+   LBL {: lns :}  14 lns CBZ,
    13 45 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,  lns LBL,   \ prepend '-'
    0 1 MOVZ,  1 12 0 ADDI,  2 SP 32 ADDI,  2 2 12 SUB,
    NR-WRITE SYS,                        \ write(1, ptr, len)
@@ -39,7 +39,7 @@ variable ATOI-LBL
    SP SP 32 SUBI,  12 SP 32 ADDI,
    13 10 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,
    10 10 MOVZ,
-   NEWLBL {: lloop :}  lloop LBL,
+   LBL {: lloop :}  lloop LBL,
    11 9 10 UDIV,  13 11 10 MUL,  13 9 13 SUB,
    13 13 48 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
    9 11 0 ADDI,  9 lloop CBNZ,
@@ -60,10 +60,10 @@ variable ATOI-LBL
    10 0 MOVZ,                              \ result = 0
    11 1 MOVZ,                              \ sign = 1
    12 9 0 LDRB,  12 45 CMPI,               \ first char == '-' ?
-   NEWLBL {: lpos :}  C-NE lpos BCOND,
+   LBL {: lpos :}  C-NE lpos BCOND,
    11 0 MOVN,  9 9 1 ADDI,                 \ sign = -1 ; ptr++
    lpos LBL,
-   NEWLBL {: lloop :}  NEWLBL {: ldone :}
+   LBL {: lloop :}  LBL {: ldone :}
    lloop LBL,
    12 9 0 LDRB,                            \ c = *ptr
    12 48 CMPI,  C-LT ldone BCOND,          \ c < '0' -> done

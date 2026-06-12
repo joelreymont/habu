@@ -21,7 +21,7 @@ T{ R-MUL -> 42 }T                       \ 6*7 native multiply
 \ back-edge branch + CBNZ resolved by the label pass.
 : R-LOOP ( -- rc )  ICODE-RESET
    0 5 MOVZ,                            \ x0 = 5
-   NEWLBL dup LBL,                      \ L:
+   LBL dup LBL,                      \ L:
    0 0 1 SUBI,                          \ x0 = x0 - 1
    0 swap CBNZ,                         \ cbnz x0, L
    16 1 MOVZ,  $80 SVC,                 \ exit(0)

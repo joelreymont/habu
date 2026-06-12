@@ -27,7 +27,7 @@ s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR
    SP SP 32 SUBI,
    14 SP 0 ADDI,                            \ x14 = buf base (sp; via ADDI so reg-31 means SP)
    11 15 MOVZ,                              \ char index 15..0 inclusive
-   NEWLBL {: hl :}  NEWLBL {: hd :}  NEWLBL {: hlet :}
+   LBL {: hl :}  LBL {: hd :}  LBL {: hlet :}
    hl LBL,
       12 9 $F ANDI,                         \ x12 = val & 0xF
       13 12 48 ADDI,                        \ '0'+nibble
@@ -52,7 +52,7 @@ s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR
       21 19 MCTX-OFF LDR,                   \ x21 = mcontext = [ucontext+48]
       9 20 0 ADDI,  LHEX @ BL,              \ print sig
       20 0 MOVZ,                            \ i = 0..28
-      NEWLBL {: rl :}  NEWLBL {: RD :}
+      LBL {: rl :}  LBL {: RD :}
       rl LBL,  20 29 CMPI,  C-GE RD BCOND,
          22 20 3 LSLI,  22 22 SS-OFF ADDI,  22 21 22 ADD,  9 22 0 LDR,  LHEX @ BL,
          20 20 1 ADDI,  rl B,

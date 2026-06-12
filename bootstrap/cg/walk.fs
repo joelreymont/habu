@@ -118,9 +118,9 @@ defer LOOP-HOOK   ( a u -- f )
    CARRY-SNAP                                     \ pin carry into homes (before the skip test)
    LIDX REG-PIN  LLIM REG-PIN                      \ loop-control + carry regs are loop-carried:
    CARRY-N @ 0 ?do  CARRY-R i cells + @ REG-PIN  loop   \ the optimizer must not touch them
-   NEWLBL {: LEXIT :}
+   LBL {: LEXIT :}
    qdo? if  LIDX LLIM CMP,  C-GE LEXIT BCOND,  then   \ ?DO: skip body if index>=limit
-   NEWLBL {: ltop :}  ltop LBL,
+   LBL {: ltop :}  ltop LBL,
    RL-ACTIVE on  ba bu WALK-SPAN  RL-ACTIVE off
    CARRY-RECON                                    \ carry-out -> homes (or RL-FAIL)
    RL-FAIL @ if exit then                         \ ineligible: bail, caller rolls back
@@ -147,12 +147,12 @@ defer LOOP-HOOK   ( a u -- f )
 \ Compile a body with one i64 input pushed first; the body's TOS becomes exit().
 : COMPILE-WORD {: ba bu input -- :}
    ICODE-RESET  CF-RESET  CGL-RESET  Q-RESET  PIN-RESET
-   NEWLBL LCRASHH !  NEWLBL LHEX !  NEWLBL LHDR !
+   LBL LCRASHH !  LBL LHEX !  LBL LHDR !
    512 G-PROLOGUE
    G-HEAP-INIT                          \ entry: mmap the bump heap (HP); callees inherit it
    G-INSTALL-CRASH                      \ self-diagnosing crash (register dump to stderr)
    input G-LIT
-   NEWLBL EPILOG !        \ EXIT branches here
+   LBL EPILOG !        \ EXIT branches here
    ba bu WALK-BODY
    EPILOG @ LBL,
    G-EXIT-TOS

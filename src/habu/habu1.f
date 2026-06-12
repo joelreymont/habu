@@ -83,7 +83,7 @@ variable FPL  variable FPE
 
 : FPRIM {: na nu xt :}
    na nu KEEP? 0 = IF EXIT THEN
-   NEWLBL FPL !  NEWLBL FPE !
+   LBL FPL !  LBL FPE !
    na nu FPL @ FPE @ REG-PRIM
    FPL @ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    xt execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE @ LBL, ;
@@ -91,7 +91,7 @@ s" fprim" s" n n n --" TRUST
 
 : FPRIM-L {: na nu xt :}               \ LEAF prim: no BL/BLR in body -> no x30 frame
    na nu KEEP? 0 = IF EXIT THEN
-   NEWLBL FPL !  NEWLBL FPE !
+   LBL FPL !  LBL FPE !
    na nu FPL @ FPE @ REG-PRIM
    FPL @ LBL,  xt execute  RET,  FPE @ LBL, ;
 s" fprim-l" s" n n n --" TRUST
@@ -131,7 +131,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 : BU.   A G-POP  G-PRINTU9 ;
 
 : BRUNRC  A G-POP                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
-   NEWLBL NEWLBL NEWLBL {: spok spdn spw :}
+   LBL LBL LBL {: spok spdn spw :}
    SP SP 64 SUBI,
    9 SP 16 STR,                      \ argv[0] = path
    10 0 MOVZ,  10 SP 24 STR,         \ argv[1] = 0
@@ -183,7 +183,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 : BSPACE 13 32 MOVZ,  G-EMITC ;
 
 : B.S
-   NEWLBL NEWLBL {: sl sd :}
+   LBL LBL {: sl sd :}
    9 DATA S0-CELL LDR,  9 DATA SSCR-CELL STR,
    sl LBL,
       9 DATA SSCR-CELL LDR,  9 XDS CMP,  C-GE sd BCOND,
@@ -284,7 +284,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 : BEXEC   A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 : BCATCH
-   NEWLBL NEWLBL {: lres lpush :}
+   LBL LBL {: lres lpush :}
    A G-POP
    SP SP 48 SUBI,
    30 SP 32 STR,
@@ -301,7 +301,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
    lpush LBL,  9 G-PUSH ;
 
 : BTHROW
-   NEWLBL {: lnoh :}
+   LBL {: lnoh :}
    A G-POP
    11 DATA 8 LDR,
    11 lnoh CBZ,
@@ -310,7 +310,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
    SP 13 0 ADDI,  12 BR,
    lnoh LBL,
-   10 DATA REPLH-CELL LDR,  NEWLBL {: lnorec :}  10 lnorec CBZ,
+   10 DATA REPLH-CELL LDR,  LBL {: lnorec :}  10 lnorec CBZ,
    10 DATA RRECP-CELL LDR,  10 BR,
    lnorec LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;
 
@@ -323,7 +323,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 : BSETCHECK  A G-POP  A DATA HOOK-CELL STR, ;
 
 : BSWL
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: wl wend wnext wcmp wmatch wf1 wf2 :}
+   LBL LBL LBL LBL LBL LBL LBL {: wl wend wnext wcmp wmatch wf1 wf2 :}
    2 G-POP  1 G-POP  0 G-POP
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,
    wl LBL,  6 wend CBZ,
@@ -418,7 +418,7 @@ s" emit-prims" s" --" TRUST
 : BF>S  A G-POP  0 A FMOVXD,  A 0 FCVTZS,  A G-PUSH ;
 
 : BFDOT
-   NEWLBL NEWLBL NEWLBL {: fl il sd :}
+   LBL LBL LBL {: fl il sd :}
    A G-POP  15 A 0 ADDI,                               \ bits (sign test later)
    SP SP 48 SUBI,
    12 SP 48 ADDI,
@@ -465,7 +465,7 @@ s" emit-fp-prims" s" --" TRUST
    LBCAP @ LBL,
    11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    LBCS @ LBL,
-   NEWLBL NEWLBL NEWLBL {: bok bcp bcd :}
+   LBL LBL LBL {: bok bcp bcd :}
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
    14 DATA BODYLEN-CELL LDR,
    5 BODYBUF-CAP MOVZ,  14 5 CMP,  C-LT bok BCOND,
@@ -481,7 +481,7 @@ s" emit-fp-prims" s" --" TRUST
 
 : EMIT-TOK
    LTOK @ LBL,
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: tskip thas tscan tgot tnone :}
+   LBL LBL LBL LBL LBL {: tskip thas tscan tgot tnone :}
    11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
    tskip LBL,
       11 12 CMP,  C-GE tnone BCOND,
@@ -502,7 +502,7 @@ s" emit-fp-prims" s" --" TRUST
 
 : EMIT-FLUSH
    LFLUSH @ LBL,
-   NEWLBL NEWLBL NEWLBL NEWLBL {: fdl fdd fil fid :}
+   LBL LBL LBL LBL {: fdl fdd fil fid :}
    9 9 6 LSRI,  9 9 6 LSLI,                                 \ align start down to the
    10 9 0 ADDI,                                             \ line, or the 64-byte
                                                             \ stride skips the last one
@@ -514,7 +514,7 @@ s" emit-fp-prims" s" --" TRUST
 
 : EMIT-FIND
    LFIND @ LBL,
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: floop fdone fnext fcmp fmatch :}
+   LBL LBL LBL LBL LBL {: floop fdone fnext fcmp fmatch :}
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  13 0 MOVZ,
    floop LBL,
       6 fdone CBZ,
@@ -537,7 +537,7 @@ s" emit-fp-prims" s" --" TRUST
 
 : EMIT-NUM
    LNUM @ LBL,
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: ldone ndoll nohex lloop lok gotd nd nuc ndot isfrac lint fpos :}
    11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ,
    10 ldone CBZ,

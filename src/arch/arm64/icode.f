@@ -28,11 +28,11 @@ create FXS 2048 cells allot   create FXL 2048 cells allot   create FXK 2048 cell
 
 : ASM-INIT  ARESET  0 NLBL !  0 NFX !  0 BEGIN dup cells LBLP + -1 swap ! 1 + dup 1023 > UNTIL drop ;
 
-: NEWLBL?  NLBL @ 1023 > IF s" icode: out of labels" 72 die THEN ;
+: ?LBL  NLBL @ 1023 > IF s" icode: out of labels" 72 die THEN ;
 
 : FX?      NFX @ 2047 > IF s" icode: out of fixups" 72 die THEN ;
 
-: NEWLBL  NEWLBL?  NLBL @ dup 1 + NLBL ! ;           \ -- id
+: LBL  ?LBL  NLBL @ dup 1 + NLBL ! ;           \ -- id
 
 : FX+ {: site lbl kind :}  FX?                       \ record a forward fixup
    site NFX @ cells FXS + !  lbl NFX @ cells FXL + !  kind NFX @ cells FXK + !  NFX @ 1 + NFX ! ;
