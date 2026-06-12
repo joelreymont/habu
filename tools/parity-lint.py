@@ -8,7 +8,6 @@ import re, sys
 
 PAIRS = [
     ('bootstrap/cg/forth.fs', ['src/habu/habu1.f', 'src/habu/habu2.f']),
-    ('bootstrap/cg/treeshake.fs', ['src/habu/treeshake.f']),
     ('bootstrap/cg/regalloc.fs', ['src/habu/regalloc.f']),
     ('bootstrap/cg/jit.fs', ['src/habu/jit.f']),
     ('bootstrap/cg/prof.fs',  ['src/habu/prof.f']),
@@ -39,7 +38,7 @@ def defs(path):
 # vs subset idioms: swap/?do/locals-helpers). Their OUTPUT is still byte-golden-
 # checked; the lint covers the near-transcription emitters where divergence hides.
 ALLOW = {a.lower() for a in (
-    'EMIT-FORTH','FPRIM','FPRIM-L','c-emitw','cf-entry','cfn-entry','emit-dict',
+    'EMIT-FORTH','FPRIM','FPRIM-L','KEEP?','SHK-TOK=','c-emitw','cf-entry','cfn-entry','emit-dict',
     'emit-main','reg-prim','(sigact)','emit-crash-handler','emit-source','CRH-INIT')}
 
 fail = 0

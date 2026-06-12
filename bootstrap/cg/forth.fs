@@ -19,7 +19,6 @@ require exec.fs
 require templ.fs           \ g-push, XDS(=19)
 require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
 require crash.fs           \ in-binary crash handler (register dump on signal)
-require treeshake.fs       \ KEEP? prim/keyword gating (hb-build's maker arms it)
 
 20 constant RBASE   21 constant INP    22 constant INE
 26 constant DBASE  27 constant NDICT  28 constant CP
@@ -114,15 +113,13 @@ create PNPOOL 1024 chars allot   variable PNP   variable #PL
    na dst nu move   nu PNP +!   1 #PL +! ;
 
 : FPRIM {: na nu xt -- :}            \ define+register a primitive (start..RET..end labels)
-   na nu KEEP? 0 = IF EXIT THEN
    NEWLBL {: lbl :}  NEWLBL {: elbl :}
    na nu lbl elbl REG-PRIM
    lbl LBL,  SP SP 16 SUBI,  30 SP 0 STR,    \ prologue: save x30 (calls now nest, not inline)
    xt execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  elbl LBL, ;
 
 : FPRIM-L {: na nu xt -- :}          \ LEAF primitive: no BL/BLR in the body, so no
-   na nu KEEP? 0 = IF EXIT THEN          \ x30 frame — 2x cheaper calls, fully inlineable
-   NEWLBL {: lbl :}  NEWLBL {: elbl :}
+   NEWLBL {: lbl :}  NEWLBL {: elbl :}   \ x30 frame — 2x cheaper calls, fully inlineable
    na nu lbl elbl REG-PRIM
    lbl LBL,  xt execute  RET,  elbl LBL, ;
 

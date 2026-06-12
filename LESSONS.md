@@ -180,6 +180,13 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **Bootstrap is a ladder, not a mirror** (user directive 2026-06): bootstrap/cg
+  is the minimum gforth code that builds bin/hb once. Habu features (tree shaker,
+  drivers, REPL niceties) live in src/** ONLY — never port them backward "for
+  parity". parity-lint guards emitter divergence where generated code must match;
+  structurally/featurally different words go in ALLOW and stay verified by the
+  goldens + the stage2 fixpoint.
+
 - **Scratch-register choice inside EMITTED loops needs the WHOLE enclosing
   region, not the visible lines**: loading TKL into x6 inside C-LBRACE's
   name-scan looked safe (x6 unused nearby) but x6 holds the group-start
