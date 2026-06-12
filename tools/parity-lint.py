@@ -8,6 +8,7 @@ import re, sys
 
 PAIRS = [
     ('bootstrap/cg/forth.fs', ['src/habu/habu1.f', 'src/habu/habu2.f']),
+    ('bootstrap/cg/regalloc.fs', ['src/habu/regalloc.f']),
     ('bootstrap/cg/vsjit.fs', ['src/habu/vsjit.f']),
     ('bootstrap/cg/prof.fs',  ['src/habu/prof.f']),
     ('bootstrap/cg/rt.fs',    ['src/habu/rt.f']),

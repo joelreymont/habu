@@ -17,7 +17,7 @@ create EB 786432 allot  variable EL
    0 CL !
    s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/arch/arm64/mnem.f" +F
    s" src/core/util.f" +F  s" src/os/macos/sys.f" +F  s" src/habu/rt.f" +F
-   s" src/habu/crash.f" +F  s" src/habu/habu1.f" +F  s" src/habu/prof.f" +F  s" src/habu/vsjit.f" +F  s" src/habu/habu2.f" +F
+   s" src/habu/crash.f" +F  s" src/habu/habu1.f" +F  s" src/habu/prof.f" +F  s" src/habu/regalloc.f" +F  s" src/habu/vsjit.f" +F  s" src/habu/habu2.f" +F
    s" : SRC$ s" +B  s\" \" 6 7 * .\" ;" +B  s"  " +B
    s" : GO SRC$ EMIT-FORTH " +B
    s" 0 BEGIN dup ASM-LEN 4 / < WHILE dup CW@ RD32 . 1 + REPEAT drop ; GO" +B

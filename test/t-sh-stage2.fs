@@ -15,7 +15,7 @@ require sh-driver.fs
    s" src/core/sha256.f" +F  s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F
    s" src/arch/arm64/mnem.f" +F
    s" src/os/macos/sys.f" +F  s" src/habu/rt.f" +F  s" src/habu/crash.f" +F  s" src/os/macos/macho.f" +F
-   s" src/os/macos/sign2.f" +F  s" src/habu/habu1.f" +F  s" src/habu/prof.f" +F  s" src/habu/vsjit.f" +F  s" src/habu/habu2.f" +F
+   s" src/os/macos/sign2.f" +F  s" src/habu/habu1.f" +F  s" src/habu/prof.f" +F  s" src/habu/regalloc.f" +F  s" src/habu/vsjit.f" +F  s" src/habu/habu2.f" +F
    s" src/habu/stage2.f" +F ;                        \ a type error rejects -> exit 70
 \ write SRC where stage1 will read it back as data
 : SAVE-SRC ( -- )

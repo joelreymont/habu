@@ -5,13 +5,11 @@
 \ Load after prof.fs, before habu2.f.
 variable Lvspill   variable Lvlitpush   variable Lvpushc
 variable Lvtop2c   variable Lvfoldput
-variable Lvralloc  variable Lvmovk  variable Lvforcek  variable Lvbinprep  variable Lvpushr
+variable Lvmovk  variable Lvforcek  variable Lvbinprep  variable Lvpushr
 $200 constant VSP-CELL
-$208 constant VRFREE-CELL
 $210 constant VTAG-OFF
 $250 constant VVAL-OFF
 32   constant VSMAX
-$7F  constant VRALL
 $F9000260 constant W-PUSHR
 
 : emit-vlitpush
@@ -114,20 +112,6 @@ variable Lkwdup2  variable Lkwdrop2  variable Lkwswap2  variable Lkwover2  varia
    Lkwdup2 @ LBL,   s" dup" BYTES,    Lkwdrop2 @ LBL,  s" drop" BYTES,
    Lkwswap2 @ LBL,  s" swap" BYTES,   Lkwover2 @ LBL,  s" over" BYTES,
    Lkwnip2 @ LBL,   s" nip" BYTES, ;
-
-\ Lvralloc ( -- x14=reg | 0 ) : grab a free register from the x9..x15 bitmask
-: emit-vralloc
-   Lvralloc @ LBL,
-   NEWLBL NEWLBL NEWLBL {: rl rgot rno :}
-   6 DATA VRFREE-CELL LDR,  5 0 MOVZ,
-   rl LBL,
-      5 7 CMPI,  C-GE rno BCOND,
-      7 6 5 LSRV,  7 7 1 ANDI,  7 rgot CBNZ,
-      5 5 1 ADDI,  rl B,
-   rno LBL,  14 0 MOVZ,  RET,
-   rgot LBL,
-      7 1 MOVZ,  7 7 5 LSLV,  6 6 7 EOR,  6 DATA VRFREE-CELL STR,
-      14 5 9 ADDI,  RET, ;
 
 \ Lvmovk ( x11=val x14=rd ) : emit a MINIMAL movz/movn + movk chain targeting rd —
 \ movn form when $FFFF chunks dominate; chunks the base op already set are skipped.
