@@ -1333,3 +1333,30 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 - Multi-sub python edit scripts must WRITE before any assert can fail, or
   apply per-sub: one failed anchor silently dropped a whole earlier batch
   (CF-QUOT "applied" but never written). Prefer one-edit-one-write.
+
+## True AOT — the dictionary snapshot (2026-06-12)
+
+- The snapshot = engine text copy + live dict/code region + live data region +
+  a 40-byte trailer (magic, old text base, ndict, region len, data len) inside
+  one bigger __TEXT. Fixed-VA regions ($300000000/$340000000, MAP_FIXED with
+  result==requested verified) make every region-internal baked address valid
+  verbatim across runs — the ONLY movers are engine-text addresses (ASLR).
+- Three relocation surfaces, found one crash at a time: (1) call chains
+  `movz/movk/movk x16 + blr x16` whose value sat in the old text (literal x16
+  chains end in `str x16,[x19]` — the blr suffix is the discriminator);
+  (2) SEED-PRIM dict slot.addr values (old text!) — user words' slots are
+  region addrs and need nothing; (3) per-boot cells (RBASE/S0/DOESP/CREATEP)
+  re-stored after the copy. CUR/WIDN/HOOK must be PRESERVED (warm wordlists +
+  live check hook) — guard the startup zeroing with the snapshot flag.
+- The maker is just bin/hbi fed toolchain + snap.f: SNAPGO reads its own
+  header for the text size, streams header/text/region/data/trailer with raw
+  writes (MBUF can't hold its own snapshot — it lives in the data being
+  dumped), and external codesign signs it. Boot: 0.378s cold toolchain
+  compile -> 0.003s warm. The warm binary still compiles new definitions
+  against the snapshot dict.
+- Shadowing strikes: the toolchain defines the DSL register constant RBASE
+  (=20); after case folding it shadows the `rbase` PRIM — `rbase STB !`
+  compiled as `20 STB !`. Read the saved base from its DATA cell instead.
+  Prim names must avoid the DSL register/constant namespace.
+- Fixed VAs also make crashes DETERMINISTIC across runs (same pc every time) —
+  worth it for debuggability alone.
