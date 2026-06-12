@@ -26,6 +26,8 @@ create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PA
 
 : CON-CH {: p :} p 1 = IF 110 ELSE p 2 = IF 102 ELSE p 3 = IF 114 ELSE 99 THEN THEN THEN ;   \ n / f / r
 
+\ a quot type renders '?' — quot-bearing sigs are never RECORDED (the native
+\ sig grammar can't express them yet); inside one word they check fully.
 : REND-TYPE {: t :} t T-RES {: r :}
    r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
    r TAG T-CON = IF r PAY CON-CH EMIT1 ELSE 63 EMIT1 THEN THEN ;

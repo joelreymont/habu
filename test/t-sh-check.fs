@@ -46,3 +46,11 @@ T{ s" : LR {: x:r :} x f. ;"      CHK2 s\" -1\n" compare 0= -> true }T
 \ be unsound); the author declares it with trust, and callers certify.
 T{ s\" : ARR create cells allot does> swap cells + ; s\" a4\" s\" n -- n\" trust 4 ARR A4 : USE 2 A4 @ . ; 7 2 A4 ! USE"
    CHK2 s\" 1\n-1\n7\n" compare 0= -> true }T
+\ quotation typing: [: ;] infers a quot<effect> type; execute applies it; the
+\ omega combinator rejects via the occurs check (never loops); quot-bearing
+\ sigs render '?' and stay unrecorded (callers go uncheckable, not unsound).
+T{ s" : T0 [: ;] drop ;"                          CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : T1 [: 7 ;] execute . ;"                   CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : TB 1.5 [: 1 + ;] execute . ;"             CHK2 s\" 0\n"  compare 0= -> true }T
+T{ s" : W [: dup execute ;] dup execute ;"        CHK2 s\" 0\n"  compare 0= -> true }T
+T{ s" : dip swap >r execute r> ; : T 10 3 [: 2 * ;] dip + . ; T" CHK2 s\" -1\n1\n23\n" compare 0= -> true }T

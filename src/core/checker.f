@@ -1,5 +1,6 @@
 0 constant T-CON   1 constant T-VAR   2 constant T-PTR
 3 constant S-ROW   4 constant S-PUSH
+5 constant T-QUOT
 -1 constant UNBOUND
 2048 constant MAXTV            \ typevar pool (engine-sized bodies allocate hundreds)
 create TVT MAXTV cells allot   create RVT MAXTV cells allot
@@ -28,6 +29,18 @@ create TVT MAXTV cells allot   create RVT MAXTV cells allot
 : RV@ cells RVT + @ ;
 
 : RV! cells RVT + ! ;
+256 constant MAXQE             \ quotation effects (din dout rin rout per record)
+create QEA MAXQE 32 * allot   variable QEN
+: MK-QUOT {: din dout rin rout :}   \ ( -- t ) allocate a quot<effect> term
+   QEN @ MAXQE 1 - > IF s" checker: out of quot effects" 76 die THEN
+   QEN @ 32 * QEA + {: a :}
+   din a !  dout a 8 + !  rin a 16 + !  rout a 24 + !
+   QEN @ 3 lshift T-QUOT or  QEN @ 1 + QEN ! ;
+: Q>DIN  PAY 32 * QEA + @ ;
+: Q>DOUT PAY 32 * QEA + 8 + @ ;
+: Q>RIN  PAY 32 * QEA + 16 + @ ;
+: Q>ROUT PAY 32 * QEA + 24 + @ ;
+
 2048 constant MAXPUSH          \ push records (engine-sized bodies need hundreds)
 create SPA MAXPUSH 16 * allot   variable SPN
 
@@ -58,20 +71,67 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 : UNPAIR U-POP U-POP swap ;
 
 \ occurs check: binding a row var to a spine containing itself would make the
-\ row cyclic (R-RES then loops forever) — mismatched branch depths trigger this.
-: ROW-OCC? {: r s :}  s BEGIN R-RES dup TAG S-PUSH = WHILE P>REST REPEAT  r = ;
+\ row cyclic — including THROUGH a quotation's effect rows (the ω-combinator
+\ must reject, never loop). Recursion depth is bounded by term size; the
+\ accumulator rides the stack (a shared variable would be clobbered by the
+\ recursive calls).
+: ROW-OCC? {: r s :}
+   0  s                                  \ ( acc cur )
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+     dup P>TYPE T-RES dup TAG T-QUOT = IF
+       r over Q>DIN RECURSE  swap        \ ( acc cur f1 qt )
+       r over Q>DOUT RECURSE  swap       \ ( acc cur f1 f2 qt )
+       r over Q>RIN RECURSE  swap        \ ( acc cur f1 f2 f3 qt )
+       r swap Q>ROUT RECURSE             \ ( acc cur f1 f2 f3 f4 )
+       or or or  rot or swap             \ ( acc' cur )
+     ELSE drop THEN
+     P>REST
+   REPEAT
+   r = or ;
 
 : U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
    over ISROW IF 2dup ROW-OCC? IF 2drop 0 UOK ! ELSE swap PAY RV! THEN ELSE
    dup ISROW IF 2dup swap ROW-OCC? IF 2drop 0 UOK ! ELSE PAY RV! THEN ELSE
    2dup P>TYPE swap P>TYPE swap PAIR P>REST swap P>REST swap PAIR THEN THEN THEN ;
 
+variable TOCC  variable TODN
+
+\ TY-OCC? ( v t -- f ) : does tyvar v occur in t, descending through quot
+\ effect rows? One worklist holds both terms and rows (disjoint tag spaces);
+\ TODN counts pending items, the items ride the data stack.
+: TY-OCC? {: v t :}
+   0 TOCC !  1 TODN !  t
+   BEGIN TODN @ 0 > WHILE
+     TODN @ 1 - TODN !
+     dup TAG S-ROW =  over TAG S-PUSH =  or IF
+       R-RES dup TAG S-PUSH = IF
+         dup P>TYPE swap P>REST
+         TODN @ 2 + TODN !
+       ELSE drop THEN
+     ELSE
+       T-RES
+       dup TAG T-VAR = IF PAY v = IF -1 TOCC ! THEN ELSE
+       dup TAG T-QUOT = IF
+         dup Q>DIN swap  dup Q>DOUT swap  dup Q>RIN swap  Q>ROUT
+         TODN @ 4 + TODN !
+       ELSE drop THEN THEN
+     THEN
+   REPEAT
+   TOCC @ ;
+
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
    2dup = IF 2drop ELSE
-   over ISVAR IF swap PAY TV! ELSE
-   dup ISVAR IF PAY TV! ELSE
-   over PAY over PAY = IF 2drop ELSE 2drop 0 UOK ! THEN THEN THEN THEN ;
+   over TAG T-QUOT =  over TAG T-QUOT =  and IF
+     2dup Q>DIN swap Q>DIN swap PAIR
+     2dup Q>DOUT swap Q>DOUT swap PAIR
+     2dup Q>RIN swap Q>RIN swap PAIR
+     Q>ROUT swap Q>ROUT swap PAIR ELSE
+   over ISVAR IF
+     over PAY over TY-OCC? IF 2drop 0 UOK ! ELSE swap PAY TV! THEN ELSE
+   dup ISVAR IF
+     dup PAY  rot  tuck TY-OCC? IF 2drop 0 UOK ! ELSE swap PAY TV! THEN ELSE
+   over PAY over PAY = IF 2drop ELSE 2drop 0 UOK ! THEN THEN THEN THEN THEN ;
 
 : UNIFY   \ ( s1 s2 -- ok ) worklist-driven; rows and types interleave
    0 USP !  -1 UOK !  PAIR
@@ -114,6 +174,28 @@ create FAILTK 64 allot   variable FAILTU
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    tv DCUR @ MK-PUSH DCUR ! ;
+variable QTT  variable QD2  variable QR2
+
+: RSEXEC   \ execute: pop the xt; apply its quot effect (or bind a var to one)
+   FRESH MK-VAR FRESH MK-ROW {: tv rest :}
+   DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
+   rest DCUR !
+   tv T-RES QTT !
+   QTT @ TAG T-QUOT = IF
+     DCUR @ QTT @ Q>DIN  UNIFY OK @ and OK !
+     RCUR @ QTT @ Q>RIN  UNIFY OK @ and OK !
+     QTT @ Q>DOUT DCUR !  QTT @ Q>ROUT RCUR !
+   ELSE QTT @ TAG T-VAR = IF
+     \ unknown xt: bind it to a RETURN-PURE quot over the current state (a
+     \ return-impure literal quot then fails to unify at the bind — sound).
+     FRESH MK-ROW QD2 !
+     DCUR @ QD2 @ RCUR @ RCUR @ MK-QUOT QR2 !
+     QTT @ PAY QR2 @ TY-OCC? IF 0 OK ! ELSE
+       QR2 @ QTT @ PAY TV!
+       QD2 @ DCUR !
+     THEN
+   ELSE 0 OK ! THEN THEN ;
+
 variable RSH
 
 : RS-TOK? {: a u :}
@@ -121,7 +203,8 @@ variable RSH
    a u s" >r" STR= IF RS->R ELSE
    a u s" r>" STR= IF RSR> ELSE
    a u s" r@" STR= IF RSR@ ELSE
-   0 RSH ! THEN THEN THEN
+   a u s" execute" STR= IF RSEXEC ELSE
+   0 RSH ! THEN THEN THEN THEN
    RSH @ ;
 
 \ --- generic signature parser: build a step effect from a textual " in -- out "
@@ -368,7 +451,7 @@ variable LCO
 \ --- control flow: branch states saved on a CF stack and unified at joins.
 \ Both rows are snapshot: A/B = data, RA/RB = return (PLAN: net growth on
 \ either row at a back edge is a row-occurs failure).
-\ kinds: 1 if  2 if+else  3 begin  4 begin+while  5 do
+\ kinds: 1 if  2 if+else  3 begin  4 begin+while  5 do  6 quotation
 create CFKND 32 cells allot   create CFSA 32 cells allot   create CFSB 32 cells allot
 create CFRA 32 cells allot    create CFRB 32 cells allot
 variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
@@ -460,8 +543,25 @@ variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
      dup cells CFKND + @ 5 = IF INDO @ 1 + INDO ! THEN  1 + REPEAT drop
    INDO @ 1 > IF s" -- n" PARSE-SIG ELSE -1 UNCK ! THEN ;
 
+: CF-QUOT   \ [: — pause the outer inference, open a nested one
+   6  DCUR @  BROW @  RCUR @  RBROW @  CF-PUSH
+   FRESH MK-ROW dup BROW ! DCUR !
+   FRESH MK-ROW dup RBROW ! RCUR ! ;
+
+variable QTMP
+
+: CF-SEMIQ  \ ;] — quot<nested effect> pushed onto the restored outer row
+   CF-MT? IF -1 UNCK ! ELSE CF@K 6 <> IF -1 UNCK ! ELSE
+     BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
+     CF@B BROW !  CF@RB RBROW !
+     CF@RA RCUR !
+     QTMP @  CF@A  MK-PUSH DCUR !
+     CF-DROP THEN THEN ;
+
 : CF-TOK? {: a u :}
    -1 CFH !
+   a u s" [:" STR= IF CF-QUOT ELSE
+   a u s" ;]" STR= IF CF-SEMIQ ELSE
    a u s" if" STR= IF CF-IF ELSE
    a u s" else" STR= IF CF-ELSE ELSE
    a u s" then" STR= IF CF-THEN ELSE
@@ -476,7 +576,7 @@ variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
    a u s" +loop" STR= IF CF-+LOOP ELSE
    a u s" i" STR= IF CF-I ELSE
    a u s" j" STR= IF CF-J ELSE
-   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    CFH @ ;
 variable TBASE variable TBLEN variable TI variable TSTART
 \ first token of the checked text is the word's NAME (skipped, kept for the
