@@ -1301,3 +1301,35 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 - gforth test strings holding embedded quotes need `s\"` with `\"` escapes —
   a plain `s"` ends at the first inner quote and the error points at the
   wrong word.
+
+## Quotations, does>, spawn — the metaprogramming wave (2026-06-12)
+
+- DOES> in STC: the created body is `push dfield ; RET` (leaf) — patch the RET
+  into `b D` and give D its own prologue; the B (not BL) preserves the
+  caller's x30 so the shared `;` epilogue returns correctly. The patch MUST
+  run from engine text: flipping the region to RW un-executes the page the
+  defining word itself runs on (SIGBUS on the next fetch). Same trap for
+  `compile,` called from an immediate word executing under RX — the prim
+  self-manages RW/RX because prims live in binary text.
+- c-call's inline scan deliberately excludes the final RET slot — exactly
+  where the does>-patch lives, so an inlined copy silently dropped the `b
+  does-body`. Guard: refuse inlining when the ret slot isn't RET.
+- Prim bodies must not reference build labels (Lcreate) — subset golden tests
+  emit the prim table without the full engine. Route through a startup-stored
+  DATA cell (ldr x16,[x20,#CELL]; blr x16) instead: emits label-free.
+- The native checker's quot typing: [: pauses the outer inference on the CF
+  stack (kind 6) and opens fresh rows; ;] reifies quot<effect> onto the
+  restored row. `execute` on a type VAR binds it to a RETURN-PURE quot over
+  the current state — that one choice makes `: dip swap >r execute r> ;`
+  INFER and certify. Occurs must descend quot effect rows (ω rejects, never
+  loops) — and iterative worklists beat recursion: a shared accumulator
+  variable is clobbered by recursive calls, and pushing list items while
+  `dup`-ing the parent corrupts the walk (both bit me in one afternoon).
+- posix_spawn(244) + wait4(7) work as raw SVCs with no libc: &pid/path/0/0/
+  argv/envp in x0-x5, WEXITSTATUS = (status>>8)&FF — `run-rc` lets the engine
+  run its own behavior gate (test/hb-suite.f, wired into test/run.sh).
+- Engine keywords are compile-only by default — suites written for bin/hbi
+  must wrap `if`/quotations in definitions (interpret-level `if` is exit 70).
+- Multi-sub python edit scripts must WRITE before any assert can fail, or
+  apply per-sub: one failed anchor silently dropped a whole earlier batch
+  (CF-QUOT "applied" but never written). Prefer one-edit-one-write.
