@@ -120,6 +120,18 @@ TRP 105 T=
 : TLR 1 2 3 4 5 6 7 8 9 10 11 12  0 begin 1 + dup 3 = until drop  + + + + + + + + + + + ;
 TLR 78 T=
 
+\ locals register cache: repeat refs reuse the cached reg (one ldr total)...
+: KL {: a :} a a + a + ;
+5 KL 15 T=
+\ ...a call spills and invalidates (the ref after must reload from the frame)
+: KC {: a :} P5 drop a ;
+3 KC 3 T=
+\ ...and the cache claim survives a BEGIN back edge (loop-resident local)
+: KR {: a :} 0 begin a + dup 15 < 0= until ;
+5 KR 15 T=
+: KW {: a :} 0 begin dup 12 < while a + repeat ;
+4 KW 12 T=
+
 \ report: count + nonzero exit on failure
 : REPORT
    #FAIL @ 0 = if [char] o emit [char] k emit cr exit then

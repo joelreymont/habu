@@ -180,6 +180,18 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **The locals register cache was built, measured, and REJECTED** (2026-06): a
+  full slot->reg cache (CLCREG/CMASK, claim-through-VRFREE, loop-survival via
+  the recon path) passed all correctness gates and benched EXACTLY the same as
+  the plain per-ref ldr (0.60 ns/iter both ways, counter baseline 0.49). Why:
+  the [sp] slot load is never on the loop-carried dependency chain, so the OoO
+  core hides its latency completely; the cache's mov costs the same issue slot
+  the ldr did. Zero-copy (pushing the cached reg as the VS entry) is unsound —
+  a binop writes its result into rd, corrupting the cache (a a + destroys a).
+  Conclusion: per-ref ldr into a fresh pool reg IS the right design on Apple
+  Silicon. Don't rebuild this without hardware where L1-load issue is the
+  bottleneck. The locals-correctness tests (KL/KC/KR/KW) stay in hb-suite.
+
 - **Renaming a global to a name some words use for a LOCAL is a shadow bug**:
   NEWLBL -> LBL made boot FPRIM's second allocation (`LBL {: lbl :}  LBL ...`)
   read the just-declared LOCAL lbl instead of calling the word (gforth and the
