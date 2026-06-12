@@ -1245,3 +1245,26 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   SCODE — the old post-write guard segfaulted before it could fire. Growing
   the image breaks tools/build.sh by design (the OLD embedded builder refuses
   the bigger emit, exit 73) — capacity changes go through tools/bootstrap.sh.
+
+## clobber-lint — a register lint is useless without contract modeling (2026-06-12)
+
+- The raw lint (writes-before-BL poisoned by callee clobbers, read-after flags)
+  produced 72 findings, ALL false. Making it useful needed four models:
+  RETURNS (Lcfpop->x9, Lkwcmp->x0, Lcemit->CP... reads after the BL are the
+  contract, and the value can still be poisoned by a LATER call), PRESERVES
+  (frame-saved args like Lvpushc's x11; regs written only on no-return exit
+  paths like Lbcap's x0-x2/x16), routine regions ending at RET-before-next-
+  `Lx @ LBL,` (not end-of-word — packed helpers inflated each other's sets),
+  and callee = ops[-2] of `Lx @ BL,` (ops[0] misattributed callees after
+  builder-word token junk). x30/x31/x28 are never tracked: LR is frame-saved
+  around BLs, 31 encodes SP and XZR, and every emitter advances CP by design.
+- Triage payoff beyond the lint: it caught the stale "clobbers x9..x15"
+  comment on Lhex (it also clobbers x0-x2/x16 — its write syscall). Clobber
+  comments must list syscall registers, that's exactly what a caller needs.
+
+## Process: anything over ~15s is a hang (2026-06-12)
+
+- Engine builds run in well under a second (build.sh 0.36s, bootstrap.sh ~2s);
+  a single gforth test file is seconds. Cap commands at 10-20s — a generous
+  timeout just delays discovering the code is hanging or the invocation is
+  wrong (the "slow stage2 build" was a 0.06s path error).
