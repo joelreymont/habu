@@ -76,3 +76,4 @@ $0042 constant SA-PROF-FLAGS
 
 : emit-prof-prims
    s" prof-on" ['] bprof-on FPRIM-L  s" prof-report" ['] bprof-report FPRIM-L ;
+s" emit-prof-prims" s" --" trust

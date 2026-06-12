@@ -452,6 +452,7 @@ variable CFSK
    Lvspill @ BL,
    hxt execute  lmainlbl B,
    CFSK @ LBL, ;
+s" cf-entry" s" n n n n --" trust
 
 \ cfn-entry: keyword case WITHOUT the spill — loop words manage the VS
 \ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
@@ -461,6 +462,7 @@ variable CFSK
    0 CFSK @ CBZ,
    hxt execute  lmainlbl B,
    CFSK @ LBL, ;
+s" cfn-entry" s" n n n n --" trust
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable Lmain  variable Lexit  variable Lcompile  variable Lundef
 variable CFSK2
@@ -486,6 +488,7 @@ variable CFSK2
    hxtm execute
    lmainlbl B,
    CFSK @ LBL, ;
+s" cfb-entry" s" n n n n n --" trust
 
 \ cfbn-entry: like cfb-entry but the register path neither spills nor saves —
 \ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
@@ -506,6 +509,7 @@ variable CFSK2
    hxtm execute
    lmainlbl B,
    CFSK @ LBL, ;
+s" cfbn-entry" s" n n n n n --" trust
 
 : j-ifr  c-pushcp  8 $B4000000 LIT64,  9 8 14 ORR,  Lcemit @ BL, ;
 
@@ -614,6 +618,7 @@ variable CFSK2
    9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
    13 Lundef @ CBZ,
    11 BLR,  Lmain @ B, ;
+s" em-interpret" s" --" trust
 
 : em-compile
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotsemi notd nohook rejected notloc lmem lcnotnum :}
@@ -713,10 +718,12 @@ variable CFSK2
       0 70 MOVZ,  16 1 MOVZ,  $80 SVC,
    Lexit @ LBL,
       0 0 MOVZ,  16 1 MOVZ,  $80 SVC, ;
+s" em-compile" s" --" trust
 
 : emit-main
    NEWLBL Lmain !  NEWLBL Lexit !  NEWLBL Lcompile !  NEWLBL Lundef !
    em-startup  em-comment  em-interpret  em-compile ;
+s" emit-main" s" --" trust
 variable SRCA
 
 : EMIT-FORTH {: a u :}
@@ -758,3 +765,4 @@ variable SRCA
    emit-profdump  emit-prof  emit-vsjit
    emit-dict
    Lsrc @ LBL,  SRCA @ SRCN @ BYTES, ;
+s" emit-forth" s" n n --" trust

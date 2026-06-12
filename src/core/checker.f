@@ -245,6 +245,15 @@ create SDQN 2 allot  115 SDQN c!  34 SDQN 1 + c!     \ the two chars of `s"`
    s" c," s" n --" PT+
    s" type" s" n n --" PT+
    s" throw" s" n --" PT+
+   s" die" s" n n n --" PT+
+   s" open" s" n n n -- n" PT+
+   s" read" s" n n n -- n" PT+
+   s" write" s" n n n -- n" PT+
+   s" close" s" n --" PT+
+   s" rbase" s" -- n" PT+
+   s" wordlist" s" -- n" PT+
+   s" get-current" s" -- n" PT+
+   s" set-current" s" n --" PT+
    \ floats: r = real (concrete), distinct from n (int) and f (flag)
    s" f+" s" r r -- r" PT+    s" f-" s" r r -- r" PT+
    s" f*" s" r r -- r" PT+    s" f/" s" r r -- r" PT+

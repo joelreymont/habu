@@ -90,6 +90,7 @@ variable FESK
    Lvfoldput @ BL,
    lmainlbl B,
    FESK @ LBL, ;
+s" fold-entry" s" n n n n --" trust
 
 : f+ 11 11 12 ADD, ;
 
@@ -254,6 +255,7 @@ variable FESK2
       9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  Lcemit @ BL,
       lmainlbl B,
    FESK @ LBL, ;
+s" vop-entry" s" n n n n n --" trust
 
 : e+   8 $8B000000 LIT64, ;
 
@@ -454,6 +456,7 @@ variable FESK3
    13 FESK3 @ CBZ,
    lmainlbl B,
    FESK3 @ LBL, ;
+s" vshuf-entry" s" n n n n n --" trust
 
 : xdup   6 DATA VSP-CELL LDR,  5 6 1 SUBI,  Lvcopy @ BL, ;
 
@@ -486,6 +489,7 @@ variable FESK4
       emitxt execute
       lmainlbl B,
    FESK4 @ LBL, ;
+s" vun-entry" s" n n n n n --" trust
 
 : fu1+  11 11 1 ADDI, ;
 

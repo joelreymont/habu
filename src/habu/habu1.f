@@ -62,11 +62,13 @@ variable FPL  variable FPE
    na nu FPL @ FPE @ reg-prim
    FPL @ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    xt execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE @ LBL, ;
+s" fprim" s" n n n --" trust
 
 : FPRIM-L {: na nu xt :}               \ LEAF prim: no BL/BLR in body -> no x30 frame
    NEWLBL FPL !  NEWLBL FPE !
    na nu FPL @ FPE @ reg-prim
    FPL @ LBL,  xt execute  RET,  FPE @ LBL, ;
+s" fprim-l" s" n n n --" trust
 \ shared label ids (forward refs)
 variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  variable SRCN
 variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncount
@@ -293,6 +295,7 @@ variable Lkwchar variable Lkwbchar
    s" wordlist" ['] bwordlist FPRIM-L   s" get-current" ['] bgetcur FPRIM-L
    s" set-current" ['] bsetcur FPRIM-L  s" search-wl" ['] bswl FPRIM-L
    s" set-check" ['] bsetcheck FPRIM-L ;
+s" emit-prims" s" --" trust
 
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
 \ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
@@ -366,6 +369,7 @@ variable Lkwchar variable Lkwbchar
    s" f0<" ['] bf0< FPRIM-L  s" f0=" ['] bf0= FPRIM-L
    s" s>f" ['] bs>f FPRIM-L  s" f>s" ['] bf>s FPRIM-L
    s" f." ['] bfdot FPRIM-L ;
+s" emit-fp-prims" s" --" trust
 
 : emit-cemit
    Lcemit @ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
