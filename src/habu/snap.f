@@ -6,6 +6,9 @@
 \ recompile. The output is unsigned; tools/snap-hb.sh codesigns it.
 $48425350414E5321 constant SNAP-MAGIC
 
+\ output path — the single knob; tools/snap-hb.sh owns/moves the artifact
+: SNAP-OUT s" /tmp/hb-warm0" ;
+
 create SNP 32 allot
 create TRL 40 allot
 create ZPG 4096 allot
@@ -62,7 +65,7 @@ variable SNL  variable SFTS  variable SFD
    SNAP-MAGIC TRL !  STB @ TRL 8 + !  ndict@ TRL 16 + !
    SCL @ TRL 24 + !  SDL @ TRL 32 + !
    \ stream: header, engine text, region, data, trailer, zero pad
-   s" /tmp/hb-warm0" PATHZ0
+   SNAP-OUT PATHZ0
    SNP 1537 493 open SFD !
    SFD @ MBUF CODE-OFF WALL
    SFD @ STB @ STSZ @ WALL

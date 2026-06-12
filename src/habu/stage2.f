@@ -5,13 +5,17 @@
 \ byte-identical to the gforth-built engine for the same source.
 create S2P 32 allot   create O2P 32 allot
 
+\ fixpoint I/O paths — the single knobs; tools/build.sh owns the artifacts
+: S2-IN  s" /tmp/stage2-src" ;
+: S2-OUT s" /tmp/stage2-got" ;
+
 : PATHZ {: a u d :}
    0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;
 variable SBUF  variable SLEN  variable SFD  variable SRD
 $40000 constant SMAX
 
 : READ-SRC
-   s" /tmp/stage2-src" S2P PATHZ
+   S2-IN S2P PATHZ
    S2P 0 0 open SFD !
    here SBUF !  SMAX allot  0 SLEN !
    BEGIN                                                 \ loop: read() may return short
@@ -27,6 +31,6 @@ $40000 constant SMAX
    SBUF @ SLEN @ EMIT-FORTH
    BUILD-IMAGE
    s" hb" SET-SIGID  CODESIG2
-   s" /tmp/stage2-got" O2P PATHZ
+   S2-OUT O2P PATHZ
    O2P 1537 493 open  dup MBUF MLEN @ write drop  close ;
 GO
