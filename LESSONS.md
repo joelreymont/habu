@@ -180,6 +180,21 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **A prim must never reference a main-loop label.** BTHROW branching to LRREC
+  (the REPL recovery entry) broke t-sh-habu1's subset golden: subset drivers run
+  EMIT-PRIMS without EMIT-MAIN, so the label is unallocated on both sides and
+  the streams diverge. Decouple through a DATA cell instead (RRECP-CELL, stored
+  by EMIT-MAIN at startup like DOESP-CELL) — prims load-and-BR, subsets stay
+  self-contained.
+- **gforth's libcc FFI cache (~/.cache/gforth) corrupts** under concurrent
+  gforths (hash mismatch / missing libgflibc.so) — exec.fs's `system` rides on
+  it. The gate now exports XDG_CACHE_HOME=/tmp/habu-gforth-cache and primes it
+  serially; if a stray run breaks the global cache, rm -rf ~/.cache/gforth and
+  prime with: gforth -e 's" true" system bye'.
+- **Gate exit codes vanish behind pipes**: `run.sh | tail -1` reports tail's rc.
+  A FAIL went unnoticed and got pushed. Check ${PIPESTATUS}/separate the status
+  from the tail.
+
 - **A bare word name on build output = the engine's LUNDEF** (it writes the
   unknown token to stderr before exit 70). Seeing `LQNLLQNL` mid-build meant a
   forward reference: habu2.f uses label VARIABLES at line ~140 (EMIT-KWDATA)

@@ -4,6 +4,11 @@
 set -e
 G=${GFORTH:-$HOME/.local/bin/gforth}
 cd "$(dirname "$0")/.."
+# hermetic gforth FFI cache: exec.fs's `system` goes through libcc; the per-user
+# global cache (~/.cache/gforth) corrupts under concurrent gforths (hash
+# mismatch / missing .so). Use a gate-owned cache and prime it serially.
+export XDG_CACHE_HOME=/tmp/habu-gforth-cache
+[ -d "$XDG_CACHE_HOME/gforth" ] || gforth -e 's" true" system bye' >/dev/null 2>&1
 ./tools/parity-lint.py || { echo "FAIL: parity-lint"; exit 1; }
 ./tools/shadow-lint.py || { echo "FAIL: shadow-lint"; exit 1; }
 $G test/all.fs -e bye > /tmp/habu-gate.log 2>&1 || { tail -5 /tmp/habu-gate.log; echo "FAIL: all.fs"; exit 1; }

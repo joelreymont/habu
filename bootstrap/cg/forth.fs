@@ -55,6 +55,7 @@ $3648 constant RSAVCP-CELL \ line-start CP    (REPL error rollback)
 $3650 constant RSAVND-CELL \ line-start NDICT
 $3658 constant RSAVDP-CELL \ line-start DP
 $3660 constant RSAVSP-CELL \ loop-level machine SP (throw recovery unwinds to it)
+$3668 constant RRECP-CELL  \ runtime addr of the REPL recovery entry (EMIT-MAIN stores it)
 $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
                            \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
@@ -349,7 +350,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    SP 13 0 ADDI,  12 BR,                 \ restore sp; jump to catch's resume
    lnoh LBL,
    10 DATA REPLH-CELL LDR,  NEWLBL {: lnorec :}  10 lnorec CBZ,
-   LRREC @ B,                                \ tty REPL: recover instead of dying
+   10 DATA RRECP-CELL LDR,  10 BR,                                \ tty REPL: recover instead of dying
    lnorec LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;   \ no handler -> exit(exc)
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
@@ -1478,6 +1479,7 @@ variable CFSK2
    G-INSTALL-CRASH                                    \ self-diagnosing crash (register dump)
    9 LDOESPATCH @ ADR,  9 DATA DOESP-CELL STR,
    9 LCREATE @ ADR,  9 DATA CREATEP-CELL STR,        \ DOES> patch routine addr
+   9 LRREC @ ADR,  9 DATA RRECP-CELL STR,             \ throw's REPL recovery entry
    LVRINIT @ BL,                                     \ fill VRTAB/VRITAB from VRPACK
    EMIT-SOURCE                                        \ INP/INE <- baked LSRC or stdin
    PEND 0 MOVZ,                                       \ interpret mode

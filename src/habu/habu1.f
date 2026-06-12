@@ -32,7 +32,7 @@ $3648 constant RSAVCP-CELL \ line-start CP    (REPL error rollback)
 $3650 constant RSAVND-CELL \ line-start NDICT
 $3658 constant RSAVDP-CELL \ line-start DP
 $3660 constant RSAVSP-CELL \ loop-level machine SP (throw recovery unwinds to it)
-variable LRREC             \ REPL recovery entry (set in habu2's label block)
+$3668 constant RRECP-CELL  \ runtime addr of the REPL recovery entry (EMIT-MAIN stores it)
 $1D8 constant SSCR-CELL
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF
@@ -301,7 +301,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
    SP 13 0 ADDI,  12 BR,
    lnoh LBL,
    10 DATA REPLH-CELL LDR,  NEWLBL {: lnorec :}  10 lnorec CBZ,
-   LRREC @ B,
+   10 DATA RRECP-CELL LDR,  10 BR,
    lnorec LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;
 
 : BWORDLIST  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;

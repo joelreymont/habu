@@ -134,7 +134,7 @@ create SQ-KW  115 c, 34 c,
 create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
 create QUOT-KW 91 c, 58 c,      \ [:
 create SEMIQ-KW 59 c, 93 c,     \ ;]
-variable LREAD  variable LRBYE  variable LRDIE  variable LQNL  variable LOKS
+variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
 create QNL-KW 63 c, 10 c,
 create OKS-KW 32 c, 111 c, 107 c, 10 c,
 create TICK-KW   39 c,
@@ -763,6 +763,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
    G-INSTALL-CRASH
    9 LDOESPATCH @ ADR,  9 DATA DOESP-CELL STR,
    9 LCREATE @ ADR,  9 DATA CREATEP-CELL STR,
+   9 LRREC @ ADR,  9 DATA RRECP-CELL STR,
    LVRINIT @ BL,                                     \ fill VRTAB/VRITAB from VRPACK
    EMIT-SOURCE
    PEND 0 MOVZ, ;
