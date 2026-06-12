@@ -174,6 +174,7 @@ def effects(mn, ops):
     elif mn == "CMPI,": r(0)
     elif mn in ("CBZ,", "CBNZ,"): r(0)
     elif mn == "SVC,": W |= {0}; R |= {0, 1, 2, 16}
+    elif mn == "SYS,": W |= {0, 16}; R |= {0, 1, 2}   # NR-x SYS, = movz x16 + svc
     elif mn == "RET,": R.add(30)
     elif mn == "BLR,": W |= set(range(0, 18)) | {30}; r(0)
     elif mn in PSEUDO:

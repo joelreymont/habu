@@ -5,6 +5,7 @@
 \ tokenizing/compilation is walk.fs.)
 
 require asm.fs
+require sys.fs
 
  9 constant T0   10 constant T1   11 constant T2
 19 constant XDS  31 constant SP   25 constant RSP   26 constant HP
@@ -16,7 +17,7 @@ $100000 constant HEAPSZ
 
 : g-heap-init ( -- )
    0 0 MOVZ,  1 HEAPSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
-   16 197 MOVZ,  $80 SVC,  HP 0 0 ADDI, ;     \ mmap RW; HP = base
+   NR-MMAP SYS,  HP 0 0 ADDI, ;     \ mmap RW; HP = base
 
 \ data-stack ops (Xds points just past TOS; full-ascending)
 : g-push ( reg -- )  XDS 0 STR,  XDS XDS 8 ADDI, ;
@@ -37,9 +38,9 @@ $100000 constant HEAPSZ
 : g-prologue {: n -- :}
    SP SP n LOCSZ + SUBI,  XDS SP LOCSZ ADDI,  RSP XDS 0 ADDI,  RSP RSP n ADDI, ;
 
-: g-exit-tos ( -- )  0 g-pop  16 1 MOVZ,  $80 SVC, ;     \ exit(TOS)
+: g-exit-tos ( -- )  0 g-pop  NR-EXIT SYS, ;     \ exit(TOS)
 
-: g-exit0    ( -- )  0 0 MOVZ,  16 1 MOVZ,  $80 SVC, ;   \ exit(0)
+: g-exit0    ( -- )  0 0 MOVZ,  NR-EXIT SYS, ;   \ exit(0)
 
 \ Spill-path primitives — ONLY the ops not handled by the register-allocated
 \ CG-VS (regstack.fs); arith/shuffle/compare/logical/shift moved there. These run

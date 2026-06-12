@@ -10,7 +10,8 @@
 \ reads mcontext = [ucontext+48], regs at [mcontext+16 + i*8] (x0..x28), then
 \ fp/lr/sp/pc, prints each as hex, and exit(134).
 
-require asm.fs                 \ icode mnemonics (ADR, STR, SVC, ...)
+require asm.fs
+require sys.fs                 \ icode mnemonics (ADR, STR, SVC, ...)
 
 variable Lcrashh   variable Lhex   variable Lhdr
 s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR-HDR
@@ -38,7 +39,7 @@ s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR
       11 11 1 SUBI,  hl B,
    hd LBL,
    12 10 MOVZ,  12 14 16 STRB,              \ newline at buf[16]
-   0 2 MOVZ,  1 14 0 ADDI,  2 17 MOVZ,  16 4 MOVZ,  $80 SVC,   \ write(2, buf, 17)
+   0 2 MOVZ,  1 14 0 ADDI,  2 17 MOVZ,  NR-WRITE SYS,   \ write(2, buf, 17)
    SP SP 32 ADDI,  RET, ;
 
 \ The crash handler is entered DIRECTLY as the trampoline (sa_tramp=Lcrashh), so
@@ -47,7 +48,7 @@ s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR
    Lcrashh @ LBL,
       20 2 0 ADDI,                          \ x20 = sig (saved before the header write clobbers x2)
       19 4 0 ADDI,                          \ x19 = ucontext
-      1 Lhdr @ ADR,  0 2 MOVZ,  2 CR-HDR nip MOVZ,  16 4 MOVZ,  $80 SVC,   \ write header
+      1 Lhdr @ ADR,  0 2 MOVZ,  2 CR-HDR nip MOVZ,  NR-WRITE SYS,   \ write header
       21 19 MCTX-OFF LDR,                   \ x21 = mcontext = [ucontext+48]
       9 20 0 ADDI,  Lhex @ BL,              \ print sig
       20 0 MOVZ,                            \ i = 0..28
@@ -60,12 +61,12 @@ s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR
       9 21 256 LDR,  Lhex @ BL,             \ lr
       9 21 264 LDR,  Lhex @ BL,             \ sp
       9 21 272 LDR,  Lhex @ BL,             \ pc
-      0 134 MOVZ,  16 1 MOVZ,  $80 SVC,     \ exit(134)
+      0 134 MOVZ,  NR-EXIT SYS,     \ exit(134)
    Lhdr @ LBL,  CR-HDR BYTES, ;             \ header bytes (handler exits, never reaches them)
 
 \ g-install-crash ( -- ) : install the handler for ILL/TRAP/BUS/SEGV. Builds a
 \ struct __sigaction { handler, tramp, mask, flags } on the stack and syscalls.
-: (sigact) ( signo -- )  0 swap MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  16 46 MOVZ,  $80 SVC, ;
+: (sigact) ( signo -- )  0 swap MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SIGACTION SYS, ;
 
 : g-install-crash ( -- )
    SP SP 32 SUBI,

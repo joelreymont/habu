@@ -1,6 +1,6 @@
 \ stage2.fs — the FIXPOINT driver: the running standalone (stage1) reads the
 \ compiler's own source from /tmp/stage2-src, compiles it with the ported engine
-\ builder (EMIT-FORTH), wraps it in the full Mach-O (BUILD-MACHO), and writes the
+\ builder (EMIT-FORTH), wraps it in the full Mach-O (BUILD-IMAGE), and writes the
 \ unsigned stage2 binary to /tmp/stage2-got. t-sh-stage2.fs asserts stage2 is
 \ byte-identical to the gforth-built engine for the same source.
 create S2P 32 allot   create O2P 32 allot
@@ -25,7 +25,7 @@ $40000 constant SMAX
 : GO
    READ-SRC
    SBUF @ SLEN @ EMIT-FORTH
-   BUILD-MACHO
+   BUILD-IMAGE
    s" hb" SET-SIGID  CODESIG2
    s" /tmp/stage2-got" O2P PATHZ
    O2P 1537 493 open  dup MBUF MLEN @ write drop  close ;

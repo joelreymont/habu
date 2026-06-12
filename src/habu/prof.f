@@ -9,8 +9,6 @@ $1E8 constant PROF-LIM
 $1F8 constant PROF-OTHER      \ samples outside any dict word (main loop, helpers)
 $1F0000 constant PROF-CNT
 14  constant SIGALRM
-83  constant NR-SETITIMER
-184 constant NR-SIGRETURN
 $0042 constant SA-PROF-FLAGS
 
 : emit-profdump
@@ -21,15 +19,15 @@ $0042 constant SA-PROF-FLAGS
       7 NDICT 0 ADDI,  6 7 CMP,  C-GE dd BCOND,
       7 PROF-CNT LIT64,  7 DATA 7 ADD,  8 6 3 LSLI,  7 7 8 ADD,  17 7 0 LDR,
       17 dn CBZ,
-      0 1 MOVZ,  1 5 24 ADDI,  2 5 16 LDR,  16 4 MOVZ,  $80 SVC,
+      0 1 MOVZ,  1 5 24 ADDI,  2 5 16 LDR,  NR-WRITE SYS,
       SP SP 16 SUBI,  12 32 MOVZ,  12 SP 0 STRB,
-      0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  16 4 MOVZ,  $80 SVC,
+      0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
       SP SP 16 ADDI,
       9 17 0 ADDI,  g-print9
    dn LBL,  5 5 DREC ADDI,  6 6 1 ADDI,  dl B,
    dd LBL,  17 DATA PROF-OTHER LDR,  17 dret CBZ,        \ "(other) N" if any
       SP SP 16 SUBI,  12 $2029726568746F28 LIT64,  12 SP 0 STR,
-      0 1 MOVZ,  1 SP 0 ADDI,  2 8 MOVZ,  16 4 MOVZ,  $80 SVC,
+      0 1 MOVZ,  1 SP 0 ADDI,  2 8 MOVZ,  NR-WRITE SYS,
       SP SP 16 ADDI,
       9 17 0 ADDI,  g-print9
    dret LBL,  RET, ;
@@ -52,8 +50,8 @@ $0042 constant SA-PROF-FLAGS
    pdone LBL,
    12 DATA PROF-OTHER LDR,  12 12 1 ADDI,  12 DATA PROF-OTHER STR,
    psig LBL,
-   0 4 0 ADDI,  16 NR-SIGRETURN MOVZ,  $80 SVC,
-   prep LBL,  Lprofdump @ BL,  0 99 MOVZ,  16 1 MOVZ,  $80 SVC, ;
+   0 4 0 ADDI,  NR-SIGRETURN SYS,
+   prep LBL,  Lprofdump @ BL,  0 99 MOVZ,  NR-EXIT SYS, ;
 
 : bprof-on
    NEWLBL NEWLBL {: zl zd :}
@@ -65,10 +63,10 @@ $0042 constant SA-PROF-FLAGS
    SP SP 64 SUBI,
    9 Lprofh @ ADR,  9 SP 0 STR,  9 SP 8 STR,
    10 SA-PROF-FLAGS MOVZ,  10 10 32 LSLI,  10 SP 16 STR,
-   0 SIGALRM MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  16 46 MOVZ,  $80 SVC,
+   0 SIGALRM MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SIGACTION SYS,
    9 0 MOVZ,   9 SP 32 STR,  10 1000 MOVZ,  10 SP 40 STR,
    9 SP 48 STR,  10 SP 56 STR,
-   0 0 MOVZ,  1 SP 32 ADDI,  2 0 MOVZ,  16 NR-SETITIMER MOVZ,  $80 SVC,
+   0 0 MOVZ,  1 SP 32 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS,
    SP SP 64 ADDI, ;
 
 : bprof-report  SP SP 16 SUBI,  30 SP 0 STR,  Lprofdump @ BL,

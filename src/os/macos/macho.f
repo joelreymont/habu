@@ -102,3 +102,6 @@ variable PHP
    CODE CODELEN @ m-bytes
    MPAGE m-pad
    m-here MLEN ! ;
+
+\ the target-neutral driver entry: another OS swaps in an ELF builder here
+: BUILD-IMAGE  BUILD-MACHO ;

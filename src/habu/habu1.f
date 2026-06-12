@@ -190,18 +190,18 @@ variable Lkwchar variable Lkwbchar
 
 : bccomma A g-pop  7 DATA 0 LDR,  A 7 0 STRB, 7 7 1 ADDI,  7 DATA 0 STR, ;
 
-: btype   2 g-pop  1 g-pop  0 1 MOVZ,  16 4 MOVZ,  $80 SVC, ;
+: btype   2 g-pop  1 g-pop  0 1 MOVZ,  NR-WRITE SYS, ;
 
-: bdie    7 g-pop  2 g-pop  1 g-pop  0 2 MOVZ,  16 4 MOVZ,  $80 SVC,
-          0 7 0 ADDI,  16 1 MOVZ,  $80 SVC, ;
+: bdie    7 g-pop  2 g-pop  1 g-pop  0 2 MOVZ,  NR-WRITE SYS,
+          0 7 0 ADDI,  NR-EXIT SYS, ;
 
-: bopen   2 g-pop  1 g-pop  0 g-pop  16 5 MOVZ,  $80 SVC,  0 g-push ;
+: bopen   2 g-pop  1 g-pop  0 g-pop  NR-OPEN SYS,  0 g-push ;
 
-: bwrite  2 g-pop  1 g-pop  0 g-pop  16 4 MOVZ,  $80 SVC,  0 g-push ;
+: bwrite  2 g-pop  1 g-pop  0 g-pop  NR-WRITE SYS,  0 g-push ;
 
-: bread   2 g-pop  1 g-pop  0 g-pop  16 3 MOVZ,  $80 SVC,  0 g-push ;
+: bread   2 g-pop  1 g-pop  0 g-pop  NR-READ SYS,  0 g-push ;
 
-: bclose  0 g-pop  16 6 MOVZ,  $80 SVC, ;
+: bclose  0 g-pop  NR-CLOSE SYS, ;
 
 : brbase  9 DATA RBASE-CELL LDR,  9 g-push ;
 
@@ -233,7 +233,7 @@ variable Lkwchar variable Lkwbchar
    10 11 0 LDR,  10 DATA 8 STR,
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
    SP 13 0 ADDI,  12 BR,
-   lnoh LBL,  0 9 0 ADDI,  16 1 MOVZ,  $80 SVC, ;
+   lnoh LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;
 
 : bwordlist  9 DATA WIDN-CELL LDR,  9 g-push  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
 
@@ -358,7 +358,7 @@ s" emit-prims" s" --" trust
      13 45 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,         \ '-'
    sd LBL,
    0 1 MOVZ,  1 12 0 ADDI,  2 SP 48 ADDI,  2 2 12 SUB,
-   16 4 MOVZ,  $80 SVC,
+   NR-WRITE SYS,
    SP SP 48 ADDI, ;
 
 : emit-fp-prims
@@ -385,8 +385,8 @@ s" emit-fp-prims" s" --" trust
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
    14 DATA BODYLEN-CELL LDR,
    5 BODYBUF-CAP MOVZ,  14 5 CMP,  C-LT bok BCOND,
-      0 2 MOVZ,  1 11 0 ADDI,  2 12 0 ADDI,  16 4 MOVZ,  $80 SVC,
-      0 71 MOVZ,  16 1 MOVZ,  $80 SVC,
+      0 2 MOVZ,  1 11 0 ADDI,  2 12 0 ADDI,  NR-WRITE SYS,
+      0 71 MOVZ,  NR-EXIT SYS,
    bok LBL,
    15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
    bcp LBL,  12 bcd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
@@ -412,7 +412,7 @@ s" emit-fp-prims" s" --" trust
 
 : emit-prot
    Lprot @ LBL,
-   0 DBASE 0 ADDI,  1 REGION LIT64,  16 74 MOVZ,  $80 SVC,  RET, ;
+   0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET, ;
 
 : emit-flush
    Lflush @ LBL,

@@ -229,21 +229,21 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
 
 : bccomma A g-pop  7 DATA 0 LDR,  A 7 0 STRB, 7 7 1 ADDI,  7 DATA 0 STR, ;
 
-: btype   2 g-pop  1 g-pop  0 1 MOVZ,  16 4 MOVZ,  $80 SVC, ;   \ ( addr len -- ) write(1,..)
+: btype   2 g-pop  1 g-pop  0 1 MOVZ,  NR-WRITE SYS, ;   \ ( addr len -- ) write(1,..)
 
 \ die ( a u code -- noreturn ): msg to stderr, exit(code). The in-subset abort for
 \ compiler invariant violations — better a loud death than silent memory corruption.
-: bdie    7 g-pop  2 g-pop  1 g-pop  0 2 MOVZ,  16 4 MOVZ,  $80 SVC,
-          0 7 0 ADDI,  16 1 MOVZ,  $80 SVC, ;
+: bdie    7 g-pop  2 g-pop  1 g-pop  0 2 MOVZ,  NR-WRITE SYS,
+          0 7 0 ADDI,  NR-EXIT SYS, ;
 
 \ file I/O (path must be NUL-terminated by the caller)
-: bopen   2 g-pop  1 g-pop  0 g-pop  16 5 MOVZ,  $80 SVC,  0 g-push ;   \ ( pathz flags mode -- fd )
+: bopen   2 g-pop  1 g-pop  0 g-pop  NR-OPEN SYS,  0 g-push ;   \ ( pathz flags mode -- fd )
 
-: bwrite  2 g-pop  1 g-pop  0 g-pop  16 4 MOVZ,  $80 SVC,  0 g-push ;   \ ( fd buf len -- n )
+: bwrite  2 g-pop  1 g-pop  0 g-pop  NR-WRITE SYS,  0 g-push ;   \ ( fd buf len -- n )
 
-: bread   2 g-pop  1 g-pop  0 g-pop  16 3 MOVZ,  $80 SVC,  0 g-push ;   \ ( fd buf len -- n )
+: bread   2 g-pop  1 g-pop  0 g-pop  NR-READ SYS,  0 g-push ;   \ ( fd buf len -- n )
 
-: bclose  0 g-pop  16 6 MOVZ,  $80 SVC, ;                               \ ( fd -- )
+: bclose  0 g-pop  NR-CLOSE SYS, ;                               \ ( fd -- )
 
 : brbase  9 DATA RBASE-CELL LDR,  9 g-push ;                            \ ( -- rbase ) __TEXT load base
 
@@ -278,7 +278,7 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    10 11 0 LDR,  10 DATA 8 STR,          \ HND = prev
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,   \ link, resume pc, machine sp
    SP 13 0 ADDI,  12 BR,                 \ restore sp; jump to catch's resume
-   lnoh LBL,  0 9 0 ADDI,  16 1 MOVZ,  $80 SVC, ;   \ no handler -> exit(exc)
+   lnoh LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;   \ no handler -> exit(exc)
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
 : bwordlist  9 DATA WIDN-CELL LDR,  9 g-push  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
@@ -406,7 +406,7 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
      13 45 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,         \ '-'
    sd LBL,
    0 1 MOVZ,  1 12 0 ADDI,  2 SP 48 ADDI,  2 2 12 SUB,
-   16 4 MOVZ,  $80 SVC,
+   NR-WRITE SYS,
    SP SP 48 ADDI, ;
 
 : emit-fp-prims ( -- )
@@ -432,8 +432,8 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
    14 DATA BODYLEN-CELL LDR,
    5 BODYBUF-CAP MOVZ,  14 5 CMP,  C-LT bok BCOND,
-      0 2 MOVZ,  1 11 0 ADDI,  2 12 0 ADDI,  16 4 MOVZ,  $80 SVC,
-      0 71 MOVZ,  16 1 MOVZ,  $80 SVC,
+      0 2 MOVZ,  1 11 0 ADDI,  2 12 0 ADDI,  NR-WRITE SYS,
+      0 71 MOVZ,  NR-EXIT SYS,
    bok LBL,
    15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
    bcp LBL,  12 bcd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
@@ -462,7 +462,7 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
 \ ---- PROT ( x2=prot -- ) : mprotect(region, REGION, prot) ----
 : emit-prot ( -- )
    Lprot @ LBL,
-   0 DBASE 0 ADDI,  1 REGION LIT64,  16 74 MOVZ,  $80 SVC,  RET, ;
+   0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET, ;
 
 \ ---- FLUSH ( x9=start -- ) : DC CVAU + IC IVAU over [x9, CP) — just the words
 \ emitted since the last flush, not the whole code area (that walk made every
@@ -627,14 +627,14 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 : emit-source ( -- )
    STDIN? @ if
       0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
-      16 197 MOVZ,  $80 SVC,                       \ mmap RW input buffer -> x0
+      NR-MMAP SYS,                       \ mmap RW input buffer -> x0
       11 0 0 ADDI,  9 0 0 ADDI,                    \ x11 = base, x9 = write ptr
       NEWLBL {: rl :}  NEWLBL {: rd :}
       rl LBL,
          0 0 MOVZ,  1 9 0 ADDI,                    \ read(fd=0, buf=ptr, …)
          2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,   \ count = base+SZ-ptr
          2 rd CBZ,                                 \ buffer full -> done
-         16 3 MOVZ,  $80 SVC,                      \ -> x0 = n
+         NR-READ SYS,                      \ -> x0 = n
          0 rd CBZ,                                 \ EOF (n=0) -> done
          9 9 0 ADD,  rl B,                         \ ptr += n
       rd LBL,
@@ -966,15 +966,15 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    \ non-empty while compiling control flow) — refuse loudly: token + exit(75).
    NEWLBL {: cfok :}
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
-      0 75 MOVZ,  16 1 MOVZ,  $80 SVC,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
    cfok LBL,
    \ FOOTGUN GUARD 1b: {: after EXIT — the patched epilogue would tear down a
    \ frame the exit path never carved. Refuse loudly: token + exit(75).
    NEWLBL {: xok :}
    11 DATA EXITH-CELL LDR,  11 xok CBZ,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
-      0 75 MOVZ,  16 1 MOVZ,  $80 SVC,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
    xok LBL,
    \ first {: of the word carves a fixed 16-slot (128-byte) frame; later blocks
    \ append to the locals table and pop into the next slots (no second carve).
@@ -992,15 +992,15 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       \ cap: 16 local slots (the frame is fixed); a 17th overflows LOCNAMES
       NEWLBL {: nlok :}
       11 DATA LOCN-CELL LDR,  11 16 CMPI,  C-LT nlok BCOND,
-         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
-         0 75 MOVZ,  16 1 MOVZ,  $80 SVC,
+         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+         0 75 MOVZ,  NR-EXIT SYS,
       nlok LBL,
       \ FOOTGUN GUARD 2: a local named i/I is shadowed by the loop-index keyword
       NEWLBL {: noti :}
       TKL 1 CMPI,  C-NE noti BCOND,
       13 TKA 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
-         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
-         0 75 MOVZ,  16 1 MOVZ,  $80 SVC,
+         0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+         0 75 MOVZ,  NR-EXIT SYS,
       noti LBL,
       11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  11 11 LOCNAMES ADDI,  11 DATA 11 ADD,
       TKL 11 0 STR,                           \ entry.len
@@ -1133,7 +1133,7 @@ variable CFSK2
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  XDS SP 0 ADDI,                  \ data stack on machine sp
    \ mmap(0, REGION, PROT_READ|WRITE=3, MAP_ANON|MAP_PRIVATE=0x1002, -1, 0)
    0 0 MOVZ,  1 REGION LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
-   16 197 MOVZ,  $80 SVC,
+   NR-MMAP SYS,
    DBASE 0 0 ADDI,                                    \ x26 = region
    CP DBASE 0 ADDI,  5 DICT-SIZE LIT64,  CP CP 5 ADD, \ x28 = region + DICT-SIZE
    \ seed runtime dict from build-time dict (convert offsets -> absolute addr + clen)
@@ -1152,7 +1152,7 @@ variable CFSK2
    scdone LBL,
    \ separate always-RW data region (x20 is free after the seed copy); [x20]=DP=x20+8
    0 0 MOVZ,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
-   16 197 MOVZ,  $80 SVC,
+   NR-MMAP SYS,
    20 0 RBASE-CELL STR,                               \ save RBASE (x20=__TEXT base) into the data region
    DATA 0 0 ADDI,
    XDS DATA S0-CELL STR,                              \ save data-stack base for `.s`
@@ -1187,12 +1187,12 @@ variable CFSK2
          2 3 MOVZ,  Lprot @ BL,                             \ region -> RW *before* any write
          NEWLBL {: cpok :}  NEWLBL {: ndok :}
          9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
-            0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
-            0 76 MOVZ,  16 1 MOVZ,  $80 SVC,                    \ code region full
+            0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+            0 76 MOVZ,  NR-EXIT SYS,                    \ code region full
          cpok LBL,
          9 1280 MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slot 1280 = CFSTK-OFF
-            0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
-            0 77 MOVZ,  16 1 MOVZ,  $80 SVC,                    \ dictionary full
+            0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+            0 77 MOVZ,  NR-EXIT SYS,                    \ dictionary full
          ndok LBL,
          Ltok @ BL,                                         \ read NAME
          9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,  \ slot
@@ -1334,10 +1334,10 @@ variable CFSK2
    \ undefined word during compilation: write the name to stderr and exit(70). Silently
    \ skipping it (the old behaviour) hid real bugs (e.g. `0<`, `STR=` -> no-op).
    lundef LBL,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,   \ write(2, name)
-      0 70 MOVZ,  16 1 MOVZ,  $80 SVC,                       \ exit(70)
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,   \ write(2, name)
+      0 70 MOVZ,  NR-EXIT SYS,                       \ exit(70)
    lexit LBL,
-      0 0 MOVZ,  16 1 MOVZ,  $80 SVC, ;                     \ exit(0)
+      0 0 MOVZ,  NR-EXIT SYS, ;                     \ exit(0)
 
 : EMIT-FORTH ( src-a src-u -- )
    SRCN !  >r

@@ -4,7 +4,7 @@
 : GO
    1 STDIN? !
    0 0 EMIT-FORTH
-   BUILD-MACHO
+   BUILD-IMAGE
    s" hbi" SET-SIGID  CODESIG2
    s" /tmp/hbi-got" PATH0  1537 493 open  dup MBUF MLEN @ write drop  close ;
 GO

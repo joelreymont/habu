@@ -32,7 +32,7 @@ CRH-INIT
       11 11 1 SUBI,  hl B,
    hd LBL,
    12 10 MOVZ,  12 14 16 STRB,
-   0 2 MOVZ,  1 14 0 ADDI,  2 17 MOVZ,  16 4 MOVZ,  $80 SVC,
+   0 2 MOVZ,  1 14 0 ADDI,  2 17 MOVZ,  NR-WRITE SYS,
    SP SP 32 ADDI,  RET, ;
 
 : emit-crash-handler
@@ -40,7 +40,7 @@ CRH-INIT
    NEWLBL NEWLBL {: rl rd :}
       20 2 0 ADDI,
       19 4 0 ADDI,
-      1 Lhdr @ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  16 4 MOVZ,  $80 SVC,
+      1 Lhdr @ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,
       21 19 MCTX-OFF LDR,
       9 20 0 ADDI,  Lhex @ BL,
       20 0 MOVZ,
@@ -52,10 +52,10 @@ CRH-INIT
       9 21 256 LDR,  Lhex @ BL,
       9 21 264 LDR,  Lhex @ BL,
       9 21 272 LDR,  Lhex @ BL,
-      0 134 MOVZ,  16 1 MOVZ,  $80 SVC,
+      0 134 MOVZ,  NR-EXIT SYS,
    Lhdr @ LBL,  CRH CRHL @ BYTES, ;
 
-: (sigact) {: signo :}  0 signo MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  16 46 MOVZ,  $80 SVC, ;
+: (sigact) {: signo :}  0 signo MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SIGACTION SYS, ;
 
 : g-install-crash
    SP SP 32 SUBI,

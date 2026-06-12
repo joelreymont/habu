@@ -114,3 +114,6 @@ variable NCMDS                        \ load commands counted as emitted
    CODELEN @ MP +!
    MPAGE m-pad                        \ pad file to one page
    m-here MLEN ! ;
+
+\ the target-neutral driver entry: another OS swaps in an ELF builder here
+: BUILD-IMAGE ( -- )  BUILD-MACHO ;

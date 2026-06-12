@@ -26,7 +26,7 @@ variable DOT-LBL  variable ATOI-LBL
    14 lns CBZ,
    13 45 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,  lns LBL,
    0 1 MOVZ,  1 12 0 ADDI,  2 SP 32 ADDI,  2 2 12 SUB,
-   16 4 MOVZ,  $80 SVC,
+   NR-WRITE SYS,
    SP SP 32 ADDI, ;
 
 : EMIT-DOT  DOT-LBL @ LBL,  XDS XDS 8 SUBI,  9 XDS 0 LDR,  g-print9  RET, ;
@@ -42,13 +42,13 @@ variable DOT-LBL  variable ATOI-LBL
    13 13 48 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
    9 11 0 ADDI,  9 lloop CBNZ,
    0 1 MOVZ,  1 12 0 ADDI,  2 SP 32 ADDI,  2 2 12 SUB,
-   16 4 MOVZ,  $80 SVC,
+   NR-WRITE SYS,
    SP SP 32 ADDI, ;
 
 \ Write the single byte in x13 to stdout (emit/cr/space share it).
 : g-emitc
    SP SP 16 SUBI,  13 SP 0 STRB,
-   0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  16 4 MOVZ,  $80 SVC,
+   0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    SP SP 16 ADDI, ;
 
 \ ATOI: NUL-terminated decimal string at x9 -> push i64 (leading '-' ok). Leaf.
