@@ -109,6 +109,17 @@ dbase@ $300000000 = -1 T=
 cp@ dbase@ - 0 > -1 T=
 ndict@ 0 > -1 T=
 
+\ register pool stress: 9 live VS values exceed the 8-reg pool (x9..x15,x29)
+\ mid-expression -> the 9th allocation takes the spill path; sum proves no value
+\ was lost or aliased (1+2+...+9 = 45)
+: TRP 1 2 3 4 5 6 7 8 9  + + + + + + + + ;
+TRP 45 T=
+
+\ loop-resident registers: 8 loop-carried values (full pool incl. x29) survive
+\ a BEGIN/UNTIL back edge via the byte-packed snapshot
+: TLR 1 2 3 4 5 6 7  0 begin 1 + dup 3 = until drop  + + + + + + ;
+TLR 28 T=
+
 \ report: count + nonzero exit on failure
 : REPORT
    #FAIL @ 0 = if [char] o emit [char] k emit cr exit then

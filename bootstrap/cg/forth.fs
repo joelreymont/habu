@@ -1456,6 +1456,7 @@ variable CFSK2
    G-INSTALL-CRASH                                    \ self-diagnosing crash (register dump)
    9 LDOESPATCH @ ADR,  9 DATA DOESP-CELL STR,
    9 LCREATE @ ADR,  9 DATA CREATEP-CELL STR,        \ DOES> patch routine addr
+   LVRINIT @ BL,                                     \ fill VRTAB/VRITAB from VRPACK
    EMIT-SOURCE                                        \ INP/INE <- baked LSRC or stdin
    PEND 0 MOVZ,                                       \ interpret mode
    NEWLBL {: LMAIN :}  NEWLBL {: LEXIT :}  NEWLBL {: LCOMPILE :}  NEWLBL {: LUNDEF :}
@@ -1673,7 +1674,7 @@ variable CFSK2
    NEWLBL LPROFH !  NEWLBL LPROFDUMP !
    NEWLBL LVSPILL !  NEWLBL LVLITPUSH !  NEWLBL LVPUSHC !
    NEWLBL LVTOP2C !  NEWLBL LVFOLDPUT !
-   NEWLBL LVRALLOC !  NEWLBL LVMOVK !  NEWLBL LVFORCEK !  NEWLBL LVBINPREP !  NEWLBL LVPUSHR !
+   NEWLBL LVRALLOC !  NEWLBL LVBIT !  NEWLBL LVRINIT !  NEWLBL LVMOVK !  NEWLBL LVFORCEK !  NEWLBL LVBINPREP !  NEWLBL LVPUSHR !
    NEWLBL LVDROP !  NEWLBL LVSWAPX !  NEWLBL LVNIPX !  NEWLBL LVCOPY !
    NEWLBL LVSNAP !  NEWLBL LVRECON !
    NEWLBL LKWPLUS !  NEWLBL LKWMINUS !  NEWLBL LKWSTAR !

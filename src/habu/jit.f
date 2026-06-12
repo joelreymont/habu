@@ -194,7 +194,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    6 DATA VSP-CELL LDR,  5 6 1 SUBI,  LVFORCEK @ BL,  14 bno CBZ,
    15 14 0 ADDI,  14 SP 8 LDR,
    \ free rm's bit; VSP--  (entry[VSP-2] already = reg rd via force-in-place)
-   7 15 9 SUBI,  8 1 MOVZ,  8 8 7 LSLV,
+   7 15 0 ADDI,  LVBIT @ BL,
    6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
    6 DATA VSP-CELL LDR,  6 6 1 SUBI,  6 DATA VSP-CELL STR,
    13 2 MOVZ,  b2 B,
@@ -213,7 +213,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    SP SP 16 SUBI,  30 SP 0 STR,  14 SP 8 STR,
    6 DATA VSP-CELL LDR,  6 VSMAX CMPI,  C-LT pr BCOND,
       LVSPILL @ BL,
-      14 SP 8 LDR,  7 14 9 SUBI,  8 1 MOVZ,  8 8 7 LSLV,
+      14 SP 8 LDR,  7 14 0 ADDI,  LVBIT @ BL,
       6 DATA VRFREE-CELL LDR,  6 6 8 EOR,  6 DATA VRFREE-CELL STR,   \ re-claim x14
    pr LBL,
    14 SP 8 LDR,  6 DATA VSP-CELL LDR,
@@ -284,17 +284,18 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 : EMIT-VDROP
    LVDROP @ LBL,
    NEWLBL NEWLBL {: no fr :}
+   SP SP 16 SUBI,  30 SP 0 STR,
    13 0 MOVZ,
    6 DATA VSP-CELL LDR,  6 no CBZ,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    7 fr CBNZ,
       8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
-      7 11 9 SUBI,  8 1 MOVZ,  8 8 7 LSLV,
+      7 11 0 ADDI,  LVBIT @ BL,
       6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
       6 DATA VSP-CELL LDR,
    fr LBL,
    6 6 1 SUBI,  6 DATA VSP-CELL STR,  13 1 MOVZ,
-   no LBL,  RET, ;
+   no LBL,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LVSWAPX ( -- x13=ok ) : swap ANY top two entries (pure relabel; no code)
 : EMIT-VSWAPX
@@ -315,12 +316,13 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 : EMIT-VNIPX
    LVNIPX @ LBL,
    NEWLBL NEWLBL {: no fr :}
+   SP SP 16 SUBI,  30 SP 0 STR,
    13 0 MOVZ,
    6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT no BCOND,
    5 6 2 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    7 fr CBNZ,
       8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
-      7 11 9 SUBI,  8 1 MOVZ,  8 8 7 LSLV,
+      7 11 0 ADDI,  LVBIT @ BL,
       6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
       6 DATA VSP-CELL LDR,
    fr LBL,
@@ -331,7 +333,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  9 7 0 STRB,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  10 8 0 STR,
    6 6 1 SUBI,  6 DATA VSP-CELL STR,  13 1 MOVZ,
-   no LBL,  RET, ;
+   no LBL,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LVCOPY ( x5=k -- x13=ok ) : push a copy of entry k (con free; reg = one mov)
 : EMIT-VCOPY
@@ -354,15 +356,15 @@ variable LVSNAP  variable LVRECON
 $358 constant SNAPSP-CELL       \ BEGIN snapshot stack depth
 $360 constant SNAPSTK-OFF       \ 32 x (k, packed-regs) BEGIN nesting frames
 
-\ LVSNAP ( -- ) : BEGIN. VSP<=7: force every VS entry into a register (movz
+\ LVSNAP ( -- ) : BEGIN. VSP<=8: force every VS entry into a register (movz
 \ chains for cons emitted HERE, before the loop top) and push (k, packed regs —
-\ a nibble per slot, bottom-up) on the snapshot stack. Deep VS or a failed
+\ a byte per slot, bottom-up) on the snapshot stack. Deep VS or a failed
 \ force: spill-all and push (0,0) — that loop runs memory-resident as before.
 : EMIT-VSNAP
    LVSNAP @ LBL,
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: fl fd fail spush pl pd :}
    SP SP 16 SUBI,  30 SP 0 STR,
-   6 DATA VSP-CELL LDR,  6 8 CMPI,  C-GE fail BCOND,
+   6 DATA VSP-CELL LDR,  6 9 CMPI,  C-GE fail BCOND,
    5 0 MOVZ,
    fl LBL,                                  \ force entry x5 (Lvforcek saves x5)
       6 DATA VSP-CELL LDR,  5 6 CMP,  C-GE fd BCOND,
@@ -373,7 +375,7 @@ $360 constant SNAPSTK-OFF       \ 32 x (k, packed-regs) BEGIN nesting frames
    pl LBL,
       6 DATA VSP-CELL LDR,  11 6 CMP,  C-GE pd BCOND,
       8 11 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  7 8 0 LDR,
-      8 11 2 LSLI,  7 7 8 LSLV,  12 12 7 ORR,
+      8 11 3 LSLI,  7 7 8 LSLV,  12 12 7 ORR,
       11 11 1 ADDI,  pl B,
    pd LBL,
    6 DATA VSP-CELL LDR,  13 6 0 ADDI,  spush B,
@@ -404,7 +406,7 @@ $360 constant SNAPSTK-OFF       \ 32 x (k, packed-regs) BEGIN nesting frames
       5 13 CMP,  C-GE cd BCOND,
       7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,  7 rel CBNZ,
       8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDR,
-      6 5 2 LSLI,  7 12 6 LSRV,  7 7 $F ANDI,
+      6 5 3 LSLI,  7 12 6 LSRV,  7 7 $FF ANDI,
       8 7 CMP,  C-NE rel BCOND,
       5 5 1 ADDI,  cl B,
    cd LBL,
@@ -417,12 +419,12 @@ $360 constant SNAPSTK-OFF       \ 32 x (k, packed-regs) BEGIN nesting frames
    rl LBL,
       5 rln CBZ,
       5 5 1 SUBI,
-      6 5 2 LSLI,  7 12 6 LSRV,  7 7 $F ANDI,         \ x7 = L[i]
+      6 5 3 LSLI,  7 12 6 LSRV,  7 7 $FF ANDI,         \ x7 = L[i]
       9 $D1002273 LIT64,  LCEMIT @ BL,                \ sub x19,#8
       8 $F9400260 LIT64,  9 8 7 ORR,  LCEMIT @ BL,    \ ldr L[i],[x19]
       8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  6 0 MOVZ,  6 8 0 STRB,
       8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  7 8 0 STR,
-      7 7 9 SUBI,  6 1 MOVZ,  6 6 7 LSLV,  11 11 6 ORR,
+      LVBIT @ BL,  11 11 8 ORR,
       rl B,
    rln LBL,
    13 DATA VSP-CELL STR,
@@ -513,5 +515,5 @@ s" vun-entry" s" n n n n n --" TRUST
    LKWNEG2 @ LBL,  s" negate" BYTES,  LKWINV2 @ LBL,  s" invert" BYTES, ;
 
 : EMIT-JIT  EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
-   EMIT-VRALLOC  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VBINPREP  EMIT-VPUSHR
+   EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VBINPREP  EMIT-VPUSHR
    EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON ;
