@@ -60,10 +60,68 @@
 : ENC-UDIV {: rd rn rm :} $9AC00800 rd rn rm RRR ;
 \ arithmetic shift right immediate (SBFM)
 : ENC-ASRI {: rd rn sh :} $9340FC00 rd or  rn 5 lshift or  sh 16 lshift or MSK ;
-\ logical immediates (nis = N<<12 | immr<<6 | imms, pre-packed by the caller)
+\ logical immediates (nis = N<<12 | immr<<6 | imms)
 : ENC-ANDI {: rd rn nis :} $92000000 rd or  rn 5 lshift or  nis 10 lshift or MSK ;
 : ENC-ORRI {: rd rn nis :} $B2000000 rd or  rn 5 lshift or  nis 10 lshift or MSK ;
 : ENC-EORI {: rd rn nis :} $D2000000 rd or  rn 5 lshift or  nis 10 lshift or MSK ;
+
+\ encodeBitMasks: plain mask -> nis. A valid mask is a power-of-2-sized
+\ repeating element (2..64 bits) that is a rotated contiguous run of ones;
+\ 0 and all-ones are not encodable (die 72).
+variable PCX
+
+: POPC64 {: x :}  \ ( x -- n )
+   x PCX !  0
+   BEGIN PCX @ 0 <> WHILE  PCX @ 1 and +  PCX @ 1 rshift PCX !  REPEAT ;
+
+: EMASK {: e :}   \ ( e -- mask ) low-e-bits mask; lshift wraps at 64
+   e 64 = IF -1 ELSE 1 e lshift 1 - THEN ;
+
+variable REMSK
+
+: RORE {: x r e :}  \ ( x r e -- y )
+   e EMASK REMSK !
+   x REMSK @ and dup  r rshift  swap e r - lshift  or  REMSK @ and ;
+
+: HALVES= {: x e :}  \ ( x e -- f )
+   1 e 2 / lshift 1 -  dup  x and  swap  x e 2 / rshift and  = ;
+
+variable LELE
+
+: LELEM {: x :}  \ ( x -- elem e )
+   64 LELE !
+   BEGIN  LELE @ 2 >  x LELE @ HALVES= and  WHILE  LELE @ 2 / LELE !  REPEAT
+   x LELE @ EMASK and  LELE @ ;
+
+variable LRI
+
+: LROT {: elem ones e :}  \ ( elem ones e -- r | -1 )
+   -1  0 LRI !
+   BEGIN LRI @ e < WHILE
+      1 ones lshift 1 -  LRI @ e RORE  elem = IF
+         drop LRI @  e LRI !
+      ELSE
+         LRI @ 1 + LRI !
+      THEN
+   REPEAT ;
+
+: LIMM-PACK {: r ones e :}  \ ( r ones e -- nis )
+   e 64 = IF $1000 ELSE 0 THEN
+   r 6 lshift or
+   e 2 * 1 - 63 and 63 xor  ones 1 - or  or ;
+
+variable LIE   variable LIONES
+
+: LIMM-BAD  s" asm: bad logical immediate" 72 die ;
+
+: >LIMM {: mask :}  \ ( mask -- nis )
+   mask 0 =  mask -1 =  or IF LIMM-BAD THEN
+   mask LELEM LIE !                                  \ ( elem ), e in LIE
+   dup POPC64 LIONES !
+   LIONES @ LIE @ = IF LIMM-BAD THEN
+   LIONES @ LIE @ LROT                               \ ( r | -1 )
+   dup 0 < IF LIMM-BAD THEN
+   LIONES @ LIE @ LIMM-PACK ;
 \ indirect branches, trap, nop
 : ENC-BLR {: rn :} $D63F0000 rn 5 lshift or MSK ;
 : ENC-BR  {: rn :} $D61F0000 rn 5 lshift or MSK ;

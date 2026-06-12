@@ -47,12 +47,12 @@ T{ $FF00             ENC-LOGIMM -> $1E07 true }T   \ rotated run (immr=56)
 T{ $FFFF             ENC-LOGIMM -> $100F true }T
 T{ $F0               ENC-LOGIMM -> $1F03 true }T
 T{ $FFFFFFFFFFFFFF00 ENC-LOGIMM -> $1E37 true }T   \ wrapping run
-T{ $5555555555555555 ENC-LOGIMM -> $5555555555555555 false }T  \ period-2: not encodable
+T{ $5555555555555555 ENC-LOGIMM -> $3C true }T     \ period-2: size-2 element, r=0
 T{ 0                 ENC-LOGIMM -> 0 false }T
 T{ -1                ENC-LOGIMM -> -1 false }T
-T{ ICODE-RESET 0 0 $1007 ANDI, V1 -> $92401C00 }T  \ and x0,x0,#0xFF
-T{ ICODE-RESET 0 0 $1007 ORRI, V1 -> $B2401C00 }T  \ orr x0,x0,#0xFF
-T{ ICODE-RESET 0 0 $1007 EORI, V1 -> $D2401C00 }T  \ eor x0,x0,#0xFF
+T{ ICODE-RESET 0 0 $FF ANDI,   V1 -> $92401C00 }T  \ and x0,x0,#0xFF
+T{ ICODE-RESET 0 0 $FF ORRI,   V1 -> $B2401C00 }T  \ orr x0,x0,#0xFF
+T{ ICODE-RESET 0 0 $FF EORI,   V1 -> $D2401C00 }T  \ eor x0,x0,#0xFF
 T{ ICODE-RESET BRK,            V1 -> $D4200000 }T  \ brk #0
 T{ ICODE-RESET 0 1 1 LSLI,   V1 -> $D37FF820 }T  \ lsl x0,x1,#1
 T{ ICODE-RESET 0 1 13 LSLI,  V1 -> $D373C820 }T  \ lsl x0,x1,#13
@@ -138,3 +138,13 @@ T{ ICODE-RESET 1 FCMP0,     V1 -> $1E602028 }T   \ fcmp d1, #0.0
 T{ ICODE-RESET 0 3 SCVTF,   V1 -> $9E620060 }T   \ scvtf d0, x3
 T{ ICODE-RESET 3 0 FCVTZS,  V1 -> $9E780003 }T   \ fcvtzs x3, d0
 T{ ICODE-RESET 0 1 FMOVDD,  V1 -> $1E604020 }T   \ fmov d0, d1   (FP reg-reg copy)
+
+\ --- logical-immediate encoding (encodeBitMasks, all element sizes) ---
+T{ $F >LIMM -> $1003 }T                          \ size 64, 4 ones, r=0
+T{ 1 >LIMM -> $1000 }T                           \ size 64, 1 one
+T{ $7FFFF >LIMM -> $1012 }T                      \ size 64, 19 ones
+T{ $FFFFFFFF00000000 >LIMM -> $181F }T           \ size 64, wrapped run, r=32
+T{ $0000000100000001 >LIMM -> 0 }T               \ size 32 element
+T{ $AAAAAAAAAAAAAAAA >LIMM -> $7C }T             \ size 2 element, r=1
+T{ ICODE-RESET 12 9 $F ANDI,  V1 -> $92400D2C }T \ and x12, x9, #0xF
+T{ 5 ENC-LOGIMM -> 5 false }T                    \ 0b101: not a run

@@ -69,6 +69,50 @@ variable #LBL
    0 #IC !  0 #LBL !
    MAX-LBL 0 ?do  -1 LBLPOS i cells + !  loop ;
 
+\ --- logical-immediate encoding (encodeBitMasks: plain mask -> N:immr:imms) ---
+\ A valid mask is a power-of-2-sized repeating element (2..64 bits) that is a
+\ rotated contiguous run of ones. 0 and all-ones are not encodable.
+s" cg: bad logical immediate" exception constant E-BADLIMM
+
+: POPC64 ( x -- n )   \ population count
+   0 swap  begin dup while  swap over 1 and +  swap 1 rshift  repeat  drop ;
+
+: EMASK ( e -- mask )   \ low-e-bits mask; ARM lshift wraps at 64, so special-case
+   dup 64 = if drop -1 else 1 swap lshift 1- then ;
+
+: RORE {: x r e -- x' :}   \ rotate x right by r within an e-bit element
+   e EMASK {: m :}
+   x m and {: xm :}
+   xm r rshift  xm e r - lshift  or  m and ;
+
+: HALVES= {: x e -- f :}   \ low and high halves of the e-bit x equal?
+   e 2/ {: h :}  1 h lshift 1- {: m :}
+   x m and  x h rshift m and  = ;
+
+: LELEM {: x -- elem e :}   \ smallest power-of-2 repeating element of x
+   64 {: e :}
+   begin  e 2 >  x e HALVES=  and  while  e 2/ to e  repeat
+   x e EMASK and  e ;
+
+: LROT {: elem ones e -- r | -1 :}   \ r such that ROR(ones-run, r, e) = elem
+   1 ones lshift 1- {: run :}
+   e 0 ?do  run i e RORE elem = if  i unloop exit  then  loop  -1 ;
+
+: LIMM-PACK {: r ones e -- nis :}   \ pack N<<12 | immr<<6 | imms
+   e 64 = if $1000 else 0 then
+   r 6 lshift or
+   e 2* 1- 63 and 63 xor  ones 1- or  or ;
+
+: ENC-LOGIMM {: x -- nis true | x false :}
+   x 0=  x -1 =  or if  x false exit  then
+   x LELEM {: elem e :}
+   elem POPC64 {: ones :}
+   ones e = if  x false exit  then
+   elem ones e LROT dup 0< if  drop x false exit  then
+   ones e LIMM-PACK  true ;
+
+: >LIMM ( mask -- nis )  ENC-LOGIMM 0= if E-BADLIMM throw then ;
+
 \ --- mnemonics ( … -- ); register operands are X-register numbers 0..31 ---
 : MOVZ, ( rd imm16 -- )    0 0 IOP-MOVZ IC, ;
 : MOVK, ( rd imm16 sh -- ) 0 IOP-MOVK IC, ;     \ sh in {0,16,32,48}
@@ -85,9 +129,9 @@ variable #LBL
 : AND,  ( rd rn rm -- )    0 IOP-AND IC, ;
 : ORR,  ( rd rn rm -- )    0 IOP-ORR IC, ;
 : EOR,  ( rd rn rm -- )    0 IOP-EOR IC, ;
-: ANDI, ( rd rn nis -- )   0 IOP-ANDI IC, ;   \ logical immediate (nis = N<<12|immr<<6|imms)
-: ORRI, ( rd rn nis -- )   0 IOP-ORRI IC, ;
-: EORI, ( rd rn nis -- )   0 IOP-EORI IC, ;
+: ANDI, ( rd rn mask -- )  >LIMM 0 IOP-ANDI IC, ;   \ plain mask, encoded here
+: ORRI, ( rd rn mask -- )  >LIMM 0 IOP-ORRI IC, ;
+: EORI, ( rd rn mask -- )  >LIMM 0 IOP-EORI IC, ;
 : LSLI, ( rd rn sh -- )    0 IOP-LSLI IC, ;
 : LSRI, ( rd rn sh -- )    0 IOP-LSRI IC, ;
 : ASRI, ( rd rn sh -- )    0 IOP-ASRI IC, ;

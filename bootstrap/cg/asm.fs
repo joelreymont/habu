@@ -76,17 +76,9 @@ CHECKING-ON? off   \ logical-immediate encode/encoders are metaprogramming (bit 
 : ENC-ANDI ( i -- )  $92000000 RRI EMITW ;
 : ENC-ORRI ( i -- )  $B2000000 RRI EMITW ;
 : ENC-EORI ( i -- )  $D2000000 RRI EMITW ;
-\ encodeBitMasks: element-size-64 single contiguous run (rotated/wrapping ok);
-\ rejects period-<64 patterns. regstack.fs uses it to pick AND/ORR/EOR #imm.
-: ROR64 ( x r -- x' )  63 and dup 0= if drop exit then  {: r :}  dup r rshift  swap 64 r - lshift  or ;
-: POPC64 ( x -- n )  0 swap  begin dup while  swap over 1 and +  swap 1 rshift  repeat  drop ;
-: ENC-LOGIMM ( x -- nis true | x false )
-   dup 0= over -1 = or if false exit then
-   dup dup 1 ROR64 xor POPC64 2 <> if false exit then          \ not a single run
-   dup POPC64 {: ones :}  1 ones lshift 1- {: bottom :}
-   64 0 ?do  dup i ROR64 bottom = if
-      drop  $1000  64 i - 63 and 6 lshift or  ones 1- or  true  unloop exit  then  loop
-   false ;
+\ encodeBitMasks (ENC-LOGIMM, all element sizes) lives in icode.fs now — the
+\ ANDI,/ORRI,/EORI, mnemonics take PLAIN masks and encode at build time;
+\ regstack.fs still probes ENC-LOGIMM to pick the #imm form.
 CHECKING-ON? on
 : ENC-LSLV ( R i64 -- R )  $9AC02000 RRR EMITW ;
 : ENC-LSRV ( R i64 -- R )  $9AC02400 RRR EMITW ;

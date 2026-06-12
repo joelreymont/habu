@@ -103,7 +103,7 @@ variable Lkwdup2  variable Lkwdrop2  variable Lkwswap2  variable Lkwover2  varia
    6 DATA VRFREE-CELL LDR,  5 0 MOVZ,
    rl LBL,
       5 7 CMPI,  C-GE rno BCOND,
-      7 6 5 LSRV,  7 7 $1000 ANDI,  7 rgot CBNZ,
+      7 6 5 LSRV,  7 7 1 ANDI,  7 rgot CBNZ,
       5 5 1 ADDI,  rl B,
    rno LBL,  14 0 MOVZ,  RET,
    rgot LBL,
@@ -378,7 +378,7 @@ $360 constant SNAPSTK-OFF       \ 32 x (k, packed-regs) BEGIN nesting frames
       5 13 CMP,  C-GE cd BCOND,
       7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,  7 rel CBNZ,
       8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDR,
-      6 5 2 LSLI,  7 12 6 LSRV,  7 7 $1003 ANDI,
+      6 5 2 LSLI,  7 12 6 LSRV,  7 7 $F ANDI,
       8 7 CMP,  C-NE rel BCOND,
       5 5 1 ADDI,  cl B,
    cd LBL,
@@ -391,7 +391,7 @@ $360 constant SNAPSTK-OFF       \ 32 x (k, packed-regs) BEGIN nesting frames
    rl LBL,
       5 rln CBZ,
       5 5 1 SUBI,
-      6 5 2 LSLI,  7 12 6 LSRV,  7 7 $1003 ANDI,      \ x7 = L[i]
+      6 5 2 LSLI,  7 12 6 LSRV,  7 7 $F ANDI,         \ x7 = L[i]
       9 $D1002273 LIT64,  Lcemit @ BL,                \ sub x19,#8
       8 $F9400260 LIT64,  9 8 7 ORR,  Lcemit @ BL,    \ ldr L[i],[x19]
       8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  6 0 MOVZ,  6 8 0 STRB,

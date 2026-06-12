@@ -19,7 +19,7 @@ CRH-INIT
    14 SP 0 ADDI,
    11 15 MOVZ,
    hl LBL,
-      12 9 $1003 ANDI,
+      12 9 $F ANDI,
       13 12 48 ADDI,
       12 10 CMPI,  C-LT hlet BCOND,  13 13 39 ADDI,
       hlet LBL,

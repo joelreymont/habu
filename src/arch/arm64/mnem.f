@@ -20,9 +20,9 @@
 : AND,  {: rd rn rm :}  rd rn rm ENC-AND EMITW ;
 : ORR,  {: rd rn rm :}  rd rn rm ENC-ORR EMITW ;
 : EOR,  {: rd rn rm :}  rd rn rm ENC-EOR EMITW ;
-: ANDI, {: rd rn nis :}  rd rn nis ENC-ANDI EMITW ;
-: ORRI, {: rd rn nis :}  rd rn nis ENC-ORRI EMITW ;
-: EORI, {: rd rn nis :}  rd rn nis ENC-EORI EMITW ;
+: ANDI, {: rd rn mask :}  rd rn mask >LIMM ENC-ANDI EMITW ;
+: ORRI, {: rd rn mask :}  rd rn mask >LIMM ENC-ORRI EMITW ;
+: EORI, {: rd rn mask :}  rd rn mask >LIMM ENC-EORI EMITW ;
 : LSLI, {: rd rn sh :}  rd rn sh ENC-LSLI EMITW ;
 : LSRI, {: rd rn sh :}  rd rn sh ENC-LSRI EMITW ;
 : ASRI, {: rd rn sh :}  rd rn sh ENC-ASRI EMITW ;

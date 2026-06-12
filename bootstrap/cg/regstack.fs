@@ -113,8 +113,8 @@ variable RL-ACTIVE   variable RL-FAIL
 \ AND/OR/EOR with a const operand that's a valid ARM logical immediate -> #imm form.
 : vlogic {: rgen igen fold -- :}
    v-2con? if  v-popc {: b :} v-popc {: a :}  a b fold execute v-pushc exit then
-   v-top-tag V-CON = if  v-top-val ENC-LOGIMM if  {: nis :}
-      v-popc drop  v-popr {: a :}  a a nis igen execute  a v-pushr  exit
+   v-top-tag V-CON = if  v-top-val ENC-LOGIMM if  drop
+      v-popc {: m :}  v-popr {: a :}  a a m igen execute  a v-pushr  exit
    else drop then then
    v-popr {: b :} v-popr {: a :}  a a b rgen execute  b r-free  a v-pushr ;
 

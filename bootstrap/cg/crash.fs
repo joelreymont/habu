@@ -28,7 +28,7 @@ s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR
    11 15 MOVZ,                              \ char index 15..0 inclusive
    NEWLBL {: hl :}  NEWLBL {: hd :}  NEWLBL {: hlet :}
    hl LBL,
-      12 9 $1003 ANDI,                      \ x12 = val & 0xF
+      12 9 $F ANDI,                         \ x12 = val & 0xF
       13 12 48 ADDI,                        \ '0'+nibble
       12 10 CMPI,  C-LT hlet BCOND,  13 13 39 ADDI,   \ if >=10 -> 'a'-10+nibble
       hlet LBL,
