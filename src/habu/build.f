@@ -6,8 +6,8 @@
 \ The toolchain compiling THIS driver is checker-hooked; the user program is
 \ compiled by the emitted engine at its own startup (unchecked there).
 
-: BLD-IN  s" /tmp/hb-build-src" ;
-: BLD-OUT s" /tmp/hb-build-got" ;
+: BLD-IN  s" hb-build-src" TMP-PATH ;
+: BLD-OUT s" hb-build-got" TMP-PATH ;
 variable PB  variable PN  variable PFD  variable PRD
 $40000 constant PMAX
 

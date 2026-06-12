@@ -4,7 +4,7 @@
 \ Swapped in for stage2.f by `srclist.sh hbi` (see tools/build.sh).
 
 \ output path — the single knob; tools/build.sh owns the artifact
-: HBI-OUT s" /tmp/hbi-got" ;
+: HBI-OUT s" hbi-got" TMP-PATH ;
 
 \ the REPL bootstrap baked as the engine's LSRC (path is repo-root relative;
 \ build.sh cd's there before running the maker)

@@ -6,8 +6,8 @@
 create S2P 32 allot   create O2P 32 allot
 
 \ fixpoint I/O paths — the single knobs; tools/build.sh owns the artifacts
-: S2-IN  s" /tmp/stage2-src" ;
-: S2-OUT s" /tmp/stage2-got" ;
+: S2-IN  s" stage2-src" TMP-PATH ;
+: S2-OUT s" stage2-got" TMP-PATH ;
 
 : PATHZ {: a u d :}
    0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;

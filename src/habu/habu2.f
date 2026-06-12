@@ -644,6 +644,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
    {: scopy scdone rvok dvok snomag sc1 sc1d sc2 sc2d srl srn srx cwok sdl2 sdn2 sds2 :}
    NEWLBL SNBL !  NEWLBL SNOL !
    LANCHOR @ LBL,
+   13 0 0 ADDI,  14 1 0 ADDI,  15 2 0 ADDI,
    RBASE LANCHOR @ ADR,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
@@ -677,6 +678,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
    20 0 RBASE-CELL STR,
    DATA 0 0 ADDI,
    XDS DATA S0-CELL STR,
+   13 DATA ARGC-CELL STR,  14 DATA ARGV-CELL STR,  15 DATA ENVP-CELL STR,
    5 DATA-START MOVZ,  7 DATA 5 ADD,  7 DATA DP-CELL STR,
    \ ---- AOT snapshot? (trailer at the end of our own __text). If present:
    \ restore both regions verbatim (fixed VAs keep region addresses valid),
@@ -698,6 +700,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
    SNOL @ B,
    SNBL @ LBL,  0 79 MOVZ,  NR-EXIT SYS,
    SNOL @ LBL,
+   9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,       \ x22 = engine text len then
    8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
    13 DBASE 0 ADDI,  14 0 MOVZ,
@@ -712,6 +715,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
    sc2d LBL,
    25 DATA RBASE-CELL STR,                          \ live values over stale copies
    XDS DATA S0-CELL STR,
+   9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
    \ rebase seed-prim dict entries (slot.addr in the old engine text)

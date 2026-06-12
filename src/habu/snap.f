@@ -7,7 +7,7 @@
 $48425350414E5321 constant SNAP-MAGIC
 
 \ output path — the single knob; tools/snap-hb.sh owns/moves the artifact
-: SNAP-OUT s" /tmp/hb-warm0" ;
+: SNAP-OUT s" hb-warm0" TMP-PATH ;
 
 create SNP 32 allot
 create TRL 40 allot

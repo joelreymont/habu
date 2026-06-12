@@ -33,6 +33,9 @@ $3650 constant RSAVND-CELL \ line-start NDICT
 $3658 constant RSAVDP-CELL \ line-start DP
 $3660 constant RSAVSP-CELL \ loop-level machine SP (throw recovery unwinds to it)
 $3668 constant RRECP-CELL  \ runtime addr of the REPL recovery entry (EMIT-MAIN stores it)
+$3670 constant ARGC-CELL   \ dyld main(argc,argv,envp): x0-x2, captured at entry
+$3678 constant ARGV-CELL
+$3680 constant ENVP-CELL
 $1D8 constant SSCR-CELL
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF

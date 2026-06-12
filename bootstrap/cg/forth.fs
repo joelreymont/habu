@@ -56,6 +56,9 @@ $3650 constant RSAVND-CELL \ line-start NDICT
 $3658 constant RSAVDP-CELL \ line-start DP
 $3660 constant RSAVSP-CELL \ loop-level machine SP (throw recovery unwinds to it)
 $3668 constant RRECP-CELL  \ runtime addr of the REPL recovery entry (EMIT-MAIN stores it)
+$3670 constant ARGC-CELL   \ dyld main(argc,argv,envp): x0-x2, captured at entry
+$3678 constant ARGV-CELL
+$3680 constant ENVP-CELL
 $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
                            \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
@@ -1354,6 +1357,7 @@ variable CFSK2
 \ ---- MAIN: startup (data stack + mmap + seed dict) then the outer interpreter ----
 : EMIT-MAIN ( -- )
    LANCHOR @ LBL,
+   13 0 0 ADDI,  14 1 0 ADDI,  15 2 0 ADDI,          \ main(argc,argv,envp) from dyld
    RBASE LANCHOR @ ADR,                              \ x20 = __TEXT base
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  XDS SP 0 ADDI,                  \ data stack on machine sp
    \ mmap(0, REGION, PROT_READ|WRITE=3, MAP_ANON|MAP_PRIVATE=0x1002, -1, 0)
@@ -1389,6 +1393,7 @@ variable CFSK2
    20 0 RBASE-CELL STR,                               \ save RBASE (x20=__TEXT base) into the data region
    DATA 0 0 ADDI,
    XDS DATA S0-CELL STR,                              \ save data-stack base for `.s`
+   13 DATA ARGC-CELL STR,  14 DATA ARGV-CELL STR,  15 DATA ENVP-CELL STR,
    5 DATA-START MOVZ,  7 DATA 5 ADD,  7 DATA DP-CELL STR,   \ DP = base + header ($2800 > imm12)
    \ ---- AOT snapshot? (trailer at the end of our own __text). If present:
    \ restore both regions verbatim (fixed VAs keep region addresses valid),
@@ -1414,6 +1419,7 @@ variable CFSK2
    snokz B,
    snbad LBL,  0 79 MOVZ,  NR-EXIT SYS,
    snokz LBL,
+   9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,       \ x22 = engine text len then
    8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
    13 DBASE 0 ADDI,  14 0 MOVZ,
@@ -1428,6 +1434,7 @@ variable CFSK2
    sc2d LBL,
    25 DATA RBASE-CELL STR,                          \ live values over stale copies
    XDS DATA S0-CELL STR,
+   9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
    NEWLBL {: sdl2 :}  NEWLBL {: sdn2 :}  NEWLBL {: sds2 :}

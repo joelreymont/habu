@@ -9,7 +9,7 @@ require sh-driver.fs
 : GEN ( -- a u )
    0 CL !
    s" src/core/sha256.f" +F  s" src/core/util.f" +F  s" src/arch/arm64/asm.f" +F
-   s" src/arch/arm64/icode.f" +F  s" src/arch/arm64/mnem.f" +F  s" src/os/macos/sys.f" +F  s" src/os/macos/macho.f" +F  s" src/os/macos/sign2.f" +F
+   s" src/arch/arm64/icode.f" +F  s" src/arch/arm64/mnem.f" +F  s" src/os/macos/sys.f" +F  s" src/os/macos/env.f" +F  s" src/os/macos/macho.f" +F  s" src/os/macos/sign2.f" +F
    s" src/core/checker.f" +F
    s" src/core/render.f" +F  s" src/arch/arm64/disasm.f" +F
    s" : GO $700 $206 + . ; GO" +B               \ hex sentinel: $700+$206 = 2310

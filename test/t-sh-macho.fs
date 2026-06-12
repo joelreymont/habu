@@ -8,7 +8,7 @@ require sh-driver.fs
    MBUF MLEN @ fd write-file throw  fd close-file throw ;
 : GEN ( -- )
    0 CL !
-   s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/arch/arm64/mnem.f" +F  s" src/os/macos/sys.f" +F
+   s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/arch/arm64/mnem.f" +F  s" src/os/macos/sys.f" +F  s" src/os/macos/env.f" +F
    s" src/core/util.f" +F  s" src/os/macos/macho.f" +F  s" test/demos/macho-demo.f" +F
    CBUF CL @ NF-RUN ;
 REF GEN
