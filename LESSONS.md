@@ -180,6 +180,20 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **The engine is LC_MAIN, not LC_UNIXTHREAD**: dyld calls the entry as
+  main(argc, argv, envp) in x0-x2 — the kernel start-stack layout (argc at
+  [sp]) is NOT there. Capture x0-x2 at the first instructions (x13-x15 are
+  free until the cold stores) and re-store the live cells after a warm
+  snapshot restore (the snapshot carries the snapshot-time values).
+- **Self-hosting chicken-and-egg on new runtime cells**: gen2 of a fixpoint
+  build is the OLD engine running NEW text; new text must tolerate the old
+  engine for one generation (GETENV returns 0 0 when ENVP-CELL is 0). The
+  fixpoint loop's extra generation handles the rest.
+- **Subset t-sh drivers mirror srclist.sh BY HAND** — adding a file to
+  srclist.sh requires adding it to every `+F` list that loads a dependent
+  (grep test/*.fs for 'sys.f" +F'). stage1 dying with exit 70 printing a bare
+  word name (TMP-PATH) is the tell.
+
 - **A prim must never reference a main-loop label.** BTHROW branching to LRREC
   (the REPL recovery entry) broke t-sh-habu1's subset golden: subset drivers run
   EMIT-PRIMS without EMIT-MAIN, so the label is unallocated on both sides and
