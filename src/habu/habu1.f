@@ -28,6 +28,9 @@ $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF
 8000 constant BODYBUF-CAP
 $568 constant RSP-CELL    \ user return-stack depth (>r r> r@)
+$570 constant EXITH-CELL  \ EXIT placeholder chain head (code offset; 0 = none)
+$578 constant LVD-CELL    \ compile-time DO nesting depth (LEAVE chains)
+$580 constant LVH-OFF     \ LEAVE chain head per nesting level — 16 levels
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
 $3000 constant DATA-START
 variable STDIN?   0 STDIN? !
@@ -65,12 +68,16 @@ variable FPL  variable FPE
 variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  variable SRCN
 variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncount
 variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp  variable Lbcap  variable Lbcs
+variable Lbchain
 variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
 variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
 variable Lkwdo variable Lkwloop variable Lkwi
 variable Lkwtor variable Lkwrfrom variable Lkwrfet
+variable Lkwexit variable Lkwrec
+variable Lkwqdo variable Lkwploop variable Lkwj variable Lkwleave variable Lkwunloop
+variable Lkwchar variable Lkwbchar
 9 constant A   10 constant B   11 constant C
 \ ---- primitive bodies (operate on the x19 data stack) ----
 : b+   B g-pop  A g-pop  A A B ADD,  A g-push ;
@@ -80,6 +87,10 @@ variable Lkwtor variable Lkwrfrom variable Lkwrfet
 : bdrop XDS XDS 8 SUBI, ;
 : bswap A g-pop  B g-pop  A g-push  B g-push ;
 : bdot  A g-pop  g-print9 ;
+: bu.   A g-pop  g-printu9 ;
+: bemit A g-pop  13 9 0 ADDI,  g-emitc ;
+: bcr   13 10 MOVZ,  g-emitc ;
+: bspace 13 32 MOVZ,  g-emitc ;
 : b.s
    NEWLBL NEWLBL {: sl sd :}
    9 DATA S0-CELL LDR,  9 DATA SSCR-CELL STR,
@@ -184,6 +195,8 @@ variable Lkwtor variable Lkwrfrom variable Lkwrfet
    s" +"    ['] b+    FPRIM-L   s" -"    ['] b-    FPRIM-L   s" *"    ['] b*    FPRIM-L
    s" dup"  ['] bdup  FPRIM-L   s" drop" ['] bdrop FPRIM-L   s" swap" ['] bswap FPRIM-L
    s" ."    ['] bdot  FPRIM-L   s" .s"   ['] b.s   FPRIM-L
+   s" u."   ['] bu.   FPRIM-L   s" emit" ['] bemit FPRIM-L
+   s" cr"   ['] bcr   FPRIM-L   s" space" ['] bspace FPRIM-L
    s" ="    ['] b=    FPRIM-L   s" <>"   ['] b<>   FPRIM-L   s" <"    ['] b<    FPRIM-L
    s" >"    ['] b>    FPRIM-L   s" <="   ['] b<=   FPRIM-L   s" >="   ['] b>=   FPRIM-L
    s" 0="   ['] b0=   FPRIM-L   s" 0<"   ['] b0<   FPRIM-L

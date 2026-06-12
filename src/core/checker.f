@@ -190,6 +190,11 @@ create SDQN 2 allot  115 SDQN c!  34 SDQN 1 + c!     \ the two chars of `s"`
    \ inline, so only the bare token reaches the body capture.
    SDQN 2 PT2+  s" -- n n" PT2+
    s" [']" s" -- n" PT+
+   s" [char]" s" -- n" PT+
+   s" emit" s" n --" PT+
+   s" cr" s" --" PT+
+   s" space" s" --" PT+
+   s" u." s" n --" PT+
    \ defining-word kinds (the engine hooks "NAME create" etc. so the name gets
    \ recorded): create/variable are addresses; a constant's cell is untyped.
    s" create" s" -- n" PT+
@@ -314,10 +319,18 @@ variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
 : CF-LOOP
    CF-MT? IF -1 UNCK ! ELSE CF@K 5 <> IF -1 UNCK ! ELSE
      CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP THEN THEN ;
+: CF-+LOOP
+   s" n --" PARSE-SIG
+   CF-MT? IF -1 UNCK ! ELSE CF@K 5 <> IF -1 UNCK ! ELSE
+     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP THEN THEN ;
 : CF-I
    0 INDO !  0 BEGIN dup #CFC @ < WHILE
      dup cells CFKND + @ 5 = IF -1 INDO ! THEN  1 + REPEAT drop
    INDO @ IF s" -- n" PARSE-SIG ELSE -1 UNCK ! THEN ;
+: CF-J                                     \ needs two enclosing DO frames
+   0 INDO !  0 BEGIN dup #CFC @ < WHILE
+     dup cells CFKND + @ 5 = IF INDO @ 1 + INDO ! THEN  1 + REPEAT drop
+   INDO @ 1 > IF s" -- n" PARSE-SIG ELSE -1 UNCK ! THEN ;
 : CF-TOK? {: a u :}
    -1 CFH !
    a u s" if" STR= IF CF-IF ELSE
@@ -329,9 +342,12 @@ variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
    a u s" while" STR= IF CF-WHILE ELSE
    a u s" repeat" STR= IF CF-REPEAT ELSE
    a u s" do" STR= IF CF-DO ELSE
+   a u s" ?do" STR= IF CF-DO ELSE
    a u s" loop" STR= IF CF-LOOP ELSE
+   a u s" +loop" STR= IF CF-+LOOP ELSE
    a u s" i" STR= IF CF-I ELSE
-   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   a u s" j" STR= IF CF-J ELSE
+   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    CFH @ ;
 variable TBASE variable TBLEN variable TI variable TSTART
 \ first token of the checked text is the word's NAME (skipped, kept for the

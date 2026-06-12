@@ -51,9 +51,13 @@ $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B ea
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
 8000 constant BODYBUF-CAP \ fatal above this (truncation would let the checker certify unseen code)
 $568 constant RSP-CELL    \ user return-stack depth (>r r> r@)
+$570 constant EXITH-CELL  \ EXIT placeholder chain head (code offset; 0 = none)
+$578 constant LVD-CELL    \ compile-time DO nesting depth (LEAVE chains)
+$580 constant LVH-OFF     \ LEAVE chain head per nesting level — 16 levels
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
 $3000 constant DATA-START \ DP initial offset (past header + loop stack + body buf + rstack)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
+create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
 create TICK-KW   39 c,          \ '  (0x27)
 create BTICK-KW  91 c, 39 c, 93 c,   \ ['] = [ ' ]  (0x5b 0x27 0x5d)
 create LBRACE-KW 123 c, 58 c,   \ {:  (0x7b 0x3a)
@@ -94,12 +98,16 @@ variable Lanchor  variable Lfind  variable Lnum  variable Ldict  variable Lsrc  
 variable Lcemit   variable Ltok   variable Lprot  variable Lflush variable Lncount
 \ control-flow JIT helpers + keyword data labels (self-host 1b)
 variable Lcfpush  variable Lcfpop  variable Lpat   variable Lkwcmp  variable Lbcap  variable Lbcs
+variable Lbchain
 variable Lkwif    variable Lkwthen variable Lkwelse variable Lkwbegin
 variable Lkwuntil variable Lkwagain variable Lkwwhile variable Lkwrepeat
 variable Lkwcreate variable Lkwvar variable Lkwsq variable Lkwtick variable Lkwbtick
 variable Lkwlbrace variable Lkwendloc variable Lloc-find variable Lkwconst
 variable Lkwdo variable Lkwloop variable Lkwi
 variable Lkwtor variable Lkwrfrom variable Lkwrfet
+variable Lkwexit variable Lkwrec
+variable Lkwqdo variable Lkwploop variable Lkwj variable Lkwleave variable Lkwunloop
+variable Lkwchar variable Lkwbchar
 
 9 constant A   10 constant B   11 constant C
 require prof.fs           \ in-binary sampling profiler (emitters + prims)
@@ -112,6 +120,10 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
 : bdrop XDS XDS 8 SUBI, ;
 : bswap A g-pop  B g-pop  A g-push  B g-push ;
 : bdot  A g-pop  g-print9 ;          \ pop x9, print signed decimal + newline
+: bu.   A g-pop  g-printu9 ;         \ pop x9, print unsigned decimal + newline
+: bemit A g-pop  13 9 0 ADDI,  g-emitc ;   \ ( c -- ) write one byte
+: bcr   13 10 MOVZ,  g-emitc ;
+: bspace 13 32 MOVZ,  g-emitc ;
 \ .s — print the whole data stack (base..top), one signed decimal per line, WITHOUT
 \ consuming it. The loop pointer lives in a DATA cell because g-print9 clobbers x9..x15.
 : b.s
@@ -235,6 +247,8 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    s" +"    ['] b+    FPRIM-L   s" -"    ['] b-    FPRIM-L   s" *"    ['] b*    FPRIM-L
    s" dup"  ['] bdup  FPRIM-L   s" drop" ['] bdrop FPRIM-L   s" swap" ['] bswap FPRIM-L
    s" ."    ['] bdot  FPRIM-L   s" .s"   ['] b.s   FPRIM-L
+   s" u."   ['] bu.   FPRIM-L   s" emit" ['] bemit FPRIM-L
+   s" cr"   ['] bcr   FPRIM-L   s" space" ['] bspace FPRIM-L
    s" ="    ['] b=    FPRIM-L   s" <>"   ['] b<>   FPRIM-L   s" <"    ['] b<    FPRIM-L
    s" >"    ['] b>    FPRIM-L   s" <="   ['] b<=   FPRIM-L   s" >="   ['] b>=   FPRIM-L
    s" 0="   ['] b0=   FPRIM-L   s" 0<"   ['] b0<   FPRIM-L
@@ -573,7 +587,17 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
          4 5 CMP,  C-NE kno BCOND,
          2 2 1 ADDI,  kchk B,
       kyes LBL,  0 1 MOVZ,  RET,
-      kno  LBL,  0 0 MOVZ,  RET, ;
+      kno  LBL,  0 0 MOVZ,  RET,
+   Lbchain @ LBL,                                    \ patch a B-placeholder chain:
+      NEWLBL {: bcl :}  NEWLBL {: bcd :}             \ x9=head offset, x14=target;
+      bcl LBL,  9 bcd CBZ,                           \ clobbers x5,x10-x12
+         10 DBASE 9 ADD,  11 10 0 LDRW,
+         12 14 10 SUB,  12 12 2 ASRI,
+         5 $3FFFFFF LIT64,  12 12 5 AND,
+         5 $14000000 LIT64,  12 12 5 ORR,
+         12 10 0 STRW,
+         9 11 0 ADDI,  bcl B,
+      bcd LBL,  RET, ;
 
 \ Lloc-find ( -- x0 = local slot index, or -1 ) : exact-match TKA/TKL against the
 \ locals table ([x20+LOCNAMES], LOC-N records of {len, 16 name bytes}).
@@ -607,7 +631,11 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    Lkwlbrace @ LBL, LBRACE-KW 2 BYTES,  Lkwendloc @ LBL, ENDLOC-KW 2 BYTES,
    Lkwconst @ LBL,  s" constant" BYTES,
    Lkwdo @ LBL,  s" do" BYTES,    Lkwloop @ LBL,  s" loop" BYTES,    Lkwi @ LBL,  s" i" BYTES,
-   Lkwtor @ LBL,  s" >r" BYTES,   Lkwrfrom @ LBL,  s" r>" BYTES,   Lkwrfet @ LBL,  s" r@" BYTES, ;
+   Lkwtor @ LBL,  s" >r" BYTES,   Lkwrfrom @ LBL,  s" r>" BYTES,   Lkwrfet @ LBL,  s" r@" BYTES,
+   Lkwexit @ LBL,  s" exit" BYTES,   Lkwrec @ LBL,  s" recurse" BYTES,
+   Lkwqdo @ LBL,  s" ?do" BYTES,   Lkwploop @ LBL,  s" +loop" BYTES,   Lkwj @ LBL,  s" j" BYTES,
+   Lkwleave @ LBL,  s" leave" BYTES,   Lkwunloop @ LBL,  s" unloop" BYTES,
+   Lkwchar @ LBL,  s" char" BYTES,   Lkwbchar @ LBL,  BCHAR-KW 6 BYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
@@ -639,20 +667,65 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ depth [x20+LOOPSP-CELL]) since x27/x28 are the compiler's NDICT/CP. Fixed encodings
 \ (computed offline). j-do pushes a frame + records loop-top; j-loop increments the
 \ index, compares, b.lt back, then pops the frame on exit; j-i pushes the index.
-: j-do  ( limit start DO )
+: j-frame  ( -- )                       \ pop limit/start, push a loop frame
    3506446963 c-emitw  4181721705 c-emitw  3506446963 c-emitw  4181721706 c-emitw
    4181780107 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
-   4177527177 c-emitw  4177528202 c-emitw  2432697707 c-emitw  4177585803 c-emitw
+   4177527177 c-emitw  4177528202 c-emitw  2432697707 c-emitw  4177585803 c-emitw ;
+: j-lvopen  ( -- )                       \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
+   9 DATA LVD-CELL LDR,
+   10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
+   12 0 MOVZ,  12 10 0 STR,
+   9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
+: j-lvleave  ( -- )                      \ chain a B placeholder on the current level
+   9 DATA LVD-CELL LDR,  9 9 1 SUBI,
+   10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
+   9 10 0 LDR,
+   11 CP DBASE SUB,  11 10 0 STR,
+   Lcemit @ BL, ;
+: j-do  ( limit start DO )
+   j-frame  j-lvopen  c-pushcp ;
+: j-?do ( limit start ?DO )              \ DO, but skip the loop when limit = start
+   j-frame  j-lvopen
+   $EB0A013F c-emitw                     \ cmp x9,x10  (start/limit still live)
+   $54000041 c-emitw                     \ b.ne +8 (over the skip placeholder)
+   j-lvleave
    c-pushcp ;
+: j-leave  j-lvleave ;
+: j-unloop                               \ pop one loop frame, no branch
+   4181780107 c-emitw  3506439531 c-emitw  4177585803 c-emitw ;
+: j-loopend  ( -- )                      \ shared LOOP/+LOOP tail: pop frame, patch
+   14 CP 0 ADDI,                         \ LEAVE/?DO skips to the pop point, LVD--
+   4181780107 c-emitw  3506439531 c-emitw  4177585803 c-emitw
+   9 DATA LVD-CELL LDR,  9 9 1 SUBI,  9 DATA LVD-CELL STR,
+   10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,  9 10 0 LDR,
+   Lbchain @ BL, ;
 : j-loop
    4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4181721481 c-emitw  4181722506 c-emitw  2432697641 c-emitw  4177527177 c-emitw  3943301439 c-emitw
    Lcfpop @ BL,                                        \ x9 = loop-top
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $5400000B LIT64,  9 9 10 ORR,  Lcemit @ BL,       \ b.lt loop-top
-   4181780107 c-emitw  3506439531 c-emitw  4177585803 c-emitw ;   \ pop frame
+   j-loopend ;
+: j-+loop  ( n +LOOP )                   \ index += n; loop while (old-limit) and
+   $D1002273 c-emitw  $F9400269 c-emitw  \ (new-limit) agree in sign (ANS crossing)
+   4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
+   $F940018D c-emitw                     \ ldr x13,[x12]      index
+   4181722506 c-emitw                    \ ldr x10,[x12,#8]   limit
+   $CB0A01AF c-emitw                     \ sub x15,x13,x10    old
+   $8B0901AD c-emitw                     \ add x13,x13,x9
+   $F900018D c-emitw                     \ str x13,[x12]
+   $CB0A01B0 c-emitw                     \ sub x16,x13,x10    new
+   $CA1001EF c-emitw                     \ eor x15,x15,x16
+   $F10001FF c-emitw                     \ cmp x15,#0
+   Lcfpop @ BL,
+   10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
+   9 $5400000A LIT64,  9 9 10 ORR,  Lcemit @ BL,       \ b.ge loop-top
+   j-loopend ;
 : j-i
    4181780107 c-emitw  3506439531 c-emitw  3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
+   4181721481 c-emitw  4177527401 c-emitw  2432705139 c-emitw ;
+: j-j                                    \ outer loop index: frame[LOOPSP-2]
+   4181780107 c-emitw  $D100096B c-emitw 3548179820 c-emitw  2434269580 c-emitw  2333344140 c-emitw
    4181721481 c-emitw  4177527401 c-emitw  2432705139 c-emitw ;
 
 \ >R R> R@ — the user return stack lives in a data-region stack ([x20+RSTK-OFF],
@@ -684,6 +757,18 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 
 : j-rfetch  j-rpop                                     \ peek RSTK -> push data
    $F9000269 c-emitw  $91002273 c-emitw ;
+
+\ EXIT: emit a placeholder word holding the PREVIOUS chain offset (0 = end);
+\ `;` walks the chain and patches each into `b epilogue`. RECURSE: bl back to
+\ the current word's entry (PEND slot.addr) — every word has the standard
+\ prologue/epilogue, so calling into the open definition is well-formed.
+: j-exit
+   9 DATA EXITH-CELL LDR,                              \ x9 = prev chain offset
+   10 CP DBASE SUB,  10 DATA EXITH-CELL STR,           \ head := this placeholder
+   Lcemit @ BL, ;
+
+: j-recurse
+   9 PEND 0 LDR,  $94000000 $3FFFFFF c-bback ;         \ bl entry
 
 \ CREATE/VARIABLE (interpret-mode defining words): make a dict word whose body
 \ pushes the current DP (a data-space address). Reuses the `:` slot pattern + the
@@ -742,6 +827,11 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
    Lkwconst 8 c-defhook ;
 
+\ CHAR NAME (interpret): push NAME's first byte. [CHAR] NAME (compile): bake it
+\ as a VS constant (folds like any literal).
+: c-char  ( -- )   Ltok @ BL,  9 TKA 0 LDRB,  9 g-push ;
+: c-bchar ( -- )   Ltok @ BL,  11 TKA 0 LDRB,  Lvpushc @ BL, ;
+
 \ ' NAME (interpret): find NAME, push its code address. ['] NAME (compile): bake
 \ the address as a literal push into the word being compiled (via c-lit, x11=addr).
 : c-tick ( -- )
@@ -762,6 +852,13 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
       0 75 MOVZ,  16 1 MOVZ,  $80 SVC,
    cfok LBL,
+   \ FOOTGUN GUARD 1b: {: after EXIT — the patched epilogue would tear down a
+   \ frame the exit path never carved. Refuse loudly: token + exit(75).
+   NEWLBL {: xok :}
+   11 DATA EXITH-CELL LDR,  11 xok CBZ,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  16 4 MOVZ,  $80 SVC,
+      0 75 MOVZ,  16 1 MOVZ,  $80 SVC,
+   xok LBL,
    \ first {: of the word carves a fixed 16-slot (128-byte) frame; later blocks
    \ append to the locals table and pop into the next slots (no second carve).
    12 DATA LOCF-CELL LDR,  NEWLBL {: havef :}  12 havef CBNZ,
@@ -975,6 +1072,7 @@ variable CFSK2
          12 0 MOVZ,  12 DATA BODYLEN-CELL STR,                           \ reset body capture
          Lbcap @ BL,             \ seed with the NAME (checker records certified sigs)
          12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,     \ reset the VS
+         12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,                  \ reset EXIT/LEAVE chains
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
          9 $D10043FF LIT64,  Lcemit @ BL,                  \ prologue: sub sp,sp,#16
          9 $F90003FE LIT64,  Lcemit @ BL,                  \   str x30,[sp]  (slot.addr points here)
@@ -985,6 +1083,7 @@ variable CFSK2
       lmain Lkwvar    8 ['] c-variable cf-entry
       lmain Lkwconst  8 ['] c-constant cf-entry
       lmain Lkwtick   1 ['] c-tick     cf-entry
+      lmain Lkwchar   4 ['] c-char     cf-entry
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,             \ NUMBER?
       NEWLBL {: lnotnum :}
       12 lnotnum CBZ,  11 g-push  lmain B,
@@ -998,6 +1097,8 @@ variable CFSK2
       TKL 1 CMPI,  C-NE lnotsemi BCOND,
       9 TKA 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,       \ ';'
          Lvspill @ BL,                                       \ VS -> real pushes first
+         \ patch every EXIT placeholder to `b here` (epilogue, incl. teardown)
+         14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  Lbchain @ BL,
          12 DATA LOCF-CELL LDR,  NEWLBL {: notd :}  12 notd CBZ,   \ tear down locals frame
             9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ add sp,sp,#frame
          notd LBL,
@@ -1032,12 +1133,20 @@ variable CFSK2
       lmain Lkwrepeat 6 ['] j-repeat cfn-entry
       lmain Lkwsq     2 ['] c-sdq    cf-entry            \ S" string"
       lmain Lkwbtick  3 ['] c-btick  cf-entry            \ ['] NAME
+      lmain Lkwbchar  6 ['] c-bchar  cf-entry            \ [CHAR] X
       lmain Lkwdo     2 ['] j-do     cf-entry            \ DO
       lmain Lkwloop   4 ['] j-loop   cf-entry            \ LOOP
       lmain Lkwi      1 ['] j-i      cf-entry            \ I
       lmain Lkwtor    2 ['] j-tor    cf-entry            \ >R
       lmain Lkwrfrom  2 ['] j-rfrom  cf-entry            \ R>
       lmain Lkwrfet   2 ['] j-rfetch cf-entry            \ R@
+      lmain Lkwexit   4 ['] j-exit    cf-entry            \ EXIT
+      lmain Lkwrec    7 ['] j-recurse cf-entry            \ RECURSE
+      lmain Lkwqdo    3 ['] j-?do     cf-entry            \ ?DO
+      lmain Lkwploop  5 ['] j-+loop   cf-entry            \ +LOOP
+      lmain Lkwj      1 ['] j-j       cf-entry            \ J
+      lmain Lkwleave  5 ['] j-leave   cf-entry            \ LEAVE
+      lmain Lkwunloop 6 ['] j-unloop  cf-entry            \ UNLOOP
       lmain Lkwlbrace 2 ['] c-lbrace cf-entry            \ {: a b :} locals
       \ local-name reference -> load from its frame slot, push
       Lloc-find @ BL,  NEWLBL {: notloc :}  NEWLBL {: lmem :}  0 0 CMPI,  C-LT notloc BCOND,
@@ -1098,6 +1207,7 @@ variable CFSK2
    NEWLBL Lcemit !  NEWLBL Ltok !  NEWLBL Lprot !  NEWLBL Lflush !  NEWLBL Lncount !
    NEWLBL Lbcap !  NEWLBL Lbcs !
    NEWLBL Lcfpush !  NEWLBL Lcfpop !  NEWLBL Lpat !  NEWLBL Lkwcmp !
+   NEWLBL Lbchain !
    NEWLBL Lkwif !  NEWLBL Lkwthen !  NEWLBL Lkwelse !  NEWLBL Lkwbegin !
    NEWLBL Lkwuntil !  NEWLBL Lkwagain !  NEWLBL Lkwwhile !  NEWLBL Lkwrepeat !
    NEWLBL Lkwcreate !  NEWLBL Lkwvar !  NEWLBL Lkwsq !
@@ -1105,6 +1215,9 @@ variable CFSK2
    NEWLBL Lkwlbrace !  NEWLBL Lkwendloc !  NEWLBL Lloc-find !  NEWLBL Lkwconst !
    NEWLBL Lkwdo !  NEWLBL Lkwloop !  NEWLBL Lkwi !
    NEWLBL Lkwtor !  NEWLBL Lkwrfrom !  NEWLBL Lkwrfet !
+   NEWLBL Lkwexit !  NEWLBL Lkwrec !
+   NEWLBL Lkwqdo !  NEWLBL Lkwploop !  NEWLBL Lkwj !  NEWLBL Lkwleave !  NEWLBL Lkwunloop !
+   NEWLBL Lkwchar !  NEWLBL Lkwbchar !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !

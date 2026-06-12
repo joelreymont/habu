@@ -15,6 +15,7 @@ require t-sh-habu1.fs
 require t-sh-cg.fs
 require t-sh-hex.fs
 require t-sh-rstack.fs
+require t-sh-cf2.fs
 require t-sh-coload.fs
 require t-sh-undef.fs
 require t-sh-locguard.fs
