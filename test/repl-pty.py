@@ -45,6 +45,10 @@ step(b'garbage\x03', [b'habu> '], reject=b'garbage?')  # ^C cancels (never inter
 step(b'5 .\n', [b'5', b' ok'])
 step(b'13 .\x1b[D\x1b[D\x1b[D0\n', [b'103', b' ok'])  # arrows + mid-line insert
 step(b'\x1b[A\n', [b'103', b' ok'])                 # history up re-runs the line
+step(b': SQ dup * ;\n', [b' ok'])                    # breakpoints: define, arm, hit, resume
+step(b"' SQ BP+\n", [b' ok'])
+step(b'7 SQ .\n', [b'habu-bp:', b'49'])              # BRK fires then word resumes
+step(b'6 SQ .\n', [b'36'], reject=b'habu-bp:')       # one-shot: gone on the next call
 step(b'step 2 3 + .\n', [b'step> 2', b'step> 3', b'step> +', b'5'])  # token stepper
 step(b'8 .\n', [b'8', b' ok'])                       # stepper hands back cleanly
 step(b'99 throw\n', [b'?', b'habu> '], reject=b'ok') # uncaught throw recovers on a tty

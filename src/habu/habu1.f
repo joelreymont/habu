@@ -41,6 +41,8 @@ $3690 constant TKA-CELL    \ current token addr (was x23)
 $3698 constant TKL-CELL    \ current token len  (was x24)
 $36A0 constant INP-CELL    \ input cursor (was x21)
 $36A8 constant INE-CELL    \ input end    (was x22)
+$36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
+$36C8 constant BPI-CELL    \ the original instruction word under the BRK
 $1D8 constant SSCR-CELL
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF
@@ -277,6 +279,16 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 
 : BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  0 G-PUSH ;
 
+: BPATCH32                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
+   A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
+   SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
+   A SP 8 STR,  B SP 16 STR,
+   2 3 MOVZ,  LPROT @ BL,
+   9 SP 8 LDR,  10 SP 16 LDR,  10 9 0 STRW,
+   2 5 MOVZ,  LPROT @ BL,
+   9 SP 8 LDR,  LFLUSH @ BL,
+   SP SP 32 ADDI, ;
+
 : BCLOSE  0 G-POP  NR-CLOSE SYS, ;
 
 : BRBASE  9 DATA RBASE-CELL LDR,  9 G-PUSH ;
@@ -372,7 +384,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" die"  ['] BDIE   FPRIM-L
-   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
+   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
    s" close" ['] BCLOSE FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L

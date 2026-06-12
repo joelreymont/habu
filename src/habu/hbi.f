@@ -6,10 +6,11 @@
 \ output path — the single knob; tools/build.sh owns the artifact
 : HBI-OUT s" hbi-got" TMP-PATH ;
 
-\ the REPL bootstrap + token stepper baked as the engine's LSRC (paths are
+\ the REPL bootstrap + token stepper + breakpoints baked as the engine's LSRC (paths are
 \ repo-root relative; build.sh cd's there before running the maker)
 : REPL-SRC s" src/habu/repl.f" ;
 : STEP-SRC s" src/habu/stepper.f" ;
+: DBG-SRC  s" src/habu/debug.f" ;
 variable HB  variable HL  variable HFD  variable HRD
 $10000 constant HMAX
 
@@ -26,6 +27,7 @@ $10000 constant HMAX
    here HB !  HMAX allot  0 HL !
    REPL-SRC PATH0 RD-1
    STEP-SRC PATH0 RD-1
+   DBG-SRC PATH0 RD-1
    HL @ 2 > 0= IF s" hbi: repl/stepper sources missing" 74 die THEN
    HL @ HMAX = IF s" hbi: sources exceed buffer" 74 die THEN ;
 

@@ -180,6 +180,22 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **macOS arm64 SIGTRAP resume needs the trampoline token (3rd sigreturn arg)**:
+  habu installs handlers as their own sa_tramp, so the kernel enters with the
+  TRAMP abi — x1=infostyle, x2=sig, x4=ucontext, x5=token. The crash dumper
+  never returns so it ignored all but x2/x4; a RESUMING handler must
+  sigreturn(uctx=x4, infostyle=x1, token=x5) or it SIGBUSes. Frame-save those
+  three before the write/mprotect/flush calls, restore right before the SVC.
+- **Code patches from JIT-resident code must go through ONE prim, not prot+flush
+  pairs**: a breakpoint setter flipping the code region RW then RX itself runs
+  from that region — split prot/flush words left a window. BPATCH32 (rw, store,
+  rx, isync — all inside the engine) is the atomic unit.
+- **Keep signal install OUT of the golden crash word**: G-INSTALL-CRASH is
+  parity-/golden-tested in isolation (t-sh-crash); referencing LTRAPH (bound in
+  forth.fs) from it broke the subset build (forward ref to an unbound label).
+  A separate G-INSTALL-TRAP at startup, where the label IS bound, keeps crash.f
+  self-contained.
+
 - **A test that shells out to a /tmp artifact must rm it first**: t-sh-cg
   "passed" for many sessions off a STALE /tmp/sh-cg-bin — its demo source
   (cg-demo.f) had been emptied by an old cleanup commit and the test never

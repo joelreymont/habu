@@ -64,6 +64,8 @@ $3690 constant TKA-CELL    \ current token addr (was x23)
 $3698 constant TKL-CELL    \ current token len  (was x24)
 $36A0 constant INP-CELL    \ input cursor (was x21)
 $36A8 constant INE-CELL    \ input end    (was x22)
+$36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
+$36C8 constant BPI-CELL    \ the original instruction word under the BRK
 $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
                            \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
@@ -322,6 +324,16 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  0 G-PUSH ;  \ ( fd req buf -- rc )
 
+: BPATCH32                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
+   A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
+   SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
+   A SP 8 STR,  B SP 16 STR,
+   2 3 MOVZ,  LPROT @ BL,
+   9 SP 8 LDR,  10 SP 16 LDR,  10 9 0 STRW,
+   2 5 MOVZ,  LPROT @ BL,
+   9 SP 8 LDR,  LFLUSH @ BL,
+   SP SP 32 ADDI, ;
+
 : BCLOSE  0 G-POP  NR-CLOSE SYS, ;                               \ ( fd -- )
 
 : BRBASE  9 DATA RBASE-CELL LDR,  9 G-PUSH ;                            \ ( -- rbase ) __TEXT load base
@@ -423,7 +435,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" die"  ['] BDIE   FPRIM-L
-   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
+   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
    s" close" ['] BCLOSE FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
@@ -717,6 +729,47 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ ---- source setup: point INP/INE at either the baked LSRC or stdin ----
 \ stdin mode reads all of fd 0 into a fresh RW mmap buffer, then interprets it
 \ (batch REPL: `echo ': SQ DUP * ; 5 SQ .' | ./forth`). Clobbers x0-x5,x9,x11,x16.
+variable LTRAPH   variable LBPH
+create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
+
+\ LTRAPH: SIGTRAP entry (x1=infostyle x2=sig x4=ucontext). A one-shot
+\ breakpoint at [BPA-CELL]: print habu-bp: + pc + the data-stack top, restore
+\ the original instruction, clear the bp, sigreturn to re-execute the word.
+\ Any other trap falls through to the crash dump (x2/x4 untouched).
+: EMIT-TRAPH
+   LTRAPH @ LBL,
+   LBL {: tno :}
+   9 4 MCTX-OFF LDR,                                 \ x9 = mcontext
+   10 9 272 LDR,                                     \ x10 = pc
+   11 DATA BPA-CELL LDR,
+   11 tno CBZ,
+   10 11 CMP,  C-NE tno BCOND,
+   \ our breakpoint: frame-save uctx/infostyle/token (sigreturn ABI) + mctx/pc
+   SP SP 48 SUBI,
+   1 SP 0 STR,  4 SP 8 STR,  5 SP 16 STR,  9 SP 24 STR,  10 SP 32 STR,
+   1 LBPH @ ADR,  0 2 MOVZ,  2 9 MOVZ,  NR-WRITE SYS,
+   9 SP 32 LDR,  LHEX @ BL,                          \ pc
+   9 SP 24 LDR,  12 9 168 LDR,  9 12 8 SUBI,  9 9 0 LDR,  LHEX @ BL,   \ [x19-8] = tos
+   2 3 MOVZ,  LPROT @ BL,                            \ code region -> RW
+   11 DATA BPA-CELL LDR,  12 DATA BPI-CELL LDR,  12 11 0 STRW,
+   2 5 MOVZ,  LPROT @ BL,                            \ -> RX
+   9 11 0 ADDI,  LFLUSH @ BL,
+   12 0 MOVZ,  12 DATA BPA-CELL STR,                 \ one-shot
+   0 SP 8 LDR,  1 SP 0 LDR,  2 SP 16 LDR,  SP SP 48 ADDI,
+   NR-SIGRETURN SYS,                                 \ sigreturn(uctx, infostyle, token)
+   tno LBL,
+   LCRASHH @ B,
+   LBPH @ LBL,  BPH-KW 9 BYTES, ;
+
+\ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
+\ at the dumper; this repoints just TRAP once LTRAPH is bound).
+: G-INSTALL-TRAP
+   SP SP 32 SUBI,
+   9 LTRAPH @ ADR,  9 SP 0 STR,  9 SP 8 STR,
+   10 SA-SIGINFO MOVZ,  10 10 32 LSLI,  10 SP 16 STR,
+   5 (SIGACT)
+   SP SP 32 ADDI, ;
+
 : EMIT-SOURCE ( -- )
    STDIN? @ if
       LBL {: rpipe :}  LBL {: rgo :}
@@ -1494,6 +1547,7 @@ variable CFSK2
    cwok LBL,
    9 0 MOVZ,  9 DATA LOOPSP-CELL STR,                 \ DO/LOOP frame depth = 0
    G-INSTALL-CRASH                                    \ self-diagnosing crash (register dump)
+   G-INSTALL-TRAP                                     \ SIGTRAP -> breakpoint resume
    9 LDOESPATCH @ ADR,  9 DATA DOESP-CELL STR,
    9 LCREATE @ ADR,  9 DATA CREATEP-CELL STR,        \ DOES> patch routine addr
    9 LRREC @ ADR,  9 DATA RRECP-CELL STR,             \ throw's REPL recovery entry
@@ -1751,7 +1805,7 @@ variable CFSK2
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
    LBL LKWQUOT !  LBL LKWSEMIQ !
-   LBL LCRASHH !  LBL LHEX !  LBL LHDR !
+   LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !
    LBL LPROFH !  LBL LPROFDUMP !
    LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
    LBL LVTOP2C !  LBL LVFOLDPUT !
@@ -1771,7 +1825,7 @@ variable CFSK2
    EMIT-MAIN                                              \ entry @ offset 0
    EMIT-PRIMS  EMIT-PROF-PRIMS  EMIT-FP-PRIMS  EMIT-CEMIT  EMIT-BCAP  EMIT-TOK  EMIT-PROT  EMIT-FLUSH  EMIT-FIND  EMIT-NUM
    EMIT-CREATE  EMIT-DOESPATCH
-   EMIT-CF-HELPERS  EMIT-LOC-FIND  EMIT-KWDATA  EMIT-FOLDKW  EMIT-SHUFKW  EMIT-CMPKW  EMIT-UNKW  EMIT-CRASH-HANDLER  EMIT-HEX
+   EMIT-CF-HELPERS  EMIT-LOC-FIND  EMIT-KWDATA  EMIT-FOLDKW  EMIT-SHUFKW  EMIT-CMPKW  EMIT-UNKW  EMIT-CRASH-HANDLER  EMIT-TRAPH  EMIT-HEX
    EMIT-PROFDUMP  EMIT-PROF  EMIT-JIT
    EMIT-DICT                                              \ after #PL is final
    LSRC @ LBL,  r> SRCN @ BYTES, ;

@@ -48,6 +48,47 @@ $28 constant INL-MAX
    ldone LBL, ;
 
 \ ---- source setup: baked LSRC or stdin ----
+variable LTRAPH   variable LBPH
+create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
+
+\ LTRAPH: SIGTRAP entry (x1=infostyle x2=sig x4=ucontext). A one-shot
+\ breakpoint at [BPA-CELL]: print habu-bp: + pc + the data-stack top, restore
+\ the original instruction, clear the bp, sigreturn to re-execute the word.
+\ Any other trap falls through to the crash dump (x2/x4 untouched).
+: EMIT-TRAPH
+   LTRAPH @ LBL,
+   LBL {: tno :}
+   9 4 MCTX-OFF LDR,                                 \ x9 = mcontext
+   10 9 272 LDR,                                     \ x10 = pc
+   11 DATA BPA-CELL LDR,
+   11 tno CBZ,
+   10 11 CMP,  C-NE tno BCOND,
+   \ our breakpoint: frame-save uctx/infostyle/token (sigreturn ABI) + mctx/pc
+   SP SP 48 SUBI,
+   1 SP 0 STR,  4 SP 8 STR,  5 SP 16 STR,  9 SP 24 STR,  10 SP 32 STR,
+   1 LBPH @ ADR,  0 2 MOVZ,  2 9 MOVZ,  NR-WRITE SYS,
+   9 SP 32 LDR,  LHEX @ BL,                          \ pc
+   9 SP 24 LDR,  12 9 168 LDR,  9 12 8 SUBI,  9 9 0 LDR,  LHEX @ BL,   \ [x19-8] = tos
+   2 3 MOVZ,  LPROT @ BL,                            \ code region -> RW
+   11 DATA BPA-CELL LDR,  12 DATA BPI-CELL LDR,  12 11 0 STRW,
+   2 5 MOVZ,  LPROT @ BL,                            \ -> RX
+   9 11 0 ADDI,  LFLUSH @ BL,
+   12 0 MOVZ,  12 DATA BPA-CELL STR,                 \ one-shot
+   0 SP 8 LDR,  1 SP 0 LDR,  2 SP 16 LDR,  SP SP 48 ADDI,
+   NR-SIGRETURN SYS,                                 \ sigreturn(uctx, infostyle, token)
+   tno LBL,
+   LCRASHH @ B,
+   LBPH @ LBL,  BPH-KW 9 BYTES, ;
+
+\ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
+\ at the dumper; this repoints just TRAP once LTRAPH is bound).
+: G-INSTALL-TRAP
+   SP SP 32 SUBI,
+   9 LTRAPH @ ADR,  9 SP 0 STR,  9 SP 8 STR,
+   10 SA-SIGINFO MOVZ,  10 10 32 LSLI,  10 SP 16 STR,
+   5 (SIGACT)
+   SP SP 32 ADDI, ;
+
 : EMIT-SOURCE
    LBL LBL LBL LBL {: rl RD rpipe rgo :}   \ locals BEFORE the IF (frame footgun)
    STDIN? @ IF
@@ -767,6 +808,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
    cwok LBL,
    9 0 MOVZ,  9 DATA LOOPSP-CELL STR,
    G-INSTALL-CRASH
+   G-INSTALL-TRAP
    9 LDOESPATCH @ ADR,  9 DATA DOESP-CELL STR,
    9 LCREATE @ ADR,  9 DATA CREATEP-CELL STR,
    9 LRREC @ ADR,  9 DATA RRECP-CELL STR,
@@ -1019,7 +1061,7 @@ variable SRCA
    LBL LKWQUOT !  LBL LKWSEMIQ !
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
-   LBL LCRASHH !  LBL LHEX !  LBL LHDR !
+   LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !
    LBL LPROFH !  LBL LPROFDUMP !
    LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
    LBL LVTOP2C !  LBL LVFOLDPUT !
@@ -1039,7 +1081,7 @@ variable SRCA
    EMIT-MAIN
    EMIT-PRIMS  EMIT-PROF-PRIMS  EMIT-FP-PRIMS  EMIT-CEMIT  EMIT-BCAP  EMIT-TOK  EMIT-PROT  EMIT-FLUSH  EMIT-FIND  EMIT-NUM
    EMIT-CREATE  EMIT-DOESPATCH
-   EMIT-CF-HELPERS  EMIT-LOC-FIND  EMIT-KWDATA  EMIT-FOLDKW  EMIT-SHUFKW  EMIT-CMPKW  EMIT-UNKW  EMIT-CRASH-HANDLER  EMIT-HEX
+   EMIT-CF-HELPERS  EMIT-LOC-FIND  EMIT-KWDATA  EMIT-FOLDKW  EMIT-SHUFKW  EMIT-CMPKW  EMIT-UNKW  EMIT-CRASH-HANDLER  EMIT-TRAPH  EMIT-HEX
    EMIT-PROFDUMP  EMIT-PROF  EMIT-JIT
    EMIT-DICT
    LSRC @ LBL,  SRCA @ SRCN @ BYTES, ;

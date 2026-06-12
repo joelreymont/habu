@@ -332,6 +332,7 @@ create SDQN 2 allot  115 SDQN c!  34 SDQN 1 + c!     \ the two chars of `s"`
    s" open" s" n n n -- n" PT+
    s" read" s" n n n -- n" PT+
    s" ioctl" s" n n n -- n" PT+
+   s" patch32" s" n n --" PT+
    s" write" s" n n n -- n" PT+
    s" close" s" n --" PT+
    s" rbase" s" -- n" PT+
