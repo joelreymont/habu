@@ -11,7 +11,7 @@ CRH-INIT
 40 constant SA-SIGINFO
 48 constant MCTX-OFF           \ ucontext -> mcontext pointer offset (macOS arm64)
 16 constant SS-OFF             \ mcontext -> __ss.__x[0] offset
-\ Lhex ( x9=val ): write 16 hex digits + newline to fd 2. Leaf; clobbers x9..x15.
+\ Lhex ( x9=val ): write 16 hex digits + newline to fd 2. Leaf; clobbers x9..x15 and x0-x2/x16 (write syscall).
 : emit-hex
    Lhex @ LBL,
    NEWLBL NEWLBL NEWLBL {: hl hd hlet :}

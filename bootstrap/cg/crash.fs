@@ -20,7 +20,7 @@ s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR
 16 constant SS-OFF             \ mcontext -> __ss.__x[0] offset
 
 \ Lhex ( x9=val -- ) : write 16 hex digits + newline to fd 2. Uses a 32-byte stack
-\ scratch; clobbers x9..x15. Leaf (no nested call).
+\ scratch; clobbers x9..x15 and x0-x2/x16 (write syscall). Leaf (no nested call).
 : emit-hex ( -- )
    Lhex @ LBL,
    SP SP 32 SUBI,
