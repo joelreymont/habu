@@ -132,6 +132,17 @@ TLR 78 T=
 : KW {: a :} 0 begin dup 12 < while a + repeat ;
 4 KW 12 T=
 
+\ float VS: d-reg binops (FADD path), dup of a float constant, and a
+\ loop-resident float accumulator surviving BEGIN back edges in a d-reg
+: TFD 2.0 dup f+ 4.0 f= ;
+TFD -1 T=
+: TFA {: n :} 0.0 0 begin 1 + swap 1.5 f+ swap dup n = until drop 6.0 f= ;
+4 TFA -1 T=
+\ a call spills the float (bits to the memory stack); the prim path finishes
+: TF5 5 ;
+: TFC 0.5 TF5 drop 0.5 f+ 1.0 f= ;
+TFC -1 T=
+
 \ report: count + nonzero exit on failure
 : REPORT
    #FAIL @ 0 = if [char] o emit [char] k emit cr exit then

@@ -869,7 +869,8 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 
 : J-REPEAT LVRECON @ BL,  LCFPOP @ BL,  14 9 0 ADDI,  LCFPOP @ BL,  $14000000 $3FFFFFF C-BBACK
    12 0 MOVZ,  12 DATA VSP-CELL STR,                  \ exit path arrives from
-   12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,           \ WHILE's spilled state
+   12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
+   12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,           \ WHILE's spilled state
    9 14 0 ADDI,  LPAT @ BL, ;
 
 \ DO/LOOP/I — loop index/limit live in a data-region frame stack ([x20+LOOP-STK-OFF],
@@ -1547,6 +1548,7 @@ variable CFSK2
          12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,                  \ reset EXIT/LEAVE chains
          12 DATA QPATCH-CELL STR,                                        \ reset quotation state
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
+         12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
          9 $D10043FF LIT64,  LCEMIT @ BL,                  \ prologue: sub sp,sp,#16
          9 $F90003FE LIT64,  LCEMIT @ BL,                  \   str x30,[sp]  (slot.addr points here)
          LMAIN B,
@@ -1643,7 +1645,9 @@ variable CFSK2
       notloc LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,             \ NUMBER? -> literal
       LBL {: lcnotnum :}
-      12 lcnotnum CBZ,  LVPUSHC @ BL,  LMAIN B,
+      12 lcnotnum CBZ,
+      LBL {: lcflt :}  2 lcflt CBNZ,  LVPUSHC @ BL,  LMAIN B,
+      lcflt LBL,  LVPUSHF @ BL,  LMAIN B,
       lcnotnum LBL,
       LMAIN LKWPLUS  1 ['] VF+ ['] E+ VOP-ENTRY
       LMAIN LKWMINUS 1 ['] VF- ['] E- VOP-ENTRY
@@ -1668,6 +1672,10 @@ variable CFSK2
       LMAIN LKWZLT  2 ['] FU0< ['] EU0< VUN-ENTRY
       LMAIN LKWNEG2 6 ['] FUNEG ['] EUNEG VUN-ENTRY
       LMAIN LKWINV2 6 ['] FUINV ['] EUINV VUN-ENTRY
+      LMAIN LKWFPLUS  2 $1E602800 FOP-ENTRY
+      LMAIN LKWFMINUS 2 $1E603800 FOP-ENTRY
+      LMAIN LKWFSTAR  2 $1E600800 FOP-ENTRY
+      LMAIN LKWFSLASH 2 $1E601800 FOP-ENTRY
 
       LVSPILL @ BL,                                          \ VS -> memory before a call
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,            \ FIND -> inline stencil
@@ -1748,6 +1756,8 @@ variable CFSK2
    LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
    LBL LVTOP2C !  LBL LVFOLDPUT !
    LBL LVRALLOC !  LBL LVBIT !  LBL LVRINIT !  LBL LVMOVK !  LBL LVFORCEK !  LBL LVBINPREP !  LBL LVPUSHR !
+   LBL LVPUSHF !  LBL LFRALLOC !  LBL LFFORCEK !  LBL LFBINPREP !
+   LBL LKWFPLUS !  LBL LKWFMINUS !  LBL LKWFSTAR !  LBL LKWFSLASH !
    LBL LVDROP !  LBL LVSWAPX !  LBL LVNIPX !  LBL LVCOPY !
    LBL LVSNAP !  LBL LVRECON !
    LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !

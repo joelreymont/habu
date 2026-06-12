@@ -201,6 +201,7 @@ create ENDLOC-KW 58 c, 125 c,
 : J-REPEAT LVRECON @ BL,  LCFPOP @ BL,  14 9 0 ADDI,  LCFPOP @ BL,  $14000000 $3FFFFFF C-BBACK
    12 0 MOVZ,  12 DATA VSP-CELL STR,                  \ exit path arrives from
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,           \ WHILE's spilled state
+   12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
    9 14 0 ADDI,  LPAT @ BL, ;
 
 : J-FRAME                                \ pop limit/start, push a loop frame
@@ -819,6 +820,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
       12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
       12 DATA QPATCH-CELL STR,
       12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
+      12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
       9 $D10043FF LIT64,  LCEMIT @ BL,
       9 $F90003FE LIT64,  LCEMIT @ BL,
       LMAIN @ B,
@@ -908,7 +910,9 @@ s" em-interpret" s" --" TRUST
          LMAIN @ B,
       notloc LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,
-      12 lcnotnum CBZ,  LVPUSHC @ BL,  LMAIN @ B,
+      12 lcnotnum CBZ,
+      LBL {: lcflt :}  2 lcflt CBNZ,  LVPUSHC @ BL,  LMAIN @ B,
+      lcflt LBL,  LVPUSHF @ BL,  LMAIN @ B,
       lcnotnum LBL,
       s" +" KEEP? IF LMAIN @ LKWPLUS  1 ['] VF+ ['] E+ VOP-ENTRY THEN
       s" -" KEEP? IF LMAIN @ LKWMINUS 1 ['] VF- ['] E- VOP-ENTRY THEN
@@ -933,6 +937,10 @@ s" em-interpret" s" --" TRUST
       s" 0<" KEEP? IF LMAIN @ LKWZLT  2 ['] FU0< ['] EU0< VUN-ENTRY THEN
       s" negate" KEEP? IF LMAIN @ LKWNEG2 6 ['] FUNEG ['] EUNEG VUN-ENTRY THEN
       s" invert" KEEP? IF LMAIN @ LKWINV2 6 ['] FUINV ['] EUINV VUN-ENTRY THEN
+      s" f+" KEEP? IF LMAIN @ LKWFPLUS  2 $1E602800 FOP-ENTRY THEN
+      s" f-" KEEP? IF LMAIN @ LKWFMINUS 2 $1E603800 FOP-ENTRY THEN
+      s" f*" KEEP? IF LMAIN @ LKWFSTAR  2 $1E600800 FOP-ENTRY THEN
+      s" f/" KEEP? IF LMAIN @ LKWFSLASH 2 $1E601800 FOP-ENTRY THEN
       LVSPILL @ BL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
       13 LUNDEF @ CBZ,
@@ -1016,6 +1024,8 @@ variable SRCA
    LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
    LBL LVTOP2C !  LBL LVFOLDPUT !
    LBL LVRALLOC !  LBL LVBIT !  LBL LVRINIT !  LBL LVMOVK !  LBL LVFORCEK !  LBL LVBINPREP !  LBL LVPUSHR !
+   LBL LVPUSHF !  LBL LFRALLOC !  LBL LFFORCEK !  LBL LFBINPREP !
+   LBL LKWFPLUS !  LBL LKWFMINUS !  LBL LKWFSTAR !  LBL LKWFSLASH !
    LBL LVDROP !  LBL LVSWAPX !  LBL LVNIPX !  LBL LVCOPY !
    LBL LVSNAP !  LBL LVRECON !
    LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !

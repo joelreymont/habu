@@ -51,8 +51,12 @@ RETURNS = {
     "Lloc-find": {0},                # ( -> x0=slot | -1 )
     "Ltok": {0},                     # ( -> x0=have? ); INP/TKA/TKL all in cells
     "Lfind": {11, 12, 13},           # ( x9 x10 -> x11=addr x12=clen x13=found )
-    "Lnum": {11, 12},                # ( -> x11=val x12=ok )
+    "Lnum": {2, 11, 12},             # ( -> x11=val x12=ok x2=float? )
     "Lvralloc": {14},                # ( -> x14=reg | 0 )
+    "Lfralloc": {14},                # ( -> x14=dreg | 0 )
+    "Lvpushf": set(),
+    "Lfforcek": {14},                # ( x5 -> x14=dreg | 0 )
+    "Lfbinprep": {13, 14, 15},
     "Lvbit": {8},                    # ( x7=reg -> x8=free-mask bit )
     "Lvforcek": {14},                # ( x5 -> x14=reg | 0 )
     "Lvtop2c": {11, 12, 13},         # ( -> x13=ok x11=a x12=b )
@@ -66,6 +70,8 @@ PRESERVES = {
     "Lvpushc": {11},                 # frame-saves its x11=val argument
     "Lvpushr": {14},                 # frame-saves its x14=reg argument
     "Lvforcek": {5},                 # frame-saves its x5=k argument
+    "Lfforcek": {5},                 # frame-saves its x5=k argument
+    "Lvpushf": {11},                 # frame-saves its x11=bits argument
     "Lvbit": {7},                    # reads x7, never writes it
     "Lbcap": {0, 1, 2, 16},          # x0-x2/x16 written only on the exit(71) path
     "Lbcs": {0, 1, 2, 16},

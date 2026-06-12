@@ -11,7 +11,7 @@
 \   (free/claim via LVBIT)   habu2.f: the WHILE and J-REPEAT VRALL stores
 \ Load after mnem.f/sys.f, before jit.f.
 
-variable LVRALLOC   variable LVBIT   variable LVRINIT
+variable LVRALLOC   variable LVBIT   variable LVRINIT   variable LFRALLOC
 
 $1D0F0E0D0C0B0A09 constant VRPACK   \ x9..x15, x29 (byte per slot, idx 0 low)
 $1615181719 constant VRPACK2        \ overflow: x25,x23,x24,x21,x22 (tokenizer state in DATA cells)
@@ -21,6 +21,9 @@ VRPACK PK# constant #POOL1
 1 #POOL lshift 1 - constant VRALL
 
 $208  constant VRFREE-CELL      \ free-register bitmask, bit = pool index
+$36B0 constant FRFREE-CELL      \ FLOAT pool free bits: bit i = d(8+i) free
+$FF   constant FRALL            \ d8..d15 (d0-d7 stay prim scratch; contiguous,
+                                \ so idx+8 math replaces a table here)
 $3600 constant VRTAB-OFF        \ 32 B: idx -> register number   (after LOCNAMES)
 $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled)
 
@@ -66,6 +69,20 @@ $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled
    rgot LBL,
       7 1 MOVZ,  7 7 5 LSLV,  6 6 7 EOR,  6 DATA VRFREE-CELL STR,
       14 VRTAB-OFF LIT64,  14 DATA 14 ADD,  14 14 5 ADD,  14 14 0 LDRB,  RET, ;
+
+\ LFRALLOC ( -- x14=dreg | 0 ) : grab a free FLOAT register (d8..d15)
+: EMIT-FRALLOC
+   LFRALLOC @ LBL,
+   LBL LBL LBL {: rl rgot rno :}
+   6 DATA FRFREE-CELL LDR,  5 0 MOVZ,
+   rl LBL,
+      5 8 CMPI,  C-GE rno BCOND,
+      7 6 5 LSRV,  7 7 1 ANDI,  7 rgot CBNZ,
+      5 5 1 ADDI,  rl B,
+   rno LBL,  14 0 MOVZ,  RET,
+   rgot LBL,
+      7 1 MOVZ,  7 7 5 LSLV,  6 6 7 EOR,  6 DATA FRFREE-CELL STR,
+      14 5 8 ADDI,  RET, ;
 
 \ LVBIT ( x7=reg -- x8=its free-mask bit ) : reg -> 1<<idx via the inverse
 \ table. Preserves x7; clobbers x10. Callers or (free) / eor (claim) the mask.
