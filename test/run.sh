@@ -8,4 +8,9 @@ cd "$(dirname "$0")/.."
 $G test/all.fs -e bye > /tmp/habu-gate.log 2>&1 || { tail -5 /tmp/habu-gate.log; echo "FAIL: all.fs"; exit 1; }
 $G test/selfhost-all.fs -e bye > /tmp/habu-shgate.log 2>&1 || { tail -5 /tmp/habu-shgate.log; echo "FAIL: selfhost-all.fs"; exit 1; }
 [ -x bin/hbi ] && { ./tools/test-hb.sh || exit 1; }
-echo "PASS: full suite (all.fs + selfhost-all.fs + hb-suite)"
+[ -x bin/hbi ] && { ./tools/snap-hb.sh >/dev/null || { echo "FAIL: snap-hb"; exit 1; }
+  out=$(echo 's" w" s" n -- n" trust 7 . : Q 5 dup * . ; Q' | /tmp/hb-warm)
+  [ "$out" = "7
+25" ] || { echo "FAIL: warm snapshot (got: $out)"; exit 1; }
+  echo "PASS: AOT snapshot (warm toolchain boot)"; }
+echo "PASS: full suite (all.fs + selfhost-all.fs + hb-suite + snapshot)"

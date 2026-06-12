@@ -51,6 +51,7 @@ $00020400 constant CD-VERSION
 2         constant HT-SHA256
 12        constant CS-PAGE-LOG
 1         constant EXECSEG-MAIN
+variable EXECSEG-LIM   MPAGE EXECSEG-LIM !   \ snapshots override (bigger __TEXT)
 
 : add-codesig-lc
    MH-HDR-SZ  20 hl@ +  {: at :}
@@ -73,7 +74,7 @@ $00020400 constant CD-VERSION
    0 b32
    0 b32  0 b32
    0 b32  0 b64
-   0 b64  MPAGE b64  EXECSEG-MAIN b64 ;
+   0 b64  EXECSEG-LIM @ b64  EXECSEG-MAIN b64 ;
 variable CSI
 
 : CODESIG2

@@ -627,7 +627,9 @@ s" cfbn-entry" s" n n n n n --" trust
    j-untilx ;
 
 : em-startup
-   NEWLBL NEWLBL NEWLBL NEWLBL {: scopy scdone rvok dvok :}
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL
+   NEWLBL NEWLBL NEWLBL
+   {: scopy scdone rvok dvok snomag sc1 sc1d sc2 sc2d srl srn srx cwok sdl2 sdn2 sds2 :}
    Lanchor @ LBL,
    RBASE Lanchor @ ADR,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
@@ -663,10 +665,80 @@ s" cfbn-entry" s" n n n n n --" trust
    DATA 0 0 ADDI,
    XDS DATA S0-CELL STR,
    5 DATA-START MOVZ,  7 DATA 5 ADD,  7 DATA DP-CELL STR,
+   \ ---- AOT snapshot? (trailer at the end of our own __text). If present:
+   \ restore both regions verbatim (fixed VAs keep region addresses valid),
+   \ relocate engine-text call chains (the only ASLR-movers), boot WARM. ----
+   24 0 MOVZ,                                       \ x24 = snapshot flag
+   9 DATA RBASE-CELL LDR,  25 9 0 ADDI,             \ x25 = live text CONTENT base
+   10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
+   11 10 216 LDR,                                   \ S = our __text size
+   12 9 11 ADD,  12 12 40 SUBI,                     \ trailer
+   13 12 0 LDR,  5 SNAP-MAGIC LIT64,  13 5 CMP,  C-NE snomag BCOND,
+   21 12 8 LDR,                                     \ x21 = snapshot-time text base
+   15 12 16 LDR,                                    \ x15 = ndict
+   6 12 24 LDR,                                     \ x6 = region payload len
+   7 12 32 LDR,                                     \ x7 = data payload len
+   22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,       \ x22 = engine text len then
+   8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
+   13 DBASE 0 ADDI,  14 0 MOVZ,
+   sc1 LBL,  14 6 CMP,  C-GE sc1d BCOND,
+      3 8 14 ADD,  3 3 0 LDRB,  4 13 14 ADD,  3 4 0 STRB,
+      14 14 1 ADDI,  sc1 B,
+   sc1d LBL,
+   8 12 7 SUB,  13 DATA 0 ADDI,  14 0 MOVZ,
+   sc2 LBL,  14 7 CMP,  C-GE sc2d BCOND,
+      3 8 14 ADD,  3 3 0 LDRB,  4 13 14 ADD,  3 4 0 STRB,
+      14 14 1 ADDI,  sc2 B,
+   sc2d LBL,
+   25 DATA RBASE-CELL STR,                          \ live values over stale copies
+   XDS DATA S0-CELL STR,
+   NDICT 15 0 ADDI,
+   CP DBASE 6 ADD,
+   \ rebase seed-prim dict entries (slot.addr in the old engine text)
+   9 DBASE 0 ADDI,  10 0 MOVZ,
+   sdl2 LBL,  10 NDICT CMP,  C-GE sdn2 BCOND,
+      13 9 0 LDR,
+      13 21 CMP,  C-LT sds2 BCOND,
+      14 21 22 ADD,  13 14 CMP,  C-GE sds2 BCOND,
+      13 13 21 SUB,  13 13 25 ADD,  13 9 0 STR,
+      sds2 LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
+   sdn2 LBL,
+   \ relocation: movz/movk/movk x16 + blr x16 whose value sat in the OLD text
+   9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,
+   srl LBL,  9 CP CMP,  C-GE srx BCOND,
+      10 9 0 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+      5 $D2800010 LIT64,  10 5 CMP,  C-NE srn BCOND,
+      10 9 4 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+      5 $F2A00010 LIT64,  10 5 CMP,  C-NE srn BCOND,
+      10 9 8 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+      5 $F2C00010 LIT64,  10 5 CMP,  C-NE srn BCOND,
+      10 9 12 LDRW,  5 $D63F0200 LIT64,  10 5 CMP,  C-NE srn BCOND,
+      10 9 0 LDRW,  10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  13 10 0 ADDI,
+      10 9 4 LDRW,  10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 16 LSLI,  13 13 10 ORR,
+      10 9 8 LDRW,  10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 32 LSLI,  13 13 10 ORR,
+      13 21 CMP,  C-LT srn BCOND,
+      14 21 22 ADD,  13 14 CMP,  C-GE srn BCOND,
+      13 13 21 SUB,  13 13 25 ADD,                  \ rebase into the live text
+      10 9 0 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+        14 13 0 ADDI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 0 STRW,
+      10 9 4 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+        14 13 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
+      10 9 8 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+        14 13 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
+      9 9 12 ADDI,
+   srn LBL,  9 9 4 ADDI,  srl B,
+   srx LBL,
+   2 5 MOVZ,  Lprot @ BL,                           \ region RX +
+   9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  Lflush @ BL,   \ coherent
+   24 1 MOVZ,
+   snomag LBL,
    9 0 MOVZ,  9 DATA HND-CELL STR,
+   24 cwok CBNZ,
+
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 1 MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,
+   cwok LBL,
    9 0 MOVZ,  9 DATA LOOPSP-CELL STR,
    g-install-crash
    9 Ldoespatch @ ADR,  9 DATA DOESP-CELL STR,

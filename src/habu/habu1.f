@@ -9,6 +9,7 @@
 $100000 constant REGION
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
+$48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 $10000  constant DICT-SIZE
 48      constant DREC
 $F000   constant CFSTK-OFF
@@ -129,6 +130,10 @@ variable Lkwdoes variable Lkwquot variable Lkwsemiq
    9 9 8 LSRI,  9 9 $FF ANDI,        \ WEXITSTATUS
    9 g-push
    SP SP 64 ADDI, ;
+
+: bcpfetch    9 CP 0 ADDI,  A g-push ;     \ ( -- addr ) live CP (snapshot writer)
+: bndictfetch 9 NDICT 0 ADDI,  A g-push ;  \ ( -- n ) live dict count
+: bdbasefetch 9 DBASE 0 ADDI,  A g-push ;  \ ( -- addr ) region base
 
 : bcreate  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
@@ -333,6 +338,8 @@ variable Lkwdoes variable Lkwquot variable Lkwsemiq
    s" compile," ['] bcompile FPRIM
    s" create" ['] bcreate FPRIM
    s" run-rc" ['] brunrc FPRIM-L
+   s" cp@" ['] bcpfetch FPRIM-L   s" dbase@" ['] bdbasefetch FPRIM-L
+   s" ndict@" ['] bndictfetch FPRIM-L
    s" die"  ['] bdie   FPRIM-L
    s" open" ['] bopen FPRIM-L   s" write" ['] bwrite FPRIM-L   s" read" ['] bread FPRIM-L
    s" close" ['] bclose FPRIM-L

@@ -26,6 +26,7 @@ require crash.fs           \ in-binary crash handler (register dump on signal)
 $100000 constant REGION       \ mmap region size (1 MB)
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
+$48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 $10000  constant DICT-SIZE     \ dict area at region+0 (64 KB); code area follows
 48      constant DREC          \ dict record: addr(8) clen(8) namelen(8) name(16) wid(8)
 $F000   constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
@@ -162,6 +163,10 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    9 9 8 LSRI,  9 9 $FF ANDI,        \ WEXITSTATUS
    9 g-push
    SP SP 64 ADDI, ;
+: bcpfetch    9 CP 0 ADDI,  A g-push ;     \ ( -- addr ) live CP (snapshot writer)
+: bndictfetch 9 NDICT 0 ADDI,  A g-push ;  \ ( -- n ) live dict count
+: bdbasefetch 9 DBASE 0 ADDI,  A g-push ;  \ ( -- addr ) region base
+
 : bcreate  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
 
@@ -382,6 +387,8 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    s" compile," ['] bcompile FPRIM
    s" create" ['] bcreate FPRIM
    s" run-rc" ['] brunrc FPRIM-L
+   s" cp@" ['] bcpfetch FPRIM-L   s" dbase@" ['] bdbasefetch FPRIM-L
+   s" ndict@" ['] bndictfetch FPRIM-L
    s" die"  ['] bdie   FPRIM-L
    s" open" ['] bopen FPRIM-L   s" write" ['] bwrite FPRIM-L   s" read" ['] bread FPRIM-L
    s" close" ['] bclose FPRIM-L
@@ -1345,10 +1352,83 @@ variable CFSK2
    DATA 0 0 ADDI,
    XDS DATA S0-CELL STR,                              \ save data-stack base for `.s`
    5 DATA-START MOVZ,  7 DATA 5 ADD,  7 DATA DP-CELL STR,   \ DP = base + header ($2800 > imm12)
+   \ ---- AOT snapshot? (trailer at the end of our own __text). If present:
+   \ restore both regions verbatim (fixed VAs keep region addresses valid),
+   \ relocate engine-text call chains (the only ASLR-movers), boot WARM. ----
+   NEWLBL {: snomag :}  NEWLBL {: sc1 :}  NEWLBL {: sc1d :}
+   NEWLBL {: sc2 :}  NEWLBL {: sc2d :}
+   NEWLBL {: srl :}  NEWLBL {: srn :}  NEWLBL {: srx :}  NEWLBL {: snapdone :}
+   24 0 MOVZ,                                       \ x24 = snapshot flag
+   9 DATA RBASE-CELL LDR,  25 9 0 ADDI,             \ x25 = live text CONTENT base
+   10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
+   11 10 216 LDR,                                   \ S = our __text size
+   12 9 11 ADD,  12 12 40 SUBI,                     \ trailer
+   13 12 0 LDR,  5 SNAP-MAGIC LIT64,  13 5 CMP,  C-NE snomag BCOND,
+   21 12 8 LDR,                                     \ x21 = snapshot-time text base
+   15 12 16 LDR,                                    \ x15 = ndict
+   6 12 24 LDR,                                     \ x6 = region payload len
+   7 12 32 LDR,                                     \ x7 = data payload len
+   22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,       \ x22 = engine text len then
+   8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
+   13 DBASE 0 ADDI,  14 0 MOVZ,
+   sc1 LBL,  14 6 CMP,  C-GE sc1d BCOND,
+      3 8 14 ADD,  3 3 0 LDRB,  4 13 14 ADD,  3 4 0 STRB,
+      14 14 1 ADDI,  sc1 B,
+   sc1d LBL,
+   8 12 7 SUB,  13 DATA 0 ADDI,  14 0 MOVZ,
+   sc2 LBL,  14 7 CMP,  C-GE sc2d BCOND,
+      3 8 14 ADD,  3 3 0 LDRB,  4 13 14 ADD,  3 4 0 STRB,
+      14 14 1 ADDI,  sc2 B,
+   sc2d LBL,
+   25 DATA RBASE-CELL STR,                          \ live values over stale copies
+   XDS DATA S0-CELL STR,
+   NDICT 15 0 ADDI,
+   CP DBASE 6 ADD,
+   NEWLBL {: sdl2 :}  NEWLBL {: sdn2 :}  NEWLBL {: sds2 :}
+   \ rebase seed-prim dict entries (slot.addr in the old engine text)
+   9 DBASE 0 ADDI,  10 0 MOVZ,
+   sdl2 LBL,  10 NDICT CMP,  C-GE sdn2 BCOND,
+      13 9 0 LDR,
+      13 21 CMP,  C-LT sds2 BCOND,
+      14 21 22 ADD,  13 14 CMP,  C-GE sds2 BCOND,
+      13 13 21 SUB,  13 13 25 ADD,  13 9 0 STR,
+      sds2 LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
+   sdn2 LBL,
+   \ relocation: movz/movk/movk x16 + blr x16 whose value sat in the OLD text
+   9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,
+   srl LBL,  9 CP CMP,  C-GE srx BCOND,
+      10 9 0 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+      5 $D2800010 LIT64,  10 5 CMP,  C-NE srn BCOND,
+      10 9 4 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+      5 $F2A00010 LIT64,  10 5 CMP,  C-NE srn BCOND,
+      10 9 8 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+      5 $F2C00010 LIT64,  10 5 CMP,  C-NE srn BCOND,
+      10 9 12 LDRW,  5 $D63F0200 LIT64,  10 5 CMP,  C-NE srn BCOND,
+      10 9 0 LDRW,  10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  13 10 0 ADDI,
+      10 9 4 LDRW,  10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 16 LSLI,  13 13 10 ORR,
+      10 9 8 LDRW,  10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 32 LSLI,  13 13 10 ORR,
+      13 21 CMP,  C-LT srn BCOND,
+      14 21 22 ADD,  13 14 CMP,  C-GE srn BCOND,
+      13 13 21 SUB,  13 13 25 ADD,                  \ rebase into the live text
+      10 9 0 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+        14 13 0 ADDI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 0 STRW,
+      10 9 4 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+        14 13 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
+      10 9 8 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+        14 13 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
+      9 9 12 ADDI,
+   srn LBL,  9 9 4 ADDI,  srl B,
+   srx LBL,
+   2 5 MOVZ,  Lprot @ BL,                           \ region RX +
+   9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  Lflush @ BL,   \ coherent
+   24 1 MOVZ,
+   snomag LBL,
    9 0 MOVZ,  9 DATA HND-CELL STR,                    \ HND (catch handler chain) = 0
+   NEWLBL {: cwok :}  24 cwok CBNZ,                   \ snapshot keeps warm CUR/WIDN/HOOK
    9 0 MOVZ,  9 DATA CUR-CELL STR,                    \ CURRENT wordlist = 0 (FORTH)
    9 1 MOVZ,  9 DATA WIDN-CELL STR,                   \ next fresh wid = 1
    9 0 MOVZ,  9 DATA HOOK-CELL STR,                   \ check hook = none
+   cwok LBL,
    9 0 MOVZ,  9 DATA LOOPSP-CELL STR,                 \ DO/LOOP frame depth = 0
    g-install-crash                                    \ self-diagnosing crash (register dump)
    9 Ldoespatch @ ADR,  9 DATA DOESP-CELL STR,
