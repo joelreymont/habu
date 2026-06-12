@@ -34,6 +34,9 @@ $580 constant LVH-OFF     \ LEAVE chain head per nesting level — 16 levels
 $560 constant LASTC-CELL  \ last CREATEd slot addr (DOES> patches it)
 $1F0 constant DOESP-CELL  \ runtime address of Ldoespatch (stored at startup)
 $230 constant CREATEP-CELL \ runtime address of Lcreate (prims must not name labels)
+$238 constant QPATCH-CELL \ [: b-over patch site (0 = not inside a quotation)
+$240 constant QENT-CELL   \ [: nested entry address (the xt ;] pushes)
+$248 constant QXH-CELL    \ saved EXIT chain head across the quotation
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
 $3000 constant DATA-START
 variable STDIN?   0 STDIN? !
@@ -87,7 +90,7 @@ variable Lkwexit variable Lkwrec
 variable Lkwqdo variable Lkwploop variable Lkwj variable Lkwleave variable Lkwunloop
 variable Lkwchar variable Lkwbchar
 variable Lkwimm variable Lkwpost variable Lkwcompc
-variable Lkwdoes
+variable Lkwdoes variable Lkwquot variable Lkwsemiq
 9 constant A   10 constant B   11 constant C
 
 \ ---- primitive bodies (operate on the x19 data stack) ----

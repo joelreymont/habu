@@ -57,10 +57,15 @@ $580 constant LVH-OFF     \ LEAVE chain head per nesting level — 16 levels
 $560 constant LASTC-CELL  \ last CREATEd slot addr (DOES> patches it)
 $1F0 constant DOESP-CELL  \ runtime address of Ldoespatch (stored at startup)
 $230 constant CREATEP-CELL \ runtime address of Lcreate (prims must not name labels)
+$238 constant QPATCH-CELL \ [: b-over patch site (0 = not inside a quotation)
+$240 constant QENT-CELL   \ [: nested entry address (the xt ;] pushes)
+$248 constant QXH-CELL    \ saved EXIT chain head across the quotation
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
 $3000 constant DATA-START \ DP initial offset (past header + loop stack + body buf + rstack)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
+create QUOT-KW 91 c, 58 c,      \ [:
+create SEMIQ-KW 59 c, 93 c,     \ ;]
 create TICK-KW   39 c,          \ '  (0x27)
 create BTICK-KW  91 c, 39 c, 93 c,   \ ['] = [ ' ]  (0x5b 0x27 0x5d)
 create LBRACE-KW 123 c, 58 c,   \ {:  (0x7b 0x3a)
@@ -115,7 +120,7 @@ variable Lkwexit variable Lkwrec
 variable Lkwqdo variable Lkwploop variable Lkwj variable Lkwleave variable Lkwunloop
 variable Lkwchar variable Lkwbchar
 variable Lkwimm variable Lkwpost variable Lkwcompc
-variable Lkwdoes
+variable Lkwdoes variable Lkwquot variable Lkwsemiq
 
 9 constant A   10 constant B   11 constant C
 require prof.fs           \ in-binary sampling profiler (emitters + prims)
@@ -753,7 +758,8 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    Lkwchar @ LBL,  s" char" BYTES,   Lkwbchar @ LBL,  BCHAR-KW 6 BYTES,
    Lkwimm @ LBL,  s" immediate" BYTES,   Lkwpost @ LBL,  s" postpone" BYTES,
    Lkwcompc @ LBL,  s" compile," BYTES,
-   Lkwdoes @ LBL,  s" does>" BYTES, ;
+   Lkwdoes @ LBL,  s" does>" BYTES,
+   Lkwquot @ LBL,  QUOT-KW 2 BYTES,   Lkwsemiq @ LBL,  SEMIQ-KW 2 BYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
@@ -929,6 +935,39 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    9 $D10043FF LIT64,  Lcemit @ BL,      \ D: fresh prologue for the does-body
    9 $F90003FE LIT64,  Lcemit @ BL, ;
 
+\ [: ... ;] — an anonymous nested definition: [: jumps over the body, gives it
+\ its own prologue; ;] closes it (epilogue + patch) and pushes its address as a
+\ literal in the OUTER word (xt on the stack at outer runtime). One level; the
+\ EXIT chain is scoped to the quotation; locals inside are refused.
+: j-quot ( -- )
+   NEWLBL {: qok :}
+   9 DATA QPATCH-CELL LDR,  9 qok CBZ,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
+   qok LBL,
+   9 CP 0 ADDI,  9 DATA QPATCH-CELL STR,
+   9 $14000000 LIT64,  Lcemit @ BL,               \ b-over placeholder
+   9 CP 0 ADDI,  9 DATA QENT-CELL STR,            \ the quotation's entry
+   9 DATA EXITH-CELL LDR,  9 DATA QXH-CELL STR,   \ scope the EXIT chain
+   12 0 MOVZ,  12 DATA EXITH-CELL STR,
+   9 $D10043FF LIT64,  Lcemit @ BL,               \ its own prologue
+   9 $F90003FE LIT64,  Lcemit @ BL, ;
+
+: j-semiquot ( -- )
+   NEWLBL {: sqok :}
+   9 DATA QPATCH-CELL LDR,  9 sqok CBNZ,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
+   sqok LBL,
+   14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  Lbchain @ BL,   \ exits -> this epilogue
+   9 DATA QXH-CELL LDR,  9 DATA EXITH-CELL STR,
+   9 $F94003FE LIT64,  Lcemit @ BL,                \ epilogue: ldr x30,[sp]
+   9 $910043FF LIT64,  Lcemit @ BL,                \ add sp,#16
+   9 W-RET LIT64,  Lcemit @ BL,
+   9 DATA QPATCH-CELL LDR,  Lpat @ BL,             \ b-over lands here
+   11 DATA QENT-CELL LDR,  c-lit                   \ push the xt in the outer word
+   12 0 MOVZ,  12 DATA QPATCH-CELL STR, ;
+
 \ Ldoespatch ( x10=D ): patch the last-created word's RET into `b D`.
 \ Runs from engine text, so the region RW/RX flips are safe mid-execution.
 : emit-doespatch ( -- )
@@ -1074,6 +1113,13 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    cfok LBL,
+   \ FOOTGUN GUARD 1c: {: inside [: ;] — the locals frame belongs to the OUTER
+   \ word; the quotation's epilogue would not tear it down. Refuse: exit(75).
+   NEWLBL {: qlok :}
+   11 DATA QPATCH-CELL LDR,  11 qlok CBZ,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
+   qlok LBL,
    \ FOOTGUN GUARD 1b: {: after EXIT — the patched epilogue would tear down a
    \ frame the exit path never carved. Refuse loudly: token + exit(75).
    NEWLBL {: xok :}
@@ -1326,6 +1372,7 @@ variable CFSK2
          Lbcap @ BL,             \ seed with the NAME (checker records certified sigs)
          12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,     \ reset the VS
          12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,                  \ reset EXIT/LEAVE chains
+         12 DATA QPATCH-CELL STR,                                        \ reset quotation state
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
          9 $D10043FF LIT64,  Lcemit @ BL,                  \ prologue: sub sp,sp,#16
          9 $F90003FE LIT64,  Lcemit @ BL,                  \   str x30,[sp]  (slot.addr points here)
@@ -1391,6 +1438,8 @@ variable CFSK2
       lmain Lkwbchar  6 ['] c-bchar  cf-entry            \ [CHAR] X
       lmain Lkwpost   8 ['] c-postpone cf-entry           \ POSTPONE NAME
       lmain Lkwdoes   5 ['] j-does     cf-entry           \ DOES>
+      lmain Lkwquot   2 ['] j-quot     cf-entry           \ [:
+      lmain Lkwsemiq  2 ['] j-semiquot cf-entry           \ ;]
       lmain Lkwdo     2 ['] j-do     cf-entry            \ DO
       lmain Lkwloop   4 ['] j-loop   cf-entry            \ LOOP
       lmain Lkwi      1 ['] j-i      cf-entry            \ I
@@ -1485,6 +1534,7 @@ variable CFSK2
    NEWLBL Lkwqdo !  NEWLBL Lkwploop !  NEWLBL Lkwj !  NEWLBL Lkwleave !  NEWLBL Lkwunloop !
    NEWLBL Lkwchar !  NEWLBL Lkwbchar !
    NEWLBL Lkwimm !  NEWLBL Lkwpost !  NEWLBL Lkwcompc !  NEWLBL Lkwdoes !
+   NEWLBL Lkwquot !  NEWLBL Lkwsemiq !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !

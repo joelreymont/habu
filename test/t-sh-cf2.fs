@@ -39,3 +39,9 @@ T{ s" : CNT create 0 , does> dup @ 1 + dup rot ! ; CNT K K . K . K ." CF2-OUT s\
 \ does>-patched words must never be INLINED by c-call (the patch lives in the
 \ ret slot, outside the inline scan): compiled calls go through bl.
 T{ s" : ARR create cells allot does> swap cells + ; 4 ARR A4 : USE 2 A4 @ . ; 7 2 A4 ! USE" CF2-OUT s\" 7\n" compare 0= -> true }T
+\ [: ... ;] anonymous definitions: the xt lands on the stack; combinators are
+\ library words over execute + the return stack.
+T{ s" : T 5 [: 1 + ;] execute . ; T"                              CF2-OUT s\" 6\n"  compare 0= -> true }T
+T{ s" : dip swap >r execute r> ; : T 10 3 [: 2 * ;] dip + . ; T"  CF2-OUT s\" 23\n" compare 0= -> true }T
+T{ s" : T [: 7 ;] execute [: 2 ;] execute + . ; T"                CF2-OUT s\" 9\n"  compare 0= -> true }T
+T{ s" : keep over >r execute r> ; : T 5 [: 1 + . ;] keep . ; T"   CF2-OUT s\" 6\n5\n" compare 0= -> true }T

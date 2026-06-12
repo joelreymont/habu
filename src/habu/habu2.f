@@ -127,6 +127,8 @@ $28 constant INL-MAX
 \ keyword bytes (lower-case / literal) at known labels
 create SQ-KW  115 c, 34 c,
 create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
+create QUOT-KW 91 c, 58 c,      \ [:
+create SEMIQ-KW 59 c, 93 c,     \ ;]
 create TICK-KW   39 c,
 create BTICK-KW  91 c, 39 c, 93 c,
 create LBRACE-KW 123 c, 58 c,
@@ -150,7 +152,8 @@ create ENDLOC-KW 58 c, 125 c,
    Lkwchar @ LBL,  s" char" BYTES,   Lkwbchar @ LBL,  BCHAR-KW 6 BYTES,
    Lkwimm @ LBL,  s" immediate" BYTES,   Lkwpost @ LBL,  s" postpone" BYTES,
    Lkwcompc @ LBL,  s" compile," BYTES,
-   Lkwdoes @ LBL,  s" does>" BYTES, ;
+   Lkwdoes @ LBL,  s" does>" BYTES,
+   Lkwquot @ LBL,  QUOT-KW 2 BYTES,   Lkwsemiq @ LBL,  SEMIQ-KW 2 BYTES, ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : c-emitw {: w :}  9 w LIT64,  Lcemit @ BL, ;
@@ -317,6 +320,35 @@ create ENDLOC-KW 58 c, 125 c,
    9 $D10043FF LIT64,  Lcemit @ BL,      \ D: fresh prologue for the does-body
    9 $F90003FE LIT64,  Lcemit @ BL, ;
 
+: j-quot
+   NEWLBL {: qok :}
+   9 DATA QPATCH-CELL LDR,  9 qok CBZ,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
+   qok LBL,
+   9 CP 0 ADDI,  9 DATA QPATCH-CELL STR,
+   9 $14000000 LIT64,  Lcemit @ BL,               \ b-over placeholder
+   9 CP 0 ADDI,  9 DATA QENT-CELL STR,            \ the quotation's entry
+   9 DATA EXITH-CELL LDR,  9 DATA QXH-CELL STR,   \ scope the EXIT chain
+   12 0 MOVZ,  12 DATA EXITH-CELL STR,
+   9 $D10043FF LIT64,  Lcemit @ BL,               \ its own prologue
+   9 $F90003FE LIT64,  Lcemit @ BL, ;
+
+: j-semiquot
+   NEWLBL {: sqok :}
+   9 DATA QPATCH-CELL LDR,  9 sqok CBNZ,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
+   sqok LBL,
+   14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  Lbchain @ BL,   \ exits -> this epilogue
+   9 DATA QXH-CELL LDR,  9 DATA EXITH-CELL STR,
+   9 $F94003FE LIT64,  Lcemit @ BL,                \ epilogue: ldr x30,[sp]
+   9 $910043FF LIT64,  Lcemit @ BL,                \ add sp,#16
+   9 W-RET LIT64,  Lcemit @ BL,
+   9 DATA QPATCH-CELL LDR,  Lpat @ BL,             \ b-over lands here
+   11 DATA QENT-CELL LDR,  c-lit                   \ push the xt in the outer word
+   12 0 MOVZ,  12 DATA QPATCH-CELL STR, ;
+
 : emit-doespatch
    Ldoespatch @ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
@@ -448,11 +480,16 @@ create ENDLOC-KW 58 c, 125 c,
 : c-lbrace
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL
    NEWLBL NEWLBL
-   {: cfok xok havef nl nd nstore nlok noti ncp ncd pl pd tsl tsd :}
+   NEWLBL
+   {: cfok xok qlok havef nl nd nstore nlok noti ncp ncd pl pd tsl tsd :}
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
       0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    cfok LBL,
+   11 DATA QPATCH-CELL LDR,  11 qlok CBZ,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
+   qlok LBL,
    11 DATA EXITH-CELL LDR,  11 xok CBZ,
       0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
@@ -673,6 +710,7 @@ s" cfbn-entry" s" n n n n n --" trust
       Lbcap @ BL,             \ seed with the NAME (checker records certified sigs)
       12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
       12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
+      12 DATA QPATCH-CELL STR,
       12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
       9 $D10043FF LIT64,  Lcemit @ BL,
       9 $F90003FE LIT64,  Lcemit @ BL,
@@ -733,6 +771,8 @@ s" em-interpret" s" --" trust
       Lmain @ Lkwbchar  6 ['] c-bchar  cf-entry
       Lmain @ Lkwpost   8 ['] c-postpone cf-entry
       Lmain @ Lkwdoes   5 ['] j-does     cf-entry
+      Lmain @ Lkwquot   2 ['] j-quot     cf-entry
+      Lmain @ Lkwsemiq  2 ['] j-semiquot cf-entry
       Lmain @ Lkwdo     2 ['] j-do     cf-entry
       Lmain @ Lkwloop   4 ['] j-loop   cf-entry
       Lmain @ Lkwi      1 ['] j-i      cf-entry
@@ -827,6 +867,7 @@ variable SRCA
    NEWLBL Lkwqdo !  NEWLBL Lkwploop !  NEWLBL Lkwj !  NEWLBL Lkwleave !  NEWLBL Lkwunloop !
    NEWLBL Lkwchar !  NEWLBL Lkwbchar !
    NEWLBL Lkwimm !  NEWLBL Lkwpost !  NEWLBL Lkwcompc !  NEWLBL Lkwdoes !
+   NEWLBL Lkwquot !  NEWLBL Lkwsemiq !
    NEWLBL Lbchain !  NEWLBL Lcreate !  NEWLBL Ldoespatch !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
