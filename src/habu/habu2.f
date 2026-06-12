@@ -145,7 +145,9 @@ create ENDLOC-KW 58 c, 125 c,
    Lkwexit @ LBL,  s" exit" BYTES,   Lkwrec @ LBL,  s" recurse" BYTES,
    Lkwqdo @ LBL,  s" ?do" BYTES,   Lkwploop @ LBL,  s" +loop" BYTES,   Lkwj @ LBL,  s" j" BYTES,
    Lkwleave @ LBL,  s" leave" BYTES,   Lkwunloop @ LBL,  s" unloop" BYTES,
-   Lkwchar @ LBL,  s" char" BYTES,   Lkwbchar @ LBL,  BCHAR-KW 6 BYTES, ;
+   Lkwchar @ LBL,  s" char" BYTES,   Lkwbchar @ LBL,  BCHAR-KW 6 BYTES,
+   Lkwimm @ LBL,  s" immediate" BYTES,   Lkwpost @ LBL,  s" postpone" BYTES,
+   Lkwcompc @ LBL,  s" compile," BYTES, ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : c-emitw {: w :}  9 w LIT64,  Lcemit @ BL, ;
@@ -353,6 +355,27 @@ create ENDLOC-KW 58 c, 125 c,
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
    Lkwconst 8 c-defhook ;
+
+: c-immediate
+   2 3 MOVZ,  Lprot @ BL,
+   9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   10 9 16 LDR,  10 10 $100 ORRI,  10 9 16 STR,
+   2 5 MOVZ,  Lprot @ BL, ;
+
+: c-postpone
+   NEWLBL NEWLBL NEWLBL {: pok pnimm pdone :}
+   Ltok @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
+   13 pok CBNZ,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT SYS,
+   pok LBL,
+   14 13 2 ANDI,  14 pnimm CBZ,
+      c-call  pdone B,
+   pnimm LBL,
+      c-lit
+      9 Lkwcompc @ ADR,  10 8 MOVZ,  Lfind @ BL,
+      c-call
+   pdone LBL, ;
 
 : c-isdq
    INP INP 1 ADDI,  13 INP 0 ADDI,
@@ -617,6 +640,7 @@ s" cfbn-entry" s" n n n n n --" trust
    Lmain @ Lkwconst  8 ['] c-constant cf-entry
    Lmain @ Lkwtick   1 ['] c-tick     cf-entry
    Lmain @ Lkwchar   4 ['] c-char     cf-entry
+   Lmain @ Lkwimm    9 ['] c-immediate cf-entry
    Lmain @ Lkwsq     2 ['] c-isdq     cf-entry
    9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,
    12 lnotnum CBZ,  11 g-push  Lmain @ B,
@@ -627,7 +651,7 @@ s" cfbn-entry" s" n n n n n --" trust
 s" em-interpret" s" --" trust
 
 : em-compile
-   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotsemi notd nohook rejected notloc lmem lcnotnum :}
+   NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL {: lnotsemi notd nohook rejected notloc lmem lcnotnum notimm :}
    Lcompile @ LBL,
       TKL 1 CMPI,  C-NE lnotsemi BCOND,
       9 TKA 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
@@ -664,6 +688,7 @@ s" em-interpret" s" --" trust
       Lmain @ Lkwsq     2 ['] c-sdq    cf-entry
       Lmain @ Lkwbtick  3 ['] c-btick  cf-entry
       Lmain @ Lkwbchar  6 ['] c-bchar  cf-entry
+      Lmain @ Lkwpost   8 ['] c-postpone cf-entry
       Lmain @ Lkwdo     2 ['] j-do     cf-entry
       Lmain @ Lkwloop   4 ['] j-loop   cf-entry
       Lmain @ Lkwi      1 ['] j-i      cf-entry
@@ -718,6 +743,14 @@ s" em-interpret" s" --" trust
       Lvspill @ BL,
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
       13 Lundef @ CBZ,
+      14 13 2 ANDI,  14 notimm CBZ,
+         SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
+         2 5 MOVZ,  Lprot @ BL,
+         11 SP 8 LDR,  11 BLR,
+         2 3 MOVZ,  Lprot @ BL,
+         30 SP 0 LDR,  SP SP 16 ADDI,
+         Lmain @ B,
+      notimm LBL,
       c-call  Lmain @ B,
    Lundef @ LBL,
       0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
@@ -749,6 +782,7 @@ variable SRCA
    NEWLBL Lkwexit !  NEWLBL Lkwrec !
    NEWLBL Lkwqdo !  NEWLBL Lkwploop !  NEWLBL Lkwj !  NEWLBL Lkwleave !  NEWLBL Lkwunloop !
    NEWLBL Lkwchar !  NEWLBL Lkwbchar !
+   NEWLBL Lkwimm !  NEWLBL Lkwpost !  NEWLBL Lkwcompc !
    NEWLBL Lbchain !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !

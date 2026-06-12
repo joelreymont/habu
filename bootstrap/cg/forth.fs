@@ -111,6 +111,7 @@ variable Lkwtor variable Lkwrfrom variable Lkwrfet
 variable Lkwexit variable Lkwrec
 variable Lkwqdo variable Lkwploop variable Lkwj variable Lkwleave variable Lkwunloop
 variable Lkwchar variable Lkwbchar
+variable Lkwimm variable Lkwpost variable Lkwcompc
 
 9 constant A   10 constant B   11 constant C
 require prof.fs           \ in-binary sampling profiler (emitters + prims)
@@ -132,6 +133,17 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
 : bdot  A g-pop  g-print9 ;          \ pop x9, print signed decimal + newline
 
 : bu.   A g-pop  g-printu9 ;         \ pop x9, print unsigned decimal + newline
+: bcompile  A g-pop  11 9 0 ADDI,    \ ( xt -- ) append `movz-chain x16 ; blr x16` at CP
+   SP SP 16 SUBI,  11 SP 8 STR,
+   2 3 MOVZ,  Lprot @ BL,             \ run with region RX (immediate caller) — flip RW
+   11 SP 8 LDR,
+   5 $FFFF MOVZ,
+   7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
+   7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
+   7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
+   9 $D63F0200 LIT64,  Lcemit @ BL,
+   2 5 MOVZ,  Lprot @ BL,             \ back to RX for the caller
+   SP SP 16 ADDI, ;
 
 : bemit A g-pop  13 9 0 ADDI,  g-emitc ;   \ ( c -- ) write one byte
 
@@ -335,6 +347,7 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    s" here" ['] bhere  FPRIM-L   s" allot" ['] ballot FPRIM-L
    s" ,"    ['] bcomma FPRIM-L   s" c,"   ['] bccomma FPRIM-L
    s" type" ['] btype  FPRIM-L   s" execute" ['] bexec FPRIM
+   s" compile," ['] bcompile FPRIM
    s" die"  ['] bdie   FPRIM-L
    s" open" ['] bopen FPRIM-L   s" write" ['] bwrite FPRIM-L   s" read" ['] bread FPRIM-L
    s" close" ['] bclose FPRIM-L
@@ -479,7 +492,7 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    fil LBL,  10 CP CMP,  C-GE fid BCOND,  10 ICIVAU,  10 10 64 ADDI,  fil B,
    fid LBL,  DSB-ISH,  ISB,  RET, ;
 
-\ ---- FIND ( x9=tka x10=tkl -- x11=addr x12=clen x13=found ) over 40-byte records ----
+\ ---- FIND ( x9=tka x10=tkl -- x11=addr x12=clen x13=found|imm<<1 ) over 40-byte records ----
 : emit-find ( -- )
    Lfind @ LBL,
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  13 0 MOVZ,           \ rec, remaining, found=0
@@ -487,7 +500,7 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
    NEWLBL {: fcmp :}   NEWLBL {: fmatch :}
    floop LBL,
       6 fdone CBZ,
-      14 5 16 LDR,  14 10 CMP,  C-NE fnext BCOND,         \ namelen != tkl
+      14 5 16 LDR,  14 14 $FF ANDI,  14 10 CMP,  C-NE fnext BCOND,         \ namelen != tkl
       7 0 MOVZ,                                            \ i=0
       fcmp LBL,
          7 10 CMP,  C-GE fmatch BCOND,
@@ -498,7 +511,9 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
          15 4 CMP,  C-NE fnext BCOND,
          7 7 1 ADDI,  fcmp B,
       fmatch LBL,                                          \ keep scanning: take the LAST
-         11 5 0 LDR,  12 5 8 LDR,  13 1 MOVZ,  fnext B,    \ (newest) match -> redefs shadow
+         11 5 0 LDR,  12 5 8 LDR,
+         14 5 16 LDR,  14 14 $100 ANDI,  14 14 7 LSRI,   \ immediate bit -> 2
+         13 1 MOVZ,  13 13 14 ORR,  fnext B,    \ (newest) match -> redefs shadow
       fnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  floop B,
    fdone LBL,  RET, ;
 
@@ -725,7 +740,9 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    Lkwexit @ LBL,  s" exit" BYTES,   Lkwrec @ LBL,  s" recurse" BYTES,
    Lkwqdo @ LBL,  s" ?do" BYTES,   Lkwploop @ LBL,  s" +loop" BYTES,   Lkwj @ LBL,  s" j" BYTES,
    Lkwleave @ LBL,  s" leave" BYTES,   Lkwunloop @ LBL,  s" unloop" BYTES,
-   Lkwchar @ LBL,  s" char" BYTES,   Lkwbchar @ LBL,  BCHAR-KW 6 BYTES, ;
+   Lkwchar @ LBL,  s" char" BYTES,   Lkwbchar @ LBL,  BCHAR-KW 6 BYTES,
+   Lkwimm @ LBL,  s" immediate" BYTES,   Lkwpost @ LBL,  s" postpone" BYTES,
+   Lkwcompc @ LBL,  s" compile," BYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : c-emitw  ( word -- )  9 swap LIT64,  Lcemit @ BL, ;          \ emit one fixed instr word
@@ -941,6 +958,31 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
    Lkwconst 8 c-defhook ;
+
+\ IMMEDIATE: mark the LAST defined word — the compile loop EXECUTES immediate
+\ words instead of compiling calls (flag = bit $100 of slot.namelen).
+: c-immediate ( -- )
+   2 3 MOVZ,  Lprot @ BL,                               \ dict lives in the RX region
+   9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   10 9 16 LDR,  10 10 $100 ORRI,  10 9 16 STR,
+   2 5 MOVZ,  Lprot @ BL, ;
+
+\ POSTPONE NAME (compile): immediate -> compile the call; ordinary -> bake the
+\ xt and compile a call to the `compile,` prim (appends the call at ITS runtime).
+: c-postpone ( -- )
+   NEWLBL {: pok :}  NEWLBL {: pnimm :}  NEWLBL {: pdone :}
+   Ltok @ BL,  9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,
+   13 pok CBNZ,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT SYS,
+   pok LBL,
+   14 13 2 ANDI,  14 pnimm CBZ,
+      c-call  pdone B,
+   pnimm LBL,
+      c-lit                                              \ bake the xt (x11)
+      9 Lkwcompc @ ADR,  10 8 MOVZ,  Lfind @ BL,         \ find `compile,`
+      c-call
+   pdone LBL, ;
 
 \ CHAR NAME (interpret): push NAME's first byte. [CHAR] NAME (compile): bake it
 \ as a VS constant (folds like any literal).
@@ -1230,6 +1272,7 @@ variable CFSK2
       lmain Lkwconst  8 ['] c-constant cf-entry
       lmain Lkwtick   1 ['] c-tick     cf-entry
       lmain Lkwchar   4 ['] c-char     cf-entry
+      lmain Lkwimm    9 ['] c-immediate cf-entry
       lmain Lkwsq     2 ['] c-isdq     cf-entry
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lnum @ BL,             \ NUMBER?
       NEWLBL {: lnotnum :}
@@ -1281,6 +1324,7 @@ variable CFSK2
       lmain Lkwsq     2 ['] c-sdq    cf-entry            \ S" string"
       lmain Lkwbtick  3 ['] c-btick  cf-entry            \ ['] NAME
       lmain Lkwbchar  6 ['] c-bchar  cf-entry            \ [CHAR] X
+      lmain Lkwpost   8 ['] c-postpone cf-entry           \ POSTPONE NAME
       lmain Lkwdo     2 ['] j-do     cf-entry            \ DO
       lmain Lkwloop   4 ['] j-loop   cf-entry            \ LOOP
       lmain Lkwi      1 ['] j-i      cf-entry            \ I
@@ -1338,6 +1382,15 @@ variable CFSK2
       Lvspill @ BL,                                          \ VS -> memory before a call
       9 TKA 0 ADDI,  10 TKL 0 ADDI,  Lfind @ BL,            \ FIND -> inline stencil
       13 lundef CBZ,                                         \ undefined word in a : body -> error
+      NEWLBL {: notimm :}
+      14 13 2 ANDI,  14 notimm CBZ,                          \ IMMEDIATE: execute NOW
+         SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
+         2 5 MOVZ,  Lprot @ BL,                              \ region RX to run it
+         11 SP 8 LDR,  11 BLR,
+         2 3 MOVZ,  Lprot @ BL,                              \ back to RW (still compiling)
+         30 SP 0 LDR,  SP SP 16 ADDI,
+         lmain B,
+      notimm LBL,
       c-call  lmain B,                                      \ x11=addr -> emit BL (no longer inline)
    \ undefined word during compilation: write the name to stderr and exit(70). Silently
    \ skipping it (the old behaviour) hid real bugs (e.g. `0<`, `STR=` -> no-op).
@@ -1365,6 +1418,7 @@ variable CFSK2
    NEWLBL Lkwexit !  NEWLBL Lkwrec !
    NEWLBL Lkwqdo !  NEWLBL Lkwploop !  NEWLBL Lkwj !  NEWLBL Lkwleave !  NEWLBL Lkwunloop !
    NEWLBL Lkwchar !  NEWLBL Lkwbchar !
+   NEWLBL Lkwimm !  NEWLBL Lkwpost !  NEWLBL Lkwcompc !
    NEWLBL Lcrashh !  NEWLBL Lhex !  NEWLBL Lhdr !
    NEWLBL Lprofh !  NEWLBL Lprofdump !
    NEWLBL Lvspill !  NEWLBL Lvlitpush !  NEWLBL Lvpushc !

@@ -22,3 +22,10 @@ T{ s" -1 u."                                              CF2-OUT s\" 1844674407
 T{ s" : T 65 emit space 66 emit cr ; T"                   CF2-OUT s\" A B\n" compare 0= -> true }T
 \ typed locals run with bare-name references
 T{ s" : T {: a:n b:n :} a b + . ; 3 4 T"                  CF2-OUT s\" 7\n"  compare 0= -> true }T
+\ immediate / postpone / compile, — user-extensible compile words (phase A):
+\ an immediate word EXECUTES during compilation; postpone compiles either the
+\ call (immediate target) or code that compiles the call (ordinary target).
+T{ s" : STAR 42 emit ; immediate : T STAR ; T"                    CF2-OUT s" *"     compare 0= -> true }T
+T{ s\" : FOO 7 . ; : E7 ['] FOO compile, ; immediate : T E7 ; T" CF2-OUT s\" 7\n" compare 0= -> true }T
+T{ s" : FOO 9 . ; : P postpone FOO ; immediate : T P ; T"         CF2-OUT s\" 9\n" compare 0= -> true }T
+T{ s" : IM 3 . ; immediate : P2 postpone IM ; immediate : T P2 ; T" CF2-OUT s\" 3\n" compare 0= -> true }T

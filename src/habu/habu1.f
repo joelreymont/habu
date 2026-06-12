@@ -83,6 +83,7 @@ variable Lkwtor variable Lkwrfrom variable Lkwrfet
 variable Lkwexit variable Lkwrec
 variable Lkwqdo variable Lkwploop variable Lkwj variable Lkwleave variable Lkwunloop
 variable Lkwchar variable Lkwbchar
+variable Lkwimm variable Lkwpost variable Lkwcompc
 9 constant A   10 constant B   11 constant C
 
 \ ---- primitive bodies (operate on the x19 data stack) ----
@@ -101,6 +102,18 @@ variable Lkwchar variable Lkwbchar
 : bdot  A g-pop  g-print9 ;
 
 : bu.   A g-pop  g-printu9 ;
+
+: bcompile  A g-pop  11 9 0 ADDI,
+   SP SP 16 SUBI,  11 SP 8 STR,
+   2 3 MOVZ,  Lprot @ BL,
+   11 SP 8 LDR,
+   5 $FFFF MOVZ,
+   7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
+   7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
+   7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  Lcemit @ BL,
+   9 $D63F0200 LIT64,  Lcemit @ BL,
+   2 5 MOVZ,  Lprot @ BL,
+   SP SP 16 ADDI, ;
 
 : bemit A g-pop  13 9 0 ADDI,  g-emitc ;
 
@@ -287,6 +300,7 @@ variable Lkwchar variable Lkwbchar
    s" here" ['] bhere  FPRIM-L   s" allot" ['] ballot FPRIM-L
    s" ,"    ['] bcomma FPRIM-L   s" c,"   ['] bccomma FPRIM-L
    s" type" ['] btype  FPRIM-L   s" execute" ['] bexec FPRIM
+   s" compile," ['] bcompile FPRIM
    s" die"  ['] bdie   FPRIM-L
    s" open" ['] bopen FPRIM-L   s" write" ['] bwrite FPRIM-L   s" read" ['] bread FPRIM-L
    s" close" ['] bclose FPRIM-L
@@ -432,7 +446,7 @@ s" emit-fp-prims" s" --" trust
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  13 0 MOVZ,
    floop LBL,
       6 fdone CBZ,
-      14 5 16 LDR,  14 10 CMP,  C-NE fnext BCOND,
+      14 5 16 LDR,  14 14 $FF ANDI,  14 10 CMP,  C-NE fnext BCOND,
       7 0 MOVZ,
       fcmp LBL,
          7 10 CMP,  C-GE fmatch BCOND,
@@ -443,7 +457,9 @@ s" emit-fp-prims" s" --" trust
          15 4 CMP,  C-NE fnext BCOND,
          7 7 1 ADDI,  fcmp B,
       fmatch LBL,
-         11 5 0 LDR,  12 5 8 LDR,  13 1 MOVZ,  fnext B,
+         11 5 0 LDR,  12 5 8 LDR,
+         14 5 16 LDR,  14 14 $100 ANDI,  14 14 7 LSRI,   \ immediate bit -> 2
+         13 1 MOVZ,  13 13 14 ORR,  fnext B,
       fnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  floop B,
    fdone LBL,  RET, ;
 
