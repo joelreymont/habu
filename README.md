@@ -114,7 +114,7 @@ source self-checks at **783 certified / 0 uncheckable / 0 rejected**.
 ## Combinators
 
 `EXECUTE DIP KEEP BI TRI TIMES EACH MAP FOLD` are both **typed** (effects in the
-DB) and **runnable** (`src/runtime.fs`), so a checked program can use them and
+DB) and **runnable** (`bootstrap/src/runtime.fs`), so a checked program can use them and
 run:
 
 ```forth
