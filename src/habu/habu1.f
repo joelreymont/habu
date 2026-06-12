@@ -110,6 +110,24 @@ variable Lkwdoes variable Lkwquot variable Lkwsemiq
 
 : bu.   A g-pop  g-printu9 ;
 
+: brunrc  A g-pop                    \ ( pathz -- rc ) spawn + wait, exit status
+   SP SP 64 SUBI,
+   9 SP 16 STR,                      \ argv[0] = path
+   10 0 MOVZ,  10 SP 24 STR,         \ argv[1] = 0
+   10 SP 48 STR,                     \ envp[0] = 0
+   0 SP 0 ADDI,                      \ &pid
+   1 9 0 ADDI,
+   2 0 MOVZ,  3 0 MOVZ,
+   4 SP 16 ADDI,  5 SP 48 ADDI,
+   NR-SPAWN SYS,
+   0 SP 0 LDR,                       \ pid
+   1 SP 8 ADDI,  2 0 MOVZ,  3 0 MOVZ,
+   NR-WAIT4 SYS,
+   9 SP 8 LDRW,
+   9 9 8 LSRI,  9 9 $FF ANDI,        \ WEXITSTATUS
+   9 g-push
+   SP SP 64 ADDI, ;
+
 : bcreate  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
 
@@ -312,6 +330,7 @@ variable Lkwdoes variable Lkwquot variable Lkwsemiq
    s" type" ['] btype  FPRIM-L   s" execute" ['] bexec FPRIM
    s" compile," ['] bcompile FPRIM
    s" create" ['] bcreate FPRIM
+   s" run-rc" ['] brunrc FPRIM-L
    s" die"  ['] bdie   FPRIM-L
    s" open" ['] bopen FPRIM-L   s" write" ['] bwrite FPRIM-L   s" read" ['] bread FPRIM-L
    s" close" ['] bclose FPRIM-L
