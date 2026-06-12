@@ -324,11 +324,26 @@ variable FLD  variable FLI  variable FLO  variable FLC
 create LOCNB 256 allot   create LOCLN 16 cells allot   create LOCTV 16 cells allot
 variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  variable LI  variable LRF
 
+variable LCO
+
+: LCOLON {: a u :}   \ ( a u -- ) LCO = index of the first ':' in a/u, or u
+   u LCO !
+   0 BEGIN  dup u <  LCO @ u =  and WHILE
+     dup a + c@ 58 = IF dup LCO ! THEN
+     1 + REPEAT drop ;
+
+\ a typed local `a:n` stores the BARE name (matching the engine) and unifies
+\ the local's type var with the asserted type — a wrong use then rejects.
 : LOC-ADD {: a u :}
-   #LOC @ 15 >  u 16 >  or IF -1 UNCK ! ELSE
-     a  LOCNB #LOC @ 16 * +  u CCOPY
-     u #LOC @ cells LOCLN + !
+   a u LCOLON
+   #LOC @ 15 >  LCO @ 16 >  or IF -1 UNCK ! ELSE
+     a  LOCNB #LOC @ 16 * +  LCO @ CCOPY
+     LCO @ #LOC @ cells LOCLN + !
      FRESH MK-VAR #LOC @ cells LOCTV + !
+     LCO @ u < IF
+       a LCO @ + 1 +  u LCO @ - 1 -  TOK-TYPE
+       #LOC @ cells LOCTV + @  UNIFY OK @ and OK !
+     THEN
      #LOC @ 1 + #LOC ! THEN ;
 
 : LOC-BIND

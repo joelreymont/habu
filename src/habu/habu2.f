@@ -383,7 +383,8 @@ create ENDLOC-KW 58 c, 125 c,
 
 : c-lbrace
    NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL NEWLBL
-   {: cfok xok havef nl nd nstore nlok noti ncp ncd pl pd :}
+   NEWLBL NEWLBL
+   {: cfok xok havef nl nd nstore nlok noti ncp ncd pl pd tsl tsd :}
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
       0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
@@ -412,8 +413,13 @@ create ENDLOC-KW 58 c, 125 c,
          0 75 MOVZ,  NR-EXIT SYS,
       noti LBL,
       11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  11 11 LOCNAMES ADDI,  11 DATA 11 ADD,
-      TKL 11 0 STR,
-      12 11 8 ADDI,  13 TKA 0 ADDI,  14 TKL 0 ADDI,
+      14 0 MOVZ,
+      tsl LBL,  14 TKL CMP,  C-GE tsd BCOND,
+         15 TKA 14 ADD,  15 15 0 LDRB,  15 58 CMPI,  C-EQ tsd BCOND,
+         14 14 1 ADDI,  tsl B,
+      tsd LBL,
+      14 11 0 STR,
+      12 11 8 ADDI,  13 TKA 0 ADDI,
       ncp LBL,  14 ncd CBZ,  15 13 0 LDRB, 15 12 0 STRB, 12 12 1 ADDI, 13 13 1 ADDI, 14 14 1 SUBI, ncp B,
       ncd LBL,
       11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR,

@@ -20,3 +20,5 @@ T{ s" : T [char] A emit [char] B emit cr ; T"             CF2-OUT s\" AB\n" comp
 T{ s" char Z ."                                           CF2-OUT s\" 90\n" compare 0= -> true }T
 T{ s" -1 u."                                              CF2-OUT s\" 18446744073709551615\n" compare 0= -> true }T
 T{ s" : T 65 emit space 66 emit cr ; T"                   CF2-OUT s\" A B\n" compare 0= -> true }T
+\ typed locals run with bare-name references
+T{ s" : T {: a:n b:n :} a b + . ; 3 4 T"                  CF2-OUT s\" 7\n"  compare 0= -> true }T

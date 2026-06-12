@@ -36,3 +36,8 @@ T{ s" : RC 7 >r 1 if r@ else 0 then r> drop + . ;" CHK2 s\" -1\n" compare 0= -> 
 \ (recurse makes MYST uncheckable=1; the trusted sig lets USES certify=-1.)
 T{ s\" : MYST dup 0 > if 1- recurse then ; s\" myst\" s\" n -- n\" trust : USES 5 MYST . ; USES"
    CHK2 s\" 1\n-1\n0\n" compare 0= -> true }T
+\ typed local assertions: {: a:n :} binds the local's type var to the
+\ asserted type; references use the bare name; a wrong use rejects.
+T{ s" : L2 {: a:n :} a 1 + . ;"   CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : LB {: a:r :} a 1 + . ;"   CHK2 s\" 0\n"  compare 0= -> true }T
+T{ s" : LR {: x:r :} x f. ;"      CHK2 s\" -1\n" compare 0= -> true }T

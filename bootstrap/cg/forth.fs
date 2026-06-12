@@ -1003,8 +1003,16 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
          0 75 MOVZ,  NR-EXIT SYS,
       noti LBL,
       11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  11 11 LOCNAMES ADDI,  11 DATA 11 ADD,
-      TKL 11 0 STR,                           \ entry.len
-      12 11 8 ADDI,  13 TKA 0 ADDI,  14 TKL 0 ADDI,    \ copy name bytes
+      \ typed local a:n — references use the BARE name; the :type suffix is
+      \ checker-only (it reaches the hook via the body capture). x14 = bare len.
+      NEWLBL {: tsl :}  NEWLBL {: tsd :}
+      14 0 MOVZ,
+      tsl LBL,  14 TKL CMP,  C-GE tsd BCOND,
+         15 TKA 14 ADD,  15 15 0 LDRB,  15 58 CMPI,  C-EQ tsd BCOND,
+         14 14 1 ADDI,  tsl B,
+      tsd LBL,
+      14 11 0 STR,                            \ entry.len = bare len
+      12 11 8 ADDI,  13 TKA 0 ADDI,           \ copy bare bytes (x14 already the count)
       ncp LBL,  14 ncd CBZ,  15 13 0 LDRB, 15 12 0 STRB, 12 12 1 ADDI, 13 13 1 ADDI, 14 14 1 SUBI, ncp B,
       ncd LBL,
       11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR,   \ N++
