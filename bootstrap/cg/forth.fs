@@ -137,7 +137,7 @@ require vsjit.fs          \ runtime abstract value stack for the : compiler
 : bdot  A g-pop  g-print9 ;          \ pop x9, print signed decimal + newline
 
 : bu.   A g-pop  g-printu9 ;         \ pop x9, print unsigned decimal + newline
-: bcreate  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
+: bcreate  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
 
 : bcompile  A g-pop  11 9 0 ADDI,    \ ( xt -- ) append `movz-chain x16 ; blr x16` at CP
@@ -621,11 +621,13 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    lnopro LBL,
       12 INL-MAX CMPI,  C-GT lcall BCOND,
       13 11 0 ADDI,  14 11 12 ADD,                            \ whole body [addr, addr+clen)
+      9 14 0 LDRW,  8 $D65F03C0 LIT64,  9 8 CMP,  C-NE lcall BCOND,   \ ret slot patched
+                                                               \ (does>) -> never inline
    lscan LBL,
       15 13 0 ADDI,
    lsbody LBL,  15 14 CMP,  C-GE lcopy BCOND,
       9 15 0 LDRW,  15 15 4 ADDI,
-      8 $FC000000 LIT64,  10 9 8 AND,  8 $94000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,  \ BL
+      8 $FC000000 LIT64,  10 9 8 AND,  8 $94000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,
       8 $FFFFFC1F LIT64,  10 9 8 AND,
          8 $D63F0000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,                                \ BLR
          8 $D61F0000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,                                \ BR
@@ -962,9 +964,14 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 
 \ CREATE as a BL-able routine: the interpret keyword AND the runtime `create`
 \ prim share it, so defining words (`: CONST create , does> @ ;`) work.
+\ Lcreate ( x15=top-level? ): the hook KIND record (`NAME create` -> sig -- n)
+\ only applies to top-level creates — a word created INSIDE a defining word may
+\ be does>-patched to any effect, so it publishes unrecorded; the author
+\ declares it with `trust`.
 : emit-create ( -- )
+   NEWLBL {: nokind :}
    Lcreate @ LBL,
-   SP SP 16 SUBI,  30 SP 0 STR,
+   SP SP 16 SUBI,  30 SP 0 STR,  15 SP 8 STR,
    2 3 MOVZ,  Lprot @ BL,                               \ region -> RW
    Ltok @ BL,                                            \ read NAME
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  Lbcap @ BL,   \ seed "NAME " for the hook
@@ -984,10 +991,12 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    9 DATA LASTC-CELL STR,                               \ DOES> patches this slot
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,                 \ region -> RX + flush
+   15 SP 8 LDR,  15 nokind CBZ,
    Lkwcreate 6 c-defhook
+   nokind LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-: c-create ( -- )  Lcreate @ BL, ;
+: c-create ( -- )  15 1 MOVZ,  Lcreate @ BL, ;
 
 : c-variable ( -- )  c-create
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;          \ reserve 1 cell

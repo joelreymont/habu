@@ -36,3 +36,6 @@ T{ s" : CONST create , does> @ ; 5 CONST FIVE FIVE ."         CF2-OUT s\" 5\n"  
 T{ s" : CONST create , does> @ ; 5 CONST F 9 CONST N F N + ." CF2-OUT s\" 14\n" compare 0= -> true }T
 T{ s" : ARR create cells allot does> swap cells + ; 4 ARR A4 7 2 A4 ! 2 A4 @ ." CF2-OUT s\" 7\n" compare 0= -> true }T
 T{ s" : CNT create 0 , does> dup @ 1 + dup rot ! ; CNT K K . K . K ." CF2-OUT s\" 1\n2\n3\n" compare 0= -> true }T
+\ does>-patched words must never be INLINED by c-call (the patch lives in the
+\ ret slot, outside the inline scan): compiled calls go through bl.
+T{ s" : ARR create cells allot does> swap cells + ; 4 ARR A4 : USE 2 A4 @ . ; 7 2 A4 ! USE" CF2-OUT s\" 7\n" compare 0= -> true }T

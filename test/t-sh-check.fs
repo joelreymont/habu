@@ -41,3 +41,8 @@ T{ s\" : MYST dup 0 > if 1- recurse then ; s\" myst\" s\" n -- n\" trust : USES 
 T{ s" : L2 {: a:n :} a 1 + . ;"   CHK2 s\" -1\n" compare 0= -> true }T
 T{ s" : LB {: a:r :} a 1 + . ;"   CHK2 s\" 0\n"  compare 0= -> true }T
 T{ s" : LR {: x:r :} x f. ;"      CHK2 s\" -1\n" compare 0= -> true }T
+\ CREATE...DOES> typing: a word created INSIDE a defining word publishes
+\ UNRECORDED (its does>-patched effect is arbitrary — recording `-- n` would
+\ be unsound); the author declares it with trust, and callers certify.
+T{ s\" : ARR create cells allot does> swap cells + ; s\" a4\" s\" n -- n\" trust 4 ARR A4 : USE 2 A4 @ . ; 7 2 A4 ! USE"
+   CHK2 s\" 1\n-1\n7\n" compare 0= -> true }T

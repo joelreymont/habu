@@ -107,7 +107,7 @@ variable Lkwdoes
 
 : bu.   A g-pop  g-printu9 ;
 
-: bcreate  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
+: bcreate  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
 
 : bcompile  A g-pop  11 9 0 ADDI,

@@ -22,6 +22,8 @@ $28 constant INL-MAX
    lnopro LBL,
       12 INL-MAX CMPI,  C-GT lcall BCOND,
       13 11 0 ADDI,  14 11 12 ADD,
+      9 14 0 LDRW,  8 $D65F03C0 LIT64,  9 8 CMP,  C-NE lcall BCOND,   \ ret slot patched
+                                                               \ (does>) -> never inline
    lscan LBL,
       15 13 0 ADDI,
    lsbody LBL,  15 14 CMP,  C-GE lcopy BCOND,
@@ -345,9 +347,9 @@ create ENDLOC-KW 58 c, 125 c,
    nohk LBL, ;
 
 : emit-create
-   NEWLBL NEWLBL {: ncp ncpd :}
+   NEWLBL NEWLBL NEWLBL {: ncp ncpd nokind :}
    Lcreate @ LBL,
-   SP SP 16 SUBI,  30 SP 0 STR,
+   SP SP 16 SUBI,  30 SP 0 STR,  15 SP 8 STR,
    2 3 MOVZ,  Lprot @ BL,
    Ltok @ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  Lbcap @ BL,   \ seed "NAME " for the hook
@@ -366,10 +368,12 @@ create ENDLOC-KW 58 c, 125 c,
    9 DATA LASTC-CELL STR,
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  Lprot @ BL,  Lflush @ BL,
+   15 SP 8 LDR,  15 nokind CBZ,
    Lkwcreate 6 c-defhook
+   nokind LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-: c-create  Lcreate @ BL, ;
+: c-create  15 1 MOVZ,  Lcreate @ BL, ;
 
 : c-variable  c-create
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;
