@@ -180,6 +180,20 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **A test that shells out to a /tmp artifact must rm it first**: t-sh-cg
+  "passed" for many sessions off a STALE /tmp/sh-cg-bin — its demo source
+  (cg-demo.f) had been emptied by an old cleanup commit and the test never
+  noticed because the previous binary still ran. Surfaced only when /tmp got
+  cleaned. Every generate-then-run test now removes its artifact before GEN.
+- **Float pool design (shipped)**: VS tags grew to four — 0 int reg, 1 int con,
+  2 d-reg, 3 float con (LNUM returns float-ness in x2; literals push tag 3 so
+  the loop snapshot float-forces them instead of pinning bits in an x-reg).
+  Snapshots pack bit 7 = float; recon reloads ldr dN and rebuilds FRFREE via a
+  scratch claim cell. The win is the loop-carried chain leaving memory:
+  f-accum 8.55 -> 0.96 ns/iter. The same OoO logic that killed the locals
+  cache APPROVED this one — measure which side of the dependency chain the
+  memory traffic is on before building.
+
 - **The locals register cache was built, measured, and REJECTED** (2026-06): a
   full slot->reg cache (CLCREG/CMASK, claim-through-VRFREE, loop-survival via
   the recon path) passed all correctness gates and benched EXACTLY the same as
