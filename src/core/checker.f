@@ -404,7 +404,7 @@ variable FLD  variable FLI  variable FLO  variable FLC
 \ --- locals: {: a b :} pops and binds names to type vars; a reference pushes
 \ its binding. Groups accumulate (a later group binds only its own names).
 : CCOPY {: a d u :}  0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop ;
-create LOCNB 256 allot   create LOCLN 16 cells allot   create LOCTV 16 cells allot
+create LOCNB 1024 allot   create LOCLN 64 cells allot   create LOCTV 64 cells allot
 variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  variable LI  variable LRF
 
 variable LCO
@@ -419,7 +419,7 @@ variable LCO
 \ the local's type var with the asserted type — a wrong use then rejects.
 : LOC-ADD {: a u :}
    a u LCOLON
-   #LOC @ 15 >  LCO @ 16 >  or IF -1 UNCK ! ELSE
+   #LOC @ 63 >  LCO @ 16 >  or IF -1 UNCK ! ELSE
      a  LOCNB #LOC @ 16 * +  LCO @ CCOPY
      LCO @ #LOC @ cells LOCLN + !
      FRESH MK-VAR #LOC @ cells LOCTV + !

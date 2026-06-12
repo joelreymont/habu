@@ -17,7 +17,8 @@ $200000 constant DATA-SIZE
 $100000 constant IBUFSZ
 20 constant DATA
 0   constant DP-CELL    8  constant HND-CELL
-16  constant LOCN-CELL   24 constant LOCF-CELL    32 constant LOCNAMES
+16  constant LOCN-CELL   24 constant LOCF-CELL
+$3000 constant LOCNAMES   \ 64 records x 24 B ($3000-$3600); was 16 at DATA+32
 24  constant LOC-REC
 $1A0 constant CUR-CELL
 $1A8 constant WIDN-CELL
@@ -41,7 +42,7 @@ $238 constant QPATCH-CELL \ [: b-over patch site (0 = not inside a quotation)
 $240 constant QENT-CELL   \ [: nested entry address (the xt ;] pushes)
 $248 constant QXH-CELL    \ saved EXIT chain head across the quotation
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
-$3000 constant DATA-START
+$3800 constant DATA-START
 variable STDIN?   0 STDIN? !
 \ runtime instruction-word constants the JIT compiler stamps out
 $D65F03C0 constant W-RET

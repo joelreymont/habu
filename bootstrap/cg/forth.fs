@@ -39,7 +39,8 @@ $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 \ for the word being compiled — LOC-N count, LOC-F frame bytes, then 16 name slots
 \ (len + up to 16 name bytes, 24 B each). User data (DP) starts past the header.
 0   constant DP-CELL    8  constant HND-CELL
-16  constant LOCN-CELL   24 constant LOCF-CELL    32 constant LOCNAMES
+16  constant LOCN-CELL   24 constant LOCF-CELL
+$3000 constant LOCNAMES   \ 64 records x 24 B ($3000-$3600); was 16 at DATA+32
 24  constant LOC-REC      \ bytes per local name record (len + 16 name)
 $1A0 constant CUR-CELL    \ get/set-current wordlist id (new defs go here)
 $1A8 constant WIDN-CELL   \ next fresh wordlist id (WORDLIST hands these out)
@@ -64,7 +65,7 @@ $238 constant QPATCH-CELL \ [: b-over patch site (0 = not inside a quotation)
 $240 constant QENT-CELL   \ [: nested entry address (the xt ;] pushes)
 $248 constant QXH-CELL    \ saved EXIT chain head across the quotation
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
-$3000 constant DATA-START \ DP initial offset (past header + loop stack + body buf + rstack)
+$3800 constant DATA-START \ DP initial offset (past header + loop stack + body buf + rstack)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
 create QUOT-KW 91 c, 58 c,      \ [:
@@ -764,7 +765,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    NEWLBL {: ll :}  NEWLBL {: lmiss :}  NEWLBL {: lhit :}
    NEWLBL {: lcmp :}  NEWLBL {: lnext :}
    ll LBL,  10 9 CMP,  C-GE lmiss BCOND,
-      12 LOC-REC MOVZ,  11 10 12 MUL,  11 11 LOCNAMES ADDI,  11 DATA 11 ADD,   \ entry
+      12 LOC-REC MOVZ,  11 10 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,   \ entry
       12 11 0 LDR,  12 TKL CMP,  C-NE lnext BCOND,   \ len mismatch
       13 0 MOVZ,                                     \ j
       lcmp LBL,  13 TKL CMP,  C-GE lhit BCOND,
@@ -1164,12 +1165,10 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    xok LBL,
-   \ first {: of the word carves a fixed 16-slot (128-byte) frame; later blocks
-   \ append to the locals table and pop into the next slots (no second carve).
-   12 DATA LOCF-CELL LDR,  NEWLBL {: havef :}  12 havef CBNZ,
-      9 $D10203FF LIT64,  Lcemit @ BL,        \ sub sp,sp,#128
-      9 128 MOVZ,  9 DATA LOCF-CELL STR,      \ LOC-F = 128
-   havef LBL,
+   \ each {: :} group carves EXACTLY its own slots at ':}' — no fixed frame, no
+   \ slot cap from the frame. A slot's sp offset is LOCF - 8*(slot+1): earlier
+   \ slots shift UP by each later carve, and LOCF tracks the running total, so
+   \ the offset stays compile-time computable. Teardown stays `add sp,#LOCF`.
    6 DATA LOCN-CELL LDR,                      \ x6 = start slot for this block (= current N)
    NEWLBL {: nl :}  NEWLBL {: nd :}  NEWLBL {: nstore :}  NEWLBL {: ncp :}  NEWLBL {: ncd :}
    nl LBL,
@@ -1177,9 +1176,9 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       Lbcap @ BL,                                          \ locals reach the checker too
       0 Lkwendloc @ ADR,  1 2 MOVZ,  Lkwcmp @ BL,  0 nstore CBZ,  nd B,   \ ":}" -> done
       nstore LBL,
-      \ cap: 16 local slots (the frame is fixed); a 17th overflows LOCNAMES
+      \ cap: the LOCNAMES table holds 64 records — die loudly past it
       NEWLBL {: nlok :}
-      11 DATA LOCN-CELL LDR,  11 16 CMPI,  C-LT nlok BCOND,
+      11 DATA LOCN-CELL LDR,  11 64 CMPI,  C-LT nlok BCOND,
          0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
          0 75 MOVZ,  NR-EXIT SYS,
       nlok LBL,
@@ -1190,7 +1189,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
          0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
          0 75 MOVZ,  NR-EXIT SYS,
       noti LBL,
-      11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  11 11 LOCNAMES ADDI,  11 DATA 11 ADD,
+      11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
       \ typed local a:n — references use the BARE name; the :type suffix is
       \ checker-only (it reaches the hook via the body capture). x14 = bare len.
       NEWLBL {: tsl :}  NEWLBL {: tsd :}
@@ -1206,14 +1205,21 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR,   \ N++
       nl B,
    nd LBL,
-   \ pop this block's values into slots [start .. N-1] (top -> highest slot)
+   \ carve exactly this group's slots, bump LOCF, then pop top -> highest
+   \ NEW slot at offset LOCF - 8*(i+1)
+   13 DATA LOCN-CELL LDR,  14 13 6 SUB,       \ n = N - start
+   5 14 3 LSLI,  5 5 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,   \ carve = align16(n*8):
+   9 $D10003FF LIT64,  15 5 10 LSLI,  9 9 15 ORR,  Lcemit @ BL,   \ SP must stay 16-aligned
+   15 DATA LOCF-CELL LDR,  15 15 5 ADD,  15 DATA LOCF-CELL STR,   \ (pad sits below the slots)
+   12 DATA LOCF-CELL LDR,  12 12 3 LSRI,      \ x12 = total slots in the frame
    13 DATA LOCN-CELL LDR,  13 13 1 SUBI,      \ i = N-1
    NEWLBL {: pl :}  NEWLBL {: pd :}
    pl LBL,
       13 6 CMP,  C-LT pd BCOND,               \ i < start -> done
       9 $D1002273 LIT64,  Lcemit @ BL,        \ sub x19,#8
       9 $F9400269 LIT64,  Lcemit @ BL,        \ ldr x9,[x19]
-      9 $F90003E9 LIT64,  14 13 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ str x9,[sp,#i*8]
+      5 12 13 SUB,  5 5 1 SUBI,               \ scaled off = total - i - 1
+      9 $F90003E9 LIT64,  5 5 10 LSLI,  9 9 5 ORR,  Lcemit @ BL,   \ str x9,[sp,#off]
       13 13 1 SUBI,  pl B,
    pd LBL, ;
 
@@ -1583,12 +1589,14 @@ variable CFSK2
       \ local-name reference -> load from its frame slot, push
       Lloc-find @ BL,  NEWLBL {: notloc :}  NEWLBL {: lmem :}  0 0 CMPI,  C-LT notloc BCOND,
          Lvralloc @ BL,  14 lmem CBZ,                  \ local -> straight into a register
-         9 $F94003E0 LIT64,  9 9 14 ORR,  7 0 10 LSLI,  9 9 7 ORR,  Lcemit @ BL,
+         7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,   \ off = total-slot-1
+         9 $F94003E0 LIT64,  9 9 14 ORR,  7 7 10 LSLI,  9 9 7 ORR,  Lcemit @ BL,
          Lvpushr @ BL,
          lmain B,
          lmem LBL,                                     \ no free reg: classic memory push
          Lvspill @ BL,
-         9 $F94003E9 LIT64,  14 0 10 LSLI,  9 9 14 ORR,  Lcemit @ BL,   \ ldr x9,[sp,#slot*8]
+         7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
+         9 $F94003E9 LIT64,  7 7 10 LSLI,  9 9 7 ORR,  Lcemit @ BL,   \ ldr x9,[sp,#off]
          9 W-PUSH0 LIT64,  Lcemit @ BL,  9 W-PUSH1 LIT64,  Lcemit @ BL,
          lmain B,
       notloc LBL,
