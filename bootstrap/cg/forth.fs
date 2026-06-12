@@ -50,6 +50,10 @@ $1C0 constant RBASE-CELL  \ saved __TEXT load base (RBASE) for the self-rebuild
 $1C8 constant LOOPSP-CELL \ DO/LOOP frame stack depth
 $1D0 constant S0-CELL     \ saved data-stack base (initial XDS) for the `.s` inspector
 $1D8 constant SSCR-CELL   \ `.s` loop-pointer scratch (survives g-print9's x9..x15 clobber)
+$3640 constant REPLH-CELL  \ REPL line-reader xt (0 = batch; repl.f INSTALL sets it)
+$3648 constant RSAVCP-CELL \ line-start CP    (REPL error rollback)
+$3650 constant RSAVND-CELL \ line-start NDICT
+$3658 constant RSAVDP-CELL \ line-start DP
 $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
                            \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
@@ -70,6 +74,8 @@ create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, 
 create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
 create QUOT-KW 91 c, 58 c,      \ [:
 create SEMIQ-KW 59 c, 93 c,     \ ;]
+create QNL-KW 63 c, 10 c,       \ ?\n  (REPL reject)
+create OKS-KW 32 c, 111 c, 107 c, 10 c,   \ \x20ok\n (REPL accept)
 create TICK-KW   39 c,          \ '  (0x27)
 create BTICK-KW  91 c, 39 c, 93 c,   \ ['] = [ ' ]  (0x5b 0x27 0x5d)
 create LBRACE-KW 123 c, 58 c,   \ {:  (0x7b 0x3a)
@@ -117,6 +123,7 @@ variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
 variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWTICK variable LKWBTICK
+variable LREAD  variable LRBYE  variable LRDIE  variable LQNL  variable LOKS
 variable LKWLBRACE variable LKWENDLOC variable LLOC-FIND variable LKWCONST
 variable LKWDO variable LKWLOOP variable LKWI
 variable LKWTOR variable LKWRFROM variable LKWRFET
@@ -302,6 +309,8 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BREAD   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
 
+: BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  0 G-PUSH ;  \ ( fd req buf -- rc )
+
 : BCLOSE  0 G-POP  NR-CLOSE SYS, ;                               \ ( fd -- )
 
 : BRBASE  9 DATA RBASE-CELL LDR,  9 G-PUSH ;                            \ ( -- rbase ) __TEXT load base
@@ -400,7 +409,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" die"  ['] BDIE   FPRIM-L
-   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L
+   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" close" ['] BCLOSE FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
@@ -694,6 +703,13 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ (batch REPL: `echo ': SQ DUP * ; 5 SQ .' | ./forth`). Clobbers x0-x5,x9,x11,x16.
 : EMIT-SOURCE ( -- )
    STDIN? @ if
+      NEWLBL {: rpipe :}  NEWLBL {: rgo :}
+      \ a tty? run the BAKED source (the REPL bootstrap) instead of a blocking
+      \ read-to-EOF; a pipe keeps the classic batch read-all below.
+      0 0 MOVZ,  1 $40487413 LIT64,  2 DATA BODYBUF-OFF ADDI,  NR-IOCTL SYS,
+      0 rpipe CBNZ,
+      INP LSRC @ ADR,  INE LSRC @ ADR,  5 SRCN @ LIT64,  INE INE 5 ADD,  rgo B,
+      rpipe LBL,
       0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
       NR-MMAP SYS,                       \ mmap RW input buffer -> x0
       11 0 0 ADDI,  9 0 0 ADDI,                    \ x11 = base, x9 = write ptr
@@ -707,6 +723,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
          9 9 0 ADD,  rl B,                         \ ptr += n
       RD LBL,
       INP 11 0 ADDI,  INE 9 0 ADDI,                \ INP=base, INE=ptr
+      rgo LBL,
    else
       INP LSRC @ ADR,  INE LSRC @ ADR,  5 SRCN @ LIT64,  INE INE 5 ADD,
    then ;
@@ -788,6 +805,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    LKWTICK @ LBL,   TICK-KW 1 BYTES,    LKWBTICK @ LBL,  BTICK-KW 3 BYTES,
    LKWLBRACE @ LBL, LBRACE-KW 2 BYTES,  LKWENDLOC @ LBL, ENDLOC-KW 2 BYTES,
    LKWCONST @ LBL,  s" constant" BYTES,
+   LQNL @ LBL,  QNL-KW 2 BYTES,   LOKS @ LBL,  OKS-KW 4 BYTES,
    LKWDO @ LBL,  s" do" BYTES,    LKWLOOP @ LBL,  s" loop" BYTES,    LKWI @ LBL,  s" i" BYTES,
    LKWTOR @ LBL,  s" >r" BYTES,   LKWRFROM @ LBL,  s" r>" BYTES,   LKWRFET @ LBL,  s" r@" BYTES,
    LKWEXIT @ LBL,  s" exit" BYTES,   LKWREC @ LBL,  s" recurse" BYTES,
@@ -1646,8 +1664,36 @@ variable CFSK2
    \ skipping it (the old behaviour) hid real bugs (e.g. `0<`, `STR=` -> no-op).
    LUNDEF LBL,
       0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,   \ write(2, name)
+      9 DATA REPLH-CELL LDR,  9 LRDIE @ CBZ,
+      \ REPL: "?", roll back this line's compile state, reset stacks, read again
+      0 2 MOVZ,  1 LQNL @ ADR,  2 2 MOVZ,  NR-WRITE SYS,
+      CP DATA RSAVCP-CELL LDR,
+      NDICT DATA RSAVND-CELL LDR,
+      9 DATA RSAVDP-CELL LDR,  9 DATA DP-CELL STR,
+      9 DATA S0-CELL LDR,  XDS 9 0 ADDI,
+      9 0 MOVZ,
+      9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
+      9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
+      9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
+      PEND 0 MOVZ,
+      9 VRALL MOVZ,  9 DATA VRFREE-CELL STR,
+      LREAD @ B,
+   LRDIE @ LBL,
       0 70 MOVZ,  NR-EXIT SYS,                       \ exit(70)
    LEXIT LBL,
+      9 DATA REPLH-CELL LDR,  9 LRBYE @ CBZ,
+      0 1 MOVZ,  1 LOKS @ ADR,  2 4 MOVZ,  NR-WRITE SYS,        \ " ok"
+   LREAD @ LBL,
+      \ save line-start compile state, then call RD-LINE ( -- a u )
+      CP DATA RSAVCP-CELL STR,
+      NDICT DATA RSAVND-CELL STR,
+      9 DATA DP-CELL LDR,  9 DATA RSAVDP-CELL STR,
+      9 DATA REPLH-CELL LDR,  9 BLR,
+      XDS XDS 8 SUBI,  10 XDS 0 LDR,
+      XDS XDS 8 SUBI,  11 XDS 0 LDR,
+      10 LRBYE @ CBZ,                                 \ empty = EOF
+      INP 11 0 ADDI,  INE 11 10 ADD,  LMAIN B,
+   LRBYE @ LBL,
       0 0 MOVZ,  NR-EXIT SYS, ;                     \ exit(0)
 
 : EMIT-FORTH ( src-a src-u -- )
@@ -1658,6 +1704,7 @@ variable CFSK2
    NEWLBL LBCAP !  NEWLBL LBCS !
    NEWLBL LCFPUSH !  NEWLBL LCFPOP !  NEWLBL LPAT !  NEWLBL LKWCMP !
    NEWLBL LBCHAIN !  NEWLBL LCREATE !  NEWLBL LDOESPATCH !
+   NEWLBL LREAD !  NEWLBL LRBYE !  NEWLBL LRDIE !  NEWLBL LQNL !  NEWLBL LOKS !
    NEWLBL LKWIF !  NEWLBL LKWTHEN !  NEWLBL LKWELSE !  NEWLBL LKWBEGIN !
    NEWLBL LKWUNTIL !  NEWLBL LKWAGAIN !  NEWLBL LKWWHILE !  NEWLBL LKWREPEAT !
    NEWLBL LKWCREATE !  NEWLBL LKWVAR !  NEWLBL LKWSQ !

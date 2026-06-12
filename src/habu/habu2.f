@@ -49,8 +49,12 @@ $28 constant INL-MAX
 
 \ ---- source setup: baked LSRC or stdin ----
 : EMIT-SOURCE
-   NEWLBL NEWLBL {: rl RD :}              \ locals BEFORE the IF (frame footgun)
+   NEWLBL NEWLBL NEWLBL NEWLBL {: rl RD rpipe rgo :}   \ locals BEFORE the IF (frame footgun)
    STDIN? @ IF
+      0 0 MOVZ,  1 $40487413 LIT64,  2 DATA BODYBUF-OFF ADDI,  NR-IOCTL SYS,
+      0 rpipe CBNZ,
+      INP LSRC @ ADR,  INE LSRC @ ADR,  5 SRCN @ LIT64,  INE INE 5 ADD,  rgo B,
+      rpipe LBL,
       0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
       NR-MMAP SYS,
       11 0 0 ADDI,  9 0 0 ADDI,
@@ -63,6 +67,7 @@ $28 constant INL-MAX
          9 9 0 ADD,  rl B,
       RD LBL,
       INP 11 0 ADDI,  INE 9 0 ADDI,
+      rgo LBL,
    ELSE
       INP LSRC @ ADR,  INE LSRC @ ADR,  5 SRCN @ LIT64,  INE INE 5 ADD,
    THEN ;
@@ -129,6 +134,9 @@ create SQ-KW  115 c, 34 c,
 create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
 create QUOT-KW 91 c, 58 c,      \ [:
 create SEMIQ-KW 59 c, 93 c,     \ ;]
+variable LREAD  variable LRBYE  variable LRDIE  variable LQNL  variable LOKS
+create QNL-KW 63 c, 10 c,
+create OKS-KW 32 c, 111 c, 107 c, 10 c,
 create TICK-KW   39 c,
 create BTICK-KW  91 c, 39 c, 93 c,
 create LBRACE-KW 123 c, 58 c,
@@ -144,6 +152,7 @@ create ENDLOC-KW 58 c, 125 c,
    LKWTICK @ LBL,   TICK-KW 1 BYTES,    LKWBTICK @ LBL,  BTICK-KW 3 BYTES,
    LKWLBRACE @ LBL, LBRACE-KW 2 BYTES,  LKWENDLOC @ LBL, ENDLOC-KW 2 BYTES,
    LKWCONST @ LBL,  s" constant" BYTES,
+   LQNL @ LBL,  QNL-KW 2 BYTES,   LOKS @ LBL,  OKS-KW 4 BYTES,
    LKWDO @ LBL,  s" do" BYTES,    LKWLOOP @ LBL,  s" loop" BYTES,    LKWI @ LBL,  s" i" BYTES,
    LKWTOR @ LBL,  s" >r" BYTES,   LKWRFROM @ LBL,  s" r>" BYTES,   LKWRFET @ LBL,  s" r@" BYTES,
    LKWEXIT @ LBL,  s" exit" BYTES,   LKWREC @ LBL,  s" recurse" BYTES,
@@ -931,10 +940,38 @@ s" em-interpret" s" --" TRUST
       notimm LBL,
       C-CALL  LMAIN @ B,
    LUNDEF @ LBL,
-      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT SYS,
+      0 2 MOVZ,  1 TKA 0 ADDI,  2 TKL 0 ADDI,  NR-WRITE SYS,   \ write(2, name)
+      9 DATA REPLH-CELL LDR,  9 LRDIE @ CBZ,
+      \ REPL: "?", roll back this line's compile state, reset stacks, read again
+      0 2 MOVZ,  1 LQNL @ ADR,  2 2 MOVZ,  NR-WRITE SYS,
+      CP DATA RSAVCP-CELL LDR,
+      NDICT DATA RSAVND-CELL LDR,
+      9 DATA RSAVDP-CELL LDR,  9 DATA DP-CELL STR,
+      9 DATA S0-CELL LDR,  XDS 9 0 ADDI,
+      9 0 MOVZ,
+      9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
+      9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
+      9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
+      PEND 0 MOVZ,
+      9 VRALL MOVZ,  9 DATA VRFREE-CELL STR,
+      LREAD @ B,
+   LRDIE @ LBL,
+      0 70 MOVZ,  NR-EXIT SYS,                       \ exit(70)
    LEXIT @ LBL,
-      0 0 MOVZ,  NR-EXIT SYS, ;
+      9 DATA REPLH-CELL LDR,  9 LRBYE @ CBZ,
+      0 1 MOVZ,  1 LOKS @ ADR,  2 4 MOVZ,  NR-WRITE SYS,        \ " ok"
+   LREAD @ LBL,
+      \ save line-start compile state, then call RD-LINE ( -- a u )
+      CP DATA RSAVCP-CELL STR,
+      NDICT DATA RSAVND-CELL STR,
+      9 DATA DP-CELL LDR,  9 DATA RSAVDP-CELL STR,
+      9 DATA REPLH-CELL LDR,  9 BLR,
+      XDS XDS 8 SUBI,  10 XDS 0 LDR,
+      XDS XDS 8 SUBI,  11 XDS 0 LDR,
+      10 LRBYE @ CBZ,                                 \ empty = EOF
+      INP 11 0 ADDI,  INE 11 10 ADD,  LMAIN @ B,
+   LRBYE @ LBL,
+      0 0 MOVZ,  NR-EXIT SYS, ;                     \ exit(0)
 s" em-compile" s" --" TRUST
 
 : EMIT-MAIN
@@ -963,6 +1000,7 @@ variable SRCA
    NEWLBL LKWIMM !  NEWLBL LKWPOST !  NEWLBL LKWCOMPC !  NEWLBL LKWDOES !
    NEWLBL LKWQUOT !  NEWLBL LKWSEMIQ !
    NEWLBL LBCHAIN !  NEWLBL LCREATE !  NEWLBL LDOESPATCH !
+   NEWLBL LREAD !  NEWLBL LRBYE !  NEWLBL LRDIE !  NEWLBL LQNL !  NEWLBL LOKS !
    NEWLBL LCRASHH !  NEWLBL LHEX !  NEWLBL LHDR !
    NEWLBL LPROFH !  NEWLBL LPROFDUMP !
    NEWLBL LVSPILL !  NEWLBL LVLITPUSH !  NEWLBL LVPUSHC !

@@ -8,6 +8,7 @@ require icode.fs
 1   constant NR-EXIT
 3   constant NR-READ
 4   constant NR-WRITE
+54  constant NR-IOCTL
 5   constant NR-OPEN
 6   constant NR-CLOSE
 46  constant NR-SIGACTION

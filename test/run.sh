@@ -14,4 +14,5 @@ $G test/selfhost-all.fs -e bye > /tmp/habu-shgate.log 2>&1 || { tail -5 /tmp/hab
   [ "$out" = "7
 25" ] || { echo "FAIL: warm snapshot (got: $out)"; exit 1; }
   echo "PASS: AOT snapshot (warm toolchain boot)"; }
-echo "PASS: full suite (all.fs + selfhost-all.fs + hb-suite + snapshot)"
+[ -x bin/hbi ] && { python3 test/repl-pty.py || { echo "FAIL: tty REPL"; exit 1; } }
+echo "PASS: full suite (all.fs + selfhost-all.fs + hb-suite + snapshot + repl)"

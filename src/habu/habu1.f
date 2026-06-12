@@ -27,6 +27,10 @@ $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL
 $1D0 constant S0-CELL
+$3640 constant REPLH-CELL  \ REPL line-reader xt (0 = batch; repl.f INSTALL sets it)
+$3648 constant RSAVCP-CELL \ line-start CP    (REPL error rollback)
+$3650 constant RSAVND-CELL \ line-start NDICT
+$3658 constant RSAVDP-CELL \ line-start DP
 $1D8 constant SSCR-CELL
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF
@@ -259,6 +263,8 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 
 : BREAD   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  0 G-PUSH ;
 
+: BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  0 G-PUSH ;
+
 : BCLOSE  0 G-POP  NR-CLOSE SYS, ;
 
 : BRBASE  9 DATA RBASE-CELL LDR,  9 G-PUSH ;
@@ -351,7 +357,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" die"  ['] BDIE   FPRIM-L
-   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L
+   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" close" ['] BCLOSE FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
