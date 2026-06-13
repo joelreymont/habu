@@ -61,6 +61,8 @@ step(b'3 PB .\n', [b'6'], reject=b'habu-bp:')        # hit 1 (skipped)
 step(b'3 PB .\n', [b'6'], reject=b'habu-bp:')        # hit 2 (skipped)
 step(b'3 PB .\n', [b'habu-bp:', b'6'])               # hit 3 -> breaks
 step(b'step 2 3 + .\n', [b'step> 2', b'step> 3', b'step> +', b'5'])  # token stepper
+step(b'step : SD dup * ;\n', [b' ok'])              # stepping a definition runs it whole (no crash)
+step(b'4 SD .\n', [b'16'])                          # the stepped def is usable
 step(b'8 .\n', [b'8', b' ok'])                       # stepper hands back cleanly
 step(b'99 throw\n', [b'?', b'habu> '], reject=b'ok') # uncaught throw recovers on a tty
 step(b'6 .\n', [b'6', b' ok'])                       # still alive, state clean

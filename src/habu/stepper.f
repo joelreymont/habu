@@ -30,13 +30,23 @@ variable SLEN  variable SPOS  variable STEPPING
       SPOS @ 1 + SPOS ! REPEAT
    SBUF ts +  SPOS @ ts - ;
 
+\ a token that reads AHEAD (':' for a definition) can't be stepped one token at
+\ a time — feeding ':' alone leaves it with no name to read. Detect it and feed
+\ the rest of the line whole, running it normally.
+: COLON? {: a u :}  u 1 = a c@ 58 = and ;
+: REST-OF {: a u :}  a  SBUF SLEN @ +  a -  ;     \ ( a u -- a restlen ) token start .. end
+
 \ between tokens: show the stack the last token left, then feed the next one
 : NEXT-TOK ( -- n n )
    .s
    S-SKIP
    SPOS @ SLEN @ < 0= IF 0 STEPPING !  RD-LINE exit THEN
    S-SCAN
-   s" step> " EMITS  over over EMITS  s"  " EMITS ;
+   2dup COLON? IF
+      0 STEPPING !  REST-OF                       \ definition -> run whole, stop stepping
+   ELSE
+      s" step> " EMITS  over over EMITS  s"  " EMITS
+   THEN ;
 
 : SRD-LINE ( -- n n )  STEPPING @ IF NEXT-TOK ELSE RD-LINE THEN ;
 
