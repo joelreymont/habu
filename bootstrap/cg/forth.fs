@@ -65,7 +65,8 @@ $3698 constant TKL-CELL    \ current token len  (was x24)
 $36A0 constant INP-CELL    \ input cursor (was x21)
 $36A8 constant INE-CELL    \ input end    (was x22)
 $36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
-$36C8 constant BPI-CELL    \ the original instruction word under the BRK
+$36C8 constant BPI-CELL    \ (legacy single-BP; unused)
+$36D0 constant BPTAB-OFF   \ 16 breakpoints: (addr, saved-instr) 16 B each, addr 0 = empty
 $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
                            \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
@@ -741,20 +742,26 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    LBL {: tno :}
    9 4 MCTX-OFF LDR,                                 \ x9 = mcontext
    10 9 272 LDR,                                     \ x10 = pc
-   11 DATA BPA-CELL LDR,
-   11 tno CBZ,
-   10 11 CMP,  C-NE tno BCOND,
-   \ our breakpoint: frame-save uctx/infostyle/token (sigreturn ABI) + mctx/pc
+   LBL {: bscan :}  LBL {: bnext :}  LBL {: bhit :}
+   6 16 MOVZ,  7 0 MOVZ,                             \ MAXBP, i  (scan BPTAB[0..16))
+   bscan LBL,
+      7 6 CMP,  C-GE tno BCOND,
+      8 7 4 LSLI,  14 BPTAB-OFF LIT64,  8 8 14 ADD,  8 DATA 8 ADD,   \ &BPTAB[i] (16 B stride)
+      13 8 0 LDR,  13 bnext CBZ,                     \ empty slot (addr 0)
+      10 13 CMP,  C-EQ bhit BCOND,
+      bnext LBL,  7 7 1 ADDI,  bscan B,
+   bhit LBL,                                         \ x8=&slot x13=addr x10=pc
+   \ frame-save uctx/infostyle/token (sigreturn ABI) + mctx/pc + &slot
    SP SP 48 SUBI,
-   1 SP 0 STR,  4 SP 8 STR,  5 SP 16 STR,  9 SP 24 STR,  10 SP 32 STR,
+   1 SP 0 STR,  4 SP 8 STR,  5 SP 16 STR,  9 SP 24 STR,  10 SP 32 STR,  8 SP 40 STR,
    1 LBPH @ ADR,  0 2 MOVZ,  2 9 MOVZ,  NR-WRITE SYS,
    9 SP 32 LDR,  LHEX @ BL,                          \ pc
    9 SP 24 LDR,  12 9 168 LDR,  9 12 8 SUBI,  9 9 0 LDR,  LHEX @ BL,   \ [x19-8] = tos
    2 3 MOVZ,  LPROT @ BL,                            \ code region -> RW
-   11 DATA BPA-CELL LDR,  12 DATA BPI-CELL LDR,  12 11 0 STRW,
+   8 SP 40 LDR,  11 8 0 LDR,  12 8 8 LDR,  12 11 0 STRW,   \ restore orig instr
    2 5 MOVZ,  LPROT @ BL,                            \ -> RX
    9 11 0 ADDI,  LFLUSH @ BL,
-   12 0 MOVZ,  12 DATA BPA-CELL STR,                 \ one-shot
+   8 SP 40 LDR,  12 0 MOVZ,  12 8 0 STR,             \ one-shot: clear slot addr
    0 SP 8 LDR,  1 SP 0 LDR,  2 SP 16 LDR,  SP SP 48 ADDI,
    NR-SIGRETURN SYS,                                 \ sigreturn(uctx, infostyle, token)
    tno LBL,
