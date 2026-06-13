@@ -35,6 +35,38 @@ false-certifies — "the gate is green" is necessary, not sufficient, for a
 soundness property. Regression: t-sh-verify `QXB`/`QXG` (the leak is only
 observable under CHECK! verify, not plain infer).
 
+## AOT linker works: engine stripped, __text 564 B vs 11836 B (2026-06-13)
+
+`tools/hb-aot.sh prog.f -o out` AOT-compiles a `: MAIN ;` program to a standalone
+native binary with the interpreter/compiler/parser STRIPPED — `fib`'s __text is
+**564 B** (entry + MAIN + FIB + `.`) vs **11836 B** for the embed-interpret build.
+fib(10)=55, fib(20)=6765. How (`src/habu/aot.f`, a driver): the maker compiles the
+program IN-PROCESS — point INP/INE (`DATA-VA + $36A0/$36A8`) at the program text +
+an `AOT-LINK` sentinel and RETURN; the maker's own interpret loop compiles the
+defs into its JIT region, then runs `AOT-LINK`, which walks the native call graph
+from MAIN (the compiled call is a fixed 4-instr `movz/movk/movk x16 + blr x16`;
+`recurse` is a relative `bl`), copies the reachable closure into the output __text,
+and emits a minimal entry (reserve the value stack, `x19=sp`, `bl MAIN`, exit).
+
+Four traps the build surfaced, in order:
+1. **Dict cap.** The maker re-compiles the whole toolchain (1256 words) into its
+   1280-slot dict; aot.f's ~44 words overflowed. Raised the cap to ~1620
+   (`DICT-SIZE` $10000→$14000, `CFSTK-OFF` $F000→$13000, the `1280` checks→1600,
+   in BOTH `habu1/2.f` and the parity-locked `forth.fs`). The toolchain was at the
+   ceiling — any feature overflowed it; this was the right fix, not a workaround.
+2. **Dict len excludes the RET.** Record offset 8 = `cp_after − start − 4`, so a
+   copied blob is missing its trailing `ret` and falls through. Copy `len+4`.
+3. **ASLR.** arm64 macOS forces PIE (non-PIE is SIGKILLed by AMFI), so a baked
+   absolute `blr` target is wrong under the slide (faults at the callee's UNslid
+   address; the entry's own `bl MAIN` is relative so a no-call MAIN worked,
+   masking it). Fix: rewrite each abs call to a PC-RELATIVE `bl` (3 nops + bl) —
+   slide-independent, no runtime relocation.
+4. `."` doesn't exist in habu (`s" " type`); ONE `{: :}` group per word, none in
+   loops; `i` is a loop word, not a usable local name.
+
+Remaining: sub-page Mach-O packing — file is still 16627 B (one 16 KB __TEXT page
++ sig) though __text is 564 B; packing __LINKEDIT against the code drops the file.
+
 ## The standalone is ~100% engine: AOT vs the page floor (2026-06-13)
 
 `hb-build` of `42 . CR` and of `fib` produce **byte-identical 16628 B** binaries —

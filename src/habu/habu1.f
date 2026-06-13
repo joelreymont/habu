@@ -10,9 +10,9 @@ $100000 constant REGION
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
-$10000  constant DICT-SIZE
+$14000  constant DICT-SIZE
 48      constant DREC
-$F000   constant CFSTK-OFF
+$13000  constant CFSTK-OFF
 $200000 constant DATA-SIZE
 $100000 constant IBUFSZ
 20 constant DATA

@@ -48,6 +48,13 @@ printf ': T 6 7 * . ;\nT\n' > $T/hb-bt.f
 [ "$($T/hb-bt)" = "42" ] || { echo "FAIL: hb-build output (got: $($T/hb-bt))"; exit 1; }
 [ "$(stat -f%z $T/hb-bt)" -lt 20000 ] || { echo "FAIL: hb-build size ($(stat -f%z $T/hb-bt) >= 20000 — tree shake regressed)"; exit 1; }
 echo "PASS: hb-build standalone (shaken, $(stat -f%z $T/hb-bt) B)"
+# hb-aot: AOT-compile a MAIN program to native, engine stripped (no interpreter).
+printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;\n: MAIN 10 FIB . CR ;\n' > $T/hb-at.f
+./tools/hb-aot.sh $T/hb-at.f -o $T/hb-at >/dev/null || { echo "FAIL: hb-aot"; exit 1; }
+[ "$($T/hb-at)" = "55" ] || { echo "FAIL: hb-aot output (got: $($T/hb-at))"; exit 1; }
+ATX=$(size -m $T/hb-at 2>/dev/null | awk '/__text/{print $3}')
+[ "${ATX:-99999}" -lt 2000 ] || { echo "FAIL: hb-aot did not strip the engine (__text=$ATX, expected <2000)"; exit 1; }
+echo "PASS: hb-aot standalone (engine stripped, __text $ATX B vs ~11800 embed)"
 if [ "$1" = "full" ]; then
   ./tools/oracle.sh || exit 1
 fi
