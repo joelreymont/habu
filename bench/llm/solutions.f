@@ -19,3 +19,12 @@
 : KEEP1  ( i64 -- i64 ) dup >r 10 * r> + ;                      \ n*10+n via the return stack
 : TWICE  ( i64 -- i64 ) [: dup + ;] execute ;                   \ apply a quotation
 : APPLY  ( i64 [ i64 -- i64 ] -- i64 ) execute ;                \ a quotation parameter
+\ harder: deeper control flow, more locals, combinators, return-stack
+: MIN2   ( i64 i64 -- i64 ) {: a b :} a b < if a else b then ;  \ smaller of a,b
+: SIGNUM ( i64 -- i64 ) dup 0 > if drop 1 else 0 < if -1 else 0 then then ;  \ sign of n
+: 2DUP2  ( a b -- a b a b ) over over ;                         \ duplicate the top pair
+: POW    ( i64 i64 -- i64 ) {: b e :} 1 e 0 ?do b * loop ;      \ b raised to e
+: COUNTDOWN ( i64 -- i64 ) 0 swap 0 ?do 1+ loop ;             \ count up to n (== n)
+: DIP    ( R x [ R -- S ] -- S x ) {: x q :} q execute x ;     \ run q under the top item
+: KEEP   ( x [ x -- a ] -- a x ) {: x q :} x q execute x ;     \ run q on x, keep x
+: BI     ( x [ x -- a ] [ x -- b ] -- a b ) {: x q1 q2 :} x q1 execute x q2 execute ;  \ apply two quots to x

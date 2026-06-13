@@ -22,7 +22,15 @@ the metrics in `PROTOCOL.md`. Reference solutions are in `solutions.f`.
 | 13 | `KEEP1` | `( i64 -- i64 )` | n*10 + n, keeping n on the **return stack** | `5 → 55` |
 | 14 | `TWICE` | `( i64 -- i64 )` | apply a quotation that doubles | `21 → 42` |
 | 15 | `APPLY` | `( i64 [ i64 -- i64 ] -- i64 )` | apply the **quotation parameter** to n | `5 [: dup * ;] → 25` |
+| 16 | `MIN2` | `( i64 i64 -- i64 )` | smaller of a, b (locals) | `3 9 → 3`, `9 3 → 3` |
+| 17 | `SIGNUM` | `( i64 -- i64 )` | sign of n (-1/0/1), **nested if/else** | `-4 → -1`, `0 → 0`, `7 → 1` |
+| 18 | `2DUP2` | `( a b -- a b a b )` | duplicate the top pair (polymorphic) | `1 2 → 1 2 1 2` |
+| 19 | `POW` | `( i64 i64 -- i64 )` | b raised to e (loop) | `2 3 → 8`, `5 0 → 1` |
+| 20 | `COUNTDOWN` | `( i64 -- i64 )` | count up to n with a loop (= n) | `5 → 5` |
+| 21 | `DIP` | `( R x [ R -- S ] -- S x )` | **combinator**: run the quot under the top item | `1 2 [: 10 + ;] → 11 2` |
+| 22 | `KEEP` | `( x [ x -- a ] -- a x )` | **combinator**: run the quot on x, keep x | `5 [: dup * ;] → 25 5` |
+| 23 | `BI` | `( x [ x -- a ] [ x -- b ] -- a b )` | **combinator**: apply two quots to x | `4 [: 1+ ;] [: dup * ;] → 5 16` |
 
-Beyond these 15, add harder tasks for a fuller eval: a small tokenizer/parser, a
-return-stack-heavy traversal, a multi-quotation combinator (`bi`/`tri`), and a
-**deliberately underspecified** task where the model must write the test first.
+For a fuller eval (toward 30–50), add: a small tokenizer/parser, a
+return-stack-heavy traversal, `tri`/`cleave`, and a **deliberately
+underspecified** task where the model must write the test first.
