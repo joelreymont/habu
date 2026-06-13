@@ -14,7 +14,7 @@ requires building a small Forth runtime (Part F) — accepted as the long pole.
 > **STATUS (2026-06-12): the end-state is REACHED — Parts A–F DONE, fixpoint
 > holds.** `bin/hb` is a standalone macOS ARM64 Forth engine that compiles the
 > whole toolchain source (`src/`), type-checks it with its built-in checker
-> (783 certified / 0 uncheckable / 0 rejected), and **rebuilds itself
+> (self-checks clean — see `STATUS.md` for the count), and **rebuilds itself
 > byte-for-byte** (stage2 ≡ stage3; `tools/build.sh` is the no-gforth daily
 > loop, `tools/bootstrap.sh` regenerates from nothing). gforth is bootstrap +
 > differential oracle only. The runtime `:` compiler JIT-allocates registers
@@ -30,7 +30,7 @@ requires building a small Forth runtime (Part F) — accepted as the long pole.
 > (test/hb-suite.f via the `run-rc` spawn prim), and TRUE AOT: tools/snap-hb.sh
 > emits a dictionary-snapshot binary that boots the whole toolchain WARM in
 > ~3 ms (fixed-VA regions + startup relocation of engine-text references).
-> The toolchain self-checks 783/0/0. Sections below are the historical design
+> The toolchain self-checks clean (see `STATUS.md`). Sections below are the historical design
 > record; their "remaining/not started" markers predate this status.
 
 ## Foundational principle: everything in Forth, no C

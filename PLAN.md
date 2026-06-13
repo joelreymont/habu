@@ -243,7 +243,7 @@ which now lives under `bootstrap/src/` (the `src/` below = today's
 in `src/{core,arch/arm64,habu,os/macos}`; its built-in checker
 (`src/core/checker.f`) now covers the engine's full compile surface (control
 flow, return row, typed locals, quotations + typed execute, trust) — the
-toolchain self-checks 783/0/0. The native sig grammar gained named row vars,
+toolchain self-checks clean (see `STATUS.md`). The native sig grammar gained named row vars,
 quotation sub-sigs, and scheme-string recording of quot-bearing sigs
 (combinator call sites check against them). Native now has distinct concrete types
 (n = generic int, subsumes the widths), the `| rin -- rout` return clause, and

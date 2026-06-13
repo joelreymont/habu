@@ -26,8 +26,10 @@ create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PA
 
 : CON-CH {: p :} p 1 = IF 110 ELSE p 2 = IF 102 ELSE p 3 = IF 114 ELSE 99 THEN THEN THEN ;   \ n / f / r
 
-\ a quot type renders '?' — quot-bearing sigs are never RECORDED (the native
-\ sig grammar can't express them yet); inside one word they check fully.
+\ a quot type renders [ in -- out ] (two nesting levels; deeper caps at '?').
+\ Gap2/3: quot-bearing sigs now RECORD as scheme-strings and round-trip, so
+\ combinator call sites (dip, keep) are checked against them. Only a genuine '?'
+\ (an unmodeled tag, via RQM) still blocks recording — see REC-SIG below.
 create QRBUF 32 cells allot   variable QRBN     \ level-1 nested quot
 create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
 

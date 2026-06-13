@@ -87,13 +87,15 @@ compiles: prims, literals, all control flow (`IF`/`BEGIN`/`DO`/`?DO`/`+LOOP`/
 `EXIT`/`RECURSE`), the return stack (`>R R> R@`, balance enforced), typed
 locals (`{: a:n :}`), quotations (`[: ;]` + typed `execute`), `trust`
 declarations, and prints reject diagnostics to stderr. The toolchain's own
-source self-checks at **783 certified / 0 uncheckable / 0 rejected**.
+source self-checks clean — see [`STATUS.md`](STATUS.md) for the current count.
 
 The checked native REPL is **`bin/habu`** (the AOT snapshot from
 `tools/snap-hb.sh`): the full toolchain warm, the checker live. It **verifies a
 definition's body against its own declared `( in -- out )`** and rejects a
 mismatch — `: SQ ( i64 -- i64 ) dup ;` is dropped with a diagnostic, `dup *`
-is accepted. Untyped definitions stay infer-only. The native sig grammar handles named
+is accepted. Untyped definitions stay infer-only — so LLM-generated definitions
+should declare signatures and be verified with `CHECK!` (verify body-vs-sig),
+not just `CHECK` (infer). The native sig grammar handles named
 row vars (`R S T`), quotation sub-sigs (`[ in -- out ]`), and records
 quot-bearing sigs as scheme-strings (so combinator call sites — `dip`, `keep`
 — are checked against them). The native grammar now also handles distinct concrete types (`i64 u8 u32 cell
