@@ -110,13 +110,28 @@ create RBUF 64 cells allot   variable RBN
 : DROW {: s :}  s REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
-: DIAG-PRINT
-   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !
+\ structured diagnostics: `JSON-DIAGS ON` emits one JSON object per reject for
+\ LLM repair (code/word/token/expected/actual) instead of the human prose line.
+variable JSON-DIAGS   0 JSON-DIAGS !
+: JKEY {: a u :}  34 EMIT1  a u DTXT  34 EMIT1  58 EMIT1 ;   \ "key":
+: DIAG-PROSE
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
    DEXP @ 0 <> IF
      s"  expected: " DTXT  DEXP @ DROW
-     s" actual: " DTXT  DACT @ DROW THEN
+     s" actual: " DTXT  DACT @ DROW THEN ;
+: DIAG-JSON
+   123 EMIT1                                              \ {
+   s" code" JKEY   34 EMIT1 s" E-MISMATCH" DTXT 34 EMIT1  44 EMIT1
+   s" word" JKEY   34 EMIT1 NMA @ NMU @ DTXT   34 EMIT1   44 EMIT1
+   s" token" JKEY  34 EMIT1 FAILTK FAILTU @ DTXT 34 EMIT1
+   DEXP @ 0 <> IF
+     44 EMIT1 s" expected" JKEY 34 EMIT1 DEXP @ DROW 34 EMIT1
+     44 EMIT1 s" actual"   JKEY 34 EMIT1 DACT @ DROW 34 EMIT1 THEN
+   125 EMIT1 ;                                            \ }
+: DIAG-PRINT
+   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !
+   JSON-DIAGS @ IF DIAG-JSON ELSE DIAG-PROSE THEN
    10 EMIT1
    2 RSBUF RSN @ write drop
    0 RDST !  0 RSN ! ;
