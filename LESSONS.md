@@ -3,6 +3,33 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Two false-certs a review found: bool-as-int and malformed-sig (2026-06-13)
+
+A deep code review (`CODE_REVIEW_REPORT.md`) found two native-checker
+false-certifications, both where a LOOSE default silently passed contracts the
+docs say are invalid. (1) `TOK-TYPE` mapped the flag letter `f` to generic int
+`n`, and `n` subsumes any int width — so `0=`'s result certified against a
+declared `i64`, and `IF` consumed an unconstrained typevar `a` (so `( char -- )
+IF` certified). Fix: `f` → `CC-BOOL`; `IF`/`UNTIL`/`WHILE` consume `bool`. The
+key that kept this from breaking the toolchain: `bool` stays in `INT-FAM?`, so
+generic `n` still flows into a `bool` slot (`1 IF`, `flag flag and`, a flag
+returned as a generic-`n` output all still check) — only a CONCRETE non-flag
+(`i64`/`char`/`addr`) vs `bool` rejects, because `CON-OK?` allows the n↔width
+subsumption but never width↔width. So the distinction we needed was `bool` ≠
+concrete-`i64`, NOT `bool` ≠ `n`. (2) The sig parser consumed required `--`/`]`
+delimiters with `NEXT-SIG-TOK 2drop` — no check — so `( i64 )` and `( [ -- )`
+parsed as some other effect and certified. Fix: `EXPECT-SIG` fails closed (EOF
+reads as a 0-length token → mismatch) and sets `SGBAD`, which forces verdict 0.
+`SGBAD` is reset ONCE at `CHECK` entry, never in `PSIG` — the body's internal
+prim-sig parses run `PSIG` too and would clear a malformed-declared-sig flag;
+`EXPECT-SIG` only ever SETS, so a well-formed internal sig can't unset it.
+Lesson: a checker's DEFAULT for an unmodeled/under-constrained case decides
+soundness — "accept as generic" and "consume without checking" are both
+false-certify defaults; the safe default is reject (or, for genuine
+incompleteness, uncheckable). Tests pinning the old behavior (`C4 ( u8 -- i64 )
+0=` => -1, `M1 ( [ -- )` => -1) were pinning the BUG — fixing the checker means
+flipping those, not preserving them.
+
 ## EXIT modeling: the whole toolchain typechecks, 0 uncheckable (2026-06-13)
 
 The 9 uncheckable toolchain words (`ENV=?`, `GETENV`, `TMP-PATH`, `SHK-TOK=`,

@@ -263,7 +263,7 @@ variable NRES  variable NDI  variable NDH
    a u s" ptr"  STR= IF CC-ADDR EXIT THEN   0 ;
 : TOK-TYPE {: a u :}  a c@ {: c :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
-   u 1 = c 102 = and IF 1 MK-CON ELSE          \ 'f' -> flag = generic int
+   u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
    u 1 = c 114 = and IF 3 MK-CON ELSE          \ 'r' -> real/float (con 3)
    a u CON-OF dup IF MK-CON ELSE drop          \ i64/u8/u32/cell/char/str/addr/bool
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
@@ -295,6 +295,13 @@ create ROWMAP 26 cells allot
 : ROWMAP-RESET 0 BEGIN dup cells ROWMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
 : RVAR-OF {: c :}  c 65 - cells ROWMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-ROW ;
 
+\ SGBAD: the declared signature is malformed (a required '--'/']' delimiter was
+\ missing or wrong). A malformed contract must REJECT, never silently parse as
+\ some other effect. EXPECT-SIG consumes the next sig token and fails closed if
+\ it is not the expected delimiter (EOF reads as a 0-length token -> mismatch).
+variable SGBAD
+: EXPECT-SIG {: ea eu :}  NEXT-SIG-TOK ea eu STR= 0= IF -1 SGBAD ! THEN ;
+
 \ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
 \ upper-case token names the row (shared by letter); else the passed implicit
 \ tail is used. Types fold bottom->top; '[' in -- out ']' is a quot<effect>
@@ -310,9 +317,9 @@ create ROWMAP 26 cells allot
         2drop
         FRESH MK-ROW                                  \ the quot's shared data row
         dup RECURSE                                   \ quot in-stack (on qrow)
-        NEXT-SIG-TOK 2drop                            \ consume '--'
+        s" --" EXPECT-SIG                             \ require '--'
         swap RECURSE                                  \ quot out-stack (on qrow)
-        NEXT-SIG-TOK 2drop                            \ consume ']'
+        s" ]" EXPECT-SIG                              \ require ']'
         FRESH MK-ROW dup MK-QUOT                      \ rin = rout (no return effect)
         swap MK-PUSH
      ELSE
@@ -342,7 +349,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT
    PKRESET NMAP-RESET ROWMAP-RESET  0 SGHASR !  0 RR-SHARED !
    FRESH MK-ROW {: dr :}
    dr PSIDE  PR-IN ! PD-IN !
-   NEXT-SIG-TOK 2drop                             \ consume '--'
+   s" --" EXPECT-SIG                              \ require the top-level '--'
    dr PSIDE  PR-OUT ! PD-OUT !
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
@@ -584,7 +591,7 @@ variable XROW  variable XRROW  variable XSET  variable DEADP
 
 : RSUNI {: s :}  RCUR @ s UNIFY OK @ and OK ! ;
 
-: CF-IF  s" a --" PARSE-SIG  1 DCUR @ 0 RCUR @ 0 CF-PUSH ;
+: CF-IF  s" bool --" PARSE-SIG  1 DCUR @ 0 RCUR @ 0 CF-PUSH ;   \ IF consumes a flag, not any value
 
 : CF-ELSE
    CF-MT? IF -1 UNCK ! ELSE CF@K 1 <> IF -1 UNCK ! ELSE
@@ -620,7 +627,7 @@ variable XROW  variable XRROW  variable XSET  variable DEADP
 : CF-BEGIN  3 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 
 : CF-UNTIL
-   s" a --" PARSE-SIG
+   s" bool --" PARSE-SIG
    CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
      CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP THEN THEN ;
 
@@ -629,7 +636,7 @@ variable XROW  variable XRROW  variable XSET  variable DEADP
      CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP  -1 DEADP ! THEN THEN ;
 
 : CF-WHILE
-   s" a --" PARSE-SIG
+   s" bool --" PARSE-SIG
    CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
      4 #CFC @ 1 - cells CFKND + !
      DCUR @ #CFC @ 1 - cells CFSB + !
@@ -778,7 +785,7 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
-   0 XSET !  0 DEADP !
+   0 XSET !  0 DEADP !  0 SGBAD !
    BEGIN TI @ TBLEN @ < WHILE
      BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
@@ -806,7 +813,7 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
    LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    VSIG @ SGSEEN @ SGHASR @ and and IF RCUR @ SGROUT @ UNIFY OK @ and OK ! THEN
-   UNCK @ IF 1 ELSE OK @ THEN
+   SGBAD @ IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN   \ a malformed declared sig rejects
    dup 0 =  DIAGXT @ 0 <>  and IF DIAGXT @ execute THEN
    dup -1 = NMU @ 0 > and RECXT @ 0 <> and IF NMA @ NMU @ RECXT @ execute THEN ;
 

@@ -48,14 +48,24 @@ T{ s" : FR ( R | S a -- R a | S ) r> ;"       V s\" -1\n" compare 0= -> true }T
 T{ s" : C1 ( str -- i64 ) ;"              V s\" 0\n"  compare 0= -> true }T
 T{ s" : C2 ( bool -- char ) ;"            V s\" 0\n"  compare 0= -> true }T
 T{ s" : C3 ( cell -- i64 ) ;"             V s\" 0\n"  compare 0= -> true }T
-T{ s" : C4 ( u8 -- i64 ) 0= ;"            V s\" -1\n" compare 0= -> true }T   \ 0= : n -- n, subsumes
+T{ s" : C4 ( u8 -- i64 ) 0= ;"            V s\" 0\n"  compare 0= -> true }T   \ 0= : n -- bool; bool is NOT i64
 T{ s" : C5 ( char -- char ) 1 + ;"        V s\" -1\n" compare 0= -> true }T
+\ bool is a distinct flag type: a comparison result must be declared bool, not
+\ folded into i64; IF/UNTIL/WHILE consume a flag, so a concrete non-flag rejects.
+T{ s" : CF2 ( i64 -- bool ) 0= ;"         V s\" -1\n" compare 0= -> true }T
+T{ s" : CF3 ( char -- i64 ) if 1 else 2 then ;" V s\" 0\n"  compare 0= -> true }T   \ IF on char -> reject
+T{ s" : CF4 ( bool -- i64 ) if 1 else 2 then ;" V s\" -1\n" compare 0= -> true }T
+T{ s" : CF5 ( i64 i64 -- bool ) < ;"      V s\" -1\n" compare 0= -> true }T
 
-\ --- robustness: malformed sigs must be DETERMINISTIC and never crash the engine
-\ (V builds + runs an engine; a crash or hang would fail the assert). The exact
-\ flag for garbage input is unspecified — these pin the stable behavior.
-T{ s" : M1 ( [ -- ) drop ;"               V s\" -1\n" compare 0= -> true }T   \ unclosed quot
+\ --- robustness: a malformed declared signature must REJECT (a missing/wrong
+\ '--' or ']' delimiter can't be silently reparsed as some other effect), and
+\ never crash the engine (V builds + runs an engine; a crash/hang fails here).
+T{ s" : M1 ( [ -- ) drop ;"               V s\" 0\n"  compare 0= -> true }T   \ unclosed quot
 T{ s" : M2 ( a | b | c -- a ) drop ;"     V s\" 0\n"  compare 0= -> true }T   \ triple pipe
+T{ s" : M3 ( i64 ) drop ;"                V s\" 0\n"  compare 0= -> true }T   \ no top-level --
+T{ s" : M4 ( [ i64 -- i64 -- i64 ) ;"     V s\" 0\n"  compare 0= -> true }T   \ quot missing ]
+T{ s" : M5 ( [ i64 i64 ] -- ) drop ;"     V s\" 0\n"  compare 0= -> true }T   \ quot missing inner --
+T{ s" : M6 ( i64 i64 -- i64 ) + ;"        V s\" -1\n" compare 0= -> true }T   \ well-formed still certifies
 T{ s" : M3 ( i64 -- i64 | S ) ;"          V s\" 0\n"  compare 0= -> true }T   \ asymmetric return
 
 \ --- exit inside a [: ;] quotation is scoped to the quote, NOT the colon def.
