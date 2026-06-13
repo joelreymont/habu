@@ -17,4 +17,7 @@ bin/hbi < $T/hb-snap-src
 mv $T/hb-warm0 $T/hb-warm
 codesign -s - --force $T/hb-warm 2>/dev/null
 chmod +x $T/hb-warm
-echo "snap OK: $T/hb-warm ($(stat -f%z $T/hb-warm) bytes)"
+# bin/habu = the checked native REPL: full toolchain warm, verify hook on, ~3ms
+# boot (gitignored, regenerable). bin/hbi stays the minimal stdin engine.
+cp $T/hb-warm bin/habu && codesign -s - --force bin/habu 2>/dev/null && chmod +x bin/habu
+echo "snap OK: $T/hb-warm + bin/habu ($(stat -f%z $T/hb-warm) bytes)"

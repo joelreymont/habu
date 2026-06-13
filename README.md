@@ -30,9 +30,11 @@ built-in checker, and **rebuilds itself byte-for-byte** (stage2 fixpoint):
 ```sh
 ./tools/bootstrap.sh   # build bin/hb from nothing but gforth (once)
 ./tools/build.sh       # daily rebuild: bin/hb recompiles itself, no gforth
-echo ': SQ dup * ; 7 SQ .' | bin/hbi    # batch: program from stdin
-bin/hbi                                 # on a tty: interactive REPL
-                                        #   (line editing, history, error recovery)
+echo ': SQ dup * ; 7 SQ .' | bin/hbi    # batch: program from stdin (bare engine)
+./tools/snap-hb.sh ; bin/habu           # the CHECKED native REPL: full toolchain
+                                        #   warm (~3ms boot), verifies typed defs
+                                        #   against their ( in -- out ), line
+                                        #   editing, history, breakpoints, `step`
 ./tools/hb-build.sh prog.f -o prog      # AOT: standalone signed binary (~17 KB:
                                         #  tree-shaken to the program's words)
 ```
@@ -87,7 +89,8 @@ locals (`{: a:n :}`), quotations (`[: ;]` + typed `execute`), `trust`
 declarations, and prints reject diagnostics to stderr. The toolchain's own
 source self-checks at **783 certified / 0 uncheckable / 0 rejected**.
 
-The warm habu environment (the AOT snapshot, `tools/snap-hb.sh`) **verifies a
+The checked native REPL is **`bin/habu`** (the AOT snapshot from
+`tools/snap-hb.sh`): the full toolchain warm, the checker live. It **verifies a
 definition's body against its own declared `( in -- out )`** and rejects a
 mismatch — `: SQ ( i64 -- i64 ) dup ;` is dropped with a diagnostic, `dup *`
 is accepted. Untyped definitions stay infer-only. The native sig grammar handles named
