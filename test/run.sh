@@ -45,18 +45,18 @@ HB_TMP=$HT ./tools/snap-hb.sh >/dev/null && [ -x "$HT/hb-warm" ] || { echo "FAIL
 rm -rf "$HT"
 echo "PASS: HB_TMP isolation"
 python3 test/repl-pty.py || { echo "FAIL: tty REPL"; exit 1; }
-printf ': T 6 7 * . ;\nT\n' > $T/hb-bt.f
-./tools/hb-build.sh $T/hb-bt.f -o $T/hb-bt >/dev/null || { echo "FAIL: hb-build"; exit 1; }
-[ "$($T/hb-bt)" = "42" ] || { echo "FAIL: hb-build output (got: $($T/hb-bt))"; exit 1; }
-[ "$(stat -f%z $T/hb-bt)" -lt 20000 ] || { echo "FAIL: hb-build size ($(stat -f%z $T/hb-bt) >= 20000 — tree shake regressed)"; exit 1; }
-echo "PASS: hb-build standalone (shaken, $(stat -f%z $T/hb-bt) B)"
-# hb-aot: AOT-compile a MAIN program to native, engine stripped (no interpreter).
+# hb-build DEFAULT = AOT: compile MAIN to native, engine stripped (no interpreter).
 printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;\n: MAIN 10 FIB . CR ;\n' > $T/hb-at.f
-./tools/hb-aot.sh $T/hb-at.f -o $T/hb-at >/dev/null || { echo "FAIL: hb-aot"; exit 1; }
-[ "$($T/hb-at)" = "55" ] || { echo "FAIL: hb-aot output (got: $($T/hb-at))"; exit 1; }
+./tools/hb-build.sh $T/hb-at.f -o $T/hb-at >/dev/null || { echo "FAIL: hb-build (AOT)"; exit 1; }
+[ "$($T/hb-at)" = "55" ] || { echo "FAIL: hb-build AOT output (got: $($T/hb-at))"; exit 1; }
 ATX=$(size -m $T/hb-at 2>/dev/null | awk '/__text/{print $3}')
-[ "${ATX:-99999}" -lt 2000 ] || { echo "FAIL: hb-aot did not strip the engine (__text=$ATX, expected <2000)"; exit 1; }
-echo "PASS: hb-aot standalone (engine stripped, __text $ATX B vs ~11800 embed)"
+[ "${ATX:-99999}" -lt 2000 ] || { echo "FAIL: hb-build AOT did not strip the engine (__text=$ATX, expected <2000)"; exit 1; }
+echo "PASS: hb-build AOT (engine stripped, __text $ATX B vs ~11800 embed)"
+# hb-build --repl = engine + REPL bundle: the library's words run + are callable.
+printf ': SQ ( i64 -- i64 ) DUP * ;\nEXPORT SQ\n9 SQ . CR\n' > $T/hb-rt.f
+./tools/hb-build.sh --repl $T/hb-rt.f -o $T/hb-rt >/dev/null || { echo "FAIL: hb-build --repl"; exit 1; }
+[ "$($T/hb-rt)" = "81" ] || { echo "FAIL: hb-build --repl output (got: $($T/hb-rt))"; exit 1; }
+echo "PASS: hb-build --repl bundle ($(stat -f%z $T/hb-rt) B, engine + library)"
 if [ "$1" = "full" ]; then
   ./tools/oracle.sh || exit 1
 fi
