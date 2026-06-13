@@ -124,7 +124,7 @@ unify against them — `ptr` is typed as an address instead.
   gforth differential (the gforth-hosted suite + the boot-vs-port goldens) —
   run it before pushing emitter changes, or `run.sh full` for both. `tools/`
   also holds bootstrap/build/hb-build/probe/imgdump/jitdump/parity-lint/
-  clobber-lint/shadow-lint, and `snap-hb.sh` for the AOT snapshot binary
+  clobber-lint/shadow-lint/repl-lint, and `snap-hb.sh` for the AOT snapshot binary
   (boots the whole toolchain warm in ~3 ms).
 
 ## Combinators

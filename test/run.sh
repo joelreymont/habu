@@ -11,6 +11,7 @@ T=${HB_TMP:-/tmp}
 ./tools/parity-lint.py || { echo "FAIL: parity-lint"; exit 1; }
 ./tools/shadow-lint.py || { echo "FAIL: shadow-lint"; exit 1; }
 ./tools/clobber-lint.py || { echo "FAIL: clobber-lint"; exit 1; }
+./tools/repl-lint.py || { echo "FAIL: repl-lint"; exit 1; }
 [ -x bin/hb ] || { echo "no bin/hb — run tools/bootstrap.sh once"; exit 1; }
 ./tools/build.sh > $T/hb-build.log 2>&1 || { tail -5 $T/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }
 echo "PASS: self-rebuild fixpoint"
