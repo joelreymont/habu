@@ -180,6 +180,14 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **`die` in REPL-baked code kills the whole session**: `BP+` on a full table
+  called `die` (write + exit 76), so a recoverable user error took down the
+  interactive REPL. Interactive/REPL-baked words (repl.f, stepper.f, debug.f)
+  must `throw` (caught by the REPL's uncaught-throw recovery -> "?" + roll back +
+  re-read), not `die`. `die` is only for the build-time makers (hbi/build/snap/
+  stage2 drivers), where exiting IS the failure. Adversarial-probe interactive
+  features for the table-full / resource-exhausted path.
+
 - **Self-recursion in the native engine is RECURSE, never the word's own name**:
   a recursive sig parser written `: PSTACK ... dup PSTACK ...` fails — the name
   isn't in the dict mid-definition, so the snapshot maker dies "PSTACK undefined".

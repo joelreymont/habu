@@ -28,7 +28,7 @@ $D4200000 constant BRK0
 \ BPADD ( xt ctrl -- ) : record + plant. ctrl = (skip << 1) | persistent.
 : BPADD {: xt ctrl :}
    xt FIND 0 < 0= IF exit THEN                \ already set
-   FREE dup 0 < IF drop s" bp: table full (8)" 76 die THEN
+   FREE dup 0 < IF drop s" bp: table full (8)" EMITS 76 throw THEN   \ recoverable in the REPL
    SLOT                                       \ ( s )  one locals group per word
    xt over !  xt W32@ over 8 + !  0 over 16 + !  ctrl over 24 + !  drop
    BRK0 xt patch32 ;
