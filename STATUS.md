@@ -51,13 +51,18 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   check against them), nested quotations.
 - **Trust** — `trust` charts an asserted effect for the un-inferable; see
   `TRUSTED.md`. Callers are still checked.
+- **Diagnostics** — reject diagnostics to stderr; `JSON-DIAGS ON` switches to a
+  structured JSON object per reject (code/word/token/expected/actual) for LLM
+  repair (`test/t-sh-jdiag.fs`).
 
 ## Known gaps
 
 - **AOT-strip linker** — works (`tools/hb-aot.sh`): a `: MAIN ;` program compiles
   to a native binary with the engine stripped (fib __text 564 B vs 11836 B
-  embed). Remaining: sub-page Mach-O packing (file still 16627 B at the page
-  floor); wiring it as the hb-build default with `--repl` + `EXPORT` roots.
+  embed). The file is 16627 B — one 16 KB `__TEXT` page + signature, the PROVEN
+  hard floor for a signed arm64 macOS executable (a sub-page `__LINKEDIT` is
+  SIGKILLed by AMFI). Remaining: wiring hb-aot as the hb-build default with
+  `--repl` (engine bundle) + `EXPORT` roots.
 - **`ptr a` (parametric pointer)** — gforth-tier checker only; native types `ptr`
   as an address (no native prim operates on pointer-types).
 - **`leave` typing** — unmodeled in the native checker (no toolchain word needs
