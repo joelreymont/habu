@@ -114,6 +114,14 @@ create RBUF 64 cells allot   variable RBN
 \ LLM repair (code/word/token/expected/actual) instead of the human prose line.
 variable JSON-DIAGS   0 JSON-DIAGS !
 : JKEY {: a u :}  34 EMIT1  a u DTXT  34 EMIT1  58 EMIT1 ;   \ "key":
+\ a length-based repair hint: more values out than declared (remove a producer),
+\ fewer (consumes too much), or equal (a type mismatch — fix the body not the sig).
+: SUGGEST-TEXT ( -- a u )
+   DEXP @ REND-COLLECT RBN @  DACT @ REND-COLLECT RBN @  {: e a :}
+   a e > IF  s" the body leaves more values than declared — remove a producer or add outputs to the signature"
+   ELSE a e < IF  s" the body leaves fewer values than declared — it consumes too much, or declare fewer outputs"
+   ELSE  s" type mismatch at this token — fix the body to match the signature, do not weaken the signature"
+   THEN THEN ;
 : DIAG-PROSE
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
@@ -127,7 +135,8 @@ variable JSON-DIAGS   0 JSON-DIAGS !
    s" token" JKEY  34 EMIT1 FAILTK FAILTU @ DTXT 34 EMIT1
    DEXP @ 0 <> IF
      44 EMIT1 s" expected" JKEY 34 EMIT1 DEXP @ DROW 34 EMIT1
-     44 EMIT1 s" actual"   JKEY 34 EMIT1 DACT @ DROW 34 EMIT1 THEN
+     44 EMIT1 s" actual"   JKEY 34 EMIT1 DACT @ DROW 34 EMIT1
+     44 EMIT1 s" suggestion" JKEY 34 EMIT1 SUGGEST-TEXT DTXT 34 EMIT1 THEN
    125 EMIT1 ;                                            \ }
 : DIAG-PRINT
    1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !

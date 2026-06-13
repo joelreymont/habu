@@ -19,6 +19,7 @@ require sh-driver.fs
 \ JSON on: the reject surfaces as a JSON object naming the code + word.
 T{ -1 SRC ERR-OF  s\" {\"code\":\"E-MISMATCH\"" HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"word\":\"sqbad\""        HAS? -> true }T
+T{ -1 SRC ERR-OF  s\" \"suggestion\":\"the body leaves more"  HAS? -> true }T
 \ JSON off (default): prose line, no JSON object.
 T{  0 SRC ERR-OF  s" habu: in"                   HAS? -> true }T
 T{  0 SRC ERR-OF  s\" {\"code\""                 HAS? -> false }T

@@ -769,7 +769,7 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
      DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !         \ every path exited: output = accumulator
      ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
    THEN
-   VSIG @ SGSEEN @ and IF DCUR @ SGOUT @ UNIFY OK @ and OK ! THEN
+   VSIG @ SGSEEN @ and IF SGOUT @ SUNI THEN   \ SUNI captures declared(exp)/inferred(act) for the diagnostic
    LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    VSIG @ SGSEEN @ SGHASR @ and and IF RCUR @ SGROUT @ UNIFY OK @ and OK ! THEN
