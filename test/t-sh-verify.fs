@@ -38,4 +38,10 @@ T{ s" : RK ( i64 -- i64 ) >r r> ;"        V s\" -1\n" compare 0= -> true }T
 \ --- ptr typed as an address (int-family)
 T{ s" : PP ( ptr -- ptr ) ;"              V s\" -1\n" compare 0= -> true }T
 
+\ --- return-stack clause ( ... | rin -- rout ): >R / R> declarations verify,
+\ a wrong return declaration rejects
+T{ s" : TOR ( R a | S -- R | S a ) >r ;"      V s\" -1\n" compare 0= -> true }T
+T{ s" : BAL ( R a | S -- R a | S ) >r ;"      V s\" 0\n"  compare 0= -> true }T
+T{ s" : FR ( R | S a -- R a | S ) r> ;"       V s\" -1\n" compare 0= -> true }T
+
 #ERRORS @ 0<> negate (bye)

@@ -160,7 +160,7 @@ variable RCUR   variable RBROW
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
-variable VSIG   variable SGSEEN   variable SGOUT
+variable VSIG   variable SGSEEN   variable SGOUT   variable SGROUT
 create FAILTK 64 allot   variable FAILTU
 
 : STEP {: din dout :}
@@ -320,16 +320,36 @@ create ROWMAP 26 cells allot
      THEN
    AGAIN ;
 
-\ PSIG ( -- din dout ) : in -- out over the cursor; a leading rowvar names the
-\ shared data row, else one fresh implicit row is shared between in and out.
+variable SGHASR                          \ a return-stack clause ( ... | rin -- rout ) present?
+variable RR-SHARED                       \ the shared return row, allocated lazily on '|'
+variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT
+
+: RRTAIL ( -- rrow )                     \ the shared return row (allocate once, on demand)
+   RR-SHARED @ dup 0= IF drop FRESH MK-ROW dup RR-SHARED ! THEN ;
+
+\ PSIDE ( dtail -- drow rrow ) : one side = data stack [ '|' return stack ]. No
+\ '|' -> rrow = the shared return row so far (0 if no clause anywhere) — CHECK
+\ ignores it. The return row is allocated only when a '|' actually appears, so
+\ ordinary sigs cost no extra typevars.
+: PSIDE {: dtail :}
+   dtail PSTACK                                   \ data part (stops at | -- ])
+   NEXT-SIG-TOK 2dup s" |" STR= IF
+      2drop  -1 SGHASR !  RRTAIL PSTACK           \ ( drow rrow ) explicit return
+   ELSE PK! RR-SHARED @ THEN ;                    \ no | here -> shared tail (untouched)
+
+\ PSIG ( -- din dout rin rout ) : data + return rows over the cursor.
 : PSIG
-   PKRESET NMAP-RESET ROWMAP-RESET
-   FRESH MK-ROW  dup PSTACK  NEXT-SIG-TOK 2drop  swap PSTACK ;
+   PKRESET NMAP-RESET ROWMAP-RESET  0 SGHASR !  0 RR-SHARED !
+   FRESH MK-ROW {: dr :}
+   dr PSIDE  PR-IN ! PD-IN !
+   NEXT-SIG-TOK 2drop                             \ consume '--'
+   dr PSIDE  PR-OUT ! PD-OUT !
+   PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
-: PARSE-SIG {: a u :}      a SB ! u SL ! 0 SI !  PSIG STEP ;
+: PARSE-SIG {: a u :}      a SB ! u SL ! 0 SI !  PSIG 2drop STEP ;
 
-\ PARSE-SIG-RAW ( a u -- din dout ) : the declared effect as two rows (no STEP),
-\ for verifying a definition's body against its own ( in -- out ).
+\ PARSE-SIG-RAW ( a u -- din dout rin rout ) : the declared effect as four rows
+\ (no STEP), for verifying a definition's body against its own ( in -- out ).
 : PARSE-SIG-RAW {: a u :}  a SB ! u SL ! 0 SI !  PSIG ;
 
 \ --- prim table: name/sig pairs [nlen][name][slen][sig]...[0], scanned by FIND-SIG.
@@ -684,7 +704,7 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !
-   0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !
+   0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    BEGIN TI @ TBLEN @ < WHILE
      BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
@@ -692,7 +712,9 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
          TI @ 1 + TI !  TI @ TSTART !             \ sig text starts after '('
          BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 41 <>  and WHILE TI @ 1 + TI ! REPEAT
          VSIG @ IF
-           TBASE @ TSTART @ +  TI @ TSTART @ -  PARSE-SIG-RAW  SGOUT !  DCUR !  -1 SGSEEN !
+           TBASE @ TSTART @ +  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
+           SGHASR @ IF  SGROUT !  RCUR !  SGOUT !  DCUR !            \ seed data + return
+           ELSE  2drop  SGOUT !  DCUR !  THEN  -1 SGSEEN !
          THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
        ELSE
@@ -704,7 +726,8 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
    REPEAT
    VSIG @ SGSEEN @ and IF DCUR @ SGOUT @ UNIFY OK @ and OK ! THEN
    LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
-   RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN   \ return row must balance
+   SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
+   VSIG @ SGSEEN @ SGHASR @ and and IF RCUR @ SGROUT @ UNIFY OK @ and OK ! THEN
    UNCK @ IF 1 ELSE OK @ THEN
    dup 0 =  DIAGXT @ 0 <>  and IF DIAGXT @ execute THEN
    dup -1 = NMU @ 0 > and RECXT @ 0 <> and IF NMA @ NMU @ RECXT @ execute THEN ;
