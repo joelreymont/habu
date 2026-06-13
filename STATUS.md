@@ -40,6 +40,9 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
 - **Locals** — typed `{: a:n :}` scope.
 - **Control flow** — `IF/ELSE/THEN`, `BEGIN…UNTIL/WHILE…REPEAT/AGAIN`,
   `?DO…LOOP/+LOOP`, `I J UNLOOP RECURSE`; branch states unified at the joins.
+- **Leave** — `leave` must carry the loop-exit row (= the post-`?DO` row of a
+  neutral body) and kills the path to `loop`; the loop exit stays live (reached
+  by the leave or a zero-trip `?do`). Non-neutral leave rejects.
 - **Exit** — `exit` accumulates the data+return rows (all returns + the `;`
   fall-through must unify) and marks the path dead; dead branches excluded from
   joins; unbalanced exits reject. `unloop` is a typing no-op.
@@ -66,5 +69,3 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   is SIGKILLed by AMFI). No remaining AOT work.
 - **`ptr a` (parametric pointer)** — gforth-tier checker only; native types `ptr`
   as an address (no native prim operates on pointer-types).
-- **`leave` typing** — unmodeled in the native checker (no toolchain word needs
-  a typed `leave`).
