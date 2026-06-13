@@ -541,8 +541,15 @@ variable LCO
 \ either row at a back edge is a row-occurs failure).
 \ kinds: 1 if  2 if+else  3 begin  4 begin+while  5 do  6 quotation
 create CFKND 32 cells allot   create CFSA 32 cells allot   create CFSB 32 cells allot
-create CFRA 32 cells allot    create CFRB 32 cells allot
+create CFRA 32 cells allot    create CFRB 32 cells allot   create CFDED 32 cells allot
 variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
+\ EXIT: an early return. XROW accumulates the data row at each exit (all returns,
+\ incl. the fall-through at ';', must unify). DEADP marks the current linear path
+\ terminated by exit, so the enclosing THEN excludes it from the branch join.
+\ CFDED[i] saves the if-branch's deadness across CF-ELSE. (leave is not modeled;
+\ unloop is a typing no-op — loop control isn't on the typed rows.)
+variable XROW  variable XRROW  variable XSET  variable DEADP
+: CF@DED #CFC @ 1 - cells CFDED + @ ;
 
 : CF-PUSH {: k s0 s1 r0 r1 :}
    #CFC @ 31 > IF -1 UNCK ! ELSE
@@ -575,6 +582,7 @@ variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
 
 : CF-ELSE
    CF-MT? IF -1 UNCK ! ELSE CF@K 1 <> IF -1 UNCK ! ELSE
+     DEADP @ #CFC @ 1 - cells CFDED + !  0 DEADP !       \ save if-branch deadness; else runs live
      DCUR @ CTMP !  CF@A DCUR !
      RCUR @ RTMP !  CF@RA RCUR !
      2 #CFC @ 1 - cells CFKND + !
@@ -584,8 +592,24 @@ variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
 
 : CF-THEN
    CF-MT? IF -1 UNCK ! ELSE
-     CF@K 1 = IF CF@A SUNI CF@RA RSUNI CF-DROP ELSE
-     CF@K 2 = IF CF@B SUNI CF@RB RSUNI CF-DROP ELSE -1 UNCK ! THEN THEN THEN ;
+     CF@K 1 = IF                                          \ IF ... THEN (no else)
+        DEADP @ IF CF@A DCUR !  CF@RA RCUR !  0 DEADP !   \ if-branch exited: take fall-through
+        ELSE CF@A SUNI  CF@RA RSUNI THEN  CF-DROP
+     ELSE CF@K 2 = IF                                     \ IF ... ELSE ... THEN
+        DEADP @  CF@DED                                   \ ( else-dead if-dead )
+        2dup and IF 2drop -1 DEADP !                      \ both exited -> path stays dead
+        ELSE over IF 2drop CF@B DCUR ! CF@RB RCUR ! 0 DEADP !  \ else exited -> take if-branch
+        ELSE nip IF 0 DEADP !                             \ if exited -> keep else (in DCUR)
+        ELSE CF@B SUNI CF@RB RSUNI 0 DEADP ! THEN THEN THEN
+        CF-DROP
+     ELSE -1 UNCK ! THEN THEN THEN ;
+
+: CF-EXIT                                                 \ early return: accumulate, kill path
+   XSET @ IF  DCUR @ XROW @ UNIFY OK @ and OK !
+              RCUR @ XRROW @ UNIFY OK @ and OK !
+   ELSE  DCUR @ XROW !  RCUR @ XRROW !  -1 XSET ! THEN
+   -1 DEADP ! ;
+: CF-UNLOOP ;                                             \ loop control isn't typed -> no-op
 
 : CF-BEGIN  3 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 
@@ -594,9 +618,9 @@ variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
    CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
      CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP THEN THEN ;
 
-: CF-AGAIN
+: CF-AGAIN                              \ unconditional loop: code after AGAIN is unreachable
    CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
-     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP THEN THEN ;
+     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP  -1 DEADP ! THEN THEN ;
 
 : CF-WHILE
    s" a --" PARSE-SIG
@@ -664,7 +688,9 @@ variable QTMP
    a u s" +loop" STR= IF CF-+LOOP ELSE
    a u s" i" STR= IF CF-I ELSE
    a u s" j" STR= IF CF-J ELSE
-   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   a u s" exit" STR= IF CF-EXIT ELSE
+   a u s" unloop" STR= IF CF-UNLOOP ELSE
+   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    CFH @ ;
 variable TBASE variable TBLEN variable TI variable TSTART
 \ first token of the checked text is the word's NAME (skipped, kept for the
@@ -705,6 +731,7 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
+   0 XSET !  0 DEADP !
    BEGIN TI @ TBLEN @ < WHILE
      BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
@@ -724,6 +751,10 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
        THEN
      THEN
    REPEAT
+   XSET @ IF                                         \ fold early-return states into the output
+     DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !         \ every path exited: output = accumulator
+     ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
+   THEN
    VSIG @ SGSEEN @ and IF DCUR @ SGOUT @ UNIFY OK @ and OK ! THEN
    LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)

@@ -56,6 +56,14 @@ T{ s" : W [: dup execute ;] dup execute ;"        CHK2 s\" 0\n"  compare 0= -> t
 \ Gap2/3: dip's quot sig now RECORDS as a scheme-string and round-trips, so
 \ the caller T is CHECKED against it (-1) instead of uncheckable (1) before.
 T{ s" : dip swap >r execute r> ; : T 10 3 [: 2 * ;] dip + . ; T" CHK2 s\" -1\n-1\n23\n" compare 0= -> true }T
+\ EXIT: an early return. Every return point (each exit + the fall-through at ';')
+\ must leave the same stack. unloop is a typing no-op. Dead code after exit in a
+\ branch is excluded from the THEN join; a BEGIN..AGAIN returns only via exit.
+T{ s" : EX1 {: n :} n 0 < if 0 exit then n ;"            CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : EXB {: n :} n 0 < if 0 0 exit then n ;"          CHK2 s\" 0\n"  compare 0= -> true }T
+T{ s" : EXD {: a u :} u 0 ?do a i + c@ 0= if unloop 0 exit then loop -1 ;"  CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : EXDB {: a u :} u 0 ?do a i + c@ 0= if unloop 0 0 exit then loop -1 ;" CHK2 s\" 0\n" compare 0= -> true }T
+T{ s" : EXG {: a :} 0 begin dup 9 < while dup a = if drop -1 exit then 1+ repeat drop 0 ;" CHK2 s\" -1\n" compare 0= -> true }T
 \ regression: the jit fold helpers must not shadow the FLOAT prims (they
 \ were named f+/f-/f* once — any toolchain-loaded engine lost float ops and
 \ their checker sigs).

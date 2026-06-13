@@ -3,6 +3,26 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## EXIT modeling: the whole toolchain typechecks, 0 uncheckable (2026-06-13)
+
+The 9 uncheckable toolchain words (`ENV=?`, `GETENV`, `TMP-PATH`, `SHK-TOK=`,
+`KEEP?`, `FPRIM`, `FPRIM-L`, `EM-INTERPRET`, `EM-COMPILE`) all hinged on early
+`exit` — the checker modeled every loop/branch construct EXCEPT `exit`/`unloop`,
+so a word with an early return fell through to "unknown word" → uncheckable, and
+that cascaded to callers. Teaching the checker a SOUND `exit` model took it from
+860/0/9 to **890/0/0** (every word certified, zero uncheckable).
+
+The model: `exit` accumulates the data+return rows into `XROW`/`XRROW` (all
+returns, plus the fall-through at `;`, must unify) and marks the path DEAD;
+`CF-THEN` excludes a dead branch from the join (`CFDED` saves the if-branch's
+deadness across `CF-ELSE`); `unloop` is a typing no-op (loop control isn't on the
+typed rows). The bug that the fixpoint caught: a `BEGIN..AGAIN` returns ONLY via
+`exit`, so code after `AGAIN` is unreachable — `CF-AGAIN` must set DEADP, else the
+word-end fold unifies the dead post-loop state with the exit states and
+false-rejects (it killed `NEXT-TOK`). Soundness held: unbalanced exits (1-out vs
+2-out) still reject — t-sh-check `EXB`/`EXDB`. `leave` is still unmodeled (no
+toolchain word needs it).
+
 ## The standalone is ~100% engine: AOT vs the page floor (2026-06-13)
 
 `hb-build` of `42 . CR` and of `fib` produce **byte-identical 16628 B** binaries —
