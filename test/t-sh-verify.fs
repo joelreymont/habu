@@ -30,4 +30,12 @@ T{ s" : IDQ ( [ i64 -- i64 ] -- [ i64 -- i64 ] ) ;"  V s\" -1\n" compare 0= -> t
 T{ s" : WW ( u8 -- u32 ) ;"               V s\" 0\n"  compare 0= -> true }T
 T{ s" : WK ( u8 -- u8 ) ;"                V s\" -1\n" compare 0= -> true }T
 
+\ --- nested quotations verify (the recursive parser handles depth)
+T{ s" : NQ ( [ [ i64 -- i64 ] -- i64 ] -- ) drop ;"  V s\" -1\n" compare 0= -> true }T
+\ --- return stack: balance is inferred; >r without r> rejects
+T{ s" : RB ( i64 -- ) >r ;"               V s\" 0\n"  compare 0= -> true }T
+T{ s" : RK ( i64 -- i64 ) >r r> ;"        V s\" -1\n" compare 0= -> true }T
+\ --- ptr typed as an address (int-family)
+T{ s" : PP ( ptr -- ptr ) ;"              V s\" -1\n" compare 0= -> true }T
+
 #ERRORS @ 0<> negate (bye)
