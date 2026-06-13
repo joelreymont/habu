@@ -90,10 +90,13 @@ source self-checks at **783 certified / 0 uncheckable / 0 rejected**.
 The warm habu environment (the AOT snapshot, `tools/snap-hb.sh`) **verifies a
 definition's body against its own declared `( in -- out )`** and rejects a
 mismatch — `: SQ ( i64 -- i64 ) dup ;` is dropped with a diagnostic, `dup *`
-is accepted. Untyped definitions stay infer-only. The native sig grammar matches the
-gforth tier: named row vars (`R S T`), quotation sub-sigs (`[ in -- out ]`),
-and recording of quot-bearing sigs as scheme-strings (so combinator call
-sites — `dip`, `keep` — are checked against them).
+is accepted. Untyped definitions stay infer-only. The native sig grammar handles named
+row vars (`R S T`), quotation sub-sigs (`[ in -- out ]`), and records
+quot-bearing sigs as scheme-strings (so combinator call sites — `dip`, `keep`
+— are checked against them). It does **not yet** match the gforth tier on
+concrete types (`u8 u32 cell bool char str addr` and `ptr` all collapse to one
+int width), the `| rin -- rout` return-stack clause, or nested quotations — use
+the gforth-hosted checker for those.
 
 ## Layout
 
