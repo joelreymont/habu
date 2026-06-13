@@ -3,6 +3,34 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## The standalone is ~100% engine: AOT vs the page floor (2026-06-13)
+
+`hb-build` of `42 . CR` and of `fib` produce **byte-identical 16628 B** binaries —
+the program is noise. `__text` is ~10.6 KB of bare engine; the file is one 16384 B
+arm64 `__TEXT` page (page size IS 16384) + a 244 B signature, i.e. *at* the page
+floor. The bloat is the interpreter/JIT/parser: `hb-build` bakes the program as
+source and **interprets it at startup** (`EMIT-MAIN` = `EM-STARTUP`+`EM-INTERPRET`
++`EM-COMPILE`; entry points at the baked source), so the whole engine is reachable
+and the (textual, leaf-prim) shaker can't remove it. `FIB`+`MAIN` are 380 B of
+native — a 30× tax. Fix = AOT: compile `MAIN` once at build, strip the engine.
+That's a native linker/DCE, because the static image assembler (`EMIT-FORTH` →
+icode `CODE`) and the live JIT (running region) are *separate* codegen targets and
+inter-word calls are absolute `movz/movk x16 + blr` (relocated on warm boot,
+`habu2.f`). Approach: source call-graph reachability for the subset, the existing
+`em-startup` relocator for the bytes.
+
+## Tree-shake reachability is sound only under AOT (2026-06-13)
+
+Call-graph reachability (keep a word iff reachable from roots through the
+definition call graph) is strictly better than the textual shaker (which keeps a
+prim if its name appears *anywhere* — dead defs, comments, strings). But it is
+**unsound for the embed/`--repl` builds**: those recompile their baked source at
+startup, so a dead `: DEAD f+ ;` still gets JIT-compiled and would fault if `f+`
+were shaken. Embed must keep every *named* word (textual `KEEP?`); call-graph
+reachability belongs to AOT, where the program is compiled *once* at build time.
+`treeshake.f` now carries both: `KEEP?` (textual, embed) + `SHK-FROM`/`IN-REACH?`
+(call-graph, AOT). Tested in `t-shake.fs`.
+
 ## Certified dominates: the whole toolchain self-checks (2026-06-11)
 
 The checker now models locals ({: :} pops bound to type vars), control flow

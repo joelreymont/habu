@@ -18,4 +18,5 @@ export XDG_CACHE_HOME=/tmp/habu-gforth-cache
 [ -d "$XDG_CACHE_HOME/gforth" ] || "$G" -e 's" true" system bye' >/dev/null 2>&1
 $G test/all.fs -e bye > /tmp/habu-gate.log 2>&1 || { tail -5 /tmp/habu-gate.log; echo "FAIL: all.fs"; exit 1; }
 $G test/selfhost-all.fs -e bye > /tmp/habu-shgate.log 2>&1 || { tail -5 /tmp/habu-shgate.log; echo "FAIL: selfhost-all.fs"; exit 1; }
-echo "PASS: oracle (all.fs + selfhost-all.fs)"
+( cd test && $G t-shake.fs -e bye ) > /tmp/habu-shake.log 2>&1 || { tail -5 /tmp/habu-shake.log; echo "FAIL: t-shake.fs"; exit 1; }
+echo "PASS: oracle (all.fs + selfhost-all.fs + t-shake)"
