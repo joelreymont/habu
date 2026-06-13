@@ -542,6 +542,11 @@ variable LCO
 \ kinds: 1 if  2 if+else  3 begin  4 begin+while  5 do  6 quotation
 create CFKND 32 cells allot   create CFSA 32 cells allot   create CFSB 32 cells allot
 create CFRA 32 cells allot    create CFRB 32 cells allot   create CFDED 32 cells allot
+\ exit-accumulator save slots: a [: ;] quotation is a nested scope, so its early
+\ returns must NOT leak into the enclosing word's accumulator (CF-QUOT saves,
+\ CF-SEMIQ folds the quote's own exits then restores).
+create CFXRO 32 cells allot   create CFXRR 32 cells allot
+create CFXST 32 cells allot    create CFXDP 32 cells allot
 variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
 \ EXIT: an early return. XROW accumulates the data row at each exit (all returns,
 \ incl. the fall-through at ';', must unify). DEADP marks the current linear path
@@ -655,8 +660,11 @@ variable XROW  variable XRROW  variable XSET  variable DEADP
      dup cells CFKND + @ 5 = IF INDO @ 1 + INDO ! THEN  1 + REPEAT drop
    INDO @ 1 > IF s" -- n" PARSE-SIG ELSE -1 UNCK ! THEN ;
 
-: CF-QUOT   \ [: — pause the outer inference, open a nested one
+: CF-QUOT   \ [: — pause the outer inference (incl. its exit state), open a nested one
    6  DCUR @  BROW @  RCUR @  RBROW @  CF-PUSH
+   XROW @ #CFC @ 1 - cells CFXRO + !  XRROW @ #CFC @ 1 - cells CFXRR + !
+   XSET @ #CFC @ 1 - cells CFXST + !  DEADP @ #CFC @ 1 - cells CFXDP + !
+   0 XSET !  0 DEADP !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 
@@ -664,7 +672,13 @@ variable QTMP
 
 : CF-SEMIQ  \ ;] — quot<nested effect> pushed onto the restored outer row
    CF-MT? IF -1 UNCK ! ELSE CF@K 6 <> IF -1 UNCK ! ELSE
+     XSET @ IF                                   \ fold the quote's OWN early returns into its effect
+       DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !
+       ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
+     THEN
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
+     #CFC @ 1 - cells CFXRO + @ XROW !  #CFC @ 1 - cells CFXRR + @ XRROW !
+     #CFC @ 1 - cells CFXST + @ XSET !  #CFC @ 1 - cells CFXDP + @ DEADP !  \ restore outer exit state
      CF@B BROW !  CF@RB RBROW !
      CF@RA RCUR !
      QTMP @  CF@A  MK-PUSH DCUR !

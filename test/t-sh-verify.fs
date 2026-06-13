@@ -58,6 +58,12 @@ T{ s" : M1 ( [ -- ) drop ;"               V s\" -1\n" compare 0= -> true }T   \ 
 T{ s" : M2 ( a | b | c -- a ) drop ;"     V s\" 0\n"  compare 0= -> true }T   \ triple pipe
 T{ s" : M3 ( i64 -- i64 | S ) ;"          V s\" 0\n"  compare 0= -> true }T   \ asymmetric return
 
+\ --- exit inside a [: ;] quotation is scoped to the quote, NOT the colon def.
+\ Verify catches the wrong effect: declaring ( -- i64 ) for a body that actually
+\ leaves six values must REJECT (this was a false-certify before the fix).
+T{ s" : QXB ( -- i64 ) 5 [: exit ;] execute 1 2 3 4 5 ;"  V s\" 0\n"  compare 0= -> true }T
+T{ s" : QXG ( -- i64 i64 i64 ) [: 1 2 3 exit ;] execute ;" V s\" -1\n" compare 0= -> true }T
+
 \ --- regression: a (...)-named word in a body is a CALL, not a declared sig.
 \ The sig scanner requires '( ' (paren+space); before that, '(CMP)' was eaten as
 \ a sig, emptying LT's body so it rejected against its declared ( a b -- i64 ).

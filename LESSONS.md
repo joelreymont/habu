@@ -23,6 +23,18 @@ false-rejects (it killed `NEXT-TOK`). Soundness held: unbalanced exits (1-out vs
 2-out) still reject — t-sh-check `EXB`/`EXDB`. `leave` is still unmodeled (no
 toolchain word needs it).
 
+An adversarial code review caught a real false-certification I'd shipped: `exit`
+inside a `[: ;]` quotation wrote the GLOBAL exit accumulators, which `CF-QUOT`/
+`CF-SEMIQ` never isolated — so the quote's early return leaked out and a word
+like `: W ( -- n ) 5 [: exit ;] execute 1 2 3 4 5 ;` certified though its real
+effect is `( -- n*6 )`. Fix: a quotation is a nested scope (it already nests
+DCUR/BROW/RCUR), so the exit accumulator nests too — `CF-QUOT` saves+resets it,
+`CF-SEMIQ` folds the quote's own exits into the quote effect then restores the
+outer. Lesson: every checker change needs an adversarial review hunting for
+false-certifies — "the gate is green" is necessary, not sufficient, for a
+soundness property. Regression: t-sh-verify `QXB`/`QXG` (the leak is only
+observable under CHECK! verify, not plain infer).
+
 ## The standalone is ~100% engine: AOT vs the page floor (2026-06-13)
 
 `hb-build` of `42 . CR` and of `fib` produce **byte-identical 16628 B** binaries —

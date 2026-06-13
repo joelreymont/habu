@@ -64,6 +64,14 @@ T{ s" : EXB {: n :} n 0 < if 0 0 exit then n ;"          CHK2 s\" 0\n"  compare 
 T{ s" : EXD {: a u :} u 0 ?do a i + c@ 0= if unloop 0 exit then loop -1 ;"  CHK2 s\" -1\n" compare 0= -> true }T
 T{ s" : EXDB {: a u :} u 0 ?do a i + c@ 0= if unloop 0 0 exit then loop -1 ;" CHK2 s\" 0\n" compare 0= -> true }T
 T{ s" : EXG {: a :} 0 begin dup 9 < while dup a = if drop -1 exit then 1+ repeat drop 0 ;" CHK2 s\" -1\n" compare 0= -> true }T
+\ exit inside a [: ;] quotation returns from the QUOTE, not the colon def — its
+\ early returns stay scoped to the quote (a nested inference), so the outer word
+\ infers normally. (The unsound LEAK is caught by CHECK! verify — see t-sh-verify.)
+T{ s" : QXL [: 1 2 3 exit ;] execute ;"           CHK2 s\" -1\n" compare 0= -> true }T   \ quote ( -- n n n )
+T{ s" : QXN 5 [: exit ;] execute 1 2 3 4 5 ;"      CHK2 s\" -1\n" compare 0= -> true }T   \ infers ( -- n*6 )
+\ divergent exits in the SAME scope are inconsistent -> rejected even by infer mode
+T{ s" : XD1 {: n :} n if 7 7 exit then n ;"       CHK2 s\" 0\n"  compare 0= -> true }T
+T{ s" : XD2 {: n :} n if 1 exit else 2 2 exit then ;" CHK2 s\" 0\n" compare 0= -> true }T
 \ regression: the jit fold helpers must not shadow the FLOAT prims (they
 \ were named f+/f-/f* once — any toolchain-loaded engine lost float ops and
 \ their checker sigs).
