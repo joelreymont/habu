@@ -51,6 +51,15 @@ step(b"' SQ BP+\n' IN1 BP+\n", [b' ok'])            # TWO breakpoints at once
 step(b'7 SQ .\n', [b'habu-bp:', b'49'])              # SQ's BRK fires then resumes
 step(b'9 IN1 .\n', [b'habu-bp:', b'10'])             # IN1's BRK fires too (multiple)
 step(b'6 SQ .\n', [b'36'], reject=b'habu-bp:')       # one-shot: gone on the next call
+step(b': PB dup + ;\n', [b' ok'])                    # persistent: fires EVERY call
+step(b"' PB BP*\n", [b' ok'])
+step(b'5 PB .\n', [b'habu-bp:', b'10'])
+step(b'6 PB .\n', [b'habu-bp:', b'12'])              # still armed
+step(b"' PB BP-\n", [b' ok'])
+step(b'2 \' PB BPN\n', [b' ok'])                     # skip-count: silent first 2 hits
+step(b'3 PB .\n', [b'6'], reject=b'habu-bp:')        # hit 1 (skipped)
+step(b'3 PB .\n', [b'6'], reject=b'habu-bp:')        # hit 2 (skipped)
+step(b'3 PB .\n', [b'habu-bp:', b'6'])               # hit 3 -> breaks
 step(b'step 2 3 + .\n', [b'step> 2', b'step> 3', b'step> +', b'5'])  # token stepper
 step(b'8 .\n', [b'8', b' ok'])                       # stepper hands back cleanly
 step(b'99 throw\n', [b'?', b'habu> '], reject=b'ok') # uncaught throw recovers on a tty

@@ -29,10 +29,15 @@ equivalent.
 `src/habu/debug.f` (baked into `bin/hbi`): `' WORD BP+` plants a `BRK #0` at the
 word's entry. Hitting it prints `habu-bp:` + the pc + the data-stack top, then
 restores the original instruction and **resumes** the word; the breakpoint is
-one-shot (gone on the next call). `BP-` removes an unhit one. The engine's
-SIGTRAP handler (`EMIT-TRAPH` in `forth.fs`/`habu2.f`) does the resume via
+one-shot. `' WORD BP*` is **persistent** (fires every call — the handler
+emulates the entry prologue `sub sp,#16` by adjusting the ucontext sp/pc and
+leaves the BRK planted, so no single-step is needed). `N ' WORD BPN` is
+persistent but **silent for the first N hits** (skip-count). `BP-` removes;
+`BP.` lists. Up to 8 at once. The SIGTRAP handler (`EMIT-TRAPH`) resumes via
 `sigreturn` with the trampoline token; code is patched through the `patch32`
-prim (RW→store→RX→isync, atomic from JIT-resident code).
+prim (RW→store→RX→isync, atomic from JIT-resident code). A full
+Forth-predicate conditional would need signal-safe deferred evaluation and is
+not implemented — skip-count covers the common case.
 
 ## lldb — native stepping (habu-built binaries)
 lldb works on habu/standalone binaries (needs the admin password once). Reveals

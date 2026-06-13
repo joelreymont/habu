@@ -743,25 +743,36 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    9 4 MCTX-OFF LDR,                                 \ x9 = mcontext
    10 9 272 LDR,                                     \ x10 = pc
    LBL {: bscan :}  LBL {: bnext :}  LBL {: bhit :}
-   6 16 MOVZ,  7 0 MOVZ,                             \ MAXBP, i  (scan BPTAB[0..16))
+   LBL {: emu :}  LBL {: fin :}
+   6 8 MOVZ,  7 0 MOVZ,                              \ MAXBP=8, i  (scan BPTAB[0..8))
    bscan LBL,
       7 6 CMP,  C-GE tno BCOND,
-      8 7 4 LSLI,  14 BPTAB-OFF LIT64,  8 8 14 ADD,  8 DATA 8 ADD,   \ &BPTAB[i] (16 B stride)
+      8 7 5 LSLI,  14 BPTAB-OFF LIT64,  8 8 14 ADD,  8 DATA 8 ADD,   \ &BPTAB[i] (32 B stride)
       13 8 0 LDR,  13 bnext CBZ,                     \ empty slot (addr 0)
       10 13 CMP,  C-EQ bhit BCOND,
       bnext LBL,  7 7 1 ADDI,  bscan B,
-   bhit LBL,                                         \ x8=&slot x13=addr x10=pc
-   \ frame-save uctx/infostyle/token (sigreturn ABI) + mctx/pc + &slot
+   \ slot layout: +0 addr  +8 saved-instr  +16 hits  +24 ctrl(skip<<1 | persist)
+   bhit LBL,                                         \ x8=&slot x9=mctx x10=pc
    SP SP 48 SUBI,
    1 SP 0 STR,  4 SP 8 STR,  5 SP 16 STR,  9 SP 24 STR,  10 SP 32 STR,  8 SP 40 STR,
-   1 LBPH @ ADR,  0 2 MOVZ,  2 9 MOVZ,  NR-WRITE SYS,
+   14 8 16 LDR,  14 14 1 ADDI,  14 8 16 STR,         \ hits++
+   15 8 24 LDR,  12 15 1 LSRI,                       \ x15=ctrl  x12=skip
+   14 12 CMP,  C-LS emu BCOND,                       \ hits <= skip -> silent, just emulate
+   1 LBPH @ ADR,  0 2 MOVZ,  2 9 MOVZ,  NR-WRITE SYS,   \ "habu-bp:"
    9 SP 32 LDR,  LHEX @ BL,                          \ pc
    9 SP 24 LDR,  12 9 168 LDR,  9 12 8 SUBI,  9 9 0 LDR,  LHEX @ BL,   \ [x19-8] = tos
-   2 3 MOVZ,  LPROT @ BL,                            \ code region -> RW
-   8 SP 40 LDR,  11 8 0 LDR,  12 8 8 LDR,  12 11 0 STRW,   \ restore orig instr
-   2 5 MOVZ,  LPROT @ BL,                            \ -> RX
+   8 SP 40 LDR,  15 8 24 LDR,  15 15 1 ANDI,  15 emu CBNZ,   \ persistent -> emulate, keep BRK
+   2 3 MOVZ,  LPROT @ BL,                            \ one-shot: restore + remove
+   8 SP 40 LDR,  11 8 0 LDR,  12 8 8 LDR,  12 11 0 STRW,
+   2 5 MOVZ,  LPROT @ BL,
    9 11 0 ADDI,  LFLUSH @ BL,
-   8 SP 40 LDR,  12 0 MOVZ,  12 8 0 STR,             \ one-shot: clear slot addr
+   8 SP 40 LDR,  12 0 MOVZ,  12 8 0 STR,             \ clear slot addr (resume re-runs orig)
+   fin B,
+   emu LBL,                                          \ emulate the entry prologue, keep BRK:
+   9 SP 24 LDR,                                      \ mctx
+   12 9 264 LDR,  12 12 16 SUBI,  12 9 264 STR,      \ sp -= 16  (sub sp,sp,#16)
+   12 9 272 LDR,  12 12 4 ADDI,  12 9 272 STR,       \ pc += 4   (skip the BRK)
+   fin LBL,
    0 SP 8 LDR,  1 SP 0 LDR,  2 SP 16 LDR,  SP SP 48 ADDI,
    NR-SIGRETURN SYS,                                 \ sigreturn(uctx, infostyle, token)
    tno LBL,
