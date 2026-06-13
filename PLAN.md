@@ -243,10 +243,10 @@ which now lives under `bootstrap/src/` (the `src/` below = today's
 in `src/{core,arch/arm64,habu,os/macos}`; its built-in checker
 (`src/core/checker.f`) now covers the engine's full compile surface (control
 flow, return row, typed locals, quotations + typed execute, trust) — the
-toolchain self-checks 783/0/0. Remaining vs this design: scheme-string
-recording for quot-bearing sigs (they check fully but render `?` and stay
-unrecorded) and named row vars in the native sig grammar. See CODEGEN-PLAN.md
-for the engine side.
+toolchain self-checks 783/0/0. The native sig grammar now matches the gforth
+tier — named row vars, quotation sub-sigs, and scheme-string recording of
+quot-bearing sigs (combinator call sites check against them). See
+CODEGEN-PLAN.md for the engine side.
 
 ```
 habu/  AGENTS.md LESSONS.md PLAN.md README.md .gitignore  docs/forth.md

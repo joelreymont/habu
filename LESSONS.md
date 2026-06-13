@@ -180,6 +180,33 @@ boundary reads explicitly. Remaining holes found are dotted (frame collision, IF
 balance, BODYBUF truncation, catch/throw-across-frames test gap).
 
 ## Process
+- **Self-recursion in the native engine is RECURSE, never the word's own name**:
+  a recursive sig parser written `: PSTACK ... dup PSTACK ...` fails — the name
+  isn't in the dict mid-definition, so the snapshot maker dies "PSTACK undefined".
+  Use `dup RECURSE`. (Mutual recursion needs DEFER, which the engine lacks — so
+  structure recursive grammars as ONE self-recursive word.)
+- **No-locals stack discipline is a footgun under recursion**: a parser that kept
+  its accumulator on the data stack used `PK! 2drop` where `PK!` already consumed
+  the token — the stray `2drop` ate the accumulator AND reached into the buried
+  outer-call row. Fix: make the tail a `{: tail :}` LOCAL (locals get a fresh
+  frame per recursive call) and keep only the one row on the data stack.
+- **A pure-data quot must have rin = rout (the SAME row)**: building a quot term
+  with two separate fresh return rows makes RSEXEC set `RCUR := rout` (≠ rin),
+  and CHECK's end-of-word return-balance check then rejects. `FRESH MK-ROW dup
+  MK-QUOT` (rin=rout) is the pure-data quot.
+- **Render and record are coupled — ship them with the parser**: recording quot
+  sigs (render `[ in -- out ]`) only works once PARSE-SIG can RE-PARSE that
+  scheme back to an identical quot term. With both, a combinator's recorded sig
+  round-trips and callers check against it (dip/keep). Gap2 alone broke combinator
+  checks; Gap2+Gap3 together is sound. Recalibrate the ONE test whose word becomes
+  newly-checkable (uncheckable 1 -> certified -1) — that's an improvement, not a
+  regression.
+- **Making the native parser correct can pass the self-host AS-IS**: t-selfhost's
+  CHART sigs were written gforth-style (`R -- R i64`, R a row) but the old native
+  parser folded R->int; fixing R to be a row var did NOT break t-selfhost — the
+  charted words type-check correctly under row semantics. Verify, don't assume a
+  recalibration is needed.
+
 - **Recording a previously-unrecorded sig changes CALL-SITE checking**: making
   the native renderer emit quot scheme-strings (instead of '?') was correct in
   isolation and self-checked, but it caused quot-bearing words like `dip` to be
