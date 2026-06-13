@@ -708,7 +708,7 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
    BEGIN TI @ TBLEN @ < WHILE
      BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
-       TBASE @ TI @ + c@ 40 = IF                 \ '(' -> the declared sig
+       TBASE @ TI @ + c@ 40 =  TBASE @ TI @ + 1 + c@ 32 =  and IF   \ '( ' (not '(CMP)') -> sig
          TI @ 1 + TI !  TI @ TSTART !             \ sig text starts after '('
          BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 41 <>  and WHILE TI @ 1 + TI ! REPEAT
          VSIG @ IF

@@ -58,6 +58,11 @@ T{ s" : M1 ( [ -- ) drop ;"               V s\" -1\n" compare 0= -> true }T   \ 
 T{ s" : M2 ( a | b | c -- a ) drop ;"     V s\" 0\n"  compare 0= -> true }T   \ triple pipe
 T{ s" : M3 ( i64 -- i64 | S ) ;"          V s\" 0\n"  compare 0= -> true }T   \ asymmetric return
 
+\ --- regression: a (...)-named word in a body is a CALL, not a declared sig.
+\ The sig scanner requires '( ' (paren+space); before that, '(CMP)' was eaten as
+\ a sig, emptying LT's body so it rejected against its declared ( a b -- i64 ).
+T{ s" : (CMP) 2drop -1 ; : LT ( a b -- i64 ) (CMP) ;"  V s\" -1\n-1\n" compare 0= -> true }T
+
 \ --- deep + polymorphic: spill past inference, nested rows, shared tyvars
 T{ s" : D1 ( a b c d e f -- f e d c b a ) >r >r >r >r >r >r r> r> r> r> r> r> ;"  V s\" -1\n" compare 0= -> true }T
 T{ s" : D2 ( a a a -- a ) drop drop ;"    V s\" -1\n" compare 0= -> true }T
