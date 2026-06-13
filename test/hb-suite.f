@@ -143,6 +143,19 @@ TFD -1 T=
 : TFC 0.5 TF5 drop 0.5 f+ 1.0 f= ;
 TFC -1 T=
 
+\ float pool: deep expression spills past d8..d15 (10 live floats), the other
+\ binops, and a float carried through a quotation
+: TFS 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0 f+ f+ f+ f+ f+ f+ f+ f+ f+ 55.0 f= ;
+TFS -1 T=
+: TFM 3.0 4.0 f* 12.0 f= ;
+TFM -1 T=
+: TFV 10.0 4.0 f/ 2.5 f= ;
+TFV -1 T=
+: TFQ 2.0 [: 3.0 f+ ;] execute 5.0 f= ;
+TFQ -1 T=
+: TFG 5.0 3.0 f> ;
+TFG -1 T=
+
 \ report: count + nonzero exit on failure
 : REPORT
    #FAIL @ 0 = if [char] o emit [char] k emit cr exit then

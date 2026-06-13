@@ -44,4 +44,23 @@ T{ s" : TOR ( R a | S -- R | S a ) >r ;"      V s\" -1\n" compare 0= -> true }T
 T{ s" : BAL ( R a | S -- R a | S ) >r ;"      V s\" 0\n"  compare 0= -> true }T
 T{ s" : FR ( R | S a -- R a | S ) r> ;"       V s\" -1\n" compare 0= -> true }T
 
+\ --- distinct concrete widths reject pairwise; n (generic int) subsumes them
+T{ s" : C1 ( str -- i64 ) ;"              V s\" 0\n"  compare 0= -> true }T
+T{ s" : C2 ( bool -- char ) ;"            V s\" 0\n"  compare 0= -> true }T
+T{ s" : C3 ( cell -- i64 ) ;"             V s\" 0\n"  compare 0= -> true }T
+T{ s" : C4 ( u8 -- i64 ) 0= ;"            V s\" -1\n" compare 0= -> true }T   \ 0= : n -- n, subsumes
+T{ s" : C5 ( char -- char ) 1 + ;"        V s\" -1\n" compare 0= -> true }T
+
+\ --- robustness: malformed sigs must be DETERMINISTIC and never crash the engine
+\ (V builds + runs an engine; a crash or hang would fail the assert). The exact
+\ flag for garbage input is unspecified — these pin the stable behavior.
+T{ s" : M1 ( [ -- ) drop ;"               V s\" -1\n" compare 0= -> true }T   \ unclosed quot
+T{ s" : M2 ( a | b | c -- a ) drop ;"     V s\" 0\n"  compare 0= -> true }T   \ triple pipe
+T{ s" : M3 ( i64 -- i64 | S ) ;"          V s\" 0\n"  compare 0= -> true }T   \ asymmetric return
+
+\ --- deep + polymorphic: spill past inference, nested rows, shared tyvars
+T{ s" : D1 ( a b c d e f -- f e d c b a ) >r >r >r >r >r >r r> r> r> r> r> r> ;"  V s\" -1\n" compare 0= -> true }T
+T{ s" : D2 ( a a a -- a ) drop drop ;"    V s\" -1\n" compare 0= -> true }T
+T{ s" : D3 ( a -- b ) ;"                  V s\" -1\n" compare 0= -> true }T   \ a unifies with b (no-op)
+
 #ERRORS @ 0<> negate (bye)

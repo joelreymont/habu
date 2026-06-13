@@ -60,6 +60,14 @@ step(b'2 \' PB BPN\n', [b' ok'])                     # skip-count: silent first 
 step(b'3 PB .\n', [b'6'], reject=b'habu-bp:')        # hit 1 (skipped)
 step(b'3 PB .\n', [b'6'], reject=b'habu-bp:')        # hit 2 (skipped)
 step(b'3 PB .\n', [b'habu-bp:', b'6'])               # hit 3 -> breaks
+step(b"' PB BP-\n", [b' ok'])
+# breakpoint table-full must RECOVER (throw), not kill the REPL (was: die->exit)
+for _w in range(9):
+    step((": F%d %d ;\n" % (_w, _w)).encode(), [b' ok'])
+for _w in range(8):
+    step(("' F%d BP+\n" % _w).encode(), [b' ok'])         # fill the 8-slot table
+step(b"' F8 BP+\n", [b'table full'], reject=b'habu>\r\nhabu>')  # 9th: message, not crash
+step(b'5 .\n', [b'5', b' ok'])                       # REPL survived the table-full error
 step(b'step 2 3 + .\n', [b'step> 2', b'step> 3', b'step> +', b'5'])  # token stepper
 step(b'step : SD dup * ;\n', [b' ok'])              # stepping a definition runs it whole (no crash)
 step(b'4 SD .\n', [b'16'])                          # the stepped def is usable
