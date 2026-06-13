@@ -551,8 +551,9 @@ variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
 \ EXIT: an early return. XROW accumulates the data row at each exit (all returns,
 \ incl. the fall-through at ';', must unify). DEADP marks the current linear path
 \ terminated by exit, so the enclosing THEN excludes it from the branch join.
-\ CFDED[i] saves the if-branch's deadness across CF-ELSE. (leave is not modeled;
-\ unloop is a typing no-op — loop control isn't on the typed rows.)
+\ CFDED[i] saves the if-branch's deadness across CF-ELSE. (leave targets the
+\ enclosing DO frame's loop-exit row; unloop is a typing no-op — loop control
+\ isn't on the typed rows.)
 variable XROW  variable XRROW  variable XSET  variable DEADP
 : CF@DED #CFC @ 1 - cells CFDED + @ ;
 
@@ -641,14 +642,23 @@ variable XROW  variable XRROW  variable XSET  variable DEADP
 
 : CF-DO  s" n n --" PARSE-SIG  5 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 
+\ At LOOP the exit is always live: ?do/do terminates, and a `leave` jumps here.
+\ If the body fall-through is dead (unconditional leave/exit), the back-edge is
+\ never taken — skip the body-vs-DO-point unify, but the loop-exit row is still
+\ the DO-point row (a zero-trip ?do or a leave both leave exactly that). Live
+\ fall-through: the back edge requires a stack-neutral body (CF@A SUNI).
 : CF-LOOP
    CF-MT? IF -1 UNCK ! ELSE CF@K 5 <> IF -1 UNCK ! ELSE
-     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP THEN THEN ;
+     DEADP @ IF  0 DEADP !
+     ELSE  CF@A SUNI  CF@RA RSUNI  THEN
+     CF@A DCUR !  CF@RA RCUR !  CF-DROP THEN THEN ;
 
 : CF-+LOOP
    s" n --" PARSE-SIG
    CF-MT? IF -1 UNCK ! ELSE CF@K 5 <> IF -1 UNCK ! ELSE
-     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP THEN THEN ;
+     DEADP @ IF  0 DEADP !
+     ELSE  CF@A SUNI  CF@RA RSUNI  THEN
+     CF@A DCUR !  CF@RA RCUR !  CF-DROP THEN THEN ;
 
 : CF-I
    0 INDO !  0 BEGIN dup #CFC @ < WHILE
@@ -659,6 +669,28 @@ variable XROW  variable XRROW  variable XSET  variable DEADP
    0 INDO !  0 BEGIN dup #CFC @ < WHILE
      dup cells CFKND + @ 5 = IF INDO @ 1 + INDO ! THEN  1 + REPEAT drop
    INDO @ 1 > IF s" -- n" PARSE-SIG ELSE -1 UNCK ! THEN ;
+
+variable LVDO  variable LVDN
+\ CF-FINDDO ( -- ) : LVDO = index of the nearest enclosing DO frame, or -1.
+\ Scans top-down and stops at the first DO (kind 5) or quotation boundary
+\ (kind 6) — a `leave` inside [: ;] does not escape to an outer loop.
+: CF-FINDDO
+   -1 LVDO !  0 LVDN !
+   #CFC @ 1 -
+   BEGIN dup 0 >= LVDN @ 0= and WHILE
+     dup cells CFKND + @ 5 = IF dup LVDO !  -1 LVDN ! THEN
+     dup cells CFKND + @ 6 = IF -1 LVDN ! THEN
+     1 - REPEAT drop ;
+
+\ CF-LEAVE : early loop exit. The stack at `leave` must match the loop-exit row
+\ (= the DO-point row CFSA, since the body is stack-neutral); likewise the return
+\ row. Then the path to `loop` is dead (CF-LOOP revives the live loop exit).
+: CF-LEAVE
+   CF-FINDDO
+   LVDO @ 0< IF -1 UNCK ! ELSE
+     LVDO @ cells CFSA + @ SUNI
+     LVDO @ cells CFRA + @ RSUNI
+     -1 DEADP ! THEN ;
 
 : CF-QUOT   \ [: — pause the outer inference (incl. its exit state), open a nested one
    6  DCUR @  BROW @  RCUR @  RBROW @  CF-PUSH
@@ -703,8 +735,9 @@ variable QTMP
    a u s" i" STR= IF CF-I ELSE
    a u s" j" STR= IF CF-J ELSE
    a u s" exit" STR= IF CF-EXIT ELSE
+   a u s" leave" STR= IF CF-LEAVE ELSE
    a u s" unloop" STR= IF CF-UNLOOP ELSE
-   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    CFH @ ;
 variable TBASE variable TBLEN variable TI variable TSTART
 \ first token of the checked text is the word's NAME (skipped, kept for the

@@ -35,3 +35,17 @@ T{ ' C-DO catch -> 0 }T
 \ RECURSE uses the declared effect
 : C-REC s" CREC" s" R i64 -- R i64" s" DUP 0= IF ELSE 1- RECURSE THEN" CHECK-DEF ;
 T{ ' C-REC catch -> 0 }T
+
+\ LEAVE: the stack at LEAVE must equal the loop-exit row (= the post-?DO row of
+\ a stack-neutral body). A neutral LEAVE inside a branch is fine.
+: C-LV  s" CLV" s" R i64 i64 -- R" s" ?DO I 7 = IF LEAVE THEN LOOP" CHECK-DEF ;
+T{ ' C-LV catch -> 0 }T
+
+\ LEAVE carrying an extra value -> the exit row no longer matches -> E-LOOP.
+\ (Was silently certified when LEAVE had no effect; the inferred sig was a lie.)
+: C-LVB s" CLVB" s" R i64 i64 -- R" s" ?DO 99 LEAVE LOOP" CHECK-DEF ;
+T{ ' C-LVB catch -> E-LOOP }T
+
+\ LEAVE outside any loop -> E-LOOP.
+: C-LVN s" CLVN" s" R -- R" s" LEAVE" CHECK-DEF ;
+T{ ' C-LVN catch -> E-LOOP }T

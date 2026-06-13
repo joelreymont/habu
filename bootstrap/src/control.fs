@@ -29,7 +29,12 @@ variable U2A variable U2B variable U2C variable U2D
 : POP-BOOL ( -- )  s" R bool -- R" APPLY-SCHEME ;
 
 \ Loop-nesting depth: I valid at depth>=1, J at depth>=2. Reset per definition.
+\ DOSD/DOSR snapshot each enclosing DO's loop-exit rows (= the post-?DO rows, a
+\ neutral body leaves them unchanged) so LEAVE can assert it carries that exact
+\ stack to the exit — a non-neutral LEAVE would otherwise be silently certified.
 variable DO-DEPTH
+16 constant MAX-DO
+create DOSD MAX-DO cells allot   create DOSR MAX-DO cells allot
 :noname ( -- ) 0 DO-DEPTH ! ; is CHECK-RESET
 : PUSH-I64 ( -- )  TC-I64 MK-CON PUSH-DTYPE ;
 : DO-I ( -- )  DO-DEPTH @ 0= if E-LOOP throw then PUSH-I64 ;
@@ -64,10 +69,20 @@ variable DO-DEPTH
 \ --- DO / ?DO … (LOOP | +LOOP) ---
 : DO-DO ( -- )
    s" R i64 i64 -- R" APPLY-SCHEME           \ consume ( limit index )
+   DO-DEPTH @ MAX-DO >= if E-LOOP throw then
    DCUR @ RCUR @ {: sd sr :}
+   sd DO-DEPTH @ cells DOSD + !  sr DO-DEPTH @ cells DOSR + !
    1 DO-DEPTH +!  CHECK-SEG  -1 DO-DEPTH +!  {: ea eu :}
    ea eu s" +LOOP" CI= if s" R i64 -- R" APPLY-SCHEME then
    DCUR @ sd RCUR @ sr E-LOOP 2UNIFY-OR ;
+
+\ LEAVE jumps to the loop exit: the stack here must equal the loop-exit row of
+\ the innermost enclosing DO (frame DO-DEPTH-1). Loop control isn't on the typed
+\ rows, so there's no further effect. (UNLOOP stays a pure no-op.)
+: DO-LEAVE ( -- )
+   DO-DEPTH @ 0= if E-LOOP throw then
+   DO-DEPTH @ 1 - {: f :}
+   DCUR @  f cells DOSD + @   RCUR @  f cells DOSR + @   E-LOOP 2UNIFY-OR ;
 
 : DO-RECURSE ( -- )  CUR-SIG@ APPLY-SCHEME ;   \ fresh instantiation of own effect
 : DO-EXIT ( -- )                               \ assert current = declared output
@@ -83,7 +98,7 @@ variable DO-DEPTH
    2dup s" EXIT"    CI= if 2drop DO-EXIT    true exit then
    2dup s" I"       CI= if 2drop DO-I       true exit then
    2dup s" J"       CI= if 2drop DO-J       true exit then
-   2dup s" LEAVE"   CI= if 2drop            true exit then   \ no data effect
-   2dup s" UNLOOP"  CI= if 2drop            true exit then
+   2dup s" LEAVE"   CI= if 2drop DO-LEAVE   true exit then
+   2dup s" UNLOOP"  CI= if 2drop            true exit then   \ no data effect
    2drop false ;
 ' (CHECK-CONTROL) is CHECK-CONTROL

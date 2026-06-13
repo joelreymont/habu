@@ -72,6 +72,16 @@ T{ s" : QXN 5 [: exit ;] execute 1 2 3 4 5 ;"      CHK2 s\" -1\n" compare 0= -> 
 \ divergent exits in the SAME scope are inconsistent -> rejected even by infer mode
 T{ s" : XD1 {: n :} n if 7 7 exit then n ;"       CHK2 s\" 0\n"  compare 0= -> true }T
 T{ s" : XD2 {: n :} n if 1 exit else 2 2 exit then ;" CHK2 s\" 0\n" compare 0= -> true }T
+\ LEAVE: early loop exit. The stack at `leave` must match the loop-exit row (=
+\ the DO-point row, since the body is stack-neutral); the post-loop code is live
+\ (reached by the leave or a zero-trip ?do). A non-neutral leave-point rejects.
+T{ s" : LVA 5 0 ?do i 7 = if leave then loop ;"             CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : LVD 5 0 ?do leave loop 7 . ;"                        CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : LVC {: n :} 0 n 0 ?do dup i = if leave then 1+ loop . ;" CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : LVE {: n :} 0 n 0 ?do dup 5 = if drop 99 leave then 1+ loop . ;" CHK2 s\" -1\n" compare 0= -> true }T
+T{ s" : LVB 5 0 ?do 99 leave loop . ;"                       CHK2 s\" 0\n"  compare 0= -> true }T
+\ a `leave` inside a [: ;] quotation has no enclosing loop in its scope -> uncheckable
+T{ s" : LVQ [: leave ;] drop ;"                              CHK2 s\" 1\n"  compare 0= -> true }T
 \ regression: the jit fold helpers must not shadow the FLOAT prims (they
 \ were named f+/f-/f* once — any toolchain-loaded engine lost float ops and
 \ their checker sigs).

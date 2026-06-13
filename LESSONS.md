@@ -20,8 +20,36 @@ typed rows). The bug that the fixpoint caught: a `BEGIN..AGAIN` returns ONLY via
 `exit`, so code after `AGAIN` is unreachable — `CF-AGAIN` must set DEADP, else the
 word-end fold unifies the dead post-loop state with the exit states and
 false-rejects (it killed `NEXT-TOK`). Soundness held: unbalanced exits (1-out vs
-2-out) still reject — t-sh-check `EXB`/`EXDB`. `leave` is still unmodeled (no
-toolchain word needs it).
+2-out) still reject — t-sh-check `EXB`/`EXDB`.
+
+## LEAVE typing: the loop-exit row is the constraint — and a reference false-cert (2026-06-13)
+
+`leave` was unmodeled in BOTH checkers, but "unmodeled" meant two different
+wrong things. Native (`src/core/checker.f`) fell through to "unknown word" →
+**uncheckable**: sound but every word using the idiomatic early loop exit stayed
+uncertified. The gforth-hosted reference (`bootstrap/src/control.fs`) treated
+`LEAVE` as a pure no-op → **falsely certified**: `: D ( -- ) 3 0 ?do 99 dup if
+leave then drop loop ;` certifies `( -- )` though its real effect is `( -- n )`
+(the `leave` jumps out carrying the 99 the fall-through `drop` would have
+removed). A no-op is not a conservative default for a control-transfer word.
+
+The model (both checkers): at `leave` the stack must equal the **loop-exit row**,
+which for a stack-neutral body is exactly the post-`?do` row (the DO frame's
+saved data/return rows). Native: `CF-FINDDO` walks the CF stack to the nearest
+DO, stopping at a `[:` boundary (a `leave` can't escape a quotation), then
+`SUNI`/`RSUNI` against that frame and sets DEADP. `CF-LOOP` then revives the live
+loop exit — the post-loop code is reachable via the leave or a zero-trip `?do`,
+so a dead body fall-through takes CFSA as the exit row instead of unifying the
+back edge. Reference: a `DOSD`/`DOSR` stack indexed by `DO-DEPTH` lets `DO-LEAVE`
+assert current == the enclosing loop-exit row (`E-LOOP` on mismatch); no deadness
+tracking, so it's strictly more conservative than native (rejects dead-code-after-
+leave that native certifies) but never falsely certifies. Verdicts now agree on
+the cases that matter: neutral leave certifies (`LVA`/`LVC`/`LVD`/`LVE`),
+non-neutral rejects (`LVB`), leave-outside-a-loop rejects. Regression: t-sh-check
+`LVA/LVB/LVC/LVD/LVE/LVQ`, t-control `C-LV/C-LVB/C-LVN`. Lesson: when two
+implementations of the same judgement both "don't model X," check what the
+default DOES — silence as no-op is a false-certify; silence as unknown is merely
+incomplete.
 
 An adversarial code review caught a real false-certification I'd shipped: `exit`
 inside a `[: ;]` quotation wrote the GLOBAL exit accumulators, which `CF-QUOT`/
