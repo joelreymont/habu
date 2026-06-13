@@ -96,10 +96,12 @@ mismatch — `: SQ ( i64 -- i64 ) dup ;` is dropped with a diagnostic, `dup *`
 is accepted. Untyped definitions stay infer-only. The native sig grammar handles named
 row vars (`R S T`), quotation sub-sigs (`[ in -- out ]`), and records
 quot-bearing sigs as scheme-strings (so combinator call sites — `dip`, `keep`
-— are checked against them). It does **not yet** match the gforth tier on
-concrete types (`u8 u32 cell bool char str addr` and `ptr` all collapse to one
-int width), the `| rin -- rout` return-stack clause, or nested quotations — use
-the gforth-hosted checker for those.
+— are checked against them). The native grammar now also handles distinct concrete types (`i64 u8 u32 cell
+char str addr bool`, with `n` the generic int that subsumes them), the
+`| rin -- rout` return-stack clause, and nested quotations. The one
+gforth-tier-only piece is the **parametric** `ptr a` (pointer-to-type): the
+native prims operate on `n`/`addr`, so a parametric pointer type would never
+unify against them — `ptr` is typed as an address instead.
 
 ## Layout
 

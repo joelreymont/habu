@@ -245,9 +245,10 @@ in `src/{core,arch/arm64,habu,os/macos}`; its built-in checker
 flow, return row, typed locals, quotations + typed execute, trust) — the
 toolchain self-checks 783/0/0. The native sig grammar gained named row vars,
 quotation sub-sigs, and scheme-string recording of quot-bearing sigs
-(combinator call sites check against them). Still gforth-tier-only: distinct
-concrete width types (native collapses u8/u32/cell/bool/char/str/addr/ptr to
-one int), the `| rin -- rout` return clause, and nested quotations. See
+(combinator call sites check against them). Native now has distinct concrete types
+(n = generic int, subsumes the widths), the `| rin -- rout` return clause, and
+nested quotations. The one remaining gforth-tier-only piece is the parametric
+`ptr a` (no native prim uses pointer-types, so it would be dead machinery). See
 CODEGEN-PLAN.md for the engine side.
 
 ```
