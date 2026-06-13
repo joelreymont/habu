@@ -1351,6 +1351,18 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
 \ S" string" (compile mode): emit  B over the bytes ; <bytes> ; push abs-addr ;
 \ push len. Bytes live in the RX code image; the absolute address is known at
 \ compile time, so C-LIT pushes it (no PC-relative ADR needed).
+\ compile-mode PC-RELATIVE address push: emit `adr x9, target` then the push
+\ stencil. Unlike C-LIT's absolute movz/movk, the offset survives the AOT blob
+\ copy and the ASLR slide, because the target (an embedded S" body) moves WITH
+\ this instruction. target in x11; CP (the emit cursor / future ADR pc) is x28.
+: C-ADR ( -- )
+   5 11 28 SUB,                                                       \ x5 = d = target - CP
+   8 $10000009 LIT64,                                                 \ ADR opcode | Rd=x9
+   6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,                    \ | (d & 3) << 29
+   7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,  \ | ((d>>2) & 0x7FFFF) << 5
+   9 8 0 ADDI,  LCEMIT @ BL,                                          \ emit the ADR word
+   9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL, ;
+
 : C-SDQ ( -- )
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,                      \ skip one space; x13 = start
    LBL {: sl :}  LBL {: sd :}
@@ -1365,7 +1377,7 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    cd LBL,
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,             \ pad CP to 4
    9 15 0 ADDI,  15 10 0 ADDI,  LPAT @ BL,              \ x9=B addr; save len in x15; patch B->here
-   11 12 0 ADDI,  C-LIT                                 \ push byte addr (x12)
+   11 12 0 ADDI,  C-ADR                                 \ push byte addr PC-relative (AOT/ASLR-safe)
    11 15 0 ADDI,  C-LIT ;                               \ push len (x15)
 
 \ emit one compile-mode keyword case: if TKA/TKL == kw, run handler then back to lmain

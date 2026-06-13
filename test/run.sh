@@ -66,6 +66,13 @@ echo "PASS: hb-build AOT (engine stripped, __text $ATX B vs ~11800 embed)"
 ./tools/hb-build.sh $T/hb-cl.f -o $T/hb-cl >/dev/null || { echo "FAIL: hb-build AOT closure stress (260 words)"; exit 1; }
 [ "$($T/hb-cl)" = "260" ] || { echo "FAIL: hb-build AOT closure stress output (got: $($T/hb-cl))"; exit 1; }
 echo "PASS: hb-build AOT closure stress (260 reachable words)"
+# AOT S" string literal: the body is embedded in MAIN's blob and its address is
+# pushed PC-relative, so it survives the blob copy + ASLR (an absolute push would
+# point back into the builder's JIT region and print nothing).
+printf ': MAIN s" hi" type CR ;\n' > $T/hb-str.f
+./tools/hb-build.sh $T/hb-str.f -o $T/hb-str >/dev/null || { echo "FAIL: hb-build AOT S\" build"; exit 1; }
+[ "$($T/hb-str)" = "hi" ] || { echo "FAIL: hb-build AOT S\" output (got: $($T/hb-str))"; exit 1; }
+echo "PASS: hb-build AOT S\" string literal (PC-relative, relocation-safe)"
 # hb-build --repl = engine + REPL bundle: the library's words run + are callable.
 printf ': SQ ( i64 -- i64 ) DUP * ;\nEXPORT SQ\n9 SQ . CR\n' > $T/hb-rt.f
 ./tools/hb-build.sh --repl $T/hb-rt.f -o $T/hb-rt >/dev/null || { echo "FAIL: hb-build --repl"; exit 1; }

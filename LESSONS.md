@@ -3,6 +3,26 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## AOT S" survives the copy when the address is PC-relative (2026-06-13)
+
+The review's H1: an AOT'd `: MAIN s" hi" type cr ;` printed nothing. Compile-mode
+`S"` embeds the string body in MAIN's code blob, then pushed its ABSOLUTE address
+via `C-LIT` (movz/movk). The AOT linker copies the blob to a new image and
+rewrites inter-word calls to PC-relative `bl`, but it never touched absolute
+literal pushes — so the baked address still pointed into the builder's JIT
+region (and would break under ASLR even if it pointed at the copy). Fix: a new
+`C-ADR` emits `adr x9, <target>` (PC-relative) instead of the absolute movz/movk,
+then the same push stencil. The runtime value is identical (PC + offset =
+addr), so the normal JIT path is unchanged; but because the string body lives in
+the SAME blob, the offset is preserved when the blob is copied, and PC-relative
+is slide-independent — no AOT relocation needed. Two enablers made the encoding
+exact: the body is 4-aligned (the blob starts 4-aligned and a 4-byte `B`
+placeholder precedes it) and only a few bytes away, so the ADR offset is a small
+multiple of 4, well inside ADR's ±1MB. Key contrast for the NEXT fix: this trick
+works ONLY because target and pusher share a blob. `[']`'s xt and `CREATE`'s
+data live in OTHER blobs / the unmapped data region, so they need an AOT-time
+relocation pass, not compile-time PC-relative — still open (dotted).
+
 ## AOT closure cap + engine div0: two robustness gaps the review found (2026-06-13)
 
 Same review (`CODE_REVIEW_REPORT.md`) flagged two non-checker gaps. (1) The AOT

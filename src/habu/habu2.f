@@ -606,6 +606,18 @@ create ENDLOC-KW 58 c, 125 c,
       13 13 1 SUBI,  pl B,
    pd LBL, ;
 
+\ compile-mode PC-RELATIVE address push: emit `adr x9, target` then the push
+\ stencil. Unlike C-LIT's absolute movz/movk, the offset survives the AOT blob
+\ copy and the ASLR slide, because the target (an embedded S" body) moves WITH
+\ this instruction. target in x11; CP (the emit cursor / future ADR pc) is x28.
+: C-ADR
+   5 11 28 SUB,                                                       \ x5 = d = target - CP
+   8 $10000009 LIT64,                                                 \ ADR opcode | Rd=x9
+   6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,                    \ | (d & 3) << 29
+   7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,  \ | ((d>>2) & 0x7FFFF) << 5
+   9 8 0 ADDI,  LCEMIT @ BL,                                          \ emit the ADR word
+   9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL, ;
+
 : C-SDQ
    LBL LBL LBL LBL {: sl sd cl cd :}
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
@@ -619,8 +631,8 @@ create ENDLOC-KW 58 c, 125 c,
    cd LBL,
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
    9 15 0 ADDI,  15 10 0 ADDI,  LPAT @ BL,
-   11 12 0 ADDI,  C-LIT
-   11 15 0 ADDI,  C-LIT ;
+   11 12 0 ADDI,  C-ADR                                \ push byte addr PC-relative (AOT/ASLR-safe)
+   11 15 0 ADDI,  C-LIT ;                              \ push len (a value, absolute is fine)
 variable CFSK
 
 : CF-ENTRY {: lmainlbl kwvar kwlen hxt :}
