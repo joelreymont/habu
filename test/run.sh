@@ -26,7 +26,16 @@ out=$(echo 's" HOME" getenv nip 0 > .' | $T/hb-warm)
 out=$(printf ': SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | $T/hb-warm 2>/dev/null)
 [ "$out" = "49" ] || { echo "FAIL: snapshot good typed def (got: $out)"; exit 1; }
 printf ': SQBAD ( i64 -- i64 ) dup ;\nSQBAD\n' | $T/hb-warm >/dev/null 2>&1 && { echo "FAIL: snapshot did NOT reject bad sig"; exit 1; }
-echo "PASS: AOT snapshot (warm toolchain boot) + getenv + sig-check"
+# named rows + quot sub-sigs VERIFY (Gap3): CHECK! body-vs-declared-sig.
+# V1 row-poly certifies, V2 combinator-param certifies, V3 bad row count rejects.
+out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i64 ) execute" CHECK! .\ns" V3 ( R -- R i64 ) 5 5" CHECK! .\n' | $T/hb-warm 2>/dev/null)
+[ "$out" = "-1
+-1
+0" ] || { echo "FAIL: snapshot rows/quot sig verify (got: $out)"; exit 1; }
+# and the row sig runs end to end
+out=$(printf ': PSH ( R -- R i64 ) 5 ;\nPSH .\n' | $T/hb-warm 2>/dev/null)
+[ "$out" = "5" ] || { echo "FAIL: snapshot named-row sig run (got: $out)"; exit 1; }
+echo "PASS: AOT snapshot (warm toolchain boot) + getenv + sig-check (rows+quots)"
 HT=$(mktemp -d)
 HB_TMP=$HT ./tools/snap-hb.sh >/dev/null && [ -x "$HT/hb-warm" ] || { echo "FAIL: HB_TMP isolation"; exit 1; }
 rm -rf "$HT"

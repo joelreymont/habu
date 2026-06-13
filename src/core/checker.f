@@ -246,41 +246,69 @@ variable NRES  variable NDI  variable NDH
    u 1 = c 114 = and IF 3 MK-CON ELSE          \ 'r' -> real/float (con 3)
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
    1 MK-CON THEN THEN THEN THEN ;
-variable PHASE  variable INROW  variable OUTROW
-
-: SIG-TOK {: a u :}
-   a u s" --" STR= IF 1 PHASE ! ELSE
-     a u TOK-TYPE PHASE @ 0= IF INROW @ MK-PUSH INROW ! ELSE OUTROW @ MK-PUSH OUTROW ! THEN
-   THEN ;
 variable SB variable SL variable SI variable SS
+variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
 
-: PARSE-SIG {: a u :}
-   a SB ! u SL ! NMAP-RESET 0 PHASE !
-   FRESH {: s :} s MK-ROW INROW ! s MK-ROW OUTROW ! 0 SI !
-   BEGIN SI @ SL @ < WHILE
-     BEGIN SI @ SL @ < SB @ SI @ + c@ 32 = and WHILE SI @ 1 + SI ! REPEAT
-     SI @ SL @ < IF
-       SB @ SI @ + SS !
-       BEGIN SI @ SL @ < SB @ SI @ + c@ 32 <> and WHILE SI @ 1 + SI ! REPEAT
-       SS @ SB @ SI @ + SS @ - SIG-TOK
+: PK!  PKU !  PKA !  -1 PKHAVE ! ;                   \ ( a u -- )
+: PKRESET 0 PKHAVE ! ;
+\ NEXT-SIG-TOK ( -- a u ) : next whitespace token over the SB/SL/SI cursor;
+\ ( a 0 ) at end. Honors one pushed-back token.
+: NEXT-SIG-TOK
+   PKHAVE @ IF 0 PKHAVE ! PKA @ PKU @ EXIT THEN
+   BEGIN SI @ SL @ < SB @ SI @ + c@ 32 = and WHILE SI @ 1 + SI ! REPEAT
+   SI @ SL @ < 0= IF SB @ 0 EXIT THEN
+   SB @ SI @ + SS !
+   BEGIN SI @ SL @ < SB @ SI @ + c@ 32 <> and WHILE SI @ 1 + SI ! REPEAT
+   SS @ SB @ SI @ + SS @ - ;
+
+: UPPER? {: c :} c 64 > c 91 < and ;
+: ROW-LEAD? {: a u :} u 1 = a c@ UPPER? and ;        \ a single upper letter leads a row
+: DELIM? {: a u :}                                   \ stack terminator
+   u 0 = IF -1 EXIT THEN
+   a u s" --" STR= IF -1 EXIT THEN
+   a u s" ]"  STR= IF -1 EXIT THEN
+   a u s" |"  STR= ;
+
+create ROWMAP 26 cells allot
+: ROWMAP-RESET 0 BEGIN dup cells ROWMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
+: RVAR-OF {: c :}  c 65 - cells ROWMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-ROW ;
+
+\ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
+\ upper-case token names the row (shared by letter); else the passed implicit
+\ tail is used. Types fold bottom->top; '[' in -- out ']' is a quot<effect>
+\ (RECURSE for the nested stacks; rin=rout=one fresh row -> no return effect).
+\ tail is a LOCAL so it survives RECURSE; the data stack holds only the row.
+: PSTACK {: tail :}
+   NEXT-SIG-TOK 2dup ROW-LEAD? IF
+      drop c@ RVAR-OF                                 \ row = named var
+   ELSE PK! tail THEN                                 \ push back token; row = tail
+   BEGIN
+     NEXT-SIG-TOK 2dup DELIM? IF PK! EXIT THEN        \ ( row a u )->PK!->( row ), return
+     2dup s" [" STR= IF
+        2drop
+        FRESH MK-ROW                                  \ the quot's shared data row
+        dup RECURSE                                   \ quot in-stack (on qrow)
+        NEXT-SIG-TOK 2drop                            \ consume '--'
+        swap RECURSE                                  \ quot out-stack (on qrow)
+        NEXT-SIG-TOK 2drop                            \ consume ']'
+        FRESH MK-ROW dup MK-QUOT                      \ rin = rout (no return effect)
+        swap MK-PUSH
+     ELSE
+        TOK-TYPE  swap MK-PUSH
      THEN
-   REPEAT
-   INROW @ OUTROW @ STEP ;
+   AGAIN ;
+
+\ PSIG ( -- din dout ) : in -- out over the cursor; a leading rowvar names the
+\ shared data row, else one fresh implicit row is shared between in and out.
+: PSIG
+   PKRESET NMAP-RESET ROWMAP-RESET
+   FRESH MK-ROW  dup PSTACK  NEXT-SIG-TOK 2drop  swap PSTACK ;
+
+: PARSE-SIG {: a u :}      a SB ! u SL ! 0 SI !  PSIG STEP ;
 
 \ PARSE-SIG-RAW ( a u -- din dout ) : the declared effect as two rows (no STEP),
 \ for verifying a definition's body against its own ( in -- out ).
-: PARSE-SIG-RAW {: a u :}
-   a SB ! u SL ! NMAP-RESET 0 PHASE !
-   FRESH {: s :} s MK-ROW INROW ! s MK-ROW OUTROW ! 0 SI !
-   BEGIN SI @ SL @ < WHILE
-     BEGIN SI @ SL @ < SB @ SI @ + c@ 32 = and WHILE SI @ 1 + SI ! REPEAT
-     SI @ SL @ < IF
-       SB @ SI @ + SS !
-       BEGIN SI @ SL @ < SB @ SI @ + c@ 32 <> and WHILE SI @ 1 + SI ! REPEAT
-       SS @ SB @ SI @ + SS @ - SIG-TOK
-     THEN
-   REPEAT
-   INROW @ OUTROW @ ;
+: PARSE-SIG-RAW {: a u :}  a SB ! u SL ! 0 SI !  PSIG ;
 
 \ --- prim table: name/sig pairs [nlen][name][slen][sig]...[0], scanned by FIND-SIG.
 \ A data table (not a 26-branch word) because the standalone INLINES colon-word
