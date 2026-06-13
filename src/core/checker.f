@@ -89,6 +89,17 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
    REPEAT
    r = or ;
 
+4 constant CC-I64   5 constant CC-U8    6 constant CC-U32   7 constant CC-CELL
+8 constant CC-CHAR  9 constant CC-STR  10 constant CC-ADDR  11 constant CC-BOOL
+12 constant CC-MAX
+: INT-FAM? {: code :}  code 1 =  code 3 >  code CC-MAX <  and  or ;   \ n + concretes (not float)
+\ CON-OK? ( t1 t2 -- f ) : two concrete cons unify iff equal, or one is the
+\ generic int n(1) and the other is int-family (n subsumes any int width).
+: CON-OK? {: t1 t2 :}
+   t1 PAY t2 PAY = IF -1 EXIT THEN
+   t1 PAY 1 = t2 PAY INT-FAM? and IF -1 EXIT THEN
+   t2 PAY 1 = t1 PAY INT-FAM? and IF -1 EXIT THEN  0 ;
+
 : U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
    over ISROW IF 2dup ROW-OCC? IF 2drop 0 UOK ! ELSE swap PAY RV! THEN ELSE
    dup ISROW IF 2dup swap ROW-OCC? IF 2drop 0 UOK ! ELSE PAY RV! THEN ELSE
@@ -131,7 +142,7 @@ variable TOCC  variable TODN
      over PAY over TY-OCC? IF 2drop 0 UOK ! ELSE swap PAY TV! THEN ELSE
    dup ISVAR IF
      dup PAY  rot  tuck TY-OCC? IF 2drop 0 UOK ! ELSE swap PAY TV! THEN ELSE
-   over PAY over PAY = IF 2drop ELSE 2drop 0 UOK ! THEN THEN THEN THEN THEN ;
+   2dup CON-OK? IF 2drop ELSE 2drop 0 UOK ! THEN THEN THEN THEN THEN ;
 
 : UNIFY   \ ( s1 s2 -- ok ) worklist-driven; rows and types interleave
    0 USP !  -1 UOK !  PAIR
@@ -240,12 +251,22 @@ variable NRES  variable NDI  variable NDH
 : VAR-OF {: c :}  c 97 - cells NMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-VAR ;
 
 \ NB: declare locals at word top, never inside IF/loop (corrupts the locals frame).
+\ concrete width types get distinct con codes; n(1)/f(1) stay the GENERIC int
+\ (the prim DB and the toolchain's own body use n), and the unifier lets n
+\ subsume any int-family code (so '( i64 -- i64 )' over an n-typed prim still
+\ checks). r(3)=float. Table-driven to keep the body small (inline-safe).
+: CON-OF {: a u :}                      \ multi-char name -> con code, or 0
+   a u s" i64"  STR= IF CC-I64  EXIT THEN   a u s" u8"   STR= IF CC-U8   EXIT THEN
+   a u s" u32"  STR= IF CC-U32  EXIT THEN   a u s" cell" STR= IF CC-CELL EXIT THEN
+   a u s" char" STR= IF CC-CHAR EXIT THEN   a u s" str"  STR= IF CC-STR  EXIT THEN
+   a u s" addr" STR= IF CC-ADDR EXIT THEN   a u s" bool" STR= IF CC-BOOL EXIT THEN  0 ;
 : TOK-TYPE {: a u :}  a c@ {: c :}
-   u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> int (con 1)
-   u 1 = c 102 = and IF 1 MK-CON ELSE          \ 'f' -> flag = int (Forth flags are -1/0)
+   u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
+   u 1 = c 102 = and IF 1 MK-CON ELSE          \ 'f' -> flag = generic int
    u 1 = c 114 = and IF 3 MK-CON ELSE          \ 'r' -> real/float (con 3)
+   a u CON-OF dup IF MK-CON ELSE drop          \ i64/u8/u32/cell/char/str/addr/bool
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
-   1 MK-CON THEN THEN THEN THEN ;
+   1 MK-CON THEN THEN THEN THEN THEN ;
 variable SB variable SL variable SI variable SS
 variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
 
