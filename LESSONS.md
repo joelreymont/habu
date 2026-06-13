@@ -3,6 +3,24 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## AOT closure cap + engine div0: two robustness gaps the review found (2026-06-13)
+
+Same review (`CODE_REVIEW_REPORT.md`) flagged two non-checker gaps. (1) The AOT
+linker's closure/relocation tables (`CLO/OLDA/NEWOFF/BLEN`) were fixed 256-cell
+arrays with NO bound check, so a >256-word reachable closure wrote past them and
+crashed the build (rc 134). Fix: a `MAX-CLO` constant (1024, comfortably above
+any program the ~1620-word dict can hold) sizes all four arrays, and `ADD-CLO`
+`die`s with a clear message at the cap — fail closed, never corrupt. (2) The
+engine's interpreter/spill-path `BDIV`/`BMOD` used raw ARM64 `SDIV`, which yields
+0 on a zero divisor (gforth throws). The JIT path already trapped via
+`templ.fs`'s `G-DIV0?`; the spill path didn't, so `1 0 /` at the REPL silently
+returned 0. Fix: a `BDIV0?` guard (`LBL {: lok :} B lok CBNZ, BRK, lok LBL,`)
+added identically to BOTH parity twins (`src/habu/habu1.f` + `bootstrap/cg/forth.fs`)
+— a zero divisor now BRK-traps (exit 134) instead of fabricating a result.
+Lesson: a fixed-size table with no guard is a latent crash, and a default gate
+that only exercises the happy path (numeric recursion, nonzero division) hides
+both — pin the boundary (260-word closure, div-by-zero exit) in `run.sh`.
+
 ## Two false-certs a review found: bool-as-int and malformed-sig (2026-06-13)
 
 A deep code review (`CODE_REVIEW_REPORT.md`) found two native-checker

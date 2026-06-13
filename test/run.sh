@@ -18,6 +18,12 @@ T=${HB_TMP:-/tmp}
 ./tools/build.sh > $T/hb-build.log 2>&1 || { tail -5 $T/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }
 echo "PASS: self-rebuild fixpoint"
 ./tools/test-hb.sh || exit 1
+# divide/modulo by zero must fail loudly (ARM64 SDIV yields 0 silently); the
+# engine traps, so the run exits nonzero instead of printing a bogus result.
+printf '1 0 / .\n'   | bin/hbi >/dev/null 2>&1 && { echo "FAIL: 1 0 / did not trap"; exit 1; }
+printf '1 0 mod .\n' | bin/hbi >/dev/null 2>&1 && { echo "FAIL: 1 0 mod did not trap"; exit 1; }
+printf '7 2 / . 7 2 mod . cr\n' | bin/hbi 2>/dev/null | tr -d '\n ' | grep -q '^31$' || { echo "FAIL: nonzero div/mod regressed"; exit 1; }
+echo "PASS: div/mod by zero traps (no silent 0)"
 ./tools/snap-hb.sh >/dev/null || { echo "FAIL: snap-hb"; exit 1; }
 out=$(echo 's" w" s" n -- n" trust 7 . : Q 5 dup * . ; Q' | $T/hb-warm)
 [ "$out" = "7
@@ -52,6 +58,14 @@ printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE +
 ATX=$(size -m $T/hb-at 2>/dev/null | awk '/__text/{print $3}')
 [ "${ATX:-99999}" -lt 2000 ] || { echo "FAIL: hb-build AOT did not strip the engine (__text=$ATX, expected <2000)"; exit 1; }
 echo "PASS: hb-build AOT (engine stripped, __text $ATX B vs ~11800 embed)"
+# AOT closure stress: a 260-word reachable chain (above the old 256-cell tables,
+# which silently overflowed and crashed the linker). Must build and compute 260.
+{ printf ': W259 ( -- n ) 1 ;\n'
+  i=258; while [ $i -ge 0 ]; do printf ': W%s ( -- n ) W%s 1 + ;\n' "$i" "$((i+1))"; i=$((i-1)); done
+  printf ': MAIN W0 . CR ;\n'; } > $T/hb-cl.f
+./tools/hb-build.sh $T/hb-cl.f -o $T/hb-cl >/dev/null || { echo "FAIL: hb-build AOT closure stress (260 words)"; exit 1; }
+[ "$($T/hb-cl)" = "260" ] || { echo "FAIL: hb-build AOT closure stress output (got: $($T/hb-cl))"; exit 1; }
+echo "PASS: hb-build AOT closure stress (260 reachable words)"
 # hb-build --repl = engine + REPL bundle: the library's words run + are callable.
 printf ': SQ ( i64 -- i64 ) DUP * ;\nEXPORT SQ\n9 SQ . CR\n' > $T/hb-rt.f
 ./tools/hb-build.sh --repl $T/hb-rt.f -o $T/hb-rt >/dev/null || { echo "FAIL: hb-build --repl"; exit 1; }

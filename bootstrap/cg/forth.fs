@@ -270,9 +270,11 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BRSH B G-POP A G-POP  A A B LSRV, A G-PUSH ;
 
-: BDIV B G-POP A G-POP  A A B SDIV, A G-PUSH ;
+: BDIV0? LBL {: lok :} B lok CBNZ, BRK, lok LBL, ;   \ SDIV by 0 silently yields 0; trap a zero divisor (B)
 
-: BMOD B G-POP A G-POP  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
+: BDIV B G-POP A G-POP  BDIV0?  A A B SDIV, A G-PUSH ;
+
+: BMOD B G-POP A G-POP  BDIV0?  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
 
 \ stack shuffles (memory on x19)
 : BNIP  A G-POP  XDS XDS 8 SUBI,  A G-PUSH ;

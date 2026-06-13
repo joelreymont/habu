@@ -44,10 +44,15 @@ variable FX
 : FINDMAIN  0 FX !
    BEGIN FX @ ndict@ < WHILE  FX @ REC MAIN? IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  0 ;
 
-\ --- closure: BFS from MAIN over the native call graph.
-create CLO 256 cells allot   variable NCLO  variable CX
+\ --- closure: BFS from MAIN over the native call graph. CLO and the parallel
+\ COPY/RELOCATE arrays (OLDA/NEWOFF/BLEN) are all sized by MAX-CLO; ADD-CLO fails
+\ closed at the cap so a large closure can never write past the tables.
+1024 constant MAX-CLO
+create CLO MAX-CLO cells allot   variable NCLO  variable CX
 : IN-CLO? {: r :}  0 CX ! BEGIN CX @ NCLO @ < WHILE CX @ cells CLO + @ r = IF -1 exit THEN CX @ 1+ CX ! REPEAT 0 ;
-: ADD-CLO {: r :}  r IN-CLO? IF exit THEN  r NCLO @ cells CLO + !  NCLO @ 1+ NCLO ! ;
+: ADD-CLO {: r :}  r IN-CLO? IF exit THEN
+   NCLO @ MAX-CLO >= IF s" aot: closure exceeds MAX-CLO" 74 die THEN
+   r NCLO @ cells CLO + !  NCLO @ 1+ NCLO ! ;
 variable SP2  variable SEND
 : SCAN-REC {: r :}
    r @ SP2 !  r @ r 8 + @ + SEND !
@@ -61,7 +66,7 @@ variable WI
 
 \ --- emit the image: minimal entry + copied blobs, then relocate the calls.
 variable MLBL  variable REC2
-create OLDA 256 cells allot   create NEWOFF 256 cells allot   create BLEN 256 cells allot
+create OLDA MAX-CLO cells allot   create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
 : EMIT-ENTRY
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
