@@ -3,13 +3,18 @@
 declares a word's stack effect WITHOUT checking its body. Every trusted word is
 part of the trusted base, a soundness cliff: a wrong declared effect lets the
 checker certify programs built on a lie. So the set must stay small, audited, and
-TESTED. This lint pins the manifest (TRUSTED.md) to the code: every TRUST site in
-src/ must have a manifest row with the same effect string, and every manifest row
-must cite at least one test.
+TESTED and fresh. This lint pins the manifest (TRUSTED.md) to the code: every
+TRUST site in src/ must have a manifest row with the same effect string, every
+manifest row must cite at least one test, and every audit date must be recent.
 """
-import re, sys, pathlib
+import datetime as dt
+import os
+import re
+import sys
+import pathlib
 
 SITE = re.compile(r's"\s+([^"]+?)"\s+s"\s+([^"]*?)"\s+TRUST')
+MAX_AUDIT_AGE_DAYS = 90
 
 def norm_effect(s):
     return " ".join(s.strip().split()).lower()
@@ -29,8 +34,15 @@ for f in sorted(pathlib.Path("src").rglob("*.f")):
                 bad += 1
             sites[name] = (effect, site)
 
-# --- parse TRUSTED.md table: rows are | Word | Effect | Reason | Tests | ... | ---
-manifest = {}                                                # word -> (effect, tests)
+def today():
+    raw = os.environ.get("TRUST_LINT_TODAY")
+    if raw:
+        return dt.date.fromisoformat(raw)
+    return dt.date.today()
+
+
+# --- parse TRUSTED.md table: rows are | Word | Effect | Reason | Tests | Site | Last audited |
+manifest = {}                                                # word -> (effect, tests, audit)
 mpath = pathlib.Path("TRUSTED.md")
 if not mpath.exists():
     print("trust-lint: TRUSTED.md missing — the trust manifest is required")
@@ -39,7 +51,7 @@ for line in mpath.read_text().splitlines():
     if not line.lstrip().startswith("|"):
         continue
     cells = [c.strip() for c in line.strip().strip("|").split("|")]
-    if len(cells) < 4:
+    if len(cells) < 6:
         continue
     word = cells[0].strip("`").strip()
     if not word or word.lower() == "word" or set(word) <= set("-: "):
@@ -47,18 +59,33 @@ for line in mpath.read_text().splitlines():
     if word in manifest:
         print(f"DUPLICATE-ROW TRUSTED.md: `{word}` appears more than once")
         bad += 1
-    manifest[word] = (cells[1].strip("`").strip(), cells[3])
+    manifest[word] = (cells[1].strip("`").strip(), cells[3], cells[5])
 
 # --- cross-check ---
 for name, (effect, site) in sorted(sites.items()):
     if name not in manifest:
         print(f"UNMANIFESTED {site}: `{name}` is TRUSTed but has no TRUSTED.md row")
         bad += 1
-    elif norm_effect(effect) != norm_effect(manifest[name][0]):
-        print(f"EFFECT-DRIFT {site}: `{name}` code effect `{effect}` != TRUSTED.md `{manifest[name][0]}`")
+        continue
+    meffect, tests, audit = manifest[name]
+    if norm_effect(effect) != norm_effect(meffect):
+        print(f"EFFECT-DRIFT {site}: `{name}` code effect `{effect}` != TRUSTED.md `{meffect}`")
         bad += 1
-    elif not manifest[name][1].strip():
+    if not tests.strip():
         print(f"UNTESTED {site}: `{name}` has an empty Tests cell in TRUSTED.md")
+        bad += 1
+    try:
+        audit_date = dt.date.fromisoformat(audit.strip())
+    except ValueError:
+        print(f"BAD-AUDIT-DATE TRUSTED.md: `{name}` has invalid Last audited `{audit}`")
+        bad += 1
+        continue
+    age = (today() - audit_date).days
+    if age < 0:
+        print(f"FUTURE-AUDIT TRUSTED.md: `{name}` Last audited `{audit}` is in the future")
+        bad += 1
+    elif age > MAX_AUDIT_AGE_DAYS:
+        print(f"STALE-AUDIT TRUSTED.md: `{name}` Last audited `{audit}` is {age} day(s) old")
         bad += 1
 for word in sorted(manifest):
     if word not in sites:

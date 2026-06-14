@@ -58,6 +58,7 @@ def findings(path: pathlib.Path, label: str) -> list[dict[str, object]]:
             continue
         if word in UNSAFE:
             bad.append({
+                "schema_version": 1,
                 "code": "E-AOT-UNSUPPORTED",
                 "file": label,
                 "line": tok.line,

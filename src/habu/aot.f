@@ -88,6 +88,7 @@ create AENB 20 allot  variable AENV  variable AENN
    AENN @ BEGIN dup 0 > WHILE 1 - dup AENB + c@ AE1 REPEAT drop ;
 : AOT-UNSAFE-JSON {: caller callee :}
    123 AE1
+   s" schema_version" AEJKEY 1 AEJNUM 44 AE1
    s" code" AEJKEY s" E-AOT-UNSUPPORTED" AEJSTR 44 AE1
    s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
    s" word" AEJKEY caller 24 + caller 16 + @ $FF and AEJSTR 44 AE1
@@ -127,6 +128,7 @@ MAX-CLO CLO-LIMIT!
 : IN-CLO? {: r :}  0 CX ! BEGIN CX @ NCLO @ < WHILE CX @ cells CLO + @ r = IF -1 exit THEN CX @ 1+ CX ! REPEAT 0 ;
 : CLO-OVERFLOW-JSON {: r :}
    123 AE1
+   s" schema_version" AEJKEY 1 AEJNUM 44 AE1
    s" code" AEJKEY s" E-AOT-CLOSURE-LIMIT" AEJSTR 44 AE1
    s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
    s" reachable_count" AEJKEY NCLO @ AEJNUM 44 AE1

@@ -44,6 +44,7 @@ def findings(path: pathlib.Path, label: str) -> list[dict[str, object]]:
         if tok.kind == "word" and tok.text.lower() == ":":
             if i + 1 >= len(toks) or toks[i + 1].kind != "word":
                 bad.append({
+                    "schema_version": 1,
                     "code": "E-MISSING-NAME",
                     "file": label,
                     "line": tok.line,
@@ -59,6 +60,7 @@ def findings(path: pathlib.Path, label: str) -> list[dict[str, object]]:
             kind = sig_kind(sig)
             if kind == "optout":
                 bad.append({
+                    "schema_version": 1,
                     "code": "E-UNVERIFIED-SIGNATURE",
                     "file": label,
                     "line": name.line,
@@ -70,6 +72,7 @@ def findings(path: pathlib.Path, label: str) -> list[dict[str, object]]:
                 })
             elif kind == "missing":
                 bad.append({
+                    "schema_version": 1,
                     "code": "E-MISSING-SIGNATURE",
                     "file": label,
                     "line": name.line,

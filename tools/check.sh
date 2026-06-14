@@ -5,16 +5,18 @@ set -e
 cd "$(dirname "$0")/.."
 JSON=0
 STRICT=0
+ALL=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --json-errors) JSON=1; shift ;;
     --strict-signatures) STRICT=1; shift ;;
+    --all-errors) ALL=1; shift ;;
     --) shift; break ;;
-    -*) echo "usage: tools/check.sh [--json-errors] [--strict-signatures] [prog.f]"; exit 64 ;;
+    -*) echo "usage: tools/check.sh [--json-errors] [--strict-signatures] [--all-errors] [prog.f]"; exit 64 ;;
     *) break ;;
   esac
 done
-[ "$#" -le 1 ] || { echo "usage: tools/check.sh [--json-errors] [--strict-signatures] [prog.f]"; exit 64; }
+[ "$#" -le 1 ] || { echo "usage: tools/check.sh [--json-errors] [--strict-signatures] [--all-errors] [prog.f]"; exit 64; }
 [ -x bin/habu ] || { echo "check.sh: bin/habu missing (run tools/snap-hb.sh first)"; exit 69; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/habu-check.XXXXXX")
 cleanup() { rm -rf "$T"; }
@@ -37,6 +39,11 @@ fi
 if [ "$STRICT" = 1 ]; then
   ./tools/signature-lint.py $LINT_JSON --label "$LABEL" "$SRC" >&2
 fi
+if [ "$ALL" = 1 ]; then
+  if [ "$JSON" = 1 ]; then JSON_ARG=--json-errors; else JSON_ARG=; fi
+  ./tools/check-all-errors.py $JSON_ARG --label "$LABEL" "$SRC"
+  exit $?
+fi
 case "$LABEL" in
   *\"*) echo "check.sh: source path contains a double quote, cannot set DIAG-FILE"; exit 64 ;;
 esac
@@ -51,4 +58,15 @@ cat >> "$RUN" <<'EOF'
 ' CHECK-SH-HOOK set-check
 EOF
 ./tools/diag-origin.py "$SRC" >> "$RUN"
-bin/habu < "$RUN"
+if [ "$JSON" = 1 ]; then
+  ERR=$T/stderr
+  if bin/habu < "$RUN" 2>"$ERR"; then
+    cat "$ERR" >&2
+  else
+    rc=$?
+    ./tools/json-only.py "$ERR" >&2
+    exit "$rc"
+  fi
+else
+  bin/habu < "$RUN"
+fi

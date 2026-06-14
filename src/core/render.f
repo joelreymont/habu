@@ -195,6 +195,7 @@ variable JPOS  variable JLINE  variable JCOL
 : DIAG-JSON
    JLOC-CALC
    123 EMIT1                                              \ {
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
    s" code" JKEY   DCODE JSTR  44 EMIT1
    s" verdict" JKEY DVERDICT JSTR  44 EMIT1
    s" word" JKEY   NMA @ NMU @ JSTR   44 EMIT1

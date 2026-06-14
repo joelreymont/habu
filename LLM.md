@@ -32,6 +32,13 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   `printf ': SQUARE ( i64 -- i64 ) dup * ;\n' | bin/habu`
   An accepted def is silently added; a rejected one is dropped. For interactive
   **verify mode** (body vs declared sig), prepend `' CHECK! set-check`.
+- For repair loops, prefer the wrapper:
+  `./tools/check.sh --json-errors --all-errors file.f`.
+  It exits nonzero on checker failure and emits one schema-versioned JSON object
+  per failed top-level definition with file/line/column/byte spans. Use
+  `tools/diag-to-sarif.py` when the diagnostics need to enter CI/review UIs.
+- Use `tools/public-signatures.py file.f` to expose typed public words as a
+  machine-readable manifest for an agent or downstream package.
 - Authoritative verdict (-1 certified / 0 rejected / 1 uncheckable) via the
   gforth-hosted checker — same harness as `test/t-sh-verify.fs`: feed
   `: NAME ( sig ) body ;` to the `V` word there. `CHECK` = infer the body's

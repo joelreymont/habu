@@ -22,7 +22,8 @@ require sh-driver.fs
 
 \ JSON on: the reject surfaces as a JSON object naming the code + word, plus
 \ machine-readable repair context.
-T{ -1 SRC ERR-OF  s\" {\"code\":\"E-MISMATCH\"" HAS? -> true }T
+T{ -1 SRC ERR-OF  s\" {\"schema_version\":1" HAS? -> true }T
+T{ -1 SRC ERR-OF  s\" \"code\":\"E-MISMATCH\"" HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"verdict\":\"rejected\"" HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"word\":\"sqbad\""        HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"token\":\"dup\""         HAS? -> true }T

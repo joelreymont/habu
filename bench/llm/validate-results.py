@@ -8,13 +8,20 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 TASKS = ROOT / "bench/llm/tasks.tsv"
 RESULTS = ROOT / "bench/llm/results/reference.jsonl"
 REQUIRED = {
+    "schema_version",
+    "run_id",
     "task_id",
     "name",
     "model",
+    "attempt",
     "first_pass_checker",
     "first_pass_tests",
+    "tests_passed",
     "repair_iterations",
+    "checker_iterations",
+    "diagnostic_count",
     "tokens_used",
+    "wall_ms",
     "final_chars",
     "trust_uses",
     "signature_weakened",
@@ -47,16 +54,30 @@ with RESULTS.open() as f:
             fail(f"{RESULTS}:{line_no}: task/name drift for id {tid}")
         if row["model"] != "reference":
             fail(f"{RESULTS}:{line_no}: reference file contains non-reference model")
+        if row["schema_version"] != 1:
+            fail(f"{RESULTS}:{line_no}: unsupported schema_version")
+        if not row["run_id"]:
+            fail(f"{RESULTS}:{line_no}: empty run_id")
+        if row["attempt"] != 1:
+            fail(f"{RESULTS}:{line_no}: reference should be attempt 1")
         if row["first_pass_checker"] != "certified":
             fail(f"{RESULTS}:{line_no}: reference solution not certified")
         if row["first_pass_tests"] is not True:
             fail(f"{RESULTS}:{line_no}: reference tests not passing")
+        if row["tests_passed"] is not True:
+            fail(f"{RESULTS}:{line_no}: final tests not passing")
         if row["repair_iterations"] != 0:
             fail(f"{RESULTS}:{line_no}: reference should need zero repairs")
+        if row["checker_iterations"] != 1:
+            fail(f"{RESULTS}:{line_no}: reference should need one checker iteration")
+        if row["diagnostic_count"] != 0:
+            fail(f"{RESULTS}:{line_no}: reference should have zero diagnostics")
         if row["trust_uses"] != 0:
             fail(f"{RESULTS}:{line_no}: benchmark task used TRUST")
         if row["signature_weakened"] is not False:
             fail(f"{RESULTS}:{line_no}: reference weakened a signature")
+        if not isinstance(row["wall_ms"], int) or row["wall_ms"] < 0:
+            fail(f"{RESULTS}:{line_no}: invalid wall_ms")
         if not isinstance(row["final_chars"], int) or row["final_chars"] <= 0:
             fail(f"{RESULTS}:{line_no}: invalid final_chars")
 

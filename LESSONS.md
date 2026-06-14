@@ -36,6 +36,19 @@ that origin with the relative token span. Keep those markers out of the final
 diagnostic helper words, and the user program has already been verified against
 the wrapped check source.
 
+## Agent diagnostics are an API, not stderr prose (2026-06-14)
+
+Once `--json-errors` became an agent contract, field order and mixed stderr
+started to matter. A native `die` after a JSON diagnostic is correct for process
+control but wrong as an API payload; wrappers now preserve only valid JSON object
+lines when at least one exists, while passing raw stderr through for unexpected
+non-JSON failures. Every diagnostic producer carries `schema_version: 1`, and
+`tools/check.sh --all-errors` batches top-level definition failures so agents
+can repair independent mistakes in one pass. The SARIF adapter and public
+signature manifest keep those same source spans usable outside the CLI. Trust
+audits now age out through `trust-lint`; a TRUST row is not permanent just because
+the effect string still matches.
+
 ## AOT-unsafe words can be inlined away from closure scans (2026-06-14)
 
 The first stripped-AOT guard rejected unsupported data-space words during native

@@ -47,6 +47,14 @@ out=$(printf ': PSH ( R -- R i64 ) 5 ;\nPSH .\n' | $T/hb-warm 2>/dev/null)
 [ "$out" = "5" ] || { echo "FAIL: snapshot named-row sig run (got: $out)"; exit 1; }
 [ -x bin/habu ] || { echo "FAIL: bin/habu (checked REPL) not produced"; exit 1; }
 printf ': JBAD ( i64 -- i64 ) dup ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json.err && { echo "FAIL: tools/check.sh --json-errors accepted bad def"; exit 1; }
+python3 - "$T/habu-json.err" <<'PY'
+import json, pathlib, sys
+lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
+assert lines and all(line.startswith("{") for line in lines), lines
+for line in lines:
+    obj = json.loads(line)
+    assert obj["schema_version"] == 1, obj
+PY
 grep -q '"verdict":"rejected"' $T/habu-json.err || { echo "FAIL: --json-errors missing verdict"; exit 1; }
 grep -q '"declared_effect":"i64 -- i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing declared effect"; exit 1; }
 grep -q '"inferred_effect":"i64 -- i64 i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing inferred effect"; exit 1; }
@@ -82,6 +90,39 @@ printf ': NOSIG dup ;\n' | ./tools/check.sh --strict-signatures --json-errors >$
 grep -q '"code":"E-MISSING-SIGNATURE"' $T/habu-strict-json.out || { echo "FAIL: strict-signatures missing JSON diagnostic"; exit 1; }
 printf ': X ( infer ) dup ;\n' | ./tools/check.sh --strict-signatures --json-errors >$T/habu-strict-infer.out 2>&1 && { echo "FAIL: tools/check.sh --strict-signatures accepted infer opt-out"; exit 1; }
 grep -q '"code":"E-UNVERIFIED-SIGNATURE"' $T/habu-strict-infer.out || { echo "FAIL: strict-signatures missing opt-out diagnostic"; exit 1; }
+cat > $T/habu-all-errors.f <<'EOF'
+: OK ( i64 -- i64 ) dup * ;
+: BAD1 ( i64 -- i64 ) dup ;
+: BAD2 ( i64 -- ) >r ;
+EOF
+./tools/check.sh --json-errors --all-errors $T/habu-all-errors.f >/dev/null 2>$T/habu-all-errors.err && { echo "FAIL: tools/check.sh --all-errors accepted bad defs"; exit 1; }
+python3 - "$T/habu-all-errors.err" <<'PY'
+import json, pathlib, sys
+objs = [json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines()]
+assert len(objs) == 2, objs
+assert {obj["word"] for obj in objs} == {"bad1", "bad2"}, objs
+assert all(obj["schema_version"] == 1 for obj in objs), objs
+PY
+./tools/diag-to-sarif.py $T/habu-all-errors.err > $T/habu-all-errors.sarif
+python3 - "$T/habu-all-errors.sarif" <<'PY'
+import json, pathlib, sys
+sarif = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert sarif["version"] == "2.1.0", sarif
+results = sarif["runs"][0]["results"]
+assert len(results) == 2, results
+assert all(r["locations"][0]["physicalLocation"]["region"]["startLine"] for r in results), results
+PY
+./tools/public-signatures.py examples/llm/good.f > $T/public-signatures.json
+python3 - "$T/public-signatures.json" <<'PY'
+import json, pathlib, sys
+doc = json.loads(pathlib.Path(sys.argv[1]).read_text())
+defs = {item["word"]: item for item in doc["definitions"]}
+assert doc["schema_version"] == 1, doc
+assert defs["SQUARE"]["signature"] == "(i64 -- i64)", defs["SQUARE"]
+assert defs["APPLY"]["signature"] == "(i64 [ i64 -- i64 ] -- i64)", defs["APPLY"]
+PY
+TRUST_LINT_TODAY=2026-10-01 ./tools/trust-lint.py >$T/trust-stale.out 2>&1 && { echo "FAIL: trust-lint accepted stale audit dates"; exit 1; }
+grep -q 'STALE-AUDIT' $T/trust-stale.out || { echo "FAIL: trust-lint stale audit diagnostic missing"; exit 1; }
 echo "PASS: AOT snapshot (warm toolchain boot) + getenv + sig-check (rows+quots) + bin/habu"
 HT=$(mktemp -d)
 HB_TMP=$HT ./tools/snap-hb.sh >/dev/null && [ -x "$HT/hb-warm" ] || { echo "FAIL: HB_TMP isolation"; exit 1; }
@@ -97,6 +138,14 @@ printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE +
 [ "$($T/hb-at)" = "55" ] || { echo "FAIL: hb-build AOT output (got: $($T/hb-at))"; exit 1; }
 ATX=$(size -m $T/hb-at 2>/dev/null | awk '/__text/{print $3}')
 [ "${ATX:-99999}" -lt 2000 ] || { echo "FAIL: hb-build AOT did not strip the engine (__text=$ATX, expected <2000)"; exit 1; }
+./tools/aot-call-report.py $T/hb-at > $T/hb-at-call-report.json
+python3 - "$T/hb-at-call-report.json" <<'PY'
+import json, pathlib, sys
+doc = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert doc["schema_version"] == 1, doc
+assert doc["file_bytes"] > 0, doc
+assert doc["padding_bytes"] == doc["patched_call_stencils"] * 12, doc
+PY
 echo "PASS: hb-build AOT (engine stripped, __text $ATX B vs ~11800 embed)"
 # AOT closure stress: a 260-word reachable chain (above the old 256-cell tables,
 # which silently overflowed and crashed the linker). Must build and compute 260.
@@ -130,6 +179,7 @@ grep -q 'check did not certify' $T/hb-uncheckable.err || { echo "FAIL: hb-build 
 printf ': MAIN ( -- ) here . CR ;\n' > $T/hb-aot-unsafe.f
 ./tools/hb-build.sh --json-errors $T/hb-aot-unsafe.f -o $T/hb-aot-unsafe >/dev/null 2>$T/hb-aot-unsafe.err && { echo "FAIL: hb-build AOT accepted here"; exit 1; }
 grep -q '"code":"E-AOT-UNSUPPORTED"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing JSON code"; exit 1; }
+grep -q '"schema_version":1' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing schema version"; exit 1; }
 grep -q '"token":"here"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing token"; exit 1; }
 grep -q '"word":"MAIN"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing word"; exit 1; }
 grep -q '"reason":"stripped AOT has no persistent data region"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing reason"; exit 1; }
@@ -140,9 +190,17 @@ grep -q '"byte_end":' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe 
   printf ': MAIN ( -- ) 1 W0 drop ;\n'; } > $T/hb-clo-limit.f
 ./tools/hb-build.sh --json-errors $T/hb-clo-limit.f -o $T/hb-clo-limit >/dev/null 2>$T/hb-clo-limit.err && { echo "FAIL: hb-build accepted closure over MAX-CLO"; exit 1; }
 grep -q '"code":"E-AOT-CLOSURE-LIMIT"' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing JSON code"; exit 1; }
+grep -q '"schema_version":1' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing schema version"; exit 1; }
 grep -q '"reachable_count":8' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing reachable_count"; exit 1; }
 grep -q '"max_closure":8' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing max_closure"; exit 1; }
 grep -q '"root_word":"MAIN"' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing root_word"; exit 1; }
+python3 - "$T/hb-clo-limit.err" <<'PY'
+import json, pathlib, sys
+lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
+assert len(lines) == 1 and lines[0].startswith("{"), lines
+obj = json.loads(lines[0])
+assert obj["schema_version"] == 1, obj
+PY
 echo "PASS: hb-build strict signatures + uncheckable/AOT-unsafe rejection"
 # hb-build default AOT must verify declared signatures and treat rejection as fatal.
 printf ': BAD ( i64 -- i64 ) 0= ;\n: MAIN ( -- ) 0 BAD . CR ;\n' > $T/hb-badsig.f

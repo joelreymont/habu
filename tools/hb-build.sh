@@ -96,7 +96,18 @@ else
   sed 's/^[[:space:]]*EXPORT /\\ EXPORT /' "$USRC" > "$ISRC"
 fi
 rm -f "$GOTPATH"
-"$MKPATH"
+if [ "$JSON" = 1 ]; then
+  ERR=$T/maker-stderr
+  if "$MKPATH" 2>"$ERR"; then
+    cat "$ERR" >&2
+  else
+    rc=$?
+    ./tools/json-only.py "$ERR" >&2
+    exit "$rc"
+  fi
+else
+  "$MKPATH"
+fi
 [ -f "$GOTPATH" ] || { echo "hb-build: maker did not produce $GOT"; exit 74; }
 mv "$GOTPATH" "$OUT"
 chmod +x "$OUT"
