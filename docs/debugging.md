@@ -36,8 +36,8 @@ persistent but **silent for the first N hits** (skip-count). `BP-` removes;
 `BP.` lists. Up to 8 at once. The SIGTRAP handler (`EMIT-TRAPH`) resumes via
 `sigreturn` with the trampoline token; code is patched through the `patch32`
 prim (RW→store→RX→isync, atomic from JIT-resident code). A full
-Forth-predicate conditional would need signal-safe deferred evaluation and is
-not implemented — skip-count covers the common case.
+Forth-predicate conditional would need signal-safe deferred evaluation; the
+supported conditional breakpoint mechanism is skip-count (`BPN`).
 
 ## lldb — native stepping (habu-built binaries)
 lldb works on habu/standalone binaries (needs the admin password once). Reveals

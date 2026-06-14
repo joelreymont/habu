@@ -303,11 +303,10 @@ forward-depends on a later one: I/O prims are hand-emitted runtime routines in A
     ARM64 numbers (`write=4 exit=1 mmap=197 mprotect=74`, `svc #0x80`, x16, no
     `0x2000000` mask) → `LESSONS.md` + named constants. *Accept:* the stub prints
     a known string and exits; bytes verified.
-0.3 **The speed gap is real.** Inner loop (arith + `@`/`c@` + a branch) three
-    ways: checked-habu (threaded), gforth-fast, hand-written native. Files
-    `bench/inner-loop.{fs,s}`, `bench/run.sh`; specify timing (iterations,
-    `utime`, warmup, ns/op). *Accept:* ns/op table; native ≥2× over gforth-fast →
-    proceed; else write the finding and **stop**.
+0.3 **The speed gap is real.** Inner loop (arith + `@`/`c@` + a branch) with a
+    hand-written native baseline in `bench/inner-loop.s`; historical gforth
+    microbench wrappers were removed once gforth became bootstrap-only. *Accept:*
+    native timings justify backend work; else write the finding and **stop**.
 
 ### Phase 1 — ARM64 assembler (Forth, golden-tested)
 

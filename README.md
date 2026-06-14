@@ -1,6 +1,7 @@
 # habu — Checked Forth
 
-A complete, **checked Forth** hosted by and self-hosted in Gforth. Checked code
+A complete, **checked Forth** with a native self-hosted macOS ARM64 engine.
+Gforth is kept only as the bootstrap seed. Checked code
 is ordinary Forth that fails to compile unless its body's inferred stack effect
 unifies with its declared effect — so an LLM (or human) writing Forth gets the
 stack discipline enforced by the compiler, not by hand.
@@ -51,9 +52,8 @@ Then `: NAME ( typed-effect ) body ;` is checked; `: NAME body ;` (no typed
 effect) is the ordinary Forth colon, untouched.
 
 ```sh
-gforth bootstrap/examples.fs   # runnable checked programs
 ( cd test && ./run.sh )        # default gate: habu-native, no gforth, <10 s
-( cd test && ./run.sh full )   # + tools/oracle.sh: the gforth differential
+./tools/bootstrap-oracle.sh    # bootstrap-only gforth differential
 ```
 
 ## The type system
@@ -116,7 +116,7 @@ unify against them — `ptr` is typed as an address instead.
 - [`CODEGEN-PLAN.md`](CODEGEN-PLAN.md) — the native backend / self-host design.
 - [`docs/forth.md`](docs/forth.md) — Forth coding standards for this repo.
 - [`LESSONS.md`](LESSONS.md) — build recipe + findings (the project's memory).
-- `bootstrap/src/` — the gforth-hosted full checker, one file per concern;
+- `bootstrap/src/` — the gforth-hosted bootstrap checker, one file per concern;
   `bootstrap/habu.fs` adds the `:` override. `bootstrap/cg/` — the gforth-hosted
   engine builder (ICode, encoders, Mach-O, jit, disassembler, profiler, crash
   handler).
@@ -127,9 +127,9 @@ unify against them — `ptr` is typed as an address instead.
   signing).
 - `test/` — `T{ … }T` tests. `test/run.sh` is the DEFAULT gate, habu-native
   end to end: lints + self-rebuild fixpoint + hb-suite + warm-snapshot boot +
-  tty REPL + hb-build (runs with gforth absent). `tools/oracle.sh` is the
-  gforth differential (the gforth-hosted suite + the boot-vs-port goldens) —
-  run it before pushing emitter changes, or `run.sh full` for both. `tools/`
+  tty REPL + hb-build (runs with gforth absent). `tools/bootstrap-oracle.sh` is
+  the bootstrap-only gforth differential (the gforth-hosted suite + the
+  boot-vs-port goldens). `tools/`
   also holds bootstrap/build/hb-build/probe/imgdump/jitdump/parity-lint/
   clobber-lint/shadow-lint/repl-lint, and `snap-hb.sh` for the AOT snapshot binary
   (boots the whole toolchain warm in ~3 ms).

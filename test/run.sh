@@ -2,11 +2,16 @@
 # run.sh — the DEFAULT gate: habu-native, no gforth anywhere on the path.
 #   lints -> self-rebuild fixpoint -> hb-suite -> AOT snapshot -> tty REPL ->
 #   hb-build standalone.
-# The gforth differential (boot-vs-port goldens + the gforth-hosted checker
-# suite) lives in tools/oracle.sh — run it before pushing emitter changes.
-# `test/run.sh full` runs both.
 set -e
 cd "$(dirname "$0")/.."
+if [ "${1:-}" = "full" ]; then
+  echo "FAIL: test/run.sh full retired; run ./tools/bootstrap-oracle.sh only for bootstrap recovery"
+  exit 64
+fi
+if [ "$#" -gt 0 ]; then
+  echo "usage: test/run.sh"
+  exit 64
+fi
 T=${HB_TMP:-/tmp}
 ./tools/parity-lint.py || { echo "FAIL: parity-lint"; exit 1; }
 ./tools/shadow-lint.py || { echo "FAIL: shadow-lint"; exit 1; }
@@ -145,15 +150,17 @@ doc = json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert doc["schema_version"] == 1, doc
 assert doc["file_bytes"] > 0, doc
 assert doc["padding_bytes"] == doc["patched_call_stencils"] * 12, doc
+assert doc["patched_call_stencils"] == 0, doc
 assert doc["direct_bl_instructions"] > 0, doc
 PY
 echo "PASS: hb-build AOT (engine stripped, __text $ATX B vs ~11800 embed)"
-# AOT compacts reachable call stencils inside straight-line blobs: a non-inline
-# call becomes one BL instead of NOP,NOP,NOP,BL padding. Branch/string blobs keep
-# the fixed-width path unless proven safe.
-printf ': BIG ( i64 -- i64 ) 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ ;\n: WRAP ( i64 -- i64 ) BIG 1+ ;\n: MAIN ( -- ) 1 WRAP . CR ;\n' > $T/hb-compact.f
+# AOT compacts reachable call stencils inside blobs that also contain branches
+# and embedded S" bodies. The linker rewrites B/CBZ/ADR through an old->new byte
+# map, so there must be no leftover NOP,NOP,NOP,BL padding.
+printf ': BIG ( i64 -- i64 ) 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ ;\n: WRAP ( i64 -- i64 ) DUP 0< IF NEGATE ELSE BIG THEN 1+ ;\n: MAIN ( -- ) 1 WRAP . s" ok" type CR ;\n' > $T/hb-compact.f
 ./tools/hb-build.sh $T/hb-compact.f -o $T/hb-compact >/dev/null || { echo "FAIL: hb-build AOT compact calls"; exit 1; }
-[ "$($T/hb-compact)" = "22" ] || { echo "FAIL: hb-build AOT compact call output (got: $($T/hb-compact))"; exit 1; }
+[ "$($T/hb-compact)" = "22
+ok" ] || { echo "FAIL: hb-build AOT compact call output (got: $($T/hb-compact))"; exit 1; }
 ./tools/aot-call-report.py $T/hb-compact > $T/hb-compact-call-report.json
 python3 - "$T/hb-compact-call-report.json" <<'PY'
 import json, pathlib, sys
@@ -242,7 +249,4 @@ fi
 grep -q "expected: i64" $T/hb-rt-bad.err || { echo "FAIL: hb-build --repl diagnostic lost expected type"; exit 1; }
 grep -q "actual: bool" $T/hb-rt-bad.err || { echo "FAIL: hb-build --repl diagnostic lost actual type"; exit 1; }
 echo "PASS: hb-build --repl verifies user defs ($(stat -f%z $T/hb-rt) B, engine + library)"
-if [ "$1" = "full" ]; then
-  ./tools/oracle.sh || exit 1
-fi
-echo "PASS: native gate (fixpoint + hb-suite + snapshot + repl + hb-build)${1:+ + oracle}"
+echo "PASS: native gate (fixpoint + hb-suite + snapshot + repl + hb-build)"

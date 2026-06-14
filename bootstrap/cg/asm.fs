@@ -119,7 +119,7 @@ CHECKING-ON? on
 : ENC-ASRV ( R i64 -- R )  $9AC02800 RRR EMITW ;
 CHECKING-ON? off
 
-\ --- remaining encoders (return-stack juggling; not yet in the checkable subset) ---
+\ --- trusted encoders (return-stack juggling / table-memory machinery) ---
 : ENC-MOVZ ( i -- )  >r r@ IC-A r> IC-B 0 MOVZHW EMITW ;
 
 : ENC-MOVK ( i -- )  >r r@ IC-A r@ IC-B r> IC-C 16 / MOVKHW EMITW ;

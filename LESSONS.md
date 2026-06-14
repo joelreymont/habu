@@ -18,18 +18,48 @@ declared signature string; use rendered inferred effects only for infer-mode
 definitions. Regression: `t-sh-verify` covers recursive `FIB`, recursive
 rejection, and a certified caller of recursive `FIB`.
 
-## AOT call compaction needs a PC-relative safety boundary (2026-06-14)
+## AOT compaction needs separate copy and map cursors (2026-06-14)
+
+The full AOT compactor now deletes reachable call-stencil padding even inside
+blobs that contain branches and embedded `S"` data. The durable shape is a
+planned old-byte to new-byte map: calls map their first word to one `BL`, removed
+padding maps to "no address", and ordinary words/data preserve byte offsets. Use
+that map for every PC-relative source (`B/BL`, `B.cond`, `CBZ/CBNZ`, `TBZ/TBNZ`,
+`ADR`) and range-check the re-encoded immediate; fail closed if a branch points
+into deleted padding or an `ADRP` appears in a stripped-AOT blob.
+
+The first implementation reused the copy loop's `CP2`/`CEND` while resolving a
+PC-relative target. That nested map walk returned with the outer copy cursor
+clobbered, then emitted until the code buffer overflowed. Keep mapper cursors
+separate from emit cursors (`MAPP`/`MAPE` vs `CP2`/`CEND`) whenever relocation
+looks back through the input blob. Regression: the native gate now asserts FIB,
+a branch-containing call wrapper, and an `S"` blob all build with zero padded
+`NOP,NOP,NOP,BL` stencils.
+
+## Gforth belongs behind the bootstrap boundary (2026-06-14)
+
+Once the native engine can rebuild, check, benchmark LLM answers, and probe from
+`bin/hbi`, gforth should not remain in the daily workflow as a convenience
+wrapper. Keep it in `tools/bootstrap.sh` and the explicitly named
+`tools/bootstrap-oracle.sh` for seed/reference recovery; move ordinary checks to
+native scripts (`test/run.sh`, `tools/check.sh`, `bench/llm/run.sh`,
+`tools/probe.sh`). Old one-shot reports and gforth-only microbench wrappers are
+liabilities after the boundary moves: they keep retired oracle commands
+discoverable and make future agents think gforth is still an
+active implementation path.
+
+## AOT call compaction first needed a PC-relative boundary (2026-06-14)
 
 Deleting the three padding words from a rewritten call stencil is only safe when
 the containing blob has no internal PC-relative instructions. Branches and
 ADR/ADRP string addresses are relative to instruction positions; removing bytes
 before their source or target silently corrupts native code unless the linker has
 a full old-to-new relocation map for code and embedded data. The safe first step
-is a planned dense layout that compacts straight-line blobs and leaves any blob
-with B/BL/B.cond/CBZ/TBZ/ADR/ADRP on the fixed-width NOP,NOP,NOP,BL path. The
-gate must include both: a straight-line non-inline call fixture that proves
-padding disappears, and branch/string/closure fixtures that prove conservative
-fallback behavior still runs.
+was a planned dense layout that compacted straight-line blobs and left any blob
+with B/BL/B.cond/CBZ/TBZ/ADR/ADRP on the fixed-width NOP,NOP,NOP,BL path. That
+first-step gate needed both: a straight-line non-inline call fixture that proved
+padding disappeared, and branch/string/closure fixtures that proved conservative
+fallback behavior still ran.
 
 ## Codegen metadata cells need direct record tests (2026-06-14)
 
@@ -88,8 +118,8 @@ While validating the LLM benchmark I ran multiple gforth/native smoke tests in
 parallel; each used `test/nf.fs`, which writes and executes the fixed path
 `/tmp/nf-bin`. The benchmark briefly reported only `1/30` certified because a
 concurrent probe replaced the executable mid-run. Do not parallelize `NF-RUN`
-tests unless each gets an isolated output path. Sequential `bench/llm/run.sh` and
-`tools/oracle.sh` were green.
+tests unless each gets an isolated output path. Sequential LLM benchmark and
+gforth-oracle gates were green.
 
 ## Feature growth must move the dict guard, not shrink coverage (2026-06-14)
 
@@ -833,7 +863,8 @@ Then added CONSTANT FOLDING: VS entries are tagged reg-or-constant; a binop with
 constant operands folds at compile time (no code). `5 dup *` now folds to `movz x9,#25`
 — 5 instructions, the multiply gone. `2 3 4 + *` folds entirely to 14. So: 16 (memory)
 -> 7 (registers) -> 5 (folding). The standalone is now a genuinely OPTIMIZING native
-compiler. Still straight-line only (control flow + FP + spill are the remaining work).
+compiler. At that point it handled branchless bodies; control flow, FP, and
+spills were the remaining work.
 
 ## Standalone peephole optimizer + the `i`-local footgun (2026-06-11)
 
@@ -1447,8 +1478,8 @@ caught — which is the real value the dot asked for.
 
 ## Codegen Phase 0.3 — speed gate (superseded by the dispatch bench above)
 
-Serial scalar LCG (`x = x*A + C`, 1e9 iters; `bench/inner-loop.{fs,s}` +
-`bench/run.sh`). **Native baseline must be hand-written ARM64** (`inner-loop.s` —
+Serial scalar LCG (`x = x*A + C`, 1e9 iters; historical Forth runner plus
+`bench/inner-loop.s`). **Native baseline must be hand-written ARM64** (`inner-loop.s` —
 the exact `mul; add` habu emits), NOT clang `-O2` C: clang unrolled/scheduled to
 0.97 ns/iter, flattering native; the faithful naive loop is **1.26 ns/iter** and
 **unroll-8 is identical (1.26)** → the loop is **latency-bound** (mul→add serial

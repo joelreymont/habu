@@ -1,6 +1,6 @@
 /* dispatch.c — the dispatch-bound byte-mix as C, for an LLVM (clang -O3)
-   baseline. Same algorithm/seed as dispatch.fs and dispatch.s. This is the bar
-   a native Forth backend must rival — gforth is not the competition. */
+   baseline. Same algorithm/seed as dispatch.s. This is the bar a native Forth
+   backend must rival. */
 #include <stdint.h>
 static uint8_t buf[65536];
 int main(void){

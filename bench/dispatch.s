@@ -1,7 +1,7 @@
 // dispatch.s — native baseline for the dispatch-bound bench. Hand-written ARM64:
 // the instructions caf's backend will emit for the xorshift byte-mix. The 3
-// `dup<<n xor` Forth ops each become ONE shifted-EOR. Same hash as dispatch.fs
-// (seed 1, buf[i]=i&0xff). Exits with low byte of the hash for a cross-check.
+// `dup<<n xor` Forth ops each become ONE shifted-EOR. Seed 1, buf[i]=i&0xff.
+// Exits with low byte of the hash for a cross-check.
 .global _main
 .align 2
 .section __DATA,__bss

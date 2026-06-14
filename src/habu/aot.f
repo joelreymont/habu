@@ -169,10 +169,9 @@ variable WI
 : CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop s" aot: no MAIN" 74 die THEN  dup ROOTREC !  ADD-CLO
    0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ cells CLO + @ SCAN-REC  WI @ 1+ WI ! REPEAT ;
 
-\ --- emit the image: minimal entry + copied blobs, then relocate the calls.
+\ --- emit the image: minimal entry + compacted, relocated blobs.
 variable MLBL  variable REC2
 create OLDA MAX-CLO cells allot   create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
-create CDENSE MAX-CLO cells allot
 : EMIT-ENTRY
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
@@ -184,21 +183,11 @@ variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
 : BCOND? {: w :}  w $FF000010 and $54000000 = ;
 : CBZIMM? {: w :}  w $7E000000 and $34000000 = ;
 : TBZIMM? {: w :}  w $7E000000 and $36000000 = ;
-: ADRIMM? {: w :}  w $9F000000 and dup $10000000 = swap $90000000 = or ;
-: PCREL? {: w :}  w BIMM? w BCOND? or w CBZIMM? or w TBZIMM? or w ADRIMM? or ;
+: ADR? {: w :}  w $9F000000 and $10000000 = ;
+: ADRP? {: w :}  w $9F000000 and $90000000 = ;
 : RAW-LEN {: r :}  r 8 + @ 4 + ;
-: COMPACTABLE? {: r :}
-   r @ CP2 !  r @ r RAW-LEN + CEND !
-   BEGIN CP2 @ CEND @ < WHILE
-      CP2 @ CEND @ CALL-AT? IF
-         CP2 @ 16 + CP2 !
-      ELSE
-         CP2 @ W32@ PCREL? IF 0 EXIT THEN
-         CP2 @ 4 + CP2 !
-      THEN
-   REPEAT -1 ;
+: REC-END {: r :}  r @ r RAW-LEN + ;
 : COMPACT-LEN {: r :}
-   r COMPACTABLE? 0= IF r RAW-LEN EXIT THEN
    0 CLEN !  r @ CP2 !  r @ r RAW-LEN + CEND !
    BEGIN CP2 @ CEND @ < WHILE
       CP2 @ CEND @ CALL-AT? IF
@@ -217,7 +206,6 @@ variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
       WI @ cells CLO + @ REC2 !
       REC2 @ @         OLDA   WI @ cells + !
       NEXT-OFF @       NEWOFF WI @ cells + !
-      REC2 @ COMPACTABLE? CDENSE WI @ cells + !
       REC2 @ COMPACT-LEN dup BLEN WI @ cells + !
       NEXT-OFF @ + NEXT-OFF !
       WI @ 1+ WI ! REPEAT ;
@@ -231,11 +219,32 @@ variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
       CX @ 1+ CX ! REPEAT  -1 ;
 \ encode a compact PC-relative BL. The AOT __text is small today, but range
 \ checking makes linker corruption fail at build time if that ever changes.
-variable BDELTA
-: BL32 {: site target :}
-   target site - 4 / BDELTA !
-   BDELTA @ -33554432 <  BDELTA @ 33554431 > or IF s" aot: BL target out of range" 74 die THEN
-   BDELTA @ $3FFFFFF and $94000000 or ;
+variable BDELTA  variable TNEW
+: FIELD {: w lo width :}  w lo rshift  1 width lshift 1 - and ;
+: SX {: f width :}  f 1 width 1 - lshift xor  1 width 1 - lshift - ;
+: REL26 {: site target :}
+   target site - BDELTA !
+   BDELTA @ 3 and 0 <> IF s" aot: branch target not 4-byte aligned" 74 die THEN
+   BDELTA @ 4 / BDELTA !
+   BDELTA @ -33554432 <  BDELTA @ 33554431 > or IF s" aot: B/BL target out of range" 74 die THEN
+   BDELTA @ $3FFFFFF and ;
+: REL19 {: site target :}
+   target site - BDELTA !
+   BDELTA @ 3 and 0 <> IF s" aot: branch target not 4-byte aligned" 74 die THEN
+   BDELTA @ 4 / BDELTA !
+   BDELTA @ -262144 <  BDELTA @ 262143 > or IF s" aot: rel19 target out of range" 74 die THEN
+   BDELTA @ $7FFFF and ;
+: REL14 {: site target :}
+   target site - BDELTA !
+   BDELTA @ 3 and 0 <> IF s" aot: branch target not 4-byte aligned" 74 die THEN
+   BDELTA @ 4 / BDELTA !
+   BDELTA @ -8192 <  BDELTA @ 8191 > or IF s" aot: rel14 target out of range" 74 die THEN
+   BDELTA @ $3FFF and ;
+: BL32 {: site target :}  site target REL26 $94000000 or ;
+: ADRD32 {: site target :}
+   target site - BDELTA !
+   BDELTA @ -1048576 <  BDELTA @ 1048575 > or IF s" aot: ADR target out of range" 74 die THEN
+   BDELTA @ 3 and 29 lshift  BDELTA @ 2 rshift $7FFFF and 5 lshift or ;
 \ replace the 4-instr `movz/movk/movk x16; blr x16` at CODE byte offset `site`
 \ with `nop; nop; nop; bl target` (target = the callee's CODE offset).
 : PATCH-BL {: site target :}
@@ -243,8 +252,61 @@ variable BDELTA
    $D503201F CODE site 4 + + W32!
    $D503201F CODE site 8 + + W32!
    site 12 + target BL32  CODE site 12 + + W32! ;
+
+variable MAPOUT  variable MAPP  variable MAPE
+: REC-NEWOFF {: r :}  0 CX !
+   BEGIN CX @ NCLO @ < WHILE
+      CX @ cells CLO + @ r = IF NEWOFF CX @ cells + @ EXIT THEN
+      CX @ 1+ CX ! REPEAT  -1 ;
+: MAP-IN-BLOB {: r t :}
+   t r @ < IF -1 EXIT THEN
+   t r REC-END > IF -1 EXIT THEN
+   0 MAPOUT !  r @ MAPP !  r REC-END MAPE !
+   BEGIN MAPP @ MAPE @ < WHILE
+      MAPP @ MAPE @ CALL-AT?  MAPP @ CALL-IN-CLO? and IF
+         t MAPP @ = IF r REC-NEWOFF MAPOUT @ + EXIT THEN
+         t MAPP @ 16 + < IF -1 EXIT THEN
+         MAPOUT @ 4 + MAPOUT !  MAPP @ 16 + MAPP !
+      ELSE
+         t MAPP @ 4 + < IF r REC-NEWOFF MAPOUT @ +  t MAPP @ - + EXIT THEN
+         MAPOUT @ 4 + MAPOUT !  MAPP @ 4 + MAPP !
+      THEN
+   REPEAT
+   t MAPE @ = IF r REC-NEWOFF MAPOUT @ + ELSE -1 THEN ;
+: OLD>NEW {: t :}  0 CX !
+   BEGIN CX @ NCLO @ < WHILE
+      CX @ cells CLO + @ t MAP-IN-BLOB dup -1 <> IF EXIT THEN drop
+      CX @ 1+ CX ! REPEAT  -1 ;
+: MAP-TARGET {: r t :}
+   r t MAP-IN-BLOB dup -1 <> IF EXIT THEN drop  t OLD>NEW ;
+: MAP-TARGET! {: r t :}
+   r t MAP-TARGET TNEW !
+   TNEW @ -1 = IF s" aot: PC-relative target removed or outside closure" 74 die THEN ;
+: BTGT26 {: p w :}  p  w 0 26 FIELD 26 SX 4 * + ;
+: BTGT19 {: p w :}  p  w 5 19 FIELD 19 SX 4 * + ;
+: BTGT14 {: p w :}  p  w 5 14 FIELD 14 SX 4 * + ;
+: ADRTGT {: p w :}  p  w 5 19 FIELD 2 lshift  w 29 2 FIELD or 21 SX + ;
+: RELOC-W32 {: r p w :}
+   w BIMM? IF
+      r p w BTGT26 MAP-TARGET!
+      w $FC000000 and  ASM-LEN TNEW @ REL26 or EXIT THEN
+   w BCOND? IF
+      r p w BTGT19 MAP-TARGET!
+      w $FF00001F and  ASM-LEN TNEW @ REL19 5 lshift or EXIT THEN
+   w CBZIMM? IF
+      r p w BTGT19 MAP-TARGET!
+      w $FF00001F and  ASM-LEN TNEW @ REL19 5 lshift or EXIT THEN
+   w TBZIMM? IF
+      r p w BTGT14 MAP-TARGET!
+      w $FFF8001F and  ASM-LEN TNEW @ REL14 5 lshift or EXIT THEN
+   w ADR? IF
+      r p w ADRTGT MAP-TARGET!
+      w $9F00001F and  ASM-LEN TNEW @ ADRD32 or EXIT THEN
+   w ADRP? IF s" aot: ADRP relocation unsupported" 74 die THEN
+   w ;
+
 variable DENSE-RV
-: COPY-DENSE-BLOB {: r :}
+: COPY-COMPACT-BLOB {: r :}
    r @ CP2 !  r @ r RAW-LEN + CEND !
    BEGIN CP2 @ CEND @ < WHILE
       CP2 @ CEND @ CALL-AT? IF
@@ -252,21 +314,17 @@ variable DENSE-RV
          DENSE-RV @ -1 <> IF
             ASM-LEN DENSE-RV @ BL32 EMITW  CP2 @ 16 + CP2 !
          ELSE
-            CP2 @ W32@ EMITW  CP2 @ 4 + CP2 !
+            r CP2 @ CP2 @ W32@ RELOC-W32 EMITW  CP2 @ 4 + CP2 !
          THEN
       ELSE
-         CP2 @ W32@ EMITW  CP2 @ 4 + CP2 !
+         r CP2 @ CP2 @ W32@ RELOC-W32 EMITW  CP2 @ 4 + CP2 !
       THEN
    REPEAT ;
 : COPY-PLANNED-BLOBS
    0 WI ! BEGIN WI @ NCLO @ < WHILE
       WI @ cells CLO + @ REC2 !
       WI @ 0= IF MLBL @ LBL, THEN          \ MAIN is closure word 0 -> place its label
-      CDENSE WI @ cells + @ IF
-         REC2 @ COPY-DENSE-BLOB
-      ELSE
-         REC2 @ @  REC2 @ RAW-LEN  BYTES,       \ copy the blob (incl. RET) into CODE
-      THEN
+      REC2 @ COPY-COMPACT-BLOB
       WI @ 1+ WI ! REPEAT ;
 : COPY-BLOBS  PLAN-BLOBS  COPY-PLANNED-BLOBS ;
 variable RP  variable RE  variable RV

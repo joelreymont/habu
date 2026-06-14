@@ -1,5 +1,5 @@
 \ t-cg-effect.fs — codegen records carry compact checked-effect metadata.
-\ Run via tools/oracle.sh.
+\ Run via tools/bootstrap-oracle.sh.
 require ../bootstrap/src/habu.fs
 CHECKING-ON? off
 require ../bootstrap/cg/install.fs

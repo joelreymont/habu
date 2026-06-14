@@ -45,7 +45,7 @@ points stay listed.
 - `tools/snap-hb.sh` — warm checked snapshot builder.
 - `tools/check.sh` — checked native engine wrapper.
 - `tools/hb-build.sh` — standalone binary builder.
-- `tools/oracle.sh` — gforth differential gate.
+- `tools/bootstrap-oracle.sh` — bootstrap-only gforth differential.
 - `tools/srclist.sh` — canonical source order.
 - `tools/signature-lint.py` — strict typed-signature lint.
 - `tools/aot-lint.py` — stripped-AOT unsupported-word lint.

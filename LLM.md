@@ -65,8 +65,8 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 
 ## 7. Run the gate
 - `( cd test && ./run.sh )` — habu-native, no gforth, < 10 s. Must be green.
-- If you changed an emitter (`bootstrap/cg/*`, `src/**`) also run
-  `tools/oracle.sh` (the gforth differential) or `./run.sh full`.
+- Gforth is bootstrap-only. Use `tools/bootstrap-oracle.sh` only when changing
+  bootstrap seed/reference code or validating recovery from no native binary.
 
 ## 8. Record lessons
 - On any new finding, mistake, or insight, add a lesson to `LESSONS.md` (lessons

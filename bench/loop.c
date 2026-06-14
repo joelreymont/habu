@@ -1,5 +1,5 @@
-/* loop.c — xorshift accumulator loop (latency-bound serial chain) for a real
-   caf-codegen vs clang -O3 comparison. Same body as the caf word in bench/loop.fs.
+/* loop.c — xorshift accumulator loop (latency-bound serial chain) for a native
+   backend vs clang -O3 comparison.
    Pass iteration count as argv[1] (default 1e8). */
 #include <stdint.h>
 #include <stdlib.h>

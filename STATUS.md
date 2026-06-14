@@ -13,8 +13,9 @@ The native engine type-checks its own toolchain source (`src/`) as it compiles
 it. "Certified" = body inferred and (where a signature is declared) verified
 against it; "Uncheckable" = effect not statically inferable and not trusted;
 "Rejected" = inferred effect contradicts the declaration. `tools/build.sh` runs
-the self-check on every rebuild; `( cd test && ./run.sh )` is the gate, and
-`tools/oracle.sh` is the gforth differential — both green at this verification.
+the self-check on every rebuild; `( cd test && ./run.sh )` is the Habu-native
+gate. Gforth is bootstrap-only; `tools/bootstrap-oracle.sh` exists for changes
+to the bootstrap seed/reference mirror and recovery validation.
 
 History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling, now
 890/0/0 — the 9 formerly-uncheckable words (`ENV=?`, `GETENV`, `TMP-PATH`,
