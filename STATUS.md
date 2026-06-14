@@ -67,9 +67,11 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   callable). The AOT file is 16627 B — one 16 KB `__TEXT` page + signature, the
   PROVEN hard floor for a signed arm64 macOS executable (a sub-page `__LINKEDIT`
   is SIGKILLed by AMFI). `S"` string literals are AOT-safe (their body is
-  embedded in the blob and pushed PC-relative). Still AOT-unsupported:
-  `[']`-xt and `CREATE`/data-region access (the xt push and `here`/`,` need an
-  xt-relocation pass + a mapped data region — address-bearing features beyond
-  intra-blob strings).
+  embedded in the blob and pushed PC-relative). AOT is stripped COMPUTE only,
+  and the two features outside that boundary both fail LOUDLY (no silent wrong
+  output): `['] WORD execute` is REJECTED by the checker (an opaque xt's effect
+  can't be typed — use a `[: ;]` quotation, which is modeled), and `CREATE` /
+  data-region access (`here`/`,`/`@`) SIGBUSes because AOT maps no data region —
+  persistent data is the snapshot/`--repl` path by design, not stripped AOT.
 - **`ptr a` (parametric pointer)** — gforth-tier checker only; native types `ptr`
   as an address (no native prim operates on pointer-types).

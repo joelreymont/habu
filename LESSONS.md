@@ -18,10 +18,17 @@ the SAME blob, the offset is preserved when the blob is copied, and PC-relative
 is slide-independent — no AOT relocation needed. Two enablers made the encoding
 exact: the body is 4-aligned (the blob starts 4-aligned and a 4-byte `B`
 placeholder precedes it) and only a few bytes away, so the ADR offset is a small
-multiple of 4, well inside ADR's ±1MB. Key contrast for the NEXT fix: this trick
-works ONLY because target and pusher share a blob. `[']`'s xt and `CREATE`'s
-data live in OTHER blobs / the unmapped data region, so they need an AOT-time
-relocation pass, not compile-time PC-relative — still open (dotted).
+multiple of 4, well inside ADR's ±1MB. This trick works ONLY because target and
+pusher share a blob. The adjacent cases turned out NOT to be the same silent-bug
+class once probed: `['] WORD execute` is REJECTED by the checker (the engine
+consumes the ticked word inline, so an opaque xt's effect can't be typed — use a
+`[: ;]` quotation), and `CREATE`/data SIGBUSes under AOT (no mapped data region;
+persistent data is the snapshot/`--repl` path by design). Both fail LOUDLY —
+H1's danger was that it built, ran, and printed the WRONG bytes; a reject or a
+SIGBUS is a different, acceptable class. Lesson: before assuming an adjacent
+symptom shares a root cause, probe its failure MODE — "also broken under AOT"
+split into one checker-reject and one design boundary, neither needing the
+xt-relocation pass I'd assumed.
 
 ## AOT closure cap + engine div0: two robustness gaps the review found (2026-06-13)
 
