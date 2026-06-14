@@ -65,6 +65,8 @@ $40000 constant PMAX
 create AECH 1 allot
 : AE1 {: c :}  c AECH c!  2 AECH 1 write drop ;
 : AETXT {: a u :}  2 a u write drop ;
+: AEREC-TXT {: r :}
+   r 0= IF s" <unknown>" AETXT ELSE r 24 + r 16 + @ $FF and AETXT THEN ;
 : AEJCHAR {: c :}
    c 10 = IF 92 AE1 110 AE1 EXIT THEN
    c 13 = IF 92 AE1 114 AE1 EXIT THEN
@@ -72,12 +74,25 @@ create AECH 1 allot
    c 34 =  c 92 = or IF 92 AE1 THEN  c AE1 ;
 : AEJSTR {: a u :}  34 AE1  0 BEGIN dup u < WHILE dup a + c@ AEJCHAR 1 + REPEAT drop 34 AE1 ;
 : AEJKEY {: a u :}  a u AEJSTR 58 AE1 ;
+: AEJREC {: r :}
+   r 0= IF s" <unknown>" AEJSTR ELSE r 24 + r 16 + @ $FF and AEJSTR THEN ;
+create AENB 20 allot  variable AENV  variable AENN
+: AEJNUM
+   AENV !  0 AENN !
+   AENV @ 0= IF 48 AE1 EXIT THEN
+   BEGIN AENV @ 0 > WHILE
+      AENV @ 10 mod 48 +  AENB AENN @ + c!
+      AENN @ 1 + AENN !
+      AENV @ 10 / AENV !
+   REPEAT
+   AENN @ BEGIN dup 0 > WHILE 1 - dup AENB + c@ AE1 REPEAT drop ;
 : AOT-UNSAFE-JSON {: caller callee :}
    123 AE1
    s" code" AEJKEY s" E-AOT-UNSUPPORTED" AEJSTR 44 AE1
    s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
    s" word" AEJKEY caller 24 + caller 16 + @ $FF and AEJSTR 44 AE1
    s" token" AEJKEY callee 24 + callee 16 + @ $FF and AEJSTR 44 AE1
+   s" reason" AEJKEY s" stripped AOT has no persistent data region" AEJSTR 44 AE1
    s" suggestion" AEJKEY
    s" stripped AOT has no persistent data region; use --repl/snapshot for data-space words or remove the runtime data access" AEJSTR
    125 AE1 10 AE1 ;
@@ -102,9 +117,37 @@ variable FX
 \ closed at the cap so a large closure can never write past the tables.
 1024 constant MAX-CLO
 create CLO MAX-CLO cells allot   variable NCLO  variable CX
+variable ROOTREC
+variable CLO-LIMIT
+: CLO-LIMIT! {: n :}
+   n 1 < IF s" aot: CLO-LIMIT below 1" 74 die THEN
+   n MAX-CLO > IF s" aot: CLO-LIMIT above MAX-CLO" 74 die THEN
+   n CLO-LIMIT ! ;
+MAX-CLO CLO-LIMIT!
 : IN-CLO? {: r :}  0 CX ! BEGIN CX @ NCLO @ < WHILE CX @ cells CLO + @ r = IF -1 exit THEN CX @ 1+ CX ! REPEAT 0 ;
+: CLO-OVERFLOW-JSON {: r :}
+   123 AE1
+   s" code" AEJKEY s" E-AOT-CLOSURE-LIMIT" AEJSTR 44 AE1
+   s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
+   s" reachable_count" AEJKEY NCLO @ AEJNUM 44 AE1
+   s" max_closure" AEJKEY CLO-LIMIT @ AEJNUM 44 AE1
+   s" root_word" AEJKEY ROOTREC @ AEJREC 44 AE1
+   s" last_added_word" AEJKEY r AEJREC 44 AE1
+   s" suggestion" AEJKEY
+   s" split program, use --repl/snapshot, or raise MAX-CLO with a gate that proves the larger closure" AEJSTR
+   125 AE1 10 AE1 ;
+: CLO-OVERFLOW-PROSE {: r :}
+   s" aot: closure exceeds MAX-CLO reachable_count=" AETXT NCLO @ AEJNUM
+   s"  max_closure=" AETXT CLO-LIMIT @ AEJNUM
+   s"  root_word='" AETXT ROOTREC @ AEREC-TXT
+   s" ' last_added_word='" AETXT r AEREC-TXT
+   s" ' suggestion='split program, use --repl/snapshot, or raise MAX-CLO with a gate that proves the larger closure'" AETXT
+   10 AE1 ;
+: CLO-OVERFLOW-DIE {: r :}
+   JSON-DIAGS @ IF r CLO-OVERFLOW-JSON ELSE r CLO-OVERFLOW-PROSE THEN
+   s" aot: closure exceeds MAX-CLO" 74 die ;
 : ADD-CLO {: r :}  r IN-CLO? IF exit THEN
-   NCLO @ MAX-CLO >= IF s" aot: closure exceeds MAX-CLO" 74 die THEN
+   NCLO @ CLO-LIMIT @ >= IF r CLO-OVERFLOW-DIE THEN
    r NCLO @ cells CLO + !  NCLO @ 1+ NCLO ! ;
 variable SP2  variable SEND
 : SCAN-REC {: r :}
@@ -119,7 +162,7 @@ variable SP2  variable SEND
       ELSE SP2 @ 4 + SP2 ! THEN
    REPEAT ;
 variable WI
-: CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop s" aot: no MAIN" 74 die THEN  ADD-CLO
+: CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop s" aot: no MAIN" 74 die THEN  dup ROOTREC !  ADD-CLO
    0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ cells CLO + @ SCAN-REC  WI @ 1+ WI ! REPEAT ;
 
 \ --- emit the image: minimal entry + copied blobs, then relocate the calls.

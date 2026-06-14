@@ -181,6 +181,11 @@ variable JPOS  variable JLINE  variable JCOL
       THEN
       JPOS @ 1 + JPOS !
    REPEAT ;
+: JABS-LINE ( -- n )  DIAGL0 @ JLINE @ + 1 - ;
+: JABS-COL ( -- n )
+   JLINE @ 1 = IF DIAGC0 @ JCOL @ + 1 - ELSE JCOL @ THEN ;
+: JABS-BSTART ( -- n )  DIAGB0 @ FAILB @ + ;
+: JABS-BEND ( -- n )  DIAGB0 @ FAILE @ + ;
 : DIAG-PROSE
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
@@ -196,10 +201,10 @@ variable JPOS  variable JLINE  variable JCOL
    s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
    s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1
    s" file" JKEY  DIAGFB DIAGFU @ JSTR  44 EMIT1
-   s" line" JKEY  JLINE @ JNUM  44 EMIT1
-   s" column" JKEY  JCOL @ JNUM  44 EMIT1
-   s" byte_start" JKEY  FAILB @ JNUM  44 EMIT1
-   s" byte_end" JKEY  FAILE @ JNUM  44 EMIT1
+   s" line" JKEY  JABS-LINE JNUM  44 EMIT1
+   s" column" JKEY  JABS-COL JNUM  44 EMIT1
+   s" byte_start" JKEY  JABS-BSTART JNUM  44 EMIT1
+   s" byte_end" JKEY  JABS-BEND JNUM  44 EMIT1
    s" definition_source" JKEY  TBASE @ TBLEN @ JSTR  44 EMIT1
    SGSEEN @ IF
      s" declared_effect" JKEY

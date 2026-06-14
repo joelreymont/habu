@@ -46,7 +46,7 @@ out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i6
 out=$(printf ': PSH ( R -- R i64 ) 5 ;\nPSH .\n' | $T/hb-warm 2>/dev/null)
 [ "$out" = "5" ] || { echo "FAIL: snapshot named-row sig run (got: $out)"; exit 1; }
 [ -x bin/habu ] || { echo "FAIL: bin/habu (checked REPL) not produced"; exit 1; }
-printf ': JBAD ( i64 -- i64 ) dup ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json.err || { echo "FAIL: tools/check.sh --json-errors"; exit 1; }
+printf ': JBAD ( i64 -- i64 ) dup ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json.err && { echo "FAIL: tools/check.sh --json-errors accepted bad def"; exit 1; }
 grep -q '"verdict":"rejected"' $T/habu-json.err || { echo "FAIL: --json-errors missing verdict"; exit 1; }
 grep -q '"declared_effect":"i64 -- i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing declared effect"; exit 1; }
 grep -q '"inferred_effect":"i64 -- i64 i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing inferred effect"; exit 1; }
@@ -57,10 +57,31 @@ grep -q '"column":' $T/habu-json.err || { echo "FAIL: --json-errors missing colu
 grep -q '"byte_start":' $T/habu-json.err || { echo "FAIL: --json-errors missing byte_start"; exit 1; }
 grep -q '"byte_end":' $T/habu-json.err || { echo "FAIL: --json-errors missing byte_end"; exit 1; }
 grep -q '"definition_source":' $T/habu-json.err || { echo "FAIL: --json-errors missing definition source"; exit 1; }
+cat > $T/habu-json-file.f <<'EOF'
+\ prelude
+
+: JBAD ( i64 -- i64 ) dup ;
+EOF
+./tools/check.sh --json-errors $T/habu-json-file.f >/dev/null 2>$T/habu-json-file.err && { echo "FAIL: tools/check.sh --json-errors accepted file bad def"; exit 1; }
+python3 - "$T/habu-json-file.err" "$T/habu-json-file.f" <<'PY'
+import json, pathlib, sys
+obj = json.loads(pathlib.Path(sys.argv[1]).read_text().splitlines()[0])
+src = pathlib.Path(sys.argv[2]).read_text()
+idx = src.index("dup")
+line = src[:idx].count("\n") + 1
+col = idx - src.rfind("\n", 0, idx)
+assert obj["file"] == sys.argv[2], obj
+assert obj["line"] == line, obj
+assert obj["column"] == col, obj
+assert obj["byte_start"] == idx, obj
+assert obj["byte_end"] == idx + 3, obj
+PY
 printf ': NOSIG dup ;\n' | ./tools/check.sh --strict-signatures >$T/habu-strict.err 2>&1 && { echo "FAIL: tools/check.sh --strict-signatures accepted nosig"; exit 1; }
 grep -q 'E-MISSING-SIGNATURE' $T/habu-strict.err || { echo "FAIL: strict-signatures missing text diagnostic"; exit 1; }
 printf ': NOSIG dup ;\n' | ./tools/check.sh --strict-signatures --json-errors >$T/habu-strict-json.out 2>&1 && { echo "FAIL: tools/check.sh --strict-signatures --json-errors accepted nosig"; exit 1; }
 grep -q '"code":"E-MISSING-SIGNATURE"' $T/habu-strict-json.out || { echo "FAIL: strict-signatures missing JSON diagnostic"; exit 1; }
+printf ': X ( infer ) dup ;\n' | ./tools/check.sh --strict-signatures --json-errors >$T/habu-strict-infer.out 2>&1 && { echo "FAIL: tools/check.sh --strict-signatures accepted infer opt-out"; exit 1; }
+grep -q '"code":"E-UNVERIFIED-SIGNATURE"' $T/habu-strict-infer.out || { echo "FAIL: strict-signatures missing opt-out diagnostic"; exit 1; }
 echo "PASS: AOT snapshot (warm toolchain boot) + getenv + sig-check (rows+quots) + bin/habu"
 HT=$(mktemp -d)
 HB_TMP=$HT ./tools/snap-hb.sh >/dev/null && [ -x "$HT/hb-warm" ] || { echo "FAIL: HB_TMP isolation"; exit 1; }
@@ -110,6 +131,18 @@ printf ': MAIN ( -- ) here . CR ;\n' > $T/hb-aot-unsafe.f
 ./tools/hb-build.sh --json-errors $T/hb-aot-unsafe.f -o $T/hb-aot-unsafe >/dev/null 2>$T/hb-aot-unsafe.err && { echo "FAIL: hb-build AOT accepted here"; exit 1; }
 grep -q '"code":"E-AOT-UNSUPPORTED"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing JSON code"; exit 1; }
 grep -q '"token":"here"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing token"; exit 1; }
+grep -q '"word":"MAIN"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing word"; exit 1; }
+grep -q '"reason":"stripped AOT has no persistent data region"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing reason"; exit 1; }
+grep -q '"byte_end":' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing byte_end"; exit 1; }
+{ printf '8 CLO-LIMIT!\n'
+  printf ': W8 ( n -- n ) dup 0< if negate then ;\n'
+  i=7; while [ $i -ge 0 ]; do printf ': W%s ( n -- n ) W%s dup 0< if negate then ;\n' "$i" "$((i+1))"; i=$((i-1)); done
+  printf ': MAIN ( -- ) 1 W0 drop ;\n'; } > $T/hb-clo-limit.f
+./tools/hb-build.sh --json-errors $T/hb-clo-limit.f -o $T/hb-clo-limit >/dev/null 2>$T/hb-clo-limit.err && { echo "FAIL: hb-build accepted closure over MAX-CLO"; exit 1; }
+grep -q '"code":"E-AOT-CLOSURE-LIMIT"' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing JSON code"; exit 1; }
+grep -q '"reachable_count":8' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing reachable_count"; exit 1; }
+grep -q '"max_closure":8' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing max_closure"; exit 1; }
+grep -q '"root_word":"MAIN"' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing root_word"; exit 1; }
 echo "PASS: hb-build strict signatures + uncheckable/AOT-unsafe rejection"
 # hb-build default AOT must verify declared signatures and treat rejection as fatal.
 printf ': BAD ( i64 -- i64 ) 0= ;\n: MAIN ( -- ) 0 BAD . CR ;\n' > $T/hb-badsig.f

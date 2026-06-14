@@ -72,7 +72,8 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   and the two features outside that boundary both fail LOUDLY (no silent wrong
   output): `['] WORD execute` is REJECTED by the checker (an opaque xt's effect
   can't be typed — use a `[: ;]` quotation, which is modeled), and `CREATE` /
-  data-region access (`here`/`,`/`@`) SIGBUSes because AOT maps no data region —
-  persistent data is the snapshot/`--repl` path by design, not stripped AOT.
+  data-region access (`here`/`,`/`@`) is rejected statically with
+  `E-AOT-UNSUPPORTED` because AOT maps no data region — persistent data is the
+  snapshot/`--repl` path by design, not stripped AOT.
 - **`ptr a` (parametric pointer)** — gforth-tier checker only; native types `ptr`
   as an address (no native prim operates on pointer-types).

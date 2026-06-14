@@ -50,6 +50,7 @@ points stay listed.
 - `tools/signature-lint.py` — strict typed-signature lint.
 - `tools/aot-lint.py` — stripped-AOT unsupported-word lint.
 - `tools/forth_lex.py` — shared lexer for source lints.
+- `tools/diag-origin.py` — injects source-origin markers for checker JSON.
 - `tools/filemap-lint.py` — freshness lint for this file.
 - `tools/trust-lint.py` — `TRUSTED.md` drift lint.
 - `tools/stale-status-lint.py` — stale status/count lint.

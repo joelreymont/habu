@@ -40,9 +40,15 @@ fi
 case "$LABEL" in
   *\"*) echo "check.sh: source path contains a double quote, cannot set DIAG-FILE"; exit 64 ;;
 esac
-printf 's" %s" DIAG-FILE!\n' "$LABEL" > "$RUN"
+printf '%s\n' '0 set-check' > "$RUN"
+printf 's" %s" DIAG-FILE!\n' "$LABEL" >> "$RUN"
 if [ "$JSON" = 1 ]; then
   printf '%s\n' '-1 JSON-DIAGS !' >> "$RUN"
 fi
-cat "$SRC" >> "$RUN"
+cat >> "$RUN" <<'EOF'
+: CHECK-SH-HOOK ( n n -- n )
+   CHECK!  dup -1 <> IF s" check.sh: check did not certify" 70 die THEN ;
+' CHECK-SH-HOOK set-check
+EOF
+./tools/diag-origin.py "$SRC" >> "$RUN"
 bin/habu < "$RUN"

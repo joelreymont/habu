@@ -18,6 +18,24 @@ declared signature string; use rendered inferred effects only for infer-mode
 definitions. Regression: `t-sh-verify` covers recursive `FIB`, recursive
 rejection, and a certified caller of recursive `FIB`.
 
+## Agent wrappers need executable failure and real source origins (2026-06-14)
+
+`tools/check.sh --json-errors` used to print a structured checker rejection while
+exiting 0, because the checked REPL drops rejected definitions but treats the
+session as recovered. That is wrong for agent loops: command status must be an
+authoritative verdict. The wrapper now disables the ambient hook, installs a
+fail-closed `CHECK!` hook, and dies on any verdict other than `-1` after the
+checker has emitted JSON/prose.
+
+The checker itself only sees the captured definition body (`NAME ...`), so raw
+`FAILB`/`FAILE` offsets are definition-relative. File-grade diagnostics need an
+origin marker before each colon definition. `tools/diag-origin.py` injects
+`DIAG-ORIGIN!` before user definitions for build-time checking; render combines
+that origin with the relative token span. Keep those markers out of the final
+`hb-build --repl` bundled source: the tree-shaken runtime may not keep internal
+diagnostic helper words, and the user program has already been verified against
+the wrapped check source.
+
 ## AOT-unsafe words can be inlined away from closure scans (2026-06-14)
 
 The first stripped-AOT guard rejected unsupported data-space words during native

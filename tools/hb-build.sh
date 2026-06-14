@@ -55,6 +55,7 @@ if [ "$REPL" = 1 ]; then DRIVER=build; ISRC=$T/hb-build-src; GOT=hb-build-got; M
 else                     DRIVER=aot;   ISRC=$T/hb-aot-src;   GOT=hb-aot-got;   MK=hb-aot-mk; fi
 STAGE2_SRC=$T/stage2-src
 STAGE2_GOT=$T/stage2-got
+USRC=$T/hb-user-src
 MKPATH=$T/$MK
 GOTPATH=$T/$GOT
 
@@ -84,11 +85,15 @@ chmod +x "$MKPATH"
 # so the tree-shaker keeps them, but they don't execute). --repl keeps a
 # user-only copy for build-time verification, then appends repl.f so the bundle
 # installs the interactive REPL on a tty.
-sed 's/^[[:space:]]*EXPORT /\\ EXPORT /' "$SRC" > "$ISRC"
 if [ "$REPL" = 1 ]; then
-  cp "$ISRC" "$T/hb-build-check-src"
+  ./tools/diag-origin.py "$SRC" > "$USRC"
+  sed 's/^[[:space:]]*EXPORT /\\ EXPORT /' "$USRC" > "$T/hb-build-check-src"
+  sed 's/^[[:space:]]*EXPORT /\\ EXPORT /' "$SRC" > "$ISRC"
   printf '\n' >> "$ISRC"
   cat src/habu/repl.f >> "$ISRC"
+else
+  ./tools/diag-origin.py "$SRC" > "$USRC"
+  sed 's/^[[:space:]]*EXPORT /\\ EXPORT /' "$USRC" > "$ISRC"
 fi
 rm -f "$GOTPATH"
 "$MKPATH"

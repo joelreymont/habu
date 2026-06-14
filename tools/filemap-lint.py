@@ -23,6 +23,7 @@ REQUIRED = {
     "tools/signature-lint.py",
     "tools/aot-lint.py",
     "tools/forth_lex.py",
+    "tools/diag-origin.py",
     "test/run.sh",
     "test/t-sh-jdiag.fs",
     "bench/llm/tasks.tsv",

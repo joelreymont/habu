@@ -39,16 +39,22 @@ def usage() -> None:
 def findings(path: pathlib.Path, label: str) -> list[dict[str, object]]:
     toks = scan(path.read_text())
     bad: list[dict[str, object]] = []
-    skip_name = False
+    expect_name = False
+    current_word = ""
     for tok in toks:
         if tok.kind != "word":
             continue
         word = tok.text.lower()
-        if skip_name:
-            skip_name = False
+        if expect_name:
+            current_word = tok.text
+            expect_name = False
             continue
         if word == ":":
-            skip_name = True
+            expect_name = True
+            current_word = ""
+            continue
+        if word == ";":
+            current_word = ""
             continue
         if word in UNSAFE:
             bad.append({
@@ -57,7 +63,10 @@ def findings(path: pathlib.Path, label: str) -> list[dict[str, object]]:
                 "line": tok.line,
                 "column": tok.column,
                 "byte_start": tok.byte,
+                "byte_end": tok.byte + len(tok.text),
+                "word": current_word,
                 "token": tok.text,
+                "reason": "stripped AOT has no persistent data region",
                 "suggestion": "stripped AOT has no persistent data region; use --repl/snapshot for data-space words or remove the runtime data access",
             })
     return bad

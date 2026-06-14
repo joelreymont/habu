@@ -800,6 +800,7 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
    THEN ;
 
 create DIAGFB 256 allot   variable DIAGFU
+variable DIAGL0  variable DIAGC0  variable DIAGB0
 : DIAG-FILE! {: a u :}
    u 255 > IF s" diag: file path too long" 76 die THEN
    0 BEGIN dup u < WHILE
@@ -807,7 +808,10 @@ create DIAGFB 256 allot   variable DIAGFU
       1 +
    REPEAT drop
    u DIAGFU ! ;
+: DIAG-ORIGIN! {: line col byte :}
+   line DIAGL0 !  col DIAGC0 !  byte DIAGB0 ! ;
 s" <input>" DIAG-FILE!
+1 1 0 DIAG-ORIGIN!
 
 \ TRUST: declare a word's effect without checking its body — the native escape
 \ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
