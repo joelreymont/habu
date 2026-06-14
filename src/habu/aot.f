@@ -13,6 +13,9 @@ $40000 constant PMAX
 : AOT-IN   s" hb-aot-src" TMP-PATH ;
 : AOT-OUT  s" hb-aot-got" TMP-PATH ;
 
+: USER-HOOK
+   CHECK!  dup 0= IF s" hb-build: check rejected" 70 die THEN ;
+
 : READ-PROG
    AOT-IN PATH0  0 0 open PFD !
    here PB !  PMAX allot  0 PN !
@@ -118,6 +121,7 @@ variable RP  variable RE  variable RV
    AOT-OUT PATH0  1537 493 open  dup MBUF MLEN @ write drop  close ;
 
 : GO  READ-PROG  SENTSET
+   ['] USER-HOOK set-check
    PB @ DATA-VA INP-CELL + !
    PB @ PN @ + DATA-VA INE-CELL + ! ;
 GO

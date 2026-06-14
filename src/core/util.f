@@ -12,9 +12,11 @@ variable SEQ
    SEQ @ ;
 
 \ NUL-terminated path helper for open: copy (a,u) to d, append NUL.
+256 constant PATH-CAP
 : PATHZ {: a u d :}
+   u 1 + PATH-CAP > IF s" path too long" 76 die THEN
    0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;
-create PZB 32 allot
+create PZB PATH-CAP allot
 
 : PATH0 {: a u :}  a u PZB PATHZ  PZB ;     \ ( a u -- pathz ) shared scratch
 \ read a little-endian u32 from byte addr p

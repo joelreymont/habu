@@ -21,8 +21,11 @@ OUT=$3
 if [ "$REPL" = 1 ]; then DRIVER=build; ISRC=$T/hb-build-src; GOT=hb-build-got; MK=hb-build-mk
 else                     DRIVER=aot;   ISRC=$T/hb-aot-src;   GOT=hb-aot-got;   MK=hb-aot-mk; fi
 
-# maker = checker-hooked toolchain + the chosen driver, compiled by bin/hb (so the
-# program is type-checked as it compiles in the maker).
+# maker = checker-hooked toolchain + the chosen driver, compiled by bin/hb.
+# In default AOT mode the driver compiles the program in-process under CHECK!.
+# In --repl mode the source is bundled and recompiled by the emitted engine at
+# startup, so the bundle keeps the interpreter/REPL rather than enforcing checks
+# at build time.
 for f in $(./tools/srclist.sh $DRIVER); do
   [ "$f" = "src/core/sha256.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
   cat "$f"; printf '\n'

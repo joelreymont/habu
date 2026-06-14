@@ -3,20 +3,14 @@
 \ builder (EMIT-FORTH), wraps it in the full Mach-O (BUILD-IMAGE), and writes the
 \ unsigned stage2 binary to /tmp/stage2-got. t-sh-stage2.fs asserts stage2 is
 \ byte-identical to the gforth-built engine for the same source.
-create S2P 32 allot   create O2P 32 allot
-
 \ fixpoint I/O paths — the single knobs; tools/build.sh owns the artifacts
 : S2-IN  s" stage2-src" TMP-PATH ;
 : S2-OUT s" stage2-got" TMP-PATH ;
-
-: PATHZ {: a u d :}
-   0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;
 variable SBUF  variable SLEN  variable SFD  variable SRD
 $40000 constant SMAX
 
 : READ-SRC
-   S2-IN S2P PATHZ
-   S2P 0 0 open SFD !
+   S2-IN PATH0 0 0 open SFD !
    here SBUF !  SMAX allot  0 SLEN !
    BEGIN                                                 \ loop: read() may return short
      SFD @  SBUF @ SLEN @ +  SMAX SLEN @ -  read SRD !
@@ -31,6 +25,5 @@ $40000 constant SMAX
    SBUF @ SLEN @ EMIT-FORTH
    BUILD-IMAGE
    s" hb" SET-SIGID  CODESIG2
-   S2-OUT O2P PATHZ
-   O2P 1537 493 open  dup MBUF MLEN @ write drop  close ;
+   S2-OUT PATH0 1537 493 open  dup MBUF MLEN @ write drop  close ;
 GO

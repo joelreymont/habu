@@ -9,7 +9,6 @@ $48425350414E5321 constant SNAP-MAGIC
 \ output path — the single knob; tools/snap-hb.sh owns/moves the artifact
 : SNAP-OUT s" hb-warm0" TMP-PATH ;
 
-create SNP 32 allot
 create TRL 40 allot
 create ZPG 4096 allot
 variable WOF
@@ -17,10 +16,6 @@ variable ZREM
 variable ZC
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SNL  variable SFTS  variable SFD
-
-: PATHZ0 {: a u :}
-   0 BEGIN dup u < WHILE  dup a + c@  over SNP + c!  1 + REPEAT drop
-   0 SNP u + c! ;
 
 : WALL {: fd a u :}
    0 WOF !
@@ -65,8 +60,7 @@ variable SNL  variable SFTS  variable SFD
    SNAP-MAGIC TRL !  STB @ TRL 8 + !  ndict@ TRL 16 + !
    SCL @ TRL 24 + !  SDL @ TRL 32 + !
    \ stream: header, engine text, region, data, trailer, zero pad
-   SNAP-OUT PATHZ0
-   SNP 1537 493 open SFD !
+   SNAP-OUT PATH0 1537 493 open SFD !
    SFD @ MBUF CODE-OFF WALL
    SFD @ STB @ STSZ @ WALL
    SFD @ SDB @ SCL @ WALL

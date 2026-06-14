@@ -1,6 +1,7 @@
 \ render.fs — render the checker's inferred residual stack (DCUR) back to readable
 \ type names. Type variables get canonical letters a,b,c… (assigned bottom-to-top),
-\ int=n, flag=f, float=r. The "render" half of the native sigparse/checker. Needs
+\ generic int=n, old flag=f, float=r; concrete types render by name. The "render"
+\ half of the native sigparse/checker. Needs
 \ checker.fs. Standalone has no emit/+!; chars go through a 1-byte buffer + type.
 \ Also the checker's sig RECORDER: certified words render "in -- out" to a buffer
 \ and append it to USIGS (installed via RECXT), so callers of certified words
@@ -24,7 +25,21 @@ create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PA
    vp cells SEEN + @ UNBOUND = IF NLET @ vp cells SEEN + ! NLET @ 1 + NLET ! THEN
    vp cells SEEN + @ 97 + ;
 
-: CON-CH {: p :} p 1 = IF 110 ELSE p 2 = IF 102 ELSE p 3 = IF 114 ELSE 99 THEN THEN THEN ;   \ n / f / r
+: RSTR {: a u :}  0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
+
+: CON-OUT {: p :}
+   p 1 = IF 110 EMIT1 ELSE
+   p 2 = IF 102 EMIT1 ELSE
+   p 3 = IF 114 EMIT1 ELSE
+   p CC-I64  = IF s" i64"  RSTR ELSE
+   p CC-U8   = IF s" u8"   RSTR ELSE
+   p CC-U32  = IF s" u32"  RSTR ELSE
+   p CC-CELL = IF s" cell" RSTR ELSE
+   p CC-CHAR = IF s" char" RSTR ELSE
+   p CC-STR  = IF s" str"  RSTR ELSE
+   p CC-ADDR = IF s" addr" RSTR ELSE
+   p CC-BOOL = IF s" bool" RSTR ELSE
+   63 EMIT1 THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 \ a quot type renders [ in -- out ] (two nesting levels; deeper caps at '?').
 \ Gap2/3: quot-bearing sigs now RECORD as scheme-strings and round-trip, so
@@ -38,7 +53,7 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
 
 : Q2REND-1 {: t :} t T-RES {: r :}              \ level-2 leaf: con | var | '?'
    r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
-   r TAG T-CON = IF r PAY CON-CH EMIT1 ELSE 63 EMIT1 THEN THEN ;
+   r TAG T-CON = IF r PAY CON-OUT ELSE 63 EMIT1 THEN THEN ;
 
 : Q2REND-ROW {: row :}  0 Q2BN !  row
    BEGIN R-RES dup TAG S-PUSH = WHILE
@@ -50,7 +65,7 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
 
 : QREND-1 {: t :} t T-RES {: r :}               \ level-1 leaf: con | var | nested quot
    r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
-   r TAG T-CON = IF r PAY CON-CH EMIT1 ELSE
+   r TAG T-CON = IF r PAY CON-OUT ELSE
    r TAG T-QUOT = IF                            \ a nested quot -> [ in -- out ]
      91 EMIT1 32 EMIT1  r Q>DIN Q2REND-ROW
      45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT Q2REND-ROW  93 EMIT1
@@ -66,7 +81,7 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
 
 : REND-TYPE {: t :} t T-RES {: r :}
    r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
-   r TAG T-CON = IF r PAY CON-CH EMIT1 ELSE
+   r TAG T-CON = IF r PAY CON-OUT ELSE
    r TAG T-QUOT = IF                                     \ quot<effect> -> [ in -- out ]
      91 EMIT1 32 EMIT1  r Q>DIN QREND-ROW
      45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT QREND-ROW  93 EMIT1

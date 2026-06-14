@@ -3,6 +3,34 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## User build verification needs CHECK!, and path buffers must fail closed (2026-06-14)
+
+A re-review found the isolated checker fixes were real, but two integration paths
+still let bad user programs through. First, `snap.f` used `create SNP 32 allot`
+for `$HB_TMP/hb-warm0`; a normal `mktemp -d` path overflowed SNP into the trailer
+buffer and overwrote `SNAP-MAGIC` with path bytes (`...warm0`). The emitted file
+then booted COLD (no restored dict/data, `HOOK-CELL=0`) while `snap-hb.sh` only
+checked that the file existed. Fix: one guarded `PATH0` scratch (`PATH-CAP=256`)
+and make `snap.f`/`stage2.f` use it; the gate now boots a long-HB_TMP snapshot and
+asserts the hook cell is nonzero plus a checked def runs. Keep direct path writes
+behind `PATH0`; a smaller ad-hoc destination can silently invalidate a shared-cap
+guard even when today's literal path is short.
+
+Second, `hb-build.sh` makers inherited the toolchain dogfood hook (`CHECK`, infer
+only), so declared false-certs still built: `( i64 -- i64 ) 0=` printed `-1`,
+and malformed `( i64 )` parsed as some other effect. Worse, a modeled rejection
+could print `habu: in b...` and the script still returned 0 with a runnable binary.
+Fix: the default stripped-AOT driver installs a user-program hook before compiling
+the supplied source: `CHECK!`, and `die` on a 0 verdict. (`--repl` is a different
+boundary: it bundles source for a later engine startup, so it is documented as a
+REPL/source bundle rather than the checked build path.) Lesson: dogfood inference
+is not a user-build policy; user-facing checked builds must verify declared
+effects and make checker rejection fatal. Tests must assert the bad program fails
+to BUILD, not merely that a later accidental call exits nonzero. Also assert the
+diagnostic preserves concrete type names: a `bool` vs `i64` rejection that renders
+as `c` vs `c` is technically fatal but useless for repair, and hides whether the
+checker rejected for the right reason.
+
 ## Gap analysis: a claimed-checked self-host word that wasn't (2026-06-14)
 
 A "Gaps" sweep (verify every README claim against the code/REPL) found the

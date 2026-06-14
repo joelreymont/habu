@@ -3,11 +3,13 @@
 \ runs the maker (toolchain + this driver, compiled by bin/hb), and moves
 \ /tmp/hb-build-got to the requested output. The emitted binary is the bare
 \ engine with the program as its baked source: it runs at startup and exits.
-\ The toolchain compiling THIS driver is checker-hooked; the user program is
-\ compiled by the emitted engine at its own startup (unchecked there).
+\ The toolchain compiling THIS driver is checker-hooked. The emitted bundle
+\ recompiles the user source at its own startup; use the default stripped AOT
+\ path when the build itself must verify declared user signatures.
 
 : BLD-IN  s" hb-build-src" TMP-PATH ;
 : BLD-OUT s" hb-build-got" TMP-PATH ;
+
 variable PB  variable PN  variable PFD  variable PRD
 $40000 constant PMAX
 

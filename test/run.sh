@@ -34,7 +34,7 @@ out=$(echo 's" HOME" getenv nip 0 > .' | $T/hb-warm)
 # is rejected (unpublished -> calling it exits 70); a correct one runs.
 out=$(printf ': SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | $T/hb-warm 2>/dev/null)
 [ "$out" = "49" ] || { echo "FAIL: snapshot good typed def (got: $out)"; exit 1; }
-printf ': SQBAD ( i64 -- i64 ) dup ;\nSQBAD\n' | $T/hb-warm >/dev/null 2>&1 && { echo "FAIL: snapshot did NOT reject bad sig"; exit 1; }
+printf ': SQBAD ( i64 -- i64 ) dup ;\n7 SQBAD .\n' | $T/hb-warm >/dev/null 2>&1 && { echo "FAIL: snapshot did NOT reject bad sig"; exit 1; }
 # named rows + quot sub-sigs VERIFY (Gap3): CHECK! body-vs-declared-sig.
 # V1 row-poly certifies, V2 combinator-param certifies, V3 bad row count rejects.
 out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i64 ) execute" CHECK! .\ns" V3 ( R -- R i64 ) 5 5" CHECK! .\n' | $T/hb-warm 2>/dev/null)
@@ -48,6 +48,9 @@ out=$(printf ': PSH ( R -- R i64 ) 5 ;\nPSH .\n' | $T/hb-warm 2>/dev/null)
 echo "PASS: AOT snapshot (warm toolchain boot) + getenv + sig-check (rows+quots) + bin/habu"
 HT=$(mktemp -d)
 HB_TMP=$HT ./tools/snap-hb.sh >/dev/null && [ -x "$HT/hb-warm" ] || { echo "FAIL: HB_TMP isolation"; exit 1; }
+out=$(printf '$340000000 $1B0 + @ 0= .\n: SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | "$HT/hb-warm" 2>/dev/null)
+[ "$out" = "0
+49" ] || { echo "FAIL: HB_TMP snapshot restore/check hook (got: $out)"; exit 1; }
 rm -rf "$HT"
 echo "PASS: HB_TMP isolation"
 python3 test/repl-pty.py || { echo "FAIL: tty REPL"; exit 1; }
@@ -73,6 +76,18 @@ printf ': MAIN s" hi" type CR ;\n' > $T/hb-str.f
 ./tools/hb-build.sh $T/hb-str.f -o $T/hb-str >/dev/null || { echo "FAIL: hb-build AOT S\" build"; exit 1; }
 [ "$($T/hb-str)" = "hi" ] || { echo "FAIL: hb-build AOT S\" output (got: $($T/hb-str))"; exit 1; }
 echo "PASS: hb-build AOT S\" string literal (PC-relative, relocation-safe)"
+# hb-build default AOT must verify declared signatures and treat rejection as fatal.
+printf ': BAD ( i64 -- i64 ) 0= ;\n: MAIN 0 BAD . CR ;\n' > $T/hb-badsig.f
+if ./tools/hb-build.sh $T/hb-badsig.f -o $T/hb-badsig >/dev/null 2>$T/hb-badsig.err; then
+  echo "FAIL: hb-build accepted bool-as-i64 false cert"; exit 1
+fi
+grep -q "expected: i64" $T/hb-badsig.err || { echo "FAIL: bool-as-i64 diagnostic lost expected type"; exit 1; }
+grep -q "actual: bool" $T/hb-badsig.err || { echo "FAIL: bool-as-i64 diagnostic lost actual type"; exit 1; }
+printf ': M ( i64 ) drop ;\n: MAIN 5 M 7 . CR ;\n' > $T/hb-malsig.f
+./tools/hb-build.sh $T/hb-malsig.f -o $T/hb-malsig >/dev/null 2>&1 && { echo "FAIL: hb-build accepted malformed sig"; exit 1; }
+printf ': B ( -- i64 ) 1.5 1 + ;\n: MAIN B . CR ;\n' > $T/hb-typebad.f
+./tools/hb-build.sh $T/hb-typebad.f -o $T/hb-typebad >/dev/null 2>&1 && { echo "FAIL: hb-build ignored checker rejection"; exit 1; }
+echo "PASS: hb-build rejects bad checked programs"
 # hb-build --repl = engine + REPL bundle: the library's words run + are callable.
 printf ': SQ ( i64 -- i64 ) DUP * ;\nEXPORT SQ\n9 SQ . CR\n' > $T/hb-rt.f
 ./tools/hb-build.sh --repl $T/hb-rt.f -o $T/hb-rt >/dev/null || { echo "FAIL: hb-build --repl"; exit 1; }
