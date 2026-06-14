@@ -160,8 +160,11 @@ variable RCUR   variable RBROW
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
-variable VSIG   variable SGSEEN   variable SGOUT   variable SGROUT
+variable VSIG   variable SGSEEN   variable SGIN   variable SGOUT
+variable SGRIN  variable SGROUT
 create FAILTK 64 allot   variable FAILTU
+variable TOKIX  variable FAILIX  variable DVERD
+variable JSON-DIAGS   0 JSON-DIAGS !
 
 : STEP {: din dout :}
    DCUR @ WAS !
@@ -761,6 +764,10 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
        dup a + c@  dup 64 >  over 91 <  and IF 32 or THEN
        over TKF + c!  1 +
      REPEAT drop  u TFU !  -1 THEN ;
+: CAP-FAIL ( -- )
+   FAILSET @ 0= IF TKF FAILTK TFU @ CCOPY  TFU @ FAILTU !  TOKIX @ FAILIX ! THEN ;
+: CAP-LONG {: a u :}
+   FAILSET @ 0= IF a FAILTK u CCOPY  u FAILTU !  TOKIX @ FAILIX ! THEN ;
 
 \ TRUST: declare a word's effect without checking its body — the native escape
 \ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
@@ -770,21 +777,25 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
    sa su  TKF TFU @  USIG-ADD ;
 
 : DO-TOK1 {: a u :}
-   a u TOKFOLD 0= IF -1 UNCK ! ELSE
-   FAILSET @ 0= IF TKF FAILTK TFU @ CCOPY  TFU @ FAILTU ! THEN
+   a u TOKFOLD 0= IF s" <too-long-token>" CAP-LONG  -1 UNCK !  -1 FAILSET ! ELSE
+   CAP-FAIL
    TOK0 @ IF TKF NMB TFU @ CCOPY  NMB NMA !  TFU @ NMU !  0 TOK0 ! ELSE
    LMODE @ IF TKF TFU @ LOC-TOK ELSE
    TKF TFU @ s" {:" STR= IF 1 LMODE !  #LOC @ LGRP ! ELSE
    TKF TFU @ CF-TOK? 0= IF
    TKF TFU @ RS-TOK? 0= IF
    TKF TFU @ LOC-REF? 0= IF
-   TKF TFU @ DO-TOK THEN THEN THEN THEN THEN THEN THEN
-   OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN ;
+   TKF TFU @ DO-TOK THEN THEN THEN THEN THEN THEN
+   OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
+   UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
+   THEN
+   TOKIX @ 1 + TOKIX ! ;
 
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
+   0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 TOKIX !  0 FAILIX !  0 DVERD !
    0 XSET !  0 DEADP !  0 SGBAD !
    BEGIN TI @ TBLEN @ < WHILE
      BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
@@ -794,8 +805,11 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
          BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 41 <>  and WHILE TI @ 1 + TI ! REPEAT
          VSIG @ IF
            TBASE @ TSTART @ +  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
-           SGHASR @ IF  SGROUT !  RCUR !  SGOUT !  DCUR !            \ seed data + return
-           ELSE  2drop  SGOUT !  DCUR !  THEN  -1 SGSEEN !
+           SGHASR @ IF
+             SGROUT !  dup SGRIN !  RCUR !  SGOUT !  dup SGIN !  DCUR !
+           ELSE
+             2drop  SGOUT !  dup SGIN !  DCUR !
+           THEN  -1 SGSEEN !
          THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
        ELSE
@@ -814,7 +828,9 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    VSIG @ SGSEEN @ SGHASR @ and and IF RCUR @ SGROUT @ UNIFY OK @ and OK ! THEN
    SGBAD @ IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN   \ a malformed declared sig rejects
-   dup 0 =  DIAGXT @ 0 <>  and IF DIAGXT @ execute THEN
+   dup DVERD !
+   dup 0 =  over 1 = JSON-DIAGS @ and  or
+   DIAGXT @ 0 <> and IF DIAGXT @ execute THEN
    dup -1 = NMU @ 0 > and RECXT @ 0 <> and IF NMA @ NMU @ RECXT @ execute THEN ;
 
 \ CHECK! ( a u -- flag ) : like CHECK but VERIFIES the body against a leading

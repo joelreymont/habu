@@ -15,6 +15,17 @@ duplication, not date/count prose in adjacent protocol docs. Lesson: external
 checklists are useful adversarial inputs even after implementation; verify the
 meta-docs as executable claims, not just the code paths.
 
+## Recommendation docs should collapse into gates (2026-06-14)
+
+Once an external recommendation has been accepted, the durable artifact should be
+code, data, or a lint gate — not a second status document that needs more review.
+The LLM-readiness follow-up closed that loop: JSON diagnostics now expose the
+machine fields the repair loop needs, the benchmark has executable task/result
+data, TRUST effect drift is linted, and `STATUS.md`'s verification date is
+checked. After that, the temporary eval/report markdown and old benchmark
+protocol prose were deleted. Lesson: keep the canonical docs, but retire
+one-shot review/eval docs as soon as their claims are executable.
+
 ## REPL bundles need user-only verification inputs (2026-06-14)
 
 Closing the `hb-build --repl` boundary required checking the user source before

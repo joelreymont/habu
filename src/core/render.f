@@ -125,16 +125,44 @@ create RBUF 64 cells allot   variable RBN
 : DROW {: s :}  s REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
-\ structured diagnostics: `JSON-DIAGS ON` emits one JSON object per reject for
-\ LLM repair (code/word/token/expected/actual) instead of the human prose line.
-variable JSON-DIAGS   0 JSON-DIAGS !
-: JKEY {: a u :}  34 EMIT1  a u DTXT  34 EMIT1  58 EMIT1 ;   \ "key":
+\ structured diagnostics: `JSON-DIAGS ON` emits one JSON object per reject or
+\ uncheckable verdict for LLM repair.
+create JNBUF 20 allot  variable JNV  variable JNN
+variable DSUGE  variable DSUGA
+: JNUM
+   JNV !  0 JNN !
+   JNV @ 0= IF 48 EMIT1 EXIT THEN
+   BEGIN JNV @ 0 > WHILE
+      JNV @ 10 mod 48 +  JNBUF JNN @ + c!
+      JNN @ 1 + JNN !
+      JNV @ 10 / JNV !
+   REPEAT
+   JNN @ BEGIN dup 0 > WHILE
+      1 - dup JNBUF + c@ EMIT1
+   REPEAT drop ;
+: JCHAR {: c :}  c 34 =  c 92 = or IF 92 EMIT1 THEN  c EMIT1 ;
+: JSTR {: a u :}  34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;
+: JKEY {: a u :}  a u JSTR  58 EMIT1 ;
+: JROW {: s :}  34 EMIT1  s DROW  34 EMIT1 ;
+: JEFFECT {: din dout rin rout hasr :}
+   34 EMIT1
+   din DROW  s" -- " DTXT  dout DROW
+   hasr IF s" | " DTXT  rin DROW  s" -- " DTXT  rout DROW THEN
+   34 EMIT1 ;
+: DCODE
+   DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
+   SGBAD @ IF s" E-BAD-SIGNATURE" ELSE
+   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN ;
+: DVERDICT  DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN ;
 \ a length-based repair hint: more values out than declared (remove a producer),
 \ fewer (consumes too much), or equal (a type mismatch — fix the body not the sig).
 : SUGGEST-TEXT ( -- a u )
-   DEXP @ REND-COLLECT RBN @  DACT @ REND-COLLECT RBN @  {: e a :}
-   a e > IF  s" the body leaves more values than declared — remove a producer or add outputs to the signature"
-   ELSE a e < IF  s" the body leaves fewer values than declared — it consumes too much, or declare fewer outputs"
+   DVERD @ 1 = IF s" checker could not infer this word; rewrite with modeled words or add TRUST only for audited primitives" EXIT THEN
+   DEXP @ 0= IF s" rejected without a captured stack mismatch; inspect the token and declared signature" EXIT THEN
+   DEXP @ REND-COLLECT RBN @ DSUGE !
+   DACT @ REND-COLLECT RBN @ DSUGA !
+   DSUGA @ DSUGE @ > IF  s" the body leaves more values than declared — remove a producer or add outputs to the signature"
+   ELSE DSUGA @ DSUGE @ < IF  s" the body leaves fewer values than declared — it consumes too much, or declare fewer outputs"
    ELSE  s" type mismatch at this token — fix the body to match the signature, do not weaken the signature"
    THEN THEN ;
 : DIAG-PROSE
@@ -145,13 +173,30 @@ variable JSON-DIAGS   0 JSON-DIAGS !
      s" actual: " DTXT  DACT @ DROW THEN ;
 : DIAG-JSON
    123 EMIT1                                              \ {
-   s" code" JKEY   34 EMIT1 s" E-MISMATCH" DTXT 34 EMIT1  44 EMIT1
-   s" word" JKEY   34 EMIT1 NMA @ NMU @ DTXT   34 EMIT1   44 EMIT1
-   s" token" JKEY  34 EMIT1 FAILTK FAILTU @ DTXT 34 EMIT1
+   s" code" JKEY   DCODE JSTR  44 EMIT1
+   s" verdict" JKEY DVERDICT JSTR  44 EMIT1
+   s" word" JKEY   NMA @ NMU @ JSTR   44 EMIT1
+   s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
+   s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1
+   SGSEEN @ IF
+     s" declared_effect" JKEY
+     SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ JEFFECT  44 EMIT1
+   THEN
+   s" inferred_effect" JKEY
+   SGSEEN @ IF SGIN @ ELSE BROW @ THEN
+   DCUR @
+   SGHASR @ IF SGRIN @ ELSE RBROW @ THEN
+   RCUR @
+   SGHASR @ JEFFECT  44 EMIT1
+   s" return_stack" JKEY
+   123 EMIT1
+   s" expected" JKEY  SGHASR @ IF SGROUT @ ELSE RBROW @ THEN JROW  44 EMIT1
+   s" actual" JKEY    RCUR @ JROW
+   125 EMIT1
    DEXP @ 0 <> IF
-     44 EMIT1 s" expected" JKEY 34 EMIT1 DEXP @ DROW 34 EMIT1
-     44 EMIT1 s" actual"   JKEY 34 EMIT1 DACT @ DROW 34 EMIT1
-     44 EMIT1 s" suggestion" JKEY 34 EMIT1 SUGGEST-TEXT DTXT 34 EMIT1 THEN
+     44 EMIT1 s" expected" JKEY DEXP @ JROW
+     44 EMIT1 s" actual"   JKEY DACT @ JROW THEN
+   44 EMIT1 s" suggestion" JKEY SUGGEST-TEXT JSTR
    125 EMIT1 ;                                            \ }
 : DIAG-PRINT
    1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !

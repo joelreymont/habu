@@ -5,6 +5,7 @@ a word (it has been 783 -> 860 -> 890), so this fails the gate if one reappears
 outside STATUS.md and LESSONS.md (the historical log, where past counts are the
 record). Replace the number with a pointer to STATUS.md instead.
 """
+import datetime as _dt
 import re, sys, pathlib
 
 ALLOWED = {"STATUS.md", "LESSONS.md", "tools/stale-status-lint.py"}
@@ -20,6 +21,15 @@ SKIP = ("/.jj/", "/.git/", "/.dots/")   # vcs + dot-CLI storage, not project doc
 
 root = pathlib.Path(".")
 bad = 0
+status = pathlib.Path("STATUS.md").read_text()
+match = re.search(r"^Last verified:\s*(\d{4}-\d{2}-\d{2})\s*$", status, re.M)
+today = _dt.date.today().isoformat()
+if not match:
+    print("STALE-STATUS STATUS.md: missing `Last verified: YYYY-MM-DD`")
+    bad += 1
+elif match.group(1) != today:
+    print(f"STALE-STATUS STATUS.md: Last verified is {match.group(1)}, expected {today}")
+    bad += 1
 for p in sorted(root.glob("**/*.md")):
     rel = p.as_posix()
     if rel in ALLOWED or any(s in "/" + rel for s in SKIP):

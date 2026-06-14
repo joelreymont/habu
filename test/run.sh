@@ -45,6 +45,11 @@ out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i6
 out=$(printf ': PSH ( R -- R i64 ) 5 ;\nPSH .\n' | $T/hb-warm 2>/dev/null)
 [ "$out" = "5" ] || { echo "FAIL: snapshot named-row sig run (got: $out)"; exit 1; }
 [ -x bin/habu ] || { echo "FAIL: bin/habu (checked REPL) not produced"; exit 1; }
+printf ': JBAD ( i64 -- i64 ) dup ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json.err || { echo "FAIL: tools/check.sh --json-errors"; exit 1; }
+grep -q '"verdict":"rejected"' $T/habu-json.err || { echo "FAIL: --json-errors missing verdict"; exit 1; }
+grep -q '"declared_effect":"i64 -- i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing declared effect"; exit 1; }
+grep -q '"inferred_effect":"i64 -- i64 i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing inferred effect"; exit 1; }
+grep -q '"token_index":1' $T/habu-json.err || { echo "FAIL: --json-errors missing token index"; exit 1; }
 echo "PASS: AOT snapshot (warm toolchain boot) + getenv + sig-check (rows+quots) + bin/habu"
 HT=$(mktemp -d)
 HB_TMP=$HT ./tools/snap-hb.sh >/dev/null && [ -x "$HT/hb-warm" ] || { echo "FAIL: HB_TMP isolation"; exit 1; }

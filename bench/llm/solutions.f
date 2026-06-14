@@ -1,6 +1,5 @@
-\ solutions.f — reference answer key for the habu LLM benchmark. Each is a
-\ checked definition: `run.sh` proves all 15 typecheck (CHECK! => -1 certified).
-\ The spec on each line is the prompt a model is given (without the body).
+\ solutions.f — reference answer key for the habu LLM benchmark. Each definition
+\ is checked: run.sh proves all tasks typecheck (CHECK! => -1 certified).
 \ Categories: arithmetic, control flow, locals, polymorphic stack, loops,
 \ return stack, quotations/combinators, recursion-as-loop.
 
@@ -28,3 +27,10 @@
 : DIP    ( R x [ R -- S ] -- S x ) {: x q :} q execute x ;     \ run q under the top item
 : KEEP   ( x [ x -- a ] -- a x ) {: x q :} x q execute x ;     \ run q on x, keep x
 : BI     ( x [ x -- a ] [ x -- b ] -- a b ) {: x q1 q2 :} x q1 execute x q2 execute ;  \ apply two quots to x
+: INC    ( i64 -- i64 ) 1 + ;                                  \ n+1
+: DEC    ( i64 -- i64 ) 1 - ;                                  \ n-1
+: DOUBLE ( i64 -- i64 ) dup + ;                                \ n*2
+: EVEN?  ( i64 -- bool ) 1 and 0 = ;                           \ true iff even
+: BETWEEN? ( i64 i64 i64 -- bool ) {: x lo hi :} x lo >= x hi <= and ;  \ lo <= x <= hi
+: SUMSQ  ( i64 i64 -- i64 ) {: a b :} a dup * b dup * + ;      \ a^2+b^2
+: COMPOSE2 ( i64 [ i64 -- i64 ] [ i64 -- i64 ] -- i64 ) {: x q1 q2 :} x q1 execute q2 execute ;  \ q2(q1(x))
