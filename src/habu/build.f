@@ -115,7 +115,7 @@ create VBUF BODYBUF-CAP allot
    AGAIN ;
 
 : V-VERIFY-BODY
-   VBUF VL @ CHECK!  dup 0= IF s" hb-build: check rejected" 70 die THEN drop ;
+   VBUF VL @ CHECK!  dup -1 <> IF s" hb-build: check did not certify" 70 die THEN drop ;
 
 : V-VERIFY-DEF
    0 VL !

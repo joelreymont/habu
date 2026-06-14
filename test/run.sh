@@ -14,6 +14,7 @@ T=${HB_TMP:-/tmp}
 ./tools/repl-lint.py || { echo "FAIL: repl-lint"; exit 1; }
 ./tools/trust-lint.py || { echo "FAIL: trust-lint"; exit 1; }
 ./tools/stale-status-lint.py || { echo "FAIL: stale-status-lint"; exit 1; }
+./tools/filemap-lint.py || { echo "FAIL: filemap-lint"; exit 1; }
 [ -x bin/hb ] || { echo "no bin/hb — run tools/bootstrap.sh once"; exit 1; }
 ./tools/build.sh > $T/hb-build.log 2>&1 || { tail -5 $T/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }
 echo "PASS: self-rebuild fixpoint"
@@ -50,6 +51,16 @@ grep -q '"verdict":"rejected"' $T/habu-json.err || { echo "FAIL: --json-errors m
 grep -q '"declared_effect":"i64 -- i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing declared effect"; exit 1; }
 grep -q '"inferred_effect":"i64 -- i64 i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing inferred effect"; exit 1; }
 grep -q '"token_index":1' $T/habu-json.err || { echo "FAIL: --json-errors missing token index"; exit 1; }
+grep -q '"file":"<stdin>"' $T/habu-json.err || { echo "FAIL: --json-errors missing file"; exit 1; }
+grep -q '"line":1' $T/habu-json.err || { echo "FAIL: --json-errors missing line"; exit 1; }
+grep -q '"column":' $T/habu-json.err || { echo "FAIL: --json-errors missing column"; exit 1; }
+grep -q '"byte_start":' $T/habu-json.err || { echo "FAIL: --json-errors missing byte_start"; exit 1; }
+grep -q '"byte_end":' $T/habu-json.err || { echo "FAIL: --json-errors missing byte_end"; exit 1; }
+grep -q '"definition_source":' $T/habu-json.err || { echo "FAIL: --json-errors missing definition source"; exit 1; }
+printf ': NOSIG dup ;\n' | ./tools/check.sh --strict-signatures >$T/habu-strict.err 2>&1 && { echo "FAIL: tools/check.sh --strict-signatures accepted nosig"; exit 1; }
+grep -q 'E-MISSING-SIGNATURE' $T/habu-strict.err || { echo "FAIL: strict-signatures missing text diagnostic"; exit 1; }
+printf ': NOSIG dup ;\n' | ./tools/check.sh --strict-signatures --json-errors >$T/habu-strict-json.out 2>&1 && { echo "FAIL: tools/check.sh --strict-signatures --json-errors accepted nosig"; exit 1; }
+grep -q '"code":"E-MISSING-SIGNATURE"' $T/habu-strict-json.out || { echo "FAIL: strict-signatures missing JSON diagnostic"; exit 1; }
 echo "PASS: AOT snapshot (warm toolchain boot) + getenv + sig-check (rows+quots) + bin/habu"
 HT=$(mktemp -d)
 HB_TMP=$HT ./tools/snap-hb.sh >/dev/null && [ -x "$HT/hb-warm" ] || { echo "FAIL: HB_TMP isolation"; exit 1; }
@@ -60,7 +71,7 @@ rm -rf "$HT"
 echo "PASS: HB_TMP isolation"
 python3 test/repl-pty.py || { echo "FAIL: tty REPL"; exit 1; }
 # hb-build DEFAULT = AOT: compile MAIN to native, engine stripped (no interpreter).
-printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;\n: MAIN 10 FIB . CR ;\n' > $T/hb-at.f
+printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;\n: MAIN ( -- ) 10 FIB . CR ;\n' > $T/hb-at.f
 ./tools/hb-build.sh $T/hb-at.f -o $T/hb-at >/dev/null || { echo "FAIL: hb-build (AOT)"; exit 1; }
 [ "$($T/hb-at)" = "55" ] || { echo "FAIL: hb-build AOT output (got: $($T/hb-at))"; exit 1; }
 ATX=$(size -m $T/hb-at 2>/dev/null | awk '/__text/{print $3}')
@@ -70,27 +81,46 @@ echo "PASS: hb-build AOT (engine stripped, __text $ATX B vs ~11800 embed)"
 # which silently overflowed and crashed the linker). Must build and compute 260.
 { printf ': W259 ( -- n ) 1 ;\n'
   i=258; while [ $i -ge 0 ]; do printf ': W%s ( -- n ) W%s 1 + ;\n' "$i" "$((i+1))"; i=$((i-1)); done
-  printf ': MAIN W0 . CR ;\n'; } > $T/hb-cl.f
+  printf ': MAIN ( -- ) W0 . CR ;\n'; } > $T/hb-cl.f
 ./tools/hb-build.sh $T/hb-cl.f -o $T/hb-cl >/dev/null || { echo "FAIL: hb-build AOT closure stress (260 words)"; exit 1; }
 [ "$($T/hb-cl)" = "260" ] || { echo "FAIL: hb-build AOT closure stress output (got: $($T/hb-cl))"; exit 1; }
 echo "PASS: hb-build AOT closure stress (260 reachable words)"
 # AOT S" string literal: the body is embedded in MAIN's blob and its address is
 # pushed PC-relative, so it survives the blob copy + ASLR (an absolute push would
 # point back into the builder's JIT region and print nothing).
-printf ': MAIN s" hi" type CR ;\n' > $T/hb-str.f
+printf ': MAIN ( -- ) s" hi" type CR ;\n' > $T/hb-str.f
 ./tools/hb-build.sh $T/hb-str.f -o $T/hb-str >/dev/null || { echo "FAIL: hb-build AOT S\" build"; exit 1; }
 [ "$($T/hb-str)" = "hi" ] || { echo "FAIL: hb-build AOT S\" output (got: $($T/hb-str))"; exit 1; }
 echo "PASS: hb-build AOT S\" string literal (PC-relative, relocation-safe)"
+# build verification requires certification; strict signature mode catches
+# missing signatures as source-lint errors before the maker runs.
+printf ': NOSIG 42 . CR ;\n' > $T/hb-nosig.f
+./tools/hb-build.sh --strict-signatures $T/hb-nosig.f -o $T/hb-nosig >$T/hb-nosig.err 2>&1 && { echo "FAIL: hb-build --strict-signatures accepted nosig"; exit 1; }
+grep -q 'E-MISSING-SIGNATURE' $T/hb-nosig.err || { echo "FAIL: hb-build --strict-signatures missing diagnostic"; exit 1; }
+printf ': MAIN ( -- ) 42 . CR ;\n' > $T/hb-strict-ok.f
+./tools/hb-build.sh --strict-signatures $T/hb-strict-ok.f -o $T/hb-strict-ok >/dev/null || { echo "FAIL: hb-build --strict-signatures good build"; exit 1; }
+[ "$($T/hb-strict-ok)" = "42" ] || { echo "FAIL: hb-build --strict-signatures output (got: $($T/hb-strict-ok))"; exit 1; }
+# CHECK! verdict 1 means uncheckable, not certified; build hooks must reject it.
+printf ': U ( -- ) [: leave ;] drop ;\n: MAIN ( -- ) U ;\n' > $T/hb-uncheckable.f
+./tools/hb-build.sh $T/hb-uncheckable.f -o $T/hb-uncheckable >/dev/null 2>$T/hb-uncheckable.err && { echo "FAIL: hb-build accepted uncheckable CHECK! verdict"; exit 1; }
+grep -q 'check did not certify' $T/hb-uncheckable.err || { echo "FAIL: hb-build uncheckable diagnostic missing"; exit 1; }
+# stripped AOT has no persistent data region. Reject data-space primitives
+# statically before/while linking instead of emitting a runtime-crashing binary.
+printf ': MAIN ( -- ) here . CR ;\n' > $T/hb-aot-unsafe.f
+./tools/hb-build.sh --json-errors $T/hb-aot-unsafe.f -o $T/hb-aot-unsafe >/dev/null 2>$T/hb-aot-unsafe.err && { echo "FAIL: hb-build AOT accepted here"; exit 1; }
+grep -q '"code":"E-AOT-UNSUPPORTED"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing JSON code"; exit 1; }
+grep -q '"token":"here"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing token"; exit 1; }
+echo "PASS: hb-build strict signatures + uncheckable/AOT-unsafe rejection"
 # hb-build default AOT must verify declared signatures and treat rejection as fatal.
-printf ': BAD ( i64 -- i64 ) 0= ;\n: MAIN 0 BAD . CR ;\n' > $T/hb-badsig.f
+printf ': BAD ( i64 -- i64 ) 0= ;\n: MAIN ( -- ) 0 BAD . CR ;\n' > $T/hb-badsig.f
 if ./tools/hb-build.sh $T/hb-badsig.f -o $T/hb-badsig >/dev/null 2>$T/hb-badsig.err; then
   echo "FAIL: hb-build accepted bool-as-i64 false cert"; exit 1
 fi
 grep -q "expected: i64" $T/hb-badsig.err || { echo "FAIL: bool-as-i64 diagnostic lost expected type"; exit 1; }
 grep -q "actual: bool" $T/hb-badsig.err || { echo "FAIL: bool-as-i64 diagnostic lost actual type"; exit 1; }
-printf ': M ( i64 ) drop ;\n: MAIN 5 M 7 . CR ;\n' > $T/hb-malsig.f
+printf ': M ( i64 ) drop ;\n: MAIN ( -- ) 5 M 7 . CR ;\n' > $T/hb-malsig.f
 ./tools/hb-build.sh $T/hb-malsig.f -o $T/hb-malsig >/dev/null 2>&1 && { echo "FAIL: hb-build accepted malformed sig"; exit 1; }
-printf ': B ( -- i64 ) 1.5 1 + ;\n: MAIN B . CR ;\n' > $T/hb-typebad.f
+printf ': B ( -- i64 ) 1.5 1 + ;\n: MAIN ( -- ) B . CR ;\n' > $T/hb-typebad.f
 ./tools/hb-build.sh $T/hb-typebad.f -o $T/hb-typebad >/dev/null 2>&1 && { echo "FAIL: hb-build ignored checker rejection"; exit 1; }
 echo "PASS: hb-build rejects bad checked programs"
 # hb-build --repl = build-time checked user source + engine/REPL bundle.

@@ -6,8 +6,10 @@ the model to track the stack by hand. See `PLAN.md` for design and roadmap.
 
 ## Conventions
 
-- **Forth words are UPPER-CASE.** Define and call words in upper case
-  (`SQUARE`, `CHECKED:`, `DROP`). Lower-case only for `\` comments and prose.
+- **Project-defined Forth words are UPPER-CASE; built-ins stay as-is/lower-case.**
+  Define and call our words in upper case (`SQUARE`, `CHECKED:`); keep core words
+  lower-case (`dup`, `drop`, `if`, `?do`). Lower-case only for `\` comments and
+  prose outside code.
 - Gforth target: **0.7.9** at `~/.local/bin/gforth` (built from source; see
   `LESSONS.md`). Keep `~/.local/bin` ahead of `/opt/homebrew/bin` on PATH.
 

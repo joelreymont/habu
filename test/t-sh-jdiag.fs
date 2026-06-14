@@ -27,6 +27,12 @@ T{ -1 SRC ERR-OF  s\" \"verdict\":\"rejected\"" HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"word\":\"sqbad\""        HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"token\":\"dup\""         HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"token_index\":1"         HAS? -> true }T
+T{ -1 SRC ERR-OF  s\" \"file\":\"<input>\""      HAS? -> true }T
+T{ -1 SRC ERR-OF  s\" \"line\":1"                HAS? -> true }T
+T{ -1 SRC ERR-OF  s\" \"column\":"               HAS? -> true }T
+T{ -1 SRC ERR-OF  s\" \"byte_start\":"           HAS? -> true }T
+T{ -1 SRC ERR-OF  s\" \"byte_end\":"             HAS? -> true }T
+T{ -1 SRC ERR-OF  s\" \"definition_source\":"    HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"declared_effect\":\"i64 -- i64 " HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"inferred_effect\":\"i64 -- i64 i64 " HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"return_stack\":{\"expected\":\"\"" HAS? -> true }T

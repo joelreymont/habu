@@ -14,7 +14,7 @@ $40000 constant PMAX
 : AOT-OUT  s" hb-aot-got" TMP-PATH ;
 
 : USER-HOOK
-   CHECK!  dup 0= IF s" hb-build: check rejected" 70 die THEN ;
+   CHECK!  dup -1 <> IF s" hb-build: check did not certify" 70 die THEN ;
 
 : READ-PROG
    AOT-IN PATH0  0 0 open PFD !
@@ -41,6 +41,56 @@ $40000 constant PMAX
    r 24 + c@ FOLD 109 = and  r 25 + c@ FOLD 97 = and
    r 26 + c@ FOLD 105 = and  r 27 + c@ FOLD 110 = and ;
 
+: REC-NAME= {: r a u :}
+   r 16 + @ $FF and u = IF
+      0 BEGIN dup u < WHILE
+         dup r 24 + swap + c@ FOLD
+         over a + c@ FOLD = 0= IF drop 0 EXIT THEN
+         1 +
+      REPEAT drop -1
+   ELSE 0 THEN ;
+: AOT-UNSAFE? {: r :}
+   r s" @" REC-NAME= IF -1 EXIT THEN
+   r s" !" REC-NAME= IF -1 EXIT THEN
+   r s" c@" REC-NAME= IF -1 EXIT THEN
+   r s" c!" REC-NAME= IF -1 EXIT THEN
+   r s" here" REC-NAME= IF -1 EXIT THEN
+   r s" allot" REC-NAME= IF -1 EXIT THEN
+   r s" ," REC-NAME= IF -1 EXIT THEN
+   r s" c," REC-NAME= IF -1 EXIT THEN
+   r s" create" REC-NAME= IF -1 EXIT THEN
+   r s" compile," REC-NAME= IF -1 EXIT THEN
+   r s" patch32" REC-NAME= IF -1 EXIT THEN
+   0 ;
+create AECH 1 allot
+: AE1 {: c :}  c AECH c!  2 AECH 1 write drop ;
+: AETXT {: a u :}  2 a u write drop ;
+: AEJCHAR {: c :}
+   c 10 = IF 92 AE1 110 AE1 EXIT THEN
+   c 13 = IF 92 AE1 114 AE1 EXIT THEN
+   c 9 = IF 92 AE1 116 AE1 EXIT THEN
+   c 34 =  c 92 = or IF 92 AE1 THEN  c AE1 ;
+: AEJSTR {: a u :}  34 AE1  0 BEGIN dup u < WHILE dup a + c@ AEJCHAR 1 + REPEAT drop 34 AE1 ;
+: AEJKEY {: a u :}  a u AEJSTR 58 AE1 ;
+: AOT-UNSAFE-JSON {: caller callee :}
+   123 AE1
+   s" code" AEJKEY s" E-AOT-UNSUPPORTED" AEJSTR 44 AE1
+   s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
+   s" word" AEJKEY caller 24 + caller 16 + @ $FF and AEJSTR 44 AE1
+   s" token" AEJKEY callee 24 + callee 16 + @ $FF and AEJSTR 44 AE1
+   s" suggestion" AEJKEY
+   s" stripped AOT has no persistent data region; use --repl/snapshot for data-space words or remove the runtime data access" AEJSTR
+   125 AE1 10 AE1 ;
+: AOT-UNSAFE-PROSE {: caller callee :}
+   s" hb-build: stripped AOT unsupported word '" AETXT
+   callee 24 + callee 16 + @ $FF and AETXT
+   s" ' called by '" AETXT
+   caller 24 + caller 16 + @ $FF and AETXT
+   s" '" AETXT 10 AE1 ;
+: AOT-UNSAFE-DIE {: caller callee :}
+   JSON-DIAGS @ IF caller callee AOT-UNSAFE-JSON ELSE caller callee AOT-UNSAFE-PROSE THEN
+   s" hb-build: AOT unsupported word" 70 die ;
+
 variable FX
 : FINDADDR {: t :}  0 FX !
    BEGIN FX @ ndict@ < WHILE  FX @ REC @ t = IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  0 ;
@@ -60,7 +110,12 @@ variable SP2  variable SEND
 : SCAN-REC {: r :}
    r @ SP2 !  r @ r 8 + @ + SEND !
    BEGIN SP2 @ SEND @ < WHILE
-      SP2 @ CALL? IF  SP2 @ TGT FINDADDR dup IF ADD-CLO ELSE drop THEN  SP2 @ 16 + SP2 !
+      SP2 @ CALL? IF
+         SP2 @ TGT FINDADDR dup IF
+            dup AOT-UNSAFE? IF r swap AOT-UNSAFE-DIE THEN
+            ADD-CLO
+         ELSE drop THEN
+         SP2 @ 16 + SP2 !
       ELSE SP2 @ 4 + SP2 ! THEN
    REPEAT ;
 variable WI

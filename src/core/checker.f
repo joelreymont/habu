@@ -162,8 +162,10 @@ variable RCUR   variable RBROW
 variable WAS   variable DEXP   variable DACT   variable FAILSET
 variable VSIG   variable SGSEEN   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT
+variable SGA  variable SGU
 create FAILTK 64 allot   variable FAILTU
 variable TOKIX  variable FAILIX  variable DVERD
+variable FAILB  variable FAILE
 variable JSON-DIAGS   0 JSON-DIAGS !
 
 : STEP {: din dout :}
@@ -565,6 +567,8 @@ variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
 \ enclosing DO frame's loop-exit row; unloop is a typing no-op — loop control
 \ isn't on the typed rows.)
 variable XROW  variable XRROW  variable XSET  variable DEADP
+variable RSHAS  variable RSGIN  variable RSGOUT  variable RSGRIN  variable RSGROUT
+variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF@DED #CFC @ 1 - cells CFDED + @ ;
 
 : CF-PUSH {: k s0 s1 r0 r1 :}
@@ -593,6 +597,23 @@ variable XROW  variable XRROW  variable XSET  variable DEADP
    OK @ and OK ! ;
 
 : RSUNI {: s :}  RCUR @ s UNIFY OK @ and OK ! ;
+
+: SG-SAVE
+   SGHASR @ RSHAS !  SGIN @ RSGIN !  SGOUT @ RSGOUT !
+   SGRIN @ RSGRIN !  SGROUT @ RSGROUT ! ;
+: SG-REST
+   RSHAS @ SGHASR !  RSGIN @ SGIN !  RSGOUT @ SGOUT !
+   RSGRIN @ SGRIN !  RSGROUT @ SGROUT ! ;
+: CF-RECURSE
+   VSIG @ SGSEEN @ and IF
+      SG-SAVE
+      SGA @ SGU @ PARSE-SIG-RAW
+      SGHASR @ RHAS !
+      RROUT !  RRIN !  RDOUT !  RDIN !
+      SG-REST
+      RDIN @ SUNI  RDOUT @ DCUR !
+      RHAS @ IF RRIN @ RSUNI  RROUT @ RCUR ! THEN
+   ELSE -1 UNCK ! THEN ;
 
 : CF-IF  s" bool --" PARSE-SIG  1 DCUR @ 0 RCUR @ 0 CF-PUSH ;   \ IF consumes a flag, not any value
 
@@ -747,7 +768,8 @@ variable QTMP
    a u s" exit" STR= IF CF-EXIT ELSE
    a u s" leave" STR= IF CF-LEAVE ELSE
    a u s" unloop" STR= IF CF-UNLOOP ELSE
-   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   a u s" recurse" STR= IF CF-RECURSE ELSE
+   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    CFH @ ;
 variable TBASE variable TBLEN variable TI variable TSTART
 \ first token of the checked text is the word's NAME (skipped, kept for the
@@ -764,10 +786,28 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
        dup a + c@  dup 64 >  over 91 <  and IF 32 or THEN
        over TKF + c!  1 +
      REPEAT drop  u TFU !  -1 THEN ;
+: FAIL-SPAN! ( -- )
+   TSTART @ TBASE @ - FAILB !
+   FAILB @ TFU @ + FAILE ! ;
 : CAP-FAIL ( -- )
-   FAILSET @ 0= IF TKF FAILTK TFU @ CCOPY  TFU @ FAILTU !  TOKIX @ FAILIX ! THEN ;
+   FAILSET @ 0= IF
+      TKF FAILTK TFU @ CCOPY  TFU @ FAILTU !  TOKIX @ FAILIX !  FAIL-SPAN!
+   THEN ;
 : CAP-LONG {: a u :}
-   FAILSET @ 0= IF a FAILTK u CCOPY  u FAILTU !  TOKIX @ FAILIX ! THEN ;
+   FAILSET @ 0= IF
+      a FAILTK u CCOPY  u FAILTU !  TOKIX @ FAILIX !
+      TSTART @ TBASE @ - FAILB !  FAILB @ u + FAILE !
+   THEN ;
+
+create DIAGFB 256 allot   variable DIAGFU
+: DIAG-FILE! {: a u :}
+   u 255 > IF s" diag: file path too long" 76 die THEN
+   0 BEGIN dup u < WHILE
+      dup a + c@  over DIAGFB + c!
+      1 +
+   REPEAT drop
+   u DIAGFU ! ;
+s" <input>" DIAG-FILE!
 
 \ TRUST: declare a word's effect without checking its body — the native escape
 \ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
@@ -795,8 +835,9 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
-   0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 TOKIX !  0 FAILIX !  0 DVERD !
-   0 XSET !  0 DEADP !  0 SGBAD !
+   0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGA !  0 SGU !
+   0 TOKIX !  0 FAILIX !  0 DVERD !
+   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 SGBAD !
    BEGIN TI @ TBLEN @ < WHILE
      BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
@@ -804,6 +845,7 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
          TI @ 1 + TI !  TI @ TSTART !             \ sig text starts after '('
          BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 41 <>  and WHILE TI @ 1 + TI ! REPEAT
          VSIG @ IF
+           TBASE @ TSTART @ + SGA !  TI @ TSTART @ - SGU !
            TBASE @ TSTART @ +  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
            SGHASR @ IF
              SGROUT !  dup SGRIN !  RCUR !  SGOUT !  dup SGIN !  DCUR !
@@ -823,15 +865,27 @@ create TKF 64 allot   create NMB 64 allot   variable TFU
      DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !         \ every path exited: output = accumulator
      ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
    THEN
-   VSIG @ SGSEEN @ and IF SGOUT @ SUNI THEN   \ SUNI captures declared(exp)/inferred(act) for the diagnostic
+   VSIG @ SGSEEN @ and IF
+      SGOUT @ SUNI
+      OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
+   THEN                                        \ SUNI captures declared(exp)/inferred(act)
    LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
-   VSIG @ SGSEEN @ SGHASR @ and and IF RCUR @ SGROUT @ UNIFY OK @ and OK ! THEN
+   VSIG @ SGSEEN @ SGHASR @ and and IF
+      RCUR @ SGROUT @ UNIFY OK @ and OK !
+      OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
+   THEN
    SGBAD @ IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN   \ a malformed declared sig rejects
    dup DVERD !
    dup 0 =  over 1 = JSON-DIAGS @ and  or
    DIAGXT @ 0 <> and IF DIAGXT @ execute THEN
-   dup -1 = NMU @ 0 > and RECXT @ 0 <> and IF NMA @ NMU @ RECXT @ execute THEN ;
+   dup -1 = NMU @ 0 > and IF
+      VSIG @ SGSEEN @ and IF
+         SGA @ SGU @  NMA @ NMU @  USIG-ADD
+      ELSE
+         RECXT @ 0 <> IF NMA @ NMU @ RECXT @ execute THEN
+      THEN
+   THEN ;
 
 \ CHECK! ( a u -- flag ) : like CHECK but VERIFIES the body against a leading
 \ ( in -- out ) declared sig (rejects on mismatch). The standalone REPL hook.

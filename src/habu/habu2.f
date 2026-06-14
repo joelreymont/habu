@@ -768,7 +768,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
    \ corrupt/truncated trailer must never smear the regions: exit 79
    5 REGION LIT64,  6 5 CMP,  C-GT SNBL @ BCOND,
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT SNBL @ BCOND,
-   5 1600 MOVZ,  15 5 CMP,  C-GT SNBL @ BCOND,
+   5 2200 MOVZ,  15 5 CMP,  C-GT SNBL @ BCOND,
    SNOL @ B,
    SNBL @ LBL,  0 79 MOVZ,  NR-EXIT SYS,
    SNOL @ LBL,
@@ -869,7 +869,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
          0 76 MOVZ,  NR-EXIT SYS,
       cpok LBL,
-      9 1600 MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slot 1600 < CFSTK-OFF/48
+      9 2200 MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slot 2200 < CFSTK-OFF/48
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
          0 77 MOVZ,  NR-EXIT SYS,
       ndok LBL,

@@ -27,9 +27,9 @@ $100000 constant REGION       \ mmap region size (1 MB)
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
-$14000  constant DICT-SIZE     \ dict area at region+0 (80 KB); code area follows
+$1C000  constant DICT-SIZE     \ dict area at region+0 (112 KB); code area follows
 48      constant DREC          \ dict record: addr(8) clen(8) namelen(8) name(16) wid(8)
-$13000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
+$1B000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
 $200000 constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
 $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 \ x20 (RBASE) is dead after startup, so it doubles as DATA: the data-space base.
@@ -1510,7 +1510,7 @@ variable CFSK2
    LBL {: snbad :}  LBL {: snokz :}
    5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
-   5 1600 MOVZ,  15 5 CMP,  C-GT snbad BCOND,
+   5 2200 MOVZ,  15 5 CMP,  C-GT snbad BCOND,
    snokz B,
    snbad LBL,  0 79 MOVZ,  NR-EXIT SYS,
    snokz LBL,
@@ -1611,7 +1611,7 @@ variable CFSK2
             0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
             0 76 MOVZ,  NR-EXIT SYS,                    \ code region full
          cpok LBL,
-         9 1600 MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slot 1600 < CFSTK-OFF/48
+         9 2200 MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slot 2200 < CFSTK-OFF/48
             0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
             0 77 MOVZ,  NR-EXIT SYS,                    \ dictionary full
          ndok LBL,

@@ -14,6 +14,9 @@ T{ s" : SQ ( i64 -- i64 ) dup * ;"        V s\" -1\n" compare 0= -> true }T
 T{ s" : BAD ( i64 -- i64 ) dup ;"         V s\" 0\n"  compare 0= -> true }T
 T{ s" : DR ( i64 i64 -- i64 ) + ;"        V s\" -1\n" compare 0= -> true }T
 T{ s" : XS ( i64 -- i64 i64 ) dup ;"      V s\" -1\n" compare 0= -> true }T
+T{ s" : FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;" V s\" -1\n" compare 0= -> true }T
+T{ s" : FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ; : MF ( -- ) 10 FIB . cr ;" V s\" -1\n-1\n" compare 0= -> true }T
+T{ s" : RBAD ( n -- n ) RECURSE DUP ;"    V s\" 0\n"  compare 0= -> true }T
 
 \ --- polymorphic + named row vars
 T{ s" : SW ( a b -- b a ) swap ;"         V s\" -1\n" compare 0= -> true }T

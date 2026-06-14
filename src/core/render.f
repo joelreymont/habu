@@ -8,13 +8,14 @@
 \ certify too.
 create ECH 1 allot
 variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
-create RSBUF 512 allot   variable RSN
+16384 constant RSBUF-CAP
+create RSBUF RSBUF-CAP allot   variable RSN
 variable RQM                             \ a '?' rendered = unknown tag, don't record
 
 : EMIT1 {: c :}
    c 63 = IF 1 RQM ! THEN
    RDST @ IF
-     RSN @ 510 > IF s" render: sig buffer full" 76 die THEN
+     RSN @ RSBUF-CAP 2 - > IF s" render: sig buffer full" 76 die THEN
      c RSBUF RSN @ + c!  RSN @ 1 + RSN !
    ELSE c ECH c! ECH 1 type THEN ;
 create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PAY)
@@ -140,7 +141,11 @@ variable DSUGE  variable DSUGA
    JNN @ BEGIN dup 0 > WHILE
       1 - dup JNBUF + c@ EMIT1
    REPEAT drop ;
-: JCHAR {: c :}  c 34 =  c 92 = or IF 92 EMIT1 THEN  c EMIT1 ;
+: JCHAR {: c :}
+   c 10 = IF 92 EMIT1 110 EMIT1 EXIT THEN
+   c 13 = IF 92 EMIT1 114 EMIT1 EXIT THEN
+   c 9 = IF 92 EMIT1 116 EMIT1 EXIT THEN
+   c 34 =  c 92 = or IF 92 EMIT1 THEN  c EMIT1 ;
 : JSTR {: a u :}  34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;
 : JKEY {: a u :}  a u JSTR  58 EMIT1 ;
 : JROW {: s :}  34 EMIT1  s DROW  34 EMIT1 ;
@@ -165,6 +170,17 @@ variable DSUGE  variable DSUGA
    ELSE DSUGA @ DSUGE @ < IF  s" the body leaves fewer values than declared — it consumes too much, or declare fewer outputs"
    ELSE  s" type mismatch at this token — fix the body to match the signature, do not weaken the signature"
    THEN THEN ;
+variable JPOS  variable JLINE  variable JCOL
+: JLOC-CALC
+   1 JLINE !  1 JCOL !  0 JPOS !
+   BEGIN JPOS @ FAILB @ <  JPOS @ TBLEN @ <  and WHILE
+      TBASE @ JPOS @ + c@ 10 = IF
+         JLINE @ 1 + JLINE !  1 JCOL !
+      ELSE
+         JCOL @ 1 + JCOL !
+      THEN
+      JPOS @ 1 + JPOS !
+   REPEAT ;
 : DIAG-PROSE
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
@@ -172,12 +188,19 @@ variable DSUGE  variable DSUGA
      s"  expected: " DTXT  DEXP @ DROW
      s" actual: " DTXT  DACT @ DROW THEN ;
 : DIAG-JSON
+   JLOC-CALC
    123 EMIT1                                              \ {
    s" code" JKEY   DCODE JSTR  44 EMIT1
    s" verdict" JKEY DVERDICT JSTR  44 EMIT1
    s" word" JKEY   NMA @ NMU @ JSTR   44 EMIT1
    s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
    s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1
+   s" file" JKEY  DIAGFB DIAGFU @ JSTR  44 EMIT1
+   s" line" JKEY  JLINE @ JNUM  44 EMIT1
+   s" column" JKEY  JCOL @ JNUM  44 EMIT1
+   s" byte_start" JKEY  FAILB @ JNUM  44 EMIT1
+   s" byte_end" JKEY  FAILE @ JNUM  44 EMIT1
+   s" definition_source" JKEY  TBASE @ TBLEN @ JSTR  44 EMIT1
    SGSEEN @ IF
      s" declared_effect" JKEY
      SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ JEFFECT  44 EMIT1

@@ -9,6 +9,19 @@
 # The output needs neither habu nor gforth to run.
 set -e
 cd "$(dirname "$0")/.."
+REPL=0
+JSON=0
+STRICT=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --repl) REPL=1; shift ;;
+    --json-errors) JSON=1; shift ;;
+    --strict-signatures) STRICT=1; shift ;;
+    --) shift; break ;;
+    -*) echo "usage: hb-build.sh [--repl] [--json-errors] [--strict-signatures] prog.f -o out"; exit 64 ;;
+    *) break ;;
+  esac
+done
 CLEAN_T=0
 if [ -n "${HB_TMP:-}" ]; then
   T=$HB_TMP
@@ -22,13 +35,21 @@ cleanup() {
   [ "$CLEAN_T" = 0 ] || rm -rf "$T"
 }
 trap cleanup EXIT HUP INT TERM
-REPL=0
-[ "$1" = "--repl" ] && { REPL=1; shift; }
 SRC=$1
-[ "$2" = "-o" ] && [ -n "$3" ] || { echo "usage: hb-build.sh [--repl] prog.f -o out"; exit 64; }
+[ "$2" = "-o" ] && [ -n "$3" ] || { echo "usage: hb-build.sh [--repl] [--json-errors] [--strict-signatures] prog.f -o out"; exit 64; }
 OUT=$3
 [ -f "$SRC" ] || { echo "hb-build: no such source: $SRC"; exit 66; }
 [ -x bin/hb ] || { echo "hb-build: bin/hb missing (run tools/build.sh first)"; exit 69; }
+case "$SRC" in
+  *\"*) echo "hb-build: source path contains a double quote, cannot set DIAG-FILE"; exit 64 ;;
+esac
+if [ "$JSON" = 1 ]; then LINT_JSON=--json; else LINT_JSON=; fi
+if [ "$STRICT" = 1 ]; then
+  ./tools/signature-lint.py $LINT_JSON "$SRC" >&2
+fi
+if [ "$REPL" = 0 ]; then
+  ./tools/aot-lint.py $LINT_JSON "$SRC" >&2
+fi
 
 if [ "$REPL" = 1 ]; then DRIVER=build; ISRC=$T/hb-build-src; GOT=hb-build-got; MK=hb-build-mk
 else                     DRIVER=aot;   ISRC=$T/hb-aot-src;   GOT=hb-aot-got;   MK=hb-aot-mk; fi
@@ -43,7 +64,15 @@ GOTPATH=$T/$GOT
 # bundles that source plus trusted REPL support for startup/runtime execution.
 for f in $(./tools/srclist.sh $DRIVER); do
   [ "$f" = "src/core/sha256.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
-  cat "$f"; printf '\n'
+  if [ "$f" = "src/habu/$DRIVER.f" ]; then
+    sed '$d' "$f"
+    printf 's" %s" DIAG-FILE!\n' "$SRC"
+    [ "$JSON" = 1 ] && printf '%s\n' '-1 JSON-DIAGS !'
+    tail -n 1 "$f"
+  else
+    cat "$f"
+  fi
+  printf '\n'
 done > "$STAGE2_SRC"
 rm -f "$STAGE2_GOT"
 bin/hb

@@ -3,6 +3,50 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Strict CHECK! exposed recursion and recording gaps (2026-06-14)
+
+Changing build hooks from "reject only 0" to "accept only -1" was the right
+soundness boundary, but it immediately made the old AOT `FIB` fixture fail:
+`recurse` was unmodeled, so a perfectly typed recursive word returned
+uncheckable. The durable fix is not to weaken the build hook; in verify mode,
+`recurse` applies a fresh instantiation of the current word's declared signature.
+Fresh matters: reusing the parsed declaration aliases the current stack row and
+false-rejects recursive calls. The second bug appeared at call sites: rendering a
+verified quotation-bearing signature from mutated type terms recorded a corrupted
+scheme (`APPLY` became unusable). For successful `CHECK!`, record the raw
+declared signature string; use rendered inferred effects only for infer-mode
+definitions. Regression: `t-sh-verify` covers recursive `FIB`, recursive
+rejection, and a certified caller of recursive `FIB`.
+
+## AOT-unsafe words can be inlined away from closure scans (2026-06-14)
+
+The first stripped-AOT guard rejected unsupported data-space words during native
+closure scanning, but `here` still built: leaf primitives can be inlined into the
+caller, leaving no call edge for the closure scan to see. Static AOT capability
+checks therefore need a source-level pass before the maker runs, plus the closure
+guard for non-inlined edges. `tools/aot-lint.py` shares the Forth lexer with
+strict signature linting so comments and strings do not create false positives.
+The regression asserts `hb-build --json-errors` rejects `: MAIN ( -- ) here ...`
+with `E-AOT-UNSUPPORTED` instead of emitting a runtime-crashing binary.
+
+## Tests that build `/tmp/nf-bin` must not run in parallel (2026-06-14)
+
+While validating the LLM benchmark I ran multiple gforth/native smoke tests in
+parallel; each used `test/nf.fs`, which writes and executes the fixed path
+`/tmp/nf-bin`. The benchmark briefly reported only `1/30` certified because a
+concurrent probe replaced the executable mid-run. Do not parallelize `NF-RUN`
+tests unless each gets an isolated output path. Sequential `bench/llm/run.sh` and
+`tools/oracle.sh` were green.
+
+## Feature growth must move the dict guard, not shrink coverage (2026-06-14)
+
+Adding diagnostics and stricter build checks grew the toolchain enough that the
+260-word AOT closure stress hit the 1600-record dictionary cap before reaching
+the linker. Reducing the stress below 257 words would have stopped testing the
+old closure-table overflow. The correct fix was to move the control-flow stack up
+and raise the dict guard to 2200 records in both parity-locked engine emitters,
+then recalibrate the dictionary-full guard test to exceed the new cap.
+
 ## Recommendation evals catch stale meta-docs too (2026-06-14)
 
 Evaluating the repo against an external LLM-readiness recommendation doc found
