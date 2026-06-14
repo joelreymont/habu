@@ -3,6 +3,34 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Property-based soundness testing: execution is the oracle (2026-06-14)
+
+Built `tools/prop_gen.py` + `tools/prop-test.py` (design in `PROP-TESTING.md`):
+generate runnable typed defs, check them, RUN the certified ones, and fail if a
+certified def's real out-arity ≠ its declared sig. The oracle is **execution in
+bin/habu**, not a second checker — we explicitly did NOT use the bootstrap gforth
+checker as a differential (that would chain the native checker to a bootstrap
+artifact forever). The soundness verdict is robust to generator bugs: a wrong
+`true_out` only makes the checker reject (declared ≠ inferred); only
+`certified AND measured ≠ declared` flags a real false-cert.
+
+Three engineering facts that decided the design: (1) the engine has **no `depth`**
+word and its `CHECK!` hook rejects un-checkable helpers, so out-arity is measured
+by pushing a sentinel `MK`, running, and counting residual above it with a helper
+defined under `0 set-check` (`: NAB … ;`). (2) **Pipe mode does not recover from a
+compile error** — one malformed def aborts the whole batch (57/60 silently became
+`None` before I saw it), so each program runs in its OWN bin/habu process;
+isolation also parallelizes and lifted the certified yield from a masked 3% to a
+real ~70%. (3) The harness must prove its own teeth: `--self-test` fabricates a
+false-cert result and asserts the classifier flags it, because a sound checker
+won't produce a real one to test against. First sweep: 3000 programs, 2152
+certified, **0 false-certs** — the recent fixes hold. Gate smoke (200 defs, fixed
+seed, ~1.6 s) + a `test/prop-corpus/` replay freeze every found counterexample as
+a regression. All the leverage is in the generator: random tokens bounce off the
+parser; a stack-depth-tracked walk over a runnable, terminating sublanguage is
+what reaches the checker's edges. Open (Phase 2 dot): `leave`/`exit` in the
+generator and metamorphic (composition/subsumption) properties.
+
 ## Strict CHECK! exposed recursion and recording gaps (2026-06-14)
 
 Changing build hooks from "reject only 0" to "accept only -1" was the right
