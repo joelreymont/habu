@@ -40,6 +40,9 @@ s" R i64 -- R i64" s" 1-"     PRIM
 s" R i64 -- R i64" s" 2*"     PRIM
 s" R i64 -- R i64" s" 2/"     PRIM
 
+\ --- flag literals ( -> bool ) ---
+s" R -- R bool"         s" TRUE"  PRIM
+s" R -- R bool"         s" FALSE" PRIM
 \ --- comparison ( -> bool ) ---
 s" R i64 -- R bool"     s" 0="  PRIM
 s" R a a -- R bool"     s" ="   PRIM

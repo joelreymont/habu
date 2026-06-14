@@ -8,6 +8,19 @@ T{ ' Q-EXEC catch -> 0 }T
 : Q-DIP  s" QD" s" R i64 i64 -- R i64 i64" s" [: 1+ ;] DIP" CHECK-DEF ;
 T{ ' Q-DIP catch -> 0 }T
 
+\ array iterators EACH/MAP/FOLD ( ptr<a> count [quot] ): a quotation of the
+\ right per-element arity over a typed buffer checks; a wrong arity rejects.
+: Q-EACH s" QEA" s" R ptr i64 i64 -- R"     s" [: DROP ;] EACH" CHECK-DEF ;
+T{ ' Q-EACH catch -> 0 }T
+: Q-MAP  s" QMP" s" R ptr i64 i64 -- R"     s" [: 1+ ;] MAP"    CHECK-DEF ;
+T{ ' Q-MAP catch -> 0 }T
+: Q-FOLD s" QFD" s" R ptr i64 i64 i64 -- R i64" s" [: + ;] FOLD" CHECK-DEF ;
+T{ ' Q-FOLD catch -> 0 }T
+\ EACH's body must consume exactly one element (R a -- R); a producing body
+\ over-grows the row and the occurs-check rejects.
+: Q-EACHB s" QEAB" s" R ptr i64 i64 -- R"   s" [: 1+ ;] EACH" CHECK-DEF ;
+T{ ' Q-EACHB catch -> E-OCCURS }T
+
 \ tick a charted word and execute it:  ' DUP EXECUTE  ~ DUP
 : Q-TICK s" QT" s" R a -- R a a" s" ' DUP EXECUTE" CHECK-DEF ;
 T{ ' Q-TICK catch -> 0 }T

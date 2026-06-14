@@ -72,13 +72,16 @@ Signature grammar `( in -- out )` (case-insensitive, like Forth):
 | `… | rin -- rout` | optional return-stack clause |
 
 Examples: `DUP : ( R a -- R a a )`, `= : ( R a a -- R bool )`,
-`@ : ( R ptr a -- R a )`, `>R : ( R a | S -- R | S a )`,
-`EXECUTE : ( R [ R -- S ] -- S )`.
+`@ : ( R ptr a -- R a )`, `>R : ( R a -- R | S -- S a )`,
+`EXECUTE : ( R [ R -- S ] -- S )`. (The return clause follows the data
+effect: `Din -- Dout | Rin -- Rout`.)
 
 Supported (gforth-hosted checker): typed `:` definitions, literals, the
 primitive set, polymorphic signatures, `IF/ELSE/THEN`,
 `BEGIN…UNTIL/WHILE…REPEAT/AGAIN`, `?DO…LOOP/+LOOP`, `RECURSE`/`EXIT`, typed
-locals (`{: a b :}`, `{ a:u8 -- }`), quotations (`[: ;]`), `'`/`['] ` (xt typed
+locals (`{: a b :}`, or the gforth `{ a:u8 -- }` form — which needs the def to
+carry a typed `( … )` signature, else it's raw gforth that rejects `a:u8`),
+quotations (`[: ;]`), `'`/`['] ` (xt typed
 as quot), the return stack (`>R R> R@`), pointer/memory ops, and `TRUSTED:`
 annotations for words whose effect can't be inferred (FFI, metaprogramming).
 

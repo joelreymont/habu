@@ -3,6 +3,36 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Gap analysis: a claimed-checked self-host word that wasn't (2026-06-14)
+
+A "Gaps" sweep (verify every README claim against the code/REPL) found the
+headline self-host claim overstated: the README says `C-RESOLVE` (the full
+looping RESOLVE-TYPE) and `C-UNIFY` are "type-checked through habu's own
+checker," but `all.fs` (exit 0, "0 failure(s)") quietly printed `habu: WARNING:
+C-RESOLVE was NOT type-checked … compiled natively`. The colon override has an
+OVERLAY rule (`bootstrap/src/colon.fs`): a body with an unmodeled word throws
+`E-UNCHECKED`, warns, and compiles via the NATIVE colon anyway — so the test's
+`find-name` assertion passed on a natively-compiled word, not a checked one. The
+unmodeled word was `false`/`true`: never in the gforth-hosted prim DB. Fix: chart
+`TRUE`/`FALSE` as `( R -- R bool )` in `bootstrap/src/prims.fs` — both now
+genuinely check, making the claim true (no doc edit needed). NOTE: I started to
+add them to the NATIVE checker too, but the native ENGINE has no `true`/`false`
+word (deliberately minimal), so the checker must NOT model what the engine can't
+compile — reverted. The checker's vocabulary tracks the engine's, per tier.
+
+Two meta-lessons. (1) A green suite can hide an overstatement: "0 failures" with
+a warning on stderr is not "everything is checked." Grep the warnings, don't
+trust the exit code. (2) Subagents (and quick `catch`-based probes) MIS-tested:
+one reported EACH/MAP/FOLD "broken under the checker" — actually it passed `i64`
+where a `ptr<a>` address was required; with `here N [: ;]` shape they return
+`CHECK-CODE 0`. The authoritative signal in the gforth-hosted tier is the
+`CHECK-CODE` variable (0=checked / −2=native-fallback / else type-error), NOT
+`EVALUATE catch` (colon.fs swallows the error internally). Always verify a
+"finding" with the tier's real verdict signal before acting on it — two of four
+agents' headline claims were wrong, and the dig protocol caught both. The 3
+array combinators were also UNTESTED (`test/` had no reference) — added
+`Q-EACH/Q-MAP/Q-FOLD` + a negative `Q-EACHB` to `t-quots.fs`.
+
 ## AOT S" survives the copy when the address is PC-relative (2026-06-13)
 
 The review's H1: an AOT'd `: MAIN s" hi" type cr ;` printed nothing. Compile-mode

@@ -32,6 +32,12 @@ requires building a small Forth runtime (Part F) — accepted as the long pole.
 > ~3 ms (fixed-VA regions + startup relocation of engine-text references).
 > The toolchain self-checks clean (see `STATUS.md`). Sections below are the historical design
 > record; their "remaining/not started" markers predate this status.
+>
+> **PATHS:** the design body cites the gforth-hosted checker as bare
+> `src/<file>.fs` (e.g. `src/colon.fs`, `src/checker.fs`, `src/db.fs`) — those
+> files now live under **`bootstrap/src/`**. The NATIVE self-hosted toolchain
+> (what `bin/hb` compiles and re-checks) is `src/{core,arch/arm64,habu,os/macos}`.
+> So read every bare `src/<name>.fs` below as `bootstrap/src/<name>.fs`.
 
 ## Foundational principle: everything in Forth, no C
 
