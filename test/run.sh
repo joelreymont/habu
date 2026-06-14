@@ -145,8 +145,25 @@ doc = json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert doc["schema_version"] == 1, doc
 assert doc["file_bytes"] > 0, doc
 assert doc["padding_bytes"] == doc["patched_call_stencils"] * 12, doc
+assert doc["direct_bl_instructions"] > 0, doc
 PY
 echo "PASS: hb-build AOT (engine stripped, __text $ATX B vs ~11800 embed)"
+# AOT compacts reachable call stencils inside straight-line blobs: a non-inline
+# call becomes one BL instead of NOP,NOP,NOP,BL padding. Branch/string blobs keep
+# the fixed-width path unless proven safe.
+printf ': BIG ( i64 -- i64 ) 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ ;\n: WRAP ( i64 -- i64 ) BIG 1+ ;\n: MAIN ( -- ) 1 WRAP . CR ;\n' > $T/hb-compact.f
+./tools/hb-build.sh $T/hb-compact.f -o $T/hb-compact >/dev/null || { echo "FAIL: hb-build AOT compact calls"; exit 1; }
+[ "$($T/hb-compact)" = "22" ] || { echo "FAIL: hb-build AOT compact call output (got: $($T/hb-compact))"; exit 1; }
+./tools/aot-call-report.py $T/hb-compact > $T/hb-compact-call-report.json
+python3 - "$T/hb-compact-call-report.json" <<'PY'
+import json, pathlib, sys
+doc = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert doc["schema_version"] == 1, doc
+assert doc["patched_call_stencils"] == 0, doc
+assert doc["padding_bytes"] == 0, doc
+assert doc["direct_bl_instructions"] >= 3, doc
+PY
+echo "PASS: hb-build AOT compact call layout"
 # AOT closure stress: a 260-word reachable chain (above the old 256-cell tables,
 # which silently overflowed and crashed the linker). Must build and compute 260.
 { printf ': W259 ( -- n ) 1 ;\n'

@@ -9,14 +9,14 @@ require rt.fs
 
 30 constant LR
 
-\ --- CODE-TABLE: name -> [ label | len | body-bytes ] ---
+\ --- CODE-TABLE: name -> [ label | arity | effect-flags | len | body-bytes ] ---
 wordlist constant CODE-TABLE
 
-: CG-RECORD ( na nu ba bu arity -- )       \ entry: [ label | arity | len | bytes ]
-   {: ar :}
+: CG-RECORD ( na nu ba bu arity flags -- )
+   {: ar flags :}
    2swap nextname
    get-current >r  CODE-TABLE set-current  create  r> set-current
-   -1 ,  ar ,  dup ,  here >r  dup allot  r> swap move ;
+   -1 ,  ar ,  flags ,  dup ,  here >r  dup allot  r> swap move ;
 
 : WORD-PFA  ( a u -- pfa | 0 )  CODE-TABLE search-wordlist if execute else 0 then ;
 
@@ -24,7 +24,9 @@ wordlist constant CODE-TABLE
 
 : PFA>ARITY ( pfa -- n )  cell+ @ ;
 
-: PFA>BODY  ( pfa -- ba bu )  dup 3 cells + swap 2 cells + @ ;
+: PFA>EFLAGS ( pfa -- flags )  2 cells + @ ;
+
+: PFA>BODY  ( pfa -- ba bu )  dup 4 cells + swap 3 cells + @ ;
 
 \ --- token iteration (no emission) ---
 : FOR-TOKENS {: a u xt | end cur ts -- :}

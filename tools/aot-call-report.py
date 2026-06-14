@@ -22,6 +22,11 @@ def words(data: bytes):
         yield off, struct.unpack_from("<IIII", data, off)
 
 
+def word32s(data: bytes):
+    for off in range(0, len(data) - 3, 4):
+        yield off, struct.unpack_from("<I", data, off)[0]
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 1:
         usage()
@@ -31,6 +36,7 @@ def main(argv: list[str]) -> int:
     for off, quartet in words(data):
         if quartet[0] == NOP and quartet[1] == NOP and quartet[2] == NOP and quartet[3] & BL_MASK == BL_OP:
             sites.append(off)
+    direct_bl_sites = [off for off, word in word32s(data) if word & BL_MASK == BL_OP]
     doc = {
         "schema_version": 1,
         "file": str(path),
@@ -38,6 +44,8 @@ def main(argv: list[str]) -> int:
         "patched_call_stencils": len(sites),
         "padding_bytes": len(sites) * 12,
         "compact_call_bytes": len(sites) * 4,
+        "direct_bl_instructions": len(direct_bl_sites),
+        "direct_bl_sites": direct_bl_sites,
         "sites": sites,
     }
     json.dump(doc, sys.stdout, indent=2)

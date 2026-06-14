@@ -34,6 +34,7 @@ $40000 constant PMAX
    p 4 + W32@ $FFE0001F and $F2A00010 = and
    p 8 + W32@ $FFE0001F and $F2C00010 = and
    p 12 + W32@ $D63F0200 = and ;
+: CALL-AT? {: p e :}  p 16 + e <= IF p CALL? ELSE 0 THEN ;
 
 : REC {: k :}  dbase@ k 48 * + ;          \ dict record k  (0:addr 8:len 16:nlen 24:name)
 : FOLD {: c :}  c 64 > c 91 < and IF c 32 + ELSE c THEN ;
@@ -126,6 +127,7 @@ variable CLO-LIMIT
    n CLO-LIMIT ! ;
 MAX-CLO CLO-LIMIT!
 : IN-CLO? {: r :}  0 CX ! BEGIN CX @ NCLO @ < WHILE CX @ cells CLO + @ r = IF -1 exit THEN CX @ 1+ CX ! REPEAT 0 ;
+: CALL-IN-CLO? {: p :}  p TGT FINDADDR dup IF IN-CLO? ELSE drop 0 THEN ;
 : CLO-OVERFLOW-JSON {: r :}
    123 AE1
    s" schema_version" AEJKEY 1 AEJNUM 44 AE1
@@ -170,20 +172,54 @@ variable WI
 \ --- emit the image: minimal entry + copied blobs, then relocate the calls.
 variable MLBL  variable REC2
 create OLDA MAX-CLO cells allot   create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
+create CDENSE MAX-CLO cells allot
 : EMIT-ENTRY
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    XDS SP 0 ADDI,
    MLBL @ BL,                              \ bl MAIN (resolved when MLBL is placed)
    0 0 MOVZ,  NR-EXIT SYS, ;               \ exit(0)
-: COPY-BLOBS
+variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
+: BIMM? {: w :}  w $7C000000 and $14000000 = ;
+: BCOND? {: w :}  w $FF000010 and $54000000 = ;
+: CBZIMM? {: w :}  w $7E000000 and $34000000 = ;
+: TBZIMM? {: w :}  w $7E000000 and $36000000 = ;
+: ADRIMM? {: w :}  w $9F000000 and dup $10000000 = swap $90000000 = or ;
+: PCREL? {: w :}  w BIMM? w BCOND? or w CBZIMM? or w TBZIMM? or w ADRIMM? or ;
+: RAW-LEN {: r :}  r 8 + @ 4 + ;
+: COMPACTABLE? {: r :}
+   r @ CP2 !  r @ r RAW-LEN + CEND !
+   BEGIN CP2 @ CEND @ < WHILE
+      CP2 @ CEND @ CALL-AT? IF
+         CP2 @ 16 + CP2 !
+      ELSE
+         CP2 @ W32@ PCREL? IF 0 EXIT THEN
+         CP2 @ 4 + CP2 !
+      THEN
+   REPEAT -1 ;
+: COMPACT-LEN {: r :}
+   r COMPACTABLE? 0= IF r RAW-LEN EXIT THEN
+   0 CLEN !  r @ CP2 !  r @ r RAW-LEN + CEND !
+   BEGIN CP2 @ CEND @ < WHILE
+      CP2 @ CEND @ CALL-AT? IF
+         CP2 @ CALL-IN-CLO? IF
+            CLEN @ 4 + CLEN !  CP2 @ 16 + CP2 !
+         ELSE
+            CLEN @ 4 + CLEN !  CP2 @ 4 + CP2 !
+         THEN
+      ELSE
+         CLEN @ 4 + CLEN !  CP2 @ 4 + CP2 !
+      THEN
+   REPEAT CLEN @ ;
+: PLAN-BLOBS
+   ASM-LEN NEXT-OFF !
    0 WI ! BEGIN WI @ NCLO @ < WHILE
       WI @ cells CLO + @ REC2 !
-      WI @ 0= IF MLBL @ LBL, THEN          \ MAIN is closure word 0 -> place its label
       REC2 @ @         OLDA   WI @ cells + !
-      ASM-LEN          NEWOFF WI @ cells + !
-      REC2 @ 8 + @ 4 + BLEN   WI @ cells + !   \ dict len excludes the trailing RET — add it back
-      REC2 @ @  REC2 @ 8 + @ 4 +  BYTES,       \ copy the blob (incl. RET) into CODE
+      NEXT-OFF @       NEWOFF WI @ cells + !
+      REC2 @ COMPACTABLE? CDENSE WI @ cells + !
+      REC2 @ COMPACT-LEN dup BLEN WI @ cells + !
+      NEXT-OFF @ + NEXT-OFF !
       WI @ 1+ WI ! REPEAT ;
 \ code offset (in CODE) of the blob whose OLD addr is t, or -1. The binary is PIE
 \ (arm64 macOS requires it), so absolute call targets would be wrong under the
@@ -193,20 +229,53 @@ create OLDA MAX-CLO cells allot   create NEWOFF MAX-CLO cells allot   create BLE
    BEGIN CX @ NCLO @ < WHILE
       OLDA CX @ cells + @ t = IF  NEWOFF CX @ cells + @  exit THEN
       CX @ 1+ CX ! REPEAT  -1 ;
+\ encode a compact PC-relative BL. The AOT __text is small today, but range
+\ checking makes linker corruption fail at build time if that ever changes.
+variable BDELTA
+: BL32 {: site target :}
+   target site - 4 / BDELTA !
+   BDELTA @ -33554432 <  BDELTA @ 33554431 > or IF s" aot: BL target out of range" 74 die THEN
+   BDELTA @ $3FFFFFF and $94000000 or ;
 \ replace the 4-instr `movz/movk/movk x16; blr x16` at CODE byte offset `site`
 \ with `nop; nop; nop; bl target` (target = the callee's CODE offset).
 : PATCH-BL {: site target :}
    $D503201F CODE site +     W32!
    $D503201F CODE site 4 + + W32!
    $D503201F CODE site 8 + + W32!
-   target  site 12 + -  4 /  $3FFFFFF and  $94000000 or  CODE site 12 + + W32! ;
+   site 12 + target BL32  CODE site 12 + + W32! ;
+variable DENSE-RV
+: COPY-DENSE-BLOB {: r :}
+   r @ CP2 !  r @ r RAW-LEN + CEND !
+   BEGIN CP2 @ CEND @ < WHILE
+      CP2 @ CEND @ CALL-AT? IF
+         CP2 @ TGT CLO-OFF DENSE-RV !
+         DENSE-RV @ -1 <> IF
+            ASM-LEN DENSE-RV @ BL32 EMITW  CP2 @ 16 + CP2 !
+         ELSE
+            CP2 @ W32@ EMITW  CP2 @ 4 + CP2 !
+         THEN
+      ELSE
+         CP2 @ W32@ EMITW  CP2 @ 4 + CP2 !
+      THEN
+   REPEAT ;
+: COPY-PLANNED-BLOBS
+   0 WI ! BEGIN WI @ NCLO @ < WHILE
+      WI @ cells CLO + @ REC2 !
+      WI @ 0= IF MLBL @ LBL, THEN          \ MAIN is closure word 0 -> place its label
+      CDENSE WI @ cells + @ IF
+         REC2 @ COPY-DENSE-BLOB
+      ELSE
+         REC2 @ @  REC2 @ RAW-LEN  BYTES,       \ copy the blob (incl. RET) into CODE
+      THEN
+      WI @ 1+ WI ! REPEAT ;
+: COPY-BLOBS  PLAN-BLOBS  COPY-PLANNED-BLOBS ;
 variable RP  variable RE  variable RV
 : RELOCATE
    0 WI ! BEGIN WI @ NCLO @ < WHILE
       NEWOFF WI @ cells + @ RP !
       RP @ BLEN WI @ cells + @ + RE !
       BEGIN RP @ RE @ < WHILE
-         CODE RP @ + CALL? IF
+         CODE RP @ + CODE RE @ + CALL-AT? IF
             CODE RP @ + TGT CLO-OFF RV !
             RV @ -1 <> IF RP @ RV @ PATCH-BL THEN
             RP @ 16 + RP !

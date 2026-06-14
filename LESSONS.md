@@ -18,6 +18,28 @@ declared signature string; use rendered inferred effects only for infer-mode
 definitions. Regression: `t-sh-verify` covers recursive `FIB`, recursive
 rejection, and a certified caller of recursive `FIB`.
 
+## AOT call compaction needs a PC-relative safety boundary (2026-06-14)
+
+Deleting the three padding words from a rewritten call stencil is only safe when
+the containing blob has no internal PC-relative instructions. Branches and
+ADR/ADRP string addresses are relative to instruction positions; removing bytes
+before their source or target silently corrupts native code unless the linker has
+a full old-to-new relocation map for code and embedded data. The safe first step
+is a planned dense layout that compacts straight-line blobs and leaves any blob
+with B/BL/B.cond/CBZ/TBZ/ADR/ADRP on the fixed-width NOP,NOP,NOP,BL path. The
+gate must include both: a straight-line non-inline call fixture that proves
+padding disappears, and branch/string/closure fixtures that prove conservative
+fallback behavior still runs.
+
+## Codegen metadata cells need direct record tests (2026-06-14)
+
+The checked-effect handoff for gforth codegen parsed signatures correctly, but
+the first CODE-TABLE record change stored arity in the flags cell because the
+multi-local binding order was easy to misread. The failure only showed up when a
+test queried `PFA>EFLAGS`; the generated code path still built. When extending
+compact metadata beside body bytes, add direct record-layout tests (`PFA>ARITY`,
+`PFA>EFLAGS`, body offset) before trusting downstream benchmarks.
+
 ## Agent wrappers need executable failure and real source origins (2026-06-14)
 
 `tools/check.sh --json-errors` used to print a structured checker rejection while

@@ -7,7 +7,7 @@ variable LVSPILL   variable LVLITPUSH   variable LVPUSHC
 variable LVPUSHF   variable LFFORCEK  variable LFBINPREP
 variable LKWFPLUS  variable LKWFMINUS  variable LKWFSTAR  variable LKWFSLASH
 variable LVTOP2C   variable LVFOLDPUT
-variable LVMOVK  variable LVFORCEK  variable LVBINPREP  variable LVPUSHR
+variable LVMOVK  variable LVFORCEK  variable LVBINPREP  variable LVBINIPREP  variable LVPUSHR
 $200 constant VSP-CELL
 $210 constant VTAG-OFF
 $250 constant VVAL-OFF
@@ -223,6 +223,48 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    bno LBL,  13 0 MOVZ,
    b2 LBL,  30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
+\ LVBINIPREP ( -- x13=mode ) : LVBINPREP plus mode 3 for top small constant.
+\ mode 3: x14=rd/rn for the deep operand, x15=imm12, VSP already --.
+: EMIT-VBINIPREP
+   LVBINIPREP @ LBL,
+   LBL LBL LBL LBL {: bno bfold b2 bdone :}
+   SP SP 32 SUBI,  30 SP 0 STR,
+   6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT bno BCOND,
+   5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+   5 6 2 SUBI,  8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDRB,
+   7 2 CMPI,  C-EQ bno BCOND,  8 2 CMPI,  C-EQ bno BCOND,
+   7 7 8 AND,  7 1 CMPI,  C-EQ bfold BCOND,
+   6 DATA VSP-CELL LDR,
+   5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
+   7 1 CMPI,  C-NE b2 BCOND,
+   12 0 CMPI,  C-LT b2 BCOND,
+   12 4095 CMPI,  C-GT b2 BCOND,
+   12 SP 8 STR,
+   5 6 2 SUBI,  8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDRB,
+   8 2 CMPI,  C-EQ bno BCOND,  8 3 CMPI,  C-EQ bno BCOND,
+   LVFORCEK @ BL,  14 bno CBZ,
+   15 SP 8 LDR,
+   6 DATA VSP-CELL LDR,  6 6 1 SUBI,  6 DATA VSP-CELL STR,
+   13 3 MOVZ,  bdone B,
+   b2 LBL,
+   \ register path: force deep then top
+   6 DATA VSP-CELL LDR,  5 6 2 SUBI,  LVFORCEK @ BL,  14 bno CBZ,
+   14 SP 8 STR,
+   6 DATA VSP-CELL LDR,  5 6 1 SUBI,  LVFORCEK @ BL,  14 bno CBZ,
+   15 14 0 ADDI,  14 SP 8 LDR,
+   7 15 0 ADDI,  LVBIT @ BL,
+   6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
+   6 DATA VSP-CELL LDR,  6 6 1 SUBI,  6 DATA VSP-CELL STR,
+   13 2 MOVZ,  bdone B,
+   bfold LBL,
+   6 DATA VSP-CELL LDR,
+   5 6 2 SUBI,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
+   5 6 1 SUBI,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
+   13 1 MOVZ,  bdone B,
+   bno LBL,  13 0 MOVZ,
+   bdone LBL,  30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
 \ LVPUSHR ( x14=reg ) : push a register entry (spill-on-full keeps x14 claimed)
 : EMIT-VPUSHR
    LVPUSHR @ LBL,
@@ -256,6 +298,30 @@ variable FESK2
       9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
       lmainlbl B,
    FESK @ LBL, ;
+
+variable FESK6
+
+\ vopi-entry: VOP-ENTRY plus small top-constant immediate lowering.
+: VOPI-ENTRY {: lmainlbl kwvar kwlen foldxt emitxt immxt :}
+   LBL FESK !  LBL FESK2 !  LBL FESK6 !
+   0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
+   0 FESK @ CBZ,
+   LVBINIPREP @ BL,
+   13 FESK @ CBZ,
+   13 1 CMPI,  C-NE FESK2 @ BCOND,
+      foldxt execute
+      LVFOLDPUT @ BL,
+      lmainlbl B,
+   FESK2 @ LBL,
+   13 3 CMPI,  C-NE FESK6 @ BCOND,
+      immxt execute
+      lmainlbl B,
+   FESK6 @ LBL,
+      emitxt execute
+      9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
+      lmainlbl B,
+   FESK @ LBL, ;
+s" vopi-entry" s" n n n n n n --" TRUST
 s" vop-entry" s" n n n n n --" TRUST
 
 : E+   8 $8B000000 LIT64, ;
@@ -269,6 +335,12 @@ s" vop-entry" s" n n n n n --" TRUST
 : EOR2 8 $AA000000 LIT64, ;
 
 : EXOR 8 $CA000000 LIT64, ;
+
+: EI2N  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL, ;
+
+: EI+  8 $91000000 LIT64,  EI2N ;
+
+: EI-  8 $D1000000 LIT64,  EI2N ;
 variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKWLE2  variable LKWGE2
 
 \ comparison entry: fold -> dispatch computes the flag; registers -> emit
@@ -683,5 +755,5 @@ s" vun-entry" s" n n n n n --" TRUST
    LKWNEG2 @ LBL,  s" negate" BYTES,  LKWINV2 @ LBL,  s" invert" BYTES, ;
 
 : EMIT-JIT  EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
-   EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VBINPREP  EMIT-VPUSHR
+   EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
    EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON ;

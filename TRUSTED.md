@@ -41,6 +41,7 @@ have a row here, and every row must cite a test.
 | emit-forth | `n n --` | Top-level engine builder: allocates every forward-ref label and emits the complete image. | `test/t-sh-habu2.fs`, `test/t-sh-stage2.fs` | src/habu/habu2.f:1119 | 2026-06-13 |
 | fold-entry | `n n n n --` | JIT constant-fold case: emits the keyword guard then `fxt execute`s a fold handler + raw branches. | `test/t-sh-fold.fs`, `test/t-sh-jit.fs` | src/habu/jit.f:104 | 2026-06-13 |
 | vop-entry | `n n n n n --` | JIT binop case: fold-vs-emit split with two indirect xts and raw asm. | `test/t-sh-fold.fs`, `test/t-sh-jit.fs` | src/habu/jit.f:259 | 2026-06-13 |
+| vopi-entry | `n n n n n n --` | JIT binop-immediate case: fold/register/immediate split with three indirect xts and raw asm. | `test/t-sh-jit.fs`, `bench/typed-codegen/run.sh` | src/habu/jit.f:324 | 2026-06-14 |
 | vshuf-entry | `n n n n n --` | JIT reg-aware stack-shuffle case (dup/over/swap/drop/nip as register moves); `sxt execute` + raw asm. | `test/t-sh-jit.fs`, `test/t-sh-fold.fs` | src/habu/jit.f:613 | 2026-06-13 |
 | vun-entry | `n n n n n --` | JIT unary-op case: con-fold vs in-place reg op via `foldxt`/`emitxt` and raw asm. | `test/t-sh-jit.fs`, `test/t-sh-fold.fs` | src/habu/jit.f:646 | 2026-06-13 |
 | emit-prof-prims | `--` | Emits the sampling-profiler prims as raw asm via FPRIM-L. | `test/t-sh-prof.fs` | src/habu/prof.f:77 | 2026-06-13 |
