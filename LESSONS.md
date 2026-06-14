@@ -3,6 +3,18 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Recommendation evals catch stale meta-docs too (2026-06-14)
+
+Evaluating the repo against an external LLM-readiness recommendation doc found
+that the big requested pieces were already present (`LLM.md`, `STATUS.md`,
+`TRUSTED.md`, JSON diagnostics, `bench/llm`, examples), but two small freshness
+facts had drifted: `STATUS.md` still said last verified 2026-06-13 after a
+2026-06-14 gate/oracle run, and `bench/llm/PROTOCOL.md` said "15 tasks" while
+the suite had 23 certified tasks. The existing stale-status lint catches count
+duplication, not date/count prose in adjacent protocol docs. Lesson: external
+checklists are useful adversarial inputs even after implementation; verify the
+meta-docs as executable claims, not just the code paths.
+
 ## User build verification needs CHECK!, and path buffers must fail closed (2026-06-14)
 
 A re-review found the isolated checker fixes were real, but two integration paths

@@ -39,7 +39,7 @@ a bare typed stack DSL. habu's edge is the tight `check → repair` loop on
 stack-effect errors; the metric that should move is **repair iterations** and
 **signature-weakening rate**.
 
-## Categories covered (15 tasks)
+## Categories covered (23 tasks)
 arithmetic · control flow · locals · polymorphic stack words · counted loops ·
 return stack · quotations & combinators · recursion · a small parser · a
 test-first underspecified task.
