@@ -2,8 +2,8 @@
 # hb-build.sh — compile a Forth program into a standalone signed macOS binary.
 #   tools/hb-build.sh prog.f -o out          AOT (default): compile MAIN to native,
 #                                            strip the engine. Program must define `: MAIN ;`.
-#   tools/hb-build.sh --repl prog.f -o out   bundle the full engine + the program's
-#                                            definitions and drop into the REPL on a tty.
+#   tools/hb-build.sh --repl prog.f -o out   verify, then bundle the full engine +
+#                                            the program's definitions and REPL.
 # In --repl mode the textual tree-shaker keeps every word NAMED in the source;
 # add `EXPORT word1 word2 …` lines to keep extra words callable at the REPL.
 # The output needs neither habu nor gforth to run.
@@ -39,9 +39,8 @@ GOTPATH=$T/$GOT
 
 # maker = checker-hooked toolchain + the chosen driver, compiled by bin/hb.
 # In default AOT mode the driver compiles the program in-process under CHECK!.
-# In --repl mode the source is bundled and recompiled by the emitted engine at
-# startup, so the bundle keeps the interpreter/REPL rather than enforcing checks
-# at build time.
+# In --repl mode the driver pre-verifies the user source with CHECK!, then
+# bundles that source plus trusted REPL support for startup/runtime execution.
 for f in $(./tools/srclist.sh $DRIVER); do
   [ "$f" = "src/core/sha256.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
   cat "$f"; printf '\n'
@@ -53,10 +52,15 @@ mv "$STAGE2_GOT" "$MKPATH"
 chmod +x "$MKPATH"
 
 # the program. EXPORT lines are commented out (the names stay in the source text
-# so the tree-shaker keeps them, but they don't execute). --repl appends repl.f so
-# the bundle installs the interactive REPL on a tty.
+# so the tree-shaker keeps them, but they don't execute). --repl keeps a
+# user-only copy for build-time verification, then appends repl.f so the bundle
+# installs the interactive REPL on a tty.
 sed 's/^[[:space:]]*EXPORT /\\ EXPORT /' "$SRC" > "$ISRC"
-if [ "$REPL" = 1 ]; then printf '\n' >> "$ISRC"; cat src/habu/repl.f >> "$ISRC"; fi
+if [ "$REPL" = 1 ]; then
+  cp "$ISRC" "$T/hb-build-check-src"
+  printf '\n' >> "$ISRC"
+  cat src/habu/repl.f >> "$ISRC"
+fi
 rm -f "$GOTPATH"
 "$MKPATH"
 [ -f "$GOTPATH" ] || { echo "hb-build: maker did not produce $GOT"; exit 74; }

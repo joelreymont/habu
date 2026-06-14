@@ -17,12 +17,15 @@ infrastructure:
 - Native diagnostics support `JSON-DIAGS ON`.
 - `examples/llm/` exists.
 - `bench/llm/` exists and is run by `tools/oracle.sh`.
-- Default `hb-build.sh` now verifies user definitions through `CHECK!` and fails
-  closed on checker rejection.
+- `hb-build.sh` verifies user definitions through `CHECK!` and fails closed on
+  checker rejection in both default AOT mode and `--repl` source-bundle mode.
 
 Habu is therefore already past the baseline described by the recommendation file.
-The remaining high-value work is not broad new architecture; it is sharpening
-diagnostics and turning the benchmark harness into measured multi-model data.
+The previous residual `hb-build --repl` boundary is closed for user-authored
+colon definitions: the build driver checks the user source before bundling it
+with trusted REPL support. The remaining high-value work is not broad new
+architecture; it is sharpening diagnostics and turning the benchmark harness into
+measured multi-model data.
 
 ## Recommendation Status
 
@@ -35,6 +38,7 @@ diagnostics and turning the benchmark harness into measured multi-model data.
 | Add LLM benchmark suite | Partial | `bench/llm/tasks.md`, `solutions.f`, `validate.fs`, and `run.sh` exist. `tools/oracle.sh` runs it. Current answer key validates `23/23` certified, `0` rejected. | It is a reference validation harness, not yet a measured benchmark run across models. The recommendation asks for 30-50 tasks and recorded metrics such as repair iterations/tokens/signature weakening. |
 | Add stale-doc detection around status numbers | Done | `STATUS.md` is the single count source; `tools/stale-status-lint.py` is in the native gate and reports `0 finding(s)`. | Date freshness is not linted; `STATUS.md` was updated here to `2026-06-14`. |
 | Add "do not fix by weakening the type" rule | Done | `LLM.md` section 4 says to fix the body, not the signature; JSON diagnostic suggestions also say not to weaken the signature for type mismatches. | None found. |
+| Make checked builds fail closed | Done | Default AOT uses `CHECK!` while compiling the user program in-process; `--repl` now verifies the user-only source before emitting the full source+REPL bundle. `test/run.sh` rejects bad signatures in both modes. | The bundled REPL support is trusted project runtime code, not a user verification target. |
 | Add examples for model prompting | Done | `examples/llm/good.f` and `examples/llm/bad.f` cover accepted and rejected idioms with reasons. | Could add the JSON diagnostic expected output beside each bad example, but the base examples exist. |
 | Keep language small and opinionated | Aligned | Current docs and gates keep the target narrow: macOS arm64 native engine, checked Forth subset, small examples, strict style. | Portability remains intentionally narrow. |
 | Make checker loop the product | Mostly done | `README.md`, `LLM.md`, `STATUS.md`, `bench/llm/PROTOCOL.md`, and JSON diagnostics all center the write-check-repair loop. | Needs measured LLM runs and richer diagnostics to fully close the loop. |
@@ -53,12 +57,8 @@ diagnostics and turning the benchmark harness into measured multi-model data.
 
 ## Verification Performed
 
-- `./tools/stale-status-lint.py`
-- `./tools/trust-lint.py`
-- `./bench/llm/run.sh`
-
-Relevant previously-run gates for the current committed stack:
-
 - `./test/run.sh`
 - `./tools/oracle.sh`
-- `HB_TMP=$(mktemp -d) ./tools/bootstrap.sh`
+
+`./test/run.sh` includes the stale-status and trust lints; `./tools/oracle.sh`
+includes the LLM benchmark harness.

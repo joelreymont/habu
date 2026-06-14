@@ -88,11 +88,17 @@ printf ': M ( i64 ) drop ;\n: MAIN 5 M 7 . CR ;\n' > $T/hb-malsig.f
 printf ': B ( -- i64 ) 1.5 1 + ;\n: MAIN B . CR ;\n' > $T/hb-typebad.f
 ./tools/hb-build.sh $T/hb-typebad.f -o $T/hb-typebad >/dev/null 2>&1 && { echo "FAIL: hb-build ignored checker rejection"; exit 1; }
 echo "PASS: hb-build rejects bad checked programs"
-# hb-build --repl = engine + REPL bundle: the library's words run + are callable.
+# hb-build --repl = build-time checked user source + engine/REPL bundle.
 printf ': SQ ( i64 -- i64 ) DUP * ;\nEXPORT SQ\n9 SQ . CR\n' > $T/hb-rt.f
 ./tools/hb-build.sh --repl $T/hb-rt.f -o $T/hb-rt >/dev/null || { echo "FAIL: hb-build --repl"; exit 1; }
 [ "$($T/hb-rt)" = "81" ] || { echo "FAIL: hb-build --repl output (got: $($T/hb-rt))"; exit 1; }
-echo "PASS: hb-build --repl bundle ($(stat -f%z $T/hb-rt) B, engine + library)"
+printf ': RBAD ( i64 -- i64 ) 0= ;\nEXPORT RBAD\n' > $T/hb-rt-bad.f
+if ./tools/hb-build.sh --repl $T/hb-rt-bad.f -o $T/hb-rt-bad >/dev/null 2>$T/hb-rt-bad.err; then
+  echo "FAIL: hb-build --repl accepted bool-as-i64 false cert"; exit 1
+fi
+grep -q "expected: i64" $T/hb-rt-bad.err || { echo "FAIL: hb-build --repl diagnostic lost expected type"; exit 1; }
+grep -q "actual: bool" $T/hb-rt-bad.err || { echo "FAIL: hb-build --repl diagnostic lost actual type"; exit 1; }
+echo "PASS: hb-build --repl verifies user defs ($(stat -f%z $T/hb-rt) B, engine + library)"
 if [ "$1" = "full" ]; then
   ./tools/oracle.sh || exit 1
 fi

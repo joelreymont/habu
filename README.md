@@ -37,6 +37,8 @@ echo ': SQ dup * ; 7 SQ .' | bin/hbi    # batch: program from stdin (bare engine
                                         #   editing, history, breakpoints, `step`
 ./tools/hb-build.sh prog.f -o prog      # AOT: standalone signed binary (~17 KB:
                                         #  tree-shaken to the program's words)
+./tools/hb-build.sh --repl prog.f -o prog-repl
+                                        # checked source bundle + interactive REPL
 ```
 
 **The gforth-hosted checker** (bootstrap tier — the full row-polymorphic

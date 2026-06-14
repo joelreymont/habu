@@ -15,6 +15,18 @@ duplication, not date/count prose in adjacent protocol docs. Lesson: external
 checklists are useful adversarial inputs even after implementation; verify the
 meta-docs as executable claims, not just the code paths.
 
+## REPL bundles need user-only verification inputs (2026-06-14)
+
+Closing the `hb-build --repl` boundary required checking the user source before
+the full runtime bundle is emitted. The first implementation verified the entire
+post-append source, including trusted `src/habu/repl.f`; that over-scoped the
+user contract and made support/editor internals part of the user build policy.
+Fix: `hb-build.sh` writes a user-only `hb-build-check-src` for `CHECK!`
+validation, then emits the full `hb-build-src` with appended REPL support. Also
+remember that native source may only introduce `{: :}` locals at word top level:
+a scratch local inside an `IF` is rejected by the compiler guard as `{:`/exit 75,
+so helper parsers need variables or top-level locals for branch scratch state.
+
 ## User build verification needs CHECK!, and path buffers must fail closed (2026-06-14)
 
 A re-review found the isolated checker fixes were real, but two integration paths
@@ -33,12 +45,12 @@ only), so declared false-certs still built: `( i64 -- i64 ) 0=` printed `-1`,
 and malformed `( i64 )` parsed as some other effect. Worse, a modeled rejection
 could print `habu: in b...` and the script still returned 0 with a runnable binary.
 Fix: the default stripped-AOT driver installs a user-program hook before compiling
-the supplied source: `CHECK!`, and `die` on a 0 verdict. (`--repl` is a different
-boundary: it bundles source for a later engine startup, so it is documented as a
-REPL/source bundle rather than the checked build path.) Lesson: dogfood inference
-is not a user-build policy; user-facing checked builds must verify declared
-effects and make checker rejection fatal. Tests must assert the bad program fails
-to BUILD, not merely that a later accidental call exits nonzero. Also assert the
+the supplied source: `CHECK!`, and `die` on a 0 verdict; `--repl` now has the
+same user-source fail-closed policy before bundling its runtime support. Lesson:
+dogfood inference is not a user-build policy; user-facing checked builds must
+verify declared effects and make checker rejection fatal. Tests must assert the
+bad program fails to BUILD, not merely that a later accidental call exits
+nonzero. Also assert the
 diagnostic preserves concrete type names: a `bool` vs `i64` rejection that renders
 as `c` vs `c` is technically fatal but useless for repair, and hides whether the
 checker rejected for the right reason. Shell wrappers need the same fail-closed

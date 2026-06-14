@@ -62,7 +62,8 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
 
 - **AOT-strip linker** — done and the DEFAULT. `hb-build.sh prog.f -o out` AOT-
   compiles `: MAIN ;` to a native binary with the engine stripped (fib __text
-  564 B vs 11836 B embed). `--repl` bundles the full engine + the program's
+  564 B vs 11836 B embed). `--repl` verifies the user source's checked
+  definitions at build time, then bundles the full engine + the program's
   library and drops into the REPL on a tty (`EXPORT word…` keeps extra words
   callable). The AOT file is 16627 B — one 16 KB `__TEXT` page + signature, the
   PROVEN hard floor for a signed arm64 macOS executable (a sub-page `__LINKEDIT`
