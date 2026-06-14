@@ -29,7 +29,12 @@ effects and make checker rejection fatal. Tests must assert the bad program fail
 to BUILD, not merely that a later accidental call exits nonzero. Also assert the
 diagnostic preserves concrete type names: a `bool` vs `i64` rejection that renders
 as `c` vs `c` is technically fatal but useless for repair, and hides whether the
-checker rejected for the right reason.
+checker rejected for the right reason. Shell wrappers need the same fail-closed
+standard: fixed `/tmp/hb-aot-*` names make parallel probes corrupt each other,
+and `mv artifact out && chmod out` before an unconditional success message can
+hide a missing artifact. User-facing builders should use a private temp dir by
+default, export `HB_TMP` to the native maker, and explicitly assert each expected
+artifact exists before reporting success.
 
 ## Gap analysis: a claimed-checked self-host word that wasn't (2026-06-14)
 
