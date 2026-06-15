@@ -68,7 +68,6 @@ points stay listed.
 - `test/t-sh-jdiag.fs` — JSON diagnostic regression tests.
 - `test/t-sh-verify.fs` — native `CHECK!` verification tests.
 - `test/prop-test.f` — self-hosted property-based checker-soundness test (in-process via `evaluate`).
-- `test/prop-corpus/` — frozen false-cert counterexamples (prop-test regression).
 - `test/hb-suite.f` — native engine behavior suite.
 - `bench/llm/tasks.tsv` — LLM benchmark task set.
 - `bench/llm/solutions.f` — reference benchmark solutions.
