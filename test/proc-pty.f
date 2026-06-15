@@ -13,11 +13,13 @@ create RBUF 4096 allot
 create PFD 8 allot
 create NL 1 allot
 create EOT 1 allot
+create CH 1 allot
 create PTYNAME 128 allot
 
 variable #FAIL
 variable #CASE
 variable RN
+variable QUIET
 variable IN-R
 variable IN-W
 variable OUT-R
@@ -94,10 +96,40 @@ variable SFD
 
 : DRAIN {: fd :} ( fd -- )
    RCLR
-   0 begin dup 20 < while
-      fd 100 POLL-IN 0 > if fd READ+ then
+   0 QUIET !
+   0 begin dup 60 < QUIET @ 6 < and while
+      fd 50 POLL-IN 0 > if fd READ+ 0 QUIET ! else QUIET @ 1 + QUIET ! then
       1 +
    repeat drop ;
+
+: SEND-C {: c :} ( c -- )
+   c CH c!
+   MFD @ CH 1 FD-WRITE ;
+
+: SEND-S {: a u :} ( a u -- )
+   MFD @ a u FD-WRITE ;
+
+: SEND-LN {: a u :} ( a u -- )
+   MFD @ a u FD-WRITE-LN ;
+
+: SEND-ESC ( c -- )
+   27 SEND-C
+   91 SEND-C
+   SEND-C ;
+
+: STEP-LN {: a u :} ( a u -- )
+   a u SEND-LN
+   MFD @ DRAIN ;
+
+: STEP-S {: a u :} ( a u -- )
+   a u SEND-S
+   MFD @ DRAIN ;
+
+: EXPECT ( a u -- )
+   TCONTAINS ;
+
+: REJECT {: a u :} ( a u -- )
+   RBUF RN @ a u CONTAINS? 0 T= ;
 
 : CAPTURE-HB ( -- )
    IN-R IN-W MKPIPE
@@ -139,12 +171,150 @@ variable SFD
    PID @ 0 > TTRUE
    SFD @ close
    MFD @ DRAIN
-   s" habu> " TCONTAINS
-   MFD @ s" 1 2 + ." FD-WRITE-LN
+   s"  ok" EXPECT
+   s" habu> " EXPECT
+   s" 1 2 + ." STEP-LN
+   s" 3" EXPECT
+   s"  ok" EXPECT
+   s" habu> " EXPECT
+   s" frobnicate" STEP-LN
+   s" frobnicate?" EXPECT
+   s" habu> " EXPECT
+   s"  ok" REJECT
+   s" : SQ dup * ;" STEP-LN
+   s"  ok" EXPECT
+   s" 7 SQ ." STEP-LN
+   s" 49" EXPECT
+   s"  ok" EXPECT
+   s" 1 2 + .." SEND-S
+   127 SEND-C
+   10 SEND-C
    MFD @ DRAIN
-   s" 3" TCONTAINS
-   s"  ok" TCONTAINS
-   EOT MFD @ swap 1 write 1 T=
+   s" 3" EXPECT
+   s"  ok" EXPECT
+   s" garbage" SEND-S
+   3 SEND-C
+   MFD @ DRAIN
+   s" habu> " EXPECT
+   s" garbage?" REJECT
+   s" 5 ." STEP-LN
+   s" 5" EXPECT
+   s"  ok" EXPECT
+   s" 13 ." SEND-S
+   68 SEND-ESC
+   68 SEND-ESC
+   68 SEND-ESC
+   48 SEND-C
+   10 SEND-C
+   MFD @ DRAIN
+   s" 103" EXPECT
+   s"  ok" EXPECT
+   65 SEND-ESC
+   10 SEND-C
+   MFD @ DRAIN
+   s" 103" EXPECT
+   s"  ok" EXPECT
+   s" : SQ dup * ;" STEP-LN
+   s"  ok" EXPECT
+   s" : IN1 1 + ;" STEP-LN
+   s"  ok" EXPECT
+   s" ' SQ BP+" STEP-LN
+   s"  ok" EXPECT
+   s" ' IN1 BP+" STEP-LN
+   s"  ok" EXPECT
+   s" 7 SQ ." STEP-LN
+   s" habu-bp:" EXPECT
+   s" 49" EXPECT
+   s" 9 IN1 ." STEP-LN
+   s" habu-bp:" EXPECT
+   s" 10" EXPECT
+   s" 6 SQ ." STEP-LN
+   s" 36" EXPECT
+   s" habu-bp:" REJECT
+   s" : PB dup + ;" STEP-LN
+   s"  ok" EXPECT
+   s" ' PB BP*" STEP-LN
+   s"  ok" EXPECT
+   s" 5 PB ." STEP-LN
+   s" habu-bp:" EXPECT
+   s" 10" EXPECT
+   s" 6 PB ." STEP-LN
+   s" habu-bp:" EXPECT
+   s" 12" EXPECT
+   s" ' PB BP-" STEP-LN
+   s"  ok" EXPECT
+   s" 2 ' PB BPN" STEP-LN
+   s"  ok" EXPECT
+   s" 3 PB ." STEP-LN
+   s" 6" EXPECT
+   s" habu-bp:" REJECT
+   s" 3 PB ." STEP-LN
+   s" 6" EXPECT
+   s" habu-bp:" REJECT
+   s" 3 PB ." STEP-LN
+   s" habu-bp:" EXPECT
+   s" 6" EXPECT
+   s" ' PB BP-" STEP-LN
+   s"  ok" EXPECT
+   s" : F0 0 ;" STEP-LN
+   s"  ok" EXPECT
+   s" : F1 1 ;" STEP-LN
+   s"  ok" EXPECT
+   s" : F2 2 ;" STEP-LN
+   s"  ok" EXPECT
+   s" : F3 3 ;" STEP-LN
+   s"  ok" EXPECT
+   s" : F4 4 ;" STEP-LN
+   s"  ok" EXPECT
+   s" : F5 5 ;" STEP-LN
+   s"  ok" EXPECT
+   s" : F6 6 ;" STEP-LN
+   s"  ok" EXPECT
+   s" : F7 7 ;" STEP-LN
+   s"  ok" EXPECT
+   s" : F8 8 ;" STEP-LN
+   s"  ok" EXPECT
+   s" ' F0 BP+" STEP-LN
+   s"  ok" EXPECT
+   s" ' F1 BP+" STEP-LN
+   s"  ok" EXPECT
+   s" ' F2 BP+" STEP-LN
+   s"  ok" EXPECT
+   s" ' F3 BP+" STEP-LN
+   s"  ok" EXPECT
+   s" ' F4 BP+" STEP-LN
+   s"  ok" EXPECT
+   s" ' F5 BP+" STEP-LN
+   s"  ok" EXPECT
+   s" ' F6 BP+" STEP-LN
+   s"  ok" EXPECT
+   s" ' F7 BP+" STEP-LN
+   s"  ok" EXPECT
+   s" ' F8 BP+" STEP-LN
+   s" table full" EXPECT
+   s" 5 ." STEP-LN
+   s" 5" EXPECT
+   s"  ok" EXPECT
+   s" step 2 3 + ." STEP-LN
+   s" step> 2" EXPECT
+   s" step> 3" EXPECT
+   s" step> +" EXPECT
+   s" 5" EXPECT
+   s" step : SD dup * ;" STEP-LN
+   s"  ok" EXPECT
+   s" 4 SD ." STEP-LN
+   s" 16" EXPECT
+   s" 8 ." STEP-LN
+   s" 8" EXPECT
+   s"  ok" EXPECT
+   s" 99 throw" STEP-LN
+   s" ?" EXPECT
+   s" habu> " EXPECT
+   s"  ok" REJECT
+   s" 6 ." STEP-LN
+   s" 6" EXPECT
+   s"  ok" EXPECT
+   4 SEND-C
    PID @ wait-rc 0 T=
    MFD @ close ;
 
