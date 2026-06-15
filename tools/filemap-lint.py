@@ -26,7 +26,7 @@ REQUIRED = {
     "tools/diag-origin.py",
     "tools/json-only.py",
     "tools/check-all-errors.py",
-    "tools/diag-to-sarif.py",
+    "tools/diag-to-sarif.f",
     "tools/public-signatures.py",
     "tools/aot-call-report.py",
     "test/run.sh",

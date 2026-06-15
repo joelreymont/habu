@@ -137,7 +137,8 @@ assert len(objs) == 2, objs
 assert {obj["word"] for obj in objs} == {"bad1", "bad2"}, objs
 assert all(obj["schema_version"] == 1 for obj in objs), objs
 PY
-./tools/diag-to-sarif.py $T/habu-all-errors.err > $T/habu-all-errors.sarif
+cat tools/json.f tools/diag-to-sarif.f > $T/diag-to-sarif.f
+bin/hb $T/diag-to-sarif.f $T/habu-all-errors.err < /dev/null > $T/habu-all-errors.sarif
 python3 - "$T/habu-all-errors.sarif" <<'PY'
 import json, pathlib, sys
 sarif = json.loads(pathlib.Path(sys.argv[1]).read_text())
