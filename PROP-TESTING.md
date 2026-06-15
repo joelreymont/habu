@@ -209,12 +209,17 @@ Properties that hold within the single checker and catch cases execution can't:
 - `test/run.sh` — smoke invocation.
 - `test/prop-corpus/` — frozen counterexamples (regression).
 
-## Open work (v1 → v2)
+## Open work
 
-- **Generator richness:** v1 is the linear integer sublanguage (stack ops, arith,
-  literals). Add `if/else/then`, bounded `?do/loop`, `>r/r>/r@`, quotations,
-  locals — and the `leave`/`exit` baits (where this session's marquee false-certs
-  lived). Building these as Forth strings is the work.
+Done: the generator emits net-0 **structural ops** (`?do/loop`, `if/else/then`,
+`>r/r>`) alongside the linear sublanguage, so a regression in their arity modelling
+shows up as a certified-but-wrong measurement. And three **leave/exit baits**
+(non-neutral `leave`, divergent `exit` — where this session's false-certs lived)
+that a sound checker rejects: if a regression ever certifies one, the harness
+`die`s. Remaining:
+
+- **More generator constructs:** quotations `[: ;]`, typed locals `{: :}`, nested
+  control — building these as Forth string-builders is the work.
 - **Shrinking** a found counterexample to its minimal form (delta-debug on the
   body tokens, replaying through `evaluate`).
 - **Metamorphic** properties (composition, subsumption, render round-trip).

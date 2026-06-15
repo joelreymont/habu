@@ -33,6 +33,11 @@ variable NI
 \ ---- depth-tracked linear body generator over the integer sublanguage ----
 variable DEP  variable NIN  variable DOUT  variable K
 : STEP  ( -- )   \ append one depth-feasible op to BBUF, update DEP
+   5 RND% 0 = IF                          \ 1-in-5: a net-0 STRUCTURAL op (DEP unchanged)
+      DEP @ 1 >= IF 3 ELSE 1 THEN RND% K !
+      K @ 0 = IF s" 3 0 ?do loop " B+ exit THEN              \ bounded neutral loop
+      K @ 1 = IF s" dup 0= if 1+ else 1- then " B+ exit THEN \ balanced branch
+               s" >r r> " B+ exit THEN                       \ balanced return stack
    DEP @ 2 >= IF 9 RND% ELSE  DEP @ 1 >= IF 6 RND% ELSE 0 THEN  THEN  K !
    K @ 0 = IF 10 RND% BD s"  " B+  DEP @ 1+ DEP !  exit THEN   \ literal
    K @ 1 = IF s" 1+ " B+      exit THEN
@@ -87,10 +92,23 @@ variable N  variable RI
    4 4 <> IF s" prop-test: self-test BROKEN (equal flagged)" 1 die THEN
    s" prop-test: self-test OK (arity comparison fires)" type cr ;
 
+\ leave/exit regression baits: non-neutral leave / divergent exit programs that a
+\ SOUND checker rejects. If a regression ever certifies one, its real arity differs
+\ from its declared sig -> die. (These are where this session's false-certs lived.)
+: BAIT  ( a u -- )   \ MUST NOT certify
+   ['] VH set-check  evaluate  0 set-check
+   VERD @ -1 = IF s" prop-test: BAIT certified — leave/exit soundness regressed!" 1 die THEN ;
+: BAITS
+   s" : G ( -- ) 3 0 ?do 99 leave loop ;"            BAIT   \ leave carries an extra value
+   s" : G ( i64 -- i64 ) dup 0 < if 0 0 exit then ;" BAIT   \ exit-path arity != fall-through
+   s" : G ( -- i64 ) 5 0 ?do leave 9 loop ;"         BAIT   \ leave-point != loop-exit
+   s" prop-test: baits OK (non-neutral leave / divergent exit rejected)" type cr ;
+
 \ Fail loudly on any false-cert (`die` exits with the code; IF/THEN are
 \ compile-only so this is wrapped in a word). A clean run reaches end-of-input,
 \ which exits 0 in batch mode — no `bye` needed (the engine has none).
 : FINISH  NFC @ 0 > IF s" prop-test: FALSE-CERT found" 1 die THEN ;
 SELFTEST
+BAITS
 1 250 RUN
 FINISH
