@@ -24,7 +24,7 @@ constants; and a `T{ … -> … }T` test for every word.
 
 - **One concern per file** — never bundle unrelated responsibilities (parser vs
   renderer vs DB vs data table). Split at responsibility seams; it aids review
-  and lets files be built in parallel. See `LESSONS.md` § Process.
+  and lets files be built in parallel. See `docs/forth.md` § Files.
 
 ## Lessons
 

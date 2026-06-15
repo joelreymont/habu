@@ -142,8 +142,6 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Read docs before coding:** `docs/forth.md` is the coding standard;
   `LESSONS.md` is memory of previous failures. Do not put standards back into
   this file.
-- **One concern per file pays off:** split parser, renderer, DB, data tables,
-  and drivers so review and parallel work stay localized.
 - **Parallel agents need disjoint write scopes:** background workers use separate
   jj workspaces and must not edit the main working tree.
 - **Commit after significant changes:** keep `jj` changes small and described;

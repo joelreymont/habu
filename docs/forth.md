@@ -44,6 +44,16 @@ bottom.
 - **Locals `{: a b :}`** are encouraged where they remove juggling (gforth 0.7.9
   supports them). Prefer named locals over a 4-deep stack dance.
 
+## Files
+
+- **One concern per file.** Do not bundle unrelated responsibilities: parser,
+  renderer, DB, data table, and driver code belong in separate files. Split at
+  responsibility boundaries so review stays focused and files can be built in
+  parallel.
+- **Reusable helpers belong in libraries, not pasted drivers.** Tool/script
+  drivers can concatenate library files for `hb script.f args...`, but shared
+  behavior should still live in one owned source file.
+
 ## Stack comments
 
 - **Every definition** carries `( before -- after )` with items named:
