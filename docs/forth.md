@@ -15,7 +15,9 @@ bottom.
   `>X` (`TERM>TAG`, `S>NUMBER?`); fetch/store `X@` / `X!` (`TV@` / `TV!`);
   allocate/reset `X-ALLOC` / `X-RESET`.
 - Short names per the global naming rules: abbreviate common terms (`buf`, `ctx`,
-  `idx`, `nv`, `ki`, `ko`); single letters fine in tight scope (`i`, `t`, `n`).
+  `idx`, `nv`, `ki`, `ko`); single letters are fine in tight scope only when
+  they do not collide with built-ins. Do not use loop words such as `i` or `j`
+  as locals.
 - **Check for collisions with gforth built-ins** before naming — gforth is
   case-insensitive, so `CON?`/`VAR?` clash with existing words. Prefix to
   disambiguate (`TYCON?`, `TYVAR?`). When in doubt, `' NAME` in a REPL: if it
