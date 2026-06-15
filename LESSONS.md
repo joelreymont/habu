@@ -13,6 +13,17 @@ support source and append a fresh `CHECK!` hook install before user input begins
 support code is trusted engine UI code, while user definitions in the prompt and
 pipeline stay checked.
 
+## Darwin benchmark time is not a syscall (2026-06-15)
+
+macOS headers expose `gettimeofday` as raw syscall 116, but `clock_gettime`,
+`clock_gettime_nsec_np`, and `mach_absolute_time` are libSystem/commpage APIs, not
+entries in `sys/syscall.h`. For the no-libSystem Habu engine, a correct
+benchmark clock can read `CNTVCT_EL0` and `CNTFRQ_EL0` directly from EL0 on
+Apple Silicon and convert ticks with quotient/remainder arithmetic:
+`(ticks / freq) * 1e9 + ((ticks % freq) * 1e9) / freq`. Do not multiply the raw
+tick count by 1e9 first; that can overflow long uptimes even though the final
+nanosecond value is representable.
+
 ## Re-entrant EVALUATE: the engine can now run code in-process (2026-06-15)
 
 The fixed `evaluate` save frame must never live in a "free-looking" header gap

@@ -12,6 +12,7 @@
 46  constant NR-SIGACTION
 74  constant NR-MPROTECT
 83  constant NR-SETITIMER
+116 constant NR-GETTIMEOFDAY
 184 constant NR-SIGRETURN
 197 constant NR-MMAP
 244 constant NR-SPAWN     \ posix_spawn(&pid, path, 0, 0, argv, envp)

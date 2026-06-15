@@ -175,6 +175,30 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 : BCPSET   A G-POP  CP A 0 ADDI, ;         \ ( addr -- ) set CP — forget code back to a mark
 : BNDSET   A G-POP  NDICT A 0 ADDI, ;      \ ( n -- ) set NDICT — forget dict entries past a mark
 
+: BEPOCHSECONDS ( -- )
+   LBL {: ok :}
+   SP SP 16 SUBI,
+   0 SP 0 ADDI,  1 0 MOVZ,  NR-GETTIMEOFDAY SYS,
+   9 C-CS CSET,  9 9 0 ORR,  9 0 CMPI,  C-EQ ok BCOND,  BRK,
+   ok LBL,
+   9 SP 0 LDR,  9 G-PUSH
+   SP SP 16 ADDI, ;
+
+\ Monotonic nanoseconds for benchmarks. Darwin exposes `clock_gettime` and
+\ `mach_absolute_time` through libSystem/commpage APIs, not this raw-syscall
+\ engine. On arm64 macOS, EL0 can read CNTVCT_EL0 and CNTFRQ_EL0 directly; use
+\ quotient/remainder conversion so the tick*1e9 multiply cannot overflow.
+: BMONONS ( -- )
+   LBL {: ok :}
+   $D53BE049 EMITW  $D53BE00A EMITW         \ mrs x9,CNTVCT_EL0 ; mrs x10,CNTFRQ_EL0
+   10 ok CBNZ,  BRK,  ok LBL,
+   11 9 10 UDIV,                            \ q = ticks / freq
+   12 11 10 MUL,  9 9 12 SUB,               \ r = ticks % freq
+   13 $3B9ACA00 LIT64,                      \ 1_000_000_000 ns/s
+   11 11 13 MUL,
+   9 9 13 MUL,  9 9 10 UDIV,
+   9 11 9 ADD,  9 G-PUSH ;
+
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
@@ -417,6 +441,8 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
+   s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
+   s" mono-ns" ['] BMONONS FPRIM-L
    s" evaluate" ['] B-EVAL FPRIM-L
    s" die"  ['] BDIE   FPRIM-L
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L   s" patch32" ['] BPATCH32 FPRIM

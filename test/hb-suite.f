@@ -109,6 +109,12 @@ dbase@ $300000000 = -1 T=
 cp@ dbase@ - 0 > -1 T=
 ndict@ 0 > -1 T=
 
+\ time primitives: deterministic shape/range only, never exact wall time
+epoch-seconds 1600000000 > -1 T=
+mono-ns mono-ns <= -1 T=
+: TMONO-ELAPSED mono-ns 0 100000 0 do i + loop drop mono-ns swap - ;
+TMONO-ELAPSED 0 > -1 T=
+
 \ register pool stress: 14 live VS values exceed the 13-reg pool (x9..x15,
 \ x29, x25, x23, x24, x21, x22) mid-expression -> the 14th allocation takes
 \ the spill path; sum proves no value was lost or aliased (1+..+14 = 105)
