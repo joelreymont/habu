@@ -17,8 +17,8 @@ clobbers x9..x15. The base is saved at startup into `S0-CELL`.
 ## `.` — single value (in the standalone)
 Pop + print one signed decimal + newline. Use for a specific intermediate.
 
-## `step` — native token stepper (in the REPL, `bin/hbi` on a tty)
-`src/habu/stepper.f` is baked into `bin/hbi`. `step 5 dup * 3 +` runs the rest
+## `step` — native token stepper (in the REPL, `bin/hb` on a tty)
+`src/habu/stepper.f` is baked into `bin/hb`. `step 5 dup * 3 +` runs the rest
 of the line one token at a time, echoing each token and printing the data stack
 after it executes — no `EVALUATE` needed: the REPL hook feeds the engine one
 token per call, so the engine's own interpret loop is the evaluator. The
@@ -26,7 +26,7 @@ gforth-host `STEP` (`bootstrap/cg/stepper.fs`, below) is the bootstrap-tier
 equivalent.
 
 ## `BP+` / `BP-` — one-shot breakpoints on compiled words (REPL)
-`src/habu/debug.f` (baked into `bin/hbi`): `' WORD BP+` plants a `BRK #0` at the
+`src/habu/debug.f` (baked into `bin/hb`): `' WORD BP+` plants a `BRK #0` at the
 word's entry. Hitting it prints `habu-bp:` + the pc + the data-stack top, then
 restores the original instruction and **resumes** the word; the breakpoint is
 one-shot. `' WORD BP*` is **persistent** (fires every call — the handler

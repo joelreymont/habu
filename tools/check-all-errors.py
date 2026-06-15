@@ -78,7 +78,7 @@ def run_one(label: str, json_errors: bool, accepted: list[str], definition: str,
     prefix.append(definition)
     program = "\n".join(prefix) + "\n"
 
-    return subprocess.run(["bin/habu"], input=program, text=True, capture_output=True)
+    return subprocess.run(["bin/hb"], input=program, text=True, capture_output=True)
 
 
 def main(argv: list[str]) -> int:

@@ -2,8 +2,8 @@
 \ Generates runnable typed defs, checks them, RUNS the certified ones IN-PROCESS
 \ (via `evaluate`), and fails (exit 1) if a certified def's real out-arity differs
 \ from its declared ( in -- out ) — a false-cert. No Python, no gforth, no
-\ spawning: generator, driver and measurement are all habu, run by bin/habu.
-\ See PROP-TESTING.md.  Run:  bin/habu < test/prop-test.f   (exit 1 on a false-cert)
+\ spawning: generator, driver and measurement are all habu, run by bin/hb.
+\ See PROP-TESTING.md.  Run:  bin/hb < test/prop-test.f   (exit 1 on a false-cert)
 0 set-check                       \ the harness is uncheckable metaprogramming
 
 \ ---- measurement: count residual items above a sentinel (engine has no `depth`)

@@ -29,7 +29,7 @@ A false-cert is "checker says correct, but it isn't," so catching it needs a
 gforth-hosted checker as a differential oracle: that would chain the native
 checker to a bootstrap artifact forever (every native change mirrored in
 `bootstrap/src` to keep the diff meaningful). The stronger, gforth-free oracle is
-**the program's own behavior** — run it in `bin/habu` and measure what it really
+**the program's own behavior** — run it in `bin/hb` and measure what it really
 does to the stack.
 
 This is property-based testing: the *property* is the soundness invariant, the
@@ -54,7 +54,7 @@ soup that bounces off the parser.
 
 ## Architecture — self-hosted, in-process
 
-The whole harness is **checked-Forth's untyped tooling tier, run by `bin/habu`**
+The whole harness is **checked-Forth's untyped tooling tier, run by `bin/hb`**
 (`test/prop-test.f`): the PRNG, the generator, the driver and the measurement are
 all habu. Each program is defined, checked and run **in the same process** via
 the engine's re-entrant `evaluate` — no Python, no gforth, no per-program
@@ -78,7 +78,7 @@ on an error (so a bad generated program is discarded, not fatal). See LESSONS,
 (`CHECK! dup VERD !`, not `CHECK! VERD !`) — dropping it underflows the
 compiler's stack and corrupts the next `evaluate`.
 
-### The oracle protocol (validated against bin/habu)
+### The oracle protocol (validated against bin/hb)
 
 The engine has **no `depth`** primitive, and its `CHECK!` hook rejects any
 un-checkable helper, so measurement uses a marker sentinel and a helper defined
@@ -196,7 +196,7 @@ is no dict cap to hit.
 
 ## Gate integration & running
 
-- **Run:** `bin/habu < test/prop-test.f` (exit 0 = clean; `die`/nonzero on a
+- **Run:** `bin/hb < test/prop-test.f` (exit 0 = clean; `die`/nonzero on a
   false-cert). Fixed seed in the script = reproducible.
 - **Smoke (in `test/run.sh`):** 250 programs, sub-second, in-process; fails the
   gate on any FALSE-CERT. A `SELFTEST` first proves the arity comparison fires
@@ -222,5 +222,5 @@ is no dict cap to hit.
 ## File plan
 
 - `test/prop-test.f` — the whole self-hosted harness: PRNG + generator + driver +
-  measurement, run by `bin/habu`, in-process via `evaluate`.
+  measurement, run by `bin/hb`, in-process via `evaluate`.
 - `test/run.sh` — smoke invocation.

@@ -1,5 +1,5 @@
 \ lib.f — string/file library for the self-hosted linters (shadow/parity/clobber),
-\ run by bin/habu. Replaces the regex/text plumbing the Python tools used. Tooling
+\ run by bin/hb. Replaces the regex/text plumbing the Python tools used. Tooling
 \ tier: uncheckable metaprogramming, so checking is OFF for the whole library.
 0 set-check
 

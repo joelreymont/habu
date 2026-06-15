@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""repl-pty: drive bin/hbi on a pseudo-terminal and assert the interactive
+"""repl-pty: drive bin/hb on a pseudo-terminal and assert the interactive
 REPL contract: prompt, evaluation + " ok", undefined-word recovery (no exit,
 no " ok", state rolled back), definitions usable after an error, EOF exit 0.
 The same binary stays batch on a pipe — that path is covered by hb-suite."""
 import os, pty, select, sys, time
 
-HBI = os.path.join(os.path.dirname(__file__), '..', 'bin', 'hbi')
+HB = os.path.join(os.path.dirname(__file__), '..', 'bin', 'hb')
 
 pid, fd = pty.fork()
 if pid == 0:
-    os.execv(HBI, [HBI])
+    os.execv(HB, [HB])
 
 def drain(t=0.5):
     out = b''

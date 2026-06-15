@@ -1,6 +1,6 @@
 #!/bin/sh
 # run.sh — the DEFAULT gate: habu-native, no gforth anywhere on the path.
-#   lints -> self-rebuild fixpoint -> hb-suite -> AOT snapshot -> tty REPL ->
+#   lints -> self-rebuild fixpoint -> hb-suite -> checked hb -> tty REPL ->
 #   hb-build standalone.
 set -e
 cd "$(dirname "$0")/.."
@@ -26,31 +26,30 @@ echo "PASS: self-rebuild fixpoint"
 ./tools/test-hb.sh || exit 1
 # divide/modulo by zero must fail loudly (ARM64 SDIV yields 0 silently); the
 # engine traps, so the run exits nonzero instead of printing a bogus result.
-printf '1 0 / .\n'   | bin/hbi >/dev/null 2>&1 && { echo "FAIL: 1 0 / did not trap"; exit 1; }
-printf '1 0 mod .\n' | bin/hbi >/dev/null 2>&1 && { echo "FAIL: 1 0 mod did not trap"; exit 1; }
-printf '7 2 / . 7 2 mod . cr\n' | bin/hbi 2>/dev/null | tr -d '\n ' | grep -q '^31$' || { echo "FAIL: nonzero div/mod regressed"; exit 1; }
+printf '1 0 / .\n'   | bin/hb >/dev/null 2>&1 && { echo "FAIL: 1 0 / did not trap"; exit 1; }
+printf '1 0 mod .\n' | bin/hb >/dev/null 2>&1 && { echo "FAIL: 1 0 mod did not trap"; exit 1; }
+printf '7 2 / . 7 2 mod . cr\n' | bin/hb 2>/dev/null | tr -d '\n ' | grep -q '^31$' || { echo "FAIL: nonzero div/mod regressed"; exit 1; }
 echo "PASS: div/mod by zero traps (no silent 0)"
-./tools/snap-hb.sh >/dev/null || { echo "FAIL: snap-hb"; exit 1; }
-out=$(echo 's" w" s" n -- n" trust 7 . : Q 5 dup * . ; Q' | $T/hb-warm)
+out=$(echo 's" w" s" n -- n" trust 7 . : Q 5 dup * . ; Q' | bin/hb)
 [ "$out" = "7
-25" ] || { echo "FAIL: warm snapshot (got: $out)"; exit 1; }
-out=$(echo 's" HOME" getenv nip 0 > .' | $T/hb-warm)
+25" ] || { echo "FAIL: checked hb trust/run smoke (got: $out)"; exit 1; }
+out=$(echo 's" HOME" getenv nip 0 > .' | bin/hb)
 [ "$out" = "-1" ] || { echo "FAIL: getenv (got: $out)"; exit 1; }
-# the warm snapshot is checked-Forth: a typed def whose body violates its sig
+# hb is checked-Forth: a typed def whose body violates its sig
 # is rejected (unpublished -> calling it exits 70); a correct one runs.
-out=$(printf ': SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | $T/hb-warm 2>/dev/null)
-[ "$out" = "49" ] || { echo "FAIL: snapshot good typed def (got: $out)"; exit 1; }
-printf ': SQBAD ( i64 -- i64 ) dup ;\n7 SQBAD .\n' | $T/hb-warm >/dev/null 2>&1 && { echo "FAIL: snapshot did NOT reject bad sig"; exit 1; }
+out=$(printf ': SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | bin/hb 2>/dev/null)
+[ "$out" = "49" ] || { echo "FAIL: hb good typed def (got: $out)"; exit 1; }
+printf ': SQBAD ( i64 -- i64 ) dup ;\n7 SQBAD .\n' | bin/hb >/dev/null 2>&1 && { echo "FAIL: hb did NOT reject bad sig"; exit 1; }
 # named rows + quot sub-sigs VERIFY (Gap3): CHECK! body-vs-declared-sig.
 # V1 row-poly certifies, V2 combinator-param certifies, V3 bad row count rejects.
-out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i64 ) execute" CHECK! .\ns" V3 ( R -- R i64 ) 5 5" CHECK! .\n' | $T/hb-warm 2>/dev/null)
+out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i64 ) execute" CHECK! .\ns" V3 ( R -- R i64 ) 5 5" CHECK! .\n' | bin/hb 2>/dev/null)
 [ "$out" = "-1
 -1
-0" ] || { echo "FAIL: snapshot rows/quot sig verify (got: $out)"; exit 1; }
+0" ] || { echo "FAIL: hb rows/quot sig verify (got: $out)"; exit 1; }
 # and the row sig runs end to end
-out=$(printf ': PSH ( R -- R i64 ) 5 ;\nPSH .\n' | $T/hb-warm 2>/dev/null)
-[ "$out" = "5" ] || { echo "FAIL: snapshot named-row sig run (got: $out)"; exit 1; }
-[ -x bin/habu ] || { echo "FAIL: bin/habu (checked REPL) not produced"; exit 1; }
+out=$(printf ': PSH ( R -- R i64 ) 5 ;\nPSH .\n' | bin/hb 2>/dev/null)
+[ "$out" = "5" ] || { echo "FAIL: hb named-row sig run (got: $out)"; exit 1; }
+[ -x bin/hb ] || { echo "FAIL: bin/hb not produced"; exit 1; }
 printf ': JBAD ( i64 -- i64 ) dup ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json.err && { echo "FAIL: tools/check.sh --json-errors accepted bad def"; exit 1; }
 python3 - "$T/habu-json.err" <<'PY'
 import json, pathlib, sys
@@ -128,19 +127,19 @@ assert defs["APPLY"]["signature"] == "(i64 [ i64 -- i64 ] -- i64)", defs["APPLY"
 PY
 TRUST_LINT_TODAY=2026-10-01 ./tools/trust-lint.py >$T/trust-stale.out 2>&1 && { echo "FAIL: trust-lint accepted stale audit dates"; exit 1; }
 grep -q 'STALE-AUDIT' $T/trust-stale.out || { echo "FAIL: trust-lint stale audit diagnostic missing"; exit 1; }
-echo "PASS: AOT snapshot (warm toolchain boot) + getenv + sig-check (rows+quots) + bin/habu"
+echo "PASS: checked bin/hb + getenv + sig-check (rows+quots)"
 # property-based soundness smoke, SELF-HOSTED in habu: generate typed defs,
 # check them, and RUN the certified ones IN-PROCESS (via `evaluate`); a false-cert
 # (real out-arity != declared) calls `die` -> nonzero exit. Fixed seed in the
 # script = reproducible. No Python, no gforth, no spawning. See PROP-TESTING.md.
-bin/habu < test/prop-test.f > $T/prop.out 2>/dev/null || { echo "FAIL: prop-test (self-hosted) found a FALSE-CERT"; exit 1; }
+bin/hb < test/prop-test.f > $T/prop.out 2>/dev/null || { echo "FAIL: prop-test (self-hosted) found a FALSE-CERT"; exit 1; }
 grep -q "self-test OK" $T/prop.out || { echo "FAIL: prop-test self-test/run did not complete"; exit 1; }
 echo "PASS: prop-test soundness smoke (self-hosted in habu, in-process via evaluate)"
 HT=$(mktemp -d)
-HB_TMP=$HT ./tools/snap-hb.sh >/dev/null && [ -x "$HT/hb-warm" ] || { echo "FAIL: HB_TMP isolation"; exit 1; }
-out=$(printf '$340000000 $1B0 + @ 0= .\n: SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | "$HT/hb-warm" 2>/dev/null)
+HB_TMP=$HT ./tools/snap-hb.sh >/dev/null || { echo "FAIL: HB_TMP isolation"; exit 1; }
+out=$(printf '$340000000 $1B0 + @ 0= .\n: SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | bin/hb 2>/dev/null)
 [ "$out" = "0
-49" ] || { echo "FAIL: HB_TMP snapshot restore/check hook (got: $out)"; exit 1; }
+49" ] || { echo "FAIL: HB_TMP hb refresh/check hook (got: $out)"; exit 1; }
 rm -rf "$HT"
 echo "PASS: HB_TMP isolation"
 python3 test/repl-pty.py || { echo "FAIL: tty REPL"; exit 1; }
@@ -256,4 +255,4 @@ fi
 grep -q "expected: i64" $T/hb-rt-bad.err || { echo "FAIL: hb-build --repl diagnostic lost expected type"; exit 1; }
 grep -q "actual: bool" $T/hb-rt-bad.err || { echo "FAIL: hb-build --repl diagnostic lost actual type"; exit 1; }
 echo "PASS: hb-build --repl verifies user defs ($(stat -f%z $T/hb-rt) B, engine + library)"
-echo "PASS: native gate (fixpoint + hb-suite + snapshot + repl + hb-build)"
+echo "PASS: native gate (fixpoint + hb-suite + checked hb + repl + hb-build)"

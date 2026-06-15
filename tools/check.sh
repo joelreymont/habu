@@ -17,7 +17,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 [ "$#" -le 1 ] || { echo "usage: tools/check.sh [--json-errors] [--strict-signatures] [--all-errors] [prog.f]"; exit 64; }
-[ -x bin/habu ] || { echo "check.sh: bin/habu missing (run tools/snap-hb.sh first)"; exit 69; }
+[ -x bin/hb ] || { echo "check.sh: bin/hb missing (run tools/build.sh first)"; exit 69; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/habu-check.XXXXXX")
 cleanup() { rm -rf "$T"; }
 trap cleanup EXIT HUP INT TERM
@@ -60,7 +60,7 @@ EOF
 ./tools/diag-origin.py "$SRC" >> "$RUN"
 if [ "$JSON" = 1 ]; then
   ERR=$T/stderr
-  if bin/habu < "$RUN" 2>"$ERR"; then
+  if bin/hb < "$RUN" 2>"$ERR"; then
     cat "$ERR" >&2
   else
     rc=$?
@@ -68,5 +68,5 @@ if [ "$JSON" = 1 ]; then
     exit "$rc"
   fi
 else
-  bin/habu < "$RUN"
+  bin/hb < "$RUN"
 fi

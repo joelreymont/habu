@@ -2,7 +2,7 @@
 \ Self-hosted port of shadow-lint.py. The engine dict is later-wins and the checker
 \ records later sigs over PTAB, so a toolchain word named like a prim silently
 \ replaces it for every program the toolchain-loaded engine compiles.
-\ Run:  cat tools/lint/lib.f tools/lint/shadow-lint.f | bin/habu
+\ Run:  cat tools/lint/lib.f tools/lint/shadow-lint.f | bin/hb
 \ (lib.f already did `0 set-check`.)
 
 create FB 131072 allot                       \ one file at a time

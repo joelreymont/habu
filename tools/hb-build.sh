@@ -6,7 +6,7 @@
 #                                            the program's definitions and REPL.
 # In --repl mode the textual tree-shaker keeps every word NAMED in the source;
 # add `EXPORT word1 word2 …` lines to keep extra words callable at the REPL.
-# The output needs neither habu nor gforth to run.
+# The output needs neither hb nor gforth to run.
 set -e
 cd "$(dirname "$0")/.."
 REPL=0
@@ -63,20 +63,23 @@ GOTPATH=$T/$GOT
 # In default AOT mode the driver compiles the program in-process under CHECK!.
 # In --repl mode the driver pre-verifies the user source with CHECK!, then
 # bundles that source plus trusted REPL support for startup/runtime execution.
-for f in $(./tools/srclist.sh $DRIVER); do
-  [ "$f" = "src/core/sha256.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
-  if [ "$f" = "src/habu/$DRIVER.f" ]; then
-    sed '$d' "$f"
-    printf 's" %s" DIAG-FILE!\n' "$SRC"
-    [ "$JSON" = 1 ] && printf '%s\n' '-1 JSON-DIAGS !'
-    tail -n 1 "$f"
-  else
-    cat "$f"
-  fi
-  printf '\n'
-done > "$STAGE2_SRC"
+{
+  printf '0 set-check\n'
+  for f in $(./tools/srclist.sh $DRIVER); do
+    [ "$f" = "src/core/sha256.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
+    if [ "$f" = "src/habu/$DRIVER.f" ]; then
+      sed '$d' "$f"
+      printf 's" %s" DIAG-FILE!\n' "$SRC"
+      [ "$JSON" = 1 ] && printf '%s\n' '-1 JSON-DIAGS !'
+      tail -n 1 "$f"
+    else
+      cat "$f"
+    fi
+    printf '\n'
+  done
+} > "$STAGE2_SRC"
 rm -f "$STAGE2_GOT"
-bin/hb
+bin/hb < src/habu/stage2.f
 [ -f "$STAGE2_GOT" ] || { echo "hb-build: bootstrap maker did not produce stage2-got"; exit 74; }
 mv "$STAGE2_GOT" "$MKPATH"
 chmod +x "$MKPATH"

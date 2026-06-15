@@ -1,12 +1,12 @@
 #!/bin/sh
 # imgdump.sh <image> [image2] — per-word dict dump of a habu binary (runs
-# tools/imgdump.f on bin/hbi). With two images: compare word sizes first
+# tools/imgdump.f on bin/hb). With two images: compare word sizes first
 # (shift-insensitive), then offsets — answers "which word changed size" vs
 # "everything just shifted".
 set -e
 cd "$(dirname "$0")/.."
-[ -x bin/hbi ] || { echo "no bin/hbi — run tools/build.sh"; exit 1; }
-dump() { cp "$1" /tmp/imgdump-in; bin/hbi < tools/imgdump.f; }
+[ -x bin/hb ] || { echo "no bin/hb — run tools/build.sh"; exit 1; }
+dump() { cp "$1" /tmp/imgdump-in; bin/hb < tools/imgdump.f; }
 [ $# -ge 2 ] || { dump "$1"; exit 0; }
 dump "$1" > /tmp/imgdump-a.txt
 dump "$2" > /tmp/imgdump-b.txt

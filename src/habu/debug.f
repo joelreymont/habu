@@ -5,7 +5,7 @@
 \   ' WORD BP*      persistent (fires every call; emulates the entry prologue)
 \   N ' WORD BPN    persistent, but silent for the first N hits (skip-count)
 \   ' WORD BP-      remove      BP. = list active breakpoints (addrs)
-\ Up to 8 at once. Baked into bin/hbi after repl/stepper.
+\ Up to 8 at once. Baked into bin/hb after repl/stepper.
 
 $36D0 constant BPTAB             \ 8 x (addr, saved-instr, hits, ctrl) 32 B each
 8 constant MAXBP

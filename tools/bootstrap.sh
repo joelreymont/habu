@@ -31,5 +31,5 @@ bin/hb                                          # stage1 -> stage2
 [ -f "$T/stage2-got" ] || { echo "bootstrap: stage1 did not produce stage2-got"; exit 1; }
 cmp bin/hb "$T/stage2-got" || { echo "FIXPOINT BROKEN"; exit 1; }
 codesign -v bin/hb 2>/dev/null
-echo "bootstrap OK: bin/hb (self-compiled, signed, fixpoint verified)"
-./tools/build.sh                                # bin/hbi (stdin engine) for probe.sh
+echo "bootstrap OK: stage compiler bootstrapped"
+./tools/build.sh                                # installs the checked bin/hb

@@ -1,4 +1,4 @@
-\ repl.f — the interactive REPL for the stdin engine (bin/hbi). Baked as the
+\ repl.f — the interactive REPL for the stdin engine (bin/hb). Baked as the
 \ engine's LSRC; EMIT-SOURCE runs it only when fd 0 is a tty (a pipe gets the
 \ classic batch read-all and never sees these words run). INSTALL points
 \ REPLH-CELL at RD-LINE; the engine's LEXIT path then prints " ok", saves the

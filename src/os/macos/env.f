@@ -1,6 +1,6 @@
 \ env.f — process arguments and environment. The engine runs under dyld
 \ (LC_MAIN): main(argc, argv, envp) arrives in x0-x2 and EM-STARTUP saves them
-\ to DATA header cells at entry (warm snapshot boots re-store the live values).
+\ to DATA header cells at entry (snapshot boots re-store the live values).
 
 $340000000 constant ENV-DATA
 $3670 constant ARGC-CELL

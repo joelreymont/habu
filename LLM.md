@@ -29,7 +29,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 
 ## 3. Verify it typechecks
 - Run a definition through the native engine:
-  `printf ': SQUARE ( i64 -- i64 ) dup * ;\n' | bin/habu`
+  `printf ': SQUARE ( i64 -- i64 ) dup * ;\n' | bin/hb`
   An accepted def is silently added; a rejected one is dropped. For interactive
   **verify mode** (body vs declared sig), prepend `' CHECK! set-check`.
 - For repair loops, prefer the wrapper:

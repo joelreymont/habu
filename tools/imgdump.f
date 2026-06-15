@@ -1,7 +1,7 @@
 \ imgdump.f — habu image inspector, in habu. Run: tools/imgdump.sh <image>
 \ Reads /tmp/imgdump-in, locates the embedded dict (48-byte entries:
 \ start/end/len/name[16]/wid), prints one line per word: name $start $len.
-\ Self-contained: runs on bin/hbi with nothing prepended.
+\ Self-contained: runs on bin/hb with nothing prepended.
 
 variable IB   variable IL                    \ image buffer, length
 variable IFD  variable IRD

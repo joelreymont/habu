@@ -15,15 +15,14 @@ trap cleanup EXIT HUP INT TERM
 N=$(awk 'NR>1{n++} END{print n+0}' bench/llm/tasks.tsv)
 DEFN=$(grep -c '^: ' bench/llm/solutions.f)
 [ "$DEFN" = "$N" ] || { echo "FAIL: task/solution count mismatch ($N task(s), $DEFN definition(s))"; exit 1; }
-[ -x bin/habu ] || ./tools/snap-hb.sh >/dev/null
-[ -x bin/hbi ] || ./tools/build.sh >/dev/null
+[ -x bin/hb ] || ./tools/build.sh >/dev/null
 ./tools/check.sh bench/llm/solutions.f >"$T/check.out" 2>"$T/check.err" || {
   cat "$T/check.err"
   echo "FAIL: answer key is not all-certified"
   exit 1
 }
-echo "habu LLM bench: $N/$N reference solutions certified, 0 rejected"
-TEST_OUT=$(cat bench/llm/solutions.f bench/llm/tests.f | bin/hbi 2>"$T/tests.err")
+echo "hb LLM bench: $N/$N reference solutions certified, 0 rejected"
+TEST_OUT=$(cat bench/llm/solutions.f bench/llm/tests.f | bin/hb 2>"$T/tests.err")
 [ "$TEST_OUT" = "ok" ] || { echo "FAIL: reference functional tests (got: $TEST_OUT)"; exit 1; }
 ./bench/llm/validate-results.py
 echo "PASS: answer key valid ($N/$N certified, $N/$N tests passed, metrics valid)"

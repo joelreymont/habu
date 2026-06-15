@@ -3,7 +3,7 @@
 The engine's dict is later-wins and the checker records later sigs over PTAB,
 so a toolchain word named like a prim silently replaces it for every program
 the toolchain-loaded engine compiles (the vsjit fold helpers were once named
-f+/f-/f* — float ops vanished on any warm engine)."""
+f+/f-/f* — float ops vanished on any snapshot-loaded engine)."""
 import re, pathlib, subprocess, sys
 
 prims = set()

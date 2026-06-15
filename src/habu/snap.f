@@ -1,4 +1,5 @@
-\ snap.f — AOT snapshot driver (fed to bin/hbi after the toolchain source):
+\ snap.f — image writer run by bin/hb (or by a temporary stdin engine during
+\ tools/build.sh):
 \ writes a new binary = engine text copy + the LIVE dict/code region + the LIVE
 \ data region + a 40-byte trailer. The engine's startup loader (em-startup)
 \ detects the trailer, restores both regions (fixed VAs make region addresses
@@ -7,7 +8,7 @@
 $48425350414E5321 constant SNAP-MAGIC
 
 \ output path — the single knob; tools/snap-hb.sh owns/moves the artifact
-: SNAP-OUT s" hb-warm0" TMP-PATH ;
+: SNAP-OUT s" hb-snap0" TMP-PATH ;
 
 create TRL 40 allot
 create ZPG 4096 allot
@@ -69,8 +70,8 @@ variable SNL  variable SFTS  variable SFD
    SFD @  SFTS @ CODE-OFF - SNL @ -  WPAD
    SFD @ close ;
 
-\ freeze the verify-on-definition hook into the warm image: the snapshot is
-\ habu fully loaded, so a typed def in its REPL is checked against its sig.
+\ Freeze the verify-on-definition hook into the emitted image: hb is fully
+\ loaded, so a typed def in its REPL is checked against its sig.
 : HOOK! CHECK! ;
 ' HOOK! set-check
 SNAPGO

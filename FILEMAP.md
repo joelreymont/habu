@@ -31,8 +31,8 @@ points stay listed.
 - `src/habu/regalloc.f` — virtual stack register allocator.
 - `src/habu/aot.f` — stripped AOT linker driver.
 - `src/habu/build.f` — `hb-build --repl` bundle driver.
-- `src/habu/snap.f` — warm snapshot image writer.
-- `src/habu/hbi.f` — stdin/interactive engine builder.
+- `src/habu/snap.f` — checked image writer for `bin/hb`.
+- `src/habu/stdin.f` — internal stdin/interactive engine builder.
 
 ## Mach-O And Signing
 
@@ -43,7 +43,7 @@ points stay listed.
 ## Tools And Gates
 
 - `tools/build.sh` — self-host rebuild/fixpoint.
-- `tools/snap-hb.sh` — warm checked snapshot builder.
+- `tools/snap-hb.sh` — refreshes the checked `bin/hb` image.
 - `tools/check.sh` — checked native engine wrapper.
 - `tools/hb-build.sh` — standalone binary builder.
 - `tools/bootstrap-oracle.sh` — bootstrap-only gforth differential.

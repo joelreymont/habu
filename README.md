@@ -31,11 +31,11 @@ built-in checker, and **rebuilds itself byte-for-byte** (stage2 fixpoint):
 ```sh
 ./tools/bootstrap.sh   # build bin/hb from nothing but gforth (once)
 ./tools/build.sh       # daily rebuild: bin/hb recompiles itself, no gforth
-echo ': SQ dup * ; 7 SQ .' | bin/hbi    # batch: program from stdin (bare engine)
-./tools/snap-hb.sh ; bin/habu           # the CHECKED native REPL: full toolchain
-                                        #   warm (~3ms boot), verifies typed defs
-                                        #   against their ( in -- out ), line
-                                        #   editing, history, breakpoints, `step`
+echo ': SQ dup * ; 7 SQ .' | bin/hb     # batch: program from stdin
+bin/hb                                  # tty: checked REPL with line editing,
+                                        #   history, breakpoints, `step`, and
+                                        #   verification of typed definitions
+                                        #   against their ( in -- out )
 ./tools/hb-build.sh prog.f -o prog      # AOT: standalone signed binary (~17 KB:
                                         #  tree-shaken to the program's words)
 ./tools/hb-build.sh --repl prog.f -o prog-repl
@@ -94,13 +94,13 @@ locals (`{: a:n :}`), quotations (`[: ;]` + typed `execute`), `trust`
 declarations, and prints reject diagnostics to stderr. The toolchain's own
 source self-checks clean — see [`STATUS.md`](STATUS.md) for the current count.
 
-The checked native REPL is **`bin/habu`** (the AOT snapshot from
-`tools/snap-hb.sh`): the full toolchain warm, the checker live. It **verifies a
-definition's body against its own declared `( in -- out )`** and rejects a
-mismatch — `: SQ ( i64 -- i64 ) dup ;` is dropped with a diagnostic, `dup *`
-is accepted. Untyped definitions stay infer-only — so LLM-generated definitions
-should declare signatures and be verified with `CHECK!` (verify body-vs-sig),
-not just `CHECK` (infer). The native sig grammar handles named
+The checked native engine is **`bin/hb`**. On a tty it starts the REPL; on a
+pipe it reads and runs stdin. It **verifies a definition's body against its own
+declared `( in -- out )`** and rejects a mismatch — `: SQ ( i64 -- i64 ) dup ;`
+is dropped with a diagnostic, `dup *` is accepted. Untyped definitions stay
+infer-only — so LLM-generated definitions should declare signatures and be
+verified with `CHECK!` (verify body-vs-sig), not just `CHECK` (infer). The native
+sig grammar handles named
 row vars (`R S T`), quotation sub-sigs (`[ in -- out ]`), and records
 quot-bearing sigs as scheme-strings (so combinator call sites — `dip`, `keep`
 — are checked against them). The native grammar now also handles distinct concrete types (`i64 u8 u32 cell
@@ -126,13 +126,12 @@ unify against them — `ptr` is typed as an address instead.
   parts, jit, profiler, crash, stage2 driver), `src/os/macos/` (Mach-O,
   signing).
 - `test/` — `T{ … }T` tests. `test/run.sh` is the DEFAULT gate, habu-native
-  end to end: lints + self-rebuild fixpoint + hb-suite + warm-snapshot boot +
+  end to end: lints + self-rebuild fixpoint + hb-suite + checked `hb` +
   tty REPL + hb-build (runs with gforth absent). `tools/bootstrap-oracle.sh` is
   the bootstrap-only gforth differential (the gforth-hosted suite + the
   boot-vs-port goldens). `tools/`
   also holds bootstrap/build/hb-build/probe/imgdump/jitdump/parity-lint/
-  clobber-lint/shadow-lint/repl-lint, and `snap-hb.sh` for the AOT snapshot binary
-  (boots the whole toolchain warm in ~3 ms).
+  clobber-lint/shadow-lint/repl-lint, and `snap-hb.sh` for refreshing `bin/hb`.
 
 ## Combinators
 

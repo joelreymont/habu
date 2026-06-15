@@ -2,7 +2,7 @@
 \ the line ONE TOKEN at a time, echoing each token and printing the data stack
 \ after it executes. No EVALUATE needed: while stepping, the REPL hook returns
 \ one token per call, so the engine's own interpret loop is the evaluator.
-\ Baked into bin/hbi after repl.f (uses its DATAB/REPLH-CELL/TTY?/EMITS/
+\ Baked into bin/hb after repl.f (uses its DATAB/REPLH-CELL/TTY?/EMITS/
 \ RD-LINE); tools/hb-build.sh programs never see it.
 
 $36A0 constant SINP-CELL        \ engine input cursor cell

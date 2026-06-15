@@ -4,17 +4,17 @@ a recoverable user error (a full breakpoint table, a bad token) would take down
 the whole interactive session instead of being caught by the REPL's
 uncaught-throw recovery (print a message + roll back the line + read again).
 Interactive code raises errors with `throw`; only the build-time makers
-(hbi/build/snap/stage2 drivers) may `die`, because there exiting IS the failure.
+(stdin/build/snap/stage2 drivers) may `die`, because there exiting IS the failure.
 
-The baked-into-the-REPL file list is derived from hbi.f's `*-SRC` words (the
+The baked-into-the-REPL file list is derived from stdin.f's `*-SRC` words (the
 sources READ-REPL bakes as the engine's LSRC), with the known three as a
 backstop. Caught a real one twice: debug.f BP+ table-full, and the impulse to
 `die` from the stepper.
 """
 import re, sys, pathlib
 
-hbi = pathlib.Path("src/habu/hbi.f").read_text()
-baked = re.findall(r'-SRC\s+s" (src/[^"]+\.f)"', hbi)
+stdin_src = pathlib.Path("src/habu/stdin.f").read_text()
+baked = re.findall(r'-SRC\s+s" (src/[^"]+\.f)"', stdin_src)
 baked = sorted(set(baked) | {"src/habu/repl.f", "src/habu/stepper.f", "src/habu/debug.f"})
 
 FATAL = {"die", "bye"}

@@ -1,10 +1,10 @@
 #!/bin/sh
 # probe.sh '<habu program>' [expected-output] — run a habu program on the
-# installed native stdin engine. With expected-output: exits 1 on mismatch.
+# installed native engine. With expected-output: exits 1 on mismatch.
 # Without: prints rc + output. PROBE_FILES are piped before the program.
 set -e
 cd "$(dirname "$0")/.."
-[ -x bin/hbi ] || { echo "no bin/hbi — run tools/build.sh"; exit 1; }
+[ -x bin/hb ] || { echo "no bin/hb — run tools/build.sh"; exit 1; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/hb-probe.XXXXXX")
 cleanup() {
   if command -v trash >/dev/null 2>&1; then
@@ -16,7 +16,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 rc=0
 out=$({ for f in $PROBE_FILES; do cat "$f"; printf '\n'; done
-        printf '%s\n' "$1"; } | timeout 10 bin/hbi 2>"$T/probe.err") || rc=$?
+        printf '%s\n' "$1"; } | timeout 10 bin/hb 2>"$T/probe.err") || rc=$?
 if [ $# -ge 2 ]; then
   [ "$out" = "$2" ] && { echo "OK [$out]"; exit 0; }
   echo "MISMATCH rc=$rc got=[$out] want=[$2]"; head -2 "$T/probe.err"; exit 1

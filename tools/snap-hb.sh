@@ -1,25 +1,18 @@
 #!/bin/sh
-# snap-hb.sh — produce $T/hb-warm: a SNAPSHOT binary that boots with the
-# whole toolchain already compiled (AOT — zero recompile at startup).
-# Mechanics: feed bin/hbi the toolchain + the snap driver; the running engine
-# serializes its own warm state; codesign the result.
+# snap-hb.sh — refresh bin/hb from the currently installed checked engine.
+# The installed hb runs the snapshot script from stdin, serializes its live
+# toolchain state, and this wrapper signs/replaces bin/hb. Source changes should
+# normally go through tools/build.sh, which rebuilds from source before this step.
 set -e
 cd "$(dirname "$0")/.."
 T=${HB_TMP:-/tmp}
-[ -x bin/hbi ] || { echo "no bin/hbi — run tools/build.sh"; exit 1; }
-{ for f in $(./tools/srclist.sh snap); do
-    [ "$f" = "src/core/sha256.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
-    cat "$f"; printf '\n'
-  done } > "$T/hb-snap-src"
-rm -f "$T/hb-warm0" "$T/hb-warm"
-bin/hbi < "$T/hb-snap-src"
-[ -f "$T/hb-warm0" ] || { echo "FAIL: snapshot not written"; exit 1; }
-mv "$T/hb-warm0" "$T/hb-warm"
-codesign -s - --force "$T/hb-warm" 2>/dev/null
-chmod +x "$T/hb-warm"
-# bin/habu = the checked native REPL: full toolchain warm, verify hook on, ~3ms
-# boot (gitignored, regenerable). bin/hbi stays the minimal stdin engine.
-cp "$T/hb-warm" bin/habu
-codesign -s - --force bin/habu 2>/dev/null
-chmod +x bin/habu
-echo "snap OK: $T/hb-warm + bin/habu ($(stat -f%z "$T/hb-warm") bytes)"
+[ -x bin/hb ] || { echo "no bin/hb — run tools/build.sh"; exit 1; }
+rm -f "$T/hb-snap0" "$T/hb-new"
+bin/hb < src/habu/snap.f
+[ -f "$T/hb-snap0" ] || { echo "FAIL: snapshot not written"; exit 1; }
+mv "$T/hb-snap0" "$T/hb-new"
+codesign -s - --force "$T/hb-new" 2>/dev/null
+chmod +x "$T/hb-new"
+mv "$T/hb-new" bin/hb
+find bin -maxdepth 1 -type f ! -name hb -delete
+echo "snap OK: bin/hb ($(stat -f%z bin/hb) bytes)"

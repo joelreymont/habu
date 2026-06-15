@@ -4,7 +4,7 @@
 \ a silent divergence (the bug class the byte-goldens only flag as "bytes differ").
 \ Filtering drops \ and ( ) comments (the tokenizer strips them), LBL, {: .. :}
 \ label spans + label references, and case-folds — so only the real instruction
-\ stream is compared. Run: cat tools/lint/lib.f tools/lint/parity-lint.f | bin/habu
+\ stream is compared. Run: cat tools/lint/lib.f tools/lint/parity-lint.f | bin/hb
 
 create FB 131072 allot
 

@@ -1,9 +1,9 @@
 #!/bin/sh
-# bench.sh — fixed kernels on bin/hbi; informs the regalloc tier decisions
+# bench.sh — fixed kernels on bin/hb; informs the regalloc tier decisions
 # (pool width vs locals cache vs float pool). Prints ns/iter; gates nothing.
 # Float kernels join when the d-reg pool work starts (dot caf-1002e9de).
 cd "$(dirname "$0")/.."
-[ -x bin/hbi ] || { echo "no bin/hbi — run tools/build.sh"; exit 1; }
+[ -x bin/hb ] || { echo "no bin/hb — run tools/build.sh"; exit 1; }
 python3 - <<'EOF'
 import subprocess, time
 
@@ -25,7 +25,7 @@ KERNELS = [
 
 for name, iters, prog in KERNELS:
     t0 = time.perf_counter()
-    r = subprocess.run(['bin/hbi'], input=prog.encode(), capture_output=True)
+    r = subprocess.run(['bin/hb'], input=prog.encode(), capture_output=True)
     dt = time.perf_counter() - t0
     if r.returncode != 0:
         print(f"{name}  FAILED rc={r.returncode}")

@@ -33,7 +33,7 @@ $3600 constant VRTAB-OFF        \ 32 B: idx -> register number   (after LOCNAMES
 $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled)
 
 \ LVRINIT ( -- ) : fill VRTAB/VRITAB from the VRPACK literal. Run once at startup
-\ (idempotent; the warm snapshot carries the tables but re-running is harmless).
+\ (idempotent; snapshot images carry the tables but re-running is harmless).
 : EMIT-VRINIT
    LVRINIT @ LBL,
    LBL {: pl :}  LBL {: pd :}  LBL {: fl :}  LBL {: fd :}

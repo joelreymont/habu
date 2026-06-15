@@ -3,6 +3,16 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Baked REPL support needs an explicit hook boundary (2026-06-15)
+
+The installed `hb` image preserves its definition-check hook, so tty startup runs
+the baked REPL/stepper/debug source under that hook unless the source disables it.
+That made startup reject untyped support helpers (`FREE` calling `FIND`) before
+the first prompt. The durable boundary is to prepend `0 set-check` to the baked
+support source and append a fresh `CHECK!` hook install before user input begins:
+support code is trusted engine UI code, while user definitions in the prompt and
+pipeline stay checked.
+
 ## Re-entrant EVALUATE: the engine can now run code in-process (2026-06-15)
 
 The fixed `evaluate` save frame must never live in a "free-looking" header gap
@@ -38,7 +48,7 @@ confirmed the two engines stayed byte-identical.
 Built `tools/prop_gen.py` + `tools/prop-test.py` (design in `PROP-TESTING.md`):
 generate runnable typed defs, check them, RUN the certified ones, and fail if a
 certified def's real out-arity ≠ its declared sig. The oracle is **execution in
-bin/habu**, not a second checker — we explicitly did NOT use the bootstrap gforth
+bin/hb**, not a second checker — we explicitly did NOT use the bootstrap gforth
 checker as a differential (that would chain the native checker to a bootstrap
 artifact forever). The soundness verdict is robust to generator bugs: a wrong
 `true_out` only makes the checker reject (declared ≠ inferred); only
@@ -49,7 +59,7 @@ word and its `CHECK!` hook rejects un-checkable helpers, so out-arity is measure
 by pushing a sentinel `MK`, running, and counting residual above it with a helper
 defined under `0 set-check` (`: NAB … ;`). (2) **Pipe mode does not recover from a
 compile error** — one malformed def aborts the whole batch (57/60 silently became
-`None` before I saw it), so each program runs in its OWN bin/habu process;
+`None` before I saw it), so each program runs in its OWN bin/hb process;
 isolation also parallelizes and lifted the certified yield from a masked 3% to a
 real ~70%. (3) The harness must prove its own teeth: `--self-test` fabricates a
 false-cert result and asserts the classifier flags it, because a sound checker
@@ -97,7 +107,7 @@ a branch-containing call wrapper, and an `S"` blob all build with zero padded
 ## Gforth belongs behind the bootstrap boundary (2026-06-14)
 
 Once the native engine can rebuild, check, benchmark LLM answers, and probe from
-`bin/hbi`, gforth should not remain in the daily workflow as a convenience
+`bin/hb`, gforth should not remain in the daily workflow as a convenience
 wrapper. Keep it in `tools/bootstrap.sh` and the explicitly named
 `tools/bootstrap-oracle.sh` for seed/reference recovery; move ordinary checks to
 native scripts (`test/run.sh`, `tools/check.sh`, `bench/llm/run.sh`,
@@ -227,7 +237,7 @@ so helper parsers need variables or top-level locals for branch scratch state.
 
 A re-review found the isolated checker fixes were real, but two integration paths
 still let bad user programs through. First, `snap.f` used `create SNP 32 allot`
-for `$HB_TMP/hb-warm0`; a normal `mktemp -d` path overflowed SNP into the trailer
+for the snapshot output under `$HB_TMP`; a normal `mktemp -d` path overflowed SNP into the trailer
 buffer and overwrote `SNAP-MAGIC` with path bytes (`...warm0`). The emitted file
 then booted COLD (no restored dict/data, `HOOK-CELL=0`) while `snap-hb.sh` only
 checked that the file existed. Fix: one guarded `PATH0` scratch (`PATH-CAP=256`)
@@ -659,7 +669,7 @@ balance, BODYBUF truncation, catch/throw-across-frames test gap).
   called `die` (write + exit 76), so a recoverable user error took down the
   interactive REPL. Interactive/REPL-baked words (repl.f, stepper.f, debug.f)
   must `throw` (caught by the REPL's uncaught-throw recovery -> "?" + roll back +
-  re-read), not `die`. `die` is only for the build-time makers (hbi/build/snap/
+  re-read), not `die`. `die` is only for the build-time makers (stdin/build/snap/
   stage2 drivers), where exiting IS the failure. Adversarial-probe interactive
   features for the table-full / resource-exhausted path.
 
@@ -699,7 +709,7 @@ balance, BODYBUF truncation, catch/throw-across-frames test gap).
   sites mis-unify. Don't ship the render half without the parse half.
 - **Native vs gforth checker are different guarantees**: the gforth tier
   verifies body-vs-declared-sig (rejects); the native checker infers + checks
-  internal consistency, and (now) verifies body-vs-sig in the warm snapshot via
+  internal consistency, and (now) verifies body-vs-sig in the installed snapshot via
   CHECK! (VSIG flag, seed DCUR from the declared inputs, final-unify against the
   declared outputs). The hook receives the body WITHOUT the sig comment by
   default — the colon-open handler now captures the leading `( … )` span into the
@@ -1984,7 +1994,7 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 - posix_spawn(244) + wait4(7) work as raw SVCs with no libc: &pid/path/0/0/
   argv/envp in x0-x5, WEXITSTATUS = (status>>8)&FF — `run-rc` lets the engine
   run its own behavior gate (test/hb-suite.f, wired into test/run.sh).
-- Engine keywords are compile-only by default — suites written for bin/hbi
+- Engine keywords are compile-only by default — suites written for the stdin engine
   must wrap `if`/quotations in definitions (interpret-level `if` is exit 70).
 - Multi-sub python edit scripts must WRITE before any assert can fail, or
   apply per-sub: one failed anchor silently dropped a whole earlier batch
@@ -2004,7 +2014,7 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
   region addrs and need nothing; (3) per-boot cells (RBASE/S0/DOESP/CREATEP)
   re-stored after the copy. CUR/WIDN/HOOK must be PRESERVED (warm wordlists +
   live check hook) — guard the startup zeroing with the snapshot flag.
-- The maker is just bin/hbi fed toolchain + snap.f: SNAPGO reads its own
+- The maker is just the stdin engine fed toolchain + snap.f: SNAPGO reads its own
   header for the text size, streams header/text/region/data/trailer with raw
   writes (MBUF can't hold its own snapshot — it lives in the data being
   dumped), and external codesign signs it. Boot: 0.378s cold toolchain
@@ -2022,7 +2032,7 @@ the checker was lagging. **It wasn't the engine — it was prim-DB coverage.**
 - Prim shadowing is a CLASS: any toolchain `: name` silently replaces the
   prim in the dict (later-wins) AND in the checker's sig scan. The vsjit fold
   helpers named f+/f-/f* erased the float prims on every toolchain-loaded
-  engine — found only by probing a warm snapshot. tools/shadow-lint.py now
+  engine — found only by probing a snapshot image. tools/shadow-lint.py now
   gates it.
 - The RAW darwin posix_spawn (syscall 244) is NOT the libc signature: FIVE
   args (&pid, path, adesc, argv, envp) — adesc folds file_actions+attr; pass
