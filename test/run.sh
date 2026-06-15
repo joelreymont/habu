@@ -147,7 +147,8 @@ results = sarif["runs"][0]["results"]
 assert len(results) == 2, results
 assert all(r["locations"][0]["physicalLocation"]["region"]["startLine"] for r in results), results
 PY
-./tools/public-signatures.py examples/llm/good.f > $T/public-signatures.json
+cat tools/lint/lib.f tools/public-signatures.f > $T/public-signatures.f
+bin/hb $T/public-signatures.f examples/llm/good.f < /dev/null > $T/public-signatures.json
 python3 - "$T/public-signatures.json" <<'PY'
 import json, pathlib, sys
 doc = json.loads(pathlib.Path(sys.argv[1]).read_text())

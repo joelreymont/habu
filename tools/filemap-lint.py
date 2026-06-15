@@ -27,7 +27,7 @@ REQUIRED = {
     "tools/json-only.f",
     "tools/check-all-errors.py",
     "tools/diag-to-sarif.f",
-    "tools/public-signatures.py",
+    "tools/public-signatures.f",
     "tools/aot-call-report.f",
     "test/run.sh",
     "test/t-sh-jdiag.fs",

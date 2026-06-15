@@ -37,7 +37,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   It exits nonzero on checker failure and emits one schema-versioned JSON object
   per failed top-level definition with file/line/column/byte spans. Use
   `tools/diag-to-sarif.f` when the diagnostics need to enter CI/review UIs.
-- Use `tools/public-signatures.py file.f` to expose typed public words as a
+- Use `tools/public-signatures.f file.f` to expose typed public words as a
   machine-readable manifest for an agent or downstream package.
 - Authoritative verdict (-1 certified / 0 rejected / 1 uncheckable) via the
   gforth-hosted checker — same harness as `test/t-sh-verify.fs`: feed

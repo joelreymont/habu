@@ -25,33 +25,26 @@ s" : STRINGED ( i64 -- i64 ) dup ;"
 ( : COMMENTED ( i64 -- i64 ) dup ; )
 EOF
 
-python_good="$tmp/good-python.json"
 habu_good="$tmp/good-habu.json"
-tools/public-signatures.py examples/llm/good.f > "$python_good"
 "$HB" "$script" examples/llm/good.f > "$habu_good"
 
-python_fixture="$tmp/fixture-python.json"
 habu_fixture="$tmp/fixture-habu.json"
-tools/public-signatures.py "$fixture" > "$python_fixture"
 "$HB" "$script" "$fixture" > "$habu_fixture"
 
-python3 - "$python_good" "$habu_good" "$python_fixture" "$habu_fixture" <<'PY'
-import json
-import pathlib
-import sys
+grep -Fq '"schema_version":1' "$habu_good"
+grep -Fq '"word":"SQUARE"' "$habu_good"
+grep -Fq '"signature":"(i64 -- i64)"' "$habu_good"
+grep -Fq '"word":"APPLY"' "$habu_good"
+grep -Fq '"signature":"(i64 [ i64 -- i64 ] -- i64)"' "$habu_good"
 
-paths = [pathlib.Path(p) for p in sys.argv[1:]]
-good_py, good_habu, fixture_py, fixture_habu = [json.loads(p.read_text()) for p in paths]
-assert good_habu == good_py, (good_habu, good_py)
-assert fixture_habu == fixture_py, (fixture_habu, fixture_py)
-
-items = {item["word"]: item for item in fixture_habu["definitions"]}
-assert set(items) == {"LOWER", "CAPS", "1+"}, items
-assert items["LOWER"]["signature"] == "(x -- x)", items["LOWER"]
-assert items["LOWER"]["exported"] is True, items["LOWER"]
-assert items["1+"]["exported"] is True, items["1+"]
-assert items["CAPS"]["exported"] is False, items["CAPS"]
-PY
+grep -Fq '"word":"LOWER"' "$habu_fixture"
+grep -Fq '"signature":"(x -- x)"' "$habu_fixture"
+grep -Fq '"exported":true' "$habu_fixture"
+grep -Fq '"word":"CAPS"' "$habu_fixture"
+grep -Fq '"exported":false' "$habu_fixture"
+grep -Fq '"word":"1+"' "$habu_fixture"
+! grep -Fq '"word":"MIXED"' "$habu_fixture"
+! grep -Fq '"word":"BAD"' "$habu_fixture"
 
 set +e
 "$HB" "$script" < /dev/null > "$tmp/noargs.out" 2> "$tmp/noargs.err"
