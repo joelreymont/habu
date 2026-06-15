@@ -15,11 +15,12 @@ the model to track the stack by hand. See `PLAN.md` for design and roadmap.
 
 ## Forth style (BLOCKING)
 
-See **`docs/forth.md`** for the full Forth standards. In short: our words
-UPPER-CASE (built-ins as-is); hyphens not underscores; small factored words with
-a `( in -- out )` comment each; shallow stacks (factor / `{: :}` locals, no deep
-juggling); `throw` named codes, never silent; named constants; and a
-`T{ … -> … }T` test for every word.
+See **`docs/forth.md`** for the full Forth standards. In short: new public/library
+Forth defaults to checked typed definitions; unchecked code must be an explicit
+tested boundary; our words UPPER-CASE (built-ins as-is); hyphens not underscores;
+small factored words with a `( in -- out )` comment each; shallow stacks (factor /
+`{: :}` locals, no deep juggling); `throw` named codes, never silent; named
+constants; and a `T{ … -> … }T` test for every word.
 
 - **One concern per file** — never bundle unrelated responsibilities (parser vs
   renderer vs DB vs data table). Split at responsibility seams; it aids review
@@ -27,12 +28,12 @@ juggling); `throw` named codes, never silent; named constants; and a
 
 ## Lessons
 
-- **Read `LESSONS.md` at the start of every session, and update it after any
-  finding, mistake, or insight.** It is the project's running memory.
-- `LESSONS.md` holds lessons only — what worked, what didn't, and why
-  (incl. a Process section and Gforth 0.7.9 gotchas).
-- NOT for API reference, code snippets, or language patterns — those go in
-  `docs/` (see `docs/forth.md`).
+- **Read `docs/forth.md` and `LESSONS.md` at the start of every session, and
+  update `LESSONS.md` after any finding, mistake, or insight.** The former is the
+  coding standard; the latter is the project's concise running memory.
+- `LESSONS.md` holds lessons only — what worked, what didn't, and why. It is NOT
+  for API reference, code snippets, Forth standards, or language patterns; those
+  go in `docs/` (especially `docs/forth.md`).
 
 ## Workflow
 

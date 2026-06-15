@@ -23,6 +23,17 @@ bottom.
 
 ## Words & factoring
 
+- **Default new public/library Forth to checked typed definitions.** If the
+  checker can express the layer, write an explicit typed effect and let `hb`
+  verify it, e.g. `: SQUARE ( i64 -- i64 ) dup * ;`.
+- **Unchecked code is a named boundary, not a habit.** Use `0 set-check`,
+  raw emitter words, or `TRUST` only for layers the checker cannot express:
+  metaprogramming, source-string generators, primitive emitters, snapshot/build
+  drivers, and similarly low-level support. Keep the boundary obvious in the
+  file and add focused tests for the contract it asserts.
+- **Factor reusable helpers back into checked Forth.** If an unchecked harness or
+  tool grows a helper that can be typed, move that helper to checked code instead
+  of letting unchecked scaffolding become the library surface.
 - **Small, single-purpose words**, aim ≤ 5 lines. A word should read top-to-bottom
   without you tracking more than a few stack items.
 - **Factor when the stack gets unreadable.** If you reach for `ROT -ROT PICK
