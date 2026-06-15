@@ -160,8 +160,9 @@ grep -q 'STALE-AUDIT' $T/trust-stale.out || { echo "FAIL: trust-lint stale audit
 echo "PASS: checked bin/hb + getenv + sig-check (rows+quots)"
 # property-based soundness smoke, SELF-HOSTED in habu: generate typed defs,
 # check them, and RUN the certified ones IN-PROCESS (via `evaluate`); a false-cert
-# (real out-arity != declared) calls `die` -> nonzero exit. Fixed seed in the
-# script = reproducible. No Python, no gforth, no spawning. See PROP-TESTING.md.
+# (real out-arity != declared) calls `die` -> nonzero exit. Default seed/count
+# are reproducible; argv can override longer sweeps. No Python, no gforth, no
+# spawning. See PROP-TESTING.md.
 bin/hb < test/prop-test.f > $T/prop.out 2>/dev/null || { echo "FAIL: prop-test (self-hosted) found a FALSE-CERT"; exit 1; }
 grep -q "self-test OK" $T/prop.out || { echo "FAIL: prop-test self-test/run did not complete"; exit 1; }
 echo "PASS: prop-test soundness smoke (self-hosted in habu, in-process via evaluate)"
