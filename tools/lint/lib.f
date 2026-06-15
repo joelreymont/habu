@@ -79,6 +79,49 @@ variable TN#  variable PARENS?  variable TI  variable TS  variable BOL
 : FOLD-TO  {: a u dst :}  ( -- )  \ copy a/u to dst, ASCII-folded to lower-case
    0 begin dup u < while  dup a + c@ FOLD  over dst + c!  1+  repeat  drop ;
 
+\ ---- bounded string-keyed intern/set --------------------------------------
+76 constant E-LINT-INTERN-CAP
+$200 constant INTERN-MAX
+$2000 constant INTERN-BUF-CAP
+$100 constant INTERN-FOLD-CAP
+
+create INTERN-BUF INTERN-BUF-CAP allot
+create INTERN-OFF INTERN-MAX cells allot
+create INTERN-LEN INTERN-MAX cells allot
+create INTERN-FOLD-BUF INTERN-FOLD-CAP allot
+variable INTERN-N
+variable INTERN-END
+
+: INTERN#  ( -- n )  INTERN-N @ ;
+: INTERN-RESET  ( -- )  0 INTERN-N !  0 INTERN-END ! ;
+: INTERN-INIT  ( -- )  INTERN-RESET ;
+: INTERN$  {: id :}  ( -- a u )
+   id 0 <  id INTERN-N @ >= or IF E-LINT-INTERN-CAP throw THEN
+   id cells INTERN-OFF + @  id cells INTERN-LEN + @ ;
+: INTERN-FIND  {: a u :}  ( -- id|-1 )
+   0 begin dup INTERN-N @ < while
+      dup cells INTERN-OFF + @  over cells INTERN-LEN + @  a u STR= IF exit THEN
+      1+
+   repeat  drop -1 ;
+: INTERN  {: a u :}  ( -- id )
+   a u INTERN-FIND dup 0 >= IF exit THEN drop
+   INTERN-N @ INTERN-MAX >= IF E-LINT-INTERN-CAP throw THEN
+   INTERN-END @ u + INTERN-BUF-CAP > IF E-LINT-INTERN-CAP throw THEN
+   a INTERN-BUF INTERN-END @ + u BMOVE
+   INTERN-BUF INTERN-END @ + INTERN-OFF INTERN-N @ cells + !
+   u INTERN-LEN INTERN-N @ cells + !
+   INTERN-END @ u + INTERN-END !
+   INTERN-N @ dup 1+ INTERN-N ! ;
+: INTERN?  ( a u -- f )  INTERN-FIND 0 >= ;
+: INTERN-FOLD  {: a u :}  ( -- id )
+   u INTERN-FOLD-CAP > IF E-LINT-INTERN-CAP throw THEN
+   a u INTERN-FOLD-BUF FOLD-TO
+   INTERN-FOLD-BUF u INTERN ;
+: INTERN-FOLD?  {: a u :}  ( -- f )
+   u INTERN-FOLD-CAP > IF E-LINT-INTERN-CAP throw THEN
+   a u INTERN-FOLD-BUF FOLD-TO
+   INTERN-FOLD-BUF u INTERN? ;
+
 \ ---- bounded string helpers for source tools ------------------------------
 13 constant CR
 34 constant DQUOTE
