@@ -156,7 +156,7 @@ variable FV
 variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
 
-: NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV !
+: NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! 0 QEN !  \ QEN: per-check quot-effect pool, parallel to TVINIT
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
