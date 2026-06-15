@@ -58,6 +58,6 @@ Darwin constants used by `test/proc-pty.f`:
 - `F_SETFD = 2`
 - `FD_CLOEXEC = 1`
 
-The focused gate is `bin/hb < test/proc-pty.f`. The Python
-`test/repl-pty.py` remains the full compatibility baseline until the Forth test
-matches its entire editor/debugger coverage.
+The focused gate is `bin/hb < test/proc-pty.f`. It is the native compatibility
+baseline for process capture, PTY startup, line editing, history, breakpoints,
+stepper recovery, Ctrl-C, Ctrl-D, and async exit.

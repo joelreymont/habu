@@ -173,7 +173,7 @@ out=$(printf '$340000000 $1B0 + @ 0= .\n: SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\
 49" ] || { echo "FAIL: HB_TMP hb refresh/check hook (got: $out)"; exit 1; }
 rm -rf "$HT"
 echo "PASS: HB_TMP isolation"
-python3 test/repl-pty.py || { echo "FAIL: tty REPL"; exit 1; }
+bin/hb < test/proc-pty.f || { echo "FAIL: process/pty"; exit 1; }
 # hb-build DEFAULT = AOT: compile MAIN to native, engine stripped (no interpreter).
 printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;\n: MAIN ( -- ) 10 FIB . CR ;\n' > $T/hb-at.f
 ./tools/hb-build.sh $T/hb-at.f -o $T/hb-at >/dev/null || { echo "FAIL: hb-build (AOT)"; exit 1; }
