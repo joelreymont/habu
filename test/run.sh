@@ -129,13 +129,13 @@ PY
 TRUST_LINT_TODAY=2026-10-01 ./tools/trust-lint.py >$T/trust-stale.out 2>&1 && { echo "FAIL: trust-lint accepted stale audit dates"; exit 1; }
 grep -q 'STALE-AUDIT' $T/trust-stale.out || { echo "FAIL: trust-lint stale audit diagnostic missing"; exit 1; }
 echo "PASS: AOT snapshot (warm toolchain boot) + getenv + sig-check (rows+quots) + bin/habu"
-# property-based soundness smoke: generate typed defs, check them, RUN the
-# certified ones, and fail if any certified def's real out-arity differs from its
-# declared sig (a false-cert). Fixed seed = reproducible. See PROP-TESTING.md.
-python3 tools/prop-test.py --self-test >/dev/null || { echo "FAIL: prop-test detector self-test"; exit 1; }
-python3 tools/prop-test.py --seed 1 --count 200 --jobs 8 || { echo "FAIL: prop-test found a FALSE-CERT (see above)"; exit 1; }
-python3 tools/prop-test.py --replay test/prop-corpus >/dev/null || { echo "FAIL: prop-test corpus regression"; exit 1; }
-echo "PASS: prop-test soundness smoke (200 generated defs, no false-cert)"
+# property-based soundness smoke, SELF-HOSTED in habu: generate typed defs,
+# check them, and RUN the certified ones IN-PROCESS (via `evaluate`); a false-cert
+# (real out-arity != declared) calls `die` -> nonzero exit. Fixed seed in the
+# script = reproducible. No Python, no gforth, no spawning. See PROP-TESTING.md.
+bin/habu < test/prop-test.f > $T/prop.out 2>/dev/null || { echo "FAIL: prop-test (self-hosted) found a FALSE-CERT"; exit 1; }
+grep -q "self-test OK" $T/prop.out || { echo "FAIL: prop-test self-test/run did not complete"; exit 1; }
+echo "PASS: prop-test soundness smoke (self-hosted in habu, in-process via evaluate)"
 HT=$(mktemp -d)
 HB_TMP=$HT ./tools/snap-hb.sh >/dev/null && [ -x "$HT/hb-warm" ] || { echo "FAIL: HB_TMP isolation"; exit 1; }
 out=$(printf '$340000000 $1B0 + @ 0= .\n: SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | "$HT/hb-warm" 2>/dev/null)

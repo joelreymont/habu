@@ -57,8 +57,6 @@ points stay listed.
 - `tools/diag-to-sarif.py` — converts diagnostic JSONL to SARIF for CI/review UIs.
 - `tools/public-signatures.py` — emits typed public-word manifests for agents.
 - `tools/aot-call-report.py` — measures patched AOT call-stencil padding.
-- `tools/prop_gen.py` — seeded generator of runnable typed defs (prop testing).
-- `tools/prop-test.py` — property-based checker-soundness test (generate→check→run→compare).
 - `tools/filemap-lint.py` — freshness lint for this file.
 - `tools/trust-lint.py` — `TRUSTED.md` drift lint.
 - `tools/stale-status-lint.py` — stale status/count lint.
@@ -69,6 +67,7 @@ points stay listed.
 - `test/all.fs` — gforth-hosted suite entry.
 - `test/t-sh-jdiag.fs` — JSON diagnostic regression tests.
 - `test/t-sh-verify.fs` — native `CHECK!` verification tests.
+- `test/prop-test.f` — self-hosted property-based checker-soundness test (in-process via `evaluate`).
 - `test/prop-corpus/` — frozen false-cert counterexamples (prop-test regression).
 - `test/hb-suite.f` — native engine behavior suite.
 - `bench/llm/tasks.tsv` — LLM benchmark task set.

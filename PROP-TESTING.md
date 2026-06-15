@@ -52,21 +52,31 @@ the checker's hard edges, not random token soup that bounces off the parser.
   the one checker and catch some cases execution can't — a second, complementary
   property (Phase 2).
 
-## Architecture
+## Architecture — self-hosted, in-process
+
+The whole harness is **checked-Forth's untyped tooling tier, run by `bin/habu`**
+(`test/prop-test.f`): the PRNG, the generator, the driver and the measurement are
+all habu. Each program is defined, checked and run **in the same process** via
+the engine's re-entrant `evaluate` — no Python, no gforth, no per-program
+spawning.
 
 ```
-generator ──▶ programs ──▶ [Pass 1: CHECK!] ──▶ verdicts ──┐
-   (Python)   (Forth text)   (bin/habu)                     │
-                                                            ▼
-                              certified subset ──▶ [Pass 2: run + measure]
-                                                     (bin/habu)
-                                                            │
-                                            measured arity ≠ declared? ──▶ shrink ──▶ report
+for each program (seeded PRNG):
+  GEN          build ": G ( i64*in -- i64*out ) <body> ;" in a buffer
+  ['] VH set-check   evaluate <def>     \ VH = `CHECK! dup VERD !` → VERD = verdict
+  0 set-check
+  VERD = -1 ?  →  evaluate "MK <in×7> G NAB"   \ run G, NAB = measured out-arity
+               EVALERR=0 and measured ≠ declared  →  FALSE-CERT (arity)
+               EVALERR=1 (trap, consumed too much) →  FALSE-CERT (trap)
 ```
 
-Driver + generator live in `tools/` (Python, like `forth_lex.py`,
-`check-all-errors.py`). The generated *programs* are Forth, run by `bin/habu`
-(native, no gforth). Python is dev tooling, not part of the engine.
+`evaluate` ( a u -- ) was added to the engine for exactly this: it saves the
+outer input + compile state, runs the string through the interpret loop, and
+returns to the caller — restoring state and setting `EVALERR` on a clean end or
+on an error (so a bad generated program is discarded, not fatal). See LESSONS,
+"Re-entrant EVALUATE". The check hook **must leave the verdict on the stack**
+(`CHECK! dup VERD !`, not `CHECK! VERD !`) — dropping it underflows the
+compiler's stack and corrupts the next `evaluate`.
 
 ### The oracle protocol (validated against bin/habu)
 
@@ -181,17 +191,31 @@ Properties that hold within the single checker and catch cases execution can't:
 
 ## Gate integration & running
 
-- **Smoke (in `test/run.sh`):** fixed seed, a few hundred programs, parallel
-  workers, sub-second; fails the gate on any FALSE-CERT.
-- **Sweep (manual / CI nightly):** `tools/prop-test.py --count 100000 --seed N
-  --jobs K`; emits a JSONL report and a minimized repro per failure.
-- **Regression:** every minimized counterexample is frozen as a `T{ … }T` case so
-  it can never silently return.
+- **Run:** `bin/habu < test/prop-test.f` (exit 0 = clean; `die`/nonzero on a
+  false-cert). Fixed seed in the script = reproducible.
+- **Smoke (in `test/run.sh`):** 250 programs, sub-second, in-process; fails the
+  gate on any FALSE-CERT. A `SELFTEST` first proves the arity comparison fires
+  (a sound checker won't hand us a real false-cert to test against).
+- **Sweep:** bump the `1 250 RUN` count in the script (the dict grows by one per
+  certified def, so a single process is bounded by the ~1600-word dict cap;
+  larger sweeps want a dict-reset, see Open work).
+- **Regression:** freeze any counterexample as a `T{ … }T` case in
+  `test/prop-corpus/` so it can never silently return.
 
 ## File plan
 
-- `tools/prop_gen.py` — the typed-Forth generator (safe sublanguage, seeded).
-- `tools/prop-test.py` — the two-pass driver: batch-check, batch-run-measure,
-  compare, shrink, report (imports `prop_gen`).
+- `test/prop-test.f` — the whole self-hosted harness: PRNG + generator + driver +
+  measurement, run by `bin/habu`, in-process via `evaluate`.
 - `test/run.sh` — smoke invocation.
-- `test/prop-corpus/` — frozen minimized counterexamples (regression).
+- `test/prop-corpus/` — frozen counterexamples (regression).
+
+## Open work (v1 → v2)
+
+- **Generator richness:** v1 is the linear integer sublanguage (stack ops, arith,
+  literals). Add `if/else/then`, bounded `?do/loop`, `>r/r>/r@`, quotations,
+  locals — and the `leave`/`exit` baits (where this session's marquee false-certs
+  lived). Building these as Forth strings is the work.
+- **Shrinking** a found counterexample to its minimal form (delta-debug on the
+  body tokens, replaying through `evaluate`).
+- **Metamorphic** properties (composition, subsumption, render round-trip).
+- **Dict reset** between programs so a sweep isn't bounded by the dict cap.
