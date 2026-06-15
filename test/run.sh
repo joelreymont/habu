@@ -56,6 +56,10 @@ out=$(bin/hb $T/hb-script-argv.f alpha beta)
 [ "$out" = "2
 alpha
 beta" ] || { echo "FAIL: hb script argv mode (got: $out)"; exit 1; }
+out=$(printf 'ARGC .\n1 ARGV$ type cr\n2 ARGV$ type cr\n' | bin/hb alpha beta)
+[ "$out" = "3
+alpha
+beta" ] || { echo "FAIL: hb pipeline argv mode (got: $out)"; exit 1; }
 set +e
 bin/hb $T/no-such-hb-script.f >/dev/null 2>&1
 rc=$?
