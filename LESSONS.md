@@ -46,6 +46,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 
 ## Runtime And REPL
 
+- **Native scripts load one source file:** `bin/hb tool.f args...` has no
+  `include` word, so reusable script helpers are concatenated ahead of the tool
+  body when testing or packaging single-file scripts.
 - **Baked REPL support needs an explicit hook boundary:** installed `hb` preserves
   its check hook. Baked REPL/stepper/debug source is trusted engine UI code, so
   the snapshot prepends `0 set-check` and then reinstalls a `CHECK!` hook before
