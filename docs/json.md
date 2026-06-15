@@ -1,0 +1,73 @@
+# JSON Tooling
+
+`tools/json.f` is a bounded Habu-native JSON foundation for tools that run with
+`bin/hb`.
+
+Load it by concatenating it before the tool that uses it:
+
+```sh
+cat tools/json.f my-tool.f | bin/hb
+```
+
+## Parser
+
+`JSON-PARSE ( addr u -- node )` parses one complete JSON value and throws named
+errors on failure:
+
+- `E-JSON-SYNTAX`
+- `E-JSON-CAPACITY`
+- `E-JSON-TYPE`
+
+`JSON-ERROR$ ( -- addr u )` and `JSON-ERR-POS @` expose the last parser error
+message and byte offset.
+
+The parser accepts objects, arrays, strings, numbers, `true`, `false`, and
+`null`. Strings are decoded into UTF-8, including `\uXXXX` escapes and surrogate
+pairs. Numbers are validated with the JSON grammar and stored as their original
+lexeme.
+
+Core accessors:
+
+- `JSON-KIND ( node -- kind )`
+- `JSON-COUNT ( node -- u )`
+- `JSON-STRING$ ( node -- addr u )`
+- `JSON-NUMBER$ ( node -- addr u )`
+- `JSON-BOOL@ ( node -- f )`
+- `JSON-NULL? ( node -- f )`
+- `JSON-ARR@ ( arr-node idx -- node )`
+- `JSON-OBJ@ ( obj-node idx -- key-addr key-u value-node )`
+- `JSON-GET ( obj-node key-addr key-u -- node|-1 )`
+
+## JSONL
+
+`JSONL-START ( addr u -- )` initializes iteration over newline-separated input.
+`JSONL-NEXT-OBJECT ( -- node|-1 )` returns the next valid object line, skipping
+blank lines, prose, invalid JSON, and valid non-object JSON values. Skips are
+part of the iterator contract and can be inspected with
+`JSONL-SKIPPED ( -- u )`.
+
+The returned node is valid until the next `JSONL-NEXT-OBJECT` call, because each
+line parse reuses the static DOM buffers.
+
+## Writer
+
+`JSON-WRITE ( node -- addr u )` emits compact JSON for a parsed node. It escapes
+control bytes, quotes, and backslashes; non-ASCII UTF-8 bytes are emitted as
+UTF-8.
+
+Manual writer helpers share the same output buffer:
+
+- `JSONW-RESET`
+- `JSONW-RAW`
+- `JSONW-STRING`
+- `JSONW-KEY`
+- `JSONW-OBJECT-START`, `JSONW-OBJECT-END`
+- `JSONW-ARRAY-START`, `JSONW-ARRAY-END`
+- `JSONW-COMMA`
+
+## Bounds
+
+The implementation is intentionally static-buffered. Current caps are
+`JSON-MAX-NODES`, `JSON-MAX-ITEMS`, `JSON-MAX-PAIRS`, `JSON-STR-CAP`,
+`JSON-OUT-CAP`, and `JSON-MAX-DEPTH` in `tools/json.f`. Exceeding any cap throws
+`E-JSON-CAPACITY`.
