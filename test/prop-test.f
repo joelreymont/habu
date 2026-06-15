@@ -28,7 +28,9 @@ variable SA  variable SU  variable BI  variable PJ  variable NJ
    begin PJ @ SU @ < while  SA @ PJ @ + c@  PBUF PLEN @ + c!  PLEN @ 1+ PLEN !  PJ @ 1+ PJ !  repeat ;
 : BD  ( n -- )  48 + BBUF BLEN @ + c!  BLEN @ 1+ BLEN ! ;
 variable NI
-: PI64  ( n -- )  NI !  0 NJ !  begin NJ @ NI @ < while  s" i64 " P+  NJ @ 1+ NJ !  repeat ;
+variable TFLAG                             \ sig element type: 0 = i64 (concrete), 1 = n (generic)
+: PTY  ( n -- )  NI !  0 NJ !  begin NJ @ NI @ < while  TFLAG @ IF s" n " ELSE s" i64 " THEN P+  NJ @ 1+ NJ !  repeat ;
+: PC   ( c -- )  PBUF PLEN @ + c!  PLEN @ 1+ PLEN ! ;
 
 \ ---- depth-tracked generator over the integer sublanguage ----
 variable DEP  variable NIN  variable DOUT  variable K
@@ -55,51 +57,139 @@ variable PERT?                             \ declared out perturbed away from th
    K @ 7 = IF s" over " B+  DEP @ 1+ DEP !  exit THEN
             s" nip " B+     DEP @ 1- DEP ! ;
 variable STEPS  variable GI
-: GEN  ( -- )   \ PBUF := ": G ( i64*NIN -- i64*DOUT ) <body> ;"
-   0 BLEN ! 0 PLEN !  0 LOC? !
-   4 RND% NIN !
-   NIN @ 0 > 3 RND% 0 = and IF            \ 1-in-3: bind the inputs as locals {: a b c :} at the top
-      -1 LOC? !  s" {: " B+
-      0 GI ! begin GI @ NIN @ < while GI @ BLET GI @ 1+ GI ! repeat  s" :} " B+
-      0 DEP !
+: GEN-BODY  ( nin uselocals -- )           \ fill BBUF with a body, set NIN and the true residual DEP
+   over 0 > and  LOC? !                     \ bind inputs as locals only when there ARE inputs
+   NIN !  0 BLEN !
+   LOC? @ IF                                \ {: a b c :} prefix binds the NIN inputs as locals
+      s" {: " B+  0 GI ! begin GI @ NIN @ < while GI @ BLET GI @ 1+ GI ! repeat  s" :} " B+  0 DEP !
    ELSE NIN @ DEP ! THEN
    6 RND% 3 + STEPS !
-   0 GI ! begin GI @ STEPS @ < while  STEP  GI @ 1+ GI !  repeat   \ build body, compute true DEP
+   0 GI ! begin GI @ STEPS @ < while  STEP  GI @ 1+ GI !  repeat ;   \ build body, compute true DEP
+: HEAD  {: nch din dout :}                  \ PBUF += ": <nch> ( din -- dout ) "  (TFLAG picks i64/n)
+   0 PLEN !  s" : " P+  nch PC  s"  ( " P+  din PTY  s" -- " P+  dout PTY  s" ) " P+ ;
+: BODY+  ( -- )  BBUF BLEN @ P+  s" ; " P+ ;
+: GEN  ( -- )   \ PBUF := ": G ( i64*NIN -- i64*DOUT ) <body> ;"
+   0 TFLAG !
+   4 RND%  3 RND% 0 =  GEN-BODY            \ 0..3 inputs, bound as locals 1-in-3
    DEP @ DOUT !  0 PERT? !                 \ declared = true residual depth ...
    10 RND% 3 < IF                          \ ... perturbed 30% of the time (intended-reject)
       2 RND% IF DOUT @ 1+ ELSE DOUT @ 1- THEN
       dup 0 < IF drop 0 THEN  DOUT !
       DOUT @ DEP @ <> IF -1 PERT? ! THEN THEN
-   s" : G ( " P+  NIN @ PI64  s" -- " P+  DOUT @ PI64  s" ) " P+
-   BBUF BLEN @ P+  s" ; " P+ ;
+   71 NIN @ DOUT @ HEAD  BODY+ ;           \ 71 = 'G'
 
 \ ---- driver: check, then run + measure, in-process; forget each program ----
 variable NCERT  variable NFC  variable NFR  variable RJ
-variable CPSAVE  variable NDSAVE
-: RUNNER  ( -- )  \ PBUF := "MK <NIN copies of 7> G NAB"
-   0 PLEN ! s" MK " P+  NIN @ NI !  0 RJ !
-   begin RJ @ NI @ < while  s" 7 " P+  RJ @ 1+ RJ !  repeat   s" G NAB" P+ ;
+\ ---- complete checkpoint/rollback: a `: G ;` grows THREE persistent stores —
+\ code (CP), the name dict (NDICT) and the checker's certified-signature table
+\ (UEND, the USIGS cursor). Per-check transient pools (the term arena, QEN) reset
+\ themselves in the checker's NEW; the `:` handler resets the codegen scratch. So a
+\ correct forget = restore exactly CP/NDICT/UEND. Without UEND, an unbounded sweep
+\ overflows USIGS ("user sigs full") after ~1k certified defs. Two levels (program
+\ + shrink variant) so shrinking can roll back inside a program's own checkpoint.
+variable CPSAVE  variable NDSAVE  variable UESAVE
+variable SCPSV   variable SNDSV   variable SUESV
+: MARK    ( -- )  cp@ CPSAVE !  ndict@ NDSAVE !  UEND @ UESAVE ! ;
+: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ UEND ! ;
+: SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
+: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ UEND ! ;
+\ ---- shared measurement: build "MK <nin×7> <nch> NAB", run <nch>, compare arity ----
+: RUN1  ( nch nin -- )   \ PBUF := "MK <nin copies of 7> <nch> NAB"
+   NI !  0 PLEN ! s" MK " P+  0 RJ ! begin RJ @ NI @ < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
+   PC  32 PC  s" NAB" P+ ;
+: CHK  ( a u -- )  ['] VH set-check  evaluate  0 set-check ;     \ check one def; VERD := verdict
+: MEASURE  {: nch nin expected :}   \ run a CERTIFIED word <nch>; +1 NFC on arity-mismatch or trap
+   nch nin RUN1  PBUF PLEN @ evaluate          \ ( -- measured ), or traps and recovers
+   ERR@ 0 = IF  expected <> IF  NFC @ 1+ NFC !  s" FALSE-CERT(arity) " type nch emit cr  THEN
+   ELSE  NFC @ 1+ NFC !  s" FALSE-CERT(trap) " type nch emit cr  THEN ;
+
+\ ---- metamorphic subsumption: an i64-certified body must also certify under the
+\ generic ( n -- n ) sig (n subsumes i64). If it does, run it too (free false-cert
+\ coverage); i64-cert but n-reject is a checker inconsistency (logged, non-fatal). ----
+variable NSUB  variable NSI
+: SUBSUME  ( -- )   \ pre: BBUF/NIN/DOUT is the certified i64 program G
+   SMARK  1 TFLAG !  71 NIN @ DOUT @ HEAD  BODY+  0 TFLAG !  PBUF PLEN @ CHK
+   VERD @ -1 = IF  NSUB @ 1+ NSUB !  71 NIN @ DOUT @ MEASURE
+   ELSE  NSI @ 1+ NSI !  THEN
+   SFORGET ;
+
+\ ---- metamorphic render round-trip: render the just-certified body's effect, then
+\ re-declare the SAME body with that exact rendered sig — it must re-certify. ----
+variable NRT  variable NRI  variable RSA  variable RSU
+: ROUNDTRIP  ( -- )   \ pre: G just certified; REND-SIG holds G's rendered effect
+   REND-SIG  RSU !  RSA !
+   SMARK  0 PLEN ! s" : G ( " P+  RSA @ RSU @ P+  s"  ) " P+  BBUF BLEN @ P+  s" ; " P+  PBUF PLEN @ CHK
+   VERD @ -1 = IF  NRT @ 1+ NRT !  71 NIN @ DOUT @ MEASURE
+   ELSE  NRI @ 1+ NRI !  THEN
+   SFORGET ;
+
+\ ---- metamorphic composition: A:(x--y) and B:(y--z) both certified => ': C A B ;'
+\ must certify ( x -- z ) and run-match — chains arities; catches what one body can't. ----
+variable NCMP  variable NCI  variable CAI  variable CAO  variable CBO
+: COMPOSE  ( -- )
+   SMARK  0 TFLAG !
+   3 RND% 0 GEN-BODY  NIN @ CAI !  DEP @ CAO !  65 CAI @ CAO @ HEAD  BODY+  PBUF PLEN @ CHK   \ A=65
+   VERD @ -1 = IF
+      CAO @ 0 GEN-BODY  DEP @ CBO !  66 CAO @ CBO @ HEAD  BODY+  PBUF PLEN @ CHK              \ B=66, in=CAO
+      VERD @ -1 = IF
+         0 PLEN ! s" : C ( " P+  CAI @ PTY  s" -- " P+  CBO @ PTY  s" ) A B ; " P+  PBUF PLEN @ CHK   \ C=67
+         VERD @ -1 = IF  NCMP @ 1+ NCMP !  67 CAI @ CBO @ MEASURE
+         ELSE  NCI @ 1+ NCI !  THEN
+      THEN
+   THEN
+   SFORGET ;
+
+\ ---- shrinking: on a FALSE-CERT, delta-debug BBUF down to a minimal body that
+\ STILL satisfies a predicate (certify-and-mismatch in real use; "still certifies"
+\ in the self-test). Drops one trailing token per step, restoring any drop that
+\ breaks the predicate. Token surgery just moves BLEN — the bytes stay put. ----
+variable PRED  variable BSAVE
+: TRIM-TRAIL ( -- )  begin BLEN @ 0 > BBUF BLEN @ 1- + c@ 32 = and while  BLEN @ 1- BLEN !  repeat ;
+: DROP-LAST  ( -- f )   \ remove the last space-delimited token; f = did-remove
+   TRIM-TRAIL  BLEN @ 0= IF 0 exit THEN
+   begin BLEN @ 0 > BBUF BLEN @ 1- + c@ 32 <> and while  BLEN @ 1- BLEN !  repeat  -1 ;
+: REBUILD-G ( -- )  0 TFLAG !  71 NIN @ DOUT @ HEAD  BODY+ ;   \ PBUF := ": G ( NIN -- DOUT ) BBUF ;"
+: FCFAIL?  ( -- f )   \ does the current BBUF certify AND run to an arity != DOUT (or trap)?
+   SMARK  REBUILD-G  PBUF PLEN @ CHK
+   VERD @ -1 = IF  71 NIN @ RUN1  PBUF PLEN @ evaluate
+      ERR@ 0 = IF  DOUT @ <>  ELSE  1  THEN
+   ELSE  0  THEN  SFORGET ;
+: STILLCERT? ( -- f )  SMARK  REBUILD-G  PBUF PLEN @ CHK  VERD @ -1 =  SFORGET ;
+: SHRINK  ( pred-xt -- )   \ minimize BBUF keeping (pred) true
+   PRED !
+   begin
+      BLEN @ BSAVE !
+      DROP-LAST IF  PRED @ execute IF -1 ELSE  BSAVE @ BLEN !  0 THEN
+      ELSE 0 THEN
+   while repeat ;
+
+\ ---- driver: base program (false-cert + false-reject), then metamorphic amplifiers ----
+variable NFC0
 : ONE  ( -- )
-   cp@ CPSAVE !  ndict@ NDSAVE !            \ mark — forget this program afterwards (unbounded sweeps)
-   GEN
-   ['] VH set-check   PBUF PLEN @ evaluate   0 set-check
-   VERD @ -1 = IF                           \ CERTIFIED: measured out-arity must equal declared
+   MARK  GEN                                 \ checkpoint, then build ": G ( ... ) <body> ;"
+   PBUF PLEN @ CHK
+   VERD @ -1 = IF                            \ CERTIFIED: measured out-arity must equal declared
       NCERT @ 1+ NCERT !
-      RUNNER  PBUF PLEN @ evaluate           \ leaves measured on the stack, or traps
-      ERR@ 0 = IF
-         DOUT @ <> IF  NFC @ 1+ NFC !  s" FALSE-CERT(arity) declared " type DOUT @ . cr  THEN
-      ELSE  NFC @ 1+ NFC !  s" FALSE-CERT(trap) declared " type DOUT @ . cr  THEN
-   ELSE VERD @ 0 = PERT? @ 0= and IF         \ REJECTED but NOT perturbed -> the generator declared the
-      NFR @ 1+ NFR !                          \ true arity, yet the checker rejected it: a FALSE-REJECT
+      NFC @ NFC0 !  71 NIN @ DOUT @ MEASURE   \ base run-and-compare
+      NFC @ NFC0 @ > IF                       \ a FALSE-CERT: shrink to a minimal counterexample & print
+         ['] FCFAIL? SHRINK
+         s" minimal counterexample: " type  REBUILD-G  PBUF PLEN @ type cr THEN
+      ROUNDTRIP  SUBSUME                      \ metamorphic amplifiers on the certified body
+   ELSE VERD @ 0 = PERT? @ 0= and IF         \ rejected but NOT perturbed -> the generator declared the
+      NFR @ 1+ NFR !                          \ true arity yet the checker rejected it: a FALSE-REJECT
    THEN THEN
-   NDSAVE @ ndict!  CPSAVE @ cp! ;           \ forget G (+ any quotation/locals code), reuse the space
+   FORGET                                    \ forget G (code + dict entry + recorded sig)
+   COMPOSE ;                                  \ independent two-body composition probe
 variable N  variable RI
 : RUN  ( seed count -- )
-   N !  SEED !  0 NCERT ! 0 NFC ! 0 NFR !
+   N !  SEED !  0 NCERT ! 0 NFC ! 0 NFR !  0 NSUB ! 0 NSI ! 0 NRT ! 0 NRI ! 0 NCMP ! 0 NCI !
    0 RI ! begin RI @ N @ < while  ONE  RI @ 1+ RI !  repeat
    s" prop-test: " type N @ . s" programs, " type
    NCERT @ . s" certified, " type  NFC @ . s" FALSE-CERT(s), " type
-   NFR @ . s" false-reject(s)" type cr ;
+   NFR @ . s" false-reject(s)" type cr
+   s" prop-test: metamorphic — " type  NSUB @ . s" subsumption + " type
+   NRT @ . s" round-trip + " type  NCMP @ . s" composition runs; " type
+   NSI @ NRI @ + NCI @ +  . s" inconsistency(ies)" type cr ;
 
 \ self-test: prove the detector has teeth (a sound checker won't hand us a real
 \ false-cert, so confirm the arity comparison fires on a fabricated mismatch).
@@ -121,11 +211,22 @@ variable N  variable RI
    s" : G ( -- i64 ) 5 0 ?do leave 9 loop ;"         BAIT   \ leave-point != loop-exit
    s" prop-test: baits OK (non-neutral leave / divergent exit rejected)" type cr ;
 
+\ shrink self-test: a long certified ( i64 -- i64 ) body must REDUCE under the
+\ "still certifies" predicate — proves the delta-debug loop + token surgery work
+\ (a sound checker never hands us a real false-cert to shrink, so exercise the
+\ machinery on an achievable predicate).
+: SELFTEST-SHRINK
+   0 BLEN !  s" dup drop 1+ 1- negate 1+ 1- " B+  1 NIN !  1 DOUT !
+   BLEN @  ['] STILLCERT? SHRINK  BLEN @  >  0= IF
+      s" prop-test: self-test SHRINK BROKEN (no reduction)" 1 die THEN
+   s" prop-test: shrink OK (delta-debug reduced to: " type  REBUILD-G  PBUF PLEN @ type s" )" type cr ;
+
 \ Fail loudly on any false-cert (`die` exits with the code; IF/THEN are
 \ compile-only so this is wrapped in a word). A clean run reaches end-of-input,
 \ which exits 0 in batch mode — no `bye` needed (the engine has none).
 : FINISH  NFC @ 0 > IF s" prop-test: FALSE-CERT found" 1 die THEN ;
 SELFTEST
+SELFTEST-SHRINK
 BAITS
 1 250 RUN
 FINISH

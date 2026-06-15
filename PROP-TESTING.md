@@ -139,10 +139,60 @@ The generator is **seeded** (`--seed`) so any CI failure is reproducible.
 | certified, measured `out` ≠ declared `out` | **FALSE-CERT (arity)** — the headline bug |
 | certified, Pass 2 traps / underflows | **FALSE-CERT (consumes too much)** |
 | rejected, but runs and matches the sig | **false-reject** (incompleteness — logged, not fatal) |
+| metamorphic relation says certify, checker rejects | **inconsistency** (subsumption/composition/round-trip — logged, not fatal) |
 | uncheckable (1) | ignored (sound by construction) |
 
 Only FALSE-CERT classes fail the build. False-rejects are logged for precision
 work but never gate-fail (rejecting a valid program is safe).
+
+## Metamorphic amplifiers
+
+Run-and-compare on a single random program is one source of truth; **metamorphic
+relations** add three more, each deriving a *new* program from a checked one whose
+verdict is forced by the original's. Every derived program that the checker
+certifies is itself run-and-compared, so a false-cert hiding behind composition or
+generalization is caught; a derived program the checker *rejects* when the relation
+says it must certify is a **checker inconsistency** (logged, non-fatal — like a
+false-reject, it is a precision gap, not a soundness break).
+
+- **Subsumption** — `n` (generic int) subsumes `i64`. For every body certified at
+  `( i64*in -- i64*out )`, the SAME body must certify at `( n*in -- n*out )`
+  (habu's arithmetic is generic over int width; `( n -- n ) 1+` certifies). The
+  generic version, if certified, is also run: same arity must hold.
+- **Composition** — generate `A:(x -- y)` and `B:(y -- z)`, both certified with
+  arities chained (`B`'s in-count = `A`'s out-count), then check `: C A B ;`. It
+  must certify `( x -- z )` and run to arity `z`. This exercises the checker's
+  *effect composition* (USIG lookup + row unification), which single-body
+  execution cannot reach.
+- **Render round-trip** — render the just-certified body's inferred effect back to
+  text (`REND-SIG`), re-declare the SAME body with that exact rendered sig, and
+  re-check. It must re-certify. This pins `render → parse → check` as a fixpoint;
+  a divergence is a render/parser bug.
+
+## Shrinking
+
+When run-and-compare flags a FALSE-CERT, the harness **delta-debugs** the failing
+body to a minimal counterexample before reporting it: drop one trailing token,
+re-check that the reduced body *still certifies and still mismatches*, keep the
+drop if so, restore it if not, repeat to a fixpoint. Token surgery only moves the
+body-length cursor (the bytes stay put), so a rejected reduction is a single
+assignment to undo. The minimal `: G ( in -- out ) … ;` is printed. A sound
+checker never produces a real false-cert to shrink, so `SELFTEST-SHRINK` exercises
+the loop on an achievable predicate ("still certifies"): it reduces
+`dup drop 1+ 1- negate 1+ 1-` to `dup drop` and fails the build if it does not.
+
+## Unbounded sweeps & the complete forget
+
+A `: G … ;` grows THREE persistent stores: code (`CP`), the name dict (`NDICT`)
+and the checker's certified-signature table (`UEND`, the `USIGS` cursor). The
+per-program **forget** restores exactly those three, so the sweep reuses the same
+memory every iteration and runs **unbounded** — 50 000+ programs in one process
+with no growth. (Per-check transient pools reset themselves: the term arena and
+the quot-effect pool `QEN` in the checker's `NEW`, the codegen scratch at `:`.)
+Two checkpoint levels nest cleanly: a program-level mark, and a variant-level mark
+so shrinking and the metamorphic amplifiers can define-check-discard derived words
+inside a program's own checkpoint. Bump the `RUN` count for a longer sweep; there
+is no dict cap to hit.
 
 ## Gate integration & running
 
@@ -152,8 +202,9 @@ work but never gate-fail (rejecting a valid program is safe).
   gate on any FALSE-CERT. A `SELFTEST` first proves the arity comparison fires
   (a sound checker won't hand us a real false-cert to test against), and `BAITS`
   asserts the leave/exit programs that a sound checker must reject stay rejected.
-- **Sweep:** bump the `1 250 RUN` count in the script (the dict grows by one per
-  certified def, so a single process is bounded by the ~1600-word dict cap).
+- **Sweep:** bump the `1 250 RUN` count in the script — the complete forget
+  reuses CP/NDICT/USIGS every iteration, so a single process runs unbounded
+  (50 000+ programs verified, no growth).
 - **Regression:** freeze any counterexample as a `BAIT` in `prop-test.f` (a
   program that must not certify) so it can never silently return.
 
