@@ -1,5 +1,5 @@
 \ shadow-lint.f — toolchain colon definitions must not shadow engine PRIM names.
-\ Self-hosted port of shadow-lint.py. The engine dict is later-wins and the checker
+\ Self-hosted shadow lint. The engine dict is later-wins and the checker
 \ records later sigs over PTAB, so a toolchain word named like a prim silently
 \ replaces it for every program the toolchain-loaded engine compiles.
 \ Run:  cat tools/lint/lib.f tools/lint/shadow-lint.f | bin/hb

@@ -63,6 +63,6 @@ re-link contract is: header rebuilt fresh from constants, code copied
   text base, ndict, region len, data len) and the startup relocation of
   engine-text references (x16 call chains + seed-prim dict slots).
 
-Documented contracts the checker/lints rely on: `tools/clobber-lint.py`
-(RETURNS/PRESERVES tables), `tools/shadow-lint.py` (toolchain names must not
+Documented contracts the checker/lints rely on: `tools/lint/clobber-lint.f`
+(RETURNS/PRESERVES tables), `tools/lint/shadow-lint.f` (toolchain names must not
 shadow prims), and `docs/forth.md`.

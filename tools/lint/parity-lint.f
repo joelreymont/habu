@@ -1,5 +1,5 @@
 \ parity-lint.f — token-diff paired emitter definitions (boot vs port) by NAME.
-\ Self-hosted port of parity-lint.py. For each (boot, port) file pair, compare the
+\ Self-hosted parity lint. For each (boot, port) file pair, compare the
 \ filtered token stream of every def present in BOTH (minus ALLOW); a difference is
 \ a silent divergence (the bug class the byte-goldens only flag as "bytes differ").
 \ Filtering drops \ and ( ) comments (the tokenizer strips them), LBL, {: .. :}

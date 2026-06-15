@@ -2,16 +2,13 @@
 
 ## Problem statement
 
-The project has three build-time linters written in **Python** (`tools/parity-lint.py`,
-`tools/clobber-lint.py`, `tools/shadow-lint.py`). The standing mandate is that
-project tooling must be **self-hosted in habu**, not Python (gforth is already
-bootstrap-only; carrying a Python dependency for tooling contradicts the
-self-hosting goal). The work is to reimplement all three in habu, run by `bin/hb`,
-then delete the `.py` versions.
+Complete. The build-time parity, shadow, and clobber linters are self-hosted
+Habu scripts under `tools/lint/`, run by `bin/hb` in `test/run.sh`, and the old
+Python implementations have been deleted.
 
-### The structural tension to resolve first (DECISION NEEDED)
+### Bootstrap Input Decision
 
-`shadow-lint` reads only habu sources (`src/habu/habu1.f` + the snap srclist) — clean.
+`shadow-lint` reads only habu sources (`src/habu/habu1.f` + the snap srclist).
 
 **`parity-lint` and `clobber-lint` inherently read the frozen bootstrap emitters**
 (`bootstrap/cg/forth.fs`, `jit.fs`, `regalloc.fs`, `prof.fs`, `rt.fs`, `crash.fs`):
@@ -22,45 +19,22 @@ then delete the `.py` versions.
 - `clobber-lint`'s file list spans both the bootstrap and the port (it models the
   register-clobber graph across both dialects).
 
-This conflicts with the "forth.fs is bootstrap-only, frozen, stop going back to it"
-stance. The Python versions read these files too — but self-hosting them makes the
-habu tool depend on (read-only) the frozen bootstrap tree.
-
-**Decision required before continuing:**
-1. Port parity + clobber as-is (they read the frozen `bootstrap/cg/*.fs`, read-only
-   — same inputs as the `.py`), **or**
-2. Drop/retire parity + clobber (the bootstrap is frozen and decoupled, so a
-   boot-vs-port diff may be obsolete), keeping only shadow-lint self-hosted, **or**
-3. Re-scope parity/clobber to analyze only the habu ports (changes what they check).
+The chosen contract is to keep those frozen bootstrap reads read-only. That
+preserves the existing parity and clobber checks without putting gforth back on
+the daily execution path.
 
 ## Status
 
-### Done and pushed (master)
+### Done
 - **`tools/lint/lib.f`** — habu string/file library: `READ-FILE` (slurp via
   open/read/close), `STR=`/`STR=CI`/`PREFIX?`/`FIND-SUB`/`CONTAINS?`,
   `TOKENIZE` (whitespace tokens, strips `\` and — when `PARENS?` set — `( )`
   comments, tracks column-0 via `TBOL`), `TOK`/`TOK0?`/`TEOL?`/`TOK=` (stack-based),
-  `BMOVE`/`FOLD`/`FOLD-TO`. Verified: habu1.f → 3875 tokens, 105 BOL-defs = `grep -c '^: '`.
-- **`tools/lint/shadow-lint.f`** — reproduces `shadow-lint.py` (clean, 88 prims),
-  teeth verified (catches `EMIT` case-insensitively + `open`). DONE.
-
-### In progress (uncommitted, do not have a clean run)
-- **`tools/lint/parity-lint.f`** — full port written. Fixed two habu bugs so far:
-  - `DEF-END` used `j` as a local — `i`/`j` are loop-index keywords, silently
-    resolve to the keyword (garbage), NOT the argument. Renamed to `dj`.
-  - `DEF-END` used `exit` inside a locals+loop word; rewrote flag-based (`DEDONE`).
-  - **Current blocker:** `WALK-BOOT` crashes (SIGSEGV) on `forth.fs`. Suspected
-    `FSCR` (32 KB) or `DBUF` (128 KB) overflow, or a forth.fs def whose closing `;`
-    is not detected as end-of-line so `DEF-END` returns `TN#` and `FILTER` then
-    processes a huge range and overruns `FSCR`. Was bisecting which def when stopped.
-    Debug it **in habu** (instrument the walker), not by grepping forth.fs.
-
-### Not started (dotted)
-- `clobber-lint.f` — register model + tables, region/clobber-set closure,
-  call-site liveness (3 dots).
-- def-walker + set/intern generalization; gate integration + delete the `.py`.
-
-Open dots: `dot ls` (7 lint dots remain).
+  `BMOVE`/`FOLD`/`FOLD-TO`, and bounded intern/set helpers.
+- **`tools/lint/parity-lint.f`** — reproduces the parity divergence check.
+- **`tools/lint/shadow-lint.f`** — reproduces the prim-shadow check.
+- **`tools/lint/clobber-lint.f`** — reproduces the register-clobber model.
+- **`test/run.sh`** feeds each linter through `bin/hb`.
 
 ## habu gotchas discovered (apply when writing more habu tooling)
 - **`i` and `j` are loop-index keywords — never use as local names.** They compile
@@ -80,10 +54,7 @@ Open dots: `dot ls` (7 lint dots remain).
 
 ## How to run / verify
 ```
-cat tools/lint/lib.f tools/lint/shadow-lint.f  | bin/hb     # shadow (clean)
-cat tools/lint/lib.f tools/lint/parity-lint.f  | bin/hb     # parity (crashes — WIP)
-python3 tools/parity-lint.py        # reference: "parity-lint: 0 divergence(s)"
-python3 tools/shadow-lint.py        # reference: "shadow-lint: clean"
+cat tools/lint/lib.f tools/lint/parity-lint.f  | bin/hb
+cat tools/lint/lib.f tools/lint/shadow-lint.f  | bin/hb
+cat tools/lint/lib.f tools/lint/clobber-lint.f | bin/hb
 ```
-Gate integration (final): feed `lib.f` + each linter to `bin/hb`, exit nonzero on
-a finding, replace the `python3` calls in the gate, delete the three `.py` files.

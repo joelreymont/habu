@@ -25,9 +25,9 @@ cleanup() {
   [ "$CLEAN_T" = 0 ] || rm -rf "$T"
 }
 trap cleanup EXIT HUP INT TERM
-./tools/parity-lint.py || { echo "FAIL: parity-lint"; exit 1; }
-./tools/shadow-lint.py || { echo "FAIL: shadow-lint"; exit 1; }
-./tools/clobber-lint.py || { echo "FAIL: clobber-lint"; exit 1; }
+cat tools/lint/lib.f tools/lint/parity-lint.f | bin/hb || { echo "FAIL: parity-lint"; exit 1; }
+cat tools/lint/lib.f tools/lint/shadow-lint.f | bin/hb || { echo "FAIL: shadow-lint"; exit 1; }
+cat tools/lint/lib.f tools/lint/clobber-lint.f | bin/hb || { echo "FAIL: clobber-lint"; exit 1; }
 ./tools/repl-lint.py || { echo "FAIL: repl-lint"; exit 1; }
 ./tools/trust-lint.py || { echo "FAIL: trust-lint"; exit 1; }
 ./tools/stale-status-lint.py || { echo "FAIL: stale-status-lint"; exit 1; }
