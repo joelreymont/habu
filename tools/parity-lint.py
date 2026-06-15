@@ -39,7 +39,11 @@ def defs(path):
 # checked; the lint covers the near-transcription emitters where divergence hides.
 ALLOW = {a.lower() for a in (
     'EMIT-FORTH','FPRIM','FPRIM-L','KEEP?','SHK-TOK=','c-emitw','cf-entry','cfn-entry','emit-dict',
-    'emit-main','reg-prim','(sigact)','emit-crash-handler','emit-source','CRH-INIT')}
+    'emit-main','reg-prim','(sigact)','emit-crash-handler','emit-source','CRH-INIT',
+    # emit-prims is the prim REGISTRATION table: the bootstrap (gforth) builder is
+    # frozen, so native-only engine prims are added to habu1/2.f only and this
+    # table legitimately diverges. The prim BODIES are native-only (auto-skipped).
+    'emit-prims')}
 
 fail = 0
 for boot, ports in PAIRS:

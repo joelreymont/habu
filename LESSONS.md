@@ -5,6 +5,14 @@ mistakes, or insights. Lessons only — no API reference or code snippets (→ `
 
 ## Re-entrant EVALUATE: the engine can now run code in-process (2026-06-15)
 
+The fixed `evaluate` save frame must never live in a "free-looking" header gap
+without checking every generated-runtime table. Placing `EVAL-FRAME` at `$3600`
+overlapped `VRTAB`/`VRITAB`; every nested `evaluate` then overwrote the register
+allocator's byte tables with saved pointers and cursors. The symptom was
+near-valid ARM64 instructions with unmasked high register-byte bits set in fields
+like SUB's shift/Rm area, not stale I-cache. Reserve data-header layout centrally
+and verify non-overlap whenever adding fixed cells.
+
 The engine's interpreter was the top-level loop, not a subroutine — no
 `evaluate`, and batch mode aborts on any error. That gap is why the prop-tester
 spawned a process per program (and reached for Python). Added `evaluate ( a u -- )`:

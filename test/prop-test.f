@@ -30,16 +30,22 @@ variable SA  variable SU  variable BI  variable PJ  variable NJ
 variable NI
 : PI64  ( n -- )  NI !  0 NJ !  begin NJ @ NI @ < while  s" i64 " P+  NJ @ 1+ NJ !  repeat ;
 
-\ ---- depth-tracked linear body generator over the integer sublanguage ----
+\ ---- depth-tracked generator over the integer sublanguage ----
 variable DEP  variable NIN  variable DOUT  variable K
+variable LOC?                              \ inputs bound as locals a/b/c at the body top?
+variable PERT?                             \ declared out perturbed away from the true depth?
+: BLET  ( i -- )  97 + BBUF BLEN @ + c!  BLEN @ 1+ BLEN !  s"  " B+ ;   \ emit letter a+i then space
 : STEP  ( -- )   \ append one depth-feasible op to BBUF, update DEP
    5 RND% 0 = IF                          \ 1-in-5: a net-0 STRUCTURAL op (DEP unchanged)
-      DEP @ 1 >= IF 3 ELSE 1 THEN RND% K !
+      DEP @ 1 >= IF 4 ELSE 1 THEN RND% K !
       K @ 0 = IF s" 3 0 ?do loop " B+ exit THEN              \ bounded neutral loop
       K @ 1 = IF s" dup 0= if 1+ else 1- then " B+ exit THEN \ balanced branch
-               s" >r r> " B+ exit THEN                       \ balanced return stack
+      K @ 2 = IF s" >r r> " B+ exit THEN                     \ balanced return stack
+               s" [: 1+ ;] execute " B+ exit THEN            \ quotation applied
    DEP @ 2 >= IF 9 RND% ELSE  DEP @ 1 >= IF 6 RND% ELSE 0 THEN  THEN  K !
-   K @ 0 = IF 10 RND% BD s"  " B+  DEP @ 1+ DEP !  exit THEN   \ literal
+   K @ 0 = IF                                                  \ push a value: a local ref, or a literal
+      LOC? @ IF NIN @ RND% BLET ELSE 10 RND% BD s"  " B+ THEN
+      DEP @ 1+ DEP !  exit THEN
    K @ 1 = IF s" 1+ " B+      exit THEN
    K @ 2 = IF s" 1- " B+      exit THEN
    K @ 3 = IF s" negate " B+  exit THEN
@@ -50,39 +56,50 @@ variable DEP  variable NIN  variable DOUT  variable K
             s" nip " B+     DEP @ 1- DEP ! ;
 variable STEPS  variable GI
 : GEN  ( -- )   \ PBUF := ": G ( i64*NIN -- i64*DOUT ) <body> ;"
-   0 BLEN ! 0 PLEN !
-   4 RND% NIN !   NIN @ DEP !
+   0 BLEN ! 0 PLEN !  0 LOC? !
+   4 RND% NIN !
+   NIN @ 0 > 3 RND% 0 = and IF            \ 1-in-3: bind the inputs as locals {: a b c :} at the top
+      -1 LOC? !  s" {: " B+
+      0 GI ! begin GI @ NIN @ < while GI @ BLET GI @ 1+ GI ! repeat  s" :} " B+
+      0 DEP !
+   ELSE NIN @ DEP ! THEN
    6 RND% 3 + STEPS !
    0 GI ! begin GI @ STEPS @ < while  STEP  GI @ 1+ GI !  repeat   \ build body, compute true DEP
-   DEP @ DOUT !                            \ declared = true residual depth ...
+   DEP @ DOUT !  0 PERT? !                 \ declared = true residual depth ...
    10 RND% 3 < IF                          \ ... perturbed 30% of the time (intended-reject)
       2 RND% IF DOUT @ 1+ ELSE DOUT @ 1- THEN
-      dup 0 < IF drop 0 THEN  DOUT ! THEN
+      dup 0 < IF drop 0 THEN  DOUT !
+      DOUT @ DEP @ <> IF -1 PERT? ! THEN THEN
    s" : G ( " P+  NIN @ PI64  s" -- " P+  DOUT @ PI64  s" ) " P+
    BBUF BLEN @ P+  s" ; " P+ ;
 
-\ ---- driver: check, then (if certified) run + measure, in-process ----
-variable NCERT  variable NFC  variable RJ
+\ ---- driver: check, then run + measure, in-process; forget each program ----
+variable NCERT  variable NFC  variable NFR  variable RJ
+variable CPSAVE  variable NDSAVE
+: RUNNER  ( -- )  \ PBUF := "MK <NIN copies of 7> G NAB"
+   0 PLEN ! s" MK " P+  NIN @ NI !  0 RJ !
+   begin RJ @ NI @ < while  s" 7 " P+  RJ @ 1+ RJ !  repeat   s" G NAB" P+ ;
 : ONE  ( -- )
+   cp@ CPSAVE !  ndict@ NDSAVE !            \ mark — forget this program afterwards (unbounded sweeps)
    GEN
    ['] VH set-check   PBUF PLEN @ evaluate   0 set-check
-   VERD @ -1 = IF
+   VERD @ -1 = IF                           \ CERTIFIED: measured out-arity must equal declared
       NCERT @ 1+ NCERT !
-      0 PLEN ! s" MK " P+  NIN @ NI !  0 RJ !
-      begin RJ @ NI @ < while  s" 7 " P+  RJ @ 1+ RJ !  repeat   s" G NAB" P+
-      PBUF PLEN @ evaluate                   \ leaves measured on the stack, or traps
+      RUNNER  PBUF PLEN @ evaluate           \ leaves measured on the stack, or traps
       ERR@ 0 = IF
          DOUT @ <> IF  NFC @ 1+ NFC !  s" FALSE-CERT(arity) declared " type DOUT @ . cr  THEN
-      ELSE
-         NFC @ 1+ NFC !  s" FALSE-CERT(trap) declared " type DOUT @ . cr
-      THEN
-   THEN ;
+      ELSE  NFC @ 1+ NFC !  s" FALSE-CERT(trap) declared " type DOUT @ . cr  THEN
+   ELSE VERD @ 0 = PERT? @ 0= and IF         \ REJECTED but NOT perturbed -> the generator declared the
+      NFR @ 1+ NFR !                          \ true arity, yet the checker rejected it: a FALSE-REJECT
+   THEN THEN
+   NDSAVE @ ndict!  CPSAVE @ cp! ;           \ forget G (+ any quotation/locals code), reuse the space
 variable N  variable RI
 : RUN  ( seed count -- )
-   N !  SEED !  0 NCERT ! 0 NFC !
+   N !  SEED !  0 NCERT ! 0 NFC ! 0 NFR !
    0 RI ! begin RI @ N @ < while  ONE  RI @ 1+ RI !  repeat
    s" prop-test: " type N @ . s" programs, " type
-   NCERT @ . s" certified, " type  NFC @ . s" FALSE-CERT(s)" type cr ;
+   NCERT @ . s" certified, " type  NFC @ . s" FALSE-CERT(s), " type
+   NFR @ . s" false-reject(s)" type cr ;
 
 \ self-test: prove the detector has teeth (a sound checker won't hand us a real
 \ false-cert, so confirm the arity comparison fires on a fabricated mismatch).

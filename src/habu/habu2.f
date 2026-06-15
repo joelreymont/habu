@@ -1085,6 +1085,7 @@ s" em-interpret" s" --" TRUST
          9 14 0 LDR,  9 DATA INP-CELL STR,           \ restore outer INP/INE (defs persist)
          9 14 8 LDR,  9 DATA INE-CELL STR,
          9 0 MOVZ,  9 DATA EVALERR-CELL STR,         \ clean
+         9 14 24 LDR,  SP 9 0 ADDI,                  \ restore the machine SP (no per-call drift)
          9 14 16 LDR,  9 BR,                         \ return to the evaluate caller
       LEX0 @ LBL,
       9 DATA REPLH-CELL LDR,  9 LRBYE @ CBZ,

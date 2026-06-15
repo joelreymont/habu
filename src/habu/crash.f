@@ -52,6 +52,10 @@ CRH-INIT
       9 21 256 LDR,  LHEX @ BL,
       9 21 264 LDR,  LHEX @ BL,
       9 21 272 LDR,  LHEX @ BL,
+      9 21 272 LDR,  9 9 8 SUBI,  9 9 0 LDRW,  LHEX @ BL,    \ [pc-8]
+      9 21 272 LDR,  9 9 4 SUBI,  9 9 0 LDRW,  LHEX @ BL,    \ [pc-4]
+      9 21 272 LDR,  9 9 0 LDRW,  LHEX @ BL,                 \ [pc]
+      9 21 272 LDR,  9 9 4 ADDI,  9 9 0 LDRW,  LHEX @ BL,    \ [pc+4]
       0 134 MOVZ,  NR-EXIT SYS,
    LHDR @ LBL,  CRH CRHL @ BYTES, ;
 

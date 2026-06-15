@@ -44,7 +44,11 @@ $36A8 constant INE-CELL    \ input end    (was x22)
 $36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
 $36C8 constant BPI-CELL    \ (legacy single-BP; unused)
 $36D0 constant BPTAB-OFF   \ 16 breakpoints: (addr, saved-instr) 16 B each, addr 0 = empty
-$3600 constant EVAL-FRAME  \ re-entrant evaluate save frame, 8 cells (free LOCNAMES tail $3600-$363F):
+$2740 constant EVAL-FRAME  \ re-entrant evaluate save frame, 8 cells ($2740-$277F: the free hole
+                           \ between BODYBUF end ($800+8000=$2740) and RSTK ($2800)). NOT $3600 —
+                           \ that COLLIDED with VRTAB-OFF/$3600 + VRITAB-OFF/$3620 (regalloc.f), so every
+                           \ evaluate clobbered the reg-alloc tables -> LVRALLOC returned saved stack-
+                           \ pointer bytes as register numbers -> illegal SUB encodings (nondeterm SIGILL).
                            \ +0 INP +8 INE +16 RET +24 SP +32 XDS +40 CP +48 NDICT +56 DP
 $37D0 constant EVALD-CELL  \ evaluate nesting depth (0 = top-level REPL/batch; gates the nested paths)
 $37D8 constant EVALERR-CELL \ result of the last evaluate: 0 = clean, 1 = recovered from an error
@@ -168,6 +172,8 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 : BCPFETCH    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
 : BNDICTFETCH 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
+: BCPSET   A G-POP  CP A 0 ADDI, ;         \ ( addr -- ) set CP — forget code back to a mark
+: BNDSET   A G-POP  NDICT A 0 ADDI, ;      \ ( n -- ) set NDICT — forget dict entries past a mark
 
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
@@ -410,6 +416,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
    s" run-rc" ['] BRUNRC FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
+   s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
    s" evaluate" ['] B-EVAL FPRIM-L
    s" die"  ['] BDIE   FPRIM-L
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
