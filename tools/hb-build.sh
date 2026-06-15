@@ -58,6 +58,11 @@ STAGE2_GOT=$T/stage2-got
 USRC=$T/hb-user-src
 MKPATH=$T/$MK
 GOTPATH=$T/$GOT
+JSON_ONLY_TOOL=$T/json-only.f
+json_only() {
+  [ -f "$JSON_ONLY_TOOL" ] || cat tools/argv.f tools/json.f tools/json-only.f > "$JSON_ONLY_TOOL"
+  bin/hb "$JSON_ONLY_TOOL" "$1"
+}
 
 # maker = checker-hooked toolchain + the chosen driver, compiled by bin/hb.
 # In default AOT mode the driver compiles the program in-process under CHECK!.
@@ -105,7 +110,7 @@ if [ "$JSON" = 1 ]; then
     cat "$ERR" >&2
   else
     rc=$?
-    ./tools/json-only.py "$ERR" >&2
+    json_only "$ERR" >&2
     exit "$rc"
   fi
 else

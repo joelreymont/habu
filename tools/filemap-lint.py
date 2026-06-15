@@ -24,7 +24,7 @@ REQUIRED = {
     "tools/aot-lint.py",
     "tools/forth_lex.py",
     "tools/diag-origin.py",
-    "tools/json-only.py",
+    "tools/json-only.f",
     "tools/check-all-errors.py",
     "tools/diag-to-sarif.f",
     "tools/public-signatures.py",

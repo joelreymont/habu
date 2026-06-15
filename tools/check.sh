@@ -39,6 +39,11 @@ fi
 if [ "$STRICT" = 1 ]; then
   ./tools/signature-lint.py $LINT_JSON --label "$LABEL" "$SRC" >&2
 fi
+JSON_ONLY_TOOL=$T/json-only.f
+json_only() {
+  [ -f "$JSON_ONLY_TOOL" ] || cat tools/argv.f tools/json.f tools/json-only.f > "$JSON_ONLY_TOOL"
+  bin/hb "$JSON_ONLY_TOOL" "$1"
+}
 if [ "$ALL" = 1 ]; then
   if [ "$JSON" = 1 ]; then JSON_ARG=--json-errors; else JSON_ARG=; fi
   ./tools/check-all-errors.py $JSON_ARG --label "$LABEL" "$SRC"
@@ -64,7 +69,7 @@ if [ "$JSON" = 1 ]; then
     cat "$ERR" >&2
   else
     rc=$?
-    ./tools/json-only.py "$ERR" >&2
+    json_only "$ERR" >&2
     exit "$rc"
   fi
 else

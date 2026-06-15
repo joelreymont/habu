@@ -52,7 +52,7 @@ points stay listed.
 - `tools/aot-lint.py` — stripped-AOT unsupported-word lint.
 - `tools/forth_lex.py` — shared lexer for source lints.
 - `tools/diag-origin.py` — injects source-origin markers for checker JSON.
-- `tools/json-only.py` — keeps wrapper JSON mode machine-only on known diagnostics.
+- `tools/json-only.f` — keeps wrapper JSON mode machine-only on known diagnostics.
 - `tools/check-all-errors.py` — batches checker diagnostics by top-level definition.
 - `tools/diag-to-sarif.f` — converts diagnostic JSONL to SARIF for CI/review UIs.
 - `tools/public-signatures.py` — emits typed public-word manifests for agents.
