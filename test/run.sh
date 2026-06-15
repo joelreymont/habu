@@ -31,7 +31,7 @@ cat tools/lint/lib.f tools/lint/clobber-lint.f | bin/hb || { echo "FAIL: clobber
 cat tools/lint/lib.f tools/repl-lint.f | bin/hb || { echo "FAIL: repl-lint"; exit 1; }
 ./tools/trust-lint.py || { echo "FAIL: trust-lint"; exit 1; }
 ./tools/stale-status-lint.py || { echo "FAIL: stale-status-lint"; exit 1; }
-./tools/filemap-lint.py || { echo "FAIL: filemap-lint"; exit 1; }
+cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint"; exit 1; }
 [ -x bin/hb ] || { echo "no bin/hb — run tools/bootstrap.sh once"; exit 1; }
 ./tools/build.sh > $T/hb-build.log 2>&1 || { tail -5 $T/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }
 echo "PASS: self-rebuild fixpoint"

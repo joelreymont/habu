@@ -1,7 +1,7 @@
 # FILEMAP.md
 
 Fast orientation for coding agents when code search is unavailable or expensive.
-`tools/filemap-lint.py` keeps these paths live and checks that required entry
+`tools/filemap-lint.f` keeps these paths live and checks that required entry
 points stay listed.
 
 ## Agent Context
@@ -57,7 +57,7 @@ points stay listed.
 - `tools/diag-to-sarif.f` — converts diagnostic JSONL to SARIF for CI/review UIs.
 - `tools/public-signatures.f` — emits typed public-word manifests for agents.
 - `tools/aot-call-report.f` — measures patched AOT call-stencil padding.
-- `tools/filemap-lint.py` — freshness lint for this file.
+- `tools/filemap-lint.f` — freshness lint for this file.
 - `tools/trust-lint.py` — `TRUSTED.md` drift lint.
 - `tools/stale-status-lint.py` — stale status/count lint.
 
