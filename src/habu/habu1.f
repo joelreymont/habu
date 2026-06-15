@@ -169,6 +169,108 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
    9 G-PUSH
    SP SP 64 ADDI, ;
 
+: BPIPE                              \ ( -- rfd wfd rc ) rc=0, or -1 -1 -1
+   LBL LBL {: pok pdn :}
+   NR-PIPE SYS,
+   9 C-CS CSET,  9 pok CBZ,
+      9 0 MOVN,  9 G-PUSH  9 G-PUSH  9 G-PUSH  pdn B,
+   pok LBL,
+   0 G-PUSH  1 G-PUSH  9 0 MOVZ,  9 G-PUSH
+   pdn LBL, ;
+
+: BDUP2  B G-POP  A G-POP            \ ( oldfd newfd -- rc ) rc=newfd or -1
+   LBL LBL {: dok ddn :}
+   NR-DUP2 SYS,
+   9 C-CS CSET,  9 dok CBZ,
+      0 0 MOVN,  ddn B,
+   dok LBL,
+   ddn LBL,
+   0 G-PUSH ;
+
+: BFCNTL  2 G-POP  1 G-POP  0 G-POP  \ ( fd cmd arg -- rc ) rc=sysret or -1
+   LBL LBL {: fok fdn :}
+   NR-FCNTL SYS,
+   9 C-CS CSET,  9 fok CBZ,
+      0 0 MOVN,  fdn B,
+   fok LBL,
+   fdn LBL,
+   0 G-PUSH ;
+
+: BPOLL  2 G-POP  1 G-POP  0 G-POP   \ ( fds nfds timeout -- rc ) rc=nready/0 or -1
+   LBL LBL {: pok pdn :}
+   NR-POLL SYS,
+   9 C-CS CSET,  9 pok CBZ,
+      0 0 MOVN,  pdn B,
+   pok LBL,
+   pdn LBL,
+   0 G-PUSH ;
+
+: BWAITRC  A G-POP                    \ ( pid -- rc ) wait4; -1 = wait failed
+   LBL LBL {: wok wdn :}
+   SP SP 16 SUBI,
+   0 9 0 ADDI,
+   1 SP 0 ADDI,  2 0 MOVZ,  3 0 MOVZ,
+   NR-WAIT4 SYS,
+   9 C-CS CSET,  9 wok CBZ,
+      9 0 MOVN,  wdn B,
+   wok LBL,
+   9 SP 0 LDRW,
+   9 9 8 LSRI,  9 9 $FF ANDI,
+   wdn LBL,
+   9 G-PUSH
+   SP SP 16 ADDI, ;
+
+\ Emit one PSFA_DUP2 record into the runtime file-actions blob at x13.
+: SPAWN-DUP2-ACTION {: fdreg newfd :}
+   LBL {: skip :}
+   fdreg 0 CMPI,  C-LT skip BCOND,
+   14 13 4 LDRW,  15 1040 MOVZ,  14 14 15 MUL,
+   14 14 8 ADDI,  14 14 13 ADD,
+   15 2 MOVZ,  15 14 0 STRW,
+   fdreg 14 4 STRW,
+   15 newfd MOVZ,  15 14 8 STRW,
+   14 13 4 LDRW,  14 14 1 ADDI,  14 13 4 STRW,
+   skip LBL, ;
+s" spawn-dup2-action" s" n n --" TRUST
+
+: BSPAWNIO                            \ ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )
+   12 G-POP  11 G-POP  10 G-POP  9 G-POP
+   LBL LBL {: spok spdn :}
+   SP SP 3584 SUBI,
+   9 SP 16 STR,                       \ argv[0] = path
+   14 0 MOVZ,  14 SP 24 STR,          \ argv[1] = 0
+   14 SP 32 STR,                      \ envp[0] = 0
+   13 SP 176 ADDI,                    \ file actions
+   14 3 MOVZ,  14 13 0 STRW,
+   14 0 MOVZ,  14 13 4 STRW,
+   10 0 SPAWN-DUP2-ACTION
+   11 1 SPAWN-DUP2-ACTION
+   12 2 SPAWN-DUP2-ACTION
+   14 0 MOVZ,                         \ zero the descriptor
+   14 SP 48 STR,  14 SP 56 STR,  14 SP 64 STR,  14 SP 72 STR,
+   14 SP 80 STR,  14 SP 88 STR,  14 SP 96 STR,  14 SP 104 STR,
+   14 SP 112 STR,  14 SP 120 STR,  14 SP 128 STR,  14 SP 136 STR,
+   14 SP 144 STR,  14 SP 152 STR,  14 SP 160 STR,  14 SP 168 STR,
+   14 13 4 LDRW,  15 1040 MOVZ,  14 14 15 MUL,  14 14 8 ADDI,
+   14 SP 64 STR,                      \ adesc.file_actions_size
+   13 SP 72 STR,                      \ adesc.file_actions
+   0 SP 0 ADDI,                       \ &pid
+   1 9 0 ADDI,                        \ path
+   14 13 4 LDRW,  2 SP 48 ADDI,
+   LBL {: sad :}
+   14 sad CBNZ,
+      2 0 MOVZ,                       \ no actions: XNU rejects an empty blob
+   sad LBL,
+   3 SP 16 ADDI,  4 SP 32 ADDI,       \ argv, envp
+   NR-SPAWN SYS,
+   9 C-CS CSET,  9 9 0 ORR,  9 spok CBZ,
+      9 0 MOVN,  spdn B,
+   spok LBL,
+   9 SP 0 LDR,
+   spdn LBL,
+   9 G-PUSH
+   SP SP 3584 ADDI, ;
+
 : BCPFETCH    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
 : BNDICTFETCH 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
@@ -438,6 +540,9 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
    s" compile," ['] BCOMPILE FPRIM
    s" create" ['] BCREATE FPRIM
    s" run-rc" ['] BRUNRC FPRIM-L
+   s" pipe" ['] BPIPE FPRIM-L   s" dup2" ['] BDUP2 FPRIM-L
+   s" fcntl" ['] BFCNTL FPRIM-L   s" poll" ['] BPOLL FPRIM-L
+   s" spawn-io" ['] BSPAWNIO FPRIM-L   s" wait-rc" ['] BWAITRC FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L

@@ -369,11 +369,12 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT
 \ bodies, so a dispatch word with many PARSE-SIG calls overflows. DO-TOK stays small.
 \ prim sig table: records [nlen][name][slen][sig], 0-terminated — built from
 \ readable strings (PT+ keeps the terminator as it appends).
-create PTAB 2048 allot  variable PTP
+3072 constant PTAB-CAP
+create PTAB PTAB-CAP allot  variable PTP
 create SDQN 2 allot  115 SDQN c!  34 SDQN 1 + c!     \ the two chars of `s"`
 
 : PT2+ {: a u :}
-   PTP @ u + 2 + PTAB 2046 + > IF s" checker: prim table full" 76 die THEN
+   PTP @ u + 2 +  PTAB PTAB-CAP 2 - +  > IF s" checker: prim table full" 76 die THEN
    u PTP @ c!
    0 BEGIN dup u < WHILE  dup a + c@  over PTP @ + 1 + c!  1 + REPEAT drop
    PTP @ 1 + u + PTP !  0 PTP @ c! ;
@@ -430,6 +431,12 @@ create SDQN 2 allot  115 SDQN c!  34 SDQN 1 + c!     \ the two chars of `s"`
    s" open" s" n n n -- n" PT+
    s" read" s" n n n -- n" PT+
    s" ioctl" s" n n n -- n" PT+
+   s" pipe" s" -- n n n" PT+
+   s" dup2" s" n n -- n" PT+
+   s" fcntl" s" n n n -- n" PT+
+   s" poll" s" n n n -- n" PT+
+   s" spawn-io" s" n n n n -- n" PT+
+   s" wait-rc" s" n -- n" PT+
    s" patch32" s" n n --" PT+
    s" write" s" n n n -- n" PT+
    s" close" s" n --" PT+

@@ -9,12 +9,16 @@
 184 constant NR-SIGRETURN
 5   constant NR-OPEN
 6   constant NR-CLOSE
+42  constant NR-PIPE
 46  constant NR-SIGACTION
 74  constant NR-MPROTECT
+90  constant NR-DUP2
+92  constant NR-FCNTL
 83  constant NR-SETITIMER
 116 constant NR-GETTIMEOFDAY
 184 constant NR-SIGRETURN
 197 constant NR-MMAP
+230 constant NR-POLL
 244 constant NR-SPAWN     \ posix_spawn(&pid, path, 0, 0, argv, envp)
 7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
 

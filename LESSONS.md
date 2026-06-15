@@ -96,8 +96,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   private five-arg kernel ABI `pid*, path, adesc, argv, envp`; `wait4` status
   needs `(status >> 8) & 0xff`. Check carry and errno-in-x0.
 - **Process redirection uses XNU spawn descriptors:** empty file-action blobs are
-  invalid; pass null descriptors when no fd remapping is requested. PTY support
-  uses `/dev/ptmx` plus ioctl flow, not `forkpty`/`openpty` libc symbols.
+  invalid; pass null descriptors when no fd remapping is requested. Mark
+  parent-only pipe/pty fds close-on-exec before spawning or the child can inherit
+  a write end and never observe EOF. PTY support uses `/dev/ptmx` plus ioctl
+  flow, not `forkpty`/`openpty` libc symbols.
 - **Darwin benchmark time is not a syscall:** `clock_gettime`,
   `clock_gettime_nsec_np`, and `mach_absolute_time` are libSystem/commpage APIs.
   The no-libSystem monotonic clock reads `CNTVCT_EL0`/`CNTFRQ_EL0` and converts
