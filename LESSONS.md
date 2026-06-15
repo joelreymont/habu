@@ -24,6 +24,16 @@ Apple Silicon and convert ticks with quotient/remainder arithmetic:
 tick count by 1e9 first; that can overflow long uptimes even though the final
 nanosecond value is representable.
 
+## Default new Forth to checked typed words (2026-06-15)
+
+When adding Forth source, start from checked words with explicit stack effects
+for public/library behavior. Use `0 set-check`, raw emitter words, or `TRUST`
+only when the checker cannot express the layer (metaprogramming, source-string
+generators, primitive emitters, snapshot/build drivers), and make that boundary
+obvious in the file with focused tests that exercise the contract. Do not let
+unchecked scaffolding drift into reusable library code by habit; if a helper can
+be factored into checked typed Forth, factor it there.
+
 ## Re-entrant EVALUATE: the engine can now run code in-process (2026-06-15)
 
 The fixed `evaluate` save frame must never live in a "free-looking" header gap
