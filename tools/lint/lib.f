@@ -59,9 +59,11 @@ variable TN#  variable PARENS?  variable TI  variable TS  variable BOL
          a TS @ + TOFF TN# @ cells + !  TI @ TS @ - TLEN TN# @ cells + !  TN# @ 1+ TN# !
       THEN THEN THEN
    repeat ;
-: TOK   {: k :}  ( -- a u )   TOFF k cells + @   TLEN k cells + @ ;
-: TOK0? {: k :}  ( -- f )     TBOL k cells + @ ;
-: TOK=  {: k a u :}  ( -- f )  k TOK a u STR= ;
+\ stack-based (no locals) so a caller can hold its own locals frame without deep
+\ nesting — habu locals do not nest more than ~2 deep reliably.
+: TOK   ( k -- a u )   dup cells TOFF + @   swap cells TLEN + @ ;
+: TOK0? ( k -- f )     cells TBOL + @ ;
+: TOK=  ( k a u -- f )  >R >R TOK R> R> STR= ;
 
 \ ---- more string ops for the linters ----
 : BMOVE  {: a dst u :}  ( -- )  \ copy u bytes a -> dst
@@ -70,3 +72,9 @@ variable TN#  variable PARENS?  variable TI  variable TS  variable BOL
 : STR=CI  {: a u b v :}  ( -- f )   \ case-insensitive byte equality
    u v <> IF 0 exit THEN
    0 begin dup u < while  dup a + c@ FOLD  over b + c@ FOLD  <> IF drop 0 exit THEN  1+  repeat  drop  -1 ;
+
+\ ---- token helpers for the def-walkers ----
+: TEOL?  ( k -- f )   \ is token k the last on its source line? (next is BOL, or end)
+   1+ dup TN# @ >= IF drop -1 ELSE TOK0? THEN ;
+: FOLD-TO  {: a u dst :}  ( -- )  \ copy a/u to dst, ASCII-folded to lower-case
+   0 begin dup u < while  dup a + c@ FOLD  over dst + c!  1+  repeat  drop ;
