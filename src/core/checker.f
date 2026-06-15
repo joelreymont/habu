@@ -41,7 +41,7 @@ create QEA MAXQE 32 * allot   variable QEN
 : Q>RIN  PAY 32 * QEA + 16 + @ ;
 : Q>ROUT PAY 32 * QEA + 24 + @ ;
 
-2048 constant MAXPUSH          \ push records (engine-sized bodies need hundreds)
+4096 constant MAXPUSH          \ push records (engine-sized bodies need hundreds; evaluate's recovery guards grew EM-COMPILE)
 create SPA MAXPUSH 16 * allot   variable SPN
 
 : MK-PUSH SPN @ MAXPUSH 1 - > IF s" checker: out of pushes" 76 die THEN

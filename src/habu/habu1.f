@@ -44,6 +44,11 @@ $36A8 constant INE-CELL    \ input end    (was x22)
 $36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
 $36C8 constant BPI-CELL    \ (legacy single-BP; unused)
 $36D0 constant BPTAB-OFF   \ 16 breakpoints: (addr, saved-instr) 16 B each, addr 0 = empty
+$3600 constant EVAL-FRAME  \ re-entrant evaluate save frame, 8 cells (free LOCNAMES tail $3600-$363F):
+                           \ +0 INP +8 INE +16 RET +24 SP +32 XDS +40 CP +48 NDICT +56 DP
+$37D0 constant EVALD-CELL  \ evaluate nesting depth (0 = top-level REPL/batch; gates the nested paths)
+$37D8 constant EVALERR-CELL \ result of the last evaluate: 0 = clean, 1 = recovered from an error
+$37E0 constant LMAINP-CELL  \ runtime addr of the interpret loop top (EM-STARTUP stores it; B-EVAL branches there)
 $1D8 constant SSCR-CELL
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF
@@ -163,6 +168,25 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 : BCPFETCH    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
 : BNDICTFETCH 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
+
+\ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
+\ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
+\ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
+\ labels). End-of-buffer (LEXIT) and an error (LUNDEF), when EVALD>0, restore the
+\ frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
+: B-EVAL
+   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+   14 EVAL-FRAME LIT64,  14 DATA 14 ADD,             \ x14 = &frame
+   11 DATA INP-CELL LDR,  11 14 0 STR,
+   12 DATA INE-CELL LDR,  12 14 8 STR,
+   30 14 16 STR,                                     \ leaf prim: x30 = caller return
+   11 SP 0 ADDI,  11 14 24 STR,
+   XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
+   11 DATA DP-CELL LDR,  11 14 56 STR,
+   11 DATA EVALD-CELL LDR,  11 11 1 ADDI,  11 DATA EVALD-CELL STR,
+   9 DATA INP-CELL STR,                              \ INP = a
+   11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
+   9 DATA LMAINP-CELL LDR,  9 BR, ;
 
 : BCREATE  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
@@ -386,6 +410,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
    s" run-rc" ['] BRUNRC FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
+   s" evaluate" ['] B-EVAL FPRIM-L
    s" die"  ['] BDIE   FPRIM-L
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
    s" close" ['] BCLOSE FPRIM-L

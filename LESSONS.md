@@ -3,6 +3,28 @@
 What worked, what didn't, and why. Read at session start; update after findings,
 mistakes, or insights. Lessons only — no API reference or code snippets (→ `docs/`).
 
+## Re-entrant EVALUATE: the engine can now run code in-process (2026-06-15)
+
+The engine's interpreter was the top-level loop, not a subroutine — no
+`evaluate`, and batch mode aborts on any error. That gap is why the prop-tester
+spawned a process per program (and reached for Python). Added `evaluate ( a u -- )`:
+`B-EVAL` (a leaf prim) saves the outer INP/INE + full compile state (SP, XDS, CP,
+NDICT, DP, and the caller return) into a fixed 8-cell frame, points INP/INE at the
+string, bumps `EVALD`, and branches to the interpret-loop top (its runtime addr in
+`LMAINP-CELL` — prims can't name labels). `LEXIT` (end-of-buffer) and `LUNDEF`
+(an error), guarded by `EVALD>0`, restore the frame and return to the caller —
+the error path rolls compile state back (so a bad program is discarded) and sets
+`EVALERR`; the clean path keeps definitions. Result: in-process define-check-run
+WITH recovery, even in batch (`s" NOSUCH" evaluate 99 .` prints 99). Two traps:
+(1) **parity idiom** — `forth.fs` declares the four loop labels as `{: locals :}`
+(one giant word) while `habu2.f` uses variables (split words); the `LMAINP`
+store needed `LMAIN` in scope, so the byte-free `LBL {: :}` declaration had to
+move above the startup stores. Parity is byte-level, so `LMAIN @` (var) and
+`LMAIN` (local) emit the same `ADR` — only the source differs. (2) the new
+recovery guards grew `EM-COMPILE` past `MAXPUSH`=2048 during the checker's
+(futile, uncheckable) body inference — raised to 4096. `parity-lint` 0 divergences
+confirmed the two engines stayed byte-identical.
+
 ## Property-based soundness testing: execution is the oracle (2026-06-14)
 
 Built `tools/prop_gen.py` + `tools/prop-test.py` (design in `PROP-TESTING.md`):

@@ -655,6 +655,7 @@ s" cf-entry" s" n n n n --" TRUST
 s" cfn-entry" s" n n n n --" TRUST
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable LMAIN  variable LEXIT  variable LCOMPILE  variable LUNDEF
+variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable SNBL  variable SNOL   \ snapshot-loader labels (em-startup's locals group is at the 16 cap)
 variable CFSK2
 
@@ -841,6 +842,7 @@ s" cfbn-entry" s" n n n n n --" TRUST
    9 LDOESPATCH @ ADR,  9 DATA DOESP-CELL STR,
    9 LCREATE @ ADR,  9 DATA CREATEP-CELL STR,
    9 LRREC @ ADR,  9 DATA RRECP-CELL STR,
+   9 LMAIN @ ADR,  9 DATA LMAINP-CELL STR,            \ interpret-loop top (B-EVAL branches here)
    LVRINIT @ BL,                                     \ fill VRTAB/VRITAB from VRPACK
    EMIT-SOURCE
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
@@ -1040,6 +1042,23 @@ s" em-interpret" s" --" TRUST
       C-CALL  LMAIN @ B,
    LUNDEF @ LBL,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,   \ write(2, name)
+      9 DATA EVALD-CELL LDR,  9 LUN0 @ CBZ,          \ inside evaluate? roll back to the frame, return err=1
+         14 EVAL-FRAME LIT64,  14 DATA 14 ADD,
+         9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
+         CP 14 40 LDR,  NDICT 14 48 LDR,  XDS 14 32 LDR,
+         9 14 56 LDR,  9 DATA DP-CELL STR,
+         9 0 MOVZ,
+         9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
+         9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
+         9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
+         9 DATA PEND-CELL STR,
+         9 VRALL MOVZ,  9 DATA VRFREE-CELL STR,
+         9 14 0 LDR,  9 DATA INP-CELL STR,
+         9 14 8 LDR,  9 DATA INE-CELL STR,
+         9 1 MOVZ,  9 DATA EVALERR-CELL STR,
+         9 14 24 LDR,  SP 9 0 ADDI,                  \ restore the machine SP, then return
+         9 14 16 LDR,  9 BR,
+      LUN0 @ LBL,
       9 DATA REPLH-CELL LDR,  9 LRDIE @ CBZ,
    LRREC @ LBL,
       \ REPL recovery (also throw's no-handler target): "?", roll back the
@@ -1060,6 +1079,14 @@ s" em-interpret" s" --" TRUST
    LRDIE @ LBL,
       0 70 MOVZ,  NR-EXIT SYS,                       \ exit(70)
    LEXIT @ LBL,
+      9 DATA EVALD-CELL LDR,  9 LEX0 @ CBZ,          \ inside evaluate? clean end-of-buffer -> return
+         14 EVAL-FRAME LIT64,  14 DATA 14 ADD,
+         9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
+         9 14 0 LDR,  9 DATA INP-CELL STR,           \ restore outer INP/INE (defs persist)
+         9 14 8 LDR,  9 DATA INE-CELL STR,
+         9 0 MOVZ,  9 DATA EVALERR-CELL STR,         \ clean
+         9 14 16 LDR,  9 BR,                         \ return to the evaluate caller
+      LEX0 @ LBL,
       9 DATA REPLH-CELL LDR,  9 LRBYE @ CBZ,
       0 1 MOVZ,  1 LOKS @ ADR,  2 4 MOVZ,  NR-WRITE SYS,        \ " ok"
    LREAD @ LBL,
@@ -1104,6 +1131,7 @@ variable SRCA
    LBL LKWQUOT !  LBL LKWSEMIQ !
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
+   LBL LEX0 !  LBL LUN0 !
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !
    LBL LPROFH !  LBL LPROFDUMP !
    LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
