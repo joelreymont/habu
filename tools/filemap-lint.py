@@ -28,7 +28,7 @@ REQUIRED = {
     "tools/check-all-errors.py",
     "tools/diag-to-sarif.f",
     "tools/public-signatures.py",
-    "tools/aot-call-report.py",
+    "tools/aot-call-report.f",
     "test/run.sh",
     "test/t-sh-jdiag.fs",
     "bench/llm/tasks.tsv",

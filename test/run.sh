@@ -181,7 +181,7 @@ printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE +
 [ "$($T/hb-at)" = "55" ] || { echo "FAIL: hb-build AOT output (got: $($T/hb-at))"; exit 1; }
 ATX=$(size -m $T/hb-at 2>/dev/null | awk '/__text/{print $3}')
 [ "${ATX:-99999}" -lt 2000 ] || { echo "FAIL: hb-build AOT did not strip the engine (__text=$ATX, expected <2000)"; exit 1; }
-./tools/aot-call-report.py $T/hb-at > $T/hb-at-call-report.json
+bin/hb tools/aot-call-report.f $T/hb-at < /dev/null > $T/hb-at-call-report.json
 python3 - "$T/hb-at-call-report.json" <<'PY'
 import json, pathlib, sys
 doc = json.loads(pathlib.Path(sys.argv[1]).read_text())
@@ -199,7 +199,7 @@ printf ': BIG ( i64 -- i64 ) 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 
 ./tools/hb-build.sh $T/hb-compact.f -o $T/hb-compact >/dev/null || { echo "FAIL: hb-build AOT compact calls"; exit 1; }
 [ "$($T/hb-compact)" = "22
 ok" ] || { echo "FAIL: hb-build AOT compact call output (got: $($T/hb-compact))"; exit 1; }
-./tools/aot-call-report.py $T/hb-compact > $T/hb-compact-call-report.json
+bin/hb tools/aot-call-report.f $T/hb-compact < /dev/null > $T/hb-compact-call-report.json
 python3 - "$T/hb-compact-call-report.json" <<'PY'
 import json, pathlib, sys
 doc = json.loads(pathlib.Path(sys.argv[1]).read_text())
