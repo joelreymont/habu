@@ -32,6 +32,8 @@ built-in checker, and **rebuilds itself byte-for-byte** (stage2 fixpoint):
 ./tools/bootstrap.sh   # build bin/hb from nothing but gforth (once)
 ./tools/build.sh       # daily rebuild: bin/hb recompiles itself, no gforth
 echo ': SQ dup * ; 7 SQ .' | bin/hb     # batch: program from stdin
+bin/hb script.f arg...                  # script: program from file; args via
+                                        #   SCRIPT-ARGC / SCRIPT-ARGV$
 bin/hb                                  # tty: checked REPL with line editing,
                                         #   history, breakpoints, `step`, and
                                         #   verification of typed definitions

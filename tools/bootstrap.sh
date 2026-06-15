@@ -6,7 +6,19 @@
 set -e
 G=${GFORTH:-$HOME/.local/bin/gforth}
 cd "$(dirname "$0")/.."
-T=${HB_TMP:-/tmp}
+CLEAN_T=0
+if [ -n "${HB_TMP:-}" ]; then
+  T=$HB_TMP
+else
+  T=$(mktemp -d "${TMPDIR:-/tmp}/hb-bootstrap.XXXXXX")
+  CLEAN_T=1
+fi
+mkdir -p "$T"
+export HB_TMP=$T
+cleanup() {
+  [ "$CLEAN_T" = 0 ] || rm -rf "$T"
+}
+trap cleanup EXIT HUP INT TERM
 mkdir -p bin
 SRC=$(./tools/srclist.sh)
 # the compiler source, with the checker hooked (habu type-checks itself)

@@ -15,6 +15,15 @@ $3680 constant ENVP-CELL
 
 : ZLEN {: z :}  0 begin z over + c@ while 1 + repeat ;
 
+: ARGV$ ( i -- a u )  ARGV dup ZLEN ;
+
+: SCRIPT-ARGC ( -- n )
+   ARGC 2 -  dup 0 < if drop 0 then ;
+
+: SCRIPT-ARGV ( i -- z )  2 + ARGV ;
+
+: SCRIPT-ARGV$ ( i -- a u )  SCRIPT-ARGV dup ZLEN ;
+
 \ does the c-string z start with name a/u followed by '='?
 : ENV=? {: z a u :}
    u 0 ?do  z i + c@  a i + c@  = 0= IF unloop 0 exit THEN  loop

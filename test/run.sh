@@ -12,7 +12,19 @@ if [ "$#" -gt 0 ]; then
   echo "usage: test/run.sh"
   exit 64
 fi
-T=${HB_TMP:-/tmp}
+CLEAN_T=0
+if [ -n "${HB_TMP:-}" ]; then
+  T=$HB_TMP
+else
+  T=$(mktemp -d "${TMPDIR:-/tmp}/hb-gate.XXXXXX")
+  CLEAN_T=1
+fi
+mkdir -p "$T"
+export HB_TMP=$T
+cleanup() {
+  [ "$CLEAN_T" = 0 ] || rm -rf "$T"
+}
+trap cleanup EXIT HUP INT TERM
 ./tools/parity-lint.py || { echo "FAIL: parity-lint"; exit 1; }
 ./tools/shadow-lint.py || { echo "FAIL: shadow-lint"; exit 1; }
 ./tools/clobber-lint.py || { echo "FAIL: clobber-lint"; exit 1; }
@@ -35,6 +47,20 @@ out=$(echo 's" w" s" n -- n" trust 7 . : Q 5 dup * . ; Q' | bin/hb)
 25" ] || { echo "FAIL: checked hb trust/run smoke (got: $out)"; exit 1; }
 out=$(echo 's" HOME" getenv nip 0 > .' | bin/hb)
 [ "$out" = "-1" ] || { echo "FAIL: getenv (got: $out)"; exit 1; }
+cat > $T/hb-script-argv.f <<'EOF'
+SCRIPT-ARGC .
+0 SCRIPT-ARGV$ type cr
+1 SCRIPT-ARGV$ type cr
+EOF
+out=$(bin/hb $T/hb-script-argv.f alpha beta)
+[ "$out" = "2
+alpha
+beta" ] || { echo "FAIL: hb script argv mode (got: $out)"; exit 1; }
+set +e
+bin/hb $T/no-such-hb-script.f >/dev/null 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 74 ] || { echo "FAIL: hb missing script rc $rc (want 74)"; exit 1; }
 # hb is checked-Forth: a typed def whose body violates its sig
 # is rejected (unpublished -> calling it exits 70); a correct one runs.
 out=$(printf ': SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | bin/hb 2>/dev/null)

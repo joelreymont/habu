@@ -246,6 +246,17 @@ asserts the hook cell is nonzero plus a checked def runs. Keep direct path write
 behind `PATH0`; a smaller ad-hoc destination can silently invalidate a shared-cap
 guard even when today's literal path is short.
 
+## Native rebuilds need private HB_TMP by default (2026-06-15)
+
+Parallel jj workspaces still share the host `/tmp`, so fixed names such as
+`/tmp/stage2-src` and `/tmp/stage2-got` can race even when agents never touch the
+same checkout. Symptom: `test/run.sh` reported `mv: /tmp/stage2-got: No such
+file or directory` while a direct `tools/build.sh` immediately succeeded. Fix:
+`tools/build.sh`, `tools/bootstrap.sh`, and the native gate allocate a private
+temp dir and export it as `HB_TMP` unless the caller supplied one. Keep explicit
+`HB_TMP` for repro/debug, but never let default automation write shared stage
+artifacts.
+
 Second, `hb-build.sh` makers inherited the toolchain dogfood hook (`CHECK`, infer
 only), so declared false-certs still built: `( i64 -- i64 ) 0=` printed `-1`,
 and malformed `( i64 )` parsed as some other effect. Worse, a modeled rejection

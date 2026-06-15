@@ -8,7 +8,19 @@
 # as bin/hb. No other public artifacts are produced.
 set -e
 cd "$(dirname "$0")/.."
-T=${HB_TMP:-/tmp}
+CLEAN_T=0
+if [ -n "${HB_TMP:-}" ]; then
+  T=$HB_TMP
+else
+  T=$(mktemp -d "${TMPDIR:-/tmp}/hb-rebuild.XXXXXX")
+  CLEAN_T=1
+fi
+mkdir -p "$T"
+export HB_TMP=$T
+cleanup() {
+  [ "$CLEAN_T" = 0 ] || rm -rf "$T"
+}
+trap cleanup EXIT HUP INT TERM
 [ -x bin/hb ] || { echo "no bin/hb — run tools/bootstrap.sh once"; exit 1; }
 
 mkstage() {  # $1 = driver; writes $T/stage2-src (checker hooked)
