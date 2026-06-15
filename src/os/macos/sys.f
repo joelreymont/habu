@@ -5,6 +5,7 @@
 1   constant NR-EXIT
 3   constant NR-READ
 4   constant NR-WRITE
+33  constant NR-ACCESS
 54  constant NR-IOCTL
 184 constant NR-SIGRETURN
 5   constant NR-OPEN
@@ -20,6 +21,8 @@
 197 constant NR-MMAP
 230 constant NR-POLL
 244 constant NR-SPAWN     \ posix_spawn(&pid, path, 0, 0, argv, envp)
+338 constant NR-STAT64
+344 constant NR-GETDIRENTRIES64
 7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
 
 : SYS, ( n -- )  16 swap MOVZ,  $80 SVC, ;

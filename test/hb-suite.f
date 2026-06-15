@@ -85,6 +85,24 @@ create PZB 64 allot
 s" /usr/bin/true" PATHZ run-rc 0 T=
 s" /usr/bin/false" PATHZ run-rc 1 T=
 
+\ filesystem syscalls
+create STB 256 allot
+create DBUF 4096 allot
+create DIRBASE 8 allot
+variable DFD
+: U16@ {: a :} a c@ a 1 + c@ 8 lshift or ;
+: MODE@ STB 4 + U16@ ;
+s" AGENTS.md" PATHZ 0 access 0 T=
+s" /nonexistent-habu-fs" PATHZ 0 access -1 T=
+s" AGENTS.md" PATHZ STB stat64 0 T=
+MODE@ $F000 and $8000 = -1 T=
+s" src" PATHZ STB stat64 0 T=
+MODE@ $F000 and $4000 = -1 T=
+s" src/os/macos" PATHZ open-rd DFD !
+DFD @ 0 >= -1 T=
+0 DIRBASE !
+DFD @ DBUF 4096 DIRBASE getdirentries64 0 > -1 T=
+DFD @ close
 
 \ floats (the f+ prim must be the FLOAT op — it was once shadowed by a
 \ jit fold helper named f+)

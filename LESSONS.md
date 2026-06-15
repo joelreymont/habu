@@ -102,6 +102,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Raw Darwin syscalls are not libc APIs:** `posix_spawn` syscall 244 takes the
   private five-arg kernel ABI `pid*, path, adesc, argv, envp`; `wait4` status
   needs `(status >> 8) & 0xff`. Check carry and errno-in-x0.
+- **Recursive directory walks need per-depth buffers:** `getdirentries64` records
+  are batch-local; recursing with one shared dirent buffer corrupts the parent
+  iteration. Keep directory buffers, offsets, base cookies, and fds indexed by
+  traversal depth.
 - **Process redirection uses XNU spawn descriptors:** empty file-action blobs are
   invalid; pass null descriptors when no fd remapping is requested. Mark
   parent-only pipe/pty fds close-on-exec before spawning or the child can inherit

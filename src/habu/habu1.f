@@ -437,6 +437,14 @@ s" spawn-dup2-action" s" n n --" TRUST
 : BDIE    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
           0 7 0 ADDI,  NR-EXIT SYS, ;
 
+: SYS-PUSH                         \ ( -- ) push x0, or -1 when the syscall carry is set
+   LBL LBL {: ok done :}
+   9 C-CS CSET,  9 ok CBZ,
+      0 0 MOVN,  done B,
+   ok LBL,
+   done LBL,
+   0 G-PUSH ;
+
 : BOPEN   2 G-POP  1 G-POP  0 G-POP  NR-OPEN SYS,  0 G-PUSH ;
 
 : BWRITE  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  0 G-PUSH ;
@@ -444,6 +452,15 @@ s" spawn-dup2-action" s" n n --" TRUST
 : BREAD   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  0 G-PUSH ;
 
 : BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  0 G-PUSH ;
+
+: BOPENRD A G-POP  0 9 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS,  SYS-PUSH ;
+
+: BACCESS 1 G-POP  0 G-POP  NR-ACCESS SYS,  SYS-PUSH ;
+
+: BSTAT64 1 G-POP  0 G-POP  NR-STAT64 SYS,  SYS-PUSH ;
+
+: BGETDIRENTRIES64
+   3 G-POP  2 G-POP  1 G-POP  0 G-POP  NR-GETDIRENTRIES64 SYS,  SYS-PUSH ;
 
 : BPATCH32                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
@@ -557,7 +574,11 @@ s" spawn-dup2-action" s" n n --" TRUST
    s" mono-ns" ['] BMONONS FPRIM-L
    s" evaluate" ['] B-EVAL FPRIM-L
    s" die"  ['] BDIE   FPRIM-L
-   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
+   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
+   s" open-rd" ['] BOPENRD FPRIM-L
+   s" access" ['] BACCESS FPRIM-L   s" stat64" ['] BSTAT64 FPRIM-L
+   s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM-L
+   s" patch32" ['] BPATCH32 FPRIM
    s" close" ['] BCLOSE FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
