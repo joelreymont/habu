@@ -79,12 +79,19 @@ $F2A00009 constant W-MOVK1
 $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3
 \ --- primitive registry (build-side, for the seed dictionary) ---
-create PLBL 96 cells allot   create PEL 96 cells allot
-create PLEN 96 cells allot   create PNAM 96 cells allot
-create PNPOOL 1024 allot   variable PNP   variable #PL
+128 constant PRIM-CAP
+2048 constant PRIM-NAME-CAP
+create PLBL PRIM-CAP cells allot   create PEL PRIM-CAP cells allot
+create PLEN PRIM-CAP cells allot   create PNAM PRIM-CAP cells allot
+create PNPOOL PRIM-NAME-CAP allot   variable PNP   variable #PL
 variable RPD
 
+: ?PRIM-SPACE {: na nu :} ( na nu -- )
+   #PL @ PRIM-CAP >= IF s" primitive registry full" 76 die THEN
+   PNP @ nu + PRIM-NAME-CAP > IF s" primitive name pool full" 76 die THEN ;
+
 : REG-PRIM {: na nu lbl elbl :}
+   na nu ?PRIM-SPACE
    lbl  #PL @ cells PLBL + !
    elbl #PL @ cells PEL  + !
    nu   #PL @ cells PLEN + !

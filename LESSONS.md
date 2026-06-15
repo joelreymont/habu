@@ -89,6 +89,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **AOT closure stress protects old overflow bugs:** when feature growth hits
   dictionary guards, move the guard/capacity; do not shrink the >256-word closure
   fixture below the old failure threshold.
+- **Primitive registry growth needs explicit guards:** adding process primitives
+  overflowed the old 96-entry seed registry and corrupted the generated stage
+  image. Keep registry/name-pool capacities named and checked in `REG-PRIM` so
+  growth fails closed at build time.
 
 ## Darwin And Syscalls
 
