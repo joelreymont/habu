@@ -134,6 +134,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Trust is audited, not permanent:** native `trust` records asserted effects so
   callers are checked, but audit rows must stay current and stale dates must fail
   lint.
+- **Effect drift checks must compare full normalized tokens:** returning on the
+  first shared whitespace made `n --` equal `n -- n`. Tokenize/advance through
+  the whole effect when comparing manifest text.
 - **Shadowing prim names is a class of bug:** later toolchain words can replace
   primitive dictionary entries and checker signatures. `shadow-lint` gates this.
 - **Useful register lint needs contracts:** clobber analysis must model callee

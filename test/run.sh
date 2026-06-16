@@ -29,7 +29,8 @@ cat tools/lint/lib.f tools/lint/parity-lint.f | bin/hb || { echo "FAIL: parity-l
 cat tools/lint/lib.f tools/lint/shadow-lint.f | bin/hb || { echo "FAIL: shadow-lint"; exit 1; }
 cat tools/lint/lib.f tools/lint/clobber-lint.f | bin/hb || { echo "FAIL: clobber-lint"; exit 1; }
 cat tools/lint/lib.f tools/repl-lint.f | bin/hb || { echo "FAIL: repl-lint"; exit 1; }
-./tools/trust-lint.py || { echo "FAIL: trust-lint"; exit 1; }
+cat tools/lint/lib.f tools/fs.f tools/trust-lint.f | bin/hb || { echo "FAIL: trust-lint"; exit 1; }
+./tools/trust-lint-test.sh || { echo "FAIL: trust-lint fixtures"; exit 1; }
 cat tools/lint/lib.f tools/fs.f tools/stale-status-lint.f | bin/hb || { echo "FAIL: stale-status-lint"; exit 1; }
 cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint"; exit 1; }
 [ -x bin/hb ] || { echo "no bin/hb — run tools/bootstrap.sh once"; exit 1; }
@@ -157,7 +158,7 @@ assert doc["schema_version"] == 1, doc
 assert defs["SQUARE"]["signature"] == "(i64 -- i64)", defs["SQUARE"]
 assert defs["APPLY"]["signature"] == "(i64 [ i64 -- i64 ] -- i64)", defs["APPLY"]
 PY
-TRUST_LINT_TODAY=2026-10-01 ./tools/trust-lint.py >$T/trust-stale.out 2>&1 && { echo "FAIL: trust-lint accepted stale audit dates"; exit 1; }
+TRUST_LINT_TODAY=2026-10-01 sh -c 'cat tools/lint/lib.f tools/fs.f tools/trust-lint.f | bin/hb' >$T/trust-stale.out 2>&1 && { echo "FAIL: trust-lint accepted stale audit dates"; exit 1; }
 grep -q 'STALE-AUDIT' $T/trust-stale.out || { echo "FAIL: trust-lint stale audit diagnostic missing"; exit 1; }
 echo "PASS: checked bin/hb + getenv + sig-check (rows+quots)"
 # property-based soundness smoke, SELF-HOSTED in habu: generate typed defs,

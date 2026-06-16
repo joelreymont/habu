@@ -56,7 +56,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 - **Never use TRUST without:** (a) a `TRUSTED.md` audit entry — word, asserted
   effect, why it can't be inferred, who verified it; and (b) a `T{ … -> … }T`
   test proving the runtime behavior matches the asserted effect.
-  `tools/trust-lint.py` enforces this.
+  `tools/trust-lint.f` enforces this.
 
 ## 6. Test every word
 - Add a `T{ … -> … }T` for each word as you write it — happy path plus each

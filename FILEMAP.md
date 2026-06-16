@@ -58,7 +58,8 @@ points stay listed.
 - `tools/public-signatures.f` — emits typed public-word manifests for agents.
 - `tools/aot-call-report.f` — measures patched AOT call-stencil padding.
 - `tools/filemap-lint.f` — freshness lint for this file.
-- `tools/trust-lint.py` — `TRUSTED.md` drift lint.
+- `tools/trust-lint.f` — `TRUSTED.md` drift lint.
+- `tools/trust-lint-test.sh` — fixture coverage for `TRUSTED.md` drift lint.
 - `tools/stale-status-lint.f` — stale status/count lint.
 
 ## Tests And Benchmarks

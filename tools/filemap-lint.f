@@ -98,7 +98,8 @@ variable FM-NUM-L
    s" tools/public-signatures.f" FM-REQ
    s" tools/aot-call-report.f" FM-REQ
    s" tools/filemap-lint.f" FM-REQ
-   s" tools/trust-lint.py" FM-REQ
+   s" tools/trust-lint.f" FM-REQ
+   s" tools/trust-lint-test.sh" FM-REQ
    s" tools/stale-status-lint.f" FM-REQ
    s" test/run.sh" FM-REQ
    s" test/t-sh-jdiag.fs" FM-REQ
