@@ -2,7 +2,7 @@
 
 Last verified: 2026-06-16
 Gate: passing
-Certified: 977  Uncheckable: 2  Rejected: 0
+Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 
 This is the single source of truth for the self-check counts. Other docs
@@ -22,8 +22,8 @@ builder checks. Gforth is bootstrap-only; `tools/bootstrap-oracle.sh` exists
 for changes to the bootstrap seed/reference mirror and recovery validation.
 
 History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling,
-890/0/0 after that model landed, and 977/2/0 after the native primitive,
-combinator, and parsing-word gap closures. The 9 formerly-uncheckable words
+890/0/0 after that model landed, and 979/0/0 after the native primitive,
+combinator, parsing-word, and stage2 utility signature gap closures. The 9 formerly-uncheckable words
 (`ENV=?`, `GETENV`, `TMP-PATH`, `SHK-TOK=`, `KEEP?`, `FPRIM`, `FPRIM-L`,
 `EM-INTERPRET`, `EM-COMPILE`) all hinged on early `exit`; teaching the checker a
 sound `exit`/`unloop` model certified them and their callers. See `LESSONS.md`

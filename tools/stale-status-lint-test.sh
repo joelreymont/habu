@@ -12,7 +12,7 @@ cat > "$T/STATUS.md" <<'EOF'
 # Status
 
 Last verified: 2026-06-16
-Certified: 977  Uncheckable: 2  Rejected: 0
+Certified: 979  Uncheckable: 0  Rejected: 0
 EOF
 cat > "$T/LESSONS.md" <<'EOF'
 Historical 783/0/0 count is allowed here.

@@ -465,6 +465,7 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" open" s" n n n -- n" PT+
    s" read" s" n n n -- n" PT+
    s" ioctl" s" n n n -- n" PT+
+   s" path0" s" n n -- n" PT+
    s" open-rd" s" n -- n" PT+
    s" access" s" n n -- n" PT+
    s" stat64" s" n n -- n" PT+
