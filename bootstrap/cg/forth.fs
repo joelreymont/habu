@@ -29,6 +29,8 @@ $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 $1C000  constant DICT-SIZE     \ dict area at region+0 (112 KB); code area follows
 48      constant DREC          \ dict record: addr(8) clen(8) namelen(8) name(16) wid(8)
+16      constant DNAME-INL
+$200    constant DNAME-EXT
 2304    constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..2303 end exactly at CFSTK.
 $1B000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
 $300000 constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
@@ -443,16 +445,19 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 \ search-wl ( a u wid -- addr|0 ): find name (a,u) in wordlist wid (case-folded)
 : BSWL
+   LBL LBL LBL LBL LBL LBL LBL LBL {: wl wend wnext wcmp wmatch wf1 wf2 winl :}
    2 G-POP  1 G-POP  0 G-POP                      \ wid=x2, u=x1, a=x0
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,   \ fold mask, rec, count, result
-   LBL {: wl :} LBL {: wend :} LBL {: wnext :} LBL {: wcmp :}
-   LBL {: wmatch :} LBL {: wf1 :} LBL {: wf2 :}
    wl LBL,  6 wend CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,    \ wid mismatch
-      9 5 16 LDR,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
+      9 5 16 LDR,  9 9 $FF ANDI,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
+      16 5 24 ADDI,
+      9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 winl CBZ,
+         16 5 24 LDR,
+      winl LBL,
       7 0 MOVZ,
       wcmp LBL,  7 1 CMP,  C-GE wmatch BCOND,
-         9 5 24 ADDI,  9 9 7 ADD,  9 9 0 LDRB,    \ rec.name[j]
+         9 16 7 ADD,  9 9 0 LDRB,                 \ rec.name[j]
          9 $41 CMPI,  C-LT wf1 BCOND,  9 $5A CMPI,  C-GT wf1 BCOND,  9 9 3 ORR,
          wf1 LBL,
          10 0 7 ADD,  10 10 0 LDRB,               \ a[j]
@@ -642,16 +647,19 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ ---- FIND ( x9=tka x10=tkl -- x11=addr x12=clen x13=found|imm<<1 ) over 40-byte records ----
 : EMIT-FIND ( -- )
    LFIND @ LBL,
+   LBL LBL LBL LBL LBL LBL {: floop fdone fnext fcmp fmatch finl :}
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  13 0 MOVZ,           \ rec, remaining, found=0
-   LBL {: floop :}  LBL {: fdone :}  LBL {: fnext :}
-   LBL {: fcmp :}   LBL {: fmatch :}
    floop LBL,
       6 fdone CBZ,
       14 5 16 LDR,  14 14 $FF ANDI,  14 10 CMP,  C-NE fnext BCOND,         \ namelen != tkl
+      16 5 24 ADDI,
+      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 finl CBZ,
+         16 5 24 LDR,
+      finl LBL,
       7 0 MOVZ,                                            \ i=0
       fcmp LBL,
          7 10 CMP,  C-GE fmatch BCOND,
-         15 5 24 ADDI,  15 15 7 ADD,  15 15 0 LDRB,        \ rec.name[i]
+         15 16 7 ADD,  15 15 0 LDRB,                       \ rec.name[i]
          3 15 $41 SUBI,  3 26 CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,  \ fold A-Z->a-z
          4 9 7 ADD,     4 4 0 LDRB,                         \ tok[i]
          3 4 $41 SUBI,   3 26 CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,     \ fold A-Z->a-z
@@ -1214,6 +1222,41 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    10 G-POP
    nohk LBL, ;
 
+: C-STORE-NAME ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL {: short fail capok lcopy lcd scopy scd done :}
+   12 DATA TKL-CELL LDR,
+   12 256 CMPI,  C-GE fail BCOND,
+   13 12 0 ADDI,
+   12 DNAME-INL CMPI,  C-LE short BCOND,
+      14 DNAME-EXT MOVZ,  13 13 14 ORR,  13 9 16 STR,
+      15 12 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI,
+      16 CP 15 ADD,
+      10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  16 10 CMP,  C-LT capok BCOND,
+         fail B,
+      capok LBL,
+      CP 9 24 STR,
+      10 DATA TKA-CELL LDR,
+      11 CP 0 ADDI,
+      14 12 0 ADDI,
+      lcopy LBL,  14 lcd CBZ,
+         15 10 0 LDRB,  15 11 0 STRB,
+         10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  lcopy B,
+      lcd LBL,
+      CP 16 0 ADDI,
+      done B,
+   short LBL,
+      13 9 16 STR,
+      11 9 24 ADDI,  10 DATA TKA-CELL LDR,  14 12 0 ADDI,
+      scopy LBL,  14 scd CBZ,
+         15 10 0 LDRB,  15 11 0 STRB,
+         10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  scopy B,
+      scd LBL,
+      done B,
+   fail LBL,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 76 MOVZ,  NR-EXIT SYS,
+   done LBL, ;
+
 : C-FIND-TRUST  LBL {: ok :}
    9 LKWTRUST @ ADR,  10 5 MOVZ,  LFIND @ BL,
    13 ok CBNZ,
@@ -1235,19 +1278,16 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
 \ applies to top-level creates. When a trusted definer arms CRSIG, runtime CREATE
 \ records the created word's declared effect with TRUST before the optional hook.
 : EMIT-CREATE ( -- )
-   LBL LBL LBL LBL {: ncp ncpd nocr nokind :}
+   LBL LBL {: nocr nokind :}
    LCREATE @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  15 SP 8 STR,
    2 3 MOVZ,  LPROT @ BL,                               \ region -> RW
    LTOK @ BL,                                            \ read NAME
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot
-   CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,                            \ slot.addr=CP, namelen
+   C-STORE-NAME
+   CP 9 0 STR,
    14 DATA CUR-CELL LDR,  14 9 40 STR,                   \ slot.wid = CURRENT
-   10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,         \ copy name
-   ncp LBL,  12 ncpd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
-      10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncp B,
-   ncpd LBL,
    11 DATA 0 LDR,                                        \ x11 = DP (body pushes it)
    C-LIT                                                 \ emit movz/movk x9=DP + push
    9 W-RET LIT64,  LCEMIT @ BL,                          \ emit RET
@@ -1274,14 +1314,10 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
 : C-CONSTANT ( -- )
    2 3 MOVZ,  LPROT @ BL,  LTOK @ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
-   15 G-POP                                             \ n -> x15 AFTER LBCAP (it clobbers x15)
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
-   10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
-   LBL {: kcp :}  LBL {: kcd :}
-   kcp LBL,  12 kcd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
-      10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  kcp B,
-   kcd LBL,
+   C-STORE-NAME
+   15 G-POP                                             \ n -> x15 after name storage (clobbers x15)
+   CP 9 0 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
    11 15 0 ADDI,  C-LIT                                 \ body: push n
    9 W-RET LIT64,  LCEMIT @ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
@@ -1754,14 +1790,9 @@ variable CFSK2
          LTOK @ BL,                                         \ read NAME
          9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,  \ slot
          9 DATA PEND-CELL STR,
-         CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,                         \ slot.addr=CP, slot.namelen
+         C-STORE-NAME
+         CP 9 0 STR,
          14 DATA CUR-CELL LDR,  14 9 40 STR,                \ slot.wid = CURRENT
-         10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,      \ copy name
-         LBL {: ncopy :}  LBL {: ncd :}
-         ncopy LBL,  12 ncd CBZ,
-            13 11 0 LDRB,  13 10 0 STRB,
-            10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncopy B,
-         ncd LBL,
          5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,   \ reset CFSP
          12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,      \ reset locals
          12 0 MOVZ,  12 DATA BODYLEN-CELL STR,                           \ reset body capture

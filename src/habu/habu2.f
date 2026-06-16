@@ -408,9 +408,14 @@ create ENDLOC-KW 58 c, 125 c,
    SP SP 16 SUBI,  30 SP 0 STR,  11 BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 : C-CALL-TRUST-PEND ( -- )
+   LBL {: pinl :}
    C-FIND-TRUST
    12 DATA PEND-CELL LDR,
-   9 12 24 ADDI,  9 G-PUSH
+   9 12 24 ADDI,
+   10 12 16 LDR,  10 10 DNAME-EXT ANDI,  10 pinl CBZ,
+      9 12 24 LDR,
+   pinl LBL,
+   9 G-PUSH
    9 12 16 LDR,  9 9 $FF ANDI,  9 G-PUSH
    9 DATA TSIG-A-CELL LDR,  9 G-PUSH
    9 DATA TSIG-U-CELL LDR,  9 G-PUSH
@@ -557,20 +562,52 @@ create ENDLOC-KW 58 c, 125 c,
    10 G-POP
    nohk LBL, ;
 
+: C-STORE-NAME ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL {: short fail capok lcopy lcd scopy scd done :}
+   12 DATA TKL-CELL LDR,
+   12 256 CMPI,  C-GE fail BCOND,
+   13 12 0 ADDI,
+   12 DNAME-INL CMPI,  C-LE short BCOND,
+      14 DNAME-EXT MOVZ,  13 13 14 ORR,  13 9 16 STR,
+      15 12 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI,
+      16 CP 15 ADD,
+      10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  16 10 CMP,  C-LT capok BCOND,
+         fail B,
+      capok LBL,
+      CP 9 24 STR,
+      10 DATA TKA-CELL LDR,
+      11 CP 0 ADDI,
+      14 12 0 ADDI,
+      lcopy LBL,  14 lcd CBZ,
+         15 10 0 LDRB,  15 11 0 STRB,
+         10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  lcopy B,
+      lcd LBL,
+      CP 16 0 ADDI,
+      done B,
+   short LBL,
+      13 9 16 STR,
+      11 9 24 ADDI,  10 DATA TKA-CELL LDR,  14 12 0 ADDI,
+      scopy LBL,  14 scd CBZ,
+         15 10 0 LDRB,  15 11 0 STRB,
+         10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  scopy B,
+      scd LBL,
+      done B,
+   fail LBL,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 76 MOVZ,  NR-EXIT SYS,
+   done LBL, ;
+
 : EMIT-CREATE
-   LBL LBL LBL LBL {: ncp ncpd nocr nokind :}
+   LBL LBL {: nocr nokind :}
    LCREATE @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  15 SP 8 STR,
    2 3 MOVZ,  LPROT @ BL,
    LTOK @ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,
+   C-STORE-NAME
+   CP 9 0 STR,
    14 DATA CUR-CELL LDR,  14 9 40 STR,
-   10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
-   ncp LBL,  12 ncpd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
-      10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncp B,
-   ncpd LBL,
    11 DATA 0 LDR,
    C-LIT
    9 W-RET LIT64,  LCEMIT @ BL,
@@ -593,16 +630,12 @@ create ENDLOC-KW 58 c, 125 c,
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;
 
 : C-CONSTANT
-   LBL LBL {: kcp kcd :}
    2 3 MOVZ,  LPROT @ BL,  LTOK @ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
-   15 G-POP                                             \ n -> x15 AFTER LBCAP (it clobbers x15)
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
-   10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
-   kcp LBL,  12 kcd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
-      10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  kcp B,
-   kcd LBL,
+   C-STORE-NAME
+   15 G-POP                                             \ n -> x15 after name storage (clobbers x15)
+   CP 9 0 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
    11 15 0 ADDI,  C-LIT
    9 W-RET LIT64,  LCEMIT @ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
@@ -663,7 +696,7 @@ create ENDLOC-KW 58 c, 125 c,
    done LBL, ;
 
 : C-TRUSTED
-   LBL LBL LBL LBL LBL LBL LBL {: ncopy ncd cpok ndok notcre creok done :}
+   LBL LBL LBL LBL LBL {: cpok ndok notcre creok done :}
    2 3 MOVZ,  LPROT @ BL,
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -676,13 +709,9 @@ create ENDLOC-KW 58 c, 125 c,
    LTOK @ BL,  0 done CBZ,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    9 DATA PEND-CELL STR,
-   CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,
+   C-STORE-NAME
+   CP 9 0 STR,
    14 DATA CUR-CELL LDR,  14 9 40 STR,
-   10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
-   ncopy LBL,  12 ncd CBZ,
-      13 11 0 LDRB,  13 10 0 STRB,
-      10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncopy B,
-   ncd LBL,
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
    12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
    12 DATA BODYLEN-CELL STR,
@@ -1128,7 +1157,7 @@ s" cfbn-entry" s" n ptr a n n n --" TRUST
       9 DATA PEND-CELL LDR,  9 LCOMPILE @ CBNZ, ;
 
 : EM-INTERPRET
-   LBL LBL LBL LBL LBL LBL {: lnotcolon ncopy ncd lnotnum cpok ndok :}
+   LBL LBL LBL LBL {: lnotcolon lnotnum cpok ndok :}
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotcolon BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,
       2 3 MOVZ,  LPROT @ BL,
@@ -1143,13 +1172,9 @@ s" cfbn-entry" s" n ptr a n n n --" TRUST
       LTOK @ BL,
       9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
       9 DATA PEND-CELL STR,
-      CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,
+      C-STORE-NAME
+      CP 9 0 STR,
       14 DATA CUR-CELL LDR,  14 9 40 STR,
-      10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
-      ncopy LBL,  12 ncd CBZ,
-         13 11 0 LDRB,  13 10 0 STRB,
-         10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncopy B,
-      ncd LBL,
       5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
       12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
       12 0 MOVZ,  12 DATA BODYLEN-CELL STR,

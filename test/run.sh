@@ -81,6 +81,17 @@ out=$(printf 'TRUSTED: TLEAK ( n -- n ) dup ;\ns" TUSE ( n -- n ) TLEAK" CHECK! 
 0
 5
 5" ] || { echo "FAIL: hb TRUSTED: effect recording (got: $out)"; exit 1; }
+out=$(printf ': LONG-DICTIONARY-NAME-ADDONE ( i64 -- i64 ) 1 + ;\n41 LONG-DICTIONARY-NAME-ADDONE .\n123 constant LONG-DICTIONARY-CONSTANT\nLONG-DICTIONARY-CONSTANT .\nvariable LONG-DICTIONARY-VARIABLE\n77 LONG-DICTIONARY-VARIABLE !\nLONG-DICTIONARY-VARIABLE @ .\ns" LONG-DICTIONARY-NAME-ADDONE" get-current search-wl 0= .\ns" long-dictionary-name-addone" get-current search-wl 0= .\n: LONG-REDEFINE-NAME ( -- i64 ) 1 ;\n: LONG-REDEFINE-NAME ( -- i64 ) 2 ;\nLONG-REDEFINE-NAME .\nTRUSTED: LONG-DICTIONARY-TRUSTED ( n -- n ) dup ;\ns" USE ( n -- n ) LONG-DICTIONARY-TRUSTED" CHECK! .\ns" BAD ( n -- n n ) LONG-DICTIONARY-TRUSTED" CHECK! .\n9 LONG-DICTIONARY-TRUSTED . .\n' | bin/hb 2>/dev/null)
+[ "$out" = "42
+123
+77
+0
+0
+2
+-1
+0
+9
+9" ] || { echo "FAIL: hb long dictionary names (got: $out)"; exit 1; }
 out=$(printf 'TRUSTED: ARR ( n -- ) CREATES ( n -- ptr a ) create cells allot does> swap 0 ?do cell+ loop ;\n4 ARR A4\ns" USE ( n -- ptr a ) A4" CHECK! .\n7 2 A4 !\n2 A4 @ .\n' | bin/hb 2>/dev/null)
 [ "$out" = "-1
 7" ] || { echo "FAIL: hb trusted CREATE...DOES> effect recording (got: $out)"; exit 1; }

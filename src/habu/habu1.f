@@ -12,6 +12,8 @@ $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 $1C000  constant DICT-SIZE
 48      constant DREC
+16      constant DNAME-INL
+$200    constant DNAME-EXT
 2304    constant DICT-CAP  \ CFSTK-OFF / DREC; slots 0..2303 end exactly at CFSTK.
 $1B000  constant CFSTK-OFF
 $300000 constant DATA-SIZE
@@ -592,15 +594,19 @@ s" spawn-dup2-action" s" n n --" TRUST
 : BSETCHECK  A G-POP  A DATA HOOK-CELL STR, ;
 
 : BSWL
-   LBL LBL LBL LBL LBL LBL LBL {: wl wend wnext wcmp wmatch wf1 wf2 :}
+   LBL LBL LBL LBL LBL LBL LBL LBL {: wl wend wnext wcmp wmatch wf1 wf2 winl :}
    2 G-POP  1 G-POP  0 G-POP
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,
    wl LBL,  6 wend CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,
-      9 5 16 LDR,  9 1 CMP,  C-NE wnext BCOND,
+      9 5 16 LDR,  9 9 $FF ANDI,  9 1 CMP,  C-NE wnext BCOND,
+      16 5 24 ADDI,
+      9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 winl CBZ,
+         16 5 24 LDR,
+      winl LBL,
       7 0 MOVZ,
       wcmp LBL,  7 1 CMP,  C-GE wmatch BCOND,
-         9 5 24 ADDI,  9 9 7 ADD,  9 9 0 LDRB,
+         9 16 7 ADD,  9 9 0 LDRB,
          9 $41 CMPI,  C-LT wf1 BCOND,  9 $5A CMPI,  C-GT wf1 BCOND,  9 9 3 ORR,
          wf1 LBL,
          10 0 7 ADD,  10 10 0 LDRB,
@@ -798,15 +804,19 @@ s" emit-fp-prims" s" --" TRUST
 
 : EMIT-FIND
    LFIND @ LBL,
-   LBL LBL LBL LBL LBL {: floop fdone fnext fcmp fmatch :}
+   LBL LBL LBL LBL LBL LBL {: floop fdone fnext fcmp fmatch finl :}
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  13 0 MOVZ,
    floop LBL,
       6 fdone CBZ,
       14 5 16 LDR,  14 14 $FF ANDI,  14 10 CMP,  C-NE fnext BCOND,
+      16 5 24 ADDI,
+      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 finl CBZ,
+         16 5 24 LDR,
+      finl LBL,
       7 0 MOVZ,
       fcmp LBL,
          7 10 CMP,  C-GE fmatch BCOND,
-         15 5 24 ADDI,  15 15 7 ADD,  15 15 0 LDRB,
+         15 16 7 ADD,  15 15 0 LDRB,
          3 15 $41 SUBI,  3 26 CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
          4 9 7 ADD,     4 4 0 LDRB,
          3 4 $41 SUBI,   3 26 CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,

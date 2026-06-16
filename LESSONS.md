@@ -98,6 +98,8 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   overflowed the old 96-entry seed registry and corrupted the generated stage
   image. Keep registry/name-pool capacities named and checked in `REG-PRIM` so
   growth fails closed at build time.
+- **Label locals must match label values exactly:** an extra local name consumes
+  stale generator stack state and can crash much later in unrelated emitted code.
 - **Checked process code uses modeled primitives:** `run-rc` executes but is not
   checker-modeled. Use `spawn-io wait-rc` in checked examples until `run-rc` is
   expressed as a checked wrapper or given an audited checker model.
@@ -147,6 +149,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   LR/SP conventions; raw write-before-BL/read-after-BL rules are mostly false.
 - **Stale binaries hide fixes:** never silence the build while debugging the code
   it builds. Remove output artifacts before generate-then-run tests.
+- **Dictionary name users share one decoder:** long-name records store flags in
+  length and may point outside the record; `find`, `search-wl`, and trust
+  recording must mask length and honor the external-name flag.
 
 ## Environment
 
