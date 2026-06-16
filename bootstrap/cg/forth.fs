@@ -30,7 +30,7 @@ $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 $1C000  constant DICT-SIZE     \ dict area at region+0 (112 KB); code area follows
 48      constant DREC          \ dict record: addr(8) clen(8) namelen(8) name(16) wid(8)
 $1B000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
-$200000 constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
+$300000 constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
 $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 \ x20 (RBASE) is dead after startup, so it doubles as DATA: the data-space base.
 \ [x20] holds DP (next-free pointer); usable space is [x20+8 .. x20+DATA-SIZE).
@@ -330,11 +330,22 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ data space: DP cell is [x20]; HERE/ALLOT/,/C, bump it (x20 region is always RW)
 : BHERE   7 DATA 0 LDR,  7 G-PUSH ;
 
-: BALLOT  A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DATA 0 STR, ;
+: DP-CHECK {: reg -- :}
+   LBL LBL {: low-ok high-ok :}
+   5 DATA-START MOVZ,  5 DATA 5 ADD,
+   reg 5 CMP,  C-GE low-ok BCOND,
+      0 76 MOVZ,  NR-EXIT SYS,
+   low-ok LBL,
+   5 DATA-SIZE LIT64,  5 DATA 5 ADD,
+   reg 5 CMP,  C-LE high-ok BCOND,
+      0 76 MOVZ,  NR-EXIT SYS,
+   high-ok LBL, ;
 
-: BCOMMA  A G-POP  7 DATA 0 LDR,  A 7 0 STR,  7 7 8 ADDI,  7 DATA 0 STR, ;
+: BALLOT  A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
 
-: BCCOMMA A G-POP  7 DATA 0 LDR,  A 7 0 STRB, 7 7 1 ADDI,  7 DATA 0 STR, ;
+: BCOMMA  A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR, ;
+
+: BCCOMMA A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
 
 : BTYPE   2 G-POP  1 G-POP  0 1 MOVZ,  NR-WRITE SYS, ;   \ ( addr len -- ) write(1,..)
 
@@ -1215,7 +1226,7 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
 : C-CREATE ( -- )  15 1 MOVZ,  LCREATE @ BL, ;
 
 : C-VARIABLE ( -- )  C-CREATE
-   7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;          \ reserve 1 cell
+   7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;          \ reserve 1 cell
 
 \ CONSTANT ( n -- ) "name": define a word that pushes n. Pop n first (x15
 \ survives the name copy), then emit a literal-push body via C-LIT (x11=n).
@@ -1370,6 +1381,7 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
    sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,             \ x10 = len; skip closing "
    12 DATA 0 LDR,  15 12 0 ADDI,                        \ x12 = DP, x15 = string base
+   14 12 10 ADD,  14 DP-CHECK
    11 13 0 ADDI,  9 10 0 ADDI,
    LBL {: cl :}  LBL {: cd :}
    cl LBL,  9 cd CBZ,

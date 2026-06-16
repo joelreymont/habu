@@ -191,6 +191,23 @@ variable JSON-DIAGS   0 JSON-DIAGS !
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    tv DCUR @ MK-PUSH DCUR ! ;
+
+: RS2->R                                   \ 2>r : data pair -> return row
+   FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
+   DCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
+   rest DCUR !
+   t1 RCUR @ MK-PUSH  t2 swap MK-PUSH  RCUR ! ;
+
+: RS2R>                                    \ 2r> : return pair -> data row
+   FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
+   RCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
+   rest RCUR !
+   t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR ! ;
+
+: RS2R@                                    \ 2r@ : peek return pair
+   FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
+   RCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
+   t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR ! ;
 variable QTT  variable QD2  variable QR2
 
 : RSEXEC   \ execute: pop the xt; apply its quot effect (or bind a var to one)
@@ -220,8 +237,11 @@ variable RSH
    a u s" >r" STR= IF RS->R ELSE
    a u s" r>" STR= IF RSR> ELSE
    a u s" r@" STR= IF RSR@ ELSE
+   a u s" 2>r" STR= IF RS2->R ELSE
+   a u s" 2r>" STR= IF RS2R> ELSE
+   a u s" 2r@" STR= IF RS2R@ ELSE
    a u s" execute" STR= IF RSEXEC ELSE
-   0 RSH ! THEN THEN THEN THEN
+   0 RSH ! THEN THEN THEN THEN THEN THEN THEN
    RSH @ ;
 
 \ --- generic signature parser: build a step effect from a textual " in -- out "
@@ -393,6 +413,8 @@ create SDQN 2 allot  115 SDQN c!  34 SDQN 1 + c!     \ the two chars of `s"`
    s" -rot" s" a b c -- c a b" PT+
    s" 2dup" s" a b -- a b a b" PT+
    s" 2drop" s" a b --" PT+
+   s" 2swap" s" a b c d -- c d a b" PT+
+   s" 2over" s" a b c d -- a b c d a b" PT+
    s" +" s" n n -- n" PT+
    s" -" s" n n -- n" PT+
    s" *" s" n n -- n" PT+
@@ -413,13 +435,22 @@ create SDQN 2 allot  115 SDQN c!  34 SDQN 1 + c!     \ the two chars of `s"`
    s" >=" s" n n -- f" PT+
    s" /" s" n n -- n" PT+
    s" mod" s" n n -- n" PT+
+   s" /mod" s" n n -- n n" PT+
+   s" abs" s" n -- n" PT+
+   s" min" s" n n -- n" PT+
+   s" max" s" n n -- n" PT+
    s" lshift" s" n n -- n" PT+
    s" rshift" s" n n -- n" PT+
    s" cells" s" n -- n" PT+
+   s" cell+" s" n -- n" PT+
+   s" chars" s" n -- n" PT+
+   s" char+" s" n -- n" PT+
    s" @" s" n -- n" PT+
    s" !" s" a n --" PT+
+   s" +!" s" n a --" PT+
    s" c@" s" n -- n" PT+
    s" c!" s" a n --" PT+
+   s" count" s" n -- n n" PT+
    s" ." s" n --" PT+
    s" .s" s" --" PT+
    s" here" s" -- n" PT+

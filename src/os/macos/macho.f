@@ -1,9 +1,9 @@
 \ macho.fs — the FULL Mach-O builder, transcribed from bootstrap/cg/macho.fs for the
 \ engine-builder port: header + 6 load commands (PAGEZERO, TEXT+__text, LINKEDIT,
-\ DYLINKER, MAIN, DYLIB libSystem), slack to $1000, code at $1000, padded to one
-\ page. Canonical UNSIGNED artifact; sign.fs post-pass adds the ad-hoc signature.
+\ DYLINKER, MAIN, DYLIB libSystem), slack to $1000, code at $1000, and TEXT sized
+\ to content. Canonical UNSIGNED artifact; sign.fs post-pass adds the ad-hoc signature.
 \ Golden byte-for-byte vs habu in test/t-sh-macho.fs. Code comes from icode's CODE.
-$50000 constant MSIZE
+$90000 constant MSIZE
 create MBUF MSIZE allot
 variable MP
 variable MLEN
@@ -42,13 +42,14 @@ $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $100000000 constant VMBASE
 $1000     constant CODE-OFF          \ entry file offset (slack below for codesign)
-$40000    constant MPAGE             \ __TEXT file/vm size; __LINKEDIT starts here
+$80000    constant MPAGE             \ maximum generated code window for builder images
 variable CODELEN
 
 : ASM-CODE  ASM-LEN CODELEN ! ;      \ code already assembled in icode's CODE
 
 \ __TEXT sized to CONTENT (16 KB pages), not a fixed page count: a 24 KB
-\ program is a 28 KB binary, not 264 KB. MPAGE survives as the buffer cap.
+\ program is a 28 KB binary, not a fixed-cap binary. MPAGE is only the fail-closed
+\ maximum generated-code window for builder images.
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $3FFF +  $3FFF invert and ;
 variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign post-pass)
 

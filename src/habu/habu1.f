@@ -13,7 +13,7 @@ $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 $1C000  constant DICT-SIZE
 48      constant DREC
 $1B000  constant CFSTK-OFF
-$200000 constant DATA-SIZE
+$300000 constant DATA-SIZE
 $100000 constant IBUFSZ
 20 constant DATA
 0   constant DP-CELL    8  constant HND-CELL
@@ -131,6 +131,7 @@ variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 9 constant A   10 constant B   11 constant C
+12 constant DREG  13 constant EREG
 
 \ ---- primitive bodies (operate on the x19 data stack) ----
 : B+   B G-POP  A G-POP  A A B ADD,  A G-PUSH ;
@@ -400,6 +401,14 @@ s" spawn-dup2-action" s" n n --" TRUST
 
 : BMOD B G-POP A G-POP  BDIV0?  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
 
+: BDIVMOD B G-POP A G-POP  BDIV0?  C A B SDIV,  DREG C B MUL,  A A DREG SUB,  A G-PUSH C G-PUSH ;
+
+: BABS A G-POP  A 0 CMPI,  LBL {: done :}  C-GE done BCOND,  A SP A SUB,  done LBL,  A G-PUSH ;
+
+: BMIN B G-POP A G-POP  A B CMP,  LBL {: done :}  C-LE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
+
+: BMAX B G-POP A G-POP  A B CMP,  LBL {: done :}  C-GE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
+
 : BNIP  A G-POP  XDS XDS 8 SUBI,  A G-PUSH ;
 
 : BOVER B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH ;
@@ -414,9 +423,17 @@ s" spawn-dup2-action" s" n n --" TRUST
 
 : B2DROP XDS XDS 16 SUBI, ;
 
+: B2SWAP EREG G-POP DREG G-POP C G-POP A G-POP  DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
+
+: B2OVER EREG G-POP DREG G-POP C G-POP A G-POP  A G-PUSH C G-PUSH DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
+
+: BQDUP A G-POP  A G-PUSH  LBL {: done :}  A done CBZ,  A G-PUSH  done LBL, ;
+
 : BFETCH  A G-POP  A A 0 LDR,  A G-PUSH ;
 
 : BSTORE  B G-POP A G-POP  A B 0 STR, ;
+
+: BPLUSSTORE B G-POP A G-POP  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
 : BCFETCH A G-POP  A A 0 LDRB, A G-PUSH ;
 
@@ -424,13 +441,51 @@ s" spawn-dup2-action" s" n n --" TRUST
 
 : BCELLS  A G-POP  A A 3 LSLI, A G-PUSH ;
 
+: BCELLPLUS A G-POP  A A 8 ADDI, A G-PUSH ;
+
+: BCHARS ;
+
+: BCHARPLUS A G-POP  A A 1 ADDI, A G-PUSH ;
+
+: BCOUNT A G-POP  B A 0 LDRB,  A A 1 ADDI,  A G-PUSH  B G-PUSH ;
+
+: RSTK-PUSH {: reg :}
+   14 DATA RSP-CELL LDR,
+   15 14 3 LSLI,  15 DATA 15 ADD,
+   reg 15 RSTK-OFF STR,
+   14 14 1 ADDI,  14 DATA RSP-CELL STR, ;
+
+: RSTK-POP {: reg :}
+   14 DATA RSP-CELL LDR,
+   14 14 1 SUBI,
+   15 14 3 LSLI,  15 DATA 15 ADD,
+   reg 15 RSTK-OFF LDR,
+   14 DATA RSP-CELL STR, ;
+
+: B2TOR B G-POP A G-POP  A RSTK-PUSH  B RSTK-PUSH ;
+
+: B2RFROM B RSTK-POP  A RSTK-POP  A G-PUSH  B G-PUSH ;
+
+: B2RFETCH B RSTK-POP  A RSTK-POP  A RSTK-PUSH  B RSTK-PUSH  A G-PUSH  B G-PUSH ;
+
 : BHERE   7 DATA 0 LDR,  7 G-PUSH ;
 
-: BALLOT  A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DATA 0 STR, ;
+: DP-CHECK {: reg :} ( reg -- )
+   LBL LBL {: low-ok high-ok :}
+   5 DATA-START MOVZ,  5 DATA 5 ADD,
+   reg 5 CMP,  C-GE low-ok BCOND,
+      0 76 MOVZ,  NR-EXIT SYS,
+   low-ok LBL,
+   5 DATA-SIZE LIT64,  5 DATA 5 ADD,
+   reg 5 CMP,  C-LE high-ok BCOND,
+      0 76 MOVZ,  NR-EXIT SYS,
+   high-ok LBL, ;
 
-: BCOMMA  A G-POP  7 DATA 0 LDR,  A 7 0 STR,  7 7 8 ADDI,  7 DATA 0 STR, ;
+: BALLOT  A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
 
-: BCCOMMA A G-POP  7 DATA 0 LDR,  A 7 0 STRB, 7 7 1 ADDI,  7 DATA 0 STR, ;
+: BCOMMA  A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR, ;
+
+: BCCOMMA A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
 
 : BTYPE   2 G-POP  1 G-POP  0 1 MOVZ,  NR-WRITE SYS, ;
 
@@ -551,13 +606,17 @@ s" spawn-dup2-action" s" n n --" TRUST
    s" and"  ['] BAND  FPRIM-L   s" or"   ['] BOR   FPRIM-L   s" xor"  ['] BXOR  FPRIM-L
    s" invert" ['] BINV FPRIM-L  s" negate" ['] BNEG FPRIM-L
    s" lshift" ['] BLSH FPRIM-L  s" rshift" ['] BRSH FPRIM-L
-   s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L
+   s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
+   s" abs"  ['] BABS  FPRIM-L   s" min"  ['] BMIN  FPRIM-L   s" max"  ['] BMAX FPRIM-L
    s" nip"  ['] BNIP  FPRIM-L   s" over" ['] BOVER FPRIM-L   s" tuck" ['] BTUCK FPRIM-L
    s" rot"  ['] BROT  FPRIM-L   s" -rot" ['] BMROT FPRIM-L
    s" 2dup" ['] B2DUP FPRIM-L   s" 2drop" ['] B2DROP FPRIM-L
-   s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L
+   s" 2swap" ['] B2SWAP FPRIM-L  s" 2over" ['] B2OVER FPRIM-L  s" ?dup" ['] BQDUP FPRIM-L
+   s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L   s" +!" ['] BPLUSSTORE FPRIM-L
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
-   s" cells" ['] BCELLS FPRIM-L
+   s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
+   s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT FPRIM-L
+   s" 2>r" ['] B2TOR FPRIM-L  s" 2r>" ['] B2RFROM FPRIM-L  s" 2r@" ['] B2RFETCH FPRIM-L
    s" here" ['] BHERE  FPRIM-L   s" allot" ['] BALLOT FPRIM-L
    s" ,"    ['] BCOMMA FPRIM-L   s" c,"   ['] BCCOMMA FPRIM-L
    s" type" ['] BTYPE  FPRIM-L   s" execute" ['] BEXEC FPRIM

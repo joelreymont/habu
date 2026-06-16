@@ -19,9 +19,20 @@ variable #CASE
 10 3 - 7 T=
 -1 $FF and 255 T=
 7 2 mod 1 T=
+7 2 /mod 3 T= 1 T=
 $10 4 lshift $100 T=
 5 3 > -1 T=
 5 3 <= 0 T=
+-7 abs 7 T=
+3 7 min 3 T=
+3 7 max 7 T=
+1 2 3 4 2swap 2 T= 1 T= 4 T= 3 T=
+1 2 3 4 2over 2 T= 1 T= 4 T= 3 T= 2 T= 1 T=
+0 ?dup 0 T=
+5 ?dup + 10 T=
+8 cell+ 16 T=
+8 char+ 9 T=
+8 chars 8 T=
 
 \ control flow
 : TIF dup 5 > if drop 99 else 1 + then ;
@@ -43,6 +54,10 @@ TLEAVE 4 T=
 \ return stack, exit, recurse
 : TRS 1 2 >r 10 + r> + ;
 TRS 13 T=
+: TRS2 1 2 2>r 10 2r> + + ;
+TRS2 13 T=
+: TRS2@ 1 2 2>r 2r@ + 2r> + + ;
+TRS2@ 6 T=
 : TEXIT dup 5 > if drop 99 exit then 1 + ;
 3 TEXIT 4 T=
 7 TEXIT 99 T=
@@ -61,6 +76,8 @@ FIVE 5 T=
 4 ARR A4
 7 2 A4 !
 2 A4 @ 7 T=
+here 3 over c! 65 over 1 + c! 66 over 2 + c! count 3 T= drop
+here 10 over ! 5 over +! @ 15 T=
 
 \ quotations + combinators
 : TQ1 5 [: 1 + ;] execute ;

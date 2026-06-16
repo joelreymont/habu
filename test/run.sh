@@ -78,6 +78,22 @@ out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i6
 [ "$out" = "-1
 -1
 0" ] || { echo "FAIL: hb rows/quot sig verify (got: $out)"; exit 1; }
+out=$(printf 's" P1 ( i64 i64 i64 i64 -- i64 i64 i64 i64 i64 i64 ) 2over" CHECK! .\ns" P2 ( i64 i64 -- i64 i64 ) 2>r 2r>" CHECK! .\ns" P3 ( i64 -- i64 ) abs" CHECK! .\ns" P4 ( i64 i64 -- i64 i64 ) /mod" CHECK! .\ns" P5 ( i64 -- i64 i64 ) count" CHECK! .\n' | bin/hb 2>/dev/null)
+[ "$out" = "-1
+-1
+-1
+-1
+-1" ] || { echo "FAIL: hb primitive checklist signatures (got: $out)"; exit 1; }
+out=$(printf 's" RBAD1 ( i64 i64 -- ) 2>r" CHECK! .\ns" RBAD2 ( -- i64 i64 ) 2r>" CHECK! .\ns" RPEEK ( i64 i64 -- i64 i64 i64 i64 ) 2>r 2r@ 2r>" CHECK! .\ns" QD ( i64 -- i64 i64 ) ?dup" CHECK! .\n' | bin/hb 2>/dev/null)
+[ "$out" = "0
+0
+-1
+1" ] || { echo "FAIL: hb return-stack/?dup primitive verdicts (got: $out)"; exit 1; }
+set +e
+printf '$400000 allot\n' | bin/hb >/dev/null 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 76 ] || { echo "FAIL: data-space overflow rc $rc (want 76)"; exit 1; }
 # and the row sig runs end to end
 out=$(printf ': PSH ( R -- R i64 ) 5 ;\nPSH .\n' | bin/hb 2>/dev/null)
 [ "$out" = "5" ] || { echo "FAIL: hb named-row sig run (got: $out)"; exit 1; }

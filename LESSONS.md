@@ -57,6 +57,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Fixed DATA cells require layout audits:** placing `EVAL-FRAME` in a
   free-looking gap overlapped register allocator tables and produced invalid
   ARM64 fields. Centralize fixed header offsets and verify non-overlap.
+- **Data-space growth must fail closed:** large native tool bundles can push
+  interpret-mode `DP` near the mapped DATA limit; allocation paths need explicit
+  bounds checks so growth exits with a capacity error instead of faulting on the
+  next `s"`/store.
 - **Pipe mode and script mode are distinct:** non-tty stdin with bytes is pipeline
   mode even when `argc > 1` (needed for `bin/hb seed count < test/prop-test.f`).
   Empty non-tty stdin with `argc > 1` runs `argv[1]` as a script path.

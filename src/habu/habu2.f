@@ -511,7 +511,7 @@ create ENDLOC-KW 58 c, 125 c,
 : C-CREATE  15 1 MOVZ,  LCREATE @ BL, ;
 
 : C-VARIABLE  C-CREATE
-   7 DATA 0 LDR,  7 7 8 ADDI,  7 DATA 0 STR, ;
+   7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;
 
 : C-CONSTANT
    LBL LBL {: kcp kcd :}
@@ -559,6 +559,7 @@ create ENDLOC-KW 58 c, 125 c,
    sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
    sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
    12 DATA 0 LDR,  15 12 0 ADDI,                        \ x12 = DP, x15 = string base
+   14 12 10 ADD,  14 DP-CHECK
    11 13 0 ADDI,  9 10 0 ADDI,
    cl LBL,  9 cd CBZ,
       14 11 0 LDRB,  14 12 0 STRB,  12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
