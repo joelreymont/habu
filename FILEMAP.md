@@ -82,5 +82,8 @@ points stay listed.
 - `bench/llm/solutions.f` — reference benchmark solutions.
 - `bench/llm/validate-results.f` — native reference/attempt metric validator and summarizer.
 - `bench/llm/validate-results-test.sh` — fixture coverage for metric validation.
+- `bench/llm/habu-array-lib.f` — checked array helper vocabulary for library-assisted Habu benchmark arm.
+- `bench/llm/habu-array-lib-test.sh` — focused coverage for the benchmark array helper library.
+- `bench/llm/habu-preamble-lib.txt` — LLM prompt preamble for library-assisted Habu benchmark arm.
 - `bench/llm/run.sh` — benchmark certification runner.
 - `bench/llm/perf.sh` — LLM feedback-loop performance benchmark runner.

@@ -1,0 +1,32 @@
+You write habu, a checked stack-based language (Forth-like). Define a word with:
+
+  : NAME ( in -- out ) {: locals :} body ;
+
+A CHECKER verifies the body's real stack effect; a mismatch is REJECTED with a
+diagnostic. Tasks operate on an INTEGER ARRAY passed as a POINTER and a LENGTH.
+
+This benchmark arm preloads a small checked helper library. Prefer these helpers
+instead of raw address arithmetic:
+
+  A@           ( ptr a n -- a )       read array[index]
+  A!           ( a ptr a n -- )       write value to array[index]
+  A+!          ( n ptr a n -- )       add delta to array[index]
+  A-SWAP       ( ptr a n n -- )       swap array[i] and array[j]
+  LAST-INDEX   ( n -- n )             len -> len-1
+  MIRROR-INDEX ( n n -- n )           len index -> len-1-index
+  EVEN?        ( n -- bool )          true when an integer is even
+
+Use typed locals for the array pointer:
+
+  : ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :}
+    0 len 0 ?do arr i A@ + loop ;
+
+  : SQ-EACH ( ptr a n -- ) {: arr:ptr len :}
+    len 0 ?do arr i A@ dup * arr i A! loop ;
+
+LOOP over the array with `len 0 ?do ... i ... loop`.
+CONDITIONS need an explicit boolean: `dup 0 <>`, `x 0 >`, `a b =`, `EVEN?`.
+
+Rules: for an array->array task, MODIFY THE ARRAY IN PLACE (write results back
+with A! or A-SWAP); do not return anything. For an array->scalar task, leave
+exactly one integer. Output ONLY the definition. No prose, no code fences.
