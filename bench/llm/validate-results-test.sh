@@ -21,7 +21,9 @@ cp "$ROOT/bench/llm/tasks.tsv" "$T/bench/llm/tasks.tsv"
 cp "$ROOT/bench/llm/results/reference.jsonl" "$T/bench/llm/results/reference.jsonl"
 
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE")
-[ "$out" = "llm-results: 30 reference metric row(s), 0 finding(s)" ] || {
+expected_count=$(awk 'NR>1{n++} END{print n+0}' "$ROOT/bench/llm/tasks.tsv")
+expected="llm-results: $expected_count reference metric row(s), 0 finding(s)"
+[ "$out" = "$expected" ] || {
   echo "FAIL: validate-results good fixture: $out"
   exit 1
 }
