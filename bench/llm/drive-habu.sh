@@ -1,5 +1,5 @@
 #!/bin/sh
-# drive-habu.sh — habu arm. The model writes a checked array word; we certify it
+# drive-habu.sh — Habu benchmark arms. The model writes a checked array word; we certify it
 # (tools/check.sh), and on rejection feed the checker diagnostic back as the repair
 # signal (up to N rounds). On certify, grade values via grade.sh (which builds the
 # array in memory and runs the io-vectors). Emits one JSONL metrics row.

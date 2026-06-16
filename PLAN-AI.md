@@ -12,10 +12,12 @@ Run verification commands from the repository root.
 ## 1. Goal (what we set out to measure)
 
 > **Is habu a good language for an LLM to produce code in, vs mainstream languages, on
-> complex tasks?** For each task an LLM (`claude -p`) writes the solution in habu, JavaScript,
-> and Rust; we compile/check and run it against io-vectors, and measure the cost to reach a
-> correct solution. The question is *how habu stacks up against Rust/JS as a codegen target* —
-> NOT (as an earlier iteration wrongly focused on) whether habu's checker helps in isolation.
+> complex tasks?** For each task an LLM (`claude -p`) writes the solution in raw Habu,
+> library-assisted Habu, JavaScript, and Rust; we compile/check and run it against
+> io-vectors, and measure the cost to reach a correct solution. The question is *how
+> Habu stacks up against Rust/JS as a codegen target*, and whether an LLM-facing checked
+> stdlib closes the raw-pointer gap — NOT (as an earlier iteration wrongly focused on)
+> whether Habu's checker helps in isolation.
 
 Two earlier task sets were rejected as too easy (a strong model one-shots them, so they don't
 discriminate): single-function integer katas (gcd, fib, …) and fixed-size linear algebra
@@ -36,12 +38,13 @@ committed raw-Habu/JS/Rust data:
 | language | trial pass | first-try green | task pass@k | mean output-tokens-to-green | max |
 |---|---|---|---|---|---|
 | Habu raw | 95% | 90% | 100% | **629** | 5545 |
-| Habu library | pending new run | pending new run | pending new run | pending new run | pending new run |
+| Habu + array helpers | pending new run | pending new run | pending new run | pending new run | pending new run |
 | JavaScript | 100% | 100% | 100% | 91 | 154 |
 | Rust | 100% | 95% | 100% | 86 | 181 |
 
 **Conclusions:**
-1. **Task-level correctness parity, trial-level reliability gap.** The model reaches a
+1. **Task-level correctness parity, trial-level reliability gap.** In the committed
+   raw-Habu evidence, the model reaches a
    correct Habu solution for every task under k=2 (task pass@k 100%, equal to JS/Rust),
    so Habu is a *viable* LLM codegen target. The stricter trial-level result is 19/20
    green Habu trials vs 20/20 JS and 20/20 Rust; the one miss is an ARGMAX driver
@@ -57,7 +60,8 @@ committed raw-Habu/JS/Rust data:
 3. **Cause:** the corpus-familiarity tax. habu's typed pointers (`arr:ptr`), `i cells arr + @`/`!`
    indexing, and in-place concatenative loops have ~zero pretraining, so the model reasons each
    step from first principles — cheap when the stack shape is obvious, expensive when it must
-   juggle.
+   juggle. The `habu-lib` arm is designed to test whether checked helper words (`A@`, `A!`,
+   `A-SWAP`, `MIRROR-INDEX`, `EVEN?`) reduce that tax without weakening Habu's checker.
 
 The per-task token table (with the 1×→60× ratios) is in `RESULTS.md`.
 
@@ -113,9 +117,11 @@ sh bench/llm/drive-habu.sh 4 ARGMAX "ptr a n -- i64" \
    "Return the index of the maximum element; on ties the smallest index." as \
    "[3 1 4 1 5] -> 4; [9 1 1] -> 0; [1 5 5 2] -> 1; [5] -> 0" a </dev/null
 ```
-Emits one JSONL row. Expect `outcome:pass` with a token count far above the JS/Rust cost for
-the same task (run `drive-js.sh` / `drive-rust.sh` with the same args, dropping the trailing
-`a`, to compare).
+Emits one raw-Habu JSONL row. Expect `outcome:pass` with a token count far above the JS/Rust
+cost for the same task (run `drive-js.sh` / `drive-rust.sh` with the same args, dropping the
+trailing `a`, to compare). To spot-check the helper arm, rerun the same command with trailing
+`lib` instead of `a`; the driver emits `arm:"habu-lib"` and bundles `habu-array-lib.f` before
+checking/grading the candidate.
 
 ---
 
@@ -129,13 +135,20 @@ the same task (run `drive-js.sh` / `drive-rust.sh` with the same args, dropping 
   per-language test harness from a task's vectors; `emit_row` writes a JSONL metrics line.
   (Note: `hb_test` forces `IFS=' '` internally — it builds the habu array with `here v , v , …`
   and must split on spaces regardless of the caller's IFS.)
-- `bench/llm/habu-preamble.txt` — the in-context teaching for the habu arm (typed-pointer
+- `bench/llm/habu-preamble.txt` — the in-context teaching for the raw Habu arm (typed-pointer
   locals, `i cells arr + @`/`!` indexing, `?do … loop`, explicit-boolean conditions, in-place
   rule). This is the *only* habu knowledge the model gets; the corpus-familiarity tax is what
   remains after this teaching.
-- `bench/llm/drive-habu.sh` — habu arm. Prompt = preamble + task; `claude -p` → extract def →
-  `tools/check.sh` (certify) → on reject feed the checker diagnostic back (≤5 rounds); on
-  certify, grade via `grade.sh`. Emits one JSONL row (`arm:"habu-a"`).
+- `bench/llm/habu-array-lib.f` — checked helper library for the `habu-lib` arm: array read/write,
+  indexed increment, swap, mirror index, and even predicate. The helpers are bundled before the
+  candidate, so the model writes against certified Habu code rather than an unchecked foreign API.
+- `bench/llm/habu-preamble-lib.txt` — in-context teaching for the helper arm. It tells the model
+  to prefer `A@`, `A!`, `A-SWAP`, `MIRROR-INDEX`, and `EVEN?` over raw address arithmetic.
+- `bench/llm/drive-habu.sh` — Habu driver. The final argument selects `a` (raw Habu,
+  `arm:"habu-a"`) or `lib` (helper arm, `arm:"habu-lib"`). Prompt = preamble + task;
+  `claude -p` → extract def → bundle helper library when selected → `tools/check.sh`
+  (certify) → on reject feed the checker diagnostic back (≤5 rounds); on certify, grade via
+  `grade.sh`.
 - `bench/llm/drive-js.sh`, `drive-rust.sh` — JS/Rust arms. `f(a)` returns a number (`as`) or
   array/`Vec` (`aa`); repair on node test failures / rustc errors + test failures.
 - `bench/llm/grade.sh` — runs a candidate in an isolated, timeout-bounded child so a trap/hang
@@ -167,7 +180,7 @@ addition.
   reasoning cost overwhelms this and biases habu HIGH. The robust signals are **pass-rate**
   (parity) and the **direction + magnitude of the skew** (cheap on elementwise, expensive on
   juggling), which are insensitive to per-token terseness.
-- **The habu arm uses the checker** (it's how you'd really write habu); a rejection costs a
+- **Both Habu arms use the checker** (it's how you'd really write habu); a rejection costs a
   repair round. This *helps* habu (localizes errors) but also means over-strict rejections cost
   rounds. Observed repair rounds were low (mean 1.05), so this is a minor factor here.
 - **Task pass@k hides trial misses.** Habu is 100% at task pass@k because each task has at
@@ -186,7 +199,9 @@ addition.
 
 ## 6. Provenance
 
-- The original harness code, `RESULTS.md`, and `run.jsonl` landed in jj commit
+- The original three-arm harness code, `RESULTS.md`, and `run.jsonl` landed in jj commit
   `ce34f03f bench: habu vs JS/Rust on array/memory algorithms`. `run.jsonl` is tracked as the
   evidence record; only `*.log` under `results/` is gitignored.
+- The four-arm harness adds `habu-lib` as a checked-library A/B against raw Habu. Until a fresh
+  live run is committed, `RESULTS.md` marks helper rows as missing instead of extrapolating.
 - The `depth` primitive is a separate commit already on `habu` master.

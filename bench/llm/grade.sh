@@ -23,7 +23,7 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/grade.XXXXXX")
 trap 'rm -rf "$T"' EXIT
 # Assemble: candidate + grading harness (unchecked) + vectors + verdict.
 # --no-check prepends `0 set-check` so the candidate runs even if it would NOT
-# certify (habu arm b: judged purely by tests, like JS/Rust).
+# certify; this is kept for historical unchecked controls.
 {
   [ "$NOCHECK" = 1 ] && printf '0 set-check\n'
   cat "$CAND"; printf '\n'

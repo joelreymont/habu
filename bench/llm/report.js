@@ -89,8 +89,10 @@ o += `JS ${pct(j.passk, j.tasks)}, Rust ${pct(r.passk, r.tasks)}. `;
 o += `At the stricter trial level: Habu raw ${h.passed}/${h.trials}, `;
 o += hasLib ? `Habu + array helpers ${hl.passed}/${hl.trials}, ` : 'Habu + array helpers has no live rows, ';
 o += `JS ${j.passed}/${j.trials}, Rust ${r.passed}/${r.trials}. `;
-if (h.nonpass) o += `Raw Habu has ${h.nonpass} non-pass row(s); see the table below. `;
-if (hasLib && hl.nonpass) o += `The helper arm has ${hl.nonpass} non-pass row(s); see the table below. `;
+const notes = [];
+if (h.nonpass) notes.push(`Raw Habu has ${h.nonpass} non-pass row(s); see the table below.`);
+if (hasLib && hl.nonpass) notes.push(`The helper arm has ${hl.nonpass} non-pass row(s); see the table below.`);
+if (notes.length) o += notes.join(' ');
 o += '\n\nThe raw-Habu cost split is bimodal:\n\n';
 o += '- **Simple elementwise loops** (sum, square, negate, max) — raw Habu is **comparable or cheaper** than JS/Rust '
    + '(its source is terse and the pattern is regular).\n';
