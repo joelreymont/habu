@@ -26,6 +26,7 @@ create FS-BASES FS-MAX-DEPTH cells allot
 create FS-FDS FS-MAX-DEPTH cells allot
 create FS-NS FS-MAX-DEPTH cells allot
 create FS-OFFS FS-MAX-DEPTH cells allot
+create FS-RECS FS-MAX-DEPTH cells allot
 variable FS-DEPTH
 variable FS-I
 variable FS-WALK-XT
@@ -75,6 +76,12 @@ variable FS-NAME-U
 
 : FS-OFF! ( n -- )
    FS-DEPTH @ cells FS-OFFS + ! ;
+
+: FS-REC@ ( -- n )
+   FS-DEPTH @ cells FS-RECS + @ ;
+
+: FS-REC! ( n -- )
+   FS-DEPTH @ cells FS-RECS + ! ;
 
 : FS-PATHZ {: a u :} ( a u -- z )
    u 1 + FS-PATH-CAP > IF E-FS-PATH throw THEN
@@ -176,7 +183,7 @@ variable FS-NAME-U
       0 FS-OFF!
       begin FS-OFF@ FS-N@ < while
          FS-DIR@ FS-OFF@ + FS-ENT !
-         FS-ENT @ D-RECLEN dup 0 <= IF FS-FD@ close E-FS-DIR throw THEN drop
+         FS-ENT @ D-RECLEN dup 0 <= IF FS-FD@ close E-FS-DIR throw THEN FS-REC!
          FS-ENT @ D-NAME 2dup SKIP-ENTRY? IF
             2drop
          ELSE
@@ -186,7 +193,7 @@ variable FS-NAME-U
             FS-CUR FS-CHILD-U @ recurse
             FS-DEPTH @ 1 - FS-DEPTH !
          THEN
-         FS-OFF@ FS-ENT @ D-RECLEN + FS-OFF!
+         FS-OFF@ FS-REC@ + FS-OFF!
       repeat
    repeat
    FS-FD@ close ;

@@ -104,8 +104,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   needs `(status >> 8) & 0xff`. Check carry and errno-in-x0.
 - **Recursive directory walks need per-depth buffers:** `getdirentries64` records
   are batch-local; recursing with one shared dirent buffer corrupts the parent
-  iteration. Keep directory buffers, offsets, base cookies, and fds indexed by
-  traversal depth.
+  iteration. Keep directory buffers, offsets, record lengths, base cookies, and
+  fds indexed by traversal depth; even a global current-record pointer is unsafe
+  because the child walk overwrites it before the parent advances.
 - **Process redirection uses XNU spawn descriptors:** empty file-action blobs are
   invalid; pass null descriptors when no fd remapping is requested. Mark
   parent-only pipe/pty fds close-on-exec before spawning or the child can inherit
