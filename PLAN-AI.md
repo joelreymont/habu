@@ -5,7 +5,7 @@ another agent everything needed to **independently verify the conclusions**. The
 plan (a within-habu checker A/B control) was superseded; the goal that drove the final work
 is below.
 
-Workspace: `/Users/joel/Work/habu-ai` (jj workspace `ai`, sibling of `habu`).
+Run verification commands from the repository root.
 
 ---
 
@@ -30,17 +30,21 @@ concatenative loops, while being one-liners in JS/Rust.
 10 array tasks × 3 languages × 2 trials = 60 trials (`bench/llm/results/run.jsonl`,
 summarized in `bench/llm/RESULTS.md`). Headline:
 
-| language | pass@1 | pass@k | mean output-tokens-to-green | max |
-|---|---|---|---|---|
-| habu (checked) | 90% | 100% | **629** | 5545 |
-| JavaScript | 100% | 100% | 91 | 154 |
-| Rust | 95% | 100% | 86 | 181 |
+| language | trial pass | first-try green | task pass@k | mean output-tokens-to-green | max |
+|---|---|---|---|---|---|
+| habu (checked) | 95% | 90% | 100% | **629** | 5545 |
+| JavaScript | 100% | 100% | 100% | 91 | 154 |
+| Rust | 100% | 95% | 100% | 86 | 181 |
 
 **Conclusions:**
-1. **Correctness parity.** The model reaches a correct solution in habu for every task
-   (pass@k 100%, equal to JS/Rust). habu is a *viable* LLM codegen target.
-2. **A large but SKEWED effort gap.** "Output tokens to green" = the model's chain-of-thought
-   + emitted code, i.e. how hard it had to reason. It is **bimodal**:
+1. **Task-level correctness parity, trial-level reliability gap.** The model reaches a
+   correct Habu solution for every task under k=2 (task pass@k 100%, equal to JS/Rust),
+   so Habu is a *viable* LLM codegen target. The stricter trial-level result is 19/20
+   green Habu trials vs 20/20 JS and 20/20 Rust; the one miss is an ARGMAX driver
+   error row after the model-call timeout.
+2. **A large but SKEWED effort gap.** "Output tokens to green" counts generated output
+   tokens on passing trials. It is not direct access to hidden reasoning, but it is a
+   useful generation-effort proxy. The distribution is **bimodal**:
    - *Simple elementwise loops* (ARR-SUM, SQ-EACH, NEGATE-EACH, ARR-MAX): habu ≈ **1×**
      (comparable or cheaper — terse source, regular shape).
    - *Index tracking / carried state / in-place rearrangement* (ARGMAX, REVERSE, RUNMAX,
@@ -57,8 +61,9 @@ The per-task token table (with the 1×→60× ratios) is in `RESULTS.md`.
 
 ## 3. HOW TO VERIFY (do these in order)
 
-All commands run from `/Users/joel/Work/habu-ai`. You need the native binary `bin/hb`
-(run `tools/bootstrap.sh` once if missing; ~5 s, gforth-seeded), `node`, and `rustc`.
+You need the native binary `bin/hb`, `node`, and `rustc`. If `bin/hb` is missing,
+install a trusted seed with `tools/seed.sh` and then run `tools/build.sh` to rebuild
+from current source.
 
 ### V1 — Harness is sound (deterministic, no LLM, no tokens)
 ```
@@ -91,9 +96,9 @@ node bench/llm/report.js bench/llm/results/run.jsonl > /tmp/RESULTS.md
 ```
 Then compare `/tmp/RESULTS.md` to the committed `bench/llm/RESULTS.md`. Exact token counts
 WILL differ run-to-run (model nondeterminism), but the **shape** must reproduce: pass@k ≈ 100%
-for all arms, and habu's per-task tokens ≈ 1× on the elementwise tasks and many-× (especially
-ARGMAX) on the index/state/in-place tasks. The committed `run.jsonl` is the exact evidence
-behind the numbers in §2.
+for all arms, trial pass close to the table in §2, and Habu's per-task tokens ≈ 1× on the
+elementwise tasks and many-× (especially ARGMAX) on the index/state/in-place tasks. The
+committed `run.jsonl` is the exact evidence behind the numbers in §2.
 
 ### V4 — Spot-check a single live cell
 ```
@@ -131,12 +136,13 @@ the same task (run `drive-js.sh` / `drive-rust.sh` with the same args, dropping 
   array in memory (`here , ,`) and runs the io-vectors via generated `G=` assertions.
 - `bench/llm/parse-resp.js` — extracts the completion text + **output_tokens** from
   `claude -p --output-format json`. Input tokens are deliberately excluded (Claude Code harness
-  overhead ~7–22K/call + prompt caching distort them); output tokens track reasoning effort.
+  overhead ~7–22K/call + prompt caching distort them); output tokens track generated-token cost.
 - `bench/llm/run-bench.sh <k>` — orchestrator: every task × 3 arms × k trials → `run.jsonl`,
   then `report.js` → `RESULTS.md`. Drivers are invoked with `</dev/null` (else `claude -p`
   swallows the loop's stdin) and `|| true` (a failing driver must not abort the sweep).
-- `bench/llm/report.js` — aggregates `run.jsonl` → `RESULTS.md` (per-arm pass@1/pass@k, mean
-  rounds, median/mean/max output tokens, per-task token table with habu/best ratio, verdict).
+- `bench/llm/report.js` — aggregates `run.jsonl` → `RESULTS.md` (trial pass, first-try
+  green, task pass@k, non-pass rows, wall time, mean rounds, median/mean/max output tokens,
+  per-task token table with Habu/best ratio, verdict).
 - `bench/llm/ref-solutions.f` — certified habu answer key (see V2).
 - `bench/llm/grade-test.sh`, `bench-test.sh` — the deterministic teeth (see V1).
 
@@ -157,11 +163,15 @@ addition.
 - **The habu arm uses the checker** (it's how you'd really write habu); a rejection costs a
   repair round. This *helps* habu (localizes errors) but also means over-strict rejections cost
   rounds. Observed repair rounds were low (mean 1.05), so this is a minor factor here.
+- **Task pass@k hides trial misses.** Habu is 100% at task pass@k because each task has at
+  least one green trial, but trial pass is 95% because one ARGMAX model call failed after the
+  timeout. Use both numbers.
 - **Model nondeterminism.** `claude -p` is not bit-reproducible. k=2; verify the *shape*, not
   exact tokens. The habu side (engine, checker, grading) is fully deterministic.
-- **Output-tokens-as-effort** is a proxy. It correlates with wall time in the data (ARGMAX
-  habu: 5545 tokens / 73 s vs JS: ~90 / 4 s), but a model that "thinks" less verbosely could
-  shift absolute numbers; the *ratio* across languages is the durable signal.
+- **Output-tokens-as-effort** is a proxy. It is generated-token cost, not direct hidden
+  reasoning. It correlates with wall time in the data (ARGMAX Habu: 5545 tokens / 85 s vs
+  JS: ~90 / 4 s), but a model that emits less verbose output could shift absolute numbers;
+  the *ratio* across languages is the durable signal.
 - **Scope.** 10 single-array tasks, two conventions. Harder tasks (sorting, binary search,
   NxN matrices over memory) would likely *widen* the tail — an obvious next step.
 
@@ -169,7 +179,7 @@ addition.
 
 ## 6. Provenance
 
-- All harness code, `RESULTS.md`, and `run.jsonl` are in the single local jj commit
-  `bench: habu vs JS/Rust on array/memory algorithms` (unpushed). `run.jsonl` is tracked as the
+- The original harness code, `RESULTS.md`, and `run.jsonl` landed in jj commit
+  `ce34f03f bench: habu vs JS/Rust on array/memory algorithms`. `run.jsonl` is tracked as the
   evidence record; only `*.log` under `results/` is gitignored.
 - The `depth` primitive is a separate commit already on `habu` master.

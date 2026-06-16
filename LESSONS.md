@@ -157,6 +157,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Snapshot scanners need structural proof:** magic constants also appear in
   code. Accept a trailer only when `region-len + data-len` ends exactly at the
   trailer offset; otherwise fallback dictionary scans see false snapshots.
+- **LLM benchmark reports need separate axes:** keep trial pass, task pass@k,
+  repair rounds, wall time, and generated-token cost distinct. Output tokens are
+  an effort proxy, not direct access to hidden reasoning.
 
 ## Historical Bootstrap
 

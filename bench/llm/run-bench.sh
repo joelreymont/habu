@@ -1,6 +1,6 @@
 #!/bin/sh
-# run-bench.sh [k_trials] — run every task in bench-tasks.tsv across all four arms
-# {habu-a, habu-b, js, rust} for k trials, appending JSONL metrics rows. Then
+# run-bench.sh [k_trials] — run every task in bench-tasks.tsv across all three arms
+# {habu-a, js, rust} for k trials, appending JSONL metrics rows. Then
 # report.js aggregates into RESULTS.md. Makes real `claude -p` calls.
 set -e
 cd "$(dirname "$0")/../.."
