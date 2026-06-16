@@ -50,6 +50,13 @@ $2740 constant EVAL-FRAME  \ re-entrant evaluate save frame, 8 cells ($2740-$277
                            \ evaluate clobbered the reg-alloc tables -> LVRALLOC returned saved stack-
                            \ pointer bytes as register numbers -> illegal SUB encodings (nondeterm SIGILL).
                            \ +0 INP +8 INE +16 RET +24 SP +32 XDS +40 CP +48 NDICT +56 DP
+$2780 constant TSIG-A-CELL  \ TRUSTED: pending word effect source pointer
+$2788 constant TSIG-U-CELL
+$2790 constant TCSIG-A-CELL \ TRUSTED: pending created-word effect pointer
+$2798 constant TCSIG-U-CELL
+$27A0 constant CRSIG-A-CELL \ runtime created-word effect pending for CREATE
+$27A8 constant CRSIG-U-CELL
+$27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
 $37D0 constant EVALD-CELL  \ evaluate nesting depth (0 = top-level REPL/batch; gates the nested paths)
 $37D8 constant EVALERR-CELL \ result of the last evaluate: 0 = clean, 1 = recovered from an error
 $37E0 constant LMAINP-CELL  \ runtime addr of the interpret loop top (EM-STARTUP stores it; B-EVAL branches there)
@@ -134,6 +141,7 @@ variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUN
 variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
+variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
 

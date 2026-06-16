@@ -129,15 +129,20 @@ rule; effect-DB word → apply (INST then compose); FORBIDDEN-without-annotation
 
 ## Trusted annotations & defining words
 
-- **Trusted annotation** — `TRUSTED: NAME ( eff ) … ;` (and a way to annotate an
-  existing/host word): records `eff` as NAME's DB scheme **without inferring the
-  body**; call sites are checked normally. The escape hatch for metaprogramming,
-  host primitives, and FFI.
+- **Trusted annotation** — `TRUSTED: NAME ( eff ) … ;` records `eff` as NAME's
+  DB scheme **without inferring the body**; call sites are checked normally.
+  `s" name" s" eff" TRUST` annotates an already-defined/native word. This is the
+  escape hatch for metaprogramming, host primitives, and FFI.
 - **`CONSTANT` / `VARIABLE`** — defining words: `n CONSTANT NAME` charts
   `NAME : ( ρ -- ρ i64 )`; `VARIABLE NAME` charts `NAME : ( ρ -- ρ ptr<cell> )`.
-- **`CREATE … DOES>`** — the created word's runtime effect is given by a trusted
-  annotation on the defining word; the `DOES>` body is checked as a quotation
-  producing that effect with the created word's data field `ptr<…>` on the stack.
+- **`CREATE … DOES>`** — `TRUSTED: NAME ( definer-eff ) CREATES
+  ( created-eff ) … ;` records `definer-eff` for the defining word and records
+  `created-eff` for every word produced by runtime `CREATE` while that definer
+  runs. A `DOES>` body inside a trusted definer requires `CREATES`; without it,
+  definition fails. With `created-eff = ( in -- out )`, the native checker verifies
+  the `DOES>` body as `( in ptr a -- out )`, because the created word pushes its
+  data-field pointer before entering the body. Use typed pointer stepping
+  (`cell+`, `count`, typed memory words), not raw integer `+`.
 - **`POSTPONE IMMEDIATE COMPILE, EVALUATE`** — compiler-manipulating; only
   admitted inside a `TRUSTED:` word, else `E-UNSAFE`.
 

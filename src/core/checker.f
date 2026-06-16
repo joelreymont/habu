@@ -1021,13 +1021,16 @@ s" <input>" DIAG-FILE!
    THEN
    TOKIX @ 1 + TOKIX ! ;
 
-: CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
+\ CHECK-RESET ( a u -- )
+: CHECK-RESET {: a u :}
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !
-   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 SGBAD !  0 UNSAFE !
+   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 SGBAD !  0 UNSAFE ! ;
+
+: CHECK-SCAN ( -- )
    BEGIN TI @ TBLEN @ < WHILE
      BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
@@ -1050,11 +1053,21 @@ s" <input>" DIAG-FILE!
          TSTART @  TBASE @ TI @ +  TSTART @ -  DO-TOK1
        THEN
      THEN
-   REPEAT
+   REPEAT ;
+
+: CHECK-FOLD-EXITS ( -- )
    XSET @ IF                                         \ fold early-return states into the output
      DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !         \ every path exited: output = accumulator
      ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
-   THEN
+   THEN ;
+
+: CHECK-VERDICT ( -- n )
+   SGBAD @ UNSAFE @ or IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN ;
+
+: CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
+   a u CHECK-RESET
+   CHECK-SCAN
+   CHECK-FOLD-EXITS
    VSIG @ SGSEEN @ and IF
       SGOUT @ SUNI
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
@@ -1065,7 +1078,7 @@ s" <input>" DIAG-FILE!
       RCUR @ SGROUT @ UNIFY OK @ and OK !
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
    THEN
-   SGBAD @ UNSAFE @ or IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN   \ malformed/unsafe rejects
+   CHECK-VERDICT                                      \ malformed/unsafe rejects
    dup DVERD !
    dup 0 =  over 1 = JSON-DIAGS @ and  or
    DIAGXT @ 0 <> and IF DIAGXT @ execute THEN
@@ -1080,3 +1093,33 @@ s" <input>" DIAG-FILE!
 \ CHECK! ( a u -- flag ) : like CHECK but VERIFIES the body against a leading
 \ ( in -- out ) declared sig (rejects on mismatch). The standalone REPL hook.
 : CHECK! {: a u :}  -1 VSIG !  a u CHECK  0 VSIG ! ;
+
+: DOES-DIN ( row -- row' )
+   FRESH MK-VAR MK-PTR swap MK-PUSH ;
+
+: RAW-SIG! ( din dout rin rout -- )
+   SGHASR @ IF
+      SGROUT !  SGRIN !  SGOUT !  SGIN !
+   ELSE
+      2drop  SGOUT !  SGIN !
+   THEN ;
+
+\ CHECK-DOES! ( body-a body-u sig-a sig-u -- verdict ) verifies a DOES> body
+\ against a created-word runtime effect.  If the created word is declared
+\ `( in -- out )`, the DOES> body must type as `( in ptr a -- out )`: the native
+\ CREATE stub pushes the created word's data-field address before branching to
+\ the DOES> body.
+: CHECK-DOES! {: ba bu sa su :}
+   ba bu CHECK-RESET
+   0 TOK0 !
+   sa su PARSE-SIG-RAW RAW-SIG!
+   SGIN @ DOES-DIN dup BROW ! DCUR !
+   SGHASR @ IF SGRIN @ dup RBROW ! RCUR ! THEN
+   CHECK-SCAN
+   CHECK-FOLD-EXITS
+   SGOUT @ SUNI
+   OK @ IF SGOUT @ DCUR ! THEN
+   LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
+   SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
+   SGHASR @ IF RCUR @ SGROUT @ UNIFY OK @ and OK ! THEN
+   CHECK-VERDICT dup DVERD ! ;

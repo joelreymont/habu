@@ -11,6 +11,14 @@
    7 6 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK2 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
    7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
    9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL, ;
+\ compile-mode raw literal materialization: emit movz/movk x9=val.  `val` is in
+\ the compiler's x11 at definition time; unlike C-LIT this does not push it.
+: C-X9-LIT
+   6 11 0 ADDI,  5 $FFFF MOVZ,
+   7 6 5 AND,    7 7 5 LSLI,  8 W-MOVZ0 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
+   7 6 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK1 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
+   7 6 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK2 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
+   7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 LIT64,  9 8 7 ORR,  LCEMIT @ BL, ;
 \ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
 $28 constant INL-MAX
 
@@ -260,6 +268,8 @@ create ENDLOC-KW 58 c, 125 c,
    LKWIMM @ LBL,  s" immediate" BYTES,   LKWPOST @ LBL,  s" postpone" BYTES,
    LKWCOMPC @ LBL,  s" compile," BYTES,
    LKWDOES @ LBL,  s" does>" BYTES,
+   LKWTRUSTED @ LBL, s" trusted:" BYTES, LKWCREATES @ LBL, s" creates" BYTES,
+   LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES, ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
@@ -382,6 +392,66 @@ create ENDLOC-KW 58 c, 125 c,
 : W-STRX {: rt RN off :}                               \ ( rt rn off -- w ) str rt,[rn,#off]
    $F9000000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
 
+: C-FIND-TRUST  LBL {: ok :}
+   9 LKWTRUST @ ADR,  10 5 MOVZ,  LFIND @ BL,
+   13 ok CBNZ,
+      0 2 MOVZ,  1 LKWTRUST @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT SYS,
+   ok LBL, ;
+
+: C-CALL-TRUST-CURRENT ( -- )
+   C-FIND-TRUST
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   9 DATA CRSIG-A-CELL LDR,  9 G-PUSH
+   9 DATA CRSIG-U-CELL LDR,  9 G-PUSH
+   SP SP 16 SUBI,  30 SP 0 STR,  11 BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
+
+: C-CALL-TRUST-PEND ( -- )
+   C-FIND-TRUST
+   12 DATA PEND-CELL LDR,
+   9 12 24 ADDI,  9 G-PUSH
+   9 12 16 LDR,  9 9 $FF ANDI,  9 G-PUSH
+   9 DATA TSIG-A-CELL LDR,  9 G-PUSH
+   9 DATA TSIG-U-CELL LDR,  9 G-PUSH
+   SP SP 16 SUBI,  30 SP 0 STR,  11 BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
+
+: C-DIE-DOES ( -- )
+   0 2 MOVZ,  1 LKWDOES @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
+   0 70 MOVZ,  NR-EXIT SYS, ;
+
+: C-CALL-CHECK-DOES ( -- )
+   LBL LBL {: found good :}
+   9 LKWCHKDOES @ ADR,  10 11 MOVZ,  LFIND @ BL,
+   13 found CBNZ,
+      0 2 MOVZ,  1 LKWCHKDOES @ ADR,  2 11 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT SYS,
+   found LBL,
+   9 DATA BODYBUF-OFF ADDI,
+   10 DATA DOESB-CELL LDR,
+   9 9 10 ADD,  9 G-PUSH
+   12 DATA BODYLEN-CELL LDR,  12 12 10 SUB,  12 G-PUSH
+   9 DATA TCSIG-A-CELL LDR,  9 G-PUSH
+   9 DATA TCSIG-U-CELL LDR,  9 G-PUSH
+   SP SP 16 SUBI,  30 SP 0 STR,  11 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
+   10 G-POP  11 0 MOVN,  10 11 CMP,  C-EQ good BCOND,
+      C-DIE-DOES
+   good LBL, ;
+
+: C-EMIT-CRSIG-SET ( -- )
+   LBL {: none :}
+   9 DATA TCSIG-U-CELL LDR,  9 none CBZ,
+      11 DATA TCSIG-A-CELL LDR,  C-X9-LIT
+      9 20 CRSIG-A-CELL W-STRX C-EMITW
+      11 DATA TCSIG-U-CELL LDR,  C-X9-LIT
+      9 20 CRSIG-U-CELL W-STRX C-EMITW
+   none LBL, ;
+
+: C-EMIT-CRSIG-CLEAR ( -- )
+   9 W-MOVZ0 LIT64,  LCEMIT @ BL,
+   9 20 CRSIG-A-CELL W-STRX C-EMITW
+   9 20 CRSIG-U-CELL W-STRX C-EMITW ;
+
 : J-TOR                                                \ pop data -> push RSTK
    $D1002273 C-EMITW  $F9400269 C-EMITW                \ sub x19,#8 ; ldr x9,[x19]
    10 20 RSP-CELL W-LDRX C-EMITW
@@ -421,6 +491,7 @@ create ENDLOC-KW 58 c, 125 c,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    dok LBL,
+   9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    $1000008A C-EMITW                     \ adr x10, #+16 = D (4 words ahead)
    16 20 DOESP-CELL W-LDRX C-EMITW       \ x16 = LDOESPATCH runtime addr
    $D63F0200 C-EMITW                     \ blr x16
@@ -487,7 +558,7 @@ create ENDLOC-KW 58 c, 125 c,
    nohk LBL, ;
 
 : EMIT-CREATE
-   LBL LBL LBL {: ncp ncpd nokind :}
+   LBL LBL LBL LBL {: ncp ncpd nocr nokind :}
    LCREATE @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  15 SP 8 STR,
    2 3 MOVZ,  LPROT @ BL,
@@ -508,6 +579,9 @@ create ENDLOC-KW 58 c, 125 c,
    9 DATA LASTC-CELL STR,
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,
+   9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
+      C-CALL-TRUST-CURRENT
+   nocr LBL,
    15 SP 8 LDR,  15 nokind CBZ,
    LKWCREATE 6 C-DEFHOOK
    nokind LBL,
@@ -536,6 +610,101 @@ create ENDLOC-KW 58 c, 125 c,
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,
    LKWCONST 8 C-DEFHOOK ;
+
+: C-CLEAR-TRUSTED-STATE ( -- )
+   9 0 MOVZ,
+   9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
+   9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
+   9 DATA DOESB-CELL STR, ;
+
+: C-PARSE-TRUST-SIG ( -- )
+   LBL LBL LBL LBL LBL {: ws got scan done bad :}
+   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
+   ws LBL,  11 12 CMP,  C-GE bad BCOND,
+      13 11 0 LDRB,  13 32 CMPI,  C-HI got BCOND,
+      11 11 1 ADDI,  ws B,
+   got LBL,  13 40 CMPI,  C-NE bad BCOND,
+      14 11 0 ADDI,  15 11 0 ADDI,
+   scan LBL,  15 12 CMP,  C-GE bad BCOND,
+      13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE scan BCOND,
+   15 DATA INP-CELL STR,
+   11 14 1 ADDI,  12 15 14 SUB,  12 12 2 SUBI,
+   11 DATA TSIG-A-CELL STR,  12 DATA TSIG-U-CELL STR,
+   11 14 0 ADDI,  12 15 14 SUB,  LBCS @ BL,
+   done B,
+   bad LBL,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 76 MOVZ,  NR-EXIT SYS,
+   done LBL, ;
+
+: C-PARSE-CREATED-SIG ( -- )
+   LBL LBL LBL LBL LBL LBL LBL {: ws got scan cpy cpd done bad :}
+   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
+   ws LBL,  11 12 CMP,  C-GE bad BCOND,
+      13 11 0 LDRB,  13 32 CMPI,  C-HI got BCOND,
+      11 11 1 ADDI,  ws B,
+   got LBL,  13 40 CMPI,  C-NE bad BCOND,
+      14 11 0 ADDI,  15 11 0 ADDI,
+   scan LBL,  15 12 CMP,  C-GE bad BCOND,
+      13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE scan BCOND,
+   15 DATA INP-CELL STR,
+   16 14 1 ADDI,  10 15 14 SUB,  10 10 2 SUBI,
+   12 DATA 0 LDR,  15 12 0 ADDI,
+   14 12 10 ADD,  14 DP-CHECK
+   11 16 0 ADDI,  9 10 0 ADDI,
+   cpy LBL,  9 cpd CBZ,
+      13 11 0 LDRB,  13 12 0 STRB,
+      12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cpy B,
+   cpd LBL,
+   12 DATA 0 STR,
+   15 DATA TCSIG-A-CELL STR,  10 DATA TCSIG-U-CELL STR,
+   done B,
+   bad LBL,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 76 MOVZ,  NR-EXIT SYS,
+   done LBL, ;
+
+: C-TRUSTED
+   LBL LBL LBL LBL LBL LBL LBL {: ncopy ncd cpok ndok notcre creok done :}
+   2 3 MOVZ,  LPROT @ BL,
+   9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 76 MOVZ,  NR-EXIT SYS,
+   cpok LBL,
+   9 2200 MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 77 MOVZ,  NR-EXIT SYS,
+   ndok LBL,
+   LTOK @ BL,  0 done CBZ,
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   9 DATA PEND-CELL STR,
+   CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,
+   14 DATA CUR-CELL LDR,  14 9 40 STR,
+   10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
+   ncopy LBL,  12 ncd CBZ,
+      13 11 0 LDRB,  13 10 0 STRB,
+      10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncopy B,
+   ncd LBL,
+   5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
+   12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
+   12 DATA BODYLEN-CELL STR,
+   C-CLEAR-TRUSTED-STATE
+   LBCAP @ BL,
+   C-PARSE-TRUST-SIG
+   LTOK @ BL,  0 creok CBZ,
+      0 LKWCREATES @ ADR,  1 7 MOVZ,  LKWCMP @ BL,
+      0 notcre CBZ,
+         C-PARSE-CREATED-SIG  creok B,
+      notcre LBL,
+         9 DATA TKA-CELL LDR,  9 DATA INP-CELL STR,
+   creok LBL,
+   12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
+   12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
+   12 DATA QPATCH-CELL STR,
+   12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
+   12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
+   9 $D10043FF LIT64,  LCEMIT @ BL,
+   9 $F90003FE LIT64,  LCEMIT @ BL,
+   C-EMIT-CRSIG-SET
+   done LBL, ;
 
 : C-IMMEDIATE
    2 3 MOVZ,  LPROT @ BL,
@@ -937,7 +1106,11 @@ s" cfbn-entry" s" n ptr a n n n --" TRUST
    9 LMAIN @ ADR,  9 DATA LMAINP-CELL STR,            \ interpret-loop top (B-EVAL branches here)
    LVRINIT @ BL,                                     \ fill VRTAB/VRITAB from VRPACK
    EMIT-SOURCE
-   9 0 MOVZ,  9 DATA PEND-CELL STR, ;
+   9 0 MOVZ,  9 DATA PEND-CELL STR,
+   9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
+   9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
+   9 DATA CRSIG-A-CELL STR,  9 DATA CRSIG-U-CELL STR,
+   9 DATA DOESB-CELL STR, ;
 
 : EM-COMMENT
    LBL LBL LBL {: notcom skln skpar :}
@@ -980,6 +1153,7 @@ s" cfbn-entry" s" n ptr a n n n --" TRUST
       5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
       12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
       12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
+      C-CLEAR-TRUSTED-STATE
       LBCAP @ BL,             \ seed with the NAME (checker records certified sigs)
       \ capture an optional leading ( in -- out ) into the body, so the check
       \ hook sees the declared sig (CHECK! verifies the body against it)
@@ -1004,6 +1178,7 @@ s" cfbn-entry" s" n ptr a n n n --" TRUST
       9 $F90003FE LIT64,  LCEMIT @ BL,
       LMAIN @ B,
    lnotcolon LBL,
+   s" trusted:" KEEP? IF LMAIN @ LKWTRUSTED 8 ['] C-TRUSTED CF-ENTRY THEN
    s" create" KEEP? IF LMAIN @ LKWCREATE 6 ['] C-CREATE   CF-ENTRY THEN
    s" variable" KEEP? IF LMAIN @ LKWVAR    8 ['] C-VARIABLE CF-ENTRY THEN
    s" constant" KEEP? IF LMAIN @ LKWCONST  8 ['] C-CONSTANT CF-ENTRY THEN
@@ -1022,11 +1197,15 @@ s" cfbn-entry" s" n ptr a n n n --" TRUST
 s" em-interpret" s" --" TRUST
 
 : EM-COMPILE
-   LBL LBL LBL LBL LBL LBL LBL LBL {: lnotsemi notd nohook rejected notloc lmem lcnotnum notimm :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: lnotsemi notd nohook rejected notloc lmem lcnotnum notimm tpub ndhas ndchk ndclr :}
    LCOMPILE @ LBL,
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
          LVSPILL @ BL,
+         9 DATA TCSIG-U-CELL LDR,  9 ndclr CBZ,
+            C-EMIT-CRSIG-CLEAR
+         ndclr LBL,
          14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,
          12 DATA LOCF-CELL LDR,  12 notd CBZ,
             9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  LCEMIT @ BL,
@@ -1036,6 +1215,20 @@ s" em-interpret" s" --" TRUST
          9 W-RET LIT64,  LCEMIT @ BL,
          11 DATA PEND-CELL LDR,  9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
          2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,
+         9 DATA TSIG-U-CELL LDR,  9 tpub CBZ,
+            10 DATA TCSIG-U-CELL LDR,  10 ndhas CBNZ,
+            10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
+               C-DIE-DOES
+            ndhas LBL,
+            10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
+               C-CALL-CHECK-DOES
+            ndchk LBL,
+            C-CALL-TRUST-PEND
+            NDICT NDICT 1 ADDI,
+            C-CLEAR-TRUSTED-STATE
+            9 0 MOVZ,  9 DATA PEND-CELL STR,
+            LMAIN @ B,
+         tpub LBL,
          9 DATA HOOK-CELL LDR,  9 nohook CBZ,
             10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
             10 DATA BODYLEN-CELL LDR,  10 G-PUSH
@@ -1044,6 +1237,7 @@ s" em-interpret" s" --" TRUST
          nohook LBL,
             NDICT NDICT 1 ADDI,
          rejected LBL,
+         C-CLEAR-TRUSTED-STATE
          9 0 MOVZ,  9 DATA PEND-CELL STR,
          LMAIN @ B,
       lnotsemi LBL,
@@ -1148,6 +1342,11 @@ s" em-interpret" s" --" TRUST
          9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
          9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
          9 DATA PEND-CELL STR,
+         9 0 MOVZ,
+         9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
+         9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
+         9 DATA CRSIG-A-CELL STR,  9 DATA CRSIG-U-CELL STR,
+         9 DATA DOESB-CELL STR,
          9 VRALL MOVZ,  9 DATA VRFREE-CELL STR,
          9 14 0 LDR,  9 DATA INP-CELL STR,
          9 14 8 LDR,  9 DATA INE-CELL STR,
@@ -1169,6 +1368,11 @@ s" em-interpret" s" --" TRUST
       9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
       9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
       9 DATA PEND-CELL STR,
+      9 0 MOVZ,
+      9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
+      9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
+      9 DATA CRSIG-A-CELL STR,  9 DATA CRSIG-U-CELL STR,
+      9 DATA DOESB-CELL STR,
       9 VRALL MOVZ,  9 DATA VRFREE-CELL STR,
       9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
       LREAD @ B,
@@ -1228,6 +1432,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
+   LBL LKWTRUSTED !  LBL LKWCREATES !  LBL LKWTRUST !  LBL LKWCHKDOES !
    LBL LKWQUOT !  LBL LKWSEMIQ !
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !

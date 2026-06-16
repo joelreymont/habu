@@ -72,6 +72,26 @@ set -e
 out=$(printf ': SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | bin/hb 2>/dev/null)
 [ "$out" = "49" ] || { echo "FAIL: hb good typed def (got: $out)"; exit 1; }
 printf ': SQBAD ( i64 -- i64 ) dup ;\n7 SQBAD .\n' | bin/hb >/dev/null 2>&1 && { echo "FAIL: hb did NOT reject bad sig"; exit 1; }
+out=$(printf 'TRUSTED: TLEAK ( n -- n ) dup ;\ns" TUSE ( n -- n ) TLEAK" CHECK! .\ns" TBAD ( n -- n n ) TLEAK" CHECK! .\n5 TLEAK . .\n' | bin/hb 2>/dev/null)
+[ "$out" = "-1
+0
+5
+5" ] || { echo "FAIL: hb TRUSTED: effect recording (got: $out)"; exit 1; }
+out=$(printf 'TRUSTED: ARR ( n -- ) CREATES ( n -- ptr a ) create cells allot does> swap 0 ?do cell+ loop ;\n4 ARR A4\ns" USE ( n -- ptr a ) A4" CHECK! .\n7 2 A4 !\n2 A4 @ .\n' | bin/hb 2>/dev/null)
+[ "$out" = "-1
+7" ] || { echo "FAIL: hb trusted CREATE...DOES> effect recording (got: $out)"; exit 1; }
+set +e
+printf 'TRUSTED: BADARR ( n -- ) CREATES ( n -- ptr a ) create cells allot does> drop ;\n' | bin/hb >$T/habu-bad-does.out 2>$T/habu-bad-does.err
+rc=$?
+set -e
+[ "$rc" -eq 70 ] || { echo "FAIL: hb bad trusted DOES> rc $rc (want 70)"; exit 1; }
+grep -q 'does>' $T/habu-bad-does.err || { echo "FAIL: hb bad trusted DOES> missing diagnostic"; exit 1; }
+set +e
+printf 'TRUSTED: BADDEF ( n -- ) create cells allot does> drop ;\n' | bin/hb >$T/habu-missing-creates.out 2>$T/habu-missing-creates.err
+rc=$?
+set -e
+[ "$rc" -eq 70 ] || { echo "FAIL: hb trusted DOES> without CREATES rc $rc (want 70)"; exit 1; }
+grep -q 'does>' $T/habu-missing-creates.err || { echo "FAIL: hb trusted DOES> without CREATES missing diagnostic"; exit 1; }
 # named rows + quot sub-sigs VERIFY (Gap3): CHECK! body-vs-declared-sig.
 # V1 row-poly certifies, V2 combinator-param certifies, V3 bad row count rejects.
 out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i64 ) execute" CHECK! .\ns" V3 ( R -- R i64 ) 5 5" CHECK! .\n' | bin/hb 2>/dev/null)

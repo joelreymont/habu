@@ -69,6 +69,13 @@ $36C8 constant BPI-CELL    \ (legacy single-BP; unused)
 $36D0 constant BPTAB-OFF   \ 16 breakpoints: (addr, saved-instr) 16 B each, addr 0 = empty
 $3600 constant EVAL-FRAME  \ re-entrant evaluate save frame, 8 cells (free LOCNAMES tail $3600-$363F):
                            \ +0 INP +8 INE +16 RET +24 SP +32 XDS +40 CP +48 NDICT +56 DP
+$2780 constant TSIG-A-CELL  \ TRUSTED: pending word effect source pointer
+$2788 constant TSIG-U-CELL
+$2790 constant TCSIG-A-CELL \ TRUSTED: pending created-word effect pointer
+$2798 constant TCSIG-U-CELL
+$27A0 constant CRSIG-A-CELL \ runtime created-word effect pending for CREATE
+$27A8 constant CRSIG-U-CELL
+$27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
 $37D0 constant EVALD-CELL  \ evaluate nesting depth (0 = top-level REPL/batch; gates the nested paths)
 $37D8 constant EVALERR-CELL \ result of the last evaluate: 0 = clean, 1 = recovered from an error
 $37E0 constant LMAINP-CELL  \ runtime addr of the interpret loop top (EM-STARTUP stores it; B-EVAL branches there)
@@ -156,6 +163,7 @@ variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUN
 variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
+variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
 
 9 constant A   10 constant B   11 constant C
 require prof.fs           \ in-binary sampling profiler (emitters + prims)
@@ -953,6 +961,8 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    LKWIMM @ LBL,  s" immediate" BYTES,   LKWPOST @ LBL,  s" postpone" BYTES,
    LKWCOMPC @ LBL,  s" compile," BYTES,
    LKWDOES @ LBL,  s" does>" BYTES,
+   LKWTRUSTED @ LBL, s" trusted:" BYTES, LKWCREATES @ LBL, s" creates" BYTES,
+   LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
@@ -1123,6 +1133,7 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    dok LBL,
+   9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    $1000008A C-EMITW                     \ adr x10, #+16 = D (4 words ahead)
    16 20 DOESP-CELL W-LDRX C-EMITW       \ x16 = LDOESPATCH runtime addr
    $D63F0200 C-EMITW                     \ blr x16
@@ -1196,14 +1207,28 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    10 G-POP
    nohk LBL, ;
 
+: C-FIND-TRUST  LBL {: ok :}
+   9 LKWTRUST @ ADR,  10 5 MOVZ,  LFIND @ BL,
+   13 ok CBNZ,
+      0 2 MOVZ,  1 LKWTRUST @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT SYS,
+   ok LBL, ;
+
+: C-CALL-TRUST-CURRENT ( -- )
+   C-FIND-TRUST
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   9 DATA CRSIG-A-CELL LDR,  9 G-PUSH
+   9 DATA CRSIG-U-CELL LDR,  9 G-PUSH
+   SP SP 16 SUBI,  30 SP 0 STR,  11 BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
+
 \ CREATE as a BL-able routine: the interpret keyword AND the runtime `create`
 \ prim share it, so defining words (`: CONST create , does> @ ;`) work.
 \ LCREATE ( x15=top-level? ): the hook KIND record (`NAME create` -> sig -- n)
-\ only applies to top-level creates — a word created INSIDE a defining word may
-\ be does>-patched to any effect, so it publishes unrecorded; the author
-\ declares it with `trust`.
+\ applies to top-level creates. When a trusted definer arms CRSIG, runtime CREATE
+\ records the created word's declared effect with TRUST before the optional hook.
 : EMIT-CREATE ( -- )
-   LBL {: nokind :}
+   LBL LBL LBL LBL {: ncp ncpd nocr nokind :}
    LCREATE @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  15 SP 8 STR,
    2 3 MOVZ,  LPROT @ BL,                               \ region -> RW
@@ -1213,7 +1238,6 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    CP 9 0 STR,  12 DATA TKL-CELL LDR,  12 9 16 STR,                            \ slot.addr=CP, namelen
    14 DATA CUR-CELL LDR,  14 9 40 STR,                   \ slot.wid = CURRENT
    10 9 24 ADDI,  11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,         \ copy name
-   LBL {: ncp :}  LBL {: ncpd :}
    ncp LBL,  12 ncpd CBZ,  13 11 0 LDRB,  13 10 0 STRB,
       10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  ncp B,
    ncpd LBL,
@@ -1225,6 +1249,9 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    9 DATA LASTC-CELL STR,                               \ DOES> patches this slot
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,                 \ region -> RX + flush
+   9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
+      C-CALL-TRUST-CURRENT
+   nocr LBL,
    15 SP 8 LDR,  15 nokind CBZ,
    LKWCREATE 6 C-DEFHOOK
    nokind LBL,
@@ -1983,6 +2010,7 @@ variable CFSK2
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
+   LBL LKWTRUSTED !  LBL LKWCREATES !  LBL LKWTRUST !  LBL LKWCHKDOES !
    LBL LKWQUOT !  LBL LKWSEMIQ !
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !
    LBL LPROFH !  LBL LPROFDUMP !

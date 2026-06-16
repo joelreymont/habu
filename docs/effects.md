@@ -76,12 +76,20 @@ equal effect; loop bodies must be stack-neutral.
 
 ## Escape hatches
 
-- `TRUSTED: NAME ( eff ) body ;` — chart `eff` under `NAME` **without** checking
+- `TRUSTED: NAME ( eff ) body ;` — record `eff` for `NAME` **without** checking
   the body, then compile it normally. For metaprogramming words (`evaluate`,
   parsing, dictionary ops, raw memory) the checker can't follow.
 - To chart an **already-defined** word's effect (so the checker can use it as a
-  leaf) without redefining it: `eff-str name-str CHART` after `PARSE-SIG`. habu's
-  own codegen dogfoods this — see `bootstrap/cg/asm.fs`'s `CHART-EFF`.
+  leaf) without redefining it in native habu: `s" name" s" eff" TRUST`.
+- Trusted definers use `TRUSTED: NAME ( definer-eff ) CREATES
+  ( created-eff ) body ;`. `definer-eff` is the effect of invoking the defining
+  word itself; `created-eff` is recorded for each word produced by runtime
+  `CREATE` while that definer runs. If a trusted definer contains `DOES>`, it must
+  declare `CREATES`.
+- For `CREATE...DOES>`, if `created-eff` is `( in -- out )`, the native checker
+  verifies the `DOES>` body as `( in ptr a -- out )`: the created word pushes its
+  data-field pointer before entering the `DOES>` body. Use typed pointer steps
+  such as `cell+`, not raw integer `+`, when moving through that data field.
 - **Literal-argument `PICK`/`ROLL` are folded** to a concrete shuffle at check
   time: `0 PICK`≡`DUP`, `1 PICK`≡`OVER`, `2 PICK ( a b c -- a b c a )`;
   `1 ROLL`≡`SWAP`, `2 ROLL`≡`ROT`. A **dynamic** (runtime-computed) index can't be

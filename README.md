@@ -163,9 +163,11 @@ self-hosting compiler always trusts its runtime.
 The checker's algorithmic core (the unifier, the string tokenizer, the wordlist
 DB) uses address arithmetic, `parse-name`, and `CREATE` — code whose effect is
 not statically inferable. That is exactly what **`TRUSTED:`** is for: you assert
-the effect, the checker trusts it, and call sites are still checked. This is a
-designed feature of the maximal scope, not a gap — every word is either checked
-or explicitly trusted.
+the effect, the checker trusts it, and call sites are still checked. Trusted
+definers can also declare `CREATES ( created-effect )`; native `hb` records that
+effect for each word the definer creates, and checks a `DOES>` body with the
+created word's data-field pointer on the stack. Every word is either checked or
+explicitly trusted.
 
 ## Notes
 
