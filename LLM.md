@@ -99,3 +99,6 @@ To summarize a real model attempt, concatenate `tools/lint/lib.f`, `tools/json.f
 `tools/argv.f`, and `bench/llm/validate-results.f`, then run the bundle with the
 attempt JSONL path; add `--json` for a machine-readable summary with failure
 buckets and per-category coverage.
+Run `bench/llm/perf.sh` for quick latency measurements of the checker,
+functional tests, metric validator, property-test smoke, and microbench smoke;
+add `--full` when rebuild and AOT build/runtime timings are needed.

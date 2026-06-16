@@ -80,7 +80,8 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   `final_chars`, `trust_uses`, and `signature_weakened`. Attempt JSONL files can
   now be summarized through the native validator, including failure buckets and
   per-category coverage. Open work is to run real model attempts through that
-  schema and expand category breadth.
+  schema and expand category breadth. `bench/llm/perf.sh` records quick
+  feedback-loop latency, with `--full` covering rebuild and AOT timings.
 - **AOT-strip linker** — done and the DEFAULT. `hb-build.sh prog.f -o out` AOT-
   compiles `: MAIN ;` to a native binary with the engine stripped (fib __text
   540 B vs 11836 B embed). `--repl` verifies the user source's checked

@@ -82,3 +82,4 @@ points stay listed.
 - `bench/llm/validate-results.f` — native reference/attempt metric validator and summarizer.
 - `bench/llm/validate-results-test.sh` — fixture coverage for metric validation.
 - `bench/llm/run.sh` — benchmark certification runner.
+- `bench/llm/perf.sh` — LLM feedback-loop performance benchmark runner.
