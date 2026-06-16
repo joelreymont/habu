@@ -24,5 +24,7 @@ DEFN=$(grep -c '^: ' bench/llm/solutions.f)
 echo "hb LLM bench: $N/$N reference solutions certified, 0 rejected"
 TEST_OUT=$(cat bench/llm/solutions.f bench/llm/tests.f | bin/hb 2>"$T/tests.err")
 [ "$TEST_OUT" = "ok" ] || { echo "FAIL: reference functional tests (got: $TEST_OUT)"; exit 1; }
-./bench/llm/validate-results.py
+VALIDATOR=$T/validate-results.f
+cat tools/lint/lib.f tools/json.f bench/llm/validate-results.f >"$VALIDATOR"
+bin/hb "$VALIDATOR"
 echo "PASS: answer key valid ($N/$N certified, $N/$N tests passed, metrics valid)"

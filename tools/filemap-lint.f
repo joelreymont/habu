@@ -108,7 +108,9 @@ variable FM-NUM-L
    s" tools/stale-status-lint.f" FM-REQ
    s" test/run.sh" FM-REQ
    s" test/t-sh-jdiag.fs" FM-REQ
-   s" bench/llm/tasks.tsv" FM-REQ ;
+   s" bench/llm/tasks.tsv" FM-REQ
+   s" bench/llm/validate-results.f" FM-REQ
+   s" bench/llm/validate-results-test.sh" FM-REQ ;
 
 : FM-U. ( u -- )
    0 FM-NUM-L !
