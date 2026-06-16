@@ -187,7 +187,14 @@ variable DSUGE  variable DSUGA
 : SUGGEST-TEXT ( -- a u )
    UNSAFE @ IF s" compiler-manipulating words need an audited trusted boundary; remove this token from checked code" EXIT THEN
    DVERD @ 1 = IF s" checker could not infer this word; rewrite with modeled words or add TRUST only for audited primitives" EXIT THEN
-   DEXP @ 0= IF s" rejected without a captured stack mismatch; inspect the token and declared signature" EXIT THEN
+   DEXP @ 0= IF
+      RETURN-MISMATCH? IF
+         s" return stack is unbalanced; pair >r with r> or remove the return-stack transfer"
+      ELSE
+         s" rejected without a captured stack mismatch; inspect the token and declared signature"
+      THEN
+      EXIT
+   THEN
    DEXP @ REND-COLLECT RBN @ DSUGE !
    DACT @ REND-COLLECT RBN @ DSUGA !
    DSUGA @ DSUGE @ > IF  s" the body leaves more values than declared; remove a producer or drop the extra value"

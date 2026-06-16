@@ -4,6 +4,7 @@
 0 set-check
 
 $10000 constant CA-FILE-CAP
+$20000 constant CA-PROG-CAP
 $10000 constant CA-ERR-CAP
 $400 constant CA-OUT-CAP
 512 constant CA-DEF-MAX
@@ -18,6 +19,7 @@ $400 constant CA-OUT-CAP
 1 constant FD-CLOEXEC
 
 create CA-FILE-BUF CA-FILE-CAP allot
+create CA-PROG-BUF CA-PROG-CAP allot
 create CA-ERR-BUF CA-ERR-CAP allot
 create CA-OUT-BUF CA-OUT-CAP allot
 create CA-NUM-BUF CA-NUM-CAP allot
@@ -41,6 +43,7 @@ variable CA-RC
 variable CA-FAILED
 variable CA-RAW-FAILURE
 variable CA-JSON-FOUND
+variable CA-PROG-LEN
 
 variable CA-IN-R
 variable CA-IN-W
@@ -88,10 +91,6 @@ variable CA-FILE-U
    CA-LF CA-LF-BUF c!
    CA-LF-BUF 1 ;
 
-: CA-WRITE-LN {: fd a u :} ( fd a u -- )
-   fd a u CA-WRITE
-   fd CA-LF$ CA-WRITE ;
-
 : CA-U$ {: u :} ( u -- a u )
    CA-NUM-CAP CA-NUM-I !
    u 0= IF
@@ -108,12 +107,21 @@ variable CA-FILE-U
    repeat drop
    CA-NUM-BUF CA-NUM-I @ + CA-NUM-CAP CA-NUM-I @ - ;
 
-: CA-FD-U ( fd u -- )
-   CA-U$ rot -rot CA-WRITE ;
+: CA-PROG+ {: a u :} ( a u -- )
+   CA-PROG-LEN @ u + CA-PROG-CAP > IF s" check-all-errors: generated program too large" 76 die THEN
+   a CA-PROG-BUF CA-PROG-LEN @ + u BMOVE
+   CA-PROG-LEN @ u + CA-PROG-LEN ! ;
 
-: CA-FD-C ( fd c -- )
+: CA-PROG-C ( c -- )
    CA-LF-BUF c!
-   CA-LF-BUF 1 CA-WRITE ;
+   CA-LF-BUF 1 CA-PROG+ ;
+
+: CA-PROG-LN ( a u -- )
+   CA-PROG+
+   CA-LF CA-PROG-C ;
+
+: CA-PROG-U ( u -- )
+   CA-U$ CA-PROG+ ;
 
 : CA-PFD! {: fd events :} ( fd events -- )
    events 32 lshift fd $FFFFFFFF and or CA-PFD ! ;
@@ -149,6 +157,10 @@ variable CA-FILE-U
    k CA-TOK-WORD? 0= IF 0 exit THEN
    k LTOK a u STR= ;
 
+: CA-PARSE-NEXT? {: k :} ( k -- f )
+   k s" char" CA-TOK= IF -1 exit THEN
+   k s" [char]" CA-TOK= ;
+
 : CA-ORIGIN! {: src dst :} ( src dst -- )
    src 1+ CA-TOK-WORD? IF
       src 1+ LL@ dst CA-LINE!
@@ -175,7 +187,9 @@ variable CA-FILE-U
       CA-I @ s" :" CA-TOK= IF
          CA-I @ 1+ CA-J !
          begin CA-J @ L# @ < while
-            CA-J @ s" ;" CA-TOK= IF
+            CA-J @ CA-PARSE-NEXT? IF
+               CA-J @ 2 + CA-J !
+            ELSE CA-J @ s" ;" CA-TOK= IF
                CA-I @ LB@
                CA-J @ LB@ CA-J @ LTOK nip +
                CA-I @ CA-ADD-DEF
@@ -183,7 +197,7 @@ variable CA-FILE-U
                L# @ CA-J !
             ELSE
                CA-J @ 1+ CA-J !
-            THEN
+            THEN THEN
          repeat
       THEN
       CA-I @ 1+ CA-I !
@@ -192,43 +206,43 @@ variable CA-FILE-U
 : CA-SLICE$ {: start end :} ( start end -- a u )
    CA-FILE-BUF start + end start - ;
 
-: CA-WRITE-SLICE {: fd start end :} ( fd start end -- )
-   fd start end CA-SLICE$ CA-WRITE ;
+: CA-PROG-SLICE ( start end -- )
+   CA-SLICE$ CA-PROG+ ;
 
-: CA-WRITE-PREFIX {: fd :} ( fd -- )
-   fd s" 0 set-check" CA-WRITE-LN
-   fd s" s" CA-WRITE
-   34 fd swap CA-FD-C
-   fd CA-SP CA-FD-C
-   fd CA-FILE-A @ CA-FILE-U @ CA-WRITE
-   34 fd swap CA-FD-C
-   fd s"  DIAG-FILE!" CA-WRITE-LN
-   ARGV-JSON? IF fd s" -1 JSON-DIAGS !" CA-WRITE-LN THEN
-   fd s" : CHECK-SH-HOOK ( n n -- n )" CA-WRITE-LN
-   fd s"    CHECK! dup -1 <> IF 70 throw THEN ;" CA-WRITE-LN
-   fd s" ' CHECK-SH-HOOK set-check" CA-WRITE-LN ;
+: CA-PROG-PREFIX ( -- )
+   s" 0 set-check" CA-PROG-LN
+   s" s" CA-PROG+
+   34 CA-PROG-C
+   CA-SP CA-PROG-C
+   CA-FILE-A @ CA-FILE-U @ CA-PROG+
+   34 CA-PROG-C
+   s"  DIAG-FILE!" CA-PROG-LN
+   ARGV-JSON? IF s" -1 JSON-DIAGS !" CA-PROG-LN THEN
+   s" : CHECK-SH-HOOK ( n n -- n )" CA-PROG-LN
+   s"    CHECK! dup -1 <> IF 70 throw THEN ;" CA-PROG-LN
+   s" ' CHECK-SH-HOOK set-check" CA-PROG-LN ;
 
-: CA-WRITE-ACCEPTED {: fd upto :} ( fd upto -- )
+: CA-PROG-ACCEPTED {: upto :} ( upto -- )
    0 begin dup upto < while
       dup CA-OK@ IF
-         fd over CA-START@ over CA-END@ CA-WRITE-SLICE
-         fd CA-LF$ CA-WRITE
+         dup CA-START@ over CA-END@ CA-PROG-SLICE
+         CA-LF CA-PROG-C
       THEN
       1+
    repeat drop ;
 
-: CA-WRITE-ORIGIN {: fd k :} ( fd k -- )
-   fd k CA-LINE@ CA-FD-U  fd CA-SP CA-FD-C
-   fd k CA-COL@ CA-FD-U   fd CA-SP CA-FD-C
-   fd k CA-BYTE@ CA-FD-U
-   fd s"  DIAG-ORIGIN!" CA-WRITE-LN ;
+: CA-PROG-ORIGIN {: k :} ( k -- )
+   k CA-LINE@ CA-PROG-U  CA-SP CA-PROG-C
+   k CA-COL@ CA-PROG-U   CA-SP CA-PROG-C
+   k CA-BYTE@ CA-PROG-U
+   s"  DIAG-ORIGIN!" CA-PROG-LN ;
 
-: CA-WRITE-PROGRAM {: fd k :} ( fd k -- )
-   fd CA-WRITE-PREFIX
-   fd k CA-WRITE-ACCEPTED
-   fd k CA-WRITE-ORIGIN
-   fd k CA-START@ k CA-END@ CA-WRITE-SLICE
-   fd CA-LF$ CA-WRITE ;
+: CA-BUILD-PROGRAM {: k :} ( k -- )
+   0 CA-PROG-LEN !
+   CA-PROG-PREFIX
+   k CA-PROG-ACCEPTED
+   k CA-PROG-ORIGIN
+   k CA-START@ k CA-END@ CA-PROG-SLICE ;
 
 : CA-SPAWN-HB {: k :} ( k -- rc )
    CA-IN-R CA-IN-W CA-MKPIPE
@@ -241,7 +255,8 @@ variable CA-FILE-U
    CA-IN-R @ close
    CA-OUT-W @ close
    CA-ERR-W @ close
-   CA-IN-W @ k CA-WRITE-PROGRAM
+   k CA-BUILD-PROGRAM
+   CA-IN-W @ CA-PROG-BUF CA-PROG-LEN @ CA-WRITE
    CA-IN-W @ close
    CA-PID @ wait-rc CA-RC !
    CA-OUT-R @ CA-OUT-BUF CA-OUT-CAP CA-OUT-LEN CA-DRAIN-FD

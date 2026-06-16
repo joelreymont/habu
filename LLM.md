@@ -85,7 +85,10 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 - Repair quality: minimize `repair_iterations`, `checker_iterations`, and
   `diagnostic_count`; every diagnostic must identify the failing definition,
   token/span, expected stack, actual stack, stable error code, and
-  machine-readable `repair_class`.
+  machine-readable `repair_class`. Record `diagnostic_token`,
+  `diagnostic_span`, `diagnostic_expected`, `diagnostic_actual`,
+  `diagnostic_code`, `diagnostic_repair_class`, and `all_errors_stable` in
+  result rows so repair feedback quality is scored, not assumed.
 - Safety: `trust_uses=0` unless the task explicitly requires an audited boundary;
   `signature_weakened=false` always. Fix bodies before signatures.
 - Cost: track `tokens_used`, `wall_ms`, and `final_chars`; fast feedback matters

@@ -199,6 +199,13 @@ variable GJA-DIRECT
    dup JSON-KIND J-STR <> IF drop s" expected JSON string" GJA-FAIL THEN
    JSON-STRING$ nip 0= IF s" expected nonempty JSON string" GJA-FAIL THEN ;
 
+: GJA-REQ-STRF ( root a u -- )
+   GJA-REQ dup JSON-KIND J-STR <> IF drop s" expected JSON string" GJA-FAIL THEN
+   drop ;
+
+: GJA-REQ-INTF ( root a u -- )
+   GJA-REQ GJA-INT drop ;
+
 : GJA-SCHEMA1 ( root -- )
    s" schema_version" GJA-REQ GJA-INT 1 <> IF s" schema_version is not 1" GJA-FAIL THEN ;
 
@@ -275,24 +282,48 @@ variable GJA-DIRECT
    GJA-WANT-A @ GJA-WANT-U @ GJA-ASSERT-STR
    GJA-ROOT @ s" suggestion" GJA-REQ GJA-NONEMPTY-STR ;
 
+: GJA-DIAG-COMMON ( root -- )
+   dup GJA-SCHEMA1
+   dup s" code" GJA-REQ GJA-NONEMPTY-STR
+   dup s" repair_class" GJA-REQ GJA-NONEMPTY-STR
+   dup s" word" GJA-REQ GJA-NONEMPTY-STR
+   dup s" token" GJA-REQ GJA-NONEMPTY-STR
+   dup s" token_index" GJA-REQ-INTF
+   dup s" file" GJA-REQ GJA-NONEMPTY-STR
+   dup s" line" GJA-REQ-INTF
+   dup s" column" GJA-REQ-INTF
+   dup s" byte_start" GJA-REQ-INTF
+   dup s" byte_end" GJA-REQ-INTF
+   dup s" definition_source" GJA-REQ GJA-NONEMPTY-STR
+   dup s" suggestion" GJA-REQ GJA-NONEMPTY-STR
+   dup s" return_stack" GJA-REQ dup GJA-OBJ
+   dup s" expected" GJA-REQ-STRF
+   s" actual" GJA-REQ-STRF
+   drop ;
+
+: GJA-DIAG-DSTACK ( root -- )
+   dup s" expected" GJA-REQ-STRF
+   s" actual" GJA-REQ-STRF ;
+
+: GJA-ALL-ROW0 ( root -- )
+   dup GJA-DIAG-COMMON
+   dup s" word" GJA-REQ s" bad1" GJA-ASSERT-STR
+   dup s" code" GJA-REQ s" E-MISMATCH" GJA-ASSERT-STR
+   dup s" repair_class" GJA-REQ s" remove_producer" GJA-ASSERT-STR
+   GJA-DIAG-DSTACK ;
+
+: GJA-ALL-ROW1 ( root -- )
+   dup GJA-DIAG-COMMON
+   dup s" word" GJA-REQ s" bad2" GJA-ASSERT-STR
+   dup s" code" GJA-REQ s" E-REJECTED" GJA-ASSERT-STR
+   dup s" repair_class" GJA-REQ s" fix_return_stack" GJA-ASSERT-STR
+   s" return_stack" GJA-REQ s" actual" GJA-REQ GJA-NONEMPTY-STR ;
+
 : GJA-ALL-ERRORS ( path-a path-u -- )
-   0 GJA-OK1 ! 0 GJA-OK2 !
    GJA-READ GJA-SPLIT-LINES
    GJA-LINE# @ 2 <> IF s" expected two all-errors diagnostics" GJA-FAIL THEN
-   0 GJA-I !
-   begin GJA-I @ GJA-LINE# @ < while
-      GJA-I @ GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT
-      JSON-PARSE dup GJA-OBJ dup GJA-SCHEMA1
-      s" word" GJA-REQ GJA-NODE !
-      GJA-NODE @ s" bad1" GJA-STR= IF -1 GJA-OK1 ! ELSE
-         GJA-NODE @ s" bad2" GJA-STR= IF -1 GJA-OK2 ! ELSE
-            s" unexpected all-errors word" GJA-FAIL
-         THEN
-      THEN
-      GJA-I @ 1+ GJA-I !
-   repeat
-   GJA-OK1 @ 0= IF s" missing bad1 diagnostic" GJA-FAIL THEN
-   GJA-OK2 @ 0= IF s" missing bad2 diagnostic" GJA-FAIL THEN ;
+   0 GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT JSON-PARSE dup GJA-OBJ GJA-ALL-ROW0
+   1 GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT JSON-PARSE dup GJA-OBJ GJA-ALL-ROW1 ;
 
 : GJA-START-LINE-OK ( result -- )
    s" locations" GJA-REQ dup GJA-ARR-KIND

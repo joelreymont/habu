@@ -186,6 +186,7 @@ bin/hb "$GATE_JSON" diag-repair-class "$T/habu-unsafe.err" trusted_boundary_requ
 printf ': EV ( -- n ) evaluate ;\nEV .\n' | bin/hb >/dev/null 2>&1 && { echo "FAIL: hb published unsafe evaluate definition"; exit 1; }
 cat > $T/habu-all-errors.f <<'EOF'
 : OK ( i64 -- i64 ) dup * ;
+: SEMI ( -- i64 ) [char] ; ;
 : BAD1 ( i64 -- i64 ) dup ;
 : BAD2 ( i64 -- ) >r ;
 EOF

@@ -39,6 +39,13 @@ awk '
     gsub(/"repair_iterations":0/, "\"repair_iterations\":2");
     gsub(/"checker_iterations":1/, "\"checker_iterations\":3");
     gsub(/"diagnostic_count":0/, "\"diagnostic_count\":4");
+    gsub(/"diagnostic_token":true/, "\"diagnostic_token\":false");
+    gsub(/"diagnostic_span":true/, "\"diagnostic_span\":false");
+    gsub(/"diagnostic_expected":true/, "\"diagnostic_expected\":false");
+    gsub(/"diagnostic_actual":true/, "\"diagnostic_actual\":false");
+    gsub(/"diagnostic_code":true/, "\"diagnostic_code\":false");
+    gsub(/"diagnostic_repair_class":true/, "\"diagnostic_repair_class\":false");
+    gsub(/"all_errors_stable":true/, "\"all_errors_stable\":false");
     gsub(/"tokens_used":0/, "\"tokens_used\":100");
     gsub(/"wall_ms":0/, "\"wall_ms\":250");
   }
@@ -61,6 +68,16 @@ printf '%s\n' "$out" | grep -q 'buckets checker_rejected=1 first_tests_failed=1 
   printf '%s\n' "$out"
   exit 1
 }
+printf '%s\n' "$out" | grep -q 'diagnostic_quality token=32 span=32 expected=32 actual=32 code=32 repair_class=32 all_errors_stable=32' || {
+  echo "FAIL: validate-results diagnostic quality"
+  printf '%s\n' "$out"
+  exit 1
+}
+printf '%s\n' "$out" | grep -q 'diagnostic_gaps token=1 span=1 expected=1 actual=1 code=1 repair_class=1 all_errors_stable=1' || {
+  echo "FAIL: validate-results diagnostic gaps"
+  printf '%s\n' "$out"
+  exit 1
+}
 printf '%s\n' "$out" | grep -q 'category arithmetic rows=6 certified=5 tests=5' || {
   echo "FAIL: validate-results summary category"
   printf '%s\n' "$out"
@@ -75,6 +92,16 @@ printf '%s\n' "$out" | grep -q '"rows":33' || {
 }
 printf '%s\n' "$out" | grep -q '"checker_rejected":1' || {
   echo "FAIL: validate-results json buckets"
+  printf '%s\n' "$out"
+  exit 1
+}
+printf '%s\n' "$out" | grep -q '"diagnostic_quality":{"token":32,"span":32,"expected":32,"actual":32,"code":32,"repair_class":32,"all_errors_stable":32}' || {
+  echo "FAIL: validate-results json diagnostic quality"
+  printf '%s\n' "$out"
+  exit 1
+}
+printf '%s\n' "$out" | grep -q '"diagnostic_gaps":{"token":1,"span":1,"expected":1,"actual":1,"code":1,"repair_class":1,"all_errors_stable":1}' || {
+  echo "FAIL: validate-results json diagnostic gaps"
   printf '%s\n' "$out"
   exit 1
 }

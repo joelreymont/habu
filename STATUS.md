@@ -76,9 +76,12 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   native-only: `bench/llm/run.sh` validates the task set, checked reference
   solutions, functional tests, and metric JSONL. The scorecard fields are
   `first_pass_checker`, `first_pass_tests`, `tests_passed`, `repair_iterations`,
-  `checker_iterations`, `diagnostic_count`, `tokens_used`, `wall_ms`,
-  `final_chars`, `trust_uses`, and `signature_weakened`. Attempt JSONL files can
-  now be summarized through the native validator, including failure buckets and
+  `checker_iterations`, `diagnostic_count`, `diagnostic_token`,
+  `diagnostic_span`, `diagnostic_expected`, `diagnostic_actual`,
+  `diagnostic_code`, `diagnostic_repair_class`, `all_errors_stable`,
+  `tokens_used`, `wall_ms`, `final_chars`, `trust_uses`, and
+  `signature_weakened`. Attempt JSONL files can now be summarized through the
+  native validator, including failure buckets, diagnostic-quality gaps, and
   per-category coverage. Open work is to run real model attempts through that
   schema and expand category breadth. `bench/llm/perf.sh` records quick
   feedback-loop latency, with `--full` covering rebuild and AOT timings.

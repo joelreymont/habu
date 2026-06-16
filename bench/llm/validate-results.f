@@ -77,6 +77,13 @@ variable LV-TESTS
 variable LV-REPAIRS
 variable LV-CHECKERS
 variable LV-DIAGS
+variable LV-DTOK
+variable LV-DSPAN
+variable LV-DEXPECT
+variable LV-DACTUAL
+variable LV-DCODE
+variable LV-DCLASS
+variable LV-AESTABLE
 variable LV-TOKENS
 variable LV-WALL
 variable LV-CHARS
@@ -87,6 +94,13 @@ variable LV-BAD-FIRST
 variable LV-BAD-TESTS
 variable LV-BAD-TRUST
 variable LV-BAD-SIG
+variable LV-BAD-DTOK
+variable LV-BAD-DSPAN
+variable LV-BAD-DEXP
+variable LV-BAD-DACT
+variable LV-BAD-DCODE
+variable LV-BAD-DCLASS
+variable LV-BAD-AE
 
 : LV-OUT ( a u -- ) type ;
 : LV-NL ( -- ) 10 emit ;
@@ -331,6 +345,13 @@ variable LV-BAD-SIG
    root s" repair_iterations" LV-REQ
    root s" checker_iterations" LV-REQ
    root s" diagnostic_count" LV-REQ
+   root s" diagnostic_token" LV-REQ
+   root s" diagnostic_span" LV-REQ
+   root s" diagnostic_expected" LV-REQ
+   root s" diagnostic_actual" LV-REQ
+   root s" diagnostic_code" LV-REQ
+   root s" diagnostic_repair_class" LV-REQ
+   root s" all_errors_stable" LV-REQ
    root s" tokens_used" LV-REQ
    root s" wall_ms" LV-REQ
    root s" final_chars" LV-REQ
@@ -412,6 +433,13 @@ variable LV-BAD-SIG
    root s" repair_iterations" LV-INT-FIELD drop
    root s" checker_iterations" LV-INT-FIELD drop
    root s" diagnostic_count" LV-INT-FIELD drop
+   root s" diagnostic_token" LV-BOOL-FIELD drop
+   root s" diagnostic_span" LV-BOOL-FIELD drop
+   root s" diagnostic_expected" LV-BOOL-FIELD drop
+   root s" diagnostic_actual" LV-BOOL-FIELD drop
+   root s" diagnostic_code" LV-BOOL-FIELD drop
+   root s" diagnostic_repair_class" LV-BOOL-FIELD drop
+   root s" all_errors_stable" LV-BOOL-FIELD drop
    root s" tokens_used" LV-INT-FIELD drop
    root s" wall_ms" LV-INT-FIELD drop
    root s" final_chars" LV-INT-FIELD 0 <= IF s" invalid final_chars" LV-FAIL-AT THEN
@@ -427,6 +455,13 @@ variable LV-BAD-SIG
    root s" repair_iterations" 0 s" reference should need zero repairs" LV-CHECK-INT=
    root s" checker_iterations" 1 s" reference should need one checker iteration" LV-CHECK-INT=
    root s" diagnostic_count" 0 s" reference should have zero diagnostics" LV-CHECK-INT=
+   root s" diagnostic_token" -1 s" reference should have token diagnostics available" LV-CHECK-BOOL=
+   root s" diagnostic_span" -1 s" reference should have span diagnostics available" LV-CHECK-BOOL=
+   root s" diagnostic_expected" -1 s" reference should have expected diagnostics available" LV-CHECK-BOOL=
+   root s" diagnostic_actual" -1 s" reference should have actual diagnostics available" LV-CHECK-BOOL=
+   root s" diagnostic_code" -1 s" reference should have code diagnostics available" LV-CHECK-BOOL=
+   root s" diagnostic_repair_class" -1 s" reference should have repair class diagnostics available" LV-CHECK-BOOL=
+   root s" all_errors_stable" -1 s" reference should have stable all-errors diagnostics" LV-CHECK-BOOL=
    root s" trust_uses" 0 s" benchmark task used TRUST" LV-CHECK-INT=
    root s" signature_weakened" 0 s" reference weakened a signature" LV-CHECK-BOOL= ;
 
@@ -436,6 +471,9 @@ variable LV-BAD-SIG
    root LV-CERTIFIED? IF LV-P @ LV-CAT-CERT++ THEN
    root s" tests_passed" LV-BOOL-FIELD IF LV-P @ LV-CAT-TESTS++ THEN ;
 
+: LV-ACC-BOOL {: root a u good bad :} ( root a u good bad -- )
+   root a u LV-BOOL-FIELD IF good LV-CELL++ ELSE bad LV-CELL++ THEN ;
+
 : LV-ACCUM-ROW {: root :} ( root -- )
    LV-ROWS LV-CELL++
    root LV-CERTIFIED? IF LV-CERT LV-CELL++ ELSE LV-BAD-CHECKER LV-CELL++ THEN
@@ -444,6 +482,13 @@ variable LV-BAD-SIG
    root s" repair_iterations" LV-INT-FIELD LV-REPAIRS LV-CELL+!
    root s" checker_iterations" LV-INT-FIELD LV-CHECKERS LV-CELL+!
    root s" diagnostic_count" LV-INT-FIELD LV-DIAGS LV-CELL+!
+   root s" diagnostic_token" LV-DTOK LV-BAD-DTOK LV-ACC-BOOL
+   root s" diagnostic_span" LV-DSPAN LV-BAD-DSPAN LV-ACC-BOOL
+   root s" diagnostic_expected" LV-DEXPECT LV-BAD-DEXP LV-ACC-BOOL
+   root s" diagnostic_actual" LV-DACTUAL LV-BAD-DACT LV-ACC-BOOL
+   root s" diagnostic_code" LV-DCODE LV-BAD-DCODE LV-ACC-BOOL
+   root s" diagnostic_repair_class" LV-DCLASS LV-BAD-DCLASS LV-ACC-BOOL
+   root s" all_errors_stable" LV-AESTABLE LV-BAD-AE LV-ACC-BOOL
    root s" tokens_used" LV-INT-FIELD LV-TOKENS LV-CELL+!
    root s" wall_ms" LV-INT-FIELD LV-WALL LV-CELL+!
    root s" final_chars" LV-INT-FIELD LV-CHARS LV-CELL+!
@@ -477,6 +522,13 @@ variable LV-BAD-SIG
    0 LV-REPAIRS !
    0 LV-CHECKERS !
    0 LV-DIAGS !
+   0 LV-DTOK !
+   0 LV-DSPAN !
+   0 LV-DEXPECT !
+   0 LV-DACTUAL !
+   0 LV-DCODE !
+   0 LV-DCLASS !
+   0 LV-AESTABLE !
    0 LV-TOKENS !
    0 LV-WALL !
    0 LV-CHARS !
@@ -486,7 +538,14 @@ variable LV-BAD-SIG
    0 LV-BAD-FIRST !
    0 LV-BAD-TESTS !
    0 LV-BAD-TRUST !
-   0 LV-BAD-SIG ! ;
+   0 LV-BAD-SIG !
+   0 LV-BAD-DTOK !
+   0 LV-BAD-DSPAN !
+   0 LV-BAD-DEXP !
+   0 LV-BAD-DACT !
+   0 LV-BAD-DCODE !
+   0 LV-BAD-DCLASS !
+   0 LV-BAD-AE ! ;
 
 : LV-SCAN-RESULTS ( -- )
    LV-RESET-SUMMARY
@@ -543,6 +602,24 @@ variable LV-BAD-SIG
    s" trust_used" LV-BAD-TRUST @ LV-TEXT-FIELD
    s" signature_weakened" LV-BAD-SIG @ LV-TEXT-FIELD
    LV-NL
+   s" llm-results: diagnostic_quality" LV-OUT
+   s" token" LV-DTOK @ LV-TEXT-FIELD
+   s" span" LV-DSPAN @ LV-TEXT-FIELD
+   s" expected" LV-DEXPECT @ LV-TEXT-FIELD
+   s" actual" LV-DACTUAL @ LV-TEXT-FIELD
+   s" code" LV-DCODE @ LV-TEXT-FIELD
+   s" repair_class" LV-DCLASS @ LV-TEXT-FIELD
+   s" all_errors_stable" LV-AESTABLE @ LV-TEXT-FIELD
+   LV-NL
+   s" llm-results: diagnostic_gaps" LV-OUT
+   s" token" LV-BAD-DTOK @ LV-TEXT-FIELD
+   s" span" LV-BAD-DSPAN @ LV-TEXT-FIELD
+   s" expected" LV-BAD-DEXP @ LV-TEXT-FIELD
+   s" actual" LV-BAD-DACT @ LV-TEXT-FIELD
+   s" code" LV-BAD-DCODE @ LV-TEXT-FIELD
+   s" repair_class" LV-BAD-DCLASS @ LV-TEXT-FIELD
+   s" all_errors_stable" LV-BAD-AE @ LV-TEXT-FIELD
+   LV-NL
    LV-OUTPUT-CATEGORIES ;
 
 : LV-JSON-U ( u -- )
@@ -561,6 +638,28 @@ variable LV-BAD-SIG
    s" tests_failed" LV-BAD-TESTS @ LV-JSON-COMMA-UF
    s" trust_used" LV-BAD-TRUST @ LV-JSON-COMMA-UF
    s" signature_weakened" LV-BAD-SIG @ LV-JSON-UF
+   JSONW-OBJECT-END ;
+
+: LV-DQ-JSON ( -- )
+   JSONW-OBJECT-START
+   s" token" LV-DTOK @ LV-JSON-COMMA-UF
+   s" span" LV-DSPAN @ LV-JSON-COMMA-UF
+   s" expected" LV-DEXPECT @ LV-JSON-COMMA-UF
+   s" actual" LV-DACTUAL @ LV-JSON-COMMA-UF
+   s" code" LV-DCODE @ LV-JSON-COMMA-UF
+   s" repair_class" LV-DCLASS @ LV-JSON-COMMA-UF
+   s" all_errors_stable" LV-AESTABLE @ LV-JSON-UF
+   JSONW-OBJECT-END ;
+
+: LV-DG-JSON ( -- )
+   JSONW-OBJECT-START
+   s" token" LV-BAD-DTOK @ LV-JSON-COMMA-UF
+   s" span" LV-BAD-DSPAN @ LV-JSON-COMMA-UF
+   s" expected" LV-BAD-DEXP @ LV-JSON-COMMA-UF
+   s" actual" LV-BAD-DACT @ LV-JSON-COMMA-UF
+   s" code" LV-BAD-DCODE @ LV-JSON-COMMA-UF
+   s" repair_class" LV-BAD-DCLASS @ LV-JSON-COMMA-UF
+   s" all_errors_stable" LV-BAD-AE @ LV-JSON-UF
    JSONW-OBJECT-END ;
 
 : LV-OUTPUT-CATEGORY-JSON {: k :} ( k -- )
@@ -602,6 +701,8 @@ variable LV-BAD-SIG
    s" trust_uses" LV-TRUST @ LV-JSON-COMMA-UF
    s" signature_weakened" LV-SIGWEAK @ LV-JSON-COMMA-UF
    s" buckets" JSONW-KEY LV-OUTPUT-BUCKETS-JSON JSONW-COMMA
+   s" diagnostic_quality" JSONW-KEY LV-DQ-JSON JSONW-COMMA
+   s" diagnostic_gaps" JSONW-KEY LV-DG-JSON JSONW-COMMA
    s" categories" JSONW-KEY LV-OUT-CATS-JSON
    JSONW-OBJECT-END
    JSON-OUT-BUF JSON-OUT-LEN @ LV-OUT LV-NL ;

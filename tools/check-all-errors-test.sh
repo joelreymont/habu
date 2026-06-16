@@ -17,6 +17,7 @@ cat "$ROOT/tools/lint/lib.f" \
 
 cat > "$T/input.f" <<'EOF'
 : OK ( i64 -- i64 ) dup * ;
+: SEMI ( -- i64 ) [char] ; ;
 : BAD1 ( i64 -- i64 ) dup ;
 : BAD2 ( i64 -- ) >r ;
 EOF
