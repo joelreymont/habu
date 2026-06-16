@@ -58,7 +58,10 @@ awk '
 ' "$ROOT/bench/llm/results/reference.jsonl" > "$T/bench/llm/results/attempt.jsonl"
 
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/attempt.jsonl)
-printf '%s\n' "$out" | grep -q 'run=attempt-fixture model=toy-model rows=33 certified=32 first_tests=32 tests=32 repairs=2 checker_iterations=35 diagnostics=4 tokens=100 wall_ms=250' || {
+expected_good=$((expected_count - 1))
+expected_checkers=$((expected_count + 2))
+
+printf '%s\n' "$out" | grep -q "run=attempt-fixture model=toy-model rows=$expected_count certified=$expected_good first_tests=$expected_good tests=$expected_good repairs=2 checker_iterations=$expected_checkers diagnostics=4 tokens=100 wall_ms=250" || {
   echo "FAIL: validate-results summary totals"
   printf '%s\n' "$out"
   exit 1
@@ -68,7 +71,7 @@ printf '%s\n' "$out" | grep -q 'buckets checker_rejected=1 first_tests_failed=1 
   printf '%s\n' "$out"
   exit 1
 }
-printf '%s\n' "$out" | grep -q 'diagnostic_quality token=32 span=32 expected=32 actual=32 code=32 repair_class=32 all_errors_stable=32' || {
+printf '%s\n' "$out" | grep -q "diagnostic_quality token=$expected_good span=$expected_good expected=$expected_good actual=$expected_good code=$expected_good repair_class=$expected_good all_errors_stable=$expected_good" || {
   echo "FAIL: validate-results diagnostic quality"
   printf '%s\n' "$out"
   exit 1
@@ -85,7 +88,7 @@ printf '%s\n' "$out" | grep -q 'category arithmetic rows=6 certified=5 tests=5' 
 }
 
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/attempt.jsonl)
-printf '%s\n' "$out" | grep -q '"rows":33' || {
+printf '%s\n' "$out" | grep -q "\"rows\":$expected_count" || {
   echo "FAIL: validate-results json rows"
   printf '%s\n' "$out"
   exit 1
@@ -95,7 +98,7 @@ printf '%s\n' "$out" | grep -q '"checker_rejected":1' || {
   printf '%s\n' "$out"
   exit 1
 }
-printf '%s\n' "$out" | grep -q '"diagnostic_quality":{"token":32,"span":32,"expected":32,"actual":32,"code":32,"repair_class":32,"all_errors_stable":32}' || {
+printf '%s\n' "$out" | grep -q "\"diagnostic_quality\":{\"token\":$expected_good,\"span\":$expected_good,\"expected\":$expected_good,\"actual\":$expected_good,\"code\":$expected_good,\"repair_class\":$expected_good,\"all_errors_stable\":$expected_good}" || {
   echo "FAIL: validate-results json diagnostic quality"
   printf '%s\n' "$out"
   exit 1

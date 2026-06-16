@@ -1,7 +1,8 @@
 \ solutions.f — reference answer key for the habu LLM benchmark. Each definition
 \ is checked: run.sh proves all tasks typecheck (CHECK! => -1 certified).
 \ Categories: arithmetic, control flow, locals, polymorphic stack, loops,
-\ return stack, quotations/combinators, recursion-as-loop, stack introspection.
+\ return stack, quotations/combinators, stack introspection, memory, strings,
+\ files, processes, time, recursion, parser edge cases.
 
 : SQUARE ( i64 -- i64 ) dup * ;                                  \ n -> n*n
 : CUBE   ( i64 -- i64 ) dup dup * * ;                            \ n -> n*n*n
@@ -37,3 +38,14 @@
 : DEPTHNOW ( R -- R n ) depth ;                                \ report current stack depth
 : HAS2? ( R -- R bool ) depth 2 >= ;                           \ true iff at least two cells live
 : ADDDEPTH ( R i64 -- R i64 ) depth + ;                        \ add current depth to top value
+: MEMCELL ( i64 -- i64 ) here {: p :} 8 allot p ! p @ ;        \ store and fetch one cell
+: BYTECELL ( u8 -- u8 ) here {: p :} 1 allot p c! p c@ ;       \ store and fetch one byte
+: STRLEN ( -- i64 ) s" habu" nip ;                             \ string literal length
+: FIRSTCH ( -- u8 ) s" habu" drop c@ ;                         \ first byte of a string literal
+: TWOCELLS ( i64 -- i64 ) here {: p :} 16 allot p ! 99 p cell+ ! p @ p cell+ @ + ;  \ two-cell access
+: MONO? ( -- bool ) mono-ns mono-ns <= ;                       \ monotonic clock ordering
+: TRUE-RC ( -- i64 ) s" /usr/bin/true" path0 -1 -1 -1 spawn-io wait-rc ;  \ run a process and report rc
+: TRUE-EXISTS? ( -- bool ) s" /usr/bin/true" path0 0 access 0= ;  \ path exists
+: STATTRUE ( -- bool ) here {: st :} 144 allot s" /usr/bin/true" path0 st stat64 0= ;  \ stat a path
+: FIB ( i64 -- i64 ) dup 2 < if exit then dup 1 - recurse swap 2 - recurse + ;  \ recursive fibonacci
+: SEVEN-CHAR ( -- i64 ) [char] 7 ;                             \ parse-next word with a digit char

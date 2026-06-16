@@ -98,6 +98,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   overflowed the old 96-entry seed registry and corrupted the generated stage
   image. Keep registry/name-pool capacities named and checked in `REG-PRIM` so
   growth fails closed at build time.
+- **Checked process code uses modeled primitives:** `run-rc` executes but is not
+  checker-modeled. Use `spawn-io wait-rc` in checked examples until `run-rc` is
+  expressed as a checked wrapper or given an audited checker model.
 
 ## Darwin And Syscalls
 

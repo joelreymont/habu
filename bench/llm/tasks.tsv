@@ -32,3 +32,14 @@ id	name	signature	category	tests
 31	DEPTHNOW	(R -- R n)	stack-introspection	11 22 -> 11 22 2
 32	HAS2?	(R -- R bool)	stack-introspection	empty -> 0; 1 -> 1 0; 1 2 -> 1 2 -1
 33	ADDDEPTH	(R i64 -- R i64)	stack-introspection	10 -> 11; 3 4 10 -> 3 4 13
+34	MEMCELL	(i64 -- i64)	memory	42 -> 42
+35	BYTECELL	(u8 -- u8)	byte-memory	65 -> 65
+36	STRLEN	(-- i64)	strings	empty -> 4
+37	FIRSTCH	(-- u8)	strings	empty -> 104
+38	TWOCELLS	(i64 -- i64)	memory	1 -> 100
+39	MONO?	(-- bool)	time	empty -> -1
+40	TRUE-RC	(-- i64)	process	empty -> 0
+41	TRUE-EXISTS?	(-- bool)	files	empty -> -1
+42	STATTRUE	(-- bool)	files	empty -> -1
+43	FIB	(i64 -- i64)	recursion	6 -> 8
+44	SEVEN-CHAR	(-- i64)	parsing	empty -> 55
