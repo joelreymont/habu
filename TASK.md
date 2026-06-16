@@ -36,21 +36,10 @@ the daily execution path.
 - **`tools/lint/clobber-lint.f`** — reproduces the register-clobber model.
 - **`test/run.sh`** feeds each linter through `bin/hb`.
 
-## habu gotchas discovered (apply when writing more habu tooling)
-- **`i` and `j` are loop-index keywords — never use as local names.** They compile
-  to the (compile-only) loop index, not your argument; silent garbage.
-- `{: :}` locals do **not** accept `-- outputs` (binds them as extra locals →
-  stack underflow). Put the effect in a `( -- )` comment.
-- habu locals nest only ~2 deep reliably; make leaf helpers **stack-based**.
-- Data region is 2 MB (`DATA-SIZE=$200000`); the installed `bin/hb` already uses
-  ~931 KB, leaving ~1.1 MB. Size buffers small (file buf 128 KB, token arrays
-  `TMAX=$6000`). Overshoot → writes past the region → SIGSEGV.
-- Missing words: `pick`, `+!`, `within`. Use variables / explicit increment.
-- Compile-only words (`begin`/`while`/`repeat`, `[' ]`, `i`, `?do`) cannot run at
-  the interpret (top) level — wrap loops/ticks in a `: WORD ;`.
-- The engine prints an undefined word to **stderr** then spills the rest of the
-  failed def to the interpreter — a stray token on stderr means a word failed to
-  compile (look earlier in that def).
+## Habu gotchas
+
+Durable tooling gotchas live in `docs/forth.md`; this task file is historical
+status for the self-hosted lint migration.
 
 ## How to run / verify
 ```

@@ -46,9 +46,6 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 
 ## Runtime And REPL
 
-- **Native scripts load one source file:** `bin/hb tool.f args...` has no
-  `include` word, so reusable script helpers are concatenated ahead of the tool
-  body when testing or packaging single-file scripts.
 - **Baked REPL support needs an explicit hook boundary:** installed `hb` preserves
   its check hook. Baked REPL/stepper/debug source is trusted engine UI code, so
   the snapshot prepends `0 set-check` and then reinstalls a `CHECK!` hook before
@@ -63,9 +60,6 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Pipe mode and script mode are distinct:** non-tty stdin with bytes is pipeline
   mode even when `argc > 1` (needed for `bin/hb seed count < test/prop-test.f`).
   Empty non-tty stdin with `argc > 1` runs `argv[1]` as a script path.
-- **Interactive support must recover, not exit:** REPL-baked recoverable failures
-  should `throw` into REPL recovery (`?`, rollback, reread). Reserve `die` for
-  build-time makers where process exit is the correct failure.
 - **PTY behavior needs a real pty harness:** `script(1)` interleaves echo/output.
   Drive a pty directly and poll for exit when testing prompt, raw mode, history,
   Ctrl-C/Ctrl-D, and async termination.
@@ -131,38 +125,17 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Source origins are wrapper-owned:** the checker reports definition-relative
   spans. Build/check wrappers inject origin markers before definitions and keep
   those markers out of final user bundles.
-- **Trust is audited, not permanent:** native `trust` records asserted effects so
-  callers are checked, but audit rows must stay current and stale dates must fail
-  lint.
 - **Effect drift checks must compare full normalized tokens:** returning on the
   first shared whitespace made `n --` equal `n -- n`. Tokenize/advance through
   the whole effect when comparing manifest text.
-- **Native CLI tools need lean images:** combining large lint tables, `json.f`,
-  and another large file buffer can crash on file reads. Prefer standalone
-  readers/writers sized from real inputs, and keep helper scratch state separate
-  from caller loop indexes.
-- **Shadowing prim names is a class of bug:** later toolchain words can replace
-  primitive dictionary entries and checker signatures. `shadow-lint` gates this.
+- **Large native tool bundles can corrupt reads:** combining large lint tables,
+  `json.f`, and another large file buffer crashed JSON gate assertions. A lean
+  standalone reader plus distinct helper scratch variables fixed it.
 - **Useful register lint needs contracts:** clobber analysis must model callee
   returns, preserves, no-return exits, routine boundaries, syscall clobbers, and
   LR/SP conventions; raw write-before-BL/read-after-BL rules are mostly false.
 - **Stale binaries hide fixes:** never silence the build while debugging the code
   it builds. Remove output artifacts before generate-then-run tests.
-
-## Process
-
-- **Read docs before coding:** `docs/forth.md` is the coding standard;
-  `LESSONS.md` is memory of previous failures. Do not put standards back into
-  this file.
-- **Parallel agents need disjoint write scopes:** background workers use separate
-  jj workspaces and must not edit the main working tree.
-- **Commit after significant changes:** keep `jj` changes small and described;
-  after finishing/pushing a change, start a fresh working-copy commit before new
-  edits.
-- **Track remaining work with detailed dots:** each dot needs title, file/context,
-  root cause, and proposed fix. Large infrastructure dots must be decomposed.
-- **Run the native gate before closing work:** `test/run.sh` is the daily
-  authority; bootstrap/oracle gates are for recovery or seed/reference changes.
 
 ## Environment
 

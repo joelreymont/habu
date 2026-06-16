@@ -22,6 +22,8 @@ bottom.
   case-insensitive, so `CON?`/`VAR?` clash with existing words. Prefix to
   disambiguate (`TYCON?`, `TYVAR?`). When in doubt, `' NAME` in a REPL: if it
   resolves, the name is taken.
+- **Do not shadow native primitive names.** Later dictionary entries can replace
+  primitive signatures and codegen hooks; `shadow-lint` gates this class of bug.
 
 ## Words & factoring
 
@@ -41,8 +43,13 @@ bottom.
 - **Factor when the stack gets unreadable.** If you reach for `ROT -ROT PICK
   ROLL`, stop and either factor a helper or use locals. Deep juggling is exactly
   what this project forbids in *user* code — hold our own code to it.
-- **Locals `{: a b :}`** are encouraged where they remove juggling (gforth 0.7.9
-  supports them). Prefer named locals over a 4-deep stack dance.
+- **Locals `{: a b :}`** are encouraged where they remove juggling. They bind
+  inputs only; do not put `-- outputs` inside the locals form. Keep the effect in
+  the stack comment.
+- **Do not build deep locals stacks.** Habu locals are reliable for shallow
+  factoring; nested helper calls from loop/callback bodies should use stack-based
+  leaf helpers or explicitly separate scratch variables so inner helpers cannot
+  clobber caller indexes.
 
 ## Files
 
@@ -53,6 +60,9 @@ bottom.
 - **Reusable helpers belong in libraries, not pasted drivers.** Tool/script
   drivers can concatenate library files for `hb script.f args...`, but shared
   behavior should still live in one owned source file.
+- **Native scripts are single-source loads.** `hb tool.f args...` has no
+  `include`; wrappers concatenate owned libraries ahead of the driver when a tool
+  needs shared code.
 
 ## Stack comments
 
@@ -71,6 +81,10 @@ bottom.
 - **`catch` only at boundaries** (the `:` override wrapper). No `… catch drop`,
   `catch 2drop`, or other masking — that is forbidden by the global error rules.
 - `unreachable`-style `abort"` only for proven-impossible states, with a message.
+- **Interactive/REPL support recovers; builders may exit.** Recoverable
+  interactive failures should `throw` into REPL recovery (`?`, rollback, reread).
+  Use process exits such as `die` for build-time makers and CLI boundaries where
+  terminating the process is the contract.
 
 ## Constants
 
@@ -96,6 +110,21 @@ bottom.
 
 - `\` line comments, terse. No restating what the code obviously does.
 - Remove scratch/debug prints before commit.
+- If a definition fails to compile, Habu reports the undefined word on stderr and
+  then may spill the rest of that definition through the interpreter. A stray
+  stderr token means the real error is earlier in the same definition.
+
+## Habu Native Tooling Gotchas
+
+- **Keep native tool bundles lean.** The native data region is finite; large lint
+  tables plus `json.f` plus another large file buffer can crash during reads.
+  Size buffers from real inputs and prefer standalone readers/writers for small
+  assertion or emit-only tools.
+- **Missing convenience words are not bugs in the standard.** Habu currently lacks
+  words such as `pick`, `+!`, and `within`; use variables, explicit increments,
+  or explicit comparisons.
+- **Trust is audited, not permanent.** `TRUST` records asserted effects so callers
+  can be checked, but audit rows must stay current and stale dates must fail lint.
 
 ## Gforth 0.7.9 gotchas that shape how we write code
 
@@ -105,8 +134,9 @@ bottom.
 - **Case-insensitive** dictionary → name-collision risk (see Naming).
 - **`[']` is compile-only.** Inside an interpreted `T{ … }T`, use `'` (tick) to
   get an xt, e.g. `' WORD catch`.
-- **`if`/`else`/`then` and `;` are compile-only** — all conditional/looping logic
-  must live inside a `:` definition, never at the top level.
+- **Control words and ticks are compile-only** — `if`/`else`/`then`,
+  `begin`/`while`/`repeat`, `[']`, `i`, `?do`, and `;` must live inside a
+  `:` definition, never at the top level.
 - **`parse-name` returns a transient `( c-addr u )`** that the next
   `s"`/`."`/`refill` invalidates — `move` the bytes into your own buffer
   immediately; never hold the pointer across another parsing word.
