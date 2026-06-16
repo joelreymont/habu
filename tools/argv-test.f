@@ -89,6 +89,15 @@ variable TEST-FAIL
    ARGV-POS# 1 ASSERT=
    0 ARGV-POS$ s" --json" ASSERT$ ;
 
+: TEST-JSON-ERRORS ( -- )
+   QUIET-MOCK
+   s" --json-errors" ARGV-MOCK+
+   s" file.f" ARGV-MOCK+
+   ARGV-PARSE
+   ARGV-JSON? ASSERT
+   ARGV-POS# 1 ASSERT=
+   0 ARGV-POS$ s" file.f" ASSERT$ ;
+
 : TEST-UNKNOWN ( -- )
    QUIET-MOCK
    s" --wat" ARGV-MOCK+
@@ -128,6 +137,7 @@ variable TEST-FAIL
    TEST-COMMON
    TEST-DEFAULTS
    TEST-DASHDASH
+   TEST-JSON-ERRORS
    TEST-UNKNOWN
    TEST-MISSING-LABEL
    TEST-MISSING-OUT

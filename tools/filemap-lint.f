@@ -89,15 +89,16 @@ variable FM-NUM-L
    s" tools/check.sh" FM-REQ
    s" tools/hb-build.sh" FM-REQ
    s" tools/lint/json-writer.f" FM-REQ
+   s" tools/lint/source-lex.f" FM-REQ
    s" tools/signature-lint.f" FM-REQ
    s" tools/signature-lint-test.sh" FM-REQ
    s" tools/aot-lint.f" FM-REQ
    s" tools/aot-lint-test.sh" FM-REQ
-   s" tools/forth_lex.py" FM-REQ
    s" tools/diag-origin.f" FM-REQ
    s" tools/diag-origin-test.sh" FM-REQ
    s" tools/json-only.f" FM-REQ
-   s" tools/check-all-errors.py" FM-REQ
+   s" tools/check-all-errors.f" FM-REQ
+   s" tools/check-all-errors-test.sh" FM-REQ
    s" tools/diag-to-sarif.f" FM-REQ
    s" tools/public-signatures.f" FM-REQ
    s" tools/aot-call-report.f" FM-REQ

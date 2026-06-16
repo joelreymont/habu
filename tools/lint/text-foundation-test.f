@@ -57,7 +57,7 @@ create LEX-FIX FIX-CAP allot     variable LEX-LEN
 
 : INIT-BT-FIX  ( -- )
    0 BT-LEN !
-   s" See `tools/forth_lex.py` and `plain`." BT-FIX FIX-CAP BT-LEN BUF-APPEND
+   s" See `tools/lint/source-lex.f` and `plain`." BT-FIX FIX-CAP BT-LEN BUF-APPEND
    10 BT-FIX FIX-CAP BT-LEN BUF-APPEND-C ;
 : BT-FIX$  ( -- a u )  BT-FIX BT-LEN @ ;
 
@@ -106,7 +106,7 @@ create LEX-FIX FIX-CAP allot     variable LEX-LEN
    SRC-FIX$ SRC-PATH-REF? ASSERT
    P1A @ P1U @ s" src/habu/repl.f" ASSERT$
    BT-FIX$ BACKTICK-PATH? ASSERT
-   P1A @ P1U @ s" tools/forth_lex.py" ASSERT$
+   P1A @ P1U @ s" tools/lint/source-lex.f" ASSERT$
    s" `plain`" BACKTICK-PATH? 0= ASSERT ;
 
 : TEST-SIGS  ( -- )

@@ -56,7 +56,9 @@ json_only() {
 }
 if [ "$ALL" = 1 ]; then
   if [ "$JSON" = 1 ]; then JSON_ARG=--json-errors; else JSON_ARG=; fi
-  ./tools/check-all-errors.py $JSON_ARG --label "$LABEL" "$SRC"
+  CHECK_ALL_TOOL=$T/check-all-errors.f
+  [ -f "$CHECK_ALL_TOOL" ] || cat tools/lint/lib.f tools/lint/source-lex.f tools/argv.f tools/check-all-errors.f > "$CHECK_ALL_TOOL"
+  bin/hb "$CHECK_ALL_TOOL" $JSON_ARG --label "$LABEL" "$SRC"
   exit $?
 fi
 case "$LABEL" in

@@ -178,6 +178,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-PARSE-OPT {: a u :} ( a u -- )
    a u s" --json" STR= IF -1 ARGV-JSON ! EXIT THEN
+   a u s" --json-errors" STR= IF -1 ARGV-JSON ! EXIT THEN
    a u s" --label" STR= IF a u ARGV-TAKE-NEXT ARGV-LABEL! EXIT THEN
    a u s" --strict-signatures" STR= IF -1 ARGV-STRICT-SIGNATURES ! EXIT THEN
    a u s" --all-errors" STR= IF -1 ARGV-ALL-ERRORS ! EXIT THEN

@@ -49,15 +49,16 @@ points stay listed.
 - `tools/bootstrap-oracle.sh` — bootstrap-only gforth differential.
 - `tools/srclist.sh` — canonical source order.
 - `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.
+- `tools/lint/source-lex.f` — shared source lexer for native lints.
 - `tools/signature-lint.f` — strict typed-signature lint.
 - `tools/signature-lint-test.sh` — fixture coverage for strict typed-signature lint.
 - `tools/aot-lint.f` — stripped-AOT unsupported-word lint.
 - `tools/aot-lint-test.sh` — fixture coverage for stripped-AOT source lint.
-- `tools/forth_lex.py` — shared lexer for source lints.
 - `tools/diag-origin.f` — injects source-origin markers for checker JSON.
 - `tools/diag-origin-test.sh` — fixture coverage for diagnostic origin markers.
 - `tools/json-only.f` — keeps wrapper JSON mode machine-only on known diagnostics.
-- `tools/check-all-errors.py` — batches checker diagnostics by top-level definition.
+- `tools/check-all-errors.f` — batches checker diagnostics by top-level definition.
+- `tools/check-all-errors-test.sh` — fixture coverage for all-errors checking.
 - `tools/diag-to-sarif.f` — converts diagnostic JSONL to SARIF for CI/review UIs.
 - `tools/public-signatures.f` — emits typed public-word manifests for agents.
 - `tools/aot-call-report.f` — measures patched AOT call-stencil padding.
