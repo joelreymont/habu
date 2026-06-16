@@ -12,7 +12,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 - `STATUS.md` — the current self-check counts and known gaps.
 
 ## 1. Conventions (BLOCKING)
-- **Our words UPPER-CASE** (`SQUARE`, `AVG2`); built-in gforth words stay
+- **Our words UPPER-CASE** (`SQUARE`, `AVG2`); built-in Forth words stay
   lower-case (`dup`, `if`, `>r`, `?do`). Never upper-case a built-in.
 - **Hyphens, never underscores.** Short names (`buf`, `ctx`, `idx`).
 - One concern per file. Small words; factor when the stack gets deep.
@@ -100,10 +100,12 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 
 Run the reference scorecard with `bench/llm/run.sh`. It validates the task set,
 the checked reference solutions, functional tests, and the JSONL metric schema.
-To summarize a real model attempt, concatenate `tools/lint/lib.f`, `tools/json.f`,
-`tools/argv.f`, and `bench/llm/validate-results.f`, then run the bundle with the
-attempt JSONL path; add `--json` for a machine-readable summary with failure
-buckets and per-category coverage.
+To summarize a real model attempt, concatenate `tools/date.f`,
+`tools/lint/lib.f`, `tools/json.f`, `tools/argv.f`, and
+`bench/llm/validate-results.f`, then run the bundle with the attempt JSONL path;
+add `--json` for a machine-readable summary with failure buckets and
+per-category coverage. Date-stamped run IDs use `*-YYYY-MM-DD` and are validated
+by the native date parser.
 Run `bench/llm/perf.sh` for quick latency measurements of the checker,
 functional tests, metric validator, property-test smoke, and microbench smoke;
 add `--full` when rebuild and AOT build/runtime timings are needed.

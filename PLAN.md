@@ -21,7 +21,7 @@ metaprogram) and re-checked by the checker.
 
 | Area           | Choice                                                          |
 | -------------- | -------------------------------------------------------------- |
-| Gforth target  | 0.7.9 dev (`~/.local/bin/gforth`)                              |
+| Bootstrap ref  | Gforth 0.7.9 dev (`~/.local/bin/gforth`), recovery/reference only |
 | Inference      | HM-style: type vars + row vars, mutually-recursive occurs, union-find subst, **let-generalization on store** |
 | Effects        | **Four rows** per effect: data-in, data-out, return-in, return-out |
 | Higher order   | `xt`≡`quot<E>` unified; quotations, combinators, iterators     |
@@ -189,6 +189,10 @@ c@ c!` and pointer arithmetic `CELL+ CELLS CHAR+ CHARS` and `+`/`-` overloads fo
 yield `bool`; `IF/WHILE/UNTIL` require `bool` (a flag-producing word must yield
 `bool`). Naked `?DUP` is value-dependent and remains deliberately untypeable;
 use the checkable `?DUP-IF` idiom instead (see `docs/effects.md`).
+Time primitives are `EPOCH-SECONDS ( -- n )` for UTC Unix seconds and `MONO-NS
+( -- n )` for monotonic benchmarking. Shared checked UTC date formatting and
+parsing lives in `tools/date.f` (`PARSE-YMD`, `FORMAT-YMD`,
+`FORMAT-EPOCH-UTC`) for lints, benchmark run IDs, and JSONL metadata.
 
 ## Diagnostics (first-class — the LLM repair interface)
 

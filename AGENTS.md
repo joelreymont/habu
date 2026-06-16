@@ -1,8 +1,9 @@
 # habu — Checked Forth
 
-A checked stack-effect system for Forth, hosted by Gforth. LLM-generated Forth is
-verified by a checker (typed, row-polymorphic stack effects) rather than trusting
-the model to track the stack by hand. See `PLAN.md` for design and roadmap.
+A checked stack-effect system for Forth, self-hosted by `bin/hb`. LLM-generated
+Forth is verified by a checker (typed, row-polymorphic stack effects) rather
+than trusting the model to track the stack by hand. See `PLAN.md` for design and
+roadmap.
 
 ## Conventions
 
@@ -10,8 +11,8 @@ the model to track the stack by hand. See `PLAN.md` for design and roadmap.
   Define and call our words in upper case (`SQUARE`, `CHECKED:`); keep core words
   lower-case (`dup`, `drop`, `if`, `?do`). Lower-case only for `\` comments and
   prose outside code.
-- Gforth target: **0.7.9** at `~/.local/bin/gforth` (built from source; see
-  `LESSONS.md`). Keep `~/.local/bin` ahead of `/opt/homebrew/bin` on PATH.
+- Gforth is bootstrap-only. Use it only through `tools/bootstrap.sh` or
+  `tools/bootstrap-oracle.sh` for recovery/reference work.
 
 ## Forth style (BLOCKING)
 

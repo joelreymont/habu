@@ -37,7 +37,7 @@ and `{: a b :}` read-only locals.
 `>R R> R@ 2>R 2R> 2R@`,
 `F+ F- F* F/ FNEGATE FABS FSQRT F< F> F= F0< F0= S>F F>S F.` (doubles as raw
 IEEE754 bit-cells on the data stack; literals `d.d`; checker type `r`),
-`OPEN WRITE READ CLOSE MMAP RBASE`,
+`OPEN WRITE READ CLOSE MMAP RBASE EPOCH-SECONDS MONO-NS`,
 `CATCH THROW`,
 `WORDLIST GET-CURRENT SET-CURRENT SEARCH-WL SET-CHECK`.
 
@@ -59,11 +59,12 @@ remove the subset words above. The remainder must be empty.
 Files checked: `sha256.f util.f asm.f icode.f mnem.f macho.f sign2.f
 checker.f render.f disasm.f habu1.f habu2.f jit.f rt.f crash.f prof.f stage2.f` — **408 defined words, residual gap = 0**.
 
-The guard is `test/t-sh-coload.fs`, wired into `test/selfhost-all.fs`: it concatenates
-the codegen-layer sources and compiles them under the standalone itself. The standalone
-errors (exit 70) on any undefined word — in both compile and interpret mode — so a
-future edit that reaches outside the subset fails the gate immediately. The standalone
-is the enforcement, not a separate checker script.
+The guard is the native rebuild/fixpoint path in `tools/build.sh`, wired into
+`test/run.sh`: it concatenates the native toolchain sources and compiles them
+under `bin/hb` itself. The standalone errors (exit 70) on any undefined word —
+in both compile and interpret mode — so a future edit that reaches outside the
+subset fails the gate immediately. The standalone is the enforcement, not a
+separate checker script.
 
 ## Semantic deltas (same name, different behaviour than gforth)
 
@@ -83,9 +84,16 @@ differently, and subset source must be written for the standalone's semantics:
 ## The fixpoint (achieved 2026-06-11)
 
 The subset proved sufficient: the complete compiler is written in it (`asm icode mnem
-util walk rt crash macho engine engine2 stage2`), and `test/t-sh-stage2.fs` is the
-standing gate — stage1 (the gforth-built standalone carrying that source as its
-program) reads the same source back as data, compiles it with the ported `EMIT-FORTH`,
-wraps it with the ported `BUILD-MACHO`, and the emitted stage2 image is byte-identical
-to gforth's build of the same source. Any edit that breaks the subset, the emitter
-parity, or the fixpoint fails the gate.
+util walk rt crash macho engine engine2 stage2`), and the default gate now
+checks the native self-rebuild directly. `tools/build.sh` rebuilds `bin/hb` from
+the current native sources and verifies the output is byte-identical. Gforth
+remains a bootstrap/reference recovery path, not the default gate. Any edit
+that breaks the subset, the emitter parity, or the fixpoint fails `test/run.sh`.
+
+## Time And Date
+
+The engine exposes `epoch-seconds ( -- n )` for UTC Unix time and `mono-ns
+( -- n )` for monotonic timing. Shared checked date helpers live in
+`tools/date.f`: `PARSE-YMD`, `FORMAT-YMD`, and `FORMAT-EPOCH-UTC`. Tool bundles
+that need date validation load `tools/date.f` before unchecked lint/JSON driver
+scaffolding so the date code remains checked.

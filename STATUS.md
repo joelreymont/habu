@@ -69,6 +69,10 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
 - **Diagnostics** — reject diagnostics to stderr; `JSON-DIAGS ON` switches to a
   structured JSON object per reject (code/repair_class/word/token/expected/actual)
   for LLM repair (`test/t-sh-jdiag.fs`).
+- **Time/date** — `epoch-seconds` and `mono-ns` are checker-modeled native
+  primitives. `tools/date.f` provides checked UTC Gregorian helpers:
+  `PARSE-YMD`, `FORMAT-YMD`, and `FORMAT-EPOCH-UTC`; lints and LLM metric
+  validators use them instead of host date tools.
 
 ## Current state and gaps
 
@@ -82,9 +86,10 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   `tokens_used`, `wall_ms`, `final_chars`, `trust_uses`, and
   `signature_weakened`. Attempt JSONL files can now be summarized through the
   native validator, including failure buckets, diagnostic-quality gaps, and
-  per-category coverage. Open work is to run real model attempts through that
-  schema and expand category breadth. `bench/llm/perf.sh` records quick
-  feedback-loop latency, with `--full` covering rebuild and AOT timings.
+  per-category coverage. Date-stamped run IDs (`*-YYYY-MM-DD`) are validated in
+  Habu. Open work is to run real model attempts through that schema and expand
+  category breadth. `bench/llm/perf.sh` records quick feedback-loop latency,
+  with `--full` covering rebuild and AOT timings.
 - **AOT-strip linker** — done and the DEFAULT. `hb-build.sh prog.f -o out` AOT-
   compiles `: MAIN ;` to a native binary with the engine stripped (fib __text
   540 B vs 11836 B embed). `--repl` verifies the user source's checked
