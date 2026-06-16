@@ -26,14 +26,15 @@ and `{: a b :}` read-only locals.
 **Control flow** (case-folded, so UPPER-CASE source matches) — `IF` `THEN` `ELSE`,
 `BEGIN` `UNTIL` `AGAIN` `WHILE` `REPEAT`, `DO` `LOOP` `I`.
 
-**String / tick** — `S" …"`, `['] NAME`.
+**String / tick** — `S" …"`, `C" …"`, `." …"`, `['] NAME`.
 
 **Primitives** (registered in `emit-prims`, `forth.fs`):
 `+ - * / MOD`, `1+ 1-`, `AND OR XOR INVERT NEGATE LSHIFT RSHIFT`,
 `= <> < > <= >= 0= 0<`,
-`DUP DROP SWAP NIP OVER TUCK ROT -ROT 2DUP 2DROP`,
-`@ ! C@ C! CELLS HERE ALLOT , C,`,
-`. .S TYPE EXECUTE DIE PROF-ON PROF-REPORT`,
+`DUP DROP SWAP NIP OVER TUCK ROT -ROT 2DUP 2DROP 2SWAP 2OVER ?DUP`,
+`@ ! +! C@ C! CELL+ CELLS CHAR+ CHARS COUNT HERE ALLOT , C,`,
+`. .S U. EMIT CR SPACE TYPE EXECUTE DIE PROF-ON PROF-REPORT`,
+`>R R> R@ 2>R 2R> 2R@`,
 `F+ F- F* F/ FNEGATE FABS FSQRT F< F> F= F0< F0= S>F F>S F.` (doubles as raw
 IEEE754 bit-cells on the data stack; literals `d.d`; checker type `r`),
 `OPEN WRITE READ CLOSE RBASE`,
@@ -45,10 +46,9 @@ the load order) as a `:`/`VARIABLE`/`CONSTANT`/`CREATE` word.
 
 ## What is deliberately NOT in the subset
 
-`." …"` (dot-quote), `MOVE`, `FILL`, `EMIT`, `+!`, `2@`, `2!`, `>R`/`R>`,
-`?DUP`, `MIN`/`MAX`/`ABS`, `U<`, `WITHIN`, floating point. The compiler source avoids all
-of these — where a primitive is missing it is open-coded (e.g. a store-then-reload
-instead of `+!`, an explicit byte loop instead of `MOVE`).
+`MOVE`, `FILL`, `2@`, `2!`, `U<`, `WITHIN`, and arbitrary `CHAR` parsing in
+compiled code. The compiler source avoids these — where a primitive is missing it
+is open-coded (for example, an explicit byte loop instead of `MOVE`).
 
 ## Proof the source is closed under the subset
 

@@ -12,7 +12,8 @@ stack discipline enforced by the compiler, not by hand.
 ```
 
 The checker is a static pass in front of `:`. There are **no runtime type tags
-and no GC** — accepted code compiles to ordinary Gforth.
+and no GC** — accepted code runs under the native `bin/hb` engine. Gforth remains
+only the bootstrap/reference tier.
 
 ## Requirements
 
@@ -91,7 +92,7 @@ annotations for words whose effect can't be inferred (FFI, metaprogramming).
 
 The native engine's built-in checker now models the full surface its engine
 compiles: prims, literals, all control flow (`IF`/`BEGIN`/`DO`/`?DO`/`+LOOP`/
-`EXIT`/`RECURSE`), the return stack (`>R R> R@`, balance enforced), typed
+`EXIT`/`RECURSE`), the return stack (`>R R> R@ 2>R 2R> 2R@`, balance enforced), typed
 locals (`{: a:n :}`), quotations (`[: ;]` + typed `execute`), `trust`
 declarations, and prints reject diagnostics to stderr. The toolchain's own
 source self-checks clean — see [`STATUS.md`](STATUS.md) for the current count.
@@ -105,12 +106,13 @@ verified with `CHECK!` (verify body-vs-sig), not just `CHECK` (infer). The nativ
 sig grammar handles named
 row vars (`R S T`), quotation sub-sigs (`[ in -- out ]`), and records
 quot-bearing sigs as scheme-strings (so combinator call sites — `dip`, `keep`
-— are checked against them). The native grammar now also handles distinct concrete types (`i64 u8 u32 cell
-char str addr bool`, with `n` the generic int that subsumes them), the
-`| rin -- rout` return-stack clause, and nested quotations. The one
-gforth-tier-only piece is the **parametric** `ptr a` (pointer-to-type): the
-native prims operate on `n`/`addr`, so a parametric pointer type would never
-unify against them — `ptr` is typed as an address instead.
+— are checked against them). The native grammar also handles distinct concrete
+types (`i64 u8 u32 cell char str addr bool`, with `n` the generic int that
+subsumes them), the `| rin -- rout` return-stack clause, nested quotations, and
+native parsing words (`s"`, `c"`, `."`, `[char]`). The one gforth-tier-only piece
+is the **parametric** `ptr a` (pointer-to-type): the native prims operate on
+`n`/`addr`, so a parametric pointer type would never unify against them — `ptr`
+is typed as an address instead.
 
 ## Layout
 
@@ -138,8 +140,8 @@ unify against them — `ptr` is typed as an address instead.
 ## Combinators
 
 `EXECUTE DIP KEEP BI TRI TIMES EACH MAP FOLD` are both **typed** (effects in the
-DB) and **runnable** (`bootstrap/src/runtime.fs`), so a checked program can use them and
-run:
+DB, with higher-order library rows pinned by `TRUST`) and **runnable**, so a
+checked program can use them and run:
 
 ```forth
 : PM1 ( i64 -- i64 i64 ) [: 1+ ;] [: 1- ;] BI ;   \ 7 PM1 → 6 8
@@ -172,6 +174,6 @@ or explicitly trusted.
   signature; a plain stack comment is the ordinary Forth colon. A checked body
   that uses words the checker doesn't model falls back to the native colon, so
   the override never breaks valid Forth — it checks what it can.
-- Body capture is span-aware: string literals (`S" ." C" S\" .(`), comments
-  (`( \`), and char literals (`[char] char`) keep their contents (an embedded
-  `;` or `(` never breaks a definition).
+- Body capture is span-aware: string literals/parsing words (`s"`, `c"`, `."`),
+  comments (`( \`), and char literals (`[char] char`) keep their contents (an
+  embedded `;` or `(` never breaks a definition).

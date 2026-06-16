@@ -2,7 +2,7 @@
 
 Last verified: 2026-06-16
 Gate: passing
-Certified: 890  Uncheckable: 0  Rejected: 0
+Certified: 977  Uncheckable: 2  Rejected: 0
 Host-script workflow hooks: retired and gated
 
 This is the single source of truth for the self-check counts. Other docs
@@ -21,11 +21,13 @@ assertions, property soundness smoke, PTY/process checks, and AOT/`--repl`
 builder checks. Gforth is bootstrap-only; `tools/bootstrap-oracle.sh` exists
 for changes to the bootstrap seed/reference mirror and recovery validation.
 
-History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling, now
-890/0/0 — the 9 formerly-uncheckable words (`ENV=?`, `GETENV`, `TMP-PATH`,
-`SHK-TOK=`, `KEEP?`, `FPRIM`, `FPRIM-L`, `EM-INTERPRET`, `EM-COMPILE`) all hinged
-on early `exit`; teaching the checker a sound `exit`/`unloop` model certified them
-and their callers. See `LESSONS.md` for the full record.
+History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling,
+890/0/0 after that model landed, and 977/2/0 after the native primitive,
+combinator, and parsing-word gap closures. The 9 formerly-uncheckable words
+(`ENV=?`, `GETENV`, `TMP-PATH`, `SHK-TOK=`, `KEEP?`, `FPRIM`, `FPRIM-L`,
+`EM-INTERPRET`, `EM-COMPILE`) all hinged on early `exit`; teaching the checker a
+sound `exit`/`unloop` model certified them and their callers. See `LESSONS.md`
+for the full record.
 
 ## Native checker surface
 
@@ -40,7 +42,7 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
 - **Occurs check through quotations** — descends ptr/quot/push; a self-applying
   quotation is rejected, never loops.
 - **Row unification** — full row polymorphism over both the data and return rows.
-- **Return-stack ops** — `>R R> R@` typed; balance enforced.
+- **Return-stack ops** — `>R R> R@ 2>R 2R> 2R@` typed; balance enforced.
 - **`execute`** — `xt ≡ quot<E>`; all four of the quotation's rows are threaded.
 - **Locals** — typed `{: a:n :}` scope.
 - **Control flow** — `IF/ELSE/THEN`, `BEGIN…UNTIL/WHILE…REPEAT/AGAIN`,
@@ -57,13 +59,18 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   `n` = generic int), type vars, named row vars, the `| rin -- rout` return
   clause, quotation sub-sigs `[ in -- out ]` (recorded so combinator call sites
   check against them), nested quotations.
+- **Parsing words** — `s"`, `c"`, `."`, `[char]`, and interpret-mode `char` are
+  modeled and covered in runtime, checker, and AOT tests.
+- **Higher-order library** — `DIP KEEP BI TRI TIMES EACH MAP FOLD` are runnable
+  native words with audited `TRUST`ed public schemes; callers are checked against
+  those schemes.
 - **Trust** — `trust` charts an asserted effect for the un-inferable; see
   `TRUSTED.md`. Callers are still checked.
 - **Diagnostics** — reject diagnostics to stderr; `JSON-DIAGS ON` switches to a
   structured JSON object per reject (code/word/token/expected/actual) for LLM
   repair (`test/t-sh-jdiag.fs`).
 
-## Known gaps
+## Current state and gaps
 
 - **AOT-strip linker** — done and the DEFAULT. `hb-build.sh prog.f -o out` AOT-
   compiles `: MAIN ;` to a native binary with the engine stripped (fib __text
@@ -72,13 +79,15 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   library and drops into the REPL on a tty (`EXPORT word…` keeps extra words
   callable). The AOT file is 16627 B — one 16 KB `__TEXT` page + signature, the
   PROVEN hard floor for a signed arm64 macOS executable (a sub-page `__LINKEDIT`
-  is SIGKILLed by AMFI). `S"` string literals are AOT-safe (their body is
-  embedded in the blob and pushed PC-relative). AOT is stripped COMPUTE only,
-  and the two features outside that boundary both fail LOUDLY (no silent wrong
-  output): `['] WORD execute` is REJECTED by the checker (an opaque xt's effect
-  can't be typed — use a `[: ;]` quotation, which is modeled), and `CREATE` /
+  is SIGKILLed by AMFI). `S"`, `C"`, and `."` parsing words are AOT-safe (string
+  bodies are embedded in the blob and pushed/used PC-relative). AOT is stripped
+  COMPUTE only, and the two features outside that boundary both fail LOUDLY (no
+  silent wrong output): `['] WORD execute` is REJECTED by the checker (an opaque
+  xt's effect can't be typed — use a `[: ;]` quotation, which is modeled), and `CREATE` /
   data-region access (`here`/`,`/`@`) is rejected statically with
   `E-AOT-UNSUPPORTED` because AOT maps no data region — persistent data is the
   snapshot/`--repl` path by design, not stripped AOT.
 - **`ptr a` (parametric pointer)** — gforth-tier checker only; native types `ptr`
   as an address (no native prim operates on pointer-types).
+- **Naked `?DUP`** — runtime exists, but the checker deliberately rejects it as
+  value-dependent (`CHECK!` verdict 1); use `?DUP-IF` for a typeable branch.

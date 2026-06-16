@@ -63,8 +63,8 @@ spaces for type vars and row vars), all occurs-checked:
 `ptr→inner`, `quot→effect→all four rows`, `push→(rest, top-type)`: a type var
 must not occur in a `ptr`/`quot` it binds to; a row var must not occur in any
 stack/effect — **including inside a quotation's rows**. A self-applying quotation
-must be rejected with `E-OCCURS`, never loop. (The shallow stub `OCCURS` in the
-current `types.fs` is wrong and gets rewritten.)
+must be rejected with `E-OCCURS`, never loop. The native checker implements the
+deep quotation-aware walk; keep omega-quotation regressions in the gate.
 
 **Schemes are canonical signature strings** (persistent; the per-check arena is
 wiped each definition, so terms can't be stored). This makes the two polymorphism
@@ -121,6 +121,10 @@ rule; effect-DB word → apply (INST then compose); FORBIDDEN-without-annotation
   element-type effects (closed signatures in the primitive table); a counted
   combinator `TIMES ( ρ u quot<( σ -- σ )> -- ρ )`. Each combinator/quotation use
   `INST`s the quotation effect fresh (so `BI`'s two quotations are independent).
+  Native call sites are checked today; `DIP/KEEP/BI/TRI/TIMES/EACH/MAP/FOLD`
+  live in `src/core/combinators.f` with `TRUST`ed public schemes. Native iterator
+  schemes currently use raw `addr` plus `i64` elements; parametric `ptr<a>`
+  remains gforth/bootstrap-tier scope.
 - **Return stack** — `>R R> R@ 2>R 2R> 2R@` move types between the data and
   return rows; checked by the same four-row composition.
 
@@ -157,9 +161,10 @@ reentrancy → delegate to `NATIVE:`; (2) `PARSE-NAME` the name; (3) parse the
 effect ourselves; (4) **capture the structured body**: a `parse-name` loop that
 (a) tracks nesting of `[: … ;]`, `{ … }`/`{: … :}`, and control words to find the
 matching top-level `;`, and (b) **consumes the delimited span of every parsing
-word** — `(  \  S"  S\"  C"  ."  .(  CHAR  [CHAR]` — via `parse`/`>in` so an
-embedded `;` inside a string/comment never terminates capture (a pure
-`parse-name` loop is provably wrong here). Copy each token's bytes out
+word** — native today consumes `(  \  S"  C"  ."  CHAR  [CHAR]` spans; the
+gforth-tier/full-Forth capture target also includes `S\"` and `.(` — via
+`parse`/`>in` so an embedded `;` inside a string/comment never terminates
+capture (a pure `parse-name` loop is provably wrong here). Copy each token's bytes out
 immediately (a `parse-name` address dies at the next parse); (5) run the checker
 inside `CATCH`; (6) on success set `RE-EMIT?`, re-`EVALUATE` `: NAME body ;`,
 generalize + record the effect; (7) on failure format the diagnostic, define
@@ -170,15 +175,16 @@ re-EVALUATE, nesting-aware capture, quotations/locals round-trip. Avoid the name
 ## Primitive table (closed checklist)
 
 Authored through the signature parser at startup. Must include: `DUP DROP SWAP
-OVER ROT -ROT NIP TUCK ?DUP 2DUP 2DROP 2SWAP 2OVER`; `+ - * / MOD /MOD AND OR XOR
+OVER ROT -ROT NIP TUCK 2DUP 2DROP 2SWAP 2OVER`; `+ - * / MOD /MOD AND OR XOR
 INVERT LSHIFT RSHIFT NEGATE ABS MIN MAX` (`i64`); `0= 0< = <> < > <= >=`
 (`= : ( ρ a a -- ρ bool )`, comparisons `( ρ i64 i64 -- ρ bool )`); `@ ! +!
 c@ c!` and pointer arithmetic `CELL+ CELLS CHAR+ CHARS` and `+`/`-` overloads for
 `( ρ ptr<a> i64 -- ρ ptr<a> )`; `HERE ALLOT , C,`; `>R R> R@ 2>R 2R> 2R@`;
 `I J` (in loop scope); `EXECUTE DIP KEEP BI TRI`, `EACH MAP FOLD TIMES`;
-`CHAR [CHAR]` (`char`), `S" ." TYPE COUNT`; `. U. EMIT CR SPACE`. Comparisons
+`CHAR [CHAR]` (`char`), `S" C" ." TYPE COUNT`; `. U. EMIT CR SPACE`. Comparisons
 yield `bool`; `IF/WHILE/UNTIL` require `bool` (a flag-producing word must yield
-`bool`).
+`bool`). Naked `?DUP` is value-dependent and remains deliberately untypeable;
+use the checkable `?DUP-IF` idiom instead (see `docs/effects.md`).
 
 ## Diagnostics (first-class — the LLM repair interface)
 
@@ -247,9 +253,10 @@ toolchain self-checks clean (see `STATUS.md`). The native sig grammar gained nam
 quotation sub-sigs, and scheme-string recording of quot-bearing sigs
 (combinator call sites check against them). Native now has distinct concrete types
 (n = generic int, subsumes the widths), the `| rin -- rout` return clause, and
-nested quotations. The one remaining gforth-tier-only piece is the parametric
-`ptr a` (no native prim uses pointer-types, so it would be dead machinery). See
-CODEGEN-PLAN.md for the engine side.
+nested quotations. Bracketed quotation signature syntax is data-stack-only today;
+actual quote terms still thread return rows through `execute`. The remaining
+gforth-tier-only type-system piece is parametric `ptr a` (native prims use raw
+`addr`). See CODEGEN-PLAN.md for the engine side.
 
 ```
 habu/  AGENTS.md LESSONS.md PLAN.md README.md .gitignore  docs/forth.md

@@ -1,8 +1,13 @@
 # habu native code generation
 
+> Historical bootstrap/codegen reference. The current daily path is the
+> self-hosted native engine: `bin/hb`, `tools/build.sh`, and
+> `tools/hb-build.sh`. This document describes the earlier gforth-hosted
+> `bootstrap/cg/` pipeline and is kept as design background.
+
 habu compiles checked Forth to **standalone ARM64 macOS executables** — entirely
-in Forth, no C and no LLVM. The compiler is hosted on gforth; its *output* is a
-self-contained, dyld-loaded, ad-hoc-signed Mach-O that runs with no gforth.
+in Forth, no C and no LLVM. In the historical pipeline below the compiler is
+hosted on gforth; the current native pipeline is hosted by `bin/hb`.
 
 ## Quick start
 
@@ -73,9 +78,9 @@ End-to-end (slow, exec per case, run explicitly): `t-cg-exe.fs` (raw ICode),
 `t-cg-word.fs`/`t-cg-ctrl.fs` (body strings), `t-cg-hook.fs` (checked words +
 calls + recursion), `t-cg-io.fs` (`.` output), `t-cg-cli.fs` (standalone CLI).
 
-## Not yet
+## Current successor
 
-The compiler still runs on gforth. A **fully self-hosting** habu (the compiler
-itself compiled to native, gforth dropped) needs a native Forth runtime —
-interpreter, dictionary, `evaluate` — which is the remaining long pole
-(`CODEGEN-PLAN.md` Part F).
+The self-hosted successor exists: `bin/hb` compiles its own source to a
+byte-identical replacement, and `tools/hb-build.sh prog.f -o out` emits the
+default stripped AOT binary for user programs. Keep gforth references here as
+bootstrap-history only; current status lives in `STATUS.md`.

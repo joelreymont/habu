@@ -124,11 +124,14 @@ sets the declared sig to either match (intended-certify) or be perturbed by ±1
 | branches (net 0) | `dup 0= if 1+ else 1- then` |
 | loops (net 0) | `3 0 ?do loop` |
 | return stack (net 0) | `>r r>` |
+| quotations (net 0) | `[: 1+ ;] execute` |
+| locals | optional top-level `{: a b c :}` binding of generated inputs |
 | baits (must reject) | non-neutral `leave`, divergent `exit` |
 
 **Excluded (non-runnable or fault-prone):** `/ mod` (div0 traps),
 `@ ! c@ c!` (need valid addresses), `here , allot create does>` (data region /
-not a pure function), recursion (divergence risk), `."` (absent in habu).
+not a pure function), recursion (divergence risk), `."` as a random generator op
+(output side effect; it is covered by targeted parsing-word tests).
 
 The generator is **seeded**. The default smoke uses seed `1`, count `250`; an
 argv run can override both with `bin/hb <seed> <count> < test/prop-test.f`, so
@@ -205,24 +208,27 @@ is no dict cap to hit.
 - **Override:** `bin/hb 123 1000 < test/prop-test.f` runs seed `123`, count
   `1000` when the stdin script has access to `ARGC`/`ARGV`.
 - **Smoke (in `test/run.sh`):** 250 programs, sub-second, in-process; fails the
-  gate on any FALSE-CERT. A `SELFTEST` first proves the arity comparison fires
-  (a sound checker won't hand us a real false-cert to test against), and `BAITS`
-  asserts the leave/exit programs that a sound checker must reject stay rejected.
+  gate on any FALSE-CERT. `SELFTEST` sanity-checks the comparison predicate,
+  `SELFTEST-SHRINK` exercises shrinking, and `BAITS` asserts programs a sound
+  checker must reject stay rejected.
 - **Sweep:** pass a larger count on argv — the complete forget reuses
   CP/NDICT/USIGS every iteration, so a single process runs unbounded (50 000+
   programs verified, no growth).
 - **Regression:** freeze any counterexample as a `BAIT` in `prop-test.f` (a
   program that must not certify) so it can never silently return. Current baits
-  cover non-neutral `leave`, divergent `exit`, bool-as-`i64`, and malformed
-  signatures.
+  cover non-neutral `leave`, divergent `exit`, bool-as-`i64`, malformed
+  signatures, and malformed quotation signatures.
 
 ## What the generator emits
 
 - The **linear integer sublanguage**: literals, `dup drop swap over nip`,
   `+ - * and or xor 1+ 1- negate` — the arity-soundness core.
 - Net-0 **structural ops**: bounded `?do/loop`, balanced `if/else/then`, balanced
-  `>r/r>` — so a regression in their arity modelling shows up as a
-  certified-but-wrong measurement.
+  `>r/r>`, and `[: 1+ ;] execute` — so a regression in their arity modelling
+  shows up as a certified-but-wrong measurement.
+- Optional **locals**: generated inputs may be bound with `{: a b c :}` and then
+  referenced as ordinary value producers, exercising local-scope stack effects
+  without making the body fault-prone.
 - **Leave/exit baits**: non-neutral `leave` and divergent `exit` (where this
   session's false-certs lived) that a sound checker rejects; certifying one is a
   `die`.
