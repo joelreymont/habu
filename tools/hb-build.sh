@@ -54,11 +54,16 @@ diag_origin() {
   [ -f "$DIAG_ORIGIN_TOOL" ] || cat tools/lint/lib.f tools/diag-origin.f > "$DIAG_ORIGIN_TOOL"
   bin/hb "$DIAG_ORIGIN_TOOL" "$1"
 }
+AOT_LINT_TOOL=$T/aot-lint.f
+aot_lint() {
+  [ -f "$AOT_LINT_TOOL" ] || cat tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/argv.f tools/aot-lint.f > "$AOT_LINT_TOOL"
+  bin/hb "$AOT_LINT_TOOL" "$@"
+}
 if [ "$STRICT" = 1 ]; then
   signature_lint $LINT_JSON "$SRC" >&2
 fi
 if [ "$REPL" = 0 ]; then
-  ./tools/aot-lint.py $LINT_JSON "$SRC" >&2
+  aot_lint $LINT_JSON "$SRC" >&2
 fi
 
 if [ "$REPL" = 1 ]; then DRIVER=build; ISRC=$T/hb-build-src; GOT=hb-build-got; MK=hb-build-mk
