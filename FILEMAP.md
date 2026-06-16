@@ -59,7 +59,7 @@ points stay listed.
 - `tools/aot-call-report.f` — measures patched AOT call-stencil padding.
 - `tools/filemap-lint.f` — freshness lint for this file.
 - `tools/trust-lint.py` — `TRUSTED.md` drift lint.
-- `tools/stale-status-lint.py` — stale status/count lint.
+- `tools/stale-status-lint.f` — stale status/count lint.
 
 ## Tests And Benchmarks
 

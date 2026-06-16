@@ -1,12 +1,12 @@
 # habu — Status
 
-Last verified: 2026-06-15
+Last verified: 2026-06-16
 Gate: passing
 Certified: 890  Uncheckable: 0  Rejected: 0
 
 This is the single source of truth for the self-check counts. Other docs
 (`README.md`, `PLAN.md`, `CODEGEN-PLAN.md`) point here instead of quoting a
-number — see `tools/stale-status-lint.py`, which fails the gate if a count-shaped
+number — see `tools/stale-status-lint.f`, which fails the gate if a count-shaped
 string reappears outside this file and `LESSONS.md` (the historical log).
 
 The native engine type-checks its own toolchain source (`src/`) as it compiles
