@@ -78,3 +78,20 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 ## 9. Stay in scope
 - When fixing a checker / codegen / REPL bug, fix the root cause and nothing
   else. One concern per change; one change per commit (`jj`, 50-char imperative).
+
+## 10. Scorecard
+- Correctness: `first_pass_checker=certified`, `first_pass_tests=true`, and
+  `tests_passed=true`.
+- Repair quality: minimize `repair_iterations`, `checker_iterations`, and
+  `diagnostic_count`; every diagnostic must identify the failing definition,
+  token/span, expected stack, actual stack, and stable error code.
+- Safety: `trust_uses=0` unless the task explicitly requires an audited boundary;
+  `signature_weakened=false` always. Fix bodies before signatures.
+- Cost: track `tokens_used`, `wall_ms`, and `final_chars`; fast feedback matters
+  because checker calls sit inside the LLM repair loop.
+- Coverage: report results by benchmark category, not just aggregate pass rate.
+  A model that passes arithmetic but fails quotations, return-stack code, strings,
+  files, or AOT-safe programs is not done.
+
+Run the reference scorecard with `bench/llm/run.sh`. It validates the task set,
+the checked reference solutions, functional tests, and the JSONL metric schema.

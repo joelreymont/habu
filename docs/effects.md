@@ -43,6 +43,7 @@ SWAP   ( R a b -- R b a )
 +      ( R i64 i64 -- R i64 )
 <      ( R i64 i64 -- R bool )     \ comparisons yield bool, not i64
 @      ( R ptr a -- R a )
+DEPTH  ( R -- R n )
 WITHIN ( R i64 i64 i64 -- R bool )
 >R     ( R a -- R | S -- S a )     \ moves a value data→return stack
 R>     ( R -- R a | S a -- S )
@@ -95,7 +96,7 @@ equal effect; loop bodies must be stack-neutral.
   `1 ROLL`≡`SWAP`, `2 ROLL`≡`ROT`. A **dynamic** (runtime-computed) index can't be
   folded and stays untypeable → `E-UNCHECKED` (native fallback) or behind
   `TRUSTED:`. See `src/pickroll.fs`.
-- Words the checker can't type (variadic `?DUP`, dynamic `PICK`/`ROLL`/`DEPTH`)
+- Words the checker can't type (variadic `?DUP`, dynamic `PICK`/`ROLL`)
   must stay outside checked code or behind `TRUSTED:`.
 
 ## Notes
