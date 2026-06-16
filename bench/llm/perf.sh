@@ -87,7 +87,7 @@ measure() {
 }
 
 VALIDATOR=$T/validate-results.f
-cat tools/lint/lib.f tools/json.f tools/argv.f bench/llm/validate-results.f > "$VALIDATOR"
+cat tools/date.f tools/lint/lib.f tools/json.f tools/argv.f bench/llm/validate-results.f > "$VALIDATOR"
 
 measure check_solutions ./tools/check.sh bench/llm/solutions.f
 measure functional_tests sh -c 'cat bench/llm/solutions.f bench/llm/tests.f | bin/hb'

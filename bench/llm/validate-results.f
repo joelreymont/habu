@@ -392,6 +392,18 @@ variable LV-BAD-AE
    THEN
    a u LV-RUN-BUF LV-RUN-U @ STR= 0= IF s" mixed run_id values" LV-FAIL-AT THEN ;
 
+: LV-DATE-RUN? {: a u :} ( a u -- f )
+   u DATE-LEN 1+ < IF 0 0= 0= exit THEN
+   a u DATE-LEN - 1- + c@ DATE-DASH = ;
+
+: LV-CHECK-RUN-DATE {: a u :} ( a u -- )
+   a u LV-DATE-RUN? IF
+      a u DATE-LEN - + DATE-LEN PARSE-YMD 0= IF
+         drop s" invalid run_id date" LV-FAIL-AT
+      THEN
+      drop
+   THEN ;
+
 : LV-MODEL-CHECK {: a u :} ( a u -- )
    LV-MODEL-SET @ 0= IF
       u LV-MODEL-CAP > IF s" model too long" LV-FAIL-AT THEN
@@ -411,6 +423,7 @@ variable LV-BAD-AE
 : LV-CHECK-STRING-META {: root :} ( root -- )
    root s" run_id" LV-STR-FIELD
    dup 0= IF 2drop s" empty run_id" LV-FAIL-AT THEN
+   2dup LV-CHECK-RUN-DATE
    LV-MODE @ LV-MODE-SUMMARY = IF LV-RUN-CHECK ELSE 2drop THEN
    root s" model" LV-STR-FIELD
    dup 0= IF 2drop s" empty model" LV-FAIL-AT THEN

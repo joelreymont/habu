@@ -14,7 +14,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 BUNDLE=$T/validate-results.f
-cat "$ROOT/tools/lint/lib.f" "$ROOT/tools/json.f" "$ROOT/tools/argv.f" "$ROOT/bench/llm/validate-results.f" > "$BUNDLE"
+cat "$ROOT/tools/date.f" "$ROOT/tools/lint/lib.f" "$ROOT/tools/json.f" "$ROOT/tools/argv.f" "$ROOT/bench/llm/validate-results.f" > "$BUNDLE"
 
 mkdir -p "$T/bench/llm/results"
 cp "$ROOT/bench/llm/tasks.tsv" "$T/bench/llm/tasks.tsv"
@@ -123,6 +123,21 @@ set -e
 [ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted duplicate"; exit 1; }
 printf '%s\n' "$out" | grep -q 'duplicate task_id' || {
   echo "FAIL: validate-results duplicate diagnostic"
+  printf '%s\n' "$out"
+  exit 1
+}
+
+awk '{
+  gsub(/reference-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/, "reference-2026-02-29");
+  print
+}' "$ROOT/bench/llm/results/reference.jsonl" > "$T/bench/llm/results/reference.jsonl"
+set +e
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" 2>&1)
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted invalid run_id date"; exit 1; }
+printf '%s\n' "$out" | grep -q 'invalid run_id date' || {
+  echo "FAIL: validate-results invalid run_id diagnostic"
   printf '%s\n' "$out"
   exit 1
 }
