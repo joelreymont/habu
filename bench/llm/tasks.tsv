@@ -43,3 +43,4 @@ id	name	signature	category	tests
 42	STATTRUE	(-- bool)	files	empty -> -1
 43	FIB	(i64 -- i64)	recursion	6 -> 8
 44	SEVEN-CHAR	(-- i64)	parsing	empty -> 55
+45	AOT-STR	(-- i64)	aot-safe	empty -> 50

@@ -13,6 +13,7 @@ $20000 constant LV-RESULT-CAP
 
 0 constant LV-MODE-REFERENCE
 1 constant LV-MODE-SUMMARY
+45 constant LV-MIN-TASKS
 
 9 constant LV-TAB
 10 constant LV-LF
@@ -229,6 +230,36 @@ variable LV-BAD-AE
    LV-TASK-CAT-A k cells + @
    LV-TASK-CAT-U k cells + @ ;
 
+: LV-FIND-TASK-CAT {: a u :} ( a u -- k|-1 )
+   0 begin dup LV-TASK# @ < while
+      dup LV-TASK-CAT$ a u STR= IF exit THEN
+      1+
+   repeat drop -1 ;
+
+: LV-MISSING-CAT {: a u :} ( a u -- )
+   s" llm-results: missing required benchmark category " LV-OUT
+   a u LV-OUT
+   LV-NL
+   1 throw ;
+
+: LV-REQ-TASK-CAT {: a u :} ( a u -- )
+   a u LV-FIND-TASK-CAT 0< IF a u LV-MISSING-CAT THEN ;
+
+: LV-CHECK-TASK-COVERAGE ( -- )
+   LV-TASK# @ LV-MIN-TASKS < IF
+      s" llm-results: need at least " LV-OUT
+      LV-MIN-TASKS LV-U.
+      s"  tasks, found " LV-OUT
+      LV-TASK# @ LV-U.
+      LV-NL
+      1 throw
+   THEN
+   s" quotation" LV-REQ-TASK-CAT
+   s" return-stack" LV-REQ-TASK-CAT
+   s" strings" LV-REQ-TASK-CAT
+   s" files" LV-REQ-TASK-CAT
+   s" aot-safe" LV-REQ-TASK-CAT ;
+
 : LV-SEEN@ ( k -- n )
    cells LV-SEEN-ID + @ ;
 
@@ -313,12 +344,7 @@ variable LV-BAD-AE
 : LV-SCAN-TASKS ( -- )
    0 LV-TASK# !
    s" bench/llm/tasks.tsv" LV-TASK-BUF LV-TASK-CAP READ-FILE ['] LV-TASK-LINE LV-FOR-LINES
-   LV-TASK# @ 30 < IF
-      s" need at least 30 tasks, found " LV-OUT
-      LV-TASK# @ LV-U.
-      LV-NL
-      1 throw
-   THEN ;
+   LV-CHECK-TASK-COVERAGE ;
 
 : LV-GET {: root a u :} ( root a u -- node )
    root a u JSON-GET ;

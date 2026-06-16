@@ -49,3 +49,4 @@
 : STATTRUE ( -- bool ) here {: st :} 144 allot s" /usr/bin/true" path0 st stat64 0= ;  \ stat a path
 : FIB ( i64 -- i64 ) dup 2 < if exit then dup 1 - recurse swap 2 - recurse + ;  \ recursive fibonacci
 : SEVEN-CHAR ( -- i64 ) [char] 7 ;                             \ parse-next word with a digit char
+: AOT-STR ( -- i64 ) s" hi" nip [char] 0 + ;                  \ AOT-safe string length + char literal

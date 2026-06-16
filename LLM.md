@@ -21,8 +21,9 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 - Every **public** word carries an explicit typed `( in -- out )`:
   `: SQUARE ( i64 -- i64 ) dup * ;`. A typed sig turns checking on for that word.
 - Types: `i64 u8 u32 cell bool char str addr`; type vars `a b c`; row vars
-  `R S T` (a leading one = the stack tail); quotations `[ in -- out ]`; the
-  optional return-stack clause `… | rin -- rout`. `n` is the generic int.
+  `R S T` (a leading one = the stack tail); quotations
+  `[ in -- out [| rin -- rout] ]`; the optional top-level return-stack clause
+  `… | rin -- rout`. `n` is the generic int.
 - **Prefer `{: a b :}` locals over deep stack juggling.** If you reach for
   `rot -rot pick roll`, stop: factor a helper or bind locals.
 - Quotations are `[: … ;]`; apply with `execute` (or a combinator: `dip keep`).
@@ -98,7 +99,9 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   because checker calls sit inside the LLM repair loop.
 - Coverage: report results by benchmark category, not just aggregate pass rate.
   A model that passes arithmetic but fails quotations, return-stack code, strings,
-  files, or AOT-safe programs is not done.
+  files, or AOT-safe programs is not done. The native validator fails the
+  reference benchmark unless those required categories are present in
+  `bench/llm/tasks.tsv`.
 
 Run the reference scorecard with `bench/llm/run.sh`. It validates the task set,
 the checked reference solutions, functional tests, and the JSONL metric schema.

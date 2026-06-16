@@ -142,4 +142,18 @@ printf '%s\n' "$out" | grep -q 'invalid run_id date' || {
   exit 1
 }
 
+cp "$ROOT/bench/llm/results/reference.jsonl" "$T/bench/llm/results/reference.jsonl"
+awk 'BEGIN { FS=OFS="\t" } NR > 1 && $4 == "aot-safe" { $4 = "parsing" } { print }' \
+  "$ROOT/bench/llm/tasks.tsv" > "$T/bench/llm/tasks.tsv"
+set +e
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" 2>&1)
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted missing category"; exit 1; }
+printf '%s\n' "$out" | grep -q 'missing required benchmark category aot-safe' || {
+  echo "FAIL: validate-results missing category diagnostic"
+  printf '%s\n' "$out"
+  exit 1
+}
+
 echo "PASS: validate-results fixtures"

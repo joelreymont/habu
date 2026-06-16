@@ -87,9 +87,10 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   `signature_weakened`. Per-task candidate/repair directories can be converted
   to attempt JSONL with `bench/llm/run-attempts.sh`; the native validator then
   summarizes failure buckets, diagnostic-quality gaps, and per-category coverage.
-  Date-stamped run IDs (`*-YYYY-MM-DD`) are validated in Habu. Open work is to
-  expand category breadth. `bench/llm/perf.sh` records quick feedback-loop latency,
-  with `--full` covering rebuild and AOT timings.
+  Date-stamped run IDs (`*-YYYY-MM-DD`) are validated in Habu. The reference
+  gate requires quotation, return-stack, strings, files, and AOT-safe benchmark
+  categories. `bench/llm/perf.sh` records quick feedback-loop latency, with
+  `--full` covering rebuild and AOT timings.
 - **AOT-strip linker** — done and the DEFAULT. `hb-build.sh prog.f -o out` AOT-
   compiles `: MAIN ;` to a native binary with the engine stripped (fib __text
   540 B vs 11836 B embed). `--repl` verifies the user source's checked
