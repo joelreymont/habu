@@ -74,6 +74,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   structurally different, but compared code must emit identical bytes. Use
   parity-lint for paired emitter drift and allowlist only deliberate differences
   covered by goldens/fixpoint.
+- **Bootstrap caps track native caps:** paired-emitter growth can make gforth
+  stage0 exceed bootstrap Mach-O limits before native builds notice. Keep
+  `bootstrap/cg/macho.fs` caps aligned with `src/os/macos/macho.f` and run
+  `tools/bootstrap.sh` after changing bootstrap emitters or image limits.
 - **AOT compaction requires an old-to-new map:** removing call-stencil padding is
   safe only when every PC-relative source (`B/BL`, conditional branches, `ADR`)
   is remapped and range-checked. Keep mapper cursors separate from copy cursors.

@@ -1,7 +1,7 @@
 \ macho.fs — emit a minimal dynamic macOS ARM64 Mach-O executable, in Forth.
 \ Layout: header + 6 load commands (PAGEZERO, TEXT+__text, LINKEDIT, DYLINKER,
 \ MAIN, LOAD_DYLIB libSystem), header slack to 0x1000, the ICode-assembled code
-\ at 0x1000, padded to one page (MPAGE). This is the canonical UNSIGNED binary;
+\ at 0x1000, padded to the content-aligned TEXT size. This is the canonical UNSIGNED binary;
 \ sign.fs is a post-pass that rewrites the header to add LC_CODE_SIGNATURE + an
 \ embedded ad-hoc signature (replacing external `codesign`), exactly as codesign
 \ does. The drift guard compares this unsigned artifact. Static binaries are
@@ -9,7 +9,7 @@
 
 require asm.fs
 
-$50000 constant MSIZE
+$90000 constant MSIZE
 create MBUF MSIZE allot
 variable MP
 variable MLEN
@@ -47,7 +47,7 @@ $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $100000000 constant VMBASE
 $1000     constant CODE-OFF          \ entry file offset (slack below for codesign)
-$40000    constant MPAGE              \ __TEXT file/vm size; __LINKEDIT starts here
+$80000    constant MPAGE              \ maximum generated code window for builder images
 
 variable CODELEN
 create SCODE MPAGE allot              \ assembled-code scratch (grows with the standalone)
@@ -59,7 +59,8 @@ create SCODE MPAGE allot              \ assembled-code scratch (grows with the s
    SCODE ASSEMBLE CODELEN ! ;
 
 \ __TEXT sized to CONTENT (16 KB pages), not a fixed page count: a 24 KB
-\ program is a 28 KB binary, not 264 KB. MPAGE survives as the buffer cap.
+\ program is a 28 KB binary, not a fixed-cap binary. MPAGE is only the fail-closed
+\ maximum generated-code window for builder images.
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $3FFF +  $3FFF invert and ;
 
 variable LE-OFF                       \ file offset of the __LINKEDIT LC (for sign.fs post-pass)
@@ -116,7 +117,7 @@ variable NCMDS                        \ load commands counted as emitted
    CODE-OFF M-PAD                    \ header slack (room for the post-pass LC_CODE_SIGNATURE)
    SCODE  MP @  CODELEN @  move      \ copy assembled code
    CODELEN @ MP +!
-   TEXTSZ M-PAD                        \ pad file to one page
+   TEXTSZ M-PAD                        \ pad file to content-aligned TEXT size
    M-HERE MLEN ! ;
 
 \ the target-neutral driver entry: another OS swaps in an ELF builder here
