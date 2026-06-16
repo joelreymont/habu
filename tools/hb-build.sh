@@ -49,6 +49,11 @@ signature_lint() {
   [ -f "$SIGNATURE_LINT_TOOL" ] || cat tools/lint/lib.f tools/lint/source-lex.f tools/argv.f tools/signature-lint.f > "$SIGNATURE_LINT_TOOL"
   bin/hb "$SIGNATURE_LINT_TOOL" "$@"
 }
+DIAG_ORIGIN_TOOL=$T/diag-origin.f
+diag_origin() {
+  [ -f "$DIAG_ORIGIN_TOOL" ] || cat tools/lint/lib.f tools/diag-origin.f > "$DIAG_ORIGIN_TOOL"
+  bin/hb "$DIAG_ORIGIN_TOOL" "$1"
+}
 if [ "$STRICT" = 1 ]; then
   signature_lint $LINT_JSON "$SRC" >&2
 fi
@@ -99,13 +104,13 @@ chmod +x "$MKPATH"
 # user-only copy for build-time verification, then appends repl.f so the bundle
 # installs the interactive REPL on a tty.
 if [ "$REPL" = 1 ]; then
-  ./tools/diag-origin.py "$SRC" > "$USRC"
+  diag_origin "$SRC" > "$USRC"
   sed 's/^[[:space:]]*EXPORT /\\ EXPORT /' "$USRC" > "$T/hb-build-check-src"
   sed 's/^[[:space:]]*EXPORT /\\ EXPORT /' "$SRC" > "$ISRC"
   printf '\n' >> "$ISRC"
   cat src/habu/repl.f >> "$ISRC"
 else
-  ./tools/diag-origin.py "$SRC" > "$USRC"
+  diag_origin "$SRC" > "$USRC"
   sed 's/^[[:space:]]*EXPORT /\\ EXPORT /' "$USRC" > "$ISRC"
 fi
 rm -f "$GOTPATH"

@@ -41,6 +41,11 @@ signature_lint() {
   [ -f "$SIGNATURE_LINT_TOOL" ] || cat tools/lint/lib.f tools/lint/source-lex.f tools/argv.f tools/signature-lint.f > "$SIGNATURE_LINT_TOOL"
   bin/hb "$SIGNATURE_LINT_TOOL" "$@"
 }
+DIAG_ORIGIN_TOOL=$T/diag-origin.f
+diag_origin() {
+  [ -f "$DIAG_ORIGIN_TOOL" ] || cat tools/lint/lib.f tools/diag-origin.f > "$DIAG_ORIGIN_TOOL"
+  bin/hb "$DIAG_ORIGIN_TOOL" "$1"
+}
 if [ "$STRICT" = 1 ]; then
   signature_lint $LINT_JSON --label "$LABEL" "$SRC" >&2
 fi
@@ -67,7 +72,7 @@ cat >> "$RUN" <<'EOF'
    CHECK!  dup -1 <> IF s" check.sh: check did not certify" 70 die THEN ;
 ' CHECK-SH-HOOK set-check
 EOF
-./tools/diag-origin.py "$SRC" >> "$RUN"
+diag_origin "$SRC" >> "$RUN"
 if [ "$JSON" = 1 ]; then
   ERR=$T/stderr
   if bin/hb < "$RUN" 2>"$ERR"; then

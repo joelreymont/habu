@@ -52,7 +52,8 @@ points stay listed.
 - `tools/signature-lint-test.sh` — fixture coverage for strict typed-signature lint.
 - `tools/aot-lint.py` — stripped-AOT unsupported-word lint.
 - `tools/forth_lex.py` — shared lexer for source lints.
-- `tools/diag-origin.py` — injects source-origin markers for checker JSON.
+- `tools/diag-origin.f` — injects source-origin markers for checker JSON.
+- `tools/diag-origin-test.sh` — fixture coverage for diagnostic origin markers.
 - `tools/json-only.f` — keeps wrapper JSON mode machine-only on known diagnostics.
 - `tools/check-all-errors.py` — batches checker diagnostics by top-level definition.
 - `tools/diag-to-sarif.f` — converts diagnostic JSONL to SARIF for CI/review UIs.

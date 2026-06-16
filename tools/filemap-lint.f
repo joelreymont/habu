@@ -92,7 +92,8 @@ variable FM-NUM-L
    s" tools/signature-lint-test.sh" FM-REQ
    s" tools/aot-lint.py" FM-REQ
    s" tools/forth_lex.py" FM-REQ
-   s" tools/diag-origin.py" FM-REQ
+   s" tools/diag-origin.f" FM-REQ
+   s" tools/diag-origin-test.sh" FM-REQ
    s" tools/json-only.f" FM-REQ
    s" tools/check-all-errors.py" FM-REQ
    s" tools/diag-to-sarif.f" FM-REQ
