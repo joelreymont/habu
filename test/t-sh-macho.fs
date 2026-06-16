@@ -8,8 +8,10 @@ require sh-driver.fs
    MBUF MLEN @ fd write-file throw  fd close-file throw ;
 : GEN ( -- )
    0 CL !
+   s" src/core/util.f" +F
    s" src/arch/arm64/asm.f" +F  s" src/arch/arm64/icode.f" +F  s" src/arch/arm64/mnem.f" +F  s" src/os/macos/sys.f" +F  s" src/os/macos/env.f" +F
-   s" src/core/util.f" +F  s" src/os/macos/macho.f" +F  s" test/demos/macho-demo.f" +F
+   s" src/os/macos/macho.f" +F  s" test/demos/macho-demo.f" +F
    CBUF CL @ NF-RUN ;
-REF GEN
+: ZERO-GOT ( -- )  s" /tmp/sh-macho-got.bin" w/o create-file throw close-file throw ;
+REF ZERO-GOT GEN
 T{ s" /tmp/sh-macho-ref.bin" slurp-file s" /tmp/sh-macho-got.bin" slurp-file compare 0= -> true }T
