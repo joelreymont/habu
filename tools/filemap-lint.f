@@ -109,6 +109,8 @@ variable FM-NUM-L
    s" tools/trust-lint-test.sh" FM-REQ
    s" tools/stale-status-lint.f" FM-REQ
    s" tools/parallel-agent-lint.f" FM-REQ
+   s" tools/string.f" FM-REQ
+   s" tools/string-test.sh" FM-REQ
    s" tools/date.f" FM-REQ
    s" tools/date-test.sh" FM-REQ
    s" test/run.sh" FM-REQ
