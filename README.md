@@ -43,15 +43,6 @@ bin/hb                                  # tty: checked REPL with line editing,
                                         # checked source bundle + interactive REPL
 ```
 
-**The gforth-hosted checker** (bootstrap tier — the full row-polymorphic
-checker, quotations/combinators included):
-
-```sh
-gforth bootstrap/habu.fs       # loads the checker + the ':' override
-```
-Then `: NAME ( typed-effect ) body ;` is checked; `: NAME body ;` (no typed
-effect) is the ordinary Forth colon, untouched.
-
 ```sh
 ( cd test && ./run.sh )        # default gate: habu-native, no gforth, <10 s
 ```
@@ -78,8 +69,8 @@ Examples: `DUP : ( R a -- R a a )`, `= : ( R a a -- R bool )`,
 `EXECUTE : ( R [ R -- S ] -- S )`. (The return clause follows the data
 effect: `Din -- Dout | Rin -- Rout`.)
 
-Supported (gforth-hosted checker): typed `:` definitions, literals, the
-primitive set, polymorphic signatures, `IF/ELSE/THEN`,
+Supported by the native checker: typed `:` definitions, literals, the primitive
+set, polymorphic signatures, `IF/ELSE/THEN`,
 `BEGIN…UNTIL/WHILE…REPEAT/AGAIN`, `?DO…LOOP/+LOOP`, `RECURSE`/`EXIT`, typed
 locals (`{: a b :}`, or the gforth `{ a:u8 -- }` form — which needs the def to
 carry a typed `( … )` signature, else it's raw gforth that rejects `a:u8`),
@@ -116,10 +107,6 @@ primitives consume typed pointers, and `ptr` without an inner type is rejected.
 - [`CODEGEN-PLAN.md`](CODEGEN-PLAN.md) — the native backend / self-host design.
 - [`docs/forth.md`](docs/forth.md) — Forth coding standards for this repo.
 - [`LESSONS.md`](LESSONS.md) — build recipe + findings (the project's memory).
-- `bootstrap/src/` — the gforth-hosted bootstrap checker, one file per concern;
-  `bootstrap/habu.fs` adds the `:` override. `bootstrap/cg/` — the gforth-hosted
-  engine builder (ICode, encoders, Mach-O, jit, disassembler, profiler, crash
-  handler).
 - `src/` — the NATIVE toolchain source the engine compiles (and re-checks) when
   rebuilding itself: `src/core/` (checker, render, sha256), `src/arch/arm64/`
   (encoders, assembler, disassembler, mnemonics), `src/habu/` (engine builder

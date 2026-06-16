@@ -2,8 +2,8 @@
 
 A complete checked Forth, SELF-HOSTED: bin/hb compiles its own source (0.2 s,
 type-checking itself as it goes) and reproduces itself byte-for-byte — see
-tools/build.sh. Gforth 0.7.9 is BOOTSTRAP-ONLY (bootstrap/, tools/bootstrap.sh
-regenerates bin/hb from nothing). Checked code is ordinary Forth that fails to
+tools/build.sh. No-binary recovery installs a trusted native seed with
+tools/seed.sh and immediately rebuilds current source. Checked code is ordinary Forth that fails to
 compile unless its body's inferred stack effect unifies with its declared effect. Background notes (a chat session, not authoritative on
 scope): `~/Downloads/forth_checked_stack_session_history.md`.
 
@@ -21,7 +21,7 @@ metaprogram) and re-checked by the checker.
 
 | Area           | Choice                                                          |
 | -------------- | -------------------------------------------------------------- |
-| Bootstrap ref  | Gforth 0.7.9 dev (`~/.local/bin/gforth`), recovery/reference only |
+| Seed           | Trusted native `hb` seed via `tools/seed.sh`, then `tools/build.sh` fixpoint |
 | Inference      | HM-style: type vars + row vars, mutually-recursive occurs, union-find subst, **let-generalization on store** |
 | Effects        | **Four rows** per effect: data-in, data-out, return-in, return-out |
 | Higher order   | `xt`≡`quot<E>` unified; quotations, combinators, iterators     |
@@ -252,13 +252,11 @@ Every cross-file word, with its stack effect. Forward-declared in **`forward.fs`
 
 ## File layout & load order
 
-NOTE (2026-06-12): this section describes the **gforth-hosted full checker**,
-which now lives under `bootstrap/src/` (the `src/` below = today's
-`bootstrap/src/`). The NATIVE toolchain the self-hosted engine compiles lives
-in `src/{core,arch/arm64,habu,os/macos}`; its built-in checker
-(`src/core/checker.f`) now covers the engine's full compile surface (control
-flow, return row, typed locals, quotations + typed execute, trust) — the
-toolchain self-checks clean (see `STATUS.md`). The native sig grammar gained named row vars,
+The NATIVE toolchain the self-hosted engine compiles lives in
+`src/{core,arch/arm64,habu,os/macos}`; its built-in checker
+(`src/core/checker.f`) covers the engine's full compile surface (control flow,
+return row, typed locals, quotations + typed execute, trust) — the toolchain
+self-checks clean (see `STATUS.md`). The native sig grammar has named row vars,
 quotation sub-sigs, and scheme-string recording of quot-bearing sigs
 (combinator call sites check against them). Native now has distinct concrete types
 (n = generic int, subsumes the widths), the `| rin -- rout` return clause, and
@@ -268,10 +266,11 @@ through `execute`. See CODEGEN-PLAN.md for the engine side.
 
 ```
 habu/  AGENTS.md LESSONS.md PLAN.md README.md .gitignore  docs/forth.md
-  bootstrap/src/  config forward arena types rows effects-repr diag-state unify
-        render sigparse db prims diag checker control locals quots defining
-        capture colon  (+ ../habu.fs)
-  test/ tester.fs all.fs t-<each>.fs   examples.fs
+  src/core/  checker render util sha256 combinators
+  src/arch/arm64/  asm icode mnem disasm
+  src/habu/  habu1 habu2 jit regalloc rt crash prof repl snap stage2
+  src/os/macos/  sys env macho sign2
+  test/ run.sh hb-suite.f prop-test.f proc-pty.f
 ```
 Each file is one concern (no file bundles unrelated responsibilities — see
 `docs/forth.md`). Load order: `config forward arena types rows effects-repr

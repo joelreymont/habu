@@ -1,9 +1,8 @@
 # The self-hosting Forth subset
 
-The bootstrap target: the minimal Forth the **standalone** (the native engine built by
-`bootstrap/cg/forth.fs`) must accept so that it can compile its **own compiler's source**. This
-document defines that subset and records the proof that the current compiler source lives
-inside it.
+The self-host target: the minimal Forth the native engine must accept so that it
+can compile its **own compiler's source**. This document defines that subset and
+records the proof that the current compiler source lives inside it.
 
 ## Why it matters
 
@@ -12,7 +11,8 @@ Self-hosting = the standalone compiles the Forth program that *is* the compiler
 source again to a byte-identical binary (the fixpoint). For that to even start, every
 word the compiler source uses must be one the standalone already provides or one the
 source defines itself. If the source reached for a word the standalone lacks, the
-bootstrap is impossible. So the subset is a *closure* property, not a wish list.
+native fixpoint is impossible. So the subset is a *closure* property, not a wish
+list.
 
 ## The subset
 
@@ -86,9 +86,9 @@ differently, and subset source must be written for the standalone's semantics:
 The subset proved sufficient: the complete compiler is written in it (`asm icode mnem
 util walk rt crash macho engine engine2 stage2`), and the default gate now
 checks the native self-rebuild directly. `tools/build.sh` rebuilds `bin/hb` from
-the current native sources and verifies the output is byte-identical. Gforth
-remains a bootstrap/reference recovery path, not the default gate. Any edit
-that breaks the subset, the emitter parity, or the fixpoint fails `test/run.sh`.
+the current native sources and verifies the output is byte-identical. No-binary
+recovery uses `tools/seed.sh`, then the same native fixpoint. Any edit that
+breaks the subset, native codegen, or the fixpoint fails `test/run.sh`.
 
 ## Time And Date
 

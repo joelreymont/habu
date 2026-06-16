@@ -21,9 +21,6 @@ points stay listed.
 - `src/core/util.f` — shared subset helpers.
 - `src/core/checker.f` — native stack-effect checker and verifier.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
-- `bootstrap/src/checker.fs` — gforth-hosted reference checker.
-- `bootstrap/src/sigparse.fs` — reference signature parser.
-- `bootstrap/src/colon.fs` — gforth checked-colon integration.
 
 ## Native Engine And Builders
 
@@ -79,8 +76,6 @@ points stay listed.
 ## Tests And Benchmarks
 
 - `test/run.sh` — default native gate.
-- `test/all.fs` — gforth-hosted suite entry.
-- `test/t-sh-jdiag.fs` — JSON diagnostic regression tests.
 - `test/t-sh-verify.fs` — native `CHECK!` verification tests.
 - `test/prop-test.f` — self-hosted property-based checker-soundness test (in-process via `evaluate`).
 - `test/hb-suite.f` — native engine behavior suite.

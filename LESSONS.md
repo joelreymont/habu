@@ -17,8 +17,8 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   the old gforth oracle script is retired.
 - **Native rebuilds need private temp dirs:** parallel jj workspaces share host
   `/tmp`; fixed names like `stage2-got` race. `tools/build.sh`,
-  `tools/bootstrap.sh`, and `test/run.sh` allocate and export private `HB_TMP`
-  by default, while preserving explicit `HB_TMP` for repro.
+  `tools/seed.sh`, and `test/run.sh` allocate and export private `HB_TMP`
+  by default where they run builds, while preserving explicit `HB_TMP` for repro.
 - **User-facing builds must fail closed:** `hb-build` verifies user source with
   `CHECK!` and accepts only `-1` certification. Tests assert bad programs fail
   to build, not merely that a later call exits nonzero.
@@ -77,10 +77,6 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Parity is native fixpoint, not mirror drift:** the active parity proof is
   byte-for-byte self-rebuild through `tools/build.sh`. Do not keep bootstrap
   token-diff lints alive as a second source of truth.
-- **Bootstrap caps track native caps:** paired-emitter growth can make gforth
-  stage0 exceed bootstrap Mach-O limits before native builds notice. Keep
-  `bootstrap/cg/macho.fs` caps aligned with `src/os/macos/macho.f` and run
-  `tools/bootstrap.sh` after changing bootstrap emitters or image limits.
 - **AOT compaction requires an old-to-new map:** removing call-stencil padding is
   safe only when every PC-relative source (`B/BL`, conditional branches, `ADR`)
   is remapped and range-checked. Keep mapper cursors separate from copy cursors.
@@ -162,11 +158,8 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   code. Accept a trailer only when `region-len + data-len` ends exactly at the
   trailer offset; otherwise fallback dictionary scans see false snapshots.
 
-## Environment
+## Historical Bootstrap
 
-- **Gforth target is 0.7.9 dev:** Homebrew's 0.7.3 is insufficient. Build from
-  source with real GCC, GNU autotools/libtool, texinfo, and m4; keep
-  `~/.local/bin` before Homebrew on PATH.
-- **macOS/Gforth caches are shared state:** concurrent gforth/libcc cache use can
-  corrupt `~/.cache/gforth`; isolate cache dirs for oracle/bootstrap runs when
-  parallelism is involved.
+- **Old gforth runs need isolation:** if deliberately using historical bootstrap
+  code, isolate gforth/libcc caches; concurrent runs can corrupt
+  `~/.cache/gforth`.
