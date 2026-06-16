@@ -93,7 +93,7 @@ create LEX-FIX FIX-CAP allot     variable LEX-LEN
    STR-FIX$ SPLIT-WHITESPACE  SN# @ 3 ASSERT=
    0 S@ s" Alpha" ASSERT$  1 S@ s" beta" ASSERT$  2 S@ s" Gamma" ASSERT$
    s" hello.f" s" .f" HAS-EXT? ASSERT
-   s" hello.fs" s" .py" HAS-EXT? 0= ASSERT
+   s" hello.fs" s" .zig" HAS-EXT? 0= ASSERT
    s" Habu" s" Ha" STARTS-WITH? ASSERT
    s" Habu" s" bu" ENDS-WITH? ASSERT
    s" banana" 97 COUNT-CHAR 3 ASSERT=

@@ -1,5 +1,5 @@
 #!/bin/sh
-# imgdump.sh <image> [image2] — per-word dict dump of a habu binary (runs
+# imgdump.sh <image> [image2] — per-word dict dump of an hb image (runs
 # tools/imgdump.f on bin/hb). With two images: compare word sizes first
 # (shift-insensitive), then offsets — answers "which word changed size" vs
 # "everything just shifted".

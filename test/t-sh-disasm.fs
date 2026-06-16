@@ -1,6 +1,6 @@
 \ t-sh-disasm.fs — the standalone's own ARM64 disassembler (src/arch/arm64/disasm.f) decodes
 \ a known instruction buffer to mnemonics + operands (self-hosted debugging of generated
-\ code, zero gforth/python). Run: gforth test/t-sh-disasm.fs -e bye
+\ code, zero host scripting). Run: gforth test/t-sh-disasm.fs -e bye
 require sh-driver.fs
 : DIS-OUT ( -- a u )
    0 CL !

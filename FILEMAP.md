@@ -58,6 +58,7 @@ points stay listed.
 - `tools/diag-origin-test.sh` — fixture coverage for diagnostic origin markers.
 - `tools/json-only.f` — keeps wrapper JSON mode machine-only on known diagnostics.
 - `tools/gate-json-assert.f` — native JSON assertions for the default gate.
+- `tools/host-lint.f` — rejects retired host-script workflow tokens.
 - `tools/check-all-errors.f` — batches checker diagnostics by top-level definition.
 - `tools/check-all-errors-test.sh` — fixture coverage for all-errors checking.
 - `tools/diag-to-sarif.f` — converts diagnostic JSONL to SARIF for CI/review UIs.

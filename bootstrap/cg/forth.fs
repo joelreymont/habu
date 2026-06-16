@@ -1602,7 +1602,7 @@ variable CFSK2
    24 1 MOVZ,
    snomag LBL,
    9 0 MOVZ,  9 DATA HND-CELL STR,                    \ HND (catch handler chain) = 0
-   LBL {: cwok :}  24 cwok CBNZ,                   \ snapshot keeps warm CUR/WIDN/HOOK
+   LBL {: cwok :}  24 cwok CBNZ,                   \ snapshot preserves live CUR/WIDN/HOOK
    9 0 MOVZ,  9 DATA CUR-CELL STR,                    \ CURRENT wordlist = 0 (FORTH)
    9 1 MOVZ,  9 DATA WIDN-CELL STR,                   \ next fresh wid = 1
    9 0 MOVZ,  9 DATA HOOK-CELL STR,                   \ check hook = none

@@ -1,5 +1,5 @@
 \ lib.f — string/file library for the self-hosted linters (shadow/parity/clobber),
-\ run by bin/hb. Replaces the regex/text plumbing the Python tools used. Tooling
+\ run by bin/hb. Replaces old host-side text plumbing. Tooling
 \ tier: uncheckable metaprogramming, so checking is OFF for the whole library.
 0 set-check
 
@@ -203,12 +203,11 @@ create SOFF SMAX cells allot   create SLEN SMAX cells allot   variable SN#
    a u SLASH INDEX-OF 0 >= IF -1 exit THEN
    a u s" .md" HAS-EXT? IF -1 exit THEN
    a u s" .sh" HAS-EXT? IF -1 exit THEN
-   a u s" .py" HAS-EXT? IF -1 exit THEN
    a u s" .f" HAS-EXT? IF -1 exit THEN
    a u s" .fs" HAS-EXT? IF -1 exit THEN
    a u s" .tsv" HAS-EXT? ;
 
-\ ---- named scanners replacing the current Python regex use-cases ----------
+\ ---- named scanners replacing the former regex use-cases ------------------
 variable PSA  variable PSU  variable PX  variable PSTART
 variable P1A  variable P1U  variable P2A  variable P2U
 : PAT-RESET  {: a u :}  ( -- )  a PSA !  u PSU !  0 PX !  0 P1U !  0 P2U ! ;

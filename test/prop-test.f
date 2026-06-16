@@ -1,7 +1,7 @@
 \ prop-test.f — property-based checker-soundness test, SELF-HOSTED in habu.
 \ Generates runnable typed defs, checks them, RUNS the certified ones IN-PROCESS
 \ (via `evaluate`), and fails (exit 1) if a certified def's real out-arity differs
-\ from its declared ( in -- out ) — a false-cert. No Python, no gforth, no
+\ from its declared ( in -- out ) — a false-cert. No host scripting, no gforth, no
 \ spawning: generator, driver and measurement are all habu, run by bin/hb.
 \ See PROP-TESTING.md.  Run:  bin/hb < test/prop-test.f   (exit 1 on a false-cert)
 \ Optional sweep override: bin/hb 123 1000 < test/prop-test.f

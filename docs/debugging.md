@@ -49,15 +49,15 @@ signature. Write to a fresh path when in doubt.
 `bootstrap/cg/stepper.fs`: `s" 5 dup * 3 +" STEP` evaluates one token at a time, printing
 the token and the data stack after each step, leaving the result. The "stepper".
 
-## Forth disassembler (preferred over python/otool)
+## Forth disassembler (preferred over external disassemblers)
 `bootstrap/cg/disasm.fs`: `DISASM ( addr nwords -- )` decodes habu's ARM64 subset to
 mnemonics. Its decode math (`disasm-core.fs`) and the encoders (`asm-checked.fs`)
 are written as CHECKED typed Forth — habu certifies them (CHECK-CODE=0). Use this to
 inspect generated code; it found the walk-dispatcher bug (undefined `STR=`) instantly.
 
-## otool / python — last resort
-`otool -tv <bin>` or decode `__text` (offset 0x1000) as little-endian u32 in python.
-Verify page hashes vs the embedded CodeDirectory the same way.
+## External disassembly — last resort
+`otool -tv <bin>` can inspect `__text` when the native disassembler lacks an
+encoding. Verify page hashes vs the embedded CodeDirectory the same way.
 
 ## Standalone gotchas a stepper catches fast
 - A 2nd `{: :}` locals group mis-reads its slot (use a variable instead).

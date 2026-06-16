@@ -4,7 +4,7 @@
 
 Complete. The build-time parity, shadow, and clobber linters are self-hosted
 Habu scripts under `tools/lint/`, run by `bin/hb` in `test/run.sh`, and the old
-Python implementations have been deleted.
+host implementations have been deleted.
 
 ### Bootstrap Input Decision
 

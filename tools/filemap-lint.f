@@ -18,7 +18,6 @@ variable FM-NUM-L
    a u s" /" CONTAINS? IF -1 exit THEN
    a u s" .md" HAS-EXT? IF -1 exit THEN
    a u s" .sh" HAS-EXT? IF -1 exit THEN
-   a u s" .py" HAS-EXT? IF -1 exit THEN
    a u s" .f" HAS-EXT? IF -1 exit THEN
    a u s" .fs" HAS-EXT? IF -1 exit THEN
    a u s" .tsv" HAS-EXT? ;
@@ -98,6 +97,7 @@ variable FM-NUM-L
    s" tools/diag-origin-test.sh" FM-REQ
    s" tools/json-only.f" FM-REQ
    s" tools/gate-json-assert.f" FM-REQ
+   s" tools/host-lint.f" FM-REQ
    s" tools/check-all-errors.f" FM-REQ
    s" tools/check-all-errors-test.sh" FM-REQ
    s" tools/diag-to-sarif.f" FM-REQ

@@ -57,7 +57,7 @@ soup that bounces off the parser.
 The whole harness is **checked-Forth's untyped tooling tier, run by `bin/hb`**
 (`test/prop-test.f`): the PRNG, the generator, the driver and the measurement are
 all habu. Each program is defined, checked and run **in the same process** via
-the engine's re-entrant `evaluate` — no Python, no gforth, no per-program
+the engine's re-entrant `evaluate` — no host scripting, no gforth, no per-program
 spawning.
 
 ```

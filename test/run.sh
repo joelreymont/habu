@@ -32,6 +32,7 @@ cat tools/lint/lib.f tools/repl-lint.f | bin/hb || { echo "FAIL: repl-lint"; exi
 cat tools/lint/lib.f tools/fs.f tools/trust-lint.f | bin/hb || { echo "FAIL: trust-lint"; exit 1; }
 ./tools/trust-lint-test.sh || { echo "FAIL: trust-lint fixtures"; exit 1; }
 cat tools/lint/lib.f tools/fs.f tools/stale-status-lint.f | bin/hb || { echo "FAIL: stale-status-lint"; exit 1; }
+cat tools/lint/lib.f tools/fs.f tools/host-lint.f | bin/hb || { echo "FAIL: host-lint"; exit 1; }
 cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint"; exit 1; }
 [ -x bin/hb ] || { echo "no bin/hb — run tools/bootstrap.sh once"; exit 1; }
 ./tools/build.sh > $T/hb-build.log 2>&1 || { tail -5 $T/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }
@@ -127,7 +128,7 @@ echo "PASS: checked bin/hb + getenv + sig-check (rows+quots)"
 # property-based soundness smoke, SELF-HOSTED in habu: generate typed defs,
 # check them, and RUN the certified ones IN-PROCESS (via `evaluate`); a false-cert
 # (real out-arity != declared) calls `die` -> nonzero exit. Default seed/count
-# are reproducible; argv can override longer sweeps. No Python, no gforth, no
+# are reproducible; argv can override longer sweeps. No host scripting, no gforth, no
 # spawning. See PROP-TESTING.md.
 bin/hb < test/prop-test.f > $T/prop.out 2>/dev/null || { echo "FAIL: prop-test (self-hosted) found a FALSE-CERT"; exit 1; }
 grep -q "self-test OK" $T/prop.out || { echo "FAIL: prop-test self-test/run did not complete"; exit 1; }
