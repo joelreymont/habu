@@ -81,15 +81,10 @@ out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i6
 out=$(printf ': PSH ( R -- R i64 ) 5 ;\nPSH .\n' | bin/hb 2>/dev/null)
 [ "$out" = "5" ] || { echo "FAIL: hb named-row sig run (got: $out)"; exit 1; }
 [ -x bin/hb ] || { echo "FAIL: bin/hb not produced"; exit 1; }
+GATE_JSON=$T/gate-json-assert.f
+cat tools/json.f tools/gate-json-assert.f > "$GATE_JSON"
 printf ': JBAD ( i64 -- i64 ) dup ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json.err && { echo "FAIL: tools/check.sh --json-errors accepted bad def"; exit 1; }
-python3 - "$T/habu-json.err" <<'PY'
-import json, pathlib, sys
-lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
-assert lines and all(line.startswith("{") for line in lines), lines
-for line in lines:
-    obj = json.loads(line)
-    assert obj["schema_version"] == 1, obj
-PY
+bin/hb "$GATE_JSON" json-lines-schema "$T/habu-json.err"
 grep -q '"verdict":"rejected"' $T/habu-json.err || { echo "FAIL: --json-errors missing verdict"; exit 1; }
 grep -q '"declared_effect":"i64 -- i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing declared effect"; exit 1; }
 grep -q '"inferred_effect":"i64 -- i64 i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing inferred effect"; exit 1; }
@@ -106,19 +101,7 @@ cat > $T/habu-json-file.f <<'EOF'
 : JBAD ( i64 -- i64 ) dup ;
 EOF
 ./tools/check.sh --json-errors $T/habu-json-file.f >/dev/null 2>$T/habu-json-file.err && { echo "FAIL: tools/check.sh --json-errors accepted file bad def"; exit 1; }
-python3 - "$T/habu-json-file.err" "$T/habu-json-file.f" <<'PY'
-import json, pathlib, sys
-obj = json.loads(pathlib.Path(sys.argv[1]).read_text().splitlines()[0])
-src = pathlib.Path(sys.argv[2]).read_text()
-idx = src.index("dup")
-line = src[:idx].count("\n") + 1
-col = idx - src.rfind("\n", 0, idx)
-assert obj["file"] == sys.argv[2], obj
-assert obj["line"] == line, obj
-assert obj["column"] == col, obj
-assert obj["byte_start"] == idx, obj
-assert obj["byte_end"] == idx + 3, obj
-PY
+bin/hb "$GATE_JSON" diag-file-origin "$T/habu-json-file.err" "$T/habu-json-file.f"
 printf ': NOSIG dup ;\n' | ./tools/check.sh --strict-signatures >$T/habu-strict.err 2>&1 && { echo "FAIL: tools/check.sh --strict-signatures accepted nosig"; exit 1; }
 grep -q 'E-MISSING-SIGNATURE' $T/habu-strict.err || { echo "FAIL: strict-signatures missing text diagnostic"; exit 1; }
 printf ': NOSIG dup ;\n' | ./tools/check.sh --strict-signatures --json-errors >$T/habu-strict-json.out 2>&1 && { echo "FAIL: tools/check.sh --strict-signatures --json-errors accepted nosig"; exit 1; }
@@ -131,33 +114,13 @@ cat > $T/habu-all-errors.f <<'EOF'
 : BAD2 ( i64 -- ) >r ;
 EOF
 ./tools/check.sh --json-errors --all-errors $T/habu-all-errors.f >/dev/null 2>$T/habu-all-errors.err && { echo "FAIL: tools/check.sh --all-errors accepted bad defs"; exit 1; }
-python3 - "$T/habu-all-errors.err" <<'PY'
-import json, pathlib, sys
-objs = [json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines()]
-assert len(objs) == 2, objs
-assert {obj["word"] for obj in objs} == {"bad1", "bad2"}, objs
-assert all(obj["schema_version"] == 1 for obj in objs), objs
-PY
+bin/hb "$GATE_JSON" all-errors "$T/habu-all-errors.err"
 cat tools/json.f tools/diag-to-sarif.f > $T/diag-to-sarif.f
 bin/hb $T/diag-to-sarif.f $T/habu-all-errors.err < /dev/null > $T/habu-all-errors.sarif
-python3 - "$T/habu-all-errors.sarif" <<'PY'
-import json, pathlib, sys
-sarif = json.loads(pathlib.Path(sys.argv[1]).read_text())
-assert sarif["version"] == "2.1.0", sarif
-results = sarif["runs"][0]["results"]
-assert len(results) == 2, results
-assert all(r["locations"][0]["physicalLocation"]["region"]["startLine"] for r in results), results
-PY
+bin/hb "$GATE_JSON" sarif "$T/habu-all-errors.sarif"
 cat tools/lint/lib.f tools/public-signatures.f > $T/public-signatures.f
 bin/hb $T/public-signatures.f examples/llm/good.f < /dev/null > $T/public-signatures.json
-python3 - "$T/public-signatures.json" <<'PY'
-import json, pathlib, sys
-doc = json.loads(pathlib.Path(sys.argv[1]).read_text())
-defs = {item["word"]: item for item in doc["definitions"]}
-assert doc["schema_version"] == 1, doc
-assert defs["SQUARE"]["signature"] == "(i64 -- i64)", defs["SQUARE"]
-assert defs["APPLY"]["signature"] == "(i64 [ i64 -- i64 ] -- i64)", defs["APPLY"]
-PY
+bin/hb "$GATE_JSON" public-signatures "$T/public-signatures.json"
 TRUST_LINT_TODAY=2026-10-01 sh -c 'cat tools/lint/lib.f tools/fs.f tools/trust-lint.f | bin/hb' >$T/trust-stale.out 2>&1 && { echo "FAIL: trust-lint accepted stale audit dates"; exit 1; }
 grep -q 'STALE-AUDIT' $T/trust-stale.out || { echo "FAIL: trust-lint stale audit diagnostic missing"; exit 1; }
 echo "PASS: checked bin/hb + getenv + sig-check (rows+quots)"
@@ -184,15 +147,7 @@ printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE +
 ATX=$(size -m $T/hb-at 2>/dev/null | awk '/__text/{print $3}')
 [ "${ATX:-99999}" -lt 2000 ] || { echo "FAIL: hb-build AOT did not strip the engine (__text=$ATX, expected <2000)"; exit 1; }
 bin/hb tools/aot-call-report.f $T/hb-at < /dev/null > $T/hb-at-call-report.json
-python3 - "$T/hb-at-call-report.json" <<'PY'
-import json, pathlib, sys
-doc = json.loads(pathlib.Path(sys.argv[1]).read_text())
-assert doc["schema_version"] == 1, doc
-assert doc["file_bytes"] > 0, doc
-assert doc["padding_bytes"] == doc["patched_call_stencils"] * 12, doc
-assert doc["patched_call_stencils"] == 0, doc
-assert doc["direct_bl_instructions"] > 0, doc
-PY
+bin/hb "$GATE_JSON" aot-stripped "$T/hb-at-call-report.json"
 echo "PASS: hb-build AOT (engine stripped, __text $ATX B vs ~11800 embed)"
 # AOT compacts reachable call stencils inside blobs that also contain branches
 # and embedded S" bodies. The linker rewrites B/CBZ/ADR through an old->new byte
@@ -202,14 +157,7 @@ printf ': BIG ( i64 -- i64 ) 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 
 [ "$($T/hb-compact)" = "22
 ok" ] || { echo "FAIL: hb-build AOT compact call output (got: $($T/hb-compact))"; exit 1; }
 bin/hb tools/aot-call-report.f $T/hb-compact < /dev/null > $T/hb-compact-call-report.json
-python3 - "$T/hb-compact-call-report.json" <<'PY'
-import json, pathlib, sys
-doc = json.loads(pathlib.Path(sys.argv[1]).read_text())
-assert doc["schema_version"] == 1, doc
-assert doc["patched_call_stencils"] == 0, doc
-assert doc["padding_bytes"] == 0, doc
-assert doc["direct_bl_instructions"] >= 3, doc
-PY
+bin/hb "$GATE_JSON" aot-compact "$T/hb-compact-call-report.json"
 echo "PASS: hb-build AOT compact call layout"
 # AOT closure stress: a 260-word reachable chain (above the old 256-cell tables,
 # which silently overflowed and crashed the linker). Must build and compute 260.
@@ -258,13 +206,7 @@ grep -q '"schema_version":1' $T/hb-clo-limit.err || { echo "FAIL: hb-build closu
 grep -q '"reachable_count":8' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing reachable_count"; exit 1; }
 grep -q '"max_closure":8' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing max_closure"; exit 1; }
 grep -q '"root_word":"MAIN"' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing root_word"; exit 1; }
-python3 - "$T/hb-clo-limit.err" <<'PY'
-import json, pathlib, sys
-lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
-assert len(lines) == 1 and lines[0].startswith("{"), lines
-obj = json.loads(lines[0])
-assert obj["schema_version"] == 1, obj
-PY
+bin/hb "$GATE_JSON" json-one-schema "$T/hb-clo-limit.err"
 echo "PASS: hb-build strict signatures + uncheckable/AOT-unsafe rejection"
 # hb-build default AOT must verify declared signatures and treat rejection as fatal.
 printf ': BAD ( i64 -- i64 ) 0= ;\n: MAIN ( -- ) 0 BAD . CR ;\n' > $T/hb-badsig.f

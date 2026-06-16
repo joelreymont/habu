@@ -137,10 +137,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Effect drift checks must compare full normalized tokens:** returning on the
   first shared whitespace made `n --` equal `n -- n`. Tokenize/advance through
   the whole effect when comparing manifest text.
-- **Native CLI lints need lean images:** combining `source-lex` token tables,
-  `json.f`, and another large file buffer can crash on file reads. Prefer small
-  local JSON writers for emit-only tools and size lexer/buffer tables from real
-  wrapper inputs.
+- **Native CLI tools need lean images:** combining large lint tables, `json.f`,
+  and another large file buffer can crash on file reads. Prefer standalone
+  readers/writers sized from real inputs, and keep helper scratch state separate
+  from caller loop indexes.
 - **Shadowing prim names is a class of bug:** later toolchain words can replace
   primitive dictionary entries and checker signatures. `shadow-lint` gates this.
 - **Useful register lint needs contracts:** clobber analysis must model callee
