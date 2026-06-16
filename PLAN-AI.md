@@ -27,12 +27,16 @@ concatenative loops, while being one-liners in JS/Rust.
 
 ## 2. The result (claims to be verified)
 
-10 array tasks × 3 languages × 2 trials = 60 trials (`bench/llm/results/run.jsonl`,
-summarized in `bench/llm/RESULTS.md`). Headline:
+The committed evidence is 10 array tasks × 3 original arms × 2 trials = 60
+trials (`bench/llm/results/run.jsonl`, summarized in `bench/llm/RESULTS.md`).
+The harness now has a fourth arm, `habu-lib`, which gives Habu checked array
+helpers; rerun the benchmark to collect live library-arm rows. Headline from the
+committed raw-Habu/JS/Rust data:
 
 | language | trial pass | first-try green | task pass@k | mean output-tokens-to-green | max |
 |---|---|---|---|---|---|
-| habu (checked) | 95% | 90% | 100% | **629** | 5545 |
+| Habu raw | 95% | 90% | 100% | **629** | 5545 |
+| Habu library | pending new run | pending new run | pending new run | pending new run | pending new run |
 | JavaScript | 100% | 100% | 100% | 91 | 154 |
 | Rust | 100% | 95% | 100% | 86 | 181 |
 
@@ -68,12 +72,13 @@ from current source.
 ### V1 — Harness is sound (deterministic, no LLM, no tokens)
 ```
 ./bench/llm/grade-test.sh      # -> PASS: grade.sh classifies pass/fail/reject/trap/timeout
-./bench/llm/bench-test.sh      # -> PASS: array drivers (as + aa, 3 arms + habu repair)
+./bench/llm/bench-test.sh      # -> PASS: array drivers (as + aa, 4 arms + habu repair)
 ```
 `grade-test` proves the isolated run+grade spine classifies a correct/wrong/non-certifying/
-trapping/looping candidate correctly. `bench-test` drives all three arm scripts with STUB
-models (canned answers) for both conventions and checks the JSONL each emits — including that
-habu's repair loop fires on a checker rejection (rounds=2).
+trapping/looping candidate correctly. `bench-test` drives raw Habu, library
+Habu, JavaScript, and Rust with STUB models (canned answers) for both
+conventions and checks the JSONL each emits — including that Habu's repair loop
+fires on a checker rejection (rounds=2).
 
 ### V2 — Tasks are FEASIBLE in habu and the io-vector ground truth is correct
 ```
@@ -91,14 +96,16 @@ harness and hangs.)
 
 ### V3 — Reproduce the benchmark (uses real `claude -p`; costs tokens; non-deterministic)
 ```
-sh bench/llm/run-bench.sh 2                       # 10 tasks × 3 arms × 2 trials -> results/run.jsonl
+sh bench/llm/run-bench.sh 2                       # 10 tasks × 4 arms × 2 trials -> results/run.jsonl
 node bench/llm/report.js bench/llm/results/run.jsonl > /tmp/RESULTS.md
 ```
 Then compare `/tmp/RESULTS.md` to the committed `bench/llm/RESULTS.md`. Exact token counts
 WILL differ run-to-run (model nondeterminism), but the **shape** must reproduce: pass@k ≈ 100%
 for all arms, trial pass close to the table in §2, and Habu's per-task tokens ≈ 1× on the
 elementwise tasks and many-× (especially ARGMAX) on the index/state/in-place tasks. The
-committed `run.jsonl` is the exact evidence behind the numbers in §2.
+committed `run.jsonl` is the exact evidence behind the raw-Habu/JS/Rust numbers
+in §2; because it predates `habu-lib`, the report marks library rows as missing
+until a new run is produced.
 
 ### V4 — Spot-check a single live cell
 ```
@@ -137,12 +144,12 @@ the same task (run `drive-js.sh` / `drive-rust.sh` with the same args, dropping 
 - `bench/llm/parse-resp.js` — extracts the completion text + **output_tokens** from
   `claude -p --output-format json`. Input tokens are deliberately excluded (Claude Code harness
   overhead ~7–22K/call + prompt caching distort them); output tokens track generated-token cost.
-- `bench/llm/run-bench.sh <k>` — orchestrator: every task × 3 arms × k trials → `run.jsonl`,
+- `bench/llm/run-bench.sh <k>` — orchestrator: every task × 4 arms × k trials → `run.jsonl`,
   then `report.js` → `RESULTS.md`. Drivers are invoked with `</dev/null` (else `claude -p`
   swallows the loop's stdin) and `|| true` (a failing driver must not abort the sweep).
 - `bench/llm/report.js` — aggregates `run.jsonl` → `RESULTS.md` (trial pass, first-try
   green, task pass@k, non-pass rows, wall time, mean rounds, median/mean/max output tokens,
-  per-task token table with Habu/best ratio, verdict).
+  per-task token table with raw/best and lib/best ratios, verdict).
 - `bench/llm/ref-solutions.f` — certified habu answer key (see V2).
 - `bench/llm/grade-test.sh`, `bench-test.sh` — the deterministic teeth (see V1).
 

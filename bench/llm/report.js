@@ -1,11 +1,17 @@
 // report.js <run.jsonl> -> RESULTS.md (stdout). Head-to-head: can an LLM produce
-// correct array/memory code in habu vs JavaScript vs Rust?
+// correct array/memory code in raw Habu, library-assisted Habu, JavaScript, and Rust?
 const fs = require('fs');
-const rows = fs.readFileSync(process.argv[2], 'utf8').trim().split('\n')
+const input = fs.readFileSync(process.argv[2], 'utf8').trim();
+const rows = input.split('\n')
   .filter(Boolean).map(JSON.parse);
 
-const ARMS = ['habu-a', 'js', 'rust'];
-const LABEL = { 'habu-a': 'habu (checked)', js: 'JavaScript', rust: 'Rust' };
+const ARMS = ['habu-a', 'habu-lib', 'js', 'rust'];
+const LABEL = {
+  'habu-a': 'Habu raw',
+  'habu-lib': 'Habu + array helpers',
+  js: 'JavaScript',
+  rust: 'Rust',
+};
 const by = a => rows.filter(r => r.arm === a);
 const median = a => { if (!a.length) return null; a = a.slice().sort((x, y) => x - y);
   const n = a.length; return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2; };
@@ -14,6 +20,7 @@ const pct = (n, d) => d ? `${Math.round(n / d * 100)}%` : '—';
 const fmt = v => v == null ? '—' : Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
 const sec = ms => ms == null ? null : Math.round(ms / 10) / 100;
 const q = s => String(s).replace(/\|/g, '\\|');
+const ratio = (n, d) => (n != null && d != null && d !== 0 && d !== Infinity) ? `${(n / d).toFixed(0)}x` : '—';
 
 function stats(arm) {
   const rs = by(arm);
@@ -34,13 +41,21 @@ function stats(arm) {
 }
 const S = Object.fromEntries(ARMS.map(a => [a, stats(a)]));
 const allNonpass = rows.filter(r => r.outcome !== 'pass');
+const taskNames = [...new Set(rows.map(r => r.name))];
+const hasLib = S['habu-lib'].trials > 0;
 
 let o = '';
-o += '# RESULTS.md — habu vs JavaScript vs Rust: LLM codegen on array/memory algorithms\n\n';
-o += `Generated from \`results/run.jsonl\` (${rows.length} trials). Model: \`claude -p\`. Tasks: ${S['habu-a'].tasks} `;
+o += '# RESULTS.md — Habu vs JavaScript vs Rust: LLM codegen on array/memory algorithms\n\n';
+o += `Generated from \`results/run.jsonl\` (${rows.length} trials). Model: \`claude -p\`. Tasks: ${taskNames.length} `;
 o += 'algorithms over an integer array (sum/max/min/argmax/count, reverse/prefix-sum/square/negate/running-max).\n';
-o += 'In habu these require typed pointers, `i cells arr + @`/`!` indexing, in-place mutation, and concatenative\n';
-o += 'loops — unfamiliar territory for an LLM; in JS/Rust they are idiomatic one-liners.\n\n';
+o += 'Raw Habu requires typed pointers, `i cells arr + @`/`!` indexing, in-place mutation, and concatenative\n';
+o += 'loops — unfamiliar territory for an LLM. The Habu + array helpers arm exposes checked helpers for array access and\n';
+o += 'common index patterns; JS/Rust use idiomatic array/slice APIs.\n';
+if (!hasLib) {
+  o += '\n**Habu + array helpers data is missing from this committed run.** The harness now runs the `habu-lib` arm, but\n';
+  o += 'the checked-in `results/run.jsonl` predates that arm; re-run `sh bench/llm/run-bench.sh 2` to fill it.\n';
+}
+o += '\n';
 o += '_Each task: the model writes the function in the target language; we compile/check + run all io-vectors,\n';
 o += 'feeding the failure (checker/compiler diagnostic or failing case) back for up to 5 repair rounds. A trial\n';
 o += 'is "green" only when every io-vector passes. Metric: output tokens to green (input excluded — Claude Code\n';
@@ -53,7 +68,7 @@ o += '| language | trials | green trials | trial pass | first-try green | task p
 o += '|---|---:|---:|---:|---:|---:|---:|\n';
 for (const a of ARMS) { const s = S[a];
   o += `| ${LABEL[a]} | ${s.trials} | ${s.passed} | ${pct(s.passed, s.trials)} | ${pct(s.firstPass, s.trials)} | ${pct(s.passk, s.tasks)} | ${s.nonpass} |\n`; }
-o += '\n`trial pass` is stricter than `task pass@k`: Habu has one failed ARGMAX trial, but another ARGMAX trial passed, so task-level pass@k is still 100%.\n\n';
+o += '\n`trial pass` is stricter than `task pass@k`: a task can have a failed trial and still pass at task level when another trial is green.\n\n';
 
 o += '## Effort To Green\n\n';
 o += '| language | mean rounds | median output tokens | **mean output tokens** | max output tokens | median wall s | max wall s |\n';
@@ -62,25 +77,37 @@ for (const a of ARMS) { const s = S[a];
   o += `| ${LABEL[a]} | ${fmt(s.meanRounds)} | ${fmt(s.medTok)} | **${fmt(s.meanTok)}** | ${fmt(s.maxTok)} | ${fmt(sec(s.medWall))} | ${fmt(sec(s.maxWall))} |\n`; }
 o += '\nEffort metrics use passing trials only. Mean/max matter more than the median: Habu\'s cost is skewed — cheap on simple tasks, spiking on hard ones.\n\n';
 
-const h = S['habu-a'], j = S.js, r = S.rust;
+const h = S['habu-a'], hl = S['habu-lib'], j = S.js, r = S.rust;
 const bestMean = Math.min(j.meanTok ?? Infinity, r.meanTok ?? Infinity);
-const effort = (h.meanTok != null && bestMean && bestMean !== Infinity) ? (h.meanTok / bestMean) : null;
-o += '## Verdict — how does habu stack up?\n\n';
-o += `**Task-level correctness parity, with a trial-level reliability gap.** task pass@k is identical — Habu ${pct(h.passk, h.tasks)} vs `;
-o += `JS ${pct(j.passk, j.tasks)} / Rust ${pct(r.passk, r.tasks)} — so the model can produce correct Habu for every task in this suite. `;
-o += `At the stricter trial level Habu is ${h.passed}/${h.trials}, JS ${j.passed}/${j.trials}, Rust ${r.passed}/${r.trials}; `;
-o += 'the one Habu miss is an ARGMAX driver error row after the model-call timeout. The cost split is bimodal:\n\n';
-o += '- **Simple elementwise loops** (sum, square, negate, max) — habu is **comparable or cheaper** than JS/Rust '
+const effort = ratio(h.meanTok, bestMean);
+const libEffort = ratio(hl.meanTok, bestMean);
+const libVsRaw = ratio(hl.meanTok, h.meanTok);
+o += '## Verdict — how does Habu stack up?\n\n';
+o += `Task pass@k is Habu raw ${pct(h.passk, h.tasks)}, `;
+o += hasLib ? `Habu + array helpers ${pct(hl.passk, hl.tasks)}, ` : 'Habu + array helpers —, ';
+o += `JS ${pct(j.passk, j.tasks)}, Rust ${pct(r.passk, r.tasks)}. `;
+o += `At the stricter trial level: Habu raw ${h.passed}/${h.trials}, `;
+o += hasLib ? `Habu + array helpers ${hl.passed}/${hl.trials}, ` : 'Habu + array helpers has no live rows, ';
+o += `JS ${j.passed}/${j.trials}, Rust ${r.passed}/${r.trials}. `;
+if (h.nonpass) o += `Raw Habu has ${h.nonpass} non-pass row(s); see the table below. `;
+if (hasLib && hl.nonpass) o += `The helper arm has ${hl.nonpass} non-pass row(s); see the table below. `;
+o += '\n\nThe raw-Habu cost split is bimodal:\n\n';
+o += '- **Simple elementwise loops** (sum, square, negate, max) — raw Habu is **comparable or cheaper** than JS/Rust '
    + '(its source is terse and the pattern is regular).\n';
 o += '- **Anything needing index tracking, carried state, or in-place rearrangement** (argmax, reverse, prefix-sum, '
-   + 'running-max) — habu costs **5x–60x** more generation effort. The worst, ARGMAX, spiked to ~5500 output tokens vs ~100 '
+   + 'running-max) — raw Habu costs **5x–60x** more generation effort. The worst, ARGMAX, spiked to ~5500 output tokens vs ~100 '
    + 'in JS/Rust.\n\n';
-if (effort) o += `Net: mean output-tokens-to-green habu **${fmt(h.meanTok)}** vs JS **${fmt(j.meanTok)}** / Rust **${fmt(r.meanTok)}** `
-  + `— about **${effort.toFixed(0)}x** the cheapest mainstream arm, almost entirely from the hard tail.\n\n`;
-o += 'The gap is the corpus-familiarity tax: habu\'s typed pointers (`arr:ptr`), `i cells arr + @`/`!` indexing, and\n';
+if (h.meanTok != null && bestMean !== Infinity) o += `Net: mean output-tokens-to-green Habu raw **${fmt(h.meanTok)}** vs JS **${fmt(j.meanTok)}** / Rust **${fmt(r.meanTok)}** `
+  + `— about **${effort}** the cheapest mainstream arm, almost entirely from the hard tail.\n\n`;
+if (hasLib && hl.meanTok != null && bestMean !== Infinity) {
+  o += `Habu + array helpers mean output-tokens-to-green is **${fmt(hl.meanTok)}**, about **${libEffort}** the cheapest mainstream arm `;
+  o += `and **${libVsRaw}** of raw Habu's mean cost.\n\n`;
+}
+if (!hasLib) o += 'A raw-vs-library conclusion is intentionally withheld until `habu-lib` rows are collected in a live run.\n\n';
+o += 'The raw-Habu gap is the corpus-familiarity tax: Habu\'s typed pointers (`arr:ptr`), `i cells arr + @`/`!` indexing, and\n';
 o += 'in-place concatenative loops have much less model prior than JavaScript arrays or Rust slices. That makes obvious\n';
-o += 'stack shapes cheap and stateful/indexed loops expensive. Mean repair rounds on passing trials: Habu '
-   + `${fmt(h.meanRounds)}, JS ${fmt(j.meanRounds)}, Rust ${fmt(r.meanRounds)}.\n\n`;
+o += 'stack shapes cheap and stateful/indexed loops expensive. Mean repair rounds on passing trials: Habu raw '
+   + `${fmt(h.meanRounds)}, Habu + array helpers ${fmt(hl.meanRounds)}, JS ${fmt(j.meanRounds)}, Rust ${fmt(r.meanRounds)}.\n\n`;
 
 if (allNonpass.length) {
   o += '## Non-Pass Rows\n\n';
@@ -92,16 +119,17 @@ if (allNonpass.length) {
 }
 
 o += '## Per-Task Max Output Tokens\n\n';
-const names = [...new Set(rows.map(r => r.name))];
-o += '| task | Habu | JS | Rust | Habu/best | trial outcomes (h/js/rust) |\n|---|---:|---:|---:|---:|---|\n';
-for (const n of names) {
+o += '| task | Habu raw | Habu + helpers | JS | Rust | raw/best | helpers/best | trial outcomes (raw/helpers/js/rust) |\n|---|---:|---:|---:|---:|---:|---:|---|\n';
+for (const n of taskNames) {
   const tk = arm => { const xs = rows.filter(z => z.name === n && z.arm === arm && z.outcome === 'pass'); return xs.length ? Math.max(...xs.map(x => x.tokens)) : null; };
   const oc = arm => { const xs = rows.filter(z => z.name === n && z.arm === arm); return xs.length ? xs.map(x => `${x.outcome}/${x.rounds}`).join(',') : '—'; };
-  const hh = tk('habu-a'), jj = tk('js'), rr = tk('rust');
+  const hh = tk('habu-a'), ll = tk('habu-lib'), jj = tk('js'), rr = tk('rust');
   const best = Math.min(jj ?? Infinity, rr ?? Infinity);
-  const ratio = (hh != null && best && best !== Infinity) ? `${(hh / best).toFixed(0)}x` : '—';
-  o += `| ${n} | ${fmt(hh)} | ${fmt(jj)} | ${fmt(rr)} | ${ratio} | ${oc('habu-a')} ${oc('js')} ${oc('rust')} |\n`;
+  const rawRatio = ratio(hh, best);
+  const libRatio = ratio(ll, best);
+  const outcomes = `raw ${oc('habu-a')}; helpers ${oc('habu-lib')}; js ${oc('js')}; rust ${oc('rust')}`;
+  o += `| ${q(n)} | ${fmt(hh)} | ${fmt(ll)} | ${fmt(jj)} | ${fmt(rr)} | ${rawRatio} | ${libRatio} | ${q(outcomes)} |\n`;
 }
-o += '\nCells are max output tokens among passing trials. `Habu/best` compares Habu with the cheaper mainstream arm; '
-   + 'the jump from ~1x on elementwise tasks to ~60x on ARGMAX is the main signal.\n';
+o += '\nCells are max output tokens among passing trials. `raw/best` and `helpers/best` compare each Habu arm with the cheaper mainstream arm; '
+   + 'the jump from ~1x on elementwise tasks to ~60x on ARGMAX is the main raw-Habu signal.\n';
 process.stdout.write(o);
