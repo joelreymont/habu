@@ -14,7 +14,12 @@ require asm.fs
 require sys.fs                 \ icode mnemonics (ADR, STR, SVC, ...)
 
 variable LCRASHH   variable LHEX   variable LHDR
-s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR-HDR
+create CRH 80 allot  variable CRHL
+
+: CRH-INIT  s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: a u :}
+   0 BEGIN dup u < WHILE  dup a + c@  over CRH + c!  1 + REPEAT drop
+   10 CRH u + c!  u 1 + CRHL ! ;
+CRH-INIT
 
 40 constant SA-SIGINFO
 48 constant MCTX-OFF           \ ucontext -> mcontext pointer offset (macOS arm64)
@@ -46,13 +51,13 @@ s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR
 \ the kernel's register layout applies on entry: x2=sig, x4=ucontext.
 : EMIT-CRASH-HANDLER ( -- )
    LCRASHH @ LBL,
+   LBL LBL {: rl RD :}
       20 2 0 ADDI,                          \ x20 = sig (saved before the header write clobbers x2)
       19 4 0 ADDI,                          \ x19 = ucontext
-      1 LHDR @ ADR,  0 2 MOVZ,  2 CR-HDR nip MOVZ,  NR-WRITE SYS,   \ write header
+      1 LHDR @ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,   \ write header
       21 19 MCTX-OFF LDR,                   \ x21 = mcontext = [ucontext+48]
       9 20 0 ADDI,  LHEX @ BL,              \ print sig
       20 0 MOVZ,                            \ i = 0..28
-      LBL {: rl :}  LBL {: RD :}
       rl LBL,  20 29 CMPI,  C-GE RD BCOND,
          22 20 3 LSLI,  22 22 SS-OFF ADDI,  22 21 22 ADD,  9 22 0 LDR,  LHEX @ BL,
          20 20 1 ADDI,  rl B,
@@ -61,8 +66,12 @@ s\" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:\n" 2constant CR
       9 21 256 LDR,  LHEX @ BL,             \ lr
       9 21 264 LDR,  LHEX @ BL,             \ sp
       9 21 272 LDR,  LHEX @ BL,             \ pc
+      9 21 272 LDR,  9 9 8 SUBI,  9 9 0 LDRW,  LHEX @ BL,    \ [pc-8]
+      9 21 272 LDR,  9 9 4 SUBI,  9 9 0 LDRW,  LHEX @ BL,    \ [pc-4]
+      9 21 272 LDR,  9 9 0 LDRW,  LHEX @ BL,                 \ [pc]
+      9 21 272 LDR,  9 9 4 ADDI,  9 9 0 LDRW,  LHEX @ BL,    \ [pc+4]
       0 134 MOVZ,  NR-EXIT SYS,     \ exit(134)
-   LHDR @ LBL,  CR-HDR BYTES, ;             \ header bytes (handler exits, never reaches them)
+   LHDR @ LBL,  CRH CRHL @ BYTES, ;         \ header bytes (handler exits, never reaches them)
 
 \ G-INSTALL-CRASH ( -- ) : install the handler for ILL/TRAP/BUS/SEGV. Builds a
 \ struct __sigaction { handler, tramp, mask, flags } on the stack and syscalls.
