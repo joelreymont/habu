@@ -54,7 +54,6 @@ effect) is the ordinary Forth colon, untouched.
 
 ```sh
 ( cd test && ./run.sh )        # default gate: habu-native, no gforth, <10 s
-./tools/bootstrap-oracle.sh    # bootstrap-only gforth differential
 ```
 
 ## The type system
@@ -128,9 +127,8 @@ primitives consume typed pointers, and `ptr` without an inner type is rejected.
   signing).
 - `test/` — `T{ … }T` tests. `test/run.sh` is the DEFAULT gate, habu-native
   end to end: lints + self-rebuild fixpoint + hb-suite + checked `hb` +
-  tty REPL + hb-build (runs with gforth absent). `tools/bootstrap-oracle.sh` is
-  the bootstrap-only gforth differential (the gforth-hosted suite + the
-  boot-vs-port goldens). `tools/` also holds build/hb-build/probe/imgdump/
+  tty REPL + hb-build (runs with gforth absent). `tools/` also holds
+  seed/build/hb-build/probe/imgdump/
   jitdump/clobber-lint/shadow-lint/repl-lint, and `snap-hb.sh` for refreshing
   `bin/hb`.
 

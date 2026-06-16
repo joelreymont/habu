@@ -12,9 +12,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   with `tools/seed.sh /path/to/hb-seed`; optional SHA-256 verification plus the
   immediate `tools/build.sh` fixpoint make the installed binary current-source
   native, without making gforth the normal trust root.
-- **Gforth is bootstrap-only:** daily work uses `bin/hb`, `tools/build.sh`, and
-  `test/run.sh`. Keep gforth in `tools/bootstrap.sh` and
-  `tools/bootstrap-oracle.sh` for seed/reference recovery.
+- **Gforth is historical bootstrap only:** daily work uses `bin/hb`,
+  `tools/build.sh`, and `test/run.sh`. No-binary recovery uses `tools/seed.sh`;
+  the old gforth oracle script is retired.
 - **Native rebuilds need private temp dirs:** parallel jj workspaces share host
   `/tmp`; fixed names like `stage2-got` race. `tools/build.sh`,
   `tools/bootstrap.sh`, and `test/run.sh` allocate and export private `HB_TMP`

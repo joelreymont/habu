@@ -18,8 +18,8 @@ the self-check on every rebuild; `( cd test && ./run.sh )` is the Habu-native
 gate. That gate runs native parity/shadow/clobber/trust/status/filemap lints,
 the retired host-script token lint, the rebuild fixpoint, JSON diagnostic
 assertions, property soundness smoke, PTY/process checks, and AOT/`--repl`
-builder checks. Gforth is bootstrap-only; `tools/bootstrap-oracle.sh` exists
-for changes to the bootstrap seed/reference mirror and recovery validation.
+builder checks. The old gforth bootstrap oracle is retired; native recovery uses
+`tools/seed.sh` and native verification uses this gate.
 
 History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling,
 890/0/0 after that model landed, and 979/0/0 after the native primitive,

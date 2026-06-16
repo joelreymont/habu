@@ -5,7 +5,7 @@
 set -e
 cd "$(dirname "$0")/.."
 if [ "${1:-}" = "full" ]; then
-  echo "FAIL: test/run.sh full retired; run ./tools/bootstrap-oracle.sh only for bootstrap recovery"
+  echo "FAIL: test/run.sh full retired; the native gate is test/run.sh"
   exit 64
 fi
 if [ "$#" -gt 0 ]; then
