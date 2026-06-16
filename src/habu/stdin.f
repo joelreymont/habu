@@ -13,28 +13,30 @@
 : DBG-SRC  s" src/habu/debug.f" ;
 variable HB  variable HL  variable HFD  variable HRD
 $10000 constant HMAX
+: HB@ HB @ ;
+s" HB@" s" -- ptr u8" TRUST
 
-: H+ {: a u :} ( a u -- )
+: H+ {: a:ptr u :} ( a u -- )
    HL @ u + HMAX > IF s" hb: repl sources exceed buffer" 74 die THEN
    0 BEGIN dup u < WHILE
-      a over + c@  HB @ HL @ + c!
+      a over + c@  HB@ HL @ + c!
       HL @ 1 + HL !  1 +
    REPEAT drop ;
 
 : HNL ( -- )
    HL @ 1 + HMAX > IF s" hb: repl sources exceed buffer" 74 die THEN
-   10 HB @ HL @ + c!  HL @ 1 + HL ! ;
+   10 HB@ HL @ + c!  HL @ 1 + HL ! ;
 
 : HLINE ( a u -- )  H+ HNL ;
 
 : RD-1 ( z -- )
    0 0 open HFD !
    BEGIN                                                 \ read() may return short
-     HFD @  HB @ HL @ +  HMAX HL @ -  read HRD !
+     HFD @  HB@ HL @ +  HMAX HL @ -  read HRD !
      HRD @ 0 >
    WHILE  HL @ HRD @ + HL !  REPEAT
    HFD @ close
-   10 HB @ HL @ + c!  HL @ 1 + HL ! ;
+   10 HB@ HL @ + c!  HL @ 1 + HL ! ;
 
 : READ-REPL
    here HB !  HMAX allot  0 HL !
@@ -49,7 +51,7 @@ $10000 constant HMAX
 : GO
    READ-REPL
    1 STDIN? !
-   HB @ HL @ EMIT-FORTH
+   HB@ HL @ EMIT-FORTH
    BUILD-IMAGE
    s" hb" SET-SIGID  CODESIG2
    STDIN-OUT PATH0  1537 493 open  dup MBUF MLEN @ write drop  close ;

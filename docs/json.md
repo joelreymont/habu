@@ -11,14 +11,14 @@ cat tools/json.f my-tool.f | bin/hb
 
 ## Parser
 
-`JSON-PARSE ( addr u -- node )` parses one complete JSON value and throws named
+`JSON-PARSE ( ptr u8 u -- node )` parses one complete JSON value and throws named
 errors on failure:
 
 - `E-JSON-SYNTAX`
 - `E-JSON-CAPACITY`
 - `E-JSON-TYPE`
 
-`JSON-ERROR$ ( -- addr u )` and `JSON-ERR-POS @` expose the last parser error
+`JSON-ERROR$ ( -- ptr u8 u )` and `JSON-ERR-POS @` expose the last parser error
 message and byte offset.
 
 The parser accepts objects, arrays, strings, numbers, `true`, `false`, and
@@ -30,17 +30,17 @@ Core accessors:
 
 - `JSON-KIND ( node -- kind )`
 - `JSON-COUNT ( node -- u )`
-- `JSON-STRING$ ( node -- addr u )`
-- `JSON-NUMBER$ ( node -- addr u )`
-- `JSON-BOOL@ ( node -- f )`
-- `JSON-NULL? ( node -- f )`
+- `JSON-STRING$ ( node -- ptr u8 u )`
+- `JSON-NUMBER$ ( node -- ptr u8 u )`
+- `JSON-BOOL@ ( node -- bool )`
+- `JSON-NULL? ( node -- bool )`
 - `JSON-ARR@ ( arr-node idx -- node )`
-- `JSON-OBJ@ ( obj-node idx -- key-addr key-u value-node )`
-- `JSON-GET ( obj-node key-addr key-u -- node|-1 )`
+- `JSON-OBJ@ ( obj-node idx -- key-ptr key-u value-node )`
+- `JSON-GET ( obj-node key-ptr key-u -- node|-1 )`
 
 ## JSONL
 
-`JSONL-START ( addr u -- )` initializes iteration over newline-separated input.
+`JSONL-START ( ptr u8 u -- )` initializes iteration over newline-separated input.
 `JSONL-NEXT-OBJECT ( -- node|-1 )` returns the next valid object line, skipping
 blank lines, prose, invalid JSON, and valid non-object JSON values. Skips are
 part of the iterator contract and can be inspected with
@@ -51,7 +51,7 @@ line parse reuses the static DOM buffers.
 
 ## Writer
 
-`JSON-WRITE ( node -- addr u )` emits compact JSON for a parsed node. It escapes
+`JSON-WRITE ( node -- ptr u8 u )` emits compact JSON for a parsed node. It escapes
 control bytes, quotes, and backslashes; non-ASCII UTF-8 bytes are emitted as
 UTF-8.
 

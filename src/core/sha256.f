@@ -33,7 +33,8 @@ create HH0
   1779033703 , 3144134277 , 1013904242 , 2773480762 , 1359893119 , 2600822924 , 528734635 , 1541459225 ,
 create H 64 allot   create WS 512 allot   create ST 64 allot
 
-: BE32@ dup c@ 24 lshift  over 1 + c@ 16 lshift or  over 2 + c@ 8 lshift or  swap 3 + c@ or ;
+: BE32@ ( ptr u8 -- n )
+   dup c@ 24 lshift  over 1 + c@ 16 lshift or  over 2 + c@ 8 lshift or  swap 3 + c@ or ;
 
 : STV cells ST + @ ;
 
@@ -45,8 +46,9 @@ create H 64 allot   create WS 512 allot   create ST 64 allot
    4 STV t1 + M32  ST 4 cells + !                          \ e = d + t1
    t1 t2 + M32  ST 0 cells + ! ;                           \ a = t1 + t2
 
-: SHA-BLOCK ( a -- )
-   16 0 DO  dup i 4 * + BE32@  WS i cells + !  LOOP drop
+: SHA-BLOCK ( ptr u8 -- )
+   {: a:ptr :}
+   16 0 DO  a i 4 * + BE32@  WS i cells + !  LOOP
    64 16 DO
      WS i 2 - cells + @ SSIG1  WS i 7 - cells + @ +  WS i 15 - cells + @ SSIG0 +  WS i 16 - cells + @ +  M32
      WS i cells + !  LOOP
@@ -56,28 +58,34 @@ create H 64 allot   create WS 512 allot   create ST 64 allot
 
 : SHA-INIT 8 0 DO  HH0 i cells + @  H i cells + !  LOOP ;
 
-: BE32! {: w a :}
+: BE32! ( n ptr u8 -- )
+   {: w a:ptr :}
    w 24 rshift 255 and a c!  w 16 rshift 255 and a 1 + c!
    w 8 rshift 255 and a 2 + c!  w 255 and a 3 + c! ;
 
-: BE64! {: x a :}  8 0 DO  x 56 i 8 * - rshift 255 and  a i + c!  LOOP ;
+: BE64! ( n ptr u8 -- )
+   {: x a:ptr :}  8 0 DO  x 56 i 8 * - rshift 255 and  a i + c!  LOOP ;
 
-: ZFILL {: a n :}  n 0 DO  0 a i + c!  LOOP ;
+: ZFILL ( ptr u8 n -- )
+   {: a:ptr n :}  n 0 DO  0 a i + c!  LOOP ;
 
 \ NB: the standalone's plain DO is do-while (0 0 DO runs once), so every loop that
 \ can have zero trips is guarded with `0 > if ... then`.
-: BMOVE {: src dst n :}  n 0 > if  n 0 DO  src i + c@ dst i + c!  LOOP  then ;
+: BMOVE ( ptr u8 ptr u8 n -- )
+   {: src:ptr dst:ptr n :}  n 0 > if  n 0 DO  src i + c@ dst i + c!  LOOP  then ;
 create PBLK 128 allot
 
 \ pad tail [tail,tail+tl) of a ub-byte message into PBLK; returns block count (1|2)
-: SHA-PAD {: tail tl ub :}
+: SHA-PAD ( ptr u8 n n -- n )
+   {: tail:ptr tl ub :}
    PBLK 128 ZFILL  tail PBLK tl BMOVE  128 PBLK tl + c!
    tl 56 < if 64 else 128 then {: blen :}
    ub 8 *  PBLK blen 8 - +  BE64!
    blen 64 / ;
 
 \ SHA-256 of [a,u) -> writes 32 bytes to dst
-: SHA256 {: a u dst :}  SHA-INIT
+: SHA256 ( ptr u8 n ptr u8 -- )
+   {: a:ptr u dst:ptr :}  SHA-INIT
    u 64 / {: nb :}
    nb 0 > if  nb 0 DO  a i 64 * +  SHA-BLOCK  LOOP  then
    a nb 64 * +  u nb 64 * -  u  SHA-PAD {: nblk :}

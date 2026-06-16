@@ -727,24 +727,24 @@ create ENDLOC-KW 58 c, 125 c,
    C-CALL ;
 variable CFSK
 
-: CF-ENTRY {: lmainlbl kwvar kwlen hxt :}
+: CF-ENTRY {: lmainlbl kwvar:ptr kwlen hxt :}
    LBL CFSK !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
    LVSPILL @ BL,
    hxt execute  lmainlbl B,
    CFSK @ LBL, ;
-s" cf-entry" s" n n n n --" TRUST
+s" cf-entry" s" n ptr a n n --" TRUST
 
 \ cfn-entry: keyword case WITHOUT the spill — loop words manage the VS
 \ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
-: CFN-ENTRY {: lmainlbl kwvar kwlen hxt :}
+: CFN-ENTRY {: lmainlbl kwvar:ptr kwlen hxt :}
    LBL CFSK !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
    hxt execute  lmainlbl B,
    CFSK @ LBL, ;
-s" cfn-entry" s" n n n n --" TRUST
+s" cfn-entry" s" n ptr a n n --" TRUST
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable LMAIN  variable LEXIT  variable LCOMPILE  variable LUNDEF
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
@@ -754,7 +754,7 @@ variable CFSK2
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
 \ a REGISTER top branches directly (no spill + memory pop); con or empty falls
 \ back to the spill + pop path. hxtr gets the condition reg in x14.
-: CFB-ENTRY {: lmainlbl kwvar kwlen hxtm hxtr :}
+: CFB-ENTRY {: lmainlbl kwvar:ptr kwlen hxtm hxtr :}
    LBL CFSK !  LBL CFSK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
@@ -772,12 +772,12 @@ variable CFSK2
    hxtm execute
    lmainlbl B,
    CFSK @ LBL, ;
-s" cfb-entry" s" n n n n n --" TRUST
+s" cfb-entry" s" n ptr a n n n --" TRUST
 
 \ cfbn-entry: like CFB-ENTRY but the register path neither spills nor saves —
 \ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
 \ LVDROP (which only relabels the VS, no emission).
-: CFBN-ENTRY {: lmainlbl kwvar kwlen hxtm hxtr :}
+: CFBN-ENTRY {: lmainlbl kwvar:ptr kwlen hxtm hxtr :}
    LBL CFSK !  LBL CFSK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
@@ -793,7 +793,7 @@ s" cfb-entry" s" n n n n n --" TRUST
    hxtm execute
    lmainlbl B,
    CFSK @ LBL, ;
-s" cfbn-entry" s" n n n n n --" TRUST
+s" cfbn-entry" s" n ptr a n n n --" TRUST
 
 : J-IFR  C-PUSHCP  8 $B4000000 LIT64,  9 8 14 ORR,  LCEMIT @ BL, ;
 
@@ -1206,8 +1206,10 @@ s" em-compile" s" --" TRUST
    EM-STARTUP  EM-COMMENT  EM-INTERPRET  EM-COMPILE ;
 s" emit-main" s" --" TRUST
 variable SRCA
+: SRCA@ SRCA @ ;
+s" SRCA@" s" -- ptr u8" TRUST
 
-: EMIT-FORTH {: a u :}
+: EMIT-FORTH {: a:ptr u :}
    u SRCN !  a SRCA !
    ASM-INIT  0 #PL !  0 PNP !
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
@@ -1253,5 +1255,5 @@ variable SRCA
    EMIT-CF-HELPERS  EMIT-LOC-FIND  EMIT-KWDATA  EMIT-FOLDKW  EMIT-SHUFKW  EMIT-CMPKW  EMIT-UNKW  EMIT-CRASH-HANDLER  EMIT-TRAPH  EMIT-HEX
    EMIT-PROFDUMP  EMIT-PROF  EMIT-JIT
    EMIT-DICT
-   LSRC @ LBL,  SRCA @ SRCN @ BYTES, ;
-s" emit-forth" s" n n --" TRUST
+   LSRC @ LBL,  SRCA@ SRCN @ BYTES, ;
+s" emit-forth" s" ptr u8 n --" TRUST

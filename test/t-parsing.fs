@@ -1,6 +1,6 @@
 \ t-parsing.fs — parsing-word literals via CHECK-DEF: S" ." C" CHAR [CHAR].
 
-\ S" pushes addr u32; TYPE consumes both, leaving the return row untouched.
+\ S" pushes ptr u8 u32; TYPE consumes both, leaving the return row untouched.
 : P-STR  s" PSTR" s" R -- R" s\" S\" hi\" TYPE" CHECK-DEF ;
 T{ ' P-STR catch -> 0 }T
 

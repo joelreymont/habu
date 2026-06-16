@@ -85,35 +85,37 @@ create PLBL PRIM-CAP cells allot   create PEL PRIM-CAP cells allot
 create PLEN PRIM-CAP cells allot   create PNAM PRIM-CAP cells allot
 create PNPOOL PRIM-NAME-CAP allot   variable PNP   variable #PL
 variable RPD
+: RPD@ RPD @ ;
+s" RPD@" s" -- ptr u8" TRUST
 
-: ?PRIM-SPACE {: na nu :} ( na nu -- )
+: ?PRIM-SPACE {: na:ptr nu :} ( na nu -- )
    #PL @ PRIM-CAP >= IF s" primitive registry full" 76 die THEN
    PNP @ nu + PRIM-NAME-CAP > IF s" primitive name pool full" 76 die THEN ;
 
-: REG-PRIM {: na nu lbl elbl :}
+: REG-PRIM {: na:ptr nu lbl elbl :}
    na nu ?PRIM-SPACE
    lbl  #PL @ cells PLBL + !
    elbl #PL @ cells PEL  + !
    nu   #PL @ cells PLEN + !
-   PNPOOL PNP @ + RPD !  RPD @ #PL @ cells PNAM + !
-   0 BEGIN dup nu < WHILE  dup na + c@  over RPD @ + c!  1 + REPEAT drop
+   PNPOOL PNP @ + RPD !  RPD@ #PL @ cells PNAM + !
+   0 BEGIN dup nu < WHILE  dup na + c@  over RPD@ + c!  1 + REPEAT drop
    PNP @ nu + PNP !  #PL @ 1 + #PL ! ;
 variable FPL  variable FPE
 
-: FPRIM {: na nu xt :}
-   na nu KEEP? 0 = IF EXIT THEN
+: FPRIM {: na:ptr nu xt :}
+   na nu KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
    na nu FPL @ FPE @ REG-PRIM
    FPL @ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    xt execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE @ LBL, ;
-s" fprim" s" n n n --" TRUST
+s" fprim" s" ptr u8 n n --" TRUST
 
-: FPRIM-L {: na nu xt :}               \ LEAF prim: no BL/BLR in body -> no x30 frame
-   na nu KEEP? 0 = IF EXIT THEN
+: FPRIM-L {: na:ptr nu xt :}           \ LEAF prim: no BL/BLR in body -> no x30 frame
+   na nu KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
    na nu FPL @ FPE @ REG-PRIM
    FPL @ LBL,  xt execute  RET,  FPE @ LBL, ;
-s" fprim-l" s" n n n --" TRUST
+s" fprim-l" s" ptr u8 n n --" TRUST
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
 variable LCEMIT   variable LTOK   variable LPROT  variable LFLUSH variable LNCOUNT

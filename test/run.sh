@@ -78,7 +78,7 @@ out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i6
 [ "$out" = "-1
 -1
 0" ] || { echo "FAIL: hb rows/quot sig verify (got: $out)"; exit 1; }
-out=$(printf 's" P1 ( i64 i64 i64 i64 -- i64 i64 i64 i64 i64 i64 ) 2over" CHECK! .\ns" P2 ( i64 i64 -- i64 i64 ) 2>r 2r>" CHECK! .\ns" P3 ( i64 -- i64 ) abs" CHECK! .\ns" P4 ( i64 i64 -- i64 i64 ) /mod" CHECK! .\ns" P5 ( i64 -- i64 i64 ) count" CHECK! .\n' | bin/hb 2>/dev/null)
+out=$(printf 's" P1 ( i64 i64 i64 i64 -- i64 i64 i64 i64 i64 i64 ) 2over" CHECK! .\ns" P2 ( i64 i64 -- i64 i64 ) 2>r 2r>" CHECK! .\ns" P3 ( i64 -- i64 ) abs" CHECK! .\ns" P4 ( i64 i64 -- i64 i64 ) /mod" CHECK! .\ns" P5 ( ptr u8 -- ptr u8 i64 ) count" CHECK! .\n' | bin/hb 2>/dev/null)
 [ "$out" = "-1
 -1
 -1
@@ -89,7 +89,7 @@ out=$(printf 's" RBAD1 ( i64 i64 -- ) 2>r" CHECK! .\ns" RBAD2 ( -- i64 i64 ) 2r>
 0
 -1
 1" ] || { echo "FAIL: hb return-stack/?dup primitive verdicts (got: $out)"; exit 1; }
-out=$(printf 's" CDIP ( i64 i64 -- i64 i64 ) [: 1+ ;] DIP" CHECK! .\ns" CKEEP ( i64 -- i64 i64 ) [: 1+ ;] KEEP" CHECK! .\ns" CBI ( i64 -- i64 i64 ) [: 1+ ;] [: 2 * ;] BI" CHECK! .\ns" CTRI ( i64 -- i64 i64 i64 ) [: 1+ ;] [: 2 * ;] [: 3 + ;] TRI" CHECK! .\ns" CTIMES ( i64 -- i64 ) 5 [: 1+ ;] TIMES" CHECK! .\ns" CEACH ( i64 addr i64 -- i64 ) [: + ;] EACH" CHECK! .\ns" CMAP ( addr i64 -- ) [: 1+ ;] MAP" CHECK! .\ns" CFOLD ( addr i64 i64 -- i64 ) [: + ;] FOLD" CHECK! .\n' | bin/hb 2>/dev/null)
+out=$(printf 's" CDIP ( i64 i64 -- i64 i64 ) [: 1+ ;] DIP" CHECK! .\ns" CKEEP ( i64 -- i64 i64 ) [: 1+ ;] KEEP" CHECK! .\ns" CBI ( i64 -- i64 i64 ) [: 1+ ;] [: 2 * ;] BI" CHECK! .\ns" CTRI ( i64 -- i64 i64 i64 ) [: 1+ ;] [: 2 * ;] [: 3 + ;] TRI" CHECK! .\ns" CTIMES ( i64 -- i64 ) 5 [: 1+ ;] TIMES" CHECK! .\ns" CEACH ( i64 ptr i64 i64 -- i64 ) [: + ;] EACH" CHECK! .\ns" CMAP ( ptr i64 i64 -- ) [: 1+ ;] MAP" CHECK! .\ns" CFOLD ( ptr i64 i64 i64 -- i64 ) [: + ;] FOLD" CHECK! .\n' | bin/hb 2>/dev/null)
 [ "$out" = "-1
 -1
 -1
@@ -98,12 +98,12 @@ out=$(printf 's" CDIP ( i64 i64 -- i64 i64 ) [: 1+ ;] DIP" CHECK! .\ns" CKEEP ( 
 -1
 -1
 -1" ] || { echo "FAIL: hb combinator/iterator verdicts (got: $out)"; exit 1; }
-out=$(printf '." hi" cr\nc" ok" count type cr\n: DQ ( -- ) ." bye" ;\nDQ cr\n: CQ ( -- n n ) c" yo" count ;\nCQ type cr\n' | bin/hb 2>/dev/null)
+out=$(printf '." hi" cr\nc" ok" count type cr\n: DQ ( -- ) ." bye" ;\nDQ cr\n: CQ ( -- ptr u8 n ) c" yo" count ;\nCQ type cr\n' | bin/hb 2>/dev/null)
 [ "$out" = "hi
 ok
 bye
 yo" ] || { echo "FAIL: hb parsing-word runtime surface (got: $out)"; exit 1; }
-printf ': DQ ( -- ) ." ok" ;\n: CQ ( -- n n ) c" ok" count ;\n' | ./tools/check.sh || { echo "FAIL: check.sh parsing-word certification"; exit 1; }
+printf ': DQ ( -- ) ." ok" ;\n: CQ ( -- ptr u8 n ) c" ok" count ;\n' | ./tools/check.sh || { echo "FAIL: check.sh parsing-word certification"; exit 1; }
 set +e
 printf '$400000 allot\n' | bin/hb >/dev/null 2>&1
 rc=$?

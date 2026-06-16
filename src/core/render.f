@@ -52,9 +52,10 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
 \ A quot renders as [ in -- out ] to TWO nesting levels (one buffer per level;
 \ a 3rd-level quot caps at '?'). That covers every combinator sig in practice.
 
-: Q2REND-1 {: t :} t T-RES {: r :}              \ level-2 leaf: con | var | '?'
+: Q2REND-1 {: t :} t T-RES {: r :}              \ level-2 leaf: con | var | ptr | '?'
    r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
-   r TAG T-CON = IF r PAY CON-OUT ELSE 63 EMIT1 THEN THEN ;
+   r TAG T-CON = IF r PAY CON-OUT ELSE
+   r TAG T-PTR = IF s" ptr " RSTR  r PTR>INNER RECURSE ELSE 63 EMIT1 THEN THEN THEN ;
 
 : Q2REND-ROW {: row :}  0 Q2BN !  row
    BEGIN R-RES dup TAG S-PUSH = WHILE
@@ -67,10 +68,11 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
 : QREND-1 {: t :} t T-RES {: r :}               \ level-1 leaf: con | var | nested quot
    r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
    r TAG T-CON = IF r PAY CON-OUT ELSE
+   r TAG T-PTR = IF s" ptr " RSTR  r PTR>INNER RECURSE ELSE
    r TAG T-QUOT = IF                            \ a nested quot -> [ in -- out ]
      91 EMIT1 32 EMIT1  r Q>DIN Q2REND-ROW
      45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT Q2REND-ROW  93 EMIT1
-   ELSE 63 EMIT1 THEN THEN THEN ;
+   ELSE 63 EMIT1 THEN THEN THEN THEN ;
 
 : QREND-ROW {: row :}  0 QRBN !  row
    BEGIN R-RES dup TAG S-PUSH = WHILE
@@ -83,10 +85,11 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
 : REND-TYPE {: t :} t T-RES {: r :}
    r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
    r TAG T-CON = IF r PAY CON-OUT ELSE
+   r TAG T-PTR = IF s" ptr " RSTR  r PTR>INNER RECURSE ELSE
    r TAG T-QUOT = IF                                     \ quot<effect> -> [ in -- out ]
      91 EMIT1 32 EMIT1  r Q>DIN QREND-ROW
      45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT QREND-ROW  93 EMIT1
-   ELSE 63 EMIT1 THEN THEN THEN ;
+   ELSE 63 EMIT1 THEN THEN THEN THEN ;
 create RBUF 64 cells allot   variable RBN
 
 : REND-COLLECT {: s :}  0 RBN !  s

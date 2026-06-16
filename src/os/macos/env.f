@@ -6,14 +6,23 @@ $340000000 constant ENV-DATA
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
+s" ENV-DATA" s" -- ptr n" TRUST
 
 : ARGC ( -- n )  ENV-DATA ARGC-CELL + @ ;
 
-: ARGV ( i -- z )  8 * ENV-DATA ARGV-CELL + @ + @ ;   \ argv[i], NUL-terminated
+: ARGV-BASE ENV-DATA ARGV-CELL + @ ;
+s" ARGV-BASE" s" -- ptr n" TRUST
 
-: ENVP ( i -- z )  8 * ENV-DATA ENVP-CELL + @ + @ ;   \ envp[i], 0 at the end
+: ARGV ( i -- z )  8 * ARGV-BASE + @ ;   \ argv[i], NUL-terminated
+s" ARGV" s" n -- ptr u8" TRUST
 
-: ZLEN {: z :}  0 begin z over + c@ while 1 + repeat ;
+: ENVP-BASE ENV-DATA ENVP-CELL + @ ;
+s" ENVP-BASE" s" -- ptr n" TRUST
+
+: ENVP ( i -- z )  8 * ENVP-BASE + @ ;   \ envp[i], 0 at the end
+s" ENVP" s" n -- ptr u8" TRUST
+
+: ZLEN {: z:ptr :}  0 begin z over + c@ 0= 0= while 1 + repeat ;
 
 : ARGV$ ( i -- a u )  ARGV dup ZLEN ;
 
@@ -25,25 +34,31 @@ $3680 constant ENVP-CELL
 : SCRIPT-ARGV$ ( i -- a u )  SCRIPT-ARGV dup ZLEN ;
 
 \ does the c-string z start with name a/u followed by '='?
-: ENV=? {: z a u :}
-   u 0 ?do  z i + c@  a i + c@  = 0= IF unloop 0 exit THEN  loop
+: ENV=? {: z:ptr a:ptr u :}
+   u 0 ?do  z i + c@  a i + c@  = 0= IF unloop 0 0= 0= exit THEN  loop
    z u + c@ 61 = ;
+
+: NULL$ 0 0 ;
+s" NULL$" s" -- ptr u8 n" TRUST
 
 \ value of $name, or 0 0 when unset (also when no environment was captured —
 \ an engine built before the capture existed must still self-rebuild once)
 : GETENV {: a u :}
-   ENV-DATA ENVP-CELL + @ 0 = IF 0 0 exit THEN
-   0 begin dup ENVP while
+   ENV-DATA ENVP-CELL + @ 0 = IF NULL$ exit THEN
+   0 begin dup ENVP 0= 0= while
       dup ENVP a u ENV=? IF  ENVP u + 1 +  dup ZLEN  exit THEN
       1 + repeat
-   drop 0 0 ;
+   drop NULL$ ;
 
 \ $HB_TMP/<name> (default /tmp/<name>) — the build drivers' path knob
 create TPB 256 allot
 variable TPP  variable TPQ
-: TMP-PATH {: a u :}
+: TPP@ TPP @ ;
+s" TPP@" s" -- ptr u8" TRUST
+
+: TMP-PATH {: a:ptr u :}
    s" HB_TMP" GETENV  dup 0 = IF drop drop s" /tmp" THEN  TPQ ! TPP !
-   TPQ @ 0 ?do  TPP @ i + c@  TPB i + c!  loop
+   TPQ @ 0 ?do  TPP@ i + c@  TPB i + c!  loop
    47 TPB TPQ @ + c!
    u 0 ?do  a i + c@  TPB TPQ @ + 1 + i + c!  loop
    TPB  TPQ @ 1 + u + ;

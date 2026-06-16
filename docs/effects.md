@@ -52,9 +52,9 @@ KEEP   ( R a [ R a -- S ] -- S a ) \ run with a copy, keep original
 BI     ( R a [ R a -- R b ] [ R b a -- R b c ] -- R b c )
 TRI    ( R a [ R a -- R b ] [ R b a -- R b c ] [ R b c a -- R b c d ] -- R b c d )
 TIMES  ( R i64 [ R -- R ] -- R )   \ counted iterate (trusted runtime boundary)
-EACH   ( R addr i64 [ R i64 -- R ] -- R )
-MAP    ( R addr i64 [ R i64 -- R i64 ] -- R )
-FOLD   ( R addr i64 b [ R b i64 -- R b ] -- R b )
+EACH   ( R ptr a i64 [ R a -- R ] -- R )
+MAP    ( R ptr a i64 [ R a -- R a ] -- R )
+FOLD   ( R ptr a i64 b [ R b a -- R b ] -- R b )
 ?DUP-IF( R a [ R a -- R ] -- R )   \ typeable fusion of `?DUP IF … THEN`
 ```
 

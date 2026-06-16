@@ -22,6 +22,14 @@ create TVT MAXTV cells allot   create RVT MAXTV cells allot
 
 : MK-ROW 3 lshift S-ROW or ;
 
+1024 constant MAXPTR
+create PTRA MAXPTR cells allot   variable PTRN
+
+: MK-PTR PTRN @ MAXPTR 1 - > IF s" checker: out of ptr terms" 76 die THEN
+   PTRN @ cells PTRA + !  PTRN @ 3 lshift T-PTR or  PTRN @ 1 + PTRN ! ;
+
+: PTR>INNER PAY cells PTRA + @ ;
+
 : TV@ cells TVT + @ ;
 
 : TV! cells TVT + ! ;
@@ -78,7 +86,9 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 : ROW-OCC? {: r s :}
    0  s                                  \ ( acc cur )
    BEGIN R-RES dup TAG S-PUSH = WHILE
-     dup P>TYPE T-RES dup TAG T-QUOT = IF
+     dup P>TYPE T-RES
+     BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
+     dup TAG T-QUOT = IF
        r over Q>DIN RECURSE  swap        \ ( acc cur f1 qt )
        r over Q>DOUT RECURSE  swap       \ ( acc cur f1 f2 qt )
        r over Q>RIN RECURSE  swap        \ ( acc cur f1 f2 f3 qt )
@@ -92,7 +102,11 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 4 constant CC-I64   5 constant CC-U8    6 constant CC-U32   7 constant CC-CELL
 8 constant CC-CHAR  9 constant CC-STR  10 constant CC-ADDR  11 constant CC-BOOL
 12 constant CC-MAX
-: INT-FAM? {: code :}  code 1 =  code 3 >  code CC-MAX <  and  or ;   \ n + concretes (not float)
+: INT-FAM? {: code :}
+   code 1 = IF -1 EXIT THEN
+   code CC-I64 = IF -1 EXIT THEN  code CC-U8 = IF -1 EXIT THEN
+   code CC-U32 = IF -1 EXIT THEN  code CC-CELL = IF -1 EXIT THEN
+   code CC-CHAR = IF -1 EXIT THEN code CC-ADDR = ;
 \ CON-OK? ( t1 t2 -- f ) : two concrete cons unify iff equal, or one is the
 \ generic int n(1) and the other is int-family (n subsumes any int width).
 : CON-OK? {: t1 t2 :}
@@ -120,12 +134,16 @@ variable TOCC  variable TODN
          TODN @ 2 + TODN !
        ELSE drop THEN
      ELSE
-       T-RES
-       dup TAG T-VAR = IF PAY v = IF -1 TOCC ! THEN ELSE
-       dup TAG T-QUOT = IF
-         dup Q>DIN swap  dup Q>DOUT swap  dup Q>RIN swap  Q>ROUT
-         TODN @ 4 + TODN !
-       ELSE drop THEN THEN
+      T-RES
+      dup TAG T-VAR = IF PAY v = IF -1 TOCC ! THEN ELSE
+      dup TAG T-PTR = IF
+        PTR>INNER
+        TODN @ 1 + TODN !
+      ELSE
+      dup TAG T-QUOT = IF
+        dup Q>DIN swap  dup Q>DOUT swap  dup Q>RIN swap  Q>ROUT
+        TODN @ 4 + TODN !
+      ELSE drop THEN THEN THEN
      THEN
    REPEAT
    TOCC @ ;
@@ -138,11 +156,15 @@ variable TOCC  variable TODN
      2dup Q>DOUT swap Q>DOUT swap PAIR
      2dup Q>RIN swap Q>RIN swap PAIR
      Q>ROUT swap Q>ROUT swap PAIR ELSE
+   over TAG T-PTR =  over TAG T-PTR =  and IF
+     over PTR>INNER over PTR>INNER PAIR 2drop ELSE
    over ISVAR IF
      over PAY over TY-OCC? IF 2drop 0 UOK ! ELSE swap PAY TV! THEN ELSE
    dup ISVAR IF
      dup PAY  rot  tuck TY-OCC? IF 2drop 0 UOK ! ELSE swap PAY TV! THEN ELSE
-   2dup CON-OK? IF 2drop ELSE 2drop 0 UOK ! THEN THEN THEN THEN THEN ;
+   over TAG T-CON =  over TAG T-CON =  and IF
+     2dup CON-OK? IF 2drop ELSE 2drop 0 UOK ! THEN
+   ELSE 2drop 0 UOK ! THEN THEN THEN THEN THEN THEN ;
 
 : UNIFY   \ ( s1 s2 -- ok ) worklist-driven; rows and types interleave
    0 USP !  -1 UOK !  PAIR
@@ -156,7 +178,7 @@ variable FV
 variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
 
-: NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! 0 QEN !  \ QEN: per-check quot-effect pool, parallel to TVINIT
+: NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! 0 QEN ! 0 PTRN !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
@@ -256,6 +278,8 @@ create NMAP 26 cells allot
 
 : LOWER? {: c :} c 96 > c 123 < and ;
 variable NRES  variable NDI  variable NDH
+variable SGBAD
+variable UNSAFE
 
 : HEXD? {: c :} c DIGIT?  c 96 > c 103 < and or  c 64 > c 71 < and or ;
 
@@ -284,15 +308,19 @@ variable NRES  variable NDI  variable NDH
    a u s" i64"  STR= IF CC-I64  EXIT THEN   a u s" u8"   STR= IF CC-U8   EXIT THEN
    a u s" u32"  STR= IF CC-U32  EXIT THEN   a u s" cell" STR= IF CC-CELL EXIT THEN
    a u s" char" STR= IF CC-CHAR EXIT THEN   a u s" str"  STR= IF CC-STR  EXIT THEN
-   a u s" addr" STR= IF CC-ADDR EXIT THEN   a u s" bool" STR= IF CC-BOOL EXIT THEN
-   a u s" ptr"  STR= IF CC-ADDR EXIT THEN   0 ;
+   a u s" addr" STR= IF CC-ADDR EXIT THEN   a u s" bool" STR= IF CC-BOOL EXIT THEN   0 ;
+: BAD-SIG-TYPE  -1 SGBAD !  1 MK-CON ;
 : TOK-TYPE {: a u :}  a c@ {: c :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
    u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
    u 1 = c 114 = and IF 3 MK-CON ELSE          \ 'r' -> real/float (con 3)
    a u CON-OF dup IF MK-CON ELSE drop          \ i64/u8/u32/cell/char/str/addr/bool
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
-   1 MK-CON THEN THEN THEN THEN THEN ;
+   BAD-SIG-TYPE THEN THEN THEN THEN THEN ;
+
+: LOCAL-TYPE {: a u :}
+   a u s" ptr" STR= IF FRESH MK-VAR MK-PTR ELSE a u TOK-TYPE THEN ;
+
 variable SB variable SL variable SI variable SS
 variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
 
@@ -316,6 +344,11 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
    a u s" ]"  STR= IF -1 EXIT THEN
    a u s" |"  STR= ;
 
+: SIG-TYPE {: a u :}
+   a u s" ptr" STR= IF
+      NEXT-SIG-TOK 2dup DELIM? IF PK! -1 SGBAD ! 1 MK-CON ELSE RECURSE MK-PTR THEN
+   ELSE a u TOK-TYPE THEN ;
+
 create ROWMAP 26 cells allot
 : ROWMAP-RESET 0 BEGIN dup cells ROWMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
 : RVAR-OF {: c :}  c 65 - cells ROWMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-ROW ;
@@ -324,8 +357,6 @@ create ROWMAP 26 cells allot
 \ missing or wrong). A malformed contract must REJECT, never silently parse as
 \ some other effect. EXPECT-SIG consumes the next sig token and fails closed if
 \ it is not the expected delimiter (EOF reads as a 0-length token -> mismatch).
-variable SGBAD
-variable UNSAFE
 : EXPECT-SIG {: ea eu :}  NEXT-SIG-TOK ea eu STR= 0= IF -1 SGBAD ! THEN ;
 
 \ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
@@ -349,7 +380,7 @@ variable UNSAFE
         FRESH MK-ROW dup MK-QUOT                      \ rin = rout (no return effect)
         swap MK-PUSH
      ELSE
-        TOK-TYPE  swap MK-PUSH
+        SIG-TYPE  swap MK-PUSH
      THEN
    AGAIN ;
 
@@ -418,23 +449,38 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" 2swap" s" a b c d -- c d a b" PT+
    s" 2over" s" a b c d -- a b c d a b" PT+
    s" +" s" n n -- n" PT+
+   s" +" s" ptr a n -- ptr a" PT+
+   s" +" s" n ptr a -- ptr a" PT+
    s" -" s" n n -- n" PT+
+   s" -" s" ptr a n -- ptr a" PT+
+   s" -" s" ptr a ptr a -- n" PT+
    s" *" s" n n -- n" PT+
    s" and" s" n n -- n" PT+
+   s" and" s" f f -- f" PT+
    s" or" s" n n -- n" PT+
+   s" or" s" f f -- f" PT+
    s" xor" s" n n -- n" PT+
+   s" xor" s" f f -- f" PT+
    s" 1+" s" n -- n" PT+
+   s" 1+" s" ptr a -- ptr a" PT+
    s" 1-" s" n -- n" PT+
+   s" 1-" s" ptr a -- ptr a" PT+
    s" negate" s" n -- n" PT+
    s" invert" s" n -- n" PT+
-   s" 0=" s" n -- f" PT+
+   s" 0=" s" a -- f" PT+
    s" 0<" s" n -- f" PT+
    s" =" s" n n -- f" PT+
+   s" =" s" ptr a ptr a -- f" PT+
    s" <" s" n n -- f" PT+
+   s" <" s" ptr a ptr a -- f" PT+
    s" >" s" n n -- f" PT+
+   s" >" s" ptr a ptr a -- f" PT+
    s" <>" s" n n -- f" PT+
+   s" <>" s" ptr a ptr a -- f" PT+
    s" <=" s" n n -- f" PT+
+   s" <=" s" ptr a ptr a -- f" PT+
    s" >=" s" n n -- f" PT+
+   s" >=" s" ptr a ptr a -- f" PT+
    s" /" s" n n -- n" PT+
    s" mod" s" n n -- n" PT+
    s" /mod" s" n n -- n n" PT+
@@ -444,40 +490,42 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" lshift" s" n n -- n" PT+
    s" rshift" s" n n -- n" PT+
    s" cells" s" n -- n" PT+
+   s" cell+" s" ptr a -- ptr a" PT+
    s" cell+" s" n -- n" PT+
    s" chars" s" n -- n" PT+
+   s" char+" s" ptr a -- ptr a" PT+
    s" char+" s" n -- n" PT+
-   s" @" s" n -- n" PT+
-   s" !" s" a n --" PT+
-   s" +!" s" n a --" PT+
-   s" c@" s" n -- n" PT+
-   s" c!" s" a n --" PT+
-   s" count" s" n -- n n" PT+
+   s" @" s" ptr a -- a" PT+
+   s" !" s" a ptr a --" PT+
+   s" +!" s" n ptr n --" PT+
+   s" c@" s" ptr u8 -- u8" PT+
+   s" c!" s" u8 ptr u8 --" PT+
+   s" count" s" ptr u8 -- ptr u8 n" PT+
    s" ." s" n --" PT+
    s" .s" s" --" PT+
-   s" here" s" -- n" PT+
+   s" here" s" -- ptr a" PT+
    s" allot" s" n --" PT+
    s" ," s" n --" PT+
    s" c," s" n --" PT+
-   s" type" s" n n --" PT+
+   s" type" s" ptr u8 n --" PT+
    s" throw" s" n --" PT+
-   s" die" s" n n n --" PT+
-   s" open" s" n n n -- n" PT+
-   s" read" s" n n n -- n" PT+
-   s" ioctl" s" n n n -- n" PT+
-   s" path0" s" n n -- n" PT+
-   s" open-rd" s" n -- n" PT+
-   s" access" s" n n -- n" PT+
-   s" stat64" s" n n -- n" PT+
-   s" getdirentries64" s" n n n n -- n" PT+
+   s" die" s" ptr u8 n n --" PT+
+   s" open" s" ptr u8 n n -- n" PT+
+   s" read" s" n ptr u8 n -- n" PT+
+   s" ioctl" s" n n ptr a -- n" PT+
+   s" path0" s" ptr u8 n -- ptr u8" PT+
+   s" open-rd" s" ptr u8 -- n" PT+
+   s" access" s" ptr u8 n -- n" PT+
+   s" stat64" s" ptr u8 ptr u8 -- n" PT+
+   s" getdirentries64" s" n ptr u8 n ptr n -- n" PT+
    s" pipe" s" -- n n n" PT+
    s" dup2" s" n n -- n" PT+
    s" fcntl" s" n n n -- n" PT+
-   s" poll" s" n n n -- n" PT+
-   s" spawn-io" s" n n n n -- n" PT+
+   s" poll" s" ptr a n n -- n" PT+
+   s" spawn-io" s" ptr u8 n n n -- n" PT+
    s" wait-rc" s" n -- n" PT+
    s" patch32" s" n n --" PT+
-   s" write" s" n n n -- n" PT+
+   s" write" s" n ptr u8 n -- n" PT+
    s" close" s" n --" PT+
    s" epoch-seconds" s" -- n" PT+
    s" mono-ns" s" -- n" PT+
@@ -494,8 +542,8 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" s>f" s" n -- r" PT+     s" f>s" s" r -- n" PT+    s" f." s" r --" PT+
    \ s" pushes addr+len; ['] pushes an xt. The engine consumes their payload
    \ inline, so only the bare token reaches the body capture.
-   SDQN 2 PT2+  s" -- n n" PT2+
-   CDQN 2 PT2+  s" -- n" PT2+
+   SDQN 2 PT2+  s" -- ptr u8 n" PT2+
+   CDQN 2 PT2+  s" -- ptr u8" PT2+
    DOTQN 2 PT2+ s" --" PT2+
    s" [']" s" -- n" PT+
    s" [char]" s" -- n" PT+
@@ -505,8 +553,8 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" u." s" n --" PT+
    \ defining-word kinds (the engine hooks "NAME create" etc. so the name gets
    \ recorded): create/variable are addresses; a constant's cell is untyped.
-   s" create" s" -- n" PT+
-   s" variable" s" -- n" PT+
+   s" create" s" -- ptr a" PT+
+   s" variable" s" -- ptr a" PT+
    s" constant" s" -- a" PT+ ;
 PTABLE
 variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable FSP  variable FP
@@ -531,6 +579,65 @@ create USIGS 32768 allot   0 USIGS c!   variable UEND   0 UEND !
    REPEAT drop ;
 
 : FIND-SIG {: a u :}  0 FSU !  PTAB a u SCAN-SIGS  USIGS a u SCAN-SIGS  FSU @ ;
+create TVSAVE MAXTV cells allot   create RVSAVE MAXTV cells allot
+variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN
+variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
+variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-SGBAD
+variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
+variable SV-SGRIN   variable SV-SGROUT
+
+: COPY-CELLS {: src dst n :}
+   0 BEGIN dup n < WHILE
+      dup cells src + @  over cells dst + !
+      1 +
+   REPEAT drop ;
+
+: TRIAL-SAVE
+   FV @ SV-FV !  TVT TVSAVE SV-FV @ COPY-CELLS  RVT RVSAVE SV-FV @ COPY-CELLS
+   SPN @ SV-SPN !  QEN @ SV-QEN !  PTRN @ SV-PTRN !
+   OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
+   FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !
+   SGBAD @ SV-SGBAD !  SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
+   SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT ! ;
+
+: TRIAL-CLEAR-NEW
+   SV-FV @ BEGIN dup FV @ < WHILE
+      UNBOUND over cells TVT + !  UNBOUND over cells RVT + !
+      1 +
+   REPEAT drop ;
+
+: TRIAL-REST-SG
+   SV-SGBAD @ SGBAD !  SV-SGSEEN @ SGSEEN !  SV-SGHASR @ SGHASR !
+   SV-SGIN @ SGIN !  SV-SGOUT @ SGOUT !  SV-SGRIN @ SGRIN !  SV-SGROUT @ SGROUT ! ;
+
+: TRIAL-REST
+   TRIAL-CLEAR-NEW
+   TVSAVE TVT SV-FV @ COPY-CELLS  RVSAVE RVT SV-FV @ COPY-CELLS  SV-FV @ FV !
+   SV-SPN @ SPN !  SV-QEN @ QEN !  SV-PTRN @ PTRN !
+   SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !
+   SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !
+   TRIAL-REST-SG ;
+
+: TRY-SIG {: a u :}
+   TRIAL-SAVE
+   a u PARSE-SIG
+   OK @ SGBAD @ 0= and IF TRIAL-REST-SG -1 ELSE TRIAL-REST 0 THEN ;
+
+variable TSEEN  variable TSOK  variable TFA  variable TFU
+
+: TRY-TAB {: tab a u :}
+   0 TSEEN !  0 TSOK !  0 TFU !  tab FP !
+   BEGIN FP @ c@ dup WHILE
+     FNL !  FP @ 1 + FNP !
+     FNP @ FNL @ + dup c@ FSL ! 1 + FSP !
+     a u FNP @ FNL @ STR= IF
+       TSEEN @ 0= IF FSP @ TFA !  FSL @ TFU ! THEN
+       -1 TSEEN !
+       TSOK @ 0= IF FSP @ FSL @ TRY-SIG IF -1 TSOK ! THEN THEN
+     THEN
+     FSP @ FSL @ + FP !
+   REPEAT drop
+   TSOK @ ;
 variable FLD  variable FLI  variable FLO  variable FLC
 
 : FLODIG? {: a u :}                        \ -?d+.d+ (one interior dot) -> float literal
@@ -547,9 +654,12 @@ variable FLD  variable FLI  variable FLO  variable FLC
    a FLI @ + c@ 46 = IF drop 0 THEN ;
 
 : DO-TOK {: a u :}
-   a u FIND-SIG IF FSA @ FSU @ PARSE-SIG ELSE
+   0 FSU !  USIGS a u SCAN-SIGS
+   FSU @ IF FSA @ FSU @ PARSE-SIG ELSE
+   PTAB a u TRY-TAB IF EXIT THEN
+   TSEEN @ IF TFA @ TFU @ PARSE-SIG ELSE
    a u ALLDIG? IF s" -- n" PARSE-SIG ELSE
-   a u FLODIG? IF s" -- r" PARSE-SIG ELSE -1 UNCK ! THEN THEN THEN ;
+   a u FLODIG? IF s" -- r" PARSE-SIG ELSE -1 UNCK ! THEN THEN THEN THEN ;
 
 \ --- locals: {: a b :} pops and binds names to type vars; a reference pushes
 \ its binding. Groups accumulate (a later group binds only its own names).
@@ -574,8 +684,8 @@ variable LCO
      LCO @ #LOC @ cells LOCLN + !
      FRESH MK-VAR #LOC @ cells LOCTV + !
      LCO @ u < IF
-       a LCO @ + 1 +  u LCO @ - 1 -  TOK-TYPE
-       #LOC @ cells LOCTV + @  UNIFY OK @ and OK !
+      a LCO @ + 1 +  u LCO @ - 1 -  LOCAL-TYPE
+      #LOC @ cells LOCTV + @  UNIFY OK @ and OK !
      THEN
      #LOC @ 1 + #LOC ! THEN ;
 

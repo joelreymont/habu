@@ -20,20 +20,20 @@ variable JSON-ONLY-FD
 variable JSON-ONLY-LEN
 variable JSON-ONLY-RD
 
-: JSON-ONLY-COPY-BYTES {: a dst u :} ( a dst u -- )
+: JSON-ONLY-COPY-BYTES {: a:ptr dst:ptr u :} ( ptr u8 ptr u8 n -- )
    0 begin dup u < while
       dup a + c@ over dst + c!
       1+
    repeat drop ;
 
-: JSON-ONLY-PATHZ {: a u :} ( addr u -- zaddr )
+: JSON-ONLY-PATHZ {: a:ptr u :} ( ptr u8 n -- ptr u8 )
    u 1+ JSON-ONLY-PATH-CAP > IF s" json-only: path too long" JSON-ONLY-E-IO die THEN
    a JSON-ONLY-PATH u JSON-ONLY-COPY-BYTES
    0 JSON-ONLY-PATH u + c!
    JSON-ONLY-PATH ;
 
-: JSON-ONLY-READ-FILE ( addr u -- file-addr file-u )
-   {: a u :}
+: JSON-ONLY-READ-FILE ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u :}
    a u JSON-ONLY-PATHZ 0 0 open JSON-ONLY-FD !
    JSON-ONLY-FD @ 0 < IF s" json-only: cannot open input" JSON-ONLY-E-IO die THEN
    0 JSON-ONLY-LEN !
@@ -54,27 +54,27 @@ variable JSON-ONLY-RD
    JSON-ONLY-FD @ close
    JSON-ONLY-IN JSON-ONLY-LEN @ ;
 
-: JSON-ONLY-WRITE ( fd addr u -- )
-   {: fd a u :}
+: JSON-ONLY-WRITE ( n ptr u8 n -- )
+   {: fd a:ptr u :}
    u 0= IF exit THEN
    fd a u write u <> IF s" json-only: write failed" JSON-ONLY-E-IO die THEN ;
 
-: JSON-ONLY-LF$ ( -- addr u )
+: JSON-ONLY-LF$ ( -- ptr u8 n )
    JSON-ONLY-LF-C JSON-ONLY-LF c!
    JSON-ONLY-LF 1 ;
 
-: JSON-ONLY-STDERR ( addr u -- )
-   {: a u :}
+: JSON-ONLY-STDERR ( ptr u8 n -- )
+   {: a:ptr u :}
    2 a u JSON-ONLY-WRITE ;
 
 : JSON-ONLY-STDOUT-LINE ( -- )
-   1 JSONL-LA @ JSONL-LU @ JSON-ONLY-WRITE
+   1 JSONL-LA@ JSONL-LU @ JSON-ONLY-WRITE
    1 JSON-ONLY-LF$ JSON-ONLY-WRITE ;
 
-: JSON-ONLY-NEXT? ( -- f )
-   JSONL-NEXT-OBJECT dup -1 = IF drop 0 ELSE drop -1 THEN ;
+: JSON-ONLY-NEXT? ( -- bool )
+   JSONL-NEXT-OBJECT dup -1 = IF drop 0 0= 0= ELSE drop 0 0= THEN ;
 
-: JSON-ONLY-START? ( addr u -- f )
+: JSON-ONLY-START? ( ptr u8 n -- bool )
    JSONL-START
    JSON-ONLY-NEXT? ;
 
@@ -84,7 +84,7 @@ variable JSON-ONLY-RD
       JSON-ONLY-NEXT? 0=
    until ;
 
-: JSON-ONLY-FILTER ( addr u -- )
+: JSON-ONLY-FILTER ( ptr u8 n -- )
    2dup JSON-ONLY-START? IF
       2drop
       JSON-ONLY-EMIT-FOUND
@@ -97,7 +97,7 @@ variable JSON-ONLY-RD
    2 JSON-ONLY-LF$ JSON-ONLY-WRITE
    ARGV-E-USAGE throw ;
 
-: JSON-ONLY-INPUT$ ( -- addr u )
+: JSON-ONLY-INPUT$ ( -- ptr u8 n )
    ARGV-COUNT 1 <> IF JSON-ONLY-USAGE THEN
    0 ARGV-TOK$ ;
 

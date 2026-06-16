@@ -14,15 +14,17 @@ create CODE CODE-CAP-BYTES allot   variable CP
 \ NB: the standalone mis-reads a SECOND {: :} locals group, so these use a variable
 \ for the byte pointer instead of a 2nd local (cf. VAR-OF / BR-EMIT bugs).
 variable EP
+: EP@ EP @ ;
+s" EP@" s" -- ptr u8" TRUST
 
 : EMITW {: u :}  1 CP?  CP @ CW@ EP !                \ store u LE at CODE[CP], CP++
-   u 255 and EP @ c!  u 8 rshift 255 and EP @ 1 + c!
-   u 16 rshift 255 and EP @ 2 + c!  u 24 rshift 255 and EP @ 3 + c!
+   u 255 and EP@ c!  u 8 rshift 255 and EP@ 1 + c!
+   u 16 rshift 255 and EP@ 2 + c!  u 24 rshift 255 and EP@ 3 + c!
    CP @ 1 + CP ! ;
 
 : PATCH {: u w :}  w CW@ EP !                        \ OR u into the word already at w (delta bits)
-   u 255 and EP @ c@ or EP @ c!  u 8 rshift 255 and EP @ 1 + c@ or EP @ 1 + c!
-   u 16 rshift 255 and EP @ 2 + c@ or EP @ 2 + c!  u 24 rshift 255 and EP @ 3 + c@ or EP @ 3 + c! ;
+   u 255 and EP@ c@ or EP@ c!  u 8 rshift 255 and EP@ 1 + c@ or EP@ 1 + c!
+   u 16 rshift 255 and EP@ 2 + c@ or EP@ 2 + c!  u 24 rshift 255 and EP@ 3 + c@ or EP@ 3 + c! ;
 \ labels: LBLP[id] = defining word pos, or -1 if pending (1024 — engine-builder sized)
 create LBLP 1024 cells allot   variable NLBL
 \ fixups: site word-pos, target label, kind (0=B26, 1=cond/CBZ 19-bit, 2=ADR)
@@ -86,11 +88,13 @@ variable LBI
 : DLBL, {: lbl :}                                            \ cell = label's byte offset
    lbl cells LBLP + @ dup 0 < IF s" icode: DLBL forward ref" 72 die THEN  4 * DCQ, ;
 variable BYP
+: BYP@ BYP @ ;
+s" BYP@" s" -- ptr u8" TRUST
 
-: BYTES, {: a u :}  u 3 + 4 / CP?  CP @ 4 * CODE + BYP !     \ raw bytes, zero-padded to 4
-   0 BEGIN dup u < WHILE  dup a + c@  BYP @ c!  BYP @ 1 + BYP !  1 + REPEAT drop
-   BEGIN BYP @ CODE - 3 and 0 <> WHILE  0 BYP @ c!  BYP @ 1 + BYP !  REPEAT
-   BYP @ CODE - 4 / CP ! ;
+: BYTES, {: a:ptr u :}  u 3 + 4 / CP?  CP @ 4 * CODE + BYP !     \ raw bytes, zero-padded to 4
+   0 BEGIN dup u < WHILE  dup a + c@  BYP@ c!  BYP@ 1 + BYP !  1 + REPEAT drop
+   BEGIN BYP@ CODE - 3 and 0 <> WHILE  0 BYP@ c!  BYP@ 1 + BYP !  REPEAT
+   BYP@ CODE - 4 / CP ! ;
 \ --- 64-bit constant synthesis: minimal MOVZ/MOVN + MOVK chain (byte-parity with
 \ habu's LIT-Z/LIT-N in bootstrap/cg/asm.fs — the stage2 fixpoint depends on it) ---
 variable LCH  variable LFI  variable LCI

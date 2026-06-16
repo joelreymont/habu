@@ -38,8 +38,20 @@ T{ s" : NQ ( [ [ i64 -- i64 ] -- i64 ] -- ) drop ;"  V s\" -1\n" compare 0= -> t
 \ --- return stack: balance is inferred; >r without r> rejects
 T{ s" : RB ( i64 -- ) >r ;"               V s\" 0\n"  compare 0= -> true }T
 T{ s" : RK ( i64 -- i64 ) >r r> ;"        V s\" -1\n" compare 0= -> true }T
-\ --- ptr typed as an address (int-family)
-T{ s" : PP ( ptr -- ptr ) ;"              V s\" -1\n" compare 0= -> true }T
+\ --- ptr is parametric: dangling `ptr` and unknown types reject; typed pointer
+\ load/store/arithmetic/comparison verify, and pointee mismatches reject.
+T{ s" : PBAD ( ptr -- ptr ) ;"            V s\" 0\n"  compare 0= -> true }T
+T{ s" : TBAD ( xyz -- xyz ) ;"            V s\" 0\n"  compare 0= -> true }T
+T{ s" : PIBAD ( ptr xyz -- ) drop ;"      V s\" 0\n"  compare 0= -> true }T
+T{ s" : PP ( ptr a -- ptr a ) ;"          V s\" -1\n" compare 0= -> true }T
+T{ s" : PPN ( ptr ptr a -- ptr ptr a ) ;" V s\" -1\n" compare 0= -> true }T
+T{ s" : PLD ( ptr a -- a ) @ ;"           V s\" -1\n" compare 0= -> true }T
+T{ s" : PST ( a ptr a -- ) ! ;"           V s\" -1\n" compare 0= -> true }T
+T{ s" : PC8 ( ptr u8 -- u8 ) c@ ;"        V s\" -1\n" compare 0= -> true }T
+T{ s" : PCBAD ( ptr i64 -- u8 ) c@ ;"     V s\" 0\n"  compare 0= -> true }T
+T{ s" : PADD ( ptr a n -- ptr a ) + ;"    V s\" -1\n" compare 0= -> true }T
+T{ s" : PDIFF ( ptr a ptr a -- n ) - ;"   V s\" -1\n" compare 0= -> true }T
+T{ s" : PEQ ( ptr a ptr a -- bool ) = ;"  V s\" -1\n" compare 0= -> true }T
 
 \ --- return-stack clause ( ... | rin -- rout ): >R / R> declarations verify,
 \ a wrong return declaration rejects

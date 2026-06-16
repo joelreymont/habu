@@ -27,14 +27,14 @@ s" TIMES" s" R i64 [ R -- R ] -- R" TRUST
 
 : EACH {: a n q :}
    n 0 ?do a i cells + @ q execute loop ;
-s" EACH" s" R addr i64 [ R i64 -- R ] -- R" TRUST
+s" EACH" s" R ptr a i64 [ R a -- R ] -- R" TRUST
 
 : MAP {: a n q :}
    n 0 ?do a i cells + dup @ q execute swap ! loop ;
-s" MAP" s" R addr i64 [ R i64 -- R i64 ] -- R" TRUST
+s" MAP" s" R ptr a i64 [ R a -- R a ] -- R" TRUST
 
 : FOLD {: a n acc q :}
    acc n 0 ?do a i cells + @ q execute loop ;
-s" FOLD" s" R addr i64 b [ R b i64 -- R b ] -- R b" TRUST
+s" FOLD" s" R ptr a i64 b [ R b a -- R b ] -- R b" TRUST
 
 ' HOOK set-check

@@ -123,8 +123,7 @@ rule; effect-DB word → apply (INST then compose); FORBIDDEN-without-annotation
   `INST`s the quotation effect fresh (so `BI`'s two quotations are independent).
   Native call sites are checked today; `DIP/KEEP/BI/TRI/TIMES/EACH/MAP/FOLD`
   live in `src/core/combinators.f` with `TRUST`ed public schemes. Native iterator
-  schemes currently use raw `addr` plus `i64` elements; parametric `ptr<a>`
-  remains gforth/bootstrap-tier scope.
+  schemes use parametric `ptr<a>` and preserve the element type across `@`/`!`.
 - **Return stack** — `>R R> R@ 2>R 2R> 2R@` move types between the data and
   return rows; checked by the same four-row composition.
 
@@ -253,10 +252,9 @@ toolchain self-checks clean (see `STATUS.md`). The native sig grammar gained nam
 quotation sub-sigs, and scheme-string recording of quot-bearing sigs
 (combinator call sites check against them). Native now has distinct concrete types
 (n = generic int, subsumes the widths), the `| rin -- rout` return clause, and
-nested quotations. Bracketed quotation signature syntax is data-stack-only today;
-actual quote terms still thread return rows through `execute`. The remaining
-gforth-tier-only type-system piece is parametric `ptr a` (native prims use raw
-`addr`). See CODEGEN-PLAN.md for the engine side.
+nested quotations and native parametric `ptr a`. Bracketed quotation signature
+syntax is data-stack-only today; actual quote terms still thread return rows
+through `execute`. See CODEGEN-PLAN.md for the engine side.
 
 ```
 habu/  AGENTS.md LESSONS.md PLAN.md README.md .gitignore  docs/forth.md

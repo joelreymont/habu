@@ -42,6 +42,8 @@ $80 constant LMAX
 create LOFF LMAX cells allot   create LLEN LMAX cells allot   variable LN#
 variable PI
 : LABEL+  {: a u :}  a LOFF LN# @ cells + !  u LLEN LN# @ cells + !  LN# @ 1+ LN# ! ;
+: LOCAL-LABEL+ {: a u :}
+   a u s" :" FIND-SUB dup 0 >= IF a swap LABEL+ ELSE drop a u LABEL+ THEN ;
 : LABEL?  {: a u :}  ( -- f )
    0 begin dup LN# @ < while
       dup cells LOFF + @  over cells LLEN + @  a u STR= IF drop -1 exit THEN  1+
@@ -52,7 +54,7 @@ variable PI
       PI @ TOK s" {:" STR= IF
          PI @ 1+ PI !
          begin PI @ hi < PI @ TOK s" :}" STR= 0= and while
-            PI @ TOK s" --" STR= 0= IF PI @ TOK LABEL+ THEN  PI @ 1+ PI !
+            PI @ TOK s" --" STR= 0= IF PI @ TOK LOCAL-LABEL+ THEN  PI @ 1+ PI !
          repeat
       THEN  PI @ 1+ PI !
    repeat ;

@@ -7,10 +7,12 @@ $90000 constant MSIZE
 create MBUF MSIZE allot
 variable MP
 variable MLEN
+: MP@ MP @ ;
+s" MP@" s" -- ptr u8" TRUST
 
 : M-RESET  MBUF MP ! ;
 
-: M8  {: b :}  b MP @ c!  MP @ 1 + MP ! ;
+: M8  {: b :}  b MP@ c!  MP@ 1 + MP ! ;
 
 : M16 {: h :}  h M8  h 8 rshift M8 ;
 
@@ -18,13 +20,13 @@ variable MLEN
 
 : M64 {: x :}  x M32  x 32 rshift M32 ;
 
-: M-HERE  MP @ MBUF - ;
+: M-HERE  MP@ MBUF - ;
 
 : M-ZEROS {: n :}  n 0 > IF n BEGIN dup 0 > WHILE 0 M8 1 - REPEAT drop THEN ;
 
-: M-BYTES {: a u :}  0 BEGIN dup u < WHILE  dup a + c@ M8  1 + REPEAT drop ;
+: M-BYTES {: a:ptr u :}  0 BEGIN dup u < WHILE  dup a + c@ M8  1 + REPEAT drop ;
 
-: M-NAME16 {: a u :}  a u M-BYTES  16 u - M-ZEROS ;
+: M-NAME16 {: a:ptr u :}  a u M-BYTES  16 u - M-ZEROS ;
 
 : M-PAD {: off :}  off M-HERE - M-ZEROS ;
 \ Mach-O constants
@@ -53,20 +55,20 @@ variable CODELEN
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $3FFF +  $3FFF invert and ;
 variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign post-pass)
 
-: SEG, {: a u vma vmsz foff fsz prot nsects extra :}
+: SEG, {: a:ptr u vma vmsz foff fsz prot nsects extra :}
    LC-SEG64 M32   72 extra + M32
    a u M-NAME16
    vma M64  vmsz M64  foff M64  fsz M64
    prot M32  prot M32  nsects M32  0 M32 ;
 
-: SECT, {: na nu sa su addr size off al fl :}
+: SECT, {: na:ptr nu sa:ptr su addr size off al fl :}
    na nu M-NAME16   sa su M-NAME16
    addr M64  size M64  off M32  al M32
    0 M32  0 M32  fl M32  0 M32 0 M32 0 M32 ;
 
 : DYLINKER,
    LC-DYLINKER M32  32 M32  12 M32
-   s" /usr/lib/dyld" {: a u :}  a u M-BYTES  32 12 - u - M-ZEROS ;
+   s" /usr/lib/dyld" {: a:ptr u :}  a u M-BYTES  32 12 - u - M-ZEROS ;
 
 : MAIN, {: entryoff :}
    LC-MAIN M32  24 M32  entryoff M64  0 M64 ;
@@ -74,7 +76,7 @@ variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign po
 : DYLIB,
    LC-DYLIB M32  56 M32  24 M32
    2 M32  $054C0000 M32  $00010000 M32     \ ts=2, cur=1356.0.0, compat=1.0.0
-   s" /usr/lib/libSystem.B.dylib" {: a u :}  a u M-BYTES  56 24 - u - M-ZEROS ;
+   s" /usr/lib/libSystem.B.dylib" {: a:ptr u :}  a u M-BYTES  56 24 - u - M-ZEROS ;
 32 constant MH-HDR-SZ                \ mach_header_64 size
 variable NCMDS
 
@@ -85,8 +87,11 @@ variable NCMDS
    0 M32  0 M32  MH-FLAGS M32  0 M32 ;
 variable PHP
 
-: PL! {: w a :}  a PHP !  w $FF and PHP @ c!  w 8 rshift $FF and PHP @ 1 + c!
-   w 16 rshift $FF and PHP @ 2 + c!  w 24 rshift $FF and PHP @ 3 + c! ;
+: PHP@ PHP @ ;
+s" PHP@" s" -- ptr u8" TRUST
+
+: PL! {: w a:ptr :}  a PHP !  w $FF and PHP@ c!  w 8 rshift $FF and PHP@ 1 + c!
+   w 16 rshift $FF and PHP@ 2 + c!  w 24 rshift $FF and PHP@ 3 + c! ;
 
 : PATCH-HDR
    NCMDS @  MBUF 16 +  PL!

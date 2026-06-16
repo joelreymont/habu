@@ -4,8 +4,10 @@
 \ (v0x20400, adhoc, SHA-256 page hashes). Operates on MBUF/MLEN/LE-OFF in place.
 \ Needs sha256.fs + macho.fs. Signature ints BIG-endian; header patches LE.
 variable SIGA  variable SIGU
+: SIGA@ SIGA @ ;
+s" SIGA@" s" -- ptr u8" TRUST
 
-: SET-SIGID {: a u :}  a SIGA !  u SIGU ! ;
+: SET-SIGID {: a:ptr u :}  a SIGA !  u SIGU ! ;
 
 : SIG-IDLEN  SIGU @ 1 + ;
 $1D       constant LC-CODE-SIG
@@ -25,13 +27,15 @@ variable  SIG-DOFF
 : ALN {: n a :}  n a 1 - +  a 1 - invert and ;
 \ absolute LE access into MBUF (header patching)
 variable HLP
+: HLP@ HLP @ ;
+s" HLP@" s" -- ptr u8" TRUST
 
 : HL@ {: off :}  MBUF off +  dup c@  over 1 + c@ 8 lshift or
    over 2 + c@ 16 lshift or  swap 3 + c@ 24 lshift or ;
 
 : HL! {: w off :}  MBUF off + HLP !
-   w $FF and HLP @ c!  w 8 rshift $FF and HLP @ 1 + c!
-   w 16 rshift $FF and HLP @ 2 + c!  w 24 rshift $FF and HLP @ 3 + c! ;
+   w $FF and HLP@ c!  w 8 rshift $FF and HLP@ 1 + c!
+   w 16 rshift $FF and HLP@ 2 + c!  w 24 rshift $FF and HLP@ 3 + c! ;
 
 : HX! {: x off :}  x off HL!  x 32 rshift off 4 + HL! ;
 \ big-endian cursor into MBUF (the signature blob)
@@ -43,7 +47,7 @@ variable SC
 
 : B64 {: x :}  x 32 rshift B32  x $FFFFFFFF and B32 ;
 
-: BSTR {: a u :}  0 BEGIN dup u < WHILE  dup a + c@ B8  1 + REPEAT drop ;
+: BSTR {: a:ptr u :}  0 BEGIN dup u < WHILE  dup a + c@ B8  1 + REPEAT drop ;
 $FADE0CC0 constant CSMAGIC-EMBEDDED
 $FADE0C02 constant CSMAGIC-CODEDIR
 $00020400 constant CD-VERSION
@@ -84,7 +88,7 @@ variable CSI
    CSMAGIC-EMBEDDED B32   SB-SIZE B32   1 B32
    0 B32   20 B32
    CD-HDR,
-   SIGA @ SIGU @ BSTR  0 B8
+   SIGA@ SIGU @ BSTR  0 B8
    0 CSI ! BEGIN CSI @ NCSLOTS < WHILE
      MBUF CSI @ CS-PAGE * +  CS-PAGE  MBUF SC @ +  SHA256  SC @ CS-HASH + SC !
      CSI @ 1 + CSI ! REPEAT

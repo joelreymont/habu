@@ -109,10 +109,9 @@ quot-bearing sigs as scheme-strings (so combinator call sites — `dip`, `keep`
 — are checked against them). The native grammar also handles distinct concrete
 types (`i64 u8 u32 cell char str addr bool`, with `n` the generic int that
 subsumes them), the `| rin -- rout` return-stack clause, nested quotations, and
-native parsing words (`s"`, `c"`, `."`, `[char]`). The one gforth-tier-only piece
-is the **parametric** `ptr a` (pointer-to-type): the native prims operate on
-`n`/`addr`, so a parametric pointer type would never unify against them — `ptr`
-is typed as an address instead.
+native parsing words (`s"`, `c"`, `."`, `[char]`). The native checker also models
+the **parametric** `ptr a` pointer type: memory, path, process, and byte-buffer
+primitives consume typed pointers, and `ptr` without an inner type is rejected.
 
 ## Layout
 

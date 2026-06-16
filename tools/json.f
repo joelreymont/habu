@@ -93,44 +93,52 @@ variable JSONL-LA
 variable JSONL-LU
 variable JSONL-ROOT
 variable JSONL-SKIPS
+: JSON-A@ JSON-A @ ;
+s" JSON-A@" s" -- ptr u8" TRUST
+: JSON-GKA@ JSON-GKA @ ;
+s" JSON-GKA@" s" -- ptr u8" TRUST
+: JSONL-A@ JSONL-A @ ;
+s" JSONL-A@" s" -- ptr u8" TRUST
+: JSONL-LA@ JSONL-LA @ ;
+s" JSONL-LA@" s" -- ptr u8" TRUST
 
-: JSON-COPY ( addr i64 addr -- )
-   {: a u dst :}
+: JSON-COPY ( ptr u8 i64 ptr u8 -- )
+   {: a:ptr u dst:ptr :}
    0 begin dup u < while
       dup a + c@  over dst + c!
       1+
    repeat drop ;
 
-: JSON-STR= ( addr i64 addr i64 -- bool )
-   {: a u b v :}
-   u v <> IF 0 exit THEN
+: JSON-STR= ( ptr u8 i64 ptr u8 i64 -- bool )
+   {: a:ptr u b:ptr v :}
+   u v <> IF 0 0= 0= exit THEN
    0 begin dup u < while
-      dup a + c@  over b + c@  <> IF drop 0 exit THEN
+      dup a + c@  over b + c@  <> IF drop 0 0= 0= exit THEN
       1+
-   repeat drop  -1 ;
+   repeat drop  0 0= ;
 
-: JSON-SET-ERROR ( addr i64 -- )
-   {: a u :}
+: JSON-SET-ERROR ( ptr u8 i64 -- )
+   {: a:ptr u :}
    u JSON-ERR-CAP > IF s" json: error message overflow" 76 die THEN
    a u JSON-ERR-BUF JSON-COPY
    u JSON-ERR-LEN ! ;
 
-: JSON-ERROR$ ( -- addr i64 )
+: JSON-ERROR$ ( -- ptr u8 i64 )
    JSON-ERR-BUF JSON-ERR-LEN @ ;
 
-: JSON-FAIL ( addr i64 i64 -- )
+: JSON-FAIL ( ptr u8 i64 i64 -- )
    {: a u code :}
    a u JSON-SET-ERROR
    JSON-I @ JSON-ERR-POS !
    code throw ;
 
-: JSON-SYNTAX ( addr i64 -- )
+: JSON-SYNTAX ( ptr u8 i64 -- )
    E-JSON-SYNTAX JSON-FAIL ;
 
-: JSON-CAPACITY ( addr i64 -- )
+: JSON-CAPACITY ( ptr u8 i64 -- )
    E-JSON-CAPACITY JSON-FAIL ;
 
-: JSON-TYPE-ERROR ( addr i64 -- )
+: JSON-TYPE-ERROR ( ptr u8 i64 -- )
    E-JSON-TYPE JSON-FAIL ;
 
 : JSON-RESET ( -- )
@@ -143,12 +151,12 @@ variable JSONL-SKIPS
    0 JSON-ERR-POS !
    0 JSON-DEPTH ! ;
 
-: J-CELL@ ( i64 addr -- i64 )
-   {: n base :}
+: J-CELL@ ( i64 ptr n -- i64 )
+   {: n base:ptr :}
    base n cells + @ ;
 
-: J-CELL! ( i64 i64 addr -- )
-   {: x n base :}
+: J-CELL! ( i64 i64 ptr n -- )
+   {: x n base:ptr :}
    x base n cells + ! ;
 
 : J-KIND@ ( i64 -- i64 )  J-KINDS J-CELL@ ;
@@ -178,37 +186,37 @@ variable JSONL-SKIPS
    0 JSON-NODE @ J-COUNT!
    JSON-NODE @ ;
 
-: JSON-STR+ ( i64 -- )
+: JSON-STR+ ( n -- )
    {: c :}
    JSON-STR-LEN @ 1+ JSON-STR-CAP > IF s" json: string buffer full" JSON-CAPACITY THEN
    c JSON-STR-BUF JSON-STR-LEN @ + c!
    JSON-STR-LEN @ 1+ JSON-STR-LEN ! ;
 
-: JSON-SAVE$ ( addr i64 -- i64 i64 )
-   {: a u :}
+: JSON-SAVE$ ( ptr u8 i64 -- i64 i64 )
+   {: a:ptr u :}
    JSON-STR-LEN @ JSON-START !
    JSON-STR-LEN @ u + JSON-STR-CAP > IF s" json: string buffer full" JSON-CAPACITY THEN
    a u JSON-STR-BUF JSON-STR-LEN @ + JSON-COPY
    JSON-STR-LEN @ u + JSON-STR-LEN !
    JSON-START @ u ;
 
-: JSON-WHITE? ( i64 -- bool )
+: JSON-WHITE? ( n -- bool )
    dup J-SP = over J-TAB = or over J-LF = or swap J-CR = or ;
 
-: JSON-DIGIT? ( i64 -- bool )
+: JSON-DIGIT? ( n -- bool )
    dup J-ZERO >= swap 57 <= and ;
 
-: JSON-DIGIT1? ( i64 -- bool )
+: JSON-DIGIT1? ( n -- bool )
    dup 49 >= swap 57 <= and ;
 
 : JSON-END? ( -- bool )
    JSON-I @ JSON-U @ >= ;
 
-: JSON-AT ( -- i64 )
+: JSON-AT ( -- n )
    JSON-END? IF s" json: unexpected end" JSON-SYNTAX THEN
-   JSON-A @ JSON-I @ + c@ ;
+   JSON-A@ JSON-I @ + c@ ;
 
-: JSON-TAKE ( -- i64 )
+: JSON-TAKE ( -- n )
    JSON-AT
    JSON-I @ 1+ JSON-I ! ;
 
@@ -217,21 +225,21 @@ variable JSONL-SKIPS
       JSON-AT JSON-WHITE? IF JSON-I @ 1+ JSON-I ! ELSE exit THEN
    repeat ;
 
-: JSON-EXPECT ( i64 -- )
+: JSON-EXPECT ( n -- )
    {: c :}
    JSON-TAKE c <> IF s" json: unexpected character" JSON-SYNTAX THEN ;
 
-: JSON-HEX? ( i64 -- i64 )
+: JSON-HEX? ( n -- n )
    dup 48 >= over 57 <= and IF 48 - exit THEN
    dup 65 >= over 70 <= and IF 55 - exit THEN
    dup 97 >= over 102 <= and IF 87 - exit THEN
    drop -1 ;
 
-: JSON-HEX-DIGIT ( -- i64 )
+: JSON-HEX-DIGIT ( -- n )
    JSON-TAKE JSON-HEX?
    dup 0< IF s" json: bad unicode escape" JSON-SYNTAX THEN ;
 
-: JSON-HEX4 ( -- i64 )
+: JSON-HEX4 ( -- n )
    JSON-HEX-DIGIT 16 *
    JSON-HEX-DIGIT +
    16 *
@@ -239,7 +247,7 @@ variable JSONL-SKIPS
    16 *
    JSON-HEX-DIGIT + ;
 
-: JSON-UTF8+ ( i64 -- )
+: JSON-UTF8+ ( n -- )
    {: cp :}
    cp $80 < IF cp JSON-STR+ exit THEN
    cp $800 < IF
@@ -308,11 +316,11 @@ variable JSONL-SKIPS
       THEN
    again ;
 
-: JSON-MATCH ( addr i64 -- )
-   {: a u :}
+: JSON-MATCH ( ptr u8 i64 -- )
+   {: a:ptr u :}
    JSON-I @ u + JSON-U @ > IF s" json: unexpected end" JSON-SYNTAX THEN
    0 begin dup u < while
-      dup a + c@  over JSON-I @ + JSON-A @ + c@  <> IF s" json: bad literal" JSON-SYNTAX THEN
+      dup a + c@  over JSON-I @ + JSON-A@ + c@  <> IF s" json: bad literal" JSON-SYNTAX THEN
       1+
    repeat drop
    JSON-I @ u + JSON-I ! ;
@@ -356,7 +364,7 @@ variable JSONL-SKIPS
          JSON-NUM-DIGITS 0= IF s" json: bad exponent" JSON-SYNTAX THEN
       THEN
    THEN
-   JSON-A @ JSON-START @ +  JSON-I @ JSON-START @ -  JSON-SAVE$ ;
+   JSON-A@ JSON-START @ +  JSON-I @ JSON-START @ -  JSON-SAVE$ ;
 
 : JSON-ITEM-APPEND ( i64 i64 -- )
    {: arr node :}
@@ -418,12 +426,12 @@ variable JSONL-SKIPS
             JSON-END? IF s" json: unterminated object" JSON-SYNTAX THEN
             JSON-AT J-RBRACE = IF
                JSON-TAKE drop
-               0
+               0 0= 0=
             ELSE
                J-COMMA JSON-EXPECT
                JSON-SKIP-WS
                JSON-AT J-RBRACE = IF s" json: trailing object comma" JSON-SYNTAX THEN
-               -1
+               0 0=
             THEN
          while repeat
       THEN
@@ -445,12 +453,12 @@ variable JSONL-SKIPS
             JSON-END? IF s" json: unterminated array" JSON-SYNTAX THEN
             JSON-AT J-RBRACK = IF
                JSON-TAKE drop
-               0
+               0 0= 0=
             ELSE
                J-COMMA JSON-EXPECT
                JSON-SKIP-WS
                JSON-AT J-RBRACK = IF s" json: trailing array comma" JSON-SYNTAX THEN
-               -1
+               0 0=
             THEN
          while repeat
       THEN
@@ -482,8 +490,8 @@ variable JSONL-SKIPS
    JSON-DEPTH @ 1- JSON-DEPTH !
    JSON-VN @ ;
 
-: JSON-PARSE ( addr i64 -- i64 )
-   {: a u :}
+: JSON-PARSE ( ptr u8 i64 -- i64 )
+   {: a:ptr u :}
    JSON-RESET
    a JSON-A !
    u JSON-U !
@@ -500,12 +508,12 @@ variable JSONL-SKIPS
    {: node kind :}
    node J-KIND@ kind <> IF s" json: wrong node kind" JSON-TYPE-ERROR THEN ;
 
-: JSON-STRING$ ( i64 -- addr i64 )
+: JSON-STRING$ ( i64 -- ptr u8 i64 )
    {: node :}
    node J-STR JSON-REQUIRE-KIND
    JSON-STR-BUF node J-OFF@ +  node J-LEN@ ;
 
-: JSON-NUMBER$ ( i64 -- addr i64 )
+: JSON-NUMBER$ ( i64 -- ptr u8 i64 )
    {: node :}
    node J-NUM JSON-REQUIRE-KIND
    JSON-STR-BUF node J-OFF@ +  node J-LEN@ ;
@@ -530,7 +538,7 @@ variable JSONL-SKIPS
    repeat
    JSON-TMP @ J-ITEMS J-CELL@ ;
 
-: JSON-OBJ@ ( i64 i64 -- addr i64 i64 )
+: JSON-OBJ@ ( i64 i64 -- ptr u8 i64 i64 )
    {: node idx :}
    node J-OBJ JSON-REQUIRE-KIND
    idx 0< idx node J-COUNT@ >= or IF s" json: object index out of range" JSON-TYPE-ERROR THEN
@@ -544,14 +552,14 @@ variable JSONL-SKIPS
    JSON-TMP @ J-KEY-LEN J-CELL@
    JSON-TMP @ J-PAIR-VAL J-CELL@ ;
 
-: JSON-GET ( i64 addr i64 -- i64 )
-   {: node key ku :}
+: JSON-GET ( i64 ptr u8 i64 -- i64 )
+   {: node key:ptr ku :}
    node J-OBJ JSON-REQUIRE-KIND
    -1 JSON-GOT !
    0 JSON-GI !
    begin JSON-GI @ node J-COUNT@ < while
       node JSON-GI @ JSON-OBJ@ JSON-GVAL ! JSON-GKL ! JSON-GKA !
-      JSON-GKA @ JSON-GKL @ key ku JSON-STR= IF
+      JSON-GKA@ JSON-GKL @ key ku JSON-STR= IF
          JSON-GVAL @ JSON-GOT !
          node J-COUNT@ JSON-GI !
       ELSE
@@ -563,22 +571,22 @@ variable JSONL-SKIPS
 : JSONW-RESET ( -- )
    0 JSON-OUT-LEN ! ;
 
-: JSONW-C ( i64 -- )
+: JSONW-C ( n -- )
    {: c :}
    JSON-OUT-LEN @ 1+ JSON-OUT-CAP > IF s" json: writer buffer full" JSON-CAPACITY THEN
    c JSON-OUT-BUF JSON-OUT-LEN @ + c!
    JSON-OUT-LEN @ 1+ JSON-OUT-LEN ! ;
 
-: JSONW-RAW ( addr i64 -- )
-   {: a u :}
+: JSONW-RAW ( ptr u8 i64 -- )
+   {: a:ptr u :}
    JSON-OUT-LEN @ u + JSON-OUT-CAP > IF s" json: writer buffer full" JSON-CAPACITY THEN
    a u JSON-OUT-BUF JSON-OUT-LEN @ + JSON-COPY
    JSON-OUT-LEN @ u + JSON-OUT-LEN ! ;
 
-: JSONW-HEX ( i64 -- i64 )
+: JSONW-HEX ( n -- n )
    dup 10 < IF 48 + ELSE 55 + THEN ;
 
-: JSONW-U00 ( i64 -- )
+: JSONW-U00 ( n -- )
    J-BACKSLASH JSONW-C
    117 JSONW-C
    48 JSONW-C
@@ -586,7 +594,7 @@ variable JSONL-SKIPS
    dup 4 rshift JSONW-HEX JSONW-C
    $F and JSONW-HEX JSONW-C ;
 
-: JSONW-ESC-C ( i64 -- )
+: JSONW-ESC-C ( n -- )
    {: c :}
    c J-DQ = IF J-BACKSLASH JSONW-C J-DQ JSONW-C exit THEN
    c J-BACKSLASH = IF J-BACKSLASH JSONW-C J-BACKSLASH JSONW-C exit THEN
@@ -598,8 +606,8 @@ variable JSONL-SKIPS
    c J-SP < IF c JSONW-U00 exit THEN
    c JSONW-C ;
 
-: JSONW-STRING ( addr i64 -- )
-   {: a u :}
+: JSONW-STRING ( ptr u8 i64 -- )
+   {: a:ptr u :}
    J-DQ JSONW-C
    0 begin dup u < while
       dup a + c@ JSONW-ESC-C
@@ -607,7 +615,7 @@ variable JSONL-SKIPS
    repeat drop
    J-DQ JSONW-C ;
 
-: JSONW-KEY ( addr i64 -- )
+: JSONW-KEY ( ptr u8 i64 -- )
    JSONW-STRING
    J-COLON JSONW-C ;
 
@@ -641,7 +649,7 @@ variable JSONL-SKIPS
       0 begin dup node J-COUNT@ < while
          dup 0 > IF J-COMMA JSONW-C THEN
          node over JSON-OBJ@ JSON-GVAL ! JSON-GKL ! JSON-GKA !
-         JSON-GKA @ JSON-GKL @ JSONW-KEY
+         JSON-GKA@ JSON-GKL @ JSONW-KEY
          JSON-GVAL @ RECURSE
          1+
       repeat drop
@@ -650,21 +658,21 @@ variable JSONL-SKIPS
    THEN
    s" json: unknown node kind" JSON-TYPE-ERROR ;
 
-: JSON-WRITE ( i64 -- addr i64 )
+: JSON-WRITE ( i64 -- ptr u8 i64 )
    JSONW-RESET
    JSON-EMIT
    JSON-OUT-BUF JSON-OUT-LEN @ ;
 
-: JSON-TRIM-LEFT ( addr i64 -- addr i64 )
-   {: a u :}
+: JSON-TRIM-LEFT ( ptr u8 i64 -- ptr u8 i64 )
+   {: a:ptr u :}
    0 begin dup u < while
       dup a + c@ JSON-WHITE? 0= IF dup a + u rot - exit THEN
       1+
    repeat drop
    a 0 ;
 
-: JSON-TRIM-RIGHT ( addr i64 -- addr i64 )
-   {: a u :}
+: JSON-TRIM-RIGHT ( ptr u8 i64 -- ptr u8 i64 )
+   {: a:ptr u :}
    u JSON-TMP !
    begin JSON-TMP @ 0 > while
       a JSON-TMP @ 1- + c@ JSON-WHITE? IF
@@ -675,11 +683,11 @@ variable JSONL-SKIPS
    repeat
    a 0 ;
 
-: JSON-TRIM ( addr i64 -- addr i64 )
+: JSON-TRIM ( ptr u8 i64 -- ptr u8 i64 )
    JSON-TRIM-LEFT JSON-TRIM-RIGHT ;
 
-: JSONL-START ( addr i64 -- )
-   {: a u :}
+: JSONL-START ( ptr u8 i64 -- )
+   {: a:ptr u :}
    a JSONL-A !
    u JSONL-U !
    0 JSONL-I !
@@ -689,28 +697,28 @@ variable JSONL-SKIPS
    JSONL-SKIPS @ ;
 
 : JSONL-TAKE-LINE ( -- bool )
-   JSONL-I @ JSONL-U @ >= IF 0 exit THEN
+   JSONL-I @ JSONL-U @ >= IF 0 0= 0= exit THEN
    JSONL-I @ JSON-START !
    begin JSONL-I @ JSONL-U @ < while
-      JSONL-A @ JSONL-I @ + c@ J-LF = IF
-         JSONL-A @ JSON-START @ +  JSONL-I @ JSON-START @ -  JSON-TRIM
+      JSONL-A@ JSONL-I @ + c@ J-LF = IF
+         JSONL-A@ JSON-START @ +  JSONL-I @ JSON-START @ -  JSON-TRIM
          JSONL-LU ! JSONL-LA !
          JSONL-I @ 1+ JSONL-I !
-         -1 exit
+         0 0= exit
       THEN
       JSONL-I @ 1+ JSONL-I !
    repeat
-   JSONL-A @ JSON-START @ +  JSONL-U @ JSON-START @ -  JSON-TRIM
+   JSONL-A@ JSON-START @ +  JSONL-U @ JSON-START @ -  JSON-TRIM
    JSONL-LU ! JSONL-LA !
    JSONL-U @ JSONL-I !
-   -1 ;
+   0 0= ;
 
 \ Unchecked boundary: this JSONL layer uses catch to skip prose/invalid lines.
 \ catch is not modeled by the checker; the strict JSON parser it calls remains
 \ typed and throws only the JSON error constants above.
 : JSONL-PARSE-LINE
    \ ( -- node )
-   JSONL-LA @ JSONL-LU @ JSON-PARSE ;
+   JSONL-LA@ JSONL-LU @ JSON-PARSE ;
 
 : JSONL-TRY
    \ ( -- code )

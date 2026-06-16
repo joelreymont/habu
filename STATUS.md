@@ -74,10 +74,10 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
 
 - **AOT-strip linker** — done and the DEFAULT. `hb-build.sh prog.f -o out` AOT-
   compiles `: MAIN ;` to a native binary with the engine stripped (fib __text
-  564 B vs 11836 B embed). `--repl` verifies the user source's checked
+  540 B vs 11836 B embed). `--repl` verifies the user source's checked
   definitions at build time, then bundles the full engine + the program's
   library and drops into the REPL on a tty (`EXPORT word…` keeps extra words
-  callable). The AOT file is 16627 B — one 16 KB `__TEXT` page + signature, the
+  callable). The AOT file is 16628 B — one 16 KB `__TEXT` page + signature, the
   PROVEN hard floor for a signed arm64 macOS executable (a sub-page `__LINKEDIT`
   is SIGKILLed by AMFI). `S"`, `C"`, and `."` parsing words are AOT-safe (string
   bodies are embedded in the blob and pushed/used PC-relative). AOT is stripped
@@ -87,7 +87,9 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   data-region access (`here`/`,`/`@`) is rejected statically with
   `E-AOT-UNSUPPORTED` because AOT maps no data region — persistent data is the
   snapshot/`--repl` path by design, not stripped AOT.
-- **`ptr a` (parametric pointer)** — gforth-tier checker only; native types `ptr`
-  as an address (no native prim operates on pointer-types).
+- **`ptr a` (parametric pointer)** — implemented natively. `ptr` requires an
+  inner type, memory/path/process primitives are pointer-typed, pointer
+  arithmetic preserves pointee type, pointer differences return `n`, and pointer
+  comparisons return `bool`.
 - **Naked `?DUP`** — runtime exists, but the checker deliberately rejects it as
   value-dependent (`CHECK!` verdict 1); use `?DUP-IF` for a typeable branch.

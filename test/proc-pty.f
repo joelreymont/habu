@@ -30,17 +30,21 @@ variable PID
 variable MFD
 variable SFD
 
-: T= {: got want :} ( got want -- )
+: T= {: got want :} ( n n -- )
    #CASE @ 1 + #CASE !
    got want <> if
       [char] F emit #CASE @ .
       #FAIL @ 1 + #FAIL !
    then ;
 
-: TTRUE ( f -- )
-   -1 T= ;
+: TTRUE ( bool -- )
+   #CASE @ 1 + #CASE !
+   0= if
+      [char] F emit #CASE @ .
+      #FAIL @ 1 + #FAIL !
+   then ;
 
-: PATHZ {: a u :} ( a u -- pathz )
+: PATHZ {: a:ptr u :} ( ptr u8 n -- ptr u8 )
    0 begin dup u < while
       dup a + c@  over PATH-BUF + c!
       1 +
@@ -48,7 +52,7 @@ variable SFD
    0 PATH-BUF u + c!
    PATH-BUF ;
 
-: MKPIPE {: rvar wvar :} ( rvar wvar -- )
+: MKPIPE {: rvar:ptr wvar:ptr :} ( ptr n ptr n -- )
    pipe 0 T=
    wvar !
    rvar ! ;
@@ -60,27 +64,27 @@ variable SFD
    fd RBUF RN @ + 4096 RN @ - read
    dup 0 > if RN @ + RN ! else drop then ;
 
-: MATCH-AT {: ha na nu off :} ( ha na nu off -- f )
-   -1
+: MATCH-AT {: ha:ptr na:ptr nu off :} ( ptr u8 ptr u8 n n -- bool )
+   0 0=
    nu 0 ?do
-      ha off + i + c@  na i + c@  <> if drop 0 leave then
+      ha off + i + c@  na i + c@  <> if drop 0 0= 0= leave then
    loop ;
 
-: CONTAINS? {: ha hu na nu :} ( ha hu na nu -- f )
-   nu 0= if -1 exit then
-   hu nu < if 0 exit then
+: CONTAINS? {: ha:ptr hu na:ptr nu :} ( ptr u8 n ptr u8 n -- bool )
+   nu 0= if 0 0= exit then
+   hu nu < if 0 0= 0= exit then
    hu nu - 1 + 0 ?do
-      ha na nu i MATCH-AT if -1 unloop exit then
+      ha na nu i MATCH-AT if 0 0= unloop exit then
    loop
-   0 ;
+   0 0= 0= ;
 
-: TCONTAINS {: a u :} ( a u -- )
+: TCONTAINS {: a:ptr u :} ( ptr u8 n -- )
    RBUF RN @ a u CONTAINS? TTRUE ;
 
-: FD-WRITE {: fd a u :} ( fd a u -- )
+: FD-WRITE {: fd a:ptr u :} ( n ptr u8 n -- )
    fd a u write u T= ;
 
-: FD-WRITE-LN {: fd a u :} ( fd a u -- )
+: FD-WRITE-LN {: fd a:ptr u :} ( n ptr u8 n -- )
    fd a u FD-WRITE
    fd NL 1 FD-WRITE ;
 
@@ -106,10 +110,10 @@ variable SFD
    c CH c!
    MFD @ CH 1 FD-WRITE ;
 
-: SEND-S {: a u :} ( a u -- )
+: SEND-S {: a:ptr u :} ( ptr u8 n -- )
    MFD @ a u FD-WRITE ;
 
-: SEND-LN {: a u :} ( a u -- )
+: SEND-LN {: a:ptr u :} ( ptr u8 n -- )
    MFD @ a u FD-WRITE-LN ;
 
 : SEND-ESC ( c -- )
@@ -117,19 +121,19 @@ variable SFD
    91 SEND-C
    SEND-C ;
 
-: STEP-LN {: a u :} ( a u -- )
+: STEP-LN {: a:ptr u :} ( ptr u8 n -- )
    a u SEND-LN
    MFD @ DRAIN ;
 
-: STEP-S {: a u :} ( a u -- )
+: STEP-S {: a:ptr u :} ( ptr u8 n -- )
    a u SEND-S
    MFD @ DRAIN ;
 
-: EXPECT ( a u -- )
+: EXPECT ( ptr u8 n -- )
    TCONTAINS ;
 
-: REJECT {: a u :} ( a u -- )
-   RBUF RN @ a u CONTAINS? 0 T= ;
+: REJECT {: a:ptr u :} ( ptr u8 n -- )
+   RBUF RN @ a u CONTAINS? 0= TTRUE ;
 
 : CAPTURE-HB ( -- )
    IN-R IN-W MKPIPE
@@ -159,8 +163,8 @@ variable SFD
    s" /dev/ptmx" PATHZ 2 0 open MFD !
    MFD @ 2 > TTRUE
    MFD @ CLOEXEC
-   MFD @ TIOCPTYGRANT 0 ioctl 0 T=
-   MFD @ TIOCPTYUNLK 0 ioctl 0 T=
+   MFD @ TIOCPTYGRANT NULL$ drop ioctl 0 T=
+   MFD @ TIOCPTYUNLK NULL$ drop ioctl 0 T=
    MFD @ TIOCPTYGNAME PTYNAME ioctl 0 T=
    PTYNAME 2 0 open SFD !
    SFD @ 2 > TTRUE ;

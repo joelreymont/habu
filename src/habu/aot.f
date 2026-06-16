@@ -10,6 +10,10 @@
 
 variable PB  variable PN  variable PFD  variable PRD
 $40000 constant PMAX
+: AOT-PB@ PB @ ;
+s" AOT-PB@" s" -- ptr u8" TRUST
+: AOT-DBASE@ dbase@ ;
+s" AOT-DBASE@" s" -- ptr a" TRUST
 : AOT-IN   s" hb-aot-src" TMP-PATH ;
 : AOT-OUT  s" hb-aot-got" TMP-PATH ;
 
@@ -19,63 +23,68 @@ $40000 constant PMAX
 : READ-PROG
    AOT-IN PATH0  0 0 open PFD !
    here PB !  PMAX allot  0 PN !
-   BEGIN  PFD @  PB @ PN @ +  PMAX PN @ -  read PRD !  PRD @ 0 > WHILE  PN @ PRD @ + PN !  REPEAT
+   BEGIN  PFD @  AOT-PB@ PN @ +  PMAX PN @ -  read PRD !  PRD @ 0 > WHILE  PN @ PRD @ + PN !  REPEAT
    PFD @ close
    PN @ 0 > 0= IF s" aot: empty source" 74 die THEN ;
-: SENTSET  s"  AOT-LINK " {: sa su :}  su 0 ?do  sa i + c@  PB @ PN @ + i + c!  loop  PN @ su + PN ! ;
+: SENTSET  s"  AOT-LINK " {: sa:ptr su :}  su 0 ?do  sa i + c@  AOT-PB@ PN @ + i + c!  loop  PN @ su + PN ! ;
 
 \ --- read 32-bit words; recognize the compiled call (movz/movk/movk x16 + blr x16)
-: W32@ {: a :} a c@  a 1+ c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
-: W32! {: w a :} w a c!  w 8 rshift a 1+ c!  w 16 rshift a 2 + c!  w 24 rshift a 3 + c! ;
-: TGT {: p :} p W32@ 5 rshift $FFFF and
+: W32@ {: a:ptr :} a c@  a 1+ c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
+: W32! {: w a:ptr :} w a c!  w 8 rshift a 1+ c!  w 16 rshift a 2 + c!  w 24 rshift a 3 + c! ;
+: TGT {: p:ptr :} p W32@ 5 rshift $FFFF and
    p 4 + W32@ 5 rshift $FFFF and 16 lshift or
    p 8 + W32@ 5 rshift $FFFF and 32 lshift or ;
-: CALL? {: p :} p W32@ $FFE0001F and $D2800010 =
+: CALL? {: p:ptr :} p W32@ $FFE0001F and $D2800010 =
    p 4 + W32@ $FFE0001F and $F2A00010 = and
    p 8 + W32@ $FFE0001F and $F2C00010 = and
    p 12 + W32@ $D63F0200 = and ;
-: CALL-AT? {: p e :}  p 16 + e <= IF p CALL? ELSE 0 THEN ;
+: CALL-AT? {: p:ptr e:ptr :}  p 16 + e <= IF p CALL? ELSE 0 0= 0= THEN ;
 
-: REC {: k :}  dbase@ k 48 * + ;          \ dict record k  (0:addr 8:len 16:nlen 24:name)
+: REC {: k :} ( n -- ptr a )
+   AOT-DBASE@ k 48 * + ;          \ dict record k  (0:addr 8:len 16:nlen 24:name)
 : AOT-FOLD {: c :}  c 64 > c 91 < and IF c 32 + ELSE c THEN ;
-: MAIN? {: r :}  r 16 + @ $FF and 4 =
+: MAIN? {: r:ptr :} ( ptr a -- bool )
+   r 16 + @ $FF and 4 =
    r 24 + c@ AOT-FOLD 109 = and  r 25 + c@ AOT-FOLD 97 = and
    r 26 + c@ AOT-FOLD 105 = and  r 27 + c@ AOT-FOLD 110 = and ;
 
-: REC-NAME= {: r a u :}
+: REC-NAME= {: r:ptr a:ptr u :} ( ptr a ptr u8 n -- bool )
    r 16 + @ $FF and u = IF
       0 BEGIN dup u < WHILE
          dup r 24 + swap + c@ AOT-FOLD
-         over a + c@ AOT-FOLD = 0= IF drop 0 EXIT THEN
+         over a + c@ AOT-FOLD = 0= IF drop 0 0= 0= EXIT THEN
          1 +
-      REPEAT drop -1
-   ELSE 0 THEN ;
-: AOT-UNSAFE? {: r :}
-   r s" @" REC-NAME= IF -1 EXIT THEN
-   r s" !" REC-NAME= IF -1 EXIT THEN
-   r s" c@" REC-NAME= IF -1 EXIT THEN
-   r s" c!" REC-NAME= IF -1 EXIT THEN
-   r s" here" REC-NAME= IF -1 EXIT THEN
-   r s" allot" REC-NAME= IF -1 EXIT THEN
-   r s" ," REC-NAME= IF -1 EXIT THEN
-   r s" c," REC-NAME= IF -1 EXIT THEN
-   r s" create" REC-NAME= IF -1 EXIT THEN
-   r s" compile," REC-NAME= IF -1 EXIT THEN
-   r s" patch32" REC-NAME= IF -1 EXIT THEN
-   0 ;
+      REPEAT drop 0 0=
+   ELSE 0 0= 0= THEN ;
+: AOT-UNSAFE? {: r:ptr :} ( ptr a -- bool )
+   r s" @" REC-NAME= IF 0 0= EXIT THEN
+   r s" !" REC-NAME= IF 0 0= EXIT THEN
+   r s" c@" REC-NAME= IF 0 0= EXIT THEN
+   r s" c!" REC-NAME= IF 0 0= EXIT THEN
+   r s" here" REC-NAME= IF 0 0= EXIT THEN
+   r s" allot" REC-NAME= IF 0 0= EXIT THEN
+   r s" ," REC-NAME= IF 0 0= EXIT THEN
+   r s" c," REC-NAME= IF 0 0= EXIT THEN
+   r s" create" REC-NAME= IF 0 0= EXIT THEN
+   r s" compile," REC-NAME= IF 0 0= EXIT THEN
+   r s" patch32" REC-NAME= IF 0 0= EXIT THEN
+   0 0= 0= ;
 create AECH 1 allot
 : AE1 {: c :}  c AECH c!  2 AECH 1 write drop ;
-: AETXT {: a u :}  2 a u write drop ;
-: AEREC-TXT {: r :}
+: AETXT {: a:ptr u :} ( ptr u8 n -- )
+   2 a u write drop ;
+: AEREC-TXT {: r:ptr :} ( ptr a -- )
    r 0= IF s" <unknown>" AETXT ELSE r 24 + r 16 + @ $FF and AETXT THEN ;
 : AEJCHAR {: c :}
    c 10 = IF 92 AE1 110 AE1 EXIT THEN
    c 13 = IF 92 AE1 114 AE1 EXIT THEN
    c 9 = IF 92 AE1 116 AE1 EXIT THEN
    c 34 =  c 92 = or IF 92 AE1 THEN  c AE1 ;
-: AEJSTR {: a u :}  34 AE1  0 BEGIN dup u < WHILE dup a + c@ AEJCHAR 1 + REPEAT drop 34 AE1 ;
-: AEJKEY {: a u :}  a u AEJSTR 58 AE1 ;
-: AEJREC {: r :}
+: AEJSTR {: a:ptr u :} ( ptr u8 n -- )
+   34 AE1  0 BEGIN dup u < WHILE dup a + c@ AEJCHAR 1 + REPEAT drop 34 AE1 ;
+: AEJKEY {: a:ptr u :} ( ptr u8 n -- )
+   a u AEJSTR 58 AE1 ;
+: AEJREC {: r:ptr :} ( ptr a -- )
    r 0= IF s" <unknown>" AEJSTR ELSE r 24 + r 16 + @ $FF and AEJSTR THEN ;
 create AENB 20 allot  variable AENV  variable AENN
 : AEJNUM
@@ -87,7 +96,7 @@ create AENB 20 allot  variable AENV  variable AENN
       AENV @ 10 / AENV !
    REPEAT
    AENN @ BEGIN dup 0 > WHILE 1 - dup AENB + c@ AE1 REPEAT drop ;
-: AOT-UNSAFE-JSON {: caller callee :}
+: AOT-UNSAFE-JSON {: caller:ptr callee:ptr :} ( ptr a ptr a -- )
    123 AE1
    s" schema_version" AEJKEY 1 AEJNUM 44 AE1
    s" code" AEJKEY s" E-AOT-UNSUPPORTED" AEJSTR 44 AE1
@@ -98,13 +107,13 @@ create AENB 20 allot  variable AENV  variable AENN
    s" suggestion" AEJKEY
    s" stripped AOT has no persistent data region; use --repl/snapshot for data-space words or remove the runtime data access" AEJSTR
    125 AE1 10 AE1 ;
-: AOT-UNSAFE-PROSE {: caller callee :}
+: AOT-UNSAFE-PROSE {: caller:ptr callee:ptr :} ( ptr a ptr a -- )
    s" hb-build: stripped AOT unsupported word '" AETXT
    callee 24 + callee 16 + @ $FF and AETXT
    s" ' called by '" AETXT
    caller 24 + caller 16 + @ $FF and AETXT
    s" '" AETXT 10 AE1 ;
-: AOT-UNSAFE-DIE {: caller callee :}
+: AOT-UNSAFE-DIE {: caller:ptr callee:ptr :} ( ptr a ptr a -- )
    JSON-DIAGS @ IF caller callee AOT-UNSAFE-JSON ELSE caller callee AOT-UNSAFE-PROSE THEN
    s" hb-build: AOT unsupported word" 70 die ;
 
@@ -126,9 +135,11 @@ variable CLO-LIMIT
    n MAX-CLO > IF s" aot: CLO-LIMIT above MAX-CLO" 74 die THEN
    n CLO-LIMIT ! ;
 MAX-CLO CLO-LIMIT!
-: IN-CLO? {: r :}  0 CX ! BEGIN CX @ NCLO @ < WHILE CX @ cells CLO + @ r = IF -1 exit THEN CX @ 1+ CX ! REPEAT 0 ;
-: CALL-IN-CLO? {: p :}  p TGT FINDADDR dup IF IN-CLO? ELSE drop 0 THEN ;
-: CLO-OVERFLOW-JSON {: r :}
+: IN-CLO? {: r:ptr :} ( ptr a -- bool )
+   0 CX ! BEGIN CX @ NCLO @ < WHILE CX @ cells CLO + @ r = IF 0 0= exit THEN CX @ 1+ CX ! REPEAT 0 0= 0= ;
+: CALL-IN-CLO? {: p:ptr :} ( ptr u8 -- bool )
+   p TGT FINDADDR dup 0= 0= IF IN-CLO? ELSE drop 0 0= 0= THEN ;
+: CLO-OVERFLOW-JSON {: r:ptr :} ( ptr a -- )
    123 AE1
    s" schema_version" AEJKEY 1 AEJNUM 44 AE1
    s" code" AEJKEY s" E-AOT-CLOSURE-LIMIT" AEJSTR 44 AE1
@@ -140,21 +151,22 @@ MAX-CLO CLO-LIMIT!
    s" suggestion" AEJKEY
    s" split program, use --repl/snapshot, or raise MAX-CLO with a gate that proves the larger closure" AEJSTR
    125 AE1 10 AE1 ;
-: CLO-OVERFLOW-PROSE {: r :}
+: CLO-OVERFLOW-PROSE {: r:ptr :} ( ptr a -- )
    s" aot: closure exceeds MAX-CLO reachable_count=" AETXT NCLO @ AEJNUM
    s"  max_closure=" AETXT CLO-LIMIT @ AEJNUM
    s"  root_word='" AETXT ROOTREC @ AEREC-TXT
    s" ' last_added_word='" AETXT r AEREC-TXT
    s" ' suggestion='split program, use --repl/snapshot, or raise MAX-CLO with a gate that proves the larger closure'" AETXT
    10 AE1 ;
-: CLO-OVERFLOW-DIE {: r :}
+: CLO-OVERFLOW-DIE {: r:ptr :} ( ptr a -- )
    JSON-DIAGS @ IF r CLO-OVERFLOW-JSON ELSE r CLO-OVERFLOW-PROSE THEN
    s" aot: closure exceeds MAX-CLO" 74 die ;
-: ADD-CLO {: r :}  r IN-CLO? IF exit THEN
+: ADD-CLO {: r:ptr :} ( ptr a -- )
+   r IN-CLO? IF exit THEN
    NCLO @ CLO-LIMIT @ >= IF r CLO-OVERFLOW-DIE THEN
    r NCLO @ cells CLO + !  NCLO @ 1+ NCLO ! ;
 variable SP2  variable SEND
-: SCAN-REC {: r :}
+: SCAN-REC {: r:ptr :} ( ptr a -- )
    r @ SP2 !  r @ r 8 + @ + SEND !
    BEGIN SP2 @ SEND @ < WHILE
       SP2 @ CALL? IF
@@ -185,9 +197,11 @@ variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
 : TBZIMM? {: w :}  w $7E000000 and $36000000 = ;
 : ADR? {: w :}  w $9F000000 and $10000000 = ;
 : ADRP? {: w :}  w $9F000000 and $90000000 = ;
-: RAW-LEN {: r :}  r 8 + @ 4 + ;
-: REC-END {: r :}  r @ r RAW-LEN + ;
-: COMPACT-LEN {: r :}
+: RAW-LEN {: r:ptr :} ( ptr a -- n )
+   r 8 + @ 4 + ;
+: REC-END {: r:ptr :} ( ptr a -- ptr u8 )
+   r @ r RAW-LEN + ;
+: COMPACT-LEN {: r:ptr :} ( ptr a -- n )
    0 CLEN !  r @ CP2 !  r @ r RAW-LEN + CEND !
    BEGIN CP2 @ CEND @ < WHILE
       CP2 @ CEND @ CALL-AT? IF
@@ -254,11 +268,12 @@ variable BDELTA  variable TNEW
    site 12 + target BL32  CODE site 12 + + W32! ;
 
 variable MAPOUT  variable MAPP  variable MAPE
-: REC-NEWOFF {: r :}  0 CX !
+: REC-NEWOFF {: r:ptr :} ( ptr a -- n )
+   0 CX !
    BEGIN CX @ NCLO @ < WHILE
       CX @ cells CLO + @ r = IF NEWOFF CX @ cells + @ EXIT THEN
       CX @ 1+ CX ! REPEAT  -1 ;
-: MAP-IN-BLOB {: r t :}
+: MAP-IN-BLOB {: r:ptr t:ptr :} ( ptr a ptr u8 -- n )
    t r @ < IF -1 EXIT THEN
    t r REC-END > IF -1 EXIT THEN
    0 MAPOUT !  r @ MAPP !  r REC-END MAPE !
@@ -273,20 +288,25 @@ variable MAPOUT  variable MAPP  variable MAPE
       THEN
    REPEAT
    t MAPE @ = IF r REC-NEWOFF MAPOUT @ + ELSE -1 THEN ;
-: OLD>NEW {: t :}  0 CX !
+: OLD>NEW {: t:ptr :} ( ptr u8 -- n )
+   0 CX !
    BEGIN CX @ NCLO @ < WHILE
       CX @ cells CLO + @ t MAP-IN-BLOB dup -1 <> IF EXIT THEN drop
       CX @ 1+ CX ! REPEAT  -1 ;
-: MAP-TARGET {: r t :}
+: MAP-TARGET {: r:ptr t:ptr :} ( ptr a ptr u8 -- n )
    r t MAP-IN-BLOB dup -1 <> IF EXIT THEN drop  t OLD>NEW ;
-: MAP-TARGET! {: r t :}
+: MAP-TARGET! {: r:ptr t:ptr :} ( ptr a ptr u8 -- )
    r t MAP-TARGET TNEW !
    TNEW @ -1 = IF s" aot: PC-relative target removed or outside closure" 74 die THEN ;
-: BTGT26 {: p w :}  p  w 0 26 FIELD 26 SX 4 * + ;
-: BTGT19 {: p w :}  p  w 5 19 FIELD 19 SX 4 * + ;
-: BTGT14 {: p w :}  p  w 5 14 FIELD 14 SX 4 * + ;
-: ADRTGT {: p w :}  p  w 5 19 FIELD 2 lshift  w 29 2 FIELD or 21 SX + ;
-: RELOC-W32 {: r p w :}
+: BTGT26 {: p:ptr w :} ( ptr u8 n -- ptr u8 )
+   p  w 0 26 FIELD 26 SX 4 * + ;
+: BTGT19 {: p:ptr w :} ( ptr u8 n -- ptr u8 )
+   p  w 5 19 FIELD 19 SX 4 * + ;
+: BTGT14 {: p:ptr w :} ( ptr u8 n -- ptr u8 )
+   p  w 5 14 FIELD 14 SX 4 * + ;
+: ADRTGT {: p:ptr w :} ( ptr u8 n -- ptr u8 )
+   p  w 5 19 FIELD 2 lshift  w 29 2 FIELD or 21 SX + ;
+: RELOC-W32 {: r:ptr p:ptr w :} ( ptr a ptr u8 n -- n )
    w BIMM? IF
       r p w BTGT26 MAP-TARGET!
       w $FC000000 and  ASM-LEN TNEW @ REL26 or EXIT THEN
@@ -306,7 +326,7 @@ variable MAPOUT  variable MAPP  variable MAPE
    w ;
 
 variable DENSE-RV
-: COPY-COMPACT-BLOB {: r :}
+: COPY-COMPACT-BLOB {: r:ptr :} ( ptr a -- )
    r @ CP2 !  r @ r RAW-LEN + CEND !
    BEGIN CP2 @ CEND @ < WHILE
       CP2 @ CEND @ CALL-AT? IF
@@ -349,6 +369,6 @@ variable RP  variable RE  variable RV
 
 : GO  READ-PROG  SENTSET
    ['] USER-HOOK set-check
-   PB @ DATA-VA INP-CELL + !
-   PB @ PN @ + DATA-VA INE-CELL + ! ;
+   AOT-PB@ DATA-VA INP-CELL + !
+   AOT-PB@ PN @ + DATA-VA INE-CELL + ! ;
 GO

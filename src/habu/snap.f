@@ -17,8 +17,12 @@ variable ZREM
 variable ZC
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SNL  variable SFTS  variable SFD
+: STB@ STB @ ;
+s" STB@" s" -- ptr u8" TRUST
+: SDB@ SDB @ ;
+s" SDB@" s" -- ptr u8" TRUST
 
-: WALL {: fd a u :}
+: WALL {: fd a:ptr u :}
    0 WOF !
    BEGIN WOF @ u < WHILE
      fd  a WOF @ +  u WOF @ -  write
@@ -63,8 +67,8 @@ variable SNL  variable SFTS  variable SFD
    \ stream: header, engine text, region, data, trailer, zero pad
    SNAP-OUT PATH0 1537 493 open SFD !
    SFD @ MBUF CODE-OFF WALL
-   SFD @ STB @ STSZ @ WALL
-   SFD @ SDB @ SCL @ WALL
+   SFD @ STB@ STSZ @ WALL
+   SFD @ SDB@ SCL @ WALL
    SFD @ $340000000 SDL @ WALL
    SFD @ TRL 40 WALL
    SFD @  SFTS @ CODE-OFF - SNL @ -  WPAD

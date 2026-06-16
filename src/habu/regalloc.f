@@ -15,7 +15,7 @@ variable LVRALLOC   variable LVBIT   variable LVRINIT   variable LFRALLOC
 
 $1D0F0E0D0C0B0A09 constant VRPACK   \ x9..x15, x29 (byte per slot, idx 0 low)
 $1615181719 constant VRPACK2        \ overflow: x25,x23,x24,x21,x22 (tokenizer state in DATA cells)
-: PK# ( x -- n ) 0 BEGIN over WHILE 1 + swap 8 rshift swap REPEAT nip ;
+: PK# ( x -- n ) 0 BEGIN over 0= 0= WHILE 1 + swap 8 rshift swap REPEAT nip ;
 VRPACK PK# constant #POOL1
 #POOL1 VRPACK2 PK# + constant #POOL
 1 #POOL lshift 1 - constant VRALL

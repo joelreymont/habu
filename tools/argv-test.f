@@ -13,27 +13,27 @@ variable TEST-FAIL
       TEST-FAIL @ 1 + TEST-FAIL !
    THEN ;
 
-: ASSERT= ( got want -- )  = ASSERT ;
+: ASSERT= ( n n -- )  = ASSERT ;
 
-: ASSERT$ ( a u b v -- )  STR= ASSERT ;
+: ASSERT$ ( ptr u8 n ptr u8 n -- )  STR= ASSERT ;
 
-: ASSERT-RC ( got want -- )
+: ASSERT-RC ( n n -- )
    0 ARGV-QUIET!
    = ASSERT ;
 
-: PARSE-RC ( -- code )  ['] ARGV-PARSE catch ;
+: PARSE-RC ( -- n )  ['] ARGV-PARSE catch ;
 
 : EXPECT-ONE-POS ( -- )  1 ARGV-EXPECT-POS-EXACT ;
 
-: ONE-POS-RC ( -- code )
+: ONE-POS-RC ( -- n )
    ['] ARGV-PARSE catch dup 0 <> IF EXIT THEN drop
    ['] EXPECT-ONE-POS catch ;
 
-: NEED-OUT-RC ( -- code )
+: NEED-OUT-RC ( -- n )
    ['] ARGV-PARSE catch dup 0 <> IF EXIT THEN drop
    ['] ARGV-REQUIRE-OUT catch ;
 
-: NEED-LABEL-RC ( -- code )
+: NEED-LABEL-RC ( -- n )
    ['] ARGV-PARSE catch dup 0 <> IF EXIT THEN drop
    ['] ARGV-REQUIRE-LABEL catch ;
 

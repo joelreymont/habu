@@ -14,15 +14,17 @@
 
 variable PB  variable PN  variable PFD  variable PRD
 $40000 constant PMAX
+: BLD-PB@ PB @ ;
+s" BLD-PB@" s" -- ptr u8" TRUST
 
 : ENSURE-PBUF
    PB @ 0= IF here PB !  PMAX allot THEN ;
 
-: READ-PATH {: a u :}
+: READ-PATH {: a:ptr u :}
    a u PATH0  0 0 open PFD !
    ENSURE-PBUF  0 PN !
    BEGIN                                                 \ read() may return short
-     PFD @  PB @ PN @ +  PMAX PN @ -  read PRD !
+     PFD @  BLD-PB@ PN @ +  PMAX PN @ -  read PRD !
      PRD @ 0 >
    WHILE  PN @ PRD @ + PN !  REPEAT
    PFD @ close
@@ -38,31 +40,31 @@ variable VL
 create VBUF BODYBUF-CAP allot
 
 : V-SKIP-WS
-   BEGIN VI @ PN @ < IF PB @ VI @ + c@ 33 < ELSE 0 THEN WHILE
+   BEGIN VI @ PN @ < IF BLD-PB@ VI @ + c@ 33 < ELSE 0 0= 0= THEN WHILE
       VI @ 1 + VI !
    REPEAT ;
 
 : V-SKIP-PAST {: ch :}
    0 VFOUND !
    BEGIN VI @ PN @ < WHILE
-      PB @ VI @ + c@  VI @ 1 + VI !  ch = IF -1 VFOUND ! EXIT THEN
+      BLD-PB@ VI @ + c@  VI @ 1 + VI !  ch = IF -1 VFOUND ! EXIT THEN
    REPEAT ;
 
 : V-NEXT-RAW ( -- a u )
    V-SKIP-WS
-   VI @ PN @ >= IF PB @ 0 EXIT THEN
-   PB @ VI @ + VT !
-   BEGIN VI @ PN @ < IF PB @ VI @ + c@ 32 > ELSE 0 THEN WHILE
+   VI @ PN @ >= IF BLD-PB@ 0 EXIT THEN
+   VI @ VSTART !
+   BEGIN VI @ PN @ < IF BLD-PB@ VI @ + c@ 32 > ELSE 0 0= 0= THEN WHILE
       VI @ 1 + VI !
    REPEAT
-   VT @  PB @ VI @ +  VT @ - ;
+   BLD-PB@ VSTART @ +  VI @ VSTART @ - ;
 
-: V-OPN? {: a u :}
+: V-OPN? {: a:ptr u :}
    u 2 = IF
       a 1 + c@ 34 = IF
          a c@ 115 =  a c@ 46 = or  a c@ 99 = or
-      ELSE 0 THEN
-   ELSE 0 THEN ;
+      ELSE 0 0= 0= THEN
+   ELSE 0 0= 0= THEN ;
 
 : V-NEXT ( -- a u )
    BEGIN
@@ -70,7 +72,7 @@ create VBUF BODYBUF-CAP allot
       dup 0= IF EXIT THEN
       2dup 1 = swap c@ 92 = and IF 2drop 10 V-SKIP-PAST ELSE
       2dup 1 = swap c@ 40 = and IF 2drop 41 V-SKIP-PAST ELSE
-      VSKIPSTR @ IF
+      VSKIPSTR @ 0= 0= IF
          2dup V-OPN? IF 2drop 34 V-SKIP-PAST ELSE EXIT THEN
       ELSE EXIT THEN
       THEN THEN
@@ -81,7 +83,7 @@ create VBUF BODYBUF-CAP allot
 : V-RAW!   V-NEXT-RAW  VTU !  VTA ! ;
 : V-BODY!  V-NEXT-BODY VTU !  VTA ! ;
 
-: V-APP {: a u :}
+: V-APP {: a:ptr u :}
    VL @ u + 1 + BODYBUF-CAP > IF s" hb-build: check body too long" 74 die THEN
    0 BEGIN dup u < WHILE
       dup a + c@  VBUF VL @ + c!
@@ -93,18 +95,18 @@ create VBUF BODYBUF-CAP allot
 : V-MAYBE-SIG
    V-SKIP-WS
    VI @ PN @ < IF
-      PB @ VI @ + c@ 40 = IF
-         PB @ VI @ + VSTART !
+      BLD-PB@ VI @ + c@ 40 = IF
+         VI @ VSTART !
          41 V-SKIP-PAST
          VFOUND @ 0= IF s" hb-build: unterminated signature" 74 die THEN
-         VSTART @  PB @ VI @ + VSTART @ -  V-APP
+         BLD-PB@ VSTART @ +  VI @ VSTART @ -  V-APP
       THEN
    THEN ;
 
-: V-ENDS-Q? {: a u :}
-   u 0 > IF a u + 1 - c@ 34 = ELSE 0 THEN ;
+: V-ENDS-Q? {: a:ptr u :}
+   u 0 > IF a u + 1 - c@ 34 = ELSE 0 0= 0= THEN ;
 
-: V-APP-STRING {: a u :}
+: V-APP-STRING {: a:ptr u :}
    a u V-APP
    BEGIN
       V-RAW!
@@ -141,9 +143,9 @@ create VBUF BODYBUF-CAP allot
    READ-CHECK
    VERIFY-SOURCE
    READ-PROG
-   PB @ SHK-A !  PN @ SHK-U !  -1 SHAKE? !
+   BLD-PB@ SHK-A !  PN @ SHK-U !  -1 SHAKE? !
    0 STDIN? !
-   PB @ PN @ EMIT-FORTH
+   BLD-PB@ PN @ EMIT-FORTH
    BUILD-IMAGE
    s" hb-prog" SET-SIGID  CODESIG2
    BLD-OUT PATH0  1537 493 open  dup MBUF MLEN @ write drop  close ;
