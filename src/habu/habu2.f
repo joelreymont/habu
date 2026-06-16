@@ -416,7 +416,7 @@ create ENDLOC-KW 58 c, 125 c,
       9 12 24 LDR,
    pinl LBL,
    9 G-PUSH
-   9 12 16 LDR,  9 9 $FF ANDI,  9 G-PUSH
+   9 12 16 LDR,  9 9 4 LSLI,  9 9 4 LSRI,  9 G-PUSH
    9 DATA TSIG-A-CELL LDR,  9 G-PUSH
    9 DATA TSIG-U-CELL LDR,  9 G-PUSH
    SP SP 16 SUBI,  30 SP 0 STR,  11 BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
@@ -565,10 +565,9 @@ create ENDLOC-KW 58 c, 125 c,
 : C-STORE-NAME ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: short fail capok lcopy lcd scopy scd done :}
    12 DATA TKL-CELL LDR,
-   12 256 CMPI,  C-GE fail BCOND,
    13 12 0 ADDI,
    12 DNAME-INL CMPI,  C-LE short BCOND,
-      14 DNAME-EXT MOVZ,  13 13 14 ORR,  13 9 16 STR,
+      14 DNAME-EXT LIT64,  13 13 14 ORR,  13 9 16 STR,
       15 12 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI,
       16 CP 15 ADD,
       10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  16 10 CMP,  C-LT capok BCOND,
@@ -738,7 +737,7 @@ create ENDLOC-KW 58 c, 125 c,
 : C-IMMEDIATE
    2 3 MOVZ,  LPROT @ BL,
    9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   10 9 16 LDR,  10 10 $100 ORRI,  10 9 16 STR,
+   10 9 16 LDR,  10 10 DNAME-IMM ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROT @ BL, ;
 
 : C-POSTPONE
@@ -946,7 +945,7 @@ s" cfn-entry" s" n ptr a n n --" TRUST
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable LMAIN  variable LEXIT  variable LCOMPILE  variable LUNDEF
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
-variable SNBL  variable SNOL   \ snapshot-loader labels (em-startup's locals group is at the 16 cap)
+variable SNBL  variable SNOL  variable SNRN  \ snapshot-loader labels (em-startup's locals group is at the 16 cap)
 variable CFSK2
 
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
@@ -1005,7 +1004,7 @@ s" cfbn-entry" s" n ptr a n n n --" TRUST
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    LBL LBL LBL
    {: scopy scdone rvok dvok snomag sc1 sc1d sc2 sc2d srl srn srx cwok sdl2 sdn2 sds2 :}
-   LBL SNBL !  LBL SNOL !
+   LBL SNBL !  LBL SNOL !  LBL SNRN !
    LANCHOR @ LBL,
    13 0 0 ADDI,  14 1 0 ADDI,  15 2 0 ADDI,
    RBASE LANCHOR @ ADR,
@@ -1081,14 +1080,20 @@ s" cfbn-entry" s" n ptr a n n n --" TRUST
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
-   \ rebase seed-prim dict entries (slot.addr in the old engine text)
+   \ rebase seed-prim dict entries and external names in the old engine text
    9 DBASE 0 ADDI,  10 0 MOVZ,
    sdl2 LBL,  10 NDICT CMP,  C-GE sdn2 BCOND,
       13 9 0 LDR,
       13 21 CMP,  C-LT sds2 BCOND,
       14 21 22 ADD,  13 14 CMP,  C-GE sds2 BCOND,
       13 13 21 SUB,  13 13 25 ADD,  13 9 0 STR,
-      sds2 LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
+      sds2 LBL,
+      13 9 16 LDR,  13 13 DNAME-EXT ANDI,  13 SNRN @ CBZ,
+      13 9 24 LDR,
+      13 21 CMP,  C-LT SNRN @ BCOND,
+      14 21 22 ADD,  13 14 CMP,  C-GE SNRN @ BCOND,
+      13 13 21 SUB,  13 13 25 ADD,  13 9 24 STR,
+      SNRN @ LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
    sdn2 LBL,
    \ relocation: movz/movk/movk x16 + blr x16 whose value sat in the OLD text
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,

@@ -21,13 +21,16 @@ $0042 constant SA-PROF-FLAGS    \ SA_SIGINFO|SA_RESTART
 \ Clobbers x0-x2,x9-x17; loop regs x5/x6 survive G-PRINT9 (x9..x14) + syscalls.
 : EMIT-PROFDUMP ( -- )
    LPROFDUMP @ LBL,
-   LBL {: dl :}  LBL {: dn :}  LBL {: dd :}  LBL {: dret :}
+   LBL {: dl :}  LBL {: dn :}  LBL {: dd :}  LBL {: dret :}  LBL {: pinl :}
    5 DBASE 0 ADDI,  6 0 MOVZ,                       \ rec, i
    dl LBL,
       7 NDICT 0 ADDI,  6 7 CMP,  C-GE dd BCOND,
       7 PROF-CNT LIT64,  7 DATA 7 ADD,  8 6 3 LSLI,  7 7 8 ADD,  17 7 0 LDR,
       17 dn CBZ,                                    \ no samples -> next
-      0 1 MOVZ,  1 5 24 ADDI,  2 5 16 LDR,  NR-WRITE SYS,   \ write(1, name, len)
+      0 1 MOVZ,  1 5 24 ADDI,  2 5 16 LDR,                  \ write(1, name, len)
+      9 2 DNAME-EXT ANDI,  9 pinl CBZ,
+         1 5 24 LDR,
+      pinl LBL,  2 2 4 LSLI,  2 2 4 LSRI,  NR-WRITE SYS,
       SP SP 16 SUBI,  12 32 MOVZ,  12 SP 0 STRB,                    \ " "
       0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
       SP SP 16 ADDI,

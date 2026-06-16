@@ -28,9 +28,11 @@ $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs 
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 $1C000  constant DICT-SIZE     \ dict area at region+0 (112 KB); code area follows
-48      constant DREC          \ dict record: addr(8) clen(8) namelen(8) name(16) wid(8)
+48      constant DREC          \ dict record: addr(8) clen(8) name-len|flags(8) name|ptr(16) wid(8)
 16      constant DNAME-INL
-$200    constant DNAME-EXT
+$0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
+$1000000000000000 constant DNAME-IMM
+$2000000000000000 constant DNAME-EXT
 2304    constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..2303 end exactly at CFSTK.
 $1B000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
 $300000 constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
@@ -384,6 +386,8 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  0 G-PUSH ;  \ ( fd req buf -- rc )
 
+: BMMAP   5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP  NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
+
 : BPATCH32                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
@@ -450,7 +454,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,   \ fold mask, rec, count, result
    wl LBL,  6 wend CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,    \ wid mismatch
-      9 5 16 LDR,  9 9 $FF ANDI,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
+      9 5 16 LDR,  9 9 4 LSLI,  9 9 4 LSRI,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
       16 5 24 ADDI,
       9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 winl CBZ,
          16 5 24 LDR,
@@ -499,7 +503,8 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" evaluate" ['] B-EVAL FPRIM-L
    s" die"  ['] BDIE   FPRIM-L
-   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
+   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
+   s" mmap" ['] BMMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
    s" close" ['] BCLOSE FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
@@ -651,7 +656,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  13 0 MOVZ,           \ rec, remaining, found=0
    floop LBL,
       6 fdone CBZ,
-      14 5 16 LDR,  14 14 $FF ANDI,  14 10 CMP,  C-NE fnext BCOND,         \ namelen != tkl
+      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,  14 10 CMP,  C-NE fnext BCOND,         \ namelen != tkl
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 finl CBZ,
          16 5 24 LDR,
@@ -667,7 +672,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
          7 7 1 ADDI,  fcmp B,
       fmatch LBL,                                          \ keep scanning: take the LAST
          11 5 0 LDR,  12 5 8 LDR,
-         14 5 16 LDR,  14 14 $100 ANDI,  14 14 7 LSRI,   \ immediate bit -> 2
+         14 5 16 LDR,  14 14 DNAME-IMM ANDI,  14 14 59 LSRI,   \ immediate bit -> 2
          13 1 MOVZ,  13 13 14 ORR,  fnext B,    \ (newest) match -> redefs shadow
       fnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  floop B,
    fdone LBL,  RET, ;
@@ -1225,10 +1230,9 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
 : C-STORE-NAME ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: short fail capok lcopy lcd scopy scd done :}
    12 DATA TKL-CELL LDR,
-   12 256 CMPI,  C-GE fail BCOND,
    13 12 0 ADDI,
    12 DNAME-INL CMPI,  C-LE short BCOND,
-      14 DNAME-EXT MOVZ,  13 13 14 ORR,  13 9 16 STR,
+      14 DNAME-EXT LIT64,  13 13 14 ORR,  13 9 16 STR,
       15 12 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI,
       16 CP 15 ADD,
       10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  16 10 CMP,  C-LT capok BCOND,
@@ -1327,11 +1331,11 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    LKWCONST 8 C-DEFHOOK ;
 
 \ IMMEDIATE: mark the LAST defined word — the compile loop EXECUTES immediate
-\ words instead of compiling calls (flag = bit $100 of slot.namelen).
+\ words instead of compiling calls (flag = DNAME-IMM in slot.name-len|flags).
 : C-IMMEDIATE ( -- )
    2 3 MOVZ,  LPROT @ BL,                               \ dict lives in the RX region
    9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   10 9 16 LDR,  10 10 $100 ORRI,  10 9 16 STR,
+   10 9 16 LDR,  10 10 DNAME-IMM ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROT @ BL, ;
 
 \ POSTPONE NAME (compile): immediate -> compile the call; ordinary -> bake the
@@ -1703,15 +1707,21 @@ variable CFSK2
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
-   LBL {: sdl2 :}  LBL {: sdn2 :}  LBL {: sds2 :}
-   \ rebase seed-prim dict entries (slot.addr in the old engine text)
+   LBL {: sdl2 :}  LBL {: sdn2 :}  LBL {: sds2 :}  LBL {: snrn :}
+   \ rebase seed-prim dict entries and external names in the old engine text
    9 DBASE 0 ADDI,  10 0 MOVZ,
    sdl2 LBL,  10 NDICT CMP,  C-GE sdn2 BCOND,
       13 9 0 LDR,
       13 21 CMP,  C-LT sds2 BCOND,
       14 21 22 ADD,  13 14 CMP,  C-GE sds2 BCOND,
       13 13 21 SUB,  13 13 25 ADD,  13 9 0 STR,
-      sds2 LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
+      sds2 LBL,
+      13 9 16 LDR,  13 13 DNAME-EXT ANDI,  13 snrn CBZ,
+      13 9 24 LDR,
+      13 21 CMP,  C-LT snrn BCOND,
+      14 21 22 ADD,  13 14 CMP,  C-GE snrn BCOND,
+      13 13 21 SUB,  13 13 25 ADD,  13 9 24 STR,
+      snrn LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
    sdn2 LBL,
    \ relocation: movz/movk/movk x16 + blr x16 whose value sat in the OLD text
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,

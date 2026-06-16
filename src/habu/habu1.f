@@ -13,7 +13,9 @@ $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 $1C000  constant DICT-SIZE
 48      constant DREC
 16      constant DNAME-INL
-$200    constant DNAME-EXT
+$0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
+$1000000000000000 constant DNAME-IMM
+$2000000000000000 constant DNAME-EXT
 2304    constant DICT-CAP  \ CFSTK-OFF / DREC; slots 0..2303 end exactly at CFSTK.
 $1B000  constant CFSTK-OFF
 $300000 constant DATA-SIZE
@@ -529,6 +531,8 @@ s" spawn-dup2-action" s" n n --" TRUST
 
 : BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  0 G-PUSH ;
 
+: BMMAP   5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP  NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
+
 : BOPENRD A G-POP  0 9 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS,  SYS-PUSH ;
 
 : BACCESS 1 G-POP  0 G-POP  NR-ACCESS SYS,  SYS-PUSH ;
@@ -599,7 +603,7 @@ s" spawn-dup2-action" s" n n --" TRUST
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,
    wl LBL,  6 wend CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,
-      9 5 16 LDR,  9 9 $FF ANDI,  9 1 CMP,  C-NE wnext BCOND,
+      9 5 16 LDR,  9 9 4 LSLI,  9 9 4 LSRI,  9 1 CMP,  C-NE wnext BCOND,
       16 5 24 ADDI,
       9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 winl CBZ,
          16 5 24 LDR,
@@ -659,6 +663,7 @@ s" spawn-dup2-action" s" n n --" TRUST
    s" evaluate" ['] B-EVAL FPRIM-L
    s" die"  ['] BDIE   FPRIM-L
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
+   s" mmap" ['] BMMAP FPRIM-L
    s" open-rd" ['] BOPENRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L   s" stat64" ['] BSTAT64 FPRIM-L
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM-L
@@ -808,7 +813,7 @@ s" emit-fp-prims" s" --" TRUST
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  13 0 MOVZ,
    floop LBL,
       6 fdone CBZ,
-      14 5 16 LDR,  14 14 $FF ANDI,  14 10 CMP,  C-NE fnext BCOND,
+      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,  14 10 CMP,  C-NE fnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 finl CBZ,
          16 5 24 LDR,
@@ -824,7 +829,7 @@ s" emit-fp-prims" s" --" TRUST
          7 7 1 ADDI,  fcmp B,
       fmatch LBL,
          11 5 0 LDR,  12 5 8 LDR,
-         14 5 16 LDR,  14 14 $100 ANDI,  14 14 7 LSRI,   \ immediate bit -> 2
+         14 5 16 LDR,  14 14 DNAME-IMM ANDI,  14 14 59 LSRI,   \ immediate bit -> 2
          13 1 MOVZ,  13 13 14 ORR,  fnext B,
       fnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  floop B,
    fdone LBL,  RET, ;

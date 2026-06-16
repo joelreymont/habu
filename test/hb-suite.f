@@ -146,6 +146,7 @@ DFD @ 0 >= -1 T=
 0 DIRBASE !
 DFD @ DBUF 4096 DIRBASE getdirentries64 0 > -1 T=
 DFD @ close
+0 4096 3 $1002 -1 0 mmap dup 0 < 0 T= dup 65 swap c! c@ 65 T=
 
 \ floats (the f+ prim must be the FLOAT op — it was once shadowed by a
 \ jit fold helper named f+)

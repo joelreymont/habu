@@ -37,7 +37,7 @@ and `{: a b :}` read-only locals.
 `>R R> R@ 2>R 2R> 2R@`,
 `F+ F- F* F/ FNEGATE FABS FSQRT F< F> F= F0< F0= S>F F>S F.` (doubles as raw
 IEEE754 bit-cells on the data stack; literals `d.d`; checker type `r`),
-`OPEN WRITE READ CLOSE RBASE`,
+`OPEN WRITE READ CLOSE MMAP RBASE`,
 `CATCH THROW`,
 `WORDLIST GET-CURRENT SET-CURRENT SEARCH-WL SET-CHECK`.
 

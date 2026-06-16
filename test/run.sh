@@ -92,6 +92,13 @@ out=$(printf ': LONG-DICTIONARY-NAME-ADDONE ( i64 -- i64 ) 1 + ;\n41 LONG-DICTIO
 0
 9
 9" ] || { echo "FAIL: hb long dictionary names (got: $out)"; exit 1; }
+out=$(printf 'wordlist constant LONG-WL\nLONG-WL set-current\n: LONG-WORDLIST-ONLY-NAME ( -- i64 ) 8 ;\n0 set-current\ns" LONG-WORDLIST-ONLY-NAME" 0 search-wl 0= .\ns" LONG-WORDLIST-ONLY-NAME" LONG-WL search-wl 0= .\n' | bin/hb 2>/dev/null)
+[ "$out" = "-1
+0" ] || { echo "FAIL: hb long dictionary wordlist isolation (got: $out)"; exit 1; }
+long_name=$(printf '%600s' '' | tr ' ' A)
+out=$(printf ': %s ( -- n ) 1 ;\n%s .\ns" %s" get-current search-wl 0= .\n' "$long_name" "$long_name" "$long_name" | bin/hb 2>/dev/null)
+[ "$out" = "1
+0" ] || { echo "FAIL: hb dictionary name over 255 bytes (got: $out)"; exit 1; }
 out=$(printf 'TRUSTED: ARR ( n -- ) CREATES ( n -- ptr a ) create cells allot does> swap 0 ?do cell+ loop ;\n4 ARR A4\ns" USE ( n -- ptr a ) A4" CHECK! .\n7 2 A4 !\n2 A4 @ .\n' | bin/hb 2>/dev/null)
 [ "$out" = "-1
 7" ] || { echo "FAIL: hb trusted CREATE...DOES> effect recording (got: $out)"; exit 1; }
@@ -113,8 +120,9 @@ out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i6
 [ "$out" = "-1
 -1
 0" ] || { echo "FAIL: hb rows/quot sig verify (got: $out)"; exit 1; }
-out=$(printf 's" P1 ( i64 i64 i64 i64 -- i64 i64 i64 i64 i64 i64 ) 2over" CHECK! .\ns" P2 ( i64 i64 -- i64 i64 ) 2>r 2r>" CHECK! .\ns" P3 ( i64 -- i64 ) abs" CHECK! .\ns" P4 ( i64 i64 -- i64 i64 ) /mod" CHECK! .\ns" P5 ( ptr u8 -- ptr u8 i64 ) count" CHECK! .\ns" P6 ( i64 i64 -- i64 i64 i64 ) depth" CHECK! .\n' | bin/hb 2>/dev/null)
+out=$(printf 's" P1 ( i64 i64 i64 i64 -- i64 i64 i64 i64 i64 i64 ) 2over" CHECK! .\ns" P2 ( i64 i64 -- i64 i64 ) 2>r 2r>" CHECK! .\ns" P3 ( i64 -- i64 ) abs" CHECK! .\ns" P4 ( i64 i64 -- i64 i64 ) /mod" CHECK! .\ns" P5 ( ptr u8 -- ptr u8 i64 ) count" CHECK! .\ns" P6 ( i64 i64 -- i64 i64 i64 ) depth" CHECK! .\ns" P7 ( -- n ) 0 4096 3 $1002 -1 0 mmap" CHECK! .\n' | bin/hb 2>/dev/null)
 [ "$out" = "-1
+-1
 -1
 -1
 -1
@@ -225,9 +233,22 @@ HB_TMP=$HT ./tools/snap-hb.sh >/dev/null || { echo "FAIL: HB_TMP isolation"; exi
 out=$(printf '$340000000 $1B0 + @ 0= .\n: SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | bin/hb 2>/dev/null)
 [ "$out" = "0
 49" ] || { echo "FAIL: HB_TMP hb refresh/check hook (got: $out)"; exit 1; }
+{ printf ': LONG-SNAPSHOT-DICTIONARY-WORD ( i64 -- i64 ) 3 + ;\n'
+  cat src/habu/snap.f; } > $T/hb-snap-long.f
+HB_TMP=$HT bin/hb < $T/hb-snap-long.f >/dev/null || { echo "FAIL: long-name snapshot write"; exit 1; }
+codesign -s - --force "$HT/hb-snap0" 2>/dev/null
+chmod +x "$HT/hb-snap0"
+out=$(printf '39 LONG-SNAPSHOT-DICTIONARY-WORD .\n' | "$HT/hb-snap0" 2>/dev/null)
+[ "$out" = "42" ] || { echo "FAIL: long-name snapshot restore (got: $out)"; exit 1; }
 rm -rf "$HT"
 echo "PASS: HB_TMP isolation"
 bin/hb < test/proc-pty.f || { echo "FAIL: process/pty"; exit 1; }
+out=$(printf ': LONG-PROFILER-BUSY-WORD ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;\n: GO ( -- ) 100000 prof-on LONG-PROFILER-BUSY-WORD prof-report ;\nGO\n' | bin/hb 2>/dev/null | head -1)
+case "$out" in
+  "LONG-PROFILER-BUSY-WORD "*) ;;
+  *) echo "FAIL: profiler long-name output (got: $out)"; exit 1 ;;
+esac
+echo "PASS: profiler long dictionary names"
 # hb-build DEFAULT = AOT: compile MAIN to native, engine stripped (no interpreter).
 printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;\n: MAIN ( -- ) 10 FIB . CR ;\n' > $T/hb-at.f
 ./tools/hb-build.sh $T/hb-at.f -o $T/hb-at >/dev/null || { echo "FAIL: hb-build (AOT)"; exit 1; }
@@ -255,6 +276,10 @@ echo "PASS: hb-build AOT compact call layout"
 ./tools/hb-build.sh $T/hb-cl.f -o $T/hb-cl >/dev/null || { echo "FAIL: hb-build AOT closure stress (260 words)"; exit 1; }
 [ "$($T/hb-cl)" = "260" ] || { echo "FAIL: hb-build AOT closure stress output (got: $($T/hb-cl))"; exit 1; }
 echo "PASS: hb-build AOT closure stress (260 reachable words)"
+printf ': LONG-AOT-CALLED-WORD-NAME ( -- n ) 34 ;\n: MAIN ( -- ) LONG-AOT-CALLED-WORD-NAME . CR ;\n' > $T/hb-aot-long.f
+./tools/hb-build.sh $T/hb-aot-long.f -o $T/hb-aot-long >/dev/null || { echo "FAIL: hb-build AOT long names"; exit 1; }
+[ "$($T/hb-aot-long)" = "34" ] || { echo "FAIL: hb-build AOT long-name output (got: $($T/hb-aot-long))"; exit 1; }
+echo "PASS: hb-build AOT long dictionary names"
 # AOT S" string literal: the body is embedded in MAIN's blob and its address is
 # pushed PC-relative, so it survives the blob copy + ASLR (an absolute push would
 # point back into the builder's JIT region and print nothing).
@@ -289,6 +314,9 @@ grep -q '"token":"here"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsa
 grep -q '"word":"MAIN"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing word"; exit 1; }
 grep -q '"reason":"stripped AOT has no persistent data region"' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing reason"; exit 1; }
 grep -q '"byte_end":' $T/hb-aot-unsafe.err || { echo "FAIL: hb-build AOT unsafe missing byte_end"; exit 1; }
+printf ': LONG-AOT-UNSAFE-CALLER-WORD ( -- ) here drop ;\n: MAIN ( -- ) LONG-AOT-UNSAFE-CALLER-WORD ;\n' > $T/hb-aot-long-unsafe.f
+./tools/hb-build.sh --json-errors $T/hb-aot-long-unsafe.f -o $T/hb-aot-long-unsafe >/dev/null 2>$T/hb-aot-long-unsafe.err && { echo "FAIL: hb-build AOT accepted long unsafe"; exit 1; }
+grep -q '"word":"LONG-AOT-UNSAFE-CALLER-WORD"' $T/hb-aot-long-unsafe.err || { echo "FAIL: hb-build AOT unsafe lost long caller"; exit 1; }
 { printf '8 CLO-LIMIT!\n'
   printf ': W8 ( n -- n ) dup 0< if negate then ;\n'
   i=7; while [ $i -ge 0 ]; do printf ': W%s ( n -- n ) W%s dup 0< if negate then ;\n' "$i" "$((i+1))"; i=$((i-1)); done
@@ -317,6 +345,8 @@ echo "PASS: hb-build rejects bad checked programs"
 printf ': SQ ( i64 -- i64 ) DUP * ;\nEXPORT SQ\n9 SQ . CR\n' > $T/hb-rt.f
 ./tools/hb-build.sh --repl $T/hb-rt.f -o $T/hb-rt >/dev/null || { echo "FAIL: hb-build --repl"; exit 1; }
 [ "$($T/hb-rt)" = "81" ] || { echo "FAIL: hb-build --repl output (got: $($T/hb-rt))"; exit 1; }
+./tools/imgdump.sh $T/hb-rt > $T/hb-rt-dict || { echo "FAIL: imgdump generated engine"; exit 1; }
+grep -q '^+ ' $T/hb-rt-dict || { echo "FAIL: imgdump missing seed dict"; exit 1; }
 printf ': RBAD ( i64 -- i64 ) 0= ;\nEXPORT RBAD\n' > $T/hb-rt-bad.f
 if ./tools/hb-build.sh --repl $T/hb-rt-bad.f -o $T/hb-rt-bad >/dev/null 2>$T/hb-rt-bad.err; then
   echo "FAIL: hb-build --repl accepted bool-as-i64 false cert"; exit 1

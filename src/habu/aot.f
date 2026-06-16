@@ -9,11 +9,15 @@
 \ tools/hb-build.sh owns the I/O paths. A DRIVER (appended last, like build.f).
 
 variable PB  variable PN  variable PFD  variable PRD
+variable SI
 $40000 constant PMAX
 : AOT-PB@ PB @ ;
 s" AOT-PB@" s" -- ptr u8" TRUST
 : AOT-DBASE@ dbase@ ;
 s" AOT-DBASE@" s" -- ptr a" TRUST
+: AOT-PTR@ {: a:ptr :} ( ptr a -- ptr a )
+   a @ ;
+s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 : AOT-IN   s" hb-aot-src" TMP-PATH ;
 : AOT-OUT  s" hb-aot-got" TMP-PATH ;
 
@@ -26,7 +30,13 @@ s" AOT-DBASE@" s" -- ptr a" TRUST
    BEGIN  PFD @  AOT-PB@ PN @ +  PMAX PN @ -  read PRD !  PRD @ 0 > WHILE  PN @ PRD @ + PN !  REPEAT
    PFD @ close
    PN @ 0 > 0= IF s" aot: empty source" 74 die THEN ;
-: SENTSET  s"  AOT-LINK " {: sa:ptr su :}  su 0 ?do  sa i + c@  AOT-PB@ PN @ + i + c!  loop  PN @ su + PN ! ;
+: SENTSET  s"  AOT-LINK " {: sa:ptr su :}
+   0 SI !
+   BEGIN SI @ su < WHILE
+      sa SI @ + c@  AOT-PB@ PN @ + SI @ + c!
+      SI @ 1 + SI !
+   REPEAT
+   PN @ su + PN ! ;
 
 \ --- read 32-bit words; recognize the compiled call (movz/movk/movk x16 + blr x16)
 : W32@ {: a:ptr :} a c@  a 1+ c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
@@ -41,21 +51,27 @@ s" AOT-DBASE@" s" -- ptr a" TRUST
 : CALL-AT? {: p:ptr e:ptr :}  p 16 + e <= IF p CALL? ELSE 0 0= 0= THEN ;
 
 : REC {: k :} ( n -- ptr a )
-   AOT-DBASE@ k 48 * + ;          \ dict record k  (0:addr 8:len 16:nlen 24:name)
+   AOT-DBASE@ k 48 * + ;          \ dict record k  (0:addr 8:len 16:name-len|flags 24:name|ptr)
 : AOT-FOLD {: c :}  c 64 > c 91 < and IF c 32 + ELSE c THEN ;
-: MAIN? {: r:ptr :} ( ptr a -- bool )
-   r 16 + @ $FF and 4 =
-   r 24 + c@ AOT-FOLD 109 = and  r 25 + c@ AOT-FOLD 97 = and
-   r 26 + c@ AOT-FOLD 105 = and  r 27 + c@ AOT-FOLD 110 = and ;
+: REC-NAME-LEN {: r:ptr :} ( ptr a -- n )
+   r 16 + @ DNAME-LEN-MASK and ;
+: REC-NAME-PTR {: r:ptr :} ( ptr a -- ptr a )
+   r 16 + @ DNAME-EXT and 0= IF r 24 + ELSE r 24 + AOT-PTR@ THEN ;
+: REC-NAME@ {: r:ptr :} ( ptr a -- ptr a n )
+   r REC-NAME-PTR  r REC-NAME-LEN ;
+: REC-NAME-C@ {: r:ptr idx :} ( ptr a n -- n )
+   r REC-NAME-PTR idx + c@ ;
 
 : REC-NAME= {: r:ptr a:ptr u :} ( ptr a ptr u8 n -- bool )
-   r 16 + @ $FF and u = IF
+   r REC-NAME-LEN u = IF
       0 BEGIN dup u < WHILE
-         dup r 24 + swap + c@ AOT-FOLD
+         dup r swap REC-NAME-C@ AOT-FOLD
          over a + c@ AOT-FOLD = 0= IF drop 0 0= 0= EXIT THEN
          1 +
       REPEAT drop 0 0=
    ELSE 0 0= 0= THEN ;
+: MAIN? {: r:ptr :} ( ptr a -- bool )
+   r s" MAIN" REC-NAME= ;
 : AOT-UNSAFE? {: r:ptr :} ( ptr a -- bool )
    r s" @" REC-NAME= IF 0 0= EXIT THEN
    r s" !" REC-NAME= IF 0 0= EXIT THEN
@@ -74,7 +90,7 @@ create AECH 1 allot
 : AETXT {: a:ptr u :} ( ptr u8 n -- )
    2 a u write drop ;
 : AEREC-TXT {: r:ptr :} ( ptr a -- )
-   r 0= IF s" <unknown>" AETXT ELSE r 24 + r 16 + @ $FF and AETXT THEN ;
+   r 0= IF s" <unknown>" AETXT ELSE r REC-NAME@ AETXT THEN ;
 : AEJCHAR {: c :}
    c 10 = IF 92 AE1 110 AE1 EXIT THEN
    c 13 = IF 92 AE1 114 AE1 EXIT THEN
@@ -85,7 +101,7 @@ create AECH 1 allot
 : AEJKEY {: a:ptr u :} ( ptr u8 n -- )
    a u AEJSTR 58 AE1 ;
 : AEJREC {: r:ptr :} ( ptr a -- )
-   r 0= IF s" <unknown>" AEJSTR ELSE r 24 + r 16 + @ $FF and AEJSTR THEN ;
+   r 0= IF s" <unknown>" AEJSTR ELSE r REC-NAME@ AEJSTR THEN ;
 create AENB 20 allot  variable AENV  variable AENN
 : AEJNUM
    AENV !  0 AENN !
@@ -101,17 +117,17 @@ create AENB 20 allot  variable AENV  variable AENN
    s" schema_version" AEJKEY 1 AEJNUM 44 AE1
    s" code" AEJKEY s" E-AOT-UNSUPPORTED" AEJSTR 44 AE1
    s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
-   s" word" AEJKEY caller 24 + caller 16 + @ $FF and AEJSTR 44 AE1
-   s" token" AEJKEY callee 24 + callee 16 + @ $FF and AEJSTR 44 AE1
+   s" word" AEJKEY caller REC-NAME@ AEJSTR 44 AE1
+   s" token" AEJKEY callee REC-NAME@ AEJSTR 44 AE1
    s" reason" AEJKEY s" stripped AOT has no persistent data region" AEJSTR 44 AE1
    s" suggestion" AEJKEY
    s" stripped AOT has no persistent data region; use --repl/snapshot for data-space words or remove the runtime data access" AEJSTR
    125 AE1 10 AE1 ;
 : AOT-UNSAFE-PROSE {: caller:ptr callee:ptr :} ( ptr a ptr a -- )
    s" hb-build: stripped AOT unsupported word '" AETXT
-   callee 24 + callee 16 + @ $FF and AETXT
+   callee REC-NAME@ AETXT
    s" ' called by '" AETXT
-   caller 24 + caller 16 + @ $FF and AETXT
+   caller REC-NAME@ AETXT
    s" '" AETXT 10 AE1 ;
 : AOT-UNSAFE-DIE {: caller:ptr callee:ptr :} ( ptr a ptr a -- )
    JSON-DIAGS @ IF caller callee AOT-UNSAFE-JSON ELSE caller callee AOT-UNSAFE-PROSE THEN

@@ -149,9 +149,12 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   LR/SP conventions; raw write-before-BL/read-after-BL rules are mostly false.
 - **Stale binaries hide fixes:** never silence the build while debugging the code
   it builds. Remove output artifacts before generate-then-run tests.
-- **Dictionary name users share one decoder:** long-name records store flags in
-  length and may point outside the record; `find`, `search-wl`, and trust
-  recording must mask length and honor the external-name flag.
+- **Dictionary names are strings, not counted bytes:** keep flags above the
+  length field and decode through one helper path. Low-bit flags recreated a
+  255-byte cap and made AOT/prof/snapshot consumers disagree.
+- **Snapshot scanners need structural proof:** magic constants also appear in
+  code. Accept a trailer only when `region-len + data-len` ends exactly at the
+  trailer offset; otherwise fallback dictionary scans see false snapshots.
 
 ## Environment
 

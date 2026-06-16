@@ -10,7 +10,8 @@ All kernel entry goes through named numbers + one emitter:
     NR-WRITE SYS,        \ = movz x16,#4 ; svc #0x80   (darwin-arm64)
 
 `sys.f` defines `NR-EXIT NR-READ NR-WRITE NR-OPEN NR-CLOSE NR-SIGACTION
-NR-MPROTECT NR-SETITIMER NR-SIGRETURN NR-MMAP` and `SYS, ( n -- )`.
+NR-MPROTECT NR-SETITIMER NR-SIGRETURN NR-MMAP` and `SYS, ( n -- )`; the
+engine-level `mmap` primitive is the raw six-argument syscall boundary.
 linux-arm64: same registers (number in a register, args x0..x5), different
 numbers and `svc #0`. Baremetal: stub `SYS,` to a panic.
 Arg registers are x0..x5 at every call site (darwin and linux agree).
