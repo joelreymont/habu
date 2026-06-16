@@ -5,17 +5,15 @@
 
 $20000 constant SS-FILE-CAP
 32 constant SS-NUM-CAP
-16 constant SS-DATE-CAP
 
 10 constant SS-LF
-45 constant SS-DASH
 47 constant SS-SLASH
 48 constant SS-ZERO
 58 constant SS-COLON
 
 create SS-FILE-BUF SS-FILE-CAP allot
 create SS-NUM-BUF SS-NUM-CAP allot
-create SS-TODAY-BUF SS-DATE-CAP allot
+create SS-TODAY-BUF DATE-LEN allot
 create SS-ONE 1 allot
 
 variable SS-BAD
@@ -31,15 +29,7 @@ variable SS-DISP-U
 variable SS-SCAN-X
 variable SS-RUN
 variable SS-DIGITS
-variable SS-Y
-variable SS-M
-variable SS-D
-variable SS-Z
-variable SS-ERA
-variable SS-DOE
-variable SS-YOE
-variable SS-DOY
-variable SS-MP
+variable SS-TODAY-DAYS
 
 : SS-SKIP {: a u n :} ( a u n -- a' u' )
    a n +  u n - ;
@@ -126,44 +116,30 @@ variable SS-MP
       1+
    repeat drop ;
 
-: SS-CIVIL! {: days :} ( days -- )
-   days 719468 + SS-Z !
-   SS-Z @ 146097 / SS-ERA !
-   SS-Z @ SS-ERA @ 146097 * - SS-DOE !
-   SS-DOE @  SS-DOE @ 1460 / -  SS-DOE @ 36524 / +  SS-DOE @ 146096 / -  365 / SS-YOE !
-   SS-YOE @ SS-ERA @ 400 * + SS-Y !
-   SS-DOE @  365 SS-YOE @ *  SS-YOE @ 4 / +  SS-YOE @ 100 / -  - SS-DOY !
-   5 SS-DOY @ * 2 + 153 / SS-MP !
-   SS-DOY @  153 SS-MP @ * 2 + 5 /  - 1 + SS-D !
-   SS-MP @ 10 < IF SS-MP @ 3 + ELSE SS-MP @ 9 - THEN SS-M !
-   SS-M @ 2 <= IF SS-Y @ 1+ SS-Y ! THEN ;
-
-: SS-DATE-C! {: c pos :} ( c pos -- )
-   c SS-TODAY-BUF pos + c! ;
-
-: SS-DATE-N! {: n width pos :} ( n width pos -- )
-   n SS-RUN !
-   width 1- SS-SCAN-X !
-   begin SS-SCAN-X @ 0 >= while
-      SS-RUN @ 10 mod SS-ZERO +  pos SS-SCAN-X @ + SS-DATE-C!
-      SS-RUN @ 10 / SS-RUN !
-      SS-SCAN-X @ 1- SS-SCAN-X !
-   repeat ;
-
 : SS-TODAY-FROM-EPOCH ( -- a u )
-   SS-Y @ 4 0 SS-DATE-N!
-   SS-DASH 4 SS-DATE-C!
-   SS-M @ 2 5 SS-DATE-N!
-   SS-DASH 7 SS-DATE-C!
-   SS-D @ 2 8 SS-DATE-N!
-   SS-TODAY-BUF 10 ;
-
-: SS-TODAY$ ( -- a u )
-   s" STALE_STATUS_TODAY" GETENV dup 0 > IF exit THEN
-   2drop SS-TODAY-FROM-EPOCH ;
+   SS-TODAY-DAYS @ SS-TODAY-BUF DATE-LEN FORMAT-YMD ;
 
 : SS-BAD+ ( -- )
    SS-BAD @ 1+ SS-BAD ! ;
+
+: SS-BAD-TODAY ( a u -- )
+   s" BAD-TODAY STALE_STATUS_TODAY invalid `" SS-OUT
+   SS-OUT
+   s" `" SS-OUT SS-NL
+   1 throw ;
+
+: SS-BAD-STATUS-DATE ( -- )
+   s" BAD-STATUS-DATE STATUS.md: Last verified invalid `" SS-OUT
+   SS-DATE-A @ SS-DATE-U @ SS-OUT
+   s" `" SS-OUT SS-NL
+   SS-BAD+ ;
+
+: SS-TODAY$ ( -- a u )
+   s" STALE_STATUS_TODAY" GETENV dup 0 > IF
+      2dup PARSE-YMD 0= IF drop SS-BAD-TODAY THEN
+      drop exit
+   THEN
+   2drop SS-TODAY-FROM-EPOCH ;
 
 : SS-MISSING-STATUS ( -- )
    s" STALE-STATUS STATUS.md: missing `Last verified: YYYY-MM-DD`" SS-OUT SS-NL
@@ -179,6 +155,8 @@ variable SS-MP
 : SS-CHECK-STATUS ( -- )
    SS-STATUS-DATE!
    SS-FOUND? @ 0= IF SS-MISSING-STATUS exit THEN
+   SS-DATE-A @ SS-DATE-U @ PARSE-YMD 0= IF drop SS-BAD-STATUS-DATE exit THEN
+   drop
    SS-TODAY$ 2dup SS-DATE-A @ SS-DATE-U @ STR= 0= IF SS-DATE-MISMATCH ELSE 2drop THEN ;
 
 : SS-BEFORE-BOUND? {: a pos :} ( a pos -- f )
@@ -275,5 +253,5 @@ variable SS-MP
    s" stale-status-lint: " SS-OUT SS-BAD @ SS-U. s"  finding(s)" SS-OUT SS-NL
    SS-BAD @ 0 > IF 1 throw THEN ;
 
-epoch-seconds 86400 / SS-CIVIL!
+epoch-seconds DATE-SECONDS-DAY / SS-TODAY-DAYS !
 STALE-STATUS-LINT

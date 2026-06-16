@@ -31,7 +31,7 @@ cat tools/lint/lib.f tools/lint/clobber-lint.f | bin/hb || { echo "FAIL: clobber
 cat tools/lint/lib.f tools/repl-lint.f | bin/hb || { echo "FAIL: repl-lint"; exit 1; }
 cat tools/date.f tools/lint/lib.f tools/fs.f tools/trust-lint.f | bin/hb || { echo "FAIL: trust-lint"; exit 1; }
 ./tools/trust-lint-test.sh || { echo "FAIL: trust-lint fixtures"; exit 1; }
-cat tools/lint/lib.f tools/fs.f tools/stale-status-lint.f | bin/hb || { echo "FAIL: stale-status-lint"; exit 1; }
+cat tools/date.f tools/lint/lib.f tools/fs.f tools/stale-status-lint.f | bin/hb || { echo "FAIL: stale-status-lint"; exit 1; }
 cat tools/lint/lib.f tools/fs.f tools/host-lint.f | bin/hb || { echo "FAIL: host-lint"; exit 1; }
 cat tools/lint/lib.f tools/parallel-agent-lint.f | bin/hb || { echo "FAIL: parallel-agent-lint"; exit 1; }
 cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint"; exit 1; }

@@ -6,7 +6,7 @@ HB=${HABU_HB:-$ROOT/bin/hb}
 T=$(mktemp -d "${TMPDIR:-/tmp}/habu-stale-status.XXXXXX")
 trap 'rm -rf "$T"' EXIT
 
-cat "$ROOT/tools/lint/lib.f" "$ROOT/tools/fs.f" "$ROOT/tools/stale-status-lint.f" > "$T/stale-status-lint.f"
+cat "$ROOT/tools/date.f" "$ROOT/tools/lint/lib.f" "$ROOT/tools/fs.f" "$ROOT/tools/stale-status-lint.f" > "$T/stale-status-lint.f"
 
 cat > "$T/STATUS.md" <<'EOF'
 # Status
@@ -34,6 +34,23 @@ grep -Fq 'Last verified is 2026-06-15, expected 2026-06-16' "$T/stale-date.out"
 
 sed 's/2026-06-15/2026-06-16/' "$T/STATUS.md" > "$T/STATUS.next"
 mv "$T/STATUS.next" "$T/STATUS.md"
+
+sed 's/2026-06-16/2026-02-29/' "$T/STATUS.md" > "$T/STATUS.next"
+mv "$T/STATUS.next" "$T/STATUS.md"
+if ( cd "$T" && STALE_STATUS_TODAY=2026-06-16 "$HB" "$T/stale-status-lint.f" < /dev/null ) > "$T/bad-status-date.out" 2>&1; then
+  echo "FAIL: stale-status accepted invalid Last verified"
+  exit 1
+fi
+grep -Fq 'BAD-STATUS-DATE STATUS.md: Last verified invalid `2026-02-29`' "$T/bad-status-date.out"
+
+sed 's/2026-02-29/2026-06-16/' "$T/STATUS.md" > "$T/STATUS.next"
+mv "$T/STATUS.next" "$T/STATUS.md"
+if ( cd "$T" && STALE_STATUS_TODAY=2026-02-29 "$HB" "$T/stale-status-lint.f" < /dev/null ) > "$T/bad-today.out" 2>&1; then
+  echo "FAIL: stale-status accepted invalid STALE_STATUS_TODAY"
+  exit 1
+fi
+grep -Fq 'BAD-TODAY STALE_STATUS_TODAY invalid `2026-02-29`' "$T/bad-today.out"
+
 cat > "$T/README.md" <<'EOF'
 This stale count says 890 certified in prose.
 EOF
