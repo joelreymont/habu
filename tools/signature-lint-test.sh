@@ -11,6 +11,7 @@ trap cleanup EXIT HUP INT TERM
 
 BUNDLE=$T/signature-lint.bundle.f
 cat "$ROOT/tools/lint/lib.f" \
+    "$ROOT/tools/lint/json-writer.f" \
     "$ROOT/tools/lint/source-lex.f" \
     "$ROOT/tools/argv.f" \
     "$ROOT/tools/signature-lint.f" > "$BUNDLE"

@@ -38,7 +38,7 @@ else
 fi
 SIGNATURE_LINT_TOOL=$T/signature-lint.f
 signature_lint() {
-  [ -f "$SIGNATURE_LINT_TOOL" ] || cat tools/lint/lib.f tools/lint/source-lex.f tools/argv.f tools/signature-lint.f > "$SIGNATURE_LINT_TOOL"
+  [ -f "$SIGNATURE_LINT_TOOL" ] || cat tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/argv.f tools/signature-lint.f > "$SIGNATURE_LINT_TOOL"
   bin/hb "$SIGNATURE_LINT_TOOL" "$@"
 }
 DIAG_ORIGIN_TOOL=$T/diag-origin.f

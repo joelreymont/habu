@@ -48,6 +48,7 @@ points stay listed.
 - `tools/hb-build.sh` — standalone binary builder.
 - `tools/bootstrap-oracle.sh` — bootstrap-only gforth differential.
 - `tools/srclist.sh` — canonical source order.
+- `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.
 - `tools/signature-lint.f` — strict typed-signature lint.
 - `tools/signature-lint-test.sh` — fixture coverage for strict typed-signature lint.
 - `tools/aot-lint.py` — stripped-AOT unsupported-word lint.

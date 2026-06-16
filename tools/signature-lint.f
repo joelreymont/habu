@@ -4,30 +4,18 @@
 0 set-check
 
 $10000 constant SL-FILE-CAP
-$4000 constant SL-JSON-CAP
 32 constant SL-NUM-CAP
 
-8 constant SL-BS
-9 constant SL-TAB
 10 constant SL-LF
-12 constant SL-FF
-13 constant SL-CR
 32 constant SL-SP
-34 constant SL-DQ
-44 constant SL-COMMA
-48 constant SL-ZERO
-58 constant SL-COLON
-92 constant SL-BACKSLASH
 
 create SL-FILE-BUF SL-FILE-CAP allot
-create SL-JSON-BUF SL-JSON-CAP allot
 create SL-NUM-BUF SL-NUM-CAP allot
 
 variable SL-BAD
 variable SL-I
 variable SL-KIND
 variable SL-NUM-I
-variable SL-JSON-LEN
 
 variable SL-FILE-A
 variable SL-FILE-U
@@ -62,56 +50,6 @@ variable SL-SUG-U
    repeat drop
    SL-NUM-BUF SL-NUM-I @ + SL-NUM-CAP SL-NUM-I @ - ;
 
-: SLJ-RESET ( -- )
-   0 SL-JSON-LEN ! ;
-
-: SLJ-C {: c :} ( c -- )
-   SL-JSON-LEN @ 1+ SL-JSON-CAP > IF s" signature-lint: json buffer overflow" 76 die THEN
-   c SL-JSON-BUF SL-JSON-LEN @ + c!
-   SL-JSON-LEN @ 1+ SL-JSON-LEN ! ;
-
-: SLJ-RAW {: a u :} ( a u -- )
-   SL-JSON-LEN @ u + SL-JSON-CAP > IF s" signature-lint: json buffer overflow" 76 die THEN
-   a SL-JSON-BUF SL-JSON-LEN @ + u BMOVE
-   SL-JSON-LEN @ u + SL-JSON-LEN ! ;
-
-: SLJ-HEX ( n -- c )
-   dup 10 < IF SL-ZERO + ELSE 55 + THEN ;
-
-: SLJ-U00 ( c -- )
-   SL-BACKSLASH SLJ-C
-   117 SLJ-C
-   SL-ZERO SLJ-C
-   SL-ZERO SLJ-C
-   dup 4 rshift SLJ-HEX SLJ-C
-   $F and SLJ-HEX SLJ-C ;
-
-: SLJ-ESC-C {: c :} ( c -- )
-   c SL-DQ = IF SL-BACKSLASH SLJ-C SL-DQ SLJ-C exit THEN
-   c SL-BACKSLASH = IF SL-BACKSLASH SLJ-C SL-BACKSLASH SLJ-C exit THEN
-   c SL-BS = IF SL-BACKSLASH SLJ-C 98 SLJ-C exit THEN
-   c SL-FF = IF SL-BACKSLASH SLJ-C 102 SLJ-C exit THEN
-   c SL-LF = IF SL-BACKSLASH SLJ-C 110 SLJ-C exit THEN
-   c SL-CR = IF SL-BACKSLASH SLJ-C 114 SLJ-C exit THEN
-   c SL-TAB = IF SL-BACKSLASH SLJ-C 116 SLJ-C exit THEN
-   c SL-SP < IF c SLJ-U00 exit THEN
-   c SLJ-C ;
-
-: SLJ-STRING {: a u :} ( a u -- )
-   SL-DQ SLJ-C
-   0 begin dup u < while
-      dup a + c@ SLJ-ESC-C
-      1+
-   repeat drop
-   SL-DQ SLJ-C ;
-
-: SLJ-KEY ( a u -- )
-   SLJ-STRING
-   SL-COLON SLJ-C ;
-
-: SL-JSON-U ( u -- )
-   SL-U$ SLJ-RAW ;
-
 : SL-CODE! {: a u :} ( a u -- )
    a SL-CODE-A !  u SL-CODE-U ! ;
 
@@ -137,19 +75,19 @@ variable SL-SUG-U
    0 SL-HAS-END ! ;
 
 : SL-JSON-FINDING ( -- )
-   SLJ-RESET
-   123 SLJ-C
-   s" schema_version" SLJ-KEY 1 SL-JSON-U SL-COMMA SLJ-C
-   s" code" SLJ-KEY SL-CODE-A @ SL-CODE-U @ SLJ-STRING SL-COMMA SLJ-C
-   s" file" SLJ-KEY SL-FILE-A @ SL-FILE-U @ SLJ-STRING SL-COMMA SLJ-C
-   s" line" SLJ-KEY SL-LINE @ SL-JSON-U SL-COMMA SLJ-C
-   s" column" SLJ-KEY SL-COL @ SL-JSON-U SL-COMMA SLJ-C
-   s" byte_start" SLJ-KEY SL-BYTE @ SL-JSON-U SL-COMMA SLJ-C
-   SL-HAS-END @ IF s" byte_end" SLJ-KEY SL-END @ SL-JSON-U SL-COMMA SLJ-C THEN
-   s" word" SLJ-KEY SL-WORD-A @ SL-WORD-U @ SLJ-STRING SL-COMMA SLJ-C
-   s" suggestion" SLJ-KEY SL-SUG-A @ SL-SUG-U @ SLJ-STRING
-   125 SLJ-C
-   SL-JSON-BUF SL-JSON-LEN @ SL-OUT SL-NL ;
+   LJW-RESET
+   LJW-OBJECT-START
+   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
+   s" code" LJW-KEY SL-CODE-A @ SL-CODE-U @ LJW-STRING LJW-COMMA
+   s" file" LJW-KEY SL-FILE-A @ SL-FILE-U @ LJW-STRING LJW-COMMA
+   s" line" LJW-KEY SL-LINE @ LJW-U LJW-COMMA
+   s" column" LJW-KEY SL-COL @ LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY SL-BYTE @ LJW-U LJW-COMMA
+   SL-HAS-END @ IF s" byte_end" LJW-KEY SL-END @ LJW-U LJW-COMMA THEN
+   s" word" LJW-KEY SL-WORD-A @ SL-WORD-U @ LJW-STRING LJW-COMMA
+   s" suggestion" LJW-KEY SL-SUG-A @ SL-SUG-U @ LJW-STRING
+   LJW-OBJECT-END
+   LJW$ SL-OUT SL-NL ;
 
 : SL-MISSING-SIG? ( -- f )
    SL-CODE-A @ SL-CODE-U @ s" E-MISSING-SIGNATURE" STR= ;
