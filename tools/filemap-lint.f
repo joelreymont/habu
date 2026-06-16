@@ -88,7 +88,8 @@ variable FM-NUM-L
    s" src/habu/build.f" FM-REQ
    s" tools/check.sh" FM-REQ
    s" tools/hb-build.sh" FM-REQ
-   s" tools/signature-lint.py" FM-REQ
+   s" tools/signature-lint.f" FM-REQ
+   s" tools/signature-lint-test.sh" FM-REQ
    s" tools/aot-lint.py" FM-REQ
    s" tools/forth_lex.py" FM-REQ
    s" tools/diag-origin.py" FM-REQ

@@ -3,7 +3,7 @@
 
 1 constant L-WORD
 2 constant L-COMMENT
-7936 constant LEX-MAX
+4096 constant LEX-MAX
 create LKIND LEX-MAX cells allot   create LADDR LEX-MAX cells allot
 create LLEN  LEX-MAX cells allot   create LBYTE LEX-MAX cells allot
 create LLINE LEX-MAX cells allot   create LCOL  LEX-MAX cells allot

@@ -44,8 +44,13 @@ case "$SRC" in
   *\"*) echo "hb-build: source path contains a double quote, cannot set DIAG-FILE"; exit 64 ;;
 esac
 if [ "$JSON" = 1 ]; then LINT_JSON=--json; else LINT_JSON=; fi
+SIGNATURE_LINT_TOOL=$T/signature-lint.f
+signature_lint() {
+  [ -f "$SIGNATURE_LINT_TOOL" ] || cat tools/lint/lib.f tools/lint/source-lex.f tools/argv.f tools/signature-lint.f > "$SIGNATURE_LINT_TOOL"
+  bin/hb "$SIGNATURE_LINT_TOOL" "$@"
+}
 if [ "$STRICT" = 1 ]; then
-  ./tools/signature-lint.py $LINT_JSON "$SRC" >&2
+  signature_lint $LINT_JSON "$SRC" >&2
 fi
 if [ "$REPL" = 0 ]; then
   ./tools/aot-lint.py $LINT_JSON "$SRC" >&2

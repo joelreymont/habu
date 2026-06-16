@@ -48,7 +48,8 @@ points stay listed.
 - `tools/hb-build.sh` — standalone binary builder.
 - `tools/bootstrap-oracle.sh` — bootstrap-only gforth differential.
 - `tools/srclist.sh` — canonical source order.
-- `tools/signature-lint.py` — strict typed-signature lint.
+- `tools/signature-lint.f` — strict typed-signature lint.
+- `tools/signature-lint-test.sh` — fixture coverage for strict typed-signature lint.
 - `tools/aot-lint.py` — stripped-AOT unsupported-word lint.
 - `tools/forth_lex.py` — shared lexer for source lints.
 - `tools/diag-origin.py` — injects source-origin markers for checker JSON.
