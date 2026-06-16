@@ -1,11 +1,11 @@
 \ t-sh-guards.fs — habu's runtime limits fail LOUDLY, never corrupt: dictionary
-\ cap (exit 77 past ~2200 words), 17th local (exit 75), and a 1500-deep data stack
+\ cap (exit 77 past 2304 words), 17th local (exit 75), and a 1500-deep data stack
 \ that the old 2KB region would have overrun. Run: gforth test/t-sh-guards.fs -e bye
 require sh-driver.fs
 : RC-OF ( a u -- code )  s" /tmp/hb-g-bin" FORTH-EXE
    s" /tmp/hb-g-bin >/dev/null 2>/dev/null; echo $? > /tmp/hb-g-rc" system
    s" /tmp/hb-g-rc" slurp-file s>number? 2drop ;
-\ 2500 tiny definitions -> dictionary-full death (cap 2200), not corruption
+\ 2500 tiny definitions -> dictionary-full death (cap 2304), not corruption
 : MANY ( -- a u )  0 CL !
    2500 0 do  s" : W" +B  i 0 <# #s #> +B  s"  1 ; " +B  loop
    s" 42 ." +B  CBUF CL @ ;
