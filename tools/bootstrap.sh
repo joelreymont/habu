@@ -4,6 +4,12 @@
 # SELF-COMPILED binary: gforth builds stage0, stage0 compiles the source, and we
 # keep stage0's output (verified: it reproduces itself byte-for-byte).
 set -e
+if [ "${HABU_ALLOW_GFORTH_BOOTSTRAP:-}" != "1" ]; then
+  echo "bootstrap.sh is historical gforth recovery."
+  echo "Use tools/seed.sh /path/to/hb-seed for normal no-binary recovery,"
+  echo "or set HABU_ALLOW_GFORTH_BOOTSTRAP=1 for deliberate bootstrap archaeology."
+  exit 64
+fi
 G=${GFORTH:-$HOME/.local/bin/gforth}
 cd "$(dirname "$0")/.."
 CLEAN_T=0

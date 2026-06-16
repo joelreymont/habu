@@ -8,6 +8,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **One public binary:** `bin/hb` is the public interface. It starts a tty REPL,
   reads piped stdin, or runs `hb script.f args...`. Build-only engines stay
   temporary under `HB_TMP`; do not publish legacy aliases or maker binaries.
+- **No-binary recovery is native-seeded:** `bin/hb` is generated/ignored. Recover
+  with `tools/seed.sh /path/to/hb-seed`; optional SHA-256 verification plus the
+  immediate `tools/build.sh` fixpoint make the installed binary current-source
+  native, without making gforth the normal trust root.
 - **Gforth is bootstrap-only:** daily work uses `bin/hb`, `tools/build.sh`, and
   `test/run.sh`. Keep gforth in `tools/bootstrap.sh` and
   `tools/bootstrap-oracle.sh` for seed/reference recovery.

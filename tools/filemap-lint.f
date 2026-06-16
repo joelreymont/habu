@@ -82,11 +82,13 @@ variable FM-NUM-L
    s" STATUS.md" FM-REQ
    s" TRUSTED.md" FM-REQ
    s" docs/parallel-agents.md" FM-REQ
+   s" docs/seed.md" FM-REQ
    s" src/core/checker.f" FM-REQ
    s" src/core/render.f" FM-REQ
    s" src/habu/aot.f" FM-REQ
    s" src/habu/build.f" FM-REQ
    s" tools/check.sh" FM-REQ
+   s" tools/seed.sh" FM-REQ
    s" tools/hb-build.sh" FM-REQ
    s" tools/lint/json-writer.f" FM-REQ
    s" tools/lint/source-lex.f" FM-REQ

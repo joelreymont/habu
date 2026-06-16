@@ -11,8 +11,9 @@ roadmap.
   Define and call our words in upper case (`SQUARE`, `CHECKED:`); keep core words
   lower-case (`dup`, `drop`, `if`, `?do`). Lower-case only for `\` comments and
   prose outside code.
-- Gforth is bootstrap-only. Use it only through `tools/bootstrap.sh` or
-  `tools/bootstrap-oracle.sh` for recovery/reference work.
+- No-binary recovery uses `tools/seed.sh /path/to/hb-seed`; the seed is a trusted
+  native `hb` that immediately rebuilds current source through `tools/build.sh`.
+  Gforth bootstrap is historical and requires `HABU_ALLOW_GFORTH_BOOTSTRAP=1`.
 
 ## Forth style (BLOCKING)
 
@@ -43,6 +44,5 @@ constants; and a `T{ … -> … }T` test for every word.
 - Parallel dot execution follows `docs/parallel-agents.md`: read-only scouts do
   not edit the current tree; workers edit isolated jj workspaces unless their
   file ownership is disjoint.
-- Gate: `( cd test && ./run.sh )` — Habu-native, no gforth, <10 s. Gforth is
-  bootstrap-only: use `tools/bootstrap.sh` to recover from no native binary, and
-  `tools/bootstrap-oracle.sh` only when changing bootstrap seed/reference code.
+- Gate: `( cd test && ./run.sh )` — Habu-native, no gforth, <10 s. If `bin/hb`
+  is missing, install a trusted native seed with `tools/seed.sh /path/to/hb-seed`.

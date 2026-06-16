@@ -17,7 +17,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 [ "$#" -le 1 ] || { echo "usage: tools/check.sh [--json-errors] [--strict-signatures] [--all-errors] [prog.f]"; exit 64; }
-[ -x bin/hb ] || { echo "check.sh: bin/hb missing (run tools/build.sh first)"; exit 69; }
+[ -x bin/hb ] || { echo "check.sh: bin/hb missing (install a trusted seed with tools/seed.sh /path/to/hb)"; exit 69; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/habu-check.XXXXXX")
 cleanup() { rm -rf "$T"; }
 trap cleanup EXIT HUP INT TERM

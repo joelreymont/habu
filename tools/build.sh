@@ -21,7 +21,7 @@ cleanup() {
   [ "$CLEAN_T" = 0 ] || rm -rf "$T"
 }
 trap cleanup EXIT HUP INT TERM
-[ -x bin/hb ] || { echo "no bin/hb — run tools/bootstrap.sh once"; exit 1; }
+[ -x bin/hb ] || { echo "no bin/hb — install a trusted seed with tools/seed.sh /path/to/hb"; exit 1; }
 
 mkstage() {  # $1 = driver; writes $T/stage2-src (checker hooked)
   for f in $(./tools/srclist.sh "$1"); do

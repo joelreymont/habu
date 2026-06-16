@@ -14,6 +14,7 @@ points stay listed.
 - `PROP-TESTING.md` — property-based checker-soundness design (generate→check→run→compare).
 - `docs/forth.md` — blocking Forth style rules.
 - `docs/parallel-agents.md` — map-reduce protocol for parallel dot execution.
+- `docs/seed.md` — native seed trust root and no-binary recovery.
 
 ## Core Checker
 
@@ -44,6 +45,7 @@ points stay listed.
 ## Tools And Gates
 
 - `tools/build.sh` — self-host rebuild/fixpoint.
+- `tools/seed.sh` — install a trusted native seed, then rebuild current source.
 - `tools/snap-hb.sh` — refreshes the checked `bin/hb` image.
 - `tools/check.sh` — checked native engine wrapper.
 - `tools/hb-build.sh` — standalone binary builder.

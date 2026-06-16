@@ -1,8 +1,7 @@
 # habu — Checked Forth
 
 A complete, **checked Forth** with a native self-hosted macOS ARM64 engine.
-Gforth is kept only as the bootstrap seed. Checked code
-is ordinary Forth that fails to compile unless its body's inferred stack effect
+Checked code is ordinary Forth that fails to compile unless its body's inferred stack effect
 unifies with its declared effect — so an LLM (or human) writing Forth gets the
 stack discipline enforced by the compiler, not by hand.
 
@@ -12,14 +11,12 @@ stack discipline enforced by the compiler, not by hand.
 ```
 
 The checker is a static pass in front of `:`. There are **no runtime type tags
-and no GC** — accepted code runs under the native `bin/hb` engine. Gforth remains
-only the bootstrap/reference tier.
+and no GC** — accepted code runs under the native `bin/hb` engine.
 
 ## Requirements
 
-Gforth **0.7.9** (dev). Homebrew ships 0.7.3; build 0.7.9 from source — recipe in
-[`LESSONS.md`](LESSONS.md). Keep `~/.local/bin` ahead of `/opt/homebrew/bin` on
-`PATH`.
+macOS ARM64 and a trusted native `hb` seed if `bin/hb` is not already present.
+See [`docs/seed.md`](docs/seed.md).
 
 ## Use
 
@@ -30,7 +27,8 @@ no C) that JIT-compiles to machine code, type-checks definitions with its
 built-in checker, and **rebuilds itself byte-for-byte** (stage2 fixpoint):
 
 ```sh
-./tools/bootstrap.sh   # build bin/hb from nothing but gforth (once)
+./tools/seed.sh /path/to/hb-seed
+                       # recover bin/hb from a trusted native seed
 ./tools/build.sh       # daily rebuild: bin/hb recompiles itself, no gforth
 echo ': SQ dup * ; 7 SQ .' | bin/hb     # batch: program from stdin
 bin/hb script.f arg...                  # script: program from file; args via

@@ -43,8 +43,8 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 - Authoritative verdict (-1 certified / 0 rejected / 1 uncheckable) is native:
   use `bin/hb` for quick checks and `tools/check.sh --json-errors --all-errors`
   for files. `CHECK` infers the body's effect; `CHECK!` verifies the body
-  against its declared `( in -- out )`. The gforth mirror is bootstrap/reference
-  recovery only.
+  against its declared `( in -- out )`. No-binary recovery uses
+  `tools/seed.sh /path/to/hb-seed`.
 
 ## 4. On checker rejection: FIX THE BODY, NOT THE SIGNATURE
 - A rejection means the body's real effect ≠ the declared `( in -- out )`. The
@@ -67,8 +67,9 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 
 ## 7. Run the gate
 - `( cd test && ./run.sh )` — habu-native, no gforth, < 10 s. Must be green.
-- Gforth is bootstrap-only. Use `tools/bootstrap-oracle.sh` only when changing
-  bootstrap seed/reference code or validating recovery from no native binary.
+- If `bin/hb` is missing, install a trusted native seed with
+  `tools/seed.sh /path/to/hb-seed`; the seed immediately rebuilds current source
+  through `tools/build.sh`.
 
 ## 8. Record lessons
 - On any new finding, mistake, or insight, add a lesson to `LESSONS.md` (lessons

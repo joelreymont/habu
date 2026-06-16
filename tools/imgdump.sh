@@ -5,7 +5,7 @@
 # "everything just shifted".
 set -e
 cd "$(dirname "$0")/.."
-[ -x bin/hb ] || { echo "no bin/hb — run tools/build.sh"; exit 1; }
+[ -x bin/hb ] || { echo "no bin/hb — install a trusted seed with tools/seed.sh /path/to/hb"; exit 1; }
 dump() { cp "$1" /tmp/imgdump-in; bin/hb < tools/imgdump.f; }
 [ $# -ge 2 ] || { dump "$1"; exit 0; }
 dump "$1" > /tmp/imgdump-a.txt

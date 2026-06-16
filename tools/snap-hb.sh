@@ -6,7 +6,7 @@
 set -e
 cd "$(dirname "$0")/.."
 T=${HB_TMP:-/tmp}
-[ -x bin/hb ] || { echo "no bin/hb — run tools/build.sh"; exit 1; }
+[ -x bin/hb ] || { echo "no bin/hb — install a trusted seed with tools/seed.sh /path/to/hb"; exit 1; }
 rm -f "$T/hb-snap0" "$T/hb-new"
 bin/hb < src/habu/snap.f
 [ -f "$T/hb-snap0" ] || { echo "FAIL: snapshot not written"; exit 1; }

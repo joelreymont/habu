@@ -39,7 +39,7 @@ SRC=$1
 [ "$2" = "-o" ] && [ -n "$3" ] || { echo "usage: hb-build.sh [--repl] [--json-errors] [--strict-signatures] prog.f -o out"; exit 64; }
 OUT=$3
 [ -f "$SRC" ] || { echo "hb-build: no such source: $SRC"; exit 66; }
-[ -x bin/hb ] || { echo "hb-build: bin/hb missing (run tools/build.sh first)"; exit 69; }
+[ -x bin/hb ] || { echo "hb-build: bin/hb missing (install a trusted seed with tools/seed.sh /path/to/hb)"; exit 69; }
 case "$SRC" in
   *\"*) echo "hb-build: source path contains a double quote, cannot set DIAG-FILE"; exit 64 ;;
 esac
