@@ -1,7 +1,7 @@
 \ solutions.f — reference answer key for the habu LLM benchmark. Each definition
 \ is checked: run.sh proves all tasks typecheck (CHECK! => -1 certified).
 \ Categories: arithmetic, control flow, locals, polymorphic stack, loops,
-\ return stack, quotations/combinators, recursion-as-loop.
+\ return stack, quotations/combinators, recursion-as-loop, stack introspection.
 
 : SQUARE ( i64 -- i64 ) dup * ;                                  \ n -> n*n
 : CUBE   ( i64 -- i64 ) dup dup * * ;                            \ n -> n*n*n
@@ -34,3 +34,6 @@
 : BETWEEN? ( i64 i64 i64 -- bool ) {: x lo hi :} x lo >= x hi <= and ;  \ lo <= x <= hi
 : SUMSQ  ( i64 i64 -- i64 ) {: a b :} a dup * b dup * + ;      \ a^2+b^2
 : COMPOSE2 ( i64 [ i64 -- i64 ] [ i64 -- i64 ] -- i64 ) {: x q1 q2 :} x q1 execute q2 execute ;  \ q2(q1(x))
+: DEPTHNOW ( R -- R n ) depth ;                                \ report current stack depth
+: HAS2? ( R -- R bool ) depth 2 >= ;                           \ true iff at least two cells live
+: ADDDEPTH ( R i64 -- R i64 ) depth + ;                        \ add current depth to top value

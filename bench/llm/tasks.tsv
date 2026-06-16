@@ -29,3 +29,6 @@ id	name	signature	category	tests
 28	BETWEEN?	(i64 i64 i64 -- bool)	bool	5 1 9 -> -1; 10 1 9 -> 0
 29	SUMSQ	(i64 i64 -- i64)	locals	3 4 -> 25
 30	COMPOSE2	(i64 [ i64 -- i64 ] [ i64 -- i64 ] -- i64)	combinator	4 inc square -> 25
+31	DEPTHNOW	(R -- R n)	stack-introspection	11 22 -> 11 22 2
+32	HAS2?	(R -- R bool)	stack-introspection	empty -> 0; 1 -> 1 0; 1 2 -> 1 2 -1
+33	ADDDEPTH	(R i64 -- R i64)	stack-introspection	10 -> 11; 3 4 10 -> 3 4 13
