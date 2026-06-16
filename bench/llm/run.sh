@@ -27,4 +27,5 @@ TEST_OUT=$(cat bench/llm/solutions.f bench/llm/tests.f | bin/hb 2>"$T/tests.err"
 VALIDATOR=$T/validate-results.f
 cat tools/date.f tools/lint/lib.f tools/json.f tools/argv.f bench/llm/validate-results.f >"$VALIDATOR"
 bin/hb "$VALIDATOR"
+bench/llm/attempt-runner-test.sh
 echo "PASS: answer key valid ($N/$N certified, $N/$N tests passed, metrics valid)"

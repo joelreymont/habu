@@ -102,12 +102,12 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 
 Run the reference scorecard with `bench/llm/run.sh`. It validates the task set,
 the checked reference solutions, functional tests, and the JSONL metric schema.
-To summarize a real model attempt, concatenate `tools/date.f`,
-`tools/lint/lib.f`, `tools/json.f`, `tools/argv.f`, and
-`bench/llm/validate-results.f`, then run the bundle with the attempt JSONL path;
-add `--json` for a machine-readable summary with failure buckets and
-per-category coverage. Date-stamped run IDs use `*-YYYY-MM-DD` and are validated
-by the native date parser.
+To summarize a real model attempt, place per-task candidate files under a
+candidate directory (`1.f` or repair rounds as `1/1.f`, `1/2.f`, ...), run
+`bench/llm/run-attempts.sh CANDIDATE_DIR`, then pass the resulting JSONL to the
+native validator; add `--json` for a machine-readable summary with failure
+buckets and per-category coverage. Date-stamped run IDs use `*-YYYY-MM-DD` and
+are validated by the native date parser.
 Run `bench/llm/perf.sh` for quick latency measurements of the checker,
 functional tests, metric validator, property-test smoke, and microbench smoke;
 add `--full` when rebuild and AOT build/runtime timings are needed.
