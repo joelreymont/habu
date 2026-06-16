@@ -79,6 +79,6 @@ points stay listed.
 - `test/hb-suite.f` — native engine behavior suite.
 - `bench/llm/tasks.tsv` — LLM benchmark task set.
 - `bench/llm/solutions.f` — reference benchmark solutions.
-- `bench/llm/validate-results.f` — native reference metric validator.
+- `bench/llm/validate-results.f` — native reference/attempt metric validator and summarizer.
 - `bench/llm/validate-results-test.sh` — fixture coverage for metric validation.
 - `bench/llm/run.sh` — benchmark certification runner.

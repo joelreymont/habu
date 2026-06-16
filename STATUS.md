@@ -77,9 +77,10 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   solutions, functional tests, and metric JSONL. The scorecard fields are
   `first_pass_checker`, `first_pass_tests`, `tests_passed`, `repair_iterations`,
   `checker_iterations`, `diagnostic_count`, `tokens_used`, `wall_ms`,
-  `final_chars`, `trust_uses`, and `signature_weakened`. Open work is to run
-  real model attempts through that schema, expand category breadth, and summarize
-  results by feature class.
+  `final_chars`, `trust_uses`, and `signature_weakened`. Attempt JSONL files can
+  now be summarized through the native validator, including failure buckets and
+  per-category coverage. Open work is to run real model attempts through that
+  schema and expand category breadth.
 - **AOT-strip linker** — done and the DEFAULT. `hb-build.sh prog.f -o out` AOT-
   compiles `: MAIN ;` to a native binary with the engine stripped (fib __text
   540 B vs 11836 B embed). `--repl` verifies the user source's checked

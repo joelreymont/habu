@@ -95,3 +95,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 
 Run the reference scorecard with `bench/llm/run.sh`. It validates the task set,
 the checked reference solutions, functional tests, and the JSONL metric schema.
+To summarize a real model attempt, concatenate `tools/lint/lib.f`, `tools/json.f`,
+`tools/argv.f`, and `bench/llm/validate-results.f`, then run the bundle with the
+attempt JSONL path; add `--json` for a machine-readable summary with failure
+buckets and per-category coverage.
