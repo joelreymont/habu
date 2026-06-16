@@ -10,3 +10,6 @@ bin/
 # python bytecode cache
 __pycache__/
 *.pyc
+
+# generated test scratch
+test/*.tmp

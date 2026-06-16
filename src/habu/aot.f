@@ -6,7 +6,7 @@
 \ with every other word, the interpreter, the compiler and the parser stripped.
 \ All reachable blobs are copied into the output __text and their absolute
 \ inter-word calls relocated. The program MUST define `: MAIN ;`.
-\ tools/hb-aot.sh owns the I/O paths. A DRIVER (appended last, like build.f).
+\ tools/hb-build.sh owns the I/O paths. A DRIVER (appended last, like build.f).
 
 variable PB  variable PN  variable PFD  variable PRD
 $40000 constant PMAX
@@ -344,7 +344,7 @@ variable RP  variable RE  variable RV
 : AOT-LINK
    CLOSURE  ASM-INIT  LBL MLBL !
    EMIT-ENTRY  COPY-BLOBS  RELOCATE
-   ASM-CODE  BUILD-IMAGE  s" hb-aot" SET-SIGID  CODESIG2
+   ASM-CODE  BUILD-IMAGE  s" hb-prog" SET-SIGID  CODESIG2
    AOT-OUT PATH0  1537 493 open  dup MBUF MLEN @ write drop  close ;
 
 : GO  READ-PROG  SENTSET
