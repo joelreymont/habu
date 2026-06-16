@@ -19,7 +19,6 @@
 90 constant DATE-Z-CHAR
 48 constant DATE-ZERO
 10 constant DATE-BASE
-64 constant DATE-EX-USAGE
 74 constant DATE-EX-IO
 
 1 constant DATE-JAN
@@ -147,7 +146,7 @@ variable DATE-RUN
    n DATE-RUN !
    width 1- DATE-I !
    begin DATE-I @ 0 >= while
-      DATE-RUN @ 10 mod DATE-ZERO +  dst pos + DATE-I @ + c!
+      DATE-RUN @ DATE-BASE mod DATE-ZERO +  dst pos + DATE-I @ + c!
       DATE-RUN @ DATE-BASE / DATE-RUN !
       DATE-I @ 1- DATE-I !
    repeat ;

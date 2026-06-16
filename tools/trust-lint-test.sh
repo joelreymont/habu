@@ -10,7 +10,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 BUNDLE=$T/trust-lint.bundle.f
-cat "$ROOT/tools/lint/lib.f" "$ROOT/tools/fs.f" "$ROOT/tools/trust-lint.f" > "$BUNDLE"
+cat "$ROOT/tools/date.f" "$ROOT/tools/lint/lib.f" "$ROOT/tools/fs.f" "$ROOT/tools/trust-lint.f" > "$BUNDLE"
 
 write_manifest_header() {
   cat > "$1/TRUSTED.md" <<'EOF'
@@ -94,6 +94,16 @@ cat >> "$T/bad-audit/TRUSTED.md" <<'EOF'
 | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f:1 | nope |
 EOF
 expect_bad "$T/bad-audit" BAD-AUDIT-DATE
+
+make_base bad-calendar-audit
+write_manifest_header "$T/bad-calendar-audit"
+cat >> "$T/bad-calendar-audit/TRUSTED.md" <<'EOF'
+| foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f:1 | 2026-02-29 |
+EOF
+expect_bad "$T/bad-calendar-audit" BAD-AUDIT-DATE
+
+make_base bad-today
+expect_bad "$T/bad-today" BAD-TODAY 2026-02-29
 
 make_base future-audit
 write_manifest_header "$T/future-audit"

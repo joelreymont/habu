@@ -3,7 +3,10 @@
 
 variable DATE-TEST-N
 variable DATE-TEST-FAIL
-create DATE-TEST-BUF 32 allot
+32 constant DATE-TEST-BUF-LEN
+1 constant DATE-TEST-EX-FAIL
+
+create DATE-TEST-BUF DATE-TEST-BUF-LEN allot
 
 : DATE-ASSERT ( bool -- )
    DATE-TEST-N @ 1 + DATE-TEST-N !
@@ -34,11 +37,11 @@ create DATE-TEST-BUF 32 allot
    drop ;
 
 : DATE-FORMAT= {: days a:ptr u :} ( n ptr u8 n -- )
-   days DATE-TEST-BUF 32 FORMAT-YMD
+   days DATE-TEST-BUF DATE-TEST-BUF-LEN FORMAT-YMD
    a u DATE-ASSERT$ ;
 
 : DATE-TIMESTAMP= {: seconds a:ptr u :} ( n ptr u8 n -- )
-   seconds DATE-TEST-BUF 32 FORMAT-EPOCH-UTC
+   seconds DATE-TEST-BUF DATE-TEST-BUF-LEN FORMAT-EPOCH-UTC
    a u DATE-ASSERT$ ;
 
 : DATE-ROUNDTRIP {: y m d :} ( n n n -- )
@@ -84,6 +87,6 @@ s" 2026/06/16" DATE-PARSE-BAD
 : DATE-REPORT ( -- )
    DATE-TEST-FAIL @ 0= IF s" date-test: ok" type cr exit THEN
    DATE-TEST-FAIL @ . s" date-test: failures" type cr
-   s" date-test: failures" 1 die ;
+   s" date-test: failures" DATE-TEST-EX-FAIL die ;
 
 DATE-REPORT

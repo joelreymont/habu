@@ -56,14 +56,6 @@ variable TL-C#
 variable TL-START
 variable TL-AI
 variable TL-BI
-variable TL-Y
-variable TL-MON
-variable TL-DAY
-variable TL-ERA
-variable TL-YOE
-variable TL-DOY
-variable TL-DOE
-variable TL-MP
 variable TL-TODAY-DAYS
 variable TL-CUR-PATH-A
 variable TL-CUR-PATH-U
@@ -299,45 +291,18 @@ variable TL-NV
       TL-N-TOKEN= 0= IF 0 exit THEN
    again ;
 
-: TL-DIGIT? ( c -- f )
-   dup 47 > swap 58 < and ;
-
-: TL-DATE-N {: a pos len :} ( a pos len -- n ok )
-   0 TL-I !
-   0
-   begin TL-I @ len < while
-      a pos + TL-I @ + c@ dup TL-DIGIT? 0= IF drop drop 0 0 exit THEN
-      TL-ZERO - swap 10 * +
-      TL-I @ 1+ TL-I !
-   repeat -1 ;
-
-: TL-DAYS! {: y m d :} ( y m d -- )
-   y TL-Y !
-   m TL-MON !
-   d TL-DAY !
-   TL-MON @ 2 <= IF TL-Y @ 1- TL-Y ! THEN
-   TL-Y @ 400 / TL-ERA !
-   TL-Y @ TL-ERA @ 400 * - TL-YOE !
-   TL-MON @ 2 > IF TL-MON @ 3 - ELSE TL-MON @ 9 + THEN TL-MP !
-   153 TL-MP @ * 2 + 5 / TL-DAY @ + 1 - TL-DOY !
-   TL-YOE @ 365 *  TL-YOE @ 4 / +  TL-YOE @ 100 / -  TL-DOY @ + TL-DOE !
-   TL-ERA @ 146097 * TL-DOE @ + 719468 - ;
-
-: TL-PARSE-DATE {: a u :} ( a u -- days ok )
-   u 10 <> IF 0 0 exit THEN
-   a 4 + c@ TL-DASH <> IF 0 0 exit THEN
-   a 7 + c@ TL-DASH <> IF 0 0 exit THEN
-   a 0 4 TL-DATE-N 0= IF 0 0 exit THEN TL-Y !
-   a 5 2 TL-DATE-N 0= IF 0 0 exit THEN TL-MON !
-   a 8 2 TL-DATE-N 0= IF 0 0 exit THEN TL-DAY !
-   TL-Y @ TL-MON @ TL-DAY @ TL-DAYS! -1 ;
+: TL-BAD-TODAY ( a u -- )
+   s" BAD-TODAY TRUST_LINT_TODAY invalid `" TL-OUT
+   TL-OUT
+   s" `" TL-OUT TL-NL
+   1 throw ;
 
 : TL-TODAY ( -- days )
    s" TRUST_LINT_TODAY" GETENV dup 0 > IF
-      TL-PARSE-DATE 0= IF 0 exit THEN
-      exit
+      2dup PARSE-YMD 0= IF drop TL-BAD-TODAY THEN
+      TL-TODAY-DAYS ! 2drop TL-TODAY-DAYS @ exit
    THEN
-   2drop TL-TODAY-DAYS @ ;
+   2drop epoch-seconds DATE-SECONDS-DAY / ;
 
 : TL-CHECK-SITE {: sk :} ( sk -- )
    sk TL-S-NAME$ TL-FIND-MAN dup 0 < IF
@@ -361,7 +326,8 @@ variable TL-NV
       s" ` has an empty Tests cell in TRUSTED.md" TL-OUT TL-NL
       TL-BAD+
    THEN
-   TL-K @ TL-M-AUDIT$ TL-PARSE-DATE 0= IF
+   TL-K @ TL-M-AUDIT$ PARSE-YMD 0= IF
+      drop
       s" BAD-AUDIT-DATE TRUSTED.md: `" TL-OUT sk TL-S-NAME$ TL-OUT
       s" ` has invalid Last audited `" TL-OUT TL-K @ TL-M-AUDIT$ TL-OUT s" `" TL-OUT TL-NL
       TL-BAD+ exit
@@ -401,5 +367,4 @@ variable TL-NV
    s"  finding(s)" TL-OUT TL-NL
    TL-BAD @ 0 > IF 1 throw THEN ;
 
-epoch-seconds 86400 / TL-TODAY-DAYS !
 TRUST-LINT
