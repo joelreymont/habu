@@ -3,13 +3,17 @@
 # (tools/check.sh), and on rejection feed the checker diagnostic back as the repair
 # signal (up to N rounds). On certify, grade values via grade.sh (which builds the
 # array in memory and runs the io-vectors). Emits one JSONL metrics row.
-# Usage: drive-habu.sh <id> <name> <sig> <spec> <conv> <vectors> <a> [maxr]
+# Usage: drive-habu.sh <id> <name> <sig> <spec> <conv> <vectors> <a|lib> [maxr]
 set -e
 cd "$(dirname "$0")/../.."
 . bench/llm/lib.sh
 ID=$1 NAME=$2 SIG=$3 SPEC=$4 CONV=$5 VEC=$6 ARM=$7 MAXR=${8:-5}
 CLAUDE=${CLAUDE:-claude}; MODEL=${MODEL:-claude}
-PRE=$(cat bench/llm/habu-preamble.txt)
+case "$ARM" in
+  a) PRE=$(cat bench/llm/habu-preamble.txt); LIB=0 ;;
+  lib) PRE=$(cat bench/llm/habu-preamble-lib.txt); LIB=1 ;;
+  *) echo "drive-habu: unknown arm $ARM" >&2; exit 64 ;;
+esac
 T=$(mktemp -d "${TMPDIR:-/tmp}/dh.XXXXXX"); trap 'rm -rf "$T"' EXIT
 hb_test "$CONV" "$NAME" "$VEC" > "$T/vec.f"
 cases=$(case_list "$VEC")
@@ -19,6 +23,10 @@ TASK="Define the word ${NAME} with signature:
 The input is an integer array passed as (pointer, length). ${SPEC}
 For this task you must ${mode}."
 extract() { sed 's/^```.*$//' "$1" | awk '/:/{if(!s)s=NR} {a[NR]=$0; if(/;/)e=NR} END{for(i=s;i<=e;i++)print a[i]}'; }
+bundle() {
+  if [ "$LIB" = 1 ]; then cat bench/llm/habu-array-lib.f "$T/cand.f" > "$T/bundle.f"
+  else cp "$T/cand.f" "$T/bundle.f"; fi
+}
 
 round=0; feedback=""; outcome=reject; toks=0; t0=$(now_ms)
 while [ "$round" -lt "$MAXR" ]; do
@@ -36,8 +44,9 @@ ${TASK}${feedback}"
 You produced no valid definition. Output ONLY the habu definition."
     outcome=reject; continue
   fi
-  if diag=$(tools/check.sh "$T/cand.f" 2>&1); then
-    outcome=$(sh bench/llm/grade.sh 5 "$T/cand.f" "$T/vec.f")
+  bundle
+  if diag=$(tools/check.sh "$T/bundle.f" 2>&1); then
+    outcome=$(sh bench/llm/grade.sh 5 "$T/bundle.f" "$T/vec.f")
     [ "$outcome" = pass ] && break
     feedback="
 
