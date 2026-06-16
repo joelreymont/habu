@@ -149,6 +149,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   LR/SP conventions; raw write-before-BL/read-after-BL rules are mostly false.
 - **Stale binaries hide fixes:** never silence the build while debugging the code
   it builds. Remove output artifacts before generate-then-run tests.
+- **Pushes reject conflicted ancestors:** a clean worktree and passing gate do
+  not clear jj conflict metadata. Before pushing rewritten stacks, check the
+  pushed range for `conflict` and resolve the earliest conflicted commit.
 - **Dictionary names are strings, not counted bytes:** keep flags above the
   length field and decode through one helper path. Low-bit flags recreated a
   255-byte cap and made AOT/prof/snapshot consumers disagree.
