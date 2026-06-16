@@ -89,6 +89,8 @@ $248 constant QXH-CELL    \ saved EXIT chain head across the quotation
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
 $3800 constant DATA-START \ DP initial offset (past header + loop stack + body buf + rstack)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
+create CQ-KW  99 c, 34 c,
+create DOTQ-KW 46 c, 34 c,
 create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
 create QUOT-KW 91 c, 58 c,      \ [:
 create SEMIQ-KW 59 c, 93 c,     \ ;]
@@ -141,7 +143,9 @@ variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBC
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
-variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWTICK variable LKWBTICK
+variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWCQ variable LKWDOTQ
+variable LKWTICK variable LKWBTICK
+variable LKWTYPE
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable LKWLBRACE variable LKWENDLOC variable LLOC-FIND variable LKWCONST
@@ -933,6 +937,9 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    LKWWHILE @ LBL,  s" while"  BYTES,    LKWREPEAT @ LBL, s" repeat" BYTES,
    LKWCREATE @ LBL, s" create" BYTES,    LKWVAR @ LBL,    s" variable" BYTES,
    LKWSQ @ LBL,     SQ-KW 2 BYTES,                         \ the 2 bytes  s "
+   LKWCQ @ LBL,     CQ-KW 2 BYTES,
+   LKWDOTQ @ LBL,   DOTQ-KW 2 BYTES,
+   LKWTYPE @ LBL,   s" type" BYTES,
    LKWTICK @ LBL,   TICK-KW 1 BYTES,    LKWBTICK @ LBL,  BTICK-KW 3 BYTES,
    LKWLBRACE @ LBL, LBRACE-KW 2 BYTES,  LKWENDLOC @ LBL, ENDLOC-KW 2 BYTES,
    LKWCONST @ LBL,  s" constant" BYTES,
@@ -1390,6 +1397,30 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    12 DATA 0 STR,                                       \ allot: DP advances past the copy
    15 G-PUSH  10 G-PUSH ;
 
+: C-ICQ ( -- )
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
+   LBL {: sl :}  LBL {: sd :}  LBL {: capok :}  LBL {: cl :}  LBL {: cd :}
+   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
+   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
+   capok LBL,
+   12 DATA 0 LDR,  15 12 0 ADDI,                       \ x15 = counted string base
+   14 12 10 ADD,  14 14 1 ADDI,  14 DP-CHECK
+   10 12 0 STRB,  12 12 1 ADDI,
+   11 13 0 ADDI,  9 10 0 ADDI,
+   cl LBL,  9 cd CBZ,
+      14 11 0 LDRB,  14 12 0 STRB,  12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
+   cd LBL,
+   12 DATA 0 STR,
+   15 G-PUSH ;
+
+: C-IDOTQ ( -- )
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
+   LBL {: sl :}  LBL {: sd :}
+   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
+   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   0 1 MOVZ,  1 13 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS, ;
+
 \ S" string" (compile mode): emit  B over the bytes ; <bytes> ; push abs-addr ;
 \ push len. Bytes live in the RX code image; the absolute address is known at
 \ compile time, so C-LIT pushes it (no PC-relative ADR needed).
@@ -1409,10 +1440,11 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,                      \ skip one space; x13 = start
    LBL {: sl :}  LBL {: sd :}
    sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
-   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,             \ x10 = len; skip closing "
+   sd LBL,  10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR,  \ x10 = len; skip closing "
+   11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,      \ x15 = B addr; emit B placeholder
    12 CP 0 ADDI,                                        \ x12 = byte addr (after the B)
-   11 13 0 ADDI,  9 10 0 ADDI,                          \ copy x10 bytes start->CP
+   11 16 0 ADDI,  9 10 0 ADDI,                          \ copy x10 bytes start->CP
    LBL {: cl :}  LBL {: cd :}
    cl LBL,  9 cd CBZ,
       14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
@@ -1421,6 +1453,33 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    9 15 0 ADDI,  15 10 0 ADDI,  LPAT @ BL,              \ x9=B addr; save len in x15; patch B->here
    11 12 0 ADDI,  C-ADR                                 \ push byte addr PC-relative (AOT/ASLR-safe)
    11 15 0 ADDI,  C-LIT ;                               \ push len (x15)
+
+: C-CQ ( -- )
+   LBL {: sl :}  LBL {: sd :}  LBL {: capok :}  LBL {: cl :}  LBL {: cd :}
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
+   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
+   sd LBL,  10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
+   capok LBL,
+   11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
+   15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
+   12 CP 0 ADDI,
+   10 28 0 STRB,  28 28 1 ADDI,
+   11 16 0 ADDI,  9 10 0 ADDI,
+   cl LBL,  9 cd CBZ,
+      14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
+   cd LBL,
+   28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
+   9 15 0 ADDI,  15 10 1 ADDI,  LPAT @ BL,
+   11 12 0 ADDI,  C-ADR ;
+
+: C-DOTQ ( -- )
+   LBL {: ok :}
+   C-SDQ
+   9 LKWTYPE @ ADR,  10 4 MOVZ,  LFIND @ BL,
+   13 ok CBNZ,  0 70 MOVZ,  NR-EXIT SYS,
+   ok LBL,
+   C-CALL ;
 
 \ emit one compile-mode keyword case: if TKA/TKL == kw, run handler then back to lmain
 : CF-ENTRY {: lmainlbl kwvar kwlen hxt -- :}
@@ -1704,6 +1763,8 @@ variable CFSK2
       LMAIN LKWCHAR   4 ['] C-CHAR     CF-ENTRY
       LMAIN LKWIMM    9 ['] C-IMMEDIATE CF-ENTRY
       LMAIN LKWSQ     2 ['] C-ISDQ     CF-ENTRY
+      LMAIN LKWCQ     2 ['] C-ICQ      CF-ENTRY
+      LMAIN LKWDOTQ   2 ['] C-IDOTQ    CF-ENTRY
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,             \ NUMBER?
       LBL {: lnotnum :}
       12 lnotnum CBZ,  11 G-PUSH  LMAIN B,
@@ -1752,6 +1813,8 @@ variable CFSK2
       LMAIN LKWWHILE  5 ['] J-WHILE ['] J-WHILER CFB-ENTRY
       LMAIN LKWREPEAT 6 ['] J-REPEAT CFN-ENTRY
       LMAIN LKWSQ     2 ['] C-SDQ    CF-ENTRY            \ S" string"
+      LMAIN LKWCQ     2 ['] C-CQ     CF-ENTRY            \ C" counted string"
+      LMAIN LKWDOTQ   2 ['] C-DOTQ   CF-ENTRY            \ ." print string"
       LMAIN LKWBTICK  3 ['] C-BTICK  CF-ENTRY            \ ['] NAME
       LMAIN LKWBCHAR  6 ['] C-BCHAR  CF-ENTRY            \ [CHAR] X
       LMAIN LKWPOST   8 ['] C-POSTPONE CF-ENTRY           \ POSTPONE NAME
@@ -1910,7 +1973,8 @@ variable CFSK2
    LBL LEX0 !  LBL LUN0 !
    LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
    LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
-   LBL LKWCREATE !  LBL LKWVAR !  LBL LKWSQ !
+   LBL LKWCREATE !  LBL LKWVAR !  LBL LKWSQ !  LBL LKWCQ !  LBL LKWDOTQ !
+   LBL LKWTYPE !
    LBL LKWTICK !  LBL LKWBTICK !
    LBL LKWLBRACE !  LBL LKWENDLOC !  LBL LLOC-FIND !  LBL LKWCONST !
    LBL LKWDO !  LBL LKWLOOP !  LBL LKWI !

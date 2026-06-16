@@ -392,7 +392,9 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT
 \ readable strings (PT+ keeps the terminator as it appends).
 3072 constant PTAB-CAP
 create PTAB PTAB-CAP allot  variable PTP
-create SDQN 2 allot  115 SDQN c!  34 SDQN 1 + c!     \ the two chars of `s"`
+create SDQN 2 allot   115 SDQN c!   34 SDQN 1 + c!    \ the two chars of `s"`
+create CDQN 2 allot    99 CDQN c!   34 CDQN 1 + c!    \ the two chars of `c"`
+create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
 
 : PT2+ {: a u :}
    PTP @ u + 2 +  PTAB PTAB-CAP 2 - +  > IF s" checker: prim table full" 76 die THEN
@@ -492,6 +494,8 @@ create SDQN 2 allot  115 SDQN c!  34 SDQN 1 + c!     \ the two chars of `s"`
    \ s" pushes addr+len; ['] pushes an xt. The engine consumes their payload
    \ inline, so only the bare token reaches the body capture.
    SDQN 2 PT2+  s" -- n n" PT2+
+   CDQN 2 PT2+  s" -- n" PT2+
+   DOTQN 2 PT2+ s" --" PT2+
    s" [']" s" -- n" PT+
    s" [char]" s" -- n" PT+
    s" emit" s" n --" PT+
@@ -824,6 +828,19 @@ variable DIAGXT  0 DIAGXT !              \ reject-diagnostic hook (render.f inst
 \ the engine folds A-Z in keyword and dict matching — fold every token the same
 \ way (into a scratch copy: the source text may live in the read-only image).
 create TKF 64 allot   create NMB 64 allot   variable TFU
+variable SKI  variable SKF
+
+: STRING-OPENER? {: a u :}
+   a u SDQN 2 STR= IF -1 EXIT THEN
+   a u CDQN 2 STR= IF -1 EXIT THEN
+   a u DOTQN 2 STR= ;
+
+: SKIP-STRING-PAYLOAD
+   TI @ SKI !  0 SKF !
+   BEGIN SKI @ TBLEN @ <  SKF @ 0=  and WHILE
+      TBASE @ SKI @ + c@ 34 = IF -1 SKF ! ELSE SKI @ 1 + SKI ! THEN
+   REPEAT
+   SKF @ IF SKI @ 1 + TI ! THEN ;
 
 : TOKFOLD {: a u :}
    u 64 > IF 0 ELSE
@@ -886,7 +903,8 @@ s" <input>" DIAG-FILE!
    TKF TFU @ CF-TOK? 0= IF
    TKF TFU @ RS-TOK? 0= IF
    TKF TFU @ LOC-REF? 0= IF
-   TKF TFU @ DO-TOK THEN THEN THEN THEN THEN THEN THEN
+   TKF TFU @ DO-TOK  TKF TFU @ STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN
+   THEN THEN THEN THEN THEN THEN THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    THEN

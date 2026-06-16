@@ -121,7 +121,9 @@ variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBC
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
-variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWTICK variable LKWBTICK
+variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWCQ variable LKWDOTQ
+variable LKWTICK variable LKWBTICK
+variable LKWTYPE
 variable LKWLBRACE variable LKWENDLOC variable LLOC-FIND variable LKWCONST
 variable LKWDO variable LKWLOOP variable LKWI
 variable LKWTOR variable LKWRFROM variable LKWRFET

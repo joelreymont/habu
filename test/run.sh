@@ -98,6 +98,12 @@ out=$(printf 's" CDIP ( i64 i64 -- i64 i64 ) [: 1+ ;] DIP" CHECK! .\ns" CKEEP ( 
 -1
 -1
 -1" ] || { echo "FAIL: hb combinator/iterator verdicts (got: $out)"; exit 1; }
+out=$(printf '." hi" cr\nc" ok" count type cr\n: DQ ( -- ) ." bye" ;\nDQ cr\n: CQ ( -- n n ) c" yo" count ;\nCQ type cr\n' | bin/hb 2>/dev/null)
+[ "$out" = "hi
+ok
+bye
+yo" ] || { echo "FAIL: hb parsing-word runtime surface (got: $out)"; exit 1; }
+printf ': DQ ( -- ) ." ok" ;\n: CQ ( -- n n ) c" ok" count ;\n' | ./tools/check.sh || { echo "FAIL: check.sh parsing-word certification"; exit 1; }
 set +e
 printf '$400000 allot\n' | bin/hb >/dev/null 2>&1
 rc=$?
@@ -211,6 +217,11 @@ printf ': MAIN ( -- ) s" hi" type CR ;\n' > $T/hb-str.f
 ./tools/hb-build.sh $T/hb-str.f -o $T/hb-str >/dev/null || { echo "FAIL: hb-build AOT S\" build"; exit 1; }
 [ "$($T/hb-str)" = "hi" ] || { echo "FAIL: hb-build AOT S\" output (got: $($T/hb-str))"; exit 1; }
 echo "PASS: hb-build AOT S\" string literal (PC-relative, relocation-safe)"
+printf ': MAIN ( -- ) ." hi" CR c" ok" count type CR ;\n' > $T/hb-parse.f
+./tools/hb-build.sh $T/hb-parse.f -o $T/hb-parse >/dev/null || { echo "FAIL: hb-build AOT parsing words"; exit 1; }
+[ "$($T/hb-parse)" = "hi
+ok" ] || { echo "FAIL: hb-build AOT parsing-word output (got: $($T/hb-parse))"; exit 1; }
+echo "PASS: hb-build AOT .\"/C\" parsing words"
 # build verification requires certification; strict signature mode catches
 # missing signatures as source-lint errors before the maker runs.
 printf ': NOSIG 42 . CR ;\n' > $T/hb-nosig.f

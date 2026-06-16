@@ -2,13 +2,15 @@
 \ words (asm.fs encoders) into a code buffer, define labels, and resolve B/CBZ/CBNZ
 \ branches (backward immediately, forward via backpatch). Next codegen-port step
 \ after the encoders. CP counts WORDS; deltas are word-relative (ARM64 PC-relative).
-create CODE 262144 allot   variable CP
+$80000 constant CODE-CAP-BYTES
+131071 constant CODE-CAP-WORDS
+create CODE CODE-CAP-BYTES allot   variable CP
 
 : ARESET 0 CP ! ;
 
 : CW@ {: w :}  CODE w 4 * + ;                      \ byte addr of word w
 
-: CP? {: n :}  CP @ n + 65535 > IF s" icode: code buffer overflow" 72 die THEN ;
+: CP? {: n :}  CP @ n + CODE-CAP-WORDS > IF s" icode: code buffer overflow" 72 die THEN ;
 \ NB: the standalone mis-reads a SECOND {: :} locals group, so these use a variable
 \ for the byte pointer instead of a 2nd local (cf. VAR-OF / BR-EMIT bugs).
 variable EP

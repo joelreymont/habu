@@ -224,6 +224,8 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    lmiss LBL,  0 0 MOVN,  RET, ;
 \ keyword bytes (lower-case / literal) at known labels
 create SQ-KW  115 c, 34 c,
+create CQ-KW  99 c, 34 c,
+create DOTQ-KW 46 c, 34 c,
 create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
 create QUOT-KW 91 c, 58 c,      \ [:
 create SEMIQ-KW 59 c, 93 c,     \ ;]
@@ -242,6 +244,9 @@ create ENDLOC-KW 58 c, 125 c,
    LKWWHILE @ LBL,  s" while"  BYTES,    LKWREPEAT @ LBL, s" repeat" BYTES,
    LKWCREATE @ LBL, s" create" BYTES,    LKWVAR @ LBL,    s" variable" BYTES,
    LKWSQ @ LBL,     SQ-KW 2 BYTES,
+   LKWCQ @ LBL,     CQ-KW 2 BYTES,
+   LKWDOTQ @ LBL,   DOTQ-KW 2 BYTES,
+   LKWTYPE @ LBL,   s" type" BYTES,
    LKWTICK @ LBL,   TICK-KW 1 BYTES,    LKWBTICK @ LBL,  BTICK-KW 3 BYTES,
    LKWLBRACE @ LBL, LBRACE-KW 2 BYTES,  LKWENDLOC @ LBL, ENDLOC-KW 2 BYTES,
    LKWCONST @ LBL,  s" constant" BYTES,
@@ -567,6 +572,30 @@ create ENDLOC-KW 58 c, 125 c,
    12 DATA 0 STR,                                       \ allot: DP advances past the copy
    15 G-PUSH  10 G-PUSH ;
 
+: C-ICQ
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
+   LBL LBL LBL LBL LBL {: sl sd capok cl cd :}
+   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
+   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
+   capok LBL,
+   12 DATA 0 LDR,  15 12 0 ADDI,                       \ x15 = counted string base
+   14 12 10 ADD,  14 14 1 ADDI,  14 DP-CHECK
+   10 12 0 STRB,  12 12 1 ADDI,
+   11 13 0 ADDI,  9 10 0 ADDI,
+   cl LBL,  9 cd CBZ,
+      14 11 0 LDRB,  14 12 0 STRB,  12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
+   cd LBL,
+   12 DATA 0 STR,
+   15 G-PUSH ;
+
+: C-IDOTQ
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
+   LBL LBL {: sl sd :}
+   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
+   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   0 1 MOVZ,  1 13 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS, ;
+
 : C-CHAR   LTOK @ BL,  9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH ;
 
 : C-BCHAR  LTOK @ BL,  11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC @ BL, ;
@@ -657,10 +686,11 @@ create ENDLOC-KW 58 c, 125 c,
    LBL LBL LBL LBL {: sl sd cl cd :}
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
    sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
-   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   sd LBL,  10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
    12 CP 0 ADDI,
-   11 13 0 ADDI,  9 10 0 ADDI,
+   11 16 0 ADDI,  9 10 0 ADDI,
    cl LBL,  9 cd CBZ,
       14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
    cd LBL,
@@ -668,6 +698,33 @@ create ENDLOC-KW 58 c, 125 c,
    9 15 0 ADDI,  15 10 0 ADDI,  LPAT @ BL,
    11 12 0 ADDI,  C-ADR                                \ push byte addr PC-relative (AOT/ASLR-safe)
    11 15 0 ADDI,  C-LIT ;                              \ push len (a value, absolute is fine)
+
+: C-CQ
+   LBL LBL LBL LBL LBL {: sl sd capok cl cd :}
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
+   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
+   sd LBL,  10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
+   capok LBL,
+   11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
+   15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
+   12 CP 0 ADDI,
+   10 28 0 STRB,  28 28 1 ADDI,
+   11 16 0 ADDI,  9 10 0 ADDI,
+   cl LBL,  9 cd CBZ,
+      14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
+   cd LBL,
+   28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
+   9 15 0 ADDI,  15 10 1 ADDI,  LPAT @ BL,
+   11 12 0 ADDI,  C-ADR ;
+
+: C-DOTQ
+   LBL {: ok :}
+   C-SDQ
+   9 LKWTYPE @ ADR,  10 4 MOVZ,  LFIND @ BL,
+   13 ok CBNZ,  0 70 MOVZ,  NR-EXIT SYS,
+   ok LBL,
+   C-CALL ;
 variable CFSK
 
 : CF-ENTRY {: lmainlbl kwvar kwlen hxt :}
@@ -954,6 +1011,8 @@ s" cfbn-entry" s" n n n n n --" TRUST
    s" char" KEEP? IF LMAIN @ LKWCHAR   4 ['] C-CHAR     CF-ENTRY THEN
    s" immediate" KEEP? IF LMAIN @ LKWIMM    9 ['] C-IMMEDIATE CF-ENTRY THEN
    LMAIN @ LKWSQ     2 ['] C-ISDQ     CF-ENTRY
+   LMAIN @ LKWCQ     2 ['] C-ICQ      CF-ENTRY
+   LMAIN @ LKWDOTQ   2 ['] C-IDOTQ    CF-ENTRY
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,
    12 lnotnum CBZ,  11 G-PUSH  LMAIN @ B,
    lnotnum LBL,
@@ -998,6 +1057,8 @@ s" em-interpret" s" --" TRUST
       s" while" KEEP? IF LMAIN @ LKWWHILE  5 ['] J-WHILE ['] J-WHILER CFB-ENTRY THEN
       s" repeat" KEEP? IF LMAIN @ LKWREPEAT 6 ['] J-REPEAT CFN-ENTRY THEN
       LMAIN @ LKWSQ     2 ['] C-SDQ    CF-ENTRY
+      LMAIN @ LKWCQ     2 ['] C-CQ     CF-ENTRY
+      LMAIN @ LKWDOTQ   2 ['] C-DOTQ   CF-ENTRY
       s" [']" KEEP? IF LMAIN @ LKWBTICK  3 ['] C-BTICK  CF-ENTRY THEN
       s" [char]" KEEP? IF LMAIN @ LKWBCHAR  6 ['] C-BCHAR  CF-ENTRY THEN
       s" postpone" KEEP? IF LMAIN @ LKWPOST   8 ['] C-POSTPONE CF-ENTRY THEN
@@ -1155,7 +1216,8 @@ variable SRCA
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !
    LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
    LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
-   LBL LKWCREATE !  LBL LKWVAR !  LBL LKWSQ !
+   LBL LKWCREATE !  LBL LKWVAR !  LBL LKWSQ !  LBL LKWCQ !  LBL LKWDOTQ !
+   LBL LKWTYPE !
    LBL LKWTICK !  LBL LKWBTICK !
    LBL LKWLBRACE !  LBL LKWENDLOC !  LBL LLOC-FIND !  LBL LKWCONST !
    LBL LKWDO !  LBL LKWLOOP !  LBL LKWI !
