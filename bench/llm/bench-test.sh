@@ -21,6 +21,16 @@ r=$(CLAUDE="$T/hbl.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "su
 r=$(CLAUDE="$T/js.sh" sh bench/llm/drive-js.sh   1 ARR-SUM "ptr a n -- i64" "sum" as "$SV");   chk js-as   '"outcome":"pass","rounds":1' "$r"
 r=$(CLAUDE="$T/rs.sh" sh bench/llm/drive-rust.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV");   chk rust-as '"outcome":"pass","rounds":1' "$r"
 
+cat > "$T/hbprose.sh" <<EOF
+#!/bin/sh
+cat <<'OUT'
+The bug: the loop needs to add each cell.
+: ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells arr + @ + loop ;
+OUT
+EOF
+chmod +x "$T/hbprose.sh"
+r=$(CLAUDE="$T/hbprose.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" a); chk habu-extract-prose '"outcome":"pass","rounds":1' "$r"
+
 # --- conv=aa : REVERSE (array -> array, in place) ---
 mkstub "$T/hb2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do i cells arr + @ len 1 - i - cells arr + @ i cells arr + ! len 1 - i - cells arr + ! loop ;"'
 mkstub "$T/hbl2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr i len i MIRROR-INDEX A-SWAP loop ;"'

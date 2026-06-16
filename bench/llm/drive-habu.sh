@@ -22,7 +22,12 @@ TASK="Define the word ${NAME} with signature:
   : ${NAME} ( ${SIG} ) ...
 The input is an integer array passed as (pointer, length). ${SPEC}
 For this task you must ${mode}."
-extract() { sed 's/^```.*$//' "$1" | awk '/:/{if(!s)s=NR} {a[NR]=$0; if(/;/)e=NR} END{for(i=s;i<=e;i++)print a[i]}'; }
+extract() {
+  sed 's/^```.*$//' "$1" | awk '
+    /^[[:space:]]*:/ { s = 1 }
+    s { print; if ($0 ~ /;/) exit }
+  '
+}
 bundle() {
   if [ "$LIB" = 1 ]; then cat bench/llm/habu-array-lib.f "$T/cand.f" > "$T/bundle.f"
   else cp "$T/cand.f" "$T/bundle.f"; fi
