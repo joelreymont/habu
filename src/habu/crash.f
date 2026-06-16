@@ -1,5 +1,4 @@
-\ crash.fs — in-binary crash handler, transcribed from bootstrap/cg/crash.fs for the
-\ engine-builder port (golden-tested word-for-word in test/t-sh-crash.fs).
+\ crash.fs — in-binary crash handler for the native engine.
 \ sa_tramp = the handler itself: kernel enters with x2=sig, x4=ucontext; we dump
 \ sig + x0..x28 + fp/lr/sp/pc as hex lines to stderr and exit(134).
 variable LCRASHH   variable LHEX   variable LHDR

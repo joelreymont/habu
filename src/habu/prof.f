@@ -1,5 +1,4 @@
-\ prof.fs — the in-binary sampling profiler, transcribed from bootstrap/cg/prof.fs for
-\ the engine-builder port (lockstep; the engine goldens enforce parity). `n prof-on`
+\ prof.fs — the in-binary sampling profiler for the native engine. `n prof-on`
 \ = SIGALRM + 1 ms timer; ticks map the interrupted pc to its dict word and count;
 \ at the limit: dump "name count" + exit(99). prof-report dumps on demand.
 \ Load after habu1.f (uses DATA/DBASE/NDICT/DREC/A/FPRIM-L), before habu2.f.

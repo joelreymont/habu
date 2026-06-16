@@ -1,13 +1,12 @@
 # Forth Standards (habu)
 
 How we write Forth in this repo. **BLOCKING** — code that violates these is wrong,
-not a matter of taste. Target is Gforth 0.7.9; gforth-specific gotchas are at the
-bottom.
+not a matter of taste. Target is the native `bin/hb` engine.
 
 ## Naming
 
-- **Our words UPPER-CASE; built-in gforth words as-is.** Words we define
-  (`RESOLVE`, `MK-CON`, `APPLY-EFFECT`) are UPPER-CASE; core gforth words stay
+- **Our words UPPER-CASE; built-in Forth words as-is.** Words we define
+  (`RESOLVE`, `MK-CON`, `APPLY-EFFECT`) are UPPER-CASE; core Forth words stay
   lower-case (`and`, `cells`, `allot`, `: ;`, `?do`). Never upper-case a built-in.
 - **Hyphens, never underscores.** `T-CON`, `TV-RESET`, `MAX-TV` — not `T_CON`.
   Underscores are not idiomatic Forth.
@@ -18,8 +17,8 @@ bottom.
   `idx`, `nv`, `ki`, `ko`); single letters are fine in tight scope only when
   they do not collide with built-ins. Do not use loop words such as `i` or `j`
   as locals.
-- **Check for collisions with gforth built-ins** before naming — gforth is
-  case-insensitive, so `CON?`/`VAR?` clash with existing words. Prefix to
+- **Check for collisions with built-ins** before naming — Forth dictionaries are
+  case-insensitive here, so `CON?`/`VAR?` clash with existing words. Prefix to
   disambiguate (`TYCON?`, `TYVAR?`). When in doubt, `' NAME` in a REPL: if it
   resolves, the name is taken.
 - **Do not shadow native primitive names.** Later dictionary entries can replace
@@ -93,18 +92,18 @@ bottom.
   (e.g. the `3`/`7` of the 3-bit tag, and even those get a comment).
 - **Prefer `$hex` literals** for bit masks, instruction encodings, ASCII codes, and
   memory offsets (`$FF and`, `$D10043FF`, `$200`); plain counts/indices stay decimal.
-  Both gforth and the standalone parse `$hex` (case-insensitive, optional leading `-`).
+  The standalone parses `$hex` (case-insensitive, optional leading `-`).
 
 ## Testing (BLOCKING)
 
 - **Every word is exercised by `T{ … -> … }T`** as it's written — happy path plus
   each error/edge. A word without a test is unfinished.
-- Tests live in `test/t-<file>.fs`; the harness is `test/tester.fs` (vendored
-  Hayes `ttester.fs`).
+- Tests live in the native gate: `test/hb-suite.f`, focused `tools/*-test.sh`
+  fixtures, and source-specific checks wired through `test/run.sh`.
 - Assert the **specific** outcome: for errors, `' WORD catch` and check the exact
   THROW code; for diagnostics, capture text and match a substring.
-- Run a single file's tests during dev:
-  `gforth src/config.fs … src/<file>.fs test/tester.fs test/t-<file>.fs -e bye`.
+- Run focused fixtures during dev with their owning `tools/*-test.sh`, then run
+  the full native gate: `( cd test && ./run.sh )`.
 
 ## Comments & hygiene
 
@@ -126,14 +125,14 @@ bottom.
 - **Trust is audited, not permanent.** `TRUST` records asserted effects so callers
   can be checked, but audit rows must stay current and stale dates must fail lint.
 
-## Gforth 0.7.9 gotchas that shape how we write code
+## Native Forth Gotchas That Shape How We Write Code
 
 (Build/environment findings are in `../LESSONS.md`; these are the ones that affect
 *coding*.)
 
-- **Case-insensitive** dictionary → name-collision risk (see Naming).
-- **`[']` is compile-only.** Inside an interpreted `T{ … }T`, use `'` (tick) to
-  get an xt, e.g. `' WORD catch`.
+- **Case-insensitive** dictionary -> name-collision risk (see Naming).
+- **`[']` is compile-only.** In interpreted tests, use `'` (tick) to get an xt,
+  e.g. `' WORD catch`.
 - **Control words and ticks are compile-only** — `if`/`else`/`then`,
   `begin`/`while`/`repeat`, `[']`, `i`, `?do`, and `;` must live inside a
   `:` definition, never at the top level.
@@ -144,6 +143,5 @@ bottom.
 - **"is it a defined word?"** → `find-name ( c-addr u -- nt|0 )`, not `find`.
 - **`catch` preserves the pre-call args** under the throw code: `nv ' WORD catch`
   on a throw leaves `( nv code )` — `nip`/adjust in tests accordingly.
-- Run tests from a **`.fs` file**, not `echo … | gforth` (which swallows stdout);
-  the test exit code is owned by `test/all.fs` (a failed `T{}T` does NOT make
-  `gforth -e bye` exit nonzero).
+- Run tests through the owning gate script so assertion failures control the
+  process exit code.

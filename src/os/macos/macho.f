@@ -1,8 +1,8 @@
-\ macho.fs — the FULL Mach-O builder, transcribed from bootstrap/cg/macho.fs for the
-\ engine-builder port: header + 6 load commands (PAGEZERO, TEXT+__text, LINKEDIT,
+\ macho.fs — the FULL Mach-O builder for the native engine: header + 6 load
+\ commands (PAGEZERO, TEXT+__text, LINKEDIT,
 \ DYLINKER, MAIN, DYLIB libSystem), slack to $1000, code at $1000, and TEXT sized
 \ to content. Canonical UNSIGNED artifact; sign.fs post-pass adds the ad-hoc signature.
-\ Golden byte-for-byte vs habu in test/t-sh-macho.fs. Code comes from icode's CODE.
+\ The self-rebuild gate proves deterministic output. Code comes from icode's CODE.
 $90000 constant MSIZE
 create MBUF MSIZE allot
 variable MP

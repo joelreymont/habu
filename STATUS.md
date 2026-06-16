@@ -6,7 +6,7 @@ Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 
 This is the single source of truth for the self-check counts. Other docs
-(`README.md`, `PLAN.md`, `CODEGEN-PLAN.md`) point here instead of quoting a
+(`README.md`, `PLAN.md`) point here instead of quoting a
 number — see `tools/stale-status-lint.f`, which fails the gate if a count-shaped
 string reappears outside this file and `LESSONS.md` (the historical log).
 
@@ -68,7 +68,7 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   `TRUSTED.md`. Callers are still checked.
 - **Diagnostics** — reject diagnostics to stderr; `JSON-DIAGS ON` switches to a
   structured JSON object per reject (code/repair_class/word/token/expected/actual)
-  for LLM repair (`test/t-sh-jdiag.fs`).
+  for LLM repair. The native gate asserts this with `tools/gate-json-assert.f`.
 - **Time/date** — `epoch-seconds` and `mono-ns` are checker-modeled native
   primitives. `tools/date.f` provides checked UTC Gregorian helpers:
   `PARSE-YMD`, `FORMAT-YMD`, and `FORMAT-EPOCH-UTC`; lints and LLM metric

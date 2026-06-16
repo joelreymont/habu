@@ -262,7 +262,8 @@ quotation sub-sigs, and scheme-string recording of quot-bearing sigs
 (n = generic int, subsumes the widths), the `| rin -- rout` return clause, and
 nested quotations and native parametric `ptr a`. Bracketed quotation signature
 syntax is data-stack-only today; actual quote terms still thread return rows
-through `execute`. See CODEGEN-PLAN.md for the engine side.
+through `execute`. See `src/habu/habu1.f` and `src/habu/habu2.f` for the engine
+side.
 
 ```
 habu/  AGENTS.md LESSONS.md PLAN.md README.md .gitignore  docs/forth.md
@@ -325,15 +326,15 @@ standalone parsing-aware lexer used by `colon`.
     `POSTPONE…` only inside `TRUSTED:`. Tests: trusted charts effect; constant/
     variable charted; created word typed; bare `POSTPONE`→`E-UNSAFE`.
 16. **self-host + polish** — annotate the checker's own sources where they
-    metaprogram and **re-check them with the checker**; `test/all.fs`
-    failure-counting runner; `examples.fs`; `README`.
+    metaprogram and **re-check them with the checker**; native failure-counting
+    gate; examples; `README`.
 
 ## Test strategy
 
-Vendored Hayes `T{ … -> … }T`. Pass cases compile and run with the expected
-runtime effect; fail cases `CATCH` the **specific** code and match a diagnostic
-substring. `test/all.fs` owns the exit code (a failure counter `(bye)`ing
-nonzero) — `gforth -e bye` exits 0 on a failed `T{}T`. Per `docs/forth.md`.
+Native `T{ … -> … }T`-style checks and focused shell fixtures compile and run
+with the expected runtime effect. Fail cases `CATCH` the **specific** code and
+match a diagnostic substring. `test/run.sh` owns the exit code. Per
+`docs/forth.md`.
 
 ## Known hard parts
 

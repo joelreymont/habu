@@ -21,9 +21,7 @@ Pop + print one signed decimal + newline. Use for a specific intermediate.
 `src/habu/stepper.f` is baked into `bin/hb`. `step 5 dup * 3 +` runs the rest
 of the line one token at a time, echoing each token and printing the data stack
 after it executes — no `EVALUATE` needed: the REPL hook feeds the engine one
-token per call, so the engine's own interpret loop is the evaluator. The
-gforth-host `STEP` (`bootstrap/cg/stepper.fs`, below) is the bootstrap-tier
-equivalent.
+token per call, so the engine's own interpret loop is the evaluator.
 
 ## `BP+` / `BP-` — one-shot breakpoints on compiled words (REPL)
 `src/habu/debug.f` (baked into `bin/hb`): `' WORD BP+` plants a `BRK #0` at the
@@ -45,15 +43,10 @@ load-time vs runtime kills. NB: an AMFI **signature cache** keys on the path/cdh
 a binary that ran fine can be SIGKILLed at a path that previously held an invalid
 signature. Write to a fresh path when in doubt.
 
-## STEP — single-step debugger (gforth host)
-`bootstrap/cg/stepper.fs`: `s" 5 dup * 3 +" STEP` evaluates one token at a time, printing
-the token and the data stack after each step, leaving the result. The "stepper".
-
 ## Forth disassembler (preferred over external disassemblers)
-`bootstrap/cg/disasm.fs`: `DISASM ( addr nwords -- )` decodes habu's ARM64 subset to
-mnemonics. Its decode math (`disasm-core.fs`) and the encoders (`asm-checked.fs`)
-are written as CHECKED typed Forth — habu certifies them (CHECK-CODE=0). Use this to
-inspect generated code; it found the walk-dispatcher bug (undefined `STR=`) instantly.
+The native disassembler decodes habu's ARM64 subset to mnemonics. Its decode math
+and encoders are written as checked Forth where expressible. Use this to inspect
+generated code before falling back to external tools.
 
 ## External disassembly — last resort
 `otool -tv <bin>` can inspect `__text` when the native disassembler lacks an

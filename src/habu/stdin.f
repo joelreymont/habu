@@ -6,7 +6,7 @@
 \ output path — the single knob; tools/build.sh owns the temporary artifact
 : STDIN-OUT s" hb-stdin-got" TMP-PATH ;
 
-\ the REPL bootstrap + token stepper + breakpoints baked as the engine's LSRC (paths are
+\ the REPL + token stepper + breakpoints baked as the engine's LSRC (paths are
 \ repo-root relative; build.sh cd's there before running the maker)
 : REPL-SRC s" src/habu/repl.f" ;
 : STEP-SRC s" src/habu/stepper.f" ;

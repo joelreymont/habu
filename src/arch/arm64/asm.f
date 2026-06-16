@@ -1,7 +1,6 @@
 \ asm.fs — ARM64 instruction encoders in the STANDALONE's Forth (operands -> u32).
-\ Ported from bootstrap/cg/asm.fs (decimal constants; same bit layout). First step of the
-\ codegen port: the standalone can now ENCODE ARM64, not just run baked code. Verified
-\ byte-for-byte against habu in test/t-sh-asm.fs.
+\ Decimal constants preserve the bit layout used by the native engine builder.
+\ The standalone encodes ARM64 directly instead of relying on baked host output.
 4294967295 constant W32
 
 : MSK W32 and ;

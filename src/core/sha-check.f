@@ -1,6 +1,6 @@
 \ sha-check.fs — standalone self-test of sha256.fs against FIPS-180 vectors.
 \ Prints the summed digest-mismatch count over 3 vectors (abc, 56-char,
-\ 100-byte): '0' iff all match. Driven by test/t-sh-sha.fs. (no emit in the
+\ 100-byte): '0' iff all match. Used by the native gate. (no emit in the
 \ standalone -> output via '.'; vectors are canonical test fixtures.)
 create DG 32 allot
 create VABC 97 c, 98 c, 99 c, 

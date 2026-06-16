@@ -1,5 +1,5 @@
-\ sys.f — the darwin-arm64 OS seam: syscall numbers + the SVC emitter,
-\ transcribed from bootstrap/cg/sys.fs (lockstep). Engine emitters say
+\ sys.f — the darwin-arm64 OS seam: syscall numbers + the SVC emitter.
+\ Engine emitters say
 \ `NR-WRITE SYS,`; porting to another OS/arch swaps this file.
 
 1   constant NR-EXIT

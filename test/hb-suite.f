@@ -1,7 +1,5 @@
 \ hb-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb), no
-\ gforth. Golden/parity tests stay gforth-side (they compare against the
-\ bootstrap builder); everything behavioral runs here. A failure prints
-\ F<index> and the run exits 1 via the final report.
+\ gforth. A failure prints F<index> and the run exits 1 via the final report.
 
 variable #FAIL
 variable #CASE

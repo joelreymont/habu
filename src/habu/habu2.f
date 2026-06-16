@@ -1,8 +1,8 @@
-\ habu2.f — engine-builder port, part 2 (from bootstrap/cg/forth.fs): the JIT compiler
+\ habu2.f — engine-builder part 2: the JIT compiler
 \ emitters (literal/call/keywords/locals/strings/do-loop), the outer-interpreter
 \ main loop, and EMIT-FORTH. Needs habu1.f (part 1). EMIT-MAIN is split into
 \ phase words sharing label VARIABLES (a giant single word would need dozens of
-\ locals); emission ORDER is exactly src/cg's, so the output is byte-identical.
+\ locals); emission order is stable so the self-rebuild reaches a fixpoint.
 \ ---- compile-mode literal: emit movz/movk x9=val then the push stencil ----
 : C-LIT
    6 11 0 ADDI,  5 $FFFF MOVZ,

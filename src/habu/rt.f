@@ -1,8 +1,6 @@
-\ rt.fs — native runtime routines for the ENGINE-BUILDER port, transcribed from
-\ bootstrap/cg/rt.fs + the g-push/g-pop stack templates from bootstrap/cg/templ.fs. Emits the
-\ same instruction sequences via mnem.fs (golden-tested word-for-word in
-\ test/t-sh-rt.fs). Labels are allocated in ONE locals group per word (the
-\ standalone mis-reads a second {: :} group).
+\ rt.fs — native runtime routines for the ENGINE-BUILDER port. Emits stack and
+\ printer instruction sequences via mnem.fs. Labels are allocated in ONE locals
+\ group per word (the standalone mis-reads a second {: :} group).
 \ data-stack ops (XDS points just past TOS; full-ascending); regs live in mnem.fs
 : G-PUSH {: reg :}  reg XDS 0 STR,  XDS XDS 8 ADDI, ;
 

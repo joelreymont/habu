@@ -3,7 +3,7 @@
 The engine source is factored along four seams. Porting = swapping the files
 behind a seam; the goldens + the stage2 fixpoint re-prove each step.
 
-## 1. OS syscalls — `src/os/macos/sys.f` (gforth mirror: `bootstrap/cg/sys.fs`)
+## 1. OS syscalls — `src/os/macos/sys.f`
 
 All kernel entry goes through named numbers + one emitter:
 

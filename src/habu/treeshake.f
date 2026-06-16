@@ -1,5 +1,4 @@
-\ treeshake.f — THE tree shaker (habu-only; bootstrap stays minimal and never
-\ shakes). With SHAKE? on (hb-build's maker), a prim is
+\ treeshake.f — THE tree shaker. With SHAKE? on (hb-build's maker), a prim is
 \ emitted and seeded ONLY if its name appears as a whitespace token in the
 \ user program (SHK-A/SHK-U). Sound over-approximation; default off = keep
 \ all. Gates: FPRIM/FPRIM-L (habu1.f) + keyword entries (habu2.f EM-COMPILE);

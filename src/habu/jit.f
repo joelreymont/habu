@@ -1,5 +1,4 @@
-\ jit.fs — runtime abstract value stack for the `:` compiler, transcribed from
-\ bootstrap/cg/jit.fs for the engine-builder port (lockstep; goldens enforce parity).
+\ jit.fs — runtime abstract value stack for the native `:` compiler.
 \ Tag 1 = constant (no code yet), tag 0 = live register; LVSPILL materializes all
 \ entries as [x19] pushes bottom-up and empties the VS. State in DATA header cells.
 \ Load after prof.fs, before habu2.f.

@@ -95,8 +95,8 @@ s" BYP@" s" -- ptr u8" TRUST
    0 BEGIN dup u < WHILE  dup a + c@  BYP@ c!  BYP@ 1 + BYP !  1 + REPEAT drop
    BEGIN BYP@ CODE - 3 and 0 <> WHILE  0 BYP@ c!  BYP@ 1 + BYP !  REPEAT
    BYP@ CODE - 4 / CP ! ;
-\ --- 64-bit constant synthesis: minimal MOVZ/MOVN + MOVK chain (byte-parity with
-\ habu's LIT-Z/LIT-N in bootstrap/cg/asm.fs — the stage2 fixpoint depends on it) ---
+\ --- 64-bit constant synthesis: minimal MOVZ/MOVN + MOVK chain. The stage2
+\ fixpoint depends on this exact encoding policy. ---
 variable LCH  variable LFI  variable LCI
 
 : CHUNK16 {: x n :}  x n 16 * rshift $FFFF and ;

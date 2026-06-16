@@ -1,6 +1,5 @@
-\ habu1.f — the ENGINE BUILDER ported to the subset (from bootstrap/cg/forth.fs):
-\ emits the standalone native Forth's primitives, helper routines, and seed
-\ dictionary. Golden word-for-word vs habu in test/t-sh-habu1.fs. Needs asm.fs +
+\ habu1.f — the ENGINE BUILDER part 1: emits the standalone native Forth's
+\ primitives, helper routines, and seed dictionary. Needs asm.fs +
 \ icode.fs + mnem.fs + rt.fs (g-push/g-pop/g-print9) + crash.fs + macho.fs.
 \ Part 1: prims + tok/find/num/prot/flush/cemit + dict. The interpreter main
 \ loop, keyword JIT and EMIT-FORTH follow in part 2 (habu2.f).

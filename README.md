@@ -104,7 +104,6 @@ primitives consume typed pointers, and `ptr` without an inner type is rejected.
 ## Layout
 
 - [`PLAN.md`](PLAN.md) — the checker design (type system, unification, pipeline).
-- [`CODEGEN-PLAN.md`](CODEGEN-PLAN.md) — the native backend / self-host design.
 - [`docs/forth.md`](docs/forth.md) — Forth coding standards for this repo.
 - [`LESSONS.md`](LESSONS.md) — build recipe + findings (the project's memory).
 - `src/` — the NATIVE toolchain source the engine compiles (and re-checks) when
@@ -132,7 +131,7 @@ checked program can use them and run:
 ## Self-host & trusted code
 
 Real checker logic is re-checked **through habu's own checker**
-(`test/t-selfhost.fs`) and verified to compute the native result:
+(`test/run.sh`) and verified to compute the native result:
 - the complete **term encoding** (type- and stack-term bit encodings),
 - **concrete unification** (`C-UNICON` — the concrete case of `UNIFY-TYPE`),
 - **binding resolution** (`C-RESOLVE` — the full `BEGIN/WHILE/REPEAT` chase loop,
