@@ -156,11 +156,6 @@ variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
 
 : BDROP XDS XDS 8 SUBI, ;
 
-\ depth ( -- n ) : data-stack depth in cells = (XDS - [S0-CELL]) / 8. XDS points
-\ just above the top; S0-CELL holds the empty-stack base. Type-agnostic measure
-\ for the bench harness (no value-collision risk, unlike sentinel counting).
-: BDEPTH  A DATA S0-CELL LDR,  A XDS A SUB,  A A 3 LSRI,  A G-PUSH ;
-
 : BSWAP A G-POP  B G-POP  A G-PUSH  B G-PUSH ;
 
 : BDOT  A G-POP  G-PRINT9 ;
@@ -375,6 +370,12 @@ s" spawn-dup2-action" s" n n --" TRUST
       9 DATA SSCR-CELL LDR,  9 9 8 ADDI,  9 DATA SSCR-CELL STR,
       sl B,
    sd LBL, ;
+
+: BDEPTH
+   A DATA S0-CELL LDR,
+   A XDS A SUB,
+   A A 3 ASRI,
+   A G-PUSH ;
 
 : (CMP) {: cond :}  B G-POP  A G-POP  A B CMP,  A cond CSET,  A SP A SUB,  A G-PUSH ;
 
@@ -613,8 +614,7 @@ s" spawn-dup2-action" s" n n --" TRUST
 : EMIT-PRIMS
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
    s" dup"  ['] BDUP  FPRIM-L   s" drop" ['] BDROP FPRIM-L   s" swap" ['] BSWAP FPRIM-L
-   s" ."    ['] BDOT  FPRIM-L   s" .s"   ['] B.S   FPRIM-L
-   s" depth" ['] BDEPTH FPRIM-L
+   s" ."    ['] BDOT  FPRIM-L   s" .s"   ['] B.S   FPRIM-L   s" depth" ['] BDEPTH FPRIM-L
    s" u."   ['] BU.   FPRIM-L   s" emit" ['] BEMIT FPRIM-L
    s" cr"   ['] BCR   FPRIM-L   s" space" ['] BSPACE FPRIM-L
    s" ="    ['] B=    FPRIM-L   s" <>"   ['] B<>   FPRIM-L   s" <"    ['] B<    FPRIM-L

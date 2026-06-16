@@ -102,8 +102,9 @@ out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i6
 [ "$out" = "-1
 -1
 0" ] || { echo "FAIL: hb rows/quot sig verify (got: $out)"; exit 1; }
-out=$(printf 's" P1 ( i64 i64 i64 i64 -- i64 i64 i64 i64 i64 i64 ) 2over" CHECK! .\ns" P2 ( i64 i64 -- i64 i64 ) 2>r 2r>" CHECK! .\ns" P3 ( i64 -- i64 ) abs" CHECK! .\ns" P4 ( i64 i64 -- i64 i64 ) /mod" CHECK! .\ns" P5 ( ptr u8 -- ptr u8 i64 ) count" CHECK! .\n' | bin/hb 2>/dev/null)
+out=$(printf 's" P1 ( i64 i64 i64 i64 -- i64 i64 i64 i64 i64 i64 ) 2over" CHECK! .\ns" P2 ( i64 i64 -- i64 i64 ) 2>r 2r>" CHECK! .\ns" P3 ( i64 -- i64 ) abs" CHECK! .\ns" P4 ( i64 i64 -- i64 i64 ) /mod" CHECK! .\ns" P5 ( ptr u8 -- ptr u8 i64 ) count" CHECK! .\ns" P6 ( i64 i64 -- i64 i64 i64 ) depth" CHECK! .\n' | bin/hb 2>/dev/null)
 [ "$out" = "-1
+-1
 -1
 -1
 -1

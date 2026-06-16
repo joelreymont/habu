@@ -185,7 +185,7 @@ INVERT LSHIFT RSHIFT NEGATE ABS MIN MAX` (`i64`); `0= 0< = <> < > <= >=`
 c@ c!` and pointer arithmetic `CELL+ CELLS CHAR+ CHARS` and `+`/`-` overloads for
 `( ρ ptr<a> i64 -- ρ ptr<a> )`; `HERE ALLOT , C,`; `>R R> R@ 2>R 2R> 2R@`;
 `I J` (in loop scope); `EXECUTE DIP KEEP BI TRI`, `EACH MAP FOLD TIMES`;
-`CHAR [CHAR]` (`char`), `S" C" ." TYPE COUNT`; `. U. EMIT CR SPACE`. Comparisons
+`CHAR [CHAR]` (`char`), `S" C" ." TYPE COUNT`; `. U. EMIT CR SPACE DEPTH`. Comparisons
 yield `bool`; `IF/WHILE/UNTIL` require `bool` (a flag-producing word must yield
 `bool`). Naked `?DUP` is value-dependent and remains deliberately untypeable;
 use the checkable `?DUP-IF` idiom instead (see `docs/effects.md`).

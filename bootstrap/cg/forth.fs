@@ -268,6 +268,12 @@ require jit.fs          \ runtime abstract value stack for the : compiler
       sl B,
    sd LBL, ;
 
+: BDEPTH ( -- )
+   A DATA S0-CELL LDR,
+   A XDS A SUB,
+   A A 3 ASRI,
+   A G-PUSH ;
+
 \ comparisons -> Forth flag 0/-1 (CSET 0/1 then negate via the zero register SP)
 : (CMP) {: cond -- :}  B G-POP  A G-POP  A B CMP,  A cond CSET,  A SP A SUB,  A G-PUSH ;
 
@@ -460,7 +466,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 : EMIT-PRIMS ( -- )
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
    s" dup"  ['] BDUP  FPRIM-L   s" drop" ['] BDROP FPRIM-L   s" swap" ['] BSWAP FPRIM-L
-   s" ."    ['] BDOT  FPRIM-L   s" .s"   ['] B.S   FPRIM-L
+   s" ."    ['] BDOT  FPRIM-L   s" .s"   ['] B.S   FPRIM-L   s" depth" ['] BDEPTH FPRIM-L
    s" u."   ['] BU.   FPRIM-L   s" emit" ['] BEMIT FPRIM-L
    s" cr"   ['] BCR   FPRIM-L   s" space" ['] BSPACE FPRIM-L
    s" ="    ['] B=    FPRIM-L   s" <>"   ['] B<>   FPRIM-L   s" <"    ['] B<    FPRIM-L

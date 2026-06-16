@@ -7,9 +7,10 @@
 \ Optional sweep override: bin/hb 123 1000 < test/prop-test.f
 0 set-check                       \ the harness is uncheckable metaprogramming
 
-\ ---- measurement: count residual items above a sentinel (engine has no `depth`)
-variable D   -987654321 constant MK
-: NAB  0 D ! begin dup MK <> while drop D @ 1+ D ! repeat drop D @ ;
+\ ---- measurement: compare stack depth before and after a certified run
+variable BASE  variable MC
+: CLEAR-MEAS  ( vals... n -- n )
+   dup MC !  begin MC @ 0 > while  swap drop  MC @ 1- MC !  repeat ;
 variable VERD                     \ last verdict, set by the check hook
 : VH  CHECK! dup VERD ! ;         \ MUST leave the verdict on the stack for the compiler
 : ERR@  $340000000 $37D8 + @ ;    \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
@@ -109,14 +110,17 @@ variable SCPSV   variable SNDSV   variable SUESV
 : FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ UEND ! ;
 : SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
 : SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ UEND ! ;
-\ ---- shared measurement: build "MK <nin×7> <nch> NAB", run <nch>, compare arity ----
-: RUN1  ( nch nin -- )   \ PBUF := "MK <nin copies of 7> <nch> NAB"
-   NI !  0 PLEN ! s" MK " P+  0 RJ ! begin RJ @ NI @ < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
-   PC  32 PC  s" NAB" P+ ;
+\ ---- shared measurement: build "depth BASE ! <nin×7> <nch> depth BASE @ - CLEAR-MEAS" ----
+: RUN1  ( nch nin -- )
+   NI !  0 PLEN ! s" depth BASE ! " P+
+   0 RJ ! begin RJ @ NI @ < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
+   PC  32 PC  s" depth BASE @ - CLEAR-MEAS" P+ ;
 : CHK  ( a u -- )  ['] VH set-check  evaluate  0 set-check ;     \ check one def; VERD := verdict
 : RUN-MEAS  ( nch nin -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    0 LAST-TRAP !  RUN1  PBUF PLEN @ evaluate
-   ERR@ 0 = IF  LAST-MEAS !  ELSE  -1 LAST-TRAP !  THEN ;
+   ERR@ 0 = IF
+      dup 0< IF  drop -1 LAST-TRAP !  ELSE  LAST-MEAS !  THEN
+   ELSE  -1 LAST-TRAP !  THEN ;
 : FC-SET-ARITY ( expected measured -- )
    FC-MEAS !  FC-EXP !  1 FC-KIND !  NFC @ 1+ NFC ! ;
 : FC-SET-TRAP ( expected -- )

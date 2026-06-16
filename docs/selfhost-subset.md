@@ -33,7 +33,7 @@ and `{: a b :}` read-only locals.
 `= <> < > <= >= 0= 0<`,
 `DUP DROP SWAP NIP OVER TUCK ROT -ROT 2DUP 2DROP 2SWAP 2OVER ?DUP`,
 `@ ! +! C@ C! CELL+ CELLS CHAR+ CHARS COUNT HERE ALLOT , C,`,
-`. .S U. EMIT CR SPACE TYPE EXECUTE DIE PROF-ON PROF-REPORT`,
+`. .S U. EMIT CR SPACE TYPE DEPTH EXECUTE DIE PROF-ON PROF-REPORT`,
 `>R R> R@ 2>R 2R> 2R@`,
 `F+ F- F* F/ FNEGATE FABS FSQRT F< F> F= F0< F0= S>F F>S F.` (doubles as raw
 IEEE754 bit-cells on the data stack; literals `d.d`; checker type `r`),

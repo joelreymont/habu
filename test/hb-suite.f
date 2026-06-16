@@ -30,6 +30,10 @@ $10 4 lshift $100 T=
 1 2 3 4 2over 2 T= 1 T= 4 T= 3 T= 2 T= 1 T=
 0 ?dup 0 T=
 5 ?dup + 10 T=
+depth 0 T=
+1 2 depth 2 T= 2 T= 1 T=
+: TDEPTH ( i64 i64 -- i64 i64 i64 ) depth ;
+3 4 TDEPTH 2 T= 4 T= 3 T=
 8 cell+ 16 T=
 8 char+ 9 T=
 8 chars 8 T=

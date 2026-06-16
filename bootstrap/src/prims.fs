@@ -18,6 +18,7 @@ s" R a b c -- R b c a" s" ROT"   PRIM
 s" R a b c -- R c a b" s" -ROT"  PRIM
 s" R a b -- R b"       s" NIP"   PRIM
 s" R a b -- R b a b"   s" TUCK"  PRIM
+s" R -- R i64"         s" DEPTH" PRIM
 
 \ --- binary arithmetic / bitwise ( R i64 i64 -- R i64 ) ---
 s" R i64 i64 -- R i64" s" +"      PRIM
