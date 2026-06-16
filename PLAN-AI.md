@@ -1,0 +1,175 @@
+# PLAN-AI.md — habu as an LLM codegen target: benchmark, results, and verification guide
+
+This document records the **habu-vs-mainstream LLM-codegen benchmark** effort and gives
+another agent everything needed to **independently verify the conclusions**. The original
+plan (a within-habu checker A/B control) was superseded; the goal that drove the final work
+is below.
+
+Workspace: `/Users/joel/Work/habu-ai` (jj workspace `ai`, sibling of `habu`).
+
+---
+
+## 1. Goal (what we set out to measure)
+
+> **Is habu a good language for an LLM to produce code in, vs mainstream languages, on
+> complex tasks?** For each task an LLM (`claude -p`) writes the solution in habu, JavaScript,
+> and Rust; we compile/check and run it against io-vectors, and measure the cost to reach a
+> correct solution. The question is *how habu stacks up against Rust/JS as a codegen target* —
+> NOT (as an earlier iteration wrongly focused on) whether habu's checker helps in isolation.
+
+Two earlier task sets were rejected as too easy (a strong model one-shots them, so they don't
+discriminate): single-function integer katas (gcd, fib, …) and fixed-size linear algebra
+(2×2 matmul, cross product). The final suite is **algorithms over an integer array** —
+genuinely hard for an LLM in habu because they need typed pointers, in-place mutation, and
+concatenative loops, while being one-liners in JS/Rust.
+
+---
+
+## 2. The result (claims to be verified)
+
+10 array tasks × 3 languages × 2 trials = 60 trials (`bench/llm/results/run.jsonl`,
+summarized in `bench/llm/RESULTS.md`). Headline:
+
+| language | pass@1 | pass@k | mean output-tokens-to-green | max |
+|---|---|---|---|---|
+| habu (checked) | 90% | 100% | **629** | 5545 |
+| JavaScript | 100% | 100% | 91 | 154 |
+| Rust | 95% | 100% | 86 | 181 |
+
+**Conclusions:**
+1. **Correctness parity.** The model reaches a correct solution in habu for every task
+   (pass@k 100%, equal to JS/Rust). habu is a *viable* LLM codegen target.
+2. **A large but SKEWED effort gap.** "Output tokens to green" = the model's chain-of-thought
+   + emitted code, i.e. how hard it had to reason. It is **bimodal**:
+   - *Simple elementwise loops* (ARR-SUM, SQ-EACH, NEGATE-EACH, ARR-MAX): habu ≈ **1×**
+     (comparable or cheaper — terse source, regular shape).
+   - *Index tracking / carried state / in-place rearrangement* (ARGMAX, REVERSE, RUNMAX,
+     PREFIXSUM, COUNT-EVEN): habu **5×–60×**. Worst: ARGMAX ≈ **5545 tokens vs ~100** (60×).
+   - Net mean ≈ **7×**, almost entirely from this hard tail.
+3. **Cause:** the corpus-familiarity tax. habu's typed pointers (`arr:ptr`), `i cells arr + @`/`!`
+   indexing, and in-place concatenative loops have ~zero pretraining, so the model reasons each
+   step from first principles — cheap when the stack shape is obvious, expensive when it must
+   juggle.
+
+The per-task token table (with the 1×→60× ratios) is in `RESULTS.md`.
+
+---
+
+## 3. HOW TO VERIFY (do these in order)
+
+All commands run from `/Users/joel/Work/habu-ai`. You need the native binary `bin/hb`
+(run `tools/bootstrap.sh` once if missing; ~5 s, gforth-seeded), `node`, and `rustc`.
+
+### V1 — Harness is sound (deterministic, no LLM, no tokens)
+```
+./bench/llm/grade-test.sh      # -> PASS: grade.sh classifies pass/fail/reject/trap/timeout
+./bench/llm/bench-test.sh      # -> PASS: array drivers (as + aa, 3 arms + habu repair)
+```
+`grade-test` proves the isolated run+grade spine classifies a correct/wrong/non-certifying/
+trapping/looping candidate correctly. `bench-test` drives all three arm scripts with STUB
+models (canned answers) for both conventions and checks the JSONL each emits — including that
+habu's repair loop fires on a checker rejection (rounds=2).
+
+### V2 — Tasks are FEASIBLE in habu and the io-vector ground truth is correct
+```
+bin/hb < bench/llm/ref-solutions.f      # -> prints REF-OK
+```
+`ref-solutions.f` is the certified answer key: the 10 habu reference words + assertions over
+the same io-vectors as `bench-tasks.tsv`. This single command is a complete proof: `bin/hb`
+auto-checks typed definitions, so a non-certifying word would be unpublished and the run would
+error — getting **REF-OK** means *all 10 definitions certify* **and** *every io-vector value
+matches*. (To see per-definition verdicts, prepend a check hook:
+`{ echo ": HK CHECK dup . ; ' HK set-check"; bench/llm/ref-solutions.f's def section; } | bin/hb`
+prints `-1` per certified word. `tools/check.sh` on the def section alone also returns rc 0;
+do NOT run `check.sh` on the whole file — it executes the runtime assertions in its checking
+harness and hangs.)
+
+### V3 — Reproduce the benchmark (uses real `claude -p`; costs tokens; non-deterministic)
+```
+sh bench/llm/run-bench.sh 2                       # 10 tasks × 3 arms × 2 trials -> results/run.jsonl
+node bench/llm/report.js bench/llm/results/run.jsonl > /tmp/RESULTS.md
+```
+Then compare `/tmp/RESULTS.md` to the committed `bench/llm/RESULTS.md`. Exact token counts
+WILL differ run-to-run (model nondeterminism), but the **shape** must reproduce: pass@k ≈ 100%
+for all arms, and habu's per-task tokens ≈ 1× on the elementwise tasks and many-× (especially
+ARGMAX) on the index/state/in-place tasks. The committed `run.jsonl` is the exact evidence
+behind the numbers in §2.
+
+### V4 — Spot-check a single live cell
+```
+sh bench/llm/drive-habu.sh 4 ARGMAX "ptr a n -- i64" \
+   "Return the index of the maximum element; on ties the smallest index." as \
+   "[3 1 4 1 5] -> 4; [9 1 1] -> 0; [1 5 5 2] -> 1; [5] -> 0" a </dev/null
+```
+Emits one JSONL row. Expect `outcome:pass` with a token count far above the JS/Rust cost for
+the same task (run `drive-js.sh` / `drive-rust.sh` with the same args, dropping the trailing
+`a`, to compare).
+
+---
+
+## 4. Harness architecture (what each file does)
+
+- `bench/llm/bench-tasks.tsv` — the 10 tasks. Columns: `id name sig conv spec vectors`. `conv` ∈
+  `{as, aa}` (array→scalar, array→array). Vectors use `[..]` for arrays, e.g.
+  `[3 1 4] -> 8` (as) or `[3 1 2] -> [2 1 3]` (aa). **Single source of truth** — every arm's
+  test harness is generated from these vectors.
+- `bench/llm/lib.sh` — sourced helpers. `hb_test/js_test/rust_test <conv> …` generate the
+  per-language test harness from a task's vectors; `emit_row` writes a JSONL metrics line.
+  (Note: `hb_test` forces `IFS=' '` internally — it builds the habu array with `here v , v , …`
+  and must split on spaces regardless of the caller's IFS.)
+- `bench/llm/habu-preamble.txt` — the in-context teaching for the habu arm (typed-pointer
+  locals, `i cells arr + @`/`!` indexing, `?do … loop`, explicit-boolean conditions, in-place
+  rule). This is the *only* habu knowledge the model gets; the corpus-familiarity tax is what
+  remains after this teaching.
+- `bench/llm/drive-habu.sh` — habu arm. Prompt = preamble + task; `claude -p` → extract def →
+  `tools/check.sh` (certify) → on reject feed the checker diagnostic back (≤5 rounds); on
+  certify, grade via `grade.sh`. Emits one JSONL row (`arm:"habu-a"`).
+- `bench/llm/drive-js.sh`, `drive-rust.sh` — JS/Rust arms. `f(a)` returns a number (`as`) or
+  array/`Vec` (`aa`); repair on node test failures / rustc errors + test failures.
+- `bench/llm/grade.sh` — runs a candidate in an isolated, timeout-bounded child so a trap/hang
+  is *recorded, not fatal*; classifies `pass|fail|reject|trap|timeout`. For habu it builds the
+  array in memory (`here , ,`) and runs the io-vectors via generated `G=` assertions.
+- `bench/llm/parse-resp.js` — extracts the completion text + **output_tokens** from
+  `claude -p --output-format json`. Input tokens are deliberately excluded (Claude Code harness
+  overhead ~7–22K/call + prompt caching distort them); output tokens track reasoning effort.
+- `bench/llm/run-bench.sh <k>` — orchestrator: every task × 3 arms × k trials → `run.jsonl`,
+  then `report.js` → `RESULTS.md`. Drivers are invoked with `</dev/null` (else `claude -p`
+  swallows the loop's stdin) and `|| true` (a failing driver must not abort the sweep).
+- `bench/llm/report.js` — aggregates `run.jsonl` → `RESULTS.md` (per-arm pass@1/pass@k, mean
+  rounds, median/mean/max output tokens, per-task token table with habu/best ratio, verdict).
+- `bench/llm/ref-solutions.f` — certified habu answer key (see V2).
+- `bench/llm/grade-test.sh`, `bench-test.sh` — the deterministic teeth (see V1).
+
+Also delivered to `habu` master earlier in this effort: a native `depth ( -- n )` primitive
+(`src/habu/habu1.f`, `src/core/checker.f`) — a standard Forth core word habu lacked. It is NOT
+used by this benchmark (which grades by value, not stack depth) but is a sound standalone
+addition.
+
+---
+
+## 5. Threats to validity / honest caveats
+
+- **Cross-language token comparison is confounded** and is *not* the headline. habu source is
+  terser (fewer tokens for the same logic), which would bias habu LOW; on the hard tasks the
+  reasoning cost overwhelms this and biases habu HIGH. The robust signals are **pass-rate**
+  (parity) and the **direction + magnitude of the skew** (cheap on elementwise, expensive on
+  juggling), which are insensitive to per-token terseness.
+- **The habu arm uses the checker** (it's how you'd really write habu); a rejection costs a
+  repair round. This *helps* habu (localizes errors) but also means over-strict rejections cost
+  rounds. Observed repair rounds were low (mean 1.05), so this is a minor factor here.
+- **Model nondeterminism.** `claude -p` is not bit-reproducible. k=2; verify the *shape*, not
+  exact tokens. The habu side (engine, checker, grading) is fully deterministic.
+- **Output-tokens-as-effort** is a proxy. It correlates with wall time in the data (ARGMAX
+  habu: 5545 tokens / 73 s vs JS: ~90 / 4 s), but a model that "thinks" less verbosely could
+  shift absolute numbers; the *ratio* across languages is the durable signal.
+- **Scope.** 10 single-array tasks, two conventions. Harder tasks (sorting, binary search,
+  NxN matrices over memory) would likely *widen* the tail — an obvious next step.
+
+---
+
+## 6. Provenance
+
+- All harness code, `RESULTS.md`, and `run.jsonl` are in the single local jj commit
+  `bench: habu vs JS/Rust on array/memory algorithms` (unpushed). `run.jsonl` is tracked as the
+  evidence record; only `*.log` under `results/` is gitignored.
+- The `depth` primitive is a separate commit already on `habu` master.

@@ -1,0 +1,48 @@
+#!/bin/sh
+# drive-js.sh — JavaScript arm (array algorithms). f(a) takes an array; returns a
+# number (conv as) or a new array (conv aa). Repair on test failures (node).
+# Usage: drive-js.sh <id> <name> <sig> <spec> <conv> <vectors> [maxr]
+set -e
+cd "$(dirname "$0")/../.."
+. bench/llm/lib.sh
+ID=$1 NAME=$2 SIG=$3 SPEC=$4 CONV=$5 VEC=$6 MAXR=${7:-5}
+CLAUDE=${CLAUDE:-claude}; MODEL=${MODEL:-claude}
+calls=$(js_test "$CONV" "$VEC")
+T=$(mktemp -d "${TMPDIR:-/tmp}/djs.XXXXXX"); trap 'rm -rf "$T"' EXIT
+TASK="Write a JavaScript function with this exact signature:
+  function f(a) { ... }
+where a is an array of integers. It must return $(js_ret "$CONV"). Use integer
+arithmetic. ${SPEC}
+Output ONLY the function definition. No prose, no code fences."
+extract() { sed 's/^```.*$//' "$1"; }
+
+round=0; feedback=""; outcome=fail; toks=0; t0=$(now_ms)
+while [ "$round" -lt "$MAXR" ]; do
+  round=$((round+1))
+  prompt="${TASK}${feedback}"
+  timeout 120 "$CLAUDE" -p "$prompt" --output-format json > "$T/resp.json" 2>/dev/null \
+    || { outcome=error; break; }
+  rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/text.txt"); toks=$((toks+rt))
+  extract "$T/text.txt" > "$T/f.js"
+  {
+    cat "$T/f.js"; printf '\n'
+    printf 'function check(g,w,a){ if(JSON.stringify(g)!==JSON.stringify(w)){ console.error("FAIL f("+a+") = "+JSON.stringify(g)+" expected "+JSON.stringify(w)); process.exit(1);} }\n'
+    printf '%s\n' "$calls"
+    printf 'console.log("ALL-OK");\n'
+  } > "$T/test.js"
+  set +e; out=$(timeout 5 node "$T/test.js" 2>&1); rc=$?; set -e
+  if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q ALL-OK; then outcome=pass; break
+  elif [ "$rc" -eq 124 ]; then outcome=timeout
+  else outcome=fail; fi
+  feedback="
+
+Your attempt:
+$(cat "$T/f.js")
+
+It FAILED:
+$(printf '%s' "$out" | head -4)
+
+Fix it. Output ONLY the corrected function."
+done
+wall=$(( $(now_ms) - t0 ))
+emit_row "$ID" "$NAME" "$MODEL" "js" "$outcome" "$round" "$toks" "$wall"

@@ -13,3 +13,6 @@ __pycache__/
 
 # generated test scratch
 test/*.tmp
+
+# benchmark run logs (regenerable); run.jsonl IS tracked as the evidence record
+bench/llm/results/*.log
