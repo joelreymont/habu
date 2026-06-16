@@ -337,7 +337,6 @@ variable BAD  variable PR  variable CW  variable RETS  variable CALIDX
 : WORD-NAME!  ( name-tok -- )
    TOK dup WLEN !  WNAME FOLD-TO ;
 : CRASH-FILE?  {: a u :}  ( -- f )
-   a u s" bootstrap/cg/crash.fs" STR= if -1 exit then
    a u s" src/habu/crash.f" STR= ;
 : ALLOW?  {: fa fu reg cidx :}  ( -- f )
    fa fu CRASH-FILE? 0= if 0 exit then
@@ -429,17 +428,11 @@ variable BAD  variable PR  variable CW  variable RETS  variable CALIDX
 \ ---- driver ---------------------------------------------------------------
 : ALL-PASS1  ( -- )
    0 CN# !  0 CEND !  0 EN# !
-   s" bootstrap/cg/forth.fs" PASS1-FILE  s" bootstrap/cg/jit.fs" PASS1-FILE
-   s" bootstrap/cg/regalloc.fs" PASS1-FILE  s" bootstrap/cg/prof.fs" PASS1-FILE
-   s" bootstrap/cg/rt.fs" PASS1-FILE  s" bootstrap/cg/crash.fs" PASS1-FILE
    s" src/habu/habu1.f" PASS1-FILE  s" src/habu/habu2.f" PASS1-FILE
    s" src/habu/jit.f" PASS1-FILE  s" src/habu/regalloc.f" PASS1-FILE
    s" src/habu/prof.f" PASS1-FILE  s" src/habu/rt.f" PASS1-FILE
    s" src/habu/crash.f" PASS1-FILE ;
 : ALL-PASS2  ( -- )
-   s" bootstrap/cg/forth.fs" PASS2-FILE  s" bootstrap/cg/jit.fs" PASS2-FILE
-   s" bootstrap/cg/regalloc.fs" PASS2-FILE  s" bootstrap/cg/prof.fs" PASS2-FILE
-   s" bootstrap/cg/rt.fs" PASS2-FILE  s" bootstrap/cg/crash.fs" PASS2-FILE
    s" src/habu/habu1.f" PASS2-FILE  s" src/habu/habu2.f" PASS2-FILE
    s" src/habu/jit.f" PASS2-FILE  s" src/habu/regalloc.f" PASS2-FILE
    s" src/habu/prof.f" PASS2-FILE  s" src/habu/rt.f" PASS2-FILE

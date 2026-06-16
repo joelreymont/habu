@@ -5,22 +5,14 @@
 Complete. The build-time shadow and clobber linters are self-hosted Habu scripts
 under `tools/lint/`, run by `bin/hb` in `test/run.sh`, and the old host
 implementations have been deleted. The old boot-vs-port parity lint is retired:
-the native `tools/build.sh` fixpoint is the active parity proof and has no
-bootstrap input.
+the native `tools/build.sh` fixpoint is the active parity proof. The default
+lint gate has no bootstrap inputs.
 
 ### Bootstrap Input Decision
 
 `shadow-lint` reads only habu sources (`src/habu/habu1.f` + the snap srclist).
-
-**`clobber-lint` currently reads the frozen bootstrap emitters**
-(`bootstrap/cg/forth.fs`, `jit.fs`, `regalloc.fs`, `prof.fs`, `rt.fs`, `crash.fs`):
-
-- `clobber-lint`'s file list spans both the bootstrap and the port (it models the
-  register-clobber graph across both dialects).
-
-The remaining contract is temporary and read-only. It preserves the existing
-clobber check without putting gforth back on the daily execution path while the
-native-only clobber gate is completed.
+`clobber-lint` reads only the live native emitter sources under `src/habu/`.
+Bootstrap emitters are no longer inputs to the default lint gate.
 
 ## Status
 
