@@ -110,10 +110,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `clock_gettime_nsec_np`, and `mach_absolute_time` are libSystem/commpage APIs.
   The no-libSystem monotonic clock reads `CNTVCT_EL0`/`CNTFRQ_EL0` and converts
   with quotient/remainder to avoid `ticks * 1e9` overflow.
-- **`epoch-seconds` currently belongs at script top level:** interpreted
-  `epoch-seconds` works for Habu tools, but a compiled word that calls it crashes
-  today. Precompute wall-clock dates before entering compiled tool drivers until
-  the primitive's compiled-call path is fixed.
+- **The JIT inliner must reject PC-relative branches:** byte-copying a small
+  primitive body with an internal branch preserves the old branch target. This
+  made compiled `epoch-seconds` branch back into the seed primitive and return
+  `0`; branch-bearing bodies must compile as calls unless relocated.
 - **LC_MAIN gets argc/argv/envp in x0-x2:** the kernel start-stack layout is not
   present. Capture x0-x2 at entry and restore live values after snapshot boot.
 
