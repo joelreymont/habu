@@ -29,41 +29,46 @@ concatenative loops, while being one-liners in JS/Rust.
 
 ## 2. The result (claims to be verified)
 
-The committed evidence is 10 array tasks × 3 original arms × 2 trials = 60
-trials (`bench/llm/results/run.jsonl`, summarized in `bench/llm/RESULTS.md`).
-The harness now has a fourth arm, `habu-lib`, which gives Habu checked array
-helpers; rerun the benchmark to collect live library-arm rows. Headline from the
-committed raw-Habu/JS/Rust data:
+The committed evidence is 10 array tasks × 4 arms × 2 trials = 80 trials
+(`bench/llm/results/run.jsonl`, summarized in `bench/llm/RESULTS.md`). The fourth
+arm, `habu-lib`, gives Habu checked array helpers (`A@`, `A!`, `A-SWAP`,
+`MIRROR-INDEX`, `EVEN?`) so the run directly compares raw Habu against a small
+LLM-facing checked library.
 
 | language | trial pass | first-try green | task pass@k | mean output-tokens-to-green | max |
 |---|---|---|---|---|---|
-| Habu raw | 95% | 90% | 100% | **629** | 5545 |
-| Habu + array helpers | pending new run | pending new run | pending new run | pending new run | pending new run |
-| JavaScript | 100% | 100% | 100% | 91 | 154 |
-| Rust | 100% | 95% | 100% | 86 | 181 |
+| Habu raw | 90% | 80% | 100% | **753** | 4494 |
+| Habu + array helpers | 95% | 95% | 100% | **630** | 3483 |
+| JavaScript | 85% | 85% | 100% | 100 | 314 |
+| Rust | 95% | 90% | 100% | 78 | 200 |
 
 **Conclusions:**
-1. **Task-level correctness parity, trial-level reliability gap.** In the committed
-   raw-Habu evidence, the model reaches a
-   correct Habu solution for every task under k=2 (task pass@k 100%, equal to JS/Rust),
-   so Habu is a *viable* LLM codegen target. The stricter trial-level result is 19/20
-   green Habu trials vs 20/20 JS and 20/20 Rust; the one miss is an ARGMAX driver
-   error row after the model-call timeout.
+1. **Task-level correctness parity, trial-level misses.** In the committed
+   four-arm evidence, every arm reaches a correct solution for every task under
+   k=2 (task pass@k 100%). The stricter trial-level result is Habu raw 18/20,
+   Habu + helpers 19/20, JS 17/20, Rust 19/20; the misses are recorded in
+   `RESULTS.md` as non-pass rows.
 2. **A large but SKEWED effort gap.** "Output tokens to green" counts generated output
-   tokens on passing trials. It is not direct access to hidden reasoning, but it is a
-   useful generation-effort proxy. The distribution is **bimodal**:
+   tokens on passing trials with positive token counts. It is not direct access
+   to hidden reasoning, but it is a useful generation-effort proxy. The
+   distribution is **bimodal**:
    - *Simple elementwise loops* (ARR-SUM, SQ-EACH, NEGATE-EACH, ARR-MAX): habu ≈ **1×**
      (comparable or cheaper — terse source, regular shape).
    - *Index tracking / carried state / in-place rearrangement* (ARGMAX, REVERSE, RUNMAX,
-     PREFIXSUM, COUNT-EVEN): habu **5×–60×**. Worst: ARGMAX ≈ **5545 tokens vs ~100** (60×).
-   - Net mean ≈ **7×**, almost entirely from this hard tail.
+     PREFIXSUM, COUNT-EVEN): the hard tail remains. Worst measured raw-Habu row:
+     ARGMAX ≈ **4494 tokens vs 77** (58×).
+   - Net mean: raw Habu ≈ **9.6×** the cheapest mainstream arm; helper Habu ≈ **8.1×**
+     the cheapest mainstream arm and ≈ **0.8×** raw Habu.
 3. **Cause:** the corpus-familiarity tax. habu's typed pointers (`arr:ptr`), `i cells arr + @`/`!`
    indexing, and in-place concatenative loops have ~zero pretraining, so the model reasons each
    step from first principles — cheap when the stack shape is obvious, expensive when it must
-   juggle. The `habu-lib` arm is designed to test whether checked helper words (`A@`, `A!`,
-   `A-SWAP`, `MIRROR-INDEX`, `EVEN?`) reduce that tax without weakening Habu's checker.
+   juggle. The helper arm did not close the mean-token gap in this run; it slightly
+   reduced the mean vs raw Habu but still showed hard-tail spikes. It helped REVERSE,
+   COUNT-EVEN, ARGMAX, and RUNMAX in this run, but hurt PREFIXSUM and several simple
+   loops.
 
-The per-task token table (with the 1×→60× ratios) is in `RESULTS.md`.
+All passing rows in the committed evidence have positive output-token counts. The
+per-task token table is in `RESULTS.md`.
 
 ---
 
@@ -107,9 +112,7 @@ Then compare `/tmp/RESULTS.md` to the committed `bench/llm/RESULTS.md`. Exact to
 WILL differ run-to-run (model nondeterminism), but the **shape** must reproduce: pass@k ≈ 100%
 for all arms, trial pass close to the table in §2, and Habu's per-task tokens ≈ 1× on the
 elementwise tasks and many-× (especially ARGMAX) on the index/state/in-place tasks. The
-committed `run.jsonl` is the exact evidence behind the raw-Habu/JS/Rust numbers
-in §2; because it predates `habu-lib`, the report marks library rows as missing
-until a new run is produced.
+committed `run.jsonl` is the exact evidence behind all four arms in §2.
 
 ### V4 — Spot-check a single live cell
 ```
@@ -182,15 +185,15 @@ addition.
   juggling), which are insensitive to per-token terseness.
 - **Both Habu arms use the checker** (it's how you'd really write habu); a rejection costs a
   repair round. This *helps* habu (localizes errors) but also means over-strict rejections cost
-  rounds. Observed repair rounds were low (mean 1.05), so this is a minor factor here.
-- **Task pass@k hides trial misses.** Habu is 100% at task pass@k because each task has at
-  least one green trial, but trial pass is 95% because one ARGMAX model call failed after the
-  timeout. Use both numbers.
+  rounds. Observed repair rounds were low (raw mean 1.11, helper mean 1.0), so this is a minor
+  factor here.
+- **Task pass@k hides trial misses.** Every arm is 100% at task pass@k because each task has at
+  least one green trial, but trial pass ranges from 85% to 95%. Use both numbers.
 - **Model nondeterminism.** `claude -p` is not bit-reproducible. k=2; verify the *shape*, not
   exact tokens. The habu side (engine, checker, grading) is fully deterministic.
 - **Output-tokens-as-effort** is a proxy. It is generated-token cost, not direct hidden
-  reasoning. It correlates with wall time in the data (ARGMAX Habu: 5545 tokens / 85 s vs
-  JS: ~90 / 4 s), but a model that emits less verbose output could shift absolute numbers;
+  reasoning. It correlates with wall time in the data (ARGMAX raw Habu: 4494 tokens / 63 s vs
+  JS: 77 / 6 s), but a model that emits less verbose output could shift absolute numbers;
   the *ratio* across languages is the durable signal.
 - **Scope.** 10 single-array tasks, two conventions. Harder tasks (sorting, binary search,
   NxN matrices over memory) would likely *widen* the tail — an obvious next step.
@@ -202,6 +205,6 @@ addition.
 - The original three-arm harness code, `RESULTS.md`, and `run.jsonl` landed in jj commit
   `ce34f03f bench: habu vs JS/Rust on array/memory algorithms`. `run.jsonl` is tracked as the
   evidence record; only `*.log` under `results/` is gitignored.
-- The four-arm harness adds `habu-lib` as a checked-library A/B against raw Habu. Until a fresh
-  live run is committed, `RESULTS.md` marks helper rows as missing instead of extrapolating.
+- The four-arm harness adds `habu-lib` as a checked-library A/B against raw Habu; the committed
+  `run.jsonl` includes all four arms.
 - The `depth` primitive is a separate commit already on `habu` master.
