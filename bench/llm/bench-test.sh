@@ -10,6 +10,13 @@ fails=0
 mkstub() { printf '#!/bin/sh\n%s\n' "$2" > "$1"; chmod +x "$1"; }
 chk() { if printf '%s' "$3" | grep -q "$2"; then echo "ok: $1"; else echo "FAIL: $1 -> $3"; fails=$((fails+1)); fi; }
 
+printf '{"result":": X ;","modelUsage":{"claude-opus-4":{"outputTokens":7}}}\n' > "$T/resp.json"
+rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/resp.txt")
+[ "$rt" = 7 ] && [ "$(cat "$T/resp.txt")" = ': X ;' ] && echo "ok: parse-resp-modelUsage" || {
+  echo "FAIL: parse-resp-modelUsage -> tokens=$rt text=$(cat "$T/resp.txt")"
+  fails=$((fails+1))
+}
+
 # --- conv=as : ARR-SUM (array -> scalar) ---
 mkstub "$T/hb.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells arr + @ + loop ;"'
 mkstub "$T/hbl.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do arr i A@ + loop ;"'

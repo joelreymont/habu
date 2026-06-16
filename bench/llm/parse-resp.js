@@ -7,11 +7,19 @@
 const fs = require('fs');
 const raw = fs.readFileSync(process.argv[2], 'utf8');
 let result = raw, toks = 0;
+function modelUsageTokens(j) {
+  if (!j || !j.modelUsage || typeof j.modelUsage !== 'object') return 0;
+  return Object.values(j.modelUsage).reduce((sum, m) => {
+    const n = m && Number(m.outputTokens);
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+}
 try {
   const j = JSON.parse(raw);
   if (j && typeof j.result === 'string') {
     result = j.result;
-    toks = (j.usage && j.usage.output_tokens) || 0;
+    const usageTokens = j.usage && Number(j.usage.output_tokens);
+    toks = (Number.isFinite(usageTokens) && usageTokens > 0) ? usageTokens : modelUsageTokens(j);
   }
 } catch (e) { /* raw text stub */ }
 fs.writeFileSync(process.argv[3], result);
