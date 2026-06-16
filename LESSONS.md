@@ -12,9 +12,8 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   with `tools/seed.sh /path/to/hb-seed`; optional SHA-256 verification plus the
   immediate `tools/build.sh` fixpoint make the installed binary current-source
   native, without making gforth the normal trust root.
-- **Gforth is historical bootstrap only:** daily work uses `bin/hb`,
-  `tools/build.sh`, and `test/run.sh`. No-binary recovery uses `tools/seed.sh`;
-  the old gforth oracle script is retired.
+- **No hosted bootstrap in daily work:** daily work uses `bin/hb`,
+  `tools/build.sh`, and `test/run.sh`. No-binary recovery uses `tools/seed.sh`.
 - **Native rebuilds need private temp dirs:** parallel jj workspaces share host
   `/tmp`; fixed names like `stage2-got` race. `tools/build.sh`,
   `tools/seed.sh`, and `test/run.sh` allocate and export private `HB_TMP`
@@ -160,9 +159,3 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **LLM benchmark reports need separate axes:** keep trial pass, task pass@k,
   repair rounds, wall time, and generated-token cost distinct. Output tokens are
   an effort proxy, not direct access to hidden reasoning.
-
-## Historical Bootstrap
-
-- **Old gforth runs need isolation:** if deliberately using historical bootstrap
-  code, isolate gforth/libcc caches; concurrent runs can corrupt
-  `~/.cache/gforth`.

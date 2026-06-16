@@ -100,7 +100,7 @@ json_only() {
 } > "$STAGE2_SRC"
 rm -f "$STAGE2_GOT"
 bin/hb < src/habu/stage2.f
-[ -f "$STAGE2_GOT" ] || { echo "hb-build: bootstrap maker did not produce stage2-got"; exit 74; }
+[ -f "$STAGE2_GOT" ] || { echo "hb-build: native maker did not produce stage2-got"; exit 74; }
 mv "$STAGE2_GOT" "$MKPATH"
 chmod +x "$MKPATH"
 

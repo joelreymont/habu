@@ -72,8 +72,7 @@ effect: `Din -- Dout | Rin -- Rout`.)
 Supported by the native checker: typed `:` definitions, literals, the primitive
 set, polymorphic signatures, `IF/ELSE/THEN`,
 `BEGIN…UNTIL/WHILE…REPEAT/AGAIN`, `?DO…LOOP/+LOOP`, `RECURSE`/`EXIT`, typed
-locals (`{: a b :}`, or the gforth `{ a:u8 -- }` form — which needs the def to
-carry a typed `( … )` signature, else it's raw gforth that rejects `a:u8`),
+locals (`{: a b :}` in checked definitions),
 quotations (`[: ;]`), `'`/`['] ` (xt typed
 as quot), the return stack (`>R R> R@`), pointer/memory ops, and `TRUSTED:`
 annotations for words whose effect can't be inferred (FFI, metaprogramming).

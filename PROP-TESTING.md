@@ -26,9 +26,8 @@ and any certify-but-wrong fails the build.
 
 A false-cert is "checker says correct, but it isn't," so catching it needs a
 **second source of truth about correctness**. We deliberately do **not** use the
-gforth-hosted checker as a differential oracle: that would chain the native
-checker to a bootstrap artifact forever (every native change mirrored in
-`bootstrap/src` to keep the diff meaningful). The stronger, gforth-free oracle is
+old host-side checker as a differential oracle: that would chain the native
+checker to a retired mirror forever. The stronger, gforth-free oracle is
 **the program's own behavior** — run it in `bin/hb` and measure what it really
 does to the stack.
 

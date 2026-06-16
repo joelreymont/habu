@@ -1,7 +1,7 @@
 #!/bin/sh
 # the canonical habu compiler source, in dependency order (the fixpoint payload).
-# util/checker/render come FIRST so the check hook (inserted before sha256.f by
-# build/bootstrap) covers the entire toolchain — asm vocabulary included.
+# util/checker/render come FIRST so the check hook covers the entire toolchain,
+# asm vocabulary included.
 # optional arg picks the driver appended last: stage2 (default), stdin, snap,
 # build, or aot.
 D=${1:-stage2}

@@ -13,6 +13,3 @@ trusted checkout. `tools/seed.sh` copies it to `bin/hb`, optionally verifies the
 SHA-256, runs a smoke program, then runs `tools/build.sh`. The installed binary is
 therefore rebuilt from the current source and must pass the normal self-rebuild
 fixpoint.
-
-Gforth bootstrap is historical recovery only and is disabled by default. Use it
-only for deliberate bootstrap archaeology, with `HABU_ALLOW_GFORTH_BOOTSTRAP=1`.

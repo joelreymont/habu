@@ -13,7 +13,7 @@ roadmap.
   prose outside code.
 - No-binary recovery uses `tools/seed.sh /path/to/hb-seed`; the seed is a trusted
   native `hb` that immediately rebuilds current source through `tools/build.sh`.
-  Gforth bootstrap is historical and requires `HABU_ALLOW_GFORTH_BOOTSTRAP=1`.
+  There is no supported build-from-gforth recovery path in this checkout.
 
 ## Forth style (BLOCKING)
 

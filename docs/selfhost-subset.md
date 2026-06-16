@@ -66,7 +66,7 @@ in both compile and interpret mode — so a future edit that reaches outside the
 subset fails the gate immediately. The standalone is the enforcement, not a
 separate checker script.
 
-## Semantic deltas (same name, different behaviour than gforth)
+## Semantic deltas (same name, different behaviour than full Forths)
 
 Vocabulary closure is necessary but not sufficient — these standalone words *behave*
 differently, and subset source must be written for the standalone's semantics:

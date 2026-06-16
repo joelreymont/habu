@@ -109,7 +109,7 @@ rule; effect-DB word → apply (INST then compose); FORBIDDEN-without-annotation
   reported `E-LOOP`. `I J` push the loop index `( ρ -- ρ i64 )`; `LEAVE UNLOOP`
   handled; `EXIT` unifies the current effect with the declared output; `RECURSE`
   uses the current definition's **declared** effect.
-- **Locals** — `{ a:u8 b -- }` / gforth `{: a b :}`: pop named inputs (a typed
+- **Locals** — `{: a b :}`: pop named inputs (a typed
   name asserts its type), open a scope where each name use pushes its type; scope
   ends at `;`.
 - **Quotations & higher order** — `[: … ;]` checks its body to a generalized
@@ -165,16 +165,14 @@ reentrancy → delegate to `NATIVE:`; (2) `PARSE-NAME` the name; (3) parse the
 effect ourselves; (4) **capture the structured body**: a `parse-name` loop that
 (a) tracks nesting of `[: … ;]`, `{ … }`/`{: … :}`, and control words to find the
 matching top-level `;`, and (b) **consumes the delimited span of every parsing
-word** — native today consumes `(  \  S"  C"  ."  CHAR  [CHAR]` spans; the
-gforth-tier/full-Forth capture target also includes `S\"` and `.(` — via
+word** — native today consumes `(  \  S"  C"  ."  CHAR  [CHAR]` spans via
 `parse`/`>in` so an embedded `;` inside a string/comment never terminates
 capture (a pure `parse-name` loop is provably wrong here). Copy each token's bytes out
 immediately (a `parse-name` address dies at the next parse); (5) run the checker
 inside `CATCH`; (6) on success set `RE-EMIT?`, re-`EVALUATE` `: NAME body ;`,
 generalize + record the effect; (7) on failure format the diagnostic, define
-nothing. (Verified in 0.7.9: native `:` non-immediate, `RECURSE` survives
-re-EVALUATE, nesting-aware capture, quotations/locals round-trip. Avoid the name
-`NT` — a gforth built-in.)
+nothing. Native `:` is non-immediate, `RECURSE` survives re-EVALUATE, and
+nesting-aware capture preserves quotations/locals round-trip.
 
 ## Primitive table (closed checklist)
 
@@ -285,7 +283,7 @@ standalone parsing-aware lexer used by `colon`.
 
 ## Milestones (build order — all in final scope)
 
-1. **Done** — Gforth 0.7.9 built.
+1. **Done** — Native `bin/hb` self-hosts and reaches a fixpoint.
 2. **config + forward** — constants/tags/codes; `defer` all seams (occurs, hooks)
    with pinned effects. Tests: constants present; defers callable (stubbed).
 3. **arena** — bounds-checked heap. Tests: alloc/reset/overflow→`E-ARENA`.
