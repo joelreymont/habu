@@ -142,6 +142,7 @@ GATE_JSON=$T/gate-json-assert.f
 cat tools/json.f tools/gate-json-assert.f > "$GATE_JSON"
 printf ': JBAD ( i64 -- i64 ) dup ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json.err && { echo "FAIL: tools/check.sh --json-errors accepted bad def"; exit 1; }
 bin/hb "$GATE_JSON" json-lines-schema "$T/habu-json.err"
+bin/hb "$GATE_JSON" diag-repair-class "$T/habu-json.err" remove_producer
 grep -q '"verdict":"rejected"' $T/habu-json.err || { echo "FAIL: --json-errors missing verdict"; exit 1; }
 grep -q '"declared_effect":"i64 -- i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing declared effect"; exit 1; }
 grep -q '"inferred_effect":"i64 -- i64 i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing inferred effect"; exit 1; }
@@ -152,6 +153,12 @@ grep -q '"column":' $T/habu-json.err || { echo "FAIL: --json-errors missing colu
 grep -q '"byte_start":' $T/habu-json.err || { echo "FAIL: --json-errors missing byte_start"; exit 1; }
 grep -q '"byte_end":' $T/habu-json.err || { echo "FAIL: --json-errors missing byte_end"; exit 1; }
 grep -q '"definition_source":' $T/habu-json.err || { echo "FAIL: --json-errors missing definition source"; exit 1; }
+printf ': JMISS ( i64 -- i64 ) drop ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json-miss.err && { echo "FAIL: tools/check.sh --json-errors accepted missing producer"; exit 1; }
+bin/hb "$GATE_JSON" diag-repair-class "$T/habu-json-miss.err" add_producer
+printf ': JTYPE ( i64 -- i64 ) 0= ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json-type.err && { echo "FAIL: tools/check.sh --json-errors accepted type mismatch"; exit 1; }
+bin/hb "$GATE_JSON" diag-repair-class "$T/habu-json-type.err" fix_type
+printf ': JRET ( i64 -- ) >r ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json-ret.err && { echo "FAIL: tools/check.sh --json-errors accepted return-stack imbalance"; exit 1; }
+bin/hb "$GATE_JSON" diag-repair-class "$T/habu-json-ret.err" fix_return_stack
 cat > $T/habu-json-file.f <<'EOF'
 \ prelude
 
@@ -175,6 +182,7 @@ out=$(printf 's" EV ( -- n ) evaluate" CHECK! .\ns" PO ( -- ) postpone dup" CHEC
 printf ': EV ( -- n ) evaluate ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-unsafe.err && { echo "FAIL: tools/check.sh accepted unsafe evaluate"; exit 1; }
 grep -q '"code":"E-UNSAFE"' $T/habu-unsafe.err || { echo "FAIL: unsafe checker missing E-UNSAFE"; exit 1; }
 grep -q '"token":"evaluate"' $T/habu-unsafe.err || { echo "FAIL: unsafe checker missing token"; exit 1; }
+bin/hb "$GATE_JSON" diag-repair-class "$T/habu-unsafe.err" trusted_boundary_required
 printf ': EV ( -- n ) evaluate ;\nEV .\n' | bin/hb >/dev/null 2>&1 && { echo "FAIL: hb published unsafe evaluate definition"; exit 1; }
 cat > $T/habu-all-errors.f <<'EOF'
 : OK ( i64 -- i64 ) dup * ;

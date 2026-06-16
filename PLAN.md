@@ -199,6 +199,7 @@ In WORD:
   at token: <tok>
   expected: <stack>
   actual:   <stack>
+  repair_class: <machine-readable class>
   <one-line reason>   (E-CODE)
 ```
 Stacks render bottom→top with the row var as `R`/`S`, type vars `a b …` by first

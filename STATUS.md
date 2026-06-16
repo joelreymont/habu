@@ -67,8 +67,8 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
 - **Trust** — `trust` charts an asserted effect for the un-inferable; see
   `TRUSTED.md`. Callers are still checked.
 - **Diagnostics** — reject diagnostics to stderr; `JSON-DIAGS ON` switches to a
-  structured JSON object per reject (code/word/token/expected/actual) for LLM
-  repair (`test/t-sh-jdiag.fs`).
+  structured JSON object per reject (code/repair_class/word/token/expected/actual)
+  for LLM repair (`test/t-sh-jdiag.fs`).
 
 ## Current state and gaps
 

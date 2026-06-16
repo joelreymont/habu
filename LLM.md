@@ -84,7 +84,8 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   `tests_passed=true`.
 - Repair quality: minimize `repair_iterations`, `checker_iterations`, and
   `diagnostic_count`; every diagnostic must identify the failing definition,
-  token/span, expected stack, actual stack, and stable error code.
+  token/span, expected stack, actual stack, stable error code, and
+  machine-readable `repair_class`.
 - Safety: `trust_uses=0` unless the task explicitly requires an audited boundary;
   `signature_weakened=false` always. Fix bodies before signatures.
 - Cost: track `tokens_used`, `wall_ms`, and `final_chars`; fast feedback matters

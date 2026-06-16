@@ -163,6 +163,25 @@ variable DSUGE  variable DSUGA
    SGBAD @ IF s" E-BAD-SIGNATURE" ELSE
    DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN ;
 : DVERDICT  DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN ;
+: RETURN-MISMATCH? ( -- f )
+   SGHASR @ IF
+      RCUR @ R-RES  SGROUT @ R-RES  <>
+   ELSE
+      RCUR @ R-RES  RBROW @ R-RES  <>
+   THEN ;
+: REPAIR-CLASS ( -- a u )
+   UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
+   DVERD @ 1 = IF s" rewrite_uncheckable" EXIT THEN
+   SGBAD @ IF s" fix_signature_syntax" EXIT THEN
+   DEXP @ 0= IF
+      RETURN-MISMATCH? IF s" fix_return_stack" ELSE s" unknown_rejection" THEN
+      EXIT
+   THEN
+   DEXP @ REND-COLLECT RBN @ DSUGE !
+   DACT @ REND-COLLECT RBN @ DSUGA !
+   DSUGA @ DSUGE @ > IF s" remove_producer" ELSE
+   DSUGA @ DSUGE @ < IF s" add_producer" ELSE
+   s" fix_type" THEN THEN ;
 \ a length-based repair hint: more values out than declared (remove a producer),
 \ fewer (consumes too much), or equal (a type mismatch — fix the body not the sig).
 : SUGGEST-TEXT ( -- a u )
@@ -171,8 +190,8 @@ variable DSUGE  variable DSUGA
    DEXP @ 0= IF s" rejected without a captured stack mismatch; inspect the token and declared signature" EXIT THEN
    DEXP @ REND-COLLECT RBN @ DSUGE !
    DACT @ REND-COLLECT RBN @ DSUGA !
-   DSUGA @ DSUGE @ > IF  s" the body leaves more values than declared — remove a producer or add outputs to the signature"
-   ELSE DSUGA @ DSUGE @ < IF  s" the body leaves fewer values than declared — it consumes too much, or declare fewer outputs"
+   DSUGA @ DSUGE @ > IF  s" the body leaves more values than declared; remove a producer or drop the extra value"
+   ELSE DSUGA @ DSUGE @ < IF  s" the body leaves fewer values than declared; add or restore a producer, or stop consuming a required value"
    ELSE  s" type mismatch at this token — fix the body to match the signature, do not weaken the signature"
    THEN THEN ;
 variable JPOS  variable JLINE  variable JCOL
@@ -202,6 +221,7 @@ variable JPOS  variable JLINE  variable JCOL
    123 EMIT1                                              \ {
    s" schema_version" JKEY 1 JNUM 44 EMIT1
    s" code" JKEY   DCODE JSTR  44 EMIT1
+   s" repair_class" JKEY REPAIR-CLASS JSTR  44 EMIT1
    s" verdict" JKEY DVERDICT JSTR  44 EMIT1
    s" word" JKEY   NMA @ NMU @ JSTR   44 EMIT1
    s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1

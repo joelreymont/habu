@@ -24,6 +24,7 @@ require sh-driver.fs
 \ machine-readable repair context.
 T{ -1 SRC ERR-OF  s\" {\"schema_version\":1" HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"code\":\"E-MISMATCH\"" HAS? -> true }T
+T{ -1 SRC ERR-OF  s\" \"repair_class\":\"remove_producer\"" HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"verdict\":\"rejected\"" HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"word\":\"sqbad\""        HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"token\":\"dup\""         HAS? -> true }T
@@ -40,6 +41,7 @@ T{ -1 SRC ERR-OF  s\" \"return_stack\":{\"expected\":\"\"" HAS? -> true }T
 T{ -1 SRC ERR-OF  s\" \"suggestion\":\"the body leaves more"  HAS? -> true }T
 \ JSON on also classifies uncheckable definitions distinctly.
 T{ SRC-U ERR-OF  s\" \"code\":\"E-UNCHECKABLE\"" HAS? -> true }T
+T{ SRC-U ERR-OF  s\" \"repair_class\":\"rewrite_uncheckable\"" HAS? -> true }T
 T{ SRC-U ERR-OF  s\" \"verdict\":\"uncheckable\"" HAS? -> true }T
 T{ SRC-U ERR-OF  s\" \"token\":\"leave\"" HAS? -> true }T
 T{ SRC-U ERR-OF  s\" \"token_index\":2" HAS? -> true }T

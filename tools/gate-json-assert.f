@@ -195,6 +195,10 @@ variable GJA-DIRECT
 : GJA-ASSERT-STR ( node a u -- )
    GJA-STR= 0= IF s" unexpected JSON string" GJA-FAIL THEN ;
 
+: GJA-NONEMPTY-STR ( node -- )
+   dup JSON-KIND J-STR <> IF drop s" expected JSON string" GJA-FAIL THEN
+   JSON-STRING$ nip 0= IF s" expected nonempty JSON string" GJA-FAIL THEN ;
+
 : GJA-SCHEMA1 ( root -- )
    s" schema_version" GJA-REQ GJA-INT 1 <> IF s" schema_version is not 1" GJA-FAIL THEN ;
 
@@ -263,6 +267,13 @@ variable GJA-DIRECT
    GJA-ROOT @ s" column" GJA-COL @ GJA-ASSERT-INT-FIELD
    GJA-ROOT @ s" byte_start" GJA-IDX @ GJA-ASSERT-INT-FIELD
    GJA-ROOT @ s" byte_end" GJA-IDX @ 3 + GJA-ASSERT-INT-FIELD ;
+
+: GJA-DIAG-REPAIR-CLASS ( json-a json-u class-a class-u -- )
+   GJA-WANT-U ! GJA-WANT-A !
+   GJA-FIRST-JSON GJA-ROOT !
+   GJA-ROOT @ s" repair_class" GJA-REQ
+   GJA-WANT-A @ GJA-WANT-U @ GJA-ASSERT-STR
+   GJA-ROOT @ s" suggestion" GJA-REQ GJA-NONEMPTY-STR ;
 
 : GJA-ALL-ERRORS ( path-a path-u -- )
    0 GJA-OK1 ! 0 GJA-OK2 !
@@ -360,6 +371,10 @@ variable GJA-DIRECT
    0 SCRIPT-ARGV$ s" diag-file-origin" GJA-BYTES= IF
       SCRIPT-ARGC 3 <> IF GJA-USAGE THEN
       1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-DIAG-FILE-ORIGIN exit
+   THEN
+   0 SCRIPT-ARGV$ s" diag-repair-class" GJA-BYTES= IF
+      SCRIPT-ARGC 3 <> IF GJA-USAGE THEN
+      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-DIAG-REPAIR-CLASS exit
    THEN
    0 SCRIPT-ARGV$ s" all-errors" GJA-BYTES= IF
       SCRIPT-ARGC 2 <> IF GJA-USAGE THEN
