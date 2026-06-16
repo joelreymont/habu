@@ -154,8 +154,9 @@ case-meaningful element is the **single-letter signature var** — lower-case = 
 var, upper-case = row var — unambiguous because type names are ≥2 chars.
 
 **Grammar** `( in -- out )` (+ optional `| rin -- rout`): type names
-`i64 u8 u32 cell bool char str addr`; `ptr< τ >`; quotation `[ in -- out ]` →
-`quot<…>`; type vars `a b c …` (normalized by first appearance); row vars
+`i64 u8 u32 cell bool char str addr`; `ptr< τ >`; quotation
+`[ in -- out [| rin -- rout] ]` → `quot<…>`; type vars `a b c …` (normalized by
+first appearance); row vars
 `R S …` (one leading row var implicit if omitted). One parser builds normalized
 schemes; serves primitives, `TRUSTED:`, and user `:` (user sigs may be
 polymorphic). A checked `:` **must** carry an effect.
@@ -257,11 +258,10 @@ return row, typed locals, quotations + typed execute, trust) — the toolchain
 self-checks clean (see `STATUS.md`). The native sig grammar has named row vars,
 quotation sub-sigs, and scheme-string recording of quot-bearing sigs
 (combinator call sites check against them). Native now has distinct concrete types
-(n = generic int, subsumes the widths), the `| rin -- rout` return clause, and
-nested quotations and native parametric `ptr a`. Bracketed quotation signature
-syntax is data-stack-only today; actual quote terms still thread return rows
-through `execute`. See `src/habu/habu1.f` and `src/habu/habu2.f` for the engine
-side.
+(n = generic int, subsumes the widths), the `| rin -- rout` return clause,
+nested quotations, bracketed quotation return clauses, and native parametric
+`ptr a`. Actual quote terms thread return rows through `execute`. See
+`src/habu/habu1.f` and `src/habu/habu2.f` for the engine side.
 
 ```
 habu/  AGENTS.md LESSONS.md PLAN.md README.md .gitignore  docs/forth.md

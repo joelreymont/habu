@@ -57,8 +57,8 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   a quote's early `exit` does NOT leak to the enclosing word.
 - **Sig grammar** — distinct concrete types (`i64 u8 u32 cell char str addr bool`,
   `n` = generic int), type vars, named row vars, the `| rin -- rout` return
-  clause, quotation sub-sigs `[ in -- out ]` (recorded so combinator call sites
-  check against them), nested quotations.
+  clause, quotation sub-sigs `[ in -- out [| rin -- rout] ]` (recorded so
+  combinator call sites check against them), nested quotations.
 - **Parsing words** — `s"`, `c"`, `."`, `[char]`, and interpret-mode `char` are
   modeled and covered in runtime, checker, and AOT tests.
 - **Higher-order library** — `DIP KEEP BI TRI TIMES EACH MAP FOLD` are runnable

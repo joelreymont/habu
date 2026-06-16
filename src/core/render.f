@@ -42,7 +42,9 @@ create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PA
    p CC-BOOL = IF s" bool" RSTR ELSE
    63 EMIT1 THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
-\ a quot type renders [ in -- out ] (two nesting levels; deeper caps at '?').
+\ a quot type renders [ in -- out ] or [ in -- out | rin -- rout ] when the
+\ quotation has a non-neutral return-stack effect (two nesting levels; deeper
+\ caps at '?').
 \ Gap2/3: quot-bearing sigs now RECORD as scheme-strings and round-trip, so
 \ combinator call sites (dip, keep) are checked against them. Only a genuine '?'
 \ (an unmodeled tag, via RQM) still blocks recording — see REC-SIG below.
@@ -65,13 +67,23 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
    Q2BN @ BEGIN dup 0 > WHILE 1 - dup cells Q2BUF + @ Q2REND-1
      dup 0 > IF 32 EMIT1 THEN REPEAT drop ;
 
+: QRET? ( q -- f ) {: q :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
+
+: Q2RET ( q -- ) {: q :}
+   q QRET? IF
+      32 EMIT1 124 EMIT1 32 EMIT1
+      q Q>RIN Q2REND-ROW 45 EMIT1 45 EMIT1 32 EMIT1
+      q Q>ROUT Q2REND-ROW
+   THEN ;
+
 : QREND-1 {: t :} t T-RES {: r :}               \ level-1 leaf: con | var | nested quot
    r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
    r TAG T-CON = IF r PAY CON-OUT ELSE
    r TAG T-PTR = IF s" ptr " RSTR  r PTR>INNER RECURSE ELSE
-   r TAG T-QUOT = IF                            \ a nested quot -> [ in -- out ]
+   r TAG T-QUOT = IF                            \ a nested quot -> [ in -- out ... ]
      91 EMIT1 32 EMIT1  r Q>DIN Q2REND-ROW
-     45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT Q2REND-ROW  93 EMIT1
+     45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT Q2REND-ROW
+     r Q2RET  93 EMIT1
    ELSE 63 EMIT1 THEN THEN THEN THEN ;
 
 : QREND-ROW {: row :}  0 QRBN !  row
@@ -82,13 +94,21 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
    QRBN @ BEGIN dup 0 > WHILE 1 - dup cells QRBUF + @ QREND-1
      dup 0 > IF 32 EMIT1 THEN REPEAT drop ;
 
+: QRET ( q -- ) {: q :}
+   q QRET? IF
+      32 EMIT1 124 EMIT1 32 EMIT1
+      q Q>RIN QREND-ROW 45 EMIT1 45 EMIT1 32 EMIT1
+      q Q>ROUT QREND-ROW
+   THEN ;
+
 : REND-TYPE {: t :} t T-RES {: r :}
    r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
    r TAG T-CON = IF r PAY CON-OUT ELSE
    r TAG T-PTR = IF s" ptr " RSTR  r PTR>INNER RECURSE ELSE
-   r TAG T-QUOT = IF                                     \ quot<effect> -> [ in -- out ]
+   r TAG T-QUOT = IF                                     \ quot<effect> -> [ in -- out ... ]
      91 EMIT1 32 EMIT1  r Q>DIN QREND-ROW
-     45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT QREND-ROW  93 EMIT1
+     45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT QREND-ROW
+     r QRET  93 EMIT1
    ELSE 63 EMIT1 THEN THEN THEN THEN ;
 create RBUF 64 cells allot   variable RBN
 

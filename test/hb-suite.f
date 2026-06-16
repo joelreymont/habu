@@ -86,6 +86,12 @@ here 10 over ! 5 over +! @ 15 T=
 \ quotations + combinators
 : TQ1 5 [: 1 + ;] execute ;
 TQ1 6 T=
+: RUN-R> ( [ -- i64 | i64 -- ] -- i64 ) 7 >r execute ;
+: TQRIN [: r> ;] RUN-R> ;
+TQRIN 7 T=
+: RUN->R ( [ -- | -- i64 ] -- i64 ) execute r> ;
+: TQROUT [: 9 >r ;] RUN->R ;
+TQROUT 9 T=
 : TDIP 10 3 [: 2 * ;] DIP + ;
 TDIP 23 T=
 : TKEEP 7 [: 1+ ;] KEEP + ;

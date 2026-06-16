@@ -361,8 +361,8 @@ create ROWMAP 26 cells allot
 
 \ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
 \ upper-case token names the row (shared by letter); else the passed implicit
-\ tail is used. Types fold bottom->top; '[' in -- out ']' is a quot<effect>
-\ (RECURSE for the nested stacks; rin=rout=one fresh row -> no return effect).
+\ tail is used. Types fold bottom->top; '[' in -- out [ '|' rin -- rout ] ']'
+\ is a quot<effect> (RECURSE for nested stacks; no '|' means rin=rout).
 \ tail is a LOCAL so it survives RECURSE; the data stack holds only the row.
 : PSTACK {: tail :}
    NEXT-SIG-TOK 2dup ROW-LEAD? IF
@@ -372,12 +372,30 @@ create ROWMAP 26 cells allot
      NEXT-SIG-TOK 2dup DELIM? IF PK! EXIT THEN        \ ( row a u )->PK!->( row ), return
      2dup s" [" STR= IF
         2drop
-        FRESH MK-ROW                                  \ the quot's shared data row
-        dup RECURSE                                   \ quot in-stack (on qrow)
-        s" --" EXPECT-SIG                             \ require '--'
-        swap RECURSE                                  \ quot out-stack (on qrow)
-        s" ]" EXPECT-SIG                              \ require ']'
-        FRESH MK-ROW dup MK-QUOT                      \ rin = rout (no return effect)
+        FRESH MK-ROW                                  \ q data row
+        FRESH MK-ROW                                  \ q return row
+        over RECURSE                                  \ row qd qr qin
+        s" --" EXPECT-SIG
+        >r >r                                         \ park qin qr
+        RECURSE                                       \ row qout
+        r>
+        NEXT-SIG-TOK 2dup s" |" STR= IF
+           2drop
+           dup RECURSE                                \ row qout qr qrin
+           s" --" EXPECT-SIG
+           >r dup RECURSE                             \ row qout qr qrout
+           s" ]" EXPECT-SIG
+           swap drop                                  \ row qout qrout
+           r> r> 2swap >r rot r>                      \ row qin qout qrin qrout
+        ELSE
+           2dup s" ]" STR= IF
+              2drop
+           ELSE
+              2drop -1 SGBAD !
+           THEN
+           r> swap >r swap r> dup                     \ row qin qout qrin qrout
+        THEN
+        MK-QUOT
         swap MK-PUSH
      ELSE
         SIG-TYPE  swap MK-PUSH
