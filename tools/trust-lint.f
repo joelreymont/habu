@@ -302,7 +302,7 @@ variable TL-NV
       2dup PARSE-YMD 0= IF drop TL-BAD-TODAY THEN
       TL-TODAY-DAYS ! 2drop TL-TODAY-DAYS @ exit
    THEN
-   2drop epoch-seconds DATE-SECONDS-DAY / ;
+   2drop TL-TODAY-DAYS @ ;
 
 : TL-CHECK-SITE {: sk :} ( sk -- )
    sk TL-S-NAME$ TL-FIND-MAN dup 0 < IF
@@ -367,4 +367,5 @@ variable TL-NV
    s"  finding(s)" TL-OUT TL-NL
    TL-BAD @ 0 > IF 1 throw THEN ;
 
+epoch-seconds DATE-SECONDS-DAY / TL-TODAY-DAYS !
 TRUST-LINT
