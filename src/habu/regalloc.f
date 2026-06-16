@@ -1,5 +1,4 @@
-\ regalloc.f — THE register allocator, transcribed from bootstrap/cg/regalloc.fs
-\ (lockstep; parity-linted). One place to look:
+\ regalloc.f — THE register allocator. One place to look:
 \   - VRPACK: the pool TABLE — one byte per slot, idx 0 at the low byte. To
 \     widen the pool or port an arch, edit this literal (and only this file).
 \   - #POOL / VRALL are DERIVED from VRPACK (byte count / low bitmask).

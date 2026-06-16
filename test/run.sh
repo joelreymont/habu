@@ -25,7 +25,6 @@ cleanup() {
   [ "$CLEAN_T" = 0 ] || rm -rf "$T"
 }
 trap cleanup EXIT HUP INT TERM
-cat tools/lint/lib.f tools/lint/parity-lint.f | bin/hb || { echo "FAIL: parity-lint"; exit 1; }
 cat tools/lint/lib.f tools/lint/shadow-lint.f | bin/hb || { echo "FAIL: shadow-lint"; exit 1; }
 cat tools/lint/lib.f tools/lint/clobber-lint.f | bin/hb || { echo "FAIL: clobber-lint"; exit 1; }
 cat tools/lint/lib.f tools/repl-lint.f | bin/hb || { echo "FAIL: repl-lint"; exit 1; }

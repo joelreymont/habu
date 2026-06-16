@@ -70,10 +70,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 
 ## Native Codegen And AOT
 
-- **Parity is byte-level where it matters:** bootstrap and native emitters may be
-  structurally different, but compared code must emit identical bytes. Use
-  parity-lint for paired emitter drift and allowlist only deliberate differences
-  covered by goldens/fixpoint.
+- **Parity is native fixpoint, not mirror drift:** the active parity proof is
+  byte-for-byte self-rebuild through `tools/build.sh`. Do not keep bootstrap
+  token-diff lints alive as a second source of truth.
 - **Bootstrap caps track native caps:** paired-emitter growth can make gforth
   stage0 exceed bootstrap Mach-O limits before native builds notice. Keep
   `bootstrap/cg/macho.fs` caps aligned with `src/os/macos/macho.f` and run

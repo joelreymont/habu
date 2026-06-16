@@ -132,9 +132,9 @@ primitives consume typed pointers, and `ptr` without an inner type is rejected.
   end to end: lints + self-rebuild fixpoint + hb-suite + checked `hb` +
   tty REPL + hb-build (runs with gforth absent). `tools/bootstrap-oracle.sh` is
   the bootstrap-only gforth differential (the gforth-hosted suite + the
-  boot-vs-port goldens). `tools/`
-  also holds bootstrap/build/hb-build/probe/imgdump/jitdump/parity-lint/
-  clobber-lint/shadow-lint/repl-lint, and `snap-hb.sh` for refreshing `bin/hb`.
+  boot-vs-port goldens). `tools/` also holds build/hb-build/probe/imgdump/
+  jitdump/clobber-lint/shadow-lint/repl-lint, and `snap-hb.sh` for refreshing
+  `bin/hb`.
 
 ## Combinators
 

@@ -21,7 +21,7 @@ requires building a small Forth runtime (Part F) — accepted as the long pole.
 > (jit: constant folding, register ops, fused branches, loop-resident
 > registers across BEGIN loops — 30M-iteration counter loop in 0.016 s).
 > In-binary disassembler, sampling profiler, and crash handler ship inside the
-> engine; `tools/{probe,imgdump,jitdump,parity-lint,clobber-lint,shadow-lint}`
+> engine; `tools/{probe,imgdump,jitdump,clobber-lint,shadow-lint}`
 > are the dev loop. The 2026-06-12 wave closed the remaining gaps: full
 > control flow (`exit recurse ?do +loop j leave unloop >r r> r@`),
 > user-extensible compile words (`immediate postpone compile, create does>`),
