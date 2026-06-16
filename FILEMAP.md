@@ -70,6 +70,8 @@ points stay listed.
 - `tools/trust-lint-test.sh` — fixture coverage for `TRUSTED.md` drift lint.
 - `tools/stale-status-lint.f` — stale status/count lint.
 - `tools/parallel-agent-lint.f` — freshness lint for the parallel-agent protocol.
+- `tools/date.f` — shared checked Gregorian date parsing/formatting helpers.
+- `tools/date-test.sh` — focused coverage for shared date helpers.
 
 ## Tests And Benchmarks
 
