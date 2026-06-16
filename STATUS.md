@@ -3,6 +3,7 @@
 Last verified: 2026-06-16
 Gate: passing
 Certified: 890  Uncheckable: 0  Rejected: 0
+Host-script workflow hooks: retired and gated
 
 This is the single source of truth for the self-check counts. Other docs
 (`README.md`, `PLAN.md`, `CODEGEN-PLAN.md`) point here instead of quoting a
@@ -14,8 +15,11 @@ it. "Certified" = body inferred and (where a signature is declared) verified
 against it; "Uncheckable" = effect not statically inferable and not trusted;
 "Rejected" = inferred effect contradicts the declaration. `tools/build.sh` runs
 the self-check on every rebuild; `( cd test && ./run.sh )` is the Habu-native
-gate. Gforth is bootstrap-only; `tools/bootstrap-oracle.sh` exists for changes
-to the bootstrap seed/reference mirror and recovery validation.
+gate. That gate runs native parity/shadow/clobber/trust/status/filemap lints,
+the retired host-script token lint, the rebuild fixpoint, JSON diagnostic
+assertions, property soundness smoke, PTY/process checks, and AOT/`--repl`
+builder checks. Gforth is bootstrap-only; `tools/bootstrap-oracle.sh` exists
+for changes to the bootstrap seed/reference mirror and recovery validation.
 
 History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling, now
 890/0/0 — the 9 formerly-uncheckable words (`ENV=?`, `GETENV`, `TMP-PATH`,

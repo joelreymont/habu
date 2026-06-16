@@ -39,10 +39,11 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   `tools/diag-to-sarif.f` when the diagnostics need to enter CI/review UIs.
 - Use `tools/public-signatures.f file.f` to expose typed public words as a
   machine-readable manifest for an agent or downstream package.
-- Authoritative verdict (-1 certified / 0 rejected / 1 uncheckable) via the
-  gforth-hosted checker — same harness as `test/t-sh-verify.fs`: feed
-  `: NAME ( sig ) body ;` to the `V` word there. `CHECK` = infer the body's
-  effect; `CHECK!` = verify body against its declared `( in -- out )`.
+- Authoritative verdict (-1 certified / 0 rejected / 1 uncheckable) is native:
+  use `bin/hb` for quick checks and `tools/check.sh --json-errors --all-errors`
+  for files. `CHECK` infers the body's effect; `CHECK!` verifies the body
+  against its declared `( in -- out )`. The gforth mirror is bootstrap/reference
+  recovery only.
 
 ## 4. On checker rejection: FIX THE BODY, NOT THE SIGNATURE
 - A rejection means the body's real effect ≠ the declared `( in -- out )`. The

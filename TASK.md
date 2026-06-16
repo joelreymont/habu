@@ -34,6 +34,8 @@ the daily execution path.
 - **`tools/lint/parity-lint.f`** — reproduces the parity divergence check.
 - **`tools/lint/shadow-lint.f`** — reproduces the prim-shadow check.
 - **`tools/lint/clobber-lint.f`** — reproduces the register-clobber model.
+- **`tools/host-lint.f`** — gates retired host-script workflow tokens and stale
+  file names so the default workflow stays self-hosted.
 - **`test/run.sh`** feeds each linter through `bin/hb`.
 
 ## Habu gotchas
