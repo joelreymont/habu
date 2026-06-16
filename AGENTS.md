@@ -39,6 +39,9 @@ constants; and a `T{ … -> … }T` test for every word.
 
 - VCS is `jj` (Jujutsu). One change per commit; 50-char imperative subject; no emoji.
 - Commit after each significant change or feature; include new files.
+- Parallel dot execution follows `docs/parallel-agents.md`: read-only scouts do
+  not edit the current tree; workers edit isolated jj workspaces unless their
+  file ownership is disjoint.
 - Gate: `( cd test && ./run.sh )` — Habu-native, no gforth, <10 s. Gforth is
   bootstrap-only: use `tools/bootstrap.sh` to recover from no native binary, and
   `tools/bootstrap-oracle.sh` only when changing bootstrap seed/reference code.

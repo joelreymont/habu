@@ -81,6 +81,7 @@ variable FM-NUM-L
    s" LESSONS.md" FM-REQ
    s" STATUS.md" FM-REQ
    s" TRUSTED.md" FM-REQ
+   s" docs/parallel-agents.md" FM-REQ
    s" src/core/checker.f" FM-REQ
    s" src/core/render.f" FM-REQ
    s" src/habu/aot.f" FM-REQ
@@ -107,6 +108,7 @@ variable FM-NUM-L
    s" tools/trust-lint.f" FM-REQ
    s" tools/trust-lint-test.sh" FM-REQ
    s" tools/stale-status-lint.f" FM-REQ
+   s" tools/parallel-agent-lint.f" FM-REQ
    s" test/run.sh" FM-REQ
    s" test/t-sh-jdiag.fs" FM-REQ
    s" bench/llm/tasks.tsv" FM-REQ

@@ -13,6 +13,7 @@ points stay listed.
 - `TRUSTED.md` — audited `TRUST` escape-hatch manifest.
 - `PROP-TESTING.md` — property-based checker-soundness design (generate→check→run→compare).
 - `docs/forth.md` — blocking Forth style rules.
+- `docs/parallel-agents.md` — map-reduce protocol for parallel dot execution.
 
 ## Core Checker
 
@@ -68,6 +69,7 @@ points stay listed.
 - `tools/trust-lint.f` — `TRUSTED.md` drift lint.
 - `tools/trust-lint-test.sh` — fixture coverage for `TRUSTED.md` drift lint.
 - `tools/stale-status-lint.f` — stale status/count lint.
+- `tools/parallel-agent-lint.f` — freshness lint for the parallel-agent protocol.
 
 ## Tests And Benchmarks
 

@@ -33,6 +33,7 @@ cat tools/lint/lib.f tools/fs.f tools/trust-lint.f | bin/hb || { echo "FAIL: tru
 ./tools/trust-lint-test.sh || { echo "FAIL: trust-lint fixtures"; exit 1; }
 cat tools/lint/lib.f tools/fs.f tools/stale-status-lint.f | bin/hb || { echo "FAIL: stale-status-lint"; exit 1; }
 cat tools/lint/lib.f tools/fs.f tools/host-lint.f | bin/hb || { echo "FAIL: host-lint"; exit 1; }
+cat tools/lint/lib.f tools/parallel-agent-lint.f | bin/hb || { echo "FAIL: parallel-agent-lint"; exit 1; }
 cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint"; exit 1; }
 [ -x bin/hb ] || { echo "no bin/hb — run tools/bootstrap.sh once"; exit 1; }
 ./tools/build.sh > $T/hb-build.log 2>&1 || { tail -5 $T/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }

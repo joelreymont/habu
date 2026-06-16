@@ -7,6 +7,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 ## 0. Read first (every session)
 - `AGENTS.md` — conventions and the gate.
 - `docs/forth.md` — Forth style rules (BLOCKING).
+- `docs/parallel-agents.md` — map-reduce protocol for parallel dot work.
 - `LESSONS.md` (top) — the project's running memory; the latest findings.
 - `STATUS.md` — the current self-check counts and known gaps.
 
