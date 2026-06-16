@@ -82,9 +82,25 @@ here 10 over ! 5 over +! @ 15 T=
 \ quotations + combinators
 : TQ1 5 [: 1 + ;] execute ;
 TQ1 6 T=
-: DIP swap >r execute r> ;
 : TDIP 10 3 [: 2 * ;] DIP + ;
 TDIP 23 T=
+: TKEEP 7 [: 1+ ;] KEEP + ;
+TKEEP 15 T=
+: TBI 5 [: 1+ ;] [: 2 * ;] BI + ;
+TBI 16 T=
+: TTRI 3 [: 1+ ;] [: 2 * ;] [: 3 + ;] TRI + + ;
+TTRI 16 T=
+: TTIMES 0 5 [: 1+ ;] TIMES ;
+TTIMES 5 T=
+create IARR 3 cells allot
+1 IARR !  2 IARR cell+ !  3 IARR cell+ cell+ !
+: TEACH 0 IARR 3 [: + ;] EACH ;
+TEACH 6 T=
+: TFOLD IARR 3 0 [: + ;] FOLD ;
+TFOLD 6 T=
+: TMAP IARR 3 [: 1+ ;] MAP ;
+TMAP
+TFOLD 9 T=
 
 \ immediate / postpone / compile,
 : IM5 5 ; immediate

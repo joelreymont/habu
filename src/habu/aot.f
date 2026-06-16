@@ -37,16 +37,16 @@ $40000 constant PMAX
 : CALL-AT? {: p e :}  p 16 + e <= IF p CALL? ELSE 0 THEN ;
 
 : REC {: k :}  dbase@ k 48 * + ;          \ dict record k  (0:addr 8:len 16:nlen 24:name)
-: FOLD {: c :}  c 64 > c 91 < and IF c 32 + ELSE c THEN ;
+: AOT-FOLD {: c :}  c 64 > c 91 < and IF c 32 + ELSE c THEN ;
 : MAIN? {: r :}  r 16 + @ $FF and 4 =
-   r 24 + c@ FOLD 109 = and  r 25 + c@ FOLD 97 = and
-   r 26 + c@ FOLD 105 = and  r 27 + c@ FOLD 110 = and ;
+   r 24 + c@ AOT-FOLD 109 = and  r 25 + c@ AOT-FOLD 97 = and
+   r 26 + c@ AOT-FOLD 105 = and  r 27 + c@ AOT-FOLD 110 = and ;
 
 : REC-NAME= {: r a u :}
    r 16 + @ $FF and u = IF
       0 BEGIN dup u < WHILE
-         dup r 24 + swap + c@ FOLD
-         over a + c@ FOLD = 0= IF drop 0 EXIT THEN
+         dup r 24 + swap + c@ AOT-FOLD
+         over a + c@ AOT-FOLD = 0= IF drop 0 EXIT THEN
          1 +
       REPEAT drop -1
    ELSE 0 THEN ;

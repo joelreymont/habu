@@ -48,7 +48,13 @@ WITHIN ( R i64 i64 i64 -- R bool )
 R>     ( R -- R a | S a -- S )
 EXECUTE( R [ R -- S ] -- S )       \ run a quotation
 DIP    ( R a [ R -- S ] -- S a )   \ run a quotation under the top item
-TIMES  ( R i64 [ R -- R ] -- R )   \ counted iterate (quotation effect-neutral)
+KEEP   ( R a [ R a -- S ] -- S a ) \ run with a copy, keep original
+BI     ( R a [ R a -- R b ] [ R b a -- R b c ] -- R b c )
+TRI    ( R a [ R a -- R b ] [ R b a -- R b c ] [ R b c a -- R b c d ] -- R b c d )
+TIMES  ( R i64 [ R -- R ] -- R )   \ counted iterate (trusted runtime boundary)
+EACH   ( R addr i64 [ R i64 -- R ] -- R )
+MAP    ( R addr i64 [ R i64 -- R i64 ] -- R )
+FOLD   ( R addr i64 b [ R b i64 -- R b ] -- R b )
 ?DUP-IF( R a [ R a -- R ] -- R )   \ typeable fusion of `?DUP IF … THEN`
 ```
 

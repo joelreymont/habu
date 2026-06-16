@@ -89,6 +89,15 @@ out=$(printf 's" RBAD1 ( i64 i64 -- ) 2>r" CHECK! .\ns" RBAD2 ( -- i64 i64 ) 2r>
 0
 -1
 1" ] || { echo "FAIL: hb return-stack/?dup primitive verdicts (got: $out)"; exit 1; }
+out=$(printf 's" CDIP ( i64 i64 -- i64 i64 ) [: 1+ ;] DIP" CHECK! .\ns" CKEEP ( i64 -- i64 i64 ) [: 1+ ;] KEEP" CHECK! .\ns" CBI ( i64 -- i64 i64 ) [: 1+ ;] [: 2 * ;] BI" CHECK! .\ns" CTRI ( i64 -- i64 i64 i64 ) [: 1+ ;] [: 2 * ;] [: 3 + ;] TRI" CHECK! .\ns" CTIMES ( i64 -- i64 ) 5 [: 1+ ;] TIMES" CHECK! .\ns" CEACH ( i64 addr i64 -- i64 ) [: + ;] EACH" CHECK! .\ns" CMAP ( addr i64 -- ) [: 1+ ;] MAP" CHECK! .\ns" CFOLD ( addr i64 i64 -- i64 ) [: + ;] FOLD" CHECK! .\n' | bin/hb 2>/dev/null)
+[ "$out" = "-1
+-1
+-1
+-1
+-1
+-1
+-1
+-1" ] || { echo "FAIL: hb combinator/iterator verdicts (got: $out)"; exit 1; }
 set +e
 printf '$400000 allot\n' | bin/hb >/dev/null 2>&1
 rc=$?

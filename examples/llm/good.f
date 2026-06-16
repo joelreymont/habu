@@ -33,6 +33,5 @@
 \ a quotation PARAMETER, typed [ i64 -- i64 ]; the caller passes a quote.
 : APPLY  ( i64 [ i64 -- i64 ] -- i64 ) execute ;       \ 5 [: dup * ;] APPLY => 25
 
-\ a combinator whose quot sub-sig is RECORDED, so call sites are checked:
-: DIP    swap >r execute r> ;
-: ADD10  ( i64 i64 -- i64 ) [: 10 + ;] dip + ;         \ 5 7 ADD10 => 22
+\ built-in combinator call sites are checked:
+: ADD10  ( i64 i64 -- i64 ) [: 10 + ;] DIP + ;         \ 5 7 ADD10 => 22
