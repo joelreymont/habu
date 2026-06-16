@@ -17,6 +17,14 @@ rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/resp.txt")
   fails=$((fails+1))
 }
 
+cat > "$T/report.jsonl" <<'EOF'
+{"task_id":1,"name":"ZERO-TOK","model":"fixture","arm":"habu-a","outcome":"pass","rounds":1,"first_pass":true,"tokens":0,"wall_ms":10}
+{"task_id":1,"name":"ZERO-TOK","model":"fixture","arm":"js","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":10}
+EOF
+rep=$(node bench/llm/report.js "$T/report.jsonl")
+chk report-zero-token-note 'exclude 1 passing row' "$rep"
+chk report-zero-token-table '| ZERO-TOK | — | — | 5 | — | — | — |' "$rep"
+
 # --- conv=as : ARR-SUM (array -> scalar) ---
 mkstub "$T/hb.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells arr + @ + loop ;"'
 mkstub "$T/hbl.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do arr i A@ + loop ;"'

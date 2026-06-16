@@ -20,7 +20,12 @@ const pct = (n, d) => d ? `${Math.round(n / d * 100)}%` : '—';
 const fmt = v => v == null ? '—' : Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
 const sec = ms => ms == null ? null : Math.round(ms / 10) / 100;
 const q = s => String(s).replace(/\|/g, '\\|');
-const ratio = (n, d) => (n != null && d != null && d !== 0 && d !== Infinity) ? `${(n / d).toFixed(0)}x` : '—';
+const ratio = (n, d) => {
+  if (n == null || d == null || d === 0 || d === Infinity) return '—';
+  const x = n / d;
+  return `${x < 10 ? Math.round(x * 10) / 10 : Math.round(x)}x`;
+};
+const tokenKnown = r => Number.isFinite(Number(r.tokens)) && Number(r.tokens) > 0;
 
 function stats(arm) {
   const rs = by(arm);
@@ -28,12 +33,14 @@ function stats(arm) {
   const nonpass = rs.filter(r => r.outcome !== 'pass');
   const tasks = [...new Set(rs.map(r => r.name))];
   const passk = tasks.filter(n => rs.some(r => r.name === n && r.outcome === 'pass')).length;
-  const toks = passed.map(r => r.tokens);
+  const tokenRows = passed.filter(tokenKnown);
+  const toks = tokenRows.map(r => r.tokens);
   const wall = passed.map(r => r.wall_ms);
   return {
     arm, trials: rs.length, tasks: tasks.length, passed: passed.length,
     firstPass: rs.filter(r => r.first_pass).length, passk,
     nonpass: nonpass.length,
+    missingTokens: passed.length - tokenRows.length,
     meanRounds: mean(passed.map(r => r.rounds)),
     medTok: median(toks), meanTok: mean(toks), maxTok: toks.length ? Math.max(...toks) : null,
     medWall: median(wall), meanWall: mean(wall), maxWall: wall.length ? Math.max(...wall) : null,
@@ -41,8 +48,25 @@ function stats(arm) {
 }
 const S = Object.fromEntries(ARMS.map(a => [a, stats(a)]));
 const allNonpass = rows.filter(r => r.outcome !== 'pass');
+const missingTokenRows = rows.filter(r => r.outcome === 'pass' && !tokenKnown(r));
 const taskNames = [...new Set(rows.map(r => r.name))];
 const hasLib = S['habu-lib'].trials > 0;
+
+function taskTokenMax(name, arm) {
+  const xs = rows.filter(z => z.name === name && z.arm === arm && z.outcome === 'pass' && tokenKnown(z));
+  return xs.length ? Math.max(...xs.map(x => x.tokens)) : null;
+}
+
+function taskRatioRows(arm) {
+  return taskNames.map(name => {
+    const habu = taskTokenMax(name, arm);
+    const js = taskTokenMax(name, 'js');
+    const rust = taskTokenMax(name, 'rust');
+    const best = Math.min(js ?? Infinity, rust ?? Infinity);
+    if (habu == null || best === Infinity || best === 0) return null;
+    return { name, habu, best, ratio: habu / best };
+  }).filter(Boolean);
+}
 
 let o = '';
 o += '# RESULTS.md — Habu vs JavaScript vs Rust: LLM codegen on array/memory algorithms\n\n';
@@ -75,13 +99,21 @@ o += '| language | mean rounds | median output tokens | **mean output tokens** |
 o += '|---|---:|---:|---:|---:|---:|---:|\n';
 for (const a of ARMS) { const s = S[a];
   o += `| ${LABEL[a]} | ${fmt(s.meanRounds)} | ${fmt(s.medTok)} | **${fmt(s.meanTok)}** | ${fmt(s.maxTok)} | ${fmt(sec(s.medWall))} | ${fmt(sec(s.maxWall))} |\n`; }
-o += '\nEffort metrics use passing trials only. Mean/max matter more than the median: Habu\'s cost is skewed — cheap on simple tasks, spiking on hard ones.\n\n';
+o += '\nEffort metrics use passing trials with a positive output-token count. Mean/max matter more than the median: Habu\'s cost is skewed — cheap on simple tasks, spiking on hard ones.\n\n';
+if (missingTokenRows.length) {
+  const miss = ARMS.map(a => [a, S[a].missingTokens]).filter(([, n]) => n > 0)
+    .map(([a, n]) => `${LABEL[a]} ${n}`).join(', ');
+  o += `Output-token metrics exclude ${missingTokenRows.length} passing row(s) with missing/zero token counts (${miss}). `;
+  o += 'Reliability, repair-round, and wall-time metrics still include those rows.\n\n';
+}
 
 const h = S['habu-a'], hl = S['habu-lib'], j = S.js, r = S.rust;
 const bestMean = Math.min(j.meanTok ?? Infinity, r.meanTok ?? Infinity);
 const effort = ratio(h.meanTok, bestMean);
 const libEffort = ratio(hl.meanTok, bestMean);
 const libVsRaw = ratio(hl.meanTok, h.meanTok);
+const rawRatios = taskRatioRows('habu-a');
+const rawWorst = rawRatios.reduce((best, x) => !best || x.ratio > best.ratio ? x : best, null);
 o += '## Verdict — how does Habu stack up?\n\n';
 o += `Task pass@k is Habu raw ${pct(h.passk, h.tasks)}, `;
 o += hasLib ? `Habu + array helpers ${pct(hl.passk, hl.tasks)}, ` : 'Habu + array helpers —, ';
@@ -96,9 +128,11 @@ if (notes.length) o += notes.join(' ');
 o += '\n\nThe raw-Habu cost split is bimodal:\n\n';
 o += '- **Simple elementwise loops** (sum, square, negate, max) — raw Habu is **comparable or cheaper** than JS/Rust '
    + '(its source is terse and the pattern is regular).\n';
-o += '- **Anything needing index tracking, carried state, or in-place rearrangement** (argmax, reverse, prefix-sum, '
-   + 'running-max) — raw Habu costs **5x–60x** more generation effort. The worst, ARGMAX, spiked to ~5500 output tokens vs ~100 '
-   + 'in JS/Rust.\n\n';
+if (rawWorst) {
+  o += '- **Anything needing index tracking, carried state, or in-place rearrangement** (argmax, reverse, prefix-sum, '
+     + `running-max) remains the hard tail. In this run the worst measured raw-Habu task is ${rawWorst.name} at `
+     + `about **${rawWorst.ratio.toFixed(0)}x** (${fmt(rawWorst.habu)} vs ${fmt(rawWorst.best)} output tokens).\n\n`;
+}
 if (h.meanTok != null && bestMean !== Infinity) o += `Net: mean output-tokens-to-green Habu raw **${fmt(h.meanTok)}** vs JS **${fmt(j.meanTok)}** / Rust **${fmt(r.meanTok)}** `
   + `— about **${effort}** the cheapest mainstream arm, almost entirely from the hard tail.\n\n`;
 if (hasLib && hl.meanTok != null && bestMean !== Infinity) {
@@ -123,15 +157,14 @@ if (allNonpass.length) {
 o += '## Per-Task Max Output Tokens\n\n';
 o += '| task | Habu raw | Habu + helpers | JS | Rust | raw/best | helpers/best | trial outcomes (raw/helpers/js/rust) |\n|---|---:|---:|---:|---:|---:|---:|---|\n';
 for (const n of taskNames) {
-  const tk = arm => { const xs = rows.filter(z => z.name === n && z.arm === arm && z.outcome === 'pass'); return xs.length ? Math.max(...xs.map(x => x.tokens)) : null; };
   const oc = arm => { const xs = rows.filter(z => z.name === n && z.arm === arm); return xs.length ? xs.map(x => `${x.outcome}/${x.rounds}`).join(',') : '—'; };
-  const hh = tk('habu-a'), ll = tk('habu-lib'), jj = tk('js'), rr = tk('rust');
+  const hh = taskTokenMax(n, 'habu-a'), ll = taskTokenMax(n, 'habu-lib'), jj = taskTokenMax(n, 'js'), rr = taskTokenMax(n, 'rust');
   const best = Math.min(jj ?? Infinity, rr ?? Infinity);
   const rawRatio = ratio(hh, best);
   const libRatio = ratio(ll, best);
   const outcomes = `raw ${oc('habu-a')}; helpers ${oc('habu-lib')}; js ${oc('js')}; rust ${oc('rust')}`;
   o += `| ${q(n)} | ${fmt(hh)} | ${fmt(ll)} | ${fmt(jj)} | ${fmt(rr)} | ${rawRatio} | ${libRatio} | ${q(outcomes)} |\n`;
 }
-o += '\nCells are max output tokens among passing trials. `raw/best` and `helpers/best` compare each Habu arm with the cheaper mainstream arm; '
-   + 'the jump from ~1x on elementwise tasks to ~60x on ARGMAX is the main raw-Habu signal.\n';
+o += '\nCells are max output tokens among passing trials with positive output-token counts. `raw/best` and `helpers/best` compare each Habu arm with the cheaper mainstream arm; '
+   + 'the jump from ~1x on elementwise tasks to the hard-task tail is the main raw-Habu signal.\n';
 process.stdout.write(o);
