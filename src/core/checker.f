@@ -503,6 +503,7 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" count" s" ptr u8 -- ptr u8 n" PT+
    s" ." s" n --" PT+
    s" .s" s" --" PT+
+   s" depth" s" -- n" PT+
    s" here" s" -- ptr a" PT+
    s" allot" s" n --" PT+
    s" ," s" n --" PT+

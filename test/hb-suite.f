@@ -33,6 +33,8 @@ $10 4 lshift $100 T=
 8 cell+ 16 T=
 8 char+ 9 T=
 8 chars 8 T=
+depth 0 T=
+1 2 3 depth nip nip nip 3 T=
 
 \ control flow
 : TIF dup 5 > if drop 99 else 1 + then ;

@@ -72,6 +72,10 @@ set -e
 out=$(printf ': SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | bin/hb 2>/dev/null)
 [ "$out" = "49" ] || { echo "FAIL: hb good typed def (got: $out)"; exit 1; }
 printf ': SQBAD ( i64 -- i64 ) dup ;\n7 SQBAD .\n' | bin/hb >/dev/null 2>&1 && { echo "FAIL: hb did NOT reject bad sig"; exit 1; }
+# depth ( -- n ): certifies (else QDEPTH unpublished -> empty out) and reads the
+# real data-stack cell count (0 when empty) — sentinel-free arity measurement.
+out=$(printf ': QDEPTH ( -- n ) depth ;\nQDEPTH .\n' | bin/hb 2>/dev/null)
+[ "$out" = "0" ] || { echo "FAIL: hb depth prim certify+run (got: $out)"; exit 1; }
 out=$(printf 'TRUSTED: TLEAK ( n -- n ) dup ;\ns" TUSE ( n -- n ) TLEAK" CHECK! .\ns" TBAD ( n -- n n ) TLEAK" CHECK! .\n5 TLEAK . .\n' | bin/hb 2>/dev/null)
 [ "$out" = "-1
 0
