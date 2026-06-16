@@ -73,9 +73,13 @@ TDIP 23 T=
 : IM5 5 ; immediate
 : TI IM5 ;
 TI 5 T=
+\ POSTPONE is compiler-manipulating; this fixture tests the runtime primitive,
+\ not checked user code.
+0 set-check
 : P5 postpone IM5 ; immediate
 : TP P5 ;
 TP 5 T=
+' HB-CHECK-HOOK set-check
 
 \ child processes: run-rc spawns + waits (paths need a NUL)
 create PZB 64 allot

@@ -109,6 +109,17 @@ printf ': NOSIG dup ;\n' | ./tools/check.sh --strict-signatures --json-errors >$
 grep -q '"code":"E-MISSING-SIGNATURE"' $T/habu-strict-json.out || { echo "FAIL: strict-signatures missing JSON diagnostic"; exit 1; }
 printf ': X ( infer ) dup ;\n' | ./tools/check.sh --strict-signatures --json-errors >$T/habu-strict-infer.out 2>&1 && { echo "FAIL: tools/check.sh --strict-signatures accepted infer opt-out"; exit 1; }
 grep -q '"code":"E-UNVERIFIED-SIGNATURE"' $T/habu-strict-infer.out || { echo "FAIL: strict-signatures missing opt-out diagnostic"; exit 1; }
+out=$(printf 's" EV ( -- n ) evaluate" CHECK! .\ns" PO ( -- ) postpone dup" CHECK! .\ns" CO ( -- ) compile," CHECK! .\ns" IM ( -- ) immediate" CHECK! .\ns" LB ( -- ) [" CHECK! .\ns" RB ( -- ) ]" CHECK! .\n' | bin/hb 2>/dev/null)
+[ "$out" = "0
+0
+0
+0
+0
+0" ] || { echo "FAIL: unsafe compiler words did not hard-reject (got: $out)"; exit 1; }
+printf ': EV ( -- n ) evaluate ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-unsafe.err && { echo "FAIL: tools/check.sh accepted unsafe evaluate"; exit 1; }
+grep -q '"code":"E-UNSAFE"' $T/habu-unsafe.err || { echo "FAIL: unsafe checker missing E-UNSAFE"; exit 1; }
+grep -q '"token":"evaluate"' $T/habu-unsafe.err || { echo "FAIL: unsafe checker missing token"; exit 1; }
+printf ': EV ( -- n ) evaluate ;\nEV .\n' | bin/hb >/dev/null 2>&1 && { echo "FAIL: hb published unsafe evaluate definition"; exit 1; }
 cat > $T/habu-all-errors.f <<'EOF'
 : OK ( i64 -- i64 ) dup * ;
 : BAD1 ( i64 -- i64 ) dup ;

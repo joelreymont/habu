@@ -155,13 +155,15 @@ variable DSUGE  variable DSUGA
    hasr IF s" | " DTXT  rin DROW  s" -- " DTXT  rout DROW THEN
    34 EMIT1 ;
 : DCODE
+   UNSAFE @ IF s" E-UNSAFE" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
    SGBAD @ IF s" E-BAD-SIGNATURE" ELSE
-   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN ;
+   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN ;
 : DVERDICT  DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN ;
 \ a length-based repair hint: more values out than declared (remove a producer),
 \ fewer (consumes too much), or equal (a type mismatch — fix the body not the sig).
 : SUGGEST-TEXT ( -- a u )
+   UNSAFE @ IF s" compiler-manipulating words need an audited trusted boundary; remove this token from checked code" EXIT THEN
    DVERD @ 1 = IF s" checker could not infer this word; rewrite with modeled words or add TRUST only for audited primitives" EXIT THEN
    DEXP @ 0= IF s" rejected without a captured stack mismatch; inspect the token and declared signature" EXIT THEN
    DEXP @ REND-COLLECT RBN @ DSUGE !

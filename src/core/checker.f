@@ -305,6 +305,7 @@ create ROWMAP 26 cells allot
 \ some other effect. EXPECT-SIG consumes the next sig token and fails closed if
 \ it is not the expected delimiter (EOF reads as a 0-length token -> mismatch).
 variable SGBAD
+variable UNSAFE
 : EXPECT-SIG {: ea eu :}  NEXT-SIG-TOK ea eu STR= 0= IF -1 SGBAD ! THEN ;
 
 \ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
@@ -833,16 +834,28 @@ s" <input>" DIAG-FILE!
    na nu TOKFOLD 0= IF s" trust: name too long" 76 die THEN
    sa su  TKF TFU @  USIG-ADD ;
 
+: UNSAFE-TOK? {: a u :}
+   a u s" evaluate" STR= IF -1 EXIT THEN
+   a u s" postpone" STR= IF -1 EXIT THEN
+   a u s" compile," STR= IF -1 EXIT THEN
+   a u s" immediate" STR= IF -1 EXIT THEN
+   a u s" [" STR= IF -1 EXIT THEN
+   a u s" ]" STR= ;
+
+: REJECT-UNSAFE ( -- )
+   -1 UNSAFE !  0 OK !  -1 FAILSET ! ;
+
 : DO-TOK1 {: a u :}
    a u TOKFOLD 0= IF s" <too-long-token>" CAP-LONG  -1 UNCK !  -1 FAILSET ! ELSE
    CAP-FAIL
    TOK0 @ IF TKF NMB TFU @ CCOPY  NMB NMA !  TFU @ NMU !  0 TOK0 ! ELSE
    LMODE @ IF TKF TFU @ LOC-TOK ELSE
    TKF TFU @ s" {:" STR= IF 1 LMODE !  #LOC @ LGRP ! ELSE
+   TKF TFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
    TKF TFU @ CF-TOK? 0= IF
    TKF TFU @ RS-TOK? 0= IF
    TKF TFU @ LOC-REF? 0= IF
-   TKF TFU @ DO-TOK THEN THEN THEN THEN THEN THEN
+   TKF TFU @ DO-TOK THEN THEN THEN THEN THEN THEN THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    THEN
@@ -854,7 +867,7 @@ s" <input>" DIAG-FILE!
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !
-   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 SGBAD !
+   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 SGBAD !  0 UNSAFE !
    BEGIN TI @ TBLEN @ < WHILE
      BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
@@ -892,7 +905,7 @@ s" <input>" DIAG-FILE!
       RCUR @ SGROUT @ UNIFY OK @ and OK !
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
    THEN
-   SGBAD @ IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN   \ a malformed declared sig rejects
+   SGBAD @ UNSAFE @ or IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN   \ malformed/unsafe rejects
    dup DVERD !
    dup 0 =  over 1 = JSON-DIAGS @ and  or
    DIAGXT @ 0 <> and IF DIAGXT @ execute THEN
