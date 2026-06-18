@@ -10,6 +10,7 @@ $20000 constant LV-RESULT-CAP
 256 constant LV-PATH-CAP
 256 constant LV-RUN-CAP
 128 constant LV-MODEL-CAP
+$1000 constant LV-RC-STR-CAP
 
 0 constant LV-MODE-REFERENCE
 1 constant LV-MODE-SUMMARY
@@ -26,6 +27,7 @@ create LV-RESULT-BUF LV-RESULT-CAP allot
 create LV-NUM-BUF LV-NUM-CAP allot
 create LV-RUN-BUF LV-RUN-CAP allot
 create LV-MODEL-BUF LV-MODEL-CAP allot
+create LV-RC-STR LV-RC-STR-CAP allot
 
 create LV-TASK-ID LV-MAX cells allot
 create LV-TASK-NAME-A LV-MAX cells allot
@@ -40,9 +42,19 @@ create LV-CAT-ROWS LV-MAX cells allot
 create LV-CAT-CERT LV-MAX cells allot
 create LV-CAT-TESTS LV-MAX cells allot
 
+create LV-RC-A LV-MAX cells allot
+create LV-RC-U LV-MAX cells allot
+create LV-RC-ROWS LV-MAX cells allot
+create LV-RC-SUCCESS LV-MAX cells allot
+create LV-RC-REPAIRS LV-MAX cells allot
+create LV-RC-DIAGS LV-MAX cells allot
+create LV-RC-TOKDELTA LV-MAX cells allot
+
 variable LV-TASK#
 variable LV-SEEN#
 variable LV-CAT#
+variable LV-RC#
+variable LV-RC-STR-U
 variable LV-NUM-I
 variable LV-I
 variable LV-J
@@ -104,6 +116,13 @@ variable LV-BAD-DACT
 variable LV-BAD-DCODE
 variable LV-BAD-DCLASS
 variable LV-BAD-AE
+variable LV-ROW-DIAGS
+variable LV-ROW-TESTS
+variable LV-RC-DIAG
+variable LV-RC-SUCC
+variable LV-RC-ROUND
+variable LV-RC-TOK
+variable LV-RC-SUM
 
 : LV-OUT ( a u -- ) type ;
 : LV-NL ( -- ) 10 emit ;
@@ -326,6 +345,69 @@ variable LV-BAD-AE
    a u LV-FIND-CAT dup 0 >= IF exit THEN
    drop a u LV-CAT+ ;
 
+: LV-RC$ {: k :} ( k -- a u )
+   LV-RC-A k cells + @
+   LV-RC-U k cells + @ ;
+
+: LV-RC-ROWS@ ( k -- n )
+   cells LV-RC-ROWS + @ ;
+
+: LV-RC-SUCCESS@ ( k -- n )
+   cells LV-RC-SUCCESS + @ ;
+
+: LV-RC-REPAIRS@ ( k -- n )
+   cells LV-RC-REPAIRS + @ ;
+
+: LV-RC-DIAGS@ ( k -- n )
+   cells LV-RC-DIAGS + @ ;
+
+: LV-RC-TOKDELTA@ ( k -- n )
+   cells LV-RC-TOKDELTA + @ ;
+
+: LV-RC-ROWS++ ( k -- )
+   cells LV-RC-ROWS + LV-CELL++ ;
+
+: LV-RC-SUCCESS++ ( k -- )
+   cells LV-RC-SUCCESS + LV-CELL++ ;
+
+: LV-RC-REPAIRS+ {: n k :} ( n k -- )
+   n LV-RC-REPAIRS k cells + LV-CELL+! ;
+
+: LV-RC-DIAGS+ {: n k :} ( n k -- )
+   n LV-RC-DIAGS k cells + LV-CELL+! ;
+
+: LV-RC-TOKDELTA+ {: n k :} ( n k -- )
+   n LV-RC-TOKDELTA k cells + LV-CELL+! ;
+
+: LV-FIND-RC {: a u :} ( a u -- k|-1 )
+   0 begin dup LV-RC# @ < while
+      dup LV-RC$ a u STR= IF exit THEN
+      1+
+   repeat drop -1 ;
+
+: LV-RC-COPY! {: a u k :} ( a u k -- )
+   LV-RC-STR-U @ u + LV-RC-STR-CAP > IF s" repair class names too long" LV-FAIL THEN
+   a LV-RC-STR LV-RC-STR-U @ + u BMOVE
+   LV-RC-STR LV-RC-STR-U @ + LV-RC-A k cells + !
+   u LV-RC-U k cells + !
+   LV-RC-STR-U @ u + LV-RC-STR-U ! ;
+
+: LV-RC+ {: a u :} ( a u -- k )
+   LV-RC# @ LV-MAX >= IF s" too many repair classes" LV-FAIL THEN
+   LV-RC# @ LV-P !
+   a u LV-P @ LV-RC-COPY!
+   0 LV-RC-ROWS LV-P @ cells + !
+   0 LV-RC-SUCCESS LV-P @ cells + !
+   0 LV-RC-REPAIRS LV-P @ cells + !
+   0 LV-RC-DIAGS LV-P @ cells + !
+   0 LV-RC-TOKDELTA LV-P @ cells + !
+   LV-RC# @ 1+ LV-RC# !
+   LV-P @ ;
+
+: LV-RC-ID {: a u :} ( a u -- k )
+   a u LV-FIND-RC dup 0 >= IF exit THEN
+   drop a u LV-RC+ ;
+
 : LV-TASK-LINE {: a u :} ( a u -- )
    LV-LINE @ 1 = IF exit THEN
    LV-TASK# @ LV-MAX >= IF s" too many tasks" LV-FAIL THEN
@@ -520,14 +602,61 @@ variable LV-BAD-AE
 : LV-ACC-BOOL {: root a u good bad :} ( root a u good bad -- )
    root a u LV-BOOL-FIELD IF good LV-CELL++ ELSE bad LV-CELL++ THEN ;
 
+: LV-RC-OBJ {: item :} ( item -- )
+   item JSON-KIND J-OBJ <> IF s" invalid repair_class_stats item" LV-FAIL-AT THEN ;
+
+: LV-RC-REQS {: item :} ( item -- )
+   item s" repair_class" LV-REQ
+   item s" diagnostic_count" LV-REQ
+   item s" repair_success" LV-REQ
+   item s" repair_iterations" LV-REQ
+   item s" token_delta" LV-REQ ;
+
+: LV-ACCUM-RC-ITEM {: item :} ( item -- )
+   item LV-RC-OBJ
+   item LV-RC-REQS
+   item s" repair_class" LV-STR-FIELD dup 0= IF 2drop s" empty repair_class" LV-FAIL-AT THEN
+   LV-RC-ID LV-P !
+   item s" diagnostic_count" LV-INT-FIELD
+   dup 0 <= IF drop s" invalid repair class diagnostic_count" LV-FAIL-AT THEN
+   dup LV-RC-DIAG ! LV-RC-SUM LV-CELL+!
+   item s" repair_success" LV-BOOL-FIELD LV-RC-SUCC !
+   LV-RC-SUCC @ LV-ROW-TESTS @ 0= and IF s" repair class success on failed row" LV-FAIL-AT THEN
+   item s" repair_iterations" LV-INT-FIELD
+   dup 0 < IF drop s" invalid repair class repair_iterations" LV-FAIL-AT THEN
+   LV-RC-ROUND !
+   item s" token_delta" LV-INT-FIELD
+   dup 0 < IF drop s" invalid repair class token_delta" LV-FAIL-AT THEN
+   LV-RC-TOK !
+   LV-P @ LV-RC-ROWS++
+   LV-RC-SUCC @ IF LV-P @ LV-RC-SUCCESS++ THEN
+   LV-RC-ROUND @ LV-P @ LV-RC-REPAIRS+
+   LV-RC-DIAG @ LV-P @ LV-RC-DIAGS+
+   LV-RC-TOK @ LV-P @ LV-RC-TOKDELTA+ ;
+
+: LV-ACCUM-RC-STATS {: root :} ( root -- )
+   root s" repair_class_stats" LV-GET dup -1 = IF
+      drop
+      LV-ROW-DIAGS @ 0 > IF s" missing fields repair_class_stats" LV-FAIL-AT THEN
+      exit
+   THEN
+   dup JSON-KIND J-ARR <> IF drop s" invalid repair_class_stats" LV-FAIL-AT THEN
+   LV-NODE !
+   0 LV-RC-SUM !
+   0 begin dup LV-NODE @ JSON-COUNT < while
+      LV-NODE @ over JSON-ARR@ LV-ACCUM-RC-ITEM
+      1+
+   repeat drop
+   LV-RC-SUM @ LV-ROW-DIAGS @ <> IF s" repair class diagnostic_count mismatch" LV-FAIL-AT THEN ;
+
 : LV-ACCUM-ROW {: root :} ( root -- )
    LV-ROWS LV-CELL++
    root LV-CERTIFIED? IF LV-CERT LV-CELL++ ELSE LV-BAD-CHECKER LV-CELL++ THEN
    root s" first_pass_tests" LV-BOOL-FIELD IF LV-FIRST-TESTS LV-CELL++ ELSE LV-BAD-FIRST LV-CELL++ THEN
-   root s" tests_passed" LV-BOOL-FIELD IF LV-TESTS LV-CELL++ ELSE LV-BAD-TESTS LV-CELL++ THEN
+   root s" tests_passed" LV-BOOL-FIELD dup LV-ROW-TESTS ! IF LV-TESTS LV-CELL++ ELSE LV-BAD-TESTS LV-CELL++ THEN
    root s" repair_iterations" LV-INT-FIELD LV-REPAIRS LV-CELL+!
    root s" checker_iterations" LV-INT-FIELD LV-CHECKERS LV-CELL+!
-   root s" diagnostic_count" LV-INT-FIELD LV-DIAGS LV-CELL+!
+   root s" diagnostic_count" LV-INT-FIELD dup LV-ROW-DIAGS ! LV-DIAGS LV-CELL+!
    root s" diagnostic_token" LV-DTOK LV-BAD-DTOK LV-ACC-BOOL
    root s" diagnostic_span" LV-DSPAN LV-BAD-DSPAN LV-ACC-BOOL
    root s" diagnostic_expected" LV-DEXPECT LV-BAD-DEXP LV-ACC-BOOL
@@ -540,6 +669,7 @@ variable LV-BAD-AE
    root s" final_chars" LV-INT-FIELD LV-CHARS LV-CELL+!
    root s" trust_uses" LV-INT-FIELD dup LV-TRUST LV-CELL+! 0 > IF LV-BAD-TRUST LV-CELL++ THEN
    root s" signature_weakened" LV-BOOL-FIELD dup IF LV-SIGWEAK LV-CELL++ LV-BAD-SIG LV-CELL++ ELSE drop THEN
+   root LV-ACCUM-RC-STATS
    root LV-CAT-ACCUM ;
 
 : LV-CHECK-ROW {: root :} ( root -- )
@@ -557,6 +687,8 @@ variable LV-BAD-AE
 : LV-RESET-SUMMARY ( -- )
    0 LV-SEEN# !
    0 LV-CAT# !
+   0 LV-RC# !
+   0 LV-RC-STR-U !
    0 LV-RUN-U !
    0 LV-RUN-SET !
    0 LV-MODEL-U !
@@ -591,7 +723,9 @@ variable LV-BAD-AE
    0 LV-BAD-DACT !
    0 LV-BAD-DCODE !
    0 LV-BAD-DCLASS !
-   0 LV-BAD-AE ! ;
+   0 LV-BAD-AE !
+   0 LV-ROW-DIAGS !
+   0 LV-ROW-TESTS ! ;
 
 : LV-SCAN-RESULTS ( -- )
    LV-RESET-SUMMARY
@@ -623,6 +757,20 @@ variable LV-BAD-AE
       s" rows" LV-P @ LV-CAT-ROWS@ LV-TEXT-FIELD
       s" certified" LV-P @ LV-CAT-CERT@ LV-TEXT-FIELD
       s" tests" LV-P @ LV-CAT-TESTS@ LV-TEXT-FIELD
+      LV-NL
+      1+
+   repeat drop ;
+
+: LV-OUTPUT-REPAIR-CLASSES ( -- )
+   0 begin dup LV-RC# @ < while
+      dup LV-P !
+      s" llm-results: repair_class " LV-OUT
+      LV-P @ LV-RC$ LV-OUT
+      s" rows" LV-P @ LV-RC-ROWS@ LV-TEXT-FIELD
+      s" repair_success" LV-P @ LV-RC-SUCCESS@ LV-TEXT-FIELD
+      s" repair_iterations" LV-P @ LV-RC-REPAIRS@ LV-TEXT-FIELD
+      s" diagnostics" LV-P @ LV-RC-DIAGS@ LV-TEXT-FIELD
+      s" token_delta" LV-P @ LV-RC-TOKDELTA@ LV-TEXT-FIELD
       LV-NL
       1+
    repeat drop ;
@@ -666,6 +814,7 @@ variable LV-BAD-AE
    s" repair_class" LV-BAD-DCLASS @ LV-TEXT-FIELD
    s" all_errors_stable" LV-BAD-AE @ LV-TEXT-FIELD
    LV-NL
+   LV-OUTPUT-REPAIR-CLASSES
    LV-OUTPUT-CATEGORIES ;
 
 : LV-JSON-U ( u -- )
@@ -719,11 +868,31 @@ variable LV-BAD-AE
    s" tests_passed" k LV-CAT-TESTS@ LV-JSON-UF
    JSONW-OBJECT-END ;
 
+: LV-OUTPUT-RC-JSON {: k :} ( k -- )
+   JSONW-OBJECT-START
+   s" repair_class" JSONW-KEY
+   k LV-RC$ JSONW-STRING JSONW-COMMA
+   s" rows" k LV-RC-ROWS@ LV-JSON-COMMA-UF
+   s" repair_success" k LV-RC-SUCCESS@ LV-JSON-COMMA-UF
+   s" repair_iterations" k LV-RC-REPAIRS@ LV-JSON-COMMA-UF
+   s" diagnostic_count" k LV-RC-DIAGS@ LV-JSON-COMMA-UF
+   s" token_delta" k LV-RC-TOKDELTA@ LV-JSON-UF
+   JSONW-OBJECT-END ;
+
 : LV-OUT-CATS-JSON ( -- )
    JSONW-ARRAY-START
    0 begin dup LV-CAT# @ < while
       dup 0 > IF JSONW-COMMA THEN
       dup LV-OUTPUT-CATEGORY-JSON
+      1+
+   repeat drop
+   JSONW-ARRAY-END ;
+
+: LV-OUT-RCS-JSON ( -- )
+   JSONW-ARRAY-START
+   0 begin dup LV-RC# @ < while
+      dup 0 > IF JSONW-COMMA THEN
+      dup LV-OUTPUT-RC-JSON
       1+
    repeat drop
    JSONW-ARRAY-END ;
@@ -749,6 +918,7 @@ variable LV-BAD-AE
    s" buckets" JSONW-KEY LV-OUTPUT-BUCKETS-JSON JSONW-COMMA
    s" diagnostic_quality" JSONW-KEY LV-DQ-JSON JSONW-COMMA
    s" diagnostic_gaps" JSONW-KEY LV-DG-JSON JSONW-COMMA
+   s" repair_classes" JSONW-KEY LV-OUT-RCS-JSON JSONW-COMMA
    s" categories" JSONW-KEY LV-OUT-CATS-JSON
    JSONW-OBJECT-END
    JSON-OUT-BUF JSON-OUT-LEN @ LV-OUT LV-NL ;

@@ -26,8 +26,29 @@ trap cleanup EXIT HUP INT TERM
 REF=$T/ref
 TASK_LINES=$T/tasks.body
 mkdir -p "$REF" "$(dirname "$OUT")"
-awk -v dir="$REF" '/^: /{ n++; print > (dir "/" n ".f") }' bench/llm/solutions.f
 awk -F '\t' 'NR > 1 && $6 == "forth"' bench/llm/tasks.tsv > "$TASK_LINES"
+awk -v dir="$REF" '
+  BEGIN { FS = "\t" }
+  FNR == NR {
+    if (FNR > 1 && $6 == "forth") {
+      task_id[$2] = $1
+    }
+    next
+  }
+  /^: / {
+    split($0, parts, /[ \t]+/)
+    name = parts[2]
+    if (!(name in task_id)) {
+      print "run-attempts: solution without harness=forth task: " name > "/dev/stderr"
+      exit 1
+    }
+    print > (dir "/" task_id[name] ".f")
+  }
+' bench/llm/tasks.tsv bench/llm/solutions.f
+while IFS="$(printf '\t')" read -r id _rest; do
+  [ -n "$id" ] || continue
+  [ -f "$REF/$id.f" ] || { echo "run-attempts: missing reference solution for task $id" >&2; exit 66; }
+done < "$TASK_LINES"
 : > "$OUT"
 
 json_escape() {
@@ -106,11 +127,61 @@ stable_diag() {
   if cmp -s "$diag" "$again"; then printf 1; else printf 0; fi
 }
 
+repair_class_order() {
+  printf '%s\n' \
+    remove_producer \
+    add_producer \
+    fix_type \
+    fix_return_stack \
+    trusted_boundary_required \
+    fix_signature_syntax \
+    rewrite_uncheckable \
+    unknown_rejection
+}
+
+diag_classes() {
+  sed -n 's/.*"repair_class":"\([^"]*\)".*/\1/p' "$1"
+}
+
+emit_class_stat() {
+  cls=$1 events=$2 success=$3 token_delta=$4
+  diag_count=$(awk -F '\t' -v c="$cls" '$2 == c { n++ } END { print n + 0 }' "$events")
+  [ "$diag_count" -gt 0 ] || return 0
+  round_count=$(awk -F '\t' -v c="$cls" '$2 == c { seen[$1] = 1 } END { for (k in seen) n++; print n + 0 }' "$events")
+  [ "$success" = 1 ] && class_success=true || class_success=false
+  [ "$CLASS_STAT_FIRST" = 1 ] || printf ','
+  CLASS_STAT_FIRST=0
+  printf '{"repair_class":"%s","diagnostic_count":%s,"repair_success":%s,"repair_iterations":%s,"token_delta":%s}' \
+    "$(json_escape "$cls")" "$diag_count" "$class_success" "$round_count" "$token_delta"
+}
+
+emit_repair_class_stats() {
+  events=$1 success=$2 token_delta=$3
+  printf '['
+  if [ -s "$events" ]; then
+    CLASS_STAT_FIRST=1
+    known=
+    for cls in $(repair_class_order); do
+      known="$known $cls"
+      emit_class_stat "$cls" "$events" "$success" "$token_delta"
+    done
+    for cls in $(awk -F '\t' '{ print $2 }' "$events" | sort -u); do
+      case " $known " in
+        *" $cls "*) continue ;;
+      esac
+      emit_class_stat "$cls" "$events" "$success" "$token_delta"
+    done
+  fi
+  printf ']'
+}
+
 row_for_task() {
   id=$1 name=$2 sig=$3
   exp_sig=$(norm_sig "$sig")
   diag_all=$T/diag-$id.all
+  class_events=$T/classes-$id.tsv
   : > "$diag_all"
+  : > "$class_events"
   first_checker=rejected
   first_tests=0
   tests=0
@@ -137,6 +208,10 @@ row_for_task() {
     else
       [ "$checkers" -eq 1 ] && first_bad=$cand
       cat "$diag" >> "$diag_all"
+      diag_classes "$diag" | while IFS= read -r cls; do
+        [ -n "$cls" ] || continue
+        printf '%s\t%s\n' "$checkers" "$cls" >> "$class_events"
+      done
       final=$cand
     fi
   done
@@ -167,6 +242,9 @@ row_for_task() {
     "$(bool "$dtok")" "$(bool "$dspan")" "$(bool "$dexp")" "$(bool "$dact")" >> "$OUT"
   printf '"diagnostic_code":%s,"diagnostic_repair_class":%s,"all_errors_stable":%s,' \
     "$(bool "$dcode")" "$(bool "$dclass")" "$(bool "$ae")" >> "$OUT"
+  printf '"repair_class_stats":' >> "$OUT"
+  emit_repair_class_stats "$class_events" "$tests" 0 >> "$OUT"
+  printf ',' >> "$OUT"
   printf '"tokens_used":0,"wall_ms":%s,"final_chars":%s,"trust_uses":%s,"signature_weakened":%s}\n' \
     "$wall" "$chars" "$trust" "$(bool "$sigweak")" >> "$OUT"
 }

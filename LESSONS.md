@@ -172,3 +172,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **LLM benchmark reports need separate axes:** keep trial pass, task pass@k,
   repair rounds, wall time, and generated-token cost distinct. Output tokens are
   an effort proxy, not direct access to hidden reasoning.
+- **LLM validator fixtures should isolate corpus churn:** generate temporary
+  reference metric rows from the task manifest under test instead of assuming the
+  checked-in reference JSONL has already been refreshed for concurrent task
+  additions.

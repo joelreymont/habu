@@ -18,7 +18,22 @@ cat "$ROOT/tools/date.f" "$ROOT/tools/lint/lib.f" "$ROOT/tools/json.f" "$ROOT/to
 
 mkdir -p "$T/bench/llm/results"
 cp "$ROOT/bench/llm/tasks.tsv" "$T/bench/llm/tasks.tsv"
-cp "$ROOT/bench/llm/results/reference.jsonl" "$T/bench/llm/results/reference.jsonl"
+
+write_reference_jsonl() {
+  awk -F '\t' '
+    NR > 1 && $6 == "forth" {
+      printf "{\"schema_version\":1,\"run_id\":\"reference-2026-06-18\",\"task_id\":%s,\"name\":\"%s\",\"model\":\"reference\",\"attempt\":1,", $1, $2
+      printf "\"first_pass_checker\":\"certified\",\"first_pass_tests\":true,\"tests_passed\":true,"
+      printf "\"repair_iterations\":0,\"checker_iterations\":1,\"diagnostic_count\":0,"
+      printf "\"diagnostic_token\":true,\"diagnostic_span\":true,\"diagnostic_expected\":true,"
+      printf "\"diagnostic_actual\":true,\"diagnostic_code\":true,\"diagnostic_repair_class\":true,"
+      printf "\"all_errors_stable\":true,\"tokens_used\":0,\"wall_ms\":0,\"final_chars\":1,"
+      printf "\"trust_uses\":0,\"signature_weakened\":false}\n"
+    }
+  ' "$T/bench/llm/tasks.tsv" > "$T/bench/llm/results/reference.jsonl"
+}
+
+write_reference_jsonl
 
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE")
 expected_count=$(awk -F '\t' 'NR>1 && $6 == "forth" {n++} END{print n+0}' "$ROOT/bench/llm/tasks.tsv")
@@ -48,6 +63,8 @@ awk '
     gsub(/"all_errors_stable":true/, "\"all_errors_stable\":false");
     gsub(/"tokens_used":0/, "\"tokens_used\":100");
     gsub(/"wall_ms":0/, "\"wall_ms\":250");
+    sub(/"tokens_used":100/,
+      "\"repair_class_stats\":[{\"repair_class\":\"remove_producer\",\"diagnostic_count\":2,\"repair_success\":false,\"repair_iterations\":1,\"token_delta\":30},{\"repair_class\":\"add_producer\",\"diagnostic_count\":1,\"repair_success\":false,\"repair_iterations\":2,\"token_delta\":50},{\"repair_class\":\"fix_type\",\"diagnostic_count\":1,\"repair_success\":false,\"repair_iterations\":1,\"token_delta\":20}],\"tokens_used\":100");
   }
   if ($0 ~ /"task_id":2,/) {
     gsub(/"trust_uses":0/, "\"trust_uses\":1");
@@ -86,6 +103,21 @@ printf '%s\n' "$out" | grep -q 'category arithmetic rows=6 certified=5 tests=5' 
   printf '%s\n' "$out"
   exit 1
 }
+printf '%s\n' "$out" | grep -q 'repair_class remove_producer rows=1 repair_success=0 repair_iterations=1 diagnostics=2 token_delta=30' || {
+  echo "FAIL: validate-results repair class remove_producer"
+  printf '%s\n' "$out"
+  exit 1
+}
+printf '%s\n' "$out" | grep -q 'repair_class add_producer rows=1 repair_success=0 repair_iterations=2 diagnostics=1 token_delta=50' || {
+  echo "FAIL: validate-results repair class add_producer"
+  printf '%s\n' "$out"
+  exit 1
+}
+printf '%s\n' "$out" | grep -q 'repair_class fix_type rows=1 repair_success=0 repair_iterations=1 diagnostics=1 token_delta=20' || {
+  echo "FAIL: validate-results repair class fix_type"
+  printf '%s\n' "$out"
+  exit 1
+}
 
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/attempt.jsonl)
 printf '%s\n' "$out" | grep -q "\"rows\":$expected_count" || {
@@ -113,9 +145,15 @@ printf '%s\n' "$out" | grep -q '"category":"arithmetic","rows":6,"certified":5,"
   printf '%s\n' "$out"
   exit 1
 }
+printf '%s\n' "$out" | grep -q '"repair_classes":\[{"repair_class":"remove_producer","rows":1,"repair_success":0,"repair_iterations":1,"diagnostic_count":2,"token_delta":30},{"repair_class":"add_producer","rows":1,"repair_success":0,"repair_iterations":2,"diagnostic_count":1,"token_delta":50},{"repair_class":"fix_type","rows":1,"repair_success":0,"repair_iterations":1,"diagnostic_count":1,"token_delta":20}\]' || {
+  echo "FAIL: validate-results json repair classes"
+  printf '%s\n' "$out"
+  exit 1
+}
 
-cp "$ROOT/bench/llm/results/reference.jsonl" "$T/bench/llm/results/reference.jsonl"
-head -n 1 "$ROOT/bench/llm/results/reference.jsonl" >> "$T/bench/llm/results/reference.jsonl"
+write_reference_jsonl
+dup_line=$(sed -n '1p' "$T/bench/llm/results/reference.jsonl")
+printf '%s\n' "$dup_line" >> "$T/bench/llm/results/reference.jsonl"
 set +e
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" 2>&1)
 rc=$?
@@ -127,10 +165,12 @@ printf '%s\n' "$out" | grep -q 'duplicate task_id' || {
   exit 1
 }
 
+write_reference_jsonl
 awk '{
   gsub(/reference-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/, "reference-2026-02-29");
   print
-}' "$ROOT/bench/llm/results/reference.jsonl" > "$T/bench/llm/results/reference.jsonl"
+}' "$T/bench/llm/results/reference.jsonl" > "$T/bench/llm/results/reference.bad-date"
+mv "$T/bench/llm/results/reference.bad-date" "$T/bench/llm/results/reference.jsonl"
 set +e
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" 2>&1)
 rc=$?
@@ -142,7 +182,7 @@ printf '%s\n' "$out" | grep -q 'invalid run_id date' || {
   exit 1
 }
 
-cp "$ROOT/bench/llm/results/reference.jsonl" "$T/bench/llm/results/reference.jsonl"
+write_reference_jsonl
 awk 'BEGIN { FS=OFS="\t" } NR > 1 && $4 == "aot-safe" { $4 = "parsing" } { print }' \
   "$ROOT/bench/llm/tasks.tsv" > "$T/bench/llm/tasks.tsv"
 set +e
