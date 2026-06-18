@@ -47,6 +47,42 @@ elements tie for the maximum. Mutating kernels are `A-REVERSE!`,
 `A-PREFIX-SUM!`, `A-RUNMAX!`, and `A-FILL!`; empty arrays are valid no-ops for
 these words.
 
+## Date And Time
+
+`lib/time.f` exposes checked public wrappers around the native clock primitives:
+
+```forth
+TIME-EPOCH-SECONDS  ( -- n )
+TIME-MONO-NS        ( -- n )
+```
+
+`TIME-EPOCH-SECONDS` returns UTC Unix seconds from `epoch-seconds`.
+`TIME-MONO-NS` returns monotonic nanoseconds from `mono-ns`; callers should only
+compare ordering or elapsed time, never exact values.
+
+`lib/date.f` exposes checked Gregorian UTC helpers:
+
+```forth
+DATE-DIGIT?       ( n -- bool )
+LEAP-YEAR?        ( n -- bool )
+MONTH-DAYS        ( n n -- n )
+VALID-YMD?        ( n n n -- bool )
+YMD>DAYS          ( n n n -- n )
+DAYS>YMD          ( n -- n n n )
+DATE-N            ( ptr u8 n n -- n bool )
+PARSE-YMD         ( ptr u8 n -- n bool )
+DATE-WIDTH!       ( n n ptr u8 n -- )
+FORMAT-YMD        ( n ptr u8 n -- ptr u8 n )
+FORMAT-EPOCH-UTC  ( n ptr u8 n -- ptr u8 n )
+```
+
+`PARSE-YMD` accepts exactly `YYYY-MM-DD` and returns the Unix epoch day plus a
+success flag. `FORMAT-YMD` writes `YYYY-MM-DD`; `FORMAT-EPOCH-UTC` writes
+`YYYY-MM-DDTHH:MM:SSZ`. Formatters use caller-provided buffers and throw
+`E-TIME-CAPACITY` when the buffer is too small. `FORMAT-EPOCH-UTC` also throws
+`E-TIME-RANGE` for negative epoch seconds. Load `lib/errors.f` before
+`lib/date.f` when using formatter error codes.
+
 ## Manifest Format
 
 `lib/std.manifest` is UTF-8 TSV with schema version `1` and this exact header:

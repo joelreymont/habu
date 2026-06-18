@@ -24,5 +24,18 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test	lib/test.f	module			lib/test-test.f	docs/stdlib.md	stdlib-test	planned	reusable test assertions and fixture helpers
 1	property	lib/property.f	module			lib/property-test.f	docs/stdlib.md	stdlib-property	planned	property generator and checker support
 1	build	lib/build.f	module			lib/build-test.f	docs/stdlib.md	stdlib-build	planned	checked build and bundle helpers
-1	time	lib/time.f	module			lib/time-test.f	docs/stdlib.md	stdlib-time	planned	monotonic and wall-clock helpers
-1	date	lib/date.f	module			lib/date-test.f	docs/stdlib.md	stdlib-date	planned	checked UTC date parsing formatting and conversion
+1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers
+1	time	lib/time.f	word	TIME-EPOCH-SECONDS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native UTC epoch seconds
+1	time	lib/time.f	word	TIME-MONO-NS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native monotonic nanoseconds
+1	date	lib/date.f	module			tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	checked UTC date parsing formatting and conversion
+1	date	lib/date.f	word	DATE-DIGIT?	(n -- bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	ASCII decimal digit predicate for date parsing
+1	date	lib/date.f	word	LEAP-YEAR?	(n -- bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	Gregorian leap-year predicate
+1	date	lib/date.f	word	MONTH-DAYS	(n n -- n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	days in a Gregorian month for a year
+1	date	lib/date.f	word	VALID-YMD?	(n n n -- bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	validate Gregorian year month day triples
+1	date	lib/date.f	word	YMD>DAYS	(n n n -- n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	convert Gregorian date to Unix epoch day
+1	date	lib/date.f	word	DAYS>YMD	(n -- n n n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	convert Unix epoch day to Gregorian date
+1	date	lib/date.f	word	DATE-N	(ptr u8 n n -- n bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	parse fixed-width decimal field from a typed pointer
+1	date	lib/date.f	word	PARSE-YMD	(ptr u8 n -- n bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	parse yyyy-mm-dd to Unix epoch day plus success flag
+1	date	lib/date.f	word	DATE-WIDTH!	(n n ptr u8 n --)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	write fixed-width zero-padded decimal field
+1	date	lib/date.f	word	FORMAT-YMD	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format Unix epoch day as yyyy-mm-dd
+1	date	lib/date.f	word	FORMAT-EPOCH-UTC	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format nonnegative Unix seconds as UTC timestamp
