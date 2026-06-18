@@ -30,17 +30,16 @@ model_init() {
     echo "bench/llm: unknown model id $_mid in $MODEL_REGISTRY" >&2
     exit 64
   }
-  _old_ifs=$IFS
-  IFS='	'
-  set -- $_row
-  IFS=$_old_ifs
-  MODEL_ID=$1
-  MODEL_LABEL=$2
-  MODEL_COMMAND=$3
-  MODEL_ARGS=$4
-  MODEL_PARSER=$5
-  MODEL_TOKEN_FIELDS=$6
-  MODEL_TIMEOUT=$7
+  _model_field() {
+    printf '%s\n' "$_row" | awk -F '\t' -v n="$1" '{ print $n }'
+  }
+  MODEL_ID=$(_model_field 1)
+  MODEL_LABEL=$(_model_field 2)
+  MODEL_COMMAND=$(_model_field 3)
+  MODEL_ARGS=$(_model_field 4)
+  MODEL_PARSER=$(_model_field 5)
+  MODEL_TOKEN_FIELDS=$(_model_field 6)
+  MODEL_TIMEOUT=$(_model_field 7)
   [ -n "$MODEL_LABEL" ] || MODEL_LABEL=$MODEL_ID
   [ -n "$MODEL_COMMAND" ] || MODEL_COMMAND=$MODEL_ID
   [ -n "$MODEL_ARGS" ] || MODEL_ARGS='{prompt}'
@@ -126,6 +125,8 @@ case_list() {
 # emit_row: id name model arm outcome rounds tokens wall_ms
 emit_row() {
   fp=false; [ "$5" = pass ] && [ "$6" -eq 1 ] && fp=true
-  printf '{"task_id":%s,"name":"%s","model":"%s","arm":"%s","outcome":"%s","rounds":%s,"first_pass":%s,"tokens":%s,"wall_ms":%s}\n' \
-    "$1" "$2" "$3" "$4" "$5" "$6" "$fp" "$7" "$8"
+  printf '{"task_id":%s,"name":"%s","model_id":"%s","model":"%s","arm":"%s","trial":%s,"task_order":%s,"k_trials":%s,"order_seed":"%s","outcome":"%s","rounds":%s,"first_pass":%s,"tokens":%s,"wall_ms":%s}\n' \
+    "$1" "$2" "${MODEL_ID:-$3}" "$3" "$4" \
+    "${BENCH_TRIAL:-0}" "${BENCH_TASK_ORDER:-0}" "${BENCH_K:-0}" "${BENCH_SEED:-manifest}" \
+    "$5" "$6" "$fp" "$7" "$8"
 }

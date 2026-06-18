@@ -48,7 +48,7 @@ mkstub "$T/js.sh" 'echo "function f(a){ return a.reduce((s,x)=>s+x,0); }"'
 mkstub "$T/rs.sh" 'echo "fn f(a: &[i64]) -> i64 { a.iter().sum() }"'
 SV="[3 1 4] -> 8; [5] -> 5"
 r=$(CLAUDE="$T/hb.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" a); chk habu-as '"outcome":"pass","rounds":1' "$r"
-r=$(CLAUDE="$T/hbl.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" lib); chk habu-lib-as '"arm":"habu-lib","outcome":"pass","rounds":1' "$r"
+r=$(CLAUDE="$T/hbl.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" lib); chk habu-lib-as '"arm":"habu-lib","trial":0,"task_order":0,"k_trials":0,"order_seed":"manifest","outcome":"pass","rounds":1' "$r"
 r=$(CLAUDE="$T/js.sh" sh bench/llm/drive-js.sh   1 ARR-SUM "ptr a n -- i64" "sum" as "$SV");   chk js-as   '"outcome":"pass","rounds":1' "$r"
 r=$(CLAUDE="$T/rs.sh" sh bench/llm/drive-rust.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV");   chk rust-as '"outcome":"pass","rounds":1' "$r"
 
@@ -57,7 +57,24 @@ id	label	command	args	parser	token_fields	timeout_s
 fixture	FixtureJS	$T/js.sh	-p {prompt} --output-format json	raw		5
 EOF
 r=$(MODEL_REGISTRY="$T/models.tsv" MODEL_ID=fixture sh bench/llm/drive-js.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV")
-chk model-registry-label '"model":"FixtureJS","arm":"js","outcome":"pass","rounds":1' "$r"
+chk model-registry-label '"model_id":"fixture","model":"FixtureJS","arm":"js","trial":0,"task_order":0,"k_trials":0,"order_seed":"manifest","outcome":"pass","rounds":1' "$r"
+
+cat > "$T/models2.tsv" <<EOF
+id	label	command	args	parser	token_fields	timeout_s
+alpha	AlphaJS	$T/js.sh	-p {prompt} --output-format json	raw		5
+beta	BetaJS	$T/js.sh	-p {prompt} --output-format json	raw		5
+EOF
+: > "$T/multi-model.jsonl"
+MODEL_REGISTRY="$T/models2.tsv" MODEL_ID=alpha BENCH_TRIAL=1 BENCH_TASK_ORDER=7 BENCH_K=2 BENCH_SEED=fixture-seed \
+  sh bench/llm/drive-js.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" >> "$T/multi-model.jsonl"
+MODEL_REGISTRY="$T/models2.tsv" MODEL_ID=beta BENCH_TRIAL=1 BENCH_TASK_ORDER=7 BENCH_K=2 BENCH_SEED=fixture-seed \
+  sh bench/llm/drive-js.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" >> "$T/multi-model.jsonl"
+multi=$(cat "$T/multi-model.jsonl")
+chk multi-model-alpha '"model_id":"alpha","model":"AlphaJS","arm":"js","trial":1,"task_order":7,"k_trials":2,"order_seed":"fixture-seed"' "$multi"
+chk multi-model-beta '"model_id":"beta","model":"BetaJS","arm":"js","trial":1,"task_order":7,"k_trials":2,"order_seed":"fixture-seed"' "$multi"
+rep=$(node bench/llm/report.js "$T/multi-model.jsonl")
+chk multi-report-alpha '| AlphaJS | JavaScript | 1 | 1 | 100% | 100% | 100% | 0 |' "$rep"
+chk multi-report-beta '| BetaJS | JavaScript | 1 | 1 | 100% | 100% | 100% | 0 |' "$rep"
 
 cat > "$T/hbprose.sh" <<EOF
 #!/bin/sh
@@ -76,7 +93,7 @@ mkstub "$T/js2.sh" 'echo "function f(a){ return a.slice().reverse(); }"'
 mkstub "$T/rs2.sh" 'echo "fn f(a: &[i64]) -> Vec<i64> { a.iter().rev().cloned().collect() }"'
 MV="[3 1 4 1 5] -> [5 1 4 1 3]; [1 2] -> [2 1]"
 r=$(CLAUDE="$T/hb2.sh" sh bench/llm/drive-habu.sh 6 REVERSE "ptr a n --" "reverse" aa "$MV" a); chk habu-aa '"outcome":"pass","rounds":1' "$r"
-r=$(CLAUDE="$T/hbl2.sh" sh bench/llm/drive-habu.sh 6 REVERSE "ptr a n --" "reverse" aa "$MV" lib); chk habu-lib-aa '"arm":"habu-lib","outcome":"pass","rounds":1' "$r"
+r=$(CLAUDE="$T/hbl2.sh" sh bench/llm/drive-habu.sh 6 REVERSE "ptr a n --" "reverse" aa "$MV" lib); chk habu-lib-aa '"arm":"habu-lib","trial":0,"task_order":0,"k_trials":0,"order_seed":"manifest","outcome":"pass","rounds":1' "$r"
 r=$(CLAUDE="$T/js2.sh" sh bench/llm/drive-js.sh   6 REVERSE "ptr a n --" "reverse" aa "$MV");   chk js-aa   '"outcome":"pass","rounds":1' "$r"
 r=$(CLAUDE="$T/rs2.sh" sh bench/llm/drive-rust.sh 6 REVERSE "ptr a n --" "reverse" aa "$MV");   chk rust-aa '"outcome":"pass","rounds":1' "$r"
 

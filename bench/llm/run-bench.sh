@@ -6,22 +6,26 @@ set -e
 cd "$(dirname "$0")/../.."
 . bench/llm/lib.sh
 K=${1:-2}
-OUT=bench/llm/results/run.jsonl
-mkdir -p bench/llm/results
+OUT=${2:-${BENCH_OUT:-bench/llm/results/run.jsonl}}
+TASKS=${BENCH_TASKS:-bench/llm/bench-tasks.tsv}
+BENCH_SEED=${BENCH_SEED:-manifest}
+mkdir -p "$(dirname "$OUT")"
 : > "$OUT"
 TAB=$(printf '\t')
-tail -n +2 bench/llm/bench-tasks.tsv | while IFS="$TAB" read -r id name sig conv spec vectors; do
+task_order=0
+tail -n +2 "$TASKS" | while IFS="$TAB" read -r id name sig conv spec vectors; do
   [ -n "$id" ] || continue
+  task_order=$((task_order+1))
   model_ids | while IFS= read -r model_id; do
     t=1
     while [ "$t" -le "$K" ]; do
       # Four arms — raw Habu, library-assisted Habu, JS, Rust.
       # </dev/null: model CLIs may otherwise read this loop's piped stdin and swallow
       # the remaining task lines. || true: a failing driver must not abort the sweep.
-      MODEL_ID=$model_id sh bench/llm/drive-habu.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors" a </dev/null >> "$OUT" || true
-      MODEL_ID=$model_id sh bench/llm/drive-habu.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors" lib </dev/null >> "$OUT" || true
-      MODEL_ID=$model_id sh bench/llm/drive-js.sh   "$id" "$name" "$sig" "$spec" "$conv" "$vectors"   </dev/null >> "$OUT" || true
-      MODEL_ID=$model_id sh bench/llm/drive-rust.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors"   </dev/null >> "$OUT" || true
+      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED sh bench/llm/drive-habu.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors" a </dev/null >> "$OUT" || true
+      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED sh bench/llm/drive-habu.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors" lib </dev/null >> "$OUT" || true
+      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED sh bench/llm/drive-js.sh   "$id" "$name" "$sig" "$spec" "$conv" "$vectors"   </dev/null >> "$OUT" || true
+      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED sh bench/llm/drive-rust.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors"   </dev/null >> "$OUT" || true
       t=$((t+1))
     done
   done
