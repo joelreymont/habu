@@ -2,10 +2,10 @@
 # build.sh — rebuild the single installed binary, bin/hb, USING bin/hb.
 #
 # bin/hb is the checked native engine users run. Build-only compiler engines are
-# temporary files under $HB_TMP: first prove the stage2 compiler reaches a
-# byte-for-byte fixpoint, then use that compiler to build a temporary stdin
-# engine, feed it the snapshot script, and install the resulting checked engine
-# as bin/hb. No other public artifacts are produced.
+# temporary files under $HB_TMP. The checked Habu driver owns the source assembly,
+# fixpoint loop, byte comparison, and artifact expectations; this shell wrapper
+# owns private temp setup, command shims for OS operations not yet in the stdlib,
+# and final installation of the already validated hb-new artifact.
 set -e
 cd "$(dirname "$0")/.."
 CLEAN_T=0
@@ -23,61 +23,92 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 [ -x bin/hb ] || { echo "no bin/hb — install a trusted seed with tools/seed.sh /path/to/hb"; exit 1; }
 
-mkstage() {  # $1 = driver; writes $T/stage2-src (checker hooked)
-  for f in $(./tools/srclist.sh "$1"); do
-    [ "$f" = "src/core/sha256.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
-    cat "$f"; printf '\n'
-  done > $T/stage2-src
-}
-
-mktool() {  # $1 = driver, $2 = output file
-  for f in $(./tools/srclist.sh "$1"); do
-    [ "$f" = "src/core/sha256.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
-    cat "$f"; printf '\n'
-  done > "$2"
-}
-
-mkstage stage2
-rm -f $T/stage2-got
+cat > "$T/build-bootstrap-stage" <<EOF
+#!/bin/sh
+set -eu
+export HB_TMP="$T"
+/bin/rm -f "$T/stage2-got" "$T/hb-stage"
 bin/hb < src/habu/stage2.f
-[ -f $T/stage2-got ] || { echo "build: stage script did not produce stage2-got"; exit 1; }
-mv $T/stage2-got $T/hb-stage
-chmod +x $T/hb-stage
-ok=0
-for g in 1 2 3 4; do
-  rm -f $T/stage2-got
-  $T/hb-stage
-  if cmp -s $T/hb-stage $T/stage2-got; then
-    codesign -v $T/hb-stage
-    echo "build OK: stage compiler fixpoint"
-    ok=1; break
-  fi
-  mv $T/stage2-got $T/hb-stage; chmod +x $T/hb-stage
-done
-[ "$ok" = 1 ] || { echo "FIXPOINT BROKEN: no convergence after 4 generations"; exit 1; }
+test -f "$T/stage2-got"
+/bin/mv "$T/stage2-got" "$T/hb-stage"
+/bin/chmod +x "$T/hb-stage"
+EOF
 
-# Temporary stdin engine: needed only to compile and snapshot the full toolchain
-# from source without installing a second binary.
-mkstage stdin
-rm -f $T/stage2-got $T/hb-stdin-got
-$T/hb-stage
-[ -f $T/stage2-got ] || { echo "build: stdin maker not produced"; exit 1; }
-mv $T/stage2-got $T/hb-stdin-mk
-chmod +x $T/hb-stdin-mk
-$T/hb-stdin-mk
-[ -f $T/hb-stdin-got ] || { echo "build: stdin engine not produced"; exit 1; }
-mv $T/hb-stdin-got $T/hb-stdin
-chmod +x $T/hb-stdin
-codesign -v $T/hb-stdin
+cat > "$T/build-run-stage" <<EOF
+#!/bin/sh
+set -eu
+export HB_TMP="$T"
+/bin/rm -f "$T/stage2-got"
+"$T/hb-stage"
+test -f "$T/stage2-got"
+EOF
 
-# Installed hb: full checked toolchain plus tty REPL / pipeline stdin behavior.
-mktool snap "$T/hb-snap-src"
-rm -f $T/hb-snap0 $T/hb-new
-$T/hb-stdin < "$T/hb-snap-src"
-[ -f $T/hb-snap0 ] || { echo "build: checked hb image not produced"; exit 1; }
-mv $T/hb-snap0 $T/hb-new
-codesign -s - --force $T/hb-new 2>/dev/null
-chmod +x $T/hb-new
-mv $T/hb-new bin/hb
-find bin -maxdepth 1 -type f ! -name hb -delete
+cat > "$T/build-promote-stage" <<EOF
+#!/bin/sh
+set -eu
+/bin/mv "$T/stage2-got" "$T/hb-stage"
+/bin/chmod +x "$T/hb-stage"
+EOF
+
+cat > "$T/build-verify-stage" <<EOF
+#!/bin/sh
+set -eu
+/usr/bin/codesign -v "$T/hb-stage"
+EOF
+
+cat > "$T/build-promote-stdin-maker" <<EOF
+#!/bin/sh
+set -eu
+/bin/mv "$T/stage2-got" "$T/hb-stdin-mk"
+/bin/chmod +x "$T/hb-stdin-mk"
+EOF
+
+cat > "$T/build-run-stdin-maker" <<EOF
+#!/bin/sh
+set -eu
+export HB_TMP="$T"
+/bin/rm -f "$T/hb-stdin-got"
+"$T/hb-stdin-mk"
+test -f "$T/hb-stdin-got"
+EOF
+
+cat > "$T/build-promote-stdin-engine" <<EOF
+#!/bin/sh
+set -eu
+/bin/mv "$T/hb-stdin-got" "$T/hb-stdin"
+/bin/chmod +x "$T/hb-stdin"
+EOF
+
+cat > "$T/build-verify-stdin" <<EOF
+#!/bin/sh
+set -eu
+/usr/bin/codesign -v "$T/hb-stdin"
+EOF
+
+cat > "$T/build-run-snap" <<EOF
+#!/bin/sh
+set -eu
+export HB_TMP="$T"
+/bin/rm -f "$T/hb-snap0" "$T/hb-new"
+"$T/hb-stdin" < "$T/hb-snap-src"
+test -f "$T/hb-snap0"
+EOF
+
+cat > "$T/build-promote-snap" <<EOF
+#!/bin/sh
+set -eu
+/bin/mv "$T/hb-snap0" "$T/hb-new"
+/usr/bin/codesign -s - --force "$T/hb-new" 2>/dev/null
+/bin/chmod +x "$T/hb-new"
+EOF
+
+/bin/chmod +x "$T"/build-*
+
+./tools/bundle-lib.sh -o "$T/build-fixpoint.f" \
+  errors string fs process build -- tools/build-fixpoint.f
+HB_TMP=$T bin/hb "$T/build-fixpoint.f"
+
+test -f "$T/hb-new" || { echo "build: checked hb image not produced"; exit 1; }
+/bin/mv "$T/hb-new" bin/hb
+/usr/bin/find bin -maxdepth 1 -type f ! -name hb -delete
 echo "build OK: bin/hb (checked engine, tty REPL + stdin)"
