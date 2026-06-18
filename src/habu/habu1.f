@@ -304,6 +304,42 @@ s" spawn-dup2-action" s" n n --" TRUST
    9 G-PUSH
    SP SP 3584 ADDI, ;
 
+: BSPAWNARGVIO                        \ ( pathz argvp stdinfd stdoutfd stderrfd -- pid|-1 )
+   12 G-POP  11 G-POP  10 G-POP  9 G-POP  8 G-POP
+   LBL LBL {: spok spdn :}
+   SP SP 3584 SUBI,
+   14 0 MOVZ,  14 SP 16 STR,          \ envp[0] = 0
+   13 SP 176 ADDI,                    \ file actions
+   14 3 MOVZ,  14 13 0 STRW,
+   14 0 MOVZ,  14 13 4 STRW,
+   10 0 SPAWN-DUP2-ACTION
+   11 1 SPAWN-DUP2-ACTION
+   12 2 SPAWN-DUP2-ACTION
+   14 0 MOVZ,                         \ zero the descriptor
+   14 SP 48 STR,  14 SP 56 STR,  14 SP 64 STR,  14 SP 72 STR,
+   14 SP 80 STR,  14 SP 88 STR,  14 SP 96 STR,  14 SP 104 STR,
+   14 SP 112 STR,  14 SP 120 STR,  14 SP 128 STR,  14 SP 136 STR,
+   14 SP 144 STR,  14 SP 152 STR,  14 SP 160 STR,  14 SP 168 STR,
+   14 13 4 LDRW,  15 1040 MOVZ,  14 14 15 MUL,  14 14 8 ADDI,
+   14 SP 64 STR,                      \ adesc.file_actions_size
+   13 SP 72 STR,                      \ adesc.file_actions
+   0 SP 0 ADDI,                       \ &pid
+   1 8 0 ADDI,                        \ path
+   14 13 4 LDRW,  2 SP 48 ADDI,
+   LBL {: sad :}
+   14 sad CBNZ,
+      2 0 MOVZ,                       \ no actions: XNU rejects an empty blob
+   sad LBL,
+   3 9 0 ADDI,  4 SP 16 ADDI,         \ argv, envp
+   NR-SPAWN SYS,
+   9 C-CS CSET,  9 9 0 ORR,  9 spok CBZ,
+      9 0 MOVN,  spdn B,
+   spok LBL,
+   9 SP 0 LDR,
+   spdn LBL,
+   9 G-PUSH
+   SP SP 3584 ADDI, ;
+
 : BCPFETCH    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
 : BNDICTFETCH 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
@@ -669,7 +705,8 @@ s" spawn-dup2-action" s" n n --" TRUST
    s" pipe" ['] BPIPE FPRIM-L   s" dup2" ['] BDUP2 FPRIM-L
    s" fcntl" ['] BFCNTL FPRIM-L   s" poll" ['] BPOLL FPRIM-L
    s" kill" ['] BKILL FPRIM-L
-   s" spawn-io" ['] BSPAWNIO FPRIM-L   s" wait-rc" ['] BWAITRC FPRIM-L
+   s" spawn-io" ['] BSPAWNIO FPRIM-L
+   s" spawn-argv-io" ['] BSPAWNARGVIO FPRIM-L   s" wait-rc" ['] BWAITRC FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
