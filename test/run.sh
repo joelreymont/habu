@@ -37,6 +37,7 @@ cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint
 ./tools/string-test.sh || { echo "FAIL: string helpers"; exit 1; }
 ./tools/array-test.sh || { echo "FAIL: array helpers"; exit 1; }
 ./lib/map-test.sh || { echo "FAIL: map stdlib"; exit 1; }
+./lib/fs-test.sh || { echo "FAIL: fs stdlib"; exit 1; }
 ./lib/argv-test.sh || { echo "FAIL: argv stdlib"; exit 1; }
 ./lib/test-test.sh || { echo "FAIL: test stdlib"; exit 1; }
 ./tools/date-test.sh || { echo "FAIL: date helpers"; exit 1; }
