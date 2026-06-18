@@ -63,12 +63,14 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	planned	v1 regex handles use ptr u8 n storage buffers, never unchecked addr dereference
 1	map	lib/map.f	module			lib/map-test.f	docs/stdlib.md	stdlib-map	active	v1 map storage uses ptr a n cells and ptr u8 n keys, never unchecked addr dereference
 1	map	lib/map.f	word	MAP-CHECK-CAP	(n --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a positive map capacity
+1	map	lib/map.f	word	MAP-CHECK-LEN	(n --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a nonnegative key length
 1	map	lib/map.f	word	MAP-CELLS	(n -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	return the cell count needed for a fixed-capacity map
 1	map	lib/map.f	word	MAP-EMPTY?	(n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test an empty slot state
 1	map	lib/map.f	word	MAP-DELETED?	(n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test a deleted slot state
 1	map	lib/map.f	word	MAP-OCCUPIED?	(n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test an occupied slot state
 1	map	lib/map.f	word	MAP-CAP@	(ptr a -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read map capacity
 1	map	lib/map.f	word	MAP-CAP!	(n ptr a --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	write checked map capacity
+1	map	lib/map.f	word	MAP-CHECK-HANDLE	(ptr a n --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a map storage pointer and capacity pair
 1	map	lib/map.f	word	MAP-COUNT@	(ptr a -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read occupied count
 1	map	lib/map.f	word	MAP-DELETED@	(ptr a -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read deleted count
 1	map	lib/map.f	word	MAP-COUNT!	(n ptr a --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	write checked occupied count
@@ -93,6 +95,14 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	map	lib/map.f	word	MAP-HASH	(ptr u8 n -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	hash a counted key string
 1	map	lib/map.f	word	MAP-INDEX	(n n -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	map hash to a capacity-bounded slot index
 1	map	lib/map.f	word	MAP-PROBE	(n n n -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	compute a linear-probe slot index
+1	map	lib/map.f	word	MAP-SLOT-MATCH?	(ptr a n n ptr u8 n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test whether one occupied slot matches hash and key
+1	map	lib/map.f	word	MAP-REMEMBER-FREE	(n n -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	remember the first reusable probe slot
+1	map	lib/map.f	word	MAP-LOCATE-SLOT	(n ptr a n ptr u8 n n -- n n n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	classify one probed map slot
+1	map	lib/map.f	word	MAP-LOCATE	(ptr a n ptr u8 n -- n n n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	locate key insertion or lookup slot
+1	map	lib/map.f	word	MAP-SLOT-INSERT	(a ptr a n n ptr u8 n --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	insert one value into a free map slot
+1	map	lib/map.f	word	MAP-GET	(ptr a n ptr u8 n -- n bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	lookup a numeric value by counted key
+1	map	lib/map.f	word	MAP-HAS?	(ptr a n ptr u8 n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test whether a counted key exists
+1	map	lib/map.f	word	MAP-SET	(n ptr a n ptr u8 n --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	insert or replace a numeric value by counted key
 1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	checked path stat join helpers now; WALK-FILES planned with checked quotation or audited TRUST boundary
 1	fs	lib/fs.f	word	FS-FALSE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a false flag for filesystem helpers
 1	fs	lib/fs.f	word	FS-TRUE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a true flag for filesystem helpers

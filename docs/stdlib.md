@@ -194,22 +194,23 @@ partial regex or an unchecked `addr`.
 
 ## Map
 
-`lib/map.f` provides a fixed-capacity open-addressed string-key map foundation.
+`lib/map.f` provides a fixed-capacity open-addressed string-key map.
 The source-backed surface uses `ptr a n` cell storage: `MAP-CELLS` returns the
 cell count to allocate for a capacity, and `MAP-INIT` initializes that storage.
 Key strings use `ptr u8 n`.
 
-The current published words expose the checked storage layout needed by the
-lookup/update layer:
+The published words expose checked storage layout plus lookup/update helpers:
 
 ```forth
 MAP-CHECK-CAP       ( n -- )
+MAP-CHECK-LEN       ( n -- )
 MAP-CELLS           ( n -- n )
 MAP-EMPTY?          ( n -- bool )
 MAP-DELETED?        ( n -- bool )
 MAP-OCCUPIED?       ( n -- bool )
 MAP-CAP@            ( ptr a -- n )
 MAP-CAP!            ( n ptr a -- )
+MAP-CHECK-HANDLE    ( ptr a n -- )
 MAP-COUNT@          ( ptr a -- n )
 MAP-DELETED@        ( ptr a -- n )
 MAP-COUNT!          ( n ptr a -- )
@@ -234,23 +235,19 @@ MAP-INIT            ( ptr a n -- )
 MAP-HASH            ( ptr u8 n -- n )
 MAP-INDEX           ( n n -- n )
 MAP-PROBE           ( n n n -- n )
-```
-
-The planned high-level API builds on the same cell storage and counted byte
-keys:
-
-```forth
+MAP-SLOT-MATCH?     ( ptr a n n ptr u8 n -- bool )
+MAP-REMEMBER-FREE   ( n n -- n )
+MAP-LOCATE-SLOT     ( n ptr a n ptr u8 n n -- n n n )
+MAP-LOCATE          ( ptr a n ptr u8 n -- n n n )
+MAP-SLOT-INSERT     ( a ptr a n n ptr u8 n -- )
 MAP-HAS?    ( ptr a n ptr u8 n -- bool )
 MAP-GET     ( ptr a n ptr u8 n -- n bool )
 MAP-SET     ( n ptr a n ptr u8 n -- )
-MAP-COUNT   ( ptr a n -- n )
-MAP-EACH    ( ptr a n [ ptr u8 n n -- ] -- )
 ```
 
 `MAP-GET` returns value plus present flag. `MAP-SET` inserts or replaces one
-numeric value. `MAP-EACH` invokes the quotation once per occupied slot; v1 does
-not guarantee lexical key ordering. Capacity, malformed storage, and full-table
-states throw named errors such as `E-MAP-BAD-CAP` and `E-MAP-FULL`.
+numeric value. Capacity, malformed storage, and full-table states throw named
+errors such as `E-MAP-BAD-CAP` and `E-MAP-FULL`.
 
 ## Files
 
