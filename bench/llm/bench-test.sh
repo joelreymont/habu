@@ -104,7 +104,7 @@ chk report-latency-microbench '| microbench_smoke | 56 | 0.06 |' "$rep"
 
 # --- conv=as : ARR-SUM (array -> scalar) ---
 mkstub "$T/hb.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells arr + @ + loop ;"'
-mkstub "$T/hbl.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do arr i A@ + loop ;"'
+mkstub "$T/hbl.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do arr len i A@ + loop ;"'
 mkstub "$T/js.sh" 'echo "function f(a){ return a.reduce((s,x)=>s+x,0); }"'
 mkstub "$T/rs.sh" 'echo "fn f(a: &[i64]) -> i64 { a.iter().sum() }"'
 SV="[3 1 4] -> 8; [5] -> 5"
@@ -150,7 +150,7 @@ r=$(CLAUDE="$T/hbprose.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64"
 
 # --- conv=aa : REVERSE (array -> array, in place) ---
 mkstub "$T/hb2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do i cells arr + @ len 1 - i - cells arr + @ i cells arr + ! len 1 - i - cells arr + ! loop ;"'
-mkstub "$T/hbl2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr i len i MIRROR-INDEX A-SWAP loop ;"'
+mkstub "$T/hbl2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr len i len i MIRROR-INDEX A-SWAP loop ;"'
 mkstub "$T/js2.sh" 'echo "function f(a){ return a.slice().reverse(); }"'
 mkstub "$T/rs2.sh" 'echo "fn f(a: &[i64]) -> Vec<i64> { a.iter().rev().cloned().collect() }"'
 MV="[3 1 4 1 5] -> [5 1 4 1 3]; [1 2] -> [2 1]"

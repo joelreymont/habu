@@ -30,7 +30,9 @@ extract() {
   '
 }
 bundle() {
-  if [ "$LIB" = 1 ]; then cat bench/llm/habu-array-lib.f "$T/cand.f" > "$T/bundle.f"
+  if [ "$LIB" = 1 ]; then
+    tools/bundle-lib.sh -o "$T/prelude.f" errors array -- bench/llm/habu-array-lib.f
+    cat "$T/prelude.f" "$T/cand.f" > "$T/bundle.f"
   else cp "$T/cand.f" "$T/bundle.f"; fi
 }
 runtime_ms() {

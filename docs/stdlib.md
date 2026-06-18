@@ -73,12 +73,22 @@ elements tie for the maximum. Mutating kernels are `A-REVERSE!`,
 `A-PREFIX-SUM!`, `A-RUNMAX!`, and `A-FILL!`; empty arrays are valid no-ops for
 these words.
 
+Convenience helpers keep common index math checked: `A+!` adds to one element,
+`A-SWAP` swaps two checked indexes, `LAST-INDEX` returns `len - 1` for a
+non-empty array, `MIRROR-INDEX` returns `len - 1 - index`, and `EVEN?` returns a
+Forth boolean for integer parity.
+
 ```forth
 A-CHECK-INDEX     ( n n -- )
 A-CHECK-RANGE     ( n n n -- )
 A-CHECK-NONEMPTY  ( n -- )
 A@                ( ptr a n n -- a )
 A!                ( a ptr a n n -- )
+A+!               ( n ptr a n n -- )
+A-SWAP            ( ptr a n n n -- )
+LAST-INDEX        ( n -- n )
+MIRROR-INDEX      ( n n -- n )
+EVEN?             ( n -- bool )
 A-SUM             ( ptr n n -- n )
 A-MIN             ( ptr n n -- n )
 A-MAX             ( ptr n n -- n )
