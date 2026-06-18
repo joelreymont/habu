@@ -536,6 +536,9 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" path0" s" ptr u8 n -- ptr u8" PT+
    s" open-rd" s" ptr u8 -- n" PT+
    s" access" s" ptr u8 n -- n" PT+
+   s" unlink" s" ptr u8 -- n" PT+
+   s" rename" s" ptr u8 ptr u8 -- n" PT+
+   s" chmod" s" ptr u8 n -- n" PT+
    s" stat64" s" ptr u8 ptr u8 -- n" PT+
    s" getdirentries64" s" n ptr u8 n ptr n -- n" PT+
    s" pipe" s" -- n n n" PT+

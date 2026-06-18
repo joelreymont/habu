@@ -545,6 +545,12 @@ s" spawn-dup2-action" s" n n --" TRUST
 
 : BACCESS 1 G-POP  0 G-POP  NR-ACCESS SYS,  SYS-PUSH ;
 
+: BUNLINK 0 G-POP  NR-UNLINK SYS,  SYS-PUSH ;
+
+: BRENAME 1 G-POP  0 G-POP  NR-RENAME SYS,  SYS-PUSH ;
+
+: BCHMOD  1 G-POP  0 G-POP  NR-CHMOD SYS,  SYS-PUSH ;
+
 : BSTAT64 1 G-POP  0 G-POP  NR-STAT64 SYS,  SYS-PUSH ;
 
 : BGETDIRENTRIES64
@@ -674,7 +680,9 @@ s" spawn-dup2-action" s" n n --" TRUST
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L
    s" open-rd" ['] BOPENRD FPRIM-L
-   s" access" ['] BACCESS FPRIM-L   s" stat64" ['] BSTAT64 FPRIM-L
+   s" access" ['] BACCESS FPRIM-L
+   s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
+   s" stat64" ['] BSTAT64 FPRIM-L
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM-L
    s" patch32" ['] BPATCH32 FPRIM
    s" close" ['] BCLOSE FPRIM-L
