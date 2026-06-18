@@ -4,15 +4,16 @@
 0 set-check
 
 $8000 constant LV-TASK-CAP
-$40000 constant LV-RESULT-CAP
-64 constant LV-MAX
-512 constant LV-ROW-MAX
+$20000 constant LV-RESULT-CAP
+$4000 constant LV-READ-CAP
+256 constant LV-MAX
+2048 constant LV-ROW-MAX
 32 constant LV-NUM-CAP
 256 constant LV-PATH-CAP
 256 constant LV-RUN-CAP
 128 constant LV-MODEL-CAP
 $1000 constant LV-RC-STR-CAP
-$10000 constant LV-KEY-STR-CAP
+$40000 constant LV-KEY-STR-CAP
 64 constant LV-SHA-LEN
 
 0 constant LV-MODE-REFERENCE
@@ -32,6 +33,7 @@ $10000 constant LV-KEY-STR-CAP
 
 create LV-TASK-BUF LV-TASK-CAP allot
 create LV-RESULT-BUF LV-RESULT-CAP allot
+create LV-READ-BUF LV-READ-CAP allot
 create LV-NUM-BUF LV-NUM-CAP allot
 create LV-RUN-BUF LV-RUN-CAP allot
 create LV-MODEL-BUF LV-MODEL-CAP allot
@@ -70,6 +72,7 @@ create LV-RC-DIAGS LV-MAX cells allot
 create LV-RC-TOKDELTA LV-MAX cells allot
 
 variable LV-TASK#
+variable LV-REF-TASK#
 variable LV-SEEN#
 variable LV-CAT#
 variable LV-RC#
@@ -154,6 +157,10 @@ variable LV-RC-SUCC
 variable LV-RC-ROUND
 variable LV-RC-TOK
 variable LV-RC-SUM
+variable LV-RFD
+variable LV-RGOT
+variable LV-BI
+variable LV-LINE-U
 
 : LV-OUT ( a u -- ) type ;
 : LV-NL ( -- ) 10 emit ;
@@ -324,6 +331,9 @@ variable LV-RC-SUM
       1+
    repeat drop -1 ;
 
+: LV-FORTH-HARNESS? {: a :} ( a -- f )
+   a LV-M @ 1+ + LV-N @ LV-M @ 1+ - s" forth" STR= ;
+
 : LV-FIND-SEEN {: id :} ( id -- k|-1 )
    0 begin dup LV-SEEN# @ < while
       dup LV-SEEN@ id = IF exit THEN
@@ -484,15 +494,16 @@ variable LV-RC-SUM
    LV-M !
    a u LV-M @ 1+ LV-TAB-AT dup 0 < IF drop exit THEN
    LV-N !
-   a LV-M @ 1+ + LV-N @ LV-M @ 1+ - s" forth" STR= 0= IF exit THEN
    a LV-I @ LV-U? 0= IF drop s" invalid task id" LV-FAIL THEN
    LV-TASK# @ LV-TASK-ID!
    a LV-I @ 1+ + LV-J @ LV-I @ 1+ - LV-TASK# @ LV-TASK-NAME!
    a LV-H @ 1+ + LV-C @ LV-H @ 1+ - LV-TASK# @ LV-TASK-CAT!
+   a LV-FORTH-HARNESS? IF LV-REF-TASK# LV-CELL++ THEN
    LV-TASK# @ 1+ LV-TASK# ! ;
 
 : LV-SCAN-TASKS ( -- )
    0 LV-TASK# !
+   0 LV-REF-TASK# !
    s" bench/llm/tasks.tsv" LV-TASK-BUF LV-TASK-CAP READ-FILE ['] LV-TASK-LINE LV-FOR-LINES
    LV-CHECK-TASK-COVERAGE ;
 
@@ -863,6 +874,29 @@ variable LV-RC-SUM
    JSON-PARSE LV-ROOT !
    LV-ROOT @ LV-CHECK-ROW ;
 
+: LV-FINISH-RESULT-LINE ( -- )
+   LV-LINE @ 1+ LV-LINE !
+   LV-RESULT-BUF LV-LINE-U @ LV-LINE-LEN LV-RESULT-LINE
+   0 LV-LINE-U ! ;
+
+: LV-RESULT-BYTE {: c :} ( c -- )
+   c LV-LF = IF LV-FINISH-RESULT-LINE exit THEN
+   LV-LINE-U @ LV-RESULT-CAP >= IF s" result line too long" LV-FAIL THEN
+   c LV-RESULT-BUF LV-LINE-U @ + c!
+   LV-LINE-U @ 1+ LV-LINE-U ! ;
+
+: LV-SCAN-RESULT-BYTES {: n :} ( n -- )
+   0 LV-BI !
+   begin LV-BI @ n < while
+      LV-READ-BUF LV-BI @ + c@ LV-RESULT-BYTE
+      LV-BI @ 1+ LV-BI !
+   repeat ;
+
+: LV-OPEN-RESULT ( -- )
+   LV-RESULT-PATH$ PATHZ
+   PATHBUF 0 0 open LV-RFD !
+   LV-RFD @ 0 < IF s" cannot open result file" LV-FAIL THEN ;
+
 : LV-RESET-SUMMARY ( -- )
    0 LV-SEEN# !
    0 LV-CAT# !
@@ -912,11 +946,20 @@ variable LV-RC-SUM
 
 : LV-SCAN-RESULTS ( -- )
    LV-RESET-SUMMARY
-   LV-RESULT-PATH$ LV-RESULT-BUF LV-RESULT-CAP READ-FILE
-   ['] LV-RESULT-LINE LV-FOR-LINES ;
+   0 LV-LINE !
+   0 LV-LINE-U !
+   LV-OPEN-RESULT
+   begin
+      LV-RFD @ LV-READ-BUF LV-READ-CAP read dup LV-RGOT ! 0 >
+   while
+      LV-RGOT @ LV-SCAN-RESULT-BYTES
+   repeat
+   LV-RFD @ close
+   LV-RGOT @ 0 < IF s" result read failed" LV-FAIL THEN
+   LV-LINE-U @ 0 > IF LV-FINISH-RESULT-LINE THEN ;
 
 : LV-OUTPUT-REFERENCE ( -- )
-   LV-SEEN# @ LV-TASK# @ <> IF
+   LV-SEEN# @ LV-REF-TASK# @ <> IF
       s" results/tasks mismatch: " LV-FAIL
    THEN
    s" llm-results: " LV-OUT
@@ -1108,7 +1151,7 @@ variable LV-RC-SUM
 
 : LV-OUTPUT-SUMMARY ( -- )
    LV-SEEN# @ 0= IF s" empty result file" LV-FAIL THEN
-   LV-SEEN# @ LV-TASK# @ <> IF
+   LV-SCHEMA @ 1 = LV-SEEN# @ LV-REF-TASK# @ <> and IF
       s" results/tasks mismatch: " LV-FAIL
    THEN
    LV-JSON @ IF LV-OUTPUT-SUMMARY-JSON ELSE LV-OUTPUT-SUMMARY-TEXT THEN ;

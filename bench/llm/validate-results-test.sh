@@ -37,7 +37,7 @@ write_reference_jsonl() {
 write_live_jsonl() {
   trials=$1
   awk -F '\t' -v trials="$trials" -v hash="$HASH" '
-    NR > 1 && $6 == "forth" {
+    NR > 1 {
       for (trial = 1; trial <= trials; trial++) {
         printf "{\"schema_version\":2,\"run_id\":\"live-fixture-2026-06-18\","
         printf "\"model_id\":\"toy-model\",\"arm\":\"forth\",\"trial_id\":\"live-fixture-2026-06-18:toy-model:forth:%s:%d\",", $1, trial
@@ -68,6 +68,7 @@ write_reference_jsonl
 
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE")
 expected_count=$(awk -F '\t' 'NR>1 && $6 == "forth" {n++} END{print n+0}' "$ROOT/bench/llm/tasks.tsv")
+expected_all_count=$(awk -F '\t' 'NR>1 {n++} END{print n+0}' "$ROOT/bench/llm/tasks.tsv")
 expected="llm-results: $expected_count reference metric row(s), 0 finding(s)"
 [ "$out" = "$expected" ] || {
   echo "FAIL: validate-results good fixture: $out"
@@ -184,16 +185,21 @@ printf '%s\n' "$out" | grep -q '"repair_classes":\[{"repair_class":"remove_produ
 
 write_live_jsonl 2
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl)
-expected_live_rows=$((expected_count * 2))
+expected_live_rows=$((expected_all_count * 2))
 printf '%s\n' "$out" | grep -q "run=live-fixture-2026-06-18 model=toy-model rows=$expected_live_rows certified=$expected_live_rows first_tests=$expected_live_rows tests=$expected_live_rows repairs=0 checker_iterations=$expected_live_rows diagnostics=0 tokens=0 wall_ms=0" || {
   echo "FAIL: validate-results V2 k-trial summary"
   printf '%s\n' "$out"
   exit 1
 }
 printf '%s\n' "$out" | grep -q 'category arithmetic rows=12 certified=12 tests=12' || {
-  echo "FAIL: validate-results V2 category k-trial accounting"
-  printf '%s\n' "$out"
-  exit 1
+   echo "FAIL: validate-results V2 category k-trial accounting"
+   printf '%s\n' "$out"
+   exit 1
+}
+printf '%s\n' "$out" | grep -q 'category arrays rows=30 certified=30 tests=30' || {
+   echo "FAIL: validate-results V2 expanded category accounting"
+   printf '%s\n' "$out"
+   exit 1
 }
 
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/live.jsonl)
