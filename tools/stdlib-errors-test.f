@@ -1,0 +1,89 @@
+\ stdlib-errors-test.f - focused tests for lib/errors.f.
+\ Run: cat lib/errors.f tools/stdlib-errors-test.f | bin/hb
+
+variable #FAIL
+variable #CASE
+
+: T= {: got want :} ( got want -- )
+   #CASE @ 1 + #CASE !
+   got want <> IF
+      [char] F emit #CASE @ .
+      #FAIL @ 1 + #FAIL !
+   THEN ;
+
+: REQUIRE-NONEMPTY ( n -- n )
+   dup 0 <= IF E-A-EMPTY throw THEN ;
+
+E-A-FIRST -2000 T=
+E-A-LAST -2099 T=
+E-A-EMPTY -2000 T=
+E-A-BOUNDS -2001 T=
+
+E-FS-FIRST -2100 T=
+E-FS-LAST -2199 T=
+E-FS-PATH -2100 T=
+E-FS-STAT -2101 T=
+E-FS-OPEN -2102 T=
+E-FS-DIR -2103 T=
+E-FS-DEPTH -2104 T=
+E-FS-IO -2105 T=
+E-FS-CAPACITY -2106 T=
+
+E-STR-FIRST -2200 T=
+E-STR-LAST -2299 T=
+E-STR-BOUNDS -2200 T=
+E-STR-CAPACITY -2201 T=
+
+E-RX-FIRST -2300 T=
+E-RX-LAST -2399 T=
+E-RX-SYNTAX -2300 T=
+E-RX-CAPACITY -2301 T=
+
+E-MAP-FIRST -2400 T=
+E-MAP-LAST -2499 T=
+E-MAP-FULL -2400 T=
+E-MAP-BAD-CAP -2401 T=
+
+E-PROC-FIRST -2500 T=
+E-PROC-LAST -2599 T=
+E-PROC-SPAWN -2500 T=
+E-PROC-WAIT -2501 T=
+E-PROC-TIMEOUT -2502 T=
+E-PROC-OUTPUT -2503 T=
+
+E-TIME-FIRST -2600 T=
+E-TIME-LAST -2699 T=
+E-TIME-RANGE -2600 T=
+E-TIME-CAPACITY -2601 T=
+E-TIME-CLOCK -2602 T=
+
+E-PROP-FIRST -2700 T=
+E-PROP-LAST -2799 T=
+E-PROP-SEED -2700 T=
+E-PROP-GENERATOR -2701 T=
+E-PROP-SHRINK -2702 T=
+E-PROP-CAPACITY -2703 T=
+
+E-BUILD-FIRST -2800 T=
+E-BUILD-LAST -2899 T=
+E-BUILD-SOURCE -2800 T=
+E-BUILD-COMMAND -2801 T=
+E-BUILD-STATUS -2802 T=
+E-BUILD-PATH -2803 T=
+
+E-DIAG-FIRST -2900 T=
+E-DIAG-LAST -2999 T=
+E-DIAG-SCHEMA -2900 T=
+E-DIAG-CAPACITY -2901 T=
+E-DIAG-ORIGIN -2902 T=
+
+7 REQUIRE-NONEMPTY 7 T=
+7 ' REQUIRE-NONEMPTY catch 0 T= 7 T=
+0 ' REQUIRE-NONEMPTY catch E-A-EMPTY T= drop
+
+: REPORT ( -- )
+   #FAIL @ 0 = IF s" stdlib-errors-test: ok" type cr exit THEN
+   #FAIL @ . s" stdlib-errors-test: failures" type cr
+   s" stdlib-errors-test: failures" 1 die ;
+
+REPORT
