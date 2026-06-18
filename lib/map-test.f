@@ -1,14 +1,23 @@
 \ map-test.f - focused tests for fixed-capacity map layout helpers.
-\ Run: cat lib/errors.f lib/map.f lib/map-test.f | bin/hb
+\ Run: cat lib/errors.f lib/string.f lib/map.f lib/map-test.f | bin/hb
 
 1 constant MT-EX-FAIL
 8 constant MT-CAP
+3 constant MT-FULL-CAP
 
 variable MT-CASE
 variable MT-FAIL
 
 create MT-MAP MT-CAP MAP-CELLS cells allot
+create MT-FULL-MAP MT-FULL-CAP MAP-CELLS cells allot
 create MT-KEY 97 c, 98 c, 99 c,
+create MT-KEY-A 97 c,
+create MT-KEY-B 98 c,
+create MT-KEY-C 99 c,
+create MT-KEY-D 100 c,
+create MT-KEY-I 105 c,
+create MT-KEY-Q 113 c,
+create MT-KEY-Z 122 c,
 
 : MT-ASSERT ( bool -- )
    MT-CASE @ 1 + MT-CASE !
@@ -175,6 +184,20 @@ create MT-KEY 97 c, 98 c, 99 c,
 : MT-PROBE-RANGE ( ptr u8 n n n -- ) {: a:ptr u step cap :}
    a u MAP-HASH step cap MAP-PROBE cap MT-RANGE ;
 
+: MT-ASSERT-HIT ( ptr a n ptr u8 n n -- ) {: m:ptr cap key:ptr len want :}
+   m cap key len MAP-GET MT-ASSERT want MT= ;
+
+: MT-ASSERT-MISS ( ptr a n ptr u8 n -- ) {: m:ptr cap key:ptr len :}
+   m cap key len MAP-HAS? 0= MT-ASSERT
+   m cap key len MAP-GET 0= MT-ASSERT 0 MT= ;
+
+: MT-ASSERT-COLLISION-SLOT ( n ptr u8 -- ) {: step want:ptr :}
+   MT-MAP MT-KEY-A 1 MAP-HASH step MT-CAP MAP-PROBE MAP-SLOT-KEY-A@
+      want = MT-ASSERT ;
+
+: MT-FULL-INSERT ( -- )
+   44 MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MAP-SET ;
+
 : MT-TEST-HASH-PROBE ( -- )
    s" " MAP-HASH MAP-HASH-SEED MT=
    s" alpha" MAP-HASH s" alpha" MAP-HASH MT=
@@ -185,6 +208,53 @@ create MT-KEY 97 c, 98 c, 99 c,
    s" alpha" 1 MT-CAP MT-PROBE-RANGE
    s" alpha" MT-CAP MT-CAP MT-PROBE-RANGE
    s" alpha" -1 MT-CAP MT-PROBE-RANGE ;
+
+: MT-TEST-MAP-SET-GET ( -- )
+   MT-MAP MT-CAP MAP-INIT
+   MT-MAP MT-CAP MT-KEY-Z 1 MT-ASSERT-MISS
+   11 MT-MAP MT-CAP MT-KEY-A 1 MAP-SET
+   MT-MAP MAP-COUNT@ 1 MT=
+   MT-MAP MT-CAP MT-KEY-A 1 MAP-HAS? MT-ASSERT
+   MT-MAP MT-CAP MT-KEY-A 1 11 MT-ASSERT-HIT
+   MT-MAP MT-CAP MT-KEY-Z 1 MT-ASSERT-MISS
+   22 MT-MAP MT-CAP MT-KEY-A 1 MAP-SET
+   MT-MAP MAP-COUNT@ 1 MT=
+   MT-MAP MT-CAP MT-KEY-A 1 22 MT-ASSERT-HIT ;
+
+: MT-TEST-MAP-COLLISIONS ( -- )
+   MT-MAP MT-CAP MAP-INIT
+   MT-KEY-A 1 MAP-HASH MT-CAP MAP-INDEX
+      MT-KEY-I 1 MAP-HASH MT-CAP MAP-INDEX MT=
+   MT-KEY-A 1 MAP-HASH MT-CAP MAP-INDEX
+      MT-KEY-Q 1 MAP-HASH MT-CAP MAP-INDEX MT=
+   11 MT-MAP MT-CAP MT-KEY-A 1 MAP-SET
+   22 MT-MAP MT-CAP MT-KEY-I 1 MAP-SET
+   33 MT-MAP MT-CAP MT-KEY-Q 1 MAP-SET
+   MT-MAP MAP-COUNT@ 3 MT=
+   0 MT-KEY-A MT-ASSERT-COLLISION-SLOT
+   1 MT-KEY-I MT-ASSERT-COLLISION-SLOT
+   2 MT-KEY-Q MT-ASSERT-COLLISION-SLOT
+   MT-MAP MT-CAP MT-KEY-A 1 11 MT-ASSERT-HIT
+   MT-MAP MT-CAP MT-KEY-I 1 22 MT-ASSERT-HIT
+   MT-MAP MT-CAP MT-KEY-Q 1 33 MT-ASSERT-HIT
+   44 MT-MAP MT-CAP MT-KEY-I 1 MAP-SET
+   MT-MAP MAP-COUNT@ 3 MT=
+   MT-MAP MT-CAP MT-KEY-A 1 11 MT-ASSERT-HIT
+   MT-MAP MT-CAP MT-KEY-I 1 44 MT-ASSERT-HIT
+   MT-MAP MT-CAP MT-KEY-Q 1 33 MT-ASSERT-HIT ;
+
+: MT-TEST-MAP-FULL ( -- )
+   MT-FULL-MAP MT-FULL-CAP MAP-INIT
+   11 MT-FULL-MAP MT-FULL-CAP MT-KEY-A 1 MAP-SET
+   22 MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 MAP-SET
+   33 MT-FULL-MAP MT-FULL-CAP MT-KEY-C 1 MAP-SET
+   MT-FULL-MAP MAP-COUNT@ MT-FULL-CAP MT=
+   ['] MT-FULL-INSERT catch E-MAP-FULL MT=
+   MT-FULL-MAP MAP-COUNT@ MT-FULL-CAP MT=
+   44 MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 MAP-SET
+   MT-FULL-MAP MAP-COUNT@ MT-FULL-CAP MT=
+   MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 44 MT-ASSERT-HIT
+   MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MT-ASSERT-MISS ;
 
 : MT-REPORT ( -- )
    MT-FAIL @ 0= if s" map-test: ok" type cr exit then
@@ -198,6 +268,9 @@ create MT-KEY 97 c, 98 c, 99 c,
    MT-TEST-SLOT-FIELDS
    MT-TEST-INIT-CLEAR
    MT-TEST-HASH-PROBE
+   MT-TEST-MAP-SET-GET
+   MT-TEST-MAP-COLLISIONS
+   MT-TEST-MAP-FULL
    MT-REPORT ;
 
 MT-MAIN
