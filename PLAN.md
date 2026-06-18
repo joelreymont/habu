@@ -100,17 +100,25 @@ benchmark drivers, and prompts must not introduce public executables named
 
 `bin/hb` owns all normal entry modes:
 
-- `bin/hb` on a tty starts the checked REPL.
-- `program | bin/hb` runs stdin as a batch/pipeline program and writes to
-  stdout/stderr.
-- `bin/hb script.f args...` runs `script.f` with the remaining args exposed to
+- tty and `argc <= 1`: start the checked REPL.
+- tty and `argc > 1`: run `argv[1]` as a script with remaining args exposed to
   Habu.
-- `bin/hb args... < script.f` keeps stdin as the program source and exposes args
-  to the script, which is required for property/benchmark seeds.
+- non-tty stdin with bytes: run stdin as the program, regardless of `argc`; args
+  remain visible to the program. This is required for property/benchmark seeds.
+- non-tty stdin at EOF and `argc > 1`: run `argv[1]` as a script.
 
 Build scripts are ordinary Habu scripts loaded by these modes. Shell wrappers may
 choose sources, make private temp dirs, and concatenate a bundle, but the build
-logic itself belongs in checked Habu libraries and scripts.
+logic itself belongs in checked Habu libraries and scripts. The allowed shell
+boundary is: set environment, create private temp dirs, choose source lists,
+launch `bin/hb`, compare or install final artifacts, and propagate exit status.
+The durable build policy, step graph, expected artifacts, and fail-closed checks
+belong in Habu.
+
+Baked REPL, stepper, and debug source are trusted engine UI. Snapshots may
+prepend `0 set-check` while baking that UI, but must reinstall a `CHECK!` hook
+before user input. The gate must prove typed definitions are checked after a
+rebuild/snapshot.
 
 ### Native-Only Trust Root
 
@@ -123,6 +131,10 @@ Historical bootstrap sources may remain only as inert reference material. They
 must not feed default lint, benchmark, build, or self-check paths. The native
 fixpoint build and native gate are the active parity proof.
 
+Verification must assert that `bin/` exposes no public executable except `hb`
+after rebuild, and that maker/build engines remain private temp artifacts under
+`HB_TMP`.
+
 ### Soundness Gate
 
 The property harness in `test/prop-test.f` is a standing soundness gate, not an
@@ -132,6 +144,8 @@ through `evaluate`, and fails only on certified-but-wrong behavior.
 
 The stdlib/property work in this plan may extract reusable generators and test
 helpers, but it must not weaken the existing checker-soundness gate.
+Verification must include both the default property smoke and an argv-preserving
+pipeline run such as `bin/hb 2 10 < test/prop-test.f`.
 
 ### LLM-Facing Documentation
 
@@ -139,6 +153,14 @@ helpers, but it must not weaken the existing checker-soundness gate.
 machine-readable signature manifests must agree. The prompt surface for agents
 should come from the same checked public signatures that the gate validates, not
 from hand-copied examples that can drift.
+
+Tracked dots:
+
+- `caf-017ff627bf8096be` Reverify LLM baseline contracts.
+- `caf-dda01a0bccb3d15c` Specify build shell boundary.
+- `caf-f6a5010c93899801` Port build step model to Habu.
+- `caf-5db04ad3950fc01c` Port build fixpoint driver.
+- `caf-ec42e1261b644134` Audit LLM dot dependency graph.
 
 ## Representation Decision
 
@@ -166,9 +188,17 @@ index, start, or count in prose.
 Future `slice a` support is allowed only after v1 proves the stdlib shape. It
 must not block Phase 1.
 
-Other domain handles also stay inside today's type grammar. Regex and map
-handles are `addr` in v1; docs may call them `rx` or `map` in prose, but checked
-signatures use `addr` until dedicated concrete types exist.
+Other domain handles also stay inside today's type grammar. Memory-backed handles
+use `ptr u8 n` buffers in v1: the pointer is the storage base and `n` is the
+buffer capacity or compiled byte length, as documented per word. `addr` is only
+for opaque handles that are never dereferenced by checked code, or for an audited
+TRUST boundary that converts to a typed pointer. Regex and map docs may call
+these values `rx` or `map` in prose, but checked signatures must remain typed
+pointers until dedicated concrete handle types exist.
+
+Tracked dot:
+
+- `caf-b530d2dcfb50767a` Specify stdlib handle representation.
 
 ## File Layout
 
@@ -176,6 +206,7 @@ Add a `lib/` tree for reusable checked Habu:
 
 ```text
 lib/
+  errors.f
   array.f
   string.f
   regex.f
@@ -186,6 +217,8 @@ lib/
   test.f
   property.f
   build.f
+  time.f
+  date.f
   std.manifest
 
 docs/
@@ -214,6 +247,20 @@ Each library gets:
 model runs. `LLM.md` remains the concise operating protocol agents read before
 coding.
 
+`lib/errors.f` owns stdlib throw codes. It reserves named ranges by library, and
+every fallible public word gets exact error tests. Local ad hoc negative codes
+must not leak into public stdlib APIs.
+
+`TRUST` in `lib/` is permitted only when the checker cannot express the boundary.
+The same audit rules as engine code apply: `TRUSTED.md` entry, focused runtime
+tests, public-signature coverage, and trust lint scanning both `src/` and `lib/`.
+
+Tracked dots:
+
+- `caf-a486f45e913299c2` Create stdlib layout and manifest.
+- `caf-ea7ebca2557a64fd` Define stdlib error policy.
+- `caf-20ce687c0730c333` Extend trust lint to lib.
+
 ## Phase 1 - Checked Array Stdlib
 
 Goal: make current array hard tails library composition.
@@ -221,7 +268,9 @@ Goal: make current array hard tails library composition.
 Create `lib/array.f` and move the benchmark-private helper surface there. Effects
 below use the v1 representation.
 
-Indexed helpers:
+Indexed helpers. The raw pointer/index words do not take a length and therefore
+do not perform bounds checks; they are for already-validated loops and small
+LLM-facing kernels. Public length-aware words must validate before indexing.
 
 ```forth
 A@             ( ptr a n -- a )       \ pointer, index
@@ -234,6 +283,16 @@ LAST-INDEX    ( n -- n )
 MIRROR-INDEX  ( n n -- n )
 EVEN?         ( n -- bool )
 ```
+
+Bounds semantics:
+
+- `A-CHECK-INDEX` throws `E-A-BOUNDS` when length is negative, index is negative,
+  or index is greater than or equal to length.
+- `A-CHECK-RANGE` throws `E-A-BOUNDS` when length, start, or count is negative,
+  or when `start + count > length`.
+- `LAST-INDEX` throws `E-A-EMPTY` when length is less than or equal to zero.
+- Whole-array words that require at least one element throw `E-A-EMPTY`; empty
+  no-op words state that explicitly.
 
 Whole-array scalar kernels:
 
@@ -290,6 +349,9 @@ Tracked dots:
 - `caf-fa509d91be8db3c7` Define LLM stdlib surface.
 - `caf-583555f1af00460c` Add stdlib bundle mechanism.
 - `caf-8f6e22a01fe1c7f7` Promote array helpers to stdlib.
+- `caf-973cc1cf71a64a4b` Add array bounds and empty errors.
+- `caf-bd4c836040edce85` Add scalar array hard-tail kernels.
+- `caf-bb6d52fb5ec8151c` Add mutating array hard-tail kernels.
 - `caf-eca720800d681475` Wire benchmark to stdlib arrays.
 
 ## Phase 2 - Checked Array Combinators
@@ -404,6 +466,13 @@ Required repair classes:
 - `unknown_word`
 - `unsafe_word`
 
+Repair fixtures:
+
+- One deterministic checker fixture per `repair_class`.
+- Fixture output includes the repair packet and verifies stable token/span,
+  expected/actual, code, class, hint, and source excerpt fields.
+- Multi-diagnostic inputs produce deterministic ordering and packet counts.
+
 Benchmark driver changes:
 
 - `bench/llm/drive-habu.sh` uses JSON diagnostics and repair packets for all
@@ -414,6 +483,7 @@ Benchmark driver changes:
 
 Tracked dots:
 
+- `caf-095648ac69941804` Add repair class fixtures.
 - `caf-be7e76a1a9232ab0` Add LLM repair packet tool.
 - `caf-fcf16bb7fe724292` Use repair packets in Habu driver.
 
@@ -433,6 +503,15 @@ Arms:
 - `python`
 - `typescript`
 
+Task manifest:
+
+- V2 uses one canonical manifest, `bench/llm/tasks.tsv`; legacy
+  `bench/llm/bench-tasks.tsv` is either imported into it or retired.
+- The manifest records task id, category, feature tags, harness kind, language
+  signatures, prompt spec, and vectors/reference data.
+- Live runs, reference solutions, validators, and reports all read the same
+  manifest.
+
 Task categories:
 
 - Arrays and mutation.
@@ -441,10 +520,13 @@ Task categories:
 - Maps/counting/grouping.
 - Files and paths.
 - Processes and command capture.
+- Time and date.
 - Property tests.
 - Build scripts.
 - Diagnostics/repair.
 - AOT-safe programs.
+- Core checked-Forth features: quotations, return stack, row-polymorphic
+  combinators, control/loops, and memory/pointers.
 
 Minimum task count:
 
@@ -457,6 +539,10 @@ Run matrix:
 - Main evidence: k=5 per task/arm/model.
 - Smoke evidence: k=2 for cheap iteration.
 - At least two model families once drivers support them.
+- V2 row identity is `(run_id, model_id, arm, task_id, trial_id)`.
+- `trial_id` is required. `trial_pass = passed_trials / k`.
+  `task_pass@k = any passed trial for that task/arm/model`. Repair rounds are
+  not trials.
 - Every row records model command, model label, date/run id, arm, category, task
   id, prompt hash, outcome, and generated-code runtime where available.
 - Every row uses the scorecard field names from `LLM.md`:
@@ -468,6 +554,15 @@ Run matrix:
   and `signature_weakened`.
 - Candidate sources are stored per task and repair round so failures can be
   replayed without rerunning a model.
+- Each live row points to an artifact directory containing the prompt, raw model
+  response, extracted candidate, checker diagnostics, repair packet, test output,
+  final bundle, and sha256 hashes.
+- `bench/llm/models.tsv` or equivalent defines model label, command, args, output
+  parser, token fields, timeout, and environment requirements. Reports stratify
+  by model and do not pool model families without per-model tables.
+- `runtime_ms` is warmed candidate execution over fixed inputs/repetitions. It
+  is separate from model wall time, checker time, compile/build time, and
+  feedback-loop latency.
 
 Report requirements:
 
@@ -486,6 +581,11 @@ Report requirements:
 - Feedback-loop latency from `bench/llm/perf.sh`: checker, functional tests,
   metric validator, property-test smoke, microbench smoke, and `--full` rebuild
   plus AOT timings.
+- Repair-packet effectiveness by `repair_class`: fixture coverage, success rate,
+  repair rounds, and token deltas.
+- Limitations section: nondeterminism, k/N confidence, token proxy limits,
+  scaffold fairness, library comparability, task-selection bias, hardware/runtime
+  environment, and deterministic-vs-live evidence boundaries.
 
 Native validator requirements:
 
@@ -493,6 +593,8 @@ Native validator requirements:
 - Reject mixed schema versions.
 - Reject missing diagnostic-quality fields.
 - Reject result/task drift.
+- Accept exactly the configured k trials per `(model_id, arm, task_id)` and
+  reject duplicate full row identities.
 - Keep reference rows zero-trust unless the task explicitly covers audited
   boundaries.
 - Reject date/run ids that do not parse through native date helpers.
@@ -501,12 +603,22 @@ Native validator requirements:
 Tracked dots:
 
 - `caf-53349d53fddaaa2f` Define LLM benchmark schema v2.
+- `caf-53e1e0552be5d91c` Define V2 matrix identity.
+- `caf-0342cd385732563b` Define benchmark trial metrics.
+- `caf-d0147cdd624136f8` Specify live replay artifacts.
+- `caf-9a6964ec8a6c01de` Unify benchmark task manifests.
 - `caf-8647df7823d6236d` Add stdlib benchmark task families.
+- `caf-a88640cb0f473220` Add required checker benchmark categories.
+- `caf-d7f03ace8147b8fb` Split benchmark task-family work.
 - `caf-4f8283e4cb195398` Add stdlib and skeleton arms.
 - `caf-d38354169bd4ca5a` Add Python and TypeScript baselines.
 - `caf-8de22befc7a622c5` Support multi-model benchmark runs.
+- `caf-f82efaed1ac9fb0a` Add benchmark model registry.
 - `caf-a1d9a9539fa534fa` Measure generated code runtime.
+- `caf-c097dda4f5febd7d` Define generated runtime protocol.
 - `caf-1a93909abd2f6ec6` Report category and arm deltas.
+- `caf-0704c29bd03061c0` Report LLM feedback latency.
+- `caf-e59e3678678e3c59` Add benchmark limitations section.
 - `caf-1040c3e49ba6bd97` Run expanded LLM benchmark.
 
 ## Phase 5 - Broader LLM Stdlib
@@ -569,13 +681,16 @@ Excluded in v1:
 Public surface:
 
 ```forth
-RX-COMPILE   ( ptr u8 n -- addr )
-RX-MATCH?    ( ptr u8 n addr -- bool )
-RX-FIND      ( ptr u8 n addr -- n n bool )
-RX-COUNT     ( ptr u8 n addr -- n )
+RX-COMPILE   ( ptr u8 n ptr u8 n -- n )
+RX-MATCH?    ( ptr u8 n ptr u8 n -- bool )
+RX-FIND      ( ptr u8 n ptr u8 n -- n n bool )
+RX-COUNT     ( ptr u8 n ptr u8 n -- n )
 ```
 
-Regex must fail closed on malformed patterns or capacity overflow.
+`RX-COMPILE` takes pattern bytes plus a caller-provided bytecode buffer and
+capacity, then returns the compiled byte length. Match/find/count take input text
+plus compiled bytecode pointer/length. Regex must fail closed on malformed
+patterns or capacity overflow.
 
 ### Maps
 
@@ -584,13 +699,16 @@ Implement a fixed-capacity open-addressed string-key map.
 Public surface:
 
 ```forth
-MAP-INIT    ( addr n -- )
-MAP-HAS?    ( addr ptr u8 n -- bool )
-MAP-GET     ( addr ptr u8 n -- n bool )
-MAP-SET     ( n addr ptr u8 n -- )
-MAP-COUNT   ( addr -- n )
-MAP-EACH    ( addr [ ptr u8 n n -- ] -- )
+MAP-INIT    ( ptr u8 n -- )
+MAP-HAS?    ( ptr u8 n ptr u8 n -- bool )
+MAP-GET     ( ptr u8 n ptr u8 n -- n bool )
+MAP-SET     ( n ptr u8 n ptr u8 n -- )
+MAP-COUNT   ( ptr u8 n -- n )
+MAP-EACH    ( ptr u8 n [ ptr u8 n n -- ] -- )
 ```
+
+The first `ptr u8 n` pair is the map storage buffer and capacity. Key strings
+are the second `ptr u8 n` pair. Internal slot layout stays private to `lib/map.f`.
 
 Errors:
 
@@ -617,6 +735,11 @@ WRITE-ALL    ( ptr u8 n ptr u8 n -- )
 APPEND-FILE  ( ptr u8 n ptr u8 n -- )
 ```
 
+`WALK-FILES` is either a checked quotation combinator or one audited TRUST
+boundary with tests proving callback invocation, recursion-buffer isolation, and
+error behavior. Its focused fixture is `lib/fs-test.sh`, wired into the native
+gate after promotion.
+
 ### Processes
 
 Promote tested process/PTY helpers into `lib/process.f`.
@@ -634,6 +757,36 @@ RUN-CAPTURE  ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
 around modeled primitives. Do not publish examples that rely on unchecked
 `run-rc` if `spawn-io wait-rc` is the checked path.
 
+Process contracts:
+
+- Public wrappers accept counted paths/commands and own NUL termination before
+  calling pathz primitives.
+- Negative fd values mean inherit/default as documented; nonnegative fd values
+  are passed through explicitly.
+- Parent-only pipe/PTY fds are close-on-exec before spawning and closed in the
+  parent after use.
+- `RUN-CAPTURE` arguments are command string, stdout buffer/capacity, stderr
+  buffer/capacity, and timeout milliseconds. It returns stdout length, stderr
+  length, and rc in that order. Output truncation throws a named stdlib error.
+
+### Time And Date
+
+Promote checked time/date helpers into `lib/time.f` and `lib/date.f`.
+
+Public surface:
+
+```forth
+EPOCH-SECONDS     ( -- n )
+MONO-NS           ( -- n )
+PARSE-YMD         ( ptr u8 n -- n n n bool )
+FORMAT-YMD        ( n n n ptr u8 n -- n )
+FORMAT-EPOCH-UTC  ( n ptr u8 n -- n )
+```
+
+`EPOCH-SECONDS` and `MONO-NS` wrap checker-modeled native primitives. Date
+formatters use caller-provided buffers and throw named stdlib errors on
+insufficient capacity or invalid ranges.
+
 ### Args, Tests, Properties, Builds
 
 Promote:
@@ -644,6 +797,11 @@ Promote:
 - `lib/build.f`: checked command steps, temp dirs, artifact paths, source
   validation, fail-closed status reporting.
 
+These libraries must split checked reusable helpers from unchecked harness
+boundaries. `evaluate`, source-string generation, raw argv/envp cells, and build
+driver process exits stay in small named boundaries with TRUST/audit entries
+when needed; pure helpers get public checked signatures.
+
 Tracked dots:
 
 - `caf-61df19e626202e0d` Promote string helpers to stdlib.
@@ -652,17 +810,22 @@ Tracked dots:
 - `caf-f4123f6ae266987a` Add regex parser scanner.
 - `caf-0347899117bed799` Implement regex matcher core.
 - `caf-a83149f222b1aac2` Expose regex find helpers.
+- `caf-b530d2dcfb50767a` Specify stdlib handle representation.
 - `caf-0a6ff9f39e4a2e49` Add fixed-cap map layout.
 - `caf-735f45ee596f0512` Implement map get and set.
 - `caf-fd1a85a426a2ef61` Add map iteration helpers.
 - `caf-82a46b35b9564cbb` Promote filesystem helpers.
+- `caf-a9ea2e9d4156889b` Specify file walking trust boundary.
 - `caf-64e5c28b27b9eb63` Add checked file read write helpers.
 - `caf-eac3764a23af6c5f` Promote process helpers.
+- `caf-cda110101ecae382` Specify checked process API contracts.
 - `caf-3be1f3c4fa8dc632` Add process capture API.
 - `caf-7c20d9950db54298` Promote argv parser to stdlib.
 - `caf-d4cbea9483117138` Add checked test helper library.
 - `caf-ae58608572f6027a` Add checked build helper library.
 - `caf-c2f1d2930cccf7cc` Extract property helper library.
+- `caf-3453ea81d309ca46` Specify test property build APIs.
+- `caf-feceb19bbdb145aa` Promote time date helpers to stdlib.
 - `caf-cd8026d9eb7831ef` Add stdlib example scripts.
 
 ## Critical Path
@@ -671,15 +834,18 @@ Work in this order unless a dependency proves wrong:
 
 1. Re-verify baseline contracts: `hb` entry modes, native-only build/gate, and
    property soundness smoke.
-2. `docs/stdlib.md`, `docs/llm-scorecard.md`, `lib/` layout, and manifest.
-3. `tools/bundle-lib.sh`.
-4. `lib/array.f` with promoted helpers and hard-tail kernels.
-5. Deterministic `habu-stdlib` benchmark arm.
-6. Repair-packet schema and driver feedback.
-7. Array combinators and property tests.
-8. Benchmark v2 schema/report/validator.
-9. Broader stdlib categories.
-10. Expanded live benchmark.
+2. Specify the build shell/Habu boundary and the `lib/` TRUST/error/handle
+   policies.
+3. `docs/stdlib.md`, `docs/llm-scorecard.md`, `lib/` layout, and manifest.
+4. `tools/bundle-lib.sh`.
+5. `lib/array.f` with promoted helpers, bounds errors, and hard-tail kernels.
+6. Deterministic `habu-stdlib` benchmark arm.
+7. Repair-packet schema, fixtures, and driver feedback.
+8. Array combinators and property tests.
+9. Benchmark v2 schema/report/validator with unified manifest, matrix identity,
+   replay artifacts, model registry, and runtime protocol.
+10. Broader stdlib categories.
+11. Expanded live benchmark.
 
 Do not start regex/maps/process capture before the array stdlib and bundle
 mechanism exist. They need the same packaging and test conventions.
@@ -691,7 +857,10 @@ surface; new surfaces must add their fixture before their dot closes.
 
 ```sh
 printf ': SQ ( i64 -- i64 ) dup * ; 7 SQ .\n' | bin/hb
+printf ': PIPED ( -- n ) 7 ; PIPED .\n' | bin/hb ignored-script.f arg
+bin/hb 2 10 < test/prop-test.f
 bin/hb < test/prop-test.f
+test "$(find bin -type f -perm -111 ! -name hb -print | wc -l)" -eq 0
 ./bench/llm/run.sh
 ./bench/llm/perf.sh
 ./tools/check.sh lib/array.f
@@ -731,13 +900,18 @@ separate commit from harness/library changes.
 The plan is done only when all of these are true:
 
 - `bin/hb` is the only public binary, and REPL/stdin/script invocation modes are
-  covered by docs and tests.
+  covered by docs and tests, including pipe-with-args and empty-stdin script
+  fallback.
 - Daily build/test paths stay native-only; no gforth or hosted bootstrap path is
   reintroduced into the default workflow.
+- The build shell/Habu boundary is documented, and build policy/step validation
+  lives in Habu scripts/libraries.
 - `test/prop-test.f` remains in the gate and keeps using `depth`, not a stack
   sentinel, as the runtime arity oracle.
 - `lib/` exists and every public stdlib word has a checked effect or audited
   trust entry.
+- `TRUST` lint covers `lib/`, stdlib errors are centrally named, and memory-backed
+  handles use typed pointers rather than unchecked `addr` access.
 - `docs/stdlib.md`, `docs/llm-scorecard.md`, and `LLM.md` document the public
   surface, scorecard fields, and agent protocol without drift.
 - `tools/bundle-lib.sh` lets `hb` scripts use selected libraries without adding
@@ -745,7 +919,11 @@ The plan is done only when all of these are true:
 - Array hard-tail kernels exist and are tested.
 - Array combinators exist and are tested.
 - Repair packets are consumed by Habu benchmark drivers.
-- Benchmark v2 has required categories and validates its own schema natively.
+- Benchmark v2 has required categories, a unified task manifest, matrix identity,
+  replay artifacts, model registry, runtime protocol, and native schema
+  validation.
+- Time/date, file, process, map, regex, test, property, and build helper contracts
+  are documented and tested.
 - Expanded live benchmark evidence is committed.
 - Success criteria in this file are met or the remaining misses have new dots
   with measured evidence.
