@@ -173,6 +173,8 @@ else echo ': ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells ar
 EOF
 chmod +x "$T/hbr.sh"
 r=$(CLAUDE="$T/hbr.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" a); chk habu-repair '"outcome":"pass","rounds":2' "$r"
+chk habu-repair-packet 'habu_repair_packet' "$r"
+chk habu-repair-class 'remove_producer' "$r"
 
 if [ "$manifest_ready" = 1 ]; then
   cat > "$T/canon-model.sh" <<'EOF'

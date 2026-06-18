@@ -21,7 +21,11 @@ printf '\\ no candidate extracted\n' > "$T/cand.f"
 printf '\\ no final bundle\n' > "$T/bundle.f"
 : > "$T/checker-diagnostics.txt"
 : > "$T/repair-packet.json"
+: > "$T/checker-stdout.txt"
+: > "$T/checker-prose.txt"
 : > "$T/test-output.txt"
+REPAIR_TOOL=$T/repair-packet-tool.f
+cat tools/argv.f tools/json.f tools/repair-packet.f > "$REPAIR_TOOL"
 hb_test "$CONV" "$NAME" "$VEC" > "$T/vec.f"
 hb_bench "$CONV" "$NAME" "$VEC" > "$T/bench.f"
 cases=$(case_list "$VEC")
@@ -79,8 +83,7 @@ You produced no valid definition. Output ONLY the habu definition."
     outcome=reject; continue
   fi
   bundle
-  if diag=$(tools/check.sh "$T/bundle.f" 2>&1); then
-    : > "$T/checker-diagnostics.txt"
+  if tools/check.sh "$T/bundle.f" >"$T/checker-stdout.txt" 2>"$T/checker-prose.txt"; then
     outcome=$(sh bench/llm/grade.sh 5 "$T/bundle.f" "$T/vec.f")
     printf '%s\n' "$outcome" > "$T/test-output.txt"
     [ "$outcome" = pass ] && break
@@ -93,15 +96,24 @@ It certified but FAILED the tests. It must satisfy (input -> expected):
 ${cases}
 Fix the logic. Output ONLY the corrected definition."
   else
-    printf '%s\n' "$diag" > "$T/checker-diagnostics.txt"
-    printf '%s\n' "$diag" > "$T/test-output.txt"
+    tools/check.sh --json-errors --all-errors "$T/bundle.f" >"$T/checker-stdout.txt" 2>"$T/checker-diagnostics.txt" || true
+    if [ ! -s "$T/checker-diagnostics.txt" ] && [ -s "$T/checker-stdout.txt" ]; then
+      cp "$T/checker-stdout.txt" "$T/checker-diagnostics.txt"
+    fi
+    if ! bin/hb "$REPAIR_TOOL" "$T/checker-diagnostics.txt" > "$T/repair-packet.json"; then
+      outcome=error
+      break
+    fi
+    BENCH_DIAGNOSTIC_COUNT=$(sed -n 's/.*"diagnostic_count":\([0-9][0-9]*\).*/\1/p' "$T/repair-packet.json")
+    [ -n "$BENCH_DIAGNOSTIC_COUNT" ] || BENCH_DIAGNOSTIC_COUNT=1
+    cat "$T/repair-packet.json" > "$T/test-output.txt"
     feedback="
 
 Your attempt:
 $(cat "$T/cand.f")
 
-The checker REJECTED it:
-$(printf '%s' "$diag" | grep -v 'check.sh:')
+The checker REJECTED it. Use this repair packet:
+$(cat "$T/repair-packet.json")
 
 Fix it so it certifies. Output ONLY the corrected definition."
     outcome=reject
