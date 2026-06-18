@@ -332,11 +332,19 @@ process exits stay in small named boundary words with `TRUST` audit entries
 where the checker cannot express the contract.
 
 ```forth
+T-RESET         ( -- )
+T-CASES         ( -- n )
+T-FAILURES      ( -- n )
+T-ASSERT        ( bool -- )
 T=              ( n n -- )
+T<>             ( n n -- )
 TTRUE           ( bool -- )
+TFALSE          ( bool -- )
+T-STR=          ( ptr u8 n ptr u8 n -- bool )
 T$=             ( ptr u8 n ptr u8 n -- )
-TTHROWS         ( [ -- ] n -- )
-T-REPORT        ( -- n )
+T$<>            ( ptr u8 n ptr u8 n -- )
+TTHROWS         ( a n -- )
+T-REPORT        ( -- )
 PROP-SEED!      ( n -- )
 PROP-RND        ( -- n )
 PROP-RND%       ( n -- n )
@@ -349,13 +357,15 @@ BUILD-RUN       ( ptr u8 n ptr u8 n -- n )
 ```
 
 `lib/test.f` assertions throw named test errors and keep one final report path;
-they never mask assertion failures. `lib/property.f` owns deterministic PRNG
-state, seed/count parsing, generator helpers, and shrinking utilities. Property
-execution may call an audited `evaluate` boundary for generated checked source,
-but pure generators and shrink predicates remain checked helpers. `lib/build.f`
-owns build step modeling, source validation, artifact path construction, and
-fail-closed status reporting; raw process exits are only allowed at the final
-CLI/script boundary.
+they never mask assertion failures. `TTHROWS` takes an execution token `a`
+created by tick (`' WORD`) plus an expected throw code; its raw `catch` use is
+isolated behind the audited trusted boundary `TTHROWS-RAW`.
+`lib/property.f` owns deterministic PRNG state, seed/count parsing, generator
+helpers, and shrinking utilities. Property execution may call an audited
+`evaluate` boundary for generated checked source, but pure generators and shrink
+predicates remain checked helpers. `lib/build.f` owns build step modeling,
+source validation, artifact path construction, and fail-closed status reporting;
+raw process exits are only allowed at the final CLI/script boundary.
 
 ## Build Shell Boundary
 

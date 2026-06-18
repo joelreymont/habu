@@ -25,7 +25,7 @@ variable T-EXPECTED#
 
 : T-ASSERT ( bool -- )
    T-NEXT
-   0= IF T-FAIL THEN ;
+   0= if T-FAIL then ;
 
 : T= ( n n -- ) {: got want :}
    got want = T-ASSERT ;
@@ -40,9 +40,9 @@ variable T-EXPECTED#
    0= T-ASSERT ;
 
 : T-STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
-   u v <> IF 0 0= 0= exit THEN
+   u v <> if 0 0= 0= exit then
    0 begin dup u < while
-      dup a + c@ over b + c@ <> IF drop 0 0= 0= exit THEN
+      dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
       1+
    repeat drop 0 0= ;
 
@@ -53,7 +53,7 @@ variable T-EXPECTED#
    T-STR= 0= T-ASSERT ;
 
 : T-REPORT ( -- )
-   T-FAIL# @ 0= IF s" test: ok" type cr exit THEN
+   T-FAIL# @ 0= if s" test: ok" type cr exit then
    T-FAIL# @ . s" test: failures" type cr
    s" test: failures" T-EX-FAIL die ;
 

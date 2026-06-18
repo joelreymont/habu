@@ -57,6 +57,7 @@ body. Re-audit when a row's body or effect string changes.
 | EACH | `R ptr a i64 [ R a -- R ] -- R` | Array iterator keeps the quotation across element calls; direct checked code would require a recursive quotation type. | `test/hb-suite.f`, `test/run.sh` | src/core/combinators.f:30 | 2026-06-16 |
 | MAP | `R ptr a i64 [ R a -- R a ] -- R` | Array map keeps the quotation across element calls and mutates cells in place; direct checked code would require a recursive quotation type. | `test/hb-suite.f`, `test/run.sh` | src/core/combinators.f:34 | 2026-06-16 |
 | FOLD | `R ptr a i64 b [ R b a -- R b ] -- R b` | Array fold keeps the quotation across accumulator calls; direct checked code would require a recursive quotation type. | `test/hb-suite.f`, `test/run.sh` | src/core/combinators.f:38 | 2026-06-16 |
+| TTHROWS-RAW | `a n --` | Test assertion boundary around `catch`; the checker has no model for applying an arbitrary execution token and observing its throw code. | `lib/test-test.sh`, `test/run.sh` | lib/test.f:61 | 2026-06-18 |
 | EP@ | `-- ptr u8` | Reads the current byte-emission cursor stored in a raw variable; preserves pointer type for byte stores. | `test/run.sh` | src/arch/arm64/icode.f:18 | 2026-06-16 |
 | BYP@ | `-- ptr u8` | Reads the byte-copy cursor stored in a raw variable during `BYTES,`. | `test/run.sh` | src/arch/arm64/icode.f:92 | 2026-06-16 |
 | ENV-DATA | `-- ptr n` | Returns the fixed engine data-region header pointer used for argc/argv/envp cells. | `test/run.sh`, `tools/argv-test.f` | src/os/macos/env.f:9 | 2026-06-16 |

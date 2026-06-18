@@ -233,11 +233,29 @@ variable P1A  variable P1U  variable P2A  variable P2U
    begin PAT-END? 0= PAT-C@ DQUOTE <> and while PX @ 1+ PX ! repeat
    PAT-END? IF 0 exit THEN
    PSA @ PX @ + P2A @ - P2U !  PX @ 1+ PX !  -1 ;
+: PAT-CAP-WORD-1  ( -- f )
+   PAT-SKIP-WS
+   PAT-END? IF 0 exit THEN
+   PSA @ PX @ + P1A !
+   begin PAT-END? 0= PAT-C@ WS? 0= and while PX @ 1+ PX ! repeat
+   PSA @ PX @ + P1A @ - P1U !
+   P1U @ 0 > ;
+: PAT-CAP-PARENS-2  ( -- f )
+   PAT-SKIP-WS
+   PAT-END? IF 0 exit THEN
+   PAT-C@ 40 <> IF 0 exit THEN
+   PX @ 1+ PX !
+   PAT-SKIP-WS  PSA @ PX @ + P2A !
+   begin PAT-END? 0= PAT-C@ 41 <> and while PX @ 1+ PX ! repeat
+   PAT-END? IF 0 exit THEN
+   PSA @ PX @ + P2A @ - P2U !
+   P2A @ P2U @ TRIM P2U ! P2A !
+   PX @ 1+ PX !  -1 ;
 : PAT-MATCH-WORD  {: a u :}  ( -- f )
    PSU @ PX @ - u < IF 0 exit THEN
    PSA @ PX @ + u  a u STR=CI 0= IF 0 exit THEN
    PX @ u + PX !  PAT-WORD-END? ;
-: TRUST-SITE?  {: a u :}  ( -- f )  \ s" name" s" effect" TRUST
+: TRUST-LITERAL-SITE?  {: a u :}  ( -- f )  \ s" name" s" effect" TRUST
    a u PAT-RESET
    begin PAT-END? 0= while
       PX @ PSTART !
@@ -249,6 +267,20 @@ variable P1A  variable P1U  variable P2A  variable P2U
       THEN
       PSTART @ 1+ PX !
    repeat  0 ;
+: TRUSTED-DEF-SITE?  {: a u :}  ( -- f )  \ TRUSTED: name ( effect )
+   a u PAT-RESET
+   begin PAT-END? 0= while
+      PX @ PSTART !
+      s" TRUSTED:" PAT-MATCH-WORD IF
+         PAT-CAP-WORD-1 IF
+            PAT-CAP-PARENS-2 IF -1 exit THEN
+         THEN
+      THEN
+      PSTART @ 1+ PX !
+   repeat  0 ;
+: TRUST-SITE?  {: a u :}  ( -- f )
+   a u TRUST-LITERAL-SITE? IF -1 exit THEN
+   a u TRUSTED-DEF-SITE? ;
 : SRC-PATH-REF?  {: a u :}  ( -- f )  \ token ending -SRC, then s" src/*.f"
    a u PAT-RESET
    begin PAT-END? 0= while

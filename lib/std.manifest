@@ -80,7 +80,22 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	argv	lib/argv.f	word	ARGV-POSZ	(n -- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return positional argument as pathz
 1	argv	lib/argv.f	word	ARGV-OUTZ	(-- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return output path as pathz
 1	argv	lib/argv.f	word	ARGV-INIT	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	initialize argv parser defaults
-1	test	lib/test.f	module			lib/test-test.f	docs/stdlib.md	stdlib-test	planned	checked assertions fixture helpers and final report policy
+1	test	lib/test.f	module			lib/test-test.f	docs/stdlib.md	stdlib-test	active	checked assertions fixture helpers and final report policy
+1	test	lib/test.f	word	T-RESET	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	reset assertion counters
+1	test	lib/test.f	word	T-CASES	(-- n)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	return assertion case count
+1	test	lib/test.f	word	T-FAILURES	(-- n)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	return assertion failure count
+1	test	lib/test.f	word	T-NEXT	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	increment assertion case count
+1	test	lib/test.f	word	T-FAIL	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	record one assertion failure
+1	test	lib/test.f	word	T-ASSERT	(bool --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert a Forth boolean
+1	test	lib/test.f	word	T=	(n n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert numeric equality
+1	test	lib/test.f	word	T<>	(n n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert numeric inequality
+1	test	lib/test.f	word	TTRUE	(bool --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert true flag
+1	test	lib/test.f	word	TFALSE	(bool --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert false flag
+1	test	lib/test.f	word	T-STR=	(ptr u8 n ptr u8 n -- bool)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	compare counted byte strings for tests
+1	test	lib/test.f	word	T$=	(ptr u8 n ptr u8 n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert counted byte-string equality
+1	test	lib/test.f	word	T$<>	(ptr u8 n ptr u8 n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert counted byte-string inequality
+1	test	lib/test.f	word	T-REPORT	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	report assertion summary and exit on failures
+1	test	lib/test.f	word	TTHROWS	(a n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert execution token throws expected code
 1	property	lib/property.f	module			lib/property-test.f	docs/stdlib.md	stdlib-property	planned	deterministic PRNG generators shrinking and audited evaluate boundary
 1	build	lib/build.f	module			lib/build-test.f	docs/stdlib.md	stdlib-build	planned	checked Habu build policy across shell boundary and artifact validation
 1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers

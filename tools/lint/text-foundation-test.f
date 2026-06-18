@@ -103,6 +103,9 @@ create LEX-FIX FIX-CAP allot     variable LEX-LEN
    TRUST-FIX$ TRUST-SITE? ASSERT
    P1A @ P1U @ s" SQ" ASSERT$
    P2A @ P2U @ s" ( n -- n )" ASSERT$
+   s" TRUSTED: TRAW ( a n -- ) catch ;" TRUST-SITE? ASSERT
+   P1A @ P1U @ s" TRAW" ASSERT$
+   P2A @ P2U @ s" a n --" ASSERT$
    SRC-FIX$ SRC-PATH-REF? ASSERT
    P1A @ P1U @ s" src/habu/repl.f" ASSERT$
    BT-FIX$ BACKTICK-PATH? ASSERT

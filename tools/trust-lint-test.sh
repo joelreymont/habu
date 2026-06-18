@@ -39,6 +39,15 @@ s" lib-foo" s" -- n" TRUST
 EOF
 }
 
+add_lib_trusted_def() {
+  d=$1
+  mkdir -p "$d/lib"
+  cat > "$d/lib/trusted-def.f" <<'EOF'
+TRUSTED: lib-trusted ( n -- n )
+  dup ;
+EOF
+}
+
 run_lint() {
   d=$1
   today=${2:-2026-06-16}
@@ -113,14 +122,20 @@ expect_ok "$T/good"
 
 make_base good-lib
 add_lib_trust "$T/good-lib"
+add_lib_trusted_def "$T/good-lib"
 cat >> "$T/good-lib/TRUSTED.md" <<'EOF'
 | lib-foo | `-- n` | fixture | `test/t-lib-fixture.fs` | lib/trust.f:1 | 2026-06-13 |
+| lib-trusted | `n -- n` | fixture | `test/t-lib-fixture.fs` | lib/trusted-def.f:1 | 2026-06-13 |
 EOF
-expect_ok_counts "$T/good-lib" 2 2
+expect_ok_counts "$T/good-lib" 3 3
 
 make_base unmanifested-lib
 add_lib_trust "$T/unmanifested-lib"
 expect_bad_contains "$T/unmanifested-lib" UNMANIFESTED "lib/trust.f:1"
+
+make_base unmanifested-trusted-def
+add_lib_trusted_def "$T/unmanifested-trusted-def"
+expect_bad_contains "$T/unmanifested-trusted-def" UNMANIFESTED "lib/trusted-def.f:1"
 
 make_base stale-lib-row
 cat >> "$T/stale-lib-row/TRUSTED.md" <<'EOF'
