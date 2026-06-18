@@ -96,6 +96,16 @@ check_v2_manifest() {
   require_task 109 PROC-CAPTURE-NONZERO-OK? process stdlib-process run v2,nonzero-rc
   require_task 110 PROC-CAPTURE-TIMEOUT process stdlib-negative reject v2,timeout
   require_task 111 PROC-CAPTURE-TRUNCATED process stdlib-negative reject v2,negative-truncation
+  require_task 112 PROP-DEFAULTS-OK? property stdlib-property run v2,defaults
+  require_task 113 PROP-RND-SEQ-OK? property stdlib-property run v2,deterministic-rnd
+  require_task 114 PROP-GEN-SCRIPT-OK? property stdlib-property run v2,generator
+  require_task 115 PROP-SHRINK-OK? property stdlib-property run v2,shrink
+  require_task 116 PROP-BAD-SEED property stdlib-negative reject v2,negative-seed
+  require_task 117 BUILD-CHECK-SOURCE-OK? build stdlib-build run v2,check-source
+  require_task 118 BUILD-ARTIFACT-OK? build stdlib-build run v2,artifact
+  require_task 119 BUILD-STEP-STATUS build stdlib-negative reject v2,step-status
+  require_task 120 BUILD-RUN-ARTIFACT-OK? build stdlib-build run v2,run-artifact
+  require_task 121 BUILD-MISSING-ARTIFACT build stdlib-negative reject v2,missing-artifact
 }
 assert_repair_class() {
   name=$1
@@ -354,6 +364,147 @@ create PROC-BENCH-ERR PROC-BENCH-CAP allot
 EOF
   assert_process_fixture proc-capture-truncated "-2504" "$T/proc-capture-truncated.f" "$T/proc-capture-long"
 }
+assert_property_fixture() {
+  name=$1
+  want=$2
+  source=$3
+  out=$(bin/hb "$source" 2>"$T/$name.err") || {
+    cat "$T/$name.err"
+    echo "FAIL: property fixture failed $name"
+    exit 1
+  }
+  [ "$out" = "$want" ] || {
+    echo "FAIL: property fixture $name got $out want $want"
+    exit 1
+  }
+}
+check_property_v2_fixtures() {
+  cat lib/errors.f lib/string.f lib/property.f >"$T/prop-defaults.f"
+  cat >>"$T/prop-defaults.f" <<'EOF'
+: PROP-DEFAULTS-OK? ( -- bool )
+   PROP-DEFAULTS 250 = swap 1 = and ;
+PROP-DEFAULTS-OK? . cr
+EOF
+  assert_property_fixture prop-defaults "-1" "$T/prop-defaults.f"
+
+  cat lib/errors.f lib/string.f lib/property.f >"$T/prop-rnd-seq.f"
+  cat >>"$T/prop-rnd-seq.f" <<'EOF'
+: PROP-RND-SEQ-OK? ( -- bool )
+   1 5 PROP-RUN-RESET
+   PROP-RND 1103527590 <> if STR-FALSE exit then
+   PROP-SEED@ 1103527590 <> if STR-FALSE exit then
+   10 PROP-RND% 5 <> if STR-FALSE exit then
+   PROP-COUNT@ 5 = ;
+PROP-RND-SEQ-OK? . cr
+EOF
+  assert_property_fixture prop-rnd-seq "-1" "$T/prop-rnd-seq.f"
+
+  cat lib/errors.f lib/string.f lib/property.f >"$T/prop-gen-script.f"
+  cat >>"$T/prop-gen-script.f" <<'EOF'
+: PROP-GEN-SCRIPT-OK? ( -- bool )
+   0 PROP-GEN-START
+   s" 7 " 0 1 PROP-GEN-STEP
+   s" drop " 1 -1 PROP-GEN-STEP
+   PROP-GEN-DEPTH@ 0 <> if STR-FALSE exit then
+   PROP-BUF$ s" 7 drop " STR= ;
+PROP-GEN-SCRIPT-OK? . cr
+EOF
+  assert_property_fixture prop-gen-script "-1" "$T/prop-gen-script.f"
+
+  cat lib/errors.f lib/string.f lib/property.f >"$T/prop-shrink.f"
+  cat >>"$T/prop-shrink.f" <<'EOF'
+: PROP-BENCH-KEEP? ( -- bool )
+   PROP-BUF$ nip 4 >= ;
+: PROP-SHRINK-OK? ( -- bool )
+   PROP-BUF-RESET
+   s" dup drop 1+ " PROP-BUF+
+   [: PROP-BENCH-KEEP? ;] PROP-SHRINK
+   PROP-BUF$ s" dup " STR= ;
+PROP-SHRINK-OK? . cr
+EOF
+  assert_property_fixture prop-shrink "-1" "$T/prop-shrink.f"
+
+  cat lib/errors.f lib/string.f lib/property.f >"$T/prop-bad-seed.f"
+  cat >>"$T/prop-bad-seed.f" <<'EOF'
+: PROP-BENCH-BAD ( -- )
+   -1 1 PROP-RUN-RESET ;
+' PROP-BENCH-BAD catch . cr
+EOF
+  assert_property_fixture prop-bad-seed "-2700" "$T/prop-bad-seed.f"
+}
+assert_build_fixture() {
+  name=$1
+  want=$2
+  source=$3
+  shift 3
+  out=$(bin/hb "$source" "$@" 2>"$T/$name.err") || {
+    cat "$T/$name.err"
+    echo "FAIL: build fixture failed $name"
+    exit 1
+  }
+  [ "$out" = "$want" ] || {
+    echo "FAIL: build fixture $name got $out want $want"
+    exit 1
+  }
+}
+check_build_v2_fixtures() {
+  printf '%s\n' ': MAIN ( -- i64 ) 42 ;' >"$T/build-source-ok.f"
+  printf '%s\n' ': BAD ( i64 -- i64 ) 0= ;' >"$T/build-source-bad.f"
+  cat >"$T/build-make-artifact" <<EOF
+#!/bin/sh
+printf 'artifact' >"$T/build-artifact.out"
+EOF
+  cat >"$T/build-no-artifact" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+  chmod +x "$T/build-make-artifact" "$T/build-no-artifact"
+
+  cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/build.f >"$T/build-check-source.f"
+  cat >>"$T/build-check-source.f" <<'EOF'
+: BUILD-CHECK-SOURCE-OK? ( -- bool )
+   0 SCRIPT-ARGV$ BUILD-CHECK
+   BUILD-TRUE ;
+BUILD-CHECK-SOURCE-OK? . cr
+EOF
+  assert_build_fixture build-check-source "-1" "$T/build-check-source.f" "$T/build-source-ok.f"
+
+  cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/build.f >"$T/build-artifact.f"
+  cat >>"$T/build-artifact.f" <<'EOF'
+: BUILD-ARTIFACT-OK? ( -- bool )
+   0 SCRIPT-ARGV$ s" out.bin" BUILD-ARTIFACT
+   0 SCRIPT-ARGV$ s" out.bin" BUILD-PATH-BUF JOIN-PATH
+   BUILD-PATH-BUF swap STR= ;
+BUILD-ARTIFACT-OK? . cr
+EOF
+  assert_build_fixture build-artifact "-1" "$T/build-artifact.f" "$T"
+
+  cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/build.f >"$T/build-step-status.f"
+  cat >>"$T/build-step-status.f" <<'EOF'
+: BUILD-BENCH-BAD-STEP ( -- n )
+   7 ;
+: BUILD-BENCH-BAD ( -- )
+   s" bad-step" [: BUILD-BENCH-BAD-STEP ;] BUILD-STEP ;
+' BUILD-BENCH-BAD catch . cr
+EOF
+  assert_build_fixture build-step-status "-2802" "$T/build-step-status.f"
+
+  cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/build.f >"$T/build-run-artifact.f"
+  cat >>"$T/build-run-artifact.f" <<'EOF'
+: BUILD-RUN-ARTIFACT-OK? ( -- bool )
+   0 SCRIPT-ARGV$ 1 SCRIPT-ARGV$ BUILD-RUN 0= ;
+BUILD-RUN-ARTIFACT-OK? . cr
+EOF
+  assert_build_fixture build-run-artifact "-1" "$T/build-run-artifact.f" "$T/build-make-artifact" "$T/build-artifact.out"
+
+  cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/build.f >"$T/build-missing-artifact.f"
+  cat >>"$T/build-missing-artifact.f" <<'EOF'
+: BUILD-BENCH-BAD ( -- )
+   0 SCRIPT-ARGV$ 1 SCRIPT-ARGV$ BUILD-RUN drop ;
+' BUILD-BENCH-BAD catch . cr
+EOF
+  assert_build_fixture build-missing-artifact "-2803" "$T/build-missing-artifact.f" "$T/build-no-artifact" "$T/build-missing.out"
+}
 check_tsv_shape
 check_v2_manifest
 check_diagnostic_v2_fixtures
@@ -382,6 +533,8 @@ check_aot_v2_fixtures
 check_regex_v2_fixtures
 check_file_v2_fixtures
 check_process_v2_fixtures
+check_property_v2_fixtures
+check_build_v2_fixtures
 VALIDATOR=$T/validate-results.f
 cat tools/date.f tools/lint/lib.f tools/json.f tools/argv.f bench/llm/validate-results.f >"$VALIDATOR"
 bin/hb "$VALIDATOR"
