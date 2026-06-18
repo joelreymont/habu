@@ -41,6 +41,7 @@ cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint
 [ -x bin/hb ] || { echo "no bin/hb — install a trusted seed with tools/seed.sh /path/to/hb"; exit 1; }
 ./tools/build.sh > $T/hb-build.log 2>&1 || { tail -5 $T/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }
 echo "PASS: self-rebuild fixpoint"
+./tools/check-repair-hints-test.sh || { echo "FAIL: repair diagnostic hints"; exit 1; }
 ./tools/hb-baseline-contracts-test.sh || { echo "FAIL: hb baseline contracts"; exit 1; }
 ./tools/test-hb.sh || exit 1
 # divide/modulo by zero must fail loudly (ARM64 SDIV yields 0 silently); the
