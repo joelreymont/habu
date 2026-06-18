@@ -39,19 +39,27 @@ rows in `lib/std.manifest`; planned contracts here define the target API shape
 for implementation dots and benchmark prompts.
 
 Typed examples in prompts must use the current checked grammar exactly. Array
-views use `ptr a n`; byte strings, regex bytecode buffers, map storage, paths,
-and capture buffers use `ptr u8 n`. Quotation effects are written in brackets,
-for example `[ ptr u8 n -- ]`.
+views and cell-backed map storage use `ptr a n`; byte strings, regex bytecode
+buffers, map keys, paths, and capture buffers use `ptr u8 n`. Quotation effects
+are written in brackets, for example `[ ptr u8 n -- ]`.
 
 ## Handle Representation
 
-The checker currently has pointer types, not nominal handle types. v1 memory-backed handles use `ptr u8 n`: the pointer is the storage base and `n` is the byte capacity or active length specified by the owning module. Public signatures must keep that representation visible until dedicated concrete handle types exist.
+The checker currently has pointer types, not nominal handle types. Byte-oriented
+v1 memory-backed handles use `ptr u8 n`: the pointer is the storage base and
+`n` is the byte capacity or active length specified by the owning module.
+Cell-oriented storage such as arrays and fixed-capacity map slot storage uses
+`ptr a n`: the pointer is the cell storage base and `n` is the element or slot
+capacity. Public signatures must keep that representation visible until
+dedicated concrete handle types exist.
 
 Opaque `addr` values are boundary-only. A module may use `addr` only for values
 that checked code never dereferences, or behind a named audited `TRUST` wrapper
 that converts the boundary value into a typed pointer contract with focused
-tests. Regex and map prose may call values `rx` or `map`, but manifest effects
-and source signatures remain typed as `ptr u8 n`.
+tests. Regex prose may call values `rx`, but manifest effects and source
+signatures remain typed as `ptr u8 n`; map prose may call values `map`, but
+manifest effects and source signatures remain typed as `ptr a n` for storage
+and `ptr u8 n` for keys.
 
 ## Array
 
@@ -174,17 +182,57 @@ partial regex or an unchecked `addr`.
 
 ## Map
 
-`lib/map.f` provides a fixed-capacity open-addressed string-key map. The first
-`ptr u8 n` pair is the map storage buffer and capacity. Key strings are the
-second `ptr u8 n` pair. Internal slot layout stays private to `lib/map.f`.
+`lib/map.f` provides a fixed-capacity open-addressed string-key map foundation.
+The source-backed surface uses `ptr a n` cell storage: `MAP-CELLS` returns the
+cell count to allocate for a capacity, and `MAP-INIT` initializes that storage.
+Key strings use `ptr u8 n`.
+
+The current published words expose the checked storage layout needed by the
+lookup/update layer:
 
 ```forth
-MAP-INIT    ( ptr u8 n -- )
-MAP-HAS?    ( ptr u8 n ptr u8 n -- bool )
-MAP-GET     ( ptr u8 n ptr u8 n -- n bool )
-MAP-SET     ( n ptr u8 n ptr u8 n -- )
-MAP-COUNT   ( ptr u8 n -- n )
-MAP-EACH    ( ptr u8 n [ ptr u8 n n -- ] -- )
+MAP-CHECK-CAP       ( n -- )
+MAP-CELLS           ( n -- n )
+MAP-EMPTY?          ( n -- bool )
+MAP-DELETED?        ( n -- bool )
+MAP-OCCUPIED?       ( n -- bool )
+MAP-CAP@            ( ptr a -- n )
+MAP-CAP!            ( n ptr a -- )
+MAP-COUNT@          ( ptr a -- n )
+MAP-DELETED@        ( ptr a -- n )
+MAP-COUNT!          ( n ptr a -- )
+MAP-DELETED!        ( n ptr a -- )
+MAP-SLOTS           ( ptr a -- ptr a )
+MAP-CHECK-INDEX     ( ptr a n -- )
+MAP-SLOT            ( ptr a n -- ptr a )
+MAP-SLOT-FIELD      ( ptr a n n -- ptr a )
+MAP-SLOT-STATE@     ( ptr a n -- n )
+MAP-SLOT-STATE!     ( n ptr a n -- )
+MAP-SLOT-HASH@      ( ptr a n -- n )
+MAP-SLOT-HASH!      ( n ptr a n -- )
+MAP-SLOT-KEY-A@     ( ptr a n -- ptr u8 )
+MAP-SLOT-KEY-A!     ( ptr u8 ptr a n -- )
+MAP-SLOT-KEY-U@     ( ptr a n -- n )
+MAP-SLOT-KEY-U!     ( n ptr a n -- )
+MAP-SLOT-VALUE@     ( ptr a n -- a )
+MAP-SLOT-VALUE!     ( a ptr a n -- )
+MAP-SLOT-CLEAR      ( ptr a n -- )
+MAP-CLEAR           ( ptr a -- )
+MAP-INIT            ( ptr a n -- )
+MAP-HASH            ( ptr u8 n -- n )
+MAP-INDEX           ( n n -- n )
+MAP-PROBE           ( n n n -- n )
+```
+
+The planned high-level API builds on the same cell storage and counted byte
+keys:
+
+```forth
+MAP-HAS?    ( ptr a n ptr u8 n -- bool )
+MAP-GET     ( ptr a n ptr u8 n -- n bool )
+MAP-SET     ( n ptr a n ptr u8 n -- )
+MAP-COUNT   ( ptr a n -- n )
+MAP-EACH    ( ptr a n [ ptr u8 n n -- ] -- )
 ```
 
 `MAP-GET` returns value plus present flag. `MAP-SET` inserts or replaces one

@@ -18,6 +18,7 @@ fail() {
 
 grep -Fq '## Handle Representation' "$DOC" || fail "missing Handle Representation section"
 grep -Fq 'v1 memory-backed handles use `ptr u8 n`' "$DOC" || fail "missing ptr u8 n handle contract"
+grep -Fq 'fixed-capacity map slot storage uses' "$DOC" || fail "missing ptr a n map storage contract"
 grep -Fq 'Opaque `addr` values are boundary-only' "$DOC" || fail "missing addr boundary rule"
 
 require_doc() {
@@ -31,7 +32,8 @@ require_doc 'SB-APPEND       ( ptr u8 n -- )'
 require_doc '## Regex'
 require_doc 'RX-COMPILE   ( ptr u8 n ptr u8 n -- n )'
 require_doc '## Map'
-require_doc 'MAP-SET     ( n ptr u8 n ptr u8 n -- )'
+require_doc 'MAP-CELLS           ( n -- n )'
+require_doc 'MAP-SET     ( n ptr a n ptr u8 n -- )'
 require_doc '## Files'
 require_doc 'WALK-FILES   ( ptr u8 n [ ptr u8 n -- ] -- )'
 require_doc 'one audited `TRUST` boundary'
@@ -175,8 +177,8 @@ awk 'BEGIN { FS = "\t"; ok = 1 }
     printf "%s:%d: regex module notes must specify ptr u8 n handle representation\n", FILENAME, NR > "/dev/stderr"
     ok = 0
   }
-  $2 == "map" && $4 == "module" && $11 !~ /ptr u8 n/ {
-    printf "%s:%d: map module notes must specify ptr u8 n handle representation\n", FILENAME, NR > "/dev/stderr"
+  $2 == "map" && $4 == "module" && ($11 !~ /ptr a n/ || $11 !~ /ptr u8 n/) {
+    printf "%s:%d: map module notes must specify ptr a n storage and ptr u8 n key representation\n", FILENAME, NR > "/dev/stderr"
     ok = 0
   }
   $2 == "fs" && $4 == "module" && ($11 !~ /WALK-FILES/ || $11 !~ /TRUST/) {
