@@ -217,6 +217,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	WAIT-RC	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and throw on wait failure
 1	process	lib/process.f	word	SPAWN-IO	(ptr u8 n n n n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with explicit stdio fds
 1	process	lib/process.f	word	RUN-RC	(ptr u8 n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path and return exit status
+1	process	lib/process.f	word	RUN-IO-RC	(ptr u8 n n n n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with explicit stdio fds and return exit status
 1	process	lib/process.f	word	FD-CLOEXEC!	(n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	mark a parent-owned fd close-on-exec
 1	process	lib/process.f	word	PIPE-PAIR	(-- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	create a pipe and throw on failure
 1	process	lib/process.f	word	PROC-PFD-SLOT	(n -- ptr a)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	return a pollfd slot in the process poll buffer

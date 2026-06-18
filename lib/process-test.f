@@ -5,6 +5,10 @@
 
 variable PT-R
 variable PT-W
+variable PT-IN-R
+variable PT-IN-W
+variable PT-OUT-R
+variable PT-OUT-W
 create PT-BUF 32 allot
 create PT-OUT 32 allot
 create PT-ERR 32 allot
@@ -103,6 +107,18 @@ create PT-ERR 32 allot
       1+
    repeat drop ;
 
+: TEST-RUN-IO-CAT ( -- )
+   PIPE-PAIR PT-IN-W ! PT-IN-R !
+   PIPE-PAIR PT-OUT-W ! PT-OUT-R !
+   PT-IN-W @ s" cat-in" write 6 T=
+   PT-IN-W @ close
+   s" /bin/cat" PT-IN-R @ PT-OUT-W @ -1 RUN-IO-RC 0 T=
+   PT-IN-R @ close
+   PT-OUT-W @ close
+   PT-OUT-R @ PT-READ 6 T=
+   PT-BUF 6 s" cat-in" T$=
+   PT-OUT-R @ close ;
+
 : PROCESS-TEST-MAIN ( -- )
    T-RESET
    SCRIPT-ARGC 6 < if s" process-test: missing fixture args" T-EX-FAIL die then
@@ -119,6 +135,7 @@ create PT-ERR 32 allot
    TEST-RUN-CAPTURE-FALSE
    TEST-RUN-CAPTURE-HB
    TEST-RUN-CAPTURE-FD-CLEANUP
+   TEST-RUN-IO-CAT
    T-REPORT
    s" process-test: ok" type cr ;
 

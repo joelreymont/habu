@@ -373,6 +373,7 @@ PATHZ               ( ptr u8 n -- ptr u8 )
 WAIT-RC             ( n -- n )
 SPAWN-IO            ( ptr u8 n n n n -- n )
 RUN-RC              ( ptr u8 n -- n )
+RUN-IO-RC           ( ptr u8 n n n n -- n )
 FD-CLOEXEC!         ( n -- )
 PIPE-PAIR           ( -- n n )
 PROC-PFD-SLOT       ( n -- ptr a )
@@ -406,8 +407,9 @@ RUN-CAPTURE  ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
 `PATHZ` copies a counted path into the module's private NUL-terminated path
 buffer and throws `E-PROC-OUTPUT` if the path does not fit. `RUN-RC` composes the
 checked `SPAWN-IO` and `WAIT-RC` wrappers rather than the unchecked runtime
-`run-rc` primitive. `SPAWN-IO` and `WAIT-RC` throw `E-PROC-SPAWN` and
-`E-PROC-WAIT` for primitive failures.
+`run-rc` primitive. `RUN-IO-RC` is the same checked run-and-wait path with
+explicit stdin, stdout, and stderr fds. `SPAWN-IO` and `WAIT-RC` throw
+`E-PROC-SPAWN` and `E-PROC-WAIT` for primitive failures.
 
 `SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
 fds. Negative fd values mean inherit/default; nonnegative fd values are passed

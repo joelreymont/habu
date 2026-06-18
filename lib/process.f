@@ -58,6 +58,9 @@ variable PROC-RD
 : RUN-RC ( ptr u8 n -- n )
    -1 -1 -1 SPAWN-IO WAIT-RC ;
 
+: RUN-IO-RC ( ptr u8 n n n n -- n )
+   SPAWN-IO WAIT-RC ;
+
 : FD-CLOEXEC! ( n -- ) {: fd :}
    fd F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT throw then ;
 
