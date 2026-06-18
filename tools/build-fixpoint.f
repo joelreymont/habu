@@ -1,6 +1,7 @@
 \ build-fixpoint.f - checked self-rebuild orchestration.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/process.f, and lib/build.f.
+\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
+\ lib/process.f, lib/process-argv.f, and lib/build.f.
 
 262144 constant BF-SOURCE-CAP
 32768 constant BF-CMP-CAP
@@ -10,11 +11,11 @@
 74 constant BF-BUILD-RC
 
 create BF-SOURCE-BUF BF-SOURCE-CAP allot
-create BF-CMD-PATH FS-PATH-CAP allot
 create BF-ART-PATH FS-PATH-CAP allot
 create BF-OUT-PATH FS-PATH-CAP allot
 create BF-A-PATH FS-PATH-CAP allot
 create BF-B-PATH FS-PATH-CAP allot
+create BF-ENV-BUF FS-PATH-CAP allot
 create BF-CMP-A BF-CMP-CAP allot
 create BF-CMP-B BF-CMP-CAP allot
 create BF-LF-BUF 1 allot
@@ -29,6 +30,7 @@ variable BF-RA
 variable BF-RB
 variable BF-GEN
 variable BF-FOUND
+variable BF-PID
 
 : BF-TRUE ( -- bool )
    0 0= ;
@@ -42,20 +44,94 @@ variable BF-FOUND
    path dst pathu BYTE-COPY
    pathu ;
 
-: BF-CMD$ ( ptr u8 n -- ptr u8 n )
-   BF-CMD-PATH BF-TMP> BF-CMD-PATH swap ;
-
 : BF-ART$ ( ptr u8 n -- ptr u8 n )
    BF-ART-PATH BF-TMP> BF-ART-PATH swap ;
 
 : BF-OUT$ ( ptr u8 n -- ptr u8 n )
    BF-OUT-PATH BF-TMP> BF-OUT-PATH swap ;
 
-: BF-RUN ( ptr u8 n ptr u8 n -- ) {: cmd:ptr cmdu art:ptr artu :}
-   cmd cmdu BF-CMD$ art artu BF-ART$ BUILD-RUN drop ;
+: BF-A$ ( ptr u8 n -- ptr u8 n )
+   BF-A-PATH BF-TMP> BF-A-LEN !
+   BF-A-PATH BF-A-LEN @ ;
+
+: BF-B$ ( ptr u8 n -- ptr u8 n )
+   BF-B-PATH BF-TMP> BF-B-LEN !
+   BF-B-PATH BF-B-LEN @ ;
+
+: BF-TMP$ ( -- ptr u8 n )
+   s" HB_TMP" GETENV dup 0= if drop drop s" /tmp" then ;
+
+: BF-ENV$ ( -- ptr u8 n )
+   s" HB_TMP=" {: prefix:ptr prefixu :}
+   BF-TMP$ {: tmp:ptr tmpu :}
+   prefix BF-ENV-BUF prefixu BYTE-COPY
+   tmp BF-ENV-BUF prefixu + tmpu BYTE-COPY
+   BF-ENV-BUF prefixu tmpu + ;
 
 : BF-EXPECT ( ptr u8 n -- )
    BF-ART$ BUILD-EXPECT ;
+
+: BF-RC0 ( n -- )
+   0 <> if E-BUILD-STATUS throw then ;
+
+: BF-REMOVE-TMP ( ptr u8 n -- ) {: a:ptr u :}
+   a u BF-A$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
+
+: BF-RENAME-TMP ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
+   src srcu BF-A$ dst dstu BF-B$ RENAME-FILE ;
+
+: BF-CHMOD-X-TMP ( ptr u8 n -- )
+   BF-A$ CHMOD-X ;
+
+: BF-OPEN-INPUT ( ptr u8 n -- n )
+   FS-PATHZ open-rd dup 0 < if E-BUILD-PATH throw then ;
+
+: BF-ARGV-ENV-EXE ( ptr u8 n -- )
+   PROC-ARGV-RESET
+   BF-ENV$ PROC-ARGV+
+   PROC-ARGV+ ;
+
+: BF-RUN-ENV-FDS ( n n n -- n ) {: infd outfd errfd :}
+   s" /usr/bin/env" PROC-ARGV-PREPARE infd outfd errfd PROC-SPAWN-ARGV-RAW BF-PID !
+   PROC-ARGV-RESET
+   BF-PID @ 0 < if E-PROC-SPAWN throw then
+   BF-PID @ WAIT-RC ;
+
+: BF-RUN-ENV-INFD ( n -- n ) {: infd :}
+   s" /usr/bin/env" PROC-ARGV-PREPARE infd -1 -1 PROC-SPAWN-ARGV-RAW BF-PID !
+   PROC-ARGV-RESET
+   infd close
+   BF-PID @ 0 < if E-PROC-SPAWN throw then
+   BF-PID @ WAIT-RC ;
+
+: BF-RUN-ENV-EXE ( ptr u8 n -- n )
+   BF-ARGV-ENV-EXE
+   -1 -1 -1 BF-RUN-ENV-FDS ;
+
+: BF-RUN-ENV-PATH-INFILE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu src:ptr srcu :}
+   exe exeu BF-ARGV-ENV-EXE
+   src srcu BF-OPEN-INPUT BF-RUN-ENV-INFD ;
+
+: BF-RUN-ENV-TMP ( ptr u8 n -- n )
+   BF-A$ BF-RUN-ENV-EXE ;
+
+: BF-RUN-ENV-TMP-INFILE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu src:ptr srcu :}
+   exe exeu BF-A$ BF-ARGV-ENV-EXE
+   src srcu BF-B$ BF-OPEN-INPUT BF-RUN-ENV-INFD ;
+
+: BF-CODESIGN-VERIFY-TMP ( ptr u8 n -- ) {: a:ptr u :}
+   PROC-ARGV-RESET
+   s" -v" PROC-ARGV+
+   a u BF-A$ PROC-ARGV+
+   s" /usr/bin/codesign" -1 -1 -1 RUN-ARGV-IO-RC BF-RC0 ;
+
+: BF-CODESIGN-FORCE-TMP ( ptr u8 n -- ) {: a:ptr u :}
+   PROC-ARGV-RESET
+   s" -s" PROC-ARGV+
+   s" -" PROC-ARGV+
+   s" --force" PROC-ARGV+
+   a u BF-A$ PROC-ARGV+
+   s" /usr/bin/codesign" -1 -1 -1 RUN-ARGV-IO-RC BF-RC0 ;
 
 : BF-RESET-OUT ( ptr u8 n -- )
    BF-OUT$ BF-SOURCE-BUF 0 WRITE-ALL ;
@@ -161,16 +237,24 @@ variable BF-FOUND
    s" hb-snap-src" s" src/habu/snap.f" BF-EMIT-SOURCE ;
 
 : BF-BOOTSTRAP-STAGE ( -- )
-   s" build-bootstrap-stage" s" hb-stage" BF-RUN ;
+   s" stage2-got" BF-REMOVE-TMP
+   s" hb-stage" BF-REMOVE-TMP
+   s" bin/hb" s" src/habu/stage2.f" BF-RUN-ENV-PATH-INFILE BF-RC0
+   s" stage2-got" BF-EXPECT
+   s" stage2-got" s" hb-stage" BF-RENAME-TMP
+   s" hb-stage" BF-CHMOD-X-TMP ;
 
 : BF-RUN-STAGE ( -- )
-   s" build-run-stage" s" stage2-got" BF-RUN ;
+   s" stage2-got" BF-REMOVE-TMP
+   s" hb-stage" BF-RUN-ENV-TMP BF-RC0
+   s" stage2-got" BF-EXPECT ;
 
 : BF-PROMOTE-STAGE ( -- )
-   s" build-promote-stage" s" hb-stage" BF-RUN ;
+   s" stage2-got" s" hb-stage" BF-RENAME-TMP
+   s" hb-stage" BF-CHMOD-X-TMP ;
 
 : BF-VERIFY-STAGE ( -- )
-   s" build-verify-stage" s" hb-stage" BF-RUN ;
+   s" hb-stage" BF-CODESIGN-VERIFY-TMP ;
 
 : BF-STAGE-MATCH? ( -- bool )
    s" hb-stage" s" stage2-got" BF-TMP-FILE= ;
@@ -197,15 +281,24 @@ variable BF-FOUND
 : BF-BUILD-STDIN ( -- )
    BF-STDIN-SOURCE
    BF-RUN-STAGE
-   s" build-promote-stdin-maker" s" hb-stdin-mk" BF-RUN
-   s" build-run-stdin-maker" s" hb-stdin-got" BF-RUN
-   s" build-promote-stdin-engine" s" hb-stdin" BF-RUN
-   s" build-verify-stdin" s" hb-stdin" BF-RUN ;
+   s" stage2-got" s" hb-stdin-mk" BF-RENAME-TMP
+   s" hb-stdin-mk" BF-CHMOD-X-TMP
+   s" hb-stdin-got" BF-REMOVE-TMP
+   s" hb-stdin-mk" BF-RUN-ENV-TMP BF-RC0
+   s" hb-stdin-got" BF-EXPECT
+   s" hb-stdin-got" s" hb-stdin" BF-RENAME-TMP
+   s" hb-stdin" BF-CHMOD-X-TMP
+   s" hb-stdin" BF-CODESIGN-VERIFY-TMP ;
 
 : BF-BUILD-SNAP ( -- )
    BF-SNAP-SOURCE
-   s" build-run-snap" s" hb-snap0" BF-RUN
-   s" build-promote-snap" s" hb-new" BF-RUN
+   s" hb-snap0" BF-REMOVE-TMP
+   s" hb-new" BF-REMOVE-TMP
+   s" hb-stdin" s" hb-snap-src" BF-RUN-ENV-TMP-INFILE BF-RC0
+   s" hb-snap0" BF-EXPECT
+   s" hb-snap0" s" hb-new" BF-RENAME-TMP
+   s" hb-new" BF-CODESIGN-FORCE-TMP
+   s" hb-new" BF-CHMOD-X-TMP
    s" hb-new" BF-EXPECT
    s" build OK: hb-new validated" type cr ;
 
