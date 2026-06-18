@@ -83,6 +83,12 @@ variable HOST-PATH-U
    2dup HOST-PAT-A 6 HOST-FIND-CI 0 >= IF 2drop -1 exit THEN
    HOST-PAT-B 3 HOST-FIND-CI 0 >= ;
 
+: HOST-BENCH-BASELINE? ( a u -- f )
+   2dup s" ./bench/llm/drive-" PREFIX? IF s" .sh" HAS-EXT? exit THEN
+   2dup s" ./bench/llm/bench-test.sh" PATH= IF 2drop -1 exit THEN
+   2dup s" ./bench/llm/run-bench.sh" PATH= IF 2drop -1 exit THEN
+   s" ./bench/llm/lib.sh" PATH= ;
+
 : HOST-CHECK-A ( a u -- )
    HOST-PAT-A 6 HOST-FIND-CI
    dup 0 >= IF
@@ -106,6 +112,7 @@ variable HOST-PATH-U
    HOST-BUF HOST-LEN @ HOST-CHECK-B ;
 
 : HOST-SCAN-FILE {: a u :} ( -- )
+   a u HOST-BENCH-BASELINE? IF exit THEN
    a u HOST-PATH-BAD? IF a u HOST-REPORT-PATH exit THEN
    a u HOST-TEXT? 0= IF exit THEN
    a HOST-PATH-A !  u HOST-PATH-U !
