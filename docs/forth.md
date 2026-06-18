@@ -57,8 +57,9 @@ not a matter of taste. Target is the native `bin/hb` engine.
   responsibility boundaries so review stays focused and files can be built in
   parallel.
 - **Reusable helpers belong in libraries, not pasted drivers.** Tool/script
-  drivers can concatenate library files for `hb script.f args...`, but shared
-  behavior should still live in one owned source file.
+  drivers use `tools/bundle-lib.sh -o out.f module... -- driver.f` to concatenate
+  library files for `hb out.f args...`; shared behavior still lives in one owned
+  source file.
 - **Native scripts are single-source loads.** `hb tool.f args...` has no
   `include`; wrappers concatenate owned libraries ahead of the driver when a tool
   needs shared code.
