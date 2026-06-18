@@ -1,0 +1,14 @@
+schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
+1	errors	lib/errors.f	module			lib/errors-test.f	docs/stdlib.md	stdlib-errors	planned	central named throw-code ranges and stdlib failure policy
+1	array	lib/array.f	module			lib/array-test.f	docs/stdlib.md	stdlib-array	planned	checked array handles indexing bounds and scalar kernels
+1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	planned	checked byte-string helpers and formatter support
+1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	planned	checked regex surface built on explicit handle representation
+1	map	lib/map.f	module			lib/map-test.f	docs/stdlib.md	stdlib-map	planned	checked associative collection surface
+1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	planned	checked filesystem helpers with named errors
+1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	planned	checked process spawning capture and exit-status helpers
+1	argv	lib/argv.f	module			lib/argv-test.f	docs/stdlib.md	stdlib-argv	planned	checked command-line parser helpers
+1	test	lib/test.f	module			lib/test-test.f	docs/stdlib.md	stdlib-test	planned	reusable test assertions and fixture helpers
+1	property	lib/property.f	module			lib/property-test.f	docs/stdlib.md	stdlib-property	planned	property generator and checker support
+1	build	lib/build.f	module			lib/build-test.f	docs/stdlib.md	stdlib-build	planned	checked build and bundle helpers
+1	time	lib/time.f	module			lib/time-test.f	docs/stdlib.md	stdlib-time	planned	monotonic and wall-clock helpers
+1	date	lib/date.f	module			lib/date-test.f	docs/stdlib.md	stdlib-date	planned	checked UTC date parsing formatting and conversion
