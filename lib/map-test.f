@@ -7,9 +7,15 @@
 
 variable MT-CASE
 variable MT-FAIL
+variable MT-EACH-COUNT
+variable MT-EACH-SUM
+variable MT-EACH-LEN-SUM
 
 create MT-MAP MT-CAP MAP-CELLS cells allot
 create MT-FULL-MAP MT-FULL-CAP MAP-CELLS cells allot
+create MT-EACH-KEYS MT-CAP cells allot
+create MT-EACH-LENS MT-CAP cells allot
+create MT-EACH-VALUES MT-CAP cells allot
 create MT-KEY 97 c, 98 c, 99 c,
 create MT-KEY-A 97 c,
 create MT-KEY-B 98 c,
@@ -36,6 +42,31 @@ create MT-KEY-Z 122 c,
    MT-CAP MAP-CELLS 0 ?do
       777 MT-MAP i cells + !
    loop ;
+
+: MT-EACH-CLEAR-CELLS ( ptr a -- ) {: a:ptr :}
+   MT-CAP 0 ?do
+      0 a i cells + !
+   loop ;
+
+: MT-EACH-RESET ( -- )
+   0 MT-EACH-COUNT !
+   0 MT-EACH-SUM !
+   0 MT-EACH-LEN-SUM !
+   MT-EACH-KEYS MT-EACH-CLEAR-CELLS
+   MT-EACH-LENS MT-EACH-CLEAR-CELLS
+   MT-EACH-VALUES MT-EACH-CLEAR-CELLS ;
+
+: MT-EACH-KEY-CODE ( ptr u8 n -- n ) {: key:ptr len :}
+   len 0 > if key c@ else 0 then ;
+
+: MT-EACH-RECORD ( ptr u8 n n -- ) {: key:ptr len value :}
+   MT-EACH-COUNT @ {: ix :}
+   key len MT-EACH-KEY-CODE MT-EACH-KEYS ix cells + !
+   len MT-EACH-LENS ix cells + !
+   value MT-EACH-VALUES ix cells + !
+   ix 1 + MT-EACH-COUNT !
+   MT-EACH-SUM @ value + MT-EACH-SUM !
+   MT-EACH-LEN-SUM @ len + MT-EACH-LEN-SUM ! ;
 
 : MT-ASSERT-CLEAR-SLOT ( n -- ) {: ix :}
    MT-MAP ix MAP-SLOT-STATE@ MAP-EMPTY MT=
@@ -195,6 +226,11 @@ create MT-KEY-Z 122 c,
    MT-MAP MT-KEY-A 1 MAP-HASH step MT-CAP MAP-PROBE MAP-SLOT-KEY-A@
       want = MT-ASSERT ;
 
+: MT-ASSERT-EACH-ROW ( n n n n -- ) {: ix key len value :}
+   MT-EACH-KEYS ix cells + @ key MT=
+   MT-EACH-LENS ix cells + @ len MT=
+   MT-EACH-VALUES ix cells + @ value MT= ;
+
 : MT-FULL-INSERT ( -- )
    44 MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MAP-SET ;
 
@@ -256,6 +292,51 @@ create MT-KEY-Z 122 c,
    MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 44 MT-ASSERT-HIT
    MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MT-ASSERT-MISS ;
 
+: MT-TEST-MAP-EACH-EMPTY ( -- )
+   MT-MAP MT-CAP MAP-INIT
+   MT-EACH-RESET
+   MT-MAP MT-CAP [: MT-EACH-RECORD ;] MAP-EACH
+   MT-EACH-COUNT @ 0 MT=
+   MT-EACH-SUM @ 0 MT=
+   MT-EACH-LEN-SUM @ 0 MT= ;
+
+: MT-TEST-MAP-EACH-INSERTS ( -- )
+   MT-MAP MT-CAP MAP-INIT
+   11 MT-MAP MT-CAP MT-KEY-A 1 MAP-SET
+   22 MT-MAP MT-CAP MT-KEY-B 1 MAP-SET
+   MT-EACH-RESET
+   MT-MAP MT-CAP [: MT-EACH-RECORD ;] MAP-EACH
+   MT-EACH-COUNT @ 2 MT=
+   MT-EACH-SUM @ 33 MT=
+   MT-EACH-LEN-SUM @ 2 MT=
+   0 [char] a 1 11 MT-ASSERT-EACH-ROW
+   1 [char] b 1 22 MT-ASSERT-EACH-ROW ;
+
+: MT-TEST-MAP-EACH-UPDATES ( -- )
+   MT-MAP MT-CAP MAP-INIT
+   11 MT-MAP MT-CAP MT-KEY-A 1 MAP-SET
+   22 MT-MAP MT-CAP MT-KEY-B 1 MAP-SET
+   33 MT-MAP MT-CAP MT-KEY-A 1 MAP-SET
+   MT-EACH-RESET
+   MT-MAP MT-CAP [: MT-EACH-RECORD ;] MAP-EACH
+   MT-EACH-COUNT @ 2 MT=
+   MT-EACH-SUM @ 55 MT=
+   0 [char] a 1 33 MT-ASSERT-EACH-ROW
+   1 [char] b 1 22 MT-ASSERT-EACH-ROW ;
+
+: MT-TEST-MAP-EACH-COLLISIONS ( -- )
+   MT-MAP MT-CAP MAP-INIT
+   11 MT-MAP MT-CAP MT-KEY-A 1 MAP-SET
+   22 MT-MAP MT-CAP MT-KEY-I 1 MAP-SET
+   33 MT-MAP MT-CAP MT-KEY-Q 1 MAP-SET
+   MT-EACH-RESET
+   MT-MAP MT-CAP [: MT-EACH-RECORD ;] MAP-EACH
+   MT-EACH-COUNT @ 3 MT=
+   MT-EACH-SUM @ 66 MT=
+   0 [char] q 1 33 MT-ASSERT-EACH-ROW
+   1 [char] a 1 11 MT-ASSERT-EACH-ROW
+   2 [char] i 1 22 MT-ASSERT-EACH-ROW ;
+
 : MT-REPORT ( -- )
    MT-FAIL @ 0= if s" map-test: ok" type cr exit then
    MT-FAIL @ . s" map-test: failures" type cr
@@ -271,6 +352,10 @@ create MT-KEY-Z 122 c,
    MT-TEST-MAP-SET-GET
    MT-TEST-MAP-COLLISIONS
    MT-TEST-MAP-FULL
+   MT-TEST-MAP-EACH-EMPTY
+   MT-TEST-MAP-EACH-INSERTS
+   MT-TEST-MAP-EACH-UPDATES
+   MT-TEST-MAP-EACH-COLLISIONS
    MT-REPORT ;
 
 MT-MAIN

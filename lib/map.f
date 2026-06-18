@@ -220,3 +220,15 @@ $7FFFFFFFFFFFFFFF constant MAP-HASH-MASK
    then
    loc MAP-LOC-FREE <> if E-MAP-FULL throw then
    value m ix hash key len MAP-SLOT-INSERT ;
+
+\ Visit occupied entries in ascending storage-slot order.
+: MAP-EACH ( ptr a n [ ptr u8 n n -- ] -- ) {: m:ptr cap q :}
+   m cap MAP-CHECK-HANDLE
+   cap 0 ?do
+      m i MAP-SLOT-STATE@ MAP-OCCUPIED? if
+         m i MAP-SLOT-KEY-A@
+         m i MAP-SLOT-KEY-U@
+         m i MAP-SLOT-VALUE@
+         q execute
+      then
+   loop ;
