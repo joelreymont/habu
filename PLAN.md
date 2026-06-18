@@ -608,6 +608,16 @@ Tracked dots:
 - `caf-d0147cdd624136f8` Specify live replay artifacts.
 - `caf-9a6964ec8a6c01de` Unify benchmark task manifests.
 - `caf-8647df7823d6236d` Add stdlib benchmark task families.
+- `caf-318396f468464887` Add array benchmark V2 tasks.
+- `caf-e332223f5ddd39f9` Add string benchmark V2 tasks.
+- `caf-a153463219dcb080` Add regex benchmark V2 tasks.
+- `caf-e172702436c276ad` Add map benchmark V2 tasks.
+- `caf-49542db8d7552b3a` Add file benchmark V2 tasks.
+- `caf-bb37ad27763abec7` Add process benchmark V2 tasks.
+- `caf-8521330d435326dd` Add time date benchmark V2 tasks.
+- `caf-0d23e19c717bb81b` Add property build benchmark V2 tasks.
+- `caf-1a508208521a82ed` Add diagnostic benchmark V2 tasks.
+- `caf-91586f86fb3c66e3` Add AOT-safe benchmark V2 tasks.
 - `caf-a88640cb0f473220` Add required checker benchmark categories.
 - `caf-d7f03ace8147b8fb` Split benchmark task-family work.
 - `caf-4f8283e4cb195398` Add stdlib and skeleton arms.
@@ -820,6 +830,11 @@ Tracked dots:
 - `caf-eac3764a23af6c5f` Promote process helpers.
 - `caf-cda110101ecae382` Specify checked process API contracts.
 - `caf-3be1f3c4fa8dc632` Add process capture API.
+- `caf-6805905af9f91380` Implement capture pipe setup.
+- `caf-ac0f5cf530e13b15` Implement capture drain loop.
+- `caf-4d7ba155d5d94ecb` Add capture timeout handling.
+- `caf-d296857ab4e4d367` Add capture overflow behavior.
+- `caf-ef7b9f82ac094a86` Add process capture fixtures.
 - `caf-7c20d9950db54298` Promote argv parser to stdlib.
 - `caf-d4cbea9483117138` Add checked test helper library.
 - `caf-ae58608572f6027a` Add checked build helper library.
