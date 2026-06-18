@@ -176,6 +176,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   reference metric rows from the task manifest under test instead of assuming the
   checked-in reference JSONL has already been refreshed for concurrent task
   additions.
+- **Cross-row JSON state must copy strings:** `JSON-STRING$` points into the
+  parser's reusable string buffer. Validators that compare data across
+  `JSON-PARSE` calls must copy string bytes before parsing the next row.
 - **Doc contract fixtures need stable anchors:** when `grep -F` gates API prose,
   keep the asserted phrase contiguous in Markdown or assert a shorter stable
   substring; ordinary line wrapping can otherwise hide a present contract.

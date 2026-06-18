@@ -4,6 +4,7 @@ const fs = require('fs');
 const input = fs.readFileSync(process.argv[2], 'utf8').trim();
 const rows = input.split('\n')
   .filter(Boolean).map(JSON.parse);
+const perfPath = process.argv[3] || process.env.BENCH_PERF_JSON || null;
 
 const ARMS = ['habu-a', 'habu-lib', 'js', 'rust'];
 const LABEL = {
@@ -30,8 +31,18 @@ const tokenKnown = r => Number.isFinite(Number(r.tokens)) && Number(r.tokens) > 
 const runtimeKnown = r => r.runtime_ms != null && Number.isFinite(Number(r.runtime_ms)) && Number(r.runtime_ms) >= 0;
 const trialTaskKey = r => `${modelKey(r)}\t${r.task_id ?? r.name}`;
 
+function readPerf(path) {
+  if (!path) return null;
+  const perf = JSON.parse(fs.readFileSync(path, 'utf8'));
+  if (!perf || perf.bench !== 'llm-perf' || !Array.isArray(perf.results)) {
+    throw new Error(`invalid llm-perf JSON: ${path}`);
+  }
+  return perf;
+}
+
 const models = [...new Set(rows.map(modelKey))].sort((a, b) => modelLabel(a).localeCompare(modelLabel(b)) || a.localeCompare(b));
 const by = (a, model = null) => rows.filter(r => r.arm === a && (model == null || modelKey(r) === model));
+const perf = readPerf(perfPath);
 
 function stats(arm, model = null) {
   const rs = by(arm, model);
@@ -102,6 +113,20 @@ o += 'harness overhead + caching distort it). Output tokens are generated-token 
 o += 'reasoning. They are still a useful effort proxy: habu source is terser, yet output tokens run HIGHER on hard tasks\n';
 o += '— the reasoning cost of the unfamiliar memory model dominates the terseness saving._\n\n';
 
+o += '## Evidence Contract\n\n';
+o += 'V2 live rows are identified by `run_id`, `model_id`, `arm`, `task_id`, and `trial_id`; duplicate full keys are invalid while multiple trials for the same task are expected.\n';
+o += 'Replayable rows retain `prompt`, `raw_response`, `extracted_candidate`, `checker_diagnostics`, `repair_packet`, `test_output`, and `final_bundle`, each with a `*_sha256` field so artifacts can be matched to archived files or inline payloads.\n\n';
+
+o += '## Limitations\n\n';
+o += '- **nondeterminism**: model sampling, provider scheduling, local load, and transient tool latency can change individual rows.\n';
+o += '- **k/N confidence**: pass rates are point estimates for the recorded k trials over N selected tasks, not confidence intervals.\n';
+o += '- **token proxy limits**: output tokens exclude input, hidden reasoning, prompt-cache effects, and harness overhead.\n';
+o += '- **scaffold fairness**: each arm gets the same repair budget, but language prompts, compilers, and diagnostics differ.\n';
+o += '- **library comparability**: `habu-lib` measures a checked helper surface, while JS/Rust use their familiar standard library idioms.\n';
+o += '- **task selection**: the suite stresses integer array and memory algorithms; it does not represent every programming workload.\n';
+o += '- **environment**: wall/runtime timings are tied to the local machine, OS, toolchain, and current `bin/hb` build.\n';
+o += '- **deterministic-vs-live boundary**: shell fixtures verify the harness deterministically; benchmark claims require archived live V2 rows.\n\n';
+
 o += '## Reliability\n\n';
 o += '| language | trials | green trials | trial pass | first-try green | task pass@k | non-pass rows |\n';
 o += '|---|---:|---:|---:|---:|---:|---:|\n';
@@ -138,6 +163,18 @@ if (missingRuntimeRows.length) {
     .map(([a, n]) => `${LABEL[a]} ${n}`).join(', ');
   o += `Runtime metrics exclude ${missingRuntimeRows.length} passing row(s) without measured runtime (${miss}). `;
   o += 'Reliability, repair-round, token, and wall-time metrics still include those rows.\n\n';
+}
+
+o += '## LLM Feedback Latency\n\n';
+o += 'Source: `bench/llm/perf.sh --json`; these timings measure local checker/test/report feedback latency, not model inference latency.\n\n';
+if (perf) {
+  o += '| check | wall ms | wall s |\n|---|---:|---:|\n';
+  for (const r of perf.results) {
+    o += `| ${q(r.name)} | ${fmt(r.wall_ms)} | ${fmt(sec(r.wall_ms))} |\n`;
+  }
+  o += '\n';
+} else {
+  o += 'No perf JSON artifact was supplied with this report run.\n\n';
 }
 
 const h = S['habu-a'], hl = S['habu-lib'], j = S.js, r = S.rust;

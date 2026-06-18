@@ -81,6 +81,26 @@ EOF
 rep=$(node bench/llm/report.js "$T/report-runtime.jsonl")
 chk report-runtime-header 'median runtime ms' "$rep"
 chk report-runtime-not-wall '| JavaScript | 1 | 5 | \*\*5\*\* | 5 | 7 | 7 | 9 | 9 |' "$rep"
+chk report-limitations-section '## Limitations' "$rep"
+chk report-limitations-nondeterminism 'nondeterminism' "$rep"
+chk report-limitations-confidence 'k/N confidence' "$rep"
+chk report-limitations-token-proxy 'token proxy limits' "$rep"
+chk report-limitations-scaffold 'scaffold fairness' "$rep"
+chk report-limitations-library 'library comparability' "$rep"
+chk report-limitations-task-selection 'task selection' "$rep"
+chk report-limitations-environment 'environment' "$rep"
+chk report-limitations-boundary 'deterministic-vs-live boundary' "$rep"
+chk report-evidence-contract 'run_id.*model_id.*arm.*task_id.*trial_id' "$rep"
+chk report-replay-artifacts 'prompt.*raw_response.*extracted_candidate.*checker_diagnostics.*repair_packet.*test_output.*final_bundle' "$rep"
+
+cat > "$T/perf.json" <<'EOF'
+{"schema_version":1,"bench":"llm-perf","full":false,"results":[{"name":"check_solutions","wall_ms":12},{"name":"functional_tests","wall_ms":23},{"name":"metric_validator","wall_ms":34},{"name":"prop_smoke_250","wall_ms":45},{"name":"microbench_smoke","wall_ms":56}]}
+EOF
+rep=$(node bench/llm/report.js "$T/report-runtime.jsonl" "$T/perf.json")
+chk report-latency-section '## LLM Feedback Latency' "$rep"
+chk report-latency-source 'bench/llm/perf.sh --json' "$rep"
+chk report-latency-validator '| metric_validator | 34 | 0.03 |' "$rep"
+chk report-latency-microbench '| microbench_smoke | 56 | 0.06 |' "$rep"
 
 # --- conv=as : ARR-SUM (array -> scalar) ---
 mkstub "$T/hb.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells arr + @ + loop ;"'

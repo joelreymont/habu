@@ -4,13 +4,16 @@
 0 set-check
 
 $8000 constant LV-TASK-CAP
-$20000 constant LV-RESULT-CAP
+$40000 constant LV-RESULT-CAP
 64 constant LV-MAX
+512 constant LV-ROW-MAX
 32 constant LV-NUM-CAP
 256 constant LV-PATH-CAP
 256 constant LV-RUN-CAP
 128 constant LV-MODEL-CAP
 $1000 constant LV-RC-STR-CAP
+$10000 constant LV-KEY-STR-CAP
+64 constant LV-SHA-LEN
 
 0 constant LV-MODE-REFERENCE
 1 constant LV-MODE-SUMMARY
@@ -20,7 +23,12 @@ $1000 constant LV-RC-STR-CAP
 10 constant LV-LF
 13 constant LV-CR
 48 constant LV-ZERO
+57 constant LV-NINE
 58 constant LV-COLON
+65 constant LV-UPPER-A
+70 constant LV-UPPER-F
+97 constant LV-LOWER-A
+102 constant LV-LOWER-F
 
 create LV-TASK-BUF LV-TASK-CAP allot
 create LV-RESULT-BUF LV-RESULT-CAP allot
@@ -28,6 +36,7 @@ create LV-NUM-BUF LV-NUM-CAP allot
 create LV-RUN-BUF LV-RUN-CAP allot
 create LV-MODEL-BUF LV-MODEL-CAP allot
 create LV-RC-STR LV-RC-STR-CAP allot
+create LV-KEY-STR LV-KEY-STR-CAP allot
 
 create LV-TASK-ID LV-MAX cells allot
 create LV-TASK-NAME-A LV-MAX cells allot
@@ -35,6 +44,16 @@ create LV-TASK-NAME-U LV-MAX cells allot
 create LV-TASK-CAT-A LV-MAX cells allot
 create LV-TASK-CAT-U LV-MAX cells allot
 create LV-SEEN-ID LV-MAX cells allot
+
+create LV-KEY-TASK-ID LV-ROW-MAX cells allot
+create LV-KEY-RUN-A LV-ROW-MAX cells allot
+create LV-KEY-RUN-U LV-ROW-MAX cells allot
+create LV-KEY-MODEL-A LV-ROW-MAX cells allot
+create LV-KEY-MODEL-U LV-ROW-MAX cells allot
+create LV-KEY-ARM-A LV-ROW-MAX cells allot
+create LV-KEY-ARM-U LV-ROW-MAX cells allot
+create LV-KEY-TRIAL-A LV-ROW-MAX cells allot
+create LV-KEY-TRIAL-U LV-ROW-MAX cells allot
 
 create LV-CAT-A LV-MAX cells allot
 create LV-CAT-U LV-MAX cells allot
@@ -54,7 +73,11 @@ variable LV-TASK#
 variable LV-SEEN#
 variable LV-CAT#
 variable LV-RC#
+variable LV-KEY#
 variable LV-RC-STR-U
+variable LV-KEY-STR-U
+variable LV-SCHEMA
+variable LV-SCHEMA-SET
 variable LV-NUM-I
 variable LV-I
 variable LV-J
@@ -85,6 +108,14 @@ variable LV-RUN-U
 variable LV-RUN-SET
 variable LV-MODEL-U
 variable LV-MODEL-SET
+variable LV-CUR-RUN-A
+variable LV-CUR-RUN-U
+variable LV-CUR-MODEL-A
+variable LV-CUR-MODEL-U
+variable LV-CUR-ARM-A
+variable LV-CUR-ARM-U
+variable LV-CUR-TRIAL-A
+variable LV-CUR-TRIAL-U
 variable LV-ROWS
 variable LV-CERT
 variable LV-FIRST-TESTS
@@ -222,7 +253,7 @@ variable LV-RC-SUM
    0 LV-K !
    0
    begin LV-K @ LV-U @ < while
-      LV-A @ LV-K @ + c@ dup LV-ZERO < over 57 > or IF drop drop 0 0 exit THEN
+      LV-A @ LV-K @ + c@ dup LV-ZERO < over LV-NINE > or IF drop drop 0 0 exit THEN
       LV-ZERO - swap 10 * +
       LV-K @ 1+ LV-K !
    repeat -1 ;
@@ -303,6 +334,36 @@ variable LV-RC-SUM
    LV-SEEN# @ LV-MAX >= IF s" too many result rows" LV-FAIL THEN
    id LV-SEEN# @ LV-SEEN!
    LV-SEEN# @ 1+ LV-SEEN# ! ;
+
+: LV-KEY-COPY$ {: a u :} ( a u -- a' u )
+   LV-KEY-STR-U @ u + LV-KEY-STR-CAP > IF s" result identity strings too long" LV-FAIL THEN
+   LV-KEY-STR LV-KEY-STR-U @ + LV-A !
+   u LV-U !
+   a LV-A @ u BMOVE
+   LV-KEY-STR-U @ u + LV-KEY-STR-U !
+   LV-A @ LV-U @ ;
+
+: LV-CUR-KEY-MATCH? {: k :} ( k -- f )
+   LV-KEY-TASK-ID k cells + @ LV-ID @ <> IF 0 exit THEN
+   LV-KEY-RUN-A k cells + @ LV-KEY-RUN-U k cells + @ LV-CUR-RUN-A @ LV-CUR-RUN-U @ STR= 0= IF 0 exit THEN
+   LV-KEY-MODEL-A k cells + @ LV-KEY-MODEL-U k cells + @ LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ STR= 0= IF 0 exit THEN
+   LV-KEY-ARM-A k cells + @ LV-KEY-ARM-U k cells + @ LV-CUR-ARM-A @ LV-CUR-ARM-U @ STR= 0= IF 0 exit THEN
+   LV-KEY-TRIAL-A k cells + @ LV-KEY-TRIAL-U k cells + @ LV-CUR-TRIAL-A @ LV-CUR-TRIAL-U @ STR= ;
+
+: LV-FIND-KEY ( -- k|-1 )
+   0 begin dup LV-KEY# @ < while
+      dup LV-CUR-KEY-MATCH? IF exit THEN
+      1+
+   repeat drop -1 ;
+
+: LV-KEY+ ( -- )
+   LV-KEY# @ LV-ROW-MAX >= IF s" too many result identities" LV-FAIL THEN
+   LV-ID @ LV-KEY-TASK-ID LV-KEY# @ cells + !
+   LV-CUR-RUN-A @ LV-CUR-RUN-U @ LV-KEY-COPY$ LV-KEY-RUN-U LV-KEY# @ cells + ! LV-KEY-RUN-A LV-KEY# @ cells + !
+   LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ LV-KEY-COPY$ LV-KEY-MODEL-U LV-KEY# @ cells + ! LV-KEY-MODEL-A LV-KEY# @ cells + !
+   LV-CUR-ARM-A @ LV-CUR-ARM-U @ LV-KEY-COPY$ LV-KEY-ARM-U LV-KEY# @ cells + ! LV-KEY-ARM-A LV-KEY# @ cells + !
+   LV-CUR-TRIAL-A @ LV-CUR-TRIAL-U @ LV-KEY-COPY$ LV-KEY-TRIAL-U LV-KEY# @ cells + ! LV-KEY-TRIAL-A LV-KEY# @ cells + !
+   LV-KEY# @ 1+ LV-KEY# ! ;
 
 : LV-CAT-ROWS@ ( k -- n )
    cells LV-CAT-ROWS + @ ;
@@ -442,7 +503,14 @@ variable LV-RC-SUM
    LV-GET -1 <> ;
 
 : LV-MISSING {: a u :} ( a u -- )
-   s" missing fields " LV-FAIL-AT ;
+   s" llm-results: " LV-OUT
+   LV-RESULT-PATH$ LV-OUT
+   s" :" LV-OUT
+   LV-LINE @ LV-U.
+   s" : missing fields " LV-OUT
+   a u LV-OUT
+   LV-NL
+   1 throw ;
 
 : LV-REQ {: root a u :} ( root a u -- )
    root a u LV-HAS? 0= IF a u LV-MISSING THEN ;
@@ -484,6 +552,58 @@ variable LV-RC-SUM
 : LV-BOOL-FIELD {: root a u :} ( root a u -- f )
    root a u LV-GET dup JSON-KIND J-BOOL <> IF drop s" invalid bool field" LV-FAIL-AT THEN
    JSON-BOOL@ ;
+
+: LV-CHECK-SCHEMA {: n :} ( n -- )
+   n 1 <> n 2 <> and IF s" unsupported schema_version" LV-FAIL-AT THEN
+   LV-SCHEMA-SET @ 0= IF
+      n LV-SCHEMA !
+      -1 LV-SCHEMA-SET !
+      exit
+   THEN
+   n LV-SCHEMA @ <> IF s" mixed schema_version values" LV-FAIL-AT THEN ;
+
+: LV-HEX? {: c :} ( c -- f )
+   c LV-ZERO >= c LV-NINE <= and
+   c LV-UPPER-A >= c LV-UPPER-F <= and or
+   c LV-LOWER-A >= c LV-LOWER-F <= and or ;
+
+: LV-SHA256? ( a u -- f )
+   LV-U ! LV-A !
+   LV-U @ LV-SHA-LEN <> IF 0 exit THEN
+   0 LV-K !
+   begin LV-K @ LV-U @ < while
+      LV-A @ LV-K @ + c@ LV-HEX? 0= IF 0 exit THEN
+      LV-K @ 1+ LV-K !
+   repeat -1 ;
+
+: LV-CHECK-ARTIFACT {: root a u ha hu must :} ( root a u ha hu must -- )
+   root a u LV-REQ
+   root a u LV-STR-FIELD
+   must IF dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN THEN
+   2drop
+   root ha hu LV-REQ
+   root ha hu LV-STR-FIELD LV-SHA256? 0= IF s" invalid sha256 hash" LV-FAIL-AT THEN ;
+
+: LV-CHECK-V2-ARTIFACTS {: root :} ( root -- )
+   root s" prompt" s" prompt_sha256" -1 LV-CHECK-ARTIFACT
+   root s" raw_response" s" raw_response_sha256" -1 LV-CHECK-ARTIFACT
+   root s" extracted_candidate" s" extracted_candidate_sha256" -1 LV-CHECK-ARTIFACT
+   root s" checker_diagnostics" s" checker_diagnostics_sha256" 0 LV-CHECK-ARTIFACT
+   root s" repair_packet" s" repair_packet_sha256" 0 LV-CHECK-ARTIFACT
+   root s" test_output" s" test_output_sha256" 0 LV-CHECK-ARTIFACT
+   root s" final_bundle" s" final_bundle_sha256" -1 LV-CHECK-ARTIFACT ;
+
+: LV-CHECK-V2-IDENTITY {: root :} ( root -- )
+   root s" run_id" LV-REQ
+   root s" run_id" LV-STR-FIELD dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN LV-CUR-RUN-U ! LV-CUR-RUN-A !
+   root s" model_id" LV-REQ
+   root s" model_id" LV-STR-FIELD dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN LV-CUR-MODEL-U ! LV-CUR-MODEL-A !
+   root s" arm" LV-REQ
+   root s" arm" LV-STR-FIELD dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN LV-CUR-ARM-U ! LV-CUR-ARM-A !
+   root s" trial_id" LV-REQ
+   root s" trial_id" LV-STR-FIELD dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN LV-CUR-TRIAL-U ! LV-CUR-TRIAL-A !
+   LV-FIND-KEY 0 >= IF s" duplicate result identity" LV-FAIL-AT THEN
+   LV-KEY+ ;
 
 : LV-CHECK-INT= {: root a u want msg mu :} ( root a u want msg mu -- )
    root a u LV-INT-FIELD want <> IF msg mu LV-FAIL-AT THEN ;
@@ -546,13 +666,18 @@ variable LV-RC-SUM
 
 : LV-CHECK-COMMON {: root :} ( root -- )
    root LV-REQS
+   root s" schema_version" LV-INT-FIELD LV-CHECK-SCHEMA
    root s" task_id" LV-INT-FIELD LV-ID !
-   LV-ID @ LV-FIND-SEEN 0 >= IF s" duplicate task_id " LV-ID @ LV-FAIL-AT-ID THEN
-   LV-ID @ LV-SEEN+
+   LV-SCHEMA @ 2 = IF
+      root LV-CHECK-V2-IDENTITY
+      LV-ID @ LV-FIND-SEEN 0 < IF LV-ID @ LV-SEEN+ THEN
+   ELSE
+      LV-ID @ LV-FIND-SEEN 0 >= IF s" duplicate task_id " LV-ID @ LV-FAIL-AT-ID THEN
+      LV-ID @ LV-SEEN+
+   THEN
    LV-ID @ LV-FIND-TASK dup 0 < IF drop s" task/name drift for id " LV-ID @ LV-FAIL-AT-ID THEN
    LV-TASK-K !
    root s" name" LV-STR-FIELD LV-TASK-K @ LV-TASK-NAME$ STR= 0= IF s" task/name drift for id " LV-ID @ LV-FAIL-AT-ID THEN
-   root s" schema_version" 1 s" unsupported schema_version" LV-CHECK-INT=
    root LV-CHECK-STRING-META
    root s" attempt" LV-INT-FIELD drop
    root s" first_pass_checker" LV-STR-FIELD 2drop
@@ -572,9 +697,11 @@ variable LV-RC-SUM
    root s" wall_ms" LV-INT-FIELD drop
    root s" final_chars" LV-INT-FIELD 0 <= IF s" invalid final_chars" LV-FAIL-AT THEN
    root s" trust_uses" LV-INT-FIELD drop
-   root s" signature_weakened" LV-BOOL-FIELD drop ;
+   root s" signature_weakened" LV-BOOL-FIELD drop
+   LV-SCHEMA @ 2 = IF root LV-CHECK-V2-ARTIFACTS THEN ;
 
 : LV-CHECK-REFERENCE {: root :} ( root -- )
+   root s" schema_version" 1 s" reference schema_version must be 1" LV-CHECK-INT=
    root s" model" s" reference" s" reference file contains non-reference model" LV-CHECK-STR=
    root s" attempt" 1 s" reference should be attempt 1" LV-CHECK-INT=
    root s" first_pass_checker" s" certified" s" reference solution not certified" LV-CHECK-STR=
@@ -688,7 +815,11 @@ variable LV-RC-SUM
    0 LV-SEEN# !
    0 LV-CAT# !
    0 LV-RC# !
+   0 LV-KEY# !
    0 LV-RC-STR-U !
+   0 LV-KEY-STR-U !
+   0 LV-SCHEMA !
+   0 LV-SCHEMA-SET !
    0 LV-RUN-U !
    0 LV-RUN-SET !
    0 LV-MODEL-U !
@@ -900,7 +1031,7 @@ variable LV-RC-SUM
 : LV-OUTPUT-SUMMARY-JSON ( -- )
    JSONW-RESET
    JSONW-OBJECT-START
-   s" schema_version" 1 LV-JSON-COMMA-UF
+   s" schema_version" LV-SCHEMA @ LV-JSON-COMMA-UF
    s" run_id" JSONW-KEY LV-RUN$ JSONW-STRING JSONW-COMMA
    s" model" JSONW-KEY LV-MODEL$ JSONW-STRING JSONW-COMMA
    s" rows" LV-ROWS @ LV-JSON-COMMA-UF

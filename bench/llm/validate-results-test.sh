@@ -4,6 +4,7 @@ set -eu
 cd "$(dirname "$0")/../.."
 ROOT=$(pwd)
 T=$(mktemp -d "${TMPDIR:-/tmp}/hb-llm-results.XXXXXX")
+HASH=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 cleanup() {
   if command -v trash >/dev/null 2>&1; then
     trash "$T"
@@ -31,6 +32,32 @@ write_reference_jsonl() {
       printf "\"trust_uses\":0,\"signature_weakened\":false}\n"
     }
   ' "$T/bench/llm/tasks.tsv" > "$T/bench/llm/results/reference.jsonl"
+}
+
+write_live_jsonl() {
+  trials=$1
+  awk -F '\t' -v trials="$trials" -v hash="$HASH" '
+    NR > 1 && $6 == "forth" {
+      for (trial = 1; trial <= trials; trial++) {
+        printf "{\"schema_version\":2,\"run_id\":\"live-fixture-2026-06-18\","
+        printf "\"model_id\":\"toy-model\",\"arm\":\"forth\",\"trial_id\":\"live-fixture-2026-06-18:toy-model:forth:%s:%d\",", $1, trial
+        printf "\"task_id\":%s,\"name\":\"%s\",\"model\":\"toy-model\",\"attempt\":%d,", $1, $2, trial
+        printf "\"first_pass_checker\":\"certified\",\"first_pass_tests\":true,\"tests_passed\":true,"
+        printf "\"repair_iterations\":0,\"checker_iterations\":1,\"diagnostic_count\":0,"
+        printf "\"diagnostic_token\":true,\"diagnostic_span\":true,\"diagnostic_expected\":true,"
+        printf "\"diagnostic_actual\":true,\"diagnostic_code\":true,\"diagnostic_repair_class\":true,"
+        printf "\"all_errors_stable\":true,\"tokens_used\":0,\"wall_ms\":0,\"final_chars\":1,"
+        printf "\"trust_uses\":0,\"signature_weakened\":false,"
+        printf "\"prompt\":\"prompt\",\"prompt_sha256\":\"%s\",", hash
+        printf "\"raw_response\":\"raw\",\"raw_response_sha256\":\"%s\",", hash
+        printf "\"extracted_candidate\":\"candidate\",\"extracted_candidate_sha256\":\"%s\",", hash
+        printf "\"checker_diagnostics\":\"\",\"checker_diagnostics_sha256\":\"%s\",", hash
+        printf "\"repair_packet\":\"\",\"repair_packet_sha256\":\"%s\",", hash
+        printf "\"test_output\":\"ok\",\"test_output_sha256\":\"%s\",", hash
+        printf "\"final_bundle\":\"bundle\",\"final_bundle_sha256\":\"%s\"}\n", hash
+      }
+    }
+  ' "$T/bench/llm/tasks.tsv" > "$T/bench/llm/results/live.jsonl"
 }
 
 write_reference_jsonl
@@ -147,6 +174,75 @@ printf '%s\n' "$out" | grep -q '"category":"arithmetic","rows":6,"certified":5,"
 }
 printf '%s\n' "$out" | grep -q '"repair_classes":\[{"repair_class":"remove_producer","rows":1,"repair_success":0,"repair_iterations":1,"diagnostic_count":2,"token_delta":30},{"repair_class":"add_producer","rows":1,"repair_success":0,"repair_iterations":2,"diagnostic_count":1,"token_delta":50},{"repair_class":"fix_type","rows":1,"repair_success":0,"repair_iterations":1,"diagnostic_count":1,"token_delta":20}\]' || {
   echo "FAIL: validate-results json repair classes"
+  printf '%s\n' "$out"
+  exit 1
+}
+
+write_live_jsonl 2
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl)
+expected_live_rows=$((expected_count * 2))
+printf '%s\n' "$out" | grep -q "run=live-fixture-2026-06-18 model=toy-model rows=$expected_live_rows certified=$expected_live_rows first_tests=$expected_live_rows tests=$expected_live_rows repairs=0 checker_iterations=$expected_live_rows diagnostics=0 tokens=0 wall_ms=0" || {
+  echo "FAIL: validate-results V2 k-trial summary"
+  printf '%s\n' "$out"
+  exit 1
+}
+printf '%s\n' "$out" | grep -q 'category arithmetic rows=12 certified=12 tests=12' || {
+  echo "FAIL: validate-results V2 category k-trial accounting"
+  printf '%s\n' "$out"
+  exit 1
+}
+
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/live.jsonl)
+printf '%s\n' "$out" | grep -q "\"schema_version\":2" || {
+  echo "FAIL: validate-results V2 json schema"
+  printf '%s\n' "$out"
+  exit 1
+}
+printf '%s\n' "$out" | grep -q "\"rows\":$expected_live_rows" || {
+  echo "FAIL: validate-results V2 json rows"
+  printf '%s\n' "$out"
+  exit 1
+}
+
+dup_line=$(sed -n '1p' "$T/bench/llm/results/live.jsonl")
+printf '%s\n' "$dup_line" >> "$T/bench/llm/results/live.jsonl"
+set +e
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl 2>&1)
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted duplicate V2 identity"; exit 1; }
+printf '%s\n' "$out" | grep -q 'duplicate result identity' || {
+  echo "FAIL: validate-results V2 duplicate diagnostic"
+  printf '%s\n' "$out"
+  exit 1
+}
+
+write_live_jsonl 1
+awk 'NR == 1 { sub(/,"raw_response_sha256":"[0-9a-f][0-9a-f]*"/, "") } { print }' \
+  "$T/bench/llm/results/live.jsonl" > "$T/bench/llm/results/live.missing-artifact"
+mv "$T/bench/llm/results/live.missing-artifact" "$T/bench/llm/results/live.jsonl"
+set +e
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl 2>&1)
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted missing replay hash"; exit 1; }
+printf '%s\n' "$out" | grep -q 'missing fields raw_response_sha256' || {
+  echo "FAIL: validate-results missing replay hash diagnostic"
+  printf '%s\n' "$out"
+  exit 1
+}
+
+write_live_jsonl 1
+awk 'NR == 1 { sub(/"final_bundle_sha256":"[0-9a-f][0-9a-f]*"/, "\"final_bundle_sha256\":\"not-a-sha\"") } { print }' \
+  "$T/bench/llm/results/live.jsonl" > "$T/bench/llm/results/live.bad-hash"
+mv "$T/bench/llm/results/live.bad-hash" "$T/bench/llm/results/live.jsonl"
+set +e
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl 2>&1)
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted invalid replay hash"; exit 1; }
+printf '%s\n' "$out" | grep -q 'invalid sha256 hash' || {
+  echo "FAIL: validate-results invalid replay hash diagnostic"
   printf '%s\n' "$out"
   exit 1
 }
