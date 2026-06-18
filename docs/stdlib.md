@@ -307,13 +307,15 @@ Public path words accept counted byte strings and own any private NUL-terminated
 copy needed for syscalls.
 
 The current source-backed surface covers path predicates, stat mode, basename,
-bounded path joining, bounded file I/O, and recursive file walking:
+bounded path joining, bounded file I/O, file mutation, and recursive file
+walking:
 
 ```forth
 FS-FALSE           ( -- bool )
 FS-TRUE            ( -- bool )
 FS-U16@            ( ptr u8 -- n )
 FS-CHECK-JOIN-CAP       ( n -- )
+FS-PATHZ-INTO           ( ptr u8 n ptr u8 -- ptr u8 )
 FS-PATHZ                ( ptr u8 n -- ptr u8 )
 EXISTS?                 ( ptr u8 n -- bool )
 FS-TRY-STAT-MODE        ( ptr u8 n -- n )
@@ -326,6 +328,10 @@ READ-ALL                ( ptr u8 n ptr u8 n -- n )
 FS-WRITE-BY-FLAGS       ( ptr u8 n ptr u8 n n -- )
 WRITE-ALL               ( ptr u8 n ptr u8 n -- )
 APPEND-FILE             ( ptr u8 n ptr u8 n -- )
+FS-MUT-PATHZ2           ( ptr u8 n -- ptr u8 )
+REMOVE-FILE             ( ptr u8 n -- )
+RENAME-FILE             ( ptr u8 n ptr u8 n -- )
+CHMOD-X                 ( ptr u8 n -- )
 FS-SKIP-DIR?            ( ptr u8 n -- bool )
 FS-SKIP-ENTRY?          ( ptr u8 n -- bool )
 FS-WALK-PATH            ( ptr u8 n [ ptr u8 n -- ] -- )
@@ -342,6 +348,14 @@ The caller supplies the explicit output cap. Files larger than the cap throw
 `WRITE-ALL` creates/truncates a regular file, and `APPEND-FILE` creates/appends
 to a regular file. Both write the full counted input or throw a named filesystem
 error.
+
+`lib/fs-mutate.f` is layered after the native engine contains `unlink`, `rename`,
+and `chmod`. It owns `REMOVE-FILE`, `RENAME-FILE`, and `CHMOD-X`, each accepting
+counted paths and throwing named filesystem errors. `RENAME-FILE` uses a second
+private pathz buffer so preparing the destination path cannot overwrite the source
+path. Keeping these words outside core `lib/fs.f` preserves the bootstrap path:
+older `bin/hb` builds can still load the core fs helpers before the self-rebuild
+adds the mutation primitives.
 
 `WALK-FILES` must be implemented either as a checked quotation combinator or as
 one audited `TRUST` boundary with focused tests proving callback invocation,
