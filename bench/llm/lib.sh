@@ -6,6 +6,8 @@
 # test harness is GENERATED from the same vectors.
 #   habu: builds the array in memory (here , ,) and calls ( ptr n -- ... );
 #   JS:   f(arr)  returns a number (as) or array (aa);
+#   Python:     f(list) returns an int (as) or a new list (aa);
+#   TypeScript: f(array) returns a number (as) or array (aa);
 #   Rust: fn f(a:&[i64]) -> i64 (as) or -> Vec<i64> (aa).
 
 BENCH_TASK_HEADER=$(printf 'id\tname\tsignature\tcategory\ttests\tharness\tconv\tspec\tvectors\ttags\tjs_signature\trust_signature')
@@ -128,6 +130,28 @@ rust_test() {
   done
 }
 
+py_test() {
+  _conv=$1
+  printf '%s\n' "$2" | tr ';' '\n' | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    a=$(unbr "$(_lhs "$p")" | tr ' ' ',')
+    if [ "$_conv" = as ]; then e=$(printf '%s' "$(_rhs "$p")" | xargs)
+    else e="[$(unbr "$(_rhs "$p")" | tr ' ' ',')]"; fi
+    printf 'check(f([%s]), %s, "[%s]")\n' "$a" "$e" "$a"
+  done
+}
+
+ts_test() {
+  _conv=$1
+  printf '%s\n' "$2" | tr ';' '\n' | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    a=$(unbr "$(_lhs "$p")" | tr ' ' ',')
+    if [ "$_conv" = as ]; then e=$(printf '%s' "$(_rhs "$p")" | xargs)
+    else e="[$(unbr "$(_rhs "$p")" | tr ' ' ',')]"; fi
+    printf 'check(f([%s]), %s, "[%s]");\n' "$a" "$e" "$a"
+  done
+}
+
 hb_bench() {
   _conv=$1; _name=$2
   printf '%s\n' "$3" | tr ';' '\n' | while IFS= read -r p; do
@@ -159,6 +183,40 @@ js_bench() {
   printf 'console.log("RUNTIME-MS " + __benchMs);\n'
 }
 
+py_bench() {
+  printf 'import time\n'
+  printf 'def bench_once():\n'
+  printf '%s\n' "$1" | tr ';' '\n' | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    a=$(unbr "$(_lhs "$p")" | tr ' ' ',')
+    printf '    f([%s])\n' "$a"
+  done
+  printf 'for _ in range(%s):\n' "$(bench_runtime_warmups)"
+  printf '    bench_once()\n'
+  printf '__bench_start = time.perf_counter_ns()\n'
+  printf 'for _ in range(%s):\n' "$(bench_runtime_repetitions)"
+  printf '    bench_once()\n'
+  printf '__bench_ns = time.perf_counter_ns() - __bench_start\n'
+  printf '__bench_ms = (__bench_ns + 999_999) // 1_000_000\n'
+  printf 'print("RUNTIME-MS " + str(__bench_ms))\n'
+}
+
+ts_bench() {
+  printf 'function benchOnce(): void {\n'
+  printf '%s\n' "$1" | tr ';' '\n' | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    a=$(unbr "$(_lhs "$p")" | tr ' ' ',')
+    printf '  void f([%s]);\n' "$a"
+  done
+  printf '}\n'
+  printf 'for (let i = 0; i < %s; i++) benchOnce();\n' "$(bench_runtime_warmups)"
+  printf 'const __benchStart = process.hrtime.bigint();\n'
+  printf 'for (let i = 0; i < %s; i++) benchOnce();\n' "$(bench_runtime_repetitions)"
+  printf 'const __benchNs = process.hrtime.bigint() - __benchStart;\n'
+  printf 'const __benchMs = Number((__benchNs + 999999n) / 1000000n);\n'
+  printf 'console.log("RUNTIME-MS " + __benchMs);\n'
+}
+
 rust_bench() {
   printf '    fn bench_once() {\n'
   printf '%s\n' "$1" | tr ';' '\n' | while IFS= read -r p; do
@@ -175,7 +233,10 @@ rust_bench() {
 }
 
 js_ret()   { [ "$1" = as ] && printf 'a single integer' || printf 'a NEW array of integers'; }
+py_ret()   { [ "$1" = as ] && printf 'a single integer' || printf 'a NEW list of integers'; }
+ts_ret()   { [ "$1" = as ] && printf 'a single number' || printf 'a NEW array of numbers'; }
 rust_ret() { [ "$1" = as ] && printf 'i64' || printf 'Vec<i64>'; }
+ts_ret_type() { [ "$1" = as ] && printf 'number' || printf 'number[]'; }
 
 case_list() {
   printf '%s\n' "$1" | tr ';' '\n' | while IFS= read -r p; do

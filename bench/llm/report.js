@@ -1,18 +1,23 @@
 // report.js <run.jsonl> -> RESULTS.md (stdout). Head-to-head: can an LLM produce
-// correct array/memory code across Habu arms, JavaScript, and Rust?
+// correct array/memory code across Habu arms, JavaScript, Python, TypeScript,
+// and Rust?
 const fs = require('fs');
 const input = fs.readFileSync(process.argv[2], 'utf8').trim();
 const rows = input.split('\n')
   .filter(Boolean).map(JSON.parse);
 const perfPath = process.argv[3] || process.env.BENCH_PERF_JSON || null;
 
-const ARMS = ['habu-a', 'habu-lib', 'habu-stdlib', 'habu-skeleton', 'js', 'rust'];
+const HABU_ARMS = ['habu-a', 'habu-lib', 'habu-stdlib', 'habu-skeleton'];
+const BASELINE_ARMS = ['js', 'python', 'ts', 'rust'];
+const ARMS = [...HABU_ARMS, ...BASELINE_ARMS];
 const LABEL = {
   'habu-a': 'Habu raw',
   'habu-lib': 'Habu + array helpers',
   'habu-stdlib': 'Habu + stdlib',
   'habu-skeleton': 'Habu + skeleton',
   js: 'JavaScript',
+  python: 'Python',
+  ts: 'TypeScript',
   rust: 'Rust',
 };
 const median = a => { if (!a.length) return null; a = a.slice().sort((x, y) => x - y);
@@ -85,24 +90,29 @@ function taskTokenMax(name, arm) {
   return xs.length ? Math.max(...xs.map(x => x.tokens)) : null;
 }
 
+function bestBaselineTokenMax(name) {
+  const xs = BASELINE_ARMS
+    .map(arm => taskTokenMax(name, arm))
+    .filter(x => x != null);
+  return xs.length ? Math.min(...xs) : Infinity;
+}
+
 function taskRatioRows(arm) {
   return taskNames.map(name => {
     const habu = taskTokenMax(name, arm);
-    const js = taskTokenMax(name, 'js');
-    const rust = taskTokenMax(name, 'rust');
-    const best = Math.min(js ?? Infinity, rust ?? Infinity);
+    const best = bestBaselineTokenMax(name);
     if (habu == null || best === Infinity || best === 0) return null;
     return { name, habu, best, ratio: habu / best };
   }).filter(Boolean);
 }
 
 let o = '';
-o += '# RESULTS.md — Habu vs JavaScript vs Rust: LLM codegen on array/memory algorithms\n\n';
+o += '# RESULTS.md — Habu vs JavaScript, Python, TypeScript, and Rust: LLM codegen on array/memory algorithms\n\n';
 o += `Generated from \`results/run.jsonl\` (${rows.length} trials). Models: ${models.map(m => `\`${modelLabel(m)}\``).join(', ')}. Tasks: ${taskNames.length} `;
 o += 'algorithms over an integer array (sum/max/min/argmax/count, reverse/prefix-sum/square/negate/running-max).\n';
 o += 'Raw Habu requires typed pointers, `i cells arr + @`/`!` indexing, in-place mutation, and concatenative\n';
 o += 'loops — unfamiliar territory for an LLM. The Habu + array helpers arm exposes checked helpers for array access and\n';
-o += 'common index patterns; JS/Rust use idiomatic array/slice APIs.\n';
+o += 'common index patterns; JS, Python, TypeScript, and Rust use idiomatic array/list/slice APIs.\n';
 if (!hasLib) {
   o += '\n**Habu + array helpers data is missing from this committed run.** The harness now runs the `habu-lib` arm, but\n';
   o += 'the checked-in `results/run.jsonl` predates that arm; re-run `sh bench/llm/run-bench.sh 2` to fill it.\n';
@@ -125,7 +135,7 @@ o += '- **nondeterminism**: model sampling, provider scheduling, local load, and
 o += '- **k/N confidence**: pass rates are point estimates for the recorded k trials over N selected tasks, not confidence intervals.\n';
 o += '- **token proxy limits**: output tokens exclude input, hidden reasoning, prompt-cache effects, and harness overhead.\n';
 o += '- **scaffold fairness**: each arm gets the same repair budget, but language prompts, compilers, and diagnostics differ.\n';
-o += '- **library comparability**: `habu-lib` and `habu-stdlib` measure checked helper surfaces, `habu-skeleton` measures scaffold help, while JS/Rust use their familiar standard library idioms.\n';
+o += '- **library comparability**: `habu-lib` and `habu-stdlib` measure checked helper surfaces, `habu-skeleton` measures scaffold help, while JS, Python, TypeScript, and Rust use their familiar standard library idioms.\n';
 o += '- **task selection**: the suite stresses integer array and memory algorithms; it does not represent every programming workload.\n';
 o += '- **environment**: wall/runtime timings are tied to the local machine, OS, toolchain, and current `bin/hb` build.\n';
 o += '- **deterministic-vs-live boundary**: shell fixtures verify the harness deterministically; benchmark claims require archived live V2 rows.\n\n';
@@ -180,37 +190,44 @@ if (perf) {
   o += 'No perf JSON artifact was supplied with this report run.\n\n';
 }
 
-const h = S['habu-a'], hl = S['habu-lib'], hs = S['habu-stdlib'], hk = S['habu-skeleton'], j = S.js, r = S.rust;
-const bestMean = Math.min(j.meanTok ?? Infinity, r.meanTok ?? Infinity);
+const h = S['habu-a'], hl = S['habu-lib'], hs = S['habu-stdlib'], hk = S['habu-skeleton'];
+const bestMean = Math.min(...BASELINE_ARMS.map(a => S[a].meanTok ?? Infinity));
 const effort = ratio(h.meanTok, bestMean);
 const libEffort = ratio(hl.meanTok, bestMean);
 const libVsRaw = ratio(hl.meanTok, h.meanTok);
 const rawRatios = taskRatioRows('habu-a');
 const rawWorst = rawRatios.reduce((best, x) => !best || x.ratio > best.ratio ? x : best, null);
+const baselinePass = BASELINE_ARMS.map(a => `${LABEL[a]} ${pct(S[a].passk, S[a].tasks)}`).join(', ');
+const baselineTrials = BASELINE_ARMS.map(a => `${LABEL[a]} ${S[a].passed}/${S[a].trials}`).join(', ');
+const baselineMeans = BASELINE_ARMS.map(a => `${LABEL[a]} **${fmt(S[a].meanTok)}**`).join(' / ');
+const baselineRounds = BASELINE_ARMS.map(a => `${LABEL[a]} ${fmt(S[a].meanRounds)}`).join(', ');
 o += '## Verdict — how does Habu stack up?\n\n';
 o += `Task pass@k is Habu raw ${pct(h.passk, h.tasks)}, `;
 o += hasLib ? `Habu + array helpers ${pct(hl.passk, hl.tasks)}, ` : 'Habu + array helpers —, ';
 o += `Habu + stdlib ${pct(hs.passk, hs.tasks)}, Habu + skeleton ${pct(hk.passk, hk.tasks)}, `;
-o += `JS ${pct(j.passk, j.tasks)}, Rust ${pct(r.passk, r.tasks)}. `;
+o += `${baselinePass}. `;
 o += `At the stricter trial level: Habu raw ${h.passed}/${h.trials}, `;
 o += hasLib ? `Habu + array helpers ${hl.passed}/${hl.trials}, ` : 'Habu + array helpers has no live rows, ';
 o += `Habu + stdlib ${hs.passed}/${hs.trials}, Habu + skeleton ${hk.passed}/${hk.trials}, `;
-o += `JS ${j.passed}/${j.trials}, Rust ${r.passed}/${r.trials}. `;
+o += `${baselineTrials}. `;
 const notes = [];
 if (h.nonpass) notes.push(`Raw Habu has ${h.nonpass} non-pass row(s); see the table below.`);
 if (hasLib && hl.nonpass) notes.push(`The helper arm has ${hl.nonpass} non-pass row(s); see the table below.`);
 if (hs.nonpass) notes.push(`The stdlib arm has ${hs.nonpass} non-pass row(s); see the table below.`);
 if (hk.nonpass) notes.push(`The skeleton arm has ${hk.nonpass} non-pass row(s); see the table below.`);
+for (const a of BASELINE_ARMS) {
+  if (S[a].nonpass) notes.push(`${LABEL[a]} has ${S[a].nonpass} non-pass row(s); see the table below.`);
+}
 if (notes.length) o += notes.join(' ');
 o += '\n\nThe raw-Habu cost split is bimodal:\n\n';
-o += '- **Simple elementwise loops** (sum, square, negate, max) — raw Habu is **comparable or cheaper** than JS/Rust '
+o += '- **Simple elementwise loops** (sum, square, negate, max) — raw Habu is **comparable or cheaper** than baseline languages '
    + '(its source is terse and the pattern is regular).\n';
 if (rawWorst) {
   o += '- **Anything needing index tracking, carried state, or in-place rearrangement** (argmax, reverse, prefix-sum, '
      + `running-max) remains the hard tail. In this run the worst measured raw-Habu task is ${rawWorst.name} at `
      + `about **${rawWorst.ratio.toFixed(0)}x** (${fmt(rawWorst.habu)} vs ${fmt(rawWorst.best)} output tokens).\n\n`;
 }
-if (h.meanTok != null && bestMean !== Infinity) o += `Net: mean output-tokens-to-green Habu raw **${fmt(h.meanTok)}** vs JS **${fmt(j.meanTok)}** / Rust **${fmt(r.meanTok)}** `
+if (h.meanTok != null && bestMean !== Infinity) o += `Net: mean output-tokens-to-green Habu raw **${fmt(h.meanTok)}** vs ${baselineMeans} `
   + `— about **${effort}** the cheapest mainstream arm, almost entirely from the hard tail.\n\n`;
 if (hasLib && hl.meanTok != null && bestMean !== Infinity) {
   o += `Habu + array helpers mean output-tokens-to-green is **${fmt(hl.meanTok)}**, about **${libEffort}** the cheapest mainstream arm `;
@@ -218,10 +235,10 @@ if (hasLib && hl.meanTok != null && bestMean !== Infinity) {
 }
 if (!hasLib) o += 'A raw-vs-library conclusion is intentionally withheld until `habu-lib` rows are collected in a live run.\n\n';
 o += 'The raw-Habu gap is the corpus-familiarity tax: Habu\'s typed pointers (`arr:ptr`), `i cells arr + @`/`!` indexing, and\n';
-o += 'in-place concatenative loops have much less model prior than JavaScript arrays or Rust slices. That makes obvious\n';
+o += 'in-place concatenative loops have much less model prior than JavaScript arrays, Python lists, TypeScript arrays, or Rust slices. That makes obvious\n';
 o += 'stack shapes cheap and stateful/indexed loops expensive. Mean repair rounds on passing trials: Habu raw '
    + `${fmt(h.meanRounds)}, Habu + array helpers ${fmt(hl.meanRounds)}, Habu + stdlib ${fmt(hs.meanRounds)}, `
-   + `Habu + skeleton ${fmt(hk.meanRounds)}, JS ${fmt(j.meanRounds)}, Rust ${fmt(r.meanRounds)}.\n\n`;
+   + `Habu + skeleton ${fmt(hk.meanRounds)}, ${baselineRounds}.\n\n`;
 
 if (allNonpass.length) {
   o += '## Non-Pass Rows\n\n';
@@ -233,17 +250,17 @@ if (allNonpass.length) {
 }
 
 o += '## Per-Task Max Output Tokens\n\n';
-o += '| task | Habu raw | Habu + helpers | Habu + stdlib | Habu + skeleton | JS | Rust | raw/best | helpers/best | stdlib/best | skeleton/best | trial outcomes (raw/helpers/stdlib/skeleton/js/rust) |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n';
+o += '| task | Habu raw | Habu + helpers | Habu + stdlib | Habu + skeleton | JS | Python | TypeScript | Rust | raw/best | helpers/best | stdlib/best | skeleton/best | trial outcomes (raw/helpers/stdlib/skeleton/js/python/ts/rust) |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n';
 for (const n of taskNames) {
   const oc = arm => { const xs = rows.filter(z => z.name === n && z.arm === arm); return xs.length ? xs.map(x => `${x.outcome}/${x.rounds}`).join(',') : '—'; };
-  const hh = taskTokenMax(n, 'habu-a'), ll = taskTokenMax(n, 'habu-lib'), ss = taskTokenMax(n, 'habu-stdlib'), kk = taskTokenMax(n, 'habu-skeleton'), jj = taskTokenMax(n, 'js'), rr = taskTokenMax(n, 'rust');
-  const best = Math.min(jj ?? Infinity, rr ?? Infinity);
+  const hh = taskTokenMax(n, 'habu-a'), ll = taskTokenMax(n, 'habu-lib'), ss = taskTokenMax(n, 'habu-stdlib'), kk = taskTokenMax(n, 'habu-skeleton'), jj = taskTokenMax(n, 'js'), pp = taskTokenMax(n, 'python'), tt = taskTokenMax(n, 'ts'), rr = taskTokenMax(n, 'rust');
+  const best = bestBaselineTokenMax(n);
   const rawRatio = ratio(hh, best);
   const libRatio = ratio(ll, best);
   const stdlibRatio = ratio(ss, best);
   const skeletonRatio = ratio(kk, best);
-  const outcomes = `raw ${oc('habu-a')}; helpers ${oc('habu-lib')}; stdlib ${oc('habu-stdlib')}; skeleton ${oc('habu-skeleton')}; js ${oc('js')}; rust ${oc('rust')}`;
-  o += `| ${q(n)} | ${fmt(hh)} | ${fmt(ll)} | ${fmt(ss)} | ${fmt(kk)} | ${fmt(jj)} | ${fmt(rr)} | ${rawRatio} | ${libRatio} | ${stdlibRatio} | ${skeletonRatio} | ${q(outcomes)} |\n`;
+  const outcomes = `raw ${oc('habu-a')}; helpers ${oc('habu-lib')}; stdlib ${oc('habu-stdlib')}; skeleton ${oc('habu-skeleton')}; js ${oc('js')}; python ${oc('python')}; ts ${oc('ts')}; rust ${oc('rust')}`;
+  o += `| ${q(n)} | ${fmt(hh)} | ${fmt(ll)} | ${fmt(ss)} | ${fmt(kk)} | ${fmt(jj)} | ${fmt(pp)} | ${fmt(tt)} | ${fmt(rr)} | ${rawRatio} | ${libRatio} | ${stdlibRatio} | ${skeletonRatio} | ${q(outcomes)} |\n`;
 }
 o += '\nCells are max output tokens among passing trials with positive output-token counts. Habu ratios compare each Habu arm with the cheaper mainstream arm; '
    + 'the jump from ~1x on elementwise tasks to the hard-task tail is the main raw-Habu signal.\n';
