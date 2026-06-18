@@ -16,6 +16,10 @@ fail() {
 [ -f "$DOC" ] || fail "missing $DOC"
 [ -x "$HB" ] || fail "missing executable $HB"
 
+grep -Fq '## Handle Representation' "$DOC" || fail "missing Handle Representation section"
+grep -Fq 'v1 memory-backed handles use `ptr u8 n`' "$DOC" || fail "missing ptr u8 n handle contract"
+grep -Fq 'Opaque `addr` values are boundary-only' "$DOC" || fail "missing addr boundary rule"
+
 header=$(sed -n '1p' "$MANIFEST")
 expected=$(printf 'schema_version\tmodule\tfile\tkind\tword\teffect\ttest\tdoc\towner\tstatus\tnotes')
 [ "$header" = "$expected" ] || fail "unexpected manifest header"
@@ -121,5 +125,16 @@ else
 fi
 
 diff -u "$T/public-words" "$T/manifest-words" || fail "public word rows drifted from checked signatures"
+
+awk 'BEGIN { FS = "\t"; ok = 1 }
+  $2 == "regex" && $4 == "module" && $11 !~ /ptr u8 n/ {
+    printf "%s:%d: regex module notes must specify ptr u8 n handle representation\n", FILENAME, NR > "/dev/stderr"
+    ok = 0
+  }
+  $2 == "map" && $4 == "module" && $11 !~ /ptr u8 n/ {
+    printf "%s:%d: map module notes must specify ptr u8 n handle representation\n", FILENAME, NR > "/dev/stderr"
+    ok = 0
+  }
+  END { exit ok ? 0 : 1 }' "$MANIFEST" || fail "handle representation notes missing"
 
 echo "stdlib-manifest-test: ok"

@@ -27,6 +27,16 @@ Each module gets a focused test file named in the manifest and documentation in
 this file. Source files stay one concern per file, and new public/library words
 default to checked typed definitions.
 
+## Handle Representation
+
+The checker currently has pointer types, not nominal handle types. v1 memory-backed handles use `ptr u8 n`: the pointer is the storage base and `n` is the byte capacity or active length specified by the owning module. Public signatures must keep that representation visible until dedicated concrete handle types exist.
+
+Opaque `addr` values are boundary-only. A module may use `addr` only for values
+that checked code never dereferences, or behind a named audited `TRUST` wrapper
+that converts the boundary value into a typed pointer contract with focused
+tests. Regex and map prose may call values `rx` or `map`, but manifest effects
+and source signatures remain typed as `ptr u8 n`.
+
 ## Array
 
 `lib/array.f` provides checked helpers for cell arrays. Array words take a base

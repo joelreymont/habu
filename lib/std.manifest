@@ -16,8 +16,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	array	lib/array.f	word	A-RUNMAX!	(ptr n n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	replace numeric cells with running maxima
 1	array	lib/array.f	word	A-FILL!	(a ptr a n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fill a cell array with one value
 1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	planned	checked byte-string helpers and formatter support
-1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	planned	checked regex surface built on explicit handle representation
-1	map	lib/map.f	module			lib/map-test.f	docs/stdlib.md	stdlib-map	planned	checked associative collection surface
+1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	planned	v1 regex handles use ptr u8 n storage buffers, never unchecked addr dereference
+1	map	lib/map.f	module			lib/map-test.f	docs/stdlib.md	stdlib-map	planned	v1 map handles use ptr u8 n storage buffers, never unchecked addr dereference
 1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	planned	checked filesystem helpers with named errors
 1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	planned	checked process spawning capture and exit-status helpers
 1	argv	lib/argv.f	module			lib/argv-test.f	docs/stdlib.md	stdlib-argv	planned	checked command-line parser helpers
