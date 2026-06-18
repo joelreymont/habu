@@ -37,7 +37,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-TRUE ( -- bool )  0 0= ;
 
-: ARGV-BYTES= {: a:ptr u b:ptr v :} ( ptr u8 n ptr u8 n -- bool )
+: ARGV-BYTES= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    u v <> if ARGV-FALSE exit then
    0 begin dup u < while
       dup a + c@  over b + c@  <> if drop ARGV-FALSE exit then
@@ -46,7 +46,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-BUF-FAIL ( -- )  ARGV-E-INTERNAL throw ;
 
-: ARGV-MSG+ {: a:ptr u :} ( ptr u8 n -- )
+: ARGV-MSG+ ( ptr u8 n -- ) {: a:ptr u :}
    ARGV-MSG-L @ u + ARGV-MSG-CAP > if ARGV-BUF-FAIL then
    0 begin dup u < while
       dup a + c@  ARGV-MSG ARGV-MSG-L @ + c!
@@ -54,12 +54,12 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
       1 +
    repeat drop ;
 
-: ARGV-MSG-C+ {: c :} ( c -- )
+: ARGV-MSG-C+ ( c -- ) {: c :}
    ARGV-MSG-L @ 1 + ARGV-MSG-CAP > if ARGV-BUF-FAIL then
    c ARGV-MSG ARGV-MSG-L @ + c!
    ARGV-MSG-L @ 1 + ARGV-MSG-L ! ;
 
-: ARGV-USAGE! {: a:ptr u :} ( ptr u8 n -- )
+: ARGV-USAGE! ( ptr u8 n -- ) {: a:ptr u :}
    a ARGV-USAGE-A !  u ARGV-USAGE-U ! ;
 
 : ARGV-QUIET! ( n -- )  ARGV-QUIET ! ;
@@ -72,18 +72,18 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    ARGV-QUIET @ 0 = if 2 ARGV-MSG ARGV-MSG-L @ write drop then
    ARGV-E-USAGE throw ;
 
-: ARGV-FAIL {: a:ptr u :} ( ptr u8 n -- )
+: ARGV-FAIL ( ptr u8 n -- ) {: a:ptr u :}
    0 ARGV-MSG-L !
    a u ARGV-MSG+
    ARGV-FAIL-DONE ;
 
-: ARGV-UNKNOWN {: a:ptr u :} ( ptr u8 n -- )
+: ARGV-UNKNOWN ( ptr u8 n -- ) {: a:ptr u :}
    0 ARGV-MSG-L !
    s" unknown option: " ARGV-MSG+
    a u ARGV-MSG+
    ARGV-FAIL-DONE ;
 
-: ARGV-MISSING {: a:ptr u :} ( ptr u8 n -- )
+: ARGV-MISSING ( ptr u8 n -- ) {: a:ptr u :}
    0 ARGV-MSG-L !
    s" missing value for " ARGV-MSG+
    a u ARGV-MSG+
@@ -101,7 +101,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    -1 ARGV-USE-MOCK? !
    0 ARGV-MOCK# ! ;
 
-: ARGV-MOCK+ {: a:ptr u :} ( ptr u8 n -- )
+: ARGV-MOCK+ ( ptr u8 n -- ) {: a:ptr u :}
    ARGV-MOCK# @ ARGV-MAX >= if ARGV-E-INTERNAL throw then
    a ARGV-MOCK-A ARGV-MOCK# @ cells + !
    u ARGV-MOCK-U ARGV-MOCK# @ cells + !
@@ -110,7 +110,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 : ARGV-COUNT ( -- n )
    ARGV-USE-MOCK? @ if ARGV-MOCK# @ else SCRIPT-ARGC then ;
 
-: ARGV-TOK$ {: idx :} ( n -- ptr u8 n )
+: ARGV-TOK$ ( n -- ptr u8 n ) {: idx :}
    ARGV-USE-MOCK? @ if
       idx cells ARGV-MOCK-A + @
       idx cells ARGV-MOCK-U + @
@@ -118,13 +118,13 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
       idx SCRIPT-ARGV$
    then ;
 
-: ARGV-TOK= {: idx a:ptr u :} ( n ptr u8 n -- bool )
+: ARGV-TOK= ( n ptr u8 n -- bool ) {: idx a:ptr u :}
    idx ARGV-TOK$ a u ARGV-BYTES= ;
 
-: ARGV-DASH? {: a:ptr u :} ( ptr u8 n -- bool )
+: ARGV-DASH? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 1 > if a c@ ARGV-CHAR-DASH = else ARGV-FALSE then ;
 
-: ARGV-POS+ {: a:ptr u :} ( ptr u8 n -- )
+: ARGV-POS+ ( ptr u8 n -- ) {: a:ptr u :}
    ARGV-NPOS @ ARGV-MAX >= if s" too many positional arguments" ARGV-FAIL then
    a ARGV-POS-A ARGV-NPOS @ cells + !
    u ARGV-POS-U ARGV-NPOS @ cells + !
@@ -132,15 +132,15 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-POS# ( -- n )  ARGV-NPOS @ ;
 
-: ARGV-POS$ {: idx :} ( n -- ptr u8 n )
+: ARGV-POS$ ( n -- ptr u8 n ) {: idx :}
    idx 0 <  idx ARGV-NPOS @ >= or if s" positional index out of range" ARGV-FAIL then
    idx cells ARGV-POS-A + @
    idx cells ARGV-POS-U + @ ;
 
-: ARGV-OUT! {: a:ptr u :} ( ptr u8 n -- )
+: ARGV-OUT! ( ptr u8 n -- ) {: a:ptr u :}
    a ARGV-OUT-A !  u ARGV-OUT-U !  -1 ARGV-OUT-SET ! ;
 
-: ARGV-OUT-DEFAULT! {: a:ptr u :} ( ptr u8 n -- )
+: ARGV-OUT-DEFAULT! ( ptr u8 n -- ) {: a:ptr u :}
    a ARGV-OUT-DEFAULT-A !  u ARGV-OUT-DEFAULT-U ! ;
 
 : ARGV-OUT? ( -- bool )  ARGV-OUT-SET @ 0 <> ;
@@ -154,12 +154,12 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-JSON? ( -- bool )  ARGV-JSON @ 0 <> ;
 
-: ARGV-TAKE-NEXT {: a:ptr u :} ( ptr u8 n -- ptr u8 n )
+: ARGV-TAKE-NEXT ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    ARGV-I @ 1 + ARGV-COUNT >= if a u ARGV-MISSING then
    ARGV-I @ 1 + ARGV-I !
    ARGV-I @ ARGV-TOK$ ;
 
-: ARGV-PARSE-OPT {: a:ptr u :} ( ptr u8 n -- )
+: ARGV-PARSE-OPT ( ptr u8 n -- ) {: a:ptr u :}
    a u s" --json" ARGV-BYTES= if -1 ARGV-JSON ! exit then
    a u s" -o" ARGV-BYTES= if a u ARGV-TAKE-NEXT ARGV-OUT! exit then
    a u ARGV-DASH? if a u ARGV-UNKNOWN else a u ARGV-POS+ then ;
@@ -182,19 +182,19 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
       ARGV-I @ 1 + ARGV-I !
    repeat ;
 
-: ARGV-EXPECT-POS {: lo hi :} ( n n -- )
+: ARGV-EXPECT-POS ( n n -- ) {: lo hi :}
    ARGV-NPOS @ lo < if s" wrong number of positional arguments" ARGV-FAIL then
    hi 0 >= if
       ARGV-NPOS @ hi > if s" wrong number of positional arguments" ARGV-FAIL then
    then ;
 
-: ARGV-EXPECT-POS-EXACT {: n :} ( n -- )
+: ARGV-EXPECT-POS-EXACT ( n -- ) {: n :}
    n n ARGV-EXPECT-POS ;
 
 : ARGV-REQUIRE-OUT ( -- )
    ARGV-OUT? 0= if s" missing -o OUT" ARGV-FAIL then ;
 
-: ARGV-ZCOPY {: a:ptr u dst:ptr cap :} ( ptr u8 n ptr u8 n -- ptr u8 )
+: ARGV-ZCOPY ( ptr u8 n ptr u8 n -- ptr u8 ) {: a:ptr u dst:ptr cap :}
    u 1 + cap > if ARGV-E-INTERNAL throw then
    0 begin dup u < while
       dup a + c@  over dst + c!

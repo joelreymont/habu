@@ -39,7 +39,47 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	map	lib/map.f	module			lib/map-test.f	docs/stdlib.md	stdlib-map	planned	v1 map handles use ptr u8 n storage buffers, never unchecked addr dereference
 1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	planned	WALK-FILES checked quotation or audited TRUST boundary with depth-first recursion buffers
 1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	planned	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup
-1	argv	lib/argv.f	module			lib/argv-test.f	docs/stdlib.md	stdlib-argv	planned	checked command-line parser helpers
+1	argv	lib/argv.f	module			lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	checked command-line parser helpers for hb script args
+1	argv	lib/argv.f	word	ARGV-FALSE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a false flag for parser internals
+1	argv	lib/argv.f	word	ARGV-TRUE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a true flag for parser internals
+1	argv	lib/argv.f	word	ARGV-BYTES=	(ptr u8 n ptr u8 n -- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	compare counted argv byte strings
+1	argv	lib/argv.f	word	ARGV-BUF-FAIL	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	throw argv internal buffer failure
+1	argv	lib/argv.f	word	ARGV-MSG+	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	append bytes to the argv error buffer
+1	argv	lib/argv.f	word	ARGV-MSG-C+	(c --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	append one byte to the argv error buffer
+1	argv	lib/argv.f	word	ARGV-USAGE!	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	set usage text for argv diagnostics
+1	argv	lib/argv.f	word	ARGV-QUIET!	(n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	enable or disable argv diagnostic writes
+1	argv	lib/argv.f	word	ARGV-FAIL-DONE	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	finish an argv usage failure and throw
+1	argv	lib/argv.f	word	ARGV-FAIL	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	throw an argv usage failure with text
+1	argv	lib/argv.f	word	ARGV-UNKNOWN	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	throw an unknown-option usage failure
+1	argv	lib/argv.f	word	ARGV-MISSING	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	throw a missing-value usage failure
+1	argv	lib/argv.f	word	ARGV-RESET	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	clear argv parser state
+1	argv	lib/argv.f	word	ARGV-USE-SCRIPT	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	read real SCRIPT-ARGV inputs
+1	argv	lib/argv.f	word	ARGV-MOCK-CLEAR	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	enable and clear mock argv inputs
+1	argv	lib/argv.f	word	ARGV-MOCK+	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	append one mock argv token
+1	argv	lib/argv.f	word	ARGV-COUNT	(-- n)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return active argv token count
+1	argv	lib/argv.f	word	ARGV-TOK$	(n -- ptr u8 n)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	fetch one active argv token
+1	argv	lib/argv.f	word	ARGV-TOK=	(n ptr u8 n -- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	compare one active argv token to bytes
+1	argv	lib/argv.f	word	ARGV-DASH?	(ptr u8 n -- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	test whether a token begins with dash
+1	argv	lib/argv.f	word	ARGV-POS+	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	append one positional argument
+1	argv	lib/argv.f	word	ARGV-POS#	(-- n)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return positional argument count
+1	argv	lib/argv.f	word	ARGV-POS$	(n -- ptr u8 n)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	fetch one positional argument
+1	argv	lib/argv.f	word	ARGV-OUT!	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	set output path option
+1	argv	lib/argv.f	word	ARGV-OUT-DEFAULT!	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	set default output path
+1	argv	lib/argv.f	word	ARGV-OUT?	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	report whether output path was set
+1	argv	lib/argv.f	word	ARGV-OUT$	(-- ptr u8 n)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return output path or default
+1	argv	lib/argv.f	word	ARGV-JSON?	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	report whether --json was set
+1	argv	lib/argv.f	word	ARGV-TAKE-NEXT	(ptr u8 n -- ptr u8 n)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	consume the token after an option
+1	argv	lib/argv.f	word	ARGV-PARSE-OPT	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	parse one option or positional token
+1	argv	lib/argv.f	word	ARGV-COLLECT-REST	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	collect all tokens after --
+1	argv	lib/argv.f	word	ARGV-PARSE	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	parse active argv tokens
+1	argv	lib/argv.f	word	ARGV-EXPECT-POS	(n n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	validate positional argument count range
+1	argv	lib/argv.f	word	ARGV-EXPECT-POS-EXACT	(n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	validate exact positional argument count
+1	argv	lib/argv.f	word	ARGV-REQUIRE-OUT	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	require -o OUT
+1	argv	lib/argv.f	word	ARGV-ZCOPY	(ptr u8 n ptr u8 n -- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	copy counted bytes into NUL-terminated buffer
+1	argv	lib/argv.f	word	ARGV-PATHZ	(ptr u8 n -- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	copy counted path bytes into argv path buffer
+1	argv	lib/argv.f	word	ARGV-POSZ	(n -- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return positional argument as pathz
+1	argv	lib/argv.f	word	ARGV-OUTZ	(-- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return output path as pathz
+1	argv	lib/argv.f	word	ARGV-INIT	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	initialize argv parser defaults
 1	test	lib/test.f	module			lib/test-test.f	docs/stdlib.md	stdlib-test	planned	checked assertions fixture helpers and final report policy
 1	property	lib/property.f	module			lib/property-test.f	docs/stdlib.md	stdlib-property	planned	deterministic PRNG generators shrinking and audited evaluate boundary
 1	build	lib/build.f	module			lib/build-test.f	docs/stdlib.md	stdlib-build	planned	checked Habu build policy across shell boundary and artifact validation

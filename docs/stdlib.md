@@ -275,6 +275,54 @@ success flag. `FORMAT-YMD` writes `YYYY-MM-DD`; `FORMAT-EPOCH-UTC` writes
 `E-TIME-RANGE` for negative epoch seconds. Load `lib/errors.f` before
 `lib/date.f` when using formatter error codes.
 
+## Argv
+
+`lib/argv.f` provides checked command-line parsing for `hb script.f args...`
+scripts. It reads `SCRIPT-ARGC` and `SCRIPT-ARGV$` by default, or an in-memory
+mock argv set for focused tests. `ARGV-PARSE` recognizes `--json`, `-o OUT`,
+and `--`; tokens after `--` are always positionals, even when they begin with a
+dash. Unknown dash-prefixed options and missing option values throw
+`ARGV-E-USAGE` after emitting the configured usage text unless quiet mode is
+enabled.
+
+```forth
+ARGV-USAGE!             ( ptr u8 n -- )
+ARGV-QUIET!             ( n -- )
+ARGV-USE-SCRIPT         ( -- )
+ARGV-MOCK-CLEAR         ( -- )
+ARGV-MOCK+              ( ptr u8 n -- )
+ARGV-COUNT              ( -- n )
+ARGV-TOK$               ( n -- ptr u8 n )
+ARGV-TOK=               ( n ptr u8 n -- bool )
+ARGV-PARSE              ( -- )
+ARGV-EXPECT-POS         ( n n -- )
+ARGV-EXPECT-POS-EXACT   ( n -- )
+ARGV-POS#               ( -- n )
+ARGV-POS$               ( n -- ptr u8 n )
+ARGV-POSZ               ( n -- ptr u8 )
+ARGV-JSON?              ( -- bool )
+ARGV-OUT-DEFAULT!       ( ptr u8 n -- )
+ARGV-OUT!               ( ptr u8 n -- )
+ARGV-OUT?               ( -- bool )
+ARGV-OUT$               ( -- ptr u8 n )
+ARGV-OUTZ               ( -- ptr u8 )
+ARGV-REQUIRE-OUT        ( -- )
+ARGV-PATHZ              ( ptr u8 n -- ptr u8 )
+ARGV-ZCOPY              ( ptr u8 n ptr u8 n -- ptr u8 )
+```
+
+Drivers set usage/defaults, call `ARGV-PARSE`, validate positional arity with
+`ARGV-EXPECT-POS` or `ARGV-EXPECT-POS-EXACT`, then read counted outputs through
+`ARGV-POS$`, `ARGV-OUT$`, and `ARGV-JSON?`. Path-oriented syscall wrappers may
+use `ARGV-POSZ`, `ARGV-OUTZ`, or `ARGV-PATHZ`; these copy into the module-owned
+path buffer and throw `ARGV-E-INTERNAL` on capacity failure.
+
+Mocks keep parser tests self-hosted: `ARGV-MOCK-CLEAR` enables mock mode and
+empties the mock list, `ARGV-MOCK+` appends one counted token, and
+`ARGV-USE-SCRIPT` restores real script argv. `ARGV-QUIET!` suppresses usage
+writes while still throwing exact error codes, so tests can assert
+`ARGV-E-USAGE` deterministically.
+
 ## Test Property And Build Helpers
 
 `lib/test.f`, `lib/property.f`, and `lib/build.f` provide reusable checked
