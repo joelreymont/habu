@@ -1170,7 +1170,7 @@ s" cfbn-entry" s" n ptr a n n n --" TRUST
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
          0 76 MOVZ,  NR-EXIT SYS,
       cpok LBL,
-      9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slots 0..2303 end at CFSTK-OFF
+      9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slots end at CFSTK-OFF
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
          0 77 MOVZ,  NR-EXIT SYS,
       ndok LBL,

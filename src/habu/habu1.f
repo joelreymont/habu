@@ -9,14 +9,14 @@ $100000 constant REGION
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
-$1C000  constant DICT-SIZE
+$22000  constant DICT-SIZE
 48      constant DREC
 16      constant DNAME-INL
 $0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
-2304    constant DICT-CAP  \ CFSTK-OFF / DREC; slots 0..2303 end exactly at CFSTK.
-$1B000  constant CFSTK-OFF
+2816    constant DICT-CAP  \ CFSTK-OFF / DREC; slots 0..2815 end exactly at CFSTK.
+$21000  constant CFSTK-OFF
 $300000 constant DATA-SIZE
 $100000 constant IBUFSZ
 20 constant DATA
