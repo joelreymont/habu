@@ -8,7 +8,7 @@ set -e
 cd "$(dirname "$0")/../.."
 . bench/llm/lib.sh
 ID=$1 NAME=$2 SIG=$3 SPEC=$4 CONV=$5 VEC=$6 ARM=$7 MAXR=${8:-5}
-CLAUDE=${CLAUDE:-claude}; MODEL=${MODEL:-claude}
+model_init
 case "$ARM" in
   a) PRE=$(cat bench/llm/habu-preamble.txt); LIB=0 ;;
   lib) PRE=$(cat bench/llm/habu-preamble-lib.txt); LIB=1 ;;
@@ -39,9 +39,9 @@ while [ "$round" -lt "$MAXR" ]; do
   prompt="${PRE}
 
 ${TASK}${feedback}"
-  timeout 120 "$CLAUDE" -p "$prompt" --output-format json > "$T/resp.json" 2>/dev/null \
+  model_run "$prompt" "$T/resp.json" \
     || { outcome=error; break; }
-  rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/text.txt"); toks=$((toks+rt))
+  rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); toks=$((toks+rt))
   extract "$T/text.txt" > "$T/cand.f"
   if ! grep -q ';' "$T/cand.f"; then
     feedback="

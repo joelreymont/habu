@@ -6,7 +6,7 @@ set -e
 cd "$(dirname "$0")/../.."
 . bench/llm/lib.sh
 ID=$1 NAME=$2 SIG=$3 SPEC=$4 CONV=$5 VEC=$6 MAXR=${7:-5}
-CLAUDE=${CLAUDE:-claude}; MODEL=${MODEL:-claude}
+model_init
 asserts=$(rust_test "$CONV" "$VEC")
 T=$(mktemp -d "${TMPDIR:-/tmp}/drs.XXXXXX"); trap 'rm -rf "$T"' EXIT
 TASK="Write a Rust function with this exact signature:
@@ -19,9 +19,9 @@ round=0; feedback=""; outcome=reject; toks=0; t0=$(now_ms)
 while [ "$round" -lt "$MAXR" ]; do
   round=$((round+1))
   prompt="${TASK}${feedback}"
-  timeout 120 "$CLAUDE" -p "$prompt" --output-format json > "$T/resp.json" 2>/dev/null \
+  model_run "$prompt" "$T/resp.json" \
     || { outcome=error; break; }
-  rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/text.txt"); toks=$((toks+rt))
+  rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); toks=$((toks+rt))
   extract "$T/text.txt" > "$T/f.rs"
   {
     cat "$T/f.rs"; printf '\n'

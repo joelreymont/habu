@@ -13,6 +13,63 @@ unbr()   { printf '%s' "$1" | tr -d '[]' | xargs; }              # "[3 1 4]" -> 
 _lhs()   { printf '%s' "$1" | sed 's/->.*//'; }
 _rhs()   { printf '%s' "$1" | sed 's/.*->//'; }
 
+MODEL_REGISTRY=${MODEL_REGISTRY:-bench/llm/models.tsv}
+
+model_ids() {
+  awk -F '\t' 'NR > 1 && $1 != "" && substr($1, 1, 1) != "#" { print $1 }' "$MODEL_REGISTRY"
+}
+
+model_row() {
+  awk -F '\t' -v id="$1" 'NR > 1 && $1 == id { print; found = 1; exit }
+    END { if (!found) exit 1 }' "$MODEL_REGISTRY"
+}
+
+model_init() {
+  _mid=${MODEL_ID:-${MODEL:-claude}}
+  _row=$(model_row "$_mid") || {
+    echo "bench/llm: unknown model id $_mid in $MODEL_REGISTRY" >&2
+    exit 64
+  }
+  _old_ifs=$IFS
+  IFS='	'
+  set -- $_row
+  IFS=$_old_ifs
+  MODEL_ID=$1
+  MODEL_LABEL=$2
+  MODEL_COMMAND=$3
+  MODEL_ARGS=$4
+  MODEL_PARSER=$5
+  MODEL_TOKEN_FIELDS=$6
+  MODEL_TIMEOUT=$7
+  [ -n "$MODEL_LABEL" ] || MODEL_LABEL=$MODEL_ID
+  [ -n "$MODEL_COMMAND" ] || MODEL_COMMAND=$MODEL_ID
+  [ -n "$MODEL_ARGS" ] || MODEL_ARGS='{prompt}'
+  [ -n "$MODEL_PARSER" ] || MODEL_PARSER=raw
+  [ -n "$MODEL_TIMEOUT" ] || MODEL_TIMEOUT=120
+  [ -z "${CLAUDE:-}" ] || MODEL_COMMAND=$CLAUDE
+  MODEL=${MODEL:-$MODEL_LABEL}
+}
+
+model_run() {
+  _prompt=$1
+  _out=$2
+  case "$MODEL_ARGS" in
+    '-p {prompt} --output-format json')
+      timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" -p "$_prompt" --output-format json > "$_out" 2>/dev/null
+      ;;
+    '{prompt}')
+      timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" "$_prompt" > "$_out" 2>/dev/null
+      ;;
+    '')
+      timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" "$_prompt" > "$_out" 2>/dev/null
+      ;;
+    *)
+      echo "bench/llm: unsupported args template for $MODEL_ID: $MODEL_ARGS" >&2
+      return 64
+      ;;
+  esac
+}
+
 # hb_test <conv> <NAME> <vectors> -> habu assertions (AP holds the array pointer).
 hb_test() {
   _conv=$1; _name=$2

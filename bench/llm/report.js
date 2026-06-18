@@ -12,7 +12,8 @@ const LABEL = {
   js: 'JavaScript',
   rust: 'Rust',
 };
-const by = a => rows.filter(r => r.arm === a);
+const models = [...new Set(rows.map(r => r.model || 'unknown'))].sort();
+const by = (a, model = null) => rows.filter(r => r.arm === a && (model == null || (r.model || 'unknown') === model));
 const median = a => { if (!a.length) return null; a = a.slice().sort((x, y) => x - y);
   const n = a.length; return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2; };
 const mean = a => a.length ? Math.round(a.reduce((s, x) => s + x, 0) / a.length * 100) / 100 : null;
@@ -27,8 +28,8 @@ const ratio = (n, d) => {
 };
 const tokenKnown = r => Number.isFinite(Number(r.tokens)) && Number(r.tokens) > 0;
 
-function stats(arm) {
-  const rs = by(arm);
+function stats(arm, model = null) {
+  const rs = by(arm, model);
   const passed = rs.filter(r => r.outcome === 'pass');
   const nonpass = rs.filter(r => r.outcome !== 'pass');
   const tasks = [...new Set(rs.map(r => r.name))];
@@ -70,7 +71,7 @@ function taskRatioRows(arm) {
 
 let o = '';
 o += '# RESULTS.md — Habu vs JavaScript vs Rust: LLM codegen on array/memory algorithms\n\n';
-o += `Generated from \`results/run.jsonl\` (${rows.length} trials). Model: \`claude -p\`. Tasks: ${taskNames.length} `;
+o += `Generated from \`results/run.jsonl\` (${rows.length} trials). Models: ${models.map(m => `\`${m}\``).join(', ')}. Tasks: ${taskNames.length} `;
 o += 'algorithms over an integer array (sum/max/min/argmax/count, reverse/prefix-sum/square/negate/running-max).\n';
 o += 'Raw Habu requires typed pointers, `i cells arr + @`/`!` indexing, in-place mutation, and concatenative\n';
 o += 'loops — unfamiliar territory for an LLM. The Habu + array helpers arm exposes checked helpers for array access and\n';
@@ -93,6 +94,18 @@ o += '|---|---:|---:|---:|---:|---:|---:|\n';
 for (const a of ARMS) { const s = S[a];
   o += `| ${LABEL[a]} | ${s.trials} | ${s.passed} | ${pct(s.passed, s.trials)} | ${pct(s.firstPass, s.trials)} | ${pct(s.passk, s.tasks)} | ${s.nonpass} |\n`; }
 o += '\n`trial pass` is stricter than `task pass@k`: a task can have a failed trial and still pass at task level when another trial is green.\n\n';
+
+o += '## Per-Model Reliability\n\n';
+o += '| model | language | trials | green trials | trial pass | first-try green | task pass@k | non-pass rows |\n';
+o += '|---|---|---:|---:|---:|---:|---:|---:|\n';
+for (const model of models) {
+  for (const a of ARMS) {
+    const s = stats(a, model);
+    if (!s.trials) continue;
+    o += `| ${q(model)} | ${LABEL[a]} | ${s.trials} | ${s.passed} | ${pct(s.passed, s.trials)} | ${pct(s.firstPass, s.trials)} | ${pct(s.passk, s.tasks)} | ${s.nonpass} |\n`;
+  }
+}
+o += '\nAggregate language tables above pool rows only after this per-model breakdown makes each model family visible.\n\n';
 
 o += '## Effort To Green\n\n';
 o += '| language | mean rounds | median output tokens | **mean output tokens** | max output tokens | median wall s | max wall s |\n';

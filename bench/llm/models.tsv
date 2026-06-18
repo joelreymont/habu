@@ -1,0 +1,2 @@
+id	label	command	args	parser	token_fields	timeout_s
+claude	claude	claude	-p {prompt} --output-format json	claude-json	usage.output_tokens,modelUsage.*.outputTokens	120

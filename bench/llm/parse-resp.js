@@ -1,26 +1,59 @@
-// parse-resp.js — extract the completion text + GENERATION token count from a
-// claude -p response. Handles `--output-format json` (real claude) and raw text
-// (stubs). Usage: node parse-resp.js <resp-file> <out-text-file>  -> prints tokens.
-// We count OUTPUT tokens only: input_tokens is dominated by Claude Code harness
-// overhead (~7-22K/call) and distorted by prompt caching, so it is not a fair
-// cross-call signal; output_tokens = what the model generated for the task.
+// parse-resp.js — extract completion text + generation token count from a model
+// response. Usage:
+//   node parse-resp.js <resp-file> <out-text-file> [parser] [token-fields]
+// Parsers: claude-json (default), openai-json, raw. Token fields are comma-
+// separated JSON paths; `*` fans out over object values or array elements.
+// We count OUTPUT tokens only: input tokens are dominated by harness overhead and
+// prompt caching, so they are not a fair cross-call signal.
 const fs = require('fs');
 const raw = fs.readFileSync(process.argv[2], 'utf8');
+const parser = process.argv[4] || 'claude-json';
+const tokenFields = process.argv[5] || 'usage.output_tokens,modelUsage.*.outputTokens';
 let result = raw, toks = 0;
-function modelUsageTokens(j) {
-  if (!j || !j.modelUsage || typeof j.modelUsage !== 'object') return 0;
-  return Object.values(j.modelUsage).reduce((sum, m) => {
-    const n = m && Number(m.outputTokens);
-    return sum + (Number.isFinite(n) ? n : 0);
-  }, 0);
+
+function valuesAt(x, path) {
+  if (!path.length) return [x];
+  if (x == null) return [];
+  const [h, ...rest] = path;
+  if (h === '*') {
+    if (Array.isArray(x)) return x.flatMap(v => valuesAt(v, rest));
+    if (typeof x === 'object') return Object.values(x).flatMap(v => valuesAt(v, rest));
+    return [];
+  }
+  return valuesAt(x[h], rest);
+}
+
+function tokenSum(j) {
+  return tokenFields.split(',')
+    .map(s => s.trim()).filter(Boolean)
+    .flatMap(p => valuesAt(j, p.split('.')))
+    .reduce((sum, v) => {
+      const n = Number(v);
+      return sum + (Number.isFinite(n) && n > 0 ? n : 0);
+    }, 0);
+}
+
+function textFromJson(j) {
+  if (parser === 'claude-json') {
+    if (j && typeof j.result === 'string') return j.result;
+    if (Array.isArray(j && j.content)) {
+      return j.content.map(c => c && c.text).filter(Boolean).join('');
+    }
+  }
+  if (parser === 'openai-json') {
+    if (typeof (j && j.output_text) === 'string') return j.output_text;
+    const msg = j && j.choices && j.choices[0] && j.choices[0].message;
+    if (msg && typeof msg.content === 'string') return msg.content;
+  }
+  return null;
 }
 try {
   const j = JSON.parse(raw);
-  if (j && typeof j.result === 'string') {
-    result = j.result;
-    const usageTokens = j.usage && Number(j.usage.output_tokens);
-    toks = (Number.isFinite(usageTokens) && usageTokens > 0) ? usageTokens : modelUsageTokens(j);
+  if (parser !== 'raw') {
+    const text = textFromJson(j);
+    if (typeof text === 'string') result = text;
   }
+  toks = tokenSum(j);
 } catch (e) { /* raw text stub */ }
 fs.writeFileSync(process.argv[3], result);
 process.stdout.write(String(toks));
