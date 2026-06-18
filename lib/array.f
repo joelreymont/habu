@@ -1,20 +1,20 @@
 \ array.f - checked cell-array helpers.
 
 : A-CHECK-INDEX ( n n -- ) {: len ix :}
-   len 0 < IF E-A-BOUNDS throw THEN
-   ix 0 < IF E-A-BOUNDS throw THEN
-   ix len >= IF E-A-BOUNDS throw THEN ;
+   len 0 < if E-A-BOUNDS throw then
+   ix 0 < if E-A-BOUNDS throw then
+   ix len >= if E-A-BOUNDS throw then ;
 
 : A-CHECK-RANGE ( n n n -- ) {: len start cnt :}
-   len 0 < IF E-A-BOUNDS throw THEN
-   start 0 < IF E-A-BOUNDS throw THEN
-   cnt 0 < IF E-A-BOUNDS throw THEN
-   start len > IF E-A-BOUNDS throw THEN
-   cnt len start - > IF E-A-BOUNDS throw THEN ;
+   len 0 < if E-A-BOUNDS throw then
+   start 0 < if E-A-BOUNDS throw then
+   cnt 0 < if E-A-BOUNDS throw then
+   start len > if E-A-BOUNDS throw then
+   cnt len start - > if E-A-BOUNDS throw then ;
 
 : A-CHECK-NONEMPTY ( n -- ) {: len :}
-   len 0 < IF E-A-BOUNDS throw THEN
-   len 0= IF E-A-EMPTY throw THEN ;
+   len 0 < if E-A-BOUNDS throw then
+   len 0= if E-A-EMPTY throw then ;
 
 : A@ ( ptr a n n -- a ) {: arr:ptr len ix :}
    len ix A-CHECK-INDEX
@@ -70,17 +70,17 @@
    len 0 len A-CHECK-RANGE
    0
    len 0 ?do
-      arr i cells + @ 2 mod 0= IF 1+ THEN
+      arr i cells + @ 2 mod 0= if 1+ then
    loop ;
 
 : A-ARGMAX ( ptr n n -- n ) {: arr:ptr len :}
    len A-CHECK-NONEMPTY
    0 arr @
    len 1 ?do
-      arr i cells + @ over > IF
+      arr i cells + @ over > if
          2drop
          i arr i cells + @
-      THEN
+      then
    loop
    drop ;
 
@@ -98,7 +98,7 @@
 
 : A-PREFIX-SUM! ( ptr n n -- ) {: arr:ptr len :}
    len 0 len A-CHECK-RANGE
-   len 1 <= IF exit THEN
+   len 1 <= if exit then
    len 1 ?do
       arr i 1 - cells + @
       arr i cells + @ +
@@ -107,7 +107,7 @@
 
 : A-RUNMAX! ( ptr n n -- ) {: arr:ptr len :}
    len 0 len A-CHECK-RANGE
-   len 1 <= IF exit THEN
+   len 1 <= if exit then
    len 1 ?do
       arr i 1 - cells + @
       arr i cells + @ max
@@ -151,7 +151,7 @@
 
 : A-SCAN1! ( ptr n n [ n n -- n ] -- ) {: arr:ptr len q :}
    len 0 len A-CHECK-RANGE
-   len 1 <= IF exit THEN
+   len 1 <= if exit then
    arr len 0 A@
    len 1 ?do
       arr len i A@ q execute
@@ -162,13 +162,13 @@
 : A-FIND-INDEX ( ptr a n [ a -- bool ] -- n ) {: arr:ptr len q :}
    len 0 len A-CHECK-RANGE
    len 0 ?do
-      arr len i A@ q execute IF i exit THEN
+      arr len i A@ q execute if i exit then
    loop
    -1 ;
 
 : A-FIND-INDEXI ( ptr a n [ n a -- bool ] -- n ) {: arr:ptr len q :}
    len 0 len A-CHECK-RANGE
    len 0 ?do
-      i arr len i A@ q execute IF i exit THEN
+      i arr len i A@ q execute if i exit then
    loop
    -1 ;

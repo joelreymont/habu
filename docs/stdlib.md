@@ -66,12 +66,20 @@ counts, starts past `len`, and ranges that overrun `len`.
 `A-CHECK-NONEMPTY ( n -- )` throws `E-A-BOUNDS` for negative lengths and
 `E-A-EMPTY` for zero length.
 
-Numeric scalar kernels are `A-SUM`, `A-MIN`, `A-MAX`, `A-COUNT-EVEN`, and
-`A-ARGMAX`. `A-MIN`, `A-MAX`, and `A-ARGMAX` require a non-empty array and throw
-`E-A-EMPTY` for length zero; `A-ARGMAX` returns the smallest index when multiple
-elements tie for the maximum. Mutating kernels are `A-REVERSE!`,
+Numeric scalar kernels are `A-SUM`, `A-MIN`, `A-MAX`, `A-COUNT-EVEN`,
+`A-ARGMAX`, and `A-MAX-INDEX`. `A-MIN`, `A-MAX`, `A-ARGMAX`, and `A-MAX-INDEX`
+require a non-empty array and throw `E-A-EMPTY` for length zero; `A-ARGMAX` and
+`A-MAX-INDEX` return the smallest index when multiple elements tie for the
+maximum. Mutating kernels are `A-REVERSE-RANGE!`, `A-REVERSE!`,
 `A-PREFIX-SUM!`, `A-RUNMAX!`, and `A-FILL!`; empty arrays are valid no-ops for
 these words.
+
+Quotation combinators make common LLM-generated loops explicit and checked.
+`A-MAP!` and `A-MAPI!` update cells in place, `A-FOLD` and `A-FOLDI` reduce
+cells with an accumulator, `A-SCAN!` writes a prefix scan from an explicit seed,
+`A-SCAN1!` uses the first cell as the seed, and `A-FIND-INDEX` /
+`A-FIND-INDEXI` return the first matching index or `-1`. Index-aware quotations
+receive the zero-based index before the value.
 
 Convenience helpers keep common index math checked: `A+!` adds to one element,
 `A-SWAP` swaps two checked indexes, `LAST-INDEX` returns `len - 1` for a
@@ -94,10 +102,20 @@ A-MIN             ( ptr n n -- n )
 A-MAX             ( ptr n n -- n )
 A-COUNT-EVEN      ( ptr n n -- n )
 A-ARGMAX          ( ptr n n -- n )
+A-MAX-INDEX       ( ptr n n -- n )
+A-REVERSE-RANGE!  ( ptr a n n n -- )
 A-REVERSE!        ( ptr a n -- )
 A-PREFIX-SUM!     ( ptr n n -- )
 A-RUNMAX!         ( ptr n n -- )
 A-FILL!           ( a ptr a n -- )
+A-MAP!            ( ptr a n [ a -- a ] -- )
+A-MAPI!           ( ptr a n [ n a -- a ] -- )
+A-FOLD            ( ptr a n b [ b a -- b ] -- b )
+A-FOLDI           ( ptr a n b [ b n a -- b ] -- b )
+A-SCAN!           ( ptr n n n [ n n -- n ] -- )
+A-SCAN1!          ( ptr n n [ n n -- n ] -- )
+A-FIND-INDEX      ( ptr a n [ a -- bool ] -- n )
+A-FIND-INDEXI     ( ptr a n [ n a -- bool ] -- n )
 ```
 
 ## String

@@ -16,10 +16,10 @@ create AT-ACTUAL 32 cells allot
 
 : AT= {: got want :} ( n n -- )
    AT-CASE @ 1 + AT-CASE !
-   got want <> IF
+   got want <> if
       [char] F emit AT-CASE @ .
       AT-FAIL @ 1 + AT-FAIL !
-   THEN ;
+   then ;
 
 0 set-check
 : T{ ( -- )
@@ -351,7 +351,7 @@ create AT-ACTUAL 32 cells allot
    T{ AT-WORK 4 A-MAX-INDEX -> 1 }T ;
 
 : AT-REPORT ( -- )
-   AT-FAIL @ 0 = IF s" array-test: ok" type cr exit THEN
+   AT-FAIL @ 0 = if s" array-test: ok" type cr exit then
    AT-FAIL @ . s" array-test: failures" type cr
    s" array-test: failures" AT-EX-FAIL die ;
 

@@ -35,6 +35,7 @@ cat tools/lint/lib.f tools/fs.f tools/host-lint.f | bin/hb || { echo "FAIL: host
 cat tools/lint/lib.f tools/parallel-agent-lint.f | bin/hb || { echo "FAIL: parallel-agent-lint"; exit 1; }
 cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint"; exit 1; }
 ./tools/string-test.sh || { echo "FAIL: string helpers"; exit 1; }
+./tools/array-test.sh || { echo "FAIL: array helpers"; exit 1; }
 ./lib/argv-test.sh || { echo "FAIL: argv stdlib"; exit 1; }
 ./lib/test-test.sh || { echo "FAIL: test stdlib"; exit 1; }
 ./tools/date-test.sh || { echo "FAIL: date helpers"; exit 1; }
