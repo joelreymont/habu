@@ -84,6 +84,13 @@ check_v2_manifest() {
   require_task 97 RX-COUNT-OK? regex stdlib stack v2,count
   require_task 98 RX-BAD-PATTERN regex stdlib-negative reject v2,negative-syntax
   require_task 99 RX-CAPACITY regex stdlib-negative reject v2,negative-capacity
+  require_task 100 FS-PATH-KINDS-OK? files stdlib stack v2,path-kind
+  require_task 101 FS-BASENAME-OK? files stdlib stack v2,basename
+  require_task 102 FS-JOIN-OK? files stdlib stack v2,join-path
+  require_task 103 FS-READ-ALL-OK? files stdlib-file run v2,read-all
+  require_task 104 FS-WRITE-ALL-OK? files stdlib-file run v2,write-all
+  require_task 105 FS-APPEND-OK? files stdlib-file run v2,append
+  require_task 106 FS-READ-CAPACITY files stdlib-negative reject v2,negative-capacity
 }
 assert_repair_class() {
   name=$1
@@ -176,6 +183,70 @@ create RX-BENCH 2 allot
 EOF
   assert_regex_throw_file rx-capacity "-2301" "$T/rx-capacity.f"
 }
+assert_file_fixture() {
+  name=$1
+  want=$2
+  source=$3
+  shift 3
+  out=$(bin/hb "$source" "$@" 2>"$T/$name.err") || {
+    cat "$T/$name.err"
+    echo "FAIL: file fixture failed $name"
+    exit 1
+  }
+  [ "$out" = "$want" ] || {
+    echo "FAIL: file fixture $name got $out want $want"
+    exit 1
+  }
+}
+check_file_v2_fixtures() {
+  printf '%s' 'alpha' >"$T/fs-read.txt"
+  cat lib/errors.f lib/string.f lib/fs.f >"$T/fs-read-all.f"
+  cat >>"$T/fs-read-all.f" <<'EOF'
+16 constant FS-BENCH-CAP
+create FS-BENCH-BUF FS-BENCH-CAP allot
+: FS-READ-ALL-OK? ( -- bool )
+   0 SCRIPT-ARGV$ FS-BENCH-BUF FS-BENCH-CAP READ-ALL
+   FS-BENCH-BUF swap s" alpha" STR= ;
+FS-READ-ALL-OK? . cr
+EOF
+  assert_file_fixture fs-read-all "-1" "$T/fs-read-all.f" "$T/fs-read.txt"
+
+  cat lib/errors.f lib/string.f lib/fs.f >"$T/fs-write-all.f"
+  cat >>"$T/fs-write-all.f" <<'EOF'
+16 constant FS-BENCH-CAP
+create FS-BENCH-BUF FS-BENCH-CAP allot
+: FS-WRITE-ALL-OK? ( -- bool )
+   0 SCRIPT-ARGV$ s" xy" WRITE-ALL
+   0 SCRIPT-ARGV$ FS-BENCH-BUF FS-BENCH-CAP READ-ALL
+   FS-BENCH-BUF swap s" xy" STR= ;
+FS-WRITE-ALL-OK? . cr
+EOF
+  assert_file_fixture fs-write-all "-1" "$T/fs-write-all.f" "$T/fs-write.txt"
+
+  cat lib/errors.f lib/string.f lib/fs.f >"$T/fs-append.f"
+  cat >>"$T/fs-append.f" <<'EOF'
+16 constant FS-BENCH-CAP
+create FS-BENCH-BUF FS-BENCH-CAP allot
+: FS-APPEND-OK? ( -- bool )
+   0 SCRIPT-ARGV$ s" xy" WRITE-ALL
+   0 SCRIPT-ARGV$ s" z" APPEND-FILE
+   0 SCRIPT-ARGV$ FS-BENCH-BUF FS-BENCH-CAP READ-ALL
+   FS-BENCH-BUF swap s" xyz" STR= ;
+FS-APPEND-OK? . cr
+EOF
+  assert_file_fixture fs-append "-1" "$T/fs-append.f" "$T/fs-append.txt"
+
+  printf '%s' 'abcd' >"$T/fs-big.txt"
+  cat lib/errors.f lib/string.f lib/fs.f >"$T/fs-read-capacity.f"
+  cat >>"$T/fs-read-capacity.f" <<'EOF'
+3 constant FS-BENCH-CAP
+create FS-BENCH-BUF FS-BENCH-CAP allot
+: FS-BENCH-BAD ( -- )
+   0 SCRIPT-ARGV$ FS-BENCH-BUF FS-BENCH-CAP READ-ALL drop ;
+' FS-BENCH-BAD catch . cr
+EOF
+  assert_file_fixture fs-read-capacity "-2106" "$T/fs-read-capacity.f" "$T/fs-big.txt"
+}
 check_tsv_shape
 check_v2_manifest
 check_diagnostic_v2_fixtures
@@ -192,7 +263,7 @@ echo "hb LLM bench: $N/$N reference solutions certified, 0 rejected"
 TEST_OUT=$(cat bench/llm/solutions.f bench/llm/tests.f | bin/hb 2>"$T/tests.err")
 [ "$TEST_OUT" = "ok" ] || { echo "FAIL: reference functional tests (got: $TEST_OUT)"; exit 1; }
 REF=$T/ref-solutions.f
-cat lib/errors.f lib/string.f lib/regex.f lib/map.f lib/date.f lib/time.f bench/llm/ref-solutions.f >"$REF"
+cat lib/errors.f lib/string.f lib/regex.f lib/map.f lib/date.f lib/time.f lib/fs.f bench/llm/ref-solutions.f >"$REF"
 ./tools/check.sh "$REF" >"$T/ref-check.out" 2>"$T/ref-check.err" || {
   cat "$T/ref-check.err"
   echo "FAIL: V2 reference solutions are not all-certified"
@@ -202,6 +273,7 @@ REF_OUT=$(bin/hb < "$REF" 2>"$T/ref.err")
 [ "$REF_OUT" = "REF-OK" ] || { echo "FAIL: V2 reference tests (got: $REF_OUT)"; exit 1; }
 check_aot_v2_fixtures
 check_regex_v2_fixtures
+check_file_v2_fixtures
 VALIDATOR=$T/validate-results.f
 cat tools/date.f tools/lint/lib.f tools/json.f tools/argv.f bench/llm/validate-results.f >"$VALIDATOR"
 bin/hb "$VALIDATOR"

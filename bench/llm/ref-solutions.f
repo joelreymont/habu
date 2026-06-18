@@ -21,6 +21,7 @@ variable REF-RX-LEN
 variable REF-RX-OFF
 variable REF-RX-U
 variable REF-RX-OK
+create REF-FS-OUT FS-PATH-CAP allot
 
 : ARR-SUM    ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells arr + @ + loop ;
 : ARR-MAX    ( ptr a n -- i64 ) {: arr:ptr len :} arr @ len 1 ?do i cells arr + @ max loop ;
@@ -212,6 +213,27 @@ create REF-DATE-BUF REF-DATE-BUF-LEN allot
    s" [0-9]" REF-RX-COMPILE!
    s" a1b23" REF-RX REF-RX-LEN @ RX-COUNT 3 = ;
 
+: REF-FS-JOIN$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pa:ptr pu na:ptr nu :}
+   pa pu na nu REF-FS-OUT JOIN-PATH
+   REF-FS-OUT swap ;
+
+: FS-PATH-KINDS-OK? ( -- bool )
+   s" AGENTS.md" EXISTS? 0= if STR-FALSE exit then
+   s" AGENTS.md" FILE? 0= if STR-FALSE exit then
+   s" AGENTS.md" DIR? if STR-FALSE exit then
+   s" src" DIR? 0= if STR-FALSE exit then
+   s" src" FILE? if STR-FALSE else STR-TRUE then ;
+
+: FS-BASENAME-OK? ( -- bool )
+   s" src/core/checker.f" BASENAME s" checker.f" STR= 0= if STR-FALSE exit then
+   s" src/" BASENAME s" " STR= 0= if STR-FALSE exit then
+   s" file.f" BASENAME s" file.f" STR= ;
+
+: FS-JOIN-OK? ( -- bool )
+   s" src" s" core" REF-FS-JOIN$ s" src/core" STR= 0= if STR-FALSE exit then
+   s" src/" s" core" REF-FS-JOIN$ s" src/core" STR= 0= if STR-FALSE exit then
+   s" /" s" tmp" REF-FS-JOIN$ s" /tmp" STR= ;
+
 0 set-check  variable AP  variable #BAD  0 #BAD !
 : G= ( got want ) <> if 1 #BAD +! then ;
 
@@ -274,5 +296,8 @@ MAP-GROUP-OK? -1 G=
 RX-MATCH-OK? -1 G=
 RX-FIND-OK? -1 G=
 RX-COUNT-OK? -1 G=
+FS-PATH-KINDS-OK? -1 G=
+FS-BASENAME-OK? -1 G=
+FS-JOIN-OK? -1 G=
 
 : REP #BAD @ 0= if ." REF-OK" else ." REF-FAIL bad=" #BAD @ . then cr ; REP

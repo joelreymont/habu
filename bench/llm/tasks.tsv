@@ -98,3 +98,10 @@ id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rus
 97	RX-COUNT-OK?	(-- bool)	regex	empty -> -1	stdlib	stack	Using RX-COMPILE and RX-COUNT, count non-overlapping regex matches in a counted byte string.	-	regex,stdlib,v2,count	-	-
 98	RX-BAD-PATTERN	(-- error)	regex	code E-RX-SYNTAX	stdlib-negative	reject	Reject malformed quantifier and quantified-anchor regex bytecode during matcher validation.	code E-RX-SYNTAX	regex,stdlib,v2,negative-syntax	-	-
 99	RX-CAPACITY	(-- error)	regex	code E-RX-CAPACITY	stdlib-negative	reject	Reject regex compilation into a too-small bytecode buffer instead of truncating.	code E-RX-CAPACITY	regex,stdlib,v2,negative-capacity	-	-
+100	FS-PATH-KINDS-OK?	(-- bool)	files	empty -> -1	stdlib	stack	Using EXISTS?, FILE?, and DIR?, verify an existing file, an existing directory, and a missing path.	-	file,stdlib,v2,path-kind	-	-
+101	FS-BASENAME-OK?	(-- bool)	files	empty -> -1	stdlib	stack	Using BASENAME, verify nested path, trailing slash, and bare filename basename extraction.	-	file,stdlib,v2,basename	-	-
+102	FS-JOIN-OK?	(-- bool)	files	empty -> -1	stdlib	stack	Using JOIN-PATH, verify parent/child joining with and without an existing parent slash.	-	file,stdlib,v2,join-path	-	-
+103	FS-READ-ALL-OK?	(-- bool)	files	temp file -> -1	stdlib-file	run	Using READ-ALL, read a temp fixture file into a bounded byte buffer and compare its contents.	-	file,stdlib,v2,read-all	-	-
+104	FS-WRITE-ALL-OK?	(-- bool)	files	temp path -> -1	stdlib-file	run	Using WRITE-ALL and READ-ALL, write a temp file and read it back from a bounded byte buffer.	-	file,stdlib,v2,write-all	-	-
+105	FS-APPEND-OK?	(-- bool)	files	temp path -> -1	stdlib-file	run	Using APPEND-FILE, append to a temp file and verify the resulting contents.	-	file,stdlib,v2,append	-	-
+106	FS-READ-CAPACITY	(-- error)	files	code E-FS-CAPACITY	stdlib-negative	reject	Reject READ-ALL into a byte buffer smaller than the file instead of truncating silently.	code E-FS-CAPACITY	file,stdlib,v2,negative-capacity	-	-
