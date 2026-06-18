@@ -56,3 +56,10 @@
 : UNTIL5 ( i64 -- i64 ) 0 swap 0 ?do i 5 = if leave then 1+ loop ;  \ count up to min(n,5)
 : MEM-SWAPCELL ( i64 i64 -- i64 i64 ) here {: p :} 16 allot p ! p cell+ ! p @ p cell+ @ ;  \ swap through data memory
 : TRI ( x [ x -- a ] [ x -- b ] [ x -- c ] -- a b c ) {: x q1 q2 q3 :} x q1 execute x q2 execute x q3 execute ;  \ apply three quotations to x
+: DIAG-REMOVE-PRODUCER ( i64 -- i64 ) dup * ;                \ corrected remove_producer diagnostic bait
+: DIAG-ADD-PRODUCER ( i64 -- i64 ) 1 + ;                     \ corrected add_producer diagnostic bait
+: DIAG-FIX-TYPE ( i64 -- i64 ) 0= if 1 else 0 then ;         \ bool converted to numeric result
+: DIAG-FIX-RSTACK ( i64 -- ) >r r> drop ;                    \ balanced return-stack traffic, no data result
+: DIAG-TRUSTED-BOUNDARY ( -- i64 ) 42 ;                      \ modeled checked code, no unsafe evaluation
+: DIAG-SIGNATURE-SYNTAX ( i64 -- i64 ) 1 + ;                 \ exact checked signature syntax
+: DIAG-REWRITE-UNCHECKABLE ( i64 -- i64 ) dup * ;            \ modeled checked stack code

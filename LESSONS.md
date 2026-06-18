@@ -179,3 +179,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Doc contract fixtures need stable anchors:** when `grep -F` gates API prose,
   keep the asserted phrase contiguous in Markdown or assert a shorter stable
   substring; ordinary line wrapping can otherwise hide a present contract.
+- **Return-stack repair fixtures need data-effect parity:** `fix_return_stack`
+  appears only when the data stack already matches the declaration; a bad `>r`
+  that also removes a declared data output is correctly classified as
+  `add_producer` first.

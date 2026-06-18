@@ -21,14 +21,21 @@ require_task() {
   category=$3
   harness=$4
   conv=$5
-  tag=$6
+  tags=$6
   awk -F '\t' -v id="$id" -v name="$name" -v category="$category" \
-    -v harness="$harness" -v conv="$conv" -v tag="$tag" '
+    -v harness="$harness" -v conv="$conv" -v tags="$tags" '
+    BEGIN { split(tags, want, ",") }
     NR > 1 && $1 == id && $2 == name && $4 == category &&
-      $6 == harness && $7 == conv && index("," $10 ",", "," tag ",") { found = 1 }
+      $6 == harness && $7 == conv {
+        ok = 1
+        for (i in want) {
+          if (!index("," $10 ",", "," want[i] ",")) ok = 0
+        }
+        if (ok) found = 1
+      }
     END { exit found ? 0 : 1 }
   ' bench/llm/tasks.tsv || {
-    echo "FAIL: missing V2 task row $id $name ($category/$harness/$conv/$tag)"
+    echo "FAIL: missing V2 task row $id $name ($category/$harness/$conv/$tags)"
     exit 1
   }
 }
@@ -48,6 +55,34 @@ check_v2_manifest() {
   require_task 68 AOT-MAIN-STRING aot-safe aot build-run aot-positive
   require_task 69 AOT-UNSAFE-HERE aot-unsupported aot-negative reject aot-negative
   require_task 70 AOT-UNSAFE-ALLOT aot-unsupported aot-negative reject aot-negative
+  require_task 71 DIAG-REMOVE-PRODUCER diagnostic-repair forth stack v2,remove_producer
+  require_task 72 DIAG-ADD-PRODUCER diagnostic-repair forth stack v2,add_producer
+  require_task 73 DIAG-FIX-TYPE diagnostic-repair forth stack v2,fix_type
+  require_task 74 DIAG-FIX-RSTACK diagnostic-repair forth stack v2,fix_return_stack
+  require_task 75 DIAG-TRUSTED-BOUNDARY diagnostic-repair forth stack v2,trusted_boundary_required
+  require_task 76 DIAG-SIGNATURE-SYNTAX diagnostic-repair forth stack v2,fix_signature_syntax
+  require_task 77 DIAG-REWRITE-UNCHECKABLE diagnostic-repair forth stack v2,rewrite_uncheckable
+}
+assert_repair_class() {
+  name=$1
+  class=$2
+  source=$3
+  printf '%s\n' "$source" >"$T/$name.f"
+  ./tools/check.sh --json-errors "$T/$name.f" >/dev/null 2>"$T/$name.err" && {
+    echo "FAIL: diagnostic fixture accepted $name"
+    exit 1
+  }
+  bin/hb "$T/gate-json-assert.f" diag-repair-class "$T/$name.err" "$class"
+}
+check_diagnostic_v2_fixtures() {
+  cat tools/json.f tools/gate-json-assert.f >"$T/gate-json-assert.f"
+  assert_repair_class diag-remove-producer remove_producer ': DIAG-REMOVE-PRODUCER ( i64 -- i64 ) dup ;'
+  assert_repair_class diag-add-producer add_producer ': DIAG-ADD-PRODUCER ( i64 -- i64 ) drop ;'
+  assert_repair_class diag-fix-type fix_type ': DIAG-FIX-TYPE ( i64 -- i64 ) 0= ;'
+  assert_repair_class diag-fix-rstack fix_return_stack ': DIAG-FIX-RSTACK ( i64 -- ) >r ;'
+  assert_repair_class diag-trusted-boundary trusted_boundary_required ': DIAG-TRUSTED-BOUNDARY ( -- i64 ) evaluate ;'
+  assert_repair_class diag-signature-syntax fix_signature_syntax ': DIAG-SIGNATURE-SYNTAX ( i64 ) 1 + ;'
+  assert_repair_class diag-rewrite-uncheckable rewrite_uncheckable ': DIAG-REWRITE-UNCHECKABLE ( i64 -- i64 ) leave ;'
 }
 check_aot_v2_fixtures() {
   printf '%s\n' ': MAIN ( -- ) 6 7 * . cr ;' >"$T/aot-ok.f"
@@ -73,6 +108,7 @@ check_aot_v2_fixtures() {
 }
 check_tsv_shape
 check_v2_manifest
+check_diagnostic_v2_fixtures
 N=$(awk -F '\t' 'NR>1 && $6 == "forth" {n++} END{print n+0}' bench/llm/tasks.tsv)
 DEFN=$(grep -c '^: ' bench/llm/solutions.f)
 [ "$DEFN" = "$N" ] || { echo "FAIL: task/solution count mismatch ($N task(s), $DEFN definition(s))"; exit 1; }
