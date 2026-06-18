@@ -36,6 +36,7 @@ cat tools/lint/lib.f tools/parallel-agent-lint.f | bin/hb || { echo "FAIL: paral
 cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint"; exit 1; }
 ./tools/string-test.sh || { echo "FAIL: string helpers"; exit 1; }
 ./tools/array-test.sh || { echo "FAIL: array helpers"; exit 1; }
+./lib/regex-test.sh || { echo "FAIL: regex stdlib"; exit 1; }
 ./lib/map-test.sh || { echo "FAIL: map stdlib"; exit 1; }
 ./lib/fs-test.sh || { echo "FAIL: fs stdlib"; exit 1; }
 ./lib/argv-test.sh || { echo "FAIL: argv stdlib"; exit 1; }

@@ -174,23 +174,33 @@ returns the next field, the next scan index, and a success flag.
 
 ## Regex
 
-`lib/regex.f` exposes a bounded capture-free regex subset for LLM tasks:
+`lib/regex.f` exposes a bounded capture-free regex scanner/tokenizer for LLM tasks:
 literals, `.`, `^`, `$`, character classes and negated classes, escaped
 metacharacters, and `?`, `*`, `+`. v1 excludes captures, backreferences,
 lookaround, and alternation unless a bounded NFA plan is implemented first.
 
 ```forth
-RX-COMPILE   ( ptr u8 n ptr u8 n -- n )
-RX-MATCH?    ( ptr u8 n ptr u8 n -- bool )
-RX-FIND      ( ptr u8 n ptr u8 n -- n n bool )
-RX-COUNT     ( ptr u8 n ptr u8 n -- n )
+RX-ESCAPABLE?         ( n -- bool )
+RX-UNSUPPORTED-META?  ( n -- bool )
+RX-CHECK-BYTE         ( n -- )
+RX-NEED               ( n n n -- )
+RX-EMIT-1             ( n ptr u8 n n -- n )
+RX-EMIT-LIT           ( n ptr u8 n n -- n )
+RX-EMIT-RANGE         ( n ptr u8 n ptr u8 n n -- n )
+RX-SCAN-CLASS-BODY    ( ptr u8 n n -- n )
+RX-SCAN-CLASS         ( ptr u8 n n -- n n n )
+RX-EMIT-CLASS-DONE    ( ptr u8 ptr u8 n n n n n -- n n )
+RX-EMIT-CLASS         ( ptr u8 n n ptr u8 n n -- n n )
+RX-SCAN-ESCAPE        ( ptr u8 n n ptr u8 n n -- n n )
+RX-SCAN-ONE           ( ptr u8 n n ptr u8 n n -- n n )
+RX-COMPILE            ( ptr u8 n ptr u8 n -- n )
 ```
 
 `RX-COMPILE` takes pattern bytes plus a caller-provided bytecode buffer and
-capacity, then returns the compiled byte length. Match, find, and count take
-input text plus compiled bytecode pointer/length. Malformed patterns and
-bytecode capacity overflow throw named regex errors; they do not return a
-partial regex or an unchecked `addr`.
+capacity, then returns the compiled byte length. Malformed patterns and bytecode
+capacity overflow throw named regex errors; they do not return a partial regex
+or an unchecked `addr`. Matching (`RX-MATCH?`, `RX-FIND`, `RX-COUNT`) remains a
+planned layer on top of this scanner.
 
 ## Map
 

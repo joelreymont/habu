@@ -60,7 +60,21 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR-PARSE-POS	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a nonnegative bounded i64
 1	string	lib/string.f	word	STR-PARSE-NEG	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a negative bounded i64
 1	string	lib/string.f	word	STR>NUMBER?	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse an optional-sign bounded i64
-1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	planned	v1 regex handles use ptr u8 n storage buffers, never unchecked addr dereference
+1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	active	v1 regex scanner uses ptr u8 n storage buffers, never unchecked addr dereference
+1	regex	lib/regex.f	word	RX-ESCAPABLE?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte can be escaped
+1	regex	lib/regex.f	word	RX-UNSUPPORTED-META?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test unsupported regex metacharacters
+1	regex	lib/regex.f	word	RX-CHECK-BYTE	(n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate token byte range
+1	regex	lib/regex.f	word	RX-NEED	(n n n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate output token capacity
+1	regex	lib/regex.f	word	RX-EMIT-1	(n ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit a one-byte token
+1	regex	lib/regex.f	word	RX-EMIT-LIT	(n ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit a literal token
+1	regex	lib/regex.f	word	RX-EMIT-RANGE	(n ptr u8 n ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit a class range token
+1	regex	lib/regex.f	word	RX-SCAN-CLASS-BODY	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan to a valid class terminator
+1	regex	lib/regex.f	word	RX-SCAN-CLASS	(ptr u8 n n -- n n n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan a bracket class and negation flag
+1	regex	lib/regex.f	word	RX-EMIT-CLASS-DONE	(ptr u8 ptr u8 n n n n n -- n n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit scanned class token and next index
+1	regex	lib/regex.f	word	RX-EMIT-CLASS	(ptr u8 n n ptr u8 n n -- n n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one class token
+1	regex	lib/regex.f	word	RX-SCAN-ESCAPE	(ptr u8 n n ptr u8 n n -- n n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one escaped literal
+1	regex	lib/regex.f	word	RX-SCAN-ONE	(ptr u8 n n ptr u8 n n -- n n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one regex token
+1	regex	lib/regex.f	word	RX-COMPILE	(ptr u8 n ptr u8 n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	compile bounded capture-free regex tokens
 1	map	lib/map.f	module			lib/map-test.f	docs/stdlib.md	stdlib-map	active	v1 map storage uses ptr a n cells and ptr u8 n keys, never unchecked addr dereference
 1	map	lib/map.f	word	MAP-CHECK-CAP	(n --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a positive map capacity
 1	map	lib/map.f	word	MAP-CHECK-LEN	(n --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a nonnegative key length
