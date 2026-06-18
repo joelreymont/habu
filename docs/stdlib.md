@@ -436,10 +436,21 @@ T$<>            ( ptr u8 n ptr u8 n -- )
 TTHROWS         ( a n -- )
 T-REPORT        ( -- )
 PROP-SEED!      ( n -- )
+PROP-SEED@      ( -- n )
+PROP-COUNT@     ( -- n )
+PROP-DEFAULTS   ( -- n n )
+PROP-RUN-RESET  ( n n -- )
 PROP-RND        ( -- n )
 PROP-RND%       ( n -- n )
-PROP-RUN        ( n n [ -- ] -- )
-SHRINK-TRAIL    ( ptr u8 n [ ptr u8 n -- bool ] -- ptr u8 n )
+PROP-BUF-RESET  ( -- )
+PROP-BUF+       ( ptr u8 n -- )
+PROP-BUF-C+     ( n -- )
+PROP-DIGIT+     ( n -- )
+PROP-BUF$       ( -- ptr u8 n )
+PROP-GEN-START  ( n -- )
+PROP-GEN-STEP   ( ptr u8 n n n -- )
+PROP-DROP-LAST  ( -- bool )
+PROP-SHRINK     ( [ -- bool ] -- )
 BUILD-STEP      ( ptr u8 n [ -- n ] -- )
 BUILD-CHECK     ( ptr u8 n -- )
 BUILD-ARTIFACT  ( ptr u8 n ptr u8 n -- ptr u8 n )
@@ -450,10 +461,11 @@ BUILD-RUN       ( ptr u8 n ptr u8 n -- n )
 they never mask assertion failures. `TTHROWS` takes an execution token `a`
 created by tick (`' WORD`) plus an expected throw code; its raw `catch` use is
 isolated behind the audited trusted boundary `TTHROWS-RAW`.
-`lib/property.f` owns deterministic PRNG state, seed/count parsing, generator
-helpers, and shrinking utilities. Property execution may call an audited
-`evaluate` boundary for generated checked source, but pure generators and shrink
-predicates remain checked helpers. `lib/build.f` owns build step modeling,
+`lib/property.f` owns deterministic PRNG state, seed/count bounds, bounded
+source buffers, modeled generator depth, and token-tail shrinking utilities.
+Property execution may call an audited `evaluate` boundary for generated checked
+source, but pure generators and shrink predicates remain checked helpers.
+`lib/build.f` owns build step modeling,
 source validation, artifact path construction, and fail-closed status reporting;
 raw process exits are only allowed at the final CLI/script boundary.
 
