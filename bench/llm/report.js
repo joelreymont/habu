@@ -12,8 +12,6 @@ const LABEL = {
   js: 'JavaScript',
   rust: 'Rust',
 };
-const models = [...new Set(rows.map(r => r.model || 'unknown'))].sort();
-const by = (a, model = null) => rows.filter(r => r.arm === a && (model == null || (r.model || 'unknown') === model));
 const median = a => { if (!a.length) return null; a = a.slice().sort((x, y) => x - y);
   const n = a.length; return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2; };
 const mean = a => a.length ? Math.round(a.reduce((s, x) => s + x, 0) / a.length * 100) / 100 : null;
@@ -21,35 +19,51 @@ const pct = (n, d) => d ? `${Math.round(n / d * 100)}%` : '—';
 const fmt = v => v == null ? '—' : Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
 const sec = ms => ms == null ? null : Math.round(ms / 10) / 100;
 const q = s => String(s).replace(/\|/g, '\\|');
+const modelKey = r => r.model_id || r.model || 'unknown';
+const modelLabel = key => rows.find(r => modelKey(r) === key)?.model || key;
 const ratio = (n, d) => {
   if (n == null || d == null || d === 0 || d === Infinity) return '—';
   const x = n / d;
   return `${x < 10 ? Math.round(x * 10) / 10 : Math.round(x)}x`;
 };
 const tokenKnown = r => Number.isFinite(Number(r.tokens)) && Number(r.tokens) > 0;
+const runtimeKnown = r => r.runtime_ms != null && Number.isFinite(Number(r.runtime_ms)) && Number(r.runtime_ms) >= 0;
+const trialTaskKey = r => `${modelKey(r)}\t${r.task_id ?? r.name}`;
+
+const models = [...new Set(rows.map(modelKey))].sort((a, b) => modelLabel(a).localeCompare(modelLabel(b)) || a.localeCompare(b));
+const by = (a, model = null) => rows.filter(r => r.arm === a && (model == null || modelKey(r) === model));
 
 function stats(arm, model = null) {
   const rs = by(arm, model);
   const passed = rs.filter(r => r.outcome === 'pass');
   const nonpass = rs.filter(r => r.outcome !== 'pass');
-  const tasks = [...new Set(rs.map(r => r.name))];
-  const passk = tasks.filter(n => rs.some(r => r.name === n && r.outcome === 'pass')).length;
+  const taskUnits = new Map();
+  for (const r of rs) {
+    const k = trialTaskKey(r);
+    taskUnits.set(k, (taskUnits.get(k) || false) || r.outcome === 'pass');
+  }
+  const passk = [...taskUnits.values()].filter(Boolean).length;
   const tokenRows = passed.filter(tokenKnown);
+  const runtimeRows = passed.filter(runtimeKnown);
   const toks = tokenRows.map(r => r.tokens);
+  const runtime = runtimeRows.map(r => Number(r.runtime_ms));
   const wall = passed.map(r => r.wall_ms);
   return {
-    arm, trials: rs.length, tasks: tasks.length, passed: passed.length,
+    arm, trials: rs.length, tasks: taskUnits.size, passed: passed.length,
     firstPass: rs.filter(r => r.first_pass).length, passk,
     nonpass: nonpass.length,
     missingTokens: passed.length - tokenRows.length,
+    missingRuntime: passed.length - runtimeRows.length,
     meanRounds: mean(passed.map(r => r.rounds)),
     medTok: median(toks), meanTok: mean(toks), maxTok: toks.length ? Math.max(...toks) : null,
+    medRuntime: median(runtime), maxRuntime: runtime.length ? Math.max(...runtime) : null,
     medWall: median(wall), meanWall: mean(wall), maxWall: wall.length ? Math.max(...wall) : null,
   };
 }
 const S = Object.fromEntries(ARMS.map(a => [a, stats(a)]));
 const allNonpass = rows.filter(r => r.outcome !== 'pass');
 const missingTokenRows = rows.filter(r => r.outcome === 'pass' && !tokenKnown(r));
+const missingRuntimeRows = rows.filter(r => r.outcome === 'pass' && !runtimeKnown(r));
 const taskNames = [...new Set(rows.map(r => r.name))];
 const hasLib = S['habu-lib'].trials > 0;
 
@@ -71,7 +85,7 @@ function taskRatioRows(arm) {
 
 let o = '';
 o += '# RESULTS.md — Habu vs JavaScript vs Rust: LLM codegen on array/memory algorithms\n\n';
-o += `Generated from \`results/run.jsonl\` (${rows.length} trials). Models: ${models.map(m => `\`${m}\``).join(', ')}. Tasks: ${taskNames.length} `;
+o += `Generated from \`results/run.jsonl\` (${rows.length} trials). Models: ${models.map(m => `\`${modelLabel(m)}\``).join(', ')}. Tasks: ${taskNames.length} `;
 o += 'algorithms over an integer array (sum/max/min/argmax/count, reverse/prefix-sum/square/negate/running-max).\n';
 o += 'Raw Habu requires typed pointers, `i cells arr + @`/`!` indexing, in-place mutation, and concatenative\n';
 o += 'loops — unfamiliar territory for an LLM. The Habu + array helpers arm exposes checked helpers for array access and\n';
@@ -93,7 +107,7 @@ o += '| language | trials | green trials | trial pass | first-try green | task p
 o += '|---|---:|---:|---:|---:|---:|---:|\n';
 for (const a of ARMS) { const s = S[a];
   o += `| ${LABEL[a]} | ${s.trials} | ${s.passed} | ${pct(s.passed, s.trials)} | ${pct(s.firstPass, s.trials)} | ${pct(s.passk, s.tasks)} | ${s.nonpass} |\n`; }
-o += '\n`trial pass` is stricter than `task pass@k`: a task can have a failed trial and still pass at task level when another trial is green.\n\n';
+o += '\n`trial pass` is passed trials over k. `task pass@k` is any green trial per task+arm+model; a task can have a failed trial and still pass at task level when another trial is green for the same model.\n\n';
 
 o += '## Per-Model Reliability\n\n';
 o += '| model | language | trials | green trials | trial pass | first-try green | task pass@k | non-pass rows |\n';
@@ -102,22 +116,28 @@ for (const model of models) {
   for (const a of ARMS) {
     const s = stats(a, model);
     if (!s.trials) continue;
-    o += `| ${q(model)} | ${LABEL[a]} | ${s.trials} | ${s.passed} | ${pct(s.passed, s.trials)} | ${pct(s.firstPass, s.trials)} | ${pct(s.passk, s.tasks)} | ${s.nonpass} |\n`;
+    o += `| ${q(modelLabel(model))} | ${LABEL[a]} | ${s.trials} | ${s.passed} | ${pct(s.passed, s.trials)} | ${pct(s.firstPass, s.trials)} | ${pct(s.passk, s.tasks)} | ${s.nonpass} |\n`;
   }
 }
 o += '\nAggregate language tables above pool rows only after this per-model breakdown makes each model family visible.\n\n';
 
 o += '## Effort To Green\n\n';
-o += '| language | mean rounds | median output tokens | **mean output tokens** | max output tokens | median wall s | max wall s |\n';
-o += '|---|---:|---:|---:|---:|---:|---:|\n';
+o += '| language | mean rounds | median output tokens | **mean output tokens** | max output tokens | median runtime ms | max runtime ms | median wall s | max wall s |\n';
+o += '|---|---:|---:|---:|---:|---:|---:|---:|---:|\n';
 for (const a of ARMS) { const s = S[a];
-  o += `| ${LABEL[a]} | ${fmt(s.meanRounds)} | ${fmt(s.medTok)} | **${fmt(s.meanTok)}** | ${fmt(s.maxTok)} | ${fmt(sec(s.medWall))} | ${fmt(sec(s.maxWall))} |\n`; }
-o += '\nEffort metrics use passing trials with a positive output-token count. Mean/max matter more than the median: Habu\'s cost is skewed — cheap on simple tasks, spiking on hard ones.\n\n';
+  o += `| ${LABEL[a]} | ${fmt(s.meanRounds)} | ${fmt(s.medTok)} | **${fmt(s.meanTok)}** | ${fmt(s.maxTok)} | ${fmt(s.medRuntime)} | ${fmt(s.maxRuntime)} | ${fmt(sec(s.medWall))} | ${fmt(sec(s.maxWall))} |\n`; }
+o += '\nEffort metrics use passing trials with a positive output-token count. Runtime metrics use `runtime_ms`, a warmed candidate execution over fixed vectors and repetitions; wall time remains model/checker/compiler/feedback latency. Mean/max matter more than the median: Habu\'s cost is skewed — cheap on simple tasks, spiking on hard ones.\n\n';
 if (missingTokenRows.length) {
   const miss = ARMS.map(a => [a, S[a].missingTokens]).filter(([, n]) => n > 0)
     .map(([a, n]) => `${LABEL[a]} ${n}`).join(', ');
   o += `Output-token metrics exclude ${missingTokenRows.length} passing row(s) with missing/zero token counts (${miss}). `;
   o += 'Reliability, repair-round, and wall-time metrics still include those rows.\n\n';
+}
+if (missingRuntimeRows.length) {
+  const miss = ARMS.map(a => [a, S[a].missingRuntime]).filter(([, n]) => n > 0)
+    .map(([a, n]) => `${LABEL[a]} ${n}`).join(', ');
+  o += `Runtime metrics exclude ${missingRuntimeRows.length} passing row(s) without measured runtime (${miss}). `;
+  o += 'Reliability, repair-round, token, and wall-time metrics still include those rows.\n\n';
 }
 
 const h = S['habu-a'], hl = S['habu-lib'], j = S.js, r = S.rust;

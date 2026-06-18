@@ -16,6 +16,7 @@ case "$ARM" in
 esac
 T=$(mktemp -d "${TMPDIR:-/tmp}/dh.XXXXXX"); trap 'rm -rf "$T"' EXIT
 hb_test "$CONV" "$NAME" "$VEC" > "$T/vec.f"
+hb_bench "$CONV" "$NAME" "$VEC" > "$T/bench.f"
 cases=$(case_list "$VEC")
 mode=$( [ "$CONV" = aa ] && echo "modify the array IN PLACE (write results back with !), returning nothing" || echo "return one integer" )
 TASK="Define the word ${NAME} with signature:
@@ -31,6 +32,23 @@ extract() {
 bundle() {
   if [ "$LIB" = 1 ]; then cat bench/llm/habu-array-lib.f "$T/cand.f" > "$T/bundle.f"
   else cp "$T/cand.f" "$T/bundle.f"; fi
+}
+runtime_ms() {
+  {
+    cat "$T/bundle.f"; printf '\n'
+    printf '0 set-check\nvariable AP\n'
+    printf ': BENCH-ONCE ( -- )\n'
+    cat "$T/bench.f"
+    printf ';\n'
+    printf ': BENCH-MEASURE ( -- n )\n'
+    printf '  %s 0 ?do BENCH-ONCE loop\n' "$(bench_runtime_warmups)"
+    printf '  mono-ns\n'
+    printf '  %s 0 ?do BENCH-ONCE loop\n' "$(bench_runtime_repetitions)"
+    printf '  mono-ns swap - 999999 + 1000000 /\n'
+    printf ';\n'
+    printf 'BENCH-MEASURE . cr\n'
+  } > "$T/runtime.f"
+  timeout 5 bin/hb < "$T/runtime.f" 2>/dev/null | bench_runtime_ms_from_output
 }
 
 round=0; feedback=""; outcome=reject; toks=0; t0=$(now_ms)
@@ -75,4 +93,12 @@ Fix it so it certifies. Output ONLY the corrected definition."
   fi
 done
 wall=$(( $(now_ms) - t0 ))
-emit_row "$ID" "$NAME" "$MODEL" "habu-$ARM" "$outcome" "$round" "$toks" "$wall"
+rt_ms=null; rt_status=not_run
+if [ "$outcome" = pass ]; then
+  if rt=$(runtime_ms); then
+    rt_ms=$rt; rt_status=ok
+  else
+    outcome=error; rt_status=error
+  fi
+fi
+emit_row "$ID" "$NAME" "$MODEL" "habu-$ARM" "$outcome" "$round" "$toks" "$wall" "$rt_ms" "$rt_status"

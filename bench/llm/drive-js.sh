@@ -8,6 +8,7 @@ cd "$(dirname "$0")/../.."
 ID=$1 NAME=$2 SIG=$3 SPEC=$4 CONV=$5 VEC=$6 MAXR=${7:-5}
 model_init
 calls=$(js_test "$CONV" "$VEC")
+bench=$(js_bench "$VEC")
 T=$(mktemp -d "${TMPDIR:-/tmp}/djs.XXXXXX"); trap 'rm -rf "$T"' EXIT
 TASK="Write a JavaScript function with this exact signature:
   function f(a) { ... }
@@ -45,4 +46,16 @@ $(printf '%s' "$out" | head -4)
 Fix it. Output ONLY the corrected function."
 done
 wall=$(( $(now_ms) - t0 ))
-emit_row "$ID" "$NAME" "$MODEL" "js" "$outcome" "$round" "$toks" "$wall"
+rt_ms=null; rt_status=not_run
+if [ "$outcome" = pass ]; then
+  {
+    cat "$T/f.js"; printf '\n'
+    printf '%s\n' "$bench"
+  } > "$T/runtime.js"
+  if rt=$(timeout 5 node "$T/runtime.js" 2>/dev/null | bench_runtime_ms_from_output); then
+    rt_ms=$rt; rt_status=ok
+  else
+    outcome=error; rt_status=error
+  fi
+fi
+emit_row "$ID" "$NAME" "$MODEL" "js" "$outcome" "$round" "$toks" "$wall" "$rt_ms" "$rt_status"

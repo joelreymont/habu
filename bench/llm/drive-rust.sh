@@ -8,6 +8,7 @@ cd "$(dirname "$0")/../.."
 ID=$1 NAME=$2 SIG=$3 SPEC=$4 CONV=$5 VEC=$6 MAXR=${7:-5}
 model_init
 asserts=$(rust_test "$CONV" "$VEC")
+bench=$(rust_bench "$VEC")
 T=$(mktemp -d "${TMPDIR:-/tmp}/drs.XXXXXX"); trap 'rm -rf "$T"' EXIT
 TASK="Write a Rust function with this exact signature:
   fn f(a: &[i64]) -> $(rust_ret "$CONV") { ... }
@@ -55,4 +56,20 @@ $(printf '%s' "$out" | grep -i 'assert\|panic\|left\|right' | head -4)
 Fix the logic. Output ONLY the corrected function."
 done
 wall=$(( $(now_ms) - t0 ))
-emit_row "$ID" "$NAME" "$MODEL" "rust" "$outcome" "$round" "$toks" "$wall"
+rt_ms=null; rt_status=not_run
+if [ "$outcome" = pass ]; then
+  {
+    cat "$T/f.rs"; printf '\n'
+    printf 'fn main() {\n%s\n}\n' "$bench"
+  } > "$T/runtime.rs"
+  if rustc "$T/runtime.rs" -o "$T/runtime-bin" 2>"$T/runtime-comp.err"; then
+    if rt=$(timeout 5 "$T/runtime-bin" 2>/dev/null | bench_runtime_ms_from_output); then
+      rt_ms=$rt; rt_status=ok
+    else
+      outcome=error; rt_status=error
+    fi
+  else
+    outcome=error; rt_status=error
+  fi
+fi
+emit_row "$ID" "$NAME" "$MODEL" "rust" "$outcome" "$round" "$toks" "$wall" "$rt_ms" "$rt_status"

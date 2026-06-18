@@ -128,6 +128,52 @@ rust_test() {
   done
 }
 
+hb_bench() {
+  _conv=$1; _name=$2
+  printf '%s\n' "$3" | tr ';' '\n' | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    IFS=' '
+    av=$(unbr "$(_lhs "$p")"); n=$(printf '%s' "$av" | wc -w | tr -d ' ')
+    build="here"; for v in $av; do build="$build $v ,"; done; build="$build AP !"
+    if [ "$_conv" = as ]; then
+      printf '%s  AP @ %s %s drop\n' "$build" "$n" "$_name"
+    else
+      printf '%s  AP @ %s %s\n' "$build" "$n" "$_name"
+    fi
+  done
+}
+
+js_bench() {
+  printf 'function benchOnce(){\n'
+  printf '%s\n' "$1" | tr ';' '\n' | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    a=$(unbr "$(_lhs "$p")" | tr ' ' ',')
+    printf '  void f([%s]);\n' "$a"
+  done
+  printf '}\n'
+  printf 'for (let i = 0; i < %s; i++) benchOnce();\n' "$(bench_runtime_warmups)"
+  printf 'const __benchStart = process.hrtime.bigint();\n'
+  printf 'for (let i = 0; i < %s; i++) benchOnce();\n' "$(bench_runtime_repetitions)"
+  printf 'const __benchNs = process.hrtime.bigint() - __benchStart;\n'
+  printf 'const __benchMs = Number((__benchNs + 999999n) / 1000000n);\n'
+  printf 'console.log("RUNTIME-MS " + __benchMs);\n'
+}
+
+rust_bench() {
+  printf '    fn bench_once() {\n'
+  printf '%s\n' "$1" | tr ';' '\n' | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    a=$(unbr "$(_lhs "$p")" | tr ' ' ',')
+    printf '        std::hint::black_box(f(&[%s]));\n' "$a"
+  done
+  printf '    }\n'
+  printf '    for _ in 0..%s { bench_once(); }\n' "$(bench_runtime_warmups)"
+  printf '    let __bench_start = std::time::Instant::now();\n'
+  printf '    for _ in 0..%s { bench_once(); }\n' "$(bench_runtime_repetitions)"
+  printf '    let __bench_ms = (__bench_start.elapsed().as_nanos() + 999_999) / 1_000_000;\n'
+  printf '    println!("RUNTIME-MS {}", __bench_ms);\n'
+}
+
 js_ret()   { [ "$1" = as ] && printf 'a single integer' || printf 'a NEW array of integers'; }
 rust_ret() { [ "$1" = as ] && printf 'i64' || printf 'Vec<i64>'; }
 
@@ -138,11 +184,37 @@ case_list() {
   done
 }
 
-# emit_row: id name model arm outcome rounds tokens wall_ms
+bench_runtime_repetitions() {
+  printf '%s' "${BENCH_RUNTIME_REPETITIONS:-${BENCH_RUNTIME_REPS:-100}}"
+}
+
+bench_runtime_warmups() {
+  printf '%s' "${BENCH_RUNTIME_WARMUPS:-10}"
+}
+
+bench_trial_id() {
+  printf '%s:%s:%s:%s:%s' \
+    "${BENCH_SEED:-manifest}" "${MODEL_ID:-$3}" "$2" "$1" "${BENCH_TRIAL:-0}"
+}
+
+bench_runtime_ms_from_output() {
+  awk '
+    /^[0-9][0-9]*$/ { ms = $1 }
+    $1 == "RUNTIME-MS" && $2 ~ /^[0-9][0-9]*$/ { ms = $2 }
+    END { if (ms != "") print ms; else exit 1 }
+  '
+}
+
+# emit_row: id name model arm outcome rounds tokens wall_ms [runtime_ms] [runtime_status]
 emit_row() {
   fp=false; [ "$5" = pass ] && [ "$6" -eq 1 ] && fp=true
-  printf '{"task_id":%s,"name":"%s","model_id":"%s","model":"%s","arm":"%s","trial":%s,"task_order":%s,"k_trials":%s,"order_seed":"%s","outcome":"%s","rounds":%s,"first_pass":%s,"tokens":%s,"wall_ms":%s}\n' \
+  runtime_ms=${9:-null}
+  runtime_status=${10:-not_run}
+  trial_id=$(bench_trial_id "$1" "$4" "$3")
+  printf '{"task_id":%s,"name":"%s","model_id":"%s","model":"%s","arm":"%s","trial_id":"%s","trial":%s,"task_order":%s,"k_trials":%s,"order_seed":"%s","outcome":"%s","rounds":%s,"first_pass":%s,"tokens":%s,"wall_ms":%s,"runtime_ms":%s,"runtime_repetitions":%s,"runtime_warmups":%s,"runtime_status":"%s"}\n' \
     "$1" "$2" "${MODEL_ID:-$3}" "$3" "$4" \
+    "$trial_id" \
     "${BENCH_TRIAL:-0}" "${BENCH_TASK_ORDER:-0}" "${BENCH_K:-0}" "${BENCH_SEED:-manifest}" \
-    "$5" "$6" "$fp" "$7" "$8"
+    "$5" "$6" "$fp" "$7" "$8" "$runtime_ms" \
+    "$(bench_runtime_repetitions)" "$(bench_runtime_warmups)" "$runtime_status"
 }
