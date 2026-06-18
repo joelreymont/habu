@@ -120,6 +120,24 @@ chk report-latency-source 'bench/llm/perf.sh --json' "$rep"
 chk report-latency-validator '| metric_validator | 34 | 0.03 |' "$rep"
 chk report-latency-microbench '| microbench_smoke | 56 | 0.06 |' "$rep"
 
+cat > "$T/report-category-deltas.jsonl" <<'EOF'
+{"task_id":1,"name":"ARR-A","model_id":"fixture","model":"Fixture","arm":"habu-a","task_family":"arrays","outcome":"pass","rounds":1,"first_pass":true,"tokens":100,"wall_ms":10,"runtime_ms":10,"diagnostic_token":true,"diagnostic_span":true,"diagnostic_expected":true,"diagnostic_actual":true,"diagnostic_code":true,"diagnostic_repair_class":true,"all_errors_stable":true}
+{"task_id":2,"name":"ARR-B","model_id":"fixture","model":"Fixture","arm":"habu-a","task_family":"arrays","outcome":"fail","rounds":2,"first_pass":false,"tokens":0,"wall_ms":20,"runtime_ms":null,"diagnostic_token":false,"diagnostic_span":false,"diagnostic_expected":false,"diagnostic_actual":false,"diagnostic_code":false,"diagnostic_repair_class":false,"all_errors_stable":false}
+{"task_id":1,"name":"ARR-A","model_id":"fixture","model":"Fixture","arm":"habu-stdlib","task_family":"arrays","outcome":"pass","rounds":1,"first_pass":true,"tokens":50,"wall_ms":10,"runtime_ms":8,"diagnostic_token":true,"diagnostic_span":true,"diagnostic_expected":true,"diagnostic_actual":true,"diagnostic_code":true,"diagnostic_repair_class":true,"all_errors_stable":true}
+{"task_id":2,"name":"ARR-B","model_id":"fixture","model":"Fixture","arm":"habu-stdlib","task_family":"arrays","outcome":"pass","rounds":1,"first_pass":true,"tokens":60,"wall_ms":10,"runtime_ms":12,"diagnostic_token":true,"diagnostic_span":true,"diagnostic_expected":true,"diagnostic_actual":true,"diagnostic_code":true,"diagnostic_repair_class":true,"all_errors_stable":true}
+{"task_id":1,"name":"ARR-A","model_id":"fixture","model":"Fixture","arm":"habu-skeleton","task_family":"arrays","outcome":"pass","rounds":1,"first_pass":true,"tokens":80,"wall_ms":10,"runtime_ms":20,"diagnostic_token":true,"diagnostic_span":true,"diagnostic_expected":true,"diagnostic_actual":true,"diagnostic_code":true,"diagnostic_repair_class":true,"all_errors_stable":true}
+{"task_id":2,"name":"ARR-B","model_id":"fixture","model":"Fixture","arm":"habu-skeleton","task_family":"arrays","outcome":"fail","rounds":2,"first_pass":false,"tokens":0,"wall_ms":20,"runtime_ms":null,"diagnostic_token":false,"diagnostic_span":false,"diagnostic_expected":false,"diagnostic_actual":false,"diagnostic_code":false,"diagnostic_repair_class":false,"all_errors_stable":false}
+{"task_id":3,"name":"STR-A","model_id":"fixture","model":"Fixture","arm":"habu-a","task_family":"strings","outcome":"pass","rounds":1,"first_pass":true,"tokens":200,"wall_ms":10,"runtime_ms":30,"diagnostic_token":true,"diagnostic_span":true,"diagnostic_expected":true,"diagnostic_actual":true,"diagnostic_code":true,"diagnostic_repair_class":true,"all_errors_stable":true}
+{"task_id":3,"name":"STR-A","model_id":"fixture","model":"Fixture","arm":"habu-stdlib","task_family":"strings","outcome":"pass","rounds":1,"first_pass":true,"tokens":100,"wall_ms":10,"runtime_ms":12,"diagnostic_token":true,"diagnostic_span":true,"diagnostic_expected":true,"diagnostic_actual":true,"diagnostic_code":true,"diagnostic_repair_class":true,"all_errors_stable":true}
+{"task_id":3,"name":"STR-A","model_id":"fixture","model":"Fixture","arm":"habu-skeleton","task_family":"strings","outcome":"pass","rounds":1,"first_pass":true,"tokens":90,"wall_ms":10,"runtime_ms":14,"diagnostic_token":true,"diagnostic_span":true,"diagnostic_expected":true,"diagnostic_actual":true,"diagnostic_code":true,"diagnostic_repair_class":true,"all_errors_stable":true}
+EOF
+rep=$(node bench/llm/report.js "$T/report-category-deltas.jsonl")
+chk report-category-section '## Category Reliability And Effort' "$rep"
+chk report-category-raw-arrays '| arrays | Habu raw | 2 | 1 | 50% | 50% | 1 | 100 | 10 | 50% |' "$rep"
+chk report-category-stdlib-arrays '| arrays | Habu + stdlib | 2 | 2 | 100% | 100% | 1 | 55 | 10 | 100% |' "$rep"
+chk report-delta-section '## Habu Arm Deltas By Category' "$rep"
+chk report-delta-arrays '| arrays | 50% | 100% | 50% | +50pp | -50pp | 0.6x | 1.5x | 1x | 2x |' "$rep"
+
 # --- conv=as : ARR-SUM (array -> scalar) ---
 mkstub "$T/hb.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells arr + @ + loop ;"'
 mkstub "$T/hbl.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do arr len i A@ + loop ;"'

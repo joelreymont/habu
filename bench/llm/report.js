@@ -37,6 +37,24 @@ const ratio = (n, d) => {
 const tokenKnown = r => Number.isFinite(Number(r.tokens)) && Number(r.tokens) > 0;
 const runtimeKnown = r => r.runtime_ms != null && Number.isFinite(Number(r.runtime_ms)) && Number(r.runtime_ms) >= 0;
 const trialTaskKey = r => `${modelKey(r)}\t${r.task_id ?? r.name}`;
+const rowCategory = r => r.task_family || r.category || 'unknown';
+const diagFields = [
+  'diagnostic_token',
+  'diagnostic_span',
+  'diagnostic_expected',
+  'diagnostic_actual',
+  'diagnostic_code',
+  'diagnostic_repair_class',
+  'all_errors_stable',
+];
+const diagComplete = r => diagFields.every(k => r[k] === true);
+const passRateValue = s => s.tasks ? s.passk / s.tasks : null;
+const passDelta = (a, b) => {
+  const av = passRateValue(a), bv = passRateValue(b);
+  if (av == null || bv == null) return '—';
+  const pp = Math.round((av - bv) * 100);
+  return `${pp > 0 ? '+' : ''}${pp}pp`;
+};
 
 function readPerf(path) {
   if (!path) return null;
@@ -51,8 +69,8 @@ const models = [...new Set(rows.map(modelKey))].sort((a, b) => modelLabel(a).loc
 const by = (a, model = null) => rows.filter(r => r.arm === a && (model == null || modelKey(r) === model));
 const perf = readPerf(perfPath);
 
-function stats(arm, model = null) {
-  const rs = by(arm, model);
+function stats(arm, model = null, category = null) {
+  const rs = by(arm, model).filter(r => category == null || rowCategory(r) === category);
   const passed = rs.filter(r => r.outcome === 'pass');
   const nonpass = rs.filter(r => r.outcome !== 'pass');
   const taskUnits = new Map();
@@ -66,6 +84,7 @@ function stats(arm, model = null) {
   const toks = tokenRows.map(r => r.tokens);
   const runtime = runtimeRows.map(r => Number(r.runtime_ms));
   const wall = passed.map(r => r.wall_ms);
+  const diagOk = rs.filter(diagComplete).length;
   return {
     arm, trials: rs.length, tasks: taskUnits.size, passed: passed.length,
     firstPass: rs.filter(r => r.first_pass).length, passk,
@@ -76,6 +95,7 @@ function stats(arm, model = null) {
     medTok: median(toks), meanTok: mean(toks), maxTok: toks.length ? Math.max(...toks) : null,
     medRuntime: median(runtime), maxRuntime: runtime.length ? Math.max(...runtime) : null,
     medWall: median(wall), meanWall: mean(wall), maxWall: wall.length ? Math.max(...wall) : null,
+    diagOk,
   };
 }
 const S = Object.fromEntries(ARMS.map(a => [a, stats(a)]));
@@ -83,6 +103,7 @@ const allNonpass = rows.filter(r => r.outcome !== 'pass');
 const missingTokenRows = rows.filter(r => r.outcome === 'pass' && !tokenKnown(r));
 const missingRuntimeRows = rows.filter(r => r.outcome === 'pass' && !runtimeKnown(r));
 const taskNames = [...new Set(rows.map(r => r.name))];
+const categories = [...new Set(rows.map(rowCategory))].sort((a, b) => a.localeCompare(b));
 const hasLib = S['habu-lib'].trials > 0;
 
 function taskTokenMax(name, arm) {
@@ -177,6 +198,30 @@ if (missingRuntimeRows.length) {
   o += `Runtime metrics exclude ${missingRuntimeRows.length} passing row(s) without measured runtime (${miss}). `;
   o += 'Reliability, repair-round, token, and wall-time metrics still include those rows.\n\n';
 }
+
+o += '## Category Reliability And Effort\n\n';
+o += '| category | language | trials | green trials | trial pass | task pass@k | mean rounds | mean output tokens | median runtime ms | diagnostic complete |\n';
+o += '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|\n';
+for (const category of categories) {
+  for (const arm of ARMS) {
+    const s = stats(arm, null, category);
+    if (!s.trials) continue;
+    o += `| ${q(category)} | ${LABEL[arm]} | ${s.trials} | ${s.passed} | ${pct(s.passed, s.trials)} | ${pct(s.passk, s.tasks)} | ${fmt(s.meanRounds)} | ${fmt(s.meanTok)} | ${fmt(s.medRuntime)} | ${pct(s.diagOk, s.trials)} |\n`;
+  }
+}
+o += '\nCategory rows keep the same trial pass, task pass@k, repair-round, token, runtime, and diagnostic-quality semantics as the aggregate tables, but make weak task families visible.\n\n';
+
+o += '## Habu Arm Deltas By Category\n\n';
+o += '| category | raw task pass@k | stdlib task pass@k | skeleton task pass@k | stdlib - raw pass | skeleton - stdlib pass | stdlib/raw tokens | skeleton/stdlib tokens | stdlib/raw runtime | skeleton/stdlib runtime |\n';
+o += '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n';
+for (const category of categories) {
+  const raw = stats('habu-a', null, category);
+  const stdlib = stats('habu-stdlib', null, category);
+  const skeleton = stats('habu-skeleton', null, category);
+  if (!raw.trials && !stdlib.trials && !skeleton.trials) continue;
+  o += `| ${q(category)} | ${pct(raw.passk, raw.tasks)} | ${pct(stdlib.passk, stdlib.tasks)} | ${pct(skeleton.passk, skeleton.tasks)} | ${passDelta(stdlib, raw)} | ${passDelta(skeleton, stdlib)} | ${ratio(stdlib.meanTok, raw.meanTok)} | ${ratio(skeleton.meanTok, stdlib.meanTok)} | ${ratio(stdlib.medRuntime, raw.medRuntime)} | ${ratio(skeleton.medRuntime, stdlib.medRuntime)} |\n`;
+}
+o += '\nPositive pass deltas mean the later Habu arm solved more tasks in that category. Token and runtime ratios below 1x mean the later arm was cheaper among passing trials with measured values.\n\n';
 
 o += '## LLM Feedback Latency\n\n';
 o += 'Source: `bench/llm/perf.sh --json`; these timings measure local checker/test/report feedback latency, not model inference latency.\n\n';
