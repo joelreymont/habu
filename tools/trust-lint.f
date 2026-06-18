@@ -37,6 +37,8 @@ create TL-M-EO TL-MAX cells allot
 create TL-M-EL TL-MAX cells allot
 create TL-M-TO TL-MAX cells allot
 create TL-M-TL TL-MAX cells allot
+create TL-M-SO TL-MAX cells allot
+create TL-M-SL TL-MAX cells allot
 create TL-M-AO TL-MAX cells allot
 create TL-M-AL TL-MAX cells allot
 
@@ -112,6 +114,7 @@ variable TL-NV
 : TL-M-NAME$ {: k :} ( k -- a u ) TL-M-NO k TL-A@ TL-M-NL k TL-A@ TL-O$ ;
 : TL-M-EFF$  {: k :} ( k -- a u ) TL-M-EO k TL-A@ TL-M-EL k TL-A@ TL-O$ ;
 : TL-M-TEST$ {: k :} ( k -- a u ) TL-M-TO k TL-A@ TL-M-TL k TL-A@ TL-O$ ;
+: TL-M-SITE$ {: k :} ( k -- a u ) TL-M-SO k TL-A@ TL-M-SL k TL-A@ TL-O$ ;
 : TL-M-AUDIT$ {: k :} ( k -- a u ) TL-M-AO k TL-A@ TL-M-AL k TL-A@ TL-O$ ;
 
 : TL-FIND-SITE {: a u :} ( a u -- k|-1 )
@@ -156,12 +159,13 @@ variable TL-NV
    s" ` appears more than once" TL-OUT TL-NL
    TL-BAD+ ;
 
-: TL-ADD-MAN {: name nu eff eu tests tu audit au :} ( name nu eff eu tests tu audit au -- )
+: TL-ADD-MAN {: name nu eff eu tests tu site su audit au :} ( name nu eff eu tests tu site su audit au -- )
    name nu TL-FIND-MAN dup 0 >= IF name nu TL-DUP-ROW ELSE drop THEN
    TL-M# @ TL-MAX >= IF s" trust-lint: too many manifest rows" TL-FAIL THEN
    name nu TL-STORE$ TL-M-NL TL-M# @ TL-A! TL-M-NO TL-M# @ TL-A!
    eff eu TL-STORE$ TL-M-EL TL-M# @ TL-A! TL-M-EO TL-M# @ TL-A!
    tests tu TL-STORE$ TL-M-TL TL-M# @ TL-A! TL-M-TO TL-M# @ TL-A!
+   site su TL-STORE$ TL-M-SL TL-M# @ TL-A! TL-M-SO TL-M# @ TL-A!
    audit au TL-STORE$ TL-M-AL TL-M# @ TL-A! TL-M-AO TL-M# @ TL-A!
    TL-M# @ 1+ TL-M# ! ;
 
@@ -179,6 +183,7 @@ variable TL-NV
 : TL-DO-LINE ( end -- )
    TL-LE !
    TL-LINE @ 1+ TL-LINE !
+   TL-LINE @ TL-CUR-LINE !
    TL-LA @ TL-LS @ +  TL-LE @ TL-LS @ -  TL-LINE-LEN
    TL-LXT @ execute
    TL-LE @ 1+ TL-LS ! ;
@@ -250,6 +255,7 @@ variable TL-NV
    2dup TL-SEPARATOR? IF 2drop exit THEN
    2dup 1 TL-CELL$ TL-UNBACKTICK TRIM
    3 TL-CELL$ TRIM
+   4 TL-CELL$ TRIM
    5 TL-CELL$ TRIM
    TL-ADD-MAN ;
 
@@ -351,14 +357,19 @@ variable TL-NV
 
 : TL-CHECK-STALE-ROW {: mk :} ( mk -- )
    mk TL-M-NAME$ TL-FIND-SITE 0 < IF
-      s" STALE-ROW TRUSTED.md: `" TL-OUT mk TL-M-NAME$ TL-OUT
-      s" ` has a row but no TRUST site in src/" TL-OUT TL-NL
+      s" STALE-ROW TRUSTED.md " TL-OUT mk TL-M-SITE$ TL-OUT
+      s" : `" TL-OUT mk TL-M-NAME$ TL-OUT
+      s" ` has a row but no TRUST site in src/ or lib/" TL-OUT TL-NL
       TL-BAD+
    THEN ;
+
+: TL-SCAN-OPTIONAL-ROOT {: a u :} ( a u -- )
+   a u EXISTS? IF a u ['] TL-SCAN-SRC-FILE WALK-FILES THEN ;
 
 : TRUST-LINT ( -- )
    0 TL-END !  0 TL-S# !  0 TL-M# !  0 TL-BAD !
    s" src" ['] TL-SCAN-SRC-FILE WALK-FILES
+   s" lib" TL-SCAN-OPTIONAL-ROOT
    TL-SCAN-MANIFEST
    0 begin dup TL-S# @ < while dup TL-CHECK-SITE 1+ repeat drop
    0 begin dup TL-M# @ < while dup TL-CHECK-STALE-ROW 1+ repeat drop

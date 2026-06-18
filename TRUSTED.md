@@ -23,8 +23,8 @@ so it cannot derive an effect for them. Their correctness is pinned instead by:
 `Last audited` is the date a human last confirmed the declared effect matches the
 body. Re-audit when a row's body or effect string changes.
 
-`tools/trust-lint.f` enforces this manifest: every `TRUST` site in `src/` must
-have a row here, and every row must cite a test.
+`tools/trust-lint.f` enforces this manifest: every `TRUST` site in `src/` and
+`lib/` must have a row here, and every row must cite a test.
 
 | Word | Effect | Reason | Tests | Site | Last audited |
 |------|--------|--------|-------|------|--------------|
