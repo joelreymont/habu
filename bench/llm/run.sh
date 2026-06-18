@@ -73,6 +73,12 @@ check_v2_manifest() {
   require_task 86 STR-PARSE-I64-OK? strings stdlib stack v2,parse-i64
   require_task 87 STR-PREFIX-SUFFIX-OK? strings stdlib stack v2,prefix-suffix
   require_task 88 STR-SEARCH-OK? strings stdlib stack v2,search
+  require_task 89 MAP-COUNT-OK? maps stdlib stack v2,count
+  require_task 90 MAP-MISS-OK? maps stdlib stack v2,miss
+  require_task 91 MAP-UPDATE-OK? maps stdlib stack v2,update
+  require_task 92 MAP-COLLISION-OK? maps stdlib stack v2,collision
+  require_task 93 MAP-EACH-OK? maps stdlib stack v2,iteration
+  require_task 94 MAP-GROUP-OK? maps stdlib stack v2,grouping
 }
 assert_repair_class() {
   name=$1
@@ -133,7 +139,7 @@ echo "hb LLM bench: $N/$N reference solutions certified, 0 rejected"
 TEST_OUT=$(cat bench/llm/solutions.f bench/llm/tests.f | bin/hb 2>"$T/tests.err")
 [ "$TEST_OUT" = "ok" ] || { echo "FAIL: reference functional tests (got: $TEST_OUT)"; exit 1; }
 REF=$T/ref-solutions.f
-cat lib/errors.f lib/string.f lib/date.f lib/time.f bench/llm/ref-solutions.f >"$REF"
+cat lib/errors.f lib/string.f lib/map.f lib/date.f lib/time.f bench/llm/ref-solutions.f >"$REF"
 ./tools/check.sh "$REF" >"$T/ref-check.out" 2>"$T/ref-check.err" || {
   cat "$T/ref-check.err"
   echo "FAIL: V2 reference solutions are not all-certified"

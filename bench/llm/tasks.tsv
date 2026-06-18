@@ -87,3 +87,9 @@ id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rus
 86	STR-PARSE-I64-OK?	(-- bool)	strings	empty -> -1	stdlib	stack	Using STR>NUMBER?, parse signed integer boundaries and reject an overflow.	-	string,stdlib,v2,parse-i64	-	-
 87	STR-PREFIX-SUFFIX-OK?	(-- bool)	strings	empty -> -1	stdlib	stack	Using STARTS-WITH? and ENDS-WITH?, verify prefix and suffix checks on counted byte strings.	-	string,stdlib,v2,prefix-suffix	-	-
 88	STR-SEARCH-OK?	(-- bool)	strings	empty -> -1	stdlib	stack	Using FIND-SUB and CONTAINS?, verify substring position, presence, and absence checks on counted byte strings.	-	string,stdlib,v2,search	-	-
+89	MAP-COUNT-OK?	(-- bool)	maps	empty -> -1	stdlib	stack	Using MAP-INIT, MAP-SET, MAP-COUNT@, and MAP-GET, verify inserted key count and lookup.	-	map,stdlib,v2,count	-	-
+90	MAP-MISS-OK?	(-- bool)	maps	empty -> -1	stdlib	stack	Using MAP-GET and MAP-HAS?, verify a missing key returns a false flag and no value.	-	map,stdlib,v2,miss	-	-
+91	MAP-UPDATE-OK?	(-- bool)	maps	empty -> -1	stdlib	stack	Using MAP-SET, verify replacing an existing key updates its value without growing the map.	-	map,stdlib,v2,update	-	-
+92	MAP-COLLISION-OK?	(-- bool)	maps	empty -> -1	stdlib	stack	Using MAP-SET and MAP-GET, verify collision-heavy single-byte keys remain independently retrievable.	-	map,stdlib,v2,collision	-	-
+93	MAP-EACH-OK?	(-- bool)	maps	empty -> -1	stdlib	stack	Using MAP-EACH, iterate occupied entries and verify aggregate count and value sum.	-	map,stdlib,v2,iteration	-	-
+94	MAP-GROUP-OK?	(-- bool)	maps	empty -> -1	stdlib	stack	Using MAP-GET and MAP-SET, group repeated string keys into counted occurrences.	-	map,stdlib,v2,grouping	-	-
