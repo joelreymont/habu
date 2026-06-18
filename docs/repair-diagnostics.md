@@ -91,6 +91,21 @@ Current checker classes:
   modeled words or use an audited boundary only when the primitive is intended.
 - `unknown_rejection`: rejection did not fit a more specific class.
 
+The checker `suggestion` field is stable short text derived only from
+`repair_class`; it does not replace the raw `expected`, `actual`, or
+`return_stack` evidence:
+
+| `repair_class` | `suggestion` |
+| --- | --- |
+| `remove_producer` | `Remove an extra producer or drop the surplus value.` |
+| `add_producer` | `Add the missing producer or stop consuming a required value.` |
+| `fix_type` | `Change the body so produced types match the signature.` |
+| `fix_return_stack` | `Balance return-stack transfers before the definition exits.` |
+| `trusted_boundary_required` | `Move this compiler or runtime boundary behind audited TRUST.` |
+| `fix_signature_syntax` | `Repair the stack-effect comment syntax, including --.` |
+| `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
+| `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
+
 ## Benchmark Result Fields
 
 Benchmark JSONL rows score diagnostic quality with boolean fields derived from

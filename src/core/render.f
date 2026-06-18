@@ -202,24 +202,25 @@ variable DSUGE  variable DSUGA
    DSUGA @ DSUGE @ > IF s" remove_producer" ELSE
    DSUGA @ DSUGE @ < IF s" add_producer" ELSE
    s" fix_type" THEN THEN ;
-\ a length-based repair hint: more values out than declared (remove a producer),
-\ fewer (consumes too much), or equal (a type mismatch — fix the body not the sig).
+\ Short repair hint derived from the stable class. Raw stack rows stay in their
+\ own JSON fields; this text is only for LLM action selection.
 : SUGGEST-TEXT ( -- a u )
-   UNSAFE @ IF s" compiler-manipulating words need an audited trusted boundary; remove this token from checked code" EXIT THEN
-   DVERD @ 1 = IF s" checker could not infer this word; rewrite with modeled words or add TRUST only for audited primitives" EXIT THEN
+   UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
+   DVERD @ 1 = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
+   SGBAD @ IF s" Repair the stack-effect comment syntax, including --." EXIT THEN
    DEXP @ 0= IF
       RETURN-MISMATCH? IF
-         s" return stack is unbalanced; pair >r with r> or remove the return-stack transfer"
+         s" Balance return-stack transfers before the definition exits."
       ELSE
-         s" rejected without a captured stack mismatch; inspect the token and declared signature"
+         s" Inspect the token, signature, and raw stack evidence."
       THEN
       EXIT
    THEN
    DEXP @ REND-COLLECT RBN @ DSUGE !
    DACT @ REND-COLLECT RBN @ DSUGA !
-   DSUGA @ DSUGE @ > IF  s" the body leaves more values than declared; remove a producer or drop the extra value"
-   ELSE DSUGA @ DSUGE @ < IF  s" the body leaves fewer values than declared; add or restore a producer, or stop consuming a required value"
-   ELSE  s" type mismatch at this token — fix the body to match the signature, do not weaken the signature"
+   DSUGA @ DSUGE @ > IF  s" Remove an extra producer or drop the surplus value."
+   ELSE DSUGA @ DSUGE @ < IF  s" Add the missing producer or stop consuming a required value."
+   ELSE  s" Change the body so produced types match the signature."
    THEN THEN ;
 variable JPOS  variable JLINE  variable JCOL
 : JLOC-CALC

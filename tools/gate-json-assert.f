@@ -275,12 +275,40 @@ variable GJA-DIRECT
    GJA-ROOT @ s" byte_start" GJA-IDX @ GJA-ASSERT-INT-FIELD
    GJA-ROOT @ s" byte_end" GJA-IDX @ 3 + GJA-ASSERT-INT-FIELD ;
 
+: GJA-SUGGEST-FOR ( class-a class-u -- hint-a hint-u )
+   2dup s" remove_producer" GJA-BYTES= IF 2drop
+      s" Remove an extra producer or drop the surplus value." exit
+   THEN
+   2dup s" add_producer" GJA-BYTES= IF 2drop
+      s" Add the missing producer or stop consuming a required value." exit
+   THEN
+   2dup s" fix_type" GJA-BYTES= IF 2drop
+      s" Change the body so produced types match the signature." exit
+   THEN
+   2dup s" fix_return_stack" GJA-BYTES= IF 2drop
+      s" Balance return-stack transfers before the definition exits." exit
+   THEN
+   2dup s" trusted_boundary_required" GJA-BYTES= IF 2drop
+      s" Move this compiler or runtime boundary behind audited TRUST." exit
+   THEN
+   2dup s" fix_signature_syntax" GJA-BYTES= IF 2drop
+      s" Repair the stack-effect comment syntax, including --." exit
+   THEN
+   2dup s" rewrite_uncheckable" GJA-BYTES= IF 2drop
+      s" Rewrite with modeled words or isolate an audited primitive." exit
+   THEN
+   2dup s" unknown_rejection" GJA-BYTES= IF 2drop
+      s" Inspect the token, signature, and raw stack evidence." exit
+   THEN
+   2drop s" unknown repair class in suggestion assertion" GJA-FAIL ;
+
 : GJA-DIAG-REPAIR-CLASS ( json-a json-u class-a class-u -- )
    GJA-WANT-U ! GJA-WANT-A !
    GJA-FIRST-JSON GJA-ROOT !
    GJA-ROOT @ s" repair_class" GJA-REQ
    GJA-WANT-A @ GJA-WANT-U @ GJA-ASSERT-STR
-   GJA-ROOT @ s" suggestion" GJA-REQ GJA-NONEMPTY-STR ;
+   GJA-ROOT @ s" suggestion" GJA-REQ dup GJA-NONEMPTY-STR
+   GJA-WANT-A @ GJA-WANT-U @ GJA-SUGGEST-FOR GJA-ASSERT-STR ;
 
 : GJA-DIAG-COMMON ( root -- )
    dup GJA-SCHEMA1
