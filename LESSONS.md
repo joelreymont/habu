@@ -142,6 +142,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Effect drift checks must compare full normalized tokens:** returning on the
   first shared whitespace made `n --` equal `n -- n`. Tokenize/advance through
   the whole effect when comparing manifest text.
+- **Public signature rows need effects before locals:** `tools/public-signatures.f`
+  only records `: WORD ( in -- out ) ...` forms. Put `{: :}` locals after the
+  stack-effect comment in published library definitions so manifest drift checks
+  see them.
 - **Large native tool bundles can corrupt reads:** combining large lint tables,
   `json.f`, and another large file buffer crashed JSON gate assertions. A lean
   standalone reader plus distinct helper scratch variables fixed it.

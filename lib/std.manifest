@@ -1,6 +1,20 @@
 schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	errors	lib/errors.f	module			lib/errors-test.f	docs/stdlib.md	stdlib-errors	planned	central named throw-code ranges and stdlib failure policy
-1	array	lib/array.f	module			lib/array-test.f	docs/stdlib.md	stdlib-array	planned	checked array handles indexing bounds and scalar kernels
+1	array	lib/array.f	module			lib/array-test.f	docs/stdlib.md	stdlib-array	active	checked array handles indexing bounds and scalar kernels
+1	array	lib/array.f	word	A-CHECK-INDEX	(n n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	validate one zero-based index against an array length
+1	array	lib/array.f	word	A-CHECK-RANGE	(n n n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	validate start and count against an array length
+1	array	lib/array.f	word	A-CHECK-NONEMPTY	(n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	require a positive array length
+1	array	lib/array.f	word	A@	(ptr a n n -- a)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fetch a checked cell-array element
+1	array	lib/array.f	word	A!	(a ptr a n n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	store a checked cell-array element
+1	array	lib/array.f	word	A-SUM	(ptr n n -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	sum numeric cell-array elements
+1	array	lib/array.f	word	A-MIN	(ptr n n -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	find the minimum numeric cell-array element
+1	array	lib/array.f	word	A-MAX	(ptr n n -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	find the maximum numeric cell-array element
+1	array	lib/array.f	word	A-COUNT-EVEN	(ptr n n -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	count even numeric cell-array elements
+1	array	lib/array.f	word	A-ARGMAX	(ptr n n -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	find the first index of the maximum element
+1	array	lib/array.f	word	A-REVERSE!	(ptr a n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	reverse cell-array elements in place
+1	array	lib/array.f	word	A-PREFIX-SUM!	(ptr n n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	replace numeric cells with prefix sums
+1	array	lib/array.f	word	A-RUNMAX!	(ptr n n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	replace numeric cells with running maxima
+1	array	lib/array.f	word	A-FILL!	(a ptr a n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fill a cell array with one value
 1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	planned	checked byte-string helpers and formatter support
 1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	planned	checked regex surface built on explicit handle representation
 1	map	lib/map.f	module			lib/map-test.f	docs/stdlib.md	stdlib-map	planned	checked associative collection surface
