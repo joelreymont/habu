@@ -2,4 +2,15 @@
 set -eu
 
 cd "$(dirname "$0")/.."
-cat tools/string.f tools/string-test.f | bin/hb
+
+HB=${HABU_HB:-bin/hb}
+
+fail() {
+  echo "string-test: $*" >&2
+  exit 1
+}
+
+[ -x "$HB" ] || fail "missing executable $HB"
+[ -f lib/string.f ] || fail "missing lib/string.f"
+
+cat lib/string.f lib/string-test.f | "$HB"
