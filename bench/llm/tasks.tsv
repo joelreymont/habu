@@ -96,3 +96,5 @@ id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rus
 95	RX-MATCH-OK?	(-- bool)	regex	empty -> -1	stdlib	stack	Using RX-COMPILE and RX-MATCH?, verify a slug-like pattern matches the whole input and rejects a bad suffix.	-	regex,stdlib,v2,match	-	-
 96	RX-FIND-OK?	(-- bool)	regex	empty -> -1	stdlib	stack	Using RX-COMPILE and RX-FIND, find the first regex match offset and length in a counted byte string.	-	regex,stdlib,v2,find	-	-
 97	RX-COUNT-OK?	(-- bool)	regex	empty -> -1	stdlib	stack	Using RX-COMPILE and RX-COUNT, count non-overlapping regex matches in a counted byte string.	-	regex,stdlib,v2,count	-	-
+98	RX-BAD-PATTERN	(-- error)	regex	code E-RX-SYNTAX	stdlib-negative	reject	Reject malformed quantifier and quantified-anchor regex bytecode during matcher validation.	code E-RX-SYNTAX	regex,stdlib,v2,negative-syntax	-	-
+99	RX-CAPACITY	(-- error)	regex	code E-RX-CAPACITY	stdlib-negative	reject	Reject regex compilation into a too-small bytecode buffer instead of truncating.	code E-RX-CAPACITY	regex,stdlib,v2,negative-capacity	-	-

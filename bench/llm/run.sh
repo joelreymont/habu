@@ -82,6 +82,8 @@ check_v2_manifest() {
   require_task 95 RX-MATCH-OK? regex stdlib stack v2,match
   require_task 96 RX-FIND-OK? regex stdlib stack v2,find
   require_task 97 RX-COUNT-OK? regex stdlib stack v2,count
+  require_task 98 RX-BAD-PATTERN regex stdlib-negative reject v2,negative-syntax
+  require_task 99 RX-CAPACITY regex stdlib-negative reject v2,negative-capacity
 }
 assert_repair_class() {
   name=$1
@@ -126,6 +128,54 @@ check_aot_v2_fixtures() {
   grep -q '"code":"E-AOT-UNSUPPORTED"' "$T/aot-bad-allot.err" || { echo "FAIL: V2 AOT allot code"; exit 1; }
   grep -q '"token":"allot"' "$T/aot-bad-allot.err" || { echo "FAIL: V2 AOT allot token"; exit 1; }
 }
+assert_regex_throw_file() {
+  name=$1
+  code=$2
+  source=$3
+  out=$(bin/hb "$source" 2>"$T/$name.err") || {
+    cat "$T/$name.err"
+    echo "FAIL: regex fixture did not catch $name"
+    exit 1
+  }
+  [ "$out" = "$code" ] || {
+    echo "FAIL: regex fixture $name got $out want $code"
+    exit 1
+  }
+}
+check_regex_v2_fixtures() {
+  cat lib/errors.f lib/string.f lib/regex.f >"$T/rx-bad-pattern.f"
+  cat >>"$T/rx-bad-pattern.f" <<'EOF'
+64 constant RX-BENCH-CAP
+create RX-BENCH RX-BENCH-CAP allot
+variable RX-BENCH-LEN
+: RX-BENCH-BAD ( -- )
+   s" *a" RX-BENCH RX-BENCH-CAP RX-COMPILE RX-BENCH-LEN !
+   s" aaa" RX-BENCH RX-BENCH-LEN @ RX-MATCH? drop ;
+' RX-BENCH-BAD catch . cr
+EOF
+  assert_regex_throw_file rx-bad-pattern "-2300" "$T/rx-bad-pattern.f"
+
+  cat lib/errors.f lib/string.f lib/regex.f >"$T/rx-bad-anchor.f"
+  cat >>"$T/rx-bad-anchor.f" <<'EOF'
+64 constant RX-BENCH-CAP
+create RX-BENCH RX-BENCH-CAP allot
+variable RX-BENCH-LEN
+: RX-BENCH-BAD ( -- )
+   s" ^*" RX-BENCH RX-BENCH-CAP RX-COMPILE RX-BENCH-LEN !
+   s" aaa" RX-BENCH RX-BENCH-LEN @ RX-MATCH? drop ;
+' RX-BENCH-BAD catch . cr
+EOF
+  assert_regex_throw_file rx-bad-anchor "-2300" "$T/rx-bad-anchor.f"
+
+  cat lib/errors.f lib/string.f lib/regex.f >"$T/rx-capacity.f"
+  cat >>"$T/rx-capacity.f" <<'EOF'
+create RX-BENCH 2 allot
+: RX-BENCH-BAD ( -- )
+   s" abc" RX-BENCH 2 RX-COMPILE drop ;
+' RX-BENCH-BAD catch . cr
+EOF
+  assert_regex_throw_file rx-capacity "-2301" "$T/rx-capacity.f"
+}
 check_tsv_shape
 check_v2_manifest
 check_diagnostic_v2_fixtures
@@ -151,6 +201,7 @@ cat lib/errors.f lib/string.f lib/regex.f lib/map.f lib/date.f lib/time.f bench/
 REF_OUT=$(bin/hb < "$REF" 2>"$T/ref.err")
 [ "$REF_OUT" = "REF-OK" ] || { echo "FAIL: V2 reference tests (got: $REF_OUT)"; exit 1; }
 check_aot_v2_fixtures
+check_regex_v2_fixtures
 VALIDATOR=$T/validate-results.f
 cat tools/date.f tools/lint/lib.f tools/json.f tools/argv.f bench/llm/validate-results.f >"$VALIDATOR"
 bin/hb "$VALIDATOR"
