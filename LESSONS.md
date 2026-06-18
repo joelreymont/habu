@@ -136,6 +136,12 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Diagnostics are an API:** JSON errors carry `schema_version: 1`, source spans,
   verdict, word, token, expected, and actual. Wrappers preserve valid JSON object
   lines and fail nonzero on checker rejection.
+- **Benchmark manifests are multi-harness:** `bench/llm/tasks.tsv` is canonical
+  for both reference and live runs; reference metrics must filter
+  `harness=forth` instead of assuming every manifest row has a checked answer key.
+- **Manifest buffers must size for V2 rows:** extra live-run fields can push
+  `bench/llm/tasks.tsv` past old compact-reader buffers; keep native validator
+  task buffers sized from the expanded manifest, not the old five-column file.
 - **Source origins are wrapper-owned:** the checker reports definition-relative
   spans. Build/check wrappers inject origin markers before definitions and keep
   those markers out of final user bundles.
