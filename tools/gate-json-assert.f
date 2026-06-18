@@ -45,6 +45,8 @@ variable GJA-B
 variable GJA-V
 variable GJA-WANT-A
 variable GJA-WANT-U
+variable GJA-CLASS-A
+variable GJA-CLASS-U
 variable GJA-SRC-PATH-A
 variable GJA-SRC-PATH-U
 variable GJA-STENCILS
@@ -310,6 +312,31 @@ variable GJA-DIRECT
    GJA-ROOT @ s" suggestion" GJA-REQ dup GJA-NONEMPTY-STR
    GJA-WANT-A @ GJA-WANT-U @ GJA-SUGGEST-FOR GJA-ASSERT-STR ;
 
+: GJA-REPAIR-PACKET ( json-a json-u class-a class-u -- )
+   GJA-CLASS-U ! GJA-CLASS-A !
+   GJA-FIRST-JSON GJA-ROOT !
+   GJA-ROOT @ s" schema_version" 1 GJA-ASSERT-INT-FIELD
+   GJA-ROOT @ s" kind" GJA-REQ s" habu_repair_packet" GJA-ASSERT-STR
+   GJA-ROOT @ s" repair_class" GJA-REQ
+   GJA-CLASS-A @ GJA-CLASS-U @ GJA-ASSERT-STR
+   GJA-ROOT @ s" diagnostic_count" GJA-REQ GJA-INT 0 <= IF s" invalid diagnostic_count" GJA-FAIL THEN
+   GJA-ROOT @ s" word" GJA-REQ GJA-NONEMPTY-STR
+   GJA-ROOT @ s" token" GJA-REQ GJA-NONEMPTY-STR
+   GJA-ROOT @ s" token_index" GJA-REQ-INTF
+   GJA-ROOT @ s" file" GJA-REQ GJA-NONEMPTY-STR
+   GJA-ROOT @ s" line" GJA-REQ-INTF
+   GJA-ROOT @ s" column" GJA-REQ-INTF
+   GJA-ROOT @ s" byte_start" GJA-REQ-INTF
+   GJA-ROOT @ s" byte_end" GJA-REQ-INTF
+   GJA-ROOT @ s" inferred_effect" GJA-REQ GJA-NONEMPTY-STR
+   GJA-ROOT @ s" return_stack" GJA-REQ GJA-OBJ
+   GJA-ROOT @ s" code" GJA-REQ GJA-NONEMPTY-STR
+   GJA-ROOT @ s" suggestion" GJA-REQ dup GJA-NONEMPTY-STR
+   GJA-CLASS-A @ GJA-CLASS-U @ GJA-SUGGEST-FOR GJA-ASSERT-STR
+   GJA-ROOT @ s" source_excerpt" GJA-REQ GJA-NONEMPTY-STR
+   GJA-ROOT @ s" instruction" GJA-REQ
+   s" Fix the definition so it certifies. Output only corrected Habu code." GJA-ASSERT-STR ;
+
 : GJA-DIAG-COMMON ( root -- )
    dup GJA-SCHEMA1
    dup s" code" GJA-REQ GJA-NONEMPTY-STR
@@ -434,6 +461,10 @@ variable GJA-DIRECT
    0 SCRIPT-ARGV$ s" diag-repair-class" GJA-BYTES= IF
       SCRIPT-ARGC 3 <> IF GJA-USAGE THEN
       1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-DIAG-REPAIR-CLASS exit
+   THEN
+   0 SCRIPT-ARGV$ s" repair-packet" GJA-BYTES= IF
+      SCRIPT-ARGC 3 <> IF GJA-USAGE THEN
+      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-REPAIR-PACKET exit
    THEN
    0 SCRIPT-ARGV$ s" all-errors" GJA-BYTES= IF
       SCRIPT-ARGC 2 <> IF GJA-USAGE THEN

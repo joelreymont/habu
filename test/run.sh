@@ -40,6 +40,7 @@ cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint
 ./tools/date-test.sh || { echo "FAIL: date helpers"; exit 1; }
 ./tools/bundle-lib-test.sh || { echo "FAIL: stdlib bundle wrapper"; exit 1; }
 ./tools/repair-schema-doc-test.sh || { echo "FAIL: repair diagnostic schema doc"; exit 1; }
+./tools/repair-packet-test.sh || { echo "FAIL: repair packet tool"; exit 1; }
 [ -x bin/hb ] || { echo "no bin/hb — install a trusted seed with tools/seed.sh /path/to/hb"; exit 1; }
 ./tools/build.sh > $T/hb-build.log 2>&1 || { tail -5 $T/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }
 echo "PASS: self-rebuild fixpoint"
