@@ -365,17 +365,41 @@ wrappers accept counted paths/commands, own conversion to private `pathz`
 buffers, and never require LLM code to build C strings by hand.
 
 ```forth
-RUN-RC       ( ptr u8 n -- n )
-SPAWN-IO     ( ptr u8 n n n n -- n )
-WAIT-RC      ( n -- n )
+PROC-WAIT-RAW       ( n -- n )
+PROC-SPAWN-RAW      ( ptr u8 n n n -- n )
+PROC-ZCOPY          ( ptr u8 n ptr u8 n -- ptr u8 )
+PATHZ               ( ptr u8 n -- ptr u8 )
+WAIT-RC             ( n -- n )
+SPAWN-IO            ( ptr u8 n n n n -- n )
+RUN-RC              ( ptr u8 n -- n )
+FD-CLOEXEC!         ( n -- )
+PIPE-PAIR           ( -- n n )
+PROC-PFD!           ( n n -- )
+POLL-IN             ( n n -- n )
+POLL-IN-OR-TIMEOUT  ( n n -- n )
 RUN-CAPTURE  ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
 ```
 
+`PATHZ` copies a counted path into the module's private NUL-terminated path
+buffer and throws `E-PROC-OUTPUT` if the path does not fit. `RUN-RC` composes the
+checked `SPAWN-IO` and `WAIT-RC` wrappers rather than the unchecked runtime
+`run-rc` primitive. `SPAWN-IO` and `WAIT-RC` throw `E-PROC-SPAWN` and
+`E-PROC-WAIT` for primitive failures.
+
 `SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
 fds. Negative fd values mean inherit/default; nonnegative fd values are passed
-through explicitly. Parent-only pipe and PTY fds must be marked `FD_CLOEXEC`
-before spawning, then closed by the parent after the child no longer needs them.
-Every spawn path must close all fds it owns on success and failure.
+through explicitly. `PIPE-PAIR` creates a pipe as read fd then write fd.
+Parent-only pipe and PTY fds must be marked close-on-exec with `FD-CLOEXEC!`
+before spawning; this sets the Darwin `FD_CLOEXEC` flag. Parent code then closes
+the fd after the child no longer needs it.
+Every spawn path must close all fds it owns on success and failure. `POLL-IN`
+polls one fd for readable input and returns the raw poll result;
+`POLL-IN-OR-TIMEOUT` throws `E-PROC-TIMEOUT` for a zero poll result and
+`E-PROC-OUTPUT` for poll failure.
+
+`PROC-WAIT-RAW` and `PROC-SPAWN-RAW` are raw primitive aliases captured before
+the checked wrapper names are defined. Application code should prefer
+`SPAWN-IO`, `WAIT-RC`, and `RUN-RC`.
 
 `RUN-CAPTURE` takes command string, stdout buffer/capacity, stderr
 buffer/capacity, and timeout milliseconds. It returns stdout length, stderr
@@ -386,9 +410,8 @@ child before throwing `E-PROC-TIMEOUT`. Process wrappers throw named errors for
 path conversion failure, spawn failure, wait failure, capture drain failure,
 timeout, and output capacity overflow.
 
-`RUN-RC` must be checker-modeled or implemented as an audited checked wrapper
-around modeled primitives. Until that exists, checked examples should use
-`SPAWN-IO WAIT-RC` rather than unchecked runtime words.
+`RUN-CAPTURE` remains a planned layer until Habu has the primitive support needed
+to terminate and reap timed-out children without leaking a process.
 
 ## Date And Time
 

@@ -39,6 +39,7 @@ cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint
 ./lib/regex-test.sh || { echo "FAIL: regex stdlib"; exit 1; }
 ./lib/map-test.sh || { echo "FAIL: map stdlib"; exit 1; }
 ./lib/fs-test.sh || { echo "FAIL: fs stdlib"; exit 1; }
+./lib/process-test.sh || { echo "FAIL: process stdlib"; exit 1; }
 ./lib/argv-test.sh || { echo "FAIL: argv stdlib"; exit 1; }
 ./lib/test-test.sh || { echo "FAIL: test stdlib"; exit 1; }
 ./lib/property-test.sh || { echo "FAIL: property stdlib"; exit 1; }
@@ -256,7 +257,7 @@ out=$(printf '39 LONG-SNAPSHOT-DICTIONARY-WORD .\n' | "$HT/hb-snap0" 2>/dev/null
 [ "$out" = "42" ] || { echo "FAIL: long-name snapshot restore (got: $out)"; exit 1; }
 rm -rf "$HT"
 echo "PASS: HB_TMP isolation"
-bin/hb < test/proc-pty.f || { echo "FAIL: process/pty"; exit 1; }
+cat lib/errors.f lib/process.f test/proc-pty.f | bin/hb || { echo "FAIL: process/pty"; exit 1; }
 out=$(printf ': LONG-PROFILER-BUSY-WORD ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;\n: GO ( -- ) 100000 prof-on LONG-PROFILER-BUSY-WORD prof-report ;\nGO\n' | bin/hb 2>/dev/null | head -1)
 case "$out" in
   "LONG-PROFILER-BUSY-WORD "*) ;;

@@ -5,7 +5,14 @@ libc helpers.
 
 ## Process Capture
 
-`spawn-io ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )` wraps syscall 244,
+`lib/process.f` exposes checked helpers over the raw runtime primitives. The
+focused process/PTY gate bundles it with:
+
+```sh
+cat lib/errors.f lib/process.f test/proc-pty.f | bin/hb
+```
+
+The raw `spawn-io ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )` primitive wraps syscall 244,
 `posix_spawn(pid*, path, adesc, argv, envp)`. Darwin's kernel ABI differs from
 libc's public `posix_spawn` signature: the third argument is a private
 `struct _posix_spawn_args_desc`.
@@ -26,15 +33,17 @@ The file-actions blob is the XNU `_posix_spawn_file_actions` layout:
 
 `spawn-io` emits only dup2 actions. Pass a negative fd to leave that stream
 unchanged. It returns the spawned pid or `-1`; `wait-rc ( pid -- rc )` returns
-`WEXITSTATUS(status)` or `-1`.
+`WEXITSTATUS(status)` or `-1`. Checked code should use `SPAWN-IO`,
+`WAIT-RC`, and `RUN-RC`; those wrappers accept counted paths and throw named
+process errors for primitive failures.
 
 When all three fds are negative, `spawn-io` passes a null descriptor. XNU rejects
 an args descriptor whose file-actions pointer names a zero-action blob with
 `EINVAL`.
 
-The parent must mark parent-only fds `FD_CLOEXEC` with `fcntl` before spawning.
-For stdin capture, this includes the pipe write end; otherwise the child inherits
-that writer and never sees EOF after the parent closes its copy.
+The parent must mark parent-only fds close-on-exec with `FD-CLOEXEC!` before
+spawning. For stdin capture, this includes the pipe write end; otherwise the
+child inherits that writer and never sees EOF after the parent closes its copy.
 
 ## PTY Foundation
 
@@ -47,7 +56,7 @@ Darwin's `openpty`, `forkpty`, `posix_openpt`, `grantpt`, `unlockpt`, and
 4. `ioctl(master, TIOCPTYGNAME, pathbuf)` for the slave path.
 5. `open(pathbuf, O_RDWR, 0)` for the slave.
 6. `spawn-io` with the slave fd duplicated to `0`, `1`, and `2`.
-7. Parent drives the close-on-exec master with `poll` and `read`/`write`.
+7. Parent drives the close-on-exec master with `POLL-IN` and `read`/`write`.
 
 Darwin constants used by `test/proc-pty.f`:
 
@@ -58,6 +67,6 @@ Darwin constants used by `test/proc-pty.f`:
 - `F_SETFD = 2`
 - `FD_CLOEXEC = 1`
 
-The focused gate is `bin/hb < test/proc-pty.f`. It is the native compatibility
-baseline for process capture, PTY startup, line editing, history, breakpoints,
-stepper recovery, Ctrl-C, Ctrl-D, and async exit.
+The focused gate is the bundled command shown above. It is the native
+compatibility baseline for process capture, PTY startup, line editing, history,
+breakpoints, stepper recovery, Ctrl-C, Ctrl-D, and async exit.

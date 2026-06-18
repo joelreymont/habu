@@ -4,13 +4,8 @@
 $20007454 constant TIOCPTYGRANT
 $40807453 constant TIOCPTYGNAME
 $20007452 constant TIOCPTYUNLK
-1 constant POLLIN
-2 constant F-SETFD
-1 constant FD-CLOEXEC
 
-create PATH-BUF 256 allot
 create RBUF 4096 allot
-create PFD 8 allot
 create NL 1 allot
 create EOT 1 allot
 create CH 1 allot
@@ -44,19 +39,6 @@ variable SFD
       #FAIL @ 1 + #FAIL !
    then ;
 
-: PATHZ {: a:ptr u :} ( ptr u8 n -- ptr u8 )
-   0 begin dup u < while
-      dup a + c@  over PATH-BUF + c!
-      1 +
-   repeat drop
-   0 PATH-BUF u + c!
-   PATH-BUF ;
-
-: MKPIPE {: rvar:ptr wvar:ptr :} ( ptr n ptr n -- )
-   pipe 0 T=
-   wvar !
-   rvar ! ;
-
 : RCLR ( -- )
    0 RN ! ;
 
@@ -87,16 +69,6 @@ variable SFD
 : FD-WRITE-LN {: fd a:ptr u :} ( n ptr u8 n -- )
    fd a u FD-WRITE
    fd NL 1 FD-WRITE ;
-
-: PFD! {: fd events :} ( fd events -- )
-   events 32 lshift  fd $FFFFFFFF and  or  PFD ! ;
-
-: CLOEXEC {: fd :} ( fd -- )
-   fd F-SETFD FD-CLOEXEC fcntl 0 T= ;
-
-: POLL-IN {: fd ms :} ( fd ms -- rc )
-   fd POLLIN PFD!
-   PFD 1 ms poll ;
 
 : DRAIN {: fd :} ( fd -- )
    RCLR
@@ -136,20 +108,20 @@ variable SFD
    RBUF RN @ a u CONTAINS? 0= TTRUE ;
 
 : CAPTURE-HB ( -- )
-   IN-R IN-W MKPIPE
-   OUT-R OUT-W MKPIPE
-   ERR-R ERR-W MKPIPE
-   IN-W @ CLOEXEC
-   OUT-R @ CLOEXEC
-   ERR-R @ CLOEXEC
-   s" bin/hb" PATHZ IN-R @ OUT-W @ ERR-W @ spawn-io PID !
+   PIPE-PAIR IN-W ! IN-R !
+   PIPE-PAIR OUT-W ! OUT-R !
+   PIPE-PAIR ERR-W ! ERR-R !
+   IN-W @ FD-CLOEXEC!
+   OUT-R @ FD-CLOEXEC!
+   ERR-R @ FD-CLOEXEC!
+   s" bin/hb" IN-R @ OUT-W @ ERR-W @ SPAWN-IO PID !
    PID @ 0 > TTRUE
    IN-R @ close
    OUT-W @ close
    ERR-W @ close
    IN-W @ s" 2 3 + ." FD-WRITE-LN
    IN-W @ close
-   PID @ wait-rc 0 T=
+   PID @ WAIT-RC 0 T=
    RCLR
    OUT-R @ READ+
    s" 5" TCONTAINS
@@ -162,7 +134,7 @@ variable SFD
 : OPEN-PTY ( -- )
    s" /dev/ptmx" PATHZ 2 0 open MFD !
    MFD @ 2 > TTRUE
-   MFD @ CLOEXEC
+   MFD @ FD-CLOEXEC!
    MFD @ TIOCPTYGRANT NULL$ drop ioctl 0 T=
    MFD @ TIOCPTYUNLK NULL$ drop ioctl 0 T=
    MFD @ TIOCPTYGNAME PTYNAME ioctl 0 T=
@@ -171,7 +143,7 @@ variable SFD
 
 : PTY-HB ( -- )
    OPEN-PTY
-   s" bin/hb" PATHZ SFD @ SFD @ SFD @ spawn-io PID !
+   s" bin/hb" SFD @ SFD @ SFD @ SPAWN-IO PID !
    PID @ 0 > TTRUE
    SFD @ close
    MFD @ DRAIN
@@ -319,7 +291,7 @@ variable SFD
    s" 6" EXPECT
    s"  ok" EXPECT
    4 SEND-C
-   PID @ wait-rc 0 T=
+   PID @ WAIT-RC 0 T=
    MFD @ close ;
 
 : REPORT ( -- )
