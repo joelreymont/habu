@@ -336,6 +336,30 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	build	lib/build.f	word	BUILD-RUN	(ptr u8 n ptr u8 n -- n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	run a counted command and require its expected artifact
 1	build	lib/build.f	word	BUILD-SKIP-WHITE	(n -- n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	skip ASCII whitespace in the build source buffer
 1	build	lib/build.f	word	BUILD-STEP	(ptr u8 n [ -- n ] --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	run one checked step quotation and throw on nonzero rc
+1	build	lib/build.f	word	BUILD-STEP-A!	(ptr u8 ptr a n --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	store a typed byte-pointer field in a build step record
+1	build	lib/build.f	word	BUILD-STEP-A@	(ptr a n -- ptr u8)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	read a typed byte-pointer field from a build step record
+1	build	lib/build.f	word	BUILD-STEP-ARGV!	(ptr u8 n ptr a --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	store build step argv metadata
+1	build	lib/build.f	word	BUILD-STEP-ARGV$	(ptr a -- ptr u8 n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	read build step argv metadata
+1	build	lib/build.f	word	BUILD-STEP-ARTIFACT!	(ptr u8 n ptr a --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	store required build artifact path metadata
+1	build	lib/build.f	word	BUILD-STEP-ARTIFACT$	(ptr a -- ptr u8 n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	read required build artifact path metadata
+1	build	lib/build.f	word	BUILD-STEP-CHECK-OFF	(n --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	validate a build step record cell offset
+1	build	lib/build.f	word	BUILD-STEP-CLEAR	(ptr a --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	clear a build step record to empty fields and rc -1
+1	build	lib/build.f	word	BUILD-STEP-COMMAND!	(ptr u8 n ptr a --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	store a required executable command path in a build step record
+1	build	lib/build.f	word	BUILD-STEP-COMMAND$	(ptr a -- ptr u8 n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	read the executable command path from a build step record
+1	build	lib/build.f	word	BUILD-STEP-EMPTY!	(ptr a n --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	clear one counted string field in a build step record
+1	build	lib/build.f	word	BUILD-STEP-FIELD	(ptr a n -- ptr a)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	return a checked build step record field address
+1	build	lib/build.f	word	BUILD-STEP-N!	(n ptr a n --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	store a numeric field in a build step record
+1	build	lib/build.f	word	BUILD-STEP-N@	(ptr a n -- n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	read a numeric field from a build step record
+1	build	lib/build.f	word	BUILD-STEP-NAME!	(ptr u8 n ptr a --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	store a required build step name
+1	build	lib/build.f	word	BUILD-STEP-NAME$	(ptr a -- ptr u8 n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	read a build step name
+1	build	lib/build.f	word	BUILD-STEP-PAIR!	(ptr u8 n ptr a n --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	store one counted byte-string pair in a build step record
+1	build	lib/build.f	word	BUILD-STEP-PAIR$	(ptr a n -- ptr u8 n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	read one counted byte-string pair from a build step record
+1	build	lib/build.f	word	BUILD-STEP-RC!	(n ptr a --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	store the last run rc in a build step record
+1	build	lib/build.f	word	BUILD-STEP-RC@	(ptr a -- n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	read the last run rc from a build step record
+1	build	lib/build.f	word	BUILD-STEP-RUN	(ptr a -- n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	validate and run one build step record, storing its rc
+1	build	lib/build.f	word	BUILD-STEP-TMP!	(ptr u8 n ptr a --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	store a required private temp path in a build step record
+1	build	lib/build.f	word	BUILD-STEP-TMP$	(ptr a -- ptr u8 n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	read the private temp path from a build step record
+1	build	lib/build.f	word	BUILD-STEP-VALIDATE	(ptr a --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	validate required command temp and artifact fields in a step record
 1	build	lib/build.f	word	BUILD-TRUE	(-- bool)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	return a true flag for build helpers
 1	build	lib/build.f	word	BUILD-WHITE?	(n -- bool)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	test whether a byte is build-source whitespace
 1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers

@@ -569,6 +569,30 @@ BUILD-EXPECT      ( ptr u8 n -- )
 BUILD-ARTIFACT    ( ptr u8 n ptr u8 n -- ptr u8 n )
 BUILD-STEP      ( ptr u8 n [ -- n ] -- )
 BUILD-RUN       ( ptr u8 n ptr u8 n -- n )
+BUILD-STEP-CHECK-OFF ( n -- )
+BUILD-STEP-FIELD     ( ptr a n -- ptr a )
+BUILD-STEP-A!        ( ptr u8 ptr a n -- )
+BUILD-STEP-A@        ( ptr a n -- ptr u8 )
+BUILD-STEP-N!        ( n ptr a n -- )
+BUILD-STEP-N@        ( ptr a n -- n )
+BUILD-STEP-PAIR!     ( ptr u8 n ptr a n -- )
+BUILD-STEP-PAIR$     ( ptr a n -- ptr u8 n )
+BUILD-STEP-EMPTY!    ( ptr a n -- )
+BUILD-STEP-CLEAR     ( ptr a -- )
+BUILD-STEP-NAME!     ( ptr u8 n ptr a -- )
+BUILD-STEP-COMMAND!  ( ptr u8 n ptr a -- )
+BUILD-STEP-ARGV!     ( ptr u8 n ptr a -- )
+BUILD-STEP-TMP!      ( ptr u8 n ptr a -- )
+BUILD-STEP-ARTIFACT! ( ptr u8 n ptr a -- )
+BUILD-STEP-NAME$     ( ptr a -- ptr u8 n )
+BUILD-STEP-COMMAND$  ( ptr a -- ptr u8 n )
+BUILD-STEP-ARGV$     ( ptr a -- ptr u8 n )
+BUILD-STEP-TMP$      ( ptr a -- ptr u8 n )
+BUILD-STEP-ARTIFACT$ ( ptr a -- ptr u8 n )
+BUILD-STEP-RC@       ( ptr a -- n )
+BUILD-STEP-RC!       ( n ptr a -- )
+BUILD-STEP-VALIDATE  ( ptr a -- )
+BUILD-STEP-RUN       ( ptr a -- n )
 ```
 
 `lib/test.f` assertions throw named test errors and keep one final report path;
@@ -592,6 +616,15 @@ path, throws `E-BUILD-COMMAND` if the command is not a file, throws
 `E-BUILD-STATUS` on nonzero rc, and throws `E-BUILD-PATH` if the expected artifact
 file is absent after a successful command. Raw process exits are only allowed at
 the final CLI/script boundary.
+
+Build step records are `BUILD-STEP-CELLS cells` caller-owned storage with counted
+fields for name, executable command path, argv metadata, private temp path,
+required artifact path, and last rc. `BUILD-STEP-VALIDATE` rejects missing command
+files, missing temp directories, and empty artifact paths before execution.
+`BUILD-STEP-RUN` validates the record, runs the command path through `BUILD-RUN`,
+requires the artifact, stores the rc, and returns it. Argv is modeled as metadata
+until the process layer grows argv-vector spawning; it is still part of the
+checked build contract so drivers can preserve intended command arguments.
 
 ## Build Shell Boundary
 
