@@ -10,6 +10,13 @@ model_init
 calls=$(js_test "$CONV" "$VEC")
 bench=$(js_bench "$VEC")
 T=$(mktemp -d "${TMPDIR:-/tmp}/djs.XXXXXX"); trap 'rm -rf "$T"' EXIT
+printf 'prompt unavailable\n' > "$T/prompt.txt"
+printf 'response unavailable\n' > "$T/resp.json"
+printf '// no candidate extracted\n' > "$T/f.js"
+printf '// no final bundle\n' > "$T/test.js"
+: > "$T/checker-diagnostics.txt"
+: > "$T/repair-packet.json"
+: > "$T/test-output.txt"
 TASK="Write a JavaScript function with this exact signature:
   function f(a) { ... }
 where a is an array of integers. It must return $(js_ret "$CONV"). Use integer
@@ -21,10 +28,12 @@ round=0; feedback=""; outcome=fail; toks=0; t0=$(now_ms)
 while [ "$round" -lt "$MAXR" ]; do
   round=$((round+1))
   prompt="${TASK}${feedback}"
+  printf '%s' "$prompt" > "$T/prompt.txt"
   model_run "$prompt" "$T/resp.json" \
-    || { outcome=error; break; }
+    || { printf 'model_run_failed\n' > "$T/resp.json"; outcome=error; break; }
   rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); toks=$((toks+rt))
   extract "$T/text.txt" > "$T/f.js"
+  [ -s "$T/f.js" ] || printf '// no candidate extracted\n' > "$T/f.js"
   {
     cat "$T/f.js"; printf '\n'
     printf 'function check(g,w,a){ if(JSON.stringify(g)!==JSON.stringify(w)){ console.error("FAIL f("+a+") = "+JSON.stringify(g)+" expected "+JSON.stringify(w)); process.exit(1);} }\n'
@@ -32,6 +41,7 @@ while [ "$round" -lt "$MAXR" ]; do
     printf 'console.log("ALL-OK");\n'
   } > "$T/test.js"
   set +e; out=$(timeout 5 node "$T/test.js" 2>&1); rc=$?; set -e
+  printf '%s\n' "$out" > "$T/test-output.txt"
   if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q ALL-OK; then outcome=pass; break
   elif [ "$rc" -eq 124 ]; then outcome=timeout
   else outcome=fail; fi
@@ -58,4 +68,12 @@ if [ "$outcome" = pass ]; then
     outcome=error; rt_status=error
   fi
 fi
+BENCH_PROMPT_FILE=$T/prompt.txt
+BENCH_RAW_RESPONSE_FILE=$T/resp.json
+BENCH_CANDIDATE_FILE=$T/f.js
+BENCH_CHECKER_DIAGNOSTICS_FILE=$T/checker-diagnostics.txt
+BENCH_REPAIR_PACKET_FILE=$T/repair-packet.json
+BENCH_TEST_OUTPUT_FILE=$T/test-output.txt
+BENCH_FINAL_BUNDLE_FILE=$T/test.js
+BENCH_SOURCE_FILE=$T/f.js
 emit_row "$ID" "$NAME" "$MODEL" "js" "$outcome" "$round" "$toks" "$wall" "$rt_ms" "$rt_status"

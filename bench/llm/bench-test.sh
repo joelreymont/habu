@@ -112,6 +112,11 @@ r=$(CLAUDE="$T/hb.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum
 r=$(CLAUDE="$T/hbl.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" lib); chk habu-lib-as '"arm":"habu-lib","trial_id":"manifest:claude:habu-lib:1:0","trial":0,"task_order":0,"k_trials":0,"order_seed":"manifest","outcome":"pass","rounds":1' "$r"
 r=$(CLAUDE="$T/js.sh" sh bench/llm/drive-js.sh   1 ARR-SUM "ptr a n -- i64" "sum" as "$SV");   chk js-as   '"outcome":"pass","rounds":1' "$r"
 chk js-as-runtime '"runtime_ms":[0-9][0-9]*,"runtime_repetitions":100,"runtime_warmups":10,"runtime_status":"ok"' "$r"
+chk js-v2-schema '"schema_version":2' "$r"
+chk js-v2-task-family '"task_family":"arrays"' "$r"
+chk js-v2-model-unknown '"model_version":"unknown","model_date":"unknown"' "$r"
+chk js-v2-replay-hashes '"prompt_sha256":"[0-9a-f][0-9a-f]*".*"raw_response_sha256":"[0-9a-f][0-9a-f]*".*"final_bundle_sha256":"[0-9a-f][0-9a-f]*"' "$r"
+chk js-v2-source-chars '"source_chars":[1-9][0-9]*' "$r"
 r=$(CLAUDE="$T/rs.sh" sh bench/llm/drive-rust.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV");   chk rust-as '"outcome":"pass","rounds":1' "$r"
 
 cat > "$T/models.tsv" <<EOF
@@ -202,8 +207,8 @@ EOF
     cat "$T/canon-run.jsonl"
     fails=$((fails+1))
   }
-  if grep -q 'ARR-SUM' "$T/canon-run.jsonl"; then
-    echo "FAIL: run-bench-canonical-no-legacy -> found ARR-SUM"
+  if grep -q '"name":"ARR-SUM"' "$T/canon-run.jsonl"; then
+    echo "FAIL: run-bench-canonical-no-legacy -> found ARR-SUM task row"
     fails=$((fails+1))
   else
     echo "ok: run-bench-canonical-no-legacy"

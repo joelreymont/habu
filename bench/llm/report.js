@@ -115,6 +115,7 @@ o += '— the reasoning cost of the unfamiliar memory model dominates the tersen
 
 o += '## Evidence Contract\n\n';
 o += 'V2 live rows are identified by `run_id`, `model_id`, `arm`, `task_id`, and `trial_id`; duplicate full keys are invalid while multiple trials for the same task are expected.\n';
+o += 'Rows also carry `task_family`, `model_version`, `model_date`, trial/order metadata, outcome and repair counters, diagnostic-quality booleans, `source_chars`, and warmed-runtime fields. Unknown model version/date are recorded as `unknown` rather than omitted.\n';
 o += 'Replayable rows retain `prompt`, `raw_response`, `extracted_candidate`, `checker_diagnostics`, `repair_packet`, `test_output`, and `final_bundle`, each with a `*_sha256` field so artifacts can be matched to archived files or inline payloads.\n\n';
 
 o += '## Limitations\n\n';

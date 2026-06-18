@@ -605,6 +605,57 @@ variable LV-RC-SUM
    LV-FIND-KEY 0 >= IF s" duplicate result identity" LV-FAIL-AT THEN
    LV-KEY+ ;
 
+: LV-REQ-NONEMPTY-STR {: root a u :} ( root a u -- )
+   root a u LV-REQ
+   root a u LV-STR-FIELD dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN
+   2drop ;
+
+: LV-REQ-NONNEG-INT {: root a u :} ( root a u -- n )
+   root a u LV-REQ
+   root a u LV-INT-FIELD dup 0 < IF drop s" invalid integer field" LV-FAIL-AT THEN ;
+
+: LV-CHECK-TASK-FAMILY {: root :} ( root -- )
+   root s" task_family" LV-REQ
+   root s" task_family" LV-STR-FIELD dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN
+   LV-TASK-K @ LV-TASK-CAT$ STR= 0= IF s" task_family/category drift" LV-FAIL-AT THEN ;
+
+: LV-CHECK-DATE-OR-UNKNOWN {: a u :} ( a u -- )
+   a u s" unknown" STR= IF exit THEN
+   u DATE-LEN <> IF s" invalid model_date" LV-FAIL-AT THEN
+   a u PARSE-YMD 0= IF drop s" invalid model_date" LV-FAIL-AT THEN
+   drop ;
+
+: LV-CHECK-MODEL-DATE {: root :} ( root -- )
+   root s" model_date" LV-REQ
+   root s" model_date" LV-STR-FIELD dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN
+   LV-CHECK-DATE-OR-UNKNOWN ;
+
+: LV-CHECK-RUNTIME-MS {: root :} ( root -- )
+   root s" runtime_ms" LV-REQ
+   root s" runtime_ms" LV-GET dup JSON-KIND J-NULL = IF drop exit THEN
+   dup JSON-KIND J-NUM <> IF drop s" invalid runtime_ms" LV-FAIL-AT THEN
+   JSON-NUMBER$ LV-U? 0= IF drop s" invalid runtime_ms" LV-FAIL-AT THEN
+   drop ;
+
+: LV-CHECK-V2-META {: root :} ( root -- )
+   root LV-CHECK-TASK-FAMILY
+   root s" model_version" LV-REQ-NONEMPTY-STR
+   root LV-CHECK-MODEL-DATE
+   root s" trial" LV-REQ-NONNEG-INT drop
+   root s" task_order" LV-REQ-NONNEG-INT drop
+   root s" k_trials" LV-REQ-NONNEG-INT drop
+   root s" order_seed" LV-REQ-NONEMPTY-STR
+   root s" outcome" LV-REQ-NONEMPTY-STR
+   root s" rounds" LV-REQ-NONNEG-INT drop
+   root s" first_pass" LV-REQ
+   root s" first_pass" LV-BOOL-FIELD drop
+   root s" tokens" LV-REQ-NONNEG-INT drop
+   root s" source_chars" LV-REQ-NONNEG-INT dup 0 <= IF drop s" invalid source_chars" LV-FAIL-AT THEN drop
+   root LV-CHECK-RUNTIME-MS
+   root s" runtime_repetitions" LV-REQ-NONNEG-INT drop
+   root s" runtime_warmups" LV-REQ-NONNEG-INT drop
+   root s" runtime_status" LV-REQ-NONEMPTY-STR ;
+
 : LV-CHECK-INT= {: root a u want msg mu :} ( root a u want msg mu -- )
    root a u LV-INT-FIELD want <> IF msg mu LV-FAIL-AT THEN ;
 
@@ -679,6 +730,7 @@ variable LV-RC-SUM
    LV-TASK-K !
    root s" name" LV-STR-FIELD LV-TASK-K @ LV-TASK-NAME$ STR= 0= IF s" task/name drift for id " LV-ID @ LV-FAIL-AT-ID THEN
    root LV-CHECK-STRING-META
+   LV-SCHEMA @ 2 = IF root LV-CHECK-V2-META THEN
    root s" attempt" LV-INT-FIELD drop
    root s" first_pass_checker" LV-STR-FIELD 2drop
    root s" first_pass_tests" LV-BOOL-FIELD drop

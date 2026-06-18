@@ -10,6 +10,13 @@ model_init
 asserts=$(rust_test "$CONV" "$VEC")
 bench=$(rust_bench "$VEC")
 T=$(mktemp -d "${TMPDIR:-/tmp}/drs.XXXXXX"); trap 'rm -rf "$T"' EXIT
+printf 'prompt unavailable\n' > "$T/prompt.txt"
+printf 'response unavailable\n' > "$T/resp.json"
+printf '// no candidate extracted\n' > "$T/f.rs"
+printf '// no final bundle\n' > "$T/test.rs"
+: > "$T/checker-diagnostics.txt"
+: > "$T/repair-packet.json"
+: > "$T/test-output.txt"
 TASK="Write a Rust function with this exact signature:
   fn f(a: &[i64]) -> $(rust_ret "$CONV") { ... }
 where a is a slice of integers. ${SPEC}
@@ -20,16 +27,20 @@ round=0; feedback=""; outcome=reject; toks=0; t0=$(now_ms)
 while [ "$round" -lt "$MAXR" ]; do
   round=$((round+1))
   prompt="${TASK}${feedback}"
+  printf '%s' "$prompt" > "$T/prompt.txt"
   model_run "$prompt" "$T/resp.json" \
-    || { outcome=error; break; }
+    || { printf 'model_run_failed\n' > "$T/resp.json"; outcome=error; break; }
   rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); toks=$((toks+rt))
   extract "$T/text.txt" > "$T/f.rs"
+  [ -s "$T/f.rs" ] || printf '// no candidate extracted\n' > "$T/f.rs"
   {
     cat "$T/f.rs"; printf '\n'
     printf 'fn main() {\n%s\n    println!("ALL-OK");\n}\n' "$asserts"
   } > "$T/test.rs"
   if ! rustc "$T/test.rs" -o "$T/bin" 2>"$T/comp.err"; then
     outcome=reject
+    cp "$T/comp.err" "$T/checker-diagnostics.txt"
+    cp "$T/comp.err" "$T/test-output.txt"
     feedback="
 
 Your attempt:
@@ -42,6 +53,7 @@ Fix it so it compiles. Output ONLY the corrected function."
     continue
   fi
   set +e; out=$(timeout 5 "$T/bin" 2>&1); rc=$?; set -e
+  printf '%s\n' "$out" > "$T/test-output.txt"
   if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q ALL-OK; then outcome=pass; break
   elif [ "$rc" -eq 124 ]; then outcome=timeout
   else outcome=fail; fi
@@ -72,4 +84,12 @@ if [ "$outcome" = pass ]; then
     outcome=error; rt_status=error
   fi
 fi
+BENCH_PROMPT_FILE=$T/prompt.txt
+BENCH_RAW_RESPONSE_FILE=$T/resp.json
+BENCH_CANDIDATE_FILE=$T/f.rs
+BENCH_CHECKER_DIAGNOSTICS_FILE=$T/checker-diagnostics.txt
+BENCH_REPAIR_PACKET_FILE=$T/repair-packet.json
+BENCH_TEST_OUTPUT_FILE=$T/test-output.txt
+BENCH_FINAL_BUNDLE_FILE=$T/test.rs
+BENCH_SOURCE_FILE=$T/f.rs
 emit_row "$ID" "$NAME" "$MODEL" "rust" "$outcome" "$round" "$toks" "$wall" "$rt_ms" "$rt_status"

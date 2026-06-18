@@ -15,6 +15,13 @@ case "$ARM" in
   *) echo "drive-habu: unknown arm $ARM" >&2; exit 64 ;;
 esac
 T=$(mktemp -d "${TMPDIR:-/tmp}/dh.XXXXXX"); trap 'rm -rf "$T"' EXIT
+printf 'prompt unavailable\n' > "$T/prompt.txt"
+printf 'response unavailable\n' > "$T/resp.json"
+printf '\\ no candidate extracted\n' > "$T/cand.f"
+printf '\\ no final bundle\n' > "$T/bundle.f"
+: > "$T/checker-diagnostics.txt"
+: > "$T/repair-packet.json"
+: > "$T/test-output.txt"
 hb_test "$CONV" "$NAME" "$VEC" > "$T/vec.f"
 hb_bench "$CONV" "$NAME" "$VEC" > "$T/bench.f"
 cases=$(case_list "$VEC")
@@ -59,10 +66,12 @@ while [ "$round" -lt "$MAXR" ]; do
   prompt="${PRE}
 
 ${TASK}${feedback}"
+  printf '%s' "$prompt" > "$T/prompt.txt"
   model_run "$prompt" "$T/resp.json" \
-    || { outcome=error; break; }
+    || { printf 'model_run_failed\n' > "$T/resp.json"; outcome=error; break; }
   rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); toks=$((toks+rt))
   extract "$T/text.txt" > "$T/cand.f"
+  [ -s "$T/cand.f" ] || printf '\\ no candidate extracted\n' > "$T/cand.f"
   if ! grep -q ';' "$T/cand.f"; then
     feedback="
 
@@ -71,7 +80,9 @@ You produced no valid definition. Output ONLY the habu definition."
   fi
   bundle
   if diag=$(tools/check.sh "$T/bundle.f" 2>&1); then
+    : > "$T/checker-diagnostics.txt"
     outcome=$(sh bench/llm/grade.sh 5 "$T/bundle.f" "$T/vec.f")
+    printf '%s\n' "$outcome" > "$T/test-output.txt"
     [ "$outcome" = pass ] && break
     feedback="
 
@@ -82,6 +93,8 @@ It certified but FAILED the tests. It must satisfy (input -> expected):
 ${cases}
 Fix the logic. Output ONLY the corrected definition."
   else
+    printf '%s\n' "$diag" > "$T/checker-diagnostics.txt"
+    printf '%s\n' "$diag" > "$T/test-output.txt"
     feedback="
 
 Your attempt:
@@ -103,4 +116,12 @@ if [ "$outcome" = pass ]; then
     outcome=error; rt_status=error
   fi
 fi
+BENCH_PROMPT_FILE=$T/prompt.txt
+BENCH_RAW_RESPONSE_FILE=$T/resp.json
+BENCH_CANDIDATE_FILE=$T/cand.f
+BENCH_CHECKER_DIAGNOSTICS_FILE=$T/checker-diagnostics.txt
+BENCH_REPAIR_PACKET_FILE=$T/repair-packet.json
+BENCH_TEST_OUTPUT_FILE=$T/test-output.txt
+BENCH_FINAL_BUNDLE_FILE=$T/bundle.f
+BENCH_SOURCE_FILE=$T/cand.f
 emit_row "$ID" "$NAME" "$MODEL" "habu-$ARM" "$outcome" "$round" "$toks" "$wall" "$rt_ms" "$rt_status"

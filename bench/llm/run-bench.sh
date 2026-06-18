@@ -27,10 +27,10 @@ tail -n +2 "$TASKS" | while IFS="$TAB" read -r id name signature category tests 
       # Four arms — raw Habu, library-assisted Habu, JS, Rust.
       # </dev/null: model CLIs may otherwise read this loop's piped stdin and swallow
       # the remaining task lines. || true: a failing driver must not abort the sweep.
-      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED sh bench/llm/drive-habu.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors" a </dev/null >> "$OUT" || true
-      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED sh bench/llm/drive-habu.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors" lib </dev/null >> "$OUT" || true
-      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED sh bench/llm/drive-js.sh   "$id" "$name" "$sig" "$spec" "$conv" "$vectors"   </dev/null >> "$OUT" || true
-      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED sh bench/llm/drive-rust.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors"   </dev/null >> "$OUT" || true
+      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED BENCH_TASK_FAMILY=$category sh bench/llm/drive-habu.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors" a </dev/null >> "$OUT" || true
+      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED BENCH_TASK_FAMILY=$category sh bench/llm/drive-habu.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors" lib </dev/null >> "$OUT" || true
+      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED BENCH_TASK_FAMILY=$category sh bench/llm/drive-js.sh   "$id" "$name" "$sig" "$spec" "$conv" "$vectors"   </dev/null >> "$OUT" || true
+      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED BENCH_TASK_FAMILY=$category sh bench/llm/drive-rust.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors"   </dev/null >> "$OUT" || true
       t=$((t+1))
     done
   done

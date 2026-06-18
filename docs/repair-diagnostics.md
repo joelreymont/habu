@@ -108,8 +108,19 @@ The checker `suggestion` field is stable short text derived only from
 
 ## Benchmark Result Fields
 
-Benchmark JSONL rows score diagnostic quality with boolean fields derived from
-the checker or repair packets:
+Live benchmark JSONL rows use `schema_version: 2`. The native validator requires
+identity fields `run_id`, `model_id`, `arm`, `task_id`, and `trial_id`, plus
+`task_family`, `model`, `model_version`, `model_date`, trial/order metadata,
+outcome/repair fields, token and wall-time fields, `source_chars`, runtime
+fields, and replay artifacts. Unknown model version/date are represented by the
+stable nonempty string `unknown`.
+
+Replay fields are `prompt`, `raw_response`, `extracted_candidate`,
+`checker_diagnostics`, `repair_packet`, `test_output`, and `final_bundle`; every
+one must have a paired `*_sha256` field.
+
+Benchmark rows score diagnostic quality with boolean fields derived from the
+checker or repair packets:
 
 | Field | Type | Presence | Meaning |
 | --- | --- | --- | --- |

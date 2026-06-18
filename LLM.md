@@ -104,6 +104,20 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   files, or AOT-safe programs is not done. The native validator fails the
   reference benchmark unless those required categories are present in
   `bench/llm/tasks.tsv`.
+- Live benchmark rows use `schema_version:2`. Required identity and context:
+  `run_id`, `model_id`, `arm`, `task_id`, `trial_id`, `task_family`, `model`,
+  `model_version`, `model_date`, `trial`, `task_order`, `k_trials`, and
+  `order_seed`. If the registry cannot know model version/date, record the stable
+  nonempty value `unknown`.
+- Required live outcome evidence: `outcome`, `rounds`, `first_pass`,
+  `first_pass_checker`, `first_pass_tests`, `tests_passed`,
+  `repair_iterations`, `checker_iterations`, diagnostic quality booleans,
+  `tokens`, `tokens_used`, `wall_ms`, `source_chars`, `final_chars`, trust and
+  signature fields, `runtime_ms`, `runtime_repetitions`, `runtime_warmups`, and
+  `runtime_status`.
+- Required replay evidence: inline `prompt`, `raw_response`,
+  `extracted_candidate`, `checker_diagnostics`, `repair_packet`, `test_output`,
+  and `final_bundle`, each paired with a `*_sha256` field.
 
 Run the reference scorecard with `bench/llm/run.sh`. It validates the task set,
 the checked reference solutions, functional tests, and the JSONL metric schema.

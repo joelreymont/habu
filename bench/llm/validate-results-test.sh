@@ -41,6 +41,8 @@ write_live_jsonl() {
       for (trial = 1; trial <= trials; trial++) {
         printf "{\"schema_version\":2,\"run_id\":\"live-fixture-2026-06-18\","
         printf "\"model_id\":\"toy-model\",\"arm\":\"forth\",\"trial_id\":\"live-fixture-2026-06-18:toy-model:forth:%s:%d\",", $1, trial
+        printf "\"task_family\":\"%s\",\"model_version\":\"unknown\",\"model_date\":\"unknown\",", $4
+        printf "\"trial\":%d,\"task_order\":%s,\"k_trials\":%d,\"order_seed\":\"live-fixture\",", trial, $1, trials
         printf "\"task_id\":%s,\"name\":\"%s\",\"model\":\"toy-model\",\"attempt\":%d,", $1, $2, trial
         printf "\"first_pass_checker\":\"certified\",\"first_pass_tests\":true,\"tests_passed\":true,"
         printf "\"repair_iterations\":0,\"checker_iterations\":1,\"diagnostic_count\":0,"
@@ -48,6 +50,8 @@ write_live_jsonl() {
         printf "\"diagnostic_actual\":true,\"diagnostic_code\":true,\"diagnostic_repair_class\":true,"
         printf "\"all_errors_stable\":true,\"tokens_used\":0,\"wall_ms\":0,\"final_chars\":1,"
         printf "\"trust_uses\":0,\"signature_weakened\":false,"
+        printf "\"outcome\":\"pass\",\"rounds\":1,\"first_pass\":true,\"tokens\":0,\"source_chars\":1,"
+        printf "\"runtime_ms\":null,\"runtime_repetitions\":100,\"runtime_warmups\":10,\"runtime_status\":\"not_run\","
         printf "\"prompt\":\"prompt\",\"prompt_sha256\":\"%s\",", hash
         printf "\"raw_response\":\"raw\",\"raw_response_sha256\":\"%s\",", hash
         printf "\"extracted_candidate\":\"candidate\",\"extracted_candidate_sha256\":\"%s\",", hash
@@ -204,6 +208,26 @@ printf '%s\n' "$out" | grep -q "\"rows\":$expected_live_rows" || {
   exit 1
 }
 
+write_live_jsonl 1
+awk 'NR == 1 {
+  sub(/,"task_family":"[^"]+"/, "");
+  sub(/,"model_version":"[^"]+"/, "");
+  sub(/,"model_date":"[^"]+"/, "");
+  sub(/,"source_chars":[0-9][0-9]*/, "");
+} { print }' "$T/bench/llm/results/live.jsonl" > "$T/bench/llm/results/live.legacy-v2"
+mv "$T/bench/llm/results/live.legacy-v2" "$T/bench/llm/results/live.jsonl"
+set +e
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl 2>&1)
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted legacy-shaped V2 row"; exit 1; }
+printf '%s\n' "$out" | grep -q 'missing fields task_family' || {
+  echo "FAIL: validate-results legacy V2 missing-field diagnostic"
+  printf '%s\n' "$out"
+  exit 1
+}
+
+write_live_jsonl 1
 dup_line=$(sed -n '1p' "$T/bench/llm/results/live.jsonl")
 printf '%s\n' "$dup_line" >> "$T/bench/llm/results/live.jsonl"
 set +e
