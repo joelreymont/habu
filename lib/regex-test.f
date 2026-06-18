@@ -7,9 +7,13 @@
 
 create RXT-BUF RXT-BUF-CAP allot
 create RXT-SMALL RXT-SMALL-CAP allot
+variable RXT-RX-LEN
 
 : RXT-COMPILE ( ptr u8 n -- n )
    RXT-BUF RXT-BUF-CAP RX-COMPILE ;
+
+: RXT-COMPILE! ( ptr u8 n -- )
+   RXT-COMPILE RXT-RX-LEN ! ;
 
 : RXT-B@ ( n -- n ) {: ix :}
    RXT-BUF ix + c@ ;
@@ -90,6 +94,80 @@ create RXT-SMALL RXT-SMALL-CAP allot
 : RXT-NEG-CAP ( -- )
    s" a" RXT-BUF -1 RX-COMPILE drop ;
 
+: RXT-BAD-QUANT ( -- )
+   s" *a" RXT-COMPILE! s" aaa" RXT-BUF RXT-RX-LEN @ RX-MATCH? drop ;
+
+: RXT-DOUBLE-QUANT ( -- )
+   s" a**" RXT-COMPILE! s" aaa" RXT-BUF RXT-RX-LEN @ RX-MATCH? drop ;
+
+: RXT-ANCHOR-QUANT ( -- )
+   s" ^*" RXT-COMPILE! s" aaa" RXT-BUF RXT-RX-LEN @ RX-MATCH? drop ;
+
+: RXT-ASSERT-NOT-FOUND ( n n bool -- )
+   TFALSE
+   0 T=
+   0 T= ;
+
+: RXT-ASSERT-FOUND ( n n bool n n -- ) {: want-off want-len :}
+   TTRUE
+   want-len T=
+   want-off T= ;
+
+: RXT-TEST-MATCH-LITERALS ( -- )
+   s" abc" RXT-COMPILE!
+   s" abc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
+   s" ab" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE
+   s" xabc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE ;
+
+: RXT-TEST-MATCH-META ( -- )
+   s" a.c" RXT-COMPILE!
+   s" abc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
+   s" ac" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE
+   s" ^a.c$" RXT-COMPILE!
+   s" abc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
+   s" abcx" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE ;
+
+: RXT-TEST-MATCH-CLASSES ( -- )
+   s" [a-c][^0-9]" RXT-COMPILE!
+   s" bX" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
+   s" b5" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE
+   s" dX" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE ;
+
+: RXT-TEST-MATCH-ESCAPED ( -- )
+   s" a\.\+\?" RXT-COMPILE!
+   s" a.+?" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
+   s" ax+?" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE ;
+
+: RXT-TEST-MATCH-REPEATS ( -- )
+   s" ab?c" RXT-COMPILE!
+   s" abc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
+   s" ac" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
+   s" abb" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE
+   s" ab*c" RXT-COMPILE!
+   s" ac" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
+   s" abbbc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
+   s" ab+c" RXT-COMPILE!
+   s" abc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
+   s" ac" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE
+   s" a*a" RXT-COMPILE!
+   s" aaa" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE ;
+
+: RXT-TEST-FIND ( -- )
+   s" a.c" RXT-COMPILE!
+   s" zzaXczz" RXT-BUF RXT-RX-LEN @ RX-FIND 2 3 RXT-ASSERT-FOUND
+   s" zzz" RXT-BUF RXT-RX-LEN @ RX-FIND RXT-ASSERT-NOT-FOUND
+   s" ^abc" RXT-COMPILE!
+   s" xabc" RXT-BUF RXT-RX-LEN @ RX-FIND RXT-ASSERT-NOT-FOUND
+   s" abc" RXT-BUF RXT-RX-LEN @ RX-FIND 0 3 RXT-ASSERT-FOUND ;
+
+: RXT-TEST-COUNT ( -- )
+   s" a+" RXT-COMPILE!
+   s" aaabaa" RXT-BUF RXT-RX-LEN @ RX-COUNT 2 T=
+   s" [0-9]" RXT-COMPILE!
+   s" a1b23" RXT-BUF RXT-RX-LEN @ RX-COUNT 3 T=
+   s" a*" RXT-COMPILE!
+   s" bbb" RXT-BUF RXT-RX-LEN @ RX-COUNT 4 T= ;
+
 : RXT-TEST-THROWS ( -- )
    ['] RXT-DANGLING-ESCAPE catch E-RX-SYNTAX T=
    ['] RXT-BAD-ESCAPE catch E-RX-SYNTAX T=
@@ -98,7 +176,10 @@ create RXT-SMALL RXT-SMALL-CAP allot
    ['] RXT-EMPTY-NEG-CLASS catch E-RX-SYNTAX T=
    ['] RXT-DANGLING-CLASS-ESCAPE catch E-RX-SYNTAX T=
    ['] RXT-CAP-OVERFLOW catch E-RX-CAPACITY T=
-   ['] RXT-NEG-CAP catch E-RX-CAPACITY T= ;
+   ['] RXT-NEG-CAP catch E-RX-CAPACITY T=
+   ['] RXT-BAD-QUANT catch E-RX-SYNTAX T=
+   ['] RXT-DOUBLE-QUANT catch E-RX-SYNTAX T=
+   ['] RXT-ANCHOR-QUANT catch E-RX-SYNTAX T= ;
 
 : RXT-REPORT ( -- )
    T-FAILURES 0= if s" regex-test: ok" type cr exit then
@@ -112,6 +193,13 @@ create RXT-SMALL RXT-SMALL-CAP allot
    RXT-TEST-ESCAPES
    RXT-TEST-CLASSES
    RXT-TEST-CLASS-ESCAPE
+   RXT-TEST-MATCH-LITERALS
+   RXT-TEST-MATCH-META
+   RXT-TEST-MATCH-CLASSES
+   RXT-TEST-MATCH-ESCAPED
+   RXT-TEST-MATCH-REPEATS
+   RXT-TEST-FIND
+   RXT-TEST-COUNT
    RXT-TEST-THROWS
    RXT-REPORT ;
 
