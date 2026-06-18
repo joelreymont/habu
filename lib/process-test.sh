@@ -33,9 +33,31 @@ cat > "$T/capture-sleep" <<'EOF'
 sleep 2
 EOF
 
-chmod +x "$T/capture-ok" "$T/capture-long" "$T/capture-sleep"
+cat > "$T/capture-err-long" <<'EOF'
+#!/bin/sh
+printf 'abcdef' >&2
+EOF
+
+cat > "$T/capture-false" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+
+case "$HB" in
+  /*) HB_ABS=$HB ;;
+  *) HB_ABS=$PWD/$HB ;;
+esac
+
+cat > "$T/capture-hb" <<EOF
+#!/bin/sh
+printf '1 2 + . cr' | "$HB_ABS"
+EOF
+
+chmod +x "$T/capture-ok" "$T/capture-long" "$T/capture-sleep" \
+  "$T/capture-err-long" "$T/capture-false" "$T/capture-hb"
 
 cat lib/errors.f lib/test.f lib/process.f lib/process-test.f > "$T/process-test.f"
-"$HB" "$T/process-test.f" "$T/capture-ok" "$T/capture-long" "$T/capture-sleep" |
+"$HB" "$T/process-test.f" "$T/capture-ok" "$T/capture-long" "$T/capture-sleep" \
+  "$T/capture-err-long" "$T/capture-false" "$T/capture-hb" |
   grep -F "process-test: ok" >/dev/null
 cat lib/errors.f lib/process.f | ./tools/check.sh >/dev/null
