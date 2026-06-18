@@ -12,6 +12,67 @@ cleanup() {
   fi
 }
 trap cleanup EXIT HUP INT TERM
+check_tsv_shape() {
+  awk -F '\t' 'NF != 12 { print "FAIL: tasks.tsv line " NR " has " NF " field(s)"; bad=1 } END { exit bad ? 1 : 0 }' bench/llm/tasks.tsv
+}
+require_task() {
+  id=$1
+  name=$2
+  category=$3
+  harness=$4
+  conv=$5
+  tag=$6
+  awk -F '\t' -v id="$id" -v name="$name" -v category="$category" \
+    -v harness="$harness" -v conv="$conv" -v tag="$tag" '
+    NR > 1 && $1 == id && $2 == name && $4 == category &&
+      $6 == harness && $7 == conv && index("," $10 ",", "," tag ",") { found = 1 }
+    END { exit found ? 0 : 1 }
+  ' bench/llm/tasks.tsv || {
+    echo "FAIL: missing V2 task row $id $name ($category/$harness/$conv/$tag)"
+    exit 1
+  }
+}
+check_v2_manifest() {
+  require_task 56 CALL-TWICE quotation forth stack v2
+  require_task 57 R-KEEP2 return-stack forth stack v2
+  require_task 58 ROW-DUP row-polymorphism forth stack v2
+  require_task 59 UNTIL5 control-loop forth stack v2
+  require_task 60 MEM-SWAPCELL memory forth stack v2
+  require_task 61 TRI checked-combinator forth stack v2
+  require_task 62 DATE-PARSE-OK? date stdlib stack parse-ymd
+  require_task 63 DATE-FORMAT-OK? date stdlib stack format-ymd
+  require_task 64 EPOCH-UTC-OK? date stdlib stack format-epoch-utc
+  require_task 65 MONO-ELAPSED? time stdlib stack mono-ns
+  require_task 66 INVALID-DATE? date stdlib stack invalid-date
+  require_task 67 AOT-MAIN-ARITH aot-safe aot build-run aot-positive
+  require_task 68 AOT-MAIN-STRING aot-safe aot build-run aot-positive
+  require_task 69 AOT-UNSAFE-HERE aot-unsupported aot-negative reject aot-negative
+  require_task 70 AOT-UNSAFE-ALLOT aot-unsupported aot-negative reject aot-negative
+}
+check_aot_v2_fixtures() {
+  printf '%s\n' ': MAIN ( -- ) 6 7 * . cr ;' >"$T/aot-ok.f"
+  ./tools/hb-build.sh "$T/aot-ok.f" -o "$T/aot-ok" >/dev/null
+  [ "$("$T/aot-ok")" = "42" ] || { echo "FAIL: V2 AOT positive fixture"; exit 1; }
+  printf '%s\n' ': MAIN ( -- ) s" hi" nip [char] 0 + . cr ;' >"$T/aot-string.f"
+  ./tools/hb-build.sh "$T/aot-string.f" -o "$T/aot-string" >/dev/null
+  [ "$("$T/aot-string")" = "50" ] || { echo "FAIL: V2 AOT string fixture"; exit 1; }
+  printf '%s\n' ': MAIN ( -- ) here drop ;' >"$T/aot-bad-here.f"
+  ./tools/hb-build.sh --json-errors "$T/aot-bad-here.f" -o "$T/aot-bad-here" >/dev/null 2>"$T/aot-bad-here.err" && {
+    echo "FAIL: V2 AOT accepted here"
+    exit 1
+  }
+  grep -q '"code":"E-AOT-UNSUPPORTED"' "$T/aot-bad-here.err" || { echo "FAIL: V2 AOT here code"; exit 1; }
+  grep -q '"token":"here"' "$T/aot-bad-here.err" || { echo "FAIL: V2 AOT here token"; exit 1; }
+  printf '%s\n' ': MAIN ( -- ) 8 allot ;' >"$T/aot-bad-allot.f"
+  ./tools/hb-build.sh --json-errors "$T/aot-bad-allot.f" -o "$T/aot-bad-allot" >/dev/null 2>"$T/aot-bad-allot.err" && {
+    echo "FAIL: V2 AOT accepted allot"
+    exit 1
+  }
+  grep -q '"code":"E-AOT-UNSUPPORTED"' "$T/aot-bad-allot.err" || { echo "FAIL: V2 AOT allot code"; exit 1; }
+  grep -q '"token":"allot"' "$T/aot-bad-allot.err" || { echo "FAIL: V2 AOT allot token"; exit 1; }
+}
+check_tsv_shape
+check_v2_manifest
 N=$(awk -F '\t' 'NR>1 && $6 == "forth" {n++} END{print n+0}' bench/llm/tasks.tsv)
 DEFN=$(grep -c '^: ' bench/llm/solutions.f)
 [ "$DEFN" = "$N" ] || { echo "FAIL: task/solution count mismatch ($N task(s), $DEFN definition(s))"; exit 1; }
@@ -24,6 +85,16 @@ DEFN=$(grep -c '^: ' bench/llm/solutions.f)
 echo "hb LLM bench: $N/$N reference solutions certified, 0 rejected"
 TEST_OUT=$(cat bench/llm/solutions.f bench/llm/tests.f | bin/hb 2>"$T/tests.err")
 [ "$TEST_OUT" = "ok" ] || { echo "FAIL: reference functional tests (got: $TEST_OUT)"; exit 1; }
+REF=$T/ref-solutions.f
+cat lib/errors.f lib/date.f lib/time.f bench/llm/ref-solutions.f >"$REF"
+./tools/check.sh "$REF" >"$T/ref-check.out" 2>"$T/ref-check.err" || {
+  cat "$T/ref-check.err"
+  echo "FAIL: V2 reference solutions are not all-certified"
+  exit 1
+}
+REF_OUT=$(bin/hb < "$REF" 2>"$T/ref.err")
+[ "$REF_OUT" = "REF-OK" ] || { echo "FAIL: V2 reference tests (got: $REF_OUT)"; exit 1; }
+check_aot_v2_fixtures
 VALIDATOR=$T/validate-results.f
 cat tools/date.f tools/lint/lib.f tools/json.f tools/argv.f bench/llm/validate-results.f >"$VALIDATOR"
 bin/hb "$VALIDATOR"

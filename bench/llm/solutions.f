@@ -50,3 +50,9 @@
 : FIB ( i64 -- i64 ) dup 2 < if exit then dup 1 - recurse swap 2 - recurse + ;  \ recursive fibonacci
 : SEVEN-CHAR ( -- i64 ) [char] 7 ;                             \ parse-next word with a digit char
 : AOT-STR ( -- i64 ) s" hi" nip [char] 0 + ;                  \ AOT-safe string length + char literal
+: CALL-TWICE ( i64 [ i64 -- i64 ] -- i64 ) {: x q :} x q execute q execute ;  \ execute one quotation twice
+: R-KEEP2 ( i64 -- i64 ) dup >r dup + r> + ;                  \ double n while preserving n on return stack
+: ROW-DUP ( R x -- R x x ) dup ;                              \ duplicate the top item over any stack row
+: UNTIL5 ( i64 -- i64 ) 0 swap 0 ?do i 5 = if leave then 1+ loop ;  \ count up to min(n,5)
+: MEM-SWAPCELL ( i64 i64 -- i64 i64 ) here {: p :} 16 allot p ! p cell+ ! p @ p cell+ @ ;  \ swap through data memory
+: TRI ( x [ x -- a ] [ x -- b ] [ x -- c ] -- a b c ) {: x q1 q2 q3 :} x q1 execute x q2 execute x q3 execute ;  \ apply three quotations to x

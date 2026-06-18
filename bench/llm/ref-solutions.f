@@ -16,6 +16,33 @@ variable BI  variable BV
 : NEGATE-EACH ( ptr a n -- ) {: arr:ptr len :} len 0 ?do i cells arr + @ negate i cells arr + ! loop ;
 : RUNMAX     ( ptr a n -- ) {: arr:ptr len :} len 1 ?do i 1 - cells arr + @ i cells arr + @ max i cells arr + ! loop ;
 
+32 constant REF-DATE-BUF-LEN
+create REF-DATE-BUF REF-DATE-BUF-LEN allot
+
+: REF-BYTES= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+   u v <> IF 0 0= 0= exit THEN
+   0 begin dup u < while
+      dup a + c@ over b + c@ <> IF drop 0 0= 0= exit THEN
+      1+
+   repeat drop 0 0= ;
+
+: DATE-PARSE-OK? ( -- bool )
+   s" 2026-06-16" PARSE-YMD swap 20620 = and ;
+
+: DATE-FORMAT-OK? ( -- bool )
+   20620 REF-DATE-BUF REF-DATE-BUF-LEN FORMAT-YMD
+   s" 2026-06-16" REF-BYTES= ;
+
+: EPOCH-UTC-OK? ( -- bool )
+   90061 REF-DATE-BUF REF-DATE-BUF-LEN FORMAT-EPOCH-UTC
+   s" 1970-01-02T01:01:01Z" REF-BYTES= ;
+
+: MONO-ELAPSED? ( -- bool )
+   TIME-MONO-NS 0 100000 0 do i + loop drop TIME-MONO-NS swap - 0 >= ;
+
+: INVALID-DATE? ( -- bool )
+   s" 2026-02-29" PARSE-YMD 0= swap drop ;
+
 0 set-check  variable AP  variable #BAD  0 #BAD !
 : G= ( got want ) <> if 1 #BAD +! then ;
 
@@ -43,5 +70,12 @@ here -2 , 3 , AP !  AP @ 2 SQ-EACH  AP @ 0 cells + @ 4 G= AP @ 1 cells + @ 9 G=
 here -2 , 0 , 7 , AP !  AP @ 3 NEGATE-EACH  AP @ 0 cells + @ 2 G= AP @ 1 cells + @ 0 G= AP @ 2 cells + @ -7 G=
 here 2 , 7 , 1 , AP !  AP @ 3 RUNMAX  AP @ 0 cells + @ 2 G= AP @ 1 cells + @ 7 G= AP @ 2 cells + @ 7 G=
 here 5 , 4 , 3 , AP !  AP @ 3 RUNMAX  AP @ 0 cells + @ 5 G= AP @ 1 cells + @ 5 G= AP @ 2 cells + @ 5 G=
+
+\ stdlib date/time checks
+DATE-PARSE-OK? -1 G=
+DATE-FORMAT-OK? -1 G=
+EPOCH-UTC-OK? -1 G=
+MONO-ELAPSED? -1 G=
+INVALID-DATE? -1 G=
 
 : REP #BAD @ 0= if ." REF-OK" else ." REF-FAIL bad=" #BAD @ . then cr ; REP
