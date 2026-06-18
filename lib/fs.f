@@ -17,6 +17,8 @@ $8 constant FS-O-APPEND
 $200 constant FS-O-CREAT
 $400 constant FS-O-TRUNC
 420 constant FS-MODE-0644
+$FFF constant FS-MODE-PERM
+73 constant FS-MODE-EXEC
 1 constant FS-READ-PROBE-CAP
 
 $F000 constant S-IFMT
@@ -27,6 +29,7 @@ $2E constant FS-DOT
 $2F constant FS-SLASH
 
 create FS-PATHZ-BUF FS-PATHZ-CAP allot
+create FS-PATHZ2-BUF FS-PATHZ-CAP allot
 create FS-READ-PROBE FS-READ-PROBE-CAP allot
 create FS-STAT-BUF FS-STAT-CAP allot
 create FS-WALK-BUF FS-MAX-DEPTH FS-PATH-CAP * allot
@@ -135,12 +138,18 @@ variable FS-IO-WR
 : FS-CHECK-JOIN-CAP ( n -- )
    dup FS-PATH-CAP > if E-FS-CAPACITY throw then drop ;
 
-: FS-PATHZ ( ptr u8 n -- ptr u8 ) {: a:ptr u :}
+: FS-PATHZ-INTO ( ptr u8 n ptr u8 -- ptr u8 ) {: a:ptr u dst:ptr :}
    u 0 < if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-PATH throw then
-   a FS-PATHZ-BUF u BYTE-COPY
-   0 FS-PATHZ-BUF u + c!
-   FS-PATHZ-BUF ;
+   a dst u BYTE-COPY
+   0 dst u + c!
+   dst ;
+
+: FS-PATHZ ( ptr u8 n -- ptr u8 )
+   FS-PATHZ-BUF FS-PATHZ-INTO ;
+
+: FS-PATHZ2 ( ptr u8 n -- ptr u8 )
+   FS-PATHZ2-BUF FS-PATHZ-INTO ;
 
 : EXISTS? ( ptr u8 n -- bool )
    FS-PATHZ 0 access 0= ;
@@ -231,6 +240,16 @@ variable FS-IO-WR
 
 : APPEND-FILE ( ptr u8 n ptr u8 n -- )
    FS-O-WRONLY FS-O-CREAT or FS-O-APPEND or FS-WRITE-BY-FLAGS ;
+
+: REMOVE-FILE ( ptr u8 n -- ) {: a:ptr u :}
+   a u FS-PATHZ unlink 0 < if E-FS-IO throw then ;
+
+: RENAME-FILE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
+   src srcu FS-PATHZ dst dstu FS-PATHZ2 rename 0 < if E-FS-IO throw then ;
+
+: CHMOD-X ( ptr u8 n -- ) {: a:ptr u :}
+   a u STAT-MODE FS-MODE-PERM and FS-MODE-EXEC or {: mode :}
+   a u FS-PATHZ mode chmod 0 < if E-FS-IO throw then ;
 
 : FS-DOT-ENTRY? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 1 = if a c@ FS-DOT = else FS-FALSE then ;
