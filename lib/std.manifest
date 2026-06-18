@@ -31,6 +31,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	array	lib/array.f	word	A-FIND-INDEX	(ptr a n [ a -- bool ] -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return first value-matching index or -1
 1	array	lib/array.f	word	A-FIND-INDEXI	(ptr a n [ n a -- bool ] -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return first index-aware match or -1
 1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	active	checked byte-string predicates builders split and parse helpers
+1	string	lib/string.f	word	STR-TRUE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a true flag for string helpers
+1	string	lib/string.f	word	STR-FALSE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a false flag for string helpers
 1	string	lib/string.f	word	BYTE-COPY	(ptr u8 ptr u8 n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	copy bytes between checked byte buffers
 1	string	lib/string.f	word	ASCII-LOWER	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII uppercase byte to lowercase
 1	string	lib/string.f	word	ASCII-UPPER	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII lowercase byte to uppercase
@@ -45,6 +47,19 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	LTRIM	(ptr u8 n -- ptr u8 n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	remove leading ASCII whitespace
 1	string	lib/string.f	word	RTRIM	(ptr u8 n -- ptr u8 n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	remove trailing ASCII whitespace
 1	string	lib/string.f	word	TRIM	(ptr u8 n -- ptr u8 n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	remove leading and trailing ASCII whitespace
+1	string	lib/string.f	word	SB-CHECK-ROOM	(n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	validate string builder capacity for an append
+1	string	lib/string.f	word	SB-RESET	(--)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	clear the shared string builder
+1	string	lib/string.f	word	SB-APPEND	(ptr u8 n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	append counted bytes to the shared string builder
+1	string	lib/string.f	word	SB-APPEND-C	(n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	append one byte to the shared string builder
+1	string	lib/string.f	word	SB$	(-- ptr u8 n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return current shared string builder bytes
+1	string	lib/string.f	word	SPLIT-NEXT	(ptr u8 n n n -- ptr u8 n n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return the next separator-delimited field
+1	string	lib/string.f	word	STR-DIGIT?	(n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	test an ASCII decimal digit byte
+1	string	lib/string.f	word	STR-DIGIT-VALUE	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII decimal digit byte to value
+1	string	lib/string.f	word	STR-DIGITS?	(ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	test a non-empty all-digit byte string
+1	string	lib/string.f	word	STR-DIGITS<=	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	compare decimal digit strings by numeric value
+1	string	lib/string.f	word	STR-PARSE-POS	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a nonnegative bounded i64
+1	string	lib/string.f	word	STR-PARSE-NEG	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a negative bounded i64
+1	string	lib/string.f	word	STR>NUMBER?	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse an optional-sign bounded i64
 1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	planned	v1 regex handles use ptr u8 n storage buffers, never unchecked addr dereference
 1	map	lib/map.f	module			lib/map-test.f	docs/stdlib.md	stdlib-map	active	v1 map storage uses ptr a n cells and ptr u8 n keys, never unchecked addr dereference
 1	map	lib/map.f	word	MAP-CHECK-CAP	(n --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a positive map capacity

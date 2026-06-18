@@ -130,9 +130,14 @@ A-FIND-INDEXI     ( ptr a n [ n a -- bool ] -- n )
 
 `lib/string.f` provides checked byte-string helpers. Inputs are byte pointers
 plus lengths; no word assumes NUL termination unless its name says `PATHZ` or a
-module boundary explicitly says it owns path conversion.
+module boundary explicitly says it owns path conversion. `SB-*` words operate on
+the shared bounded string-builder buffer and throw `E-STR-CAPACITY` or
+`E-STR-BOUNDS` instead of truncating silently. `STR>NUMBER?` parses a signed
+i64 and returns `0 false` on invalid or out-of-range input.
 
 ```forth
+STR-TRUE        ( -- bool )
+STR-FALSE       ( -- bool )
 BYTE-COPY       ( ptr u8 ptr u8 n -- )
 ASCII-LOWER     ( n -- n )
 ASCII-UPPER     ( n -- n )
@@ -147,11 +152,18 @@ COUNT-CHAR      ( ptr u8 n n -- n )
 LTRIM           ( ptr u8 n -- ptr u8 n )
 RTRIM           ( ptr u8 n -- ptr u8 n )
 TRIM            ( ptr u8 n -- ptr u8 n )
+SB-CHECK-ROOM   ( n -- )
 SB-RESET        ( -- )
 SB-APPEND       ( ptr u8 n -- )
 SB-APPEND-C     ( n -- )
 SB$             ( -- ptr u8 n )
 SPLIT-NEXT      ( ptr u8 n n n -- ptr u8 n n bool )
+STR-DIGIT?      ( n -- bool )
+STR-DIGIT-VALUE ( n -- n )
+STR-DIGITS?     ( ptr u8 n -- bool )
+STR-DIGITS<=    ( ptr u8 n ptr u8 n -- bool )
+STR-PARSE-POS   ( ptr u8 n -- n bool )
+STR-PARSE-NEG   ( ptr u8 n -- n bool )
 STR>NUMBER?     ( ptr u8 n -- n bool )
 ```
 
