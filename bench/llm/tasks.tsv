@@ -93,3 +93,6 @@ id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rus
 92	MAP-COLLISION-OK?	(-- bool)	maps	empty -> -1	stdlib	stack	Using MAP-SET and MAP-GET, verify collision-heavy single-byte keys remain independently retrievable.	-	map,stdlib,v2,collision	-	-
 93	MAP-EACH-OK?	(-- bool)	maps	empty -> -1	stdlib	stack	Using MAP-EACH, iterate occupied entries and verify aggregate count and value sum.	-	map,stdlib,v2,iteration	-	-
 94	MAP-GROUP-OK?	(-- bool)	maps	empty -> -1	stdlib	stack	Using MAP-GET and MAP-SET, group repeated string keys into counted occurrences.	-	map,stdlib,v2,grouping	-	-
+95	RX-MATCH-OK?	(-- bool)	regex	empty -> -1	stdlib	stack	Using RX-COMPILE and RX-MATCH?, verify a slug-like pattern matches the whole input and rejects a bad suffix.	-	regex,stdlib,v2,match	-	-
+96	RX-FIND-OK?	(-- bool)	regex	empty -> -1	stdlib	stack	Using RX-COMPILE and RX-FIND, find the first regex match offset and length in a counted byte string.	-	regex,stdlib,v2,find	-	-
+97	RX-COUNT-OK?	(-- bool)	regex	empty -> -1	stdlib	stack	Using RX-COMPILE and RX-COUNT, count non-overlapping regex matches in a counted byte string.	-	regex,stdlib,v2,count	-	-

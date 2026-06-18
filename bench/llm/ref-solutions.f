@@ -15,6 +15,12 @@ variable REF-MAP-OK
 variable REF-MAP-EACH-COUNT
 variable REF-MAP-EACH-SUM
 variable REF-MAP-EACH-LEN-SUM
+64 constant REF-RX-CAP
+create REF-RX REF-RX-CAP allot
+variable REF-RX-LEN
+variable REF-RX-OFF
+variable REF-RX-U
+variable REF-RX-OK
 
 : ARR-SUM    ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells arr + @ + loop ;
 : ARR-MAX    ( ptr a n -- i64 ) {: arr:ptr len :} arr @ len 1 ?do i cells arr + @ max loop ;
@@ -181,6 +187,31 @@ create REF-DATE-BUF REF-DATE-BUF-LEN allot
    s" red" 2 REF-MAP-EXPECT 0= if STR-FALSE exit then
    s" blue" 1 REF-MAP-EXPECT ;
 
+: REF-RX-COMPILE! ( ptr u8 n -- )
+   REF-RX REF-RX-CAP RX-COMPILE REF-RX-LEN ! ;
+
+: REF-RX-FIND! ( ptr u8 n -- )
+   REF-RX REF-RX-LEN @ RX-FIND
+   REF-RX-OK !
+   REF-RX-U !
+   REF-RX-OFF ! ;
+
+: RX-MATCH-OK? ( -- bool )
+   s" ^[a-z]+-[0-9]+$" REF-RX-COMPILE!
+   s" habu-2026" REF-RX REF-RX-LEN @ RX-MATCH? 0= if STR-FALSE exit then
+   s" habu-xx" REF-RX REF-RX-LEN @ RX-MATCH? if STR-FALSE else STR-TRUE then ;
+
+: RX-FIND-OK? ( -- bool )
+   s" a.+c" REF-RX-COMPILE!
+   s" zzaXczz" REF-RX-FIND!
+   REF-RX-OK @ 0= if STR-FALSE exit then
+   REF-RX-OFF @ 2 <> if STR-FALSE exit then
+   REF-RX-U @ 3 = ;
+
+: RX-COUNT-OK? ( -- bool )
+   s" [0-9]" REF-RX-COMPILE!
+   s" a1b23" REF-RX REF-RX-LEN @ RX-COUNT 3 = ;
+
 0 set-check  variable AP  variable #BAD  0 #BAD !
 : G= ( got want ) <> if 1 #BAD +! then ;
 
@@ -240,5 +271,8 @@ MAP-UPDATE-OK? -1 G=
 MAP-COLLISION-OK? -1 G=
 MAP-EACH-OK? -1 G=
 MAP-GROUP-OK? -1 G=
+RX-MATCH-OK? -1 G=
+RX-FIND-OK? -1 G=
+RX-COUNT-OK? -1 G=
 
 : REP #BAD @ 0= if ." REF-OK" else ." REF-FAIL bad=" #BAD @ . then cr ; REP

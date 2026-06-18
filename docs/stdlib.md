@@ -174,10 +174,12 @@ returns the next field, the next scan index, and a success flag.
 
 ## Regex
 
-`lib/regex.f` exposes a bounded capture-free regex scanner/tokenizer for LLM tasks:
-literals, `.`, `^`, `$`, character classes and negated classes, escaped
+`lib/regex.f` exposes a bounded capture-free regex scanner and matcher for LLM
+tasks: literals, `.`, `^`, `$`, character classes and negated classes, escaped
 metacharacters, and `?`, `*`, `+`. v1 excludes captures, backreferences,
-lookaround, and alternation unless a bounded NFA plan is implemented first.
+lookaround, and alternation unless a bounded NFA plan is implemented first. Regex
+bytecode uses caller-provided `ptr u8 n` storage; matches never return unchecked
+`addr` handles.
 
 ```forth
 RX-ESCAPABLE?         ( n -- bool )
@@ -194,13 +196,51 @@ RX-EMIT-CLASS         ( ptr u8 n n ptr u8 n n -- n n )
 RX-SCAN-ESCAPE        ( ptr u8 n n ptr u8 n n -- n n )
 RX-SCAN-ONE           ( ptr u8 n n ptr u8 n n -- n n )
 RX-COMPILE            ( ptr u8 n ptr u8 n -- n )
+RX-CHECK-MATCH-ARGS   ( n n -- )
+RX-FLAGS-CLEAR        ( ptr u8 n -- )
+RX-FLAG?              ( ptr u8 n -- bool )
+RX-ANY-FLAG?          ( ptr u8 n -- bool )
+RX-ADD-STATE          ( ptr u8 n n -- )
+RX-QUANT?             ( n -- bool )
+RX-ZERO-QUANT?        ( n -- bool )
+RX-CONSUMING?         ( n -- bool )
+RX-ANCHOR?            ( n -- bool )
+RX-FIXED-ATOM-LEN     ( n n n -- n )
+RX-CLASS-RAW-LEN      ( ptr u8 n n -- n )
+RX-ATOM-LEN           ( ptr u8 n n -- n )
+RX-ATOM-END           ( ptr u8 n n -- n )
+RX-QUANT-AT           ( ptr u8 n n -- n )
+RX-AFTER-ATOM-QUANT   ( ptr u8 n n -- n )
+RX-VALIDATE-STEP      ( ptr u8 n n -- n )
+RX-VALIDATE           ( ptr u8 n -- )
+RX-CLASS-RANGE-CAND?  ( ptr u8 n n -- bool )
+RX-CLASS-RANGE-MATCH? ( n ptr u8 n -- bool )
+RX-CLASS-ESC-MATCH?   ( n ptr u8 n n -- bool )
+RX-CLASS-MEMBER?      ( n ptr u8 n -- bool )
+RX-ATOM-CHAR-MATCH?   ( n ptr u8 n n -- bool )
+RX-ANCHOR-MATCH?      ( n n n -- bool )
+RX-CLOSE-ONE          ( ptr u8 n n n ptr u8 n -- )
+RX-CLOSE              ( ptr u8 n n n ptr u8 -- )
+RX-RESET-STATES       ( n -- )
+RX-NEXT>ACTIVE        ( n -- )
+RX-ADD-CONSUME-TARGET ( ptr u8 n n ptr u8 -- )
+RX-CONSUME-STATE      ( ptr u8 ptr u8 n n ptr u8 ptr u8 n -- )
+RX-CONSUME-CHAR       ( ptr u8 ptr u8 n n -- )
+RX-ACCEPT?            ( n -- bool )
+RX-PREFIX-LEN         ( ptr u8 n ptr u8 n n -- n bool )
+RX-PREPARE            ( n ptr u8 n -- )
+RX-MATCH?             ( ptr u8 n ptr u8 n -- bool )
+RX-FIND-FROM          ( ptr u8 n ptr u8 n n -- n n bool )
+RX-FIND               ( ptr u8 n ptr u8 n -- n n bool )
+RX-COUNT              ( ptr u8 n ptr u8 n -- n )
 ```
 
 `RX-COMPILE` takes pattern bytes plus a caller-provided bytecode buffer and
 capacity, then returns the compiled byte length. Malformed patterns and bytecode
 capacity overflow throw named regex errors; they do not return a partial regex
-or an unchecked `addr`. Matching (`RX-MATCH?`, `RX-FIND`, `RX-COUNT`) remains a
-planned layer on top of this scanner.
+or an unchecked `addr`. `RX-MATCH?` is whole-input matching, `RX-FIND` returns
+`offset length true` or `0 0 false`, and `RX-COUNT` counts non-overlapping
+matches, advancing one byte after zero-length matches to avoid hangs.
 
 ## Map
 
@@ -253,6 +293,7 @@ MAP-SLOT-INSERT     ( a ptr a n n ptr u8 n -- )
 MAP-HAS?    ( ptr a n ptr u8 n -- bool )
 MAP-GET     ( ptr a n ptr u8 n -- n bool )
 MAP-SET     ( n ptr a n ptr u8 n -- )
+MAP-EACH    ( ptr a n [ ptr u8 n n -- ] -- )
 ```
 
 `MAP-GET` returns value plus present flag. `MAP-SET` inserts or replaces one

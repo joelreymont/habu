@@ -60,7 +60,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR-PARSE-POS	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a nonnegative bounded i64
 1	string	lib/string.f	word	STR-PARSE-NEG	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a negative bounded i64
 1	string	lib/string.f	word	STR>NUMBER?	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse an optional-sign bounded i64
-1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	active	v1 regex scanner uses ptr u8 n storage buffers, never unchecked addr dereference
+1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	active	v1 regex scanner and matcher use ptr u8 n storage buffers, never unchecked addr dereference
 1	regex	lib/regex.f	word	RX-ESCAPABLE?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte can be escaped
 1	regex	lib/regex.f	word	RX-UNSUPPORTED-META?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test unsupported regex metacharacters
 1	regex	lib/regex.f	word	RX-CHECK-BYTE	(n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate token byte range
@@ -75,6 +75,43 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	regex	lib/regex.f	word	RX-SCAN-ESCAPE	(ptr u8 n n ptr u8 n n -- n n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one escaped literal
 1	regex	lib/regex.f	word	RX-SCAN-ONE	(ptr u8 n n ptr u8 n n -- n n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one regex token
 1	regex	lib/regex.f	word	RX-COMPILE	(ptr u8 n ptr u8 n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	compile bounded capture-free regex tokens
+1	regex	lib/regex.f	word	RX-CHECK-MATCH-ARGS	(n n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate text and bytecode lengths for matching
+1	regex	lib/regex.f	word	RX-FLAGS-CLEAR	(ptr u8 n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	clear a bounded regex state flag buffer
+1	regex	lib/regex.f	word	RX-FLAG?	(ptr u8 n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test one regex state flag
+1	regex	lib/regex.f	word	RX-ANY-FLAG?	(ptr u8 n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether any regex state flag is set
+1	regex	lib/regex.f	word	RX-ADD-STATE	(ptr u8 n n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	add one bounded regex NFA state
+1	regex	lib/regex.f	word	RX-QUANT?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a token is a quantifier
+1	regex	lib/regex.f	word	RX-ZERO-QUANT?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a quantifier allows zero width
+1	regex	lib/regex.f	word	RX-CONSUMING?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a token consumes one byte
+1	regex	lib/regex.f	word	RX-ANCHOR?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a token is an anchor
+1	regex	lib/regex.f	word	RX-FIXED-ATOM-LEN	(n n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate fixed-size atom bounds
+1	regex	lib/regex.f	word	RX-CLASS-RAW-LEN	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	read a compiled class body length
+1	regex	lib/regex.f	word	RX-ATOM-LEN	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return one compiled atom byte length
+1	regex	lib/regex.f	word	RX-ATOM-END	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return the offset after one compiled atom
+1	regex	lib/regex.f	word	RX-QUANT-AT	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return the quantifier after one atom or zero
+1	regex	lib/regex.f	word	RX-AFTER-ATOM-QUANT	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return the offset after atom and optional quantifier
+1	regex	lib/regex.f	word	RX-VALIDATE-STEP	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate one compiled regex step
+1	regex	lib/regex.f	word	RX-VALIDATE	(ptr u8 n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate compiled regex bytecode
+1	regex	lib/regex.f	word	RX-CLASS-RANGE-CAND?	(ptr u8 n n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether class bytes form a range
+1	regex	lib/regex.f	word	RX-CLASS-RANGE-MATCH?	(n ptr u8 n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte matches a class range
+1	regex	lib/regex.f	word	RX-CLASS-ESC-MATCH?	(n ptr u8 n n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte matches an escaped class byte
+1	regex	lib/regex.f	word	RX-CLASS-MEMBER?	(n ptr u8 n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte is in a class body
+1	regex	lib/regex.f	word	RX-ATOM-CHAR-MATCH?	(n ptr u8 n n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte matches one atom
+1	regex	lib/regex.f	word	RX-ANCHOR-MATCH?	(n n n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether an anchor matches a position
+1	regex	lib/regex.f	word	RX-CLOSE-ONE	(ptr u8 n n n ptr u8 n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	close one epsilon regex state
+1	regex	lib/regex.f	word	RX-CLOSE	(ptr u8 n n n ptr u8 --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	close epsilon regex states
+1	regex	lib/regex.f	word	RX-RESET-STATES	(n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	reset regex active and next state buffers
+1	regex	lib/regex.f	word	RX-NEXT>ACTIVE	(n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	move next regex states to active states
+1	regex	lib/regex.f	word	RX-ADD-CONSUME-TARGET	(ptr u8 n n ptr u8 --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	add target states after one consumed byte
+1	regex	lib/regex.f	word	RX-CONSUME-STATE	(ptr u8 ptr u8 n n ptr u8 ptr u8 n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	consume one byte from one active state
+1	regex	lib/regex.f	word	RX-CONSUME-CHAR	(ptr u8 ptr u8 n n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	advance regex states by one text byte
+1	regex	lib/regex.f	word	RX-ACCEPT?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether regex accept state is active
+1	regex	lib/regex.f	word	RX-PREFIX-LEN	(ptr u8 n ptr u8 n n -- n bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return match length from a start offset
+1	regex	lib/regex.f	word	RX-PREPARE	(n ptr u8 n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate args and bytecode before matching
+1	regex	lib/regex.f	word	RX-MATCH?	(ptr u8 n ptr u8 n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whole-input regex match
+1	regex	lib/regex.f	word	RX-FIND-FROM	(ptr u8 n ptr u8 n n -- n n bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	find a regex match from a start offset
+1	regex	lib/regex.f	word	RX-FIND	(ptr u8 n ptr u8 n -- n n bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	find first regex match offset and length
+1	regex	lib/regex.f	word	RX-COUNT	(ptr u8 n ptr u8 n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	count non-overlapping regex matches
 1	map	lib/map.f	module			lib/map-test.f	docs/stdlib.md	stdlib-map	active	v1 map storage uses ptr a n cells and ptr u8 n keys, never unchecked addr dereference
 1	map	lib/map.f	word	MAP-CHECK-CAP	(n --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a positive map capacity
 1	map	lib/map.f	word	MAP-CHECK-LEN	(n --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a nonnegative key length
@@ -117,6 +154,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	map	lib/map.f	word	MAP-GET	(ptr a n ptr u8 n -- n bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	lookup a numeric value by counted key
 1	map	lib/map.f	word	MAP-HAS?	(ptr a n ptr u8 n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test whether a counted key exists
 1	map	lib/map.f	word	MAP-SET	(n ptr a n ptr u8 n --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	insert or replace a numeric value by counted key
+1	map	lib/map.f	word	MAP-EACH	(ptr a n [ ptr u8 n n -- ] --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	visit occupied entries in storage-slot order
 1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	checked path stat join helpers now; WALK-FILES planned with checked quotation or audited TRUST boundary
 1	fs	lib/fs.f	word	FS-FALSE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a false flag for filesystem helpers
 1	fs	lib/fs.f	word	FS-TRUE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a true flag for filesystem helpers
