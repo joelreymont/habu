@@ -53,6 +53,7 @@ cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint
 ./tools/build.sh > $T/hb-build.log 2>&1 || { tail -5 $T/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }
 echo "PASS: self-rebuild fixpoint"
 ./lib/fs-mutate-test.sh || { echo "FAIL: fs mutation stdlib"; exit 1; }
+./lib/process-argv-test.sh || { echo "FAIL: process argv stdlib"; exit 1; }
 ./tools/check-repair-hints-test.sh || { echo "FAIL: repair diagnostic hints"; exit 1; }
 ./tools/hb-baseline-contracts-test.sh || { echo "FAIL: hb baseline contracts"; exit 1; }
 ./tools/test-hb.sh || exit 1

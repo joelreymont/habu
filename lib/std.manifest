@@ -252,6 +252,16 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-RUN-CAPTURE-LOOP	(ptr u8 n ptr u8 n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	poll and drain capture streams until EOF or timeout
 1	process	lib/process.f	word	PROC-SPAWN-CAPTURE	(ptr u8 --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn the capture child and close parent write fds
 1	process	lib/process.f	word	RUN-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr rc
+1	process-argv	lib/process-argv.f	module			lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	checked argv table builder layered after native primitive rebuild
+1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-RAW	(ptr u8 ptr a n n n -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-io alias for checked argv wrappers
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-RESET	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	clear argv extra-arg count and backing string buffer offset
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-SLOT	(n -- ptr a)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	return one checked argv pointer-table slot
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-CHECK-EXTRA	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	validate that one more extra argv entry fits
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-ZCOPY	(ptr u8 n -- ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	copy counted argv bytes into the module NUL-terminated argv string buffer
+1	process-argv	lib/process-argv.f	word	PROC-ARGV+	(ptr u8 n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	append one counted extra argv string after argv0
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-PREPARE	(ptr u8 n -- ptr u8 ptr a)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	install executable path as argv0 and terminate the argv pointer table
+1	process-argv	lib/process-argv.f	word	SPAWN-ARGV-IO	(ptr u8 n n n n -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared extra argv strings and explicit stdio fds
+1	process-argv	lib/process-argv.f	word	RUN-ARGV-IO-RC	(ptr u8 n n n n -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv strings explicit stdio fds and return exit status
 1	argv	lib/argv.f	module			lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	checked command-line parser helpers for hb script args
 1	argv	lib/argv.f	word	ARGV-FALSE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a false flag for parser internals
 1	argv	lib/argv.f	word	ARGV-TRUE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a true flag for parser internals

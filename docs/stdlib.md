@@ -18,6 +18,7 @@ Planned module files:
 - `lib/map.f`
 - `lib/fs.f`
 - `lib/process.f`
+- `lib/process-argv.f`
 - `lib/argv.f`
 - `lib/test.f`
 - `lib/property.f`
@@ -439,6 +440,29 @@ polls one fd for readable input and returns the raw poll result;
 `PROC-WAIT-RAW` and `PROC-SPAWN-RAW` are raw primitive aliases captured before
 the checked wrapper names are defined. Application code should prefer
 `SPAWN-IO`, `WAIT-RC`, and `RUN-RC`.
+
+`lib/process-argv.f` layers argument-vector support on top of `lib/process.f`.
+It is loaded after the native engine rebuild because older seeds do not know
+the raw `spawn-argv-io` primitive. It owns bounded argv table and string buffers,
+so callers append counted extra args and never hand-build C argv storage.
+
+```forth
+PROC-SPAWN-ARGV-RAW   ( ptr u8 ptr a n n n -- n )
+PROC-ARGV-RESET       ( -- )
+PROC-ARGV-SLOT        ( n -- ptr a )
+PROC-ARGV-CHECK-EXTRA ( -- )
+PROC-ARGV-ZCOPY       ( ptr u8 n -- ptr u8 )
+PROC-ARGV+            ( ptr u8 n -- )
+PROC-ARGV-PREPARE     ( ptr u8 n -- ptr u8 ptr a )
+SPAWN-ARGV-IO         ( ptr u8 n n n n -- n )
+RUN-ARGV-IO-RC        ( ptr u8 n n n n -- n )
+```
+
+Use `PROC-ARGV-RESET`, append zero or more extra args with `PROC-ARGV+`, then
+call `SPAWN-ARGV-IO` or `RUN-ARGV-IO-RC` with the executable path and stdio fds.
+`argv[0]` is always the executable path. `SPAWN-ARGV-IO` resets argv state after
+the primitive spawn returns, throws `E-PROC-SPAWN` on spawn failure, and reuses
+the same fd inheritance rules as `SPAWN-IO`.
 
 `RUN-CAPTURE` takes command string, stdout buffer/capacity, stderr
 buffer/capacity, and timeout milliseconds. It returns stdout length, stderr
