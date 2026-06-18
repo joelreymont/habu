@@ -38,6 +38,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   `./tools/check.sh --json-errors --all-errors file.f`.
   It exits nonzero on checker failure and emits one schema-versioned JSON object
   per failed top-level definition with file/line/column/byte spans. Use
+  `docs/repair-diagnostics.md` as the Repair diagnostic schema, and use
   `tools/diag-to-sarif.f` when the diagnostics need to enter CI/review UIs.
 - Use `tools/public-signatures.f file.f` to expose typed public words as a
   machine-readable manifest for an agent or downstream package.
@@ -89,7 +90,8 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 - Repair quality: minimize `repair_iterations`, `checker_iterations`, and
   `diagnostic_count`; every diagnostic must identify the failing definition,
   token/span, expected stack, actual stack, stable error code, and
-  machine-readable `repair_class`. Record `diagnostic_token`,
+  machine-readable `repair_class`. See `docs/repair-diagnostics.md` for the
+  Repair diagnostic schema. Record `diagnostic_token`,
   `diagnostic_span`, `diagnostic_expected`, `diagnostic_actual`,
   `diagnostic_code`, `diagnostic_repair_class`, and `all_errors_stable` in
   result rows so repair feedback quality is scored, not assumed.
