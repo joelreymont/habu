@@ -56,10 +56,10 @@ Win conditions:
 - Array hard-tail token ratios are below 3x the best mainstream baseline.
 - Median repair rounds for `habu-stdlib` are 1.
 - Mean output tokens for `habu-stdlib` are below 2x Rust on checked/system tasks
-  and below 2x TypeScript/Python on script/glue tasks.
-- Runtime of generated Habu code is faster than Python/TypeScript for equivalent
-  kernels and competitive with Rust for small kernels where startup does not
-  dominate.
+  and below 2x mainstream dynamic-language arms on script/glue tasks.
+- Runtime of generated Habu code is faster than mainstream dynamic-language arms
+  for equivalent kernels and competitive with Rust for small kernels where
+  startup does not dominate.
 - Generated Habu uses stable stdlib words instead of raw stack gymnastics in
   most passing solutions.
 
@@ -76,9 +76,9 @@ Non-goals:
 - Checked code first. New public/library words default to checked typed Habu.
 - One public binary: `bin/hb`. Shell helpers may concatenate libraries, but no
   new public build-only binary is introduced.
-- Standard-library words are not benchmark cheating. JS, Rust, Python, and
-  TypeScript win partly because their libraries encode idioms. Habu needs
-  equivalent checked idioms.
+- Standard-library words are not benchmark cheating. JS, Rust, TypeScript, and
+  dynamic scripting ecosystems win partly because their libraries encode idioms.
+  Habu needs equivalent checked idioms.
 - Prefer high-level kernels before clever prompts. The model should compose
   certified words, not rediscover invariants.
 - Keep raw arms in benchmarks to measure improvement honestly.
@@ -500,7 +500,7 @@ Arms:
   model fills the body.
 - `js`
 - `rust`
-- `python`
+- `dynamic-scripting`
 - `typescript`
 
 Task manifest:
@@ -621,7 +621,7 @@ Tracked dots:
 - `caf-a88640cb0f473220` Add required checker benchmark categories.
 - `caf-d7f03ace8147b8fb` Split benchmark task-family work.
 - `caf-4f8283e4cb195398` Add stdlib and skeleton arms.
-- `caf-d38354169bd4ca5a` Add Python and TypeScript baselines.
+- `caf-d38354169bd4ca5a` Add dynamic-script and TypeScript baselines.
 - `caf-8de22befc7a622c5` Support multi-model benchmark runs.
 - `caf-f82efaed1ac9fb0a` Add benchmark model registry.
 - `caf-a1d9a9539fa534fa` Measure generated code runtime.
