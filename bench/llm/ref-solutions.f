@@ -4,6 +4,10 @@
 \   tools/check.sh bench/llm/ref-solutions.f   -> rc 0 (all defs certify)
 \   bin/hb < bench/llm/ref-solutions.f         -> prints REF-OK (all io-vectors pass)
 variable BI  variable BV
+variable REF-SPLIT-A
+variable REF-SPLIT-U
+variable REF-SPLIT-NEXT
+variable REF-SPLIT-OK
 
 : ARR-SUM    ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells arr + @ + loop ;
 : ARR-MAX    ( ptr a n -- i64 ) {: arr:ptr len :} arr @ len 1 ?do i cells arr + @ max loop ;
@@ -47,6 +51,48 @@ create REF-DATE-BUF REF-DATE-BUF-LEN allot
 
 : INVALID-DATE? ( -- bool )
    s" 2026-02-29" PARSE-YMD 0= swap drop ;
+
+: STR-TRIM-OK? ( -- bool )
+   s"   alpha  " TRIM s" alpha" STR= ;
+
+: REF-SPLIT-CAPTURE ( ptr u8 n n n -- )
+   SPLIT-NEXT
+   REF-SPLIT-OK !
+   REF-SPLIT-NEXT !
+   REF-SPLIT-U !
+   REF-SPLIT-A ! ;
+
+: STR-SPLIT-OK? ( -- bool )
+   s" a,b" 44 0 REF-SPLIT-CAPTURE
+   REF-SPLIT-OK @ 0= if STR-FALSE exit then
+   REF-SPLIT-A @ REF-SPLIT-U @ s" a" STR= 0= if STR-FALSE exit then
+   REF-SPLIT-NEXT @ 2 <> if STR-FALSE exit then
+   s" a,b" 44 REF-SPLIT-NEXT @ REF-SPLIT-CAPTURE
+   REF-SPLIT-OK @ 0= if STR-FALSE exit then
+   REF-SPLIT-A @ REF-SPLIT-U @ s" b" STR= 0= if STR-FALSE exit then
+   REF-SPLIT-NEXT @ 4 <> if STR-FALSE exit then
+   STR-TRUE ;
+
+: STR-BUILDER-OK? ( -- bool )
+   SB-RESET
+   s" alpha" SB-APPEND
+   45 SB-APPEND-C
+   s" beta" SB-APPEND
+   SB$ s" alpha-beta" STR= ;
+
+: STR-PARSE-I64-OK? ( -- bool )
+   s" -9223372036854775808" STR>NUMBER? 0= if drop STR-FALSE exit then
+   STR-MIN-I64 <> if STR-FALSE exit then
+   s" 9223372036854775808" STR>NUMBER? if drop STR-FALSE else drop STR-TRUE then ;
+
+: STR-PREFIX-SUFFIX-OK? ( -- bool )
+   s" habu-forth" s" habu" STARTS-WITH? 0= if STR-FALSE exit then
+   s" habu-forth" s" forth" ENDS-WITH? ;
+
+: STR-SEARCH-OK? ( -- bool )
+   s" alpha-beta" s" beta" FIND-SUB 6 <> if STR-FALSE exit then
+   s" alpha-beta" s" ph" CONTAINS? 0= if STR-FALSE exit then
+   s" alpha-beta" s" gamma" CONTAINS? if STR-FALSE else STR-TRUE then ;
 
 0 set-check  variable AP  variable #BAD  0 #BAD !
 : G= ( got want ) <> if 1 #BAD +! then ;
@@ -95,5 +141,11 @@ DATE-FORMAT-OK? -1 G=
 EPOCH-UTC-OK? -1 G=
 MONO-ELAPSED? -1 G=
 INVALID-DATE? -1 G=
+STR-TRIM-OK? -1 G=
+STR-SPLIT-OK? -1 G=
+STR-BUILDER-OK? -1 G=
+STR-PARSE-I64-OK? -1 G=
+STR-PREFIX-SUFFIX-OK? -1 G=
+STR-SEARCH-OK? -1 G=
 
 : REP #BAD @ 0= if ." REF-OK" else ." REF-FAIL bad=" #BAD @ . then cr ; REP
