@@ -1,11 +1,20 @@
 \ string-test.f - focused tests for checked stdlib string helpers.
-\ Run: cat lib/string.f lib/string-test.f | bin/hb
+\ Run: cat lib/errors.f lib/string.f lib/string-test.f | bin/hb
 
 64 constant STR-TEST-BUF-LEN
 1 constant STR-TEST-EX-FAIL
+44 constant STR-TEST-COMMA
+45 constant STR-TEST-DASH
+65 constant STR-TEST-A-CHAR
 
 variable STR-TEST-N
 variable STR-TEST-FAIL
+variable STR-TEST-SPLIT-A
+variable STR-TEST-SPLIT-U
+variable STR-TEST-SPLIT-NEXT
+variable STR-TEST-SPLIT-OK
+variable STR-TEST-PARSE-N
+variable STR-TEST-PARSE-OK
 create STR-TEST-BUF STR-TEST-BUF-LEN allot
 create STR-TEST-LEFT-WS
    STR-TAB c, STR-LF c, 97 c, 98 c, 99 c,
@@ -24,6 +33,73 @@ create STR-TEST-RIGHT-WS
 
 : STR-ASSERT$ ( ptr u8 n ptr u8 n -- )
    STR= STR-ASSERT ;
+
+: STR-SPLIT-CHECK ( ptr u8 n n n ptr u8 n n bool -- ) {: a:ptr u sep start exp:ptr exp-u exp-next exp-ok :}
+   a u sep start SPLIT-NEXT
+   STR-TEST-SPLIT-OK !
+   STR-TEST-SPLIT-NEXT !
+   STR-TEST-SPLIT-U !
+   STR-TEST-SPLIT-A !
+   STR-TEST-SPLIT-A @ STR-TEST-SPLIT-U @ exp exp-u STR-ASSERT$
+   STR-TEST-SPLIT-NEXT @ exp-next STR-ASSERT=
+   exp-ok if
+      STR-TEST-SPLIT-OK @ 0= 0= STR-ASSERT
+   else
+      STR-TEST-SPLIT-OK @ 0= STR-ASSERT
+   then ;
+
+: STR-PARSE-CHECK ( ptr u8 n n bool -- ) {: a:ptr u want ok :}
+   a u STR>NUMBER?
+   STR-TEST-PARSE-OK !
+   STR-TEST-PARSE-N !
+   ok if
+      STR-TEST-PARSE-OK @ 0= 0= STR-ASSERT
+   else
+      STR-TEST-PARSE-OK @ 0= STR-ASSERT
+   then
+   STR-TEST-PARSE-N @ want STR-ASSERT= ;
+
+: STR-TEST-SB-OVERFLOW ( -- )
+   SB-RESET
+   SB-CAP 0 ?do STR-TEST-A-CHAR SB-APPEND-C loop
+   STR-TEST-A-CHAR SB-APPEND-C ;
+
+: STR-TEST-BUILDER ( -- )
+   SB-RESET
+   s" ab" SB-APPEND
+   99 SB-APPEND-C
+   SB$ s" abc" STR-ASSERT$
+   SB-RESET
+   s" alpha" SB-APPEND
+   STR-TEST-DASH SB-APPEND-C
+   s" beta" SB-APPEND
+   SB$ s" alpha-beta" STR-ASSERT$
+   ['] STR-TEST-SB-OVERFLOW catch E-STR-CAPACITY STR-ASSERT=
+   SB-RESET ;
+
+: STR-TEST-SPLIT ( -- )
+   s" a,b,c" STR-TEST-COMMA 0 s" a" 2 STR-TRUE STR-SPLIT-CHECK
+   s" a,b,c" STR-TEST-COMMA 2 s" b" 4 STR-TRUE STR-SPLIT-CHECK
+   s" a,b,c" STR-TEST-COMMA 4 s" c" 6 STR-TRUE STR-SPLIT-CHECK
+   s" a,b,c" STR-TEST-COMMA 6 s" " 6 STR-FALSE STR-SPLIT-CHECK
+   s" ,a,," STR-TEST-COMMA 0 s" " 1 STR-TRUE STR-SPLIT-CHECK
+   s" ,a,," STR-TEST-COMMA 1 s" a" 3 STR-TRUE STR-SPLIT-CHECK
+   s" ,a,," STR-TEST-COMMA 3 s" " 4 STR-TRUE STR-SPLIT-CHECK
+   s" ,a,," STR-TEST-COMMA 4 s" " 5 STR-TRUE STR-SPLIT-CHECK
+   s" " STR-TEST-COMMA 0 s" " 1 STR-TRUE STR-SPLIT-CHECK
+   s" " STR-TEST-COMMA 1 s" " 1 STR-FALSE STR-SPLIT-CHECK ;
+
+: STR-TEST-PARSE ( -- )
+   s" 12345" 12345 STR-TRUE STR-PARSE-CHECK
+   s" -456" -456 STR-TRUE STR-PARSE-CHECK
+   s" +77" 77 STR-TRUE STR-PARSE-CHECK
+   s" " 0 STR-FALSE STR-PARSE-CHECK
+   s" abc" 0 STR-FALSE STR-PARSE-CHECK
+   s" 12x" 0 STR-FALSE STR-PARSE-CHECK
+   s" 9223372036854775807" STR-MAX-I64 STR-TRUE STR-PARSE-CHECK
+   s" -9223372036854775808" STR-MIN-I64 STR-TRUE STR-PARSE-CHECK
+   s" 9223372036854775808" 0 STR-FALSE STR-PARSE-CHECK
+   s" -9223372036854775809" 0 STR-FALSE STR-PARSE-CHECK ;
 
 s" abc" s" abc" STR= STR-ASSERT
 s" " s" " STR= STR-ASSERT
@@ -69,6 +145,9 @@ s" " RTRIM nip 0 STR-ASSERT=
 s" copy" drop STR-TEST-BUF 4 BYTE-COPY
 STR-TEST-BUF 4 s" copy" STR-ASSERT$
 STR-TEST-BUF 0 STR-TEST-BUF 0 BYTE-COPY
+STR-TEST-BUILDER
+STR-TEST-SPLIT
+STR-TEST-PARSE
 
 : STR-TEST-REPORT ( -- )
    STR-TEST-FAIL @ 0= if s" string-test: ok" type cr exit then
