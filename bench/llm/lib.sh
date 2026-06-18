@@ -2,11 +2,27 @@
 # Tasks operate on an INTEGER ARRAY. Two calling conventions (conv):
 #   as : (array) -> scalar         e.g. ARR-SUM [3 1 4] -> 8
 #   aa : (array) -> array          e.g. REVERSE [3 1 4] -> [4 1 3]   (habu: in place)
-# Vectors use [..] for arrays. Single source of truth = bench-tasks.tsv; each arm's
+# Vectors use [..] for arrays. Single source of truth = bench/llm/tasks.tsv; each arm's
 # test harness is GENERATED from the same vectors.
 #   habu: builds the array in memory (here , ,) and calls ( ptr n -- ... );
 #   JS:   f(arr)  returns a number (as) or array (aa);
 #   Rust: fn f(a:&[i64]) -> i64 (as) or -> Vec<i64> (aa).
+
+BENCH_TASK_HEADER=$(printf 'id\tname\tsignature\tcategory\ttests\tharness\tconv\tspec\tvectors\ttags\tjs_signature\trust_signature')
+
+bench_require_manifest_header() {
+  _manifest=$1
+  _got=$(sed -n '1p' "$_manifest")
+  [ "$_got" = "$BENCH_TASK_HEADER" ] && return 0
+  echo "bench/llm: unsupported task manifest schema in $_manifest" >&2
+  echo "bench/llm: expected: $BENCH_TASK_HEADER" >&2
+  echo "bench/llm: got:      $_got" >&2
+  return 64
+}
+
+bench_sig() {
+  printf '%s' "$1" | sed 's/^[(]//; s/[)]$//' | xargs
+}
 
 now_ms() { perl -MTime::HiRes=time -e 'printf "%d", time()*1000'; }
 unbr()   { printf '%s' "$1" | tr -d '[]' | xargs; }              # "[3 1 4]" -> "3 1 4"

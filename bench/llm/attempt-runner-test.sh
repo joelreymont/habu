@@ -25,7 +25,7 @@ OUT=$T/attempt.jsonl
 SUMMARY=$T/summary.txt
 bench/llm/run-attempts.sh "$C" "$OUT" attempt-fixture-2026-06-16 fixture-model >"$T/stdout" 2>"$SUMMARY"
 
-expected_count=$(awk 'NR>1{n++} END{print n+0}' bench/llm/tasks.tsv)
+expected_count=$(awk -F '\t' 'NR>1 && $6 == "forth" {n++} END{print n+0}' bench/llm/tasks.tsv)
 [ "$(wc -l < "$OUT" | tr -d ' ')" = "$expected_count" ] || {
   echo "FAIL: attempt runner row count"
   cat "$SUMMARY"

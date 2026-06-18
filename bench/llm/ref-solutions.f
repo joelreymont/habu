@@ -1,6 +1,6 @@
 \ ref-solutions.f — certified habu answer key for the array-algorithm benchmark.
 \ Proves every task is FEASIBLE in habu (all 10 defs certify) and that the io-vector
-\ ground truth in bench-tasks.tsv is correct. Verify two ways:
+\ ground truth in the harness=array rows of tasks.tsv is correct. Verify two ways:
 \   tools/check.sh bench/llm/ref-solutions.f   -> rc 0 (all defs certify)
 \   bin/hb < bench/llm/ref-solutions.f         -> prints REF-OK (all io-vectors pass)
 variable BI  variable BV

@@ -3,7 +3,7 @@
 
 0 set-check
 
-$1000 constant LV-TASK-CAP
+$8000 constant LV-TASK-CAP
 $20000 constant LV-RESULT-CAP
 64 constant LV-MAX
 32 constant LV-NUM-CAP
@@ -48,6 +48,8 @@ variable LV-I
 variable LV-J
 variable LV-H
 variable LV-C
+variable LV-M
+variable LV-N
 variable LV-ID
 variable LV-ROOT
 variable LV-NODE
@@ -335,6 +337,11 @@ variable LV-BAD-AE
    LV-H !
    a u LV-H @ 1+ LV-TAB-AT dup 0 < IF drop exit THEN
    LV-C !
+   a u LV-C @ 1+ LV-TAB-AT dup 0 < IF drop exit THEN
+   LV-M !
+   a u LV-M @ 1+ LV-TAB-AT dup 0 < IF drop exit THEN
+   LV-N !
+   a LV-M @ 1+ + LV-N @ LV-M @ 1+ - s" forth" STR= 0= IF exit THEN
    a LV-I @ LV-U? 0= IF drop s" invalid task id" LV-FAIL THEN
    LV-TASK# @ LV-TASK-ID!
    a LV-I @ 1+ + LV-J @ LV-I @ 1+ - LV-TASK# @ LV-TASK-NAME!

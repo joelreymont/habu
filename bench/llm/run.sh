@@ -12,7 +12,7 @@ cleanup() {
   fi
 }
 trap cleanup EXIT HUP INT TERM
-N=$(awk 'NR>1{n++} END{print n+0}' bench/llm/tasks.tsv)
+N=$(awk -F '\t' 'NR>1 && $6 == "forth" {n++} END{print n+0}' bench/llm/tasks.tsv)
 DEFN=$(grep -c '^: ' bench/llm/solutions.f)
 [ "$DEFN" = "$N" ] || { echo "FAIL: task/solution count mismatch ($N task(s), $DEFN definition(s))"; exit 1; }
 [ -x bin/hb ] || ./tools/build.sh >/dev/null

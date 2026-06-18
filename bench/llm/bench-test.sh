@@ -10,6 +10,33 @@ fails=0
 mkstub() { printf '#!/bin/sh\n%s\n' "$2" > "$1"; chmod +x "$1"; }
 chk() { if printf '%s' "$3" | grep -q "$2"; then echo "ok: $1"; else echo "FAIL: $1 -> $3"; fails=$((fails+1)); fi; }
 
+manifest_ready=1
+expected_manifest_header=$(printf 'id\tname\tsignature\tcategory\ttests\tharness\tconv\tspec\tvectors\ttags\tjs_signature\trust_signature')
+manifest_header=$(sed -n '1p' bench/llm/tasks.tsv)
+if [ "$manifest_header" = "$expected_manifest_header" ]; then
+  echo "ok: manifest-v2-header"
+else
+  echo "FAIL: manifest-v2-header -> $manifest_header"
+  fails=$((fails+1))
+  manifest_ready=0
+fi
+
+if grep -q 'bench-tasks.tsv' bench/llm/run-bench.sh; then
+  echo "FAIL: run-bench-canonical-default -> still mentions bench-tasks.tsv"
+  fails=$((fails+1))
+  manifest_ready=0
+else
+  echo "ok: run-bench-canonical-default"
+fi
+
+if awk 'NF && substr($0, 1, 1) != "#" { found = 1 } END { exit found ? 1 : 0 }' bench/llm/bench-tasks.tsv; then
+  echo "ok: retired-bench-tasks"
+else
+  echo "FAIL: retired-bench-tasks -> bench-tasks.tsv still has task rows"
+  fails=$((fails+1))
+  manifest_ready=0
+fi
+
 printf '{"result":": X ;","modelUsage":{"claude-opus-4":{"outputTokens":7}}}\n' > "$T/resp.json"
 rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/resp.txt")
 [ "$rt" = 7 ] && [ "$(cat "$T/resp.txt")" = ': X ;' ] && echo "ok: parse-resp-modelUsage" || {
@@ -106,6 +133,47 @@ else echo ': ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells ar
 EOF
 chmod +x "$T/hbr.sh"
 r=$(CLAUDE="$T/hbr.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" a); chk habu-repair '"outcome":"pass","rounds":2' "$r"
+
+if [ "$manifest_ready" = 1 ]; then
+  cat > "$T/canon-model.sh" <<'EOF'
+#!/bin/sh
+case "$1" in
+  *"JavaScript function"*) echo 'function f(a){ return a.reduce((s,x)=>s+x,0); }' ;;
+  *"Rust function"*) echo 'fn f(a: &[i64]) -> i64 { a.iter().sum() }' ;;
+  *"CANON-SUM"*) echo ': CANON-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells arr + @ + loop ;' ;;
+  *) echo "unexpected prompt" >&2; exit 2 ;;
+esac
+EOF
+  chmod +x "$T/canon-model.sh"
+  cat > "$T/models.tsv" <<EOF
+id	label	command	args	parser	token_fields	timeout_s
+fixture	CanonManifest	$T/canon-model.sh	{prompt}	raw		5
+EOF
+  cat > "$T/canon-tasks.tsv" <<'EOF'
+id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rust_signature
+99	CANON-SUM	(ptr a n -- i64)	arrays	[3 1 4] -> 8; [5] -> 5	array	as	Return the sum of all elements of the array.	[3 1 4] -> 8; [5] -> 5	array,scalar	function f(a) -> number	fn f(a: &[i64]) -> i64
+EOF
+  MODEL_REGISTRY="$T/models.tsv" MODEL_ID=fixture BENCH_TASKS="$T/canon-tasks.tsv" BENCH_RESULTS="$T/canon-results.md" \
+    sh bench/llm/run-bench.sh 1 "$T/canon-run.jsonl" >"$T/canon-run.out" 2>"$T/canon-run.err"
+  run_rows=$(wc -l < "$T/canon-run.jsonl" | tr -d ' ')
+  [ "$run_rows" = 4 ] && echo "ok: run-bench-canonical-row-count" || {
+    echo "FAIL: run-bench-canonical-row-count -> $run_rows"
+    cat "$T/canon-run.err"
+    fails=$((fails+1))
+  }
+  canon_rows=$(grep -c '"name":"CANON-SUM"' "$T/canon-run.jsonl" || true)
+  [ "$canon_rows" = 4 ] && echo "ok: run-bench-canonical-task" || {
+    echo "FAIL: run-bench-canonical-task -> $canon_rows"
+    cat "$T/canon-run.jsonl"
+    fails=$((fails+1))
+  }
+  if grep -q 'ARR-SUM' "$T/canon-run.jsonl"; then
+    echo "FAIL: run-bench-canonical-no-legacy -> found ARR-SUM"
+    fails=$((fails+1))
+  else
+    echo "ok: run-bench-canonical-no-legacy"
+  fi
+fi
 
 echo "----"
 if [ "$fails" -eq 0 ]; then echo "PASS: array drivers (as + aa, 4 arms + habu repair)"

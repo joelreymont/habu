@@ -6,7 +6,7 @@
 #   CANDIDATE_DIR/1/1.f        repair round 1 for task 1
 #   CANDIDATE_DIR/1/2.f        repair round 2 for task 1
 #
-# Emits one validate-results.f-compatible JSONL row per bench/llm/tasks.tsv task.
+# Emits one validate-results.f-compatible JSONL row per harness=forth task.
 set -eu
 cd "$(dirname "$0")/../.."
 
@@ -27,7 +27,7 @@ REF=$T/ref
 TASK_LINES=$T/tasks.body
 mkdir -p "$REF" "$(dirname "$OUT")"
 awk -v dir="$REF" '/^: /{ n++; print > (dir "/" n ".f") }' bench/llm/solutions.f
-tail -n +2 bench/llm/tasks.tsv > "$TASK_LINES"
+awk -F '\t' 'NR > 1 && $6 == "forth"' bench/llm/tasks.tsv > "$TASK_LINES"
 : > "$OUT"
 
 json_escape() {
