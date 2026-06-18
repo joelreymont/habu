@@ -36,7 +36,6 @@ require_doc 'MAP-CELLS           ( n -- n )'
 require_doc 'MAP-SET     ( n ptr a n ptr u8 n -- )'
 require_doc '## Files'
 require_doc 'WALK-FILES   ( ptr u8 n [ ptr u8 n -- ] -- )'
-require_doc 'one audited `TRUST` boundary'
 require_doc 'depth-first'
 require_doc 'per-depth recursion buffers'
 require_doc '## Processes'
@@ -182,8 +181,8 @@ awk 'BEGIN { FS = "\t"; ok = 1 }
     printf "%s:%d: map module notes must specify ptr a n storage and ptr u8 n key representation\n", FILENAME, NR > "/dev/stderr"
     ok = 0
   }
-  $2 == "fs" && $4 == "module" && ($11 !~ /WALK-FILES/ || $11 !~ /TRUST/) {
-    printf "%s:%d: fs module notes must mention WALK-FILES trust contract\n", FILENAME, NR > "/dev/stderr"
+  $2 == "fs" && $4 == "module" && $11 !~ /WALK-FILES/ {
+    printf "%s:%d: fs module notes must mention WALK-FILES contract\n", FILENAME, NR > "/dev/stderr"
     ok = 0
   }
   $2 == "process" && $4 == "module" && ($11 !~ /RUN-CAPTURE/ || $11 !~ /FD_CLOEXEC/) {

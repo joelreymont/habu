@@ -107,6 +107,26 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs	lib/fs.f	word	FS-FALSE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a false flag for filesystem helpers
 1	fs	lib/fs.f	word	FS-TRUE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a true flag for filesystem helpers
 1	fs	lib/fs.f	word	FS-U16@	(ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read a little-endian 16-bit field from bytes
+1	fs	lib/fs.f	word	FS-CHECK-DEPTH	(n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	validate filesystem walk recursion depth
+1	fs	lib/fs.f	word	FS-PATH-SLOT	(n -- ptr u8)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return per-depth path buffer
+1	fs	lib/fs.f	word	FS-DIR-SLOT	(n -- ptr u8)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return per-depth directory buffer
+1	fs	lib/fs.f	word	FS-CUR-PATH	(-- ptr u8)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return current walk path buffer
+1	fs	lib/fs.f	word	FS-NEXT-PATH	(-- ptr u8)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return child walk path buffer
+1	fs	lib/fs.f	word	FS-CUR-DIR	(-- ptr u8)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return current walk directory buffer
+1	fs	lib/fs.f	word	FS-BASE@	(-- ptr n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return current getdirentries base pointer cell
+1	fs	lib/fs.f	word	FS-FD-PTR	(n -- ptr n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return per-depth file descriptor cell
+1	fs	lib/fs.f	word	FS-FD@	(-- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read current walk directory fd
+1	fs	lib/fs.f	word	FS-FD!	(n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	write current walk directory fd
+1	fs	lib/fs.f	word	FS-FDS-RESET	(--)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	reset walk fd table
+1	fs	lib/fs.f	word	FS-CLOSE-FD-AT	(n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	close one per-depth walk fd if open
+1	fs	lib/fs.f	word	FS-CLOSE-WALK	(--)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	close all active walk fds
+1	fs	lib/fs.f	word	FS-THROW-WALK	(n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	close walk fds and throw an fs error
+1	fs	lib/fs.f	word	FS-N@	(-- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read current directory buffer byte count
+1	fs	lib/fs.f	word	FS-N!	(n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	write current directory buffer byte count
+1	fs	lib/fs.f	word	FS-OFF@	(-- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read current directory record offset
+1	fs	lib/fs.f	word	FS-OFF!	(n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	write current directory record offset
+1	fs	lib/fs.f	word	FS-REC@	(-- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read current directory record length
+1	fs	lib/fs.f	word	FS-REC!	(n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	write current directory record length
 1	fs	lib/fs.f	word	FS-CHECK-JOIN-CAP	(n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	validate joined path length against capacity
 1	fs	lib/fs.f	word	FS-PATHZ	(ptr u8 n -- ptr u8)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	copy a counted path into an internal NUL-terminated buffer
 1	fs	lib/fs.f	word	EXISTS?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test whether a path exists
@@ -116,6 +136,22 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs	lib/fs.f	word	DIR?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test whether a path is a directory
 1	fs	lib/fs.f	word	BASENAME	(ptr u8 n -- ptr u8 n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return the final path component
 1	fs	lib/fs.f	word	JOIN-PATH	(ptr u8 n ptr u8 n ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	join two path segments into caller storage
+1	fs	lib/fs.f	word	FS-PATH=	(ptr u8 n ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	compare counted paths
+1	fs	lib/fs.f	word	FS-DOT-ENTRY?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test current-directory entry name
+1	fs	lib/fs.f	word	FS-DOTDOT-ENTRY?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test parent-directory entry name
+1	fs	lib/fs.f	word	FS-SKIP-DIR?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test skipped walk directory names
+1	fs	lib/fs.f	word	FS-SKIP-ENTRY?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test skipped directory entry names
+1	fs	lib/fs.f	word	FS-OPEN-DIR	(ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	open a directory for walking
+1	fs	lib/fs.f	word	FS-DIRENT-RECLEN	(ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read dirent record length
+1	fs	lib/fs.f	word	FS-DIRENT-NAMELEN	(ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read dirent name length
+1	fs	lib/fs.f	word	FS-DIRENT-NAME	(ptr u8 -- ptr u8 n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return counted dirent name
+1	fs	lib/fs.f	word	FS-CHECK-RECORD	(--)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	validate current dirent record bounds
+1	fs	lib/fs.f	word	FS-READ-DIR	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read the next directory buffer chunk
+1	fs	lib/fs.f	word	FS-WALK-ROOT!	(ptr u8 n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	copy root path into walk buffer
+1	fs	lib/fs.f	word	FS-WALK-JOIN-LEN	(ptr u8 n n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	compute child path length
+1	fs	lib/fs.f	word	FS-CHECK-WALK-JOIN-CAP	(ptr u8 n n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	validate child path capacity
+1	fs	lib/fs.f	word	FS-WALK-PATH	(ptr u8 n [ ptr u8 n -- ] --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	walk one path recursively
+1	fs	lib/fs.f	word	WALK-FILES	(ptr u8 n [ ptr u8 n -- ] --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	walk regular files depth-first and call a quotation
 1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	planned	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup
 1	argv	lib/argv.f	module			lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	checked command-line parser helpers for hb script args
 1	argv	lib/argv.f	word	ARGV-FALSE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a false flag for parser internals

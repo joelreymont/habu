@@ -262,21 +262,28 @@ and bounded path joining:
 FS-FALSE           ( -- bool )
 FS-TRUE            ( -- bool )
 FS-U16@            ( ptr u8 -- n )
-FS-CHECK-JOIN-CAP  ( n -- )
-FS-PATHZ           ( ptr u8 n -- ptr u8 )
-EXISTS?      ( ptr u8 n -- bool )
-FS-TRY-STAT-MODE   ( ptr u8 n -- n )
-STAT-MODE          ( ptr u8 n -- n )
-FILE?        ( ptr u8 n -- bool )
-DIR?         ( ptr u8 n -- bool )
-BASENAME     ( ptr u8 n -- ptr u8 n )
-JOIN-PATH    ( ptr u8 n ptr u8 n ptr u8 -- n )
+FS-CHECK-JOIN-CAP       ( n -- )
+FS-PATHZ                ( ptr u8 n -- ptr u8 )
+EXISTS?                 ( ptr u8 n -- bool )
+FS-TRY-STAT-MODE        ( ptr u8 n -- n )
+STAT-MODE               ( ptr u8 n -- n )
+FILE?                   ( ptr u8 n -- bool )
+DIR?                    ( ptr u8 n -- bool )
+BASENAME                ( ptr u8 n -- ptr u8 n )
+JOIN-PATH               ( ptr u8 n ptr u8 n ptr u8 -- n )
+FS-SKIP-DIR?            ( ptr u8 n -- bool )
+FS-SKIP-ENTRY?          ( ptr u8 n -- bool )
+FS-WALK-PATH            ( ptr u8 n [ ptr u8 n -- ] -- )
+WALK-FILES   ( ptr u8 n [ ptr u8 n -- ] -- )
 ```
+
+`WALK-FILES` walks regular files depth-first, skips `.git`, `.jj`, and
+`.dots`, uses per-depth buffers, and closes active directory descriptors before
+throwing explicit filesystem errors.
 
 The planned higher-level file API is:
 
 ```forth
-WALK-FILES   ( ptr u8 n [ ptr u8 n -- ] -- )
 READ-ALL     ( ptr u8 n ptr u8 n -- n )
 WRITE-ALL    ( ptr u8 n ptr u8 n -- )
 APPEND-FILE  ( ptr u8 n ptr u8 n -- )
