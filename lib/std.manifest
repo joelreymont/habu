@@ -15,15 +15,15 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	array	lib/array.f	word	A-PREFIX-SUM!	(ptr n n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	replace numeric cells with prefix sums
 1	array	lib/array.f	word	A-RUNMAX!	(ptr n n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	replace numeric cells with running maxima
 1	array	lib/array.f	word	A-FILL!	(a ptr a n --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fill a cell array with one value
-1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	planned	checked byte-string helpers and formatter support
+1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	planned	checked byte-string predicates builders split and parse helpers
 1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	planned	v1 regex handles use ptr u8 n storage buffers, never unchecked addr dereference
 1	map	lib/map.f	module			lib/map-test.f	docs/stdlib.md	stdlib-map	planned	v1 map handles use ptr u8 n storage buffers, never unchecked addr dereference
-1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	planned	checked filesystem helpers with named errors
-1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	planned	checked process spawning capture and exit-status helpers
+1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	planned	WALK-FILES checked quotation or audited TRUST boundary with depth-first recursion buffers
+1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	planned	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup
 1	argv	lib/argv.f	module			lib/argv-test.f	docs/stdlib.md	stdlib-argv	planned	checked command-line parser helpers
-1	test	lib/test.f	module			lib/test-test.f	docs/stdlib.md	stdlib-test	planned	reusable test assertions and fixture helpers
-1	property	lib/property.f	module			lib/property-test.f	docs/stdlib.md	stdlib-property	planned	property generator and checker support
-1	build	lib/build.f	module			lib/build-test.f	docs/stdlib.md	stdlib-build	planned	checked build and bundle helpers
+1	test	lib/test.f	module			lib/test-test.f	docs/stdlib.md	stdlib-test	planned	checked assertions fixture helpers and final report policy
+1	property	lib/property.f	module			lib/property-test.f	docs/stdlib.md	stdlib-property	planned	deterministic PRNG generators shrinking and audited evaluate boundary
+1	build	lib/build.f	module			lib/build-test.f	docs/stdlib.md	stdlib-build	planned	checked Habu build policy across shell boundary and artifact validation
 1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers
 1	time	lib/time.f	word	TIME-EPOCH-SECONDS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native UTC epoch seconds
 1	time	lib/time.f	word	TIME-MONO-NS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native monotonic nanoseconds

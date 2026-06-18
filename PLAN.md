@@ -108,12 +108,11 @@ benchmark drivers, and prompts must not introduce public executables named
 - non-tty stdin at EOF and `argc > 1`: run `argv[1]` as a script.
 
 Build scripts are ordinary Habu scripts loaded by these modes. Shell wrappers may
-choose sources, make private temp dirs, and concatenate a bundle, but the build
-logic itself belongs in checked Habu libraries and scripts. The allowed shell
-boundary is: set environment, create private temp dirs, choose source lists,
-launch `bin/hb`, compare or install final artifacts, and propagate exit status.
-The durable build policy, step graph, expected artifacts, and fail-closed checks
-belong in Habu.
+only set final environment values, create and export private `HB_TMP`, launch
+`bin/hb`, install already-validated final artifacts, and propagate exit status.
+Build policy, source selection, step graph decisions, artifact expectations,
+checker certification, fixpoint comparison, and fallback logic belong in checked
+Habu libraries and scripts.
 
 Baked REPL, stepper, and debug source are trusted engine UI. Snapshots may
 prepend `0 set-check` while baking that UI, but must reinstall a `CHECK!` hook
@@ -149,10 +148,11 @@ pipeline run such as `bin/hb 2 10 < test/prop-test.f`.
 
 ### LLM-Facing Documentation
 
-`LLM.md`, `docs/forth.md`, `docs/stdlib.md`, `STATUS.md`, `TRUSTED.md`, and
+`docs/stdlib.md` is the authoritative LLM-facing stdlib surface. `LLM.md`,
+`docs/forth.md`, `docs/stdlib.md`, `STATUS.md`, `TRUSTED.md`, and
 machine-readable signature manifests must agree. The prompt surface for agents
-should come from the same checked public signatures that the gate validates, not
-from hand-copied examples that can drift.
+comes from the same checked public signatures and documented contract sections
+that the gate validates, not from hand-copied examples that can drift.
 
 Tracked dots:
 
@@ -747,8 +747,12 @@ APPEND-FILE  ( ptr u8 n ptr u8 n -- )
 
 `WALK-FILES` is either a checked quotation combinator or one audited TRUST
 boundary with tests proving callback invocation, recursion-buffer isolation, and
-error behavior. Its focused fixture is `lib/fs-test.sh`, wired into the native
-gate after promotion.
+error behavior. Traversal is depth-first over regular files. Entries inside one
+directory follow the platform directory-stream order; callers needing lexical
+order must collect and sort separately. Recursive walks use per-depth path and
+directory buffers so a child walk cannot corrupt the parent record. Callback
+path pointers are transient and must be copied before storage. Its focused
+fixture is `lib/fs-test.sh`, wired into the native gate after promotion.
 
 ### Processes
 
@@ -773,11 +777,13 @@ Process contracts:
   calling pathz primitives.
 - Negative fd values mean inherit/default as documented; nonnegative fd values
   are passed through explicitly.
-- Parent-only pipe/PTY fds are close-on-exec before spawning and closed in the
-  parent after use.
+- Parent-only pipe/PTY fds are marked `FD_CLOEXEC` before spawning and closed in
+  the parent on every success and failure path.
 - `RUN-CAPTURE` arguments are command string, stdout buffer/capacity, stderr
   buffer/capacity, and timeout milliseconds. It returns stdout length, stderr
-  length, and rc in that order. Output truncation throws a named stdlib error.
+  length, and rc in that order. Output overflow throws `E-PROC-TRUNCATED`
+  rather than silently truncating. Timeout reaps or terminates the child before
+  throwing `E-PROC-TIMEOUT`.
 
 ### Time And Date
 
@@ -799,7 +805,7 @@ insufficient capacity or invalid ranges.
 
 ### Args, Tests, Properties, Builds
 
-Promote:
+Promote checked helper APIs:
 
 - `lib/argv.f`: generic argv parser and mock argv hooks.
 - `lib/test.f`: `T=`, `TTRUE`, string assertions, error assertions, final report.
@@ -811,6 +817,14 @@ These libraries must split checked reusable helpers from unchecked harness
 boundaries. `evaluate`, source-string generation, raw argv/envp cells, and build
 driver process exits stay in small named boundaries with TRUST/audit entries
 when needed; pure helpers get public checked signatures.
+
+Planned public effects are documented in `docs/stdlib.md`, including
+`T= ( n n -- )`, `PROP-RUN ( n n [ -- ] -- )`, and
+`BUILD-STEP ( ptr u8 n [ -- n ] -- )`. `lib/property.f` may expose an audited
+`evaluate` boundary for generated checked source, but deterministic PRNG,
+generator, and shrink words remain checked. `lib/build.f` owns Habu-side build
+policy and artifact validation; shell wrappers only provide the boundary named
+above.
 
 Tracked dots:
 

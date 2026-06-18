@@ -176,3 +176,6 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   reference metric rows from the task manifest under test instead of assuming the
   checked-in reference JSONL has already been refreshed for concurrent task
   additions.
+- **Doc contract fixtures need stable anchors:** when `grep -F` gates API prose,
+  keep the asserted phrase contiguous in Markdown or assert a shorter stable
+  substring; ordinary line wrapping can otherwise hide a present contract.

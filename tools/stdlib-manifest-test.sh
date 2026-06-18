@@ -20,6 +20,41 @@ grep -Fq '## Handle Representation' "$DOC" || fail "missing Handle Representatio
 grep -Fq 'v1 memory-backed handles use `ptr u8 n`' "$DOC" || fail "missing ptr u8 n handle contract"
 grep -Fq 'Opaque `addr` values are boundary-only' "$DOC" || fail "missing addr boundary rule"
 
+require_doc() {
+  grep -Fq "$1" "$DOC" || fail "missing stdlib contract: $1"
+}
+
+require_doc '## LLM Surface'
+require_doc '## String'
+require_doc 'BYTE-COPY       ( ptr u8 ptr u8 n -- )'
+require_doc 'SB-APPEND       ( ptr u8 n -- )'
+require_doc '## Regex'
+require_doc 'RX-COMPILE   ( ptr u8 n ptr u8 n -- n )'
+require_doc '## Map'
+require_doc 'MAP-SET     ( n ptr u8 n ptr u8 n -- )'
+require_doc '## Files'
+require_doc 'WALK-FILES   ( ptr u8 n [ ptr u8 n -- ] -- )'
+require_doc 'one audited `TRUST` boundary'
+require_doc 'depth-first'
+require_doc 'per-depth recursion buffers'
+require_doc '## Processes'
+require_doc 'RUN-CAPTURE  ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )'
+require_doc 'counted paths/commands'
+require_doc 'FD_CLOEXEC'
+require_doc 'rc in that order'
+require_doc 'E-PROC-TRUNCATED'
+require_doc 'E-PROC-TIMEOUT'
+require_doc '## Test Property And Build Helpers'
+require_doc 'T=              ( n n -- )'
+require_doc 'PROP-RUN        ( n n [ -- ] -- )'
+require_doc 'BUILD-STEP      ( ptr u8 n [ -- n ] -- )'
+require_doc '`evaluate`'
+require_doc 'source-string generation'
+require_doc '## Build Shell Boundary'
+require_doc 'Shell wrappers may only'
+require_doc '`HB_TMP`'
+require_doc 'Habu build helpers are responsible'
+
 header=$(sed -n '1p' "$MANIFEST")
 expected=$(printf 'schema_version\tmodule\tfile\tkind\tword\teffect\ttest\tdoc\towner\tstatus\tnotes')
 [ "$header" = "$expected" ] || fail "unexpected manifest header"
@@ -135,6 +170,26 @@ awk 'BEGIN { FS = "\t"; ok = 1 }
     printf "%s:%d: map module notes must specify ptr u8 n handle representation\n", FILENAME, NR > "/dev/stderr"
     ok = 0
   }
-  END { exit ok ? 0 : 1 }' "$MANIFEST" || fail "handle representation notes missing"
+  $2 == "fs" && $4 == "module" && ($11 !~ /WALK-FILES/ || $11 !~ /TRUST/) {
+    printf "%s:%d: fs module notes must mention WALK-FILES trust contract\n", FILENAME, NR > "/dev/stderr"
+    ok = 0
+  }
+  $2 == "process" && $4 == "module" && ($11 !~ /RUN-CAPTURE/ || $11 !~ /FD_CLOEXEC/) {
+    printf "%s:%d: process module notes must mention RUN-CAPTURE and FD_CLOEXEC\n", FILENAME, NR > "/dev/stderr"
+    ok = 0
+  }
+  $2 == "test" && $4 == "module" && $11 !~ /checked assertions/ {
+    printf "%s:%d: test module notes must mention checked assertions\n", FILENAME, NR > "/dev/stderr"
+    ok = 0
+  }
+  $2 == "property" && $4 == "module" && ($11 !~ /PRNG/ || $11 !~ /evaluate boundary/) {
+    printf "%s:%d: property module notes must mention PRNG and evaluate boundary\n", FILENAME, NR > "/dev/stderr"
+    ok = 0
+  }
+  $2 == "build" && $4 == "module" && ($11 !~ /shell boundary/ || $11 !~ /Habu/) {
+    printf "%s:%d: build module notes must mention shell boundary and Habu ownership\n", FILENAME, NR > "/dev/stderr"
+    ok = 0
+  }
+  END { exit ok ? 0 : 1 }' "$MANIFEST" || fail "stdlib module notes missing"
 
 echo "stdlib-manifest-test: ok"
