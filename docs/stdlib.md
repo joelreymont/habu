@@ -556,9 +556,18 @@ PROP-GEN-START  ( n -- )
 PROP-GEN-STEP   ( ptr u8 n n n -- )
 PROP-DROP-LAST  ( -- bool )
 PROP-SHRINK     ( [ -- bool ] -- )
+BUILD-FALSE       ( -- bool )
+BUILD-TRUE        ( -- bool )
+BUILD-WHITE?      ( n -- bool )
+BUILD-FIND-CHAR   ( n n -- n )
+BUILD-SKIP-WHITE  ( n -- n )
+BUILD-CHECK-ONE   ( n n -- )
+BUILD-READ-SOURCE ( ptr u8 n -- )
+BUILD-CHECK-NEXT  ( n -- n )
+BUILD-CHECK       ( ptr u8 n -- )
+BUILD-EXPECT      ( ptr u8 n -- )
+BUILD-ARTIFACT    ( ptr u8 n ptr u8 n -- ptr u8 n )
 BUILD-STEP      ( ptr u8 n [ -- n ] -- )
-BUILD-CHECK     ( ptr u8 n -- )
-BUILD-ARTIFACT  ( ptr u8 n ptr u8 n -- ptr u8 n )
 BUILD-RUN       ( ptr u8 n ptr u8 n -- n )
 ```
 
@@ -570,9 +579,19 @@ isolated behind the audited trusted boundary `TTHROWS-RAW`.
 source buffers, modeled generator depth, and token-tail shrinking utilities.
 Property execution may call an audited `evaluate` boundary for generated checked
 source, but pure generators and shrink predicates remain checked helpers.
-`lib/build.f` owns build step modeling,
-source validation, artifact path construction, and fail-closed status reporting;
-raw process exits are only allowed at the final CLI/script boundary.
+`lib/build.f` owns build step modeling, checked source certification, artifact
+path construction, and fail-closed status reporting. `BUILD-CHECK` requires a
+counted source path that names a file, scans colon definitions in bounded module
+storage, and certifies each definition with `CHECK!`; missing, malformed, or
+uncheckable source throws `E-BUILD-SOURCE`. `BUILD-EXPECT` requires a counted
+artifact path that names a file. `BUILD-ARTIFACT` joins a build root and artifact
+name into the module-owned bounded path buffer, throwing `E-BUILD-PATH` for empty
+or too-long components. `BUILD-STEP` runs a checked quotation returning an rc and
+throws `E-BUILD-STATUS` on nonzero status. `BUILD-RUN` runs a counted command
+path, throws `E-BUILD-COMMAND` if the command is not a file, throws
+`E-BUILD-STATUS` on nonzero rc, and throws `E-BUILD-PATH` if the expected artifact
+file is absent after a successful command. Raw process exits are only allowed at
+the final CLI/script boundary.
 
 ## Build Shell Boundary
 

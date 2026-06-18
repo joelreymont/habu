@@ -324,7 +324,20 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	property	lib/property.f	word	PROP-TRIM-TRAIL	(--)	lib/property-test.f	docs/stdlib.md	stdlib-property	published	trim trailing spaces from generator buffer
 1	property	lib/property.f	word	PROP-DROP-LAST	(-- bool)	lib/property-test.f	docs/stdlib.md	stdlib-property	published	drop final generated token if present
 1	property	lib/property.f	word	PROP-SHRINK	([ -- bool ] --)	lib/property-test.f	docs/stdlib.md	stdlib-property	published	shrink buffered source while predicate remains true
-1	build	lib/build.f	module			lib/build-test.f	docs/stdlib.md	stdlib-build	planned	checked Habu build policy across shell boundary and artifact validation
+1	build	lib/build.f	module			lib/build-test.f	docs/stdlib.md	stdlib-build	active	checked Habu build policy across shell boundary and artifact validation
+1	build	lib/build.f	word	BUILD-ARTIFACT	(ptr u8 n ptr u8 n -- ptr u8 n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	construct a bounded artifact path under a build root
+1	build	lib/build.f	word	BUILD-CHECK	(ptr u8 n --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	validate and certify checked definitions in a counted source path
+1	build	lib/build.f	word	BUILD-CHECK-NEXT	(n -- n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	scan and certify the next colon definition in the build source buffer
+1	build	lib/build.f	word	BUILD-CHECK-ONE	(n n --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	certify one source-buffer definition range with CHECK!
+1	build	lib/build.f	word	BUILD-EXPECT	(ptr u8 n --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	require that a counted artifact path names a file
+1	build	lib/build.f	word	BUILD-FALSE	(-- bool)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	return a false flag for build helpers
+1	build	lib/build.f	word	BUILD-FIND-CHAR	(n n -- n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	find one byte in the build source buffer or return -1
+1	build	lib/build.f	word	BUILD-READ-SOURCE	(ptr u8 n --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	read a build source file into the bounded source buffer
+1	build	lib/build.f	word	BUILD-RUN	(ptr u8 n ptr u8 n -- n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	run a counted command and require its expected artifact
+1	build	lib/build.f	word	BUILD-SKIP-WHITE	(n -- n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	skip ASCII whitespace in the build source buffer
+1	build	lib/build.f	word	BUILD-STEP	(ptr u8 n [ -- n ] --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	run one checked step quotation and throw on nonzero rc
+1	build	lib/build.f	word	BUILD-TRUE	(-- bool)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	return a true flag for build helpers
+1	build	lib/build.f	word	BUILD-WHITE?	(n -- bool)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	test whether a byte is build-source whitespace
 1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers
 1	time	lib/time.f	word	TIME-EPOCH-SECONDS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native UTC epoch seconds
 1	time	lib/time.f	word	TIME-MONO-NS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native monotonic nanoseconds

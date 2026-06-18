@@ -43,6 +43,7 @@ cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint
 ./lib/argv-test.sh || { echo "FAIL: argv stdlib"; exit 1; }
 ./lib/test-test.sh || { echo "FAIL: test stdlib"; exit 1; }
 ./lib/property-test.sh || { echo "FAIL: property stdlib"; exit 1; }
+./lib/build-test.sh || { echo "FAIL: build stdlib"; exit 1; }
 ./tools/date-test.sh || { echo "FAIL: date helpers"; exit 1; }
 ./tools/bundle-lib-test.sh || { echo "FAIL: stdlib bundle wrapper"; exit 1; }
 ./tools/repair-schema-doc-test.sh || { echo "FAIL: repair diagnostic schema doc"; exit 1; }
