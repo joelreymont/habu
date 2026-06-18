@@ -91,6 +91,11 @@ check_v2_manifest() {
   require_task 104 FS-WRITE-ALL-OK? files stdlib-file run v2,write-all
   require_task 105 FS-APPEND-OK? files stdlib-file run v2,append
   require_task 106 FS-READ-CAPACITY files stdlib-negative reject v2,negative-capacity
+  require_task 107 PROC-RUN-RC-OK? process stdlib-process run v2,run-rc
+  require_task 108 PROC-CAPTURE-OUTERR-OK? process stdlib-process run v2,capture-streams
+  require_task 109 PROC-CAPTURE-NONZERO-OK? process stdlib-process run v2,nonzero-rc
+  require_task 110 PROC-CAPTURE-TIMEOUT process stdlib-negative reject v2,timeout
+  require_task 111 PROC-CAPTURE-TRUNCATED process stdlib-negative reject v2,negative-truncation
 }
 assert_repair_class() {
   name=$1
@@ -247,6 +252,108 @@ create FS-BENCH-BUF FS-BENCH-CAP allot
 EOF
   assert_file_fixture fs-read-capacity "-2106" "$T/fs-read-capacity.f" "$T/fs-big.txt"
 }
+assert_process_fixture() {
+  name=$1
+  want=$2
+  source=$3
+  shift 3
+  out=$(bin/hb "$source" "$@" 2>"$T/$name.err") || {
+    cat "$T/$name.err"
+    echo "FAIL: process fixture failed $name"
+    exit 1
+  }
+  [ "$out" = "$want" ] || {
+    echo "FAIL: process fixture $name got $out want $want"
+    exit 1
+  }
+}
+check_process_v2_fixtures() {
+  cat >"$T/proc-rc-ok" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+  cat >"$T/proc-capture-out-err" <<'EOF'
+#!/bin/sh
+printf 'out'
+printf 'err' >&2
+exit 0
+EOF
+  cat >"$T/proc-capture-nonzero" <<'EOF'
+#!/bin/sh
+exit 7
+EOF
+  cat >"$T/proc-capture-sleep" <<'EOF'
+#!/bin/sh
+sleep 2
+EOF
+  cat >"$T/proc-capture-long" <<'EOF'
+#!/bin/sh
+printf 'abcdef'
+EOF
+  chmod +x "$T/proc-rc-ok" "$T/proc-capture-out-err" \
+    "$T/proc-capture-nonzero" "$T/proc-capture-sleep" \
+    "$T/proc-capture-long"
+
+  cat lib/errors.f lib/string.f lib/process.f >"$T/proc-run-rc-ok.f"
+  cat >>"$T/proc-run-rc-ok.f" <<'EOF'
+: PROC-RUN-RC-OK? ( -- bool )
+   0 SCRIPT-ARGV$ RUN-RC 0= ;
+PROC-RUN-RC-OK? . cr
+EOF
+  assert_process_fixture proc-run-rc-ok "-1" "$T/proc-run-rc-ok.f" "$T/proc-rc-ok"
+
+  cat lib/errors.f lib/string.f lib/process.f >"$T/proc-capture-out-err.f"
+  cat >>"$T/proc-capture-out-err.f" <<'EOF'
+32 constant PROC-BENCH-CAP
+create PROC-BENCH-OUT PROC-BENCH-CAP allot
+create PROC-BENCH-ERR PROC-BENCH-CAP allot
+: PROC-CAPTURE-OUTERR-OK? ( -- bool )
+   0 SCRIPT-ARGV$ PROC-BENCH-OUT PROC-BENCH-CAP PROC-BENCH-ERR PROC-BENCH-CAP 1000 RUN-CAPTURE
+   {: outu erru rc :}
+   rc 0 <> if STR-FALSE exit then
+   outu 3 <> if STR-FALSE exit then
+   erru 3 <> if STR-FALSE exit then
+   PROC-BENCH-OUT outu s" out" STR= 0= if STR-FALSE exit then
+   PROC-BENCH-ERR erru s" err" STR= ;
+PROC-CAPTURE-OUTERR-OK? . cr
+EOF
+  assert_process_fixture proc-capture-out-err "-1" "$T/proc-capture-out-err.f" "$T/proc-capture-out-err"
+
+  cat lib/errors.f lib/string.f lib/process.f >"$T/proc-capture-nonzero.f"
+  cat >>"$T/proc-capture-nonzero.f" <<'EOF'
+32 constant PROC-BENCH-CAP
+create PROC-BENCH-OUT PROC-BENCH-CAP allot
+create PROC-BENCH-ERR PROC-BENCH-CAP allot
+: PROC-CAPTURE-NONZERO-OK? ( -- bool )
+   0 SCRIPT-ARGV$ PROC-BENCH-OUT PROC-BENCH-CAP PROC-BENCH-ERR PROC-BENCH-CAP 1000 RUN-CAPTURE
+   {: outu erru rc :}
+   rc 7 = outu 0= and erru 0= and ;
+PROC-CAPTURE-NONZERO-OK? . cr
+EOF
+  assert_process_fixture proc-capture-nonzero "-1" "$T/proc-capture-nonzero.f" "$T/proc-capture-nonzero"
+
+  cat lib/errors.f lib/string.f lib/process.f >"$T/proc-capture-timeout.f"
+  cat >>"$T/proc-capture-timeout.f" <<'EOF'
+32 constant PROC-BENCH-CAP
+create PROC-BENCH-OUT PROC-BENCH-CAP allot
+create PROC-BENCH-ERR PROC-BENCH-CAP allot
+: PROC-BENCH-BAD ( -- )
+   0 SCRIPT-ARGV$ PROC-BENCH-OUT PROC-BENCH-CAP PROC-BENCH-ERR PROC-BENCH-CAP 100 RUN-CAPTURE 2drop drop ;
+' PROC-BENCH-BAD catch . cr
+EOF
+  assert_process_fixture proc-capture-timeout "-2502" "$T/proc-capture-timeout.f" "$T/proc-capture-sleep"
+
+  cat lib/errors.f lib/string.f lib/process.f >"$T/proc-capture-truncated.f"
+  cat >>"$T/proc-capture-truncated.f" <<'EOF'
+3 constant PROC-BENCH-CAP
+create PROC-BENCH-OUT PROC-BENCH-CAP allot
+create PROC-BENCH-ERR PROC-BENCH-CAP allot
+: PROC-BENCH-BAD ( -- )
+   0 SCRIPT-ARGV$ PROC-BENCH-OUT PROC-BENCH-CAP PROC-BENCH-ERR PROC-BENCH-CAP 1000 RUN-CAPTURE 2drop drop ;
+' PROC-BENCH-BAD catch . cr
+EOF
+  assert_process_fixture proc-capture-truncated "-2504" "$T/proc-capture-truncated.f" "$T/proc-capture-long"
+}
 check_tsv_shape
 check_v2_manifest
 check_diagnostic_v2_fixtures
@@ -274,6 +381,7 @@ REF_OUT=$(bin/hb < "$REF" 2>"$T/ref.err")
 check_aot_v2_fixtures
 check_regex_v2_fixtures
 check_file_v2_fixtures
+check_process_v2_fixtures
 VALIDATOR=$T/validate-results.f
 cat tools/date.f tools/lint/lib.f tools/json.f tools/argv.f bench/llm/validate-results.f >"$VALIDATOR"
 bin/hb "$VALIDATOR"
