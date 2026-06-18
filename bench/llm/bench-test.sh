@@ -57,7 +57,7 @@ cat > "$T/report.jsonl" <<'EOF'
 EOF
 rep=$(node bench/llm/report.js "$T/report.jsonl")
 chk report-zero-token-note 'exclude 1 passing row' "$rep"
-chk report-zero-token-table '| ZERO-TOK | — | — | 5 | — | — | — |' "$rep"
+chk report-zero-token-table '| ZERO-TOK | — | — | — | — | 5 | — | — | — | — | — |' "$rep"
 
 cat > "$T/report-models.jsonl" <<'EOF'
 {"task_id":1,"name":"MREG","model":"alpha","arm":"js","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":10}
@@ -74,6 +74,15 @@ cat > "$T/report-model-family.jsonl" <<'EOF'
 EOF
 rep=$(node bench/llm/report.js "$T/report-model-family.jsonl")
 chk report-family-task-pass-at-k '| JavaScript | 2 | 1 | 50% | 50% | 50% | 1 |' "$rep"
+
+cat > "$T/report-habu-arms.jsonl" <<'EOF'
+{"task_id":1,"name":"HARM","model_id":"fixture","model":"Fixture","arm":"habu-stdlib","trial_id":"manifest:fixture:habu-stdlib:1:1","trial":1,"task_order":1,"k_trials":1,"order_seed":"manifest","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":10,"runtime_ms":1,"runtime_repetitions":2,"runtime_warmups":1,"runtime_status":"ok"}
+{"task_id":1,"name":"HARM","model_id":"fixture","model":"Fixture","arm":"habu-skeleton","trial_id":"manifest:fixture:habu-skeleton:1:1","trial":1,"task_order":1,"k_trials":1,"order_seed":"manifest","outcome":"pass","rounds":1,"first_pass":true,"tokens":6,"wall_ms":10,"runtime_ms":1,"runtime_repetitions":2,"runtime_warmups":1,"runtime_status":"ok"}
+EOF
+rep=$(node bench/llm/report.js "$T/report-habu-arms.jsonl")
+chk report-habu-stdlib-label 'Habu + stdlib' "$rep"
+chk report-habu-skeleton-label 'Habu + skeleton' "$rep"
+chk report-habu-arms-task-row 'stdlib pass/1; skeleton pass/1' "$rep"
 
 cat > "$T/report-runtime.jsonl" <<'EOF'
 {"task_id":1,"name":"RT","model_id":"fixture","model":"Fixture","arm":"js","trial_id":"manifest:fixture:js:1:1","trial":1,"task_order":1,"k_trials":1,"order_seed":"manifest","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":9000,"runtime_ms":7,"runtime_repetitions":2,"runtime_warmups":1,"runtime_status":"ok"}
@@ -105,11 +114,15 @@ chk report-latency-microbench '| microbench_smoke | 56 | 0.06 |' "$rep"
 # --- conv=as : ARR-SUM (array -> scalar) ---
 mkstub "$T/hb.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells arr + @ + loop ;"'
 mkstub "$T/hbl.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do arr len i A@ + loop ;"'
+mkstub "$T/hbstd.sh" 'echo ": ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do arr len i A@ + loop ;"'
+mkstub "$T/hbsk.sh" 'echo "0 len 0 ?do i cells arr + @ + loop"'
 mkstub "$T/js.sh" 'echo "function f(a){ return a.reduce((s,x)=>s+x,0); }"'
 mkstub "$T/rs.sh" 'echo "fn f(a: &[i64]) -> i64 { a.iter().sum() }"'
 SV="[3 1 4] -> 8; [5] -> 5"
 r=$(CLAUDE="$T/hb.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" a); chk habu-as '"outcome":"pass","rounds":1' "$r"
 r=$(CLAUDE="$T/hbl.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" lib); chk habu-lib-as '"arm":"habu-lib","trial_id":"manifest:claude:habu-lib:1:0","trial":0,"task_order":0,"k_trials":0,"order_seed":"manifest","outcome":"pass","rounds":1' "$r"
+r=$(CLAUDE="$T/hbstd.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" stdlib); chk habu-stdlib-as '"arm":"habu-stdlib","trial_id":"manifest:claude:habu-stdlib:1:0","trial":0,"task_order":0,"k_trials":0,"order_seed":"manifest","outcome":"pass","rounds":1' "$r"
+r=$(CLAUDE="$T/hbsk.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" skeleton); chk habu-skeleton-as '"arm":"habu-skeleton","trial_id":"manifest:claude:habu-skeleton:1:0","trial":0,"task_order":0,"k_trials":0,"order_seed":"manifest","outcome":"pass","rounds":1' "$r"
 r=$(CLAUDE="$T/js.sh" sh bench/llm/drive-js.sh   1 ARR-SUM "ptr a n -- i64" "sum" as "$SV");   chk js-as   '"outcome":"pass","rounds":1' "$r"
 chk js-as-runtime '"runtime_ms":[0-9][0-9]*,"runtime_repetitions":100,"runtime_warmups":10,"runtime_status":"ok"' "$r"
 chk js-v2-schema '"schema_version":2' "$r"
@@ -156,11 +169,15 @@ r=$(CLAUDE="$T/hbprose.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64"
 # --- conv=aa : REVERSE (array -> array, in place) ---
 mkstub "$T/hb2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do i cells arr + @ len 1 - i - cells arr + @ i cells arr + ! len 1 - i - cells arr + ! loop ;"'
 mkstub "$T/hbl2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr len i len i MIRROR-INDEX A-SWAP loop ;"'
+mkstub "$T/hbstd2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr len i len i MIRROR-INDEX A-SWAP loop ;"'
+mkstub "$T/hbsk2.sh" 'echo "len 2 / 0 ?do i cells arr + @ len 1 - i - cells arr + @ i cells arr + ! len 1 - i - cells arr + ! loop"'
 mkstub "$T/js2.sh" 'echo "function f(a){ return a.slice().reverse(); }"'
 mkstub "$T/rs2.sh" 'echo "fn f(a: &[i64]) -> Vec<i64> { a.iter().rev().cloned().collect() }"'
 MV="[3 1 4 1 5] -> [5 1 4 1 3]; [1 2] -> [2 1]"
 r=$(CLAUDE="$T/hb2.sh" sh bench/llm/drive-habu.sh 6 REVERSE "ptr a n --" "reverse" aa "$MV" a); chk habu-aa '"outcome":"pass","rounds":1' "$r"
 r=$(CLAUDE="$T/hbl2.sh" sh bench/llm/drive-habu.sh 6 REVERSE "ptr a n --" "reverse" aa "$MV" lib); chk habu-lib-aa '"arm":"habu-lib","trial_id":"manifest:claude:habu-lib:6:0","trial":0,"task_order":0,"k_trials":0,"order_seed":"manifest","outcome":"pass","rounds":1' "$r"
+r=$(CLAUDE="$T/hbstd2.sh" sh bench/llm/drive-habu.sh 6 REVERSE "ptr a n --" "reverse" aa "$MV" stdlib); chk habu-stdlib-aa '"arm":"habu-stdlib","trial_id":"manifest:claude:habu-stdlib:6:0","trial":0,"task_order":0,"k_trials":0,"order_seed":"manifest","outcome":"pass","rounds":1' "$r"
+r=$(CLAUDE="$T/hbsk2.sh" sh bench/llm/drive-habu.sh 6 REVERSE "ptr a n --" "reverse" aa "$MV" skeleton); chk habu-skeleton-aa '"arm":"habu-skeleton","trial_id":"manifest:claude:habu-skeleton:6:0","trial":0,"task_order":0,"k_trials":0,"order_seed":"manifest","outcome":"pass","rounds":1' "$r"
 r=$(CLAUDE="$T/js2.sh" sh bench/llm/drive-js.sh   6 REVERSE "ptr a n --" "reverse" aa "$MV");   chk js-aa   '"outcome":"pass","rounds":1' "$r"
 r=$(CLAUDE="$T/rs2.sh" sh bench/llm/drive-rust.sh 6 REVERSE "ptr a n --" "reverse" aa "$MV");   chk rust-aa '"outcome":"pass","rounds":1' "$r"
 
@@ -198,13 +215,13 @@ EOF
   MODEL_REGISTRY="$T/models.tsv" MODEL_ID=fixture BENCH_TASKS="$T/canon-tasks.tsv" BENCH_RESULTS="$T/canon-results.md" \
     sh bench/llm/run-bench.sh 1 "$T/canon-run.jsonl" >"$T/canon-run.out" 2>"$T/canon-run.err"
   run_rows=$(wc -l < "$T/canon-run.jsonl" | tr -d ' ')
-  [ "$run_rows" = 4 ] && echo "ok: run-bench-canonical-row-count" || {
+  [ "$run_rows" = 6 ] && echo "ok: run-bench-canonical-row-count" || {
     echo "FAIL: run-bench-canonical-row-count -> $run_rows"
     cat "$T/canon-run.err"
     fails=$((fails+1))
   }
   canon_rows=$(grep -c '"name":"CANON-SUM"' "$T/canon-run.jsonl" || true)
-  [ "$canon_rows" = 4 ] && echo "ok: run-bench-canonical-task" || {
+  [ "$canon_rows" = 6 ] && echo "ok: run-bench-canonical-task" || {
     echo "FAIL: run-bench-canonical-task -> $canon_rows"
     cat "$T/canon-run.jsonl"
     fails=$((fails+1))
@@ -218,5 +235,5 @@ EOF
 fi
 
 echo "----"
-if [ "$fails" -eq 0 ]; then echo "PASS: array drivers (as + aa, 4 arms + habu repair)"
+if [ "$fails" -eq 0 ]; then echo "PASS: array drivers (as + aa, 6 arms + habu repair)"
 else echo "FAIL: bench-test ($fails case(s))"; exit 1; fi

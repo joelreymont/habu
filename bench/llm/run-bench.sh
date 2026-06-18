@@ -1,7 +1,8 @@
 #!/bin/sh
 # run-bench.sh [k_trials] [out.jsonl] — run every array task in the canonical
-# manifest across all four arms
-# {habu-a, habu-lib, js, rust} for k trials, appending JSONL metrics rows. Then
+# manifest across all six arms
+# {habu-a, habu-lib, habu-stdlib, habu-skeleton, js, rust} for k trials,
+# appending JSONL metrics rows. Then
 # report.js aggregates into RESULTS.md. Makes real `claude -p` calls.
 set -e
 cd "$(dirname "$0")/../.."
@@ -24,11 +25,14 @@ tail -n +2 "$TASKS" | while IFS="$TAB" read -r id name signature category tests 
   model_ids | while IFS= read -r model_id; do
     t=1
     while [ "$t" -le "$K" ]; do
-      # Four arms — raw Habu, library-assisted Habu, JS, Rust.
+      # Six arms — raw Habu, library-assisted Habu, full stdlib Habu,
+      # skeleton Habu, JS, Rust.
       # </dev/null: model CLIs may otherwise read this loop's piped stdin and swallow
       # the remaining task lines. || true: a failing driver must not abort the sweep.
       MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED BENCH_TASK_FAMILY=$category sh bench/llm/drive-habu.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors" a </dev/null >> "$OUT" || true
       MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED BENCH_TASK_FAMILY=$category sh bench/llm/drive-habu.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors" lib </dev/null >> "$OUT" || true
+      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED BENCH_TASK_FAMILY=$category sh bench/llm/drive-habu.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors" stdlib </dev/null >> "$OUT" || true
+      MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED BENCH_TASK_FAMILY=$category sh bench/llm/drive-habu.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors" skeleton </dev/null >> "$OUT" || true
       MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED BENCH_TASK_FAMILY=$category sh bench/llm/drive-js.sh   "$id" "$name" "$sig" "$spec" "$conv" "$vectors"   </dev/null >> "$OUT" || true
       MODEL_ID=$model_id BENCH_TRIAL=$t BENCH_TASK_ORDER=$task_order BENCH_K=$K BENCH_SEED=$BENCH_SEED BENCH_TASK_FAMILY=$category sh bench/llm/drive-rust.sh "$id" "$name" "$sig" "$spec" "$conv" "$vectors"   </dev/null >> "$OUT" || true
       t=$((t+1))

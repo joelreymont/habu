@@ -3,15 +3,17 @@
 # (tools/check.sh), and on rejection feed the checker diagnostic back as the repair
 # signal (up to N rounds). On certify, grade values via grade.sh (which builds the
 # array in memory and runs the io-vectors). Emits one JSONL metrics row.
-# Usage: drive-habu.sh <id> <name> <sig> <spec> <conv> <vectors> <a|lib> [maxr]
+# Usage: drive-habu.sh <id> <name> <sig> <spec> <conv> <vectors> <a|lib|stdlib|skeleton> [maxr]
 set -e
 cd "$(dirname "$0")/../.."
 . bench/llm/lib.sh
 ID=$1 NAME=$2 SIG=$3 SPEC=$4 CONV=$5 VEC=$6 ARM=$7 MAXR=${8:-5}
 model_init
 case "$ARM" in
-  a) PRE=$(cat bench/llm/habu-preamble.txt); LIB=0 ;;
-  lib) PRE=$(cat bench/llm/habu-preamble-lib.txt); LIB=1 ;;
+  a) PRE=$(cat bench/llm/habu-preamble.txt); LIB_MODULES=; SKELETON=0 ;;
+  lib) PRE=$(cat bench/llm/habu-preamble-lib.txt); LIB_MODULES="errors array"; SKELETON=0 ;;
+  stdlib) PRE=$(cat bench/llm/habu-preamble-stdlib.txt); LIB_MODULES="errors array string map fs argv test time date"; SKELETON=0 ;;
+  skeleton) PRE=$(cat bench/llm/habu-preamble-skeleton.txt); LIB_MODULES=; SKELETON=1 ;;
   *) echo "drive-habu: unknown arm $ARM" >&2; exit 64 ;;
 esac
 T=$(mktemp -d "${TMPDIR:-/tmp}/dh.XXXXXX"); trap 'rm -rf "$T"' EXIT
@@ -30,10 +32,19 @@ hb_test "$CONV" "$NAME" "$VEC" > "$T/vec.f"
 hb_bench "$CONV" "$NAME" "$VEC" > "$T/bench.f"
 cases=$(case_list "$VEC")
 mode=$( [ "$CONV" = aa ] && echo "modify the array IN PLACE (write results back with !), returning nothing" || echo "return one integer" )
-TASK="Define the word ${NAME} with signature:
+if [ "$SKELETON" = 1 ]; then
+  TASK="Complete this checked definition skeleton:
+  : ${NAME} ( ${SIG} ) {: arr:ptr len :}
+    ... your body here ...
+  ;
+The input array pointer local is arr and the length local is len. ${SPEC}
+For this task you must ${mode}. Output ONLY the definition body, without ': ${NAME}', the signature, locals, or ';'."
+else
+  TASK="Define the word ${NAME} with signature:
   : ${NAME} ( ${SIG} ) ...
 The input is an integer array passed as (pointer, length). ${SPEC}
 For this task you must ${mode}."
+fi
 extract() {
   sed 's/^```.*$//' "$1" | awk '
     /^[[:space:]]*:/ { s = 1 }
@@ -41,10 +52,26 @@ extract() {
   '
 }
 bundle() {
-  if [ "$LIB" = 1 ]; then
-    tools/bundle-lib.sh -o "$T/prelude.f" errors array -- bench/llm/habu-array-lib.f
+  if [ -n "$LIB_MODULES" ]; then
+    tools/bundle-lib.sh -o "$T/prelude.f" $LIB_MODULES -- bench/llm/habu-array-lib.f
     cat "$T/prelude.f" "$T/cand.f" > "$T/bundle.f"
   else cp "$T/cand.f" "$T/bundle.f"; fi
+}
+extract_skeleton() {
+  if grep -q '^[[:space:]]*:' "$1"; then
+    extract "$1" > "$T/cand.f"
+  else
+    sed 's/^```.*$//' "$1" | awk 'NF { print }' > "$T/body.f"
+    if [ -s "$T/body.f" ]; then
+      {
+        printf ': %s ( %s ) {: arr:ptr len :}\n' "$NAME" "$SIG"
+        cat "$T/body.f"
+        printf '\n;\n'
+      } > "$T/cand.f"
+    else
+      printf '\\ no candidate extracted\n' > "$T/cand.f"
+    fi
+  fi
 }
 runtime_ms() {
   {
@@ -74,7 +101,11 @@ ${TASK}${feedback}"
   model_run "$prompt" "$T/resp.json" \
     || { printf 'model_run_failed\n' > "$T/resp.json"; outcome=error; break; }
   rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); toks=$((toks+rt))
-  extract "$T/text.txt" > "$T/cand.f"
+  if [ "$SKELETON" = 1 ]; then
+    extract_skeleton "$T/text.txt"
+  else
+    extract "$T/text.txt" > "$T/cand.f"
+  fi
   [ -s "$T/cand.f" ] || printf '\\ no candidate extracted\n' > "$T/cand.f"
   if ! grep -q ';' "$T/cand.f"; then
     feedback="

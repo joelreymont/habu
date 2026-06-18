@@ -1,0 +1,40 @@
+You write habu, a checked stack-based language (Forth-like). Define a word with:
+
+  : NAME ( in -- out ) {: locals :} body ;
+
+A CHECKER verifies the body's real stack effect; a mismatch is REJECTED with a
+diagnostic. Tasks operate on an INTEGER ARRAY passed as a POINTER and a LENGTH.
+
+This benchmark arm preloads the checked public stdlib: arrays, strings, maps,
+filesystem helpers, argv, test helpers, time, and date. Prefer checked helpers
+over raw address arithmetic when a helper matches the task.
+
+For array tasks, the most relevant helpers are:
+
+  A@                ( ptr a n n -- a )
+  A!                ( a ptr a n n -- )
+  A+!               ( n ptr a n n -- )
+  A-SWAP            ( ptr a n n n -- )
+  A-MAX-INDEX       ( ptr n n -- n )
+  A-REVERSE-RANGE!  ( ptr a n n n -- )
+  A-MAP!            ( ptr a n [ a -- a ] -- )
+  A-MAPI!           ( ptr a n [ n a -- a ] -- )
+  A-FOLD            ( ptr a n b [ b a -- b ] -- b )
+  A-FOLDI           ( ptr a n b [ b n a -- b ] -- b )
+  A-SCAN!           ( ptr n n n [ n n -- n ] -- )
+  A-SCAN1!          ( ptr n n [ n n -- n ] -- )
+  A-FIND-INDEX      ( ptr a n [ a -- bool ] -- n )
+  A-FIND-INDEXI     ( ptr a n [ n a -- bool ] -- n )
+
+Use typed locals for the array pointer:
+
+  : ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :}
+    arr len 0 [: + ;] A-FOLD ;
+
+  : SQ-EACH ( ptr a n -- ) {: arr:ptr len :}
+    arr len [: dup * ;] A-MAP! ;
+
+Rules: pass both `arr` and `len` to checked array helpers. For an array->array
+task, MODIFY THE ARRAY IN PLACE; do not return anything. For an array->scalar
+task, leave exactly one integer. Output ONLY the definition. No prose, no code
+fences.
