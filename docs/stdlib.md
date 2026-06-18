@@ -307,7 +307,7 @@ Public path words accept counted byte strings and own any private NUL-terminated
 copy needed for syscalls.
 
 The current source-backed surface covers path predicates, stat mode, basename,
-and bounded path joining:
+bounded path joining, bounded file I/O, and recursive file walking:
 
 ```forth
 FS-FALSE           ( -- bool )
@@ -322,6 +322,10 @@ FILE?                   ( ptr u8 n -- bool )
 DIR?                    ( ptr u8 n -- bool )
 BASENAME                ( ptr u8 n -- ptr u8 n )
 JOIN-PATH               ( ptr u8 n ptr u8 n ptr u8 -- n )
+READ-ALL                ( ptr u8 n ptr u8 n -- n )
+FS-WRITE-BY-FLAGS       ( ptr u8 n ptr u8 n n -- )
+WRITE-ALL               ( ptr u8 n ptr u8 n -- )
+APPEND-FILE             ( ptr u8 n ptr u8 n -- )
 FS-SKIP-DIR?            ( ptr u8 n -- bool )
 FS-SKIP-ENTRY?          ( ptr u8 n -- bool )
 FS-WALK-PATH            ( ptr u8 n [ ptr u8 n -- ] -- )
@@ -332,13 +336,12 @@ WALK-FILES   ( ptr u8 n [ ptr u8 n -- ] -- )
 `.dots`, uses per-depth buffers, and closes active directory descriptors before
 throwing explicit filesystem errors.
 
-The planned higher-level file API is:
-
-```forth
-READ-ALL     ( ptr u8 n ptr u8 n -- n )
-WRITE-ALL    ( ptr u8 n ptr u8 n -- )
-APPEND-FILE  ( ptr u8 n ptr u8 n -- )
-```
+`READ-ALL` reads a regular file into caller storage and returns the byte count.
+The caller supplies the explicit output cap. Files larger than the cap throw
+`E-FS-CAPACITY`; open and I/O failures throw `E-FS-OPEN` or `E-FS-IO`.
+`WRITE-ALL` creates/truncates a regular file, and `APPEND-FILE` creates/appends
+to a regular file. Both write the full counted input or throw a named filesystem
+error.
 
 `WALK-FILES` must be implemented either as a checked quotation combinator or as
 one audited `TRUST` boundary with focused tests proving callback invocation,

@@ -169,6 +169,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Snapshot scanners need structural proof:** magic constants also appear in
   code. Accept a trailer only when `region-len + data-len` ends exactly at the
   trailer offset; otherwise fallback dictionary scans see false snapshots.
+- **Generic syscall prims expose raw positive errno:** `open`, `read`, and
+  `write` do not normalize carry like `open-rd`/`access`/`stat64`. Checked file
+  helpers must use normalized prims where available and validate syscall counts
+  instead of treating only negative values as failure.
 - **LLM benchmark reports need separate axes:** keep trial pass, task pass@k,
   repair rounds, wall time, and generated-token cost distinct. Output tokens are
   an effort proxy, not direct access to hidden reasoning.

@@ -12,6 +12,12 @@ FS-PATH-CAP 1 + constant FS-PATHZ-CAP
 16 constant FS-DIRENT-RECLEN-OFF
 18 constant FS-DIRENT-NAMELEN-OFF
 21 constant FS-DIRENT-NAME-OFF
+1 constant FS-O-WRONLY
+$8 constant FS-O-APPEND
+$200 constant FS-O-CREAT
+$400 constant FS-O-TRUNC
+420 constant FS-MODE-0644
+1 constant FS-READ-PROBE-CAP
 
 $F000 constant S-IFMT
 $4000 constant S-IFDIR
@@ -21,6 +27,7 @@ $2E constant FS-DOT
 $2F constant FS-SLASH
 
 create FS-PATHZ-BUF FS-PATHZ-CAP allot
+create FS-READ-PROBE FS-READ-PROBE-CAP allot
 create FS-STAT-BUF FS-STAT-CAP allot
 create FS-WALK-BUF FS-MAX-DEPTH FS-PATH-CAP * allot
 create FS-DIR-BUF FS-MAX-DEPTH FS-DIR-CAP * allot
@@ -35,6 +42,11 @@ variable FS-CHILD-U
 variable FS-ENT
 variable FS-NAME-A
 variable FS-NAME-U
+variable FS-IO-FD
+variable FS-IO-LEN
+variable FS-IO-RD
+variable FS-IO-OFF
+variable FS-IO-WR
 
 : FS-FALSE ( -- bool )
    0 0= 0= ;
@@ -181,6 +193,44 @@ variable FS-NAME-U
 
 : FS-PATH= ( ptr u8 n ptr u8 n -- bool )
    STR= ;
+
+: READ-ALL ( ptr u8 n ptr u8 n -- n ) {: pa:ptr pu dst:ptr cap :}
+   cap 0 < if E-FS-CAPACITY throw then
+   pa pu FS-PATHZ open-rd FS-IO-FD !
+   FS-IO-FD @ 0 < if E-FS-OPEN throw then
+   0 FS-IO-LEN !
+   begin FS-IO-LEN @ cap < while
+      FS-IO-FD @ dst FS-IO-LEN @ + cap FS-IO-LEN @ - read FS-IO-RD !
+      FS-IO-RD @ 0 < if FS-IO-FD @ close E-FS-IO throw then
+      FS-IO-RD @ cap FS-IO-LEN @ - > if FS-IO-FD @ close E-FS-IO throw then
+      FS-IO-RD @ 0= if FS-IO-FD @ close FS-IO-LEN @ exit then
+      FS-IO-LEN @ FS-IO-RD @ + FS-IO-LEN !
+   repeat
+   FS-IO-FD @ FS-READ-PROBE FS-READ-PROBE-CAP read FS-IO-RD !
+   FS-IO-RD @ 0 < if FS-IO-FD @ close E-FS-IO throw then
+   FS-IO-RD @ 0 > if FS-IO-FD @ close E-FS-CAPACITY throw then
+   FS-IO-FD @ close
+   FS-IO-LEN @ ;
+
+: FS-WRITE-BY-FLAGS ( ptr u8 n ptr u8 n n -- ) {: pa:ptr pu src:ptr u flags :}
+   u 0 < if E-FS-CAPACITY throw then
+   pa pu EXISTS? if pa pu FILE? 0= if E-FS-OPEN throw then then
+   pa pu FS-PATHZ flags FS-MODE-0644 open FS-IO-FD !
+   pa pu FILE? 0= if E-FS-OPEN throw then
+   0 FS-IO-OFF !
+   begin FS-IO-OFF @ u < while
+      FS-IO-FD @ src FS-IO-OFF @ + u FS-IO-OFF @ - write FS-IO-WR !
+      FS-IO-WR @ 0 <= if FS-IO-FD @ close E-FS-IO throw then
+      FS-IO-WR @ u FS-IO-OFF @ - > if FS-IO-FD @ close E-FS-IO throw then
+      FS-IO-OFF @ FS-IO-WR @ + FS-IO-OFF !
+   repeat
+   FS-IO-FD @ close ;
+
+: WRITE-ALL ( ptr u8 n ptr u8 n -- )
+   FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-WRITE-BY-FLAGS ;
+
+: APPEND-FILE ( ptr u8 n ptr u8 n -- )
+   FS-O-WRONLY FS-O-CREAT or FS-O-APPEND or FS-WRITE-BY-FLAGS ;
 
 : FS-DOT-ENTRY? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 1 = if a c@ FS-DOT = else FS-FALSE then ;

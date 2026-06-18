@@ -155,7 +155,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	map	lib/map.f	word	MAP-HAS?	(ptr a n ptr u8 n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test whether a counted key exists
 1	map	lib/map.f	word	MAP-SET	(n ptr a n ptr u8 n --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	insert or replace a numeric value by counted key
 1	map	lib/map.f	word	MAP-EACH	(ptr a n [ ptr u8 n n -- ] --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	visit occupied entries in storage-slot order
-1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	checked path stat join helpers now; WALK-FILES planned with checked quotation or audited TRUST boundary
+1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	checked path stat join read write append helpers and WALK-FILES contract
 1	fs	lib/fs.f	word	FS-FALSE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a false flag for filesystem helpers
 1	fs	lib/fs.f	word	FS-TRUE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a true flag for filesystem helpers
 1	fs	lib/fs.f	word	FS-U16@	(ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read a little-endian 16-bit field from bytes
@@ -189,6 +189,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs	lib/fs.f	word	BASENAME	(ptr u8 n -- ptr u8 n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return the final path component
 1	fs	lib/fs.f	word	JOIN-PATH	(ptr u8 n ptr u8 n ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	join two path segments into caller storage
 1	fs	lib/fs.f	word	FS-PATH=	(ptr u8 n ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	compare counted paths
+1	fs	lib/fs.f	word	READ-ALL	(ptr u8 n ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read a whole file into caller storage up to an explicit cap
+1	fs	lib/fs.f	word	FS-WRITE-BY-FLAGS	(ptr u8 n ptr u8 n n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	write all bytes using caller-selected open flags
+1	fs	lib/fs.f	word	WRITE-ALL	(ptr u8 n ptr u8 n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	create or truncate a file and write all bytes
+1	fs	lib/fs.f	word	APPEND-FILE	(ptr u8 n ptr u8 n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	create or append to a file and write all bytes
 1	fs	lib/fs.f	word	FS-DOT-ENTRY?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test current-directory entry name
 1	fs	lib/fs.f	word	FS-DOTDOT-ENTRY?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test parent-directory entry name
 1	fs	lib/fs.f	word	FS-SKIP-DIR?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test skipped walk directory names

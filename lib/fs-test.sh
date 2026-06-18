@@ -26,6 +26,8 @@ cleanup() { rm -rf "$T"; }
 trap cleanup EXIT HUP INT TERM
 
 ROOT=$T/root
+IO=$T/io.txt
+BIG=$T/big.txt
 mkdir -p "$ROOT/alpha/aa-child"
 mkdir -p "$ROOT/.git" "$ROOT/.jj" "$ROOT/.dots"
 mkdir -p "$ROOT/alpha/.git" "$ROOT/alpha/aa-child/.dots"
@@ -37,6 +39,7 @@ mkdir -p "$ROOT/alpha/.git" "$ROOT/alpha/aa-child/.dots"
 : > "$ROOT/.dots/ignored.txt"
 : > "$ROOT/alpha/.git/ignored.txt"
 : > "$ROOT/alpha/aa-child/.dots/ignored.txt"
+printf 'abcd' > "$BIG"
 
 DEEP=$T/deep
 mkdir -p "$DEEP"
@@ -51,4 +54,4 @@ done
 
 BUNDLE=$T/fs-test.f
 cat lib/errors.f lib/string.f lib/fs.f lib/fs-test.f > "$BUNDLE"
-"$HB" "$BUNDLE" "$ROOT" "$DEEP"
+"$HB" "$BUNDLE" "$ROOT" "$DEEP" "$IO" "$BIG"
