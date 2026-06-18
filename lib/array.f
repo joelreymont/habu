@@ -24,6 +24,27 @@
    len ix A-CHECK-INDEX
    value arr ix cells + ! ;
 
+: A+! ( n ptr a n n -- ) {: delta arr:ptr len ix :}
+   arr len ix A@ delta +
+   arr len ix A! ;
+
+: A-SWAP ( ptr a n n n -- ) {: arr:ptr len ix jx :}
+   arr len ix A@
+   arr len jx A@
+   arr len ix A!
+   arr len jx A! ;
+
+: LAST-INDEX ( n -- n ) {: len :}
+   len A-CHECK-NONEMPTY
+   len 1 - ;
+
+: MIRROR-INDEX ( n n -- n ) {: len ix :}
+   len ix A-CHECK-INDEX
+   len 1 - ix - ;
+
+: EVEN? ( n -- bool )
+   1 and 0= ;
+
 : A-SUM ( ptr n n -- n ) {: arr:ptr len :}
    len 0 len A-CHECK-RANGE
    0

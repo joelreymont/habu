@@ -79,6 +79,21 @@ create AT-WORK 5 cells allot
 : AT-ASTORE-HIGH ( -- )
    9 AT-WORK 5 5 A! ;
 
+: AT-APLUS-HIGH ( -- )
+   1 AT-WORK 5 5 A+! ;
+
+: AT-ASWAP-HIGH ( -- )
+   AT-WORK 5 0 5 A-SWAP ;
+
+: AT-ASWAP-NEG ( -- )
+   AT-WORK 5 -1 0 A-SWAP ;
+
+: AT-LAST-EMPTY ( -- )
+   0 LAST-INDEX drop ;
+
+: AT-MIRROR-HIGH ( -- )
+   5 5 MIRROR-INDEX drop ;
+
 : AT-MIN-EMPTY ( -- )
    AT-EMPTY 0 A-MIN drop ;
 
@@ -111,6 +126,25 @@ create AT-WORK 5 cells allot
    99 AT-WORK 1 0 A!
    AT-WORK 1 0 A@ 99 AT=
    ['] AT-ASTORE-HIGH catch E-A-BOUNDS AT= ;
+
+: AT-TEST-PROMOTED-HELPERS ( -- )
+   1 2 3 4 AT-WORK4
+   5 AT-WORK 4 1 A+!
+   AT-WORK 4 1 A@ 7 AT=
+   ['] AT-APLUS-HIGH catch E-A-BOUNDS AT=
+   AT-WORK 4 0 3 A-SWAP
+   AT-WORK 4 0 A@ 4 AT=
+   AT-WORK 4 3 A@ 1 AT=
+   ['] AT-ASWAP-HIGH catch E-A-BOUNDS AT=
+   ['] AT-ASWAP-NEG catch E-A-BOUNDS AT=
+   5 LAST-INDEX 4 AT=
+   ['] AT-LAST-EMPTY catch E-A-EMPTY AT=
+   5 1 MIRROR-INDEX 3 AT=
+   ['] AT-MIRROR-HIGH catch E-A-BOUNDS AT=
+   4 EVEN? -1 AT=
+   5 EVEN? 0 AT=
+   -2 EVEN? -1 AT=
+   -3 EVEN? 0 AT= ;
 
 : AT-TEST-SCALARS ( -- )
    AT-EMPTY 0 A-SUM 0 AT=
@@ -189,6 +223,7 @@ create AT-WORK 5 cells allot
 : AT-MAIN ( -- )
    AT-TEST-CHECKS
    AT-TEST-ACCESS
+   AT-TEST-PROMOTED-HELPERS
    AT-TEST-SCALARS
    AT-TEST-REVERSE
    AT-TEST-PREFIX

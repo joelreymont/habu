@@ -1,5 +1,5 @@
 \ habu-array-lib-test.f - focused tests for checked benchmark array helpers.
-\ Run: cat bench/llm/habu-array-lib.f bench/llm/habu-array-lib-test.f | bin/hb
+\ Run: cat lib/errors.f lib/array.f bench/llm/habu-array-lib.f bench/llm/habu-array-lib-test.f | bin/hb
 
 1 constant HATL-EX-FAIL
 variable HATL-N
@@ -17,15 +17,15 @@ variable HATL-FAIL
 
 here 1 , 2 , 3 , constant HATL-A
 
-HATL-A 0 A@ 1 HATL-ASSERT=
-HATL-A 2 A@ 3 HATL-ASSERT=
-9 HATL-A 1 A!
-HATL-A 1 A@ 9 HATL-ASSERT=
-5 HATL-A 1 A+!
-HATL-A 1 A@ 14 HATL-ASSERT=
-HATL-A 0 2 A-SWAP
-HATL-A 0 A@ 3 HATL-ASSERT=
-HATL-A 2 A@ 1 HATL-ASSERT=
+HATL-A 3 0 A@ 1 HATL-ASSERT=
+HATL-A 3 2 A@ 3 HATL-ASSERT=
+9 HATL-A 3 1 A!
+HATL-A 3 1 A@ 9 HATL-ASSERT=
+5 HATL-A 3 1 A+!
+HATL-A 3 1 A@ 14 HATL-ASSERT=
+HATL-A 3 0 2 A-SWAP
+HATL-A 3 0 A@ 3 HATL-ASSERT=
+HATL-A 3 2 A@ 1 HATL-ASSERT=
 5 LAST-INDEX 4 HATL-ASSERT=
 5 1 MIRROR-INDEX 3 HATL-ASSERT=
 4 EVEN? HATL-ASSERT
