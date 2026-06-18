@@ -104,6 +104,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Checked process code uses modeled primitives:** `run-rc` executes but is not
   checker-modeled. Use `spawn-io wait-rc` in checked examples until `run-rc` is
   expressed as a checked wrapper or given an audited checker model.
+- **Process buffers stay typed only on the stack:** storing caller byte-buffer
+  pointers in ordinary variables makes the checker see them as `n` on reload.
+  Keep capture buffers as typed locals/arguments and store only numeric fd/count
+  state in process variables.
 
 ## Darwin And Syscalls
 

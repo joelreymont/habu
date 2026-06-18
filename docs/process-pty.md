@@ -37,6 +37,10 @@ unchanged. It returns the spawned pid or `-1`; `wait-rc ( pid -- rc )` returns
 `WAIT-RC`, and `RUN-RC`; those wrappers accept counted paths and throw named
 process errors for primitive failures.
 
+`kill ( pid sig -- rc )` wraps Darwin syscall 37 and returns `0` or `-1`.
+`RUN-CAPTURE` uses it with `SIGKILL` before `wait-rc` whenever timeout or
+overflow cleanup must terminate the active child.
+
 When all three fds are negative, `spawn-io` passes a null descriptor. XNU rejects
 an args descriptor whose file-actions pointer names a zero-action blob with
 `EINVAL`.

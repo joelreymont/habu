@@ -45,6 +45,7 @@
 -2501 constant E-PROC-WAIT
 -2502 constant E-PROC-TIMEOUT
 -2503 constant E-PROC-OUTPUT
+-2504 constant E-PROC-TRUNCATED
 
 \ Time/date: -2600..-2699
 -2600 constant E-TIME-FIRST

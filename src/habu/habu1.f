@@ -229,6 +229,15 @@ variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
    pdn LBL,
    0 G-PUSH ;
 
+: BKILL  1 G-POP  0 G-POP           \ ( pid sig -- rc ) rc=0 or -1
+   LBL LBL {: kok kdn :}
+   NR-KILL SYS,
+   9 C-CS CSET,  9 kok CBZ,
+      0 0 MOVN,  kdn B,
+   kok LBL,
+   kdn LBL,
+   0 G-PUSH ;
+
 : BWAITRC  A G-POP                    \ ( pid -- rc ) wait4; -1 = wait failed
    LBL LBL {: wok wdn :}
    SP SP 16 SUBI,
@@ -653,6 +662,7 @@ s" spawn-dup2-action" s" n n --" TRUST
    s" run-rc" ['] BRUNRC FPRIM-L
    s" pipe" ['] BPIPE FPRIM-L   s" dup2" ['] BDUP2 FPRIM-L
    s" fcntl" ['] BFCNTL FPRIM-L   s" poll" ['] BPOLL FPRIM-L
+   s" kill" ['] BKILL FPRIM-L
    s" spawn-io" ['] BSPAWNIO FPRIM-L   s" wait-rc" ['] BWAITRC FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L

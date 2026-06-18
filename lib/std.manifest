@@ -211,6 +211,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup
 1	process	lib/process.f	word	PROC-WAIT-RAW	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-rc alias captured before checked wrapper shadows the primitive name
 1	process	lib/process.f	word	PROC-SPAWN-RAW	(ptr u8 n n n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-io alias captured before checked wrapper shadows the primitive name
+1	process	lib/process.f	word	PROC-KILL-RAW	(n n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw kill alias for terminating timed-out capture children
 1	process	lib/process.f	word	PROC-ZCOPY	(ptr u8 n ptr u8 n -- ptr u8)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	copy counted bytes into a bounded NUL-terminated process buffer
 1	process	lib/process.f	word	PATHZ	(ptr u8 n -- ptr u8)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	copy counted path into the process module pathz buffer
 1	process	lib/process.f	word	WAIT-RC	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and throw on wait failure
@@ -218,9 +219,32 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	RUN-RC	(ptr u8 n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path and return exit status
 1	process	lib/process.f	word	FD-CLOEXEC!	(n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	mark a parent-owned fd close-on-exec
 1	process	lib/process.f	word	PIPE-PAIR	(-- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	create a pipe and throw on failure
+1	process	lib/process.f	word	PROC-PFD-SLOT	(n -- ptr a)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	return a pollfd slot in the process poll buffer
+1	process	lib/process.f	word	PROC-PFD-AT!	(n n n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	write one indexed pollfd entry
 1	process	lib/process.f	word	PROC-PFD!	(n n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	write one pollfd entry into the process poll buffer
+1	process	lib/process.f	word	PROC-PFD-REVENTS	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	read revents from one process pollfd slot
 1	process	lib/process.f	word	POLL-IN	(n n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	poll one fd for readable input with millisecond timeout
 1	process	lib/process.f	word	POLL-IN-OR-TIMEOUT	(n n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	poll one fd for readable input and throw on timeout or poll failure
+1	process	lib/process.f	word	PROC-CAPTURE-RESET	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	reset process capture state cells
+1	process	lib/process.f	word	PROC-CLOSE-CELL	(ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	close and clear a file descriptor cell
+1	process	lib/process.f	word	PROC-CLOSE-CAPTURE-FDS	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	close every fd owned by the active capture
+1	process	lib/process.f	word	PROC-REAP-CAPTURE	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for the active capture child and store its rc
+1	process	lib/process.f	word	PROC-KILL-CAPTURE	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	terminate and reap the active capture child
+1	process	lib/process.f	word	PROC-THROW-CAPTURE	(n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	clean capture resources and throw the supplied process error
+1	process	lib/process.f	word	PROC-OPEN-PIPE	(ptr a ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	open one capture pipe into read and write fd cells
+1	process	lib/process.f	word	PROC-CLOEXEC-CELL	(ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	mark one fd cell close-on-exec or throw with cleanup
+1	process	lib/process.f	word	PROC-SETUP-CAPTURE-FDS	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	open and protect stdout/stderr capture pipes
+1	process	lib/process.f	word	PROC-CAPTURE-DEADLINE!	(n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	record an absolute monotonic capture deadline
+1	process	lib/process.f	word	PROC-REMAINING-MS	(-- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	return milliseconds remaining before capture timeout
+1	process	lib/process.f	word	PROC-POLL-CAPTURE	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	poll stdout and stderr capture fds together
+1	process	lib/process.f	word	PROC-READ-STREAM	(ptr a ptr u8 n ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	read one ready capture stream into caller storage
+1	process	lib/process.f	word	PROC-PROBE-FULL-STREAM	(ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	distinguish exact-capacity EOF from capture overflow
+1	process	lib/process.f	word	PROC-READ-OR-PROBE-STREAM	(ptr a ptr u8 n ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	read or overflow-probe one ready capture stream
+1	process	lib/process.f	word	PROC-DRAIN-READY	(ptr u8 n ptr u8 n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	drain readable stdout/stderr capture streams
+1	process	lib/process.f	word	PROC-CAPTURE-DONE?	(-- bool)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	test whether both capture streams reached EOF
+1	process	lib/process.f	word	PROC-RUN-CAPTURE-LOOP	(ptr u8 n ptr u8 n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	poll and drain capture streams until EOF or timeout
+1	process	lib/process.f	word	PROC-SPAWN-CAPTURE	(ptr u8 --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn the capture child and close parent write fds
+1	process	lib/process.f	word	RUN-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr rc
 1	argv	lib/argv.f	module			lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	checked command-line parser helpers for hb script args
 1	argv	lib/argv.f	word	ARGV-FALSE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a false flag for parser internals
 1	argv	lib/argv.f	word	ARGV-TRUE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a true flag for parser internals

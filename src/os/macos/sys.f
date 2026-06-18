@@ -10,6 +10,7 @@
 184 constant NR-SIGRETURN
 5   constant NR-OPEN
 6   constant NR-CLOSE
+37  constant NR-KILL
 42  constant NR-PIPE
 46  constant NR-SIGACTION
 74  constant NR-MPROTECT

@@ -6,6 +6,8 @@
 variable PT-R
 variable PT-W
 create PT-BUF 32 allot
+create PT-OUT 32 allot
+create PT-ERR 32 allot
 
 : PT-READ ( fd -- n )
    PT-BUF 32 read ;
@@ -49,13 +51,50 @@ create PT-BUF 32 allot
    PT-R @ close
    PT-W @ close ;
 
+: PT-CAPTURE-OK ( -- ptr u8 n )
+   0 SCRIPT-ARGV$ ;
+
+: PT-CAPTURE-LONG ( -- ptr u8 n )
+   1 SCRIPT-ARGV$ ;
+
+: PT-CAPTURE-SLEEP ( -- ptr u8 n )
+   2 SCRIPT-ARGV$ ;
+
+: TEST-RUN-CAPTURE-BASIC ( -- )
+   PT-CAPTURE-OK PT-OUT 32 PT-ERR 32 1000 RUN-CAPTURE 7 T= 3 T= 3 T=
+   PT-OUT 3 s" out" T$=
+   PT-ERR 3 s" err" T$= ;
+
+: TEST-RUN-CAPTURE-EXACT-CAP ( -- )
+   PT-CAPTURE-OK PT-OUT 3 PT-ERR 3 1000 RUN-CAPTURE 7 T= 3 T= 3 T=
+   PT-OUT 3 s" out" T$=
+   PT-ERR 3 s" err" T$= ;
+
+: TEST-RUN-CAPTURE-TRUNCATED ( -- )
+   PT-CAPTURE-LONG PT-OUT 3 PT-ERR 32 1000 RUN-CAPTURE 2drop drop ;
+
+: TEST-RUN-CAPTURE-TIMEOUT ( -- )
+   PT-CAPTURE-SLEEP PT-OUT 32 PT-ERR 32 100 RUN-CAPTURE 2drop drop ;
+
+: TEST-RUN-CAPTURE-FD-CLEANUP ( -- )
+   0 begin dup 80 < while
+      PT-CAPTURE-OK PT-OUT 32 PT-ERR 32 1000 RUN-CAPTURE 7 T= 3 T= 3 T=
+      1+
+   repeat drop ;
+
 : PROCESS-TEST-MAIN ( -- )
    T-RESET
+   SCRIPT-ARGC 3 < if s" process-test: missing fixture args" T-EX-FAIL die then
    TEST-PATHZ
    TEST-SPAWN-WAIT
    TEST-WAIT-FAIL
    TEST-PIPE
    TEST-POLL-TIMEOUT
+   TEST-RUN-CAPTURE-BASIC
+   TEST-RUN-CAPTURE-EXACT-CAP
+   ['] TEST-RUN-CAPTURE-TRUNCATED E-PROC-TRUNCATED TTHROWS
+   ['] TEST-RUN-CAPTURE-TIMEOUT E-PROC-TIMEOUT TTHROWS
+   TEST-RUN-CAPTURE-FD-CLEANUP
    T-REPORT
    s" process-test: ok" type cr ;
 

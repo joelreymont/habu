@@ -367,6 +367,7 @@ buffers, and never require LLM code to build C strings by hand.
 ```forth
 PROC-WAIT-RAW       ( n -- n )
 PROC-SPAWN-RAW      ( ptr u8 n n n -- n )
+PROC-KILL-RAW       ( n n -- n )
 PROC-ZCOPY          ( ptr u8 n ptr u8 n -- ptr u8 )
 PATHZ               ( ptr u8 n -- ptr u8 )
 WAIT-RC             ( n -- n )
@@ -374,9 +375,31 @@ SPAWN-IO            ( ptr u8 n n n n -- n )
 RUN-RC              ( ptr u8 n -- n )
 FD-CLOEXEC!         ( n -- )
 PIPE-PAIR           ( -- n n )
+PROC-PFD-SLOT       ( n -- ptr a )
+PROC-PFD-AT!        ( n n n -- )
 PROC-PFD!           ( n n -- )
+PROC-PFD-REVENTS    ( n -- n )
 POLL-IN             ( n n -- n )
 POLL-IN-OR-TIMEOUT  ( n n -- n )
+PROC-CAPTURE-RESET       ( -- )
+PROC-CLOSE-CELL          ( ptr a -- )
+PROC-CLOSE-CAPTURE-FDS   ( -- )
+PROC-REAP-CAPTURE        ( -- )
+PROC-KILL-CAPTURE        ( -- )
+PROC-THROW-CAPTURE       ( n -- )
+PROC-OPEN-PIPE           ( ptr a ptr a -- )
+PROC-CLOEXEC-CELL        ( ptr a -- )
+PROC-SETUP-CAPTURE-FDS   ( -- )
+PROC-CAPTURE-DEADLINE!   ( n -- )
+PROC-REMAINING-MS        ( -- n )
+PROC-POLL-CAPTURE        ( n -- n )
+PROC-READ-STREAM         ( ptr a ptr u8 n ptr a -- )
+PROC-PROBE-FULL-STREAM   ( ptr a -- )
+PROC-READ-OR-PROBE-STREAM ( ptr a ptr u8 n ptr a -- )
+PROC-DRAIN-READY         ( ptr u8 n ptr u8 n -- )
+PROC-CAPTURE-DONE?       ( -- bool )
+PROC-RUN-CAPTURE-LOOP    ( ptr u8 n ptr u8 n -- )
+PROC-SPAWN-CAPTURE       ( ptr u8 -- )
 RUN-CAPTURE  ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
 ```
 
@@ -405,13 +428,11 @@ the checked wrapper names are defined. Application code should prefer
 buffer/capacity, and timeout milliseconds. It returns stdout length, stderr
 length, and rc in that order. Captures are bounded by the caller capacities; if
 either stream would exceed its capacity, the word throws `E-PROC-TRUNCATED`
-rather than truncating silently. On timeout, it terminates or otherwise reaps the
-child before throwing `E-PROC-TIMEOUT`. Process wrappers throw named errors for
-path conversion failure, spawn failure, wait failure, capture drain failure,
-timeout, and output capacity overflow.
-
-`RUN-CAPTURE` remains a planned layer until Habu has the primitive support needed
-to terminate and reap timed-out children without leaking a process.
+rather than truncating silently. Exact-capacity output is accepted when the next
+read observes EOF. On timeout, it sends `SIGKILL` through the checked
+`PROC-KILL-RAW` boundary, waits for the child, closes owned fds, and then throws
+`E-PROC-TIMEOUT`. Truncation and other capture failures also clean up all owned
+fds and terminate/reap the active child before throwing a named process error.
 
 ## Date And Time
 
