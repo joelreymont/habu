@@ -84,14 +84,17 @@
    loop
    drop ;
 
-: A-REVERSE! ( ptr a n -- ) {: arr:ptr len :}
-   len 0 len A-CHECK-RANGE
-   len 2 / 0 ?do
-      arr i cells + @
-      arr len 1 - i - cells + @
-      arr i cells + !
-      arr len 1 - i - cells + !
+: A-MAX-INDEX ( ptr n n -- n )
+   A-ARGMAX ;
+
+: A-REVERSE-RANGE! ( ptr a n n n -- ) {: arr:ptr len start cnt :}
+   len start cnt A-CHECK-RANGE
+   cnt 2 / 0 ?do
+      arr len start i + start cnt + 1 - i - A-SWAP
    loop ;
+
+: A-REVERSE! ( ptr a n -- ) {: arr:ptr len :}
+   arr len 0 len A-REVERSE-RANGE! ;
 
 : A-PREFIX-SUM! ( ptr n n -- ) {: arr:ptr len :}
    len 0 len A-CHECK-RANGE
@@ -116,3 +119,56 @@
    len 0 ?do
       value arr i cells + !
    loop ;
+
+: A-MAP! ( ptr a n [ a -- a ] -- ) {: arr:ptr len q :}
+   len 0 len A-CHECK-RANGE
+   arr len q MAP ;
+
+: A-MAPI! ( ptr a n [ n a -- a ] -- ) {: arr:ptr len q :}
+   len 0 len A-CHECK-RANGE
+   len 0 ?do
+      i arr len i A@ q execute
+      arr len i A!
+   loop ;
+
+: A-FOLD ( ptr a n b [ b a -- b ] -- b ) {: arr:ptr len acc q :}
+   len 0 len A-CHECK-RANGE
+   arr len acc q FOLD ;
+
+: A-FOLDI ( ptr a n b [ b n a -- b ] -- b ) {: arr:ptr len acc q :}
+   len 0 len A-CHECK-RANGE
+   acc len 0 ?do
+      i arr len i A@ q execute
+   loop ;
+
+: A-SCAN! ( ptr n n n [ n n -- n ] -- ) {: arr:ptr len acc q :}
+   len 0 len A-CHECK-RANGE
+   acc len 0 ?do
+      arr len i A@ q execute
+      dup arr len i A!
+   loop
+   drop ;
+
+: A-SCAN1! ( ptr n n [ n n -- n ] -- ) {: arr:ptr len q :}
+   len 0 len A-CHECK-RANGE
+   len 1 <= IF exit THEN
+   arr len 0 A@
+   len 1 ?do
+      arr len i A@ q execute
+      dup arr len i A!
+   loop
+   drop ;
+
+: A-FIND-INDEX ( ptr a n [ a -- bool ] -- n ) {: arr:ptr len q :}
+   len 0 len A-CHECK-RANGE
+   len 0 ?do
+      arr len i A@ q execute IF i exit THEN
+   loop
+   -1 ;
+
+: A-FIND-INDEXI ( ptr a n [ n a -- bool ] -- n ) {: arr:ptr len q :}
+   len 0 len A-CHECK-RANGE
+   len 0 ?do
+      i arr len i A@ q execute IF i exit THEN
+   loop
+   -1 ;

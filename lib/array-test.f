@@ -5,11 +5,14 @@
 
 variable AT-CASE
 variable AT-FAIL
+variable AT-START-DEPTH
+variable AT-ACTUAL-DEPTH
 
 create AT-EMPTY
 create AT-ONE 42 ,
 create AT-NORMAL 3 , -1 , 4 , 4 , 2 ,
 create AT-WORK 5 cells allot
+create AT-ACTUAL 32 cells allot
 
 : AT= {: got want :} ( n n -- )
    AT-CASE @ 1 + AT-CASE !
@@ -17,6 +20,23 @@ create AT-WORK 5 cells allot
       [char] F emit AT-CASE @ .
       AT-FAIL @ 1 + AT-FAIL !
    THEN ;
+
+0 set-check
+: T{ ( -- )
+   depth AT-START-DEPTH ! ;
+
+: -> ( R -- )
+   depth AT-START-DEPTH @ - dup AT-ACTUAL-DEPTH !
+   0 ?do
+      AT-ACTUAL i cells + !
+   loop ;
+
+: }T ( R -- )
+   depth AT-START-DEPTH @ - dup AT-ACTUAL-DEPTH @ AT=
+   0 ?do
+      AT-ACTUAL i cells + @ AT=
+   loop ;
+' HB-CHECK-HOOK set-check
 
 : AT-WORK1 ( n -- )
    AT-WORK ! ;
@@ -33,6 +53,13 @@ create AT-WORK 5 cells allot
    AT-WORK 2 cells + !
    AT-WORK cell+ !
    AT-WORK ! ;
+
+: AT-WORK5@ ( -- n n n n n )
+   AT-WORK 5 0 A@
+   AT-WORK 5 1 A@
+   AT-WORK 5 2 A@
+   AT-WORK 5 3 A@
+   AT-WORK 5 4 A@ ;
 
 : AT-CHECK-INDEX-VALID ( -- )
    5 0 A-CHECK-INDEX
@@ -102,6 +129,36 @@ create AT-WORK 5 cells allot
 
 : AT-ARGMAX-EMPTY ( -- )
    AT-EMPTY 0 A-ARGMAX drop ;
+
+: AT-AMAP-NEG ( -- )
+   AT-WORK -1 [: 1+ ;] A-MAP! ;
+
+: AT-AMAPI-NEG ( -- )
+   AT-WORK -1 [: + ;] A-MAPI! ;
+
+: AT-AFOLD-NEG ( -- )
+   AT-WORK -1 0 [: + ;] A-FOLD drop ;
+
+: AT-AFOLDI-NEG ( -- )
+   AT-WORK -1 0 [: + + ;] A-FOLDI drop ;
+
+: AT-ASCAN-NEG ( -- )
+   AT-WORK -1 0 [: + ;] A-SCAN! ;
+
+: AT-ASCAN1-NEG ( -- )
+   AT-WORK -1 [: + ;] A-SCAN1! ;
+
+: AT-AREVERSE-RANGE-OVERRUN ( -- )
+   AT-WORK 5 3 3 A-REVERSE-RANGE! ;
+
+: AT-AFIND-NEG ( -- )
+   AT-WORK -1 [: 0= ;] A-FIND-INDEX drop ;
+
+: AT-AFINDI-NEG ( -- )
+   AT-WORK -1 [: drop 0= ;] A-FIND-INDEXI drop ;
+
+: AT-AMAX-INDEX-EMPTY ( -- )
+   AT-EMPTY 0 A-MAX-INDEX drop ;
 
 : AT-TEST-CHECKS ( -- )
    ['] AT-CHECK-INDEX-VALID catch 0 AT=
@@ -215,6 +272,84 @@ create AT-WORK 5 cells allot
    AT-WORK 5 3 A@ -6 AT=
    AT-WORK 5 4 A@ -6 AT= ;
 
+: AT-TEST-MAP-COMBINATORS ( -- )
+   33 AT-WORK1
+   T{ AT-WORK 0 [: 1+ ;] A-MAP! -> }T
+   T{ AT-WORK 1 0 A@ -> 33 }T
+   7 AT-WORK1
+   T{ AT-WORK 1 [: 2 * ;] A-MAP! -> }T
+   T{ AT-WORK 1 0 A@ -> 14 }T
+   1 -2 3 0 5 AT-WORK5
+   T{ AT-WORK 5 [: dup * ;] A-MAP! -> }T
+   T{ AT-WORK5@ -> 1 4 9 0 25 }T
+   ['] AT-AMAP-NEG catch E-A-BOUNDS AT=
+   44 AT-WORK1
+   T{ AT-WORK 0 [: + ;] A-MAPI! -> }T
+   T{ AT-WORK 1 0 A@ -> 44 }T
+   7 AT-WORK1
+   T{ AT-WORK 1 [: + ;] A-MAPI! -> }T
+   T{ AT-WORK 1 0 A@ -> 7 }T
+   10 10 10 10 10 AT-WORK5
+   T{ AT-WORK 5 [: + ;] A-MAPI! -> }T
+   T{ AT-WORK5@ -> 10 11 12 13 14 }T
+   ['] AT-AMAPI-NEG catch E-A-BOUNDS AT= ;
+
+: AT-TEST-FOLD-COMBINATORS ( -- )
+   T{ AT-EMPTY 0 100 [: + ;] A-FOLD -> 100 }T
+   T{ AT-ONE 1 0 [: + ;] A-FOLD -> 42 }T
+   T{ AT-NORMAL 5 0 [: + ;] A-FOLD -> 12 }T
+   ['] AT-AFOLD-NEG catch E-A-BOUNDS AT=
+   T{ AT-EMPTY 0 100 [: + + ;] A-FOLDI -> 100 }T
+   T{ AT-ONE 1 0 [: + + ;] A-FOLDI -> 42 }T
+   T{ AT-NORMAL 5 0 [: * + ;] A-FOLDI -> 27 }T
+   ['] AT-AFOLDI-NEG catch E-A-BOUNDS AT= ;
+
+: AT-TEST-SCAN-COMBINATORS ( -- )
+   90 AT-WORK1
+   T{ AT-WORK 0 0 [: + ;] A-SCAN! -> }T
+   T{ AT-WORK 1 0 A@ -> 90 }T
+   4 AT-WORK1
+   T{ AT-WORK 1 10 [: + ;] A-SCAN! -> }T
+   T{ AT-WORK 1 0 A@ -> 14 }T
+   3 1 4 1 5 AT-WORK5
+   T{ AT-WORK 5 0 [: + ;] A-SCAN! -> }T
+   T{ AT-WORK5@ -> 3 4 8 9 14 }T
+   ['] AT-ASCAN-NEG catch E-A-BOUNDS AT=
+   91 AT-WORK1
+   T{ AT-WORK 0 [: + ;] A-SCAN1! -> }T
+   T{ AT-WORK 1 0 A@ -> 91 }T
+   4 AT-WORK1
+   T{ AT-WORK 1 [: + ;] A-SCAN1! -> }T
+   T{ AT-WORK 1 0 A@ -> 4 }T
+   3 1 4 1 5 AT-WORK5
+   T{ AT-WORK 5 [: + ;] A-SCAN1! -> }T
+   T{ AT-WORK5@ -> 3 4 8 9 14 }T
+   ['] AT-ASCAN1-NEG catch E-A-BOUNDS AT= ;
+
+: AT-TEST-INDEX-COMBINATORS ( -- )
+   1 2 3 4 5 AT-WORK5
+   T{ AT-WORK 5 0 0 A-REVERSE-RANGE! -> }T
+   T{ AT-WORK 5 0 A@ AT-WORK 5 4 A@ -> 1 5 }T
+   T{ AT-WORK 5 2 1 A-REVERSE-RANGE! -> }T
+   T{ AT-WORK5@ -> 1 2 3 4 5 }T
+   T{ AT-WORK 5 1 3 A-REVERSE-RANGE! -> }T
+   T{ AT-WORK5@ -> 1 4 3 2 5 }T
+   ['] AT-AREVERSE-RANGE-OVERRUN catch E-A-BOUNDS AT=
+   T{ AT-EMPTY 0 [: 4 = ;] A-FIND-INDEX -> -1 }T
+   T{ AT-ONE 1 [: 42 = ;] A-FIND-INDEX -> 0 }T
+   T{ AT-NORMAL 5 [: 4 = ;] A-FIND-INDEX -> 2 }T
+   T{ AT-NORMAL 5 [: 9 = ;] A-FIND-INDEX -> -1 }T
+   ['] AT-AFIND-NEG catch E-A-BOUNDS AT=
+   T{ AT-EMPTY 0 [: drop 0 = ;] A-FIND-INDEXI -> -1 }T
+   T{ AT-ONE 1 [: drop 0 = ;] A-FIND-INDEXI -> 0 }T
+   T{ AT-NORMAL 5 [: drop 3 = ;] A-FIND-INDEXI -> 3 }T
+   ['] AT-AFINDI-NEG catch E-A-BOUNDS AT=
+   ['] AT-AMAX-INDEX-EMPTY catch E-A-EMPTY AT=
+   T{ AT-ONE 1 A-MAX-INDEX -> 0 }T
+   T{ AT-NORMAL 5 A-MAX-INDEX -> 2 }T
+   1 5 5 2 AT-WORK4
+   T{ AT-WORK 4 A-MAX-INDEX -> 1 }T ;
+
 : AT-REPORT ( -- )
    AT-FAIL @ 0 = IF s" array-test: ok" type cr exit THEN
    AT-FAIL @ . s" array-test: failures" type cr
@@ -229,6 +364,10 @@ create AT-WORK 5 cells allot
    AT-TEST-PREFIX
    AT-TEST-RUNMAX
    AT-TEST-FILL
+   AT-TEST-MAP-COMBINATORS
+   AT-TEST-FOLD-COMBINATORS
+   AT-TEST-SCAN-COMBINATORS
+   AT-TEST-INDEX-COMBINATORS
    AT-REPORT ;
 
 AT-MAIN
