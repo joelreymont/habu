@@ -62,6 +62,11 @@ check_v2_manifest() {
   require_task 75 DIAG-TRUSTED-BOUNDARY diagnostic-repair forth stack v2,trusted_boundary_required
   require_task 76 DIAG-SIGNATURE-SYNTAX diagnostic-repair forth stack v2,fix_signature_syntax
   require_task 77 DIAG-REWRITE-UNCHECKABLE diagnostic-repair forth stack v2,rewrite_uncheckable
+  require_task 78 FIND-FIRST-NEG arrays array as v2,find-index
+  require_task 79 ABS-EACH arrays array aa v2,map
+  require_task 80 ADD-INDEX arrays array aa v2,indexed-map
+  require_task 81 PREFIX-PROD arrays array aa v2,scan
+  require_task 82 REVERSE-INNER arrays array aa v2,reverse-range
 }
 assert_repair_class() {
   name=$1
