@@ -16,10 +16,14 @@ variable HOST-NUM-L
 variable HOST-PATH-A
 variable HOST-PATH-U
 
+: HOST-CHECK-HOOK ( -- )
+   CHECK! ;
+' HOST-CHECK-HOOK set-check
+
 : HOST-NL ( -- )
    10 emit ;
 
-: HOST-U. ( u -- )
+: HOST-U. ( n -- )
    0 HOST-NUM-L !
    dup 0= IF drop 48 emit exit THEN
    begin dup 0 > while
@@ -43,7 +47,7 @@ variable HOST-PATH-U
    112 HOST-PAT-B 1 + c!
    121 HOST-PAT-B 2 + c! ;
 
-: HOST-FIND-CI {: a u b v :} ( -- idx|-1 )
+: HOST-FIND-CI {: a:ptr u b:ptr v :} ( ptr u8 n ptr u8 n -- n )
    v 0= IF 0 exit THEN
    u v < IF -1 exit THEN
    0 begin dup u v - <= while
@@ -51,7 +55,7 @@ variable HOST-PATH-U
       1+
    repeat drop -1 ;
 
-: HOST-FIND {: a u b v :} ( -- idx|-1 )
+: HOST-FIND {: a:ptr u b:ptr v :} ( ptr u8 n ptr u8 n -- n )
    v 0= IF 0 exit THEN
    u v < IF -1 exit THEN
    0 begin dup u v - <= while
@@ -59,13 +63,13 @@ variable HOST-PATH-U
       1+
    repeat drop -1 ;
 
-: HOST-LINE# {: a u idx :} ( -- n )
+: HOST-LINE# {: a:ptr u idx :} ( ptr u8 n n -- n )
    1 0 begin dup idx < while
       dup a + c@ 10 = IF swap 1+ swap THEN
       1+
    repeat drop ;
 
-: HOST-TEXT? {: a u :} ( -- f )
+: HOST-TEXT? {: a:ptr u :} ( ptr u8 n -- bool )
    a u s" .f" HAS-EXT? IF -1 exit THEN
    a u s" .fs" HAS-EXT? IF -1 exit THEN
    a u s" .sh" HAS-EXT? IF -1 exit THEN
@@ -75,30 +79,30 @@ variable HOST-PATH-U
    a u s" .json" HAS-EXT? IF -1 exit THEN
    a u s" .jsonl" HAS-EXT? ;
 
-: HOST-REPORT-PATH ( a u -- )
+: HOST-REPORT-PATH ( ptr u8 n -- )
    s" HOST-LINT " type
    type
    s" : path contains retired host-script token" type HOST-NL
    HOST-BAD @ 1+ HOST-BAD ! ;
 
-: HOST-REPORT-CONTENT {: a u line :} ( -- )
+: HOST-REPORT-CONTENT {: a:ptr u line :} ( ptr u8 n n -- )
    s" HOST-LINT " type
    a u type 58 emit line HOST-U.
    s" : content contains retired host-script token" type HOST-NL
    HOST-BAD @ 1+ HOST-BAD ! ;
 
-: HOST-PATH-BAD? ( a u -- f )
+: HOST-PATH-BAD? ( ptr u8 n -- bool )
    2dup HOST-PAT-A 6 HOST-FIND-CI 0 >= IF 2drop -1 exit THEN
    HOST-PAT-B 3 HOST-FIND-CI 0 >= ;
 
-: HOST-BENCH-BASELINE? ( a u -- f )
+: HOST-BENCH-BASELINE? ( ptr u8 n -- bool )
    2dup s" ./bench/llm/drive-" PREFIX? IF s" .sh" HAS-EXT? exit THEN
    2dup s" ./bench/llm/bench-test.sh" PATH= IF 2drop -1 exit THEN
    2dup s" ./bench/llm/run-bench.sh" PATH= IF 2drop -1 exit THEN
    2dup s" ./bench/llm/report.f" PATH= IF 2drop -1 exit THEN
    s" ./bench/llm/lib.sh" PATH= ;
 
-: HOST-CHECK-A ( a u -- )
+: HOST-CHECK-A ( ptr u8 n -- )
    HOST-PAT-A 6 HOST-FIND
    dup 0 >= IF
       HOST-BUF HOST-LEN @ rot HOST-LINE#
@@ -107,7 +111,7 @@ variable HOST-PATH-U
       drop
    THEN ;
 
-: HOST-CHECK-B ( a u -- )
+: HOST-CHECK-B ( ptr u8 n -- )
    HOST-PAT-B 3 HOST-FIND
    dup 0 >= IF
       HOST-BUF HOST-LEN @ rot HOST-LINE#
@@ -120,7 +124,7 @@ variable HOST-PATH-U
    HOST-BUF HOST-LEN @ HOST-CHECK-A
    HOST-BUF HOST-LEN @ HOST-CHECK-B ;
 
-: HOST-SCAN-FILE {: a u :} ( -- )
+: HOST-SCAN-FILE {: a:ptr u :} ( ptr u8 n -- )
    a u HOST-BENCH-BASELINE? IF exit THEN
    a u HOST-PATH-BAD? IF a u HOST-REPORT-PATH exit THEN
    a u HOST-TEXT? 0= IF exit THEN

@@ -26,6 +26,7 @@ out=$(run_lint \
   "$ROOT/bench/llm/report.f" \
   "$ROOT/bench/llm/parse-resp.f" \
   "$ROOT/bench/llm/validate-results.f" \
+  "$ROOT/tools/host-lint.f" \
   "$ROOT/tools/filemap-lint.f" \
   "$ROOT/tools/parallel-agent-lint.f")
 [ -z "$out" ] || {
