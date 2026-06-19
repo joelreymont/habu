@@ -14,8 +14,13 @@ MAXR=${BENCH_MAX_REPAIRS:-5}
 TAB=$(printf '\t')
 
 mkdir -p "$(dirname "$OUT")"
-: > "$OUT"
+if [ "${BENCH_RESUME:-0}" = 1 ] && [ -f "$OUT" ]; then
+  :
+else
+  : > "$OUT"
+fi
 bench_require_manifest_header "$TASKS"
+RUN_ARM=${BENCH_FORTH_ARM:-habu-forth}
 
 task_selected() {
   id=$1
@@ -24,6 +29,17 @@ task_selected() {
     *",$id,"*) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+row_done() {
+  rid=$1
+  rmodel=$2
+  rtrial=$3
+  [ -f "$OUT" ] || return 1
+  grep -F "\"task_id\":$rid," "$OUT" |
+    grep -F "\"model_id\":\"$rmodel\"" |
+    grep -F "\"arm\":\"$RUN_ARM\"" |
+    grep -F "\"trial\":$rtrial," >/dev/null
 }
 
 task_order=0
@@ -42,6 +58,10 @@ tail -n +2 "$TASKS" | while IFS="$TAB" read -r id name signature category tests 
     [ -n "$model_id" ] || continue
     t=1
     while [ "$t" -le "$K" ]; do
+      if [ "${BENCH_RESUME:-0}" = 1 ] && row_done "$id" "$model_id" "$t"; then
+        t=$((t + 1))
+        continue
+      fi
       MODEL_ID=$model_id \
       BENCH_TRIAL=$t \
       BENCH_TASK_ORDER=$task_order \

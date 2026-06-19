@@ -288,6 +288,17 @@ MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_RE
 }
 chk forth-runner-report 'category arithmetic rows=1 certified=1 tests=1' "$(cat "$T/forth-results.md")"
 
+MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_SEED=forth-resume BENCH_RESULTS="$T/forth-resume-full.md" \
+  sh bench/llm/run-forth-bench.sh 2 "$T/forth-resume-full.jsonl" >/dev/null
+sed -n '1p' "$T/forth-resume-full.jsonl" > "$T/forth-resume-partial.jsonl"
+MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_SEED=forth-resume BENCH_RESUME=1 BENCH_RESULTS="$T/forth-resume.md" \
+  sh bench/llm/run-forth-bench.sh 2 "$T/forth-resume-partial.jsonl" >/dev/null
+[ "$(wc -l < "$T/forth-resume-partial.jsonl" | tr -d ' ')" = 2 ] && echo "ok: forth-runner-resume-row-count" || {
+  echo "FAIL: forth-runner-resume-row-count"
+  fails=$((fails+1))
+}
+chk forth-runner-resume-report 'rows=2 certified=2 first_tests=2 tests=2' "$(cat "$T/forth-resume.md")"
+
 # --- conv=aa : REVERSE (array -> array, in place) ---
 mkstub "$T/hb2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do i cells arr + @ len 1 - i - cells arr + @ i cells arr + ! len 1 - i - cells arr + ! loop ;"'
 mkstub "$T/hbl2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr len i len i MIRROR-INDEX A-SWAP loop ;"'

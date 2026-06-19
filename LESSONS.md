@@ -180,6 +180,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **LLM benchmark reports need separate axes:** keep trial pass, task pass@k,
   repair rounds, wall time, and generated-token cost distinct. Output tokens are
   an effort proxy, not direct access to hidden reasoning.
+- **Live benchmark sweeps must resume by identity:** model calls and driver
+  repairs can fail before emitting a row. Resume on `(model_id, arm, task_id,
+  trial)` so interrupted JSONL fills missing trials without duplicating evidence.
 - **Dogfood benchmark hot paths:** per-call benchmark glue such as model-response
   parsing must be Habu-native. Host parsers hide missing Habu JSON/string/file
   primitives and make the benchmark less credible as an LLM-native proof.
