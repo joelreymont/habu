@@ -1,6 +1,8 @@
 #!/bin/sh
 # run-forth-bench.sh [k_trials] [out.jsonl] — run every harness=forth task in
-# the canonical manifest through the live Habu Forth driver.
+# the canonical manifest through the live Habu Forth driver. By default it runs
+# the diagnostic ablation arms: structured repair packets, raw diagnostics, and
+# blind failure feedback.
 set -e
 cd "$(dirname "$0")/../.."
 . bench/llm/lib.sh
@@ -12,7 +14,13 @@ RESULTS=${BENCH_RESULTS:-bench/llm/RESULTS-expanded.md}
 BENCH_SEED=${BENCH_SEED:-manifest}
 MAXR=${BENCH_MAX_REPAIRS:-5}
 TAB=$(printf '\t')
-FEEDBACK_MODES=${BENCH_FORTH_MODES:-repair}
+if [ -n "${BENCH_FORTH_MODES:-}" ]; then
+  FEEDBACK_MODES=$BENCH_FORTH_MODES
+elif [ -n "${BENCH_FORTH_ARM:-}" ]; then
+  FEEDBACK_MODES=repair
+else
+  FEEDBACK_MODES="repair raw blind"
+fi
 T=$(mktemp -d "${TMPDIR:-/tmp}/run-forth-bench.XXXXXX")
 trap 'rm -rf "$T"' EXIT HUP INT TERM
 EXPECTED=$T/expected.tsv

@@ -195,6 +195,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Diagnostic usefulness needs an ablation:** replayable benchmark artifacts make
   rows auditable, but only structured-vs-raw-vs-blind feedback arms show whether
   Habu diagnostics actually help LLM-generated code converge.
+- **Ablation plumbing is not evidence:** if a benchmark arm exists only behind an
+  opt-in environment variable, the default live runner can silently skip the
+  proof. Make required ablations default, with opt-out overrides tested.
 - **Live benchmark sweeps must resume by identity:** model calls and driver
   repairs can fail before emitting a row. Resume on `(model_id, arm, task_id,
   trial)` so interrupted JSONL fills missing trials without duplicating evidence.

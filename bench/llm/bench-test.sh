@@ -272,7 +272,7 @@ EOF
 chmod +x "$T/forth-rawdiag.sh"
 r=$(CLAUDE="$T/forth-rawdiag.sh" sh bench/llm/drive-forth.sh 19 POW "i64 i64 -- i64" loop "2 3 -> 8; 5 0 -> 1" "Define POW with the checked Forth stack effect." 3)
 chk forth-driver-rawdiag-repair '"outcome":"pass","rounds":2' "$r"
-chk forth-driver-rawdiag-code 'E-UNSTRUCTURED-CHECK' "$r"
+chk forth-driver-rawdiag-code 'E-UNDEFINED' "$r"
 chk forth-driver-rawdiag-class '"repair_class":"unknown_rejection"' "$r"
 chk forth-driver-rawdiag-stats '"repair_class_stats":\[{"repair_class":"unknown_rejection","diagnostic_count":1,"repair_success":true,"repair_iterations":1,"token_delta":0}\]' "$r"
 
@@ -335,11 +335,15 @@ forthfix	ForthFixture	$T/forth-good.sh	{prompt}	raw		5
 EOF
 MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_RESULTS="$T/forth-results.md" \
   sh bench/llm/run-forth-bench.sh 1 "$T/forth-run.jsonl" >/dev/null
-[ "$(wc -l < "$T/forth-run.jsonl" | tr -d ' ')" = 1 ] && echo "ok: forth-runner-row-count" || {
+[ "$(wc -l < "$T/forth-run.jsonl" | tr -d ' ')" = 3 ] && echo "ok: forth-runner-row-count" || {
   echo "FAIL: forth-runner-row-count"
   fails=$((fails+1))
 }
-chk forth-runner-report 'category arithmetic rows=1 certified=1 tests=1' "$(cat "$T/forth-results.md")"
+forth_default_rows=$(cat "$T/forth-run.jsonl")
+chk forth-runner-default-repair '"arm":"habu-forth"' "$forth_default_rows"
+chk forth-runner-default-raw '"arm":"habu-forth-raw"' "$forth_default_rows"
+chk forth-runner-default-blind '"arm":"habu-forth-blind"' "$forth_default_rows"
+chk forth-runner-report 'category arithmetic rows=3 certified=3 tests=3' "$(cat "$T/forth-results.md")"
 
 cat > "$T/forth-kill-driver.sh" <<'EOF'
 #!/bin/sh
@@ -387,11 +391,11 @@ MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_SE
 sed -n '1p' "$T/forth-resume-full.jsonl" > "$T/forth-resume-partial.jsonl"
 MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_SEED=forth-resume BENCH_RESUME=1 BENCH_RESULTS="$T/forth-resume.md" \
   sh bench/llm/run-forth-bench.sh 2 "$T/forth-resume-partial.jsonl" >/dev/null
-[ "$(wc -l < "$T/forth-resume-partial.jsonl" | tr -d ' ')" = 2 ] && echo "ok: forth-runner-resume-row-count" || {
+[ "$(wc -l < "$T/forth-resume-partial.jsonl" | tr -d ' ')" = 6 ] && echo "ok: forth-runner-resume-row-count" || {
   echo "FAIL: forth-runner-resume-row-count"
   fails=$((fails+1))
 }
-chk forth-runner-resume-report 'rows=2 certified=2 first_tests=2 tests=2' "$(cat "$T/forth-resume.md")"
+chk forth-runner-resume-report 'rows=6 certified=6 first_tests=6 tests=6' "$(cat "$T/forth-resume.md")"
 
 # --- conv=aa : REVERSE (array -> array, in place) ---
 mkstub "$T/hb2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do i cells arr + @ len 1 - i - cells arr + @ i cells arr + ! len 1 - i - cells arr + ! loop ;"'
