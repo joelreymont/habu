@@ -100,7 +100,7 @@ grep -q "run=attempt-fixture-2026-06-16 model=fixture-model rows=$expected_count
   exit 1
 }
 
-grep -q 'buckets checker_rejected=8 first_tests_failed=8 tests_failed=0 trust_used=0 signature_weakened=1' "$SUMMARY" || {
+grep -q 'buckets checker_rejected=8 first_tests_failed=8 tests_failed=0 trust_used=1 signature_weakened=1' "$SUMMARY" || {
   echo "FAIL: attempt runner summary buckets"
   cat "$SUMMARY"
   exit 1

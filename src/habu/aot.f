@@ -383,6 +383,8 @@ variable RP  variable RE  variable RV
    ASM-CODE  BUILD-IMAGE  s" hb-prog" SET-SIGID  CODESIG2
    AOT-OUT PATH0  1537 493 open  dup MBUF MLEN @ write drop  close ;
 
+\ Audited driver boundary: this word installs the checker hook for user source.
+0 set-check
 : GO  READ-PROG  SENTSET
    ['] USER-HOOK set-check
    AOT-PB@ DATA-VA INP-CELL + !

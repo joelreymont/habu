@@ -23,6 +23,7 @@ check_hint() {
     echo "FAIL: check-repair-hints accepted $name" >&2
     exit 1
   fi
+  bin/hb "$ASSERT" json-one-schema "$err"
   bin/hb "$ASSERT" diag-repair-class "$err" "$class"
 }
 
@@ -36,6 +37,10 @@ check_hint fix-return-stack fix_return_stack \
   ': DIAG-FIX-RSTACK ( i64 -- ) >r ;'
 check_hint trusted-boundary trusted_boundary_required \
   ': DIAG-TRUSTED-BOUNDARY ( -- i64 ) evaluate ;'
+check_hint trusted-boundary-trust trusted_boundary_required \
+  ': DIAG-TRUSTED-BOUNDARY-TRUST ( -- i64 ) s" HIDDEN" s" -- i64" TRUST 42 ;'
+check_hint trusted-boundary-set-check trusted_boundary_required \
+  ': DIAG-TRUSTED-BOUNDARY-SET-CHECK ( -- i64 ) 0 set-check 42 ;'
 check_hint signature-syntax fix_signature_syntax \
   ': DIAG-SIGNATURE-SYNTAX ( i64 ) 1 + ;'
 check_hint rewrite-uncheckable rewrite_uncheckable \

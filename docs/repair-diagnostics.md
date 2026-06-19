@@ -85,7 +85,9 @@ Current checker classes:
 - `fix_type`: data-stack arity matches, but one or more types differ.
 - `fix_return_stack`: return-stack row differs from the declaration.
 - `trusted_boundary_required`: checked code used a compiler or runtime boundary
-  that requires audited `TRUST` or a modeled rewrite.
+  that requires audited `TRUST` or a modeled rewrite. This includes adversarial
+  attempts to call `evaluate`, declare effects with `TRUST`, or disable/replace
+  the checker hook with `set-check` from inside a checked definition.
 - `fix_signature_syntax`: the stack-effect comment is malformed or incomplete.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
   modeled words or use an audited boundary only when the primitive is intended.
@@ -105,6 +107,11 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_signature_syntax` | `Repair the stack-effect comment syntax, including --.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
+
+The benchmark diagnostic fixtures include separate trusted-boundary rows for
+`evaluate`, `TRUST`, and `set-check` misuse. Each must reject through
+`tools/check.sh --json-errors` as schema-1 JSON with
+`repair_class: trusted_boundary_required` and the stable suggestion above.
 
 ## Benchmark Result Fields
 

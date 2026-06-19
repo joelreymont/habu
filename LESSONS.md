@@ -240,3 +240,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   cells, but expose arrays/string pools through small audited accessors with
   `TRUSTED:` effects. Checked callers keep seeing `ptr` values instead of
   untyped numbers reloaded from variables.
+- **Trusted-boundary diagnostics must classify every escape hatch:** catching
+  `evaluate` is not enough; `TRUST` and `set-check` inside checked definitions
+  need the same schema-1 `trusted_boundary_required` rejection so repair loops
+  do not learn to silence the checker.

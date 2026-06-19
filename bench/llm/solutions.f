@@ -61,5 +61,7 @@
 : DIAG-FIX-TYPE ( i64 -- i64 ) 0= if 1 else 0 then ;         \ bool converted to numeric result
 : DIAG-FIX-RSTACK ( i64 -- ) >r r> drop ;                    \ balanced return-stack traffic, no data result
 : DIAG-TRUSTED-BOUNDARY ( -- i64 ) 42 ;                      \ modeled checked code, no unsafe evaluation
+: DIAG-TRUST-BOUNDARY ( -- i64 ) 42 ;                        \ modeled checked code, no TRUST declaration
+: DIAG-SET-CHECK-BOUNDARY ( -- i64 ) 42 ;                    \ modeled checked code, no hook replacement
 : DIAG-SIGNATURE-SYNTAX ( i64 -- i64 ) 1 + ;                 \ exact checked signature syntax
 : DIAG-REWRITE-UNCHECKABLE ( i64 -- i64 ) dup * ;            \ modeled checked stack code

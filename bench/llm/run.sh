@@ -60,6 +60,8 @@ check_v2_manifest() {
   require_task 73 DIAG-FIX-TYPE diagnostic-repair forth stack v2,fix_type
   require_task 74 DIAG-FIX-RSTACK diagnostic-repair forth stack v2,fix_return_stack
   require_task 75 DIAG-TRUSTED-BOUNDARY diagnostic-repair forth stack v2,trusted_boundary_required
+  require_task 122 DIAG-TRUST-BOUNDARY diagnostic-repair forth stack v2,trusted_boundary_required,trust
+  require_task 123 DIAG-SET-CHECK-BOUNDARY diagnostic-repair forth stack v2,trusted_boundary_required,set-check
   require_task 76 DIAG-SIGNATURE-SYNTAX diagnostic-repair forth stack v2,fix_signature_syntax
   require_task 77 DIAG-REWRITE-UNCHECKABLE diagnostic-repair forth stack v2,rewrite_uncheckable
   require_task 78 FIND-FIRST-NEG arrays array as v2,find-index
@@ -116,6 +118,7 @@ assert_repair_class() {
     echo "FAIL: diagnostic fixture accepted $name"
     exit 1
   }
+  bin/hb "$T/gate-json-assert.f" json-one-schema "$T/$name.err"
   bin/hb "$T/gate-json-assert.f" diag-repair-class "$T/$name.err" "$class"
 }
 check_diagnostic_v2_fixtures() {
@@ -125,6 +128,8 @@ check_diagnostic_v2_fixtures() {
   assert_repair_class diag-fix-type fix_type ': DIAG-FIX-TYPE ( i64 -- i64 ) 0= ;'
   assert_repair_class diag-fix-rstack fix_return_stack ': DIAG-FIX-RSTACK ( i64 -- ) >r ;'
   assert_repair_class diag-trusted-boundary trusted_boundary_required ': DIAG-TRUSTED-BOUNDARY ( -- i64 ) evaluate ;'
+  assert_repair_class diag-trust-boundary trusted_boundary_required ': DIAG-TRUST-BOUNDARY ( -- i64 ) s" HIDDEN" s" -- i64" TRUST 42 ;'
+  assert_repair_class diag-set-check-boundary trusted_boundary_required ': DIAG-SET-CHECK-BOUNDARY ( -- i64 ) 0 set-check 42 ;'
   assert_repair_class diag-signature-syntax fix_signature_syntax ': DIAG-SIGNATURE-SYNTAX ( i64 ) 1 + ;'
   assert_repair_class diag-rewrite-uncheckable rewrite_uncheckable ': DIAG-REWRITE-UNCHECKABLE ( i64 -- i64 ) leave ;'
 }

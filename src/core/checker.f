@@ -1022,6 +1022,8 @@ s" <input>" DIAG-FILE!
 
 : UNSAFE-TOK? {: a u :}
    a u s" evaluate" STR= IF -1 EXIT THEN
+   a u s" trust" STR= IF -1 EXIT THEN
+   a u s" set-check" STR= IF -1 EXIT THEN
    a u s" postpone" STR= IF -1 EXIT THEN
    a u s" compile," STR= IF -1 EXIT THEN
    a u s" immediate" STR= IF -1 EXIT THEN
