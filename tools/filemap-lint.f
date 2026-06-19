@@ -19,11 +19,11 @@ variable FM-NUM-L
 : FM-NL ( -- ) 10 emit ;
 
 : FM-PATHISH? {: a:ptr u :} ( ptr u8 n -- bool )
-   a u s" /" CONTAINS? IF -1 exit THEN
-   a u s" .md" HAS-EXT? IF -1 exit THEN
-   a u s" .sh" HAS-EXT? IF -1 exit THEN
-   a u s" .f" HAS-EXT? IF -1 exit THEN
-   a u s" .fs" HAS-EXT? IF -1 exit THEN
+   a u s" /" CONTAINS? IF LINT-TRUE exit THEN
+   a u s" .md" HAS-EXT? IF LINT-TRUE exit THEN
+   a u s" .sh" HAS-EXT? IF LINT-TRUE exit THEN
+   a u s" .f" HAS-EXT? IF LINT-TRUE exit THEN
+   a u s" .fs" HAS-EXT? IF LINT-TRUE exit THEN
    a u s" .tsv" HAS-EXT? ;
 
 : FM-EXISTS? ( ptr u8 n -- bool )

@@ -70,13 +70,13 @@ variable HOST-PATH-U
    repeat drop ;
 
 : HOST-TEXT? {: a:ptr u :} ( ptr u8 n -- bool )
-   a u s" .f" HAS-EXT? IF -1 exit THEN
-   a u s" .fs" HAS-EXT? IF -1 exit THEN
-   a u s" .sh" HAS-EXT? IF -1 exit THEN
-   a u s" .md" HAS-EXT? IF -1 exit THEN
-   a u s" .tsv" HAS-EXT? IF -1 exit THEN
-   a u s" .txt" HAS-EXT? IF -1 exit THEN
-   a u s" .json" HAS-EXT? IF -1 exit THEN
+   a u s" .f" HAS-EXT? IF LINT-TRUE exit THEN
+   a u s" .fs" HAS-EXT? IF LINT-TRUE exit THEN
+   a u s" .sh" HAS-EXT? IF LINT-TRUE exit THEN
+   a u s" .md" HAS-EXT? IF LINT-TRUE exit THEN
+   a u s" .tsv" HAS-EXT? IF LINT-TRUE exit THEN
+   a u s" .txt" HAS-EXT? IF LINT-TRUE exit THEN
+   a u s" .json" HAS-EXT? IF LINT-TRUE exit THEN
    a u s" .jsonl" HAS-EXT? ;
 
 : HOST-REPORT-PATH ( ptr u8 n -- )
@@ -97,9 +97,9 @@ variable HOST-PATH-U
 
 : HOST-BENCH-BASELINE? ( ptr u8 n -- bool )
    2dup s" ./bench/llm/drive-" PREFIX? IF s" .sh" HAS-EXT? exit THEN
-   2dup s" ./bench/llm/bench-test.sh" PATH= IF 2drop -1 exit THEN
-   2dup s" ./bench/llm/run-bench.sh" PATH= IF 2drop -1 exit THEN
-   2dup s" ./bench/llm/report.f" PATH= IF 2drop -1 exit THEN
+   2dup s" ./bench/llm/bench-test.sh" PATH= IF 2drop LINT-TRUE exit THEN
+   2dup s" ./bench/llm/run-bench.sh" PATH= IF 2drop LINT-TRUE exit THEN
+   2dup s" ./bench/llm/report.f" PATH= IF 2drop LINT-TRUE exit THEN
    s" ./bench/llm/lib.sh" PATH= ;
 
 : HOST-CHECK-A ( ptr u8 n -- )
