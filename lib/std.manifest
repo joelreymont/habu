@@ -30,6 +30,22 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	array	lib/array.f	word	A-SCAN1!	(ptr n n [ n n -- n ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	write prefix scan values using the first cell as seed
 1	array	lib/array.f	word	A-FIND-INDEX	(ptr a n [ a -- bool ] -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return first value-matching index or -1
 1	array	lib/array.f	word	A-FIND-INDEXI	(ptr a n [ n a -- bool ] -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return first index-aware match or -1
+1	table	lib/table.f	module			lib/table-test.f	docs/stdlib.md	stdlib-table	active	checked fixed-capacity cell table record helpers
+1	table	lib/table.f	word	TBL-CHECK-ROW	(n n --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	validate one zero-based row index against a table row capacity
+1	table	lib/table.f	word	TBL-CHECK-FIELD	(n n --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	validate one zero-based field index against a record width
+1	table	lib/table.f	word	TBL-CHECK-PAIR	(n n --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	validate a two-cell counted byte-string field
+1	table	lib/table.f	word	TBL-CELLS	(n n -- n)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	return total cell count for a fixed-capacity table layout
+1	table	lib/table.f	word	TBL-FIELD	(ptr a n n n n -- ptr a)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	return a checked table field address
+1	table	lib/table.f	word	TBL-CELL@	(ptr a n n n n -- a)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	fetch one generic checked table cell
+1	table	lib/table.f	word	TBL-CELL!	(a ptr a n n n n --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	store one generic checked table cell
+1	table	lib/table.f	word	TBL-N@	(ptr a n n n n -- n)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	fetch one numeric checked table field
+1	table	lib/table.f	word	TBL-N!	(n ptr a n n n n --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	store one numeric checked table field
+1	table	lib/table.f	word	TBL-BOOL@	(ptr a n n n n -- bool)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	fetch one boolean checked table field
+1	table	lib/table.f	word	TBL-BOOL!	(bool ptr a n n n n --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	store one boolean checked table field
+1	table	lib/table.f	word	TBL-A@	(ptr a n n n n -- ptr u8)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	fetch one typed byte pointer checked table field
+1	table	lib/table.f	word	TBL-A!	(ptr u8 ptr a n n n n --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	store one typed byte pointer checked table field
+1	table	lib/table.f	word	TBL-PAIR!	(ptr u8 n ptr a n n n n --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	store one counted byte-string field pair
+1	table	lib/table.f	word	TBL-PAIR$	(ptr a n n n n -- ptr u8 n)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	read one counted byte-string field pair
 1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	active	checked byte-string predicates builders split and parse helpers
 1	string	lib/string.f	word	STR-TRUE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a true flag for string helpers
 1	string	lib/string.f	word	STR-FALSE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a false flag for string helpers

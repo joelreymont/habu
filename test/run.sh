@@ -37,6 +37,7 @@ cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint
 ./tools/checked-boundary-lint-test.sh || { echo "FAIL: checked-boundary-lint"; exit 1; }
 ./tools/string-test.sh || { echo "FAIL: string helpers"; exit 1; }
 ./tools/array-test.sh || { echo "FAIL: array helpers"; exit 1; }
+cat lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f | bin/hb || { echo "FAIL: table stdlib"; exit 1; }
 ./lib/regex-test.sh || { echo "FAIL: regex stdlib"; exit 1; }
 ./lib/map-test.sh || { echo "FAIL: map stdlib"; exit 1; }
 ./lib/fs-test.sh || { echo "FAIL: fs stdlib"; exit 1; }

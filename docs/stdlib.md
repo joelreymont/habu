@@ -13,6 +13,7 @@ Planned module files:
 
 - `lib/errors.f`
 - `lib/array.f`
+- `lib/table.f`
 - `lib/string.f`
 - `lib/regex.f`
 - `lib/map.f`
@@ -125,6 +126,38 @@ A-SCAN!           ( ptr n n n [ n n -- n ] -- )
 A-SCAN1!          ( ptr n n [ n n -- n ] -- )
 A-FIND-INDEX      ( ptr a n [ a -- bool ] -- n )
 A-FIND-INDEXI     ( ptr a n [ n a -- bool ] -- n )
+```
+
+## Table
+
+`lib/table.f` provides checked helpers for fixed-capacity cell tables. A table is
+plain `ptr a` storage with an explicit row count and field count supplied to each
+operation. `TBL-FIELD ( ptr a n n n n -- ptr a )` returns the checked address
+for `table[row][field]`; rows outside `[0, rows)` throw `E-TBL-BOUNDS`, and
+fields outside `[0, fields)` throw `E-TBL-FIELD`.
+
+Typed accessors make common tool records explicit without inventing nominal
+handles yet: numeric fields use `TBL-N@` / `TBL-N!`, booleans use `TBL-BOOL@` /
+`TBL-BOOL!`, byte pointers use `TBL-A@` / `TBL-A!`, and counted byte-string
+pairs use `TBL-PAIR$` / `TBL-PAIR!`. Pair fields occupy two adjacent cells and
+are rejected unless both cells fit in the record width.
+
+```forth
+TBL-CHECK-ROW    ( n n -- )
+TBL-CHECK-FIELD  ( n n -- )
+TBL-CHECK-PAIR   ( n n -- )
+TBL-CELLS        ( n n -- n )
+TBL-FIELD        ( ptr a n n n n -- ptr a )
+TBL-CELL@        ( ptr a n n n n -- a )
+TBL-CELL!        ( a ptr a n n n n -- )
+TBL-N@           ( ptr a n n n n -- n )
+TBL-N!           ( n ptr a n n n n -- )
+TBL-BOOL@        ( ptr a n n n n -- bool )
+TBL-BOOL!        ( bool ptr a n n n n -- )
+TBL-A@           ( ptr a n n n n -- ptr u8 )
+TBL-A!           ( ptr u8 ptr a n n n n -- )
+TBL-PAIR!        ( ptr u8 n ptr a n n n n -- )
+TBL-PAIR$        ( ptr a n n n n -- ptr u8 n )
 ```
 
 ## String

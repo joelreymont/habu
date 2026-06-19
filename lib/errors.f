@@ -76,3 +76,9 @@
 -2900 constant E-DIAG-SCHEMA
 -2901 constant E-DIAG-CAPACITY
 -2902 constant E-DIAG-ORIGIN
+
+\ Tables: -3000..-3099
+-3000 constant E-TBL-FIRST
+-3099 constant E-TBL-LAST
+-3000 constant E-TBL-BOUNDS
+-3001 constant E-TBL-FIELD
