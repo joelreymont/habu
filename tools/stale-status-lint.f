@@ -31,26 +31,30 @@ variable SS-RUN
 variable SS-DIGITS
 variable SS-TODAY-DAYS
 
-: SS-SKIP {: a u n :} ( a u n -- a' u' )
+: SS-CHECK-HOOK ( -- )
+   CHECK! ;
+' SS-CHECK-HOOK set-check
+
+: SS-SKIP ( ptr u8 n n -- ptr u8 n ) {: a:ptr u n :}
    a n +  u n - ;
 
-: SS-C! ( c -- ) SS-ONE c! ;
+: SS-C! ( n -- ) SS-ONE c! ;
 
-: SS-OUT ( a u -- )
+: SS-OUT ( ptr u8 n -- )
    dup 0= IF 2drop exit THEN
    1 -rot write drop ;
 
-: SS-ERR ( a u -- )
+: SS-ERR ( ptr u8 n -- )
    dup 0= IF 2drop exit THEN
    2 -rot write drop ;
 
-: SS-C ( c -- )
+: SS-C ( n -- )
    SS-C!
    SS-ONE 1 SS-OUT ;
 
 : SS-NL ( -- ) SS-LF SS-C ;
 
-: SS-U. ( u -- )
+: SS-U. ( n -- )
    0 SS-NUM-L !
    dup 0= IF drop SS-ZERO SS-C exit THEN
    begin dup 0 > while
@@ -63,42 +67,51 @@ variable SS-TODAY-DAYS
       SS-NUM-BUF SS-NUM-L @ + c@ SS-C
    repeat ;
 
-: SS-2D ( u -- )
+: SS-2D ( n -- )
    dup 10 < IF SS-ZERO SS-C THEN
    SS-U. ;
 
-: SS-4D ( u -- )
+: SS-4D ( n -- )
    dup 1000 < IF SS-ZERO SS-C THEN
    dup 100 < IF SS-ZERO SS-C THEN
    dup 10 < IF SS-ZERO SS-C THEN
    SS-U. ;
 
-: SS-DIGIT? ( c -- f )
+: SS-DIGIT? ( n -- bool )
    dup 47 > swap 58 < and ;
 
-: SS-ALNUM? ( c -- f )
-   dup SS-DIGIT? IF drop -1 exit THEN
-   dup 64 > over 91 < and IF drop -1 exit THEN
-   dup 96 > swap 123 < and ;
+: SS-TRUE ( -- bool )
+   0 0= ;
 
-: SS-REL {: a u :} ( a u -- a' u' )
+: SS-FALSE ( -- bool )
+   0 1 = ;
+
+: SS-NOT ( bool -- bool )
+   IF SS-FALSE ELSE SS-TRUE THEN ;
+
+: SS-ALNUM? ( n -- bool ) {: c :}
+   c SS-DIGIT? IF SS-TRUE exit THEN
+   c 64 > c 91 < and IF SS-TRUE exit THEN
+   c 96 > c 123 < and ;
+
+: SS-REL ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    u 2 >= IF
       a c@ 46 =  a 1 + c@ SS-SLASH = and IF a 2 + u 2 - exit THEN
    THEN
    a u ;
 
-: SS-DISPLAY! ( a u -- )
+: SS-DISPLAY! ( ptr u8 n -- )
    SS-REL SS-DISP-U ! SS-DISP-A ! ;
 
-: SS-ALLOWED? ( a u -- f )
+: SS-ALLOWED? ( ptr u8 n -- bool )
    SS-REL
-   2dup s" STATUS.md" STR= IF 2drop -1 exit THEN
+   2dup s" STATUS.md" STR= IF 2drop SS-TRUE exit THEN
    s" LESSONS.md" STR= ;
 
-: SS-MD? ( a u -- f )
+: SS-MD? ( ptr u8 n -- bool )
    s" .md" HAS-EXT? ;
 
-: SS-LINE-PREFIX? {: a u b v :} ( a u b v -- f )
+: SS-LINE-PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    a u b v STARTS-WITH? ;
 
 : SS-STATUS-DATE! ( -- )
@@ -116,13 +129,13 @@ variable SS-TODAY-DAYS
       1+
    repeat drop ;
 
-: SS-TODAY-FROM-EPOCH ( -- a u )
+: SS-TODAY-FROM-EPOCH ( -- ptr u8 n )
    SS-TODAY-DAYS @ SS-TODAY-BUF DATE-LEN FORMAT-YMD ;
 
 : SS-BAD+ ( -- )
    SS-BAD @ 1+ SS-BAD ! ;
 
-: SS-BAD-TODAY ( a u -- )
+: SS-BAD-TODAY ( ptr u8 n -- )
    s" BAD-TODAY STALE_STATUS_TODAY invalid `" SS-OUT
    SS-OUT
    s" `" SS-OUT SS-NL
@@ -134,7 +147,7 @@ variable SS-TODAY-DAYS
    s" `" SS-OUT SS-NL
    SS-BAD+ ;
 
-: SS-TODAY$ ( -- a u )
+: SS-TODAY$ ( -- ptr u8 n )
    s" STALE_STATUS_TODAY" GETENV dup 0 > IF
       2dup PARSE-YMD 0= IF drop SS-BAD-TODAY THEN
       drop exit
@@ -145,7 +158,7 @@ variable SS-TODAY-DAYS
    s" STALE-STATUS STATUS.md: missing `Last verified: YYYY-MM-DD`" SS-OUT SS-NL
    SS-BAD+ ;
 
-: SS-DATE-MISMATCH ( a u -- )
+: SS-DATE-MISMATCH ( ptr u8 n -- )
    s" STALE-STATUS STATUS.md: Last verified is " SS-OUT
    SS-DATE-A @ SS-DATE-U @ SS-OUT
    s" , expected " SS-OUT
@@ -159,17 +172,17 @@ variable SS-TODAY-DAYS
    drop
    SS-TODAY$ 2dup SS-DATE-A @ SS-DATE-U @ STR= 0= IF SS-DATE-MISMATCH ELSE 2drop THEN ;
 
-: SS-BEFORE-BOUND? {: a pos :} ( a pos -- f )
-   pos 0= IF -1 exit THEN
-   a pos 1- + c@ SS-ALNUM? 0= ;
+: SS-BEFORE-BOUND? ( ptr u8 n -- bool ) {: a:ptr pos :}
+   pos 0= IF SS-TRUE exit THEN
+   a pos 1- + c@ SS-ALNUM? SS-NOT ;
 
-: SS-AFTER-BOUND? {: a u pos :} ( a u pos -- f )
-   pos u >= IF -1 exit THEN
-   a pos + c@ SS-ALNUM? 0= ;
+: SS-AFTER-BOUND? ( ptr u8 n n -- bool ) {: a:ptr u pos :}
+   pos u >= IF SS-TRUE exit THEN
+   a pos + c@ SS-ALNUM? SS-NOT ;
 
-: SS-SLASH-RUN {: a u pos :} ( a u pos -- pos' ok )
-   pos u >= IF pos 0 exit THEN
-   a pos + c@ SS-SLASH <> IF pos 0 exit THEN
+: SS-SLASH-RUN ( ptr u8 n n -- n bool ) {: a:ptr u pos :}
+   pos u >= IF pos SS-FALSE exit THEN
+   a pos + c@ SS-SLASH <> IF pos SS-FALSE exit THEN
    pos 1+ SS-RUN !
    SS-RUN @ SS-DIGITS !
    begin SS-RUN @ u <  a SS-RUN @ + c@ SS-DIGIT? and while
@@ -177,11 +190,11 @@ variable SS-TODAY-DAYS
    repeat
    SS-RUN @  SS-RUN @ SS-DIGITS @ > ;
 
-: SS-WORD-AT? {: a u pos b v :} ( a u pos b v -- f )
-   u pos - v < IF 0 exit THEN
+: SS-WORD-AT? ( ptr u8 n n ptr u8 n -- bool ) {: a:ptr u pos b:ptr v :}
+   u pos - v < IF SS-FALSE exit THEN
    a pos + v b v STR=CI ;
 
-: SS-COUNT-LINE? {: a u :} ( a u -- f )
+: SS-COUNT-LINE? ( ptr u8 n -- bool ) {: a:ptr u :}
    0 SS-SCAN-X !
    begin SS-SCAN-X @ u < while
       a SS-SCAN-X @ + c@ SS-DIGIT? IF
@@ -198,7 +211,7 @@ variable SS-TODAY-DAYS
                         SS-SCAN-X !
                         a u SS-SCAN-X @ SS-SLASH-RUN IF
                            SS-SCAN-X !
-                           a u SS-SCAN-X @ SS-AFTER-BOUND? IF -1 exit THEN
+                           a u SS-SCAN-X @ SS-AFTER-BOUND? IF SS-TRUE exit THEN
                         ELSE
                            drop
                         THEN
@@ -210,8 +223,8 @@ variable SS-TODAY-DAYS
                         begin SS-SCAN-X @ u <  a SS-SCAN-X @ + c@ WS? and while
                            SS-SCAN-X @ 1+ SS-SCAN-X !
                         repeat
-                        a u SS-SCAN-X @ s" certified" SS-WORD-AT? IF -1 exit THEN
-                        a u SS-SCAN-X @ s" uncheckable" SS-WORD-AT? IF -1 exit THEN
+                        a u SS-SCAN-X @ s" certified" SS-WORD-AT? IF SS-TRUE exit THEN
+                        a u SS-SCAN-X @ s" uncheckable" SS-WORD-AT? IF SS-TRUE exit THEN
                      THEN
                   THEN
                THEN
@@ -223,7 +236,7 @@ variable SS-TODAY-DAYS
          SS-SCAN-X @ 1+ SS-SCAN-X !
       THEN
    repeat
-   0 ;
+   SS-FALSE ;
 
 : SS-FINDING ( -- )
    s" STALE-STATUS " SS-OUT
@@ -234,10 +247,10 @@ variable SS-TODAY-DAYS
    SS-NL
    SS-BAD+ ;
 
-: SS-SCAN-MD {: a u :} ( a u -- )
+: SS-SCAN-MD ( ptr u8 n -- ) {: a:ptr u :}
    a u SS-ALLOWED? IF exit THEN
-   a u SS-MD? 0= IF exit THEN
-   a u EXISTS? 0= IF exit THEN
+   a u SS-MD? SS-NOT IF exit THEN
+   a u EXISTS? SS-NOT IF exit THEN
    a u SS-DISPLAY!
    a u SS-FILE-BUF SS-FILE-CAP READ-FILE SPLIT-LINES
    0 begin dup SN# @ < while
