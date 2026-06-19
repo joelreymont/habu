@@ -214,6 +214,34 @@ printf '%s\n' "$out" | grep -q "\"rows\":$expected_live_rows" || {
   exit 1
 }
 
+write_live_jsonl 2
+tail -n +2 "$T/bench/llm/results/live.jsonl" > "$T/bench/llm/results/live.missing-row"
+mv "$T/bench/llm/results/live.missing-row" "$T/bench/llm/results/live.jsonl"
+set +e
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl 2>&1)
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted missing k trial"; exit 1; }
+printf '%s\n' "$out" | grep -q 'k_trials coverage mismatch task=1 model=toy-model arm=forth rows=1 k_trials=2' || {
+  echo "FAIL: validate-results missing k-trial diagnostic"
+  printf '%s\n' "$out"
+  exit 1
+}
+
+write_live_jsonl 1
+sed -n '1p' "$T/bench/llm/results/live.jsonl" |
+  sed 's/:1:1"/:1:2"/; s/"trial":1,/"trial":2,/' >> "$T/bench/llm/results/live.jsonl"
+set +e
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl 2>&1)
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted extra k trial"; exit 1; }
+printf '%s\n' "$out" | grep -q 'k_trials coverage mismatch task=1 model=toy-model arm=forth rows=2 k_trials=1' || {
+  echo "FAIL: validate-results extra k-trial diagnostic"
+  printf '%s\n' "$out"
+  exit 1
+}
+
 write_live_jsonl 1
 awk 'NR == 1 {
   sub(/,"task_family":"[^"]+"/, "");

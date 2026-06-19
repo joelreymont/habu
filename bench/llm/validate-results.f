@@ -8,6 +8,7 @@ $20000 constant LV-RESULT-CAP
 $4000 constant LV-READ-CAP
 256 constant LV-MAX
 2048 constant LV-ROW-MAX
+512 constant LV-GRP-MAX
 32 constant LV-NUM-CAP
 256 constant LV-PATH-CAP
 256 constant LV-RUN-CAP
@@ -57,6 +58,16 @@ create LV-KEY-ARM-U LV-ROW-MAX cells allot
 create LV-KEY-TRIAL-A LV-ROW-MAX cells allot
 create LV-KEY-TRIAL-U LV-ROW-MAX cells allot
 
+create LV-GRP-TASK-ID LV-GRP-MAX cells allot
+create LV-GRP-RUN-A LV-GRP-MAX cells allot
+create LV-GRP-RUN-U LV-GRP-MAX cells allot
+create LV-GRP-MODEL-A LV-GRP-MAX cells allot
+create LV-GRP-MODEL-U LV-GRP-MAX cells allot
+create LV-GRP-ARM-A LV-GRP-MAX cells allot
+create LV-GRP-ARM-U LV-GRP-MAX cells allot
+create LV-GRP-COUNT LV-GRP-MAX cells allot
+create LV-GRP-K LV-GRP-MAX cells allot
+
 create LV-CAT-A LV-MAX cells allot
 create LV-CAT-U LV-MAX cells allot
 create LV-CAT-ROWS LV-MAX cells allot
@@ -77,6 +88,7 @@ variable LV-SEEN#
 variable LV-CAT#
 variable LV-RC#
 variable LV-KEY#
+variable LV-GRP#
 variable LV-RC-STR-U
 variable LV-KEY-STR-U
 variable LV-SCHEMA
@@ -118,6 +130,7 @@ variable LV-CUR-ARM-A
 variable LV-CUR-ARM-U
 variable LV-CUR-TRIAL-A
 variable LV-CUR-TRIAL-U
+variable LV-CUR-K
 variable LV-ROWS
 variable LV-CERT
 variable LV-FIRST-TESTS
@@ -361,6 +374,69 @@ variable LV-LINE-U
    LV-CUR-ARM-A @ LV-CUR-ARM-U @ LV-KEY-COPY$ LV-KEY-ARM-U LV-KEY# @ cells + ! LV-KEY-ARM-A LV-KEY# @ cells + !
    LV-CUR-TRIAL-A @ LV-CUR-TRIAL-U @ LV-KEY-COPY$ LV-KEY-TRIAL-U LV-KEY# @ cells + ! LV-KEY-TRIAL-A LV-KEY# @ cells + !
    LV-KEY# @ 1+ LV-KEY# ! ;
+
+: LV-CUR-GROUP-MATCH? {: k :} ( n -- bool )
+   LV-GRP-TASK-ID k cells + @ LV-ID @ <> IF 0 exit THEN
+   LV-GRP-RUN-A k cells + @ LV-GRP-RUN-U k cells + @ LV-CUR-RUN-A @ LV-CUR-RUN-U @ STR= 0= IF 0 exit THEN
+   LV-GRP-MODEL-A k cells + @ LV-GRP-MODEL-U k cells + @ LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ STR= 0= IF 0 exit THEN
+   LV-GRP-ARM-A k cells + @ LV-GRP-ARM-U k cells + @ LV-CUR-ARM-A @ LV-CUR-ARM-U @ STR= ;
+
+: LV-FIND-GROUP ( -- n )
+   0 begin dup LV-GRP# @ < while
+      dup LV-CUR-GROUP-MATCH? IF exit THEN
+      1+
+   repeat drop -1 ;
+
+: LV-GROUP-COUNT++ ( n -- )
+   cells LV-GRP-COUNT + LV-CELL++ ;
+
+: LV-GROUP-COUNT@ ( n -- n )
+   cells LV-GRP-COUNT + @ ;
+
+: LV-GROUP-K@ ( n -- n )
+   cells LV-GRP-K + @ ;
+
+: LV-GROUP-K-CHECK {: k :} ( n -- )
+   LV-GRP-K k cells + @ LV-CUR-K @ <> IF s" inconsistent k_trials for result group" LV-FAIL-AT THEN ;
+
+: LV-GROUP+ ( -- )
+   LV-GRP# @ LV-GRP-MAX >= IF s" too many result groups" LV-FAIL THEN
+   LV-ID @ LV-GRP-TASK-ID LV-GRP# @ cells + !
+   LV-CUR-RUN-A @ LV-CUR-RUN-U @ LV-KEY-COPY$ LV-GRP-RUN-U LV-GRP# @ cells + ! LV-GRP-RUN-A LV-GRP# @ cells + !
+   LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ LV-KEY-COPY$ LV-GRP-MODEL-U LV-GRP# @ cells + ! LV-GRP-MODEL-A LV-GRP# @ cells + !
+   LV-CUR-ARM-A @ LV-CUR-ARM-U @ LV-KEY-COPY$ LV-GRP-ARM-U LV-GRP# @ cells + ! LV-GRP-ARM-A LV-GRP# @ cells + !
+   1 LV-GRP-COUNT LV-GRP# @ cells + !
+   LV-CUR-K @ LV-GRP-K LV-GRP# @ cells + !
+   LV-GRP# @ 1+ LV-GRP# ! ;
+
+: LV-GROUP-ACCUM ( -- )
+   LV-FIND-GROUP dup 0 >= IF
+      dup LV-GROUP-K-CHECK
+      LV-GROUP-COUNT++
+      exit
+   THEN
+   drop LV-GROUP+ ;
+
+: LV-COVERAGE-FAIL {: k :} ( n -- )
+   s" llm-results: k_trials coverage mismatch task=" LV-OUT
+   LV-GRP-TASK-ID k cells + @ LV-U.
+   s"  model=" LV-OUT
+   LV-GRP-MODEL-A k cells + @ LV-GRP-MODEL-U k cells + @ LV-OUT
+   s"  arm=" LV-OUT
+   LV-GRP-ARM-A k cells + @ LV-GRP-ARM-U k cells + @ LV-OUT
+   s"  rows=" LV-OUT
+   LV-GRP-COUNT k cells + @ LV-U.
+   s"  k_trials=" LV-OUT
+   LV-GRP-K k cells + @ LV-U.
+   LV-NL
+   1 throw ;
+
+: LV-CHECK-EXACT-K ( -- )
+   LV-SCHEMA @ 2 <> IF exit THEN
+   0 begin dup LV-GRP# @ < while
+      dup LV-GROUP-COUNT@ over LV-GROUP-K@ <> IF dup LV-COVERAGE-FAIL THEN
+      1+
+   repeat drop ;
 
 : LV-CAT-ROWS@ ( n -- n )
    cells LV-CAT-ROWS + @ ;
@@ -657,7 +733,7 @@ variable LV-LINE-U
    root LV-CHECK-MODEL-DATE
    root s" trial" LV-REQ-NONNEG-INT drop
    root s" task_order" LV-REQ-NONNEG-INT drop
-   root s" k_trials" LV-REQ-NONNEG-INT drop
+   root s" k_trials" LV-REQ-NONNEG-INT dup 0 <= IF drop s" invalid k_trials" LV-FAIL-AT THEN LV-CUR-K !
    root s" order_seed" LV-REQ-NONEMPTY-STR
    root s" outcome" LV-REQ-NONEMPTY-STR
    root s" rounds" LV-REQ-NONNEG-INT drop
@@ -744,7 +820,7 @@ variable LV-LINE-U
    LV-TASK-K !
    root s" name" LV-STR-FIELD LV-TASK-K @ LV-TASK-NAME$ STR= 0= IF s" task/name drift for id " LV-ID @ LV-FAIL-AT-ID THEN
    root LV-CHECK-STRING-META
-   LV-SCHEMA @ 2 = IF root LV-CHECK-V2-META THEN
+   LV-SCHEMA @ 2 = IF root LV-CHECK-V2-META LV-GROUP-ACCUM THEN
    root s" attempt" LV-INT-FIELD drop
    root s" first_pass_checker" LV-STR-FIELD 2drop
    root s" first_pass_tests" LV-BOOL-FIELD drop
@@ -905,6 +981,7 @@ variable LV-LINE-U
    0 LV-CAT# !
    0 LV-RC# !
    0 LV-KEY# !
+   0 LV-GRP# !
    0 LV-RC-STR-U !
    0 LV-KEY-STR-U !
    0 LV-SCHEMA !
@@ -1157,6 +1234,7 @@ variable LV-LINE-U
    LV-SCHEMA @ 1 = LV-SEEN# @ LV-REF-TASK# @ <> and IF
       s" results/tasks mismatch: " LV-FAIL
    THEN
+   LV-CHECK-EXACT-K
    LV-JSON @ IF LV-OUTPUT-SUMMARY-JSON ELSE LV-OUTPUT-SUMMARY-TEXT THEN ;
 
 : LV-CONFIG ( -- )
