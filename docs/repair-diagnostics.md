@@ -16,7 +16,7 @@ Fields:
 | Field | Type | Presence | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Current checker diagnostic schema version. |
-| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNSAFE`, `E-BAD-SIGNATURE`, or `E-UNCHECKABLE`. |
+| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-BAD-SIGNATURE`, or `E-UNCHECKABLE`. |
 | `repair_class` | string | required | Stable repair bucket used by LLM repair loops. |
 | `verdict` | string | required | `rejected` or `uncheckable`; certification is not emitted as a diagnostic. |
 | `word` | string | required | Failing definition name as seen by the checker. |

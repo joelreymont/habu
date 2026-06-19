@@ -232,6 +232,14 @@ cat > $T/habu-all-errors.f <<'EOF'
 EOF
 ./tools/check.sh --json-errors --all-errors $T/habu-all-errors.f >/dev/null 2>$T/habu-all-errors.err && { echo "FAIL: tools/check.sh --all-errors accepted bad defs"; exit 1; }
 bin/hb "$GATE_JSON" all-errors "$T/habu-all-errors.err"
+printf ': UDEF ( i64 -- i64 ) dup NOPE ;\n' | ./tools/check.sh --json-errors --all-errors >/dev/null 2>$T/habu-undef.err && { echo "FAIL: tools/check.sh --all-errors accepted undefined word"; exit 1; }
+bin/hb "$GATE_JSON" json-one-schema "$T/habu-undef.err"
+bin/hb "$GATE_JSON" diag-repair-class "$T/habu-undef.err" unknown_rejection
+grep -q '"code":"E-UNDEFINED"' $T/habu-undef.err || { echo "FAIL: undefined diagnostic missing E-UNDEFINED"; exit 1; }
+grep -q '"token":"NOPE"' $T/habu-undef.err || { echo "FAIL: undefined diagnostic missing token"; exit 1; }
+printf ': POW ( i64 -- i64 ) dup POW ;\n' | ./tools/check.sh --json-errors --all-errors >/dev/null 2>$T/habu-recursive.err && { echo "FAIL: tools/check.sh --all-errors accepted recursive self-call"; exit 1; }
+bin/hb "$GATE_JSON" json-one-schema "$T/habu-recursive.err"
+grep -q '"token":"POW"' $T/habu-recursive.err || { echo "FAIL: recursive undefined diagnostic missing token"; exit 1; }
 cat tools/json.f tools/diag-to-sarif.f > $T/diag-to-sarif.f
 bin/hb $T/diag-to-sarif.f $T/habu-all-errors.err < /dev/null > $T/habu-all-errors.sarif
 bin/hb "$GATE_JSON" sarif "$T/habu-all-errors.sarif"

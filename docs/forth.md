@@ -110,9 +110,10 @@ not a matter of taste. Target is the native `bin/hb` engine.
 
 - `\` line comments, terse. No restating what the code obviously does.
 - Remove scratch/debug prints before commit.
-- If a definition fails to compile, Habu reports the undefined word on stderr and
-  then may spill the rest of that definition through the interpreter. A stray
-  stderr token means the real error is earlier in the same definition.
+- If a definition fails to compile in raw engine mode, Habu reports the undefined
+  word on stderr and then may spill the rest of that definition through the
+  interpreter. `tools/check.sh --json-errors --all-errors` wraps matched
+  undefined tokens in schema-1 JSON diagnostics.
 
 ## Habu Native Tooling Gotchas
 

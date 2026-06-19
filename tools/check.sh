@@ -57,7 +57,7 @@ json_only() {
 if [ "$ALL" = 1 ]; then
   if [ "$JSON" = 1 ]; then JSON_ARG=--json-errors; else JSON_ARG=; fi
   CHECK_ALL_TOOL=$T/check-all-errors.f
-  [ -f "$CHECK_ALL_TOOL" ] || cat tools/lint/lib.f tools/lint/source-lex.f tools/argv.f tools/check-all-errors.f > "$CHECK_ALL_TOOL"
+  [ -f "$CHECK_ALL_TOOL" ] || cat tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/argv.f tools/check-all-errors.f > "$CHECK_ALL_TOOL"
   bin/hb "$CHECK_ALL_TOOL" $JSON_ARG --label "$LABEL" "$SRC"
   exit $?
 fi

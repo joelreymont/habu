@@ -28,6 +28,7 @@ create CA-LF-BUF 1 allot
 
 create CA-DEF-START CA-DEF-MAX cells allot
 create CA-DEF-END CA-DEF-MAX cells allot
+create CA-DEF-TOK CA-DEF-MAX cells allot
 create CA-DEF-LINE CA-DEF-MAX cells allot
 create CA-DEF-COL CA-DEF-MAX cells allot
 create CA-DEF-BYTE CA-DEF-MAX cells allot
@@ -44,6 +45,11 @@ variable CA-FAILED
 variable CA-RAW-FAILURE
 variable CA-JSON-FOUND
 variable CA-PROG-LEN
+variable CA-RAW-A
+variable CA-RAW-U
+variable CA-MATCH-TOK
+variable CA-MATCH-ORD
+variable CA-ORD
 
 variable CA-IN-R
 variable CA-IN-W
@@ -68,6 +74,7 @@ variable CA-FILE-U
 
 : CA-START@ ( k -- n ) CA-DEF-START swap CA-CELL@ ;
 : CA-END@ ( k -- n ) CA-DEF-END swap CA-CELL@ ;
+: CA-DEFTOK@ ( k -- n ) CA-DEF-TOK swap CA-CELL@ ;
 : CA-LINE@ ( k -- n ) CA-DEF-LINE swap CA-CELL@ ;
 : CA-COL@ ( k -- n ) CA-DEF-COL swap CA-CELL@ ;
 : CA-BYTE@ ( k -- n ) CA-DEF-BYTE swap CA-CELL@ ;
@@ -75,6 +82,7 @@ variable CA-FILE-U
 
 : CA-START! ( n k -- ) CA-DEF-START swap CA-CELL! ;
 : CA-END! ( n k -- ) CA-DEF-END swap CA-CELL! ;
+: CA-DEFTOK! ( n k -- ) CA-DEF-TOK swap CA-CELL! ;
 : CA-LINE! ( n k -- ) CA-DEF-LINE swap CA-CELL! ;
 : CA-COL! ( n k -- ) CA-DEF-COL swap CA-CELL! ;
 : CA-BYTE! ( n k -- ) CA-DEF-BYTE swap CA-CELL! ;
@@ -176,6 +184,7 @@ variable CA-FILE-U
    CA-DEF# @ CA-DEF-MAX >= IF s" check-all-errors: too many definitions" 76 die THEN
    start CA-DEF# @ CA-START!
    end CA-DEF# @ CA-END!
+   tok CA-DEF# @ CA-DEFTOK!
    tok CA-DEF# @ CA-ORIGIN!
    0 CA-DEF# @ CA-OK!
    CA-DEF# @ 1+ CA-DEF# ! ;
@@ -276,6 +285,85 @@ variable CA-FILE-U
    start end CA-ERR-LINE TRIM CA-ERR
    CA-LF$ CA-ERR ;
 
+: CA-WORD$ {: k :} ( k -- a u )
+   k CA-DEFTOK@ 1+ LTOK ;
+
+: CA-DEF-SOURCE$ {: k :} ( k -- a u )
+   CA-FILE-BUF k CA-DEFTOK@ 1+ LB@ +
+   k CA-END@ 1- k CA-DEFTOK@ 1+ LB@ - ;
+
+: CA-DECLARED$ {: k :} ( k -- a u f )
+   k CA-DEFTOK@ 2 + dup L# @ >= IF drop 0 0 0 exit THEN
+   dup LK@ L-COMMENT <> IF drop 0 0 0 exit THEN
+   LCONTENT TRIM -1 ;
+
+: CA-BODY-START {: k :} ( k -- tok )
+   k CA-DEFTOK@ 2 +
+   begin dup L# @ < while
+      dup LK@ L-COMMENT = IF 1+ ELSE exit THEN
+   repeat ;
+
+: CA-FIND-BODY-TOKEN {: k a u :} ( k a u -- tok ord f )
+   0 CA-ORD !
+   k CA-BODY-START CA-J !
+   begin CA-J @ L# @ < while
+      CA-J @ LB@ k CA-END@ >= IF 0 0 0 exit THEN
+      CA-J @ CA-TOK-WORD? IF
+         CA-J @ s" ;" CA-TOK= IF 0 0 0 exit THEN
+         CA-ORD @ 1+ CA-ORD !
+         CA-J @ LTOK a u STR= IF CA-J @ CA-ORD @ -1 exit THEN
+      THEN
+      CA-J @ 1+ CA-J !
+   repeat
+   0 0 0 ;
+
+: CA-JSON-EMPTY-FIELD ( a u -- )
+   LJW-KEY s" " LJW-STRING ;
+
+: CA-JSON-UNDEF {: k tok ord :} ( k tok ord -- )
+   LJW-RESET
+   LJW-OBJECT-START
+   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
+   s" code" LJW-KEY s" E-UNDEFINED" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" unknown_rejection" LJW-STRING LJW-COMMA
+   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
+   s" word" LJW-KEY k CA-WORD$ LJW-STRING LJW-COMMA
+   s" token" LJW-KEY tok LTOK LJW-STRING LJW-COMMA
+   s" token_index" LJW-KEY ord LJW-U LJW-COMMA
+   s" file" LJW-KEY CA-FILE-A @ CA-FILE-U @ LJW-STRING LJW-COMMA
+   s" line" LJW-KEY tok LL@ LJW-U LJW-COMMA
+   s" column" LJW-KEY tok LC@ LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY tok LB@ LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY tok LB@ tok LTOK nip + LJW-U LJW-COMMA
+   s" definition_source" LJW-KEY k CA-DEF-SOURCE$ LJW-STRING LJW-COMMA
+   k CA-DECLARED$ IF
+      s" declared_effect" LJW-KEY LJW-STRING LJW-COMMA
+   ELSE
+      2drop
+   THEN
+   s" inferred_effect" LJW-KEY s" unknown " LJW-STRING LJW-COMMA
+   s" return_stack" LJW-KEY
+   LJW-OBJECT-START
+   s" expected" CA-JSON-EMPTY-FIELD LJW-COMMA
+   s" actual" CA-JSON-EMPTY-FIELD
+   LJW-OBJECT-END LJW-COMMA
+   s" suggestion" LJW-KEY s" Inspect the token, signature, and raw stack evidence." LJW-STRING
+   LJW-OBJECT-END
+   LJW$ CA-ERR
+   CA-LF$ CA-ERR ;
+
+: CA-TRY-RAW-JSON {: k :} ( k -- f )
+   CA-ERR-BUF CA-ERR-LEN @ TRIM CA-RAW-U ! CA-RAW-A !
+   CA-RAW-U @ 0= IF 0 exit THEN
+   k CA-RAW-A @ CA-RAW-U @ CA-FIND-BODY-TOKEN IF
+      CA-MATCH-ORD ! CA-MATCH-TOK !
+      k CA-MATCH-TOK @ CA-MATCH-ORD @ CA-JSON-UNDEF
+      -1
+   ELSE
+      2drop
+      0
+   THEN ;
+
 : CA-FILTER-JSON ( -- )
    0 CA-JSON-FOUND !
    0 CA-LS !
@@ -297,13 +385,15 @@ variable CA-FILE-U
       THEN
    THEN ;
 
-: CA-HANDLE-FAIL {: rc :} ( rc -- )
+: CA-HANDLE-FAIL {: k rc :} ( k rc -- )
    -1 CA-FAILED !
    ARGV-JSON? IF
       CA-FILTER-JSON
       CA-JSON-FOUND @ 0= IF
-         CA-ERR-BUF CA-ERR-LEN @ CA-ERR
-         rc CA-RAW-FAILURE !
+         k CA-TRY-RAW-JSON 0= IF
+            CA-ERR-BUF CA-ERR-LEN @ CA-ERR
+            rc CA-RAW-FAILURE !
+         THEN
       THEN
    ELSE
       CA-ERR-BUF CA-ERR-LEN @ CA-ERR
@@ -317,7 +407,7 @@ variable CA-FILE-U
       CA-K @ CA-SPAWN-HB dup 0= IF
          drop -1 CA-K @ CA-OK!
       ELSE
-         CA-HANDLE-FAIL
+         CA-K @ swap CA-HANDLE-FAIL
       THEN
       CA-K @ 1+ CA-K !
    repeat ;
