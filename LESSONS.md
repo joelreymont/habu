@@ -137,6 +137,11 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 
 ## Diagnostics And Tooling
 
+- **Dot hierarchy parents need root files:** add plan children with
+  `dot add ... -P <root-id>` only when `.dots/<root-id>/<root-id>.md` exists.
+  Do not use `-P` with a nested child id; it creates stray top-level directories
+  without root files and breaks `dot tree`. Put second-level dependencies in the
+  description instead.
 - **Diagnostics are an API:** JSON errors carry `schema_version: 1`, source spans,
   verdict, word, token, expected, and actual. Wrappers preserve valid JSON object
   lines and fail nonzero on checker rejection.
