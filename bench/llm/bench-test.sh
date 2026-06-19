@@ -239,6 +239,39 @@ EOF
 chmod +x "$T/hbprose.sh"
 r=$(CLAUDE="$T/hbprose.sh" sh bench/llm/drive-habu.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV" a); chk habu-extract-prose '"outcome":"pass","rounds":1' "$r"
 
+mkstub "$T/forth-good.sh" 'echo ": SQUARE ( i64 -- i64 ) dup * ;"'
+r=$(CLAUDE="$T/forth-good.sh" sh bench/llm/drive-forth.sh 1 SQUARE "i64 -- i64" arithmetic "7 -> 49; -3 -> 9" "Define SQUARE with the checked Forth stack effect." 2)
+chk forth-driver-pass '"arm":"habu-forth".*"outcome":"pass","rounds":1' "$r"
+chk forth-driver-family '"task_family":"arithmetic"' "$r"
+chk forth-driver-empty-repairs '"repair_class_stats":\[\]' "$r"
+chk forth-driver-replay '"prompt_sha256":"[0-9a-f][0-9a-f]*".*"final_bundle_sha256":"[0-9a-f][0-9a-f]*"' "$r"
+
+cat > "$T/forth-repair.sh" <<EOF
+#!/bin/sh
+if [ -f "$T/forth-repair.seen" ]; then
+  echo ": CUBE ( i64 -- i64 ) dup dup * * ;"
+else
+  touch "$T/forth-repair.seen"
+  echo ": CUBE ( i64 -- i64 ) dup ;"
+fi
+EOF
+chmod +x "$T/forth-repair.sh"
+r=$(CLAUDE="$T/forth-repair.sh" sh bench/llm/drive-forth.sh 2 CUBE "i64 -- i64" arithmetic "3 -> 27" "Define CUBE with the checked Forth stack effect." 3)
+chk forth-driver-repair '"outcome":"pass","rounds":2.*"first_pass_checker":"rejected","first_pass_tests":false,"tests_passed":true' "$r"
+chk forth-driver-repair-stats '"diagnostic_count":1.*"repair_class_stats":\[{"repair_class":"remove_producer","diagnostic_count":1,"repair_success":true,"repair_iterations":1,"token_delta":0}\]' "$r"
+
+cat > "$T/models-forth.tsv" <<EOF
+id	label	command	args	parser	token_fields	timeout_s
+forthfix	ForthFixture	$T/forth-good.sh	{prompt}	raw		5
+EOF
+MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_RESULTS="$T/forth-results.md" \
+  sh bench/llm/run-forth-bench.sh 1 "$T/forth-run.jsonl" >/dev/null
+[ "$(wc -l < "$T/forth-run.jsonl" | tr -d ' ')" = 1 ] && echo "ok: forth-runner-row-count" || {
+  echo "FAIL: forth-runner-row-count"
+  fails=$((fails+1))
+}
+chk forth-runner-report 'category arithmetic rows=1 certified=1 tests=1' "$(cat "$T/forth-results.md")"
+
 # --- conv=aa : REVERSE (array -> array, in place) ---
 mkstub "$T/hb2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do i cells arr + @ len 1 - i - cells arr + @ i cells arr + ! len 1 - i - cells arr + ! loop ;"'
 mkstub "$T/hbl2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr len i len i MIRROR-INDEX A-SWAP loop ;"'

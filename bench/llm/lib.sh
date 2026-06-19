@@ -334,10 +334,13 @@ bench_artifact_json() {
 
 # emit_row: id name model arm outcome rounds tokens wall_ms [runtime_ms] [runtime_status]
 emit_row() {
-  fp=false; [ "$5" = pass ] && [ "$6" -eq 1 ] && fp=true
-  tests_passed=false; [ "$5" = pass ] && tests_passed=true
-  checker_verdict=rejected; [ "$5" = pass ] && checker_verdict=certified
-  repair_iterations=0; [ "$6" -gt 0 ] && repair_iterations=$(( $6 - 1 ))
+  fp=${BENCH_FIRST_PASS:-false}; [ "$5" = pass ] && [ "$6" -eq 1 ] && fp=${BENCH_FIRST_PASS:-true}
+  tests_passed=${BENCH_TESTS_PASSED:-false}; [ "$5" = pass ] && tests_passed=${BENCH_TESTS_PASSED:-true}
+  checker_verdict=${BENCH_FIRST_PASS_CHECKER:-rejected}; [ "$5" = pass ] && checker_verdict=${BENCH_FIRST_PASS_CHECKER:-certified}
+  first_pass_tests=${BENCH_FIRST_PASS_TESTS:-$fp}
+  checker_iterations=${BENCH_CHECKER_ITERATIONS:-$6}
+  repair_iterations=${BENCH_REPAIR_ITERATIONS:-0}; [ "$6" -gt 0 ] && repair_iterations=${BENCH_REPAIR_ITERATIONS:-$(( $6 - 1 ))}
+  attempt=${BENCH_ATTEMPT:-$6}
   runtime_ms=${9:-null}
   runtime_status=${10:-not_run}
   run_id=$(bench_run_id)
@@ -356,6 +359,10 @@ emit_row() {
   seed_q=$(bench_json_quote "${BENCH_SEED:-manifest}")
   outcome_q=$(bench_json_quote "$5")
   runtime_status_q=$(bench_json_quote "$runtime_status")
+  repair_class_stats=${BENCH_REPAIR_CLASS_STATS:-[]}
+  if [ -z "${BENCH_REPAIR_CLASS_STATS+x}" ] && [ "${BENCH_DIAGNOSTIC_COUNT:-0}" -gt 0 ]; then
+    repair_class_stats='[{"repair_class":"unknown_rejection","diagnostic_count":'"${BENCH_DIAGNOSTIC_COUNT:-0}"',"repair_success":'"$tests_passed"',"repair_iterations":'"$repair_iterations"',"token_delta":0}]'
+  fi
   printf '{'
   printf '"schema_version":2,"run_id":%s,' "$run_id_q"
   printf '"task_id":%s,"name":%s,"model_id":%s,"model":%s,"arm":%s,"trial_id":%s,' \
@@ -368,9 +375,9 @@ emit_row() {
     "$runtime_ms" "$(bench_runtime_repetitions)" "$(bench_runtime_warmups)" "$runtime_status_q"
   printf '"task_family":%s,"model_version":%s,"model_date":%s,' "$family_q" "$model_version_q" "$model_date_q"
   printf '"attempt":%s,"first_pass_checker":"%s","first_pass_tests":%s,"tests_passed":%s,' \
-    "$6" "$checker_verdict" "$fp" "$tests_passed"
+    "$attempt" "$checker_verdict" "$first_pass_tests" "$tests_passed"
   printf '"repair_iterations":%s,"checker_iterations":%s,"diagnostic_count":%s,' \
-    "$repair_iterations" "$6" "${BENCH_DIAGNOSTIC_COUNT:-0}"
+    "$repair_iterations" "$checker_iterations" "${BENCH_DIAGNOSTIC_COUNT:-0}"
   printf '"diagnostic_token":%s,"diagnostic_span":%s,"diagnostic_expected":%s,"diagnostic_actual":%s,' \
     "${BENCH_DIAGNOSTIC_TOKEN:-true}" "${BENCH_DIAGNOSTIC_SPAN:-true}" \
     "${BENCH_DIAGNOSTIC_EXPECTED:-true}" "${BENCH_DIAGNOSTIC_ACTUAL:-true}"
@@ -378,6 +385,7 @@ emit_row() {
     "${BENCH_DIAGNOSTIC_CODE:-true}" "${BENCH_DIAGNOSTIC_REPAIR_CLASS:-true}" "${BENCH_ALL_ERRORS_STABLE:-true}"
   printf '"tokens_used":%s,"final_chars":%s,"trust_uses":%s,"signature_weakened":%s,' \
     "$7" "$source_chars" "${BENCH_TRUST_USES:-0}" "${BENCH_SIGNATURE_WEAKENED:-false}"
+  printf '"repair_class_stats":%s,' "$repair_class_stats"
   bench_artifact_json prompt "${BENCH_PROMPT_FILE:-}"; printf ','
   bench_artifact_json raw_response "${BENCH_RAW_RESPONSE_FILE:-}"; printf ','
   bench_artifact_json extracted_candidate "${BENCH_CANDIDATE_FILE:-}"; printf ','
