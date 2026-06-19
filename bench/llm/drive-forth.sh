@@ -109,6 +109,9 @@ check_candidate() {
   if tools/check.sh --json-errors --all-errors "$cand" </dev/null >"$T/checker-stdout.txt" 2>"$diag"; then
     return 0
   fi
+  if [ ! -s "$diag" ] && [ -s "$T/checker-stdout.txt" ]; then
+    cp "$T/checker-stdout.txt" "$diag"
+  fi
   return 1
 }
 
