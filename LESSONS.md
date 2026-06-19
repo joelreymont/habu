@@ -223,6 +223,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Doc contract fixtures need stable anchors:** when `grep -F` gates API prose,
   keep the asserted phrase contiguous in Markdown or assert a shorter stable
   substring; ordinary line wrapping can otherwise hide a present contract.
+- **CLI emitters validate before writing stdout:** source-list style tools should
+  parse and reject bad arguments before emitting prefixes; otherwise usage errors
+  can leak partial machine-readable output.
 - **Return-stack repair fixtures need data-effect parity:** `fix_return_stack`
   appears only when the data stack already matches the declaration; a bad `>r`
   that also removes a declared data output is correctly classified as
