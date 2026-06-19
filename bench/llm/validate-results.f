@@ -96,7 +96,6 @@ variable LV-LA
 variable LV-LU
 variable LV-LX
 variable LV-LS
-variable LV-LXT
 variable LV-LE
 variable LV-A
 variable LV-U
@@ -162,12 +161,16 @@ variable LV-RGOT
 variable LV-BI
 variable LV-LINE-U
 
-: LV-OUT ( a u -- ) type ;
+: LV-CHECK-HOOK ( -- )
+   CHECK! ;
+' LV-CHECK-HOOK set-check
+
+: LV-OUT ( ptr u8 n -- ) type ;
 : LV-NL ( -- ) 10 emit ;
 : LV-SPACE ( -- ) 32 emit ;
 : LV-EQ ( -- ) 61 emit ;
 
-: LV-U$ {: u :} ( u -- a u )
+: LV-U$ {: u :} ( n -- ptr u8 n )
    LV-NUM-CAP LV-NUM-I !
    u 0= IF
       LV-NUM-I @ 1- LV-NUM-I !
@@ -183,29 +186,29 @@ variable LV-LINE-U
    repeat drop
    LV-NUM-BUF LV-NUM-I @ + LV-NUM-CAP LV-NUM-I @ - ;
 
-: LV-U. ( u -- )
+: LV-U. ( n -- )
    LV-U$ LV-OUT ;
 
-: LV-CELL++ ( a -- )
+: LV-CELL++ ( ptr n -- )
    dup @ 1+ swap ! ;
 
-: LV-CELL+! {: n a :} ( n a -- )
+: LV-CELL+! {: n a :} ( n ptr n -- )
    a @ n + a ! ;
 
-: LV-RESULT-PATH$ ( -- a u )
+: LV-RESULT-PATH$ ( -- ptr u8 n )
    LV-RESULT-PATH-A @ LV-RESULT-PATH-U @ ;
 
-: LV-RESULT-PATH! {: a u :} ( a u -- )
+: LV-RESULT-PATH! {: a:ptr u :} ( ptr u8 n -- )
    a LV-RESULT-PATH-A !
    u LV-RESULT-PATH-U ! ;
 
-: LV-FAIL ( a u -- )
+: LV-FAIL ( ptr u8 n -- )
    s" llm-results: " LV-OUT
    LV-OUT
    LV-NL
    1 throw ;
 
-: LV-FAIL-AT ( a u -- )
+: LV-FAIL-AT ( ptr u8 n -- )
    s" llm-results: " LV-OUT
    LV-RESULT-PATH$ LV-OUT
    s" :" LV-OUT
@@ -215,7 +218,7 @@ variable LV-LINE-U
    LV-NL
    1 throw ;
 
-: LV-FAIL-AT-ID {: a u id :} ( a u id -- )
+: LV-FAIL-AT-ID {: a:ptr u id :} ( ptr u8 n n -- )
    s" llm-results: " LV-OUT
    LV-RESULT-PATH$ LV-OUT
    s" :" LV-OUT
@@ -226,35 +229,19 @@ variable LV-LINE-U
    LV-NL
    1 throw ;
 
-: LV-LINE-LEN ( a u -- a u' )
+: LV-LINE-LEN ( ptr u8 n -- ptr u8 n )
    dup 0 > IF
       2dup + 1- c@ LV-CR = IF 1- THEN
    THEN ;
 
-: LV-DO-LINE ( end -- )
-   LV-LE !
-   LV-LINE @ 1+ LV-LINE !
-   LV-LA @ LV-LS @ + LV-LE @ LV-LS @ - LV-LINE-LEN
-   LV-LXT @ execute
-   LV-LE @ 1+ LV-LS ! ;
-
-: LV-FOR-LINES ( a u xt -- )
-   LV-LXT ! LV-LU ! LV-LA !
-   0 LV-LINE ! 0 LV-LX ! 0 LV-LS !
-   begin LV-LX @ LV-LU @ < while
-      LV-LA @ LV-LX @ + c@ LV-LF = IF LV-LX @ LV-DO-LINE THEN
-      LV-LX @ 1+ LV-LX !
-   repeat
-   LV-LS @ LV-LU @ < IF LV-LU @ LV-DO-LINE THEN ;
-
-: LV-TAB-AT ( a u start -- idx|-1 )
+: LV-TAB-AT ( ptr u8 n n -- n )
    LV-P ! LV-U ! LV-A !
    LV-P @ begin dup LV-U @ < while
       LV-A @ over + c@ LV-TAB = IF exit THEN
       1+
    repeat drop -1 ;
 
-: LV-U? ( a u -- n ok )
+: LV-U? ( ptr u8 n -- n bool )
    LV-U ! LV-A !
    LV-U @ 0= IF 0 0 exit THEN
    0 LV-K !
@@ -265,43 +252,43 @@ variable LV-LINE-U
       LV-K @ 1+ LV-K !
    repeat -1 ;
 
-: LV-TASK-ID@ ( k -- n )
+: LV-TASK-ID@ ( n -- n )
    cells LV-TASK-ID + @ ;
 
-: LV-TASK-ID! ( n k -- )
+: LV-TASK-ID! ( n n -- )
    cells LV-TASK-ID + ! ;
 
-: LV-TASK-NAME! ( a u k -- )
+: LV-TASK-NAME! ( ptr u8 n n -- )
    LV-K ! LV-U ! LV-A !
    LV-A @ LV-TASK-NAME-A LV-K @ cells + !
    LV-U @ LV-TASK-NAME-U LV-K @ cells + ! ;
 
-: LV-TASK-NAME$ {: k :} ( k -- a u )
+: LV-TASK-NAME$ {: k :} ( n -- ptr u8 n )
    LV-TASK-NAME-A k cells + @
    LV-TASK-NAME-U k cells + @ ;
 
-: LV-TASK-CAT! ( a u k -- )
+: LV-TASK-CAT! ( ptr u8 n n -- )
    LV-K ! LV-U ! LV-A !
    LV-A @ LV-TASK-CAT-A LV-K @ cells + !
    LV-U @ LV-TASK-CAT-U LV-K @ cells + ! ;
 
-: LV-TASK-CAT$ {: k :} ( k -- a u )
+: LV-TASK-CAT$ {: k :} ( n -- ptr u8 n )
    LV-TASK-CAT-A k cells + @
    LV-TASK-CAT-U k cells + @ ;
 
-: LV-FIND-TASK-CAT {: a u :} ( a u -- k|-1 )
+: LV-FIND-TASK-CAT {: a:ptr u :} ( ptr u8 n -- n )
    0 begin dup LV-TASK# @ < while
       dup LV-TASK-CAT$ a u STR= IF exit THEN
       1+
    repeat drop -1 ;
 
-: LV-MISSING-CAT {: a u :} ( a u -- )
+: LV-MISSING-CAT {: a:ptr u :} ( ptr u8 n -- )
    s" llm-results: missing required benchmark category " LV-OUT
    a u LV-OUT
    LV-NL
    1 throw ;
 
-: LV-REQ-TASK-CAT {: a u :} ( a u -- )
+: LV-REQ-TASK-CAT {: a:ptr u :} ( ptr u8 n -- )
    a u LV-FIND-TASK-CAT 0< IF a u LV-MISSING-CAT THEN ;
 
 : LV-CHECK-TASK-COVERAGE ( -- )
@@ -319,33 +306,33 @@ variable LV-LINE-U
    s" files" LV-REQ-TASK-CAT
    s" aot-safe" LV-REQ-TASK-CAT ;
 
-: LV-SEEN@ ( k -- n )
+: LV-SEEN@ ( n -- n )
    cells LV-SEEN-ID + @ ;
 
-: LV-SEEN! ( n k -- )
+: LV-SEEN! ( n n -- )
    cells LV-SEEN-ID + ! ;
 
-: LV-FIND-TASK {: id :} ( id -- k|-1 )
+: LV-FIND-TASK {: id :} ( n -- n )
    0 begin dup LV-TASK# @ < while
       dup LV-TASK-ID@ id = IF exit THEN
       1+
    repeat drop -1 ;
 
-: LV-FORTH-HARNESS? {: a :} ( a -- f )
+: LV-FORTH-HARNESS? {: a:ptr :} ( ptr u8 -- bool )
    a LV-M @ 1+ + LV-N @ LV-M @ 1+ - s" forth" STR= ;
 
-: LV-FIND-SEEN {: id :} ( id -- k|-1 )
+: LV-FIND-SEEN {: id :} ( n -- n )
    0 begin dup LV-SEEN# @ < while
       dup LV-SEEN@ id = IF exit THEN
       1+
    repeat drop -1 ;
 
-: LV-SEEN+ {: id :} ( id -- )
+: LV-SEEN+ {: id :} ( n -- )
    LV-SEEN# @ LV-MAX >= IF s" too many result rows" LV-FAIL THEN
    id LV-SEEN# @ LV-SEEN!
    LV-SEEN# @ 1+ LV-SEEN# ! ;
 
-: LV-KEY-COPY$ {: a u :} ( a u -- a' u )
+: LV-KEY-COPY$ {: a:ptr u :} ( ptr u8 n -- ptr u8 n )
    LV-KEY-STR-U @ u + LV-KEY-STR-CAP > IF s" result identity strings too long" LV-FAIL THEN
    LV-KEY-STR LV-KEY-STR-U @ + LV-A !
    u LV-U !
@@ -353,14 +340,14 @@ variable LV-LINE-U
    LV-KEY-STR-U @ u + LV-KEY-STR-U !
    LV-A @ LV-U @ ;
 
-: LV-CUR-KEY-MATCH? {: k :} ( k -- f )
+: LV-CUR-KEY-MATCH? {: k :} ( n -- bool )
    LV-KEY-TASK-ID k cells + @ LV-ID @ <> IF 0 exit THEN
    LV-KEY-RUN-A k cells + @ LV-KEY-RUN-U k cells + @ LV-CUR-RUN-A @ LV-CUR-RUN-U @ STR= 0= IF 0 exit THEN
    LV-KEY-MODEL-A k cells + @ LV-KEY-MODEL-U k cells + @ LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ STR= 0= IF 0 exit THEN
    LV-KEY-ARM-A k cells + @ LV-KEY-ARM-U k cells + @ LV-CUR-ARM-A @ LV-CUR-ARM-U @ STR= 0= IF 0 exit THEN
    LV-KEY-TRIAL-A k cells + @ LV-KEY-TRIAL-U k cells + @ LV-CUR-TRIAL-A @ LV-CUR-TRIAL-U @ STR= ;
 
-: LV-FIND-KEY ( -- k|-1 )
+: LV-FIND-KEY ( -- n )
    0 begin dup LV-KEY# @ < while
       dup LV-CUR-KEY-MATCH? IF exit THEN
       1+
@@ -375,25 +362,25 @@ variable LV-LINE-U
    LV-CUR-TRIAL-A @ LV-CUR-TRIAL-U @ LV-KEY-COPY$ LV-KEY-TRIAL-U LV-KEY# @ cells + ! LV-KEY-TRIAL-A LV-KEY# @ cells + !
    LV-KEY# @ 1+ LV-KEY# ! ;
 
-: LV-CAT-ROWS@ ( k -- n )
+: LV-CAT-ROWS@ ( n -- n )
    cells LV-CAT-ROWS + @ ;
 
-: LV-CAT-CERT@ ( k -- n )
+: LV-CAT-CERT@ ( n -- n )
    cells LV-CAT-CERT + @ ;
 
-: LV-CAT-TESTS@ ( k -- n )
+: LV-CAT-TESTS@ ( n -- n )
    cells LV-CAT-TESTS + @ ;
 
-: LV-CAT-ROWS++ ( k -- )
+: LV-CAT-ROWS++ ( n -- )
    cells LV-CAT-ROWS + LV-CELL++ ;
 
-: LV-CAT-CERT++ ( k -- )
+: LV-CAT-CERT++ ( n -- )
    cells LV-CAT-CERT + LV-CELL++ ;
 
-: LV-CAT-TESTS++ ( k -- )
+: LV-CAT-TESTS++ ( n -- )
    cells LV-CAT-TESTS + LV-CELL++ ;
 
-: LV-FIND-CAT {: a u :} ( a u -- k|-1 )
+: LV-FIND-CAT {: a:ptr u :} ( ptr u8 n -- n )
    0 begin dup LV-CAT# @ < while
       dup cells LV-CAT-A + @
       over cells LV-CAT-U + @
@@ -401,7 +388,7 @@ variable LV-LINE-U
       1+
    repeat drop -1 ;
 
-: LV-CAT+ {: a u :} ( a u -- k )
+: LV-CAT+ {: a:ptr u :} ( ptr u8 n -- n )
    LV-CAT# @ LV-MAX >= IF s" too many categories" LV-FAIL THEN
    LV-CAT# @ LV-P !
    a LV-CAT-A LV-P @ cells + !
@@ -412,58 +399,58 @@ variable LV-LINE-U
    LV-CAT# @ 1+ LV-CAT# !
    LV-P @ ;
 
-: LV-CAT-ID {: a u :} ( a u -- k )
+: LV-CAT-ID {: a:ptr u :} ( ptr u8 n -- n )
    a u LV-FIND-CAT dup 0 >= IF exit THEN
    drop a u LV-CAT+ ;
 
-: LV-RC$ {: k :} ( k -- a u )
+: LV-RC$ {: k :} ( n -- ptr u8 n )
    LV-RC-A k cells + @
    LV-RC-U k cells + @ ;
 
-: LV-RC-ROWS@ ( k -- n )
+: LV-RC-ROWS@ ( n -- n )
    cells LV-RC-ROWS + @ ;
 
-: LV-RC-SUCCESS@ ( k -- n )
+: LV-RC-SUCCESS@ ( n -- n )
    cells LV-RC-SUCCESS + @ ;
 
-: LV-RC-REPAIRS@ ( k -- n )
+: LV-RC-REPAIRS@ ( n -- n )
    cells LV-RC-REPAIRS + @ ;
 
-: LV-RC-DIAGS@ ( k -- n )
+: LV-RC-DIAGS@ ( n -- n )
    cells LV-RC-DIAGS + @ ;
 
-: LV-RC-TOKDELTA@ ( k -- n )
+: LV-RC-TOKDELTA@ ( n -- n )
    cells LV-RC-TOKDELTA + @ ;
 
-: LV-RC-ROWS++ ( k -- )
+: LV-RC-ROWS++ ( n -- )
    cells LV-RC-ROWS + LV-CELL++ ;
 
-: LV-RC-SUCCESS++ ( k -- )
+: LV-RC-SUCCESS++ ( n -- )
    cells LV-RC-SUCCESS + LV-CELL++ ;
 
-: LV-RC-REPAIRS+ {: n k :} ( n k -- )
+: LV-RC-REPAIRS+ {: n k :} ( n n -- )
    n LV-RC-REPAIRS k cells + LV-CELL+! ;
 
-: LV-RC-DIAGS+ {: n k :} ( n k -- )
+: LV-RC-DIAGS+ {: n k :} ( n n -- )
    n LV-RC-DIAGS k cells + LV-CELL+! ;
 
-: LV-RC-TOKDELTA+ {: n k :} ( n k -- )
+: LV-RC-TOKDELTA+ {: n k :} ( n n -- )
    n LV-RC-TOKDELTA k cells + LV-CELL+! ;
 
-: LV-FIND-RC {: a u :} ( a u -- k|-1 )
+: LV-FIND-RC {: a:ptr u :} ( ptr u8 n -- n )
    0 begin dup LV-RC# @ < while
       dup LV-RC$ a u STR= IF exit THEN
       1+
    repeat drop -1 ;
 
-: LV-RC-COPY! {: a u k :} ( a u k -- )
+: LV-RC-COPY! {: a:ptr u k :} ( ptr u8 n n -- )
    LV-RC-STR-U @ u + LV-RC-STR-CAP > IF s" repair class names too long" LV-FAIL THEN
    a LV-RC-STR LV-RC-STR-U @ + u BMOVE
    LV-RC-STR LV-RC-STR-U @ + LV-RC-A k cells + !
    u LV-RC-U k cells + !
    LV-RC-STR-U @ u + LV-RC-STR-U ! ;
 
-: LV-RC+ {: a u :} ( a u -- k )
+: LV-RC+ {: a:ptr u :} ( ptr u8 n -- n )
    LV-RC# @ LV-MAX >= IF s" too many repair classes" LV-FAIL THEN
    LV-RC# @ LV-P !
    a u LV-P @ LV-RC-COPY!
@@ -475,11 +462,11 @@ variable LV-LINE-U
    LV-RC# @ 1+ LV-RC# !
    LV-P @ ;
 
-: LV-RC-ID {: a u :} ( a u -- k )
+: LV-RC-ID {: a:ptr u :} ( ptr u8 n -- n )
    a u LV-FIND-RC dup 0 >= IF exit THEN
    drop a u LV-RC+ ;
 
-: LV-TASK-LINE {: a u :} ( a u -- )
+: LV-TASK-LINE {: a:ptr u :} ( ptr u8 n -- )
    LV-LINE @ 1 = IF exit THEN
    LV-TASK# @ LV-MAX >= IF s" too many tasks" LV-FAIL THEN
    a u 0 LV-TAB-AT dup 0 < IF drop exit THEN
@@ -501,19 +488,35 @@ variable LV-LINE-U
    a LV-FORTH-HARNESS? IF LV-REF-TASK# LV-CELL++ THEN
    LV-TASK# @ 1+ LV-TASK# ! ;
 
+: LV-DO-TASK-LINE ( n -- )
+   LV-LE !
+   LV-LINE @ 1+ LV-LINE !
+   LV-LA @ LV-LS @ + LV-LE @ LV-LS @ - LV-LINE-LEN
+   LV-TASK-LINE
+   LV-LE @ 1+ LV-LS ! ;
+
+: LV-FOR-TASK-LINES ( ptr u8 n -- )
+   LV-LU ! LV-LA !
+   0 LV-LINE ! 0 LV-LX ! 0 LV-LS !
+   begin LV-LX @ LV-LU @ < while
+      LV-LA @ LV-LX @ + c@ LV-LF = IF LV-LX @ LV-DO-TASK-LINE THEN
+      LV-LX @ 1+ LV-LX !
+   repeat
+   LV-LS @ LV-LU @ < IF LV-LU @ LV-DO-TASK-LINE THEN ;
+
 : LV-SCAN-TASKS ( -- )
    0 LV-TASK# !
    0 LV-REF-TASK# !
-   s" bench/llm/tasks.tsv" LV-TASK-BUF LV-TASK-CAP READ-FILE ['] LV-TASK-LINE LV-FOR-LINES
+   s" bench/llm/tasks.tsv" LV-TASK-BUF LV-TASK-CAP READ-FILE LV-FOR-TASK-LINES
    LV-CHECK-TASK-COVERAGE ;
 
-: LV-GET {: root a u :} ( root a u -- node )
+: LV-GET {: root a:ptr u :} ( n ptr u8 n -- n )
    root a u JSON-GET ;
 
-: LV-HAS? ( root a u -- f )
+: LV-HAS? ( n ptr u8 n -- bool )
    LV-GET -1 <> ;
 
-: LV-MISSING {: a u :} ( a u -- )
+: LV-MISSING {: a:ptr u :} ( ptr u8 n -- )
    s" llm-results: " LV-OUT
    LV-RESULT-PATH$ LV-OUT
    s" :" LV-OUT
@@ -523,10 +526,10 @@ variable LV-LINE-U
    LV-NL
    1 throw ;
 
-: LV-REQ {: root a u :} ( root a u -- )
+: LV-REQ {: root a:ptr u :} ( n ptr u8 n -- )
    root a u LV-HAS? 0= IF a u LV-MISSING THEN ;
 
-: LV-REQS {: root :} ( root -- )
+: LV-REQS {: root :} ( n -- )
    root s" schema_version" LV-REQ
    root s" run_id" LV-REQ
    root s" task_id" LV-REQ
@@ -552,15 +555,15 @@ variable LV-LINE-U
    root s" trust_uses" LV-REQ
    root s" signature_weakened" LV-REQ ;
 
-: LV-INT-FIELD {: root a u :} ( root a u -- n )
+: LV-INT-FIELD {: root a:ptr u :} ( n ptr u8 n -- n )
    root a u LV-GET dup JSON-KIND J-NUM <> IF drop s" invalid integer field" LV-FAIL-AT THEN
    JSON-NUMBER$ LV-U? 0= IF drop s" invalid integer field" LV-FAIL-AT THEN ;
 
-: LV-STR-FIELD {: root a u :} ( root a u -- a u )
+: LV-STR-FIELD {: root a:ptr u :} ( n ptr u8 n -- ptr u8 n )
    root a u LV-GET dup JSON-KIND J-STR <> IF drop s" invalid string field" LV-FAIL-AT THEN
    JSON-STRING$ ;
 
-: LV-BOOL-FIELD {: root a u :} ( root a u -- f )
+: LV-BOOL-FIELD {: root a:ptr u :} ( n ptr u8 n -- bool )
    root a u LV-GET dup JSON-KIND J-BOOL <> IF drop s" invalid bool field" LV-FAIL-AT THEN
    JSON-BOOL@ ;
 
@@ -573,12 +576,12 @@ variable LV-LINE-U
    THEN
    n LV-SCHEMA @ <> IF s" mixed schema_version values" LV-FAIL-AT THEN ;
 
-: LV-HEX? {: c :} ( c -- f )
+: LV-HEX? {: c :} ( n -- bool )
    c LV-ZERO >= c LV-NINE <= and
    c LV-UPPER-A >= c LV-UPPER-F <= and or
    c LV-LOWER-A >= c LV-LOWER-F <= and or ;
 
-: LV-SHA256? ( a u -- f )
+: LV-SHA256? ( ptr u8 n -- bool )
    LV-U ! LV-A !
    LV-U @ LV-SHA-LEN <> IF 0 exit THEN
    0 LV-K !
@@ -587,7 +590,7 @@ variable LV-LINE-U
       LV-K @ 1+ LV-K !
    repeat -1 ;
 
-: LV-CHECK-ARTIFACT {: root a u ha hu must :} ( root a u ha hu must -- )
+: LV-CHECK-ARTIFACT {: root a:ptr u ha:ptr hu must :} ( n ptr u8 n ptr u8 n bool -- )
    root a u LV-REQ
    root a u LV-STR-FIELD
    must IF dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN THEN
@@ -595,7 +598,7 @@ variable LV-LINE-U
    root ha hu LV-REQ
    root ha hu LV-STR-FIELD LV-SHA256? 0= IF s" invalid sha256 hash" LV-FAIL-AT THEN ;
 
-: LV-CHECK-V2-ARTIFACTS {: root :} ( root -- )
+: LV-CHECK-V2-ARTIFACTS {: root :} ( n -- )
    root s" prompt" s" prompt_sha256" -1 LV-CHECK-ARTIFACT
    root s" raw_response" s" raw_response_sha256" -1 LV-CHECK-ARTIFACT
    root s" extracted_candidate" s" extracted_candidate_sha256" -1 LV-CHECK-ARTIFACT
@@ -604,7 +607,7 @@ variable LV-LINE-U
    root s" test_output" s" test_output_sha256" 0 LV-CHECK-ARTIFACT
    root s" final_bundle" s" final_bundle_sha256" -1 LV-CHECK-ARTIFACT ;
 
-: LV-CHECK-V2-IDENTITY {: root :} ( root -- )
+: LV-CHECK-V2-IDENTITY {: root :} ( n -- )
    root s" run_id" LV-REQ
    root s" run_id" LV-STR-FIELD dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN LV-CUR-RUN-U ! LV-CUR-RUN-A !
    root s" model_id" LV-REQ
@@ -616,39 +619,39 @@ variable LV-LINE-U
    LV-FIND-KEY 0 >= IF s" duplicate result identity" LV-FAIL-AT THEN
    LV-KEY+ ;
 
-: LV-REQ-NONEMPTY-STR {: root a u :} ( root a u -- )
+: LV-REQ-NONEMPTY-STR {: root a:ptr u :} ( n ptr u8 n -- )
    root a u LV-REQ
    root a u LV-STR-FIELD dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN
    2drop ;
 
-: LV-REQ-NONNEG-INT {: root a u :} ( root a u -- n )
+: LV-REQ-NONNEG-INT {: root a:ptr u :} ( n ptr u8 n -- n )
    root a u LV-REQ
    root a u LV-INT-FIELD dup 0 < IF drop s" invalid integer field" LV-FAIL-AT THEN ;
 
-: LV-CHECK-TASK-FAMILY {: root :} ( root -- )
+: LV-CHECK-TASK-FAMILY {: root :} ( n -- )
    root s" task_family" LV-REQ
    root s" task_family" LV-STR-FIELD dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN
    LV-TASK-K @ LV-TASK-CAT$ STR= 0= IF s" task_family/category drift" LV-FAIL-AT THEN ;
 
-: LV-CHECK-DATE-OR-UNKNOWN {: a u :} ( a u -- )
+: LV-CHECK-DATE-OR-UNKNOWN {: a:ptr u :} ( ptr u8 n -- )
    a u s" unknown" STR= IF exit THEN
    u DATE-LEN <> IF s" invalid model_date" LV-FAIL-AT THEN
    a u PARSE-YMD 0= IF drop s" invalid model_date" LV-FAIL-AT THEN
    drop ;
 
-: LV-CHECK-MODEL-DATE {: root :} ( root -- )
+: LV-CHECK-MODEL-DATE {: root :} ( n -- )
    root s" model_date" LV-REQ
    root s" model_date" LV-STR-FIELD dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN
    LV-CHECK-DATE-OR-UNKNOWN ;
 
-: LV-CHECK-RUNTIME-MS {: root :} ( root -- )
+: LV-CHECK-RUNTIME-MS {: root :} ( n -- )
    root s" runtime_ms" LV-REQ
    root s" runtime_ms" LV-GET dup JSON-KIND J-NULL = IF drop exit THEN
    dup JSON-KIND J-NUM <> IF drop s" invalid runtime_ms" LV-FAIL-AT THEN
    JSON-NUMBER$ LV-U? 0= IF drop s" invalid runtime_ms" LV-FAIL-AT THEN
    drop ;
 
-: LV-CHECK-V2-META {: root :} ( root -- )
+: LV-CHECK-V2-META {: root :} ( n -- )
    root LV-CHECK-TASK-FAMILY
    root s" model_version" LV-REQ-NONEMPTY-STR
    root LV-CHECK-MODEL-DATE
@@ -667,19 +670,19 @@ variable LV-LINE-U
    root s" runtime_warmups" LV-REQ-NONNEG-INT drop
    root s" runtime_status" LV-REQ-NONEMPTY-STR ;
 
-: LV-CHECK-INT= {: root a u want msg mu :} ( root a u want msg mu -- )
+: LV-CHECK-INT= {: root a:ptr u want msg:ptr mu :} ( n ptr u8 n n ptr u8 n -- )
    root a u LV-INT-FIELD want <> IF msg mu LV-FAIL-AT THEN ;
 
-: LV-CHECK-STR= {: root a u want wu msg mu :} ( root a u want wu msg mu -- )
+: LV-CHECK-STR= {: root a:ptr u want:ptr wu msg:ptr mu :} ( n ptr u8 n ptr u8 n ptr u8 n -- )
    root a u LV-STR-FIELD want wu STR= 0= IF msg mu LV-FAIL-AT THEN ;
 
-: LV-CHECK-BOOL= {: root a u want msg mu :} ( root a u want msg mu -- )
+: LV-CHECK-BOOL= {: root a:ptr u want msg:ptr mu :} ( n ptr u8 n bool ptr u8 n -- )
    root a u LV-BOOL-FIELD want <> IF msg mu LV-FAIL-AT THEN ;
 
-: LV-CERTIFIED? {: root :} ( root -- f )
+: LV-CERTIFIED? {: root :} ( n -- bool )
    root s" first_pass_checker" LV-STR-FIELD s" certified" STR= ;
 
-: LV-RUN-CHECK {: a u :} ( a u -- )
+: LV-RUN-CHECK {: a:ptr u :} ( ptr u8 n -- )
    LV-RUN-SET @ 0= IF
       u LV-RUN-CAP > IF s" run_id too long" LV-FAIL-AT THEN
       a LV-RUN-BUF u BMOVE
@@ -689,11 +692,11 @@ variable LV-LINE-U
    THEN
    a u LV-RUN-BUF LV-RUN-U @ STR= 0= IF s" mixed run_id values" LV-FAIL-AT THEN ;
 
-: LV-DATE-RUN? {: a u :} ( a u -- f )
+: LV-DATE-RUN? {: a:ptr u :} ( ptr u8 n -- bool )
    u DATE-LEN 1+ < IF 0 0= 0= exit THEN
    a u DATE-LEN - 1- + c@ DATE-DASH = ;
 
-: LV-CHECK-RUN-DATE {: a u :} ( a u -- )
+: LV-CHECK-RUN-DATE {: a:ptr u :} ( ptr u8 n -- )
    a u LV-DATE-RUN? IF
       a u DATE-LEN - + DATE-LEN PARSE-YMD 0= IF
          drop s" invalid run_id date" LV-FAIL-AT
@@ -701,7 +704,7 @@ variable LV-LINE-U
       drop
    THEN ;
 
-: LV-MODEL-CHECK {: a u :} ( a u -- )
+: LV-MODEL-CHECK {: a:ptr u :} ( ptr u8 n -- )
    LV-MODEL-SET @ 0= IF
       u LV-MODEL-CAP > IF s" model too long" LV-FAIL-AT THEN
       a LV-MODEL-BUF u BMOVE
@@ -711,13 +714,13 @@ variable LV-LINE-U
    THEN
    a u LV-MODEL-BUF LV-MODEL-U @ STR= 0= IF s" mixed model values" LV-FAIL-AT THEN ;
 
-: LV-RUN$ ( -- a u )
+: LV-RUN$ ( -- ptr u8 n )
    LV-RUN-BUF LV-RUN-U @ ;
 
-: LV-MODEL$ ( -- a u )
+: LV-MODEL$ ( -- ptr u8 n )
    LV-MODEL-BUF LV-MODEL-U @ ;
 
-: LV-CHECK-STRING-META {: root :} ( root -- )
+: LV-CHECK-STRING-META {: root :} ( n -- )
    root s" run_id" LV-STR-FIELD
    dup 0= IF 2drop s" empty run_id" LV-FAIL-AT THEN
    2dup LV-CHECK-RUN-DATE
@@ -726,7 +729,7 @@ variable LV-LINE-U
    dup 0= IF 2drop s" empty model" LV-FAIL-AT THEN
    LV-MODE @ LV-MODE-SUMMARY = IF LV-MODEL-CHECK ELSE 2drop THEN ;
 
-: LV-CHECK-COMMON {: root :} ( root -- )
+: LV-CHECK-COMMON {: root :} ( n -- )
    root LV-REQS
    root s" schema_version" LV-INT-FIELD LV-CHECK-SCHEMA
    root s" task_id" LV-INT-FIELD LV-ID !
@@ -763,7 +766,7 @@ variable LV-LINE-U
    root s" signature_weakened" LV-BOOL-FIELD drop
    LV-SCHEMA @ 2 = IF root LV-CHECK-V2-ARTIFACTS THEN ;
 
-: LV-CHECK-REFERENCE {: root :} ( root -- )
+: LV-CHECK-REFERENCE {: root :} ( n -- )
    root s" schema_version" 1 s" reference schema_version must be 1" LV-CHECK-INT=
    root s" model" s" reference" s" reference file contains non-reference model" LV-CHECK-STR=
    root s" attempt" 1 s" reference should be attempt 1" LV-CHECK-INT=
@@ -783,26 +786,26 @@ variable LV-LINE-U
    root s" trust_uses" 0 s" benchmark task used TRUST" LV-CHECK-INT=
    root s" signature_weakened" 0 s" reference weakened a signature" LV-CHECK-BOOL= ;
 
-: LV-CAT-ACCUM {: root :} ( root -- )
+: LV-CAT-ACCUM {: root :} ( n -- )
    LV-TASK-K @ LV-TASK-CAT$ LV-CAT-ID LV-P !
    LV-P @ LV-CAT-ROWS++
    root LV-CERTIFIED? IF LV-P @ LV-CAT-CERT++ THEN
    root s" tests_passed" LV-BOOL-FIELD IF LV-P @ LV-CAT-TESTS++ THEN ;
 
-: LV-ACC-BOOL {: root a u good bad :} ( root a u good bad -- )
+: LV-ACC-BOOL {: root a:ptr u good:ptr bad:ptr :} ( n ptr u8 n ptr n ptr n -- )
    root a u LV-BOOL-FIELD IF good LV-CELL++ ELSE bad LV-CELL++ THEN ;
 
-: LV-RC-OBJ {: item :} ( item -- )
+: LV-RC-OBJ {: item :} ( n -- )
    item JSON-KIND J-OBJ <> IF s" invalid repair_class_stats item" LV-FAIL-AT THEN ;
 
-: LV-RC-REQS {: item :} ( item -- )
+: LV-RC-REQS {: item :} ( n -- )
    item s" repair_class" LV-REQ
    item s" diagnostic_count" LV-REQ
    item s" repair_success" LV-REQ
    item s" repair_iterations" LV-REQ
    item s" token_delta" LV-REQ ;
 
-: LV-ACCUM-RC-ITEM {: item :} ( item -- )
+: LV-ACCUM-RC-ITEM {: item :} ( n -- )
    item LV-RC-OBJ
    item LV-RC-REQS
    item s" repair_class" LV-STR-FIELD dup 0= IF 2drop s" empty repair_class" LV-FAIL-AT THEN
@@ -824,7 +827,7 @@ variable LV-LINE-U
    LV-RC-DIAG @ LV-P @ LV-RC-DIAGS+
    LV-RC-TOK @ LV-P @ LV-RC-TOKDELTA+ ;
 
-: LV-ACCUM-RC-STATS {: root :} ( root -- )
+: LV-ACCUM-RC-STATS {: root :} ( n -- )
    root s" repair_class_stats" LV-GET dup -1 = IF
       drop
       LV-ROW-DIAGS @ 0 > IF s" missing fields repair_class_stats" LV-FAIL-AT THEN
@@ -839,7 +842,7 @@ variable LV-LINE-U
    repeat drop
    LV-RC-SUM @ LV-ROW-DIAGS @ <> IF s" repair class diagnostic_count mismatch" LV-FAIL-AT THEN ;
 
-: LV-ACCUM-ROW {: root :} ( root -- )
+: LV-ACCUM-ROW {: root :} ( n -- )
    LV-ROWS LV-CELL++
    root LV-CERTIFIED? IF LV-CERT LV-CELL++ ELSE LV-BAD-CHECKER LV-CELL++ THEN
    root s" first_pass_tests" LV-BOOL-FIELD IF LV-FIRST-TESTS LV-CELL++ ELSE LV-BAD-FIRST LV-CELL++ THEN
@@ -862,7 +865,7 @@ variable LV-LINE-U
    root LV-ACCUM-RC-STATS
    root LV-CAT-ACCUM ;
 
-: LV-CHECK-ROW {: root :} ( root -- )
+: LV-CHECK-ROW {: root :} ( n -- )
    root LV-CHECK-COMMON
    LV-MODE @ LV-MODE-REFERENCE = IF
       root LV-CHECK-REFERENCE
@@ -870,7 +873,7 @@ variable LV-LINE-U
       root LV-ACCUM-ROW
    THEN ;
 
-: LV-RESULT-LINE ( a u -- )
+: LV-RESULT-LINE ( ptr u8 n -- )
    JSON-PARSE LV-ROOT !
    LV-ROOT @ LV-CHECK-ROW ;
 
@@ -879,7 +882,7 @@ variable LV-LINE-U
    LV-RESULT-BUF LV-LINE-U @ LV-LINE-LEN LV-RESULT-LINE
    0 LV-LINE-U ! ;
 
-: LV-RESULT-BYTE {: c :} ( c -- )
+: LV-RESULT-BYTE {: c :} ( n -- )
    c LV-LF = IF LV-FINISH-RESULT-LINE exit THEN
    LV-LINE-U @ LV-RESULT-CAP >= IF s" result line too long" LV-FAIL THEN
    c LV-RESULT-BUF LV-LINE-U @ + c!
@@ -967,10 +970,10 @@ variable LV-LINE-U
    s"  reference metric row(s), 0 finding(s)" LV-OUT
    LV-NL ;
 
-: LV-NAME=U ( a u n -- )
+: LV-NAME=U ( ptr u8 n n -- )
    -rot LV-OUT LV-EQ LV-U. ;
 
-: LV-TEXT-FIELD ( a u n -- )
+: LV-TEXT-FIELD ( ptr u8 n n -- )
    LV-SPACE LV-NAME=U ;
 
 : LV-OUTPUT-CATEGORIES ( -- )
@@ -1043,13 +1046,13 @@ variable LV-LINE-U
    LV-OUTPUT-REPAIR-CLASSES
    LV-OUTPUT-CATEGORIES ;
 
-: LV-JSON-U ( u -- )
+: LV-JSON-U ( n -- )
    LV-U$ JSONW-RAW ;
 
-: LV-JSON-UF {: a u n :} ( a u n -- )
+: LV-JSON-UF {: a:ptr u n :} ( ptr u8 n n -- )
    a u JSONW-KEY n LV-JSON-U ;
 
-: LV-JSON-COMMA-UF ( a u n -- )
+: LV-JSON-COMMA-UF ( ptr u8 n n -- )
    LV-JSON-UF JSONW-COMMA ;
 
 : LV-OUTPUT-BUCKETS-JSON ( -- )
@@ -1083,7 +1086,7 @@ variable LV-LINE-U
    s" all_errors_stable" LV-BAD-AE @ LV-JSON-UF
    JSONW-OBJECT-END ;
 
-: LV-OUTPUT-CATEGORY-JSON {: k :} ( k -- )
+: LV-OUTPUT-CATEGORY-JSON {: k :} ( n -- )
    JSONW-OBJECT-START
    s" category" JSONW-KEY
    LV-CAT-A k cells + @
@@ -1094,7 +1097,7 @@ variable LV-LINE-U
    s" tests_passed" k LV-CAT-TESTS@ LV-JSON-UF
    JSONW-OBJECT-END ;
 
-: LV-OUTPUT-RC-JSON {: k :} ( k -- )
+: LV-OUTPUT-RC-JSON {: k :} ( n -- )
    JSONW-OBJECT-START
    s" repair_class" JSONW-KEY
    k LV-RC$ JSONW-STRING JSONW-COMMA
