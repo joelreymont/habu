@@ -234,8 +234,8 @@ create REF-DATE-BUF REF-DATE-BUF-LEN allot
    s" src/" s" core" REF-FS-JOIN$ s" src/core" STR= 0= if STR-FALSE exit then
    s" /" s" tmp" REF-FS-JOIN$ s" /tmp" STR= ;
 
-0 set-check  variable AP  variable #BAD  0 #BAD !
-: G= ( got want ) <> if 1 #BAD +! then ;
+variable AP  variable #BAD  0 #BAD !
+: G= ( n n -- ) <> if 1 #BAD +! then ;
 
 \ array->scalar checks
 here 3 , 1 , 4 , 1 , 5 , AP !  AP @ 5 ARR-SUM 14 G=

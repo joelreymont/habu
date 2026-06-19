@@ -21,14 +21,15 @@ SECS=${1:?timeout secs}; CAND=${2:?candidate.f}; VEC=${3:?vectors.f}
 [ -f "$CAND" ] && [ -f "$VEC" ] || { echo error; exit 1; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/grade.XXXXXX")
 trap 'rm -rf "$T"' EXIT
-# Assemble: candidate + grading harness (unchecked) + vectors + verdict.
+# Assemble: candidate + checked grading harness + vectors + verdict.
 # --no-check prepends `0 set-check` so the candidate runs even if it would NOT
 # certify; this is kept for historical unchecked controls.
 {
   [ "$NOCHECK" = 1 ] && printf '0 set-check\n'
   cat "$CAND"; printf '\n'
-  printf '0 set-check\nvariable #BAD  0 #BAD !\nvariable AP  variable BP\n: G= ( got want ) <> if 1 #BAD +! then ;\n'
-  printf ': GRADE-REPORT #BAD @ 0= if .\" GRADE-OK\" else .\" GRADE-FAIL\" then cr ;\n'
+  [ "$NOCHECK" = 1 ] && printf "' HB-CHECK-HOOK set-check\n"
+  printf 'variable #BAD  0 #BAD !\nvariable AP  variable BP\n: G= ( n n -- ) <> if 1 #BAD +! then ;\n'
+  printf ': GRADE-REPORT ( -- ) #BAD @ 0= if .\" GRADE-OK\" else .\" GRADE-FAIL\" then cr ;\n'
   cat "$VEC"; printf '\n'
   printf 'GRADE-REPORT\n'
 } > "$T/prog.f"

@@ -76,7 +76,7 @@ extract_skeleton() {
 runtime_ms() {
   {
     cat "$T/bundle.f"; printf '\n'
-    printf '0 set-check\nvariable AP\n'
+    printf 'variable AP\n'
     printf ': BENCH-ONCE ( -- )\n'
     cat "$T/bench.f"
     printf ';\n'
