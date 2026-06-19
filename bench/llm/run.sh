@@ -6,10 +6,9 @@ cd "$(dirname "$0")/../.."
 T=$(mktemp -d "${TMPDIR:-/tmp}/habu-llm.XXXXXX")
 cleanup() {
   if command -v trash >/dev/null 2>&1; then
-    trash "$T"
-  else
-    rm -r "$T"
+    trash "$T" 2>/dev/null && return
   fi
+  rm -rf "$T"
 }
 trap cleanup EXIT HUP INT TERM
 check_tsv_shape() {
@@ -517,6 +516,10 @@ N=$(awk -F '\t' 'NR>1 && $6 == "forth" {n++} END{print n+0}' bench/llm/tasks.tsv
 DEFN=$(grep -c '^: ' bench/llm/solutions.f)
 [ "$DEFN" = "$N" ] || { echo "FAIL: task/solution count mismatch ($N task(s), $DEFN definition(s))"; exit 1; }
 [ -x bin/hb ] || ./tools/build.sh >/dev/null
+cat lib/errors.f lib/test.f bench/llm/json-row.f bench/llm/json-row-test.f | bin/hb || {
+  echo "FAIL: llm json row emitter"
+  exit 1
+}
 ./tools/check.sh bench/llm/solutions.f >"$T/check.out" 2>"$T/check.err" || {
   cat "$T/check.err"
   echo "FAIL: answer key is not all-certified"

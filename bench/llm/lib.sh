@@ -298,14 +298,28 @@ bench_model_date() {
   printf '%s' "${BENCH_MODEL_DATE:-${MODEL_DATE:-unknown}}"
 }
 
+bench_json_row_tool() {
+  _bundle=${HABU_JSON_ROW_BUNDLE:-${HB_TMP:-${TMPDIR:-/tmp}}/habu-llm-json-row.f}
+  _tmp=$_bundle.tmp.$$
+  if [ ! -f "$_bundle" ] ||
+     [ lib/errors.f -nt "$_bundle" ] ||
+     [ bench/llm/json-row.f -nt "$_bundle" ]; then
+    cat lib/errors.f bench/llm/json-row.f > "$_tmp"
+    mv "$_tmp" "$_bundle"
+  fi
+  printf '%s' "$_bundle"
+}
+
 bench_json_quote() {
-  node -e 'process.stdout.write(JSON.stringify(process.argv[1] || ""))' "$1"
+  _tool=$(bench_json_row_tool)
+  bin/hb "$_tool" string "${1:-}"
 }
 
 bench_json_quote_file() {
   _path=$1
   if [ -n "$_path" ] && [ -f "$_path" ]; then
-    node -e 'const fs=require("fs"); process.stdout.write(JSON.stringify(fs.readFileSync(process.argv[1], "utf8")))' "$_path"
+    _tool=$(bench_json_row_tool)
+    bin/hb "$_tool" file "$_path"
   else
     bench_json_quote ""
   fi

@@ -21,6 +21,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `/tmp`; fixed names like `stage2-got` race. `tools/build.sh`,
   `tools/seed.sh`, and `test/run.sh` allocate and export private `HB_TMP`
   by default where they run builds, while preserving explicit `HB_TMP` for repro.
+- **Temp cleanup must not fail the gate:** `trash` can reject private temp
+  directories under sandboxed `/var/folders`; cleanup hooks should prefer trash
+  but fall back to direct removal when trash itself fails.
 - **User-facing builds must fail closed:** `hb-build` verifies user source with
   `CHECK!` and accepts only `-1` certification. Tests assert bad programs fail
   to build, not merely that a later call exits nonzero.
@@ -201,6 +204,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Dogfood benchmark hot paths:** per-call benchmark glue such as model-response
   parsing must be Habu-native. Host parsers hide missing Habu JSON/string/file
   primitives and make the benchmark less credible as an LLM-native proof.
+- **Benchmark row artifacts need streaming JSON:** prompt/response/replay fields
+  can exceed small writer buffers. Quote artifact bytes with a chunked Habu
+  emitter instead of routing row bodies through fixed-capacity JSON builders or
+  host JSON encoders.
 - **Codex input-token bloat is ambient context:** default `codex exec` loads
   apps/plugins/tool context and project instructions; a smoke prompt fell from
   about 29k input tokens to about 11.5k by using a clean `CODEX_HOME` plus
