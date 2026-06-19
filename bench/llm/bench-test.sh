@@ -51,6 +51,17 @@ rt=$(node bench/llm/parse-resp.js "$T/openai.json" "$T/openai.txt" openai-json u
   fails=$((fails+1))
 }
 
+cat > "$T/codex.jsonl" <<'EOF'
+{"type":"thread.started","thread_id":"fixture"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"function f(a){return a.length;}"}}
+{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":13,"reasoning_output_tokens":5}}
+EOF
+rt=$(node bench/llm/parse-resp.js "$T/codex.jsonl" "$T/codex.txt" codex-jsonl usage.output_tokens)
+[ "$rt" = 13 ] && [ "$(cat "$T/codex.txt")" = 'function f(a){return a.length;}' ] && echo "ok: parse-resp-codex" || {
+  echo "FAIL: parse-resp-codex -> tokens=$rt text=$(cat "$T/codex.txt")"
+  fails=$((fails+1))
+}
+
 cat > "$T/report.jsonl" <<'EOF'
 {"task_id":1,"name":"ZERO-TOK","model":"fixture","arm":"habu-a","outcome":"pass","rounds":1,"first_pass":true,"tokens":0,"wall_ms":10}
 {"task_id":1,"name":"ZERO-TOK","model":"fixture","arm":"js","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":10}
@@ -172,6 +183,24 @@ EOF
 r=$(MODEL_REGISTRY="$T/models.tsv" MODEL_ID=fixture sh bench/llm/drive-js.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV")
 chk model-registry-label '"model_id":"fixture","model":"FixtureJS","arm":"js","trial_id":"manifest:fixture:js:1:0","trial":0,"task_order":0,"k_trials":0,"order_seed":"manifest","outcome":"pass","rounds":1' "$r"
 
+cat > "$T/codex-model.sh" <<'EOF'
+#!/bin/sh
+case "$*" in
+  *exec*--json*) ;;
+  *) echo "missing codex exec args: $*" >&2; exit 2 ;;
+esac
+printf '%s\n' '{"type":"thread.started","thread_id":"fixture"}'
+printf '%s\n' '{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"function f(a){ return a.reduce((s,x)=>s+x,0); }"}}'
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":17,"reasoning_output_tokens":3}}'
+EOF
+chmod +x "$T/codex-model.sh"
+cat > "$T/models-codex.tsv" <<EOF
+id	label	command	args	parser	token_fields	timeout_s
+codexfix	CodexFixture	$T/codex-model.sh	codex-exec {prompt}	codex-jsonl	usage.output_tokens	5
+EOF
+r=$(MODEL_REGISTRY="$T/models-codex.tsv" MODEL_ID=codexfix sh bench/llm/drive-js.sh 1 ARR-SUM "ptr a n -- i64" "sum" as "$SV")
+chk model-registry-codex '"model_id":"codexfix","model":"CodexFixture","arm":"js".*"outcome":"pass","rounds":1.*"tokens":17' "$r"
+
 cat > "$T/models2.tsv" <<EOF
 id	label	command	args	parser	token_fields	timeout_s
 alpha	AlphaJS	$T/js.sh	-p {prompt} --output-format json	raw		5
@@ -289,6 +318,21 @@ EOF
   else
     echo "ok: run-bench-canonical-no-legacy"
   fi
+  cat > "$T/models-filter.tsv" <<EOF
+id	label	command	args	parser	token_fields	timeout_s
+alpha	Alpha	$T/canon-model.sh	{prompt}	raw		5
+beta	Beta	$T/canon-model.sh	{prompt}	raw		5
+EOF
+  MODEL_REGISTRY="$T/models-filter.tsv" MODEL_ID=beta BENCH_TASKS="$T/canon-tasks.tsv" BENCH_RESULTS="$T/filter-results.md" \
+    sh bench/llm/run-bench.sh 1 "$T/filter-run.jsonl" >"$T/filter-run.out" 2>"$T/filter-run.err"
+  filter_rows=$(wc -l < "$T/filter-run.jsonl" | tr -d ' ')
+  filter_beta=$(grep -c '"model_id":"beta"' "$T/filter-run.jsonl" || true)
+  filter_alpha=$(grep -c '"model_id":"alpha"' "$T/filter-run.jsonl" || true)
+  [ "$filter_rows" = 8 ] && [ "$filter_beta" = 8 ] && [ "$filter_alpha" = 0 ] && echo "ok: run-bench-model-filter" || {
+    echo "FAIL: run-bench-model-filter -> rows=$filter_rows beta=$filter_beta alpha=$filter_alpha"
+    cat "$T/filter-run.err"
+    fails=$((fails+1))
+  }
 fi
 
 echo "----"

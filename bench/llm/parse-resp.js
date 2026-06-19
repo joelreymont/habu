@@ -1,7 +1,7 @@
 // parse-resp.js — extract completion text + generation token count from a model
 // response. Usage:
 //   node parse-resp.js <resp-file> <out-text-file> [parser] [token-fields]
-// Parsers: claude-json (default), openai-json, raw. Token fields are comma-
+// Parsers: claude-json (default), openai-json, codex-jsonl, raw. Token fields are comma-
 // separated JSON paths; `*` fans out over object values or array elements.
 // We count OUTPUT tokens only: input tokens are dominated by harness overhead and
 // prompt caching, so they are not a fair cross-call signal.
@@ -48,12 +48,21 @@ function textFromJson(j) {
   return null;
 }
 try {
-  const j = JSON.parse(raw);
-  if (parser !== 'raw') {
-    const text = textFromJson(j);
-    if (typeof text === 'string') result = text;
+  if (parser === 'codex-jsonl') {
+    const events = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(JSON.parse);
+    const messages = events
+      .map(e => e && e.item)
+      .filter(item => item && item.type === 'agent_message' && typeof item.text === 'string');
+    if (messages.length) result = messages[messages.length - 1].text;
+    toks = events.reduce((sum, event) => sum + tokenSum(event), 0);
+  } else {
+    const j = JSON.parse(raw);
+    if (parser !== 'raw') {
+      const text = textFromJson(j);
+      if (typeof text === 'string') result = text;
+    }
+    toks = tokenSum(j);
   }
-  toks = tokenSum(j);
 } catch (e) { /* raw text stub */ }
 fs.writeFileSync(process.argv[3], result);
 process.stdout.write(String(toks));

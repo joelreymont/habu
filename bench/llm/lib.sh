@@ -34,6 +34,10 @@ _rhs()   { printf '%s' "$1" | sed 's/.*->//'; }
 MODEL_REGISTRY=${MODEL_REGISTRY:-bench/llm/models.tsv}
 
 model_ids() {
+  if [ -n "${MODEL_ID:-}" ]; then
+    printf '%s\n' "$MODEL_ID"
+    return
+  fi
   awk -F '\t' 'NR > 1 && $1 != "" && substr($1, 1, 1) != "#" { print $1 }' "$MODEL_REGISTRY"
 }
 
@@ -72,13 +76,18 @@ model_run() {
   _out=$2
   case "$MODEL_ARGS" in
     '-p {prompt} --output-format json')
-      timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" -p "$_prompt" --output-format json > "$_out" 2>/dev/null
+      timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" -p "$_prompt" --output-format json > "$_out" 2>/dev/null </dev/null
+      ;;
+    'codex-exec {prompt}')
+      timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" exec \
+        --disable plugins --disable apps --disable multi_agent --disable tool_suggest --disable workspace_dependencies \
+        --skip-git-repo-check --ignore-rules --ignore-user-config --sandbox read-only --json "$_prompt" > "$_out" 2>/dev/null </dev/null
       ;;
     '{prompt}')
-      timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" "$_prompt" > "$_out" 2>/dev/null
+      timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" "$_prompt" > "$_out" 2>/dev/null </dev/null
       ;;
     '')
-      timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" "$_prompt" > "$_out" 2>/dev/null
+      timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" "$_prompt" > "$_out" 2>/dev/null </dev/null
       ;;
     *)
       echo "bench/llm: unsupported args template for $MODEL_ID: $MODEL_ARGS" >&2
