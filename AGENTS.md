@@ -28,6 +28,23 @@ constants; and a `T{ … -> … }T` test for every word.
   renderer vs DB vs data table). Split at responsibility seams; it aids review
   and lets files be built in parallel. See `docs/forth.md` § Files.
 
+## Habu Only (BLOCKING)
+
+- New repo automation, tests, benchmarks, report reducers, parsers, code
+  generators, build logic, repair tools, and LLM tooling must be checked/typed
+  Habu Forth run by `bin/hb`.
+- Do not add new Python, JavaScript, Node, shell, awk, sed, or Perl logic. A
+  shell file is allowed only as a compatibility launcher whose behavior is
+  `exec bin/hb tool.f "$@"`, and the remaining launcher must be tracked as host
+  glue to retire.
+- Existing host glue is legacy debt. Do not extend it; replace it. When Habu
+  lacks a needed primitive or typed abstraction, add a detailed dot for that
+  capability and build it in Habu instead of adding host code.
+- Unchecked Habu (`0 set-check`, `TRUSTED:`) is allowed only as a named, tested
+  boundary for behavior the checker cannot yet express. The missing typed
+  capability must be tracked by dot and removed from the unchecked boundary when
+  implemented.
+
 ## Lessons
 
 - **Read `docs/forth.md` and `LESSONS.md` at the start of every session, and
