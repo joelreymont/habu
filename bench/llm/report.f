@@ -4,19 +4,16 @@
 \ Tool boundary: streaming JSONL, large replay strings, and CLI/file IO live here.
 0 set-check
 
-1024 constant RR-ROW-MAX
-128 constant RR-TASK-MAX
-128 constant RR-MODEL-MAX
-64 constant RR-CAT-MAX
 16 constant RR-ARM-MAX
 $80000 constant RR-LINE-CAP
 $4000 constant RR-READ-CAP
 $40000 constant RR-PERF-CAP
-$10000 constant RR-STR-CAP
 512 constant RR-KEY-CAP
 1024 constant RR-VALUE-CAP
 32 constant RR-NUM-CAP
-128 constant RR-STAT-MAX
+1 constant RR-MIN-CAP
+4096 constant RR-STR-HEADROOM
+64 constant RR-STR-ROW-HEADROOM
 
 -9223372036854775808 constant RR-NULL
 76 constant RR-E-INTERNAL
@@ -50,51 +47,62 @@ $10000 constant RR-STR-CAP
 create RR-LINE RR-LINE-CAP allot
 create RR-READ RR-READ-CAP allot
 create RR-PERF RR-PERF-CAP allot
-create RR-STR RR-STR-CAP allot
 create RR-KEY RR-KEY-CAP allot
 create RR-VALUE RR-VALUE-CAP allot
 create RR-NUM RR-NUM-CAP allot
-create RR-VALS RR-ROW-MAX cells allot
 
-create R-TASK-ID RR-ROW-MAX cells allot
-create R-NAME-O RR-ROW-MAX cells allot
-create R-NAME-U RR-ROW-MAX cells allot
-create R-MODEL-ID-O RR-ROW-MAX cells allot
-create R-MODEL-ID-U RR-ROW-MAX cells allot
-create R-MODEL-O RR-ROW-MAX cells allot
-create R-MODEL-U RR-ROW-MAX cells allot
-create R-MODEL-KEY-O RR-ROW-MAX cells allot
-create R-MODEL-KEY-U RR-ROW-MAX cells allot
-create R-ARM RR-ROW-MAX cells allot
-create R-CAT-O RR-ROW-MAX cells allot
-create R-CAT-U RR-ROW-MAX cells allot
-create R-OUT-O RR-ROW-MAX cells allot
-create R-OUT-U RR-ROW-MAX cells allot
-create R-ROUNDS RR-ROW-MAX cells allot
-create R-FIRST RR-ROW-MAX cells allot
-create R-TOKENS RR-ROW-MAX cells allot
-create R-RUNTIME RR-ROW-MAX cells allot
-create R-RUNTIME-KNOWN RR-ROW-MAX cells allot
-create R-WALL RR-ROW-MAX cells allot
-create R-DIAGOK RR-ROW-MAX cells allot
+variable RR-STR-P
+variable RR-STR-CAP
+variable RR-ROW-CAP
+variable RR-TASK-CAP
+variable RR-MODEL-CAP
+variable RR-CAT-CAP
+variable RR-BYTE-COUNT
+variable RR-COUNT-ROWS
+variable RR-COUNT-SEEN
+variable RR-COUNT-FD
 
-create T-NAME-O RR-TASK-MAX cells allot
-create T-NAME-U RR-TASK-MAX cells allot
+variable RR-VALS-P
 
-create M-KEY-O RR-MODEL-MAX cells allot
-create M-KEY-U RR-MODEL-MAX cells allot
-create M-LABEL-O RR-MODEL-MAX cells allot
-create M-LABEL-U RR-MODEL-MAX cells allot
+variable R-TASK-ID-P
+variable R-NAME-O-P
+variable R-NAME-U-P
+variable R-MODEL-ID-O-P
+variable R-MODEL-ID-U-P
+variable R-MODEL-O-P
+variable R-MODEL-U-P
+variable R-MODEL-KEY-O-P
+variable R-MODEL-KEY-U-P
+variable R-ARM-P
+variable R-CAT-O-P
+variable R-CAT-U-P
+variable R-OUT-O-P
+variable R-OUT-U-P
+variable R-ROUNDS-P
+variable R-FIRST-P
+variable R-TOKENS-P
+variable R-RUNTIME-P
+variable R-RUNTIME-KNOWN-P
+variable R-WALL-P
+variable R-DIAGOK-P
 
-create C-NAME-O RR-CAT-MAX cells allot
-create C-NAME-U RR-CAT-MAX cells allot
+variable T-NAME-O-P
+variable T-NAME-U-P
 
-create U-TASK-ID RR-ROW-MAX cells allot
-create U-NAME-O RR-ROW-MAX cells allot
-create U-NAME-U RR-ROW-MAX cells allot
-create U-MODEL-O RR-ROW-MAX cells allot
-create U-MODEL-U RR-ROW-MAX cells allot
-create U-PASS RR-ROW-MAX cells allot
+variable M-KEY-O-P
+variable M-KEY-U-P
+variable M-LABEL-O-P
+variable M-LABEL-U-P
+
+variable C-NAME-O-P
+variable C-NAME-U-P
+
+variable U-TASK-ID-P
+variable U-NAME-O-P
+variable U-NAME-U-P
+variable U-MODEL-O-P
+variable U-MODEL-U-P
+variable U-PASS-P
 
 variable RR-ROWS
 variable RR-STR-U
@@ -175,12 +183,123 @@ variable U-COUNT
 variable RR-PERF-ROOT
 variable RR-PERF-ARR
 
+TRUSTED: RR-STR ( -- ptr u8 ) RR-STR-P @ ;
+TRUSTED: RR-VALS ( -- ptr n ) RR-VALS-P @ ;
+
+TRUSTED: R-TASK-ID ( -- ptr n ) R-TASK-ID-P @ ;
+TRUSTED: R-NAME-O ( -- ptr n ) R-NAME-O-P @ ;
+TRUSTED: R-NAME-U ( -- ptr n ) R-NAME-U-P @ ;
+TRUSTED: R-MODEL-ID-O ( -- ptr n ) R-MODEL-ID-O-P @ ;
+TRUSTED: R-MODEL-ID-U ( -- ptr n ) R-MODEL-ID-U-P @ ;
+TRUSTED: R-MODEL-O ( -- ptr n ) R-MODEL-O-P @ ;
+TRUSTED: R-MODEL-U ( -- ptr n ) R-MODEL-U-P @ ;
+TRUSTED: R-MODEL-KEY-O ( -- ptr n ) R-MODEL-KEY-O-P @ ;
+TRUSTED: R-MODEL-KEY-U ( -- ptr n ) R-MODEL-KEY-U-P @ ;
+TRUSTED: R-ARM ( -- ptr n ) R-ARM-P @ ;
+TRUSTED: R-CAT-O ( -- ptr n ) R-CAT-O-P @ ;
+TRUSTED: R-CAT-U ( -- ptr n ) R-CAT-U-P @ ;
+TRUSTED: R-OUT-O ( -- ptr n ) R-OUT-O-P @ ;
+TRUSTED: R-OUT-U ( -- ptr n ) R-OUT-U-P @ ;
+TRUSTED: R-ROUNDS ( -- ptr n ) R-ROUNDS-P @ ;
+TRUSTED: R-FIRST ( -- ptr n ) R-FIRST-P @ ;
+TRUSTED: R-TOKENS ( -- ptr n ) R-TOKENS-P @ ;
+TRUSTED: R-RUNTIME ( -- ptr n ) R-RUNTIME-P @ ;
+TRUSTED: R-RUNTIME-KNOWN ( -- ptr n ) R-RUNTIME-KNOWN-P @ ;
+TRUSTED: R-WALL ( -- ptr n ) R-WALL-P @ ;
+TRUSTED: R-DIAGOK ( -- ptr n ) R-DIAGOK-P @ ;
+
+TRUSTED: T-NAME-O ( -- ptr n ) T-NAME-O-P @ ;
+TRUSTED: T-NAME-U ( -- ptr n ) T-NAME-U-P @ ;
+
+TRUSTED: M-KEY-O ( -- ptr n ) M-KEY-O-P @ ;
+TRUSTED: M-KEY-U ( -- ptr n ) M-KEY-U-P @ ;
+TRUSTED: M-LABEL-O ( -- ptr n ) M-LABEL-O-P @ ;
+TRUSTED: M-LABEL-U ( -- ptr n ) M-LABEL-U-P @ ;
+
+TRUSTED: C-NAME-O ( -- ptr n ) C-NAME-O-P @ ;
+TRUSTED: C-NAME-U ( -- ptr n ) C-NAME-U-P @ ;
+
+TRUSTED: U-TASK-ID ( -- ptr n ) U-TASK-ID-P @ ;
+TRUSTED: U-NAME-O ( -- ptr n ) U-NAME-O-P @ ;
+TRUSTED: U-NAME-U ( -- ptr n ) U-NAME-U-P @ ;
+TRUSTED: U-MODEL-O ( -- ptr n ) U-MODEL-O-P @ ;
+TRUSTED: U-MODEL-U ( -- ptr n ) U-MODEL-U-P @ ;
+TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
+
 : RR-CHECK-HOOK ( -- )
    CHECK! ;
 ' RR-CHECK-HOOK set-check
 
 : RR-FAIL ( a u -- )
    type cr RR-E-INTERNAL die ;
+
+: RR-ALLOC-BYTES ( n -- n )
+   {: bytes:n :}
+   bytes 0 <= if s" report: bad allocation size" RR-FAIL then
+   0 bytes 3 $1002 -1 0 mmap dup 0 < if s" report: mmap failed" RR-FAIL then ;
+
+: RR-ALLOC-CELLS ( n ptr n -- )
+   {: count:n dst:ptr :}
+   count cells RR-ALLOC-BYTES dst ! ;
+
+: RR-CAP-NONZERO ( n -- n )
+   dup RR-MIN-CAP < if drop RR-MIN-CAP then ;
+
+: RR-INIT-CAPS ( -- )
+   RR-COUNT-ROWS @ RR-CAP-NONZERO
+   dup RR-ROW-CAP !
+   dup RR-TASK-CAP !
+   dup RR-MODEL-CAP !
+   RR-CAT-CAP !
+   RR-BYTE-COUNT @ 2 *
+   RR-ROW-CAP @ RR-STR-ROW-HEADROOM * +
+   RR-STR-HEADROOM + RR-STR-CAP ! ;
+
+: RR-ALLOC-ROW-TABLES ( -- )
+   RR-ROW-CAP @ RR-VALS-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-TASK-ID-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-NAME-O-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-NAME-U-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-MODEL-ID-O-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-MODEL-ID-U-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-MODEL-O-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-MODEL-U-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-MODEL-KEY-O-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-MODEL-KEY-U-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-ARM-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-CAT-O-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-CAT-U-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-OUT-O-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-OUT-U-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-ROUNDS-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-FIRST-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-TOKENS-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-RUNTIME-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-RUNTIME-KNOWN-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-WALL-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-DIAGOK-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ U-TASK-ID-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ U-NAME-O-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ U-NAME-U-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ U-MODEL-O-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ U-MODEL-U-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ U-PASS-P RR-ALLOC-CELLS ;
+
+: RR-ALLOC-DIM-TABLES ( -- )
+   RR-TASK-CAP @ T-NAME-O-P RR-ALLOC-CELLS
+   RR-TASK-CAP @ T-NAME-U-P RR-ALLOC-CELLS
+   RR-MODEL-CAP @ M-KEY-O-P RR-ALLOC-CELLS
+   RR-MODEL-CAP @ M-KEY-U-P RR-ALLOC-CELLS
+   RR-MODEL-CAP @ M-LABEL-O-P RR-ALLOC-CELLS
+   RR-MODEL-CAP @ M-LABEL-U-P RR-ALLOC-CELLS
+   RR-CAT-CAP @ C-NAME-O-P RR-ALLOC-CELLS
+   RR-CAT-CAP @ C-NAME-U-P RR-ALLOC-CELLS ;
+
+: RR-INIT-STORAGE ( -- )
+   RR-INIT-CAPS
+   RR-STR-CAP @ RR-ALLOC-BYTES RR-STR-P !
+   RR-ALLOC-ROW-TABLES
+   RR-ALLOC-DIM-TABLES ;
 
 : RR-CELL ( ptr n n -- ptr n ) cells swap + ;
 : RR-A@ ( ptr n n -- n ) RR-CELL @ ;
@@ -195,10 +314,10 @@ variable RR-PERF-ARR
 : RR-UNKNOWN$ ( -- a u ) s" unknown" ;
 
 : RR-CHECK-ROW ( -- )
-   RR-ROWS @ RR-ROW-MAX >= if s" report: too many rows" RR-FAIL then ;
+   RR-ROWS @ RR-ROW-CAP @ >= if s" report: too many rows" RR-FAIL then ;
 
 : RR-CHECK-STR ( n -- )
-   RR-STR-U @ + RR-STR-CAP > if s" report: string pool full" RR-FAIL then ;
+   RR-STR-U @ + RR-STR-CAP @ > if s" report: string pool full" RR-FAIL then ;
 
 : RR-SAVE$ ( ptr u8 n -- n n )
    {: a:ptr u :}
@@ -593,6 +712,39 @@ variable RR-PERF-ARR
       1+
    repeat drop ;
 
+: RR-COUNT-LINE ( -- )
+   RR-COUNT-SEEN @ 0= 0= if
+      RR-COUNT-ROWS @ 1+ RR-COUNT-ROWS !
+      0 RR-COUNT-SEEN !
+   then ;
+
+: RR-COUNT-BYTE ( n -- )
+   RR-BYTE-COUNT @ 1+ RR-BYTE-COUNT !
+   dup RR-LF = if drop RR-COUNT-LINE exit then
+   RR-CR = if exit then
+   1 RR-COUNT-SEEN ! ;
+
+: RR-COUNT-BUF ( n -- )
+   {: n :}
+   0 begin dup n < while
+      RR-READ over + c@ RR-COUNT-BYTE
+      1+
+   repeat drop ;
+
+: RR-COUNT-RUN ( ptr u8 n -- )
+   0 RR-BYTE-COUNT !
+   0 RR-COUNT-ROWS !
+   0 RR-COUNT-SEEN !
+   FS-PATHZ open-rd RR-COUNT-FD !
+   RR-COUNT-FD @ 0 < if s" report: cannot open run JSONL" RR-FAIL then
+   begin
+      RR-COUNT-FD @ RR-READ RR-READ-CAP read dup 0 < if RR-COUNT-FD @ close s" report: read failed" RR-FAIL then
+      dup 0 > while
+      RR-COUNT-BUF
+   repeat drop
+   RR-COUNT-FD @ close
+   RR-COUNT-LINE ;
+
 : RR-SCAN-RUN ( ptr u8 n -- )
    FS-PATHZ open-rd RR-RFD !
    RR-RFD @ 0 < if s" report: cannot open run JSONL" RR-FAIL then
@@ -619,20 +771,20 @@ variable RR-PERF-ARR
 
 : RR-ROW-MODEL-MATCH? ( n n -- bool )
    {: idx:n model:n :}
-   model 0 < if -1 exit then
+   model 0 < if 0 0= exit then
    idx RR-ROW-MODEL-KEY$ model RR-MODEL-KEY$ STR= ;
 
 : RR-ROW-CAT-MATCH? ( n n -- bool )
    {: idx:n cat:n :}
-   cat 0 < if -1 exit then
+   cat 0 < if 0 0= exit then
    idx RR-ROW-CAT$ cat RR-CAT$ STR= ;
 
 : RR-ROW-SELECT? ( n n n n -- bool )
    {: idx:n arm:n model:n cat:n :}
-   idx R-ARM RR-AT arm <> if 0 exit then
-   idx model RR-ROW-MODEL-MATCH? 0= if 0 exit then
-   idx cat RR-ROW-CAT-MATCH? 0= if 0 exit then
-   -1 ;
+   idx R-ARM RR-AT arm <> if 0 0= 0= exit then
+   idx model RR-ROW-MODEL-MATCH? 0= if 0 0= 0= exit then
+   idx cat RR-ROW-CAT-MATCH? 0= if 0 0= 0= exit then
+   0 0= ;
 
 : RR-TASK-INDEX ( ptr u8 n -- n )
    {: a:ptr u :}
@@ -642,7 +794,7 @@ variable RR-PERF-ARR
    repeat drop -1 ;
 
 : RR-ADD-TASK ( ptr u8 n -- )
-   RR-TASK-N @ RR-TASK-MAX >= if s" report: too many tasks" RR-FAIL then
+   RR-TASK-N @ RR-TASK-CAP @ >= if s" report: too many tasks" RR-FAIL then
    T-NAME-O T-NAME-U RR-TASK-N @ RR-STORE$
    RR-TASK-N @ 1+ RR-TASK-N ! ;
 
@@ -655,7 +807,7 @@ variable RR-PERF-ARR
 
 : RR-ADD-MODEL ( ptr u8 n ptr u8 n -- )
    {: ka:ptr ku la:ptr lu :}
-   RR-MODEL-N @ RR-MODEL-MAX >= if s" report: too many models" RR-FAIL then
+   RR-MODEL-N @ RR-MODEL-CAP @ >= if s" report: too many models" RR-FAIL then
    ka ku M-KEY-O M-KEY-U RR-MODEL-N @ RR-STORE$
    lu 0 > if la lu else ka ku then M-LABEL-O M-LABEL-U RR-MODEL-N @ RR-STORE$
    RR-MODEL-N @ 1+ RR-MODEL-N ! ;
@@ -668,7 +820,7 @@ variable RR-PERF-ARR
    repeat drop -1 ;
 
 : RR-ADD-CAT ( ptr u8 n -- )
-   RR-CAT-N @ RR-CAT-MAX >= if s" report: too many categories" RR-FAIL then
+   RR-CAT-N @ RR-CAT-CAP @ >= if s" report: too many categories" RR-FAIL then
    C-NAME-O C-NAME-U RR-CAT-N @ RR-STORE$
    RR-CAT-N @ 1+ RR-CAT-N ! ;
 
@@ -690,7 +842,7 @@ variable RR-PERF-ARR
    repeat drop ;
 
 : RR-VAL+ ( n -- )
-   S-TOK# @ RR-ROW-MAX >= if s" report: stat value overflow" RR-FAIL then
+   S-TOK# @ RR-ROW-CAP @ >= if s" report: stat value overflow" RR-FAIL then
    RR-VALS S-TOK# @ RR-A!
    S-TOK# @ 1+ S-TOK# ! ;
 
@@ -739,11 +891,11 @@ variable RR-PERF-ARR
 
 : RR-UNIT-MATCH? ( n n -- bool )
    {: row:n unit:n :}
-   row RR-ROW-MODEL-KEY$ unit U-MODEL-O RR-AT unit U-MODEL-U RR-AT RR-$ STR= 0= if 0 exit then
-   row R-TASK-ID RR-AT unit U-TASK-ID RR-AT <> if 0 exit then
+   row RR-ROW-MODEL-KEY$ unit U-MODEL-O RR-AT unit U-MODEL-U RR-AT RR-$ STR= 0= if 0 0= 0= exit then
+   row R-TASK-ID RR-AT unit U-TASK-ID RR-AT <> if 0 0= 0= exit then
    row R-TASK-ID RR-AT 0 < if
       row RR-ROW-NAME$ unit U-NAME-O RR-AT unit U-NAME-U RR-AT RR-$ STR=
-   else -1 then ;
+   else 0 0= then ;
 
 : RR-UNIT-INDEX ( n -- n )
    {: row:n :}
@@ -754,7 +906,7 @@ variable RR-PERF-ARR
 
 : RR-ADD-UNIT ( n -- n )
    {: row:n :}
-   U-COUNT @ RR-ROW-MAX >= if s" report: too many task units" RR-FAIL then
+   U-COUNT @ RR-ROW-CAP @ >= if s" report: too many task units" RR-FAIL then
    row R-TASK-ID RR-AT U-TASK-ID U-COUNT @ RR-A!
    row R-NAME-O RR-AT U-NAME-O U-COUNT @ RR-A!
    row R-NAME-U RR-AT U-NAME-U U-COUNT @ RR-A!
@@ -1207,6 +1359,8 @@ variable RR-PERF-ARR
    RR-USAGE
    ARGV-PARSE
    1 2 ARGV-EXPECT-POS
+   0 ARGV-POS$ RR-COUNT-RUN
+   RR-INIT-STORAGE
    0 RR-ROWS ! 0 RR-STR-U ! 0 RR-LINE-U ! 1 RR-LINE# !
    0 ARGV-POS$ RR-SCAN-RUN
    RR-INDEX-DIMENSIONS

@@ -122,6 +122,17 @@ chk report-limitations-boundary 'deterministic-vs-live boundary' "$rep"
 chk report-evidence-contract 'run_id.*model_id.*arm.*task_id.*trial_id' "$rep"
 chk report-replay-artifacts 'prompt.*raw_response.*extracted_candidate.*checker_diagnostics.*repair_packet.*test_output.*final_bundle' "$rep"
 
+long_name=LONG-DYNAMIC-STORAGE-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+: > "$T/report-large.jsonl"
+i=1
+while [ "$i" -le 1100 ]; do
+  printf '{"task_id":1,"name":"%s","model_id":"fixture","model":"Fixture Model With Long Repeated Label","arm":"js","trial_id":"large:%s","trial":%s,"task_order":1,"k_trials":1100,"order_seed":"fixture","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":10,"runtime_ms":1,"runtime_repetitions":2,"runtime_warmups":1,"runtime_status":"ok"}\n' "$long_name" "$i" "$i" >> "$T/report-large.jsonl"
+  i=$((i+1))
+done
+rep=$(sh bench/llm/report.sh "$T/report-large.jsonl")
+chk report-dynamic-row-cap 'Generated from `results/run.jsonl` (1100 trials)' "$rep"
+chk report-dynamic-string-cap "$long_name" "$rep"
+
 cat > "$T/perf.json" <<'EOF'
 {"schema_version":1,"bench":"llm-perf","full":false,"results":[{"name":"check_solutions","wall_ms":12},{"name":"functional_tests","wall_ms":23},{"name":"metric_validator","wall_ms":34},{"name":"prop_smoke_250","wall_ms":45},{"name":"microbench_smoke","wall_ms":56}]}
 EOF

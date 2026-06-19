@@ -218,3 +218,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   that uses an unchecked immediate word executes that word during compilation.
   Keep wrappers for `postpone`/`compile,` primitive fixtures inside the same
   tested boundary, then restore `CHECK!` afterward.
+- **Dynamic pointer tables need typed accessors:** store `mmap` results in raw
+  cells, but expose arrays/string pools through small audited accessors with
+  `TRUSTED:` effects. Checked callers keep seeing `ptr` values instead of
+  untyped numbers reloaded from variables.
