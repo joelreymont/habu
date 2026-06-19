@@ -117,7 +117,7 @@ TFOLD 9 T=
 : TI IM5 ;
 TI 5 T=
 \ POSTPONE is compiler-manipulating; this fixture tests the runtime primitive,
-\ not checked user code.
+\ not checked user code. TP must compile through P5 while the boundary is active.
 0 set-check
 : P5 postpone IM5 ; immediate
 : TP P5 ;

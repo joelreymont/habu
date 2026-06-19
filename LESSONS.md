@@ -214,3 +214,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Shared tool libraries must hand off checker state deliberately:** when a
   bundled helper library re-enables `CHECK!`, end with an explicit boundary if
   downstream legacy scanner modules are expected to choose their own hook.
+- **Immediate-word fixtures extend to compiled callers:** a checked definition
+  that uses an unchecked immediate word executes that word during compilation.
+  Keep wrappers for `postpone`/`compile,` primitive fixtures inside the same
+  tested boundary, then restore `CHECK!` afterward.

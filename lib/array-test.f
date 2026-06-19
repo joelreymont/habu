@@ -21,6 +21,8 @@ create AT-ACTUAL 32 cells allot
       AT-FAIL @ 1 + AT-FAIL !
    then ;
 
+\ T{ -> }T intentionally models an arbitrary stack tail, which is a
+\ metaprogramming test boundary; reusable array helpers below are checked.
 0 set-check
 : T{ ( -- )
    depth AT-START-DEPTH ! ;
