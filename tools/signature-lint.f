@@ -31,10 +31,14 @@ variable SL-WORD-U
 variable SL-SUG-A
 variable SL-SUG-U
 
-: SL-OUT ( a u -- ) type ;
+: SL-CHECK-HOOK ( -- )
+   CHECK! ;
+' SL-CHECK-HOOK set-check
+
+: SL-OUT ( ptr u8 n -- ) type ;
 : SL-NL ( -- ) 10 emit ;
 
-: SL-U$ {: u :} ( u -- a u )
+: SL-U$ ( n -- ptr u8 n ) {: u :}
    SL-NUM-CAP SL-NUM-I !
    u 0= IF
       SL-NUM-I @ 1- SL-NUM-I !
@@ -50,21 +54,21 @@ variable SL-SUG-U
    repeat drop
    SL-NUM-BUF SL-NUM-I @ + SL-NUM-CAP SL-NUM-I @ - ;
 
-: SL-CODE! {: a u :} ( a u -- )
+: SL-CODE! ( ptr u8 n -- ) {: a:ptr u :}
    a SL-CODE-A !  u SL-CODE-U ! ;
 
-: SL-WORD! {: a u :} ( a u -- )
+: SL-WORD! ( ptr u8 n -- ) {: a:ptr u :}
    a SL-WORD-A !  u SL-WORD-U ! ;
 
-: SL-SUG! {: a u :} ( a u -- )
+: SL-SUG! ( ptr u8 n -- ) {: a:ptr u :}
    a SL-SUG-A !  u SL-SUG-U ! ;
 
-: SL-ORIGIN! {: k :} ( k -- )
+: SL-ORIGIN! ( n -- ) {: k :}
    k LL@ SL-LINE !
    k LC@ SL-COL !
    k LB@ SL-BYTE ! ;
 
-: SL-TOK-END {: k :} ( k -- n )
+: SL-TOK-END ( n -- n ) {: k :}
    k LB@ k LTOK nip + ;
 
 : SL-END! ( n -- )
@@ -120,7 +124,7 @@ variable SL-SUG-U
    s" add a word name after ':'" SL-SUG!
    SL-REPORT ;
 
-: SL-MISSING-SIGNATURE {: name :} ( name -- )
+: SL-MISSING-SIGNATURE ( n -- ) {: name :}
    s" E-MISSING-SIGNATURE" SL-CODE!
    name SL-ORIGIN!
    name SL-TOK-END SL-END!
@@ -128,7 +132,7 @@ variable SL-SUG-U
    s" add a typed `( in -- out )` signature immediately after the word name" SL-SUG!
    SL-REPORT ;
 
-: SL-UNVERIFIED-SIGNATURE {: name sig :} ( name sig -- )
+: SL-UNVERIFIED-SIGNATURE ( n n -- ) {: name sig :}
    s" E-UNVERIFIED-SIGNATURE" SL-CODE!
    name SL-ORIGIN!
    sig SL-TOK-END SL-END!
@@ -136,19 +140,19 @@ variable SL-SUG-U
    s" agent-facing strict mode requires a typed `( in -- out )` signature" SL-SUG!
    SL-REPORT ;
 
-: SL-WORD-TOK? {: k :} ( k -- f )
+: SL-WORD-TOK? ( n -- bool ) {: k :}
    k L# @ >= IF 0 exit THEN
    k LK@ L-WORD = ;
 
-: SL-COMMENT-TOK? {: k :} ( k -- f )
+: SL-COMMENT-TOK? ( n -- bool ) {: k :}
    k L# @ >= IF 0 exit THEN
    k LK@ L-COMMENT = ;
 
-: SL-COLON? {: k :} ( k -- f )
+: SL-COLON? ( n -- bool ) {: k :}
    k SL-WORD-TOK? 0= IF 0 exit THEN
    k LTOK s" :" STR= ;
 
-: SL-SIG-KIND {: k :} ( k -- kind )
+: SL-SIG-KIND ( n -- n ) {: k :}
    k SL-COMMENT-TOK? 0= IF SIG-MISSING exit THEN
    k LCONTENT SIG-KIND ;
 
@@ -176,10 +180,10 @@ variable SL-SUG-U
       THEN
    repeat ;
 
-: SL-LABEL$ {: a u :} ( a u -- la lu )
+: SL-LABEL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    ARGV-LABEL? IF 2drop ARGV-LABEL$ ELSE a u THEN ;
 
-: SL-SCAN-FILE {: a u :} ( a u -- )
+: SL-SCAN-FILE ( ptr u8 n -- ) {: a:ptr u :}
    a u SL-LABEL$ SL-FILE-U ! SL-FILE-A !
    a u SL-FILE-BUF SL-FILE-CAP READ-FILE LEX-SOURCE
    SL-SCAN-TOKENS ;
