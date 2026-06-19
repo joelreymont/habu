@@ -12,10 +12,14 @@ variable PAL-LEN
 variable PAL-BAD
 variable PAL-NUM-L
 
+: PAL-CHECK-HOOK ( -- )
+   CHECK! ;
+' PAL-CHECK-HOOK set-check
+
 : PAL-NL ( -- )
    10 emit ;
 
-: PAL-U. ( u -- )
+: PAL-U. ( n -- )
    0 PAL-NUM-L !
    dup 0= IF drop 48 emit exit THEN
    begin dup 0 > while

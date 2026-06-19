@@ -12,9 +12,13 @@ variable FM-START
 variable FM-BAD
 variable FM-NUM-L
 
+: FM-CHECK-HOOK ( -- )
+   CHECK! ;
+' FM-CHECK-HOOK set-check
+
 : FM-NL ( -- ) 10 emit ;
 
-: FM-PATHISH? {: a u :} ( a u -- f )
+: FM-PATHISH? {: a:ptr u :} ( ptr u8 n -- bool )
    a u s" /" CONTAINS? IF -1 exit THEN
    a u s" .md" HAS-EXT? IF -1 exit THEN
    a u s" .sh" HAS-EXT? IF -1 exit THEN
@@ -22,20 +26,20 @@ variable FM-NUM-L
    a u s" .fs" HAS-EXT? IF -1 exit THEN
    a u s" .tsv" HAS-EXT? ;
 
-: FM-EXISTS? ( a u -- f )
+: FM-EXISTS? ( ptr u8 n -- bool )
    PATHZ PATHBUF 0 access 0= ;
 
-: FM-PRINT-PATH ( a u -- )
+: FM-PRINT-PATH ( ptr u8 n -- )
    96 emit type 96 emit ;
 
-: FM-STALE ( a u -- )
+: FM-STALE ( ptr u8 n -- )
    s" FILEMAP-STALE FILEMAP.md: " type
    2dup FM-PRINT-PATH
    s"  does not exist" type FM-NL
    2drop
    FM-BAD @ 1+ FM-BAD ! ;
 
-: FM-MISSING ( a u -- )
+: FM-MISSING ( ptr u8 n -- )
    s" FILEMAP-MISSING FILEMAP.md: required entry " type
    2dup FM-PRINT-PATH
    s"  is absent" type FM-NL
@@ -72,7 +76,7 @@ variable FM-NUM-L
       1+
    repeat drop ;
 
-: FM-REQ ( a u -- )
+: FM-REQ ( ptr u8 n -- )
    2dup INTERN? 0= IF FM-MISSING ELSE 2drop THEN ;
 
 : FM-CHECK-REQUIRED ( -- )
@@ -120,7 +124,7 @@ variable FM-NUM-L
    s" bench/llm/validate-results.f" FM-REQ
    s" bench/llm/validate-results-test.sh" FM-REQ ;
 
-: FM-U. ( u -- )
+: FM-U. ( n -- )
    0 FM-NUM-L !
    dup 0= IF drop 48 emit exit THEN
    begin dup 0 > while

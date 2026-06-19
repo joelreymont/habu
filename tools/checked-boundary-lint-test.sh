@@ -25,7 +25,9 @@ out=$(run_lint \
   "$ROOT/tools/checked-boundary-lint.f" \
   "$ROOT/bench/llm/report.f" \
   "$ROOT/bench/llm/parse-resp.f" \
-  "$ROOT/bench/llm/validate-results.f")
+  "$ROOT/bench/llm/validate-results.f" \
+  "$ROOT/tools/filemap-lint.f" \
+  "$ROOT/tools/parallel-agent-lint.f")
 [ -z "$out" ] || {
   echo "FAIL: checked-boundary-lint protected files emitted output: $out"
   exit 1
