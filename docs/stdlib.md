@@ -366,6 +366,18 @@ FS-MUT-PATHZ2           ( ptr u8 n -- ptr u8 )
 REMOVE-FILE             ( ptr u8 n -- )
 RENAME-FILE             ( ptr u8 n ptr u8 n -- )
 CHMOD-X                 ( ptr u8 n -- )
+MKDIR-MODE              ( ptr u8 n n -- )
+MAKE-DIR                ( ptr u8 n -- )
+REMOVE-DIR              ( ptr u8 n -- )
+MAKE-DIRS               ( ptr u8 n -- )
+COPY-FILE               ( ptr u8 n ptr u8 n n -- )
+ATOMIC-WRITE-FILE       ( ptr u8 n ptr u8 n -- )
+MAKE-TEMP-DIR           ( ptr u8 n ptr u8 n -- ptr u8 n )
+TMPDIR-MKDIR            ( ptr u8 n -- ptr u8 n )
+CLEANUP-RESET           ( -- )
+CLEANUP+                ( ptr u8 n -- )
+CLEANUP-DIR+            ( ptr u8 n -- )
+CLEANUP-RUN             ( -- )
 FS-SKIP-DIR?            ( ptr u8 n -- bool )
 FS-SKIP-ENTRY?          ( ptr u8 n -- bool )
 FS-WALK-PATH            ( ptr u8 n [ ptr u8 n -- ] -- )
@@ -383,13 +395,23 @@ The caller supplies the explicit output cap. Files larger than the cap throw
 to a regular file. Both write the full counted input or throw a named filesystem
 error.
 
-`lib/fs-mutate.f` is layered after the native engine contains `unlink`, `rename`,
-and `chmod`. It owns `REMOVE-FILE`, `RENAME-FILE`, and `CHMOD-X`, each accepting
-counted paths and throwing named filesystem errors. `RENAME-FILE` uses a second
-private pathz buffer so preparing the destination path cannot overwrite the source
-path. Keeping these words outside core `lib/fs.f` preserves the bootstrap path:
-older `bin/hb` builds can still load the core fs helpers before the self-rebuild
-adds the mutation primitives.
+`lib/fs-mutate.f` is layered after the native engine contains mutation
+primitives such as `unlink`, `rename`, `chmod`, `mkdir`, and `rmdir`. It owns
+counted-path wrappers for files and directories. Public wrappers avoid the exact
+primitive names because the dictionary is case-insensitive: use `MAKE-DIR`,
+`REMOVE-DIR`, and `MAKE-DIRS`, not uppercase shadows of `mkdir` or `rmdir`.
+`RENAME-FILE` uses a second private pathz buffer so preparing the destination
+path cannot overwrite the source path. `COPY-FILE` reads through an explicit
+caller capacity and throws `E-FS-CAPACITY` instead of truncating. `ATOMIC-WRITE-FILE`
+writes a sibling `.tmp` file and renames it over the destination.
+
+`MAKE-TEMP-DIR` creates a unique directory under an explicit base path, and
+`TMPDIR-MKDIR` uses `$TMPDIR` or `/tmp`. Cleanup registrations copy counted paths
+into owned storage and `CLEANUP-RUN` removes them in reverse order, so nested
+directory cleanups can register parent before child and still remove child first.
+Keeping these words outside core `lib/fs.f` preserves the bootstrap path: older
+`bin/hb` builds can still load the core fs helpers before the self-rebuild adds
+the mutation primitives.
 
 `WALK-FILES` must be implemented either as a checked quotation combinator or as
 one audited `TRUST` boundary with focused tests proving callback invocation,

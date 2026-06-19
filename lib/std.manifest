@@ -227,9 +227,31 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs	lib/fs.f	word	WALK-FILES	(ptr u8 n [ ptr u8 n -- ] --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	walk regular files depth-first and call a quotation
 1	fs-mutate	lib/fs-mutate.f	module			lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	checked filesystem mutation helpers layered after native primitive rebuild
 1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-PATHZ2	(ptr u8 n -- ptr u8)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	copy a counted path into the mutation module second pathz buffer
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-CHECK-SUFFIX-CAP	(n n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	validate suffix path capacity inputs
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-SUFFIX-PATH	(ptr u8 n ptr u8 n ptr u8 -- n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	build path plus suffix into caller storage
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-CLEANUP-SLOT	(n -- ptr u8)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	return cleanup path storage for one registration
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-CLEANUP-U-PTR	(n -- ptr n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	return cleanup path length cell
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-CLEANUP-KIND-PTR	(n -- ptr n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	return cleanup kind cell
 1	fs-mutate	lib/fs-mutate.f	word	REMOVE-FILE	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	unlink a counted path or throw E-FS-IO
 1	fs-mutate	lib/fs-mutate.f	word	RENAME-FILE	(ptr u8 n ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	rename one counted path to another or throw E-FS-IO
 1	fs-mutate	lib/fs-mutate.f	word	CHMOD-X	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	add executable permission bits to a counted path
+1	fs-mutate	lib/fs-mutate.f	word	MKDIR-MODE	(ptr u8 n n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create a directory with explicit mode
+1	fs-mutate	lib/fs-mutate.f	word	MAKE-DIR	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create one counted directory path
+1	fs-mutate	lib/fs-mutate.f	word	REMOVE-DIR	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	remove one empty counted directory path
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-MKDIR-ONE	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	idempotently create one directory component
+1	fs-mutate	lib/fs-mutate.f	word	MAKE-DIRS	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create missing directory prefixes for one counted path
+1	fs-mutate	lib/fs-mutate.f	word	COPY-FILE	(ptr u8 n ptr u8 n n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	copy a file through bounded caller-selected capacity
+1	fs-mutate	lib/fs-mutate.f	word	ATOMIC-WRITE-FILE	(ptr u8 n ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	write to a sibling temporary file then rename over destination
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-SB-U	(n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	append unsigned decimal digits into the string builder
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-BUILD-TEMP	(ptr u8 n ptr u8 n -- ptr u8 n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	build unique temp path bytes into owned storage
+1	fs-mutate	lib/fs-mutate.f	word	MAKE-TEMP-DIR	(ptr u8 n ptr u8 n -- ptr u8 n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create a unique directory under an explicit base path
+1	fs-mutate	lib/fs-mutate.f	word	TMPDIR-MKDIR	(ptr u8 n -- ptr u8 n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create a unique directory under TMPDIR or /tmp
+1	fs-mutate	lib/fs-mutate.f	word	CLEANUP-RESET	(--)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	clear cleanup registrations
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-CLEANUP+	(ptr u8 n n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	register one cleanup path with explicit kind
+1	fs-mutate	lib/fs-mutate.f	word	CLEANUP+	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	register a file for best-effort reverse cleanup
+1	fs-mutate	lib/fs-mutate.f	word	CLEANUP-DIR+	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	register an empty directory for reverse cleanup
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-CLEANUP-REMOVE	(n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	remove one cleanup registration if it exists
+1	fs-mutate	lib/fs-mutate.f	word	CLEANUP-RUN	(--)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	run cleanup registrations in reverse order
 1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup
 1	process	lib/process.f	word	PROC-WAIT-RAW	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-rc alias captured before checked wrapper shadows the primitive name
 1	process	lib/process.f	word	PROC-SPAWN-RAW	(ptr u8 n n n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-io alias captured before checked wrapper shadows the primitive name
