@@ -180,6 +180,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **LLM benchmark reports need separate axes:** keep trial pass, task pass@k,
   repair rounds, wall time, and generated-token cost distinct. Output tokens are
   an effort proxy, not direct access to hidden reasoning.
+- **Diagnostic usefulness needs an ablation:** replayable benchmark artifacts make
+  rows auditable, but only structured-vs-raw-vs-blind feedback arms show whether
+  Habu diagnostics actually help LLM-generated code converge.
 - **Live benchmark sweeps must resume by identity:** model calls and driver
   repairs can fail before emitting a row. Resume on `(model_id, arm, task_id,
   trial)` so interrupted JSONL fills missing trials without duplicating evidence.

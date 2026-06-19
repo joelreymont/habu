@@ -15,7 +15,14 @@ CATEGORY=$4
 TESTS=$5
 SPEC=$6
 MAXR=${7:-5}
-ARM=${BENCH_FORTH_ARM:-habu-forth}
+FEEDBACK_MODE=${BENCH_FORTH_FEEDBACK:-repair}
+case "$FEEDBACK_MODE" in
+  repair) DEFAULT_ARM=habu-forth ;;
+  raw) DEFAULT_ARM=habu-forth-raw ;;
+  blind) DEFAULT_ARM=habu-forth-blind ;;
+  *) echo "drive-forth: unknown feedback mode $FEEDBACK_MODE" >&2; exit 64 ;;
+esac
+ARM=${BENCH_FORTH_ARM:-$DEFAULT_ARM}
 
 model_init
 
@@ -218,6 +225,48 @@ repair_class_stats_json() {
   printf ']'
 }
 
+checker_feedback() {
+  cand=$1
+  diag=$2
+  packet=$3
+  case "$FEEDBACK_MODE" in
+    repair)
+      printf '\n\nYour attempt:\n'
+      cat "$cand"
+      printf '\nThe checker rejected it. Use this repair packet:\n'
+      cat "$packet"
+      printf '\n\nFix the body so it satisfies the declared stack effect. Output only the corrected definition.'
+      ;;
+    raw)
+      printf '\n\nYour attempt:\n'
+      cat "$cand"
+      printf '\nThe checker rejected it. Raw checker diagnostics:\n'
+      cat "$diag"
+      printf '\n\nFix the body so it satisfies the declared stack effect. Output only the corrected definition.'
+      ;;
+    blind)
+      printf '\n\nYour attempt did not certify against the declared stack effect. Fix the body. Output only the corrected definition.'
+      ;;
+  esac
+}
+
+test_feedback() {
+  cand=$1
+  test_out=$2
+  case "$FEEDBACK_MODE" in
+    repair|raw)
+      printf '\n\nYour attempt:\n'
+      cat "$cand"
+      printf '\nIt certified, but failed the benchmark tests. Test output:\n'
+      cat "$test_out"
+      printf '\n\nExpected examples:\n%s\n\nFix the logic. Output only the corrected definition.' "$cases"
+      ;;
+    blind)
+      printf '\n\nYour attempt certified, but failed the benchmark tests. Fix the logic. Output only the corrected definition.'
+      ;;
+  esac
+}
+
 cases=$(printf '%s' "$TESTS" | tr ';' '\n' | sed '/^[[:space:]]*$/d')
 TASK="Define exactly one checked Habu Forth word:
   : ${NAME} ( ${SIG} ) ... ;
@@ -293,18 +342,7 @@ The candidate used an unchecked/trusted boundary. This benchmark requires checke
     fi
     [ "$round" -eq 1 ] && first_tests=false
     outcome=fail
-    feedback="
-
-Your attempt:
-$(cat "$T/cand.f")
-
-It certified, but failed the benchmark tests. Test output:
-$(cat "$T/test-output.txt")
-
-Expected examples:
-${cases}
-
-Fix the logic. Output only the corrected definition."
+    feedback=$(test_feedback "$T/cand.f" "$T/test-output.txt")
   else
     [ "$round" -eq 1 ] && first_bad=$T/first-bad.f && cp "$T/cand.f" "$first_bad"
     [ "$round" -eq 1 ] && first_checker=rejected
@@ -319,15 +357,7 @@ Fix the logic. Output only the corrected definition."
     fi
     cp "$T/repair-packet.json" "$T/test-output.txt"
     outcome=reject
-    feedback="
-
-Your attempt:
-$(cat "$T/cand.f")
-
-The checker rejected it. Use this repair packet:
-$(cat "$T/repair-packet.json")
-
-Fix the body so it satisfies the declared stack effect. Output only the corrected definition."
+    feedback=$(checker_feedback "$T/cand.f" "$T/round-$round.err" "$T/repair-packet.json")
   fi
 done
 

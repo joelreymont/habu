@@ -152,6 +152,12 @@ checking/grading the candidate.
   `claude -p` → extract def → bundle helper library when selected → `tools/check.sh`
   (certify) → on reject feed the checker diagnostic back (≤5 rounds); on certify, grade via
   `grade.sh`.
+- `bench/llm/drive-forth.sh` — checked-Habu manifest driver. `BENCH_FORTH_FEEDBACK`
+  selects the repair signal for the same task: `repair` (`arm:"habu-forth"`) sends
+  normalized repair packets, `raw` (`arm:"habu-forth-raw"`) sends raw checker output, and
+  `blind` (`arm:"habu-forth-blind"`) sends only generic failure feedback. This ablation is
+  the evidence path for whether Habu diagnostics help LLM repair, separate from replay
+  artifact auditability.
 - `bench/llm/drive-js.sh`, `drive-rust.sh` — JS/Rust arms. `f(a)` returns a number (`as`) or
   array/`Vec` (`aa`); repair on node test failures / rustc errors + test failures.
 - `bench/llm/grade.sh` — runs a candidate in an isolated, timeout-bounded child so a trap/hang

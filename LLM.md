@@ -95,6 +95,11 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   `diagnostic_span`, `diagnostic_expected`, `diagnostic_actual`,
   `diagnostic_code`, `diagnostic_repair_class`, and `all_errors_stable` in
   result rows so repair feedback quality is scored, not assumed.
+- Diagnostic usefulness requires an ablation, not just replayable rows. Compare
+  the same checked Habu tasks with structured repair packets, raw checker text,
+  and blind generic feedback. Claims that Habu is better for LLM-generated code
+  need improved pass rate, fewer repair rounds, or lower token/wall effort in
+  the structured arm against the raw/blind arms.
 - Safety: `trust_uses=0` unless the task explicitly requires an audited boundary;
   `signature_weakened=false` always. Fix bodies before signatures.
 - Cost: track `tokens_used`, `wall_ms`, and `final_chars`; fast feedback matters

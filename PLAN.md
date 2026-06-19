@@ -498,6 +498,12 @@ Arms:
 - `habu-stdlib`: full public stdlib arm.
 - `habu-skeleton`: stdlib plus checked signatures/tests/skeletons where the
   model fills the body.
+- `habu-forth`: checked Habu with structured repair packets after checker
+  rejection.
+- `habu-forth-raw`: the same checked Habu tasks with raw checker diagnostics fed
+  back instead of normalized repair packets.
+- `habu-forth-blind`: the same checked Habu tasks with generic failure feedback
+  and no diagnostic detail in the repair prompt.
 - `js`
 - `rust`
 - `dynamic-scripting`
@@ -576,6 +582,9 @@ Report requirements:
 - Trust-use and signature-weakening counts.
 - Per-category tables.
 - Raw-vs-stdlib and stdlib-vs-skeleton deltas.
+- Structured-vs-raw-vs-blind diagnostic ablations for checked Habu tasks. Replay
+  artifacts prove auditability; this ablation is what tests whether Habu's
+  checker feedback actually helps LLM-generated code converge.
 - Missing-token/runtime rows excluded only from the affected metric, not from
   reliability.
 - Feedback-loop latency from `bench/llm/perf.sh`: checker, functional tests,

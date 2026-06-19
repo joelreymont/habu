@@ -276,6 +276,40 @@ chk forth-driver-rawdiag-code 'E-UNSTRUCTURED-CHECK' "$r"
 chk forth-driver-rawdiag-class '"repair_class":"unknown_rejection"' "$r"
 chk forth-driver-rawdiag-stats '"repair_class_stats":\[{"repair_class":"unknown_rejection","diagnostic_count":1,"repair_success":true,"repair_iterations":1,"token_delta":0}\]' "$r"
 
+cat > "$T/forth-raw-feedback.sh" <<EOF
+#!/bin/sh
+if [ -f "$T/forth-raw-feedback.seen" ]; then
+  echo ": CUBE ( i64 -- i64 ) dup dup * * ;"
+else
+  touch "$T/forth-raw-feedback.seen"
+  echo ": CUBE ( i64 -- i64 ) dup ;"
+fi
+EOF
+chmod +x "$T/forth-raw-feedback.sh"
+r=$(BENCH_FORTH_FEEDBACK=raw CLAUDE="$T/forth-raw-feedback.sh" sh bench/llm/drive-forth.sh 2 CUBE "i64 -- i64" arithmetic "3 -> 27" "Define CUBE with the checked Forth stack effect." 3)
+chk forth-driver-raw-feedback '"arm":"habu-forth-raw".*"outcome":"pass","rounds":2' "$r"
+chk forth-driver-raw-feedback-prompt 'Raw checker diagnostics' "$r"
+
+cat > "$T/forth-blind-feedback.sh" <<EOF
+#!/bin/sh
+if [ -f "$T/forth-blind-feedback.seen" ]; then
+  echo ": CUBE ( i64 -- i64 ) dup dup * * ;"
+else
+  touch "$T/forth-blind-feedback.seen"
+  echo ": CUBE ( i64 -- i64 ) dup ;"
+fi
+EOF
+chmod +x "$T/forth-blind-feedback.sh"
+r=$(BENCH_FORTH_FEEDBACK=blind CLAUDE="$T/forth-blind-feedback.sh" sh bench/llm/drive-forth.sh 2 CUBE "i64 -- i64" arithmetic "3 -> 27" "Define CUBE with the checked Forth stack effect." 3)
+chk forth-driver-blind-feedback '"arm":"habu-forth-blind".*"outcome":"pass","rounds":2' "$r"
+chk forth-driver-blind-feedback-prompt 'attempt did not certify' "$r"
+if printf '%s' "$r" | grep -Eq 'Use this repair packet|Raw checker diagnostics'; then
+  echo "FAIL: forth-driver-blind-feedback-detail -> prompt exposed diagnostic detail"
+  fails=$((fails+1))
+else
+  echo "ok: forth-driver-blind-feedback-detail"
+fi
+
 cat > "$T/models-forth.tsv" <<EOF
 id	label	command	args	parser	token_fields	timeout_s
 forthfix	ForthFixture	$T/forth-good.sh	{prompt}	raw		5
@@ -287,6 +321,25 @@ MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_RE
   fails=$((fails+1))
 }
 chk forth-runner-report 'category arithmetic rows=1 certified=1 tests=1' "$(cat "$T/forth-results.md")"
+
+MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_FORTH_MODES="repair raw" BENCH_SEED=forth-modes-resume BENCH_RESULTS="$T/forth-modes.md" \
+  sh bench/llm/run-forth-bench.sh 1 "$T/forth-modes.jsonl" >/dev/null
+[ "$(wc -l < "$T/forth-modes.jsonl" | tr -d ' ')" = 2 ] && echo "ok: forth-runner-modes-row-count" || {
+  echo "FAIL: forth-runner-modes-row-count"
+  fails=$((fails+1))
+}
+modes_rows=$(cat "$T/forth-modes.jsonl")
+chk forth-runner-modes-repair '"arm":"habu-forth"' "$modes_rows"
+chk forth-runner-modes-raw '"arm":"habu-forth-raw"' "$modes_rows"
+chk forth-runner-modes-report 'rows=2 certified=2 first_tests=2 tests=2' "$(cat "$T/forth-modes.md")"
+
+sed -n '1p' "$T/forth-modes.jsonl" > "$T/forth-modes-partial.jsonl"
+MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_FORTH_MODES="repair raw" BENCH_SEED=forth-modes-resume BENCH_RESUME=1 BENCH_RESULTS="$T/forth-modes-resume.md" \
+  sh bench/llm/run-forth-bench.sh 1 "$T/forth-modes-partial.jsonl" >/dev/null
+[ "$(wc -l < "$T/forth-modes-partial.jsonl" | tr -d ' ')" = 2 ] && echo "ok: forth-runner-modes-resume-row-count" || {
+  echo "FAIL: forth-runner-modes-resume-row-count"
+  fails=$((fails+1))
+}
 
 MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_SEED=forth-resume BENCH_RESULTS="$T/forth-resume-full.md" \
   sh bench/llm/run-forth-bench.sh 2 "$T/forth-resume-full.jsonl" >/dev/null

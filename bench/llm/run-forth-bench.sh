@@ -12,6 +12,7 @@ RESULTS=${BENCH_RESULTS:-bench/llm/RESULTS-expanded.md}
 BENCH_SEED=${BENCH_SEED:-manifest}
 MAXR=${BENCH_MAX_REPAIRS:-5}
 TAB=$(printf '\t')
+FEEDBACK_MODES=${BENCH_FORTH_MODES:-repair}
 
 mkdir -p "$(dirname "$OUT")"
 if [ "${BENCH_RESUME:-0}" = 1 ] && [ -f "$OUT" ]; then
@@ -20,7 +21,30 @@ else
   : > "$OUT"
 fi
 bench_require_manifest_header "$TASKS"
-RUN_ARM=${BENCH_FORTH_ARM:-habu-forth}
+
+mode_count=0
+for mode in $FEEDBACK_MODES; do
+  mode_count=$((mode_count + 1))
+done
+[ "$mode_count" -gt 0 ] || { echo "run-forth-bench: no BENCH_FORTH_MODES selected" >&2; exit 64; }
+if [ -n "${BENCH_FORTH_ARM:-}" ] && [ "$mode_count" -ne 1 ]; then
+  echo "run-forth-bench: BENCH_FORTH_ARM requires exactly one BENCH_FORTH_MODES entry" >&2
+  exit 64
+fi
+
+arm_for_mode() {
+  mode=$1
+  if [ -n "${BENCH_FORTH_ARM:-}" ]; then
+    printf '%s\n' "$BENCH_FORTH_ARM"
+    return 0
+  fi
+  case "$mode" in
+    repair) printf 'habu-forth\n' ;;
+    raw) printf 'habu-forth-raw\n' ;;
+    blind) printf 'habu-forth-blind\n' ;;
+    *) echo "run-forth-bench: unknown feedback mode $mode" >&2; return 64 ;;
+  esac
+}
 
 task_selected() {
   id=$1
@@ -34,11 +58,12 @@ task_selected() {
 row_done() {
   rid=$1
   rmodel=$2
-  rtrial=$3
+  rarm=$3
+  rtrial=$4
   [ -f "$OUT" ] || return 1
   grep -F "\"task_id\":$rid," "$OUT" |
     grep -F "\"model_id\":\"$rmodel\"" |
-    grep -F "\"arm\":\"$RUN_ARM\"" |
+    grep -F "\"arm\":\"$rarm\"" |
     grep -F "\"trial\":$rtrial," >/dev/null
 }
 
@@ -56,23 +81,28 @@ tail -n +2 "$TASKS" | while IFS="$TAB" read -r id name signature category tests 
   sig=$(bench_sig "$signature")
   model_ids | while IFS= read -r model_id; do
     [ -n "$model_id" ] || continue
-    t=1
-    while [ "$t" -le "$K" ]; do
-      if [ "${BENCH_RESUME:-0}" = 1 ] && row_done "$id" "$model_id" "$t"; then
+    for mode in $FEEDBACK_MODES; do
+      arm=$(arm_for_mode "$mode") || exit $?
+      t=1
+      while [ "$t" -le "$K" ]; do
+        if [ "${BENCH_RESUME:-0}" = 1 ] && row_done "$id" "$model_id" "$arm" "$t"; then
+          t=$((t + 1))
+          continue
+        fi
+        MODEL_ID=$model_id \
+        BENCH_TRIAL=$t \
+        BENCH_TASK_ORDER=$task_order \
+        BENCH_K=$K \
+        BENCH_SEED=$BENCH_SEED \
+        BENCH_TASK_FAMILY=$category \
+        BENCH_FORTH_FEEDBACK=$mode \
+        BENCH_FORTH_ARM=$arm \
+        sh bench/llm/drive-forth.sh "$id" "$name" "$sig" "$category" "$tests" "$spec" "$MAXR" </dev/null >> "$OUT" || true
         t=$((t + 1))
-        continue
-      fi
-      MODEL_ID=$model_id \
-      BENCH_TRIAL=$t \
-      BENCH_TASK_ORDER=$task_order \
-      BENCH_K=$K \
-      BENCH_SEED=$BENCH_SEED \
-      BENCH_TASK_FAMILY=$category \
-      sh bench/llm/drive-forth.sh "$id" "$name" "$sig" "$category" "$tests" "$spec" "$MAXR" </dev/null >> "$OUT" || true
-      t=$((t + 1))
+      done
     done
   done
-  echo "[run-forth-bench] task $id $name done (k=$K)" >&2
+  echo "[run-forth-bench] task $id $name done (k=$K modes=$FEEDBACK_MODES)" >&2
 done
 
 sh bench/llm/expanded-report.sh "$OUT" > "$RESULTS"
