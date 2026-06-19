@@ -1,8 +1,6 @@
 \ process-argv-test.f - focused tests for lib/process-argv.f.
 \ Run: lib/process-argv-test.sh
 
-0 set-check
-
 variable PAT-IN-R
 variable PAT-IN-W
 variable PAT-OUT-R

@@ -1,8 +1,6 @@
 \ build-test.f - focused tests for checked build helpers.
 \ Run: lib/build-test.sh
 
-0 set-check
-
 create BUILD-TEST-PATH FS-PATH-CAP allot
 create BUILD-TEST-STEP BUILD-STEP-CELLS cells allot
 
@@ -38,6 +36,11 @@ create BUILD-TEST-STEP BUILD-STEP-CELLS cells allot
 
 : BT-NOART ( -- ptr u8 n )
    BT-ROOT s" noart.bin" BUILD-ARTIFACT ;
+
+: BT-CHECK-ARTIFACT-PATH ( -- )
+   BT-ROOT s" artifact.bin" BUILD-ARTIFACT {: got:ptr gotu :}
+   BT-ROOT s" artifact.bin" BUILD-TEST-PATH JOIN-PATH {: wantu :}
+   got gotu BUILD-TEST-PATH wantu T$= ;
 
 : BT-FILL-STEP ( -- )
    BUILD-TEST-STEP BUILD-STEP-CLEAR
@@ -115,10 +118,7 @@ create BUILD-TEST-STEP BUILD-STEP-CELLS cells allot
    ['] BT-MISSING-SOURCE E-BUILD-SOURCE TTHROWS
    ['] BT-BAD-SOURCE E-BUILD-SOURCE TTHROWS
    ['] BT-UNCHECKABLE-SOURCE E-BUILD-SOURCE TTHROWS
-   BT-ROOT s" artifact.bin" BUILD-ARTIFACT
-   BUILD-TEST-PATH swap
-   BT-ROOT s" artifact.bin" BUILD-TEST-PATH JOIN-PATH
-   BUILD-TEST-PATH swap T$=
+   BT-CHECK-ARTIFACT-PATH
    ['] BT-MISSING-EXPECT E-BUILD-PATH TTHROWS
    ['] BT-EMPTY-ARTIFACT E-BUILD-PATH TTHROWS ;
 

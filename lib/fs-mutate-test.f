@@ -1,8 +1,6 @@
 \ fs-mutate-test.f - focused tests for lib/fs-mutate.f.
 \ Run: lib/fs-mutate-test.sh
 
-0 set-check
-
 : FMT-REMOVE-PATH ( -- ptr u8 n )
    0 SCRIPT-ARGV$ ;
 

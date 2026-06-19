@@ -1,8 +1,6 @@
 \ process-test.f -- focused tests for lib/process.f.
 \ Run: cat lib/errors.f lib/test.f lib/process.f lib/process-test.f | bin/hb
 
-0 set-check
-
 variable PT-R
 variable PT-W
 variable PT-IN-R
@@ -13,7 +11,7 @@ create PT-BUF 32 allot
 create PT-OUT 32 allot
 create PT-ERR 32 allot
 
-: PT-READ ( fd -- n )
+: PT-READ ( n -- n )
    PT-BUF 32 read ;
 
 : TEST-SPAWN-FAIL ( -- )
