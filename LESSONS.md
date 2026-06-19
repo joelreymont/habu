@@ -208,3 +208,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Report reducers need dedicated scratch cells:** loop scratch such as
   `RR-I/J/K` is clobbered by nested stats, sort, and render helpers; persist
   cross-call metrics in purpose-named variables.
+- **Checked tool fatal paths use the modeled `die` effect:** `die` is modeled as
+  `( ptr u8 n n -- )`; old unchecked `s" msg" type cr 1 die` branches do not
+  type-check. Use `s" msg" code die` or a checked wrapper.
+- **Shared tool libraries must hand off checker state deliberately:** when a
+  bundled helper library re-enables `CHECK!`, end with an explicit boundary if
+  downstream legacy scanner modules are expected to choose their own hook.
