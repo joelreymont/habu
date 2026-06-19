@@ -52,7 +52,7 @@ while [ "$round" -lt "$MAXR" ]; do
   printf '%s' "$prompt" > "$T/prompt.txt"
   model_run "$prompt" "$T/resp.json" \
     || { printf 'model_run_failed\n' > "$T/resp.json"; outcome=error; break; }
-  rt=$(node bench/llm/parse-resp.js "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); toks=$((toks+rt))
+  rt=$(sh bench/llm/parse-resp.sh "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); toks=$((toks+rt))
   extract "$T/text.txt" > "$T/f.ts"
   [ -s "$T/f.ts" ] || printf '// no candidate extracted\n' > "$T/f.ts"
   {

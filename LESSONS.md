@@ -180,6 +180,14 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **LLM benchmark reports need separate axes:** keep trial pass, task pass@k,
   repair rounds, wall time, and generated-token cost distinct. Output tokens are
   an effort proxy, not direct access to hidden reasoning.
+- **Dogfood benchmark hot paths:** per-call benchmark glue such as model-response
+  parsing must be Habu-native. Host parsers hide missing Habu JSON/string/file
+  primitives and make the benchmark less credible as an LLM-native proof.
+- **Codex input-token bloat is ambient context:** default `codex exec` loads
+  apps/plugins/tool context and project instructions; a smoke prompt fell from
+  about 29k input tokens to about 11.5k by using a clean `CODEX_HOME` plus
+  disabled apps/plugins/tool features. Benchmark rows still report generated
+  output tokens only; raw artifacts preserve full Codex usage for audits.
 - **LLM validator fixtures should isolate corpus churn:** generate temporary
   reference metric rows from the task manifest under test instead of assuming the
   checked-in reference JSONL has already been refreshed for concurrent task
