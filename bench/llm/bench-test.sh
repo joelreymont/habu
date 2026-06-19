@@ -310,6 +310,25 @@ else
   echo "ok: forth-driver-blind-feedback-detail"
 fi
 
+cat > "$T/forth-codex-last.sh" <<'EOF'
+#!/bin/sh
+out=
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then out=$2; shift 2; continue; fi
+  shift
+done
+[ -n "$out" ] || exit 2
+printf '%s\n' ': SQUARE ( i64 -- i64 ) dup * ;' > "$out"
+printf '%s\n' 'not-json'
+EOF
+chmod +x "$T/forth-codex-last.sh"
+cat > "$T/models-forth-codex-last.tsv" <<EOF
+id	label	command	args	parser	token_fields	timeout_s
+codexlast	CodexLast	$T/forth-codex-last.sh	codex-exec {prompt}	codex-jsonl	usage.output_tokens	5
+EOF
+r=$(MODEL_REGISTRY="$T/models-forth-codex-last.tsv" MODEL_ID=codexlast sh bench/llm/drive-forth.sh 1 SQUARE "i64 -- i64" arithmetic "7 -> 49; -3 -> 9" "Define SQUARE with the checked Forth stack effect." 2)
+chk forth-driver-codex-last '"model_id":"codexlast","model":"CodexLast","arm":"habu-forth".*"outcome":"pass","rounds":1.*"tokens":0' "$r"
+
 cat > "$T/models-forth.tsv" <<EOF
 id	label	command	args	parser	token_fields	timeout_s
 forthfix	ForthFixture	$T/forth-good.sh	{prompt}	raw		5
@@ -321,6 +340,28 @@ MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_RE
   fails=$((fails+1))
 }
 chk forth-runner-report 'category arithmetic rows=1 certified=1 tests=1' "$(cat "$T/forth-results.md")"
+
+cat > "$T/forth-kill-driver.sh" <<'EOF'
+#!/bin/sh
+timeout_pid=$PPID
+driver_pid=$(ps -o ppid= -p "$timeout_pid" | tr -d ' ')
+[ -n "$driver_pid" ] && kill -TERM "$driver_pid" 2>/dev/null
+exit 1
+EOF
+chmod +x "$T/forth-kill-driver.sh"
+cat > "$T/models-forth-kill.tsv" <<EOF
+id	label	command	args	parser	token_fields	timeout_s
+forthkill	ForthKill	$T/forth-kill-driver.sh	{prompt}	raw		5
+EOF
+set +e
+MODEL_REGISTRY="$T/models-forth-kill.tsv" MODEL_ID=forthkill BENCH_TASK_IDS=1 BENCH_RESULTS="$T/forth-missing.md" \
+  sh bench/llm/run-forth-bench.sh 1 "$T/forth-missing.jsonl" >"$T/forth-missing.out" 2>"$T/forth-missing.err"
+missing_rc=$?
+set -e
+[ "$missing_rc" -ne 0 ] && grep -q 'missing row task=1 model=forthkill arm=habu-forth trial=1' "$T/forth-missing.err" && echo "ok: forth-runner-missing-row" || {
+  echo "FAIL: forth-runner-missing-row -> rc=$missing_rc err=$(cat "$T/forth-missing.err")"
+  fails=$((fails+1))
+}
 
 MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_FORTH_MODES="repair raw" BENCH_SEED=forth-modes-resume BENCH_RESULTS="$T/forth-modes.md" \
   sh bench/llm/run-forth-bench.sh 1 "$T/forth-modes.jsonl" >/dev/null

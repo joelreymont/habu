@@ -13,6 +13,10 @@ BENCH_SEED=${BENCH_SEED:-manifest}
 MAXR=${BENCH_MAX_REPAIRS:-5}
 TAB=$(printf '\t')
 FEEDBACK_MODES=${BENCH_FORTH_MODES:-repair}
+T=$(mktemp -d "${TMPDIR:-/tmp}/run-forth-bench.XXXXXX")
+trap 'rm -rf "$T"' EXIT HUP INT TERM
+EXPECTED=$T/expected.tsv
+: > "$EXPECTED"
 
 mkdir -p "$(dirname "$OUT")"
 if [ "${BENCH_RESUME:-0}" = 1 ] && [ -f "$OUT" ]; then
@@ -67,6 +71,25 @@ row_done() {
     grep -F "\"trial\":$rtrial," >/dev/null
 }
 
+expect_row() {
+  printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >> "$EXPECTED"
+}
+
+check_expected_rows() {
+  missing=0
+  while IFS="$TAB" read -r eid emodel earm etrial; do
+    [ -n "$eid" ] || continue
+    if ! row_done "$eid" "$emodel" "$earm" "$etrial"; then
+      echo "run-forth-bench: missing row task=$eid model=$emodel arm=$earm trial=$etrial" >&2
+      missing=$((missing + 1))
+    fi
+  done < "$EXPECTED"
+  [ "$missing" -eq 0 ] || {
+    echo "run-forth-bench: $missing missing row(s); rerun with BENCH_RESUME=1 after fixing the driver" >&2
+    return 1
+  }
+}
+
 task_order=0
 selected=0
 tail -n +2 "$TASKS" | while IFS="$TAB" read -r id name signature category tests harness conv spec vectors tags js_signature rust_signature; do
@@ -85,6 +108,7 @@ tail -n +2 "$TASKS" | while IFS="$TAB" read -r id name signature category tests 
       arm=$(arm_for_mode "$mode") || exit $?
       t=1
       while [ "$t" -le "$K" ]; do
+        expect_row "$id" "$model_id" "$arm" "$t"
         if [ "${BENCH_RESUME:-0}" = 1 ] && row_done "$id" "$model_id" "$arm" "$t"; then
           t=$((t + 1))
           continue
@@ -105,5 +129,6 @@ tail -n +2 "$TASKS" | while IFS="$TAB" read -r id name signature category tests 
   echo "[run-forth-bench] task $id $name done (k=$K modes=$FEEDBACK_MODES)" >&2
 done
 
+check_expected_rows
 sh bench/llm/expanded-report.sh "$OUT" > "$RESULTS"
 echo "[run-forth-bench] wrote $RESULTS" >&2

@@ -186,6 +186,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Live benchmark sweeps must resume by identity:** model calls and driver
   repairs can fail before emitting a row. Resume on `(model_id, arm, task_id,
   trial)` so interrupted JSONL fills missing trials without duplicating evidence.
+- **Live runners must enforce exact coverage:** a driver can die before row
+  emission while the outer sweep continues. Record expected identities during the
+  run and fail before report generation if any row is missing.
 - **Dogfood benchmark hot paths:** per-call benchmark glue such as model-response
   parsing must be Habu-native. Host parsers hide missing Habu JSON/string/file
   primitives and make the benchmark less credible as an LLM-native proof.

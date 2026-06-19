@@ -64,6 +64,7 @@ printf '\\ no final bundle\n' > "$T/bundle.f"
 : > "$T/checker-prose.txt"
 : > "$T/test-output.txt"
 : > "$T/class-events.tsv"
+: > "$T/last-message.txt"
 
 REPAIR_TOOL=$T/repair-packet-tool.f
 cat tools/argv.f tools/json.f tools/repair-packet.f > "$REPAIR_TOOL"
@@ -267,6 +268,29 @@ test_feedback() {
   esac
 }
 
+codex_output_tokens() {
+  sed -n 's/.*"turn.completed".*"output_tokens":\([0-9][0-9]*\).*/\1/p' "$1" | tail -n 1
+}
+
+parse_model_response() {
+  resp=$1
+  text=$2
+  last=$3
+  if [ -s "$last" ]; then
+    cp "$last" "$text"
+    rt=$(codex_output_tokens "$resp")
+    [ -n "$rt" ] || rt=0
+    printf '%s' "$rt"
+    return 0
+  fi
+  if rt=$(sh bench/llm/parse-resp.sh "$resp" "$text" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); then
+    printf '%s' "$rt"
+    return 0
+  fi
+  printf 'response parse failed\n' > "$text"
+  printf '0'
+}
+
 cases=$(printf '%s' "$TESTS" | tr ';' '\n' | sed '/^[[:space:]]*$/d')
 TASK="Define exactly one checked Habu Forth word:
   : ${NAME} ( ${SIG} ) ... ;
@@ -297,12 +321,14 @@ while [ "$round" -lt "$MAXR" ]; do
   round=$((round + 1))
   prompt="${TASK}${feedback}"
   printf '%s' "$prompt" > "$T/prompt.txt"
+  : > "$T/last-message.txt"
+  MODEL_LAST_MESSAGE_FILE=$T/last-message.txt
   if ! model_run "$prompt" "$T/resp.json"; then
     printf 'model_run_failed\n' > "$T/resp.json"
     outcome=error
     break
   fi
-  rt=$(sh bench/llm/parse-resp.sh "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS")
+  rt=$(parse_model_response "$T/resp.json" "$T/text.txt" "$T/last-message.txt")
   toks=$((toks + rt))
   extract "$T/text.txt" > "$T/cand.f"
   [ -s "$T/cand.f" ] || printf '\\ no candidate extracted\n' > "$T/cand.f"

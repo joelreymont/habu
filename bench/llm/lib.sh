@@ -79,9 +79,16 @@ model_run() {
       timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" -p "$_prompt" --output-format json > "$_out" 2>/dev/null </dev/null
       ;;
     'codex-exec {prompt}')
-      timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" exec \
-        --disable plugins --disable apps --disable multi_agent --disable tool_suggest --disable workspace_dependencies \
-        --skip-git-repo-check --ignore-rules --ignore-user-config --sandbox read-only --json "$_prompt" > "$_out" 2>/dev/null </dev/null
+      if [ -n "${MODEL_LAST_MESSAGE_FILE:-}" ]; then
+        timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" exec \
+          --disable plugins --disable apps --disable multi_agent --disable tool_suggest --disable workspace_dependencies \
+          --skip-git-repo-check --ignore-rules --ignore-user-config --sandbox read-only \
+          -o "$MODEL_LAST_MESSAGE_FILE" --json "$_prompt" > "$_out" 2>/dev/null </dev/null
+      else
+        timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" exec \
+          --disable plugins --disable apps --disable multi_agent --disable tool_suggest --disable workspace_dependencies \
+          --skip-git-repo-check --ignore-rules --ignore-user-config --sandbox read-only --json "$_prompt" > "$_out" 2>/dev/null </dev/null
+      fi
       ;;
     '{prompt}')
       timeout "$MODEL_TIMEOUT" "$MODEL_COMMAND" "$_prompt" > "$_out" 2>/dev/null </dev/null
