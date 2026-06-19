@@ -77,7 +77,7 @@ points stay listed.
 
 - `test/run.sh` — default native gate.
 - `test/prop-test.f` — self-hosted property-based checker-soundness test (in-process via `evaluate`).
-- `test/hb-suite.f` — native engine behavior suite.
+- `test/engine-suite.f` — native engine behavior suite.
 - `bench/llm/tasks.tsv` — LLM benchmark task set.
 - `bench/llm/solutions.f` — reference benchmark solutions.
 - `bench/llm/validate-results.f` — native reference/attempt metric validator and summarizer.

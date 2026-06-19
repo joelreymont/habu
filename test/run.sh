@@ -1,6 +1,6 @@
 #!/bin/sh
 # run.sh — the DEFAULT gate: habu-native, no gforth anywhere on the path.
-#   lints -> self-rebuild fixpoint -> hb-suite -> checked hb -> tty REPL ->
+#   lints -> self-rebuild fixpoint -> engine suite -> checked hb -> tty REPL ->
 #   hb-build standalone.
 set -e
 cd "$(dirname "$0")/.."
@@ -375,4 +375,4 @@ fi
 grep -q "expected: i64" $T/hb-rt-bad.err || { echo "FAIL: hb-build --repl diagnostic lost expected type"; exit 1; }
 grep -q "actual: bool" $T/hb-rt-bad.err || { echo "FAIL: hb-build --repl diagnostic lost actual type"; exit 1; }
 echo "PASS: hb-build --repl verifies user defs ($(stat -f%z $T/hb-rt) B, engine + library)"
-echo "PASS: native gate (fixpoint + hb-suite + checked hb + repl + hb-build)"
+echo "PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)"

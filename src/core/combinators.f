@@ -11,7 +11,7 @@ s" KEEP" s" R a [ R a -- S ] -- S a" TRUST
 \ BI/TRI and the iterators must keep quotations available across calls. Modeling
 \ that in checked code would require recursive quotation types, so these are
 \ audited boundaries with call-site signatures recorded by TRUST and covered by
-\ hb-suite/run.sh.
+\ engine-suite/run.sh.
 0 set-check
 : BI
    >r KEEP r> execute ;

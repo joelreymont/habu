@@ -111,7 +111,7 @@ primitives consume typed pointers, and `ptr` without an inner type is rejected.
   parts, jit, profiler, crash, stage2 driver), `src/os/macos/` (Mach-O,
   signing).
 - `test/` — `T{ … }T` tests. `test/run.sh` is the DEFAULT gate, habu-native
-  end to end: lints + self-rebuild fixpoint + hb-suite + checked `hb` +
+  end to end: lints + self-rebuild fixpoint + engine suite + checked `hb` +
   tty REPL + hb-build (runs with gforth absent). `tools/` also holds
   seed/build/hb-build/probe/imgdump/
   jitdump/clobber-lint/shadow-lint/repl-lint, and `snap-hb.sh` for refreshing

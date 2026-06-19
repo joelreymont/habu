@@ -4,8 +4,8 @@
 # behaviors on the installed self-hosted binary.
 cd "$(dirname "$0")/.."
 [ -x bin/hb ] || { echo "no bin/hb — install a trusted seed with tools/seed.sh /path/to/hb"; exit 1; }
-out=$(bin/hb < test/hb-suite.f) || { echo "$out"; echo "FAIL: hb-suite (engine died)"; exit 1; }
+out=$(bin/hb < test/engine-suite.f) || { echo "$out"; echo "FAIL: engine suite (engine died)"; exit 1; }
 case "$out" in
-  *ok) echo "PASS: hb-suite on bin/hb" ;;
-  *) echo "$out"; echo "FAIL: hb-suite"; exit 1 ;;
+  *ok) echo "PASS: engine suite on bin/hb" ;;
+  *) echo "$out"; echo "FAIL: engine suite"; exit 1 ;;
 esac

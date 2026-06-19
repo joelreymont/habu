@@ -99,7 +99,7 @@ not a matter of taste. Target is the native `bin/hb` engine.
 
 - **Every word is exercised by `T{ … -> … }T`** as it's written — happy path plus
   each error/edge. A word without a test is unfinished.
-- Tests live in the native gate: `test/hb-suite.f`, focused `tools/*-test.sh`
+- Tests live in the native gate: `test/engine-suite.f`, focused `tools/*-test.sh`
   fixtures, and source-specific checks wired through `test/run.sh`.
 - Assert the **specific** outcome: for errors, `' WORD catch` and check the exact
   THROW code; for diagnostics, capture text and match a substring.

@@ -1,4 +1,4 @@
-\ hb-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb), no
+\ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb), no
 \ gforth. A failure prints F<index> and the run exits 1 via the final report.
 
 variable #FAIL
@@ -150,11 +150,11 @@ DFD @ 0 >= -1 T=
 0 DIRBASE !
 DFD @ DBUF 4096 DIRBASE getdirentries64 0 > -1 T=
 DFD @ close
-s" /tmp/habu-hb-suite-mkdir" PATHZ rmdir drop
-s" /tmp/habu-hb-suite-mkdir" PATHZ 493 mkdir 0 T=
-s" /tmp/habu-hb-suite-mkdir" PATHZ STB stat64 0 T=
+s" /tmp/habu-engine-suite-mkdir" PATHZ rmdir drop
+s" /tmp/habu-engine-suite-mkdir" PATHZ 493 mkdir 0 T=
+s" /tmp/habu-engine-suite-mkdir" PATHZ STB stat64 0 T=
 MODE@ $F000 and $4000 = -1 T=
-s" /tmp/habu-hb-suite-mkdir" PATHZ rmdir 0 T=
+s" /tmp/habu-engine-suite-mkdir" PATHZ rmdir 0 T=
 0 4096 3 $1002 -1 0 mmap dup 0 < 0 T= dup 65 swap c! c@ 65 T=
 
 \ floats (the f+ prim must be the FLOAT op — it was once shadowed by a
@@ -238,5 +238,5 @@ TFG -1 T=
 \ report: count + nonzero exit on failure
 : REPORT
    #FAIL @ 0 = if [char] o emit [char] k emit cr exit then
-   #FAIL @ . s" hb-suite: failures" 1 die ;
+   #FAIL @ . s" engine-suite: failures" 1 die ;
 REPORT
