@@ -260,6 +260,22 @@ r=$(CLAUDE="$T/forth-repair.sh" sh bench/llm/drive-forth.sh 2 CUBE "i64 -- i64" 
 chk forth-driver-repair '"outcome":"pass","rounds":2.*"first_pass_checker":"rejected","first_pass_tests":false,"tests_passed":true' "$r"
 chk forth-driver-repair-stats '"diagnostic_count":1.*"repair_class_stats":\[{"repair_class":"remove_producer","diagnostic_count":1,"repair_success":true,"repair_iterations":1,"token_delta":0}\]' "$r"
 
+cat > "$T/forth-rawdiag.sh" <<EOF
+#!/bin/sh
+if [ -f "$T/forth-rawdiag.seen" ]; then
+  echo ": POW ( i64 i64 -- i64 ) {: b e :} 1 e 0 ?do b * loop ;"
+else
+  touch "$T/forth-rawdiag.seen"
+  echo ": POW ( i64 i64 -- i64 ) {: b e :} e 0= if 1 else b e 1 - POW b * then ;"
+fi
+EOF
+chmod +x "$T/forth-rawdiag.sh"
+r=$(CLAUDE="$T/forth-rawdiag.sh" sh bench/llm/drive-forth.sh 19 POW "i64 i64 -- i64" loop "2 3 -> 8; 5 0 -> 1" "Define POW with the checked Forth stack effect." 3)
+chk forth-driver-rawdiag-repair '"outcome":"pass","rounds":2' "$r"
+chk forth-driver-rawdiag-code 'E-UNSTRUCTURED-CHECK' "$r"
+chk forth-driver-rawdiag-class '"repair_class":"unknown_rejection"' "$r"
+chk forth-driver-rawdiag-stats '"repair_class_stats":\[{"repair_class":"unknown_rejection","diagnostic_count":1,"repair_success":true,"repair_iterations":1,"token_delta":0}\]' "$r"
+
 cat > "$T/models-forth.tsv" <<EOF
 id	label	command	args	parser	token_fields	timeout_s
 forthfix	ForthFixture	$T/forth-good.sh	{prompt}	raw		5

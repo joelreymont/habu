@@ -112,6 +112,25 @@ check_candidate() {
   if [ ! -s "$diag" ] && [ -s "$T/checker-stdout.txt" ]; then
     cp "$T/checker-stdout.txt" "$diag"
   fi
+  if ! grep -q '^[[:space:]]*{' "$diag"; then
+    raw=$(tr '\n' ' ' < "$diag" | xargs)
+    [ -n "$raw" ] || raw=checker_failed_without_diagnostic
+    token=$(printf '%s' "$raw" | awk '{ print $1 }')
+    [ -n "$token" ] || token=unknown
+    suggestion="Replace unsupported or undefined tokens with checked Habu words."
+    if [ "$token" = "$NAME" ]; then
+      suggestion="Use recurse for recursive calls inside the current definition."
+    fi
+    definition_source=$(bench_json_quote_file "$cand")
+    printf '{' > "$diag"
+    printf '"schema_version":1,"verdict":"rejected","word":%s,' "$(bench_json_quote "$NAME")" >> "$diag"
+    printf '"token":%s,"token_index":0,"file":%s,' "$(bench_json_quote "$token")" "$(bench_json_quote "$cand")" >> "$diag"
+    printf '"line":1,"column":1,"byte_start":0,"byte_end":0,' >> "$diag"
+    printf '"declared_effect":%s,"inferred_effect":%s,' "$(bench_json_quote "$SIG")" "$(bench_json_quote "$raw")" >> "$diag"
+    printf '"expected":null,"actual":null,"return_stack":{"expected":null,"actual":null},' >> "$diag"
+    printf '"code":"E-UNSTRUCTURED-CHECK","repair_class":"unknown_rejection",' >> "$diag"
+    printf '"suggestion":%s,"definition_source":%s}\n' "$(bench_json_quote "$suggestion")" "$definition_source" >> "$diag"
+  fi
   return 1
 }
 
