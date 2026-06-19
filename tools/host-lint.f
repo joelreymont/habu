@@ -51,6 +51,14 @@ variable HOST-PATH-U
       1+
    repeat drop -1 ;
 
+: HOST-FIND {: a u b v :} ( -- idx|-1 )
+   v 0= IF 0 exit THEN
+   u v < IF -1 exit THEN
+   0 begin dup u v - <= while
+      dup a + v b v STR= IF exit THEN
+      1+
+   repeat drop -1 ;
+
 : HOST-LINE# {: a u idx :} ( -- n )
    1 0 begin dup idx < while
       dup a + c@ 10 = IF swap 1+ swap THEN
@@ -87,10 +95,11 @@ variable HOST-PATH-U
    2dup s" ./bench/llm/drive-" PREFIX? IF s" .sh" HAS-EXT? exit THEN
    2dup s" ./bench/llm/bench-test.sh" PATH= IF 2drop -1 exit THEN
    2dup s" ./bench/llm/run-bench.sh" PATH= IF 2drop -1 exit THEN
+   2dup s" ./bench/llm/report.f" PATH= IF 2drop -1 exit THEN
    s" ./bench/llm/lib.sh" PATH= ;
 
 : HOST-CHECK-A ( a u -- )
-   HOST-PAT-A 6 HOST-FIND-CI
+   HOST-PAT-A 6 HOST-FIND
    dup 0 >= IF
       HOST-BUF HOST-LEN @ rot HOST-LINE#
       HOST-PATH-A @ HOST-PATH-U @ rot HOST-REPORT-CONTENT
@@ -99,7 +108,7 @@ variable HOST-PATH-U
    THEN ;
 
 : HOST-CHECK-B ( a u -- )
-   HOST-PAT-B 3 HOST-FIND-CI
+   HOST-PAT-B 3 HOST-FIND
    dup 0 >= IF
       HOST-BUF HOST-LEN @ rot HOST-LINE#
       HOST-PATH-A @ HOST-PATH-U @ rot HOST-REPORT-CONTENT

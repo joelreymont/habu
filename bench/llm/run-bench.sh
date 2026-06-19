@@ -2,8 +2,8 @@
 # run-bench.sh [k_trials] [out.jsonl] — run every array task in the canonical
 # manifest across all eight arms
 # {habu-a, habu-lib, habu-stdlib, habu-skeleton, js, python, ts, rust} for k trials,
-# appending JSONL metrics rows. Then
-# report.js aggregates into RESULTS.md. Makes real `claude -p` calls.
+# appending JSONL metrics rows. Then the Habu report reducer aggregates into
+# RESULTS.md. Makes real model CLI calls.
 set -e
 cd "$(dirname "$0")/../.."
 . bench/llm/lib.sh
@@ -42,5 +42,5 @@ tail -n +2 "$TASKS" | while IFS="$TAB" read -r id name signature category tests 
   done
   echo "[run-bench] task $id $name done (k=$K)" >&2
 done
-node bench/llm/report.js "$OUT" > "$RESULTS"
+sh bench/llm/report.sh "$OUT" > "$RESULTS"
 echo "[run-bench] wrote $RESULTS" >&2

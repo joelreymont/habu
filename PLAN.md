@@ -909,7 +909,7 @@ Live benchmark evidence after benchmark-surface changes:
 
 ```sh
 sh bench/llm/run-bench.sh 2
-node bench/llm/report.js bench/llm/results/run.jsonl > /tmp/RESULTS.md
+sh bench/llm/report.sh bench/llm/results/run.jsonl > /tmp/RESULTS.md
 ```
 
 Fresh live model runs are nondeterministic. Review `/tmp/RESULTS.md` for the
@@ -917,7 +917,7 @@ expected shape before replacing `bench/llm/RESULTS.md`. For committed JSONL
 evidence, report generation must be deterministic:
 
 ```sh
-node bench/llm/report.js bench/llm/results/run.jsonl > /tmp/RESULTS.md
+sh bench/llm/report.sh bench/llm/results/run.jsonl > /tmp/RESULTS.md
 cmp /tmp/RESULTS.md bench/llm/RESULTS.md
 ```
 

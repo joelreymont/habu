@@ -106,7 +106,7 @@ harness and hangs.)
 ### V3 — Reproduce the benchmark (uses real `claude -p`; costs tokens; non-deterministic)
 ```
 sh bench/llm/run-bench.sh 2                       # 10 tasks × 4 arms × 2 trials -> results/run.jsonl
-node bench/llm/report.js bench/llm/results/run.jsonl > /tmp/RESULTS.md
+sh bench/llm/report.sh bench/llm/results/run.jsonl > /tmp/RESULTS.md
 ```
 Then compare `/tmp/RESULTS.md` to the committed `bench/llm/RESULTS.md`. Exact token counts
 WILL differ run-to-run (model nondeterminism), but the **shape** must reproduce: pass@k ≈ 100%
@@ -161,9 +161,9 @@ checking/grading the candidate.
   `claude -p --output-format json`. Input tokens are deliberately excluded (Claude Code harness
   overhead ~7–22K/call + prompt caching distort them); output tokens track generated-token cost.
 - `bench/llm/run-bench.sh <k>` — orchestrator: every task × 4 arms × k trials → `run.jsonl`,
-  then `report.js` → `RESULTS.md`. Drivers are invoked with `</dev/null` (else `claude -p`
+  then the Habu report reducer → `RESULTS.md`. Drivers are invoked with `</dev/null` (else `claude -p`
   swallows the loop's stdin) and `|| true` (a failing driver must not abort the sweep).
-- `bench/llm/report.js` — aggregates `run.jsonl` → `RESULTS.md` (trial pass, first-try
+- `bench/llm/report.f` / `report.sh` — aggregates `run.jsonl` → `RESULTS.md` (trial pass, first-try
   green, task pass@k, non-pass rows, wall time, mean rounds, median/mean/max output tokens,
   per-task token table with raw/best and lib/best ratios, verdict).
 - `bench/llm/ref-solutions.f` — certified habu answer key (see V2).
