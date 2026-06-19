@@ -40,10 +40,17 @@ Core accessors:
 
 ## JSONL
 
-`JSONL-START ( ptr u8 u -- )` initializes iteration over newline-separated input.
-`JSONL-NEXT-OBJECT ( -- node|-1 )` returns the next valid object line, skipping
-blank lines, prose, invalid JSON, and valid non-object JSON values. Skips are
-part of the iterator contract and can be inspected with
+`JSONL-START-STRICT ( ptr u8 u -- )` initializes strict iteration over
+newline-separated input. `JSONL-NEXT-OBJECT ( -- node|-1 )` returns the next
+object row, skips blank rows, throws parser errors for invalid JSON/prose rows,
+and throws `E-JSON-TYPE` for valid non-object rows.
+
+`JSONL-START-SKIP ( ptr u8 u -- )` initializes skip-invalid/prose iteration.
+`JSONL-NEXT-OBJECT` returns the next valid object line, skipping blank lines,
+prose, invalid JSON syntax, and valid non-object JSON values. `JSONL-START`
+remains a compatibility alias for `JSONL-START-SKIP`.
+
+Skipped rows are part of the iterator contract and can be inspected with
 `JSONL-SKIPPED ( -- u )`.
 
 The returned node is valid until the next `JSONL-NEXT-OBJECT` call, because each

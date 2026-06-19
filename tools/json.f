@@ -93,6 +93,10 @@ variable JSONL-LA
 variable JSONL-LU
 variable JSONL-ROOT
 variable JSONL-SKIPS
+variable JSONL-MODE
+
+0 constant JSONL-MODE-STRICT
+1 constant JSONL-MODE-SKIP
 : JSON-A@ JSON-A @ ;
 s" JSON-A@" s" -- ptr u8" TRUST
 : JSON-GKA@ JSON-GKA @ ;
@@ -686,15 +690,34 @@ s" JSONL-LA@" s" -- ptr u8" TRUST
 : JSON-TRIM ( ptr u8 i64 -- ptr u8 i64 )
    JSON-TRIM-LEFT JSON-TRIM-RIGHT ;
 
-: JSONL-START ( ptr u8 i64 -- )
-   {: a:ptr u :}
+: JSONL-START-MODE ( ptr u8 i64 i64 -- )
+   {: a:ptr u mode :}
+   mode JSONL-MODE-STRICT <> mode JSONL-MODE-SKIP <> and IF
+      s" jsonl: bad cursor mode" JSON-TYPE-ERROR
+   THEN
    a JSONL-A !
    u JSONL-U !
    0 JSONL-I !
-   0 JSONL-SKIPS ! ;
+   0 JSONL-SKIPS !
+   mode JSONL-MODE ! ;
+
+: JSONL-START-STRICT ( ptr u8 i64 -- )
+   JSONL-MODE-STRICT JSONL-START-MODE ;
+
+: JSONL-START-SKIP ( ptr u8 i64 -- )
+   JSONL-MODE-SKIP JSONL-START-MODE ;
+
+: JSONL-START ( ptr u8 i64 -- )
+   JSONL-START-SKIP ;
 
 : JSONL-SKIPPED ( -- i64 )
    JSONL-SKIPS @ ;
+
+: JSONL-SKIP ( -- )
+   JSONL-SKIPS @ 1+ JSONL-SKIPS ! ;
+
+: JSONL-SKIP-MODE? ( -- bool )
+   JSONL-MODE @ JSONL-MODE-SKIP = ;
 
 : JSONL-TAKE-LINE ( -- bool )
    JSONL-I @ JSONL-U @ >= IF 0 0= 0= exit THEN
@@ -713,38 +736,51 @@ s" JSONL-LA@" s" -- ptr u8" TRUST
    JSONL-U @ JSONL-I !
    0 0= ;
 
-\ Unchecked boundary: this JSONL layer uses catch to skip prose/invalid lines.
-\ catch is not modeled by the checker; the strict JSON parser it calls remains
-\ typed and throws only the JSON error constants above.
-: JSONL-PARSE-LINE
-   \ ( -- node )
+: JSONL-PARSE-LINE ( -- i64 )
    JSONL-LA@ JSONL-LU @ JSON-PARSE ;
 
-: JSONL-TRY
+\ Unchecked boundary: catch is not modeled by the checker. Keep this word as the
+\ only JSONL recovery boundary; checked code decides whether a code may skip.
+: JSONL-CATCH-LINE
    \ ( -- code )
    ['] JSONL-PARSE-LINE catch
    dup 0= IF drop JSONL-ROOT ! 0 exit THEN ;
 
-: JSONL-SKIP
-   \ ( -- )
-   JSONL-SKIPS @ 1+ JSONL-SKIPS ! ;
+: JSONL-OBJECT? ( i64 -- bool )
+   JSON-KIND J-OBJ = ;
 
-: JSONL-NEXT-OBJECT
-   \ ( -- node|-1 )
+: JSONL-OBJECT-OR-SKIP ( i64 -- i64 bool )
+   dup JSONL-OBJECT? 0= IF
+      JSONL-SKIP-MODE? IF
+         drop JSONL-SKIP -1 0 0= 0= exit
+      THEN
+      s" jsonl: row is not object" JSON-TYPE-ERROR
+   THEN
+   0 0= ;
+
+: JSONL-RECOVER? ( i64 -- bool )
+   {: code :}
+   code E-JSON-SYNTAX = JSONL-SKIP-MODE? and IF
+      JSONL-SKIP 0 0= exit
+   THEN
+   code throw
+   0 0= 0= ;
+
+: JSONL-NEXT-OBJECT ( -- i64 )
    begin JSONL-TAKE-LINE while
       JSONL-LU @ 0= IF
          JSONL-SKIP
       ELSE
-         JSONL-TRY JSON-TMP !
-         JSON-TMP @ 0= IF
-            JSONL-ROOT @ JSON-KIND J-OBJ = IF JSONL-ROOT @ exit THEN
-            JSONL-SKIP
+         JSONL-SKIP-MODE? IF
+            JSONL-CATCH-LINE JSON-TMP !
          ELSE
-            JSON-TMP @ E-JSON-SYNTAX = IF
-               JSONL-SKIP
-            ELSE
-               JSON-TMP @ throw
-            THEN
+            JSONL-PARSE-LINE JSONL-ROOT !
+            0 JSON-TMP !
+         THEN
+         JSON-TMP @ 0= IF
+            JSONL-ROOT @ JSONL-OBJECT-OR-SKIP IF exit THEN drop
+         ELSE
+            JSON-TMP @ JSONL-RECOVER? drop
          THEN
       THEN
    repeat
