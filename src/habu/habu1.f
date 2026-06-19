@@ -587,6 +587,10 @@ s" spawn-dup2-action" s" n n --" TRUST
 
 : BCHMOD  1 G-POP  0 G-POP  NR-CHMOD SYS,  SYS-PUSH ;
 
+: BMKDIR  1 G-POP  0 G-POP  NR-MKDIR SYS,  SYS-PUSH ;
+
+: BRMDIR  0 G-POP  NR-RMDIR SYS,  SYS-PUSH ;
+
 : BSTAT64 1 G-POP  0 G-POP  NR-STAT64 SYS,  SYS-PUSH ;
 
 : BGETDIRENTRIES64
@@ -719,6 +723,7 @@ s" spawn-dup2-action" s" n n --" TRUST
    s" open-rd" ['] BOPENRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
+   s" mkdir" ['] BMKDIR FPRIM-L     s" rmdir" ['] BRMDIR FPRIM-L
    s" stat64" ['] BSTAT64 FPRIM-L
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM-L
    s" patch32" ['] BPATCH32 FPRIM

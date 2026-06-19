@@ -150,6 +150,11 @@ DFD @ 0 >= -1 T=
 0 DIRBASE !
 DFD @ DBUF 4096 DIRBASE getdirentries64 0 > -1 T=
 DFD @ close
+s" /tmp/habu-hb-suite-mkdir" PATHZ rmdir drop
+s" /tmp/habu-hb-suite-mkdir" PATHZ 493 mkdir 0 T=
+s" /tmp/habu-hb-suite-mkdir" PATHZ STB stat64 0 T=
+MODE@ $F000 and $4000 = -1 T=
+s" /tmp/habu-hb-suite-mkdir" PATHZ rmdir 0 T=
 0 4096 3 $1002 -1 0 mmap dup 0 < 0 T= dup 65 swap c! c@ 65 T=
 
 \ floats (the f+ prim must be the FLOAT op — it was once shadowed by a

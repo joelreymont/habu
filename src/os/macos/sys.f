@@ -25,6 +25,8 @@
 230 constant NR-POLL
 244 constant NR-SPAWN     \ posix_spawn(&pid, path, 0, 0, argv, envp)
 128 constant NR-RENAME
+136 constant NR-MKDIR
+137 constant NR-RMDIR
 338 constant NR-STAT64
 344 constant NR-GETDIRENTRIES64
 7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
