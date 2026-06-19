@@ -17,8 +17,13 @@ variable PR-OUT-U
 variable PR-TOKENS
 variable PR-ROOT
 variable PR-NODE
+variable PR-TYPE-NODE
 variable PR-ITEM
 variable PR-NUM-I
+
+: PR-CHECK-HOOK ( -- )
+   CHECK! ;
+' PR-CHECK-HOOK set-check
 
 : PR-FAIL ( ptr u8 n -- )
    type cr PR-E-INTERNAL die ;
@@ -39,17 +44,17 @@ variable PR-NUM-I
    a PR-OUT PR-OUT-U @ + u BYTE-COPY
    PR-OUT-U @ u + PR-OUT-U ! ;
 
-: PR-GET ( node ptr u8 n -- node|-1 ) {: node key:ptr ku :}
+: PR-GET ( n ptr u8 n -- n ) {: node key:ptr ku :}
    node 0 < IF -1 exit THEN
    node JSON-KIND J-OBJ <> IF -1 exit THEN
    node key ku JSON-GET ;
 
-: PR-NODE>NUMBER ( node -- n ) {: node :}
+: PR-NODE>NUMBER ( n -- n ) {: node :}
    node 0 < IF 0 exit THEN
    node JSON-KIND J-NUM <> IF 0 exit THEN
    node JSON-NUMBER$ STR>NUMBER? 0= IF drop 0 exit THEN ;
 
-: PR-GET2-NUM ( root ptr u8 n ptr u8 n -- n ) {: root a:ptr u b:ptr v :}
+: PR-GET2-NUM ( n ptr u8 n ptr u8 n -- n ) {: root a:ptr u b:ptr v :}
    root a u PR-GET PR-NODE !
    PR-NODE @ b v PR-GET PR-NODE>NUMBER ;
 
@@ -59,11 +64,11 @@ variable PR-NUM-I
 : PR-TOKENS+ ( n -- )
    PR-TOKENS @ + PR-TOKENS ! ;
 
-: PR-MODELUSAGE-ITEM ( obj idx -- n ) {: obj idx :}
+: PR-MODELUSAGE-ITEM ( n n -- n ) {: obj idx :}
    obj idx JSON-OBJ@ PR-ITEM ! 2drop
    PR-ITEM @ s" outputTokens" PR-GET PR-NODE>NUMBER ;
 
-: PR-MODELUSAGE-TOKENS ( root -- n ) {: root :}
+: PR-MODELUSAGE-TOKENS ( n -- n ) {: root :}
    root s" modelUsage" PR-GET PR-NODE !
    PR-NODE @ 0 < IF 0 exit THEN
    PR-NODE @ JSON-KIND J-OBJ <> IF 0 exit THEN
@@ -72,7 +77,7 @@ variable PR-NUM-I
       1+
    repeat drop ;
 
-: PR-ADD-TOKEN-FIELDS ( root -- ) {: root :}
+: PR-ADD-TOKEN-FIELDS ( n -- ) {: root :}
    PR-TF$ s" usage.output_tokens" CONTAINS? IF
       root s" usage" s" output_tokens" PR-GET2-NUM PR-TOKENS+
    THEN
@@ -83,19 +88,19 @@ variable PR-NUM-I
       root PR-MODELUSAGE-TOKENS PR-TOKENS+
    THEN ;
 
-: PR-MAYBE-SET-STRING ( node -- bool ) {: node :}
+: PR-MAYBE-SET-STRING ( n -- bool ) {: node :}
    node 0 < IF 0 exit THEN
    node JSON-KIND J-STR <> IF 0 exit THEN
    node JSON-STRING$ PR-OUT-SET
    -1 ;
 
-: PR-MAYBE-APPEND-TEXT ( node -- )
+: PR-MAYBE-APPEND-TEXT ( n -- )
    s" text" PR-GET
    dup 0 < IF drop exit THEN
    dup JSON-KIND J-STR <> IF drop exit THEN
    JSON-STRING$ PR-OUT-APPEND ;
 
-: PR-CLAUDE-CONTENT ( root -- ) {: root :}
+: PR-CLAUDE-CONTENT ( n -- ) {: root :}
    root s" content" PR-GET PR-NODE !
    PR-NODE @ 0 < IF exit THEN
    PR-NODE @ JSON-KIND J-ARR <> IF exit THEN
@@ -110,7 +115,7 @@ variable PR-NUM-I
    PR-ROOT @ s" result" PR-GET PR-MAYBE-SET-STRING IF exit THEN
    PR-CLAUDE-CONTENT ;
 
-: PR-PARSE-OPENAI-CHOICE ( choices -- ) {: choices :}
+: PR-PARSE-OPENAI-CHOICE ( n -- ) {: choices :}
    choices 0 < IF exit THEN
    choices JSON-KIND J-ARR <> IF exit THEN
    choices JSON-COUNT 0= IF exit THEN
@@ -123,13 +128,16 @@ variable PR-NUM-I
    PR-ROOT @ s" output_text" PR-GET PR-MAYBE-SET-STRING IF exit THEN
    PR-ROOT @ s" choices" PR-GET PR-PARSE-OPENAI-CHOICE ;
 
-: PR-CODEX-AGENT-MESSAGE? ( item -- bool ) {: item :}
-   item s" type" PR-GET
-   dup 0 < IF drop 0 exit THEN
-   dup JSON-KIND J-STR <> IF drop 0 exit THEN
-   JSON-STRING$ s" agent_message" STR= ;
+: PR-AGENT-MESSAGE$? ( ptr u8 i64 -- bool )
+   s" agent_message" STR= ;
 
-: PR-CODEX-EVENT ( root -- ) {: root :}
+: PR-CODEX-AGENT-MESSAGE? ( n -- bool ) {: item :}
+   item s" type" PR-GET PR-TYPE-NODE !
+   PR-TYPE-NODE @ 0 < IF 0 exit THEN
+   PR-TYPE-NODE @ JSON-KIND J-STR <> IF 0 exit THEN
+   PR-TYPE-NODE @ JSON-STRING$ PR-AGENT-MESSAGE$? ;
+
+: PR-CODEX-EVENT ( n -- ) {: root :}
    root PR-ADD-TOKEN-FIELDS
    root s" item" PR-GET PR-NODE !
    PR-NODE @ PR-CODEX-AGENT-MESSAGE? 0= IF exit THEN

@@ -202,3 +202,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   appears only when the data stack already matches the declaration; a bad `>r`
   that also removes a declared data output is correctly classified as
   `add_producer` first.
+- **Broad unchecked tool ports hide the bugs being chased:** reinstall the
+  `CHECK!` hook immediately after raw declarations and lint protected files for
+  normal definitions left under `0 set-check`.
+- **Report reducers need dedicated scratch cells:** loop scratch such as
+  `RR-I/J/K` is clobbered by nested stats, sort, and render helpers; persist
+  cross-call metrics in purpose-named variables.

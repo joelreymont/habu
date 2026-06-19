@@ -34,6 +34,7 @@ cat tools/date.f tools/lint/lib.f tools/fs.f tools/stale-status-lint.f | bin/hb 
 cat tools/lint/lib.f tools/fs.f tools/host-lint.f | bin/hb || { echo "FAIL: host-lint"; exit 1; }
 cat tools/lint/lib.f tools/parallel-agent-lint.f | bin/hb || { echo "FAIL: parallel-agent-lint"; exit 1; }
 cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint"; exit 1; }
+./tools/checked-boundary-lint-test.sh || { echo "FAIL: checked-boundary-lint"; exit 1; }
 ./tools/string-test.sh || { echo "FAIL: string helpers"; exit 1; }
 ./tools/array-test.sh || { echo "FAIL: array helpers"; exit 1; }
 ./lib/regex-test.sh || { echo "FAIL: regex stdlib"; exit 1; }
