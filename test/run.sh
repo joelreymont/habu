@@ -58,7 +58,11 @@ echo "PASS: self-rebuild fixpoint"
 ./lib/process-argv-test.sh || { echo "FAIL: process argv stdlib"; exit 1; }
 ./tools/check-repair-hints-test.sh || { echo "FAIL: repair diagnostic hints"; exit 1; }
 ./tools/hb-baseline-contracts-test.sh || { echo "FAIL: hb baseline contracts"; exit 1; }
-./tools/test-hb.sh || exit 1
+out=$(bin/hb < test/engine-suite.f) || { echo "$out"; echo "FAIL: engine suite (engine died)"; exit 1; }
+case "$out" in
+  *ok) echo "PASS: engine suite on bin/hb" ;;
+  *) echo "$out"; echo "FAIL: engine suite"; exit 1 ;;
+esac
 # divide/modulo by zero must fail loudly (ARM64 SDIV yields 0 silently); the
 # engine traps, so the run exits nonzero instead of printing a bogus result.
 printf '1 0 / .\n'   | bin/hb >/dev/null 2>&1 && { echo "FAIL: 1 0 / did not trap"; exit 1; }
