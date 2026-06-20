@@ -8,6 +8,11 @@
 9 constant SIGKILL
 2 constant F-SETFD
 1 constant FD-CLOEXEC
+$7F constant PROC-WAIT-TERM-MASK
+$FF constant PROC-WAIT-EXIT-MASK
+0 constant PROC-OUTCOME-EXIT
+1 constant PROC-OUTCOME-SIGNAL
+2 constant PROC-OUTCOME-TIMEOUT
 
 create PROC-PATHZ-BUF PROC-PATHZ-CAP allot
 create PROC-PFD 16 allot
@@ -23,9 +28,15 @@ variable PROC-OUT-LEN
 variable PROC-ERR-LEN
 variable PROC-DEADLINE
 variable PROC-RD
+variable PROC-STATUS
+variable PROC-OUTCOME-KIND
+variable PROC-OUTCOME-CODE
 
 : PROC-WAIT-RAW ( n -- n )
    wait-rc ;
+
+: PROC-WAIT-STATUS-RAW ( n -- n )
+   wait-status ;
 
 : PROC-SPAWN-RAW ( ptr u8 n n n -- n )
    spawn-io ;
@@ -45,10 +56,29 @@ variable PROC-RD
 : PATHZ ( ptr u8 n -- ptr u8 )
    PROC-PATHZ-BUF PROC-PATHZ-CAP PROC-ZCOPY ;
 
+: WAIT-STATUS ( n -- n )
+   PROC-WAIT-STATUS-RAW {: status :}
+   status 0 < if E-PROC-WAIT throw then
+   status ;
+
+: PROC-STATUS>OUTCOME ( n -- n n ) {: status :}
+   status PROC-WAIT-TERM-MASK and {: term :}
+   term 0= if
+      PROC-OUTCOME-EXIT status 8 rshift PROC-WAIT-EXIT-MASK and
+      exit
+   then
+   PROC-OUTCOME-SIGNAL term ;
+
+: PROC-STATUS>RC ( n -- n )
+   PROC-STATUS>OUTCOME {: kind code :}
+   kind PROC-OUTCOME-EXIT = if code exit then
+   128 code + ;
+
+: WAIT-OUTCOME ( n -- n n )
+   WAIT-STATUS PROC-STATUS>OUTCOME ;
+
 : WAIT-RC ( n -- n )
-   PROC-WAIT-RAW {: rc :}
-   rc 0 < if E-PROC-WAIT throw then
-   rc ;
+   WAIT-STATUS PROC-STATUS>RC ;
 
 : SPAWN-IO ( ptr u8 n n n n -- n ) {: a:ptr u infd outfd errfd :}
    a u PATHZ infd outfd errfd PROC-SPAWN-RAW {: pid :}
@@ -99,7 +129,10 @@ variable PROC-RD
    -1 PROC-ERR-R !
    -1 PROC-ERR-W !
    0 PROC-OUT-LEN !
-   0 PROC-ERR-LEN ! ;
+   0 PROC-ERR-LEN !
+   0 PROC-STATUS !
+   PROC-OUTCOME-EXIT PROC-OUTCOME-KIND !
+   0 PROC-OUTCOME-CODE ! ;
 
 : PROC-CLOSE-CELL ( ptr a -- ) {: p:ptr :}
    p @ dup 0 >= if
@@ -117,11 +150,25 @@ variable PROC-RD
 
 : PROC-REAP-CAPTURE ( -- )
    PROC-PID @ dup 0 >= if
-      WAIT-RC PROC-RC !
+      WAIT-STATUS dup PROC-STATUS !
+      dup PROC-STATUS>RC PROC-RC !
+      PROC-STATUS>OUTCOME PROC-OUTCOME-CODE ! PROC-OUTCOME-KIND !
       -1 PROC-PID !
    else
       drop
    then ;
+
+: PROC-REAP-CAPTURE-TIMEOUT ( -- )
+   PROC-PID @ dup 0 >= if
+      dup SIGKILL PROC-KILL-RAW drop
+      WAIT-STATUS PROC-STATUS !
+      -1 PROC-PID !
+   else
+      drop
+   then
+   PROC-OUTCOME-TIMEOUT PROC-OUTCOME-KIND !
+   SIGKILL PROC-OUTCOME-CODE !
+   128 SIGKILL + PROC-RC ! ;
 
 : PROC-KILL-CAPTURE ( -- )
    PROC-PID @ dup 0 >= if
@@ -172,6 +219,13 @@ variable PROC-RD
    rc 0= if E-PROC-TIMEOUT PROC-THROW-CAPTURE then
    rc ;
 
+: PROC-POLL-CAPTURE-OUTCOME ( n -- n ) {: ms :}
+   PROC-OUT-R @ POLLIN 0 PROC-PFD-AT!
+   PROC-ERR-R @ POLLIN 1 PROC-PFD-AT!
+   PROC-PFD 2 ms poll {: rc :}
+   rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
+   rc ;
+
 : PROC-READ-STREAM ( ptr a ptr u8 n ptr a -- ) {: fdp:ptr buf:ptr cap lenp:ptr :}
    cap lenp @ - 0 <= if E-PROC-TRUNCATED PROC-THROW-CAPTURE then
    fdp @ buf lenp @ + cap lenp @ - read PROC-RD !
@@ -217,6 +271,18 @@ variable PROC-RD
       out outcap err errcap PROC-DRAIN-READY
    repeat ;
 
+: PROC-RUN-CAPTURE-OUTCOME-LOOP ( ptr u8 n ptr u8 n -- ) {: out:ptr outcap err:ptr errcap :}
+   begin PROC-CAPTURE-DONE? 0= while
+      PROC-REMAINING-MS PROC-POLL-CAPTURE-OUTCOME dup 0= if
+         drop
+         PROC-REAP-CAPTURE-TIMEOUT
+         exit
+      then
+      drop
+      out outcap err errcap PROC-DRAIN-READY
+   repeat
+   PROC-REAP-CAPTURE ;
+
 : PROC-SPAWN-CAPTURE ( ptr u8 -- )
    -1 PROC-OUT-W @ PROC-ERR-W @ PROC-SPAWN-RAW {: pid :}
    pid 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
@@ -238,3 +304,17 @@ variable PROC-RD
    PROC-CLOSE-CAPTURE-FDS
    PROC-REAP-CAPTURE
    PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
+
+: RUN-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+   pathu 0 < if E-PROC-OUTPUT throw then
+   outcap 0 < if E-PROC-OUTPUT throw then
+   errcap 0 < if E-PROC-OUTPUT throw then
+   PROC-CAPTURE-RESET
+   timeout PROC-CAPTURE-DEADLINE!
+   path pathu PATHZ {: pathz:ptr :}
+   PROC-SETUP-CAPTURE-FDS
+   pathz PROC-SPAWN-CAPTURE
+   out outcap err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
+   PROC-CLOSE-CAPTURE-FDS
+   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-OUTCOME-KIND @ PROC-OUTCOME-CODE @ ;

@@ -225,6 +225,19 @@ variable PROC-ARGV-IN-OFF
    PROC-REAP-CAPTURE
    PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
 
+: RUN-ARGV-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+   path pathu PROC-ARGV-CHECK-PATH
+   outcap 0 < if E-PROC-OUTPUT throw then
+   errcap 0 < if E-PROC-OUTPUT throw then
+   PROC-CAPTURE-RESET
+   timeout PROC-CAPTURE-DEADLINE!
+   PROC-SETUP-CAPTURE-FDS
+   path pathu PROC-ARGV-PREPARE PROC-SPAWN-ARGV-CAPTURE
+   out outcap err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
+   PROC-CLOSE-CAPTURE-FDS
+   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-OUTCOME-KIND @ PROC-OUTCOME-CODE @ ;
+
 : RUN-ARGV-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH

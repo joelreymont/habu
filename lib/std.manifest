@@ -260,10 +260,15 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs-mutate	lib/fs-mutate.f	word	CLEANUP-RUN	(--)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	run cleanup registrations in reverse order
 1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup
 1	process	lib/process.f	word	PROC-WAIT-RAW	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-rc alias captured before checked wrapper shadows the primitive name
+1	process	lib/process.f	word	PROC-WAIT-STATUS-RAW	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-status alias captured before checked wrappers decode wait outcomes
 1	process	lib/process.f	word	PROC-SPAWN-RAW	(ptr u8 n n n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-io alias captured before checked wrapper shadows the primitive name
 1	process	lib/process.f	word	PROC-KILL-RAW	(n n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw kill alias for terminating timed-out capture children
 1	process	lib/process.f	word	PROC-ZCOPY	(ptr u8 n ptr u8 n -- ptr u8)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	copy counted bytes into a bounded NUL-terminated process buffer
 1	process	lib/process.f	word	PATHZ	(ptr u8 n -- ptr u8)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	copy counted path into the process module pathz buffer
+1	process	lib/process.f	word	WAIT-STATUS	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return raw Darwin wait status or throw on wait failure
+1	process	lib/process.f	word	PROC-STATUS>OUTCOME	(n -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	decode raw wait status to outcome kind and exit or signal code
+1	process	lib/process.f	word	PROC-STATUS>RC	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	map raw wait status to historical rc with signals as 128 plus signal
+1	process	lib/process.f	word	WAIT-OUTCOME	(n -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return outcome kind plus exit or signal code
 1	process	lib/process.f	word	WAIT-RC	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and throw on wait failure
 1	process	lib/process.f	word	SPAWN-IO	(ptr u8 n n n n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with explicit stdio fds
 1	process	lib/process.f	word	RUN-RC	(ptr u8 n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path and return exit status
@@ -280,6 +285,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-CLOSE-CELL	(ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	close and clear a file descriptor cell
 1	process	lib/process.f	word	PROC-CLOSE-CAPTURE-FDS	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	close every fd owned by the active capture
 1	process	lib/process.f	word	PROC-REAP-CAPTURE	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for the active capture child and store its rc
+1	process	lib/process.f	word	PROC-REAP-CAPTURE-TIMEOUT	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	kill the active capture child and store timeout outcome fields
 1	process	lib/process.f	word	PROC-KILL-CAPTURE	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	terminate and reap the active capture child
 1	process	lib/process.f	word	PROC-THROW-CAPTURE	(n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	clean capture resources and throw the supplied process error
 1	process	lib/process.f	word	PROC-OPEN-PIPE	(ptr a ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	open one capture pipe into read and write fd cells
@@ -288,14 +294,17 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-CAPTURE-DEADLINE!	(n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	record an absolute monotonic capture deadline
 1	process	lib/process.f	word	PROC-REMAINING-MS	(-- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	return milliseconds remaining before capture timeout
 1	process	lib/process.f	word	PROC-POLL-CAPTURE	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	poll stdout and stderr capture fds together
+1	process	lib/process.f	word	PROC-POLL-CAPTURE-OUTCOME	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	poll capture fds without converting timeout to E-PROC-TIMEOUT
 1	process	lib/process.f	word	PROC-READ-STREAM	(ptr a ptr u8 n ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	read one ready capture stream into caller storage
 1	process	lib/process.f	word	PROC-PROBE-FULL-STREAM	(ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	distinguish exact-capacity EOF from capture overflow
 1	process	lib/process.f	word	PROC-READ-OR-PROBE-STREAM	(ptr a ptr u8 n ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	read or overflow-probe one ready capture stream
 1	process	lib/process.f	word	PROC-DRAIN-READY	(ptr u8 n ptr u8 n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	drain readable stdout/stderr capture streams
 1	process	lib/process.f	word	PROC-CAPTURE-DONE?	(-- bool)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	test whether both capture streams reached EOF
 1	process	lib/process.f	word	PROC-RUN-CAPTURE-LOOP	(ptr u8 n ptr u8 n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	poll and drain capture streams until EOF or timeout
+1	process	lib/process.f	word	PROC-RUN-CAPTURE-OUTCOME-LOOP	(ptr u8 n ptr u8 n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	poll and drain capture streams while recording timeout as an outcome
 1	process	lib/process.f	word	PROC-SPAWN-CAPTURE	(ptr u8 --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn the capture child and close parent write fds
 1	process	lib/process.f	word	RUN-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr rc
+1	process	lib/process.f	word	RUN-CAPTURE-OUTCOME	(ptr u8 n ptr u8 n ptr u8 n n -- n n n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr outcome kind and code
 1	process-argv	lib/process-argv.f	module			lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	checked argv table builder layered after native primitive rebuild
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-RAW	(ptr u8 ptr a n n n -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-io alias for checked argv wrappers
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-RESET	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	clear argv extra-arg count and backing string buffer offset
@@ -309,6 +318,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-CHECK-PATH	(ptr u8 n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	validate a counted executable path before argv capture opens fds
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn prepared argv with stdout and stderr capture fds
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable with prepared argv and capture bounded stdout stderr rc
+1	process-argv	lib/process-argv.f	word	RUN-ARGV-CAPTURE-OUTCOME	(ptr u8 n ptr u8 n ptr u8 n n -- n n n n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv and capture bounded stdout stderr outcome kind and code
 1	process-env	lib/process-env.f	module			lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	checked child envp builder and deterministic executable lookup
 1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-RAW	(ptr u8 ptr a ptr a n n n -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-env-io alias captured after native primitive rebuild
 1	process-env	lib/process-env.f	word	PROC-ENV-RESET	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	clear prepared child environment entries and backing string buffer offset

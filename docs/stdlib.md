@@ -445,10 +445,15 @@ buffers, and never require LLM code to build C strings by hand.
 
 ```forth
 PROC-WAIT-RAW       ( n -- n )
+PROC-WAIT-STATUS-RAW ( n -- n )
 PROC-SPAWN-RAW      ( ptr u8 n n n -- n )
 PROC-KILL-RAW       ( n n -- n )
 PROC-ZCOPY          ( ptr u8 n ptr u8 n -- ptr u8 )
 PATHZ               ( ptr u8 n -- ptr u8 )
+WAIT-STATUS         ( n -- n )
+PROC-STATUS>OUTCOME ( n -- n n )
+PROC-STATUS>RC      ( n -- n )
+WAIT-OUTCOME        ( n -- n n )
 WAIT-RC             ( n -- n )
 SPAWN-IO            ( ptr u8 n n n n -- n )
 RUN-RC              ( ptr u8 n -- n )
@@ -465,6 +470,7 @@ PROC-CAPTURE-RESET       ( -- )
 PROC-CLOSE-CELL          ( ptr a -- )
 PROC-CLOSE-CAPTURE-FDS   ( -- )
 PROC-REAP-CAPTURE        ( -- )
+PROC-REAP-CAPTURE-TIMEOUT ( -- )
 PROC-KILL-CAPTURE        ( -- )
 PROC-THROW-CAPTURE       ( n -- )
 PROC-OPEN-PIPE           ( ptr a ptr a -- )
@@ -473,14 +479,17 @@ PROC-SETUP-CAPTURE-FDS   ( -- )
 PROC-CAPTURE-DEADLINE!   ( n -- )
 PROC-REMAINING-MS        ( -- n )
 PROC-POLL-CAPTURE        ( n -- n )
+PROC-POLL-CAPTURE-OUTCOME ( n -- n )
 PROC-READ-STREAM         ( ptr a ptr u8 n ptr a -- )
 PROC-PROBE-FULL-STREAM   ( ptr a -- )
 PROC-READ-OR-PROBE-STREAM ( ptr a ptr u8 n ptr a -- )
 PROC-DRAIN-READY         ( ptr u8 n ptr u8 n -- )
 PROC-CAPTURE-DONE?       ( -- bool )
 PROC-RUN-CAPTURE-LOOP    ( ptr u8 n ptr u8 n -- )
+PROC-RUN-CAPTURE-OUTCOME-LOOP ( ptr u8 n ptr u8 n -- )
 PROC-SPAWN-CAPTURE       ( ptr u8 -- )
 RUN-CAPTURE  ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+RUN-CAPTURE-OUTCOME  ( ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
 ```
 
 `PATHZ` copies a counted path into the module's private NUL-terminated path
@@ -489,6 +498,13 @@ checked `SPAWN-IO` and `WAIT-RC` wrappers rather than the unchecked runtime
 `run-rc` primitive. `RUN-IO-RC` is the same checked run-and-wait path with
 explicit stdin, stdout, and stderr fds. `SPAWN-IO` and `WAIT-RC` throw
 `E-PROC-SPAWN` and `E-PROC-WAIT` for primitive failures.
+
+`WAIT-STATUS` returns the raw Darwin wait status for a pid and throws
+`E-PROC-WAIT` on primitive failure. `WAIT-OUTCOME` decodes that status into
+`kind code`; `kind` is `PROC-OUTCOME-EXIT`, `PROC-OUTCOME-SIGNAL`, or
+`PROC-OUTCOME-TIMEOUT`, and `code` is the exit code or signal number.
+`WAIT-RC` preserves the historical exit-code API for normal exits and maps
+signaled children to `128 + signal`.
 
 `SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
 fds. Negative fd values mean inherit/default; nonnegative fd values are passed
@@ -523,6 +539,7 @@ RUN-ARGV-IO-RC        ( ptr u8 n n n n -- n )
 PROC-ARGV-CHECK-PATH  ( ptr u8 n -- )
 PROC-SPAWN-ARGV-CAPTURE ( ptr u8 ptr a -- )
 RUN-ARGV-CAPTURE      ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+RUN-ARGV-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
 ```
 
 Use `PROC-ARGV-RESET`, append zero or more extra args with `PROC-ARGV+`, then
@@ -542,6 +559,10 @@ observes EOF. On timeout, it sends `SIGKILL` through the checked
 `PROC-KILL-RAW` boundary, waits for the child, closes owned fds, and then throws
 `E-PROC-TIMEOUT`. Truncation and other capture failures also clean up all owned
 fds and terminate/reap the active child before throwing a named process error.
+The `*-OUTCOME` capture variants return stdout length, stderr length, outcome
+kind, and outcome code. They classify timeout as `PROC-OUTCOME-TIMEOUT` instead
+of throwing `E-PROC-TIMEOUT`; output truncation and other harness failures still
+throw named process errors.
 
 `lib/process-env.f` is a post-rebuild layer on top of `lib/process-argv.f` for
 explicit child environments and PATH lookup. Keeping it separate preserves the
