@@ -138,5 +138,7 @@ tail -n +2 "$TASKS" | while IFS="$TAB" read -r id name signature category tests 
 done
 
 check_expected_rows
-sh bench/llm/expanded-report.sh "$OUT" > "$RESULTS"
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f \
+  lib/process-argv.f lib/time.f lib/date.f lib/argv.f \
+  bench/llm/expanded-report.f -- "$OUT" > "$RESULTS"
 echo "[run-forth-bench] wrote $RESULTS" >&2

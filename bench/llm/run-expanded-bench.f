@@ -538,8 +538,18 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    RB-RESULTS-RESET
    PROC-ARGV-RESET
    RB-PROC-PATH
-   s" sh" PROC-ARGV+
-   s" bench/llm/expanded-report.sh" PROC-ARGV+
+   s" bin/hb" PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" lib/errors.f" PROC-ARGV+
+   s" lib/string.f" PROC-ARGV+
+   s" lib/fs.f" PROC-ARGV+
+   s" lib/process.f" PROC-ARGV+
+   s" lib/process-argv.f" PROC-ARGV+
+   s" lib/time.f" PROC-ARGV+
+   s" lib/date.f" PROC-ARGV+
+   s" lib/argv.f" PROC-ARGV+
+   s" bench/llm/expanded-report.f" PROC-ARGV+
+   s" --" PROC-ARGV+
    RB-OUT$ PROC-ARGV+
    RB-RUN-TO-RESULTS drop ;
 

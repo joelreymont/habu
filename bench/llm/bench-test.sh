@@ -402,7 +402,7 @@ id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rus
 1	SQUARE	(i64 -- i64)	arithmetic	7 -> 49; -3 -> 9	forth	stack	Define SQUARE with the checked Forth stack effect.	-	arithmetic,forth	-	-
 EOF
 expanded_native="$T/run-expanded-native.f"
-cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/argv.f \
+cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f \
   bench/llm/manifest.f bench/llm/run-expanded-bench.f > "$expanded_native"
 MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASKS="$T/expanded-native-tasks.tsv" BENCH_SEED=expanded-native BENCH_RESULTS="$T/expanded-native.md" \
   bin/hb "$expanded_native" 1 "$T/expanded-native.jsonl" >/dev/null

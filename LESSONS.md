@@ -153,6 +153,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   Do not use `-P` with a nested child id; it creates stray top-level directories
   without root files and breaks `dot tree`. Put second-level dependencies in the
   description instead.
+- **Quote dot descriptions defensively:** dot descriptions often contain
+  backticks, `$`, or Forth punctuation. Pass `-d` text in single quotes or a
+  file-backed command path so the shell cannot execute or expand repro snippets.
 - **Diagnostics are an API:** JSON errors carry `schema_version: 1`, source spans,
   verdict, word, token, expected, and actual. Wrappers preserve valid JSON object
   lines and fail nonzero on checker rejection.
@@ -240,6 +243,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Broad unchecked tool ports hide the bugs being chased:** reinstall the
   `CHECK!` hook immediately after raw declarations and lint protected files for
   normal definitions left under `0 set-check`.
+- **Native report tools should stream large inputs:** stacking multiple
+  256K-512K capture/read buffers can push later data objects into unsafe space.
+  Count/scan large JSONL inputs in chunks and reserve fixed capture buffers only
+  for bounded summaries.
 - **Report reducers need dedicated scratch cells:** loop scratch such as
   `RR-I/J/K` is clobbered by nested stats, sort, and render helpers; persist
   cross-call metrics in purpose-named variables.
