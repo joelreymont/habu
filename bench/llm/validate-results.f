@@ -14,6 +14,7 @@ $4000 constant LV-READ-CAP
 256 constant LV-RUN-CAP
 128 constant LV-MODEL-CAP
 $1000 constant LV-RC-STR-CAP
+$1000 constant LV-ARM-STR-CAP
 $40000 constant LV-KEY-STR-CAP
 64 constant LV-SHA-LEN
 
@@ -39,6 +40,7 @@ create LV-NUM-BUF LV-NUM-CAP allot
 create LV-RUN-BUF LV-RUN-CAP allot
 create LV-MODEL-BUF LV-MODEL-CAP allot
 create LV-RC-STR LV-RC-STR-CAP allot
+create LV-ARM-STR LV-ARM-STR-CAP allot
 create LV-KEY-STR LV-KEY-STR-CAP allot
 
 create LV-TASK-ID LV-MAX cells allot
@@ -82,14 +84,29 @@ create LV-RC-REPAIRS LV-MAX cells allot
 create LV-RC-DIAGS LV-MAX cells allot
 create LV-RC-TOKDELTA LV-MAX cells allot
 
+create LV-ARM-A LV-MAX cells allot
+create LV-ARM-U LV-MAX cells allot
+create LV-ARM-ROWS LV-MAX cells allot
+create LV-ARM-CERT LV-MAX cells allot
+create LV-ARM-FIRST LV-MAX cells allot
+create LV-ARM-TESTS LV-MAX cells allot
+create LV-ARM-REPAIRS LV-MAX cells allot
+create LV-ARM-CHECKERS LV-MAX cells allot
+create LV-ARM-DIAGS LV-MAX cells allot
+create LV-ARM-TOKENS LV-MAX cells allot
+create LV-ARM-WALL LV-MAX cells allot
+create LV-ARM-CHARS LV-MAX cells allot
+
 variable LV-TASK#
 variable LV-REF-TASK#
 variable LV-SEEN#
 variable LV-CAT#
 variable LV-RC#
+variable LV-ARM#
 variable LV-KEY#
 variable LV-GRP#
 variable LV-RC-STR-U
+variable LV-ARM-STR-U
 variable LV-KEY-STR-U
 variable LV-SCHEMA
 variable LV-SCHEMA-SET
@@ -542,6 +559,104 @@ variable LV-LINE-U
    a u LV-FIND-RC dup 0 >= IF exit THEN
    drop a u LV-RC+ ;
 
+: LV-ARM$ {: k :} ( n -- ptr u8 n )
+   LV-ARM-A k cells + @
+   LV-ARM-U k cells + @ ;
+
+: LV-ARM-ROWS@ ( n -- n )
+   cells LV-ARM-ROWS + @ ;
+
+: LV-ARM-CERT@ ( n -- n )
+   cells LV-ARM-CERT + @ ;
+
+: LV-ARM-FIRST@ ( n -- n )
+   cells LV-ARM-FIRST + @ ;
+
+: LV-ARM-TESTS@ ( n -- n )
+   cells LV-ARM-TESTS + @ ;
+
+: LV-ARM-REPAIRS@ ( n -- n )
+   cells LV-ARM-REPAIRS + @ ;
+
+: LV-ARM-CHECKERS@ ( n -- n )
+   cells LV-ARM-CHECKERS + @ ;
+
+: LV-ARM-DIAGS@ ( n -- n )
+   cells LV-ARM-DIAGS + @ ;
+
+: LV-ARM-TOKENS@ ( n -- n )
+   cells LV-ARM-TOKENS + @ ;
+
+: LV-ARM-WALL@ ( n -- n )
+   cells LV-ARM-WALL + @ ;
+
+: LV-ARM-CHARS@ ( n -- n )
+   cells LV-ARM-CHARS + @ ;
+
+: LV-ARM-ROWS++ ( n -- )
+   cells LV-ARM-ROWS + LV-CELL++ ;
+
+: LV-ARM-CERT++ ( n -- )
+   cells LV-ARM-CERT + LV-CELL++ ;
+
+: LV-ARM-FIRST++ ( n -- )
+   cells LV-ARM-FIRST + LV-CELL++ ;
+
+: LV-ARM-TESTS++ ( n -- )
+   cells LV-ARM-TESTS + LV-CELL++ ;
+
+: LV-ARM-REPAIRS+ {: n k :} ( n n -- )
+   n LV-ARM-REPAIRS k cells + LV-CELL+! ;
+
+: LV-ARM-CHECKERS+ {: n k :} ( n n -- )
+   n LV-ARM-CHECKERS k cells + LV-CELL+! ;
+
+: LV-ARM-DIAGS+ {: n k :} ( n n -- )
+   n LV-ARM-DIAGS k cells + LV-CELL+! ;
+
+: LV-ARM-TOKENS+ {: n k :} ( n n -- )
+   n LV-ARM-TOKENS k cells + LV-CELL+! ;
+
+: LV-ARM-WALL+ {: n k :} ( n n -- )
+   n LV-ARM-WALL k cells + LV-CELL+! ;
+
+: LV-ARM-CHARS+ {: n k :} ( n n -- )
+   n LV-ARM-CHARS k cells + LV-CELL+! ;
+
+: LV-FIND-ARM {: a:ptr u :} ( ptr u8 n -- n )
+   0 begin dup LV-ARM# @ < while
+      dup LV-ARM$ a u STR= IF exit THEN
+      1+
+   repeat drop -1 ;
+
+: LV-ARM-COPY! {: a:ptr u k :} ( ptr u8 n n -- )
+   LV-ARM-STR-U @ u + LV-ARM-STR-CAP > IF s" arm names too long" LV-FAIL THEN
+   a LV-ARM-STR LV-ARM-STR-U @ + u BMOVE
+   LV-ARM-STR LV-ARM-STR-U @ + LV-ARM-A k cells + !
+   u LV-ARM-U k cells + !
+   LV-ARM-STR-U @ u + LV-ARM-STR-U ! ;
+
+: LV-ARM+ {: a:ptr u :} ( ptr u8 n -- n )
+   LV-ARM# @ LV-MAX >= IF s" too many arms" LV-FAIL THEN
+   LV-ARM# @ LV-P !
+   a u LV-P @ LV-ARM-COPY!
+   0 LV-ARM-ROWS LV-P @ cells + !
+   0 LV-ARM-CERT LV-P @ cells + !
+   0 LV-ARM-FIRST LV-P @ cells + !
+   0 LV-ARM-TESTS LV-P @ cells + !
+   0 LV-ARM-REPAIRS LV-P @ cells + !
+   0 LV-ARM-CHECKERS LV-P @ cells + !
+   0 LV-ARM-DIAGS LV-P @ cells + !
+   0 LV-ARM-TOKENS LV-P @ cells + !
+   0 LV-ARM-WALL LV-P @ cells + !
+   0 LV-ARM-CHARS LV-P @ cells + !
+   LV-ARM# @ 1+ LV-ARM# !
+   LV-P @ ;
+
+: LV-ARM-ID {: a:ptr u :} ( ptr u8 n -- n )
+   a u LV-FIND-ARM dup 0 >= IF exit THEN
+   drop a u LV-ARM+ ;
+
 : LV-TASK-LINE {: a:ptr u :} ( ptr u8 n -- )
    LV-LINE @ 1 = IF exit THEN
    LV-TASK# @ LV-MAX >= IF s" too many tasks" LV-FAIL THEN
@@ -868,6 +983,20 @@ variable LV-LINE-U
    root LV-CERTIFIED? IF LV-P @ LV-CAT-CERT++ THEN
    root s" tests_passed" LV-BOOL-FIELD IF LV-P @ LV-CAT-TESTS++ THEN ;
 
+: LV-ARM-ACCUM {: root :} ( n -- )
+   LV-SCHEMA @ 2 <> IF exit THEN
+   LV-CUR-ARM-A @ LV-CUR-ARM-U @ LV-ARM-ID LV-P !
+   LV-P @ LV-ARM-ROWS++
+   root LV-CERTIFIED? IF LV-P @ LV-ARM-CERT++ THEN
+   root s" first_pass_tests" LV-BOOL-FIELD IF LV-P @ LV-ARM-FIRST++ THEN
+   root s" tests_passed" LV-BOOL-FIELD IF LV-P @ LV-ARM-TESTS++ THEN
+   root s" repair_iterations" LV-INT-FIELD LV-P @ LV-ARM-REPAIRS+
+   root s" checker_iterations" LV-INT-FIELD LV-P @ LV-ARM-CHECKERS+
+   root s" diagnostic_count" LV-INT-FIELD LV-P @ LV-ARM-DIAGS+
+   root s" tokens_used" LV-INT-FIELD LV-P @ LV-ARM-TOKENS+
+   root s" wall_ms" LV-INT-FIELD LV-P @ LV-ARM-WALL+
+   root s" final_chars" LV-INT-FIELD LV-P @ LV-ARM-CHARS+ ;
+
 : LV-ACC-BOOL {: root a:ptr u good:ptr bad:ptr :} ( n ptr u8 n ptr n ptr n -- )
    root a u LV-BOOL-FIELD IF good LV-CELL++ ELSE bad LV-CELL++ THEN ;
 
@@ -939,6 +1068,7 @@ variable LV-LINE-U
    root s" trust_uses" LV-INT-FIELD dup LV-TRUST LV-CELL+! 0 > IF LV-BAD-TRUST LV-CELL++ THEN
    root s" signature_weakened" LV-BOOL-FIELD dup IF LV-SIGWEAK LV-CELL++ LV-BAD-SIG LV-CELL++ ELSE drop THEN
    root LV-ACCUM-RC-STATS
+   root LV-ARM-ACCUM
    root LV-CAT-ACCUM ;
 
 : LV-CHECK-ROW {: root :} ( n -- )
@@ -980,9 +1110,11 @@ variable LV-LINE-U
    0 LV-SEEN# !
    0 LV-CAT# !
    0 LV-RC# !
+   0 LV-ARM# !
    0 LV-KEY# !
    0 LV-GRP# !
    0 LV-RC-STR-U !
+   0 LV-ARM-STR-U !
    0 LV-KEY-STR-U !
    0 LV-SCHEMA !
    0 LV-SCHEMA-SET !
@@ -1081,6 +1213,25 @@ variable LV-LINE-U
       1+
    repeat drop ;
 
+: LV-OUTPUT-ARMS ( -- )
+   0 begin dup LV-ARM# @ < while
+      dup LV-P !
+      s" llm-results: arm " LV-OUT
+      LV-P @ LV-ARM$ LV-OUT
+      s" rows" LV-P @ LV-ARM-ROWS@ LV-TEXT-FIELD
+      s" certified" LV-P @ LV-ARM-CERT@ LV-TEXT-FIELD
+      s" first_tests" LV-P @ LV-ARM-FIRST@ LV-TEXT-FIELD
+      s" tests" LV-P @ LV-ARM-TESTS@ LV-TEXT-FIELD
+      s" repairs" LV-P @ LV-ARM-REPAIRS@ LV-TEXT-FIELD
+      s" checker_iterations" LV-P @ LV-ARM-CHECKERS@ LV-TEXT-FIELD
+      s" diagnostics" LV-P @ LV-ARM-DIAGS@ LV-TEXT-FIELD
+      s" tokens" LV-P @ LV-ARM-TOKENS@ LV-TEXT-FIELD
+      s" wall_ms" LV-P @ LV-ARM-WALL@ LV-TEXT-FIELD
+      s" final_chars" LV-P @ LV-ARM-CHARS@ LV-TEXT-FIELD
+      LV-NL
+      1+
+   repeat drop ;
+
 : LV-OUTPUT-SUMMARY-TEXT ( -- )
    s" llm-results: run=" LV-OUT LV-RUN$ LV-OUT
    s"  model=" LV-OUT LV-MODEL$ LV-OUT
@@ -1121,6 +1272,7 @@ variable LV-LINE-U
    s" all_errors_stable" LV-BAD-AE @ LV-TEXT-FIELD
    LV-NL
    LV-OUTPUT-REPAIR-CLASSES
+   LV-OUTPUT-ARMS
    LV-OUTPUT-CATEGORIES ;
 
 : LV-JSON-U ( n -- )
@@ -1185,6 +1337,22 @@ variable LV-LINE-U
    s" token_delta" k LV-RC-TOKDELTA@ LV-JSON-UF
    JSONW-OBJECT-END ;
 
+: LV-OUTPUT-ARM-JSON {: k :} ( n -- )
+   JSONW-OBJECT-START
+   s" arm" JSONW-KEY
+   k LV-ARM$ JSONW-STRING JSONW-COMMA
+   s" rows" k LV-ARM-ROWS@ LV-JSON-COMMA-UF
+   s" certified" k LV-ARM-CERT@ LV-JSON-COMMA-UF
+   s" first_tests_passed" k LV-ARM-FIRST@ LV-JSON-COMMA-UF
+   s" tests_passed" k LV-ARM-TESTS@ LV-JSON-COMMA-UF
+   s" repair_iterations" k LV-ARM-REPAIRS@ LV-JSON-COMMA-UF
+   s" checker_iterations" k LV-ARM-CHECKERS@ LV-JSON-COMMA-UF
+   s" diagnostic_count" k LV-ARM-DIAGS@ LV-JSON-COMMA-UF
+   s" tokens_used" k LV-ARM-TOKENS@ LV-JSON-COMMA-UF
+   s" wall_ms" k LV-ARM-WALL@ LV-JSON-COMMA-UF
+   s" final_chars" k LV-ARM-CHARS@ LV-JSON-UF
+   JSONW-OBJECT-END ;
+
 : LV-OUT-CATS-JSON ( -- )
    JSONW-ARRAY-START
    0 begin dup LV-CAT# @ < while
@@ -1199,6 +1367,15 @@ variable LV-LINE-U
    0 begin dup LV-RC# @ < while
       dup 0 > IF JSONW-COMMA THEN
       dup LV-OUTPUT-RC-JSON
+      1+
+   repeat drop
+   JSONW-ARRAY-END ;
+
+: LV-OUT-ARMS-JSON ( -- )
+   JSONW-ARRAY-START
+   0 begin dup LV-ARM# @ < while
+      dup 0 > IF JSONW-COMMA THEN
+      dup LV-OUTPUT-ARM-JSON
       1+
    repeat drop
    JSONW-ARRAY-END ;
@@ -1225,6 +1402,7 @@ variable LV-LINE-U
    s" diagnostic_quality" JSONW-KEY LV-DQ-JSON JSONW-COMMA
    s" diagnostic_gaps" JSONW-KEY LV-DG-JSON JSONW-COMMA
    s" repair_classes" JSONW-KEY LV-OUT-RCS-JSON JSONW-COMMA
+   s" arms" JSONW-KEY LV-OUT-ARMS-JSON JSONW-COMMA
    s" categories" JSONW-KEY LV-OUT-CATS-JSON
    JSONW-OBJECT-END
    JSON-OUT-BUF JSON-OUT-LEN @ LV-OUT LV-NL ;

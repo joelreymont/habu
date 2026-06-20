@@ -64,6 +64,32 @@ write_live_jsonl() {
   ' "$T/bench/llm/tasks.tsv" > "$T/bench/llm/results/live.jsonl"
 }
 
+write_arm_jsonl() {
+  : > "$T/bench/llm/results/live.jsonl"
+  for arm in habu-forth habu-forth-raw habu-forth-blind; do
+    printf '{"schema_version":2,"run_id":"arm-fixture-2026-06-18",' >> "$T/bench/llm/results/live.jsonl"
+    printf '"model_id":"toy-model","arm":"%s","trial_id":"arm-fixture-2026-06-18:toy-model:%s:1:1",' "$arm" "$arm" >> "$T/bench/llm/results/live.jsonl"
+    printf '"task_family":"arithmetic","model_version":"unknown","model_date":"unknown",' >> "$T/bench/llm/results/live.jsonl"
+    printf '"trial":1,"task_order":1,"k_trials":1,"order_seed":"arm-fixture",' >> "$T/bench/llm/results/live.jsonl"
+    printf '"task_id":1,"name":"SQUARE","model":"toy-model","attempt":1,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"first_pass_checker":"certified","first_pass_tests":true,"tests_passed":true,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"diagnostic_token":true,"diagnostic_span":true,"diagnostic_expected":true,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"diagnostic_actual":true,"diagnostic_code":true,"diagnostic_repair_class":true,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"all_errors_stable":true,"tokens_used":0,"wall_ms":0,"final_chars":1,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"trust_uses":0,"signature_weakened":false,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"outcome":"pass","rounds":1,"first_pass":true,"tokens":0,"source_chars":1,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"runtime_ms":null,"runtime_repetitions":100,"runtime_warmups":10,"runtime_status":"not_run",' >> "$T/bench/llm/results/live.jsonl"
+    printf '"prompt":"prompt","prompt_sha256":"%s",' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+    printf '"raw_response":"raw","raw_response_sha256":"%s",' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+    printf '"extracted_candidate":"candidate","extracted_candidate_sha256":"%s",' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+    printf '"checker_diagnostics":"","checker_diagnostics_sha256":"%s",' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+    printf '"repair_packet":"","repair_packet_sha256":"%s",' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+    printf '"test_output":"ok","test_output_sha256":"%s",' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+    printf '"final_bundle":"bundle","final_bundle_sha256":"%s"}\n' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+  done
+}
+
 write_reference_jsonl
 
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE")
@@ -210,6 +236,31 @@ printf '%s\n' "$out" | grep -q "\"schema_version\":2" || {
 }
 printf '%s\n' "$out" | grep -q "\"rows\":$expected_live_rows" || {
   echo "FAIL: validate-results V2 json rows"
+  printf '%s\n' "$out"
+  exit 1
+}
+
+write_arm_jsonl
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl)
+printf '%s\n' "$out" | grep -q 'arm habu-forth rows=1 certified=1 first_tests=1 tests=1 repairs=0 checker_iterations=1 diagnostics=0 tokens=0 wall_ms=0 final_chars=1' || {
+  echo "FAIL: validate-results arm habu-forth summary"
+  printf '%s\n' "$out"
+  exit 1
+}
+printf '%s\n' "$out" | grep -q 'arm habu-forth-raw rows=1 certified=1 first_tests=1 tests=1 repairs=0 checker_iterations=1 diagnostics=0 tokens=0 wall_ms=0 final_chars=1' || {
+  echo "FAIL: validate-results arm habu-forth-raw summary"
+  printf '%s\n' "$out"
+  exit 1
+}
+printf '%s\n' "$out" | grep -q 'arm habu-forth-blind rows=1 certified=1 first_tests=1 tests=1 repairs=0 checker_iterations=1 diagnostics=0 tokens=0 wall_ms=0 final_chars=1' || {
+  echo "FAIL: validate-results arm habu-forth-blind summary"
+  printf '%s\n' "$out"
+  exit 1
+}
+
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/live.jsonl)
+printf '%s\n' "$out" | grep -q '"arms":\[{"arm":"habu-forth","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1},{"arm":"habu-forth-raw","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1},{"arm":"habu-forth-blind","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1}\]' || {
+  echo "FAIL: validate-results json arms"
   printf '%s\n' "$out"
   exit 1
 }
