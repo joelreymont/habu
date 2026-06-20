@@ -70,6 +70,8 @@ cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f 
 bin/hb --load lib/errors.f lib/string.f lib/string-test.f || { echo "FAIL: string helpers"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/json-write.f lib/json-write-test.f || { echo "FAIL: json writer helpers"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/json-write.f lib/json-write-test.f | $CHECK >/dev/null || { echo "FAIL: json writer helper check"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/test-runner.f lib/test-runner-test.f || { echo "FAIL: test runner helpers"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/test-runner.f lib/test-runner-test.f | $CHECK >/dev/null || { echo "FAIL: test runner helper check"; exit 1; }
 bin/hb --load lib/errors.f lib/array.f lib/array-test.f || { echo "FAIL: array helpers"; exit 1; }
 bin/hb --load lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f || { echo "FAIL: table stdlib"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/regex.f lib/regex-test.f || { echo "FAIL: regex stdlib"; exit 1; }

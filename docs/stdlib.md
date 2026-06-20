@@ -25,6 +25,7 @@ Planned module files:
 - `lib/process-env.f`
 - `lib/argv.f`
 - `lib/test.f`
+- `lib/test-runner.f`
 - `lib/property.f`
 - `lib/build.f`
 - `lib/time.f`
@@ -791,6 +792,24 @@ T$=             ( ptr u8 n ptr u8 n -- )
 T$<>            ( ptr u8 n ptr u8 n -- )
 TTHROWS         ( a n -- )
 T-REPORT        ( -- )
+GT-RESET        ( -- )
+GT-START        ( ptr u8 n -- )
+GT-CLEANUP      ( -- )
+GT-PATH         ( ptr u8 n ptr u8 -- n )
+GT-RUN          ( ptr u8 n n -- )
+GT-RUN-DEFAULT  ( ptr u8 n -- )
+GT-RC@          ( -- n )
+GT-RC=          ( n ptr u8 n -- )
+GT-RC-NONZERO   ( ptr u8 n -- )
+GT-TIMEOUT      ( ptr u8 n -- )
+GT-STDOUT=      ( ptr u8 n ptr u8 n -- )
+GT-STDERR=      ( ptr u8 n ptr u8 n -- )
+GT-STDOUT-HAS   ( ptr u8 n ptr u8 n -- )
+GT-STDERR-HAS   ( ptr u8 n ptr u8 n -- )
+GT-FAIL+        ( ptr u8 n -- )
+GT-FAILURES     ( -- n )
+GT-FAIL-NAME$   ( n -- ptr u8 n )
+GT-REPORT       ( -- )
 PROP-SEED!      ( n -- )
 PROP-SEED@      ( -- n )
 PROP-COUNT@     ( -- n )
@@ -854,6 +873,13 @@ isolated behind the audited trusted boundary `TTHROWS-RAW`.
 source buffers, modeled generator depth, and token-tail shrinking utilities.
 Property execution may call an audited `evaluate` boundary for generated checked
 source, but pure generators and shrink predicates remain checked helpers.
+`lib/test-runner.f` layers reusable gate-fixture helpers on top of `lib/fs.f`,
+`lib/fs-mutate.f`, `lib/process.f`, and `lib/process-argv.f`. It creates a
+cleanup-tracked temporary root, runs prepared argv captures with bounded stdout
+and stderr buffers, classifies exit/signal/timeout outcomes, and accumulates
+named failures so gate scripts can report all local expectation failures before
+exiting. Test runner paths are counted byte strings; stdout/stderr assertions
+never truncate silently because process capture still enforces bounded output.
 `lib/build.f` owns build step modeling, checked source certification, artifact
 path construction, and fail-closed status reporting. `BUILD-CHECK` requires a
 counted source path that names a file, scans colon definitions in bounded module
