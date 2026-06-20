@@ -537,6 +537,10 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/
   echo "FAIL: llm artifact hashes"
   exit 1
 }
+bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/negative-score.f bench/llm/negative-score-test.f || {
+  echo "FAIL: llm negative scorer"
+  exit 1
+}
 $CHECK bench/llm/solutions.f >"$T/check.out" 2>"$T/check.err" || {
   cat "$T/check.err"
   echo "FAIL: answer key is not all-certified"
