@@ -245,14 +245,12 @@ signatures include `PROP-RUN-RESET ( n n -- )`, `PROP-RND% ( n -- n )`,
 ## Builds
 
 Load `lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f lib/build.f`.
-Shell wrappers may allocate temp space and invoke `bin/hb`, but build policy
-belongs in checked Habu. The published signatures include
+Build policy belongs in checked Habu. The published signatures include
 `BUILD-CHECK ( ptr u8 n -- )`, `BUILD-EXPECT ( ptr u8 n -- )`,
 `BUILD-ARTIFACT ( ptr u8 n ptr u8 n -- ptr u8 n )`,
 `BUILD-STEP ( ptr u8 n [ -- n ] -- )`, and
 `BUILD-RUN ( ptr u8 n ptr u8 n -- n )`. They are covered by `lib/build-test.f`,
-`lib/build-test.sh`, `tools/build-fixpoint-test.sh`, and the `hb-build` checks
-inside `test/run.sh`.
+`tools/build-fixpoint-test.sh`, and the `hb-build` checks inside `test/run.sh`.
 
 ```forth
 create BE-STEP BUILD-STEP-CELLS cells allot
