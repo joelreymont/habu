@@ -1,8 +1,21 @@
 \ test-test.f - focused tests for lib/test.f.
-\ Run: cat lib/test.f lib/test-test.f | bin/hb
+\ Run: bin/hb --load lib/test.f lib/test-test.f
 
 : TT-THROW-7 ( -- )
    7 throw ;
+
+: TT-THROW-5 ( -- )
+   5 throw ;
+
+T-RESET
+1 2 T=
+T-CASES 1 T=
+T-FAILURES 1 T=
+
+T-RESET
+' TT-THROW-5 4 TTHROWS
+T-CASES 1 T=
+T-FAILURES 1 T=
 
 T-RESET
 
