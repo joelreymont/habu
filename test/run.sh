@@ -45,7 +45,9 @@ cat tools/aot-call-report.f tools/aot-call-report-test.f | ./tools/check.sh >/de
 bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/argv.f tools/trust-lint.f || { echo "FAIL: trust-lint"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/trust-lint-test.f || { echo "FAIL: trust-lint fixtures"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/trust-lint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: trust-lint fixture check"; exit 1; }
-bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/stale-status-lint.f || { echo "FAIL: stale-status-lint"; exit 1; }
+bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/argv.f tools/stale-status-lint.f || { echo "FAIL: stale-status-lint"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/stale-status-lint-test.f || { echo "FAIL: stale-status-lint fixtures"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/stale-status-lint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: stale-status-lint fixture check"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/fs.f tools/host-lint.f || { echo "FAIL: host-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/parallel-agent-lint.f || { echo "FAIL: parallel-agent-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/filemap-lint.f || { echo "FAIL: filemap-lint"; exit 1; }

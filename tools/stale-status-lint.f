@@ -1,5 +1,6 @@
 \ stale-status-lint.f - enforce STATUS.md as the only live self-check count.
-\ Load after tools/lint/lib.f and tools/fs.f. Run with bin/hb.
+\ Load after tools/date.f, tools/lint/lib.f, tools/fs.f, and tools/argv.f.
+\ Run: bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/argv.f tools/stale-status-lint.f -- [ROOT] [TODAY]
 
 0 set-check
 
@@ -14,6 +15,7 @@ $20000 constant SS-FILE-CAP
 create SS-FILE-BUF SS-FILE-CAP allot
 create SS-NUM-BUF SS-NUM-CAP allot
 create SS-TODAY-BUF DATE-LEN allot
+create SS-PATH-BUF FS-PATH-CAP allot
 create SS-ONE 1 allot
 
 variable SS-BAD
@@ -30,6 +32,8 @@ variable SS-SCAN-X
 variable SS-RUN
 variable SS-DIGITS
 variable SS-TODAY-DAYS
+variable SS-ROOT-A
+variable SS-ROOT-U
 
 : SS-CHECK-HOOK ( -- )
    CHECK! ;
@@ -95,10 +99,42 @@ variable SS-TODAY-DAYS
    c 96 > c 123 < and ;
 
 : SS-REL ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+   SS-ROOT-U @ 0 >  SS-ROOT-A @ SS-ROOT-U @ s" ." STR= 0= and IF
+      u SS-ROOT-U @ > IF
+         a SS-ROOT-U @ SS-ROOT-A @ SS-ROOT-U @ STR= IF
+            a SS-ROOT-U @ + c@ SS-SLASH = IF
+               a SS-ROOT-U @ 1 + +  u SS-ROOT-U @ 1 + -  exit
+            THEN
+         THEN
+      THEN
+   THEN
    u 2 >= IF
       a c@ 46 =  a 1 + c@ SS-SLASH = and IF a 2 + u 2 - exit THEN
    THEN
    a u ;
+
+: SS-ROOT ( -- ptr u8 n )
+   SS-ROOT-A @ SS-ROOT-U @ ;
+
+: SS-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
+   a SS-ROOT-A !
+   u SS-ROOT-U ! ;
+
+: SS-ROOT-SELF? ( -- bool )
+   SS-ROOT-U @ 0= IF SS-TRUE exit THEN
+   SS-ROOT-A @ SS-ROOT-U @ s" ." STR= ;
+
+: SS-ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+   SS-ROOT-SELF? IF a u exit THEN
+   SS-ROOT-U @ u + 1 + FS-PATH-CAP > IF s" stale-status-lint: root path too long" 1 die THEN
+   SS-ROOT-A @ SS-PATH-BUF SS-ROOT-U @ COPY-BYTES
+   SS-ROOT-A @ SS-ROOT-U @ 1 - + c@ SS-SLASH = IF
+      a SS-PATH-BUF SS-ROOT-U @ + u COPY-BYTES
+      SS-PATH-BUF SS-ROOT-U @ u + exit
+   THEN
+   SS-SLASH SS-PATH-BUF SS-ROOT-U @ + c!
+   a SS-PATH-BUF SS-ROOT-U @ 1 + + u COPY-BYTES
+   SS-PATH-BUF SS-ROOT-U @ 1 + u + ;
 
 : SS-DISPLAY! ( ptr u8 n -- )
    SS-REL SS-DISP-U ! SS-DISP-A ! ;
@@ -116,7 +152,7 @@ variable SS-TODAY-DAYS
 
 : SS-STATUS-DATE! ( -- )
    0 SS-FOUND? !
-   s" STATUS.md" SS-FILE-BUF SS-FILE-CAP READ-FILE SPLIT-LINES
+   s" STATUS.md" SS-ROOTED$ SS-FILE-BUF SS-FILE-CAP READ-FILE SPLIT-LINES
    0 begin dup SN# @ < while
       dup S@ TRIM
       2dup s" Last verified:" SS-LINE-PREFIX? IF
@@ -136,7 +172,7 @@ variable SS-TODAY-DAYS
    SS-BAD @ 1+ SS-BAD ! ;
 
 : SS-BAD-TODAY ( ptr u8 n -- )
-   s" BAD-TODAY STALE_STATUS_TODAY invalid `" SS-OUT
+   s" BAD-TODAY today argument invalid `" SS-OUT
    SS-OUT
    s" `" SS-OUT SS-NL
    1 throw ;
@@ -148,11 +184,7 @@ variable SS-TODAY-DAYS
    SS-BAD+ ;
 
 : SS-TODAY$ ( -- ptr u8 n )
-   s" STALE_STATUS_TODAY" GETENV dup 0 > IF
-      2dup PARSE-YMD 0= IF drop SS-BAD-TODAY THEN
-      drop exit
-   THEN
-   2drop SS-TODAY-FROM-EPOCH ;
+   SS-TODAY-FROM-EPOCH ;
 
 : SS-MISSING-STATUS ( -- )
    s" STALE-STATUS STATUS.md: missing `Last verified: YYYY-MM-DD`" SS-OUT SS-NL
@@ -262,9 +294,24 @@ variable SS-TODAY-DAYS
 : STALE-STATUS-LINT ( -- )
    0 SS-BAD !
    SS-CHECK-STATUS
-   s" ." ['] SS-SCAN-MD WALK-FILES
+   SS-ROOT ['] SS-SCAN-MD WALK-FILES
    s" stale-status-lint: " SS-OUT SS-BAD @ SS-U. s"  finding(s)" SS-OUT SS-NL
    SS-BAD @ 0 > IF 1 throw THEN ;
 
-epoch-seconds DATE-SECONDS-DAY / SS-TODAY-DAYS !
-STALE-STATUS-LINT
+: SS-CONFIG ( -- )
+   s" tools/stale-status-lint.f [ROOT] [TODAY]" ARGV-USAGE!
+   ARGV-PARSE
+   0 2 ARGV-EXPECT-POS
+   ARGV-POS# 0 > IF 0 ARGV-POS$ SS-ROOT! ELSE s" ." SS-ROOT! THEN
+   ARGV-POS# 1 > IF
+      1 ARGV-POS$ 2dup PARSE-YMD 0= IF drop SS-BAD-TODAY THEN
+      SS-TODAY-DAYS ! 2drop
+   ELSE
+      epoch-seconds DATE-SECONDS-DAY / SS-TODAY-DAYS !
+   THEN ;
+
+: SS-MAIN ( -- )
+   SS-CONFIG
+   STALE-STATUS-LINT ;
+
+SS-MAIN

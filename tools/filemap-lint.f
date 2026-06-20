@@ -127,6 +127,7 @@ variable FM-NUM-L
    s" tools/trust-lint.f" FM-REQ
    s" tools/trust-lint-test.f" FM-REQ
    s" tools/stale-status-lint.f" FM-REQ
+   s" tools/stale-status-lint-test.f" FM-REQ
    s" tools/parallel-agent-lint.f" FM-REQ
    s" tools/string.f" FM-REQ
    s" lib/string-test.f" FM-REQ
