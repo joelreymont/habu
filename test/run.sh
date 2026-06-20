@@ -42,7 +42,8 @@ bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/stale-status-lint.f
 bin/hb --load tools/lint/lib.f tools/fs.f tools/host-lint.f || { echo "FAIL: host-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/parallel-agent-lint.f || { echo "FAIL: parallel-agent-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/filemap-lint.f || { echo "FAIL: filemap-lint"; exit 1; }
-./tools/checked-boundary-lint-test.sh || { echo "FAIL: checked-boundary-lint"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/checked-boundary-lint-test.f || { echo "FAIL: checked-boundary-lint"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/checked-boundary-lint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: checked-boundary-lint fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/string-test.f || { echo "FAIL: string helpers"; exit 1; }
 bin/hb --load lib/errors.f lib/array.f lib/array-test.f || { echo "FAIL: array helpers"; exit 1; }
 bin/hb --load lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f || { echo "FAIL: table stdlib"; exit 1; }

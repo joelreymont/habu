@@ -62,6 +62,7 @@ points stay listed.
 - `tools/host-lint.f` — rejects retired host-script workflow tokens.
 - `tools/check-all-errors.f` — batches checker diagnostics by top-level definition.
 - `tools/check-all-errors-test.f` — checked fixture coverage for all-errors checking.
+- `tools/checked-boundary-lint-test.f` — checked fixture coverage for unchecked-boundary lint.
 - `tools/diag-to-sarif.f` — converts diagnostic JSONL to SARIF for CI/review UIs.
 - `tools/public-signatures.f` — emits typed public-word manifests for agents.
 - `tools/aot-call-report.f` — measures patched AOT call-stencil padding.
