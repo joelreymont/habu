@@ -44,20 +44,16 @@ case "$SRC" in
   *\"*) echo "hb-build: source path contains a double quote, cannot set DIAG-FILE"; exit 64 ;;
 esac
 if [ "$JSON" = 1 ]; then LINT_JSON=--json; else LINT_JSON=; fi
-SIGNATURE_LINT_TOOL=$T/signature-lint.f
 signature_lint() {
-  [ -f "$SIGNATURE_LINT_TOOL" ] || cat tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/argv.f tools/signature-lint.f > "$SIGNATURE_LINT_TOOL"
-  bin/hb "$SIGNATURE_LINT_TOOL" "$@"
+  bin/hb --load tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f \
+    tools/argv.f tools/signature-lint.f -- "$@"
 }
-DIAG_ORIGIN_TOOL=$T/diag-origin.f
 diag_origin() {
-  [ -f "$DIAG_ORIGIN_TOOL" ] || cat tools/lint/lib.f tools/diag-origin.f > "$DIAG_ORIGIN_TOOL"
-  bin/hb "$DIAG_ORIGIN_TOOL" "$1"
+  bin/hb --load tools/lint/lib.f tools/diag-origin.f -- "$1"
 }
-AOT_LINT_TOOL=$T/aot-lint.f
 aot_lint() {
-  [ -f "$AOT_LINT_TOOL" ] || cat tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/argv.f tools/aot-lint.f > "$AOT_LINT_TOOL"
-  bin/hb "$AOT_LINT_TOOL" "$@"
+  bin/hb --load tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f \
+    tools/argv.f tools/aot-lint.f -- "$@"
 }
 if [ "$STRICT" = 1 ]; then
   signature_lint $LINT_JSON "$SRC" >&2
@@ -73,10 +69,8 @@ STAGE2_GOT=$T/stage2-got
 USRC=$T/hb-user-src
 MKPATH=$T/$MK
 GOTPATH=$T/$GOT
-JSON_ONLY_TOOL=$T/json-only.f
 json_only() {
-  [ -f "$JSON_ONLY_TOOL" ] || cat tools/argv.f tools/json.f tools/json-only.f > "$JSON_ONLY_TOOL"
-  bin/hb "$JSON_ONLY_TOOL" "$1"
+  bin/hb --load tools/argv.f tools/json.f tools/json-only.f -- "$1"
 }
 
 # maker = checker-hooked toolchain + the chosen driver, compiled by bin/hb.

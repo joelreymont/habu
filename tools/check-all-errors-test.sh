@@ -9,12 +9,6 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-BUNDLE=$T/check-all-errors.bundle.f
-cat "$ROOT/tools/lint/lib.f" \
-    "$ROOT/tools/lint/source-lex.f" \
-    "$ROOT/tools/argv.f" \
-    "$ROOT/tools/check-all-errors.f" > "$BUNDLE"
-
 cat > "$T/input.f" <<'EOF'
 : OK ( i64 -- i64 ) dup * ;
 : SEMI ( -- i64 ) [char] ; ;
@@ -23,7 +17,9 @@ cat > "$T/input.f" <<'EOF'
 EOF
 
 set +e
-"$ROOT/bin/hb" "$BUNDLE" --json-errors --label "$T/input.f" "$T/input.f" >"$T/out" 2>"$T/err"
+"$ROOT/bin/hb" --load "$ROOT/tools/lint/lib.f" "$ROOT/tools/lint/json-writer.f" \
+  "$ROOT/tools/lint/source-lex.f" "$ROOT/tools/argv.f" "$ROOT/tools/check-all-errors.f" \
+  -- --json-errors --label "$T/input.f" "$T/input.f" >"$T/out" 2>"$T/err"
 rc=$?
 set -e
 [ "$rc" -eq 70 ] || {

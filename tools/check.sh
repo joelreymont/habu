@@ -36,29 +36,27 @@ else
   LABEL="<stdin>"
   cat > "$SRC"
 fi
-SIGNATURE_LINT_TOOL=$T/signature-lint.f
 signature_lint() {
-  [ -f "$SIGNATURE_LINT_TOOL" ] || cat tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/argv.f tools/signature-lint.f > "$SIGNATURE_LINT_TOOL"
-  bin/hb "$SIGNATURE_LINT_TOOL" "$@"
+  bin/hb --load tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f \
+    tools/argv.f tools/signature-lint.f -- "$@"
 }
-DIAG_ORIGIN_TOOL=$T/diag-origin.f
 diag_origin() {
-  [ -f "$DIAG_ORIGIN_TOOL" ] || cat tools/lint/lib.f tools/diag-origin.f > "$DIAG_ORIGIN_TOOL"
-  bin/hb "$DIAG_ORIGIN_TOOL" "$1"
+  bin/hb --load tools/lint/lib.f tools/diag-origin.f -- "$1"
 }
 if [ "$STRICT" = 1 ]; then
   signature_lint $LINT_JSON --label "$LABEL" "$SRC" >&2
 fi
-JSON_ONLY_TOOL=$T/json-only.f
 json_only() {
-  [ -f "$JSON_ONLY_TOOL" ] || cat tools/argv.f tools/json.f tools/json-only.f > "$JSON_ONLY_TOOL"
-  bin/hb "$JSON_ONLY_TOOL" "$1"
+  bin/hb --load tools/argv.f tools/json.f tools/json-only.f -- "$1"
 }
 if [ "$ALL" = 1 ]; then
-  if [ "$JSON" = 1 ]; then JSON_ARG=--json-errors; else JSON_ARG=; fi
-  CHECK_ALL_TOOL=$T/check-all-errors.f
-  [ -f "$CHECK_ALL_TOOL" ] || cat tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/argv.f tools/check-all-errors.f > "$CHECK_ALL_TOOL"
-  bin/hb "$CHECK_ALL_TOOL" $JSON_ARG --label "$LABEL" "$SRC"
+  if [ "$JSON" = 1 ]; then
+    bin/hb --load tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f \
+      tools/argv.f tools/check-all-errors.f -- --json-errors --label "$LABEL" "$SRC"
+  else
+    bin/hb --load tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f \
+      tools/argv.f tools/check-all-errors.f -- --label "$LABEL" "$SRC"
+  fi
   exit $?
 fi
 case "$LABEL" in
