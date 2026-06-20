@@ -46,7 +46,8 @@ bin/hb --load lib/argv.f lib/argv-test.f || { echo "FAIL: argv stdlib mocks"; ex
 bin/hb --load lib/argv.f lib/argv-test.f -- --json -o OUT -- file.f --literal || { echo "FAIL: argv stdlib script args"; exit 1; }
 ./tools/check.sh lib/argv.f >/dev/null || { echo "FAIL: argv stdlib check"; exit 1; }
 ./lib/test-test.sh || { echo "FAIL: test stdlib"; exit 1; }
-./lib/property-test.sh || { echo "FAIL: property stdlib"; exit 1; }
+bin/hb --load lib/errors.f lib/test.f lib/property.f lib/property-test.f || { echo "FAIL: property stdlib"; exit 1; }
+cat lib/errors.f lib/property.f | ./tools/check.sh >/dev/null || { echo "FAIL: property stdlib check"; exit 1; }
 ./lib/build-test.sh || { echo "FAIL: build stdlib"; exit 1; }
 bin/hb --load tools/date.f tools/date-test.f || { echo "FAIL: date helpers"; exit 1; }
 ./tools/bundle-lib-test.sh || { echo "FAIL: stdlib bundle wrapper"; exit 1; }

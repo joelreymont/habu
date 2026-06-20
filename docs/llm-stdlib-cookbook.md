@@ -215,8 +215,7 @@ Load `lib/errors.f lib/string.f lib/test.f lib/property.f`. The published
 signatures include `PROP-RUN-RESET ( n n -- )`, `PROP-RND% ( n -- n )`,
 `PROP-BUF+ ( ptr u8 n -- )`, `PROP-BUF$ ( -- ptr u8 n )`, and
 `PROP-SHRINK ( [ -- bool ] -- )`. They are covered by `lib/property-test.f`,
-`lib/property-test.sh`, `examples/property-test.f`, and the checker soundness
-smoke in `test/prop-test.f`.
+`examples/property-test.f`, and the checker soundness smoke in `test/prop-test.f`.
 
 ```forth
 17 constant PTE-SEED
