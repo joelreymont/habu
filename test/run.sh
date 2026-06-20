@@ -282,6 +282,12 @@ case "$out" in
   *) echo "FAIL: profiler long-name output (got: $out)"; exit 1 ;;
 esac
 echo "PASS: profiler long dictionary names"
+out=$(bin/hb --load src/arch/arm64/disasm.f tools/jitdump.f -- ': JITDUMP-SMOKE ( -- i64 ) 7 ;' JITDUMP-SMOKE 2>/dev/null)
+case "$out" in
+  *ret*) ;;
+  *) echo "FAIL: jitdump direct CLI output (got: $out)"; exit 1 ;;
+esac
+echo "PASS: jitdump direct CLI"
 # hb-build DEFAULT = AOT: compile MAIN to native, engine stripped (no interpreter).
 printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;\n: MAIN ( -- ) 10 FIB . CR ;\n' > $T/hb-at.f
 ./tools/hb-build.sh $T/hb-at.f -o $T/hb-at >/dev/null || { echo "FAIL: hb-build (AOT)"; exit 1; }

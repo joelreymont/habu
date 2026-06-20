@@ -250,6 +250,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Broad unchecked tool ports hide the bugs being chased:** reinstall the
   `CHECK!` hook immediately after raw declarations and lint protected files for
   normal definitions left under `0 set-check`.
+- **Debug tool CLIs still obey checker rules:** direct Habu replacements for
+  shell probes should load dependencies with `--load`, keep top-level control
+  flow inside a word, and expose raw pointer cursors through audited accessors.
 - **Native report tools should stream large inputs:** stacking multiple
   256K-512K capture/read buffers can push later data objects into unsafe space.
   Count/scan large JSONL inputs in chunks and reserve fixed capture buffers only

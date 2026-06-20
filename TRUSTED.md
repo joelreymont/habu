@@ -61,6 +61,7 @@ body. Re-audit when a row's body or effect string changes.
 | BUILD-CHECK-RAW | `ptr u8 n -- n` | Build helper boundary around `CHECK!`; the checker cannot certify a source definition by evaluating its own checker recursively. | `lib/build-test.sh`, `test/run.sh` | lib/build.f:47 | 2026-06-18 |
 | EP@ | `-- ptr u8` | Reads the current byte-emission cursor stored in a raw variable; preserves pointer type for byte stores. | `test/run.sh` | src/arch/arm64/icode.f:18 | 2026-06-16 |
 | BYP@ | `-- ptr u8` | Reads the byte-copy cursor stored in a raw variable during `BYTES,`. | `test/run.sh` | src/arch/arm64/icode.f:92 | 2026-06-16 |
+| DRP@ | `-- ptr u8` | Reads the disassembler row-table cursor stored in a raw variable; preserves byte-pointer type for table byte/word loads. | `tools/jitdump.f`, `test/run.sh` | src/arch/arm64/disasm.f:38 | 2026-06-20 |
 | ENV-DATA | `-- ptr n` | Returns the fixed engine data-region header pointer used for argc/argv/envp cells. | `test/run.sh`, `tools/argv-test.f` | src/os/macos/env.f:9 | 2026-06-16 |
 | ARGV-BASE | `-- ptr n` | Reads the raw argv vector pointer from the engine startup cell. | `test/run.sh`, `tools/argv-test.f` | src/os/macos/env.f:14 | 2026-06-16 |
 | ARGV | `n -- ptr u8` | Reads a NUL-terminated argv entry from the raw argv vector. | `test/run.sh`, `tools/argv-test.f` | src/os/macos/env.f:17 | 2026-06-16 |

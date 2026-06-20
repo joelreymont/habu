@@ -35,14 +35,17 @@ create CHB 4 allot
 \ NB: no locals inside the loop (corrupts the frame) — row fields go through variables.
 variable DDONE  variable DRI  variable DRP  variable DMSK  variable DVAL  variable DKIND  variable DNL
 
+TRUSTED: DRP@ ( -- ptr u8 )
+   DRP @ ;
+
 : DIS1 {: w :}  DTB DRP !  0 DDONE !  0 DRI !
    BEGIN DRI @ NROWS < WHILE
-     DRP @ U64@ DMSK !  DRP @ 8 + U64@ DVAL !
-     DRP @ 16 + c@ DKIND !  DRP @ 17 + c@ DNL !
+     DRP@ U64@ DMSK !  DRP@ 8 + U64@ DVAL !
+     DRP@ 16 + c@ DKIND !  DRP@ 17 + c@ DNL !
      DDONE @ 0= w DMSK @ and DVAL @ = and IF
-       DRP @ 18 + DNL @ type SPC  w DKIND @ DROW-EMIT  1 DDONE !  THEN
-     DRP @ 18 + DNL @ + DRP !  DRI @ 1 + DRI !
+       DRP@ 18 + DNL @ type SPC  w DKIND @ DROW-EMIT  1 DDONE !  THEN
+     DRP@ 18 + DNL @ + DRP !  DRI @ 1 + DRI !
    REPEAT
    DDONE @ 0= IF 63 EMITC THEN ;
 
-: DISASM {: a n :}  0 BEGIN dup n < WHILE  dup 4 * a + U64@ 4294967295 and DIS1  1 + REPEAT drop ;
+: DISASM {: a:ptr n :}  0 BEGIN dup n < WHILE  a over 4 * + U64@ 4294967295 and DIS1  1 + REPEAT drop ;
