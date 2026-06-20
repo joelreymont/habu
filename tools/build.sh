@@ -25,7 +25,8 @@ trap cleanup EXIT HUP INT TERM
 
 HB_TMP=$T bin/hb --load \
   lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/build.f tools/build-fixpoint.f
+  lib/process.f lib/process-argv.f lib/build.f \
+  tools/build-fixpoint.f tools/build-fixpoint-main.f
 
 test -f "$T/hb-new" || { echo "build: checked hb image not produced"; exit 1; }
 /bin/mv "$T/hb-new" bin/hb

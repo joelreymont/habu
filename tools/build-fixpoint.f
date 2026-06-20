@@ -321,5 +321,3 @@ variable BF-PID
    s" stdin" BF-ARG0= if BF-BUILD-STDIN exit then
    s" snap" BF-ARG0= if BF-BUILD-SNAP exit then
    BF-USAGE ;
-
-BF-MAIN

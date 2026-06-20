@@ -48,6 +48,9 @@ points stay listed.
 - `tools/check.sh` — checked native engine wrapper.
 - `tools/hb-build.sh` — standalone binary builder.
 - `tools/srclist.f` — canonical source order.
+- `tools/build-fixpoint.f` — checked self-rebuild fixpoint orchestration definitions.
+- `tools/build-fixpoint-main.f` — CLI entrypoint for the self-rebuild fixpoint driver.
+- `tools/build-fixpoint-test.f` — checked fixture coverage for the self-rebuild fixpoint driver.
 - `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.
 - `tools/lint/source-lex.f` — shared source lexer for native lints.
 - `tools/signature-lint.f` — strict typed-signature lint.

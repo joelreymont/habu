@@ -94,6 +94,9 @@ variable FM-NUM-L
    s" tools/check.sh" FM-REQ
    s" tools/seed.sh" FM-REQ
    s" tools/hb-build.sh" FM-REQ
+   s" tools/build-fixpoint.f" FM-REQ
+   s" tools/build-fixpoint-main.f" FM-REQ
+   s" tools/build-fixpoint-test.f" FM-REQ
    s" tools/lint/json-writer.f" FM-REQ
    s" tools/lint/source-lex.f" FM-REQ
    s" tools/signature-lint.f" FM-REQ

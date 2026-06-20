@@ -250,7 +250,7 @@ Build policy belongs in checked Habu. The published signatures include
 `BUILD-ARTIFACT ( ptr u8 n ptr u8 n -- ptr u8 n )`,
 `BUILD-STEP ( ptr u8 n [ -- n ] -- )`, and
 `BUILD-RUN ( ptr u8 n ptr u8 n -- n )`. They are covered by `lib/build-test.f`,
-`tools/build-fixpoint-test.sh`, and the `hb-build` checks inside `test/run.sh`.
+`tools/build-fixpoint-test.f`, and the `hb-build` checks inside `test/run.sh`.
 
 ```forth
 create BE-STEP BUILD-STEP-CELLS cells allot
