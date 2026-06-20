@@ -119,8 +119,8 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    SP SP 32 ADDI, ;
 
 : EMIT-SOURCE
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: tty file sdone sfail srl serr rl RD pipeok repl done fscan fnext fready floop :}   \ locals BEFORE the IF (frame footgun)
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: tty file sdone sfail srl serr rl RD pipeok repl done fscan fnext fready floop shloop :}   \ locals BEFORE the IF (frame footgun)
    STDIN? @ IF
       0 0 MOVZ,  1 $40487413 LIT64,  2 DATA BODYBUF-OFF ADDI,  NR-IOCTL SYS,
       0 tty CBZ,
@@ -140,7 +140,18 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
       9 11 CMP,  C-NE pipeok BCOND,
       10 DATA ARGC-CELL LDR,  10 1 CMPI,  C-GT file BCOND,
       pipeok LBL,
-      11 DATA INP-CELL STR,  9 DATA INE-CELL STR,  done B,
+      11 DATA INP-CELL STR,  9 DATA INE-CELL STR,
+      12 9 11 SUB,  12 2 CMPI,  C-LT done BCOND,
+      4 11 0 LDRB,  4 $23 CMPI,  C-NE done BCOND,
+      4 11 1 LDRB,  4 $21 CMPI,  C-NE done BCOND,
+      11 11 2 ADDI,
+      shloop LBL,
+         11 9 CMP,  C-GE done BCOND,
+         4 11 0 LDRB,
+         11 11 1 ADDI,
+         11 DATA INP-CELL STR,
+         4 10 CMPI,  C-EQ done BCOND,
+         shloop B,
       tty LBL,
       9 DATA ARGC-CELL LDR,  9 1 CMPI,  C-LE repl BCOND,
       0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
