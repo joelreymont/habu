@@ -103,8 +103,12 @@ benchmark drivers, and prompts must not introduce public executables named
 - tty and `argc <= 1`: start the checked REPL.
 - tty and `argc > 1`: run `argv[1]` as a script with remaining args exposed to
   Habu.
+- `--load source... -- args...`: explicit source-list script mode. The loader
+  reads only the listed source files before `--`; fd 0 is left untouched as tool
+  data, and script args start after `--`.
 - non-tty stdin with bytes: run stdin as the program, regardless of `argc`; args
-  remain visible to the program. This is required for property/benchmark seeds.
+  remain visible to the program unless the explicit `--load` source-list mode is
+  selected. This is required for property/benchmark seeds.
 - non-tty stdin at EOF and `argc > 1`: run `argv[1]` as a script.
 
 Build scripts are ordinary Habu scripts loaded by these modes. Shell wrappers may

@@ -61,7 +61,10 @@ bin/hb --load lib/errors.f lib/string.f lib/map.f lib/map-test.f || { echo "FAIL
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-test.f || { echo "FAIL: fs stdlib"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: fs stdlib check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/source.f lib/source-test.f || { echo "FAIL: source stdlib"; exit 1; }
+printf DATA | bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/source.f lib/source-test.f -- stdin || { echo "FAIL: source stdlib stdin"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/source.f lib/source-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: source stdlib check"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/hb-cli-contracts-test.f || { echo "FAIL: hb CLI contracts"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/hb-cli-contracts-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: hb CLI contract check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-test.f || { echo "FAIL: process stdlib"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: process stdlib check"; exit 1; }
 bin/hb --load lib/argv.f lib/argv-test.f || { echo "FAIL: argv stdlib mocks"; exit 1; }

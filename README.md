@@ -33,6 +33,8 @@ built-in checker, and **rebuilds itself byte-for-byte** (stage2 fixpoint):
 echo ': SQ dup * ; 7 SQ .' | bin/hb     # batch: program from stdin
 bin/hb script.f arg...                  # script: program from file; args via
                                         #   SCRIPT-ARGC / SCRIPT-ARGV$
+printf DATA | bin/hb --load lib/source.f tool.f --
+                                        # multi-source script; stdin remains data
 bin/hb                                  # tty: checked REPL with line editing,
                                         #   history, breakpoints, `step`, and
                                         #   verification of typed definitions

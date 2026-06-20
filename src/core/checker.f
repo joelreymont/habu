@@ -527,6 +527,8 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" ," s" n --" PT+
    s" c," s" n --" PT+
    s" type" s" ptr u8 n --" PT+
+   s" script-argc" s" -- n" PT+
+   s" script-argv$" s" n -- ptr u8 n" PT+
    s" throw" s" n --" PT+
    s" die" s" ptr u8 n n --" PT+
    s" open" s" ptr u8 n n -- n" PT+

@@ -111,6 +111,10 @@ create ST-LENS 2 cells allot
 : TEST-READ-STDIN-ALL ( -- )
    ST-BUF ST-CAP READ-STDIN-ALL 0 T= ;
 
+: TEST-READ-STDIN-DATA ( -- )
+   ST-BUF ST-CAP READ-STDIN-ALL 4 T=
+   ST-BUF 4 s" DATA" T$= ;
+
 : TEST-CONCAT-FILES ( -- )
    ST-PATHS ST-LENS 2 ST-BUF ST-CAP CONCAT-FILES 9 T=
    ST-BUF 9 s" alphabeta" T$= ;
@@ -150,4 +154,19 @@ create ST-LENS 2 cells allot
    T-REPORT
    s" source-test: ok" type cr ;
 
-SOURCE-TEST-MAIN
+: SOURCE-TEST-STDIN-MAIN ( -- )
+   T-RESET
+   TEST-READ-STDIN-DATA
+   T-REPORT
+   s" source-test stdin: ok" type cr ;
+
+: SOURCE-TEST-USAGE ( -- )
+   s" source-test: usage: [stdin]" 64 die ;
+
+: SOURCE-TEST-ENTRY ( -- )
+   SCRIPT-ARGC 0= if SOURCE-TEST-MAIN exit then
+   SCRIPT-ARGC 1 <> if SOURCE-TEST-USAGE then
+   0 SCRIPT-ARGV$ s" stdin" STR= if SOURCE-TEST-STDIN-MAIN exit then
+   SOURCE-TEST-USAGE ;
+
+SOURCE-TEST-ENTRY

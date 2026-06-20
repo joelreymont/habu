@@ -64,6 +64,16 @@ out=$(bin/hb --load "$T/multi-a.f" "$T/multi-b.f" "$T/multi-main.f" -- theta < /
 1
 theta" ] || fail "multi-source script mode failed (got: $out)"
 
+cat > "$T/stdin-data-tool.f" <<'EOF'
+create B 32 allot
+: MAIN ( -- ) B 32 READ-STDIN-ALL dup . B swap type cr ;
+MAIN
+EOF
+
+out=$(printf 'DATA' | bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/source.f "$T/stdin-data-tool.f" -- 2>/dev/null)
+[ "$out" = "4
+DATA" ] || fail "--load did not leave stdin as script data (got: $out)"
+
 bin/hb 123 4 < test/prop-test.f > "$T/prop-argv.out" 2> "$T/prop-argv.err" ||
   fail "prop-test rejected seed/count argv"
 prop_norm=$(tr '\n' ' ' < "$T/prop-argv.out")

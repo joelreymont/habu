@@ -479,11 +479,10 @@ whose first non-space byte sequence starts with `EXPORT ` by replacing leading
 whitespace with `\ `, preserving all other bytes.
 
 `READ-STDIN-ALL` reads fd 0 into a caller buffer and probes one extra byte when
-the buffer fills so overflow fails closed instead of truncating. The current
-`hb` CLI contract treats non-tty stdin bytes as program source, so loaded script
-tools that need arbitrary data on fd 0 must wait for the explicit script-data
-stdin mode tracked in dots; file-path source materialization is the supported
-checked path today.
+the buffer fills so overflow fails closed instead of truncating. Use explicit
+source-list mode for tools that need stdin data:
+`bin/hb --load lib/source.f tool.f -- args... < data`. In that form the loader
+reads source files from argv and leaves fd 0 for `READ-STDIN-ALL`.
 
 ## Processes
 

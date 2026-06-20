@@ -119,11 +119,22 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    SP SP 32 ADDI, ;
 
 : EMIT-SOURCE
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: tty file sdone sfail srl serr rl RD pipeok repl done fscan fnext fready floop shloop :}   \ locals BEFORE the IF (frame footgun)
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: tty file sdone sfail srl serr rl RD pipeok repl done fscan fnext fready floop shloop stdinprog :}   \ locals BEFORE the IF (frame footgun)
    STDIN? @ IF
       0 0 MOVZ,  1 $40487413 LIT64,  2 DATA BODYBUF-OFF ADDI,  NR-IOCTL SYS,
       0 tty CBZ,
+      10 DATA ARGC-CELL LDR,  10 1 CMPI,  C-LE stdinprog BCOND,
+      12 DATA ARGV-CELL LDR,  12 12 8 LDR,
+      4 12 0 LDRB,  4 $2D CMPI,  C-NE stdinprog BCOND,
+      4 12 1 LDRB,  4 $2D CMPI,  C-NE stdinprog BCOND,
+      4 12 2 LDRB,  4 108 CMPI,   C-NE stdinprog BCOND,
+      4 12 3 LDRB,  4 111 CMPI,   C-NE stdinprog BCOND,
+      4 12 4 LDRB,  4 97 CMPI,    C-NE stdinprog BCOND,
+      4 12 5 LDRB,  4 100 CMPI,   C-NE stdinprog BCOND,
+      4 12 6 LDRB,  4 0 CMPI,     C-NE stdinprog BCOND,
+      tty B,
+      stdinprog LBL,
       0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
       NR-MMAP SYS,
       13 C-CS CSET,  13 sfail CBNZ,

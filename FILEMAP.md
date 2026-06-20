@@ -46,6 +46,7 @@ points stay listed.
 - `tools/seed.sh` — install a trusted native seed, then rebuild current source.
 - `tools/snap-hb.sh` — refreshes the checked `bin/hb` image.
 - `tools/check.sh` — checked native engine wrapper.
+- `tools/hb-cli-contracts-test.f` — checked coverage for `hb` startup and stdin-data contracts.
 - `tools/hb-build.sh` — standalone binary builder.
 - `tools/srclist.f` — canonical source order.
 - `tools/build-fixpoint.f` — checked self-rebuild fixpoint orchestration definitions.

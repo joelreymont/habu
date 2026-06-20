@@ -77,10 +77,11 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Pipe mode and script mode are distinct:** non-tty stdin with bytes is pipeline
   mode even when `argc > 1` (needed for `bin/hb seed count < test/prop-test.f`).
   Empty non-tty stdin with `argc > 1` runs `argv[1]` as a script path.
-- **Script-data stdin needs its own CLI contract:** a loaded Habu tool cannot
-  currently receive arbitrary fd-0 data while also using stdin/source pipeline
-  semantics. Tests that need nonempty tool stdin should target the explicit
-  script-data mode dot, not fake it with child `hb --load` stdin.
+- **`--load` leaves stdin as tool data:** `bin/hb --load source... -- args...`
+  is explicit source-list mode. Startup reads the listed files and does not
+  consume fd 0, so checked tools can use `READ-STDIN-ALL` for data stdin.
+  Plain `bin/hb args... < program.f` remains pipeline source mode for
+  property/benchmark seed arguments.
 - **PTY behavior needs a real pty harness:** `script(1)` interleaves echo/output.
   Drive a pty directly and poll for exit when testing prompt, raw mode, history,
   Ctrl-C/Ctrl-D, and async termination.

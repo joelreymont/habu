@@ -58,8 +58,9 @@ not a matter of taste. Target is the native `bin/hb` engine.
   parallel.
 - **Reusable helpers belong in libraries, not pasted drivers.** Run multi-file
   tools as `hb --load lib/a.f lib/b.f tool.f -- args...`; the native loader
-  appends the source files before `--`, and `SCRIPT-ARGV$` starts after it.
-  Shared behavior still lives in one owned source file.
+  appends the source files before `--`, `SCRIPT-ARGV$` starts after it, and fd 0
+  remains available as tool data even when stdin is non-tty. Shared behavior
+  still lives in one owned source file.
 - **Keep script argv explicit.** `hb tool.f arg...` preserves single-script
   compatibility and treats `arg...` as script arguments. Use `--load` only when
   the command line contains more than one source file.
