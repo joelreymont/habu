@@ -130,6 +130,9 @@ variable FM-NUM-L
    s" lib/string-test.f" FM-REQ
    s" tools/date.f" FM-REQ
    s" tools/date-test.f" FM-REQ
+   s" lib/process-env.f" FM-REQ
+   s" lib/process-env-test.f" FM-REQ
+   s" test/process-env-child.f" FM-REQ
    s" test/run.sh" FM-REQ
    s" bench/llm/tasks.tsv" FM-REQ
    s" bench/llm/validate-results.f" FM-REQ

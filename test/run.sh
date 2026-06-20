@@ -85,6 +85,8 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-mutate-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: fs mutation stdlib check"; exit 1; }
 bin/hb --load lib/errors.f lib/test.f lib/process.f lib/process-argv.f lib/process-argv-test.f || { echo "FAIL: process argv stdlib"; exit 1; }
 cat lib/errors.f lib/process.f lib/process-argv.f | ./tools/check.sh >/dev/null || { echo "FAIL: process argv check"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/process-env-test.f || { echo "FAIL: process env stdlib"; exit 1; }
+cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f | ./tools/check.sh >/dev/null || { echo "FAIL: process env check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-repair-hints-test.f || { echo "FAIL: repair diagnostic hints"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-repair-hints-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: repair diagnostic hints check"; exit 1; }
 ./tools/hb-baseline-contracts-test.sh || { echo "FAIL: hb baseline contracts"; exit 1; }

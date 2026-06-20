@@ -85,6 +85,9 @@ points stay listed.
 - `lib/string-test.f` — focused coverage for checked string helpers.
 - `tools/date.f` — shared checked UTC Gregorian date parsing, formatting, and timestamp helpers.
 - `tools/date-test.f` — focused coverage for shared date helpers.
+- `lib/process-env.f` — checked child envp builder and PATH lookup helpers.
+- `lib/process-env-test.f` — focused coverage for child envp and executable lookup.
+- `test/process-env-child.f` — child fixture used by process-env tests.
 
 ## Tests And Benchmarks
 

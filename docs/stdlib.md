@@ -20,6 +20,7 @@ Planned module files:
 - `lib/fs.f`
 - `lib/process.f`
 - `lib/process-argv.f`
+- `lib/process-env.f`
 - `lib/argv.f`
 - `lib/test.f`
 - `lib/property.f`
@@ -541,6 +542,34 @@ observes EOF. On timeout, it sends `SIGKILL` through the checked
 `PROC-KILL-RAW` boundary, waits for the child, closes owned fds, and then throws
 `E-PROC-TIMEOUT`. Truncation and other capture failures also clean up all owned
 fds and terminate/reap the active child before throwing a named process error.
+
+`lib/process-env.f` is a post-rebuild layer on top of `lib/process-argv.f` for
+explicit child environments and PATH lookup. Keeping it separate preserves the
+native seed path: old seeds can still load `process-argv` for `tools/build.sh`
+before the newer `spawn-argv-env-io` primitive exists.
+
+```forth
+PROC-SPAWN-ARGV-ENV-RAW   ( ptr u8 ptr a ptr a n n n -- n )
+PROC-ENV-RESET            ( -- )
+PROC-ENV-ENTRY+           ( ptr u8 n -- )
+PROC-ENV+                 ( ptr u8 n ptr u8 n -- )
+PROC-ENV-PREPARE          ( -- ptr a )
+SPAWN-ARGV-ENV-IO         ( ptr u8 n n n n -- n )
+RUN-ARGV-ENV-IO-RC        ( ptr u8 n n n n -- n )
+RUN-ARGV-ENV-CAPTURE      ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+FIND-EXECUTABLE-IN-PATH   ( ptr u8 n ptr u8 n ptr u8 -- n bool )
+FIND-EXECUTABLE           ( ptr u8 n ptr u8 -- n bool )
+RESOLVE-EXECUTABLE        ( ptr u8 n ptr u8 -- n )
+```
+
+Call `PROC-ENV-RESET`, append exact `NAME=VALUE` entries with
+`PROC-ENV-ENTRY+` or checked name/value pairs with `PROC-ENV+`, and then run one
+of the env-aware wrappers. The child receives exactly the prepared env vector;
+there is no implicit inheritance. `FIND-EXECUTABLE-IN-PATH` accepts an explicit
+PATH byte string for deterministic tests, while `FIND-EXECUTABLE` reads the
+current process `PATH`. `RESOLVE-EXECUTABLE` throws `E-PROC-PATH` when lookup
+fails.
 
 ## Date And Time
 

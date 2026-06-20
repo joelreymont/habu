@@ -309,6 +309,19 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-CHECK-PATH	(ptr u8 n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	validate a counted executable path before argv capture opens fds
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn prepared argv with stdout and stderr capture fds
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable with prepared argv and capture bounded stdout stderr rc
+1	process-env	lib/process-env.f	module			lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	checked child envp builder and deterministic executable lookup
+1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-RAW	(ptr u8 ptr a ptr a n n n -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-env-io alias captured after native primitive rebuild
+1	process-env	lib/process-env.f	word	PROC-ENV-RESET	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	clear prepared child environment entries and backing string buffer offset
+1	process-env	lib/process-env.f	word	PROC-ENV-ENTRY+	(ptr u8 n --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	append one exact NAME=VALUE child environment entry
+1	process-env	lib/process-env.f	word	PROC-ENV+	(ptr u8 n ptr u8 n --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	append one checked child environment name/value pair
+1	process-env	lib/process-env.f	word	PROC-ENV-PREPARE	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	terminate and return the prepared child envp pointer table
+1	process-env	lib/process-env.f	word	SPAWN-ARGV-ENV-IO	(ptr u8 n n n n -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared argv envp and explicit stdio fds
+1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-IO-RC	(ptr u8 n n n n -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv envp stdio fds and return exit status
+1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp and capture bounded stdout stderr rc
+1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-STDIN-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp with bounded stdin stdout stderr capture
+1	process-env	lib/process-env.f	word	FIND-EXECUTABLE-IN-PATH	(ptr u8 n ptr u8 n ptr u8 -- n bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command against an explicit PATH byte string into caller storage
+1	process-env	lib/process-env.f	word	FIND-EXECUTABLE	(ptr u8 n ptr u8 -- n bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command against the current process PATH
+1	process-env	lib/process-env.f	word	RESOLVE-EXECUTABLE	(ptr u8 n ptr u8 -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command or throw E-PROC-PATH when lookup fails
 1	argv	lib/argv.f	module			lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	checked command-line parser helpers for hb script args
 1	argv	lib/argv.f	word	ARGV-FALSE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a false flag for parser internals
 1	argv	lib/argv.f	word	ARGV-TRUE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a true flag for parser internals
