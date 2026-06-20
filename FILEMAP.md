@@ -111,6 +111,8 @@ points stay listed.
 - `bench/llm/models.tsv` — model registry for live benchmark sweeps.
 - `bench/llm/model.f` — checked model registry scanner and selected-model metadata buffers.
 - `bench/llm/model-test.f` — focused coverage for model registry parsing and validation.
+- `bench/llm/vectors.f` — checked benchmark vector parser and Habu snippet emitter.
+- `bench/llm/vectors-test.f` — focused coverage for vector parsing and emitted snippets.
 - `bench/llm/solutions.f` — reference benchmark solutions.
 - `bench/llm/validate-results.f` — native reference/attempt metric validator and summarizer.
 - `bench/llm/validate-results-test.sh` — fixture coverage for metric validation.
