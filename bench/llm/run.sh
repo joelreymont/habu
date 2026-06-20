@@ -533,6 +533,10 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/ll
   echo "FAIL: llm vector parser"
   exit 1
 }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/core/sha256.f bench/llm/artifacts.f bench/llm/artifacts-test.f || {
+  echo "FAIL: llm artifact hashes"
+  exit 1
+}
 $CHECK bench/llm/solutions.f >"$T/check.out" 2>"$T/check.err" || {
   cat "$T/check.err"
   echo "FAIL: answer key is not all-certified"

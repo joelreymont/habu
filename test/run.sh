@@ -57,6 +57,8 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f bench/llm/manifest.f
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f bench/llm/manifest.f bench/llm/model.f bench/llm/model-test.f | $CHECK >/dev/null || { echo "FAIL: llm model registry check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/llm/vectors.f bench/llm/vectors-test.f || { echo "FAIL: llm vector parser"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/llm/vectors.f bench/llm/vectors-test.f | $CHECK >/dev/null || { echo "FAIL: llm vector parser check"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/core/sha256.f bench/llm/artifacts.f bench/llm/artifacts-test.f || { echo "FAIL: llm artifact hashes"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/core/sha256.f bench/llm/artifacts.f bench/llm/artifacts-test.f | $CHECK >/dev/null || { echo "FAIL: llm artifact hash check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/core/sha256.f tools/sha256-file-test.f || { echo "FAIL: streaming sha256"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/imgdump.f tools/imgdump-test.f || { echo "FAIL: imgdump compare"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/checked-boundary-lint-test.f || { echo "FAIL: checked-boundary-lint"; exit 1; }
