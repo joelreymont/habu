@@ -122,6 +122,8 @@ variable FM-NUM-L
    s" tools/bundle-lib-test.f" FM-REQ
    s" tools/examples-test.f" FM-REQ
    s" tools/filemap-lint.f" FM-REQ
+   s" tools/repl-lint.f" FM-REQ
+   s" tools/repl-lint-test.f" FM-REQ
    s" tools/trust-lint.f" FM-REQ
    s" tools/trust-lint-test.sh" FM-REQ
    s" tools/stale-status-lint.f" FM-REQ

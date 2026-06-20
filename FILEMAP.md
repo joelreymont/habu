@@ -77,6 +77,8 @@ points stay listed.
 - `tools/bundle-lib-test.f` — checked fixture coverage for the stdlib bundle tool.
 - `tools/examples-test.f` — checked fixture coverage for stdlib examples.
 - `tools/filemap-lint.f` — freshness lint for this file.
+- `tools/repl-lint.f` — rejects REPL-baked code that exits the interactive session.
+- `tools/repl-lint-test.f` — checked fixture coverage for REPL exit lint.
 - `tools/trust-lint.f` — `TRUSTED.md` drift lint.
 - `tools/trust-lint-test.sh` — fixture coverage for `TRUSTED.md` drift lint.
 - `tools/stale-status-lint.f` — stale status/count lint.

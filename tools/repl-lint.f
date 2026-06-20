@@ -1,11 +1,13 @@
 \ repl-lint.f -- REPL-baked code must never exit the interactive session.
-\ Run: cat tools/lint/lib.f tools/repl-lint.f | bin/hb
-\ Load after tools/lint/lib.f.
+\ Run: bin/hb --load tools/lint/lib.f tools/argv.f tools/repl-lint.f -- [ROOT]
+\ Load after tools/lint/lib.f and tools/argv.f.
 
 $8000 constant REPL-FILE-CAP
+$400 constant REPL-PATH-CAP
 $80 constant REPL-PATH-MAX
 
 create REPL-FB REPL-FILE-CAP allot
+create REPL-PATH-BUF REPL-PATH-CAP allot
 create REPL-PATH-IDS REPL-PATH-MAX cells allot
 variable REPL-PATH#
 variable REPL-BAD
@@ -23,6 +25,8 @@ variable REPL-LINE
 variable REPL-TOK-A
 variable REPL-TOK-U
 variable REPL-TOK-LINE
+variable REPL-ROOT-A
+variable REPL-ROOT-U
 
 : NL ( -- )  10 emit ;
 : EM-DASH ( -- )  $E2 emit $80 emit $94 emit ;
@@ -43,6 +47,27 @@ variable REPL-TOK-LINE
    PATHBUF 0 0 open REPL-FD !
    REPL-FD @ 0 < if 0 exit then
    REPL-FD @ close  -1 ;
+
+: REPL-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
+   a REPL-ROOT-A !
+   u REPL-ROOT-U ! ;
+
+: REPL-ROOT-SELF? ( -- bool )
+   REPL-ROOT-U @ 0= if LINT-TRUE exit then
+   REPL-ROOT-A @ REPL-ROOT-U @ s" ." STR= ;
+
+: REPL-ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+   REPL-ROOT-SELF? if a u exit then
+   REPL-ROOT-U @ u + 1 + REPL-PATH-CAP > if s" repl-lint: root path too long" type NL s" " 1 die then
+   REPL-ROOT-A @ REPL-PATH-BUF REPL-ROOT-U @ BMOVE
+   REPL-ROOT-A @ REPL-ROOT-U @ 1- + c@ SLASH = if
+      a REPL-PATH-BUF REPL-ROOT-U @ + u BMOVE
+      REPL-PATH-BUF REPL-ROOT-U @ u +
+      exit
+   then
+   SLASH REPL-PATH-BUF REPL-ROOT-U @ + c!
+   a REPL-PATH-BUF REPL-ROOT-U @ 1 + + u BMOVE
+   REPL-PATH-BUF REPL-ROOT-U @ 1 + u + ;
 
 : TRIM-DQUOTE  {: a u :}  ( -- a u' )
    a  u 0 > a u 1- + c@ DQUOTE = and if u 1- else u then ;
@@ -102,7 +127,7 @@ variable REPL-TOK-LINE
    repeat ;
 
 : ADD-STDIN-SOURCES  ( -- )
-   s" src/habu/stdin.f" REPL-FB REPL-FILE-CAP READ-FILE
+   s" src/habu/stdin.f" REPL-ROOTED$ REPL-FB REPL-FILE-CAP READ-FILE
    -1 PARENS? !  TOKENIZE
    0 REPL-I !
    begin REPL-I @ 2 + TN# @ < while
@@ -202,8 +227,8 @@ variable REPL-TOK-LINE
    repeat ;
 
 : LINT-REPL-FILE  {: pa pu :}  ( -- )
-   pa pu FILE-EXISTS? 0= if exit then
-   pa pu REPL-FB REPL-FILE-CAP READ-FILE  P2U ! P2A !
+   pa pu REPL-ROOTED$ FILE-EXISTS? 0= if exit then
+   pa pu REPL-ROOTED$ REPL-FB REPL-FILE-CAP READ-FILE  P2U ! P2A !
    pa pu  P2A @ P2U @  LINT-REPL-SOURCE ;
 
 : REPL-LINT  ( -- )
@@ -217,4 +242,15 @@ variable REPL-TOK-LINE
    s" repl-lint: " type REPL-BAD @ UTYPE 32 emit s" finding(s)" type NL
    REPL-BAD @ 0 > if s" " 1 die then ;
 
-REPL-LINT
+: REPL-CONFIG ( -- )
+   s" tools/repl-lint.f [ROOT]" ARGV-USAGE!
+   ARGV-PARSE
+   0 1 ARGV-EXPECT-POS
+   ARGV-POS# 0= if s" ." REPL-ROOT! exit then
+   0 ARGV-POS$ REPL-ROOT! ;
+
+: REPL-MAIN ( -- )
+   REPL-CONFIG
+   REPL-LINT ;
+
+REPL-MAIN

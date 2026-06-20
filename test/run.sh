@@ -27,7 +27,9 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 bin/hb --load tools/lint/lib.f tools/lint/shadow-lint.f || { echo "FAIL: shadow-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/lint/clobber-lint.f || { echo "FAIL: clobber-lint"; exit 1; }
-bin/hb --load tools/lint/lib.f tools/repl-lint.f || { echo "FAIL: repl-lint"; exit 1; }
+bin/hb --load tools/lint/lib.f tools/argv.f tools/repl-lint.f || { echo "FAIL: repl-lint"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repl-lint-test.f || { echo "FAIL: repl-lint fixtures"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repl-lint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: repl-lint fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/diag-origin-test.f || { echo "FAIL: diag-origin fixtures"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/diag-origin-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: diag-origin fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-all-errors-test.f || { echo "FAIL: check-all-errors fixtures"; exit 1; }
