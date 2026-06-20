@@ -362,6 +362,7 @@ READ-ALL                ( ptr u8 n ptr u8 n -- n )
 FS-WRITE-BY-FLAGS       ( ptr u8 n ptr u8 n n -- )
 WRITE-ALL               ( ptr u8 n ptr u8 n -- )
 APPEND-FILE             ( ptr u8 n ptr u8 n -- )
+OPEN-APPEND-FD          ( ptr u8 n -- n )
 FS-MUT-PATHZ2           ( ptr u8 n -- ptr u8 )
 REMOVE-FILE             ( ptr u8 n -- )
 RENAME-FILE             ( ptr u8 n ptr u8 n -- )
@@ -393,7 +394,9 @@ The caller supplies the explicit output cap. Files larger than the cap throw
 `E-FS-CAPACITY`; open and I/O failures throw `E-FS-OPEN` or `E-FS-IO`.
 `WRITE-ALL` creates/truncates a regular file, and `APPEND-FILE` creates/appends
 to a regular file. Both write the full counted input or throw a named filesystem
-error.
+error. `OPEN-APPEND-FD` opens the same append-only regular-file target and
+returns an fd for callers that need to stream child process output directly into
+a file.
 
 `lib/fs-mutate.f` is layered after the native engine contains mutation
 primitives such as `unlink`, `rename`, `chmod`, `mkdir`, and `rmdir`. It owns
@@ -511,20 +514,25 @@ PROC-ARGV+            ( ptr u8 n -- )
 PROC-ARGV-PREPARE     ( ptr u8 n -- ptr u8 ptr a )
 SPAWN-ARGV-IO         ( ptr u8 n n n n -- n )
 RUN-ARGV-IO-RC        ( ptr u8 n n n n -- n )
+PROC-ARGV-CHECK-PATH  ( ptr u8 n -- )
+PROC-SPAWN-ARGV-CAPTURE ( ptr u8 ptr a -- )
+RUN-ARGV-CAPTURE      ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
 ```
 
 Use `PROC-ARGV-RESET`, append zero or more extra args with `PROC-ARGV+`, then
-call `SPAWN-ARGV-IO` or `RUN-ARGV-IO-RC` with the executable path and stdio fds.
+call `SPAWN-ARGV-IO`, `RUN-ARGV-IO-RC`, or `RUN-ARGV-CAPTURE` with the executable path.
 `argv[0]` is always the executable path. `SPAWN-ARGV-IO` resets argv state after
 the primitive spawn returns, throws `E-PROC-SPAWN` on spawn failure, and reuses
 the same fd inheritance rules as `SPAWN-IO`.
 
-`RUN-CAPTURE` takes command string, stdout buffer/capacity, stderr
-buffer/capacity, and timeout milliseconds. It returns stdout length, stderr
-length, and rc in that order. Captures are bounded by the caller capacities; if
-either stream would exceed its capacity, the word throws `E-PROC-TRUNCATED`
-rather than truncating silently. Exact-capacity output is accepted when the next
-read observes EOF. On timeout, it sends `SIGKILL` through the checked
+`RUN-CAPTURE` and `RUN-ARGV-CAPTURE` take stdout buffer/capacity, stderr
+buffer/capacity, and timeout milliseconds. `RUN-CAPTURE` runs a counted
+executable path with no extra args; `RUN-ARGV-CAPTURE` runs the current prepared
+argv vector and then resets argv state. Both return stdout length, stderr length,
+and rc in that order. Captures are bounded by the caller capacities; if either
+stream would exceed its capacity, the word throws `E-PROC-TRUNCATED` rather than
+truncating silently. Exact-capacity output is accepted when the next read
+observes EOF. On timeout, it sends `SIGKILL` through the checked
 `PROC-KILL-RAW` boundary, waits for the child, closes owned fds, and then throws
 `E-PROC-TIMEOUT`. Truncation and other capture failures also clean up all owned
 fds and terminate/reap the active child before throwing a named process error.

@@ -55,3 +55,29 @@ variable PROC-ARGV-OFF
 
 : RUN-ARGV-IO-RC ( ptr u8 n n n n -- n )
    SPAWN-ARGV-IO WAIT-RC ;
+
+: PROC-ARGV-CHECK-PATH ( ptr u8 n -- ) {: path:ptr pathu :}
+   pathu 0 <= if E-PROC-OUTPUT throw then
+   pathu 1 + PROC-PATHZ-CAP > if E-PROC-OUTPUT throw then ;
+
+: PROC-SPAWN-ARGV-CAPTURE ( ptr u8 ptr a -- ) {: pathz:ptr argv:ptr :}
+   pathz argv -1 PROC-OUT-W @ PROC-ERR-W @ PROC-SPAWN-ARGV-RAW {: pid :}
+   PROC-ARGV-RESET
+   pid 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
+   pid PROC-PID !
+   PROC-OUT-W PROC-CLOSE-CELL
+   PROC-ERR-W PROC-CLOSE-CELL ;
+
+: RUN-ARGV-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+   path pathu PROC-ARGV-CHECK-PATH
+   outcap 0 < if E-PROC-OUTPUT throw then
+   errcap 0 < if E-PROC-OUTPUT throw then
+   PROC-CAPTURE-RESET
+   timeout PROC-CAPTURE-DEADLINE!
+   PROC-SETUP-CAPTURE-FDS
+   path pathu PROC-ARGV-PREPARE PROC-SPAWN-ARGV-CAPTURE
+   out outcap err errcap PROC-RUN-CAPTURE-LOOP
+   PROC-CLOSE-CAPTURE-FDS
+   PROC-REAP-CAPTURE
+   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;

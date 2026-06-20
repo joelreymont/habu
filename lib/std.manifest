@@ -210,6 +210,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs	lib/fs.f	word	FS-WRITE-BY-FLAGS	(ptr u8 n ptr u8 n n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	write all bytes using caller-selected open flags
 1	fs	lib/fs.f	word	WRITE-ALL	(ptr u8 n ptr u8 n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	create or truncate a file and write all bytes
 1	fs	lib/fs.f	word	APPEND-FILE	(ptr u8 n ptr u8 n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	create or append to a file and write all bytes
+1	fs	lib/fs.f	word	OPEN-APPEND-FD	(ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	open a regular file for append and return the fd
 1	fs	lib/fs.f	word	FS-DOT-ENTRY?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test current-directory entry name
 1	fs	lib/fs.f	word	FS-DOTDOT-ENTRY?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test parent-directory entry name
 1	fs	lib/fs.f	word	FS-SKIP-DIR?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test skipped walk directory names
@@ -300,6 +301,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-PREPARE	(ptr u8 n -- ptr u8 ptr a)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	install executable path as argv0 and terminate the argv pointer table
 1	process-argv	lib/process-argv.f	word	SPAWN-ARGV-IO	(ptr u8 n n n n -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared extra argv strings and explicit stdio fds
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-IO-RC	(ptr u8 n n n n -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv strings explicit stdio fds and return exit status
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-CHECK-PATH	(ptr u8 n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	validate a counted executable path before argv capture opens fds
+1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn prepared argv with stdout and stderr capture fds
+1	process-argv	lib/process-argv.f	word	RUN-ARGV-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable with prepared argv and capture bounded stdout stderr rc
 1	argv	lib/argv.f	module			lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	checked command-line parser helpers for hb script args
 1	argv	lib/argv.f	word	ARGV-FALSE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a false flag for parser internals
 1	argv	lib/argv.f	word	ARGV-TRUE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a true flag for parser internals
