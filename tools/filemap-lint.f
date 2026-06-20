@@ -98,6 +98,8 @@ variable FM-NUM-L
    s" tools/hb-cli-contracts-test.f" FM-REQ
    s" tools/seed.sh" FM-REQ
    s" tools/hb-build.sh" FM-REQ
+   s" tools/imgdump.f" FM-REQ
+   s" tools/imgdump-test.f" FM-REQ
    s" tools/build-fixpoint.f" FM-REQ
    s" tools/build-fixpoint-main.f" FM-REQ
    s" tools/build-fixpoint-test.f" FM-REQ
