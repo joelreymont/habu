@@ -136,6 +136,9 @@ points stay listed.
 - `bench/llm/drive-file-lib.f` — native stdlib file benchmark driver using generated `FS-FIX-*` fixture words.
 - `bench/llm/drive-file.f` — CLI wrapper for the stdlib file benchmark driver.
 - `bench/llm/drive-file-test.f` — focused coverage for stdlib file driver read/write/append and capacity-negative fixtures.
+- `bench/llm/drive-process-lib.f` — native stdlib process benchmark driver using executable generated `PROC-FIX-*` Habu fixtures.
+- `bench/llm/drive-process.f` — CLI wrapper for the stdlib process benchmark driver.
+- `bench/llm/drive-process-test.f` — focused coverage for stdlib process driver rc/capture/nonzero and timeout/truncation fixtures.
 - `bench/llm/negative-score.f` — checked scorer for negative benchmark expected codes/tokens/classes.
 - `bench/llm/negative-score-test.f` — focused coverage for negative-harness scoring outcomes.
 - `bench/llm/expanded-report.f` — expanded live benchmark Markdown report with validator and latency sections.

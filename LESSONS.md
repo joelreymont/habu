@@ -334,6 +334,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `/bin/pwd` need output buffers sized for isolated jj workspace paths, not just
   the short main checkout path; otherwise valid forked workspaces throw
   `E-PROC-TRUNCATED` before the targeted change is exercised.
+- **Large driver tests should use top-level DSL assembly:** benchmark driver
+  test bundles can hit raw parser/checker capacity when every long candidate
+  snippet is a published helper. Keep reusable vocabularies checked, then build
+  long per-case snippets with those words in the top-level test runner.
 - **Repo edits go through `apply_patch`:** even mechanical replacements should
   use patches so accidental broad rewrites, duplicate definitions, and rule
   violations stay reviewable.

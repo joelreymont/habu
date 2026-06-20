@@ -300,12 +300,29 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    then
    RB-FALSE ;
 
+: RB-TASK-STDLIB-PROCESS? ( -- bool )
+   RB-TASK-HARNESS$ s" stdlib-process" STR= if
+      RB-TASK-CONV$ s" run" STR= exit
+   then
+   RB-FALSE ;
+
+: RB-TASK-STDLIB-PROCESS-NEGATIVE? ( -- bool )
+   RB-TASK-HARNESS$ s" stdlib-negative" STR= if
+      RB-TASK-CONV$ s" reject" STR= if
+         BM-T-NAME RB-TASK-FIELD$ s" PROC-CAPTURE-TIMEOUT" STR= if RB-TRUE exit then
+         BM-T-NAME RB-TASK-FIELD$ s" PROC-CAPTURE-TRUNCATED" STR= exit
+      then
+   then
+   RB-FALSE ;
+
 : RB-TASK-RUNNABLE? ( -- bool )
    RB-TASK-FORTH? if RB-TRUE exit then
    RB-TASK-ARRAY? if RB-TRUE exit then
    RB-TASK-STDLIB-STACK? if RB-TRUE exit then
    RB-TASK-STDLIB-FILE? if RB-TRUE exit then
-   RB-TASK-STDLIB-FILE-NEGATIVE? ;
+   RB-TASK-STDLIB-FILE-NEGATIVE? if RB-TRUE exit then
+   RB-TASK-STDLIB-PROCESS? if RB-TRUE exit then
+   RB-TASK-STDLIB-PROCESS-NEGATIVE? ;
 
 : RB-ARM-FOR-MODE$ ( ptr u8 n -- ptr u8 n ) {: mode:ptr modeu :}
    RB-FORTH-ARM$ nip 0 > if RB-FORTH-ARM$ exit then
@@ -543,8 +560,19 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
    RB-STDLIB-LOADS
+   s" bench/llm/driver-fixture-helpers.f" PROC-ARGV+
    s" bench/llm/drive-file-lib.f" PROC-ARGV+
    s" bench/llm/drive-file.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   RB-STDLIB-TASK-ARGS ;
+
+: RB-PROCESS-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   PROC-ARGV-ENV-RESET
+   model modelu trial RB-ADD-COMMON-ENV
+   RB-STDLIB-LOADS
+   s" bench/llm/driver-fixture-helpers.f" PROC-ARGV+
+   s" bench/llm/drive-process-lib.f" PROC-ARGV+
+   s" bench/llm/drive-process.f" PROC-ARGV+
    s" --" PROC-ARGV+
    RB-STDLIB-TASK-ARGS ;
 
@@ -596,6 +624,14 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
       s" run-expanded-bench: missing stdlib file result row" RB-DIE
    then ;
 
+: RB-RUN-STDLIB-PROCESS-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib-process" trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
+   model modelu trial RB-PROCESS-ARGS
+   RB-RUN-HB-APPEND drop
+   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib-process" trial RB-ROW-DONE? 0= if
+      s" run-expanded-bench: missing stdlib process result row" RB-DIE
+   then ;
+
 : RB-RUN-ARRAY-ARMS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    0 RB-MODE-NEXT !
    begin
@@ -615,6 +651,8 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    RB-TASK-STDLIB-STACK? if model modelu trial RB-RUN-STDLIB-STACK-ONE exit then
    RB-TASK-STDLIB-FILE? if model modelu trial RB-RUN-STDLIB-FILE-ONE exit then
    RB-TASK-STDLIB-FILE-NEGATIVE? if model modelu trial RB-RUN-STDLIB-FILE-ONE exit then
+   RB-TASK-STDLIB-PROCESS? if model modelu trial RB-RUN-STDLIB-PROCESS-ONE exit then
+   RB-TASK-STDLIB-PROCESS-NEGATIVE? if model modelu trial RB-RUN-STDLIB-PROCESS-ONE exit then
    RB-TASK-FORTH? if model modelu trial RB-RUN-FORTH-MODES exit then
    RB-TASK-ARRAY? if model modelu trial RB-RUN-ARRAY-ARMS exit then
    ;
