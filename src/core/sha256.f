@@ -33,6 +33,23 @@ create HH0
   1779033703 , 3144134277 , 1013904242 , 2773480762 , 1359893119 , 2600822924 , 528734635 , 1541459225 ,
 create H 64 allot   create WS 512 allot   create ST 64 allot
 
+4096 constant SHA-IO-CAP
+-1 constant SHA-E-OPEN
+-2 constant SHA-E-READ
+
+create SHA-TAIL 64 allot
+create SHA-IO SHA-IO-CAP allot
+create SHA-DIGEST 32 allot
+
+variable SHA-TAIL-U
+variable SHA-TOTAL
+variable SHA-A
+variable SHA-U
+variable SHA-NEED
+variable SHA-NBLK
+variable SHA-FD
+variable SHA-RD
+
 : BE32@ ( ptr u8 -- n )
    dup c@ 24 lshift  over 1 + c@ 16 lshift or  over 2 + c@ 8 lshift or  swap 3 + c@ or ;
 
@@ -58,6 +75,11 @@ create H 64 allot   create WS 512 allot   create ST 64 allot
 
 : SHA-INIT 8 0 DO  HH0 i cells + @  H i cells + !  LOOP ;
 
+: SHA256-RESET ( -- )
+   SHA-INIT
+   0 SHA-TAIL-U !
+   0 SHA-TOTAL ! ;
+
 : BE32! ( n ptr u8 -- )
    {: w a:ptr :}
    w 24 rshift 255 and a c!  w 16 rshift 255 and a 1 + c!
@@ -75,6 +97,13 @@ create H 64 allot   create WS 512 allot   create ST 64 allot
    {: src:ptr dst:ptr n :}  n 0 > if  n 0 DO  src i + c@ dst i + c!  LOOP  then ;
 create PBLK 128 allot
 
+: SHA-TAKE-TAIL ( n -- )
+   {: n :}
+   SHA-A @ SHA-TAIL SHA-TAIL-U @ + n BMOVE
+   SHA-TAIL-U @ n + SHA-TAIL-U !
+   SHA-A @ n + SHA-A !
+   SHA-U @ n - SHA-U ! ;
+
 \ pad tail [tail,tail+tl) of a ub-byte message into PBLK; returns block count (1|2)
 : SHA-PAD ( ptr u8 n n -- n )
    {: tail:ptr tl ub :}
@@ -84,10 +113,76 @@ create PBLK 128 allot
    blen 64 / ;
 
 \ SHA-256 of [a,u) -> writes 32 bytes to dst
-: SHA256 ( ptr u8 n ptr u8 -- )
-   {: a:ptr u dst:ptr :}  SHA-INIT
-   u 64 / {: nb :}
-   nb 0 > if  nb 0 DO  a i 64 * +  SHA-BLOCK  LOOP  then
-   a nb 64 * +  u nb 64 * -  u  SHA-PAD {: nblk :}
-   PBLK SHA-BLOCK  nblk 1 > if PBLK 64 + SHA-BLOCK then
+: SHA256-UPDATE ( ptr u8 n -- )
+   {: a:ptr u :}
+   a SHA-A !
+   u SHA-U !
+   SHA-TOTAL @ u + SHA-TOTAL !
+   SHA-TAIL-U @ 0 > if
+      SHA-U @ 0 > if
+         64 SHA-TAIL-U @ - SHA-NEED !
+         SHA-U @ SHA-NEED @ < if SHA-U @ SHA-TAKE-TAIL exit then
+         SHA-NEED @ SHA-TAKE-TAIL
+         SHA-TAIL SHA-BLOCK
+         0 SHA-TAIL-U !
+      then
+   then
+   begin SHA-U @ 64 >= while
+      SHA-A @ SHA-BLOCK
+      SHA-A @ 64 + SHA-A !
+      SHA-U @ 64 - SHA-U !
+   repeat
+   SHA-U @ 0 > if
+      SHA-A @ SHA-TAIL SHA-U @ BMOVE
+      SHA-U @ SHA-TAIL-U !
+   then ;
+
+: SHA256-FINAL ( ptr u8 -- )
+   {: dst:ptr :}
+   SHA-TAIL SHA-TAIL-U @ SHA-TOTAL @ SHA-PAD SHA-NBLK !
+   PBLK SHA-BLOCK
+   SHA-NBLK @ 1 > if PBLK 64 + SHA-BLOCK then
    8 0 DO  H i cells + @  dst i 4 * + BE32!  LOOP ;
+
+: SHA256 ( ptr u8 n ptr u8 -- )
+   {: a:ptr u dst:ptr :}
+   SHA256-RESET
+   a u SHA256-UPDATE
+   dst SHA256-FINAL ;
+
+: NIB>HEX ( n -- n )
+   dup 10 < if 48 + else 87 + then ;
+
+: BYTE>HEX ( n ptr u8 -- )
+   {: b dst:ptr :}
+   b 4 rshift 15 and NIB>HEX dst c!
+   b 15 and NIB>HEX dst 1 + c! ;
+
+: SHA256>HEX ( ptr u8 ptr u8 -- )
+   {: dg:ptr dst:ptr :}
+   32 0 DO  dg i + c@  dst i 2 * +  BYTE>HEX  LOOP ;
+
+: SHA-CLOSE ( -- )
+   SHA-FD @ 0 >= if SHA-FD @ close then ;
+
+: SHA256-FILE ( ptr u8 n ptr u8 -- n )
+   {: pa:ptr pu dst:ptr :}
+   SHA256-RESET
+   pa pu path0 open-rd SHA-FD !
+   SHA-FD @ 0 < if SHA-E-OPEN exit then
+   begin
+      SHA-FD @ SHA-IO SHA-IO-CAP read SHA-RD !
+      SHA-RD @ 0 > while
+      SHA-IO SHA-RD @ SHA256-UPDATE
+   repeat
+   SHA-RD @ 0 < if SHA-CLOSE SHA-E-READ exit then
+   SHA-CLOSE
+   dst SHA256-FINAL
+   0 ;
+
+: SHA256-FILE-HEX ( ptr u8 n ptr u8 -- n )
+   {: pa:ptr pu dst:ptr :}
+   pa pu SHA-DIGEST SHA256-FILE dup 0 <> if exit then
+   drop
+   SHA-DIGEST dst SHA256>HEX
+   0 ;

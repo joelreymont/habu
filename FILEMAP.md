@@ -22,6 +22,7 @@ points stay listed.
 - `src/core/util.f` — shared subset helpers.
 - `src/core/checker.f` — native stack-effect checker and verifier.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
+- `src/core/sha256.f` — standalone SHA-256, streaming file digest, and hex helpers.
 
 ## Native Engine And Builders
 
@@ -47,6 +48,7 @@ points stay listed.
 - `tools/snap-hb.sh` — refreshes the checked `bin/hb` image.
 - `tools/check.f` — Habu-native checked engine runner.
 - `tools/check-test.f` — checked fixture coverage for the native check runner.
+- `tools/sha256-file-test.f` — checked fixture coverage for streaming SHA-256 helpers.
 - `tools/hb-cli-contracts-test.f` — checked coverage for `hb` startup and stdin-data contracts.
 - `tools/hb-build.sh` — standalone binary builder.
 - `tools/srclist.f` — canonical source order.

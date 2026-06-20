@@ -53,6 +53,7 @@ cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f 
 bin/hb --load tools/lint/lib.f tools/fs.f tools/host-lint.f || { echo "FAIL: host-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/parallel-agent-lint.f || { echo "FAIL: parallel-agent-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/filemap-lint.f || { echo "FAIL: filemap-lint"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/core/sha256.f tools/sha256-file-test.f || { echo "FAIL: streaming sha256"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/checked-boundary-lint-test.f || { echo "FAIL: checked-boundary-lint"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/checked-boundary-lint-test.f | $CHECK >/dev/null || { echo "FAIL: checked-boundary-lint fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/string-test.f || { echo "FAIL: string helpers"; exit 1; }

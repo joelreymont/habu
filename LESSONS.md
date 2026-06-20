@@ -202,6 +202,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Large native tool bundles can corrupt reads:** combining large lint tables,
   `json.f`, and another large file buffer crashed JSON gate assertions. A lean
   standalone reader plus distinct helper scratch variables fixed it.
+- **Unchecked core fixtures stay outside source files:** standalone core sources
+  such as `src/core/sha256.f` must not disable checking themselves; put
+  `0 set-check` in the fixture harness and keep checked wrappers/tests separate.
 - **Useful register lint needs contracts:** clobber analysis must model callee
   returns, preserves, no-return exits, routine boundaries, syscall clobbers, and
   LR/SP conventions; raw write-before-BL/read-after-BL rules are mostly false.
