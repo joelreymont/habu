@@ -9,6 +9,7 @@
 # Emits one validate-results.f-compatible JSONL row per harness=forth task.
 set -eu
 cd "$(dirname "$0")/../.."
+CHECK="bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f --"
 
 [ "$#" -ge 1 ] || { echo "usage: bench/llm/run-attempts.sh CANDIDATE_DIR [out.jsonl] [run_id] [model]" >&2; exit 64; }
 CAND_ROOT=$1
@@ -107,7 +108,7 @@ run_tests() {
 
 check_candidate() {
   cand=$1 diag=$2
-  if ./tools/check.sh --json-errors --all-errors "$cand" </dev/null >/dev/null 2>"$diag"; then
+  if $CHECK --json-errors --all-errors "$cand" </dev/null >/dev/null 2>"$diag"; then
     return 0
   fi
   return 1

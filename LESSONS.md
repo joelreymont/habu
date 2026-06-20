@@ -299,7 +299,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   counts such as `BYTE-BITS 7 *` inside checked field readers can destabilize
   later locals-heavy definitions. Name the shifts and keep decoder bodies
   straight-line.
-- **Do not type-check CLI mains by accident:** `tools/check.sh` executes the
-  final source after checking. For scripts with a top-level `MAIN`, use a
-  no-main fixture or safe argv/env inputs; otherwise the check can launch the
-  live tool and write default artifacts.
+- **Do not type-check CLI mains by accident:** the native `tools/check.f` runner
+  executes the final source after checking. For scripts with a top-level `MAIN`,
+  use a no-main fixture or safe argv/env inputs; otherwise the check can launch
+  the live tool and write default artifacts.

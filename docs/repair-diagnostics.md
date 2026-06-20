@@ -2,7 +2,7 @@
 
 This is the stable machine contract for Habu checker repair feedback. The
 implemented surface today is one JSON object per failed top-level definition from
-`tools/check.sh --json-errors --all-errors`. A repair packet is the normalized
+the native `tools/check.f` runner with `--json-errors --all-errors`. A repair packet is the normalized
 LLM prompt object built from those checker diagnostics.
 
 ## Checker Diagnostic JSON
@@ -110,7 +110,7 @@ The checker `suggestion` field is stable short text derived only from
 
 The benchmark diagnostic fixtures include separate trusted-boundary rows for
 `evaluate`, `TRUST`, and `set-check` misuse. Each must reject through
-`tools/check.sh --json-errors` as schema-1 JSON with
+`tools/check.f --json-errors` as schema-1 JSON with
 `repair_class: trusted_boundary_required` and the stable suggestion above.
 
 ## Benchmark Result Fields

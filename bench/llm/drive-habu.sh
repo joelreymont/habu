@@ -1,12 +1,13 @@
 #!/bin/sh
 # drive-habu.sh — Habu benchmark arms. The model writes a checked array word; we certify it
-# (tools/check.sh), and on rejection feed the checker diagnostic back as the repair
+# with tools/check.f, and on rejection feed the checker diagnostic back as the repair
 # signal (up to N rounds). On certify, grade values via grade.sh (which builds the
 # array in memory and runs the io-vectors). Emits one JSONL metrics row.
 # Usage: drive-habu.sh <id> <name> <sig> <spec> <conv> <vectors> <a|lib|stdlib|skeleton> [maxr]
 set -e
 cd "$(dirname "$0")/../.."
 . bench/llm/lib.sh
+CHECK="bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f --"
 ID=$1 NAME=$2 SIG=$3 SPEC=$4 CONV=$5 VEC=$6 ARM=$7 MAXR=${8:-5}
 model_init
 case "$ARM" in
@@ -114,7 +115,7 @@ You produced no valid definition. Output ONLY the habu definition."
     outcome=reject; continue
   fi
   bundle
-  if tools/check.sh "$T/bundle.f" >"$T/checker-stdout.txt" 2>"$T/checker-prose.txt"; then
+  if $CHECK "$T/bundle.f" >"$T/checker-stdout.txt" 2>"$T/checker-prose.txt"; then
     outcome=$(sh bench/llm/grade.sh 5 "$T/bundle.f" "$T/vec.f")
     printf '%s\n' "$outcome" > "$T/test-output.txt"
     [ "$outcome" = pass ] && break
@@ -127,7 +128,7 @@ It certified but FAILED the tests. It must satisfy (input -> expected):
 ${cases}
 Fix the logic. Output ONLY the corrected definition."
   else
-    tools/check.sh --json-errors --all-errors "$T/bundle.f" >"$T/checker-stdout.txt" 2>"$T/checker-diagnostics.txt" || true
+    $CHECK --json-errors --all-errors "$T/bundle.f" >"$T/checker-stdout.txt" 2>"$T/checker-diagnostics.txt" || true
     if [ ! -s "$T/checker-diagnostics.txt" ] && [ -s "$T/checker-stdout.txt" ]; then
       cp "$T/checker-stdout.txt" "$T/checker-diagnostics.txt"
     fi

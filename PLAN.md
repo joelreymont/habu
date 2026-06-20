@@ -346,7 +346,7 @@ Success for Phase 1:
 - `ARGMAX`, `REVERSE`, `PREFIXSUM`, and `RUNMAX` hard-tail ratios drop below 3x
   mainstream best in the `habu-stdlib` arm.
 - `bench/llm/bench-test.sh` covers the new arm without live model calls.
-- `lib/array.f` public words certify through `tools/check.sh`.
+- `lib/array.f` public words certify through the native `tools/check.f` runner.
 
 Tracked dots:
 
@@ -409,7 +409,7 @@ Tracked dots:
 
 Goal: convert checker failures into compact, actionable LLM repair input.
 
-`tools/check.sh --json-errors --all-errors` already exposes structured
+The native `tools/check.f` runner with `--json-errors --all-errors` already exposes structured
 diagnostics. Add `tools/repair-packet.f` to turn those diagnostics into a stable
 schema and prompt fragment.
 
@@ -905,7 +905,7 @@ bin/hb < test/prop-test.f
 test "$(find bin -type f -perm -111 ! -name hb -print | wc -l)" -eq 0
 ./bench/llm/run.sh
 ./bench/llm/perf.sh
-./tools/check.sh lib/array.f
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f -- lib/array.f
 bin/hb --load lib/errors.f lib/array.f lib/array-test.f
 ./bench/llm/bench-test.sh
 ./bench/llm/grade-test.sh

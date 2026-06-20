@@ -91,7 +91,8 @@ variable FM-NUM-L
    s" src/core/render.f" FM-REQ
    s" src/habu/aot.f" FM-REQ
    s" src/habu/build.f" FM-REQ
-   s" tools/check.sh" FM-REQ
+   s" tools/check.f" FM-REQ
+   s" tools/check-test.f" FM-REQ
    s" tools/hb-cli-contracts-test.f" FM-REQ
    s" tools/seed.sh" FM-REQ
    s" tools/hb-build.sh" FM-REQ

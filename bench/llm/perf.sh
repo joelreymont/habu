@@ -4,6 +4,7 @@
 set -eu
 
 cd "$(dirname "$0")/../.."
+CHECK="bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f --"
 
 JSON=0
 FULL=0
@@ -89,7 +90,7 @@ measure() {
 VALIDATOR=$T/validate-results.f
 cat tools/date.f tools/lint/lib.f tools/json.f tools/argv.f bench/llm/validate-results.f > "$VALIDATOR"
 
-measure check_solutions ./tools/check.sh bench/llm/solutions.f
+measure check_solutions $CHECK bench/llm/solutions.f
 measure functional_tests sh -c 'cat bench/llm/solutions.f bench/llm/tests.f | bin/hb'
 measure metric_validator bin/hb "$VALIDATOR"
 measure prop_smoke_250 sh -c 'bin/hb 123 250 < test/prop-test.f'

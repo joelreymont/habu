@@ -34,8 +34,8 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   `printf ': SQUARE ( i64 -- i64 ) dup * ;\n' | bin/hb`
   An accepted def is silently added; a rejected one is dropped. For interactive
   **verify mode** (body vs declared sig), prepend `' CHECK! set-check`.
-- For repair loops, prefer the wrapper:
-  `./tools/check.sh --json-errors --all-errors file.f`.
+- For repair loops, run the native checker script:
+  `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f -- --json-errors --all-errors file.f`.
   It exits nonzero on checker failure and emits one schema-versioned JSON object
   per failed top-level definition with file/line/column/byte spans. Use
   `docs/repair-diagnostics.md` as the Repair diagnostic schema, and use
@@ -43,7 +43,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 - Use `tools/public-signatures.f file.f` to expose typed public words as a
   machine-readable manifest for an agent or downstream package.
 - Authoritative verdict (-1 certified / 0 rejected / 1 uncheckable) is native:
-  use `bin/hb` for quick checks and `tools/check.sh --json-errors --all-errors`
+  use `bin/hb` for quick checks and `tools/check.f` under `bin/hb --load ... --`
   for files. `CHECK` infers the body's effect; `CHECK!` verifies the body
   against its declared `( in -- out )`. No-binary recovery uses
   `tools/seed.sh /path/to/hb-seed`.

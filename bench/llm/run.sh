@@ -3,6 +3,7 @@
 # reference metric data using the native Habu engine only.
 set -e
 cd "$(dirname "$0")/../.."
+CHECK="bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f --"
 T=$(mktemp -d "${TMPDIR:-/tmp}/habu-llm.XXXXXX")
 cleanup() {
   if command -v trash >/dev/null 2>&1; then
@@ -113,7 +114,7 @@ assert_repair_class() {
   class=$2
   source=$3
   printf '%s\n' "$source" >"$T/$name.f"
-  ./tools/check.sh --json-errors "$T/$name.f" >/dev/null 2>"$T/$name.err" && {
+  $CHECK --json-errors "$T/$name.f" >/dev/null 2>"$T/$name.err" && {
     echo "FAIL: diagnostic fixture accepted $name"
     exit 1
   }
@@ -524,7 +525,7 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/ll
   echo "FAIL: llm manifest scanner"
   exit 1
 }
-./tools/check.sh bench/llm/solutions.f >"$T/check.out" 2>"$T/check.err" || {
+$CHECK bench/llm/solutions.f >"$T/check.out" 2>"$T/check.err" || {
   cat "$T/check.err"
   echo "FAIL: answer key is not all-certified"
   exit 1
@@ -534,7 +535,7 @@ TEST_OUT=$(bin/hb --load bench/llm/solutions.f bench/llm/tests.f 2>"$T/tests.err
 [ "$TEST_OUT" = "ok" ] || { echo "FAIL: reference functional tests (got: $TEST_OUT)"; exit 1; }
 REF=$T/ref-solutions.f
 cat lib/errors.f lib/string.f lib/regex.f lib/map.f lib/date.f lib/time.f lib/fs.f bench/llm/ref-solutions.f >"$REF"
-./tools/check.sh "$REF" >"$T/ref-check.out" 2>"$T/ref-check.err" || {
+$CHECK "$REF" >"$T/ref-check.out" 2>"$T/ref-check.err" || {
   cat "$T/ref-check.err"
   echo "FAIL: V2 reference solutions are not all-certified"
   exit 1

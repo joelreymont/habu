@@ -7,6 +7,7 @@
 set -e
 cd "$(dirname "$0")/../.."
 . bench/llm/lib.sh
+CHECK="bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f --"
 
 ID=$1
 NAME=$2
@@ -114,7 +115,7 @@ make_bundle() {
 check_candidate() {
   cand=$1
   diag=$2
-  if tools/check.sh --json-errors --all-errors "$cand" </dev/null >"$T/checker-stdout.txt" 2>"$diag"; then
+  if $CHECK --json-errors --all-errors "$cand" </dev/null >"$T/checker-stdout.txt" 2>"$diag"; then
     return 0
   fi
   if [ ! -s "$diag" ] && [ -s "$T/checker-stdout.txt" ]; then

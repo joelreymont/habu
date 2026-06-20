@@ -45,7 +45,8 @@ points stay listed.
 - `tools/build.sh` — self-host rebuild/fixpoint.
 - `tools/seed.sh` — install a trusted native seed, then rebuild current source.
 - `tools/snap-hb.sh` — refreshes the checked `bin/hb` image.
-- `tools/check.sh` — checked native engine wrapper.
+- `tools/check.f` — Habu-native checked engine runner.
+- `tools/check-test.f` — checked fixture coverage for the native check runner.
 - `tools/hb-cli-contracts-test.f` — checked coverage for `hb` startup and stdin-data contracts.
 - `tools/hb-build.sh` — standalone binary builder.
 - `tools/srclist.f` — canonical source order.

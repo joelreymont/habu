@@ -99,8 +99,8 @@ auto-checks typed definitions, so a non-certifying word would be unpublished and
 error — getting **REF-OK** means *all 10 definitions certify* **and** *every io-vector value
 matches*. (To see per-definition verdicts, prepend a check hook:
 `{ echo ": HK CHECK dup . ; ' HK set-check"; bench/llm/ref-solutions.f's def section; } | bin/hb`
-prints `-1` per certified word. `tools/check.sh` on the def section alone also returns rc 0;
-do NOT run `check.sh` on the whole file — it executes the runtime assertions in its checking
+prints `-1` per certified word. The native `tools/check.f` runner on the def section alone also returns rc 0;
+do NOT run the checker runner on the whole file — it executes the runtime assertions in its checking
 harness and hangs.)
 
 ### V3 — Reproduce the benchmark (uses real `claude -p`; costs tokens; non-deterministic)
@@ -149,7 +149,7 @@ checking/grading the candidate.
   to prefer `A@`, `A!`, `A-SWAP`, `MIRROR-INDEX`, and `EVEN?` over raw address arithmetic.
 - `bench/llm/drive-habu.sh` — Habu driver. The final argument selects `a` (raw Habu,
   `arm:"habu-a"`) or `lib` (helper arm, `arm:"habu-lib"`). Prompt = preamble + task;
-  `claude -p` → extract def → bundle helper library when selected → `tools/check.sh`
+  `claude -p` -> extract def -> bundle helper library when selected -> `tools/check.f`
   (certify) → on reject feed the checker diagnostic back (≤5 rounds); on certify, grade via
   `grade.sh`.
 - `bench/llm/drive-forth.sh` — checked-Habu manifest driver. `BENCH_FORTH_FEEDBACK`

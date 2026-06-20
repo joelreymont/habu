@@ -21,6 +21,7 @@ else
 fi
 mkdir -p "$T"
 export HB_TMP=$T
+CHECK="bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f --"
 cleanup() {
   [ "$CLEAN_T" = 0 ] || rm -rf "$T"
 }
@@ -29,77 +30,79 @@ bin/hb --load tools/lint/lib.f tools/lint/shadow-lint.f || { echo "FAIL: shadow-
 bin/hb --load tools/lint/lib.f tools/lint/clobber-lint.f || { echo "FAIL: clobber-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/argv.f tools/repl-lint.f || { echo "FAIL: repl-lint"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repl-lint-test.f || { echo "FAIL: repl-lint fixtures"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repl-lint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: repl-lint fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repl-lint-test.f | $CHECK >/dev/null || { echo "FAIL: repl-lint fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/diag-origin-test.f || { echo "FAIL: diag-origin fixtures"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/diag-origin-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: diag-origin fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/diag-origin-test.f | $CHECK >/dev/null || { echo "FAIL: diag-origin fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-all-errors-test.f || { echo "FAIL: check-all-errors fixtures"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-all-errors-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: check-all-errors fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-all-errors-test.f | $CHECK >/dev/null || { echo "FAIL: check-all-errors fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/aot-lint-test.f || { echo "FAIL: aot-lint fixtures"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/aot-lint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: aot-lint fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/aot-lint-test.f | $CHECK >/dev/null || { echo "FAIL: aot-lint fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/signature-lint-test.f || { echo "FAIL: signature-lint fixtures"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/signature-lint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: signature-lint fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/signature-lint-test.f | $CHECK >/dev/null || { echo "FAIL: signature-lint fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/public-signatures-test.f || { echo "FAIL: public-signatures fixtures"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/public-signatures-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: public-signatures fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/public-signatures-test.f | $CHECK >/dev/null || { echo "FAIL: public-signatures fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/lib.f tools/stdlib-manifest-test.f || { echo "FAIL: stdlib manifest"; exit 1; }
 bin/hb --load tools/aot-call-report.f tools/aot-call-report-test.f || { echo "FAIL: aot-call-report fixtures"; exit 1; }
-cat tools/aot-call-report.f tools/aot-call-report-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: aot-call-report fixture check"; exit 1; }
+cat tools/aot-call-report.f tools/aot-call-report-test.f | $CHECK >/dev/null || { echo "FAIL: aot-call-report fixture check"; exit 1; }
 bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/argv.f tools/trust-lint.f || { echo "FAIL: trust-lint"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/trust-lint-test.f || { echo "FAIL: trust-lint fixtures"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/trust-lint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: trust-lint fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/trust-lint-test.f | $CHECK >/dev/null || { echo "FAIL: trust-lint fixture check"; exit 1; }
 bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/argv.f tools/stale-status-lint.f || { echo "FAIL: stale-status-lint"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/stale-status-lint-test.f || { echo "FAIL: stale-status-lint fixtures"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/stale-status-lint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: stale-status-lint fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/stale-status-lint-test.f | $CHECK >/dev/null || { echo "FAIL: stale-status-lint fixture check"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/fs.f tools/host-lint.f || { echo "FAIL: host-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/parallel-agent-lint.f || { echo "FAIL: parallel-agent-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/filemap-lint.f || { echo "FAIL: filemap-lint"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/checked-boundary-lint-test.f || { echo "FAIL: checked-boundary-lint"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/checked-boundary-lint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: checked-boundary-lint fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/checked-boundary-lint-test.f | $CHECK >/dev/null || { echo "FAIL: checked-boundary-lint fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/string-test.f || { echo "FAIL: string helpers"; exit 1; }
 bin/hb --load lib/errors.f lib/array.f lib/array-test.f || { echo "FAIL: array helpers"; exit 1; }
 bin/hb --load lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f || { echo "FAIL: table stdlib"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/regex.f lib/regex-test.f || { echo "FAIL: regex stdlib"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/map.f lib/map-test.f || { echo "FAIL: map stdlib"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-test.f || { echo "FAIL: fs stdlib"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: fs stdlib check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-test.f | $CHECK >/dev/null || { echo "FAIL: fs stdlib check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/source.f lib/source-test.f || { echo "FAIL: source stdlib"; exit 1; }
 printf DATA | bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/source.f lib/source-test.f -- stdin || { echo "FAIL: source stdlib stdin"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/source.f lib/source-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: source stdlib check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/source.f lib/source-test.f | $CHECK >/dev/null || { echo "FAIL: source stdlib check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/hb-cli-contracts-test.f || { echo "FAIL: hb CLI contracts"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/hb-cli-contracts-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: hb CLI contract check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/hb-cli-contracts-test.f | $CHECK >/dev/null || { echo "FAIL: hb CLI contract check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-test.f || { echo "FAIL: process stdlib"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: process stdlib check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-test.f | $CHECK >/dev/null || { echo "FAIL: process stdlib check"; exit 1; }
 bin/hb --load lib/argv.f lib/argv-test.f || { echo "FAIL: argv stdlib mocks"; exit 1; }
 bin/hb --load lib/argv.f lib/argv-test.f -- --json -o OUT -- file.f --literal || { echo "FAIL: argv stdlib script args"; exit 1; }
-./tools/check.sh lib/argv.f >/dev/null || { echo "FAIL: argv stdlib check"; exit 1; }
+$CHECK lib/argv.f >/dev/null || { echo "FAIL: argv stdlib check"; exit 1; }
 bin/hb --load lib/test.f lib/test-test.f || { echo "FAIL: test stdlib"; exit 1; }
 bin/hb --load lib/errors.f lib/test.f lib/property.f lib/property-test.f || { echo "FAIL: property stdlib"; exit 1; }
-cat lib/errors.f lib/property.f | ./tools/check.sh >/dev/null || { echo "FAIL: property stdlib check"; exit 1; }
+cat lib/errors.f lib/property.f | $CHECK >/dev/null || { echo "FAIL: property stdlib check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/build.f lib/build-test.f || { echo "FAIL: build stdlib"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/build.f lib/build-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: build stdlib check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/build.f lib/build-test.f | $CHECK >/dev/null || { echo "FAIL: build stdlib check"; exit 1; }
 bin/hb --load tools/date.f tools/date-test.f || { echo "FAIL: date helpers"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/bundle-lib-test.f || { echo "FAIL: stdlib bundle wrapper"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/bundle-lib-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: bundle-lib fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/bundle-lib-test.f | $CHECK >/dev/null || { echo "FAIL: bundle-lib fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f || { echo "FAIL: examples fixtures"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: examples fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f | $CHECK >/dev/null || { echo "FAIL: examples fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f tools/build-fixpoint.f tools/build-fixpoint-test.f || { echo "FAIL: build fixpoint driver"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f tools/build-fixpoint.f tools/build-fixpoint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: build fixpoint fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f tools/build-fixpoint.f tools/build-fixpoint-test.f | $CHECK >/dev/null || { echo "FAIL: build fixpoint fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repair-schema-doc-test.f || { echo "FAIL: repair diagnostic schema doc"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repair-schema-doc-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: repair diagnostic schema doc check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repair-schema-doc-test.f | $CHECK >/dev/null || { echo "FAIL: repair diagnostic schema doc check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repair-packet-test.f || { echo "FAIL: repair packet tool"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repair-packet-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: repair packet fixture check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repair-packet-test.f | $CHECK >/dev/null || { echo "FAIL: repair packet fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/json-only-test.f || { echo "FAIL: json-only tool"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/json-only-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: json-only tool check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/json-only-test.f | $CHECK >/dev/null || { echo "FAIL: json-only tool check"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-test.f || { echo "FAIL: native check runner"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-test.f | $CHECK >/dev/null || { echo "FAIL: native check runner fixture check"; exit 1; }
 [ -x bin/hb ] || { echo "no bin/hb — install a trusted seed with tools/seed.sh /path/to/hb"; exit 1; }
 ./tools/build.sh > $T/hb-build.log 2>&1 || { tail -5 $T/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }
 echo "PASS: self-rebuild fixpoint"
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-mutate-test.f || { echo "FAIL: fs mutation stdlib"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-mutate-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: fs mutation stdlib check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-mutate-test.f | $CHECK >/dev/null || { echo "FAIL: fs mutation stdlib check"; exit 1; }
 bin/hb --load lib/errors.f lib/test.f lib/process.f lib/process-argv.f lib/process-argv-test.f || { echo "FAIL: process argv stdlib"; exit 1; }
-cat lib/errors.f lib/process.f lib/process-argv.f | ./tools/check.sh >/dev/null || { echo "FAIL: process argv check"; exit 1; }
+cat lib/errors.f lib/process.f lib/process-argv.f | $CHECK >/dev/null || { echo "FAIL: process argv check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/process-env-test.f || { echo "FAIL: process env stdlib"; exit 1; }
-cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f | ./tools/check.sh >/dev/null || { echo "FAIL: process env check"; exit 1; }
+cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f | $CHECK >/dev/null || { echo "FAIL: process env check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-repair-hints-test.f || { echo "FAIL: repair diagnostic hints"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-repair-hints-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: repair diagnostic hints check"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-repair-hints-test.f | $CHECK >/dev/null || { echo "FAIL: repair diagnostic hints check"; exit 1; }
 ./tools/hb-baseline-contracts-test.sh || { echo "FAIL: hb baseline contracts"; exit 1; }
 out=$(bin/hb < test/engine-suite.f) || { echo "$out"; echo "FAIL: engine suite (engine died)"; exit 1; }
 case "$out" in
@@ -215,7 +218,7 @@ out=$(printf '." hi" cr\nc" ok" count type cr\n: DQ ( -- ) ." bye" ;\nDQ cr\n: C
 ok
 bye
 yo" ] || { echo "FAIL: hb parsing-word runtime surface (got: $out)"; exit 1; }
-printf ': DQ ( -- ) ." ok" ;\n: CQ ( -- ptr u8 n ) c" ok" count ;\n' | ./tools/check.sh || { echo "FAIL: check.sh parsing-word certification"; exit 1; }
+printf ': DQ ( -- ) ." ok" ;\n: CQ ( -- ptr u8 n ) c" ok" count ;\n' | $CHECK || { echo "FAIL: check.f parsing-word certification"; exit 1; }
 set +e
 printf '$400000 allot\n' | bin/hb >/dev/null 2>&1
 rc=$?
@@ -227,7 +230,7 @@ out=$(printf ': PSH ( R -- R i64 ) 5 ;\nPSH .\n' | bin/hb 2>/dev/null)
 [ -x bin/hb ] || { echo "FAIL: bin/hb not produced"; exit 1; }
 GATE_JSON=$T/gate-json-assert.f
 cat tools/json.f tools/gate-json-assert.f > "$GATE_JSON"
-printf ': JBAD ( i64 -- i64 ) dup ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json.err && { echo "FAIL: tools/check.sh --json-errors accepted bad def"; exit 1; }
+printf ': JBAD ( i64 -- i64 ) dup ;\n' | $CHECK --json-errors >/dev/null 2>$T/habu-json.err && { echo "FAIL: tools/check.f --json-errors accepted bad def"; exit 1; }
 bin/hb "$GATE_JSON" json-lines-schema "$T/habu-json.err"
 bin/hb "$GATE_JSON" diag-repair-class "$T/habu-json.err" remove_producer
 grep -q '"verdict":"rejected"' $T/habu-json.err || { echo "FAIL: --json-errors missing verdict"; exit 1; }
@@ -240,24 +243,24 @@ grep -q '"column":' $T/habu-json.err || { echo "FAIL: --json-errors missing colu
 grep -q '"byte_start":' $T/habu-json.err || { echo "FAIL: --json-errors missing byte_start"; exit 1; }
 grep -q '"byte_end":' $T/habu-json.err || { echo "FAIL: --json-errors missing byte_end"; exit 1; }
 grep -q '"definition_source":' $T/habu-json.err || { echo "FAIL: --json-errors missing definition source"; exit 1; }
-printf ': JMISS ( i64 -- i64 ) drop ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json-miss.err && { echo "FAIL: tools/check.sh --json-errors accepted missing producer"; exit 1; }
+printf ': JMISS ( i64 -- i64 ) drop ;\n' | $CHECK --json-errors >/dev/null 2>$T/habu-json-miss.err && { echo "FAIL: tools/check.f --json-errors accepted missing producer"; exit 1; }
 bin/hb "$GATE_JSON" diag-repair-class "$T/habu-json-miss.err" add_producer
-printf ': JTYPE ( i64 -- i64 ) 0= ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json-type.err && { echo "FAIL: tools/check.sh --json-errors accepted type mismatch"; exit 1; }
+printf ': JTYPE ( i64 -- i64 ) 0= ;\n' | $CHECK --json-errors >/dev/null 2>$T/habu-json-type.err && { echo "FAIL: tools/check.f --json-errors accepted type mismatch"; exit 1; }
 bin/hb "$GATE_JSON" diag-repair-class "$T/habu-json-type.err" fix_type
-printf ': JRET ( i64 -- ) >r ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-json-ret.err && { echo "FAIL: tools/check.sh --json-errors accepted return-stack imbalance"; exit 1; }
+printf ': JRET ( i64 -- ) >r ;\n' | $CHECK --json-errors >/dev/null 2>$T/habu-json-ret.err && { echo "FAIL: tools/check.f --json-errors accepted return-stack imbalance"; exit 1; }
 bin/hb "$GATE_JSON" diag-repair-class "$T/habu-json-ret.err" fix_return_stack
 cat > $T/habu-json-file.f <<'EOF'
 \ prelude
 
 : JBAD ( i64 -- i64 ) dup ;
 EOF
-./tools/check.sh --json-errors $T/habu-json-file.f >/dev/null 2>$T/habu-json-file.err && { echo "FAIL: tools/check.sh --json-errors accepted file bad def"; exit 1; }
+$CHECK --json-errors $T/habu-json-file.f >/dev/null 2>$T/habu-json-file.err && { echo "FAIL: tools/check.f --json-errors accepted file bad def"; exit 1; }
 bin/hb "$GATE_JSON" diag-file-origin "$T/habu-json-file.err" "$T/habu-json-file.f"
-printf ': NOSIG dup ;\n' | ./tools/check.sh --strict-signatures >$T/habu-strict.err 2>&1 && { echo "FAIL: tools/check.sh --strict-signatures accepted nosig"; exit 1; }
+printf ': NOSIG dup ;\n' | $CHECK --strict-signatures >$T/habu-strict.err 2>&1 && { echo "FAIL: tools/check.f --strict-signatures accepted nosig"; exit 1; }
 grep -q 'E-MISSING-SIGNATURE' $T/habu-strict.err || { echo "FAIL: strict-signatures missing text diagnostic"; exit 1; }
-printf ': NOSIG dup ;\n' | ./tools/check.sh --strict-signatures --json-errors >$T/habu-strict-json.out 2>&1 && { echo "FAIL: tools/check.sh --strict-signatures --json-errors accepted nosig"; exit 1; }
+printf ': NOSIG dup ;\n' | $CHECK --strict-signatures --json-errors >$T/habu-strict-json.out 2>&1 && { echo "FAIL: tools/check.f --strict-signatures --json-errors accepted nosig"; exit 1; }
 grep -q '"code":"E-MISSING-SIGNATURE"' $T/habu-strict-json.out || { echo "FAIL: strict-signatures missing JSON diagnostic"; exit 1; }
-printf ': X ( infer ) dup ;\n' | ./tools/check.sh --strict-signatures --json-errors >$T/habu-strict-infer.out 2>&1 && { echo "FAIL: tools/check.sh --strict-signatures accepted infer opt-out"; exit 1; }
+printf ': X ( infer ) dup ;\n' | $CHECK --strict-signatures --json-errors >$T/habu-strict-infer.out 2>&1 && { echo "FAIL: tools/check.f --strict-signatures accepted infer opt-out"; exit 1; }
 grep -q '"code":"E-UNVERIFIED-SIGNATURE"' $T/habu-strict-infer.out || { echo "FAIL: strict-signatures missing opt-out diagnostic"; exit 1; }
 out=$(printf 's" EV ( -- n ) evaluate" CHECK! .\ns" PO ( -- ) postpone dup" CHECK! .\ns" CO ( -- ) compile," CHECK! .\ns" IM ( -- ) immediate" CHECK! .\ns" LB ( -- ) [" CHECK! .\ns" RB ( -- ) ]" CHECK! .\n' | bin/hb 2>/dev/null)
 [ "$out" = "0
@@ -266,7 +269,7 @@ out=$(printf 's" EV ( -- n ) evaluate" CHECK! .\ns" PO ( -- ) postpone dup" CHEC
 0
 0
 0" ] || { echo "FAIL: unsafe compiler words did not hard-reject (got: $out)"; exit 1; }
-printf ': EV ( -- n ) evaluate ;\n' | ./tools/check.sh --json-errors >/dev/null 2>$T/habu-unsafe.err && { echo "FAIL: tools/check.sh accepted unsafe evaluate"; exit 1; }
+printf ': EV ( -- n ) evaluate ;\n' | $CHECK --json-errors >/dev/null 2>$T/habu-unsafe.err && { echo "FAIL: tools/check.f accepted unsafe evaluate"; exit 1; }
 grep -q '"code":"E-UNSAFE"' $T/habu-unsafe.err || { echo "FAIL: unsafe checker missing E-UNSAFE"; exit 1; }
 grep -q '"token":"evaluate"' $T/habu-unsafe.err || { echo "FAIL: unsafe checker missing token"; exit 1; }
 bin/hb "$GATE_JSON" diag-repair-class "$T/habu-unsafe.err" trusted_boundary_required
@@ -277,14 +280,14 @@ cat > $T/habu-all-errors.f <<'EOF'
 : BAD1 ( i64 -- i64 ) dup ;
 : BAD2 ( i64 -- ) >r ;
 EOF
-./tools/check.sh --json-errors --all-errors $T/habu-all-errors.f >/dev/null 2>$T/habu-all-errors.err && { echo "FAIL: tools/check.sh --all-errors accepted bad defs"; exit 1; }
+$CHECK --json-errors --all-errors $T/habu-all-errors.f >/dev/null 2>$T/habu-all-errors.err && { echo "FAIL: tools/check.f --all-errors accepted bad defs"; exit 1; }
 bin/hb "$GATE_JSON" all-errors "$T/habu-all-errors.err"
-printf ': UDEF ( i64 -- i64 ) dup NOPE ;\n' | ./tools/check.sh --json-errors --all-errors >/dev/null 2>$T/habu-undef.err && { echo "FAIL: tools/check.sh --all-errors accepted undefined word"; exit 1; }
+printf ': UDEF ( i64 -- i64 ) dup NOPE ;\n' | $CHECK --json-errors --all-errors >/dev/null 2>$T/habu-undef.err && { echo "FAIL: tools/check.f --all-errors accepted undefined word"; exit 1; }
 bin/hb "$GATE_JSON" json-one-schema "$T/habu-undef.err"
 bin/hb "$GATE_JSON" diag-repair-class "$T/habu-undef.err" unknown_rejection
 grep -q '"code":"E-UNDEFINED"' $T/habu-undef.err || { echo "FAIL: undefined diagnostic missing E-UNDEFINED"; exit 1; }
 grep -q '"token":"NOPE"' $T/habu-undef.err || { echo "FAIL: undefined diagnostic missing token"; exit 1; }
-printf ': POW ( i64 -- i64 ) dup POW ;\n' | ./tools/check.sh --json-errors --all-errors >/dev/null 2>$T/habu-recursive.err && { echo "FAIL: tools/check.sh --all-errors accepted recursive self-call"; exit 1; }
+printf ': POW ( i64 -- i64 ) dup POW ;\n' | $CHECK --json-errors --all-errors >/dev/null 2>$T/habu-recursive.err && { echo "FAIL: tools/check.f --all-errors accepted recursive self-call"; exit 1; }
 bin/hb "$GATE_JSON" json-one-schema "$T/habu-recursive.err"
 grep -q '"token":"POW"' $T/habu-recursive.err || { echo "FAIL: recursive undefined diagnostic missing token"; exit 1; }
 cat tools/json.f tools/diag-to-sarif.f > $T/diag-to-sarif.f
