@@ -47,7 +47,7 @@ points stay listed.
 - `tools/snap-hb.sh` — refreshes the checked `bin/hb` image.
 - `tools/check.sh` — checked native engine wrapper.
 - `tools/hb-build.sh` — standalone binary builder.
-- `tools/srclist.sh` — canonical source order.
+- `tools/srclist.f` — canonical source order.
 - `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.
 - `tools/lint/source-lex.f` — shared source lexer for native lints.
 - `tools/signature-lint.f` — strict typed-signature lint.

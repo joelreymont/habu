@@ -1,7 +1,8 @@
 \ stdin.f — internal driver: emit the stdin-program engine used while building
 \ the single installed `bin/hb`. The output reads its program from stdin; on a
 \ tty it runs the baked repl.f instead, which turns it into the interactive REPL.
-\ Swapped in for stage2.f by `srclist.sh stdin` (see tools/build.sh).
+\ Swapped in for stage2.f by `bin/hb --load tools/argv.f tools/srclist.f -- stdin`
+\ (see tools/build.sh).
 
 \ output path — the single knob; tools/build.sh owns the temporary artifact
 : STDIN-OUT s" hb-stdin-got" TMP-PATH ;

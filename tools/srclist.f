@@ -19,7 +19,7 @@ variable SL-DRIVER-U
    repeat drop SL-TRUE ;
 
 : SL-USAGE ( -- )
-   s" usage: tools/srclist.sh [stage2|stdin|snap|build|aot]" SL-USAGE-RC die ;
+   s" usage: bin/hb --load tools/argv.f tools/srclist.f -- [stage2|stdin|snap|build|aot]" SL-USAGE-RC die ;
 
 : SL-DRIVER? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" stage2" SL-STR= if SL-TRUE exit then

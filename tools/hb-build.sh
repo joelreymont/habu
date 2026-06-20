@@ -79,7 +79,7 @@ json_only() {
 # bundles that source plus trusted REPL support for startup/runtime execution.
 {
   printf '0 set-check\n'
-  for f in $(./tools/srclist.sh $DRIVER); do
+  for f in $(bin/hb --load tools/argv.f tools/srclist.f -- $DRIVER); do
     [ "$f" = "src/core/sha256.f" ] && printf ': HOOK CHECK ; '"'"' HOOK set-check\n'
     if [ "$f" = "src/habu/$DRIVER.f" ]; then
       sed '$d' "$f"
