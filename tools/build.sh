@@ -23,9 +23,9 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 [ -x bin/hb ] || { echo "no bin/hb — install a trusted seed with tools/seed.sh /path/to/hb"; exit 1; }
 
-./tools/bundle-lib.sh -o "$T/build-fixpoint.f" \
-  errors string fs fs-mutate process process-argv build -- tools/build-fixpoint.f
-HB_TMP=$T bin/hb "$T/build-fixpoint.f"
+HB_TMP=$T bin/hb --load \
+  lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f \
+  lib/process.f lib/process-argv.f lib/build.f tools/build-fixpoint.f
 
 test -f "$T/hb-new" || { echo "build: checked hb image not produced"; exit 1; }
 /bin/mv "$T/hb-new" bin/hb

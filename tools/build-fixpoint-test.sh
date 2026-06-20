@@ -16,10 +16,10 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/habu-build-fixpoint.XXXXXX")
 cleanup() { rm -rf "$T"; }
 trap cleanup EXIT HUP INT TERM
 
-./tools/bundle-lib.sh -o "$T/build-fixpoint.f" \
-  errors string fs fs-mutate process process-argv build -- tools/build-fixpoint.f
-
-HB_TMP=$T "$HB" "$T/build-fixpoint.f" > "$T/build-fixpoint.out" 2> "$T/build-fixpoint.err"
+HB_TMP=$T "$HB" --load \
+  lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f \
+  lib/process.f lib/process-argv.f lib/build.f tools/build-fixpoint.f \
+  > "$T/build-fixpoint.out" 2> "$T/build-fixpoint.err"
 grep -F "build OK: stage compiler fixpoint" "$T/build-fixpoint.out" >/dev/null
 grep -F "build OK: hb-new validated" "$T/build-fixpoint.out" >/dev/null
 test -f "$T/hb-new"
