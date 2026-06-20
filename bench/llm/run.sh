@@ -12,103 +12,6 @@ cleanup() {
   rm -rf "$T"
 }
 trap cleanup EXIT HUP INT TERM
-check_tsv_shape() {
-  awk -F '\t' 'NF != 12 { print "FAIL: tasks.tsv line " NR " has " NF " field(s)"; bad=1 } END { exit bad ? 1 : 0 }' bench/llm/tasks.tsv
-}
-require_task() {
-  id=$1
-  name=$2
-  category=$3
-  harness=$4
-  conv=$5
-  tags=$6
-  awk -F '\t' -v id="$id" -v name="$name" -v category="$category" \
-    -v harness="$harness" -v conv="$conv" -v tags="$tags" '
-    BEGIN { split(tags, want, ",") }
-    NR > 1 && $1 == id && $2 == name && $4 == category &&
-      $6 == harness && $7 == conv {
-        ok = 1
-        for (i in want) {
-          if (!index("," $10 ",", "," want[i] ",")) ok = 0
-        }
-        if (ok) found = 1
-      }
-    END { exit found ? 0 : 1 }
-  ' bench/llm/tasks.tsv || {
-    echo "FAIL: missing V2 task row $id $name ($category/$harness/$conv/$tags)"
-    exit 1
-  }
-}
-check_v2_manifest() {
-  require_task 56 CALL-TWICE quotation forth stack v2
-  require_task 57 R-KEEP2 return-stack forth stack v2
-  require_task 58 ROW-DUP row-polymorphism forth stack v2
-  require_task 59 UNTIL5 control-loop forth stack v2
-  require_task 60 MEM-SWAPCELL memory forth stack v2
-  require_task 61 TRI checked-combinator forth stack v2
-  require_task 62 DATE-PARSE-OK? date stdlib stack parse-ymd
-  require_task 63 DATE-FORMAT-OK? date stdlib stack format-ymd
-  require_task 64 EPOCH-UTC-OK? date stdlib stack format-epoch-utc
-  require_task 65 MONO-ELAPSED? time stdlib stack mono-ns
-  require_task 66 INVALID-DATE? date stdlib stack invalid-date
-  require_task 67 AOT-MAIN-ARITH aot-safe aot build-run aot-positive
-  require_task 68 AOT-MAIN-STRING aot-safe aot build-run aot-positive
-  require_task 69 AOT-UNSAFE-HERE aot-unsupported aot-negative reject aot-negative
-  require_task 70 AOT-UNSAFE-ALLOT aot-unsupported aot-negative reject aot-negative
-  require_task 71 DIAG-REMOVE-PRODUCER diagnostic-repair forth stack v2,remove_producer
-  require_task 72 DIAG-ADD-PRODUCER diagnostic-repair forth stack v2,add_producer
-  require_task 73 DIAG-FIX-TYPE diagnostic-repair forth stack v2,fix_type
-  require_task 74 DIAG-FIX-RSTACK diagnostic-repair forth stack v2,fix_return_stack
-  require_task 75 DIAG-TRUSTED-BOUNDARY diagnostic-repair forth stack v2,trusted_boundary_required
-  require_task 122 DIAG-TRUST-BOUNDARY diagnostic-repair forth stack v2,trusted_boundary_required,trust
-  require_task 123 DIAG-SET-CHECK-BOUNDARY diagnostic-repair forth stack v2,trusted_boundary_required,set-check
-  require_task 76 DIAG-SIGNATURE-SYNTAX diagnostic-repair forth stack v2,fix_signature_syntax
-  require_task 77 DIAG-REWRITE-UNCHECKABLE diagnostic-repair forth stack v2,rewrite_uncheckable
-  require_task 78 FIND-FIRST-NEG arrays array as v2,find-index
-  require_task 79 ABS-EACH arrays array aa v2,map
-  require_task 80 ADD-INDEX arrays array aa v2,indexed-map
-  require_task 81 PREFIX-PROD arrays array aa v2,scan
-  require_task 82 REVERSE-INNER arrays array aa v2,reverse-range
-  require_task 83 STR-TRIM-OK? strings stdlib stack v2,trim
-  require_task 84 STR-SPLIT-OK? strings stdlib stack v2,split
-  require_task 85 STR-BUILDER-OK? strings stdlib stack v2,builder
-  require_task 86 STR-PARSE-I64-OK? strings stdlib stack v2,parse-i64
-  require_task 87 STR-PREFIX-SUFFIX-OK? strings stdlib stack v2,prefix-suffix
-  require_task 88 STR-SEARCH-OK? strings stdlib stack v2,search
-  require_task 89 MAP-COUNT-OK? maps stdlib stack v2,count
-  require_task 90 MAP-MISS-OK? maps stdlib stack v2,miss
-  require_task 91 MAP-UPDATE-OK? maps stdlib stack v2,update
-  require_task 92 MAP-COLLISION-OK? maps stdlib stack v2,collision
-  require_task 93 MAP-EACH-OK? maps stdlib stack v2,iteration
-  require_task 94 MAP-GROUP-OK? maps stdlib stack v2,grouping
-  require_task 95 RX-MATCH-OK? regex stdlib stack v2,match
-  require_task 96 RX-FIND-OK? regex stdlib stack v2,find
-  require_task 97 RX-COUNT-OK? regex stdlib stack v2,count
-  require_task 98 RX-BAD-PATTERN regex stdlib-negative reject v2,negative-syntax
-  require_task 99 RX-CAPACITY regex stdlib-negative reject v2,negative-capacity
-  require_task 100 FS-PATH-KINDS-OK? files stdlib stack v2,path-kind
-  require_task 101 FS-BASENAME-OK? files stdlib stack v2,basename
-  require_task 102 FS-JOIN-OK? files stdlib stack v2,join-path
-  require_task 103 FS-READ-ALL-OK? files stdlib-file run v2,read-all
-  require_task 104 FS-WRITE-ALL-OK? files stdlib-file run v2,write-all
-  require_task 105 FS-APPEND-OK? files stdlib-file run v2,append
-  require_task 106 FS-READ-CAPACITY files stdlib-negative reject v2,negative-capacity
-  require_task 107 PROC-RUN-RC-OK? process stdlib-process run v2,run-rc
-  require_task 108 PROC-CAPTURE-OUTERR-OK? process stdlib-process run v2,capture-streams
-  require_task 109 PROC-CAPTURE-NONZERO-OK? process stdlib-process run v2,nonzero-rc
-  require_task 110 PROC-CAPTURE-TIMEOUT process stdlib-negative reject v2,timeout
-  require_task 111 PROC-CAPTURE-TRUNCATED process stdlib-negative reject v2,negative-truncation
-  require_task 112 PROP-DEFAULTS-OK? property stdlib-property run v2,defaults
-  require_task 113 PROP-RND-SEQ-OK? property stdlib-property run v2,deterministic-rnd
-  require_task 114 PROP-GEN-SCRIPT-OK? property stdlib-property run v2,generator
-  require_task 115 PROP-SHRINK-OK? property stdlib-property run v2,shrink
-  require_task 116 PROP-BAD-SEED property stdlib-negative reject v2,negative-seed
-  require_task 117 BUILD-CHECK-SOURCE-OK? build stdlib-build run v2,check-source
-  require_task 118 BUILD-ARTIFACT-OK? build stdlib-build run v2,artifact
-  require_task 119 BUILD-STEP-STATUS build stdlib-negative reject v2,step-status
-  require_task 120 BUILD-RUN-ARTIFACT-OK? build stdlib-build run v2,run-artifact
-  require_task 121 BUILD-MISSING-ARTIFACT build stdlib-negative reject v2,missing-artifact
-}
 assert_repair_class() {
   name=$1
   class=$2
@@ -510,8 +413,10 @@ EOF
 EOF
   assert_build_fixture build-missing-artifact "-2803" "$T/build-missing-artifact.f" "$T/build-no-artifact" "$T/build-missing.out"
 }
-check_tsv_shape
-check_v2_manifest
+bin/hb --load lib/errors.f lib/string.f lib/fs.f bench/llm/manifest.f bench/llm/manifest-audit.f bench/llm/manifest-audit-main.f || {
+  echo "FAIL: V2 manifest audit"
+  exit 1
+}
 check_diagnostic_v2_fixtures
 N=$(awk -F '\t' 'NR>1 && $6 == "forth" {n++} END{print n+0}' bench/llm/tasks.tsv)
 DEFN=$(grep -c '^: ' bench/llm/solutions.f)
@@ -523,6 +428,10 @@ bin/hb --load lib/errors.f lib/test.f bench/llm/json-row.f bench/llm/json-row-te
 }
 bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/llm/manifest-test.f || {
   echo "FAIL: llm manifest scanner"
+  exit 1
+}
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f bench/llm/manifest.f bench/llm/manifest-audit.f bench/llm/manifest-audit-test.f || {
+  echo "FAIL: llm manifest audit"
   exit 1
 }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f bench/llm/manifest.f bench/llm/model.f bench/llm/model-test.f || {

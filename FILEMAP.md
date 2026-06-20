@@ -113,6 +113,9 @@ points stay listed.
 - `test/engine-suite.f` — native engine behavior suite.
 - `bench/llm/tasks.tsv` — LLM benchmark task set.
 - `bench/llm/models.tsv` — model registry for live benchmark sweeps.
+- `bench/llm/manifest-audit.f` — checked required-row audit for expanded benchmark tasks.
+- `bench/llm/manifest-audit-main.f` — CLI entry point for the benchmark manifest audit.
+- `bench/llm/manifest-audit-test.f` — focused coverage for benchmark manifest audit checks.
 - `bench/llm/model.f` — checked model registry scanner and selected-model metadata buffers.
 - `bench/llm/model-test.f` — focused coverage for model registry parsing and validation.
 - `bench/llm/vectors.f` — checked benchmark vector parser and Habu snippet emitter.

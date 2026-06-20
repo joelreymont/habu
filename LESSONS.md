@@ -206,6 +206,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   data such as JSON rows, factor a small checked writer/DSL instead of relying on
   giant quoted literals or private byte emitters. This keeps escaping and shape
   bugs in reusable Habu code.
+- **Expected-throw fixtures should stay quiet:** row/error reporters should be
+  opt-in at the CLI boundary so negative tests can assert throw codes without
+  printing user-facing `FAIL` lines.
 - **Checked helpers must be defined before use:** a forward reference inside a
   checked definition can fail during load and surface later as an unpublished
   word; move the helper after its dependencies or factor dependencies earlier.

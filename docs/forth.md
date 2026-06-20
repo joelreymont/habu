@@ -123,7 +123,7 @@ not a matter of taste. Target is the native `bin/hb` engine.
   Size buffers from real inputs and prefer standalone readers/writers for small
   assertion or emit-only tools.
 - **Missing convenience words are not bugs in the standard.** Habu currently lacks
-  words such as `pick` and `within`; use variables, explicit increments, or
+  words such as `pick`, `within`, and `0<>`; use variables, explicit increments, or
   explicit comparisons.
 - **Trust is audited, not permanent.** `TRUST` records asserted effects so callers
   can be checked, but audit rows must stay current and stale dates must fail lint.
