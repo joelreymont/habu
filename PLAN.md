@@ -226,11 +226,11 @@ docs/
   llm-scorecard.md
 
 tools/
-  bundle-lib.sh
+  bundle-lib.f
   repair-packet.f
 ```
 
-Native scripts still load a single source file. `tools/bundle-lib.sh` owns
+Native scripts still load a single source file. `tools/bundle-lib.f` owns
 concatenation of selected `lib/*.f` files plus the script driver into a temporary
 file and then runs `bin/hb bundled.f args...`. This preserves the one-binary
 contract while giving scripts a stable library surface.
@@ -875,7 +875,7 @@ Work in this order unless a dependency proves wrong:
 2. Specify the build shell/Habu boundary and the `lib/` TRUST/error/handle
    policies.
 3. `docs/stdlib.md`, `docs/llm-scorecard.md`, `lib/` layout, and manifest.
-4. `tools/bundle-lib.sh`.
+4. `tools/bundle-lib.f`.
 5. `lib/array.f` with promoted helpers, bounds errors, and hard-tail kernels.
 6. Deterministic `habu-stdlib` benchmark arm.
 7. Repair-packet schema, fixtures, and driver feedback.
@@ -952,7 +952,7 @@ The plan is done only when all of these are true:
   handles use typed pointers rather than unchecked `addr` access.
 - `docs/stdlib.md`, `docs/llm-scorecard.md`, and `LLM.md` document the public
   surface, scorecard fields, and agent protocol without drift.
-- `tools/bundle-lib.sh` lets `hb` scripts use selected libraries without adding
+- `tools/bundle-lib.f` lets `hb` scripts use selected libraries without adding
   another public binary.
 - Array hard-tail kernels exist and are tested.
 - Array combinators exist and are tested.

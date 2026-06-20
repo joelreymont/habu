@@ -53,7 +53,7 @@ extract() {
 }
 bundle() {
   if [ -n "$LIB_MODULES" ]; then
-    tools/bundle-lib.sh -o "$T/prelude.f" $LIB_MODULES -- bench/llm/habu-array-lib.f
+    bin/hb tools/bundle-lib.f -o "$T/prelude.f" $LIB_MODULES -- bench/llm/habu-array-lib.f
     cat "$T/prelude.f" "$T/cand.f" > "$T/bundle.f"
   else cp "$T/cand.f" "$T/bundle.f"; fi
 }

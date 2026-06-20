@@ -47,17 +47,17 @@ create BLT-DATA 3 , 1 , 4 ,
 BLT-MAIN
 EOF
 
-if tools/bundle-lib.sh -o "$BUNDLE" errors missing-module -- "$DRIVER" 2>"$ERR"; then
+if bin/hb tools/bundle-lib.f -o "$BUNDLE" errors missing-module -- "$DRIVER" 2>"$ERR"; then
   fail "missing module unexpectedly succeeded"
 fi
 grep -Fq "missing module" "$ERR" || fail "missing module error was not explicit"
 
-if tools/bundle-lib.sh -o "$BUNDLE" errors array -- "$T/no-such-script.f" 2>"$ERR"; then
+if bin/hb tools/bundle-lib.f -o "$BUNDLE" errors array -- "$T/no-such-script.f" 2>"$ERR"; then
   fail "missing script unexpectedly succeeded"
 fi
 grep -Fq "missing script" "$ERR" || fail "missing script error was not explicit"
 
-tools/bundle-lib.sh -o "$BUNDLE" errors array -- "$DRIVER"
+bin/hb tools/bundle-lib.f -o "$BUNDLE" errors array -- "$DRIVER"
 
 grep -Fq "lib/errors.f" "$BUNDLE" || fail "bundle missing errors module marker"
 grep -Fq "lib/array.f" "$BUNDLE" || fail "bundle missing array module marker"
