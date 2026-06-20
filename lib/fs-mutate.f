@@ -9,6 +9,7 @@ $FFF constant FS-MUT-MODE-PERM
 64 constant FS-MUT-CLEANUP-MAX
 0 constant FS-MUT-CLEANUP-FILE
 1 constant FS-MUT-CLEANUP-DIR
+2 constant FS-MUT-CLEANUP-TREE
 $2D constant FS-MUT-DASH
 $2E constant FS-MUT-DOT
 $2F constant FS-MUT-SLASH
@@ -74,6 +75,53 @@ create FS-MUT-ATOMIC-SUFFIX
 : REMOVE-DIR ( ptr u8 n -- ) {: a:ptr u :}
    a u FS-PATHZ rmdir 0 < if E-FS-IO throw then ;
 
+: FS-MUT-REMOVE-FILE-WALK ( ptr u8 n -- ) {: a:ptr u :}
+   a u FS-PATHZ unlink 0 < if E-FS-IO FS-THROW-WALK then ;
+
+: FS-MUT-REMOVE-DIR-WALK ( ptr u8 n -- ) {: a:ptr u :}
+   a u FS-PATHZ rmdir 0 < if E-FS-IO FS-THROW-WALK then ;
+
+: FS-MUT-REMOVE-TREE-PATH ( ptr u8 n -- ) {: a:ptr u :}
+   a u EXISTS? 0= if exit then
+   a u FILE? if a u FS-MUT-REMOVE-FILE-WALK exit then
+   a u DIR? 0= if E-FS-STAT FS-THROW-WALK then
+   FS-DEPTH @ 1 + FS-MAX-DEPTH >= if E-FS-DEPTH FS-THROW-WALK then
+   a u FS-OPEN-DIR FS-FD!
+   0 FS-BASE@ !
+   begin FS-READ-DIR while
+      0 FS-OFF!
+      begin FS-OFF@ FS-N@ < while
+         FS-CUR-DIR FS-OFF@ + FS-ENT !
+         FS-ENT @ FS-DIRENT-RECLEN FS-REC!
+         FS-CHECK-RECORD
+         FS-ENT @ FS-DIRENT-NAME 2dup FS-DOT-ENTRY? 0= if
+            2dup FS-DOTDOT-ENTRY? 0= if
+               FS-NAME-U ! FS-NAME-A !
+               a u FS-NAME-U @ FS-CHECK-WALK-JOIN-CAP
+               a u FS-NAME-A @ FS-NAME-U @ FS-NEXT-PATH JOIN-PATH FS-CHILD-U !
+               FS-DEPTH @ 1 + FS-DEPTH !
+               FS-CUR-PATH FS-CHILD-U @ RECURSE
+               FS-DEPTH @ 1 - FS-DEPTH !
+            else
+               2drop
+            then
+         else
+            2drop
+         then
+         FS-OFF@ FS-REC@ + FS-OFF!
+      repeat
+   repeat
+   FS-FD@ close
+   -1 FS-FD!
+   a u FS-MUT-REMOVE-DIR-WALK ;
+
+: REMOVE-TREE ( ptr u8 n -- ) {: a:ptr u :}
+   u 0 <= if E-FS-PATH throw then
+   FS-FDS-RESET
+   0 FS-DEPTH !
+   a u FS-WALK-ROOT!
+   FS-CUR-PATH u FS-MUT-REMOVE-TREE-PATH ;
+
 : FS-MUT-MKDIR-ONE ( ptr u8 n -- ) {: a:ptr u :}
    a u FS-PATHZ FS-MUT-MODE-DIR mkdir {: rc :}
    rc 0 < if
@@ -132,7 +180,9 @@ create FS-MUT-ATOMIC-SUFFIX
    FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-MAX >= if E-FS-CAPACITY throw then
    u 0 < if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-PATH throw then
-   kind FS-MUT-CLEANUP-FILE <> kind FS-MUT-CLEANUP-DIR <> and if E-FS-IO throw then
+   kind FS-MUT-CLEANUP-FILE <>
+   kind FS-MUT-CLEANUP-DIR <> and
+   kind FS-MUT-CLEANUP-TREE <> and if E-FS-IO throw then
    a FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-SLOT u BYTE-COPY
    u FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-U-PTR !
    kind FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-KIND-PTR !
@@ -144,14 +194,21 @@ create FS-MUT-ATOMIC-SUFFIX
 : CLEANUP-DIR+ ( ptr u8 n -- )
    FS-MUT-CLEANUP-DIR FS-MUT-CLEANUP+ ;
 
+: CLEANUP-TREE+ ( ptr u8 n -- )
+   FS-MUT-CLEANUP-TREE FS-MUT-CLEANUP+ ;
+
 : FS-MUT-CLEANUP-REMOVE ( n -- ) {: idx :}
    idx FS-MUT-CLEANUP-SLOT idx FS-MUT-CLEANUP-U-PTR @ {: a:ptr u :}
+   idx FS-MUT-CLEANUP-KIND-PTR @ {: kind :}
    a u EXISTS? 0= if exit then
-   idx FS-MUT-CLEANUP-KIND-PTR @ FS-MUT-CLEANUP-DIR = if
+   kind FS-MUT-CLEANUP-TREE = if
+      a u REMOVE-TREE
+   else
+   kind FS-MUT-CLEANUP-DIR = if
       a u REMOVE-DIR
    else
       a u REMOVE-FILE
-   then ;
+   then then ;
 
 : CLEANUP-RUN ( -- )
    FS-MUT-CLEANUP-N @ begin dup 0 > while
