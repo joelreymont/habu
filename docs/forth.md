@@ -147,3 +147,7 @@ not a matter of taste. Target is the native `bin/hb` engine.
   on a throw leaves `( nv code )` — `nip`/adjust in tests accordingly.
 - Run tests through the owning gate script so assertion failures control the
   process exit code.
+- **Fallible value-returning scanners should validate first.** Put range/schema
+  checks that can `throw` in a `--` helper, then make the value-returning word's
+  remaining path structurally return its declared outputs. A final throw-only
+  fallback in a word declared as `-- value...` can confuse path-effect merging.

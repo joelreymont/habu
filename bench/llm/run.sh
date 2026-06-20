@@ -520,6 +520,10 @@ cat lib/errors.f lib/test.f bench/llm/json-row.f bench/llm/json-row-test.f | bin
   echo "FAIL: llm json row emitter"
   exit 1
 }
+cat lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/llm/manifest-test.f | bin/hb || {
+  echo "FAIL: llm manifest scanner"
+  exit 1
+}
 ./tools/check.sh bench/llm/solutions.f >"$T/check.out" 2>"$T/check.err" || {
   cat "$T/check.err"
   echo "FAIL: answer key is not all-certified"
