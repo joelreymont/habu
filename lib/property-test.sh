@@ -18,10 +18,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-BUNDLE=$T/property-test.f
-cat lib/errors.f lib/test.f lib/property.f lib/property-test.f > "$BUNDLE"
-
-out=$("$HB" "$BUNDLE")
+out=$("$HB" --load lib/errors.f lib/test.f lib/property.f lib/property-test.f)
 [ "$out" = "test: ok" ] || fail "unexpected output: $out"
 
 CHECK=$T/property-check.f

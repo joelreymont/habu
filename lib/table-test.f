@@ -1,5 +1,5 @@
 \ table-test.f - focused tests for checked fixed-cell table helpers.
-\ Run: cat lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f | bin/hb
+\ Run: bin/hb --load lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f
 
 create TBLT-TABLE 12 cells allot
 

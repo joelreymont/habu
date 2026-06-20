@@ -33,10 +33,8 @@ printf 'rename-me' > "$RENAME_SRC"
 printf '#!/bin/sh\nexit 0\n' > "$CHMOD_PATH"
 printf 'copy-src' > "$COPY_SRC"
 
-BUNDLE=$T/fs-mutate-test.f
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f \
-  lib/fs-mutate-test.f > "$BUNDLE"
-"$HB" "$BUNDLE" "$REMOVE" "$RENAME_SRC" "$RENAME_DST" "$CHMOD_PATH" \
+"$HB" --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f \
+  lib/fs-mutate-test.f -- "$REMOVE" "$RENAME_SRC" "$RENAME_DST" "$CHMOD_PATH" \
   "$COPY_SRC" "$COPY_DST" "$ATOMIC_PATH" "$MKDIR_PATH" \
   "$NEST_A" "$NEST_B" "$NEST_C" "$T" |
   grep -F "fs-mutate-test: ok" >/dev/null

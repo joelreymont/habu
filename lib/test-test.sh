@@ -13,7 +13,7 @@ fail() {
 [ -x "$HB" ] || fail "missing executable $HB"
 [ -f lib/test.f ] || fail "missing lib/test.f"
 
-out=$(cat lib/test.f lib/test-test.f | "$HB")
+out=$("$HB" --load lib/test.f lib/test-test.f)
 [ "$out" = "test: ok" ] || fail "unexpected success output: $out"
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/hb-test-lib.XXXXXX")

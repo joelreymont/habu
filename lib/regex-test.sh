@@ -22,5 +22,5 @@ fail() {
 [ -f lib/test.f ] || fail "missing lib/test.f"
 [ -f lib/regex.f ] || fail "missing lib/regex.f"
 
-cat lib/errors.f lib/string.f lib/test.f lib/regex.f lib/regex-test.f |
-  "$HB" | grep -F "regex-test: ok" >/dev/null
+"$HB" --load lib/errors.f lib/string.f lib/test.f lib/regex.f lib/regex-test.f |
+  grep -F "regex-test: ok" >/dev/null

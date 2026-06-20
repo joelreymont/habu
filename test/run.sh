@@ -25,19 +25,19 @@ cleanup() {
   [ "$CLEAN_T" = 0 ] || rm -rf "$T"
 }
 trap cleanup EXIT HUP INT TERM
-cat tools/lint/lib.f tools/lint/shadow-lint.f | bin/hb || { echo "FAIL: shadow-lint"; exit 1; }
-cat tools/lint/lib.f tools/lint/clobber-lint.f | bin/hb || { echo "FAIL: clobber-lint"; exit 1; }
-cat tools/lint/lib.f tools/repl-lint.f | bin/hb || { echo "FAIL: repl-lint"; exit 1; }
-cat tools/date.f tools/lint/lib.f tools/fs.f tools/trust-lint.f | bin/hb || { echo "FAIL: trust-lint"; exit 1; }
+bin/hb --load tools/lint/lib.f tools/lint/shadow-lint.f || { echo "FAIL: shadow-lint"; exit 1; }
+bin/hb --load tools/lint/lib.f tools/lint/clobber-lint.f || { echo "FAIL: clobber-lint"; exit 1; }
+bin/hb --load tools/lint/lib.f tools/repl-lint.f || { echo "FAIL: repl-lint"; exit 1; }
+bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/trust-lint.f || { echo "FAIL: trust-lint"; exit 1; }
 ./tools/trust-lint-test.sh || { echo "FAIL: trust-lint fixtures"; exit 1; }
-cat tools/date.f tools/lint/lib.f tools/fs.f tools/stale-status-lint.f | bin/hb || { echo "FAIL: stale-status-lint"; exit 1; }
-cat tools/lint/lib.f tools/fs.f tools/host-lint.f | bin/hb || { echo "FAIL: host-lint"; exit 1; }
-cat tools/lint/lib.f tools/parallel-agent-lint.f | bin/hb || { echo "FAIL: parallel-agent-lint"; exit 1; }
-cat tools/lint/lib.f tools/filemap-lint.f | bin/hb || { echo "FAIL: filemap-lint"; exit 1; }
+bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/stale-status-lint.f || { echo "FAIL: stale-status-lint"; exit 1; }
+bin/hb --load tools/lint/lib.f tools/fs.f tools/host-lint.f || { echo "FAIL: host-lint"; exit 1; }
+bin/hb --load tools/lint/lib.f tools/parallel-agent-lint.f || { echo "FAIL: parallel-agent-lint"; exit 1; }
+bin/hb --load tools/lint/lib.f tools/filemap-lint.f || { echo "FAIL: filemap-lint"; exit 1; }
 ./tools/checked-boundary-lint-test.sh || { echo "FAIL: checked-boundary-lint"; exit 1; }
 ./tools/string-test.sh || { echo "FAIL: string helpers"; exit 1; }
 ./tools/array-test.sh || { echo "FAIL: array helpers"; exit 1; }
-cat lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f | bin/hb || { echo "FAIL: table stdlib"; exit 1; }
+bin/hb --load lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f || { echo "FAIL: table stdlib"; exit 1; }
 ./lib/regex-test.sh || { echo "FAIL: regex stdlib"; exit 1; }
 ./lib/map-test.sh || { echo "FAIL: map stdlib"; exit 1; }
 ./lib/fs-test.sh || { echo "FAIL: fs stdlib"; exit 1; }
@@ -246,7 +246,7 @@ bin/hb "$GATE_JSON" sarif "$T/habu-all-errors.sarif"
 cat tools/lint/lib.f tools/public-signatures.f > $T/public-signatures.f
 bin/hb $T/public-signatures.f examples/llm/good.f < /dev/null > $T/public-signatures.json
 bin/hb "$GATE_JSON" public-signatures "$T/public-signatures.json"
-TRUST_LINT_TODAY=2026-10-01 sh -c 'cat tools/date.f tools/lint/lib.f tools/fs.f tools/trust-lint.f | bin/hb' >$T/trust-stale.out 2>&1 && { echo "FAIL: trust-lint accepted stale audit dates"; exit 1; }
+TRUST_LINT_TODAY=2026-10-01 bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/trust-lint.f >$T/trust-stale.out 2>&1 && { echo "FAIL: trust-lint accepted stale audit dates"; exit 1; }
 grep -q 'STALE-AUDIT' $T/trust-stale.out || { echo "FAIL: trust-lint stale audit diagnostic missing"; exit 1; }
 echo "PASS: checked bin/hb + getenv + sig-check (rows+quots)"
 # property-based soundness smoke, SELF-HOSTED in habu: generate typed defs,
@@ -271,7 +271,7 @@ out=$(printf '39 LONG-SNAPSHOT-DICTIONARY-WORD .\n' | "$HT/hb-snap0" 2>/dev/null
 [ "$out" = "42" ] || { echo "FAIL: long-name snapshot restore (got: $out)"; exit 1; }
 rm -rf "$HT"
 echo "PASS: HB_TMP isolation"
-cat lib/errors.f lib/process.f test/proc-pty.f | bin/hb || { echo "FAIL: process/pty"; exit 1; }
+bin/hb --load lib/errors.f lib/process.f test/proc-pty.f || { echo "FAIL: process/pty"; exit 1; }
 out=$(printf ': LONG-PROFILER-BUSY-WORD ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;\n: GO ( -- ) 100000 prof-on LONG-PROFILER-BUSY-WORD prof-report ;\nGO\n' | bin/hb 2>/dev/null | head -1)
 case "$out" in
   "LONG-PROFILER-BUSY-WORD "*) ;;

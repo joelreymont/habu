@@ -56,8 +56,8 @@ EOF
 chmod +x "$T/capture-ok" "$T/capture-long" "$T/capture-sleep" \
   "$T/capture-err-long" "$T/capture-false" "$T/capture-hb"
 
-cat lib/errors.f lib/test.f lib/process.f lib/process-test.f > "$T/process-test.f"
-"$HB" "$T/process-test.f" "$T/capture-ok" "$T/capture-long" "$T/capture-sleep" \
+"$HB" --load lib/errors.f lib/test.f lib/process.f lib/process-test.f -- \
+  "$T/capture-ok" "$T/capture-long" "$T/capture-sleep" \
   "$T/capture-err-long" "$T/capture-false" "$T/capture-hb" |
   grep -F "process-test: ok" >/dev/null
 cat lib/errors.f lib/process.f | ./tools/check.sh >/dev/null

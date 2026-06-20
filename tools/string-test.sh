@@ -14,4 +14,4 @@ fail() {
 [ -f lib/errors.f ] || fail "missing lib/errors.f"
 [ -f lib/string.f ] || fail "missing lib/string.f"
 
-cat lib/errors.f lib/string.f lib/string-test.f | "$HB"
+"$HB" --load lib/errors.f lib/string.f lib/string-test.f

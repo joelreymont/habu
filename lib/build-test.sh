@@ -46,9 +46,8 @@ EOF
 
 chmod +x "$T/cmd-ok" "$T/cmd-noart" "$T/cmd-fail"
 
-cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/test.f lib/build.f \
-  lib/build-test.f > "$T/build-test.f"
-"$HB" "$T/build-test.f" "$SRC" "$MISSING" "$ROOT" \
+"$HB" --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/test.f lib/build.f \
+  lib/build-test.f -- "$SRC" "$MISSING" "$ROOT" \
   "$T/cmd-ok" "$T/cmd-noart" "$T/cmd-fail" \
   "$BAD" "$UNCHECKABLE" "$TOPDIE" \
   > "$T/build-test.out" 2> "$T/build-test.err"

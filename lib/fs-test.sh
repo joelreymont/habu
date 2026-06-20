@@ -52,6 +52,5 @@ while [ "$i" -lt 40 ]; do
 done
 : > "$p/leaf.txt"
 
-BUNDLE=$T/fs-test.f
-cat lib/errors.f lib/string.f lib/fs.f lib/fs-test.f > "$BUNDLE"
-"$HB" "$BUNDLE" "$ROOT" "$DEEP" "$IO" "$BIG"
+"$HB" --load lib/errors.f lib/string.f lib/fs.f lib/fs-test.f -- \
+  "$ROOT" "$DEEP" "$IO" "$BIG"

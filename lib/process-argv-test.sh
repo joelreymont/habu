@@ -17,8 +17,6 @@ cleanup() { rm -rf "$T"; }
 trap cleanup EXIT HUP INT TERM
 
 LONG_ARG=$(printf '%32769s' '' | tr ' ' a)
-BUNDLE=$T/process-argv-test.f
-cat lib/errors.f lib/test.f lib/process.f lib/process-argv.f \
-  lib/process-argv-test.f > "$BUNDLE"
-"$HB" "$BUNDLE" "$LONG_ARG" | grep -F "process-argv-test: ok" >/dev/null
+"$HB" --load lib/errors.f lib/test.f lib/process.f lib/process-argv.f \
+  lib/process-argv-test.f -- "$LONG_ARG" | grep -F "process-argv-test: ok" >/dev/null
 cat lib/errors.f lib/process.f lib/process-argv.f | ./tools/check.sh >/dev/null
