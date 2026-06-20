@@ -66,7 +66,7 @@ cat > "$T/report.jsonl" <<'EOF'
 {"task_id":1,"name":"ZERO-TOK","model":"fixture","arm":"habu-a","outcome":"pass","rounds":1,"first_pass":true,"tokens":0,"wall_ms":10}
 {"task_id":1,"name":"ZERO-TOK","model":"fixture","arm":"js","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":10}
 EOF
-rep=$(sh bench/llm/report.sh "$T/report.jsonl")
+rep=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- "$T/report.jsonl")
 chk report-zero-token-note 'exclude 1 passing row' "$rep"
 chk report-zero-token-table '| ZERO-TOK | — | — | — | — | 5 | — | — | — | — | — | — | — |' "$rep"
 
@@ -74,7 +74,7 @@ cat > "$T/report-models.jsonl" <<'EOF'
 {"task_id":1,"name":"MREG","model":"alpha","arm":"js","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":10}
 {"task_id":1,"name":"MREG","model":"beta","arm":"js","outcome":"fail","rounds":2,"first_pass":false,"tokens":9,"wall_ms":20}
 EOF
-rep=$(sh bench/llm/report.sh "$T/report-models.jsonl")
+rep=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- "$T/report-models.jsonl")
 chk report-model-section '## Per-Model Reliability' "$rep"
 chk report-model-alpha '| alpha | JavaScript | 1 | 1 | 100% | 100% | 100% | 0 |' "$rep"
 chk report-model-beta '| beta | JavaScript | 1 | 0 | 0% | 0% | 0% | 1 |' "$rep"
@@ -83,14 +83,14 @@ cat > "$T/report-model-family.jsonl" <<'EOF'
 {"task_id":1,"name":"MREG","model_id":"alpha","model":"AlphaJS","arm":"js","trial_id":"fixture-seed:alpha:js:1:1","trial":1,"task_order":7,"k_trials":1,"order_seed":"fixture-seed","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":10,"runtime_ms":3,"runtime_repetitions":2,"runtime_warmups":1,"runtime_status":"ok"}
 {"task_id":1,"name":"MREG","model_id":"beta","model":"BetaJS","arm":"js","trial_id":"fixture-seed:beta:js:1:1","trial":1,"task_order":7,"k_trials":1,"order_seed":"fixture-seed","outcome":"fail","rounds":2,"first_pass":false,"tokens":9,"wall_ms":20,"runtime_ms":null,"runtime_repetitions":2,"runtime_warmups":1,"runtime_status":"not_run"}
 EOF
-rep=$(sh bench/llm/report.sh "$T/report-model-family.jsonl")
+rep=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- "$T/report-model-family.jsonl")
 chk report-family-task-pass-at-k '| JavaScript | 2 | 1 | 50% | 50% | 50% | 1 |' "$rep"
 
 cat > "$T/report-habu-arms.jsonl" <<'EOF'
 {"task_id":1,"name":"HARM","model_id":"fixture","model":"Fixture","arm":"habu-stdlib","trial_id":"manifest:fixture:habu-stdlib:1:1","trial":1,"task_order":1,"k_trials":1,"order_seed":"manifest","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":10,"runtime_ms":1,"runtime_repetitions":2,"runtime_warmups":1,"runtime_status":"ok"}
 {"task_id":1,"name":"HARM","model_id":"fixture","model":"Fixture","arm":"habu-skeleton","trial_id":"manifest:fixture:habu-skeleton:1:1","trial":1,"task_order":1,"k_trials":1,"order_seed":"manifest","outcome":"pass","rounds":1,"first_pass":true,"tokens":6,"wall_ms":10,"runtime_ms":1,"runtime_repetitions":2,"runtime_warmups":1,"runtime_status":"ok"}
 EOF
-rep=$(sh bench/llm/report.sh "$T/report-habu-arms.jsonl")
+rep=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- "$T/report-habu-arms.jsonl")
 chk report-habu-stdlib-label 'Habu + stdlib' "$rep"
 chk report-habu-skeleton-label 'Habu + skeleton' "$rep"
 chk report-habu-arms-task-row 'stdlib pass/1; skeleton pass/1' "$rep"
@@ -99,7 +99,7 @@ cat > "$T/report-py-ts-arms.jsonl" <<'EOF'
 {"task_id":1,"name":"PYTS","model_id":"fixture","model":"Fixture","arm":"python","trial_id":"manifest:fixture:python:1:1","trial":1,"task_order":1,"k_trials":1,"order_seed":"manifest","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":10,"runtime_ms":1,"runtime_repetitions":2,"runtime_warmups":1,"runtime_status":"ok"}
 {"task_id":1,"name":"PYTS","model_id":"fixture","model":"Fixture","arm":"ts","trial_id":"manifest:fixture:ts:1:1","trial":1,"task_order":1,"k_trials":1,"order_seed":"manifest","outcome":"pass","rounds":1,"first_pass":true,"tokens":6,"wall_ms":10,"runtime_ms":1,"runtime_repetitions":2,"runtime_warmups":1,"runtime_status":"ok"}
 EOF
-rep=$(sh bench/llm/report.sh "$T/report-py-ts-arms.jsonl")
+rep=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- "$T/report-py-ts-arms.jsonl")
 chk report-python-label 'Python' "$rep"
 chk report-typescript-label 'TypeScript' "$rep"
 chk report-py-ts-arms-task-row 'python pass/1; ts pass/1' "$rep"
@@ -107,7 +107,7 @@ chk report-py-ts-arms-task-row 'python pass/1; ts pass/1' "$rep"
 cat > "$T/report-runtime.jsonl" <<'EOF'
 {"task_id":1,"name":"RT","model_id":"fixture","model":"Fixture","arm":"js","trial_id":"manifest:fixture:js:1:1","trial":1,"task_order":1,"k_trials":1,"order_seed":"manifest","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":9000,"runtime_ms":7,"runtime_repetitions":2,"runtime_warmups":1,"runtime_status":"ok"}
 EOF
-rep=$(sh bench/llm/report.sh "$T/report-runtime.jsonl")
+rep=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- "$T/report-runtime.jsonl")
 chk report-runtime-header 'median runtime ms' "$rep"
 chk report-runtime-not-wall '| JavaScript | 1 | 5 | \*\*5\*\* | 5 | 7 | 7 | 9 | 9 |' "$rep"
 chk report-limitations-section '## Limitations' "$rep"
@@ -129,14 +129,14 @@ while [ "$i" -le 1100 ]; do
   printf '{"task_id":1,"name":"%s","model_id":"fixture","model":"Fixture Model With Long Repeated Label","arm":"js","trial_id":"large:%s","trial":%s,"task_order":1,"k_trials":1100,"order_seed":"fixture","outcome":"pass","rounds":1,"first_pass":true,"tokens":5,"wall_ms":10,"runtime_ms":1,"runtime_repetitions":2,"runtime_warmups":1,"runtime_status":"ok"}\n' "$long_name" "$i" "$i" >> "$T/report-large.jsonl"
   i=$((i+1))
 done
-rep=$(sh bench/llm/report.sh "$T/report-large.jsonl")
+rep=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- "$T/report-large.jsonl")
 chk report-dynamic-row-cap 'Generated from `results/run.jsonl` (1100 trials)' "$rep"
 chk report-dynamic-string-cap "$long_name" "$rep"
 
 cat > "$T/perf.json" <<'EOF'
 {"schema_version":1,"bench":"llm-perf","full":false,"results":[{"name":"check_solutions","wall_ms":12},{"name":"functional_tests","wall_ms":23},{"name":"metric_validator","wall_ms":34},{"name":"prop_smoke_250","wall_ms":45},{"name":"microbench_smoke","wall_ms":56}]}
 EOF
-rep=$(sh bench/llm/report.sh "$T/report-runtime.jsonl" "$T/perf.json")
+rep=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- "$T/report-runtime.jsonl" "$T/perf.json")
 chk report-latency-section '## LLM Feedback Latency' "$rep"
 chk report-latency-source 'bench/llm/perf.sh --json' "$rep"
 chk report-latency-validator '| metric_validator | 34 | 0.03 |' "$rep"
@@ -153,7 +153,7 @@ cat > "$T/report-category-deltas.jsonl" <<'EOF'
 {"task_id":3,"name":"STR-A","model_id":"fixture","model":"Fixture","arm":"habu-stdlib","task_family":"strings","outcome":"pass","rounds":1,"first_pass":true,"tokens":100,"wall_ms":10,"runtime_ms":12,"diagnostic_token":true,"diagnostic_span":true,"diagnostic_expected":true,"diagnostic_actual":true,"diagnostic_code":true,"diagnostic_repair_class":true,"all_errors_stable":true}
 {"task_id":3,"name":"STR-A","model_id":"fixture","model":"Fixture","arm":"habu-skeleton","task_family":"strings","outcome":"pass","rounds":1,"first_pass":true,"tokens":90,"wall_ms":10,"runtime_ms":14,"diagnostic_token":true,"diagnostic_span":true,"diagnostic_expected":true,"diagnostic_actual":true,"diagnostic_code":true,"diagnostic_repair_class":true,"all_errors_stable":true}
 EOF
-rep=$(sh bench/llm/report.sh "$T/report-category-deltas.jsonl")
+rep=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- "$T/report-category-deltas.jsonl")
 chk report-category-section '## Category Reliability And Effort' "$rep"
 chk report-category-raw-arrays '| arrays | Habu raw | 2 | 1 | 50% | 50% | 1 | 100 | 10 | 50% |' "$rep"
 chk report-category-stdlib-arrays '| arrays | Habu + stdlib | 2 | 2 | 100% | 100% | 1 | 55 | 10 | 100% |' "$rep"
@@ -225,7 +225,7 @@ MODEL_REGISTRY="$T/models2.tsv" MODEL_ID=beta BENCH_TRIAL=1 BENCH_TASK_ORDER=7 B
 multi=$(cat "$T/multi-model.jsonl")
 chk multi-model-alpha '"model_id":"alpha","model":"AlphaJS","arm":"js","trial_id":"fixture-seed:alpha:js:1:1","trial":1,"task_order":7,"k_trials":2,"order_seed":"fixture-seed"' "$multi"
 chk multi-model-beta '"model_id":"beta","model":"BetaJS","arm":"js","trial_id":"fixture-seed:beta:js:1:1","trial":1,"task_order":7,"k_trials":2,"order_seed":"fixture-seed"' "$multi"
-rep=$(sh bench/llm/report.sh "$T/multi-model.jsonl")
+rep=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- "$T/multi-model.jsonl")
 chk multi-report-alpha '| AlphaJS | JavaScript | 1 | 1 | 100% | 100% | 100% | 0 |' "$rep"
 chk multi-report-beta '| BetaJS | JavaScript | 1 | 1 | 100% | 100% | 100% | 0 |' "$rep"
 

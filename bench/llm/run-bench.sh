@@ -42,5 +42,5 @@ tail -n +2 "$TASKS" | while IFS="$TAB" read -r id name signature category tests 
   done
   echo "[run-bench] task $id $name done (k=$K)" >&2
 done
-sh bench/llm/report.sh "$OUT" > "$RESULTS"
+bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- "$OUT" > "$RESULTS"
 echo "[run-bench] wrote $RESULTS" >&2
