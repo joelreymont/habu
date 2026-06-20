@@ -1,5 +1,5 @@
 \ build-fixpoint-test.f - checked fixture for tools/build-fixpoint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/build.f tools/build-fixpoint.f tools/build-fixpoint-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f tools/build-fixpoint.f tools/build-fixpoint-test.f
 
 8192 constant BFT-CAPTURE-CAP
 $80000 constant BFT-READ-CAP
@@ -44,10 +44,7 @@ create BFT-READ-BUF BFT-READ-CAP allot
    SB$ ;
 
 : BFT-ENV$ ( -- ptr u8 n )
-   SB-RESET
-   s" HB_TMP=" SB-APPEND
-   BFT-ROOT SB-APPEND
-   SB$ ;
+   BFT-ROOT ;
 
 : BFT-PREPARE ( -- )
    CLEANUP-RESET
@@ -60,8 +57,8 @@ create BFT-READ-BUF BFT-READ-CAP allot
 
 : BFT-ARGV-BUILD ( -- )
    PROC-ARGV-RESET
-   BFT-ENV$ PROC-ARGV+
-   s" bin/hb" PROC-ARGV+
+   PROC-ENV-RESET
+   s" HB_TMP" BFT-ENV$ PROC-ENV+
    s" --load" PROC-ARGV+
    s" lib/errors.f" PROC-ARGV+
    s" lib/string.f" PROC-ARGV+
@@ -69,14 +66,15 @@ create BFT-READ-BUF BFT-READ-CAP allot
    s" lib/fs-mutate.f" PROC-ARGV+
    s" lib/process.f" PROC-ARGV+
    s" lib/process-argv.f" PROC-ARGV+
+   s" lib/process-env.f" PROC-ARGV+
    s" lib/build.f" PROC-ARGV+
    s" tools/build-fixpoint.f" PROC-ARGV+
    s" tools/build-fixpoint-main.f" PROC-ARGV+ ;
 
 : BFT-RUN-BUILD ( -- n n n )
    BFT-ARGV-BUILD
-   s" /usr/bin/env" BFT-OUT BFT-CAPTURE-CAP BFT-ERR BFT-CAPTURE-CAP
-   BFT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" bin/hb" BFT-OUT BFT-CAPTURE-CAP BFT-ERR BFT-CAPTURE-CAP
+   BFT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE ;
 
 : BFT-TEST-BUILD ( -- )
    BFT-RUN-BUILD 0 T=
