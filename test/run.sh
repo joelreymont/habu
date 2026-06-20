@@ -42,8 +42,9 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/public-signatures-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: public-signatures fixture check"; exit 1; }
 bin/hb --load tools/aot-call-report.f tools/aot-call-report-test.f || { echo "FAIL: aot-call-report fixtures"; exit 1; }
 cat tools/aot-call-report.f tools/aot-call-report-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: aot-call-report fixture check"; exit 1; }
-bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/trust-lint.f || { echo "FAIL: trust-lint"; exit 1; }
-./tools/trust-lint-test.sh || { echo "FAIL: trust-lint fixtures"; exit 1; }
+bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/argv.f tools/trust-lint.f || { echo "FAIL: trust-lint"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/trust-lint-test.f || { echo "FAIL: trust-lint fixtures"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/trust-lint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: trust-lint fixture check"; exit 1; }
 bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/stale-status-lint.f || { echo "FAIL: stale-status-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/fs.f tools/host-lint.f || { echo "FAIL: host-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/parallel-agent-lint.f || { echo "FAIL: parallel-agent-lint"; exit 1; }
@@ -284,7 +285,7 @@ bin/hb "$GATE_JSON" sarif "$T/habu-all-errors.sarif"
 cat tools/lint/lib.f tools/public-signatures.f > $T/public-signatures.f
 bin/hb $T/public-signatures.f examples/llm/good.f < /dev/null > $T/public-signatures.json
 bin/hb "$GATE_JSON" public-signatures "$T/public-signatures.json"
-TRUST_LINT_TODAY=2026-10-01 bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/trust-lint.f >$T/trust-stale.out 2>&1 && { echo "FAIL: trust-lint accepted stale audit dates"; exit 1; }
+bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/argv.f tools/trust-lint.f -- . 2026-10-01 >$T/trust-stale.out 2>&1 && { echo "FAIL: trust-lint accepted stale audit dates"; exit 1; }
 grep -q 'STALE-AUDIT' $T/trust-stale.out || { echo "FAIL: trust-lint stale audit diagnostic missing"; exit 1; }
 echo "PASS: checked bin/hb + getenv + sig-check (rows+quots)"
 # property-based soundness smoke, SELF-HOSTED in habu: generate typed defs,

@@ -1,5 +1,6 @@
 \ trust-lint.f - keep TRUST sites pinned to TRUSTED.md.
-\ Load after tools/lint/lib.f and tools/fs.f. Run with bin/hb.
+\ Load after tools/date.f, tools/lint/lib.f, tools/fs.f, and tools/argv.f.
+\ Run: bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/argv.f tools/trust-lint.f -- [ROOT] [TODAY]
 
 0 set-check
 
@@ -18,6 +19,7 @@ $20000 constant TL-FILE-CAP
 96 constant TL-BTICK
 124 constant TL-PIPE
 
+create TL-PATH-BUF FS-PATH-CAP allot
 create TL-STR-BUF TL-STR-CAP allot
 create TL-FILE-BUF TL-FILE-CAP allot
 create TL-NUM-BUF TL-NUM-CAP allot
@@ -62,6 +64,8 @@ variable TL-TODAY-DAYS
 variable TL-CUR-PATH-A
 variable TL-CUR-PATH-U
 variable TL-CUR-LINE
+variable TL-ROOT-A
+variable TL-ROOT-U
 variable TL-LA
 variable TL-LU
 variable TL-LX
@@ -104,6 +108,34 @@ variable TL-NV
    repeat ;
 
 : TL-FAIL ( ptr u8 n -- ) 76 die ;
+
+: TL-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
+   a TL-ROOT-A !
+   u TL-ROOT-U ! ;
+
+: TL-ROOT-SELF? ( -- bool )
+   TL-ROOT-U @ 0= IF TL-TRUE exit THEN
+   TL-ROOT-A @ TL-ROOT-U @ s" ." STR= ;
+
+: TL-ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+   TL-ROOT-SELF? IF a u exit THEN
+   TL-ROOT-U @ u + 1 + FS-PATH-CAP > IF s" trust-lint: root path too long" TL-FAIL THEN
+   TL-ROOT-A @ TL-PATH-BUF TL-ROOT-U @ COPY-BYTES
+   TL-ROOT-A @ TL-ROOT-U @ 1- + c@ FS-SLASH = IF
+      a TL-PATH-BUF TL-ROOT-U @ + u COPY-BYTES
+      TL-PATH-BUF TL-ROOT-U @ u +
+      exit
+   THEN
+   FS-SLASH TL-PATH-BUF TL-ROOT-U @ + c!
+   a TL-PATH-BUF TL-ROOT-U @ 1 + + u COPY-BYTES
+   TL-PATH-BUF TL-ROOT-U @ 1 + u + ;
+
+: TL-REL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+   TL-ROOT-SELF? IF a u exit THEN
+   u TL-ROOT-U @ <= IF a u exit THEN
+   a TL-ROOT-U @ TL-ROOT-A @ TL-ROOT-U @ STR= 0= IF a u exit THEN
+   a TL-ROOT-U @ + c@ FS-SLASH <> IF a u exit THEN
+   a TL-ROOT-U @ 1 + +  u TL-ROOT-U @ 1 + - ;
 
 : TL-STORE$ ( ptr u8 n -- n n ) {: a:ptr u :}
    TL-END @ u + TL-STR-CAP > IF s" trust-lint: string store overflow" TL-FAIL THEN
@@ -216,7 +248,7 @@ variable TL-NV
 
 : TL-SCAN-SRC-FILE ( ptr u8 n -- ) {: a:ptr u :}
    a u s" .f" HAS-EXT? 0= IF exit THEN
-   a TL-CUR-PATH-A !  u TL-CUR-PATH-U !
+   a u TL-REL$ TL-CUR-PATH-U ! TL-CUR-PATH-A !
    a u TL-FILE-BUF TL-FILE-CAP READ-FILE TL-FOR-SRC-LINES ;
 
 : TL-CELL! ( ptr u8 n -- ) {: a:ptr u :}
@@ -289,11 +321,12 @@ variable TL-NV
    TL-LS @ TL-LU @ < IF TL-LU @ TL-DO-MAN-LINE THEN ;
 
 : TL-SCAN-MANIFEST ( -- )
-   s" TRUSTED.md" EXISTS? 0= IF
+   s" TRUSTED.md" TL-ROOTED$ 2dup EXISTS? 0= IF
+      2drop
       s" trust-lint: TRUSTED.md missing - the trust manifest is required" TL-OUT TL-NL
       1 throw
    THEN
-   s" TRUSTED.md" TL-FILE-BUF TL-FILE-CAP READ-FILE TL-FOR-MAN-LINES ;
+   TL-FILE-BUF TL-FILE-CAP READ-FILE TL-FOR-MAN-LINES ;
 
 : TL-A-END? ( -- bool ) TL-AI @ TL-NU @ >= ;
 : TL-B-END? ( -- bool ) TL-BI @ TL-NV @ >= ;
@@ -327,17 +360,13 @@ variable TL-NV
    again ;
 
 : TL-BAD-TODAY ( ptr u8 n -- )
-   s" BAD-TODAY TRUST_LINT_TODAY invalid `" TL-OUT
+   s" BAD-TODAY today argument invalid `" TL-OUT
    TL-OUT
    s" `" TL-OUT TL-NL
    1 throw ;
 
 : TL-TODAY ( -- n )
-   s" TRUST_LINT_TODAY" GETENV dup 0 > IF
-      2dup PARSE-YMD 0= IF drop TL-BAD-TODAY THEN
-      TL-TODAY-DAYS ! 2drop TL-TODAY-DAYS @ exit
-   THEN
-   2drop TL-TODAY-DAYS @ ;
+   TL-TODAY-DAYS @ ;
 
 : TL-CHECK-SITE ( n -- ) {: sk :}
    sk TL-S-NAME$ TL-FIND-MAN dup 0 < IF
@@ -393,11 +422,11 @@ variable TL-NV
    THEN ;
 
 : TL-SCAN-OPTIONAL-ROOT ( ptr u8 n -- ) {: a:ptr u :}
-   a u EXISTS? IF a u ['] TL-SCAN-SRC-FILE WALK-FILES THEN ;
+   a u TL-ROOTED$ 2dup EXISTS? IF ['] TL-SCAN-SRC-FILE WALK-FILES ELSE 2drop THEN ;
 
 : TRUST-LINT ( -- )
    0 TL-END !  0 TL-S# !  0 TL-M# !  0 TL-BAD !
-   s" src" ['] TL-SCAN-SRC-FILE WALK-FILES
+   s" src" TL-SCAN-OPTIONAL-ROOT
    s" lib" TL-SCAN-OPTIONAL-ROOT
    TL-SCAN-MANIFEST
    0 begin dup TL-S# @ < while dup TL-CHECK-SITE 1+ repeat drop
@@ -407,5 +436,20 @@ variable TL-NV
    s"  finding(s)" TL-OUT TL-NL
    TL-BAD @ 0 > IF 1 throw THEN ;
 
-epoch-seconds DATE-SECONDS-DAY / TL-TODAY-DAYS !
-TRUST-LINT
+: TL-CONFIG ( -- )
+   s" tools/trust-lint.f [ROOT] [TODAY]" ARGV-USAGE!
+   ARGV-PARSE
+   0 2 ARGV-EXPECT-POS
+   ARGV-POS# 0 > IF 0 ARGV-POS$ TL-ROOT! ELSE s" ." TL-ROOT! THEN
+   ARGV-POS# 1 > IF
+      1 ARGV-POS$ 2dup PARSE-YMD 0= IF drop TL-BAD-TODAY THEN
+      TL-TODAY-DAYS ! 2drop
+   ELSE
+      epoch-seconds DATE-SECONDS-DAY / TL-TODAY-DAYS !
+   THEN ;
+
+: TL-MAIN ( -- )
+   TL-CONFIG
+   TRUST-LINT ;
+
+TL-MAIN

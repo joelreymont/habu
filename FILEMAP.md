@@ -80,7 +80,7 @@ points stay listed.
 - `tools/repl-lint.f` — rejects REPL-baked code that exits the interactive session.
 - `tools/repl-lint-test.f` — checked fixture coverage for REPL exit lint.
 - `tools/trust-lint.f` — `TRUSTED.md` drift lint.
-- `tools/trust-lint-test.sh` — fixture coverage for `TRUSTED.md` drift lint.
+- `tools/trust-lint-test.f` — checked fixture coverage for `TRUSTED.md` drift lint.
 - `tools/stale-status-lint.f` — stale status/count lint.
 - `tools/parallel-agent-lint.f` — freshness lint for the parallel-agent protocol.
 - `tools/string.f` — shared checked byte-string helper library.
