@@ -62,6 +62,9 @@ points stay listed.
 - `tools/json-only.f` — keeps wrapper JSON mode machine-only on known diagnostics.
 - `tools/json-only-test.f` — checked fixture coverage for JSON diagnostic filtering.
 - `tools/gate-json-assert.f` — native JSON assertions for the default gate.
+- `tools/repair-schema-doc-test.f` — checked fixture coverage for repair diagnostic schema docs.
+- `tools/repair-packet-test.f` — checked fixture coverage for repair packet generation.
+- `tools/check-repair-hints-test.f` — checked fixture coverage for repair-class hints.
 - `tools/host-lint.f` — rejects retired host-script workflow tokens.
 - `tools/check-all-errors.f` — batches checker diagnostics by top-level definition.
 - `tools/check-all-errors-test.f` — checked fixture coverage for all-errors checking.

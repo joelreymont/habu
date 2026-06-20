@@ -107,6 +107,9 @@ variable FM-NUM-L
    s" tools/diag-origin-test.f" FM-REQ
    s" tools/json-only.f" FM-REQ
    s" tools/gate-json-assert.f" FM-REQ
+   s" tools/repair-schema-doc-test.f" FM-REQ
+   s" tools/repair-packet-test.f" FM-REQ
+   s" tools/check-repair-hints-test.f" FM-REQ
    s" tools/host-lint.f" FM-REQ
    s" tools/check-all-errors.f" FM-REQ
    s" tools/check-all-errors-test.f" FM-REQ
