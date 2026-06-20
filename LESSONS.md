@@ -6,8 +6,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 ## Current Boundaries
 
 - **One public binary:** `bin/hb` is the public interface. It starts a tty REPL,
-  reads piped stdin, or runs `hb script.f args...`. Build-only engines stay
-  temporary under `HB_TMP`; do not publish legacy aliases or maker binaries.
+  reads piped stdin, runs `hb script.f args...`, or runs a source list as
+  `hb --load lib.f tool.f -- args...`. Build-only engines stay temporary under
+  `HB_TMP`; do not publish legacy aliases or maker binaries.
 - **No-binary recovery is native-seeded:** `bin/hb` is generated/ignored. Recover
   with `tools/seed.sh /path/to/hb-seed`; optional SHA-256 verification plus the
   immediate `tools/build.sh` fixpoint make the installed binary current-source
@@ -33,6 +34,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **`CHECK!` is the user contract:** dogfood inference (`CHECK`) proves internal
   consistency; user-facing checked builds must verify the body against the
   declared `( in -- out )` and make rejection fatal.
+- **Bool paths must all return bool:** early exits in typed predicates need a
+  real false value (`0 0= 0=` or a helper), not raw `0`; otherwise path merging
+  correctly rejects the definition.
 - **Record declared signatures after verification:** successful `CHECK!` stores
   the raw declared signature string. Rendering mutated inferred terms can corrupt
   quotient/combinator schemes and break later call-site checks.

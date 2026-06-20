@@ -56,13 +56,13 @@ not a matter of taste. Target is the native `bin/hb` engine.
   renderer, DB, data table, and driver code belong in separate files. Split at
   responsibility boundaries so review stays focused and files can be built in
   parallel.
-- **Reusable helpers belong in libraries, not pasted drivers.** Tool/script
-  drivers use `tools/bundle-lib.sh -o out.f module... -- driver.f` to concatenate
-  library files for `hb out.f args...`; shared behavior still lives in one owned
-  source file.
-- **Native scripts are single-source loads.** `hb tool.f args...` has no
-  `include`; wrappers concatenate owned libraries ahead of the driver when a tool
-  needs shared code.
+- **Reusable helpers belong in libraries, not pasted drivers.** Run multi-file
+  tools as `hb --load lib/a.f lib/b.f tool.f -- args...`; the native loader
+  appends the source files before `--`, and `SCRIPT-ARGV$` starts after it.
+  Shared behavior still lives in one owned source file.
+- **Keep script argv explicit.** `hb tool.f arg...` preserves single-script
+  compatibility and treats `arg...` as script arguments. Use `--load` only when
+  the command line contains more than one source file.
 
 ## Stack comments
 

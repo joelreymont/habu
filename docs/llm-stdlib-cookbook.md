@@ -5,8 +5,9 @@ Use this file for prompt-sized checked examples. The authoritative contract is
 The snippets below name the existing focused tests that already cover the
 published words.
 
-Examples assume the needed `lib/*.f` files are concatenated before the driver.
-Native scripts are single-source loads, so do not write `include` in examples.
+Examples assume the needed `lib/*.f` files are loaded before the driver, e.g.
+`bin/hb --load lib/errors.f lib/test.f lib/array.f my-driver.f -- args...`. Do
+not write `include` in examples; source lists are passed to `hb`.
 Project words stay UPPER-CASE, built-ins stay lower-case, and every definition
 keeps an explicit checked effect.
 

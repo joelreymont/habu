@@ -3,12 +3,11 @@
 `tools/argv.f` is a small parser for native `bin/hb tool.f args...` scripts.
 Load it before the tool body, then call `ARGV-PARSE`.
 
-The native engine does not have an `include` loader, so focused tests and
-single-file tools concatenate the helper ahead of the tool source:
+For multi-file tools, pass every source after `--load` and before `--`;
+`SCRIPT-ARGV$` starts after that separator:
 
 ```sh
-cat tools/argv.f my-tool.f > "$HB_TMP/my-tool.with-argv.f"
-bin/hb "$HB_TMP/my-tool.with-argv.f" --json --label NAME -o out file.f
+bin/hb --load tools/argv.f my-tool.f -- --json --label NAME -o out file.f
 ```
 
 ## Supported Options
@@ -35,4 +34,3 @@ exits 64.
 - `ARGV-JSON?`, `ARGV-STRICT-SIGNATURES?`, `ARGV-ALL-ERRORS?` return flags.
 - `ARGV-LABEL$`, `ARGV-OUT$`, and `ARGV-POS$ ( idx -- a u )` return parsed strings.
 - `ARGV-PATHZ`, `ARGV-POSZ`, and `ARGV-OUTZ` return NUL-terminated scratch paths.
-

@@ -6,6 +6,7 @@ $340000000 constant ENV-DATA
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
+$2D constant ENV-DASH
 s" ENV-DATA" s" -- ptr n" TRUST
 
 : ARGC ( -- n )  ENV-DATA ARGC-CELL + @ ;
@@ -26,10 +27,39 @@ s" ENVP" s" n -- ptr u8" TRUST
 
 : ARGV$ ( i -- a u )  ARGV dup ZLEN ;
 
-: SCRIPT-ARGC ( -- n )
-   ARGC 2 -  dup 0 < if drop 0 then ;
+: ENV-FALSE ( -- bool ) 0 0= 0= ;
 
-: SCRIPT-ARGV ( i -- z )  2 + ARGV ;
+: SCRIPT-LOAD-Z? ( ptr u8 -- bool ) {: z:ptr :}
+   z c@ ENV-DASH <> IF ENV-FALSE exit THEN
+   z 1 + c@ ENV-DASH <> IF ENV-FALSE exit THEN
+   z 2 + c@ 108 <> IF ENV-FALSE exit THEN
+   z 3 + c@ 111 <> IF ENV-FALSE exit THEN
+   z 4 + c@ 97 <> IF ENV-FALSE exit THEN
+   z 5 + c@ 100 <> IF ENV-FALSE exit THEN
+   z 6 + c@ 0 = ;
+
+: SCRIPT-LOAD? ( -- bool )
+   ARGC 1 <= IF ENV-FALSE exit THEN
+   1 ARGV SCRIPT-LOAD-Z? ;
+
+: SCRIPT-SEP? ( n -- bool ) {: idx :}
+   idx ARGV {: z:ptr :}
+   z c@ ENV-DASH <> IF ENV-FALSE exit THEN
+   z 1 + c@ ENV-DASH <> IF ENV-FALSE exit THEN
+   z 2 + c@ 0 = ;
+
+: SCRIPT-ARG-START ( -- n )
+   SCRIPT-LOAD? 0= IF 2 exit THEN
+   2 begin dup ARGC < while
+      dup SCRIPT-SEP? IF 1 + exit THEN
+      1 +
+   repeat
+   drop ARGC ;
+
+: SCRIPT-ARGC ( -- n )
+   ARGC SCRIPT-ARG-START -  dup 0 < if drop 0 then ;
+
+: SCRIPT-ARGV ( i -- z )  SCRIPT-ARG-START + ARGV ;
 
 : SCRIPT-ARGV$ ( i -- a u )  SCRIPT-ARGV dup ZLEN ;
 

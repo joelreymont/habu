@@ -47,6 +47,23 @@ out=$(bin/hb "$T/script-mode.f" omega < /dev/null 2>/dev/null)
 1
 omega" ] || fail "empty non-tty stdin did not run argv script (got: $out)"
 
+cat > "$T/multi-a.f" <<'EOF'
+: MS-A ( -- i64 ) 40 ;
+EOF
+cat > "$T/multi-b.f" <<'EOF'
+: MS-B ( i64 -- i64 ) 2 + ;
+EOF
+cat > "$T/multi-main.f" <<'EOF'
+MS-A MS-B .
+SCRIPT-ARGC .
+0 SCRIPT-ARGV$ type cr
+EOF
+
+out=$(bin/hb --load "$T/multi-a.f" "$T/multi-b.f" "$T/multi-main.f" -- theta < /dev/null 2>/dev/null)
+[ "$out" = "42
+1
+theta" ] || fail "multi-source script mode failed (got: $out)"
+
 bin/hb 123 4 < test/prop-test.f > "$T/prop-argv.out" 2> "$T/prop-argv.err" ||
   fail "prop-test rejected seed/count argv"
 prop_norm=$(tr '\n' ' ' < "$T/prop-argv.out")
