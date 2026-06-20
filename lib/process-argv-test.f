@@ -1,5 +1,5 @@
 \ process-argv-test.f - focused tests for lib/process-argv.f.
-\ Run: lib/process-argv-test.sh
+\ Run: bin/hb --load lib/errors.f lib/test.f lib/process.f lib/process-argv.f lib/process-argv-test.f
 
 variable PAT-IN-R
 variable PAT-IN-W
@@ -8,6 +8,16 @@ variable PAT-OUT-W
 create PAT-BUF 64 allot
 create PAT-CAP-OUT 64 allot
 create PAT-CAP-ERR 32 allot
+PROC-ARGV-BUF-CAP 1 + constant PAT-LONG-CAP
+create PAT-LONG PAT-LONG-CAP allot
+variable PAT-I
+
+: PAT-LONG! ( -- )
+   0 PAT-I !
+   begin PAT-I @ PAT-LONG-CAP < while
+      97 PAT-LONG PAT-I @ + c!
+      PAT-I @ 1+ PAT-I !
+   repeat ;
 
 : PAT-READ ( -- n )
    PAT-OUT-R @ PAT-BUF 64 read ;
@@ -53,7 +63,7 @@ create PAT-CAP-ERR 32 allot
 : PAT-LONG-ARG ( -- )
    PROC-ARGV-RESET
    s" x" PROC-ARGV+
-   0 SCRIPT-ARGV$ PROC-ARGV+ ;
+   PAT-LONG! PAT-LONG PAT-LONG-CAP PROC-ARGV+ ;
 
 : PAT-RUN-ARGV-CAPTURE ( -- )
    PROC-ARGV-RESET
@@ -82,7 +92,6 @@ create PAT-CAP-ERR 32 allot
 
 : PROCESS-ARGV-TEST-MAIN ( -- )
    T-RESET
-   SCRIPT-ARGC 1 < if s" process-argv-test: missing fixture arg" T-EX-FAIL die then
    PAT-RUN-PRINTF
    PAT-RUN-CAT
    ['] PAT-SPAWN-MISSING E-PROC-SPAWN TTHROWS

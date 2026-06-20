@@ -186,8 +186,7 @@ real argv vector is needed. Use checked wrappers such as
 `SPAWN-IO ( ptr u8 n n n n -- n )`, `WAIT-RC ( n -- n )`,
 `RUN-IO-RC ( ptr u8 n n n n -- n )`, and
 `RUN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )`. They are covered by
-`lib/process-test.f`, `lib/process-test.sh`, `lib/process-argv-test.sh`, and
-`docs/process-pty.md`.
+`lib/process-test.f`, `lib/process-argv-test.f`, and `docs/process-pty.md`.
 
 ```forth
 32 constant PE-OUT-CAP
