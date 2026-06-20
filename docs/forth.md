@@ -143,6 +143,9 @@ not a matter of taste. Target is the native `bin/hb` engine.
   `s"`/`."`/`refill` invalidates — `move` the bytes into your own buffer
   immediately; never hold the pointer across another parsing word.
 - **`s>number? ( c-addr u -- d flag )` returns a double** — narrow with `d>s`.
+- **`s" "` is empty, not a one-space string.** The parser consumes the delimiter
+  after `s"`, so generated-source builders that need a literal space should emit
+  byte `32` or use an existing `*-SP` byte helper.
 - **"is it a defined word?"** → `find-name ( c-addr u -- nt|0 )`, not `find`.
 - **`catch` preserves the pre-call args** under the throw code: `nv ' WORD catch`
   on a throw leaves `( nv code )` — `nip`/adjust in tests accordingly.

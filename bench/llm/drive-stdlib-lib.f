@@ -480,12 +480,18 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
    path pathu DS-OUT-BUF DS-OUT-U @ WRITE-ALL
    DS-ERR-U @ 0 > if path pathu DS-ERR-BUF DS-ERR-U @ APPEND-FILE then ;
 
+: DS-CHECK-CLEAN? ( -- bool )
+   DS-RC @ 0= if
+      DS-OUT-U @ 0= DS-ERR-U @ 0= and exit
+   then
+   DS-FALSE ;
+
 : DS-RUN-CHECK ( -- )
    PROC-ARGV-ENV-RESET
    DS-ADD-LIBS
    DS-CAND-PATH$ PROC-ARGV+
    DS-HB-CAPTURE
-   DS-RC @ 0= if
+   DS-CHECK-CLEAN? if
       DS-DIAG-PATH$ s" " WRITE-ALL
       0 DS-DIAG-COUNT !
       exit

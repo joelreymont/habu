@@ -206,6 +206,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   data such as JSON rows, factor a small checked writer/DSL instead of relying on
   giant quoted literals or private byte emitters. This keeps escaping and shape
   bugs in reusable Habu code.
+- **Check phases must be silent:** `hb` can emit checker diagnostics while still
+  exiting 0 for a loaded file. Live drivers should treat any stdout/stderr from a
+  check-only child as rejection; otherwise rejected code can be executed later.
 - **Expected-throw fixtures should stay quiet:** row/error reporters should be
   opt-in at the CLI boundary so negative tests can assert throw codes without
   printing user-facing `FAIL` lines.
