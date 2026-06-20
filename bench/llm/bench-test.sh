@@ -334,7 +334,7 @@ id	label	command	args	parser	token_fields	timeout_s
 forthfix	ForthFixture	$T/forth-good.sh	{prompt}	raw		5
 EOF
 MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_RESULTS="$T/forth-results.md" \
-  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 "$T/forth-run.jsonl" >/dev/null
+  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 "$T/forth-run.jsonl" >/dev/null
 [ "$(wc -l < "$T/forth-run.jsonl" | tr -d ' ')" = 3 ] && echo "ok: forth-runner-row-count" || {
   echo "FAIL: forth-runner-row-count"
   fails=$((fails+1))
@@ -359,7 +359,7 @@ forthkill	ForthKill	$T/forth-kill-driver.sh	{prompt}	raw		5
 EOF
 set +e
 MODEL_REGISTRY="$T/models-forth-kill.tsv" MODEL_ID=forthkill BENCH_TASK_IDS=1 BENCH_RESULTS="$T/forth-missing.md" \
-  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 "$T/forth-missing.jsonl" >"$T/forth-missing.out" 2>"$T/forth-missing.err"
+  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 "$T/forth-missing.jsonl" >"$T/forth-missing.out" 2>"$T/forth-missing.err"
 missing_rc=$?
 set -e
 [ "$missing_rc" -ne 0 ] && grep -q 'run-expanded-bench: missing forth result row' "$T/forth-missing.err" && echo "ok: forth-runner-missing-row" || {
@@ -368,7 +368,7 @@ set -e
 }
 
 MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_FORTH_MODES="repair raw" BENCH_SEED=forth-modes-resume BENCH_RESULTS="$T/forth-modes.md" \
-  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 "$T/forth-modes.jsonl" >/dev/null
+  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 "$T/forth-modes.jsonl" >/dev/null
 [ "$(wc -l < "$T/forth-modes.jsonl" | tr -d ' ')" = 2 ] && echo "ok: forth-runner-modes-row-count" || {
   echo "FAIL: forth-runner-modes-row-count"
   fails=$((fails+1))
@@ -380,17 +380,17 @@ chk forth-runner-modes-report 'rows=2 certified=2 first_tests=2 tests=2' "$(cat 
 
 sed -n '1p' "$T/forth-modes.jsonl" > "$T/forth-modes-partial.jsonl"
 MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_FORTH_MODES="repair raw" BENCH_SEED=forth-modes-resume BENCH_RESUME=1 BENCH_RESULTS="$T/forth-modes-resume.md" \
-  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 "$T/forth-modes-partial.jsonl" >/dev/null
+  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 "$T/forth-modes-partial.jsonl" >/dev/null
 [ "$(wc -l < "$T/forth-modes-partial.jsonl" | tr -d ' ')" = 2 ] && echo "ok: forth-runner-modes-resume-row-count" || {
   echo "FAIL: forth-runner-modes-resume-row-count"
   fails=$((fails+1))
 }
 
 MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_SEED=forth-resume BENCH_RESULTS="$T/forth-resume-full.md" \
-  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 "$T/forth-resume-full.jsonl" >/dev/null
+  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 "$T/forth-resume-full.jsonl" >/dev/null
 sed -n '1p' "$T/forth-resume-full.jsonl" > "$T/forth-resume-partial.jsonl"
 MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_SEED=forth-resume BENCH_RESUME=1 BENCH_RESULTS="$T/forth-resume.md" \
-  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 "$T/forth-resume-partial.jsonl" >/dev/null
+  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 "$T/forth-resume-partial.jsonl" >/dev/null
 [ "$(wc -l < "$T/forth-resume-partial.jsonl" | tr -d ' ')" = 6 ] && echo "ok: forth-runner-resume-row-count" || {
   echo "FAIL: forth-runner-resume-row-count"
   fails=$((fails+1))
@@ -402,7 +402,7 @@ id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rus
 1	SQUARE	(i64 -- i64)	arithmetic	7 -> 49; -3 -> 9	forth	stack	Define SQUARE with the checked Forth stack effect.	-	arithmetic,forth	-	-
 EOF
 expanded_native="$T/run-expanded-native.f"
-cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f \
+cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f lib/argv.f \
   bench/llm/manifest.f bench/llm/run-expanded-bench.f > "$expanded_native"
 MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASKS="$T/expanded-native-tasks.tsv" BENCH_SEED=expanded-native BENCH_RESULTS="$T/expanded-native.md" \
   bin/hb "$expanded_native" 1 "$T/expanded-native.jsonl" >/dev/null

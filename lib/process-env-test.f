@@ -1,11 +1,13 @@
 \ process-env-test.f - focused tests for lib/process-env.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/process-env-test.f
 
-create PET-OUT 128 allot
-create PET-ERR 128 allot
+4096 constant PET-CAP
+
+create PET-OUT PET-CAP allot
+create PET-ERR PET-CAP allot
 create PET-PATH FS-PATH-CAP allot
-create PET-ENV-OUT 97 c, 108 c, 112 c, 104 c, 97 c, 10 c, 10 c,
-create PET-EMPTY-OUT 10 c, 10 c,
+create PET-ENV-OUT 97 c, 108 c, 112 c, 104 c, 97 c, 10 c, 10 c, 10 c,
+create PET-EMPTY-OUT 10 c, 10 c, 10 c,
 
 : PET-RESET ( -- )
    PROC-ARGV-RESET
@@ -15,18 +17,37 @@ create PET-EMPTY-OUT 10 c, 10 c,
    PET-RESET
    s" test/process-env-child.f" PROC-ARGV+
    s" HABU_PROC_ENV_TEST" s" alpha" PROC-ENV+
-   s" bin/hb" PET-OUT 128 PET-ERR 128 1000 RUN-ARGV-ENV-CAPTURE
-   0 T= 0 T= 7 T=
-   PET-OUT 7 PET-ENV-OUT 7 T$=
+   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP 1000 RUN-ARGV-ENV-CAPTURE
+   0 T= 0 T= 8 T=
+   PET-OUT 8 PET-ENV-OUT 8 T$=
    PROC-ARGV-N @ 0 T=
    PROC-ENV-N @ 0 T= ;
 
 : PET-RUN-EMPTY-ENV-CHILD ( -- )
    PET-RESET
    s" test/process-env-child.f" PROC-ARGV+
-   s" bin/hb" PET-OUT 128 PET-ERR 128 1000 RUN-ARGV-ENV-CAPTURE
-   0 T= 0 T= 2 T=
-   PET-OUT 2 PET-EMPTY-OUT 2 T$= ;
+   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP 1000 RUN-ARGV-ENV-CAPTURE
+   0 T= 0 T= 3 T=
+   PET-OUT 3 PET-EMPTY-OUT 3 T$= ;
+
+: PET-INHERIT-EXPECTED$ ( -- ptr u8 n )
+   SB-RESET
+   s" alpha" SB-APPEND
+   10 SB-APPEND-C
+   s" HOME" GETENV SB-APPEND
+   10 SB-APPEND-C
+   s" PATH" GETENV SB-APPEND
+   10 SB-APPEND-C
+   SB$ ;
+
+: PET-RUN-INHERIT-ENV-CHILD ( -- )
+   PET-RESET
+   s" test/process-env-child.f" PROC-ARGV+
+   s" HABU_PROC_ENV_TEST" s" alpha" PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP 1000 RUN-ARGV-ENV-CAPTURE
+   0 T= 0 T= {: outu :}
+   PET-OUT outu PET-INHERIT-EXPECTED$ T$= ;
 
 : PET-BAD-ENV-NAME ( -- )
    PET-RESET
@@ -59,6 +80,7 @@ create PET-EMPTY-OUT 10 c, 10 c,
    T-RESET
    PET-RUN-ENV-CHILD
    PET-RUN-EMPTY-ENV-CHILD
+   PET-RUN-INHERIT-ENV-CHILD
    ['] PET-BAD-ENV-NAME E-PROC-ENV TTHROWS
    ['] PET-BAD-ENV-ENTRY E-PROC-ENV TTHROWS
    ['] PET-BAD-ENV-EMPTY E-PROC-ENV TTHROWS

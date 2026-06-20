@@ -1,7 +1,8 @@
 \ run-expanded-bench.f - native expanded live benchmark runner.
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/process.f,
-\ lib/process-argv.f, lib/argv.f, and bench/llm/manifest.f.
+\ lib/process-argv.f, lib/process-env.f, lib/argv.f, and
+\ bench/llm/manifest.f.
 
 64 constant RB-USAGE-RC
 74 constant RB-RUN-RC
@@ -22,6 +23,7 @@ create RB-SNIP1 256 allot
 create RB-SNIP2 256 allot
 create RB-SNIP3 256 allot
 create RB-SNIP4 256 allot
+create RB-EXE-BUF FS-PATH-CAP allot
 create RB-LF-BUF 1 allot
 RB-LF RB-LF-BUF c!
 
@@ -67,6 +69,7 @@ variable RB-SNIP1-U
 variable RB-SNIP2-U
 variable RB-SNIP3-U
 variable RB-SNIP4-U
+variable RB-EXE-U
 variable RB-ROW-NEXT
 variable RB-ROW-A
 variable RB-ROW-U
@@ -186,32 +189,28 @@ TRUSTED: RB-MODE$ ( -- ptr u8 n )
    n RB-DEC >= if n RB-DEC / recurse then
    n RB-DEC mod RB-ZERO + SB-APPEND-C ;
 
-: RB-ENV-ARG$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: key:ptr keyu val:ptr valu :}
-   SB-RESET
-   key keyu SB-APPEND
-   s" =" SB-APPEND
-   val valu SB-APPEND
-   SB$ ;
-
-: RB-ENV-ARG-U$ ( ptr u8 n n -- ptr u8 n ) {: key:ptr keyu val :}
-   SB-RESET
-   key keyu SB-APPEND
-   s" =" SB-APPEND
-   val RB-SB-U+
-   SB$ ;
-
 : RB-PROC-ENV$ ( ptr u8 n ptr u8 n -- )
-   RB-ENV-ARG$ PROC-ARGV+ ;
+   PROC-ENV+ ;
 
-: RB-PROC-ENV-U ( ptr u8 n n -- )
-   RB-ENV-ARG-U$ PROC-ARGV+ ;
+: RB-PROC-ENV-U ( ptr u8 n n -- ) {: key:ptr keyu val :}
+   SB-RESET
+   val RB-SB-U+
+   key keyu SB$ PROC-ENV+ ;
 
-: RB-PROC-PATH ( -- )
+: RB-PATH$ ( -- ptr u8 n )
    s" PATH" GETENV dup 0= if
       2drop s" /usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"
+   then ;
+
+: RB-PROC-PATH ( -- )
+   s" PATH" RB-PATH$ RB-PROC-ENV$ ;
+
+: RB-RESOLVE-EXE ( ptr u8 n -- ptr u8 n )
+   RB-PATH$ RB-EXE-BUF FIND-EXECUTABLE-IN-PATH 0= if
+      drop 0 E-PROC-PATH throw
    then
-   {: val:ptr valu :}
-   s" PATH" val valu RB-PROC-ENV$ ;
+   RB-EXE-U !
+   RB-EXE-BUF RB-EXE-U @ ;
 
 : RB-LOAD-FILES ( -- )
    RB-TASKS$ RB-TASK-BUF RB-TASK-CAP READ-ALL RB-TASK-LEN !
@@ -308,9 +307,12 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    RB-RESULTS$ RB-LF-BUF 0 WRITE-ALL ;
 
 : RB-RUN-PREPARE ( -- )
+   s" sh" RB-RESOLVE-EXE PROC-ARGV-PREPARE
+   PROC-ENV-INHERIT-MISSING
+   PROC-ENV-PREPARE
    RB-OUT$ OPEN-APPEND-FD RB-OUT-FD !
-   s" /usr/bin/env" PROC-ARGV-PREPARE -1 RB-OUT-FD @ -1 PROC-SPAWN-ARGV-RAW RB-PID !
-   PROC-ARGV-RESET
+   -1 RB-OUT-FD @ -1 PROC-SPAWN-ARGV-ENV-RAW RB-PID !
+   PROC-ARGV-ENV-RESET
    RB-OUT-FD @ close
    RB-PID @ 0 < if s" run-expanded-bench: spawn failed" RB-DIE then ;
 
@@ -319,9 +321,12 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    RB-PID @ WAIT-RC ;
 
 : RB-RUN-TO-RESULTS ( -- n )
+   s" bin/hb" RB-RESOLVE-EXE PROC-ARGV-PREPARE
+   PROC-ENV-INHERIT-MISSING
+   PROC-ENV-PREPARE
    RB-RESULTS$ OPEN-APPEND-FD RB-OUT-FD !
-   s" /usr/bin/env" PROC-ARGV-PREPARE -1 RB-OUT-FD @ -1 PROC-SPAWN-ARGV-RAW RB-PID !
-   PROC-ARGV-RESET
+   -1 RB-OUT-FD @ -1 PROC-SPAWN-ARGV-ENV-RAW RB-PID !
+   PROC-ARGV-ENV-RESET
    RB-OUT-FD @ close
    RB-PID @ 0 < if s" run-expanded-bench: report spawn failed" RB-DIE then
    RB-PID @ WAIT-RC ;
@@ -414,11 +419,10 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" MODEL_REGISTRY" RB-MODEL-REG$ RB-PROC-ENV$ ;
 
 : RB-FORTH-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu mode:ptr modeu trial :}
-   PROC-ARGV-RESET
+   PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
    s" BENCH_FORTH_FEEDBACK" mode modeu RB-PROC-ENV$
    s" BENCH_FORTH_ARM" mode modeu RB-ARM-FOR-MODE$ RB-PROC-ENV$
-   s" sh" PROC-ARGV+
    s" bench/llm/drive-forth.sh" PROC-ARGV+
    BM-T-ID RB-TASK-FIELD$ PROC-ARGV+
    BM-T-NAME RB-TASK-FIELD$ PROC-ARGV+
@@ -431,9 +435,8 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    SB$ PROC-ARGV+ ;
 
 : RB-ARRAY-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu arm:ptr armu trial :}
-   PROC-ARGV-RESET
+   PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
-   s" sh" PROC-ARGV+
    arm armu RB-ARRAY-SCRIPT$ PROC-ARGV+
    BM-T-ID RB-TASK-FIELD$ PROC-ARGV+
    BM-T-NAME RB-TASK-FIELD$ PROC-ARGV+
@@ -536,15 +539,15 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
 
 : RB-RUN-REPORT ( -- )
    RB-RESULTS-RESET
-   PROC-ARGV-RESET
+   PROC-ARGV-ENV-RESET
    RB-PROC-PATH
-   s" bin/hb" PROC-ARGV+
    s" --load" PROC-ARGV+
    s" lib/errors.f" PROC-ARGV+
    s" lib/string.f" PROC-ARGV+
    s" lib/fs.f" PROC-ARGV+
    s" lib/process.f" PROC-ARGV+
    s" lib/process-argv.f" PROC-ARGV+
+   s" lib/process-env.f" PROC-ARGV+
    s" lib/time.f" PROC-ARGV+
    s" lib/date.f" PROC-ARGV+
    s" lib/argv.f" PROC-ARGV+

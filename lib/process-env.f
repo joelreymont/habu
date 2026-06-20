@@ -4,8 +4,8 @@
 \ lib/process-argv.f. Kept separate from process-argv so old native seeds can
 \ still run tools/build.sh before this newer primitive exists.
 
-64 constant PROC-ENV-MAX
-32768 constant PROC-ENV-BUF-CAP
+256 constant PROC-ENV-MAX
+131072 constant PROC-ENV-BUF-CAP
 61 constant PROC-ENV-EQUAL
 58 constant PROC-PATH-SEP
 47 constant PROC-PATH-SLASH
@@ -16,6 +16,7 @@ create PROC-ENV-BUF PROC-ENV-BUF-CAP allot
 
 variable PROC-ENV-N
 variable PROC-ENV-OFF
+variable PROC-ENV-I
 variable PROC-PATH-I
 
 : PROC-ENV-TRUE ( -- bool )
@@ -75,6 +76,29 @@ variable PROC-PATH-I
    PROC-ENV-CHECK-EXTRA
    a u PROC-ENV-STORE-Z PROC-ENV-INSTALL-Z ;
 
+: PROC-ENV-NAME-LEN ( ptr u8 n -- n ) {: a:ptr u :}
+   0 begin dup u < while
+      dup a + c@ PROC-ENV-EQUAL = if exit then
+      1+
+   repeat ;
+
+: PROC-ENV-SAME-NAME? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+   a u PROC-ENV-NAME-LEN {: au :}
+   b v PROC-ENV-NAME-LEN {: bv :}
+   au bv <> if PROC-ENV-FALSE exit then
+   a au b bv STR= ;
+
+: PROC-ENV-SLOT-NAME? ( ptr u8 n n -- bool ) {: a:ptr u idx :}
+   idx PROC-ENV-SLOT @ {: z:ptr :}
+   a u z z ZLEN PROC-ENV-SAME-NAME? ;
+
+: PROC-ENV-HAS-NAME? ( ptr u8 n -- bool ) {: a:ptr u :}
+   0 begin dup PROC-ENV-N @ < while
+      dup PROC-ENV-I !
+      a u PROC-ENV-I @ PROC-ENV-SLOT-NAME? if drop PROC-ENV-TRUE exit then
+      1+
+   repeat drop PROC-ENV-FALSE ;
+
 : PROC-ENV+ ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu val:ptr valu :}
    name nameu PROC-ENV-CHECK-NAME
    valu 0 < if E-PROC-ENV throw then
@@ -91,6 +115,17 @@ variable PROC-PATH-I
 : PROC-ENV-PREPARE ( -- ptr a )
    0 PROC-ENV-N @ PROC-ENV-SLOT !
    PROC-ENV-TABLE ;
+
+: PROC-ENV-INHERIT-ONE ( n -- n ) {: idx :}
+   idx ENVP dup ZLEN {: z:ptr u :}
+   z u PROC-ENV-CHECK-ENTRY
+   z u PROC-ENV-HAS-NAME? 0= if z u PROC-ENV-ENTRY+ then
+   idx 1+ ;
+
+: PROC-ENV-INHERIT-MISSING ( -- )
+   0 begin dup ENVP 0= 0= while
+      PROC-ENV-INHERIT-ONE
+   repeat drop ;
 
 : PROC-ARGV-ENV-RESET ( -- )
    PROC-ARGV-RESET

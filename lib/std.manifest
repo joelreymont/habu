@@ -314,7 +314,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-env	lib/process-env.f	word	PROC-ENV-RESET	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	clear prepared child environment entries and backing string buffer offset
 1	process-env	lib/process-env.f	word	PROC-ENV-ENTRY+	(ptr u8 n --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	append one exact NAME=VALUE child environment entry
 1	process-env	lib/process-env.f	word	PROC-ENV+	(ptr u8 n ptr u8 n --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	append one checked child environment name/value pair
-1	process-env	lib/process-env.f	word	PROC-ENV-PREPARE	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	terminate and return the prepared child envp pointer table
+1	process-env	lib/process-env.f	word	PROC-ENV-PREPARE	(-- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	terminate and return the prepared child envp pointer table
+1	process-env	lib/process-env.f	word	PROC-ENV-INHERIT-MISSING	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	copy parent envp entries whose names are not already present
 1	process-env	lib/process-env.f	word	SPAWN-ARGV-ENV-IO	(ptr u8 n n n n -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared argv envp and explicit stdio fds
 1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-IO-RC	(ptr u8 n n n n -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv envp stdio fds and return exit status
 1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp and capture bounded stdout stderr rc

@@ -554,6 +554,7 @@ PROC-ENV-RESET            ( -- )
 PROC-ENV-ENTRY+           ( ptr u8 n -- )
 PROC-ENV+                 ( ptr u8 n ptr u8 n -- )
 PROC-ENV-PREPARE          ( -- ptr a )
+PROC-ENV-INHERIT-MISSING  ( -- )
 SPAWN-ARGV-ENV-IO         ( ptr u8 n n n n -- n )
 RUN-ARGV-ENV-IO-RC        ( ptr u8 n n n n -- n )
 RUN-ARGV-ENV-CAPTURE      ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
@@ -565,11 +566,12 @@ RESOLVE-EXECUTABLE        ( ptr u8 n ptr u8 -- n )
 
 Call `PROC-ENV-RESET`, append exact `NAME=VALUE` entries with
 `PROC-ENV-ENTRY+` or checked name/value pairs with `PROC-ENV+`, and then run one
-of the env-aware wrappers. The child receives exactly the prepared env vector;
-there is no implicit inheritance. `FIND-EXECUTABLE-IN-PATH` accepts an explicit
-PATH byte string for deterministic tests, while `FIND-EXECUTABLE` reads the
-current process `PATH`. `RESOLVE-EXECUTABLE` throws `E-PROC-PATH` when lookup
-fails.
+of the env-aware wrappers. The child receives exactly the prepared env vector.
+Call `PROC-ENV-INHERIT-MISSING` after explicit overrides to copy parent envp
+entries whose names are not already present; explicit entries win and duplicate
+names are skipped. `FIND-EXECUTABLE-IN-PATH` accepts an explicit PATH byte string
+for deterministic tests, while `FIND-EXECUTABLE` reads the current process
+`PATH`. `RESOLVE-EXECUTABLE` throws `E-PROC-PATH` when lookup fails.
 
 ## Date And Time
 

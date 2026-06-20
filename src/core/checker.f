@@ -588,14 +588,16 @@ PTABLE
 variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable FSP  variable FP
 \ user sigs: certified words recorded as [len|name|len|sig]*, 0-terminated.
 \ Appended by the renderer (RECXT hook); scanned after PTAB so later wins.
-create USIGS 32768 allot   0 USIGS c!   variable UEND   0 UEND !
+65536 constant USIGS-CAP
+USIGS-CAP 2 - constant USIGS-LIMIT
+create USIGS USIGS-CAP allot   0 USIGS c!   variable UEND   0 UEND !
 
 : UB! {: c :}  c USIGS UEND @ + c!  UEND @ 1 + UEND ! ;
 
 : UBS {: a u :}  0 BEGIN dup u < WHILE  dup a + c@ UB!  1 + REPEAT drop ;
 
 : USIG-ADD {: sa su na nu :}
-   UEND @ nu + su + 3 + 32766 > IF s" checker: user sigs full" 76 die THEN
+   UEND @ nu + su + 3 + USIGS-LIMIT > IF s" checker: user sigs full" 76 die THEN
    nu UB!  na nu UBS  su UB!  sa su UBS  0 USIGS UEND @ + c! ;
 
 : SCAN-SIGS {: tab a u :}  tab FP !
