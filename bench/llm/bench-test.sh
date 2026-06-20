@@ -397,6 +397,32 @@ MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASK_IDS=1 BENCH_SE
 }
 chk forth-runner-resume-report 'rows=6 certified=6 first_tests=6 tests=6' "$(cat "$T/forth-resume.md")"
 
+cat > "$T/expanded-native-tasks.tsv" <<'EOF'
+id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rust_signature
+1	SQUARE	(i64 -- i64)	arithmetic	7 -> 49; -3 -> 9	forth	stack	Define SQUARE with the checked Forth stack effect.	-	arithmetic,forth	-	-
+EOF
+expanded_native="$T/run-expanded-native.f"
+cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/argv.f \
+  bench/llm/manifest.f bench/llm/run-expanded-bench.f > "$expanded_native"
+MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASKS="$T/expanded-native-tasks.tsv" BENCH_SEED=expanded-native BENCH_RESULTS="$T/expanded-native.md" \
+  bin/hb "$expanded_native" 1 "$T/expanded-native.jsonl" >/dev/null
+[ "$(wc -l < "$T/expanded-native.jsonl" | tr -d ' ')" = 3 ] && echo "ok: expanded-native-row-count" || {
+  echo "FAIL: expanded-native-row-count"
+  fails=$((fails+1))
+}
+expanded_native_rows=$(cat "$T/expanded-native.jsonl")
+chk expanded-native-repair '"arm":"habu-forth"' "$expanded_native_rows"
+chk expanded-native-raw '"arm":"habu-forth-raw"' "$expanded_native_rows"
+chk expanded-native-blind '"arm":"habu-forth-blind"' "$expanded_native_rows"
+chk expanded-native-report 'rows=3 certified=3 first_tests=3 tests=3' "$(cat "$T/expanded-native.md")"
+sed -n '1p' "$T/expanded-native.jsonl" > "$T/expanded-native-partial.jsonl"
+MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASKS="$T/expanded-native-tasks.tsv" BENCH_SEED=expanded-native BENCH_RESUME=1 BENCH_RESULTS="$T/expanded-native-resume.md" \
+  bin/hb "$expanded_native" 1 "$T/expanded-native-partial.jsonl" >/dev/null
+[ "$(wc -l < "$T/expanded-native-partial.jsonl" | tr -d ' ')" = 3 ] && echo "ok: expanded-native-resume-row-count" || {
+  echo "FAIL: expanded-native-resume-row-count"
+  fails=$((fails+1))
+}
+
 # --- conv=aa : REVERSE (array -> array, in place) ---
 mkstub "$T/hb2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do i cells arr + @ len 1 - i - cells arr + @ i cells arr + ! len 1 - i - cells arr + ! loop ;"'
 mkstub "$T/hbl2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr len i len i MIRROR-INDEX A-SWAP loop ;"'
