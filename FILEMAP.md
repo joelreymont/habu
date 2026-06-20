@@ -139,6 +139,9 @@ points stay listed.
 - `bench/llm/drive-process-lib.f` — native stdlib process benchmark driver using executable generated `PROC-FIX-*` Habu fixtures.
 - `bench/llm/drive-process.f` — CLI wrapper for the stdlib process benchmark driver.
 - `bench/llm/drive-process-test.f` — focused coverage for stdlib process driver rc/capture/nonzero and timeout/truncation fixtures.
+- `bench/llm/drive-property-lib.f` — native stdlib property benchmark driver with exact-token stdlib-use guards.
+- `bench/llm/drive-property.f` — CLI wrapper for the stdlib property benchmark driver.
+- `bench/llm/drive-property-test.f` — focused coverage for property default/random/generator/shrink and bad-seed fixtures.
 - `bench/llm/negative-score.f` — checked scorer for negative benchmark expected codes/tokens/classes.
 - `bench/llm/negative-score-test.f` — focused coverage for negative-harness scoring outcomes.
 - `bench/llm/expanded-report.f` — expanded live benchmark Markdown report with validator and latency sections.
