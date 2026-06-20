@@ -65,6 +65,7 @@ points stay listed.
 - `tools/checked-boundary-lint-test.f` — checked fixture coverage for unchecked-boundary lint.
 - `tools/diag-to-sarif.f` — converts diagnostic JSONL to SARIF for CI/review UIs.
 - `tools/public-signatures.f` — emits typed public-word manifests for agents.
+- `tools/public-signatures-test.f` — checked fixture coverage for public-signature manifests.
 - `tools/aot-call-report.f` — measures patched AOT call-stencil padding.
 - `tools/filemap-lint.f` — freshness lint for this file.
 - `tools/trust-lint.f` — `TRUSTED.md` drift lint.
