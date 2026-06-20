@@ -9,6 +9,7 @@ $4000 constant LV-READ-CAP
 256 constant LV-MAX
 2048 constant LV-ROW-MAX
 512 constant LV-GRP-MAX
+128 constant LV-FAM-MAX
 32 constant LV-NUM-CAP
 256 constant LV-PATH-CAP
 256 constant LV-RUN-CAP
@@ -98,12 +99,35 @@ create LV-ARM-TOKENS LV-MAX cells allot
 create LV-ARM-WALL LV-MAX cells allot
 create LV-ARM-CHARS LV-MAX cells allot
 
+create LV-FAM-CAT-A LV-FAM-MAX cells allot
+create LV-FAM-CAT-U LV-FAM-MAX cells allot
+create LV-FAM-MODEL-A LV-FAM-MAX cells allot
+create LV-FAM-MODEL-U LV-FAM-MAX cells allot
+create LV-FAM-ARM-A LV-FAM-MAX cells allot
+create LV-FAM-ARM-U LV-FAM-MAX cells allot
+create LV-FAM-ROWS LV-FAM-MAX cells allot
+create LV-FAM-CERT LV-FAM-MAX cells allot
+create LV-FAM-FIRST LV-FAM-MAX cells allot
+create LV-FAM-TESTS LV-FAM-MAX cells allot
+create LV-FAM-ROUNDS LV-FAM-MAX cells allot
+create LV-FAM-REPAIRS LV-FAM-MAX cells allot
+create LV-FAM-CHECKERS LV-FAM-MAX cells allot
+create LV-FAM-DIAGS LV-FAM-MAX cells allot
+create LV-FAM-DIAG-OK LV-FAM-MAX cells allot
+create LV-FAM-TOKENS LV-FAM-MAX cells allot
+create LV-FAM-WALL LV-FAM-MAX cells allot
+create LV-FAM-CHARS LV-FAM-MAX cells allot
+create LV-FAM-TRUST LV-FAM-MAX cells allot
+create LV-FAM-SIGWEAK LV-FAM-MAX cells allot
+create LV-FAM-REPLAY LV-FAM-MAX cells allot
+
 variable LV-TASK#
 variable LV-REF-TASK#
 variable LV-SEEN#
 variable LV-CAT#
 variable LV-RC#
 variable LV-ARM#
+variable LV-FAM#
 variable LV-KEY#
 variable LV-GRP#
 variable LV-RC-STR-U
@@ -696,6 +720,146 @@ variable LV-LINE-U
    a u LV-FIND-ARM dup 0 >= IF exit THEN
    drop a u LV-ARM+ ;
 
+: LV-FAM-CAT$ {: k :} ( n -- ptr u8 n )
+   LV-FAM-CAT-A k cells + @
+   LV-FAM-CAT-U k cells + @ ;
+
+: LV-FAM-MODEL$ {: k :} ( n -- ptr u8 n )
+   LV-FAM-MODEL-A k cells + @
+   LV-FAM-MODEL-U k cells + @ ;
+
+: LV-FAM-ARM$ {: k :} ( n -- ptr u8 n )
+   LV-FAM-ARM-A k cells + @
+   LV-FAM-ARM-U k cells + @ ;
+
+: LV-FAM-ROWS@ ( n -- n )
+   cells LV-FAM-ROWS + @ ;
+
+: LV-FAM-CERT@ ( n -- n )
+   cells LV-FAM-CERT + @ ;
+
+: LV-FAM-FIRST@ ( n -- n )
+   cells LV-FAM-FIRST + @ ;
+
+: LV-FAM-TESTS@ ( n -- n )
+   cells LV-FAM-TESTS + @ ;
+
+: LV-FAM-REPAIRS@ ( n -- n )
+   cells LV-FAM-REPAIRS + @ ;
+
+: LV-FAM-ROUNDS@ ( n -- n )
+   cells LV-FAM-ROUNDS + @ ;
+
+: LV-FAM-CHECKERS@ ( n -- n )
+   cells LV-FAM-CHECKERS + @ ;
+
+: LV-FAM-DIAGS@ ( n -- n )
+   cells LV-FAM-DIAGS + @ ;
+
+: LV-FAM-DIAG-OK@ ( n -- n )
+   cells LV-FAM-DIAG-OK + @ ;
+
+: LV-FAM-TOKENS@ ( n -- n )
+   cells LV-FAM-TOKENS + @ ;
+
+: LV-FAM-WALL@ ( n -- n )
+   cells LV-FAM-WALL + @ ;
+
+: LV-FAM-CHARS@ ( n -- n )
+   cells LV-FAM-CHARS + @ ;
+
+: LV-FAM-TRUST@ ( n -- n )
+   cells LV-FAM-TRUST + @ ;
+
+: LV-FAM-SIGWEAK@ ( n -- n )
+   cells LV-FAM-SIGWEAK + @ ;
+
+: LV-FAM-REPLAY@ ( n -- n )
+   cells LV-FAM-REPLAY + @ ;
+
+: LV-FAM-ROWS++ ( n -- )
+   cells LV-FAM-ROWS + LV-CELL++ ;
+
+: LV-FAM-CERT++ ( n -- )
+   cells LV-FAM-CERT + LV-CELL++ ;
+
+: LV-FAM-FIRST++ ( n -- )
+   cells LV-FAM-FIRST + LV-CELL++ ;
+
+: LV-FAM-TESTS++ ( n -- )
+   cells LV-FAM-TESTS + LV-CELL++ ;
+
+: LV-FAM-DIAG-OK++ ( n -- )
+   cells LV-FAM-DIAG-OK + LV-CELL++ ;
+
+: LV-FAM-SIGWEAK++ ( n -- )
+   cells LV-FAM-SIGWEAK + LV-CELL++ ;
+
+: LV-FAM-REPLAY++ ( n -- )
+   cells LV-FAM-REPLAY + LV-CELL++ ;
+
+: LV-FAM-REPAIRS+ {: n k :} ( n n -- )
+   n LV-FAM-REPAIRS k cells + LV-CELL+! ;
+
+: LV-FAM-ROUNDS+ {: n k :} ( n n -- )
+   n LV-FAM-ROUNDS k cells + LV-CELL+! ;
+
+: LV-FAM-CHECKERS+ {: n k :} ( n n -- )
+   n LV-FAM-CHECKERS k cells + LV-CELL+! ;
+
+: LV-FAM-DIAGS+ {: n k :} ( n n -- )
+   n LV-FAM-DIAGS k cells + LV-CELL+! ;
+
+: LV-FAM-TOKENS+ {: n k :} ( n n -- )
+   n LV-FAM-TOKENS k cells + LV-CELL+! ;
+
+: LV-FAM-WALL+ {: n k :} ( n n -- )
+   n LV-FAM-WALL k cells + LV-CELL+! ;
+
+: LV-FAM-CHARS+ {: n k :} ( n n -- )
+   n LV-FAM-CHARS k cells + LV-CELL+! ;
+
+: LV-FAM-TRUST+ {: n k :} ( n n -- )
+   n LV-FAM-TRUST k cells + LV-CELL+! ;
+
+: LV-CUR-FAM-MATCH? {: k :} ( n -- bool )
+   LV-FAM-CAT-A k cells + @ LV-FAM-CAT-U k cells + @ LV-TASK-K @ LV-TASK-CAT$ STR= 0= IF 0 exit THEN
+   LV-FAM-MODEL-A k cells + @ LV-FAM-MODEL-U k cells + @ LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ STR= 0= IF 0 exit THEN
+   LV-FAM-ARM-A k cells + @ LV-FAM-ARM-U k cells + @ LV-CUR-ARM-A @ LV-CUR-ARM-U @ STR= ;
+
+: LV-FIND-FAM ( -- n )
+   0 begin dup LV-FAM# @ < while
+      dup LV-CUR-FAM-MATCH? IF exit THEN
+      1+
+   repeat drop -1 ;
+
+: LV-FAM-ZERO! {: k :} ( n -- )
+   0 LV-FAM-ROWS k cells + !
+   0 LV-FAM-CERT k cells + !
+   0 LV-FAM-FIRST k cells + !
+   0 LV-FAM-TESTS k cells + !
+   0 LV-FAM-ROUNDS k cells + !
+   0 LV-FAM-REPAIRS k cells + !
+   0 LV-FAM-CHECKERS k cells + !
+   0 LV-FAM-DIAGS k cells + !
+   0 LV-FAM-DIAG-OK k cells + !
+   0 LV-FAM-TOKENS k cells + !
+   0 LV-FAM-WALL k cells + !
+   0 LV-FAM-CHARS k cells + !
+   0 LV-FAM-TRUST k cells + !
+   0 LV-FAM-SIGWEAK k cells + !
+   0 LV-FAM-REPLAY k cells + ! ;
+
+: LV-FAM+ ( -- n )
+   LV-FAM# @ LV-FAM-MAX >= IF s" too many category/model/arm cells" LV-FAIL THEN
+   LV-FAM# @ LV-P !
+   LV-TASK-K @ LV-TASK-CAT$ LV-KEY-COPY$ LV-FAM-CAT-U LV-P @ cells + ! LV-FAM-CAT-A LV-P @ cells + !
+   LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ LV-KEY-COPY$ LV-FAM-MODEL-U LV-P @ cells + ! LV-FAM-MODEL-A LV-P @ cells + !
+   LV-CUR-ARM-A @ LV-CUR-ARM-U @ LV-KEY-COPY$ LV-FAM-ARM-U LV-P @ cells + ! LV-FAM-ARM-A LV-P @ cells + !
+   LV-P @ LV-FAM-ZERO!
+   LV-FAM# @ 1+ LV-FAM# !
+   LV-P @ ;
+
 : LV-PASS-GROUPS ( -- n )
    0 LV-N !
    0 begin dup LV-GRP# @ < while
@@ -719,6 +883,34 @@ variable LV-LINE-U
    0 LV-N !
    0 begin dup LV-GRP# @ < while
       dup arm LV-ARM-GROUP? over LV-GROUP-PASS@ 0 = 0= and IF LV-N @ 1+ LV-N ! THEN
+      1+
+   repeat drop
+   LV-N @ ;
+
+: LV-GRP-MODEL$ {: k :} ( n -- ptr u8 n )
+   LV-GRP-MODEL-A k cells + @
+   LV-GRP-MODEL-U k cells + @ ;
+
+: LV-GRP-CAT$ {: k :} ( n -- ptr u8 n )
+   LV-GRP-TASK-ID k cells + @ LV-FIND-TASK LV-TASK-CAT$ ;
+
+: LV-FAM-GROUP? {: g fam :} ( n n -- bool )
+   g LV-GRP-CAT$ fam LV-FAM-CAT$ STR= 0= IF 0 exit THEN
+   g LV-GRP-MODEL$ fam LV-FAM-MODEL$ STR= 0= IF 0 exit THEN
+   g LV-GRP-ARM$ fam LV-FAM-ARM$ STR= ;
+
+: LV-FAM-GROUPS {: fam :} ( n -- n )
+   0 LV-N !
+   0 begin dup LV-GRP# @ < while
+      dup fam LV-FAM-GROUP? IF LV-N @ 1+ LV-N ! THEN
+      1+
+   repeat drop
+   LV-N @ ;
+
+: LV-FAM-PASS-GROUPS {: fam :} ( n -- n )
+   0 LV-N !
+   0 begin dup LV-GRP# @ < while
+      dup fam LV-FAM-GROUP? over LV-GROUP-PASS@ 0 = 0= and IF LV-N @ 1+ LV-N ! THEN
       1+
    repeat drop
    LV-N @ ;
@@ -823,6 +1015,15 @@ variable LV-LINE-U
 : LV-BOOL-FIELD {: root a:ptr u :} ( n ptr u8 n -- bool )
    root a u LV-GET dup JSON-KIND J-BOOL <> IF drop s" invalid bool field" LV-FAIL-AT THEN
    JSON-BOOL@ ;
+
+: LV-DIAG-COMPLETE? {: root :} ( n -- bool )
+   root s" diagnostic_token" LV-BOOL-FIELD
+   root s" diagnostic_span" LV-BOOL-FIELD and
+   root s" diagnostic_expected" LV-BOOL-FIELD and
+   root s" diagnostic_actual" LV-BOOL-FIELD and
+   root s" diagnostic_code" LV-BOOL-FIELD and
+   root s" diagnostic_repair_class" LV-BOOL-FIELD and
+   root s" all_errors_stable" LV-BOOL-FIELD and ;
 
 : LV-CHECK-SCHEMA {: n :} ( n -- )
    n 1 <> n 2 <> and IF s" unsupported schema_version" LV-FAIL-AT THEN
@@ -1071,6 +1272,25 @@ variable LV-LINE-U
    root s" wall_ms" LV-INT-FIELD LV-P @ LV-ARM-WALL+
    root s" final_chars" LV-INT-FIELD LV-P @ LV-ARM-CHARS+ ;
 
+: LV-FAM-ACCUM {: root :} ( n -- )
+   LV-SCHEMA @ 2 <> IF exit THEN
+   LV-FIND-FAM dup 0 >= IF ELSE drop LV-FAM+ THEN LV-P !
+   LV-P @ LV-FAM-ROWS++
+   root LV-CERTIFIED? IF LV-P @ LV-FAM-CERT++ THEN
+   root s" first_pass_tests" LV-BOOL-FIELD IF LV-P @ LV-FAM-FIRST++ THEN
+   root s" tests_passed" LV-BOOL-FIELD IF LV-P @ LV-FAM-TESTS++ THEN
+   root s" rounds" LV-INT-FIELD LV-P @ LV-FAM-ROUNDS+
+   root s" repair_iterations" LV-INT-FIELD LV-P @ LV-FAM-REPAIRS+
+   root s" checker_iterations" LV-INT-FIELD LV-P @ LV-FAM-CHECKERS+
+   root s" diagnostic_count" LV-INT-FIELD LV-P @ LV-FAM-DIAGS+
+   root LV-DIAG-COMPLETE? IF LV-P @ LV-FAM-DIAG-OK++ THEN
+   root s" tokens_used" LV-INT-FIELD LV-P @ LV-FAM-TOKENS+
+   root s" wall_ms" LV-INT-FIELD LV-P @ LV-FAM-WALL+
+   root s" final_chars" LV-INT-FIELD LV-P @ LV-FAM-CHARS+
+   root s" trust_uses" LV-INT-FIELD LV-P @ LV-FAM-TRUST+
+   root s" signature_weakened" LV-BOOL-FIELD IF LV-P @ LV-FAM-SIGWEAK++ THEN
+   LV-P @ LV-FAM-REPLAY++ ;
+
 : LV-ACC-BOOL {: root a:ptr u good:ptr bad:ptr :} ( n ptr u8 n ptr n ptr n -- )
    root a u LV-BOOL-FIELD IF good LV-CELL++ ELSE bad LV-CELL++ THEN ;
 
@@ -1144,6 +1364,7 @@ variable LV-LINE-U
    root s" signature_weakened" LV-BOOL-FIELD dup IF LV-SIGWEAK LV-CELL++ LV-BAD-SIG LV-CELL++ ELSE drop THEN
    root LV-ACCUM-RC-STATS
    root LV-ARM-ACCUM
+   root LV-FAM-ACCUM
    root LV-CAT-ACCUM ;
 
 : LV-CHECK-ROW {: root :} ( n -- )
@@ -1186,6 +1407,7 @@ variable LV-LINE-U
    0 LV-CAT# !
    0 LV-RC# !
    0 LV-ARM# !
+   0 LV-FAM# !
    0 LV-KEY# !
    0 LV-GRP# !
    0 LV-RC-STR-U !
@@ -1458,6 +1680,32 @@ variable LV-LINE-U
    s" task_ci95_high_bp" k LV-ARM-PASS-GROUPS k LV-ARM-GROUPS LV-CI-HIGH-BP LV-JSON-UF
    JSONW-OBJECT-END ;
 
+: LV-OUTPUT-FAM-JSON {: k :} ( n -- )
+   JSONW-OBJECT-START
+   s" category" JSONW-KEY k LV-FAM-CAT$ JSONW-STRING JSONW-COMMA
+   s" model" JSONW-KEY k LV-FAM-MODEL$ JSONW-STRING JSONW-COMMA
+   s" arm" JSONW-KEY k LV-FAM-ARM$ JSONW-STRING JSONW-COMMA
+   s" rows" k LV-FAM-ROWS@ LV-JSON-COMMA-UF
+   s" certified" k LV-FAM-CERT@ LV-JSON-COMMA-UF
+   s" first_tests_passed" k LV-FAM-FIRST@ LV-JSON-COMMA-UF
+   s" tests_passed" k LV-FAM-TESTS@ LV-JSON-COMMA-UF
+   s" rounds" k LV-FAM-ROUNDS@ LV-JSON-COMMA-UF
+   s" repair_iterations" k LV-FAM-REPAIRS@ LV-JSON-COMMA-UF
+   s" checker_iterations" k LV-FAM-CHECKERS@ LV-JSON-COMMA-UF
+   s" diagnostic_count" k LV-FAM-DIAGS@ LV-JSON-COMMA-UF
+   s" diagnostic_complete" k LV-FAM-DIAG-OK@ LV-JSON-COMMA-UF
+   s" tokens_used" k LV-FAM-TOKENS@ LV-JSON-COMMA-UF
+   s" wall_ms" k LV-FAM-WALL@ LV-JSON-COMMA-UF
+   s" final_chars" k LV-FAM-CHARS@ LV-JSON-COMMA-UF
+   s" trust_uses" k LV-FAM-TRUST@ LV-JSON-COMMA-UF
+   s" signature_weakened" k LV-FAM-SIGWEAK@ LV-JSON-COMMA-UF
+   s" task_groups" k LV-FAM-GROUPS LV-JSON-COMMA-UF
+   s" task_pass_at_k" k LV-FAM-PASS-GROUPS LV-JSON-COMMA-UF
+   s" trial_pass_bp" k LV-FAM-TESTS@ k LV-FAM-ROWS@ LV-RATIO-BP LV-JSON-COMMA-UF
+   s" task_pass_bp" k LV-FAM-PASS-GROUPS k LV-FAM-GROUPS LV-RATIO-BP LV-JSON-COMMA-UF
+   s" replay_ok" k LV-FAM-REPLAY@ LV-JSON-UF
+   JSONW-OBJECT-END ;
+
 : LV-OUT-CATS-JSON ( -- )
    JSONW-ARRAY-START
    0 begin dup LV-CAT# @ < while
@@ -1481,6 +1729,15 @@ variable LV-LINE-U
    0 begin dup LV-ARM# @ < while
       dup 0 > IF JSONW-COMMA THEN
       dup LV-OUTPUT-ARM-JSON
+      1+
+   repeat drop
+   JSONW-ARRAY-END ;
+
+: LV-OUT-FAMS-JSON ( -- )
+   JSONW-ARRAY-START
+   0 begin dup LV-FAM# @ < while
+      dup 0 > IF JSONW-COMMA THEN
+      dup LV-OUTPUT-FAM-JSON
       1+
    repeat drop
    JSONW-ARRAY-END ;
@@ -1516,6 +1773,7 @@ variable LV-LINE-U
    s" diagnostic_gaps" JSONW-KEY LV-DG-JSON JSONW-COMMA
    s" repair_classes" JSONW-KEY LV-OUT-RCS-JSON JSONW-COMMA
    s" arms" JSONW-KEY LV-OUT-ARMS-JSON JSONW-COMMA
+   s" family_cells" JSONW-KEY LV-OUT-FAMS-JSON JSONW-COMMA
    s" categories" JSONW-KEY LV-OUT-CATS-JSON
    JSONW-OBJECT-END
    JSON-OUT-BUF JSON-OUT-LEN @ LV-OUT LV-NL ;

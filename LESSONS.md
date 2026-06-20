@@ -206,6 +206,12 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   data such as JSON rows, factor a small checked writer/DSL instead of relying on
   giant quoted literals or private byte emitters. This keeps escaping and shape
   bugs in reusable Habu code.
+- **Checked helpers must be defined before use:** a forward reference inside a
+  checked definition can fail during load and surface later as an unpublished
+  word; move the helper after its dependencies or factor dependencies earlier.
+- **Native summary tables need tight capacities:** large parallel arrays consume
+  DATA quickly. Size aggregate tables from real cardinality such as
+  category/model/arm cells, not from row or group maxima.
 - **Unchecked core fixtures stay outside source files:** standalone core sources
   such as `src/core/sha256.f` must not disable checking themselves; put
   `0 set-check` in the fixture harness and keep checked wrappers/tests separate.

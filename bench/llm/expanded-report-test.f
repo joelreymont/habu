@@ -64,24 +64,30 @@ ERT-LF ERT-LF-BUF c!
 : ERT-FIELD-HASH ( ptr u8 n -- )
    ERT-HASH$ ERT-FIELD-S ;
 
-: ERT-WRITE-ROW ( -- )
+: ERT-ROW-BEGIN ( -- )
    JW-RESET
    JW-OBJECT-START
    s" schema_version" 2 ERT-FIELD-U
    s" run_id" s" fixture-2026-06-20" ERT-FIELD-S
    s" task_id" 1 ERT-FIELD-U
-   s" name" s" SQUARE" ERT-FIELD-S
+   s" name" s" SQUARE" ERT-FIELD-S ;
+
+: ERT-ROW-MODEL ( -- )
    s" model_id" s" fixture" ERT-FIELD-S
    s" model" s" Fixture" ERT-FIELD-S
    s" model_version" s" unknown" ERT-FIELD-S
    s" model_date" s" unknown" ERT-FIELD-S
-   s" arm" s" habu-forth" ERT-FIELD-S
+   s" arm" s" habu-forth" ERT-FIELD-S ;
+
+: ERT-ROW-TRIAL ( -- )
    s" trial_id" s" fixture:fixture:habu-forth:1:1" ERT-FIELD-S
    s" trial" 1 ERT-FIELD-U
    s" task_order" 1 ERT-FIELD-U
    s" k_trials" 1 ERT-FIELD-U
    s" order_seed" s" fixture" ERT-FIELD-S
-   s" task_family" s" arithmetic" ERT-FIELD-S
+   s" task_family" s" arithmetic" ERT-FIELD-S ;
+
+: ERT-ROW-OUTCOME ( -- )
    s" outcome" s" pass" ERT-FIELD-S
    s" rounds" 1 ERT-FIELD-U
    s" first_pass" ERT-TRUE ERT-FIELD-BOOL
@@ -97,7 +103,9 @@ ERT-LF ERT-LF-BUF c!
    s" tests_passed" ERT-TRUE ERT-FIELD-BOOL
    s" repair_iterations" 0 ERT-FIELD-U
    s" checker_iterations" 1 ERT-FIELD-U
-   s" diagnostic_count" 0 ERT-FIELD-U
+   s" diagnostic_count" 0 ERT-FIELD-U ;
+
+: ERT-ROW-DIAGNOSTICS ( -- )
    s" diagnostic_token" ERT-TRUE ERT-FIELD-BOOL
    s" diagnostic_span" ERT-TRUE ERT-FIELD-BOOL
    s" diagnostic_expected" ERT-TRUE ERT-FIELD-BOOL
@@ -109,7 +117,9 @@ ERT-LF ERT-LF-BUF c!
    s" wall_ms" 12 ERT-FIELD-U
    s" final_chars" 31 ERT-FIELD-U
    s" trust_uses" 0 ERT-FIELD-U
-   s" signature_weakened" ERT-FALSE ERT-FIELD-BOOL
+   s" signature_weakened" ERT-FALSE ERT-FIELD-BOOL ;
+
+: ERT-ROW-ARTIFACTS ( -- )
    s" prompt" s" Define SQUARE." ERT-FIELD-S
    s" prompt_sha256" ERT-FIELD-HASH
    s" raw_response" s" : SQUARE ( i64 -- i64 ) dup * ;" ERT-FIELD-S
@@ -123,10 +133,21 @@ ERT-LF ERT-LF-BUF c!
    s" test_output" s" ok" ERT-FIELD-S
    s" test_output_sha256" ERT-FIELD-HASH
    s" final_bundle" s" : SQUARE ( i64 -- i64 ) dup * ;" ERT-FIELD-S
-   s" final_bundle_sha256" ERT-HASH$ ERT-FIELD-S-LAST
+   s" final_bundle_sha256" ERT-HASH$ ERT-FIELD-S-LAST ;
+
+: ERT-ROW-END ( -- )
    JW-OBJECT-END
    ERT-RESULT$ JW$ WRITE-ALL
    ERT-RESULT$ ERT-LF-BUF 1 APPEND-FILE ;
+
+: ERT-WRITE-ROW ( -- )
+   ERT-ROW-BEGIN
+   ERT-ROW-MODEL
+   ERT-ROW-TRIAL
+   ERT-ROW-OUTCOME
+   ERT-ROW-DIAGNOSTICS
+   ERT-ROW-ARTIFACTS
+   ERT-ROW-END ;
 
 : ERT-WRITE-PERF ( -- )
    JW-RESET
@@ -189,6 +210,8 @@ ERT-LF ERT-LF-BUF c!
    erru 0 T=
    outu 0 > TTRUE
    outu ERT-OUT-U !
+   s" ## Category by Arm and Model" ERT-CONTAINS
+   s" | arithmetic | fixture | habu-forth | 1 | 1 | 100.00 | 100.00 | 1.00 | 9 | 0.01 | 100.00 | 100.00 |" ERT-CONTAINS
    s" ## LLM Feedback Latency" ERT-CONTAINS
    s" bench/llm/perf.sh --json" ERT-CONTAINS
    s" | metric_validator | 34 | 0.03 |" ERT-CONTAINS

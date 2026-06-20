@@ -30,6 +30,9 @@ variable ER-PERF-U
 variable ER-READ-U
 variable ER-FD
 variable ER-ROWS
+variable ER-SUM-ROOT
+variable ER-FAM-ARR
+variable ER-FAM-ROW
 variable ER-PERF-ROOT
 variable ER-PERF-ARR
 variable ER-PERF-ROW
@@ -100,6 +103,14 @@ variable ER-PARSE-N
    dup 0 < if exit then
    100 * 500 + 1000 / ;
 
+: ER-RATIO-BP {: num den :} ( n n -- n )
+   den 0= if 0 exit then
+   num 10000 * den 2 / + den / ;
+
+: ER-MEAN-CENTI {: sum count :} ( n n -- n )
+   count 0= if 0 exit then
+   sum 100 * count 2 / + count / ;
+
 : ER-CONFIG ( -- )
    s" bench/llm/expanded-report.f [result.jsonl] [perf.json]" ARGV-USAGE!
    ARGV-PARSE
@@ -167,6 +178,49 @@ variable ER-PARSE-N
 : ER-PERF-NUM ( n -- n bool )
    dup ER-PERF-NUM? if JSON-NUMBER$ ER-PARSE-U? else drop 0 ER-FALSE then ;
 
+: ER-CELL-GET ( ptr u8 n -- n )
+   ER-FAM-ROW @ -rot ER-PERF-GET ;
+
+: ER-CELL-N ( ptr u8 n -- n bool )
+   ER-CELL-GET ER-PERF-NUM ;
+
+: ER-CELL-N@ ( ptr u8 n -- n )
+   ER-CELL-N 0= if drop 0 then ;
+
+: ER-CELL-S. ( ptr u8 n -- )
+   ER-CELL-GET dup 0 < if drop ER-DASH. exit then
+   dup JSON-KIND J-STR <> if drop ER-DASH. exit then
+   JSON-STRING$ type ;
+
+: ER-CELL-U. ( ptr u8 n -- )
+   ER-CELL-N if ER-U. else drop ER-DASH. then ;
+
+: ER-CELL-BP. ( ptr u8 n -- )
+   ER-CELL-N if ER-SCALED. else drop ER-DASH. then ;
+
+: ER-CELL-FIRST. ( -- )
+   s" first_tests_passed" ER-CELL-N@
+   s" rows" ER-CELL-N@
+   ER-RATIO-BP ER-SCALED. ;
+
+: ER-CELL-ROUNDS. ( -- )
+   s" rounds" ER-CELL-N@
+   s" rows" ER-CELL-N@
+   ER-MEAN-CENTI ER-SCALED. ;
+
+: ER-CELL-WALL-S. ( -- )
+   s" wall_ms" ER-CELL-N@ ER-SEC-CENTI ER-SCALED. ;
+
+: ER-CELL-DIAG. ( -- )
+   s" diagnostic_complete" ER-CELL-N@
+   s" rows" ER-CELL-N@
+   ER-RATIO-BP ER-SCALED. ;
+
+: ER-CELL-REPLAY. ( -- )
+   s" replay_ok" ER-CELL-N@
+   s" rows" ER-CELL-N@
+   ER-RATIO-BP ER-SCALED. ;
+
 : ER-PERF-NUM. ( n -- )
    ER-PERF-NUM if ER-U. else drop ER-DASH. then ;
 
@@ -191,6 +245,44 @@ variable ER-PARSE-N
       1+
    repeat drop cr ;
 
+: ER-FAMILY-NOTE. ( -- )
+   s" Validator JSON did not include category/model/arm cells." type cr cr ;
+
+: ER-FAMILY-HEADER. ( -- )
+   s" | category | model | arm | rows | tests | pass@k | first pass | mean rounds | tokens | wall s | diagnostics | replay |" type cr
+   s" |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|" type cr ;
+
+: ER-FAMILY-ROW. ( -- )
+   s" | " type s" category" ER-CELL-S.
+   s"  | " type s" model" ER-CELL-S.
+   s"  | " type s" arm" ER-CELL-S.
+   s"  | " type s" rows" ER-CELL-U.
+   s"  | " type s" tests_passed" ER-CELL-U.
+   s"  | " type s" task_pass_bp" ER-CELL-BP.
+   s"  | " type ER-CELL-FIRST.
+   s"  | " type ER-CELL-ROUNDS.
+   s"  | " type s" tokens_used" ER-CELL-U.
+   s"  | " type ER-CELL-WALL-S.
+   s"  | " type ER-CELL-DIAG.
+   s"  | " type ER-CELL-REPLAY.
+   s"  |" type cr ;
+
+: ER-FAMILY-TABLE. ( -- )
+   ER-FAMILY-HEADER.
+   0 begin dup ER-FAM-ARR @ JSON-COUNT < while
+      ER-FAM-ARR @ over JSON-ARR@ ER-FAM-ROW !
+      ER-FAMILY-ROW.
+      1+
+   repeat drop cr ;
+
+: ER-FAMILY. ( -- )
+   s" ## Category by Arm and Model" type cr cr
+   ER-JSON-BUF ER-JSON-U @ JSON-PARSE ER-SUM-ROOT !
+   ER-SUM-ROOT @ s" family_cells" ER-PERF-GET ER-FAM-ARR !
+   ER-FAM-ARR @ 0 < if ER-FAMILY-NOTE. exit then
+   ER-FAM-ARR @ JSON-KIND J-ARR <> if ER-FAMILY-NOTE. exit then
+   ER-FAMILY-TABLE. ;
+
 : ER-PERF. ( -- )
    s" ## LLM Feedback Latency" type cr cr
    s" Source: `bench/llm/perf.sh --json`; these timings measure local checker/test/validator/property/microbench latency, not model inference latency." type cr cr
@@ -208,6 +300,7 @@ variable ER-PARSE-N
    s" The raw JSONL rows are validated by `bench/llm/validate-results.f`; replay artifacts are embedded in every row with SHA-256 fields." type cr cr
    s" ## Validator Summary" type cr cr
    ER-FENCE-TEXT
+   ER-FAMILY.
    s" ## JSON Summary" type cr cr
    ER-FENCE-JSON
    cr cr

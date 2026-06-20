@@ -338,6 +338,11 @@ printf '%s\n' "$out" | grep -q '"arms":\[{"arm":"habu-forth","rows":1,"certified
   printf '%s\n' "$out"
   exit 1
 }
+printf '%s\n' "$out" | grep -q '"family_cells":\[{"category":"arithmetic","model":"toy-model","arm":"habu-forth","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"rounds":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"diagnostic_complete":1,"tokens_used":0,"wall_ms":0,"final_chars":1,"trust_uses":0,"signature_weakened":0,"task_groups":1,"task_pass_at_k":1,"trial_pass_bp":10000,"task_pass_bp":10000,"replay_ok":1},{"category":"arithmetic","model":"toy-model","arm":"habu-forth-raw","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"rounds":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"diagnostic_complete":1,"tokens_used":0,"wall_ms":0,"final_chars":1,"trust_uses":0,"signature_weakened":0,"task_groups":1,"task_pass_at_k":1,"trial_pass_bp":10000,"task_pass_bp":10000,"replay_ok":1},{"category":"arithmetic","model":"toy-model","arm":"habu-forth-blind","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"rounds":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"diagnostic_complete":1,"tokens_used":0,"wall_ms":0,"final_chars":1,"trust_uses":0,"signature_weakened":0,"task_groups":1,"task_pass_at_k":1,"trial_pass_bp":10000,"task_pass_bp":10000,"replay_ok":1}\]' || {
+  echo "FAIL: validate-results json family cells"
+  printf '%s\n' "$out"
+  exit 1
+}
 
 write_multi_model_jsonl
 out=$(validate_results bench/llm/results/live.jsonl)
