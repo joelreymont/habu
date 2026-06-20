@@ -113,6 +113,7 @@ variable FM-NUM-L
    s" tools/public-signatures-test.f" FM-REQ
    s" tools/aot-call-report.f" FM-REQ
    s" tools/aot-call-report-test.f" FM-REQ
+   s" tools/bundle-lib-test.f" FM-REQ
    s" tools/filemap-lint.f" FM-REQ
    s" tools/trust-lint.f" FM-REQ
    s" tools/trust-lint-test.sh" FM-REQ

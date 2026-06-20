@@ -66,7 +66,8 @@ cat lib/errors.f lib/property.f | ./tools/check.sh >/dev/null || { echo "FAIL: p
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/build.f lib/build-test.f || { echo "FAIL: build stdlib"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/build.f lib/build-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: build stdlib check"; exit 1; }
 bin/hb --load tools/date.f tools/date-test.f || { echo "FAIL: date helpers"; exit 1; }
-./tools/bundle-lib-test.sh || { echo "FAIL: stdlib bundle wrapper"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/bundle-lib-test.f || { echo "FAIL: stdlib bundle wrapper"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/bundle-lib-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: bundle-lib fixture check"; exit 1; }
 ./tools/build-fixpoint-test.sh || { echo "FAIL: build fixpoint driver"; exit 1; }
 ./tools/repair-schema-doc-test.sh || { echo "FAIL: repair diagnostic schema doc"; exit 1; }
 ./tools/repair-packet-test.sh || { echo "FAIL: repair packet tool"; exit 1; }
