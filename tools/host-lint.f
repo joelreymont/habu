@@ -98,7 +98,6 @@ variable HOST-PATH-U
 : HOST-BENCH-BASELINE? ( ptr u8 n -- bool )
    2dup s" ./bench/llm/drive-" PREFIX? IF s" .sh" HAS-EXT? exit THEN
    2dup s" ./bench/llm/bench-test.sh" PATH= IF 2drop LINT-TRUE exit THEN
-   2dup s" ./bench/llm/run-bench.sh" PATH= IF 2drop LINT-TRUE exit THEN
    2dup s" ./bench/llm/report.f" PATH= IF 2drop LINT-TRUE exit THEN
    s" ./bench/llm/lib.sh" PATH= ;
 

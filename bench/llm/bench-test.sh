@@ -21,12 +21,12 @@ else
   manifest_ready=0
 fi
 
-if grep -q 'bench-tasks.tsv' bench/llm/run-bench.sh; then
-  echo "FAIL: run-bench-canonical-default -> still mentions bench-tasks.tsv"
+if grep -q 'bench-tasks.tsv' bench/llm/run-expanded-bench.f; then
+  echo "FAIL: run-expanded-canonical-default -> still mentions bench-tasks.tsv"
   fails=$((fails+1))
   manifest_ready=0
 else
-  echo "ok: run-bench-canonical-default"
+  echo "ok: run-expanded-canonical-default"
 fi
 
 if awk 'NF && substr($0, 1, 1) != "#" { found = 1 } END { exit found ? 1 : 0 }' bench/llm/bench-tasks.tsv; then
@@ -513,15 +513,16 @@ id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rus
 99	CANON-SUM	(ptr a n -- i64)	arrays	[3 1 4] -> 8; [5] -> 5	array	as	Return the sum of all elements of the array.	[3 1 4] -> 8; [5] -> 5	array,scalar	function f(a) -> number	fn f(a: &[i64]) -> i64
 EOF
   MODEL_REGISTRY="$T/models.tsv" MODEL_ID=fixture BENCH_TASKS="$T/canon-tasks.tsv" BENCH_RESULTS="$T/canon-results.md" \
-    sh bench/llm/run-bench.sh 1 "$T/canon-run.jsonl" >"$T/canon-run.out" 2>"$T/canon-run.err"
+    BENCH_ARRAY_ARMS="habu-a habu-lib habu-stdlib habu-skeleton js ts rust" \
+    bin/hb "$expanded_native" 1 "$T/canon-run.jsonl" >"$T/canon-run.out" 2>"$T/canon-run.err"
   run_rows=$(wc -l < "$T/canon-run.jsonl" | tr -d ' ')
-  [ "$run_rows" = 8 ] && echo "ok: run-bench-canonical-row-count" || {
+  [ "$run_rows" = 7 ] && echo "ok: run-bench-canonical-row-count" || {
     echo "FAIL: run-bench-canonical-row-count -> $run_rows"
     cat "$T/canon-run.err"
     fails=$((fails+1))
   }
   canon_rows=$(grep -c '"name":"CANON-SUM"' "$T/canon-run.jsonl" || true)
-  [ "$canon_rows" = 8 ] && echo "ok: run-bench-canonical-task" || {
+  [ "$canon_rows" = 7 ] && echo "ok: run-bench-canonical-task" || {
     echo "FAIL: run-bench-canonical-task -> $canon_rows"
     cat "$T/canon-run.jsonl"
     fails=$((fails+1))
@@ -538,11 +539,12 @@ alpha	Alpha	$T/canon-model.sh	{prompt}	raw		5
 beta	Beta	$T/canon-model.sh	{prompt}	raw		5
 EOF
   MODEL_REGISTRY="$T/models-filter.tsv" MODEL_ID=beta BENCH_TASKS="$T/canon-tasks.tsv" BENCH_RESULTS="$T/filter-results.md" \
-    sh bench/llm/run-bench.sh 1 "$T/filter-run.jsonl" >"$T/filter-run.out" 2>"$T/filter-run.err"
+    BENCH_ARRAY_ARMS="habu-a habu-lib habu-stdlib habu-skeleton js ts rust" \
+    bin/hb "$expanded_native" 1 "$T/filter-run.jsonl" >"$T/filter-run.out" 2>"$T/filter-run.err"
   filter_rows=$(wc -l < "$T/filter-run.jsonl" | tr -d ' ')
   filter_beta=$(grep -c '"model_id":"beta"' "$T/filter-run.jsonl" || true)
   filter_alpha=$(grep -c '"model_id":"alpha"' "$T/filter-run.jsonl" || true)
-  [ "$filter_rows" = 8 ] && [ "$filter_beta" = 8 ] && [ "$filter_alpha" = 0 ] && echo "ok: run-bench-model-filter" || {
+  [ "$filter_rows" = 7 ] && [ "$filter_beta" = 7 ] && [ "$filter_alpha" = 0 ] && echo "ok: run-bench-model-filter" || {
     echo "FAIL: run-bench-model-filter -> rows=$filter_rows beta=$filter_beta alpha=$filter_alpha"
     cat "$T/filter-run.err"
     fails=$((fails+1))

@@ -105,8 +105,8 @@ harness and hangs.)
 
 ### V3 — Reproduce the benchmark (uses real `claude -p`; costs tokens; non-deterministic)
 ```
-sh bench/llm/run-bench.sh 2                       # 10 tasks × 4 arms × 2 trials -> results/run.jsonl
-bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- bench/llm/results/run.jsonl > /tmp/RESULTS.md
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 bench/llm/results/run-expanded.jsonl
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl > /tmp/RESULTS-expanded.md
 ```
 Then compare `/tmp/RESULTS.md` to the committed `bench/llm/RESULTS.md`. Exact token counts
 WILL differ run-to-run (model nondeterminism), but the **shape** must reproduce: pass@k ≈ 100%
@@ -166,7 +166,7 @@ checking/grading the candidate.
 - `bench/llm/parse-resp.f` — extracts the completion text + **output_tokens** from
   `claude -p --output-format json`. Input tokens are deliberately excluded (Claude Code harness
   overhead ~7–22K/call + prompt caching distort them); output tokens track generated-token cost.
-- `bench/llm/run-bench.sh <k>` — orchestrator: every task × 4 arms × k trials → `run.jsonl`,
+- `bench/llm/run-expanded-bench.f <k>` — orchestrator: selected tasks × selected arms × k trials → `run-expanded.jsonl`,
   then the Habu report reducer → `RESULTS.md`. Drivers are invoked with `</dev/null` (else `claude -p`
   swallows the loop's stdin) and `|| true` (a failing driver must not abort the sweep).
 - `bench/llm/report.f` — aggregates `run.jsonl` → `RESULTS.md` (trial pass, first-try

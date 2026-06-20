@@ -917,8 +917,8 @@ Full gate before merging implementation stacks:
 Live benchmark evidence after benchmark-surface changes:
 
 ```sh
-sh bench/llm/run-bench.sh 2
-bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- bench/llm/results/run.jsonl > /tmp/RESULTS.md
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 bench/llm/results/run-expanded.jsonl
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl > /tmp/RESULTS-expanded.md
 ```
 
 Fresh live model runs are nondeterministic. Review `/tmp/RESULTS.md` for the
