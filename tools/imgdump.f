@@ -1,11 +1,12 @@
-\ imgdump.f — habu image inspector, in habu. Run: tools/imgdump.sh <image>
-\ Reads /tmp/imgdump-in, locates the snapshot trailer, maps the live region
+\ imgdump.f — habu image inspector, in habu. Run: bin/hb tools/imgdump.f <image>
+\ Reads the image path argument, locates the snapshot trailer, maps the live region
 \ payload, and prints one line per word: name $start $len.
 \ Self-contained: runs on bin/hb with nothing prepended.
 
 variable IB   variable IL                    \ image buffer, length
 variable IFD
-create IPATH 32 allot
+1024 constant IPATH-CAP
+create IPATH IPATH-CAP 1 + allot
 create ISTAT 144 allot
 variable TOFF  variable TBASE  variable TNDICT  variable TREG  variable TDATA
 variable ROFF  variable SCAN-OFF  variable HAS-SNAP
@@ -15,11 +16,19 @@ variable HN  variable ISZ
 : IB@ IB @ ;
 s" IB@" s" -- ptr u8" TRUST
 
-: ZPATH {: a:ptr u d:ptr :} ( ptr u8 ptr -- )
+: IMG-USAGE ( -- )
+   s" usage: bin/hb tools/imgdump.f image" 64 die ;
+
+: IMG-PATH$ ( -- ptr u8 n )
+   SCRIPT-ARGC 1 <> if IMG-USAGE then
+   0 SCRIPT-ARGV$ ;
+
+: ZPATH {: a:ptr u d:ptr cap :} ( ptr u8 ptr n -- )
+   u cap > if s" imgdump: path too long" 74 die then
    0 begin dup u < while  dup a + c@  over d + c!  1 + repeat drop  0 d u + c! ;
 
 : READ-IMG
-   s" /tmp/imgdump-in" IPATH ZPATH
+   IMG-PATH$ IPATH IPATH-CAP ZPATH
    IPATH ISTAT stat64 0 < IF s" imgdump: stat failed" 74 die THEN
    ISTAT 96 + @ ISZ !
    ISZ @ 0 > 0= IF s" imgdump: empty image" 74 die THEN
