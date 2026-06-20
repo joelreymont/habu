@@ -423,6 +423,25 @@ MODEL_REGISTRY="$T/models-forth.tsv" MODEL_ID=forthfix BENCH_TASKS="$T/expanded-
   fails=$((fails+1))
 }
 
+cat > "$T/expanded-native-array-tasks.tsv" <<'EOF'
+id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rust_signature
+46	ARR-SUM	(ptr a n -- i64)	arrays	[3 1 4] -> 8	array	as	Return the sum.	[3 1 4] -> 8; [5] -> 5	array	function f(a) -> number	fn f(a: &[i64]) -> i64
+EOF
+mkstub "$T/expanded-js.sh" 'echo "function f(a){ return a.reduce((s,x)=>s+x,0); }"'
+cat > "$T/models-expanded-js.tsv" <<EOF
+id	label	command	args	parser	token_fields	timeout_s
+jsfix	JSFixture	$T/expanded-js.sh	{prompt}	raw		5
+EOF
+MODEL_REGISTRY="$T/models-expanded-js.tsv" MODEL_ID=jsfix BENCH_TASKS="$T/expanded-native-array-tasks.tsv" BENCH_ARRAY_ARMS=js BENCH_SEED=expanded-array BENCH_RESULTS="$T/expanded-array.md" \
+  bin/hb "$expanded_native" 1 "$T/expanded-array.jsonl" >/dev/null
+[ "$(wc -l < "$T/expanded-array.jsonl" | tr -d ' ')" = 1 ] && echo "ok: expanded-native-array-row-count" || {
+  echo "FAIL: expanded-native-array-row-count"
+  fails=$((fails+1))
+}
+expanded_array_rows=$(cat "$T/expanded-array.jsonl")
+chk expanded-native-array-arm '"arm":"js"' "$expanded_array_rows"
+chk expanded-native-array-report 'category arrays rows=1 certified=1 tests=1' "$(cat "$T/expanded-array.md")"
+
 # --- conv=aa : REVERSE (array -> array, in place) ---
 mkstub "$T/hb2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do i cells arr + @ len 1 - i - cells arr + @ i cells arr + ! len 1 - i - cells arr + ! loop ;"'
 mkstub "$T/hbl2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr len i len i MIRROR-INDEX A-SWAP loop ;"'

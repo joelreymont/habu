@@ -61,6 +61,8 @@ variable RB-FORTH-MODES-A
 variable RB-FORTH-MODES-U
 variable RB-FORTH-ARM-A
 variable RB-FORTH-ARM-U
+variable RB-ARRAY-ARMS-A
+variable RB-ARRAY-ARMS-U
 variable RB-SNIP1-U
 variable RB-SNIP2-U
 variable RB-SNIP3-U
@@ -128,6 +130,9 @@ TRUSTED: RB-MODE! ( ptr u8 n -- )
 : RB-FORTH-ARM! ( ptr u8 n -- )
    RB-FORTH-ARM-A RB-FORTH-ARM-U RB-SET$ ;
 
+: RB-ARRAY-ARMS! ( ptr u8 n -- )
+   RB-ARRAY-ARMS-A RB-ARRAY-ARMS-U RB-SET$ ;
+
 TRUSTED: RB-TASKS$ ( -- ptr u8 n )
    RB-TASKS-A @ RB-TASKS-U @ ;
 
@@ -154,6 +159,9 @@ TRUSTED: RB-FORTH-MODES$ ( -- ptr u8 n )
 
 TRUSTED: RB-FORTH-ARM$ ( -- ptr u8 n )
    RB-FORTH-ARM-A @ RB-FORTH-ARM-U @ ;
+
+TRUSTED: RB-ARRAY-ARMS$ ( -- ptr u8 n )
+   RB-ARRAY-ARMS-A @ RB-ARRAY-ARMS-U @ ;
 
 TRUSTED: RB-MODE$ ( -- ptr u8 n )
    RB-MODE-A @ RB-MODE-U @ ;
@@ -256,12 +264,41 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
 : RB-TASK-FORTH? ( -- bool )
    RB-TASK-HARNESS$ s" forth" STR= ;
 
+: RB-TASK-ARRAY? ( -- bool )
+   RB-TASK-HARNESS$ s" array" STR= ;
+
+: RB-TASK-RUNNABLE? ( -- bool )
+   RB-TASK-FORTH? if RB-TRUE exit then
+   RB-TASK-ARRAY? ;
+
 : RB-ARM-FOR-MODE$ ( ptr u8 n -- ptr u8 n ) {: mode:ptr modeu :}
    RB-FORTH-ARM$ nip 0 > if RB-FORTH-ARM$ exit then
    mode modeu s" repair" STR= if s" habu-forth" exit then
    mode modeu s" raw" STR= if s" habu-forth-raw" exit then
    mode modeu s" blind" STR= if s" habu-forth-blind" exit then
    s" run-expanded-bench: unknown BENCH_FORTH_MODES entry" RB-DIE
+   s" " ;
+
+: RB-ARRAY-HABU-ARM$ ( ptr u8 n -- ptr u8 n ) {: arm:ptr armu :}
+   arm armu s" habu-a" STR= if s" a" exit then
+   arm armu s" habu-lib" STR= if s" lib" exit then
+   arm armu s" habu-stdlib" STR= if s" stdlib" exit then
+   arm armu s" habu-skeleton" STR= if s" skeleton" exit then
+   s" run-expanded-bench: unknown Habu array arm" RB-DIE
+   s" " ;
+
+: RB-ARRAY-HABU? ( ptr u8 n -- bool ) {: arm:ptr armu :}
+   arm armu s" habu-a" STR= if RB-TRUE exit then
+   arm armu s" habu-lib" STR= if RB-TRUE exit then
+   arm armu s" habu-stdlib" STR= if RB-TRUE exit then
+   arm armu s" habu-skeleton" STR= ;
+
+: RB-ARRAY-SCRIPT$ ( ptr u8 n -- ptr u8 n ) {: arm:ptr armu :}
+   arm armu RB-ARRAY-HABU? if s" bench/llm/drive-habu.sh" exit then
+   arm armu s" js" STR= if s" bench/llm/drive-js.sh" exit then
+   arm armu s" ts" STR= if s" bench/llm/drive-ts.sh" exit then
+   arm armu s" rust" STR= if s" bench/llm/drive-rust.sh" exit then
+   s" run-expanded-bench: unknown BENCH_ARRAY_ARMS entry" RB-DIE
    s" " ;
 
 : RB-OUT-RESET ( -- )
@@ -393,6 +430,24 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    RB-MAX-REPAIRS @ RB-SB-U+
    SB$ PROC-ARGV+ ;
 
+: RB-ARRAY-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu arm:ptr armu trial :}
+   PROC-ARGV-RESET
+   model modelu trial RB-ADD-COMMON-ENV
+   s" sh" PROC-ARGV+
+   arm armu RB-ARRAY-SCRIPT$ PROC-ARGV+
+   BM-T-ID RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-NAME RB-TASK-FIELD$ PROC-ARGV+
+   RB-TASK-LINE$ BM-TASK-SIG$ PROC-ARGV+
+   BM-T-SPEC RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-CONV RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-VECTORS RB-TASK-FIELD$ PROC-ARGV+
+   arm armu RB-ARRAY-HABU? if
+      arm armu RB-ARRAY-HABU-ARM$ PROC-ARGV+
+   then
+   SB-RESET
+   RB-MAX-REPAIRS @ RB-SB-U+
+   SB$ PROC-ARGV+ ;
+
 : RB-RUN-FORTH-ONE ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu mode:ptr modeu trial :}
    mode modeu RB-ARM-FOR-MODE$ {: arm:ptr armu :}
    BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
@@ -417,6 +472,34 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    repeat
    drop 2drop ;
 
+: RB-RUN-ARRAY-ONE ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu arm:ptr armu trial :}
+   BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
+   model modelu arm armu trial RB-ARRAY-ARGS
+   RB-RUN-APPEND drop
+   BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? 0= if
+      s" run-expanded-bench: missing array result row" RB-DIE
+   then ;
+
+: RB-RUN-ARRAY-ARMS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   0 RB-MODE-NEXT !
+   begin
+      RB-ARRAY-ARMS$ RB-SPACE RB-MODE-NEXT @ SPLIT-NEXT
+   while
+      RB-MODE-NEXT !
+      TRIM dup 0 > if
+         RB-MODE!
+         model modelu RB-MODE$ trial RB-RUN-ARRAY-ONE
+      else
+         2drop
+      then
+   repeat
+   drop 2drop ;
+
+: RB-RUN-TRIAL ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   RB-TASK-FORTH? if model modelu trial RB-RUN-FORTH-MODES exit then
+   RB-TASK-ARRAY? if model modelu trial RB-RUN-ARRAY-ARMS exit then
+   ;
+
 : RB-FOR-MODELS-TRIALS ( -- )
    0 RB-MODEL-NEXT !
    RB-READ-MODEL-LINE 0= if s" run-expanded-bench: empty model registry" RB-DIE then
@@ -426,7 +509,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
          RB-MODEL-SELECTED? if
             1 begin dup RB-K @ <= while
                dup RB-TRIAL !
-               RB-MODEL-ID$ RB-TRIAL @ RB-RUN-FORTH-MODES
+               RB-MODEL-ID$ RB-TRIAL @ RB-RUN-TRIAL
                1+
             repeat drop
          then
@@ -434,7 +517,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    repeat ;
 
 : RB-RUN-TASK ( -- )
-   RB-TASK-FORTH? 0= if exit then
+   RB-TASK-RUNNABLE? 0= if exit then
    RB-TASK-ORDER @ 1+ RB-TASK-ORDER !
    RB-TASK-SELECTED? 0= if exit then
    RB-LIMIT-REACHED? if exit then
@@ -476,6 +559,12 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" BENCH_MAX_REPAIRS" 5 RB-ENV-U-OR RB-MAX-REPAIRS !
    s" BENCH_RESUME" RB-ENV-FLAG? RB-RESUME !
    s" BENCH_FORTH_ARM" GETENV RB-FORTH-ARM!
+   s" BENCH_ARRAY_ARMS" GETENV dup 0 > if
+      RB-ARRAY-ARMS!
+   else
+      2drop
+      s" habu-a habu-lib habu-stdlib habu-skeleton js ts rust" RB-ARRAY-ARMS!
+   then
    s" BENCH_FORTH_MODES" GETENV dup 0 > if
       RB-FORTH-MODES!
    else
