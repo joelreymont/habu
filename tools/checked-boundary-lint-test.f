@@ -77,6 +77,7 @@ create CBLT-ERR CBLT-BUF-CAP allot
    CBLT-ARGV-LOAD
    s" tools/checked-boundary-lint.f" PROC-ARGV+
    s" bench/llm/report.f" PROC-ARGV+
+   s" bench/llm/parse-resp-lib.f" PROC-ARGV+
    s" bench/llm/parse-resp.f" PROC-ARGV+
    s" bench/llm/validate-results.f" PROC-ARGV+
    s" tools/host-lint.f" PROC-ARGV+

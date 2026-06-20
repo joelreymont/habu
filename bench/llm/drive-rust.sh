@@ -30,7 +30,7 @@ while [ "$round" -lt "$MAXR" ]; do
   printf '%s' "$prompt" > "$T/prompt.txt"
   model_run "$prompt" "$T/resp.json" \
     || { printf 'model_run_failed\n' > "$T/resp.json"; outcome=error; break; }
-  rt=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/parse-resp.f -- "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); toks=$((toks+rt))
+  rt=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/parse-resp-lib.f bench/llm/parse-resp.f -- "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); toks=$((toks+rt))
   extract "$T/text.txt" > "$T/f.rs"
   [ -s "$T/f.rs" ] || printf '// no candidate extracted\n' > "$T/f.rs"
   {

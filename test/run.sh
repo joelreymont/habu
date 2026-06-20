@@ -55,6 +55,7 @@ bin/hb --load tools/lint/lib.f tools/parallel-agent-lint.f || { echo "FAIL: para
 bin/hb --load tools/lint/lib.f tools/filemap-lint.f || { echo "FAIL: filemap-lint"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f bench/llm/manifest.f bench/llm/model.f bench/llm/model-test.f || { echo "FAIL: llm model registry"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f bench/llm/manifest.f bench/llm/model.f bench/llm/model-test.f | $CHECK >/dev/null || { echo "FAIL: llm model registry check"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f tools/json.f tools/argv.f bench/llm/manifest.f bench/llm/model.f bench/llm/parse-resp-lib.f bench/llm/model-run.f bench/llm/model-run-test.f || { echo "FAIL: llm model runner"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f bench/llm/manifest.f bench/llm/manifest-audit.f bench/llm/manifest-audit-test.f || { echo "FAIL: llm manifest audit"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f bench/llm/manifest.f bench/llm/manifest-audit.f bench/llm/manifest-audit-test.f | $CHECK >/dev/null || { echo "FAIL: llm manifest audit check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/llm/vectors.f bench/llm/vectors-test.f || { echo "FAIL: llm vector parser"; exit 1; }

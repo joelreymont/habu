@@ -118,6 +118,10 @@ points stay listed.
 - `bench/llm/manifest-audit-test.f` — focused coverage for benchmark manifest audit checks.
 - `bench/llm/model.f` — checked model registry scanner and selected-model metadata buffers.
 - `bench/llm/model-test.f` — focused coverage for model registry parsing and validation.
+- `bench/llm/model-run.f` — native model command runner for live benchmark drivers.
+- `bench/llm/model-run-test.f` — focused coverage for native model argv template expansion.
+- `bench/llm/parse-resp-lib.f` — loadable model response parser library for live benchmark drivers.
+- `bench/llm/parse-resp.f` — CLI wrapper for the model response parser.
 - `bench/llm/vectors.f` — checked benchmark vector parser and Habu snippet emitter.
 - `bench/llm/vectors-test.f` — focused coverage for vector parsing and emitted snippets.
 - `bench/llm/artifacts.f` — checked replay artifact path, SHA-256, and JSON field helpers.
