@@ -137,8 +137,10 @@ variable LV-RESULT-PATH-A
 variable LV-RESULT-PATH-U
 variable LV-RUN-U
 variable LV-RUN-SET
+variable LV-RUN-MIXED
 variable LV-MODEL-U
 variable LV-MODEL-SET
+variable LV-MODEL-MIXED
 variable LV-CUR-RUN-A
 variable LV-CUR-RUN-U
 variable LV-CUR-MODEL-A
@@ -881,7 +883,10 @@ variable LV-LINE-U
       -1 LV-RUN-SET !
       exit
    THEN
-   a u LV-RUN-BUF LV-RUN-U @ STR= 0= IF s" mixed run_id values" LV-FAIL-AT THEN ;
+   a u LV-RUN-BUF LV-RUN-U @ STR= 0= IF
+      LV-SCHEMA @ 2 = IF -1 LV-RUN-MIXED ! exit THEN
+      s" mixed run_id values" LV-FAIL-AT
+   THEN ;
 
 : LV-DATE-RUN? {: a:ptr u :} ( ptr u8 n -- bool )
    u DATE-LEN 1+ < IF 0 0= 0= exit THEN
@@ -903,12 +908,17 @@ variable LV-LINE-U
       -1 LV-MODEL-SET !
       exit
    THEN
-   a u LV-MODEL-BUF LV-MODEL-U @ STR= 0= IF s" mixed model values" LV-FAIL-AT THEN ;
+   a u LV-MODEL-BUF LV-MODEL-U @ STR= 0= IF
+      LV-SCHEMA @ 2 = IF -1 LV-MODEL-MIXED ! exit THEN
+      s" mixed model values" LV-FAIL-AT
+   THEN ;
 
 : LV-RUN$ ( -- ptr u8 n )
+   LV-RUN-MIXED @ IF s" multiple" exit THEN
    LV-RUN-BUF LV-RUN-U @ ;
 
 : LV-MODEL$ ( -- ptr u8 n )
+   LV-MODEL-MIXED @ IF s" multiple" exit THEN
    LV-MODEL-BUF LV-MODEL-U @ ;
 
 : LV-CHECK-STRING-META {: root :} ( n -- )
@@ -1120,8 +1130,10 @@ variable LV-LINE-U
    0 LV-SCHEMA-SET !
    0 LV-RUN-U !
    0 LV-RUN-SET !
+   0 LV-RUN-MIXED !
    0 LV-MODEL-U !
    0 LV-MODEL-SET !
+   0 LV-MODEL-MIXED !
    0 LV-ROWS !
    0 LV-CERT !
    0 LV-FIRST-TESTS !
