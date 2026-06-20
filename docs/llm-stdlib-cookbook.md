@@ -17,7 +17,7 @@ Load `lib/errors.f lib/test.f lib/array.f`. The published signatures include
 `A@ ( ptr a n n -- a )`, `A! ( a ptr a n n -- )`, `A-SUM ( ptr n n -- n )`,
 `A-MAP! ( ptr a n [ a -- a ] -- )`, `A-FOLDI ( ptr a n b [ b n a -- b ] -- b )`,
 and `A-FIND-INDEX ( ptr a n [ a -- bool ] -- n )`. They are covered by
-`lib/array-test.f`, `tools/array-test.sh`, and `examples/array.f`.
+`lib/array-test.f` and `examples/array.f`.
 
 ```forth
 4 constant AE-LEN
@@ -52,7 +52,7 @@ Load `lib/errors.f lib/string.f lib/test.f`. The published signatures include
 `TRIM ( ptr u8 n -- ptr u8 n )`, `STARTS-WITH? ( ptr u8 n ptr u8 n -- bool )`,
 `COUNT-CHAR ( ptr u8 n n -- n )`, `STR>NUMBER? ( ptr u8 n -- n bool )`,
 `SB-APPEND ( ptr u8 n -- )`, and `SB$ ( -- ptr u8 n )`. They are covered by
-`lib/string-test.f`, `tools/string-test.sh`, and `examples/string-regex.f`.
+`lib/string-test.f` and `examples/string-regex.f`.
 
 ```forth
 $2D constant SE-DASH
@@ -85,7 +85,7 @@ caller-owned `ptr a n`, sized by `MAP-CELLS ( n -- n )`, and keys are counted
 byte strings. The published signatures include `MAP-INIT ( ptr a n -- )`,
 `MAP-SET ( n ptr a n ptr u8 n -- )`, `MAP-GET ( ptr a n ptr u8 n -- n bool )`,
 and `MAP-EACH ( ptr a n [ ptr u8 n n -- ] -- )`. They are covered by
-`lib/map-test.f`, `lib/map-test.sh`, and `examples/file-map.f`.
+`lib/map-test.f` and `examples/file-map.f`.
 
 ```forth
 8 constant ME-CAP
@@ -124,8 +124,8 @@ caller-owned `ptr u8 n` storage. The published signatures include
 `RX-COMPILE ( ptr u8 n ptr u8 n -- n )`,
 `RX-MATCH? ( ptr u8 n ptr u8 n -- bool )`,
 `RX-FIND ( ptr u8 n ptr u8 n -- n n bool )`, and
-`RX-COUNT ( ptr u8 n ptr u8 n -- n )`. They are covered by `lib/regex-test.f`,
-`lib/regex-test.sh`, and `examples/string-regex.f`.
+`RX-COUNT ( ptr u8 n ptr u8 n -- n )`. They are covered by `lib/regex-test.f`
+and `examples/string-regex.f`.
 
 ```forth
 64 constant RE-RX-CAP

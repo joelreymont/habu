@@ -35,11 +35,11 @@ bin/hb --load tools/lint/lib.f tools/fs.f tools/host-lint.f || { echo "FAIL: hos
 bin/hb --load tools/lint/lib.f tools/parallel-agent-lint.f || { echo "FAIL: parallel-agent-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/filemap-lint.f || { echo "FAIL: filemap-lint"; exit 1; }
 ./tools/checked-boundary-lint-test.sh || { echo "FAIL: checked-boundary-lint"; exit 1; }
-./tools/string-test.sh || { echo "FAIL: string helpers"; exit 1; }
-./tools/array-test.sh || { echo "FAIL: array helpers"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/string-test.f || { echo "FAIL: string helpers"; exit 1; }
+bin/hb --load lib/errors.f lib/array.f lib/array-test.f || { echo "FAIL: array helpers"; exit 1; }
 bin/hb --load lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f || { echo "FAIL: table stdlib"; exit 1; }
-./lib/regex-test.sh || { echo "FAIL: regex stdlib"; exit 1; }
-./lib/map-test.sh || { echo "FAIL: map stdlib"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/regex.f lib/regex-test.f || { echo "FAIL: regex stdlib"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/map.f lib/map-test.f || { echo "FAIL: map stdlib"; exit 1; }
 ./lib/fs-test.sh || { echo "FAIL: fs stdlib"; exit 1; }
 ./lib/process-test.sh || { echo "FAIL: process stdlib"; exit 1; }
 ./lib/argv-test.sh || { echo "FAIL: argv stdlib"; exit 1; }

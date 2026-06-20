@@ -902,7 +902,7 @@ test "$(find bin -type f -perm -111 ! -name hb -print | wc -l)" -eq 0
 ./bench/llm/run.sh
 ./bench/llm/perf.sh
 ./tools/check.sh lib/array.f
-./lib/array-test.sh
+bin/hb --load lib/errors.f lib/array.f lib/array-test.f
 ./bench/llm/bench-test.sh
 ./bench/llm/grade-test.sh
 bin/hb < bench/llm/ref-solutions.f
