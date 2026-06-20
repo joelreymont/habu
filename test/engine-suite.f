@@ -184,6 +184,8 @@ ndict@ 0 > -1 T=
 epoch-seconds 1600000000 > -1 T=
 : TEPOCH epoch-seconds 1600000000 > ;
 TEPOCH -1 T=
+: TEPOCH-DEPTH depth >r epoch-seconds drop depth r> = ;
+TEPOCH-DEPTH -1 T=
 create TEPOCH-BYTE 120 c,
 : TEPOCH-AFTER-WRITEERR 99 TEPOCH-BYTE 1 write drop epoch-seconds 1600000000 > ;
 TEPOCH-AFTER-WRITEERR -1 T=

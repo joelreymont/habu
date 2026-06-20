@@ -125,6 +125,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `EFAULT` when stale positive x2 survives from a prior `write`; set all
   expected zero/null argument registers before `svc`, not just the apparent
   libc parameters.
+- **Syscall output buffers need owned storage:** `gettimeofday` writes a 16-byte
+  timeval; keep it in an audited DATA header scratch range, not live machine
+  `sp`, and test data/return-stack preservation around the primitive.
 - **Recursive directory walks need per-depth buffers:** `getdirentries64` records
   are batch-local; recursing with one shared dirent buffer corrupts the parent
   iteration. Keep directory buffers, offsets, record lengths, base cookies, and

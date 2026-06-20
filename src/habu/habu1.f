@@ -65,6 +65,7 @@ $37D0 constant EVALD-CELL  \ evaluate nesting depth (0 = top-level REPL/batch; g
 $37D8 constant EVALERR-CELL \ result of the last evaluate: 0 = clean, 1 = recovered from an error
 $37E0 constant LMAINP-CELL  \ runtime addr of the interpret loop top (EM-STARTUP stores it; B-EVAL branches there)
 $1D8 constant SSCR-CELL
+$1E0 constant GTOD-SCRATCH \ gettimeofday timeval scratch, 16 B; ends before DOESP-CELL
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF
 8000 constant BODYBUF-CAP
@@ -348,12 +349,10 @@ s" spawn-dup2-action" s" n n --" TRUST
 
 : BEPOCHSECONDS ( -- )
    LBL {: ok :}
-   SP SP 16 SUBI,
-   0 SP 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-GETTIMEOFDAY SYS,
+   0 DATA GTOD-SCRATCH ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-GETTIMEOFDAY SYS,
    9 C-CS CSET,  9 9 0 ORR,  9 0 CMPI,  C-EQ ok BCOND,  BRK,
    ok LBL,
-   9 SP 0 LDR,  9 G-PUSH
-   SP SP 16 ADDI, ;
+   9 DATA GTOD-SCRATCH LDR,  9 G-PUSH ;
 
 \ Monotonic nanoseconds for benchmarks. Darwin exposes `clock_gettime` and
 \ `mach_absolute_time` through libSystem/commpage APIs, not this raw-syscall
