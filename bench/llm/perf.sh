@@ -93,7 +93,7 @@ measure check_solutions ./tools/check.sh bench/llm/solutions.f
 measure functional_tests sh -c 'cat bench/llm/solutions.f bench/llm/tests.f | bin/hb'
 measure metric_validator bin/hb "$VALIDATOR"
 measure prop_smoke_250 sh -c 'bin/hb 123 250 < test/prop-test.f'
-measure microbench_smoke ./tools/bench.sh --smoke
+measure microbench_smoke bin/hb tools/bench.f --smoke
 
 if [ "$FULL" = 1 ]; then
   measure self_rebuild ./tools/build.sh
