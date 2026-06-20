@@ -541,7 +541,7 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/negative-score.f be
   echo "FAIL: llm negative scorer"
   exit 1
 }
-bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/expanded-report-test.f || {
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/expanded-report-test.f || {
   echo "FAIL: llm expanded report"
   exit 1
 }

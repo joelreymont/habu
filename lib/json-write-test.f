@@ -1,0 +1,128 @@
+\ json-write-test.f - focused tests for checked JSON writer.
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f
+\ lib/json-write.f lib/json-write-test.f
+
+create JWT-ESC-IN
+   65 c, JW-DQ c, JW-BACKSLASH c, JW-LF c, 1 c, 66 c,
+
+create JWT-ESC-WANT
+   JW-DQ c, 65 c, JW-BACKSLASH c, JW-DQ c, JW-BACKSLASH c, JW-BACKSLASH c,
+   JW-BACKSLASH c, 110 c, JW-BACKSLASH c, 117 c, JW-ZERO c, JW-ZERO c,
+   JW-ZERO c, 49 c, 66 c, JW-DQ c,
+
+create JWT-NAME
+   65 c, JW-DQ c, 66 c,
+
+: JWT-ESC-IN$ ( -- ptr u8 n )
+   JWT-ESC-IN 6 ;
+
+: JWT-ESC-WANT$ ( -- ptr u8 n )
+   JWT-ESC-WANT 16 ;
+
+: JWT-NAME$ ( -- ptr u8 n )
+   JWT-NAME 3 ;
+
+: JWT-TRUE ( -- bool )
+   0 0= ;
+
+: JWT-FALSE ( -- bool )
+   JWT-TRUE 0= ;
+
+: JWT-EXPECTED-OBJECT$ ( -- ptr u8 n )
+   SB-RESET
+   JW-LBRACE SB-APPEND-C
+   JW-DQ SB-APPEND-C s" name" SB-APPEND JW-DQ SB-APPEND-C JW-COLON-C SB-APPEND-C
+   JW-DQ SB-APPEND-C 65 SB-APPEND-C JW-BACKSLASH SB-APPEND-C JW-DQ SB-APPEND-C
+   66 SB-APPEND-C JW-DQ SB-APPEND-C
+   JW-COMMA-C SB-APPEND-C
+   JW-DQ SB-APPEND-C s" count" SB-APPEND JW-DQ SB-APPEND-C JW-COLON-C SB-APPEND-C
+   s" 42" SB-APPEND
+   JW-COMMA-C SB-APPEND-C
+   JW-DQ SB-APPEND-C s" ok" SB-APPEND JW-DQ SB-APPEND-C JW-COLON-C SB-APPEND-C
+   s" true" SB-APPEND
+   JW-COMMA-C SB-APPEND-C
+   JW-DQ SB-APPEND-C s" none" SB-APPEND JW-DQ SB-APPEND-C JW-COLON-C SB-APPEND-C
+   s" null" SB-APPEND
+   JW-RBRACE SB-APPEND-C
+   SB$ ;
+
+: JWT-EXPECTED-ARRAY$ ( -- ptr u8 n )
+   SB-RESET
+   JW-LBRACK SB-APPEND-C
+   s" 1" SB-APPEND
+   JW-COMMA-C SB-APPEND-C
+   JW-DQ SB-APPEND-C 120 SB-APPEND-C JW-DQ SB-APPEND-C
+   JW-COMMA-C SB-APPEND-C
+   s" false" SB-APPEND
+   JW-RBRACK SB-APPEND-C
+   SB$ ;
+
+: JWT-BUILD-OBJECT ( -- )
+   JW-RESET
+   JW-OBJECT-START
+   s" name" JWT-NAME$ JW-FIELD-S
+   JW-COMMA
+   s" count" 42 JW-FIELD-U
+   JW-COMMA
+   s" ok" JWT-TRUE JW-FIELD-BOOL
+   JW-COMMA
+   s" none" JW-FIELD-NULL
+   JW-OBJECT-END ;
+
+: JWT-BUILD-ARRAY ( -- )
+   JW-RESET
+   JW-ARRAY-START
+   1 JW-U
+   JW-COMMA
+   s" x" JW-STRING
+   JW-COMMA
+   JWT-FALSE JW-BOOL
+   JW-ARRAY-END ;
+
+: JWT-TEST-STRING-ESCAPE ( -- )
+   JW-RESET
+   JWT-ESC-IN$ JW-STRING
+   JW$ JWT-ESC-WANT$ T$= ;
+
+: JWT-TEST-OBJECT ( -- )
+   JWT-BUILD-OBJECT
+   JW$ JWT-EXPECTED-OBJECT$ T$= ;
+
+: JWT-TEST-ARRAY ( -- )
+   JWT-BUILD-ARRAY
+   JW$ JWT-EXPECTED-ARRAY$ T$= ;
+
+: JWT-RAW-NEG ( -- )
+   s" x" drop -1 JW-RAW ;
+
+: JWT-C-NEG ( -- )
+   -1 JW-C ;
+
+: JWT-C-HIGH ( -- )
+   256 JW-C ;
+
+: JWT-U-NEG ( -- )
+   -1 JW-U ;
+
+: JWT-OVERFLOW ( -- )
+   JW-RESET
+   JW-CAP 0 ?do 65 JW-C loop
+   66 JW-C ;
+
+: JWT-TEST-ERRORS ( -- )
+   ['] JWT-RAW-NEG E-JW-CAPACITY TTHROWS
+   ['] JWT-C-NEG E-JW-BYTE TTHROWS
+   ['] JWT-C-HIGH E-JW-BYTE TTHROWS
+   ['] JWT-U-NEG E-JW-BYTE TTHROWS
+   ['] JWT-OVERFLOW E-JW-CAPACITY TTHROWS ;
+
+: JWT-MAIN ( -- )
+   T-RESET
+   JWT-TEST-STRING-ESCAPE
+   JWT-TEST-OBJECT
+   JWT-TEST-ARRAY
+   JWT-TEST-ERRORS
+   T-REPORT
+   s" json-write-test: ok" type cr ;
+
+JWT-MAIN

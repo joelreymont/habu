@@ -61,13 +61,15 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/core/sha256.f bench/llm/artifacts.f bench/llm/artifacts-test.f | $CHECK >/dev/null || { echo "FAIL: llm artifact hash check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/negative-score.f bench/llm/negative-score-test.f || { echo "FAIL: llm negative scorer"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f bench/llm/negative-score.f bench/llm/negative-score-test.f | $CHECK >/dev/null || { echo "FAIL: llm negative scorer check"; exit 1; }
-bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/expanded-report-test.f || { echo "FAIL: llm expanded report"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/expanded-report-test.f | $CHECK >/dev/null || { echo "FAIL: llm expanded report check"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/expanded-report-test.f || { echo "FAIL: llm expanded report"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/expanded-report-test.f | $CHECK >/dev/null || { echo "FAIL: llm expanded report check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/core/sha256.f tools/sha256-file-test.f || { echo "FAIL: streaming sha256"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/imgdump.f tools/imgdump-test.f || { echo "FAIL: imgdump compare"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/checked-boundary-lint-test.f || { echo "FAIL: checked-boundary-lint"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/checked-boundary-lint-test.f | $CHECK >/dev/null || { echo "FAIL: checked-boundary-lint fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/string-test.f || { echo "FAIL: string helpers"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/json-write.f lib/json-write-test.f || { echo "FAIL: json writer helpers"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/json-write.f lib/json-write-test.f | $CHECK >/dev/null || { echo "FAIL: json writer helper check"; exit 1; }
 bin/hb --load lib/errors.f lib/array.f lib/array-test.f || { echo "FAIL: array helpers"; exit 1; }
 bin/hb --load lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f || { echo "FAIL: table stdlib"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/regex.f lib/regex-test.f || { echo "FAIL: regex stdlib"; exit 1; }

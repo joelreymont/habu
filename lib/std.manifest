@@ -76,6 +76,30 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR-PARSE-POS	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a nonnegative bounded i64
 1	string	lib/string.f	word	STR-PARSE-NEG	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a negative bounded i64
 1	string	lib/string.f	word	STR>NUMBER?	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse an optional-sign bounded i64
+1	json-write	lib/json-write.f	module			lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	checked emit-only JSON writer for fixtures and native tools
+1	json-write	lib/json-write.f	word	JW-CHECK-ROOM	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	validate JSON writer output capacity
+1	json-write	lib/json-write.f	word	JW-RESET	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	clear the JSON writer output buffer
+1	json-write	lib/json-write.f	word	JW-C	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	append one checked JSON output byte
+1	json-write	lib/json-write.f	word	JW-RAW	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	append raw JSON token bytes
+1	json-write	lib/json-write.f	word	JW-HEX	(n -- n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	convert a low hex digit to uppercase ASCII
+1	json-write	lib/json-write.f	word	JW-U00	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a JSON u00xx escape for one control byte
+1	json-write	lib/json-write.f	word	JW-ESC-C	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit one byte with JSON string escaping
+1	json-write	lib/json-write.f	word	JW-STRING	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit one escaped JSON string value
+1	json-write	lib/json-write.f	word	JW-KEY	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit one escaped object key and colon
+1	json-write	lib/json-write.f	word	JW-OBJECT-START	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object start delimiter
+1	json-write	lib/json-write.f	word	JW-OBJECT-END	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object end delimiter
+1	json-write	lib/json-write.f	word	JW-ARRAY-START	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an array start delimiter
+1	json-write	lib/json-write.f	word	JW-ARRAY-END	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an array end delimiter
+1	json-write	lib/json-write.f	word	JW-COMMA	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a comma delimiter
+1	json-write	lib/json-write.f	word	JW-NULL	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a JSON null value
+1	json-write	lib/json-write.f	word	JW-BOOL	(bool --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a JSON true or false value
+1	json-write	lib/json-write.f	word	JW-U	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a nonnegative integer value
+1	json-write	lib/json-write.f	word	JW-FIELD-RAW	(ptr u8 n ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with raw JSON value bytes
+1	json-write	lib/json-write.f	word	JW-FIELD-S	(ptr u8 n ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with escaped string value
+1	json-write	lib/json-write.f	word	JW-FIELD-U	(ptr u8 n n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with nonnegative integer value
+1	json-write	lib/json-write.f	word	JW-FIELD-BOOL	(ptr u8 n bool --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with boolean value
+1	json-write	lib/json-write.f	word	JW-FIELD-NULL	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with null value
+1	json-write	lib/json-write.f	word	JW$	(-- ptr u8 n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	return JSON writer output bytes
 1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	active	v1 regex scanner and matcher use ptr u8 n storage buffers, never unchecked addr dereference
 1	regex	lib/regex.f	word	RX-ESCAPABLE?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte can be escaped
 1	regex	lib/regex.f	word	RX-UNSUPPORTED-META?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test unsupported regex metacharacters

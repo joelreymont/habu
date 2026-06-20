@@ -84,3 +84,9 @@
 -3099 constant E-TBL-LAST
 -3000 constant E-TBL-BOUNDS
 -3001 constant E-TBL-FIELD
+
+\ JSON writer: -3100..-3199
+-3100 constant E-JW-FIRST
+-3199 constant E-JW-LAST
+-3100 constant E-JW-CAPACITY
+-3101 constant E-JW-BYTE

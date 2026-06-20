@@ -15,6 +15,7 @@ Planned module files:
 - `lib/array.f`
 - `lib/table.f`
 - `lib/string.f`
+- `lib/json-write.f`
 - `lib/regex.f`
 - `lib/map.f`
 - `lib/fs.f`
@@ -207,6 +208,45 @@ STR>NUMBER?     ( ptr u8 n -- n bool )
 module's current string-builder buffer and throw a named capacity error when the
 next append would exceed that buffer; they never truncate silently. `SPLIT-NEXT`
 returns the next field, the next scan index, and a success flag.
+
+## JSON Write
+
+`lib/json-write.f` is a checked emit-only JSON vocabulary for fixtures, benchmark
+rows, and native tools that do not need the full parser DOM from `tools/json.f`.
+It owns a bounded output buffer, emits compact JSON, escapes string control
+bytes/quotes/backslashes, and throws `E-JW-CAPACITY` or `E-JW-BYTE` instead of
+truncating or emitting invalid bytes. Commas remain explicit so object and array
+shape is visible in code.
+
+```forth
+JW-CHECK-ROOM  ( n -- )
+JW-RESET       ( -- )
+JW-C           ( n -- )
+JW-RAW         ( ptr u8 n -- )
+JW-HEX         ( n -- n )
+JW-U00         ( n -- )
+JW-ESC-C       ( n -- )
+JW-STRING      ( ptr u8 n -- )
+JW-KEY         ( ptr u8 n -- )
+JW-OBJECT-START ( -- )
+JW-OBJECT-END   ( -- )
+JW-ARRAY-START  ( -- )
+JW-ARRAY-END    ( -- )
+JW-COMMA        ( -- )
+JW-NULL       ( -- )
+JW-BOOL       ( bool -- )
+JW-U          ( n -- )
+JW-FIELD-RAW  ( ptr u8 n ptr u8 n -- )
+JW-FIELD-S    ( ptr u8 n ptr u8 n -- )
+JW-FIELD-U    ( ptr u8 n n -- )
+JW-FIELD-BOOL ( ptr u8 n bool -- )
+JW-FIELD-NULL ( ptr u8 n -- )
+JW$           ( -- ptr u8 n )
+```
+
+Prefer these words over constructing quoted JSON literals by hand. Use
+`JW-FIELD-S` when the value is arbitrary text and `JW-FIELD-RAW` only for a
+known-valid JSON fragment such as a prevalidated number lexeme.
 
 ## Regex
 

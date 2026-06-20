@@ -202,6 +202,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Large native tool bundles can corrupt reads:** combining large lint tables,
   `json.f`, and another large file buffer crashed JSON gate assertions. A lean
   standalone reader plus distinct helper scratch variables fixed it.
+- **Fixture structure deserves checked vocabulary:** when tests need structured
+  data such as JSON rows, factor a small checked writer/DSL instead of relying on
+  giant quoted literals or private byte emitters. This keeps escaping and shape
+  bugs in reusable Habu code.
 - **Unchecked core fixtures stay outside source files:** standalone core sources
   such as `src/core/sha256.f` must not disable checking themselves; put
   `0 set-check` in the fixture harness and keep checked wrappers/tests separate.
