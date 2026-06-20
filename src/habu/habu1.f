@@ -255,6 +255,20 @@ variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
    9 G-PUSH
    SP SP 16 ADDI, ;
 
+: BWAITSTATUS  A G-POP                \ ( pid -- status ) wait4 raw status; -1 = wait failed
+   LBL LBL {: wok wdn :}
+   SP SP 16 SUBI,
+   0 9 0 ADDI,
+   1 SP 0 ADDI,  2 0 MOVZ,  3 0 MOVZ,
+   NR-WAIT4 SYS,
+   9 C-CS CSET,  9 wok CBZ,
+      9 0 MOVN,  wdn B,
+   wok LBL,
+   9 SP 0 LDRW,
+   wdn LBL,
+   9 G-PUSH
+   SP SP 16 ADDI, ;
+
 \ Emit one PSFA_DUP2 record into the runtime file-actions blob at x13.
 : SPAWN-DUP2-ACTION {: fdreg newfd :}
    LBL {: skip :}
@@ -748,6 +762,7 @@ s" spawn-dup2-action" s" n n --" TRUST
    s" spawn-argv-io" ['] BSPAWNARGVIO FPRIM-L
    s" spawn-argv-env-io" ['] BSPAWNARGVENVIO FPRIM-L
    s" wait-rc" ['] BWAITRC FPRIM-L
+   s" wait-status" ['] BWAITSTATUS FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
