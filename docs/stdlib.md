@@ -18,6 +18,7 @@ Planned module files:
 - `lib/regex.f`
 - `lib/map.f`
 - `lib/fs.f`
+- `lib/source.f`
 - `lib/process.f`
 - `lib/process-argv.f`
 - `lib/process-env.f`
@@ -442,6 +443,47 @@ copy it before storing it.
 buffers or syscall results. They throw named filesystem errors on path overflow,
 stat/open/read/write failure, directory-depth overflow, and output capacity
 overflow.
+
+## Source Materialization
+
+`lib/source.f` provides checked helpers for bounded source assembly and small
+source-list transforms. It is layered after `lib/errors.f`, `lib/string.f`, and
+`lib/fs.f`. Callers supply output buffers and capacities; overflow throws
+`E-FS-CAPACITY`, and file/stdin I/O failures throw named filesystem errors.
+
+```forth
+SOURCE-READ-PROBE              ( -- )
+READ-STDIN-ALL                 ( ptr u8 n -- n )
+SOURCE-APPEND-BYTES            ( ptr u8 n ptr u8 n ptr n -- )
+SOURCE-PATH-A@                 ( ptr a n -- ptr u8 )
+SOURCE-PATH-U@                 ( ptr a n -- n )
+SOURCE-APPEND-FILE             ( ptr u8 n ptr u8 n ptr n -- )
+CONCAT-FILES                   ( ptr a ptr a n ptr u8 n -- n )
+WRITE-SOURCE-LIST              ( ptr a ptr a n ptr u8 n -- )
+SOURCE-FINAL-LINE-START        ( ptr u8 n -- n )
+INSERT-BEFORE-FINAL-LINE       ( ptr u8 n ptr u8 n ptr u8 n -- n )
+SOURCE-LINE-END                ( ptr u8 n n -- n )
+SOURCE-LINE-SKIP-WS            ( ptr u8 n -- n )
+SOURCE-EXPORT-LINE?            ( ptr u8 n -- bool )
+SOURCE-APPEND-COMMENTED-EXPORT ( ptr u8 n ptr u8 n ptr n -- )
+SOURCE-APPEND-COMMENT-LINE     ( ptr u8 n ptr u8 n ptr n -- )
+COMMENT-EXPORTS                ( ptr u8 n ptr u8 n -- n )
+```
+
+`CONCAT-FILES` concatenates counted path entries from parallel pointer/length
+tables into a caller buffer. `WRITE-SOURCE-LIST` writes that concatenation to a
+counted output path. `INSERT-BEFORE-FINAL-LINE` inserts a counted byte string
+before the final line of another counted byte string; when the source has no
+line break, insertion happens at the beginning. `COMMENT-EXPORTS` rewrites lines
+whose first non-space byte sequence starts with `EXPORT ` by replacing leading
+whitespace with `\ `, preserving all other bytes.
+
+`READ-STDIN-ALL` reads fd 0 into a caller buffer and probes one extra byte when
+the buffer fills so overflow fails closed instead of truncating. The current
+`hb` CLI contract treats non-tty stdin bytes as program source, so loaded script
+tools that need arbitrary data on fd 0 must wait for the explicit script-data
+stdin mode tracked in dots; file-path source materialization is the supported
+checked path today.
 
 ## Processes
 

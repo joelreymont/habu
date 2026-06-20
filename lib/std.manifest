@@ -263,6 +263,23 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs-mutate	lib/fs-mutate.f	word	CLEANUP-TREE+	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	register a recursive tree cleanup for temporary workspaces
 1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-CLEANUP-REMOVE	(n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	remove one cleanup registration if it exists
 1	fs-mutate	lib/fs-mutate.f	word	CLEANUP-RUN	(--)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	run cleanup registrations in reverse order
+1	source	lib/source.f	module			lib/source-test.f	docs/stdlib.md	stdlib-source	active	checked bounded source materialization and source-list transforms
+1	source	lib/source.f	word	SOURCE-READ-PROBE	(--)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	probe one extra stdin byte after a full buffer to reject truncation
+1	source	lib/source.f	word	READ-STDIN-ALL	(ptr u8 n -- n)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	read fd zero into a caller buffer and fail closed on overflow
+1	source	lib/source.f	word	SOURCE-APPEND-BYTES	(ptr u8 n ptr u8 n ptr n --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append bytes into a bounded destination tracked by a length cell
+1	source	lib/source.f	word	SOURCE-PATH-A@	(ptr a n -- ptr u8)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	fetch one path pointer from a source-list pointer table
+1	source	lib/source.f	word	SOURCE-PATH-U@	(ptr a n -- n)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	fetch one path length from a source-list length table
+1	source	lib/source.f	word	SOURCE-APPEND-FILE	(ptr u8 n ptr u8 n ptr n --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one counted file into a bounded destination
+1	source	lib/source.f	word	CONCAT-FILES	(ptr a ptr a n ptr u8 n -- n)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	concatenate counted path entries from parallel tables into a caller buffer
+1	source	lib/source.f	word	WRITE-SOURCE-LIST	(ptr a ptr a n ptr u8 n --)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	write concatenated source-list bytes to a counted output path
+1	source	lib/source.f	word	SOURCE-FINAL-LINE-START	(ptr u8 n -- n)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	return the byte offset of the final source line
+1	source	lib/source.f	word	INSERT-BEFORE-FINAL-LINE	(ptr u8 n ptr u8 n ptr u8 n -- n)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	insert counted bytes before the final line into a caller buffer
+1	source	lib/source.f	word	SOURCE-LINE-END	(ptr u8 n n -- n)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	return the end offset of a source line including newline when present
+1	source	lib/source.f	word	SOURCE-LINE-SKIP-WS	(ptr u8 n -- n)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	return first non-space-or-tab offset in a source line
+1	source	lib/source.f	word	SOURCE-EXPORT-LINE?	(ptr u8 n -- bool)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	test whether a source line begins with EXPORT after indentation
+1	source	lib/source.f	word	SOURCE-APPEND-COMMENTED-EXPORT	(ptr u8 n ptr u8 n ptr n --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one EXPORT line with leading whitespace replaced by a comment marker
+1	source	lib/source.f	word	SOURCE-APPEND-COMMENT-LINE	(ptr u8 n ptr u8 n ptr n --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one source line while commenting EXPORT directives
+1	source	lib/source.f	word	COMMENT-EXPORTS	(ptr u8 n ptr u8 n -- n)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	comment source EXPORT directives into a caller buffer
 1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup
 1	process	lib/process.f	word	PROC-WAIT-RAW	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-rc alias captured before checked wrapper shadows the primitive name
 1	process	lib/process.f	word	PROC-WAIT-STATUS-RAW	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-status alias captured before checked wrappers decode wait outcomes

@@ -1,0 +1,153 @@
+\ source-test.f - focused tests for checked source materialization helpers.
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/source.f lib/source-test.f
+
+2048 constant ST-CAP
+92 constant ST-BACKSLASH
+
+variable ST-ROOT-U
+variable ST-A-U
+variable ST-B-U
+variable ST-OUT-U
+variable ST-SRC-U
+variable ST-INS-U
+variable ST-WANT-U
+
+create ST-BUF ST-CAP allot
+create ST-SRC-BUF ST-CAP allot
+create ST-INS-BUF ST-CAP allot
+create ST-WANT-BUF ST-CAP allot
+create ST-ROOT-BUF FS-PATH-CAP allot
+create ST-A-BUF FS-PATH-CAP allot
+create ST-B-BUF FS-PATH-CAP allot
+create ST-OUT-PATH-BUF FS-PATH-CAP allot
+create ST-PATHS 2 cells allot
+create ST-LENS 2 cells allot
+
+: ST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u dst:ptr lenp:ptr :}
+   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   src dst u BYTE-COPY
+   u lenp ! ;
+
+: ST-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: base:ptr baseu name:ptr nameu dst:ptr lenp:ptr :}
+   base baseu name nameu dst JOIN-PATH lenp ! ;
+
+: ST-BYTES! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u dst:ptr lenp:ptr :}
+   u ST-CAP > if E-FS-CAPACITY throw then
+   src dst u BYTE-COPY
+   u lenp ! ;
+
+: ST-ROOT ( -- ptr u8 n )
+   ST-ROOT-BUF ST-ROOT-U @ ;
+
+: ST-A ( -- ptr u8 n )
+   ST-A-BUF ST-A-U @ ;
+
+: ST-B ( -- ptr u8 n )
+   ST-B-BUF ST-B-U @ ;
+
+: ST-OUT-PATH ( -- ptr u8 n )
+   ST-OUT-PATH-BUF ST-OUT-U @ ;
+
+: ST-SRC ( -- ptr u8 n )
+   ST-SRC-BUF ST-SRC-U @ ;
+
+: ST-INS ( -- ptr u8 n )
+   ST-INS-BUF ST-INS-U @ ;
+
+: ST-WANT ( -- ptr u8 n )
+   ST-WANT-BUF ST-WANT-U @ ;
+
+: ST-PATH-SLOT! ( ptr u8 n n -- ) {: a:ptr u idx :}
+   a ST-PATHS idx cells + !
+   u ST-LENS idx cells + ! ;
+
+: ST-LF ( -- )
+   10 SB-APPEND-C ;
+
+: ST-SB>SRC ( -- )
+   SB$ ST-SRC-BUF ST-SRC-U ST-BYTES! ;
+
+: ST-SB>INS ( -- )
+   SB$ ST-INS-BUF ST-INS-U ST-BYTES! ;
+
+: ST-SB>WANT ( -- )
+   SB$ ST-WANT-BUF ST-WANT-U ST-BYTES! ;
+
+: ST-INSERT-CASE! ( -- )
+   SB-RESET s" one" SB-APPEND ST-LF s" two" SB-APPEND ST-LF ST-SB>SRC
+   SB-RESET s" X" SB-APPEND ST-LF ST-SB>INS
+   SB-RESET s" one" SB-APPEND ST-LF s" X" SB-APPEND ST-LF s" two" SB-APPEND ST-LF ST-SB>WANT ;
+
+: ST-FINAL-CASE! ( -- )
+   SB-RESET s" final" SB-APPEND ST-SB>SRC
+   SB-RESET s" pre" SB-APPEND ST-LF ST-SB>INS
+   SB-RESET s" pre" SB-APPEND ST-LF s" final" SB-APPEND ST-SB>WANT ;
+
+: ST-EXPORT-CASE! ( -- )
+   SB-RESET
+   s" : A ;" SB-APPEND ST-LF
+   STR-SPACE SB-APPEND-C STR-SPACE SB-APPEND-C s" EXPORT A" SB-APPEND ST-LF
+   s" EXPORT B" SB-APPEND ST-LF
+   ST-SB>SRC
+   SB-RESET
+   s" : A ;" SB-APPEND ST-LF
+   ST-BACKSLASH SB-APPEND-C STR-SPACE SB-APPEND-C s" EXPORT A" SB-APPEND ST-LF
+   ST-BACKSLASH SB-APPEND-C STR-SPACE SB-APPEND-C s" EXPORT B" SB-APPEND ST-LF
+   ST-SB>WANT ;
+
+: ST-PREPARE ( -- )
+   CLEANUP-RESET
+   s" habu-source" TMPDIR-MKDIR {: a:ptr u :}
+   a u ST-ROOT-BUF ST-ROOT-U ST-COPY!
+   ST-ROOT CLEANUP-TREE+
+   ST-ROOT s" a.f" ST-A-BUF ST-A-U ST-PATH!
+   ST-ROOT s" b.f" ST-B-BUF ST-B-U ST-PATH!
+   ST-ROOT s" out.f" ST-OUT-PATH-BUF ST-OUT-U ST-PATH!
+   ST-A s" alpha" WRITE-ALL
+   ST-B s" beta" WRITE-ALL
+   ST-A 0 ST-PATH-SLOT!
+   ST-B 1 ST-PATH-SLOT! ;
+
+: TEST-READ-STDIN-ALL ( -- )
+   ST-BUF ST-CAP READ-STDIN-ALL 0 T= ;
+
+: TEST-CONCAT-FILES ( -- )
+   ST-PATHS ST-LENS 2 ST-BUF ST-CAP CONCAT-FILES 9 T=
+   ST-BUF 9 s" alphabeta" T$= ;
+
+: TEST-WRITE-SOURCE-LIST ( -- )
+   ST-PATHS ST-LENS 2 ST-OUT-PATH WRITE-SOURCE-LIST
+   ST-OUT-PATH ST-BUF ST-CAP READ-ALL 9 T=
+   ST-BUF 9 s" alphabeta" T$= ;
+
+: TEST-INSERT-BEFORE-FINAL-LINE ( -- )
+   ST-INSERT-CASE!
+   ST-SRC ST-INS ST-BUF ST-CAP INSERT-BEFORE-FINAL-LINE ST-WANT-U @ T=
+   ST-BUF ST-WANT-U @ ST-WANT T$=
+   ST-FINAL-CASE!
+   ST-SRC ST-INS ST-BUF ST-CAP INSERT-BEFORE-FINAL-LINE ST-WANT-U @ T=
+   ST-BUF ST-WANT-U @ ST-WANT T$= ;
+
+: TEST-COMMENT-EXPORTS ( -- )
+   ST-EXPORT-CASE!
+   ST-SRC ST-BUF ST-CAP COMMENT-EXPORTS ST-WANT-U @ T=
+   ST-BUF ST-WANT-U @ ST-WANT T$= ;
+
+: TEST-SOURCE-ERRORS ( -- )
+   s" abc" s" xyz" ST-BUF 5 INSERT-BEFORE-FINAL-LINE drop ;
+
+: SOURCE-TEST-MAIN ( -- )
+   T-RESET
+   ST-PREPARE
+   TEST-READ-STDIN-ALL
+   TEST-CONCAT-FILES
+   TEST-WRITE-SOURCE-LIST
+   TEST-INSERT-BEFORE-FINAL-LINE
+   TEST-COMMENT-EXPORTS
+   ['] TEST-SOURCE-ERRORS E-FS-CAPACITY TTHROWS
+   CLEANUP-RUN
+   ST-ROOT EXISTS? TFALSE
+   T-REPORT
+   s" source-test: ok" type cr ;
+
+SOURCE-TEST-MAIN
