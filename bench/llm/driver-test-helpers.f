@@ -56,3 +56,24 @@ fixture	Fixture	/bin/echo	{prompt}	raw		2
    JW-RESET
    JW-FIELD-S
    DTH-ROW-HAS-JSON ;
+
+: DTH-ROW-NEED-KEY ( ptr u8 n -- )
+   DTH-ROW-HAS-KEY ;
+
+: DTH-ROW-NEED-S ( ptr u8 n ptr u8 n -- )
+   DTH-ROW-HAS-S ;
+
+: DTH-ROW-NEED-U ( ptr u8 n n -- )
+   JW-RESET
+   JW-FIELD-U
+   DTH-ROW-HAS-JSON ;
+
+: DTH-ROW-NEED-BOOL ( ptr u8 n bool -- )
+   JW-RESET
+   JW-FIELD-BOOL
+   DTH-ROW-HAS-JSON ;
+
+: DTH-ROW-NEED-NULL ( ptr u8 n -- )
+   JW-RESET
+   JW-FIELD-NULL
+   DTH-ROW-HAS-JSON ;

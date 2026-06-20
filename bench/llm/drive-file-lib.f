@@ -4,8 +4,6 @@
 
 64 constant DF-FIX-CAP
 3 constant DF-FIX-SMALL-CAP
-10 constant DF-LF
-32 constant DF-SPACE
 
 create DF-PRELUDE-PATH FS-PATH-CAP allot
 create DF-READ-PATH FS-PATH-CAP allot
@@ -59,69 +57,19 @@ variable DF-BIG-U
    DF-APPEND$ s" alpha" WRITE-ALL
    DF-BIG$ s" abcd" WRITE-ALL ;
 
-: DF-TEST-C ( n -- )
-   DS-TEST-BUF DS-TEST-CAP DS-TEST-U DS-BUF-C ;
-
-: DF-TEST-SP ( -- )
-   DF-SPACE DF-TEST-C ;
-
-: DF-TEST-LF ( -- )
-   DF-LF DF-TEST-C ;
-
-: DF-TEST-U+ ( n -- ) {: n :}
-   n 0 < if DS-DASH DF-TEST-C n negate recurse exit then
-   n 10 >= if n 10 / recurse then
-   n 10 mod DS-ZERO + DF-TEST-C ;
-
-: DF-PRELUDE-CONSTANT ( n ptr u8 n -- ) {: n name:ptr nameu :}
-   n DF-TEST-U+
-   s"  constant " DS-TEST+
-   name nameu DS-TEST+
-   DF-TEST-LF ;
-
-: DF-PRELUDE-BYTES ( ptr u8 n ptr u8 n -- )
-   {: data:ptr datau name:ptr nameu :}
-   s" create " DS-TEST+
-   name nameu DS-TEST+
-   DF-TEST-SP
-   0 begin dup datau < while
-      dup data + c@ DF-TEST-U+
-      s"  c, " DS-TEST+
-      1+
-   repeat drop
-   DF-TEST-LF ;
-
-: DF-PRELUDE-$WORD ( ptr u8 n ptr u8 n n -- )
-   {: word:ptr wordu buf:ptr bufu len :}
-   s" : " DS-TEST+
-   word wordu DS-TEST+
-   s"  ( -- ptr u8 n ) " DS-TEST+
-   buf bufu DS-TEST+
-   DF-TEST-SP
-   len DF-TEST-U+
-   s"  ;" DS-TEST-LN ;
-
-: DF-PRELUDE-STRING ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: data:ptr datau buf:ptr bufu word:ptr wordu :}
-   data datau buf bufu DF-PRELUDE-BYTES
-   word wordu buf bufu datau DF-PRELUDE-$WORD ;
-
-: DF-PRELUDE-FIXTURE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   DF-PRELUDE-STRING ;
-
 : DF-BUILD-PRELUDE ( -- )
    DS-TEST-RESET
-   DF-FIX-CAP s" FS-FIX-CAP" DF-PRELUDE-CONSTANT
-   DF-FIX-SMALL-CAP s" FS-FIX-SMALL-CAP" DF-PRELUDE-CONSTANT
+   DF-FIX-CAP s" FS-FIX-CAP" DFH-CONSTANT
+   DF-FIX-SMALL-CAP s" FS-FIX-SMALL-CAP" DFH-CONSTANT
    s" create FS-FIX-BUF FS-FIX-CAP allot" DS-TEST-LN
-   DF-READ$ s" FS-FIX-READ-PATH-BUF" s" FS-FIX-READ-PATH$" DF-PRELUDE-FIXTURE
-   DF-WRITE$ s" FS-FIX-WRITE-PATH-BUF" s" FS-FIX-WRITE-PATH$" DF-PRELUDE-FIXTURE
-   DF-APPEND$ s" FS-FIX-APPEND-PATH-BUF" s" FS-FIX-APPEND-PATH$" DF-PRELUDE-FIXTURE
-   DF-BIG$ s" FS-FIX-BIG-PATH-BUF" s" FS-FIX-BIG-PATH$" DF-PRELUDE-FIXTURE
-   s" alpha-beta" s" FS-FIX-READ-WANT-BUF" s" FS-FIX-READ-WANT$" DF-PRELUDE-STRING
-   s" omega" s" FS-FIX-WRITE-DATA-BUF" s" FS-FIX-WRITE-DATA$" DF-PRELUDE-STRING
-   s" -beta" s" FS-FIX-APPEND-DATA-BUF" s" FS-FIX-APPEND-DATA$" DF-PRELUDE-STRING
-   s" alpha-beta" s" FS-FIX-APPEND-WANT-BUF" s" FS-FIX-APPEND-WANT$" DF-PRELUDE-STRING
+   DF-READ$ s" FS-FIX-READ-PATH-BUF" s" FS-FIX-READ-PATH$" DFH-STRING
+   DF-WRITE$ s" FS-FIX-WRITE-PATH-BUF" s" FS-FIX-WRITE-PATH$" DFH-STRING
+   DF-APPEND$ s" FS-FIX-APPEND-PATH-BUF" s" FS-FIX-APPEND-PATH$" DFH-STRING
+   DF-BIG$ s" FS-FIX-BIG-PATH-BUF" s" FS-FIX-BIG-PATH$" DFH-STRING
+   s" alpha-beta" s" FS-FIX-READ-WANT-BUF" s" FS-FIX-READ-WANT$" DFH-STRING
+   s" omega" s" FS-FIX-WRITE-DATA-BUF" s" FS-FIX-WRITE-DATA$" DFH-STRING
+   s" -beta" s" FS-FIX-APPEND-DATA-BUF" s" FS-FIX-APPEND-DATA$" DFH-STRING
+   s" alpha-beta" s" FS-FIX-APPEND-WANT-BUF" s" FS-FIX-APPEND-WANT$" DFH-STRING
    DF-PRELUDE$ DS-TEST$ WRITE-ALL ;
 
 : DF-BUILD-PROMPT ( -- )
@@ -256,25 +204,18 @@ variable DF-BIG-U
    s"  -> -1 }T" DS-TEST-LN
    s" DST-REPORT" DS-TEST-LN ;
 
-: DF-TEST-S" ( ptr u8 n -- ) {: a:ptr u :}
-   s" s" DS-TEST+
-   [char] " DF-TEST-C
-   DF-TEST-SP
-   a u DS-TEST+
-   [char] " DF-TEST-C ;
-
 : DF-BUILD-NEGATIVE-TESTS ( -- )
    DS-TEST-RESET
    s" : DF-NEG-MAIN ( -- )" DS-TEST-LN
    s"    ['] FS-READ-CAPACITY catch" DS-TEST-LN
    s"    dup E-FS-CAPACITY = if drop " DS-TEST+
-   s" code E-FS-CAPACITY" DF-TEST-S"
+   s" code E-FS-CAPACITY" DFH-SOURCE-S"
    s"  type cr exit then" DS-TEST-LN
    s"    0= if " DS-TEST+
-   s" silent success" DF-TEST-S"
+   s" silent success" DFH-SOURCE-S"
    s"  type cr 1 die then" DS-TEST-LN
    s"    " DS-TEST+
-   s" wrong error code" DF-TEST-S"
+   s" wrong error code" DFH-SOURCE-S"
    s"  type cr 1 die ;" DS-TEST-LN
    s" DF-NEG-MAIN" DS-TEST-LN ;
 

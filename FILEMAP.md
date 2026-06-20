@@ -129,6 +129,7 @@ points stay listed.
 - `bench/llm/live-row.f` — checked schema-v2 live benchmark row emitter with replay artifacts.
 - `bench/llm/live-row-test.f` — focused coverage for native live benchmark row emission.
 - `bench/llm/driver-test-helpers.f` — shared checked fixture/source helpers for live driver tests.
+- `bench/llm/driver-fixture-helpers.f` — checked DSL for generated benchmark fixture vocabularies and test bundles.
 - `bench/llm/drive-stdlib-lib.f` — native stdlib stack benchmark driver with checked candidate/test assembly.
 - `bench/llm/drive-stdlib.f` — CLI wrapper for the stdlib stack benchmark driver.
 - `bench/llm/drive-stdlib-test.f` — focused coverage for stdlib stack driver acceptance and source-use guards.

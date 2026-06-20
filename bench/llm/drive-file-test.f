@@ -94,9 +94,9 @@
    LR-OUTCOME$ s" pass" T$=
    LR-FIRST-CHECKER$ s" certified" T$=
    LR-TESTS-PASSED @ -1 T=
-   s" arm" s" habu-stdlib-file" DTH-ROW-HAS-S
-   s" prompt_sha256" DTH-ROW-HAS-KEY
-   s" final_bundle_sha256" DTH-ROW-HAS-KEY ;
+   s" arm" s" habu-stdlib-file" DTH-ROW-NEED-S
+   s" prompt_sha256" DTH-ROW-NEED-KEY
+   s" final_bundle_sha256" DTH-ROW-NEED-KEY ;
 
 : DFT-ASSERT-REJECT ( -- )
    LR-OUTCOME$ s" reject" T$=
