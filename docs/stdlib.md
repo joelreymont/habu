@@ -837,6 +837,30 @@ requires the artifact, stores the rc, and returns it. Argv is modeled as metadat
 until the process layer grows argv-vector spawning; it is still part of the
 checked build contract so drivers can preserve intended command arguments.
 
+`lib/codesign.f` owns checked executable promotion and macOS ad-hoc signing
+helpers for build drivers that already produced an artifact. It validates every
+input path before mutation, runs `/usr/bin/codesign` through the checked argv
+process layer, throws `E-BUILD-COMMAND` when the tool is absent, throws
+`E-BUILD-PATH` for missing artifacts, and throws `E-BUILD-STATUS` for nonzero
+signing or verification status:
+
+```forth
+CODESIGN-TOOL                ( -- ptr u8 n )
+CODESIGN-RC0                 ( n -- )
+CODESIGN-EXPECT-TOOL         ( -- )
+CODESIGN-EXPECT-FILE         ( ptr u8 n -- )
+CODESIGN-RUN                 ( -- n )
+CODESIGN-VERIFY              ( ptr u8 n -- )
+CODESIGN-FORCE               ( ptr u8 n -- )
+PROMOTE-EXECUTABLE           ( ptr u8 n ptr u8 n -- )
+PROMOTE-SIGNED-EXECUTABLE    ( ptr u8 n ptr u8 n -- )
+```
+
+`PROMOTE-EXECUTABLE` chmods the source artifact executable, renames it to the
+destination, and verifies the destination file exists. The source path is gone
+after successful promotion. `PROMOTE-SIGNED-EXECUTABLE` ad-hoc signs the source,
+promotes it, and verifies the promoted executable signature.
+
 ## Build Shell Boundary
 
 Shell wrappers may only set final environment values, create and export private

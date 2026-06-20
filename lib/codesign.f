@@ -1,0 +1,60 @@
+\ codesign.f - checked executable promotion and ad-hoc signing helpers.
+\
+\ Load after lib/errors.f, lib/fs.f, lib/fs-mutate.f, lib/process.f,
+\ and lib/process-argv.f.
+
+4096 constant CODESIGN-OUT-CAP
+4096 constant CODESIGN-ERR-CAP
+10000 constant CODESIGN-TIMEOUT-MS
+
+create CODESIGN-OUT CODESIGN-OUT-CAP allot
+create CODESIGN-ERR CODESIGN-ERR-CAP allot
+
+: CODESIGN-TOOL ( -- ptr u8 n )
+   s" /usr/bin/codesign" ;
+
+: CODESIGN-RC0 ( n -- )
+   0 <> if E-BUILD-STATUS throw then ;
+
+: CODESIGN-EXPECT-TOOL ( -- )
+   CODESIGN-TOOL FILE? 0= if E-BUILD-COMMAND throw then ;
+
+: CODESIGN-EXPECT-FILE ( ptr u8 n -- ) {: a:ptr u :}
+   u 0 <= if E-BUILD-PATH throw then
+   a u FILE? 0= if E-BUILD-PATH throw then ;
+
+: CODESIGN-RUN ( -- n )
+   CODESIGN-EXPECT-TOOL
+   CODESIGN-TOOL
+   CODESIGN-OUT CODESIGN-OUT-CAP
+   CODESIGN-ERR CODESIGN-ERR-CAP
+   CODESIGN-TIMEOUT-MS RUN-ARGV-CAPTURE
+   nip nip ;
+
+: CODESIGN-VERIFY ( ptr u8 n -- ) {: a:ptr u :}
+   a u CODESIGN-EXPECT-FILE
+   PROC-ARGV-RESET
+   s" -v" PROC-ARGV+
+   a u PROC-ARGV+
+   CODESIGN-RUN CODESIGN-RC0 ;
+
+: CODESIGN-FORCE ( ptr u8 n -- ) {: a:ptr u :}
+   a u CODESIGN-EXPECT-FILE
+   PROC-ARGV-RESET
+   s" -s" PROC-ARGV+
+   s" -" PROC-ARGV+
+   s" --force" PROC-ARGV+
+   a u PROC-ARGV+
+   CODESIGN-RUN CODESIGN-RC0 ;
+
+: PROMOTE-EXECUTABLE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
+   src srcu CODESIGN-EXPECT-FILE
+   dstu 0 <= if E-BUILD-PATH throw then
+   src srcu CHMOD-X
+   src srcu dst dstu RENAME-FILE
+   dst dstu CODESIGN-EXPECT-FILE ;
+
+: PROMOTE-SIGNED-EXECUTABLE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
+   src srcu CODESIGN-FORCE
+   src srcu dst dstu PROMOTE-EXECUTABLE
+   dst dstu CODESIGN-VERIFY ;

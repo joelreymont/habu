@@ -17,6 +17,7 @@ variable PT-CAPTURE-HB-U
 create PT-BUF 32 allot
 create PT-OUT 32 allot
 create PT-ERR 32 allot
+create PT-PWD-OUT 256 allot
 create PT-ROOT-BUF FS-PATH-CAP allot
 create PT-CAPTURE-OK-BUF FS-PATH-CAP allot
 create PT-CAPTURE-LONG-BUF FS-PATH-CAP allot
@@ -156,7 +157,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PT-W @ close ;
 
 : TEST-RUN-CAPTURE-BASIC ( -- )
-   s" /bin/pwd" PT-OUT 32 PT-ERR 32 1000 RUN-CAPTURE 0 T= 0 T= 0 > TTRUE ;
+   s" /bin/pwd" PT-PWD-OUT 256 PT-ERR 32 1000 RUN-CAPTURE 0 T= 0 T= 0 > TTRUE ;
 
 : TEST-RUN-ARGV-CAPTURE-BASIC ( -- )
    PT-CAPTURE-OK PT-OUT 32 PT-ERR 32 1000 PT-RUN-HB-SCRIPT 7 T= 3 T= 3 T=

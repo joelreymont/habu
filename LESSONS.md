@@ -306,3 +306,12 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   executes the final source after checking. For scripts with a top-level `MAIN`,
   use a no-main fixture or safe argv/env inputs; otherwise the check can launch
   the live tool and write default artifacts.
+- **Checker fixture bundles need token headroom:** focused stdlib checker runs
+  concatenate dependencies plus the fixture under `tools/check.f`. Keep
+  `tools/lint/source-lex.f` token capacity sized for real checked bundles rather
+  than dropping the diagnostic check when adding a library module pushes past an
+  old cap.
+- **Process capture fixtures must allow fork paths:** tests that capture
+  `/bin/pwd` need output buffers sized for isolated jj workspace paths, not just
+  the short main checkout path; otherwise valid forked workspaces throw
+  `E-PROC-TRUNCATED` before the targeted change is exercised.
