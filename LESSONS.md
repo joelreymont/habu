@@ -127,6 +127,11 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   loop-index scratch variable. `COMMENT-EXPORTS` once handed only newline bytes
   to its line appender because `SOURCE-LINE-END` clobbered the outer `SOURCE-I`;
   inner scans need their own scratch cells or locals.
+- **Branch paths must preserve loop indexes:** a successful branch in
+  `SMT-CHECK-LIB-COVERAGE` used `drop 2drop` and removed the loop index, so the
+  next `1+` ran on an empty stack after the checks passed. Factor row predicates
+  or audit both branch effects when a checked tool repeats one row or crashes
+  after success.
 
 ## Darwin And Syscalls
 

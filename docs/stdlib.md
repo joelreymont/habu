@@ -878,14 +878,14 @@ rows describe only public checked definitions that exist in source. The `effect`
 field must match the normalized `signature` emitted by:
 
 ```sh
-bin/hb /tmp/public-signatures.f lib/<module>.f
+bin/hb --load tools/lint/lib.f tools/public-signatures.f -- lib/<module>.f
 ```
 
-where `/tmp/public-signatures.f` is built from `tools/lint/lib.f` followed by
-`tools/public-signatures.f`, as in `tools/stdlib-manifest-test.sh`.
+The manifest, docs, source coverage, and signature drift are validated by
+`tools/stdlib-manifest-test.f`.
 
 Run the focused check with:
 
 ```sh
-./tools/stdlib-manifest-test.sh
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/lib.f tools/stdlib-manifest-test.f
 ```

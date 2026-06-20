@@ -283,6 +283,6 @@ when signatures or stdlib prose changed:
 
 ```sh
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f
-./tools/stdlib-manifest-test.sh
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/lib.f tools/stdlib-manifest-test.f
 ( cd test && ./run.sh )
 ```

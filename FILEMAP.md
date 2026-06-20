@@ -73,6 +73,7 @@ points stay listed.
 - `tools/diag-to-sarif.f` — converts diagnostic JSONL to SARIF for CI/review UIs.
 - `tools/public-signatures.f` — emits typed public-word manifests for agents.
 - `tools/public-signatures-test.f` — checked fixture coverage for public-signature manifests.
+- `tools/stdlib-manifest-test.f` — validates `lib/std.manifest`, stdlib docs, and source-backed signatures.
 - `tools/aot-call-report.f` — measures patched AOT call-stencil padding.
 - `tools/aot-call-report-test.f` — checked fixture coverage for AOT call-stencil reports.
 - `tools/bundle-lib-test.f` — checked fixture coverage for the stdlib bundle tool.

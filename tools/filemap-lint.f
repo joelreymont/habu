@@ -118,6 +118,7 @@ variable FM-NUM-L
    s" tools/diag-to-sarif.f" FM-REQ
    s" tools/public-signatures.f" FM-REQ
    s" tools/public-signatures-test.f" FM-REQ
+   s" tools/stdlib-manifest-test.f" FM-REQ
    s" tools/aot-call-report.f" FM-REQ
    s" tools/aot-call-report-test.f" FM-REQ
    s" tools/bundle-lib-test.f" FM-REQ
