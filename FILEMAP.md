@@ -108,6 +108,9 @@ points stay listed.
 - `test/prop-test.f` — self-hosted property-based checker-soundness test (in-process via `evaluate`).
 - `test/engine-suite.f` — native engine behavior suite.
 - `bench/llm/tasks.tsv` — LLM benchmark task set.
+- `bench/llm/models.tsv` — model registry for live benchmark sweeps.
+- `bench/llm/model.f` — checked model registry scanner and selected-model metadata buffers.
+- `bench/llm/model-test.f` — focused coverage for model registry parsing and validation.
 - `bench/llm/solutions.f` — reference benchmark solutions.
 - `bench/llm/validate-results.f` — native reference/attempt metric validator and summarizer.
 - `bench/llm/validate-results-test.sh` — fixture coverage for metric validation.

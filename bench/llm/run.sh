@@ -525,6 +525,10 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/ll
   echo "FAIL: llm manifest scanner"
   exit 1
 }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f bench/llm/manifest.f bench/llm/model.f bench/llm/model-test.f || {
+  echo "FAIL: llm model registry scanner"
+  exit 1
+}
 $CHECK bench/llm/solutions.f >"$T/check.out" 2>"$T/check.err" || {
   cat "$T/check.err"
   echo "FAIL: answer key is not all-certified"
