@@ -1,7 +1,6 @@
 \ json-only.f - emit JSON diagnostic object lines, else pass stderr through.
-\ Load with argv/json support:
-\   cat tools/argv.f tools/json.f tools/json-only.f > /tmp/json-only.f
-\   bin/hb /tmp/json-only.f stderr-file
+\ Run with argv/json support:
+\   bin/hb --load tools/argv.f tools/json.f tools/json-only.f -- stderr-file
 
 \ Tool driver boundary: raw file descriptors plus wrapper exit behavior. The
 \ JSON parser loaded before this file stays checked.
