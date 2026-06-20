@@ -51,7 +51,7 @@ points stay listed.
 - `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.
 - `tools/lint/source-lex.f` — shared source lexer for native lints.
 - `tools/signature-lint.f` — strict typed-signature lint.
-- `tools/signature-lint-test.sh` — fixture coverage for strict typed-signature lint.
+- `tools/signature-lint-test.f` — checked fixture coverage for strict typed-signature lint.
 - `tools/aot-lint.f` — stripped-AOT unsupported-word lint.
 - `tools/aot-lint-test.f` — checked fixture coverage for stripped-AOT source lint.
 - `tools/diag-origin.f` — injects source-origin markers for checker JSON.
