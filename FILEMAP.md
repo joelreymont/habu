@@ -55,7 +55,7 @@ points stay listed.
 - `tools/aot-lint.f` — stripped-AOT unsupported-word lint.
 - `tools/aot-lint-test.sh` — fixture coverage for stripped-AOT source lint.
 - `tools/diag-origin.f` — injects source-origin markers for checker JSON.
-- `tools/diag-origin-test.sh` — fixture coverage for diagnostic origin markers.
+- `tools/diag-origin-test.f` — checked fixture coverage for diagnostic origin markers.
 - `tools/json-only.f` — keeps wrapper JSON mode machine-only on known diagnostics.
 - `tools/json-only-test.f` — checked fixture coverage for JSON diagnostic filtering.
 - `tools/gate-json-assert.f` — native JSON assertions for the default gate.

@@ -101,7 +101,7 @@ variable FM-NUM-L
    s" tools/aot-lint.f" FM-REQ
    s" tools/aot-lint-test.sh" FM-REQ
    s" tools/diag-origin.f" FM-REQ
-   s" tools/diag-origin-test.sh" FM-REQ
+   s" tools/diag-origin-test.f" FM-REQ
    s" tools/json-only.f" FM-REQ
    s" tools/gate-json-assert.f" FM-REQ
    s" tools/host-lint.f" FM-REQ

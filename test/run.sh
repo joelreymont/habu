@@ -28,6 +28,8 @@ trap cleanup EXIT HUP INT TERM
 bin/hb --load tools/lint/lib.f tools/lint/shadow-lint.f || { echo "FAIL: shadow-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/lint/clobber-lint.f || { echo "FAIL: clobber-lint"; exit 1; }
 bin/hb --load tools/lint/lib.f tools/repl-lint.f || { echo "FAIL: repl-lint"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/diag-origin-test.f || { echo "FAIL: diag-origin fixtures"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/diag-origin-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: diag-origin fixture check"; exit 1; }
 bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/trust-lint.f || { echo "FAIL: trust-lint"; exit 1; }
 ./tools/trust-lint-test.sh || { echo "FAIL: trust-lint fixtures"; exit 1; }
 bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/stale-status-lint.f || { echo "FAIL: stale-status-lint"; exit 1; }
