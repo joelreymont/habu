@@ -235,6 +235,12 @@ variable FS-IO-WR
 : APPEND-FILE ( ptr u8 n ptr u8 n -- )
    FS-O-WRONLY FS-O-CREAT or FS-O-APPEND or FS-WRITE-BY-FLAGS ;
 
+: OPEN-APPEND-FD ( ptr u8 n -- n ) {: pa:ptr pu :}
+   pa pu EXISTS? if pa pu FILE? 0= if E-FS-OPEN throw then then
+   pa pu FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-APPEND or FS-MODE-0644 open {: fd :}
+   fd 0 < if E-FS-OPEN throw then
+   fd ;
+
 : FS-DOT-ENTRY? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 1 = if a c@ FS-DOT = else FS-FALSE then ;
 

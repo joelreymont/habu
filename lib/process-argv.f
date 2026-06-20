@@ -2,8 +2,8 @@
 \
 \ Load after lib/errors.f and lib/process.f.
 
-16 constant PROC-ARGV-MAX
-4096 constant PROC-ARGV-BUF-CAP
+64 constant PROC-ARGV-MAX
+32768 constant PROC-ARGV-BUF-CAP
 
 create PROC-ARGV-TABLE PROC-ARGV-MAX 1 + cells allot
 create PROC-ARGV-BUF PROC-ARGV-BUF-CAP allot

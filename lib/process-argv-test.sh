@@ -16,7 +16,7 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/habu-process-argv.XXXXXX")
 cleanup() { rm -rf "$T"; }
 trap cleanup EXIT HUP INT TERM
 
-LONG_ARG=$(printf '%4097s' '' | tr ' ' a)
+LONG_ARG=$(printf '%32769s' '' | tr ' ' a)
 BUNDLE=$T/process-argv-test.f
 cat lib/errors.f lib/test.f lib/process.f lib/process-argv.f \
   lib/process-argv-test.f > "$BUNDLE"
