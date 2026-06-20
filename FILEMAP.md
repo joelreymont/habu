@@ -129,6 +129,7 @@ points stay listed.
 - `bench/llm/live-row.f` — checked schema-v2 live benchmark row emitter with replay artifacts.
 - `bench/llm/live-row-test.f` — focused coverage for native live benchmark row emission.
 - `bench/llm/driver-test-helpers.f` — shared checked fixture/source helpers for live driver tests.
+- `bench/llm/driver-token-helpers.f` — checked exact-token source guards for large live drivers that need prefix-safe checks.
 - `bench/llm/driver-fixture-helpers.f` — checked DSL for generated benchmark fixture vocabularies and test bundles.
 - `bench/llm/drive-stdlib-lib.f` — native stdlib stack benchmark driver with checked candidate/test assembly.
 - `bench/llm/drive-stdlib.f` — CLI wrapper for the stdlib stack benchmark driver.
@@ -142,6 +143,9 @@ points stay listed.
 - `bench/llm/drive-property-lib.f` — native stdlib property benchmark driver with exact-token stdlib-use guards.
 - `bench/llm/drive-property.f` — CLI wrapper for the stdlib property benchmark driver.
 - `bench/llm/drive-property-test.f` — focused coverage for property default/random/generator/shrink and bad-seed fixtures.
+- `bench/llm/drive-build-lib.f` — native stdlib build benchmark driver using Habu-generated source/build-script fixtures.
+- `bench/llm/drive-build.f` — CLI wrapper for the stdlib build benchmark driver.
+- `bench/llm/drive-build-test.f` — focused coverage for build check/artifact/step-status/run/missing-artifact fixtures.
 - `bench/llm/negative-score.f` — checked scorer for negative benchmark expected codes/tokens/classes.
 - `bench/llm/negative-score-test.f` — focused coverage for negative-harness scoring outcomes.
 - `bench/llm/expanded-report.f` — expanded live benchmark Markdown report with validator and latency sections.

@@ -1,0 +1,173 @@
+\ drive-build-test.f - focused tests for native stdlib build driver.
+
+create DBT-BAD-LABEL
+   65 c, JW-DQ c, 66 c,
+
+T-RESET
+
+DTH-MODELS$ MR-REGISTRY!
+s" fixture" MR-REQUIRE
+s" -- bool" DS-SIG!
+s" build" DS-CATEGORY!
+s" empty -> -1" DS-TESTS!
+s" test-seed" DS-SEED!
+1 DS-TRIAL !
+10 DS-TASK-ORDER !
+2 DS-K !
+1 DS-MAX-REPAIRS !
+117 DS-ID !
+s" BUILD-CHECK-SOURCE-OK?" DS-NAME!
+s" build check source fixture" DS-SPEC!
+DTH-SRC-RESET
+DTH-SRC-TASK-HEAD
+s" BUILD-FIX-SOURCE-PATH$ BUILD-CHECK BUILD-TRUE " DTH-SRC+
+DTH-SRC-END DB-RUN-TEXT
+LR-OUTCOME$ s" pass" T$=
+LR-FIRST-CHECKER$ s" certified" T$=
+LR-TESTS-PASSED @ -1 T=
+s" arm" s" habu-stdlib-build" DTH-ROW-NEED-S
+s" prompt_sha256" DTH-ROW-NEED-KEY
+CLEANUP-RUN
+
+DTH-MODELS$ MR-REGISTRY!
+s" fixture" MR-REQUIRE
+s" -- bool" DS-SIG!
+s" build" DS-CATEGORY!
+s" empty -> -1" DS-TESTS!
+s" test-seed" DS-SEED!
+1 DS-TRIAL !
+10 DS-TASK-ORDER !
+2 DS-K !
+1 DS-MAX-REPAIRS !
+118 DS-ID !
+s" BUILD-ARTIFACT-OK?" DS-NAME!
+s" build artifact fixture" DS-SPEC!
+DTH-SRC-RESET
+DTH-SRC-TASK-HEAD
+s" BUILD-FIX-ROOT$ BUILD-FIX-ARTIFACT-NAME$ BUILD-ARTIFACT " DTH-SRC+
+s" BUILD-FIX-ARTIFACT-PATH$ STR= " DTH-SRC+
+DTH-SRC-END DB-RUN-TEXT
+LR-OUTCOME$ s" pass" T$=
+LR-FIRST-CHECKER$ s" certified" T$=
+LR-TESTS-PASSED @ -1 T=
+s" arm" s" habu-stdlib-build" DTH-ROW-NEED-S
+CLEANUP-RUN
+
+DTH-MODELS$ MR-REGISTRY!
+s" fixture" MR-REQUIRE
+s" -- error" DS-SIG!
+s" build" DS-CATEGORY!
+s" code E-BUILD-STATUS" DS-TESTS!
+s" test-seed" DS-SEED!
+1 DS-TRIAL !
+10 DS-TASK-ORDER !
+2 DS-K !
+1 DS-MAX-REPAIRS !
+119 DS-ID !
+s" BUILD-STEP-STATUS" DS-NAME!
+s" build step status fixture" DS-SPEC!
+DS-TEST-RESET
+DBT-BAD-LABEL 3 s" DBT-BAD-LABEL-BUF" s" DBT-BAD-LABEL$" DFH-STRING
+s" : BUILD-STEP-STATUS ( -- ) " DS-TEST+
+s" DBT-BAD-LABEL$ [: BUILD-FIX-BAD-STEP ;] BUILD-STEP ;" DS-TEST+
+DS-TEST$ DB-RUN-TEXT
+LR-OUTCOME$ s" reject" T$=
+LR-FIRST-CHECKER$ s" rejected" T$=
+LR-TESTS-PASSED @ 0 T=
+s" code E-BUILD-STATUS" DTH-ROW-HAS
+CLEANUP-RUN
+
+DTH-MODELS$ MR-REGISTRY!
+s" fixture" MR-REQUIRE
+s" -- bool" DS-SIG!
+s" build" DS-CATEGORY!
+s" empty -> -1" DS-TESTS!
+s" test-seed" DS-SEED!
+1 DS-TRIAL !
+10 DS-TASK-ORDER !
+2 DS-K !
+1 DS-MAX-REPAIRS !
+120 DS-ID !
+s" BUILD-RUN-ARTIFACT-OK?" DS-NAME!
+s" build run artifact fixture" DS-SPEC!
+DTH-SRC-RESET
+DTH-SRC-TASK-HEAD
+s" BUILD-FIX-RUN-PATH$ BUILD-FIX-ARTIFACT-PATH$ BUILD-RUN 0= " DTH-SRC+
+DTH-SRC-END DB-RUN-TEXT
+LR-OUTCOME$ s" pass" T$=
+LR-FIRST-CHECKER$ s" certified" T$=
+LR-TESTS-PASSED @ -1 T=
+s" arm" s" habu-stdlib-build" DTH-ROW-NEED-S
+CLEANUP-RUN
+
+DTH-MODELS$ MR-REGISTRY!
+s" fixture" MR-REQUIRE
+s" -- error" DS-SIG!
+s" build" DS-CATEGORY!
+s" code E-BUILD-PATH" DS-TESTS!
+s" test-seed" DS-SEED!
+1 DS-TRIAL !
+10 DS-TASK-ORDER !
+2 DS-K !
+1 DS-MAX-REPAIRS !
+121 DS-ID !
+s" BUILD-MISSING-ARTIFACT" DS-NAME!
+s" build missing artifact fixture" DS-SPEC!
+DTH-SRC-RESET
+s" : BUILD-MISSING-ARTIFACT ( -- ) " DTH-SRC+
+s" BUILD-FIX-NOART-PATH$ BUILD-FIX-MISSING-PATH$ BUILD-RUN drop ;" DTH-SRC+
+SB$ DB-RUN-TEXT
+LR-OUTCOME$ s" reject" T$=
+LR-FIRST-CHECKER$ s" rejected" T$=
+LR-TESTS-PASSED @ 0 T=
+s" code E-BUILD-PATH" DTH-ROW-HAS
+CLEANUP-RUN
+
+DTH-MODELS$ MR-REGISTRY!
+s" fixture" MR-REQUIRE
+s" -- bool" DS-SIG!
+s" build" DS-CATEGORY!
+s" empty -> -1" DS-TESTS!
+s" test-seed" DS-SEED!
+1 DS-TRIAL !
+10 DS-TASK-ORDER !
+2 DS-K !
+1 DS-MAX-REPAIRS !
+117 DS-ID !
+s" BUILD-CHECK-SOURCE-OK?" DS-NAME!
+s" build check source fixture" DS-SPEC!
+DTH-SRC-RESET
+DTH-SRC-TASK-HEAD
+s" -1 " DTH-SRC+
+DTH-SRC-END DB-RUN-TEXT
+LR-OUTCOME$ s" reject" T$=
+LR-FIRST-CHECKER$ s" rejected" T$=
+LR-TESTS-PASSED @ 0 T=
+s" required stdlib word missing" DTH-ROW-HAS
+CLEANUP-RUN
+
+DTH-MODELS$ MR-REGISTRY!
+s" fixture" MR-REQUIRE
+s" -- bool" DS-SIG!
+s" build" DS-CATEGORY!
+s" empty -> -1" DS-TESTS!
+s" test-seed" DS-SEED!
+1 DS-TRIAL !
+10 DS-TASK-ORDER !
+2 DS-K !
+1 DS-MAX-REPAIRS !
+120 DS-ID !
+s" BUILD-RUN-ARTIFACT-OK?" DS-NAME!
+s" build run artifact fixture" DS-SPEC!
+DTH-SRC-RESET
+DTH-SRC-TASK-HEAD
+s" BUILD-FIX-RUN-PATH$ RUN-RC 0= " DTH-SRC+
+DTH-SRC-END DB-RUN-TEXT
+LR-OUTCOME$ s" reject" T$=
+LR-FIRST-CHECKER$ s" rejected" T$=
+LR-TESTS-PASSED @ 0 T=
+s" forbidden build fixture boundary" DTH-ROW-HAS
+CLEANUP-RUN
+
+T-REPORT
+s" drive-build-test: ok" type cr

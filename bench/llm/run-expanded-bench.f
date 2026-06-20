@@ -329,6 +329,21 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    then
    RB-FALSE ;
 
+: RB-TASK-STDLIB-BUILD? ( -- bool )
+   RB-TASK-HARNESS$ s" stdlib-build" STR= if
+      RB-TASK-CONV$ s" run" STR= exit
+   then
+   RB-FALSE ;
+
+: RB-TASK-STDLIB-BUILD-NEGATIVE? ( -- bool )
+   RB-TASK-HARNESS$ s" stdlib-negative" STR= if
+      RB-TASK-CONV$ s" reject" STR= if
+         BM-T-NAME RB-TASK-FIELD$ s" BUILD-STEP-STATUS" STR= if RB-TRUE exit then
+         BM-T-NAME RB-TASK-FIELD$ s" BUILD-MISSING-ARTIFACT" STR= exit
+      then
+   then
+   RB-FALSE ;
+
 : RB-TASK-RUNNABLE? ( -- bool )
    RB-TASK-FORTH? if RB-TRUE exit then
    RB-TASK-ARRAY? if RB-TRUE exit then
@@ -338,7 +353,9 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    RB-TASK-STDLIB-PROCESS? if RB-TRUE exit then
    RB-TASK-STDLIB-PROCESS-NEGATIVE? if RB-TRUE exit then
    RB-TASK-STDLIB-PROPERTY? if RB-TRUE exit then
-   RB-TASK-STDLIB-PROPERTY-NEGATIVE? ;
+   RB-TASK-STDLIB-PROPERTY-NEGATIVE? if RB-TRUE exit then
+   RB-TASK-STDLIB-BUILD? if RB-TRUE exit then
+   RB-TASK-STDLIB-BUILD-NEGATIVE? ;
 
 : RB-ARM-FOR-MODE$ ( ptr u8 n -- ptr u8 n ) {: mode:ptr modeu :}
    RB-FORTH-ARM$ nip 0 > if RB-FORTH-ARM$ exit then
@@ -596,9 +613,21 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
    RB-STDLIB-LOADS
+   s" bench/llm/driver-token-helpers.f" PROC-ARGV+
    s" bench/llm/driver-fixture-helpers.f" PROC-ARGV+
    s" bench/llm/drive-property-lib.f" PROC-ARGV+
    s" bench/llm/drive-property.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   RB-STDLIB-TASK-ARGS ;
+
+: RB-BUILD-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   PROC-ARGV-ENV-RESET
+   model modelu trial RB-ADD-COMMON-ENV
+   RB-STDLIB-LOADS
+   s" bench/llm/driver-token-helpers.f" PROC-ARGV+
+   s" bench/llm/driver-fixture-helpers.f" PROC-ARGV+
+   s" bench/llm/drive-build-lib.f" PROC-ARGV+
+   s" bench/llm/drive-build.f" PROC-ARGV+
    s" --" PROC-ARGV+
    RB-STDLIB-TASK-ARGS ;
 
@@ -666,6 +695,14 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
       s" run-expanded-bench: missing stdlib property result row" RB-DIE
    then ;
 
+: RB-RUN-STDLIB-BUILD-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib-build" trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
+   model modelu trial RB-BUILD-ARGS
+   RB-RUN-HB-APPEND drop
+   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib-build" trial RB-ROW-DONE? 0= if
+      s" run-expanded-bench: missing stdlib build result row" RB-DIE
+   then ;
+
 : RB-RUN-ARRAY-ARMS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    0 RB-MODE-NEXT !
    begin
@@ -689,6 +726,8 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    RB-TASK-STDLIB-PROCESS-NEGATIVE? if model modelu trial RB-RUN-STDLIB-PROCESS-ONE exit then
    RB-TASK-STDLIB-PROPERTY? if model modelu trial RB-RUN-STDLIB-PROPERTY-ONE exit then
    RB-TASK-STDLIB-PROPERTY-NEGATIVE? if model modelu trial RB-RUN-STDLIB-PROPERTY-ONE exit then
+   RB-TASK-STDLIB-BUILD? if model modelu trial RB-RUN-STDLIB-BUILD-ONE exit then
+   RB-TASK-STDLIB-BUILD-NEGATIVE? if model modelu trial RB-RUN-STDLIB-BUILD-ONE exit then
    RB-TASK-FORTH? if model modelu trial RB-RUN-FORTH-MODES exit then
    RB-TASK-ARRAY? if model modelu trial RB-RUN-ARRAY-ARMS exit then
    ;

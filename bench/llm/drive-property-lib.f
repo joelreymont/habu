@@ -1,6 +1,7 @@
 \ drive-property-lib.f - native stdlib property benchmark driver library.
 \
-\ Load after bench/llm/drive-stdlib-lib.f and bench/llm/driver-fixture-helpers.f.
+\ Load after bench/llm/drive-stdlib-lib.f, bench/llm/driver-token-helpers.f,
+\ and bench/llm/driver-fixture-helpers.f.
 
 : DPR-DEFAULTS-TASK? ( -- bool )
    DS-NAME$ s" PROP-DEFAULTS-OK?" STR= ;
@@ -33,60 +34,30 @@
    DS-CAND$ s" evaluate" CONTAINS? if DS-TRUE exit then
    DS-CAND$ s" EVALUATE" CONTAINS? ;
 
-variable DPR-SCAN-I
-variable DPR-SCAN-J
-
-: DPR-SPACE? ( n -- bool )
-   dup STR-SPACE = over STR-TAB = or over STR-LF = or swap STR-CR = or ;
-
-: DPR-SKIP-SPACE ( ptr u8 n n -- n ) {: a:ptr u idx :}
-   idx begin dup u < while
-      dup a + c@ DPR-SPACE? if 1+ else exit then
-   repeat ;
-
-: DPR-SCAN-WORD-END ( ptr u8 n n -- n ) {: a:ptr u idx :}
-   idx begin dup u < while
-      dup a + c@ DPR-SPACE? if exit then
-      1+
-   repeat ;
-
-: DPR-CAND-HAS-WORD? ( ptr u8 n -- bool ) {: needle:ptr needleu :}
-   0 DPR-SCAN-I !
-   begin
-      DS-CAND$ DPR-SCAN-I @ DPR-SKIP-SPACE DPR-SCAN-I !
-      DPR-SCAN-I @ DS-CAND$ nip <
-   while
-      DS-CAND$ DPR-SCAN-I @ DPR-SCAN-WORD-END DPR-SCAN-J !
-      DS-CAND$ drop DPR-SCAN-I @ +
-      DPR-SCAN-J @ DPR-SCAN-I @ - needle needleu STR= if DS-TRUE exit then
-      DPR-SCAN-J @ DPR-SCAN-I !
-   repeat
-   DS-FALSE ;
-
 : DPR-CAND-USES-REQUIRED? ( -- bool )
-   DPR-DEFAULTS-TASK? if s" PROP-DEFAULTS" DPR-CAND-HAS-WORD? exit then
+   DPR-DEFAULTS-TASK? if s" PROP-DEFAULTS" DS-CAND-HAS-WORD? exit then
    DPR-RND-TASK? if
-      s" PROP-RUN-RESET" DPR-CAND-HAS-WORD?
-      s" PROP-RND" DPR-CAND-HAS-WORD? and
-      s" PROP-RND%" DPR-CAND-HAS-WORD? and
-      s" PROP-SEED@" DPR-CAND-HAS-WORD? and
-      s" PROP-COUNT@" DPR-CAND-HAS-WORD? and exit
+      s" PROP-RUN-RESET" DS-CAND-HAS-WORD?
+      s" PROP-RND" DS-CAND-HAS-WORD? and
+      s" PROP-RND%" DS-CAND-HAS-WORD? and
+      s" PROP-SEED@" DS-CAND-HAS-WORD? and
+      s" PROP-COUNT@" DS-CAND-HAS-WORD? and exit
    then
    DPR-GEN-TASK? if
-      s" PROP-GEN-START" DPR-CAND-HAS-WORD?
-      s" PROP-GEN-STEP" DPR-CAND-HAS-WORD? and
-      s" PROP-GEN-DEPTH@" DPR-CAND-HAS-WORD? and
-      s" PROP-BUF$" DPR-CAND-HAS-WORD? and
-      s" STR=" DPR-CAND-HAS-WORD? and exit
+      s" PROP-GEN-START" DS-CAND-HAS-WORD?
+      s" PROP-GEN-STEP" DS-CAND-HAS-WORD? and
+      s" PROP-GEN-DEPTH@" DS-CAND-HAS-WORD? and
+      s" PROP-BUF$" DS-CAND-HAS-WORD? and
+      s" STR=" DS-CAND-HAS-WORD? and exit
    then
    DPR-SHRINK-TASK? if
-      s" PROP-SHRINK" DPR-CAND-HAS-WORD?
-      s" PROP-BUF+" DPR-CAND-HAS-WORD? and
-      s" PROP-BUF$" DPR-CAND-HAS-WORD? and
-      s" STR=" DPR-CAND-HAS-WORD? and exit
+      s" PROP-SHRINK" DS-CAND-HAS-WORD?
+      s" PROP-BUF+" DS-CAND-HAS-WORD? and
+      s" PROP-BUF$" DS-CAND-HAS-WORD? and
+      s" STR=" DS-CAND-HAS-WORD? and exit
    then
    DPR-BAD-SEED-TASK? if
-      s" PROP-RUN-RESET" DPR-CAND-HAS-WORD? exit
+      s" PROP-RUN-RESET" DS-CAND-HAS-WORD? exit
    then
    DS-FALSE ;
 

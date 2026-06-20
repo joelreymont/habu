@@ -206,9 +206,20 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   data such as JSON rows, factor a small checked writer/DSL instead of relying on
   giant quoted literals or private byte emitters. This keeps escaping and shape
   bugs in reusable Habu code.
+- **Generated-source strings need byte fixtures:** `s"` cannot encode an
+  embedded quote. When a candidate/test source needs arbitrary bytes, emit a
+  byte-backed string word with the checked fixture DSL instead of inventing
+  ad hoc escaping.
 - **Source-use guards need token matching:** required-word checks must compare
   exact source tokens, not substrings; `PROP-DEFAULTS` matched
   `PROP-DEFAULTS-OK?` and let a constant fake through to runtime failure.
+- **Keep exact-token helpers load-selective:** moving scanner helpers into the
+  base live-driver bundle tipped large file/process tests into native capacity
+  failure. Keep optional source guards in a separate helper loaded only by
+  drivers that need them.
+- **Load transitive stdlib dependencies in child bundles:** `lib/build.f` depends
+  on `lib/process.f` for `RUN-RC`; omitting it let non-`BUILD-RUN` rows pass while
+  artifact rows died with empty child output.
 - **Check phases must be silent:** `hb` can emit checker diagnostics while still
   exiting 0 for a loaded file. Live drivers should treat any stdout/stderr from a
   check-only child as rejection; otherwise rejected code can be executed later.
