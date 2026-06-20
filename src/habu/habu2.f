@@ -1065,7 +1065,12 @@ s" cfbn-entry" s" n ptr a n n n --" TRUST
       7 RBASE 5 ADD,  7 10 0 STR,
       6 6 5 SUB,  6 6 4 SUBI,  6 10 8 STR,
       5 9 16 LDR,  5 10 16 STR,
-      5 9 24 LDR,  5 10 24 STR,  5 9 32 LDR,  5 10 32 STR,
+      6 9 24 LDR,
+      LBL {: inl-name :}
+      8 DNAME-EXT LIT64,  8 5 8 AND,  8 inl-name CBZ,
+         6 RBASE 6 ADD,
+      inl-name LBL,
+      6 10 24 STR,  5 9 32 LDR,  5 10 32 STR,
       5 9 40 LDR,  5 10 40 STR,
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL,

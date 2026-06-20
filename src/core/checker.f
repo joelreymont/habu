@@ -550,6 +550,7 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" kill" s" n n -- n" PT+
    s" spawn-io" s" ptr u8 n n n -- n" PT+
    s" spawn-argv-io" s" ptr u8 ptr a n n n -- n" PT+
+   s" spawn-argv-env-io" s" ptr u8 ptr a ptr a n n n -- n" PT+
    s" wait-rc" s" n -- n" PT+
    s" patch32" s" n n --" PT+
    s" write" s" n ptr u8 n -- n" PT+

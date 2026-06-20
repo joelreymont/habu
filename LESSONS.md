@@ -106,6 +106,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   overflowed the old 96-entry seed registry and corrupted the generated stage
   image. Keep registry/name-pool capacities named and checked in `REG-PRIM` so
   growth fails closed at build time.
+- **Seed primitive names can exceed inline storage:** `EMIT-DICT` must encode
+  names longer than `DNAME-INL` out-of-line and relocate them during startup.
+  Inline-only emission corrupts fixed `DREC` records and later primitive lookup.
 - **Label locals must match label values exactly:** an extra local name consumes
   stale generator stack state and can crash much later in unrelated emitted code.
 - **Checked process code uses modeled primitives:** `run-rc` executes but is not
