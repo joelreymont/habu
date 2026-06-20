@@ -244,6 +244,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs-mutate	lib/fs-mutate.f	word	MKDIR-MODE	(ptr u8 n n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create a directory with explicit mode
 1	fs-mutate	lib/fs-mutate.f	word	MAKE-DIR	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create one counted directory path
 1	fs-mutate	lib/fs-mutate.f	word	REMOVE-DIR	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	remove one empty counted directory path
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-REMOVE-FILE-WALK	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	unlink one path during recursive tree removal and report walk errors
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-REMOVE-DIR-WALK	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	remove one directory during recursive tree removal and report walk errors
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-REMOVE-TREE-PATH	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	recursively remove a file or directory path using per-depth buffers
+1	fs-mutate	lib/fs-mutate.f	word	REMOVE-TREE	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	recursively remove one counted path or throw a filesystem error
 1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-MKDIR-ONE	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	idempotently create one directory component
 1	fs-mutate	lib/fs-mutate.f	word	MAKE-DIRS	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create missing directory prefixes for one counted path
 1	fs-mutate	lib/fs-mutate.f	word	COPY-FILE	(ptr u8 n ptr u8 n n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	copy a file through bounded caller-selected capacity
@@ -256,6 +260,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-CLEANUP+	(ptr u8 n n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	register one cleanup path with explicit kind
 1	fs-mutate	lib/fs-mutate.f	word	CLEANUP+	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	register a file for best-effort reverse cleanup
 1	fs-mutate	lib/fs-mutate.f	word	CLEANUP-DIR+	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	register an empty directory for reverse cleanup
+1	fs-mutate	lib/fs-mutate.f	word	CLEANUP-TREE+	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	register a recursive tree cleanup for temporary workspaces
 1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-CLEANUP-REMOVE	(n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	remove one cleanup registration if it exists
 1	fs-mutate	lib/fs-mutate.f	word	CLEANUP-RUN	(--)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	run cleanup registrations in reverse order
 1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup
@@ -308,6 +313,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	module			lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	checked argv table builder layered after native primitive rebuild
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-RAW	(ptr u8 ptr a n n n -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-io alias for checked argv wrappers
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-RESET	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	clear argv extra-arg count and backing string buffer offset
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-CAPTURE-RESET	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	reset argv capture state including stdin pipe state
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-SLOT	(n -- ptr a)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	return one checked argv pointer-table slot
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-CHECK-EXTRA	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	validate that one more extra argv entry fits
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-ZCOPY	(ptr u8 n -- ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	copy counted argv bytes into the module NUL-terminated argv string buffer
@@ -316,20 +322,64 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	word	SPAWN-ARGV-IO	(ptr u8 n n n n -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared extra argv strings and explicit stdio fds
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-IO-RC	(ptr u8 n n n n -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv strings explicit stdio fds and return exit status
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-CHECK-PATH	(ptr u8 n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	validate a counted executable path before argv capture opens fds
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-CLOSE-STDIN-FDS	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	close stdin pipe fds owned by argv capture
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-THROW-CAPTURE	(n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	cleanup argv stdin capture fds before throwing a process error
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-CLOEXEC-CELL	(ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	mark one argv capture fd cell close-on-exec
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-NONBLOCK!	(n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	enable nonblocking writes for argv stdin capture
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-SETUP-STDIN-FDS	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	open and protect stdin pipe fds for argv capture
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn prepared argv with stdout and stderr capture fds
+1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-STDIN-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv with stdin stdout and stderr capture fds
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-PFD-SLOT	(n -- ptr a)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	return one pollfd slot for argv stdin capture
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-PFD-AT!	(n n n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	write one indexed pollfd entry for argv stdin capture
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-PFD-REVENTS	(n -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	read revents from an argv capture pollfd slot
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-READ-STREAM	(ptr a ptr u8 n ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	read one ready argv capture stream into caller storage
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-PROBE-FULL-STREAM	(ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	distinguish exact-capacity EOF from argv capture overflow
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-READ-OR-PROBE-STREAM	(ptr a ptr u8 n ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	read or overflow-probe one argv capture stream
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-DRAIN-READY	(ptr u8 n ptr u8 n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	drain ready stdout and stderr streams for argv capture
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-STDIN-CHUNK	(n -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	limit one nonblocking stdin write chunk
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-CLOSE-STDIN-DONE	(n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	close stdin write fd when caller input has been written
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-WRITE-STDIN-ACTIVE	(ptr u8 n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	write one stdin chunk to active argv capture child
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-WRITE-STDIN	(ptr u8 n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	advance bounded stdin writes for argv capture
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-POLL-IO	(n -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	poll stdout stderr and optional stdin fds together
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-DRIVE-STDIN	(ptr u8 n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	drive stdin writes when the child pipe is writable
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-STDIN-CAPTURE-DONE?	(-- bool)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	test whether argv capture streams and stdin writes are complete
+1	process-argv	lib/process-argv.f	word	PROC-RUN-STDIN-CAPTURE-LOOP	(ptr u8 n ptr u8 n ptr u8 n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	poll and drain argv capture streams while feeding stdin
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable with prepared argv and capture bounded stdout stderr rc
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-CAPTURE-OUTCOME	(ptr u8 n ptr u8 n ptr u8 n n -- n n n n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv and capture bounded stdout stderr outcome kind and code
+1	process-argv	lib/process-argv.f	word	RUN-ARGV-STDIN-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv with bounded stdin stdout stderr capture
 1	process-env	lib/process-env.f	module			lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	checked child envp builder and deterministic executable lookup
 1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-RAW	(ptr u8 ptr a ptr a n n n -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-env-io alias captured after native primitive rebuild
+1	process-env	lib/process-env.f	word	PROC-ENV-TRUE	(-- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return a true flag for env helper internals
+1	process-env	lib/process-env.f	word	PROC-ENV-FALSE	(-- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return a false flag for env helper internals
 1	process-env	lib/process-env.f	word	PROC-ENV-RESET	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	clear prepared child environment entries and backing string buffer offset
+1	process-env	lib/process-env.f	word	PROC-ENV-SLOT	(n -- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return one checked env pointer-table slot
+1	process-env	lib/process-env.f	word	PROC-ENV-CHECK-EXTRA	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	validate that one more environment entry fits
+1	process-env	lib/process-env.f	word	PROC-ENV-HAS-EQUAL?	(ptr u8 n -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether an environment entry contains NAME=VALUE separator
+1	process-env	lib/process-env.f	word	PROC-ENV-CHECK-NAME	(ptr u8 n --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	validate environment variable name bytes
+1	process-env	lib/process-env.f	word	PROC-ENV-CHECK-ENTRY	(ptr u8 n --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	validate exact NAME=VALUE environment entry bytes
+1	process-env	lib/process-env.f	word	PROC-ENV-STORE-Z	(ptr u8 n -- ptr u8)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	copy one environment entry into NUL-terminated storage
+1	process-env	lib/process-env.f	word	PROC-ENV-INSTALL-Z	(ptr u8 --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	install one stored environment pointer into the envp table
 1	process-env	lib/process-env.f	word	PROC-ENV-ENTRY+	(ptr u8 n --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	append one exact NAME=VALUE child environment entry
+1	process-env	lib/process-env.f	word	PROC-ENV-NAME-LEN	(ptr u8 n -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the byte length before an environment entry equals sign
+1	process-env	lib/process-env.f	word	PROC-ENV-SAME-NAME?	(ptr u8 n ptr u8 n -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	compare environment entries by variable name
+1	process-env	lib/process-env.f	word	PROC-ENV-SLOT-NAME?	(ptr u8 n n -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether one env table slot has a requested variable name
+1	process-env	lib/process-env.f	word	PROC-ENV-HAS-NAME?	(ptr u8 n -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether prepared envp already contains a variable name
 1	process-env	lib/process-env.f	word	PROC-ENV+	(ptr u8 n ptr u8 n --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	append one checked child environment name/value pair
 1	process-env	lib/process-env.f	word	PROC-ENV-PREPARE	(-- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	terminate and return the prepared child envp pointer table
+1	process-env	lib/process-env.f	word	PROC-ENV-INHERIT-ONE	(n -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	inherit one parent envp entry unless overridden
 1	process-env	lib/process-env.f	word	PROC-ENV-INHERIT-MISSING	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	copy parent envp entries whose names are not already present
+1	process-env	lib/process-env.f	word	PROC-ARGV-ENV-RESET	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	clear prepared argv and environment state together
 1	process-env	lib/process-env.f	word	SPAWN-ARGV-ENV-IO	(ptr u8 n n n n -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared argv envp and explicit stdio fds
 1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-IO-RC	(ptr u8 n n n n -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv envp stdio fds and return exit status
+1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-CAPTURE	(ptr u8 ptr a ptr a --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv and envp with stdout stderr capture fds
+1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE	(ptr u8 ptr a ptr a --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv and envp with stdin stdout stderr capture fds
 1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp and capture bounded stdout stderr rc
 1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-STDIN-CAPTURE	(ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp with bounded stdin stdout stderr capture
+1	process-env	lib/process-env.f	word	PROC-HAS-SLASH?	(ptr u8 n -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether a command path already contains a slash
+1	process-env	lib/process-env.f	word	PROC-EXECUTABLE?	(ptr u8 n -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test executable access for one counted path
+1	process-env	lib/process-env.f	word	PROC-COPY-PATH	(ptr u8 n ptr u8 -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	copy one resolved executable path into caller storage
+1	process-env	lib/process-env.f	word	PROC-JOIN-PATH-SEG	(ptr u8 n ptr u8 n ptr u8 -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	join one PATH segment and command name into caller storage
+1	process-env	lib/process-env.f	word	PROC-TRY-PATH-SEG	(ptr u8 n ptr u8 n ptr u8 -- n bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test one PATH segment for an executable command match
 1	process-env	lib/process-env.f	word	FIND-EXECUTABLE-IN-PATH	(ptr u8 n ptr u8 n ptr u8 -- n bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command against an explicit PATH byte string into caller storage
 1	process-env	lib/process-env.f	word	FIND-EXECUTABLE	(ptr u8 n ptr u8 -- n bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command against the current process PATH
 1	process-env	lib/process-env.f	word	RESOLVE-EXECUTABLE	(ptr u8 n ptr u8 -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command or throw E-PROC-PATH when lookup fails
