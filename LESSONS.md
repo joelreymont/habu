@@ -209,6 +209,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Expected-throw fixtures should stay quiet:** row/error reporters should be
   opt-in at the CLI boundary so negative tests can assert throw codes without
   printing user-facing `FAIL` lines.
+- **Do not pull unchecked parsers into checked tests:** `tools/json.f` remains an
+  unchecked legacy boundary; checked fixtures should assert with typed helpers
+  and leave full JSON parsing to validator gates until that parser is typed.
 - **Checked helpers must be defined before use:** a forward reference inside a
   checked definition can fail during load and surface later as an unpublished
   word; move the helper after its dependencies or factor dependencies earlier.

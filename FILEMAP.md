@@ -122,6 +122,8 @@ points stay listed.
 - `bench/llm/vectors-test.f` — focused coverage for vector parsing and emitted snippets.
 - `bench/llm/artifacts.f` — checked replay artifact path, SHA-256, and JSON field helpers.
 - `bench/llm/artifacts-test.f` — focused coverage for replay artifact hashing and JSON fields.
+- `bench/llm/live-row.f` — checked schema-v2 live benchmark row emitter with replay artifacts.
+- `bench/llm/live-row-test.f` — focused coverage for native live benchmark row emission.
 - `bench/llm/negative-score.f` — checked scorer for negative benchmark expected codes/tokens/classes.
 - `bench/llm/negative-score-test.f` — focused coverage for negative-harness scoring outcomes.
 - `bench/llm/expanded-report.f` — expanded live benchmark Markdown report with validator and latency sections.

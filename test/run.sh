@@ -61,6 +61,8 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/ll
 cat lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/llm/vectors.f bench/llm/vectors-test.f | $CHECK >/dev/null || { echo "FAIL: llm vector parser check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/core/sha256.f bench/llm/artifacts.f bench/llm/artifacts-test.f || { echo "FAIL: llm artifact hashes"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/core/sha256.f bench/llm/artifacts.f bench/llm/artifacts-test.f | $CHECK >/dev/null || { echo "FAIL: llm artifact hash check"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/json-write.f src/core/sha256.f bench/llm/live-row.f bench/llm/live-row-test.f || { echo "FAIL: llm live row emitter"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/json-write.f src/core/sha256.f bench/llm/live-row.f bench/llm/live-row-test.f | $CHECK >/dev/null || { echo "FAIL: llm live row emitter check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/negative-score.f bench/llm/negative-score-test.f || { echo "FAIL: llm negative scorer"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f bench/llm/negative-score.f bench/llm/negative-score-test.f | $CHECK >/dev/null || { echo "FAIL: llm negative scorer check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/expanded-report-test.f || { echo "FAIL: llm expanded report"; exit 1; }
