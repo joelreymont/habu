@@ -46,7 +46,7 @@ bin/hb --load lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f |
 ./lib/test-test.sh || { echo "FAIL: test stdlib"; exit 1; }
 ./lib/property-test.sh || { echo "FAIL: property stdlib"; exit 1; }
 ./lib/build-test.sh || { echo "FAIL: build stdlib"; exit 1; }
-./tools/date-test.sh || { echo "FAIL: date helpers"; exit 1; }
+bin/hb --load tools/date.f tools/date-test.f || { echo "FAIL: date helpers"; exit 1; }
 ./tools/bundle-lib-test.sh || { echo "FAIL: stdlib bundle wrapper"; exit 1; }
 ./tools/build-fixpoint-test.sh || { echo "FAIL: build fixpoint driver"; exit 1; }
 ./tools/repair-schema-doc-test.sh || { echo "FAIL: repair diagnostic schema doc"; exit 1; }

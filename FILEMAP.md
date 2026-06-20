@@ -72,7 +72,7 @@ points stay listed.
 - `tools/string.f` — shared checked byte-string helper library.
 - `tools/string-test.sh` — focused coverage for checked string helpers.
 - `tools/date.f` — shared checked UTC Gregorian date parsing, formatting, and timestamp helpers.
-- `tools/date-test.sh` — focused coverage for shared date helpers.
+- `tools/date-test.f` — focused coverage for shared date helpers.
 
 ## Tests And Benchmarks
 
@@ -86,7 +86,7 @@ points stay listed.
 - `bench/llm/run-attempts.sh` — turns per-task candidate/repair files into validator-schema JSONL.
 - `bench/llm/attempt-runner-test.sh` — fixture coverage for schema attempt generation.
 - `bench/llm/habu-array-lib.f` — checked array helper vocabulary for library-assisted Habu benchmark arm.
-- `bench/llm/habu-array-lib-test.sh` — focused coverage for the benchmark array helper library.
+- `bench/llm/habu-array-lib-test.f` — focused coverage for the benchmark array helper library.
 - `bench/llm/habu-preamble-lib.txt` — LLM prompt preamble for library-assisted Habu benchmark arm.
 - `bench/llm/run.sh` — benchmark certification runner.
 - `bench/llm/perf.sh` — LLM feedback-loop performance benchmark runner.
