@@ -340,20 +340,25 @@ errors such as `E-MAP-BAD-CAP` and `E-MAP-FULL`.
 Public path words accept counted byte strings and own any private NUL-terminated
 copy needed for syscalls.
 
-The current source-backed surface covers path predicates, stat mode, basename,
-bounded path joining, bounded file I/O, file mutation, and recursive file
+The current source-backed surface covers path predicates, stat mode and size,
+basename, bounded path joining, bounded file I/O, file mutation, and recursive file
 walking:
 
 ```forth
 FS-FALSE           ( -- bool )
 FS-TRUE            ( -- bool )
 FS-U16@            ( ptr u8 -- n )
+FS-U64@            ( ptr u8 -- n )
 FS-CHECK-JOIN-CAP       ( n -- )
 FS-PATHZ-INTO           ( ptr u8 n ptr u8 -- ptr u8 )
 FS-PATHZ                ( ptr u8 n -- ptr u8 )
 EXISTS?                 ( ptr u8 n -- bool )
+FS-STAT-MODE@           ( -- n )
+FS-STAT-SIZE@           ( -- n )
+FS-TRY-STAT             ( ptr u8 n -- bool )
 FS-TRY-STAT-MODE        ( ptr u8 n -- n )
 STAT-MODE               ( ptr u8 n -- n )
+FILE-SIZE               ( ptr u8 n -- n )
 FILE?                   ( ptr u8 n -- bool )
 DIR?                    ( ptr u8 n -- bool )
 BASENAME                ( ptr u8 n -- ptr u8 n )

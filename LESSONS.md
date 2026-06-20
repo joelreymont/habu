@@ -278,3 +278,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `evaluate` is not enough; `TRUST` and `set-check` inside checked definitions
   need the same schema-1 `trusted_boundary_required` rejection so repair loops
   do not learn to silence the checker.
+- **Low-level byte decoders need simple shift constants:** using computed shift
+  counts such as `BYTE-BITS 7 *` inside checked field readers can destabilize
+  later locals-heavy definitions. Name the shifts and keep decoder bodies
+  straight-line.

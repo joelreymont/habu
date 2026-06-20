@@ -8,7 +8,14 @@ FS-PATH-CAP 1 + constant FS-PATHZ-CAP
 32 constant FS-MAX-DEPTH
 256 constant FS-STAT-CAP
 8 constant FS-BYTE-BITS
+16 constant FS-BYTE-BITS-2
+24 constant FS-BYTE-BITS-3
+32 constant FS-BYTE-BITS-4
+40 constant FS-BYTE-BITS-5
+48 constant FS-BYTE-BITS-6
+56 constant FS-BYTE-BITS-7
 4 constant FS-STAT-MODE-OFF
+96 constant FS-STAT-SIZE-OFF
 16 constant FS-DIRENT-RECLEN-OFF
 18 constant FS-DIRENT-NAMELEN-OFF
 21 constant FS-DIRENT-NAME-OFF
@@ -56,6 +63,16 @@ variable FS-IO-WR
 
 : FS-U16@ ( ptr u8 -- n ) {: a:ptr :}
    a c@ a 1 + c@ FS-BYTE-BITS lshift or ;
+
+: FS-U64@ ( ptr u8 -- n )
+   dup c@
+   over 1 + c@ FS-BYTE-BITS lshift or
+   over 2 + c@ FS-BYTE-BITS-2 lshift or
+   over 3 + c@ FS-BYTE-BITS-3 lshift or
+   over 4 + c@ FS-BYTE-BITS-4 lshift or
+   over 5 + c@ FS-BYTE-BITS-5 lshift or
+   over 6 + c@ FS-BYTE-BITS-6 lshift or
+   swap 7 + c@ FS-BYTE-BITS-7 lshift or ;
 
 : FS-CHECK-DEPTH ( n -- ) {: d :}
    d 0 < if E-FS-DEPTH throw then
@@ -148,12 +165,26 @@ variable FS-IO-WR
 : EXISTS? ( ptr u8 n -- bool )
    FS-PATHZ 0 access 0= ;
 
-: FS-TRY-STAT-MODE ( ptr u8 n -- n ) {: a:ptr u :}
-   a u FS-PATHZ FS-STAT-BUF stat64 0 < if -1 exit then
+: FS-STAT-MODE@ ( -- n )
    FS-STAT-BUF FS-STAT-MODE-OFF + FS-U16@ ;
+
+: FS-STAT-SIZE@ ( -- n )
+   FS-STAT-BUF FS-STAT-SIZE-OFF + FS-U64@ ;
+
+: FS-TRY-STAT ( ptr u8 n -- bool )
+   FS-PATHZ FS-STAT-BUF stat64 0 < if FS-FALSE exit then
+   FS-TRUE ;
+
+: FS-TRY-STAT-MODE ( ptr u8 n -- n )
+   FS-TRY-STAT if FS-STAT-MODE@ else -1 then ;
 
 : STAT-MODE ( ptr u8 n -- n )
    FS-TRY-STAT-MODE dup 0 < if E-FS-STAT throw then ;
+
+: FILE-SIZE ( ptr u8 n -- n )
+   FS-TRY-STAT 0= if E-FS-STAT throw then
+   FS-STAT-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then
+   FS-STAT-SIZE@ ;
 
 : FILE? ( ptr u8 n -- bool )
    FS-TRY-STAT-MODE dup 0 < if
