@@ -69,6 +69,7 @@ create LV-GRP-ARM-A LV-GRP-MAX cells allot
 create LV-GRP-ARM-U LV-GRP-MAX cells allot
 create LV-GRP-COUNT LV-GRP-MAX cells allot
 create LV-GRP-K LV-GRP-MAX cells allot
+create LV-GRP-PASS LV-GRP-MAX cells allot
 
 create LV-CAT-A LV-MAX cells allot
 create LV-CAT-U LV-MAX cells allot
@@ -415,6 +416,9 @@ variable LV-LINE-U
 : LV-GROUP-K@ ( n -- n )
    cells LV-GRP-K + @ ;
 
+: LV-GROUP-PASS@ ( n -- n )
+   cells LV-GRP-PASS + @ ;
+
 : LV-GROUP-K-CHECK {: k :} ( n -- )
    LV-GRP-K k cells + @ LV-CUR-K @ <> IF s" inconsistent k_trials for result group" LV-FAIL-AT THEN ;
 
@@ -426,15 +430,21 @@ variable LV-LINE-U
    LV-CUR-ARM-A @ LV-CUR-ARM-U @ LV-KEY-COPY$ LV-GRP-ARM-U LV-GRP# @ cells + ! LV-GRP-ARM-A LV-GRP# @ cells + !
    1 LV-GRP-COUNT LV-GRP# @ cells + !
    LV-CUR-K @ LV-GRP-K LV-GRP# @ cells + !
+   LV-ROW-TESTS @ LV-GRP-PASS LV-GRP# @ cells + !
    LV-GRP# @ 1+ LV-GRP# ! ;
 
 : LV-GROUP-ACCUM ( -- )
    LV-FIND-GROUP dup 0 >= IF
       dup LV-GROUP-K-CHECK
-      LV-GROUP-COUNT++
+      dup LV-GROUP-COUNT++
+      LV-ROW-TESTS @ IF 1 swap cells LV-GRP-PASS + ! ELSE drop THEN
       exit
    THEN
    drop LV-GROUP+ ;
+
+: LV-GRP-ARM$ {: k :} ( n -- ptr u8 n )
+   LV-GRP-ARM-A k cells + @
+   LV-GRP-ARM-U k cells + @ ;
 
 : LV-COVERAGE-FAIL {: k :} ( n -- )
    s" llm-results: k_trials coverage mismatch task=" LV-OUT
@@ -658,6 +668,33 @@ variable LV-LINE-U
 : LV-ARM-ID {: a:ptr u :} ( ptr u8 n -- n )
    a u LV-FIND-ARM dup 0 >= IF exit THEN
    drop a u LV-ARM+ ;
+
+: LV-PASS-GROUPS ( -- n )
+   0 LV-N !
+   0 begin dup LV-GRP# @ < while
+      dup LV-GROUP-PASS@ 0 = 0= IF LV-N @ 1+ LV-N ! THEN
+      1+
+   repeat drop
+   LV-N @ ;
+
+: LV-ARM-GROUP? {: g arm :} ( n n -- bool )
+   g LV-GRP-ARM$ arm LV-ARM$ STR= ;
+
+: LV-ARM-GROUPS {: arm :} ( n -- n )
+   0 LV-N !
+   0 begin dup LV-GRP# @ < while
+      dup arm LV-ARM-GROUP? IF LV-N @ 1+ LV-N ! THEN
+      1+
+   repeat drop
+   LV-N @ ;
+
+: LV-ARM-PASS-GROUPS {: arm :} ( n -- n )
+   0 LV-N !
+   0 begin dup LV-GRP# @ < while
+      dup arm LV-ARM-GROUP? over LV-GROUP-PASS@ 0 = 0= and IF LV-N @ 1+ LV-N ! THEN
+      1+
+   repeat drop
+   LV-N @ ;
 
 : LV-TASK-LINE {: a:ptr u :} ( ptr u8 n -- )
    LV-LINE @ 1 = IF exit THEN
@@ -945,7 +982,7 @@ variable LV-LINE-U
    LV-TASK-K !
    root s" name" LV-STR-FIELD LV-TASK-K @ LV-TASK-NAME$ STR= 0= IF s" task/name drift for id " LV-ID @ LV-FAIL-AT-ID THEN
    root LV-CHECK-STRING-META
-   LV-SCHEMA @ 2 = IF root LV-CHECK-V2-META LV-GROUP-ACCUM THEN
+   LV-SCHEMA @ 2 = IF root LV-CHECK-V2-META THEN
    root s" attempt" LV-INT-FIELD drop
    root s" first_pass_checker" LV-STR-FIELD 2drop
    root s" first_pass_tests" LV-BOOL-FIELD drop
@@ -1062,6 +1099,7 @@ variable LV-LINE-U
    root LV-CERTIFIED? IF LV-CERT LV-CELL++ ELSE LV-BAD-CHECKER LV-CELL++ THEN
    root s" first_pass_tests" LV-BOOL-FIELD IF LV-FIRST-TESTS LV-CELL++ ELSE LV-BAD-FIRST LV-CELL++ THEN
    root s" tests_passed" LV-BOOL-FIELD dup LV-ROW-TESTS ! IF LV-TESTS LV-CELL++ ELSE LV-BAD-TESTS LV-CELL++ THEN
+   LV-SCHEMA @ 2 = IF LV-GROUP-ACCUM THEN
    root s" repair_iterations" LV-INT-FIELD LV-REPAIRS LV-CELL+!
    root s" checker_iterations" LV-INT-FIELD LV-CHECKERS LV-CELL+!
    root s" diagnostic_count" LV-INT-FIELD dup LV-ROW-DIAGS ! LV-DIAGS LV-CELL+!
@@ -1239,7 +1277,9 @@ variable LV-LINE-U
       s" diagnostics" LV-P @ LV-ARM-DIAGS@ LV-TEXT-FIELD
       s" tokens" LV-P @ LV-ARM-TOKENS@ LV-TEXT-FIELD
       s" wall_ms" LV-P @ LV-ARM-WALL@ LV-TEXT-FIELD
-      s" final_chars" LV-P @ LV-ARM-CHARS@ LV-TEXT-FIELD
+   s" final_chars" LV-P @ LV-ARM-CHARS@ LV-TEXT-FIELD
+      s" task_groups" LV-P @ LV-ARM-GROUPS LV-TEXT-FIELD
+      s" task_pass_at_k" LV-P @ LV-ARM-PASS-GROUPS LV-TEXT-FIELD
       LV-NL
       1+
    repeat drop ;
@@ -1258,6 +1298,12 @@ variable LV-LINE-U
    s" wall_ms" LV-WALL @ LV-TEXT-FIELD
    s" final_chars" LV-CHARS @ LV-TEXT-FIELD
    LV-NL
+   LV-SCHEMA @ 2 = IF
+      s" llm-results: pass_at_k" LV-OUT
+      s" task_groups" LV-GRP# @ LV-TEXT-FIELD
+      s" task_passed" LV-PASS-GROUPS LV-TEXT-FIELD
+      LV-NL
+   THEN
    s" llm-results: buckets" LV-OUT
    s" checker_rejected" LV-BAD-CHECKER @ LV-TEXT-FIELD
    s" first_tests_failed" LV-BAD-FIRST @ LV-TEXT-FIELD
@@ -1362,7 +1408,9 @@ variable LV-LINE-U
    s" diagnostic_count" k LV-ARM-DIAGS@ LV-JSON-COMMA-UF
    s" tokens_used" k LV-ARM-TOKENS@ LV-JSON-COMMA-UF
    s" wall_ms" k LV-ARM-WALL@ LV-JSON-COMMA-UF
-   s" final_chars" k LV-ARM-CHARS@ LV-JSON-UF
+   s" final_chars" k LV-ARM-CHARS@ LV-JSON-COMMA-UF
+   s" task_groups" k LV-ARM-GROUPS LV-JSON-COMMA-UF
+   s" task_pass_at_k" k LV-ARM-PASS-GROUPS LV-JSON-UF
    JSONW-OBJECT-END ;
 
 : LV-OUT-CATS-JSON ( -- )
@@ -1399,6 +1447,8 @@ variable LV-LINE-U
    s" run_id" JSONW-KEY LV-RUN$ JSONW-STRING JSONW-COMMA
    s" model" JSONW-KEY LV-MODEL$ JSONW-STRING JSONW-COMMA
    s" rows" LV-ROWS @ LV-JSON-COMMA-UF
+   s" task_groups" LV-GRP# @ LV-JSON-COMMA-UF
+   s" task_pass_at_k" LV-PASS-GROUPS LV-JSON-COMMA-UF
    s" certified" LV-CERT @ LV-JSON-COMMA-UF
    s" first_tests_passed" LV-FIRST-TESTS @ LV-JSON-COMMA-UF
    s" tests_passed" LV-TESTS @ LV-JSON-COMMA-UF

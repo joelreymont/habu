@@ -289,7 +289,12 @@ printf '%s\n' "$out" | grep -q 'arm habu-forth-blind rows=1 certified=1 first_te
 }
 
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/live.jsonl)
-printf '%s\n' "$out" | grep -q '"arms":\[{"arm":"habu-forth","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1},{"arm":"habu-forth-raw","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1},{"arm":"habu-forth-blind","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1}\]' || {
+printf '%s\n' "$out" | grep -q '"task_groups":3,"task_pass_at_k":3' || {
+  echo "FAIL: validate-results json pass-at-k totals"
+  printf '%s\n' "$out"
+  exit 1
+}
+printf '%s\n' "$out" | grep -q '"arms":\[{"arm":"habu-forth","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1,"task_groups":1,"task_pass_at_k":1},{"arm":"habu-forth-raw","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1,"task_groups":1,"task_pass_at_k":1},{"arm":"habu-forth-blind","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1,"task_groups":1,"task_pass_at_k":1}\]' || {
   echo "FAIL: validate-results json arms"
   printf '%s\n' "$out"
   exit 1
