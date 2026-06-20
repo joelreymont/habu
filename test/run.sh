@@ -57,7 +57,8 @@ bin/hb --load tools/date.f tools/date-test.f || { echo "FAIL: date helpers"; exi
 [ -x bin/hb ] || { echo "no bin/hb — install a trusted seed with tools/seed.sh /path/to/hb"; exit 1; }
 ./tools/build.sh > $T/hb-build.log 2>&1 || { tail -5 $T/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }
 echo "PASS: self-rebuild fixpoint"
-./lib/fs-mutate-test.sh || { echo "FAIL: fs mutation stdlib"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-mutate-test.f || { echo "FAIL: fs mutation stdlib"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-mutate-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: fs mutation stdlib check"; exit 1; }
 bin/hb --load lib/errors.f lib/test.f lib/process.f lib/process-argv.f lib/process-argv-test.f || { echo "FAIL: process argv stdlib"; exit 1; }
 cat lib/errors.f lib/process.f lib/process-argv.f | ./tools/check.sh >/dev/null || { echo "FAIL: process argv check"; exit 1; }
 ./tools/check-repair-hints-test.sh || { echo "FAIL: repair diagnostic hints"; exit 1; }

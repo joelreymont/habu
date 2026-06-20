@@ -1,41 +1,134 @@
 \ fs-mutate-test.f - focused tests for lib/fs-mutate.f.
-\ Run: lib/fs-mutate-test.sh
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-mutate-test.f
+
+variable FMT-ROOT-U
+variable FMT-REMOVE-U
+variable FMT-RENAME-SRC-U
+variable FMT-RENAME-DST-U
+variable FMT-CHMOD-U
+variable FMT-COPY-SRC-U
+variable FMT-COPY-DST-U
+variable FMT-ATOMIC-U
+variable FMT-MKDIR-U
+variable FMT-NEST-A-U
+variable FMT-NEST-B-U
+variable FMT-NEST-C-U
+
+create FMT-ROOT-BUF FS-PATH-CAP allot
+create FMT-REMOVE-BUF FS-PATH-CAP allot
+create FMT-RENAME-SRC-BUF FS-PATH-CAP allot
+create FMT-RENAME-DST-BUF FS-PATH-CAP allot
+create FMT-CHMOD-BUF FS-PATH-CAP allot
+create FMT-COPY-SRC-BUF FS-PATH-CAP allot
+create FMT-COPY-DST-BUF FS-PATH-CAP allot
+create FMT-ATOMIC-BUF FS-PATH-CAP allot
+create FMT-MKDIR-BUF FS-PATH-CAP allot
+create FMT-NEST-A-BUF FS-PATH-CAP allot
+create FMT-NEST-B-BUF FS-PATH-CAP allot
+create FMT-NEST-C-BUF FS-PATH-CAP allot
+
+: FMT-ROOT$ ( -- ptr u8 n )
+   FMT-ROOT-BUF FMT-ROOT-U @ ;
 
 : FMT-REMOVE-PATH ( -- ptr u8 n )
-   0 SCRIPT-ARGV$ ;
+   FMT-REMOVE-BUF FMT-REMOVE-U @ ;
 
 : FMT-RENAME-SRC ( -- ptr u8 n )
-   1 SCRIPT-ARGV$ ;
+   FMT-RENAME-SRC-BUF FMT-RENAME-SRC-U @ ;
 
 : FMT-RENAME-DST ( -- ptr u8 n )
-   2 SCRIPT-ARGV$ ;
+   FMT-RENAME-DST-BUF FMT-RENAME-DST-U @ ;
 
 : FMT-CHMOD-PATH ( -- ptr u8 n )
-   3 SCRIPT-ARGV$ ;
+   FMT-CHMOD-BUF FMT-CHMOD-U @ ;
 
 : FMT-COPY-SRC ( -- ptr u8 n )
-   4 SCRIPT-ARGV$ ;
+   FMT-COPY-SRC-BUF FMT-COPY-SRC-U @ ;
 
 : FMT-COPY-DST ( -- ptr u8 n )
-   5 SCRIPT-ARGV$ ;
+   FMT-COPY-DST-BUF FMT-COPY-DST-U @ ;
 
 : FMT-ATOMIC-PATH ( -- ptr u8 n )
-   6 SCRIPT-ARGV$ ;
+   FMT-ATOMIC-BUF FMT-ATOMIC-U @ ;
 
 : FMT-MKDIR-PATH ( -- ptr u8 n )
-   7 SCRIPT-ARGV$ ;
+   FMT-MKDIR-BUF FMT-MKDIR-U @ ;
 
 : FMT-NEST-A ( -- ptr u8 n )
-   8 SCRIPT-ARGV$ ;
+   FMT-NEST-A-BUF FMT-NEST-A-U @ ;
 
 : FMT-NEST-B ( -- ptr u8 n )
-   9 SCRIPT-ARGV$ ;
+   FMT-NEST-B-BUF FMT-NEST-B-U @ ;
 
 : FMT-NEST-C ( -- ptr u8 n )
-   10 SCRIPT-ARGV$ ;
+   FMT-NEST-C-BUF FMT-NEST-C-U @ ;
 
 : FMT-TEMP-BASE ( -- ptr u8 n )
-   11 SCRIPT-ARGV$ ;
+   FMT-ROOT$ ;
+
+: FMT-ROOT! ( -- )
+   s" habu-fs-mutate" TMPDIR-MKDIR {: a:ptr u :}
+   a FMT-ROOT-BUF u BYTE-COPY
+   u FMT-ROOT-U ! ;
+
+: FMT-REMOVE! ( -- )
+   FMT-ROOT$ s" remove.txt" FMT-REMOVE-BUF JOIN-PATH FMT-REMOVE-U ! ;
+
+: FMT-RENAME-SRC! ( -- )
+   FMT-ROOT$ s" rename-src.txt" FMT-RENAME-SRC-BUF JOIN-PATH FMT-RENAME-SRC-U ! ;
+
+: FMT-RENAME-DST! ( -- )
+   FMT-ROOT$ s" rename-dst.txt" FMT-RENAME-DST-BUF JOIN-PATH FMT-RENAME-DST-U ! ;
+
+: FMT-CHMOD! ( -- )
+   FMT-ROOT$ s" chmod.txt" FMT-CHMOD-BUF JOIN-PATH FMT-CHMOD-U ! ;
+
+: FMT-COPY-SRC! ( -- )
+   FMT-ROOT$ s" copy-src.txt" FMT-COPY-SRC-BUF JOIN-PATH FMT-COPY-SRC-U ! ;
+
+: FMT-COPY-DST! ( -- )
+   FMT-ROOT$ s" copy-dst.txt" FMT-COPY-DST-BUF JOIN-PATH FMT-COPY-DST-U ! ;
+
+: FMT-ATOMIC! ( -- )
+   FMT-ROOT$ s" atomic.txt" FMT-ATOMIC-BUF JOIN-PATH FMT-ATOMIC-U ! ;
+
+: FMT-MKDIR! ( -- )
+   FMT-ROOT$ s" mkdir-one" FMT-MKDIR-BUF JOIN-PATH FMT-MKDIR-U ! ;
+
+: FMT-NEST-A! ( -- )
+   FMT-ROOT$ s" nested" FMT-NEST-A-BUF JOIN-PATH FMT-NEST-A-U ! ;
+
+: FMT-NEST-B! ( -- )
+   FMT-NEST-A s" child" FMT-NEST-B-BUF JOIN-PATH FMT-NEST-B-U ! ;
+
+: FMT-NEST-C! ( -- )
+   FMT-NEST-B s" grand" FMT-NEST-C-BUF JOIN-PATH FMT-NEST-C-U ! ;
+
+: FMT-PATHS! ( -- )
+   FMT-ROOT!
+   FMT-REMOVE!
+   FMT-RENAME-SRC!
+   FMT-RENAME-DST!
+   FMT-CHMOD!
+   FMT-COPY-SRC!
+   FMT-COPY-DST!
+   FMT-ATOMIC!
+   FMT-MKDIR!
+   FMT-NEST-A!
+   FMT-NEST-B!
+   FMT-NEST-C! ;
+
+: FMT-WRITE-FIXTURES ( -- )
+   FMT-REMOVE-PATH s" delete-me" WRITE-ALL
+   FMT-RENAME-SRC s" rename-me" WRITE-ALL
+   FMT-CHMOD-PATH s" #!/bin/sh\nexit 0\n" WRITE-ALL
+   FMT-COPY-SRC s" copy-src" WRITE-ALL ;
+
+: FMT-PREPARE ( -- )
+   CLEANUP-RESET
+   FMT-PATHS!
+   FMT-ROOT$ CLEANUP-DIR+
+   FMT-WRITE-FIXTURES ;
 
 : FMT-REMOVE-MISSING ( -- )
    s" no-such-habu-fs-remove-file" REMOVE-FILE ;
@@ -83,7 +176,9 @@ create FMT-READ-BUF 64 allot
    s" habu-fs-mut" TMPDIR-MKDIR 2dup DIR? TTRUE CLEANUP-DIR+ ;
 
 : FMT-TEST-CLEANUP ( -- )
-   CLEANUP-RESET
+   FMT-RENAME-DST CLEANUP+
+   FMT-CHMOD-PATH CLEANUP+
+   FMT-COPY-SRC CLEANUP+
    FMT-COPY-DST CLEANUP+
    FMT-ATOMIC-PATH CLEANUP+
    FMT-MKDIR-PATH CLEANUP-DIR+
@@ -95,11 +190,12 @@ create FMT-READ-BUF 64 allot
    FMT-ATOMIC-PATH EXISTS? TFALSE
    FMT-MKDIR-PATH EXISTS? TFALSE
    FMT-NEST-A EXISTS? TFALSE
+   FMT-ROOT$ EXISTS? TFALSE
    CLEANUP-RUN ;
 
 : FS-MUTATE-TEST-MAIN ( -- )
    T-RESET
-   SCRIPT-ARGC 12 < if s" fs-mutate-test: missing fixture args" T-EX-FAIL die then
+   FMT-PREPARE
    FMT-REMOVE-PATH FILE? TTRUE
    FMT-REMOVE-PATH REMOVE-FILE
    FMT-REMOVE-PATH EXISTS? TFALSE
