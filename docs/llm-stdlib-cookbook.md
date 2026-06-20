@@ -156,7 +156,7 @@ when the example mutates paths. The published signatures include
 `WRITE-ALL ( ptr u8 n ptr u8 n -- )`,
 `JOIN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n )`, and
 `WALK-FILES ( ptr u8 n [ ptr u8 n -- ] -- )`. They are covered by
-`lib/fs-test.f`, `lib/fs-test.sh`, `lib/fs-mutate-test.f`, and
+`lib/fs-test.f`, `lib/fs-mutate-test.f`, and
 `examples/file-map.f`.
 
 ```forth

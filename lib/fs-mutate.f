@@ -6,7 +6,7 @@ $FFF constant FS-MUT-MODE-PERM
 73 constant FS-MUT-MODE-EXEC
 493 constant FS-MUT-MODE-DIR
 8192 constant FS-MUT-COPY-CAP
-16 constant FS-MUT-CLEANUP-MAX
+64 constant FS-MUT-CLEANUP-MAX
 0 constant FS-MUT-CLEANUP-FILE
 1 constant FS-MUT-CLEANUP-DIR
 $2D constant FS-MUT-DASH

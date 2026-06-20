@@ -761,7 +761,7 @@ directory follow the platform directory-stream order; callers needing lexical
 order must collect and sort separately. Recursive walks use per-depth path and
 directory buffers so a child walk cannot corrupt the parent record. Callback
 path pointers are transient and must be copied before storage. Its focused
-fixture is `lib/fs-test.sh`, wired into the native gate after promotion.
+fixture is `lib/fs-test.f`, wired into the native gate.
 
 ### Processes
 

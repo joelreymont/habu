@@ -40,7 +40,8 @@ bin/hb --load lib/errors.f lib/array.f lib/array-test.f || { echo "FAIL: array h
 bin/hb --load lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f || { echo "FAIL: table stdlib"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/regex.f lib/regex-test.f || { echo "FAIL: regex stdlib"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/map.f lib/map-test.f || { echo "FAIL: map stdlib"; exit 1; }
-./lib/fs-test.sh || { echo "FAIL: fs stdlib"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-test.f || { echo "FAIL: fs stdlib"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: fs stdlib check"; exit 1; }
 ./lib/process-test.sh || { echo "FAIL: process stdlib"; exit 1; }
 bin/hb --load lib/argv.f lib/argv-test.f || { echo "FAIL: argv stdlib mocks"; exit 1; }
 bin/hb --load lib/argv.f lib/argv-test.f -- --json -o OUT -- file.f --literal || { echo "FAIL: argv stdlib script args"; exit 1; }
