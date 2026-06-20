@@ -282,7 +282,7 @@ Run the focused gate beside the module you used, then the doc-signature gate
 when signatures or stdlib prose changed:
 
 ```sh
-./tools/examples-test.sh
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f
 ./tools/stdlib-manifest-test.sh
 ( cd test && ./run.sh )
 ```

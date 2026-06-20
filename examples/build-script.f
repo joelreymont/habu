@@ -1,5 +1,5 @@
 \ build-script.f - checked stdlib build-style script usage example.
-\ Run: tools/examples-test.sh
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f
 
 : BS-CONFIGURE ( -- )
    s" hb build-script.f [--json] -o OUT SOURCE" ARGV-USAGE!

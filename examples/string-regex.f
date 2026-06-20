@@ -1,5 +1,5 @@
 \ string-regex.f - checked stdlib string and regex usage example.
-\ Run: tools/examples-test.sh
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f
 
 $2D constant SRE-DASH
 $30 constant SRE-ZERO

@@ -1,5 +1,5 @@
 \ property-test.f - checked stdlib property helper usage example.
-\ Run: tools/examples-test.sh
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f
 
 17 constant PE-SEED
 32 constant PE-COUNT

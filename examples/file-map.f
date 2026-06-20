@@ -1,5 +1,5 @@
 \ file-map.f - checked stdlib filesystem and map usage example.
-\ Run: tools/examples-test.sh
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f
 
 8 constant FM-CAP
 
