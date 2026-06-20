@@ -16,7 +16,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **No hosted bootstrap in daily work:** daily work uses `bin/hb`,
   `tools/build.sh`, and `test/run.sh`. No-binary recovery uses `tools/seed.sh`.
 - **Early stdlib fixtures can load libraries directly:** before manifest/bundle
-  plumbing exists, focused `tools/*-test.sh` fixtures can concatenate `lib/*.f`
+  plumbing exists, focused `tools/*-test.f` fixtures can concatenate `lib/*.f`
   directly with their driver to test canonical library policy in isolation.
 - **Native rebuilds need private temp dirs:** parallel jj workspaces share host
   `/tmp`; fixed names like `stage2-got` race. `tools/build.sh`,

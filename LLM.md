@@ -65,7 +65,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 ## 6. Test every word
 - Add a `T{ … -> … }T` for each word as you write it — happy path plus each
   error/edge. A word without a test is unfinished. Put focused tests in the
-  owning native gate file or `tools/*-test.sh` fixture. For errors, assert the
+  owning native gate file or `tools/*-test.f` fixture. For errors, assert the
   exact THROW code.
 
 ## 7. Run the gate

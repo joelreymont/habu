@@ -105,7 +105,7 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f lib/pr
 cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f | $CHECK >/dev/null || { echo "FAIL: process env check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-repair-hints-test.f || { echo "FAIL: repair diagnostic hints"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-repair-hints-test.f | $CHECK >/dev/null || { echo "FAIL: repair diagnostic hints check"; exit 1; }
-./tools/hb-baseline-contracts-test.sh || { echo "FAIL: hb baseline contracts"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/hb-baseline-contracts-test.f || { echo "FAIL: hb baseline contracts"; exit 1; }
 out=$(bin/hb < test/engine-suite.f) || { echo "$out"; echo "FAIL: engine suite (engine died)"; exit 1; }
 case "$out" in
   *ok) echo "PASS: engine suite on bin/hb" ;;
