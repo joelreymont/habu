@@ -42,7 +42,9 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f lib/regex.f lib/regex-test.f 
 bin/hb --load lib/errors.f lib/string.f lib/map.f lib/map-test.f || { echo "FAIL: map stdlib"; exit 1; }
 ./lib/fs-test.sh || { echo "FAIL: fs stdlib"; exit 1; }
 ./lib/process-test.sh || { echo "FAIL: process stdlib"; exit 1; }
-./lib/argv-test.sh || { echo "FAIL: argv stdlib"; exit 1; }
+bin/hb --load lib/argv.f lib/argv-test.f || { echo "FAIL: argv stdlib mocks"; exit 1; }
+bin/hb --load lib/argv.f lib/argv-test.f -- --json -o OUT -- file.f --literal || { echo "FAIL: argv stdlib script args"; exit 1; }
+./tools/check.sh lib/argv.f >/dev/null || { echo "FAIL: argv stdlib check"; exit 1; }
 ./lib/test-test.sh || { echo "FAIL: test stdlib"; exit 1; }
 ./lib/property-test.sh || { echo "FAIL: property stdlib"; exit 1; }
 ./lib/build-test.sh || { echo "FAIL: build stdlib"; exit 1; }
