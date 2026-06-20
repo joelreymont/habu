@@ -61,6 +61,8 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/core/sha256.f bench/llm/artifacts.f bench/llm/artifacts-test.f | $CHECK >/dev/null || { echo "FAIL: llm artifact hash check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/negative-score.f bench/llm/negative-score-test.f || { echo "FAIL: llm negative scorer"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f bench/llm/negative-score.f bench/llm/negative-score-test.f | $CHECK >/dev/null || { echo "FAIL: llm negative scorer check"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/expanded-report-test.f || { echo "FAIL: llm expanded report"; exit 1; }
+cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/expanded-report-test.f | $CHECK >/dev/null || { echo "FAIL: llm expanded report check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f src/core/sha256.f tools/sha256-file-test.f || { echo "FAIL: streaming sha256"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/imgdump.f tools/imgdump-test.f || { echo "FAIL: imgdump compare"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/checked-boundary-lint-test.f || { echo "FAIL: checked-boundary-lint"; exit 1; }

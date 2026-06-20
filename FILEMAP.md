@@ -117,6 +117,8 @@ points stay listed.
 - `bench/llm/artifacts-test.f` — focused coverage for replay artifact hashing and JSON fields.
 - `bench/llm/negative-score.f` — checked scorer for negative benchmark expected codes/tokens/classes.
 - `bench/llm/negative-score-test.f` — focused coverage for negative-harness scoring outcomes.
+- `bench/llm/expanded-report.f` — expanded live benchmark Markdown report with validator and latency sections.
+- `bench/llm/expanded-report-test.f` — focused coverage for expanded report perf-latency rendering.
 - `bench/llm/solutions.f` — reference benchmark solutions.
 - `bench/llm/validate-results.f` — native reference/attempt metric validator and summarizer.
 - `bench/llm/validate-results-test.sh` — fixture coverage for metric validation.

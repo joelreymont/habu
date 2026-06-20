@@ -51,6 +51,8 @@ variable RB-OUT-A
 variable RB-OUT-U
 variable RB-RESULTS-A
 variable RB-RESULTS-U
+variable RB-PERF-A
+variable RB-PERF-U
 variable RB-SEED-A
 variable RB-SEED-U
 variable RB-MODEL-REG-A
@@ -115,6 +117,9 @@ TRUSTED: RB-MODE! ( ptr u8 n -- )
 : RB-RESULTS! ( ptr u8 n -- )
    RB-RESULTS-A RB-RESULTS-U RB-SET$ ;
 
+: RB-PERF! ( ptr u8 n -- )
+   RB-PERF-A RB-PERF-U RB-SET$ ;
+
 : RB-SEED! ( ptr u8 n -- )
    RB-SEED-A RB-SEED-U RB-SET$ ;
 
@@ -145,6 +150,9 @@ TRUSTED: RB-OUT$ ( -- ptr u8 n )
 TRUSTED: RB-RESULTS$ ( -- ptr u8 n )
    RB-RESULTS-A @ RB-RESULTS-U @ ;
 
+TRUSTED: RB-PERF$ ( -- ptr u8 n )
+   RB-PERF-A @ RB-PERF-U @ ;
+
 TRUSTED: RB-SEED$ ( -- ptr u8 n )
    RB-SEED-A @ RB-SEED-U @ ;
 
@@ -165,6 +173,9 @@ TRUSTED: RB-FORTH-ARM$ ( -- ptr u8 n )
 
 TRUSTED: RB-ARRAY-ARMS$ ( -- ptr u8 n )
    RB-ARRAY-ARMS-A @ RB-ARRAY-ARMS-U @ ;
+
+: RB-PERF? ( -- bool )
+   RB-PERF$ nip 0 > ;
 
 TRUSTED: RB-MODE$ ( -- ptr u8 n )
    RB-MODE-A @ RB-MODE-U @ ;
@@ -551,9 +562,11 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" lib/time.f" PROC-ARGV+
    s" lib/date.f" PROC-ARGV+
    s" lib/argv.f" PROC-ARGV+
+   s" tools/json.f" PROC-ARGV+
    s" bench/llm/expanded-report.f" PROC-ARGV+
    s" --" PROC-ARGV+
    RB-OUT$ PROC-ARGV+
+   RB-PERF? if RB-PERF$ PROC-ARGV+ then
    RB-RUN-TO-RESULTS drop ;
 
 : RB-CONFIG ( -- )
@@ -564,6 +577,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    ARGV-POS# 1 > if 1 ARGV-POS$ else s" BENCH_OUT" s" bench/llm/results/run-expanded.jsonl" RB-ENV-OR then RB-OUT!
    s" BENCH_TASKS" s" bench/llm/tasks.tsv" RB-ENV-OR RB-TASKS!
    s" BENCH_RESULTS" s" bench/llm/RESULTS-expanded.md" RB-ENV-OR RB-RESULTS!
+   s" BENCH_PERF_JSON" GETENV RB-PERF!
    s" BENCH_SEED" s" manifest" RB-ENV-OR RB-SEED!
    s" MODEL_REGISTRY" s" bench/llm/models.tsv" RB-ENV-OR RB-MODEL-REG!
    s" MODEL_ID" GETENV RB-MODEL-ONLY!
