@@ -61,7 +61,7 @@ points stay listed.
 - `tools/gate-json-assert.f` — native JSON assertions for the default gate.
 - `tools/host-lint.f` — rejects retired host-script workflow tokens.
 - `tools/check-all-errors.f` — batches checker diagnostics by top-level definition.
-- `tools/check-all-errors-test.sh` — fixture coverage for all-errors checking.
+- `tools/check-all-errors-test.f` — checked fixture coverage for all-errors checking.
 - `tools/diag-to-sarif.f` — converts diagnostic JSONL to SARIF for CI/review UIs.
 - `tools/public-signatures.f` — emits typed public-word manifests for agents.
 - `tools/aot-call-report.f` — measures patched AOT call-stencil padding.

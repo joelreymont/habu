@@ -106,7 +106,7 @@ variable FM-NUM-L
    s" tools/gate-json-assert.f" FM-REQ
    s" tools/host-lint.f" FM-REQ
    s" tools/check-all-errors.f" FM-REQ
-   s" tools/check-all-errors-test.sh" FM-REQ
+   s" tools/check-all-errors-test.f" FM-REQ
    s" tools/diag-to-sarif.f" FM-REQ
    s" tools/public-signatures.f" FM-REQ
    s" tools/aot-call-report.f" FM-REQ
