@@ -102,9 +102,8 @@ variable ER-ROWS
    s" ```" type cr ;
 
 : ER-REPORT. ( -- )
-   TIME-EPOCH-SECONDS ER-DATE-BUF DATE-TIME-LEN FORMAT-EPOCH-UTC 2drop
    s" # Expanded Habu Forth Live Benchmark" type cr cr
-   s" Generated: `" type ER-DATE-BUF DATE-TIME-LEN type s" `" type cr cr
+   s" Generated: `" type TIME-EPOCH-SECONDS ER-DATE-BUF DATE-TIME-LEN FORMAT-EPOCH-UTC type s" `" type cr cr
    s" Raw evidence: `" type ER-RESULT$ type s" ` (" type ER-ROW-COUNT ER-U. s"  rows)" type cr cr
    s" The raw JSONL rows are validated by `bench/llm/validate-results.f`; replay artifacts are embedded in every row with SHA-256 fields." type cr cr
    s" ## Validator Summary" type cr cr

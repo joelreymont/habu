@@ -121,6 +121,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Raw Darwin syscalls are not libc APIs:** `posix_spawn` syscall 244 takes the
   private five-arg kernel ABI `pid*, path, adesc, argv, envp`; `wait4` status
   needs `(status >> 8) & 0xff`. Check carry and errno-in-x0.
+- **Darwin syscall args must be fully initialized:** `gettimeofday` can return
+  `EFAULT` when stale positive x2 survives from a prior `write`; set all
+  expected zero/null argument registers before `svc`, not just the apparent
+  libc parameters.
 - **Recursive directory walks need per-depth buffers:** `getdirentries64` records
   are batch-local; recursing with one shared dirent buffer corrupts the parent
   iteration. Keep directory buffers, offsets, record lengths, base cookies, and

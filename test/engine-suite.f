@@ -184,6 +184,9 @@ ndict@ 0 > -1 T=
 epoch-seconds 1600000000 > -1 T=
 : TEPOCH epoch-seconds 1600000000 > ;
 TEPOCH -1 T=
+create TEPOCH-BYTE 120 c,
+: TEPOCH-AFTER-WRITEERR 99 TEPOCH-BYTE 1 write drop epoch-seconds 1600000000 > ;
+TEPOCH-AFTER-WRITEERR -1 T=
 mono-ns mono-ns <= -1 T=
 : TMONO-ELAPSED mono-ns 0 100000 0 do i + loop drop mono-ns swap - ;
 TMONO-ELAPSED 0 > -1 T=

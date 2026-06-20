@@ -349,7 +349,7 @@ s" spawn-dup2-action" s" n n --" TRUST
 : BEPOCHSECONDS ( -- )
    LBL {: ok :}
    SP SP 16 SUBI,
-   0 SP 0 ADDI,  1 0 MOVZ,  NR-GETTIMEOFDAY SYS,
+   0 SP 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-GETTIMEOFDAY SYS,
    9 C-CS CSET,  9 9 0 ORR,  9 0 CMPI,  C-EQ ok BCOND,  BRK,
    ok LBL,
    9 SP 0 LDR,  9 G-PUSH
