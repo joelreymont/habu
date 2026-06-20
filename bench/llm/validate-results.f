@@ -228,6 +228,33 @@ variable LV-LINE-U
 : LV-CELL+! {: n a :} ( n ptr n -- )
    a @ n + a ! ;
 
+: LV-RATIO-BP {: num den :} ( n n -- n )
+   den 0= IF 0 exit THEN
+   num 10000 * den 2 / + den / ;
+
+: LV-ISQRT {: n :} ( n -- n )
+   0 begin
+      dup 1+ dup * n <=
+   while
+      1+
+   repeat ;
+
+: LV-CLAMP-BP ( n -- n )
+   dup 0 < IF drop 0 exit THEN
+   dup 10000 > IF drop 10000 THEN ;
+
+: LV-CI-DELTA-BP {: p n :} ( n n -- n )
+   n 0= IF 0 exit THEN
+   p 10000 p - * n / LV-ISQRT 196 * 100 / ;
+
+: LV-CI-LOW-BP {: pass total :} ( n n -- n )
+   total 0= IF 0 exit THEN
+   pass total LV-RATIO-BP dup total LV-CI-DELTA-BP - LV-CLAMP-BP ;
+
+: LV-CI-HIGH-BP {: pass total :} ( n n -- n )
+   total 0= IF 0 exit THEN
+   pass total LV-RATIO-BP dup total LV-CI-DELTA-BP + LV-CLAMP-BP ;
+
 : LV-RESULT-PATH$ ( -- ptr u8 n )
    LV-RESULT-PATH-A @ LV-RESULT-PATH-U @ ;
 
@@ -1277,9 +1304,15 @@ variable LV-LINE-U
       s" diagnostics" LV-P @ LV-ARM-DIAGS@ LV-TEXT-FIELD
       s" tokens" LV-P @ LV-ARM-TOKENS@ LV-TEXT-FIELD
       s" wall_ms" LV-P @ LV-ARM-WALL@ LV-TEXT-FIELD
-   s" final_chars" LV-P @ LV-ARM-CHARS@ LV-TEXT-FIELD
+      s" final_chars" LV-P @ LV-ARM-CHARS@ LV-TEXT-FIELD
       s" task_groups" LV-P @ LV-ARM-GROUPS LV-TEXT-FIELD
       s" task_pass_at_k" LV-P @ LV-ARM-PASS-GROUPS LV-TEXT-FIELD
+      s" trial_pass_bp" LV-P @ LV-ARM-TESTS@ LV-P @ LV-ARM-ROWS@ LV-RATIO-BP LV-TEXT-FIELD
+      s" trial_ci95_low_bp" LV-P @ LV-ARM-TESTS@ LV-P @ LV-ARM-ROWS@ LV-CI-LOW-BP LV-TEXT-FIELD
+      s" trial_ci95_high_bp" LV-P @ LV-ARM-TESTS@ LV-P @ LV-ARM-ROWS@ LV-CI-HIGH-BP LV-TEXT-FIELD
+      s" task_pass_bp" LV-P @ LV-ARM-PASS-GROUPS LV-P @ LV-ARM-GROUPS LV-RATIO-BP LV-TEXT-FIELD
+      s" task_ci95_low_bp" LV-P @ LV-ARM-PASS-GROUPS LV-P @ LV-ARM-GROUPS LV-CI-LOW-BP LV-TEXT-FIELD
+      s" task_ci95_high_bp" LV-P @ LV-ARM-PASS-GROUPS LV-P @ LV-ARM-GROUPS LV-CI-HIGH-BP LV-TEXT-FIELD
       LV-NL
       1+
    repeat drop ;
@@ -1302,6 +1335,12 @@ variable LV-LINE-U
       s" llm-results: pass_at_k" LV-OUT
       s" task_groups" LV-GRP# @ LV-TEXT-FIELD
       s" task_passed" LV-PASS-GROUPS LV-TEXT-FIELD
+      s" trial_pass_bp" LV-TESTS @ LV-ROWS @ LV-RATIO-BP LV-TEXT-FIELD
+      s" trial_ci95_low_bp" LV-TESTS @ LV-ROWS @ LV-CI-LOW-BP LV-TEXT-FIELD
+      s" trial_ci95_high_bp" LV-TESTS @ LV-ROWS @ LV-CI-HIGH-BP LV-TEXT-FIELD
+      s" task_pass_bp" LV-PASS-GROUPS LV-GRP# @ LV-RATIO-BP LV-TEXT-FIELD
+      s" task_ci95_low_bp" LV-PASS-GROUPS LV-GRP# @ LV-CI-LOW-BP LV-TEXT-FIELD
+      s" task_ci95_high_bp" LV-PASS-GROUPS LV-GRP# @ LV-CI-HIGH-BP LV-TEXT-FIELD
       LV-NL
    THEN
    s" llm-results: buckets" LV-OUT
@@ -1410,7 +1449,13 @@ variable LV-LINE-U
    s" wall_ms" k LV-ARM-WALL@ LV-JSON-COMMA-UF
    s" final_chars" k LV-ARM-CHARS@ LV-JSON-COMMA-UF
    s" task_groups" k LV-ARM-GROUPS LV-JSON-COMMA-UF
-   s" task_pass_at_k" k LV-ARM-PASS-GROUPS LV-JSON-UF
+   s" task_pass_at_k" k LV-ARM-PASS-GROUPS LV-JSON-COMMA-UF
+   s" trial_pass_bp" k LV-ARM-TESTS@ k LV-ARM-ROWS@ LV-RATIO-BP LV-JSON-COMMA-UF
+   s" trial_ci95_low_bp" k LV-ARM-TESTS@ k LV-ARM-ROWS@ LV-CI-LOW-BP LV-JSON-COMMA-UF
+   s" trial_ci95_high_bp" k LV-ARM-TESTS@ k LV-ARM-ROWS@ LV-CI-HIGH-BP LV-JSON-COMMA-UF
+   s" task_pass_bp" k LV-ARM-PASS-GROUPS k LV-ARM-GROUPS LV-RATIO-BP LV-JSON-COMMA-UF
+   s" task_ci95_low_bp" k LV-ARM-PASS-GROUPS k LV-ARM-GROUPS LV-CI-LOW-BP LV-JSON-COMMA-UF
+   s" task_ci95_high_bp" k LV-ARM-PASS-GROUPS k LV-ARM-GROUPS LV-CI-HIGH-BP LV-JSON-UF
    JSONW-OBJECT-END ;
 
 : LV-OUT-CATS-JSON ( -- )
@@ -1449,6 +1494,12 @@ variable LV-LINE-U
    s" rows" LV-ROWS @ LV-JSON-COMMA-UF
    s" task_groups" LV-GRP# @ LV-JSON-COMMA-UF
    s" task_pass_at_k" LV-PASS-GROUPS LV-JSON-COMMA-UF
+   s" trial_pass_bp" LV-TESTS @ LV-ROWS @ LV-RATIO-BP LV-JSON-COMMA-UF
+   s" trial_ci95_low_bp" LV-TESTS @ LV-ROWS @ LV-CI-LOW-BP LV-JSON-COMMA-UF
+   s" trial_ci95_high_bp" LV-TESTS @ LV-ROWS @ LV-CI-HIGH-BP LV-JSON-COMMA-UF
+   s" task_pass_bp" LV-PASS-GROUPS LV-GRP# @ LV-RATIO-BP LV-JSON-COMMA-UF
+   s" task_ci95_low_bp" LV-PASS-GROUPS LV-GRP# @ LV-CI-LOW-BP LV-JSON-COMMA-UF
+   s" task_ci95_high_bp" LV-PASS-GROUPS LV-GRP# @ LV-CI-HIGH-BP LV-JSON-COMMA-UF
    s" certified" LV-CERT @ LV-JSON-COMMA-UF
    s" first_tests_passed" LV-FIRST-TESTS @ LV-JSON-COMMA-UF
    s" tests_passed" LV-TESTS @ LV-JSON-COMMA-UF

@@ -120,6 +120,43 @@ write_multi_model_jsonl() {
   done
 }
 
+write_confidence_jsonl() {
+  : > "$T/bench/llm/results/live.jsonl"
+  for trial in 1 2; do
+    if [ "$trial" = 1 ]; then
+      checker=certified
+      first_tests=true
+      tests=true
+      outcome=pass
+    else
+      checker=rejected
+      first_tests=false
+      tests=false
+      outcome=fail
+    fi
+    printf '{"schema_version":2,"run_id":"confidence-fixture-2026-06-18",' >> "$T/bench/llm/results/live.jsonl"
+    printf '"model_id":"toy-model","arm":"forth","trial_id":"confidence-fixture-2026-06-18:toy-model:forth:1:%s",' "$trial" >> "$T/bench/llm/results/live.jsonl"
+    printf '"task_family":"arithmetic","model_version":"unknown","model_date":"unknown",' >> "$T/bench/llm/results/live.jsonl"
+    printf '"trial":%s,"task_order":1,"k_trials":2,"order_seed":"confidence-fixture",' "$trial" >> "$T/bench/llm/results/live.jsonl"
+    printf '"task_id":1,"name":"SQUARE","model":"toy-model","attempt":%s,' "$trial" >> "$T/bench/llm/results/live.jsonl"
+    printf '"first_pass_checker":"%s","first_pass_tests":%s,"tests_passed":%s,' "$checker" "$first_tests" "$tests" >> "$T/bench/llm/results/live.jsonl"
+    printf '"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"diagnostic_token":true,"diagnostic_span":true,"diagnostic_expected":true,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"diagnostic_actual":true,"diagnostic_code":true,"diagnostic_repair_class":true,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"all_errors_stable":true,"tokens_used":0,"wall_ms":0,"final_chars":1,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"trust_uses":0,"signature_weakened":false,' >> "$T/bench/llm/results/live.jsonl"
+    printf '"outcome":"%s","rounds":1,"first_pass":%s,"tokens":0,"source_chars":1,' "$outcome" "$tests" >> "$T/bench/llm/results/live.jsonl"
+    printf '"runtime_ms":null,"runtime_repetitions":100,"runtime_warmups":10,"runtime_status":"not_run",' >> "$T/bench/llm/results/live.jsonl"
+    printf '"prompt":"prompt","prompt_sha256":"%s",' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+    printf '"raw_response":"raw","raw_response_sha256":"%s",' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+    printf '"extracted_candidate":"candidate","extracted_candidate_sha256":"%s",' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+    printf '"checker_diagnostics":"","checker_diagnostics_sha256":"%s",' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+    printf '"repair_packet":"","repair_packet_sha256":"%s",' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+    printf '"test_output":"ok","test_output_sha256":"%s",' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+    printf '"final_bundle":"bundle","final_bundle_sha256":"%s"}\n' "$HASH" >> "$T/bench/llm/results/live.jsonl"
+  done
+}
+
 write_reference_jsonl
 
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE")
@@ -289,12 +326,12 @@ printf '%s\n' "$out" | grep -q 'arm habu-forth-blind rows=1 certified=1 first_te
 }
 
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/live.jsonl)
-printf '%s\n' "$out" | grep -q '"task_groups":3,"task_pass_at_k":3' || {
-  echo "FAIL: validate-results json pass-at-k totals"
+printf '%s\n' "$out" | grep -q '"task_groups":3,"task_pass_at_k":3,"trial_pass_bp":10000,"trial_ci95_low_bp":10000,"trial_ci95_high_bp":10000,"task_pass_bp":10000,"task_ci95_low_bp":10000,"task_ci95_high_bp":10000' || {
+  echo "FAIL: validate-results json pass-at-k confidence totals"
   printf '%s\n' "$out"
   exit 1
 }
-printf '%s\n' "$out" | grep -q '"arms":\[{"arm":"habu-forth","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1,"task_groups":1,"task_pass_at_k":1},{"arm":"habu-forth-raw","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1,"task_groups":1,"task_pass_at_k":1},{"arm":"habu-forth-blind","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1,"task_groups":1,"task_pass_at_k":1}\]' || {
+printf '%s\n' "$out" | grep -q '"arms":\[{"arm":"habu-forth","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1,"task_groups":1,"task_pass_at_k":1,"trial_pass_bp":10000,"trial_ci95_low_bp":10000,"trial_ci95_high_bp":10000,"task_pass_bp":10000,"task_ci95_low_bp":10000,"task_ci95_high_bp":10000},{"arm":"habu-forth-raw","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1,"task_groups":1,"task_pass_at_k":1,"trial_pass_bp":10000,"trial_ci95_low_bp":10000,"trial_ci95_high_bp":10000,"task_pass_bp":10000,"task_ci95_low_bp":10000,"task_ci95_high_bp":10000},{"arm":"habu-forth-blind","rows":1,"certified":1,"first_tests_passed":1,"tests_passed":1,"repair_iterations":0,"checker_iterations":1,"diagnostic_count":0,"tokens_used":0,"wall_ms":0,"final_chars":1,"task_groups":1,"task_pass_at_k":1,"trial_pass_bp":10000,"trial_ci95_low_bp":10000,"trial_ci95_high_bp":10000,"task_pass_bp":10000,"task_ci95_low_bp":10000,"task_ci95_high_bp":10000}\]' || {
   echo "FAIL: validate-results json arms"
   printf '%s\n' "$out"
   exit 1
@@ -311,6 +348,21 @@ printf '%s\n' "$out" | grep -q 'run=multi-model-fixture-2026-06-18 model=multipl
 out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/live.jsonl)
 printf '%s\n' "$out" | grep -q '"run_id":"multi-model-fixture-2026-06-18","model":"multiple","rows":2' || {
   echo "FAIL: validate-results multi-model json summary"
+  printf '%s\n' "$out"
+  exit 1
+}
+
+write_confidence_jsonl
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl)
+printf '%s\n' "$out" | grep -q 'pass_at_k task_groups=1 task_passed=1 trial_pass_bp=5000 trial_ci95_low_bp=0 trial_ci95_high_bp=10000 task_pass_bp=10000 task_ci95_low_bp=10000 task_ci95_high_bp=10000' || {
+  echo "FAIL: validate-results confidence text summary"
+  printf '%s\n' "$out"
+  exit 1
+}
+
+out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/live.jsonl)
+printf '%s\n' "$out" | grep -q '"rows":2,"task_groups":1,"task_pass_at_k":1,"trial_pass_bp":5000,"trial_ci95_low_bp":0,"trial_ci95_high_bp":10000,"task_pass_bp":10000,"task_ci95_low_bp":10000,"task_ci95_high_bp":10000' || {
+  echo "FAIL: validate-results confidence json summary"
   printf '%s\n' "$out"
   exit 1
 }
