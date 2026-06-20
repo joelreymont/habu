@@ -271,15 +271,25 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
 : RB-TASK-HARNESS$ ( -- ptr u8 n )
    BM-T-HARNESS RB-TASK-FIELD$ ;
 
+: RB-TASK-CONV$ ( -- ptr u8 n )
+   BM-T-CONV RB-TASK-FIELD$ ;
+
 : RB-TASK-FORTH? ( -- bool )
    RB-TASK-HARNESS$ s" forth" STR= ;
 
 : RB-TASK-ARRAY? ( -- bool )
    RB-TASK-HARNESS$ s" array" STR= ;
 
+: RB-TASK-STDLIB-STACK? ( -- bool )
+   RB-TASK-HARNESS$ s" stdlib" STR= if
+      RB-TASK-CONV$ s" stack" STR= exit
+   then
+   RB-FALSE ;
+
 : RB-TASK-RUNNABLE? ( -- bool )
    RB-TASK-FORTH? if RB-TRUE exit then
-   RB-TASK-ARRAY? ;
+   RB-TASK-ARRAY? if RB-TRUE exit then
+   RB-TASK-STDLIB-STACK? ;
 
 : RB-ARM-FOR-MODE$ ( ptr u8 n -- ptr u8 n ) {: mode:ptr modeu :}
    RB-FORTH-ARM$ nip 0 > if RB-FORTH-ARM$ exit then
@@ -340,6 +350,17 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    PROC-ARGV-ENV-RESET
    RB-OUT-FD @ close
    RB-PID @ 0 < if s" run-expanded-bench: report spawn failed" RB-DIE then
+   RB-PID @ WAIT-RC ;
+
+: RB-RUN-HB-APPEND ( -- n )
+   s" bin/hb" RB-RESOLVE-EXE PROC-ARGV-PREPARE
+   PROC-ENV-INHERIT-MISSING
+   PROC-ENV-PREPARE
+   RB-OUT$ OPEN-APPEND-FD RB-OUT-FD !
+   -1 RB-OUT-FD @ -1 PROC-SPAWN-ARGV-ENV-RAW RB-PID !
+   PROC-ARGV-ENV-RESET
+   RB-OUT-FD @ close
+   RB-PID @ 0 < if s" run-expanded-bench: hb spawn failed" RB-DIE then
    RB-PID @ WAIT-RC ;
 
 : RB-OUT-LOAD ( -- )
@@ -462,6 +483,40 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    RB-MAX-REPAIRS @ RB-SB-U+
    SB$ PROC-ARGV+ ;
 
+: RB-STDLIB-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   PROC-ARGV-ENV-RESET
+   model modelu trial RB-ADD-COMMON-ENV
+   s" --load" PROC-ARGV+
+   s" lib/errors.f" PROC-ARGV+
+   s" lib/string.f" PROC-ARGV+
+   s" lib/fs.f" PROC-ARGV+
+   s" lib/fs-mutate.f" PROC-ARGV+
+   s" lib/process.f" PROC-ARGV+
+   s" lib/process-argv.f" PROC-ARGV+
+   s" lib/process-env.f" PROC-ARGV+
+   s" tools/argv.f" PROC-ARGV+
+   s" tools/json.f" PROC-ARGV+
+   s" bench/llm/manifest.f" PROC-ARGV+
+   s" bench/llm/model.f" PROC-ARGV+
+   s" bench/llm/parse-resp-lib.f" PROC-ARGV+
+   s" bench/llm/model-run.f" PROC-ARGV+
+   s" bench/llm/vectors.f" PROC-ARGV+
+   s" lib/json-write.f" PROC-ARGV+
+   s" src/core/sha256.f" PROC-ARGV+
+   s" bench/llm/live-row.f" PROC-ARGV+
+   s" bench/llm/drive-stdlib-lib.f" PROC-ARGV+
+   s" bench/llm/drive-stdlib.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   BM-T-ID RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-NAME RB-TASK-FIELD$ PROC-ARGV+
+   RB-TASK-LINE$ BM-TASK-SIG$ PROC-ARGV+
+   BM-T-CATEGORY RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-TESTS RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-SPEC RB-TASK-FIELD$ PROC-ARGV+
+   SB-RESET
+   RB-MAX-REPAIRS @ RB-SB-U+
+   SB$ PROC-ARGV+ ;
+
 : RB-RUN-FORTH-ONE ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu mode:ptr modeu trial :}
    mode modeu RB-ARM-FOR-MODE$ {: arm:ptr armu :}
    BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
@@ -494,6 +549,14 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
       s" run-expanded-bench: missing array result row" RB-DIE
    then ;
 
+: RB-RUN-STDLIB-STACK-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib" trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
+   model modelu trial RB-STDLIB-ARGS
+   RB-RUN-HB-APPEND drop
+   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib" trial RB-ROW-DONE? 0= if
+      s" run-expanded-bench: missing stdlib stack result row" RB-DIE
+   then ;
+
 : RB-RUN-ARRAY-ARMS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    0 RB-MODE-NEXT !
    begin
@@ -510,6 +573,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    drop 2drop ;
 
 : RB-RUN-TRIAL ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   RB-TASK-STDLIB-STACK? if model modelu trial RB-RUN-STDLIB-STACK-ONE exit then
    RB-TASK-FORTH? if model modelu trial RB-RUN-FORTH-MODES exit then
    RB-TASK-ARRAY? if model modelu trial RB-RUN-ARRAY-ARMS exit then
    ;
