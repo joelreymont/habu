@@ -1,5 +1,5 @@
 \ habu-array-lib-test.f - focused tests for checked benchmark array helpers.
-\ Run: cat lib/errors.f lib/array.f bench/llm/habu-array-lib.f bench/llm/habu-array-lib-test.f | bin/hb
+\ Run: bin/hb --load lib/errors.f lib/array.f bench/llm/habu-array-lib.f bench/llm/habu-array-lib-test.f
 
 1 constant HATL-EX-FAIL
 variable HATL-N

@@ -1,5 +1,5 @@
 \ json-row-test.f - focused tests for bench/llm/json-row.f.
-\ Run: cat lib/errors.f lib/test.f bench/llm/json-row.f bench/llm/json-row-test.f | bin/hb
+\ Run: bin/hb --load lib/errors.f lib/test.f bench/llm/json-row.f bench/llm/json-row-test.f
 
 create BQT-IN
 97 c, 34 c, 98 c, 92 c, 99 c, 8 c, 12 c, 10 c, 13 c, 9 c, 0 c, 1 c, 127 c,

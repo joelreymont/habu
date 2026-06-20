@@ -14,8 +14,10 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-BUNDLE=$T/validate-results.f
-cat "$ROOT/tools/date.f" "$ROOT/tools/lint/lib.f" "$ROOT/tools/json.f" "$ROOT/tools/argv.f" "$ROOT/bench/llm/validate-results.f" > "$BUNDLE"
+validate_results() {
+  (cd "$T" && "$ROOT/bin/hb" --load "$ROOT/tools/date.f" "$ROOT/tools/lint/lib.f" \
+    "$ROOT/tools/json.f" "$ROOT/tools/argv.f" "$ROOT/bench/llm/validate-results.f" -- "$@")
+}
 
 mkdir -p "$T/bench/llm/results"
 cp "$ROOT/bench/llm/tasks.tsv" "$T/bench/llm/tasks.tsv"
@@ -159,7 +161,7 @@ write_confidence_jsonl() {
 
 write_reference_jsonl
 
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE")
+out=$(validate_results)
 expected_count=$(awk -F '\t' 'NR>1 && $6 == "forth" {n++} END{print n+0}' "$ROOT/bench/llm/tasks.tsv")
 expected_all_count=$(awk -F '\t' 'NR>1 {n++} END{print n+0}' "$ROOT/bench/llm/tasks.tsv")
 expected="llm-results: $expected_count reference metric row(s), 0 finding(s)"
@@ -199,7 +201,7 @@ awk '
 }
 ' "$ROOT/bench/llm/results/reference.jsonl" > "$T/bench/llm/results/attempt.jsonl"
 
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/attempt.jsonl)
+out=$(validate_results bench/llm/results/attempt.jsonl)
 expected_good=$((expected_count - 1))
 expected_checkers=$((expected_count + 2))
 
@@ -244,7 +246,7 @@ printf '%s\n' "$out" | grep -q 'repair_class fix_type rows=1 repair_success=0 re
   exit 1
 }
 
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/attempt.jsonl)
+out=$(validate_results --json bench/llm/results/attempt.jsonl)
 printf '%s\n' "$out" | grep -q "\"rows\":$expected_count" || {
   echo "FAIL: validate-results json rows"
   printf '%s\n' "$out"
@@ -277,7 +279,7 @@ printf '%s\n' "$out" | grep -q '"repair_classes":\[{"repair_class":"remove_produ
 }
 
 write_live_jsonl 2
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl)
+out=$(validate_results bench/llm/results/live.jsonl)
 expected_live_rows=$((expected_all_count * 2))
 printf '%s\n' "$out" | grep -q "run=live-fixture-2026-06-18 model=toy-model rows=$expected_live_rows certified=$expected_live_rows first_tests=$expected_live_rows tests=$expected_live_rows repairs=0 checker_iterations=$expected_live_rows diagnostics=0 tokens=0 wall_ms=0" || {
   echo "FAIL: validate-results V2 k-trial summary"
@@ -295,7 +297,7 @@ printf '%s\n' "$out" | grep -q 'category arrays rows=30 certified=30 tests=30' |
    exit 1
 }
 
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/live.jsonl)
+out=$(validate_results --json bench/llm/results/live.jsonl)
 printf '%s\n' "$out" | grep -q "\"schema_version\":2" || {
   echo "FAIL: validate-results V2 json schema"
   printf '%s\n' "$out"
@@ -308,7 +310,7 @@ printf '%s\n' "$out" | grep -q "\"rows\":$expected_live_rows" || {
 }
 
 write_arm_jsonl
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl)
+out=$(validate_results bench/llm/results/live.jsonl)
 printf '%s\n' "$out" | grep -q 'arm habu-forth rows=1 certified=1 first_tests=1 tests=1 repairs=0 checker_iterations=1 diagnostics=0 tokens=0 wall_ms=0 final_chars=1' || {
   echo "FAIL: validate-results arm habu-forth summary"
   printf '%s\n' "$out"
@@ -325,7 +327,7 @@ printf '%s\n' "$out" | grep -q 'arm habu-forth-blind rows=1 certified=1 first_te
   exit 1
 }
 
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/live.jsonl)
+out=$(validate_results --json bench/llm/results/live.jsonl)
 printf '%s\n' "$out" | grep -q '"task_groups":3,"task_pass_at_k":3,"trial_pass_bp":10000,"trial_ci95_low_bp":10000,"trial_ci95_high_bp":10000,"task_pass_bp":10000,"task_ci95_low_bp":10000,"task_ci95_high_bp":10000' || {
   echo "FAIL: validate-results json pass-at-k confidence totals"
   printf '%s\n' "$out"
@@ -338,14 +340,14 @@ printf '%s\n' "$out" | grep -q '"arms":\[{"arm":"habu-forth","rows":1,"certified
 }
 
 write_multi_model_jsonl
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl)
+out=$(validate_results bench/llm/results/live.jsonl)
 printf '%s\n' "$out" | grep -q 'run=multi-model-fixture-2026-06-18 model=multiple rows=2 certified=2 first_tests=2 tests=2 repairs=0 checker_iterations=2 diagnostics=0 tokens=0 wall_ms=0' || {
   echo "FAIL: validate-results multi-model text summary"
   printf '%s\n' "$out"
   exit 1
 }
 
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/live.jsonl)
+out=$(validate_results --json bench/llm/results/live.jsonl)
 printf '%s\n' "$out" | grep -q '"run_id":"multi-model-fixture-2026-06-18","model":"multiple","rows":2' || {
   echo "FAIL: validate-results multi-model json summary"
   printf '%s\n' "$out"
@@ -353,14 +355,14 @@ printf '%s\n' "$out" | grep -q '"run_id":"multi-model-fixture-2026-06-18","model
 }
 
 write_confidence_jsonl
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl)
+out=$(validate_results bench/llm/results/live.jsonl)
 printf '%s\n' "$out" | grep -q 'pass_at_k task_groups=1 task_passed=1 trial_pass_bp=5000 trial_ci95_low_bp=0 trial_ci95_high_bp=10000 task_pass_bp=10000 task_ci95_low_bp=10000 task_ci95_high_bp=10000' || {
   echo "FAIL: validate-results confidence text summary"
   printf '%s\n' "$out"
   exit 1
 }
 
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" --json bench/llm/results/live.jsonl)
+out=$(validate_results --json bench/llm/results/live.jsonl)
 printf '%s\n' "$out" | grep -q '"rows":2,"task_groups":1,"task_pass_at_k":1,"trial_pass_bp":5000,"trial_ci95_low_bp":0,"trial_ci95_high_bp":10000,"task_pass_bp":10000,"task_ci95_low_bp":10000,"task_ci95_high_bp":10000' || {
   echo "FAIL: validate-results confidence json summary"
   printf '%s\n' "$out"
@@ -371,7 +373,7 @@ write_live_jsonl 2
 tail -n +2 "$T/bench/llm/results/live.jsonl" > "$T/bench/llm/results/live.missing-row"
 mv "$T/bench/llm/results/live.missing-row" "$T/bench/llm/results/live.jsonl"
 set +e
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl 2>&1)
+out=$(validate_results bench/llm/results/live.jsonl 2>&1)
 rc=$?
 set -e
 [ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted missing k trial"; exit 1; }
@@ -385,7 +387,7 @@ write_live_jsonl 1
 sed -n '1p' "$T/bench/llm/results/live.jsonl" |
   sed 's/:1:1"/:1:2"/; s/"trial":1,/"trial":2,/' >> "$T/bench/llm/results/live.jsonl"
 set +e
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl 2>&1)
+out=$(validate_results bench/llm/results/live.jsonl 2>&1)
 rc=$?
 set -e
 [ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted extra k trial"; exit 1; }
@@ -404,7 +406,7 @@ awk 'NR == 1 {
 } { print }' "$T/bench/llm/results/live.jsonl" > "$T/bench/llm/results/live.legacy-v2"
 mv "$T/bench/llm/results/live.legacy-v2" "$T/bench/llm/results/live.jsonl"
 set +e
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl 2>&1)
+out=$(validate_results bench/llm/results/live.jsonl 2>&1)
 rc=$?
 set -e
 [ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted legacy-shaped V2 row"; exit 1; }
@@ -418,7 +420,7 @@ write_live_jsonl 1
 dup_line=$(sed -n '1p' "$T/bench/llm/results/live.jsonl")
 printf '%s\n' "$dup_line" >> "$T/bench/llm/results/live.jsonl"
 set +e
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl 2>&1)
+out=$(validate_results bench/llm/results/live.jsonl 2>&1)
 rc=$?
 set -e
 [ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted duplicate V2 identity"; exit 1; }
@@ -433,7 +435,7 @@ awk 'NR == 1 { sub(/,"raw_response_sha256":"[0-9a-f][0-9a-f]*"/, "") } { print }
   "$T/bench/llm/results/live.jsonl" > "$T/bench/llm/results/live.missing-artifact"
 mv "$T/bench/llm/results/live.missing-artifact" "$T/bench/llm/results/live.jsonl"
 set +e
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl 2>&1)
+out=$(validate_results bench/llm/results/live.jsonl 2>&1)
 rc=$?
 set -e
 [ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted missing replay hash"; exit 1; }
@@ -448,7 +450,7 @@ awk 'NR == 1 { sub(/"final_bundle_sha256":"[0-9a-f][0-9a-f]*"/, "\"final_bundle_
   "$T/bench/llm/results/live.jsonl" > "$T/bench/llm/results/live.bad-hash"
 mv "$T/bench/llm/results/live.bad-hash" "$T/bench/llm/results/live.jsonl"
 set +e
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" bench/llm/results/live.jsonl 2>&1)
+out=$(validate_results bench/llm/results/live.jsonl 2>&1)
 rc=$?
 set -e
 [ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted invalid replay hash"; exit 1; }
@@ -462,7 +464,7 @@ write_reference_jsonl
 dup_line=$(sed -n '1p' "$T/bench/llm/results/reference.jsonl")
 printf '%s\n' "$dup_line" >> "$T/bench/llm/results/reference.jsonl"
 set +e
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" 2>&1)
+out=$(validate_results 2>&1)
 rc=$?
 set -e
 [ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted duplicate"; exit 1; }
@@ -479,7 +481,7 @@ awk '{
 }' "$T/bench/llm/results/reference.jsonl" > "$T/bench/llm/results/reference.bad-date"
 mv "$T/bench/llm/results/reference.bad-date" "$T/bench/llm/results/reference.jsonl"
 set +e
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" 2>&1)
+out=$(validate_results 2>&1)
 rc=$?
 set -e
 [ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted invalid run_id date"; exit 1; }
@@ -493,7 +495,7 @@ write_reference_jsonl
 awk 'BEGIN { FS=OFS="\t" } NR > 1 && $4 == "aot-safe" { $4 = "parsing" } { print }' \
   "$ROOT/bench/llm/tasks.tsv" > "$T/bench/llm/tasks.tsv"
 set +e
-out=$(cd "$T" && "$ROOT/bin/hb" "$BUNDLE" 2>&1)
+out=$(validate_results 2>&1)
 rc=$?
 set -e
 [ "$rc" -ne 0 ] || { echo "FAIL: validate-results accepted missing category"; exit 1; }

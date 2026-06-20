@@ -13,10 +13,10 @@ TITLE=${BENCH_EXPANDED_TITLE:-Expanded Habu Forth Live Benchmark}
 T=$(mktemp -d "${TMPDIR:-/tmp}/habu-expanded-report.XXXXXX")
 trap 'rm -rf "$T"' EXIT HUP INT TERM
 
-VALIDATOR=$T/validate-results.f
-cat tools/date.f tools/lint/lib.f tools/json.f tools/argv.f bench/llm/validate-results.f > "$VALIDATOR"
-bin/hb "$VALIDATOR" "$OUT" > "$T/summary.txt"
-bin/hb "$VALIDATOR" --json "$OUT" > "$T/summary.json"
+bin/hb --load tools/date.f tools/lint/lib.f tools/json.f tools/argv.f \
+  bench/llm/validate-results.f -- "$OUT" > "$T/summary.txt"
+bin/hb --load tools/date.f tools/lint/lib.f tools/json.f tools/argv.f \
+  bench/llm/validate-results.f -- --json "$OUT" > "$T/summary.json"
 
 rows=$(wc -l < "$OUT" | tr -d ' ')
 generated=$(date -u '+%Y-%m-%dT%H:%M:%SZ')

@@ -516,11 +516,11 @@ N=$(awk -F '\t' 'NR>1 && $6 == "forth" {n++} END{print n+0}' bench/llm/tasks.tsv
 DEFN=$(grep -c '^: ' bench/llm/solutions.f)
 [ "$DEFN" = "$N" ] || { echo "FAIL: task/solution count mismatch ($N task(s), $DEFN definition(s))"; exit 1; }
 [ -x bin/hb ] || ./tools/build.sh >/dev/null
-cat lib/errors.f lib/test.f bench/llm/json-row.f bench/llm/json-row-test.f | bin/hb || {
+bin/hb --load lib/errors.f lib/test.f bench/llm/json-row.f bench/llm/json-row-test.f || {
   echo "FAIL: llm json row emitter"
   exit 1
 }
-cat lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/llm/manifest-test.f | bin/hb || {
+bin/hb --load lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/llm/manifest-test.f || {
   echo "FAIL: llm manifest scanner"
   exit 1
 }
@@ -530,7 +530,7 @@ cat lib/errors.f lib/string.f lib/test.f bench/llm/manifest.f bench/llm/manifest
   exit 1
 }
 echo "hb LLM bench: $N/$N reference solutions certified, 0 rejected"
-TEST_OUT=$(cat bench/llm/solutions.f bench/llm/tests.f | bin/hb 2>"$T/tests.err")
+TEST_OUT=$(bin/hb --load bench/llm/solutions.f bench/llm/tests.f 2>"$T/tests.err")
 [ "$TEST_OUT" = "ok" ] || { echo "FAIL: reference functional tests (got: $TEST_OUT)"; exit 1; }
 REF=$T/ref-solutions.f
 cat lib/errors.f lib/string.f lib/regex.f lib/map.f lib/date.f lib/time.f lib/fs.f bench/llm/ref-solutions.f >"$REF"
@@ -539,7 +539,8 @@ cat lib/errors.f lib/string.f lib/regex.f lib/map.f lib/date.f lib/time.f lib/fs
   echo "FAIL: V2 reference solutions are not all-certified"
   exit 1
 }
-REF_OUT=$(bin/hb < "$REF" 2>"$T/ref.err")
+REF_OUT=$(bin/hb --load lib/errors.f lib/string.f lib/regex.f lib/map.f \
+  lib/date.f lib/time.f lib/fs.f bench/llm/ref-solutions.f 2>"$T/ref.err")
 [ "$REF_OUT" = "REF-OK" ] || { echo "FAIL: V2 reference tests (got: $REF_OUT)"; exit 1; }
 check_aot_v2_fixtures
 check_regex_v2_fixtures
@@ -547,8 +548,7 @@ check_file_v2_fixtures
 check_process_v2_fixtures
 check_property_v2_fixtures
 check_build_v2_fixtures
-VALIDATOR=$T/validate-results.f
-cat tools/date.f tools/lint/lib.f tools/json.f tools/argv.f bench/llm/validate-results.f >"$VALIDATOR"
-bin/hb "$VALIDATOR"
+bin/hb --load tools/date.f tools/lint/lib.f tools/json.f tools/argv.f \
+  bench/llm/validate-results.f
 bench/llm/attempt-runner-test.sh
 echo "PASS: answer key valid ($N/$N certified, $N/$N tests passed, metrics valid)"
