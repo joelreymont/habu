@@ -38,6 +38,8 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/signature-lint-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: signature-lint fixture check"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/public-signatures-test.f || { echo "FAIL: public-signatures fixtures"; exit 1; }
 cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/public-signatures-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: public-signatures fixture check"; exit 1; }
+bin/hb --load tools/aot-call-report.f tools/aot-call-report-test.f || { echo "FAIL: aot-call-report fixtures"; exit 1; }
+cat tools/aot-call-report.f tools/aot-call-report-test.f | ./tools/check.sh >/dev/null || { echo "FAIL: aot-call-report fixture check"; exit 1; }
 bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/trust-lint.f || { echo "FAIL: trust-lint"; exit 1; }
 ./tools/trust-lint-test.sh || { echo "FAIL: trust-lint fixtures"; exit 1; }
 bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/stale-status-lint.f || { echo "FAIL: stale-status-lint"; exit 1; }

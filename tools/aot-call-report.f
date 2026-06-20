@@ -61,7 +61,7 @@ variable ARRAY-FIRST
 variable JSON-NUM-V
 variable JSON-NUM-N
 
-: COPY-BYTES {: a dst u :} ( a dst u -- )
+: REPORT-COPY-BYTES {: a dst u :} ( a dst u -- )
    0 begin dup u < while
       dup a + c@  over dst + c!
       1+
@@ -73,7 +73,7 @@ variable JSON-NUM-N
 
 : PATHZ {: a u :} ( a u -- z )
    u 1+ REPORT-PATH-CAP > if s" aot-call-report: path too long" 74 die then
-   a REPORT-PATH u COPY-BYTES
+   a REPORT-PATH u REPORT-COPY-BYTES
    0 REPORT-PATH u + c!
    REPORT-PATH ;
 
@@ -196,7 +196,7 @@ variable JSON-NUM-N
 : SAVE-CARRY ( -- )
    SCAN-LEN @ SCAN-CARRY-CAP < if SCAN-LEN @ else SCAN-CARRY-CAP then SCAN-CARRY !
    SCAN-CARRY @ 0 > if
-      SCAN-BUF SCAN-LEN @ SCAN-CARRY @ - +  SCAN-BUF  SCAN-CARRY @ COPY-BYTES
+      SCAN-BUF SCAN-LEN @ SCAN-CARRY @ - +  SCAN-BUF  SCAN-CARRY @ REPORT-COPY-BYTES
    then ;
 
 : OPEN-INPUT ( -- fd )
@@ -274,7 +274,18 @@ variable JSON-NUM-N
    0 SCRIPT-ARGV$ REPORT-FILE!
    REPORT-JSON ;
 
+: REPORT-CHECK-HOOK ( -- )
+   CHECK! ;
+
+: REPORT-RESTORE-CHECK ( -- )
+   ['] REPORT-CHECK-HOOK set-check ;
+
 : MAYBE-REPORT-MAIN ( -- )
-   ARGC 1 > if REPORT-MAIN then ;
+   ARGC 1 = if REPORT-RESTORE-CHECK exit then
+   SCRIPT-LOAD? if
+      SCRIPT-ARGC 0 > if REPORT-MAIN else REPORT-RESTORE-CHECK then
+      exit
+   then
+   REPORT-MAIN ;
 
 MAYBE-REPORT-MAIN

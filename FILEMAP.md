@@ -67,6 +67,7 @@ points stay listed.
 - `tools/public-signatures.f` — emits typed public-word manifests for agents.
 - `tools/public-signatures-test.f` — checked fixture coverage for public-signature manifests.
 - `tools/aot-call-report.f` — measures patched AOT call-stencil padding.
+- `tools/aot-call-report-test.f` — checked fixture coverage for AOT call-stencil reports.
 - `tools/filemap-lint.f` — freshness lint for this file.
 - `tools/trust-lint.f` — `TRUSTED.md` drift lint.
 - `tools/trust-lint-test.sh` — fixture coverage for `TRUSTED.md` drift lint.
