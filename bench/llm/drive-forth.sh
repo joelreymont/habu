@@ -283,7 +283,7 @@ parse_model_response() {
     printf '%s' "$rt"
     return 0
   fi
-  if rt=$(sh bench/llm/parse-resp.sh "$resp" "$text" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); then
+  if rt=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/parse-resp.f -- "$resp" "$text" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); then
     printf '%s' "$rt"
     return 0
   fi

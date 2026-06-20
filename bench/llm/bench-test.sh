@@ -38,14 +38,14 @@ else
 fi
 
 printf '{"result":": X ;","modelUsage":{"claude-opus-4":{"outputTokens":7}}}\n' > "$T/resp.json"
-rt=$(sh bench/llm/parse-resp.sh "$T/resp.json" "$T/resp.txt")
+rt=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/parse-resp.f -- "$T/resp.json" "$T/resp.txt")
 [ "$rt" = 7 ] && [ "$(cat "$T/resp.txt")" = ': X ;' ] && echo "ok: parse-resp-modelUsage" || {
   echo "FAIL: parse-resp-modelUsage -> tokens=$rt text=$(cat "$T/resp.txt")"
   fails=$((fails+1))
 }
 
 printf '{"choices":[{"message":{"content":"function f(a){return a.length;}"}}],"usage":{"completion_tokens":11}}\n' > "$T/openai.json"
-rt=$(sh bench/llm/parse-resp.sh "$T/openai.json" "$T/openai.txt" openai-json usage.completion_tokens)
+rt=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/parse-resp.f -- "$T/openai.json" "$T/openai.txt" openai-json usage.completion_tokens)
 [ "$rt" = 11 ] && [ "$(cat "$T/openai.txt")" = 'function f(a){return a.length;}' ] && echo "ok: parse-resp-openai" || {
   echo "FAIL: parse-resp-openai -> tokens=$rt text=$(cat "$T/openai.txt")"
   fails=$((fails+1))
@@ -56,7 +56,7 @@ cat > "$T/codex.jsonl" <<'EOF'
 {"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"function f(a){return a.length;}"}}
 {"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":13,"reasoning_output_tokens":5}}
 EOF
-rt=$(sh bench/llm/parse-resp.sh "$T/codex.jsonl" "$T/codex.txt" codex-jsonl usage.output_tokens)
+rt=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/parse-resp.f -- "$T/codex.jsonl" "$T/codex.txt" codex-jsonl usage.output_tokens)
 [ "$rt" = 13 ] && [ "$(cat "$T/codex.txt")" = 'function f(a){return a.length;}' ] && echo "ok: parse-resp-codex" || {
   echo "FAIL: parse-resp-codex -> tokens=$rt text=$(cat "$T/codex.txt")"
   fails=$((fails+1))

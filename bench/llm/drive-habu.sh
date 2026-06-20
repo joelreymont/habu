@@ -100,7 +100,7 @@ ${TASK}${feedback}"
   printf '%s' "$prompt" > "$T/prompt.txt"
   model_run "$prompt" "$T/resp.json" \
     || { printf 'model_run_failed\n' > "$T/resp.json"; outcome=error; break; }
-  rt=$(sh bench/llm/parse-resp.sh "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); toks=$((toks+rt))
+  rt=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/parse-resp.f -- "$T/resp.json" "$T/text.txt" "$MODEL_PARSER" "$MODEL_TOKEN_FIELDS"); toks=$((toks+rt))
   if [ "$SKELETON" = 1 ]; then
     extract_skeleton "$T/text.txt"
   else
