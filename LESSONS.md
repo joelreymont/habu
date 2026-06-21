@@ -206,6 +206,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   data such as JSON rows, factor a small checked writer/DSL instead of relying on
   giant quoted literals or private byte emitters. This keeps escaping and shape
   bugs in reusable Habu code.
+- **Keep fixture DSLs at their sharing boundary:** common live-driver helper
+  bundles are capacity-sensitive. Task-specific byte/source builders belong in
+  the focused test or driver that owns them until multiple users prove they are
+  shared library surface.
 - **Generated-source strings need byte fixtures:** `s"` cannot encode an
   embedded quote. When a candidate/test source needs arbitrary bytes, emit a
   byte-backed string word with the checked fixture DSL instead of inventing
