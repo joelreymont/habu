@@ -203,7 +203,7 @@ TRUSTED: PR-TF-CONFIG$ ( -- ptr u8 n )
    PR-PARSER$ s" codex-jsonl" STR= IF PR-PARSE-CODEX exit THEN
    s" parse-resp: unsupported parser" PR-FAIL ;
 
-: PR-PARSE-RESP ( -- )
+TRUSTED: PR-PARSE-RESP ( -- )
    ['] PR-PARSE-RESP-STRICT catch
    dup 0= IF drop exit THEN
    drop PR-PARSE-RAW ;

@@ -16,8 +16,10 @@
 48 constant DS-ZERO
 57 constant DS-NINE
 59 constant DS-SEMI
+58 constant DS-COLON
 36 constant DS-DOLLAR
 10 constant DS-LF
+16 constant DS-COUNT-KEY-LEN
 10000 constant DS-HB-TIMEOUT-MS
 -3230 constant E-DS-USAGE
 -3231 constant E-DS-CAPACITY
@@ -82,6 +84,10 @@ variable DS-LINE-U
 variable DS-EXTRACT-STARTED
 variable DS-EXTRACT-SEEN
 variable DS-EXTRACT-DONE
+variable DS-AFTER-KEY
+variable DS-AFTER-COLON
+variable DS-START
+variable DS-STOP
 
 : DS-TRUE ( -- bool )
    0 0= ;
@@ -479,6 +485,59 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
 : DS-WRITE-CAPTURE ( ptr u8 n -- ) {: path:ptr pathu :}
    path pathu DS-OUT-BUF DS-OUT-U @ WRITE-ALL
    DS-ERR-U @ 0 > if path pathu DS-ERR-BUF DS-ERR-U @ APPEND-FILE then ;
+
+: DS-FIND-CHAR-FROM ( ptr u8 n n n -- n ) {: a:ptr u start ch :}
+   start begin dup u < while
+      dup a + c@ ch = if exit then
+      1+
+   repeat
+   drop
+   -1 ;
+
+: DS-DIGIT-START ( ptr u8 n n -- n ) {: a:ptr u start :}
+   start begin dup u < while
+      dup a + c@ DS-DIGIT? if exit then
+      1+
+   repeat ;
+
+: DS-DIGIT-END ( ptr u8 n n -- n ) {: a:ptr u start :}
+   start begin dup u < while
+      dup a + c@ DS-DIGIT? 0= if exit then
+      1+
+   repeat ;
+
+: DS-PACKET-DIAG-COUNT ( ptr u8 n -- n ) {: a:ptr u :}
+   a u s" diagnostic_count" FIND-SUB dup 0 < if drop 1 exit then
+   DS-COUNT-KEY-LEN + DS-AFTER-KEY !
+   a u DS-AFTER-KEY @ DS-COLON DS-FIND-CHAR-FROM dup 0 < if drop 1 exit then
+   1+ DS-AFTER-COLON !
+   a u DS-AFTER-COLON @ DS-DIGIT-START DS-START !
+   DS-START @ u >= if 1 exit then
+   a u DS-START @ DS-DIGIT-END DS-STOP !
+   a DS-START @ + DS-STOP @ DS-START @ - STR>NUMBER? 0= if drop 1 exit then
+   dup 0 <= if drop 1 exit then ;
+
+: DS-REPAIR-ARGV ( -- )
+   PROC-ARGV-ENV-RESET
+   s" --load" PROC-ARGV+
+   s" tools/argv.f" PROC-ARGV+
+   s" tools/json.f" PROC-ARGV+
+   s" tools/repair-packet.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   DS-DIAG-PATH$ PROC-ARGV+ ;
+
+: DS-RUN-REPAIR ( -- )
+   DS-REPAIR-ARGV
+   DS-HB-CAPTURE
+   DS-RC @ 0= if
+      DS-OUT-BUF DS-OUT-U @ DS-PACKET-DIAG-COUNT DS-DIAG-COUNT !
+      DS-REPAIR-PATH$ DS-OUT-BUF DS-OUT-U @ WRITE-ALL
+      DS-TEST-PATH$ DS-OUT-BUF DS-OUT-U @ WRITE-ALL
+      exit
+   then
+   DS-REPAIR-PATH$ s" {}" WRITE-ALL
+   DS-TEST-PATH$ DS-OUT-BUF DS-OUT-U @ WRITE-ALL
+   1 DS-DIAG-COUNT ! ;
 
 : DS-CAPTURE-HAS? ( ptr u8 n -- bool ) {: a:ptr u :}
    DS-OUT-BUF DS-OUT-U @ a u CONTAINS? if DS-TRUE exit then

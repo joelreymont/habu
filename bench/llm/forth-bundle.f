@@ -20,6 +20,8 @@ variable FB-DUP-NEXT
 variable FB-LINE-START
 variable FB-TARGET-SEEN
 variable FB-REF-U
+variable FB-SIZE-TOTAL
+variable FB-SIZE-MAX
 
 : FB-TRUE ( -- bool )
    0 0= ;
@@ -70,6 +72,34 @@ variable FB-REF-U
    path pathu out outcap scratch scratchcap FB-APPEND-FILE
    FB-LF out outcap FB-BUF-C ;
 
+: FB-SIZE-RESET ( -- )
+   0 FB-SIZE-TOTAL !
+   0 FB-SIZE-MAX ! ;
+
+: FB-SIZE+ ( n -- ) {: add :}
+   add 0 < if E-FB-CAPACITY throw then
+   FB-SIZE-TOTAL @ add + dup 0 < if E-FB-CAPACITY throw then
+   FB-SIZE-TOTAL ! ;
+
+: FB-MAX-SIZE! ( n -- ) {: size :}
+   size 0 < if E-FB-CAPACITY throw then
+   size FB-SIZE-MAX @ > if size FB-SIZE-MAX ! then ;
+
+: FB-FILE-SIZE ( ptr u8 n -- n ) {: path:ptr pathu :}
+   path pathu FILE? 0= if E-FB-MISSING throw then
+   path pathu FILE-SIZE ;
+
+: FB-ADD-FILE-SIZE ( ptr u8 n -- )
+   FB-FILE-SIZE dup FB-MAX-SIZE! FB-SIZE+ ;
+
+: FB-ADD-FILE-LN-SIZE ( ptr u8 n -- )
+   FB-FILE-SIZE dup FB-MAX-SIZE! 1 + FB-SIZE+ ;
+
+: FB-ADD-REF-LN-SIZE ( ptr u8 n ptr u8 n -- )
+   {: ref:ptr refu id:ptr idu :}
+   ref refu id idu FB-REF-PATH!
+   FB-REF-PATH$ FB-ADD-FILE-LN-SIZE ;
+
 : FB-APPEND-REF-LN ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: ref:ptr refu id:ptr idu out:ptr outcap scratch:ptr scratchcap :}
    ref refu id idu FB-REF-PATH!
@@ -110,6 +140,18 @@ variable FB-REF-U
    then
    ref refu line lineu FB-LINE-ID$ out outcap scratch scratchcap FB-APPEND-REF-LN ;
 
+: FB-SIZE-TASK-SOURCE ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: line:ptr lineu tasks:ptr tasksu start ref:ptr refu target:ptr targetu cand:ptr candu :}
+   line lineu FB-VALID-TASK-LINE? 0= if exit then
+   line lineu BM-TASK-FIELDS BM-REQUIRE-FIELDS
+   tasks tasksu start line lineu FB-LINE-ID$ FB-ID-DUP-BEFORE? if E-FB-DUPLICATE throw then
+   line lineu FB-LINE-ID$ target targetu STR= if
+      -1 FB-TARGET-SEEN !
+      cand candu FB-ADD-FILE-LN-SIZE
+      exit
+   then
+   ref refu line lineu FB-LINE-ID$ FB-ADD-REF-LN-SIZE ;
+
 : FB-REQUIRE-TARGET ( -- )
    FB-TARGET-SEEN @ 0= if E-FB-MISSING throw then ;
 
@@ -126,3 +168,18 @@ variable FB-REF-U
    FB-REQUIRE-TARGET
    tests testsu out outcap scratch scratchcap FB-APPEND-FILE
    FB-OUT-U @ ;
+
+: FB-BUNDLE-LIMITS ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n n )
+   {: tasks:ptr tasksu ref:ptr refu target:ptr targetu cand:ptr candu tests:ptr testsu :}
+   FB-RESET
+   FB-SIZE-RESET
+   begin
+      FB-NEXT @ FB-LINE-START !
+      tasks tasksu FB-NEXT @ BM-LINE-NEXT
+   while
+      FB-NEXT !
+      tasks tasksu FB-LINE-START @ ref refu target targetu cand candu FB-SIZE-TASK-SOURCE
+   repeat drop 2drop
+   FB-REQUIRE-TARGET
+   tests testsu FB-ADD-FILE-SIZE
+   FB-SIZE-TOTAL @ FB-SIZE-MAX @ ;
