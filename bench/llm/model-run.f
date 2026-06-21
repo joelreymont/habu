@@ -1,8 +1,9 @@
 \ model-run.f - checked native model invocation for LLM benchmark drivers.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/process.f,
-\ lib/process-argv.f, lib/process-env.f, bench/llm/manifest.f,
-\ bench/llm/model.f, and bench/llm/parse-resp-lib.f.
+\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
+\ lib/process.f, lib/process-argv.f, lib/process-env.f,
+\ bench/llm/manifest.f, bench/llm/model.f, bench/llm/parse-resp-lib.f,
+\ and bench/llm/codex-home.f.
 
 262144 constant MRUN-OUT-CAP
 65536 constant MRUN-ERR-CAP
@@ -95,10 +96,15 @@ variable MRUN-TOKENS
    then
    E-MRUN-TEMPLATE throw ;
 
+: MRUN-CODEX-CLEAN? ( -- bool )
+   MR-ARGS$ s" codex-exec {prompt}" STR=
+   MR-PARSER$ s" codex-jsonl" STR= and ;
+
 : MRUN-CAPTURE ( ptr u8 n -- ) {: prompt:ptr promptu :}
    MRUN-RESET
    PROC-ARGV-ENV-RESET
    prompt promptu MRUN-BUILD-ARGS
+   MRUN-CODEX-CLEAN? if CODEX-HOME-PREPARE-ENV then
    PROC-ENV-INHERIT-MISSING
    MRUN-RESOLVE MRUN-EMPTY$ MRUN-OUT-BUF MRUN-OUT-CAP MRUN-ERR-BUF MRUN-ERR-CAP MR-TIMEOUT 1000 * RUN-ARGV-ENV-STDIN-CAPTURE
    MRUN-RC !

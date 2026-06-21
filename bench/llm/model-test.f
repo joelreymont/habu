@@ -5,7 +5,7 @@
 alpha	Alpha Model	/tmp/alpha	-p {prompt} --json	raw		5
 
 # comment
-codex	Codex	bench/llm/codex-clean.sh	codex-exec {prompt}	codex-jsonl	usage.output_tokens	300
+codex	Codex	codex	codex-exec {prompt}	codex-jsonl	usage.output_tokens	300
 " ;
 
 : MR-BAD-HEADER$ ( -- ptr u8 n )
@@ -54,7 +54,7 @@ bad	Bad		-p	raw		1
    MR-TIMEOUT 5 T=
    s" codex" MR-REQUIRE
    MR-ID$ s" codex" T$=
-   MR-COMMAND$ s" bench/llm/codex-clean.sh" T$=
+   MR-COMMAND$ s" codex" T$=
    MR-PARSER$ s" codex-jsonl" T$=
    MR-TOKEN-FIELDS$ s" usage.output_tokens" T$=
    MR-TIMEOUT 300 T=

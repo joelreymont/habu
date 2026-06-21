@@ -121,6 +121,8 @@ points stay listed.
 - `bench/llm/manifest-audit-test.f` — focused coverage for benchmark manifest audit checks.
 - `bench/llm/model.f` — checked model registry scanner and selected-model metadata buffers.
 - `bench/llm/model-test.f` — focused coverage for model registry parsing and validation.
+- `bench/llm/codex-home.f` — checked Codex benchmark home isolation and config symlink setup.
+- `bench/llm/codex-home-test.f` — focused coverage for Codex home isolation.
 - `bench/llm/model-run.f` — native model command runner for live benchmark drivers.
 - `bench/llm/model-run-test.f` — focused coverage for native model argv template expansion.
 - `bench/llm/parse-resp-lib.f` — loadable model response parser library for live benchmark drivers.

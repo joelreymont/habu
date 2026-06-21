@@ -1,3 +1,3 @@
 id	label	command	args	parser	token_fields	timeout_s
 claude	claude	claude	-p {prompt} --output-format json	claude-json	usage.output_tokens,modelUsage.*.outputTokens	120
-codex	Codex	bench/llm/codex-clean.sh	codex-exec {prompt}	codex-jsonl	usage.output_tokens	300
+codex	Codex	codex	codex-exec {prompt}	codex-jsonl	usage.output_tokens	300

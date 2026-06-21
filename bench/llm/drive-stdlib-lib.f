@@ -3,8 +3,8 @@
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, tools/argv.f,
 \ bench/llm/manifest.f, bench/llm/model.f, bench/llm/parse-resp-lib.f,
-\ bench/llm/model-run.f, bench/llm/vectors.f, lib/json-write.f,
-\ src/core/sha256.f, and bench/llm/live-row.f.
+\ bench/llm/codex-home.f, bench/llm/model-run.f, bench/llm/vectors.f,
+\ lib/json-write.f, src/core/sha256.f, and bench/llm/live-row.f.
 
 4096 constant DS-PROMPT-CAP
 8192 constant DS-CAND-CAP

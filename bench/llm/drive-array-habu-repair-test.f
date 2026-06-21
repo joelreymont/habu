@@ -162,6 +162,7 @@ variable DART-RC
    s" bench/llm/manifest.f" PROC-ARGV+
    s" bench/llm/model.f" PROC-ARGV+
    s" bench/llm/parse-resp-lib.f" PROC-ARGV+
+   s" bench/llm/codex-home.f" PROC-ARGV+
    s" bench/llm/model-run.f" PROC-ARGV+
    s" bench/llm/vectors.f" PROC-ARGV+
    s" lib/json-write.f" PROC-ARGV+
