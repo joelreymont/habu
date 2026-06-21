@@ -26,6 +26,8 @@ variable HBB-JSON
 variable HBB-STRICT
 variable HBB-TAIL
 variable HBB-FOUND
+variable HBB-LINE-START
+variable HBB-JSON-FOUND
 
 : HBB-TRUE ( -- bool )
    0 0= ;
@@ -65,6 +67,48 @@ variable HBB-FOUND
 
 : HBB-WERR-ERR ( n -- ) {: u :}
    u 0 > if HBB-ERR-BUF u HBB-WERR then ;
+
+: HBB-WERR-LF ( -- )
+   HBB-LF-BUF 1 HBB-WERR ;
+
+: HBB-LINE-FIRST ( n n -- n ) {: start end :}
+   start begin dup end < while
+      dup HBB-ERR-BUF + c@ dup 32 = swap 9 = or if
+         1+
+      else
+         exit
+      then
+   repeat ;
+
+: HBB-LINE-JSON? ( n n -- bool ) {: start end :}
+   start end HBB-LINE-FIRST
+   dup end >= if drop HBB-FALSE exit then
+   HBB-ERR-BUF + c@ 123 = ;
+
+: HBB-WERR-LINE ( n n -- ) {: start end :}
+   end start - {: len :}
+   len 0 > if HBB-ERR-BUF start + len HBB-WERR then
+   HBB-WERR-LF ;
+
+: HBB-WERR-JSON-LINE ( n n -- ) {: start end :}
+   start end HBB-LINE-JSON? if
+      start end HBB-WERR-LINE
+      -1 HBB-JSON-FOUND !
+   then ;
+
+: HBB-WERR-JSON-ONLY ( n -- ) {: u :}
+   0 HBB-JSON-FOUND !
+   0 HBB-LINE-START !
+   0 begin dup u < while
+      HBB-ERR-BUF over + c@ HBB-LF = if
+         HBB-LINE-START @ over HBB-WERR-JSON-LINE
+         1+ dup HBB-LINE-START !
+      else
+         1+
+      then
+   repeat drop
+   HBB-LINE-START @ u < if HBB-LINE-START @ u HBB-WERR-JSON-LINE then
+   HBB-JSON-FOUND @ 0= if u HBB-WERR-ERR then ;
 
 : HBB-PATH-HAS-DQ? ( ptr u8 n -- bool )
    HBB-DQ INDEX-OF 0 >= ;
@@ -231,7 +275,7 @@ variable HBB-FOUND
 : HBB-FINISH-MAKER ( n n n -- ) {: outu erru rc :}
    rc 0= if exit then
    outu HBB-WOUT-ERR
-   erru HBB-WERR-ERR
+   HBB-JSON @ if erru HBB-WERR-JSON-ONLY else erru HBB-WERR-ERR then
    rc HBB-EXIT ;
 
 : HBB-REMOVE-OUT ( -- )

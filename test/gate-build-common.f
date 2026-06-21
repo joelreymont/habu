@@ -12,6 +12,7 @@ $19 constant GB-LC-SEGMENT-64
 72 constant GB-SEG-SECTIONS-OFF
 40 constant GB-SECT-SIZE-OFF
 80 constant GB-SECT-SIZE
+34 constant GB-DQ
 
 create GB-SRC-PATH FS-PATH-CAP allot
 create GB-OUT-PATH FS-PATH-CAP allot
@@ -64,12 +65,19 @@ variable GB-LC-OFF
    s" tools/hb-build.f" PROC-ARGV+
    s" --" PROC-ARGV+ ;
 
-: GB-HB-BUILD ( ptr u8 n -- ) {: label:ptr labelu :}
-   GB-BUILD-ARGV
+: GB-HB-BUILD-ARGS ( -- )
    GB-SRC$ PROC-ARGV+
    s" -o" PROC-ARGV+
-   GB-OUT$ PROC-ARGV+
+   GB-OUT$ PROC-ARGV+ ;
+
+: GB-HB-BUILD-CAPTURE ( -- )
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   ;
+
+: GB-HB-BUILD ( ptr u8 n -- ) {: label:ptr labelu :}
+   GB-BUILD-ARGV
+   GB-HB-BUILD-ARGS
+   GB-HB-BUILD-CAPTURE
    label labelu GE-EXPECT-OK
    GB-OUT$ FILE? 0= if label labelu GE-FAIL then ;
 
@@ -77,6 +85,10 @@ variable GB-LC-OFF
    GE-HB-RESET
    GB-OUT$ GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK ;
+
+: GB-RUN-EXPECT ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu label:ptr labelu :}
+   label labelu GB-RUN-OUT
+   want wantu label labelu GE-EXPECT-OUT ;
 
 : GB-AOT-REPORT ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-HB-RESET
@@ -99,6 +111,39 @@ variable GB-LC-OFF
    GB-REPORT$ PROC-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK ;
+
+: GB-J-DQ ( -- )
+   GB-DQ SB-APPEND-C ;
+
+: GB-J-COLON ( -- )
+   s" :" SB-APPEND ;
+
+: GB-JKEY ( ptr u8 n -- )
+   GB-J-DQ
+   SB-APPEND
+   GB-J-DQ ;
+
+: GB-EXPECT-ERR-FIELD ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu label:ptr labelu :}
+   SB-RESET
+   key keyu GB-JKEY
+   GB-J-COLON
+   SB$ label labelu GE-EXPECT-ERR-HAS ;
+
+: GB-EXPECT-ERR-RAW-FIELD ( ptr u8 n ptr u8 n ptr u8 n -- ) {: key:ptr keyu raw:ptr rawu label:ptr labelu :}
+   SB-RESET
+   key keyu GB-JKEY
+   GB-J-COLON
+   raw rawu SB-APPEND
+   SB$ label labelu GE-EXPECT-ERR-HAS ;
+
+: GB-EXPECT-ERR-STR-FIELD ( ptr u8 n ptr u8 n ptr u8 n -- ) {: key:ptr keyu val:ptr valu label:ptr labelu :}
+   SB-RESET
+   key keyu GB-JKEY
+   GB-J-COLON
+   GB-J-DQ
+   val valu SB-APPEND
+   GB-J-DQ
+   SB$ label labelu GE-EXPECT-ERR-HAS ;
 
 : GB-U32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1 + c@ 8 lshift or

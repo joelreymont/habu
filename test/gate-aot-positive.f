@@ -30,10 +30,6 @@
    GB-WRITE-SRC
    label labelu GB-HB-BUILD ;
 
-: GAP-RUN-EXPECT ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu label:ptr labelu :}
-   label labelu GB-RUN-OUT
-   want wantu label labelu GE-EXPECT-OUT ;
-
 : GAP-AOT-ASSERT ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu label:ptr labelu :}
    label labelu GB-AOT-REPORT
    mode modeu label labelu GB-GJA ;
@@ -48,7 +44,7 @@
    GAP-FIB-SOURCE
    s" hb-build AOT FIB" GAP-BUILD
    SB-RESET s" 55" GE-OUT-LINE GE-SB-LF
-   SB$ s" hb-build AOT output" GAP-RUN-EXPECT
+   SB$ s" hb-build AOT output" GB-RUN-EXPECT
    GB-OUT$ GB-MACHO-TEXT-SIZE {: textsz :}
    textsz GAP-STRIPPED-TEXT-MAX >= if s" hb-build AOT stripped __text" GE-FAIL then
    s" aot-stripped" s" aot-stripped call report" GAP-AOT-ASSERT
@@ -69,7 +65,7 @@
    GAP-COMPACT-SOURCE
    s" hb-build AOT compact calls" GAP-BUILD
    SB-RESET s" 22" GE-OUT-LINE s" ok" GE-OUT-LINE
-   SB$ s" hb-build AOT compact call output" GAP-RUN-EXPECT
+   SB$ s" hb-build AOT compact call output" GB-RUN-EXPECT
    s" aot-compact" s" aot-compact call report" GAP-AOT-ASSERT
    s" PASS: hb-build AOT compact call layout" type cr ;
 
@@ -94,7 +90,7 @@
    GAP-CLOSURE-SOURCE
    s" hb-build AOT closure stress" GAP-BUILD
    SB-RESET s" 260" GE-OUT-LINE GE-SB-LF
-   SB$ s" hb-build AOT closure stress output" GAP-RUN-EXPECT
+   SB$ s" hb-build AOT closure stress output" GB-RUN-EXPECT
    s" PASS: hb-build AOT closure stress (260 reachable words)" type cr ;
 
 : GAP-LONG-SOURCE ( -- )
@@ -107,7 +103,7 @@
    GAP-LONG-SOURCE
    s" hb-build AOT long names" GAP-BUILD
    SB-RESET s" 34" GE-OUT-LINE GE-SB-LF
-   SB$ s" hb-build AOT long-name output" GAP-RUN-EXPECT
+   SB$ s" hb-build AOT long-name output" GB-RUN-EXPECT
    s" PASS: hb-build AOT long dictionary names" type cr ;
 
 : GAP-SQUOTE-SOURCE ( -- )
@@ -121,7 +117,7 @@
    GAP-SQUOTE-SOURCE
    s" hb-build AOT S-quote build" GAP-BUILD
    SB-RESET s" hi" GE-OUT-LINE
-   SB$ s" hb-build AOT S-quote output" GAP-RUN-EXPECT
+   SB$ s" hb-build AOT S-quote output" GB-RUN-EXPECT
    s" PASS: hb-build AOT S-quote string literal (PC-relative, relocation-safe)" type cr ;
 
 : GAP-PARSE-SOURCE ( -- )
@@ -137,7 +133,7 @@
    GAP-PARSE-SOURCE
    s" hb-build AOT parsing words" GAP-BUILD
    SB-RESET s" hi" GE-OUT-LINE s" ok" GE-OUT-LINE
-   SB$ s" hb-build AOT parsing-word output" GAP-RUN-EXPECT
+   SB$ s" hb-build AOT parsing-word output" GB-RUN-EXPECT
    s" PASS: hb-build AOT dot-quote/C-quote parsing words" type cr ;
 
 : GAP-RUN ( -- )
