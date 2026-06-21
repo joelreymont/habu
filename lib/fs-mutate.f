@@ -4,6 +4,7 @@
 
 $FFF constant FS-MUT-MODE-PERM
 73 constant FS-MUT-MODE-EXEC
+448 constant FS-MUT-MODE-PRIVATE-DIR
 493 constant FS-MUT-MODE-DIR
 8192 constant FS-MUT-COPY-CAP
 64 constant FS-MUT-CLEANUP-MAX
@@ -67,9 +68,12 @@ create FS-MUT-ATOMIC-SUFFIX
 : RENAME-FILE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
    src srcu FS-PATHZ dst dstu FS-MUT-PATHZ2 rename 0 < if E-FS-IO throw then ;
 
+: CHMOD-MODE ( ptr u8 n n -- ) {: a:ptr u mode :}
+   a u FS-PATHZ mode chmod 0 < if E-FS-IO throw then ;
+
 : CHMOD-X ( ptr u8 n -- ) {: a:ptr u :}
    a u STAT-MODE FS-MUT-MODE-PERM and FS-MUT-MODE-EXEC or {: mode :}
-   a u FS-PATHZ mode chmod 0 < if E-FS-IO throw then ;
+   a u mode CHMOD-MODE ;
 
 : MAKE-SYMLINK ( ptr u8 n ptr u8 n -- ) {: target:ptr targetu link:ptr linku :}
    target targetu FS-PATHZ link linku FS-MUT-PATHZ2 symlink 0 < if E-FS-IO throw then ;

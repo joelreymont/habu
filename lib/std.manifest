@@ -270,6 +270,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs-mutate	lib/fs-mutate.f	word	REMOVE-FILE	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	unlink a counted path or throw E-FS-IO
 1	fs-mutate	lib/fs-mutate.f	word	RENAME-FILE	(ptr u8 n ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	rename one counted path to another or throw E-FS-IO
 1	fs-mutate	lib/fs-mutate.f	word	CHMOD-X	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	add executable permission bits to a counted path
+1	fs-mutate	lib/fs-mutate.f	word	CHMOD-MODE	(ptr u8 n n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	set one counted path to an explicit permission mode
 1	fs-mutate	lib/fs-mutate.f	word	MAKE-SYMLINK	(ptr u8 n ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create one symlink from counted target bytes to a counted link path
 1	fs-mutate	lib/fs-mutate.f	word	MKDIR-MODE	(ptr u8 n n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create a directory with explicit mode
 1	fs-mutate	lib/fs-mutate.f	word	MAKE-DIR	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create one counted directory path

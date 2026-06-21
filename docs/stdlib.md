@@ -421,6 +421,7 @@ FS-MUT-PATHZ2           ( ptr u8 n -- ptr u8 )
 REMOVE-FILE             ( ptr u8 n -- )
 RENAME-FILE             ( ptr u8 n ptr u8 n -- )
 CHMOD-X                 ( ptr u8 n -- )
+CHMOD-MODE              ( ptr u8 n n -- )
 MAKE-SYMLINK            ( ptr u8 n ptr u8 n -- )
 MKDIR-MODE              ( ptr u8 n n -- )
 MAKE-DIR                ( ptr u8 n -- )
@@ -465,6 +466,8 @@ primitives such as `unlink`, `rename`, `chmod`, `mkdir`, and `rmdir`. It owns
 counted-path wrappers for files and directories. Public wrappers avoid the exact
 primitive names because the dictionary is case-insensitive: use `MAKE-DIR`,
 `REMOVE-DIR`, and `MAKE-DIRS`, not uppercase shadows of `mkdir` or `rmdir`.
+`CHMOD-MODE` applies an explicit permission mode to one counted path, while
+`CHMOD-X` preserves existing permission bits and adds executable bits.
 `MAKE-SYMLINK` creates a link from counted target bytes to a counted link path.
 `RENAME-FILE` and `MAKE-SYMLINK` use a second private pathz buffer so preparing
 the destination path cannot overwrite the source path. `COPY-FILE` reads through
