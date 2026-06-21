@@ -77,7 +77,7 @@
    LR-OUTCOME$ s" reject" T$=
    LR-FIRST-CHECKER$ s" rejected" T$=
    LR-TESTS-PASSED @ 0 T=
-   needle needleu DTH-ROW-HAS ;
+   needle needleu DTH-ROW-NEED-EMBEDDED-TEXT ;
 
 : DAHT-TEST-LIB-PASS ( -- )
    s" lib" DAHT-CONFIG-SUM
@@ -116,7 +116,7 @@
    s" lib" DAHT-CONFIG-SUM
    DAHT-SUM-DUP$ DAH-RUN-TEXT
    s" habu_repair_packet" DAHT-ASSERT-REJECT
-   s" remove_producer" DTH-ROW-HAS
+   s" repair_class" s" remove_producer" DTH-ROW-NEED-EMBEDDED-FIELD-S
    CLEANUP-RUN ;
 
 : DAHT-MAIN ( -- )

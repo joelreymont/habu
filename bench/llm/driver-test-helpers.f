@@ -44,6 +44,21 @@ fixture	Fixture	/bin/echo	{prompt}	raw		2
 : DTH-ROW-HAS ( ptr u8 n -- )
    LR-ROW$ 2swap CONTAINS? TTRUE ;
 
+: DTH-ROW-NEED-EMBEDDED-TEXT ( ptr u8 n -- ) {: a:ptr u :}
+   JW-RESET
+   0 begin dup u < while
+      dup a + c@ JW-ESC-C
+      1+
+   repeat drop
+   JW$ DTH-ROW-HAS ;
+
+: DTH-ROW-NEED-EMBEDDED-FIELD-S ( ptr u8 n ptr u8 n -- )
+   JW-RESET
+   JW-FIELD-S
+   SB-RESET
+   JW$ SB-APPEND
+   SB$ DTH-ROW-NEED-EMBEDDED-TEXT ;
+
 : DTH-ROW-HAS-JSON ( -- )
    JW$ DTH-ROW-HAS ;
 
