@@ -223,7 +223,7 @@ $63 constant GD-C-LOWER
 : GD-DATA-OVERFLOW ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" $400000 allot" GE-SRC-LINE
+   s" DATA-SIZE allot" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    76 s" data-space overflow rc" GE-EXPECT-RC ;
 
