@@ -327,18 +327,82 @@ RA-DEFAULT-TIMEOUT!
 : RA-SINGLE-PATH! ( ptr u8 n ptr u8 n n -- ) {: root:ptr rootu id:ptr idu idx :}
    root rootu id idu idx RA-ROUND-SLOT idx RA-ROUND-U-PTR RA-DIR-ID-FILE! ;
 
-: RA-ROUND-PATH! ( ptr u8 n n n -- ) {: dir:ptr diru round idx :}
-   round RA-ROUND-NAME!
-   dir diru RA-NAME$ idx RA-ROUND-SLOT JOIN-PATH
+: RA-ROUND-FILE! ( ptr u8 n ptr u8 n n -- ) {: dir:ptr diru name:ptr nameu idx :}
+   dir diru name nameu idx RA-ROUND-SLOT JOIN-PATH
    idx RA-ROUND-U-PTR ! ;
 
-: RA-MAYBE-ADD-ROUND ( ptr u8 n n -- ) {: dir:ptr diru round :}
-   RA-ROUND# @ {: idx :}
-   idx RA-CHECK-ROUND
-   dir diru round idx RA-ROUND-PATH!
-   idx RA-ROUND$ FILE? if
-      idx 1+ RA-ROUND# !
+: RA-F-SUFFIX? ( ptr u8 n -- bool ) {: a:ptr u :}
+   u 2 < if RA-FALSE exit then
+   a u 2 - + c@ RA-DOT = a u 1- + c@ RA-F = and ;
+
+: RA-ADD-ROUND-AT ( ptr u8 n ptr u8 n n -- ) {: dir:ptr diru name:ptr nameu idx :}
+   idx RA-ROUND-MAX >= if
+      FS-CLOSE-WALK E-RA-CAPACITY throw
+   then
+   dir diru name nameu idx RA-ROUND-FILE!
+   idx RA-ROUND$ FILE? if idx 1+ RA-ROUND# ! then ;
+
+: RA-ADD-ROUND-FILE ( ptr u8 n ptr u8 n -- ) {: dir:ptr diru name:ptr nameu :}
+   name nameu RA-F-SUFFIX? 0= if exit then
+   dir diru name nameu RA-ROUND# @ RA-ADD-ROUND-AT ;
+
+: RA-SCAN-ROUND-ENTRY ( ptr u8 n -- ) {: dir:ptr diru :}
+   FS-ENT @ FS-DIRENT-NAME 2dup FS-SKIP-ENTRY? if
+      2drop
+   else
+      dir diru 2swap RA-ADD-ROUND-FILE
    then ;
+
+: RA-SCAN-ROUND-DIR ( ptr u8 n -- ) {: dir:ptr diru :}
+   FS-FDS-RESET
+   0 FS-DEPTH !
+   dir diru FS-OPEN-DIR FS-FD!
+   0 FS-BASE@ !
+   begin FS-READ-DIR while
+      0 FS-OFF!
+      begin FS-OFF@ FS-N@ < while
+         FS-CUR-DIR FS-OFF@ + FS-ENT !
+         FS-ENT @ FS-DIRENT-RECLEN FS-REC!
+         FS-CHECK-RECORD
+         dir diru RA-SCAN-ROUND-ENTRY
+         FS-OFF@ FS-REC@ + FS-OFF!
+      repeat
+   repeat
+   FS-FD@ close
+   -1 FS-FD! ;
+
+: RA-STR< ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+   0 begin dup u < over v < and while
+      dup a + c@ over b + c@
+      2dup < if 2drop drop RA-TRUE exit then
+      > if drop RA-FALSE exit then
+      1+
+   repeat drop
+   u v < ;
+
+: RA-ROUND>? ( n n -- bool ) {: lhs rhs :}
+   rhs RA-ROUND$ lhs RA-ROUND$ RA-STR< ;
+
+: RA-COPY-ROUND-TO ( n ptr u8 ptr n -- ) {: idx dst:ptr lenp:ptr :}
+   idx RA-ROUND$ dst lenp RA-COPY-PATH! ;
+
+: RA-SWAP-ROUNDS ( n n -- ) {: lhs rhs :}
+   lhs RA-TMP-PATH RA-TMP-U RA-COPY-ROUND-TO
+   rhs lhs RA-ROUND-SLOT lhs RA-ROUND-U-PTR RA-COPY-ROUND-TO
+   RA-TMP-PATH RA-TMP-U @ rhs RA-ROUND-SLOT rhs RA-ROUND-U-PTR RA-COPY-PATH! ;
+
+: RA-SORT-ROUNDS ( -- )
+   0 RA-I !
+   begin RA-I @ RA-ROUND# @ < while
+      RA-I @ 1+ RA-NEXT !
+      begin RA-NEXT @ RA-ROUND# @ < while
+         RA-I @ RA-NEXT @ RA-ROUND>? if
+            RA-I @ RA-NEXT @ RA-SWAP-ROUNDS
+         then
+         RA-NEXT @ 1+ RA-NEXT !
+      repeat
+      RA-I @ 1+ RA-I !
+   repeat ;
 
 : RA-REQUIRE-ROUNDS ( -- )
    RA-ROUND# @ 0= if E-RA-MISSING throw then ;
@@ -347,12 +411,9 @@ RA-DEFAULT-TIMEOUT!
    0 RA-ROUND$ FILE? 0= if E-RA-MISSING throw then ;
 
 : RA-ENUM-ROUND-DIR ( ptr u8 n -- n ) {: dir:ptr diru :}
-   1 RA-I !
-   begin RA-I @ RA-ROUND-MAX <= while
-      dir diru RA-I @ RA-MAYBE-ADD-ROUND
-      RA-I @ 1+ RA-I !
-   repeat
+   dir diru RA-SCAN-ROUND-DIR
    RA-REQUIRE-ROUNDS
+   RA-SORT-ROUNDS
    RA-ROUND# @ ;
 
 : RA-CANDIDATES ( ptr u8 n ptr u8 n -- n ) {: root:ptr rootu id:ptr idu :}
@@ -542,20 +603,27 @@ RA-DEFAULT-TIMEOUT!
    idx 0= if RA-TRUE exit then
    a idx 1- + c@ RA-WORD-CHAR? 0= ;
 
-: RA-AFTER-BOUNDARY? ( ptr u8 n n -- bool ) {: a:ptr u idx :}
-   idx RA-TRUST-LEN + u >= if RA-TRUE exit then
-   a idx RA-TRUST-LEN + + c@ RA-WORD-CHAR? 0= ;
+: RA-AFTER-BOUNDARY? ( ptr u8 n n n -- bool ) {: a:ptr u idx len :}
+   idx len + u >= if RA-TRUE exit then
+   a idx len + + c@ RA-WORD-CHAR? 0= ;
 
-: RA-TRUST-AT? ( ptr u8 n n -- bool ) {: a:ptr u idx :}
+: RA-TOKEN-AT? ( ptr u8 n n ptr u8 n -- bool ) {: a:ptr u idx tok:ptr toku :}
    idx 0 < if RA-FALSE exit then
-   idx RA-TRUST-LEN + u > if RA-FALSE exit then
-   a idx + RA-TRUST-LEN s" trust" STR=CI 0= if RA-FALSE exit then
+   idx toku + u > if RA-FALSE exit then
+   a idx + toku tok toku STR=CI 0= if RA-FALSE exit then
    a u idx RA-BEFORE-BOUNDARY? 0= if RA-FALSE exit then
-   a u idx RA-AFTER-BOUNDARY? ;
+   a u idx toku RA-AFTER-BOUNDARY? ;
+
+: RA-TRUST-AT? ( ptr u8 n n -- bool )
+   s" trust" RA-TOKEN-AT? ;
+
+: RA-SET-CHECK-AT? ( ptr u8 n n -- bool )
+   s" set-check" RA-TOKEN-AT? ;
 
 : RA-LINE-HAS-TRUST? ( ptr u8 n -- bool ) {: a:ptr u :}
    0 begin dup u < while
       dup a u rot RA-TRUST-AT? if drop RA-TRUE exit then
+      dup a u rot RA-SET-CHECK-AT? if drop RA-TRUE exit then
       1+
    repeat drop RA-FALSE ;
 

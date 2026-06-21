@@ -125,6 +125,19 @@ variable RACT-NEXT
    s" 9" RACT-CAND-SRC!
    RACT-SRC$ RACT-WEAK9$ WRITE-ALL ;
 
+: RACT-TRUST122$ ( -- ptr u8 n )
+   SB-RESET
+   s" s" SB-APPEND 34 SB-APPEND-C s"  DIAG-TRUST-BOUNDARY" SB-APPEND 34 SB-APPEND-C
+   s"  s" SB-APPEND 34 SB-APPEND-C s"  -- i64" SB-APPEND 34 SB-APPEND-C
+   s"  TRUST" SB-APPEND RACT-LF SB-APPEND-C
+   s" 0 set-check" SB-APPEND RACT-LF SB-APPEND-C
+   s" : DIAG-TRUST-BOUNDARY ( -- i64 ) 42 ;" SB-APPEND
+   SB$ ;
+
+: RACT-WRITE-TRUST122 ( -- )
+   s" 122" RACT-CAND-SRC!
+   RACT-SRC$ RACT-TRUST122$ WRITE-ALL ;
+
 : RACT-MATERIALIZE-CANDIDATES ( -- )
    s" bench/llm/tasks.tsv" s" bench/llm/solutions.f" RACT-CAND$ AS-EXTRACT-FILES
    s" 1" RACT-BAD1$ RACT-REPAIR
@@ -135,7 +148,8 @@ variable RACT-NEXT
    s" 6" RACT-BAD6$ RACT-REPAIR
    s" 7" RACT-BAD7$ RACT-REPAIR
    s" 8" RACT-BAD8$ RACT-REPAIR
-   RACT-WRITE-WEAK9 ;
+   RACT-WRITE-WEAK9
+   RACT-WRITE-TRUST122 ;
 
 : RACT-CLI-ARGS ( -- )
    PROC-ARGV-ENV-RESET
@@ -202,7 +216,7 @@ variable RACT-NEXT
 
 : RACT-EXPECT-SUMMARY ( n -- ) {: rows :}
    RACT-ERR$ rows RACT-SUMMARY$ CONTAINS? TTRUE
-   RACT-ERR$ s" buckets checker_rejected=8 checker_false_rejects=0 checker_model_rejected=8 first_tests_failed=8 tests_failed=0 trust_used=0 signature_weakened=1" CONTAINS? TTRUE
+   RACT-ERR$ s" buckets checker_rejected=8 checker_false_rejects=0 checker_model_rejected=8 first_tests_failed=8 tests_failed=0 trust_used=1 signature_weakened=1" CONTAINS? TTRUE
    RACT-ERR$ s" repair_class remove_producer rows=2 repair_success=2 repair_iterations=2 diagnostics=2 token_delta=0" CONTAINS? TTRUE
    RACT-ERR$ s" repair_class add_producer rows=2 repair_success=2 repair_iterations=2 diagnostics=2 token_delta=0" CONTAINS? TTRUE
    RACT-ERR$ s" run-attempts: wrote " CONTAINS? TTRUE ;
@@ -260,6 +274,12 @@ variable RACT-NEXT
    root s" first_pass_checker" s" certified" RACT-S-FIELD=
    root s" signature_weakened" STR-TRUE RACT-BOOL-FIELD= ;
 
+: RACT-EXPECT-TASK122 ( -- )
+   122 RACT-FIND-TASK {: root :}
+   root s" first_pass_checker" s" certified" RACT-S-FIELD=
+   root s" tests_passed" STR-TRUE RACT-BOOL-FIELD=
+   root s" trust_uses" 2 RACT-U-FIELD= ;
+
 : RACT-MAIN ( -- )
    T-RESET
    RACT-PREPARE
@@ -274,6 +294,7 @@ variable RACT-NEXT
    RACT-EXPECT-TASK1
    RACT-EXPECT-TASK8
    RACT-EXPECT-TASK9
+   RACT-EXPECT-TASK122
    CLEANUP-RUN
    RACT-ROOT$ EXISTS? TFALSE
    T-REPORT
