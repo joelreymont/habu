@@ -510,10 +510,11 @@ buffers as `WALK-FILES`, and throws named filesystem errors rather than ignoring
 partial deletion failures. If a tree contains a symlink to a directory,
 `REMOVE-TREE` unlinks the symlink itself and never descends into the target.
 
-`MAKE-TEMP-DIR` creates a unique directory under an explicit base path, and
-`TMPDIR-MKDIR` uses `$TMPDIR` or `/tmp`. Cleanup registrations copy counted paths
-into owned storage and `CLEANUP-RUN` removes them in reverse order, so nested
-directory cleanups can register parent before child and still remove child first.
+`MAKE-TEMP-DIR` creates a private unique directory under an explicit base path,
+retrying bounded deterministic candidates if a name already exists.
+`TMPDIR-MKDIR` uses `$TMPDIR` or `/tmp`. Cleanup registrations copy counted
+paths into owned storage and `CLEANUP-RUN` removes them in reverse order, so
+nested directory cleanups can register parent before child and still remove child first.
 `CLEANUP-TREE+` registers a recursive tree cleanup for temporary workspaces.
 Keeping these words outside core `lib/fs.f` keeps path inspection/read helpers
 separate from mutation and cleanup policy.

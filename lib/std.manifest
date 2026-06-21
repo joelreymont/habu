@@ -300,7 +300,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs-mutate	lib/fs-mutate.f	word	COPY-FILE-STREAM	(ptr u8 n ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	copy one file with the module streaming buffer instead of a whole-file cap
 1	fs-mutate	lib/fs-mutate.f	word	ATOMIC-WRITE-FILE	(ptr u8 n ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	write to a sibling temporary file then rename over destination
 1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-SB-U	(n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	append unsigned decimal digits into the string builder
-1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-BUILD-TEMP	(ptr u8 n ptr u8 n -- ptr u8 n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	build unique temp path bytes into owned storage
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-BUILD-TEMP-TRY	(ptr u8 n ptr u8 n n n -- ptr u8 n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	build one deterministic temp path candidate into owned storage
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-TMP-COLLISION?	(ptr u8 n -- bool)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	test whether a failed temp mkdir path should be treated as a name collision
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-MKDIR-CANDIDATE?	(ptr u8 n -- bool)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	attempt one private temp directory candidate and report collision instead of throwing
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-MAKE-TEMP-DIR-SEED	(ptr u8 n ptr u8 n n -- ptr u8 n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	create a private temp directory from a deterministic seed with bounded collision retries
 1	fs-mutate	lib/fs-mutate.f	word	MAKE-TEMP-DIR	(ptr u8 n ptr u8 n -- ptr u8 n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create a unique directory under an explicit base path
 1	fs-mutate	lib/fs-mutate.f	word	TMPDIR-MKDIR	(ptr u8 n -- ptr u8 n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create a unique directory under TMPDIR or /tmp
 1	fs-mutate	lib/fs-mutate.f	word	CLEANUP-RESET	(--)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	clear cleanup registrations

@@ -8,6 +8,7 @@ $FFF constant FS-MUT-MODE-PERM
 493 constant FS-MUT-MODE-DIR
 8192 constant FS-MUT-COPY-CAP
 64 constant FS-MUT-CLEANUP-MAX
+64 constant FS-MUT-TMP-RETRIES
 0 constant FS-MUT-CLEANUP-FILE
 1 constant FS-MUT-CLEANUP-DIR
 2 constant FS-MUT-CLEANUP-TREE
@@ -219,20 +220,42 @@ create FS-MUT-ATOMIC-SUFFIX
    n 10 >= if n 10 / RECURSE then
    n 10 mod 48 + SB-APPEND-C ;
 
-: FS-MUT-BUILD-TEMP ( ptr u8 n ptr u8 n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu :}
+: FS-MUT-BUILD-TEMP-TRY ( ptr u8 n ptr u8 n n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed attempt :}
    SB-RESET
    base baseu SB-APPEND
    FS-MUT-SLASH SB-APPEND-C
    prefix prefixu SB-APPEND
    FS-MUT-DASH SB-APPEND-C
-   mono-ns FS-MUT-SB-U
+   seed FS-MUT-SB-U
+   FS-MUT-DASH SB-APPEND-C
+   attempt FS-MUT-SB-U
    SB$ {: a:ptr u :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
    a FS-MUT-TMP-PATH u BYTE-COPY
    FS-MUT-TMP-PATH u ;
 
+: FS-MUT-TMP-COLLISION? ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u EXISTS? if 0 0= exit then
+   a u SYMLINK? ;
+
+: FS-MUT-MKDIR-CANDIDATE? ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u FS-PATHZ FS-MUT-MODE-PRIVATE-DIR mkdir {: rc :}
+   rc 0= if 0 0= exit then
+   a u FS-MUT-TMP-COLLISION? if 0 0= 0= exit then
+   E-FS-IO throw
+   0 0= 0= ;
+
+: FS-MUT-MAKE-TEMP-DIR-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed :}
+   0 begin dup FS-MUT-TMP-RETRIES < while
+      base baseu prefix prefixu seed over FS-MUT-BUILD-TEMP-TRY
+      2dup FS-MUT-MKDIR-CANDIDATE? if rot drop exit then
+      2drop 1+
+   repeat drop
+   E-FS-IO throw
+   FS-MUT-TMP-PATH 0 ;
+
 : MAKE-TEMP-DIR ( ptr u8 n ptr u8 n -- ptr u8 n )
-   FS-MUT-BUILD-TEMP 2dup MAKE-DIR ;
+   mono-ns FS-MUT-MAKE-TEMP-DIR-SEED ;
 
 : TMPDIR-MKDIR ( ptr u8 n -- ptr u8 n ) {: prefix:ptr prefixu :}
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
