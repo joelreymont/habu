@@ -238,6 +238,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   bundles are capacity-sensitive. Task-specific byte/source builders belong in
   the focused test or driver that owns them until multiple users prove they are
   shared library surface.
+- **Captured gate children need heartbeat polls:** a silent child makes the
+  parent look hung if `poll` waits for the full timeout. Gate-owned capture loops
+  should poll in heartbeat-sized slices and print label-only wait lines while
+  keeping child stdout/stderr captured for failures.
 - **Generated-source strings need byte fixtures:** `s"` cannot encode an
   embedded quote. When a candidate/test source needs arbitrary bytes, emit a
   byte-backed string word with the checked fixture DSL instead of inventing

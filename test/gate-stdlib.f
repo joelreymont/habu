@@ -6,29 +6,106 @@
 
 $40000 constant GS-SRC-CAP
 120000 constant GS-TIMEOUT-MS
+5000 constant GS-HEARTBEAT-MS
 
 create GS-SRC-BUF GS-SRC-CAP allot
 
 variable GS-SRC-U
 variable GS-RD
+variable GS-PROGRESS-LAST-NS
 
-: GS-RUN-ENV ( ptr u8 n n -- ) {: path:ptr pathu timeout :}
-   PROC-ENV-INHERIT-MISSING
-   path pathu GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP timeout
-   RUN-ARGV-ENV-CAPTURE
-   GT-OUTCOME-CODE !
-   PROC-OUTCOME-EXIT GT-OUTCOME-KIND !
-   GT-ERR-U !
-   GT-OUT-U ! ;
+: GS-PROGRESS-START ( ptr u8 n -- ) {: label:ptr labelu :}
+   label labelu GT-PROGRESS-RUN
+   mono-ns GS-PROGRESS-LAST-NS ! ;
 
-: GS-RUN-STDIN ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu in:ptr inu timeout :}
+: GS-PROGRESS-ELAPSED-MS ( -- n )
+   mono-ns GT-PROGRESS-START-NS @ - PROC-NS-PER-MS / ;
+
+: GS-PROGRESS-DUE? ( -- bool )
+   mono-ns GS-PROGRESS-LAST-NS @ - PROC-NS-PER-MS / GS-HEARTBEAT-MS >= ;
+
+: GS-PROGRESS-WAIT ( ptr u8 n -- ) {: label:ptr labelu :}
+   GS-PROGRESS-DUE? if
+      mono-ns GS-PROGRESS-LAST-NS !
+      s" WAIT: " type label labelu type
+      s"  (" type GS-PROGRESS-ELAPSED-MS GT-U-TYPE s" ms)" type cr
+   then ;
+
+: GS-PROGRESS-SLICE-MS ( -- n )
+   PROC-REMAINING-MS dup GS-HEARTBEAT-MS > if drop GS-HEARTBEAT-MS then ;
+
+: GS-CAPTURE-STORE ( -- )
+   PROC-OUT-LEN @ GT-OUT-U !
+   PROC-ERR-LEN @ GT-ERR-U !
+   PROC-OUTCOME-KIND @ GT-OUTCOME-KIND !
+   PROC-OUTCOME-CODE @ GT-OUTCOME-CODE ! ;
+
+: GS-RUN-CAPTURE-LOOP ( ptr u8 n -- ) {: label:ptr labelu :}
+   begin PROC-CAPTURE-DONE? 0= while
+      GS-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup 0= if
+         drop
+         PROC-REMAINING-MS 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
+         label labelu GS-PROGRESS-WAIT
+      else
+         drop
+         GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP PROC-DRAIN-READY
+         label labelu GS-PROGRESS-WAIT
+      then
+   repeat
+   PROC-REAP-CAPTURE ;
+
+: GS-POLL-STDIN-CAPTURE ( n -- n ) {: ms :}
+   PROC-OUT-R @ POLLIN 0 PROC-ARGV-PFD-AT!
+   PROC-ERR-R @ POLLIN 1 PROC-ARGV-PFD-AT!
+   PROC-ARGV-IN-W @ 0 >= if
+      PROC-ARGV-IN-W @ POLLOUT 2 PROC-ARGV-PFD-AT!
+   else
+      -1 0 2 PROC-ARGV-PFD-AT!
+   then
+   PROC-ARGV-PFD 3 ms poll {: rc :}
+   rc 0 < if E-PROC-OUTPUT PROC-ARGV-THROW-CAPTURE then
+   rc ;
+
+: GS-RUN-STDIN-CAPTURE-LOOP ( ptr u8 n ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
+   inu 0 <= if PROC-ARGV-IN-W PROC-CLOSE-CELL then
+   begin PROC-ARGV-STDIN-CAPTURE-DONE? 0= while
+      GS-PROGRESS-SLICE-MS GS-POLL-STDIN-CAPTURE dup 0= if
+         drop
+         PROC-REMAINING-MS 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
+         label labelu GS-PROGRESS-WAIT
+      else
+         drop
+         in inu PROC-ARGV-DRIVE-STDIN
+         GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP PROC-ARGV-DRAIN-READY
+         label labelu GS-PROGRESS-WAIT
+      then
+   repeat
+   PROC-REAP-CAPTURE ;
+
+: GS-RUN-ENV ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu timeout label:ptr labelu :}
    PROC-ENV-INHERIT-MISSING
-   path pathu in inu GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP timeout
-   RUN-ARGV-ENV-STDIN-CAPTURE
-   GT-OUTCOME-CODE !
-   PROC-OUTCOME-EXIT GT-OUTCOME-KIND !
-   GT-ERR-U !
-   GT-OUT-U ! ;
+   path pathu PROC-ARGV-CHECK-PATH
+   PROC-CAPTURE-RESET
+   timeout PROC-CAPTURE-DEADLINE!
+   PROC-SETUP-CAPTURE-FDS
+   path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-CAPTURE
+   label labelu GS-RUN-CAPTURE-LOOP
+   PROC-CLOSE-CAPTURE-FDS
+   GS-CAPTURE-STORE ;
+
+: GS-RUN-STDIN ( ptr u8 n ptr u8 n n ptr u8 n -- ) {: path:ptr pathu in:ptr inu timeout label:ptr labelu :}
+   PROC-ENV-INHERIT-MISSING
+   path pathu PROC-ARGV-CHECK-PATH
+   inu 0 < if E-PROC-OUTPUT throw then
+   PROC-ARGV-CAPTURE-RESET
+   timeout PROC-CAPTURE-DEADLINE!
+   PROC-SETUP-CAPTURE-FDS
+   PROC-ARGV-SETUP-STDIN-FDS
+   path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
+   in inu label labelu GS-RUN-STDIN-CAPTURE-LOOP
+   PROC-ARGV-CLOSE-STDIN-FDS
+   PROC-CLOSE-CAPTURE-FDS
+   GS-CAPTURE-STORE ;
 
 : GS-FAIL ( ptr u8 n -- ) {: label:ptr labelu :}
    s" FAIL: " type label labelu type cr
@@ -48,14 +125,14 @@ variable GS-RD
    s" --load" GS-ARG+ ;
 
 : GS-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
-   label labelu GT-PROGRESS-RUN
-   s" bin/hb" GS-TIMEOUT-MS GS-RUN-ENV
+   label labelu GS-PROGRESS-START
+   s" bin/hb" GS-TIMEOUT-MS label labelu GS-RUN-ENV
    label labelu GS-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : GS-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
-   label labelu GT-PROGRESS-RUN
-   s" bin/hb" in inu GS-TIMEOUT-MS GS-RUN-STDIN
+   label labelu GS-PROGRESS-START
+   s" bin/hb" in inu GS-TIMEOUT-MS label labelu GS-RUN-STDIN
    label labelu GS-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
@@ -82,9 +159,9 @@ variable GS-RD
    s" --" GS-ARG+ ;
 
 : GS-CHECK-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
-   label labelu GT-PROGRESS-RUN
+   label labelu GS-PROGRESS-START
    GS-CHECK-ARGV
-   s" bin/hb" GS-SRC-BUF GS-SRC-U @ GS-TIMEOUT-MS GS-RUN-STDIN
+   s" bin/hb" GS-SRC-BUF GS-SRC-U @ GS-TIMEOUT-MS label labelu GS-RUN-STDIN
    label labelu GS-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
