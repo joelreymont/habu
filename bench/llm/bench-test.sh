@@ -138,7 +138,7 @@ cat > "$T/perf.json" <<'EOF'
 EOF
 rep=$(bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- "$T/report-runtime.jsonl" "$T/perf.json")
 chk report-latency-section '## LLM Feedback Latency' "$rep"
-chk report-latency-source 'bench/llm/perf.sh --json' "$rep"
+chk report-latency-source 'bench/llm/perf.f -- --json' "$rep"
 chk report-latency-validator '| metric_validator | 34 | 0.03 |' "$rep"
 chk report-latency-microbench '| microbench_smoke | 56 | 0.06 |' "$rep"
 

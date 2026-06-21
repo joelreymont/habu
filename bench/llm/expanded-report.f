@@ -285,7 +285,7 @@ variable ER-PARSE-N
 
 : ER-PERF. ( -- )
    s" ## LLM Feedback Latency" type cr cr
-   s" Source: `bench/llm/perf.sh --json`; these timings measure local checker/test/validator/property/microbench latency, not model inference latency." type cr cr
+   s" Source command: `bench/llm/perf.f -- --json`. These timings measure local checker/test/validator/property/microbench latency, not model inference latency." type cr cr
    ARGV-POS# 1 <= if ER-PERF-NOTE. exit then
    ER-PERF$ ER-PERF-BUF ER-PERF-CAP READ-ALL ER-PERF-U !
    ER-PERF-BUF ER-PERF-U @ JSON-PARSE ER-PERF-ROOT !

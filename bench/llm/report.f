@@ -1307,7 +1307,7 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    repeat drop RR-NL
    s" Cells are max output tokens among passing trials with positive output-token counts. Habu ratios compare each Habu arm with the cheaper mainstream arm; the jump from ~1x on elementwise tasks to the hard-task tail is the main raw-Habu signal." RR-OUT RR-NL ;
 
-: RR-REPORT. ( -- )
+: RR-HEADER. ( -- )
    s" # RESULTS.md — Habu vs JavaScript, Python, TypeScript, and Rust: LLM codegen on array/memory algorithms" RR-OUT RR-NL RR-NL
    s" Generated from `results/run.jsonl` (" RR-OUT RR-ROWS @ RR-U. s"  trials). Models: " RR-OUT RR-MODELS.
    s" . Tasks: " RR-OUT RR-TASK-N @ RR-U. s"  algorithms over an integer array (sum/max/min/argmax/count, reverse/prefix-sum/square/negate/running-max)." RR-OUT RR-NL
@@ -1325,11 +1325,15 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    s" is green only when every io-vector passes. Metric: output tokens to green (input excluded — Claude Code" RR-OUT RR-NL
    s" harness overhead + caching distort it). Output tokens are generated-token cost, not direct access to hidden" RR-OUT RR-NL
    s" reasoning. They are still a useful effort proxy: habu source is terser, yet output tokens run HIGHER on hard tasks" RR-OUT RR-NL
-   s" — the reasoning cost of the unfamiliar memory model dominates the terseness saving._" RR-OUT RR-NL RR-NL
+   s" — the reasoning cost of the unfamiliar memory model dominates the terseness saving._" RR-OUT RR-NL RR-NL ;
+
+: RR-EVIDENCE. ( -- )
    s" ## Evidence Contract" RR-OUT RR-NL RR-NL
    s" V2 live rows are identified by `run_id`, `model_id`, `arm`, `task_id`, and `trial_id`; duplicate full keys are invalid while multiple trials for the same task are expected." RR-OUT RR-NL
    s" Rows also carry `task_family`, `model_version`, `model_date`, trial/order metadata, outcome and repair counters, `checker_false_reject`, diagnostic-quality booleans, `source_chars`, and warmed-runtime fields. Unknown model version/date are recorded as `unknown` rather than omitted." RR-OUT RR-NL
-   s" Replayable rows retain `prompt`, `raw_response`, `extracted_candidate`, `checker_diagnostics`, `repair_packet`, `test_output`, and `final_bundle`, each with a `*_sha256` field so artifacts can be matched to archived files or inline payloads." RR-OUT RR-NL RR-NL
+   s" Replayable rows retain `prompt`, `raw_response`, `extracted_candidate`, `checker_diagnostics`, `repair_packet`, `test_output`, and `final_bundle`, each with a `*_sha256` field so artifacts can be matched to archived files or inline payloads." RR-OUT RR-NL RR-NL ;
+
+: RR-LIMITATIONS. ( -- )
    s" ## Limitations" RR-OUT RR-NL RR-NL
    s" - **nondeterminism**: model sampling, provider scheduling, local load, and transient tool latency can change individual rows." RR-OUT RR-NL
    s" - **k/N confidence**: pass rates are point estimates for the recorded k trials over N selected tasks, not confidence intervals." RR-OUT RR-NL
@@ -1338,7 +1342,9 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    s" - **library comparability**: `habu-lib` and `habu-stdlib` measure checked helper surfaces, `habu-skeleton` measures scaffold help, while JS, Python, TypeScript, and Rust use their familiar standard library idioms." RR-OUT RR-NL
    s" - **task selection**: the suite stresses integer array and memory algorithms; it does not represent every programming workload." RR-OUT RR-NL
    s" - **environment**: wall/runtime timings are tied to the local machine, OS, toolchain, and current `bin/hb` build." RR-OUT RR-NL
-   s" - **deterministic-vs-live boundary**: shell fixtures verify the harness deterministically; benchmark claims require archived live V2 rows." RR-OUT RR-NL RR-NL
+   s" - **deterministic-vs-live boundary**: shell fixtures verify the harness deterministically; benchmark claims require archived live V2 rows." RR-OUT RR-NL RR-NL ;
+
+: RR-RELIABILITY. ( -- )
    s" ## Reliability" RR-OUT RR-NL RR-NL
    s" | language | trials | green trials | trial pass | first-try green | task pass@k | non-pass rows |" RR-OUT RR-NL
    s" |---|---:|---:|---:|---:|---:|---:|" RR-OUT RR-NL
@@ -1351,7 +1357,9 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
       dup 0 begin dup RR-ARM# < while 2dup RR-PER-MODEL-ROW. 1+ repeat drop
       1+
    repeat drop RR-NL
-   s" Aggregate language tables above pool rows only after this per-model breakdown makes each model family visible." RR-OUT RR-NL RR-NL
+   s" Aggregate language tables above pool rows only after this per-model breakdown makes each model family visible." RR-OUT RR-NL RR-NL ;
+
+: RR-EFFORT. ( -- )
    s" ## Effort To Green" RR-OUT RR-NL RR-NL
    s" | language | mean rounds | median output tokens | **mean output tokens** | max output tokens | median runtime ms | max runtime ms | median wall s | max wall s |" RR-OUT RR-NL
    s" |---|---:|---:|---:|---:|---:|---:|---:|---:|" RR-OUT RR-NL
@@ -1359,7 +1367,9 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    s" Effort metrics use passing trials with a positive output-token count. Runtime metrics use `runtime_ms`, a warmed candidate execution over fixed vectors and repetitions; wall time remains model/checker/compiler/feedback latency. Mean/max matter more than the median: Habu's cost is skewed — cheap on simple tasks, spiking on hard ones." RR-OUT RR-NL RR-NL
    RR-MISSING-TOKENS-NOTE.
    RR-MISSING-RUNTIME-NOTE.
-   RR-FALSE-REJECT-NOTE.
+   RR-FALSE-REJECT-NOTE. ;
+
+: RR-CATEGORIES. ( -- )
    s" ## Category Reliability And Effort" RR-OUT RR-NL RR-NL
    s" | category | language | trials | green trials | trial pass | task pass@k | mean rounds | mean output tokens | median runtime ms | diagnostic complete |" RR-OUT RR-NL
    s" |---|---|---:|---:|---:|---:|---:|---:|---:|---:|" RR-OUT RR-NL
@@ -1372,16 +1382,30 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    s" | category | raw task pass@k | stdlib task pass@k | skeleton task pass@k | stdlib - raw pass | skeleton - stdlib pass | stdlib/raw tokens | skeleton/stdlib tokens | stdlib/raw runtime | skeleton/stdlib runtime |" RR-OUT RR-NL
    s" |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|" RR-OUT RR-NL
    0 begin dup RR-CAT-N @ < while dup RR-CATEGORY-DELTA-ROW. 1+ repeat drop RR-NL
-   s" Positive pass deltas mean the later Habu arm solved more tasks in that category. Token and runtime ratios below 1x mean the later arm was cheaper among passing trials with measured values." RR-OUT RR-NL RR-NL
+   s" Positive pass deltas mean the later Habu arm solved more tasks in that category. Token and runtime ratios below 1x mean the later arm was cheaper among passing trials with measured values." RR-OUT RR-NL RR-NL ;
+
+: RR-LATENCY. ( -- )
    s" ## LLM Feedback Latency" RR-OUT RR-NL RR-NL
-   s" Source: `bench/llm/perf.sh --json`; these timings measure local checker/test/report feedback latency, not model inference latency." RR-OUT RR-NL RR-NL
-   RR-PERF.
+   s" Source command: `bench/llm/perf.f -- --json`. These timings measure local checker/test/report feedback latency, not model inference latency." RR-OUT RR-NL RR-NL
+   RR-PERF. ;
+
+: RR-VERDICT. ( -- )
    s" ## Verdict — how does Habu stack up?" RR-OUT RR-NL RR-NL
    s" Task pass@k is reported in the tables above. The raw-Habu cost split is bimodal:" RR-OUT RR-NL RR-NL
    s" - **Simple elementwise loops** (sum, square, negate, max) — raw Habu is **comparable or cheaper** than baseline languages (its source is terse and the pattern is regular)." RR-OUT RR-NL
    s" - **Anything needing index tracking, carried state, or in-place rearrangement** (argmax, reverse, prefix-sum, running-max) remains the hard tail." RR-OUT RR-NL RR-NL
    s" The raw-Habu gap is the corpus-familiarity tax: Habu's typed pointers (`arr:ptr`), `i cells arr + @`/`!` indexing, and in-place concatenative loops have much less model prior than JavaScript arrays, Python lists, TypeScript arrays, or Rust slices. That makes obvious stack shapes cheap and stateful/indexed loops expensive." RR-OUT RR-NL RR-NL
-   RR-NONPASS.
+   RR-NONPASS. ;
+
+: RR-REPORT. ( -- )
+   RR-HEADER.
+   RR-EVIDENCE.
+   RR-LIMITATIONS.
+   RR-RELIABILITY.
+   RR-EFFORT.
+   RR-CATEGORIES.
+   RR-LATENCY.
+   RR-VERDICT.
    RR-TASK-TABLE. ;
 
 : RR-USAGE ( -- )

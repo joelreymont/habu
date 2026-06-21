@@ -200,4 +200,3 @@ points stay listed.
 - `bench/llm/habu-array-lib-test.f` — focused coverage for the benchmark array helper library.
 - `bench/llm/habu-preamble-lib.txt` — LLM prompt preamble for library-assisted Habu benchmark arm.
 - `bench/llm/run.sh` — benchmark certification runner.
-- `bench/llm/perf.sh` — legacy shell LLM performance benchmark runner awaiting removal.

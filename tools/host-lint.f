@@ -102,6 +102,10 @@ variable HOST-PATH-U
    2dup s" ./bench/llm/report.f" PATH= IF 2drop LINT-TRUE exit THEN
    s" ./bench/llm/lib.sh" PATH= ;
 
+: HOST-RETIRED-SHELL? ( ptr u8 n -- bool )
+   2dup s" ./bench/llm/perf.sh" PATH= IF 2drop LINT-TRUE exit THEN
+   2drop LINT-FALSE ;
+
 : HOST-CHECK-A ( ptr u8 n -- )
    HOST-PAT-A 6 HOST-FIND
    dup 0 >= IF
@@ -126,6 +130,7 @@ variable HOST-PATH-U
 
 : HOST-SCAN-FILE {: a:ptr u :} ( ptr u8 n -- )
    a u HOST-BENCH-BASELINE? IF exit THEN
+   a u HOST-RETIRED-SHELL? IF a u HOST-REPORT-PATH exit THEN
    a u HOST-PATH-BAD? IF a u HOST-REPORT-PATH exit THEN
    a u HOST-TEXT? 0= IF exit THEN
    a HOST-PATH-A !  u HOST-PATH-U !

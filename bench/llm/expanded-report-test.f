@@ -214,7 +214,7 @@ ERT-LF ERT-LF-BUF c!
    s" ## Category by Arm and Model" ERT-CONTAINS
    s" | arithmetic | fixture | habu-forth | 1 | 1 | 100.00 | 100.00 | 1.00 | 9 | 0.01 | 100.00 | 100.00 |" ERT-CONTAINS
    s" ## LLM Feedback Latency" ERT-CONTAINS
-   s" bench/llm/perf.sh --json" ERT-CONTAINS
+   s" bench/llm/perf.f -- --json" ERT-CONTAINS
    s" | metric_validator | 34 | 0.03 |" ERT-CONTAINS
    s" | microbench_smoke | 56 | 0.06 |" ERT-CONTAINS ;
 

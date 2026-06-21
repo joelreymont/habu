@@ -469,6 +469,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   test bundles can hit raw parser/checker capacity when every long candidate
   snippet is a published helper. Keep reusable vocabularies checked, then build
   long per-case snippets with those words in the top-level test runner.
+- **Undefined tokens near a huge word can be BODYBUF pressure:** if adding a
+  small string to a large raw definition makes later tokens in that same
+  definition appear undefined, factor the colon body into section words before
+  blaming source input or code-region size.
 - **A lone `:` on large loads is the code-region guard:** confirm with
   `cp@ dbase@ -`; if it is at or past `REGION - $4000`, a colon definition is
   failing closed before it can emit a useful diagnostic. Remove one-use compiled

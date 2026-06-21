@@ -591,7 +591,7 @@ Report requirements:
   checker feedback actually helps LLM-generated code converge.
 - Missing-token/runtime rows excluded only from the affected metric, not from
   reliability.
-- Feedback-loop latency from `bench/llm/perf.sh`: checker, functional tests,
+- Feedback-loop latency from native `bench/llm/perf.f`: checker, functional tests,
   metric validator, property-test smoke, microbench smoke, and `--full` rebuild
   plus AOT timings.
 - Repair-packet effectiveness by `repair_class`: fixture coverage, success rate,
@@ -904,7 +904,7 @@ bin/hb 2 10 < test/prop-test.f
 bin/hb < test/prop-test.f
 test "$(find bin -type f -perm -111 ! -name hb -print | wc -l)" -eq 0
 ./bench/llm/run.sh
-./bench/llm/perf.sh
+bin/hb --load lib/errors.f lib/string.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f bench/llm/perf-lib.f bench/llm/perf.f
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f -- lib/array.f
 bin/hb --load lib/errors.f lib/array.f lib/array-test.f
 ./bench/llm/bench-test.sh
@@ -921,7 +921,7 @@ bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f l
 Live benchmark evidence after benchmark-surface changes:
 
 ```sh
-./bench/llm/perf.sh --json > bench/llm/results/perf.json
+bin/hb --load lib/errors.f lib/string.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f bench/llm/perf-lib.f bench/llm/perf.f -- --json > bench/llm/results/perf.json
 BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 bench/llm/results/run-expanded.jsonl
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f tools/json.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
 ```
