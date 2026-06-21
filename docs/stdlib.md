@@ -837,6 +837,9 @@ GT-CLEANUP      ( -- )
 GT-PATH         ( ptr u8 n ptr u8 -- n )
 GT-RUN          ( ptr u8 n n -- )
 GT-RUN-DEFAULT  ( ptr u8 n -- )
+GT-PROGRESS-RUN ( ptr u8 n -- )
+GT-U-TYPE       ( n -- )
+GT-PROGRESS-PASS ( ptr u8 n -- )
 GT-RC@          ( -- n )
 GT-RC=          ( n ptr u8 n -- )
 GT-RC-NONZERO   ( ptr u8 n -- )
@@ -919,6 +922,10 @@ and stderr buffers, classifies exit/signal/timeout outcomes, and accumulates
 named failures so gate scripts can report all local expectation failures before
 exiting. Test runner paths are counted byte strings; stdout/stderr assertions
 never truncate silently because process capture still enforces bounded output.
+Gate scripts should call `GT-PROGRESS-RUN` immediately before long subchecks and
+`GT-PROGRESS-PASS` after successful completion so quiet captured children do not
+look hung. The progress helpers print only runner labels and elapsed
+milliseconds; successful child stdout/stderr remains captured and suppressed.
 `lib/build.f` owns build step modeling, checked source certification, artifact
 path construction, and fail-closed status reporting. `BUILD-CHECK` requires a
 counted source path that names a file, scans colon definitions in bounded module

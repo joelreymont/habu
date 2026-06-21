@@ -48,12 +48,16 @@ variable GS-RD
    s" --load" GS-ARG+ ;
 
 : GS-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
+   label labelu GT-PROGRESS-RUN
    s" bin/hb" GS-TIMEOUT-MS GS-RUN-ENV
-   label labelu GS-EXPECT-OK ;
+   label labelu GS-EXPECT-OK
+   label labelu GT-PROGRESS-PASS ;
 
 : GS-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
+   label labelu GT-PROGRESS-RUN
    s" bin/hb" in inu GS-TIMEOUT-MS GS-RUN-STDIN
-   label labelu GS-EXPECT-OK ;
+   label labelu GS-EXPECT-OK
+   label labelu GT-PROGRESS-PASS ;
 
 : GS-SRC-RESET ( -- )
    0 GS-SRC-U ! ;
@@ -78,9 +82,11 @@ variable GS-RD
    s" --" GS-ARG+ ;
 
 : GS-CHECK-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
+   label labelu GT-PROGRESS-RUN
    GS-CHECK-ARGV
    s" bin/hb" GS-SRC-BUF GS-SRC-U @ GS-TIMEOUT-MS GS-RUN-STDIN
-   label labelu GS-EXPECT-OK ;
+   label labelu GS-EXPECT-OK
+   label labelu GT-PROGRESS-PASS ;
 
 : GS-SRC-COMMON-PROC ( -- )
    GS-SRC-RESET

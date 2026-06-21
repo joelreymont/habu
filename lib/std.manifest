@@ -523,6 +523,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test-runner	lib/test-runner.f	word	GT-CHECK	(bool ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	record a failure name when a boolean check fails
 1	test-runner	lib/test-runner.f	word	GT-RUN	(ptr u8 n n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run a prepared argv capture with timeout
 1	test-runner	lib/test-runner.f	word	GT-RUN-DEFAULT	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run a prepared argv capture with the default timeout
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-RUN	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a gate progress start line and record its start time
+1	test-runner	lib/test-runner.f	word	GT-U-TYPE	(n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	print an unsigned integer without a trailing newline for progress lines
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-PASS	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a gate progress pass line with elapsed milliseconds
 1	test-runner	lib/test-runner.f	word	GT-RC@	(-- n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return last outcome as shell-style rc
 1	test-runner	lib/test-runner.f	word	GT-RC=	(n ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last rc equals an expected value
 1	test-runner	lib/test-runner.f	word	GT-RC-NONZERO	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last rc is nonzero

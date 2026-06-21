@@ -51,7 +51,9 @@
    s" lib/test-runner.f" PROC-ARGV+ ;
 
 : TR-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
-   s" bin/hb" -1 -1 -1 RUN-ARGV-ENV-IO-RC 0 = 0= if label labelu TR-FAIL then ;
+   label labelu GT-PROGRESS-RUN
+   s" bin/hb" -1 -1 -1 RUN-ARGV-ENV-IO-RC 0 = 0= if label labelu TR-FAIL then
+   label labelu GT-PROGRESS-PASS ;
 
 : TR-COMMON ( -- )
    s" test/gate-common.f" PROC-ARGV+ ;

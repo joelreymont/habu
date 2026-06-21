@@ -22,6 +22,7 @@ variable GT-ERR-U
 variable GT-OUTCOME-KIND
 variable GT-OUTCOME-CODE
 variable GT-FAIL#
+variable GT-PROGRESS-START-NS
 
 : GT-FAIL-SLOT ( n -- ptr u8 ) {: idx :}
    idx 0 < if E-TBL-BOUNDS throw then
@@ -100,6 +101,21 @@ variable GT-FAIL#
 
 : GT-RUN-DEFAULT ( ptr u8 n -- )
    GT-DEFAULT-TIMEOUT-MS GT-RUN ;
+
+: GT-PROGRESS-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
+   mono-ns GT-PROGRESS-START-NS !
+   s" RUN: " type label labelu type cr ;
+
+: GT-U-TYPE ( n -- ) {: n :}
+   n 0 < if E-TBL-FIELD throw then
+   n 10 >= if n 10 / RECURSE then
+   n 10 mod STR-ZERO + emit ;
+
+: GT-PROGRESS-PASS ( ptr u8 n -- ) {: label:ptr labelu :}
+   s" PASS: " type label labelu type
+   s"  (" type
+   mono-ns GT-PROGRESS-START-NS @ - PROC-NS-PER-MS / GT-U-TYPE
+   s" ms)" type cr ;
 
 : GT-RC@ ( -- n )
    GT-OUTCOME-KIND @ PROC-OUTCOME-EXIT = if

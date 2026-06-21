@@ -120,16 +120,22 @@ variable GE-RD
    PROC-ARGV-ENV-RESET ;
 
 : GE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
+   label labelu GT-PROGRESS-RUN
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   label labelu GE-EXPECT-OK ;
+   label labelu GE-EXPECT-OK
+   label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN-STDIN ( ptr u8 n -- ) {: label:ptr labelu :}
+   label labelu GT-PROGRESS-RUN
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   label labelu GE-EXPECT-OK ;
+   label labelu GE-EXPECT-OK
+   label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN-STDIN-NZ ( ptr u8 n -- ) {: label:ptr labelu :}
+   label labelu GT-PROGRESS-RUN
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   label labelu GE-EXPECT-NONZERO ;
+   label labelu GE-EXPECT-NONZERO
+   label labelu GT-PROGRESS-PASS ;
 
 : GE-BIN-HB? ( ptr u8 n -- bool )
    s" bin/hb" STR= ;
