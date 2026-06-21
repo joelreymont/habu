@@ -185,6 +185,9 @@ points stay listed.
 - `bench/llm/solutions.f` — reference benchmark solutions.
 - `bench/llm/validate-results.f` — native reference/attempt metric validator and summarizer.
 - `bench/llm/validate-results-test.f` — checked positive and rejection fixture coverage for metric validation.
+- `bench/llm/perf-lib.f` — native LLM feedback-loop performance timing harness.
+- `bench/llm/perf.f` — CLI wrapper for native LLM feedback-loop performance timing.
+- `bench/llm/perf-test.f` — focused coverage for native perf JSON/text/options.
 - `bench/llm/run-attempts-lib.f` — checked attempt-runner helpers for deterministic candidate round enumeration, task looping, test-bundle assembly, checker/test execution, per-attempt metric state, and schema-1 row emission.
 - `bench/llm/run-attempts-test.f` — focused coverage for candidate enumeration, task looping, bundle assembly, checker/test execution, attempt metrics, and parsed row output.
 - `bench/llm/run-attempts-check-test.f` — checker-safe smoke coverage for attempt runner helper and row-emitter effects with JSON parser stubs.
@@ -195,4 +198,4 @@ points stay listed.
 - `bench/llm/habu-array-lib-test.f` — focused coverage for the benchmark array helper library.
 - `bench/llm/habu-preamble-lib.txt` — LLM prompt preamble for library-assisted Habu benchmark arm.
 - `bench/llm/run.sh` — benchmark certification runner.
-- `bench/llm/perf.sh` — LLM feedback-loop performance benchmark runner.
+- `bench/llm/perf.sh` — legacy shell LLM performance benchmark runner awaiting removal.
