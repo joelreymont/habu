@@ -52,11 +52,15 @@ constants; and a `T{ … -> … }T` test for every word.
   root-cause the failure, repair the violated invariant or missing capability,
   add/keep tests that prove the fix, and record any remaining substantive work
   as detailed dots.
-- Checker-first RCA is mandatory. For every stack/runtime/test failure in Forth
-  code, ask first: **should checked Habu have rejected this source before it
-  ran?** If yes, reduce the failure to a minimal checked source fixture, prove
-  whether the exact command path was fail-closed, then fix the checker/compiler
-  and add a negative regression before fixing or accepting downstream code.
+- Checker-first RCA is mandatory. For any “why didn’t the checker catch this?”
+  failure, ask first: **was this exact source path actually under a fail-closed
+  `CHECK!` hook in the command that passed?** Prove it with a minimal bad
+  definition on the same load path, command exit status, and stderr/stdout
+  diagnostics. If the path was not fail-closed, fix that harness/tooling gap
+  before runtime repair. If it was fail-closed, ask whether checked Habu should
+  have rejected the source before it ran; reduce that to a minimal checked
+  fixture, then fix the checker/compiler and add a negative regression before
+  fixing or accepting downstream code.
 - If the checker cannot yet express the invariant, do not normalize the gap with
   local runtime guards. Add the missing checker/type/compiler capability as a
   detailed dot, keep only a named tested boundary while it exists, and remove
@@ -79,13 +83,11 @@ constants; and a `T{ … -> … }T` test for every word.
   stalls, times out, or exits without diagnostics, immediately isolate the
   checker/harness phase and root cause. Do not call the fixture "too expensive",
   shrink it, bypass it, or replace it until the failing mechanism is proven.
-- For any “why didn’t the checker catch this?” RCA, after the checker-first
-  question above, ask: **was this source actually under a fail-closed checker
-  hook in the command that passed?** Prove the answer with a minimal bad
-  definition on the same load path, check command exit status, and stderr/stdout
-  diagnostics. Only after that may you blame checker semantics/codegen. If the
-  answer is “not fail-closed,” fix or dot the harness/tooling gap before moving
-  on.
+- For checker misses where the command path is fail-closed, classify the miss
+  before editing runtime code: wrong primitive/boundary effect, checker
+  semantics, codegen/runtime mismatch, or same-type semantic-role gap. Each class
+  needs a minimal fixture and either an immediate compiler/tooling fix or a
+  detailed dot for the missing checker capability.
 - Native crash/memory RCA must use debugger evidence first: set breakpoints,
   step, and inspect stack/data/watch cells. If the debugger cannot expose the
   needed state, extend the debugger/stepper before falling back to print-marker

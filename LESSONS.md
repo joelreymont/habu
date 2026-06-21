@@ -38,15 +38,14 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 
 ## Checker Soundness
 
-- **Checker RCA starts before runtime repair:** for any Forth stack/runtime/test
-  failure, ask whether checked Habu should have rejected the source before it
-  ran. If yes, reduce it to a minimal checked source, prove fail-closed
-  enforcement on that command path, then fix the checker/compiler and add a
-  negative regression before accepting downstream code changes.
-- **Checker escapes start with enforcement proof:** before debugging checker
-  semantics, prove the exact command path was fail-closed. A source can execute
-  `0 set-check` or install a non-throwing hook; `tools/check.f` without a static
-  pass can then accept code that was never actually checked.
+- **Checker RCA starts with fail-closed proof:** for any “why didn’t the checker
+  catch this?” failure, first prove the exact source path was under a fatal
+  `CHECK!` hook with a minimal bad definition on the same command path. If not,
+  fix the harness/tooling gap before runtime repair; if yes, reduce the checker
+  miss, fix the checker/compiler, and add a negative regression.
+- **Checker misses need class labels:** after fail-closed proof, classify the
+  miss as wrong boundary effect, checker semantics, codegen/runtime mismatch, or
+  same-type semantic-role gap before editing downstream runtime code.
 - **Checker RCA audits shadows before semantics:** after proving the path is
   checked, confirm recently loaded words did not shadow built-ins. `CR constant`
   shadows `cr` in Habu's case-insensitive dictionary, so a later `cr` pushes a
