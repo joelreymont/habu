@@ -375,3 +375,6 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Repo edits go through `apply_patch`:** even mechanical replacements should
   use patches so accidental broad rewrites, duplicate definitions, and rule
   violations stay reviewable.
+- **Use only documented dot commands:** `dot active` is not a status command and
+  can create a malformed dot. Use `dot ready`, `dot ls`, `dot tree`, `dot on
+  <id>`, and `dot off <id> -r "..."`
