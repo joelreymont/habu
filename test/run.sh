@@ -27,82 +27,8 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-stdlib.f || { echo "FAIL: native lint/stdlib gate phase"; exit 1; }
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f lib/build.f tools/build-fixpoint.f test/gate-engine.f || { echo "FAIL: native engine gate phase"; exit 1; }
-out=$(printf ': LONG-DICTIONARY-NAME-ADDONE ( i64 -- i64 ) 1 + ;\n41 LONG-DICTIONARY-NAME-ADDONE .\n123 constant LONG-DICTIONARY-CONSTANT\nLONG-DICTIONARY-CONSTANT .\nvariable LONG-DICTIONARY-VARIABLE\n77 LONG-DICTIONARY-VARIABLE !\nLONG-DICTIONARY-VARIABLE @ .\ns" LONG-DICTIONARY-NAME-ADDONE" get-current search-wl 0= .\ns" long-dictionary-name-addone" get-current search-wl 0= .\n: LONG-REDEFINE-NAME ( -- i64 ) 1 ;\n: LONG-REDEFINE-NAME ( -- i64 ) 2 ;\nLONG-REDEFINE-NAME .\nTRUSTED: LONG-DICTIONARY-TRUSTED ( n -- n ) dup ;\ns" USE ( n -- n ) LONG-DICTIONARY-TRUSTED" CHECK! .\ns" BAD ( n -- n n ) LONG-DICTIONARY-TRUSTED" CHECK! .\n9 LONG-DICTIONARY-TRUSTED . .\n' | bin/hb 2>/dev/null)
-[ "$out" = "42
-123
-77
-0
-0
-2
--1
-0
-9
-9" ] || { echo "FAIL: hb long dictionary names (got: $out)"; exit 1; }
-out=$(printf 'wordlist constant LONG-WL\nLONG-WL set-current\n: LONG-WORDLIST-ONLY-NAME ( -- i64 ) 8 ;\n0 set-current\ns" LONG-WORDLIST-ONLY-NAME" 0 search-wl 0= .\ns" LONG-WORDLIST-ONLY-NAME" LONG-WL search-wl 0= .\n' | bin/hb 2>/dev/null)
-[ "$out" = "-1
-0" ] || { echo "FAIL: hb long dictionary wordlist isolation (got: $out)"; exit 1; }
-long_name=$(printf '%600s' '' | tr ' ' A)
-out=$(printf ': %s ( -- n ) 1 ;\n%s .\ns" %s" get-current search-wl 0= .\n' "$long_name" "$long_name" "$long_name" | bin/hb 2>/dev/null)
-[ "$out" = "1
-0" ] || { echo "FAIL: hb dictionary name over 255 bytes (got: $out)"; exit 1; }
-out=$(printf 'TRUSTED: ARR ( n -- ) CREATES ( n -- ptr a ) create cells allot does> swap 0 ?do cell+ loop ;\n4 ARR A4\ns" USE ( n -- ptr a ) A4" CHECK! .\n7 2 A4 !\n2 A4 @ .\n' | bin/hb 2>/dev/null)
-[ "$out" = "-1
-7" ] || { echo "FAIL: hb trusted CREATE...DOES> effect recording (got: $out)"; exit 1; }
-set +e
-printf 'TRUSTED: BADARR ( n -- ) CREATES ( n -- ptr a ) create cells allot does> drop ;\n' | bin/hb >$T/habu-bad-does.out 2>$T/habu-bad-does.err
-rc=$?
-set -e
-[ "$rc" -eq 70 ] || { echo "FAIL: hb bad trusted DOES> rc $rc (want 70)"; exit 1; }
-grep -q 'does>' $T/habu-bad-does.err || { echo "FAIL: hb bad trusted DOES> missing diagnostic"; exit 1; }
-set +e
-printf 'TRUSTED: BADDEF ( n -- ) create cells allot does> drop ;\n' | bin/hb >$T/habu-missing-creates.out 2>$T/habu-missing-creates.err
-rc=$?
-set -e
-[ "$rc" -eq 70 ] || { echo "FAIL: hb trusted DOES> without CREATES rc $rc (want 70)"; exit 1; }
-grep -q 'does>' $T/habu-missing-creates.err || { echo "FAIL: hb trusted DOES> without CREATES missing diagnostic"; exit 1; }
-# named rows + quot sub-sigs VERIFY (Gap3): CHECK! body-vs-declared-sig.
-# V1 row-poly certifies, V2 combinator-param certifies, V3 bad row count rejects.
-out=$(printf 's" V1 ( R -- R i64 ) 5" CHECK! .\ns" V2 ( i64 [ i64 -- i64 ] -- i64 ) execute" CHECK! .\ns" V3 ( R -- R i64 ) 5 5" CHECK! .\n' | bin/hb 2>/dev/null)
-[ "$out" = "-1
--1
-0" ] || { echo "FAIL: hb rows/quot sig verify (got: $out)"; exit 1; }
-out=$(printf 's" P1 ( i64 i64 i64 i64 -- i64 i64 i64 i64 i64 i64 ) 2over" CHECK! .\ns" P2 ( i64 i64 -- i64 i64 ) 2>r 2r>" CHECK! .\ns" P3 ( i64 -- i64 ) abs" CHECK! .\ns" P4 ( i64 i64 -- i64 i64 ) /mod" CHECK! .\ns" P5 ( ptr u8 -- ptr u8 i64 ) count" CHECK! .\ns" P6 ( i64 i64 -- i64 i64 i64 ) depth" CHECK! .\ns" P7 ( -- n ) 0 4096 3 $1002 -1 0 mmap" CHECK! .\n' | bin/hb 2>/dev/null)
-[ "$out" = "-1
--1
--1
--1
--1
--1
--1" ] || { echo "FAIL: hb primitive checklist signatures (got: $out)"; exit 1; }
-out=$(printf 's" RBAD1 ( i64 i64 -- ) 2>r" CHECK! .\ns" RBAD2 ( -- i64 i64 ) 2r>" CHECK! .\ns" RPEEK ( i64 i64 -- i64 i64 i64 i64 ) 2>r 2r@ 2r>" CHECK! .\ns" QD ( i64 -- i64 i64 ) ?dup" CHECK! .\n' | bin/hb 2>/dev/null)
-[ "$out" = "0
-0
--1
-1" ] || { echo "FAIL: hb return-stack/?dup primitive verdicts (got: $out)"; exit 1; }
-out=$(printf 's" CDIP ( i64 i64 -- i64 i64 ) [: 1+ ;] DIP" CHECK! .\ns" CKEEP ( i64 -- i64 i64 ) [: 1+ ;] KEEP" CHECK! .\ns" CBI ( i64 -- i64 i64 ) [: 1+ ;] [: 2 * ;] BI" CHECK! .\ns" CTRI ( i64 -- i64 i64 i64 ) [: 1+ ;] [: 2 * ;] [: 3 + ;] TRI" CHECK! .\ns" CTIMES ( i64 -- i64 ) 5 [: 1+ ;] TIMES" CHECK! .\ns" CEACH ( i64 ptr i64 i64 -- i64 ) [: + ;] EACH" CHECK! .\ns" CMAP ( ptr i64 i64 -- ) [: 1+ ;] MAP" CHECK! .\ns" CFOLD ( ptr i64 i64 i64 -- i64 ) [: + ;] FOLD" CHECK! .\n' | bin/hb 2>/dev/null)
-[ "$out" = "-1
--1
--1
--1
--1
--1
--1
--1" ] || { echo "FAIL: hb combinator/iterator verdicts (got: $out)"; exit 1; }
-out=$(printf '." hi" cr\nc" ok" count type cr\n: DQ ( -- ) ." bye" ;\nDQ cr\n: CQ ( -- ptr u8 n ) c" yo" count ;\nCQ type cr\n' | bin/hb 2>/dev/null)
-[ "$out" = "hi
-ok
-bye
-yo" ] || { echo "FAIL: hb parsing-word runtime surface (got: $out)"; exit 1; }
-printf ': DQ ( -- ) ." ok" ;\n: CQ ( -- ptr u8 n ) c" ok" count ;\n' | $CHECK || { echo "FAIL: check.f parsing-word certification"; exit 1; }
-set +e
-printf '$400000 allot\n' | bin/hb >/dev/null 2>&1
-rc=$?
-set -e
-[ "$rc" -eq 76 ] || { echo "FAIL: data-space overflow rc $rc (want 76)"; exit 1; }
-# and the row sig runs end to end
-out=$(printf ': PSH ( R -- R i64 ) 5 ;\nPSH .\n' | bin/hb 2>/dev/null)
-[ "$out" = "5" ] || { echo "FAIL: hb named-row sig run (got: $out)"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f lib/build.f tools/build-fixpoint.f test/gate-engine.f || { echo "FAIL: native engine gate phase"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f test/gate-dictionary.f || { echo "FAIL: native dictionary/checker gate phase"; exit 1; }
 [ -x bin/hb ] || { echo "FAIL: bin/hb not produced"; exit 1; }
 GATE_JSON=$T/gate-json-assert.f
 cat tools/json.f tools/gate-json-assert.f > "$GATE_JSON"
