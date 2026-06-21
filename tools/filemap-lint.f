@@ -153,6 +153,8 @@ variable FM-NUM-L
    s" bench/llm/grade.f" FM-REQ
    s" bench/llm/grade-test.f" FM-REQ
    s" bench/llm/report-test.f" FM-REQ
+   s" bench/llm/drive-array-habu-lib.f" FM-REQ
+   s" bench/llm/drive-array-habu-test.f" FM-REQ
    s" bench/llm/validate-results.f" FM-REQ
    s" bench/llm/validate-results-test.sh" FM-REQ ;
 

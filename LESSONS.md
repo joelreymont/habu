@@ -417,3 +417,12 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Undefined convenience words fail before type checking:** `0<>` is not a Habu
   word. Use explicit `0 = 0=` (or add/test a real word) instead of assuming
   common Forth conveniences exist.
+- **Do not all-errors check full dependency bundles:** `tools/check.f
+  --all-errors` checks top-level definitions independently; on bundled stdlib
+  sources it can report dependency constants and helper words as undefined.
+  Use dependency-aware `tools/check.f --json-errors` for full driver bundles,
+  and reserve all-errors diagnostics for focused candidate/source checks.
+- **Live-row bundle artifacts must stay small:** `live-row.f` embeds artifact
+  contents before hashing. Native drivers that need a large internal run bundle
+  should keep that path separate from the emitted `final_bundle` artifact until
+  row emission is streaming.
