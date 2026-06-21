@@ -213,10 +213,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Large native tool bundles can corrupt reads:** combining large lint tables,
   `json.f`, and another large file buffer crashed JSON gate assertions. A lean
   standalone reader plus distinct helper scratch variables fixed it.
-- **Fixture structure deserves checked vocabulary:** when tests need structured
-  data such as JSON rows, factor a small checked writer/DSL instead of relying on
-  giant quoted literals or private byte emitters. This keeps escaping and shape
-  bugs in reusable Habu code.
+- **Escaped fixture literals hide shape bugs:** JSON-row tests became clearer
+  only after the row shape moved into checked field words with explicit quote
+  bytes.
 - **Keep fixture DSLs at their sharing boundary:** common live-driver helper
   bundles are capacity-sensitive. Task-specific byte/source builders belong in
   the focused test or driver that owns them until multiple users prove they are

@@ -37,6 +37,11 @@ not a matter of taste. Target is the native `bin/hb` engine.
 - **Factor reusable helpers back into checked Forth.** If an unchecked harness or
   tool grows a helper that can be typed, move that helper to checked code instead
   of letting unchecked scaffolding become the library surface.
+- **Build checked task vocabulary before fighting syntax.** If a test, tool, or
+  benchmark needs structured rows, JSON/TSV fragments, generated source,
+  diagnostics, packets, or repeated assertions, factor domain words or a focused
+  checked DSL first. Giant `s"` literals, fragile escaping, and private byte
+  emitters are bugs unless they are the tested boundary of that DSL.
 - **Small, single-purpose words**, aim ≤ 5 lines. A word should read top-to-bottom
   without you tracking more than a few stack items.
 - **Factor when the stack gets unreadable.** If you reach for `ROT -ROT PICK
