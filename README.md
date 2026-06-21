@@ -39,9 +39,9 @@ bin/hb                                  # tty: checked REPL with line editing,
                                         #   history, breakpoints, `step`, and
                                         #   verification of typed definitions
                                         #   against their ( in -- out )
-./tools/hb-build.sh prog.f -o prog      # AOT: standalone signed binary (~17 KB:
-                                        #  tree-shaken to the program's words)
-./tools/hb-build.sh --repl prog.f -o prog-repl
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- prog.f -o prog
+                                        # AOT: signed binary, tree-shaken to MAIN
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- --repl prog.f -o prog-repl
                                         # checked source bundle + interactive REPL
 ```
 

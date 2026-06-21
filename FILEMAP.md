@@ -51,7 +51,6 @@ points stay listed.
 - `tools/sha256-file-test.f` — checked fixture coverage for streaming SHA-256 helpers.
 - `tools/hb-cli-contracts-test.f` — checked coverage for `hb` startup and stdin-data contracts.
 - `tools/hb-baseline-contracts-test.f` — checked public `bin/hb` baseline contract fixture.
-- `tools/hb-build.sh` — compatibility launcher for standalone binary builds.
 - `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library.
 - `tools/hb-build.f` — Habu entrypoint for native AOT/REPL builds.
 - `tools/hb-build-test.f` — checked fixture coverage for native AOT/REPL builds.

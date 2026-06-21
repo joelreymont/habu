@@ -5,6 +5,9 @@ set -eu
 
 cd "$(dirname "$0")/../.."
 CHECK="bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f --"
+hb_build() {
+  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- "$@"
+}
 
 JSON=0
 FULL=0
@@ -104,7 +107,7 @@ if [ "$FULL" = 1 ]; then
     printf '%s\n' ': FIB ( n -- n ) dup 2 < if exit then dup 1 - recurse swap 2 - recurse + ;'
     printf '%s\n' ': MAIN ( -- ) 10 FIB . cr ;'
   } > "$PERF_SRC"
-  measure hb_build_aot ./tools/hb-build.sh "$PERF_SRC" -o "$PERF_BIN"
+  measure hb_build_aot hb_build "$PERF_SRC" -o "$PERF_BIN"
   measure aot_runtime "$PERF_BIN"
 fi
 

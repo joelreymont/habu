@@ -3,7 +3,7 @@
 \ after it executes. No EVALUATE needed: while stepping, the REPL hook returns
 \ one token per call, so the engine's own interpret loop is the evaluator.
 \ Baked into bin/hb after repl.f (uses its DATAB/REPLH-CELL/TTY?/EMITS/
-\ RD-LINE); tools/hb-build.sh programs never see it.
+\ RD-LINE); tools/hb-build.f programs never see it.
 
 $36A0 constant SINP-CELL        \ engine input cursor cell
 $36A8 constant SINE-CELL        \ engine input end cell

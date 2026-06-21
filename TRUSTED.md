@@ -76,10 +76,10 @@ body. Re-audit when a row's body or effect string changes.
 | SIGA@ | `-- ptr u8` | Reads the code-signing identifier pointer stored in a raw variable. | `test/run.sh` | src/os/macos/sign2.f:8 | 2026-06-16 |
 | HLP@ | `-- ptr u8` | Reads the code-signing header patch cursor stored in a raw variable. | `test/run.sh` | src/os/macos/sign2.f:31 | 2026-06-16 |
 | HB@ | `-- ptr u8` | Reads the stdin-engine baked-source buffer pointer stored in a raw variable. | `test/run.sh` | src/habu/stdin.f:17 | 2026-06-16 |
-| BLD-PB@ | `-- ptr u8` | Reads the standalone-build source buffer pointer stored in a raw variable. | `test/run.sh`, `tools/hb-build.sh` | src/habu/build.f:18 | 2026-06-16 |
-| AOT-PB@ | `-- ptr u8` | Reads the AOT build source buffer pointer stored in a raw variable. | `test/run.sh`, `tools/hb-build.sh` | src/habu/aot.f:14 | 2026-06-16 |
-| AOT-DBASE@ | `-- ptr a` | Reads the runtime dictionary base pointer for AOT dictionary-record scans; record fields are mixed, so callers specialize the pointee type at each access. | `test/run.sh`, `tools/hb-build.sh` | src/habu/aot.f:16 | 2026-06-16 |
-| AOT-PTR@ | `ptr a -- ptr a` | Reads a dictionary long-name pointer field whose pointee is another address; the checker cannot express this pointer-to-pointer load yet. | `test/run.sh`, `tools/hb-build.sh` | src/habu/aot.f:17 | 2026-06-16 |
+| BLD-PB@ | `-- ptr u8` | Reads the standalone-build source buffer pointer stored in a raw variable. | `test/run.sh`, `tools/hb-build.f` | src/habu/build.f:18 | 2026-06-16 |
+| AOT-PB@ | `-- ptr u8` | Reads the AOT build source buffer pointer stored in a raw variable. | `test/run.sh`, `tools/hb-build.f` | src/habu/aot.f:14 | 2026-06-16 |
+| AOT-DBASE@ | `-- ptr a` | Reads the runtime dictionary base pointer for AOT dictionary-record scans; record fields are mixed, so callers specialize the pointee type at each access. | `test/run.sh`, `tools/hb-build.f` | src/habu/aot.f:16 | 2026-06-16 |
+| AOT-PTR@ | `ptr a -- ptr a` | Reads a dictionary long-name pointer field whose pointee is another address; the checker cannot express this pointer-to-pointer load yet. | `test/run.sh`, `tools/hb-build.f` | src/habu/aot.f:17 | 2026-06-16 |
 | STB@ | `-- ptr u8` | Reads the snapshot source text base pointer stored in a raw variable. | `test/run.sh`, `tools/snap-hb.sh` | src/habu/snap.f:21 | 2026-06-16 |
 | SDB@ | `-- ptr u8` | Reads the snapshot dictionary/data-region pointer stored in a raw variable. | `test/run.sh`, `tools/snap-hb.sh` | src/habu/snap.f:23 | 2026-06-16 |
 | SBUF@ | `-- ptr u8` | Reads the stage2 source buffer pointer stored in a raw variable. | `test/run.sh` | src/habu/stage2.f:12 | 2026-06-16 |

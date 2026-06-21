@@ -4,6 +4,9 @@
 set -e
 cd "$(dirname "$0")/../.."
 CHECK="bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f --"
+hb_build() {
+  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- "$@"
+}
 T=$(mktemp -d "${TMPDIR:-/tmp}/habu-llm.XXXXXX")
 cleanup() {
   if command -v trash >/dev/null 2>&1; then
@@ -38,20 +41,20 @@ check_diagnostic_v2_fixtures() {
 }
 check_aot_v2_fixtures() {
   printf '%s\n' ': MAIN ( -- ) 6 7 * . cr ;' >"$T/aot-ok.f"
-  ./tools/hb-build.sh "$T/aot-ok.f" -o "$T/aot-ok" >/dev/null
+  hb_build "$T/aot-ok.f" -o "$T/aot-ok" >/dev/null
   [ "$("$T/aot-ok")" = "42" ] || { echo "FAIL: V2 AOT positive fixture"; exit 1; }
   printf '%s\n' ': MAIN ( -- ) s" hi" nip [char] 0 + . cr ;' >"$T/aot-string.f"
-  ./tools/hb-build.sh "$T/aot-string.f" -o "$T/aot-string" >/dev/null
+  hb_build "$T/aot-string.f" -o "$T/aot-string" >/dev/null
   [ "$("$T/aot-string")" = "50" ] || { echo "FAIL: V2 AOT string fixture"; exit 1; }
   printf '%s\n' ': MAIN ( -- ) here drop ;' >"$T/aot-bad-here.f"
-  ./tools/hb-build.sh --json-errors "$T/aot-bad-here.f" -o "$T/aot-bad-here" >/dev/null 2>"$T/aot-bad-here.err" && {
+  hb_build --json-errors "$T/aot-bad-here.f" -o "$T/aot-bad-here" >/dev/null 2>"$T/aot-bad-here.err" && {
     echo "FAIL: V2 AOT accepted here"
     exit 1
   }
   grep -q '"code":"E-AOT-UNSUPPORTED"' "$T/aot-bad-here.err" || { echo "FAIL: V2 AOT here code"; exit 1; }
   grep -q '"token":"here"' "$T/aot-bad-here.err" || { echo "FAIL: V2 AOT here token"; exit 1; }
   printf '%s\n' ': MAIN ( -- ) 8 allot ;' >"$T/aot-bad-allot.f"
-  ./tools/hb-build.sh --json-errors "$T/aot-bad-allot.f" -o "$T/aot-bad-allot" >/dev/null 2>"$T/aot-bad-allot.err" && {
+  hb_build --json-errors "$T/aot-bad-allot.f" -o "$T/aot-bad-allot" >/dev/null 2>"$T/aot-bad-allot.err" && {
     echo "FAIL: V2 AOT accepted allot"
     exit 1
   }

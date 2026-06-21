@@ -98,7 +98,6 @@ variable FM-NUM-L
    s" tools/hb-cli-contracts-test.f" FM-REQ
    s" tools/hb-baseline-contracts-test.f" FM-REQ
    s" tools/seed.sh" FM-REQ
-   s" tools/hb-build.sh" FM-REQ
    s" tools/hb-build-lib.f" FM-REQ
    s" tools/hb-build.f" FM-REQ
    s" tools/hb-build-test.f" FM-REQ
