@@ -248,6 +248,7 @@ create SOFF SMAX cells allot   create SLEN SMAX cells allot   variable SN#
 \ captured source pointers in global cells shared with legacy lints.
 variable PSA  variable PSU  variable PX  variable PSTART
 variable P1A  variable P1U  variable P2A  variable P2U
+variable PTA  variable PTU
 : PAT-RESET  {: a u :}  ( -- )  a PSA !  u PSU !  0 PX !  0 P1U !  0 P2U ! ;
 : PAT-END?  ( -- f )  PX @ PSU @ >= ;
 : PAT-C@  ( -- c )  PSA @ PX @ + c@ ;
@@ -293,28 +294,107 @@ variable P1A  variable P1U  variable P2A  variable P2U
    PSU @ PX @ - u < IF 0 exit THEN
    PSA @ PX @ + u  a u STR=CI 0= IF 0 exit THEN
    PX @ u + PX !  PAT-WORD-END? ;
+: PAT-TOK$  ( -- a u )
+   PTA @ PTU @ ;
+: PAT-TOK=  {: a u :}  ( -- f )
+   PAT-TOK$ a u STR=CI ;
+: PAT-TOK-SQ?  ( -- f )
+   PTU @ 2 <> IF 0 exit THEN
+   PTA @ c@ FOLD 115 <> IF 0 exit THEN
+   PTA @ 1+ c@ DQUOTE = ;
+: PAT-TOK-STRING?  ( -- f )
+   PTU @ 2 <> IF 0 exit THEN
+   PTA @ 1+ c@ DQUOTE <> IF 0 exit THEN
+   PTA @ c@ FOLD 115 = IF -1 exit THEN
+   PTA @ c@ DOT = IF -1 exit THEN
+   PTA @ c@ FOLD 99 = ;
+: PAT-SKIP-LINE-COMMENT  ( -- )
+   begin PAT-END? 0= PAT-C@ 10 <> and while PX @ 1+ PX ! repeat ;
+: PAT-SKIP-PAREN-COMMENT  ( -- )
+   PX @ 1+ PX !
+   begin PAT-END? 0= PAT-C@ 41 <> and while PX @ 1+ PX ! repeat
+   PAT-END? 0= IF PX @ 1+ PX ! THEN ;
+: PAT-SKIP-IGNORED  ( -- )
+   begin
+      PAT-SKIP-WS
+      PAT-END? IF exit THEN
+      PAT-C@ 92 = IF PAT-SKIP-LINE-COMMENT ELSE
+      PAT-C@ 40 = IF PAT-SKIP-PAREN-COMMENT ELSE exit THEN THEN
+   again ;
+: PAT-SKIP-STRING-BODY  ( -- )
+   begin PAT-END? 0= while
+      PAT-C@ DQUOTE = IF PX @ 1+ PX ! exit THEN
+      PX @ 1+ PX !
+   repeat ;
+: PAT-READ-TOKEN  ( -- f )
+   PAT-SKIP-IGNORED
+   PAT-END? IF 0 exit THEN
+   PSA @ PX @ + PTA !
+   begin PAT-END? 0= PAT-C@ WS? 0= and while PX @ 1+ PX ! repeat
+   PSA @ PX @ + PTA @ - PTU !
+   -1 ;
+: PAT-CAP-STRING-1  ( -- f )
+   PAT-TOK-SQ? 0= IF 0 exit THEN
+   PAT-END? IF 0 exit THEN
+   PAT-C@ WS? 0= IF 0 exit THEN
+   PAT-SKIP-WS
+   PSA @ PX @ + P1A !
+   begin PAT-END? 0= PAT-C@ DQUOTE <> and while PX @ 1+ PX ! repeat
+   PAT-END? IF 0 exit THEN
+   PSA @ PX @ + P1A @ - P1U !
+   PX @ 1+ PX !
+   -1 ;
+: PAT-CAP-STRING-2  ( -- f )
+   PAT-TOK-SQ? 0= IF 0 exit THEN
+   PAT-END? IF 0 exit THEN
+   PAT-C@ WS? 0= IF 0 exit THEN
+   PAT-SKIP-WS
+   PSA @ PX @ + P2A !
+   begin PAT-END? 0= PAT-C@ DQUOTE <> and while PX @ 1+ PX ! repeat
+   PAT-END? IF 0 exit THEN
+   PSA @ PX @ + P2A @ - P2U !
+   PX @ 1+ PX !
+   -1 ;
+: PAT-CAP-TOKEN-1  ( -- f )
+   PAT-READ-TOKEN 0= IF 0 exit THEN
+   PTA @ P1A !  PTU @ P1U !
+   P1U @ 0 > ;
+: PAT-CAP-EFFECT-2  ( -- f )
+   PAT-SKIP-WS
+   PAT-END? IF 0 exit THEN
+   PAT-C@ 40 <> IF 0 exit THEN
+   PX @ 1+ PX !
+   PAT-SKIP-WS
+   PSA @ PX @ + P2A !
+   begin PAT-END? 0= PAT-C@ 41 <> and while PX @ 1+ PX ! repeat
+   PAT-END? IF 0 exit THEN
+   PSA @ PX @ + P2A @ - P2U !
+   P2A @ P2U @ TRIM P2U ! P2A !
+   PX @ 1+ PX !
+   -1 ;
 : TRUST-LITERAL-SITE?  {: a u :}  ( -- f )  \ s" name" s" effect" TRUST
    a u PAT-RESET
-   begin PAT-END? 0= while
-      PX @ PSTART !
-      PAT-CAP-1 IF
-         PAT-SKIP-WS
-         PAT-CAP-2 IF
-            PAT-SKIP-WS  s" TRUST" PAT-MATCH-WORD IF -1 exit THEN
+   begin PAT-READ-TOKEN while
+      PAT-TOK-SQ? IF
+         PAT-CAP-STRING-1 IF
+            PAT-READ-TOKEN IF
+               PAT-CAP-STRING-2 IF
+                  PAT-READ-TOKEN IF s" TRUST" PAT-TOK= IF -1 exit THEN THEN
+               THEN
+            THEN
          THEN
+      ELSE
+         PAT-TOK-STRING? IF PAT-SKIP-STRING-BODY THEN
       THEN
-      PSTART @ 1+ PX !
    repeat  0 ;
 : TRUSTED-DEF-SITE?  {: a u :}  ( -- f )  \ TRUSTED: name ( effect )
    a u PAT-RESET
-   begin PAT-END? 0= while
-      PX @ PSTART !
-      s" TRUSTED:" PAT-MATCH-WORD IF
-         PAT-CAP-WORD-1 IF
-            PAT-CAP-PARENS-2 IF -1 exit THEN
-         THEN
+   begin PAT-READ-TOKEN while
+      s" TRUSTED:" PAT-TOK= IF
+         PAT-CAP-TOKEN-1 IF PAT-CAP-EFFECT-2 IF -1 exit THEN THEN
+      ELSE
+         PAT-TOK-STRING? IF PAT-SKIP-STRING-BODY THEN
       THEN
-      PSTART @ 1+ PX !
    repeat  0 ;
 : TRUST-SITE?  {: a u :}  ( -- f )
    a u TRUST-LITERAL-SITE? IF -1 exit THEN
