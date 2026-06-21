@@ -9,6 +9,7 @@ create AST-PATH FS-PATH-CAP allot
 
 variable AST-ROOT-U
 variable AST-OUT-U
+variable AST-DEPTH0
 
 : AST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then
@@ -97,9 +98,17 @@ variable AST-OUT-U
 : AST-EXPECT-DUP-TASK ( -- )
    AST-DUP-TASKS$ AST-SOLUTIONS$ AST-OUT$ AS-EXTRACT-DATA ;
 
+: AST-EXPECT-BUILD-TASKS-BALANCED ( -- )
+   AS-RESET
+   AST-TASKS$ AS-TASKS!
+   depth AST-DEPTH0 !
+   AS-BUILD-TASKS
+   depth AST-DEPTH0 @ T= ;
+
 : AST-MAIN ( -- )
    T-RESET
    AST-PREPARE
+   AST-EXPECT-BUILD-TASKS-BALANCED
    AST-EXPECT-VALID
    ['] AST-EXPECT-EXTRA E-AS-EXTRA TTHROWS
    ['] AST-EXPECT-MISSING E-AS-MISSING TTHROWS

@@ -183,16 +183,22 @@ TRUSTED: AS-SOL-BUF ( -- ptr u8 )
       1+
    repeat drop 0 AS-FALSE ;
 
+: AS-REQUIRE-NEW-ID ( ptr u8 n -- )
+   2dup AS-FIND-ID if
+      drop 2drop E-AS-DUPLICATE throw
+   then
+   drop 2drop ;
+
+: AS-REQUIRE-NEW-NAME ( ptr u8 n -- )
+   2dup AS-FIND-NAME if
+      drop 2drop E-AS-DUPLICATE throw
+   then
+   drop 2drop ;
+
 : AS-ADD-TASK ( -- )
    AS-COUNT @ AS-MAX >= if E-AS-CAPACITY throw then
-   AS-LINE$ BM-T-ID BM-TASK-FIELD$ 2dup AS-FIND-ID if
-      drop 2drop E-AS-DUPLICATE throw
-   then
-   drop
-   AS-LINE$ BM-T-NAME BM-TASK-FIELD$ 2dup AS-FIND-NAME if
-      drop 2drop E-AS-DUPLICATE throw
-   then
-   drop
+   AS-LINE$ BM-T-ID BM-TASK-FIELD$ AS-REQUIRE-NEW-ID
+   AS-LINE$ BM-T-NAME BM-TASK-FIELD$ AS-REQUIRE-NEW-NAME
    AS-COUNT @ {: idx :}
    AS-LINE$ BM-T-ID BM-TASK-FIELD$ idx AS-ID-SLOT idx AS-ID-LEN-PTR AS-COPY-FIELD
    AS-LINE$ BM-T-NAME BM-TASK-FIELD$ idx AS-NAME-SLOT idx AS-NAME-LEN-PTR AS-COPY-FIELD

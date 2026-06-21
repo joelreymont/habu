@@ -70,6 +70,12 @@ constants; and a `T{ … -> … }T` test for every word.
   stalls, times out, or exits without diagnostics, immediately isolate the
   checker/harness phase and root cause. Do not call the fixture "too expensive",
   shrink it, bypass it, or replace it until the failing mechanism is proven.
+- For any “why didn’t the checker catch this?” RCA, ask first: **was this source
+  actually under a fail-closed checker hook in the command that passed?** Prove
+  the answer with a minimal bad definition on the same load path, check command
+  exit status, and stderr/stdout diagnostics. Only after that may you blame
+  checker semantics/codegen. If the answer is “not fail-closed,” fix or dot the
+  harness/tooling gap before moving on.
 - Native crash/memory RCA must use debugger evidence first: set breakpoints,
   step, and inspect stack/data/watch cells. If the debugger cannot expose the
   needed state, extend the debugger/stepper before falling back to print-marker

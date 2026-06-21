@@ -38,6 +38,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 
 ## Checker Soundness
 
+- **Checker escapes start with enforcement proof:** before debugging checker
+  semantics, prove the exact command path was fail-closed. A source can execute
+  `0 set-check` or install a non-throwing hook; `tools/check.f` without a static
+  pass can then accept code that was never actually checked.
 - **`CHECK!` is the user contract:** dogfood inference (`CHECK`) proves internal
   consistency; user-facing checked builds must verify the body against the
   declared `( in -- out )` and make rejection fatal.
