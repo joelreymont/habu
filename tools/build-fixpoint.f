@@ -30,6 +30,8 @@ variable BF-RB
 variable BF-GEN
 variable BF-FOUND
 variable BF-PID
+variable BF-TMP-A
+variable BF-TMP-U
 
 : BF-TRUE ( -- bool )
    0 0= ;
@@ -57,7 +59,19 @@ variable BF-PID
    BF-B-PATH BF-TMP> BF-B-LEN !
    BF-B-PATH BF-B-LEN @ ;
 
+TRUSTED: BF-TMP-OVERRIDE$ ( -- ptr u8 n )
+   BF-TMP-A @ BF-TMP-U @ ;
+
+TRUSTED: BF-TMP! ( ptr u8 n -- )
+   BF-TMP-U !
+   BF-TMP-A ! ;
+
+: BF-TMP-RESET ( -- )
+   0 BF-TMP-U !
+   0 BF-TMP-A ! ;
+
 : BF-TMP$ ( -- ptr u8 n )
+   BF-TMP-U @ 0 > if BF-TMP-OVERRIDE$ exit then
    s" HB_TMP" GETENV dup 0= if drop drop s" /tmp" then ;
 
 : BF-EXPECT ( ptr u8 n -- )
