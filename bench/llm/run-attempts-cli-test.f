@@ -205,21 +205,22 @@ variable RACT-NEXT
    s" run=attempt-fixture-2026-06-16 model=fixture-model rows=" SB-APPEND
    rows RACT-U+
    s"  certified=" SB-APPEND
-   rows 8 - RACT-U+
+   rows 9 - RACT-U+
    s"  first_tests=" SB-APPEND
-   rows 8 - RACT-U+
+   rows 9 - RACT-U+
    s"  tests=" SB-APPEND
-   rows RACT-U+
+   rows 1 - RACT-U+
    s"  repairs=8 checker_iterations=" SB-APPEND
    rows 8 + RACT-U+
-   s"  diagnostics=9 tokens=0" SB-APPEND
+   s"  diagnostics=11 tokens=0" SB-APPEND
    SB$ ;
 
 : RACT-EXPECT-SUMMARY ( n -- ) {: rows :}
    RACT-ERR$ rows RACT-SUMMARY$ CONTAINS? TTRUE
-   RACT-ERR$ s" buckets checker_rejected=8 checker_false_rejects=0 checker_model_rejected=8 first_tests_failed=8 tests_failed=0 trust_used=1 signature_weakened=1" CONTAINS? TTRUE
+   RACT-ERR$ s" buckets checker_rejected=9 checker_false_rejects=0 checker_model_rejected=9 first_tests_failed=9 tests_failed=1 trust_used=1 signature_weakened=1" CONTAINS? TTRUE
    RACT-ERR$ s" repair_class remove_producer rows=2 repair_success=2 repair_iterations=2 diagnostics=2 token_delta=0" CONTAINS? TTRUE
    RACT-ERR$ s" repair_class add_producer rows=2 repair_success=2 repair_iterations=2 diagnostics=2 token_delta=0" CONTAINS? TTRUE
+   RACT-ERR$ s" repair_class trusted_boundary_required rows=2 repair_success=1 repair_iterations=2 diagnostics=3 token_delta=0" CONTAINS? TTRUE
    RACT-ERR$ s" run-attempts: wrote " CONTAINS? TTRUE ;
 
 : RACT-JGET ( n ptr u8 n -- n ) {: root key:ptr keyu :}
@@ -277,8 +278,11 @@ variable RACT-NEXT
 
 : RACT-EXPECT-TASK122 ( -- )
    122 RACT-FIND-TASK {: root :}
-   root s" first_pass_checker" s" certified" RACT-S-FIELD=
-   root s" tests_passed" STR-TRUE RACT-BOOL-FIELD=
+   root s" first_pass_checker" s" rejected" RACT-S-FIELD=
+   root s" first_pass_tests" STR-FALSE RACT-BOOL-FIELD=
+   root s" tests_passed" STR-FALSE RACT-BOOL-FIELD=
+   root s" diagnostic_count" 2 RACT-U-FIELD=
+   root s" diagnostic_repair_class" STR-TRUE RACT-BOOL-FIELD=
    root s" trust_uses" 2 RACT-U-FIELD= ;
 
 : RACT-MAIN ( -- )

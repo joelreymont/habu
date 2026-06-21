@@ -38,6 +38,11 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 
 ## Checker Soundness
 
+- **Checker RCA starts before runtime repair:** for any Forth stack/runtime/test
+  failure, ask whether checked Habu should have rejected the source before it
+  ran. If yes, reduce it to a minimal checked source, prove fail-closed
+  enforcement on that command path, then fix the checker/compiler and add a
+  negative regression before accepting downstream code changes.
 - **Checker escapes start with enforcement proof:** before debugging checker
   semantics, prove the exact command path was fail-closed. A source can execute
   `0 set-check` or install a non-throwing hook; `tools/check.f` without a static
@@ -217,6 +222,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Boundary scans parse Forth tokens:** trusted-boundary guards should scan
   whitespace-delimited Forth tokens and skip comments/string literals. Substring
   scans false-reject names such as `ENTRUSTED-VALUE` and prose comments.
+- **Boundary scans need OS-backed source buffers:** `tools/check` can certify
+  composed source bundles well over 64K. Static checker/linter phases must size
+  their source storage from `FILE-SIZE` and `MEM-ALLOC-64K-SPAN`; fixed 64K
+  buffers turn valid bundles into silent capacity exits before diagnostics run.
 
 ## Darwin And Syscalls
 

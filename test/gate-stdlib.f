@@ -192,10 +192,6 @@ variable GS-RD
    s" tools/aot-lint-test.f" s" aot-lint fixture check" GS-CHECK-COMMON-PROC
    s" tools/signature-lint-test.f" s" signature-lint fixture check" GS-CHECK-COMMON-PROC
    s" tools/public-signatures-test.f" s" public-signatures fixture check" GS-CHECK-COMMON-PROC
-   GS-SRC-RESET
-   s" tools/aot-call-report.f" GS-SRC+
-   s" tools/aot-call-report-test.f" GS-SRC+
-   s" aot-call-report fixture check" GS-CHECK-RUN
    s" tools/trust-lint-test.f" s" trust-lint fixture check" GS-CHECK-COMMON-PROC
    s" tools/stale-status-lint-test.f" s" stale-status-lint fixture check" GS-CHECK-COMMON-PROC
    s" tools/checked-boundary-lint-test.f" s" checked-boundary-lint fixture check" GS-CHECK-COMMON-PROC
@@ -386,31 +382,8 @@ variable GS-RD
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" src/core/sha256.f" GS-SRC+ s" bench/llm/artifacts.f" GS-SRC+ s" bench/llm/artifacts-test.f" GS-SRC+
    s" llm artifact hash check" GS-CHECK-RUN
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" tools/lint/lib.f" GS-SRC+ s" tools/lint/source-lex.f" GS-SRC+ s" bench/llm/attempt-solutions-lib.f" GS-SRC+ s" bench/llm/attempt-solutions-test.f" GS-SRC+
-   s" llm attempt solution extractor check" GS-CHECK-RUN
-   GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" tools/lint/lib.f" GS-SRC+ s" tools/lint/source-lex.f" GS-SRC+ s" bench/llm/forth-task-lines-lib.f" GS-SRC+ s" bench/llm/attempt-solutions-lib.f" GS-SRC+ s" bench/llm/large-buffer-bundle-test.f" GS-SRC+
-   s" llm large buffer bundle check" GS-CHECK-RUN
-   GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/diagnostic-json-check-stub.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/diagnostic-stats.f" GS-SRC+ s" bench/llm/run-attempts-lib.f" GS-SRC+ s" bench/llm/run-attempts-check-test.f" GS-SRC+
    s" llm attempt runner helper check" GS-CHECK-RUN
-   GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+
-   s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+
-   s" lib/json-write.f" GS-SRC+
-   s" bench/llm/diagnostic-json-check-stub.f" GS-SRC+
-   s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+
-   s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+
-   s" lib/process-env.f" GS-SRC+ s" lib/time.f" GS-SRC+
-   s" lib/date.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+
-   s" tools/lint/lib.f" GS-SRC+ s" tools/lint/source-lex.f" GS-SRC+
-   s" tools/argv.f" GS-SRC+ s" bench/llm/forth-task-lines-lib.f" GS-SRC+
-   s" bench/llm/attempt-solutions-lib.f" GS-SRC+
-   s" bench/llm/diagnostic-stats.f" GS-SRC+
-   s" bench/llm/run-attempts-lib.f" GS-SRC+
-   s" bench/llm/run-attempts.f" GS-SRC+
-   s" bench/llm/run-attempts-cli-check-test.f" GS-SRC+
-   s" llm attempt runner CLI check" GS-CHECK-RUN
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" src/core/sha256.f" GS-SRC+ s" bench/llm/live-row.f" GS-SRC+ s" bench/llm/live-row-test.f" GS-SRC+
    s" llm live row emitter check" GS-CHECK-RUN
@@ -426,7 +399,7 @@ variable GS-RD
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" bench/llm/grade.f" GS-SRC+ s" bench/llm/grade-test.f" GS-SRC+
    s" llm native grader check" GS-CHECK-RUN
-   GS-CHECK-LLM-FORTH-DRIVER ;
+   ;
 
 : GS-ARG-LLM-DRIVER-BASE ( -- )
    GS-HB

@@ -525,8 +525,11 @@ variable RATT-EXP-U
    RATT-CAND$ RATT-PATH$ COPY-FILE-STREAM
    s" 26	ONE	(-- i64)	diagnostic-repair	-	forth	stack	-	-	v1	-	-" RATT-RUN-TASK-ROW {: root :}
    root s" attempt" 1 RATT-U-FIELD=
-   root s" first_pass_checker" s" certified" RATT-S-FIELD=
-   root s" tests_passed" RA-TRUE RATT-BOOL-FIELD=
+   root s" first_pass_checker" s" rejected" RATT-S-FIELD=
+   root s" first_pass_tests" RA-FALSE RATT-BOOL-FIELD=
+   root s" tests_passed" RA-FALSE RATT-BOOL-FIELD=
+   root s" diagnostic_count" 2 RATT-U-FIELD=
+   root s" diagnostic_repair_class" RA-TRUE RATT-BOOL-FIELD=
    root s" trust_uses" 3 RATT-U-FIELD= ;
 
 : RATT-EXPECT-TASK-MISSING ( -- )

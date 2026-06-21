@@ -1,7 +1,7 @@
 \ argv-test.f -- focused tests for tools/argv.f.
 \ Run mocks:  cat tools/argv.f tools/argv-test.f | bin/hb
 \ Run script: cat tools/argv.f tools/argv-test.f > /tmp/hb-argv-test.f
-\             bin/hb /tmp/hb-argv-test.f --json --label NAME --strict-signatures --all-errors -o OUT file.f
+\             bin/hb /tmp/hb-argv-test.f --json --label NAME --strict-signatures --all-errors --strict-boundary -o OUT file.f
 
 variable TEST-N
 variable TEST-FAIL
@@ -48,6 +48,7 @@ variable TEST-FAIL
    s" NAME" ARGV-MOCK+
    s" --strict-signatures" ARGV-MOCK+
    s" --all-errors" ARGV-MOCK+
+   s" --strict-boundary" ARGV-MOCK+
    s" -o" ARGV-MOCK+
    s" OUT" ARGV-MOCK+
    s" file.f" ARGV-MOCK+ ;
@@ -61,6 +62,7 @@ variable TEST-FAIL
    ARGV-JSON? ASSERT
    ARGV-STRICT-SIGNATURES? ASSERT
    ARGV-ALL-ERRORS? ASSERT
+   ARGV-STRICT-BOUNDARY? ASSERT
    ARGV-LABEL? ASSERT
    ARGV-OUT? ASSERT
    ARGV-POS# 1 ASSERT=
@@ -155,6 +157,7 @@ variable TEST-FAIL
    ARGV-JSON? ASSERT
    ARGV-STRICT-SIGNATURES? ASSERT
    ARGV-ALL-ERRORS? ASSERT
+   ARGV-STRICT-BOUNDARY? ASSERT
    ARGV-LABEL$ s" NAME" ASSERT$
    ARGV-OUT$ s" OUT" ASSERT$
    0 ARGV-POS$ s" file.f" ASSERT$ ;

@@ -19,6 +19,7 @@ create ARGV-POS-U ARGV-MAX cells allot
 variable ARGV-JSON
 variable ARGV-STRICT-SIGNATURES
 variable ARGV-ALL-ERRORS
+variable ARGV-STRICT-BOUNDARY
 
 variable ARGV-LABEL-A
 variable ARGV-LABEL-U
@@ -90,6 +91,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    0 ARGV-JSON !
    0 ARGV-STRICT-SIGNATURES !
    0 ARGV-ALL-ERRORS !
+   0 ARGV-STRICT-BOUNDARY !
    NULL$ drop ARGV-LABEL-A !  0 ARGV-LABEL-U !  0 ARGV-LABEL-SET !
    NULL$ drop ARGV-OUT-A !  0 ARGV-OUT-U !  0 ARGV-OUT-SET ! ;
 
@@ -171,6 +173,8 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-ALL-ERRORS? ( -- bool )  ARGV-ALL-ERRORS @ 0 <> ;
 
+: ARGV-STRICT-BOUNDARY? ( -- bool )  ARGV-STRICT-BOUNDARY @ 0 <> ;
+
 : ARGV-TAKE-NEXT {: a:ptr u :} ( ptr u8 n -- ptr u8 n )
    ARGV-I @ 1 + ARGV-COUNT >= IF a u ARGV-MISSING THEN
    ARGV-I @ 1 + ARGV-I !
@@ -182,6 +186,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    a u s" --label" STR= IF a u ARGV-TAKE-NEXT ARGV-LABEL! EXIT THEN
    a u s" --strict-signatures" STR= IF -1 ARGV-STRICT-SIGNATURES ! EXIT THEN
    a u s" --all-errors" STR= IF -1 ARGV-ALL-ERRORS ! EXIT THEN
+   a u s" --strict-boundary" STR= IF -1 ARGV-STRICT-BOUNDARY ! EXIT THEN
    a u s" -o" STR= IF a u ARGV-TAKE-NEXT ARGV-OUT! EXIT THEN
    a u ARGV-DASH? IF a u ARGV-UNKNOWN ELSE a u ARGV-POS+ THEN ;
 

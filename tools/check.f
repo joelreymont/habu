@@ -258,6 +258,21 @@ variable CHK-ERR-PATH-U
    CHK-LABEL PROC-ARGV+
    CHK-SOURCE PROC-ARGV+ ;
 
+: CHK-ARGV-BOUNDARY ( -- )
+   PROC-ARGV-RESET
+   s" --load" PROC-ARGV+
+   s" lib/errors.f" PROC-ARGV+
+   s" lib/string.f" PROC-ARGV+
+   s" lib/memory.f" PROC-ARGV+
+   s" lib/fs.f" PROC-ARGV+
+   s" tools/lint/json-writer.f" PROC-ARGV+
+   s" tools/argv.f" PROC-ARGV+
+   s" tools/checked-boundary-lint.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   CHK-JSON @ if s" --json-errors" PROC-ARGV+ then
+   s" --strict-boundary" PROC-ARGV+
+   CHK-SOURCE PROC-ARGV+ ;
+
 : CHK-ARGV-DIAG ( -- )
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
@@ -311,6 +326,14 @@ variable CHK-ERR-PATH-U
    CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
    CHK-RC @ 0 <> if CHK-RC @ CHK-THROW then ;
 
+: CHK-RUN-BOUNDARY ( -- )
+   CHK-ARGV-BOUNDARY
+   CHK-RUN-CAPTURE
+   CHK-RC @ 0= if exit then
+   CHK-OUT-BUF CHK-OUT-U @ CHK-ERR
+   CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
+   CHK-RC @ CHK-THROW ;
+
 : CHK-RUN-ALL ( -- )
    CHK-ARGV-ALL
    CHK-RUN-CAPTURE
@@ -355,6 +378,7 @@ variable CHK-ERR-PATH-U
 : CHECK-MAIN ( -- )
    CHK-PARSE
    CHK-MATERIALIZE
+   CHK-RUN-BOUNDARY
    CHK-RUN-STRICT
    CHK-ALL @ if CHK-RUN-ALL then
    CHK-CHECK-LABEL

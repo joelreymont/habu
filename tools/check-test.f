@@ -111,6 +111,22 @@ variable CKT-BAD-U
    s" BYE" SB-APPEND
    SB$ ;
 
+: CKT-OFF-BAD$ ( -- ptr u8 n )
+   SB-RESET
+   s" 0 set-check" SB-APPEND
+   10 SB-APPEND-C
+   s" : BAD-OFF ( -- ) 1 ;" SB-APPEND
+   SB$ ;
+
+: CKT-HOOK-BAD$ ( -- ptr u8 n )
+   SB-RESET
+   s" : BAD-HOOK ( -- ) ;" SB-APPEND
+   10 SB-APPEND-C
+   s" ' BAD-HOOK set-check" SB-APPEND
+   10 SB-APPEND-C
+   s" : BAD-HOOKED ( -- ) 1 ;" SB-APPEND
+   SB$ ;
+
 : CKT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-check-test" TMPDIR-MKDIR CKT-ROOT CKT-ROOT-U CKT-COPY!
@@ -162,6 +178,20 @@ variable CKT-BAD-U
    outu 0 T=
    CKT-ERR erru s" bye" CONTAINS? TTRUE ;
 
+: CKT-TEST-SET-CHECK-OFF ( -- )
+   CKT-OFF-BAD$ CKT-RUN-JSON 0 T<>
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" CHECKER-MUTATION" CONTAINS? TTRUE
+   CKT-ERR erru s" set-check" CONTAINS? TTRUE ;
+
+: CKT-TEST-HOOK-REPLACE ( -- )
+   CKT-HOOK-BAD$ CKT-RUN-JSON 0 T<>
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" CHECKER-MUTATION" CONTAINS? TTRUE
+   CKT-ERR erru s" set-check" CONTAINS? TTRUE ;
+
 : CKT-MAIN ( -- )
    T-RESET
    CKT-PREPARE
@@ -173,6 +203,8 @@ variable CKT-BAD-U
    CKT-TEST-USAGE
    CKT-TEST-PARSE-WORDS
    CKT-TEST-DIE
+   CKT-TEST-SET-CHECK-OFF
+   CKT-TEST-HOOK-REPLACE
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;

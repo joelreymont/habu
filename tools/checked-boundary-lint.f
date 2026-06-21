@@ -1,9 +1,9 @@
 \ checked-boundary-lint.f - forbid broad unchecked definitions.
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, and tools/argv.f.
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
+\ tools/lint/json-writer.f, and tools/argv.f.
 
 0 set-check
 
-$10000 constant UB-FILE-CAP
 32 constant UB-NUM-CAP
 
 10 constant UB-LF
@@ -15,17 +15,19 @@ $10000 constant UB-FILE-CAP
 9 constant UB-TAB
 92 constant UB-BSLASH
 
-create UB-FILE UB-FILE-CAP allot
 create UB-NUM UB-NUM-CAP allot
 
 variable UB-FILE-A
 variable UB-FILE-U
+variable UB-SRC-A
 variable UB-SRC-U
+variable UB-SRC-CAP
 variable UB-I
 variable UB-LINE
 variable UB-COL
 variable UB-TOK-A
 variable UB-TOK-U
+variable UB-TOK-BYTE
 variable UB-TOK-LINE
 variable UB-TOK-COL
 variable UB-PREV-A
@@ -65,7 +67,7 @@ variable UB-NUM-I
    UB-I @ UB-SRC-U @ >= ;
 
 : UB-C@ ( -- n )
-   UB-FILE UB-I @ + c@ ;
+   UB-SRC-A @ UB-I @ + c@ ;
 
 : UB-ADV ( -- n )
    UB-C@
@@ -128,6 +130,14 @@ variable UB-NUM-I
    {: a:ptr u:n :}
    UB-PREV$ a u STR= ;
 
+: UB-TOK=CI ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   UB-TOK$ a u STR=CI ;
+
+: UB-PREV=CI ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   UB-PREV$ a u STR=CI ;
+
 : UB-SAVE-PREV ( -- )
    UB-TOK-A @ UB-PREV-A !
    UB-TOK-U @ UB-PREV-U ! ;
@@ -135,7 +145,8 @@ variable UB-NUM-I
 : UB-NEXT-TOK ( -- bool )
    UB-SKIP-IGNORED
    UB-END? if 0 exit then
-   UB-FILE UB-I @ + UB-TOK-A !
+   UB-SRC-A @ UB-I @ + UB-TOK-A !
+   UB-I @ UB-TOK-BYTE !
    UB-LINE @ UB-TOK-LINE !
    UB-COL @ UB-TOK-COL !
    0 UB-TOK-U !
@@ -147,10 +158,13 @@ variable UB-NUM-I
    -1 ;
 
 : UB-SET-CHECK-OFF? ( -- bool )
-   s" set-check" UB-TOK= s" 0" UB-PREV= and ;
+   s" set-check" UB-TOK=CI s" 0" UB-PREV=CI and ;
 
 : UB-SET-CHECK-ON? ( -- bool )
-   s" set-check" UB-TOK= s" 0" UB-PREV= 0= and ;
+   s" set-check" UB-TOK=CI s" 0" UB-PREV=CI 0= and ;
+
+: UB-CHECKER-MUTATION? ( -- bool )
+   s" set-check" UB-TOK=CI ;
 
 : UB-COLON? ( -- bool )
    s" :" UB-TOK= ;
@@ -158,15 +172,66 @@ variable UB-NUM-I
 : UB-HOOK-NAME? ( ptr u8 n -- bool )
    s" CHECK-HOOK" ENDS-WITH? ;
 
+: UB-JSON-BASE ( ptr u8 n -- )
+   {: code:ptr codeu:n :}
+   LJW-RESET
+   LJW-OBJECT-START
+   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
+   s" code" LJW-KEY code codeu LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" trusted_boundary_required" LJW-STRING LJW-COMMA
+   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA ;
+
+: UB-JSON-ORIGIN ( -- )
+   s" token" LJW-KEY UB-TOK$ LJW-STRING LJW-COMMA
+   s" token_index" LJW-KEY 0 LJW-U LJW-COMMA
+   s" file" LJW-KEY UB-FILE-A @ UB-FILE-U @ LJW-STRING LJW-COMMA
+   s" line" LJW-KEY UB-TOK-LINE @ LJW-U LJW-COMMA
+   s" column" LJW-KEY UB-TOK-COL @ LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY UB-TOK-BYTE @ LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY UB-TOK-BYTE @ UB-TOK-U @ + LJW-U LJW-COMMA ;
+
+: UB-JSON-FINISH ( ptr u8 n ptr u8 n -- )
+   {: expected:ptr expectedu:n actual:ptr actualu:n :}
+   s" expected" LJW-KEY expected expectedu LJW-STRING LJW-COMMA
+   s" actual" LJW-KEY actual actualu LJW-STRING LJW-COMMA
+   s" suggestion" LJW-KEY
+   s" Keep generated/user code checked; move checker mutations behind an audited boundary." LJW-STRING
+   LJW-OBJECT-END
+   LJW$ UB-OUT UB-NL ;
+
+: UB-JSON-DEFINITION ( ptr u8 n -- )
+   {: name:ptr nu:n :}
+   s" E-UNCHECKED-DEFINITION" UB-JSON-BASE
+   s" word" LJW-KEY name nu LJW-STRING LJW-COMMA
+   UB-JSON-ORIGIN
+   s" checked definition" s" checker disabled" UB-JSON-FINISH ;
+
+: UB-JSON-MUTATION ( -- )
+   s" E-CHECKER-MUTATION" UB-JSON-BASE
+   s" word" LJW-KEY s" " LJW-STRING LJW-COMMA
+   UB-JSON-ORIGIN
+   s" checker hook remains installed" s" set-check" UB-JSON-FINISH ;
+
 : UB-REPORT-DEFINITION ( ptr u8 n -- )
    {: name:ptr nu:n :}
    UB-BAD @ 1+ UB-BAD !
+   ARGV-JSON? if name nu UB-JSON-DEFINITION exit then
    s" UNCHECKED-DEFINITION " UB-OUT
    UB-FILE-A @ UB-FILE-U @ UB-OUT
    58 emit UB-TOK-LINE @ UB-U$ UB-OUT
    58 emit UB-TOK-COL @ UB-U$ UB-OUT
    s" : `" UB-OUT name nu UB-OUT
    s" ` defined while checker disabled" UB-OUT UB-NL ;
+
+: UB-REPORT-MUTATION ( -- )
+   UB-BAD @ 1+ UB-BAD !
+   ARGV-JSON? if UB-JSON-MUTATION exit then
+   s" CHECKER-MUTATION " UB-OUT
+   UB-FILE-A @ UB-FILE-U @ UB-OUT
+   58 emit UB-TOK-LINE @ UB-U$ UB-OUT
+   58 emit UB-TOK-COL @ UB-U$ UB-OUT
+   s" : `" UB-OUT UB-TOK$ UB-OUT
+   s" ` mutates checker state in strict boundary mode" UB-OUT UB-NL ;
 
 : UB-HANDLE-COLON ( -- )
    UB-CHECK-OFF @ 0= if exit then
@@ -181,6 +246,9 @@ variable UB-NUM-I
 : UB-SCAN ( -- )
    UB-RESET-FILE-SCAN
    begin UB-NEXT-TOK while
+      ARGV-STRICT-BOUNDARY? if
+         UB-CHECKER-MUTATION? if UB-REPORT-MUTATION then
+      then
       UB-SET-CHECK-OFF? if -1 UB-CHECK-OFF ! then
       UB-COLON? if UB-HANDLE-COLON then
       UB-SET-CHECK-ON? if 0 UB-CHECK-OFF ! then
@@ -190,7 +258,9 @@ variable UB-NUM-I
 : UB-SCAN-FILE ( ptr u8 n -- )
    {: path:ptr pu:n :}
    path UB-FILE-A ! pu UB-FILE-U !
-   path pu UB-FILE UB-FILE-CAP READ-ALL UB-SRC-U !
+   path pu FILE-SIZE MEM-ALLOC-64K-SPAN
+   UB-SRC-CAP ! UB-SRC-A !
+   path pu UB-SRC-A @ UB-SRC-CAP @ READ-ALL UB-SRC-U !
    UB-SCAN ;
 
 : CHECKED-BOUNDARY-LINT ( -- )
