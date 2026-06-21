@@ -1,5 +1,5 @@
 \ text-foundation-test.f — focused tests for tools/lint/lib.f text helpers.
-\ Run: cat tools/lint/lib.f tools/lint/source-lex.f tools/lint/text-foundation-test.f | bin/hb
+\ Run: bin/hb --load lib/errors.f lib/memory.f tools/lint/lib.f tools/lint/source-lex.f tools/lint/text-foundation-test.f
 
 variable TEST-N
 : ASSERT  ( f -- )
@@ -14,6 +14,16 @@ create TRUST-FIX FIX-CAP allot   variable TRUST-LEN
 create SRC-FIX FIX-CAP allot     variable SRC-LEN
 create BT-FIX FIX-CAP allot      variable BT-LEN
 create LEX-FIX FIX-CAP allot     variable LEX-LEN
+9000 constant BIG-LEX-TOKENS
+variable BIG-LEX-A
+variable BIG-LEX-U
+
+TRUSTED: BIG-LEX-A@ ( -- ptr u8 ) BIG-LEX-A @ ;
+TRUSTED: BIG-LEX$ ( -- ptr u8 n ) BIG-LEX-A @ BIG-LEX-U @ ;
+
+: BIG-LEX-PUT ( n -- ) {: k :}
+   120 BIG-LEX-A@ k 2 * + c!
+   32 BIG-LEX-A@ k 2 * 1+ + c! ;
 
 : INIT-STR-FIX  ( -- )
    0 STR-LEN !
@@ -79,12 +89,20 @@ create LEX-FIX FIX-CAP allot     variable LEX-LEN
    10 LEX-FIX FIX-CAP LEX-LEN BUF-APPEND-C ;
 : LEX-FIX$  ( -- a u )  LEX-FIX LEX-LEN @ ;
 
+: INIT-BIG-LEX  ( -- )
+   BIG-LEX-TOKENS 2 * MEM-ALLOC-BYTES BIG-LEX-U ! BIG-LEX-A !
+   0 begin dup BIG-LEX-TOKENS < while
+      dup BIG-LEX-PUT
+      1+
+   repeat drop ;
+
 : INIT-FIXTURES  ( -- )
    INIT-STR-FIX
    INIT-TRUST-FIX
    INIT-SRC-FIX
    INIT-BT-FIX
-   INIT-LEX-FIX ;
+   INIT-LEX-FIX
+   INIT-BIG-LEX ;
 
 : TEST-STRINGS  ( -- )
    STR-FIX$ SPLIT-LINES  SN# @ 2 ASSERT=
@@ -137,6 +155,13 @@ create LEX-FIX FIX-CAP allot     variable LEX-LEN
    6 LTOK s" ;" ASSERT$
    6 LB@ 54 ASSERT=  6 LL@ 2 ASSERT=  6 LC@ 7 ASSERT= ;
 
+: TEST-BIG-LEXER  ( -- )
+   BIG-LEX$ LEX-SOURCE
+   L# @ BIG-LEX-TOKENS ASSERT=
+   0 LTOK s" x" ASSERT$
+   8192 LTOK s" x" ASSERT$
+   BIG-LEX-TOKENS 1- LTOK s" x" ASSERT$ ;
+
 : TEXT-FOUNDATION-TEST  ( -- )
    1 TEST-N !
    INIT-FIXTURES
@@ -144,6 +169,7 @@ create LEX-FIX FIX-CAP allot     variable LEX-LEN
    TEST-SCANNERS
    TEST-SIGS
    TEST-LEXER
+   TEST-BIG-LEXER
    s" text-foundation-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
 
 TEXT-FOUNDATION-TEST

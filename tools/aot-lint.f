@@ -1,6 +1,6 @@
 \ aot-lint.f - reject source forms unsupported by stripped AOT.
-\ Load after tools/lint/lib.f, tools/lint/json-writer.f, tools/lint/source-lex.f,
-\ and tools/argv.f.
+\ Load after lib/memory.f, tools/lint/lib.f, tools/lint/json-writer.f,
+\ tools/lint/source-lex.f, and tools/argv.f.
 
 0 set-check
 

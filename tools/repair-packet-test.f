@@ -88,6 +88,8 @@ create RPT-ERR RPT-CAPTURE-CAP allot
 : RPT-ARGV-CHECK ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu file:ptr fileu :}
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
+   s" lib/errors.f" PROC-ARGV+
+   s" lib/memory.f" PROC-ARGV+
    s" tools/lint/lib.f" PROC-ARGV+
    s" tools/lint/json-writer.f" PROC-ARGV+
    s" tools/lint/source-lex.f" PROC-ARGV+

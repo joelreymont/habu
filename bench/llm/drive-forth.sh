@@ -34,7 +34,7 @@ REF=$T/ref
 TASK_LINES=$T/tasks.body
 mkdir -p "$REF"
 bin/hb --load lib/errors.f lib/string.f lib/fs.f bench/llm/manifest.f tools/argv.f bench/llm/forth-task-lines-lib.f bench/llm/forth-task-lines.f -- bench/llm/tasks.tsv "$TASK_LINES"
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f bench/llm/manifest.f tools/lint/lib.f tools/lint/source-lex.f tools/argv.f bench/llm/attempt-solutions-lib.f bench/llm/attempt-solutions.f -- bench/llm/tasks.tsv bench/llm/solutions.f "$REF"
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f bench/llm/manifest.f tools/lint/lib.f tools/lint/source-lex.f tools/argv.f bench/llm/attempt-solutions-lib.f bench/llm/attempt-solutions.f -- bench/llm/tasks.tsv bench/llm/solutions.f "$REF"
 
 [ -f "$REF/$ID.f" ] || { echo "drive-forth: no reference solution for task $ID" >&2; exit 66; }
 

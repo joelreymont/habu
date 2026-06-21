@@ -62,7 +62,7 @@ points stay listed.
 - `tools/build-fixpoint-main.f` — CLI entrypoint for the self-rebuild fixpoint driver.
 - `tools/build-fixpoint-test.f` — checked fixture coverage for the self-rebuild fixpoint driver.
 - `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.
-- `tools/lint/source-lex.f` — shared source lexer for native lints.
+- `tools/lint/source-lex.f` — shared dynamic source lexer for native lints.
 - `tools/signature-lint.f` — strict typed-signature lint.
 - `tools/signature-lint-test.f` — checked fixture coverage for strict typed-signature lint.
 - `tools/aot-lint.f` — stripped-AOT unsupported-word lint.
@@ -140,9 +140,12 @@ points stay listed.
 - `bench/llm/forth-task-lines-test.f` — focused coverage for task-row filtering and file output.
 - `bench/llm/forth-candidate.f` — checked Forth candidate extractor, definition metadata scanner, and forbidden boundary token guard.
 - `bench/llm/forth-candidate-test.f` — focused coverage for Forth candidate extraction, name/signature scanning, completion, and trusted-boundary rejection.
-- `bench/llm/forth-bundle.f` — checked Forth task bundle builder that replaces one target with a candidate and appends benchmark tests.
-- `bench/llm/forth-bundle-test.f` — focused coverage for bundle replacement, missing files, duplicate rows, extra references, schema errors, and capacity failures.
+- `bench/llm/forth-bundle.f` — checked Forth task bundle builder that sizes a bundle, replaces one target with a candidate, and appends benchmark tests.
+- `bench/llm/forth-bundle-test.f` — focused coverage for bundle sizing, replacement, missing files, duplicate rows, extra references, schema errors, and capacity failures.
 - `bench/llm/large-buffer-bundle-test.f` — regression that composes the source lexer, task-row scanner, reference extractor, and many simultaneously live 64K buffer spans in one checked load.
+- `bench/llm/drive-forth-lib.f` — native checked Habu live driver for harness=forth benchmark rows, including candidate extraction, dynamic bundle allocation, checker/test execution, and feedback modes.
+- `bench/llm/drive-forth.f` — CLI wrapper for the native Forth live benchmark driver.
+- `bench/llm/drive-forth-test.f` — focused coverage for native Forth driver pass, fail, checker reject, forbidden-boundary reject, row artifacts, and feedback-mode arms.
 - `bench/llm/diagnostic-stats.f` — checked diagnostic field, repair-class event, and statistics reducer for benchmark rows.
 - `bench/llm/diagnostic-json-check-stub.f` — checker-only JSON parser contract for the diagnostic stats reducer.
 - `bench/llm/diagnostic-stats-check-test.f` — checker fixture for diagnostic stats aggregation without loading the JSON recovery boundary.

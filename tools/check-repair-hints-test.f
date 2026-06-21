@@ -105,6 +105,8 @@ create CRHT-ERR CRHT-BUF-CAP allot
 : CRHT-CHECK-ARGS ( ptr u8 n -- ) {: label:ptr labelu :}
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
+   s" lib/errors.f" PROC-ARGV+
+   s" lib/memory.f" PROC-ARGV+
    s" tools/lint/lib.f" PROC-ARGV+
    s" tools/lint/json-writer.f" PROC-ARGV+
    s" tools/lint/source-lex.f" PROC-ARGV+
