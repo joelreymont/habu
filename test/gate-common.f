@@ -126,6 +126,17 @@ variable GE-RD
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
+: GE-BIN-HB? ( ptr u8 n -- bool )
+   s" bin/hb" STR= ;
+
+: GE-REMOVE-BIN-OTHER ( ptr u8 n -- ) {: path:ptr pathu :}
+   path pathu FILE? if
+      path pathu GE-BIN-HB? 0= if path pathu REMOVE-FILE then
+   then ;
+
+: GE-CLEAN-BIN ( -- )
+   s" bin" [: GE-REMOVE-BIN-OTHER ;] WALK-FILES ;
+
 : GE-CHECK-ARGV ( -- )
    GE-HB-RESET
    s" --load" PROC-ARGV+

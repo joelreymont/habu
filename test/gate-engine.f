@@ -9,18 +9,10 @@ variable GE-SCRIPT-U
 : GE-TMP-HB-NEW ( -- ptr u8 n )
    s" hb-new" BF-A$ ;
 
-: GE-BIN-HB? ( ptr u8 n -- bool )
-   s" bin/hb" STR= ;
-
-: GE-REMOVE-BIN-OTHER ( ptr u8 n -- ) {: path:ptr pathu :}
-   path pathu FILE? if
-      path pathu GE-BIN-HB? 0= if path pathu REMOVE-FILE then
-   then ;
-
 : GE-INSTALL-HB ( -- )
    GE-TMP-HB-NEW s" bin/hb" RENAME-FILE
    s" bin/hb" CHMOD-X
-   s" bin" [: GE-REMOVE-BIN-OTHER ;] WALK-FILES ;
+   GE-CLEAN-BIN ;
 
 : GE-BUILD-FIXPOINT ( -- )
    s" hb-gate-engine" GT-START

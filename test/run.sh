@@ -31,41 +31,7 @@ bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f l
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f test/gate-dictionary.f || { echo "FAIL: native dictionary/checker gate phase"; exit 1; }
 [ -x bin/hb ] || { echo "FAIL: bin/hb not produced"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f test/gate-diagnostics.f || { echo "FAIL: native checker diagnostics gate phase"; exit 1; }
-# property-based soundness smoke, SELF-HOSTED in habu: generate typed defs,
-# check them, and RUN the certified ones IN-PROCESS (via `evaluate`); a false-cert
-# (real out-arity != declared) calls `die` -> nonzero exit. Default seed/count
-# are reproducible; argv can override longer sweeps. No host scripting, no gforth, no
-# spawning. See PROP-TESTING.md.
-bin/hb < test/prop-test.f > $T/prop.out 2>/dev/null || { echo "FAIL: prop-test (self-hosted) found a FALSE-CERT"; exit 1; }
-grep -q "self-test OK" $T/prop.out || { echo "FAIL: prop-test self-test/run did not complete"; exit 1; }
-echo "PASS: prop-test soundness smoke (self-hosted in habu, in-process via evaluate)"
-HT=$(mktemp -d)
-HB_TMP=$HT ./tools/snap-hb.sh >/dev/null || { echo "FAIL: HB_TMP isolation"; exit 1; }
-out=$(printf '$340000000 $1B0 + @ 0= .\n: SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | bin/hb 2>/dev/null)
-[ "$out" = "0
-49" ] || { echo "FAIL: HB_TMP hb refresh/check hook (got: $out)"; exit 1; }
-{ printf ': LONG-SNAPSHOT-DICTIONARY-WORD ( i64 -- i64 ) 3 + ;\n'
-  cat src/habu/snap.f; } > $T/hb-snap-long.f
-HB_TMP=$HT bin/hb < $T/hb-snap-long.f >/dev/null || { echo "FAIL: long-name snapshot write"; exit 1; }
-codesign -s - --force "$HT/hb-snap0" 2>/dev/null
-chmod +x "$HT/hb-snap0"
-out=$(printf '39 LONG-SNAPSHOT-DICTIONARY-WORD .\n' | "$HT/hb-snap0" 2>/dev/null)
-[ "$out" = "42" ] || { echo "FAIL: long-name snapshot restore (got: $out)"; exit 1; }
-rm -rf "$HT"
-echo "PASS: HB_TMP isolation"
-bin/hb --load lib/errors.f lib/process.f test/proc-pty.f || { echo "FAIL: process/pty"; exit 1; }
-out=$(printf ': LONG-PROFILER-BUSY-WORD ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;\n: GO ( -- ) 100000 prof-on LONG-PROFILER-BUSY-WORD prof-report ;\nGO\n' | bin/hb 2>/dev/null | head -1)
-case "$out" in
-  "LONG-PROFILER-BUSY-WORD "*) ;;
-  *) echo "FAIL: profiler long-name output (got: $out)"; exit 1 ;;
-esac
-echo "PASS: profiler long dictionary names"
-out=$(bin/hb --load src/arch/arm64/disasm.f tools/jitdump.f -- ': JITDUMP-SMOKE ( -- i64 ) 7 ;' JITDUMP-SMOKE 2>/dev/null)
-case "$out" in
-  *ret*) ;;
-  *) echo "FAIL: jitdump direct CLI output (got: $out)"; exit 1 ;;
-esac
-echo "PASS: jitdump direct CLI"
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f lib/codesign.f test/gate-debug.f || { echo "FAIL: native prop/snapshot/debug gate phase"; exit 1; }
 # hb-build DEFAULT = AOT: compile MAIN to native, engine stripped (no interpreter).
 GATE_JSON=$T/gate-json-assert.f
 cat tools/json.f tools/gate-json-assert.f > "$GATE_JSON"
