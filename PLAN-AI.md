@@ -80,7 +80,8 @@ from current source.
 
 ### V1 — Harness is sound (deterministic, no LLM, no tokens)
 ```
-./bench/llm/grade-test.sh      # -> PASS: grade.sh classifies pass/fail/reject/trap/timeout
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/grade.f bench/llm/grade-test.f
+                                # -> grade-test: ok
 ./bench/llm/bench-test.sh      # -> PASS: array drivers (as + aa, 4 arms + habu repair)
 ```
 `grade-test` proves the isolated run+grade spine classifies a correct/wrong/non-certifying/
@@ -161,7 +162,7 @@ checking/grading the candidate.
   artifact auditability.
 - `bench/llm/drive-js.sh`, `drive-rust.sh` — JS/Rust arms. `f(a)` returns a number (`as`) or
   array/`Vec` (`aa`); repair on node test failures / rustc errors + test failures.
-- `bench/llm/grade.sh` — runs a candidate in an isolated, timeout-bounded child so a trap/hang
+- `bench/llm/grade.f` — runs a candidate in an isolated, timeout-bounded child so a trap/hang
   is *recorded, not fatal*; classifies `pass|fail|reject|trap|timeout`. For habu it builds the
   array in memory (`here , ,`) and runs the io-vectors via generated `G=` assertions.
 - `bench/llm/parse-resp.f` — extracts the completion text + **output_tokens** from
@@ -174,7 +175,7 @@ checking/grading the candidate.
   green, task pass@k, non-pass rows, wall time, mean rounds, median/mean/max output tokens,
   per-task token table with raw/best and lib/best ratios, verdict).
 - `bench/llm/ref-solutions.f` — certified habu answer key (see V2).
-- `bench/llm/grade-test.sh`, `bench-test.sh` — the deterministic teeth (see V1).
+- `bench/llm/grade-test.f`, `bench-test.sh` — the deterministic teeth (see V1).
 
 Also delivered to `habu` master earlier in this effort: a native `depth ( -- n )` primitive
 (`src/habu/habu1.f`, `src/core/checker.f`) — a standard Forth core word habu lacked. It is NOT

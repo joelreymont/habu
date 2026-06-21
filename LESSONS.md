@@ -44,6 +44,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Bool paths must all return bool:** early exits in typed predicates need a
   real false value (`0 0= 0=` or a helper), not raw `0`; otherwise path merging
   correctly rejects the definition.
+- **Bool arguments must be bools, not sentinels:** checked callees declared with
+  `bool` reject raw `0`/`-1` flag conventions. Use a typed bool producer such as
+  `STR-FALSE`/`STR-TRUE` or a local module helper at every call site.
 - **Record declared signatures after verification:** successful `CHECK!` stores
   the raw declared signature string. Rendering mutated inferred terms can corrupt
   quotient/combinator schemes and break later call-site checks.
@@ -227,6 +230,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Generated JSON needles need field builders:** backslash does not escape a
   quote inside `s"`. Build JSON substrings with checked byte/field helpers so
   keys and quote bytes are explicit.
+- **Generated `die` calls need typed strings:** `die` takes `ptr u8 n n`; `0 0`
+  is two integers, not an empty string. Generated harnesses should emit a real
+  `s" message"` or a byte-backed string word.
 - **Generated Forth comments use one backslash:** `\` is the comment word;
   `\\` is a different token and can turn a fixture prelude into an undefined
   word before the intended diagnostic is reached.

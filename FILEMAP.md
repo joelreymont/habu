@@ -161,6 +161,8 @@ points stay listed.
 - `bench/llm/run-expanded-bench-test.f` — focused coverage for expanded-run AOT dispatch and report validation.
 - `bench/llm/expanded-report.f` — expanded live benchmark Markdown report with validator and latency sections.
 - `bench/llm/expanded-report-test.f` — focused coverage for expanded report perf-latency rendering.
+- `bench/llm/grade.f` — native isolated benchmark grader for pass/fail/reject/trap/timeout outcomes.
+- `bench/llm/grade-test.f` — focused coverage for native benchmark grader outcome classification.
 - `bench/llm/solutions.f` — reference benchmark solutions.
 - `bench/llm/validate-results.f` — native reference/attempt metric validator and summarizer.
 - `bench/llm/validate-results-test.sh` — fixture coverage for metric validation.

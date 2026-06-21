@@ -189,7 +189,9 @@ variable GS-RD
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/json-row.f" GS-ARG+ s" bench/llm/json-row-test.f" GS-ARG+
    s" llm json row helpers" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" bench/llm/negative-score.f" GS-ARG+ s" bench/llm/negative-score-test.f" GS-ARG+
-   s" llm negative scorer" GS-HB-RUN ;
+   s" llm negative scorer" GS-HB-RUN
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" bench/llm/grade.f" GS-ARG+ s" bench/llm/grade-test.f" GS-ARG+
+   s" llm native grader" GS-HB-RUN ;
 
 : GS-CHECK-LLM-FIXTURES ( -- )
    GS-SRC-RESET
@@ -215,7 +217,10 @@ variable GS-RD
    s" llm json row helper check" GS-CHECK-RUN
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" bench/llm/negative-score.f" GS-SRC+ s" bench/llm/negative-score-test.f" GS-SRC+
-   s" llm negative scorer check" GS-CHECK-RUN ;
+   s" llm negative scorer check" GS-CHECK-RUN
+   GS-SRC-RESET
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" bench/llm/grade.f" GS-SRC+ s" bench/llm/grade-test.f" GS-SRC+
+   s" llm native grader check" GS-CHECK-RUN ;
 
 : GS-RUN-LLM-DRIVERS ( -- )
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/drive-stdlib-lib.f" GS-ARG+ s" bench/llm/driver-test-helpers.f" GS-ARG+ s" bench/llm/drive-stdlib-test.f" GS-ARG+

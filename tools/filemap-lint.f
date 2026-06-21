@@ -150,6 +150,8 @@ variable FM-NUM-L
    s" test/process-env-child.f" FM-REQ
    s" test/run.f" FM-REQ
    s" bench/llm/tasks.tsv" FM-REQ
+   s" bench/llm/grade.f" FM-REQ
+   s" bench/llm/grade-test.f" FM-REQ
    s" bench/llm/validate-results.f" FM-REQ
    s" bench/llm/validate-results-test.sh" FM-REQ ;
 

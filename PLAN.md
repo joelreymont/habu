@@ -908,7 +908,7 @@ test "$(find bin -type f -perm -111 ! -name hb -print | wc -l)" -eq 0
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f -- lib/array.f
 bin/hb --load lib/errors.f lib/array.f lib/array-test.f
 ./bench/llm/bench-test.sh
-./bench/llm/grade-test.sh
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/grade.f bench/llm/grade-test.f
 bin/hb < bench/llm/ref-solutions.f
 ```
 
