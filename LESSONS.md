@@ -166,6 +166,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   update `TRUSTED.md` in the same change with the declared effect, reason, and
   tests. Trust-lint will fail otherwise, and the omission hides the real trusted
   base delta.
+- **Trust audit dates follow the gate day:** `trust-lint` defaults to
+  `epoch-seconds / DATE-SECONDS-DAY`, an epoch/UTC day. Near local midnight, a
+  local calendar date can be future to the gate; use an explicit test date or an
+  audit date no later than the gate's default day.
 - **Seed primitive names can exceed inline storage:** `EMIT-DICT` must encode
   names longer than `DNAME-INL` out-of-line and relocate them during startup.
   Inline-only emission corrupts fixed `DREC` records and later primitive lookup.

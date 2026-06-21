@@ -84,12 +84,15 @@ variable CKT-LIST-U
    s" --bad-flag" PROC-ARGV+
    s" bin/hb" CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
 
-: CKT-RUN-SOURCE-LIST ( ptr u8 n -- n n n )
-   CKT-LIST$ 2swap WRITE-ALL
+: CKT-RUN-SOURCE-LIST-PATH ( ptr u8 n -- n n n )
    CKT-ARGV-BASE
    s" --source-list" PROC-ARGV+
-   CKT-LIST$ PROC-ARGV+
+   PROC-ARGV+
    s" bin/hb" CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+
+: CKT-RUN-SOURCE-LIST ( ptr u8 n -- n n n )
+   CKT-LIST$ 2swap WRITE-ALL
+   CKT-LIST$ CKT-RUN-SOURCE-LIST-PATH ;
 
 : CKT-GOOD$ ( -- ptr u8 n )
    s" : OK ( i64 -- i64 ) dup * ;" ;
@@ -292,7 +295,14 @@ variable CKT-LIST-U
    CKT-ERR erru s" EVIL" CONTAINS? TTRUE ;
 
 : CKT-TEST-SOURCE-LIST-LOCAL-TRUST ( -- )
-   CKT-LOCAL-TRUSTED$ CKT-RUN-SOURCE-LIST 0 T=
+   CKT-LOCAL-TRUSTED$ CKT-RUN-SOURCE-LIST 0 T<>
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" UNMANIFESTED" CONTAINS? TTRUE
+   CKT-ERR erru s" LOCAL-TEST" CONTAINS? TTRUE ;
+
+: CKT-TEST-SOURCE-LIST-AUDITED-LIB ( -- )
+   s" lib/test.f" CKT-RUN-SOURCE-LIST-PATH 0 T=
    {: outu erru :}
    outu 0 T=
    erru 0 T= ;
@@ -317,6 +327,7 @@ variable CKT-LIST-U
    CKT-TEST-AUDITED-LIB-TRUSTED
    CKT-TEST-STDIN-TRUST-REJECT
    CKT-TEST-SOURCE-LIST-LOCAL-TRUST
+   CKT-TEST-SOURCE-LIST-AUDITED-LIB
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;

@@ -317,7 +317,7 @@ variable CHK-ERR-PATH-U
    s" --strict-boundary" PROC-ARGV+
    CHK-SOURCE PROC-ARGV+ ;
 
-: CHK-ARGV-TRUST ( -- )
+: CHK-ARGV-TRUST-PATH ( ptr u8 n -- ) {: path:ptr pathu :}
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
    s" tools/date.f" PROC-ARGV+
@@ -327,8 +327,11 @@ variable CHK-ERR-PATH-U
    s" tools/trust-lint.f" PROC-ARGV+
    s" --" PROC-ARGV+
    s" source-only" PROC-ARGV+
-   CHK-SOURCE PROC-ARGV+
+   path pathu PROC-ARGV+
    s" ." PROC-ARGV+ ;
+
+: CHK-ARGV-TRUST ( -- )
+   CHK-SOURCE CHK-ARGV-TRUST-PATH ;
 
 : CHK-ARGV-DIAG ( -- )
    PROC-ARGV-RESET
@@ -393,14 +396,27 @@ variable CHK-ERR-PATH-U
    CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
    CHK-RC @ CHK-THROW ;
 
-: CHK-RUN-TRUST ( -- )
-   CHK-SOURCE-LIST @ if exit then
-   CHK-ARGV-TRUST
+: CHK-RUN-TRUST-CURRENT ( -- )
    CHK-RUN-CAPTURE
    CHK-RC @ 0= if exit then
    CHK-OUT-BUF CHK-OUT-U @ CHK-ERR
    CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
    CHK-RC @ CHK-THROW ;
+
+: CHK-RUN-TRUST-PATH ( ptr u8 n -- )
+   CHK-ARGV-TRUST-PATH
+   CHK-RUN-TRUST-CURRENT ;
+
+: CHK-RUN-TRUST-LIST ( -- )
+   0 begin dup CHK-POS-N @ < while
+      dup CHK-POS$ CHK-RUN-TRUST-PATH
+      1+
+   repeat drop ;
+
+: CHK-RUN-TRUST ( -- )
+   CHK-SOURCE-LIST @ if CHK-RUN-TRUST-LIST exit then
+   CHK-ARGV-TRUST
+   CHK-RUN-TRUST-CURRENT ;
 
 : CHK-RUN-ALL ( -- )
    CHK-ARGV-ALL

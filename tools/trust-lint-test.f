@@ -13,6 +13,8 @@ variable TLT-MAN-U
 variable TLT-SRC-TRUST-U
 variable TLT-LIB-TRUST-U
 variable TLT-LIB-DEF-U
+variable TLT-BENCH-U
+variable TLT-BENCH-TRUST-U
 
 create TLT-ROOT-BUF FS-PATH-CAP allot
 create TLT-CASE-BUF FS-PATH-CAP allot
@@ -22,6 +24,8 @@ create TLT-MAN-BUF FS-PATH-CAP allot
 create TLT-SRC-TRUST-BUF FS-PATH-CAP allot
 create TLT-LIB-TRUST-BUF FS-PATH-CAP allot
 create TLT-LIB-DEF-BUF FS-PATH-CAP allot
+create TLT-BENCH-BUF FS-PATH-CAP allot
+create TLT-BENCH-TRUST-BUF FS-PATH-CAP allot
 create TLT-OUT TLT-CAP allot
 create TLT-ERR TLT-CAP allot
 create TLT-LF-BUF 1 allot
@@ -58,6 +62,12 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-LIB-DEF ( -- ptr u8 n )
    TLT-LIB-DEF-BUF TLT-LIB-DEF-U @ ;
+
+: TLT-BENCH ( -- ptr u8 n )
+   TLT-BENCH-BUF TLT-BENCH-U @ ;
+
+: TLT-BENCH-TRUST ( -- ptr u8 n )
+   TLT-BENCH-TRUST-BUF TLT-BENCH-TRUST-U @ ;
 
 : TLT-LF+ ( -- )
    TLT-LF SB-APPEND-C ;
@@ -103,6 +113,12 @@ TLT-LF TLT-LF-BUF c!
    s"   dup ;" SB-APPEND TLT-LF+
    SB$ ;
 
+: TLT-BENCH-TRUST$ ( -- ptr u8 n )
+   SB-RESET
+   s" TRUSTED: bench-trusted ( -- ptr u8 )" SB-APPEND TLT-LF+
+   s"   here ;" SB-APPEND TLT-LF+
+   SB$ ;
+
 : TLT-OK$ ( n n -- ptr u8 n ) {: sites rows :}
    SB-RESET
    s" trust-lint: " SB-APPEND sites TLT-U+
@@ -118,7 +134,9 @@ TLT-LF TLT-LF-BUF c!
    TLT-CASE s" TRUSTED.md" TLT-MAN-BUF TLT-MAN-U TLT-PATH!
    TLT-SRC s" trust.f" TLT-SRC-TRUST-BUF TLT-SRC-TRUST-U TLT-PATH!
    TLT-LIB s" trust.f" TLT-LIB-TRUST-BUF TLT-LIB-TRUST-U TLT-PATH!
-   TLT-LIB s" trusted-def.f" TLT-LIB-DEF-BUF TLT-LIB-DEF-U TLT-PATH! ;
+   TLT-LIB s" trusted-def.f" TLT-LIB-DEF-BUF TLT-LIB-DEF-U TLT-PATH!
+   TLT-CASE s" bench" TLT-BENCH-BUF TLT-BENCH-U TLT-PATH!
+   TLT-BENCH s" trust.f" TLT-BENCH-TRUST-BUF TLT-BENCH-TRUST-U TLT-PATH! ;
 
 : TLT-WRITE-MAN-HEADER ( -- )
    TLT-MAN TLT-HEADER$ WRITE-ALL ;
@@ -149,6 +167,13 @@ TLT-LF TLT-LF-BUF c!
    s" | lib-foo | `-- n` | fixture | `test/t-lib-fixture.fs` | lib/trust.f:1 | 2026-06-13 |" TLT-APPEND-MAN
    s" | lib-trusted | `n -- n` | fixture | `test/t-lib-fixture.fs` | lib/trusted-def.f:1 | 2026-06-13 |" TLT-APPEND-MAN ;
 
+: TLT-ADD-BENCH-TRUST ( -- )
+   TLT-BENCH MAKE-DIRS
+   TLT-BENCH-TRUST TLT-BENCH-TRUST$ WRITE-ALL ;
+
+: TLT-ADD-GOOD-BENCH-ROW ( -- )
+   s" | bench-trusted | `-- ptr u8` | fixture | `test/t-bench-fixture.fs` | bench/trust.f:1 | 2026-06-13 |" TLT-APPEND-MAN ;
+
 : TLT-ARGV ( ptr u8 n -- ) {: today:ptr todayu :}
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
@@ -161,6 +186,20 @@ TLT-LF TLT-LF-BUF c!
    TLT-CASE PROC-ARGV+
    today todayu PROC-ARGV+ ;
 
+: TLT-SOURCE-ARGV ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu today:ptr todayu :}
+   PROC-ARGV-RESET
+   s" --load" PROC-ARGV+
+   s" tools/date.f" PROC-ARGV+
+   s" tools/lint/lib.f" PROC-ARGV+
+   s" tools/fs.f" PROC-ARGV+
+   s" tools/argv.f" PROC-ARGV+
+   s" tools/trust-lint.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   s" source-only" PROC-ARGV+
+   src srcu PROC-ARGV+
+   TLT-CASE PROC-ARGV+
+   today todayu PROC-ARGV+ ;
+
 : TLT-RUN ( ptr u8 n -- n n n )
    TLT-ARGV
    s" bin/hb" TLT-OUT TLT-CAP TLT-ERR TLT-CAP 1000 RUN-ARGV-CAPTURE ;
@@ -168,8 +207,18 @@ TLT-LF TLT-LF-BUF c!
 : TLT-RUN-DEFAULT ( -- n n n )
    s" 2026-06-16" TLT-RUN ;
 
+: TLT-RUN-SOURCE ( ptr u8 n -- n n n )
+   s" 2026-06-16" TLT-SOURCE-ARGV
+   s" bin/hb" TLT-OUT TLT-CAP TLT-ERR TLT-CAP 1000 RUN-ARGV-CAPTURE ;
+
 : TLT-EXPECT-OK ( n n -- ) {: sites rows :}
    TLT-RUN-DEFAULT 0 T=
+   {: outu erru :}
+   TLT-OUT outu sites rows TLT-OK$ T$=
+   TLT-ERR erru TLT-EMPTY$ T$= ;
+
+: TLT-EXPECT-SOURCE-OK ( ptr u8 n n n -- ) {: src:ptr srcu sites rows :}
+   src srcu TLT-RUN-SOURCE 0 T=
    {: outu erru :}
    TLT-OUT outu sites rows TLT-OK$ T$=
    TLT-ERR erru TLT-EMPTY$ T$= ;
@@ -197,6 +246,13 @@ TLT-LF TLT-LF-BUF c!
    TLT-ADD-LIB-DEF
    TLT-ADD-GOOD-LIB-ROWS
    3 3 TLT-EXPECT-OK ;
+
+: TLT-TEST-GOOD-NONROOT-ROW ( -- )
+   s" good-nonroot-row" TLT-MAKE-BASE
+   TLT-ADD-BENCH-TRUST
+   TLT-ADD-GOOD-BENCH-ROW
+   1 2 TLT-EXPECT-OK
+   TLT-BENCH-TRUST 1 2 TLT-EXPECT-SOURCE-OK ;
 
 : TLT-TEST-UNMANIFESTED-LIB ( -- )
    s" unmanifested-lib" TLT-MAKE-BASE
@@ -288,6 +344,7 @@ TLT-LF TLT-LF-BUF c!
    TLT-PREPARE
    TLT-TEST-GOOD
    TLT-TEST-GOOD-LIB
+   TLT-TEST-GOOD-NONROOT-ROW
    TLT-TEST-UNMANIFESTED-LIB
    TLT-TEST-UNMANIFESTED-TRUSTED
    TLT-TEST-STALE-LIB-ROW

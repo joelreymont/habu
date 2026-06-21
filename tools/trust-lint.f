@@ -6,8 +6,8 @@
 0 set-check
 
 90 constant TL-MAX-AUDIT-AGE
-128 constant TL-MAX
-$4000 constant TL-STR-CAP
+256 constant TL-MAX
+$10000 constant TL-STR-CAP
 $20000 constant TL-FILE-CAP
 32 constant TL-NUM-CAP
 16 constant TL-CELL-MAX
@@ -452,11 +452,16 @@ variable TL-NV
       drop
    THEN ;
 
+: TL-SCANNED-SITE? ( ptr u8 n -- bool )
+   2dup s" src/" STARTS-WITH? IF 2drop TL-TRUE exit THEN
+   s" lib/" STARTS-WITH? ;
+
 : TL-CHECK-STALE-ROW ( n -- ) {: mk :}
+   mk TL-M-SITE$ TL-SCANNED-SITE? TL-NOT IF exit THEN
    mk TL-M-NAME$ TL-FIND-SITE 0 < IF
       s" STALE-ROW TRUSTED.md " TL-OUT mk TL-M-SITE$ TL-OUT
       s" : `" TL-OUT mk TL-M-NAME$ TL-OUT
-      s" ` has a row but no TRUST site in src/ or lib/" TL-OUT TL-NL
+      s" ` has a row but no TRUST site in src/ or lib/ scanned roots" TL-OUT TL-NL
       TL-BAD+
    THEN ;
 
