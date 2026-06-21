@@ -610,9 +610,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	codesign	lib/codesign.f	word	CODESIGN-RC0	(n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	throw E-BUILD-STATUS for nonzero codesign rc
 1	codesign	lib/codesign.f	word	CODESIGN-EXPECT-TOOL	(--)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	require the codesign tool to exist
 1	codesign	lib/codesign.f	word	CODESIGN-EXPECT-FILE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	require a nonempty counted path naming a file
+1	codesign	lib/codesign.f	word	CODESIGN-EXPECT-EXECUTABLE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	require a nonempty counted path naming an executable file
 1	codesign	lib/codesign.f	word	CODESIGN-RUN	(-- n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	run codesign with prepared argv and return rc
+1	codesign	lib/codesign.f	word	CODESIGN-VERIFY-RC	(ptr u8 n -- n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return the codesign -v status for one executable path
 1	codesign	lib/codesign.f	word	CODESIGN-VERIFY	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	verify one counted executable path with codesign -v
 1	codesign	lib/codesign.f	word	CODESIGN-FORCE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	ad-hoc sign one counted executable path with codesign --force
+1	codesign	lib/codesign.f	word	CODESIGN-ENSURE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	verify an executable path or ad-hoc sign and verify it
 1	codesign	lib/codesign.f	word	PROMOTE-EXECUTABLE	(ptr u8 n ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	chmod executable and rename a source artifact to a destination
 1	codesign	lib/codesign.f	word	PROMOTE-SIGNED-EXECUTABLE	(ptr u8 n ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	ad-hoc sign chmod promote and verify an executable artifact
 1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers

@@ -23,6 +23,10 @@ create CODESIGN-ERR CODESIGN-ERR-CAP allot
    u 0 <= if E-BUILD-PATH throw then
    a u FILE? 0= if E-BUILD-PATH throw then ;
 
+: CODESIGN-EXPECT-EXECUTABLE ( ptr u8 n -- ) {: a:ptr u :}
+   a u CODESIGN-EXPECT-FILE
+   a u EXECUTABLE? 0= if E-BUILD-PATH throw then ;
+
 : CODESIGN-RUN ( -- n )
    CODESIGN-EXPECT-TOOL
    CODESIGN-TOOL
@@ -31,12 +35,15 @@ create CODESIGN-ERR CODESIGN-ERR-CAP allot
    CODESIGN-TIMEOUT-MS RUN-ARGV-CAPTURE
    nip nip ;
 
-: CODESIGN-VERIFY ( ptr u8 n -- ) {: a:ptr u :}
-   a u CODESIGN-EXPECT-FILE
+: CODESIGN-VERIFY-RC ( ptr u8 n -- n ) {: a:ptr u :}
+   a u CODESIGN-EXPECT-EXECUTABLE
    PROC-ARGV-RESET
    s" -v" PROC-ARGV+
    a u PROC-ARGV+
-   CODESIGN-RUN CODESIGN-RC0 ;
+   CODESIGN-RUN ;
+
+: CODESIGN-VERIFY ( ptr u8 n -- ) {: a:ptr u :}
+   a u CODESIGN-VERIFY-RC CODESIGN-RC0 ;
 
 : CODESIGN-FORCE ( ptr u8 n -- ) {: a:ptr u :}
    a u CODESIGN-EXPECT-FILE
@@ -46,6 +53,11 @@ create CODESIGN-ERR CODESIGN-ERR-CAP allot
    s" --force" PROC-ARGV+
    a u PROC-ARGV+
    CODESIGN-RUN CODESIGN-RC0 ;
+
+: CODESIGN-ENSURE ( ptr u8 n -- ) {: a:ptr u :}
+   a u CODESIGN-VERIFY-RC 0= if exit then
+   a u CODESIGN-FORCE
+   a u CODESIGN-VERIFY ;
 
 : PROMOTE-EXECUTABLE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
    src srcu CODESIGN-EXPECT-FILE

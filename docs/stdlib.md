@@ -971,17 +971,22 @@ CODESIGN-TOOL                ( -- ptr u8 n )
 CODESIGN-RC0                 ( n -- )
 CODESIGN-EXPECT-TOOL         ( -- )
 CODESIGN-EXPECT-FILE         ( ptr u8 n -- )
+CODESIGN-EXPECT-EXECUTABLE   ( ptr u8 n -- )
 CODESIGN-RUN                 ( -- n )
+CODESIGN-VERIFY-RC           ( ptr u8 n -- n )
 CODESIGN-VERIFY              ( ptr u8 n -- )
 CODESIGN-FORCE               ( ptr u8 n -- )
+CODESIGN-ENSURE              ( ptr u8 n -- )
 PROMOTE-EXECUTABLE           ( ptr u8 n ptr u8 n -- )
 PROMOTE-SIGNED-EXECUTABLE    ( ptr u8 n ptr u8 n -- )
 ```
 
 `PROMOTE-EXECUTABLE` chmods the source artifact executable, renames it to the
 destination, and verifies the destination file exists. The source path is gone
-after successful promotion. `PROMOTE-SIGNED-EXECUTABLE` ad-hoc signs the source,
-promotes it, and verifies the promoted executable signature.
+after successful promotion. `CODESIGN-ENSURE` verifies an executable path; when
+verification fails, it forces an ad-hoc signature and verifies again.
+`PROMOTE-SIGNED-EXECUTABLE` ad-hoc signs the source, promotes it, and verifies
+the promoted executable signature.
 
 ## Build Shell Boundary
 
