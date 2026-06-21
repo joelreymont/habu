@@ -209,6 +209,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Diagnostics are an API:** JSON errors carry `schema_version: 1`, source spans,
   verdict, word, token, expected, and actual. Wrappers preserve valid JSON object
   lines and fail nonzero on checker rejection.
+- **JSON fixtures need builders:** Habu `s"` does not escape embedded JSON quotes.
+  Build expected rows with `lib/json-write.f` or a checked fixture DSL instead
+  of writing giant escaped string literals that the interpreter will parse as
+  source.
 - **Benchmark manifests are multi-harness:** `bench/llm/tasks.tsv` is canonical
   for both reference and live runs; reference metrics must filter
   `harness=forth` instead of assuming every manifest row has a checked answer key.

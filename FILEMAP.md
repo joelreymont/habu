@@ -132,10 +132,10 @@ points stay listed.
 - `bench/llm/forth-task-lines-lib.f` — checked harness=forth task-row scanner/emitter for live benchmark drivers.
 - `bench/llm/forth-task-lines.f` — CLI wrapper for harness=forth task-row emission.
 - `bench/llm/forth-task-lines-test.f` — focused coverage for task-row filtering and file output.
-- `bench/llm/diagnostic-stats.f` — checked diagnostic field and repair-class statistics reducer for benchmark rows.
+- `bench/llm/diagnostic-stats.f` — checked diagnostic field, repair-class event, and statistics reducer for benchmark rows.
 - `bench/llm/diagnostic-json-check-stub.f` — checker-only JSON parser contract for the diagnostic stats reducer.
 - `bench/llm/diagnostic-stats-check-test.f` — checker fixture for diagnostic stats aggregation without loading the JSON recovery boundary.
-- `bench/llm/diagnostic-stats-test.f` — focused coverage for diagnostic field booleans and repair-class aggregation.
+- `bench/llm/diagnostic-stats-test.f` — focused coverage for diagnostic field booleans, repair-class event extraction, and aggregation.
 - `bench/llm/artifacts.f` — checked replay artifact path, SHA-256, and JSON field helpers.
 - `bench/llm/artifacts-test.f` — focused coverage for replay artifact hashing and JSON fields.
 - `bench/llm/live-row.f` — checked schema-v2 live benchmark row emitter with replay artifacts.

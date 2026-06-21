@@ -7,6 +7,8 @@
 64 constant DGS-CLASS-MAX
 64 constant DGS-CLASS-CAP
 512 constant DGS-PAIR-MAX
+$8000 constant DGS-EVENT-CAP
+20 constant DGS-NUM-CAP
 
 create DGS-CLASS-BUF DGS-CLASS-MAX DGS-CLASS-CAP * allot
 create DGS-CLASS-U DGS-CLASS-MAX cells allot
@@ -15,6 +17,8 @@ create DGS-ROUND-N DGS-CLASS-MAX cells allot
 create DGS-EMITTED DGS-CLASS-MAX cells allot
 create DGS-PAIR-CLASS DGS-PAIR-MAX cells allot
 create DGS-PAIR-ROUND DGS-PAIR-MAX cells allot
+create DGS-EVENT-BUF DGS-EVENT-CAP allot
+create DGS-NUM-BUF DGS-NUM-CAP allot
 
 variable DGS-CLASS#
 variable DGS-PAIR#
@@ -23,6 +27,8 @@ variable DGS-NEXT
 variable DGS-CAND
 variable DGS-FIRST
 variable DGS-TMP-IDX
+variable DGS-NUM-I
+variable DGS-EVENT-U
 variable DGS-DIAG#
 variable DGS-HAS-TOKEN
 variable DGS-HAS-SPAN
@@ -123,6 +129,32 @@ variable DGS-HAS-REPAIR-CLASS
 : DGS-RESET ( -- )
    DGS-RESET-DIAGS
    DGS-RESET-EVENTS ;
+
+: DGS-EVENT-ROOM ( n -- ) {: add :}
+   add 0 < if E-BM-FIELD throw then
+   add DGS-EVENT-CAP DGS-EVENT-U @ - > if E-BM-FIELD throw then ;
+
+: DGS-EVENT+ ( ptr u8 n -- ) {: a:ptr u :}
+   u DGS-EVENT-ROOM
+   a DGS-EVENT-BUF DGS-EVENT-U @ + u BYTE-COPY
+   DGS-EVENT-U @ u + DGS-EVENT-U ! ;
+
+: DGS-EVENT-C ( n -- ) {: c :}
+   1 DGS-EVENT-ROOM
+   c DGS-EVENT-BUF DGS-EVENT-U @ + c!
+   DGS-EVENT-U @ 1+ DGS-EVENT-U ! ;
+
+: DGS-EVENT-U+ ( n -- ) {: u :}
+   u 0 < if E-BM-FIELD throw then
+   DGS-NUM-CAP DGS-NUM-I !
+   u 0= if s" 0" DGS-EVENT+ exit then
+   u begin dup 0 > while
+      dup 10 mod 48 +
+      DGS-NUM-I @ 1- DGS-NUM-I !
+      DGS-NUM-BUF DGS-NUM-I @ + c!
+      10 /
+   repeat drop
+   DGS-NUM-BUF DGS-NUM-I @ + DGS-NUM-CAP DGS-NUM-I @ - DGS-EVENT+ ;
 
 : DGS-KNOWN-INDEX? ( ptr u8 n -- n bool ) {: a:ptr u :}
    0 begin dup DGS-KNOWN# < while
@@ -251,6 +283,38 @@ variable DGS-HAS-REPAIR-CLASS
 
 : DGS-DIAGNOSTIC-REPAIR-CLASS? ( -- bool )
    DGS-HAS-REPAIR-CLASS DGS-FIELD-OK? ;
+
+: DGS-CHECK-REPAIR-CLASS-NODE ( n -- ) {: cls :}
+   cls -1 = if exit then
+   cls JSON-KIND J-STR <> if E-BM-SCHEMA throw then
+   cls JSON-STRING$ nip 0= if E-BM-FIELD throw then ;
+
+: DGS-REPAIR-CLASS$? ( n -- ptr u8 n bool ) {: node :}
+   node s" repair_class" JSON-GET {: cls :}
+   cls DGS-CHECK-REPAIR-CLASS-NODE
+   cls -1 = if DGS-EVENT-BUF 0 DGS-FALSE exit then
+   cls JSON-STRING$
+   DGS-TRUE ;
+
+: DGS-APPEND-DIAG-EVENT ( n n -- ) {: node round :}
+   round 0 < if E-BM-FIELD throw then
+   node DGS-REPAIR-CLASS$? if
+      round DGS-EVENT-U+
+      STR-TAB DGS-EVENT-C
+      DGS-EVENT+
+      STR-LF DGS-EVENT-C
+   else
+      2drop
+   then ;
+
+: DGS-EVENTS-FROM-DIAGS$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u round :}
+   round 0 < if E-BM-FIELD throw then
+   0 DGS-EVENT-U !
+   a u JSONL-START-STRICT
+   begin JSONL-NEXT-OBJECT dup -1 <> while
+      round DGS-APPEND-DIAG-EVENT
+   repeat drop
+   DGS-EVENT-BUF DGS-EVENT-U @ ;
 
 : DGS-MAYBE-COMMA ( -- )
    DGS-FIRST @ if

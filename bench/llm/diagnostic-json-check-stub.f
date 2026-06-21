@@ -6,6 +6,8 @@
 \ diagnostic reducer while the real parser's catch-based recovery remains a
 \ separate boundary.
 
+3 constant J-STR
+
 : JSONL-START-STRICT ( ptr u8 n -- )
    2drop ;
 
@@ -14,3 +16,9 @@
 
 : JSON-GET ( n ptr u8 n -- n )
    2drop drop -1 ;
+
+: JSON-KIND ( n -- n )
+   drop J-STR ;
+
+: JSON-STRING$ ( n -- ptr u8 n )
+   drop s" stub" ;
