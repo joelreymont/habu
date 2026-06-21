@@ -92,6 +92,7 @@ variable REPL-ROOT-U
 
 : ADD-BACKSTOP-PATHS  ( -- )
    s" src/habu/repl.f" ADD-REPL-PATH
+   s" src/habu/debug-watch.f" ADD-REPL-PATH
    s" src/habu/stepper.f" ADD-REPL-PATH
    s" src/habu/debug.f" ADD-REPL-PATH ;
 

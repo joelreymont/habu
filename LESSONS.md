@@ -319,6 +319,14 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   times out, or exits without diagnostics is a checker/harness bug until proven
   otherwise. Isolate the exact phase and root cause before shrinking, bypassing,
   or calling the fixture too large.
+- **Native crashes need debugger state first:** for SIGSEGV, DATA corruption, or
+  stack corruption, set breakpoints/step and inspect data-stack plus watch cells.
+  If the existing debugger cannot expose the state, extend it before resorting to
+  print-marker probes.
+- **Runtime emitters must preserve the DATA register:** x20 is the engine DATA
+  base, not scratch. Any trap/debug/runtime helper that uses `DATA ...` addressing
+  must not reuse register 20 for counters or temporaries before the next DATA
+  access.
 - **Locals already consume their inputs:** after `{: a:ptr u :}`, the incoming
   stack cells are gone. Do not `drop` those inputs again on one branch; legacy
   unchecked tools can turn that underflow into a return-to-zero crash.

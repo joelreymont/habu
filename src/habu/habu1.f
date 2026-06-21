@@ -45,9 +45,11 @@ $3690 constant TKA-CELL    \ current token addr (was x23)
 $3698 constant TKL-CELL    \ current token len  (was x24)
 $36A0 constant INP-CELL    \ input cursor (was x21)
 $36A8 constant INE-CELL    \ input end    (was x22)
-$36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
+$36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; legacy single-BP)
 $36C8 constant BPI-CELL    \ (legacy single-BP; unused)
-$36D0 constant BPTAB-OFF   \ 16 breakpoints: (addr, saved-instr) 16 B each, addr 0 = empty
+$36D0 constant BPTAB-OFF   \ 8 breakpoints: (addr, saved-instr, hits, ctrl) 32 B each
+$37E8 constant BPWBASE-CELL \ watch table pointer for debug-watch.f / trap dumps
+$37F0 constant BPWN-CELL    \ active watch cell count
 $2740 constant EVAL-FRAME  \ re-entrant evaluate save frame, 8 cells ($2740-$277F: the free hole
                            \ between BODYBUF end ($800+8000=$2740) and RSTK ($2800)). NOT $3600 —
                            \ that COLLIDED with VRTAB-OFF/$3600 + VRITAB-OFF/$3620 (regalloc.f), so every

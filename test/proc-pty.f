@@ -219,6 +219,23 @@ variable SFD
    s" 12" EXPECT
    s" ' PB BP-" STEP-LN
    s"  ok" EXPECT
+   s" variable WV" STEP-LN
+   s"  ok" EXPECT
+   s" 17 WV !" STEP-LN
+   s"  ok" EXPECT
+   s" WV BPW+" STEP-LN
+   s"  ok" EXPECT
+   s" : WID dup WV @ + ;" STEP-LN
+   s"  ok" EXPECT
+   s" ' WID BP+" STEP-LN
+   s"  ok" EXPECT
+   s" 2 WID ." STEP-LN
+   s" habu-bp-stack:" EXPECT
+   s" habu-bp-watch:" EXPECT
+   s" 0000000000000011" EXPECT
+   s" 19" EXPECT
+   s" WV BPW-" STEP-LN
+   s"  ok" EXPECT
    s" 2 ' PB BPN" STEP-LN
    s"  ok" EXPECT
    s" 3 PB ." STEP-LN

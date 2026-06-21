@@ -10,6 +10,7 @@
 \ the REPL + token stepper + breakpoints baked as the engine's LSRC (paths are
 \ repo-root relative; run the maker from the repo root)
 : REPL-SRC s" src/habu/repl.f" ;
+: WATCH-SRC s" src/habu/debug-watch.f" ;
 : STEP-SRC s" src/habu/stepper.f" ;
 : DBG-SRC  s" src/habu/debug.f" ;
 variable HB  variable HL  variable HFD  variable HRD
@@ -43,6 +44,7 @@ s" HB@" s" -- ptr u8" TRUST
    here HB !  HMAX allot  0 HL !
    s" 0 set-check" HLINE
    REPL-SRC PATH0 RD-1
+   WATCH-SRC PATH0 RD-1
    STEP-SRC PATH0 RD-1
    DBG-SRC PATH0 RD-1
    s" : HB-CHECK-HOOK CHECK! ; ' HB-CHECK-HOOK set-check" HLINE

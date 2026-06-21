@@ -7,6 +7,7 @@ variable RLT-ROOT-U
 variable RLT-SRC-DIR-U
 variable RLT-STDIN-U
 variable RLT-REPL-U
+variable RLT-WATCH-U
 variable RLT-STEPPER-U
 variable RLT-DEBUG-U
 
@@ -14,6 +15,7 @@ create RLT-ROOT-BUF FS-PATH-CAP allot
 create RLT-SRC-DIR-BUF FS-PATH-CAP allot
 create RLT-STDIN-BUF FS-PATH-CAP allot
 create RLT-REPL-BUF FS-PATH-CAP allot
+create RLT-WATCH-BUF FS-PATH-CAP allot
 create RLT-STEPPER-BUF FS-PATH-CAP allot
 create RLT-DEBUG-BUF FS-PATH-CAP allot
 create RLT-OUT RLT-CAP allot
@@ -42,6 +44,9 @@ create RLT-ERR RLT-CAP allot
 : RLT-STEPPER ( -- ptr u8 n )
    RLT-STEPPER-BUF RLT-STEPPER-U @ ;
 
+: RLT-WATCH ( -- ptr u8 n )
+   RLT-WATCH-BUF RLT-WATCH-U @ ;
+
 : RLT-DEBUG ( -- ptr u8 n )
    RLT-DEBUG-BUF RLT-DEBUG-U @ ;
 
@@ -58,6 +63,7 @@ create RLT-ERR RLT-CAP allot
 : RLT-STDIN$ ( -- ptr u8 n )
    SB-RESET
    s" : REPL-SRC s" SB-APPEND RLT-DQ s"  src/habu/repl.f" SB-APPEND RLT-DQ s"  ;" SB-APPEND RLT-LF
+   s" : WATCH-SRC s" SB-APPEND RLT-DQ s"  src/habu/debug-watch.f" SB-APPEND RLT-DQ s"  ;" SB-APPEND RLT-LF
    s" : STEP-SRC s" SB-APPEND RLT-DQ s"  src/habu/stepper.f" SB-APPEND RLT-DQ s"  ;" SB-APPEND RLT-LF
    s" : DBG-SRC s" SB-APPEND RLT-DQ s"  src/habu/debug.f" SB-APPEND RLT-DQ s"  ;" SB-APPEND RLT-LF
    SB$ ;
@@ -95,9 +101,11 @@ create RLT-ERR RLT-CAP allot
    RLT-SRC-DIR MAKE-DIRS
    RLT-SRC-DIR s" stdin.f" RLT-STDIN-BUF RLT-STDIN-U RLT-PATH!
    RLT-SRC-DIR s" repl.f" RLT-REPL-BUF RLT-REPL-U RLT-PATH!
+   RLT-SRC-DIR s" debug-watch.f" RLT-WATCH-BUF RLT-WATCH-U RLT-PATH!
    RLT-SRC-DIR s" stepper.f" RLT-STEPPER-BUF RLT-STEPPER-U RLT-PATH!
    RLT-SRC-DIR s" debug.f" RLT-DEBUG-BUF RLT-DEBUG-U RLT-PATH!
    RLT-STDIN RLT-STDIN$ WRITE-ALL
+   RLT-WATCH RLT-EMPTY$ WRITE-ALL
    RLT-STEPPER RLT-EMPTY$ WRITE-ALL
    RLT-DEBUG RLT-EMPTY$ WRITE-ALL ;
 

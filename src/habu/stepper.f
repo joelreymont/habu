@@ -2,8 +2,8 @@
 \ the line ONE TOKEN at a time, echoing each token and printing the data stack
 \ after it executes. No EVALUATE needed: while stepping, the REPL hook returns
 \ one token per call, so the engine's own interpret loop is the evaluator.
-\ Baked into bin/hb after repl.f (uses its DATAB/REPLH-CELL/TTY?/EMITS/
-\ RD-LINE); tools/hb-build.f programs never see it.
+\ Baked into bin/hb after repl.f and debug-watch.f (uses DATAB/REPLH-CELL/
+\ TTY?/EMITS/RD-LINE/BPW-DUMP); tools/hb-build.f programs never see it.
 
 $36A0 constant SINP-CELL        \ engine input cursor cell
 $36A8 constant SINE-CELL        \ engine input end cell
@@ -39,6 +39,7 @@ variable SLEN  variable SPOS  variable STEPPING
 \ between tokens: show the stack the last token left, then feed the next one
 : NEXT-TOK ( -- n n )
    .s
+   BPW-DUMP
    S-SKIP
    SPOS @ SLEN @ < 0= IF 0 STEPPING !  RD-LINE exit THEN
    S-SCAN

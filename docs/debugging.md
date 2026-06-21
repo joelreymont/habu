@@ -17,16 +17,30 @@ clobbers x9..x15. The base is saved at startup into `S0-CELL`.
 ## `.` — single value (in the standalone)
 Pop + print one signed decimal + newline. Use for a specific intermediate.
 
+## `BPW+` / `BPW-` / `BPW.` — watched cells
+`src/habu/debug-watch.f` is baked into `bin/hb` before the stepper/debugger. It
+publishes a small watch table used by both `step` and compiled-word breakpoints.
+Add a cell address with `BPW+`, remove it with `BPW-`, clear all watches with
+`BPW-CLEAR`, and list `address value` pairs with `BPW.`. For fixed engine cells:
+
+```
+DATAB ENVP-CELL + BPW+
+DATAB ARGV-CELL + BPW+
+```
+
 ## `step` — native token stepper (in the REPL, `bin/hb` on a tty)
 `src/habu/stepper.f` is baked into `bin/hb`. `step 5 dup * 3 +` runs the rest
 of the line one token at a time, echoing each token and printing the data stack
-after it executes — no `EVALUATE` needed: the REPL hook feeds the engine one
-token per call, so the engine's own interpret loop is the evaluator.
+and watch table after it executes — no `EVALUATE` needed: the REPL hook feeds
+the engine one token per call, so the engine's own interpret loop is the
+evaluator.
 
 ## `BP+` / `BP-` — one-shot breakpoints on compiled words (REPL)
 `src/habu/debug.f` (baked into `bin/hb`): `' WORD BP+` plants a `BRK #0` at the
 word's entry. Hitting it prints `habu-bp:` + the pc + the data-stack top, then
-restores the original instruction and **resumes** the word; the breakpoint is
+prints `habu-bp-stack:` with each live data-stack cell and `habu-bp-watch:` with
+watched address/value pairs, then restores the original instruction and
+**resumes** the word; the breakpoint is
 one-shot. `' WORD BP*` is **persistent** (fires every call — the handler
 emulates the entry prologue `sub sp,#16` by adjusting the ucontext sp/pc and
 leaves the BRK planted, so no single-step is needed). `N ' WORD BPN` is

@@ -60,12 +60,14 @@ $28 constant INL-MAX
    ldone LBL, ;
 
 \ ---- source setup: baked LSRC or stdin ----
-variable LTRAPH   variable LBPH
+variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
+create BPS-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 115 c, 116 c, 97 c, 99 c, 107 c, 58 c, 10 c,
+create BPW-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 119 c, 97 c, 116 c, 99 c, 104 c, 58 c, 10 c,
 
 \ LTRAPH: SIGTRAP entry (x1=infostyle x2=sig x4=ucontext). A one-shot
-\ breakpoint at [BPA-CELL]: print habu-bp: + pc + the data-stack top, restore
-\ the original instruction, clear the bp, sigreturn to re-execute the word.
+\ breakpoint at [BPA-CELL]: print habu-bp, pc, data-stack, and watch cells;
+\ restore the original instruction, clear the bp, sigreturn to re-execute the word.
 \ Any other trap falls through to the crash dump (x2/x4 untouched).
 : EMIT-TRAPH
    LTRAPH @ LBL,
@@ -73,6 +75,7 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    9 4 MCTX-OFF LDR,                                 \ x9 = mcontext
    10 9 272 LDR,                                     \ x10 = pc
    LBL {: bscan :}  LBL {: bnext :}  LBL {: bhit :}
+   LBL {: sdump :}  LBL {: sdone :}  LBL {: wloop :}  LBL {: wdone :}
    LBL {: emu :}  LBL {: fin :}
    6 8 MOVZ,  7 0 MOVZ,                              \ MAXBP=8, i  (scan BPTAB[0..8))
    bscan LBL,
@@ -83,7 +86,7 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
       bnext LBL,  7 7 1 ADDI,  bscan B,
    \ slot layout: +0 addr  +8 saved-instr  +16 hits  +24 ctrl(skip<<1 | persist)
    bhit LBL,                                         \ x8=&slot x9=mctx x10=pc
-   SP SP 48 SUBI,
+   SP SP 80 SUBI,
    1 SP 0 STR,  4 SP 8 STR,  5 SP 16 STR,  9 SP 24 STR,  10 SP 32 STR,  8 SP 40 STR,
    14 8 16 LDR,  14 14 1 ADDI,  14 8 16 STR,         \ hits++
    15 8 24 LDR,  12 15 1 LSRI,                       \ x15=ctrl  x12=skip
@@ -91,6 +94,25 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    1 LBPH @ ADR,  0 2 MOVZ,  2 9 MOVZ,  NR-WRITE SYS,   \ "habu-bp:"
    9 SP 32 LDR,  LHEX @ BL,                          \ pc
    9 SP 24 LDR,  12 9 168 LDR,  9 12 8 SUBI,  9 9 0 LDR,  LHEX @ BL,   \ [x19-8] = tos
+   1 LBPSH @ ADR,  0 2 MOVZ,  2 15 MOVZ,  NR-WRITE SYS,   \ "habu-bp-stack:"
+   17 DATA S0-CELL LDR,  18 SP 24 LDR,  18 18 168 LDR,  \ x17=base x18=x19
+   sdump LBL,
+      17 18 CMP,  C-GE sdone BCOND,
+      9 17 0 LDR,  17 SP 48 STR,  18 SP 56 STR,  LHEX @ BL,
+      17 SP 48 LDR,  18 SP 56 LDR,  17 17 8 ADDI,  sdump B,
+   sdone LBL,
+   6 DATA BPWN-CELL LDR,  6 wdone CBZ,
+   7 DATA BPWBASE-CELL LDR,  7 wdone CBZ,
+   1 LBPWH @ ADR,  0 2 MOVZ,  2 15 MOVZ,  NR-WRITE SYS,   \ "habu-bp-watch:"
+   6 DATA BPWN-CELL LDR,  7 DATA BPWBASE-CELL LDR,
+   17 0 MOVZ,
+   wloop LBL,
+      17 6 CMP,  C-GE wdone BCOND,
+      22 17 3 LSLI,  22 7 22 ADD,  23 22 0 LDR,
+      9 23 0 ADDI,  LHEX @ BL,
+      9 23 0 LDR,  LHEX @ BL,
+      17 17 1 ADDI,  wloop B,
+   wdone LBL,
    8 SP 40 LDR,  15 8 24 LDR,  15 15 1 ANDI,  15 emu CBNZ,   \ persistent -> emulate, keep BRK
    2 3 MOVZ,  LPROT @ BL,                            \ one-shot: restore + remove
    8 SP 40 LDR,  11 8 0 LDR,  12 8 8 LDR,  12 11 0 STRW,
@@ -103,11 +125,13 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    12 9 264 LDR,  12 12 16 SUBI,  12 9 264 STR,      \ sp -= 16  (sub sp,sp,#16)
    12 9 272 LDR,  12 12 4 ADDI,  12 9 272 STR,       \ pc += 4   (skip the BRK)
    fin LBL,
-   0 SP 8 LDR,  1 SP 0 LDR,  2 SP 16 LDR,  SP SP 48 ADDI,
+   0 SP 8 LDR,  1 SP 0 LDR,  2 SP 16 LDR,  SP SP 80 ADDI,
    NR-SIGRETURN SYS,                                 \ sigreturn(uctx, infostyle, token)
    tno LBL,
    LCRASHH @ B,
-   LBPH @ LBL,  BPH-KW 9 BYTES, ;
+   LBPH @ LBL,  BPH-KW 9 BYTES,
+   LBPSH @ LBL, BPS-KW 15 BYTES,
+   LBPWH @ LBL, BPW-KW 15 BYTES, ;
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -1521,7 +1545,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LEX0 !  LBL LUN0 !
-   LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !
+   LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL LBPSH !  LBL LBPWH !
    LBL LPROFH !  LBL LPROFDUMP !
    LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
    LBL LVTOP2C !  LBL LVFOLDPUT !

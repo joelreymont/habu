@@ -70,6 +70,10 @@ constants; and a `T{ … -> … }T` test for every word.
   stalls, times out, or exits without diagnostics, immediately isolate the
   checker/harness phase and root cause. Do not call the fixture "too expensive",
   shrink it, bypass it, or replace it until the failing mechanism is proven.
+- Native crash/memory RCA must use debugger evidence first: set breakpoints,
+  step, and inspect stack/data/watch cells. If the debugger cannot expose the
+  needed state, extend the debugger/stepper before falling back to print-marker
+  probes.
 - Parallel dot execution follows `docs/parallel-agents.md`: read-only scouts do
   not edit the current tree; workers edit isolated jj workspaces unless their
   file ownership is disjoint.
