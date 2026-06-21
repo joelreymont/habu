@@ -427,6 +427,7 @@ REMOVE-DIR              ( ptr u8 n -- )
 REMOVE-TREE             ( ptr u8 n -- )
 MAKE-DIRS               ( ptr u8 n -- )
 COPY-FILE               ( ptr u8 n ptr u8 n n -- )
+COPY-FILE-STREAM        ( ptr u8 n ptr u8 n -- )
 ATOMIC-WRITE-FILE       ( ptr u8 n ptr u8 n -- )
 MAKE-TEMP-DIR           ( ptr u8 n ptr u8 n -- ptr u8 n )
 TMPDIR-MKDIR            ( ptr u8 n -- ptr u8 n )
@@ -467,8 +468,9 @@ primitive names because the dictionary is case-insensitive: use `MAKE-DIR`,
 `RENAME-FILE` and `MAKE-SYMLINK` use a second private pathz buffer so preparing
 the destination path cannot overwrite the source path. `COPY-FILE` reads through
 an explicit caller capacity and throws `E-FS-CAPACITY` instead of truncating.
-`ATOMIC-WRITE-FILE` writes a sibling `.tmp` file and renames it over the
-destination.
+`COPY-FILE-STREAM` copies through the module chunk buffer, so callers can copy
+large files without sizing a whole-file scratch buffer. `ATOMIC-WRITE-FILE`
+writes a sibling `.tmp` file and renames it over the destination.
 `REMOVE-TREE` recursively removes one counted path, using the same per-depth walk
 buffers as `WALK-FILES`, and throws named filesystem errors rather than ignoring
 partial deletion failures. If a tree contains a symlink to a directory,

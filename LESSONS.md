@@ -221,6 +221,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   only records `: WORD ( in -- out ) ...` forms. Put `{: :}` locals after the
   stack-effect comment in published library definitions so manifest drift checks
   see them.
+- **Library helper definitions need manifest rows:** checked `:` definitions in
+  `lib/*.f` are captured by public-signature drift checks even when intended as
+  internals. Track them as `active` manifest rows instead of leaving drift.
 - **Large native tool bundles can corrupt reads:** combining large lint tables,
   `json.f`, and another large file buffer crashed JSON gate assertions. A lean
   standalone reader plus distinct helper scratch variables fixed it.
@@ -404,6 +407,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   failing closed before it can emit a useful diagnostic. Remove one-use compiled
   fixture helpers first, then grow `REGION` deliberately when live tools outgrow
   the engine.
+- **Exit 77 with `:` is the dictionary guard:** if `cp@ dbase@ -` is well below
+  `REGION - $4000`, check `ndict@` against `DICT-CAP`. Grow `CFSTK-OFF`,
+  `DICT-CAP`, and `DICT-SIZE` together so dictionary slots still end at CFSTK
+  and code keeps the guard gap.
 - **Checker capacity bumps are layout work:** increasing global checker tables
   can shift native data layout and break unrelated fixtures. Prefer removing
   one-use fixture signatures first; expand engine regions deliberately.

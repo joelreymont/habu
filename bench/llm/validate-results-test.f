@@ -428,8 +428,7 @@ VRT-LF VRT-LF-BUF c!
    repeat drop 2drop ;
 
 : VRT-COPY-TASKS ( -- )
-   s" bench/llm/tasks.tsv" VRT-TASK-BUF VRT-TASK-CAP READ-ALL {: u :}
-   VRT-TASKS$ VRT-TASK-BUF u WRITE-ALL ;
+   s" bench/llm/tasks.tsv" VRT-TASKS$ COPY-FILE-STREAM ;
 
 : VRT-VALIDATOR-LOADS ( -- )
    s" --load" PROC-ARGV+

@@ -281,6 +281,14 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-MKDIR-ONE	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	idempotently create one directory component
 1	fs-mutate	lib/fs-mutate.f	word	MAKE-DIRS	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	create missing directory prefixes for one counted path
 1	fs-mutate	lib/fs-mutate.f	word	COPY-FILE	(ptr u8 n ptr u8 n n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	copy a file through bounded caller-selected capacity
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-COPY-RESET	(--)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	initialize streaming copy file-descriptor state
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-CLOSE-COPY-FD	(ptr n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	close one streaming copy descriptor cell if open
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-COPY-THROW	(n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	close streaming copy descriptors and rethrow a filesystem error
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-COPY-OPEN-SRC	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	open the streaming copy source file
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-COPY-CHECK-DST	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	validate the streaming copy destination path
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-COPY-OPEN-DST	(ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	open the streaming copy destination file
+1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-COPY-WRITE-CHUNK	(n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	write one streaming copy buffer chunk completely
+1	fs-mutate	lib/fs-mutate.f	word	COPY-FILE-STREAM	(ptr u8 n ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	copy one file with the module streaming buffer instead of a whole-file cap
 1	fs-mutate	lib/fs-mutate.f	word	ATOMIC-WRITE-FILE	(ptr u8 n ptr u8 n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	write to a sibling temporary file then rename over destination
 1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-SB-U	(n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	append unsigned decimal digits into the string builder
 1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-BUILD-TEMP	(ptr u8 n ptr u8 n -- ptr u8 n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	build unique temp path bytes into owned storage
