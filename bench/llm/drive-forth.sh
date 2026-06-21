@@ -33,25 +33,8 @@ trap 'rm -rf "$T"' EXIT HUP INT TERM
 REF=$T/ref
 TASK_LINES=$T/tasks.body
 mkdir -p "$REF"
-awk -F '\t' 'NR > 1 && $6 == "forth"' bench/llm/tasks.tsv > "$TASK_LINES"
-awk -v dir="$REF" '
-  BEGIN { FS = "\t" }
-  FNR == NR {
-    if (FNR > 1 && $6 == "forth") {
-      task_id[$2] = $1
-    }
-    next
-  }
-  /^: / {
-    split($0, parts, /[ \t]+/)
-    name = parts[2]
-    if (!(name in task_id)) {
-      print "drive-forth: solution without harness=forth task: " name > "/dev/stderr"
-      exit 1
-    }
-    print > (dir "/" task_id[name] ".f")
-  }
-' bench/llm/tasks.tsv bench/llm/solutions.f
+bin/hb --load lib/errors.f lib/string.f lib/fs.f bench/llm/manifest.f tools/argv.f bench/llm/forth-task-lines-lib.f bench/llm/forth-task-lines.f -- bench/llm/tasks.tsv "$TASK_LINES"
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f bench/llm/manifest.f tools/lint/lib.f tools/lint/source-lex.f tools/argv.f bench/llm/attempt-solutions-lib.f bench/llm/attempt-solutions.f -- bench/llm/tasks.tsv bench/llm/solutions.f "$REF"
 
 [ -f "$REF/$ID.f" ] || { echo "drive-forth: no reference solution for task $ID" >&2; exit 66; }
 

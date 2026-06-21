@@ -129,6 +129,9 @@ points stay listed.
 - `bench/llm/parse-resp.f` — CLI wrapper for the model response parser.
 - `bench/llm/vectors.f` — checked benchmark vector parser and Habu snippet emitter.
 - `bench/llm/vectors-test.f` — focused coverage for vector parsing and emitted snippets.
+- `bench/llm/forth-task-lines-lib.f` — checked harness=forth task-row scanner/emitter for live benchmark drivers.
+- `bench/llm/forth-task-lines.f` — CLI wrapper for harness=forth task-row emission.
+- `bench/llm/forth-task-lines-test.f` — focused coverage for task-row filtering and file output.
 - `bench/llm/artifacts.f` — checked replay artifact path, SHA-256, and JSON field helpers.
 - `bench/llm/artifacts-test.f` — focused coverage for replay artifact hashing and JSON fields.
 - `bench/llm/live-row.f` — checked schema-v2 live benchmark row emitter with replay artifacts.
