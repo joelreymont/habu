@@ -27,66 +27,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-stdlib.f || { echo "FAIL: native lint/stdlib gate phase"; exit 1; }
-[ -x bin/hb ] || { echo "no bin/hb — install a trusted seed with tools/seed.sh /path/to/hb"; exit 1; }
-./tools/build.sh > $T/hb-build.log 2>&1 || { tail -5 $T/hb-build.log; echo "FAIL: build (fixpoint)"; exit 1; }
-echo "PASS: self-rebuild fixpoint"
-bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-mutate-test.f || { echo "FAIL: fs mutation stdlib"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-mutate-test.f | $CHECK >/dev/null || { echo "FAIL: fs mutation stdlib check"; exit 1; }
-bin/hb --load lib/errors.f lib/test.f lib/process.f lib/process-argv.f lib/process-argv-test.f || { echo "FAIL: process argv stdlib"; exit 1; }
-cat lib/errors.f lib/process.f lib/process-argv.f | $CHECK >/dev/null || { echo "FAIL: process argv check"; exit 1; }
-bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/process-env-test.f || { echo "FAIL: process env stdlib"; exit 1; }
-cat lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f | $CHECK >/dev/null || { echo "FAIL: process env check"; exit 1; }
-bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-repair-hints-test.f || { echo "FAIL: repair diagnostic hints"; exit 1; }
-cat lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-repair-hints-test.f | $CHECK >/dev/null || { echo "FAIL: repair diagnostic hints check"; exit 1; }
-bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/hb-baseline-contracts-test.f || { echo "FAIL: hb baseline contracts"; exit 1; }
-out=$(bin/hb < test/engine-suite.f) || { echo "$out"; echo "FAIL: engine suite (engine died)"; exit 1; }
-case "$out" in
-  *ok) echo "PASS: engine suite on bin/hb" ;;
-  *) echo "$out"; echo "FAIL: engine suite"; exit 1 ;;
-esac
-# divide/modulo by zero must fail loudly (ARM64 SDIV yields 0 silently); the
-# engine traps, so the run exits nonzero instead of printing a bogus result.
-printf '1 0 / .\n'   | bin/hb >/dev/null 2>&1 && { echo "FAIL: 1 0 / did not trap"; exit 1; }
-printf '1 0 mod .\n' | bin/hb >/dev/null 2>&1 && { echo "FAIL: 1 0 mod did not trap"; exit 1; }
-printf '7 2 / . 7 2 mod . cr\n' | bin/hb 2>/dev/null | tr -d '\n ' | grep -q '^31$' || { echo "FAIL: nonzero div/mod regressed"; exit 1; }
-echo "PASS: div/mod by zero traps (no silent 0)"
-out=$(echo 's" w" s" n -- n" trust 7 . : Q 5 dup * . ; Q' | bin/hb)
-[ "$out" = "7
-25" ] || { echo "FAIL: checked hb trust/run smoke (got: $out)"; exit 1; }
-out=$(echo 's" HOME" getenv nip 0 > .' | bin/hb)
-[ "$out" = "-1" ] || { echo "FAIL: getenv (got: $out)"; exit 1; }
-cat > $T/hb-script-argv.f <<'EOF'
-SCRIPT-ARGC .
-0 SCRIPT-ARGV$ type cr
-1 SCRIPT-ARGV$ type cr
-EOF
-out=$(bin/hb $T/hb-script-argv.f alpha beta)
-[ "$out" = "2
-alpha
-beta" ] || { echo "FAIL: hb script argv mode (got: $out)"; exit 1; }
-out=$(printf 'ARGC .\n1 ARGV$ type cr\n2 ARGV$ type cr\n' | bin/hb alpha beta)
-[ "$out" = "3
-alpha
-beta" ] || { echo "FAIL: hb pipeline argv mode (got: $out)"; exit 1; }
-set +e
-bin/hb $T/no-such-hb-script.f >/dev/null 2>&1
-rc=$?
-set -e
-[ "$rc" -eq 74 ] || { echo "FAIL: hb missing script rc $rc (want 74)"; exit 1; }
-# hb is checked-Forth: a typed def whose body violates its sig
-# is rejected (unpublished -> calling it exits 70); a correct one runs.
-out=$(printf ': SQOK ( i64 -- i64 ) dup * ;\n7 SQOK .\n' | bin/hb 2>/dev/null)
-[ "$out" = "49" ] || { echo "FAIL: hb good typed def (got: $out)"; exit 1; }
-printf ': SQBAD ( i64 -- i64 ) dup ;\n7 SQBAD .\n' | bin/hb >/dev/null 2>&1 && { echo "FAIL: hb did NOT reject bad sig"; exit 1; }
-# depth ( -- n ): certifies (else QDEPTH unpublished -> empty out) and reads the
-# real data-stack cell count (0 when empty) — sentinel-free arity measurement.
-out=$(printf ': QDEPTH ( -- n ) depth ;\nQDEPTH .\n' | bin/hb 2>/dev/null)
-[ "$out" = "0" ] || { echo "FAIL: hb depth prim certify+run (got: $out)"; exit 1; }
-out=$(printf 'TRUSTED: TLEAK ( n -- n ) dup ;\ns" TUSE ( n -- n ) TLEAK" CHECK! .\ns" TBAD ( n -- n n ) TLEAK" CHECK! .\n5 TLEAK . .\n' | bin/hb 2>/dev/null)
-[ "$out" = "-1
-0
-5
-5" ] || { echo "FAIL: hb TRUSTED: effect recording (got: $out)"; exit 1; }
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f lib/build.f tools/build-fixpoint.f test/gate-engine.f || { echo "FAIL: native engine gate phase"; exit 1; }
 out=$(printf ': LONG-DICTIONARY-NAME-ADDONE ( i64 -- i64 ) 1 + ;\n41 LONG-DICTIONARY-NAME-ADDONE .\n123 constant LONG-DICTIONARY-CONSTANT\nLONG-DICTIONARY-CONSTANT .\nvariable LONG-DICTIONARY-VARIABLE\n77 LONG-DICTIONARY-VARIABLE !\nLONG-DICTIONARY-VARIABLE @ .\ns" LONG-DICTIONARY-NAME-ADDONE" get-current search-wl 0= .\ns" long-dictionary-name-addone" get-current search-wl 0= .\n: LONG-REDEFINE-NAME ( -- i64 ) 1 ;\n: LONG-REDEFINE-NAME ( -- i64 ) 2 ;\nLONG-REDEFINE-NAME .\nTRUSTED: LONG-DICTIONARY-TRUSTED ( n -- n ) dup ;\ns" USE ( n -- n ) LONG-DICTIONARY-TRUSTED" CHECK! .\ns" BAD ( n -- n n ) LONG-DICTIONARY-TRUSTED" CHECK! .\n9 LONG-DICTIONARY-TRUSTED . .\n' | bin/hb 2>/dev/null)
 [ "$out" = "42
 123
