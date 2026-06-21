@@ -68,15 +68,21 @@ variable REBT-FILE-U
    s" report.md" REBT-REPORT REBT-REPORT-U REBT-JOIN!
    REBT-HB-TMP$ MAKE-DIR ;
 
-: REBT-MODEL-SOURCE$ ( -- ptr u8 n )
+: REBT-MODEL-SOURCE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    BFT-RESET
    s" MAIN" s" --" BFT-SOURCE-DEF
-   s" : MAIN ( -- ) here drop ;" BFT-SOURCE-S"
+   a u BFT-SOURCE-S"
    s"  type cr " BFT+
    BFT-SOURCE-END$ ;
 
-: REBT-WRITE-MODEL ( -- )
-   REBT-MODEL-SRC$ REBT-MODEL-SOURCE$ WRITE-ALL ;
+: REBT-AOT-CANDIDATE$ ( -- ptr u8 n )
+   s" : MAIN ( -- ) here drop ;" ;
+
+: REBT-ARRAY-CANDIDATE$ ( -- ptr u8 n )
+   s" : ARR-SUM ( ptr a n -- i64 ) A-SUM ;" ;
+
+: REBT-WRITE-MODEL ( ptr u8 n -- ) {: a:ptr u :}
+   REBT-MODEL-SRC$ a u REBT-MODEL-SOURCE$ WRITE-ALL ;
 
 : REBT-HB-BUILD-LOADS ( -- )
    s" --load" PROC-ARGV+
@@ -141,13 +147,15 @@ variable REBT-FILE-U
    s" bench/llm/manifest.f" PROC-ARGV+
    s" bench/llm/run-expanded-bench.f" PROC-ARGV+ ;
 
-: REBT-RUN-EXPANDED ( -- )
+: REBT-RUN-EXPANDED-START ( ptr u8 n ptr u8 n -- ) {: task:ptr tasku seed:ptr seedu :}
    PROC-ARGV-ENV-RESET
    s" MODEL_REGISTRY" REBT-MODELS$ PROC-ENV+
    s" MODEL_ID" s" aotfix" PROC-ENV+
-   s" BENCH_TASK_IDS" s" 69" PROC-ENV+
+   s" BENCH_TASK_IDS" task tasku PROC-ENV+
    s" BENCH_RESULTS" REBT-REPORT$ PROC-ENV+
-   s" BENCH_SEED" s" run-expanded-aot-test" PROC-ENV+
+   s" BENCH_SEED" seed seedu PROC-ENV+ ;
+
+: REBT-RUN-EXPANDED-SPAWN ( -- )
    PROC-ENV-INHERIT-MISSING
    REBT-RUN-EXPANDED-LOADS
    s" --" PROC-ARGV+
@@ -156,6 +164,16 @@ variable REBT-FILE-U
    s" bin/hb" REBT-OUT REBT-CAP REBT-ERR REBT-CAP REBT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE
    0 T= 0 T= drop ;
 
+: REBT-RUN-AOT-EXPANDED ( -- )
+   s" 69" s" run-expanded-aot-2026-06-21" REBT-RUN-EXPANDED-START
+   REBT-RUN-EXPANDED-SPAWN ;
+
+: REBT-RUN-ARRAY-EXPANDED ( -- )
+   s" 46" s" run-expanded-array-2026-06-21" REBT-RUN-EXPANDED-START
+   s" BENCH_ARRAY_ARMS" s" habu-stdlib" PROC-ENV+
+   s" PATH" REBT-ROOT$ PROC-ENV+
+   REBT-RUN-EXPANDED-SPAWN ;
+
 : REBT-FILE$ ( ptr u8 n -- ptr u8 n )
    REBT-FILE REBT-CAP READ-ALL REBT-FILE-U !
    REBT-FILE REBT-FILE-U @ ;
@@ -163,7 +181,7 @@ variable REBT-FILE-U
 : REBT-CONTAINS ( ptr u8 n ptr u8 n -- )
    CONTAINS? TTRUE ;
 
-: REBT-ASSERT-JSONL ( -- )
+: REBT-ASSERT-AOT-JSONL ( -- )
    REBT-OUT-PATH$ REBT-FILE$ {: a:ptr u :}
    a u s" outcome" REBT-CONTAINS
    a u s" reject" REBT-CONTAINS
@@ -174,20 +192,47 @@ variable REBT-FILE-U
    a u s" E-AOT-UNSUPPORTED" REBT-CONTAINS
    a u s" here" REBT-CONTAINS ;
 
-: REBT-ASSERT-REPORT ( -- )
+: REBT-ASSERT-AOT-REPORT ( -- )
    REBT-REPORT$ REBT-FILE$ {: a:ptr u :}
    a u s" category aot-unsupported rows=1" REBT-CONTAINS
    a u s" arm habu-aot rows=1" REBT-CONTAINS ;
 
+: REBT-ASSERT-ARRAY-JSONL ( -- )
+   REBT-OUT-PATH$ REBT-FILE$ {: a:ptr u :}
+   a u s" outcome" REBT-CONTAINS
+   a u s" pass" REBT-CONTAINS
+   a u s" first_pass_checker" REBT-CONTAINS
+   a u s" certified" REBT-CONTAINS
+   a u s" arm" REBT-CONTAINS
+   a u s" habu-stdlib" REBT-CONTAINS
+   a u s" task_id" REBT-CONTAINS ;
+
+: REBT-ASSERT-ARRAY-REPORT ( -- )
+   REBT-REPORT$ REBT-FILE$ {: a:ptr u :}
+   a u s" category arrays rows=1" REBT-CONTAINS
+   a u s" arm habu-stdlib rows=1" REBT-CONTAINS ;
+
+: REBT-RUN-AOT-CASE ( -- )
+   REBT-AOT-CANDIDATE$ REBT-WRITE-MODEL
+   REBT-BUILD-MODEL
+   REBT-WRITE-MODELS
+   REBT-RUN-AOT-EXPANDED
+   REBT-ASSERT-AOT-JSONL
+   REBT-ASSERT-AOT-REPORT ;
+
+: REBT-RUN-ARRAY-CASE ( -- )
+   REBT-ARRAY-CANDIDATE$ REBT-WRITE-MODEL
+   REBT-BUILD-MODEL
+   REBT-WRITE-MODELS
+   REBT-RUN-ARRAY-EXPANDED
+   REBT-ASSERT-ARRAY-JSONL
+   REBT-ASSERT-ARRAY-REPORT ;
+
 : REBT-MAIN ( -- )
    T-RESET
    REBT-PREPARE
-   REBT-WRITE-MODEL
-   REBT-BUILD-MODEL
-   REBT-WRITE-MODELS
-   REBT-RUN-EXPANDED
-   REBT-ASSERT-JSONL
-   REBT-ASSERT-REPORT
+   REBT-RUN-AOT-CASE
+   REBT-RUN-ARRAY-CASE
    CLEANUP-RUN
    T-REPORT
    s" run-expanded-bench-test: ok" type cr ;

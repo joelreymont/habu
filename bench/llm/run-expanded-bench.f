@@ -24,6 +24,7 @@ create RB-SNIP2 256 allot
 create RB-SNIP3 256 allot
 create RB-SNIP4 256 allot
 create RB-EXE-BUF FS-PATH-CAP allot
+create RB-ARRAY-RUNNER-BUF FS-PATH-CAP allot
 create RB-LF-BUF 1 allot
 RB-LF RB-LF-BUF c!
 
@@ -72,6 +73,7 @@ variable RB-SNIP2-U
 variable RB-SNIP3-U
 variable RB-SNIP4-U
 variable RB-EXE-U
+variable RB-ARRAY-RUNNER-U
 variable RB-ROW-NEXT
 variable RB-ROW-A
 variable RB-ROW-U
@@ -404,12 +406,34 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    arm armu s" habu-skeleton" STR= ;
 
 : RB-ARRAY-SCRIPT$ ( ptr u8 n -- ptr u8 n ) {: arm:ptr armu :}
-   arm armu RB-ARRAY-HABU? if s" bench/llm/drive-habu.sh" exit then
    arm armu s" js" STR= if s" bench/llm/drive-js.sh" exit then
    arm armu s" ts" STR= if s" bench/llm/drive-ts.sh" exit then
    arm armu s" rust" STR= if s" bench/llm/drive-rust.sh" exit then
    s" run-expanded-bench: unknown BENCH_ARRAY_ARMS entry" RB-DIE
    s" " ;
+
+: RB-ARRAY-RUNNER$ ( -- ptr u8 n )
+   RB-ARRAY-RUNNER-BUF RB-ARRAY-RUNNER-U @ ;
+
+: RB-ARRAY-RUNNER-PATH! ( -- )
+   SB-RESET
+   RB-OUT$ SB-APPEND
+   s" .array-driver.f" SB-APPEND
+   SB$ {: a:ptr u :}
+   u FS-PATH-CAP > if s" run-expanded-bench: array runner path too long" RB-DIE then
+   a RB-ARRAY-RUNNER-BUF u BYTE-COPY
+   u RB-ARRAY-RUNNER-U ! ;
+
+: RB-ARRAY-RUNNER-WRITE ( -- )
+   RB-ARRAY-RUNNER-PATH!
+   RB-ARRAY-RUNNER$ s" DAH-MAIN " WRITE-ALL ;
+
+: RB-ARRAY-RUNNER-CLEAN ( -- )
+   RB-ARRAY-RUNNER$ FILE? if
+      RB-ARRAY-RUNNER$ FS-PATHZ unlink 0 < if
+         s" run-expanded-bench: array runner cleanup failed" RB-DIE
+      then
+   then ;
 
 : RB-OUT-RESET ( -- )
    RB-OUT$ RB-LF-BUF 0 WRITE-ALL ;
@@ -594,6 +618,29 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" bench/llm/live-row.f" PROC-ARGV+
    s" bench/llm/drive-stdlib-lib.f" PROC-ARGV+ ;
 
+: RB-ARRAY-HABU-LOADS ( -- )
+   RB-STDLIB-LOADS
+   s" bench/llm/driver-token-helpers.f" PROC-ARGV+
+   s" bench/llm/drive-array-habu-lib.f" PROC-ARGV+
+   RB-ARRAY-RUNNER-WRITE
+   RB-ARRAY-RUNNER$ PROC-ARGV+ ;
+
+: RB-ARRAY-HABU-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu arm:ptr armu trial :}
+   PROC-ARGV-ENV-RESET
+   model modelu trial RB-ADD-COMMON-ENV
+   RB-ARRAY-HABU-LOADS
+   s" --" PROC-ARGV+
+   BM-T-ID RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-NAME RB-TASK-FIELD$ PROC-ARGV+
+   RB-TASK-LINE$ BM-TASK-SIG$ PROC-ARGV+
+   BM-T-SPEC RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-CONV RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-VECTORS RB-TASK-FIELD$ PROC-ARGV+
+   arm armu RB-ARRAY-HABU-ARM$ PROC-ARGV+
+   SB-RESET
+   RB-MAX-REPAIRS @ RB-SB-U+
+   SB$ PROC-ARGV+ ;
+
 : RB-STDLIB-TASK-ARGS ( -- )
    BM-T-ID RB-TASK-FIELD$ PROC-ARGV+
    BM-T-NAME RB-TASK-FIELD$ PROC-ARGV+
@@ -700,8 +747,14 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
 
 : RB-RUN-ARRAY-ONE ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu arm:ptr armu trial :}
    BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
-   model modelu arm armu trial RB-ARRAY-ARGS
-   RB-RUN-APPEND drop
+   arm armu RB-ARRAY-HABU? if
+      model modelu arm armu trial RB-ARRAY-HABU-ARGS
+      RB-RUN-HB-APPEND drop
+      RB-ARRAY-RUNNER-CLEAN
+   else
+      model modelu arm armu trial RB-ARRAY-ARGS
+      RB-RUN-APPEND drop
+   then
    BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? 0= if
       s" run-expanded-bench: missing array result row" RB-DIE
    then ;
