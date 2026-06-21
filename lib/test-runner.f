@@ -9,6 +9,7 @@
 32768 constant GT-OUT-CAP
 32768 constant GT-ERR-CAP
 10000 constant GT-DEFAULT-TIMEOUT-MS
+5000 constant GT-HEARTBEAT-MS
 
 create GT-ROOT-BUF FS-PATH-CAP allot
 create GT-OUT-BUF GT-OUT-CAP allot
@@ -23,6 +24,7 @@ variable GT-OUTCOME-KIND
 variable GT-OUTCOME-CODE
 variable GT-FAIL#
 variable GT-PROGRESS-START-NS
+variable GT-PROGRESS-LAST-NS
 
 : GT-FAIL-SLOT ( n -- ptr u8 ) {: idx :}
    idx 0 < if E-TBL-BOUNDS throw then
@@ -104,17 +106,34 @@ variable GT-PROGRESS-START-NS
 
 : GT-PROGRESS-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    mono-ns GT-PROGRESS-START-NS !
+   GT-PROGRESS-START-NS @ GT-PROGRESS-LAST-NS !
    s" RUN: " type label labelu type cr ;
+
+: GT-PROGRESS-ELAPSED-MS ( -- n )
+   mono-ns GT-PROGRESS-START-NS @ - PROC-NS-PER-MS / ;
 
 : GT-U-TYPE ( n -- ) {: n :}
    n 0 < if E-TBL-FIELD throw then
    n 10 >= if n 10 / RECURSE then
    n 10 mod STR-ZERO + emit ;
 
+: GT-PROGRESS-DUE? ( -- bool )
+   mono-ns GT-PROGRESS-LAST-NS @ - PROC-NS-PER-MS / GT-HEARTBEAT-MS >= ;
+
+: GT-PROGRESS-WAIT ( ptr u8 n -- ) {: label:ptr labelu :}
+   GT-PROGRESS-DUE? if
+      mono-ns GT-PROGRESS-LAST-NS !
+      s" WAIT: " type label labelu type
+      s"  (" type GT-PROGRESS-ELAPSED-MS GT-U-TYPE s" ms)" type cr
+   then ;
+
+: GT-PROGRESS-SLICE-MS ( -- n )
+   PROC-REMAINING-MS dup GT-HEARTBEAT-MS > if drop GT-HEARTBEAT-MS then ;
+
 : GT-PROGRESS-PASS ( ptr u8 n -- ) {: label:ptr labelu :}
    s" PASS: " type label labelu type
    s"  (" type
-   mono-ns GT-PROGRESS-START-NS @ - PROC-NS-PER-MS / GT-U-TYPE
+   GT-PROGRESS-ELAPSED-MS GT-U-TYPE
    s" ms)" type cr ;
 
 : GT-RC@ ( -- n )

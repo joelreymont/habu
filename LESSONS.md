@@ -456,6 +456,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   deliberate JSONL `catch` recovery boundary. New checked reducers that call it
   should use small checked interface fixtures for checker runs and runtime tests
   with the real parser until the typed `catch` dot is implemented.
+- **Progress must exist at every blocking layer:** child phases can print
+  heartbeats and still leave the user blind if the parent waits with a raw
+  `WAIT-RC`. Top-level gate runners need their own poll loop, timeout, and
+  heartbeat while they stream child output.
 - **Live-row bundle artifacts must stay small:** `live-row.f` embeds artifact
   contents before hashing. Native drivers that need a large internal run bundle
   should keep that path separate from the emitted `final_bundle` artifact until

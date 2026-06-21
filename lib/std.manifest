@@ -525,7 +525,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test-runner	lib/test-runner.f	word	GT-RUN	(ptr u8 n n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run a prepared argv capture with timeout
 1	test-runner	lib/test-runner.f	word	GT-RUN-DEFAULT	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run a prepared argv capture with the default timeout
 1	test-runner	lib/test-runner.f	word	GT-PROGRESS-RUN	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a gate progress start line and record its start time
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-ELAPSED-MS	(-- n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	return elapsed milliseconds since the current progress start
 1	test-runner	lib/test-runner.f	word	GT-U-TYPE	(n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	print an unsigned integer without a trailing newline for progress lines
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-DUE?	(-- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	test whether the progress heartbeat interval has elapsed
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-WAIT	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a heartbeat wait line when a long child remains quiet
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-SLICE-MS	(-- n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	return the next poll timeout capped to the heartbeat interval
 1	test-runner	lib/test-runner.f	word	GT-PROGRESS-PASS	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a gate progress pass line with elapsed milliseconds
 1	test-runner	lib/test-runner.f	word	GT-RC@	(-- n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return last outcome as shell-style rc
 1	test-runner	lib/test-runner.f	word	GT-RC=	(n ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last rc equals an expected value

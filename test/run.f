@@ -4,6 +4,7 @@
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/test-runner.f.
 
 64 constant TR-USAGE-RC
+600000 constant TR-TIMEOUT-MS
 
 : TR-USAGE ( -- )
    s" usage: bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f" TR-USAGE-RC die ;
@@ -50,9 +51,62 @@
    s" lib/process-env.f" PROC-ARGV+
    s" lib/test-runner.f" PROC-ARGV+ ;
 
+: TR-WRITE-FD ( n ptr u8 n -- ) {: fd a:ptr u :}
+   u 0= if exit then
+   fd a u write u <> if E-FS-IO throw then ;
+
+: TR-FLUSH-OUT-U ( n -- )
+   dup 0 > if
+      1 GT-OUT-BUF rot TR-WRITE-FD
+      0 PROC-OUT-LEN !
+   else
+      drop
+   then ;
+
+: TR-FLUSH-ERR-U ( n -- )
+   dup 0 > if
+      2 GT-ERR-BUF rot TR-WRITE-FD
+      0 PROC-ERR-LEN !
+   else
+      drop
+   then ;
+
+: TR-FLUSH-CAPTURE ( -- )
+   PROC-OUT-LEN @ TR-FLUSH-OUT-U
+   PROC-ERR-LEN @ TR-FLUSH-ERR-U ;
+
+: TR-SPAWN-CAPTURE ( -- )
+   s" bin/hb" PROC-ARGV-CHECK-PATH
+   PROC-CAPTURE-RESET
+   TR-TIMEOUT-MS PROC-CAPTURE-DEADLINE!
+   PROC-SETUP-CAPTURE-FDS
+   s" bin/hb" PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-CAPTURE ;
+
+: TR-RUN-CAPTURE-LOOP ( ptr u8 n -- ) {: label:ptr labelu :}
+   begin PROC-CAPTURE-DONE? 0= while
+      GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup 0= if
+         drop
+         PROC-REMAINING-MS 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
+         label labelu GT-PROGRESS-WAIT
+      else
+         drop
+         GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP PROC-DRAIN-READY
+         TR-FLUSH-CAPTURE
+         label labelu GT-PROGRESS-WAIT
+      then
+   repeat
+   PROC-REAP-CAPTURE ;
+
+: TR-PHASE-OK? ( -- bool )
+   PROC-OUTCOME-KIND @ PROC-OUTCOME-EXIT =
+   PROC-OUTCOME-CODE @ 0= and ;
+
 : TR-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    label labelu GT-PROGRESS-RUN
-   s" bin/hb" -1 -1 -1 RUN-ARGV-ENV-IO-RC 0 = 0= if label labelu TR-FAIL then
+   TR-SPAWN-CAPTURE
+   label labelu TR-RUN-CAPTURE-LOOP
+   PROC-CLOSE-CAPTURE-FDS
+   TR-PHASE-OK? 0= if label labelu TR-FAIL then
    label labelu GT-PROGRESS-PASS ;
 
 : TR-COMMON ( -- )

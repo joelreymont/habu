@@ -6,33 +6,11 @@
 
 $40000 constant GS-SRC-CAP
 120000 constant GS-TIMEOUT-MS
-5000 constant GS-HEARTBEAT-MS
 
 create GS-SRC-BUF GS-SRC-CAP allot
 
 variable GS-SRC-U
 variable GS-RD
-variable GS-PROGRESS-LAST-NS
-
-: GS-PROGRESS-START ( ptr u8 n -- ) {: label:ptr labelu :}
-   label labelu GT-PROGRESS-RUN
-   mono-ns GS-PROGRESS-LAST-NS ! ;
-
-: GS-PROGRESS-ELAPSED-MS ( -- n )
-   mono-ns GT-PROGRESS-START-NS @ - PROC-NS-PER-MS / ;
-
-: GS-PROGRESS-DUE? ( -- bool )
-   mono-ns GS-PROGRESS-LAST-NS @ - PROC-NS-PER-MS / GS-HEARTBEAT-MS >= ;
-
-: GS-PROGRESS-WAIT ( ptr u8 n -- ) {: label:ptr labelu :}
-   GS-PROGRESS-DUE? if
-      mono-ns GS-PROGRESS-LAST-NS !
-      s" WAIT: " type label labelu type
-      s"  (" type GS-PROGRESS-ELAPSED-MS GT-U-TYPE s" ms)" type cr
-   then ;
-
-: GS-PROGRESS-SLICE-MS ( -- n )
-   PROC-REMAINING-MS dup GS-HEARTBEAT-MS > if drop GS-HEARTBEAT-MS then ;
 
 : GS-CAPTURE-STORE ( -- )
    PROC-OUT-LEN @ GT-OUT-U !
@@ -42,14 +20,14 @@ variable GS-PROGRESS-LAST-NS
 
 : GS-RUN-CAPTURE-LOOP ( ptr u8 n -- ) {: label:ptr labelu :}
    begin PROC-CAPTURE-DONE? 0= while
-      GS-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup 0= if
+      GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup 0= if
          drop
          PROC-REMAINING-MS 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
-         label labelu GS-PROGRESS-WAIT
+         label labelu GT-PROGRESS-WAIT
       else
          drop
          GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP PROC-DRAIN-READY
-         label labelu GS-PROGRESS-WAIT
+         label labelu GT-PROGRESS-WAIT
       then
    repeat
    PROC-REAP-CAPTURE ;
@@ -69,15 +47,15 @@ variable GS-PROGRESS-LAST-NS
 : GS-RUN-STDIN-CAPTURE-LOOP ( ptr u8 n ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
    inu 0 <= if PROC-ARGV-IN-W PROC-CLOSE-CELL then
    begin PROC-ARGV-STDIN-CAPTURE-DONE? 0= while
-      GS-PROGRESS-SLICE-MS GS-POLL-STDIN-CAPTURE dup 0= if
+      GT-PROGRESS-SLICE-MS GS-POLL-STDIN-CAPTURE dup 0= if
          drop
          PROC-REMAINING-MS 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
-         label labelu GS-PROGRESS-WAIT
+         label labelu GT-PROGRESS-WAIT
       else
          drop
          in inu PROC-ARGV-DRIVE-STDIN
          GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP PROC-ARGV-DRAIN-READY
-         label labelu GS-PROGRESS-WAIT
+         label labelu GT-PROGRESS-WAIT
       then
    repeat
    PROC-REAP-CAPTURE ;
@@ -125,13 +103,13 @@ variable GS-PROGRESS-LAST-NS
    s" --load" GS-ARG+ ;
 
 : GS-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
-   label labelu GS-PROGRESS-START
+   label labelu GT-PROGRESS-RUN
    s" bin/hb" GS-TIMEOUT-MS label labelu GS-RUN-ENV
    label labelu GS-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : GS-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
-   label labelu GS-PROGRESS-START
+   label labelu GT-PROGRESS-RUN
    s" bin/hb" in inu GS-TIMEOUT-MS label labelu GS-RUN-STDIN
    label labelu GS-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
@@ -159,7 +137,7 @@ variable GS-PROGRESS-LAST-NS
    s" --" GS-ARG+ ;
 
 : GS-CHECK-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
-   label labelu GS-PROGRESS-START
+   label labelu GT-PROGRESS-RUN
    GS-CHECK-ARGV
    s" bin/hb" GS-SRC-BUF GS-SRC-U @ GS-TIMEOUT-MS label labelu GS-RUN-STDIN
    label labelu GS-EXPECT-OK

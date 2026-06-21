@@ -128,6 +128,9 @@ variable GTT-HANG-U
 
 : GTT-TEST-PROGRESS ( -- )
    s" fixture progress" GT-PROGRESS-RUN
+   GT-PROGRESS-LAST-NS @ GT-HEARTBEAT-MS PROC-NS-PER-MS * -
+   GT-PROGRESS-LAST-NS !
+   s" fixture progress" GT-PROGRESS-WAIT
    s" fixture progress" GT-PROGRESS-PASS ;
 
 : TEST-RUNNER-TEST-MAIN ( -- )
