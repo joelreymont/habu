@@ -163,6 +163,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Repeatable fixtures need idempotent setup:** when a focused test may prepare
   the same directory more than once, use `MAKE-DIRS` or clean the tree before
   `MAKE-DIR`; do not let setup order decide whether the test throws `E-FS-IO`.
+- **Name numeric buffer-room inputs:** helper effects like `( cap used add -- )`
+  are all `n`; a stray `swap` can type-check and still invert capacity/add at
+  runtime. Bind `add` at the caller and pass `cap used add` explicitly.
 
 ## Darwin And Syscalls
 
