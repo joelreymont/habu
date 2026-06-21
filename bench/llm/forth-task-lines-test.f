@@ -4,10 +4,12 @@
 
 create FTLT-ROOT FS-PATH-CAP allot
 create FTLT-OUT FS-PATH-CAP allot
+create FTLT-IN FS-PATH-CAP allot
 create FTLT-READ FTLT-READ-CAP allot
 
 variable FTLT-ROOT-U
 variable FTLT-OUT-U
+variable FTLT-IN-U
 variable FTLT-READ-U
 
 : FTLT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
@@ -23,6 +25,9 @@ variable FTLT-READ-U
 
 : FTLT-OUT$ ( -- ptr u8 n )
    FTLT-OUT FTLT-OUT-U @ ;
+
+: FTLT-IN$ ( -- ptr u8 n )
+   FTLT-IN FTLT-IN-U @ ;
 
 : FTLT-TASKS$ ( -- ptr u8 n )
    s" id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rust_signature
@@ -57,6 +62,7 @@ variable FTLT-READ-U
    CLEANUP-RESET
    s" habu-forth-task-lines" TMPDIR-MKDIR FTLT-ROOT FTLT-ROOT-U FTLT-COPY!
    FTLT-ROOT$ CLEANUP-TREE+
+   FTLT-ROOT$ s" tasks.tsv" FTLT-IN FTLT-IN-U FTLT-PATH!
    FTLT-ROOT$ s" tasks.body" FTLT-OUT FTLT-OUT-U FTLT-PATH! ;
 
 : FTLT-READ-OUT ( -- ptr u8 n )
@@ -69,7 +75,9 @@ variable FTLT-READ-U
 
 : FTLT-EXPECT-FILE ( -- )
    FTLT-TASKS$ FTLT-OUT$ FTL-WRITE-DATA
-   FTLT-READ-OUT FTLT-EXPECTED$ T$= ;
+   FTLT-READ-OUT FTLT-EXPECTED$ T$=
+   FTLT-IN$ FTLT-TASKS$ WRITE-ALL
+   FTLT-IN$ FTL-FILE$ FTLT-EXPECTED$ T$= ;
 
 : FTLT-EXPECT-BAD-HEADER ( -- )
    FTLT-BAD-HEADER$ FTL-EMIT-DATA 2drop ;

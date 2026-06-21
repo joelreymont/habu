@@ -132,6 +132,7 @@ points stay listed.
 - `bench/llm/forth-task-lines-lib.f` — checked harness=forth task-row scanner/emitter for live benchmark drivers.
 - `bench/llm/forth-task-lines.f` — CLI wrapper for harness=forth task-row emission.
 - `bench/llm/forth-task-lines-test.f` — focused coverage for task-row filtering and file output.
+- `bench/llm/large-buffer-bundle-test.f` — regression that composes the source lexer, task-row scanner, reference extractor, and many 64K buffers in one checked load.
 - `bench/llm/diagnostic-stats.f` — checked diagnostic field, repair-class event, and statistics reducer for benchmark rows.
 - `bench/llm/diagnostic-json-check-stub.f` — checker-only JSON parser contract for the diagnostic stats reducer.
 - `bench/llm/diagnostic-stats-check-test.f` — checker fixture for diagnostic stats aggregation without loading the JSON recovery boundary.
@@ -185,8 +186,9 @@ points stay listed.
 - `bench/llm/run-attempts-lib.f` — checked attempt-runner helpers for deterministic candidate round enumeration, task looping, test-bundle assembly, checker/test execution, per-attempt metric state, and schema-1 row emission.
 - `bench/llm/run-attempts-test.f` — focused coverage for candidate enumeration, task looping, bundle assembly, checker/test execution, attempt metrics, and parsed row output.
 - `bench/llm/run-attempts-check-test.f` — checker-safe smoke coverage for attempt runner helper and row-emitter effects with JSON parser stubs.
-- `bench/llm/run-attempts.sh` — turns per-task candidate/repair files into validator-schema JSONL.
-- `bench/llm/attempt-runner-test.sh` — fixture coverage for schema attempt generation.
+- `bench/llm/run-attempts.f` — checked CLI that turns per-task candidate/repair files into validator-schema JSONL and validates the result.
+- `bench/llm/run-attempts-cli-test.f` — end-to-end checked fixture for the attempt runner CLI over the real forth task corpus.
+- `bench/llm/run-attempts-cli-check-test.f` — checker-safe smoke coverage for attempt runner CLI helpers.
 - `bench/llm/habu-array-lib.f` — checked array helper vocabulary for library-assisted Habu benchmark arm.
 - `bench/llm/habu-array-lib-test.f` — focused coverage for the benchmark array helper library.
 - `bench/llm/habu-preamble-lib.txt` — LLM prompt preamble for library-assisted Habu benchmark arm.

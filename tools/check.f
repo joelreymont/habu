@@ -4,9 +4,9 @@
 
 0 set-check
 
-$20000 constant CHK-SRC-CAP
-$30000 constant CHK-RUN-CAP
-$30000 constant CHK-ORIGIN-CAP
+$40000 constant CHK-SRC-CAP
+$50000 constant CHK-RUN-CAP
+$50000 constant CHK-ORIGIN-CAP
 $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP

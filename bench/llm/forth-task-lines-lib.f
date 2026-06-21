@@ -73,3 +73,7 @@ variable FTL-NEXT
 : FTL-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu out:ptr outu :}
    path pathu FTL-LOAD
    FTL-TASK-BUF FTL-TASK-U @ out outu FTL-WRITE-DATA ;
+
+: FTL-FILE$ ( ptr u8 n -- ptr u8 n )
+   FTL-LOAD
+   FTL-TASK-BUF FTL-TASK-U @ FTL-EMIT-DATA ;

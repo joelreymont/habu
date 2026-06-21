@@ -80,10 +80,19 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Fixed DATA cells require layout audits:** placing `EVAL-FRAME` in a
   free-looking gap overlapped register allocator tables and produced invalid
   ARM64 fields. Centralize fixed header offsets and verify non-overlap.
-- **Data-space growth must fail closed:** large native tool bundles can push
-  interpret-mode `DP` near the mapped DATA limit; allocation paths need explicit
-  bounds checks so growth exits with a capacity error instead of faulting on the
-  next `s"`/store.
+- **Data-space limits must serve composition:** loading `source-lex`,
+  `forth-task-lines`, and `attempt-solutions` failed because the old 3 MB DATA
+  map was too small, not because two 64K buffers were inherently unsafe. Raise
+  engine capacity with a composed-load regression; do not split tools to hide the
+  limit.
+- **Capacity probes must be real source files:** `--load` deliberately leaves
+  stdin for tool data, so piping a post-load probe to fd 0 does not execute it.
+  Put the probe in an explicit loaded source file when measuring `here`/metadata
+  after a bundle.
+- **Checker buffers must scale with composed tools:** `tools/check.f` reads the
+  concatenated source into `CHK-SRC-BUF`; when real checked tool bundles exceed
+  that cap, raise the runner buffers instead of splitting the source to dodge the
+  check path.
 - **Pipe mode and script mode are distinct:** non-tty stdin with bytes is pipeline
   mode even when `argc > 1` (needed for `bin/hb seed count < test/prop-test.f`).
   Empty non-tty stdin with `argc > 1` runs `argv[1]` as a script path.

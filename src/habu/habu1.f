@@ -17,7 +17,7 @@ $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
 4096    constant DICT-CAP  \ CFSTK-OFF / DREC; slots 0..4095 end exactly at CFSTK.
 $30000  constant CFSTK-OFF
-$300000 constant DATA-SIZE
+$4000000 constant DATA-SIZE
 $100000 constant IBUFSZ
 20 constant DATA
 0   constant DP-CELL    8  constant HND-CELL

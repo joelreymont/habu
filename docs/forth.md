@@ -123,10 +123,10 @@ not a matter of taste. Target is the native `bin/hb` engine.
 
 ## Habu Native Tooling Gotchas
 
-- **Keep native tool bundles lean.** The native data region is finite; large lint
-  tables plus `json.f` plus another large file buffer can crash during reads.
-  Size buffers from real inputs and prefer standalone readers/writers for small
-  assertion or emit-only tools.
+- **Large native tool bundles are supported.** Do not split tools merely to dodge
+  DATA pressure. If ordinary composition of checked tools and 64K buffers hits a
+  capacity limit, raise/fix the engine limit and add a regression for the real
+  composed load.
 - **Missing convenience words are not bugs in the standard.** Habu currently lacks
   words such as `pick`, `within`, and `0<>`; use variables, explicit increments, or
   explicit comparisons.

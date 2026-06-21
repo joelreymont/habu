@@ -460,7 +460,7 @@ RA-DEFAULT-TIMEOUT!
 
 : RA-TEST-OUT-OK? ( -- bool )
    RA-RC @ 0 <> if 0 0= 0= exit then
-   RA-OUT$ s" ok" STR= ;
+   RA-OUT$ TRIM s" ok" STR= ;
 
 : RA-RUN-BUNDLE-TESTS ( ptr u8 n -- bool )
    RA-HB-STDIN-CAPTURE

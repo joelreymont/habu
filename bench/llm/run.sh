@@ -486,5 +486,4 @@ check_property_v2_fixtures
 check_build_v2_fixtures
 bin/hb --load tools/date.f tools/lint/lib.f tools/json.f tools/argv.f \
   bench/llm/validate-results.f
-bench/llm/attempt-runner-test.sh
 echo "PASS: answer key valid ($N/$N certified, $N/$N tests passed, metrics valid)"

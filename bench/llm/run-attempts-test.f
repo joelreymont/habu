@@ -295,7 +295,7 @@ variable RATT-EXP-U
    RATT-BUNDLE-TASKS$ RATT-REF$ s" 2" RATT-CAND$ RATT-TESTS$
    RA-RUN-CANDIDATE-TESTS TTRUE
    RA-RC@ 0 T=
-   RA-OUT$ s" ok" T$=
+   RA-OUT$ TRIM s" ok" T$=
    RA-ERR$ s" " T$= ;
 
 : RATT-EXPECT-RUN-TESTS-FAIL ( -- )
