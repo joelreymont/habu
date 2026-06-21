@@ -1,9 +1,11 @@
 \ run-attempts-lib.f - checked candidate enumeration for attempt runners.
 \
-\ Load after lib/errors.f, lib/string.f, and lib/fs.f.
+\ Load after lib/errors.f, lib/string.f, lib/fs.f, and bench/llm/manifest.f.
 
 64 constant RA-ROUND-MAX
 20 constant RA-NUM-CAP
+$20000 constant RA-BUNDLE-CAP
+$10000 constant RA-SRC-CAP
 46 constant RA-DOT
 102 constant RA-F
 
@@ -13,14 +15,21 @@
 create RA-ROUND-PATHS RA-ROUND-MAX FS-PATH-CAP * allot
 create RA-ROUND-US RA-ROUND-MAX cells allot
 create RA-TMP-PATH FS-PATH-CAP allot
+create RA-REF-PATH FS-PATH-CAP allot
 create RA-NAME-BUF FS-PATH-CAP allot
 create RA-NUM-BUF RA-NUM-CAP allot
+create RA-BUNDLE-BUF RA-BUNDLE-CAP allot
+create RA-SRC-BUF RA-SRC-CAP allot
 
 variable RA-ROUND#
 variable RA-TMP-U
+variable RA-REF-U
 variable RA-NAME-U
 variable RA-NUM-I
 variable RA-I
+variable RA-NEXT
+variable RA-BUNDLE-U
+variable RA-TARGET-SEEN
 
 : RA-CHECK-ROUND ( n -- ) {: idx :}
    idx 0 < if E-RA-CAPACITY throw then
@@ -44,7 +53,12 @@ variable RA-I
 : RA-RESET ( -- )
    0 RA-ROUND# !
    0 RA-TMP-U !
+   0 RA-REF-U !
    0 RA-NAME-U ! ;
+
+: RA-BUNDLE-RESET ( -- )
+   0 RA-BUNDLE-U !
+   0 RA-TARGET-SEEN ! ;
 
 : RA-NAME-ROOM ( n -- ) {: add :}
    add 0 < if E-RA-CAPACITY throw then
@@ -89,16 +103,39 @@ variable RA-I
    RA-F dst u 1+ + c!
    u 2 + ;
 
+: RA-BUNDLE-ROOM ( n -- ) {: add :}
+   add 0 < if E-RA-CAPACITY throw then
+   add RA-BUNDLE-CAP RA-BUNDLE-U @ - > if E-RA-CAPACITY throw then ;
+
+: RA-BUNDLE+ ( ptr u8 n -- ) {: a:ptr u :}
+   u RA-BUNDLE-ROOM
+   a RA-BUNDLE-BUF RA-BUNDLE-U @ + u BYTE-COPY
+   RA-BUNDLE-U @ u + RA-BUNDLE-U ! ;
+
+: RA-BUNDLE-C ( n -- ) {: c :}
+   1 RA-BUNDLE-ROOM
+   c RA-BUNDLE-BUF RA-BUNDLE-U @ + c!
+   RA-BUNDLE-U @ 1+ RA-BUNDLE-U ! ;
+
+: RA-BUNDLE$ ( -- ptr u8 n )
+   RA-BUNDLE-BUF RA-BUNDLE-U @ ;
+
 : RA-TASK-DIR! ( ptr u8 n ptr u8 n -- ) {: root:ptr rootu id:ptr idu :}
    root rootu id idu RA-TMP-PATH JOIN-PATH RA-TMP-U ! ;
 
 : RA-TASK-DIR$ ( -- ptr u8 n )
    RA-TMP-PATH RA-TMP-U @ ;
 
+: RA-REF$ ( -- ptr u8 n )
+   RA-REF-PATH RA-REF-U @ ;
+
+: RA-DIR-ID-FILE! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
+   {: dir:ptr diru id:ptr idu dst:ptr lenp:ptr :}
+   dir diru id idu RA-TMP-PATH JOIN-PATH {: baseu :}
+   RA-TMP-PATH baseu dst RA-SUFFIX-F-PATH lenp ! ;
+
 : RA-SINGLE-PATH! ( ptr u8 n ptr u8 n n -- ) {: root:ptr rootu id:ptr idu idx :}
-   root rootu id idu RA-TMP-PATH JOIN-PATH {: baseu :}
-   RA-TMP-PATH baseu idx RA-ROUND-SLOT RA-SUFFIX-F-PATH
-   idx RA-ROUND-U-PTR ! ;
+   root rootu id idu idx RA-ROUND-SLOT idx RA-ROUND-U-PTR RA-DIR-ID-FILE! ;
 
 : RA-ROUND-PATH! ( ptr u8 n n n -- ) {: dir:ptr diru round idx :}
    round RA-ROUND-NAME!
@@ -138,3 +175,50 @@ variable RA-I
    RA-REQUIRE-SINGLE
    1 RA-ROUND# !
    1 ;
+
+: RA-READ-SOURCE ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu :}
+   path pathu FILE? 0= if E-RA-MISSING throw then
+   path pathu RA-SRC-BUF RA-SRC-CAP READ-ALL
+   RA-SRC-BUF swap ;
+
+: RA-APPEND-FILE ( ptr u8 n -- )
+   RA-READ-SOURCE RA-BUNDLE+ ;
+
+: RA-APPEND-FILE-LN ( ptr u8 n -- )
+   RA-APPEND-FILE
+   STR-LF RA-BUNDLE-C ;
+
+: RA-REF-PATH! ( ptr u8 n ptr u8 n -- ) {: ref:ptr refu id:ptr idu :}
+   ref refu id idu RA-REF-PATH RA-REF-U RA-DIR-ID-FILE! ;
+
+: RA-APPEND-REF-LN ( ptr u8 n ptr u8 n -- ) {: ref:ptr refu id:ptr idu :}
+   ref refu id idu RA-REF-PATH!
+   RA-REF$ RA-APPEND-FILE-LN ;
+
+: RA-LINE-ID$ ( ptr u8 n -- ptr u8 n )
+   BM-T-ID BM-TASK-FIELD$ ;
+
+: RA-APPEND-TASK-SOURCE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: line:ptr lineu ref:ptr refu target:ptr targetu cand:ptr candu :}
+   line lineu BM-BLANK-OR-COMMENT? if exit then
+   line lineu RA-LINE-ID$ target targetu STR= if
+      -1 RA-TARGET-SEEN !
+      cand candu RA-APPEND-FILE-LN
+   else
+      ref refu line lineu RA-LINE-ID$ RA-APPEND-REF-LN
+   then ;
+
+: RA-REQUIRE-TARGET ( -- )
+   RA-TARGET-SEEN @ 0= if E-RA-MISSING throw then ;
+
+: RA-BUILD-BUNDLE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: tasks:ptr tasksu ref:ptr refu target:ptr targetu cand:ptr candu tests:ptr testsu :}
+   RA-BUNDLE-RESET
+   0 RA-NEXT !
+   begin tasks tasksu RA-NEXT @ BM-LINE-NEXT while
+      RA-NEXT !
+      ref refu target targetu cand candu RA-APPEND-TASK-SOURCE
+   repeat drop 2drop
+   RA-REQUIRE-TARGET
+   tests testsu RA-APPEND-FILE
+   RA-BUNDLE$ ;
