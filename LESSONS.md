@@ -383,3 +383,11 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Use only documented dot commands:** `dot active` is not a status command and
   can create a malformed dot. Use `dot ready`, `dot ls`, `dot tree`, `dot on
   <id>`, and `dot off <id> -r "..."`
+- **Same-typed string pairs need order tests:** the checker cannot distinguish a
+  path `(ptr u8 n)` from stdin bytes `(ptr u8 n)`. When a helper takes multiple
+  string pairs, add a focused test or first live use that proves the semantic
+  order, not just the stack type.
+- **Habu-spawned `hb` children need explicit env inheritance:** shell-launched
+  children inherit env automatically; `RUN-ARGV-CAPTURE` does not recreate that
+  contract. Gate runners that spawn nested `hb` should use the env-aware process
+  APIs plus `PROC-ENV-INHERIT-MISSING`.
