@@ -222,10 +222,11 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Boundary scans parse Forth tokens:** trusted-boundary guards should scan
   whitespace-delimited Forth tokens and skip comments/string literals. Substring
   scans false-reject names such as `ENTRUSTED-VALUE` and prose comments.
-- **Boundary scans need OS-backed source buffers:** `tools/check` can certify
-  composed source bundles well over 64K. Static checker/linter phases must size
-  their source storage from `FILE-SIZE` and `MEM-ALLOC-64K-SPAN`; fixed 64K
-  buffers turn valid bundles into silent capacity exits before diagnostics run.
+- **Static diagnostic scans need OS-backed buffers:** `tools/check` can certify
+  composed source bundles well over 64K. Checker/linter phases must size both
+  input source and generated child-program storage from `FILE-SIZE` and
+  `MEM-ALLOC-64K-SPAN`; fixed 64K buffers turn valid bundles into silent
+  capacity exits before diagnostics run.
 
 ## Darwin And Syscalls
 

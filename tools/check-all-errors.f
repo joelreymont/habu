@@ -1,11 +1,10 @@
 \ check-all-errors.f - run the native checker over each top-level definition.
-\ Load after lib/memory.f, tools/lint/lib.f, tools/lint/json-writer.f,
-\ tools/lint/source-lex.f, and tools/argv.f.
+\ Load after lib/string.f, lib/memory.f, lib/fs.f, tools/lint/lib.f,
+\ tools/lint/json-writer.f, tools/lint/source-lex.f, and tools/argv.f.
 
 0 set-check
 
-$10000 constant CA-FILE-CAP
-$20000 constant CA-PROG-CAP
+$10000 constant CA-PROG-EXTRA
 $10000 constant CA-ERR-CAP
 $400 constant CA-OUT-CAP
 512 constant CA-DEF-MAX
@@ -19,8 +18,6 @@ $400 constant CA-OUT-CAP
 2 constant F-SETFD
 1 constant FD-CLOEXEC
 
-create CA-FILE-BUF CA-FILE-CAP allot
-create CA-PROG-BUF CA-PROG-CAP allot
 create CA-ERR-BUF CA-ERR-CAP allot
 create CA-OUT-BUF CA-OUT-CAP allot
 create CA-NUM-BUF CA-NUM-CAP allot
@@ -46,6 +43,11 @@ variable CA-FAILED
 variable CA-RAW-FAILURE
 variable CA-JSON-FOUND
 variable CA-PROG-LEN
+variable CA-PROG-A
+variable CA-PROG-CAP
+variable CA-SRC-A
+variable CA-SRC-U
+variable CA-SRC-CAP
 variable CA-RAW-A
 variable CA-RAW-U
 variable CA-MATCH-TOK
@@ -117,8 +119,8 @@ variable CA-FILE-U
    CA-NUM-BUF CA-NUM-I @ + CA-NUM-CAP CA-NUM-I @ - ;
 
 : CA-PROG+ {: a u :} ( a u -- )
-   CA-PROG-LEN @ u + CA-PROG-CAP > IF s" check-all-errors: generated program too large" 76 die THEN
-   a CA-PROG-BUF CA-PROG-LEN @ + u BMOVE
+   CA-PROG-LEN @ u + CA-PROG-CAP @ > IF s" check-all-errors: generated program too large" 76 die THEN
+   a CA-PROG-A @ CA-PROG-LEN @ + u BMOVE
    CA-PROG-LEN @ u + CA-PROG-LEN ! ;
 
 : CA-PROG-C ( c -- )
@@ -214,7 +216,7 @@ variable CA-FILE-U
    repeat ;
 
 : CA-SLICE$ {: start end :} ( start end -- a u )
-   CA-FILE-BUF start + end start - ;
+   CA-SRC-A @ start + end start - ;
 
 : CA-PROG-SLICE ( start end -- )
    CA-SLICE$ CA-PROG+ ;
@@ -266,7 +268,7 @@ variable CA-FILE-U
    CA-OUT-W @ close
    CA-ERR-W @ close
    k CA-BUILD-PROGRAM
-   CA-IN-W @ CA-PROG-BUF CA-PROG-LEN @ CA-WRITE
+   CA-IN-W @ CA-PROG-A @ CA-PROG-LEN @ CA-WRITE
    CA-IN-W @ close
    CA-PID @ wait-rc CA-RC !
    CA-OUT-R @ CA-OUT-BUF CA-OUT-CAP CA-OUT-LEN CA-DRAIN-FD
@@ -290,7 +292,7 @@ variable CA-FILE-U
    k CA-DEFTOK@ 1+ LTOK ;
 
 : CA-DEF-SOURCE$ {: k :} ( k -- a u )
-   CA-FILE-BUF k CA-DEFTOK@ 1+ LB@ +
+   CA-SRC-A @ k CA-DEFTOK@ 1+ LB@ +
    k CA-END@ 1- k CA-DEFTOK@ 1+ LB@ - ;
 
 : CA-DECLARED$ {: k :} ( k -- a u f )
@@ -414,13 +416,25 @@ variable CA-FILE-U
       CA-K @ 1+ CA-K !
    repeat ;
 
+: CA-CHECK-PROG-NEED ( n -- n )
+   CA-PROG-EXTRA + dup 0 <= IF s" check-all-errors: source too large" 76 die THEN ;
+
+: CA-ALLOC-SOURCE ( n -- )
+   dup MEM-ALLOC-64K-SPAN CA-SRC-CAP ! CA-SRC-A !
+   CA-CHECK-PROG-NEED MEM-ALLOC-64K-SPAN CA-PROG-CAP ! CA-PROG-A ! ;
+
+: CA-READ-SOURCE {: path pu :} ( path pu -- )
+   path pu FILE-SIZE dup CA-ALLOC-SOURCE
+   path pu CA-SRC-A @ CA-SRC-CAP @ READ-ALL CA-SRC-U ! ;
+
 : CHECK-ALL-ERRORS ( -- )
    s" tools/check-all-errors.f [--json-errors] --label name source" ARGV-USAGE!
    ARGV-PARSE
    ARGV-REQUIRE-LABEL
    1 ARGV-EXPECT-POS-EXACT
    ARGV-LABEL$ CA-FILE-U ! CA-FILE-A !
-   0 ARGV-POS$ CA-FILE-BUF CA-FILE-CAP READ-FILE LEX-SOURCE
+   0 ARGV-POS$ CA-READ-SOURCE
+   CA-SRC-A @ CA-SRC-U @ LEX-SOURCE
    CA-COLLECT-DEFS
    CA-RUN-DEFS
    CA-RAW-FAILURE @ IF CA-RAW-FAILURE @ throw THEN

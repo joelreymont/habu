@@ -140,7 +140,9 @@ create RSD-ERR RSD-BUF-CAP allot
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
    s" lib/errors.f" PROC-ARGV+
+   s" lib/string.f" PROC-ARGV+
    s" lib/memory.f" PROC-ARGV+
+   s" lib/fs.f" PROC-ARGV+
    s" tools/lint/lib.f" PROC-ARGV+
    s" tools/lint/json-writer.f" PROC-ARGV+
    s" tools/lint/source-lex.f" PROC-ARGV+
