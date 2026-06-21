@@ -154,6 +154,15 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   active until `;`, so a later `{:` in that definition aborts as an illegal
   locals group. Keep post-validation values on the stack or bind before the
   early-exit path.
+- **Return typed booleans from `bool` words:** raw `0` is an integer cell, not a
+  checked `bool`. Use `0 0= 0=` for false and `0 0=` for true in checked
+  definitions whose declared effect returns `bool`.
+- **Stress fixture source must be legal Forth:** control words such as `?do` and
+  `begin` belong inside a definition. A top-level invalid control word tests the
+  parser path, not the child timeout/truncation path you meant to exercise.
+- **Repeatable fixtures need idempotent setup:** when a focused test may prepare
+  the same directory more than once, use `MAKE-DIRS` or clean the tree before
+  `MAKE-DIR`; do not let setup order decide whether the test throws `E-FS-IO`.
 
 ## Darwin And Syscalls
 

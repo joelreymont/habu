@@ -1,11 +1,14 @@
 \ run-attempts-lib.f - checked candidate enumeration for attempt runners.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, and bench/llm/manifest.f.
+\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/process.f,
+\ lib/process-argv.f, lib/process-env.f, and bench/llm/manifest.f.
 
 64 constant RA-ROUND-MAX
 20 constant RA-NUM-CAP
+$4000 constant RA-CAPTURE-CAP
 $20000 constant RA-BUNDLE-CAP
 $10000 constant RA-SRC-CAP
+10000 constant RA-DEFAULT-TIMEOUT-MS
 46 constant RA-DOT
 102 constant RA-F
 
@@ -20,6 +23,8 @@ create RA-NAME-BUF FS-PATH-CAP allot
 create RA-NUM-BUF RA-NUM-CAP allot
 create RA-BUNDLE-BUF RA-BUNDLE-CAP allot
 create RA-SRC-BUF RA-SRC-CAP allot
+create RA-OUT-BUF RA-CAPTURE-CAP allot
+create RA-ERR-BUF RA-CAPTURE-CAP allot
 
 variable RA-ROUND#
 variable RA-TMP-U
@@ -30,6 +35,15 @@ variable RA-I
 variable RA-NEXT
 variable RA-BUNDLE-U
 variable RA-TARGET-SEEN
+variable RA-OUT-U
+variable RA-ERR-U
+variable RA-RC
+variable RA-TIMEOUT-MS
+
+: RA-DEFAULT-TIMEOUT! ( -- )
+   RA-DEFAULT-TIMEOUT-MS RA-TIMEOUT-MS ! ;
+
+RA-DEFAULT-TIMEOUT!
 
 : RA-CHECK-ROUND ( n -- ) {: idx :}
    idx 0 < if E-RA-CAPACITY throw then
@@ -119,6 +133,15 @@ variable RA-TARGET-SEEN
 
 : RA-BUNDLE$ ( -- ptr u8 n )
    RA-BUNDLE-BUF RA-BUNDLE-U @ ;
+
+: RA-OUT$ ( -- ptr u8 n )
+   RA-OUT-BUF RA-OUT-U @ ;
+
+: RA-ERR$ ( -- ptr u8 n )
+   RA-ERR-BUF RA-ERR-U @ ;
+
+: RA-RC@ ( -- n )
+   RA-RC @ ;
 
 : RA-TASK-DIR! ( ptr u8 n ptr u8 n -- ) {: root:ptr rootu id:ptr idu :}
    root rootu id idu RA-TMP-PATH JOIN-PATH RA-TMP-U ! ;
@@ -222,3 +245,54 @@ variable RA-TARGET-SEEN
    RA-REQUIRE-TARGET
    tests testsu RA-APPEND-FILE
    RA-BUNDLE$ ;
+
+: RA-CHECK-ARGV ( ptr u8 n -- ) {: cand:ptr candu :}
+   PROC-ARGV-ENV-RESET
+   s" --load" PROC-ARGV+
+   s" lib/errors.f" PROC-ARGV+
+   s" lib/string.f" PROC-ARGV+
+   s" lib/fs.f" PROC-ARGV+
+   s" lib/fs-mutate.f" PROC-ARGV+
+   s" lib/process.f" PROC-ARGV+
+   s" lib/process-argv.f" PROC-ARGV+
+   s" lib/source.f" PROC-ARGV+
+   s" tools/argv.f" PROC-ARGV+
+   s" tools/check.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   s" --json-errors" PROC-ARGV+
+   s" --all-errors" PROC-ARGV+
+   cand candu PROC-ARGV+ ;
+
+: RA-HB-CAPTURE ( -- )
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" RA-OUT-BUF RA-CAPTURE-CAP RA-ERR-BUF RA-CAPTURE-CAP
+   RA-TIMEOUT-MS @ RUN-ARGV-ENV-CAPTURE
+   RA-RC !
+   RA-ERR-U !
+   RA-OUT-U ! ;
+
+: RA-HB-STDIN-CAPTURE ( ptr u8 n -- ) {: in:ptr inu :}
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" in inu RA-OUT-BUF RA-CAPTURE-CAP RA-ERR-BUF RA-CAPTURE-CAP
+   RA-TIMEOUT-MS @ RUN-ARGV-ENV-STDIN-CAPTURE
+   RA-RC !
+   RA-ERR-U !
+   RA-OUT-U ! ;
+
+: RA-CHECK-CANDIDATE ( ptr u8 n -- bool )
+   RA-CHECK-ARGV
+   RA-HB-CAPTURE
+   RA-RC @ 0= ;
+
+: RA-TEST-OUT-OK? ( -- bool )
+   RA-RC @ 0 <> if 0 0= 0= exit then
+   RA-OUT$ s" ok" STR= ;
+
+: RA-RUN-BUNDLE-TESTS ( ptr u8 n -- bool )
+   RA-HB-STDIN-CAPTURE
+   RA-TEST-OUT-OK? ;
+
+: RA-RUN-CANDIDATE-TESTS ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool )
+   RA-BUILD-BUNDLE
+   RA-RUN-BUNDLE-TESTS ;
