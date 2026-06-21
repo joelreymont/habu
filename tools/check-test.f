@@ -144,6 +144,13 @@ variable CKT-BAD-U
    CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
    CKT-ERR erru s" <stdin>" CONTAINS? TTRUE ;
 
+: CKT-TEST-DEFAULT-ALL ( -- )
+   CKT-ALL-BAD$ CKT-RUN-JSON 70 T=
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" bad1" CONTAINS? TTRUE
+   CKT-ERR erru s" bad2" CONTAINS? TTRUE ;
+
 : CKT-TEST-STRICT ( -- )
    CKT-NOSIG$ CKT-RUN-STRICT-JSON 1 T=
    {: outu erru :}
@@ -197,6 +204,7 @@ variable CKT-BAD-U
    CKT-PREPARE
    CKT-TEST-GOOD
    CKT-TEST-JSON-BAD
+   CKT-TEST-DEFAULT-ALL
    CKT-TEST-STRICT
    CKT-TEST-ALL
    CKT-TEST-FILE-LABEL

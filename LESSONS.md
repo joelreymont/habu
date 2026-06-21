@@ -548,6 +548,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   sources it can report dependency constants and helper words as undefined.
   Use dependency-aware `tools/check.f --json-errors` for full driver bundles,
   and reserve all-errors diagnostics for focused candidate/source checks.
+- **All-errors is a failure diagnostic, not a valid-bundle preflight:** running
+  the per-definition checker before every successful `tools/check.f` source run
+  multiplies gate time by definition count. Run the fast fail-closed bundle
+  check first; invoke all-errors only after failure or explicit `--all-errors`.
 - **Reproduce `GS-CHECK-RUN` with raw stdin source:** the gate feeds bundled
   source bytes to `tools/check.f` over stdin and lets the wrapper add its own
   check prefix. Do not add a manual prefix or switch to file-argument mode when
