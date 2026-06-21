@@ -6,8 +6,6 @@
 
 128 constant AS-MAX
 128 constant AS-FIELD-CAP
-65536 constant AS-TASK-CAP
-65536 constant AS-SOL-CAP
 46 constant AS-DOT
 102 constant AS-F
 10 constant AS-LF
@@ -18,8 +16,10 @@
 -3223 constant E-AS-DUPLICATE
 -3224 constant E-AS-SYNTAX
 
-create AS-TASK-BUF AS-TASK-CAP allot
-create AS-SOL-BUF AS-SOL-CAP allot
+variable AS-TASK-P
+variable AS-TASK-CAP-U
+variable AS-SOL-P
+variable AS-SOL-CAP-U
 create AS-ID-BUF AS-MAX AS-FIELD-CAP * allot
 create AS-NAME-BUF AS-MAX AS-FIELD-CAP * allot
 create AS-ID-U AS-MAX cells allot
@@ -49,6 +49,35 @@ TRUSTED: AS-LINE! ( ptr u8 n -- )
 
 TRUSTED: AS-LINE$ ( -- ptr u8 n )
    AS-LINE-A @ AS-LINE-U @ ;
+
+TRUSTED: AS-TASK-BUF ( -- ptr u8 )
+   AS-TASK-P @ ;
+
+TRUSTED: AS-SOL-BUF ( -- ptr u8 )
+   AS-SOL-P @ ;
+
+: AS-TASK-CAP ( -- n )
+   AS-TASK-CAP-U @ ;
+
+: AS-SOL-CAP ( -- n )
+   AS-SOL-CAP-U @ ;
+
+: AS-MIN-ONE ( n -- n )
+   dup 1 < if drop 1 then ;
+
+: AS-STORE-TASK-SPAN ( ptr u8 n -- )
+   AS-TASK-CAP-U ! AS-TASK-P ! ;
+
+: AS-STORE-SOL-SPAN ( ptr u8 n -- )
+   AS-SOL-CAP-U ! AS-SOL-P ! ;
+
+: AS-ENSURE-TASK-CAP ( n -- ) {: need :}
+   need AS-MIN-ONE AS-TASK-CAP <= if exit then
+   need AS-MIN-ONE MEM-ALLOC-64K-SPAN AS-STORE-TASK-SPAN ;
+
+: AS-ENSURE-SOL-CAP ( n -- ) {: need :}
+   need AS-MIN-ONE AS-SOL-CAP <= if exit then
+   need AS-MIN-ONE MEM-ALLOC-64K-SPAN AS-STORE-SOL-SPAN ;
 
 : AS-TRUE ( -- bool )
    0 0= ;
@@ -110,20 +139,22 @@ TRUSTED: AS-LINE$ ( -- ptr u8 n )
 
 : AS-TASKS! ( ptr u8 n -- ) {: a:ptr u :}
    u 0 < if E-BM-SCHEMA throw then
-   u AS-TASK-CAP > if E-AS-CAPACITY throw then
+   u AS-ENSURE-TASK-CAP
    a AS-TASK-BUF u BYTE-COPY
    u AS-TASK-LEN ! ;
 
 : AS-SOLUTIONS! ( ptr u8 n -- ) {: a:ptr u :}
    u 0 < if E-AS-SYNTAX throw then
-   u AS-SOL-CAP > if E-AS-CAPACITY throw then
+   u AS-ENSURE-SOL-CAP
    a AS-SOL-BUF u BYTE-COPY
    u AS-SOL-LEN ! ;
 
 : AS-LOAD-TASKS ( ptr u8 n -- )
+   2dup FILE-SIZE AS-ENSURE-TASK-CAP
    AS-TASK-BUF AS-TASK-CAP READ-ALL AS-TASK-LEN ! ;
 
 : AS-LOAD-SOLUTIONS ( ptr u8 n -- )
+   2dup FILE-SIZE AS-ENSURE-SOL-CAP
    AS-SOL-BUF AS-SOL-CAP READ-ALL AS-SOL-LEN ! ;
 
 : AS-OUT-DIR! ( ptr u8 n -- ) {: a:ptr u :}

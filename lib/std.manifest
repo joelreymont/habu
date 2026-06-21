@@ -199,9 +199,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	memory	lib/memory.f	word	MEM-CHECK-SIZE	(n --)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	validate a positive byte allocation size
 1	memory	lib/memory.f	word	MEM-CHECK-64K-COUNT	(n --)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	validate a positive 64K buffer count without byte-size overflow
 1	memory	lib/memory.f	word	MEM-64K-BYTES	(n -- n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	return bytes needed for a count of 64K buffers
+1	memory	lib/memory.f	word	MEM-64K-COUNT-FOR	(n -- n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	round a positive byte need up to a 64K buffer count
+1	memory	lib/memory.f	word	MEM-64K-SPAN-BYTES	(n -- n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	round a positive byte need up to a 64K byte span
 1	memory	lib/memory.f	word	MEM-MMAP-RC	(n -- n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	raw anonymous mmap result after size validation
 1	memory	lib/memory.f	word	MEM-ALLOC-BYTES	(n -- ptr u8 n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	allocate a byte buffer and return pointer plus capacity
 1	memory	lib/memory.f	word	MEM-ALLOC-64K-BUFFERS	(n -- ptr u8 n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	allocate a contiguous span sized for n 64K buffers
+1	memory	lib/memory.f	word	MEM-ALLOC-64K-SPAN	(n -- ptr u8 n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	allocate a 64K-rounded span for a minimum byte need
 1	memory	lib/memory.f	word	MEM-ALLOC-64K	(-- ptr u8 n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	allocate one 64K byte buffer
 1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	checked path stat size join read write append helpers and WALK-FILES contract
 1	fs	lib/fs.f	word	FS-FALSE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a false flag for filesystem helpers

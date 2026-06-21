@@ -247,7 +247,7 @@ variable GS-RD
    s" llm vector parser" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" bench/llm/foreign-vectors.f" GS-ARG+ s" bench/llm/foreign-vectors-test.f" GS-ARG+
    s" llm foreign vector emitters" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/forth-task-lines-lib.f" GS-ARG+ s" bench/llm/forth-task-lines-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/forth-task-lines-lib.f" GS-ARG+ s" bench/llm/forth-task-lines-test.f" GS-ARG+
    s" llm forth task row emitter" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/forth-candidate.f" GS-ARG+ s" bench/llm/forth-candidate-test.f" GS-ARG+
    s" llm Forth candidate scanner" GS-HB-RUN
@@ -304,7 +304,7 @@ variable GS-RD
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/vectors.f" GS-SRC+ s" bench/llm/foreign-vectors.f" GS-SRC+ s" bench/llm/foreign-vectors-test.f" GS-SRC+
    s" llm foreign vector emitters check" GS-CHECK-RUN
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/forth-task-lines-lib.f" GS-SRC+ s" bench/llm/forth-task-lines-test.f" GS-SRC+
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/forth-task-lines-lib.f" GS-SRC+ s" bench/llm/forth-task-lines-test.f" GS-SRC+
    s" llm forth task row emitter check" GS-CHECK-RUN
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/forth-candidate.f" GS-SRC+ s" bench/llm/forth-candidate-test.f" GS-SRC+

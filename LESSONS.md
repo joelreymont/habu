@@ -84,7 +84,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   and `attempt-solutions` exposed DATA pressure, but the long-term rule is not
   "pick a bigger fixed ceiling." Static dictionary storage can use DATA; runtime
   source/report/JSONL buffers use the typed OS-backed memory API so any needed
-  count of 64K buffers is limited by the OS, not by `DATA-SIZE`.
+  count of 64K buffers is limited by the OS, not by `DATA-SIZE`. Size runtime
+  spans from measured byte needs, round through `MEM-ALLOC-64K-SPAN`, and keep a
+  composed scanner regression so the real libraries, not just anonymous mappings,
+  prove `here` stays unchanged.
 - **DATA-base literals break self-hosted moves:** a first-generation stage can
   still run old startup code while interpreting new source. Source-level helpers
   such as env/REPL must derive the live base through `data-base`, not a duplicated

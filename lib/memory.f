@@ -25,6 +25,13 @@ $1002 constant MEM-MAP-PRIVATE-ANON
    count MEM-CHECK-64K-COUNT
    count MEM-64K * ;
 
+: MEM-64K-COUNT-FOR ( n -- n ) {: bytes :}
+   bytes MEM-CHECK-SIZE
+   bytes 1 - MEM-64K / 1 + dup MEM-CHECK-64K-COUNT ;
+
+: MEM-64K-SPAN-BYTES ( n -- n )
+   MEM-64K-COUNT-FOR MEM-64K-BYTES ;
+
 : MEM-MMAP-RC ( n -- n ) {: bytes :}
    bytes MEM-CHECK-SIZE
    MEM-ADDR-ANY bytes MEM-PROT-RW MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap ;
@@ -38,6 +45,9 @@ TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
 
 : MEM-ALLOC-64K-BUFFERS ( n -- ptr u8 n )
    MEM-64K-BYTES MEM-ALLOC-BYTES ;
+
+: MEM-ALLOC-64K-SPAN ( n -- ptr u8 n )
+   MEM-64K-SPAN-BYTES MEM-ALLOC-BYTES ;
 
 : MEM-ALLOC-64K ( -- ptr u8 n )
    1 MEM-ALLOC-64K-BUFFERS ;

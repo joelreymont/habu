@@ -396,9 +396,12 @@ throw `E-MEM-SIZE` or `E-MEM-MAP` on failure.
 MEM-CHECK-SIZE        ( n -- )
 MEM-CHECK-64K-COUNT   ( n -- )
 MEM-64K-BYTES         ( n -- n )
+MEM-64K-COUNT-FOR     ( n -- n )
+MEM-64K-SPAN-BYTES    ( n -- n )
 MEM-MMAP-RC           ( n -- n )
 MEM-ALLOC-BYTES       ( n -- ptr u8 n )
 MEM-ALLOC-64K-BUFFERS ( n -- ptr u8 n )
+MEM-ALLOC-64K-SPAN    ( n -- ptr u8 n )
 MEM-ALLOC-64K         ( -- ptr u8 n )
 ```
 
@@ -408,6 +411,10 @@ index individual 64K slots as `base index MEM-64K * +`. Callers may keep any
 number of spans live at once. Habu code must not encode a repo-local "maximum
 number of 64K buffers" outside the explicit overflow validation in this library
 and the OS mapping result.
+
+`MEM-ALLOC-64K-SPAN` takes a minimum byte need, rounds it up to the smallest
+whole number of 64K buffers, and returns the pointer plus rounded capacity. Use
+it for source/report buffers whose exact required size is known only at runtime.
 
 ## Files
 
