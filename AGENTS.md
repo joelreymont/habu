@@ -11,8 +11,8 @@ roadmap.
   Define and call our words in upper case (`SQUARE`, `CHECKED:`); keep core words
   lower-case (`dup`, `drop`, `if`, `?do`). Lower-case only for `\` comments and
   prose outside code.
-- No-binary recovery uses `tools/seed.sh /path/to/hb-seed`; the seed is a trusted
-  native `hb` that immediately rebuilds current source through
+- No-binary recovery runs the checked seed tool with a trusted native `hb` seed:
+  see `docs/seed.md`. The seed immediately rebuilds current source through
   `tools/build-fixpoint-main.f -- install`.
   There is no supported build-from-gforth recovery path in this checkout.
 
@@ -74,4 +74,5 @@ constants; and a `T{ … -> … }T` test for every word.
   not edit the current tree; workers edit isolated jj workspaces unless their
   file ownership is disjoint.
 - Gate: `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f` — Habu-native, no gforth. If `bin/hb`
-  is missing, install a trusted native seed with `tools/seed.sh /path/to/hb-seed`.
+  is missing, recover from a trusted native seed with the checked command in
+  `docs/seed.md`.

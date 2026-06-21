@@ -126,9 +126,10 @@ rebuild/snapshot.
 ### Native-Only Trust Root
 
 Daily work uses `bin/hb`, `tools/build-fixpoint-main.f -- install`, and `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f`.
-No-binary recovery uses `tools/seed.sh /path/to/hb-seed`, then immediately
-rebuilds current source. A gforth or hosted bootstrap path must not become a
-normal gate, benchmark dependency, or documented workflow.
+No-binary recovery runs `tools/seed.f tools/seed-main.f` under a trusted native
+`hb` seed, then immediately rebuilds current source. A gforth or hosted
+bootstrap path must not become a normal gate, benchmark dependency, or
+documented workflow.
 
 Historical bootstrap sources may remain only as inert reference material. They
 must not feed default lint, benchmark, build, or self-check paths. The native

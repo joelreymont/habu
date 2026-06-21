@@ -87,8 +87,9 @@ The subset proved sufficient: the complete compiler is written in it (`asm icode
 util walk rt crash macho engine engine2 stage2`), and the default gate now
 checks the native self-rebuild directly. `tools/build-fixpoint-main.f -- install` rebuilds `bin/hb` from
 the current native sources and verifies the output is byte-identical. No-binary
-recovery uses `tools/seed.sh`, then the same native fixpoint. Any edit that
-breaks the subset, native codegen, or the fixpoint fails `test/run.f`.
+recovery runs the checked seed tool in `tools/seed.f tools/seed-main.f`, then the
+same native fixpoint. Any edit that breaks the subset, native codegen, or the
+fixpoint fails `test/run.f`.
 
 ## Time And Date
 

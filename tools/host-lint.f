@@ -104,6 +104,7 @@ variable HOST-PATH-U
 
 : HOST-RETIRED-SHELL? ( ptr u8 n -- bool )
    2dup s" ./bench/llm/perf.sh" PATH= IF 2drop LINT-TRUE exit THEN
+   2dup s" ./tools/seed.sh" PATH= IF 2drop LINT-TRUE exit THEN
    2drop LINT-FALSE ;
 
 : HOST-CHECK-A ( ptr u8 n -- )

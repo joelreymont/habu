@@ -97,7 +97,9 @@ variable FM-NUM-L
    s" tools/sha256-file-test.f" FM-REQ
    s" tools/hb-cli-contracts-test.f" FM-REQ
    s" tools/hb-baseline-contracts-test.f" FM-REQ
-   s" tools/seed.sh" FM-REQ
+   s" tools/seed.f" FM-REQ
+   s" tools/seed-main.f" FM-REQ
+   s" tools/seed-test.f" FM-REQ
    s" tools/hb-build-lib.f" FM-REQ
    s" tools/hb-build.f" FM-REQ
    s" tools/hb-build-test.f" FM-REQ

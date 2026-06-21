@@ -85,7 +85,7 @@ variable PERF-AOT-BIN-U
 
 : PERF-REQUIRE-HB ( -- )
    s" bin/hb" EXECUTABLE? 0= if
-      s" llm-perf: no bin/hb - run tools/seed.sh /path/to/hb-seed" PERF-NOHB-RC die
+      s" llm-perf: no bin/hb - recover with docs/seed.md" PERF-NOHB-RC die
    then ;
 
 : PERF-STUB? ( -- bool )

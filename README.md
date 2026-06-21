@@ -27,7 +27,7 @@ no C) that JIT-compiles to machine code, type-checks definitions with its
 built-in checker, and **rebuilds itself byte-for-byte** (stage2 fixpoint):
 
 ```sh
-./tools/seed.sh /path/to/hb-seed
+/path/to/hb-seed --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f src/core/sha256.f lib/codesign.f tools/seed.f tools/seed-main.f -- /path/to/hb-seed
                        # recover bin/hb from a trusted native seed
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
                        # daily rebuild: bin/hb recompiles itself, no gforth

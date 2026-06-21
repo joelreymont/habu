@@ -75,8 +75,8 @@ per-task token table is in `RESULTS.md`.
 ## 3. HOW TO VERIFY (do these in order)
 
 You need the native binary `bin/hb`, `node`, and `rustc`. If `bin/hb` is missing,
-install a trusted seed with `tools/seed.sh`, which runs the native build-fixpoint installer
-from current source.
+recover from a trusted seed with the checked command in `docs/seed.md`; it runs
+the native build-fixpoint installer from current source.
 
 ### V1 — Harness is sound (deterministic, no LLM, no tokens)
 ```

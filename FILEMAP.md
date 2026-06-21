@@ -43,7 +43,9 @@ points stay listed.
 
 ## Tools And Gates
 
-- `tools/seed.sh` — install a trusted native seed, then rebuild current source.
+- `tools/seed.f` — checked native seed installer, SHA verifier, smoke test, and fixpoint rebuild driver.
+- `tools/seed-main.f` — CLI entrypoint for checked native seed recovery.
+- `tools/seed-test.f` — focused coverage for seed SHA, install, signing, and smoke helpers.
 - `tools/build-fixpoint.f` — checked native stage/stdin/snapshot build driver.
 - `tools/check.f` — Habu-native checked engine runner.
 - `tools/check-test.f` — checked fixture coverage for the native check runner.
