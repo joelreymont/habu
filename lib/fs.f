@@ -30,6 +30,7 @@ $400 constant FS-O-TRUNC
 $F000 constant S-IFMT
 $4000 constant S-IFDIR
 $8000 constant S-IFREG
+$A000 constant S-IFLNK
 
 $2E constant FS-DOT
 $2F constant FS-SLASH
@@ -176,8 +177,15 @@ variable FS-IO-WR
    FS-PATHZ FS-STAT-BUF stat64 0 < if FS-FALSE exit then
    FS-TRUE ;
 
+: FS-TRY-LSTAT ( ptr u8 n -- bool )
+   FS-PATHZ FS-STAT-BUF lstat64 0 < if FS-FALSE exit then
+   FS-TRUE ;
+
 : FS-TRY-STAT-MODE ( ptr u8 n -- n )
    FS-TRY-STAT if FS-STAT-MODE@ else -1 then ;
+
+: FS-TRY-LSTAT-MODE ( ptr u8 n -- n )
+   FS-TRY-LSTAT if FS-STAT-MODE@ else -1 then ;
 
 : STAT-MODE ( ptr u8 n -- n )
    FS-TRY-STAT-MODE dup 0 < if E-FS-STAT throw then ;
@@ -199,6 +207,13 @@ variable FS-IO-WR
       drop FS-FALSE
    else
       S-IFMT and S-IFDIR =
+   then ;
+
+: SYMLINK? ( ptr u8 n -- bool )
+   FS-TRY-LSTAT-MODE dup 0 < if
+      drop FS-FALSE
+   else
+      S-IFMT and S-IFLNK =
    then ;
 
 : EXECUTABLE? ( ptr u8 n -- bool )
@@ -231,6 +246,15 @@ variable FS-IO-WR
 
 : FS-PATH= ( ptr u8 n ptr u8 n -- bool )
    STR= ;
+
+: READ-LINK ( ptr u8 n ptr u8 n -- n ) {: pa:ptr pu dst:ptr cap :}
+   cap 0 < if E-FS-CAPACITY throw then
+   pa pu FS-TRY-LSTAT 0= if E-FS-STAT throw then
+   FS-STAT-MODE@ S-IFMT and S-IFLNK <> if E-FS-STAT throw then
+   FS-STAT-SIZE@ cap > if E-FS-CAPACITY throw then
+   pa pu FS-PATHZ dst cap readlink {: n :}
+   n 0 < if E-FS-IO throw then
+   n ;
 
 : READ-ALL ( ptr u8 n ptr u8 n -- n ) {: pa:ptr pu dst:ptr cap :}
    cap 0 < if E-FS-CAPACITY throw then

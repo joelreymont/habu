@@ -399,14 +399,18 @@ EXISTS?                 ( ptr u8 n -- bool )
 FS-STAT-MODE@           ( -- n )
 FS-STAT-SIZE@           ( -- n )
 FS-TRY-STAT             ( ptr u8 n -- bool )
+FS-TRY-LSTAT            ( ptr u8 n -- bool )
 FS-TRY-STAT-MODE        ( ptr u8 n -- n )
+FS-TRY-LSTAT-MODE       ( ptr u8 n -- n )
 STAT-MODE               ( ptr u8 n -- n )
 FILE-SIZE               ( ptr u8 n -- n )
 FILE?                   ( ptr u8 n -- bool )
 DIR?                    ( ptr u8 n -- bool )
+SYMLINK?                ( ptr u8 n -- bool )
 EXECUTABLE?             ( ptr u8 n -- bool )
 BASENAME                ( ptr u8 n -- ptr u8 n )
 JOIN-PATH               ( ptr u8 n ptr u8 n ptr u8 -- n )
+READ-LINK               ( ptr u8 n ptr u8 n -- n )
 READ-ALL                ( ptr u8 n ptr u8 n -- n )
 FS-WRITE-BY-FLAGS       ( ptr u8 n ptr u8 n n -- )
 WRITE-ALL               ( ptr u8 n ptr u8 n -- )
@@ -416,6 +420,7 @@ FS-MUT-PATHZ2           ( ptr u8 n -- ptr u8 )
 REMOVE-FILE             ( ptr u8 n -- )
 RENAME-FILE             ( ptr u8 n ptr u8 n -- )
 CHMOD-X                 ( ptr u8 n -- )
+MAKE-SYMLINK            ( ptr u8 n ptr u8 n -- )
 MKDIR-MODE              ( ptr u8 n n -- )
 MAKE-DIR                ( ptr u8 n -- )
 REMOVE-DIR              ( ptr u8 n -- )
@@ -448,28 +453,34 @@ to a regular file. Both write the full counted input or throw a named filesystem
 error. `OPEN-APPEND-FD` opens the same append-only regular-file target and
 returns an fd for callers that need to stream child process output directly into
 a file.
+`SYMLINK?` uses `lstat64`, so it detects a link itself rather than following the
+target. `READ-LINK` reads the target bytes into caller storage and returns the
+byte count without appending a NUL; missing, non-link, I/O, and capacity failures
+throw named filesystem errors.
 
 `lib/fs-mutate.f` is layered after the native engine contains mutation
 primitives such as `unlink`, `rename`, `chmod`, `mkdir`, and `rmdir`. It owns
 counted-path wrappers for files and directories. Public wrappers avoid the exact
 primitive names because the dictionary is case-insensitive: use `MAKE-DIR`,
 `REMOVE-DIR`, and `MAKE-DIRS`, not uppercase shadows of `mkdir` or `rmdir`.
-`RENAME-FILE` uses a second private pathz buffer so preparing the destination
-path cannot overwrite the source path. `COPY-FILE` reads through an explicit
-caller capacity and throws `E-FS-CAPACITY` instead of truncating. `ATOMIC-WRITE-FILE`
-writes a sibling `.tmp` file and renames it over the destination.
+`MAKE-SYMLINK` creates a link from counted target bytes to a counted link path.
+`RENAME-FILE` and `MAKE-SYMLINK` use a second private pathz buffer so preparing
+the destination path cannot overwrite the source path. `COPY-FILE` reads through
+an explicit caller capacity and throws `E-FS-CAPACITY` instead of truncating.
+`ATOMIC-WRITE-FILE` writes a sibling `.tmp` file and renames it over the
+destination.
 `REMOVE-TREE` recursively removes one counted path, using the same per-depth walk
 buffers as `WALK-FILES`, and throws named filesystem errors rather than ignoring
-partial deletion failures.
+partial deletion failures. If a tree contains a symlink to a directory,
+`REMOVE-TREE` unlinks the symlink itself and never descends into the target.
 
 `MAKE-TEMP-DIR` creates a unique directory under an explicit base path, and
 `TMPDIR-MKDIR` uses `$TMPDIR` or `/tmp`. Cleanup registrations copy counted paths
 into owned storage and `CLEANUP-RUN` removes them in reverse order, so nested
 directory cleanups can register parent before child and still remove child first.
 `CLEANUP-TREE+` registers a recursive tree cleanup for temporary workspaces.
-Keeping these words outside core `lib/fs.f` preserves the bootstrap path: older
-`bin/hb` builds can still load the core fs helpers before the self-rebuild adds
-the mutation primitives.
+Keeping these words outside core `lib/fs.f` keeps path inspection/read helpers
+separate from mutation and cleanup policy.
 
 `WALK-FILES` must be implemented either as a checked quotation combinator or as
 one audited `TRUST` boundary with focused tests proving callback invocation,

@@ -173,6 +173,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   should use fixed NUL strings or production path builders. Private checked
   path-copy helpers can make a syscall test fail with `EFAULT` while obscuring
   whether the primitive ABI or fixture glue is wrong.
+- **Symlink deletion checks must lstat first:** `EXISTS?`, `FILE?`, and `DIR?`
+  follow symlinks, and broken symlinks can look absent. Destructive cleanup and
+  `REMOVE-TREE` must test `SYMLINK?` before existence/type checks so they unlink
+  the link instead of traversing or ignoring the target.
 - **The JIT inliner must reject PC-relative branches:** byte-copying a small
   primitive body with an internal branch preserves the old branch target. This
   made compiled `epoch-seconds` branch back into the seed primitive and return

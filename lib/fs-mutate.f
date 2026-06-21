@@ -66,6 +66,9 @@ create FS-MUT-ATOMIC-SUFFIX
    a u STAT-MODE FS-MUT-MODE-PERM and FS-MUT-MODE-EXEC or {: mode :}
    a u FS-PATHZ mode chmod 0 < if E-FS-IO throw then ;
 
+: MAKE-SYMLINK ( ptr u8 n ptr u8 n -- ) {: target:ptr targetu link:ptr linku :}
+   target targetu FS-PATHZ link linku FS-MUT-PATHZ2 symlink 0 < if E-FS-IO throw then ;
+
 : MKDIR-MODE ( ptr u8 n n -- ) {: a:ptr u mode :}
    a u FS-PATHZ mode mkdir 0 < if E-FS-IO throw then ;
 
@@ -82,6 +85,7 @@ create FS-MUT-ATOMIC-SUFFIX
    a u FS-PATHZ rmdir 0 < if E-FS-IO FS-THROW-WALK then ;
 
 : FS-MUT-REMOVE-TREE-PATH ( ptr u8 n -- ) {: a:ptr u :}
+   a u SYMLINK? if a u FS-MUT-REMOVE-FILE-WALK exit then
    a u EXISTS? 0= if exit then
    a u FILE? if a u FS-MUT-REMOVE-FILE-WALK exit then
    a u DIR? 0= if E-FS-STAT FS-THROW-WALK then
@@ -200,6 +204,7 @@ create FS-MUT-ATOMIC-SUFFIX
 : FS-MUT-CLEANUP-REMOVE ( n -- ) {: idx :}
    idx FS-MUT-CLEANUP-SLOT idx FS-MUT-CLEANUP-U-PTR @ {: a:ptr u :}
    idx FS-MUT-CLEANUP-KIND-PTR @ {: kind :}
+   a u SYMLINK? if a u REMOVE-FILE exit then
    a u EXISTS? 0= if exit then
    kind FS-MUT-CLEANUP-TREE = if
       a u REMOVE-TREE
