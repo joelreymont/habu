@@ -188,6 +188,8 @@ variable GS-RD
    s" llm vector parser" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/artifacts.f" GS-ARG+ s" bench/llm/artifacts-test.f" GS-ARG+
    s" llm artifact hashes" GS-HB-RUN
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" bench/llm/attempt-solutions-lib.f" GS-ARG+ s" bench/llm/attempt-solutions-test.f" GS-ARG+
+   s" llm attempt solution extractor" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/live-row-test.f" GS-ARG+
    s" llm live row emitter" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/fixture-text-test.f" GS-ARG+
@@ -214,6 +216,9 @@ variable GS-RD
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" src/core/sha256.f" GS-SRC+ s" bench/llm/artifacts.f" GS-SRC+ s" bench/llm/artifacts-test.f" GS-SRC+
    s" llm artifact hash check" GS-CHECK-RUN
+   GS-SRC-RESET
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" tools/lint/lib.f" GS-SRC+ s" tools/lint/source-lex.f" GS-SRC+ s" bench/llm/attempt-solutions-lib.f" GS-SRC+ s" bench/llm/attempt-solutions-test.f" GS-SRC+
+   s" llm attempt solution extractor check" GS-CHECK-RUN
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" src/core/sha256.f" GS-SRC+ s" bench/llm/live-row.f" GS-SRC+ s" bench/llm/live-row-test.f" GS-SRC+
    s" llm live row emitter check" GS-CHECK-RUN
