@@ -172,6 +172,17 @@ variable DSUGE  variable DSUGA
 : JSTR {: a u :}  34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;
 : JKEY {: a u :}  a u JSTR  58 EMIT1 ;
 : JROW {: s :}  34 EMIT1  s DROW  34 EMIT1 ;
+: SIG-WS? {: c :}  c 32 =  c 9 = or  c 10 = or  c 13 = or ;
+: SIG-LTRIM {: a u :}
+   0 BEGIN dup u < WHILE
+      dup a + c@ SIG-WS? 0= IF dup a + u rot - EXIT THEN
+      1 +
+   REPEAT drop a 0 ;
+: SIG-RTRIM {: a u :}
+   u BEGIN dup 0 > WHILE
+      a over 1 - + c@ SIG-WS? IF 1 - ELSE a swap EXIT THEN
+   REPEAT drop a 0 ;
+: SIG-TRIM ( a u -- a u )  SIG-LTRIM SIG-RTRIM ;
 : JEFFECT {: din dout rin rout hasr :}
    34 EMIT1
    din DROW  s" -- " DTXT  dout DROW
@@ -259,6 +270,8 @@ variable JPOS  variable JLINE  variable JCOL
    SGSEEN @ IF
      s" declared_effect" JKEY
      SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ JEFFECT  44 EMIT1
+     s" declared_effect_source" JKEY
+     SGA @ SGU @ SIG-TRIM JSTR  44 EMIT1
    THEN
    s" inferred_effect" JKEY
    SGSEEN @ IF SGIN @ ELSE BROW @ THEN

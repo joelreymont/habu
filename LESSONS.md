@@ -314,6 +314,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   appears only when the data stack already matches the declaration; a bad `>r`
   that also removes a declared data output is correctly classified as
   `add_producer` first.
+- **Repair diagnostics need source effects too:** normalized rows such as
+  `a -- a` erase user row names like `R x -- R x`; keep a source-preserving
+  effect field in diagnostics and repair packets for LLM repair context.
 - **Broad unchecked tool ports hide the bugs being chased:** reinstall the
   `CHECK!` hook immediately after raw declarations and lint protected files for
   normal definitions left under `0 set-check`.

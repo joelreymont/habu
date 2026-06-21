@@ -338,7 +338,8 @@ variable CA-FILE-U
    s" byte_end" LJW-KEY tok LB@ tok LTOK nip + LJW-U LJW-COMMA
    s" definition_source" LJW-KEY k CA-DEF-SOURCE$ LJW-STRING LJW-COMMA
    k CA-DECLARED$ IF
-      s" declared_effect" LJW-KEY LJW-STRING LJW-COMMA
+      2dup s" declared_effect" LJW-KEY LJW-STRING LJW-COMMA
+      s" declared_effect_source" LJW-KEY LJW-STRING LJW-COMMA
    ELSE
       2drop
    THEN

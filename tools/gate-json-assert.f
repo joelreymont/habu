@@ -208,6 +208,14 @@ variable GJA-DIRECT
 : GJA-REQ-INTF ( root a u -- )
    GJA-REQ GJA-INT drop ;
 
+: GJA-NULL-OR-STR ( node -- )
+   dup JSON-KIND J-NULL = IF drop exit THEN
+   dup JSON-KIND J-STR <> IF drop s" expected JSON string or null" GJA-FAIL THEN
+   drop ;
+
+: GJA-REQ-NULL-OR-STRF ( root a u -- )
+   GJA-REQ GJA-NULL-OR-STR ;
+
 : GJA-SCHEMA1 ( root -- )
    s" schema_version" GJA-REQ GJA-INT 1 <> IF s" schema_version is not 1" GJA-FAIL THEN ;
 
@@ -328,6 +336,8 @@ variable GJA-DIRECT
    GJA-ROOT @ s" column" GJA-REQ-INTF
    GJA-ROOT @ s" byte_start" GJA-REQ-INTF
    GJA-ROOT @ s" byte_end" GJA-REQ-INTF
+   GJA-ROOT @ s" declared_effect" GJA-REQ-NULL-OR-STRF
+   GJA-ROOT @ s" declared_effect_source" GJA-REQ-NULL-OR-STRF
    GJA-ROOT @ s" inferred_effect" GJA-REQ GJA-NONEMPTY-STR
    GJA-ROOT @ s" return_stack" GJA-REQ GJA-OBJ
    GJA-ROOT @ s" code" GJA-REQ GJA-NONEMPTY-STR
@@ -367,6 +377,14 @@ variable GJA-DIRECT
    GJA-ROOT @ s" return_stack" GJA-REQ dup GJA-OBJ
    dup s" expected" GJA-REQ exp expu GJA-ASSERT-STR
    s" actual" GJA-REQ act actu GJA-ASSERT-STR ;
+
+: GJA-DIAG-ROW-EFFECT {: json:ptr jsonu src:ptr srcu exp:ptr expu act:ptr actu class:ptr classu :}
+   json jsonu GJA-FIRST-JSON GJA-ROOT !
+   GJA-ROOT @ GJA-DIAG-COMMON
+   GJA-ROOT @ s" declared_effect_source" GJA-REQ src srcu GJA-ASSERT-STR
+   GJA-ROOT @ s" expected" GJA-REQ exp expu GJA-ASSERT-STR
+   GJA-ROOT @ s" actual" GJA-REQ act actu GJA-ASSERT-STR
+   GJA-ROOT @ s" repair_class" GJA-REQ class classu GJA-ASSERT-STR ;
 
 : GJA-ALL-ROW0 ( root -- )
    dup GJA-DIAG-COMMON
@@ -473,6 +491,10 @@ variable GJA-DIRECT
    0 SCRIPT-ARGV$ s" diag-return-stack" GJA-BYTES= IF
       SCRIPT-ARGC 4 <> IF GJA-USAGE THEN
       1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ 3 SCRIPT-ARGV$ GJA-DIAG-RETURN-STACK exit
+   THEN
+   0 SCRIPT-ARGV$ s" diag-row-effect" GJA-BYTES= IF
+      SCRIPT-ARGC 6 <> IF GJA-USAGE THEN
+      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ 3 SCRIPT-ARGV$ 4 SCRIPT-ARGV$ 5 SCRIPT-ARGV$ GJA-DIAG-ROW-EFFECT exit
    THEN
    0 SCRIPT-ARGV$ s" repair-packet" GJA-BYTES= IF
       SCRIPT-ARGC 3 <> IF GJA-USAGE THEN

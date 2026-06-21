@@ -103,6 +103,7 @@ create RSD-ERR RSD-BUF-CAP allot
    s" byte_end" RSD-NEED-DOC-FIELD
    s" definition_source" RSD-NEED-DOC-FIELD
    s" declared_effect" RSD-NEED-DOC-FIELD
+   s" declared_effect_source" RSD-NEED-DOC-FIELD
    s" inferred_effect" RSD-NEED-DOC-FIELD
    s" return_stack" RSD-NEED-DOC-FIELD
    s" expected" RSD-NEED-DOC-FIELD
@@ -191,6 +192,7 @@ create RSD-ERR RSD-BUF-CAP allot
    s" byte_end" RSD-NEED-DIAG-FIELD
    s" definition_source" RSD-NEED-DIAG-FIELD
    s" declared_effect" RSD-NEED-DIAG-FIELD
+   s" declared_effect_source" RSD-NEED-DIAG-FIELD
    s" inferred_effect" RSD-NEED-DIAG-FIELD
    s" return_stack" RSD-NEED-DIAG-FIELD
    s" expected" RSD-NEED-DIAG-FIELD

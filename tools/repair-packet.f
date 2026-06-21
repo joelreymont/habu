@@ -173,6 +173,7 @@ variable RP-NODE
    JSONW-COMMA root s" byte_start" RP-REQ-NUM-FIELD
    JSONW-COMMA root s" byte_end" RP-REQ-NUM-FIELD
    JSONW-COMMA root s" declared_effect" RP-OPT-STR-FIELD
+   JSONW-COMMA root s" declared_effect_source" RP-OPT-STR-FIELD
    JSONW-COMMA root s" inferred_effect" RP-REQ-STR-FIELD
    JSONW-COMMA root s" expected" RP-OPT-STR-FIELD
    JSONW-COMMA root s" actual" RP-OPT-STR-FIELD

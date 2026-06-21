@@ -29,6 +29,7 @@ Fields:
 | `byte_end` | integer | required | Zero-based byte offset immediately after the token. |
 | `definition_source` | string | required | Captured definition text without the leading colon and trailing semicolon. |
 | `declared_effect` | string | required for signed definitions | Declared data and return-stack effect, normalized by the checker. |
+| `declared_effect_source` | string | required for signed definitions | Declared effect as written between the signature parentheses, trimmed but preserving source row/type variable names. |
 | `inferred_effect` | string | required | Inferred data and return-stack effect at the diagnostic point. |
 | `return_stack` | object | required | Object with `expected` and `actual` return-stack rows. |
 | `expected` | string | data mismatch only | Expected data-stack row. Absent when only the return stack or safety verdict failed. |
@@ -61,6 +62,7 @@ Fields:
 | `byte_start` | integer | required | Token start byte. |
 | `byte_end` | integer | required | Token end byte. |
 | `declared_effect` | string or null | required | Declared effect copied from the checker, or null if no checked signature existed. |
+| `declared_effect_source` | string or null | required | Source-preserving declared effect copied from the checker, or null if no checked signature existed. |
 | `inferred_effect` | string | required | Inferred effect copied from the checker. |
 | `expected` | string or null | required | Expected data-stack row, or null when the checker did not emit a data-stack mismatch. |
 | `actual` | string or null | required | Actual data-stack row, or null when the checker did not emit a data-stack mismatch. |
