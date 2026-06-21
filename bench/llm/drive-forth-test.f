@@ -98,6 +98,19 @@ TRUSTED: DFHT-SRC-BUF ( -- ptr u8 )
    LR-TESTS-PASSED @ 0 T=
    arm armu DFHT-ASSERT-ROW-COMMON ;
 
+: DFHT-ASSERT-REPAIRED-PASS ( ptr u8 n -- ) {: arm:ptr armu :}
+   LR-OUTCOME$ s" pass" T$=
+   LR-FIRST-CHECKER$ s" rejected" T$=
+   LR-FIRST-PASS @ 0 T=
+   LR-FIRST-TESTS @ 0 T=
+   LR-TESTS-PASSED @ -1 T=
+   LR-ROUNDS @ 2 T=
+   LR-REPAIR-ITERATIONS @ 1 T=
+   LR-CHECKER-ITERATIONS @ 2 T=
+   LR-DIAG-COUNT @ 1 T=
+   LR-ROW$ s" habu_repair_packet" CONTAINS? TTRUE
+   arm armu DFHT-ASSERT-ROW-COMMON ;
+
 : DFHT-PROMPT-HAS ( ptr u8 n -- )
    DS-PROMPT$ 2swap CONTAINS? TTRUE ;
 
@@ -159,6 +172,53 @@ TRUSTED: DFHT-SRC-BUF ( -- ptr u8 )
    LR-ROW$ s" forbidden unchecked boundary" CONTAINS? TTRUE
    CLEANUP-RUN ;
 
+: DFHT-WRITE-RAW ( ptr u8 n -- )
+   DS-RAW-PATH$ 2swap WRITE-ALL ;
+
+: DFHT-RUN-TWO-TEXTS ( ptr u8 n ptr u8 n -- )
+   {: bad:ptr badu good:ptr goodu :}
+   DFH-PREPARE
+   DFH-STATE-RESET
+   DFH-NEXT-ROUND
+   bad badu DFHT-WRITE-RAW
+   bad badu DFH-EVALUATE-TEXT
+   DFH-ADD-FEEDBACK
+   DFH-NEXT-ROUND
+   good goodu DFHT-WRITE-RAW
+   good goodu DFH-EVALUATE-TEXT ;
+
+: DFHT-TEST-REPAIRED-PASS ( -- )
+   s" repair" s" habu-forth" DFHT-CONFIG-SQUARE
+   s" : SQUARE ( i64 -- i64 ) dup * dup ;"
+   s" : SQUARE ( i64 -- i64 ) dup * ;"
+   DFHT-RUN-TWO-TEXTS
+   s" habu-forth" DFHT-ASSERT-REPAIRED-PASS
+   CLEANUP-RUN ;
+
+: DFHT-NONZERO$ ( -- ptr u8 n )
+   DTH-SRC-RESET
+   DTH-SRC-TASK-HEAD
+   s" boom" DTH-SRC-S"
+   s"  7 die " DTH-SRC+
+   DTH-SRC-END ;
+
+: DFHT-TEST-NONZERO-CHILD ( -- )
+   s" repair" s" habu-forth" DFHT-CONFIG-SQUARE
+   DFHT-NONZERO$ DFH-RUN-TEXT
+   s" habu-forth" DFHT-ASSERT-FAIL
+   CLEANUP-RUN ;
+
+: DFHT-TEST-TIMEOUT-CHILD ( -- )
+   s" repair" s" habu-forth" DFHT-CONFIG-SQUARE
+   1000 DS-HB-TIMEOUT-U !
+   s" : SQUARE ( i64 -- i64 ) begin again ;" DFH-RUN-TEXT
+   LR-OUTCOME$ s" timeout" T$=
+   LR-FIRST-CHECKER$ s" certified" T$=
+   LR-TESTS-PASSED @ 0 T=
+   LR-ROUNDS @ 1 T=
+   s" habu-forth" DFHT-ASSERT-ROW-COMMON
+   CLEANUP-RUN ;
+
 : DFHT-MAIN ( -- )
    T-RESET
    DFHT-TEST-LARGE-TASK-COPY
@@ -169,6 +229,9 @@ TRUSTED: DFHT-SRC-BUF ( -- ptr u8 )
    DFHT-TEST-RAW-FEEDBACK
    DFHT-TEST-BLIND-FEEDBACK
    DFHT-TEST-FORBIDDEN-BLIND
+   DFHT-TEST-REPAIRED-PASS
+   DFHT-TEST-NONZERO-CHILD
+   DFHT-TEST-TIMEOUT-CHILD
    T-REPORT
    s" drive-forth-test: ok" type cr ;
 

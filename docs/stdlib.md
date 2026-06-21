@@ -686,11 +686,14 @@ PROC-SPAWN-ARGV-CAPTURE ( ptr u8 ptr a -- )
 RUN-ARGV-CAPTURE      ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
 RUN-ARGV-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
 RUN-ARGV-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+RUN-ARGV-STDIN-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
 ```
 
 Use `PROC-ARGV-RESET`, append zero or more extra args with `PROC-ARGV+`, then
 call `SPAWN-ARGV-IO`, `RUN-ARGV-IO-RC`, `RUN-ARGV-CAPTURE`, or
-`RUN-ARGV-STDIN-CAPTURE` with the executable path.
+`RUN-ARGV-STDIN-CAPTURE` with the executable path. Use the `*-OUTCOME` variants
+when the caller needs timeout/signal/exit classification instead of an rc-only
+result.
 `argv[0]` is always the executable path. `SPAWN-ARGV-IO` resets argv state after
 the primitive spawn returns, throws `E-PROC-SPAWN` on spawn failure, and reuses
 the same fd inheritance rules as `SPAWN-IO`.
@@ -711,7 +714,8 @@ kind, and outcome code. They classify timeout as `PROC-OUTCOME-TIMEOUT` instead
 of throwing `E-PROC-TIMEOUT`; output truncation and other harness failures still
 throw named process errors.
 `RUN-ARGV-STDIN-CAPTURE` additionally writes a bounded caller-provided stdin
-buffer into the child while draining stdout and stderr.
+buffer into the child while draining stdout and stderr; its outcome variant
+keeps the same stdin behavior and returns kind/code.
 
 `lib/process-env.f` is a post-rebuild layer on top of `lib/process-argv.f` for
 explicit child environments and PATH lookup. Keeping it separate preserves the

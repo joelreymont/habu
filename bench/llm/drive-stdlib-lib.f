@@ -64,6 +64,7 @@ variable DS-MAX-REPAIRS
 variable DS-TOKENS
 variable DS-RC
 variable DS-DIAG-COUNT
+variable DS-HB-TIMEOUT-U
 
 variable DS-NAME-A
 variable DS-NAME-U
@@ -94,6 +95,10 @@ variable DS-STOP
 
 : DS-FALSE ( -- bool )
    DS-TRUE 0= ;
+
+: DS-HB-TIMEOUT ( -- n )
+   DS-HB-TIMEOUT-U @ 0 > if DS-HB-TIMEOUT-U @ exit then
+   DS-HB-TIMEOUT-MS ;
 
 : DS-BUF-ROOM ( n n n -- ) {: add cap used :}
    add 0 < if E-DS-CAPACITY throw then
@@ -477,7 +482,7 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
 
 : DS-HB-CAPTURE ( -- )
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" DS-OUT-BUF DS-OUT-CAP DS-ERR-BUF DS-ERR-CAP DS-HB-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE
+   s" bin/hb" DS-OUT-BUF DS-OUT-CAP DS-ERR-BUF DS-ERR-CAP DS-HB-TIMEOUT RUN-ARGV-ENV-CAPTURE
    DS-RC !
    DS-ERR-U !
    DS-OUT-U ! ;
@@ -724,6 +729,7 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
    s" BENCH_TASK_ORDER" 0 DS-ENV-U DS-TASK-ORDER !
    s" BENCH_K" 1 DS-ENV-U DS-K !
    s" BENCH_MAX_REPAIRS" 1 DS-ENV-U DS-MAX-REPAIRS !
+   s" BENCH_HB_TIMEOUT_MS" DS-HB-TIMEOUT-MS DS-ENV-U DS-HB-TIMEOUT-U !
    s" BENCH_SEED" s" manifest" DS-ENV$ DS-SEED! ;
 
 : DS-USAGE ( -- )

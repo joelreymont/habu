@@ -188,6 +188,22 @@ variable PROC-PATH-I
    PROC-REAP-CAPTURE
    PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
 
+: RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+   {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+   path pathu PROC-ARGV-CHECK-PATH
+   inu 0 < if E-PROC-OUTPUT throw then
+   outcap 0 < if E-PROC-OUTPUT throw then
+   errcap 0 < if E-PROC-OUTPUT throw then
+   PROC-ARGV-CAPTURE-RESET
+   timeout PROC-CAPTURE-DEADLINE!
+   PROC-SETUP-CAPTURE-FDS
+   PROC-ARGV-SETUP-STDIN-FDS
+   path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
+   in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
+   PROC-ARGV-CLOSE-STDIN-FDS
+   PROC-CLOSE-CAPTURE-FDS
+   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-OUTCOME-KIND @ PROC-OUTCOME-CODE @ ;
+
 : PROC-HAS-SLASH? ( ptr u8 n -- bool )
    PROC-PATH-SLASH INDEX-OF 0 >= ;
 

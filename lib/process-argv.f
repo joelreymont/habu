@@ -194,6 +194,18 @@ variable PROC-ARGV-IN-OFF
    rc 0= if E-PROC-TIMEOUT PROC-ARGV-THROW-CAPTURE then
    rc ;
 
+: PROC-ARGV-POLL-IO-OUTCOME ( n -- n ) {: ms :}
+   PROC-OUT-R @ POLLIN 0 PROC-ARGV-PFD-AT!
+   PROC-ERR-R @ POLLIN 1 PROC-ARGV-PFD-AT!
+   PROC-ARGV-IN-W @ 0 >= if
+      PROC-ARGV-IN-W @ POLLOUT 2 PROC-ARGV-PFD-AT!
+   else
+      -1 0 2 PROC-ARGV-PFD-AT!
+   then
+   PROC-ARGV-PFD 3 ms poll {: rc :}
+   rc 0 < if E-PROC-OUTPUT PROC-ARGV-THROW-CAPTURE then
+   rc ;
+
 : PROC-ARGV-DRIVE-STDIN ( ptr u8 n -- ) {: in:ptr inu :}
    2 PROC-ARGV-PFD-REVENTS 0 <> if
       in inu PROC-ARGV-WRITE-STDIN
@@ -210,6 +222,22 @@ variable PROC-ARGV-IN-OFF
       in inu PROC-ARGV-DRIVE-STDIN
       out outcap err errcap PROC-ARGV-DRAIN-READY
    repeat ;
+
+: PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: in:ptr inu out:ptr outcap err:ptr errcap :}
+   inu 0 <= if PROC-ARGV-IN-W PROC-CLOSE-CELL then
+   begin PROC-ARGV-STDIN-CAPTURE-DONE? 0= while
+      PROC-REMAINING-MS PROC-ARGV-POLL-IO-OUTCOME dup 0= if
+         drop
+         PROC-ARGV-CLOSE-STDIN-FDS
+         PROC-REAP-CAPTURE-TIMEOUT
+         exit
+      then
+      drop
+      in inu PROC-ARGV-DRIVE-STDIN
+      out outcap err errcap PROC-ARGV-DRAIN-READY
+   repeat
+   PROC-REAP-CAPTURE ;
 
 : RUN-ARGV-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
@@ -254,3 +282,19 @@ variable PROC-ARGV-IN-OFF
    PROC-CLOSE-CAPTURE-FDS
    PROC-REAP-CAPTURE
    PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
+
+: RUN-ARGV-STDIN-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+   {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+   path pathu PROC-ARGV-CHECK-PATH
+   inu 0 < if E-PROC-OUTPUT throw then
+   outcap 0 < if E-PROC-OUTPUT throw then
+   errcap 0 < if E-PROC-OUTPUT throw then
+   PROC-ARGV-CAPTURE-RESET
+   timeout PROC-CAPTURE-DEADLINE!
+   PROC-SETUP-CAPTURE-FDS
+   PROC-ARGV-SETUP-STDIN-FDS
+   path pathu PROC-ARGV-PREPARE PROC-SPAWN-ARGV-STDIN-CAPTURE
+   in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
+   PROC-ARGV-CLOSE-STDIN-FDS
+   PROC-CLOSE-CAPTURE-FDS
+   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-OUTCOME-KIND @ PROC-OUTCOME-CODE @ ;
