@@ -243,6 +243,8 @@ variable GS-RD
    s" llm manifest audit" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" bench/llm/vectors-test.f" GS-ARG+
    s" llm vector parser" GS-HB-RUN
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" bench/llm/foreign-vectors.f" GS-ARG+ s" bench/llm/foreign-vectors-test.f" GS-ARG+
+   s" llm foreign vector emitters" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/forth-task-lines-lib.f" GS-ARG+ s" bench/llm/forth-task-lines-test.f" GS-ARG+
    s" llm forth task row emitter" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/diagnostic-stats.f" GS-ARG+ s" bench/llm/diagnostic-stats-test.f" GS-ARG+
@@ -283,6 +285,9 @@ variable GS-RD
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/vectors.f" GS-SRC+ s" bench/llm/vectors-test.f" GS-SRC+
    s" llm vector parser check" GS-CHECK-RUN
+   GS-SRC-RESET
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/vectors.f" GS-SRC+ s" bench/llm/foreign-vectors.f" GS-SRC+ s" bench/llm/foreign-vectors-test.f" GS-SRC+
+   s" llm foreign vector emitters check" GS-CHECK-RUN
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/forth-task-lines-lib.f" GS-SRC+ s" bench/llm/forth-task-lines-test.f" GS-SRC+
    s" llm forth task row emitter check" GS-CHECK-RUN

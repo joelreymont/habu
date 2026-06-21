@@ -93,6 +93,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   stdin for tool data, so piping a post-load probe to fd 0 does not execute it.
   Put the probe in an explicit loaded source file when measuring `here`/metadata
   after a bundle.
+- **Stdin fixture newlines need explicit bytes:** Habu `s" ...\n"` keeps the
+  backslash and `n` bytes. Process smoke tests that need a newline should use a
+  byte buffer with `10 c,` or append `STR-LF`, otherwise the child may parse a
+  word such as `cr\n`.
 - **Checker buffers must scale with composed tools:** `tools/check.f` reads the
   concatenated source into `CHK-SRC-BUF`; when real checked tool bundles exceed
   that cap, raise the runner buffers instead of splitting the source to dodge the
@@ -188,6 +192,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Name numeric buffer-room inputs:** helper effects like `( cap used add -- )`
   are all `n`; a stray `swap` can type-check and still invert capacity/add at
   runtime. Bind `add` at the caller and pass `cap used add` explicitly.
+- **Emitter helpers own their output buffer:** a numeric renderer from another
+  snippet emitter can type-check while appending into the wrong global buffer.
+  Keep byte/number appenders local to the output buffer they mutate.
 
 ## Darwin And Syscalls
 

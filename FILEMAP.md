@@ -129,6 +129,8 @@ points stay listed.
 - `bench/llm/parse-resp.f` — CLI wrapper for the model response parser.
 - `bench/llm/vectors.f` — checked benchmark vector parser and Habu snippet emitter.
 - `bench/llm/vectors-test.f` — focused coverage for vector parsing and emitted snippets.
+- `bench/llm/foreign-vectors.f` — checked JS/Python/TypeScript/Rust vector and runtime snippet emitters.
+- `bench/llm/foreign-vectors-test.f` — exact fixture coverage for foreign vector and runtime emitters.
 - `bench/llm/forth-task-lines-lib.f` — checked harness=forth task-row scanner/emitter for live benchmark drivers.
 - `bench/llm/forth-task-lines.f` — CLI wrapper for harness=forth task-row emission.
 - `bench/llm/forth-task-lines-test.f` — focused coverage for task-row filtering and file output.
