@@ -5,14 +5,18 @@
 \ lib/test-runner.f.
 
 $40000 constant GE-SRC-CAP
+64 constant GE-SRC-MAX
 120000 constant GE-TIMEOUT-MS
 10 constant GE-LF
 32 constant GE-SP
 34 constant GE-DQ
 
 create GE-SRC-BUF GE-SRC-CAP allot
+create GE-SRC-A GE-SRC-MAX cells allot
+create GE-SRC-LEN GE-SRC-MAX cells allot
 
 variable GE-SRC-U
+variable GE-SRC-N
 variable GE-RD
 
 : GE-RUN-ENV ( ptr u8 n n -- ) {: path:ptr pathu timeout :}
@@ -66,7 +70,20 @@ variable GE-RD
    GE-SB-LF ;
 
 : GE-SRC-RESET ( -- )
-   0 GE-SRC-U ! ;
+   0 GE-SRC-U !
+   0 GE-SRC-N ! ;
+
+: GE-SRC$ ( n -- ptr u8 n ) {: idx :}
+   idx 0 < if E-STR-BOUNDS throw then
+   idx GE-SRC-N @ >= if E-STR-BOUNDS throw then
+   idx cells GE-SRC-A + @
+   idx cells GE-SRC-LEN + @ ;
+
+: GE-SRC-PATH+ ( ptr u8 n -- ) {: path:ptr pathu :}
+   GE-SRC-N @ GE-SRC-MAX >= if E-STR-CAPACITY throw then
+   path GE-SRC-A GE-SRC-N @ cells + !
+   pathu GE-SRC-LEN GE-SRC-N @ cells + !
+   GE-SRC-N @ 1+ GE-SRC-N ! ;
 
 : GE-SRC-C ( n -- ) {: c :}
    c 0 < if E-STR-BOUNDS throw then
@@ -112,6 +129,7 @@ variable GE-RD
    s"  CHECK! ." GE-SRC-LINE ;
 
 : GE-SRC-FILE+ ( ptr u8 n -- ) {: path:ptr pathu :}
+   path pathu GE-SRC-PATH+
    path pathu GE-SRC-BUF GE-SRC-U @ + GE-SRC-CAP GE-SRC-U @ -
    READ-ALL GE-RD !
    GE-SRC-U @ GE-RD @ + GE-SRC-U ! ;
@@ -168,4 +186,11 @@ variable GE-RD
    label labelu GE-EXPECT-OK ;
 
 : GE-CHECK-SRC-LIST ( ptr u8 n -- ) {: label:ptr labelu :}
-   label labelu GE-CHECK-RUN ;
+   GE-CHECK-ARGV
+   s" --source-list" PROC-ARGV+
+   0 begin dup GE-SRC-N @ < while
+      dup GE-SRC$ PROC-ARGV+
+      1+
+   repeat drop
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   label labelu GE-EXPECT-OK ;

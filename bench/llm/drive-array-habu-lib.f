@@ -80,6 +80,25 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DAH-BUNDLED? if DAH-RUN-BUNDLE$ exit then
    DS-BUNDLE-PATH$ ;
 
+: DAH-CHECK-SOURCE-LIST ( -- )
+   s" --source-list" PROC-ARGV+
+   s" lib/errors.f" PROC-ARGV+
+   s" lib/array.f" PROC-ARGV+
+   DAH-STDLIB? if
+      s" lib/string.f" PROC-ARGV+
+      s" lib/map.f" PROC-ARGV+
+      s" lib/fs.f" PROC-ARGV+
+      s" lib/argv.f" PROC-ARGV+
+      s" lib/test.f" PROC-ARGV+
+      s" lib/time.f" PROC-ARGV+
+      s" lib/date.f" PROC-ARGV+
+   then
+   DAH-SCRIPT$ PROC-ARGV+ ;
+
+: DAH-CHECK-SOURCES ( -- )
+   DAH-BUNDLED? if DAH-CHECK-SOURCE-LIST exit then
+   DAH-CHECK-SOURCE$ PROC-ARGV+ ;
+
 : DAH-ARM-VALID? ( -- bool )
    DAH-RAW? if DS-TRUE exit then
    DAH-LIB? if DS-TRUE exit then
@@ -361,7 +380,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    s" tools/check.f" PROC-ARGV+
    s" --" PROC-ARGV+
    s" --json-errors" PROC-ARGV+
-   DAH-CHECK-SOURCE$ PROC-ARGV+ ;
+   DAH-CHECK-SOURCES ;
 
 : DAH-RUN-CHECK ( -- )
    DAH-CHECK-ARGV

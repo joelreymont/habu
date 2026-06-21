@@ -10,6 +10,7 @@ $50000 constant CHK-ORIGIN-CAP
 $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
+128 constant CHK-MAX-POS
 120000 constant CHK-TIMEOUT-MS
 
 10 constant CHK-LF
@@ -30,6 +31,8 @@ create CHK-NUM-BUF CHK-NUM-CAP allot
 create CHK-ROOT-BUF FS-PATH-CAP allot
 create CHK-SRC-PATH-BUF FS-PATH-CAP allot
 create CHK-ERR-PATH-BUF FS-PATH-CAP allot
+create CHK-POS-A CHK-MAX-POS cells allot
+create CHK-POS-U CHK-MAX-POS cells allot
 create CHK-ONE 1 allot
 
 variable CHK-ARG-I
@@ -37,6 +40,7 @@ variable CHK-POS-N
 variable CHK-JSON
 variable CHK-STRICT
 variable CHK-ALL
+variable CHK-SOURCE-LIST
 variable CHK-SRC-U
 variable CHK-RUN-U
 variable CHK-ORIGIN-U
@@ -78,7 +82,7 @@ variable CHK-ERR-PATH-U
    CHK-LF CHK-ERR-C ;
 
 : CHK-USAGE ( -- )
-   s" usage: tools/check.f [--json-errors] [--strict-signatures] [--all-errors] [prog.f]" CHK-ERR-LN
+   s" usage: tools/check.f [--json-errors] [--strict-signatures] [--all-errors] [--source-list file ... | prog.f]" CHK-ERR-LN
    CHK-E-USAGE throw ;
 
 : CHK-THROW ( n -- )
@@ -98,16 +102,30 @@ variable CHK-ERR-PATH-U
 : CHK-DASH? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 0 > if a c@ CHK-DASH = else 0 0= 0= then ;
 
+: CHK-POS-SLOT ( n -- ptr n )
+   cells CHK-POS-A + ;
+
+: CHK-POS-U-SLOT ( n -- ptr n )
+   cells CHK-POS-U + ;
+
+: CHK-POS$ ( n -- ptr u8 n ) {: idx :}
+   idx 0 < if CHK-USAGE then
+   idx CHK-POS-N @ >= if CHK-USAGE then
+   idx CHK-POS-SLOT @
+   idx CHK-POS-U-SLOT @ ;
+
 : CHK-ADD-POS ( ptr u8 n -- ) {: a:ptr u :}
-   CHK-POS-N @ 0 > if CHK-USAGE then
-   a CHK-SRC-A !
-   u CHK-SRC-U !
+   CHK-POS-N @ CHK-MAX-POS >= if CHK-USAGE then
+   CHK-SOURCE-LIST @ 0= if CHK-POS-N @ 0 > if CHK-USAGE then then
+   a CHK-POS-N @ CHK-POS-SLOT !
+   u CHK-POS-N @ CHK-POS-U-SLOT !
    CHK-POS-N @ 1+ CHK-POS-N ! ;
 
 : CHK-PARSE-ONE ( ptr u8 n -- ) {: a:ptr u :}
    a u s" --json-errors" STR= if -1 CHK-JSON ! exit then
    a u s" --strict-signatures" STR= if -1 CHK-STRICT ! exit then
    a u s" --all-errors" STR= if -1 CHK-ALL ! exit then
+   a u s" --source-list" STR= if -1 CHK-SOURCE-LIST ! exit then
    a u CHK-DASH? if CHK-USAGE then
    a u CHK-ADD-POS ;
 
@@ -123,6 +141,7 @@ variable CHK-ERR-PATH-U
    0 CHK-JSON !
    0 CHK-STRICT !
    0 CHK-ALL !
+   0 CHK-SOURCE-LIST !
    begin CHK-ARG-I @ SCRIPT-ARGC < while
       CHK-ARG-I @ s" --" CHK-ARG= if
          CHK-ARG-I @ 1+ CHK-ARG-I !
@@ -174,12 +193,37 @@ variable CHK-ERR-PATH-U
    CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A ! ;
 
 : CHK-MATERIALIZE-FILE ( -- )
+   0 CHK-POS$ CHK-SRC-U ! CHK-SRC-A !
    CHK-SOURCE FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    CHK-LABEL-FILE ;
+
+: CHK-SRC-C+ ( n -- ) {: c :}
+   CHK-SRC-U @ 1+ CHK-SRC-CAP > if E-FS-CAPACITY throw then
+   c CHK-SRC-BUF CHK-SRC-U @ + c!
+   CHK-SRC-U @ 1+ CHK-SRC-U ! ;
+
+: CHK-SRC-READ+ ( ptr u8 n -- ) {: path:ptr pathu :}
+   path pathu FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   path pathu CHK-SRC-BUF CHK-SRC-U @ + CHK-SRC-CAP CHK-SRC-U @ -
+   READ-ALL {: got :}
+   CHK-SRC-U @ got + CHK-SRC-U !
+   CHK-LF CHK-SRC-C+ ;
+
+: CHK-MATERIALIZE-LIST ( -- )
+   CHK-POS-N @ 0= if CHK-USAGE then
+   s" <source-list>" CHK-LABEL-U ! CHK-LABEL-A !
+   0 CHK-SRC-U !
+   0 begin dup CHK-POS-N @ < while
+      dup CHK-POS$ CHK-SRC-READ+
+      1+
+   repeat drop
+   CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
+   CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A ! ;
 
 : CHK-MATERIALIZE ( -- )
    s" bin/hb" FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
    CHK-MAKE-TEMP
+   CHK-SOURCE-LIST @ if CHK-MATERIALIZE-LIST exit then
    CHK-POS-N @ 0= if CHK-MATERIALIZE-STDIN else CHK-MATERIALIZE-FILE then ;
 
 : CHK-LABEL-DQ? ( -- bool )
@@ -350,7 +394,7 @@ variable CHK-ERR-PATH-U
    CHK-RC @ CHK-THROW ;
 
 : CHK-RUN-TRUST ( -- )
-   CHK-POS-N @ 0= if exit then
+   CHK-SOURCE-LIST @ if exit then
    CHK-ARGV-TRUST
    CHK-RUN-CAPTURE
    CHK-RC @ 0= if exit then

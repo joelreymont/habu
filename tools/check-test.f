@@ -9,9 +9,11 @@ create CKT-OUT CKT-BUF-CAP allot
 create CKT-ERR CKT-BUF-CAP allot
 create CKT-ROOT FS-PATH-CAP allot
 create CKT-BAD-PATH FS-PATH-CAP allot
+create CKT-LIST-PATH FS-PATH-CAP allot
 
 variable CKT-ROOT-U
 variable CKT-BAD-U
+variable CKT-LIST-U
 
 : CKT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -22,6 +24,9 @@ variable CKT-BAD-U
 
 : CKT-BAD$ ( -- ptr u8 n )
    CKT-BAD-PATH CKT-BAD-U @ ;
+
+: CKT-LIST$ ( -- ptr u8 n )
+   CKT-LIST-PATH CKT-LIST-U @ ;
 
 : CKT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
@@ -64,6 +69,12 @@ variable CKT-BAD-U
    CKT-BAD$ PROC-ARGV+
    s" bin/hb" CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
 
+: CKT-RUN-PATH-JSON ( ptr u8 n -- n n n )
+   CKT-ARGV-BASE
+   s" --json-errors" PROC-ARGV+
+   PROC-ARGV+
+   s" bin/hb" CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+
 : CKT-RUN-SRC-FILE-JSON ( ptr u8 n -- n n n )
    CKT-BAD$ 2swap WRITE-ALL
    CKT-RUN-FILE-JSON ;
@@ -71,6 +82,13 @@ variable CKT-BAD-U
 : CKT-RUN-ARGS ( -- n n n )
    CKT-ARGV-BASE
    s" --bad-flag" PROC-ARGV+
+   s" bin/hb" CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+
+: CKT-RUN-SOURCE-LIST ( ptr u8 n -- n n n )
+   CKT-LIST$ 2swap WRITE-ALL
+   CKT-ARGV-BASE
+   s" --source-list" PROC-ARGV+
+   CKT-LIST$ PROC-ARGV+
    s" bin/hb" CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
 
 : CKT-GOOD$ ( -- ptr u8 n )
@@ -153,11 +171,18 @@ variable CKT-BAD-U
    s" : OK ( -- ) EVIL ;" SB-APPEND
    SB$ ;
 
-: CKT-AUDITED-TRUSTED$ ( -- ptr u8 n )
+: CKT-SPOOFED-TRUSTED$ ( -- ptr u8 n )
    SB-RESET
    s" TRUSTED: TTHROWS-RAW ( a n -- ) ;" SB-APPEND
    10 SB-APPEND-C
    s" : OK ( -- ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-LOCAL-TRUSTED$ ( -- ptr u8 n )
+   SB-RESET
+   s" TRUSTED: LOCAL-TEST ( -- ) ;" SB-APPEND
+   10 SB-APPEND-C
+   s" : OK ( -- ) LOCAL-TEST ;" SB-APPEND
    SB$ ;
 
 : CKT-PREPARE ( -- )
@@ -165,6 +190,7 @@ variable CKT-BAD-U
    s" habu-check-test" TMPDIR-MKDIR CKT-ROOT CKT-ROOT-U CKT-COPY!
    CKT-ROOT$ CLEANUP-TREE+
    CKT-ROOT$ s" bad.f" CKT-BAD-PATH JOIN-PATH CKT-BAD-U !
+   CKT-ROOT$ s" local-test.f" CKT-LIST-PATH JOIN-PATH CKT-LIST-U !
    CKT-BAD$ CKT-BAD$SRC WRITE-ALL ;
 
 : CKT-TEST-GOOD ( -- )
@@ -245,8 +271,28 @@ variable CKT-BAD-U
 : CKT-TEST-TRUSTED-REJECT ( -- )
    CKT-UNAUDITED-TRUSTED$ CKT-EXPECT-TRUST-REJECT ;
 
-: CKT-TEST-AUDITED-TRUSTED ( -- )
-   CKT-AUDITED-TRUSTED$ CKT-RUN-SRC-FILE-JSON 0 T=
+: CKT-TEST-TRUSTED-SITE-SPOOF ( -- )
+   CKT-SPOOFED-TRUSTED$ CKT-RUN-SRC-FILE-JSON 0 T<>
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" SITE-DRIFT" CONTAINS? TTRUE
+   CKT-ERR erru s" TTHROWS-RAW" CONTAINS? TTRUE ;
+
+: CKT-TEST-AUDITED-LIB-TRUSTED ( -- )
+   s" lib/test.f" CKT-RUN-PATH-JSON 0 T=
+   {: outu erru :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-STDIN-TRUST-REJECT ( -- )
+   CKT-UNAUDITED-TRUST$ CKT-RUN-JSON 0 T<>
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" UNMANIFESTED" CONTAINS? TTRUE
+   CKT-ERR erru s" EVIL" CONTAINS? TTRUE ;
+
+: CKT-TEST-SOURCE-LIST-LOCAL-TRUST ( -- )
+   CKT-LOCAL-TRUSTED$ CKT-RUN-SOURCE-LIST 0 T=
    {: outu erru :}
    outu 0 T=
    erru 0 T= ;
@@ -267,7 +313,10 @@ variable CKT-BAD-U
    CKT-TEST-HOOK-REPLACE
    CKT-TEST-TRUST-REJECT
    CKT-TEST-TRUSTED-REJECT
-   CKT-TEST-AUDITED-TRUSTED
+   CKT-TEST-TRUSTED-SITE-SPOOF
+   CKT-TEST-AUDITED-LIB-TRUSTED
+   CKT-TEST-STDIN-TRUST-REJECT
+   CKT-TEST-SOURCE-LIST-LOCAL-TRUST
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;

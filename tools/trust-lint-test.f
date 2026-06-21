@@ -229,6 +229,16 @@ TLT-LF TLT-LF-BUF c!
    s" | foo | `n --` | fixture | `test/t-fixture.fs` | src/trust.f:1 | 2026-06-13 |" TLT-WRITE-MAN-ROW
    s" EFFECT-DRIFT" TLT-EXPECT-BAD ;
 
+: TLT-TEST-SITE-DRIFT-PATH ( -- )
+   s" site-drift-path" TLT-MAKE-BASE
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/other.f:1 | 2026-06-13 |" TLT-WRITE-MAN-ROW
+   s" SITE-DRIFT" s" src/other.f:1" TLT-EXPECT-BAD-CONTAINS ;
+
+: TLT-TEST-SITE-DRIFT-LINE ( -- )
+   s" site-drift-line" TLT-MAKE-BASE
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f:2 | 2026-06-13 |" TLT-WRITE-MAN-ROW
+   s" SITE-DRIFT" s" src/trust.f:2" TLT-EXPECT-BAD-CONTAINS ;
+
 : TLT-TEST-UNTESTED ( -- )
    s" untested" TLT-MAKE-BASE
    s" | foo | `n -- n` | fixture | | src/trust.f:1 | 2026-06-13 |" TLT-WRITE-MAN-ROW
@@ -284,6 +294,8 @@ TLT-LF TLT-LF-BUF c!
    TLT-TEST-DUP-SRC-LIB
    TLT-TEST-DUP-TRUST
    TLT-TEST-EFFECT-DRIFT
+   TLT-TEST-SITE-DRIFT-PATH
+   TLT-TEST-SITE-DRIFT-LINE
    TLT-TEST-UNTESTED
    TLT-TEST-BAD-AUDIT
    TLT-TEST-BAD-CALENDAR-AUDIT

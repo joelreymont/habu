@@ -21,6 +21,7 @@ $20000 constant TL-FILE-CAP
 124 constant TL-PIPE
 
 create TL-PATH-BUF FS-PATH-CAP allot
+create TL-SITE-BUF FS-PATH-CAP allot
 create TL-STR-BUF TL-STR-CAP allot
 create TL-FILE-BUF TL-FILE-CAP allot
 create TL-NUM-BUF TL-NUM-CAP allot
@@ -53,6 +54,7 @@ variable TL-S#
 variable TL-M#
 variable TL-BAD
 variable TL-NUM-L
+variable TL-SITE-U
 variable TL-LINE
 variable TL-I
 variable TL-J
@@ -183,6 +185,36 @@ variable TL-NV
    TL-S-LINE swap TL-A@ TL-U. ;
 
 : TL-BAD+ ( -- ) TL-BAD @ 1+ TL-BAD ! ;
+
+: TL-SITE+ ( ptr u8 n -- ) {: a:ptr u :}
+   TL-SITE-U @ u + FS-PATH-CAP > IF s" trust-lint: site path too long" TL-FAIL THEN
+   a TL-SITE-BUF TL-SITE-U @ + u BMOVE
+   TL-SITE-U @ u + TL-SITE-U ! ;
+
+: TL-SITE-C ( n -- ) {: c :}
+   TL-SITE-U @ 1 + FS-PATH-CAP > IF s" trust-lint: site path too long" TL-FAIL THEN
+   c TL-SITE-BUF TL-SITE-U @ + c!
+   TL-SITE-U @ 1 + TL-SITE-U ! ;
+
+: TL-SITE-U+ ( n -- ) {: n :}
+   n 0 < IF s" trust-lint: negative line" TL-FAIL THEN
+   n 10 >= IF n 10 / RECURSE THEN
+   n 10 mod TL-ZERO + TL-SITE-C ;
+
+: TL-SCAN-SITE$ ( n -- ptr u8 n ) {: sk :}
+   0 TL-SITE-U !
+   sk TL-S-PATH$ TL-SITE+
+   TL-COLON TL-SITE-C
+   TL-S-LINE sk TL-A@ TL-SITE-U+
+   TL-SITE-BUF TL-SITE-U @ ;
+
+: TL-SITE-DRIFT ( n n -- ) {: sk mk :}
+   s" SITE-DRIFT " TL-OUT sk TL-PRINT-SITE
+   s" : `" TL-OUT sk TL-S-NAME$ TL-OUT
+   s" ` manifest site `" TL-OUT mk TL-M-SITE$ TL-OUT
+   s" ` does not match scanned site `" TL-OUT sk TL-SCAN-SITE$ TL-OUT
+   s" `" TL-OUT TL-NL
+   TL-BAD+ ;
 
 : TL-DUP-SITE ( n -- )
    s" DUPLICATE-TRUST " TL-OUT
@@ -387,6 +419,9 @@ variable TL-NV
       s" ` code effect `" TL-OUT sk TL-S-EFF$ TL-OUT
       s" ` != TRUSTED.md `" TL-OUT TL-K @ TL-M-EFF$ TL-OUT s" `" TL-OUT TL-NL
       TL-BAD+
+   THEN
+   sk TL-SCAN-SITE$ TL-K @ TL-M-SITE$ STR= 0= IF
+      sk TL-K @ TL-SITE-DRIFT
    THEN
    TL-K @ TL-M-TEST$ TRIM nip 0= IF
       s" UNTESTED " TL-OUT sk TL-PRINT-SITE

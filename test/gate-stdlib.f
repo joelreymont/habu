@@ -4,13 +4,13 @@
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and
 \ lib/test-runner.f.
 
-$40000 constant GS-SRC-CAP
+128 constant GS-SRC-MAX
 120000 constant GS-TIMEOUT-MS
 
-create GS-SRC-BUF GS-SRC-CAP allot
+create GS-SRC-A GS-SRC-MAX cells allot
+create GS-SRC-LEN GS-SRC-MAX cells allot
 
-variable GS-SRC-U
-variable GS-RD
+variable GS-SRC-N
 
 : GS-CAPTURE-STORE ( -- )
    PROC-OUT-LEN @ GT-OUT-U !
@@ -115,12 +115,25 @@ variable GS-RD
    label labelu GT-PROGRESS-PASS ;
 
 : GS-SRC-RESET ( -- )
-   0 GS-SRC-U ! ;
+   0 GS-SRC-N ! ;
 
 : GS-SRC+ ( ptr u8 n -- ) {: path:ptr pathu :}
-   path pathu GS-SRC-BUF GS-SRC-U @ + GS-SRC-CAP GS-SRC-U @ -
-   READ-ALL GS-RD !
-   GS-SRC-U @ GS-RD @ + GS-SRC-U ! ;
+   GS-SRC-N @ GS-SRC-MAX >= if E-FS-CAPACITY throw then
+   path GS-SRC-A GS-SRC-N @ cells + !
+   pathu GS-SRC-LEN GS-SRC-N @ cells + !
+   GS-SRC-N @ 1+ GS-SRC-N ! ;
+
+: GS-SRC$ ( n -- ptr u8 n ) {: idx :}
+   idx 0 < if E-FS-CAPACITY throw then
+   idx GS-SRC-N @ >= if E-FS-CAPACITY throw then
+   idx cells GS-SRC-A + @
+   idx cells GS-SRC-LEN + @ ;
+
+: GS-SRC-ARGS ( -- )
+   0 begin dup GS-SRC-N @ < while
+      dup GS-SRC$ GS-ARG+
+      1+
+   repeat drop ;
 
 : GS-CHECK-ARGV ( -- )
    PROC-ARGV-RESET
@@ -139,7 +152,9 @@ variable GS-RD
 : GS-CHECK-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    label labelu GT-PROGRESS-RUN
    GS-CHECK-ARGV
-   s" bin/hb" GS-SRC-BUF GS-SRC-U @ GS-TIMEOUT-MS label labelu GS-RUN-STDIN
+   s" --source-list" GS-ARG+
+   GS-SRC-ARGS
+   s" bin/hb" GS-TIMEOUT-MS label labelu GS-RUN-ENV
    label labelu GS-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
