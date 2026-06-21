@@ -1,6 +1,7 @@
 \ trust-lint.f - keep TRUST sites pinned to TRUSTED.md.
 \ Load after tools/date.f, tools/lint/lib.f, tools/fs.f, and tools/argv.f.
 \ Run: bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/argv.f tools/trust-lint.f -- [ROOT] [TODAY]
+\ Or:  bin/hb --load ... tools/trust-lint.f -- source-only SOURCE [ROOT] [TODAY]
 
 0 set-check
 
@@ -66,6 +67,9 @@ variable TL-CUR-PATH-U
 variable TL-CUR-LINE
 variable TL-ROOT-A
 variable TL-ROOT-U
+variable TL-SOURCE-ONLY
+variable TL-SOURCE-A
+variable TL-SOURCE-U
 variable TL-LA
 variable TL-LU
 variable TL-LX
@@ -424,32 +428,69 @@ variable TL-NV
 : TL-SCAN-OPTIONAL-ROOT ( ptr u8 n -- ) {: a:ptr u :}
    a u TL-ROOTED$ 2dup EXISTS? IF ['] TL-SCAN-SRC-FILE WALK-FILES ELSE 2drop THEN ;
 
-: TRUST-LINT ( -- )
+: TL-RESET ( -- )
    0 TL-END !  0 TL-S# !  0 TL-M# !  0 TL-BAD !
-   s" src" TL-SCAN-OPTIONAL-ROOT
-   s" lib" TL-SCAN-OPTIONAL-ROOT
-   TL-SCAN-MANIFEST
-   0 begin dup TL-S# @ < while dup TL-CHECK-SITE 1+ repeat drop
-   0 begin dup TL-M# @ < while dup TL-CHECK-STALE-ROW 1+ repeat drop
+;
+
+: TL-CHECK-SITES ( -- )
+   0 begin dup TL-S# @ < while dup TL-CHECK-SITE 1+ repeat drop ;
+
+: TL-CHECK-STALE-ROWS ( -- )
+   0 begin dup TL-M# @ < while dup TL-CHECK-STALE-ROW 1+ repeat drop ;
+
+: TL-REPORT ( -- )
    s" trust-lint: " TL-OUT TL-S# @ TL-U. s"  TRUST site(s), " TL-OUT
    TL-M# @ TL-U. s"  manifest row(s), " TL-OUT TL-BAD @ TL-U.
    s"  finding(s)" TL-OUT TL-NL
    TL-BAD @ 0 > IF 1 throw THEN ;
 
-: TL-CONFIG ( -- )
-   s" tools/trust-lint.f [ROOT] [TODAY]" ARGV-USAGE!
-   ARGV-PARSE
+: TRUST-LINT ( -- )
+   TL-RESET
+   s" src" TL-SCAN-OPTIONAL-ROOT
+   s" lib" TL-SCAN-OPTIONAL-ROOT
+   TL-SCAN-MANIFEST
+   TL-CHECK-SITES
+   TL-CHECK-STALE-ROWS
+   TL-REPORT ;
+
+: TRUST-LINT-SOURCE ( -- )
+   TL-RESET
+   TL-SOURCE-A @ TL-SOURCE-U @ TL-SCAN-SRC-FILE
+   TL-SCAN-MANIFEST
+   TL-CHECK-SITES
+   TL-REPORT ;
+
+: TL-CONFIG-TODAY ( n -- ) {: idx :}
+   idx ARGV-POS$ 2dup PARSE-YMD 0= IF drop TL-BAD-TODAY THEN
+   TL-TODAY-DAYS ! 2drop ;
+
+: TL-CONFIG-SOURCE ( -- )
+   ARGV-POS# 2 < IF s" wrong number of positional arguments" ARGV-FAIL THEN
+   ARGV-POS# 4 > IF s" wrong number of positional arguments" ARGV-FAIL THEN
+   1 ARGV-POS$ TL-SOURCE-U ! TL-SOURCE-A !
+   ARGV-POS# 2 > IF 2 ARGV-POS$ TL-ROOT! ELSE s" ." TL-ROOT! THEN
+   ARGV-POS# 3 > IF 3 TL-CONFIG-TODAY ELSE epoch-seconds DATE-SECONDS-DAY / TL-TODAY-DAYS ! THEN ;
+
+: TL-CONFIG-ROOT ( -- )
    0 2 ARGV-EXPECT-POS
    ARGV-POS# 0 > IF 0 ARGV-POS$ TL-ROOT! ELSE s" ." TL-ROOT! THEN
-   ARGV-POS# 1 > IF
-      1 ARGV-POS$ 2dup PARSE-YMD 0= IF drop TL-BAD-TODAY THEN
-      TL-TODAY-DAYS ! 2drop
-   ELSE
-      epoch-seconds DATE-SECONDS-DAY / TL-TODAY-DAYS !
-   THEN ;
+   ARGV-POS# 1 > IF 1 TL-CONFIG-TODAY ELSE epoch-seconds DATE-SECONDS-DAY / TL-TODAY-DAYS ! THEN ;
+
+: TL-CONFIG ( -- )
+   s" tools/trust-lint.f [ROOT] [TODAY] | source-only SOURCE [ROOT] [TODAY]" ARGV-USAGE!
+   ARGV-PARSE
+   0 TL-SOURCE-ONLY !
+   ARGV-POS# 0 > IF
+      0 ARGV-POS$ s" source-only" STR= IF
+         -1 TL-SOURCE-ONLY !
+         TL-CONFIG-SOURCE
+         exit
+      THEN
+   THEN
+   TL-CONFIG-ROOT ;
 
 : TL-MAIN ( -- )
    TL-CONFIG
-   TRUST-LINT ;
+   TL-SOURCE-ONLY @ IF TRUST-LINT-SOURCE ELSE TRUST-LINT THEN ;
 
 TL-MAIN

@@ -273,6 +273,19 @@ variable CHK-ERR-PATH-U
    s" --strict-boundary" PROC-ARGV+
    CHK-SOURCE PROC-ARGV+ ;
 
+: CHK-ARGV-TRUST ( -- )
+   PROC-ARGV-RESET
+   s" --load" PROC-ARGV+
+   s" tools/date.f" PROC-ARGV+
+   s" tools/lint/lib.f" PROC-ARGV+
+   s" tools/fs.f" PROC-ARGV+
+   s" tools/argv.f" PROC-ARGV+
+   s" tools/trust-lint.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   s" source-only" PROC-ARGV+
+   CHK-SOURCE PROC-ARGV+
+   s" ." PROC-ARGV+ ;
+
 : CHK-ARGV-DIAG ( -- )
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
@@ -330,6 +343,15 @@ variable CHK-ERR-PATH-U
 
 : CHK-RUN-BOUNDARY ( -- )
    CHK-ARGV-BOUNDARY
+   CHK-RUN-CAPTURE
+   CHK-RC @ 0= if exit then
+   CHK-OUT-BUF CHK-OUT-U @ CHK-ERR
+   CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
+   CHK-RC @ CHK-THROW ;
+
+: CHK-RUN-TRUST ( -- )
+   CHK-POS-N @ 0= if exit then
+   CHK-ARGV-TRUST
    CHK-RUN-CAPTURE
    CHK-RC @ 0= if exit then
    CHK-OUT-BUF CHK-OUT-U @ CHK-ERR
@@ -397,6 +419,7 @@ variable CHK-ERR-PATH-U
    CHK-PARSE
    CHK-MATERIALIZE
    CHK-RUN-BOUNDARY
+   CHK-RUN-TRUST
    CHK-RUN-STRICT
    CHK-ALL @ if CHK-RUN-ALL then
    CHK-CHECK-LABEL

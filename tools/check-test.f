@@ -64,6 +64,10 @@ variable CKT-BAD-U
    CKT-BAD$ PROC-ARGV+
    s" bin/hb" CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
 
+: CKT-RUN-SRC-FILE-JSON ( ptr u8 n -- n n n )
+   CKT-BAD$ 2swap WRITE-ALL
+   CKT-RUN-FILE-JSON ;
+
 : CKT-RUN-ARGS ( -- n n n )
    CKT-ARGV-BASE
    s" --bad-flag" PROC-ARGV+
@@ -125,6 +129,35 @@ variable CKT-BAD-U
    s" ' BAD-HOOK set-check" SB-APPEND
    10 SB-APPEND-C
    s" : BAD-HOOKED ( -- ) 1 ;" SB-APPEND
+   SB$ ;
+
+: CKT-UNAUDITED-TRUST$ ( -- ptr u8 n )
+   SB-RESET
+   s" s" SB-APPEND
+   34 SB-APPEND-C
+   s"  EVIL" SB-APPEND
+   34 SB-APPEND-C
+   s"  s" SB-APPEND
+   34 SB-APPEND-C
+   s"  --" SB-APPEND
+   34 SB-APPEND-C
+   s"  TRUST" SB-APPEND
+   10 SB-APPEND-C
+   s" : OK ( -- ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-UNAUDITED-TRUSTED$ ( -- ptr u8 n )
+   SB-RESET
+   s" TRUSTED: EVIL ( -- ) ;" SB-APPEND
+   10 SB-APPEND-C
+   s" : OK ( -- ) EVIL ;" SB-APPEND
+   SB$ ;
+
+: CKT-AUDITED-TRUSTED$ ( -- ptr u8 n )
+   SB-RESET
+   s" TRUSTED: TTHROWS-RAW ( a n -- ) ;" SB-APPEND
+   10 SB-APPEND-C
+   s" : OK ( -- ) ;" SB-APPEND
    SB$ ;
 
 : CKT-PREPARE ( -- )
@@ -199,6 +232,25 @@ variable CKT-BAD-U
    CKT-ERR erru s" CHECKER-MUTATION" CONTAINS? TTRUE
    CKT-ERR erru s" set-check" CONTAINS? TTRUE ;
 
+: CKT-EXPECT-TRUST-REJECT ( ptr u8 n -- ) {: src:ptr srcu :}
+   src srcu CKT-RUN-SRC-FILE-JSON 0 T<>
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" UNMANIFESTED" CONTAINS? TTRUE
+   CKT-ERR erru s" EVIL" CONTAINS? TTRUE ;
+
+: CKT-TEST-TRUST-REJECT ( -- )
+   CKT-UNAUDITED-TRUST$ CKT-EXPECT-TRUST-REJECT ;
+
+: CKT-TEST-TRUSTED-REJECT ( -- )
+   CKT-UNAUDITED-TRUSTED$ CKT-EXPECT-TRUST-REJECT ;
+
+: CKT-TEST-AUDITED-TRUSTED ( -- )
+   CKT-AUDITED-TRUSTED$ CKT-RUN-SRC-FILE-JSON 0 T=
+   {: outu erru :}
+   outu 0 T=
+   erru 0 T= ;
+
 : CKT-MAIN ( -- )
    T-RESET
    CKT-PREPARE
@@ -213,6 +265,9 @@ variable CKT-BAD-U
    CKT-TEST-DIE
    CKT-TEST-SET-CHECK-OFF
    CKT-TEST-HOOK-REPLACE
+   CKT-TEST-TRUST-REJECT
+   CKT-TEST-TRUSTED-REJECT
+   CKT-TEST-AUDITED-TRUSTED
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;
