@@ -10,6 +10,7 @@
 32768 constant GT-ERR-CAP
 10000 constant GT-DEFAULT-TIMEOUT-MS
 5000 constant GT-HEARTBEAT-MS
+10 constant GT-LF
 
 create GT-ROOT-BUF FS-PATH-CAP allot
 create GT-OUT-BUF GT-OUT-CAP allot
@@ -25,6 +26,9 @@ variable GT-OUTCOME-CODE
 variable GT-FAIL#
 variable GT-PROGRESS-START-NS
 variable GT-PROGRESS-LAST-NS
+variable GT-LINE-END
+variable GT-FLUSH-U
+variable GT-TAIL-U
 
 : GT-FAIL-SLOT ( n -- ptr u8 ) {: idx :}
    idx 0 < if E-TBL-BOUNDS throw then
@@ -103,6 +107,38 @@ variable GT-PROGRESS-LAST-NS
 
 : GT-RUN-DEFAULT ( ptr u8 n -- )
    GT-DEFAULT-TIMEOUT-MS GT-RUN ;
+
+: GT-LINE-FLUSH-U ( ptr u8 n -- n ) {: a:ptr u :}
+   u 0 < if E-STR-BOUNDS throw then
+   0 GT-LINE-END !
+   0 begin dup u < while
+      dup a + c@ GT-LF = if dup 1+ GT-LINE-END ! then
+      1+
+   repeat drop
+   GT-LINE-END @ ;
+
+: GT-WRITE-FD ( n ptr u8 n -- ) {: fd a:ptr u :}
+   u 0 < if E-STR-BOUNDS throw then
+   u 0= if exit then
+   fd a u write u <> if E-FS-IO throw then ;
+
+: GT-FLUSH-LINES-FD ( n ptr u8 ptr a -- ) {: fd buf:ptr lenp:ptr :}
+   lenp @ 0 < if E-STR-BOUNDS throw then
+   buf lenp @ GT-LINE-FLUSH-U GT-FLUSH-U !
+   GT-FLUSH-U @ 0 <= if exit then
+   fd buf GT-FLUSH-U @ GT-WRITE-FD
+   lenp @ GT-FLUSH-U @ - GT-TAIL-U !
+   GT-TAIL-U @ 0 > if
+      buf GT-FLUSH-U @ + buf GT-TAIL-U @ BYTE-COPY
+   then
+   GT-TAIL-U @ lenp ! ;
+
+: GT-FLUSH-REMAINDER-FD ( n ptr u8 ptr a -- ) {: fd buf:ptr lenp:ptr :}
+   lenp @ GT-TAIL-U !
+   GT-TAIL-U @ 0 < if E-STR-BOUNDS throw then
+   GT-TAIL-U @ 0= if exit then
+   fd buf GT-TAIL-U @ GT-WRITE-FD
+   0 lenp ! ;
 
 : GT-PROGRESS-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    mono-ns GT-PROGRESS-START-NS !

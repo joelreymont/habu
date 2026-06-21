@@ -931,6 +931,11 @@ poll timeout with `GT-PROGRESS-SLICE-MS` and call `GT-PROGRESS-WAIT` on quiet
 polls so silent children still produce regular heartbeat lines. The progress
 helpers print only runner labels and elapsed milliseconds; successful child
 stdout/stderr remains captured unless the caller deliberately streams it.
+Streaming callers that do forward child output should route capture buffers
+through `GT-FLUSH-LINES-FD` during polling and `GT-FLUSH-REMAINDER-FD` at process
+exit. This keeps parent progress records serialized at line boundaries: a child
+line written in several chunks cannot be split by a parent heartbeat, while a
+final unterminated child fragment is still emitted before PASS/FAIL.
 `lib/build.f` owns build step modeling, checked source certification, artifact
 path construction, and fail-closed status reporting. `BUILD-CHECK` requires a
 counted source path that names a file, scans colon definitions in bounded module

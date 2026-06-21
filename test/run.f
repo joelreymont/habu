@@ -51,29 +51,13 @@
    s" lib/process-env.f" PROC-ARGV+
    s" lib/test-runner.f" PROC-ARGV+ ;
 
-: TR-WRITE-FD ( n ptr u8 n -- ) {: fd a:ptr u :}
-   u 0= if exit then
-   fd a u write u <> if E-FS-IO throw then ;
+: TR-FLUSH-CAPTURE-LINES ( -- )
+   1 GT-OUT-BUF PROC-OUT-LEN GT-FLUSH-LINES-FD
+   2 GT-ERR-BUF PROC-ERR-LEN GT-FLUSH-LINES-FD ;
 
-: TR-FLUSH-OUT-U ( n -- )
-   dup 0 > if
-      1 GT-OUT-BUF rot TR-WRITE-FD
-      0 PROC-OUT-LEN !
-   else
-      drop
-   then ;
-
-: TR-FLUSH-ERR-U ( n -- )
-   dup 0 > if
-      2 GT-ERR-BUF rot TR-WRITE-FD
-      0 PROC-ERR-LEN !
-   else
-      drop
-   then ;
-
-: TR-FLUSH-CAPTURE ( -- )
-   PROC-OUT-LEN @ TR-FLUSH-OUT-U
-   PROC-ERR-LEN @ TR-FLUSH-ERR-U ;
+: TR-FLUSH-CAPTURE-FINAL ( -- )
+   1 GT-OUT-BUF PROC-OUT-LEN GT-FLUSH-REMAINDER-FD
+   2 GT-ERR-BUF PROC-ERR-LEN GT-FLUSH-REMAINDER-FD ;
 
 : TR-SPAWN-CAPTURE ( -- )
    s" bin/hb" PROC-ARGV-CHECK-PATH
@@ -86,16 +70,21 @@
    begin PROC-CAPTURE-DONE? 0= while
       GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup 0= if
          drop
-         PROC-REMAINING-MS 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
+         PROC-REMAINING-MS 0 <= if
+            PROC-REAP-CAPTURE-TIMEOUT
+            TR-FLUSH-CAPTURE-FINAL
+            exit
+         then
          label labelu GT-PROGRESS-WAIT
       else
          drop
          GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP PROC-DRAIN-READY
-         TR-FLUSH-CAPTURE
+         TR-FLUSH-CAPTURE-LINES
          label labelu GT-PROGRESS-WAIT
       then
    repeat
-   PROC-REAP-CAPTURE ;
+   PROC-REAP-CAPTURE
+   TR-FLUSH-CAPTURE-FINAL ;
 
 : TR-PHASE-OK? ( -- bool )
    PROC-OUTCOME-KIND @ PROC-OUTCOME-EXIT =

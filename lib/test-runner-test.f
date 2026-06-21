@@ -6,10 +6,17 @@
 create GTT-OK-PATH FS-PATH-CAP allot
 create GTT-FAIL-PATH FS-PATH-CAP allot
 create GTT-HANG-PATH FS-PATH-CAP allot
+create GTT-LINE-PATH FS-PATH-CAP allot
+128 constant GTT-LINE-CAP
+create GTT-LINE-BUF GTT-LINE-CAP allot
+create GTT-READ-BUF GTT-LINE-CAP allot
 
 variable GTT-OK-U
 variable GTT-FAIL-U
 variable GTT-HANG-U
+variable GTT-LINE-U
+variable GTT-LINE-LEN
+variable GTT-LINE-FD
 
 : GTT-OK$ ( -- ptr u8 n )
    GTT-OK-PATH GTT-OK-U @ ;
@@ -20,8 +27,28 @@ variable GTT-HANG-U
 : GTT-HANG$ ( -- ptr u8 n )
    GTT-HANG-PATH GTT-HANG-U @ ;
 
+: GTT-LINE$ ( -- ptr u8 n )
+   GTT-LINE-PATH GTT-LINE-U @ ;
+
 : GTT-LF ( -- )
    10 SB-APPEND-C ;
+
+: GTT-LINES-PARTIAL$ ( -- ptr u8 n )
+   SB-RESET
+   s" alpha" SB-APPEND GTT-LF
+   s" beta" SB-APPEND
+   SB$ ;
+
+: GTT-LINES-COMPLETE$ ( -- ptr u8 n )
+   SB-RESET
+   s" alpha" SB-APPEND GTT-LF
+   s" beta" SB-APPEND GTT-LF
+   SB$ ;
+
+: GTT-ALPHA-LINE$ ( -- ptr u8 n )
+   SB-RESET
+   s" alpha" SB-APPEND GTT-LF
+   SB$ ;
 
 : GTT-OK-SRC$ ( -- ptr u8 n )
    SB-RESET
@@ -55,10 +82,34 @@ variable GTT-HANG-U
    s" bad-err" SB-APPEND GTT-LF
    SB$ ;
 
+: GTT-LINE-BUF! ( ptr u8 n -- ) {: a:ptr u :}
+   u 0 < if E-STR-BOUNDS throw then
+   u GTT-LINE-CAP > if E-STR-CAPACITY throw then
+   a GTT-LINE-BUF u BYTE-COPY
+   u GTT-LINE-LEN ! ;
+
+: GTT-LINE-FILE-RESET ( -- )
+   GTT-LINE$ SB-RESET SB$ WRITE-ALL ;
+
+: GTT-LINE-FLUSH-LINES ( -- )
+   GTT-LINE$ OPEN-APPEND-FD GTT-LINE-FD !
+   GTT-LINE-FD @ GTT-LINE-BUF GTT-LINE-LEN GT-FLUSH-LINES-FD
+   GTT-LINE-FD @ close ;
+
+: GTT-LINE-FLUSH-REMAINDER ( -- )
+   GTT-LINE$ OPEN-APPEND-FD GTT-LINE-FD !
+   GTT-LINE-FD @ GTT-LINE-BUF GTT-LINE-LEN GT-FLUSH-REMAINDER-FD
+   GTT-LINE-FD @ close ;
+
+: GTT-LINE-FILE$ ( -- ptr u8 n )
+   GTT-LINE$ GTT-READ-BUF GTT-LINE-CAP READ-ALL
+   GTT-READ-BUF swap ;
+
 : GTT-PATHS! ( -- )
    s" ok.f" GTT-OK-PATH GT-PATH GTT-OK-U !
    s" fail.f" GTT-FAIL-PATH GT-PATH GTT-FAIL-U !
-   s" hang.f" GTT-HANG-PATH GT-PATH GTT-HANG-U ! ;
+   s" hang.f" GTT-HANG-PATH GT-PATH GTT-HANG-U !
+   s" lines.txt" GTT-LINE-PATH GT-PATH GTT-LINE-U ! ;
 
 : GTT-WRITE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
    path pathu src srcu WRITE-ALL ;
@@ -126,6 +177,22 @@ variable GTT-HANG-U
    GT-RESET
    GT-FAILURES 0 T= ;
 
+: GTT-TEST-LINE-FLUSH-U ( -- )
+   s" abc" GT-LINE-FLUSH-U 0 T=
+   GTT-LINES-PARTIAL$ GT-LINE-FLUSH-U 6 T=
+   GTT-LINES-COMPLETE$ GT-LINE-FLUSH-U 11 T= ;
+
+: GTT-TEST-LINE-FLUSH-FD ( -- )
+   GTT-LINE-FILE-RESET
+   GTT-LINES-PARTIAL$ GTT-LINE-BUF!
+   GTT-LINE-FLUSH-LINES
+   GTT-LINE-LEN @ 4 T=
+   GTT-LINE-BUF GTT-LINE-LEN @ s" beta" T$=
+   GTT-LINE-FILE$ GTT-ALPHA-LINE$ T$=
+   GTT-LINE-FLUSH-REMAINDER
+   GTT-LINE-LEN @ 0 T=
+   GTT-LINE-FILE$ GTT-LINES-PARTIAL$ T$= ;
+
 : GTT-TEST-PROGRESS ( -- )
    s" fixture progress" GT-PROGRESS-RUN
    GT-PROGRESS-LAST-NS @ GT-HEARTBEAT-MS PROC-NS-PER-MS * -
@@ -141,6 +208,8 @@ variable GTT-HANG-U
    GTT-TEST-FAILING-COMMAND
    GTT-TEST-TIMEOUT
    GTT-TEST-AGGREGATE-FAILURES
+   GTT-TEST-LINE-FLUSH-U
+   GTT-TEST-LINE-FLUSH-FD
    GTT-TEST-PROGRESS
    GT-CLEANUP
    GT-ROOT EXISTS? TFALSE
