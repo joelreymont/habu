@@ -42,6 +42,16 @@ create CAE-LF-BYTE 10 c,
    s" : BAD2 ( i64 -- ) >r ;" SB-APPEND CAE-LF
    SB$ ;
 
+: CAE-SUPPORT-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" 7 constant SUP-K" SB-APPEND CAE-LF
+   s" variable SUP-V" SB-APPEND CAE-LF
+   s" create SUP-B 1 cells allot" SB-APPEND CAE-LF
+   s" TRUSTED: SUP-T ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   s" : OK-SUP ( i64 -- i64 ) SUP-T SUP-K + ;" SB-APPEND CAE-LF
+   s" : BAD-SUP ( i64 -- i64 ) SUP-T SUP-K + SUP-V @ drop SUP-B drop dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
 : CAE-LARGE-START$ ( -- ptr u8 n )
    s" : LARGE-BAD ( i64 -- i64 ) ( " ;
 
@@ -74,6 +84,20 @@ create CAE-LF-BYTE 10 c,
    CAE-DQ s" word" SB-APPEND CAE-DQ
    58 SB-APPEND-C
    CAE-DQ s" bad2" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-WORD-BADSUP$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" word" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" bad-sup" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-TOKEN-SUPK$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" token" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" SUP-K" SB-APPEND CAE-DQ
    SB$ ;
 
 : CAE-PREPARE ( -- )
@@ -138,6 +162,15 @@ create CAE-LF-BYTE 10 c,
    CAE-LARGE PROC-ARGV+
    s" bin/hb" CAE-OUT CAE-BUF-CAP CAE-ERR CAE-BUF-CAP 2000 RUN-ARGV-CAPTURE ;
 
+: CAE-TEST-SUPPORT-PRELUDE ( -- )
+   CAE-IN CAE-SUPPORT-SOURCE$ WRITE-ALL
+   CAE-RUN 70 T=
+   {: outu erru :}
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-ERR erru CAE-WORD-BADSUP$ CONTAINS? TTRUE
+   CAE-ERR erru CAE-TOKEN-SUPK$ CONTAINS? TFALSE
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
 : CAE-MAIN ( -- )
    T-RESET
    CAE-PREPARE
@@ -152,6 +185,7 @@ create CAE-LF-BYTE 10 c,
    {: loutu lerru :}
    CAE-OUT loutu CAE-EMPTY$ T$=
    CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE
+   CAE-TEST-SUPPORT-PRELUDE
    CLEANUP-RUN
    CAE-ROOT EXISTS? TFALSE
    T-REPORT

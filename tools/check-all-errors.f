@@ -8,6 +8,7 @@ $10000 constant CA-PROG-EXTRA
 $10000 constant CA-ERR-CAP
 $400 constant CA-OUT-CAP
 512 constant CA-DEF-MAX
+512 constant CA-SUP-MAX
 32 constant CA-NUM-CAP
 
 10 constant CA-LF
@@ -31,8 +32,11 @@ create CA-DEF-LINE CA-DEF-MAX cells allot
 create CA-DEF-COL CA-DEF-MAX cells allot
 create CA-DEF-BYTE CA-DEF-MAX cells allot
 create CA-DEF-OK CA-DEF-MAX cells allot
+create CA-SUP-START CA-SUP-MAX cells allot
+create CA-SUP-END CA-SUP-MAX cells allot
 
 variable CA-DEF#
+variable CA-SUP#
 variable CA-I
 variable CA-J
 variable CA-K
@@ -65,6 +69,8 @@ variable CA-OUT-LEN
 variable CA-GOT
 variable CA-LS
 variable CA-LE
+variable CA-NEXT-D
+variable CA-NEXT-S
 
 variable CA-FILE-A
 variable CA-FILE-U
@@ -82,6 +88,8 @@ variable CA-FILE-U
 : CA-COL@ ( k -- n ) CA-DEF-COL swap CA-CELL@ ;
 : CA-BYTE@ ( k -- n ) CA-DEF-BYTE swap CA-CELL@ ;
 : CA-OK@ ( k -- n ) CA-DEF-OK swap CA-CELL@ ;
+: CA-SUP-START@ ( k -- n ) CA-SUP-START swap CA-CELL@ ;
+: CA-SUP-END@ ( k -- n ) CA-SUP-END swap CA-CELL@ ;
 
 : CA-START! ( n k -- ) CA-DEF-START swap CA-CELL! ;
 : CA-END! ( n k -- ) CA-DEF-END swap CA-CELL! ;
@@ -90,6 +98,8 @@ variable CA-FILE-U
 : CA-COL! ( n k -- ) CA-DEF-COL swap CA-CELL! ;
 : CA-BYTE! ( n k -- ) CA-DEF-BYTE swap CA-CELL! ;
 : CA-OK! ( n k -- ) CA-DEF-OK swap CA-CELL! ;
+: CA-SUP-START! ( n k -- ) CA-SUP-START swap CA-CELL! ;
+: CA-SUP-END! ( n k -- ) CA-SUP-END swap CA-CELL! ;
 
 : CA-WRITE {: fd a u :} ( fd a u -- )
    u 0= IF exit THEN
@@ -168,9 +178,114 @@ variable CA-FILE-U
    k CA-TOK-WORD? 0= IF 0 exit THEN
    k LTOK a u STR= ;
 
+: CA-TOK-CI= {: k a u :} ( k a u -- f )
+   k CA-TOK-WORD? 0= IF 0 exit THEN
+   k LTOK a u STR=CI ;
+
 : CA-PARSE-NEXT? {: k :} ( k -- f )
    k s" char" CA-TOK= IF -1 exit THEN
    k s" [char]" CA-TOK= ;
+
+: CA-SRC-C@ ( n -- c )
+   CA-SRC-A @ + c@ ;
+
+: CA-TOK-END-BYTE {: k :} ( k -- n )
+   k LB@ k LTOK nip + ;
+
+: CA-LINE-START-BYTE ( n -- n )
+   begin dup 0 > while
+      dup 1- CA-SRC-C@ CA-LF = IF exit THEN
+      1-
+   repeat ;
+
+: CA-LINE-END-BYTE ( n -- n )
+   begin dup CA-SRC-U @ < while
+      dup CA-SRC-C@ CA-LF = IF exit THEN
+      1+
+   repeat ;
+
+: CA-LINE-SEG-START {: k :} ( k -- n )
+   k LB@ CA-LINE-START-BYTE CA-LS !
+   k 1- CA-J !
+   begin CA-J @ 0 >= while
+      CA-J @ LL@ k LL@ <> IF CA-LS @ exit THEN
+      CA-J @ s" ;" CA-TOK= IF
+         CA-J @ CA-TOK-END-BYTE CA-LS !
+         CA-LS @ exit
+      THEN
+      CA-J @ 1- CA-J !
+   repeat
+   CA-LS @ ;
+
+: CA-LINE-SAFE-END {: k :} ( k -- n )
+   k LB@ CA-LINE-END-BYTE CA-LE !
+   k 1+ CA-J !
+   begin CA-J @ L# @ < while
+      CA-J @ LL@ k LL@ <> IF CA-LE @ exit THEN
+      CA-J @ s" :" CA-TOK= IF CA-J @ LB@ exit THEN
+      CA-J @ 1+ CA-J !
+   repeat
+   CA-LE @ ;
+
+: CA-LAST-TOK-BEFORE {: k end :} ( k n -- k )
+   k CA-J !
+   begin CA-J @ 1+ L# @ < while
+      CA-J @ 1+ LB@ end < IF
+         CA-J @ 1+ CA-J !
+      ELSE
+         CA-J @ exit
+      THEN
+   repeat
+   CA-J @ ;
+
+: CA-ADD-SUPPORT {: start end :} ( start end -- )
+   end start <= IF exit THEN
+   CA-SUP# @ CA-SUP-MAX >= IF s" check-all-errors: too many support slices" 76 die THEN
+   start CA-SUP# @ CA-SUP-START!
+   end CA-SUP# @ CA-SUP-END!
+   CA-SUP# @ 1+ CA-SUP# ! ;
+
+: CA-ADD-SUPPORT-LINE {: k :} ( k -- )
+   k CA-LINE-SEG-START
+   k CA-LINE-SAFE-END
+   CA-ADD-SUPPORT ;
+
+: CA-ADD-SUPPORT-PAIR {: k :} ( k -- )
+   k 1+ L# @ >= IF exit THEN
+   k LB@
+   k 1+ CA-TOK-END-BYTE
+   CA-ADD-SUPPORT
+   k 1+ CA-I ! ;
+
+: CA-ADD-SUPPORT-CONSTANT {: k :} ( k -- )
+   k 1+ L# @ >= IF exit THEN
+   k CA-LINE-SEG-START
+   k 1+ CA-TOK-END-BYTE
+   CA-ADD-SUPPORT
+   k 1+ CA-I ! ;
+
+: CA-FIND-SEMI {: k :} ( k -- tok )
+   k 1+ CA-J !
+   begin CA-J @ L# @ < while
+      CA-J @ CA-PARSE-NEXT? IF
+         CA-J @ 2 + CA-J !
+      ELSE CA-J @ s" ;" CA-TOK= IF
+         CA-J @ exit
+      ELSE
+         CA-J @ 1+ CA-J !
+      THEN THEN
+   repeat
+   L# @ ;
+
+: CA-ADD-SUPPORT-TRUSTED {: k :} ( k -- )
+   k CA-FIND-SEMI dup L# @ >= IF drop exit THEN
+   k LB@ swap CA-TOK-END-BYTE CA-ADD-SUPPORT
+   CA-J @ CA-I ! ;
+
+: CA-ADD-SUPPORT-TRUST {: k :} ( k -- )
+   k CA-LINE-SEG-START
+   k CA-TOK-END-BYTE
+   CA-ADD-SUPPORT ;
 
 : CA-ORIGIN! {: src dst :} ( src dst -- )
    src 1+ CA-TOK-WORD? IF
@@ -194,6 +309,7 @@ variable CA-FILE-U
 
 : CA-COLLECT-DEFS ( -- )
    0 CA-DEF# !
+   0 CA-SUP# !
    0 CA-I !
    begin CA-I @ L# @ < while
       CA-I @ s" :" CA-TOK= IF
@@ -211,6 +327,18 @@ variable CA-FILE-U
                CA-J @ 1+ CA-J !
             THEN THEN
          repeat
+      ELSE CA-I @ s" TRUSTED:" CA-TOK-CI= IF
+         CA-I @ CA-ADD-SUPPORT-TRUSTED
+      ELSE CA-I @ s" create" CA-TOK-CI= IF
+         CA-I @ CA-ADD-SUPPORT-LINE
+         CA-I @ CA-I @ CA-LINE-SAFE-END CA-LAST-TOK-BEFORE CA-I !
+      ELSE CA-I @ s" variable" CA-TOK-CI= IF
+         CA-I @ CA-ADD-SUPPORT-PAIR
+      ELSE CA-I @ s" constant" CA-TOK-CI= IF
+         CA-I @ CA-ADD-SUPPORT-CONSTANT
+      ELSE CA-I @ s" TRUST" CA-TOK-CI= IF
+         CA-I @ CA-ADD-SUPPORT-TRUST
+      THEN THEN THEN THEN THEN
       THEN
       CA-I @ 1+ CA-I !
    repeat ;
@@ -234,14 +362,47 @@ variable CA-FILE-U
    s"    CHECK! dup -1 <> IF 70 throw THEN ;" CA-PROG-LN
    s" ' CHECK-SH-HOOK set-check" CA-PROG-LN ;
 
-: CA-PROG-ACCEPTED {: upto :} ( upto -- )
-   0 begin dup upto < while
-      dup CA-OK@ IF
-         dup CA-START@ over CA-END@ CA-PROG-SLICE
-         CA-LF CA-PROG-C
+: CA-INF ( -- n )
+   CA-SRC-U @ 1+ ;
+
+: CA-NEXT-DEF {: limit :} ( -- n )
+   CA-I @ CA-DEF# @ < IF
+      CA-I @ CA-START@ limit < IF CA-I @ CA-START@ exit THEN
+   THEN
+   CA-INF ;
+
+: CA-NEXT-SUP {: limit :} ( -- n )
+   CA-J @ CA-SUP# @ < IF
+      CA-J @ CA-SUP-START@ limit < IF CA-J @ CA-SUP-START@ exit THEN
+   THEN
+   CA-INF ;
+
+: CA-PROG-DEF-I ( -- )
+   CA-I @ CA-OK@ IF
+      CA-I @ CA-START@ CA-I @ CA-END@ CA-PROG-SLICE
+      CA-LF CA-PROG-C
+   THEN
+   CA-I @ 1+ CA-I ! ;
+
+: CA-PROG-SUP-J ( -- )
+   CA-J @ CA-SUP-START@ CA-J @ CA-SUP-END@ CA-PROG-SLICE
+   CA-LF CA-PROG-C
+   CA-J @ 1+ CA-J ! ;
+
+: CA-PROG-CONTEXT {: k :} ( k -- )
+   0 CA-I !
+   0 CA-J !
+   begin
+      k CA-START@ CA-NEXT-DEF CA-NEXT-D !
+      k CA-START@ CA-NEXT-SUP CA-NEXT-S !
+      CA-NEXT-D @ CA-INF < CA-NEXT-S @ CA-INF < or
+   while
+      CA-NEXT-D @ CA-NEXT-S @ <= IF
+         CA-PROG-DEF-I
+      ELSE
+         CA-PROG-SUP-J
       THEN
-      1+
-   repeat drop ;
+   repeat ;
 
 : CA-PROG-ORIGIN {: k :} ( k -- )
    k CA-LINE@ CA-PROG-U  CA-SP CA-PROG-C
@@ -252,7 +413,7 @@ variable CA-FILE-U
 : CA-BUILD-PROGRAM {: k :} ( k -- )
    0 CA-PROG-LEN !
    CA-PROG-PREFIX
-   k CA-PROG-ACCEPTED
+   k CA-PROG-CONTEXT
    k CA-PROG-ORIGIN
    k CA-START@ k CA-END@ CA-PROG-SLICE ;
 
