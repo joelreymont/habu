@@ -116,9 +116,9 @@ primitives consume typed pointers, and `ptr` without an inner type is rejected.
 - `test/` — `T{ … }T` tests. `test/run.sh` is the DEFAULT gate, habu-native
   end to end: lints + self-rebuild fixpoint + engine suite + checked `hb` +
 	  tty REPL + hb-build (runs with gforth absent). `tools/` also holds
-	  seed/build/hb-build/imgdump/
-	  jitdump/clobber-lint/shadow-lint/repl-lint, and `snap-hb.sh` for refreshing
-  `bin/hb`.
+	  seed/build-fixpoint/hb-build/imgdump/
+	  jitdump/clobber-lint/shadow-lint/repl-lint; snapshot refreshes run through
+  the checked `tools/build-fixpoint.f snap|install` driver.
 
 ## Combinators
 

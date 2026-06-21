@@ -296,7 +296,7 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    s" hb-stdin" BF-CHMOD-X-TMP
    s" hb-stdin" BF-CODESIGN-VERIFY-TMP ;
 
-: BF-BUILD-SNAP ( -- )
+: BF-BUILD-SNAP-FROM-STDIN ( -- )
    BF-SNAP-SOURCE
    s" hb-snap0" BF-REMOVE-TMP
    s" hb-new" BF-REMOVE-TMP
@@ -308,10 +308,15 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    s" hb-new" BF-EXPECT
    s" build OK: hb-new validated" type cr ;
 
+: BF-BUILD-SNAP ( -- )
+   BF-STAGE-FIXPOINT
+   BF-BUILD-STDIN
+   BF-BUILD-SNAP-FROM-STDIN ;
+
 : BF-BUILD-ALL ( -- )
    BF-STAGE-FIXPOINT
    BF-BUILD-STDIN
-   BF-BUILD-SNAP ;
+   BF-BUILD-SNAP-FROM-STDIN ;
 
 : BF-INSTALL-HB-NEW ( -- )
    s" hb-new" BF-A$ s" bin/hb" RENAME-FILE

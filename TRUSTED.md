@@ -80,6 +80,6 @@ body. Re-audit when a row's body or effect string changes.
 | AOT-PB@ | `-- ptr u8` | Reads the AOT build source buffer pointer stored in a raw variable. | `test/run.sh`, `tools/hb-build.f` | src/habu/aot.f:14 | 2026-06-16 |
 | AOT-DBASE@ | `-- ptr a` | Reads the runtime dictionary base pointer for AOT dictionary-record scans; record fields are mixed, so callers specialize the pointee type at each access. | `test/run.sh`, `tools/hb-build.f` | src/habu/aot.f:16 | 2026-06-16 |
 | AOT-PTR@ | `ptr a -- ptr a` | Reads a dictionary long-name pointer field whose pointee is another address; the checker cannot express this pointer-to-pointer load yet. | `test/run.sh`, `tools/hb-build.f` | src/habu/aot.f:17 | 2026-06-16 |
-| STB@ | `-- ptr u8` | Reads the snapshot source text base pointer stored in a raw variable. | `test/run.sh`, `tools/snap-hb.sh` | src/habu/snap.f:21 | 2026-06-16 |
-| SDB@ | `-- ptr u8` | Reads the snapshot dictionary/data-region pointer stored in a raw variable. | `test/run.sh`, `tools/snap-hb.sh` | src/habu/snap.f:23 | 2026-06-16 |
+| STB@ | `-- ptr u8` | Reads the snapshot source text base pointer stored in a raw variable. | `test/run.sh`, `tools/build-fixpoint.f snap` | src/habu/snap.f:21 | 2026-06-16 |
+| SDB@ | `-- ptr u8` | Reads the snapshot dictionary/data-region pointer stored in a raw variable. | `test/run.sh`, `tools/build-fixpoint.f snap` | src/habu/snap.f:23 | 2026-06-16 |
 | SBUF@ | `-- ptr u8` | Reads the stage2 source buffer pointer stored in a raw variable. | `test/run.sh` | src/habu/stage2.f:12 | 2026-06-16 |

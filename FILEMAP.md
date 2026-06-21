@@ -44,7 +44,7 @@ points stay listed.
 ## Tools And Gates
 
 - `tools/seed.sh` — install a trusted native seed, then rebuild current source.
-- `tools/snap-hb.sh` — refreshes the checked `bin/hb` image.
+- `tools/build-fixpoint.f` — checked native stage/stdin/snapshot build driver.
 - `tools/check.f` — Habu-native checked engine runner.
 - `tools/check-test.f` — checked fixture coverage for the native check runner.
 - `tools/sha256-file-test.f` — checked fixture coverage for streaming SHA-256 helpers.

@@ -4,10 +4,10 @@
 \ data region + a 40-byte trailer. The engine's startup loader (em-startup)
 \ detects the trailer, restores both regions (fixed VAs make region addresses
 \ valid as-is), relocates engine-text call chains, and boots WARM — zero
-\ recompile. The output is unsigned; tools/snap-hb.sh codesigns it.
+\ recompile. The native build-fixpoint driver signs and installs the output.
 $48425350414E5321 constant SNAP-MAGIC
 
-\ output path — the single knob; tools/snap-hb.sh owns/moves the artifact
+\ output path — the single knob; build-fixpoint owns/moves the artifact
 : SNAP-OUT s" hb-snap0" TMP-PATH ;
 
 create TRL 40 allot
