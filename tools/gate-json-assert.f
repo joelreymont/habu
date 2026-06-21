@@ -1,4 +1,4 @@
-\ gate-json-assert.f - native JSON assertions for test/run.sh.
+\ gate-json-assert.f - native JSON assertions for test/run.f.
 \ Load after tools/json.f.
 
 0 set-check

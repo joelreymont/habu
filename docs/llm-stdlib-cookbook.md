@@ -250,7 +250,7 @@ Build policy belongs in checked Habu. The published signatures include
 `BUILD-ARTIFACT ( ptr u8 n ptr u8 n -- ptr u8 n )`,
 `BUILD-STEP ( ptr u8 n [ -- n ] -- )`, and
 `BUILD-RUN ( ptr u8 n ptr u8 n -- n )`. They are covered by `lib/build-test.f`,
-`tools/build-fixpoint-test.f`, and the `hb-build` checks inside `test/run.sh`.
+`tools/build-fixpoint-test.f`, and the `hb-build` checks inside `test/run.f`.
 
 ```forth
 create BE-STEP BUILD-STEP-CELLS cells allot
@@ -284,5 +284,5 @@ when signatures or stdlib prose changed:
 ```sh
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/lib.f tools/stdlib-manifest-test.f
-( cd test && ./run.sh )
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f
 ```

@@ -208,7 +208,7 @@ is no dict cap to hit.
   false-cert). Defaults are seed `1`, count `250`, preserving the smoke behavior.
 - **Override:** `bin/hb 123 1000 < test/prop-test.f` runs seed `123`, count
   `1000` when the stdin script has access to `ARGC`/`ARGV`.
-- **Smoke (in `test/run.sh`):** 250 programs, sub-second, in-process; fails the
+- **Smoke (in `test/run.f`):** 250 programs, sub-second, in-process; fails the
   gate on any FALSE-CERT. `SELFTEST` sanity-checks the comparison predicate,
   `SELFTEST-SHRINK` exercises shrinking, and `BAITS` asserts programs a sound
   checker must reject stay rejected.
@@ -238,4 +238,4 @@ is no dict cap to hit.
 
 - `test/prop-test.f` — the whole self-hosted harness: PRNG + generator + driver +
   measurement, run by `bin/hb`, in-process via `evaluate`.
-- `test/run.sh` — smoke invocation.
+- `test/run.f` — smoke invocation.

@@ -47,7 +47,8 @@ bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f l
 ```
 
 ```sh
-( cd test && ./run.sh )        # default gate: habu-native, no gforth, <10 s
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f
+                       # default gate: habu-native, no gforth
 ```
 
 ## The type system
@@ -113,7 +114,7 @@ primitives consume typed pointers, and `ptr` without an inner type is rejected.
   (encoders, assembler, disassembler, mnemonics), `src/habu/` (engine builder
   parts, jit, profiler, crash, stage2 driver), `src/os/macos/` (Mach-O,
   signing).
-- `test/` — `T{ … }T` tests. `test/run.sh` is the DEFAULT gate, habu-native
+- `test/` — `T{ … }T` tests. `test/run.f` is the DEFAULT gate, habu-native
   end to end: lints + self-rebuild fixpoint + engine suite + checked `hb` +
 	  tty REPL + hb-build (runs with gforth absent). `tools/` also holds
 	  seed/build-fixpoint/hb-build/imgdump/
@@ -133,7 +134,7 @@ checked program can use them and run:
 ## Self-host & trusted code
 
 Real checker logic is re-checked **through habu's own checker**
-(`test/run.sh`) and verified to compute the native result:
+(`test/run.f`) and verified to compute the native result:
 - the complete **term encoding** (type- and stack-term bit encodings),
 - **concrete unification** (`C-UNICON` — the concrete case of `UNIFY-TYPE`),
 - **binding resolution** (`C-RESOLVE` — the full `BEGIN/WHILE/REPEAT` chase loop,

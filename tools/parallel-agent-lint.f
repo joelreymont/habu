@@ -55,7 +55,7 @@ variable PAL-NUM-L
    s" read-only" PAL-REQ
    s" must not edit the current working tree" PAL-REQ
    s" disjoint" PAL-REQ
-   s" ( cd test && ./run.sh )" PAL-REQ
+   s" bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f" PAL-REQ
    s" parallel-agent-lint: " type PAL-BAD @ PAL-U. s"  finding(s)" type PAL-NL
    PAL-BAD @ 0 > IF 1 throw THEN ;
 

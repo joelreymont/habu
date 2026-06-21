@@ -3,7 +3,7 @@
 ## Problem statement
 
 Complete. The build-time shadow and clobber linters are self-hosted Habu scripts
-under `tools/lint/`, run by `bin/hb` in `test/run.sh`, and the old host
+under `tools/lint/`, run by `bin/hb` in `test/run.f`, and the old host
 implementations have been deleted. The old boot-vs-port parity lint is retired:
 the native build-fixpoint installer is the active parity proof. The default
 lint gate has no bootstrap inputs.
@@ -26,7 +26,7 @@ Bootstrap emitters are no longer inputs to the default lint gate.
 - **`tools/lint/clobber-lint.f`** — reproduces the register-clobber model.
 - **`tools/host-lint.f`** — gates retired host-script workflow tokens and stale
   file names so the default workflow stays self-hosted.
-- **`test/run.sh`** feeds each linter through `bin/hb`.
+- **`test/run.f`** feeds each linter through `bin/hb`.
 
 ## Habu gotchas
 

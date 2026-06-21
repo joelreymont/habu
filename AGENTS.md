@@ -62,5 +62,5 @@ constants; and a `T{ … -> … }T` test for every word.
 - Parallel dot execution follows `docs/parallel-agents.md`: read-only scouts do
   not edit the current tree; workers edit isolated jj workspaces unless their
   file ownership is disjoint.
-- Gate: `( cd test && ./run.sh )` — Habu-native, no gforth, <10 s. If `bin/hb`
+- Gate: `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f` — Habu-native, no gforth. If `bin/hb`
   is missing, install a trusted native seed with `tools/seed.sh /path/to/hb-seed`.

@@ -14,13 +14,13 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   immediate native build-fixpoint install make the installed binary current-source
   native, without making gforth the normal trust root.
 - **No hosted bootstrap in daily work:** daily work uses `bin/hb`, the native
-  build-fixpoint installer, and `test/run.sh`. No-binary recovery uses `tools/seed.sh`.
+  build-fixpoint installer, and `test/run.f`. No-binary recovery uses `tools/seed.sh`.
 - **Early stdlib fixtures can load libraries directly:** before manifest/bundle
   plumbing exists, focused `tools/*-test.f` fixtures can concatenate `lib/*.f`
   directly with their driver to test canonical library policy in isolation.
 - **Native rebuilds need private temp dirs:** parallel jj workspaces share host
   `/tmp`; fixed names like `stage2-got` race. Native build flows,
-  `tools/seed.sh`, and `test/run.sh` allocate and export private `HB_TMP`
+  `tools/seed.sh`, and `test/run.f` allocate and export private `HB_TMP`
   by default where they run builds, while preserving explicit `HB_TMP` for repro.
 - **Build temp overrides must drive every path:** if a checked build helper
   accepts a temp override, both parent artifact paths and child `HB_TMP` must
@@ -400,3 +400,6 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   children inherit env automatically; `RUN-ARGV-CAPTURE` does not recreate that
   contract. Gate runners that spawn nested `hb` should use the env-aware process
   APIs plus `PROC-ENV-INHERIT-MISSING`.
+- **Undefined convenience words fail before type checking:** `0<>` is not a Habu
+  word. Use explicit `0 = 0=` (or add/test a real word) instead of assuming
+  common Forth conveniences exist.

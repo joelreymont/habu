@@ -109,7 +109,7 @@ points stay listed.
 
 ## Tests And Benchmarks
 
-- `test/run.sh` — default native gate.
+- `test/run.f` — default native gate.
 - `test/prop-test.f` — self-hosted property-based checker-soundness test (in-process via `evaluate`).
 - `test/engine-suite.f` — native engine behavior suite.
 - `bench/llm/tasks.tsv` — LLM benchmark task set.

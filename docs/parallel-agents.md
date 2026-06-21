@@ -43,7 +43,7 @@ gate.
 3. Merge one worker at a time with `jj rebase -s <workspace>@ -d @`.
 4. Resolve conflicts in the main workspace, rerun the relevant focused tests,
    then move to the next worker.
-5. After all merges, run `( cd test && ./run.sh )`.
+5. After all merges, run `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f`.
 6. Close completed dots with `dot off <id> -r "completed: <summary>"`.
 7. Clean up extra workspaces and temporary logs.
 

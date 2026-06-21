@@ -125,7 +125,7 @@ rebuild/snapshot.
 
 ### Native-Only Trust Root
 
-Daily work uses `bin/hb`, `tools/build-fixpoint-main.f -- install`, and `( cd test && ./run.sh )`.
+Daily work uses `bin/hb`, `tools/build-fixpoint-main.f -- install`, and `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f`.
 No-binary recovery uses `tools/seed.sh /path/to/hb-seed`, then immediately
 rebuilds current source. A gforth or hosted bootstrap path must not become a
 normal gate, benchmark dependency, or documented workflow.
@@ -915,7 +915,7 @@ bin/hb < bench/llm/ref-solutions.f
 Full gate before merging implementation stacks:
 
 ```sh
-( cd test && ./run.sh )
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f
 ```
 
 Live benchmark evidence after benchmark-surface changes:
