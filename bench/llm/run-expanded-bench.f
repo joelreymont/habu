@@ -24,7 +24,6 @@ create RB-SNIP2 256 allot
 create RB-SNIP3 256 allot
 create RB-SNIP4 256 allot
 create RB-EXE-BUF FS-PATH-CAP allot
-create RB-ARRAY-RUNNER-BUF FS-PATH-CAP allot
 create RB-LF-BUF 1 allot
 RB-LF RB-LF-BUF c!
 
@@ -73,7 +72,6 @@ variable RB-SNIP2-U
 variable RB-SNIP3-U
 variable RB-SNIP4-U
 variable RB-EXE-U
-variable RB-ARRAY-RUNNER-U
 variable RB-ROW-NEXT
 variable RB-ROW-A
 variable RB-ROW-U
@@ -412,29 +410,6 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    s" run-expanded-bench: unknown BENCH_ARRAY_ARMS entry" RB-DIE
    s" " ;
 
-: RB-ARRAY-RUNNER$ ( -- ptr u8 n )
-   RB-ARRAY-RUNNER-BUF RB-ARRAY-RUNNER-U @ ;
-
-: RB-ARRAY-RUNNER-PATH! ( -- )
-   SB-RESET
-   RB-OUT$ SB-APPEND
-   s" .array-driver.f" SB-APPEND
-   SB$ {: a:ptr u :}
-   u FS-PATH-CAP > if s" run-expanded-bench: array runner path too long" RB-DIE then
-   a RB-ARRAY-RUNNER-BUF u BYTE-COPY
-   u RB-ARRAY-RUNNER-U ! ;
-
-: RB-ARRAY-RUNNER-WRITE ( -- )
-   RB-ARRAY-RUNNER-PATH!
-   RB-ARRAY-RUNNER$ s" DAH-MAIN " WRITE-ALL ;
-
-: RB-ARRAY-RUNNER-CLEAN ( -- )
-   RB-ARRAY-RUNNER$ FILE? if
-      RB-ARRAY-RUNNER$ FS-PATHZ unlink 0 < if
-         s" run-expanded-bench: array runner cleanup failed" RB-DIE
-      then
-   then ;
-
 : RB-OUT-RESET ( -- )
    RB-OUT$ RB-LF-BUF 0 WRITE-ALL ;
 
@@ -622,8 +597,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    RB-STDLIB-LOADS
    s" bench/llm/driver-token-helpers.f" PROC-ARGV+
    s" bench/llm/drive-array-habu-lib.f" PROC-ARGV+
-   RB-ARRAY-RUNNER-WRITE
-   RB-ARRAY-RUNNER$ PROC-ARGV+ ;
+   s" bench/llm/drive-array-habu.f" PROC-ARGV+ ;
 
 : RB-ARRAY-HABU-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu arm:ptr armu trial :}
    PROC-ARGV-ENV-RESET
@@ -750,7 +724,6 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    arm armu RB-ARRAY-HABU? if
       model modelu arm armu trial RB-ARRAY-HABU-ARGS
       RB-RUN-HB-APPEND drop
-      RB-ARRAY-RUNNER-CLEAN
    else
       model modelu arm armu trial RB-ARRAY-ARGS
       RB-RUN-APPEND drop

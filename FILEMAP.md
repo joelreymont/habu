@@ -156,6 +156,7 @@ points stay listed.
 - `bench/llm/drive-aot.f` — CLI wrapper for the stripped-AOT benchmark driver.
 - `bench/llm/drive-aot-test.f` — focused coverage for AOT positive build/run and unsupported-token rejection fixtures.
 - `bench/llm/drive-array-habu-lib.f` — native Habu array benchmark driver library with array-arm bundling, skeleton wrapping, repair packets, and vector grading.
+- `bench/llm/drive-array-habu.f` — CLI wrapper for the native Habu array benchmark driver.
 - `bench/llm/drive-array-habu-test.f` — focused coverage for native Habu array driver pass, fail, reject, and repair-packet outcomes.
 - `bench/llm/negative-score.f` — checked scorer for negative benchmark expected codes/tokens/classes.
 - `bench/llm/negative-score-test.f` — focused coverage for negative-harness scoring outcomes.
