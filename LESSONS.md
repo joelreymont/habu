@@ -80,11 +80,11 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Fixed DATA cells require layout audits:** placing `EVAL-FRAME` in a
   free-looking gap overlapped register allocator tables and produced invalid
   ARM64 fields. Centralize fixed header offsets and verify non-overlap.
-- **Data-space limits must serve composition:** loading `source-lex`,
-  `forth-task-lines`, and `attempt-solutions` failed because the old DATA map
-  was too small, not because 64K buffers were inherently unsafe. The engine uses
-  a sparse fixed DATA reservation; regressions should exceed old small ceilings
-  and prove composed checked tools load together.
+- **Large buffers belong outside DATA:** loading `source-lex`, `forth-task-lines`,
+  and `attempt-solutions` exposed DATA pressure, but the long-term rule is not
+  "pick a bigger fixed ceiling." Static dictionary storage can use DATA; runtime
+  source/report/JSONL buffers use the typed OS-backed memory API so any needed
+  count of 64K buffers is limited by the OS, not by `DATA-SIZE`.
 - **DATA-base literals break self-hosted moves:** a first-generation stage can
   still run old startup code while interpreting new source. Source-level helpers
   such as env/REPL must derive the live base through `data-base`, not a duplicated

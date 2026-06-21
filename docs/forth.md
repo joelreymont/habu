@@ -124,11 +124,11 @@ not a matter of taste. Target is the native `bin/hb` engine.
 ## Habu Native Tooling Gotchas
 
 - **Large native tool bundles are supported.** Do not split tools merely to dodge
-  DATA pressure. The native engine reserves a sparse fixed DATA region; the
-  usable number of composed 64K buffers is bounded by `DATA-SIZE` minus
-  `here - data-base`, not by tiny tool-specific ceilings. If an ordinary
-  composition hits capacity, fix the real DATA model and add a regression for
-  the composed load.
+  DATA pressure. `create ... allot` is for dictionary-sized static storage; large
+  runtime-sized buffers use `lib/memory.f` (`MEM-ALLOC-BYTES` or
+  `MEM-ALLOC-64K-BUFFERS`) so composition scales with OS-backed mappings rather
+  than `DATA-SIZE`. If ordinary composition still hits capacity, fix the shared
+  memory model and add a regression for the composed load.
 - **Missing convenience words are not bugs in the standard.** Habu currently lacks
   words such as `pick`, `within`, and `0<>`; use variables, explicit increments, or
   explicit comparisons.

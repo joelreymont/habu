@@ -97,6 +97,8 @@ points stay listed.
 - `lib/string-test.f` — focused coverage for checked string helpers.
 - `lib/json-write.f` — checked emit-only JSON writer vocabulary for fixtures and native tools.
 - `lib/json-write-test.f` — focused coverage for JSON writer escaping, structure, and errors.
+- `lib/memory.f` — checked OS-backed byte buffer allocation helpers.
+- `lib/memory-test.f` — focused coverage for memory allocation and 64K buffer spans.
 - `lib/test-runner.f` — checked gate runner foundation for temp roots, captures, and aggregate failures.
 - `lib/test-runner-test.f` — focused coverage for gate runner process, timeout, and failure aggregation helpers.
 - `tools/date.f` — shared checked UTC Gregorian date parsing, formatting, and timestamp helpers.

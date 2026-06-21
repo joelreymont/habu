@@ -90,3 +90,9 @@
 -3199 constant E-JW-LAST
 -3100 constant E-JW-CAPACITY
 -3101 constant E-JW-BYTE
+
+\ OS-backed memory: -3200..-3299
+-3200 constant E-MEM-FIRST
+-3299 constant E-MEM-LAST
+-3200 constant E-MEM-SIZE
+-3201 constant E-MEM-MAP

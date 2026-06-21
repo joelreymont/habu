@@ -18,6 +18,7 @@ Planned module files:
 - `lib/json-write.f`
 - `lib/regex.f`
 - `lib/map.f`
+- `lib/memory.f`
 - `lib/fs.f`
 - `lib/source.f`
 - `lib/process.f`
@@ -377,6 +378,33 @@ MAP-EACH    ( ptr a n [ ptr u8 n n -- ] -- )
 `MAP-GET` returns value plus present flag. `MAP-SET` inserts or replaces one
 numeric value. Capacity, malformed storage, and full-table states throw named
 errors such as `E-MAP-BAD-CAP` and `E-MAP-FULL`.
+
+## Memory
+
+`lib/memory.f` provides checked OS-backed byte buffers for large composed tools.
+Use this module when a tool needs source bundles, JSONL streams, report tables,
+or many 64K scratch buffers. Do not split tools merely to avoid DATA pressure:
+`create ... allot` is for dictionary-sized static storage, while `MEM-*`
+allocation is for runtime-sized storage backed by anonymous `mmap`.
+
+The raw `mmap` primitive remains a boundary because it can return `-1`. The
+published allocation words validate sizes, convert successful mappings to typed
+`ptr u8` storage through the audited internal `MEM-ALLOC-PTR` boundary, and
+throw `E-MEM-SIZE` or `E-MEM-MAP` on failure.
+
+```forth
+MEM-CHECK-SIZE        ( n -- )
+MEM-CHECK-64K-COUNT   ( n -- )
+MEM-64K-BYTES         ( n -- n )
+MEM-MMAP-RC           ( n -- n )
+MEM-ALLOC-BYTES       ( n -- ptr u8 n )
+MEM-ALLOC-64K-BUFFERS ( n -- ptr u8 n )
+MEM-ALLOC-64K         ( -- ptr u8 n )
+```
+
+`MEM-ALLOC-64K-BUFFERS` returns one contiguous byte span sized for `n` 64K
+buffers. The returned length is the capacity in bytes; callers index individual
+64K slots as `base index MEM-64K * +`.
 
 ## Files
 
