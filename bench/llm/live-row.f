@@ -79,6 +79,7 @@ variable LR-DIAG-CLASS
 variable LR-ALL-ERRORS-STABLE
 variable LR-TRUST-USES
 variable LR-SIGNATURE-WEAKENED
+variable LR-RUNTIME-MS
 variable LR-RUNTIME-REPS
 variable LR-RUNTIME-WARMUPS
 
@@ -215,6 +216,23 @@ TRUSTED: LR-REPAIR-CLASS$ ( -- ptr u8 n )
 : LR-POSITIVE ( n -- n )
    dup 0 <= if drop 1 then ;
 
+: LR-CHECK-NONNEG ( n -- )
+   0 < if E-LR-CAPACITY throw then ;
+
+: LR-RUNTIME-CLEAR ( -- )
+   -1 LR-RUNTIME-MS !
+   s" not_run" LR-RUNTIME-STATUS! ;
+
+: LR-RUNTIME-MS! ( n -- ) {: n :}
+   n LR-CHECK-NONNEG
+   n LR-RUNTIME-MS ! ;
+
+: LR-RUNTIME-COUNTS! ( n n -- ) {: reps warmups :}
+   reps LR-CHECK-NONNEG
+   warmups LR-CHECK-NONNEG
+   reps LR-RUNTIME-REPS !
+   warmups LR-RUNTIME-WARMUPS ! ;
+
 : LR-RESET ( -- )
    s" manifest" LR-RUN-ID!
    s" unknown" LR-NAME!
@@ -252,6 +270,7 @@ TRUSTED: LR-REPAIR-CLASS$ ( -- ptr u8 n )
    -1 LR-ALL-ERRORS-STABLE !
    0 LR-TRUST-USES !
    0 LR-SIGNATURE-WEAKENED !
+   LR-RUNTIME-CLEAR
    100 LR-RUNTIME-REPS !
    10 LR-RUNTIME-WARMUPS !
    0 LR-PROMPT-U !
@@ -320,6 +339,10 @@ TRUSTED: LR-REPAIR-CLASS$ ( -- ptr u8 n )
 : LR-COMMA-FIELD-NULL ( ptr u8 n -- )
    JW-COMMA JW-FIELD-NULL ;
 
+: LR-COMMA-FIELD-RUNTIME-MS ( -- )
+   LR-RUNTIME-MS @ 0 < if s" runtime_ms" LR-COMMA-FIELD-NULL exit then
+   s" runtime_ms" LR-RUNTIME-MS @ LR-COMMA-FIELD-U ;
+
 : LR-RAW-DQ ( -- )
    JW-DQ SB-APPEND-C ;
 
@@ -381,7 +404,7 @@ TRUSTED: LR-REPAIR-CLASS$ ( -- ptr u8 n )
    s" tokens" LR-TOKENS @ LR-COMMA-FIELD-U
    s" wall_ms" LR-WALL-MS @ LR-COMMA-FIELD-U
    s" source_chars" LR-SOURCE-CHARS @ LR-POSITIVE LR-COMMA-FIELD-U
-   s" runtime_ms" LR-COMMA-FIELD-NULL
+   LR-COMMA-FIELD-RUNTIME-MS
    s" runtime_repetitions" LR-RUNTIME-REPS @ LR-COMMA-FIELD-U
    s" runtime_warmups" LR-RUNTIME-WARMUPS @ LR-COMMA-FIELD-U
    s" runtime_status" LR-RUNTIME-STATUS$ LR-COMMA-FIELD-S

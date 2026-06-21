@@ -85,6 +85,9 @@ variable LRT-BUNDLE-U
    2dup s" schema_version" LRT-CONTAINS
    2dup s" seed:fixture:habu-stdlib:62:1" LRT-CONTAINS
    2dup s" task_family" LRT-CONTAINS
+   2dup s" runtime_ms" LRT-CONTAINS
+   2dup s" null" LRT-CONTAINS
+   2dup s" not_run" LRT-CONTAINS
    2dup s" repair_class_stats" LRT-CONTAINS
    2dup s" []" LRT-CONTAINS
    2dup s" Prompt" LRT-CONTAINS
@@ -108,6 +111,21 @@ variable LRT-BUNDLE-U
    2dup s" repair_success" LRT-CONTAINS
    s" token_delta" LRT-CONTAINS ;
 
+: LRT-CONFIG-RUNTIME ( -- )
+   LRT-CONFIG
+   37 LR-RUNTIME-MS!
+   11 3 LR-RUNTIME-COUNTS!
+   s" ok" LR-RUNTIME-STATUS! ;
+
+: LRT-ASSERT-RUNTIME-ROW ( ptr u8 n -- )
+   2dup s" runtime_ms" LRT-CONTAINS
+   2dup s" 37" LRT-CONTAINS
+   2dup s" runtime_repetitions" LRT-CONTAINS
+   2dup s" 11" LRT-CONTAINS
+   2dup s" runtime_warmups" LRT-CONTAINS
+   2dup s" 3" LRT-CONTAINS
+   s" ok" LRT-CONTAINS ;
+
 : LRT-MAIN ( -- )
    T-RESET
    CLEANUP-RESET
@@ -117,6 +135,8 @@ variable LRT-BUNDLE-U
    LR-ROW$ LRT-ASSERT-ROW
    LRT-CONFIG-DIAG
    LR-ROW$ LRT-ASSERT-DIAG-ROW
+   LRT-CONFIG-RUNTIME
+   LR-ROW$ LRT-ASSERT-RUNTIME-ROW
    CLEANUP-RUN
    T-REPORT
    s" live-row-test: ok" type cr ;
