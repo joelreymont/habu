@@ -99,6 +99,9 @@ variable FM-NUM-L
    s" tools/hb-baseline-contracts-test.f" FM-REQ
    s" tools/seed.sh" FM-REQ
    s" tools/hb-build.sh" FM-REQ
+   s" tools/hb-build-lib.f" FM-REQ
+   s" tools/hb-build.f" FM-REQ
+   s" tools/hb-build-test.f" FM-REQ
    s" tools/imgdump.f" FM-REQ
    s" tools/imgdump-test.f" FM-REQ
    s" tools/build-fixpoint.f" FM-REQ
