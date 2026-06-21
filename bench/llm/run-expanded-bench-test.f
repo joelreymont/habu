@@ -79,13 +79,28 @@ variable REBT-FILE-U
 : REBT-SB-DQ ( -- )
    REBT-DQ SB-APPEND-C ;
 
-: REBT-MODEL-SOURCE$ ( -- ptr u8 n )
-   SB-RESET
-   s" : MAIN ( -- ) s" SB-APPEND
+: REBT-SOURCE-LITERAL ( ptr u8 n -- )
+   s" s" SB-APPEND
    REBT-SB-DQ
    32 SB-APPEND-C
-   s" : MAIN ( -- ) here drop ;" SB-APPEND
-   REBT-SB-DQ
+   SB-APPEND
+   REBT-SB-DQ ;
+
+: REBT-ASSERT-SOURCE-LITERAL ( -- )
+   SB-RESET
+   s" alpha" REBT-SOURCE-LITERAL
+   SB$ {: a:ptr u :}
+   u 9 T=
+   a c@ 115 T=
+   a 1 + c@ REBT-DQ T=
+   a 2 + c@ 32 T=
+   a 8 + c@ REBT-DQ T=
+   a 3 + 5 s" alpha" T$= ;
+
+: REBT-MODEL-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : MAIN ( -- ) " SB-APPEND
+   s" : MAIN ( -- ) here drop ;" REBT-SOURCE-LITERAL
    s"  type cr ;" SB-APPEND
    SB$ ;
 
@@ -195,6 +210,7 @@ variable REBT-FILE-U
 : REBT-MAIN ( -- )
    T-RESET
    REBT-PREPARE
+   REBT-ASSERT-SOURCE-LITERAL
    REBT-WRITE-MODEL
    REBT-BUILD-MODEL
    REBT-WRITE-MODELS
