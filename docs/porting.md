@@ -59,7 +59,7 @@ re-link contract is: header rebuilt fresh from constants, code copied
   non-darwin port swaps the numbers and conventions in its sys.f.
 - The AOT snapshot (`tools/build-fixpoint.f snap`, `src/habu/snap.f`, the
   em-startup loader) relies on FIXED-VA regions: RBASE-VA $300000000 /
-  DATA-VA $340000000 via MAP_FIXED with a verify-or-die. A port needs
+  DATA-VA $44000000000 via MAP_FIXED with a verify-or-die. A port needs
   equivalent fixed mappings (or full region relocation) plus the 40-byte
   trailer convention (magic, old text base, ndict, region len, data len) and
   the startup relocation of

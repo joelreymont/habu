@@ -81,10 +81,14 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   free-looking gap overlapped register allocator tables and produced invalid
   ARM64 fields. Centralize fixed header offsets and verify non-overlap.
 - **Data-space limits must serve composition:** loading `source-lex`,
-  `forth-task-lines`, and `attempt-solutions` failed because the old 3 MB DATA
-  map was too small, not because two 64K buffers were inherently unsafe. Raise
-  engine capacity with a composed-load regression; do not split tools to hide the
-  limit.
+  `forth-task-lines`, and `attempt-solutions` failed because the old DATA map
+  was too small, not because 64K buffers were inherently unsafe. The engine uses
+  a sparse fixed DATA reservation; regressions should exceed old small ceilings
+  and prove composed checked tools load together.
+- **DATA-base literals break self-hosted moves:** a first-generation stage can
+  still run old startup code while interpreting new source. Source-level helpers
+  such as env/REPL must derive the live base through `data-base`, not a duplicated
+  numeric DATA address.
 - **Capacity probes must be real source files:** `--load` deliberately leaves
   stdin for tool data, so piping a post-load probe to fd 0 does not execute it.
   Put the probe in an explicit loaded source file when measuring `here`/metadata

@@ -7,7 +7,7 @@
 26 constant DBASE  27 constant NDICT  28 constant CP
 $200000 constant REGION
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
-$340000000 constant DATA-VA  \ FIXED data VA
+$44000000000 constant DATA-VA \ high FIXED data VA for sparse 1 TiB reservation
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 $31000  constant DICT-SIZE
 48      constant DREC
@@ -17,7 +17,7 @@ $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
 4096    constant DICT-CAP  \ CFSTK-OFF / DREC; slots 0..4095 end exactly at CFSTK.
 $30000  constant CFSTK-OFF
-$4000000 constant DATA-SIZE
+$10000000000 constant DATA-SIZE \ 1 TiB sparse fixed reservation; pages are committed lazily by the OS.
 $100000 constant IBUFSZ
 20 constant DATA
 0   constant DP-CELL    8  constant HND-CELL

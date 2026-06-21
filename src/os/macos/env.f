@@ -2,7 +2,7 @@
 \ (LC_MAIN): main(argc, argv, envp) arrives in x0-x2 and EM-STARTUP saves them
 \ to DATA header cells at entry (snapshot boots re-store the live values).
 
-$340000000 constant ENV-DATA
+data-base constant ENV-DATA
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL

@@ -10,7 +10,7 @@
 \ ^K kill-to-end, ^C cancel line, ^D on an empty line = EOF, and a 16-line
 \ history ring on up/down.
 
-$340000000 constant DATAB       \ the DATA region's fixed VA
+data-base constant DATAB        \ the DATA region's fixed VA
 $3640 constant REPLH-CELL       \ engine: REPL line-reader xt
 $40487413 constant TIOCGETA
 $80487414 constant TIOCSETA

@@ -201,7 +201,7 @@ s" /nonexistent-habu-x" PATHZ run-rc -1 T=
 
 \ snapshot-writer intrinsics are sane
 dbase@ $300000000 = -1 T=
-data-base $340000000 = -1 T=
+data-base DATA-VA = -1 T=
 cp@ dbase@ - 0 > -1 T=
 ndict@ 0 > -1 T=
 

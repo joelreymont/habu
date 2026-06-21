@@ -124,9 +124,10 @@ not a matter of taste. Target is the native `bin/hb` engine.
 ## Habu Native Tooling Gotchas
 
 - **Large native tool bundles are supported.** Do not split tools merely to dodge
-  DATA pressure. If ordinary composition of checked tools and 64K buffers hits a
-  capacity limit, raise/fix the engine limit and add a regression for the real
-  composed load.
+  DATA pressure. The native engine reserves a sparse fixed DATA region so many
+  composed 64K buffers can coexist without tiny tool-specific ceilings. If an
+  ordinary composition hits capacity, fix the real DATA model and add a regression
+  for the composed load.
 - **Missing convenience words are not bugs in the standard.** Habu currently lacks
   words such as `pick`, `within`, and `0<>`; use variables, explicit increments, or
   explicit comparisons.
