@@ -111,6 +111,16 @@ TFOLD 6 T=
 : TMAP IARR 3 [: 1+ ;] MAP ;
 TMAP
 TFOLD 9 T=
+TRUSTED: T-CHECK-REJECTS ( ptr u8 n -- )
+   DIAGXT @ >r
+   0 DIAGXT !
+   CHECK! 0 T=
+   r> DIAGXT ! ;
+s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
+s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
+s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS
+s" CBAD-TIMES ( i64 -- i64 i64 ) 5 [: 1+ ;] TIMES" T-CHECK-REJECTS
+s" CBAD-MAP ( ptr i64 i64 -- i64 ) [: 1+ ;] MAP" T-CHECK-REJECTS
 
 \ immediate / postpone / compile,
 : IM5 5 ; immediate
