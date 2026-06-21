@@ -5,7 +5,7 @@
 \ loop, keyword JIT and EMIT-FORTH follow in part 2 (habu2.f).
 20 constant RBASE
 26 constant DBASE  27 constant NDICT  28 constant CP
-$100000 constant REGION
+$200000 constant REGION
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker

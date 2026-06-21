@@ -369,6 +369,11 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   test bundles can hit raw parser/checker capacity when every long candidate
   snippet is a published helper. Keep reusable vocabularies checked, then build
   long per-case snippets with those words in the top-level test runner.
+- **A lone `:` on large loads is the code-region guard:** confirm with
+  `cp@ dbase@ -`; if it is at or past `REGION - $4000`, a colon definition is
+  failing closed before it can emit a useful diagnostic. Remove one-use compiled
+  fixture helpers first, then grow `REGION` deliberately when live tools outgrow
+  the engine.
 - **Checker capacity bumps are layout work:** increasing global checker tables
   can shift native data layout and break unrelated fixtures. Prefer removing
   one-use fixture signatures first; expand engine regions deliberately.
