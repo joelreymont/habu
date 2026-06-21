@@ -22,6 +22,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `/tmp`; fixed names like `stage2-got` race. `tools/build.sh`,
   `tools/seed.sh`, and `test/run.sh` allocate and export private `HB_TMP`
   by default where they run builds, while preserving explicit `HB_TMP` for repro.
+- **Build temp overrides must drive every path:** if a checked build helper
+  accepts a temp override, both parent artifact paths and child `HB_TMP` must
+  derive from the same getter. Splitting those paths writes sources in one temp
+  tree while the spawned maker reads another.
 - **Build CLIs own temp override setup:** if `HB_TMP` names an absent directory,
   create it before spawning makers. Letting the maker discover a missing temp
   root later can collapse into an empty nonzero failure.

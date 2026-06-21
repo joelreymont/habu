@@ -39,26 +39,6 @@ variable BF-TMP-U
 : BF-FALSE ( -- bool )
    0 0= 0= ;
 
-: BF-TMP> ( ptr u8 n ptr u8 -- n ) {: name:ptr nameu dst:ptr :}
-   name nameu TMP-PATH {: path:ptr pathu :}
-   pathu FS-PATH-CAP > if E-BUILD-PATH throw then
-   path dst pathu BYTE-COPY
-   pathu ;
-
-: BF-ART$ ( ptr u8 n -- ptr u8 n )
-   BF-ART-PATH BF-TMP> BF-ART-PATH swap ;
-
-: BF-OUT$ ( ptr u8 n -- ptr u8 n )
-   BF-OUT-PATH BF-TMP> BF-OUT-PATH swap ;
-
-: BF-A$ ( ptr u8 n -- ptr u8 n )
-   BF-A-PATH BF-TMP> BF-A-LEN !
-   BF-A-PATH BF-A-LEN @ ;
-
-: BF-B$ ( ptr u8 n -- ptr u8 n )
-   BF-B-PATH BF-TMP> BF-B-LEN !
-   BF-B-PATH BF-B-LEN @ ;
-
 TRUSTED: BF-TMP-OVERRIDE$ ( -- ptr u8 n )
    BF-TMP-A @ BF-TMP-U @ ;
 
@@ -73,6 +53,26 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
 : BF-TMP$ ( -- ptr u8 n )
    BF-TMP-U @ 0 > if BF-TMP-OVERRIDE$ exit then
    s" HB_TMP" GETENV dup 0= if drop drop s" /tmp" then ;
+
+: BF-TMP> ( ptr u8 n ptr u8 -- n ) {: name:ptr nameu dst:ptr :}
+   BF-TMP$ {: root:ptr rootu :}
+   rootu 0 <= if E-BUILD-PATH throw then
+   rootu 1 + nameu + FS-PATH-CAP > if E-BUILD-PATH throw then
+   root rootu name nameu dst JOIN-PATH ;
+
+: BF-ART$ ( ptr u8 n -- ptr u8 n )
+   BF-ART-PATH BF-TMP> BF-ART-PATH swap ;
+
+: BF-OUT$ ( ptr u8 n -- ptr u8 n )
+   BF-OUT-PATH BF-TMP> BF-OUT-PATH swap ;
+
+: BF-A$ ( ptr u8 n -- ptr u8 n )
+   BF-A-PATH BF-TMP> BF-A-LEN !
+   BF-A-PATH BF-A-LEN @ ;
+
+: BF-B$ ( ptr u8 n -- ptr u8 n )
+   BF-B-PATH BF-TMP> BF-B-LEN !
+   BF-B-PATH BF-B-LEN @ ;
 
 : BF-EXPECT ( ptr u8 n -- )
    BF-ART$ BUILD-EXPECT ;

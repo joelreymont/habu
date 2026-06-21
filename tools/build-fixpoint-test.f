@@ -99,6 +99,9 @@ create BFT-READ-BUF BFT-READ-CAP allot
 : BFT-TEST-TMP-OVERRIDE ( -- )
    BFT-ROOT BF-TMP!
    BF-TMP$ BFT-ROOT T$=
+   s" stage2-src" BF-A$ BFT-STAGE2 T$=
+   BF-STAGE2-SOURCE
+   BFT-STAGE2 FILE? TTRUE
    BF-TMP-RESET ;
 
 : BFT-BUILD-FILE? ( ptr u8 n -- bool )
