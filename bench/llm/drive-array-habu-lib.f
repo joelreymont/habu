@@ -7,6 +7,10 @@
 58 constant DAH-COLON
 16 constant DAH-COUNT-KEY-LEN
 1000000 constant DAH-NS-PER-MS
+0 constant DAH-FIRST-NONE
+1 constant DAH-FIRST-PASS
+2 constant DAH-FIRST-FAIL
+3 constant DAH-FIRST-REJECT
 
 create DAH-VEC-PATH FS-PATH-CAP allot
 create DAH-SCRIPT-PATH FS-PATH-CAP allot
@@ -26,6 +30,8 @@ variable DAH-AFTER-KEY
 variable DAH-AFTER-COLON
 variable DAH-START
 variable DAH-STOP
+variable DAH-ROUND
+variable DAH-FIRST-KIND
 
 : DAH-CONV! ( ptr u8 n -- )
    DAH-CONV-A DAH-CONV-U DS-SET$ ;
@@ -86,19 +92,58 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DAH-STDLIB? if s" habu-stdlib" LR-ARM! exit then
    s" habu-skeleton" LR-ARM! ;
 
+: DAH-FIRST! ( n -- ) {: kind :}
+   DAH-FIRST-KIND @ DAH-FIRST-NONE = if kind DAH-FIRST-KIND ! then ;
+
+: DAH-REPAIR-ROUNDS ( -- n )
+   DAH-ROUND @ 0 > if DAH-ROUND @ 1- exit then
+   0 ;
+
+: DAH-APPLY-FIRST ( -- )
+   DAH-FIRST-KIND @ DAH-FIRST-REJECT = if
+      s" rejected" LR-FIRST-CHECKER!
+      0 LR-FIRST-PASS !
+      0 LR-FIRST-TESTS !
+      exit
+   then
+   DAH-FIRST-KIND @ DAH-FIRST-FAIL = if
+      s" certified" LR-FIRST-CHECKER!
+      -1 LR-FIRST-PASS !
+      0 LR-FIRST-TESTS !
+      exit
+   then
+   DAH-FIRST-KIND @ DAH-FIRST-PASS = if
+      s" certified" LR-FIRST-CHECKER!
+      -1 LR-FIRST-PASS !
+      -1 LR-FIRST-TESTS !
+   then ;
+
+: DAH-APPLY-ROW-STATS ( -- )
+   DAH-ROUND @ LR-ROUNDS !
+   DAH-REPAIR-ROUNDS LR-REPAIR-ITERATIONS !
+   DAH-ROUND @ LR-CHECKER-ITERATIONS !
+   DS-DIAG-COUNT @ LR-DIAG-COUNT !
+   DAH-APPLY-FIRST ;
+
 : DAH-LR-REJECT ( ptr u8 n -- )
+   DAH-FIRST-REJECT DAH-FIRST!
    DS-LR-REJECT
    DAH-LR-ARM!
-   0 LR-ALL-ERRORS-STABLE ! ;
+   0 LR-ALL-ERRORS-STABLE !
+   DAH-APPLY-ROW-STATS ;
 
 : DAH-LR-PASS ( -- )
+   DAH-FIRST-PASS DAH-FIRST!
    DS-LR-PASS
-   DAH-LR-ARM! ;
+   DAH-LR-ARM!
+   DAH-APPLY-ROW-STATS ;
 
 : DAH-LR-CERTIFIED-OUTCOME ( ptr u8 n -- ) {: out:ptr outu :}
+   DAH-FIRST-FAIL DAH-FIRST!
    DS-LR-FAIL
    DAH-LR-ARM!
-   out outu LR-OUTCOME! ;
+   out outu LR-OUTCOME!
+   DAH-APPLY-ROW-STATS ;
 
 : DAH-PATHS! ( -- )
    s" vectors.f" DAH-VEC-PATH DAH-VEC-U DS-JOIN!
@@ -428,10 +473,71 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DAH-WRITE-BUNDLE
    DAH-RUN-CHECK
    DS-CHECK-CLEAN? 0= if DAH-FINISH-REJECT exit then
-   DS-DIAG-PATH$ s" " WRITE-ALL
-   DS-REPAIR-PATH$ s" {}" WRITE-ALL
-   0 DS-DIAG-COUNT !
+   DS-DIAG-COUNT @ 0= if
+      DS-DIAG-PATH$ s" " WRITE-ALL
+      DS-REPAIR-PATH$ s" {}" WRITE-ALL
+   then
    DAH-FINISH-GRADE ;
+
+: DAH-STATE-RESET ( -- )
+   0 DS-TOKENS !
+   0 DS-DIAG-COUNT !
+   0 DAH-ROUND !
+   DAH-FIRST-NONE DAH-FIRST-KIND ! ;
+
+: DAH-NEXT-ROUND ( -- )
+   DAH-ROUND @ 1+ DAH-ROUND ! ;
+
+: DAH-PROMPT-FILE+ ( ptr u8 n -- ) {: path:ptr pathu :}
+   path pathu DS-OUT-BUF DS-OUT-CAP READ-ALL DS-OUT-U !
+   DS-OUT-BUF DS-OUT-U @ DS-PROMPT-LN ;
+
+: DAH-REJECT-FEEDBACK ( -- )
+   s" " DS-PROMPT-LN
+   s" The checker rejected the previous candidate. Use this repair packet:" DS-PROMPT-LN
+   DS-REPAIR-PATH$ DAH-PROMPT-FILE+
+   s" Raw checker diagnostics:" DS-PROMPT-LN
+   DS-DIAG-PATH$ DAH-PROMPT-FILE+
+   s" Fix it so it certifies. Output only corrected Habu code." DS-PROMPT-LN ;
+
+: DAH-FAIL-FEEDBACK ( -- )
+   s" " DS-PROMPT-LN
+   s" The previous candidate certified but failed the vector tests." DS-PROMPT-LN
+   s" Test output:" DS-PROMPT-LN
+   DS-TEST-PATH$ DAH-PROMPT-FILE+
+   s" Expected array examples:" DS-PROMPT-LN
+   DAH-VECTORS$ DS-PROMPT-LN
+   s" Fix the logic. Output only corrected Habu code." DS-PROMPT-LN ;
+
+: DAH-ADD-FEEDBACK ( -- )
+   LR-OUTCOME$ s" reject" STR= if DAH-REJECT-FEEDBACK exit then
+   DAH-FAIL-FEEDBACK ;
+
+: DAH-OUTCOME= ( ptr u8 n -- bool ) {: a:ptr u :}
+   LR-OUTCOME$ a u STR= ;
+
+: DAH-DONE? ( -- bool )
+   s" pass" DAH-OUTCOME= if DS-TRUE exit then
+   s" error" DAH-OUTCOME= ;
+
+: DAH-MAX-ROUNDS ( -- n )
+   DS-MAX-REPAIRS @ 0 > if DS-MAX-REPAIRS @ exit then
+   1 ;
+
+: DAH-MODEL-ERROR ( -- )
+   DAH-FIRST-REJECT DAH-FIRST!
+   1 DS-DIAG-COUNT !
+   DS-MODEL-ERROR
+   DAH-LR-ARM!
+   DAH-APPLY-ROW-STATS ;
+
+: DAH-RUN-MODEL-ROUND ( -- )
+   DS-PROMPT-PATH$ DS-PROMPT$ WRITE-ALL
+   DS-PROMPT$ MRUN-RUN
+   MRUN-OUT$ DS-RAW-PATH$ 2swap WRITE-ALL
+   DS-TOKENS @ MRUN-TOKENS @ + DS-TOKENS !
+   MRUN-RC @ 0= 0= if DAH-MODEL-ERROR exit then
+   MRUN-TEXT$ DAH-EVALUATE-TEXT ;
 
 : DAH-PREPARE ( -- )
    CLEANUP-RESET
@@ -441,26 +547,32 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DS-PROMPT-PATH$ DS-PROMPT$ WRITE-ALL
    DS-WRITE-EMPTY-ARTIFACTS ;
 
-: DAH-MODEL-ERROR ( -- )
-   DS-MODEL-ERROR
-   DAH-LR-ARM! ;
-
 : DAH-RUN-MODEL ( -- )
    DAH-PREPARE
-   DS-PROMPT$ MRUN-RUN
-   MRUN-OUT$ DS-RAW-PATH$ 2swap WRITE-ALL
-   MRUN-TOKENS @ DS-TOKENS !
-   MRUN-RC @ 0= 0= if DAH-MODEL-ERROR exit then
-   MRUN-TEXT$ DAH-EVALUATE-TEXT ;
+   DAH-STATE-RESET
+   begin
+      DAH-ROUND @ DAH-MAX-ROUNDS <
+   while
+      DAH-NEXT-ROUND
+      DAH-RUN-MODEL-ROUND
+      DAH-DONE? if exit then
+      DAH-ROUND @ DAH-MAX-ROUNDS >= if exit then
+      DAH-ADD-FEEDBACK
+   repeat ;
 
 : DAH-RUN-TEXT ( ptr u8 n -- ) {: text:ptr textu :}
    textu DS-OUT-CAP > if E-DS-CAPACITY throw then
    text DS-OUT-BUF textu BYTE-COPY
    textu DS-OUT-U !
    DAH-PREPARE
-   0 DS-TOKENS !
+   DAH-STATE-RESET
+   DAH-NEXT-ROUND
    DS-RAW-PATH$ DS-OUT-BUF DS-OUT-U @ WRITE-ALL
    DS-OUT-BUF DS-OUT-U @ DAH-EVALUATE-TEXT ;
+
+: DAH-CLI-MAX-REPAIRS ( -- n )
+   SCRIPT-ARGC 7 > if 7 SCRIPT-ARGV$ DS-PARSE-U exit then
+   s" BENCH_MAX_REPAIRS" 5 DS-ENV-U ;
 
 : DAH-USAGE ( -- )
    s" usage: bench/llm/drive-array-habu.f <id> <name> <sig> <spec> <conv> <vectors> <a|lib|stdlib|skeleton> [maxr]" E-DS-USAGE die ;
@@ -478,8 +590,8 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    5 SCRIPT-ARGV$ DS-TESTS!
    6 SCRIPT-ARGV$ DAH-ARM!
    DAH-ARM-VALID? 0= if DAH-USAGE then
-   SCRIPT-ARGC 7 > if 7 SCRIPT-ARGV$ DS-PARSE-U else 5 then DS-MAX-REPAIRS !
    DS-DEFAULTS
+   DAH-CLI-MAX-REPAIRS DS-MAX-REPAIRS !
    s" MODEL_REGISTRY" s" bench/llm/models.tsv" DS-ENV$ MR-LOAD
    s" MODEL_ID" GETENV MR-REQUIRE ;
 

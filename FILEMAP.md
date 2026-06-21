@@ -158,6 +158,7 @@ points stay listed.
 - `bench/llm/drive-array-habu-lib.f` — native Habu array benchmark driver library with array-arm bundling, skeleton wrapping, repair packets, and vector grading.
 - `bench/llm/drive-array-habu.f` — CLI wrapper for the native Habu array benchmark driver.
 - `bench/llm/drive-array-habu-test.f` — focused coverage for native Habu array driver pass, fail, reject, and repair-packet outcomes.
+- `bench/llm/drive-array-habu-repair-test.f` — focused live-model coverage for native Habu array repair-loop success and row accounting.
 - `bench/llm/negative-score.f` — checked scorer for negative benchmark expected codes/tokens/classes.
 - `bench/llm/negative-score-test.f` — focused coverage for negative-harness scoring outcomes.
 - `bench/llm/run-expanded-bench.f` — native expanded live benchmark runner and arm dispatcher.
