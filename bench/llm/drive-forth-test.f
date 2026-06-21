@@ -98,6 +98,12 @@ TRUSTED: DFHT-SRC-BUF ( -- ptr u8 )
    LR-TESTS-PASSED @ 0 T=
    arm armu DFHT-ASSERT-ROW-COMMON ;
 
+: DFHT-PROMPT-HAS ( ptr u8 n -- )
+   DS-PROMPT$ 2swap CONTAINS? TTRUE ;
+
+: DFHT-PROMPT-NOT ( ptr u8 n -- )
+   DS-PROMPT$ 2swap CONTAINS? 0= TTRUE ;
+
 : DFHT-TEST-PASS ( -- )
    s" repair" s" habu-forth" DFHT-CONFIG-SQUARE
    s" : SQUARE ( i64 -- i64 ) dup * ;" DFH-RUN-TEXT
@@ -120,6 +126,31 @@ TRUSTED: DFHT-SRC-BUF ( -- ptr u8 )
    LR-ROW$ s" remove_producer" CONTAINS? TTRUE
    CLEANUP-RUN ;
 
+: DFHT-TEST-REPAIR-FEEDBACK ( -- )
+   s" repair" s" habu-forth" DFHT-CONFIG-SQUARE
+   s" : SQUARE ( i64 -- i64 ) dup * dup ;" DFH-RUN-TEXT
+   DFH-ADD-FEEDBACK
+   s" Use this repair packet" DFHT-PROMPT-HAS
+   s" Raw checker diagnostics" DFHT-PROMPT-NOT
+   CLEANUP-RUN ;
+
+: DFHT-TEST-RAW-FEEDBACK ( -- )
+   s" raw" s" habu-forth-raw" DFHT-CONFIG-SQUARE
+   s" : SQUARE ( i64 -- i64 ) dup * dup ;" DFH-RUN-TEXT
+   DFH-ADD-FEEDBACK
+   s" Raw checker diagnostics" DFHT-PROMPT-HAS
+   s" Use this repair packet" DFHT-PROMPT-NOT
+   CLEANUP-RUN ;
+
+: DFHT-TEST-BLIND-FEEDBACK ( -- )
+   s" blind" s" habu-forth-blind" DFHT-CONFIG-SQUARE
+   s" : SQUARE ( i64 -- i64 ) dup * dup ;" DFH-RUN-TEXT
+   DFH-ADD-FEEDBACK
+   s" Your attempt did not certify" DFHT-PROMPT-HAS
+   s" Use this repair packet" DFHT-PROMPT-NOT
+   s" Raw checker diagnostics" DFHT-PROMPT-NOT
+   CLEANUP-RUN ;
+
 : DFHT-TEST-FORBIDDEN-BLIND ( -- )
    s" blind" s" habu-forth-blind" DFHT-CONFIG-SQUARE
    s" : SQUARE ( i64 -- i64 ) trust dup * ;" DFH-RUN-TEXT
@@ -134,6 +165,9 @@ TRUSTED: DFHT-SRC-BUF ( -- ptr u8 )
    DFHT-TEST-PASS
    DFHT-TEST-FAIL-RAW
    DFHT-TEST-CHECKER-REJECT
+   DFHT-TEST-REPAIR-FEEDBACK
+   DFHT-TEST-RAW-FEEDBACK
+   DFHT-TEST-BLIND-FEEDBACK
    DFHT-TEST-FORBIDDEN-BLIND
    T-REPORT
    s" drive-forth-test: ok" type cr ;
