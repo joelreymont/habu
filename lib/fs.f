@@ -24,6 +24,7 @@ $8 constant FS-O-APPEND
 $200 constant FS-O-CREAT
 $400 constant FS-O-TRUNC
 420 constant FS-MODE-0644
+1 constant FS-X-OK
 1 constant FS-READ-PROBE-CAP
 
 $F000 constant S-IFMT
@@ -199,6 +200,9 @@ variable FS-IO-WR
    else
       S-IFMT and S-IFDIR =
    then ;
+
+: EXECUTABLE? ( ptr u8 n -- bool )
+   FS-PATHZ FS-X-OK access 0= ;
 
 : BASENAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    u begin dup 0 > while

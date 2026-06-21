@@ -9,8 +9,6 @@
 61 constant PROC-ENV-EQUAL
 58 constant PROC-PATH-SEP
 47 constant PROC-PATH-SLASH
-1 constant PROC-X-OK
-
 create PROC-ENV-TABLE PROC-ENV-MAX 1 + cells allot
 create PROC-ENV-BUF PROC-ENV-BUF-CAP allot
 
@@ -194,7 +192,7 @@ variable PROC-PATH-I
    PROC-PATH-SLASH INDEX-OF 0 >= ;
 
 : PROC-EXECUTABLE? ( ptr u8 n -- bool )
-   FS-PATHZ PROC-X-OK access 0= ;
+   EXECUTABLE? ;
 
 : PROC-COPY-PATH ( ptr u8 n ptr u8 -- n ) {: a:ptr u dst:ptr :}
    u 0 < if E-PROC-PATH throw then

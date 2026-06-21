@@ -74,7 +74,7 @@
    s" native engine gate phase" TR-RUN ;
 
 : TR-EXPECT-HB ( -- )
-   s" bin/hb" FILE? 0= if s" bin/hb not produced" TR-FAIL then ;
+   s" bin/hb" EXECUTABLE? 0= if s" bin/hb not produced executable" TR-FAIL then ;
 
 : TR-DICTIONARY ( -- )
    TR-BASE
