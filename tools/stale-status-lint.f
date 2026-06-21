@@ -34,6 +34,10 @@ variable SS-DIGITS
 variable SS-TODAY-DAYS
 variable SS-ROOT-A
 variable SS-ROOT-U
+variable SS-SRC-A
+variable SS-SRC-U
+variable SS-LINE-S
+variable SS-LINE-E
 
 : SS-CHECK-HOOK ( -- )
    CHECK! ;
@@ -150,20 +154,44 @@ variable SS-ROOT-U
 : SS-LINE-PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    a u b v STARTS-WITH? ;
 
+: SS-LINE-END ( ptr u8 n n -- n ) {: a:ptr u start :}
+   start begin dup u < while
+      dup a + c@ SS-LF = IF exit THEN
+      1+
+   repeat ;
+
+: SS-STATUS-LINE ( ptr u8 n -- ) {: a:ptr u :}
+   a u TRIM
+   2dup s" Last verified:" SS-LINE-PREFIX? IF
+      14 SS-SKIP LTRIM
+      SS-DATE-U ! SS-DATE-A !
+      -1 SS-FOUND? !
+   ELSE
+      2drop
+   THEN ;
+
+: SS-LOAD-FILE ( ptr u8 n -- )
+   SS-FILE-BUF SS-FILE-CAP READ-FILE
+   SS-SRC-U ! SS-SRC-A ! ;
+
+: SS-SET-LINE-END ( -- )
+   SS-SRC-A @ SS-SRC-U @ SS-LINE-S @ SS-LINE-END SS-LINE-E ! ;
+
+: SS-CURRENT-LINE ( -- ptr u8 n )
+   SS-SRC-A @ SS-LINE-S @ +  SS-LINE-E @ SS-LINE-S @ - ;
+
+: SS-ADVANCE-LINE ( -- )
+   SS-LINE-E @ 1+ SS-LINE-S ! ;
+
 : SS-STATUS-DATE! ( -- )
    0 SS-FOUND? !
-   s" STATUS.md" SS-ROOTED$ SS-FILE-BUF SS-FILE-CAP READ-FILE SPLIT-LINES
-   0 begin dup SN# @ < while
-      dup S@ TRIM
-      2dup s" Last verified:" SS-LINE-PREFIX? IF
-         14 SS-SKIP LTRIM
-         SS-DATE-U ! SS-DATE-A !
-         -1 SS-FOUND? !
-      ELSE
-         2drop
-      THEN
-      1+
-   repeat drop ;
+   s" STATUS.md" SS-ROOTED$ SS-LOAD-FILE
+   0 SS-LINE-S !
+   begin SS-LINE-S @ SS-SRC-U @ < while
+      SS-SET-LINE-END
+      SS-CURRENT-LINE SS-STATUS-LINE
+      SS-ADVANCE-LINE
+   repeat ;
 
 : SS-TODAY-FROM-EPOCH ( -- ptr u8 n )
    SS-TODAY-DAYS @ SS-TODAY-BUF DATE-LEN FORMAT-YMD ;
@@ -284,12 +312,15 @@ variable SS-ROOT-U
    a u SS-MD? SS-NOT IF exit THEN
    a u EXISTS? SS-NOT IF exit THEN
    a u SS-DISPLAY!
-   a u SS-FILE-BUF SS-FILE-CAP READ-FILE SPLIT-LINES
-   0 begin dup SN# @ < while
-      dup 1+ SS-LINE-N !
-      dup S@ SS-COUNT-LINE? IF SS-FINDING THEN
-      1+
-   repeat drop ;
+   a u SS-LOAD-FILE
+   0 SS-LINE-N !
+   0 SS-LINE-S !
+   begin SS-LINE-S @ SS-SRC-U @ < while
+      SS-LINE-N @ 1+ SS-LINE-N !
+      SS-SET-LINE-END
+      SS-CURRENT-LINE SS-COUNT-LINE? IF SS-FINDING THEN
+      SS-ADVANCE-LINE
+   repeat ;
 
 : STALE-STATUS-LINT ( -- )
    0 SS-BAD !

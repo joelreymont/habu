@@ -2,6 +2,7 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/stale-status-lint-test.f
 
 4096 constant SST-CAP
+1050 constant SST-LONG-LINES
 10 constant SST-LF-C
 
 variable SST-ROOT-U
@@ -70,6 +71,13 @@ create SST-ERR SST-CAP allot
    SB-RESET
    s" This stale count says 890/0/0 in prose." SB-APPEND SST-LF
    SB$ ;
+
+: SST-WRITE-LONG-README ( -- )
+   SST-README SST-EMPTY$ WRITE-ALL
+   0 begin dup SST-LONG-LINES < while
+      SST-README SST-README-GOOD$ APPEND-FILE
+      1+
+   repeat drop ;
 
 : SST-GOOD-OUT$ ( -- ptr u8 n )
    SB-RESET
@@ -157,6 +165,11 @@ create SST-ERR SST-CAP allot
    SST-README SST-README-TRIPLE$ WRITE-ALL
    s" STALE-STATUS" s" README.md:1: count-shaped string" SST-EXPECT-BAD ;
 
+: SST-TEST-LONG-MARKDOWN ( -- )
+   SST-RESET-FILES
+   SST-WRITE-LONG-README
+   SST-EXPECT-OK ;
+
 : SST-MAIN ( -- )
    T-RESET
    SST-PREPARE
@@ -166,6 +179,7 @@ create SST-ERR SST-CAP allot
    SST-TEST-BAD-TODAY
    SST-TEST-COUNT-PROSE
    SST-TEST-COUNT-TRIPLE
+   SST-TEST-LONG-MARKDOWN
    CLEANUP-RUN
    SST-ROOT EXISTS? TFALSE
    T-REPORT
