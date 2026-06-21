@@ -1,5 +1,7 @@
 \ model-run-test.f - focused tests for bench/llm/model-run.f.
 
+variable MRT-HERE
+
 : MRT-REGISTRY$ ( -- ptr u8 n )
    s" id	label	command	args	parser	token_fields	timeout_s
 prompt	Prompt	/bin/echo	{prompt}	raw		2
@@ -15,11 +17,26 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    id idu MR-REQUIRE
    prompt promptu MRUN-RUN ;
 
+: MRT-HERE-SNAPSHOT ( -- )
+   here data-base - MRT-HERE ! ;
+
+: MRT-HERE-UNCHANGED ( -- )
+   here data-base - MRT-HERE @ T= ;
+
+: MRT-TEST-BUFFERS ( -- )
+   MRT-HERE-SNAPSHOT
+   MRUN-RESET
+   MRUN-OUT-CAP MRUN-OUT-NEED MEM-64K-SPAN-BYTES T=
+   MRUN-ERR-CAP MRUN-ERR-NEED MEM-64K-SPAN-BYTES T=
+   MRUN-TEXT-CAP MRUN-TEXT-NEED MEM-64K-SPAN-BYTES T=
+   MRT-HERE-UNCHANGED ;
+
 : MRT-BAD-TEMPLATE ( -- )
    s" bad" s" hello" MRT-RUN ;
 
 : MRT-MAIN ( -- )
    T-RESET
+   MRT-TEST-BUFFERS
    s" prompt" s" hello" MRT-RUN
    MRUN-RC @ 0 T=
    MRUN-TEXT$ s" hello

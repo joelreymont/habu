@@ -560,6 +560,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" --load" PROC-ARGV+
    s" lib/errors.f" PROC-ARGV+
    s" lib/string.f" PROC-ARGV+
+   s" lib/memory.f" PROC-ARGV+
    s" lib/fs.f" PROC-ARGV+
    s" lib/fs-mutate.f" PROC-ARGV+
    s" lib/process.f" PROC-ARGV+
@@ -580,7 +581,6 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
 
 : RB-FORTH-LOADS ( -- )
    RB-STDLIB-LOADS
-   s" lib/memory.f" PROC-ARGV+
    s" tools/lint/lib.f" PROC-ARGV+
    s" tools/lint/source-lex.f" PROC-ARGV+
    s" bench/llm/forth-task-lines-lib.f" PROC-ARGV+

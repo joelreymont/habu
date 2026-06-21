@@ -109,6 +109,7 @@ variable DART-RC
    s" --load" PROC-ARGV+
    s" lib/errors.f" PROC-ARGV+
    s" lib/string.f" PROC-ARGV+
+   s" lib/memory.f" PROC-ARGV+
    s" lib/fs.f" PROC-ARGV+
    s" lib/fs-mutate.f" PROC-ARGV+
    s" lib/process.f" PROC-ARGV+
@@ -152,6 +153,7 @@ variable DART-RC
    s" --load" PROC-ARGV+
    s" lib/errors.f" PROC-ARGV+
    s" lib/string.f" PROC-ARGV+
+   s" lib/memory.f" PROC-ARGV+
    s" lib/fs.f" PROC-ARGV+
    s" lib/fs-mutate.f" PROC-ARGV+
    s" lib/process.f" PROC-ARGV+

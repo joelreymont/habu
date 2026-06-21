@@ -1,20 +1,23 @@
 \ model-run.f - checked native model invocation for LLM benchmark drivers.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f,
 \ bench/llm/manifest.f, bench/llm/model.f, bench/llm/parse-resp-lib.f,
 \ and bench/llm/codex-home.f.
 
-262144 constant MRUN-OUT-CAP
-65536 constant MRUN-ERR-CAP
-4096 constant MRUN-TEXT-CAP
+262144 constant MRUN-OUT-NEED
+65536 constant MRUN-ERR-NEED
+4096 constant MRUN-TEXT-NEED
 1024 constant MRUN-EXE-CAP
 -3222 constant E-MRUN-TEMPLATE
 -3223 constant E-MRUN-CAPACITY
 
-create MRUN-OUT-BUF MRUN-OUT-CAP allot
-create MRUN-ERR-BUF MRUN-ERR-CAP allot
-create MRUN-TEXT-BUF MRUN-TEXT-CAP allot
+variable MRUN-OUT-P
+variable MRUN-OUT-CAP-U
+variable MRUN-ERR-P
+variable MRUN-ERR-CAP-U
+variable MRUN-TEXT-P
+variable MRUN-TEXT-CAP-U
 create MRUN-EXE-BUF MRUN-EXE-CAP allot
 
 variable MRUN-OUT-U
@@ -23,6 +26,24 @@ variable MRUN-TEXT-U
 variable MRUN-EXE-U
 variable MRUN-RC
 variable MRUN-TOKENS
+
+TRUSTED: MRUN-OUT-BUF ( -- ptr u8 )
+   MRUN-OUT-P @ ;
+
+TRUSTED: MRUN-ERR-BUF ( -- ptr u8 )
+   MRUN-ERR-P @ ;
+
+TRUSTED: MRUN-TEXT-BUF ( -- ptr u8 )
+   MRUN-TEXT-P @ ;
+
+: MRUN-OUT-CAP ( -- n )
+   MRUN-OUT-CAP-U @ ;
+
+: MRUN-ERR-CAP ( -- n )
+   MRUN-ERR-CAP-U @ ;
+
+: MRUN-TEXT-CAP ( -- n )
+   MRUN-TEXT-CAP-U @ ;
 
 : MRUN-OUT$ ( -- ptr u8 n )
    MRUN-OUT-BUF MRUN-OUT-U @ ;
@@ -33,7 +54,37 @@ variable MRUN-TOKENS
 : MRUN-TEXT$ ( -- ptr u8 n )
    MRUN-TEXT-BUF MRUN-TEXT-U @ ;
 
+: MRUN-MIN-ONE ( n -- n )
+   dup 1 < if drop 1 then ;
+
+: MRUN-STORE-OUT-SPAN ( ptr u8 n -- )
+   MRUN-OUT-CAP-U ! MRUN-OUT-P ! ;
+
+: MRUN-STORE-ERR-SPAN ( ptr u8 n -- )
+   MRUN-ERR-CAP-U ! MRUN-ERR-P ! ;
+
+: MRUN-STORE-TEXT-SPAN ( ptr u8 n -- )
+   MRUN-TEXT-CAP-U ! MRUN-TEXT-P ! ;
+
+: MRUN-ENSURE-OUT-CAP ( n -- ) {: need :}
+   need MRUN-MIN-ONE MRUN-OUT-CAP <= if exit then
+   need MRUN-MIN-ONE MEM-ALLOC-64K-SPAN MRUN-STORE-OUT-SPAN ;
+
+: MRUN-ENSURE-ERR-CAP ( n -- ) {: need :}
+   need MRUN-MIN-ONE MRUN-ERR-CAP <= if exit then
+   need MRUN-MIN-ONE MEM-ALLOC-64K-SPAN MRUN-STORE-ERR-SPAN ;
+
+: MRUN-ENSURE-TEXT-CAP ( n -- ) {: need :}
+   need MRUN-MIN-ONE MRUN-TEXT-CAP <= if exit then
+   need MRUN-MIN-ONE MEM-ALLOC-64K-SPAN MRUN-STORE-TEXT-SPAN ;
+
+: MRUN-ENSURE-BUFFERS ( -- )
+   MRUN-OUT-NEED MRUN-ENSURE-OUT-CAP
+   MRUN-ERR-NEED MRUN-ENSURE-ERR-CAP
+   MRUN-TEXT-NEED MRUN-ENSURE-TEXT-CAP ;
+
 : MRUN-RESET ( -- )
+   MRUN-ENSURE-BUFFERS
    0 MRUN-OUT-U !
    0 MRUN-ERR-U !
    0 MRUN-TEXT-U !
