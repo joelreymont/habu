@@ -146,6 +146,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   next `1+` ran on an empty stack after the checks passed. Factor row predicates
   or audit both branch effects when a checked tool repeats one row or crashes
   after success.
+- **Locals remove inputs from the data stack:** after `{: a b :}`, helper calls
+  must pass `a b` explicitly; do not assume the original inputs are still on the
+  stack. For checked counted loops, prefer an explicit scratch index when the
+  body calls helpers so the call effect stays visible.
 
 ## Darwin And Syscalls
 
