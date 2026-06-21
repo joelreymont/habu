@@ -4,6 +4,11 @@
 
 9 constant BFT-TAB
 10 constant BFT-LF
+8 constant BFT-BS
+12 constant BFT-FF
+13 constant BFT-CR
+92 constant BFT-BACKSLASH
+127 constant BFT-DEL
 
 : BFT-RESET ( -- )
    SB-RESET ;
@@ -57,3 +62,25 @@
 : BFT-TSV-LAST ( ptr u8 n -- )
    BFT+
    BFT-LF+ ;
+
+: BFT-JSON-ESCAPE-SAMPLE$ ( -- ptr u8 n )
+   BFT-RESET
+   s" a" BFT+
+   BFT-DQ+
+   s" b" BFT+
+   BFT-BACKSLASH BFT-C
+   s" c" BFT+
+   BFT-BS BFT-C
+   BFT-FF BFT-C
+   BFT-LF BFT-C
+   BFT-CR BFT-C
+   BFT-TAB BFT-C
+   0 BFT-C
+   1 BFT-C
+   BFT-DEL BFT-C
+   BFT$ ;
+
+: BFT-JSON-STRING$ ( ptr u8 n -- ptr u8 n )
+   JW-RESET
+   JW-STRING
+   JW$ ;

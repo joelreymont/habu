@@ -1,31 +1,6 @@
 \ json-row-test.f - focused tests for bench/llm/json-row.f.
-\ Run: bin/hb --load lib/errors.f lib/test.f bench/llm/json-row.f bench/llm/json-row-test.f
-
-create BQT-IN
-97 c, 34 c, 98 c, 92 c, 99 c, 8 c, 12 c, 10 c, 13 c, 9 c, 0 c, 1 c, 127 c,
-13 constant BQT-IN-U
-
-create BQT-WANT
-34 c,
-97 c,
-92 c, 34 c,
-98 c,
-92 c, 92 c,
-99 c,
-92 c, 98 c,
-92 c, 102 c,
-92 c, 110 c,
-92 c, 114 c,
-92 c, 116 c,
-92 c, 117 c, 48 c, 48 c, 48 c, 48 c,
-92 c, 117 c, 48 c, 48 c, 48 c, 49 c,
-127 c,
-34 c,
-32 constant BQT-WANT-U
-
-create BQT-PLAIN-WANT
-34 c, 97 c, 108 c, 112 c, 104 c, 97 c, 34 c,
-7 constant BQT-PLAIN-WANT-U
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/json-write.f
+\ bench/llm/fixture-text.f bench/llm/json-row.f bench/llm/json-row-test.f
 
 : BQT-BUF$ ( -- ptr u8 n )
    BQ-OUT BQ-OUT-LEN @ ;
@@ -48,13 +23,15 @@ create BQT-PLAIN-WANT
 
 : BQT-TEST-STRING ( -- )
    BQ-RESET
-   BQT-IN BQT-IN-U BQ-STRING
-   BQT-BUF$ BQT-WANT BQT-WANT-U T$= ;
+   BFT-JSON-ESCAPE-SAMPLE$ {: a:ptr u :}
+   a u BQ-STRING
+   BQT-BUF$ a u BFT-JSON-STRING$ T$= ;
 
 : BQT-TEST-PLAIN ( -- )
    BQ-RESET
-   s" alpha" BQ-STRING
-   BQT-BUF$ BQT-PLAIN-WANT BQT-PLAIN-WANT-U T$= ;
+   s" alpha" {: a:ptr u :}
+   a u BQ-STRING
+   BQT-BUF$ a u BFT-JSON-STRING$ T$= ;
 
 : BQT-RUN ( -- )
    T-RESET

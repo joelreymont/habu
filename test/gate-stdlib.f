@@ -186,6 +186,8 @@ variable GS-RD
    s" llm live row emitter" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/fixture-text-test.f" GS-ARG+
    s" llm fixture text helpers" GS-HB-RUN
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/json-row.f" GS-ARG+ s" bench/llm/json-row-test.f" GS-ARG+
+   s" llm json row helpers" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" bench/llm/negative-score.f" GS-ARG+ s" bench/llm/negative-score-test.f" GS-ARG+
    s" llm negative scorer" GS-HB-RUN ;
 
@@ -208,6 +210,9 @@ variable GS-RD
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/fixture-text.f" GS-SRC+ s" bench/llm/fixture-text-test.f" GS-SRC+
    s" llm fixture text helper check" GS-CHECK-RUN
+   GS-SRC-RESET
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/fixture-text.f" GS-SRC+ s" bench/llm/json-row.f" GS-SRC+ s" bench/llm/json-row-test.f" GS-SRC+
+   s" llm json row helper check" GS-CHECK-RUN
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" bench/llm/negative-score.f" GS-SRC+ s" bench/llm/negative-score-test.f" GS-SRC+
    s" llm negative scorer check" GS-CHECK-RUN ;
