@@ -10,7 +10,7 @@ $30000 constant CHK-ORIGIN-CAP
 $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
-5000 constant CHK-TIMEOUT-MS
+120000 constant CHK-TIMEOUT-MS
 
 10 constant CHK-LF
 32 constant CHK-SP

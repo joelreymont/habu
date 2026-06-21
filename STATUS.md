@@ -91,7 +91,7 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   gate requires quotation, return-stack, strings, files, and AOT-safe benchmark
   categories. `bench/llm/perf.sh` records quick feedback-loop latency, with
   `--full` covering rebuild and AOT timings.
-- **AOT-strip linker** — done and the DEFAULT. `hb-build.sh prog.f -o out` AOT-
+- **AOT-strip linker** — done and the DEFAULT. The native `tools/hb-build.f` path AOT-
   compiles `: MAIN ;` to a native binary with the engine stripped (fib __text
   540 B vs 11836 B embed). `--repl` verifies the user source's checked
   definitions at build time, then bundles the full engine + the program's

@@ -150,6 +150,7 @@ variable DA-BIN-U
    s" lib/process.f" PROC-ARGV+
    s" lib/process-argv.f" PROC-ARGV+
    s" lib/process-env.f" PROC-ARGV+
+   s" lib/source.f" PROC-ARGV+
    s" lib/build.f" PROC-ARGV+
    s" tools/build-fixpoint.f" PROC-ARGV+
    s" tools/hb-build-lib.f" PROC-ARGV+

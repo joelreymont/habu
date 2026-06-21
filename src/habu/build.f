@@ -1,5 +1,5 @@
 \ build.f — driver: bake a USER program into a standalone signed engine binary.
-\ tools/hb-build.sh owns the I/O paths: it writes the bundled source to
+\ tools/hb-build.f owns the I/O paths: it writes the bundled source to
 \ /tmp/hb-build-src, the user-only check input to /tmp/hb-build-check-src, runs
 \ the maker (toolchain + this driver, compiled by bin/hb), and moves
 \ /tmp/hb-build-got to the requested output.

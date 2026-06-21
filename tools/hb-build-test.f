@@ -1,5 +1,5 @@
 \ hb-build-test.f - checked fixture for tools/hb-build-lib.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build-test.f
 
 65536 constant HBT-CAPTURE-CAP
 120000 constant HBT-TIMEOUT-MS
@@ -11,6 +11,10 @@ variable HBT-OK-SRC-U
 variable HBT-OK-OUT-U
 variable HBT-BAD-SRC-U
 variable HBT-BAD-OUT-U
+variable HBT-REPL-SRC-U
+variable HBT-REPL-OUT-U
+variable HBT-REPL-BAD-SRC-U
+variable HBT-REPL-BAD-OUT-U
 
 create HBT-ROOT-BUF FS-PATH-CAP allot
 create HBT-TMP-BUF FS-PATH-CAP allot
@@ -19,6 +23,10 @@ create HBT-OK-SRC-BUF FS-PATH-CAP allot
 create HBT-OK-OUT-BUF FS-PATH-CAP allot
 create HBT-BAD-SRC-BUF FS-PATH-CAP allot
 create HBT-BAD-OUT-BUF FS-PATH-CAP allot
+create HBT-REPL-SRC-BUF FS-PATH-CAP allot
+create HBT-REPL-OUT-BUF FS-PATH-CAP allot
+create HBT-REPL-BAD-SRC-BUF FS-PATH-CAP allot
+create HBT-REPL-BAD-OUT-BUF FS-PATH-CAP allot
 create HBT-OUT HBT-CAPTURE-CAP allot
 create HBT-ERR HBT-CAPTURE-CAP allot
 create HBT-RUN-OUT HBT-CAPTURE-CAP allot
@@ -53,6 +61,18 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 : HBT-BAD-OUT ( -- ptr u8 n )
    HBT-BAD-OUT-BUF HBT-BAD-OUT-U @ ;
 
+: HBT-REPL-SRC ( -- ptr u8 n )
+   HBT-REPL-SRC-BUF HBT-REPL-SRC-U @ ;
+
+: HBT-REPL-OUT ( -- ptr u8 n )
+   HBT-REPL-OUT-BUF HBT-REPL-OUT-U @ ;
+
+: HBT-REPL-BAD-SRC ( -- ptr u8 n )
+   HBT-REPL-BAD-SRC-BUF HBT-REPL-BAD-SRC-U @ ;
+
+: HBT-REPL-BAD-OUT ( -- ptr u8 n )
+   HBT-REPL-BAD-OUT-BUF HBT-REPL-BAD-OUT-U @ ;
+
 : HBT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
@@ -69,6 +89,24 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 : HBT-BAD-SRC$ ( -- ptr u8 n )
    s" : MAIN ( -- ) here drop ;" ;
 
+: HBT-REPL-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" : SQ ( i64 -- i64 ) dup * ;" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" EXPORT SQ" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" 9 SQ . CR" SB-APPEND
+   HBB-LF SB-APPEND-C
+   SB$ ;
+
+: HBT-REPL-BAD-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" : RBAD ( i64 -- i64 ) 0= ;" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" EXPORT RBAD" SB-APPEND
+   HBB-LF SB-APPEND-C
+   SB$ ;
+
 : HBT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-hb-build" TMPDIR-MKDIR {: a:ptr u :}
@@ -81,8 +119,14 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBT-ROOT s" ok" HBT-OK-OUT-BUF HBT-OK-OUT-U HBT-PATH!
    HBT-ROOT s" bad.f" HBT-BAD-SRC-BUF HBT-BAD-SRC-U HBT-PATH!
    HBT-ROOT s" bad" HBT-BAD-OUT-BUF HBT-BAD-OUT-U HBT-PATH!
+   HBT-ROOT s" repl.f" HBT-REPL-SRC-BUF HBT-REPL-SRC-U HBT-PATH!
+   HBT-ROOT s" repl" HBT-REPL-OUT-BUF HBT-REPL-OUT-U HBT-PATH!
+   HBT-ROOT s" repl-bad.f" HBT-REPL-BAD-SRC-BUF HBT-REPL-BAD-SRC-U HBT-PATH!
+   HBT-ROOT s" repl-bad" HBT-REPL-BAD-OUT-BUF HBT-REPL-BAD-OUT-U HBT-PATH!
    HBT-OK-SRC HBT-OK-SRC$ WRITE-ALL
-   HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL ;
+   HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
+   HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
+   HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL ;
 
 : HBT-ARGV-BASE-TMP ( ptr u8 n -- )
    PROC-ARGV-RESET
@@ -96,6 +140,7 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    s" lib/process.f" PROC-ARGV+
    s" lib/process-argv.f" PROC-ARGV+
    s" lib/process-env.f" PROC-ARGV+
+   s" lib/source.f" PROC-ARGV+
    s" lib/build.f" PROC-ARGV+
    s" tools/build-fixpoint.f" PROC-ARGV+
    s" tools/hb-build-lib.f" PROC-ARGV+
@@ -120,6 +165,18 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    s" -o" PROC-ARGV+
    HBT-BAD-OUT PROC-ARGV+ ;
 
+: HBT-ADD-REPL ( -- )
+   s" --repl" PROC-ARGV+
+   HBT-REPL-SRC PROC-ARGV+
+   s" -o" PROC-ARGV+
+   HBT-REPL-OUT PROC-ARGV+ ;
+
+: HBT-ADD-REPL-BAD ( -- )
+   s" --repl" PROC-ARGV+
+   HBT-REPL-BAD-SRC PROC-ARGV+
+   s" -o" PROC-ARGV+
+   HBT-REPL-BAD-OUT PROC-ARGV+ ;
+
 : HBT-BUILD-OK ( -- )
    HBT-ARGV-BASE
    HBT-ADD-OK
@@ -135,6 +192,29 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    {: outu erru :}
    HBT-RUN-ERR erru HBT-EMPTY$ T$=
    HBT-RUN-OUT outu HBT-42$ T$= ;
+
+: HBT-81$ ( -- ptr u8 n )
+   SB-RESET
+   s" 81" SB-APPEND
+   HBB-LF SB-APPEND-C
+   HBB-LF SB-APPEND-C
+   SB$ ;
+
+: HBT-BUILD-REPL ( -- )
+   HBT-ARGV-BASE
+   HBT-ADD-REPL
+   HBT-RUN-HB-BUILD 0 T=
+   {: outu erru :}
+   HBT-ERR erru HBT-EMPTY$ T$=
+   HBT-OUT outu s" engine+REPL bundle" CONTAINS? TTRUE
+   HBT-REPL-OUT FILE? TTRUE ;
+
+: HBT-RUN-REPL ( -- )
+   HBT-REPL-OUT HBT-RUN-OUT HBT-CAPTURE-CAP HBT-RUN-ERR HBT-CAPTURE-CAP
+   HBT-TIMEOUT-MS RUN-CAPTURE 0 T=
+   {: outu erru :}
+   HBT-RUN-ERR erru HBT-EMPTY$ T$=
+   HBT-RUN-OUT outu HBT-81$ T$= ;
 
 : HBT-BUILD-MISSING-TMP ( -- )
    HBT-NEW-TMP EXISTS? TFALSE
@@ -189,13 +269,26 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBT-ERR erru HBT-JSON-TOKEN$ CONTAINS? TTRUE
    HBT-BAD-OUT EXISTS? TFALSE ;
 
+: HBT-REJECT-REPL-BAD ( -- )
+   HBT-ARGV-BASE
+   HBT-ADD-REPL-BAD
+   HBT-RUN-HB-BUILD 0 T<>
+   {: outu erru :}
+   HBT-OUT outu HBT-EMPTY$ T$=
+   HBT-ERR erru s" expected: i64" CONTAINS? TTRUE
+   HBT-ERR erru s" actual: bool" CONTAINS? TTRUE
+   HBT-REPL-BAD-OUT EXISTS? TFALSE ;
+
 : HBT-MAIN ( -- )
    T-RESET
    HBT-PREPARE
    HBT-BUILD-OK
    HBT-RUN-OK
+   HBT-BUILD-REPL
+   HBT-RUN-REPL
    HBT-BUILD-MISSING-TMP
    HBT-REJECT-BAD
+   HBT-REJECT-REPL-BAD
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT

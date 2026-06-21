@@ -1,8 +1,8 @@
-\ hb-build-lib.f - native AOT build CLI library.
+\ hb-build-lib.f - native AOT/REPL build CLI library.
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f, and
-\ tools/build-fixpoint.f.
+\ lib/source.f, and tools/build-fixpoint.f.
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
@@ -22,6 +22,7 @@ HBB-LF HBB-LF-BUF c!
 variable HBB-SRC-U
 variable HBB-OUT-U
 variable HBB-I
+variable HBB-REPL
 variable HBB-JSON
 variable HBB-STRICT
 variable HBB-TAIL
@@ -39,7 +40,7 @@ variable HBB-JSON-FOUND
    s" " rot die ;
 
 : HBB-USAGE ( -- )
-   s" usage: tools/hb-build.f [--json-errors] [--strict-signatures] source.f -o out" HBB-USAGE-RC die ;
+   s" usage: tools/hb-build.f [--repl] [--json-errors] [--strict-signatures] source.f -o out" HBB-USAGE-RC die ;
 
 : HBB-COPY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u FS-PATH-CAP > if E-BUILD-PATH throw then
@@ -124,6 +125,7 @@ variable HBB-JSON-FOUND
 
 : HBB-PARSE-OPTION? ( -- bool )
    HBB-I @ SCRIPT-ARGC >= if HBB-FALSE exit then
+   HBB-I @ s" --repl" HBB-ARG= if -1 HBB-REPL ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --json-errors" HBB-ARG= if -1 HBB-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --strict-signatures" HBB-ARG= if -1 HBB-STRICT ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ HBB-ARG$ s" --" STR= if HBB-INC-I HBB-FALSE exit then
@@ -134,6 +136,7 @@ variable HBB-JSON-FOUND
    begin HBB-PARSE-OPTION? while repeat ;
 
 : HBB-PARSE ( -- )
+   0 HBB-REPL !
    0 HBB-JSON !
    0 HBB-STRICT !
    0 HBB-I !
@@ -192,8 +195,20 @@ variable HBB-JSON-FOUND
    HBB-JSON @ if s" --json" PROC-ARGV+ then
    HBB-SRC$ PROC-ARGV+ ;
 
+: HBB-ADD-DIAG-ORIGIN-CMD ( -- )
+   HBB-CMD-RESET
+   s" --load" PROC-ARGV+
+   s" tools/lint/lib.f" PROC-ARGV+
+   s" tools/diag-origin.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   HBB-SRC$ PROC-ARGV+ ;
+
 : HBB-RUN-HB-CAPTURE ( -- n n n )
    s" bin/hb" HBB-OUT-BUF HBB-CAPTURE-CAP HBB-ERR-BUF HBB-CAPTURE-CAP
+   HBB-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE ;
+
+: HBB-RUN-DIAG-CAPTURE ( -- n n n )
+   s" bin/hb" BF-SOURCE-BUF BF-SOURCE-CAP HBB-ERR-BUF HBB-CAPTURE-CAP
    HBB-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE ;
 
 : HBB-FINISH-TOOL ( n n n -- ) {: outu erru rc :}
@@ -202,7 +217,17 @@ variable HBB-JSON-FOUND
    erru HBB-WERR-ERR
    rc HBB-EXIT ;
 
+: HBB-FINISH-DIAG-ORIGIN ( n n n -- n ) {: outu erru rc :}
+   rc 0= if
+      erru HBB-WERR-ERR
+      outu exit
+   then
+   BF-SOURCE-BUF outu HBB-WERR
+   erru HBB-WERR-ERR
+   0 rc HBB-EXIT ;
+
 : HBB-RUN-AOT-LINT ( -- )
+   HBB-REPL @ if exit then
    HBB-ADD-AOT-LINT-CMD
    HBB-RUN-HB-CAPTURE HBB-FINISH-TOOL ;
 
@@ -210,6 +235,25 @@ variable HBB-JSON-FOUND
    HBB-STRICT @ 0= if exit then
    HBB-ADD-SIGNATURE-LINT-CMD
    HBB-RUN-HB-CAPTURE HBB-FINISH-TOOL ;
+
+: HBB-DIAG-ORIGIN-SOURCE ( -- )
+   HBB-ADD-DIAG-ORIGIN-CMD
+   HBB-RUN-DIAG-CAPTURE HBB-FINISH-DIAG-ORIGIN BF-SOURCE-LEN ! ;
+
+: HBB-DRIVER$ ( -- ptr u8 n )
+   HBB-REPL @ if s" src/habu/build.f" else s" src/habu/aot.f" then ;
+
+: HBB-SRC-NAME$ ( -- ptr u8 n )
+   HBB-REPL @ if s" hb-build-src" else s" hb-aot-src" then ;
+
+: HBB-CHECK-NAME$ ( -- ptr u8 n )
+   s" hb-build-check-src" ;
+
+: HBB-GOT-NAME$ ( -- ptr u8 n )
+   HBB-REPL @ if s" hb-build-got" else s" hb-aot-got" then ;
+
+: HBB-MK-NAME$ ( -- ptr u8 n )
+   HBB-REPL @ if s" hb-build-mk" else s" hb-aot-mk" then ;
 
 : HBB-SB-DQ ( -- )
    HBB-DQ SB-APPEND-C ;
@@ -237,8 +281,8 @@ variable HBB-JSON-FOUND
    repeat
    HBB-TAIL @ ;
 
-: HBB-APPEND-AOT-DRIVER ( ptr u8 n -- ) {: out:ptr outu :}
-   s" src/habu/aot.f" BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN !
+: HBB-APPEND-DRIVER ( ptr u8 n -- ) {: out:ptr outu :}
+   HBB-DRIVER$ BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN !
    HBB-LAST-LINE-START {: tail :}
    out outu BF-OUT$ BF-SOURCE-BUF tail APPEND-FILE
    out outu HBB-DIAG-LINE$ BF-APPEND-LINE
@@ -250,26 +294,48 @@ variable HBB-JSON-FOUND
    s" stage2-src" BF-RESET-OUT
    s" stage2-src" s" 0 set-check" BF-APPEND-LINE
    s" stage2-src" BF-APPEND-COMMON
-   s" stage2-src" HBB-APPEND-AOT-DRIVER ;
+   s" stage2-src" HBB-APPEND-DRIVER ;
 
 : HBB-BUILD-MAKER ( -- )
    HBB-STAGE2-SOURCE
    s" stage2-got" BF-REMOVE-TMP
-   s" hb-aot-mk" BF-REMOVE-TMP
+   HBB-MK-NAME$ BF-REMOVE-TMP
    s" bin/hb" s" src/habu/stage2.f" BF-RUN-ENV-PATH-INFILE
    dup 0 <> if s" hb-build: native maker build failed" HBB-BUILD-RC die then drop
    s" stage2-got" BF-EXPECT
-   s" stage2-got" s" hb-aot-mk" BF-RENAME-TMP
-   s" hb-aot-mk" BF-CHMOD-X-TMP ;
+   s" stage2-got" HBB-MK-NAME$ BF-RENAME-TMP
+   HBB-MK-NAME$ BF-CHMOD-X-TMP ;
+
+: HBB-READ-COMMENTED-SOURCE ( -- )
+   HBB-SRC$ BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN !
+   BF-SOURCE-BUF BF-SOURCE-LEN @ SOURCE-BUF SOURCE-CAP COMMENT-EXPORTS SOURCE-LEN ! ;
+
+: HBB-READ-ORIGIN-COMMENTED-SOURCE ( -- )
+   HBB-DIAG-ORIGIN-SOURCE
+   BF-SOURCE-BUF BF-SOURCE-LEN @ SOURCE-BUF SOURCE-CAP COMMENT-EXPORTS SOURCE-LEN ! ;
+
+: HBB-WRITE-COMMENTED-SOURCE ( ptr u8 n -- ) {: name:ptr nameu :}
+   name nameu BF-OUT$ SOURCE-BUF SOURCE-LEN @ WRITE-ALL ;
 
 : HBB-PREPARE-AOT-SOURCE ( -- )
-   HBB-SRC$ BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN !
-   s" hb-aot-src" BF-OUT$ BF-SOURCE-BUF BF-SOURCE-LEN @ WRITE-ALL ;
+   HBB-READ-ORIGIN-COMMENTED-SOURCE
+   HBB-SRC-NAME$ HBB-WRITE-COMMENTED-SOURCE ;
+
+: HBB-PREPARE-REPL-SOURCE ( -- )
+   HBB-READ-ORIGIN-COMMENTED-SOURCE
+   HBB-CHECK-NAME$ HBB-WRITE-COMMENTED-SOURCE
+   HBB-READ-COMMENTED-SOURCE
+   HBB-SRC-NAME$ HBB-WRITE-COMMENTED-SOURCE
+   HBB-SRC-NAME$ BF-APPEND-LF
+   HBB-SRC-NAME$ s" src/habu/repl.f" BF-APPEND-SOURCE ;
+
+: HBB-PREPARE-PROGRAM-SOURCE ( -- )
+   HBB-REPL @ if HBB-PREPARE-REPL-SOURCE else HBB-PREPARE-AOT-SOURCE then ;
 
 : HBB-RUN-MAKER-CMD ( -- n n n )
    PROC-ARGV-RESET
    BF-PREPARE-ENV
-   s" hb-aot-mk" BF-A$ HBB-OUT-BUF HBB-CAPTURE-CAP HBB-ERR-BUF HBB-CAPTURE-CAP
+   HBB-MK-NAME$ BF-A$ HBB-OUT-BUF HBB-CAPTURE-CAP HBB-ERR-BUF HBB-CAPTURE-CAP
    HBB-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE ;
 
 : HBB-FINISH-MAKER ( n n n -- ) {: outu erru rc :}
@@ -281,27 +347,32 @@ variable HBB-JSON-FOUND
 : HBB-REMOVE-OUT ( -- )
    HBB-OUT$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
 
-: HBB-INSTALL-AOT ( -- )
-   s" hb-aot-got" BF-EXPECT
+: HBB-INSTALL-OUT ( -- )
+   HBB-GOT-NAME$ BF-EXPECT
    HBB-REMOVE-OUT
-   s" hb-aot-got" BF-A$ HBB-OUT$ RENAME-FILE
+   HBB-GOT-NAME$ BF-A$ HBB-OUT$ RENAME-FILE
    HBB-OUT$ CHMOD-X ;
 
 : HBB-RUN-MAKER ( -- )
-   s" hb-aot-got" BF-REMOVE-TMP
+   HBB-GOT-NAME$ BF-REMOVE-TMP
    HBB-RUN-MAKER-CMD HBB-FINISH-MAKER
-   HBB-INSTALL-AOT ;
+   HBB-INSTALL-OUT ;
 
 : HBB-SUCCESS ( -- )
    s" hb-build OK: " type
    HBB-OUT$ type
+   HBB-REPL @ if
+      s"  (engine+REPL bundle)"
+   else
+      s"  (AOT, engine stripped)"
+   then type
    cr ;
 
 : HBB-BUILD-AOT ( -- )
    HBB-RUN-SIGNATURE-LINT
    HBB-RUN-AOT-LINT
    HBB-BUILD-MAKER
-   HBB-PREPARE-AOT-SOURCE
+   HBB-PREPARE-PROGRAM-SOURCE
    HBB-RUN-MAKER
    HBB-SUCCESS ;
 

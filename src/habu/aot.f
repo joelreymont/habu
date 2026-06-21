@@ -6,7 +6,7 @@
 \ with every other word, the interpreter, the compiler and the parser stripped.
 \ All reachable blobs are copied into the output __text and their absolute
 \ inter-word calls relocated. The program MUST define `: MAIN ;`.
-\ tools/hb-build.sh owns the I/O paths. A DRIVER (appended last, like build.f).
+\ tools/hb-build.f owns the I/O paths. A DRIVER (appended last, like build.f).
 
 variable PB  variable PN  variable PFD  variable PRD
 variable SI
