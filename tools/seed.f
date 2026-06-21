@@ -22,6 +22,7 @@ create SEED-SMOKE-OUT SEED-SMOKE-OUT-CAP allot
 create SEED-SMOKE-ERR SEED-SMOKE-ERR-CAP allot
 create SEED-BUILD-OUT SEED-BUILD-OUT-CAP allot
 create SEED-BUILD-ERR SEED-BUILD-ERR-CAP allot
+create SEED-LF 10 c,
 create SEED-SMOKE-IN
    52 c, 49 c, 32 c, 49 c, 32 c, 43 c, 32 c, 46 c,
    32 c, 99 c, 114 c, 10 c,
@@ -123,6 +124,18 @@ variable SEED-LAST
 : SEED-EXPECT-NO-STDERR ( n -- )
    0 <> if E-BUILD-STATUS throw then ;
 
+: SEED-OUT ( ptr u8 n -- )
+   dup 0 <= if 2drop exit then
+   1 -rot write drop ;
+
+: SEED-ERR ( ptr u8 n -- )
+   dup 0 <= if 2drop exit then
+   2 -rot write drop ;
+
+: SEED-REPLAY-BUILD-OUTPUT ( n n -- ) {: outu erru :}
+   SEED-BUILD-OUT outu SEED-OUT
+   SEED-BUILD-ERR erru SEED-ERR ;
+
 : SEED-SMOKE ( ptr u8 n -- ) {: hb:ptr hbu :}
    PROC-ARGV-RESET
    hb hbu SEED-SMOKE-IN SEED-SMOKE-IN-U
@@ -155,8 +168,13 @@ variable SEED-LAST
    hb hbu
    SEED-BUILD-OUT SEED-BUILD-OUT-CAP
    SEED-BUILD-ERR SEED-BUILD-ERR-CAP
-   SEED-BUILD-TIMEOUT-MS RUN-ARGV-CAPTURE SEED-RC0
-   2drop ;
+   SEED-BUILD-TIMEOUT-MS RUN-ARGV-CAPTURE
+   {: outu erru rc :}
+   rc 0= if exit then
+   outu erru SEED-REPLAY-BUILD-OUTPUT
+   s" seed: build-fixpoint failed" SEED-ERR
+   SEED-LF 1 SEED-ERR
+   E-BUILD-STATUS throw ;
 
 : SEED-INSTALL-SMOKE-BUILD ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
    src srcu SEED-VERIFY-OPTIONAL-SHA256

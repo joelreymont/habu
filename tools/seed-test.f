@@ -10,7 +10,11 @@ create SET-SEED FS-PATH-CAP allot
 create SET-TEXT FS-PATH-CAP allot
 create SET-BAD FS-PATH-CAP allot
 create SET-SCRIPT FS-PATH-CAP allot
+create SET-FAIL-SCRIPT FS-PATH-CAP allot
 create SET-HEX SEED-SHA256-HEX-U allot
+8192 constant SET-CAP
+create SET-OUT SET-CAP allot
+create SET-ERR SET-CAP allot
 
 variable SET-ROOT-U
 variable SET-BIN-U
@@ -19,6 +23,7 @@ variable SET-SEED-U
 variable SET-TEXT-U
 variable SET-BAD-U
 variable SET-SCRIPT-U
+variable SET-FAIL-SCRIPT-U
 
 : SET-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then
@@ -49,6 +54,9 @@ variable SET-SCRIPT-U
 : SET-SCRIPT$ ( -- ptr u8 n )
    SET-SCRIPT SET-SCRIPT-U @ ;
 
+: SET-FAIL-SCRIPT$ ( -- ptr u8 n )
+   SET-FAIL-SCRIPT SET-FAIL-SCRIPT-U @ ;
+
 : SET-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-seed-test" TMPDIR-MKDIR SET-ROOT SET-ROOT-U SET-COPY!
@@ -58,7 +66,8 @@ variable SET-SCRIPT-U
    SET-BIN$ s" hb" SET-HB SET-HB-U SET-PATH!
    SET-ROOT$ s" text.txt" SET-TEXT SET-TEXT-U SET-PATH!
    SET-ROOT$ s" bad-hash.txt" SET-BAD SET-BAD-U SET-PATH!
-   SET-ROOT$ s" unsigned-script" SET-SCRIPT SET-SCRIPT-U SET-PATH! ;
+   SET-ROOT$ s" unsigned-script" SET-SCRIPT SET-SCRIPT-U SET-PATH!
+   SET-ROOT$ s" seed-build-fail.f" SET-FAIL-SCRIPT SET-FAIL-SCRIPT-U SET-PATH! ;
 
 : SET-X? ( ptr u8 n -- bool )
    STAT-MODE FS-MUT-MODE-EXEC and FS-MUT-MODE-EXEC = ;
@@ -103,6 +112,42 @@ variable SET-SCRIPT-U
 : SET-TEST-BUILD-INVOKE-SAFE ( -- )
    s" /usr/bin/true" SEED-RUN-BUILD-FIXPOINT ;
 
+: SET-FAIL-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   115 SB-APPEND-C
+   34 SB-APPEND-C
+   32 SB-APPEND-C
+   s" /bin/cat" SB-APPEND
+   34 SB-APPEND-C
+   32 SB-APPEND-C
+   s" SEED-RUN-BUILD-FIXPOINT" SB-APPEND
+   10 SB-APPEND-C
+   SB$ ;
+
+: SET-FAIL-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" --load" PROC-ARGV+
+   s" lib/errors.f" PROC-ARGV+
+   s" lib/string.f" PROC-ARGV+
+   s" lib/fs.f" PROC-ARGV+
+   s" lib/fs-mutate.f" PROC-ARGV+
+   s" lib/process.f" PROC-ARGV+
+   s" lib/process-argv.f" PROC-ARGV+
+   s" lib/process-env.f" PROC-ARGV+
+   s" src/core/sha256.f" PROC-ARGV+
+   s" lib/codesign.f" PROC-ARGV+
+   s" tools/seed.f" PROC-ARGV+
+   SET-FAIL-SCRIPT$ PROC-ARGV+ ;
+
+: SET-TEST-BUILD-FAIL-REPLAYS-ERR ( -- )
+   SET-FAIL-SCRIPT$ SET-FAIL-SOURCE$ WRITE-ALL
+   SET-FAIL-ARGV
+   s" bin/hb" SET-OUT SET-CAP SET-ERR SET-CAP 10000 RUN-ARGV-CAPTURE
+   {: outu erru rc :}
+   rc 0 T<>
+   SET-ERR erru s" illegal option" CONTAINS? TTRUE
+   SET-ERR erru s" seed: build-fixpoint failed" CONTAINS? TTRUE ;
+
 : SET-INSTALL-MISSING ( -- )
    SET-BAD$ SET-HB$ SEED-INSTALL ;
 
@@ -116,6 +161,7 @@ variable SET-SCRIPT-U
    SET-TEST-CODESIGN-ENSURE
    SET-TEST-INSTALL-SMOKE
    SET-TEST-BUILD-INVOKE-SAFE
+   SET-TEST-BUILD-FAIL-REPLAYS-ERR
    ['] SET-INSTALL-MISSING E-BUILD-PATH TTHROWS
    CLEANUP-RUN
    SET-ROOT$ EXISTS? TFALSE
