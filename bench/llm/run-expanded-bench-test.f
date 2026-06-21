@@ -6,6 +6,9 @@
 
 120000 constant REBT-TIMEOUT-MS
 65536 constant REBT-CAP
+10 constant REBT-DEC
+48 constant REBT-ZERO
+32 constant REBT-NUM-CAP
 
 create REBT-ROOT FS-PATH-CAP allot
 create REBT-HB-TMP FS-PATH-CAP allot
@@ -17,6 +20,7 @@ create REBT-REPORT FS-PATH-CAP allot
 create REBT-OUT REBT-CAP allot
 create REBT-ERR REBT-CAP allot
 create REBT-FILE REBT-CAP allot
+create REBT-NUM REBT-NUM-CAP allot
 
 variable REBT-ROOT-U
 variable REBT-HB-TMP-U
@@ -26,6 +30,7 @@ variable REBT-MODELS-U
 variable REBT-OUT-PATH-U
 variable REBT-REPORT-U
 variable REBT-FILE-U
+variable REBT-NUM-I
 
 : REBT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
@@ -68,15 +73,47 @@ variable REBT-FILE-U
    s" report.md" REBT-REPORT REBT-REPORT-U REBT-JOIN!
    REBT-HB-TMP$ MAKE-DIR ;
 
-: REBT-MODEL-SOURCE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+: REBT-U$ ( n -- ptr u8 n ) {: u :}
+   REBT-NUM-CAP REBT-NUM-I !
+   u 0= if
+      REBT-NUM-I @ 1- REBT-NUM-I !
+      REBT-ZERO REBT-NUM REBT-NUM-I @ + c!
+      REBT-NUM REBT-NUM-I @ + 1
+      exit
+   then
+   u begin dup 0 > while
+      dup REBT-DEC mod REBT-ZERO +
+      REBT-NUM-I @ 1- REBT-NUM-I !
+      REBT-NUM REBT-NUM-I @ + c!
+      REBT-DEC /
+   repeat drop
+   REBT-NUM REBT-NUM-I @ + REBT-NUM-CAP REBT-NUM-I @ - ;
+
+: REBT-U+ ( n -- )
+   REBT-U$ BFT+ ;
+
+: REBT-SOURCE-EMIT-C ( n -- )
+   REBT-U+
+   s"  emit " BFT+ ;
+
+: REBT-SOURCE-EMIT-BYTES ( ptr u8 n -- ) {: a:ptr u :}
+   0 begin dup u < while
+      dup a + c@ REBT-SOURCE-EMIT-C
+      1+
+   repeat drop ;
+
+: REBT-MODEL-SOURCE$ ( ptr u8 n -- ptr u8 n )
    BFT-RESET
    s" MAIN" s" --" BFT-SOURCE-DEF
-   a u BFT-SOURCE-S"
-   s"  type cr " BFT+
+   REBT-SOURCE-EMIT-BYTES
+   s"  cr " BFT+
    BFT-SOURCE-END$ ;
 
 : REBT-AOT-CANDIDATE$ ( -- ptr u8 n )
    s" : MAIN ( -- ) here drop ;" ;
+
+: REBT-FORTH-CANDIDATE$ ( -- ptr u8 n )
+   s" : SQUARE ( i64 -- i64 ) dup * ;" ;
 
 : REBT-ARRAY-CANDIDATE$ ( -- ptr u8 n )
    s" : ARR-SUM ( ptr a n -- i64 ) A-SUM ;" ;
@@ -174,6 +211,11 @@ variable REBT-FILE-U
    s" PATH" REBT-ROOT$ PROC-ENV+
    REBT-RUN-EXPANDED-SPAWN ;
 
+: REBT-RUN-FORTH-EXPANDED ( -- )
+   s" 1" s" run-expanded-forth-2026-06-21" REBT-RUN-EXPANDED-START
+   s" BENCH_FORTH_MODES" s" repair raw blind" PROC-ENV+
+   REBT-RUN-EXPANDED-SPAWN ;
+
 : REBT-FILE$ ( ptr u8 n -- ptr u8 n )
    REBT-FILE REBT-CAP READ-ALL REBT-FILE-U !
    REBT-FILE REBT-FILE-U @ ;
@@ -212,6 +254,24 @@ variable REBT-FILE-U
    a u s" category arrays rows=1" REBT-CONTAINS
    a u s" arm habu-stdlib rows=1" REBT-CONTAINS ;
 
+: REBT-ASSERT-FORTH-JSONL ( -- )
+   REBT-OUT-PATH$ REBT-FILE$ {: a:ptr u :}
+   a u s" outcome" REBT-CONTAINS
+   a u s" pass" REBT-CONTAINS
+   a u s" habu-forth" REBT-CONTAINS
+   a u s" habu-forth-raw" REBT-CONTAINS
+   a u s" habu-forth-blind" REBT-CONTAINS
+   a u s" drive-forth.sh" CONTAINS? 0= TTRUE ;
+
+: REBT-ASSERT-FORTH-REPORT ( -- )
+   REBT-REPORT$ REBT-FILE$ {: a:ptr u :}
+   a u s" arm habu-forth rows=1" REBT-CONTAINS
+   a u s" arm habu-forth-raw rows=1" REBT-CONTAINS
+   a u s" arm habu-forth-blind rows=1" REBT-CONTAINS ;
+
+: REBT-ASSERT-RUNNER-NO-SHELL ( -- )
+   s" bench/llm/run-expanded-bench.f" REBT-FILE$ s" drive-forth.sh" CONTAINS? 0= TTRUE ;
+
 : REBT-RUN-AOT-CASE ( -- )
    REBT-AOT-CANDIDATE$ REBT-WRITE-MODEL
    REBT-BUILD-MODEL
@@ -228,10 +288,20 @@ variable REBT-FILE-U
    REBT-ASSERT-ARRAY-JSONL
    REBT-ASSERT-ARRAY-REPORT ;
 
+: REBT-RUN-FORTH-CASE ( -- )
+   REBT-FORTH-CANDIDATE$ REBT-WRITE-MODEL
+   REBT-BUILD-MODEL
+   REBT-WRITE-MODELS
+   REBT-RUN-FORTH-EXPANDED
+   REBT-ASSERT-FORTH-JSONL
+   REBT-ASSERT-FORTH-REPORT
+   REBT-ASSERT-RUNNER-NO-SHELL ;
+
 : REBT-MAIN ( -- )
    T-RESET
    REBT-PREPARE
    REBT-RUN-AOT-CASE
+   REBT-RUN-FORTH-CASE
    REBT-RUN-ARRAY-CASE
    CLEANUP-RUN
    T-REPORT

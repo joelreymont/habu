@@ -539,22 +539,6 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" BENCH_TASK_FAMILY" BM-T-CATEGORY RB-TASK-FIELD$ RB-PROC-ENV$
    s" MODEL_REGISTRY" RB-MODEL-REG$ RB-PROC-ENV$ ;
 
-: RB-FORTH-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu mode:ptr modeu trial :}
-   PROC-ARGV-ENV-RESET
-   model modelu trial RB-ADD-COMMON-ENV
-   s" BENCH_FORTH_FEEDBACK" mode modeu RB-PROC-ENV$
-   s" BENCH_FORTH_ARM" mode modeu RB-ARM-FOR-MODE$ RB-PROC-ENV$
-   s" bench/llm/drive-forth.sh" PROC-ARGV+
-   BM-T-ID RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-NAME RB-TASK-FIELD$ PROC-ARGV+
-   RB-TASK-LINE$ BM-TASK-SIG$ PROC-ARGV+
-   BM-T-CATEGORY RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-TESTS RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-SPEC RB-TASK-FIELD$ PROC-ARGV+
-   SB-RESET
-   RB-MAX-REPAIRS @ RB-SB-U+
-   SB$ PROC-ARGV+ ;
-
 : RB-ARRAY-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu arm:ptr armu trial :}
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
@@ -593,6 +577,35 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" src/core/sha256.f" PROC-ARGV+
    s" bench/llm/live-row.f" PROC-ARGV+
    s" bench/llm/drive-stdlib-lib.f" PROC-ARGV+ ;
+
+: RB-FORTH-LOADS ( -- )
+   RB-STDLIB-LOADS
+   s" lib/memory.f" PROC-ARGV+
+   s" tools/lint/lib.f" PROC-ARGV+
+   s" tools/lint/source-lex.f" PROC-ARGV+
+   s" bench/llm/forth-task-lines-lib.f" PROC-ARGV+
+   s" bench/llm/attempt-solutions-lib.f" PROC-ARGV+
+   s" bench/llm/forth-candidate.f" PROC-ARGV+
+   s" bench/llm/forth-bundle.f" PROC-ARGV+
+   s" bench/llm/drive-forth-lib.f" PROC-ARGV+
+   s" bench/llm/drive-forth.f" PROC-ARGV+ ;
+
+: RB-FORTH-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu mode:ptr modeu trial :}
+   PROC-ARGV-ENV-RESET
+   model modelu trial RB-ADD-COMMON-ENV
+   s" BENCH_FORTH_FEEDBACK" mode modeu RB-PROC-ENV$
+   s" BENCH_FORTH_ARM" mode modeu RB-ARM-FOR-MODE$ RB-PROC-ENV$
+   RB-FORTH-LOADS
+   s" --" PROC-ARGV+
+   BM-T-ID RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-NAME RB-TASK-FIELD$ PROC-ARGV+
+   RB-TASK-LINE$ BM-TASK-SIG$ PROC-ARGV+
+   BM-T-CATEGORY RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-TESTS RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-SPEC RB-TASK-FIELD$ PROC-ARGV+
+   SB-RESET
+   RB-MAX-REPAIRS @ RB-SB-U+
+   SB$ PROC-ARGV+ ;
 
 : RB-ARRAY-HABU-LOADS ( -- )
    RB-STDLIB-LOADS
@@ -700,7 +713,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    mode modeu RB-ARM-FOR-MODE$ {: arm:ptr armu :}
    BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
    model modelu mode modeu trial RB-FORTH-ARGS
-   RB-RUN-APPEND drop
+   RB-RUN-HB-APPEND drop
    BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? 0= if
       s" run-expanded-bench: missing forth result row" RB-DIE
    then ;
