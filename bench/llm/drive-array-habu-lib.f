@@ -6,6 +6,7 @@
 5 constant DAH-GRADE-TIMEOUT-S
 58 constant DAH-COLON
 16 constant DAH-COUNT-KEY-LEN
+1000000 constant DAH-NS-PER-MS
 
 create DAH-VEC-PATH FS-PATH-CAP allot
 create DAH-SCRIPT-PATH FS-PATH-CAP allot
@@ -73,9 +74,6 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DAH-BUNDLED? if DAH-RUN-BUNDLE$ exit then
    DS-BUNDLE-PATH$ ;
 
-: DAH-HELPER-REQUIRED? ( -- bool )
-   DAH-BUNDLED? ;
-
 : DAH-ARM-VALID? ( -- bool )
    DAH-RAW? if DS-TRUE exit then
    DAH-LIB? if DS-TRUE exit then
@@ -107,11 +105,8 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    s" array-script.f" DAH-SCRIPT-PATH DAH-SCRIPT-U DS-JOIN!
    s" run-bundle.f" DAH-RUN-BUNDLE-PATH DAH-RUN-BUNDLE-U DS-JOIN! ;
 
-: DAH-MODE-AS? ( -- bool )
-   DAH-CONV$ s" as" STR= ;
-
 : DAH-MODE-TEXT ( -- )
-   DAH-MODE-AS? if
+   DAH-CONV$ s" as" STR= if
       s" For this task return one integer result." DS-PROMPT-LN
       exit
    then
@@ -172,18 +167,12 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DS-SIG$ DS-CAND+
    s"  ) {: arr:ptr len :}" DS-CAND-LN ;
 
-: DAH-FENCE? ( ptr u8 n -- bool )
-   TRIM s" ```" STARTS-WITH? ;
-
 : DAH-BODY-LINE ( ptr u8 n -- ) {: a:ptr u :}
    a u TRIM {: b:ptr v :}
    v 0= if exit then
-   b v DAH-FENCE? if exit then
+   b v s" ```" STARTS-WITH? if exit then
    b v DS-CAND-LN
    DAH-BODY-N @ 1+ DAH-BODY-N ! ;
-
-: DAH-TEXT-HAS-PUBLIC? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u DS-DEF-NEEDLE$ CONTAINS? ;
 
 : DAH-WRAP-SKELETON ( ptr u8 n -- ) {: a:ptr u :}
    DS-CAND-RESET
@@ -206,7 +195,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
 
 : DAH-EXTRACT-CANDIDATE ( ptr u8 n -- ) {: a:ptr u :}
    DAH-SKELETON? if
-      a u DAH-TEXT-HAS-PUBLIC? if a u DS-EXTRACT-CANDIDATE else a u DAH-WRAP-SKELETON then
+      a u DS-DEF-NEEDLE$ CONTAINS? if a u DS-EXTRACT-CANDIDATE else a u DAH-WRAP-SKELETON then
       exit
    then
    a u DS-EXTRACT-CANDIDATE ;
@@ -249,7 +238,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DS-CAND-HAS-PUBLIC? 0= if DS-FALSE exit then
    DAH-CAND-FORBIDDEN? if DS-FALSE exit then
    DS-CAND-COMPLETE? 0= if DS-FALSE exit then
-   DAH-HELPER-REQUIRED? if DAH-CAND-USES-ARRAY? exit then
+   DAH-BUNDLED? if DAH-CAND-USES-ARRAY? exit then
    DS-TRUE ;
 
 : DAH-INVALID-CANDIDATE ( -- )
@@ -333,9 +322,6 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DAH-CHECK-ARGV
    DS-HB-CAPTURE ;
 
-: DAH-DIGIT? ( n -- bool )
-   DS-DIGIT? ;
-
 : DAH-FIND-CHAR-FROM ( ptr u8 n n n -- n ) {: a:ptr u start ch :}
    start begin dup u < while
       dup a + c@ ch = if exit then
@@ -346,13 +332,13 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
 
 : DAH-DIGIT-START ( ptr u8 n n -- n ) {: a:ptr u start :}
    start begin dup u < while
-      dup a + c@ DAH-DIGIT? if exit then
+      dup a + c@ DS-DIGIT? if exit then
       1+
    repeat ;
 
 : DAH-DIGIT-END ( ptr u8 n n -- n ) {: a:ptr u start :}
    start begin dup u < while
-      dup a + c@ DAH-DIGIT? 0= if exit then
+      dup a + c@ DS-DIGIT? 0= if exit then
       1+
    repeat ;
 
@@ -414,27 +400,25 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DAH-CHECK-SOURCE$ PROC-ARGV+
    DAH-VEC$ PROC-ARGV+ ;
 
-: DAH-RUN-GRADE ( -- )
+: DAH-FINISH-GRADE ( -- )
+   mono-ns {: t0 :}
    DAH-GRADE-ARGV
    DS-HB-CAPTURE
-   DS-TEST-PATH$ DS-WRITE-CAPTURE ;
-
-: DAH-GRADE-OUTCOME$ ( -- ptr u8 n )
-   DS-RC @ 0 <> if s" error" exit then
-   DS-OUT-BUF DS-OUT-U @ s" pass" CONTAINS? if s" pass" exit then
-   DS-OUT-BUF DS-OUT-U @ s" fail" CONTAINS? if s" fail" exit then
-   DS-OUT-BUF DS-OUT-U @ s" reject" CONTAINS? if s" reject" exit then
-   DS-OUT-BUF DS-OUT-U @ s" trap" CONTAINS? if s" trap" exit then
-   DS-OUT-BUF DS-OUT-U @ s" timeout" CONTAINS? if s" timeout" exit then
-   s" error" ;
-
-: DAH-FINISH-GRADE ( -- )
-   DAH-RUN-GRADE
-   DAH-GRADE-OUTCOME$ 2dup s" pass" STR= if
-      2drop DAH-LR-PASS
+   DS-TEST-PATH$ DS-WRITE-CAPTURE
+   mono-ns t0 - DAH-NS-PER-MS 1- + DAH-NS-PER-MS / {: runtime-ms :}
+   DS-RC @ 0 <> if s" error" DAH-LR-CERTIFIED-OUTCOME exit then
+   DS-OUT-BUF DS-OUT-U @ s" pass" CONTAINS? if
+      DAH-LR-PASS
+      runtime-ms LR-RUNTIME-MS!
+      1 0 LR-RUNTIME-COUNTS!
+      s" ok" LR-RUNTIME-STATUS!
       exit
    then
-   DAH-LR-CERTIFIED-OUTCOME ;
+   DS-OUT-BUF DS-OUT-U @ s" fail" CONTAINS? if s" fail" DAH-LR-CERTIFIED-OUTCOME exit then
+   DS-OUT-BUF DS-OUT-U @ s" reject" CONTAINS? if s" reject" DAH-LR-CERTIFIED-OUTCOME exit then
+   DS-OUT-BUF DS-OUT-U @ s" trap" CONTAINS? if s" trap" DAH-LR-CERTIFIED-OUTCOME exit then
+   DS-OUT-BUF DS-OUT-U @ s" timeout" CONTAINS? if s" timeout" DAH-LR-CERTIFIED-OUTCOME exit then
+   s" error" DAH-LR-CERTIFIED-OUTCOME ;
 
 : DAH-EVALUATE-TEXT ( ptr u8 n -- ) {: text:ptr textu :}
    text textu DAH-EXTRACT-CANDIDATE

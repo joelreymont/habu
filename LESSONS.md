@@ -400,9 +400,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Checker capacity bumps are layout work:** increasing global checker tables
   can shift native data layout and break unrelated fixtures. Prefer removing
   one-use fixture signatures first; expand engine regions deliberately.
-- **Repo edits go through `apply_patch`:** even mechanical replacements should
-  use patches so accidental broad rewrites, duplicate definitions, and rule
-  violations stay reviewable.
+- **Repo edits go through `apply_patch`:** even mechanical replacements and
+  long one-line gate updates should use patches so accidental broad rewrites,
+  duplicate definitions, and rule violations stay reviewable.
 - **Use only documented dot commands:** `dot active` is not a status command and
   can create a malformed dot. Use `dot ready`, `dot ls`, `dot tree`, `dot on
   <id>`, and `dot off <id> -r "..."`
@@ -430,3 +430,6 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   the old 256 KiB stage2 reader even when the user source is tiny. Reproduce with
   `hb-build` child output and size `stage2-src`; then raise the named stage2
   source cap deliberately while preserving fail-closed overflow behavior.
+- **Live-row extras come after `DS-LR-*`:** driver result setters call
+  `DS-CONFIG-LR-COMMON`, which resets live-row fields. Set driver-specific
+  extensions such as runtime measurements after `DS-LR-PASS`/`DS-LR-FAIL`.
