@@ -479,11 +479,11 @@ Repair fixtures:
 
 Benchmark driver changes:
 
-- `bench/llm/drive-habu.sh` uses JSON diagnostics and repair packets for all
+- `bench/llm/drive-array-habu.f` uses JSON diagnostics and repair packets for all
   checker rejections.
-- The driver feeds the candidate definition plus the repair packet, not raw
-  wrapper stderr.
-- Deterministic bench tests assert packet use without live model calls.
+- The native driver feeds the candidate definition plus the repair packet, not
+  raw wrapper stderr.
+- Deterministic checked bench tests assert packet use without live model calls.
 
 Tracked dots:
 
