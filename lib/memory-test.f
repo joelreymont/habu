@@ -1,6 +1,8 @@
 \ memory-test.f - focused tests for OS-backed memory buffers.
 
 64 constant MEMT-BUFS
+16 constant MEMT-SPAN-BUFS
+32 constant MEMT-SPANS
 65 constant MEMT-MARK-A
 90 constant MEMT-MARK-Z
 
@@ -8,6 +10,9 @@ variable MEMT-HERE
 
 : MEMT-TOTAL ( -- n )
    MEMT-BUFS MEM-64K * ;
+
+: MEMT-SPAN-TOTAL ( -- n )
+   MEMT-SPAN-BUFS MEM-64K * ;
 
 : MEMT-ZERO-BYTES ( -- )
    0 MEM-ALLOC-BYTES 2drop ;
@@ -33,12 +38,18 @@ variable MEMT-HERE
    a c@ MEMT-MARK-A T=
    a u MEMT-END c@ MEMT-MARK-Z T= ;
 
-: MEMT-TOUCH-64K-SLOTS ( ptr u8 n -- ) {: a:ptr u :}
-   u MEMT-TOTAL T=
-   MEMT-BUFS 0 ?do
+: MEMT-TOUCH-SLOTS ( ptr u8 n n -- ) {: a:ptr u count :}
+   count MEM-64K * u T=
+   count 0 ?do
       MEMT-MARK-A i + a i MEM-64K * + c!
       a i MEM-64K * + c@ MEMT-MARK-A i + T=
    loop ;
+
+: MEMT-TOUCH-64K-SLOTS ( ptr u8 n -- )
+   MEMT-BUFS MEMT-TOUCH-SLOTS ;
+
+: MEMT-TOUCH-SPAN-SLOTS ( ptr u8 n -- )
+   MEMT-SPAN-BUFS MEMT-TOUCH-SLOTS ;
 
 : MEMT-SINGLE-64K ( -- )
    MEM-ALLOC-64K
@@ -54,6 +65,21 @@ variable MEMT-HERE
    MEM-ALLOC-64K 2drop
    here data-base - MEMT-HERE @ T= ;
 
+: MEMT-LIVE-SPAN-FRAME ( ptr u8 n n -- ) {: a:ptr u remaining :}
+   u MEMT-SPAN-TOTAL T=
+   a u MEMT-TOUCH-SPAN-SLOTS
+   remaining 0 > if
+      MEMT-SPAN-BUFS MEM-ALLOC-64K-BUFFERS
+      remaining 1 - recurse
+   then
+   a u MEMT-TOUCH-SPAN-SLOTS ;
+
+: MEMT-MANY-LIVE-SPANS ( -- )
+   here data-base - MEMT-HERE !
+   MEMT-SPAN-BUFS MEM-ALLOC-64K-BUFFERS
+   MEMT-SPANS 1 - MEMT-LIVE-SPAN-FRAME
+   here data-base - MEMT-HERE @ T= ;
+
 T-RESET
 MEM-64K $10000 T=
 1 MEM-64K-BYTES MEM-64K T=
@@ -65,6 +91,7 @@ MEM-64K 1 + MEM-64K-SPAN-BYTES MEM-64K 2 * T=
 MEMT-SINGLE-64K
 MEMT-MANY-64K
 MEMT-DATA-UNCHANGED
+MEMT-MANY-LIVE-SPANS
 ' MEMT-ZERO-BYTES E-MEM-SIZE TTHROWS
 ' MEMT-NEG-BYTES E-MEM-SIZE TTHROWS
 ' MEMT-ZERO-64K E-MEM-SIZE TTHROWS
