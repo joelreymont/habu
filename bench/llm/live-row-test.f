@@ -88,6 +88,7 @@ variable LRT-BUNDLE-U
    2dup s" runtime_ms" LRT-CONTAINS
    2dup s" null" LRT-CONTAINS
    2dup s" not_run" LRT-CONTAINS
+   2dup s" checker_false_reject" LRT-CONTAINS
    2dup s" repair_class_stats" LRT-CONTAINS
    2dup s" []" LRT-CONTAINS
    2dup s" Prompt" LRT-CONTAINS
@@ -110,6 +111,17 @@ variable LRT-BUNDLE-U
    2dup s" diagnostic_count" LRT-CONTAINS
    2dup s" repair_success" LRT-CONTAINS
    s" token_delta" LRT-CONTAINS ;
+
+: LRT-CONFIG-FALSE-REJECT ( -- )
+   LRT-CONFIG-DIAG
+   STR-TRUE LR-CHECKER-FALSE-REJECT!
+   STR-TRUE LR-TESTS-PASSED !
+   s" pass" LR-OUTCOME! ;
+
+: LRT-ASSERT-FALSE-REJECT-ROW ( ptr u8 n -- )
+   2dup s" checker_false_reject" LRT-CONTAINS
+   2dup s" true" LRT-CONTAINS
+   s" tests_passed" LRT-CONTAINS ;
 
 : LRT-CONFIG-RUNTIME ( -- )
    LRT-CONFIG
@@ -135,6 +147,8 @@ variable LRT-BUNDLE-U
    LR-ROW$ LRT-ASSERT-ROW
    LRT-CONFIG-DIAG
    LR-ROW$ LRT-ASSERT-DIAG-ROW
+   LRT-CONFIG-FALSE-REJECT
+   LR-ROW$ LRT-ASSERT-FALSE-REJECT-ROW
    LRT-CONFIG-RUNTIME
    LR-ROW$ LRT-ASSERT-RUNTIME-ROW
    CLEANUP-RUN

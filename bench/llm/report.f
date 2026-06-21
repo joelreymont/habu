@@ -85,6 +85,7 @@ variable R-RUNTIME-P
 variable R-RUNTIME-KNOWN-P
 variable R-WALL-P
 variable R-DIAGOK-P
+variable R-FALSE-REJECT-P
 
 variable T-NAME-O-P
 variable T-NAME-U-P
@@ -153,11 +154,13 @@ variable CUR-DACTUAL
 variable CUR-DCODE
 variable CUR-DCLASS
 variable CUR-AESTABLE
+variable CUR-FALSE-REJECT
 
 variable S-TRIALS
 variable S-PASSED
 variable S-FIRST
 variable S-NONPASS
+variable S-FALSE-REJECT
 variable S-TASKS
 variable S-PASSK
 variable S-MISSING-TOKENS
@@ -207,6 +210,7 @@ TRUSTED: R-RUNTIME ( -- ptr n ) R-RUNTIME-P @ ;
 TRUSTED: R-RUNTIME-KNOWN ( -- ptr n ) R-RUNTIME-KNOWN-P @ ;
 TRUSTED: R-WALL ( -- ptr n ) R-WALL-P @ ;
 TRUSTED: R-DIAGOK ( -- ptr n ) R-DIAGOK-P @ ;
+TRUSTED: R-FALSE-REJECT ( -- ptr n ) R-FALSE-REJECT-P @ ;
 
 TRUSTED: T-NAME-O ( -- ptr n ) T-NAME-O-P @ ;
 TRUSTED: T-NAME-U ( -- ptr n ) T-NAME-U-P @ ;
@@ -278,6 +282,7 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    RR-ROW-CAP @ R-RUNTIME-KNOWN-P RR-ALLOC-CELLS
    RR-ROW-CAP @ R-WALL-P RR-ALLOC-CELLS
    RR-ROW-CAP @ R-DIAGOK-P RR-ALLOC-CELLS
+   RR-ROW-CAP @ R-FALSE-REJECT-P RR-ALLOC-CELLS
    RR-ROW-CAP @ U-TASK-ID-P RR-ALLOC-CELLS
    RR-ROW-CAP @ U-NAME-O-P RR-ALLOC-CELLS
    RR-ROW-CAP @ U-NAME-U-P RR-ALLOC-CELLS
@@ -576,7 +581,8 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    0 CUR-RUNTIME ! 0 CUR-RUNTIME-KNOWN !
    0 CUR-WALL !
    0 CUR-DTOK ! 0 CUR-DSPAN ! 0 CUR-DEXPECT ! 0 CUR-DACTUAL !
-   0 CUR-DCODE ! 0 CUR-DCLASS ! 0 CUR-AESTABLE ! ;
+   0 CUR-DCODE ! 0 CUR-DCLASS ! 0 CUR-AESTABLE !
+   0 CUR-FALSE-REJECT ! ;
 
 : RR-CUR-STRING! ( ptr n ptr n -- )
    {: offp:ptr lenp:ptr :}
@@ -608,12 +614,12 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    s" outcome" RR-KEY= if CUR-OUT-O CUR-OUT-U RR-FIELD-STRING exit then
    s" rounds" RR-KEY= if RR-TOKEN-NUM CUR-ROUNDS ! exit then
    s" first_pass" RR-KEY= if RR-TOKEN-BOOL CUR-FIRST ! exit then
-	   s" tokens" RR-KEY= if RR-TOKEN-NUM CUR-TOKENS ! exit then
-	   s" runtime_ms" RR-KEY= if
-	      RR-I @ RR-J !
-	      RR-TOKEN-NULL? if 0 CUR-RUNTIME-KNOWN ! else RR-J @ RR-I ! RR-TOKEN-NUM CUR-RUNTIME ! -1 CUR-RUNTIME-KNOWN ! then
-	      exit
-	   then
+   s" tokens" RR-KEY= if RR-TOKEN-NUM CUR-TOKENS ! exit then
+   s" runtime_ms" RR-KEY= if
+      RR-I @ RR-J !
+      RR-TOKEN-NULL? if 0 CUR-RUNTIME-KNOWN ! else RR-J @ RR-I ! RR-TOKEN-NUM CUR-RUNTIME ! -1 CUR-RUNTIME-KNOWN ! then
+      exit
+   then
    s" wall_ms" RR-KEY= if RR-TOKEN-NUM CUR-WALL ! exit then
    s" diagnostic_token" RR-KEY= if RR-TOKEN-BOOL CUR-DTOK ! exit then
    s" diagnostic_span" RR-KEY= if RR-TOKEN-BOOL CUR-DSPAN ! exit then
@@ -622,6 +628,7 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    s" diagnostic_code" RR-KEY= if RR-TOKEN-BOOL CUR-DCODE ! exit then
    s" diagnostic_repair_class" RR-KEY= if RR-TOKEN-BOOL CUR-DCLASS ! exit then
    s" all_errors_stable" RR-KEY= if RR-TOKEN-BOOL CUR-AESTABLE ! exit then
+   s" checker_false_reject" RR-KEY= if RR-TOKEN-BOOL CUR-FALSE-REJECT ! exit then
    RR-SKIP-VALUE ;
 
 : RR-ROW-DIAGOK ( -- f )
@@ -673,6 +680,7 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    CUR-RUNTIME-KNOWN @ R-RUNTIME-KNOWN RR-ROWS @ RR-A!
    CUR-WALL @ R-WALL RR-ROWS @ RR-A!
    RR-ROW-DIAGOK R-DIAGOK RR-ROWS @ RR-A!
+   CUR-FALSE-REJECT @ R-FALSE-REJECT RR-ROWS @ RR-A!
    RR-ROWS @ 1+ RR-ROWS ! ;
 
 : RR-PARSE-FIELD ( -- )
@@ -880,7 +888,7 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    sum 100 * count RR-ROUND-DIV ;
 
 : RR-STATS-RESET ( -- )
-   0 S-TRIALS ! 0 S-PASSED ! 0 S-FIRST ! 0 S-NONPASS !
+   0 S-TRIALS ! 0 S-PASSED ! 0 S-FIRST ! 0 S-NONPASS ! 0 S-FALSE-REJECT !
    0 S-TASKS ! 0 S-PASSK ! 0 S-MISSING-TOKENS ! 0 S-MISSING-RUNTIME !
    0 S-ROUND-SUM ! 0 S-DIAGOK !
    0 S-TOK# ! 0 S-TOK-SUM ! RR-NULL S-TOK-MAX ! RR-NULL S-TOK-MED ! RR-NULL S-TOK-MEAN !
@@ -931,6 +939,7 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    0 begin dup RR-ROWS @ < while
       dup arm model cat RR-ROW-SELECT? if
          S-TRIALS @ 1+ S-TRIALS !
+         dup R-FALSE-REJECT RR-AT if S-FALSE-REJECT @ 1+ S-FALSE-REJECT ! then
          dup RR-ACC-UNIT
          dup R-DIAGOK RR-AT if S-DIAGOK @ 1+ S-DIAGOK ! then
          dup RR-ROW-PASS? if
@@ -944,16 +953,16 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
             else
                S-MISSING-TOKENS @ 1+ S-MISSING-TOKENS !
             then
-	            dup RR-RUNTIME-KNOWN? if
-	               dup R-RUNTIME RR-AT dup S-RUN-SUM @ + S-RUN-SUM !
-	               dup S-RUN-MAX RR-MAX!
-	               drop
-	            else
-	               S-MISSING-RUNTIME @ 1+ S-MISSING-RUNTIME !
-	            then
-	            dup R-WALL RR-AT dup S-WALL-SUM @ + S-WALL-SUM !
-	            dup S-WALL-MAX RR-MAX!
-	            drop
+            dup RR-RUNTIME-KNOWN? if
+               dup R-RUNTIME RR-AT dup S-RUN-SUM @ + S-RUN-SUM !
+               dup S-RUN-MAX RR-MAX!
+               drop
+            else
+               S-MISSING-RUNTIME @ 1+ S-MISSING-RUNTIME !
+            then
+            dup R-WALL RR-AT dup S-WALL-SUM @ + S-WALL-SUM !
+            dup S-WALL-MAX RR-MAX!
+            drop
          else
             S-NONPASS @ 1+ S-NONPASS !
          then
@@ -1188,6 +1197,28 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    repeat drop
    s" ). Reliability, repair-round, token, and wall-time metrics still include those rows." RR-OUT RR-NL RR-NL ;
 
+: RR-FALSE-REJECT-NOTE. ( -- )
+   0 RR-MET-A !
+   0 begin dup RR-ARM# < while
+      dup -1 -1 RR-COLLECT-STATS
+      RR-MET-A @ S-FALSE-REJECT @ + RR-MET-A !
+      1+
+   repeat drop
+   RR-MET-A @ 0= if exit then
+   s" Checker false-reject rows: " RR-OUT RR-MET-A @ RR-U.
+   s"  execution-confirmed row(s) were rejected by the checker and counted separately from model failures (" RR-OUT
+   0 RR-MET-B !
+   0 begin dup RR-ARM# < while
+      dup -1 -1 RR-COLLECT-STATS
+      S-FALSE-REJECT @ 0 > if
+         RR-MET-B @ 0 > if s" , " RR-OUT then
+         dup RR-LABEL$ RR-OUT RR-SPC S-FALSE-REJECT @ RR-U.
+         RR-MET-B @ 1+ RR-MET-B !
+      then
+      1+
+   repeat drop
+   s" )." RR-OUT RR-NL RR-NL ;
+
 : RR-PERF-GET ( n ptr u8 n -- n )
    {: node:n a:ptr u:n :}
    node 0 < if -1 exit then
@@ -1297,7 +1328,7 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    s" — the reasoning cost of the unfamiliar memory model dominates the terseness saving._" RR-OUT RR-NL RR-NL
    s" ## Evidence Contract" RR-OUT RR-NL RR-NL
    s" V2 live rows are identified by `run_id`, `model_id`, `arm`, `task_id`, and `trial_id`; duplicate full keys are invalid while multiple trials for the same task are expected." RR-OUT RR-NL
-   s" Rows also carry `task_family`, `model_version`, `model_date`, trial/order metadata, outcome and repair counters, diagnostic-quality booleans, `source_chars`, and warmed-runtime fields. Unknown model version/date are recorded as `unknown` rather than omitted." RR-OUT RR-NL
+   s" Rows also carry `task_family`, `model_version`, `model_date`, trial/order metadata, outcome and repair counters, `checker_false_reject`, diagnostic-quality booleans, `source_chars`, and warmed-runtime fields. Unknown model version/date are recorded as `unknown` rather than omitted." RR-OUT RR-NL
    s" Replayable rows retain `prompt`, `raw_response`, `extracted_candidate`, `checker_diagnostics`, `repair_packet`, `test_output`, and `final_bundle`, each with a `*_sha256` field so artifacts can be matched to archived files or inline payloads." RR-OUT RR-NL RR-NL
    s" ## Limitations" RR-OUT RR-NL RR-NL
    s" - **nondeterminism**: model sampling, provider scheduling, local load, and transient tool latency can change individual rows." RR-OUT RR-NL
@@ -1328,6 +1359,7 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
    s" Effort metrics use passing trials with a positive output-token count. Runtime metrics use `runtime_ms`, a warmed candidate execution over fixed vectors and repetitions; wall time remains model/checker/compiler/feedback latency. Mean/max matter more than the median: Habu's cost is skewed — cheap on simple tasks, spiking on hard ones." RR-OUT RR-NL RR-NL
    RR-MISSING-TOKENS-NOTE.
    RR-MISSING-RUNTIME-NOTE.
+   RR-FALSE-REJECT-NOTE.
    s" ## Category Reliability And Effort" RR-OUT RR-NL RR-NL
    s" | category | language | trials | green trials | trial pass | task pass@k | mean rounds | mean output tokens | median runtime ms | diagnostic complete |" RR-OUT RR-NL
    s" |---|---|---:|---:|---:|---:|---:|---:|---:|---:|" RR-OUT RR-NL

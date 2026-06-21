@@ -79,6 +79,7 @@ variable LR-DIAG-CLASS
 variable LR-ALL-ERRORS-STABLE
 variable LR-TRUST-USES
 variable LR-SIGNATURE-WEAKENED
+variable LR-CHECKER-FALSE-REJECT
 variable LR-RUNTIME-MS
 variable LR-RUNTIME-REPS
 variable LR-RUNTIME-WARMUPS
@@ -125,6 +126,9 @@ TRUSTED: LR-SET$ ( ptr u8 n ptr n ptr n -- ) {: a:ptr u ap:ptr up:ptr :}
 
 : LR-REPAIR-CLASS! ( ptr u8 n -- )
    LR-REPAIR-CLASS-A LR-REPAIR-CLASS-U LR-SET$ ;
+
+: LR-CHECKER-FALSE-REJECT! ( bool -- )
+   LR-CHECKER-FALSE-REJECT ! ;
 
 TRUSTED: LR-RUN-ID$ ( -- ptr u8 n )
    LR-RUN-ID-A @ LR-RUN-ID-U @ ;
@@ -270,6 +274,7 @@ TRUSTED: LR-REPAIR-CLASS$ ( -- ptr u8 n )
    -1 LR-ALL-ERRORS-STABLE !
    0 LR-TRUST-USES !
    0 LR-SIGNATURE-WEAKENED !
+   0 LR-CHECKER-FALSE-REJECT !
    LR-RUNTIME-CLEAR
    100 LR-RUNTIME-REPS !
    10 LR-RUNTIME-WARMUPS !
@@ -413,6 +418,7 @@ TRUSTED: LR-REPAIR-CLASS$ ( -- ptr u8 n )
    s" model_date" LR-MODEL-DATE$ LR-COMMA-FIELD-S
    s" attempt" LR-ROUNDS @ LR-COMMA-FIELD-U
    s" first_pass_checker" LR-FIRST-CHECKER$ LR-COMMA-FIELD-S
+   s" checker_false_reject" LR-CHECKER-FALSE-REJECT @ LR-COMMA-FIELD-BOOL
    s" first_pass_tests" LR-FIRST-TESTS @ LR-COMMA-FIELD-BOOL
    s" tests_passed" LR-TESTS-PASSED @ LR-COMMA-FIELD-BOOL
    s" repair_iterations" LR-REPAIR-ITERATIONS @ LR-COMMA-FIELD-U

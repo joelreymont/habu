@@ -202,7 +202,7 @@ variable RACT-NEXT
 
 : RACT-EXPECT-SUMMARY ( n -- ) {: rows :}
    RACT-ERR$ rows RACT-SUMMARY$ CONTAINS? TTRUE
-   RACT-ERR$ s" buckets checker_rejected=8 first_tests_failed=8 tests_failed=0 trust_used=0 signature_weakened=1" CONTAINS? TTRUE
+   RACT-ERR$ s" buckets checker_rejected=8 checker_false_rejects=0 checker_model_rejected=8 first_tests_failed=8 tests_failed=0 trust_used=0 signature_weakened=1" CONTAINS? TTRUE
    RACT-ERR$ s" repair_class remove_producer rows=2 repair_success=2 repair_iterations=2 diagnostics=2 token_delta=0" CONTAINS? TTRUE
    RACT-ERR$ s" repair_class add_producer rows=2 repair_success=2 repair_iterations=2 diagnostics=2 token_delta=0" CONTAINS? TTRUE
    RACT-ERR$ s" run-attempts: wrote " CONTAINS? TTRUE ;

@@ -72,8 +72,8 @@ RPT-LF RPT-LF-BUF c!
 : RPT-CLEAR ( -- )
    RPT-RESULT$ s" " WRITE-ALL ;
 
-: RPT-ROW ( n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n n bool n n n bool -- )
-   {: task name:ptr nameu model:ptr modelu arm:ptr armu family:ptr familyu outcome:ptr outcomeu rounds first tokens wall runtime diag :}
+: RPT-ROW ( n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n n bool bool n n n bool -- )
+   {: task name:ptr nameu model:ptr modelu arm:ptr armu family:ptr familyu outcome:ptr outcomeu rounds first false-reject tokens wall runtime diag :}
    JW-RESET
    JW-OBJECT-START
    s" task_id" task JW-FIELD-U
@@ -85,6 +85,7 @@ RPT-LF RPT-LF-BUF c!
    s" outcome" outcome outcomeu RPT-FIELD-S
    s" rounds" rounds RPT-FIELD-U
    s" first_pass" first RPT-FIELD-BOOL
+   s" checker_false_reject" false-reject RPT-FIELD-BOOL
    s" tokens" tokens RPT-FIELD-U
    s" wall_ms" wall RPT-FIELD-U
    runtime RPT-FIELD-RUNTIME
@@ -97,11 +98,15 @@ RPT-LF RPT-LF-BUF c!
 
 : RPT-PASS-ROW ( n ptr u8 n ptr u8 n ptr u8 n ptr u8 n n n n -- )
    {: task name:ptr nameu model:ptr modelu arm:ptr armu family:ptr familyu tokens wall runtime :}
-   task name nameu model modelu arm armu family familyu s" pass" 1 RPT-TRUE tokens wall runtime RPT-TRUE RPT-ROW ;
+   task name nameu model modelu arm armu family familyu s" pass" 1 RPT-TRUE RPT-FALSE tokens wall runtime RPT-TRUE RPT-ROW ;
 
 : RPT-FAIL-ROW ( n ptr u8 n ptr u8 n ptr u8 n ptr u8 n n n n -- )
    {: task name:ptr nameu model:ptr modelu arm:ptr armu family:ptr familyu tokens wall runtime :}
-   task name nameu model modelu arm armu family familyu s" fail" 2 RPT-FALSE tokens wall runtime RPT-FALSE RPT-ROW ;
+   task name nameu model modelu arm armu family familyu s" fail" 2 RPT-FALSE RPT-FALSE tokens wall runtime RPT-FALSE RPT-ROW ;
+
+: RPT-FALSE-REJECT-ROW ( n ptr u8 n ptr u8 n ptr u8 n ptr u8 n n n n -- )
+   {: task name:ptr nameu model:ptr modelu arm:ptr armu family:ptr familyu tokens wall runtime :}
+   task name nameu model modelu arm armu family familyu s" pass" 2 RPT-FALSE RPT-TRUE tokens wall runtime RPT-TRUE RPT-ROW ;
 
 : RPT-PREPARE ( -- )
    CLEANUP-RESET
@@ -187,6 +192,15 @@ RPT-LF RPT-LF-BUF c!
    s" | arrays | 50%" RPT-CONTAINS
    s" +50pp" RPT-CONTAINS ;
 
+: RPT-TEST-FALSE-REJECT ( -- )
+   RPT-CLEAR
+   1 s" FJR" s" fixture" s" habu-a" s" arrays" 5 10 1 RPT-FALSE-REJECT-ROW
+   1 s" FJR" s" fixture" s" js" s" arrays" 5 10 1 RPT-PASS-ROW
+   RPT-CAPTURE
+   s" Checker false-reject rows: 1" RPT-CONTAINS
+   s" execution-confirmed" RPT-CONTAINS
+   s" Habu raw 1" RPT-CONTAINS ;
+
 : RPT-MAIN ( -- )
    T-RESET
    RPT-PREPARE
@@ -195,6 +209,7 @@ RPT-LF RPT-LF-BUF c!
    RPT-TEST-RUNTIME
    RPT-TEST-ARM-LABELS
    RPT-TEST-CATEGORY-DELTAS
+   RPT-TEST-FALSE-REJECT
    CLEANUP-RUN
    T-REPORT
    s" report-test: ok" type cr ;

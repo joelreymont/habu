@@ -124,6 +124,12 @@ outcome/repair fields, token and wall-time fields, `source_chars`, runtime
 fields, and replay artifacts. Unknown model version/date are represented by the
 stable nonempty string `unknown`.
 
+`checker_false_reject` is required on schema-2 rows. It is true only when the
+first-pass checker rejected the candidate and execution confirmed the final
+candidate passed; validators reject rows that set it on a certified checker pass
+or on a failing execution row. Reports count these rows separately from model
+failures so checker precision gaps do not depress language reliability.
+
 Replay fields are `prompt`, `raw_response`, `extracted_candidate`,
 `checker_diagnostics`, `repair_packet`, `test_output`, and `final_bundle`; every
 one must have a paired `*_sha256` field.

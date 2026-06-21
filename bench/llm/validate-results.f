@@ -195,6 +195,7 @@ variable LV-CHARS
 variable LV-TRUST
 variable LV-SIGWEAK
 variable LV-BAD-CHECKER
+variable LV-FALSE-REJECTS
 variable LV-BAD-FIRST
 variable LV-BAD-TESTS
 variable LV-BAD-TRUST
@@ -1010,6 +1011,9 @@ variable LV-LINE-U
    root s" trust_uses" LV-REQ
    root s" signature_weakened" LV-REQ ;
 
+: LV-REQS-V2 {: root :} ( n -- )
+   root s" checker_false_reject" LV-REQ ;
+
 : LV-INT-FIELD {: root a:ptr u :} ( n ptr u8 n -- n )
    root a u LV-GET dup JSON-KIND J-NUM <> IF drop s" invalid integer field" LV-FAIL-AT THEN
    JSON-NUMBER$ LV-U? 0= IF drop s" invalid integer field" LV-FAIL-AT THEN ;
@@ -1146,6 +1150,16 @@ variable LV-LINE-U
 : LV-CERTIFIED? {: root :} ( n -- bool )
    root s" first_pass_checker" LV-STR-FIELD s" certified" STR= ;
 
+: LV-FALSE-REJECT? {: root :} ( n -- bool )
+   LV-SCHEMA @ 2 <> IF 0 0= 0= exit THEN
+   root s" checker_false_reject" LV-BOOL-FIELD ;
+
+: LV-CHECK-FALSE-REJECT {: root :} ( n -- )
+   LV-SCHEMA @ 2 <> IF exit THEN
+   root LV-FALSE-REJECT? 0= IF exit THEN
+   root LV-CERTIFIED? IF s" checker_false_reject requires rejected checker" LV-FAIL-AT THEN
+   root s" tests_passed" LV-BOOL-FIELD 0= IF s" checker_false_reject requires execution pass" LV-FAIL-AT THEN ;
+
 : LV-RUN-CHECK {: a:ptr u :} ( ptr u8 n -- )
    LV-RUN-SET @ 0= IF
       u LV-RUN-CAP > IF s" run_id too long" LV-FAIL-AT THEN
@@ -1204,6 +1218,7 @@ variable LV-LINE-U
 : LV-CHECK-COMMON {: root :} ( n -- )
    root LV-REQS
    root s" schema_version" LV-INT-FIELD LV-CHECK-SCHEMA
+   LV-SCHEMA @ 2 = IF root LV-REQS-V2 THEN
    root s" task_id" LV-INT-FIELD LV-ID !
    LV-SCHEMA @ 2 = IF
       root LV-CHECK-V2-IDENTITY
@@ -1236,6 +1251,7 @@ variable LV-LINE-U
    root s" final_chars" LV-INT-FIELD 0 <= IF s" invalid final_chars" LV-FAIL-AT THEN
    root s" trust_uses" LV-INT-FIELD drop
    root s" signature_weakened" LV-BOOL-FIELD drop
+   root LV-CHECK-FALSE-REJECT
    LV-SCHEMA @ 2 = IF root LV-CHECK-V2-ARTIFACTS THEN ;
 
 : LV-CHECK-REFERENCE {: root :} ( n -- )
@@ -1350,6 +1366,7 @@ variable LV-LINE-U
 : LV-ACCUM-ROW {: root :} ( n -- )
    LV-ROWS LV-CELL++
    root LV-CERTIFIED? IF LV-CERT LV-CELL++ ELSE LV-BAD-CHECKER LV-CELL++ THEN
+   root LV-FALSE-REJECT? IF LV-FALSE-REJECTS LV-CELL++ THEN
    root s" first_pass_tests" LV-BOOL-FIELD IF LV-FIRST-TESTS LV-CELL++ ELSE LV-BAD-FIRST LV-CELL++ THEN
    root s" tests_passed" LV-BOOL-FIELD dup LV-ROW-TESTS ! IF LV-TESTS LV-CELL++ ELSE LV-BAD-TESTS LV-CELL++ THEN
    LV-SCHEMA @ 2 = IF LV-GROUP-ACCUM THEN
@@ -1447,6 +1464,7 @@ variable LV-LINE-U
    0 LV-TRUST !
    0 LV-SIGWEAK !
    0 LV-BAD-CHECKER !
+   0 LV-FALSE-REJECTS !
    0 LV-BAD-FIRST !
    0 LV-BAD-TESTS !
    0 LV-BAD-TRUST !
@@ -1573,6 +1591,8 @@ variable LV-LINE-U
    THEN
    s" llm-results: buckets" LV-OUT
    s" checker_rejected" LV-BAD-CHECKER @ LV-TEXT-FIELD
+   s" checker_false_rejects" LV-FALSE-REJECTS @ LV-TEXT-FIELD
+   s" checker_model_rejected" LV-BAD-CHECKER @ LV-FALSE-REJECTS @ - LV-TEXT-FIELD
    s" first_tests_failed" LV-BAD-FIRST @ LV-TEXT-FIELD
    s" tests_failed" LV-BAD-TESTS @ LV-TEXT-FIELD
    s" trust_used" LV-BAD-TRUST @ LV-TEXT-FIELD
@@ -1612,6 +1632,8 @@ variable LV-LINE-U
 : LV-OUTPUT-BUCKETS-JSON ( -- )
    JSONW-OBJECT-START
    s" checker_rejected" LV-BAD-CHECKER @ LV-JSON-COMMA-UF
+   s" checker_false_rejects" LV-FALSE-REJECTS @ LV-JSON-COMMA-UF
+   s" checker_model_rejected" LV-BAD-CHECKER @ LV-FALSE-REJECTS @ - LV-JSON-COMMA-UF
    s" first_tests_failed" LV-BAD-FIRST @ LV-JSON-COMMA-UF
    s" tests_failed" LV-BAD-TESTS @ LV-JSON-COMMA-UF
    s" trust_used" LV-BAD-TRUST @ LV-JSON-COMMA-UF

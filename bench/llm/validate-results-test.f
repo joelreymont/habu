@@ -51,6 +51,7 @@ variable VRT-ARITH
 variable VRT-ARRAYS
 variable VRT-K
 variable VRT-ROW-MODE
+variable VRT-CHECKER-FALSE-REJECT
 
 BM-TAB VRT-TAB-BUF c!
 VRT-LF VRT-LF-BUF c!
@@ -71,7 +72,14 @@ VRT-LF VRT-LF-BUF c!
    if s" pass" else s" fail" then ;
 
 : VRT-ROW-NORMAL! ( -- )
-   VRT-ROW-NORMAL VRT-ROW-MODE ! ;
+   VRT-ROW-NORMAL VRT-ROW-MODE !
+   VRT-FALSE VRT-CHECKER-FALSE-REJECT ! ;
+
+: VRT-ROW-FALSE-REJECT! ( -- )
+   VRT-TRUE VRT-CHECKER-FALSE-REJECT ! ;
+
+: VRT-EFFECTIVE-PASS ( bool -- bool )
+   VRT-CHECKER-FALSE-REJECT @ if drop VRT-TRUE exit then ;
 
 : VRT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
@@ -313,8 +321,9 @@ VRT-LF VRT-LF-BUF c!
    s" model" model modelu VRT-FIELD-S
    s" attempt" trial VRT-FIELD-U
    s" first_pass_checker" pass VRT-CHECKER$ VRT-FIELD-S
+   s" checker_false_reject" VRT-CHECKER-FALSE-REJECT @ VRT-FIELD-BOOL
    s" first_pass_tests" pass VRT-FIELD-BOOL
-   s" tests_passed" pass VRT-FIELD-BOOL
+   s" tests_passed" pass VRT-EFFECTIVE-PASS VRT-FIELD-BOOL
    s" repair_iterations" 0 VRT-FIELD-U
    s" checker_iterations" 1 VRT-FIELD-U
    s" diagnostic_count" 0 VRT-FIELD-U
@@ -324,7 +333,7 @@ VRT-LF VRT-LF-BUF c!
    s" final_chars" 1 VRT-FIELD-U
    s" trust_uses" 0 VRT-FIELD-U
    s" signature_weakened" VRT-FALSE VRT-FIELD-BOOL
-   s" outcome" pass VRT-OUTCOME$ VRT-FIELD-S
+   s" outcome" pass VRT-EFFECTIVE-PASS VRT-OUTCOME$ VRT-FIELD-S
    s" rounds" 1 VRT-FIELD-U
    s" first_pass" pass VRT-FIELD-BOOL
    s" tokens" 0 VRT-FIELD-U
@@ -447,9 +456,8 @@ VRT-LF VRT-LF-BUF c!
    VRT-LIVE$ VRT-CLEAR-DEST
    VRT-MODE-LIVE VRT-EACH-TASK ;
 
-: VRT-WRITE-SINGLE-V2 ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool -- )
+: VRT-WRITE-SINGLE-V2-ROW ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool -- )
    {: run:ptr runu modelid:ptr modelidu model:ptr modelu arm:ptr armu pass :}
-   VRT-ROW-NORMAL!
    VRT-TASKS$ VRT-TASK-BUF VRT-TASK-CAP READ-ALL VRT-TASK-U !
    0 VRT-NEXT !
    begin VRT-TASK-BUF VRT-TASK-U @ VRT-NEXT @ BM-LINE-NEXT while
@@ -464,6 +472,10 @@ VRT-LF VRT-LF-BUF c!
       then
       2drop
    repeat drop 2drop ;
+
+: VRT-WRITE-SINGLE-V2 ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool -- )
+   VRT-ROW-NORMAL!
+   VRT-WRITE-SINGLE-V2-ROW ;
 
 : VRT-APPEND-FIRST-V2 ( n n n -- ) {: trial k mode :}
    mode VRT-ROW-MODE !
@@ -523,6 +535,18 @@ VRT-LF VRT-LF-BUF c!
    VRT-LIVE$ VRT-CLEAR-DEST
    s" multi-model-fixture-2026-06-18" s" alpha" s" Alpha" s" forth" VRT-TRUE VRT-WRITE-SINGLE-V2
    s" multi-model-fixture-2026-06-18" s" beta" s" Beta" s" forth" VRT-TRUE VRT-WRITE-SINGLE-V2 ;
+
+: VRT-WRITE-FALSE-REJECT ( -- )
+   VRT-LIVE$ VRT-CLEAR-DEST
+   VRT-ROW-NORMAL!
+   VRT-ROW-FALSE-REJECT!
+   s" false-reject-fixture-2026-06-18" s" toy-model" s" toy-model" s" forth" VRT-FALSE VRT-WRITE-SINGLE-V2-ROW ;
+
+: VRT-WRITE-BAD-FALSE-REJECT ( -- )
+   VRT-LIVE$ VRT-CLEAR-DEST
+   VRT-ROW-NORMAL!
+   VRT-ROW-FALSE-REJECT!
+   s" false-reject-fixture-2026-06-18" s" toy-model" s" toy-model" s" forth" VRT-TRUE VRT-WRITE-SINGLE-V2-ROW ;
 
 : VRT-WRITE-CONFIDENCE ( -- )
    VRT-ROW-NORMAL!
@@ -724,7 +748,7 @@ VRT-LF VRT-LF-BUF c!
    VRT-WRITE-ATTEMPT
    VRT-ATTEMPT$ VRT-FALSE VRT-RUN-VALIDATE
    VRT-ATTEMPT-SUMMARY$ VRT-OUT-CONTAINS
-   s" buckets checker_rejected=1 first_tests_failed=1 tests_failed=1 trust_used=1 signature_weakened=1" VRT-OUT-CONTAINS
+   s" buckets checker_rejected=1 checker_false_rejects=0 checker_model_rejected=1 first_tests_failed=1 tests_failed=1 trust_used=1 signature_weakened=1" VRT-OUT-CONTAINS
    s" diagnostic_gaps token=1 span=1 expected=1 actual=1 code=1 repair_class=1 all_errors_stable=1" VRT-OUT-CONTAINS
    VRT-ATTEMPT-CATEGORY$ VRT-OUT-CONTAINS
    s" repair_class remove_producer rows=1 repair_success=0 repair_iterations=1 diagnostics=2 token_delta=30" VRT-OUT-CONTAINS
@@ -735,6 +759,8 @@ VRT-LF VRT-LF-BUF c!
    VRT-ATTEMPT$ VRT-TRUE VRT-RUN-VALIDATE
    VRT-FORTH @ VRT-JSON-ROWS$ VRT-OUT-CONTAINS
    s" checker_rejected" VRT-OUT-CONTAINS
+   s" checker_false_rejects" VRT-OUT-CONTAINS
+   s" checker_model_rejected" VRT-OUT-CONTAINS
    VRT-JSON-DIAG-QUALITY$ VRT-OUT-CONTAINS
    s" diagnostic_gaps" VRT-OUT-CONTAINS
    s" repair_classes" VRT-OUT-CONTAINS
@@ -783,6 +809,14 @@ VRT-LF VRT-LF-BUF c!
    s" trial_pass_bp" VRT-OUT-CONTAINS
    s" 5000" VRT-OUT-CONTAINS ;
 
+: VRT-TEST-FALSE-REJECT ( -- )
+   VRT-WRITE-FALSE-REJECT
+   VRT-LIVE$ VRT-FALSE VRT-RUN-VALIDATE
+   s" buckets checker_rejected=1 checker_false_rejects=1 checker_model_rejected=0 first_tests_failed=1 tests_failed=0 trust_used=0 signature_weakened=0" VRT-OUT-CONTAINS
+   VRT-LIVE$ VRT-TRUE VRT-RUN-VALIDATE
+   s" checker_false_rejects" VRT-OUT-CONTAINS
+   s" checker_model_rejected" VRT-OUT-CONTAINS ;
+
 : VRT-TEST-REJECTIONS ( -- )
    2 VRT-WRITE-LIVE
    VRT-WRITE-MISSING-K
@@ -797,6 +831,8 @@ VRT-LF VRT-LF-BUF c!
    VRT-LIVE$ s" missing fields raw_response_sha256" VRT-EXPECT-FAIL
    VRT-WRITE-BAD-FINAL-HASH
    VRT-LIVE$ s" invalid sha256 hash" VRT-EXPECT-FAIL
+   VRT-WRITE-BAD-FALSE-REJECT
+   VRT-LIVE$ s" checker_false_reject requires rejected checker" VRT-EXPECT-FAIL
    VRT-WRITE-REFERENCE
    VRT-APPEND-FIRST-REFERENCE
    VRT-EMPTY$ s" duplicate task_id" VRT-EXPECT-FAIL
@@ -829,6 +865,7 @@ VRT-LF VRT-LF-BUF c!
    VRT-TEST-ARMS
    VRT-TEST-MODELS
    VRT-TEST-CONFIDENCE
+   VRT-TEST-FALSE-REJECT
    VRT-TEST-REJECTIONS
    CLEANUP-RUN
    T-REPORT

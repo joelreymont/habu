@@ -99,6 +99,7 @@ ERT-LF ERT-LF-BUF c!
    s" runtime_status" s" ok" ERT-FIELD-S
    s" attempt" 1 ERT-FIELD-U
    s" first_pass_checker" s" certified" ERT-FIELD-S
+   s" checker_false_reject" ERT-FALSE ERT-FIELD-BOOL
    s" first_pass_tests" ERT-TRUE ERT-FIELD-BOOL
    s" tests_passed" ERT-TRUE ERT-FIELD-BOOL
    s" repair_iterations" 0 ERT-FIELD-U
