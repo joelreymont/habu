@@ -140,6 +140,8 @@ points stay listed.
 - `bench/llm/forth-task-lines-test.f` — focused coverage for task-row filtering and file output.
 - `bench/llm/forth-candidate.f` — checked Forth candidate extractor, definition metadata scanner, and forbidden boundary token guard.
 - `bench/llm/forth-candidate-test.f` — focused coverage for Forth candidate extraction, name/signature scanning, completion, and trusted-boundary rejection.
+- `bench/llm/forth-bundle.f` — checked Forth task bundle builder that replaces one target with a candidate and appends benchmark tests.
+- `bench/llm/forth-bundle-test.f` — focused coverage for bundle replacement, missing files, duplicate rows, extra references, schema errors, and capacity failures.
 - `bench/llm/large-buffer-bundle-test.f` — regression that composes the source lexer, task-row scanner, reference extractor, and many simultaneously live 64K buffer spans in one checked load.
 - `bench/llm/diagnostic-stats.f` — checked diagnostic field, repair-class event, and statistics reducer for benchmark rows.
 - `bench/llm/diagnostic-json-check-stub.f` — checker-only JSON parser contract for the diagnostic stats reducer.

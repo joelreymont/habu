@@ -249,6 +249,8 @@ variable GS-RD
    s" llm forth task row emitter" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/forth-candidate.f" GS-ARG+ s" bench/llm/forth-candidate-test.f" GS-ARG+
    s" llm Forth candidate scanner" GS-HB-RUN
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/forth-bundle.f" GS-ARG+ s" bench/llm/forth-bundle-test.f" GS-ARG+
+   s" llm Forth bundle builder" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/diagnostic-stats.f" GS-ARG+ s" bench/llm/diagnostic-stats-test.f" GS-ARG+
    s" llm diagnostic stats" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/artifacts.f" GS-ARG+ s" bench/llm/artifacts-test.f" GS-ARG+
@@ -296,6 +298,9 @@ variable GS-RD
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/forth-candidate.f" GS-SRC+ s" bench/llm/forth-candidate-test.f" GS-SRC+
    s" llm Forth candidate scanner check" GS-CHECK-RUN
+   GS-SRC-RESET
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/forth-bundle.f" GS-SRC+ s" bench/llm/forth-bundle-test.f" GS-SRC+
+   s" llm Forth bundle builder check" GS-CHECK-RUN
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/diagnostic-json-check-stub.f" GS-SRC+ s" bench/llm/diagnostic-stats.f" GS-SRC+ s" bench/llm/diagnostic-stats-check-test.f" GS-SRC+
    s" llm diagnostic stats check" GS-CHECK-RUN
