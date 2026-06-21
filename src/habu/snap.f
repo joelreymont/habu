@@ -41,11 +41,11 @@ s" SDB@" s" -- ptr u8" TRUST
 : SNAP-HDR
    \ NB: the toolchain's DSL constant RBASE (=x20) shadows the `rbase` prim
    \ after case folding — read the saved text base straight from its cell.
-   $340000000 RBASE-CELL + @ STB !        \ text CONTENT base
+   DATA-VA RBASE-CELL + @ STB !           \ text CONTENT base
    STB @ $1000 - 216 + @ STSZ !           \ our own __text size ([loadbase+216])
    dbase@ SDB !
    cp@ SDB @ - SCL !                      \ region payload (dict + compiled code)
-   here $340000000 - SDL !                \ data payload (through DP)
+   here DATA-VA - SDL !                   \ data payload (through DP)
    STSZ @ SCL @ + SDL @ + 40 + SNL !      \ new __text content size
    CODE-OFF SNL @ + $3FFF + $3FFF invert and SFTS !   \ aligned file/vm text size
    \ header (fits MBUF) — BUILD-MACHO's layout with SFTS in place of MPAGE
@@ -69,7 +69,7 @@ s" SDB@" s" -- ptr u8" TRUST
    SFD @ MBUF CODE-OFF WALL
    SFD @ STB@ STSZ @ WALL
    SFD @ SDB@ SCL @ WALL
-   SFD @ $340000000 SDL @ WALL
+   SFD @ DATA-VA SDL @ WALL
    SFD @ TRL 40 WALL
    SFD @  SFTS @ CODE-OFF - SNL @ -  WPAD
    SFD @ close ;

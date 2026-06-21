@@ -18,7 +18,7 @@ variable VERD                     \ last verdict, set by the check hook
 TRUSTED: VH  ( ptr u8 n -- n )
    CHECK! dup VERD ! ;            \ MUST leave the verdict on the stack for the compiler
 TRUSTED: ERR@  ( -- n )
-   $340000000 $37D8 + @ ;         \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
+   DATA-VA $37D8 + @ ;            \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
 
 \ ---- seeded PRNG (LCG) ----
 1 constant DEFAULT-SEED

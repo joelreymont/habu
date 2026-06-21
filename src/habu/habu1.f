@@ -462,6 +462,7 @@ s" spawn-chdir-action" s" n --" TRUST
 : BCPFETCH    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
 : BNDICTFETCH 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
+: BDATAFETCH  9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
 : BCPSET   A G-POP  CP A 0 ADDI, ;         \ ( addr -- ) set CP — forget code back to a mark
 : BNDSET   A G-POP  NDICT A 0 ADDI, ;      \ ( n -- ) set NDICT — forget dict entries past a mark
 
@@ -845,6 +846,7 @@ s" spawn-chdir-action" s" n --" TRUST
    s" wait-rc" ['] BWAITRC FPRIM-L
    s" wait-status" ['] BWAITSTATUS FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
+   s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L

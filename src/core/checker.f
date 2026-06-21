@@ -565,6 +565,7 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" epoch-seconds" s" -- n" PT+
    s" mono-ns" s" -- n" PT+
    s" rbase" s" -- n" PT+
+   s" data-base" s" -- ptr a" PT+
    s" wordlist" s" -- n" PT+
    s" get-current" s" -- n" PT+
    s" set-current" s" n --" PT+

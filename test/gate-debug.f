@@ -62,7 +62,7 @@ variable GDB-PATH2-U
 
 : GDB-HOOK-SOURCE ( -- )
    GE-SRC-RESET
-   s" $340000000 $1B0 + @ 0= ." GE-SRC-LINE
+   s" DATA-VA $1B0 + @ 0= ." GE-SRC-LINE
    s" : SQOK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
    s" 7 SQOK ." GE-SRC-LINE ;
 
