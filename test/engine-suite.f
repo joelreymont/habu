@@ -145,6 +145,13 @@ s" /usr/bin/false" PATHZ run-rc 1 T=
 \ filesystem syscalls
 create STB 256 allot
 create DBUF 4096 allot
+create RLB 64 allot
+create ES-TARGETZ
+   65 c, 71 c, 69 c, 78 c, 84 c, 83 c, 46 c, 109 c, 100 c, 0 c,
+create ES-LINKZ
+   47 c, 116 c, 109 c, 112 c, 47 c, 104 c, 97 c, 98 c, 117 c, 45 c,
+   101 c, 110 c, 103 c, 105 c, 110 c, 101 c, 45 c, 115 c, 117 c,
+   105 c, 116 c, 101 c, 45 c, 108 c, 105 c, 110 c, 107 c, 0 c,
 create DIRBASE 8 allot
 variable DFD
 : U16@ {: a :} a c@ a 1 + c@ 8 lshift or ;
@@ -165,6 +172,13 @@ s" /tmp/habu-engine-suite-mkdir" PATHZ 493 mkdir 0 T=
 s" /tmp/habu-engine-suite-mkdir" PATHZ STB stat64 0 T=
 MODE@ $F000 and $4000 = -1 T=
 s" /tmp/habu-engine-suite-mkdir" PATHZ rmdir 0 T=
+ES-LINKZ unlink drop
+ES-TARGETZ ES-LINKZ symlink 0 T=
+ES-LINKZ STB lstat64 0 T=
+MODE@ $F000 and $A000 = -1 T=
+ES-LINKZ RLB 64 readlink 9 T=
+RLB c@ 65 T=
+ES-LINKZ unlink 0 T=
 0 4096 3 $1002 -1 0 mmap dup 0 < 0 T= dup 65 swap c! c@ 65 T=
 
 \ floats (the f+ prim must be the FLOAT op — it was once shadowed by a

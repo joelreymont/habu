@@ -28,7 +28,10 @@
 136 constant NR-MKDIR
 137 constant NR-RMDIR
 338 constant NR-STAT64
+340 constant NR-LSTAT64
 344 constant NR-GETDIRENTRIES64
+473 constant NR-READLINKAT
+474 constant NR-SYMLINKAT
 7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
 
 : SYS, ( n -- )  16 swap MOVZ,  $80 SVC, ;

@@ -169,6 +169,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `clock_gettime_nsec_np`, and `mach_absolute_time` are libSystem/commpage APIs.
   The no-libSystem monotonic clock reads `CNTVCT_EL0`/`CNTFRQ_EL0` and converts
   with quotient/remainder to avoid `ticks * 1e9` overflow.
+- **Path syscall tests need stable path storage:** low-level primitive smoke tests
+  should use fixed NUL strings or production path builders. Private checked
+  path-copy helpers can make a syscall test fail with `EFAULT` while obscuring
+  whether the primitive ABI or fixture glue is wrong.
 - **The JIT inliner must reject PC-relative branches:** byte-copying a small
   primitive body with an internal branch preserves the old branch target. This
   made compiled `epoch-seconds` branch back into the seed primitive and return

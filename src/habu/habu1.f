@@ -91,7 +91,7 @@ $F2A00009 constant W-MOVK1
 $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3
 \ --- primitive registry (build-side, for the seed dictionary) ---
-128 constant PRIM-CAP
+160 constant PRIM-CAP
 2048 constant PRIM-NAME-CAP
 create PLBL PRIM-CAP cells allot   create PEL PRIM-CAP cells allot
 create PLEN PRIM-CAP cells allot   create PNAM PRIM-CAP cells allot
@@ -636,11 +636,23 @@ s" spawn-dup2-action" s" n n --" TRUST
 
 : BCHMOD  1 G-POP  0 G-POP  NR-CHMOD SYS,  SYS-PUSH ;
 
+: BSYMLINK
+   2 G-POP  0 G-POP  1 1 MOVN,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
+   NR-SYMLINKAT SYS,  SYS-PUSH ;
+
+: BREADLINK
+   3 G-POP  2 G-POP  1 G-POP  0 1 MOVN,  4 0 MOVZ,  5 0 MOVZ,
+   NR-READLINKAT SYS,  SYS-PUSH ;
+
 : BMKDIR  1 G-POP  0 G-POP  NR-MKDIR SYS,  SYS-PUSH ;
 
 : BRMDIR  0 G-POP  NR-RMDIR SYS,  SYS-PUSH ;
 
 : BSTAT64 1 G-POP  0 G-POP  NR-STAT64 SYS,  SYS-PUSH ;
+
+: BLSTAT64
+   1 G-POP  0 G-POP  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
+   NR-LSTAT64 SYS,  SYS-PUSH ;
 
 : BGETDIRENTRIES64
    3 G-POP  2 G-POP  1 G-POP  0 G-POP  NR-GETDIRENTRIES64 SYS,  SYS-PUSH ;
@@ -775,8 +787,9 @@ s" spawn-dup2-action" s" n n --" TRUST
    s" open-rd" ['] BOPENRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
+   s" symlink" ['] BSYMLINK FPRIM-L   s" readlink" ['] BREADLINK FPRIM-L
    s" mkdir" ['] BMKDIR FPRIM-L     s" rmdir" ['] BRMDIR FPRIM-L
-   s" stat64" ['] BSTAT64 FPRIM-L
+   s" stat64" ['] BSTAT64 FPRIM-L   s" lstat64" ['] BLSTAT64 FPRIM-L
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM-L
    s" patch32" ['] BPATCH32 FPRIM
    s" close" ['] BCLOSE FPRIM-L

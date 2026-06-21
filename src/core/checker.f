@@ -541,9 +541,12 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" unlink" s" ptr u8 -- n" PT+
    s" rename" s" ptr u8 ptr u8 -- n" PT+
    s" chmod" s" ptr u8 n -- n" PT+
+   s" symlink" s" ptr u8 ptr u8 -- n" PT+
+   s" readlink" s" ptr u8 ptr u8 n -- n" PT+
    s" mkdir" s" ptr u8 n -- n" PT+
    s" rmdir" s" ptr u8 -- n" PT+
    s" stat64" s" ptr u8 ptr u8 -- n" PT+
+   s" lstat64" s" ptr u8 ptr u8 -- n" PT+
    s" getdirentries64" s" n ptr u8 n ptr n -- n" PT+
    s" pipe" s" -- n n n" PT+
    s" dup2" s" n n -- n" PT+
