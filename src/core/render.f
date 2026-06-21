@@ -193,9 +193,9 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
    DVERD @ 1 = IF s" rewrite_uncheckable" EXIT THEN
    SGBAD @ IF s" fix_signature_syntax" EXIT THEN
+   RETURN-MISMATCH? IF s" fix_return_stack" EXIT THEN
    DEXP @ 0= IF
-      RETURN-MISMATCH? IF s" fix_return_stack" ELSE s" unknown_rejection" THEN
-      EXIT
+      s" unknown_rejection" EXIT
    THEN
    DEXP @ REND-COLLECT RBN @ DSUGE !
    DACT @ REND-COLLECT RBN @ DSUGA !
@@ -208,13 +208,9 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    DVERD @ 1 = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
    SGBAD @ IF s" Repair the stack-effect comment syntax, including --." EXIT THEN
+   RETURN-MISMATCH? IF s" Balance return-stack transfers before the definition exits." EXIT THEN
    DEXP @ 0= IF
-      RETURN-MISMATCH? IF
-         s" Balance return-stack transfers before the definition exits."
-      ELSE
-         s" Inspect the token, signature, and raw stack evidence."
-      THEN
-      EXIT
+      s" Inspect the token, signature, and raw stack evidence." EXIT
    THEN
    DEXP @ REND-COLLECT RBN @ DSUGE !
    DACT @ REND-COLLECT RBN @ DSUGA !

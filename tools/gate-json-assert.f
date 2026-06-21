@@ -360,6 +360,14 @@ variable GJA-DIRECT
    dup s" expected" GJA-REQ-STRF
    s" actual" GJA-REQ-STRF ;
 
+: GJA-DIAG-RETURN-STACK {: json:ptr jsonu exp:ptr expu act:ptr actu :}
+   json jsonu GJA-FIRST-JSON GJA-ROOT !
+   GJA-ROOT @ GJA-DIAG-COMMON
+   GJA-ROOT @ s" repair_class" GJA-REQ s" fix_return_stack" GJA-ASSERT-STR
+   GJA-ROOT @ s" return_stack" GJA-REQ dup GJA-OBJ
+   dup s" expected" GJA-REQ exp expu GJA-ASSERT-STR
+   s" actual" GJA-REQ act actu GJA-ASSERT-STR ;
+
 : GJA-ALL-ROW0 ( root -- )
    dup GJA-DIAG-COMMON
    dup s" word" GJA-REQ s" bad1" GJA-ASSERT-STR
@@ -461,6 +469,10 @@ variable GJA-DIRECT
    0 SCRIPT-ARGV$ s" diag-repair-class" GJA-BYTES= IF
       SCRIPT-ARGC 3 <> IF GJA-USAGE THEN
       1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-DIAG-REPAIR-CLASS exit
+   THEN
+   0 SCRIPT-ARGV$ s" diag-return-stack" GJA-BYTES= IF
+      SCRIPT-ARGC 4 <> IF GJA-USAGE THEN
+      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ 3 SCRIPT-ARGV$ GJA-DIAG-RETURN-STACK exit
    THEN
    0 SCRIPT-ARGV$ s" repair-packet" GJA-BYTES= IF
       SCRIPT-ARGC 3 <> IF GJA-USAGE THEN

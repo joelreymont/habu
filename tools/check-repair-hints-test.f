@@ -58,6 +58,12 @@ create CRHT-ERR CRHT-BUF-CAP allot
 : CRHT-FIX-RSTACK$ ( -- ptr u8 n )
    s" : DIAG-FIX-RSTACK ( i64 -- ) >r ;" CRHT-LINE$ ;
 
+: CRHT-MIXED-RSTACK$ ( -- ptr u8 n )
+   s" : DIAG-MIXED-RSTACK ( i64 -- ) dup >r ;" CRHT-LINE$ ;
+
+: CRHT-BALANCED-RSTACK$ ( -- ptr u8 n )
+   s" : DIAG-BALANCED-RSTACK ( i64 -- ) >r r> drop ;" CRHT-LINE$ ;
+
 : CRHT-TRUSTED-EVAL$ ( -- ptr u8 n )
    s" : DIAG-TRUSTED-BOUNDARY ( -- i64 ) evaluate ;" CRHT-LINE$ ;
 
@@ -128,6 +134,14 @@ create CRHT-ERR CRHT-BUF-CAP allot
    class classu PROC-ARGV+
    s" bin/hb" CRHT-OUT CRHT-BUF-CAP CRHT-ERR CRHT-BUF-CAP CRHT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
 
+: CRHT-RUN-RSTACK ( ptr u8 n ptr u8 n -- n n n ) {: exp:ptr expu act:ptr actu :}
+   CRHT-ASSERT-ARGS
+   s" diag-return-stack" PROC-ARGV+
+   CRHT-DIAG PROC-ARGV+
+   exp expu PROC-ARGV+
+   act actu PROC-ARGV+
+   s" bin/hb" CRHT-OUT CRHT-BUF-CAP CRHT-ERR CRHT-BUF-CAP CRHT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+
 : CRHT-ASSERT-CLEAN ( n n n -- )
    0 T=
    {: outu erru :}
@@ -143,11 +157,25 @@ create CRHT-ERR CRHT-BUF-CAP allot
    CRHT-RUN-SCHEMA CRHT-ASSERT-CLEAN
    class classu CRHT-RUN-CLASS CRHT-ASSERT-CLEAN ;
 
+: CRHT-ASSERT-RSTACK ( ptr u8 n ptr u8 n -- )
+   CRHT-RUN-RSTACK CRHT-ASSERT-CLEAN ;
+
+: CRHT-CHECK-ACCEPTS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu body:ptr bodyu :}
+   CRHT-SRC body bodyu WRITE-ALL
+   label labelu CRHT-RUN-CHECK 0 T=
+   {: outu erru :}
+   CRHT-OUT outu CRHT-EMPTY$ T$=
+   CRHT-ERR erru CRHT-EMPTY$ T$= ;
+
 : CRHT-CASES ( -- )
    s" remove-producer" s" remove_producer" CRHT-REMOVE-PRODUCER$ CRHT-CHECK-HINT
    s" add-producer" s" add_producer" CRHT-ADD-PRODUCER$ CRHT-CHECK-HINT
    s" fix-type" s" fix_type" CRHT-FIX-TYPE$ CRHT-CHECK-HINT
    s" fix-return-stack" s" fix_return_stack" CRHT-FIX-RSTACK$ CRHT-CHECK-HINT
+   CRHT-EMPTY$ s" i64 " CRHT-ASSERT-RSTACK
+   s" mixed-return-stack" s" fix_return_stack" CRHT-MIXED-RSTACK$ CRHT-CHECK-HINT
+   CRHT-EMPTY$ s" i64 " CRHT-ASSERT-RSTACK
+   s" balanced-return-stack" CRHT-BALANCED-RSTACK$ CRHT-CHECK-ACCEPTS
    s" trusted-boundary" s" trusted_boundary_required" CRHT-TRUSTED-EVAL$ CRHT-CHECK-HINT
    s" trusted-boundary-trust" s" trusted_boundary_required" CRHT-TRUSTED-TRUST$ CRHT-CHECK-HINT
    s" trusted-boundary-set-check" s" trusted_boundary_required" CRHT-TRUSTED-SET-CHECK$ CRHT-CHECK-HINT
