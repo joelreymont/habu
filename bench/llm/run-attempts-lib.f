@@ -9,6 +9,7 @@
 $4000 constant RA-CAPTURE-CAP
 $8000 constant RA-DIAG-CAP
 $8000 constant RA-EVENT-CAP
+$8000 constant RA-STATS-CAP
 $20000 constant RA-BUNDLE-CAP
 $10000 constant RA-SRC-CAP
 10000 constant RA-DEFAULT-TIMEOUT-MS
@@ -36,6 +37,7 @@ create RA-OUT-BUF RA-CAPTURE-CAP allot
 create RA-ERR-BUF RA-CAPTURE-CAP allot
 create RA-DIAG-BUF RA-DIAG-CAP allot
 create RA-EVENT-BUF RA-EVENT-CAP allot
+create RA-STATS-BUF RA-STATS-CAP allot
 create RA-FINAL-PATH FS-PATH-CAP allot
 create RA-FIRST-BAD-PATH FS-PATH-CAP allot
 
@@ -54,6 +56,7 @@ variable RA-RC
 variable RA-TIMEOUT-MS
 variable RA-DIAG-U
 variable RA-EVENT-U
+variable RA-STATS-U
 variable RA-FINAL-U
 variable RA-FIRST-BAD-U
 variable RA-CHECKER-N
@@ -173,6 +176,9 @@ RA-DEFAULT-TIMEOUT!
 : RA-EVENTS$ ( -- ptr u8 n )
    RA-EVENT-BUF RA-EVENT-U @ ;
 
+: RA-STATS$ ( -- ptr u8 n )
+   RA-STATS-BUF RA-STATS-U @ ;
+
 : RA-FINAL$ ( -- ptr u8 n )
    RA-FINAL-PATH RA-FINAL-U @ ;
 
@@ -223,6 +229,7 @@ RA-DEFAULT-TIMEOUT!
 : RA-ROW-RESET ( -- )
    0 RA-DIAG-U !
    0 RA-EVENT-U !
+   0 RA-STATS-U !
    0 RA-FINAL-U !
    0 RA-FIRST-BAD-U !
    0 RA-CHECKER-N !
@@ -244,6 +251,9 @@ RA-DEFAULT-TIMEOUT!
 : RA-EVENT-ROOM ( n -- ) {: add :}
    RA-EVENT-CAP RA-EVENT-U @ add RA-BUF-ROOM ;
 
+: RA-STATS-ROOM ( n -- ) {: add :}
+   RA-STATS-CAP RA-STATS-U @ add RA-BUF-ROOM ;
+
 : RA-DIAG+ ( ptr u8 n -- ) {: a:ptr u :}
    u RA-DIAG-ROOM
    a RA-DIAG-BUF RA-DIAG-U @ + u BYTE-COPY
@@ -253,6 +263,12 @@ RA-DEFAULT-TIMEOUT!
    u RA-EVENT-ROOM
    a RA-EVENT-BUF RA-EVENT-U @ + u BYTE-COPY
    RA-EVENT-U @ u + RA-EVENT-U ! ;
+
+: RA-STATS! ( ptr u8 n -- ) {: a:ptr u :}
+   0 RA-STATS-U !
+   u RA-STATS-ROOM
+   a RA-STATS-BUF u BYTE-COPY
+   u RA-STATS-U ! ;
 
 : RA-COPY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u RA-CHECK-PATH-U
@@ -471,6 +487,9 @@ RA-DEFAULT-TIMEOUT!
 : RA-REPAIR-STATS$ ( -- ptr u8 n )
    RA-EVENTS$ RA-TESTS-PASSED? 0 DGS-REPAIR-STATS$ ;
 
+: RA-SNAPSHOT-REPAIR-STATS ( -- )
+   RA-REPAIR-STATS$ RA-STATS! ;
+
 : RA-BETWEEN? ( n n n -- bool ) {: c lo hi :}
    c lo >= c hi <= and ;
 
@@ -548,3 +567,68 @@ RA-DEFAULT-TIMEOUT!
    RA-FIRST-BAD-U @ 0= if -1 RA-ALL-STABLE ! exit then
    RA-FIRST-BAD$ RA-CHECK-CANDIDATE if 0 RA-ALL-STABLE ! exit then
    RA-ERR$ RA-DIAGS$ STR= if -1 else 0 then RA-ALL-STABLE ! ;
+
+: RA-COMMA-FIELD-S ( ptr u8 n ptr u8 n -- )
+   JW-COMMA
+   JW-FIELD-S ;
+
+: RA-COMMA-FIELD-U ( ptr u8 n n -- )
+   JW-COMMA
+   JW-FIELD-U ;
+
+: RA-COMMA-FIELD-BOOL ( ptr u8 n bool -- )
+   JW-COMMA
+   JW-FIELD-BOOL ;
+
+: RA-COMMA-FIELD-RAW ( ptr u8 n ptr u8 n -- )
+   JW-COMMA
+   JW-FIELD-RAW ;
+
+: RA-ROW-HEAD ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: run:ptr runu task name:ptr nameu model:ptr modelu :}
+   s" schema_version" 1 JW-FIELD-U
+   s" run_id" run runu RA-COMMA-FIELD-S
+   s" task_id" task RA-COMMA-FIELD-U
+   s" name" name nameu RA-COMMA-FIELD-S
+   s" model" model modelu RA-COMMA-FIELD-S
+   s" attempt" RA-CHECKERS RA-COMMA-FIELD-U ;
+
+: RA-ROW-OUTCOME ( -- )
+   s" first_pass_checker" RA-FIRST-CHECKER$ RA-COMMA-FIELD-S
+   s" first_pass_tests" RA-FIRST-TESTS? RA-COMMA-FIELD-BOOL
+   s" tests_passed" RA-TESTS-PASSED? RA-COMMA-FIELD-BOOL
+   s" repair_iterations" RA-REPAIRS RA-COMMA-FIELD-U
+   s" checker_iterations" RA-CHECKERS RA-COMMA-FIELD-U ;
+
+: RA-ROW-DIAGNOSTICS ( -- )
+   s" diagnostic_count" RA-DIAGNOSTIC-COUNT RA-COMMA-FIELD-U
+   s" diagnostic_token" RA-DIAGNOSTIC-TOKEN? RA-COMMA-FIELD-BOOL
+   s" diagnostic_span" RA-DIAGNOSTIC-SPAN? RA-COMMA-FIELD-BOOL
+   s" diagnostic_expected" RA-DIAGNOSTIC-EXPECTED? RA-COMMA-FIELD-BOOL
+   s" diagnostic_actual" RA-DIAGNOSTIC-ACTUAL? RA-COMMA-FIELD-BOOL
+   s" diagnostic_code" RA-DIAGNOSTIC-CODE? RA-COMMA-FIELD-BOOL
+   s" diagnostic_repair_class" RA-DIAGNOSTIC-REPAIR-CLASS? RA-COMMA-FIELD-BOOL
+   s" all_errors_stable" RA-ALL-ERRORS-STABLE? RA-COMMA-FIELD-BOOL
+   s" repair_class_stats" RA-STATS$ RA-COMMA-FIELD-RAW ;
+
+: RA-ROW-TAIL ( n -- ) {: wall :}
+   s" tokens_used" 0 RA-COMMA-FIELD-U
+   s" wall_ms" wall RA-COMMA-FIELD-U
+   s" final_chars" RA-FINAL-CHARS RA-COMMA-FIELD-U
+   s" trust_uses" RA-TRUST-USES RA-COMMA-FIELD-U
+   s" signature_weakened" RA-SIGNATURE-WEAKENED? RA-COMMA-FIELD-BOOL ;
+
+: RA-BUILD-ROW ( ptr u8 n n ptr u8 n ptr u8 n n -- )
+   {: run:ptr runu task name:ptr nameu model:ptr modelu wall :}
+   RA-SNAPSHOT-REPAIR-STATS
+   JW-RESET
+   JW-OBJECT-START
+   run runu task name nameu model modelu RA-ROW-HEAD
+   RA-ROW-OUTCOME
+   RA-ROW-DIAGNOSTICS
+   wall RA-ROW-TAIL
+   JW-OBJECT-END ;
+
+: RA-ROW$ ( ptr u8 n n ptr u8 n ptr u8 n n -- ptr u8 n )
+   RA-BUILD-ROW
+   JW$ ;

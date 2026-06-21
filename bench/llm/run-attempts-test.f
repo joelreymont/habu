@@ -72,6 +72,10 @@ variable RATT-EXP-U
 : RATT-WRITE-CAND ( ptr u8 n -- ) {: text:ptr textu :}
    RATT-CAND$ text textu WRITE-ALL ;
 
+: RATT-WRITE-NAMED-CAND ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu text:ptr textu :}
+   name nameu RATT-PATH!
+   RATT-PATH$ text textu WRITE-ALL ;
+
 : RATT-WRITE-TESTS ( ptr u8 n -- ) {: text:ptr textu :}
    RATT-TESTS$ text textu WRITE-ALL ;
 
@@ -96,6 +100,39 @@ variable RATT-EXP-U
 : RATT-EXP-LN ( ptr u8 n -- )
    RATT-EXP+
    STR-LF RATT-EXP-C ;
+
+: RATT-JGET ( n ptr u8 n -- n ) {: root key:ptr keyu :}
+   root key keyu JSON-GET dup -1 = if E-RA-MISSING throw then ;
+
+: RATT-U-FIELD= ( n ptr u8 n n -- ) {: root key:ptr keyu want :}
+   root key keyu RATT-JGET JSON-NUMBER$ STR>NUMBER? TTRUE
+   want T= ;
+
+: RATT-S-FIELD= ( n ptr u8 n ptr u8 n -- ) {: root key:ptr keyu want:ptr wantu :}
+   root key keyu RATT-JGET JSON-STRING$ want wantu T$= ;
+
+: RATT-BOOL-FIELD= ( n ptr u8 n bool -- ) {: root key:ptr keyu want :}
+   root key keyu RATT-JGET JSON-BOOL@ if
+      want TTRUE
+   else
+      want TFALSE
+   then ;
+
+: RATT-ARRAY-FIELD-COUNT= ( n ptr u8 n n -- ) {: root key:ptr keyu want :}
+   root key keyu RATT-JGET dup JSON-KIND J-ARR T=
+   JSON-COUNT want T= ;
+
+: RATT-ARRAY-FIRST-FIELD ( n ptr u8 n -- n )
+   RATT-JGET 0 JSON-ARR@ ;
+
+: RATT-EXPECT-DIAG-QUALITY ( n -- ) {: root :}
+   root s" diagnostic_token" RA-TRUE RATT-BOOL-FIELD=
+   root s" diagnostic_span" RA-TRUE RATT-BOOL-FIELD=
+   root s" diagnostic_expected" RA-TRUE RATT-BOOL-FIELD=
+   root s" diagnostic_actual" RA-TRUE RATT-BOOL-FIELD=
+   root s" diagnostic_code" RA-TRUE RATT-BOOL-FIELD=
+   root s" diagnostic_repair_class" RA-TRUE RATT-BOOL-FIELD=
+   root s" all_errors_stable" RA-TRUE RATT-BOOL-FIELD= ;
 
 : RATT-PREPARE ( -- )
    CLEANUP-RESET
@@ -294,6 +331,75 @@ variable RATT-EXP-U
    s" --" RA-FINAL-METRICS!
    RA-TRUST-USES 1 T= ;
 
+: RATT-PREPARE-CERTIFIED-ROW ( -- )
+   RA-ROW-RESET
+   RATT-GOOD-CHECK-SRC$ RATT-WRITE-CAND
+   RA-CHECKER++
+   RATT-CAND$ RA-CHECK-CANDIDATE TTRUE
+   RATT-CAND$ RA-RECORD-CERTIFIED
+   RATT-CAND$ RA-RECORD-TEST-PASS
+   s" -- i64" RA-FINAL-METRICS!
+   RA-ALL-ERRORS-STABLE! ;
+
+: RATT-PREPARE-REPAIRED-ROW ( -- )
+   RA-ROW-RESET
+   s" bad-row.f" RATT-BAD-CHECK-SRC$ RATT-WRITE-NAMED-CAND
+   RA-CHECKER++
+   RATT-PATH$ RA-CHECK-CANDIDATE TFALSE
+   RATT-PATH$ 1 RA-RECORD-REJECT
+   RATT-GOOD-CHECK-SRC$ RATT-WRITE-CAND
+   RA-CHECKER++
+   RATT-CAND$ RA-CHECK-CANDIDATE TTRUE
+   RATT-CAND$ RA-RECORD-CERTIFIED
+   RATT-CAND$ RA-RECORD-TEST-PASS
+   s" -- i64" RA-FINAL-METRICS!
+   RA-ALL-ERRORS-STABLE! ;
+
+: RATT-EXPECT-CERTIFIED-ROW ( -- )
+   RATT-PREPARE-CERTIFIED-ROW
+   s" attempt-fixture" 1 s" GOOD" s" fixture-model" 17 RA-ROW$ JSON-PARSE {: root :}
+   root s" schema_version" 1 RATT-U-FIELD=
+   root s" run_id" s" attempt-fixture" RATT-S-FIELD=
+   root s" task_id" 1 RATT-U-FIELD=
+   root s" name" s" GOOD" RATT-S-FIELD=
+   root s" model" s" fixture-model" RATT-S-FIELD=
+   root s" attempt" 1 RATT-U-FIELD=
+   root s" first_pass_checker" s" certified" RATT-S-FIELD=
+   root s" first_pass_tests" RA-TRUE RATT-BOOL-FIELD=
+   root s" tests_passed" RA-TRUE RATT-BOOL-FIELD=
+   root s" repair_iterations" 0 RATT-U-FIELD=
+   root s" checker_iterations" 1 RATT-U-FIELD=
+   root s" diagnostic_count" 0 RATT-U-FIELD=
+   root RATT-EXPECT-DIAG-QUALITY
+   root s" repair_class_stats" 0 RATT-ARRAY-FIELD-COUNT=
+   root s" tokens_used" 0 RATT-U-FIELD=
+   root s" wall_ms" 17 RATT-U-FIELD=
+   root s" final_chars" RATT-GOOD-CHECK-SRC$ nip RATT-U-FIELD=
+   root s" trust_uses" 0 RATT-U-FIELD=
+   root s" signature_weakened" RA-FALSE RATT-BOOL-FIELD= ;
+
+: RATT-EXPECT-REPAIRED-ROW ( -- )
+   RATT-PREPARE-REPAIRED-ROW
+   s" repair-fixture" 9 s" BAD" s" fixture-model" 29 RA-ROW$ JSON-PARSE {: root :}
+   root s" attempt" 2 RATT-U-FIELD=
+   root s" first_pass_checker" s" rejected" RATT-S-FIELD=
+   root s" first_pass_tests" RA-FALSE RATT-BOOL-FIELD=
+   root s" tests_passed" RA-TRUE RATT-BOOL-FIELD=
+   root s" repair_iterations" 1 RATT-U-FIELD=
+   root s" checker_iterations" 2 RATT-U-FIELD=
+   root s" diagnostic_count" 1 RATT-U-FIELD=
+   root RATT-EXPECT-DIAG-QUALITY
+   root s" repair_class_stats" 1 RATT-ARRAY-FIELD-COUNT=
+   root s" repair_class_stats" RATT-ARRAY-FIRST-FIELD {: stat :}
+   stat s" repair_class" s" remove_producer" RATT-S-FIELD=
+   stat s" diagnostic_count" 1 RATT-U-FIELD=
+   stat s" repair_success" RA-TRUE RATT-BOOL-FIELD=
+   stat s" repair_iterations" 1 RATT-U-FIELD=
+   stat s" token_delta" 0 RATT-U-FIELD=
+   root s" wall_ms" 29 RATT-U-FIELD=
+   root s" final_chars" RATT-GOOD-CHECK-SRC$ nip RATT-U-FIELD=
+   root s" signature_weakened" RA-FALSE RATT-BOOL-FIELD= ;
+
 : RATT-MAIN ( -- )
    T-RESET
    RATT-PREPARE
@@ -318,6 +424,8 @@ variable RATT-EXP-U
    RATT-EXPECT-METRIC-CERTIFIED
    RATT-EXPECT-METRIC-REJECT
    RATT-EXPECT-FINAL-METRICS
+   RATT-EXPECT-CERTIFIED-ROW
+   RATT-EXPECT-REPAIRED-ROW
    CLEANUP-RUN
    RATT-ROOT$ EXISTS? TFALSE
    T-REPORT

@@ -157,12 +157,18 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Return typed booleans from `bool` words:** raw `0` is an integer cell, not a
   checked `bool`. Use `0 0= 0=` for false and `0 0=` for true in checked
   definitions whose declared effect returns `bool`.
+- **Do not compare bools with numeric `=`:** checked `=` is `n n -- bool`, not
+  boolean equivalence. Assert the expected branch directly (`TTRUE`/`TFALSE`) or
+  write a typed bool helper.
 - **Stress fixture source must be legal Forth:** control words such as `?do` and
   `begin` belong inside a definition. A top-level invalid control word tests the
   parser path, not the child timeout/truncation path you meant to exercise.
 - **Repeatable fixtures need idempotent setup:** when a focused test may prepare
   the same directory more than once, use `MAKE-DIRS` or clean the tree before
   `MAKE-DIR`; do not let setup order decide whether the test throws `E-FS-IO`.
+- **Replay fixtures need immutable candidate paths:** stability checks rerun the
+  recorded first-bad path. Tests must not overwrite that file with a later
+  repaired candidate or the diagnostic replay result is correctly false.
 - **Name numeric buffer-room inputs:** helper effects like `( cap used add -- )`
   are all `n`; a stray `swap` can type-check and still invert capacity/add at
   runtime. Bind `add` at the caller and pass `cap used add` explicitly.
