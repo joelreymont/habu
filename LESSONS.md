@@ -42,6 +42,14 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   semantics, prove the exact command path was fail-closed. A source can execute
   `0 set-check` or install a non-throwing hook; `tools/check.f` without a static
   pass can then accept code that was never actually checked.
+- **Checker RCA audits shadows before semantics:** after proving the path is
+  checked, confirm recently loaded words did not shadow built-ins. `CR constant`
+  shadows `cr` in Habu's case-insensitive dictionary, so a later `cr` pushes a
+  cell and the checker correctly reports the next consumer.
+- **Stack comments use types, not role names:** checked effects must say
+  `( n n -- )`, `( bool -- )`, or `( ptr u8 n -- )`; role names like
+  `( got want -- )` are not type declarations and will fail at checked call
+  sites.
 - **`CHECK!` is the user contract:** dogfood inference (`CHECK`) proves internal
   consistency; user-facing checked builds must verify the body against the
   declared `( in -- out )` and make rejection fatal.

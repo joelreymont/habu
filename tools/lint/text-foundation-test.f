@@ -2,11 +2,15 @@
 \ Run: bin/hb --load lib/errors.f lib/memory.f tools/lint/lib.f tools/lint/source-lex.f tools/lint/text-foundation-test.f
 
 variable TEST-N
-: ASSERT  ( f -- )
-   0= IF s" text-foundation-test failed at assertion " type TEST-N @ . cr 1 die THEN
-   TEST-N @ 1+ TEST-N ! ;
-: ASSERT=  ( got want -- )  = ASSERT ;
-: ASSERT$  ( a u b v -- )  STR= ASSERT ;
+: ASSERT  ( bool -- )
+   IF
+      TEST-N @ 1+ TEST-N !
+      exit
+   THEN
+   s" text-foundation-test failed at assertion " type TEST-N @ . cr
+   s" text-foundation-test failed" 1 die ;
+: ASSERT=  ( n n -- )  = ASSERT ;
+: ASSERT$  ( ptr u8 n ptr u8 n -- )  STR= ASSERT ;
 
 $100 constant FIX-CAP
 create STR-FIX FIX-CAP allot     variable STR-LEN

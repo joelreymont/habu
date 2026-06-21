@@ -39,8 +39,8 @@ s" SDB@" s" -- ptr u8" TRUST
    REPEAT ;
 
 : SNAP-HDR
-   \ NB: the toolchain's DSL constant RBASE (=x20) shadows the `rbase` prim
-   \ after case folding — read the saved text base straight from its cell.
+   \ The builder's x20 register constant is XREG-RBASE so it does not shadow
+   \ the `rbase` primitive; read the saved text base straight from its cell.
    DATA-VA RBASE-CELL + @ STB !           \ text CONTENT base
    STB @ $1000 - 216 + @ STSZ !           \ our own __text size ([loadbase+216])
    dbase@ SDB !

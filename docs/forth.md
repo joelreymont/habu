@@ -76,12 +76,18 @@ not a matter of taste. Target is the native `bin/hb` engine.
 
 ## Stack comments
 
-- **Every definition** carries `( before -- after )` with items named:
-  `( t -- tag )`, `( c-addr u -- nt|0 )`, `( nv -- base )`.
+- **Every definition** carries `( before -- after )`.
+- **Checked definitions use type tokens only.** The checker reads the stack
+  comment as the signature, so write `( n n -- )`, `( bool -- )`, or
+  `( ptr u8 n -- )`, not role names such as `( got want -- )`. Put role names in
+  locals (`{: got want :}`), helper names, or nearby prose.
+- **Unchecked/prose-only comments may name roles** when no checker hook consumes
+  the comment, but keep the type shape obvious.
 - Add inline `( … )` at non-obvious points inside a longer word so the reader can
   re-anchor mid-definition.
 - Use standard notation: `x` cell, `n`/`u` signed/unsigned, `d` double, `c-addr u`
-  string, `xt` execution token, `nt` name token, `f` flag, `?` for maybe-present.
+  string, `xt` execution token, `nt` name token, `f`/`bool` flag, `?` for
+  maybe-present.
 
 ## Errors
 

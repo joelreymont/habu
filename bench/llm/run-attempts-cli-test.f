@@ -250,7 +250,7 @@ variable RACT-NEXT
       RACT-NEXT !
       JSON-PARSE dup RACT-TASK-ID@ want = if exit then drop
    repeat drop 2drop
-   E-RA-MISSING throw ;
+   E-RA-MISSING throw 0 ;
 
 : RACT-ARR-FIELD ( n ptr u8 n -- n )
    RACT-JGET dup JSON-KIND J-ARR T= ;

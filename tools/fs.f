@@ -35,83 +35,83 @@ variable FS-ENT
 variable FS-NAME-A
 variable FS-NAME-U
 
-: COPY-BYTES {: a dst u :} ( a dst u -- )
+: COPY-BYTES ( ptr u8 ptr u8 n -- ) {: a:ptr dst:ptr u :}
    0 begin dup u < while
       dup a + c@  over dst + c!
       1+
    repeat drop ;
 
-: U16@ {: a :} ( a -- u )
+: U16@ ( ptr u8 -- n ) {: a:ptr :}
    a c@  a 1 + c@ 8 lshift or ;
 
-: FS-SLOT ( n -- a )
-   FS-PATH-CAP * FS-WALK-BUF + ;
+: FS-SLOT ( n -- ptr u8 )
+   FS-WALK-BUF swap FS-PATH-CAP * + ;
 
-: FS-CUR ( -- a )
+: FS-CUR ( -- ptr u8 )
    FS-DEPTH @ FS-SLOT ;
 
-: FS-NEXT ( -- a )
+: FS-NEXT ( -- ptr u8 )
    FS-DEPTH @ 1 + FS-SLOT ;
 
-: FS-DIR@ ( -- a )
-   FS-DEPTH @ FS-DIR-CAP * FS-DIR-BUF + ;
+: FS-DIR@ ( -- ptr u8 )
+   FS-DIR-BUF FS-DEPTH @ FS-DIR-CAP * + ;
 
-: FS-BASE@ ( -- a )
-   FS-DEPTH @ cells FS-BASES + ;
+: FS-BASE@ ( -- ptr n )
+   FS-BASES FS-DEPTH @ cells + ;
 
-: FS-FD@ ( -- fd )
-   FS-DEPTH @ cells FS-FDS + @ ;
+: FS-FD@ ( -- n )
+   FS-FDS FS-DEPTH @ cells + @ ;
 
-: FS-FD! ( fd -- )
-   FS-DEPTH @ cells FS-FDS + ! ;
+: FS-FD! ( n -- )
+   FS-FDS FS-DEPTH @ cells + ! ;
 
 : FS-N@ ( -- n )
-   FS-DEPTH @ cells FS-NS + @ ;
+   FS-NS FS-DEPTH @ cells + @ ;
 
 : FS-N! ( n -- )
-   FS-DEPTH @ cells FS-NS + ! ;
+   FS-NS FS-DEPTH @ cells + ! ;
 
 : FS-OFF@ ( -- n )
-   FS-DEPTH @ cells FS-OFFS + @ ;
+   FS-OFFS FS-DEPTH @ cells + @ ;
 
 : FS-OFF! ( n -- )
-   FS-DEPTH @ cells FS-OFFS + ! ;
+   FS-OFFS FS-DEPTH @ cells + ! ;
 
 : FS-REC@ ( -- n )
-   FS-DEPTH @ cells FS-RECS + @ ;
+   FS-RECS FS-DEPTH @ cells + @ ;
 
 : FS-REC! ( n -- )
-   FS-DEPTH @ cells FS-RECS + ! ;
+   FS-RECS FS-DEPTH @ cells + ! ;
 
-: FS-PATHZ {: a u :} ( a u -- z )
+: FS-PATHZ ( ptr u8 n -- ptr u8 ) {: a:ptr u :}
    u 1 + FS-PATH-CAP > IF E-FS-PATH throw THEN
    a FS-PATHZ-BUF u COPY-BYTES
    0 FS-PATHZ-BUF u + c!
    FS-PATHZ-BUF ;
 
-: EXISTS? ( a u -- f )
+: EXISTS? ( ptr u8 n -- bool )
    FS-PATHZ 0 access 0= ;
 
-: STAT-MODE {: a u :} ( a u -- mode|-1 )
+: STAT-MODE ( ptr u8 n -- n ) {: a:ptr u :}
    a u FS-PATHZ FS-STAT-BUF stat64 0 < IF -1 exit THEN
    FS-STAT-BUF 4 + U16@ ;
 
-: FILE? ( a u -- f )
-   STAT-MODE dup 0 < IF drop 0 exit THEN
+: FILE? ( ptr u8 n -- bool )
+   STAT-MODE dup 0 < IF drop LINT-FALSE exit THEN
    S-IFMT and S-IFREG = ;
 
-: DIR? ( a u -- f )
-   STAT-MODE dup 0 < IF drop 0 exit THEN
+: DIR? ( ptr u8 n -- bool )
+   STAT-MODE dup 0 < IF drop LINT-FALSE exit THEN
    S-IFMT and S-IFDIR = ;
 
-: STR-SUFFIX? {: a u b v :} ( a u b v -- f )
-   u v < IF 0 exit THEN
+: STR-SUFFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+   u v < IF LINT-FALSE exit THEN
    a u v - + v b v STR= ;
 
-: HAS-EXT? ( a u ea eu -- f )
+: HAS-EXT? ( ptr u8 n ptr u8 n -- bool )
    STR-SUFFIX? ;
 
-: BASENAME {: a u :} ( a u -- ba bu )
+: BASENAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    u FS-I !
    begin FS-I @ 0 > while
       a FS-I @ 1 - + c@ FS-SLASH = IF
@@ -121,28 +121,28 @@ variable FS-NAME-U
    repeat
    a u ;
 
-: PATH= ( a u b v -- f )
+: PATH= ( ptr u8 n ptr u8 n -- bool )
    STR= ;
 
-: DOT-ENTRY? {: a u :} ( a u -- f )
-   u 1 = IF a c@ FS-DOT = ELSE 0 THEN ;
+: DOT-ENTRY? ( ptr u8 n -- bool ) {: a:ptr u :}
+   u 1 = IF a c@ FS-DOT = ELSE LINT-FALSE THEN ;
 
-: DOTDOT-ENTRY? {: a u :} ( a u -- f )
-   u 2 = IF a c@ FS-DOT =  a 1 + c@ FS-DOT =  and ELSE 0 THEN ;
+: DOTDOT-ENTRY? ( ptr u8 n -- bool ) {: a:ptr u :}
+   u 2 = IF a c@ FS-DOT =  a 1 + c@ FS-DOT =  and ELSE LINT-FALSE THEN ;
 
-: SKIP-DIR? ( a u -- f )
+: SKIP-DIR? ( ptr u8 n -- bool )
    BASENAME
-   2dup s" .jj" PATH= IF 2drop -1 exit THEN
-   2dup s" .git" PATH= IF 2drop -1 exit THEN
+   2dup s" .jj" PATH= IF 2drop LINT-TRUE exit THEN
+   2dup s" .git" PATH= IF 2drop LINT-TRUE exit THEN
    s" .dots" PATH= ;
 
-: SKIP-ENTRY? ( a u -- f )
-   2dup DOT-ENTRY? IF 2drop -1 exit THEN
-   2dup DOTDOT-ENTRY? IF 2drop -1 exit THEN
+: SKIP-ENTRY? ( ptr u8 n -- bool )
+   2dup DOT-ENTRY? IF 2drop LINT-TRUE exit THEN
+   2dup DOTDOT-ENTRY? IF 2drop LINT-TRUE exit THEN
    SKIP-DIR? ;
 
-: JOIN-PATH {: pa pu na nu dst :} ( pa pu na nu dst -- u )
-   pu 0 > IF pa pu 1 - + c@ FS-SLASH = ELSE 0 THEN IF
+: JOIN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n ) {: pa:ptr pu na:ptr nu dst:ptr :}
+   pu 0 > IF pa pu 1 - + c@ FS-SLASH = ELSE LINT-FALSE THEN IF
       pu nu + FS-PATH-CAP > IF E-FS-PATH throw THEN
       pa dst pu COPY-BYTES
       na dst pu + nu COPY-BYTES
@@ -155,24 +155,24 @@ variable FS-NAME-U
       pu 1 + nu +
    THEN ;
 
-: OPEN-DIR ( a u -- fd )
+: OPEN-DIR ( ptr u8 n -- n )
    FS-PATHZ open-rd dup 0 < IF E-FS-OPEN throw THEN ;
 
-: D-RECLEN ( ent -- u )
+: D-RECLEN ( ptr u8 -- n )
    16 + U16@ ;
 
-: D-NAMELEN ( ent -- u )
+: D-NAMELEN ( ptr u8 -- n )
    18 + U16@ ;
 
-: D-NAME ( ent -- a u )
+: D-NAME ( ptr u8 -- ptr u8 n )
    dup 21 +  swap D-NAMELEN ;
 
-: READ-DIR ( -- more? )
+: READ-DIR ( -- bool )
    FS-FD@ FS-DIR@ FS-DIR-CAP FS-BASE@ getdirentries64
    dup 0 < IF FS-FD@ close E-FS-DIR throw THEN
    dup FS-N! 0 > ;
 
-: WALK-PATH {: a u :} ( a u -- )
+: WALK-PATH ( ptr u8 n -- ) {: a:ptr u :}
    a u SKIP-DIR? IF exit THEN
    a u FILE? IF a u FS-WALK-XT @ execute exit THEN
    a u DIR? 0= IF E-FS-STAT throw THEN
@@ -198,7 +198,7 @@ variable FS-NAME-U
    repeat
    FS-FD@ close ;
 
-: WALK-FILES {: a u xt :} ( a u xt -- )
+: WALK-FILES ( ptr u8 n n -- ) {: a:ptr u xt :}
    xt FS-WALK-XT !
    0 FS-DEPTH !
    a FS-CUR u COPY-BYTES

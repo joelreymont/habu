@@ -3,7 +3,7 @@
 \ icode.fs + mnem.fs + rt.fs (g-push/g-pop/g-print9) + crash.fs + macho.fs.
 \ Part 1: prims + tok/find/num/prot/flush/cemit + dict. The interpreter main
 \ loop, keyword JIT and EMIT-FORTH follow in part 2 (habu2.f).
-20 constant RBASE
+20 constant XREG-RBASE
 26 constant DBASE  27 constant NDICT  28 constant CP
 $200000 constant REGION
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)

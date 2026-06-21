@@ -10,17 +10,17 @@ create FB 131072 allot
 variable WMSK  variable RMSK
 variable RX  variable RACC
 
-: CL-BIT  ( r -- m )  1 swap lshift ;
-: CL-HAS?  ( m r -- f )  CL-BIT and 0 <> ;
-: CL-ADD  ( m r -- m' )  CL-BIT or ;
-: CL-WOR  ( m -- )  WMSK @ or WMSK ! ;
-: CL-ROR  ( m -- )  RMSK @ or RMSK ! ;
+: CL-BIT  ( n -- n )  1 swap lshift ;
+: CL-HAS?  ( n n -- bool )  CL-BIT and 0 <> ;
+: CL-ADD  ( n n -- n )  CL-BIT or ;
+: CL-WOR  ( n -- )  WMSK @ or WMSK ! ;
+: CL-ROR  ( n -- )  RMSK @ or RMSK ! ;
 
 0 28 CL-ADD 30 CL-ADD 31 CL-ADD constant CONTRACT-MASK
 0 0 CL-ADD 2 CL-ADD 3 CL-ADD 4 CL-ADD 5 CL-ADD constant KWCMP-MASK
 
-: CL-DIGIT?  ( c -- f )  dup 47 > swap 58 < and ;
-: CL-NUM-REG  {: a u :}  ( -- r|-1 )
+: CL-DIGIT?  ( n -- bool )  dup 47 > swap 58 < and ;
+: CL-NUM-REG  ( ptr u8 n -- n ) {: a:ptr u :}
    u 0= if -1 exit then
    0 RACC !  0 RX !
    begin RX @ u < while
@@ -29,13 +29,13 @@ variable RX  variable RACC
       RX @ 1+ RX !
    repeat
    RACC @ 32 < if RACC @ else -1 then ;
-: REG-OF  {: a u :}  ( -- r|-1 )
+: REG-OF  ( ptr u8 n -- n ) {: a:ptr u :}
    a u s" XDS"   STR= if 19 exit then
    a u s" SP"    STR= if 31 exit then
    a u s" A"     STR= if 9 exit then
    a u s" B"     STR= if 10 exit then
    a u s" C"     STR= if 11 exit then
-   a u s" RBASE" STR= if 20 exit then
+   a u s" XREG-RBASE" STR= if 20 exit then
    a u s" DBASE" STR= if 26 exit then
    a u s" NDICT" STR= if 27 exit then
    a u s" CP"    STR= if 28 exit then
@@ -43,22 +43,25 @@ variable RX  variable RACC
    a u CL-NUM-REG ;
 
 \ ---- string/token helpers -------------------------------------------------
-: START-L?  {: a u :}  ( -- f )  u 0 > if a c@ FOLD 108 = else 0 then ;
-: ENDS-COMMA?  {: a u :}  ( -- f )  u 0 > if a u 1- + c@ 44 = else 0 then ;
-: START-DOLLAR?  {: a u :}  ( -- f )  u 0 > if a c@ 36 = else 0 then ;
-: LOWER-CHAR?  ( c -- f )  dup 96 > swap 123 < and ;
-: UPPERISH?  {: a u :}  ( -- f )
+: START-L?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   u 0 > if a c@ FOLD 108 = else LINT-FALSE then ;
+: ENDS-COMMA?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   u 0 > if a u 1- + c@ 44 = else LINT-FALSE then ;
+: START-DOLLAR?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   u 0 > if a c@ 36 = else LINT-FALSE then ;
+: LOWER-CHAR?  ( n -- bool )  dup 96 > swap 123 < and ;
+: UPPERISH?  ( ptr u8 n -- bool ) {: a:ptr u :}
    0 RX !
    begin RX @ u < while
-      a RX @ + c@ LOWER-CHAR? if 0 exit then
+      a RX @ + c@ LOWER-CHAR? if LINT-FALSE exit then
       RX @ 1+ RX !
-   repeat  -1 ;
-: STOP-MN?  {: a u :}  ( -- f )
-   a u s" RET," STR= if -1 exit then
+   repeat  LINT-TRUE ;
+: STOP-MN?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" RET," STR= if LINT-TRUE exit then
    a u s" B," STR= ;
 
 \ ---- modeled maps ---------------------------------------------------------
-: RETURNS-MASK  {: a u :}  ( -- m )
+: RETURNS-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
    a u s" Lcfpop" STR=CI if 0 9 CL-ADD exit then
    a u s" Lkwcmp" STR=CI if 0 0 CL-ADD exit then
    a u s" Lloc-find" STR=CI if 0 0 CL-ADD exit then
@@ -79,7 +82,7 @@ variable RX  variable RACC
    a u s" Lvnipx" STR=CI if 0 13 CL-ADD exit then
    a u s" Lvcopy" STR=CI if 0 13 CL-ADD exit then
    0 ;
-: PRESERVE-MASK  {: a u :}  ( -- m )
+: PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
    a u s" Lvpushc" STR=CI if 0 11 CL-ADD exit then
    a u s" Lvpushr" STR=CI if 0 14 CL-ADD exit then
    a u s" Lvforcek" STR=CI if 0 5 CL-ADD exit then
@@ -90,49 +93,49 @@ variable RX  variable RACC
    a u s" Lbcs" STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
    0 ;
 
-: PSEUDO?  {: a u :}  ( -- f )
-   a u s" g-push" STR=CI if -1 exit then
-   a u s" g-pop" STR=CI if -1 exit then
-   a u s" g-print9" STR=CI if -1 exit then
-   a u s" c-lit" STR=CI if -1 exit then
-   a u s" c-call" STR=CI if -1 exit then
-   a u s" c-popflag" STR=CI if -1 exit then
-   a u s" c-pushcp" STR=CI if -1 exit then
-   a u s" c-emitw" STR=CI if -1 exit then
-   a u s" c-bback" STR=CI if -1 exit then
-   a u s" cf-entry" STR=CI if -1 exit then
-   a u s" cfb-entry" STR=CI if -1 exit then
-   a u s" fold-entry" STR=CI if -1 exit then
-   a u s" vop-entry" STR=CI if -1 exit then
-   a u s" vcmp-entry" STR=CI if -1 exit then
-   a u s" vshuf-entry" STR=CI if -1 exit then
+: PSEUDO?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" g-push" STR=CI if LINT-TRUE exit then
+   a u s" g-pop" STR=CI if LINT-TRUE exit then
+   a u s" g-print9" STR=CI if LINT-TRUE exit then
+   a u s" c-lit" STR=CI if LINT-TRUE exit then
+   a u s" c-call" STR=CI if LINT-TRUE exit then
+   a u s" c-popflag" STR=CI if LINT-TRUE exit then
+   a u s" c-pushcp" STR=CI if LINT-TRUE exit then
+   a u s" c-emitw" STR=CI if LINT-TRUE exit then
+   a u s" c-bback" STR=CI if LINT-TRUE exit then
+   a u s" cf-entry" STR=CI if LINT-TRUE exit then
+   a u s" cfb-entry" STR=CI if LINT-TRUE exit then
+   a u s" fold-entry" STR=CI if LINT-TRUE exit then
+   a u s" vop-entry" STR=CI if LINT-TRUE exit then
+   a u s" vcmp-entry" STR=CI if LINT-TRUE exit then
+   a u s" vshuf-entry" STR=CI if LINT-TRUE exit then
    a u s" vun-entry" STR=CI ;
-: INSTR?  {: a u :}  ( -- f )
-   a u PSEUDO? if -1 exit then
+: INSTR?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u PSEUDO? if LINT-TRUE exit then
    a u ENDS-COMMA?  a u START-DOLLAR? 0= and  a u UPPERISH? and ;
 
-: MN-W3?  {: a u :}  ( -- f )
-   a u s" ADD," STR= if -1 exit then  a u s" SUB," STR= if -1 exit then
-   a u s" MUL," STR= if -1 exit then  a u s" AND," STR= if -1 exit then
-   a u s" ORR," STR= if -1 exit then  a u s" EOR," STR= if -1 exit then
-   a u s" LSLV," STR= if -1 exit then  a u s" LSRV," STR= if -1 exit then
+: MN-W3?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" ADD," STR= if LINT-TRUE exit then  a u s" SUB," STR= if LINT-TRUE exit then
+   a u s" MUL," STR= if LINT-TRUE exit then  a u s" AND," STR= if LINT-TRUE exit then
+   a u s" ORR," STR= if LINT-TRUE exit then  a u s" EOR," STR= if LINT-TRUE exit then
+   a u s" LSLV," STR= if LINT-TRUE exit then  a u s" LSRV," STR= if LINT-TRUE exit then
    a u s" SDIV," STR= ;
-: MN-W2I?  {: a u :}  ( -- f )
-   a u s" ADDI," STR= if -1 exit then  a u s" SUBI," STR= if -1 exit then
-   a u s" LSLI," STR= if -1 exit then  a u s" LSRI," STR= if -1 exit then
-   a u s" ASRI," STR= if -1 exit then  a u s" ANDI," STR= ;
-: MN-W1?  {: a u :}  ( -- f )
-   a u s" MOVZ," STR= if -1 exit then  a u s" MOVN," STR= if -1 exit then
-   a u s" ADR," STR= if -1 exit then  a u s" LIT64," STR= if -1 exit then
+: MN-W2I?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" ADDI," STR= if LINT-TRUE exit then  a u s" SUBI," STR= if LINT-TRUE exit then
+   a u s" LSLI," STR= if LINT-TRUE exit then  a u s" LSRI," STR= if LINT-TRUE exit then
+   a u s" ASRI," STR= if LINT-TRUE exit then  a u s" ANDI," STR= ;
+: MN-W1?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" MOVZ," STR= if LINT-TRUE exit then  a u s" MOVN," STR= if LINT-TRUE exit then
+   a u s" ADR," STR= if LINT-TRUE exit then  a u s" LIT64," STR= if LINT-TRUE exit then
    a u s" CSET," STR= ;
-: MN-WRMW?  {: a u :}  ( -- f )
-   a u s" MOVK," STR= if -1 exit then  a u s" MOVZHW," STR= if -1 exit then
-   a u s" MOVKHW," STR= if -1 exit then  a u s" MOVNHW," STR= ;
-: MN-LD?  {: a u :}  ( -- f )
-   a u s" LDR," STR= if -1 exit then  a u s" LDRB," STR= if -1 exit then
+: MN-WRMW?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" MOVK," STR= if LINT-TRUE exit then  a u s" MOVZHW," STR= if LINT-TRUE exit then
+   a u s" MOVKHW," STR= if LINT-TRUE exit then  a u s" MOVNHW," STR= ;
+: MN-LD?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" LDR," STR= if LINT-TRUE exit then  a u s" LDRB," STR= if LINT-TRUE exit then
    a u s" LDRW," STR= ;
-: MN-ST?  {: a u :}  ( -- f )
-   a u s" STR," STR= if -1 exit then  a u s" STRB," STR= if -1 exit then
+: MN-ST?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" STR," STR= if LINT-TRUE exit then  a u s" STRB," STR= if LINT-TRUE exit then
    a u s" STRW," STR= ;
 
 \ ---- register extraction/effects -----------------------------------------
@@ -140,19 +143,21 @@ variable RX  variable RACC
 create RRS RRMAX cells allot   variable RR#
 variable RK
 
-: RR+  ( r -- )
-   RR# @ RRMAX >= if s" clobber-lint: too many regs in instruction" type NL 1 die then
+: RR-CHECK-ROOM ( -- )
+   RR# @ RRMAX >= if s" clobber-lint: too many regs in instruction" 1 die then ;
+: RR+  ( n -- )
+   RR-CHECK-ROOM
    RRS RR# @ cells + !  RR# @ 1+ RR# ! ;
-: RR@  ( k -- r|-1 )
-   dup RR# @ < if cells RRS + @ else drop -1 then ;
-: COLLECT-REGS  {: lo hi :}  ( -- )
+: RR@  ( n -- n )
+   dup RR# @ < if RRS swap cells + @ else drop -1 then ;
+: COLLECT-REGS  ( n n -- ) {: lo hi :}
    0 RR# !  lo RK !
    begin RK @ hi < while
       RK @ TOK REG-OF dup 0 >= if RR+ else drop then
       RK @ 1+ RK !
    repeat ;
-: EW  ( k -- )  RR@ dup 0 >= if WMSK @ swap CL-ADD WMSK ! else drop then ;
-: ER  ( k -- )  RR@ dup 0 >= if RMSK @ swap CL-ADD RMSK ! else drop then ;
+: EW  ( n -- )  RR@ dup 0 >= if WMSK @ swap CL-ADD WMSK ! else drop then ;
+: ER  ( n -- )  RR@ dup 0 >= if RMSK @ swap CL-ADD RMSK ! else drop then ;
 
 : PSEUDO-EFFECTS  {: a u :}  ( -- )
    a u s" g-push" STR=CI if 0 ER 19 ER 19 EW exit then
@@ -200,19 +205,20 @@ create CWS CMAX cells allot     variable CN#
 create EFROM EMAX cells allot   create ETO EMAX cells allot   variable EN#
 variable CX  variable EX
 
-: C-NAME  ( idx -- a u )  dup cells CNOFF + @  swap cells CNLEN + @ ;
-: CWS@  ( idx -- m )  cells CWS + @ ;
-: CWS!  ( m idx -- )  cells CWS + ! ;
-: C-WOR  {: idx m :}  ( -- )  idx CWS@ m or idx CWS! ;
-: C-FIND  {: a u :}  ( -- idx|-1 )
+: C-NAME  ( n -- ptr u8 n )
+   dup CNOFF swap cells + @  swap CNLEN swap cells + @ ;
+: CWS@  ( n -- n )  CWS swap cells + @ ;
+: CWS!  ( n n -- )  CWS swap cells + ! ;
+: C-WOR  ( n n -- ) {: idx m :}  idx CWS@ m or idx CWS! ;
+: C-FIND  ( ptr u8 n -- n ) {: a:ptr u :}
    0 CX !
    begin CX @ CN# @ < while
       CX @ C-NAME a u STR=CI if CX @ exit then
       CX @ 1+ CX !
    repeat  -1 ;
 : C-ADD  {: a u :}  ( -- idx )
-   CN# @ CMAX >= if s" clobber-lint: too many labels" type NL 1 die then
-   CEND @ u + CNBUF-CAP > if s" clobber-lint: label store full" type NL 1 die then
+   CN# @ CMAX >= if s" clobber-lint: too many labels" 1 die then
+   CEND @ u + CNBUF-CAP > if s" clobber-lint: label store full" 1 die then
    a u CNBUF CEND @ + FOLD-TO
    CNBUF CEND @ + CNOFF CN# @ cells + !  u CNLEN CN# @ cells + !
    0 CWS CN# @ cells + !
@@ -220,15 +226,15 @@ variable CX  variable EX
 : C-ENSURE  {: a u :}  ( -- idx )
    a u C-FIND dup 0 >= if exit then
    drop a u C-ADD ;
-: EDGE?  {: from to :}  ( -- f )
+: EDGE?  ( n n -- bool ) {: from to :}
    0 EX !
    begin EX @ EN# @ < while
-      EX @ cells EFROM + @ from =  EX @ cells ETO + @ to = and if -1 exit then
+      EX @ cells EFROM + @ from =  EX @ cells ETO + @ to = and if LINT-TRUE exit then
       EX @ 1+ EX !
-   repeat  0 ;
+   repeat  LINT-FALSE ;
 : EDGE+  {: from to :}  ( -- )
    from to EDGE? if exit then
-   EN# @ EMAX >= if s" clobber-lint: too many BL edges" type NL 1 die then
+   EN# @ EMAX >= if s" clobber-lint: too many BL edges" 1 die then
    from EFROM EN# @ cells + !  to ETO EN# @ cells + !
    EN# @ 1+ EN# ! ;
 
@@ -244,9 +250,9 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
       DI @ TOK s" ;" STR= if DI @ exit then
       DI @ 1+ DI !
    repeat  DI @ ;
-: OPEN@  ( k -- tok-idx )  cells OPENINGS + @ ;
-: OPEN+  ( tok-idx -- )
-   ON# @ OMAX >= if s" clobber-lint: too many labels in definition" type NL 1 die then
+: OPEN@  ( n -- n )  OPENINGS swap cells + @ ;
+: OPEN+  ( n -- )
+   ON# @ OMAX >= if s" clobber-lint: too many labels in definition" 1 die then
    OPENINGS ON# @ cells + !  ON# @ 1+ ON# ! ;
 : LABEL-OPEN?  {: k hi :}  ( -- f )
    k 2 + hi >= if 0 exit then
@@ -327,27 +333,30 @@ variable CHANGED  variable EFF
 
 \ ---- pass 2: call-site liveness ------------------------------------------
 create POIS 32 cells allot   variable DIRTY
+variable APPLY-MASK
 create WNAME 128 allot       variable WLEN
 create NUMBUF 2 allot
 variable BAD  variable PR  variable CW  variable RETS  variable CALIDX
 
+: POIS@ ( n -- n )  POIS swap cells + @ ;
+: POIS! ( n n -- )  POIS swap cells + ! ;
 : POIS-CLEAR  ( -- )
    0 PR !
-   begin PR @ 32 < while -1 POIS PR @ cells + !  PR @ 1+ PR ! repeat ;
-: WORD-NAME!  ( name-tok -- )
+   begin PR @ 32 < while -1 PR @ POIS!  PR @ 1+ PR ! repeat ;
+: WORD-NAME!  ( n -- )
    TOK dup WLEN !  WNAME FOLD-TO ;
-: CRASH-FILE?  {: a u :}  ( -- f )
+: CRASH-FILE?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" src/habu/crash.f" STR= ;
-: ALLOW?  {: fa fu reg cidx :}  ( -- f )
-   fa fu CRASH-FILE? 0= if 0 exit then
-   WNAME WLEN @ s" emit-crash-handler" STR=CI 0= if 0 exit then
-   reg 1 = reg 2 = or 0= if 0 exit then
-   cidx 0 < if 0 exit then
+: ALLOW?  ( ptr u8 n n n -- bool ) {: fa:ptr fu reg cidx :}
+   fa fu CRASH-FILE? 0= if LINT-FALSE exit then
+   WNAME WLEN @ s" emit-crash-handler" STR=CI 0= if LINT-FALSE exit then
+   reg 1 = reg 2 = or 0= if LINT-FALSE exit then
+   cidx 0 < if LINT-FALSE exit then
    cidx C-NAME s" lhex" STR=CI ;
-: DEC-TYPE  {: n :}  ( -- )
+: DEC-TYPE  ( n -- ) {: n :}
    n 10 < if 48 n + NUMBUF c!  NUMBUF 1 type
    else 48 n 10 / + NUMBUF c!  48 n 10 mod + NUMBUF 1+ c!  NUMBUF 2 type then ;
-: REG-TYPE  ( r -- )  s" x" type DEC-TYPE ;
+: REG-TYPE  ( n -- )  s" x" type DEC-TYPE ;
 : FINDING  {: fa fu reg cidx :}  ( -- )
    s" CLOBBER " type fa fu type s"  " type
    WNAME WLEN @ type s" : " type reg REG-TYPE
@@ -357,37 +366,39 @@ variable BAD  variable PR  variable CW  variable RETS  variable CALIDX
    0 PR !
    begin PR @ 32 < while
       rmask CONTRACT-MASK invert and PR @ CL-HAS? if
-         POIS PR @ cells + @ CALIDX !
+         PR @ POIS@ CALIDX !
          CALIDX @ 0 >= if
             DIRTY @ PR @ CL-HAS? if
                fa fu PR @ CALIDX @ ALLOW? 0= if
                   fa fu PR @ CALIDX @ FINDING  BAD @ 1+ BAD !
                then
-               -1 POIS PR @ cells + !
+               -1 PR @ POIS!
             then
          then
       then
       PR @ 1+ PR !
    repeat ;
-: APPLY-WRITES  ( wmask -- )
-   CONTRACT-MASK invert and dup DIRTY @ or DIRTY !
+: APPLY-WRITES  ( n -- )
+   CONTRACT-MASK invert and APPLY-MASK !
+   APPLY-MASK @ DIRTY @ or DIRTY !
    0 PR !
    begin PR @ 32 < while
-      dup PR @ CL-HAS? if -1 POIS PR @ cells + ! then
+      APPLY-MASK @ PR @ CL-HAS? if -1 PR @ POIS! then
       PR @ 1+ PR !
-   repeat  drop ;
-: APPLY-RETURNS  ( rmask -- )
-   dup DIRTY @ or DIRTY !
+   repeat ;
+: APPLY-RETURNS  ( n -- )
+   APPLY-MASK !
+   APPLY-MASK @ DIRTY @ or DIRTY !
    0 PR !
    begin PR @ 32 < while
-      dup PR @ CL-HAS? if -1 POIS PR @ cells + ! then
+      APPLY-MASK @ PR @ CL-HAS? if -1 PR @ POIS! then
       PR @ 1+ PR !
-   repeat  drop ;
+   repeat ;
 : POISON-DIRTY  {: cmask cidx :}  ( -- )
    0 PR !
    begin PR @ 32 < while
       DIRTY @ PR @ CL-HAS?  cmask PR @ CL-HAS? and if
-         cidx POIS PR @ cells + !
+         cidx PR @ POIS!
       then
       PR @ 1+ PR !
    repeat ;
@@ -440,7 +451,8 @@ variable BAD  variable PR  variable CW  variable RETS  variable CALIDX
 : CLOBBER-LINT  ( -- )
    0 PARENS? !  ALL-PASS1  CLOSE-CLOBBERS  0 BAD !  ALL-PASS2
    BAD @ 0 > if
-      s" clobber-lint: " type BAD @ . s"  finding(s)" type NL  1 die
+      s" clobber-lint: " type BAD @ . s"  finding(s)" type NL
+      s" clobber-lint: findings" 1 die
    else
       s" clobber-lint: clean" type NL
    then ;

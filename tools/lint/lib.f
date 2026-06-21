@@ -157,7 +157,7 @@ variable INTERN-END
    INTERN-FOLD-BUF u INTERN? ;
 
 \ ---- bounded string helpers for source tools ------------------------------
-13 constant CR
+13 constant LINT-CR
 34 constant DQUOTE
 46 constant DOT
 47 constant SLASH
@@ -168,7 +168,7 @@ variable INTERN-END
 : COPY-LOWER ( ptr u8 n ptr u8 -- ) {: a:ptr u dst:ptr :}  a u dst FOLD-TO ;
 : COPY-UPPER ( ptr u8 n ptr u8 -- ) {: a:ptr u dst:ptr :}
    0 begin dup u < while  dup a + c@ ASCII-UP  over dst + c!  1+  repeat  drop ;
-: WS? ( n -- bool )  dup SP? swap CR = or ;
+: WS? ( n -- bool )  dup SP? swap LINT-CR = or ;
 : LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    0 begin dup u < while
       dup a + c@ WS? 0= IF dup a +  u rot -  exit THEN  1+
@@ -200,7 +200,7 @@ create SOFF SMAX cells allot   create SLEN SMAX cells allot   variable SN#
    a SOFF SN# @ cells + !  u SLEN SN# @ cells + !  SN# @ 1+ SN# ! ;
 : S@ ( n -- ptr u8 n )  dup cells SOFF + @  swap cells SLEN + @ ;
 : ADD-LINE ( ptr u8 n -- ) {: a:ptr u :}
-   u 0 >  a u 1- + c@ CR = and IF a u 1- SPLIT+ ELSE a u SPLIT+ THEN ;
+   u 0 >  a u 1- + c@ LINT-CR = and IF a u 1- SPLIT+ ELSE a u SPLIT+ THEN ;
 : SPLIT-LINES ( ptr u8 n -- ) {: a:ptr u :}
    SPLIT-CLEAR  0 TS !  0 TI !
    begin TI @ u < while
@@ -366,6 +366,5 @@ variable P1A  variable P1U  variable P2A  variable P2U
    a u SIG-OPTOUT? IF SIG-OPTOUT exit THEN
    SIG-MISSING ;
 
-0 set-check
-\ End-of-library handoff: downstream legacy scanner modules choose their own
-\ checked boundary instead of inheriting this file's checked helper hook.
+\ Downstream legacy scanner modules that need unchecked mode must declare their
+\ own `0 set-check` boundary instead of inheriting one from this shared library.

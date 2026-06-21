@@ -1,6 +1,8 @@
 \ source-lex.f — source lexer records for self-hosted tooling.
 \ Load after lib/memory.f and tools/lint/lib.f.
 
+0 set-check
+
 1 constant L-WORD
 2 constant L-COMMENT
 1024 constant LEX-MIN-CAP
@@ -101,3 +103,5 @@ TRUSTED: LEX-COPY-CELLS ( ptr n ptr n n -- )
          ELSE LEX-WORD THEN THEN
       THEN
    repeat ;
+
+' LINT-CHECK-HOOK set-check

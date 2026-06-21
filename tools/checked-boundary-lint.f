@@ -174,9 +174,12 @@ variable UB-NUM-I
    UB-TOK$ 2dup UB-HOOK-NAME? if 2drop exit then
    UB-REPORT-DEFINITION ;
 
-: UB-SCAN ( -- )
+: UB-RESET-FILE-SCAN ( -- )
    0 UB-PREV-A ! 0 UB-PREV-U !
-   0 UB-I ! 1 UB-LINE ! 1 UB-COL ! 0 UB-CHECK-OFF !
+   0 UB-I ! 1 UB-LINE ! 1 UB-COL ! ;
+
+: UB-SCAN ( -- )
+   UB-RESET-FILE-SCAN
    begin UB-NEXT-TOK while
       UB-SET-CHECK-OFF? if -1 UB-CHECK-OFF ! then
       UB-COLON? if UB-HANDLE-COLON then
@@ -195,6 +198,7 @@ variable UB-NUM-I
    ARGV-PARSE
    1 -1 ARGV-EXPECT-POS
    0 UB-BAD !
+   0 UB-CHECK-OFF !
    0 begin dup ARGV-POS# < while
       dup ARGV-POS$ UB-SCAN-FILE
       1+

@@ -28,6 +28,10 @@ variable REPL-TOK-LINE
 variable REPL-ROOT-A
 variable REPL-ROOT-U
 
+TRUSTED: REPL-ROOT-A@ ( -- ptr u8 ) REPL-ROOT-A @ ;
+TRUSTED: REPL-SRC-A@ ( -- ptr u8 ) REPL-SRC-A @ ;
+TRUSTED: REPL-TOK-A@ ( -- ptr u8 ) REPL-TOK-A @ ;
+
 : NL ( -- )  10 emit ;
 : EM-DASH ( -- )  $E2 emit $80 emit $94 emit ;
 : UTYPE  ( u -- )
@@ -42,11 +46,11 @@ variable REPL-ROOT-U
       REPL-NUM REPL-NUM-L @ + c@ emit
    repeat ;
 
-: FILE-EXISTS?  {: a u :}  ( -- f )
+: FILE-EXISTS?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u PATHZ
    PATHBUF 0 0 open REPL-FD !
-   REPL-FD @ 0 < if 0 exit then
-   REPL-FD @ close  -1 ;
+   REPL-FD @ 0 < if LINT-FALSE exit then
+   REPL-FD @ close  LINT-TRUE ;
 
 : REPL-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
    a REPL-ROOT-A !
@@ -54,13 +58,13 @@ variable REPL-ROOT-U
 
 : REPL-ROOT-SELF? ( -- bool )
    REPL-ROOT-U @ 0= if LINT-TRUE exit then
-   REPL-ROOT-A @ REPL-ROOT-U @ s" ." STR= ;
+   REPL-ROOT-A@ REPL-ROOT-U @ s" ." STR= ;
 
 : REPL-ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    REPL-ROOT-SELF? if a u exit then
-   REPL-ROOT-U @ u + 1 + REPL-PATH-CAP > if s" repl-lint: root path too long" type NL s" " 1 die then
-   REPL-ROOT-A @ REPL-PATH-BUF REPL-ROOT-U @ BMOVE
-   REPL-ROOT-A @ REPL-ROOT-U @ 1- + c@ SLASH = if
+   REPL-ROOT-U @ u + 1 + REPL-PATH-CAP > if s" repl-lint: root path too long" 1 die then
+   REPL-ROOT-A@ REPL-PATH-BUF REPL-ROOT-U @ BMOVE
+   REPL-ROOT-A@ REPL-ROOT-U @ 1- + c@ SLASH = if
       a REPL-PATH-BUF REPL-ROOT-U @ + u BMOVE
       REPL-PATH-BUF REPL-ROOT-U @ u +
       exit
@@ -69,24 +73,28 @@ variable REPL-ROOT-U
    a REPL-PATH-BUF REPL-ROOT-U @ 1 + + u BMOVE
    REPL-PATH-BUF REPL-ROOT-U @ 1 + u + ;
 
-: TRIM-DQUOTE  {: a u :}  ( -- a u' )
-   a  u 0 > a u 1- + c@ DQUOTE = and if u 1- else u then ;
+: TRIM-DQUOTE  ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+   u 0 <= if a u exit then
+   a u 1- + c@ DQUOTE = if a u 1- exit then
+   a u ;
 
-: SQUOTE-TOK?  {: a u :}  ( -- f )
-   u 2 <> if 0 exit then
+: SQUOTE-TOK?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   u 2 <> if LINT-FALSE exit then
    a c@ FOLD 115 =  a 1+ c@ DQUOTE = and ;
 
-: SRC-PATH-TOK?  {: a u :}  ( -- f )
-   a u TRIM-DQUOTE  P1U ! P1A !
-   P1A @ P1U @ s" src/" STARTS-WITH?
-   P1A @ P1U @ s" .f" HAS-EXT? and ;
+: SRC-PATH-TRIMMED? ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" src/" STARTS-WITH?
+   a u s" .f" HAS-EXT? and ;
 
-: PATH-ID@  ( k -- id )  cells REPL-PATH-IDS + @ ;
-: PATH-ID!  ( id k -- )  cells REPL-PATH-IDS + ! ;
+: SRC-PATH-TOK? ( ptr u8 n -- bool )
+   TRIM-DQUOTE SRC-PATH-TRIMMED? ;
+
+: PATH-ID@  ( n -- n )  REPL-PATH-IDS swap cells + @ ;
+: PATH-ID!  ( n n -- )  REPL-PATH-IDS swap cells + ! ;
 
 : ADD-REPL-PATH  {: a u :}  ( -- )
    a u INTERN-FIND dup 0 >= if drop exit then drop
-   REPL-PATH# @ REPL-PATH-MAX >= if s" repl-lint: too many source paths" type NL s" " 1 die then
+   REPL-PATH# @ REPL-PATH-MAX >= if s" repl-lint: too many source paths" 1 die then
    a u INTERN  REPL-PATH# @ PATH-ID!
    REPL-PATH# @ 1+ REPL-PATH# ! ;
 
@@ -96,17 +104,17 @@ variable REPL-ROOT-U
    s" src/habu/stepper.f" ADD-REPL-PATH
    s" src/habu/debug.f" ADD-REPL-PATH ;
 
-: STR<  {: a u b v :}  ( -- f )
+: STR<  ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    0 REPL-CMP !
    begin REPL-CMP @ u <  REPL-CMP @ v < and while
       a REPL-CMP @ + c@  b REPL-CMP @ + c@
-      2dup < if 2drop -1 exit then
-      > if 0 exit then
+      2dup < if 2drop LINT-TRUE exit then
+      > if LINT-FALSE exit then
       REPL-CMP @ 1+ REPL-CMP !
    repeat
    u v < ;
 
-: PATH-ID<  {: left right :}  ( -- f )
+: PATH-ID<  ( n n -- bool ) {: left right :}
    left INTERN$  right INTERN$  STR< ;
 
 : SWAP-PATH-IDS  {: left right :}  ( -- )
@@ -133,9 +141,9 @@ variable REPL-ROOT-U
    0 REPL-I !
    begin REPL-I @ 2 + TN# @ < while
       REPL-I @ TOK s" -SRC" SUFFIX? if
-         REPL-I @ 1+ TOK SQUOTE-TOK? if
-            REPL-I @ 2 + TOK SRC-PATH-TOK? if
-               P1A @ P1U @ ADD-REPL-PATH
+            REPL-I @ 1+ TOK SQUOTE-TOK? if
+               REPL-I @ 2 + TOK SRC-PATH-TOK? if
+                  REPL-I @ 2 + TOK TRIM-DQUOTE ADD-REPL-PATH
             then
          then
       then
@@ -149,17 +157,17 @@ variable REPL-ROOT-U
    ADD-BACKSTOP-PATHS
    SORT-REPL-PATHS ;
 
-: FATAL-TOK?  {: a u :}  ( -- f )
-   a u s" die" STR=CI if -1 exit then
+: FATAL-TOK?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" die" STR=CI if LINT-TRUE exit then
    a u s" bye" STR=CI ;
 
-: R-END? ( -- f )
+: R-END? ( -- bool )
    REPL-X @ REPL-SRC-U @ >= ;
 
-: R-C@ ( -- c )
-   REPL-SRC-A @ REPL-X @ + c@ ;
+: R-C@ ( -- n )
+   REPL-SRC-A@ REPL-X @ + c@ ;
 
-: R-ADV ( -- c )
+: R-ADV ( -- n )
    R-C@
    REPL-X @ 1+ REPL-X !
    dup 10 = if REPL-LINE @ 1+ REPL-LINE ! then ;
@@ -180,9 +188,9 @@ variable REPL-ROOT-U
       R-ADV DQUOTE = if exit then
    repeat ;
 
-: R-STRING-OPENER? {: a u :} ( -- f )
-   u 2 <> if 0 exit then
-   a 1+ c@ DQUOTE <> if 0 exit then
+: R-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u :}
+   u 2 <> if LINT-FALSE exit then
+   a 1+ c@ DQUOTE <> if LINT-FALSE exit then
    a c@ FOLD dup 115 = swap 99 = or
    a c@ DOT = or ;
 
@@ -200,18 +208,18 @@ variable REPL-ROOT-U
       then then then
    repeat ;
 
-: R-NEXT-WORD ( -- f )
+: R-NEXT-WORD ( -- bool )
    R-SKIP-IGNORED
-   R-END? if 0 exit then
-   REPL-SRC-A @ REPL-X @ + REPL-TOK-A !
+   R-END? if LINT-FALSE exit then
+   REPL-SRC-A@ REPL-X @ + REPL-TOK-A !
    REPL-X @ REPL-TMP !
    REPL-LINE @ REPL-TOK-LINE !
    begin R-END? 0= R-C@ WS? 0= and while
       R-ADV drop
    repeat
    REPL-X @ REPL-TMP @ - REPL-TOK-U !
-   REPL-TOK-A @ REPL-TOK-U @ R-STRING-OPENER? if R-SKIP-QUOTE then
-   -1 ;
+   REPL-TOK-A@ REPL-TOK-U @ R-STRING-OPENER? if R-SKIP-QUOTE then
+   LINT-TRUE ;
 
 : REPL-FINDING  {: fa fu ta tu line :}  ( -- )
    s" FATAL-IN-REPL " type fa fu type 58 emit line UTYPE s" : `" type
@@ -221,8 +229,8 @@ variable REPL-ROOT-U
 : LINT-REPL-SOURCE  {: fa fu a u :}  ( -- )
    a REPL-SRC-A !  u REPL-SRC-U !  0 REPL-X !  1 REPL-LINE !
    begin R-NEXT-WORD while
-      REPL-TOK-A @ REPL-TOK-U @ FATAL-TOK? if
-         fa fu  REPL-TOK-A @ REPL-TOK-U @  REPL-TOK-LINE @  REPL-FINDING
+      REPL-TOK-A@ REPL-TOK-U @ FATAL-TOK? if
+         fa fu  REPL-TOK-A@ REPL-TOK-U @  REPL-TOK-LINE @  REPL-FINDING
          REPL-BAD @ 1+ REPL-BAD !
       then
    repeat ;

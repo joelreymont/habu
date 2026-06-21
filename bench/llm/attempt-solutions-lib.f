@@ -185,13 +185,13 @@ TRUSTED: AS-SOL-BUF ( -- ptr u8 )
 
 : AS-REQUIRE-NEW-ID ( ptr u8 n -- )
    2dup AS-FIND-ID if
-      drop 2drop E-AS-DUPLICATE throw
+      E-AS-DUPLICATE throw
    then
    drop 2drop ;
 
 : AS-REQUIRE-NEW-NAME ( ptr u8 n -- )
    2dup AS-FIND-NAME if
-      drop 2drop E-AS-DUPLICATE throw
+      E-AS-DUPLICATE throw
    then
    drop 2drop ;
 

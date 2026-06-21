@@ -11,6 +11,7 @@ $10000 constant PS-FILE-CAP
 8 constant PS-BS
 9 constant PS-TAB
 10 constant PS-LF-C
+13 constant PS-CR
 12 constant PS-FF
 34 constant PS-DQ
 44 constant PS-COMMA-C
@@ -133,7 +134,7 @@ variable PS-SIG-U
    c PS-BS = IF PS-BACKSLASH-C PS-C 98 PS-C exit THEN
    c PS-FF = IF PS-BACKSLASH-C PS-C 102 PS-C exit THEN
    c PS-LF-C = IF PS-BACKSLASH-C PS-C 110 PS-C exit THEN
-   c CR = IF PS-BACKSLASH-C PS-C 114 PS-C exit THEN
+   c PS-CR = IF PS-BACKSLASH-C PS-C 114 PS-C exit THEN
    c PS-TAB = IF PS-BACKSLASH-C PS-C 116 PS-C exit THEN
    c 32 < IF c PS-JSON-U00 exit THEN
    c PS-C ;
@@ -188,7 +189,7 @@ variable PS-SIG-U
    PS-SIG-BUF PS-TU @ 2 + ;
 
 : PS-WS? ( c -- f )
-   dup 32 = over 9 = or over PS-LF-C = or swap CR = or ;
+   dup 32 = over 9 = or over PS-LF-C = or swap PS-CR = or ;
 
 : PS-END? ( -- f )
    PS-X @ PS-SRC-U @ >= ;

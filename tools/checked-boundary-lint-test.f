@@ -6,10 +6,14 @@
 variable CBLT-ROOT-U
 variable CBLT-GOOD-U
 variable CBLT-BAD-U
+variable CBLT-OFF-U
+variable CBLT-CROSS-U
 
 create CBLT-ROOT-BUF FS-PATH-CAP allot
 create CBLT-GOOD-BUF FS-PATH-CAP allot
 create CBLT-BAD-BUF FS-PATH-CAP allot
+create CBLT-OFF-BUF FS-PATH-CAP allot
+create CBLT-CROSS-BUF FS-PATH-CAP allot
 create CBLT-OUT CBLT-BUF-CAP allot
 create CBLT-ERR CBLT-BUF-CAP allot
 
@@ -25,6 +29,12 @@ create CBLT-ERR CBLT-BUF-CAP allot
 
 : CBLT-BAD ( -- ptr u8 n )
    CBLT-BAD-BUF CBLT-BAD-U @ ;
+
+: CBLT-OFF ( -- ptr u8 n )
+   CBLT-OFF-BUF CBLT-OFF-U @ ;
+
+: CBLT-CROSS ( -- ptr u8 n )
+   CBLT-CROSS-BUF CBLT-CROSS-U @ ;
 
 : CBLT-LF ( -- )
    10 SB-APPEND-C ;
@@ -44,6 +54,12 @@ create CBLT-ERR CBLT-BUF-CAP allot
    s" : BAD ( n -- n ) dup ;" SB-APPEND CBLT-LF
    SB$ ;
 
+: CBLT-OFF$ ( -- ptr u8 n )
+   s" 0 set-check" ;
+
+: CBLT-CROSS$ ( -- ptr u8 n )
+   s" : CROSS-BAD ( n -- n ) dup ;" ;
+
 : CBLT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
@@ -58,10 +74,16 @@ create CBLT-ERR CBLT-BUF-CAP allot
    CBLT-ROOT CLEANUP-DIR+
    CBLT-ROOT s" good.f" CBLT-GOOD-BUF JOIN-PATH CBLT-GOOD-U !
    CBLT-ROOT s" bad.f" CBLT-BAD-BUF JOIN-PATH CBLT-BAD-U !
+   CBLT-ROOT s" off.f" CBLT-OFF-BUF JOIN-PATH CBLT-OFF-U !
+   CBLT-ROOT s" cross.f" CBLT-CROSS-BUF JOIN-PATH CBLT-CROSS-U !
    CBLT-GOOD CLEANUP+
    CBLT-BAD CLEANUP+
+   CBLT-OFF CLEANUP+
+   CBLT-CROSS CLEANUP+
    CBLT-GOOD CBLT-GOOD$ WRITE-ALL
-   CBLT-BAD CBLT-BAD$ WRITE-ALL ;
+   CBLT-BAD CBLT-BAD$ WRITE-ALL
+   CBLT-OFF CBLT-OFF$ WRITE-ALL
+   CBLT-CROSS CBLT-CROSS$ WRITE-ALL ;
 
 : CBLT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
@@ -98,6 +120,12 @@ create CBLT-ERR CBLT-BUF-CAP allot
    CBLT-BAD PROC-ARGV+
    s" bin/hb" CBLT-OUT CBLT-BUF-CAP CBLT-ERR CBLT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
 
+: CBLT-RUN-CROSS ( -- n n n )
+   CBLT-ARGV-LOAD
+   CBLT-OFF PROC-ARGV+
+   CBLT-CROSS PROC-ARGV+
+   s" bin/hb" CBLT-OUT CBLT-BUF-CAP CBLT-ERR CBLT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+
 : CBLT-ASSERT-CLEAN ( n n n -- ) {: rc outu erru :}
    rc 0 T=
    CBLT-OUT outu CBLT-EMPTY$ T$=
@@ -115,12 +143,19 @@ create CBLT-ERR CBLT-BUF-CAP allot
    erru 0 T=
    CBLT-OUT outu CBLT-CODE$ CONTAINS? TTRUE ;
 
+: CBLT-TEST-CROSS ( -- )
+   CBLT-RUN-CROSS 1 T=
+   {: outu erru :}
+   erru 0 T=
+   CBLT-OUT outu s" CROSS-BAD" CONTAINS? TTRUE ;
+
 : CBLT-MAIN ( -- )
    T-RESET
    CBLT-PREPARE
    CBLT-TEST-CURRENT
    CBLT-TEST-GOOD
    CBLT-TEST-BAD
+   CBLT-TEST-CROSS
    CLEANUP-RUN
    CBLT-ROOT EXISTS? TFALSE
    T-REPORT
