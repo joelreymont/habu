@@ -52,11 +52,18 @@ variable GE-RD
 : GE-EXPECT-OUT ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu label:ptr labelu :}
    GT-OUT$ want wantu STR= 0= if label labelu GE-FAIL then ;
 
+: GE-EXPECT-OUT-HAS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu label:ptr labelu :}
+   GT-OUT$ want wantu CONTAINS? 0= if label labelu GE-FAIL then ;
+
 : GE-EXPECT-ERR-HAS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu label:ptr labelu :}
    GT-ERR$ want wantu CONTAINS? 0= if label labelu GE-FAIL then ;
 
 : GE-SB-LF ( -- )
    GE-LF SB-APPEND-C ;
+
+: GE-OUT-LINE ( ptr u8 n -- )
+   SB-APPEND
+   GE-SB-LF ;
 
 : GE-SRC-RESET ( -- )
    0 GE-SRC-U ! ;
@@ -94,6 +101,10 @@ variable GE-RD
    GE-SRC-SP
    a u GE-SRC+
    GE-DQ GE-SRC-C ;
+
+: GE-SRC-CHECK-LINE ( ptr u8 n -- )
+   GE-SRC-S"
+   s"  CHECK! ." GE-SRC-LINE ;
 
 : GE-SRC-FILE+ ( ptr u8 n -- ) {: path:ptr pathu :}
    path pathu GE-SRC-BUF GE-SRC-U @ + GE-SRC-CAP GE-SRC-U @ -

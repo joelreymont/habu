@@ -30,77 +30,7 @@ bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f l
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f lib/build.f tools/build-fixpoint.f test/gate-engine.f || { echo "FAIL: native engine gate phase"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f test/gate-dictionary.f || { echo "FAIL: native dictionary/checker gate phase"; exit 1; }
 [ -x bin/hb ] || { echo "FAIL: bin/hb not produced"; exit 1; }
-GATE_JSON=$T/gate-json-assert.f
-cat tools/json.f tools/gate-json-assert.f > "$GATE_JSON"
-printf ': JBAD ( i64 -- i64 ) dup ;\n' | $CHECK --json-errors >/dev/null 2>$T/habu-json.err && { echo "FAIL: tools/check.f --json-errors accepted bad def"; exit 1; }
-bin/hb "$GATE_JSON" json-lines-schema "$T/habu-json.err"
-bin/hb "$GATE_JSON" diag-repair-class "$T/habu-json.err" remove_producer
-grep -q '"verdict":"rejected"' $T/habu-json.err || { echo "FAIL: --json-errors missing verdict"; exit 1; }
-grep -q '"declared_effect":"i64 -- i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing declared effect"; exit 1; }
-grep -q '"inferred_effect":"i64 -- i64 i64 ' $T/habu-json.err || { echo "FAIL: --json-errors missing inferred effect"; exit 1; }
-grep -q '"token_index":1' $T/habu-json.err || { echo "FAIL: --json-errors missing token index"; exit 1; }
-grep -q '"file":"<stdin>"' $T/habu-json.err || { echo "FAIL: --json-errors missing file"; exit 1; }
-grep -q '"line":1' $T/habu-json.err || { echo "FAIL: --json-errors missing line"; exit 1; }
-grep -q '"column":' $T/habu-json.err || { echo "FAIL: --json-errors missing column"; exit 1; }
-grep -q '"byte_start":' $T/habu-json.err || { echo "FAIL: --json-errors missing byte_start"; exit 1; }
-grep -q '"byte_end":' $T/habu-json.err || { echo "FAIL: --json-errors missing byte_end"; exit 1; }
-grep -q '"definition_source":' $T/habu-json.err || { echo "FAIL: --json-errors missing definition source"; exit 1; }
-printf ': JMISS ( i64 -- i64 ) drop ;\n' | $CHECK --json-errors >/dev/null 2>$T/habu-json-miss.err && { echo "FAIL: tools/check.f --json-errors accepted missing producer"; exit 1; }
-bin/hb "$GATE_JSON" diag-repair-class "$T/habu-json-miss.err" add_producer
-printf ': JTYPE ( i64 -- i64 ) 0= ;\n' | $CHECK --json-errors >/dev/null 2>$T/habu-json-type.err && { echo "FAIL: tools/check.f --json-errors accepted type mismatch"; exit 1; }
-bin/hb "$GATE_JSON" diag-repair-class "$T/habu-json-type.err" fix_type
-printf ': JRET ( i64 -- ) >r ;\n' | $CHECK --json-errors >/dev/null 2>$T/habu-json-ret.err && { echo "FAIL: tools/check.f --json-errors accepted return-stack imbalance"; exit 1; }
-bin/hb "$GATE_JSON" diag-repair-class "$T/habu-json-ret.err" fix_return_stack
-cat > $T/habu-json-file.f <<'EOF'
-\ prelude
-
-: JBAD ( i64 -- i64 ) dup ;
-EOF
-$CHECK --json-errors $T/habu-json-file.f >/dev/null 2>$T/habu-json-file.err && { echo "FAIL: tools/check.f --json-errors accepted file bad def"; exit 1; }
-bin/hb "$GATE_JSON" diag-file-origin "$T/habu-json-file.err" "$T/habu-json-file.f"
-printf ': NOSIG dup ;\n' | $CHECK --strict-signatures >$T/habu-strict.err 2>&1 && { echo "FAIL: tools/check.f --strict-signatures accepted nosig"; exit 1; }
-grep -q 'E-MISSING-SIGNATURE' $T/habu-strict.err || { echo "FAIL: strict-signatures missing text diagnostic"; exit 1; }
-printf ': NOSIG dup ;\n' | $CHECK --strict-signatures --json-errors >$T/habu-strict-json.out 2>&1 && { echo "FAIL: tools/check.f --strict-signatures --json-errors accepted nosig"; exit 1; }
-grep -q '"code":"E-MISSING-SIGNATURE"' $T/habu-strict-json.out || { echo "FAIL: strict-signatures missing JSON diagnostic"; exit 1; }
-printf ': X ( infer ) dup ;\n' | $CHECK --strict-signatures --json-errors >$T/habu-strict-infer.out 2>&1 && { echo "FAIL: tools/check.f --strict-signatures accepted infer opt-out"; exit 1; }
-grep -q '"code":"E-UNVERIFIED-SIGNATURE"' $T/habu-strict-infer.out || { echo "FAIL: strict-signatures missing opt-out diagnostic"; exit 1; }
-out=$(printf 's" EV ( -- n ) evaluate" CHECK! .\ns" PO ( -- ) postpone dup" CHECK! .\ns" CO ( -- ) compile," CHECK! .\ns" IM ( -- ) immediate" CHECK! .\ns" LB ( -- ) [" CHECK! .\ns" RB ( -- ) ]" CHECK! .\n' | bin/hb 2>/dev/null)
-[ "$out" = "0
-0
-0
-0
-0
-0" ] || { echo "FAIL: unsafe compiler words did not hard-reject (got: $out)"; exit 1; }
-printf ': EV ( -- n ) evaluate ;\n' | $CHECK --json-errors >/dev/null 2>$T/habu-unsafe.err && { echo "FAIL: tools/check.f accepted unsafe evaluate"; exit 1; }
-grep -q '"code":"E-UNSAFE"' $T/habu-unsafe.err || { echo "FAIL: unsafe checker missing E-UNSAFE"; exit 1; }
-grep -q '"token":"evaluate"' $T/habu-unsafe.err || { echo "FAIL: unsafe checker missing token"; exit 1; }
-bin/hb "$GATE_JSON" diag-repair-class "$T/habu-unsafe.err" trusted_boundary_required
-printf ': EV ( -- n ) evaluate ;\nEV .\n' | bin/hb >/dev/null 2>&1 && { echo "FAIL: hb published unsafe evaluate definition"; exit 1; }
-cat > $T/habu-all-errors.f <<'EOF'
-: OK ( i64 -- i64 ) dup * ;
-: SEMI ( -- i64 ) [char] ; ;
-: BAD1 ( i64 -- i64 ) dup ;
-: BAD2 ( i64 -- ) >r ;
-EOF
-$CHECK --json-errors --all-errors $T/habu-all-errors.f >/dev/null 2>$T/habu-all-errors.err && { echo "FAIL: tools/check.f --all-errors accepted bad defs"; exit 1; }
-bin/hb "$GATE_JSON" all-errors "$T/habu-all-errors.err"
-printf ': UDEF ( i64 -- i64 ) dup NOPE ;\n' | $CHECK --json-errors --all-errors >/dev/null 2>$T/habu-undef.err && { echo "FAIL: tools/check.f --all-errors accepted undefined word"; exit 1; }
-bin/hb "$GATE_JSON" json-one-schema "$T/habu-undef.err"
-bin/hb "$GATE_JSON" diag-repair-class "$T/habu-undef.err" unknown_rejection
-grep -q '"code":"E-UNDEFINED"' $T/habu-undef.err || { echo "FAIL: undefined diagnostic missing E-UNDEFINED"; exit 1; }
-grep -q '"token":"NOPE"' $T/habu-undef.err || { echo "FAIL: undefined diagnostic missing token"; exit 1; }
-printf ': POW ( i64 -- i64 ) dup POW ;\n' | $CHECK --json-errors --all-errors >/dev/null 2>$T/habu-recursive.err && { echo "FAIL: tools/check.f --all-errors accepted recursive self-call"; exit 1; }
-bin/hb "$GATE_JSON" json-one-schema "$T/habu-recursive.err"
-grep -q '"token":"POW"' $T/habu-recursive.err || { echo "FAIL: recursive undefined diagnostic missing token"; exit 1; }
-cat tools/json.f tools/diag-to-sarif.f > $T/diag-to-sarif.f
-bin/hb $T/diag-to-sarif.f $T/habu-all-errors.err < /dev/null > $T/habu-all-errors.sarif
-bin/hb "$GATE_JSON" sarif "$T/habu-all-errors.sarif"
-cat tools/lint/lib.f tools/public-signatures.f > $T/public-signatures.f
-bin/hb $T/public-signatures.f examples/llm/good.f < /dev/null > $T/public-signatures.json
-bin/hb "$GATE_JSON" public-signatures "$T/public-signatures.json"
-bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/argv.f tools/trust-lint.f -- . 2026-10-01 >$T/trust-stale.out 2>&1 && { echo "FAIL: trust-lint accepted stale audit dates"; exit 1; }
-grep -q 'STALE-AUDIT' $T/trust-stale.out || { echo "FAIL: trust-lint stale audit diagnostic missing"; exit 1; }
-echo "PASS: checked bin/hb + getenv + sig-check (rows+quots)"
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f test/gate-diagnostics.f || { echo "FAIL: native checker diagnostics gate phase"; exit 1; }
 # property-based soundness smoke, SELF-HOSTED in habu: generate typed defs,
 # check them, and RUN the certified ones IN-PROCESS (via `evaluate`); a false-cert
 # (real out-arity != declared) calls `die` -> nonzero exit. Default seed/count
@@ -137,6 +67,8 @@ case "$out" in
 esac
 echo "PASS: jitdump direct CLI"
 # hb-build DEFAULT = AOT: compile MAIN to native, engine stripped (no interpreter).
+GATE_JSON=$T/gate-json-assert.f
+cat tools/json.f tools/gate-json-assert.f > "$GATE_JSON"
 printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;\n: MAIN ( -- ) 10 FIB . CR ;\n' > $T/hb-at.f
 ./tools/hb-build.sh $T/hb-at.f -o $T/hb-at >/dev/null || { echo "FAIL: hb-build (AOT)"; exit 1; }
 [ "$($T/hb-at)" = "55" ] || { echo "FAIL: hb-build AOT output (got: $($T/hb-at))"; exit 1; }

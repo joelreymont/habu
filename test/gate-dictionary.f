@@ -7,14 +7,6 @@ $2E constant GD-DOT
 $63 constant GD-C-LOWER
 600 constant GD-LONG-NAME-LEN
 
-: GD-OUT-LINE ( ptr u8 n -- )
-   SB-APPEND
-   GE-SB-LF ;
-
-: GD-CHECK-LINE ( ptr u8 n -- )
-   GE-SRC-S"
-   s"  CHECK! ." GE-SRC-LINE ;
-
 : GD-EMIT-LONG-NAME ( -- )
    GD-LONG-NAME-LEN GD-A GE-SRC-REPEAT-C ;
 
@@ -56,8 +48,8 @@ $63 constant GD-C-LOWER
    s" : LONG-REDEFINE-NAME ( -- i64 ) 2 ;" GE-SRC-LINE
    s" LONG-REDEFINE-NAME ." GE-SRC-LINE
    s" TRUSTED: LONG-DICTIONARY-TRUSTED ( n -- n ) dup ;" GE-SRC-LINE
-   s" USE ( n -- n ) LONG-DICTIONARY-TRUSTED" GD-CHECK-LINE
-   s" BAD ( n -- n n ) LONG-DICTIONARY-TRUSTED" GD-CHECK-LINE
+   s" USE ( n -- n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
+   s" BAD ( n -- n n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
    s" 9 LONG-DICTIONARY-TRUSTED . ." GE-SRC-LINE ;
 
 : GD-LONG-DICTIONARY ( -- )
@@ -65,16 +57,16 @@ $63 constant GD-C-LOWER
    GD-LONG-DICTIONARY-SOURCE
    s" hb long dictionary names" GE-HB-RUN-STDIN
    SB-RESET
-   s" 42" GD-OUT-LINE
-   s" 123" GD-OUT-LINE
-   s" 77" GD-OUT-LINE
-   s" 0" GD-OUT-LINE
-   s" 0" GD-OUT-LINE
-   s" 2" GD-OUT-LINE
-   s" -1" GD-OUT-LINE
-   s" 0" GD-OUT-LINE
-   s" 9" GD-OUT-LINE
-   s" 9" GD-OUT-LINE
+   s" 42" GE-OUT-LINE
+   s" 123" GE-OUT-LINE
+   s" 77" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
+   s" 2" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
+   s" 9" GE-OUT-LINE
+   s" 9" GE-OUT-LINE
    SB$ s" hb long dictionary names output" GE-EXPECT-OUT ;
 
 : GD-WORDLIST-SOURCE ( -- )
@@ -93,8 +85,8 @@ $63 constant GD-C-LOWER
    GD-WORDLIST-SOURCE
    s" hb long dictionary wordlist isolation" GE-HB-RUN-STDIN
    SB-RESET
-   s" -1" GD-OUT-LINE
-   s" 0" GD-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
    SB$ s" hb long dictionary wordlist isolation output" GE-EXPECT-OUT ;
 
 : GD-LONG-NAME-SOURCE ( -- )
@@ -112,15 +104,15 @@ $63 constant GD-C-LOWER
    GD-LONG-NAME-SOURCE
    s" hb dictionary name over 255 bytes" GE-HB-RUN-STDIN
    SB-RESET
-   s" 1" GD-OUT-LINE
-   s" 0" GD-OUT-LINE
+   s" 1" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
    SB$ s" hb dictionary name over 255 bytes output" GE-EXPECT-OUT ;
 
 : GD-TRUSTED-DOES-SOURCE ( -- )
    GE-SRC-RESET
    s" TRUSTED: ARR ( n -- ) CREATES ( n -- ptr a ) create cells allot does> swap 0 ?do cell+ loop ;" GE-SRC-LINE
    s" 4 ARR A4" GE-SRC-LINE
-   s" USE ( n -- ptr a ) A4" GD-CHECK-LINE
+   s" USE ( n -- ptr a ) A4" GE-SRC-CHECK-LINE
    s" 7 2 A4 !" GE-SRC-LINE
    s" 2 A4 @ ." GE-SRC-LINE ;
 
@@ -129,8 +121,8 @@ $63 constant GD-C-LOWER
    GD-TRUSTED-DOES-SOURCE
    s" hb trusted CREATE...DOES> effect recording" GE-HB-RUN-STDIN
    SB-RESET
-   s" -1" GD-OUT-LINE
-   s" 7" GD-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" 7" GE-OUT-LINE
    SB$ s" hb trusted CREATE...DOES> effect recording output" GE-EXPECT-OUT ;
 
 : GD-BAD-DOES ( -- )
@@ -150,56 +142,56 @@ $63 constant GD-C-LOWER
 : GD-ROW-QUOT-CHECKS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" V1 ( R -- R i64 ) 5" GD-CHECK-LINE
-   s" V2 ( i64 [ i64 -- i64 ] -- i64 ) execute" GD-CHECK-LINE
-   s" V3 ( R -- R i64 ) 5 5" GD-CHECK-LINE
+   s" V1 ( R -- R i64 ) 5" GE-SRC-CHECK-LINE
+   s" V2 ( i64 [ i64 -- i64 ] -- i64 ) execute" GE-SRC-CHECK-LINE
+   s" V3 ( R -- R i64 ) 5 5" GE-SRC-CHECK-LINE
    s" hb rows/quot sig verify" GE-HB-RUN-STDIN
-   SB-RESET s" -1" GD-OUT-LINE s" -1" GD-OUT-LINE s" 0" GD-OUT-LINE
+   SB-RESET s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" 0" GE-OUT-LINE
    SB$ s" hb rows/quot sig verify output" GE-EXPECT-OUT ;
 
 : GD-PRIMITIVE-CHECKS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" P1 ( i64 i64 i64 i64 -- i64 i64 i64 i64 i64 i64 ) 2over" GD-CHECK-LINE
-   s" P2 ( i64 i64 -- i64 i64 ) 2>r 2r>" GD-CHECK-LINE
-   s" P3 ( i64 -- i64 ) abs" GD-CHECK-LINE
-   s" P4 ( i64 i64 -- i64 i64 ) /mod" GD-CHECK-LINE
-   s" P5 ( ptr u8 -- ptr u8 i64 ) count" GD-CHECK-LINE
-   s" P6 ( i64 i64 -- i64 i64 i64 ) depth" GD-CHECK-LINE
-   s" P7 ( -- n ) 0 4096 3 $1002 -1 0 mmap" GD-CHECK-LINE
+   s" P1 ( i64 i64 i64 i64 -- i64 i64 i64 i64 i64 i64 ) 2over" GE-SRC-CHECK-LINE
+   s" P2 ( i64 i64 -- i64 i64 ) 2>r 2r>" GE-SRC-CHECK-LINE
+   s" P3 ( i64 -- i64 ) abs" GE-SRC-CHECK-LINE
+   s" P4 ( i64 i64 -- i64 i64 ) /mod" GE-SRC-CHECK-LINE
+   s" P5 ( ptr u8 -- ptr u8 i64 ) count" GE-SRC-CHECK-LINE
+   s" P6 ( i64 i64 -- i64 i64 i64 ) depth" GE-SRC-CHECK-LINE
+   s" P7 ( -- n ) 0 4096 3 $1002 -1 0 mmap" GE-SRC-CHECK-LINE
    s" hb primitive checklist signatures" GE-HB-RUN-STDIN
    SB-RESET
-   s" -1" GD-OUT-LINE s" -1" GD-OUT-LINE s" -1" GD-OUT-LINE
-   s" -1" GD-OUT-LINE s" -1" GD-OUT-LINE s" -1" GD-OUT-LINE
-   s" -1" GD-OUT-LINE
+   s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
+   s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
    SB$ s" hb primitive checklist signatures output" GE-EXPECT-OUT ;
 
 : GD-RETURN-CHECKS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" RBAD1 ( i64 i64 -- ) 2>r" GD-CHECK-LINE
-   s" RBAD2 ( -- i64 i64 ) 2r>" GD-CHECK-LINE
-   s" RPEEK ( i64 i64 -- i64 i64 i64 i64 ) 2>r 2r@ 2r>" GD-CHECK-LINE
-   s" QD ( i64 -- i64 i64 ) ?dup" GD-CHECK-LINE
+   s" RBAD1 ( i64 i64 -- ) 2>r" GE-SRC-CHECK-LINE
+   s" RBAD2 ( -- i64 i64 ) 2r>" GE-SRC-CHECK-LINE
+   s" RPEEK ( i64 i64 -- i64 i64 i64 i64 ) 2>r 2r@ 2r>" GE-SRC-CHECK-LINE
+   s" QD ( i64 -- i64 i64 ) ?dup" GE-SRC-CHECK-LINE
    s" hb return-stack/?dup primitive verdicts" GE-HB-RUN-STDIN
-   SB-RESET s" 0" GD-OUT-LINE s" 0" GD-OUT-LINE s" -1" GD-OUT-LINE s" 1" GD-OUT-LINE
+   SB-RESET s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" -1" GE-OUT-LINE s" 1" GE-OUT-LINE
    SB$ s" hb return-stack/?dup primitive verdicts output" GE-EXPECT-OUT ;
 
 : GD-COMBINATOR-CHECKS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" CDIP ( i64 i64 -- i64 i64 ) [: 1+ ;] DIP" GD-CHECK-LINE
-   s" CKEEP ( i64 -- i64 i64 ) [: 1+ ;] KEEP" GD-CHECK-LINE
-   s" CBI ( i64 -- i64 i64 ) [: 1+ ;] [: 2 * ;] BI" GD-CHECK-LINE
-   s" CTRI ( i64 -- i64 i64 i64 ) [: 1+ ;] [: 2 * ;] [: 3 + ;] TRI" GD-CHECK-LINE
-   s" CTIMES ( i64 -- i64 ) 5 [: 1+ ;] TIMES" GD-CHECK-LINE
-   s" CEACH ( i64 ptr i64 i64 -- i64 ) [: + ;] EACH" GD-CHECK-LINE
-   s" CMAP ( ptr i64 i64 -- ) [: 1+ ;] MAP" GD-CHECK-LINE
-   s" CFOLD ( ptr i64 i64 i64 -- i64 ) [: + ;] FOLD" GD-CHECK-LINE
+   s" CDIP ( i64 i64 -- i64 i64 ) [: 1+ ;] DIP" GE-SRC-CHECK-LINE
+   s" CKEEP ( i64 -- i64 i64 ) [: 1+ ;] KEEP" GE-SRC-CHECK-LINE
+   s" CBI ( i64 -- i64 i64 ) [: 1+ ;] [: 2 * ;] BI" GE-SRC-CHECK-LINE
+   s" CTRI ( i64 -- i64 i64 i64 ) [: 1+ ;] [: 2 * ;] [: 3 + ;] TRI" GE-SRC-CHECK-LINE
+   s" CTIMES ( i64 -- i64 ) 5 [: 1+ ;] TIMES" GE-SRC-CHECK-LINE
+   s" CEACH ( i64 ptr i64 i64 -- i64 ) [: + ;] EACH" GE-SRC-CHECK-LINE
+   s" CMAP ( ptr i64 i64 -- ) [: 1+ ;] MAP" GE-SRC-CHECK-LINE
+   s" CFOLD ( ptr i64 i64 i64 -- i64 ) [: + ;] FOLD" GE-SRC-CHECK-LINE
    s" hb combinator/iterator verdicts" GE-HB-RUN-STDIN
    SB-RESET
-   s" -1" GD-OUT-LINE s" -1" GD-OUT-LINE s" -1" GD-OUT-LINE s" -1" GD-OUT-LINE
-   s" -1" GD-OUT-LINE s" -1" GD-OUT-LINE s" -1" GD-OUT-LINE s" -1" GD-OUT-LINE
+   s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
+   s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
    SB$ s" hb combinator/iterator verdicts output" GE-EXPECT-OUT ;
 
 : GD-PARSING-RUNTIME-SOURCE ( -- )
@@ -216,7 +208,7 @@ $63 constant GD-C-LOWER
    GD-PARSING-RUNTIME-SOURCE
    s" hb parsing-word runtime surface" GE-HB-RUN-STDIN
    SB-RESET
-   s" hi" GD-OUT-LINE s" ok" GD-OUT-LINE s" bye" GD-OUT-LINE s" yo" GD-OUT-LINE
+   s" hi" GE-OUT-LINE s" ok" GE-OUT-LINE s" bye" GE-OUT-LINE s" yo" GE-OUT-LINE
    SB$ s" hb parsing-word runtime surface output" GE-EXPECT-OUT ;
 
 : GD-PARSING-CHECK-SOURCE ( -- )
@@ -241,7 +233,7 @@ $63 constant GD-C-LOWER
    s" : PSH ( R -- R i64 ) 5 ;" GE-SRC-LINE
    s" PSH ." GE-SRC-LINE
    s" hb named-row sig run" GE-HB-RUN-STDIN
-   SB-RESET s" 5" GD-OUT-LINE
+   SB-RESET s" 5" GE-OUT-LINE
    SB$ s" hb named-row sig run output" GE-EXPECT-OUT ;
 
 : GD-MAIN ( -- )

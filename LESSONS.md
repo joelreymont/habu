@@ -225,6 +225,12 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   embedded quote. When a candidate/test source needs arbitrary bytes, emit a
   byte-backed string word with the checked fixture DSL instead of inventing
   ad hoc escaping.
+- **Generated JSON needles need field builders:** backslash does not escape a
+  quote inside `s"`. Build JSON substrings with checked byte/field helpers so
+  keys and quote bytes are explicit.
+- **Generated Forth comments use one backslash:** `\` is the comment word;
+  `\\` is a different token and can turn a fixture prelude into an undefined
+  word before the intended diagnostic is reached.
 - **Source-use guards need token matching:** required-word checks must compare
   exact source tokens, not substrings; `PROP-DEFAULTS` matched
   `PROP-DEFAULTS-OK?` and let a constant fake through to runtime failure.
