@@ -7,20 +7,20 @@
 : S2-IN  s" stage2-src" TMP-PATH ;
 : S2-OUT s" stage2-got" TMP-PATH ;
 variable SBUF  variable SLEN  variable SFD  variable SRD
-$40000 constant SMAX
+$80000 constant S2-SOURCE-CAP
 : SBUF@ SBUF @ ;
 s" SBUF@" s" -- ptr u8" TRUST
 
 : READ-SRC
    S2-IN PATH0 0 0 open SFD !
-   here SBUF !  SMAX allot  0 SLEN !
+   here SBUF !  S2-SOURCE-CAP allot  0 SLEN !
    BEGIN                                                 \ loop: read() may return short
-     SFD @  SBUF@ SLEN @ +  SMAX SLEN @ -  read SRD !
+     SFD @  SBUF@ SLEN @ +  S2-SOURCE-CAP SLEN @ -  read SRD !
      SRD @ 0 >
    WHILE  SLEN @ SRD @ + SLEN !  REPEAT
    SFD @ close
    SLEN @ 0 > 0= IF s" stage2: empty source" 74 die THEN
-   SLEN @ SMAX = IF s" stage2: source exceeds buffer" 74 die THEN ;
+   SLEN @ S2-SOURCE-CAP = IF s" stage2: source exceeds buffer" 74 die THEN ;
 
 : GO
    READ-SRC

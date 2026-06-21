@@ -426,3 +426,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   contents before hashing. Native drivers that need a large internal run bundle
   should keep that path separate from the emitted `final_bundle` artifact until
   row emission is streaming.
+- **Stage2 source cap is a builder contract:** AOT maker generation can exceed
+  the old 256 KiB stage2 reader even when the user source is tiny. Reproduce with
+  `hb-build` child output and size `stage2-src`; then raise the named stage2
+  source cap deliberately while preserving fail-closed overflow behavior.
