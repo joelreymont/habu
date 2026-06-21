@@ -52,6 +52,21 @@ create CAE-LF-BYTE 10 c,
    s" : BAD-SUP ( i64 -- i64 ) SUP-T SUP-K + SUP-V @ drop SUP-B drop dup ;" SB-APPEND CAE-LF
    SB$ ;
 
+: CAE-AS-LEAK-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" 0 constant BM-T-ID" SB-APPEND CAE-LF
+   s" variable AS-COUNT" SB-APPEND CAE-LF
+   s" TRUSTED: AS-LINE$ ( -- ptr u8 n ) s" SB-APPEND
+   CAE-DQ 32 SB-APPEND-C s" 1	SQUARE	(i64 -- i64)" SB-APPEND CAE-DQ
+   s"  ;" SB-APPEND CAE-LF
+   s" : BM-TASK-FIELD$ ( ptr u8 n n -- ptr u8 n ) drop ;" SB-APPEND CAE-LF
+   s" : AS-REQUIRE-NEW-ID ( ptr u8 n -- ) 2drop ;" SB-APPEND CAE-LF
+   s" : AS-ADD-TASK ( -- )" SB-APPEND CAE-LF
+   s"    AS-LINE$ BM-T-ID BM-TASK-FIELD$ AS-REQUIRE-NEW-ID" SB-APPEND CAE-LF
+   s"    AS-COUNT @" SB-APPEND CAE-LF
+   s"    AS-COUNT @ 1+ AS-COUNT ! ;" SB-APPEND CAE-LF
+   SB$ ;
+
 : CAE-LARGE-START$ ( -- ptr u8 n )
    s" : LARGE-BAD ( i64 -- i64 ) ( " ;
 
@@ -98,6 +113,20 @@ create CAE-LF-BYTE 10 c,
    CAE-DQ s" token" SB-APPEND CAE-DQ
    58 SB-APPEND-C
    CAE-DQ s" SUP-K" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-WORD-ASADD$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" word" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" as-add-task" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-TOKEN-BMTID$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" token" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" BM-T-ID" SB-APPEND CAE-DQ
    SB$ ;
 
 : CAE-PREPARE ( -- )
@@ -171,6 +200,15 @@ create CAE-LF-BYTE 10 c,
    CAE-ERR erru CAE-TOKEN-SUPK$ CONTAINS? TFALSE
    CAE-ERR erru 10 COUNT-CHAR 1 T= ;
 
+: CAE-TEST-AS-ADD-TASK-LEAK ( -- )
+   CAE-IN CAE-AS-LEAK-SOURCE$ WRITE-ALL
+   CAE-RUN 70 T=
+   {: outu erru :}
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-ERR erru CAE-WORD-ASADD$ CONTAINS? TTRUE
+   CAE-ERR erru CAE-TOKEN-BMTID$ CONTAINS? TFALSE
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
 : CAE-MAIN ( -- )
    T-RESET
    CAE-PREPARE
@@ -186,6 +224,7 @@ create CAE-LF-BYTE 10 c,
    CAE-OUT loutu CAE-EMPTY$ T$=
    CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE
    CAE-TEST-SUPPORT-PRELUDE
+   CAE-TEST-AS-ADD-TASK-LEAK
    CLEANUP-RUN
    CAE-ROOT EXISTS? TFALSE
    T-REPORT
