@@ -1,5 +1,58 @@
 \ drive-forth-test.f - focused tests for native Habu Forth driver.
 
+1100 constant DFHT-LARGE-ROWS
+
+variable DFHT-HERE
+variable DFHT-SRC-P
+variable DFHT-SRC-CAP-U
+variable DFHT-SRC-U
+
+TRUSTED: DFHT-SRC-BUF ( -- ptr u8 )
+   DFHT-SRC-P @ ;
+
+: DFHT-SRC-CAP ( -- n )
+   DFHT-SRC-CAP-U @ ;
+
+: DFHT-SRC$ ( -- ptr u8 n )
+   DFHT-SRC-BUF DFHT-SRC-U @ ;
+
+: DFHT-STORE-SRC-SPAN ( ptr u8 n -- )
+   DFHT-SRC-CAP-U ! DFHT-SRC-P ! ;
+
+: DFHT-SRC-ROOM ( n -- ) {: add :}
+   add 0 < if E-DS-CAPACITY throw then
+   add DFHT-SRC-CAP DFHT-SRC-U @ - > if E-DS-CAPACITY throw then ;
+
+: DFHT-SRC+ ( ptr u8 n -- ) {: a:ptr u :}
+   u DFHT-SRC-ROOM
+   a DFHT-SRC-BUF DFHT-SRC-U @ + u BYTE-COPY
+   DFHT-SRC-U @ u + DFHT-SRC-U ! ;
+
+: DFHT-SRC-LN ( ptr u8 n -- )
+   DFHT-SRC+
+   1 DFHT-SRC-ROOM
+   10 DFHT-SRC-BUF DFHT-SRC-U @ + c!
+   DFHT-SRC-U @ 1+ DFHT-SRC-U ! ;
+
+: DFHT-TASK-HEADER$ ( -- ptr u8 n )
+   s" id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rust_signature" ;
+
+: DFHT-FORTH-ROW$ ( -- ptr u8 n )
+   s" 1	SQUARE	(i64 -- i64)	arith	1 -> 1	forth	stack	Square.	-	v1	-	-" ;
+
+: DFHT-BUILD-LARGE-TASKS ( -- )
+   0 DFHT-SRC-U !
+   DFHT-TASK-HEADER$ DFHT-SRC-LN
+   DFHT-LARGE-ROWS 0 ?do DFHT-FORTH-ROW$ DFHT-SRC-LN loop ;
+
+: DFHT-TEST-LARGE-TASK-COPY ( -- )
+   here data-base - DFHT-HERE !
+   2 MEM-ALLOC-64K-BUFFERS DFHT-STORE-SRC-SPAN
+   DFHT-BUILD-LARGE-TASKS
+   DFHT-SRC$ DFH-COPY-TASKS
+   DFH-TASKS$ nip MEM-64K > TTRUE
+   here data-base - DFHT-HERE @ T= ;
+
 : DFHT-CONFIG-SQUARE ( ptr u8 n ptr u8 n -- )
    {: feedback:ptr feedbacku arm:ptr armu :}
    DTH-MODELS$ MR-REGISTRY!
@@ -77,6 +130,7 @@
 
 : DFHT-MAIN ( -- )
    T-RESET
+   DFHT-TEST-LARGE-TASK-COPY
    DFHT-TEST-PASS
    DFHT-TEST-FAIL-RAW
    DFHT-TEST-CHECKER-REJECT

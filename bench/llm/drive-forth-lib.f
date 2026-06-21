@@ -12,12 +12,12 @@
 10 constant DFH-LF
 64 constant DFH-USAGE-RC
 66 constant DFH-DATA-RC
-65536 constant DFH-TASK-CAP
 
 create DFH-REF-PATH FS-PATH-CAP allot
-create DFH-TASK-BUF DFH-TASK-CAP allot
 
 variable DFH-REF-U
+variable DFH-TASK-P
+variable DFH-TASK-CAP-U
 variable DFH-TASK-U
 variable DFH-FEEDBACK-A
 variable DFH-FEEDBACK-U
@@ -46,6 +46,12 @@ TRUSTED: DFH-ARM$ ( -- ptr u8 n )
 
 : DFH-REF$ ( -- ptr u8 n )
    DFH-REF-PATH DFH-REF-U @ ;
+
+TRUSTED: DFH-TASK-BUF ( -- ptr u8 )
+   DFH-TASK-P @ ;
+
+: DFH-TASK-CAP ( -- n )
+   DFH-TASK-CAP-U @ ;
 
 : DFH-TASKS$ ( -- ptr u8 n )
    DFH-TASK-BUF DFH-TASK-U @ ;
@@ -140,8 +146,19 @@ TRUSTED: DFH-BUNDLE$ ( -- ptr u8 n )
    DS-ID @ DS-U+
    DS-MSG$ ;
 
+: DFH-MIN-ONE ( n -- n )
+   dup 1 < if drop 1 then ;
+
+: DFH-STORE-TASK-SPAN ( ptr u8 n -- )
+   DFH-TASK-CAP-U ! DFH-TASK-P ! ;
+
+: DFH-ENSURE-TASK-CAP ( n -- ) {: need :}
+   need DFH-MIN-ONE DFH-TASK-CAP <= if exit then
+   need DFH-MIN-ONE MEM-ALLOC-64K-SPAN DFH-STORE-TASK-SPAN ;
+
 : DFH-COPY-TASKS ( ptr u8 n -- ) {: a:ptr u :}
-   u DFH-TASK-CAP > if E-DS-CAPACITY throw then
+   u 0 < if E-DS-CAPACITY throw then
+   u DFH-ENSURE-TASK-CAP
    a DFH-TASK-BUF u BYTE-COPY
    u DFH-TASK-U ! ;
 
