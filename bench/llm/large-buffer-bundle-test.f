@@ -5,6 +5,8 @@
 
 4096 constant LBB-BUFS
 1024 constant LBB-EXTRA-BUFS
+128 constant LBB-NESTED-BUFS
+32 constant LBB-NESTED-SPANS
 90 constant LBB-MARK
 91 constant LBB-END-MARK
 
@@ -15,6 +17,9 @@ variable LBB-HERE
 
 : LBB-EXTRA-TOTAL ( -- n )
    LBB-EXTRA-BUFS MEM-64K * ;
+
+: LBB-NESTED-TOTAL ( -- n )
+   LBB-NESTED-BUFS MEM-64K * ;
 
 : LBB-HERE-SNAPSHOT ( -- )
    here data-base - LBB-HERE ! ;
@@ -45,12 +50,26 @@ variable LBB-HERE
    a u LBB-TOUCH-ENDS
    a u count LBB-TOUCH-64K-SLOTS ;
 
+: LBB-NESTED-FRAME ( ptr u8 n n -- ) {: a:ptr u remaining :}
+   a u LBB-NESTED-BUFS LBB-TOUCH-SPAN
+   remaining 0 > if
+      LBB-NESTED-BUFS MEM-ALLOC-64K-BUFFERS
+      remaining 1 - recurse
+   then
+   a u LBB-NESTED-BUFS LBB-TOUCH-SPAN ;
+
+: LBB-ALLOC-NESTED-SPANS ( -- )
+   LBB-NESTED-BUFS MEM-ALLOC-64K-BUFFERS
+   dup LBB-NESTED-TOTAL T=
+   LBB-NESTED-SPANS 1 - LBB-NESTED-FRAME ;
+
 : LBB-COMPOSED-WITH-FIRST ( ptr u8 n -- ) {: a:ptr u :}
    u LBB-TOTAL T=
    a u LBB-BUFS LBB-TOUCH-SPAN
    LBB-EXTRA-BUFS MEM-ALLOC-64K-BUFFERS
    dup LBB-EXTRA-TOTAL T=
    LBB-EXTRA-BUFS LBB-TOUCH-SPAN
+   LBB-ALLOC-NESTED-SPANS
    a u LBB-BUFS LBB-TOUCH-SPAN
    LBB-HERE-UNCHANGED ;
 

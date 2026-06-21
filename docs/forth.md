@@ -127,8 +127,10 @@ not a matter of taste. Target is the native `bin/hb` engine.
   DATA pressure. `create ... allot` is for dictionary-sized static storage; large
   runtime-sized buffers use `lib/memory.f` (`MEM-ALLOC-BYTES` or
   `MEM-ALLOC-64K-BUFFERS`) so composition scales with OS-backed mappings rather
-  than `DATA-SIZE`. If ordinary composition still hits capacity, fix the shared
-  memory model and add a regression for the composed load.
+  than `DATA-SIZE`. Tools may keep as many 64K buffers and live spans as their
+  workload needs; the only accepted limits are cell-size overflow checks and an
+  explicit OS allocation failure. If ordinary composition still hits capacity,
+  fix the shared memory model and add a regression for the composed load.
 - **Missing convenience words are not bugs in the standard.** Habu currently lacks
   words such as `pick`, `within`, and `0<>`; use variables, explicit increments, or
   explicit comparisons.

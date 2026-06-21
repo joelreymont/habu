@@ -138,7 +138,7 @@ points stay listed.
 - `bench/llm/forth-task-lines-lib.f` — checked harness=forth task-row scanner/emitter for live benchmark drivers.
 - `bench/llm/forth-task-lines.f` — CLI wrapper for harness=forth task-row emission.
 - `bench/llm/forth-task-lines-test.f` — focused coverage for task-row filtering and file output.
-- `bench/llm/large-buffer-bundle-test.f` — regression that composes the source lexer, task-row scanner, reference extractor, and many 64K buffers in one checked load.
+- `bench/llm/large-buffer-bundle-test.f` — regression that composes the source lexer, task-row scanner, reference extractor, and many simultaneously live 64K buffer spans in one checked load.
 - `bench/llm/diagnostic-stats.f` — checked diagnostic field, repair-class event, and statistics reducer for benchmark rows.
 - `bench/llm/diagnostic-json-check-stub.f` — checker-only JSON parser contract for the diagnostic stats reducer.
 - `bench/llm/diagnostic-stats-check-test.f` — checker fixture for diagnostic stats aggregation without loading the JSON recovery boundary.
