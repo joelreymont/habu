@@ -222,31 +222,8 @@ variable DF-BIG-U
 : DF-WRITE-BUNDLE ( -- )
    DS-BUNDLE-PATH$ DS-TEST$ WRITE-ALL ;
 
-: DF-NEGATIVE-PASS? ( -- bool )
-   DS-RC @ 0= if
-      DS-OUT-BUF DS-OUT-U @ s" code E-FS-CAPACITY" CONTAINS? exit
-   then
-   DS-FALSE ;
-
-: DF-NEGATIVE-SILENT? ( -- bool )
-   DS-OUT-BUF DS-OUT-U @ s" silent success" CONTAINS? ;
-
-: DF-LR-NEGATIVE-CORRECT ( -- )
-   DS-DIAG-PATH$ s" code E-FS-CAPACITY" WRITE-ALL
-   1 DS-DIAG-COUNT !
-   s" reject" DF-LR-REJECT ;
-
 : DF-FINISH-NEGATIVE ( -- )
-   DF-NEGATIVE-PASS? if DF-LR-NEGATIVE-CORRECT exit then
-   DF-NEGATIVE-SILENT? if
-      DS-DIAG-PATH$ DS-WRITE-CAPTURE
-      1 DS-DIAG-COUNT !
-      DF-LR-PASS
-      exit
-   then
-   DS-DIAG-PATH$ DS-WRITE-CAPTURE
-   1 DS-DIAG-COUNT !
-   DF-LR-FAIL ;
+   s" code E-FS-CAPACITY" DS-LR-NEGATIVE ;
 
 : DF-BUILD-TESTS ( -- )
    DF-CAPACITY-TASK? if DF-BUILD-NEGATIVE-TESTS exit then

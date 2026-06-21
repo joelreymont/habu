@@ -480,6 +480,18 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
    path pathu DS-OUT-BUF DS-OUT-U @ WRITE-ALL
    DS-ERR-U @ 0 > if path pathu DS-ERR-BUF DS-ERR-U @ APPEND-FILE then ;
 
+: DS-CAPTURE-HAS? ( ptr u8 n -- bool ) {: a:ptr u :}
+   DS-OUT-BUF DS-OUT-U @ a u CONTAINS? if DS-TRUE exit then
+   DS-ERR-BUF DS-ERR-U @ a u CONTAINS? ;
+
+: DS-WRITE-NEGATIVE-CORRECT ( ptr u8 n -- )
+   DS-DIAG-PATH$ 2swap WRITE-ALL
+   1 DS-DIAG-COUNT ! ;
+
+: DS-WRITE-NEGATIVE-CAPTURE ( -- )
+   DS-DIAG-PATH$ DS-WRITE-CAPTURE
+   1 DS-DIAG-COUNT ! ;
+
 : DS-CHECK-CLEAN? ( -- bool )
    DS-RC @ 0= if
       DS-OUT-U @ 0= DS-ERR-U @ 0= and exit
@@ -568,6 +580,15 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
    0 LR-TESTS-PASSED !
    0 LR-DIAG-COUNT !
    1 LR-CHECKER-ITERATIONS ! ;
+
+: DS-LR-NEGATIVE ( ptr u8 n -- ) {: meta:ptr metau :}
+   meta metau DS-CAPTURE-HAS? if
+      meta metau DS-WRITE-NEGATIVE-CORRECT
+      s" reject" DS-LR-REJECT
+      exit
+   then
+   DS-WRITE-NEGATIVE-CAPTURE
+   DS-LR-FAIL ;
 
 : DS-WRITE-INVALID-DIAG ( ptr u8 n -- )
    DS-DIAG-PATH$ 2swap WRITE-ALL
