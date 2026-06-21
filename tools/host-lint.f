@@ -95,8 +95,14 @@ variable HOST-PATH-U
    2dup HOST-PAT-A 6 HOST-FIND-CI 0 >= IF 2drop -1 exit THEN
    HOST-PAT-B 3 HOST-FIND-CI 0 >= ;
 
+: HOST-FORTH-SHELL? ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" ./bench/llm/drive-forth" PREFIX? 0= IF LINT-FALSE exit THEN
+   a u s" .sh" HAS-EXT? 0= IF LINT-FALSE exit THEN
+   s" ./bench/llm/drive-forth" nip s" .sh" nip + u = ;
+
 : HOST-BENCH-BASELINE? ( ptr u8 n -- bool )
    2dup s" ./bench/llm/drive-habu.sh" PATH= IF 2drop LINT-FALSE exit THEN
+   2dup HOST-FORTH-SHELL? IF 2drop LINT-FALSE exit THEN
    2dup s" ./bench/llm/drive-" PREFIX? IF s" .sh" HAS-EXT? exit THEN
    2dup s" ./bench/llm/bench-test.sh" PATH= IF 2drop LINT-TRUE exit THEN
    2dup s" ./bench/llm/report.f" PATH= IF 2drop LINT-TRUE exit THEN
@@ -104,6 +110,7 @@ variable HOST-PATH-U
 
 : HOST-RETIRED-SHELL? ( ptr u8 n -- bool )
    2dup s" ./bench/llm/perf.sh" PATH= IF 2drop LINT-TRUE exit THEN
+   2dup HOST-FORTH-SHELL? IF 2drop LINT-TRUE exit THEN
    2dup s" ./tools/seed.sh" PATH= IF 2drop LINT-TRUE exit THEN
    2drop LINT-FALSE ;
 

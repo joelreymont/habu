@@ -32,6 +32,12 @@ variable REBT-REPORT-U
 variable REBT-FILE-U
 variable REBT-NUM-I
 
+: REBT-FORTH-SHELL$ ( -- ptr u8 n )
+   SB-RESET
+   s" drive-forth" SB-APPEND
+   s" .sh" SB-APPEND
+   SB$ ;
+
 : REBT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
    a dst u BYTE-COPY
@@ -261,7 +267,7 @@ variable REBT-NUM-I
    a u s" habu-forth" REBT-CONTAINS
    a u s" habu-forth-raw" REBT-CONTAINS
    a u s" habu-forth-blind" REBT-CONTAINS
-   a u s" drive-forth.sh" CONTAINS? 0= TTRUE ;
+   a u REBT-FORTH-SHELL$ CONTAINS? 0= TTRUE ;
 
 : REBT-ASSERT-FORTH-REPORT ( -- )
    REBT-REPORT$ REBT-FILE$ {: a:ptr u :}
@@ -270,7 +276,7 @@ variable REBT-NUM-I
    a u s" arm habu-forth-blind rows=1" REBT-CONTAINS ;
 
 : REBT-ASSERT-RUNNER-NO-SHELL ( -- )
-   s" bench/llm/run-expanded-bench.f" REBT-FILE$ s" drive-forth.sh" CONTAINS? 0= TTRUE ;
+   s" bench/llm/run-expanded-bench.f" REBT-FILE$ REBT-FORTH-SHELL$ CONTAINS? 0= TTRUE ;
 
 : REBT-RUN-AOT-CASE ( -- )
    REBT-AOT-CANDIDATE$ REBT-WRITE-MODEL
