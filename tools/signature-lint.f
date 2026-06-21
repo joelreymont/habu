@@ -181,7 +181,7 @@ variable SL-SUG-U
    repeat ;
 
 : SL-LABEL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
-   ARGV-LABEL? IF 2drop ARGV-LABEL$ ELSE a u THEN ;
+   ARGV-LABEL? IF ARGV-LABEL$ ELSE a u THEN ;
 
 : SL-SCAN-FILE ( ptr u8 n -- ) {: a:ptr u :}
    a u SL-LABEL$ SL-FILE-U ! SL-FILE-A !
