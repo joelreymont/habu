@@ -7,6 +7,9 @@ CHECK="bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/proc
 hb_build() {
   bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- "$@"
 }
+hb_install() {
+  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
+}
 T=$(mktemp -d "${TMPDIR:-/tmp}/habu-llm.XXXXXX")
 cleanup() {
   if command -v trash >/dev/null 2>&1; then
@@ -424,7 +427,7 @@ check_diagnostic_v2_fixtures
 N=$(awk -F '\t' 'NR>1 && $6 == "forth" {n++} END{print n+0}' bench/llm/tasks.tsv)
 DEFN=$(grep -c '^: ' bench/llm/solutions.f)
 [ "$DEFN" = "$N" ] || { echo "FAIL: task/solution count mismatch ($N task(s), $DEFN definition(s))"; exit 1; }
-[ -x bin/hb ] || ./tools/build.sh >/dev/null
+[ -x bin/hb ] || hb_install >/dev/null
 bin/hb --load lib/errors.f lib/test.f bench/llm/json-row.f bench/llm/json-row-test.f || {
   echo "FAIL: llm json row emitter"
   exit 1

@@ -29,7 +29,8 @@ built-in checker, and **rebuilds itself byte-for-byte** (stage2 fixpoint):
 ```sh
 ./tools/seed.sh /path/to/hb-seed
                        # recover bin/hb from a trusted native seed
-./tools/build.sh       # daily rebuild: bin/hb recompiles itself, no gforth
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
+                       # daily rebuild: bin/hb recompiles itself, no gforth
 echo ': SQ dup * ; 7 SQ .' | bin/hb     # batch: program from stdin
 bin/hb script.f arg...                  # script: program from file; args via
                                         #   SCRIPT-ARGC / SCRIPT-ARGV$

@@ -11,15 +11,15 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `HB_TMP`; do not publish legacy aliases or maker binaries.
 - **No-binary recovery is native-seeded:** `bin/hb` is generated/ignored. Recover
   with `tools/seed.sh /path/to/hb-seed`; optional SHA-256 verification plus the
-  immediate `tools/build.sh` fixpoint make the installed binary current-source
+  immediate native build-fixpoint install make the installed binary current-source
   native, without making gforth the normal trust root.
-- **No hosted bootstrap in daily work:** daily work uses `bin/hb`,
-  `tools/build.sh`, and `test/run.sh`. No-binary recovery uses `tools/seed.sh`.
+- **No hosted bootstrap in daily work:** daily work uses `bin/hb`, the native
+  build-fixpoint installer, and `test/run.sh`. No-binary recovery uses `tools/seed.sh`.
 - **Early stdlib fixtures can load libraries directly:** before manifest/bundle
   plumbing exists, focused `tools/*-test.f` fixtures can concatenate `lib/*.f`
   directly with their driver to test canonical library policy in isolation.
 - **Native rebuilds need private temp dirs:** parallel jj workspaces share host
-  `/tmp`; fixed names like `stage2-got` race. `tools/build.sh`,
+  `/tmp`; fixed names like `stage2-got` race. Native build flows,
   `tools/seed.sh`, and `test/run.sh` allocate and export private `HB_TMP`
   by default where they run builds, while preserving explicit `HB_TMP` for repro.
 - **Build temp overrides must drive every path:** if a checked build helper
@@ -96,7 +96,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 ## Native Codegen And AOT
 
 - **Parity is native fixpoint, not mirror drift:** the active parity proof is
-  byte-for-byte self-rebuild through `tools/build.sh`. Do not keep bootstrap
+  byte-for-byte self-rebuild through the build-fixpoint installer. Do not keep bootstrap
   token-diff lints alive as a second source of truth.
 - **AOT compaction requires an old-to-new map:** removing call-stencil padding is
   safe only when every PC-relative source (`B/BL`, conditional branches, `ADR`)

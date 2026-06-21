@@ -5,7 +5,7 @@
 Complete. The build-time shadow and clobber linters are self-hosted Habu scripts
 under `tools/lint/`, run by `bin/hb` in `test/run.sh`, and the old host
 implementations have been deleted. The old boot-vs-port parity lint is retired:
-the native `tools/build.sh` fixpoint is the active parity proof. The default
+the native build-fixpoint installer is the active parity proof. The default
 lint gate has no bootstrap inputs.
 
 ### Bootstrap Input Decision

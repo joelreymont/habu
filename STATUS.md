@@ -13,8 +13,9 @@ string reappears outside this file and `LESSONS.md` (the historical log).
 The native engine type-checks its own toolchain source (`src/`) as it compiles
 it. "Certified" = body inferred and (where a signature is declared) verified
 against it; "Uncheckable" = effect not statically inferable and not trusted;
-"Rejected" = inferred effect contradicts the declaration. `tools/build.sh` runs
-the self-check on every rebuild; `( cd test && ./run.sh )` is the Habu-native
+"Rejected" = inferred effect contradicts the declaration. Native
+`tools/build-fixpoint-main.f -- install` runs the self-check on every rebuild;
+`( cd test && ./run.sh )` is the Habu-native
 gate. That gate runs native parity/shadow/clobber/trust/status/filemap lints,
 the retired host-script token lint, the rebuild fixpoint, JSON diagnostic
 assertions, property soundness smoke, PTY/process checks, and AOT/`--repl`

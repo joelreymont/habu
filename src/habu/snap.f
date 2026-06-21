@@ -1,5 +1,5 @@
 \ snap.f — image writer run by bin/hb (or by a temporary stdin engine during
-\ tools/build.sh):
+\ the native build-fixpoint driver):
 \ writes a new binary = engine text copy + the LIVE dict/code region + the LIVE
 \ data region + a 40-byte trailer. The engine's startup loader (em-startup)
 \ detects the trailer, restores both regions (fixed VAs make region addresses

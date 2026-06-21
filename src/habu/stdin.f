@@ -2,13 +2,13 @@
 \ the single installed `bin/hb`. The output reads its program from stdin; on a
 \ tty it runs the baked repl.f instead, which turns it into the interactive REPL.
 \ Swapped in for stage2.f by `bin/hb --load tools/argv.f tools/srclist.f -- stdin`
-\ (see tools/build.sh).
+\ (see tools/build-fixpoint.f).
 
-\ output path — the single knob; tools/build.sh owns the temporary artifact
+\ output path — the single knob; the build-fixpoint driver owns the artifact
 : STDIN-OUT s" hb-stdin-got" TMP-PATH ;
 
 \ the REPL + token stepper + breakpoints baked as the engine's LSRC (paths are
-\ repo-root relative; build.sh cd's there before running the maker)
+\ repo-root relative; run the maker from the repo root)
 : REPL-SRC s" src/habu/repl.f" ;
 : STEP-SRC s" src/habu/stepper.f" ;
 : DBG-SRC  s" src/habu/debug.f" ;

@@ -43,7 +43,6 @@ points stay listed.
 
 ## Tools And Gates
 
-- `tools/build.sh` — self-host rebuild/fixpoint.
 - `tools/seed.sh` — install a trusted native seed, then rebuild current source.
 - `tools/snap-hb.sh` — refreshes the checked `bin/hb` image.
 - `tools/check.f` — Habu-native checked engine runner.

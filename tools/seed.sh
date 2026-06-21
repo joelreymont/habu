@@ -43,5 +43,7 @@ OUT=$(printf '41 1 + . cr\n' | bin/hb 2>/dev/null) || {
   exit 70
 }
 
-./tools/build.sh
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f \
+  lib/process.f lib/process-argv.f lib/process-env.f lib/build.f \
+  tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
 echo "seed OK: trusted seed rebuilt current bin/hb"

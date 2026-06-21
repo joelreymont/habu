@@ -313,8 +313,29 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    BF-BUILD-STDIN
    BF-BUILD-SNAP ;
 
+: BF-INSTALL-HB-NEW ( -- )
+   s" hb-new" BF-A$ s" bin/hb" RENAME-FILE
+   s" bin/hb" CHMOD-X ;
+
+: BF-BIN-HB? ( ptr u8 n -- bool )
+   s" bin/hb" STR= ;
+
+: BF-REMOVE-BIN-OTHER ( ptr u8 n -- ) {: path:ptr pathu :}
+   path pathu FILE? if
+      path pathu BF-BIN-HB? 0= if path pathu REMOVE-FILE then
+   then ;
+
+: BF-CLEAN-BIN ( -- )
+   s" bin" [: BF-REMOVE-BIN-OTHER ;] WALK-FILES ;
+
+: BF-INSTALL ( -- )
+   BF-BUILD-ALL
+   BF-INSTALL-HB-NEW
+   BF-CLEAN-BIN
+   s" build OK: bin/hb (checked engine, tty REPL + stdin)" type cr ;
+
 : BF-USAGE ( -- )
-   s" usage: tools/build-fixpoint.f [all|stage|stdin|snap]" BF-USAGE-RC die ;
+   s" usage: tools/build-fixpoint.f [all|install|stage|stdin|snap]" BF-USAGE-RC die ;
 
 : BF-ARG0= ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
@@ -323,6 +344,7 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    SCRIPT-ARGC 0= if BF-BUILD-ALL exit then
    SCRIPT-ARGC 1 <> if BF-USAGE then
    s" all" BF-ARG0= if BF-BUILD-ALL exit then
+   s" install" BF-ARG0= if BF-INSTALL exit then
    s" stage" BF-ARG0= if BF-STAGE-FIXPOINT exit then
    s" stdin" BF-ARG0= if BF-BUILD-STDIN exit then
    s" snap" BF-ARG0= if BF-BUILD-SNAP exit then

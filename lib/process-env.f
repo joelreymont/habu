@@ -2,7 +2,7 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/process.f, and
 \ lib/process-argv.f. Kept separate from process-argv so old native seeds can
-\ still run tools/build.sh before this newer primitive exists.
+\ still run the build-fixpoint installer before this newer primitive exists.
 
 256 constant PROC-ENV-MAX
 131072 constant PROC-ENV-BUF-CAP

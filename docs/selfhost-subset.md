@@ -59,7 +59,7 @@ remove the subset words above. The remainder must be empty.
 Files checked: `sha256.f util.f asm.f icode.f mnem.f macho.f sign2.f
 checker.f render.f disasm.f habu1.f habu2.f jit.f rt.f crash.f prof.f stage2.f` — **408 defined words, residual gap = 0**.
 
-The guard is the native rebuild/fixpoint path in `tools/build.sh`, wired into
+The guard is the native rebuild/fixpoint path in `tools/build-fixpoint-main.f -- install`, wired into
 `test/run.sh`: it concatenates the native toolchain sources and compiles them
 under `bin/hb` itself. The standalone errors (exit 70) on any undefined word —
 in both compile and interpret mode — so a future edit that reaches outside the
@@ -85,7 +85,7 @@ differently, and subset source must be written for the standalone's semantics:
 
 The subset proved sufficient: the complete compiler is written in it (`asm icode mnem
 util walk rt crash macho engine engine2 stage2`), and the default gate now
-checks the native self-rebuild directly. `tools/build.sh` rebuilds `bin/hb` from
+checks the native self-rebuild directly. `tools/build-fixpoint-main.f -- install` rebuilds `bin/hb` from
 the current native sources and verifies the output is byte-identical. No-binary
 recovery uses `tools/seed.sh`, then the same native fixpoint. Any edit that
 breaks the subset, native codegen, or the fixpoint fails `test/run.sh`.

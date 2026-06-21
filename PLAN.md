@@ -125,7 +125,7 @@ rebuild/snapshot.
 
 ### Native-Only Trust Root
 
-Daily work uses `bin/hb`, `tools/build.sh`, and `( cd test && ./run.sh )`.
+Daily work uses `bin/hb`, `tools/build-fixpoint-main.f -- install`, and `( cd test && ./run.sh )`.
 No-binary recovery uses `tools/seed.sh /path/to/hb-seed`, then immediately
 rebuilds current source. A gforth or hosted bootstrap path must not become a
 normal gate, benchmark dependency, or documented workflow.

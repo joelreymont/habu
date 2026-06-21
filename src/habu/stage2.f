@@ -1,9 +1,9 @@
 \ stage2.fs — the FIXPOINT driver: the running standalone (stage1) reads the
 \ compiler's own source from /tmp/stage2-src, compiles it with the ported engine
 \ builder (EMIT-FORTH), wraps it in the full Mach-O (BUILD-IMAGE), and writes the
-\ unsigned stage2 binary to /tmp/stage2-got. tools/build.sh asserts stage2 is
-\ byte-identical to the previous native stage for the same source.
-\ fixpoint I/O paths — the single knobs; tools/build.sh owns the artifacts
+\ unsigned stage2 binary to /tmp/stage2-got. The native build-fixpoint driver
+\ asserts stage2 is byte-identical to the previous native stage for the same source.
+\ fixpoint I/O paths — the single knobs; the build-fixpoint driver owns artifacts
 : S2-IN  s" stage2-src" TMP-PATH ;
 : S2-OUT s" stage2-got" TMP-PATH ;
 variable SBUF  variable SLEN  variable SFD  variable SRD

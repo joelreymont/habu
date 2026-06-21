@@ -2,7 +2,8 @@
 # snap-hb.sh — refresh bin/hb from the currently installed checked engine.
 # The installed hb runs the snapshot script from stdin, serializes its live
 # toolchain state, and this wrapper signs/replaces bin/hb. Source changes should
-# normally go through tools/build.sh, which rebuilds from source before this step.
+# normally go through tools/build-fixpoint-main.f install, which rebuilds from
+# source before this step.
 set -e
 cd "$(dirname "$0")/.."
 T=${HB_TMP:-/tmp}

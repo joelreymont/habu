@@ -72,7 +72,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 - `( cd test && ./run.sh )` — habu-native, no gforth, < 10 s. Must be green.
 - If `bin/hb` is missing, install a trusted native seed with
   `tools/seed.sh /path/to/hb-seed`; the seed immediately rebuilds current source
-  through `tools/build.sh`.
+  through the native build-fixpoint installer.
 
 ## 8. Record lessons
 - On any new finding, mistake, or insight, add a lesson to `LESSONS.md` (lessons

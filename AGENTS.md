@@ -12,7 +12,8 @@ roadmap.
   lower-case (`dup`, `drop`, `if`, `?do`). Lower-case only for `\` comments and
   prose outside code.
 - No-binary recovery uses `tools/seed.sh /path/to/hb-seed`; the seed is a trusted
-  native `hb` that immediately rebuilds current source through `tools/build.sh`.
+  native `hb` that immediately rebuilds current source through
+  `tools/build-fixpoint-main.f -- install`.
   There is no supported build-from-gforth recovery path in this checkout.
 
 ## Forth style (BLOCKING)

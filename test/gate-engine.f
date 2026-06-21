@@ -6,19 +6,10 @@ create GE-SCRIPT-PATH FS-PATH-CAP allot
 
 variable GE-SCRIPT-U
 
-: GE-TMP-HB-NEW ( -- ptr u8 n )
-   s" hb-new" BF-A$ ;
-
-: GE-INSTALL-HB ( -- )
-   GE-TMP-HB-NEW s" bin/hb" RENAME-FILE
-   s" bin/hb" CHMOD-X
-   GE-CLEAN-BIN ;
-
 : GE-BUILD-FIXPOINT ( -- )
    s" hb-gate-engine" GT-START
    GT-ROOT BF-TMP!
-   BF-BUILD-ALL
-   GE-INSTALL-HB
+   BF-INSTALL
    BF-TMP-RESET
    s" PASS: self-rebuild fixpoint" type cr ;
 

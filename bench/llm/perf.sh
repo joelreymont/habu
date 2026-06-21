@@ -8,6 +8,9 @@ CHECK="bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/proc
 hb_build() {
   bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- "$@"
 }
+hb_install() {
+  bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
+}
 
 JSON=0
 FULL=0
@@ -21,7 +24,7 @@ while [ "$#" -gt 0 ]; do
 done
 [ "$#" -eq 0 ] || { echo "usage: bench/llm/perf.sh [--json] [--full]"; exit 64; }
 
-[ -x bin/hb ] || { echo "llm-perf: no bin/hb - run tools/build.sh"; exit 69; }
+[ -x bin/hb ] || { echo "llm-perf: no bin/hb - run tools/seed.sh /path/to/hb-seed"; exit 69; }
 
 CLEAN_T=0
 if [ -n "${HB_TMP:-}" ]; then
@@ -100,7 +103,7 @@ measure prop_smoke_250 sh -c 'bin/hb 123 250 < test/prop-test.f'
 measure microbench_smoke bin/hb tools/bench.f --smoke
 
 if [ "$FULL" = 1 ]; then
-  measure self_rebuild ./tools/build.sh
+  measure self_rebuild hb_install
   PERF_SRC=$T/perf-main.f
   PERF_BIN=$T/perf-main
   {
