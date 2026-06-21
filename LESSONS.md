@@ -175,6 +175,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `lib/std.manifest`, `docs/stdlib.md`, and runnable `examples/` fixtures as the
   source of truth so cookbook snippets cite checked signatures and existing
   gates instead of inventing API contracts.
+- **Keep fixture DSLs dependency-light:** checked source/TSV builders are useful,
+  but adding an extra helper file to already-large live-driver bundles can push
+  them over native DATA capacity. Use the helper where it removes local syntax
+  hacks, and split heavy bundles before sharing it more widely.
 - **Dot hierarchy parents need root files:** add plan children with
   `dot add ... -P <root-id>` only when `.dots/<root-id>/<root-id>.md` exists.
   Do not use `-P` with a nested child id; it creates stray top-level directories

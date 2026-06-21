@@ -131,6 +131,8 @@ points stay listed.
 - `bench/llm/artifacts-test.f` — focused coverage for replay artifact hashing and JSON fields.
 - `bench/llm/live-row.f` — checked schema-v2 live benchmark row emitter with replay artifacts.
 - `bench/llm/live-row-test.f` — focused coverage for native live benchmark row emission.
+- `bench/llm/fixture-text.f` — checked source-literal and TSV text fixture builder words.
+- `bench/llm/fixture-text-test.f` — focused checks for fixture text builder syntax words.
 - `bench/llm/driver-test-helpers.f` — shared checked fixture/source helpers for live driver tests.
 - `bench/llm/driver-token-helpers.f` — checked exact-token source guards for large live drivers that need prefix-safe checks.
 - `bench/llm/driver-fixture-helpers.f` — checked DSL for generated benchmark fixture vocabularies and test bundles.

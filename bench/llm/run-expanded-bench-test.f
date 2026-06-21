@@ -1,13 +1,11 @@
 \ run-expanded-bench-test.f - focused native tests for expanded benchmark dispatch.
 \
 \ Load after lib/errors.f, lib/string.f, lib/test.f, lib/fs.f,
-\ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, and lib/process-env.f.
+\ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
+\ lib/json-write.f, and bench/llm/fixture-text.f.
 
 120000 constant REBT-TIMEOUT-MS
 65536 constant REBT-CAP
-9 constant REBT-TAB
-10 constant REBT-LF
-34 constant REBT-DQ
 
 create REBT-ROOT FS-PATH-CAP allot
 create REBT-HB-TMP FS-PATH-CAP allot
@@ -70,39 +68,12 @@ variable REBT-FILE-U
    s" report.md" REBT-REPORT REBT-REPORT-U REBT-JOIN!
    REBT-HB-TMP$ MAKE-DIR ;
 
-: REBT-SB-TAB ( -- )
-   REBT-TAB SB-APPEND-C ;
-
-: REBT-SB-LF ( -- )
-   REBT-LF SB-APPEND-C ;
-
-: REBT-SB-DQ ( -- )
-   REBT-DQ SB-APPEND-C ;
-
-: REBT-SOURCE-LITERAL ( ptr u8 n -- )
-   s" s" SB-APPEND
-   REBT-SB-DQ
-   32 SB-APPEND-C
-   SB-APPEND
-   REBT-SB-DQ ;
-
-: REBT-ASSERT-SOURCE-LITERAL ( -- )
-   SB-RESET
-   s" alpha" REBT-SOURCE-LITERAL
-   SB$ {: a:ptr u :}
-   u 9 T=
-   a c@ 115 T=
-   a 1 + c@ REBT-DQ T=
-   a 2 + c@ 32 T=
-   a 8 + c@ REBT-DQ T=
-   a 3 + 5 s" alpha" T$= ;
-
 : REBT-MODEL-SOURCE$ ( -- ptr u8 n )
-   SB-RESET
-   s" : MAIN ( -- ) " SB-APPEND
-   s" : MAIN ( -- ) here drop ;" REBT-SOURCE-LITERAL
-   s"  type cr ;" SB-APPEND
-   SB$ ;
+   BFT-RESET
+   s" MAIN" s" --" BFT-SOURCE-DEF
+   s" : MAIN ( -- ) here drop ;" BFT-SOURCE-S"
+   s"  type cr " BFT+
+   BFT-SOURCE-END$ ;
 
 : REBT-WRITE-MODEL ( -- )
    REBT-MODEL-SRC$ REBT-MODEL-SOURCE$ WRITE-ALL ;
@@ -135,22 +106,22 @@ variable REBT-FILE-U
    0 T= 0 T= drop ;
 
 : REBT-MODELS-TEXT$ ( -- ptr u8 n )
-   SB-RESET
-   s" id" SB-APPEND REBT-SB-TAB
-   s" label" SB-APPEND REBT-SB-TAB
-   s" command" SB-APPEND REBT-SB-TAB
-   s" args" SB-APPEND REBT-SB-TAB
-   s" parser" SB-APPEND REBT-SB-TAB
-   s" token_fields" SB-APPEND REBT-SB-TAB
-   s" timeout_s" SB-APPEND REBT-SB-LF
-   s" aotfix" SB-APPEND REBT-SB-TAB
-   s" AOTFixture" SB-APPEND REBT-SB-TAB
-   REBT-MODEL-BIN$ SB-APPEND REBT-SB-TAB
-   REBT-SB-TAB
-   s" raw" SB-APPEND REBT-SB-TAB
-   REBT-SB-TAB
-   s" 10" SB-APPEND REBT-SB-LF
-   SB$ ;
+   BFT-RESET
+   s" id" BFT-TSV-CELL
+   s" label" BFT-TSV-CELL
+   s" command" BFT-TSV-CELL
+   s" args" BFT-TSV-CELL
+   s" parser" BFT-TSV-CELL
+   s" token_fields" BFT-TSV-CELL
+   s" timeout_s" BFT-TSV-LAST
+   s" aotfix" BFT-TSV-CELL
+   s" AOTFixture" BFT-TSV-CELL
+   REBT-MODEL-BIN$ BFT-TSV-CELL
+   BFT-TSV-BLANK
+   s" raw" BFT-TSV-CELL
+   BFT-TSV-BLANK
+   s" 10" BFT-TSV-LAST
+   BFT$ ;
 
 : REBT-WRITE-MODELS ( -- )
    REBT-MODELS$ REBT-MODELS-TEXT$ WRITE-ALL ;
@@ -210,7 +181,6 @@ variable REBT-FILE-U
 : REBT-MAIN ( -- )
    T-RESET
    REBT-PREPARE
-   REBT-ASSERT-SOURCE-LITERAL
    REBT-WRITE-MODEL
    REBT-BUILD-MODEL
    REBT-WRITE-MODELS
