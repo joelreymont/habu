@@ -137,6 +137,9 @@ points stay listed.
 - `bench/llm/drive-stdlib-lib.f` — native stdlib stack benchmark driver with checked candidate/test assembly.
 - `bench/llm/drive-stdlib.f` — CLI wrapper for the stdlib stack benchmark driver.
 - `bench/llm/drive-stdlib-test.f` — focused coverage for stdlib stack driver acceptance and source-use guards.
+- `bench/llm/drive-regex-negative-lib.f` — native stdlib regex negative benchmark driver with expected-code scoring.
+- `bench/llm/drive-regex-negative.f` — CLI wrapper for the regex negative benchmark driver.
+- `bench/llm/drive-regex-negative-test.f` — focused coverage for regex negative expected-code, wrong-code, and silent-success outcomes.
 - `bench/llm/drive-file-lib.f` — native stdlib file benchmark driver using generated `FS-FIX-*` fixture words.
 - `bench/llm/drive-file.f` — CLI wrapper for the stdlib file benchmark driver.
 - `bench/llm/drive-file-test.f` — focused coverage for stdlib file driver read/write/append and capacity-negative fixtures.

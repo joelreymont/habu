@@ -300,6 +300,15 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    then
    RB-FALSE ;
 
+: RB-TASK-STDLIB-REGEX-NEGATIVE? ( -- bool )
+   RB-TASK-HARNESS$ s" stdlib-negative" STR= if
+      RB-TASK-CONV$ s" reject" STR= if
+         BM-T-NAME RB-TASK-FIELD$ s" RX-BAD-PATTERN" STR= if RB-TRUE exit then
+         BM-T-NAME RB-TASK-FIELD$ s" RX-CAPACITY" STR= exit
+      then
+   then
+   RB-FALSE ;
+
 : RB-TASK-STDLIB-PROCESS? ( -- bool )
    RB-TASK-HARNESS$ s" stdlib-process" STR= if
       RB-TASK-CONV$ s" run" STR= exit
@@ -360,6 +369,7 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    RB-TASK-FORTH? if RB-TRUE exit then
    RB-TASK-ARRAY? if RB-TRUE exit then
    RB-TASK-STDLIB-STACK? if RB-TRUE exit then
+   RB-TASK-STDLIB-REGEX-NEGATIVE? if RB-TRUE exit then
    RB-TASK-STDLIB-FILE? if RB-TRUE exit then
    RB-TASK-STDLIB-FILE-NEGATIVE? if RB-TRUE exit then
    RB-TASK-STDLIB-PROCESS? if RB-TRUE exit then
@@ -645,6 +655,15 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" --" PROC-ARGV+
    RB-STDLIB-TASK-ARGS ;
 
+: RB-REGEX-NEGATIVE-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   PROC-ARGV-ENV-RESET
+   model modelu trial RB-ADD-COMMON-ENV
+   RB-STDLIB-LOADS
+   s" bench/llm/drive-regex-negative-lib.f" PROC-ARGV+
+   s" bench/llm/drive-regex-negative.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   RB-STDLIB-TASK-ARGS ;
+
 : RB-AOT-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
@@ -693,6 +712,14 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    RB-RUN-HB-APPEND drop
    BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib" trial RB-ROW-DONE? 0= if
       s" run-expanded-bench: missing stdlib stack result row" RB-DIE
+   then ;
+
+: RB-RUN-STDLIB-REGEX-NEGATIVE-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib" trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
+   model modelu trial RB-REGEX-NEGATIVE-ARGS
+   RB-RUN-HB-APPEND drop
+   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib" trial RB-ROW-DONE? 0= if
+      s" run-expanded-bench: missing regex negative result row" RB-DIE
    then ;
 
 : RB-RUN-STDLIB-FILE-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
@@ -752,6 +779,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
 
 : RB-RUN-TRIAL ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    RB-TASK-STDLIB-STACK? if model modelu trial RB-RUN-STDLIB-STACK-ONE exit then
+   RB-TASK-STDLIB-REGEX-NEGATIVE? if model modelu trial RB-RUN-STDLIB-REGEX-NEGATIVE-ONE exit then
    RB-TASK-STDLIB-FILE? if model modelu trial RB-RUN-STDLIB-FILE-ONE exit then
    RB-TASK-STDLIB-FILE-NEGATIVE? if model modelu trial RB-RUN-STDLIB-FILE-ONE exit then
    RB-TASK-STDLIB-PROCESS? if model modelu trial RB-RUN-STDLIB-PROCESS-ONE exit then
