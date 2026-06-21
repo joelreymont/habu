@@ -75,6 +75,11 @@ variable GE-RD
    c GE-SRC-BUF GE-SRC-U @ + c!
    GE-SRC-U @ 1+ GE-SRC-U ! ;
 
+: GE-SRC-U+ ( n -- ) {: n :}
+   n 0 < if E-STR-BOUNDS throw then
+   n 10 >= if n 10 / recurse then
+   n 10 mod STR-ZERO + GE-SRC-C ;
+
 : GE-SRC-REPEAT-C ( n n -- ) {: u c :}
    u 0 < if E-STR-BOUNDS throw then
    u 0 ?do c GE-SRC-C loop ;

@@ -32,51 +32,7 @@ bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f l
 [ -x bin/hb ] || { echo "FAIL: bin/hb not produced"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f test/gate-diagnostics.f || { echo "FAIL: native checker diagnostics gate phase"; exit 1; }
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f lib/codesign.f test/gate-debug.f || { echo "FAIL: native prop/snapshot/debug gate phase"; exit 1; }
-# hb-build DEFAULT = AOT: compile MAIN to native, engine stripped (no interpreter).
-GATE_JSON=$T/gate-json-assert.f
-cat tools/json.f tools/gate-json-assert.f > "$GATE_JSON"
-printf ': FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;\n: MAIN ( -- ) 10 FIB . CR ;\n' > $T/hb-at.f
-./tools/hb-build.sh $T/hb-at.f -o $T/hb-at >/dev/null || { echo "FAIL: hb-build (AOT)"; exit 1; }
-[ "$($T/hb-at)" = "55" ] || { echo "FAIL: hb-build AOT output (got: $($T/hb-at))"; exit 1; }
-ATX=$(size -m $T/hb-at 2>/dev/null | awk '/__text/{print $3}')
-[ "${ATX:-99999}" -lt 2000 ] || { echo "FAIL: hb-build AOT did not strip the engine (__text=$ATX, expected <2000)"; exit 1; }
-bin/hb tools/aot-call-report.f $T/hb-at < /dev/null > $T/hb-at-call-report.json
-bin/hb "$GATE_JSON" aot-stripped "$T/hb-at-call-report.json"
-echo "PASS: hb-build AOT (engine stripped, __text $ATX B vs ~11800 embed)"
-# AOT compacts reachable call stencils inside blobs that also contain branches
-# and embedded S" bodies. The linker rewrites B/CBZ/ADR through an old->new byte
-# map, so there must be no leftover NOP,NOP,NOP,BL padding.
-printf ': BIG ( i64 -- i64 ) 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ ;\n: WRAP ( i64 -- i64 ) DUP 0< IF NEGATE ELSE BIG THEN 1+ ;\n: MAIN ( -- ) 1 WRAP . s" ok" type CR ;\n' > $T/hb-compact.f
-./tools/hb-build.sh $T/hb-compact.f -o $T/hb-compact >/dev/null || { echo "FAIL: hb-build AOT compact calls"; exit 1; }
-[ "$($T/hb-compact)" = "22
-ok" ] || { echo "FAIL: hb-build AOT compact call output (got: $($T/hb-compact))"; exit 1; }
-bin/hb tools/aot-call-report.f $T/hb-compact < /dev/null > $T/hb-compact-call-report.json
-bin/hb "$GATE_JSON" aot-compact "$T/hb-compact-call-report.json"
-echo "PASS: hb-build AOT compact call layout"
-# AOT closure stress: a 260-word reachable chain (above the old 256-cell tables,
-# which silently overflowed and crashed the linker). Must build and compute 260.
-{ printf ': W259 ( -- n ) 1 ;\n'
-  i=258; while [ $i -ge 0 ]; do printf ': W%s ( -- n ) W%s 1 + ;\n' "$i" "$((i+1))"; i=$((i-1)); done
-  printf ': MAIN ( -- ) W0 . CR ;\n'; } > $T/hb-cl.f
-./tools/hb-build.sh $T/hb-cl.f -o $T/hb-cl >/dev/null || { echo "FAIL: hb-build AOT closure stress (260 words)"; exit 1; }
-[ "$($T/hb-cl)" = "260" ] || { echo "FAIL: hb-build AOT closure stress output (got: $($T/hb-cl))"; exit 1; }
-echo "PASS: hb-build AOT closure stress (260 reachable words)"
-printf ': LONG-AOT-CALLED-WORD-NAME ( -- n ) 34 ;\n: MAIN ( -- ) LONG-AOT-CALLED-WORD-NAME . CR ;\n' > $T/hb-aot-long.f
-./tools/hb-build.sh $T/hb-aot-long.f -o $T/hb-aot-long >/dev/null || { echo "FAIL: hb-build AOT long names"; exit 1; }
-[ "$($T/hb-aot-long)" = "34" ] || { echo "FAIL: hb-build AOT long-name output (got: $($T/hb-aot-long))"; exit 1; }
-echo "PASS: hb-build AOT long dictionary names"
-# AOT S" string literal: the body is embedded in MAIN's blob and its address is
-# pushed PC-relative, so it survives the blob copy + ASLR (an absolute push would
-# point back into the builder's JIT region and print nothing).
-printf ': MAIN ( -- ) s" hi" type CR ;\n' > $T/hb-str.f
-./tools/hb-build.sh $T/hb-str.f -o $T/hb-str >/dev/null || { echo "FAIL: hb-build AOT S\" build"; exit 1; }
-[ "$($T/hb-str)" = "hi" ] || { echo "FAIL: hb-build AOT S\" output (got: $($T/hb-str))"; exit 1; }
-echo "PASS: hb-build AOT S\" string literal (PC-relative, relocation-safe)"
-printf ': MAIN ( -- ) ." hi" CR c" ok" count type CR ;\n' > $T/hb-parse.f
-./tools/hb-build.sh $T/hb-parse.f -o $T/hb-parse >/dev/null || { echo "FAIL: hb-build AOT parsing words"; exit 1; }
-[ "$($T/hb-parse)" = "hi
-ok" ] || { echo "FAIL: hb-build AOT parsing-word output (got: $($T/hb-parse))"; exit 1; }
-echo "PASS: hb-build AOT .\"/C\" parsing words"
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f test/gate-build-common.f test/gate-aot-positive.f || { echo "FAIL: native hb-build AOT positive gate phase"; exit 1; }
 # build verification requires certification; strict signature mode catches
 # missing signatures as source-lint errors before the maker runs.
 printf ': NOSIG 42 . CR ;\n' > $T/hb-nosig.f
@@ -112,7 +68,7 @@ grep -q '"schema_version":1' $T/hb-clo-limit.err || { echo "FAIL: hb-build closu
 grep -q '"reachable_count":8' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing reachable_count"; exit 1; }
 grep -q '"max_closure":8' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing max_closure"; exit 1; }
 grep -q '"root_word":"MAIN"' $T/hb-clo-limit.err || { echo "FAIL: hb-build closure limit missing root_word"; exit 1; }
-bin/hb "$GATE_JSON" json-one-schema "$T/hb-clo-limit.err"
+bin/hb --load tools/json.f tools/gate-json-assert.f -- json-one-schema "$T/hb-clo-limit.err"
 echo "PASS: hb-build strict signatures + uncheckable/AOT-unsafe rejection"
 # hb-build default AOT must verify declared signatures and treat rejection as fatal.
 printf ': BAD ( i64 -- i64 ) 0= ;\n: MAIN ( -- ) 0 BAD . CR ;\n' > $T/hb-badsig.f
