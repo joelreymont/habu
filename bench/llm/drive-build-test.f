@@ -1,15 +1,22 @@
 \ drive-build-test.f - focused tests for native stdlib build driver.
 
+65 constant DBT-A
+34 constant DBT-DQ
+66 constant DBT-B
+3 constant DBT-BAD-LABEL-U
+
+create DBT-BAD-LABEL
+DBT-A c, DBT-DQ c, DBT-B c,
+
+: DBT-BAD-LABEL$ ( -- ptr u8 n )
+   DBT-BAD-LABEL DBT-BAD-LABEL-U ;
+
 T-RESET
 
-JW-RESET
-s" A" JW-RAW
-JW-DQ JW-C
-s" B" JW-RAW
-JW$ nip 3 T=
-JW$ drop c@ 65 T=
-JW$ drop 1+ c@ JW-DQ T=
-JW$ drop 2 + c@ 66 T=
+DBT-BAD-LABEL$ nip DBT-BAD-LABEL-U T=
+DBT-BAD-LABEL$ drop c@ DBT-A T=
+DBT-BAD-LABEL$ drop 1+ c@ DBT-DQ T=
+DBT-BAD-LABEL$ drop 2 + c@ DBT-B T=
 
 DTH-MODELS$ MR-REGISTRY!
 s" fixture" MR-REQUIRE
@@ -73,11 +80,7 @@ s" test-seed" DS-SEED!
 s" BUILD-STEP-STATUS" DS-NAME!
 s" build step status fixture" DS-SPEC!
 DS-TEST-RESET
-JW-RESET
-s" A" JW-RAW
-JW-DQ JW-C
-s" B" JW-RAW
-JW$ s" DBT-BAD-LABEL-BUF" s" DBT-BAD-LABEL$" DFH-STRING
+DBT-BAD-LABEL$ s" DBT-BAD-LABEL-BUF" s" DBT-BAD-LABEL$" DFH-STRING
 s" : BUILD-STEP-STATUS ( -- ) " DS-TEST+
 s" DBT-BAD-LABEL$ [: BUILD-FIX-BAD-STEP ;] BUILD-STEP ;" DS-TEST+
 DS-TEST$ DB-RUN-TEXT
