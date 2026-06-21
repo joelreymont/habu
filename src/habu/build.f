@@ -119,6 +119,20 @@ create VBUF BODYBUF-CAP allot
 : V-VERIFY-BODY
    VBUF VL @ CHECK!  dup -1 <> IF s" hb-build: check did not certify" 70 die THEN drop ;
 
+TRUSTED: V-TRUST-SIG ( ptr u8 n ptr u8 n -- )
+   TRUST ;
+
+: V-TRUST-NEXT {: sig:ptr sigu :}
+   V-NEXT-SCAN
+   dup 0= IF s" hb-build: missing defining-word name" 74 die THEN
+   sig sigu V-TRUST-SIG ;
+
+: V-RECORD-DEFINER? {: a:ptr u :}
+   a u s" constant" STR= IF s" -- a" V-TRUST-NEXT 0 0= EXIT THEN
+   a u s" create" STR= IF s" -- ptr a" V-TRUST-NEXT 0 0= EXIT THEN
+   a u s" variable" STR= IF s" -- ptr a" V-TRUST-NEXT 0 0= EXIT THEN
+   0 0= 0= ;
+
 : V-VERIFY-DEF
    0 VL !
    V-BODY!
@@ -136,7 +150,8 @@ create VBUF BODYBUF-CAP allot
    0 VI !
    BEGIN
       V-NEXT-SCAN dup 0 > WHILE
-      2dup s" :" STR= IF 2drop V-VERIFY-DEF ELSE 2drop THEN
+      2dup s" :" STR= IF 2drop V-VERIFY-DEF ELSE
+      2dup V-RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN
    REPEAT 2drop ;
 
 : GO

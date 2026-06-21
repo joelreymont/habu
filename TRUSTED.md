@@ -77,6 +77,7 @@ body. Re-audit when a row's body or effect string changes.
 | HLP@ | `-- ptr u8` | Reads the code-signing header patch cursor stored in a raw variable. | `test/run.f` | src/os/macos/sign2.f:31 | 2026-06-16 |
 | HB@ | `-- ptr u8` | Reads the stdin-engine baked-source buffer pointer stored in a raw variable. | `test/run.f` | src/habu/stdin.f:17 | 2026-06-16 |
 | BLD-PB@ | `-- ptr u8` | Reads the standalone-build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/build.f:18 | 2026-06-16 |
+| V-TRUST-SIG | `ptr u8 n ptr u8 n --` | hb-build pre-verifier records source-order defining-word signatures for parsed names; the checker cannot infer a dynamic mutation of its signature table from scanner state. | `tools/hb-build-test.f`, `test/run.f` | src/habu/build.f:122 | 2026-06-21 |
 | AOT-PB@ | `-- ptr u8` | Reads the AOT build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/aot.f:14 | 2026-06-16 |
 | AOT-DBASE@ | `-- ptr a` | Reads the runtime dictionary base pointer for AOT dictionary-record scans; record fields are mixed, so callers specialize the pointee type at each access. | `test/run.f`, `tools/hb-build.f` | src/habu/aot.f:16 | 2026-06-16 |
 | AOT-PTR@ | `ptr a -- ptr a` | Reads a dictionary long-name pointer field whose pointee is another address; the checker cannot express this pointer-to-pointer load yet. | `test/run.f`, `tools/hb-build.f` | src/habu/aot.f:17 | 2026-06-16 |

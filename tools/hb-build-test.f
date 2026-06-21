@@ -91,11 +91,21 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 
 : HBT-REPL-SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" : SQ ( i64 -- i64 ) dup * ;" SB-APPEND
+   s" 5 constant FIVE" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" create PAD 8 allot" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" variable SLOT" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" : SQ ( i64 -- i64 ) FIVE drop PAD drop SLOT drop dup * ;" SB-APPEND
    HBB-LF SB-APPEND-C
    s" EXPORT SQ" SB-APPEND
    HBB-LF SB-APPEND-C
+   s" : SHOW-ARGS ( -- ) SCRIPT-ARGC 0 > if SCRIPT-ARGC . CR 0 SCRIPT-ARGV$ type cr then ;" SB-APPEND
+   HBB-LF SB-APPEND-C
    s" 9 SQ . CR" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" SHOW-ARGS" SB-APPEND
    HBB-LF SB-APPEND-C
    SB$ ;
 
@@ -180,8 +190,9 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 : HBT-BUILD-OK ( -- )
    HBT-ARGV-BASE
    HBT-ADD-OK
-   HBT-RUN-HB-BUILD 0 T=
-   {: outu erru :}
+   HBT-RUN-HB-BUILD {: outu erru rc :}
+   rc 0 <> if s" build ok rc: " type rc . cr HBT-OUT outu type HBT-ERR erru type then
+   rc 0 T=
    HBT-ERR erru HBT-EMPTY$ T$=
    HBT-OUT outu s" hb-build OK: " CONTAINS? TTRUE
    HBT-OK-OUT FILE? TTRUE ;
@@ -203,18 +214,49 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 : HBT-BUILD-REPL ( -- )
    HBT-ARGV-BASE
    HBT-ADD-REPL
-   HBT-RUN-HB-BUILD 0 T=
-   {: outu erru :}
+   HBT-RUN-HB-BUILD {: outu erru rc :}
+   rc 0 <> if s" build repl rc: " type rc . cr HBT-OUT outu type HBT-ERR erru type then
+   rc 0 T=
    HBT-ERR erru HBT-EMPTY$ T$=
    HBT-OUT outu s" engine+REPL bundle" CONTAINS? TTRUE
    HBT-REPL-OUT FILE? TTRUE ;
 
 : HBT-RUN-REPL ( -- )
    HBT-REPL-OUT HBT-RUN-OUT HBT-CAPTURE-CAP HBT-RUN-ERR HBT-CAPTURE-CAP
-   HBT-TIMEOUT-MS RUN-CAPTURE 0 T=
-   {: outu erru :}
+   HBT-TIMEOUT-MS RUN-CAPTURE {: outu erru rc :}
+   rc 0 <> if s" repl rc: " type rc . cr HBT-RUN-OUT outu type HBT-RUN-ERR erru type then
+   rc 0 T=
    HBT-RUN-ERR erru HBT-EMPTY$ T$=
    HBT-RUN-OUT outu HBT-81$ T$= ;
+
+: HBT-81-ARGS$ ( -- ptr u8 n )
+   SB-RESET
+   s" 81" SB-APPEND
+   HBB-LF SB-APPEND-C
+   HBB-LF SB-APPEND-C
+   s" 2" SB-APPEND
+   HBB-LF SB-APPEND-C
+   HBB-LF SB-APPEND-C
+   s" alpha" SB-APPEND
+   HBB-LF SB-APPEND-C
+   SB$ ;
+
+: HBT-RUN-REPL-ARGS ( -- )
+   PROC-ARGV-ENV-RESET
+   s" alpha" PROC-ARGV+
+   s" beta" PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   HBT-REPL-OUT HBT-RUN-OUT HBT-CAPTURE-CAP HBT-RUN-ERR HBT-CAPTURE-CAP
+   HBT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
+   rc 0 <> if s" repl args rc: " type rc . cr HBT-RUN-OUT outu type HBT-RUN-ERR erru type then
+   rc 0 T=
+   HBT-RUN-ERR erru HBT-EMPTY$ T$=
+   HBT-RUN-OUT outu HBT-81-ARGS$ T-STR= 0= if
+      s" repl args stdout: " type HBT-RUN-OUT outu type cr
+      s" actual len: " type outu . cr
+      s" expect len: " type HBT-81-ARGS$ nip . cr
+   then
+   HBT-RUN-OUT outu HBT-81-ARGS$ T$= ;
 
 : HBT-BUILD-MISSING-TMP ( -- )
    HBT-NEW-TMP EXISTS? TFALSE
@@ -286,6 +328,7 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBT-RUN-OK
    HBT-BUILD-REPL
    HBT-RUN-REPL
+   HBT-RUN-REPL-ARGS
    HBT-BUILD-MISSING-TMP
    HBT-REJECT-BAD
    HBT-REJECT-REPL-BAD
