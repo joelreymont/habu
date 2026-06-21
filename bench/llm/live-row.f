@@ -53,6 +53,8 @@ variable LR-FIRST-CHECKER-A
 variable LR-FIRST-CHECKER-U
 variable LR-RUNTIME-STATUS-A
 variable LR-RUNTIME-STATUS-U
+variable LR-REPAIR-CLASS-A
+variable LR-REPAIR-CLASS-U
 
 variable LR-TASK-ID
 variable LR-TRIAL
@@ -120,6 +122,9 @@ TRUSTED: LR-SET$ ( ptr u8 n ptr n ptr n -- ) {: a:ptr u ap:ptr up:ptr :}
 : LR-RUNTIME-STATUS! ( ptr u8 n -- )
    LR-RUNTIME-STATUS-A LR-RUNTIME-STATUS-U LR-SET$ ;
 
+: LR-REPAIR-CLASS! ( ptr u8 n -- )
+   LR-REPAIR-CLASS-A LR-REPAIR-CLASS-U LR-SET$ ;
+
 TRUSTED: LR-RUN-ID$ ( -- ptr u8 n )
    LR-RUN-ID-A @ LR-RUN-ID-U @ ;
 
@@ -155,6 +160,9 @@ TRUSTED: LR-FIRST-CHECKER$ ( -- ptr u8 n )
 
 TRUSTED: LR-RUNTIME-STATUS$ ( -- ptr u8 n )
    LR-RUNTIME-STATUS-A @ LR-RUNTIME-STATUS-U @ ;
+
+TRUSTED: LR-REPAIR-CLASS$ ( -- ptr u8 n )
+   LR-REPAIR-CLASS-A @ LR-REPAIR-CLASS-U @ ;
 
 : LR-COPY-PATH ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u 0 <= if E-FS-PATH throw then
@@ -220,6 +228,7 @@ TRUSTED: LR-RUNTIME-STATUS$ ( -- ptr u8 n )
    s" unknown" LR-MODEL-DATE!
    s" rejected" LR-FIRST-CHECKER!
    s" not_run" LR-RUNTIME-STATUS!
+   s" diagnostic" LR-REPAIR-CLASS!
    0 LR-TASK-ID !
    0 LR-TRIAL !
    0 LR-TASK-ORDER !
@@ -311,6 +320,46 @@ TRUSTED: LR-RUNTIME-STATUS$ ( -- ptr u8 n )
 : LR-COMMA-FIELD-NULL ( ptr u8 n -- )
    JW-COMMA JW-FIELD-NULL ;
 
+: LR-RAW-DQ ( -- )
+   JW-DQ SB-APPEND-C ;
+
+: LR-RAW-KEY ( ptr u8 n -- )
+   LR-RAW-DQ
+   SB-APPEND
+   LR-RAW-DQ
+   JW-COLON-C SB-APPEND-C ;
+
+: LR-RAW-S ( ptr u8 n -- )
+   LR-RAW-DQ
+   SB-APPEND
+   LR-RAW-DQ ;
+
+: LR-RAW-BOOL ( bool -- )
+   if s" true" else s" false" then SB-APPEND ;
+
+: LR-REPAIR-STATS$ ( -- ptr u8 n )
+   LR-DIAG-COUNT @ 0= if s" []" exit then
+   SB-RESET
+   JW-LBRACK SB-APPEND-C
+   JW-LBRACE SB-APPEND-C
+   s" repair_class" LR-RAW-KEY
+   LR-REPAIR-CLASS$ LR-RAW-S
+   JW-COMMA-C SB-APPEND-C
+   s" diagnostic_count" LR-RAW-KEY
+   LR-DIAG-COUNT @ LR-U+
+   JW-COMMA-C SB-APPEND-C
+   s" repair_success" LR-RAW-KEY
+   LR-TESTS-PASSED @ LR-RAW-BOOL
+   JW-COMMA-C SB-APPEND-C
+   s" repair_iterations" LR-RAW-KEY
+   LR-REPAIR-ITERATIONS @ LR-U+
+   JW-COMMA-C SB-APPEND-C
+   s" token_delta" LR-RAW-KEY
+   0 LR-U+
+   JW-RBRACE SB-APPEND-C
+   JW-RBRACK SB-APPEND-C
+   SB$ ;
+
 : LR-BUILD-ROW ( -- )
    JW-RESET
    JW-OBJECT-START
@@ -357,7 +406,7 @@ TRUSTED: LR-RUNTIME-STATUS$ ( -- ptr u8 n )
    s" final_chars" LR-SOURCE-CHARS @ LR-POSITIVE LR-COMMA-FIELD-U
    s" trust_uses" LR-TRUST-USES @ LR-COMMA-FIELD-U
    s" signature_weakened" LR-SIGNATURE-WEAKENED @ LR-COMMA-FIELD-BOOL
-   s" repair_class_stats" s" []" LR-COMMA-FIELD-RAW
+   s" repair_class_stats" LR-REPAIR-STATS$ LR-COMMA-FIELD-RAW
    JW-COMMA s" prompt" LR-PROMPT$ LR-FILE-FIELD
    JW-COMMA s" raw_response" LR-RAW$ LR-FILE-FIELD
    JW-COMMA s" extracted_candidate" LR-CANDIDATE$ LR-FILE-FIELD

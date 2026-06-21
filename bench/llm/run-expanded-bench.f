@@ -344,6 +344,18 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    then
    RB-FALSE ;
 
+: RB-TASK-AOT? ( -- bool )
+   RB-TASK-HARNESS$ s" aot" STR= if
+      RB-TASK-CONV$ s" build-run" STR= exit
+   then
+   RB-FALSE ;
+
+: RB-TASK-AOT-NEGATIVE? ( -- bool )
+   RB-TASK-HARNESS$ s" aot-negative" STR= if
+      RB-TASK-CONV$ s" reject" STR= exit
+   then
+   RB-FALSE ;
+
 : RB-TASK-RUNNABLE? ( -- bool )
    RB-TASK-FORTH? if RB-TRUE exit then
    RB-TASK-ARRAY? if RB-TRUE exit then
@@ -355,7 +367,9 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    RB-TASK-STDLIB-PROPERTY? if RB-TRUE exit then
    RB-TASK-STDLIB-PROPERTY-NEGATIVE? if RB-TRUE exit then
    RB-TASK-STDLIB-BUILD? if RB-TRUE exit then
-   RB-TASK-STDLIB-BUILD-NEGATIVE? ;
+   RB-TASK-STDLIB-BUILD-NEGATIVE? if RB-TRUE exit then
+   RB-TASK-AOT? if RB-TRUE exit then
+   RB-TASK-AOT-NEGATIVE? ;
 
 : RB-ARM-FOR-MODE$ ( ptr u8 n -- ptr u8 n ) {: mode:ptr modeu :}
    RB-FORTH-ARM$ nip 0 > if RB-FORTH-ARM$ exit then
@@ -631,6 +645,16 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" --" PROC-ARGV+
    RB-STDLIB-TASK-ARGS ;
 
+: RB-AOT-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   PROC-ARGV-ENV-RESET
+   model modelu trial RB-ADD-COMMON-ENV
+   RB-STDLIB-LOADS
+   s" bench/llm/driver-token-helpers.f" PROC-ARGV+
+   s" bench/llm/drive-aot-lib.f" PROC-ARGV+
+   s" bench/llm/drive-aot.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   RB-STDLIB-TASK-ARGS ;
+
 : RB-RUN-FORTH-ONE ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu mode:ptr modeu trial :}
    mode modeu RB-ARM-FOR-MODE$ {: arm:ptr armu :}
    BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
@@ -703,6 +727,14 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
       s" run-expanded-bench: missing stdlib build result row" RB-DIE
    then ;
 
+: RB-RUN-AOT-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
+   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-aot" trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
+   model modelu trial RB-AOT-ARGS
+   RB-RUN-HB-APPEND drop
+   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-aot" trial RB-ROW-DONE? 0= if
+      s" run-expanded-bench: missing AOT result row" RB-DIE
+   then ;
+
 : RB-RUN-ARRAY-ARMS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    0 RB-MODE-NEXT !
    begin
@@ -728,6 +760,8 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    RB-TASK-STDLIB-PROPERTY-NEGATIVE? if model modelu trial RB-RUN-STDLIB-PROPERTY-ONE exit then
    RB-TASK-STDLIB-BUILD? if model modelu trial RB-RUN-STDLIB-BUILD-ONE exit then
    RB-TASK-STDLIB-BUILD-NEGATIVE? if model modelu trial RB-RUN-STDLIB-BUILD-ONE exit then
+   RB-TASK-AOT? if model modelu trial RB-RUN-AOT-ONE exit then
+   RB-TASK-AOT-NEGATIVE? if model modelu trial RB-RUN-AOT-ONE exit then
    RB-TASK-FORTH? if model modelu trial RB-RUN-FORTH-MODES exit then
    RB-TASK-ARRAY? if model modelu trial RB-RUN-ARRAY-ARMS exit then
    ;

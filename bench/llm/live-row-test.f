@@ -85,10 +85,28 @@ variable LRT-BUNDLE-U
    2dup s" schema_version" LRT-CONTAINS
    2dup s" seed:fixture:habu-stdlib:62:1" LRT-CONTAINS
    2dup s" task_family" LRT-CONTAINS
+   2dup s" repair_class_stats" LRT-CONTAINS
+   2dup s" []" LRT-CONTAINS
    2dup s" Prompt" LRT-CONTAINS
    2dup s" prompt_sha256" LRT-CONTAINS
    2dup s" final_bundle" LRT-CONTAINS
    s" tests_passed" LRT-CONTAINS ;
+
+: LRT-CONFIG-DIAG ( -- )
+   LRT-CONFIG
+   s" reject" LR-OUTCOME!
+   s" rejected" LR-FIRST-CHECKER!
+   0 LR-FIRST-PASS !
+   0 LR-FIRST-TESTS !
+   0 LR-TESTS-PASSED !
+   1 LR-DIAG-COUNT !
+   s" fixture_diag" LR-REPAIR-CLASS! ;
+
+: LRT-ASSERT-DIAG-ROW ( ptr u8 n -- )
+   2dup s" fixture_diag" LRT-CONTAINS
+   2dup s" diagnostic_count" LRT-CONTAINS
+   2dup s" repair_success" LRT-CONTAINS
+   s" token_delta" LRT-CONTAINS ;
 
 : LRT-MAIN ( -- )
    T-RESET
@@ -97,6 +115,8 @@ variable LRT-BUNDLE-U
    LRT-FILES
    LRT-CONFIG
    LR-ROW$ LRT-ASSERT-ROW
+   LRT-CONFIG-DIAG
+   LR-ROW$ LRT-ASSERT-DIAG-ROW
    CLEANUP-RUN
    T-REPORT
    s" live-row-test: ok" type cr ;

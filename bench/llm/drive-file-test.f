@@ -77,64 +77,59 @@
    s" FS-FIX-BIG-PATH$ FS-FIX-BUF FS-FIX-SMALL-CAP READ-ALL " DTH-SRC+
    DTH-SRC-END ;
 
-: DFT-SCRIPT-ARGV$ ( -- ptr u8 n )
-   DTH-SRC-RESET
-   DTH-SRC-TASK-HEAD
-   s" 0 SCRIPT-ARGV$ FS-FIX-BUF FS-FIX-CAP READ-ALL " DTH-SRC+
-   DFT-SRC-READ-WANT
-   DTH-SRC-END ;
-
-: DFT-CONSTANT$ ( -- ptr u8 n )
-   DTH-SRC-RESET
-   DTH-SRC-TASK-HEAD
-   s" -1 " DTH-SRC+
-   DTH-SRC-END ;
-
-: DFT-ASSERT-PASS ( -- )
-   LR-OUTCOME$ s" pass" T$=
-   LR-FIRST-CHECKER$ s" certified" T$=
-   LR-TESTS-PASSED @ -1 T=
-   s" arm" s" habu-stdlib-file" DTH-ROW-NEED-S
-   s" prompt_sha256" DTH-ROW-NEED-KEY
-   s" final_bundle_sha256" DTH-ROW-NEED-KEY ;
-
-: DFT-ASSERT-REJECT ( -- )
-   LR-OUTCOME$ s" reject" T$=
-   LR-FIRST-CHECKER$ s" rejected" T$=
-   LR-TESTS-PASSED @ 0 T=
-   s" required stdlib word missing" DTH-ROW-HAS ;
-
-: DFT-ASSERT-FORBIDDEN ( -- )
-   LR-OUTCOME$ s" reject" T$=
-   LR-FIRST-CHECKER$ s" rejected" T$=
-   LR-TESTS-PASSED @ 0 T=
-   s" forbidden fixture boundary" DTH-ROW-HAS ;
-
 T-RESET
 
 DFT-CONFIG-READ
 DFT-GOOD-READ$ DF-RUN-TEXT
-DFT-ASSERT-PASS
+LR-OUTCOME$ s" pass" T$=
+LR-FIRST-CHECKER$ s" certified" T$=
+LR-TESTS-PASSED @ -1 T=
+s" arm" s" habu-stdlib-file" DTH-ROW-NEED-S
+s" prompt_sha256" DTH-ROW-NEED-KEY
+s" final_bundle_sha256" DTH-ROW-NEED-KEY
 CLEANUP-RUN
 
 DFT-CONFIG-WRITE
 DFT-GOOD-WRITE$ DF-RUN-TEXT
-DFT-ASSERT-PASS
+LR-OUTCOME$ s" pass" T$=
+LR-FIRST-CHECKER$ s" certified" T$=
+LR-TESTS-PASSED @ -1 T=
+s" arm" s" habu-stdlib-file" DTH-ROW-NEED-S
+s" prompt_sha256" DTH-ROW-NEED-KEY
+s" final_bundle_sha256" DTH-ROW-NEED-KEY
 CLEANUP-RUN
 
 DFT-CONFIG-APPEND
 DFT-GOOD-APPEND$ DF-RUN-TEXT
-DFT-ASSERT-PASS
+LR-OUTCOME$ s" pass" T$=
+LR-FIRST-CHECKER$ s" certified" T$=
+LR-TESTS-PASSED @ -1 T=
+s" arm" s" habu-stdlib-file" DTH-ROW-NEED-S
+s" prompt_sha256" DTH-ROW-NEED-KEY
+s" final_bundle_sha256" DTH-ROW-NEED-KEY
 CLEANUP-RUN
 
 DFT-CONFIG-READ
-DFT-CONSTANT$ DF-RUN-TEXT
-DFT-ASSERT-REJECT
+DTH-SRC-RESET
+DTH-SRC-TASK-HEAD
+s" -1 " DTH-SRC+
+DTH-SRC-END DF-RUN-TEXT
+LR-OUTCOME$ s" reject" T$=
+LR-FIRST-CHECKER$ s" rejected" T$=
+LR-TESTS-PASSED @ 0 T=
+s" required stdlib word missing" DTH-ROW-HAS
 CLEANUP-RUN
 
 DFT-CONFIG-READ
-DFT-SCRIPT-ARGV$ DF-RUN-TEXT
-DFT-ASSERT-FORBIDDEN
+DTH-SRC-RESET
+DTH-SRC-TASK-HEAD
+s" 0 SCRIPT-ARGV$ FS-FIX-BUF FS-FIX-CAP READ-ALL " DTH-SRC+
+DFT-SRC-READ-WANT
+DTH-SRC-END DF-RUN-TEXT
+LR-OUTCOME$ s" reject" T$=
+LR-FIRST-CHECKER$ s" rejected" T$=
+LR-TESTS-PASSED @ 0 T=
+s" forbidden fixture boundary" DTH-ROW-HAS
 CLEANUP-RUN
 
 DFT-CONFIG-CAPACITY

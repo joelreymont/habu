@@ -22,6 +22,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `/tmp`; fixed names like `stage2-got` race. `tools/build.sh`,
   `tools/seed.sh`, and `test/run.sh` allocate and export private `HB_TMP`
   by default where they run builds, while preserving explicit `HB_TMP` for repro.
+- **Build CLIs own temp override setup:** if `HB_TMP` names an absent directory,
+  create it before spawning makers. Letting the maker discover a missing temp
+  root later can collapse into an empty nonzero failure.
 - **Temp cleanup must not fail the gate:** `trash` can reject private temp
   directories under sandboxed `/var/folders`; cleanup hooks should prefer trash
   but fall back to direct removal when trash itself fails.
@@ -282,6 +285,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   can exceed small writer buffers. Quote artifact bytes with a chunked Habu
   emitter instead of routing row bodies through fixed-capacity JSON builders or
   host JSON encoders.
+- **Diagnostic rows must balance repair stats:** schema-v2 rows with
+  `diagnostic_count > 0` need `repair_class_stats` whose diagnostic counts sum
+  to the row total. Empty stats are valid only for zero-diagnostic rows.
 - **Codex input-token bloat is ambient context:** default `codex exec` loads
   apps/plugins/tool context and project instructions; a smoke prompt fell from
   about 29k input tokens to about 11.5k by using a clean `CODEX_HOME` plus
@@ -356,6 +362,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   test bundles can hit raw parser/checker capacity when every long candidate
   snippet is a published helper. Keep reusable vocabularies checked, then build
   long per-case snippets with those words in the top-level test runner.
+- **Checker capacity bumps are layout work:** increasing global checker tables
+  can shift native data layout and break unrelated fixtures. Prefer removing
+  one-use fixture signatures first; expand engine regions deliberately.
 - **Repo edits go through `apply_patch`:** even mechanical replacements should
   use patches so accidental broad rewrites, duplicate definitions, and rule
   violations stay reviewable.

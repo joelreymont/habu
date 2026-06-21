@@ -6,6 +6,7 @@
 
 variable HBT-ROOT-U
 variable HBT-TMP-U
+variable HBT-NEW-TMP-U
 variable HBT-OK-SRC-U
 variable HBT-OK-OUT-U
 variable HBT-BAD-SRC-U
@@ -13,6 +14,7 @@ variable HBT-BAD-OUT-U
 
 create HBT-ROOT-BUF FS-PATH-CAP allot
 create HBT-TMP-BUF FS-PATH-CAP allot
+create HBT-NEW-TMP-BUF FS-PATH-CAP allot
 create HBT-OK-SRC-BUF FS-PATH-CAP allot
 create HBT-OK-OUT-BUF FS-PATH-CAP allot
 create HBT-BAD-SRC-BUF FS-PATH-CAP allot
@@ -35,6 +37,9 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 
 : HBT-TMP ( -- ptr u8 n )
    HBT-TMP-BUF HBT-TMP-U @ ;
+
+: HBT-NEW-TMP ( -- ptr u8 n )
+   HBT-NEW-TMP-BUF HBT-NEW-TMP-U @ ;
 
 : HBT-OK-SRC ( -- ptr u8 n )
    HBT-OK-SRC-BUF HBT-OK-SRC-U @ ;
@@ -71,6 +76,7 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBT-ROOT CLEANUP-TREE+
    HBT-ROOT s" hbtmp" HBT-TMP-BUF HBT-TMP-U HBT-PATH!
    HBT-TMP MAKE-DIR
+   HBT-ROOT s" hbtmp-new" HBT-NEW-TMP-BUF HBT-NEW-TMP-U HBT-PATH!
    HBT-ROOT s" ok.f" HBT-OK-SRC-BUF HBT-OK-SRC-U HBT-PATH!
    HBT-ROOT s" ok" HBT-OK-OUT-BUF HBT-OK-OUT-U HBT-PATH!
    HBT-ROOT s" bad.f" HBT-BAD-SRC-BUF HBT-BAD-SRC-U HBT-PATH!
@@ -78,10 +84,10 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBT-OK-SRC HBT-OK-SRC$ WRITE-ALL
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL ;
 
-: HBT-ARGV-BASE ( -- )
+: HBT-ARGV-BASE-TMP ( ptr u8 n -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   s" HB_TMP" HBT-TMP PROC-ENV+
+   s" HB_TMP" 2swap PROC-ENV+
    s" --load" PROC-ARGV+
    s" lib/errors.f" PROC-ARGV+
    s" lib/string.f" PROC-ARGV+
@@ -95,6 +101,9 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    s" tools/hb-build-lib.f" PROC-ARGV+
    s" tools/hb-build.f" PROC-ARGV+
    s" --" PROC-ARGV+ ;
+
+: HBT-ARGV-BASE ( -- )
+   HBT-TMP HBT-ARGV-BASE-TMP ;
 
 : HBT-RUN-HB-BUILD ( -- n n n )
    s" bin/hb" HBT-OUT HBT-CAPTURE-CAP HBT-ERR HBT-CAPTURE-CAP
@@ -126,6 +135,17 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    {: outu erru :}
    HBT-RUN-ERR erru HBT-EMPTY$ T$=
    HBT-RUN-OUT outu HBT-42$ T$= ;
+
+: HBT-BUILD-MISSING-TMP ( -- )
+   HBT-NEW-TMP EXISTS? TFALSE
+   HBT-NEW-TMP HBT-ARGV-BASE-TMP
+   HBT-ADD-OK
+   HBT-RUN-HB-BUILD 0 T=
+   {: outu erru :}
+   HBT-ERR erru HBT-EMPTY$ T$=
+   HBT-OUT outu s" hb-build OK: " CONTAINS? TTRUE
+   HBT-NEW-TMP DIR? TTRUE
+   HBT-OK-OUT FILE? TTRUE ;
 
 : HBT-Q ( -- )
    HBB-DQ SB-APPEND-C ;
@@ -174,6 +194,7 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBT-PREPARE
    HBT-BUILD-OK
    HBT-RUN-OK
+   HBT-BUILD-MISSING-TMP
    HBT-REJECT-BAD
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE

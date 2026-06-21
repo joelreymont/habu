@@ -149,8 +149,13 @@ points stay listed.
 - `bench/llm/drive-build-lib.f` — native stdlib build benchmark driver using Habu-generated source/build-script fixtures.
 - `bench/llm/drive-build.f` — CLI wrapper for the stdlib build benchmark driver.
 - `bench/llm/drive-build-test.f` — focused coverage for build check/artifact/step-status/run/missing-artifact fixtures.
+- `bench/llm/drive-aot-lib.f` — native stripped-AOT benchmark driver using `tools/hb-build.f`.
+- `bench/llm/drive-aot.f` — CLI wrapper for the stripped-AOT benchmark driver.
+- `bench/llm/drive-aot-test.f` — focused coverage for AOT positive build/run and unsupported-token rejection fixtures.
 - `bench/llm/negative-score.f` — checked scorer for negative benchmark expected codes/tokens/classes.
 - `bench/llm/negative-score-test.f` — focused coverage for negative-harness scoring outcomes.
+- `bench/llm/run-expanded-bench.f` — native expanded live benchmark runner and arm dispatcher.
+- `bench/llm/run-expanded-bench-test.f` — focused coverage for expanded-run AOT dispatch and report validation.
 - `bench/llm/expanded-report.f` — expanded live benchmark Markdown report with validator and latency sections.
 - `bench/llm/expanded-report-test.f` — focused coverage for expanded report perf-latency rendering.
 - `bench/llm/solutions.f` — reference benchmark solutions.

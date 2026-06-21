@@ -103,6 +103,11 @@ variable HBB-FOUND
 
 : HBB-ENV-TMP? ( -- bool )
    s" HB_TMP" GETENV dup 0= if 2drop HBB-FALSE exit then
+   2dup EXISTS? if
+      2dup DIR? 0= if s" hb-build: HB_TMP is not a directory" HBB-USAGE-RC die then
+   else
+      2dup MAKE-DIR
+   then
    BF-TMP!
    HBB-TRUE ;
 
