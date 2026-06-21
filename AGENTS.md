@@ -46,6 +46,13 @@ constants; and a `T{ … -> … }T` test for every word.
   capability must be tracked by dot and removed from the unchecked boundary when
   implemented.
 
+## Correct Fixes (BLOCKING)
+
+- No hacks, no patches, no workarounds. Always do the long-term correct fix:
+  root-cause the failure, repair the violated invariant or missing capability,
+  add/keep tests that prove the fix, and record any remaining substantive work
+  as detailed dots.
+
 ## Lessons
 
 - **Read `docs/forth.md` and `LESSONS.md` at the start of every session, and
