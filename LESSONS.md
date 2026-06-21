@@ -411,7 +411,8 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   long one-line gate updates should use patches so accidental broad rewrites,
   duplicate definitions, and rule violations stay reviewable.
 - **Use only documented dot commands:** `dot active` is not a status command and
-  can create a malformed dot. Use `dot ready`, `dot ls`, `dot tree`, `dot on
+  can create a malformed dot; subcommands such as `dot purge` do not support
+  `--help` and may mutate state. Use `dot ready`, `dot ls`, `dot tree`, `dot on
   <id>`, and `dot off <id> -r "..."`
 - **Same-typed string pairs need order tests:** the checker cannot distinguish a
   path `(ptr u8 n)` from stdin bytes `(ptr u8 n)`. When a helper takes multiple
