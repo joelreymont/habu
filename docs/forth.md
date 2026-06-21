@@ -66,6 +66,10 @@ not a matter of taste. Target is the native `bin/hb` engine.
   appends the source files before `--`, `SCRIPT-ARGV$` starts after it, and fd 0
   remains available as tool data even when stdin is non-tty. Shared behavior
   still lives in one owned source file.
+- **Keep physical source lines short.** Long `--load` builders and check source
+  appenders must be factored into helper words or split across lines. Do not let
+  load-list lines approach the interpreter input buffer; source truncation can
+  surface later as unrelated top-level words.
 - **Keep script argv explicit.** `hb tool.f arg...` preserves single-script
   compatibility and treats `arg...` as script arguments. Use `--load` only when
   the command line contains more than one source file.

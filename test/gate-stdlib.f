@@ -239,7 +239,15 @@ variable GS-RD
    s" llm model registry" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/codex-home-test.f" GS-ARG+
    s" llm codex home setup" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+ s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+ s" bench/llm/model-run-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+
+   s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+
+   s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+
+   s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+
+   s" lib/process-env.f" GS-ARG+ s" tools/json.f" GS-ARG+
+   s" tools/argv.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+
+   s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+
+   s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+
+   s" bench/llm/model-run-test.f" GS-ARG+
    s" llm model runner" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/manifest-audit.f" GS-ARG+ s" bench/llm/manifest-audit-test.f" GS-ARG+
    s" llm manifest audit" GS-HB-RUN
@@ -263,7 +271,20 @@ variable GS-RD
    s" llm large buffer bundle" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/diagnostic-stats.f" GS-ARG+ s" bench/llm/run-attempts-lib.f" GS-ARG+ s" bench/llm/run-attempts-test.f" GS-ARG+
    s" llm attempt runner helpers" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/time.f" GS-ARG+ s" lib/date.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" bench/llm/forth-task-lines-lib.f" GS-ARG+ s" bench/llm/attempt-solutions-lib.f" GS-ARG+ s" bench/llm/diagnostic-stats.f" GS-ARG+ s" bench/llm/run-attempts-lib.f" GS-ARG+ s" bench/llm/run-attempts.f" GS-ARG+ s" bench/llm/run-attempts-cli-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+
+   s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+
+   s" lib/json-write.f" GS-ARG+ s" tools/json.f" GS-ARG+
+   s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+
+   s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+
+   s" lib/process-env.f" GS-ARG+ s" lib/time.f" GS-ARG+
+   s" lib/date.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+
+   s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+
+   s" tools/argv.f" GS-ARG+ s" bench/llm/forth-task-lines-lib.f" GS-ARG+
+   s" bench/llm/attempt-solutions-lib.f" GS-ARG+
+   s" bench/llm/diagnostic-stats.f" GS-ARG+
+   s" bench/llm/run-attempts-lib.f" GS-ARG+
+   s" bench/llm/run-attempts.f" GS-ARG+
+   s" bench/llm/run-attempts-cli-test.f" GS-ARG+
    s" llm attempt runner CLI" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/live-row-test.f" GS-ARG+
    s" llm live row emitter" GS-HB-RUN
@@ -278,13 +299,59 @@ variable GS-RD
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/validate-results-test.f" GS-ARG+
    s" llm validator positive fixtures" GS-HB-RUN ;
 
+: GS-SRC-LLM-FORTH-BASE ( -- )
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+
+   s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+
+   s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+
+   s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+
+   s" lib/process-env.f" GS-SRC+ s" tools/argv.f" GS-SRC+
+   s" tools/json.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+
+   s" bench/llm/model.f" GS-SRC+ s" bench/llm/parse-resp-lib.f" GS-SRC+
+   s" bench/llm/codex-home.f" GS-SRC+ s" bench/llm/model-run.f" GS-SRC+ ;
+
+: GS-SRC-LLM-FORTH-ROW ( -- )
+   s" bench/llm/vectors.f" GS-SRC+ s" lib/json-write.f" GS-SRC+
+   s" src/core/sha256.f" GS-SRC+ s" bench/llm/live-row.f" GS-SRC+
+   s" bench/llm/drive-stdlib-lib.f" GS-SRC+
+   s" bench/llm/driver-test-helpers.f" GS-SRC+ ;
+
+: GS-SRC-LLM-FORTH-SCANNERS ( -- )
+   s" tools/lint/lib.f" GS-SRC+ s" tools/lint/source-lex.f" GS-SRC+
+   s" bench/llm/forth-task-lines-lib.f" GS-SRC+
+   s" bench/llm/attempt-solutions-lib.f" GS-SRC+
+   s" bench/llm/forth-candidate.f" GS-SRC+
+   s" bench/llm/forth-bundle.f" GS-SRC+
+   s" bench/llm/drive-forth-lib.f" GS-SRC+ ;
+
 : GS-CHECK-LLM-FORTH-DRIVER ( -- )
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" tools/argv.f" GS-SRC+ s" tools/json.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/model.f" GS-SRC+ s" bench/llm/parse-resp-lib.f" GS-SRC+ s" bench/llm/codex-home.f" GS-SRC+ s" bench/llm/model-run.f" GS-SRC+ s" bench/llm/vectors.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" src/core/sha256.f" GS-SRC+ s" bench/llm/live-row.f" GS-SRC+ s" bench/llm/drive-stdlib-lib.f" GS-SRC+ s" bench/llm/driver-test-helpers.f" GS-SRC+ s" tools/lint/lib.f" GS-SRC+ s" tools/lint/source-lex.f" GS-SRC+ s" bench/llm/forth-task-lines-lib.f" GS-SRC+ s" bench/llm/attempt-solutions-lib.f" GS-SRC+ s" bench/llm/forth-candidate.f" GS-SRC+ s" bench/llm/forth-bundle.f" GS-SRC+ s" bench/llm/drive-forth-lib.f" GS-SRC+ s" bench/llm/drive-forth-test.f" GS-SRC+
+   GS-SRC-LLM-FORTH-BASE
+   GS-SRC-LLM-FORTH-ROW
+   GS-SRC-LLM-FORTH-SCANNERS
+   s" bench/llm/drive-forth-test.f" GS-SRC+
    s" llm Forth live driver check" GS-CHECK-RUN ;
 
 : GS-RUN-LLM-FORTH-DRIVER ( -- )
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+ s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/drive-stdlib-lib.f" GS-ARG+ s" bench/llm/driver-test-helpers.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" bench/llm/forth-task-lines-lib.f" GS-ARG+ s" bench/llm/attempt-solutions-lib.f" GS-ARG+ s" bench/llm/forth-candidate.f" GS-ARG+ s" bench/llm/forth-bundle.f" GS-ARG+ s" bench/llm/drive-forth-lib.f" GS-ARG+ s" bench/llm/drive-forth-test.f" GS-ARG+
+   GS-HB
+   s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+
+   s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+
+   s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+
+   s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+
+   s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+
+   s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+
+   s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+
+   s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+
+   s" bench/llm/vectors.f" GS-ARG+ s" lib/json-write.f" GS-ARG+
+   s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+
+   s" bench/llm/drive-stdlib-lib.f" GS-ARG+
+   s" bench/llm/driver-test-helpers.f" GS-ARG+
+   s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+
+   s" bench/llm/forth-task-lines-lib.f" GS-ARG+
+   s" bench/llm/attempt-solutions-lib.f" GS-ARG+
+   s" bench/llm/forth-candidate.f" GS-ARG+
+   s" bench/llm/forth-bundle.f" GS-ARG+
+   s" bench/llm/drive-forth-lib.f" GS-ARG+
+   s" bench/llm/drive-forth-test.f" GS-ARG+
    s" llm Forth live driver" GS-HB-RUN ;
 
 : GS-CHECK-LLM-FIXTURES ( -- )
@@ -328,7 +395,21 @@ variable GS-RD
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/diagnostic-json-check-stub.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/diagnostic-stats.f" GS-SRC+ s" bench/llm/run-attempts-lib.f" GS-SRC+ s" bench/llm/run-attempts-check-test.f" GS-SRC+
    s" llm attempt runner helper check" GS-CHECK-RUN
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/diagnostic-json-check-stub.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" lib/time.f" GS-SRC+ s" lib/date.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" tools/lint/lib.f" GS-SRC+ s" tools/lint/source-lex.f" GS-SRC+ s" tools/argv.f" GS-SRC+ s" bench/llm/forth-task-lines-lib.f" GS-SRC+ s" bench/llm/attempt-solutions-lib.f" GS-SRC+ s" bench/llm/diagnostic-stats.f" GS-SRC+ s" bench/llm/run-attempts-lib.f" GS-SRC+ s" bench/llm/run-attempts.f" GS-SRC+ s" bench/llm/run-attempts-cli-check-test.f" GS-SRC+
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+
+   s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+
+   s" lib/json-write.f" GS-SRC+
+   s" bench/llm/diagnostic-json-check-stub.f" GS-SRC+
+   s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+
+   s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+
+   s" lib/process-env.f" GS-SRC+ s" lib/time.f" GS-SRC+
+   s" lib/date.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+
+   s" tools/lint/lib.f" GS-SRC+ s" tools/lint/source-lex.f" GS-SRC+
+   s" tools/argv.f" GS-SRC+ s" bench/llm/forth-task-lines-lib.f" GS-SRC+
+   s" bench/llm/attempt-solutions-lib.f" GS-SRC+
+   s" bench/llm/diagnostic-stats.f" GS-SRC+
+   s" bench/llm/run-attempts-lib.f" GS-SRC+
+   s" bench/llm/run-attempts.f" GS-SRC+
+   s" bench/llm/run-attempts-cli-check-test.f" GS-SRC+
    s" llm attempt runner CLI check" GS-CHECK-RUN
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" src/core/sha256.f" GS-SRC+ s" bench/llm/live-row.f" GS-SRC+ s" bench/llm/live-row-test.f" GS-SRC+
@@ -347,23 +428,76 @@ variable GS-RD
    s" llm native grader check" GS-CHECK-RUN
    GS-CHECK-LLM-FORTH-DRIVER ;
 
+: GS-ARG-LLM-DRIVER-BASE ( -- )
+   GS-HB
+   s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+
+   s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+
+   s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+
+   s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+
+   s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+
+   s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+
+   s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+
+   s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+
+   s" bench/llm/vectors.f" GS-ARG+ s" lib/json-write.f" GS-ARG+
+   s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+
+   s" bench/llm/drive-stdlib-lib.f" GS-ARG+ ;
+
+: GS-ARG-DRIVER-TEST ( -- )
+   s" bench/llm/driver-test-helpers.f" GS-ARG+ ;
+
+: GS-ARG-DRIVER-FIXTURE ( -- )
+   s" bench/llm/driver-fixture-helpers.f" GS-ARG+ ;
+
+: GS-ARG-DRIVER-TOKEN ( -- )
+   s" bench/llm/driver-token-helpers.f" GS-ARG+ ;
+
 : GS-RUN-LLM-DRIVERS ( -- )
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+ s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/drive-stdlib-lib.f" GS-ARG+ s" bench/llm/driver-test-helpers.f" GS-ARG+ s" bench/llm/drive-stdlib-test.f" GS-ARG+
+   GS-ARG-LLM-DRIVER-BASE
+   GS-ARG-DRIVER-TEST
+   s" bench/llm/drive-stdlib-test.f" GS-ARG+
    s" llm stdlib stack driver" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+ s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/drive-stdlib-lib.f" GS-ARG+ s" bench/llm/driver-test-helpers.f" GS-ARG+ s" bench/llm/drive-regex-negative-lib.f" GS-ARG+ s" bench/llm/drive-regex-negative-test.f" GS-ARG+
+   GS-ARG-LLM-DRIVER-BASE
+   GS-ARG-DRIVER-TEST
+   s" bench/llm/drive-regex-negative-lib.f" GS-ARG+
+   s" bench/llm/drive-regex-negative-test.f" GS-ARG+
    s" llm stdlib regex negative driver" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+ s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/drive-stdlib-lib.f" GS-ARG+ s" bench/llm/driver-test-helpers.f" GS-ARG+ s" bench/llm/driver-fixture-helpers.f" GS-ARG+ s" bench/llm/drive-file-lib.f" GS-ARG+ s" bench/llm/drive-file-test.f" GS-ARG+
+   GS-ARG-LLM-DRIVER-BASE
+   GS-ARG-DRIVER-TEST
+   GS-ARG-DRIVER-FIXTURE
+   s" bench/llm/drive-file-lib.f" GS-ARG+
+   s" bench/llm/drive-file-test.f" GS-ARG+
    s" llm stdlib file driver" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+ s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/drive-stdlib-lib.f" GS-ARG+ s" bench/llm/driver-test-helpers.f" GS-ARG+ s" bench/llm/driver-fixture-helpers.f" GS-ARG+ s" bench/llm/drive-process-lib.f" GS-ARG+ s" bench/llm/drive-process-test.f" GS-ARG+
+   GS-ARG-LLM-DRIVER-BASE
+   GS-ARG-DRIVER-TEST
+   GS-ARG-DRIVER-FIXTURE
+   s" bench/llm/drive-process-lib.f" GS-ARG+
+   s" bench/llm/drive-process-test.f" GS-ARG+
    s" llm stdlib process driver" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+ s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/drive-stdlib-lib.f" GS-ARG+ s" bench/llm/driver-test-helpers.f" GS-ARG+ s" bench/llm/driver-token-helpers.f" GS-ARG+ s" bench/llm/driver-fixture-helpers.f" GS-ARG+ s" bench/llm/drive-property-lib.f" GS-ARG+ s" bench/llm/drive-property-test.f" GS-ARG+
+   GS-ARG-LLM-DRIVER-BASE
+   GS-ARG-DRIVER-TEST
+   GS-ARG-DRIVER-TOKEN
+   GS-ARG-DRIVER-FIXTURE
+   s" bench/llm/drive-property-lib.f" GS-ARG+
+   s" bench/llm/drive-property-test.f" GS-ARG+
    s" llm stdlib property driver" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+ s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/drive-stdlib-lib.f" GS-ARG+ s" bench/llm/driver-test-helpers.f" GS-ARG+ s" bench/llm/driver-token-helpers.f" GS-ARG+ s" bench/llm/driver-fixture-helpers.f" GS-ARG+ s" bench/llm/drive-build-lib.f" GS-ARG+ s" bench/llm/drive-build-test.f" GS-ARG+
+   GS-ARG-LLM-DRIVER-BASE
+   GS-ARG-DRIVER-TEST
+   GS-ARG-DRIVER-TOKEN
+   GS-ARG-DRIVER-FIXTURE
+   s" bench/llm/drive-build-lib.f" GS-ARG+
+   s" bench/llm/drive-build-test.f" GS-ARG+
    s" llm stdlib build driver" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+ s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/drive-stdlib-lib.f" GS-ARG+ s" bench/llm/driver-test-helpers.f" GS-ARG+ s" bench/llm/driver-token-helpers.f" GS-ARG+ s" bench/llm/drive-aot-lib.f" GS-ARG+ s" bench/llm/drive-aot-test.f" GS-ARG+
+   GS-ARG-LLM-DRIVER-BASE
+   GS-ARG-DRIVER-TEST
+   GS-ARG-DRIVER-TOKEN
+   s" bench/llm/drive-aot-lib.f" GS-ARG+
+   s" bench/llm/drive-aot-test.f" GS-ARG+
    s" llm AOT driver" GS-HB-RUN
    GS-RUN-LLM-FORTH-DRIVER
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/model.f" GS-ARG+ s" bench/llm/parse-resp-lib.f" GS-ARG+ s" bench/llm/codex-home.f" GS-ARG+ s" bench/llm/model-run.f" GS-ARG+ s" bench/llm/vectors.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/drive-stdlib-lib.f" GS-ARG+ s" bench/llm/driver-token-helpers.f" GS-ARG+ s" bench/llm/drive-array-habu-lib.f" GS-ARG+ s" bench/llm/drive-array-habu-test.f" GS-ARG+
+   GS-ARG-LLM-DRIVER-BASE
+   GS-ARG-DRIVER-TOKEN
+   s" bench/llm/drive-array-habu-lib.f" GS-ARG+
+   s" bench/llm/drive-array-habu-test.f" GS-ARG+
    s" llm Habu array driver" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/source.f" GS-ARG+ s" lib/build.f" GS-ARG+ s" tools/build-fixpoint.f" GS-ARG+ s" tools/hb-build-lib.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/drive-array-habu-repair-test.f" GS-ARG+
    s" llm Habu array repair driver" GS-HB-RUN

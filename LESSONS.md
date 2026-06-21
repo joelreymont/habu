@@ -96,6 +96,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   stdin for tool data, so piping a post-load probe to fd 0 does not execute it.
   Put the probe in an explicit loaded source file when measuring `here`/metadata
   after a bundle.
+- **Gate load lists need factoring, not long physical lines:** definitions-only
+  loading of `test/gate-stdlib.f` exposed `GS-ARG+` at top level when repeated
+  LLM driver load lists approached the reader buffer. Factor shared load groups
+  into helper words and keep source lines short.
 - **Stdin fixture newlines need explicit bytes:** Habu `s" ...\n"` keeps the
   backslash and `n` bytes. Process smoke tests that need a newline should use a
   byte buffer with `10 c,` or append `STR-LF`, otherwise the child may parse a
