@@ -38,11 +38,12 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 
 ## Checker Soundness
 
-- **Checker RCA starts with fail-closed proof:** for any “why didn’t the checker
-  catch this?” failure, first prove the exact source path was under a fatal
-  `CHECK!` hook with a minimal bad definition on the same command path. If not,
-  fix the harness/tooling gap before runtime repair; if yes, reduce the checker
-  miss, fix the checker/compiler, and add a negative regression.
+- **Checker RCA starts with the missing invariant:** for any “why didn’t the
+  checker catch this?” failure, first name the static invariant that should have
+  rejected the program and where it belongs. Then prove the exact source path was
+  under a fatal `CHECK!` hook with a minimal bad definition on the same command
+  path. If not, fix the harness/tooling gap before runtime repair; if yes, reduce
+  the checker miss, fix the checker/compiler, and add a negative regression.
 - **Checker misses need class labels:** after fail-closed proof, classify the
   miss as wrong boundary effect, checker semantics, codegen/runtime mismatch, or
   same-type semantic-role gap before editing downstream runtime code.
