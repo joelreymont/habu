@@ -1,4 +1,4 @@
-\ validate-results-test.f - checked positive fixtures for validate-results.f.
+\ validate-results-test.f - checked fixtures for validate-results.f.
 \
 \ Load after lib/errors.f, lib/string.f, lib/test.f, lib/fs.f,
 \ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
@@ -15,6 +15,11 @@ $10000 constant VRT-TASK-CAP
 1 constant VRT-MODE-REFERENCE
 2 constant VRT-MODE-LIVE
 
+0 constant VRT-ROW-NORMAL
+1 constant VRT-ROW-MISSING-META
+2 constant VRT-ROW-MISSING-RAW-HASH
+3 constant VRT-ROW-BAD-FINAL-HASH
+
 create VRT-ROOT FS-PATH-CAP allot
 create VRT-TASKS FS-PATH-CAP allot
 create VRT-RESULT-DIR FS-PATH-CAP allot
@@ -24,6 +29,7 @@ create VRT-LIVE FS-PATH-CAP allot
 create VRT-OUT VRT-CAP allot
 create VRT-ERR VRT-CAP allot
 create VRT-TASK-BUF VRT-TASK-CAP allot
+create VRT-TAB-BUF 1 allot
 create VRT-LF-BUF 1 allot
 create VRT-EMPTY 1 allot
 
@@ -44,7 +50,9 @@ variable VRT-FORTH
 variable VRT-ARITH
 variable VRT-ARRAYS
 variable VRT-K
+variable VRT-ROW-MODE
 
+BM-TAB VRT-TAB-BUF c!
 VRT-LF VRT-LF-BUF c!
 
 : VRT-TRUE ( -- bool )
@@ -61,6 +69,9 @@ VRT-LF VRT-LF-BUF c!
 
 : VRT-OUTCOME$ ( bool -- ptr u8 n )
    if s" pass" else s" fail" then ;
+
+: VRT-ROW-NORMAL! ( -- )
+   VRT-ROW-NORMAL VRT-ROW-MODE ! ;
 
 : VRT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
@@ -104,6 +115,15 @@ VRT-LF VRT-LF-BUF c!
 
 : VRT-APPEND-ROW ( -- )
    VRT-DEST$ JW$ APPEND-FILE
+   VRT-DEST$ VRT-LF-BUF 1 APPEND-FILE ;
+
+: VRT-APPEND-RAW ( ptr u8 n -- )
+   VRT-DEST$ 2swap APPEND-FILE ;
+
+: VRT-APPEND-TAB ( -- )
+   VRT-DEST$ VRT-TAB-BUF 1 APPEND-FILE ;
+
+: VRT-APPEND-LF ( -- )
    VRT-DEST$ VRT-LF-BUF 1 APPEND-FILE ;
 
 : VRT-FIELD-S ( ptr u8 n ptr u8 n -- )
@@ -249,12 +269,18 @@ VRT-LF VRT-LF-BUF c!
    s" attempt" 1 VRT-FIELD-U
    task ;
 
-: VRT-REFERENCE-ROW ( ptr u8 n -- ) {: line:ptr lineu :}
-   line lineu s" reference-2026-06-18" s" reference" VRT-V1-HEAD {: task :}
+: VRT-REFERENCE-RUN-ROW ( ptr u8 n ptr u8 n -- ) {: line:ptr lineu run:ptr runu :}
+   line lineu run runu s" reference" VRT-V1-HEAD {: task :}
    VRT-V1-PASS-FIELDS
    task VRT-FALSE VRT-V1-TRAILER
    JW-OBJECT-END
    VRT-APPEND-ROW ;
+
+: VRT-REFERENCE-ROW ( ptr u8 n -- ) {: line:ptr lineu :}
+   line lineu s" reference-2026-06-18" VRT-REFERENCE-RUN-ROW ;
+
+: VRT-REFERENCE-BAD-DATE-ROW ( ptr u8 n -- ) {: line:ptr lineu :}
+   line lineu s" reference-2026-02-29" VRT-REFERENCE-RUN-ROW ;
 
 : VRT-ATTEMPT-ROW ( ptr u8 n -- ) {: line:ptr lineu :}
    line lineu s" attempt-fixture" s" toy-model" VRT-V1-HEAD {: task :}
@@ -273,9 +299,11 @@ VRT-LF VRT-LF-BUF c!
    s" model_id" modelid modelidu VRT-FIELD-S
    s" arm" arm armu VRT-FIELD-S
    s" trial_id" run runu modelid modelidu arm armu line lineu trial VRT-TRIAL-ID$ VRT-FIELD-S
-   s" task_family" line lineu VRT-TASK-CAT$ VRT-FIELD-S
-   s" model_version" s" unknown" VRT-FIELD-S
-   s" model_date" s" unknown" VRT-FIELD-S
+   VRT-ROW-MODE @ VRT-ROW-MISSING-META <> if
+      s" task_family" line lineu VRT-TASK-CAT$ VRT-FIELD-S
+      s" model_version" s" unknown" VRT-FIELD-S
+      s" model_date" s" unknown" VRT-FIELD-S
+   then
    s" trial" trial VRT-FIELD-U
    s" task_order" task VRT-FIELD-U
    s" k_trials" k VRT-FIELD-U
@@ -300,7 +328,9 @@ VRT-LF VRT-LF-BUF c!
    s" rounds" 1 VRT-FIELD-U
    s" first_pass" pass VRT-FIELD-BOOL
    s" tokens" 0 VRT-FIELD-U
-   s" source_chars" 1 VRT-FIELD-U
+   VRT-ROW-MODE @ VRT-ROW-MISSING-META <> if
+      s" source_chars" 1 VRT-FIELD-U
+   then
    s" runtime_ms" VRT-FIELD-NULL
    s" runtime_repetitions" 100 VRT-FIELD-U
    s" runtime_warmups" 10 VRT-FIELD-U
@@ -308,7 +338,9 @@ VRT-LF VRT-LF-BUF c!
    s" prompt" s" prompt" VRT-FIELD-S
    s" prompt_sha256" VRT-HASH$ VRT-FIELD-S
    s" raw_response" s" raw" VRT-FIELD-S
-   s" raw_response_sha256" VRT-HASH$ VRT-FIELD-S
+   VRT-ROW-MODE @ VRT-ROW-MISSING-RAW-HASH <> if
+      s" raw_response_sha256" VRT-HASH$ VRT-FIELD-S
+   then
    s" extracted_candidate" s" candidate" VRT-FIELD-S
    s" extracted_candidate_sha256" VRT-HASH$ VRT-FIELD-S
    s" checker_diagnostics" s" " VRT-FIELD-S
@@ -318,7 +350,9 @@ VRT-LF VRT-LF-BUF c!
    s" test_output" s" ok" VRT-FIELD-S
    s" test_output_sha256" VRT-HASH$ VRT-FIELD-S
    s" final_bundle" s" bundle" VRT-FIELD-S
-   s" final_bundle_sha256" VRT-HASH$ VRT-FIELD-S
+   s" final_bundle_sha256"
+   VRT-ROW-MODE @ VRT-ROW-BAD-FINAL-HASH = if s" not-a-sha" else VRT-HASH$ then
+   VRT-FIELD-S
    JW-OBJECT-END
    VRT-APPEND-ROW ;
 
@@ -360,6 +394,37 @@ VRT-LF VRT-LF-BUF c!
    VRT-REF$ VRT-CLEAR-DEST
    VRT-MODE-REFERENCE VRT-EACH-TASK ;
 
+: VRT-WRITE-REFERENCE-BAD-DATE ( -- )
+   VRT-REF$ VRT-CLEAR-DEST
+   VRT-TASKS$ VRT-TASK-BUF VRT-TASK-CAP READ-ALL VRT-TASK-U !
+   0 VRT-NEXT !
+   0 VRT-LINE-N !
+   begin VRT-TASK-BUF VRT-TASK-U @ VRT-NEXT @ BM-LINE-NEXT while
+      VRT-NEXT !
+      VRT-LINE-N @ 0 > if
+         2dup BM-BLANK-OR-COMMENT? 0= if
+            2dup VRT-TASK-FORTH? if 2dup VRT-REFERENCE-BAD-DATE-ROW then
+         then
+      then
+      2drop
+      VRT-LINE-N @ 1+ VRT-LINE-N !
+   repeat drop 2drop ;
+
+: VRT-APPEND-FIRST-REFERENCE ( -- )
+   VRT-TASKS$ VRT-TASK-BUF VRT-TASK-CAP READ-ALL VRT-TASK-U !
+   0 VRT-NEXT !
+   0 VRT-LINE-N !
+   begin VRT-TASK-BUF VRT-TASK-U @ VRT-NEXT @ BM-LINE-NEXT while
+      VRT-NEXT !
+      VRT-LINE-N @ 0 > if
+         2dup BM-BLANK-OR-COMMENT? 0= if
+            2dup VRT-TASK-FORTH? if 2dup VRT-REFERENCE-ROW 2drop exit then
+         then
+      then
+      2drop
+      VRT-LINE-N @ 1+ VRT-LINE-N !
+   repeat drop 2drop ;
+
 : VRT-WRITE-ATTEMPT ( -- )
    VRT-ATTEMPT$ VRT-CLEAR-DEST
    VRT-TASKS$ VRT-TASK-BUF VRT-TASK-CAP READ-ALL VRT-TASK-U !
@@ -377,12 +442,14 @@ VRT-LF VRT-LF-BUF c!
    repeat drop 2drop ;
 
 : VRT-WRITE-LIVE ( n -- ) {: k :}
+   VRT-ROW-NORMAL!
    k VRT-K !
    VRT-LIVE$ VRT-CLEAR-DEST
    VRT-MODE-LIVE VRT-EACH-TASK ;
 
 : VRT-WRITE-SINGLE-V2 ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool -- )
    {: run:ptr runu modelid:ptr modelidu model:ptr modelu arm:ptr armu pass :}
+   VRT-ROW-NORMAL!
    VRT-TASKS$ VRT-TASK-BUF VRT-TASK-CAP READ-ALL VRT-TASK-U !
    0 VRT-NEXT !
    begin VRT-TASK-BUF VRT-TASK-U @ VRT-NEXT @ BM-LINE-NEXT while
@@ -398,6 +465,54 @@ VRT-LF VRT-LF-BUF c!
       2drop
    repeat drop 2drop ;
 
+: VRT-APPEND-FIRST-V2 ( n n n -- ) {: trial k mode :}
+   mode VRT-ROW-MODE !
+   VRT-TASKS$ VRT-TASK-BUF VRT-TASK-CAP READ-ALL VRT-TASK-U !
+   0 VRT-NEXT !
+   begin VRT-TASK-BUF VRT-TASK-U @ VRT-NEXT @ BM-LINE-NEXT while
+      VRT-NEXT !
+      2dup BM-TASK-HEADER? 0= if
+         2dup BM-BLANK-OR-COMMENT? 0= if
+            2dup VRT-TASK-ID 1 = if
+               2dup trial k s" live-fixture-2026-06-18" s" toy-model" s" toy-model" s" forth" s" live-fixture" VRT-TRUE VRT-V2-ROW
+               VRT-ROW-NORMAL!
+               2drop exit
+            then
+         then
+      then
+      2drop
+   repeat drop 2drop
+   VRT-ROW-NORMAL! ;
+
+: VRT-CLEAR-LIVE ( -- )
+   VRT-LIVE$ VRT-CLEAR-DEST ;
+
+: VRT-WRITE-MISSING-K ( -- )
+   VRT-CLEAR-LIVE
+   2 2 VRT-ROW-NORMAL VRT-APPEND-FIRST-V2 ;
+
+: VRT-WRITE-EXTRA-K ( -- )
+   VRT-CLEAR-LIVE
+   1 1 VRT-ROW-NORMAL VRT-APPEND-FIRST-V2
+   2 1 VRT-ROW-NORMAL VRT-APPEND-FIRST-V2 ;
+
+: VRT-WRITE-MISSING-META ( -- )
+   VRT-CLEAR-LIVE
+   1 1 VRT-ROW-MISSING-META VRT-APPEND-FIRST-V2 ;
+
+: VRT-WRITE-DUP-V2 ( -- )
+   VRT-CLEAR-LIVE
+   1 1 VRT-ROW-NORMAL VRT-APPEND-FIRST-V2
+   1 1 VRT-ROW-NORMAL VRT-APPEND-FIRST-V2 ;
+
+: VRT-WRITE-MISSING-RAW-HASH ( -- )
+   VRT-CLEAR-LIVE
+   1 1 VRT-ROW-MISSING-RAW-HASH VRT-APPEND-FIRST-V2 ;
+
+: VRT-WRITE-BAD-FINAL-HASH ( -- )
+   VRT-CLEAR-LIVE
+   1 1 VRT-ROW-BAD-FINAL-HASH VRT-APPEND-FIRST-V2 ;
+
 : VRT-WRITE-ARMS ( -- )
    VRT-LIVE$ VRT-CLEAR-DEST
    s" arm-fixture-2026-06-18" s" toy-model" s" toy-model" s" habu-forth" VRT-TRUE VRT-WRITE-SINGLE-V2
@@ -410,6 +525,7 @@ VRT-LF VRT-LF-BUF c!
    s" multi-model-fixture-2026-06-18" s" beta" s" Beta" s" forth" VRT-TRUE VRT-WRITE-SINGLE-V2 ;
 
 : VRT-WRITE-CONFIDENCE ( -- )
+   VRT-ROW-NORMAL!
    VRT-LIVE$ VRT-CLEAR-DEST
    VRT-TASKS$ VRT-TASK-BUF VRT-TASK-CAP READ-ALL VRT-TASK-U !
    0 VRT-NEXT !
@@ -427,6 +543,51 @@ VRT-LF VRT-LF-BUF c!
       2drop
    repeat drop 2drop ;
 
+: VRT-TASK-FIELD+ ( ptr u8 n n -- ) {: line:ptr lineu idx :}
+   line lineu idx BM-TASK-FIELD$ VRT-APPEND-RAW ;
+
+: VRT-TASK-FIELD-TAB+ ( ptr u8 n n -- ) {: line:ptr lineu idx :}
+   line lineu idx VRT-TASK-FIELD+
+   VRT-APPEND-TAB ;
+
+: VRT-TASK-BAD-CAT+ ( ptr u8 n -- ) {: line:ptr lineu :}
+   line lineu VRT-TASK-CAT$ s" aot-safe" STR= if
+      s" parsing" VRT-APPEND-RAW
+   else
+      line lineu VRT-TASK-CAT$ VRT-APPEND-RAW
+   then ;
+
+: VRT-BAD-CAT-TASK-ROW ( ptr u8 n -- ) {: line:ptr lineu :}
+   line lineu BM-T-ID VRT-TASK-FIELD-TAB+
+   line lineu BM-T-NAME VRT-TASK-FIELD-TAB+
+   line lineu BM-T-SIGNATURE VRT-TASK-FIELD-TAB+
+   line lineu VRT-TASK-BAD-CAT+ VRT-APPEND-TAB
+   line lineu BM-T-TESTS VRT-TASK-FIELD-TAB+
+   line lineu BM-T-HARNESS VRT-TASK-FIELD-TAB+
+   line lineu BM-T-CONV VRT-TASK-FIELD-TAB+
+   line lineu BM-T-SPEC VRT-TASK-FIELD-TAB+
+   line lineu BM-T-VECTORS VRT-TASK-FIELD-TAB+
+   line lineu BM-T-TAGS VRT-TASK-FIELD-TAB+
+   line lineu BM-T-JS-SIGNATURE VRT-TASK-FIELD-TAB+
+   line lineu BM-T-RUST-SIGNATURE VRT-TASK-FIELD+
+   VRT-APPEND-LF ;
+
+: VRT-WRITE-TASKS-MISSING-CAT ( -- )
+   VRT-TASKS$ VRT-CLEAR-DEST
+   BM-TASK-HEADER$ VRT-APPEND-RAW
+   VRT-APPEND-LF
+   s" bench/llm/tasks.tsv" VRT-TASK-BUF VRT-TASK-CAP READ-ALL VRT-TASK-U !
+   0 VRT-NEXT !
+   0 VRT-LINE-N !
+   begin VRT-TASK-BUF VRT-TASK-U @ VRT-NEXT @ BM-LINE-NEXT while
+      VRT-NEXT !
+      VRT-LINE-N @ 0 > if
+         2dup BM-BLANK-OR-COMMENT? 0= if 2dup VRT-BAD-CAT-TASK-ROW then
+      then
+      2drop
+      VRT-LINE-N @ 1+ VRT-LINE-N !
+   repeat drop 2drop ;
+
 : VRT-COPY-TASKS ( -- )
    s" bench/llm/tasks.tsv" VRT-TASKS$ COPY-FILE-STREAM ;
 
@@ -438,7 +599,7 @@ VRT-LF VRT-LF-BUF c!
    s" tools/argv.f" PROC-ARGV+
    s" bench/llm/validate-results.f" PROC-ARGV+ ;
 
-: VRT-RUN-VALIDATE ( ptr u8 n bool -- ) {: path:ptr pathu json :}
+: VRT-CAPTURE-VALIDATE ( ptr u8 n bool -- n n n ) {: path:ptr pathu json :}
    PROC-ARGV-ENV-RESET
    s" BENCH_TASKS" VRT-TASKS$ PROC-ENV+
    s" BENCH_REFERENCE_RESULTS" VRT-REF$ PROC-ENV+
@@ -447,14 +608,26 @@ VRT-LF VRT-LF-BUF c!
    s" --" PROC-ARGV+
    json if s" --json" PROC-ARGV+ then
    pathu 0 > if path pathu PROC-ARGV+ then
-   s" bin/hb" VRT-OUT VRT-CAP VRT-ERR VRT-CAP VRT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE
-   {: outu erru rc :}
+   s" bin/hb" VRT-OUT VRT-CAP VRT-ERR VRT-CAP VRT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE ;
+
+: VRT-RUN-VALIDATE ( ptr u8 n bool -- ) {: path:ptr pathu json :}
+   path pathu json VRT-CAPTURE-VALIDATE {: outu erru rc :}
+   outu VRT-OUT-U !
    rc 0 T=
-   erru 0 T=
-   outu VRT-OUT-U ! ;
+   erru 0 T= ;
+
+: VRT-RUN-VALIDATE-FAIL ( ptr u8 n bool -- ) {: path:ptr pathu json :}
+   path pathu json VRT-CAPTURE-VALIDATE {: outu erru rc :}
+   outu VRT-OUT-U !
+   rc 0 T<>
+   erru 0 T= ;
 
 : VRT-OUT-CONTAINS ( ptr u8 n -- )
    VRT-OUT VRT-OUT-U @ 2swap CONTAINS? TTRUE ;
+
+: VRT-EXPECT-FAIL ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu needle:ptr needleu :}
+   path pathu VRT-FALSE VRT-RUN-VALIDATE-FAIL
+   needle needleu VRT-OUT-CONTAINS ;
 
 : VRT-REF-SUMMARY$ ( -- ptr u8 n )
    SB-RESET
@@ -610,6 +783,29 @@ VRT-LF VRT-LF-BUF c!
    s" trial_pass_bp" VRT-OUT-CONTAINS
    s" 5000" VRT-OUT-CONTAINS ;
 
+: VRT-TEST-REJECTIONS ( -- )
+   2 VRT-WRITE-LIVE
+   VRT-WRITE-MISSING-K
+   VRT-LIVE$ s" k_trials coverage mismatch task=1 model=toy-model arm=forth rows=1 k_trials=2" VRT-EXPECT-FAIL
+   VRT-WRITE-EXTRA-K
+   VRT-LIVE$ s" k_trials coverage mismatch task=1 model=toy-model arm=forth rows=2 k_trials=1" VRT-EXPECT-FAIL
+   VRT-WRITE-MISSING-META
+   VRT-LIVE$ s" missing fields task_family" VRT-EXPECT-FAIL
+   VRT-WRITE-DUP-V2
+   VRT-LIVE$ s" duplicate result identity" VRT-EXPECT-FAIL
+   VRT-WRITE-MISSING-RAW-HASH
+   VRT-LIVE$ s" missing fields raw_response_sha256" VRT-EXPECT-FAIL
+   VRT-WRITE-BAD-FINAL-HASH
+   VRT-LIVE$ s" invalid sha256 hash" VRT-EXPECT-FAIL
+   VRT-WRITE-REFERENCE
+   VRT-APPEND-FIRST-REFERENCE
+   VRT-EMPTY$ s" duplicate task_id" VRT-EXPECT-FAIL
+   VRT-WRITE-REFERENCE-BAD-DATE
+   VRT-EMPTY$ s" invalid run_id date" VRT-EXPECT-FAIL
+   VRT-WRITE-REFERENCE
+   VRT-WRITE-TASKS-MISSING-CAT
+   VRT-EMPTY$ s" missing required benchmark category aot-safe" VRT-EXPECT-FAIL ;
+
 : VRT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-validate-results-test" TMPDIR-MKDIR VRT-ROOT VRT-ROOT-U VRT-COPY!
@@ -633,6 +829,7 @@ VRT-LF VRT-LF-BUF c!
    VRT-TEST-ARMS
    VRT-TEST-MODELS
    VRT-TEST-CONFIDENCE
+   VRT-TEST-REJECTIONS
    CLEANUP-RUN
    T-REPORT
    s" validate-results-test: ok" type cr ;
