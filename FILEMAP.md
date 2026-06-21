@@ -103,6 +103,8 @@ points stay listed.
 - `tools/date-test.f` — focused coverage for shared date helpers.
 - `lib/process-env.f` — checked child envp builder and PATH lookup helpers.
 - `lib/process-env-test.f` — focused coverage for child envp and executable lookup.
+- `lib/process-cwd.f` — checked child cwd process helpers layered on prepared argv/envp.
+- `lib/process-cwd-test.f` — focused coverage for child cwd spawn, capture, cleanup, and validation.
 - `lib/source.f` — checked source materialization and source-list transforms.
 - `lib/source-test.f` — focused coverage for source materialization helpers.
 - `test/process-env-child.f` — child fixture used by process-env tests.

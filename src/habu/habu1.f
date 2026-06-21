@@ -269,18 +269,50 @@ variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
    9 G-PUSH
    SP SP 16 ADDI, ;
 
+1040 constant SPAWN-ACTION-SIZE
+3584 constant SPAWN-FRAME3
+2048 constant SPAWN-FRAME4-A
+2048 constant SPAWN-FRAME4-B
+256 constant SPAWN-FRAME4-C
+176 constant SPAWN-ACTIONS-OFF
+4 constant SPAWN-FA-COUNT-OFF
+8 constant SPAWN-FA-ACTS-OFF
+2 constant PSFA-DUP2
+5 constant PSFA-CHDIR
+8 constant SPAWN-CHDIR-PATH-OFF
+48 constant SPAWN-ADESC-OFF
+64 constant SPAWN-ADESC-FA-SIZE-OFF
+72 constant SPAWN-ADESC-FA-PTR-OFF
+
 \ Emit one PSFA_DUP2 record into the runtime file-actions blob at x13.
 : SPAWN-DUP2-ACTION {: fdreg newfd :}
    LBL {: skip :}
    fdreg 0 CMPI,  C-LT skip BCOND,
-   14 13 4 LDRW,  15 1040 MOVZ,  14 14 15 MUL,
-   14 14 8 ADDI,  14 14 13 ADD,
-   15 2 MOVZ,  15 14 0 STRW,
+   14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,
+   14 14 SPAWN-FA-ACTS-OFF ADDI,  14 14 13 ADD,
+   15 PSFA-DUP2 MOVZ,  15 14 0 STRW,
    fdreg 14 4 STRW,
    15 newfd MOVZ,  15 14 8 STRW,
-   14 13 4 LDRW,  14 14 1 ADDI,  14 13 4 STRW,
+   14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW,
    skip LBL, ;
 s" spawn-dup2-action" s" n n --" TRUST
+
+\ Emit one PSFA_CHDIR record into the runtime file-actions blob at x13.
+: SPAWN-CHDIR-ACTION {: cwdreg :}
+   LBL {: copy :}
+   14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,
+   14 14 SPAWN-FA-ACTS-OFF ADDI,  14 14 13 ADD,
+   15 PSFA-CHDIR MOVZ,  15 14 0 STRW,
+   16 cwdreg 0 ADDI,
+   17 14 SPAWN-CHDIR-PATH-OFF ADDI,
+   copy LBL,
+      15 16 0 LDRB,
+      15 17 0 STRB,
+      16 16 1 ADDI,
+      17 17 1 ADDI,
+      15 copy CBNZ,
+   14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW, ;
+s" spawn-chdir-action" s" n --" TRUST
 
 : BSPAWNIO                            \ ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )
    12 G-POP  11 G-POP  10 G-POP  9 G-POP
@@ -390,6 +422,42 @@ s" spawn-dup2-action" s" n n --" TRUST
    spdn LBL,
    9 G-PUSH
    SP SP 3584 ADDI, ;
+
+: BSPAWNARGVENVCWDIO                  \ ( pathz argvp envp cwdz stdinfd stdoutfd stderrfd -- pid|-1 )
+   12 G-POP  11 G-POP  10 G-POP  6 G-POP  7 G-POP  9 G-POP  8 G-POP
+   LBL LBL {: spok spdn :}
+   SP SP SPAWN-FRAME4-A SUBI,
+   SP SP SPAWN-FRAME4-B SUBI,
+   SP SP SPAWN-FRAME4-C SUBI,
+   13 SP SPAWN-ACTIONS-OFF ADDI,       \ file actions
+   14 4 MOVZ,  14 13 0 STRW,
+   14 0 MOVZ,  14 13 SPAWN-FA-COUNT-OFF STRW,
+   6 SPAWN-CHDIR-ACTION
+   10 0 SPAWN-DUP2-ACTION
+   11 1 SPAWN-DUP2-ACTION
+   12 2 SPAWN-DUP2-ACTION
+   14 0 MOVZ,                          \ zero the descriptor
+   14 SP 48 STR,  14 SP 56 STR,  14 SP 64 STR,  14 SP 72 STR,
+   14 SP 80 STR,  14 SP 88 STR,  14 SP 96 STR,  14 SP 104 STR,
+   14 SP 112 STR,  14 SP 120 STR,  14 SP 128 STR,  14 SP 136 STR,
+   14 SP 144 STR,  14 SP 152 STR,  14 SP 160 STR,  14 SP 168 STR,
+   14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,  14 14 SPAWN-FA-ACTS-OFF ADDI,
+   14 SP SPAWN-ADESC-FA-SIZE-OFF STR,  \ adesc.file_actions_size
+   13 SP SPAWN-ADESC-FA-PTR-OFF STR,   \ adesc.file_actions
+   0 SP 0 ADDI,                        \ &pid
+   1 8 0 ADDI,                         \ path
+   2 SP SPAWN-ADESC-OFF ADDI,
+   3 9 0 ADDI,  4 7 0 ADDI,            \ argv, envp
+   NR-SPAWN SYS,
+   9 C-CS CSET,  9 9 0 ORR,  9 spok CBZ,
+      9 0 MOVN,  spdn B,
+   spok LBL,
+   9 SP 0 LDR,
+   spdn LBL,
+   9 G-PUSH
+   SP SP SPAWN-FRAME4-C ADDI,
+   SP SP SPAWN-FRAME4-B ADDI,
+   SP SP SPAWN-FRAME4-A ADDI, ;
 
 : BCPFETCH    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
 : BNDICTFETCH 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
@@ -773,6 +841,7 @@ s" spawn-dup2-action" s" n n --" TRUST
    s" spawn-io" ['] BSPAWNIO FPRIM-L
    s" spawn-argv-io" ['] BSPAWNARGVIO FPRIM-L
    s" spawn-argv-env-io" ['] BSPAWNARGVENVIO FPRIM-L
+   s" spawn-argv-env-cwd-io" ['] BSPAWNARGVENVCWDIO FPRIM-L
    s" wait-rc" ['] BWAITRC FPRIM-L
    s" wait-status" ['] BWAITSTATUS FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L

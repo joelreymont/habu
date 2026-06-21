@@ -32,6 +32,7 @@ body. Re-audit when a row's body or effect string changes.
 | fprim | `ptr u8 n n --` | Raw-asm prim emitter: lays a REG-PRIM frame + `xt execute`s a code-emitting handler; no Forth effect to infer. | `test/run.f` | src/habu/habu1.f:111 | 2026-06-16 |
 | fprim-l | `ptr u8 n n --` | Leaf variant of FPRIM (no x30 frame); same `xt execute` of a code emitter. | `test/run.f` | src/habu/habu1.f:118 | 2026-06-16 |
 | spawn-dup2-action | `n n --` | Build-side helper that emits one raw XNU `PSFA_DUP2` file-action record append; label/register code is not inferable as a Forth data transform. | `test/proc-pty.f`, `test/engine-suite.f` | src/habu/habu1.f:234 | 2026-06-15 |
+| spawn-chdir-action | `n --` | Build-side helper that emits one raw XNU `PSFA_CHDIR` file-action record append and NUL-path copy; label/register code is not inferable as a Forth data transform. | `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f:315 | 2026-06-21 |
 | emit-prims | `--` | Emits the engine's whole primitive table as raw ARM64. | `test/run.f` | src/habu/habu1.f:395 | 2026-06-13 |
 | emit-fp-prims | `--` | Emits the floating-point prim table as raw asm via FPRIM-L. | `test/run.f` | src/habu/habu1.f:469 | 2026-06-13 |
 | cf-entry | `n ptr a n n --` | Control-flow keyword case: spills the VS then `hxt execute`s a code emitter; keyword label cell is a pointer. | `test/run.f` | src/habu/habu2.f:737 | 2026-06-16 |

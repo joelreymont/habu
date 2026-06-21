@@ -23,6 +23,7 @@ Planned module files:
 - `lib/process.f`
 - `lib/process-argv.f`
 - `lib/process-env.f`
+- `lib/process-cwd.f`
 - `lib/argv.f`
 - `lib/test.f`
 - `lib/test-runner.f`
@@ -700,6 +701,29 @@ entries whose names are not already present; explicit entries win and duplicate
 names are skipped. `FIND-EXECUTABLE-IN-PATH` accepts an explicit PATH byte string
 for deterministic tests, while `FIND-EXECUTABLE` reads the current process
 `PATH`. `RESOLVE-EXECUTABLE` throws `E-PROC-PATH` when lookup fails.
+
+`lib/process-cwd.f` is a post-env layer for running prepared argv/envp children
+with a child-only working directory. It uses the native
+`spawn-argv-env-cwd-io` boundary so the parent process cwd never changes. The cwd
+is copied into a separate NUL buffer from the executable path to avoid
+overwriting `argv[0]`.
+
+```forth
+PROC-SPAWN-ARGV-ENV-CWD-RAW ( ptr u8 ptr a ptr a ptr u8 n n n -- n )
+PROC-CWDZ                   ( ptr u8 n -- ptr u8 )
+SPAWN-ARGV-ENV-CWD-IO      ( ptr u8 n ptr u8 n n n n -- n )
+RUN-ARGV-ENV-CWD-IO-RC     ( ptr u8 n ptr u8 n n n n -- n )
+PROC-SPAWN-ARGV-ENV-CWD-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
+PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
+RUN-ARGV-ENV-CWD-CAPTURE   ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+RUN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+```
+
+Call `PROC-ARGV-RESET`/`PROC-ENV-RESET`, append prepared args/env entries, then
+use the cwd-aware run helper with executable path, cwd path, output buffers, and
+timeout. The helpers reset argv/env state after the native spawn attempt;
+missing or invalid cwd paths throw `E-PROC-SPAWN`, while empty or over-capacity
+cwd strings throw `E-PROC-OUTPUT` before spawning.
 
 ## Date And Time
 

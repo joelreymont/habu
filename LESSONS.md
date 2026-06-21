@@ -121,6 +121,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   overflowed the old 96-entry seed registry and corrupted the generated stage
   image. Keep registry/name-pool capacities named and checked in `REG-PRIM` so
   growth fails closed at build time.
+- **New `TRUST` sites need manifest rows immediately:** raw emitter helpers must
+  update `TRUSTED.md` in the same change with the declared effect, reason, and
+  tests. Trust-lint will fail otherwise, and the omission hides the real trusted
+  base delta.
 - **Seed primitive names can exceed inline storage:** `EMIT-DICT` must encode
   names longer than `DNAME-INL` out-of-line and relocate them during startup.
   Inline-only emission corrupts fixed `DREC` records and later primitive lookup.

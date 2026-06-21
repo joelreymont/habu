@@ -30,6 +30,11 @@ variable GE-SCRIPT-U
    GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/string.f" GE-SRC-FILE+ s" lib/fs.f" GE-SRC-FILE+ s" lib/process.f" GE-SRC-FILE+ s" lib/process-argv.f" GE-SRC-FILE+ s" lib/process-env.f" GE-SRC-FILE+
    s" process env check" GE-CHECK-SRC-LIST
    GE-HB-RESET
+   s" --load" PROC-ARGV+ s" lib/errors.f" PROC-ARGV+ s" lib/string.f" PROC-ARGV+ s" lib/test.f" PROC-ARGV+ s" lib/fs.f" PROC-ARGV+ s" lib/fs-mutate.f" PROC-ARGV+ s" lib/process.f" PROC-ARGV+ s" lib/process-argv.f" PROC-ARGV+ s" lib/process-env.f" PROC-ARGV+ s" lib/process-cwd.f" PROC-ARGV+ s" lib/process-cwd-test.f" PROC-ARGV+
+   s" process cwd stdlib" GE-HB-RUN
+   GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/string.f" GE-SRC-FILE+ s" lib/fs.f" GE-SRC-FILE+ s" lib/process.f" GE-SRC-FILE+ s" lib/process-argv.f" GE-SRC-FILE+ s" lib/process-env.f" GE-SRC-FILE+ s" lib/process-cwd.f" GE-SRC-FILE+
+   s" process cwd check" GE-CHECK-SRC-LIST
+   GE-HB-RESET
    s" --load" PROC-ARGV+ s" lib/errors.f" PROC-ARGV+ s" lib/string.f" PROC-ARGV+ s" lib/test.f" PROC-ARGV+ s" lib/fs.f" PROC-ARGV+ s" lib/fs-mutate.f" PROC-ARGV+ s" lib/process.f" PROC-ARGV+ s" lib/process-argv.f" PROC-ARGV+ s" tools/check-repair-hints-test.f" PROC-ARGV+
    s" repair diagnostic hints" GE-HB-RUN
    GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/string.f" GE-SRC-FILE+ s" lib/test.f" GE-SRC-FILE+ s" lib/fs.f" GE-SRC-FILE+ s" lib/fs-mutate.f" GE-SRC-FILE+ s" lib/process.f" GE-SRC-FILE+ s" lib/process-argv.f" GE-SRC-FILE+ s" tools/check-repair-hints-test.f" GE-SRC-FILE+
