@@ -159,6 +159,7 @@ points stay listed.
 - `bench/llm/negative-score-test.f` — focused coverage for negative-harness scoring outcomes.
 - `bench/llm/run-expanded-bench.f` — native expanded live benchmark runner and arm dispatcher.
 - `bench/llm/run-expanded-bench-test.f` — focused coverage for expanded-run AOT dispatch and report validation.
+- `bench/llm/report-test.f` — focused checked coverage for legacy report summary rows and arm/category rendering.
 - `bench/llm/expanded-report.f` — expanded live benchmark Markdown report with validator and latency sections.
 - `bench/llm/expanded-report-test.f` — focused coverage for expanded report perf-latency rendering.
 - `bench/llm/grade.f` — native isolated benchmark grader for pass/fail/reject/trap/timeout outcomes.
