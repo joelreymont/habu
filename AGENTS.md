@@ -59,6 +59,10 @@ constants; and a `T{ … -> … }T` test for every word.
 
 - VCS is `jj` (Jujutsu). One change per commit; 50-char imperative subject; no emoji.
 - Commit after each significant change or feature; include new files.
+- RCA is blocking for generated checked fixtures: if a generated checked fixture
+  stalls, times out, or exits without diagnostics, immediately isolate the
+  checker/harness phase and root cause. Do not call the fixture "too expensive",
+  shrink it, bypass it, or replace it until the failing mechanism is proven.
 - Parallel dot execution follows `docs/parallel-agents.md`: read-only scouts do
   not edit the current tree; workers edit isolated jj workspaces unless their
   file ownership is disjoint.

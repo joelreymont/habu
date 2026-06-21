@@ -238,6 +238,13 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Generated JSON needles need field builders:** backslash does not escape a
   quote inside `s"`. Build JSON substrings with checked byte/field helpers so
   keys and quote bytes are explicit.
+- **Generated checked fixtures require immediate RCA:** a fixture that stalls,
+  times out, or exits without diagnostics is a checker/harness bug until proven
+  otherwise. Isolate the exact phase and root cause before shrinking, bypassing,
+  or calling the fixture too large.
+- **Locals already consume their inputs:** after `{: a:ptr u :}`, the incoming
+  stack cells are gone. Do not `drop` those inputs again on one branch; legacy
+  unchecked tools can turn that underflow into a return-to-zero crash.
 - **Generated `die` calls need typed strings:** `die` takes `ptr u8 n n`; `0 0`
   is two integers, not an empty string. Generated harnesses should emit a real
   `s" message"` or a byte-backed string word.
