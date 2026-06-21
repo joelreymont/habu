@@ -195,6 +195,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Emitter helpers own their output buffer:** a numeric renderer from another
   snippet emitter can type-check while appending into the wrong global buffer.
   Keep byte/number appenders local to the output buffer they mutate.
+- **Boundary scans parse Forth tokens:** trusted-boundary guards should scan
+  whitespace-delimited Forth tokens and skip comments/string literals. Substring
+  scans false-reject names such as `ENTRUSTED-VALUE` and prose comments.
 
 ## Darwin And Syscalls
 
