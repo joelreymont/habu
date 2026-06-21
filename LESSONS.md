@@ -448,6 +448,14 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   sources it can report dependency constants and helper words as undefined.
   Use dependency-aware `tools/check.f --json-errors` for full driver bundles,
   and reserve all-errors diagnostics for focused candidate/source checks.
+- **Reproduce `GS-CHECK-RUN` with raw stdin source:** the gate feeds bundled
+  source bytes to `tools/check.f` over stdin and lets the wrapper add its own
+  check prefix. Do not add a manual prefix or switch to file-argument mode when
+  isolating a gate check failure; those are different code paths.
+- **Keep catch-based parsers behind checker contracts:** `tools/json.f` has a
+  deliberate JSONL `catch` recovery boundary. New checked reducers that call it
+  should use small checked interface fixtures for checker runs and runtime tests
+  with the real parser until the typed `catch` dot is implemented.
 - **Live-row bundle artifacts must stay small:** `live-row.f` embeds artifact
   contents before hashing. Native drivers that need a large internal run bundle
   should keep that path separate from the emitted `final_bundle` artifact until

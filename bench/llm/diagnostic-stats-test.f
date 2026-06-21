@@ -1,0 +1,197 @@
+\ diagnostic-stats-test.f - focused tests for diagnostic reducers.
+
+8192 constant DGST-BUF-CAP
+44 constant DGST-COMMA
+91 constant DGST-LBRACK
+93 constant DGST-RBRACK
+
+create DGST-DIAG-BUF DGST-BUF-CAP allot
+create DGST-EXP-BUF DGST-BUF-CAP allot
+
+variable DGST-DIAG-U
+variable DGST-EXP-U
+
+: DGST-DIAG-ROOM ( n -- ) {: add :}
+   add 0 < if E-BM-FIELD throw then
+   add DGST-BUF-CAP DGST-DIAG-U @ - > if E-BM-FIELD throw then ;
+
+: DGST-EXP-ROOM ( n -- ) {: add :}
+   add 0 < if E-BM-FIELD throw then
+   add DGST-BUF-CAP DGST-EXP-U @ - > if E-BM-FIELD throw then ;
+
+: DGST-DIAG-APPEND ( ptr u8 n -- ) {: a:ptr u :}
+   u DGST-DIAG-ROOM
+   a DGST-DIAG-BUF DGST-DIAG-U @ + u BYTE-COPY
+   DGST-DIAG-U @ u + DGST-DIAG-U ! ;
+
+: DGST-EXP-APPEND ( ptr u8 n -- ) {: a:ptr u :}
+   u DGST-EXP-ROOM
+   a DGST-EXP-BUF DGST-EXP-U @ + u BYTE-COPY
+   DGST-EXP-U @ u + DGST-EXP-U ! ;
+
+: DGST-DIAG-C ( n -- ) {: c :}
+   1 DGST-DIAG-ROOM
+   c DGST-DIAG-BUF DGST-DIAG-U @ + c!
+   DGST-DIAG-U @ 1+ DGST-DIAG-U ! ;
+
+: DGST-EXP-C ( n -- ) {: c :}
+   1 DGST-EXP-ROOM
+   c DGST-EXP-BUF DGST-EXP-U @ + c!
+   DGST-EXP-U @ 1+ DGST-EXP-U ! ;
+
+: DGST-DIAG-NL ( -- )
+   10 DGST-DIAG-C ;
+
+: DGST-DIAG$ ( -- ptr u8 n )
+   DGST-DIAG-BUF DGST-DIAG-U @ ;
+
+: DGST-EXP$ ( -- ptr u8 n )
+   DGST-EXP-BUF DGST-EXP-U @ ;
+
+: DGST-DIAG-APPEND-JW ( -- )
+   JW$ DGST-DIAG-APPEND
+   DGST-DIAG-NL ;
+
+: DGST-EXP-APPEND-JW ( -- )
+   JW$ DGST-EXP-APPEND ;
+
+: DGST-DIAG-FULL-ROW1 ( -- )
+   JW-RESET
+   JW-OBJECT-START
+   s" token" s" dup" JW-FIELD-S
+   JW-COMMA s" byte_start" 3 JW-FIELD-U
+   JW-COMMA s" expected" s" i64" JW-FIELD-S
+   JW-COMMA s" actual" s" bool" JW-FIELD-S
+   JW-COMMA s" code" s" E-MISMATCH" JW-FIELD-S
+   JW-COMMA s" repair_class" s" fix_type" JW-FIELD-S
+   JW-OBJECT-END
+   DGST-DIAG-APPEND-JW ;
+
+: DGST-DIAG-FULL-ROW2 ( -- )
+   JW-RESET
+   JW-OBJECT-START
+   s" token" s" drop" JW-FIELD-S
+   JW-COMMA s" byte_start" 9 JW-FIELD-U
+   JW-COMMA s" expected" JW-FIELD-NULL
+   JW-COMMA s" actual" JW-FIELD-NULL
+   JW-COMMA s" code" s" E-UNDERFLOW" JW-FIELD-S
+   JW-COMMA s" repair_class" s" remove_producer" JW-FIELD-S
+   JW-OBJECT-END
+   DGST-DIAG-APPEND-JW ;
+
+: DGST-DIAGS$ ( -- ptr u8 n )
+   0 DGST-DIAG-U !
+   DGST-DIAG-FULL-ROW1
+   DGST-DIAG-FULL-ROW2
+   DGST-DIAG$ ;
+
+: DGST-DIAG-MISSING-ROW ( -- )
+   JW-RESET
+   JW-OBJECT-START
+   s" token" s" dup" JW-FIELD-S
+   JW-COMMA s" code" s" E-MISMATCH" JW-FIELD-S
+   JW-OBJECT-END
+   DGST-DIAG-APPEND-JW ;
+
+: DGST-MISSING-FIELD-DIAGS$ ( -- ptr u8 n )
+   0 DGST-DIAG-U !
+   DGST-DIAG-MISSING-ROW
+   DGST-DIAG$ ;
+
+: DGST-EVENTS$ ( -- ptr u8 n )
+   s" 1	fix_type
+1	fix_type
+2	add_producer
+3	custom_class
+2	custom_class
+4	zeta
+4	alpha
+" ;
+
+: DGST-BAD-ROUND$ ( -- ptr u8 n )
+   s" nope	fix_type
+" ;
+
+: DGST-BAD-FIELDS$ ( -- ptr u8 n )
+   s" 1
+" ;
+
+: DGST-EXP-STAT ( ptr u8 n n bool n n -- )
+   {: cls:ptr clsu diag success iter delta :}
+   JW-RESET
+   JW-OBJECT-START
+   s" repair_class" cls clsu JW-FIELD-S
+   JW-COMMA s" diagnostic_count" diag JW-FIELD-U
+   JW-COMMA s" repair_success" success JW-FIELD-BOOL
+   JW-COMMA s" repair_iterations" iter JW-FIELD-U
+   JW-COMMA s" token_delta" delta JW-FIELD-U
+   JW-OBJECT-END
+   DGST-EXP-APPEND-JW ;
+
+: DGST-EXPECTED-STATS! ( -- )
+   0 DGST-EXP-U !
+   DGST-LBRACK DGST-EXP-C
+   s" add_producer" 1 0 0= 1 7 DGST-EXP-STAT
+   DGST-COMMA DGST-EXP-C
+   s" fix_type" 2 0 0= 1 7 DGST-EXP-STAT
+   DGST-COMMA DGST-EXP-C
+   s" alpha" 1 0 0= 1 7 DGST-EXP-STAT
+   DGST-COMMA DGST-EXP-C
+   s" custom_class" 2 0 0= 2 7 DGST-EXP-STAT
+   DGST-COMMA DGST-EXP-C
+   s" zeta" 1 0 0= 1 7 DGST-EXP-STAT
+   DGST-RBRACK DGST-EXP-C ;
+
+: DGST-EXPECT-BAD-ROUND ( -- )
+   DGST-BAD-ROUND$ DGS-FALSE 0 DGS-REPAIR-STATS$ 2drop ;
+
+: DGST-EXPECT-BAD-FIELDS ( -- )
+   DGST-BAD-FIELDS$ DGS-FALSE 0 DGS-REPAIR-STATS$ 2drop ;
+
+: DGST-EXPECT-DIAGS ( -- )
+   DGST-DIAGS$ DGS-SCAN-DIAGS
+   DGS-DIAGNOSTIC-COUNT 2 T=
+   DGS-DIAGNOSTIC-TOKEN? TTRUE
+   DGS-DIAGNOSTIC-SPAN? TTRUE
+   DGS-DIAGNOSTIC-EXPECTED? TTRUE
+   DGS-DIAGNOSTIC-ACTUAL? TTRUE
+   DGS-DIAGNOSTIC-CODE? TTRUE
+   DGS-DIAGNOSTIC-REPAIR-CLASS? TTRUE ;
+
+: DGST-EXPECT-MISSING-DIAG-FIELDS ( -- )
+   DGST-MISSING-FIELD-DIAGS$ DGS-SCAN-DIAGS
+   DGS-DIAGNOSTIC-COUNT 1 T=
+   DGS-DIAGNOSTIC-TOKEN? TTRUE
+   DGS-DIAGNOSTIC-SPAN? TFALSE
+   DGS-DIAGNOSTIC-EXPECTED? TFALSE
+   DGS-DIAGNOSTIC-ACTUAL? TFALSE
+   DGS-DIAGNOSTIC-CODE? TTRUE
+   DGS-DIAGNOSTIC-REPAIR-CLASS? TFALSE ;
+
+: DGST-EXPECT-EMPTY-DIAGS ( -- )
+   s" " DGS-SCAN-DIAGS
+   DGS-DIAGNOSTIC-COUNT 0 T=
+   DGS-DIAGNOSTIC-TOKEN? TTRUE
+   DGS-DIAGNOSTIC-SPAN? TTRUE
+   DGS-DIAGNOSTIC-EXPECTED? TTRUE
+   DGS-DIAGNOSTIC-ACTUAL? TTRUE
+   DGS-DIAGNOSTIC-CODE? TTRUE
+   DGS-DIAGNOSTIC-REPAIR-CLASS? TTRUE ;
+
+: DGST-EXPECT-STATS ( -- )
+   DGST-EXPECTED-STATS!
+   DGST-EVENTS$ 0 0= 7 DGS-REPAIR-STATS$ DGST-EXP$ T$=
+   s" " 0 0= 0 DGS-REPAIR-STATS$ s" []" T$= ;
+
+: DGST-MAIN ( -- )
+   T-RESET
+   DGST-EXPECT-DIAGS
+   DGST-EXPECT-MISSING-DIAG-FIELDS
+   DGST-EXPECT-EMPTY-DIAGS
+   DGST-EXPECT-STATS
+   ['] DGST-EXPECT-BAD-ROUND E-BM-FIELD TTHROWS
+   ['] DGST-EXPECT-BAD-FIELDS E-BM-SCHEMA TTHROWS
+   T-REPORT
+   s" diagnostic-stats-test: ok" type cr ;
+
+DGST-MAIN
