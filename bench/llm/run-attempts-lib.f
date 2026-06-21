@@ -11,6 +11,7 @@ $8000 constant RA-DIAG-CAP
 $8000 constant RA-EVENT-CAP
 $8000 constant RA-STATS-CAP
 $20000 constant RA-BUNDLE-CAP
+$20000 constant RA-JSONL-CAP
 $10000 constant RA-SRC-CAP
 10000 constant RA-DEFAULT-TIMEOUT-MS
 5 constant RA-TRUST-LEN
@@ -38,6 +39,7 @@ create RA-ERR-BUF RA-CAPTURE-CAP allot
 create RA-DIAG-BUF RA-DIAG-CAP allot
 create RA-EVENT-BUF RA-EVENT-CAP allot
 create RA-STATS-BUF RA-STATS-CAP allot
+create RA-JSONL-BUF RA-JSONL-CAP allot
 create RA-FINAL-PATH FS-PATH-CAP allot
 create RA-FIRST-BAD-PATH FS-PATH-CAP allot
 
@@ -57,6 +59,7 @@ variable RA-TIMEOUT-MS
 variable RA-DIAG-U
 variable RA-EVENT-U
 variable RA-STATS-U
+variable RA-JSONL-U
 variable RA-FINAL-U
 variable RA-FIRST-BAD-U
 variable RA-CHECKER-N
@@ -69,6 +72,9 @@ variable RA-SIGNATURE-WEAK
 variable RA-ALL-STABLE
 variable RA-SIG-OPEN
 variable RA-SIG-CLOSE
+variable RA-TASK-NEXT
+variable RA-TASK-START
+variable RA-STOP
 
 : RA-DEFAULT-TIMEOUT! ( -- )
    RA-DEFAULT-TIMEOUT-MS RA-TIMEOUT-MS ! ;
@@ -179,6 +185,9 @@ RA-DEFAULT-TIMEOUT!
 : RA-STATS$ ( -- ptr u8 n )
    RA-STATS-BUF RA-STATS-U @ ;
 
+: RA-JSONL$ ( -- ptr u8 n )
+   RA-JSONL-BUF RA-JSONL-U @ ;
+
 : RA-FINAL$ ( -- ptr u8 n )
    RA-FINAL-PATH RA-FINAL-U @ ;
 
@@ -254,6 +263,9 @@ RA-DEFAULT-TIMEOUT!
 : RA-STATS-ROOM ( n -- ) {: add :}
    RA-STATS-CAP RA-STATS-U @ add RA-BUF-ROOM ;
 
+: RA-JSONL-ROOM ( n -- ) {: add :}
+   RA-JSONL-CAP RA-JSONL-U @ add RA-BUF-ROOM ;
+
 : RA-DIAG+ ( ptr u8 n -- ) {: a:ptr u :}
    u RA-DIAG-ROOM
    a RA-DIAG-BUF RA-DIAG-U @ + u BYTE-COPY
@@ -269,6 +281,23 @@ RA-DEFAULT-TIMEOUT!
    u RA-STATS-ROOM
    a RA-STATS-BUF u BYTE-COPY
    u RA-STATS-U ! ;
+
+: RA-JSONL-RESET ( -- )
+   0 RA-JSONL-U ! ;
+
+: RA-JSONL+ ( ptr u8 n -- ) {: a:ptr u :}
+   u RA-JSONL-ROOM
+   a RA-JSONL-BUF RA-JSONL-U @ + u BYTE-COPY
+   RA-JSONL-U @ u + RA-JSONL-U ! ;
+
+: RA-JSONL-C ( n -- ) {: c :}
+   1 RA-JSONL-ROOM
+   c RA-JSONL-BUF RA-JSONL-U @ + c!
+   RA-JSONL-U @ 1+ RA-JSONL-U ! ;
+
+: RA-JSONL-LINE+ ( ptr u8 n -- )
+   RA-JSONL+
+   STR-LF RA-JSONL-C ;
 
 : RA-COPY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u RA-CHECK-PATH-U
@@ -358,6 +387,12 @@ RA-DEFAULT-TIMEOUT!
 
 : RA-LINE-ID$ ( ptr u8 n -- ptr u8 n )
    BM-T-ID BM-TASK-FIELD$ ;
+
+: RA-LINE-ID-N ( ptr u8 n -- n )
+   RA-LINE-ID$ STR>NUMBER? 0= if E-BM-FIELD throw then ;
+
+: RA-LINE-NAME$ ( ptr u8 n -- ptr u8 n )
+   BM-T-NAME BM-TASK-FIELD$ ;
 
 : RA-APPEND-TASK-SOURCE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: line:ptr lineu ref:ptr refu target:ptr targetu cand:ptr candu :}
@@ -632,3 +667,57 @@ RA-DEFAULT-TIMEOUT!
 : RA-ROW$ ( ptr u8 n n ptr u8 n ptr u8 n n -- ptr u8 n )
    RA-BUILD-ROW
    JW$ ;
+
+: RA-RUN-ROUND ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: tasks:ptr tasksu ref:ptr refu target:ptr targetu tests:ptr testsu idx :}
+   idx RA-ROUND$ {: cand:ptr candu :}
+   RA-CHECKER++
+   cand candu RA-CHECK-CANDIDATE if
+      cand candu RA-RECORD-CERTIFIED
+      tasks tasksu ref refu target targetu cand candu tests testsu RA-RUN-CANDIDATE-TESTS if
+         cand candu RA-RECORD-TEST-PASS
+         -1 RA-STOP !
+      else
+         cand candu RA-RECORD-TEST-FAIL
+      then
+   else
+      cand candu RA-CHECKERS RA-RECORD-REJECT
+   then ;
+
+: RA-RUN-ROUNDS ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: tasks:ptr tasksu ref:ptr refu target:ptr targetu tests:ptr testsu :}
+   0 RA-I !
+   0 RA-STOP !
+   begin RA-I @ RA-ROUND# @ < RA-STOP @ 0= and while
+      tasks tasksu ref refu target targetu tests testsu RA-I @ RA-RUN-ROUND
+      RA-I @ 1+ RA-I !
+   repeat ;
+
+: RA-REQUIRE-FINAL ( -- )
+   RA-FINAL-U @ 0= if E-RA-MISSING throw then ;
+
+: RA-WALL-MS ( n -- n ) {: start :}
+   mono-ns start - PROC-NS-PER-MS / ;
+
+: RA-RUN-TASK-ROW ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: line:ptr lineu tasks:ptr tasksu ref:ptr refu root:ptr rootu tests:ptr testsu run:ptr runu model:ptr modelu :}
+   line lineu BM-BLANK-OR-COMMENT? if exit then
+   mono-ns RA-TASK-START !
+   RA-ROW-RESET
+   root rootu line lineu RA-LINE-ID$ RA-CANDIDATES drop
+   tasks tasksu ref refu line lineu RA-LINE-ID$ tests testsu RA-RUN-ROUNDS
+   RA-REQUIRE-FINAL
+   line lineu BM-TASK-SIG$ RA-FINAL-METRICS!
+   RA-ALL-ERRORS-STABLE!
+   run runu line lineu RA-LINE-ID-N line lineu RA-LINE-NAME$ model modelu RA-TASK-START @ RA-WALL-MS
+   RA-ROW$ RA-JSONL-LINE+ ;
+
+: RA-RUN-TASKS ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: tasks:ptr tasksu ref:ptr refu root:ptr rootu tests:ptr testsu run:ptr runu model:ptr modelu :}
+   RA-JSONL-RESET
+   0 RA-TASK-NEXT !
+   begin tasks tasksu RA-TASK-NEXT @ BM-LINE-NEXT while
+      RA-TASK-NEXT !
+      tasks tasksu ref refu root rootu tests testsu run runu model modelu RA-RUN-TASK-ROW
+   repeat drop 2drop
+   RA-JSONL$ ;

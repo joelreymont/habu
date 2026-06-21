@@ -76,6 +76,10 @@ variable RATT-EXP-U
    name nameu RATT-PATH!
    RATT-PATH$ text textu WRITE-ALL ;
 
+: RATT-WRITE-NAMED-IN-DIR ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu text:ptr textu :}
+   name nameu RATT-DIR-PATH!
+   RATT-PATH$ text textu WRITE-ALL ;
+
 : RATT-WRITE-TESTS ( ptr u8 n -- ) {: text:ptr textu :}
    RATT-TESTS$ text textu WRITE-ALL ;
 
@@ -158,6 +162,12 @@ variable RATT-EXP-U
 : RATT-CAND-SRC$ ( -- ptr u8 n )
    s" : TWO ( -- i64 ) 22 ;" ;
 
+: RATT-ONE-GOOD-SRC$ ( -- ptr u8 n )
+   s" : ONE ( -- i64 ) 1 ;" ;
+
+: RATT-ONE-BAD-SRC$ ( -- ptr u8 n )
+   s" : ONE ( -- i64 ) 1 2 ;" ;
+
 : RATT-GOOD-CHECK-SRC$ ( -- ptr u8 n )
    s" : GOOD ( -- i64 ) 1 ;" ;
 
@@ -172,6 +182,27 @@ variable RATT-EXP-U
 
 : RATT-TESTS-SRC$ ( -- ptr u8 n )
    s" ONE drop TWO drop 111 emit 107 emit" ;
+
+: RATT-ONE-PASS-TESTS$ ( -- ptr u8 n )
+   s" ONE drop 111 emit 107 emit" ;
+
+: RATT-ONE-FAIL-TESTS$ ( -- ptr u8 n )
+   s" ONE drop 111 emit" ;
+
+: RATT-TASK21$ ( -- ptr u8 n )
+   s" 21	ONE	(-- i64)	arithmetic	-	forth	stack	-	-	v1	-	-" ;
+
+: RATT-TASK22$ ( -- ptr u8 n )
+   s" 22	ONE	(-- i64)	arithmetic	-	forth	stack	-	-	v1	-	-" ;
+
+: RATT-TASK23$ ( -- ptr u8 n )
+   s" 23	ONE	(-- i64)	arithmetic	-	forth	stack	-	-	v1	-	-" ;
+
+: RATT-TASK24$ ( -- ptr u8 n )
+   s" 24	ONE	(-- i64)	arithmetic	-	forth	stack	-	-	v1	-	-" ;
+
+: RATT-TASK25$ ( -- ptr u8 n )
+   s" 25	ONE	(-- i64)	arithmetic	-	forth	stack	-	-	v1	-	-" ;
 
 : RATT-PREPARE-BUNDLE-FIXTURE ( -- )
    RATT-BUNDLE-PATHS!
@@ -400,6 +431,65 @@ variable RATT-EXP-U
    root s" final_chars" RATT-GOOD-CHECK-SRC$ nip RATT-U-FIELD=
    root s" signature_weakened" RA-FALSE RATT-BOOL-FIELD= ;
 
+: RATT-PREPARE-TASK-LOOP ( ptr u8 n -- ) {: tests:ptr testsu :}
+   RATT-BUNDLE-PATHS!
+   RATT-REF$ MAKE-DIRS
+   tests testsu RATT-WRITE-TESTS ;
+
+: RATT-RUN-TASK-ROW ( ptr u8 n -- n ) {: task:ptr tasku :}
+   task tasku RATT-REF$ RATT-ROOT$ RATT-TESTS$
+   s" attempt-loop" s" fixture-model" RA-RUN-TASKS JSON-PARSE ;
+
+: RATT-EXPECT-TASK-FIRST-PASS ( -- )
+   RATT-ONE-PASS-TESTS$ RATT-PREPARE-TASK-LOOP
+   s" 21.f" RATT-ONE-GOOD-SRC$ RATT-WRITE-NAMED-CAND
+   RATT-TASK21$ RATT-RUN-TASK-ROW {: root :}
+   root s" task_id" 21 RATT-U-FIELD=
+   root s" attempt" 1 RATT-U-FIELD=
+   root s" first_pass_checker" s" certified" RATT-S-FIELD=
+   root s" first_pass_tests" RA-TRUE RATT-BOOL-FIELD=
+   root s" tests_passed" RA-TRUE RATT-BOOL-FIELD=
+   root s" diagnostic_count" 0 RATT-U-FIELD= ;
+
+: RATT-EXPECT-TASK-REPAIRED ( -- )
+   RATT-ONE-PASS-TESTS$ RATT-PREPARE-TASK-LOOP
+   s" 25" RATT-MAKE-DIR
+   s" 10.f" RATT-ONE-GOOD-SRC$ RATT-WRITE-NAMED-IN-DIR
+   s" 1.f" RATT-ONE-BAD-SRC$ RATT-WRITE-NAMED-IN-DIR
+   s" 2.f" RATT-ONE-GOOD-SRC$ RATT-WRITE-NAMED-IN-DIR
+   RATT-TASK25$ RATT-RUN-TASK-ROW {: root :}
+   root s" task_id" 25 RATT-U-FIELD=
+   root s" attempt" 2 RATT-U-FIELD=
+   root s" first_pass_checker" s" rejected" RATT-S-FIELD=
+   root s" tests_passed" RA-TRUE RATT-BOOL-FIELD=
+   root s" repair_iterations" 1 RATT-U-FIELD=
+   root s" checker_iterations" 2 RATT-U-FIELD=
+   root s" repair_class_stats" 1 RATT-ARRAY-FIELD-COUNT= ;
+
+: RATT-EXPECT-TASK-REJECT ( -- )
+   RATT-ONE-PASS-TESTS$ RATT-PREPARE-TASK-LOOP
+   s" 22.f" RATT-ONE-BAD-SRC$ RATT-WRITE-NAMED-CAND
+   RATT-TASK22$ RATT-RUN-TASK-ROW {: root :}
+   root s" attempt" 1 RATT-U-FIELD=
+   root s" first_pass_checker" s" rejected" RATT-S-FIELD=
+   root s" first_pass_tests" RA-FALSE RATT-BOOL-FIELD=
+   root s" tests_passed" RA-FALSE RATT-BOOL-FIELD=
+   root s" diagnostic_count" 1 RATT-U-FIELD= ;
+
+: RATT-EXPECT-TASK-TEST-FAIL ( -- )
+   RATT-ONE-FAIL-TESTS$ RATT-PREPARE-TASK-LOOP
+   s" 23.f" RATT-ONE-GOOD-SRC$ RATT-WRITE-NAMED-CAND
+   RATT-TASK23$ RATT-RUN-TASK-ROW {: root :}
+   root s" attempt" 1 RATT-U-FIELD=
+   root s" first_pass_checker" s" certified" RATT-S-FIELD=
+   root s" first_pass_tests" RA-FALSE RATT-BOOL-FIELD=
+   root s" tests_passed" RA-FALSE RATT-BOOL-FIELD=
+   root s" diagnostic_count" 0 RATT-U-FIELD= ;
+
+: RATT-EXPECT-TASK-MISSING ( -- )
+   RATT-ONE-PASS-TESTS$ RATT-PREPARE-TASK-LOOP
+   RATT-TASK24$ RA-JSONL-RESET RATT-RUN-TASK-ROW drop ;
+
 : RATT-MAIN ( -- )
    T-RESET
    RATT-PREPARE
@@ -426,6 +516,11 @@ variable RATT-EXP-U
    RATT-EXPECT-FINAL-METRICS
    RATT-EXPECT-CERTIFIED-ROW
    RATT-EXPECT-REPAIRED-ROW
+   RATT-EXPECT-TASK-FIRST-PASS
+   RATT-EXPECT-TASK-REPAIRED
+   RATT-EXPECT-TASK-REJECT
+   RATT-EXPECT-TASK-TEST-FAIL
+   ['] RATT-EXPECT-TASK-MISSING E-RA-MISSING TTHROWS
    CLEANUP-RUN
    RATT-ROOT$ EXISTS? TFALSE
    T-REPORT

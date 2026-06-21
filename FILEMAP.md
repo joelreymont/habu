@@ -182,8 +182,8 @@ points stay listed.
 - `bench/llm/solutions.f` — reference benchmark solutions.
 - `bench/llm/validate-results.f` — native reference/attempt metric validator and summarizer.
 - `bench/llm/validate-results-test.f` — checked positive and rejection fixture coverage for metric validation.
-- `bench/llm/run-attempts-lib.f` — checked attempt-runner helpers for deterministic candidate round enumeration, test-bundle assembly, checker/test execution, per-attempt metric state, and schema-1 row emission.
-- `bench/llm/run-attempts-test.f` — focused coverage for candidate enumeration, bundle assembly, checker/test execution, attempt metrics, and parsed row output.
+- `bench/llm/run-attempts-lib.f` — checked attempt-runner helpers for deterministic candidate round enumeration, task looping, test-bundle assembly, checker/test execution, per-attempt metric state, and schema-1 row emission.
+- `bench/llm/run-attempts-test.f` — focused coverage for candidate enumeration, task looping, bundle assembly, checker/test execution, attempt metrics, and parsed row output.
 - `bench/llm/run-attempts-check-test.f` — checker-safe smoke coverage for attempt runner helper and row-emitter effects with JSON parser stubs.
 - `bench/llm/run-attempts.sh` — turns per-task candidate/repair files into validator-schema JSONL.
 - `bench/llm/attempt-runner-test.sh` — fixture coverage for schema attempt generation.
