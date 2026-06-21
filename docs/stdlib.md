@@ -404,7 +404,9 @@ MEM-ALLOC-64K         ( -- ptr u8 n )
 
 `MEM-ALLOC-64K-BUFFERS` returns one contiguous byte span sized for `n` 64K
 buffers. The returned length is the capacity in bytes; callers index individual
-64K slots as `base index MEM-64K * +`.
+64K slots as `base index MEM-64K * +`. Callers may keep multiple spans live at
+once; Habu code must not encode a repo-local "maximum number of 64K buffers"
+outside the explicit size validation in this library and the OS mapping result.
 
 ## Files
 

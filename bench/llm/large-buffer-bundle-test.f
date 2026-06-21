@@ -1,67 +1,60 @@
-\ large-buffer-bundle-test.f - composed 64K buffer regression.
+\ large-buffer-bundle-test.f - composed OS-backed 64K buffer regression.
 \
-\ Load after lib/test.f, tools/lint/source-lex.f,
+\ Load after lib/test.f, lib/memory.f, tools/lint/source-lex.f,
 \ bench/llm/forth-task-lines-lib.f, and bench/llm/attempt-solutions-lib.f.
 
-$10000 constant LBB-64K
-2048 constant LBB-BUFS
+4096 constant LBB-BUFS
+1024 constant LBB-EXTRA-BUFS
 90 constant LBB-MARK
 91 constant LBB-END-MARK
 
-variable LBB-FIRST
-variable LBB-END
+variable LBB-HERE
 
 : LBB-TOTAL ( -- n )
-   LBB-64K LBB-BUFS * ;
+   LBB-BUFS MEM-64K * ;
 
-: LBB-ALLOC ( -- )
-   here LBB-FIRST !
-   LBB-BUFS 0 ?do LBB-64K allot loop
-   here LBB-END ! ;
+: LBB-EXTRA-TOTAL ( -- n )
+   LBB-EXTRA-BUFS MEM-64K * ;
 
-: LBB-SPAN ( -- n )
-   LBB-END @ LBB-FIRST @ - ;
+: LBB-HERE-SNAPSHOT ( -- )
+   here data-base - LBB-HERE ! ;
 
-: LBB-LAST ( -- ptr u8 )
-   LBB-END @ 1 - ;
+: LBB-HERE-UNCHANGED ( -- )
+   here data-base - LBB-HERE @ T= ;
 
-: LBB-SMOKE ( -- n )
-   LBB-MARK LBB-LAST c!
-   LBB-LAST c@ ;
+: LBB-END ( ptr u8 n -- ptr u8 ) {: a:ptr u :}
+   a u 1 - + ;
 
-: LBB-USED ( -- n )
-   here data-base - ;
+: LBB-SLOT ( ptr u8 n -- ptr u8 ) {: a:ptr idx :}
+   a idx MEM-64K * + ;
 
-: LBB-REMAINING ( -- n )
-   DATA-SIZE LBB-USED - ;
+: LBB-TOUCH-ENDS ( ptr u8 n -- ) {: a:ptr u :}
+   LBB-MARK a c!
+   LBB-END-MARK a u LBB-END c!
+   a c@ LBB-MARK T=
+   a u LBB-END c@ LBB-END-MARK T= ;
 
-: LBB-REMAINING-64K ( -- n )
-   LBB-REMAINING LBB-64K / ;
+: LBB-TOUCH-64K-SLOTS ( ptr u8 n n -- ) {: a:ptr u count :}
+   count MEM-64K * u T=
+   count 0 ?do
+      LBB-MARK a i LBB-SLOT c!
+      a i LBB-SLOT c@ LBB-MARK T=
+   loop ;
 
-: LBB-ALLOC-TO-FINAL-64K ( -- )
-   LBB-REMAINING LBB-64K - allot ;
+: LBB-TOUCH-SPAN ( ptr u8 n n -- ) {: a:ptr u count :}
+   a u LBB-TOUCH-ENDS
+   a u count LBB-TOUCH-64K-SLOTS ;
 
-: LBB-END-BYTE ( -- ptr u8 )
-   here 1 - ;
-
-: LBB-END-SMOKE ( -- n )
-   LBB-END-MARK LBB-END-BYTE c!
-   LBB-END-BYTE c@ ;
-
-: LBB-FINAL-CAPACITY ( -- )
-   LBB-REMAINING-64K LBB-BUFS > TTRUE
-   LBB-REMAINING LBB-64K > if
-      LBB-ALLOC-TO-FINAL-64K
-      LBB-REMAINING LBB-64K T=
-      LBB-64K allot
-      LBB-REMAINING 0 T=
-      LBB-END-SMOKE LBB-END-MARK T=
-   then ;
+: LBB-COMPOSED-WITH-FIRST ( ptr u8 n -- ) {: a:ptr u :}
+   u LBB-TOTAL T=
+   a u LBB-BUFS LBB-TOUCH-SPAN
+   LBB-EXTRA-BUFS MEM-ALLOC-64K-BUFFERS
+   dup LBB-EXTRA-TOTAL T=
+   LBB-EXTRA-BUFS LBB-TOUCH-SPAN
+   a u LBB-BUFS LBB-TOUCH-SPAN
+   LBB-HERE-UNCHANGED ;
 
 T-RESET
-LBB-ALLOC
-LBB-TOTAL $8000000 T=
-LBB-SPAN LBB-TOTAL T=
-LBB-SMOKE LBB-MARK T=
-LBB-FINAL-CAPACITY
+LBB-HERE-SNAPSHOT
+LBB-BUFS MEM-ALLOC-64K-BUFFERS LBB-COMPOSED-WITH-FIRST
 T-REPORT
