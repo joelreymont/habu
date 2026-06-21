@@ -191,7 +191,9 @@ variable GS-RD
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" bench/llm/negative-score.f" GS-ARG+ s" bench/llm/negative-score-test.f" GS-ARG+
    s" llm negative scorer" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" bench/llm/grade.f" GS-ARG+ s" bench/llm/grade-test.f" GS-ARG+
-   s" llm native grader" GS-HB-RUN ;
+   s" llm native grader" GS-HB-RUN
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/validate-results-test.f" GS-ARG+
+   s" llm validator positive fixtures" GS-HB-RUN ;
 
 : GS-CHECK-LLM-FIXTURES ( -- )
    GS-SRC-RESET

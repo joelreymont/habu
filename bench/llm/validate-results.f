@@ -953,10 +953,16 @@ variable LV-LINE-U
    repeat
    LV-LS @ LV-LU @ < IF LV-LU @ LV-DO-TASK-LINE THEN ;
 
+: LV-TASK-PATH$ ( -- ptr u8 n )
+   s" BENCH_TASKS" GETENV dup 0= IF 2drop s" bench/llm/tasks.tsv" THEN ;
+
+: LV-REFERENCE-PATH$ ( -- ptr u8 n )
+   s" BENCH_REFERENCE_RESULTS" GETENV dup 0= IF 2drop s" bench/llm/results/reference.jsonl" THEN ;
+
 : LV-SCAN-TASKS ( -- )
    0 LV-TASK# !
    0 LV-REF-TASK# !
-   s" bench/llm/tasks.tsv" LV-TASK-BUF LV-TASK-CAP READ-FILE LV-FOR-TASK-LINES
+   LV-TASK-PATH$ LV-TASK-BUF LV-TASK-CAP READ-FILE LV-FOR-TASK-LINES
    LV-CHECK-TASK-COVERAGE ;
 
 : LV-GET {: root a:ptr u :} ( n ptr u8 n -- n )
@@ -1792,7 +1798,7 @@ variable LV-LINE-U
    ARGV-JSON? LV-JSON !
    ARGV-POS# 0= IF
       LV-MODE-REFERENCE LV-MODE !
-      s" bench/llm/results/reference.jsonl" LV-RESULT-PATH!
+      LV-REFERENCE-PATH$ LV-RESULT-PATH!
       exit
    THEN
    ARGV-POS# 1 = IF
