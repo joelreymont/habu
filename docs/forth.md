@@ -124,6 +124,23 @@ not a matter of taste. Target is the native `bin/hb` engine.
 - Run focused fixtures during dev with their owning `tools/*-test.f`, then run
   the full native gate: `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f`.
 
+### Checker-Miss RCA
+
+- For any "why didn't the checker catch this?" failure, the first written line of
+  the investigation is `Static invariant:` followed by the invariant that should
+  reject the program before runtime and the checker/compiler/primitive boundary
+  where that invariant belongs.
+- Prove the exact command path is fail-closed before touching runtime/library
+  code. If bad checked source can run on that path, fix the harness/tooling path
+  first.
+- Classify the miss as wrong primitive/boundary effect, checker semantics,
+  codegen/runtime mismatch, or same-type semantic-role gap. Add a minimal checked
+  reproducer and a negative regression for that class.
+- The runtime/library repair is incomplete until the checker/compiler/primitive
+  model rejects the bad program. If the checker cannot yet express the invariant,
+  create a detailed dot for the missing checker capability and keep only a named,
+  tested boundary until that capability lands.
+
 ## Comments & hygiene
 
 - `\` line comments, terse. No restating what the code obviously does.
