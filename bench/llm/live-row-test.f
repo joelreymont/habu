@@ -9,6 +9,8 @@ create LRT-REPAIR FS-PATH-CAP allot
 create LRT-TEST FS-PATH-CAP allot
 create LRT-BUNDLE FS-PATH-CAP allot
 
+MEM-64K 17 + constant LRT-LARGE-N
+
 variable LRT-ROOT-U
 variable LRT-PROMPT-U
 variable LRT-RAW-U
@@ -44,6 +46,18 @@ variable LRT-BUNDLE-U
    s" repair.json" s" " LRT-REPAIR LRT-REPAIR-U LRT-WRITE
    s" test.txt" s" ok" LRT-TEST LRT-TEST-U LRT-WRITE
    s" bundle.f" s" : DATE-PARSE-OK? ( -- bool ) -1 ; DATE-PARSE-OK? . cr" LRT-BUNDLE LRT-BUNDLE-U LRT-WRITE ;
+
+: LRT-FILL-LARGE ( ptr u8 n -- ) {: a:ptr cap :}
+   cap LRT-LARGE-N < if E-LR-CAPACITY throw then
+   LRT-LARGE-N 0 ?do 65 a i + c! loop ;
+
+: LRT-LARGE-RAW-WRITE ( ptr u8 n -- ) {: a:ptr cap :}
+   a cap LRT-FILL-LARGE
+   s" raw.txt" a LRT-LARGE-N LRT-RAW LRT-RAW-U LRT-WRITE ;
+
+: LRT-LARGE-FILES ( -- )
+   LRT-FILES
+   LRT-LARGE-N MEM-ALLOC-64K-SPAN LRT-LARGE-RAW-WRITE ;
 
 : LRT-CONTAINS ( ptr u8 n ptr u8 n -- )
    CONTAINS? TTRUE ;
@@ -140,6 +154,12 @@ variable LRT-BUNDLE-U
    2dup s" 3" LRT-CONTAINS
    s" ok" LRT-CONTAINS ;
 
+: LRT-ASSERT-LARGE-ROW ( ptr u8 n -- )
+   {: a:ptr u :}
+   u LRT-LARGE-N > TTRUE
+   a u s" raw_response" LRT-CONTAINS
+   a u s" prompt_sha256" LRT-CONTAINS ;
+
 : LRT-MAIN ( -- )
    T-RESET
    CLEANUP-RESET
@@ -153,6 +173,9 @@ variable LRT-BUNDLE-U
    LR-ROW$ LRT-ASSERT-FALSE-REJECT-ROW
    LRT-CONFIG-RUNTIME
    LR-ROW$ LRT-ASSERT-RUNTIME-ROW
+   LRT-LARGE-FILES
+   LRT-CONFIG
+   LR-ROW$ LRT-ASSERT-LARGE-ROW
    CLEANUP-RUN
    T-REPORT
    s" live-row-test: ok" type cr ;

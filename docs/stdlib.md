@@ -220,13 +220,20 @@ returns the next field, the next scan index, and a success flag.
 
 `lib/json-write.f` is a checked emit-only JSON vocabulary for fixtures, benchmark
 rows, and native tools that do not need the full parser DOM from `tools/json.f`.
-It owns a bounded output buffer, emits compact JSON, escapes string control
-bytes/quotes/backslashes, and throws `E-JW-CAPACITY` or `E-JW-BYTE` instead of
-truncating or emitting invalid bytes. Commas remain explicit so object and array
-shape is visible in code.
+It owns an OS-backed growable output buffer, emits compact JSON, escapes string
+control bytes/quotes/backslashes, and throws `E-JW-CAPACITY` or `E-JW-BYTE`
+instead of truncating or emitting invalid bytes. Commas remain explicit so object
+and array shape is visible in code. Load it after `lib/memory.f`.
 
 ```forth
+JW-CAP         ( -- n )
+JW-STORE-SPAN  ( ptr u8 n -- )
+JW-MIN-ONE     ( n -- n )
+JW-NEED-CAP    ( n -- n )
+JW-COPY-OLD    ( ptr u8 -- )
+JW-GROW        ( n -- )
 JW-CHECK-ROOM  ( n -- )
+JW-ENSURE-INITIAL ( -- )
 JW-RESET       ( -- )
 JW-C           ( n -- )
 JW-RAW         ( ptr u8 n -- )

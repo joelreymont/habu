@@ -2,7 +2,7 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/test.f, lib/fs.f,
 \ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
-\ lib/json-write.f, and bench/llm/fixture-text.f.
+\ lib/memory.f, lib/json-write.f, and bench/llm/fixture-text.f.
 
 120000 constant REBT-TIMEOUT-MS
 65536 constant REBT-CAP

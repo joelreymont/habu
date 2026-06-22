@@ -82,7 +82,7 @@ the native build-fixpoint installer from current source.
 ```
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/grade.f bench/llm/grade-test.f
                                 # -> grade-test: ok
-bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/json-write.f bench/llm/fixture-text.f bench/llm/run-expanded-bench-test.f
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/json-write.f bench/llm/fixture-text.f bench/llm/run-expanded-bench-test.f
                                 # -> run-expanded-bench-test: ok
 ```
 `grade-test` proves the isolated run+grade spine classifies a correct/wrong/non-certifying/
@@ -107,7 +107,7 @@ harness and hangs.)
 
 ### V3 — Reproduce the benchmark (uses real `claude -p`; costs tokens; non-deterministic)
 ```
-bin/hb --load lib/errors.f lib/string.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f bench/llm/perf-lib.f bench/llm/perf.f -- --json > bench/llm/results/perf.json
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f bench/llm/perf-lib.f bench/llm/perf.f -- --json > bench/llm/results/perf.json
 BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 bench/llm/results/run-expanded.jsonl
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f tools/json.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
 ```

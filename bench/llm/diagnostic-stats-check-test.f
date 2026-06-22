@@ -1,6 +1,6 @@
 \ diagnostic-stats-check-test.f - checker fixture for diagnostic stats reducer.
 \
-\ Load after lib/test.f, lib/json-write.f, bench/llm/manifest.f,
+\ Load after lib/test.f, lib/memory.f, lib/json-write.f, bench/llm/manifest.f,
 \ bench/llm/diagnostic-json-check-stub.f, and bench/llm/diagnostic-stats.f.
 \ Runtime JSON field parsing is covered by diagnostic-stats-test.f with the real
 \ JSON parser; this fixture keeps the new reducer body checked without loading

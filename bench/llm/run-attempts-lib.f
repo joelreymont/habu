@@ -1,6 +1,6 @@
 \ run-attempts-lib.f - checked candidate enumeration for attempt runners.
 \
-\ Load after lib/errors.f, lib/string.f, lib/json-write.f, tools/json.f,
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/json-write.f, tools/json.f,
 \ lib/fs.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
 \ bench/llm/manifest.f, and bench/llm/diagnostic-stats.f.
 

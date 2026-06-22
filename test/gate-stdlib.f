@@ -178,6 +178,7 @@ variable GS-SRC-N
    s" lib/errors.f" GS-SRC+
    s" lib/string.f" GS-SRC+
    s" lib/test.f" GS-SRC+
+   s" lib/memory.f" GS-SRC+
    s" lib/json-write.f" GS-SRC+
    file fileu GS-SRC+
    label labelu GS-CHECK-RUN ;
@@ -278,7 +279,7 @@ variable GS-SRC-N
    s" llm Forth candidate scanner" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/forth-bundle.f" GS-ARG+ s" bench/llm/forth-bundle-test.f" GS-ARG+
    s" llm Forth bundle builder" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/diagnostic-stats.f" GS-ARG+ s" bench/llm/diagnostic-stats-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/diagnostic-stats.f" GS-ARG+ s" bench/llm/diagnostic-stats-test.f" GS-ARG+
    s" llm diagnostic stats" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/artifacts.f" GS-ARG+ s" bench/llm/artifacts-test.f" GS-ARG+
    s" llm artifact hashes" GS-HB-RUN
@@ -286,7 +287,7 @@ variable GS-SRC-N
    s" llm attempt solution extractor" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" bench/llm/forth-task-lines-lib.f" GS-ARG+ s" bench/llm/attempt-solutions-lib.f" GS-ARG+ s" bench/llm/large-buffer-bundle-test.f" GS-ARG+
    s" llm large buffer bundle" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/diagnostic-stats.f" GS-ARG+ s" bench/llm/run-attempts-lib.f" GS-ARG+ s" bench/llm/run-attempts-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/diagnostic-stats.f" GS-ARG+ s" bench/llm/run-attempts-lib.f" GS-ARG+ s" bench/llm/run-attempts-test.f" GS-ARG+
    s" llm attempt runner helpers" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+
    s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+
@@ -303,11 +304,11 @@ variable GS-SRC-N
    s" bench/llm/run-attempts.f" GS-ARG+
    s" bench/llm/run-attempts-cli-test.f" GS-ARG+
    s" llm attempt runner CLI" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/live-row-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/live-row.f" GS-ARG+ s" bench/llm/live-row-test.f" GS-ARG+
    s" llm live row emitter" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/fixture-text-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/fixture-text-test.f" GS-ARG+
    s" llm fixture text helpers" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/json-row.f" GS-ARG+ s" bench/llm/json-row-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/json-row.f" GS-ARG+ s" bench/llm/json-row-test.f" GS-ARG+
    s" llm json row helpers" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" bench/llm/negative-score.f" GS-ARG+ s" bench/llm/negative-score-test.f" GS-ARG+
    s" llm negative scorer" GS-HB-RUN
@@ -315,7 +316,7 @@ variable GS-SRC-N
    s" llm native grader" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/test-runner.f" GS-ARG+ s" test/gate-common.f" GS-ARG+ s" bench/llm/run-lib.f" GS-ARG+ s" bench/llm/run-test.f" GS-ARG+
    s" llm benchmark gate runner" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/validate-results-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/validate-results-test.f" GS-ARG+
    s" llm validator positive fixtures" GS-HB-RUN ;
 
 : GS-SRC-LLM-FORTH-BASE ( -- )
@@ -401,22 +402,22 @@ variable GS-SRC-N
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/forth-bundle.f" GS-SRC+ s" bench/llm/forth-bundle-test.f" GS-SRC+
    s" llm Forth bundle builder check" GS-CHECK-RUN
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/diagnostic-json-check-stub.f" GS-SRC+ s" bench/llm/diagnostic-stats.f" GS-SRC+ s" bench/llm/diagnostic-stats-check-test.f" GS-SRC+
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/diagnostic-json-check-stub.f" GS-SRC+ s" bench/llm/diagnostic-stats.f" GS-SRC+ s" bench/llm/diagnostic-stats-check-test.f" GS-SRC+
    s" llm diagnostic stats check" GS-CHECK-RUN
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" src/core/sha256.f" GS-SRC+ s" bench/llm/artifacts.f" GS-SRC+ s" bench/llm/artifacts-test.f" GS-SRC+
    s" llm artifact hash check" GS-CHECK-RUN
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/diagnostic-json-check-stub.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/diagnostic-stats.f" GS-SRC+ s" bench/llm/run-attempts-lib.f" GS-SRC+ s" bench/llm/run-attempts-check-test.f" GS-SRC+
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/diagnostic-json-check-stub.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/diagnostic-stats.f" GS-SRC+ s" bench/llm/run-attempts-lib.f" GS-SRC+ s" bench/llm/run-attempts-check-test.f" GS-SRC+
    s" llm attempt runner helper check" GS-CHECK-RUN
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" src/core/sha256.f" GS-SRC+ s" bench/llm/live-row.f" GS-SRC+ s" bench/llm/live-row-test.f" GS-SRC+
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" src/core/sha256.f" GS-SRC+ s" bench/llm/live-row.f" GS-SRC+ s" bench/llm/live-row-test.f" GS-SRC+
    s" llm live row emitter check" GS-CHECK-RUN
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/fixture-text.f" GS-SRC+ s" bench/llm/fixture-text-test.f" GS-SRC+
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/fixture-text.f" GS-SRC+ s" bench/llm/fixture-text-test.f" GS-SRC+
    s" llm fixture text helper check" GS-CHECK-RUN
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/fixture-text.f" GS-SRC+ s" bench/llm/json-row.f" GS-SRC+ s" bench/llm/json-row-test.f" GS-SRC+
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" bench/llm/fixture-text.f" GS-SRC+ s" bench/llm/json-row.f" GS-SRC+ s" bench/llm/json-row-test.f" GS-SRC+
    s" llm json row helper check" GS-CHECK-RUN
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" bench/llm/negative-score.f" GS-SRC+ s" bench/llm/negative-score-test.f" GS-SRC+
@@ -428,7 +429,7 @@ variable GS-SRC-N
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" lib/test-runner.f" GS-SRC+ s" test/gate-common.f" GS-SRC+ s" bench/llm/run-lib.f" GS-SRC+ s" bench/llm/run-test.f" GS-SRC+
    s" llm benchmark gate runner check" GS-CHECK-RUN
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" tools/argv.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/model.f" GS-SRC+ s" bench/llm/vectors.f" GS-SRC+ s" bench/llm/foreign-vectors.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" src/core/sha256.f" GS-SRC+ s" bench/llm/live-row.f" GS-SRC+ s" bench/llm/drive-stdlib-lib.f" GS-SRC+ s" bench/llm/drive-foreign-lib.f" GS-SRC+ s" bench/llm/drive-foreign-check-test.f" GS-SRC+
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" tools/argv.f" GS-SRC+ s" bench/llm/manifest.f" GS-SRC+ s" bench/llm/model.f" GS-SRC+ s" bench/llm/vectors.f" GS-SRC+ s" bench/llm/foreign-vectors.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" src/core/sha256.f" GS-SRC+ s" bench/llm/live-row.f" GS-SRC+ s" bench/llm/drive-stdlib-lib.f" GS-SRC+ s" bench/llm/drive-foreign-lib.f" GS-SRC+ s" bench/llm/drive-foreign-check-test.f" GS-SRC+
    s" llm foreign driver core check" GS-CHECK-RUN
    ;
 
@@ -528,27 +529,27 @@ variable GS-SRC-N
    s" bench/llm/drive-foreign-live.f" GS-ARG+
    s" bench/llm/drive-ts-test.f" GS-ARG+
    s" llm TypeScript driver" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/source.f" GS-ARG+ s" lib/build.f" GS-ARG+ s" lib/codesign.f" GS-ARG+ s" tools/build-fixpoint.f" GS-ARG+ s" tools/hb-build-lib.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/drive-array-habu-repair-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/source.f" GS-ARG+ s" lib/build.f" GS-ARG+ s" lib/codesign.f" GS-ARG+ s" tools/build-fixpoint.f" GS-ARG+ s" tools/hb-build-lib.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/drive-array-habu-repair-test.f" GS-ARG+
    s" llm Habu array repair driver" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/run-expanded-bench-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/run-expanded-bench-test.f" GS-ARG+
    s" llm expanded runner" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" bench/llm/report-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" bench/llm/report-test.f" GS-ARG+
    s" llm report" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" bench/llm/expanded-report-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" bench/llm/expanded-report-test.f" GS-ARG+
    s" llm expanded report" GS-HB-RUN ;
 
 : GS-CHECK-EXPANDED-REPORT ( -- )
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" bench/llm/report-test.f" GS-SRC+
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" bench/llm/report-test.f" GS-SRC+
    s" llm report check" GS-CHECK-RUN
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" bench/llm/expanded-report-test.f" GS-SRC+
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/json-write.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" bench/llm/expanded-report-test.f" GS-SRC+
    s" llm expanded report check" GS-CHECK-RUN ;
 
 : GS-RUN-STDLIB ( -- )
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/string-test.f" GS-ARG+
    s" string helpers" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" lib/json-write-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" lib/json-write-test.f" GS-ARG+
    s" json writer helpers" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/test-runner.f" GS-ARG+ s" lib/test-runner-test.f" GS-ARG+
    s" test runner helpers" GS-HB-RUN

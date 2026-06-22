@@ -3,7 +3,7 @@
 \ Load after lib/errors.f, lib/string.f, lib/test.f, lib/fs.f,
 \ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
 \ lib/source.f, lib/build.f, lib/codesign.f, tools/build-fixpoint.f, tools/hb-build-lib.f,
-\ lib/json-write.f, and bench/llm/fixture-text.f.
+\ lib/memory.f, lib/json-write.f, and bench/llm/fixture-text.f.
 
 120000 constant DART-TIMEOUT-MS
 $10000 constant DART-CAP

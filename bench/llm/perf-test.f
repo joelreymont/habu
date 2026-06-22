@@ -29,6 +29,7 @@ variable PT-ROW
    s" lib/process-argv.f"  >LEN PROC-ARGV+
    s" lib/process-env.f"  >LEN PROC-ARGV+
    s" lib/time.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/json-write.f"  >LEN PROC-ARGV+
    s" bench/llm/perf-lib.f"  >LEN PROC-ARGV+
    s" bench/llm/perf.f"  >LEN PROC-ARGV+

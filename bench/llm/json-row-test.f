@@ -1,6 +1,7 @@
 \ json-row-test.f - focused tests for bench/llm/json-row.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/json-write.f
-\ bench/llm/fixture-text.f bench/llm/json-row.f bench/llm/json-row-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/json-write.f bench/llm/fixture-text.f bench/llm/json-row.f
+\ bench/llm/json-row-test.f
 
 : BQT-BUF$ ( -- ptr u8 n )
    BQ-OUT BQ-OUT-LEN @ ;

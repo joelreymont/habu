@@ -1,6 +1,6 @@
 \ run-attempts.f - checked CLI for schema-1 attempt rows.
 \
-\ Load after lib/errors.f, lib/string.f, lib/json-write.f, tools/json.f,
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/json-write.f, tools/json.f,
 \ lib/fs.f, lib/fs-mutate.f, lib/process.f, lib/process-argv.f,
 \ lib/process-env.f, lib/time.f, lib/date.f, bench/llm/manifest.f,
 \ tools/lint/lib.f, tools/lint/source-lex.f, tools/argv.f,

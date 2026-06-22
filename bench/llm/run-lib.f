@@ -24,6 +24,9 @@
 : BGR-TEST ( -- )
    s" lib/test.f" BGR-ARG+ ;
 
+: BGR-MEMORY ( -- )
+   s" lib/memory.f" BGR-ARG+ ;
+
 : BGR-FS ( -- )
    s" lib/fs.f" BGR-ARG+
    s" lib/fs-mutate.f" BGR-ARG+ ;
@@ -86,6 +89,7 @@
 : BGR-JSON-ROW ( -- )
    BGR-HB
    BGR-ERR-STR BGR-TEST
+   BGR-MEMORY
    s" lib/json-write.f" BGR-ARG+
    s" bench/llm/fixture-text.f" BGR-ARG+
    s" bench/llm/json-row.f" BGR-ARG+
@@ -159,6 +163,7 @@
 : BGR-VALIDATOR-TEST ( -- )
    BGR-HB
    BGR-ERR-STR BGR-TEST BGR-FS BGR-PROC-ENV
+   BGR-MEMORY
    s" lib/json-write.f" BGR-ARG+
    s" bench/llm/fixture-text.f" BGR-ARG+
    s" bench/llm/manifest.f" BGR-ARG+
@@ -168,6 +173,7 @@
 : BGR-EXPANDED-RUNNER ( -- )
    BGR-HB
    BGR-ERR-STR BGR-TEST BGR-FS BGR-PROC-ENV
+   BGR-MEMORY
    s" lib/json-write.f" BGR-ARG+
    s" bench/llm/fixture-text.f" BGR-ARG+
    s" bench/llm/run-expanded-bench-test.f" BGR-ARG+
@@ -176,6 +182,7 @@
 : BGR-REPORT ( -- )
    BGR-HB
    BGR-ERR-STR BGR-TEST
+   BGR-MEMORY
    s" lib/json-write.f" BGR-ARG+
    BGR-FS BGR-PROC
    s" bench/llm/report-test.f" BGR-ARG+
@@ -184,6 +191,7 @@
 : BGR-EXPANDED-REPORT ( -- )
    BGR-HB
    BGR-ERR-STR BGR-TEST
+   BGR-MEMORY
    s" lib/json-write.f" BGR-ARG+
    BGR-FS BGR-PROC
    s" bench/llm/expanded-report-test.f" BGR-ARG+

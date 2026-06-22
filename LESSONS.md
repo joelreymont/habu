@@ -592,10 +592,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   heartbeats and still leave the user blind if the parent waits with a raw
   `WAIT-RC`. Top-level gate runners need their own poll loop, timeout, and
   heartbeat while they stream child output.
-- **Live-row bundle artifacts must stay small:** `live-row.f` embeds artifact
-  contents before hashing. Native drivers that need a large internal run bundle
-  should keep that path separate from the emitted `final_bundle` artifact until
-  row emission is streaming.
+- **Live-row artifacts use OS-backed storage:** replay rows embed prompt, raw
+  response, candidate, diagnostics, repair, test output, and final bundle bytes.
+  Do not shrink or omit those artifacts to dodge capacity; grow the JSON writer
+  and artifact reader through `lib/memory.f` so evidence size follows workload.
 - **Stage2 source cap is a builder contract:** AOT maker generation can exceed
   the old 256 KiB stage2 reader even when the user source is tiny. Reproduce with
   `hb-build` child output and size `stage2-src`; then raise the named stage2

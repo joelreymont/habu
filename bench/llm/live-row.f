@@ -1,14 +1,13 @@
 \ live-row.f - checked schema-v2 row emitter for live LLM benchmark arms.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/json-write.f, and
-\ src/core/sha256.f.
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
+\ lib/json-write.f, and src/core/sha256.f.
 
 64 constant LR-SHA-LEN
-65536 constant LR-FILE-CAP
+1 constant LR-FILE-MIN-CAP
 -3220 constant E-LR-CAPACITY
 -3221 constant E-LR-HASH
 
-create LR-FILE-BUF LR-FILE-CAP allot
 create LR-SHA LR-SHA-LEN allot
 create LR-TRIAL-ID-BUF 256 allot
 create LR-PROMPT-PATH FS-PATH-CAP allot
@@ -20,6 +19,8 @@ create LR-TEST-PATH FS-PATH-CAP allot
 create LR-BUNDLE-PATH FS-PATH-CAP allot
 
 variable LR-FILE-U
+variable LR-FILE-A
+variable LR-FILE-CAP
 variable LR-TRIAL-ID-U
 variable LR-PROMPT-U
 variable LR-RAW-U
@@ -87,6 +88,19 @@ variable LR-RUNTIME-WARMUPS
 TRUSTED: LR-SET$ ( ptr u8 n ptr n ptr n -- ) {: a:ptr u ap:ptr up:ptr :}
    a ap !
    u up ! ;
+
+TRUSTED: LR-FILE-BUF ( -- ptr u8 )
+   LR-FILE-A @ ;
+
+: LR-STORE-FILE-SPAN ( ptr u8 n -- )
+   LR-FILE-CAP ! LR-FILE-A ! ;
+
+: LR-FILE-MIN-ONE ( n -- n )
+   dup LR-FILE-MIN-CAP < if drop LR-FILE-MIN-CAP then ;
+
+: LR-ENSURE-FILE-CAP ( n -- ) {: need :}
+   need LR-FILE-MIN-ONE LR-FILE-CAP @ <= if exit then
+   need LR-FILE-MIN-ONE MEM-ALLOC-64K-SPAN LR-STORE-FILE-SPAN ;
 
 : LR-RUN-ID! ( ptr u8 n -- )
    LR-RUN-ID-A LR-RUN-ID-U LR-SET$ ;
@@ -320,7 +334,8 @@ TRUSTED: LR-REPAIR-CLASS$ ( -- ptr u8 n )
    drop LR-SHA LR-SHA-LEN ;
 
 : LR-FILE-CONTENT ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu :}
-   path pathu LR-FILE-BUF LR-FILE-CAP READ-ALL LR-FILE-U !
+   path pathu FILE-SIZE LR-ENSURE-FILE-CAP
+   path pathu LR-FILE-BUF LR-FILE-CAP @ READ-ALL LR-FILE-U !
    LR-FILE-BUF LR-FILE-U @ ;
 
 : LR-FILE-FIELD ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu path:ptr pathu :}

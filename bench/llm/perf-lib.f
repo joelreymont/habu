@@ -2,7 +2,7 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/time.f, and
-\ lib/json-write.f.
+\ lib/memory.f and lib/json-write.f.
 
 64 constant PERF-USAGE-RC
 69 constant PERF-NOHB-RC

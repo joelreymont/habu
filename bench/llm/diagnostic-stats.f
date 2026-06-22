@@ -1,7 +1,7 @@
 \ diagnostic-stats.f - checked diagnostic field and repair-class reducers.
 \
-\ Load after lib/errors.f, lib/string.f, lib/json-write.f, tools/json.f, and
-\ bench/llm/manifest.f.
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/json-write.f,
+\ tools/json.f, and bench/llm/manifest.f.
 
 8 constant DGS-KNOWN#
 64 constant DGS-CLASS-MAX

@@ -1,8 +1,8 @@
 \ json-write.f - checked emit-only JSON writer.
 \
-\ Load after lib/errors.f and lib/string.f.
+\ Load after lib/errors.f, lib/string.f, and lib/memory.f.
 
-$8000 constant JW-CAP
+1 constant JW-MIN-CAP
 32 constant JW-NUM-CAP
 
 8 constant JW-BS
@@ -22,17 +22,47 @@ $8000 constant JW-CAP
 125 constant JW-RBRACE
 255 constant JW-BYTE-MAX
 
-create JW-BUF JW-CAP allot
 create JW-NUM-BUF JW-NUM-CAP allot
 
+variable JW-BUF-A
+variable JW-BUF-CAP
 variable JW-LEN
 variable JW-NUM-I
 
-: JW-CHECK-ROOM ( n -- ) {: add :}
+TRUSTED: JW-BUF ( -- ptr u8 )
+   JW-BUF-A @ ;
+
+: JW-CAP ( -- n )
+   JW-BUF-CAP @ ;
+
+: JW-STORE-SPAN ( ptr u8 n -- )
+   JW-BUF-CAP ! JW-BUF-A ! ;
+
+: JW-MIN-ONE ( n -- n )
+   dup JW-MIN-CAP < if drop JW-MIN-CAP then ;
+
+: JW-NEED-CAP ( n -- n ) {: add :}
    add 0 < if E-JW-CAPACITY throw then
-   add JW-CAP JW-LEN @ - > if E-JW-CAPACITY throw then ;
+   JW-LEN @ 0 < if E-JW-CAPACITY throw then
+   add MEM-MAX-N JW-LEN @ - >= if E-JW-CAPACITY throw then
+   JW-LEN @ add + ;
+
+: JW-COPY-OLD ( ptr u8 -- ) {: dst:ptr :}
+   JW-LEN @ 0 > if JW-BUF dst JW-LEN @ BYTE-COPY then ;
+
+: JW-GROW ( n -- ) {: need :}
+   need JW-MIN-ONE MEM-ALLOC-64K-SPAN
+   over JW-COPY-OLD
+   JW-STORE-SPAN ;
+
+: JW-CHECK-ROOM ( n -- )
+   JW-NEED-CAP dup JW-CAP > if JW-GROW else drop then ;
+
+: JW-ENSURE-INITIAL ( -- )
+   JW-CAP 0= if JW-MIN-CAP JW-GROW then ;
 
 : JW-RESET ( -- )
+   JW-ENSURE-INITIAL
    0 JW-LEN ! ;
 
 : JW-C ( n -- ) {: c :}
@@ -135,4 +165,5 @@ variable JW-NUM-I
    JW-NULL ;
 
 : JW$ ( -- ptr u8 n )
+   JW-ENSURE-INITIAL
    JW-BUF JW-LEN @ ;

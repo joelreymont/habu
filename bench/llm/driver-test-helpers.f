@@ -1,6 +1,6 @@
 \ driver-test-helpers.f - shared checked helpers for live driver tests.
 \
-\ Load after lib/test.f, lib/json-write.f, bench/llm/live-row.f, and
+\ Load after lib/test.f, lib/memory.f, lib/json-write.f, bench/llm/live-row.f, and
 \ bench/llm/drive-stdlib-lib.f.
 
 : DTH-MODELS$ ( -- ptr u8 n )

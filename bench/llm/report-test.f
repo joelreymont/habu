@@ -1,6 +1,6 @@
 \ report-test.f - focused checked fixtures for bench/llm/report.f.
 \
-\ Load after lib/errors.f, lib/string.f, lib/test.f, lib/json-write.f,
+\ Load after lib/errors.f, lib/string.f, lib/test.f, lib/memory.f, lib/json-write.f,
 \ lib/fs.f, lib/fs-mutate.f, lib/process.f, and lib/process-argv.f.
 
 65536 constant RPT-CAPTURE-CAP

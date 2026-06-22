@@ -1,5 +1,5 @@
 \ json-write-test.f - focused tests for checked JSON writer.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/json-write.f lib/json-write-test.f
 
 create JWT-ESC-IN
@@ -12,6 +12,8 @@ create JWT-ESC-WANT
 
 create JWT-NAME
    65 c, JW-DQ c, 66 c,
+
+MEM-64K 17 + constant JWT-LARGE-N
 
 : JWT-ESC-IN$ ( -- ptr u8 n )
    JWT-ESC-IN 6 ;
@@ -104,23 +106,35 @@ create JWT-NAME
 : JWT-U-NEG ( -- )
    -1 JW-U ;
 
-: JWT-OVERFLOW ( -- )
+: JWT-HUGE-ROOM ( -- )
    JW-RESET
-   JW-CAP 0 ?do 65 JW-C loop
-   66 JW-C ;
+   MEM-MAX-N JW-CHECK-ROOM ;
+
+: JWT-BUILD-LARGE ( -- )
+   JW-RESET
+   JWT-LARGE-N 0 ?do 65 JW-C loop ;
+
+: JWT-TEST-GROWTH ( -- )
+   JWT-BUILD-LARGE
+   JW-CAP JWT-LARGE-N < TFALSE
+   JW$ {: a:ptr u :}
+   u JWT-LARGE-N T=
+   a c@ 65 T=
+   a u 1 - + c@ 65 T= ;
 
 : JWT-TEST-ERRORS ( -- )
    [: JWT-RAW-NEG ;] E-JW-CAPACITY TTHROWSQ
    [: JWT-C-NEG ;] E-JW-BYTE TTHROWSQ
    [: JWT-C-HIGH ;] E-JW-BYTE TTHROWSQ
    [: JWT-U-NEG ;] E-JW-BYTE TTHROWSQ
-   [: JWT-OVERFLOW ;] E-JW-CAPACITY TTHROWSQ ;
+   [: JWT-HUGE-ROOM ;] E-JW-CAPACITY TTHROWSQ ;
 
 : JWT-MAIN ( -- )
    T-RESET
    JWT-TEST-STRING-ESCAPE
    JWT-TEST-OBJECT
    JWT-TEST-ARRAY
+   JWT-TEST-GROWTH
    JWT-TEST-ERRORS
    T-REPORT
    s" json-write-test: ok" type cr ;

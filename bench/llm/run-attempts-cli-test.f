@@ -157,6 +157,7 @@ variable RACT-NEXT
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/json-write.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
@@ -166,7 +167,6 @@ variable RACT-NEXT
    s" lib/process-env.f"  >LEN PROC-ARGV+
    s" lib/time.f"  >LEN PROC-ARGV+
    s" lib/date.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
    s" bench/llm/manifest.f"  >LEN PROC-ARGV+
    s" tools/lint/lib.f"  >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+

@@ -1,6 +1,6 @@
 \ fixture-text.f - checked text fixture builder vocabulary.
 \
-\ Load after lib/string.f and lib/json-write.f.
+\ Load after lib/string.f, lib/memory.f, and lib/json-write.f.
 
 9 constant BFT-TAB
 10 constant BFT-LF
