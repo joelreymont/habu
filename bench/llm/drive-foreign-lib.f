@@ -14,11 +14,12 @@
 
 create DFG-CONV-BUF DFG-CONV-CAP allot
 create DFG-RUNTIME-PATH FS-PATH-CAP allot
-create DFG-NODE-PATH FS-PATH-CAP allot
+create DFG-EXEC-PATH FS-PATH-CAP allot
 
+variable DFG-LANG
 variable DFG-CONV-U
 variable DFG-RUNTIME-U
-variable DFG-NODE-U
+variable DFG-EXEC-U
 variable DFG-ROUND
 variable DFG-FIRST-KIND
 variable DFG-TEST-KIND
@@ -41,8 +42,29 @@ variable DFG-START
 : DFG-RUNTIME$ ( -- ptr u8 n )
    DFG-RUNTIME-PATH DFG-RUNTIME-U @ ;
 
-: DFG-NODE$ ( -- ptr u8 n )
-   DFG-NODE-PATH DFG-NODE-U @ ;
+: DFG-EXEC$ ( -- ptr u8 n )
+   DFG-EXEC-PATH DFG-EXEC-U @ ;
+
+: DFG-JS! ( -- )
+   FV-LANG-JS DFG-LANG ! ;
+
+: DFG-TS! ( -- )
+   FV-LANG-TS DFG-LANG ! ;
+
+: DFG-TS? ( -- bool )
+   DFG-LANG @ FV-LANG-TS = ;
+
+: DFG-ARM$ ( -- ptr u8 n )
+   DFG-TS? if s" ts" exit then
+   s" js" ;
+
+: DFG-RUNTIME-CMD$ ( -- ptr u8 n )
+   DFG-TS? if s" bun" exit then
+   s" node" ;
+
+: DFG-TIMEOUT-ENV$ ( -- ptr u8 n )
+   DFG-TS? if s" BENCH_TS_TIMEOUT_MS" exit then
+   s" BENCH_JS_TIMEOUT_MS" ;
 
 : DFG-EMPTY$ ( -- ptr u8 n )
    s" " drop 0 ;
@@ -58,10 +80,16 @@ variable DFG-START
    mono-ns DFG-START-NS @ - DFG-NS-PER-MS 1- + DFG-NS-PER-MS / DFG-WALL-MS ! ;
 
 : DFG-PATHS! ( -- )
+   DFG-TS? if
+      s" test.ts" DS-BUNDLE-PATH DS-BUNDLE-PATH-U DS-JOIN!
+      s" runtime.ts" DFG-RUNTIME-PATH DFG-RUNTIME-U DS-JOIN!
+      exit
+   then
+   s" test.js" DS-BUNDLE-PATH DS-BUNDLE-PATH-U DS-JOIN!
    s" runtime.js" DFG-RUNTIME-PATH DFG-RUNTIME-U DS-JOIN! ;
 
-: DFG-RESOLVE-NODE ( -- )
-   s" node" >LEN DFG-NODE-PATH RESOLVE-EXECUTABLE LEN>N DFG-NODE-U ! ;
+: DFG-RESOLVE-EXEC ( -- )
+   DFG-RUNTIME-CMD$ >LEN DFG-EXEC-PATH RESOLVE-EXECUTABLE LEN>N DFG-EXEC-U ! ;
 
 : DFG-FIRST! ( n -- ) {: kind :}
    DFG-FIRST-KIND @ DFG-FIRST-NONE = if kind DFG-FIRST-KIND ! then ;
@@ -83,7 +111,7 @@ variable DFG-START
 
 : DFG-CONFIG-LR-COMMON ( -- )
    DS-CONFIG-LR-COMMON
-   s" js" LR-ARM!
+   DFG-ARM$ LR-ARM!
    DFG-WALL-MS @ LR-WALL-MS !
    DFG-ROUND @ LR-ROUNDS !
    DFG-REPAIR-ROUNDS LR-REPAIR-ITERATIONS !
@@ -107,14 +135,19 @@ variable DFG-START
 
 : DFG-BUILD-PROMPT ( -- )
    DS-PROMPT-RESET
-   s" Write a JavaScript function with this exact signature:" DS-PROMPT-LN
-   s"   function f(a) { ... }" DS-PROMPT-LN
-   s" where a is an array of integers." DS-PROMPT-LN
-   DFG-CONV$ s" as" STR= if
-      s" It must return one integer result." DS-PROMPT-LN
+   DFG-TS? if
+      s" Write a TypeScript function with this exact signature:" DS-PROMPT-LN
+      DFG-CONV$ s" as" STR= if
+         s"   function f(a: number[]): number { ... }" DS-PROMPT-LN
+      else
+         s"   function f(a: number[]): number[] { ... }" DS-PROMPT-LN
+      then
    else
-      s" It must return a new array of integers." DS-PROMPT-LN
+      s" Write a JavaScript function with this exact signature:" DS-PROMPT-LN
+      s"   function f(a) { ... }" DS-PROMPT-LN
    then
+   s" where a is an array of integers." DS-PROMPT-LN
+   DFG-CONV$ s" as" STR= if s" It must return one integer result." else s" It must return a new array of integers." then DS-PROMPT-LN
    DS-SPEC$ DS-PROMPT-LN
    s" " DS-PROMPT-LN
    s" Expected examples:" DS-PROMPT-LN
@@ -146,8 +179,13 @@ variable DFG-START
    DS-TEST-RESET
    DS-CAND$ DS-TEST+
    s" " DS-TEST-LN
-   s" function check(g,w,a){ if(JSON.stringify(g)!==JSON.stringify(w)){ console.error('FAIL f('+a+') = '+JSON.stringify(g)+' expected '+JSON.stringify(w)); process.exit(1); } }" DS-TEST-LN
-   DFG-CONV$ DS-TESTS$ FV-JS-TESTS DS-TEST+
+   DFG-TS? if
+      s" function check(g: unknown,w: unknown,a: string): void { if(JSON.stringify(g)!==JSON.stringify(w)){ console.error('FAIL f('+a+') = '+JSON.stringify(g)+' expected '+JSON.stringify(w)); process.exit(1); } }" DS-TEST-LN
+      DFG-CONV$ DS-TESTS$ FV-TS-TESTS DS-TEST+
+   else
+      s" function check(g,w,a){ if(JSON.stringify(g)!==JSON.stringify(w)){ console.error('FAIL f('+a+') = '+JSON.stringify(g)+' expected '+JSON.stringify(w)); process.exit(1); } }" DS-TEST-LN
+      DFG-CONV$ DS-TESTS$ FV-JS-TESTS DS-TEST+
+   then
    s" console.log('ALL-OK');" DS-TEST-LN
    DS-BUNDLE-PATH$ DS-TEST$ WRITE-ALL ;
 
@@ -155,14 +193,18 @@ variable DFG-START
    DS-TEST-RESET
    DS-CAND$ DS-TEST+
    s" " DS-TEST-LN
-   DS-TESTS$ 10 100 FV-JS-BENCH DS-TEST+
+   DFG-TS? if
+      DS-TESTS$ 10 100 FV-TS-BENCH DS-TEST+
+   else
+      DS-TESTS$ 10 100 FV-JS-BENCH DS-TEST+
+   then
    DFG-RUNTIME$ DS-TEST$ WRITE-ALL ;
 
-: DFG-NODE-CAPTURE ( ptr u8 n -- ) {: script:ptr scriptu :}
+: DFG-SCRIPT-CAPTURE ( ptr u8 n -- ) {: script:ptr scriptu :}
    PROC-ARGV-ENV-RESET
    script scriptu >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   DFG-NODE$ >LEN DFG-EMPTY$ >LEN DS-OUT-BUF DS-OUT-CAP >LEN
+   DFG-EXEC$ >LEN DFG-EMPTY$ >LEN DS-OUT-BUF DS-OUT-CAP >LEN
    DS-ERR-BUF DS-ERR-CAP >LEN DFG-TIMEOUT >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu erru kind code :}
    code DFG-TEST-CODE !
@@ -174,7 +216,7 @@ variable DFG-START
    kind PROC-OUTCOME-EXIT = if code else 128 code + then DS-RC ! ;
 
 : DFG-RUN-TESTS ( -- )
-   DS-BUNDLE-PATH$ DFG-NODE-CAPTURE
+   DS-BUNDLE-PATH$ DFG-SCRIPT-CAPTURE
    DS-TEST-PATH$ DS-WRITE-CAPTURE ;
 
 : DFG-TEST-PASS? ( -- bool )
@@ -188,7 +230,7 @@ variable DFG-START
 
 : DFG-FINISH-RUNTIME ( -- )
    DFG-BUILD-RUNTIME-BUNDLE
-   DFG-RUNTIME$ DFG-NODE-CAPTURE
+   DFG-RUNTIME$ DFG-SCRIPT-CAPTURE
    DFG-RUNTIME-KIND @ PROC-OUTCOME-EXIT = 0= if
       s" error" DFG-LR-OUTCOME
       s" error" LR-RUNTIME-STATUS!
@@ -241,7 +283,7 @@ variable DFG-START
    CLEANUP-RESET
    DS-TEMP
    DFG-PATHS!
-   DFG-RESOLVE-NODE
+   DFG-RESOLVE-EXEC
    DFG-BUILD-PROMPT
    DS-PROMPT-PATH$ DS-PROMPT$ WRITE-ALL
    DS-WRITE-EMPTY-ARTIFACTS ;
@@ -316,7 +358,7 @@ variable DFG-START
    s" BENCH_MAX_REPAIRS" 5 DS-ENV-U ;
 
 : DFG-USAGE ( -- )
-   s" usage: bench/llm/drive-js.f <id> <name> <sig> <spec> <conv> <vectors> [maxr]" E-DS-USAGE die ;
+   s" usage: bench/llm/drive-js.f|drive-ts.f <id> <name> <sig> <spec> <conv> <vectors> [maxr]" E-DS-USAGE die ;
 
 : DFG-CONFIG ( -- )
    SCRIPT-ARGC 6 < if DFG-USAGE then
@@ -331,7 +373,7 @@ variable DFG-START
    DFG-REQUIRE-CONV
    DS-DEFAULTS
    DFG-CLI-MAX-REPAIRS DS-MAX-REPAIRS !
-   s" BENCH_JS_TIMEOUT_MS" DFG-RUN-TIMEOUT-MS DS-ENV-U DFG-TIMEOUT-U !
+   DFG-TIMEOUT-ENV$ DFG-RUN-TIMEOUT-MS DS-ENV-U DFG-TIMEOUT-U !
    s" MODEL_REGISTRY" s" bench/llm/models.tsv" DS-ENV$ MR-LOAD
    s" MODEL_ID" GETENV MR-REQUIRE ;
 

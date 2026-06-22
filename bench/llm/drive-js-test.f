@@ -1,6 +1,7 @@
 \ drive-js-test.f - focused tests for native JavaScript benchmark driver.
 
 : DJT-CONFIG ( ptr u8 n ptr u8 n -- ) {: conv:ptr convu vectors:ptr vectorsu :}
+   DFG-JS!
    s" id	label	command	args	parser	token_fields	timeout_s
 fixture	Fixture	/bin/echo	{prompt}	raw		2
 " MR-REGISTRY!

@@ -2,4 +2,5 @@
 \
 \ Load after bench/llm/drive-foreign-lib.f.
 
+DFG-JS!
 DFG-MAIN
