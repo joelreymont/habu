@@ -12,6 +12,18 @@ Forth coding standards live in `docs/forth.md`.
 
 ## Current Diagnosis
 
+The current expanded live evidence is a Codex Forth-only k=5 run:
+
+| arm | rows | task pass@5 | trial pass | diagnostics complete | trust/signature weakening |
+|---|---:|---:|---:|---:|---:|
+| habu-forth | 290 | 54/58 = 93.10% | 72.41% | 290/290 | 0 |
+
+This proves the checked repair harness is useful and replayable across the
+expanded Habu task surface, but it does not prove Habu is the best LLM target
+yet. The remaining task-pass failures are concentrated in quotation and
+combinator tasks, so the plan still needs stronger checked DSL/library shapes
+and diagnostics before rerunning cross-language baselines.
+
 The committed four-arm LLM benchmark has 80 live rows:
 
 | arm | trial pass | task pass@k | mean output tokens | max output tokens |
@@ -928,8 +940,9 @@ Live benchmark evidence after benchmark-surface changes:
 
 ```sh
 bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f bench/llm/perf-lib.f bench/llm/perf.f -- --json > bench/llm/results/perf.json
-BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 bench/llm/results/run-expanded.jsonl
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f tools/json.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
+MODEL_ID=codex BENCH_FORTH_MODES=repair BENCH_TASK_IDS=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,56,57,58,59,60,61,71,72,73,74,75,76,77 BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 5 bench/llm/results/run-expanded.jsonl
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f tools/json.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
+cmp /tmp/RESULTS-expanded.md bench/llm/RESULTS-expanded.md
 ```
 
 Fresh live model runs are nondeterministic. Review `/tmp/RESULTS-expanded.md`

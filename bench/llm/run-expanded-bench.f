@@ -912,8 +912,6 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" lib/process.f"  >LEN PROC-ARGV+
    s" lib/process-argv.f"  >LEN PROC-ARGV+
    s" lib/process-env.f"  >LEN PROC-ARGV+
-   s" lib/time.f"  >LEN PROC-ARGV+
-   s" lib/date.f"  >LEN PROC-ARGV+
    s" lib/argv.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" bench/llm/expanded-report.f"  >LEN PROC-ARGV+

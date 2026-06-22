@@ -159,6 +159,13 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `path:line`. Live rows can contain long prompts and raw responses, so JSON
   parser string storage and validator row input buffers must grow instead of
   imposing fixed row-size ceilings.
+- **Benchmark reports must be deterministic:** evidence reducers must not stamp
+  wall-clock generation time into committed reports. Use evidence-derived text
+  so regenerating from the same JSONL/perf artifacts can be proven with `cmp`.
+- **Stale status lint must distinguish prose from evidence blocks:** live-count
+  prose belongs in `STATUS.md`, but fenced machine output in benchmark evidence
+  is a replay artifact. Lint should ignore fenced code blocks and keep prose
+  count checks strict.
 
 ## Native Codegen And AOT
 

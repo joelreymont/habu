@@ -38,6 +38,7 @@ variable SS-SRC-A
 variable SS-SRC-U
 variable SS-LINE-S
 variable SS-LINE-E
+variable SS-FENCE
 
 : SS-CHECK-HOOK ( -- )
    CHECK! ;
@@ -153,6 +154,12 @@ variable SS-LINE-E
 
 : SS-LINE-PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    a u b v STARTS-WITH? ;
+
+: SS-FENCE-LINE? ( ptr u8 n -- bool )
+   TRIM s" ```" STARTS-WITH? ;
+
+: SS-FENCE-TOGGLE ( -- )
+   SS-FENCE @ 0= IF -1 ELSE 0 THEN SS-FENCE ! ;
 
 : SS-LINE-END ( ptr u8 n n -- n ) {: a:ptr u start :}
    start begin dup u < while
@@ -307,18 +314,25 @@ variable SS-LINE-E
    SS-NL
    SS-BAD+ ;
 
+: SS-SCAN-CURRENT-LINE ( -- )
+   SS-CURRENT-LINE SS-FENCE-LINE? IF SS-FENCE-TOGGLE exit THEN
+   SS-FENCE @ 0= IF
+      SS-CURRENT-LINE SS-COUNT-LINE? IF SS-FINDING THEN
+   THEN ;
+
 : SS-SCAN-MD ( ptr u8 n -- ) {: a:ptr u :}
    a u SS-ALLOWED? IF exit THEN
    a u SS-MD? SS-NOT IF exit THEN
    a u EXISTS? SS-NOT IF exit THEN
    a u SS-DISPLAY!
    a u SS-LOAD-FILE
+   0 SS-FENCE !
    0 SS-LINE-N !
    0 SS-LINE-S !
    begin SS-LINE-S @ SS-SRC-U @ < while
       SS-LINE-N @ 1+ SS-LINE-N !
       SS-SET-LINE-END
-      SS-CURRENT-LINE SS-COUNT-LINE? IF SS-FINDING THEN
+      SS-SCAN-CURRENT-LINE
       SS-ADVANCE-LINE
    repeat ;
 

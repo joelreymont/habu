@@ -1,7 +1,7 @@
 \ expanded-report.f - native expanded live benchmark Markdown report.
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/process.f,
-\ lib/process-argv.f, lib/time.f, lib/date.f, lib/argv.f, and tools/json.f.
+\ lib/process-argv.f, lib/argv.f, and tools/json.f.
 
 66 constant ER-NOINPUT-RC
 74 constant ER-IO-RC
@@ -17,7 +17,6 @@
 48 constant ER-ZERO
 57 constant ER-NINE
 
-create ER-DATE-BUF DATE-TIME-LEN allot
 create ER-READ-BUF ER-READ-CAP allot
 create ER-SUM-BUF ER-SUM-CAP allot
 create ER-JSON-BUF ER-JSON-CAP allot
@@ -299,7 +298,7 @@ variable ER-PARSE-N
 
 : ER-REPORT. ( -- )
    s" # Expanded Habu Forth Live Benchmark" type cr cr
-   s" Generated: `" type TIME-EPOCH-SECONDS ER-DATE-BUF DATE-TIME-LEN FORMAT-EPOCH-UTC type s" `" type cr cr
+   s" Generated: `deterministic from raw evidence`" type cr cr
    s" Raw evidence: `" type ER-RESULT$ type s" ` (" type ER-ROW-COUNT ER-U. s"  rows)" type cr cr
    s" The raw JSONL rows are validated by `bench/llm/validate-results.f`; replay artifacts are embedded in every row with SHA-256 fields." type cr cr
    s" ## Validator Summary" type cr cr

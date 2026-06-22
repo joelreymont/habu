@@ -29,7 +29,40 @@ concatenative loops, while being one-liners in JS/Rust.
 
 ## 2. The result (claims to be verified)
 
-The committed evidence is 10 array tasks × 4 arms × 2 trials = 80 trials
+### Current expanded Habu-Forth evidence
+
+The committed expanded evidence is 58 Forth/checker/system tasks × 5 trials =
+290 trials (`bench/llm/results/run-expanded.jsonl`, summarized in
+`bench/llm/RESULTS-expanded.md`). This is a **Forth-only Codex run** for the
+`habu-forth` repair arm. It evaluates whether Codex can produce checked Habu
+from diagnostics across the expanded task surface; it is not a cross-language
+Rust/JS comparison.
+
+| model | arm | rows | task pass@5 | trial pass | certified | tests passed | repair iterations | diagnostic fields | trust/signature weakening |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Codex | habu-forth | 290 | 54/58 = 93.10% | 72.41% | 195 | 210 | 25 | 290/290 | 0 |
+
+Expanded-run conclusions:
+
+1. **Habu is usable but not done.** Codex reaches green checked Habu on 54 of
+   58 task groups at k=5 with the repair driver. That is real progress over
+   anecdotal examples, but it is not "best for LLMs" yet.
+2. **Diagnostics are complete and replayable.** Every row carries the expected
+   diagnostic/replay fields (`token`, `span`, `expected`, `actual`, `code`,
+   `repair_class`, and stable all-errors replay), with zero false rejects,
+   zero `TRUST` use, and zero signature weakening.
+3. **The hard misses are concentrated.** The remaining task-pass failures are
+   in quotation/combinator territory: quotation reaches 2/3 task pass@5 and
+   combinator reaches 1/4. Most arithmetic, control, locals, polymorphic,
+   memory, parsing, and diagnostic-repair groups reach 100% task pass@5.
+4. **Repair helps but does not erase missing language/library shape.** The run
+   records 95 checker rejections, 25 repair iterations, and 15 repaired rows.
+   The next work is still the same: make the checked DSL/stdlib surface encode
+   the patterns models now struggle to synthesize.
+
+### Legacy cross-language array baseline
+
+The earlier committed evidence is 10 array tasks × 4 arms × 2 trials = 80 trials
 (`bench/llm/results/run.jsonl`, summarized in `bench/llm/RESULTS.md`). The fourth
 arm, `habu-lib`, gives Habu checked array helpers (`A@`, `A!`, `A-SWAP`,
 `MIRROR-INDEX`, `EVEN?`) so the run directly compares raw Habu against a small
@@ -42,7 +75,7 @@ LLM-facing checked library.
 | JavaScript | 85% | 85% | 100% | 100 | 314 |
 | Rust | 95% | 90% | 100% | 78 | 200 |
 
-**Conclusions:**
+Legacy cross-language conclusions:
 1. **Task-level correctness parity, trial-level misses.** In the committed
    four-arm evidence, every arm reaches a correct solution for every task under
    k=2 (task pass@k 100%). The stricter trial-level result is Habu raw 18/20,
@@ -105,24 +138,30 @@ prints `-1` per certified word. The native `tools/check.f` runner on the def sec
 do NOT run the checker runner on the whole file — it executes the runtime assertions in its checking
 harness and hangs.)
 
-### V3 — Reproduce the benchmark (uses real `claude -p`; costs tokens; non-deterministic)
+### V3 — Reproduce the expanded Forth-only benchmark (uses a live model; costs tokens; non-deterministic)
 ```
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f bench/llm/perf-lib.f bench/llm/perf.f -- --json > bench/llm/results/perf.json
-BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 bench/llm/results/run-expanded.jsonl
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f tools/json.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f bench/llm/perf-lib.f bench/llm/perf.f -- --json > /tmp/habu-llm-perf.json
+MODEL_ID=codex BENCH_FORTH_MODES=repair BENCH_TASK_IDS=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,56,57,58,59,60,61,71,72,73,74,75,76,77 BENCH_PERF_JSON=/tmp/habu-llm-perf.json BENCH_RESULTS=/tmp/habu-RESULTS-expanded.md bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 5 /tmp/habu-run-expanded.jsonl
 ```
-Then review `/tmp/RESULTS-expanded.md`. Exact token counts WILL differ run-to-run
-(model nondeterminism), but the **shape** must reproduce: pass@k ≈ 100% for all
-arms, trial pass close to the table in §2, and Habu's per-task tokens ≈ 1× on
-the elementwise tasks and many-× (especially ARGMAX) on the index/state/in-place
-tasks. The committed `run.jsonl` is the exact legacy evidence behind all four
-arms in §2; committed expanded evidence lives in `results/run-expanded.jsonl`
-once the k>=5 expanded run is finalized.
+Then review `/tmp/habu-RESULTS-expanded.md`. Exact token counts WILL differ run-to-run
+(model nondeterminism). For the committed expanded Forth evidence, verify the
+shape in §2: 58 task groups, roughly 93% task pass@5, roughly 72% trial pass,
+complete diagnostic/replay fields, no trust use, no signature weakening, and
+remaining failures concentrated in quotation/combinator tasks. The committed
+`run.jsonl` is the exact legacy cross-language evidence; committed expanded
+evidence lives in `bench/llm/results/run-expanded.jsonl`.
+
+To verify the committed expanded report byte-for-byte without rerunning a model:
+
+```
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f tools/json.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
+cmp /tmp/RESULTS-expanded.md bench/llm/RESULTS-expanded.md
+```
 
 ### V4 — Spot-check a single live cell
 ```
-BENCH_TASK_IDS=4 BENCH_ARRAY_ARMS=habu-a \
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 /tmp/argmax.jsonl
+MODEL_ID=codex BENCH_TASK_IDS=49 BENCH_ARRAY_ARMS=habu-a \
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 /tmp/argmax.jsonl
 ```
 Emits one raw-Habu JSONL row. Expect `outcome:pass` with a token count far above
 the JS/Rust cost for the same task when run through the native expanded runner
@@ -200,8 +239,10 @@ addition.
   repair round. This *helps* habu (localizes errors) but also means over-strict rejections cost
   rounds. Observed repair rounds were low (raw mean 1.11, helper mean 1.0), so this is a minor
   factor here.
-- **Task pass@k hides trial misses.** Every arm is 100% at task pass@k because each task has at
-  least one green trial, but trial pass ranges from 85% to 95%. Use both numbers.
+- **Task pass@k hides trial misses.** The legacy cross-language array run is
+  100% at task pass@k for every arm because each task has at least one green
+  trial, while trial pass ranges from 85% to 95%. The expanded Forth-only run is
+  93.10% task pass@5 and 72.41% trial pass. Use both numbers.
 - **Model nondeterminism.** `claude -p` is not bit-reproducible. k=2; verify the *shape*, not
   exact tokens. The habu side (engine, checker, grading) is fully deterministic.
 - **Output-tokens-as-effort** is a proxy. It is generated-token cost, not direct hidden

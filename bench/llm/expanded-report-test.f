@@ -8,6 +8,7 @@ create ERT-ROOT FS-PATH-CAP allot
 create ERT-RESULT FS-PATH-CAP allot
 create ERT-PERF FS-PATH-CAP allot
 create ERT-OUT ERT-CAPTURE-CAP allot
+create ERT-OUT2 ERT-CAPTURE-CAP allot
 create ERT-ERR ERT-CAPTURE-CAP allot
 create ERT-LF-BUF 1 allot
 
@@ -15,6 +16,7 @@ variable ERT-ROOT-U
 variable ERT-RESULT-U
 variable ERT-PERF-U
 variable ERT-OUT-U
+variable ERT-OUT2-U
 
 ERT-LF ERT-LF-BUF c!
 
@@ -192,8 +194,6 @@ ERT-LF ERT-LF-BUF c!
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" lib/process.f"  >LEN PROC-ARGV+
    s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" lib/time.f"  >LEN PROC-ARGV+
-   s" lib/date.f"  >LEN PROC-ARGV+
    s" lib/argv.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" bench/llm/expanded-report.f"  >LEN PROC-ARGV+
@@ -208,6 +208,13 @@ ERT-LF ERT-LF-BUF c!
 : ERT-CONTAINS ( ptr u8 n -- ) {: a:ptr u :}
    ERT-OUT ERT-OUT-U @ a u FIND-SUB 0 >= TTRUE ;
 
+: ERT-COPY-OUT2 ( -- )
+   ERT-OUT ERT-OUT2 ERT-OUT-U @ BYTE-COPY
+   ERT-OUT-U @ ERT-OUT2-U ! ;
+
+: ERT-SAME-OUTPUT ( -- )
+   ERT-OUT ERT-OUT-U @ ERT-OUT2 ERT-OUT2-U @ STR= TTRUE ;
+
 : ERT-TEST-LATENCY ( -- )
    ERT-RUN-REPORT {: outu erru rc :}
    rc 0 T=
@@ -219,7 +226,14 @@ ERT-LF ERT-LF-BUF c!
    s" ## LLM Feedback Latency" ERT-CONTAINS
    s" bench/llm/perf.f -- --json" ERT-CONTAINS
    s" | metric_validator | 34 | 0.03 |" ERT-CONTAINS
-   s" | microbench_smoke | 56 | 0.06 |" ERT-CONTAINS ;
+   s" | microbench_smoke | 56 | 0.06 |" ERT-CONTAINS
+   ERT-COPY-OUT2
+   ERT-RUN-REPORT {: outu2 erru2 rc2 :}
+   rc2 0 T=
+   erru2 0 T=
+   outu2 0 > TTRUE
+   outu2 ERT-OUT-U !
+   ERT-SAME-OUTPUT ;
 
 : ERT-MAIN ( -- )
    T-RESET
