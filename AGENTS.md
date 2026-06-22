@@ -7,14 +7,19 @@ roadmap.
 
 ## First Response Triggers (BLOCKING)
 
-- Before any progress update, tool call, or implementation plan, scan the latest
-  user message for “why didn’t the checker catch this?”, “why didn’t the compiler
-  catch this?”, or equivalent wording. Quoted examples, meta-process questions,
-  and variants such as “why did the checker/compiler miss it?” are live triggers.
+- First action on every turn is a silent latest-message trigger scan. Do it
+  before progress updates, tool calls, implementation plans, status text, or
+  apologies. Scan for “why didn’t the checker catch this?”, “why didn’t the
+  compiler catch this?”, or equivalent wording. Quoted examples, meta-process
+  questions, and variants such as “why did the checker/compiler miss it?” are
+  live triggers.
 - If that trigger is present, the first visible line must be `Static invariant:`
   followed by the pre-runtime fact that should have been impossible and the
   checker/compiler boundary that should enforce it. No runtime symptom,
   workaround, library edit, or test-harness edit comes first.
+- If the invariant is not known yet, the first visible line is still
+  `Static invariant:` and states the unknown precisely. Then reduce the case
+  until the invariant, owner, reproducer, compiler fix, and regression are known.
 - If the trigger was missed, the next visible message must restart with
   `Static invariant:` before continuing. Do not explain the process first.
 - Continue with `docs/forth.md` § Checker-Miss RCA: prove the exact path is

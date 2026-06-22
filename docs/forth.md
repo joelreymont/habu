@@ -129,12 +129,14 @@ not a matter of taste. Target is the native `bin/hb` engine.
 ### Checker-Miss RCA
 
 - Treat the phrase "why didn't the checker catch this?" and equivalent wording
-  as an immediate trigger, even in meta-discussion about process. The first
-  question is always: **What static invariant should have made this impossible
-  before runtime, and where should the compiler/checker enforce it?** The first
-  visible line of the response, progress update, note, dot, or investigation is
-  `Static invariant:` followed by that invariant and boundary. If you have
-  already started with runtime symptoms, stop and restart from this line.
+  as an immediate trigger, even in meta-discussion about process. Before any
+  tool call or visible text, ask: **What static invariant should have made this
+  impossible before runtime, and where should the compiler/checker enforce it?**
+  The first visible line of the response, progress update, note, dot, or
+  investigation is `Static invariant:` followed by that invariant and boundary.
+  If the invariant is not known yet, say so on that same line and reduce the
+  case until it is known. If you have already started with runtime symptoms,
+  stop and restart from this line.
 - Do not put runtime symptoms first. The checker/compiler/primitive model owns
   the investigation until the exact checked path proves that the invariant is
   outside its contract. Guards, runtime repairs, and library edits come only
