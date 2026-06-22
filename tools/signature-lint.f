@@ -1,9 +1,7 @@
 \ signature-lint.f - strict typed-signature lint.
 \ Load after lib/memory.f, lib/vector.f, tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/lint/source-lex.f,
+\ tools/lint/source-lex.f, tools/lint/json-writer.f,
 \ and tools/argv.f.
-
-0 set-check
 
 $10000 constant SL-FILE-CAP
 32 constant SL-NUM-CAP
@@ -32,10 +30,6 @@ variable SL-WORD-A
 variable SL-WORD-U
 variable SL-SUG-A
 variable SL-SUG-U
-
-: SL-CHECK-HOOK ( -- )
-   CHECK! ;
-' SL-CHECK-HOOK set-check
 
 : SL-OUT ( ptr u8 n -- ) type ;
 : SL-NL ( -- ) 10 emit ;
