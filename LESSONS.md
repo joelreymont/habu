@@ -46,22 +46,15 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   live in `USIGS`, which must grow for real composed checked bundles and still
   roll back by restoring `UEND` in define-check-discard loops. Fixed checker
   storage limits are compiler infrastructure bugs, not reasons to trim bundles.
-- **Checker RCA starts with invariant, then compiler ownership:** “why didn’t
-  the checker catch this?” is an immediate trigger, even in meta-discussion.
-  First write `Static invariant:` answering what pre-runtime fact should have
-  been impossible and where the compiler/checker should enforce it. Runtime
-  fixes wait for fail-closed proof, miss class, minimal checked reproducer, and
-  a checker/compiler/primitive-model fix or capability dot; the bad program must
-  end as a negative checker regression.
-- **Checker-miss trigger scan is a preflight, not prose:** the latest user
-  message must be scanned before any visible output or tool call. If it contains
-  a checker/compiler-miss trigger, first line is `Static invariant:`; if the
-  invariant is unknown, say that on the line and reduce until the compiler owner,
-  reproducer, fix, and regression are known.
-- **Quoted checker-miss prompts still trigger:** process questions and quoted
-  examples such as “why didn’t the checker catch this?” are not inert text. If
-  the trigger is missed, the next visible message restarts at `Static invariant:`
-  before any explanation.
+- **Checker-miss RCA starts before visible output:** scan the latest prompt for
+  checker/compiler-miss wording, including quoted or meta-process examples. The
+  first visible line must be `Static invariant:` naming the pre-runtime fact that
+  should have been impossible and the checker/compiler boundary that should
+  enforce it. If the invariant is unknown, say that on the line and reduce until
+  the owner, reproducer, fix, and regression are known. Runtime fixes wait for
+  fail-closed proof, miss class, minimal checked reproducer, and a checker,
+  compiler, or primitive-model fix or capability dot; the bad program must end
+  as a negative checker regression.
 - **Quotations are xts, not closures:** `[: ;]` may not read a surrounding
   local. Until real closure objects exist, both the checker and generated
   compiler must reject local references while a quotation is open; otherwise
