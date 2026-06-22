@@ -61,6 +61,25 @@ create ST-LENS 2 cells allot
    a ST-PATHS idx cells + !
    u ST-LENS idx cells + ! ;
 
+: ST-READ-STDIN-ALL ( ptr u8 n -- n )
+   >LEN READ-STDIN-ALL LEN>N ;
+
+: ST-CONCAT-FILES ( ptr a ptr a n ptr u8 n -- n )
+   {: paths:ptr lens:ptr count dst:ptr cap :}
+   paths lens count >COUNT dst cap >LEN CONCAT-FILES LEN>N ;
+
+: ST-WRITE-SOURCE-LIST ( ptr a ptr a n ptr u8 n -- )
+   {: paths:ptr lens:ptr count out:ptr outu :}
+   paths lens count >COUNT out outu >LEN WRITE-SOURCE-LIST ;
+
+: ST-INSERT-BEFORE-FINAL-LINE ( ptr u8 n ptr u8 n ptr u8 n -- n )
+   {: src:ptr srcu ins:ptr insu dst:ptr cap :}
+   src srcu >LEN ins insu >LEN dst cap >LEN INSERT-BEFORE-FINAL-LINE LEN>N ;
+
+: ST-COMMENT-EXPORTS ( ptr u8 n ptr u8 n -- n )
+   {: src:ptr srcu dst:ptr cap :}
+   src srcu >LEN dst cap >LEN COMMENT-EXPORTS LEN>N ;
+
 : ST-LF ( -- )
    10 SB-APPEND-C ;
 
@@ -109,36 +128,36 @@ create ST-LENS 2 cells allot
    ST-B 1 ST-PATH-SLOT! ;
 
 : TEST-READ-STDIN-ALL ( -- )
-   ST-BUF ST-CAP READ-STDIN-ALL 0 T= ;
+   ST-BUF ST-CAP ST-READ-STDIN-ALL 0 T= ;
 
 : TEST-READ-STDIN-DATA ( -- )
-   ST-BUF ST-CAP READ-STDIN-ALL 4 T=
+   ST-BUF ST-CAP ST-READ-STDIN-ALL 4 T=
    ST-BUF 4 s" DATA" T$= ;
 
 : TEST-CONCAT-FILES ( -- )
-   ST-PATHS ST-LENS 2 ST-BUF ST-CAP CONCAT-FILES 9 T=
+   ST-PATHS ST-LENS 2 ST-BUF ST-CAP ST-CONCAT-FILES 9 T=
    ST-BUF 9 s" alphabeta" T$= ;
 
 : TEST-WRITE-SOURCE-LIST ( -- )
-   ST-PATHS ST-LENS 2 ST-OUT-PATH WRITE-SOURCE-LIST
+   ST-PATHS ST-LENS 2 ST-OUT-PATH ST-WRITE-SOURCE-LIST
    ST-OUT-PATH ST-BUF ST-CAP READ-ALL 9 T=
    ST-BUF 9 s" alphabeta" T$= ;
 
 : TEST-INSERT-BEFORE-FINAL-LINE ( -- )
    ST-INSERT-CASE!
-   ST-SRC ST-INS ST-BUF ST-CAP INSERT-BEFORE-FINAL-LINE ST-WANT-U @ T=
+   ST-SRC ST-INS ST-BUF ST-CAP ST-INSERT-BEFORE-FINAL-LINE ST-WANT-U @ T=
    ST-BUF ST-WANT-U @ ST-WANT T$=
    ST-FINAL-CASE!
-   ST-SRC ST-INS ST-BUF ST-CAP INSERT-BEFORE-FINAL-LINE ST-WANT-U @ T=
+   ST-SRC ST-INS ST-BUF ST-CAP ST-INSERT-BEFORE-FINAL-LINE ST-WANT-U @ T=
    ST-BUF ST-WANT-U @ ST-WANT T$= ;
 
 : TEST-COMMENT-EXPORTS ( -- )
    ST-EXPORT-CASE!
-   ST-SRC ST-BUF ST-CAP COMMENT-EXPORTS ST-WANT-U @ T=
+   ST-SRC ST-BUF ST-CAP ST-COMMENT-EXPORTS ST-WANT-U @ T=
    ST-BUF ST-WANT-U @ ST-WANT T$= ;
 
 : TEST-SOURCE-ERRORS ( -- )
-   s" abc" s" xyz" ST-BUF 5 INSERT-BEFORE-FINAL-LINE drop ;
+   s" abc" s" xyz" ST-BUF 5 ST-INSERT-BEFORE-FINAL-LINE drop ;
 
 : SOURCE-TEST-MAIN ( -- )
    T-RESET

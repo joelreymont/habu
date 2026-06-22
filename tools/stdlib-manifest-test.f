@@ -350,6 +350,10 @@ variable SMT-J
    s" ## Map" SMT-REQ-DOC
    s" MAP-CELLS           ( count -- count )" SMT-REQ-DOC
    s" MAP-SET     ( n ptr a count ptr u8 len -- )" SMT-REQ-DOC
+   s" ## Source Materialization" SMT-REQ-DOC
+   s" READ-STDIN-ALL                 ( ptr u8 len -- len )" SMT-REQ-DOC
+   s" CONCAT-FILES                   ( ptr a ptr a count ptr u8 len -- len )" SMT-REQ-DOC
+   s" COMMENT-EXPORTS                ( ptr u8 len ptr u8 len -- len )" SMT-REQ-DOC
    s" ## Files" SMT-REQ-DOC
    s" WALK-FILES   ( ptr u8 n [ ptr u8 n -- ] -- )" SMT-REQ-DOC
    s" depth-first" SMT-REQ-DOC

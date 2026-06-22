@@ -32,7 +32,7 @@ create HCT-ERR HCT-CAP allot
    SB-RESET
    s" create B 32 allot" SB-APPEND HCT-LF
    s" : MAIN ( -- )" SB-APPEND HCT-LF
-   s"    B 32 READ-STDIN-ALL dup ." SB-APPEND HCT-LF
+   s"    B 32 >LEN READ-STDIN-ALL LEN>N dup ." SB-APPEND HCT-LF
    s"    B swap type cr ;" SB-APPEND HCT-LF
    s" MAIN" SB-APPEND HCT-LF
    SB$ ;

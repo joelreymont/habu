@@ -84,7 +84,7 @@ variable HBT-PROP-U
 : HBT-STDIN-TOOL$SRC ( -- ptr u8 n )
    SB-RESET
    s" create B 32 allot" SB-APPEND HBT-LF
-   s" : MAIN ( -- ) B 32 READ-STDIN-ALL dup . B swap type cr ;" SB-APPEND HBT-LF
+   s" : MAIN ( -- ) B 32 >LEN READ-STDIN-ALL LEN>N dup . B swap type cr ;" SB-APPEND HBT-LF
    s" MAIN" SB-APPEND HBT-LF
    SB$ ;
 
