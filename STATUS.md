@@ -1,6 +1,6 @@
 # habu — Status
 
-Last verified: 2026-06-21
+Last verified: 2026-06-22
 Gate: passing
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated

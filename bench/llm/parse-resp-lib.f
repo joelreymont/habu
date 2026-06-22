@@ -203,10 +203,14 @@ TRUSTED: PR-TF-CONFIG$ ( -- ptr u8 n )
    PR-PARSER$ s" codex-jsonl" STR= IF PR-PARSE-CODEX exit THEN
    s" parse-resp: unsupported parser" PR-FAIL ;
 
+: PR-PARSE-FALLBACK? ( n -- bool )
+   dup E-JSON-SYNTAX = swap E-JSON-TYPE = or ;
+
 TRUSTED: PR-PARSE-RESP ( -- )
    ['] PR-PARSE-RESP-STRICT catch
    dup 0= IF drop exit THEN
-   drop PR-PARSE-RAW ;
+   dup PR-PARSE-FALLBACK? IF drop PR-PARSE-RAW exit THEN
+   throw ;
 
 : PR-PARSE-BUFFER ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: input:ptr inputu parser:ptr parseru fields:ptr fieldsu :}
