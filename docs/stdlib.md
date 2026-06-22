@@ -14,6 +14,7 @@ Planned module files:
 - `lib/errors.f`
 - `lib/array.f`
 - `lib/table.f`
+- `lib/vector.f`
 - `lib/string.f`
 - `lib/json-write.f`
 - `lib/regex.f`
@@ -168,6 +169,54 @@ TBL-A@           ( ptr a count count idx idx -- ptr u8 )
 TBL-A!           ( ptr u8 ptr a count count idx idx -- )
 TBL-PAIR!        ( ptr u8 len ptr a count count idx idx -- )
 TBL-PAIR$        ( ptr a count count idx idx -- ptr u8 len )
+```
+
+## Vector
+
+`lib/vector.f` provides growable cell-vector storage backed by `lib/memory.f`.
+A vector handle is caller-owned header storage: allocate
+`VEC-HEADER-CELLS cells` in DATA or another cell area, then initialize it with
+`VEC-INIT ( ptr a count -- )`. Capacity arguments are `count`, active lengths
+are `len`, and element positions are `idx`.
+
+Vectors store generic cells. Numeric values use `VEC-N@` / `VEC-N!`, byte
+pointers use `VEC-A@` / `VEC-A!`, and generic cell code can use `VEC@` /
+`VEC!`. `VEC-PUSH` grows by doubling capacity when the active length reaches
+the current capacity; it throws `E-VEC-CAPACITY` only for invalid or overflowing
+capacity requests and `E-VEC-BOUNDS` for invalid indexes or impossible lengths.
+
+The data pointer field is an audited trust boundary until the checker can
+express typed pointer fields for cell-backed records. All bounds, growth,
+copying, length, capacity, and iteration behavior is checked Forth.
+
+```forth
+VEC-CHECK-NEED      ( count -- )
+VEC-CHECK-CAP       ( count -- )
+VEC-CHECK-LEN       ( len -- )
+VEC-CELLS>BYTES     ( count -- n )
+VEC-LEN@            ( ptr a -- len )
+VEC-CAP@            ( ptr a -- count )
+VEC-CAP!            ( count ptr a -- )
+VEC-LEN!            ( len ptr a -- )
+VEC-INIT            ( ptr a count -- )
+VEC-CLEAR           ( ptr a -- )
+VEC-CHECK-INDEX     ( ptr a idx -- )
+VEC@                ( ptr a idx -- a )
+VEC!                ( a ptr a idx -- )
+VEC-N@              ( ptr a idx -- n )
+VEC-N!              ( n ptr a idx -- )
+VEC-A@              ( ptr a idx -- ptr u8 )
+VEC-A!              ( ptr u8 ptr a idx -- )
+VEC-COPY-CELLS      ( ptr a ptr a len -- )
+VEC-INSTALL-RESIZE  ( ptr a count ptr a -- )
+VEC-RESIZE          ( ptr a count -- )
+VEC-GROW-CAP        ( ptr a count -- count )
+VEC-ENSURE          ( ptr a count -- )
+VEC-PUSH-AT         ( a ptr a n -- idx )
+VEC-PUSH            ( a ptr a -- idx )
+VEC-PUSH-N          ( n ptr a -- idx )
+VEC-PUSH-A          ( ptr u8 ptr a -- idx )
+VEC-EACH            ( ptr a [ idx a -- ] -- )
 ```
 
 ## String

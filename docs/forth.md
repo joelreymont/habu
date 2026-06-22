@@ -187,6 +187,9 @@ not a matter of taste. Target is the native `bin/hb` engine.
   explicit comparisons.
 - **Trust is audited, not permanent.** `TRUST` records asserted effects so callers
   can be checked, but audit rows must stay current and stale dates must fail lint.
+- **Keep `TRUSTED:` bodies syntax-simple.** Do not use locals inside a trusted
+  body. Factor checked helper words for real work, then keep the trusted body to
+  the minimal operation that the checker cannot express.
 
 ## Native Forth Gotchas That Shape How We Write Code
 

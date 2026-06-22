@@ -47,6 +47,34 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	table	lib/table.f	word	TBL-A!	(ptr u8 ptr a count count idx idx --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	store one typed byte pointer checked table field
 1	table	lib/table.f	word	TBL-PAIR!	(ptr u8 len ptr a count count idx idx --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	store one counted byte-string field pair
 1	table	lib/table.f	word	TBL-PAIR$	(ptr a count count idx idx -- ptr u8 len)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	read one counted byte-string field pair
+1	vector	lib/vector.f	module			lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	checked growable cell-vector helpers backed by OS memory
+1	vector	lib/vector.f	word	VEC-CHECK-NEED	(count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	validate a nonnegative requested vector capacity
+1	vector	lib/vector.f	word	VEC-CHECK-CAP	(count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	validate a positive vector capacity
+1	vector	lib/vector.f	word	VEC-CHECK-LEN	(len --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	validate a nonnegative vector length
+1	vector	lib/vector.f	word	VEC-CELLS>BYTES	(count -- n)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	convert a checked cell capacity to bytes
+1	vector	lib/vector.f	word	VEC-LEN@	(ptr a -- len)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	read a vector active length
+1	vector	lib/vector.f	word	VEC-CAP@	(ptr a -- count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	read a vector capacity
+1	vector	lib/vector.f	word	VEC-CAP!	(count ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	write a checked vector capacity
+1	vector	lib/vector.f	word	VEC-LEN!	(len ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	write a checked vector active length
+1	vector	lib/vector.f	word	VEC-INIT	(ptr a count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	initialize a vector header with OS-backed cell storage
+1	vector	lib/vector.f	word	VEC-CLEAR	(ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	reset active length without changing capacity
+1	vector	lib/vector.f	word	VEC-CHECK-INDEX	(ptr a idx --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	validate one active vector index
+1	vector	lib/vector.f	word	VEC@	(ptr a idx -- a)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	fetch a generic vector cell
+1	vector	lib/vector.f	word	VEC!	(a ptr a idx --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	store a generic vector cell
+1	vector	lib/vector.f	word	VEC-N@	(ptr a idx -- n)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	fetch a numeric vector cell
+1	vector	lib/vector.f	word	VEC-N!	(n ptr a idx --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	store a numeric vector cell
+1	vector	lib/vector.f	word	VEC-A@	(ptr a idx -- ptr u8)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	fetch a byte-pointer vector cell
+1	vector	lib/vector.f	word	VEC-A!	(ptr u8 ptr a idx --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	store a byte-pointer vector cell
+1	vector	lib/vector.f	word	VEC-COPY-CELLS	(ptr a ptr a len --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	copy checked vector cells between typed cell spans
+1	vector	lib/vector.f	word	VEC-INSTALL-RESIZE	(ptr a count ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	install a freshly allocated resized vector span
+1	vector	lib/vector.f	word	VEC-RESIZE	(ptr a count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	reallocate vector storage to a checked capacity
+1	vector	lib/vector.f	word	VEC-GROW-CAP	(ptr a count -- count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	compute a doubled vector capacity for a requested need
+1	vector	lib/vector.f	word	VEC-ENSURE	(ptr a count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	ensure a vector has capacity for a requested active count
+1	vector	lib/vector.f	word	VEC-PUSH-AT	(a ptr a n -- idx)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	push a cell using a known old active length
+1	vector	lib/vector.f	word	VEC-PUSH	(a ptr a -- idx)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	append a generic cell and return its index
+1	vector	lib/vector.f	word	VEC-PUSH-N	(n ptr a -- idx)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	append a numeric cell and return its index
+1	vector	lib/vector.f	word	VEC-PUSH-A	(ptr u8 ptr a -- idx)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	append a byte pointer and return its index
+1	vector	lib/vector.f	word	VEC-EACH	(ptr a [ idx a -- ] --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	visit active vector cells in index order
 1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	active	checked byte-string predicates builders split and parse helpers
 1	string	lib/string.f	word	STR-TRUE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a true flag for string helpers
 1	string	lib/string.f	word	STR-FALSE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a false flag for string helpers

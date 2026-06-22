@@ -96,3 +96,9 @@
 -3299 constant E-MEM-LAST
 -3200 constant E-MEM-SIZE
 -3201 constant E-MEM-MAP
+
+\ Vectors: -3300..-3399
+-3300 constant E-VEC-FIRST
+-3399 constant E-VEC-LAST
+-3300 constant E-VEC-BOUNDS
+-3301 constant E-VEC-CAPACITY

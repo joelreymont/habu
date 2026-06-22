@@ -204,6 +204,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   update `TRUSTED.md` in the same change with the declared effect, reason, and
   tests. Trust-lint will fail otherwise, and the omission hides the real trusted
   base delta.
+- **Trusted bodies stay minimal:** `TRUSTED:` bodies do not accept locals
+  reliably; factor checked helpers and keep the trusted body to the asserted
+  primitive operation, or parsing can stop at `{:` before checker diagnostics.
 - **Trust audit dates follow the gate day:** `trust-lint` defaults to
   `epoch-seconds / DATE-SECONDS-DAY`, an epoch/UTC day. Near local midnight, a
   local calendar date can be future to the gate; use an explicit test date or an

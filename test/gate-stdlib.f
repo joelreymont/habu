@@ -563,6 +563,8 @@ variable GS-SRC-N
    s" map stdlib" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/memory-test.f" GS-ARG+
    s" memory stdlib" GS-HB-RUN
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/vector.f" GS-ARG+ s" lib/vector-test.f" GS-ARG+
+   s" vector stdlib" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/fs-test.f" GS-ARG+
    s" fs stdlib" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/source.f" GS-ARG+ s" lib/source-test.f" GS-ARG+
@@ -594,6 +596,9 @@ variable GS-SRC-N
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/memory-test.f" GS-SRC+
    s" memory stdlib check" GS-CHECK-RUN
+   GS-SRC-RESET
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+ s" lib/vector.f" GS-SRC+ s" lib/vector-test.f" GS-SRC+
+   s" vector stdlib check" GS-CHECK-RUN
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/fs-test.f" GS-SRC+
    s" fs stdlib check" GS-CHECK-RUN
