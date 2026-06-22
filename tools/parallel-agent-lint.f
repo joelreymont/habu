@@ -10,10 +10,6 @@ variable PAL-LEN
 variable PAL-BAD
 variable PAL-NUM-L
 
-: PAL-CHECK-HOOK ( -- )
-   CHECK! ;
-' PAL-CHECK-HOOK set-check
-
 : PAL-NL ( -- )
    10 emit ;
 

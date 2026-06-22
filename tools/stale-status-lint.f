@@ -38,10 +38,6 @@ variable SS-LINE-S
 variable SS-LINE-E
 variable SS-FENCE
 
-: SS-CHECK-HOOK ( -- )
-   CHECK! ;
-' SS-CHECK-HOOK set-check
-
 TRUSTED: SS-ROOT$ ( -- ptr u8 n )
    SS-ROOT-A @ SS-ROOT-U @ ;
 

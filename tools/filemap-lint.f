@@ -11,10 +11,6 @@ variable FM-START
 variable FM-BAD
 variable FM-NUM-L
 
-: FM-CHECK-HOOK ( -- )
-   CHECK! ;
-' FM-CHECK-HOOK set-check
-
 : FM-NL ( -- ) 10 emit ;
 
 : FM-PATHISH? {: a:ptr u :} ( ptr u8 n -- bool )
