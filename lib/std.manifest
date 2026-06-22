@@ -101,58 +101,58 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	json-write	lib/json-write.f	word	JW-FIELD-BOOL	(ptr u8 n bool --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with boolean value
 1	json-write	lib/json-write.f	word	JW-FIELD-NULL	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with null value
 1	json-write	lib/json-write.f	word	JW$	(-- ptr u8 n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	return JSON writer output bytes
-1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	active	v1 regex scanner and matcher use ptr u8 n storage buffers, never unchecked addr dereference
+1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	active	v1 regex scanner and matcher use ptr u8 len storage buffers, never unchecked addr dereference
 1	regex	lib/regex.f	word	RX-ESCAPABLE?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte can be escaped
 1	regex	lib/regex.f	word	RX-UNSUPPORTED-META?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test unsupported regex metacharacters
 1	regex	lib/regex.f	word	RX-CHECK-BYTE	(n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate token byte range
-1	regex	lib/regex.f	word	RX-NEED	(n n n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate output token capacity
-1	regex	lib/regex.f	word	RX-EMIT-1	(n ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit a one-byte token
-1	regex	lib/regex.f	word	RX-EMIT-LIT	(n ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit a literal token
-1	regex	lib/regex.f	word	RX-EMIT-RANGE	(n ptr u8 n ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit a class range token
-1	regex	lib/regex.f	word	RX-SCAN-CLASS-BODY	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan to a valid class terminator
-1	regex	lib/regex.f	word	RX-SCAN-CLASS	(ptr u8 n n -- n n n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan a bracket class and negation flag
-1	regex	lib/regex.f	word	RX-EMIT-CLASS-DONE	(ptr u8 ptr u8 n n n n n -- n n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit scanned class token and next index
-1	regex	lib/regex.f	word	RX-EMIT-CLASS	(ptr u8 n n ptr u8 n n -- n n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one class token
-1	regex	lib/regex.f	word	RX-SCAN-ESCAPE	(ptr u8 n n ptr u8 n n -- n n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one escaped literal
-1	regex	lib/regex.f	word	RX-SCAN-ONE	(ptr u8 n n ptr u8 n n -- n n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one regex token
-1	regex	lib/regex.f	word	RX-COMPILE	(ptr u8 n ptr u8 n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	compile bounded capture-free regex tokens
-1	regex	lib/regex.f	word	RX-CHECK-MATCH-ARGS	(n n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate text and bytecode lengths for matching
-1	regex	lib/regex.f	word	RX-FLAGS-CLEAR	(ptr u8 n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	clear a bounded regex state flag buffer
-1	regex	lib/regex.f	word	RX-FLAG?	(ptr u8 n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test one regex state flag
-1	regex	lib/regex.f	word	RX-ANY-FLAG?	(ptr u8 n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether any regex state flag is set
-1	regex	lib/regex.f	word	RX-ADD-STATE	(ptr u8 n n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	add one bounded regex NFA state
+1	regex	lib/regex.f	word	RX-NEED	(len off len --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate output token capacity
+1	regex	lib/regex.f	word	RX-EMIT-1	(n ptr u8 len off -- off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit a one-byte token
+1	regex	lib/regex.f	word	RX-EMIT-LIT	(n ptr u8 len off -- off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit a literal token
+1	regex	lib/regex.f	word	RX-EMIT-RANGE	(n ptr u8 len ptr u8 len off -- off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit a class range token
+1	regex	lib/regex.f	word	RX-SCAN-CLASS-BODY	(ptr u8 len off -- off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan to a valid class terminator
+1	regex	lib/regex.f	word	RX-SCAN-CLASS	(ptr u8 len off -- off off n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan a bracket class and negation flag
+1	regex	lib/regex.f	word	RX-EMIT-CLASS-DONE	(ptr u8 ptr u8 len off off off n -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit scanned class token and next index
+1	regex	lib/regex.f	word	RX-EMIT-CLASS	(ptr u8 len off ptr u8 len off -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one class token
+1	regex	lib/regex.f	word	RX-SCAN-ESCAPE	(ptr u8 len off ptr u8 len off -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one escaped literal
+1	regex	lib/regex.f	word	RX-SCAN-ONE	(ptr u8 len off ptr u8 len off -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one regex token
+1	regex	lib/regex.f	word	RX-COMPILE	(ptr u8 len ptr u8 len -- len)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	compile bounded capture-free regex tokens
+1	regex	lib/regex.f	word	RX-CHECK-MATCH-ARGS	(len len --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate text and bytecode lengths for matching
+1	regex	lib/regex.f	word	RX-FLAGS-CLEAR	(ptr u8 len --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	clear a bounded regex state flag buffer
+1	regex	lib/regex.f	word	RX-FLAG?	(ptr u8 off -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test one regex state flag
+1	regex	lib/regex.f	word	RX-ANY-FLAG?	(ptr u8 len -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether any regex state flag is set
+1	regex	lib/regex.f	word	RX-ADD-STATE	(ptr u8 len off --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	add one bounded regex NFA state
 1	regex	lib/regex.f	word	RX-QUANT?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a token is a quantifier
 1	regex	lib/regex.f	word	RX-ZERO-QUANT?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a quantifier allows zero width
 1	regex	lib/regex.f	word	RX-CONSUMING?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a token consumes one byte
 1	regex	lib/regex.f	word	RX-ANCHOR?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a token is an anchor
-1	regex	lib/regex.f	word	RX-FIXED-ATOM-LEN	(n n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate fixed-size atom bounds
-1	regex	lib/regex.f	word	RX-CLASS-RAW-LEN	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	read a compiled class body length
-1	regex	lib/regex.f	word	RX-ATOM-LEN	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return one compiled atom byte length
-1	regex	lib/regex.f	word	RX-ATOM-END	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return the offset after one compiled atom
-1	regex	lib/regex.f	word	RX-QUANT-AT	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return the quantifier after one atom or zero
-1	regex	lib/regex.f	word	RX-AFTER-ATOM-QUANT	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return the offset after atom and optional quantifier
-1	regex	lib/regex.f	word	RX-VALIDATE-STEP	(ptr u8 n n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate one compiled regex step
-1	regex	lib/regex.f	word	RX-VALIDATE	(ptr u8 n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate compiled regex bytecode
-1	regex	lib/regex.f	word	RX-CLASS-RANGE-CAND?	(ptr u8 n n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether class bytes form a range
-1	regex	lib/regex.f	word	RX-CLASS-RANGE-MATCH?	(n ptr u8 n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte matches a class range
-1	regex	lib/regex.f	word	RX-CLASS-ESC-MATCH?	(n ptr u8 n n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte matches an escaped class byte
-1	regex	lib/regex.f	word	RX-CLASS-MEMBER?	(n ptr u8 n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte is in a class body
-1	regex	lib/regex.f	word	RX-ATOM-CHAR-MATCH?	(n ptr u8 n n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte matches one atom
-1	regex	lib/regex.f	word	RX-ANCHOR-MATCH?	(n n n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether an anchor matches a position
-1	regex	lib/regex.f	word	RX-CLOSE-ONE	(ptr u8 n n n ptr u8 n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	close one epsilon regex state
-1	regex	lib/regex.f	word	RX-CLOSE	(ptr u8 n n n ptr u8 --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	close epsilon regex states
-1	regex	lib/regex.f	word	RX-RESET-STATES	(n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	reset regex active and next state buffers
-1	regex	lib/regex.f	word	RX-NEXT>ACTIVE	(n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	move next regex states to active states
-1	regex	lib/regex.f	word	RX-ADD-CONSUME-TARGET	(ptr u8 n n ptr u8 --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	add target states after one consumed byte
-1	regex	lib/regex.f	word	RX-CONSUME-STATE	(ptr u8 ptr u8 n n ptr u8 ptr u8 n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	consume one byte from one active state
-1	regex	lib/regex.f	word	RX-CONSUME-CHAR	(ptr u8 ptr u8 n n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	advance regex states by one text byte
-1	regex	lib/regex.f	word	RX-ACCEPT?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether regex accept state is active
-1	regex	lib/regex.f	word	RX-PREFIX-LEN	(ptr u8 n ptr u8 n n -- n bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return match length from a start offset
-1	regex	lib/regex.f	word	RX-PREPARE	(n ptr u8 n --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate args and bytecode before matching
-1	regex	lib/regex.f	word	RX-MATCH?	(ptr u8 n ptr u8 n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whole-input regex match
-1	regex	lib/regex.f	word	RX-FIND-FROM	(ptr u8 n ptr u8 n n -- n n bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	find a regex match from a start offset
-1	regex	lib/regex.f	word	RX-FIND	(ptr u8 n ptr u8 n -- n n bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	find first regex match offset and length
-1	regex	lib/regex.f	word	RX-COUNT	(ptr u8 n ptr u8 n -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	count non-overlapping regex matches
+1	regex	lib/regex.f	word	RX-FIXED-ATOM-LEN	(len off len -- len)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate fixed-size atom bounds
+1	regex	lib/regex.f	word	RX-CLASS-RAW-LEN	(ptr u8 len off -- len)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	read a compiled class body length
+1	regex	lib/regex.f	word	RX-ATOM-LEN	(ptr u8 len off -- len)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return one compiled atom byte length
+1	regex	lib/regex.f	word	RX-ATOM-END	(ptr u8 len off -- off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return the offset after one compiled atom
+1	regex	lib/regex.f	word	RX-QUANT-AT	(ptr u8 len off -- n)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return the quantifier after one atom or zero
+1	regex	lib/regex.f	word	RX-AFTER-ATOM-QUANT	(ptr u8 len off -- off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return the offset after atom and optional quantifier
+1	regex	lib/regex.f	word	RX-VALIDATE-STEP	(ptr u8 len off -- off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate one compiled regex step
+1	regex	lib/regex.f	word	RX-VALIDATE	(ptr u8 len --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate compiled regex bytecode
+1	regex	lib/regex.f	word	RX-CLASS-RANGE-CAND?	(ptr u8 len off -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether class bytes form a range
+1	regex	lib/regex.f	word	RX-CLASS-RANGE-MATCH?	(n ptr u8 off -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte matches a class range
+1	regex	lib/regex.f	word	RX-CLASS-ESC-MATCH?	(n ptr u8 len off -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte matches an escaped class byte
+1	regex	lib/regex.f	word	RX-CLASS-MEMBER?	(n ptr u8 len -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte is in a class body
+1	regex	lib/regex.f	word	RX-ATOM-CHAR-MATCH?	(n ptr u8 len off -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte matches one atom
+1	regex	lib/regex.f	word	RX-ANCHOR-MATCH?	(n off len -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether an anchor matches a position
+1	regex	lib/regex.f	word	RX-CLOSE-ONE	(ptr u8 len off len ptr u8 off --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	close one epsilon regex state
+1	regex	lib/regex.f	word	RX-CLOSE	(ptr u8 len off len ptr u8 --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	close epsilon regex states
+1	regex	lib/regex.f	word	RX-RESET-STATES	(len --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	reset regex active and next state buffers
+1	regex	lib/regex.f	word	RX-NEXT>ACTIVE	(len --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	move next regex states to active states
+1	regex	lib/regex.f	word	RX-ADD-CONSUME-TARGET	(ptr u8 len off ptr u8 --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	add target states after one consumed byte
+1	regex	lib/regex.f	word	RX-CONSUME-STATE	(ptr u8 ptr u8 len off ptr u8 ptr u8 off --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	consume one byte from one active state
+1	regex	lib/regex.f	word	RX-CONSUME-CHAR	(ptr u8 ptr u8 len off --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	advance regex states by one text byte
+1	regex	lib/regex.f	word	RX-ACCEPT?	(len -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether regex accept state is active
+1	regex	lib/regex.f	word	RX-PREFIX-LEN	(ptr u8 len ptr u8 len off -- len bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return match length from a start offset
+1	regex	lib/regex.f	word	RX-PREPARE	(len ptr u8 len --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate args and bytecode before matching
+1	regex	lib/regex.f	word	RX-MATCH?	(ptr u8 len ptr u8 len -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whole-input regex match
+1	regex	lib/regex.f	word	RX-FIND-FROM	(ptr u8 len ptr u8 len off -- off len bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	find a regex match from a start offset
+1	regex	lib/regex.f	word	RX-FIND	(ptr u8 len ptr u8 len -- off len bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	find first regex match offset and length
+1	regex	lib/regex.f	word	RX-COUNT	(ptr u8 len ptr u8 len -- count)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	count non-overlapping regex matches
 1	map	lib/map.f	module			lib/map-test.f	docs/stdlib.md	stdlib-map	active	v1 map storage uses ptr a n cells and ptr u8 n keys, never unchecked addr dereference
 1	map	lib/map.f	word	MAP-CHECK-CAP	(count --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a positive map capacity
 1	map	lib/map.f	word	MAP-CHECK-LEN	(len --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a nonnegative key length

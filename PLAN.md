@@ -710,10 +710,10 @@ Excluded in v1:
 Public surface:
 
 ```forth
-RX-COMPILE   ( ptr u8 n ptr u8 n -- n )
-RX-MATCH?    ( ptr u8 n ptr u8 n -- bool )
-RX-FIND      ( ptr u8 n ptr u8 n -- n n bool )
-RX-COUNT     ( ptr u8 n ptr u8 n -- n )
+RX-COMPILE   ( ptr u8 len ptr u8 len -- len )
+RX-MATCH?    ( ptr u8 len ptr u8 len -- bool )
+RX-FIND      ( ptr u8 len ptr u8 len -- off len bool )
+RX-COUNT     ( ptr u8 len ptr u8 len -- count )
 ```
 
 `RX-COMPILE` takes pattern bytes plus a caller-provided bytecode buffer and

@@ -84,9 +84,10 @@ check_regex_v2_fixtures() {
 64 constant RX-BENCH-CAP
 create RX-BENCH RX-BENCH-CAP allot
 variable RX-BENCH-LEN
+: RX-BENCH-PTR ( -- ptr u8 ) RX-BENCH ;
 : RX-BENCH-BAD ( -- )
-   s" *a" RX-BENCH RX-BENCH-CAP RX-COMPILE RX-BENCH-LEN !
-   s" aaa" RX-BENCH RX-BENCH-LEN @ RX-MATCH? drop ;
+   s" *a" >LEN RX-BENCH-PTR RX-BENCH-CAP >LEN RX-COMPILE LEN>N RX-BENCH-LEN !
+   s" aaa" >LEN RX-BENCH-PTR RX-BENCH-LEN @ >LEN RX-MATCH? drop ;
 ' RX-BENCH-BAD catch . cr
 EOF
   assert_regex_throw_file rx-bad-pattern "-2300" "$T/rx-bad-pattern.f"
@@ -96,9 +97,10 @@ EOF
 64 constant RX-BENCH-CAP
 create RX-BENCH RX-BENCH-CAP allot
 variable RX-BENCH-LEN
+: RX-BENCH-PTR ( -- ptr u8 ) RX-BENCH ;
 : RX-BENCH-BAD ( -- )
-   s" ^*" RX-BENCH RX-BENCH-CAP RX-COMPILE RX-BENCH-LEN !
-   s" aaa" RX-BENCH RX-BENCH-LEN @ RX-MATCH? drop ;
+   s" ^*" >LEN RX-BENCH-PTR RX-BENCH-CAP >LEN RX-COMPILE LEN>N RX-BENCH-LEN !
+   s" aaa" >LEN RX-BENCH-PTR RX-BENCH-LEN @ >LEN RX-MATCH? drop ;
 ' RX-BENCH-BAD catch . cr
 EOF
   assert_regex_throw_file rx-bad-anchor "-2300" "$T/rx-bad-anchor.f"
@@ -106,8 +108,9 @@ EOF
   cat lib/errors.f lib/string.f lib/regex.f >"$T/rx-capacity.f"
   cat >>"$T/rx-capacity.f" <<'EOF'
 create RX-BENCH 2 allot
+: RX-BENCH-PTR ( -- ptr u8 ) RX-BENCH ;
 : RX-BENCH-BAD ( -- )
-   s" abc" RX-BENCH 2 RX-COMPILE drop ;
+   s" abc" >LEN RX-BENCH-PTR 2 >LEN RX-COMPILE drop ;
 ' RX-BENCH-BAD catch . cr
 EOF
   assert_regex_throw_file rx-capacity "-2301" "$T/rx-capacity.f"

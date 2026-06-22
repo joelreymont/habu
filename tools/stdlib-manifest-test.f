@@ -343,10 +343,10 @@ variable SMT-J
    s" BYTE-COPY       ( ptr u8 ptr u8 n -- )" SMT-REQ-DOC
    s" SB-APPEND       ( ptr u8 n -- )" SMT-REQ-DOC
    s" ## Regex" SMT-REQ-DOC
-   s" RX-COMPILE            ( ptr u8 n ptr u8 n -- n )" SMT-REQ-DOC
-   s" RX-MATCH?             ( ptr u8 n ptr u8 n -- bool )" SMT-REQ-DOC
-   s" RX-FIND               ( ptr u8 n ptr u8 n -- n n bool )" SMT-REQ-DOC
-   s" RX-COUNT              ( ptr u8 n ptr u8 n -- n )" SMT-REQ-DOC
+   s" RX-COMPILE            ( ptr u8 len ptr u8 len -- len )" SMT-REQ-DOC
+   s" RX-MATCH?             ( ptr u8 len ptr u8 len -- bool )" SMT-REQ-DOC
+   s" RX-FIND               ( ptr u8 len ptr u8 len -- off len bool )" SMT-REQ-DOC
+   s" RX-COUNT              ( ptr u8 len ptr u8 len -- count )" SMT-REQ-DOC
    s" ## Map" SMT-REQ-DOC
    s" MAP-CELLS           ( count -- count )" SMT-REQ-DOC
    s" MAP-SET     ( n ptr a count ptr u8 len -- )" SMT-REQ-DOC
@@ -391,7 +391,7 @@ variable SMT-J
 : SMT-CHECK-MODULE-NOTES ( n ptr u8 n ptr u8 n -- )
    {: line module:ptr mu notes:ptr nu :}
    module mu s" regex" STR= IF
-      notes nu s" ptr u8 n" CONTAINS? 0= IF line s" regex module notes must specify ptr u8 n handle representation" SMT-ROW-FINDING THEN
+      notes nu s" ptr u8 len" CONTAINS? 0= IF line s" regex module notes must specify ptr u8 len handle representation" SMT-ROW-FINDING THEN
       exit
    THEN
    module mu s" map" STR= IF

@@ -27,26 +27,26 @@
 
 : DRXT-SYNTAX$ ( -- ptr u8 n )
    DTH-SRC-RESET
-   s" create RX-PAT 42 c, create RX-TXT 97 c, create RX-OUT 32 allot variable RX-LEN " DTH-SRC+
-   s" : RX-BAD-PATTERN ( -- ) RX-PAT 1 RX-OUT 32 RX-COMPILE RX-LEN ! RX-TXT 1 RX-OUT RX-LEN @ RX-MATCH? drop " DTH-SRC+
+   s" create RX-PAT 42 c, create RX-TXT 97 c, create RX-OUT 32 allot variable RX-LEN : RX-OUT-PTR ( -- ptr u8 ) RX-OUT ; " DTH-SRC+
+   s" : RX-BAD-PATTERN ( -- ) RX-PAT 1 >LEN RX-OUT-PTR 32 >LEN RX-COMPILE LEN>N RX-LEN ! RX-TXT 1 >LEN RX-OUT-PTR RX-LEN @ >LEN RX-MATCH? drop " DTH-SRC+
    DTH-SRC-END ;
 
 : DRXT-CAPACITY$ ( -- ptr u8 n )
    DTH-SRC-RESET
-   s" create RX-PAT 97 c, 98 c, 99 c, create RX-OUT 1 allot " DTH-SRC+
-   s" : RX-CAPACITY ( -- ) RX-PAT 3 RX-OUT 0 RX-COMPILE drop " DTH-SRC+
+   s" create RX-PAT 97 c, 98 c, 99 c, create RX-OUT 1 allot : RX-OUT-PTR ( -- ptr u8 ) RX-OUT ; " DTH-SRC+
+   s" : RX-CAPACITY ( -- ) RX-PAT 3 >LEN RX-OUT-PTR 0 >LEN RX-COMPILE drop " DTH-SRC+
    DTH-SRC-END ;
 
 : DRXT-SILENT$ ( -- ptr u8 n )
    DTH-SRC-RESET
-   s" create RX-PAT 97 c, create RX-OUT 32 allot " DTH-SRC+
-   s" : RX-BAD-PATTERN ( -- ) RX-PAT 1 RX-OUT 32 RX-COMPILE drop " DTH-SRC+
+   s" create RX-PAT 97 c, create RX-OUT 32 allot : RX-OUT-PTR ( -- ptr u8 ) RX-OUT ; " DTH-SRC+
+   s" : RX-BAD-PATTERN ( -- ) RX-PAT 1 >LEN RX-OUT-PTR 32 >LEN RX-COMPILE drop " DTH-SRC+
    DTH-SRC-END ;
 
 : DRXT-WRONG$ ( -- ptr u8 n )
    DTH-SRC-RESET
-   s" create RX-PAT 97 c, 98 c, 99 c, create RX-OUT 1 allot " DTH-SRC+
-   s" : RX-BAD-PATTERN ( -- ) RX-PAT 3 RX-OUT 0 RX-COMPILE drop " DTH-SRC+
+   s" create RX-PAT 97 c, 98 c, 99 c, create RX-OUT 1 allot : RX-OUT-PTR ( -- ptr u8 ) RX-OUT ; " DTH-SRC+
+   s" : RX-BAD-PATTERN ( -- ) RX-PAT 3 >LEN RX-OUT-PTR 0 >LEN RX-COMPILE drop " DTH-SRC+
    DTH-SRC-END ;
 
 : DRXT-ASSERT-REJECT ( ptr u8 n -- )

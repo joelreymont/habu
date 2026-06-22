@@ -9,14 +9,30 @@ create RXT-BUF RXT-BUF-CAP allot
 create RXT-SMALL RXT-SMALL-CAP allot
 variable RXT-RX-LEN
 
+: RXT-BUF-PTR ( -- ptr u8 )
+   RXT-BUF ;
+
+: RXT-SMALL-PTR ( -- ptr u8 )
+   RXT-SMALL ;
+
 : RXT-COMPILE ( ptr u8 n -- n )
-   RXT-BUF RXT-BUF-CAP RX-COMPILE ;
+   >LEN RXT-BUF-PTR RXT-BUF-CAP >LEN RX-COMPILE LEN>N ;
 
 : RXT-COMPILE! ( ptr u8 n -- )
    RXT-COMPILE RXT-RX-LEN ! ;
 
 : RXT-B@ ( n -- n ) {: ix :}
    RXT-BUF ix + c@ ;
+
+: RXT-MATCH? ( ptr u8 n -- bool )
+   >LEN RXT-BUF-PTR RXT-RX-LEN @ >LEN RX-MATCH? ;
+
+: RXT-FIND ( ptr u8 n -- n n bool )
+   >LEN RXT-BUF-PTR RXT-RX-LEN @ >LEN RX-FIND {: off len found :}
+   off OFF>N len LEN>N found ;
+
+: RXT-COUNT ( ptr u8 n -- n )
+   >LEN RXT-BUF-PTR RXT-RX-LEN @ >LEN RX-COUNT COUNT>N ;
 
 : RXT-ASSERT-LIT ( n n -- ) {: off c :}
    off RXT-B@ RX-TOK-LITERAL T=
@@ -89,19 +105,19 @@ variable RXT-RX-LEN
    s" [a\]" RXT-COMPILE drop ;
 
 : RXT-CAP-OVERFLOW ( -- )
-   s" ab" RXT-SMALL RXT-SMALL-CAP RX-COMPILE drop ;
+   s" ab" >LEN RXT-SMALL-PTR RXT-SMALL-CAP >LEN RX-COMPILE drop ;
 
 : RXT-NEG-CAP ( -- )
-   s" a" RXT-BUF -1 RX-COMPILE drop ;
+   s" a" >LEN RXT-BUF-PTR -1 >LEN RX-COMPILE drop ;
 
 : RXT-BAD-QUANT ( -- )
-   s" *a" RXT-COMPILE! s" aaa" RXT-BUF RXT-RX-LEN @ RX-MATCH? drop ;
+   s" *a" RXT-COMPILE! s" aaa" RXT-MATCH? drop ;
 
 : RXT-DOUBLE-QUANT ( -- )
-   s" a**" RXT-COMPILE! s" aaa" RXT-BUF RXT-RX-LEN @ RX-MATCH? drop ;
+   s" a**" RXT-COMPILE! s" aaa" RXT-MATCH? drop ;
 
 : RXT-ANCHOR-QUANT ( -- )
-   s" ^*" RXT-COMPILE! s" aaa" RXT-BUF RXT-RX-LEN @ RX-MATCH? drop ;
+   s" ^*" RXT-COMPILE! s" aaa" RXT-MATCH? drop ;
 
 : RXT-ASSERT-NOT-FOUND ( n n bool -- )
    TFALSE
@@ -115,58 +131,58 @@ variable RXT-RX-LEN
 
 : RXT-TEST-MATCH-LITERALS ( -- )
    s" abc" RXT-COMPILE!
-   s" abc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
-   s" ab" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE
-   s" xabc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE ;
+   s" abc" RXT-MATCH? TTRUE
+   s" ab" RXT-MATCH? TFALSE
+   s" xabc" RXT-MATCH? TFALSE ;
 
 : RXT-TEST-MATCH-META ( -- )
    s" a.c" RXT-COMPILE!
-   s" abc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
-   s" ac" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE
+   s" abc" RXT-MATCH? TTRUE
+   s" ac" RXT-MATCH? TFALSE
    s" ^a.c$" RXT-COMPILE!
-   s" abc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
-   s" abcx" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE ;
+   s" abc" RXT-MATCH? TTRUE
+   s" abcx" RXT-MATCH? TFALSE ;
 
 : RXT-TEST-MATCH-CLASSES ( -- )
    s" [a-c][^0-9]" RXT-COMPILE!
-   s" bX" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
-   s" b5" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE
-   s" dX" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE ;
+   s" bX" RXT-MATCH? TTRUE
+   s" b5" RXT-MATCH? TFALSE
+   s" dX" RXT-MATCH? TFALSE ;
 
 : RXT-TEST-MATCH-ESCAPED ( -- )
    s" a\.\+\?" RXT-COMPILE!
-   s" a.+?" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
-   s" ax+?" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE ;
+   s" a.+?" RXT-MATCH? TTRUE
+   s" ax+?" RXT-MATCH? TFALSE ;
 
 : RXT-TEST-MATCH-REPEATS ( -- )
    s" ab?c" RXT-COMPILE!
-   s" abc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
-   s" ac" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
-   s" abb" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE
+   s" abc" RXT-MATCH? TTRUE
+   s" ac" RXT-MATCH? TTRUE
+   s" abb" RXT-MATCH? TFALSE
    s" ab*c" RXT-COMPILE!
-   s" ac" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
-   s" abbbc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
+   s" ac" RXT-MATCH? TTRUE
+   s" abbbc" RXT-MATCH? TTRUE
    s" ab+c" RXT-COMPILE!
-   s" abc" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE
-   s" ac" RXT-BUF RXT-RX-LEN @ RX-MATCH? TFALSE
+   s" abc" RXT-MATCH? TTRUE
+   s" ac" RXT-MATCH? TFALSE
    s" a*a" RXT-COMPILE!
-   s" aaa" RXT-BUF RXT-RX-LEN @ RX-MATCH? TTRUE ;
+   s" aaa" RXT-MATCH? TTRUE ;
 
 : RXT-TEST-FIND ( -- )
    s" a.c" RXT-COMPILE!
-   s" zzaXczz" RXT-BUF RXT-RX-LEN @ RX-FIND 2 3 RXT-ASSERT-FOUND
-   s" zzz" RXT-BUF RXT-RX-LEN @ RX-FIND RXT-ASSERT-NOT-FOUND
+   s" zzaXczz" RXT-FIND 2 3 RXT-ASSERT-FOUND
+   s" zzz" RXT-FIND RXT-ASSERT-NOT-FOUND
    s" ^abc" RXT-COMPILE!
-   s" xabc" RXT-BUF RXT-RX-LEN @ RX-FIND RXT-ASSERT-NOT-FOUND
-   s" abc" RXT-BUF RXT-RX-LEN @ RX-FIND 0 3 RXT-ASSERT-FOUND ;
+   s" xabc" RXT-FIND RXT-ASSERT-NOT-FOUND
+   s" abc" RXT-FIND 0 3 RXT-ASSERT-FOUND ;
 
 : RXT-TEST-COUNT ( -- )
    s" a+" RXT-COMPILE!
-   s" aaabaa" RXT-BUF RXT-RX-LEN @ RX-COUNT 2 T=
+   s" aaabaa" RXT-COUNT 2 T=
    s" [0-9]" RXT-COMPILE!
-   s" a1b23" RXT-BUF RXT-RX-LEN @ RX-COUNT 3 T=
+   s" a1b23" RXT-COUNT 3 T=
    s" a*" RXT-COMPILE!
-   s" bbb" RXT-BUF RXT-RX-LEN @ RX-COUNT 4 T= ;
+   s" bbb" RXT-COUNT 4 T= ;
 
 : RXT-TEST-THROWS ( -- )
    ['] RXT-DANGLING-ESCAPE catch E-RX-SYNTAX T=

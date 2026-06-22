@@ -125,12 +125,12 @@ create ME-MAP ME-CAP >COUNT MAP-CELLS COUNT>N cells allot
 ## Regex
 
 Load `lib/errors.f lib/string.f lib/test.f lib/regex.f`. Regex bytecode is
-caller-owned `ptr u8 n` storage. The published signatures include
-`RX-COMPILE ( ptr u8 n ptr u8 n -- n )`,
-`RX-MATCH? ( ptr u8 n ptr u8 n -- bool )`,
-`RX-FIND ( ptr u8 n ptr u8 n -- n n bool )`, and
-`RX-COUNT ( ptr u8 n ptr u8 n -- n )`. They are covered by `lib/regex-test.f`
-and `examples/string-regex.f`.
+caller-owned `ptr u8 len` storage. The published signatures include
+`RX-COMPILE ( ptr u8 len ptr u8 len -- len )`,
+`RX-MATCH? ( ptr u8 len ptr u8 len -- bool )`,
+`RX-FIND ( ptr u8 len ptr u8 len -- off len bool )`, and
+`RX-COUNT ( ptr u8 len ptr u8 len -- count )`. They are covered by
+`lib/regex-test.f` and `examples/string-regex.f`.
 
 ```forth
 64 constant RE-RX-CAP
@@ -138,18 +138,21 @@ and `examples/string-regex.f`.
 create RE-RX RE-RX-CAP allot
 variable RE-RX-U
 
+: RE-RX-PTR ( -- ptr u8 )
+   RE-RX ;
+
 : RE-SLUG-RX! ( -- )
-   s" ^[a-z]+-[0-9]+$" RE-RX RE-RX-CAP RX-COMPILE RE-RX-U ! ;
+   s" ^[a-z]+-[0-9]+$" >LEN RE-RX-PTR RE-RX-CAP >LEN RX-COMPILE LEN>N RE-RX-U ! ;
 
 : RE-SLUG? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u RE-RX RE-RX-U @ RX-MATCH? ;
+   a u >LEN RE-RX-PTR RE-RX-U @ >LEN RX-MATCH? ;
 
 : RE-TEST ( -- )
    T-RESET
    RE-SLUG-RX!
    s" habu-2026" RE-SLUG? TTRUE
    s" Habu-2026" RE-SLUG? TFALSE
-   s" habu-2026" RE-RX RE-RX-U @ RX-FIND TTRUE 9 T= 0 T=
+   s" habu-2026" >LEN RE-RX-PTR RE-RX-U @ >LEN RX-FIND TTRUE LEN>N 9 T= OFF>N 0 T=
    T-REPORT ;
 ```
 

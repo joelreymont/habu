@@ -11,7 +11,7 @@ variable REF-SPLIT-U
 variable REF-SPLIT-NEXT
 variable REF-SPLIT-OK
 8 constant REF-MAP-CAP
-create REF-MAP REF-MAP-CAP MAP-CELLS cells allot
+create REF-MAP REF-MAP-CAP >COUNT MAP-CELLS COUNT>N cells allot
 variable REF-MAP-V
 variable REF-MAP-OK
 variable REF-MAP-EACH-COUNT
@@ -24,6 +24,9 @@ variable REF-RX-OFF
 variable REF-RX-U
 variable REF-RX-OK
 create REF-FS-OUT FS-PATH-CAP allot
+
+: REF-RX-PTR ( -- ptr u8 )
+   REF-RX ;
 
 : ARR-SUM    ( ptr a n -- i64 ) {: arr:ptr len :} 0 len 0 ?do i cells arr + @ + loop ;
 : ARR-MAX    ( ptr a n -- i64 ) {: arr:ptr len :} arr @ len 1 ?do i cells arr + @ max loop ;
@@ -110,13 +113,25 @@ create REF-DATE-BUF REF-DATE-BUF-LEN allot
    s" alpha-beta" s" ph" CONTAINS? 0= if STR-FALSE exit then
    s" alpha-beta" s" gamma" CONTAINS? if STR-FALSE else STR-TRUE then ;
 
-: REF-MAP-GET! ( ptr a n ptr u8 n -- )
-   MAP-GET
+: REF-MAP-INIT ( -- )
+   REF-MAP REF-MAP-CAP >COUNT MAP-INIT ;
+
+: REF-MAP-COUNT ( -- n )
+   REF-MAP MAP-COUNT@ COUNT>N ;
+
+: REF-MAP-SET ( n ptr u8 n -- ) {: value key:ptr len :}
+   value REF-MAP REF-MAP-CAP >COUNT key len >LEN MAP-SET ;
+
+: REF-MAP-HAS? ( ptr u8 n -- bool ) {: key:ptr len :}
+   REF-MAP REF-MAP-CAP >COUNT key len >LEN MAP-HAS? ;
+
+: REF-MAP-GET! ( ptr u8 n -- ) {: key:ptr len :}
+   REF-MAP REF-MAP-CAP >COUNT key len >LEN MAP-GET
    REF-MAP-OK !
    REF-MAP-V ! ;
 
 : REF-MAP-EXPECT ( ptr u8 n n -- bool ) {: key:ptr len want :}
-   REF-MAP REF-MAP-CAP key len REF-MAP-GET!
+   key len REF-MAP-GET!
    REF-MAP-OK @ 0= if STR-FALSE exit then
    REF-MAP-V @ want = ;
 
@@ -125,84 +140,86 @@ create REF-DATE-BUF REF-DATE-BUF-LEN allot
    0 REF-MAP-EACH-SUM !
    0 REF-MAP-EACH-LEN-SUM ! ;
 
-: REF-MAP-EACH-RECORD ( ptr u8 n n -- ) {: key:ptr len value :}
+: REF-MAP-EACH-RECORD ( ptr u8 len n -- ) {: key:ptr len value :}
    REF-MAP-EACH-COUNT @ 1 + REF-MAP-EACH-COUNT !
    REF-MAP-EACH-SUM @ value + REF-MAP-EACH-SUM !
-   REF-MAP-EACH-LEN-SUM @ len + REF-MAP-EACH-LEN-SUM ! ;
+   REF-MAP-EACH-LEN-SUM @ len LEN>N + REF-MAP-EACH-LEN-SUM ! ;
 
 : REF-MAP-INCR ( ptr u8 n -- ) {: key:ptr len :}
-   REF-MAP REF-MAP-CAP key len MAP-GET if
+   key len REF-MAP-GET!
+   REF-MAP-OK @ if
+      REF-MAP-V @
       1 +
    else
-      drop 1
+      1
    then
-   REF-MAP REF-MAP-CAP key len MAP-SET ;
+   key len REF-MAP-SET ;
 
 : MAP-COUNT-OK? ( -- bool )
-   REF-MAP REF-MAP-CAP MAP-INIT
-   10 REF-MAP REF-MAP-CAP s" alpha" MAP-SET
-   20 REF-MAP REF-MAP-CAP s" beta" MAP-SET
-   30 REF-MAP REF-MAP-CAP s" gamma" MAP-SET
-   REF-MAP MAP-COUNT@ 3 <> if STR-FALSE exit then
+   REF-MAP-INIT
+   10 s" alpha" REF-MAP-SET
+   20 s" beta" REF-MAP-SET
+   30 s" gamma" REF-MAP-SET
+   REF-MAP-COUNT 3 <> if STR-FALSE exit then
    s" beta" 20 REF-MAP-EXPECT ;
 
 : MAP-MISS-OK? ( -- bool )
-   REF-MAP REF-MAP-CAP MAP-INIT
-   REF-MAP REF-MAP-CAP s" missing" REF-MAP-GET!
+   REF-MAP-INIT
+   s" missing" REF-MAP-GET!
    REF-MAP-OK @ if STR-FALSE exit then
    REF-MAP-V @ 0 <> if STR-FALSE exit then
-   REF-MAP REF-MAP-CAP s" missing" MAP-HAS? 0= ;
+   s" missing" REF-MAP-HAS? 0= ;
 
 : MAP-UPDATE-OK? ( -- bool )
-   REF-MAP REF-MAP-CAP MAP-INIT
-   1 REF-MAP REF-MAP-CAP s" alpha" MAP-SET
-   7 REF-MAP REF-MAP-CAP s" alpha" MAP-SET
-   REF-MAP MAP-COUNT@ 1 <> if STR-FALSE exit then
+   REF-MAP-INIT
+   1 s" alpha" REF-MAP-SET
+   7 s" alpha" REF-MAP-SET
+   REF-MAP-COUNT 1 <> if STR-FALSE exit then
    s" alpha" 7 REF-MAP-EXPECT ;
 
 : MAP-COLLISION-OK? ( -- bool )
-   REF-MAP REF-MAP-CAP MAP-INIT
-   11 REF-MAP REF-MAP-CAP s" a" MAP-SET
-   22 REF-MAP REF-MAP-CAP s" i" MAP-SET
-   33 REF-MAP REF-MAP-CAP s" q" MAP-SET
-   REF-MAP MAP-COUNT@ 3 <> if STR-FALSE exit then
+   REF-MAP-INIT
+   11 s" a" REF-MAP-SET
+   22 s" i" REF-MAP-SET
+   33 s" q" REF-MAP-SET
+   REF-MAP-COUNT 3 <> if STR-FALSE exit then
    s" a" 11 REF-MAP-EXPECT 0= if STR-FALSE exit then
    s" i" 22 REF-MAP-EXPECT 0= if STR-FALSE exit then
    s" q" 33 REF-MAP-EXPECT ;
 
 : MAP-EACH-OK? ( -- bool )
-   REF-MAP REF-MAP-CAP MAP-INIT
-   10 REF-MAP REF-MAP-CAP s" a" MAP-SET
-   20 REF-MAP REF-MAP-CAP s" b" MAP-SET
-   30 REF-MAP REF-MAP-CAP s" c" MAP-SET
+   REF-MAP-INIT
+   10 s" a" REF-MAP-SET
+   20 s" b" REF-MAP-SET
+   30 s" c" REF-MAP-SET
    REF-MAP-EACH-RESET
-   REF-MAP REF-MAP-CAP [: REF-MAP-EACH-RECORD ;] MAP-EACH
+   REF-MAP REF-MAP-CAP >COUNT [: REF-MAP-EACH-RECORD ;] MAP-EACH
    REF-MAP-EACH-COUNT @ 3 <> if STR-FALSE exit then
    REF-MAP-EACH-SUM @ 60 <> if STR-FALSE exit then
    REF-MAP-EACH-LEN-SUM @ 3 = ;
 
 : MAP-GROUP-OK? ( -- bool )
-   REF-MAP REF-MAP-CAP MAP-INIT
+   REF-MAP-INIT
    s" red" REF-MAP-INCR
    s" blue" REF-MAP-INCR
    s" red" REF-MAP-INCR
-   REF-MAP MAP-COUNT@ 2 <> if STR-FALSE exit then
+   REF-MAP-COUNT 2 <> if STR-FALSE exit then
    s" red" 2 REF-MAP-EXPECT 0= if STR-FALSE exit then
    s" blue" 1 REF-MAP-EXPECT ;
 
 : REF-RX-COMPILE! ( ptr u8 n -- )
-   REF-RX REF-RX-CAP RX-COMPILE REF-RX-LEN ! ;
+   >LEN REF-RX-PTR REF-RX-CAP >LEN RX-COMPILE LEN>N REF-RX-LEN ! ;
 
 : REF-RX-FIND! ( ptr u8 n -- )
-   REF-RX REF-RX-LEN @ RX-FIND
+   >LEN REF-RX-PTR REF-RX-LEN @ >LEN RX-FIND
    REF-RX-OK !
-   REF-RX-U !
-   REF-RX-OFF ! ;
+   LEN>N REF-RX-U !
+   OFF>N REF-RX-OFF ! ;
 
 : RX-MATCH-OK? ( -- bool )
    s" ^[a-z]+-[0-9]+$" REF-RX-COMPILE!
-   s" habu-2026" REF-RX REF-RX-LEN @ RX-MATCH? 0= if STR-FALSE exit then
-   s" habu-xx" REF-RX REF-RX-LEN @ RX-MATCH? if STR-FALSE else STR-TRUE then ;
+   s" habu-2026" >LEN REF-RX-PTR REF-RX-LEN @ >LEN RX-MATCH? 0= if STR-FALSE exit then
+   s" habu-xx" >LEN REF-RX-PTR REF-RX-LEN @ >LEN RX-MATCH? if STR-FALSE else STR-TRUE then ;
 
 : RX-FIND-OK? ( -- bool )
    s" a.+c" REF-RX-COMPILE!
@@ -213,7 +230,7 @@ create REF-DATE-BUF REF-DATE-BUF-LEN allot
 
 : RX-COUNT-OK? ( -- bool )
    s" [0-9]" REF-RX-COMPILE!
-   s" a1b23" REF-RX REF-RX-LEN @ RX-COUNT 3 = ;
+   s" a1b23" >LEN REF-RX-PTR REF-RX-LEN @ >LEN RX-COUNT COUNT>N 3 = ;
 
 : REF-FS-JOIN$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pa:ptr pu na:ptr nu :}
    pa pu na nu REF-FS-OUT JOIN-PATH

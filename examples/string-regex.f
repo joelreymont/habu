@@ -11,6 +11,9 @@ $7A constant SRE-Z
 
 create SRE-RX SRE-RX-CAP allot
 
+: SRE-RX-PTR ( -- ptr u8 )
+   SRE-RX ;
+
 : SRE-SUFFIX-NUMBER ( ptr u8 n -- n bool ) {: a:ptr u :}
    a u SRE-DASH INDEX-OF {: ix :}
    ix 0 < if 0 STR-FALSE exit then
@@ -21,7 +24,8 @@ create SRE-RX SRE-RX-CAP allot
    want T= ;
 
 : SRE-COMPILE-SLUG ( -- n )
-   s" ^[a-z]+-[0-9]+$" SRE-RX SRE-RX-CAP RX-COMPILE ;
+   s" ^[a-z]+-[0-9]+$" >LEN
+   SRE-RX-PTR SRE-RX-CAP >LEN RX-COMPILE LEN>N ;
 
 : SRE-RX@ ( n -- n )
    SRE-RX + c@ ;
