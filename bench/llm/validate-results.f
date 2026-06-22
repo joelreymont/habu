@@ -231,6 +231,12 @@ variable LV-ROW-CODE
    CHECK! ;
 ' LV-CHECK-HOOK set-check
 
+: LV-TRUE ( -- bool )
+   0 0= ;
+
+: LV-FALSE ( -- bool )
+   LV-TRUE 0= ;
+
 : LV-RESULT-CAP ( -- n )
    LV-RESULT-CAP-U @ ;
 
@@ -401,14 +407,14 @@ variable LV-ROW-CODE
 
 : LV-U? ( ptr u8 n -- n bool )
    LV-U ! LV-A !
-   LV-U @ 0= IF 0 0 exit THEN
+   LV-U @ 0= IF 0 LV-FALSE exit THEN
    0 LV-K !
    0
    begin LV-K @ LV-U @ < while
-      LV-A @ LV-K @ + c@ dup LV-ZERO < over LV-NINE > or IF drop drop 0 0 exit THEN
+      LV-A @ LV-K @ + c@ dup LV-ZERO < over LV-NINE > or IF drop drop 0 LV-FALSE exit THEN
       LV-ZERO - swap 10 * +
       LV-K @ 1+ LV-K !
-   repeat -1 ;
+   repeat LV-TRUE ;
 
 : LV-TASK-ID@ ( n -- n )
    cells LV-TASK-ID + @ ;
@@ -499,10 +505,10 @@ variable LV-ROW-CODE
    LV-A @ LV-U @ ;
 
 : LV-CUR-KEY-MATCH? {: k :} ( n -- bool )
-   LV-KEY-TASK-ID k cells + @ LV-ID @ <> IF 0 exit THEN
-   LV-KEY-RUN-A k cells + @ LV-KEY-RUN-U k cells + @ LV-CUR-RUN-A @ LV-CUR-RUN-U @ STR= 0= IF 0 exit THEN
-   LV-KEY-MODEL-A k cells + @ LV-KEY-MODEL-U k cells + @ LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ STR= 0= IF 0 exit THEN
-   LV-KEY-ARM-A k cells + @ LV-KEY-ARM-U k cells + @ LV-CUR-ARM-A @ LV-CUR-ARM-U @ STR= 0= IF 0 exit THEN
+   LV-KEY-TASK-ID k cells + @ LV-ID @ <> IF LV-FALSE exit THEN
+   LV-KEY-RUN-A k cells + @ LV-KEY-RUN-U k cells + @ LV-CUR-RUN-A @ LV-CUR-RUN-U @ STR= 0= IF LV-FALSE exit THEN
+   LV-KEY-MODEL-A k cells + @ LV-KEY-MODEL-U k cells + @ LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ STR= 0= IF LV-FALSE exit THEN
+   LV-KEY-ARM-A k cells + @ LV-KEY-ARM-U k cells + @ LV-CUR-ARM-A @ LV-CUR-ARM-U @ STR= 0= IF LV-FALSE exit THEN
    LV-KEY-TRIAL-A k cells + @ LV-KEY-TRIAL-U k cells + @ LV-CUR-TRIAL-A @ LV-CUR-TRIAL-U @ STR= ;
 
 : LV-FIND-KEY ( -- n )
@@ -521,9 +527,9 @@ variable LV-ROW-CODE
    LV-KEY# @ 1+ LV-KEY# ! ;
 
 : LV-CUR-GROUP-MATCH? {: k :} ( n -- bool )
-   LV-GRP-TASK-ID k cells + @ LV-ID @ <> IF 0 exit THEN
-   LV-GRP-RUN-A k cells + @ LV-GRP-RUN-U k cells + @ LV-CUR-RUN-A @ LV-CUR-RUN-U @ STR= 0= IF 0 exit THEN
-   LV-GRP-MODEL-A k cells + @ LV-GRP-MODEL-U k cells + @ LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ STR= 0= IF 0 exit THEN
+   LV-GRP-TASK-ID k cells + @ LV-ID @ <> IF LV-FALSE exit THEN
+   LV-GRP-RUN-A k cells + @ LV-GRP-RUN-U k cells + @ LV-CUR-RUN-A @ LV-CUR-RUN-U @ STR= 0= IF LV-FALSE exit THEN
+   LV-GRP-MODEL-A k cells + @ LV-GRP-MODEL-U k cells + @ LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ STR= 0= IF LV-FALSE exit THEN
    LV-GRP-ARM-A k cells + @ LV-GRP-ARM-U k cells + @ LV-CUR-ARM-A @ LV-CUR-ARM-U @ STR= ;
 
 : LV-FIND-GROUP ( -- n )
@@ -911,8 +917,8 @@ variable LV-ROW-CODE
    n LV-FAM-TRUST k cells + LV-CELL+! ;
 
 : LV-CUR-FAM-MATCH? {: k :} ( n -- bool )
-   LV-FAM-CAT-A k cells + @ LV-FAM-CAT-U k cells + @ LV-TASK-K @ LV-TASK-CAT$ STR= 0= IF 0 exit THEN
-   LV-FAM-MODEL-A k cells + @ LV-FAM-MODEL-U k cells + @ LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ STR= 0= IF 0 exit THEN
+   LV-FAM-CAT-A k cells + @ LV-FAM-CAT-U k cells + @ LV-TASK-K @ LV-TASK-CAT$ STR= 0= IF LV-FALSE exit THEN
+   LV-FAM-MODEL-A k cells + @ LV-FAM-MODEL-U k cells + @ LV-CUR-MODEL-A @ LV-CUR-MODEL-U @ STR= 0= IF LV-FALSE exit THEN
    LV-FAM-ARM-A k cells + @ LV-FAM-ARM-U k cells + @ LV-CUR-ARM-A @ LV-CUR-ARM-U @ STR= ;
 
 : LV-FIND-FAM ( -- n )
@@ -983,8 +989,8 @@ variable LV-ROW-CODE
    LV-GRP-TASK-ID k cells + @ LV-FIND-TASK LV-TASK-CAT$ ;
 
 : LV-FAM-GROUP? {: g fam :} ( n n -- bool )
-   g LV-GRP-CAT$ fam LV-FAM-CAT$ STR= 0= IF 0 exit THEN
-   g LV-GRP-MODEL$ fam LV-FAM-MODEL$ STR= 0= IF 0 exit THEN
+   g LV-GRP-CAT$ fam LV-FAM-CAT$ STR= 0= IF LV-FALSE exit THEN
+   g LV-GRP-MODEL$ fam LV-FAM-MODEL$ STR= 0= IF LV-FALSE exit THEN
    g LV-GRP-ARM$ fam LV-FAM-ARM$ STR= ;
 
 : LV-FAM-GROUPS {: fam :} ( n -- n )
@@ -1138,12 +1144,12 @@ variable LV-ROW-CODE
 
 : LV-SHA256? ( ptr u8 n -- bool )
    LV-U ! LV-A !
-   LV-U @ LV-SHA-LEN <> IF 0 exit THEN
+   LV-U @ LV-SHA-LEN <> IF LV-FALSE exit THEN
    0 LV-K !
    begin LV-K @ LV-U @ < while
-      LV-A @ LV-K @ + c@ LV-HEX? 0= IF 0 exit THEN
+      LV-A @ LV-K @ + c@ LV-HEX? 0= IF LV-FALSE exit THEN
       LV-K @ 1+ LV-K !
-   repeat -1 ;
+   repeat LV-TRUE ;
 
 : LV-CHECK-ARTIFACT {: root a:ptr u ha:ptr hu must :} ( n ptr u8 n ptr u8 n bool -- )
    root a u LV-REQ
@@ -1241,7 +1247,7 @@ variable LV-ROW-CODE
    root s" first_pass_checker" LV-STR-FIELD s" certified" STR= ;
 
 : LV-FALSE-REJECT? {: root :} ( n -- bool )
-   LV-SCHEMA @ 2 <> IF 0 0= 0= exit THEN
+   LV-SCHEMA @ 2 <> IF LV-FALSE exit THEN
    root s" checker_false_reject" LV-BOOL-FIELD ;
 
 : LV-CHECK-FALSE-REJECT {: root :} ( n -- )
@@ -1264,7 +1270,7 @@ variable LV-ROW-CODE
    THEN ;
 
 : LV-DATE-RUN? {: a:ptr u :} ( ptr u8 n -- bool )
-   u DATE-LEN 1+ < IF 0 0= 0= exit THEN
+   u DATE-LEN 1+ < IF LV-FALSE exit THEN
    a u DATE-LEN - 1- + c@ DATE-DASH = ;
 
 : LV-CHECK-RUN-DATE {: a:ptr u :} ( ptr u8 n -- )
