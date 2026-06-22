@@ -194,6 +194,7 @@ VEC-CHECK-NEED      ( count -- )
 VEC-CHECK-CAP       ( count -- )
 VEC-CHECK-LEN       ( len -- )
 VEC-CELLS>BYTES     ( count -- n )
+VEC-ALLOC-CELLS     ( count -- ptr a )
 VEC-DATA-FIELD      ( ptr a -- ptr ptr a )
 VEC-DATA@           ( ptr a -- ptr a )
 VEC-DATA!           ( ptr a ptr a -- )
@@ -460,15 +461,23 @@ throw `E-MEM-SIZE` or `E-MEM-MAP` on failure.
 ```forth
 MEM-CHECK-SIZE        ( n -- )
 MEM-CHECK-64K-COUNT   ( n -- )
+MEM-CHECK-CELL-COUNT  ( count -- )
 MEM-64K-BYTES         ( n -- n )
 MEM-64K-COUNT-FOR     ( n -- n )
 MEM-64K-SPAN-BYTES    ( n -- n )
+MEM-CELLS>BYTES       ( count -- n )
 MEM-MMAP-RC           ( n -- n )
 MEM-ALLOC-BYTES       ( n -- ptr u8 n )
+MEM-ALLOC-CELLS       ( count -- ptr a )
 MEM-ALLOC-64K-BUFFERS ( n -- ptr u8 n )
 MEM-ALLOC-64K-SPAN    ( n -- ptr u8 n )
 MEM-ALLOC-64K         ( -- ptr u8 n )
 ```
+
+`MEM-ALLOC-CELLS` validates a positive checked `count`, computes the byte size
+with overflow bounded by `MEM-MAX-N`, and returns a typed cell span. Use it for
+tables or vectors that store normal cells; use `ptr-field` when the table handle
+itself is stored in another cell.
 
 `MEM-ALLOC-64K-BUFFERS` returns one contiguous byte span sized for the caller's
 chosen `n` 64K buffers. The returned length is the capacity in bytes; callers

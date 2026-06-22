@@ -8,8 +8,7 @@
 3 constant VEC-HEADER-CELLS
 
 2 constant VEC-GROWTH
-1 cells constant VEC-CELL-BYTES
-MEM-MAX-N VEC-CELL-BYTES / constant VEC-MAX-CELLS
+MEM-MAX-CELLS constant VEC-MAX-CELLS
 
 : VEC-CHECK-NEED ( count -- ) {: need :}
    need COUNT>N 0 < if E-VEC-CAPACITY throw then
@@ -25,10 +24,11 @@ MEM-MAX-N VEC-CELL-BYTES / constant VEC-MAX-CELLS
 
 : VEC-CELLS>BYTES ( count -- n )
    dup VEC-CHECK-CAP
-   COUNT>N cells ;
+   MEM-CELLS>BYTES ;
 
-TRUSTED: VEC-ALLOC-CELLS ( count -- ptr a )
-   VEC-CELLS>BYTES MEM-ALLOC-BYTES drop ;
+: VEC-ALLOC-CELLS ( count -- ptr a )
+   dup VEC-CHECK-CAP
+   MEM-ALLOC-CELLS ;
 
 : VEC-DATA-FIELD ( ptr a -- ptr ptr a )
    VEC-DATA-OFF ptr-field ;

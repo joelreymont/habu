@@ -1,5 +1,6 @@
 \ report.f - Habu-native LLM benchmark report reducer.
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, tools/json.f, tools/argv.f.
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, tools/json.f,
+\ and tools/argv.f.
 
 \ Tool boundary: streaming JSONL, large replay strings, and CLI/file IO live here.
 0 set-check
@@ -186,65 +187,78 @@ variable U-COUNT
 variable RR-PERF-ROOT
 variable RR-PERF-ARR
 
-TRUSTED: RR-STR ( -- ptr u8 ) RR-STR-P @ ;
-TRUSTED: RR-VALS ( -- ptr n ) RR-VALS-P @ ;
-
-TRUSTED: R-TASK-ID ( -- ptr n ) R-TASK-ID-P @ ;
-TRUSTED: R-NAME-O ( -- ptr n ) R-NAME-O-P @ ;
-TRUSTED: R-NAME-U ( -- ptr n ) R-NAME-U-P @ ;
-TRUSTED: R-MODEL-ID-O ( -- ptr n ) R-MODEL-ID-O-P @ ;
-TRUSTED: R-MODEL-ID-U ( -- ptr n ) R-MODEL-ID-U-P @ ;
-TRUSTED: R-MODEL-O ( -- ptr n ) R-MODEL-O-P @ ;
-TRUSTED: R-MODEL-U ( -- ptr n ) R-MODEL-U-P @ ;
-TRUSTED: R-MODEL-KEY-O ( -- ptr n ) R-MODEL-KEY-O-P @ ;
-TRUSTED: R-MODEL-KEY-U ( -- ptr n ) R-MODEL-KEY-U-P @ ;
-TRUSTED: R-ARM ( -- ptr n ) R-ARM-P @ ;
-TRUSTED: R-CAT-O ( -- ptr n ) R-CAT-O-P @ ;
-TRUSTED: R-CAT-U ( -- ptr n ) R-CAT-U-P @ ;
-TRUSTED: R-OUT-O ( -- ptr n ) R-OUT-O-P @ ;
-TRUSTED: R-OUT-U ( -- ptr n ) R-OUT-U-P @ ;
-TRUSTED: R-ROUNDS ( -- ptr n ) R-ROUNDS-P @ ;
-TRUSTED: R-FIRST ( -- ptr n ) R-FIRST-P @ ;
-TRUSTED: R-TOKENS ( -- ptr n ) R-TOKENS-P @ ;
-TRUSTED: R-RUNTIME ( -- ptr n ) R-RUNTIME-P @ ;
-TRUSTED: R-RUNTIME-KNOWN ( -- ptr n ) R-RUNTIME-KNOWN-P @ ;
-TRUSTED: R-WALL ( -- ptr n ) R-WALL-P @ ;
-TRUSTED: R-DIAGOK ( -- ptr n ) R-DIAGOK-P @ ;
-TRUSTED: R-FALSE-REJECT ( -- ptr n ) R-FALSE-REJECT-P @ ;
-
-TRUSTED: T-NAME-O ( -- ptr n ) T-NAME-O-P @ ;
-TRUSTED: T-NAME-U ( -- ptr n ) T-NAME-U-P @ ;
-
-TRUSTED: M-KEY-O ( -- ptr n ) M-KEY-O-P @ ;
-TRUSTED: M-KEY-U ( -- ptr n ) M-KEY-U-P @ ;
-TRUSTED: M-LABEL-O ( -- ptr n ) M-LABEL-O-P @ ;
-TRUSTED: M-LABEL-U ( -- ptr n ) M-LABEL-U-P @ ;
-
-TRUSTED: C-NAME-O ( -- ptr n ) C-NAME-O-P @ ;
-TRUSTED: C-NAME-U ( -- ptr n ) C-NAME-U-P @ ;
-
-TRUSTED: U-TASK-ID ( -- ptr n ) U-TASK-ID-P @ ;
-TRUSTED: U-NAME-O ( -- ptr n ) U-NAME-O-P @ ;
-TRUSTED: U-NAME-U ( -- ptr n ) U-NAME-U-P @ ;
-TRUSTED: U-MODEL-O ( -- ptr n ) U-MODEL-O-P @ ;
-TRUSTED: U-MODEL-U ( -- ptr n ) U-MODEL-U-P @ ;
-TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
-
 : RR-CHECK-HOOK ( -- )
    CHECK! ;
 ' RR-CHECK-HOOK set-check
 
+: RR-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: RR-PTR-U8@ ( ptr a -- ptr u8 )
+   RR-PTR-U8-FIELD @ ;
+
+: RR-PTR-U8! ( ptr u8 ptr a -- )
+   RR-PTR-U8-FIELD ! ;
+
+: RR-PTR-N-FIELD ( ptr a -- ptr ptr n )
+   0 ptr-field ;
+
+: RR-PTR-N@ ( ptr a -- ptr n )
+   RR-PTR-N-FIELD @ ;
+
+: RR-PTR-N! ( ptr n ptr a -- )
+   RR-PTR-N-FIELD ! ;
+
+: RR-STR ( -- ptr u8 ) RR-STR-P RR-PTR-U8@ ;
+: RR-VALS ( -- ptr n ) RR-VALS-P RR-PTR-N@ ;
+
+: R-TASK-ID ( -- ptr n ) R-TASK-ID-P RR-PTR-N@ ;
+: R-NAME-O ( -- ptr n ) R-NAME-O-P RR-PTR-N@ ;
+: R-NAME-U ( -- ptr n ) R-NAME-U-P RR-PTR-N@ ;
+: R-MODEL-ID-O ( -- ptr n ) R-MODEL-ID-O-P RR-PTR-N@ ;
+: R-MODEL-ID-U ( -- ptr n ) R-MODEL-ID-U-P RR-PTR-N@ ;
+: R-MODEL-O ( -- ptr n ) R-MODEL-O-P RR-PTR-N@ ;
+: R-MODEL-U ( -- ptr n ) R-MODEL-U-P RR-PTR-N@ ;
+: R-MODEL-KEY-O ( -- ptr n ) R-MODEL-KEY-O-P RR-PTR-N@ ;
+: R-MODEL-KEY-U ( -- ptr n ) R-MODEL-KEY-U-P RR-PTR-N@ ;
+: R-ARM ( -- ptr n ) R-ARM-P RR-PTR-N@ ;
+: R-CAT-O ( -- ptr n ) R-CAT-O-P RR-PTR-N@ ;
+: R-CAT-U ( -- ptr n ) R-CAT-U-P RR-PTR-N@ ;
+: R-OUT-O ( -- ptr n ) R-OUT-O-P RR-PTR-N@ ;
+: R-OUT-U ( -- ptr n ) R-OUT-U-P RR-PTR-N@ ;
+: R-ROUNDS ( -- ptr n ) R-ROUNDS-P RR-PTR-N@ ;
+: R-FIRST ( -- ptr n ) R-FIRST-P RR-PTR-N@ ;
+: R-TOKENS ( -- ptr n ) R-TOKENS-P RR-PTR-N@ ;
+: R-RUNTIME ( -- ptr n ) R-RUNTIME-P RR-PTR-N@ ;
+: R-RUNTIME-KNOWN ( -- ptr n ) R-RUNTIME-KNOWN-P RR-PTR-N@ ;
+: R-WALL ( -- ptr n ) R-WALL-P RR-PTR-N@ ;
+: R-DIAGOK ( -- ptr n ) R-DIAGOK-P RR-PTR-N@ ;
+: R-FALSE-REJECT ( -- ptr n ) R-FALSE-REJECT-P RR-PTR-N@ ;
+
+: T-NAME-O ( -- ptr n ) T-NAME-O-P RR-PTR-N@ ;
+: T-NAME-U ( -- ptr n ) T-NAME-U-P RR-PTR-N@ ;
+
+: M-KEY-O ( -- ptr n ) M-KEY-O-P RR-PTR-N@ ;
+: M-KEY-U ( -- ptr n ) M-KEY-U-P RR-PTR-N@ ;
+: M-LABEL-O ( -- ptr n ) M-LABEL-O-P RR-PTR-N@ ;
+: M-LABEL-U ( -- ptr n ) M-LABEL-U-P RR-PTR-N@ ;
+
+: C-NAME-O ( -- ptr n ) C-NAME-O-P RR-PTR-N@ ;
+: C-NAME-U ( -- ptr n ) C-NAME-U-P RR-PTR-N@ ;
+
+: U-TASK-ID ( -- ptr n ) U-TASK-ID-P RR-PTR-N@ ;
+: U-NAME-O ( -- ptr n ) U-NAME-O-P RR-PTR-N@ ;
+: U-NAME-U ( -- ptr n ) U-NAME-U-P RR-PTR-N@ ;
+: U-MODEL-O ( -- ptr n ) U-MODEL-O-P RR-PTR-N@ ;
+: U-MODEL-U ( -- ptr n ) U-MODEL-U-P RR-PTR-N@ ;
+: U-PASS ( -- ptr n ) U-PASS-P RR-PTR-N@ ;
+
 : RR-FAIL ( a u -- )
    type cr RR-E-INTERNAL die ;
 
-: RR-ALLOC-BYTES ( n -- n )
-   {: bytes:n :}
-   bytes 0 <= if s" report: bad allocation size" RR-FAIL then
-   0 bytes 3 $1002 -1 0 mmap dup 0 < if s" report: mmap failed" RR-FAIL then ;
-
-: RR-ALLOC-CELLS ( n ptr n -- )
+: RR-ALLOC-CELLS ( n ptr a -- )
    {: count:n dst:ptr :}
-   count cells RR-ALLOC-BYTES dst ! ;
+   count >COUNT MEM-ALLOC-CELLS dst RR-PTR-N! ;
 
 : RR-CAP-NONZERO ( n -- n )
    dup RR-MIN-CAP < if drop RR-MIN-CAP then ;
@@ -302,7 +316,7 @@ TRUSTED: U-PASS ( -- ptr n ) U-PASS-P @ ;
 
 : RR-INIT-STORAGE ( -- )
    RR-INIT-CAPS
-   RR-STR-CAP @ RR-ALLOC-BYTES RR-STR-P !
+   RR-STR-CAP @ MEM-ALLOC-PTR RR-STR-P RR-PTR-U8!
    RR-ALLOC-ROW-TABLES
    RR-ALLOC-DIM-TABLES ;
 

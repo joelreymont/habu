@@ -5,6 +5,8 @@
 $10000 constant MEM-64K
 $7FFFFFFFFFFFFFFF constant MEM-MAX-N
 MEM-MAX-N MEM-64K / constant MEM-MAX-64K-BUFFERS
+1 cells constant MEM-CELL-BYTES
+MEM-MAX-N MEM-CELL-BYTES / constant MEM-MAX-CELLS
 
 0 constant MEM-ADDR-ANY
 3 constant MEM-PROT-RW
@@ -21,9 +23,18 @@ $1002 constant MEM-MAP-PRIVATE-ANON
    dup MEM-MAX-64K-BUFFERS > if E-MEM-SIZE throw then
    drop ;
 
+: MEM-CHECK-CELL-COUNT ( count -- )
+   dup COUNT>N 0 <= if E-MEM-SIZE throw then
+   dup COUNT>N MEM-MAX-CELLS > if E-MEM-SIZE throw then
+   drop ;
+
 : MEM-64K-BYTES ( n -- n ) {: count :}
    count MEM-CHECK-64K-COUNT
    count MEM-64K * ;
+
+: MEM-CELLS>BYTES ( count -- n )
+   dup MEM-CHECK-CELL-COUNT
+   COUNT>N cells ;
 
 : MEM-64K-COUNT-FOR ( n -- n ) {: bytes :}
    bytes MEM-CHECK-SIZE
@@ -42,6 +53,9 @@ TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
 : MEM-ALLOC-BYTES ( n -- ptr u8 n ) {: bytes :}
    bytes MEM-CHECK-SIZE
    bytes MEM-ALLOC-PTR bytes ;
+
+: MEM-ALLOC-CELLS ( count -- ptr a )
+   MEM-CELLS>BYTES MEM-ALLOC-PTR ;
 
 : MEM-ALLOC-64K-BUFFERS ( n -- ptr u8 n )
    MEM-64K-BYTES MEM-ALLOC-BYTES ;

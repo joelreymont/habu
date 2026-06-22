@@ -950,7 +950,7 @@ for the expected shape before replacing `bench/llm/RESULTS-expanded.md`. For
 committed legacy JSONL evidence, report generation must be deterministic:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- bench/llm/results/run.jsonl > /tmp/RESULTS.md
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- bench/llm/results/run.jsonl > /tmp/RESULTS.md
 cmp /tmp/RESULTS.md bench/llm/RESULTS.md
 ```
 
