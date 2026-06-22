@@ -110,6 +110,8 @@ variable LRT-BUNDLE-U
    2dup s" fixture_diag" LRT-CONTAINS
    2dup s" diagnostic_count" LRT-CONTAINS
    2dup s" repair_success" LRT-CONTAINS
+   2dup s" first_round" LRT-CONTAINS
+   2dup s" first_order" LRT-CONTAINS
    s" token_delta" LRT-CONTAINS ;
 
 : LRT-CONFIG-FALSE-REJECT ( -- )

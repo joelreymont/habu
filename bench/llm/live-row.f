@@ -382,6 +382,12 @@ TRUSTED: LR-REPAIR-CLASS$ ( -- ptr u8 n )
    s" repair_iterations" LR-RAW-KEY
    LR-REPAIR-ITERATIONS @ LR-U+
    JW-COMMA-C SB-APPEND-C
+   s" first_round" LR-RAW-KEY
+   1 LR-U+
+   JW-COMMA-C SB-APPEND-C
+   s" first_order" LR-RAW-KEY
+   1 LR-U+
+   JW-COMMA-C SB-APPEND-C
    s" token_delta" LR-RAW-KEY
    0 LR-U+
    JW-RBRACE SB-APPEND-C

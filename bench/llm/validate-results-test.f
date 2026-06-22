@@ -223,23 +223,25 @@ VRT-LF VRT-LF-BUF c!
    s" diagnostic_count" 0 VRT-FIELD-U
    VRT-TRUE VRT-DIAG-BOOLS ;
 
-: VRT-RC-STAT ( ptr u8 n n n n -- )
-   {: class:ptr classu diags iters delta :}
+: VRT-RC-STAT ( ptr u8 n n n n n n -- )
+   {: class:ptr classu diags iters first-round first-order delta :}
    JW-OBJECT-START
    s" repair_class" class classu JW-FIELD-S
    s" diagnostic_count" diags VRT-FIELD-U
    s" repair_success" VRT-FALSE VRT-FIELD-BOOL
    s" repair_iterations" iters VRT-FIELD-U
+   s" first_round" first-round VRT-FIELD-U
+   s" first_order" first-order VRT-FIELD-U
    s" token_delta" delta VRT-FIELD-U
    JW-OBJECT-END ;
 
 : VRT-RC-STATS ( -- )
    JW-ARRAY-START
-   s" remove_producer" 2 1 30 VRT-RC-STAT
+   s" remove_producer" 2 1 1 1 30 VRT-RC-STAT
    JW-COMMA
-   s" add_producer" 1 2 50 VRT-RC-STAT
+   s" add_producer" 1 2 1 2 50 VRT-RC-STAT
    JW-COMMA
-   s" fix_type" 1 1 20 VRT-RC-STAT
+   s" fix_type" 1 1 2 3 20 VRT-RC-STAT
    JW-ARRAY-END ;
 
 : VRT-V1-FAIL-FIELDS ( -- )
@@ -753,9 +755,9 @@ VRT-LF VRT-LF-BUF c!
    s" buckets checker_rejected=1 checker_false_rejects=0 checker_model_rejected=1 first_tests_failed=1 tests_failed=1 trust_used=1 signature_weakened=1" VRT-OUT-CONTAINS
    s" diagnostic_gaps token=1 span=1 expected=1 actual=1 code=1 repair_class=1 all_errors_stable=1" VRT-OUT-CONTAINS
    VRT-ATTEMPT-CATEGORY$ VRT-OUT-CONTAINS
-   s" repair_class remove_producer rows=1 repair_success=0 repair_iterations=1 diagnostics=2 token_delta=30" VRT-OUT-CONTAINS
-   s" repair_class add_producer rows=1 repair_success=0 repair_iterations=2 diagnostics=1 token_delta=50" VRT-OUT-CONTAINS
-   s" repair_class fix_type rows=1 repair_success=0 repair_iterations=1 diagnostics=1 token_delta=20" VRT-OUT-CONTAINS ;
+   s" repair_class remove_producer rows=1 repair_success=0 repair_iterations=1 diagnostics=2 first_round=1 first_order=1 token_delta=30" VRT-OUT-CONTAINS
+   s" repair_class add_producer rows=1 repair_success=0 repair_iterations=2 diagnostics=1 first_round=1 first_order=2 token_delta=50" VRT-OUT-CONTAINS
+   s" repair_class fix_type rows=1 repair_success=0 repair_iterations=1 diagnostics=1 first_round=2 first_order=3 token_delta=20" VRT-OUT-CONTAINS ;
 
 : VRT-TEST-ATTEMPT-JSON ( -- )
    VRT-ATTEMPT$ VRT-TRUE VRT-RUN-VALIDATE

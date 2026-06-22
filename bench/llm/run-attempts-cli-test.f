@@ -220,9 +220,9 @@ variable RACT-NEXT
 : RACT-EXPECT-SUMMARY ( n -- ) {: rows :}
    RACT-ERR$ rows RACT-SUMMARY$ CONTAINS? TTRUE
    RACT-ERR$ s" buckets checker_rejected=9 checker_false_rejects=0 checker_model_rejected=9 first_tests_failed=9 tests_failed=1 trust_used=1 signature_weakened=1" CONTAINS? TTRUE
-   RACT-ERR$ s" repair_class remove_producer rows=2 repair_success=2 repair_iterations=2 diagnostics=2 token_delta=0" CONTAINS? TTRUE
-   RACT-ERR$ s" repair_class add_producer rows=2 repair_success=2 repair_iterations=2 diagnostics=2 token_delta=0" CONTAINS? TTRUE
-   RACT-ERR$ s" repair_class trusted_boundary_required rows=2 repair_success=1 repair_iterations=2 diagnostics=3 token_delta=0" CONTAINS? TTRUE
+   RACT-ERR$ s" repair_class remove_producer rows=2 repair_success=2 repair_iterations=2 diagnostics=2 first_round=2 first_order=3 token_delta=0" CONTAINS? TTRUE
+   RACT-ERR$ s" repair_class add_producer rows=2 repair_success=2 repair_iterations=2 diagnostics=2 first_round=2 first_order=2 token_delta=0" CONTAINS? TTRUE
+   RACT-ERR$ s" repair_class trusted_boundary_required rows=2 repair_success=1 repair_iterations=2 diagnostics=3 first_round=2 first_order=2 token_delta=0" CONTAINS? TTRUE
    RACT-ERR$ s" run-attempts: wrote " CONTAINS? TTRUE ;
 
 : RACT-JGET ( n ptr u8 n -- n ) {: root key:ptr keyu :}
@@ -271,7 +271,11 @@ variable RACT-NEXT
    root s" repair_class_stats" RACT-ARR-FIELD {: stats :}
    stats JSON-COUNT 2 T=
    stats 0 JSON-ARR@ s" repair_class" s" remove_producer" RACT-S-FIELD=
-   stats 1 JSON-ARR@ s" repair_class" s" add_producer" RACT-S-FIELD= ;
+   stats 0 JSON-ARR@ s" first_round" 1 RACT-U-FIELD=
+   stats 0 JSON-ARR@ s" first_order" 2 RACT-U-FIELD=
+   stats 1 JSON-ARR@ s" repair_class" s" add_producer" RACT-S-FIELD=
+   stats 1 JSON-ARR@ s" first_round" 1 RACT-U-FIELD=
+   stats 1 JSON-ARR@ s" first_order" 1 RACT-U-FIELD= ;
 
 : RACT-EXPECT-TASK9 ( -- )
    9 RACT-FIND-TASK {: root :}

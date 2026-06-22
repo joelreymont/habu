@@ -53,14 +53,16 @@ variable DGSCT-EXP-U
 : DGSCT-EXP-APPEND-JW ( -- )
    JW$ DGSCT-EXP-APPEND ;
 
-: DGSCT-EXP-STAT ( ptr u8 n n bool n n -- )
-   {: cls:ptr clsu diag success iter delta :}
+: DGSCT-EXP-STAT ( ptr u8 n n bool n n n n -- )
+   {: cls:ptr clsu diag success iter first-round first-order delta :}
    JW-RESET
    JW-OBJECT-START
    s" repair_class" cls clsu JW-FIELD-S
    JW-COMMA s" diagnostic_count" diag JW-FIELD-U
    JW-COMMA s" repair_success" success JW-FIELD-BOOL
    JW-COMMA s" repair_iterations" iter JW-FIELD-U
+   JW-COMMA s" first_round" first-round JW-FIELD-U
+   JW-COMMA s" first_order" first-order JW-FIELD-U
    JW-COMMA s" token_delta" delta JW-FIELD-U
    JW-OBJECT-END
    DGSCT-EXP-APPEND-JW ;
@@ -68,15 +70,15 @@ variable DGSCT-EXP-U
 : DGSCT-EXPECTED-STATS! ( -- )
    0 DGSCT-EXP-U !
    DGSCT-LBRACK DGSCT-EXP-C
-   s" add_producer" 1 DGS-TRUE 1 7 DGSCT-EXP-STAT
+   s" add_producer" 1 DGS-TRUE 1 2 2 7 DGSCT-EXP-STAT
    DGSCT-COMMA DGSCT-EXP-C
-   s" fix_type" 2 DGS-TRUE 1 7 DGSCT-EXP-STAT
+   s" fix_type" 2 DGS-TRUE 1 1 1 7 DGSCT-EXP-STAT
    DGSCT-COMMA DGSCT-EXP-C
-   s" alpha" 1 DGS-TRUE 1 7 DGSCT-EXP-STAT
+   s" alpha" 1 DGS-TRUE 1 4 5 7 DGSCT-EXP-STAT
    DGSCT-COMMA DGSCT-EXP-C
-   s" custom_class" 2 DGS-TRUE 2 7 DGSCT-EXP-STAT
+   s" custom_class" 2 DGS-TRUE 2 3 3 7 DGSCT-EXP-STAT
    DGSCT-COMMA DGSCT-EXP-C
-   s" zeta" 1 DGS-TRUE 1 7 DGSCT-EXP-STAT
+   s" zeta" 1 DGS-TRUE 1 4 4 7 DGSCT-EXP-STAT
    DGSCT-RBRACK DGSCT-EXP-C ;
 
 : DGSCT-EXPECT-BAD-ROUND ( -- )

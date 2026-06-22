@@ -445,7 +445,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   host JSON encoders.
 - **Diagnostic rows must balance repair stats:** schema-v2 rows with
   `diagnostic_count > 0` need `repair_class_stats` whose diagnostic counts sum
-  to the row total. Empty stats are valid only for zero-diagnostic rows.
+  to the row total and whose `first_round`/`first_order` fields preserve
+  first-seen repair packet order. Empty stats are valid only for zero-diagnostic
+  rows.
 - **Schema-v2 changes must update every fixture:** report fixtures that only
   invoke validators indirectly still build full rows by hand; add new required
   fields there in the same change or the report child exits before assertions.

@@ -14,6 +14,8 @@ create DGS-CLASS-BUF DGS-CLASS-MAX DGS-CLASS-CAP * allot
 create DGS-CLASS-U DGS-CLASS-MAX cells allot
 create DGS-DIAG-N DGS-CLASS-MAX cells allot
 create DGS-ROUND-N DGS-CLASS-MAX cells allot
+create DGS-FIRST-ROUND DGS-CLASS-MAX cells allot
+create DGS-FIRST-ORDER DGS-CLASS-MAX cells allot
 create DGS-EMITTED DGS-CLASS-MAX cells allot
 create DGS-PAIR-CLASS DGS-PAIR-MAX cells allot
 create DGS-PAIR-ROUND DGS-PAIR-MAX cells allot
@@ -27,6 +29,7 @@ variable DGS-NEXT
 variable DGS-CAND
 variable DGS-FIRST
 variable DGS-TMP-IDX
+variable DGS-ORDER#
 variable DGS-NUM-I
 variable DGS-EVENT-U
 variable DGS-DIAG#
@@ -78,6 +81,14 @@ variable DGS-HAS-REPAIR-CLASS
    idx DGS-CHECK-CLASS
    DGS-ROUND-N idx cells + ;
 
+: DGS-FIRST-ROUND-PTR ( n -- ptr n ) {: idx :}
+   idx DGS-CHECK-CLASS
+   DGS-FIRST-ROUND idx cells + ;
+
+: DGS-FIRST-ORDER-PTR ( n -- ptr n ) {: idx :}
+   idx DGS-CHECK-CLASS
+   DGS-FIRST-ORDER idx cells + ;
+
 : DGS-EMITTED-PTR ( n -- ptr n ) {: idx :}
    idx DGS-CHECK-CLASS
    DGS-EMITTED idx cells + ;
@@ -118,10 +129,13 @@ variable DGS-HAS-REPAIR-CLASS
 : DGS-RESET-EVENTS ( -- )
    DGS-KNOWN# DGS-CLASS# !
    0 DGS-PAIR# !
+   0 DGS-ORDER# !
    0 begin dup DGS-CLASS-MAX < while
       0 over DGS-CLASS-U-PTR !
       0 over DGS-DIAG-N-PTR !
       0 over DGS-ROUND-N-PTR !
+      0 over DGS-FIRST-ROUND-PTR !
+      0 over DGS-FIRST-ORDER-PTR !
       0 over DGS-EMITTED-PTR !
       1+
    repeat drop ;
@@ -193,6 +207,12 @@ variable DGS-HAS-REPAIR-CLASS
 : DGS-COUNT-DIAG ( n -- ) {: idx :}
    idx DGS-DIAG-N-PTR @ 1+ idx DGS-DIAG-N-PTR ! ;
 
+: DGS-MARK-FIRST ( n n -- ) {: round idx :}
+   idx DGS-FIRST-ORDER-PTR @ 0 <> if exit then
+   round idx DGS-FIRST-ROUND-PTR !
+   DGS-ORDER# @ 1+ DGS-ORDER# !
+   DGS-ORDER# @ idx DGS-FIRST-ORDER-PTR ! ;
+
 : DGS-COUNT-ROUND ( n -- ) {: idx :}
    idx DGS-ROUND-N-PTR @ 1+ idx DGS-ROUND-N-PTR ! ;
 
@@ -223,7 +243,10 @@ variable DGS-HAS-REPAIR-CLASS
 
 : DGS-HANDLE-EVENT-CLASS ( n ptr u8 n -- ) {: round cls:ptr clsu :}
    clsu 0= if exit then
-   cls clsu DGS-CLASS-INDEX dup DGS-COUNT-DIAG round DGS-ADD-PAIR ;
+   cls clsu DGS-CLASS-INDEX DGS-TMP-IDX !
+   round DGS-TMP-IDX @ DGS-MARK-FIRST
+   DGS-TMP-IDX @ DGS-COUNT-DIAG
+   DGS-TMP-IDX @ round DGS-ADD-PAIR ;
 
 : DGS-HANDLE-EVENT ( ptr u8 n -- ) {: a:ptr u :}
    a u BM-BLANK-OR-COMMENT? if exit then
@@ -331,6 +354,8 @@ variable DGS-HAS-REPAIR-CLASS
    JW-COMMA s" diagnostic_count" idx DGS-DIAG-N-PTR @ JW-FIELD-U
    JW-COMMA s" repair_success" success JW-FIELD-BOOL
    JW-COMMA s" repair_iterations" idx DGS-ROUND-N-PTR @ JW-FIELD-U
+   JW-COMMA s" first_round" idx DGS-FIRST-ROUND-PTR @ JW-FIELD-U
+   JW-COMMA s" first_order" idx DGS-FIRST-ORDER-PTR @ JW-FIELD-U
    JW-COMMA s" token_delta" delta JW-FIELD-U
    JW-OBJECT-END ;
 

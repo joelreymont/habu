@@ -85,6 +85,8 @@ create LV-RC-SUCCESS LV-MAX cells allot
 create LV-RC-REPAIRS LV-MAX cells allot
 create LV-RC-DIAGS LV-MAX cells allot
 create LV-RC-TOKDELTA LV-MAX cells allot
+create LV-RC-FIRST-ROUND LV-MAX cells allot
+create LV-RC-FIRST-ORDER LV-MAX cells allot
 
 create LV-ARM-A LV-MAX cells allot
 create LV-ARM-U LV-MAX cells allot
@@ -213,6 +215,8 @@ variable LV-RC-DIAG
 variable LV-RC-SUCC
 variable LV-RC-ROUND
 variable LV-RC-TOK
+variable LV-RC-FIRST-R
+variable LV-RC-FIRST-O
 variable LV-RC-SUM
 variable LV-RFD
 variable LV-RGOT
@@ -579,6 +583,12 @@ variable LV-LINE-U
 : LV-RC-TOKDELTA@ ( n -- n )
    cells LV-RC-TOKDELTA + @ ;
 
+: LV-RC-FIRST-ROUND@ ( n -- n )
+   cells LV-RC-FIRST-ROUND + @ ;
+
+: LV-RC-FIRST-ORDER@ ( n -- n )
+   cells LV-RC-FIRST-ORDER + @ ;
+
 : LV-RC-ROWS++ ( n -- )
    cells LV-RC-ROWS + LV-CELL++ ;
 
@@ -593,6 +603,12 @@ variable LV-LINE-U
 
 : LV-RC-TOKDELTA+ {: n k :} ( n n -- )
    n LV-RC-TOKDELTA k cells + LV-CELL+! ;
+
+: LV-RC-FIRST-ROUND+ {: n k :} ( n n -- )
+   n LV-RC-FIRST-ROUND k cells + LV-CELL+! ;
+
+: LV-RC-FIRST-ORDER+ {: n k :} ( n n -- )
+   n LV-RC-FIRST-ORDER k cells + LV-CELL+! ;
 
 : LV-FIND-RC {: a:ptr u :} ( ptr u8 n -- n )
    0 begin dup LV-RC# @ < while
@@ -616,6 +632,8 @@ variable LV-LINE-U
    0 LV-RC-REPAIRS LV-P @ cells + !
    0 LV-RC-DIAGS LV-P @ cells + !
    0 LV-RC-TOKDELTA LV-P @ cells + !
+   0 LV-RC-FIRST-ROUND LV-P @ cells + !
+   0 LV-RC-FIRST-ORDER LV-P @ cells + !
    LV-RC# @ 1+ LV-RC# !
    LV-P @ ;
 
@@ -1324,6 +1342,8 @@ variable LV-LINE-U
    item s" diagnostic_count" LV-REQ
    item s" repair_success" LV-REQ
    item s" repair_iterations" LV-REQ
+   item s" first_round" LV-REQ
+   item s" first_order" LV-REQ
    item s" token_delta" LV-REQ ;
 
 : LV-ACCUM-RC-ITEM {: item :} ( n -- )
@@ -1339,6 +1359,12 @@ variable LV-LINE-U
    item s" repair_iterations" LV-INT-FIELD
    dup 0 < IF drop s" invalid repair class repair_iterations" LV-FAIL-AT THEN
    LV-RC-ROUND !
+   item s" first_round" LV-INT-FIELD
+   dup 0 < IF drop s" invalid repair class first_round" LV-FAIL-AT THEN
+   LV-RC-FIRST-R !
+   item s" first_order" LV-INT-FIELD
+   dup 0 <= IF drop s" invalid repair class first_order" LV-FAIL-AT THEN
+   LV-RC-FIRST-O !
    item s" token_delta" LV-INT-FIELD
    dup 0 < IF drop s" invalid repair class token_delta" LV-FAIL-AT THEN
    LV-RC-TOK !
@@ -1346,6 +1372,8 @@ variable LV-LINE-U
    LV-RC-SUCC @ IF LV-P @ LV-RC-SUCCESS++ THEN
    LV-RC-ROUND @ LV-P @ LV-RC-REPAIRS+
    LV-RC-DIAG @ LV-P @ LV-RC-DIAGS+
+   LV-RC-FIRST-R @ LV-P @ LV-RC-FIRST-ROUND+
+   LV-RC-FIRST-O @ LV-P @ LV-RC-FIRST-ORDER+
    LV-RC-TOK @ LV-P @ LV-RC-TOKDELTA+ ;
 
 : LV-ACCUM-RC-STATS {: root :} ( n -- )
@@ -1531,6 +1559,8 @@ variable LV-LINE-U
       s" repair_success" LV-P @ LV-RC-SUCCESS@ LV-TEXT-FIELD
       s" repair_iterations" LV-P @ LV-RC-REPAIRS@ LV-TEXT-FIELD
       s" diagnostics" LV-P @ LV-RC-DIAGS@ LV-TEXT-FIELD
+      s" first_round" LV-P @ LV-RC-FIRST-ROUND@ LV-TEXT-FIELD
+      s" first_order" LV-P @ LV-RC-FIRST-ORDER@ LV-TEXT-FIELD
       s" token_delta" LV-P @ LV-RC-TOKDELTA@ LV-TEXT-FIELD
       LV-NL
       1+
@@ -1681,6 +1711,8 @@ variable LV-LINE-U
    s" repair_success" k LV-RC-SUCCESS@ LV-JSON-COMMA-UF
    s" repair_iterations" k LV-RC-REPAIRS@ LV-JSON-COMMA-UF
    s" diagnostic_count" k LV-RC-DIAGS@ LV-JSON-COMMA-UF
+   s" first_round" k LV-RC-FIRST-ROUND@ LV-JSON-COMMA-UF
+   s" first_order" k LV-RC-FIRST-ORDER@ LV-JSON-COMMA-UF
    s" token_delta" k LV-RC-TOKDELTA@ LV-JSON-UF
    JSONW-OBJECT-END ;
 

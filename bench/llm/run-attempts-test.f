@@ -458,6 +458,8 @@ variable RATT-EXP-U
    stat s" diagnostic_count" 1 RATT-U-FIELD=
    stat s" repair_success" RA-TRUE RATT-BOOL-FIELD=
    stat s" repair_iterations" 1 RATT-U-FIELD=
+   stat s" first_round" 1 RATT-U-FIELD=
+   stat s" first_order" 1 RATT-U-FIELD=
    stat s" token_delta" 0 RATT-U-FIELD=
    root s" wall_ms" 29 RATT-U-FIELD=
    root s" final_chars" RATT-GOOD-CHECK-SRC$ nip RATT-U-FIELD=

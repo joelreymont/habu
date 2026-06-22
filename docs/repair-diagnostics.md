@@ -147,7 +147,15 @@ checker or repair packets:
 | `diagnostic_code` | boolean | required | True when every diagnostic had a stable error code. |
 | `diagnostic_repair_class` | boolean | required | True when every diagnostic had a stable repair class. |
 | `all_errors_stable` | boolean | required | True when repeated checker runs produced identical diagnostic JSONL. |
-| `repair_class_stats` | array | optional when no diagnostics | Per-class diagnostic counts and repair success accounting. |
+| `repair_class_stats` | array | optional when no diagnostics | Per-class diagnostic counts, repair success accounting, and first-seen repair packet order. |
+
+Each `repair_class_stats` item is required to contain `repair_class`,
+`diagnostic_count`, `repair_success`, `repair_iterations`, `first_round`,
+`first_order`, and `token_delta`. `first_round` is the repair round where that
+class first appeared in the diagnostic event stream; `first_order` is its
+1-based first-seen order among classes in that row's first actionable repair
+packet evidence. Lower `first_order` is better when multiple classes are present
+because the first repair packet is what drives the next model attempt.
 
 Benchmark validators must fail rows that claim diagnostic quality without the
 corresponding evidence. Reports must keep diagnostic quality, repair success,

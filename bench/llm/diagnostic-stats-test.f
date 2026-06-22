@@ -143,14 +143,16 @@ variable DGST-EXP-U
    s" 1
 " ;
 
-: DGST-EXP-STAT ( ptr u8 n n bool n n -- )
-   {: cls:ptr clsu diag success iter delta :}
+: DGST-EXP-STAT ( ptr u8 n n bool n n n n -- )
+   {: cls:ptr clsu diag success iter first-round first-order delta :}
    JW-RESET
    JW-OBJECT-START
    s" repair_class" cls clsu JW-FIELD-S
    JW-COMMA s" diagnostic_count" diag JW-FIELD-U
    JW-COMMA s" repair_success" success JW-FIELD-BOOL
    JW-COMMA s" repair_iterations" iter JW-FIELD-U
+   JW-COMMA s" first_round" first-round JW-FIELD-U
+   JW-COMMA s" first_order" first-order JW-FIELD-U
    JW-COMMA s" token_delta" delta JW-FIELD-U
    JW-OBJECT-END
    DGST-EXP-APPEND-JW ;
@@ -158,23 +160,23 @@ variable DGST-EXP-U
 : DGST-EXPECTED-STATS! ( -- )
    0 DGST-EXP-U !
    DGST-LBRACK DGST-EXP-C
-   s" add_producer" 1 0 0= 1 7 DGST-EXP-STAT
+   s" add_producer" 1 0 0= 1 2 2 7 DGST-EXP-STAT
    DGST-COMMA DGST-EXP-C
-   s" fix_type" 2 0 0= 1 7 DGST-EXP-STAT
+   s" fix_type" 2 0 0= 1 1 1 7 DGST-EXP-STAT
    DGST-COMMA DGST-EXP-C
-   s" alpha" 1 0 0= 1 7 DGST-EXP-STAT
+   s" alpha" 1 0 0= 1 4 5 7 DGST-EXP-STAT
    DGST-COMMA DGST-EXP-C
-   s" custom_class" 2 0 0= 2 7 DGST-EXP-STAT
+   s" custom_class" 2 0 0= 2 3 3 7 DGST-EXP-STAT
    DGST-COMMA DGST-EXP-C
-   s" zeta" 1 0 0= 1 7 DGST-EXP-STAT
+   s" zeta" 1 0 0= 1 4 4 7 DGST-EXP-STAT
    DGST-RBRACK DGST-EXP-C ;
 
 : DGST-EXPECTED-DIAG-EVENT-STATS! ( -- )
    0 DGST-EXP-U !
    DGST-LBRACK DGST-EXP-C
-   s" remove_producer" 1 0 0= 1 7 DGST-EXP-STAT
+   s" remove_producer" 1 0 0= 1 0 2 7 DGST-EXP-STAT
    DGST-COMMA DGST-EXP-C
-   s" fix_type" 1 0 0= 1 7 DGST-EXP-STAT
+   s" fix_type" 1 0 0= 1 0 1 7 DGST-EXP-STAT
    DGST-RBRACK DGST-EXP-C ;
 
 : DGST-EXPECT-BAD-ROUND ( -- )
