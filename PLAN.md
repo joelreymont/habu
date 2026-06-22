@@ -932,9 +932,9 @@ BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/strin
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f tools/json.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
 ```
 
-Fresh live model runs are nondeterministic. Review `/tmp/RESULTS.md` for the
-expected shape before replacing `bench/llm/RESULTS.md`. For committed JSONL
-evidence, report generation must be deterministic:
+Fresh live model runs are nondeterministic. Review `/tmp/RESULTS-expanded.md`
+for the expected shape before replacing `bench/llm/RESULTS-expanded.md`. For
+committed legacy JSONL evidence, report generation must be deterministic:
 
 ```sh
 bin/hb --load lib/errors.f lib/string.f lib/fs.f tools/json.f tools/argv.f bench/llm/report.f -- bench/llm/results/run.jsonl > /tmp/RESULTS.md

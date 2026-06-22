@@ -111,11 +111,13 @@ bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/json-write.f lib/fs.f l
 BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 bench/llm/results/run-expanded.jsonl
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f tools/json.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
 ```
-Then compare `/tmp/RESULTS.md` to the committed `bench/llm/RESULTS.md`. Exact token counts
-WILL differ run-to-run (model nondeterminism), but the **shape** must reproduce: pass@k ≈ 100%
-for all arms, trial pass close to the table in §2, and Habu's per-task tokens ≈ 1× on the
-elementwise tasks and many-× (especially ARGMAX) on the index/state/in-place tasks. The
-committed `run.jsonl` is the exact evidence behind all four arms in §2.
+Then review `/tmp/RESULTS-expanded.md`. Exact token counts WILL differ run-to-run
+(model nondeterminism), but the **shape** must reproduce: pass@k ≈ 100% for all
+arms, trial pass close to the table in §2, and Habu's per-task tokens ≈ 1× on
+the elementwise tasks and many-× (especially ARGMAX) on the index/state/in-place
+tasks. The committed `run.jsonl` is the exact legacy evidence behind all four
+arms in §2; committed expanded evidence lives in `results/run-expanded.jsonl`
+once the k>=5 expanded run is finalized.
 
 ### V4 — Spot-check a single live cell
 ```

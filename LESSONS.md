@@ -465,6 +465,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Schema-v2 changes must update every fixture:** report fixtures that only
   invoke validators indirectly still build full rows by hand; add new required
   fields there in the same change or the report child exits before assertions.
+- **Report reducer changes must refresh generated evidence docs:** when
+  `bench/llm/report.f` output shape changes, regenerate `bench/llm/RESULTS.md`
+  and update the verification prose in the same commit. A green reducer test does
+  not prove the checked-in report still matches committed JSONL evidence.
 - **Codex input-token bloat is ambient context:** default `codex exec` loads
   apps/plugins/tool context and project instructions; a smoke prompt fell from
   about 29k input tokens to about 11.5k by using a clean `CODEX_HOME` plus
