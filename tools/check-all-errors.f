@@ -6,8 +6,7 @@
 $10000 constant CA-PROG-EXTRA
 $10000 constant CA-ERR-CAP
 $400 constant CA-OUT-CAP
-512 constant CA-DEF-MAX
-512 constant CA-SUP-MAX
+512 constant CA-INIT-CAP
 32 constant CA-NUM-CAP
 
 10 constant CA-LF
@@ -24,15 +23,15 @@ create CA-NUM-BUF CA-NUM-CAP allot
 create CA-PFD 8 allot
 create CA-LF-BUF 1 allot
 
-create CA-DEF-START CA-DEF-MAX cells allot
-create CA-DEF-END CA-DEF-MAX cells allot
-create CA-DEF-TOK CA-DEF-MAX cells allot
-create CA-DEF-LINE CA-DEF-MAX cells allot
-create CA-DEF-COL CA-DEF-MAX cells allot
-create CA-DEF-BYTE CA-DEF-MAX cells allot
-create CA-DEF-OK CA-DEF-MAX cells allot
-create CA-SUP-START CA-SUP-MAX cells allot
-create CA-SUP-END CA-SUP-MAX cells allot
+create CA-DEF-START VEC-HEADER-CELLS cells allot
+create CA-DEF-END VEC-HEADER-CELLS cells allot
+create CA-DEF-TOK VEC-HEADER-CELLS cells allot
+create CA-DEF-LINE VEC-HEADER-CELLS cells allot
+create CA-DEF-COL VEC-HEADER-CELLS cells allot
+create CA-DEF-BYTE VEC-HEADER-CELLS cells allot
+create CA-DEF-OK VEC-HEADER-CELLS cells allot
+create CA-SUP-START VEC-HEADER-CELLS cells allot
+create CA-SUP-END VEC-HEADER-CELLS cells allot
 
 variable CA-DEF#
 variable CA-SUP#
@@ -120,10 +119,76 @@ variable CA-FILE-U
    die ;
 
 : CA-CELL@ ( ptr a n -- n )
-   cells + @ ;
+   >IDX VEC-N@ ;
 
 : CA-CELL! ( n ptr a n -- )
-   cells + ! ;
+   >IDX VEC-N! ;
+
+: CA-DEF-INIT ( -- )
+   CA-DEF-START CA-INIT-CAP >COUNT VEC-INIT
+   CA-DEF-END CA-INIT-CAP >COUNT VEC-INIT
+   CA-DEF-TOK CA-INIT-CAP >COUNT VEC-INIT
+   CA-DEF-LINE CA-INIT-CAP >COUNT VEC-INIT
+   CA-DEF-COL CA-INIT-CAP >COUNT VEC-INIT
+   CA-DEF-BYTE CA-INIT-CAP >COUNT VEC-INIT
+   CA-DEF-OK CA-INIT-CAP >COUNT VEC-INIT ;
+
+: CA-SUP-INIT ( -- )
+   CA-SUP-START CA-INIT-CAP >COUNT VEC-INIT
+   CA-SUP-END CA-INIT-CAP >COUNT VEC-INIT ;
+
+: CA-STORE-INIT ( -- )
+   CA-DEF-INIT
+   CA-SUP-INIT ;
+
+: CA-DEF-CLEAR ( -- )
+   CA-DEF-START VEC-CLEAR
+   CA-DEF-END VEC-CLEAR
+   CA-DEF-TOK VEC-CLEAR
+   CA-DEF-LINE VEC-CLEAR
+   CA-DEF-COL VEC-CLEAR
+   CA-DEF-BYTE VEC-CLEAR
+   CA-DEF-OK VEC-CLEAR ;
+
+: CA-SUP-CLEAR ( -- )
+   CA-SUP-START VEC-CLEAR
+   CA-SUP-END VEC-CLEAR ;
+
+: CA-STORE-CLEAR ( -- )
+   CA-DEF-CLEAR
+   CA-SUP-CLEAR ;
+
+: CA-DEF-ENSURE ( n -- ) {: count :}
+   CA-DEF-START count >COUNT VEC-ENSURE
+   CA-DEF-END count >COUNT VEC-ENSURE
+   CA-DEF-TOK count >COUNT VEC-ENSURE
+   CA-DEF-LINE count >COUNT VEC-ENSURE
+   CA-DEF-COL count >COUNT VEC-ENSURE
+   CA-DEF-BYTE count >COUNT VEC-ENSURE
+   CA-DEF-OK count >COUNT VEC-ENSURE ;
+
+: CA-SUP-ENSURE ( n -- ) {: count :}
+   CA-SUP-START count >COUNT VEC-ENSURE
+   CA-SUP-END count >COUNT VEC-ENSURE ;
+
+: CA-DEF-LEN! ( n -- ) {: count :}
+   count >LEN CA-DEF-START VEC-LEN!
+   count >LEN CA-DEF-END VEC-LEN!
+   count >LEN CA-DEF-TOK VEC-LEN!
+   count >LEN CA-DEF-LINE VEC-LEN!
+   count >LEN CA-DEF-COL VEC-LEN!
+   count >LEN CA-DEF-BYTE VEC-LEN!
+   count >LEN CA-DEF-OK VEC-LEN! ;
+
+: CA-SUP-LEN! ( n -- ) {: count :}
+   count >LEN CA-SUP-START VEC-LEN!
+   count >LEN CA-SUP-END VEC-LEN! ;
+
+: CA-DEF-ROOM ( n -- )
+   1+ dup CA-DEF-ENSURE CA-DEF-LEN! ;
+
+: CA-SUP-ROOM ( n -- )
+   1+ dup CA-SUP-ENSURE CA-SUP-LEN! ;
 
 : CA-START@ ( k -- n ) CA-DEF-START swap CA-CELL@ ;
 : CA-END@ ( k -- n ) CA-DEF-END swap CA-CELL@ ;
@@ -285,7 +350,7 @@ variable CA-FILE-U
 
 : CA-ADD-SUPPORT ( n n -- ) {: start end :}
    end start <= IF exit THEN
-   CA-SUP# @ CA-SUP-MAX >= IF s" check-all-errors: too many support slices" 76 CA-FAIL THEN
+   CA-SUP# @ CA-SUP-ROOM
    start CA-SUP# @ CA-SUP-START!
    end CA-SUP# @ CA-SUP-END!
    CA-SUP# @ 1+ CA-SUP# ! ;
@@ -344,7 +409,7 @@ variable CA-FILE-U
    THEN ;
 
 : CA-ADD-DEF ( n n n -- ) {: start end tok :}
-   CA-DEF# @ CA-DEF-MAX >= IF s" check-all-errors: too many definitions" 76 CA-FAIL THEN
+   CA-DEF# @ CA-DEF-ROOM
    start CA-DEF# @ CA-START!
    end CA-DEF# @ CA-END!
    tok CA-DEF# @ CA-DEFTOK!
@@ -355,6 +420,7 @@ variable CA-FILE-U
 : CA-COLLECT-DEFS ( -- )
    0 CA-DEF# !
    0 CA-SUP# !
+   CA-STORE-CLEAR
    0 CA-I !
    begin CA-I @ L# @ < while
       CA-I @ s" :" CA-TOK= IF
@@ -638,6 +704,7 @@ variable CA-FILE-U
    ARGV-PARSE
    ARGV-REQUIRE-LABEL
    1 ARGV-EXPECT-POS-EXACT
+   CA-STORE-INIT
    ARGV-LABEL$ CA-FILE-U ! CA-FILE-A!
    0 ARGV-POS$ CA-READ-SOURCE
    CA-SRC-A@ CA-SRC-U @ LEX-SOURCE
