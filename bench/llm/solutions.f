@@ -1,5 +1,5 @@
 \ solutions.f — reference answer key for the habu LLM benchmark. Each definition
-\ is checked: run.sh proves all tasks typecheck (CHECK! => -1 certified).
+\ is checked: run.f proves all tasks typecheck (CHECK! => -1 certified).
 \ Categories: arithmetic, control flow, locals, polymorphic stack, loops,
 \ return stack, quotations/combinators, stack introspection, memory, strings,
 \ files, processes, time, recursion, parser edge cases.

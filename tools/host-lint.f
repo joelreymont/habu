@@ -106,15 +106,17 @@ variable HOST-PATH-U
    a u s" ./bench/llm/drive-" PREFIX? 0= IF LINT-FALSE exit THEN
    a u s" .sh" HAS-EXT? ;
 
+: HOST-BENCH-SHELL? ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" ./bench/llm/" PREFIX? 0= IF LINT-FALSE exit THEN
+   a u s" .sh" HAS-EXT? ;
+
 : HOST-BENCH-BASELINE? ( ptr u8 n -- bool )
    2dup s" ./bench/llm/drive-habu.sh" PATH= IF 2drop LINT-FALSE exit THEN
    2dup HOST-FORTH-SHELL? IF 2drop LINT-FALSE exit THEN
    s" ./bench/llm/report.f" PATH= ;
 
 : HOST-RETIRED-SHELL? ( ptr u8 n -- bool )
-   2dup HOST-BENCH-DRIVER-SHELL? IF 2drop LINT-TRUE exit THEN
-   2dup s" ./bench/llm/grade.sh" PATH= IF 2drop LINT-TRUE exit THEN
-   2dup s" ./bench/llm/grade-test.sh" PATH= IF 2drop LINT-TRUE exit THEN
+   2dup HOST-BENCH-SHELL? IF 2drop LINT-TRUE exit THEN
    2dup s" ./bench/llm/perf.sh" PATH= IF 2drop LINT-TRUE exit THEN
    2dup HOST-FORTH-SHELL? IF 2drop LINT-TRUE exit THEN
    2dup s" ./tools/seed.sh" PATH= IF 2drop LINT-TRUE exit THEN

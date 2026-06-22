@@ -202,6 +202,9 @@ points stay listed.
 - `bench/llm/negative-score-test.f` — focused coverage for negative-harness scoring outcomes.
 - `bench/llm/run-expanded-bench.f` — native expanded live benchmark runner and arm dispatcher.
 - `bench/llm/run-expanded-bench-test.f` — focused coverage for expanded-run AOT dispatch and report validation.
+- `bench/llm/run-lib.f` — checked benchmark gate runner that sequences reference certification, functional tests, validator fixtures, reports, and driver fixtures.
+- `bench/llm/run.f` — CLI entry point for the checked benchmark gate runner.
+- `bench/llm/run-test.f` — focused coverage for benchmark gate runner argv setup and smoke execution.
 - `bench/llm/report-test.f` — focused checked coverage for legacy report summary rows and arm/category rendering.
 - `bench/llm/expanded-report.f` — expanded live benchmark Markdown report with validator and latency sections.
 - `bench/llm/expanded-report-test.f` — focused coverage for expanded report perf-latency rendering.
@@ -222,4 +225,3 @@ points stay listed.
 - `bench/llm/habu-array-lib.f` — checked array helper vocabulary for library-assisted Habu benchmark arm.
 - `bench/llm/habu-array-lib-test.f` — focused coverage for the benchmark array helper library.
 - `bench/llm/habu-preamble-lib.txt` — LLM prompt preamble for library-assisted Habu benchmark arm.
-- `bench/llm/run.sh` — benchmark certification runner.

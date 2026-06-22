@@ -69,7 +69,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   exact THROW code.
 
 ## 7. Run the gate
-- `( cd test && ./run.sh )` — habu-native, no gforth, < 10 s. Must be green.
+- `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f` — habu-native, no gforth. Must be green.
 - If `bin/hb` is missing, install a trusted native seed with
   `tools/seed.sh /path/to/hb-seed`; the seed immediately rebuilds current source
   through the native build-fixpoint installer.
@@ -124,14 +124,15 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   `extracted_candidate`, `checker_diagnostics`, `repair_packet`, `test_output`,
   and `final_bundle`, each paired with a `*_sha256` field.
 
-Run the reference scorecard with `bench/llm/run.sh`. It validates the task set,
+Run the reference scorecard with `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f bench/llm/run-lib.f bench/llm/run.f`. It validates the task set,
 the checked reference solutions, functional tests, and the JSONL metric schema.
 To summarize a real model attempt, place per-task candidate files under a
-candidate directory (`1.f` or repair rounds as `1/1.f`, `1/2.f`, ...), run
-`bench/llm/run-attempts.sh CANDIDATE_DIR`, then pass the resulting JSONL to the
-native validator; add `--json` for a machine-readable summary with failure
-buckets and per-category coverage. Date-stamped run IDs use `*-YYYY-MM-DD` and
-are validated by the native date parser.
-Run `bench/llm/perf.sh` for quick latency measurements of the checker,
-functional tests, metric validator, property-test smoke, and microbench smoke;
-add `--full` when rebuild and AOT build/runtime timings are needed.
+candidate directory (`1.f` or repair rounds as `1/1.f`, `1/2.f`, ...), run the
+native `bench/llm/run-attempts.f` CLI through `bin/hb --load`, then pass the
+resulting JSONL to the native validator; add `--json` for a machine-readable
+summary with failure buckets and per-category coverage. Date-stamped run IDs use
+`*-YYYY-MM-DD` and are validated by the native date parser.
+Run `bench/llm/perf.f` through `bin/hb --load` for quick latency measurements of
+the checker, functional tests, metric validator, property-test smoke, and
+microbench smoke; add `--full` when rebuild and AOT build/runtime timings are
+needed.

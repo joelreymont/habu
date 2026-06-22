@@ -910,7 +910,7 @@ printf ': PIPED ( -- n ) 7 ; PIPED .\n' | bin/hb ignored-script.f arg
 bin/hb 2 10 < test/prop-test.f
 bin/hb < test/prop-test.f
 test "$(find bin -type f -perm -111 ! -name hb -print | wc -l)" -eq 0
-./bench/llm/run.sh
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f bench/llm/run-lib.f bench/llm/run.f
 bin/hb --load lib/errors.f lib/string.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f bench/llm/perf-lib.f bench/llm/perf.f
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f -- lib/array.f
 bin/hb --load lib/errors.f lib/array.f lib/array-test.f

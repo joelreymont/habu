@@ -78,7 +78,7 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
 ## Current state and gaps
 
 - **LLM-native scorecard** — current reference benchmark infrastructure is
-  native-only: `bench/llm/run.sh` validates the task set, checked reference
+  native-only: `bench/llm/run.f` validates the task set, checked reference
   solutions, functional tests, and metric JSONL. The scorecard fields are
   `first_pass_checker`, `first_pass_tests`, `tests_passed`, `repair_iterations`,
   `checker_iterations`, `diagnostic_count`, `diagnostic_token`,
@@ -86,11 +86,11 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   `diagnostic_code`, `diagnostic_repair_class`, `all_errors_stable`,
   `tokens_used`, `wall_ms`, `final_chars`, `trust_uses`, and
   `signature_weakened`. Per-task candidate/repair directories can be converted
-  to attempt JSONL with `bench/llm/run-attempts.sh`; the native validator then
+  to attempt JSONL with `bench/llm/run-attempts.f`; the native validator then
   summarizes failure buckets, diagnostic-quality gaps, and per-category coverage.
   Date-stamped run IDs (`*-YYYY-MM-DD`) are validated in Habu. The reference
   gate requires quotation, return-stack, strings, files, and AOT-safe benchmark
-  categories. `bench/llm/perf.sh` records quick feedback-loop latency, with
+  categories. `bench/llm/perf.f` records quick feedback-loop latency, with
   `--full` covering rebuild and AOT timings.
 - **AOT-strip linker** — done and the DEFAULT. The native `tools/hb-build.f` path AOT-
   compiles `: MAIN ;` to a native binary with the engine stripped (fib __text
