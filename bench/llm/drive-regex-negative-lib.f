@@ -1,6 +1,6 @@
 \ drive-regex-negative-lib.f - native stdlib regex negative driver.
 \
-\ Load after bench/llm/drive-stdlib-lib.f.
+\ Load after bench/llm/drive-stdlib-lib.f and bench/llm/drive-stdlib-live.f.
 
 : DRX-SYNTAX-TASK? ( -- bool )
    DS-NAME$ s" RX-BAD-PATTERN" STR= ;

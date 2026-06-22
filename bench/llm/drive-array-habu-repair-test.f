@@ -173,6 +173,7 @@ variable DART-RC
    s" src/core/sha256.f"  >LEN PROC-ARGV+
    s" bench/llm/live-row.f"  >LEN PROC-ARGV+
    s" bench/llm/drive-stdlib-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-stdlib-live.f"  >LEN PROC-ARGV+
    s" bench/llm/driver-token-helpers.f"  >LEN PROC-ARGV+
    s" bench/llm/drive-array-habu-lib.f"  >LEN PROC-ARGV+
    s" bench/llm/drive-array-habu.f"  >LEN PROC-ARGV+ ;

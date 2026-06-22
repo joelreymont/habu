@@ -1,6 +1,7 @@
 \ drive-process-lib.f - native stdlib process benchmark driver library.
 \
-\ Load after bench/llm/drive-stdlib-lib.f and bench/llm/driver-fixture-helpers.f.
+\ Load after bench/llm/drive-stdlib-lib.f, bench/llm/drive-stdlib-live.f,
+\ and bench/llm/driver-fixture-helpers.f.
 
 32 constant DP-FIX-CAP
 3 constant DP-FIX-SMALL-CAP

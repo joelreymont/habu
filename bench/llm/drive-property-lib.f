@@ -1,7 +1,7 @@
 \ drive-property-lib.f - native stdlib property benchmark driver library.
 \
-\ Load after bench/llm/drive-stdlib-lib.f, bench/llm/driver-token-helpers.f,
-\ and bench/llm/driver-fixture-helpers.f.
+\ Load after bench/llm/drive-stdlib-lib.f, bench/llm/drive-stdlib-live.f,
+\ bench/llm/driver-token-helpers.f, and bench/llm/driver-fixture-helpers.f.
 
 : DPR-DEFAULTS-TASK? ( -- bool )
    DS-NAME$ s" PROP-DEFAULTS-OK?" STR= ;

@@ -1,7 +1,8 @@
 \ drive-forth-lib.f - native Habu Forth benchmark driver library.
 \
 \ Load after lib/memory.f, bench/llm/drive-stdlib-lib.f,
-\ tools/lint/source-lex.f, bench/llm/forth-task-lines-lib.f,
+\ bench/llm/drive-stdlib-live.f, tools/lint/source-lex.f,
+\ bench/llm/forth-task-lines-lib.f,
 \ bench/llm/attempt-solutions-lib.f, bench/llm/forth-candidate.f,
 \ and bench/llm/forth-bundle.f.
 

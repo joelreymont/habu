@@ -161,7 +161,8 @@ points stay listed.
 - `bench/llm/driver-test-helpers.f` — shared checked fixture/source helpers for live driver tests.
 - `bench/llm/driver-token-helpers.f` — checked exact-token source guards for large live drivers that need prefix-safe checks.
 - `bench/llm/driver-fixture-helpers.f` — checked DSL for generated benchmark fixture vocabularies and test bundles.
-- `bench/llm/drive-stdlib-lib.f` — native stdlib stack benchmark driver with checked candidate/test assembly.
+- `bench/llm/drive-stdlib-lib.f` — checked shared stdlib driver base with buffers, artifacts, capture, candidate extraction, tests, and row setup.
+- `bench/llm/drive-stdlib-live.f` — live model-run boundary for the stdlib stack benchmark driver.
 - `bench/llm/drive-stdlib.f` — CLI wrapper for the stdlib stack benchmark driver.
 - `bench/llm/drive-stdlib-test.f` — focused coverage for stdlib stack driver acceptance and source-use guards.
 - `bench/llm/drive-regex-negative-lib.f` — native stdlib regex negative benchmark driver with expected-code scoring.
@@ -187,6 +188,8 @@ points stay listed.
 - `bench/llm/drive-array-habu-test.f` — focused coverage for native Habu array driver pass, fail, reject, and repair-packet outcomes.
 - `bench/llm/drive-array-habu-repair-test.f` — focused live-model coverage for native Habu array repair-loop success and row accounting.
 - `bench/llm/drive-foreign-lib.f` — native foreign-language benchmark driver core for JavaScript, Python, Rust, and TypeScript function arms.
+- `bench/llm/drive-foreign-live.f` — live model-run boundary for foreign-language benchmark drivers.
+- `bench/llm/drive-foreign-check-test.f` — source-list fixture proving the foreign driver core checks without model-run or response-parser boundaries.
 - `bench/llm/drive-js.f` — CLI wrapper for the native JavaScript array benchmark driver.
 - `bench/llm/drive-js-test.f` — focused coverage for native JavaScript pass, fail, timeout, runtime, and repair-loop outcomes.
 - `bench/llm/drive-python.f` — CLI wrapper for the native Python array benchmark driver.

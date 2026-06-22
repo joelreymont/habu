@@ -1,6 +1,7 @@
 \ drive-aot-lib.f - native stripped-AOT benchmark driver library.
 \
-\ Load after bench/llm/drive-stdlib-lib.f and bench/llm/driver-token-helpers.f.
+\ Load after bench/llm/drive-stdlib-lib.f, bench/llm/drive-stdlib-live.f,
+\ and bench/llm/driver-token-helpers.f.
 
 120000 constant DA-TIMEOUT-MS
 

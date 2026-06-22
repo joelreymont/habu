@@ -1,6 +1,6 @@
 \ drive-file-lib.f - native stdlib file benchmark driver library.
 \
-\ Load after bench/llm/drive-stdlib-lib.f.
+\ Load after bench/llm/drive-stdlib-lib.f and bench/llm/drive-stdlib-live.f.
 
 64 constant DF-FIX-CAP
 3 constant DF-FIX-SMALL-CAP

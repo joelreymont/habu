@@ -556,12 +556,14 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" lib/json-write.f"  >LEN PROC-ARGV+
    s" src/core/sha256.f"  >LEN PROC-ARGV+
    s" bench/llm/live-row.f"  >LEN PROC-ARGV+
-   s" bench/llm/drive-stdlib-lib.f"  >LEN PROC-ARGV+ ;
+   s" bench/llm/drive-stdlib-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-stdlib-live.f"  >LEN PROC-ARGV+ ;
 
 : RB-ARRAY-FOREIGN-LOADS ( ptr u8 n -- ) {: arm:ptr armu :}
    RB-STDLIB-LOADS
    s" bench/llm/foreign-vectors.f"  >LEN PROC-ARGV+
    s" bench/llm/drive-foreign-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-foreign-live.f"  >LEN PROC-ARGV+
    arm armu RB-ARRAY-FOREIGN-DRIVER$  >LEN PROC-ARGV+ ;
 
 : RB-ARRAY-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu arm:ptr armu trial :}

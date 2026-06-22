@@ -1,9 +1,8 @@
-\ drive-stdlib-lib.f - native stdlib stack benchmark driver library.
+\ drive-stdlib-lib.f - checked shared stdlib benchmark driver base.
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, tools/argv.f,
-\ bench/llm/manifest.f, bench/llm/model.f, bench/llm/parse-resp-lib.f,
-\ bench/llm/codex-home.f, bench/llm/model-run.f, bench/llm/vectors.f,
+\ bench/llm/manifest.f, bench/llm/model.f, bench/llm/vectors.f,
 \ lib/json-write.f, src/core/sha256.f, and bench/llm/live-row.f.
 
 4096 constant DS-PROMPT-CAP
@@ -738,26 +737,6 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
    DS-PROMPT-PATH$ DS-PROMPT$ WRITE-ALL
    DS-WRITE-EMPTY-ARTIFACTS ;
 
-: DS-MODEL-ERROR ( -- )
-   DS-DIAG-PATH$ MRUN-ERR$ WRITE-ALL
-   MRUN-RC @ 0= if DS-DIAG-PATH$ s" model parse failed" WRITE-ALL then
-   1 DS-DIAG-COUNT !
-   DS-CONFIG-LR-COMMON
-   s" error" LR-OUTCOME!
-   s" rejected" LR-FIRST-CHECKER!
-   0 LR-FIRST-PASS !
-   0 LR-FIRST-TESTS !
-   0 LR-TESTS-PASSED !
-   1 LR-DIAG-COUNT ! ;
-
-: DS-RUN-MODEL ( -- )
-   DS-PREPARE
-   DS-PROMPT$ MRUN-RUN
-   MRUN-OUT$ DS-RAW-PATH$ 2swap WRITE-ALL
-   MRUN-TOKENS @ DS-TOKENS !
-   MRUN-RC @ 0= 0= if DS-MODEL-ERROR exit then
-   MRUN-TEXT$ DS-EVALUATE-TEXT ;
-
 : DS-RUN-TEXT ( ptr u8 n -- ) {: text:ptr textu :}
    textu DS-OUT-CAP > if E-DS-CAPACITY throw then
    text DS-OUT-BUF textu BYTE-COPY
@@ -791,9 +770,3 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
    DS-DEFAULTS
    s" MODEL_REGISTRY" s" bench/llm/models.tsv" DS-ENV$ MR-LOAD
    s" MODEL_ID" GETENV MR-REQUIRE ;
-
-: DS-MAIN ( -- )
-   DS-CONFIG
-   DS-RUN-MODEL
-   LR-EMIT
-   CLEANUP-RUN ;

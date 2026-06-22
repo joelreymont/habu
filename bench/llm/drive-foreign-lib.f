@@ -1,7 +1,7 @@
 \ drive-foreign-lib.f - native foreign-language benchmark driver library.
 \
-\ Load after lib/memory.f, bench/llm/drive-stdlib-lib.f,
-\ bench/llm/foreign-vectors.f, and bench/llm/model-run.f.
+\ Load after lib/memory.f, bench/llm/drive-stdlib-lib.f, and
+\ bench/llm/foreign-vectors.f.
 
 0 constant DFG-FIRST-NONE
 1 constant DFG-FIRST-PASS
@@ -457,32 +457,6 @@ variable DFG-START
    DFG-CONV$ s" aa" STR= if exit then
    E-DS-USAGE throw ;
 
-: DFG-MODEL-ERROR ( -- )
-   DS-DIAG-PATH$ MRUN-ERR$ WRITE-ALL
-   MRUN-RC @ 0= if DS-DIAG-PATH$ s" model parse failed" WRITE-ALL then
-   1 DS-DIAG-COUNT !
-   s" error" DFG-LR-OUTCOME ;
-
-: DFG-RUN-MODEL-ROUND ( -- )
-   DS-PROMPT-PATH$ DS-PROMPT$ WRITE-ALL
-   DS-PROMPT$ MRUN-RUN
-   MRUN-OUT$ DS-RAW-PATH$ 2swap WRITE-ALL
-   DS-TOKENS @ MRUN-TOKENS @ + DS-TOKENS !
-   MRUN-RC @ 0= 0= if DFG-MODEL-ERROR exit then
-   MRUN-TEXT$ DFG-EVALUATE-TEXT ;
-
-: DFG-RUN-MODEL ( -- )
-   DFG-PREPARE
-   DFG-STATE-RESET
-   DFG-WALL-SNAPSHOT
-   begin DFG-ROUND @ DFG-MAX-ROUNDS < while
-      DFG-NEXT-ROUND
-      DFG-RUN-MODEL-ROUND
-      DFG-DONE? if exit then
-      DFG-ROUND @ DFG-MAX-ROUNDS >= if exit then
-      DFG-ADD-FEEDBACK
-   repeat ;
-
 : DFG-RUN-TEXT ( ptr u8 n -- ) {: text:ptr textu :}
    textu DS-OUT-CAP > if E-DS-CAPACITY throw then
    text DS-OUT-BUF textu BYTE-COPY
@@ -517,9 +491,3 @@ variable DFG-START
    DFG-TIMEOUT-ENV$ DFG-RUN-TIMEOUT-MS DS-ENV-U DFG-TIMEOUT-U !
    s" MODEL_REGISTRY" s" bench/llm/models.tsv" DS-ENV$ MR-LOAD
    s" MODEL_ID" GETENV MR-REQUIRE ;
-
-: DFG-MAIN ( -- )
-   DFG-CONFIG
-   DFG-RUN-MODEL
-   LR-EMIT
-   CLEANUP-RUN ;

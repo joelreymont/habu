@@ -1,7 +1,7 @@
 \ drive-array-habu-lib.f - native Habu array benchmark driver library.
 \
-\ Load after bench/llm/drive-stdlib-lib.f and
-\ bench/llm/driver-token-helpers.f.
+\ Load after bench/llm/drive-stdlib-lib.f, bench/llm/drive-stdlib-live.f,
+\ and bench/llm/driver-token-helpers.f.
 
 5 constant DAH-GRADE-TIMEOUT-S
 58 constant DAH-COLON
