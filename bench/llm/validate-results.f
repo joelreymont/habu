@@ -234,8 +234,17 @@ variable LV-ROW-CODE
 : LV-RESULT-CAP ( -- n )
    LV-RESULT-CAP-U @ ;
 
-TRUSTED: LV-RESULT-BUF ( -- ptr u8 )
-   LV-RESULT-A @ ;
+: LV-RESULT-A-FIELD ( -- ptr ptr u8 )
+   LV-RESULT-A 0 ptr-field ;
+
+: LV-RESULT-A@ ( -- ptr u8 )
+   LV-RESULT-A-FIELD @ ;
+
+: LV-RESULT-A! ( ptr u8 -- )
+   LV-RESULT-A-FIELD ! ;
+
+: LV-RESULT-BUF ( -- ptr u8 )
+   LV-RESULT-A@ ;
 
 : LV-COPY-RESULT-OLD ( ptr u8 -- ) {: dst:ptr :}
    LV-RESULT-BUF dst LV-LINE-U @ BMOVE ;
@@ -243,7 +252,7 @@ TRUSTED: LV-RESULT-BUF ( -- ptr u8 )
 : LV-GROW-RESULT ( n -- ) {: need :}
    need MEM-ALLOC-64K-SPAN {: dst:ptr cap :}
    LV-RESULT-CAP 0 > IF dst LV-COPY-RESULT-OLD THEN
-   dst LV-RESULT-A !
+   dst LV-RESULT-A!
    cap LV-RESULT-CAP-U ! ;
 
 : LV-ENSURE-RESULT ( n -- ) {: need :}
