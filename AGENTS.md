@@ -55,15 +55,16 @@ constants; and a `T{ … -> … }T` test for every word.
 - Checker-first RCA is mandatory. For any “why didn’t the checker catch this?”
   failure, the first written line of the investigation must be:
   **Static invariant: what should have rejected this program before it ran, and
-  where should that invariant be enforced?** Do not edit runtime/library code
-  until the investigation also records: fail-closed proof for the exact command
-  path, miss class, minimal checked reproducer, and the checker/compiler change
-  or explicit dot that will close the soundness gap. Prove fail-closed status
-  with a minimal bad definition on the same load path, command exit status, and
-  stderr/stdout diagnostics. If the path was not fail-closed, fix that
-  harness/tooling gap before runtime repair. If it was fail-closed, reduce the
-  checker miss to a minimal checked fixture, then fix the checker/compiler and
-  add a negative regression before fixing or accepting downstream code.
+  where should that invariant be enforced?** Use the RCA template in
+  `docs/forth.md` § Checker-Miss RCA. Do not edit runtime/library code until the
+  investigation also records: fail-closed proof for the exact command path, miss
+  class, minimal checked reproducer, and the checker/compiler change or explicit
+  dot that will close the soundness gap. Prove fail-closed status with a minimal
+  bad definition on the same load path, command exit status, and stderr/stdout
+  diagnostics. If the path was not fail-closed, fix that harness/tooling gap
+  before runtime repair. If it was fail-closed, reduce the checker miss to a
+  minimal checked fixture, then fix the checker/compiler and add a negative
+  regression before fixing or accepting downstream code.
 - If the checker cannot yet express the invariant, do not normalize the gap with
   local runtime guards. Add the missing checker/type/compiler capability as a
   detailed dot, keep only a named tested boundary while it exists, and remove

@@ -130,6 +130,12 @@ not a matter of taste. Target is the native `bin/hb` engine.
   the investigation is `Static invariant:` followed by the invariant that should
   reject the program before runtime and the checker/compiler/primitive boundary
   where that invariant belongs.
+- Use this template before editing runtime/library code:
+  `Static invariant:` the pre-runtime fact that should be impossible to violate;
+  `Owner:` checker semantics, compiler/codegen model, primitive/boundary effect,
+  or typed capability gap; `Path proof:` exact command proving the source path is
+  fail-closed or the harness gap to fix first; `Reproducer:` minimal checked
+  source that should reject; `Regression:` negative test added with the fix.
 - Prove the exact command path is fail-closed before touching runtime/library
   code. If bad checked source can run on that path, fix the harness/tooling path
   first.
