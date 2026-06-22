@@ -13,6 +13,7 @@ points stay listed.
 - `TRUSTED.md` — audited `TRUST` escape-hatch manifest.
 - `PROP-TESTING.md` — property-based checker-soundness design (generate→check→run→compare).
 - `docs/forth.md` — blocking Forth style rules.
+- `docs/lint-foundation-inventory.md` — dependency map for retiring the legacy lint foundation.
 - `docs/llm-stdlib-cookbook.md` — prompt-sized checked stdlib examples for LLM-generated Habu.
 - `docs/parallel-agents.md` — map-reduce protocol for parallel dot execution.
 - `docs/seed.md` — native seed trust root and no-binary recovery.
