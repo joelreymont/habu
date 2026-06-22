@@ -52,9 +52,10 @@ constants; and a `T{ … -> … }T` test for every word.
   root-cause the failure, repair the violated invariant or missing capability,
   add/keep tests that prove the fix, and record any remaining substantive work
   as detailed dots.
-- Checker-first RCA is mandatory. For any “why didn’t the checker catch this?”
-  failure, or any process/status reply about one, ask this before any runtime
-  explanation: **What static invariant
+- Checker-first RCA is mandatory. Treat the phrase “why didn’t the checker catch
+  this?” and equivalent wording as an immediate trigger, even in meta-discussion
+  about process. For any such failure, process/status reply, note, or dot, ask
+  this before any runtime explanation: **What static invariant
   should have made this impossible before runtime, and where should the
   compiler/checker enforce it?** The first visible line of the response,
   progress update, note, dot, or investigation must be `Static invariant:` with
