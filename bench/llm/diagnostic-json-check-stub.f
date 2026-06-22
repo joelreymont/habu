@@ -6,10 +6,24 @@
 \ diagnostic reducer while the real parser's catch-based recovery remains a
 \ separate boundary.
 
+-7102 constant E-JSON-TYPE
+
 3 constant J-STR
+5 constant J-OBJ
+
+0 constant JSONL-ROW-JSON
+1 constant JSONL-ROW-BLANK
+2 constant JSONL-ROW-ERROR
+3 constant JSONL-ROW-EOF
+
+: JSONL-STUB-FALSE ( -- bool )
+   0 0= 0= ;
 
 : JSONL-START-STRICT ( ptr u8 n -- )
    2drop ;
+
+: JSONL-NEXT-ROW ( -- n n n bool )
+   -1 JSONL-ROW-EOF 0 JSONL-STUB-FALSE ;
 
 : JSONL-NEXT-OBJECT ( -- n )
    -1 ;

@@ -427,6 +427,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Check phases must be silent:** `hb` can emit checker diagnostics while still
   exiting 0 for a loaded file. Live drivers should treat any stdout/stderr from a
   check-only child as rejection; otherwise rejected code can be executed later.
+- **Checker-only stubs are contracts:** when checked fixtures load a stub instead
+  of the real module, update that stub in the same change as any consumed API
+  move. Runtime tests with the real module do not prove the checker gate still
+  models new constants, effects, or error codes.
 - **Expected-throw fixtures should stay quiet:** row/error reporters should be
   opt-in at the CLI boundary so negative tests can assert throw codes without
   printing user-facing `FAIL` lines.
