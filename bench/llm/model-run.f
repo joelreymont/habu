@@ -26,6 +26,8 @@ variable MRUN-TEXT-U
 variable MRUN-EXE-U
 variable MRUN-RC
 variable MRUN-TOKENS
+variable MRUN-PROMPT-A
+variable MRUN-PROMPT-U
 
 TRUSTED: MRUN-OUT-BUF ( -- ptr u8 )
    MRUN-OUT-P @ ;
@@ -35,6 +37,10 @@ TRUSTED: MRUN-ERR-BUF ( -- ptr u8 )
 
 TRUSTED: MRUN-TEXT-BUF ( -- ptr u8 )
    MRUN-TEXT-P @ ;
+
+TRUSTED: MRUN-PROMPT$ ( -- ptr u8 n )
+   MRUN-PROMPT-A @
+   MRUN-PROMPT-U @ ;
 
 : MRUN-OUT-CAP ( -- n )
    MRUN-OUT-CAP-U @ ;
@@ -92,6 +98,10 @@ TRUSTED: MRUN-TEXT-BUF ( -- ptr u8 )
    -1 MRUN-RC !
    0 MRUN-TOKENS ! ;
 
+: MRUN-PROMPT! ( ptr u8 n -- ) {: a:ptr u :}
+   a MRUN-PROMPT-A !
+   u MRUN-PROMPT-U ! ;
+
 : MRUN-COPY-TEXT ( ptr u8 n -- ) {: a:ptr u :}
    u MRUN-TEXT-CAP > if E-MRUN-CAPACITY throw then
    a MRUN-TEXT-BUF u BYTE-COPY
@@ -106,9 +116,26 @@ TRUSTED: MRUN-TEXT-BUF ( -- ptr u8 )
    code E-JSON-CAPACITY = if s" model response parse capacity" exit then
    s" model response parse failed" ;
 
+: MRUN-CAPTURE-ERR$ ( n -- ptr u8 n ) {: code :}
+   code E-PROC-TRUNCATED = if s" model output truncated" exit then
+   s" model process capture failed" ;
+
 : MRUN-PARSE-FAILED ( n -- ) {: code :}
    code MRUN-RC !
    code MRUN-PARSE-ERR$ MRUN-COPY-ERR ;
+
+: MRUN-CAPTURE-LENS! ( -- )
+   PROC-OUT-LEN @ LEN>N MRUN-OUT-U !
+   PROC-ERR-LEN @ LEN>N MRUN-ERR-U ! ;
+
+: MRUN-CAPTURE-FAILED ( n -- ) {: code :}
+   MRUN-CAPTURE-LENS!
+   code MRUN-RC !
+   code MRUN-CAPTURE-ERR$ MRUN-COPY-ERR ;
+
+: MRUN-PROC-ERROR? ( n -- bool ) {: code :}
+   code E-PROC-FIRST <=
+   code E-PROC-LAST >= and ;
 
 : MRUN-RESOLVE ( -- ptr u8 n )
    MR-COMMAND$ >LEN MRUN-EXE-BUF RESOLVE-EXECUTABLE LEN>N MRUN-EXE-U !
@@ -182,8 +209,17 @@ TRUSTED: MRUN-TEXT-BUF ( -- ptr u8 )
    PR-OUT$ MRUN-COPY-TEXT
    PR-TOKEN-COUNT MRUN-TOKENS ! ;
 
-: MRUN-RUN ( ptr u8 n -- )
-   MRUN-CAPTURE
+: MRUN-CAPTURE-SAVED ( -- )
+   MRUN-PROMPT$ MRUN-CAPTURE ;
+
+: MRUN-RUN ( ptr u8 n -- ) {: prompt:ptr promptu :}
+   prompt promptu MRUN-PROMPT!
+   ['] MRUN-CAPTURE-SAVED catch dup 0= if
+      drop
+   else
+      dup MRUN-PROC-ERROR? if MRUN-CAPTURE-FAILED exit then
+      throw
+   then
    MRUN-RC @ 0= if
       [: MRUN-PARSE ;] catch dup 0= if drop exit then
       MRUN-PARSE-FAILED

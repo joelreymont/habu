@@ -1,12 +1,30 @@
 \ model-run-test.f - focused tests for bench/llm/model-run.f.
 
 variable MRT-HERE
+variable MRT-ROOT-U
+variable MRT-MANY-PATH-U
 
 JSON-STR-CAP 64 + constant MRT-RESP-CAP
 120 constant MRT-RESP-X
 
 create MRT-RESP-BUF MRT-RESP-CAP allot
 variable MRT-RESP-U
+create MRT-ROOT-BUF FS-PATH-CAP allot
+create MRT-MANY-PATH-BUF FS-PATH-CAP allot
+
+: MRT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
+   u FS-PATH-CAP > if E-FS-PATH throw then
+   a dst u BYTE-COPY
+   u lenp ! ;
+
+: MRT-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu na:ptr nu dst:ptr lenp:ptr :}
+   pa pu na nu dst JOIN-PATH lenp ! ;
+
+: MRT-ROOT$ ( -- ptr u8 n )
+   MRT-ROOT-BUF MRT-ROOT-U @ ;
+
+: MRT-MANY-PATH$ ( -- ptr u8 n )
+   MRT-MANY-PATH-BUF MRT-MANY-PATH-U @ ;
 
 : MRT-RESP-ROOM ( n -- ) {: add :}
    add 0 < if E-MRUN-CAPACITY throw then
@@ -74,10 +92,19 @@ prompt	Prompt	/bin/echo	{prompt}	raw		2
 claude	Claude	/bin/echo	-p {prompt} --output-format json	raw		2
 codex	Codex	/bin/echo	codex-exec {prompt}	raw		2
 claudeparse	ClaudeParse	/bin/echo	{prompt}	claude-json	usage.output_tokens	2
+catparse	CatParse	/bin/cat	{prompt}	claude-json	usage.output_tokens	2
+trunc	Trunc	/usr/bin/yes	{prompt}	raw		2
 empty	Empty	/bin/echo		raw		2
 slow	Slow	/bin/sleep	{prompt}	raw		1
 bad	Bad	/bin/echo	--bad-template	raw		2
 " ;
+
+: MRT-PREPARE-FILES ( -- )
+   CLEANUP-RESET
+   s" habu-model-run-test" TMPDIR-MKDIR MRT-ROOT-BUF MRT-ROOT-U MRT-COPY!
+   MRT-ROOT$ CLEANUP-TREE+
+   MRT-ROOT$ s" many.json" MRT-MANY-PATH-BUF MRT-MANY-PATH-U MRT-PATH!
+   MRT-MANY-PATH$ MRT-CLAUDE-MANY-NODES$ WRITE-ALL ;
 
 : MRT-RUN ( ptr u8 n ptr u8 n -- )
    {: id:ptr idu prompt:ptr promptu :}
@@ -121,19 +148,44 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    PR-TOKEN-COUNT 0 T= ;
 
 : MRT-TEST-MRUN-PARSE-CAPACITY ( -- )
-   s" claudeparse" MRT-CLAUDE-MANY-NODES$ MRT-RUN
+   s" catparse" MRT-MANY-PATH$ MRT-RUN
    MRUN-RC @ E-JSON-CAPACITY T=
    MRUN-OUT$ nip 0 > TTRUE
    MRUN-ERR$ s" model response parse capacity" T$= ;
 
+: MRT-TEST-MRUN-CAPTURE-TRUNCATES ( -- )
+   s" trunc" s" x" MRT-RUN
+   MRUN-RC @ E-PROC-TRUNCATED T=
+   MRUN-OUT$ nip MRUN-OUT-CAP T=
+   MRUN-ERR$ s" model output truncated" T$= ;
+
+: MRT-TEST-MRUN-CAPTURE-TRUNCATED ( -- )
+   MRUN-RESET
+   MRUN-OUT-CAP >LEN PROC-OUT-LEN !
+   0 >LEN PROC-ERR-LEN !
+   E-PROC-TRUNCATED MRUN-CAPTURE-FAILED
+   MRUN-RC @ E-PROC-TRUNCATED T=
+   MRUN-OUT$ nip MRUN-OUT-CAP T=
+   MRUN-ERR$ s" model output truncated" T$= ;
+
+: MRT-TEST-MRUN-REPEATED-PARSE-CAPACITY ( -- )
+   s" catparse" MRT-MANY-PATH$ MRT-RUN
+   MRUN-RC @ E-JSON-CAPACITY T=
+   s" catparse" MRT-MANY-PATH$ MRT-RUN
+   MRUN-RC @ E-JSON-CAPACITY T= ;
+
 : MRT-MAIN ( -- )
    T-RESET
+   MRT-PREPARE-FILES
    MRT-TEST-BUFFERS
    MRT-TEST-PARSE-CLAUDE
    MRT-TEST-PARSE-SYNTAX-FALLBACK
    MRT-TEST-PARSE-TYPE-FALLBACK
    [: MRT-PARSE-LARGE-CLAUDE ;] E-JSON-CAPACITY TTHROWSQ
    MRT-TEST-MRUN-PARSE-CAPACITY
+   MRT-TEST-MRUN-REPEATED-PARSE-CAPACITY
+   MRT-TEST-MRUN-CAPTURE-TRUNCATES
+   MRT-TEST-MRUN-CAPTURE-TRUNCATED
    s" prompt" s" hello" MRT-RUN
    MRUN-RC @ 0 T=
    MRUN-TEXT$ s" hello
@@ -154,6 +206,7 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    MRUN-ERR$ nip 0 T=
    [: MRT-BAD-TEMPLATE ;] E-MRUN-TEMPLATE TTHROWSQ
    T-REPORT
+   CLEANUP-RUN
    s" model-run-test: ok" type cr ;
 
 MRT-MAIN
