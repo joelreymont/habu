@@ -530,6 +530,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test	lib/test.f	word	T$<>	(ptr u8 n ptr u8 n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert counted byte-string inequality
 1	test	lib/test.f	word	T-REPORT	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	report assertion summary and exit on failures
 1	test	lib/test.f	word	TTHROWS	(a n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert execution token throws expected code
+1	test	lib/test.f	word	TTHROWSQ	([ -- ] n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert stack-preserving quotation throws expected code
 1	test-runner	lib/test-runner.f	module			lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	checked native gate runner foundation for temp roots process capture and aggregate failures
 1	test-runner	lib/test-runner.f	word	GT-FAIL-SLOT	(n -- ptr u8)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one bounded failure-name slot
 1	test-runner	lib/test-runner.f	word	GT-FAIL-U-PTR	(n -- ptr n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one bounded failure-name length cell

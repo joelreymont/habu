@@ -739,8 +739,9 @@ s" JSONL-LA@" s" -- ptr u8" TRUST
 : JSONL-PARSE-LINE ( -- i64 )
    JSONL-LA@ JSONL-LU @ JSON-PARSE ;
 
-\ Unchecked boundary: catch is not modeled by the checker. Keep this word as the
-\ only JSONL recovery boundary; checked code decides whether a code may skip.
+\ Unchecked boundary: this catches an execution token over dynamic parser state.
+\ Checked catch covers stack-preserving quotations; checked code decides whether
+\ a code may skip.
 TRUSTED: JSONL-CATCH-LINE ( -- i64 )
    ['] JSONL-PARSE-LINE catch
    dup 0= IF drop JSONL-ROOT ! 0 exit THEN ;

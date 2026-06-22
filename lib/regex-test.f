@@ -185,17 +185,17 @@ variable RXT-RX-LEN
    s" bbb" RXT-COUNT 4 T= ;
 
 : RXT-TEST-THROWS ( -- )
-   ['] RXT-DANGLING-ESCAPE catch E-RX-SYNTAX T=
-   ['] RXT-BAD-ESCAPE catch E-RX-SYNTAX T=
-   ['] RXT-UNCLOSED-CLASS catch E-RX-SYNTAX T=
-   ['] RXT-EMPTY-CLASS catch E-RX-SYNTAX T=
-   ['] RXT-EMPTY-NEG-CLASS catch E-RX-SYNTAX T=
-   ['] RXT-DANGLING-CLASS-ESCAPE catch E-RX-SYNTAX T=
-   ['] RXT-CAP-OVERFLOW catch E-RX-CAPACITY T=
-   ['] RXT-NEG-CAP catch E-RX-CAPACITY T=
-   ['] RXT-BAD-QUANT catch E-RX-SYNTAX T=
-   ['] RXT-DOUBLE-QUANT catch E-RX-SYNTAX T=
-   ['] RXT-ANCHOR-QUANT catch E-RX-SYNTAX T= ;
+   [: RXT-DANGLING-ESCAPE ;] catch E-RX-SYNTAX T=
+   [: RXT-BAD-ESCAPE ;] catch E-RX-SYNTAX T=
+   [: RXT-UNCLOSED-CLASS ;] catch E-RX-SYNTAX T=
+   [: RXT-EMPTY-CLASS ;] catch E-RX-SYNTAX T=
+   [: RXT-EMPTY-NEG-CLASS ;] catch E-RX-SYNTAX T=
+   [: RXT-DANGLING-CLASS-ESCAPE ;] catch E-RX-SYNTAX T=
+   [: RXT-CAP-OVERFLOW ;] catch E-RX-CAPACITY T=
+   [: RXT-NEG-CAP ;] catch E-RX-CAPACITY T=
+   [: RXT-BAD-QUANT ;] catch E-RX-SYNTAX T=
+   [: RXT-DOUBLE-QUANT ;] catch E-RX-SYNTAX T=
+   [: RXT-ANCHOR-QUANT ;] catch E-RX-SYNTAX T= ;
 
 : RXT-REPORT ( -- )
    T-FAILURES 0= if s" regex-test: ok" type cr exit then

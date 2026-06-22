@@ -2,11 +2,14 @@
 \ Run: cat tools/lint/lib.f tools/lint/set-test.f | bin/hb
 
 variable TEST-N
-: ASSERT  ( f -- )
-   0= IF s" set-test failed at assertion " type TEST-N @ . cr 1 die THEN
+: ASSERT  ( bool -- )
+   0= if
+      s" set-test failed at assertion " type TEST-N @ . cr
+      s" set-test failed" 1 die
+   then
    TEST-N @ 1+ TEST-N ! ;
-: ASSERT=  ( got want -- )  = ASSERT ;
-: ASSERT$  ( a u b v -- )  STR= ASSERT ;
+: ASSERT=  ( n n -- )  = ASSERT ;
+: ASSERT$  ( ptr u8 n ptr u8 n -- )  STR= ASSERT ;
 
 create MUT-BUF 3 allot
 create KEY-BUF 2 allot
@@ -88,7 +91,7 @@ $40 constant WALK-LIMIT
    INTERN# INTERN-MAX ASSERT= ;
 : COUNT-OVERFLOW  ( -- )  FILL-CAP  INTERN-MAX KEY$ INTERN drop ;
 : TEST-CAPACITY  ( -- )
-   ['] COUNT-OVERFLOW catch E-LINT-INTERN-CAP ASSERT= ;
+   [: COUNT-OVERFLOW ;] catch E-LINT-INTERN-CAP ASSERT= ;
 
 : SET-TEST  ( -- )
    1 TEST-N !

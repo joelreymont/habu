@@ -42,7 +42,7 @@ variable TRY-U
 
 : PARSE-CODE  \ ( a u -- code )
    TRY-U ! TRY-A !
-   ['] TRY-PARSE catch
+   [: TRY-PARSE ;] catch
    dup 0= IF drop drop 0 exit THEN ;
 
 variable TA
@@ -189,8 +189,8 @@ variable NODE
    JSONL-NEXT-OBJECT ;
 
 : TEST-JSONL-MODES  \ ( -- )
-   ['] JSONL-STRICT-BAD catch E-JSON-SYNTAX ASSERT=
-   ['] JSONL-SKIP-BAD catch 0 ASSERT=
+   [: JSONL-STRICT-BAD ;] catch E-JSON-SYNTAX ASSERT=
+   [: JSONL-SKIP-BAD ;] catch 0 ASSERT=
    drop
    JSONL-SKIPPED 1 ASSERT=
    JSONL-NEXT-OBJECT ROOT !

@@ -376,6 +376,7 @@ variable SMT-J
    s" T=              ( n n -- )" SMT-REQ-DOC
    s" T-REPORT        ( -- )" SMT-REQ-DOC
    s" TTHROWS         ( a n -- )" SMT-REQ-DOC
+   s" TTHROWSQ        ( [ -- ] n -- )" SMT-REQ-DOC
    s" PROP-RUN-RESET  ( n n -- )" SMT-REQ-DOC
    s" PROP-SHRINK     ( [ -- bool ] -- )" SMT-REQ-DOC
    s" BUILD-STEP      ( ptr u8 n [ -- n ] -- )" SMT-REQ-DOC

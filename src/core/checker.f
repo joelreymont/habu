@@ -251,9 +251,27 @@ variable QTT  variable QD2  variable QR2
      DCUR @ QD2 @ RCUR @ RCUR @ MK-QUOT QR2 !
      QTT @ PAY QR2 @ TY-OCC? IF 0 OK ! ELSE
        QR2 @ QTT @ PAY TV!
-       QD2 @ DCUR !
+      QD2 @ DCUR !
      THEN
    ELSE 0 OK ! THEN THEN ;
+
+: RSCATCH   \ catch: stack-preserving quotation -> same stack plus throw code
+   FRESH MK-VAR FRESH MK-ROW {: tv rest :}
+   DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
+   rest DCUR !
+   tv T-RES QTT !
+   QTT @ TAG T-QUOT = IF
+     DCUR @ QTT @ Q>DIN   UNIFY OK @ and OK !
+     DCUR @ QTT @ Q>DOUT  UNIFY OK @ and OK !
+     RCUR @ QTT @ Q>RIN   UNIFY OK @ and OK !
+     RCUR @ QTT @ Q>ROUT  UNIFY OK @ and OK !
+   ELSE QTT @ TAG T-VAR = IF
+     DCUR @ DCUR @ RCUR @ RCUR @ MK-QUOT QR2 !
+     QTT @ PAY QR2 @ TY-OCC? IF 0 OK ! ELSE
+       QR2 @ QTT @ PAY TV!
+     THEN
+   ELSE 0 OK ! THEN THEN
+   1 MK-CON DCUR @ MK-PUSH DCUR ! ;
 
 variable RSH
 
@@ -266,7 +284,8 @@ variable RSH
    a u s" 2r>" STR= IF RS2R> ELSE
    a u s" 2r@" STR= IF RS2R@ ELSE
    a u s" execute" STR= IF RSEXEC ELSE
-   0 RSH ! THEN THEN THEN THEN THEN THEN THEN
+   a u s" catch" STR= IF RSCATCH ELSE
+   0 RSH ! THEN THEN THEN THEN THEN THEN THEN THEN
    RSH @ ;
 
 \ --- generic signature parser: build a step effect from a textual " in -- out "

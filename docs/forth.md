@@ -119,8 +119,10 @@ not a matter of taste. Target is the native `bin/hb` engine.
   each error/edge. A word without a test is unfinished.
 - Tests live in the native gate: `test/engine-suite.f`, focused `tools/*-test.f`
   fixtures, and source-specific checks wired through `test/run.f`.
-- Assert the **specific** outcome: for errors, `' WORD catch` and check the exact
-  THROW code; for diagnostics, capture text and match a substring.
+- Assert the **specific** outcome: inside checked definitions use
+  `[: WORD ;] TTHROWSQ` or another stack-preserving quotation `catch` and check
+  the exact THROW code; top-level scripts that cannot push quotations may use
+  `' WORD TTHROWS`. For diagnostics, capture text and match a substring.
 - Run focused fixtures during dev with their owning `tools/*-test.f`, then run
   the full native gate: `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f`.
 

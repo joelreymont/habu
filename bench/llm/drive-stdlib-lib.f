@@ -17,6 +17,8 @@
 57 constant DS-NINE
 59 constant DS-SEMI
 58 constant DS-COLON
+32 constant DS-SP
+34 constant DS-DQ
 36 constant DS-DOLLAR
 10 constant DS-LF
 16 constant DS-COUNT-KEY-LEN
@@ -200,6 +202,34 @@ TRUSTED: DS-SEED$ ( -- ptr u8 n )
 
 : DS-TEST$ ( -- ptr u8 n )
    DS-TEST-BUF DS-TEST-U @ ;
+
+: DS-TEST-C ( n -- )
+   DS-TEST-BUF DS-TEST-CAP DS-TEST-U DS-BUF-C ;
+
+: DS-TEST-SOURCE-LIT ( ptr u8 n -- ) {: a:ptr u :}
+   s" s" DS-TEST+
+   DS-DQ DS-TEST-C
+   DS-SP DS-TEST-C
+   a u DS-TEST+
+   DS-DQ DS-TEST-C ;
+
+: DS-NEGATIVE-TEST-TAIL ( ptr u8 n ptr u8 n -- )
+   {: code:ptr codeu const:ptr constu :}
+   s"    dup " DS-TEST+
+   const constu DS-TEST+
+   s"  = if" DS-TEST-LN
+   s"       drop " DS-TEST+
+   code codeu DS-TEST-SOURCE-LIT
+   s"  type cr" DS-TEST-LN
+   s"    else" DS-TEST-LN
+   s"       0= if " DS-TEST+
+   s" silent success" DS-TEST-SOURCE-LIT
+   s"  1 die" DS-TEST-LN
+   s"       else " DS-TEST+
+   s" wrong error code" DS-TEST-SOURCE-LIT
+   s"  1 die" DS-TEST-LN
+   s"       then" DS-TEST-LN
+   s"    then ;" DS-TEST-LN ;
 
 : DS-MSG-RESET ( -- )
    0 DS-MSG-U ! ;
@@ -647,9 +677,20 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
    0 LR-DIAG-COUNT !
    1 LR-CHECKER-ITERATIONS ! ;
 
+: DS-LR-TEST-REJECT ( ptr u8 n -- )
+   DS-CONFIG-LR-COMMON
+   LR-OUTCOME!
+   s" certified" LR-FIRST-CHECKER!
+   -1 LR-FIRST-PASS !
+   0 LR-FIRST-TESTS !
+   0 LR-TESTS-PASSED !
+   DS-DIAG-COUNT @ LR-DIAG-COUNT !
+   1 LR-CHECKER-ITERATIONS ! ;
+
 : DS-LR-NEGATIVE ( ptr u8 n -- ) {: meta:ptr metau :}
    meta metau DS-CAPTURE-HAS? if
       meta metau DS-WRITE-NEGATIVE-CORRECT
+      DS-RC @ 0= if s" reject" DS-LR-TEST-REJECT exit then
       s" reject" DS-LR-REJECT
       exit
    then

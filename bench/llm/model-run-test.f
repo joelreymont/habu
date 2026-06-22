@@ -114,7 +114,7 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    MRT-TEST-PARSE-CLAUDE
    MRT-TEST-PARSE-SYNTAX-FALLBACK
    MRT-TEST-PARSE-TYPE-FALLBACK
-   ['] MRT-PARSE-LARGE-CLAUDE E-JSON-CAPACITY TTHROWS
+   [: MRT-PARSE-LARGE-CLAUDE ;] E-JSON-CAPACITY TTHROWSQ
    s" prompt" s" hello" MRT-RUN
    MRUN-RC @ 0 T=
    MRUN-TEXT$ s" hello
@@ -129,7 +129,7 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    s" empty" s" fallback" MRT-RUN
    MRUN-TEXT$ s" fallback
 " T$=
-   ['] MRT-BAD-TEMPLATE E-MRUN-TEMPLATE TTHROWS
+   [: MRT-BAD-TEMPLATE ;] E-MRUN-TEMPLATE TTHROWSQ
    T-REPORT
    s" model-run-test: ok" type cr ;
 

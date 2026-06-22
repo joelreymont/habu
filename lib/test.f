@@ -57,7 +57,11 @@ variable T-EXPECTED#
    T-FAIL# @ . s" test: failures" type cr
    s" test: failures" T-EX-FAIL die ;
 
-\ Trusted boundary: catch is a runtime primitive with no checker model.
+: TTHROWSQ ( [ -- ] n -- )
+   T-EXPECTED# !
+   catch T-EXPECTED# @ = T-ASSERT ;
+
+\ Trusted boundary: top-level tests cannot push `[: ;]` quotations.
 TRUSTED: TTHROWS-RAW ( a n -- )
    T-EXPECTED# !
    catch T-EXPECTED# @ = T-ASSERT ;

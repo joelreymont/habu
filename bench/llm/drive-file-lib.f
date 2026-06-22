@@ -207,16 +207,8 @@ variable DF-BIG-U
 : DF-BUILD-NEGATIVE-TESTS ( -- )
    DS-TEST-RESET
    s" : DF-NEG-MAIN ( -- )" DS-TEST-LN
-   s"    ['] FS-READ-CAPACITY catch" DS-TEST-LN
-   s"    dup E-FS-CAPACITY = if drop " DS-TEST+
-   s" code E-FS-CAPACITY" DFH-SOURCE-S"
-   s"  type cr exit then" DS-TEST-LN
-   s"    0= if " DS-TEST+
-   s" silent success" DFH-SOURCE-S"
-   s"  type cr 1 die then" DS-TEST-LN
-   s"    " DS-TEST+
-   s" wrong error code" DFH-SOURCE-S"
-   s"  type cr 1 die ;" DS-TEST-LN
+   s"    [: FS-READ-CAPACITY drop ;] catch" DS-TEST-LN
+   s" code E-FS-CAPACITY" s" E-FS-CAPACITY" DS-NEGATIVE-TEST-TAIL
    s" DF-NEG-MAIN" DS-TEST-LN ;
 
 : DF-WRITE-BUNDLE ( -- )

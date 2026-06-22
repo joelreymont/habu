@@ -2,9 +2,6 @@
 \
 \ Load after bench/llm/drive-stdlib-lib.f.
 
-32 constant DRX-SP
-34 constant DRX-DQ
-
 : DRX-SYNTAX-TASK? ( -- bool )
    DS-NAME$ s" RX-BAD-PATTERN" STR= ;
 
@@ -16,38 +13,18 @@
    DRX-CAPACITY-TASK? if s" code E-RX-CAPACITY" exit then
    s" code E-RX-SYNTAX" ;
 
-: DRX-ERROR-CONST+ ( -- )
-   DRX-SYNTAX-TASK? if s" E-RX-SYNTAX" DS-TEST+ exit then
-   DRX-CAPACITY-TASK? if s" E-RX-CAPACITY" DS-TEST+ exit then
-   s" E-RX-SYNTAX" DS-TEST+ ;
-
-: DRX-TEST-C ( n -- )
-   DS-TEST-BUF DS-TEST-CAP DS-TEST-U DS-BUF-C ;
-
-: DRX-SOURCE-LIT ( ptr u8 n -- ) {: a:ptr u :}
-   s" s" DS-TEST+
-   DRX-DQ DRX-TEST-C
-   DRX-SP DRX-TEST-C
-   a u DS-TEST+
-   DRX-DQ DRX-TEST-C ;
+: DRX-ERROR-CONST$ ( -- ptr u8 n )
+   DRX-SYNTAX-TASK? if s" E-RX-SYNTAX" exit then
+   DRX-CAPACITY-TASK? if s" E-RX-CAPACITY" exit then
+   s" E-RX-SYNTAX" ;
 
 : DRX-BUILD-TESTS ( -- )
    DS-TEST-RESET
    s" : DRX-NEG-MAIN ( -- )" DS-TEST-LN
-   s"    ['] " DS-TEST+
+   s"    [: " DS-TEST+
    DS-NAME$ DS-TEST+
-   s"  catch" DS-TEST-LN
-   s"    dup " DS-TEST+
-   DRX-ERROR-CONST+
-   s"  = if drop " DS-TEST+
-   DRX-CODE$ DRX-SOURCE-LIT
-   s"  type cr exit then" DS-TEST-LN
-   s"    0= if " DS-TEST+
-   s" silent success" DRX-SOURCE-LIT
-   s"  type cr 1 die then" DS-TEST-LN
-   s"    " DS-TEST+
-   s" wrong error code" DRX-SOURCE-LIT
-   s"  type cr 1 die ;" DS-TEST-LN
+   s"  ;] catch" DS-TEST-LN
+   DRX-CODE$ DRX-ERROR-CONST$ DS-NEGATIVE-TEST-TAIL
    s" DRX-NEG-MAIN" DS-TEST-LN ;
 
 : DRX-FINISH-CHECK-REJECT ( -- )

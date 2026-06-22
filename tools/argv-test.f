@@ -21,21 +21,21 @@ variable TEST-FAIL
    0 ARGV-QUIET!
    = ASSERT ;
 
-: PARSE-RC ( -- n )  ['] ARGV-PARSE catch ;
+: PARSE-RC ( -- n )  [: ARGV-PARSE ;] catch ;
 
 : EXPECT-ONE-POS ( -- )  1 ARGV-EXPECT-POS-EXACT ;
 
 : ONE-POS-RC ( -- n )
-   ['] ARGV-PARSE catch dup 0 <> IF EXIT THEN drop
-   ['] EXPECT-ONE-POS catch ;
+   [: ARGV-PARSE ;] catch dup 0 <> IF EXIT THEN drop
+   [: EXPECT-ONE-POS ;] catch ;
 
 : NEED-OUT-RC ( -- n )
-   ['] ARGV-PARSE catch dup 0 <> IF EXIT THEN drop
-   ['] ARGV-REQUIRE-OUT catch ;
+   [: ARGV-PARSE ;] catch dup 0 <> IF EXIT THEN drop
+   [: ARGV-REQUIRE-OUT ;] catch ;
 
 : NEED-LABEL-RC ( -- n )
-   ['] ARGV-PARSE catch dup 0 <> IF EXIT THEN drop
-   ['] ARGV-REQUIRE-LABEL catch ;
+   [: ARGV-PARSE ;] catch dup 0 <> IF EXIT THEN drop
+   [: ARGV-REQUIRE-LABEL ;] catch ;
 
 : QUIET-MOCK ( -- )
    ARGV-MOCK-CLEAR

@@ -138,16 +138,8 @@
 : DPR-BUILD-NEGATIVE-TESTS ( -- )
    DS-TEST-RESET
    s" : DPR-NEG-MAIN ( -- )" DS-TEST-LN
-   s"    ['] PROP-BAD-SEED catch" DS-TEST-LN
-   s"    dup E-PROP-SEED = if drop " DS-TEST+
-   s" code E-PROP-SEED" DFH-SOURCE-S"
-   s"  type cr exit then" DS-TEST-LN
-   s"    0= if " DS-TEST+
-   s" silent success" DFH-SOURCE-S"
-   s"  type cr 1 die then" DS-TEST-LN
-   s"    " DS-TEST+
-   s" wrong error code" DFH-SOURCE-S"
-   s"  type cr 1 die ;" DS-TEST-LN
+   s"    [: PROP-BAD-SEED ;] catch" DS-TEST-LN
+   s" code E-PROP-SEED" s" E-PROP-SEED" DS-NEGATIVE-TEST-TAIL
    s" DPR-NEG-MAIN" DS-TEST-LN ;
 
 : DPR-WRITE-BUNDLE ( -- )

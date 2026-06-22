@@ -888,6 +888,7 @@ T-STR=          ( ptr u8 n ptr u8 n -- bool )
 T$=             ( ptr u8 n ptr u8 n -- )
 T$<>            ( ptr u8 n ptr u8 n -- )
 TTHROWS         ( a n -- )
+TTHROWSQ        ( [ -- ] n -- )
 T-REPORT        ( -- )
 GT-RESET        ( -- )
 GT-START        ( ptr u8 n -- )
@@ -966,9 +967,10 @@ BUILD-STEP-RUN       ( ptr a -- n )
 ```
 
 `lib/test.f` assertions throw named test errors and keep one final report path;
-they never mask assertion failures. `TTHROWS` takes an execution token `a`
-created by tick (`' WORD`) plus an expected throw code; its raw `catch` use is
-isolated behind the audited trusted boundary `TTHROWS-RAW`.
+they never mask assertion failures. `TTHROWSQ` takes a stack-preserving quotation
+plus an expected throw code and uses the checker's modeled `catch` effect.
+`TTHROWS` keeps the audited execution-token boundary for top-level test scripts,
+where `[: ;]` quotation syntax is unavailable.
 `lib/property.f` owns deterministic PRNG state, seed/count bounds, bounded
 source buffers, modeled generator depth, and token-tail shrinking utilities.
 Property execution may call an audited `evaluate` boundary for generated checked

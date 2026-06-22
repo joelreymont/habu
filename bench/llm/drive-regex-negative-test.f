@@ -51,7 +51,7 @@
 
 : DRXT-ASSERT-REJECT ( ptr u8 n -- )
    LR-OUTCOME$ s" reject" T$=
-   LR-FIRST-CHECKER$ s" rejected" T$=
+   LR-FIRST-CHECKER$ s" certified" T$=
    LR-TESTS-PASSED @ 0 T=
    DTH-ROW-HAS ;
 

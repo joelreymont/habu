@@ -272,20 +272,10 @@ variable DB-MISSING-U
 : DB-BUILD-NEGATIVE-TESTS ( -- )
    DS-TEST-RESET
    s" : DB-NEG-MAIN ( -- )" DS-TEST-LN
-   s"    ['] " DS-TEST+
+   s"    [: " DS-TEST+
    DS-NAME$ DS-TEST+
-   s"  catch" DS-TEST-LN
-   s"    dup " DS-TEST+
-   DB-EXPECTED-CONST$ DS-TEST+
-   s"  = if drop " DS-TEST+
-   DB-EXPECTED-CODE$ DFH-SOURCE-S"
-   s"  type cr exit then" DS-TEST-LN
-   s"    0= if " DS-TEST+
-   s" silent success" DFH-SOURCE-S"
-   s"  type cr 1 die then" DS-TEST-LN
-   s"    " DS-TEST+
-   s" wrong error code" DFH-SOURCE-S"
-   s"  type cr 1 die ;" DS-TEST-LN
+   s"  ;] catch" DS-TEST-LN
+   DB-EXPECTED-CODE$ DB-EXPECTED-CONST$ DS-NEGATIVE-TEST-TAIL
    s" DB-NEG-MAIN" DS-TEST-LN ;
 
 : DB-WRITE-BUNDLE ( -- )

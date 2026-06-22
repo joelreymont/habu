@@ -35,7 +35,7 @@
    NST-AOT-META$ s" reject" s" code E-OTHER token here" NS-SCORE NS-WRONG-CODE T=
    NST-AOT-META$ s" reject" s" code E-AOT-UNSUPPORTED token allot" NS-SCORE NS-WRONG-TOKEN T=
    NST-CLASS-META$ s" reject" s" code E-CHECK repair_class remove_producer" NS-SCORE NS-WRONG-CLASS T=
-   ['] NST-EXPECT-BAD-META E-BM-NEGATIVE-META TTHROWS
+   [: NST-EXPECT-BAD-META ;] E-BM-NEGATIVE-META TTHROWSQ
    T-REPORT
    s" negative-score-test: ok" type cr ;
 

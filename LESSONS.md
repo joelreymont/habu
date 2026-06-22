@@ -55,6 +55,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   checked, confirm recently loaded words did not shadow built-ins. `CR constant`
   shadows `cr` in Habu's case-insensitive dictionary, so a later `cr` pushes a
   cell and the checker correctly reports the next consumer.
+- **Checked `catch` is stack-preserving quotation catch:** when a negative test
+  catches a word whose success path has outputs, consume those outputs inside the
+  quotation (for example `[: WORD drop ;] catch`). Do not widen the checker model
+  to arbitrary execution-token catch.
 - **Stack comments use types, not role names:** checked effects must say
   `( n n -- )`, `( bool -- )`, or `( ptr u8 n -- )`; role names like
   `( got want -- )` are not type declarations and will fail at checked call
@@ -535,7 +539,8 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   one-use fixture signatures first; expand engine regions deliberately.
 - **Repo edits go through `apply_patch`:** even mechanical replacements and
   long one-line gate updates should use patches so accidental broad rewrites,
-  duplicate definitions, and rule violations stay reviewable.
+  duplicate definitions, shell-expanded capture groups, and rule violations stay
+  reviewable.
 - **Do not parallelize VCS status commands:** `jj st` and `git status` can race
   on `.git/index.lock`. Run Git/JJ index-touching commands sequentially.
 - **Use only documented dot commands:** `dot active` is not a status command and

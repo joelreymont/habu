@@ -257,45 +257,45 @@ create AT-ACTUAL 32 cells allot
    AT-EMPTY 0 AT-A-MAX-INDEX drop ;
 
 : AT-TEST-CHECKS ( -- )
-   ['] AT-CHECK-INDEX-VALID catch 0 AT=
-   ['] AT-CHECK-INDEX-NEG catch E-A-BOUNDS AT=
-   ['] AT-CHECK-INDEX-HIGH catch E-A-BOUNDS AT=
-   ['] AT-CHECK-INDEX-EMPTY catch E-A-BOUNDS AT=
-   ['] AT-CHECK-RANGE-VALID catch 0 AT=
-   ['] AT-CHECK-RANGE-NEG-START catch E-A-BOUNDS AT=
-   ['] AT-CHECK-RANGE-NEG-COUNT catch E-A-BOUNDS AT=
-   ['] AT-CHECK-RANGE-HIGH-START catch E-A-BOUNDS AT=
-   ['] AT-CHECK-RANGE-OVERRUN catch E-A-BOUNDS AT=
-   ['] AT-CHECK-NONEMPTY-VALID catch 0 AT=
-   ['] AT-CHECK-NONEMPTY-EMPTY catch E-A-EMPTY AT=
-   ['] AT-CHECK-NONEMPTY-NEG catch E-A-BOUNDS AT=
-   ['] AT-CHECK-WHOLE-VALID catch 0 AT=
-   ['] AT-CHECK-WHOLE-NEG catch E-A-BOUNDS AT= ;
+   [: AT-CHECK-INDEX-VALID ;] catch 0 AT=
+   [: AT-CHECK-INDEX-NEG ;] catch E-A-BOUNDS AT=
+   [: AT-CHECK-INDEX-HIGH ;] catch E-A-BOUNDS AT=
+   [: AT-CHECK-INDEX-EMPTY ;] catch E-A-BOUNDS AT=
+   [: AT-CHECK-RANGE-VALID ;] catch 0 AT=
+   [: AT-CHECK-RANGE-NEG-START ;] catch E-A-BOUNDS AT=
+   [: AT-CHECK-RANGE-NEG-COUNT ;] catch E-A-BOUNDS AT=
+   [: AT-CHECK-RANGE-HIGH-START ;] catch E-A-BOUNDS AT=
+   [: AT-CHECK-RANGE-OVERRUN ;] catch E-A-BOUNDS AT=
+   [: AT-CHECK-NONEMPTY-VALID ;] catch 0 AT=
+   [: AT-CHECK-NONEMPTY-EMPTY ;] catch E-A-EMPTY AT=
+   [: AT-CHECK-NONEMPTY-NEG ;] catch E-A-BOUNDS AT=
+   [: AT-CHECK-WHOLE-VALID ;] catch 0 AT=
+   [: AT-CHECK-WHOLE-NEG ;] catch E-A-BOUNDS AT= ;
 
 : AT-TEST-ACCESS ( -- )
    AT-ONE 1 0 AT-A@ 42 AT=
    AT-NORMAL 5 0 AT-A@ 3 AT=
    AT-NORMAL 5 2 AT-A@ 4 AT=
-   ['] AT-AFETCH-HIGH catch E-A-BOUNDS AT=
+   [: AT-AFETCH-HIGH ;] catch E-A-BOUNDS AT=
    0 AT-WORK1
    99 AT-WORK 1 0 AT-A!
    AT-WORK 1 0 AT-A@ 99 AT=
-   ['] AT-ASTORE-HIGH catch E-A-BOUNDS AT= ;
+   [: AT-ASTORE-HIGH ;] catch E-A-BOUNDS AT= ;
 
 : AT-TEST-PROMOTED-HELPERS ( -- )
    1 2 3 4 AT-WORK4
    5 AT-WORK 4 1 AT-A+!
    AT-WORK 4 1 AT-A@ 7 AT=
-   ['] AT-APLUS-HIGH catch E-A-BOUNDS AT=
+   [: AT-APLUS-HIGH ;] catch E-A-BOUNDS AT=
    AT-WORK 4 0 3 AT-A-SWAP
    AT-WORK 4 0 AT-A@ 4 AT=
    AT-WORK 4 3 AT-A@ 1 AT=
-   ['] AT-ASWAP-HIGH catch E-A-BOUNDS AT=
-   ['] AT-ASWAP-NEG catch E-A-BOUNDS AT=
+   [: AT-ASWAP-HIGH ;] catch E-A-BOUNDS AT=
+   [: AT-ASWAP-NEG ;] catch E-A-BOUNDS AT=
    5 AT-LAST-INDEX 4 AT=
-   ['] AT-LAST-EMPTY catch E-A-EMPTY AT=
+   [: AT-LAST-EMPTY ;] catch E-A-EMPTY AT=
    5 1 AT-MIRROR-INDEX 3 AT=
-   ['] AT-MIRROR-HIGH catch E-A-BOUNDS AT=
+   [: AT-MIRROR-HIGH ;] catch E-A-BOUNDS AT=
    4 EVEN? -1 AT=
    5 EVEN? 0 AT=
    -2 EVEN? -1 AT=
@@ -305,16 +305,16 @@ create AT-ACTUAL 32 cells allot
    AT-EMPTY 0 AT-A-SUM 0 AT=
    AT-ONE 1 AT-A-SUM 42 AT=
    AT-NORMAL 5 AT-A-SUM 12 AT=
-   ['] AT-MIN-EMPTY catch E-A-EMPTY AT=
+   [: AT-MIN-EMPTY ;] catch E-A-EMPTY AT=
    AT-ONE 1 AT-A-MIN 42 AT=
    AT-NORMAL 5 AT-A-MIN -1 AT=
-   ['] AT-MAX-EMPTY catch E-A-EMPTY AT=
+   [: AT-MAX-EMPTY ;] catch E-A-EMPTY AT=
    AT-ONE 1 AT-A-MAX 42 AT=
    AT-NORMAL 5 AT-A-MAX 4 AT=
    AT-EMPTY 0 AT-A-COUNT-EVEN 0 AT=
    AT-ONE 1 AT-A-COUNT-EVEN 1 AT=
    AT-NORMAL 5 AT-A-COUNT-EVEN 3 AT=
-   ['] AT-ARGMAX-EMPTY catch E-A-EMPTY AT=
+   [: AT-ARGMAX-EMPTY ;] catch E-A-EMPTY AT=
    AT-ONE 1 AT-A-ARGMAX 0 AT=
    AT-NORMAL 5 AT-A-ARGMAX 2 AT= ;
 
@@ -380,7 +380,7 @@ create AT-ACTUAL 32 cells allot
    1 -2 3 0 5 AT-WORK5
    T{ AT-WORK 5 [: dup * ;] AT-A-MAP! -> }T
    T{ AT-WORK5@ -> 1 4 9 0 25 }T
-   ['] AT-AMAP-NEG catch E-A-BOUNDS AT=
+   [: AT-AMAP-NEG ;] catch E-A-BOUNDS AT=
    44 AT-WORK1
    T{ AT-WORK 0 [: swap IDX>N + ;] AT-A-MAPI! -> }T
    T{ AT-WORK 1 0 AT-A@ -> 44 }T
@@ -390,17 +390,17 @@ create AT-ACTUAL 32 cells allot
    10 10 10 10 10 AT-WORK5
    T{ AT-WORK 5 [: swap IDX>N + ;] AT-A-MAPI! -> }T
    T{ AT-WORK5@ -> 10 11 12 13 14 }T
-   ['] AT-AMAPI-NEG catch E-A-BOUNDS AT= ;
+   [: AT-AMAPI-NEG ;] catch E-A-BOUNDS AT= ;
 
 : AT-TEST-FOLD-COMBINATORS ( -- )
    T{ AT-EMPTY 0 100 [: + ;] AT-A-FOLD -> 100 }T
    T{ AT-ONE 1 0 [: + ;] AT-A-FOLD -> 42 }T
    T{ AT-NORMAL 5 0 [: + ;] AT-A-FOLD -> 12 }T
-   ['] AT-AFOLD-NEG catch E-A-BOUNDS AT=
+   [: AT-AFOLD-NEG ;] catch E-A-BOUNDS AT=
    T{ AT-EMPTY 0 100 [: swap IDX>N + + ;] AT-A-FOLDI -> 100 }T
    T{ AT-ONE 1 0 [: swap IDX>N + + ;] AT-A-FOLDI -> 42 }T
    T{ AT-NORMAL 5 0 [: swap IDX>N * + ;] AT-A-FOLDI -> 27 }T
-   ['] AT-AFOLDI-NEG catch E-A-BOUNDS AT= ;
+   [: AT-AFOLDI-NEG ;] catch E-A-BOUNDS AT= ;
 
 : AT-TEST-SCAN-COMBINATORS ( -- )
    90 AT-WORK1
@@ -412,7 +412,7 @@ create AT-ACTUAL 32 cells allot
    3 1 4 1 5 AT-WORK5
    T{ AT-WORK 5 0 [: + ;] AT-A-SCAN! -> }T
    T{ AT-WORK5@ -> 3 4 8 9 14 }T
-   ['] AT-ASCAN-NEG catch E-A-BOUNDS AT=
+   [: AT-ASCAN-NEG ;] catch E-A-BOUNDS AT=
    91 AT-WORK1
    T{ AT-WORK 0 [: + ;] AT-A-SCAN1! -> }T
    T{ AT-WORK 1 0 AT-A@ -> 91 }T
@@ -422,7 +422,7 @@ create AT-ACTUAL 32 cells allot
    3 1 4 1 5 AT-WORK5
    T{ AT-WORK 5 [: + ;] AT-A-SCAN1! -> }T
    T{ AT-WORK5@ -> 3 4 8 9 14 }T
-   ['] AT-ASCAN1-NEG catch E-A-BOUNDS AT= ;
+   [: AT-ASCAN1-NEG ;] catch E-A-BOUNDS AT= ;
 
 : AT-TEST-INDEX-COMBINATORS ( -- )
    1 2 3 4 5 AT-WORK5
@@ -432,17 +432,17 @@ create AT-ACTUAL 32 cells allot
    T{ AT-WORK5@ -> 1 2 3 4 5 }T
    T{ AT-WORK 5 1 3 AT-A-REVERSE-RANGE! -> }T
    T{ AT-WORK5@ -> 1 4 3 2 5 }T
-   ['] AT-AREVERSE-RANGE-OVERRUN catch E-A-BOUNDS AT=
+   [: AT-AREVERSE-RANGE-OVERRUN ;] catch E-A-BOUNDS AT=
    T{ AT-EMPTY 0 [: 4 = ;] AT-A-FIND-INDEX -> -1 }T
    T{ AT-ONE 1 [: 42 = ;] AT-A-FIND-INDEX -> 0 }T
    T{ AT-NORMAL 5 [: 4 = ;] AT-A-FIND-INDEX -> 2 }T
    T{ AT-NORMAL 5 [: 9 = ;] AT-A-FIND-INDEX -> -1 }T
-   ['] AT-AFIND-NEG catch E-A-BOUNDS AT=
+   [: AT-AFIND-NEG ;] catch E-A-BOUNDS AT=
    T{ AT-EMPTY 0 [: drop IDX>N 0 = ;] AT-A-FIND-INDEXI -> -1 }T
    T{ AT-ONE 1 [: drop IDX>N 0 = ;] AT-A-FIND-INDEXI -> 0 }T
    T{ AT-NORMAL 5 [: drop IDX>N 3 = ;] AT-A-FIND-INDEXI -> 3 }T
-   ['] AT-AFINDI-NEG catch E-A-BOUNDS AT=
-   ['] AT-AMAX-INDEX-EMPTY catch E-A-EMPTY AT=
+   [: AT-AFINDI-NEG ;] catch E-A-BOUNDS AT=
+   [: AT-AMAX-INDEX-EMPTY ;] catch E-A-EMPTY AT=
    T{ AT-ONE 1 AT-A-MAX-INDEX -> 0 }T
    T{ AT-NORMAL 5 AT-A-MAX-INDEX -> 2 }T
    1 5 5 2 AT-WORK4
