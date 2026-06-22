@@ -3,18 +3,18 @@
 
 8 constant FM-CAP
 
-create FM-MAP FM-CAP MAP-CELLS cells allot
+create FM-MAP FM-CAP >COUNT MAP-CELLS COUNT>N cells allot
 
 : FM-INIT ( -- )
-   FM-MAP FM-CAP MAP-INIT ;
+   FM-MAP FM-CAP >COUNT MAP-INIT ;
 
 : FM-INC ( ptr u8 n -- ) {: key:ptr len :}
-   FM-MAP FM-CAP key len MAP-GET if
+   FM-MAP FM-CAP >COUNT key len >LEN MAP-GET if
       1+
    else
       drop 1
    then
-   FM-MAP FM-CAP key len MAP-SET ;
+   FM-MAP FM-CAP >COUNT key len >LEN MAP-SET ;
 
 : FM-CLASSIFY ( ptr u8 n -- ) {: a:ptr u :}
    a u s" .f" ENDS-WITH? if s" forth" FM-INC exit then
@@ -22,7 +22,7 @@ create FM-MAP FM-CAP MAP-CELLS cells allot
    s" other" FM-INC ;
 
 : FM-COUNT ( ptr u8 n -- n ) {: key:ptr len :}
-   FM-MAP FM-CAP key len MAP-GET if exit then ;
+   FM-MAP FM-CAP >COUNT key len >LEN MAP-GET if exit then ;
 
 : FM-ASSERT-COUNT ( ptr u8 n n -- ) {: key:ptr len want :}
    key len FM-COUNT want T= ;

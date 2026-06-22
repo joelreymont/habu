@@ -348,8 +348,8 @@ variable SMT-J
    s" RX-FIND               ( ptr u8 n ptr u8 n -- n n bool )" SMT-REQ-DOC
    s" RX-COUNT              ( ptr u8 n ptr u8 n -- n )" SMT-REQ-DOC
    s" ## Map" SMT-REQ-DOC
-   s" MAP-CELLS           ( n -- n )" SMT-REQ-DOC
-   s" MAP-SET     ( n ptr a n ptr u8 n -- )" SMT-REQ-DOC
+   s" MAP-CELLS           ( count -- count )" SMT-REQ-DOC
+   s" MAP-SET     ( n ptr a count ptr u8 len -- )" SMT-REQ-DOC
    s" ## Files" SMT-REQ-DOC
    s" WALK-FILES   ( ptr u8 n [ ptr u8 n -- ] -- )" SMT-REQ-DOC
    s" depth-first" SMT-REQ-DOC

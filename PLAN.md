@@ -728,16 +728,16 @@ Implement a fixed-capacity open-addressed string-key map.
 Public surface:
 
 ```forth
-MAP-INIT    ( ptr a n -- )
-MAP-HAS?    ( ptr a n ptr u8 n -- bool )
-MAP-GET     ( ptr a n ptr u8 n -- n bool )
-MAP-SET     ( n ptr a n ptr u8 n -- )
-MAP-COUNT   ( ptr a n -- n )
-MAP-EACH    ( ptr a n [ ptr u8 n n -- ] -- )
+MAP-INIT    ( ptr a count -- )
+MAP-HAS?    ( ptr a count ptr u8 len -- bool )
+MAP-GET     ( ptr a count ptr u8 len -- n bool )
+MAP-SET     ( n ptr a count ptr u8 len -- )
+MAP-COUNT@  ( ptr a -- count )
+MAP-EACH    ( ptr a count [ ptr u8 len n -- ] -- )
 ```
 
-The `ptr a n` pair is the cell-backed map storage and capacity. Key strings use
-`ptr u8 n`. Internal slot layout stays private to `lib/map.f`.
+The `ptr a` storage is caller-owned and sized by a `count` capacity. Key strings
+use `ptr u8 len`. Internal slot layout stays private to `lib/map.f`.
 
 Errors:
 

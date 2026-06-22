@@ -83,30 +83,33 @@ $2D constant SE-DASH
 ## Maps
 
 Load `lib/errors.f lib/string.f lib/test.f lib/map.f`. The public map storage is
-caller-owned `ptr a n`, sized by `MAP-CELLS ( n -- n )`, and keys are counted
-byte strings. The published signatures include `MAP-INIT ( ptr a n -- )`,
-`MAP-SET ( n ptr a n ptr u8 n -- )`, `MAP-GET ( ptr a n ptr u8 n -- n bool )`,
-and `MAP-EACH ( ptr a n [ ptr u8 n n -- ] -- )`. They are covered by
+caller-owned `ptr a`, sized by `MAP-CELLS ( count -- count )`, and keys are
+counted byte strings whose lengths enter the API as `len`. The published
+signatures include `MAP-INIT ( ptr a count -- )`,
+`MAP-SET ( n ptr a count ptr u8 len -- )`,
+`MAP-GET ( ptr a count ptr u8 len -- n bool )`, and
+`MAP-EACH ( ptr a count [ ptr u8 len n -- ] -- )`. Convert numeric capacities
+and key lengths with `>COUNT` and `>LEN`. They are covered by
 `lib/map-test.f` and `examples/file-map.f`.
 
 ```forth
 8 constant ME-CAP
 
-create ME-MAP ME-CAP MAP-CELLS cells allot
+create ME-MAP ME-CAP >COUNT MAP-CELLS COUNT>N cells allot
 
 : ME-INIT ( -- )
-   ME-MAP ME-CAP MAP-INIT ;
+   ME-MAP ME-CAP >COUNT MAP-INIT ;
 
 : ME-INC ( ptr u8 n -- ) {: key:ptr len :}
-   ME-MAP ME-CAP key len MAP-GET if
+   ME-MAP ME-CAP >COUNT key len >LEN MAP-GET if
       1+
    else
       drop 1
    then
-   ME-MAP ME-CAP key len MAP-SET ;
+   ME-MAP ME-CAP >COUNT key len >LEN MAP-SET ;
 
 : ME-COUNT ( ptr u8 n -- n ) {: key:ptr len :}
-   ME-MAP ME-CAP key len MAP-GET if exit then ;
+   ME-MAP ME-CAP >COUNT key len >LEN MAP-GET if exit then ;
 
 : ME-TEST ( -- )
    T-RESET
