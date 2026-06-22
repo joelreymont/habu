@@ -1,6 +1,7 @@
 \ repl-lint.f -- REPL-baked code must never exit the interactive session.
-\ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f tools/repl-lint.f -- [ROOT]
-\ Load after tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and tools/argv.f.
+\ Run: bin/hb --load lib/errors.f lib/memory.f lib/vector.f tools/lint/text.f tools/lint/intern.f tools/lint/token.f tools/lint/lib.f tools/argv.f tools/repl-lint.f -- [ROOT]
+\ Load after lib/errors.f, lib/memory.f, lib/vector.f, tools/lint/text.f,
+\ tools/lint/intern.f, tools/lint/token.f, tools/lint/lib.f, and tools/argv.f.
 
 $8000 constant REPL-FILE-CAP
 $400 constant REPL-PATH-CAP

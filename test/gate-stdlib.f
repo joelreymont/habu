@@ -188,7 +188,11 @@ variable GS-SRC-N
    s" shadow-lint" GS-HB-RUN
    GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/clobber-lint.f" GS-ARG+
    s" clobber-lint" GS-HB-RUN
-   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/repl-lint.f" GS-ARG+
+   GS-HB
+   s" lib/errors.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/vector.f" GS-ARG+
+   s" tools/lint/text.f" GS-ARG+ s" tools/lint/intern.f" GS-ARG+
+   s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+
+   s" tools/argv.f" GS-ARG+ s" tools/repl-lint.f" GS-ARG+
    s" repl-lint" GS-HB-RUN
    GS-HB s" tools/date.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/fs.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/trust-lint.f" GS-ARG+
    s" trust-lint" GS-HB-RUN
@@ -198,7 +202,11 @@ variable GS-SRC-N
    s" host-lint" GS-HB-RUN
    GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/parallel-agent-lint.f" GS-ARG+
    s" parallel-agent-lint" GS-HB-RUN
-   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/filemap-lint.f" GS-ARG+
+   GS-HB
+   s" lib/errors.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/vector.f" GS-ARG+
+   s" tools/lint/text.f" GS-ARG+ s" tools/lint/intern.f" GS-ARG+
+   s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+
+   s" tools/filemap-lint.f" GS-ARG+
    s" filemap-lint" GS-HB-RUN ;
 
 : GS-CHECK-TOOL-FIXTURES ( -- )

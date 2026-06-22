@@ -1,5 +1,5 @@
-\ set-test.f — focused tests for tools/lint/lib.f intern/set helpers.
-\ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/set-test.f
+\ set-test.f — focused tests for tools/lint/intern.f helpers.
+\ Run: bin/hb --load lib/errors.f lib/memory.f lib/vector.f tools/lint/text.f tools/lint/intern.f tools/lint/set-test.f
 
 variable TEST-N
 : ASSERT  ( bool -- )

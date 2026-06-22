@@ -46,7 +46,9 @@ needed. Do not add token pointer reloads back to `tools/lint/lib.f`.
 
 ### Intern and string set
 
-Owned today by `tools/lint/lib.f:116-157`.
+Owned today by checked `tools/lint/intern.f`. It stores interned key pointers
+and lengths in `lib/vector.f` headers and copies bytes into OS-backed chunks
+allocated through `lib/memory.f`.
 
 Users:
 
@@ -59,9 +61,8 @@ Users:
   exported names and manifest names.
 - `tools/lint/set-test.f` is the focused regression surface for this group.
 
-Replacement direction: checked dynamic cell tables, maps, or growable vectors
-should own key storage. Callers should not load pointer spans from untyped
-globals except through audited accessors while the port is incomplete.
+Remaining direction: keep only tools that need `INTERN` loading
+`tools/lint/intern.f`; do not move the interner back into `tools/lint/lib.f`.
 
 ### Source lexer
 

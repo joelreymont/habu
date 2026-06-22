@@ -1,5 +1,6 @@
 \ public-signatures.f - emit a JSON manifest of typed public Forth definitions.
-\ Load after tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
+\ Load after lib/errors.f, lib/memory.f, lib/vector.f, tools/lint/text.f,
+\ tools/lint/intern.f, tools/lint/token.f, and tools/lint/lib.f.
 
 0 set-check
 
