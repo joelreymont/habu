@@ -5,6 +5,9 @@
 64 constant PROC-ARGV-MAX
 32768 constant PROC-ARGV-BUF-CAP
 4 constant POLLOUT
+8 constant POLLERR
+16 constant POLLHUP
+32 constant POLLNVAL
 3 constant F-GETFL
 4 constant F-SETFL
 4 constant O-NONBLOCK
@@ -33,6 +36,12 @@ variable PROC-ARGV-IN-OFF
    -1 >FD PROC-ARGV-IN-R !
    -1 >FD PROC-ARGV-IN-W !
    0 >OFF PROC-ARGV-IN-OFF ! ;
+
+: PROC-ARGV-TRUE ( -- bool )
+   0 0= ;
+
+: PROC-ARGV-FALSE ( -- bool )
+   0 0= 0= ;
 
 : PROC-ARGV-SLOT ( idx -- ptr a ) {: idx :}
    idx IDX>N 0 < if E-PROC-OUTPUT throw then
@@ -92,10 +101,14 @@ variable PROC-ARGV-IN-OFF
    flags 0 < if E-PROC-OUTPUT PROC-ARGV-THROW-CAPTURE then
    fd FD>N F-SETFL flags O-NONBLOCK or fcntl 0 <> if E-PROC-OUTPUT PROC-ARGV-THROW-CAPTURE then ;
 
+: PROC-ARGV-NOSIGPIPE! ( fd -- ) {: fd :}
+   fd FD>N F-SETNOSIGPIPE 1 fcntl 0 <> if E-PROC-OUTPUT PROC-ARGV-THROW-CAPTURE then ;
+
 : PROC-ARGV-SETUP-STDIN-FDS ( -- )
    PROC-ARGV-IN-R PROC-ARGV-IN-W PROC-OPEN-PIPE
    PROC-ARGV-IN-R PROC-ARGV-CLOEXEC-CELL
    PROC-ARGV-IN-W PROC-ARGV-CLOEXEC-CELL
+   PROC-ARGV-IN-W @ PROC-ARGV-NOSIGPIPE!
    PROC-ARGV-IN-W @ PROC-ARGV-NONBLOCK! ;
 
 : PROC-SPAWN-ARGV-CAPTURE ( ptr u8 ptr a -- ) {: pathz:ptr argv:ptr :}
@@ -170,10 +183,17 @@ variable PROC-ARGV-IN-OFF
 : PROC-ARGV-CLOSE-STDIN-DONE ( len -- ) {: inu :}
    PROC-ARGV-IN-OFF @ OFF>N inu LEN>N >= if PROC-ARGV-IN-W PROC-CLOSE-CELL then ;
 
+: PROC-ARGV-BROKEN-STDIN? ( n -- bool ) {: events :}
+   events POLLERR and 0= 0= if PROC-ARGV-TRUE exit then
+   events POLLHUP and 0= 0= if PROC-ARGV-TRUE exit then
+   events POLLNVAL and 0= 0= if PROC-ARGV-TRUE exit then
+   PROC-ARGV-FALSE ;
+
 : PROC-ARGV-WRITE-STDIN-ACTIVE ( ptr u8 len -- ) {: src:ptr inu :}
    inu LEN>N PROC-ARGV-IN-OFF @ OFF>N - >LEN PROC-ARGV-STDIN-CHUNK {: chunk :}
    PROC-ARGV-IN-W @ FD>N src PROC-ARGV-IN-OFF @ OFF>N + chunk LEN>N write {: wrote :}
-   wrote chunk LEN>N <> if E-PROC-OUTPUT PROC-ARGV-THROW-CAPTURE then
+   wrote 0 < if PROC-ARGV-IN-W PROC-CLOSE-CELL exit then
+   wrote chunk LEN>N > if E-PROC-OUTPUT PROC-ARGV-THROW-CAPTURE then
    PROC-ARGV-IN-OFF @ OFF>N wrote + >OFF PROC-ARGV-IN-OFF !
    inu PROC-ARGV-CLOSE-STDIN-DONE ;
 
@@ -208,7 +228,9 @@ variable PROC-ARGV-IN-OFF
    rc >COUNT ;
 
 : PROC-ARGV-DRIVE-STDIN ( ptr u8 len -- ) {: in:ptr inu :}
-   2 >IDX PROC-ARGV-PFD-REVENTS 0 <> if
+   2 >IDX PROC-ARGV-PFD-REVENTS {: events :}
+   events PROC-ARGV-BROKEN-STDIN? if PROC-ARGV-IN-W PROC-CLOSE-CELL exit then
+   events POLLOUT and 0= 0= if
       in inu PROC-ARGV-WRITE-STDIN
    then ;
 

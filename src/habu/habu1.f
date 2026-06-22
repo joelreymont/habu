@@ -687,13 +687,13 @@ s" spawn-chdir-action" s" n --" TRUST
    done LBL,
    0 G-PUSH ;
 
-: BOPEN   2 G-POP  1 G-POP  0 G-POP  NR-OPEN SYS,  0 G-PUSH ;
+: BOPEN   2 G-POP  1 G-POP  0 G-POP  NR-OPEN SYS,  SYS-PUSH ;
 
-: BWRITE  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  0 G-PUSH ;
+: BWRITE  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH ;
 
-: BREAD   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  0 G-PUSH ;
+: BREAD   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  SYS-PUSH ;
 
-: BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  0 G-PUSH ;
+: BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  SYS-PUSH ;
 
 : BMMAP   5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP  NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 

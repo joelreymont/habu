@@ -408,10 +408,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Snapshot scanners need structural proof:** magic constants also appear in
   code. Accept a trailer only when `region-len + data-len` ends exactly at the
   trailer offset; otherwise fallback dictionary scans see false snapshots.
-- **Generic syscall prims expose raw positive errno:** `open`, `read`, and
-  `write` do not normalize carry like `open-rd`/`access`/`stat64`. Checked file
-  helpers must use normalized prims where available and validate syscall counts
-  instead of treating only negative values as failure.
+- **No-SIGPIPE still needs normalized syscall failure:** Darwin `F_SETNOSIGPIPE`
+  prevents parent termination, but closed-pipe `write` reports `EPIPE=32`; raw
+  errno can collide with a valid byte count. Normalize carry in syscall prims,
+  then validate counts and keep a 32-byte closed-pipe regression.
 - **LLM benchmark reports need separate axes:** keep trial pass, task pass@k,
   repair rounds, wall time, and generated-token cost distinct. Output tokens are
   an effort proxy, not direct access to hidden reasoning.
@@ -536,11 +536,13 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Repo edits go through `apply_patch`:** even mechanical replacements and
   long one-line gate updates should use patches so accidental broad rewrites,
   duplicate definitions, and rule violations stay reviewable.
+- **Do not parallelize VCS status commands:** `jj st` and `git status` can race
+  on `.git/index.lock`. Run Git/JJ index-touching commands sequentially.
 - **Use only documented dot commands:** `dot active` is not a status command and
   can create a malformed dot; subcommands such as `dot purge` do not support
   `--help` and may mutate state. Use `dot add "Title" -d "Full context..."`,
   `dot ready`, `dot ls`, `dot tree`, `dot show <id>`, and
-  `dot close <id> --reason "..."`; do not use `dot on` in this repo.
+  `dot on <id>`/`dot off <id> -r "completed: evidence..."`.
 - **Same-typed string pairs need order tests:** the checker cannot distinguish a
   path `(ptr u8 n)` from stdin bytes `(ptr u8 n)`. When a helper takes multiple
   string pairs, add a focused test or first live use that proves the semantic

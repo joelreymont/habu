@@ -2,16 +2,26 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/process-env-test.f
 
 4096 constant PET-CAP
+131072 constant PET-EARLY-IN-CAP
 
 create PET-OUT PET-CAP allot
 create PET-ERR PET-CAP allot
 create PET-PATH FS-PATH-CAP allot
+create PET-EARLY-IN PET-EARLY-IN-CAP allot
 create PET-ENV-OUT 97 c, 108 c, 112 c, 104 c, 97 c, 10 c, 10 c, 10 c,
 create PET-EMPTY-OUT 10 c, 10 c, 10 c,
+variable PET-I
 
 : PET-RESET ( -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET ;
+
+: PET-EARLY-IN! ( -- )
+   0 PET-I !
+   begin PET-I @ PET-EARLY-IN-CAP < while
+      97 PET-EARLY-IN PET-I @ + c!
+      PET-I @ 1+ PET-I !
+   repeat ;
 
 : PET-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
@@ -31,9 +41,15 @@ create PET-EMPTY-OUT 10 c, 10 c, 10 c,
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CAPTURE
    PET-CAPTURE>N ;
 
+: PET-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+   {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+   path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE PET-CAPTURE>N ;
+
 : PET-STDIN-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
-   path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
+   path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    PET-OUTCOME>N ;
 
 : PET-FIND-IN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n bool )
@@ -87,6 +103,20 @@ create PET-EMPTY-OUT 10 c, 10 c, 10 c,
    0 T= PROC-OUTCOME-EXIT T= 0 T= 9 T=
    PET-OUT 9 s" env-stdin" T$= ;
 
+: PET-RUN-ENV-STDIN-FALSE-LARGE ( -- )
+   PET-RESET
+   PET-EARLY-IN!
+   s" /usr/bin/false" PET-EARLY-IN PET-EARLY-IN-CAP
+   PET-OUT PET-CAP PET-ERR PET-CAP 1000 PET-STDIN-CAPTURE
+   1 T= 0 T= 0 T= ;
+
+: PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE ( -- )
+   PET-RESET
+   PET-EARLY-IN!
+   s" /usr/bin/false" PET-EARLY-IN PET-EARLY-IN-CAP
+   PET-OUT PET-CAP PET-ERR PET-CAP 1000 PET-STDIN-OUTCOME
+   1 T= PROC-OUTCOME-EXIT T= 0 T= 0 T= ;
+
 : PET-BAD-ENV-NAME ( -- )
    PET-RESET
    s" BAD=NAME" s" x" PET-ENV+ ;
@@ -120,6 +150,8 @@ create PET-EMPTY-OUT 10 c, 10 c, 10 c,
    PET-RUN-EMPTY-ENV-CHILD
    PET-RUN-INHERIT-ENV-CHILD
    PET-RUN-ENV-STDIN-OUTCOME
+   PET-RUN-ENV-STDIN-FALSE-LARGE
+   PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE
    ['] PET-BAD-ENV-NAME E-PROC-ENV TTHROWS
    ['] PET-BAD-ENV-ENTRY E-PROC-ENV TTHROWS
    ['] PET-BAD-ENV-EMPTY E-PROC-ENV TTHROWS

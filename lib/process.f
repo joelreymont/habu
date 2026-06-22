@@ -7,6 +7,7 @@
 1 constant POLLIN
 9 constant SIGKILL
 2 constant F-SETFD
+73 constant F-SETNOSIGPIPE
 1 constant FD-CLOEXEC
 $7F constant PROC-WAIT-TERM-MASK
 $FF constant PROC-WAIT-EXIT-MASK
@@ -93,6 +94,9 @@ variable PROC-OUTCOME-CODE
 
 : FD-CLOEXEC! ( fd -- ) {: fd :}
    fd FD>N F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT throw then ;
+
+: FD-NOSIGPIPE! ( fd -- ) {: fd :}
+   fd FD>N F-SETNOSIGPIPE 1 fcntl 0 <> if E-PROC-OUTPUT throw then ;
 
 : PIPE-PAIR ( -- fd fd )
    pipe {: r w rc :}

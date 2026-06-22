@@ -610,6 +610,7 @@ SPAWN-IO            ( ptr u8 len fd fd fd -- pid )
 RUN-RC              ( ptr u8 len -- rc )
 RUN-IO-RC           ( ptr u8 len fd fd fd -- rc )
 FD-CLOEXEC!         ( fd -- )
+FD-NOSIGPIPE!       ( fd -- )
 PIPE-PAIR           ( -- fd fd )
 PROC-PFD-SLOT       ( idx -- ptr a )
 PROC-PFD-AT!        ( fd n idx -- )
@@ -661,8 +662,10 @@ signaled children to `128 + signal`.
 `fd` roles. Negative fd values mean inherit/default; nonnegative fd values are passed
 through explicitly. `PIPE-PAIR` creates a pipe as read fd then write fd.
 Parent-only pipe and PTY fds must be marked close-on-exec with `FD-CLOEXEC!`
-before spawning; this sets the Darwin `FD_CLOEXEC` flag. Parent code then closes
-the fd after the child no longer needs it.
+before spawning; this sets the Darwin `FD_CLOEXEC` flag. Parent write fds that
+may outlive the peer reader use `FD-NOSIGPIPE!` so failed writes return an
+ordinary syscall failure instead of terminating the parent. Parent code then
+closes the fd after the child no longer needs it.
 Every spawn path must close all fds it owns on success and failure. `POLL-IN`
 polls one fd for readable input and returns the raw poll result as `count`;
 `POLL-IN-OR-TIMEOUT` throws `E-PROC-TIMEOUT` for a zero poll result and
@@ -720,8 +723,11 @@ kind, and outcome code. They classify timeout as `PROC-OUTCOME-TIMEOUT` instead
 of throwing `E-PROC-TIMEOUT`; output truncation and other harness failures still
 throw named process errors.
 `RUN-ARGV-STDIN-CAPTURE` additionally writes a bounded caller-provided stdin
-buffer into the child while draining stdout and stderr; its outcome variant
-keeps the same stdin behavior and returns kind/code.
+buffer into the child while draining stdout and stderr. The stdin write fd is
+nonblocking and no-SIGPIPE; partial writes advance by the actual byte count, and
+an early child close of stdin closes the parent write fd while capture continues
+to the child's final rc/outcome. Its outcome variant keeps the same stdin
+behavior and returns kind/code.
 
 `lib/process-env.f` is a post-rebuild layer on top of `lib/process-argv.f` for
 explicit child environments and PATH lookup. Keeping it separate preserves the

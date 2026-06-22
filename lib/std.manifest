@@ -350,6 +350,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	RUN-RC	(ptr u8 len -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path and return exit status
 1	process	lib/process.f	word	RUN-IO-RC	(ptr u8 len fd fd fd -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with explicit stdio fds and return exit status
 1	process	lib/process.f	word	FD-CLOEXEC!	(fd --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	mark a parent-owned fd close-on-exec
+1	process	lib/process.f	word	FD-NOSIGPIPE!	(fd --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	disable SIGPIPE delivery for writes to a parent-owned fd
 1	process	lib/process.f	word	PIPE-PAIR	(-- fd fd)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	create a pipe and throw on failure
 1	process	lib/process.f	word	PROC-PFD-SLOT	(idx -- ptr a)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	return a pollfd slot in the process poll buffer
 1	process	lib/process.f	word	PROC-PFD-AT!	(fd n idx --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	write one indexed pollfd entry
@@ -385,6 +386,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-RAW	(ptr u8 ptr a fd fd fd -- pid)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-io alias for checked argv wrappers
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-RESET	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	clear argv extra-arg count and backing string buffer offset
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-CAPTURE-RESET	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	reset argv capture state including stdin pipe state
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-TRUE	(-- bool)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	return a checked true flag for process argv helpers
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-FALSE	(-- bool)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	return a checked false flag for process argv helpers
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-SLOT	(idx -- ptr a)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	return one checked argv pointer-table slot
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-CHECK-EXTRA	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	validate that one more extra argv entry fits
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-ZCOPY	(ptr u8 len -- ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	copy counted argv bytes into the module NUL-terminated argv string buffer
@@ -397,6 +400,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-THROW-CAPTURE	(n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	cleanup argv stdin capture fds before throwing a process error
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-CLOEXEC-CELL	(ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	mark one argv capture fd cell close-on-exec
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-NONBLOCK!	(fd --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	enable nonblocking writes for argv stdin capture
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-NOSIGPIPE!	(fd --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	disable SIGPIPE on the argv stdin write fd with capture cleanup
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-SETUP-STDIN-FDS	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	open and protect stdin pipe fds for argv capture
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn prepared argv with stdout and stderr capture fds
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-STDIN-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv with stdin stdout and stderr capture fds
@@ -409,6 +413,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-DRAIN-READY	(ptr u8 len ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	drain ready stdout and stderr streams for argv capture
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-STDIN-CHUNK	(len -- len)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	limit one nonblocking stdin write chunk
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-CLOSE-STDIN-DONE	(len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	close stdin write fd when caller input has been written
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-BROKEN-STDIN?	(n -- bool)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	test poll revents for a broken stdin write fd
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-WRITE-STDIN-ACTIVE	(ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	write one stdin chunk to active argv capture child
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-WRITE-STDIN	(ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	advance bounded stdin writes for argv capture
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-POLL-IO	(ms -- count)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	poll stdout stderr and optional stdin fds together
