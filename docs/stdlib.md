@@ -185,15 +185,18 @@ pointers use `VEC-A@` / `VEC-A!`, and generic cell code can use `VEC@` /
 the current capacity; it throws `E-VEC-CAPACITY` only for invalid or overflowing
 capacity requests and `E-VEC-BOUNDS` for invalid indexes or impossible lengths.
 
-The data pointer field is an audited trust boundary until the checker can
-express typed pointer fields for cell-backed records. All bounds, growth,
-copying, length, capacity, and iteration behavior is checked Forth.
+The data pointer field is checked with `ptr-field`, which constructs the typed
+`ptr ptr x` address used by normal `@` and `!`. Bounds, growth, copying, length,
+capacity, and iteration behavior are checked Forth.
 
 ```forth
 VEC-CHECK-NEED      ( count -- )
 VEC-CHECK-CAP       ( count -- )
 VEC-CHECK-LEN       ( len -- )
 VEC-CELLS>BYTES     ( count -- n )
+VEC-DATA-FIELD      ( ptr a -- ptr ptr a )
+VEC-DATA@           ( ptr a -- ptr a )
+VEC-DATA!           ( ptr a ptr a -- )
 VEC-LEN@            ( ptr a -- len )
 VEC-CAP@            ( ptr a -- count )
 VEC-CAP!            ( count ptr a -- )

@@ -30,11 +30,14 @@ MEM-MAX-N VEC-CELL-BYTES / constant VEC-MAX-CELLS
 TRUSTED: VEC-ALLOC-CELLS ( count -- ptr a )
    VEC-CELLS>BYTES MEM-ALLOC-BYTES drop ;
 
-TRUSTED: VEC-DATA@ ( ptr a -- ptr a )
-   VEC-DATA-OFF cells + @ ;
+: VEC-DATA-FIELD ( ptr a -- ptr ptr a )
+   VEC-DATA-OFF ptr-field ;
 
-TRUSTED: VEC-DATA! ( ptr a ptr a -- )
-   VEC-DATA-OFF cells + ! ;
+: VEC-DATA@ ( ptr a -- ptr a )
+   VEC-DATA-FIELD @ ;
+
+: VEC-DATA! ( ptr a ptr a -- ) {: data:ptr vec:ptr :}
+   data vec VEC-DATA-FIELD ! ;
 
 : VEC-LEN@ ( ptr a -- len )
    VEC-LEN-OFF cells + @ >LEN ;

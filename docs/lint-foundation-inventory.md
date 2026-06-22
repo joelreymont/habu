@@ -66,11 +66,10 @@ globals except through audited accessors while the port is incomplete.
 
 ### Source lexer
 
-Owned today by `tools/lint/source-lex.f:4-145`. Token metadata is stored in
-checked `lib/vector.f` headers, and the scanner body is checked. The only
-remaining source-lexer `TRUSTED:` boundary is `LEX-A@` at
-`tools/lint/source-lex.f:22`, which reloads the current input byte pointer from a
-raw variable until typed pointer variables/fields are expressible.
+Owned today by `tools/lint/source-lex.f:4-151`. Token metadata is stored in
+checked `lib/vector.f` headers, and the scanner body is checked. The source
+pointer cell uses `ptr-field`, so the lexer no longer needs a `TRUSTED:` reload
+boundary for `LEX-A@`.
 
 Users:
 
@@ -81,9 +80,8 @@ Users:
 - `bench/llm/attempt-solutions-lib.f`, `bench/llm/forth-task-lines-lib.f`, and
   `bench/llm/large-buffer-bundle-test.f` compose it with benchmark source tools.
 
-Replacement direction: remove the remaining `LEX-A@` boundary after the checker
-can express typed pointer fields or typed pointer variables. New lexer users
-should depend on `lib/vector.f` and should not introduce raw table reloads.
+Replacement direction: keep new lexer users on `lib/vector.f` and `ptr-field`;
+do not introduce raw table reloads or per-tool `TRUSTED:` pointer accessors.
 
 ### PAT and trust-site scanners
 

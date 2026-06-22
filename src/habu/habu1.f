@@ -620,6 +620,8 @@ s" spawn-chdir-action" s" n --" TRUST
 
 : BSTORE  B G-POP A G-POP  A B 0 STR, ;
 
+: BPTRFIELD  B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
+
 : BPLUSSTORE B G-POP A G-POP  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
 : BCFETCH A G-POP  A A 0 LDRB, A G-PUSH ;
@@ -827,7 +829,8 @@ s" spawn-chdir-action" s" n --" TRUST
    s" rot"  ['] BROT  FPRIM-L   s" -rot" ['] BMROT FPRIM-L
    s" 2dup" ['] B2DUP FPRIM-L   s" 2drop" ['] B2DROP FPRIM-L
    s" 2swap" ['] B2SWAP FPRIM-L  s" 2over" ['] B2OVER FPRIM-L  s" ?dup" ['] BQDUP FPRIM-L
-   s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L   s" +!" ['] BPLUSSTORE FPRIM-L
+   s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L   s" ptr-field" ['] BPTRFIELD FPRIM-L
+   s" +!" ['] BPLUSSTORE FPRIM-L
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
    s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT FPRIM-L

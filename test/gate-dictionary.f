@@ -159,11 +159,12 @@ $63 constant GD-C-LOWER
    s" P5 ( ptr u8 -- ptr u8 i64 ) count" GE-SRC-CHECK-LINE
    s" P6 ( i64 i64 -- i64 i64 i64 ) depth" GE-SRC-CHECK-LINE
    s" P7 ( -- n ) 0 4096 3 $1002 -1 0 mmap" GE-SRC-CHECK-LINE
+   s" P8 ( ptr u8 ptr a -- ptr u8 ) swap over 0 ptr-field ! 0 ptr-field @" GE-SRC-CHECK-LINE
    s" hb primitive checklist signatures" GE-HB-RUN-STDIN
    SB-RESET
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
-   s" -1" GE-OUT-LINE
+   s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
    SB$ s" hb primitive checklist signatures output" GE-EXPECT-OUT ;
 
 : GD-RETURN-CHECKS ( -- )

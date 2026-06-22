@@ -22,8 +22,16 @@ create LEX-FIX FIX-CAP allot     variable LEX-LEN
 variable BIG-LEX-A
 variable BIG-LEX-U
 
-TRUSTED: BIG-LEX-A@ ( -- ptr u8 ) BIG-LEX-A @ ;
-TRUSTED: BIG-LEX$ ( -- ptr u8 n ) BIG-LEX-A @ BIG-LEX-U @ ;
+: BIG-LEX-A-FIELD ( -- ptr ptr u8 )
+   BIG-LEX-A 0 ptr-field ;
+
+: BIG-LEX-A@ ( -- ptr u8 )
+   BIG-LEX-A-FIELD @ ;
+
+: BIG-LEX-A! ( ptr u8 -- )
+   BIG-LEX-A-FIELD ! ;
+
+: BIG-LEX$ ( -- ptr u8 n ) BIG-LEX-A@ BIG-LEX-U @ ;
 
 : BIG-LEX-PUT ( n -- ) {: k :}
    120 BIG-LEX-A@ k 2 * + c!
@@ -120,7 +128,7 @@ TRUSTED: BIG-LEX$ ( -- ptr u8 n ) BIG-LEX-A @ BIG-LEX-U @ ;
 : LEX-FIX$  ( -- a u )  LEX-FIX LEX-LEN @ ;
 
 : INIT-BIG-LEX  ( -- )
-   BIG-LEX-TOKENS 2 * MEM-ALLOC-BYTES BIG-LEX-U ! BIG-LEX-A !
+   BIG-LEX-TOKENS 2 * MEM-ALLOC-BYTES BIG-LEX-U ! BIG-LEX-A!
    0 begin dup BIG-LEX-TOKENS < while
       dup BIG-LEX-PUT
       1+

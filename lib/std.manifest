@@ -52,6 +52,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	vector	lib/vector.f	word	VEC-CHECK-CAP	(count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	validate a positive vector capacity
 1	vector	lib/vector.f	word	VEC-CHECK-LEN	(len --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	validate a nonnegative vector length
 1	vector	lib/vector.f	word	VEC-CELLS>BYTES	(count -- n)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	convert a checked cell capacity to bytes
+1	vector	lib/vector.f	word	VEC-DATA-FIELD	(ptr a -- ptr ptr a)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	construct the typed pointer field address for vector storage
+1	vector	lib/vector.f	word	VEC-DATA@	(ptr a -- ptr a)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	read a vector storage pointer through a typed pointer field
+1	vector	lib/vector.f	word	VEC-DATA!	(ptr a ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	write a vector storage pointer through a typed pointer field
 1	vector	lib/vector.f	word	VEC-LEN@	(ptr a -- len)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	read a vector active length
 1	vector	lib/vector.f	word	VEC-CAP@	(ptr a -- count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	read a vector capacity
 1	vector	lib/vector.f	word	VEC-CAP!	(count ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	write a checked vector capacity

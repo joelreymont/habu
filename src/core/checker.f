@@ -545,6 +545,7 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" char+" s" n -- n" PT+
    s" @" s" ptr a -- a" PT+
    s" !" s" a ptr a --" PT+
+   s" ptr-field" s" ptr a n -- ptr ptr b" PT+
    s" +!" s" n ptr n --" PT+
    s" c@" s" ptr u8 -- u8" PT+
    s" c!" s" u8 ptr u8 --" PT+

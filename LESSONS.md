@@ -109,6 +109,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **False-rejects must be confirmed by execution:** count incompleteness only
   after compiling an unchecked copy and measuring that it really matches the
   declared effect.
+- **Pointer cells need typed field addresses:** `@`/`!` already preserve nested
+  pointer types once the address is `ptr ptr x`; use the checked `ptr-field`
+  primitive to construct that address instead of adding `TRUSTED:` reload
+  helpers for variables or record fields.
 
 ## Runtime And REPL
 

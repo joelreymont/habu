@@ -19,8 +19,14 @@ create LEX-COL-V VEC-HEADER-CELLS cells allot
 create LEX-CADDR-V VEC-HEADER-CELLS cells allot
 create LEX-CLEN-V VEC-HEADER-CELLS cells allot
 
-TRUSTED: LEX-A@ ( -- ptr u8 )
-   LEX-A @ ;
+: LEX-A-FIELD ( -- ptr ptr u8 )
+   LEX-A 0 ptr-field ;
+
+: LEX-A@ ( -- ptr u8 )
+   LEX-A-FIELD @ ;
+
+: LEX-A! ( ptr u8 -- )
+   LEX-A-FIELD ! ;
 
 : LEX-INIT-ONE ( ptr a -- )
    LEX-MIN-CAP >COUNT VEC-INIT ;
@@ -132,7 +138,7 @@ TRUSTED: LEX-A@ ( -- ptr u8 )
    L# @ 1- LTOK STRING-OPENER? if LEX-SKIP-QUOTE then ;
 
 : LEX-SOURCE ( ptr u8 n -- ) {: a:ptr u :}
-   a LEX-A ! u LEX-U ! 0 LX ! 1 LNO ! 1 LCO !
+   a LEX-A! u LEX-U ! 0 LX ! 1 LNO ! 1 LCO !
    LEX-RESET-TABLES
    begin LEX-END? 0= while
       LEX-C@ WS? if LEX-ADV drop
