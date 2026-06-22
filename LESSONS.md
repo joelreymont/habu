@@ -48,6 +48,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   fail-closed proof, miss class, minimal checked reproducer, and the
   checker/compiler fix or capability dot are recorded; the bad program must end
   as a negative checker regression.
+- **Checker misses default to compiler work:** after the `Static invariant:`
+  line, assume the checker/compiler/primitive model owns the bug until the exact
+  checked path proves that invariant is outside its contract. Fix the model and
+  add the negative regression before accepting downstream runtime code.
 - **Checker misses need class labels:** after fail-closed proof, classify the
   miss as wrong boundary effect, checker semantics, codegen/runtime mismatch, or
   same-type semantic-role gap before editing downstream runtime code.

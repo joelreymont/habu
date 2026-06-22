@@ -53,7 +53,8 @@ constants; and a `T{ … -> … }T` test for every word.
   add/keep tests that prove the fix, and record any remaining substantive work
   as detailed dots.
 - Checker-first RCA is mandatory. For any “why didn’t the checker catch this?”
-  failure, the first written line of the investigation must be:
+  failure, the first visible line of the response, note, dot, or investigation
+  must be:
   **Static invariant: what should have rejected this program before it ran, and
   where should that invariant be enforced?** Use the RCA template in
   `docs/forth.md` § Checker-Miss RCA. Do not edit runtime/library code until the
@@ -65,6 +66,10 @@ constants; and a `T{ … -> … }T` test for every word.
   before runtime repair. If it was fail-closed, reduce the checker miss to a
   minimal checked fixture, then fix the checker/compiler and add a negative
   regression before fixing or accepting downstream code.
+- A checker miss is compiler/checker work by default. Only classify it as an
+  application/library bug after proving the checked path was not supposed to
+  express that invariant; otherwise add the missing checker/compiler capability,
+  primitive model, or boundary effect and a failing negative regression first.
 - If the checker cannot yet express the invariant, do not normalize the gap with
   local runtime guards. Add the missing checker/type/compiler capability as a
   detailed dot, keep only a named tested boundary while it exists, and remove

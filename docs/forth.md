@@ -128,10 +128,12 @@ not a matter of taste. Target is the native `bin/hb` engine.
 
 ### Checker-Miss RCA
 
-- For any "why didn't the checker catch this?" failure, the first written line of
-  the investigation is `Static invariant:` followed by the invariant that should
-  reject the program before runtime and the checker/compiler/primitive boundary
-  where that invariant belongs.
+- For any "why didn't the checker catch this?" failure, the first visible line of
+  the response, note, dot, or investigation is `Static invariant:` followed by
+  the invariant that should reject the program before runtime and the
+  checker/compiler/primitive boundary where that invariant belongs. If you have
+  already started with runtime symptoms, stop and restart the investigation from
+  this line.
 - Use this template before editing runtime/library code:
   `Static invariant:` the pre-runtime fact that should be impossible to violate;
   `Owner:` checker semantics, compiler/codegen model, primitive/boundary effect,
@@ -148,6 +150,10 @@ not a matter of taste. Target is the native `bin/hb` engine.
   model rejects the bad program. If the checker cannot yet express the invariant,
   create a detailed dot for the missing checker capability and keep only a named,
   tested boundary until that capability lands.
+- Treat the compiler/checker as the owner until evidence excludes it. The normal
+  fix sequence is: add the minimal negative checked regression, make it fail for
+  the right reason, update checker semantics, compiler metadata, primitive
+  effects, or boundary typing, then repair any downstream code.
 
 ## Comments & hygiene
 
