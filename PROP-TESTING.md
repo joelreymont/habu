@@ -103,6 +103,13 @@ so the next program starts clean. The property:
 measurement is negative or `evaluate` recovers from a trap; either is a
 **false-cert signal** (consumed-too-much).
 
+The harness has five audited trust boundaries, all recorded in `TRUSTED.md` so
+source-list certification fails closed when the test is loaded directly:
+`CLEAR-MEAS` for arbitrary-tail cleanup, `ERR@` for the raw `evaluate` recovery
+cell, `CHK` for recursive checked evaluation of generated source, `RUN-MEAS` for
+dynamic measurement execution, and `CONFIRM-FR?` for the deliberate unchecked
+false-reject confirmation oracle.
+
 ## The generator (the safe integer sublanguage)
 
 Programs must be **runnable** (never fault), **terminating**, and **side-effect
