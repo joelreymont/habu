@@ -1,17 +1,16 @@
 \ argv-test.f -- focused tests for tools/argv.f.
-\ Run mocks:  cat tools/argv.f tools/argv-test.f | bin/hb
-\ Run script: cat tools/argv.f tools/argv-test.f > /tmp/hb-argv-test.f
-\             bin/hb /tmp/hb-argv-test.f --json --label NAME --strict-signatures --all-errors --strict-boundary -o OUT file.f
+\ Run mocks: bin/hb --load tools/argv.f tools/argv-test.f
+\ Run script: bin/hb --load tools/argv.f tools/argv-test.f -- --json --label NAME --strict-signatures --all-errors --strict-boundary -o OUT -- file.f --literal
 
 variable TEST-N
 variable TEST-FAIL
 
 : ASSERT ( f -- )
    TEST-N @ 1 + TEST-N !
-   0= IF
+   0= if
       s" argv-test: assertion " type TEST-N @ . s"  failed" type cr
       TEST-FAIL @ 1 + TEST-FAIL !
-   THEN ;
+   then ;
 
 : ASSERT= ( n n -- )  = ASSERT ;
 
@@ -26,15 +25,15 @@ variable TEST-FAIL
 : EXPECT-ONE-POS ( -- )  1 ARGV-EXPECT-POS-EXACT ;
 
 : ONE-POS-RC ( -- n )
-   [: ARGV-PARSE ;] catch dup 0 <> IF EXIT THEN drop
+   [: ARGV-PARSE ;] catch dup 0 <> if exit then drop
    [: EXPECT-ONE-POS ;] catch ;
 
 : NEED-OUT-RC ( -- n )
-   [: ARGV-PARSE ;] catch dup 0 <> IF EXIT THEN drop
+   [: ARGV-PARSE ;] catch dup 0 <> if exit then drop
    [: ARGV-REQUIRE-OUT ;] catch ;
 
 : NEED-LABEL-RC ( -- n )
-   [: ARGV-PARSE ;] catch dup 0 <> IF EXIT THEN drop
+   [: ARGV-PARSE ;] catch dup 0 <> if exit then drop
    [: ARGV-REQUIRE-LABEL ;] catch ;
 
 : QUIET-MOCK ( -- )
@@ -86,10 +85,12 @@ variable TEST-FAIL
    QUIET-MOCK
    s" --" ARGV-MOCK+
    s" --json" ARGV-MOCK+
+   s" -o" ARGV-MOCK+
    ARGV-PARSE
    ARGV-JSON? 0= ASSERT
-   ARGV-POS# 1 ASSERT=
-   0 ARGV-POS$ s" --json" ASSERT$ ;
+   ARGV-POS# 2 ASSERT=
+   0 ARGV-POS$ s" --json" ASSERT$
+   1 ARGV-POS$ s" -o" ASSERT$ ;
 
 : TEST-JSON-ERRORS ( -- )
    QUIET-MOCK
@@ -153,26 +154,27 @@ variable TEST-FAIL
    s" DEFAULT" ARGV-LABEL-DEFAULT!
    s" STDOUT" ARGV-OUT-DEFAULT!
    ARGV-PARSE
-   1 ARGV-EXPECT-POS-EXACT
+   2 ARGV-EXPECT-POS-EXACT
    ARGV-JSON? ASSERT
    ARGV-STRICT-SIGNATURES? ASSERT
    ARGV-ALL-ERRORS? ASSERT
    ARGV-STRICT-BOUNDARY? ASSERT
    ARGV-LABEL$ s" NAME" ASSERT$
    ARGV-OUT$ s" OUT" ASSERT$
-   0 ARGV-POS$ s" file.f" ASSERT$ ;
+   0 ARGV-POS$ s" file.f" ASSERT$
+   1 ARGV-POS$ s" --literal" ASSERT$ ;
 
 : REPORT ( -- )
-   TEST-FAIL @ 0 = IF
+   TEST-FAIL @ 0 = if
       s" argv-test: ok (" type TEST-N @ . s"  assertions)" type cr
-   ELSE
+   else
       s" argv-test: failures" 1 die
-   THEN ;
+   then ;
 
 : ARGV-TEST-MAIN ( -- )
    0 TEST-N !
    0 TEST-FAIL !
-   SCRIPT-ARGC 0 > IF TEST-SCRIPT-ARGS ELSE TEST-MOCKS THEN
+   SCRIPT-ARGC 0 > if TEST-SCRIPT-ARGS else TEST-MOCKS then
    REPORT ;
 
 ARGV-TEST-MAIN
