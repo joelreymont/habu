@@ -15,11 +15,15 @@
 create DFG-CONV-BUF DFG-CONV-CAP allot
 create DFG-RUNTIME-PATH FS-PATH-CAP allot
 create DFG-EXEC-PATH FS-PATH-CAP allot
+create DFG-BIN-PATH FS-PATH-CAP allot
+create DFG-RUNTIME-BIN-PATH FS-PATH-CAP allot
 
 variable DFG-LANG
 variable DFG-CONV-U
 variable DFG-RUNTIME-U
 variable DFG-EXEC-U
+variable DFG-BIN-U
+variable DFG-RUNTIME-BIN-U
 variable DFG-ROUND
 variable DFG-FIRST-KIND
 variable DFG-TEST-KIND
@@ -42,6 +46,12 @@ variable DFG-START
 : DFG-RUNTIME$ ( -- ptr u8 n )
    DFG-RUNTIME-PATH DFG-RUNTIME-U @ ;
 
+: DFG-BIN$ ( -- ptr u8 n )
+   DFG-BIN-PATH DFG-BIN-U @ ;
+
+: DFG-RUNTIME-BIN$ ( -- ptr u8 n )
+   DFG-RUNTIME-BIN-PATH DFG-RUNTIME-BIN-U @ ;
+
 : DFG-EXEC$ ( -- ptr u8 n )
    DFG-EXEC-PATH DFG-EXEC-U @ ;
 
@@ -54,25 +64,34 @@ variable DFG-START
 : DFG-TS! ( -- )
    FV-LANG-TS DFG-LANG ! ;
 
+: DFG-RUST! ( -- )
+   FV-LANG-RUST DFG-LANG ! ;
+
 : DFG-PY? ( -- bool )
    DFG-LANG @ FV-LANG-PY = ;
 
 : DFG-TS? ( -- bool )
    DFG-LANG @ FV-LANG-TS = ;
 
+: DFG-RUST? ( -- bool )
+   DFG-LANG @ FV-LANG-RUST = ;
+
 : DFG-ARM$ ( -- ptr u8 n )
    DFG-PY? if s" python" exit then
    DFG-TS? if s" ts" exit then
+   DFG-RUST? if s" rust" exit then
    s" js" ;
 
 : DFG-RUNTIME-CMD$ ( -- ptr u8 n )
    DFG-PY? if s" PYTHON" s" python3" DS-ENV$ exit then
    DFG-TS? if s" bun" exit then
+   DFG-RUST? if s" RUSTC" s" rustc" DS-ENV$ exit then
    s" node" ;
 
 : DFG-TIMEOUT-ENV$ ( -- ptr u8 n )
    DFG-PY? if s" BENCH_PY_TIMEOUT_MS" exit then
    DFG-TS? if s" BENCH_TS_TIMEOUT_MS" exit then
+   DFG-RUST? if s" BENCH_RUST_TIMEOUT_MS" exit then
    s" BENCH_JS_TIMEOUT_MS" ;
 
 : DFG-EMPTY$ ( -- ptr u8 n )
@@ -97,6 +116,13 @@ variable DFG-START
    DFG-TS? if
       s" test.ts" DS-BUNDLE-PATH DS-BUNDLE-PATH-U DS-JOIN!
       s" runtime.ts" DFG-RUNTIME-PATH DFG-RUNTIME-U DS-JOIN!
+      exit
+   then
+   DFG-RUST? if
+      s" test.rs" DS-BUNDLE-PATH DS-BUNDLE-PATH-U DS-JOIN!
+      s" runtime.rs" DFG-RUNTIME-PATH DFG-RUNTIME-U DS-JOIN!
+      s" test-bin" DFG-BIN-PATH DFG-BIN-U DS-JOIN!
+      s" runtime-bin" DFG-RUNTIME-BIN-PATH DFG-RUNTIME-BIN-U DS-JOIN!
       exit
    then
    s" test.js" DS-BUNDLE-PATH DS-BUNDLE-PATH-U DS-JOIN!
@@ -147,6 +173,21 @@ variable DFG-START
    LR-OUTCOME!
    0 LR-TESTS-PASSED ! ;
 
+: DFG-PROMPT-RETURN-LN ( -- )
+   DFG-CONV$ s" as" STR= if
+      s" It must return one integer result." DS-PROMPT-LN
+      exit
+   then
+   DFG-PY? if
+      s" It must return a new list of integers." DS-PROMPT-LN
+      exit
+   then
+   DFG-RUST? if
+      s" It must return a new Vec<i64>." DS-PROMPT-LN
+      exit
+   then
+   s" It must return a new array of integers." DS-PROMPT-LN ;
+
 : DFG-BUILD-PROMPT ( -- )
    DS-PROMPT-RESET
    DFG-PY? if
@@ -160,16 +201,25 @@ variable DFG-START
       else
          s"   function f(a: number[]): number[] { ... }" DS-PROMPT-LN
       then
+   else DFG-RUST? if
+      s" Write a Rust function with this exact signature:" DS-PROMPT-LN
+      DFG-CONV$ s" as" STR= if
+         s"   fn f(a: &[i64]) -> i64 { ... }" DS-PROMPT-LN
+      else
+         s"   fn f(a: &[i64]) -> Vec<i64> { ... }" DS-PROMPT-LN
+      then
    else
       s" Write a JavaScript function with this exact signature:" DS-PROMPT-LN
       s"   function f(a) { ... }" DS-PROMPT-LN
-   then then
+   then then then
    DFG-PY? if
       s" where a is a list of integers." DS-PROMPT-LN
+   else DFG-RUST? if
+      s" where a is a slice of integers." DS-PROMPT-LN
    else
       s" where a is an array of integers." DS-PROMPT-LN
-   then
-   DFG-CONV$ s" as" STR= if s" It must return one integer result." else s" It must return a new array of integers." then DS-PROMPT-LN
+   then then
+   DFG-PROMPT-RETURN-LN
    DFG-PY? if s" Use only the Python standard library." DS-PROMPT-LN then
    DS-SPEC$ DS-PROMPT-LN
    s" " DS-PROMPT-LN
@@ -219,10 +269,21 @@ variable DFG-START
    DFG-TS? if
       s" function check(g: unknown,w: unknown,a: string): void { if(JSON.stringify(g)!==JSON.stringify(w)){ console.error('FAIL f('+a+') = '+JSON.stringify(g)+' expected '+JSON.stringify(w)); process.exit(1); } }" DS-TEST-LN
       DFG-CONV$ DS-TESTS$ FV-TS-TESTS DS-TEST+
+   else DFG-RUST? if
+      s" fn main() {" DS-TEST-LN
+      DFG-CONV$ DS-TESTS$ FV-RUST-TESTS DS-TEST+
+      s"     println!(" DS-TEST+
+      DS-DQ DS-TEST-C
+      s" ALL-OK" DS-TEST+
+      DS-DQ DS-TEST-C
+      s" );" DS-TEST-LN
+      s" }" DS-TEST-LN
+      DS-BUNDLE-PATH$ DS-TEST$ WRITE-ALL
+      exit
    else
       s" function check(g,w,a){ if(JSON.stringify(g)!==JSON.stringify(w)){ console.error('FAIL f('+a+') = '+JSON.stringify(g)+' expected '+JSON.stringify(w)); process.exit(1); } }" DS-TEST-LN
       DFG-CONV$ DS-TESTS$ FV-JS-TESTS DS-TEST+
-   then
+   then then
    s" console.log('ALL-OK');" DS-TEST-LN
    DS-BUNDLE-PATH$ DS-TEST$ WRITE-ALL ;
 
@@ -234,18 +295,16 @@ variable DFG-START
       DS-TESTS$ 10 100 FV-PY-BENCH DS-TEST+
    else DFG-TS? if
       DS-TESTS$ 10 100 FV-TS-BENCH DS-TEST+
+   else DFG-RUST? if
+      s" fn main() {" DS-TEST-LN
+      DS-TESTS$ 10 100 FV-RUST-BENCH DS-TEST+
+      s" }" DS-TEST-LN
    else
       DS-TESTS$ 10 100 FV-JS-BENCH DS-TEST+
-   then then
+   then then then
    DFG-RUNTIME$ DS-TEST$ WRITE-ALL ;
 
-: DFG-SCRIPT-CAPTURE ( ptr u8 n -- ) {: script:ptr scriptu :}
-   PROC-ARGV-ENV-RESET
-   script scriptu >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   DFG-EXEC$ >LEN DFG-EMPTY$ >LEN DS-OUT-BUF DS-OUT-CAP >LEN
-   DS-ERR-BUF DS-ERR-CAP >LEN DFG-TIMEOUT >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu erru kind code :}
+: DFG-STORE-OUTCOME ( len len n n -- ) {: outu erru kind code :}
    code DFG-TEST-CODE !
    kind DFG-TEST-KIND !
    code DFG-RUNTIME-CODE !
@@ -254,9 +313,46 @@ variable DFG-START
    outu LEN>N DS-OUT-U !
    kind PROC-OUTCOME-EXIT = if code else 128 code + then DS-RC ! ;
 
+: DFG-CAPTURE-ARGV ( ptr u8 n -- ) {: exe:ptr exeu :}
+   PROC-ENV-INHERIT-MISSING
+   exe exeu >LEN DFG-EMPTY$ >LEN DS-OUT-BUF DS-OUT-CAP >LEN
+   DS-ERR-BUF DS-ERR-CAP >LEN DFG-TIMEOUT >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME DFG-STORE-OUTCOME ;
+
+: DFG-SCRIPT-CAPTURE ( ptr u8 n -- ) {: script:ptr scriptu :}
+   PROC-ARGV-ENV-RESET
+   script scriptu >LEN PROC-ARGV+
+   DFG-EXEC$ DFG-CAPTURE-ARGV ;
+
+: DFG-EXECUTABLE-CAPTURE ( ptr u8 n -- ) {: exe:ptr exeu :}
+   PROC-ARGV-ENV-RESET
+   exe exeu DFG-CAPTURE-ARGV ;
+
+: DFG-RUST-COMPILE? ( ptr u8 n ptr u8 n -- bool ) {: src:ptr srcu out:ptr outu :}
+   PROC-ARGV-ENV-RESET
+   src srcu >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   out outu >LEN PROC-ARGV+
+   DFG-EXEC$ DFG-CAPTURE-ARGV
+   DFG-TEST-KIND @ PROC-OUTCOME-EXIT <> if DS-FALSE exit then
+   DS-RC @ 0= if DS-TRUE exit then
+   DS-FALSE ;
+
 : DFG-RUN-TESTS ( -- )
    DS-BUNDLE-PATH$ DFG-SCRIPT-CAPTURE
    DS-TEST-PATH$ DS-WRITE-CAPTURE ;
+
+: DFG-RUN-RUST-TESTS? ( -- bool )
+   DS-BUNDLE-PATH$ DFG-BIN$ DFG-RUST-COMPILE? 0= if
+      DS-DIAG-PATH$ DS-WRITE-CAPTURE
+      DS-TEST-PATH$ DS-WRITE-CAPTURE
+      s" reject" DFG-LR-OUTCOME
+      1 LR-DIAG-COUNT !
+      DS-FALSE exit
+   then
+   DFG-BIN$ DFG-EXECUTABLE-CAPTURE
+   DS-TEST-PATH$ DS-WRITE-CAPTURE
+   DS-TRUE ;
 
 : DFG-TEST-PASS? ( -- bool )
    DS-RC @ 0 <> if DS-FALSE exit then
@@ -269,7 +365,13 @@ variable DFG-START
 
 : DFG-FINISH-RUNTIME ( -- )
    DFG-BUILD-RUNTIME-BUNDLE
-   DFG-RUNTIME$ DFG-SCRIPT-CAPTURE
+   DFG-RUST? if
+      DFG-RUNTIME$ DFG-RUNTIME-BIN$ DFG-RUST-COMPILE? if
+         DFG-RUNTIME-BIN$ DFG-EXECUTABLE-CAPTURE
+      then
+   else
+      DFG-RUNTIME$ DFG-SCRIPT-CAPTURE
+   then
    DFG-RUNTIME-KIND @ PROC-OUTCOME-EXIT = 0= if
       s" error" DFG-LR-OUTCOME
       s" error" LR-RUNTIME-STATUS!
@@ -292,7 +394,7 @@ variable DFG-START
    s" ok" LR-RUNTIME-STATUS! ;
 
 : DFG-FINISH-TESTS ( -- )
-   DFG-RUN-TESTS
+   DFG-RUST? if DFG-RUN-RUST-TESTS? 0= if exit then else DFG-RUN-TESTS then
    DFG-TEST-KIND @ PROC-OUTCOME-TIMEOUT = if s" timeout" DFG-LR-OUTCOME exit then
    DFG-TEST-KIND @ PROC-OUTCOME-SIGNAL = if s" trap" DFG-LR-OUTCOME exit then
    DFG-TEST-KIND @ PROC-OUTCOME-EXIT <> if s" error" DFG-LR-OUTCOME exit then
@@ -397,7 +499,7 @@ variable DFG-START
    s" BENCH_MAX_REPAIRS" 5 DS-ENV-U ;
 
 : DFG-USAGE ( -- )
-   s" usage: bench/llm/drive-js.f|drive-python.f|drive-ts.f <id> <name> <sig> <spec> <conv> <vectors> [maxr]" E-DS-USAGE die ;
+   s" usage: bench/llm/drive-js.f|drive-python.f|drive-rust.f|drive-ts.f <id> <name> <sig> <spec> <conv> <vectors> [maxr]" E-DS-USAGE die ;
 
 : DFG-CONFIG ( -- )
    SCRIPT-ARGC 6 < if DFG-USAGE then
