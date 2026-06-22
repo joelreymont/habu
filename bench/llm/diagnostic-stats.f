@@ -39,6 +39,9 @@ variable DGS-HAS-EXPECTED
 variable DGS-HAS-ACTUAL
 variable DGS-HAS-CODE
 variable DGS-HAS-REPAIR-CLASS
+variable DGS-ROW-ROOT
+variable DGS-ROW-KIND
+variable DGS-ROW-CODE
 
 : DGS-TRUE ( -- bool )
    0 0= ;
@@ -266,6 +269,27 @@ variable DGS-HAS-REPAIR-CLASS
 : DGS-HAS-KEY? ( n ptr u8 n -- bool )
    JSON-GET -1 <> ;
 
+: DGS-ROW! ( n n n -- )
+   DGS-ROW-CODE ! DGS-ROW-KIND ! DGS-ROW-ROOT ! ;
+
+: DGS-REQUIRE-ROW-OBJECT ( n -- )
+   JSON-KIND J-OBJ <> if E-JSON-TYPE throw then ;
+
+: DGS-NEXT-DIAG ( -- n bool )
+   begin
+      JSONL-NEXT-ROW if
+         DGS-ROW!
+         DGS-ROW-KIND @ JSONL-ROW-BLANK <> if
+            DGS-ROW-KIND @ JSONL-ROW-ERROR = if DGS-ROW-CODE @ throw then
+            DGS-ROW-KIND @ JSONL-ROW-JSON <> if E-BM-SCHEMA throw then
+            DGS-ROW-ROOT @ DGS-REQUIRE-ROW-OBJECT
+            DGS-ROW-ROOT @ DGS-TRUE exit
+         then
+      else
+         2drop drop -1 DGS-FALSE exit
+      then
+   again ;
+
 : DGS-MARK-DIAG-FIELDS ( n -- ) {: node :}
    DGS-DIAG# @ 1+ DGS-DIAG# !
    node s" token" DGS-HAS-KEY? if -1 DGS-HAS-TOKEN ! then
@@ -278,7 +302,7 @@ variable DGS-HAS-REPAIR-CLASS
 : DGS-SCAN-DIAGS ( ptr u8 n -- ) {: a:ptr u :}
    DGS-RESET-DIAGS
    a u JSONL-START-STRICT
-   begin JSONL-NEXT-OBJECT dup -1 <> while
+   begin DGS-NEXT-DIAG while
       DGS-MARK-DIAG-FIELDS
    repeat drop ;
 
@@ -334,7 +358,7 @@ variable DGS-HAS-REPAIR-CLASS
    round 0 < if E-BM-FIELD throw then
    0 DGS-EVENT-U !
    a u JSONL-START-STRICT
-   begin JSONL-NEXT-OBJECT dup -1 <> while
+   begin DGS-NEXT-DIAG while
       round DGS-APPEND-DIAG-EVENT
    repeat drop
    DGS-EVENT-BUF DGS-EVENT-U @ ;
