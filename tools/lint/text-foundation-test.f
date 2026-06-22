@@ -168,18 +168,18 @@ variable BIG-LEX-U
 
 : TEST-SCANNERS  ( -- )
    TRUST-FIX$ TRUST-SITE? ASSERT
-   P1A @ P1U @ s" SQ" ASSERT$
-   P2A @ P2U @ s" ( n -- n )" ASSERT$
+   P1A@ P1U @ s" SQ" ASSERT$
+   P2A@ P2U @ s" ( n -- n )" ASSERT$
    s" TRUSTED: TRAW ( a n -- ) catch ;" TRUST-SITE? ASSERT
-   P1A @ P1U @ s" TRAW" ASSERT$
-   P2A @ P2U @ s" a n --" ASSERT$
+   P1A@ P1U @ s" TRAW" ASSERT$
+   P2A@ P2U @ s" a n --" ASSERT$
    s" \ TRUSTED: FAKE ( -- )" TRUST-SITE? 0= ASSERT
    s" ( TRUSTED: FAKE ( -- ) )" TRUST-SITE? 0= ASSERT
    TRUST-STRING-FALSE$ TRUST-SITE? 0= ASSERT
    SRC-FIX$ SRC-PATH-REF? ASSERT
-   P1A @ P1U @ s" src/habu/repl.f" ASSERT$
+   P1A@ P1U @ s" src/habu/repl.f" ASSERT$
    BT-FIX$ BACKTICK-PATH? ASSERT
-   P1A @ P1U @ s" tools/lint/source-lex.f" ASSERT$
+   P1A@ P1U @ s" tools/lint/source-lex.f" ASSERT$
    s" `plain`" BACKTICK-PATH? 0= ASSERT ;
 
 : TEST-SIGS  ( -- )

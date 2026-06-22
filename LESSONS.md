@@ -105,7 +105,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Pointer cells need typed field addresses:** `@`/`!` already preserve nested
   pointer types once the address is `ptr ptr x`; use the checked `ptr-field`
   primitive to construct that address instead of adding `TRUSTED:` reload
-  helpers for variables or record fields.
+  helpers for variables, record fields, or shared scanner capture cells.
 
 ## Runtime And REPL
 

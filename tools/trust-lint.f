@@ -219,16 +219,16 @@ variable TL-NV
 : TL-DUP-SITE ( n -- )
    s" DUPLICATE-TRUST " TL-OUT
    TL-CUR-PATH-A @ TL-CUR-PATH-U @ TL-OUT TL-COLON TL-C TL-CUR-LINE @ TL-U.
-   s" : `" TL-OUT P1A @ P1U @ TL-OUT
+   s" : `" TL-OUT P1A@ P1U @ TL-OUT
    s" ` already trusted at " TL-OUT
    TL-PRINT-SITE TL-NL
    TL-BAD+ ;
 
 : TL-ADD-SITE ( -- )
-   P1A @ P1U @ TL-FIND-SITE dup 0 >= IF TL-DUP-SITE ELSE drop THEN
+   P1A@ P1U @ TL-FIND-SITE dup 0 >= IF TL-DUP-SITE ELSE drop THEN
    TL-S# @ TL-MAX >= IF s" trust-lint: too many TRUST sites" TL-FAIL THEN
-   P1A @ P1U @ TL-STORE$ TL-S-NL TL-S# @ TL-A! TL-S-NO TL-S# @ TL-A!
-   P2A @ P2U @ TL-STORE$ TL-S-EL TL-S# @ TL-A! TL-S-EO TL-S# @ TL-A!
+   P1A@ P1U @ TL-STORE$ TL-S-NL TL-S# @ TL-A! TL-S-NO TL-S# @ TL-A!
+   P2A@ P2U @ TL-STORE$ TL-S-EL TL-S# @ TL-A! TL-S-EO TL-S# @ TL-A!
    TL-CUR-PATH-A @ TL-CUR-PATH-U @ TL-STORE$ TL-S-PL TL-S# @ TL-A! TL-S-PO TL-S# @ TL-A!
    TL-CUR-LINE @ TL-S-LINE TL-S# @ TL-A!
    TL-S# @ 1+ TL-S# ! ;

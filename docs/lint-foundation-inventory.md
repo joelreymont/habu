@@ -1,8 +1,9 @@
 # Lint Foundation Inventory
 
-Current state for retiring `tools/lint/lib.f` as a broad foundation.
-The goal is to replace each concern with checked Habu libraries or narrow,
-manifested boundaries, then remove the file-wide `0 set-check` dependency.
+Current state for retiring `tools/lint/lib.f` as a broad compatibility
+foundation. The goal is to replace each remaining concern with checked Habu
+libraries or narrow, manifested boundaries, then remove the compatibility
+surfaces from this shared lint library.
 
 ## Boundary Groups
 
@@ -81,23 +82,25 @@ Users:
 Replacement direction: keep new lexer users on `lib/vector.f` and `ptr-field`;
 do not introduce raw table reloads or per-tool `TRUSTED:` pointer accessors.
 
-### PAT and trust-site scanners
+### Trust-site and path scanners
 
-Owned today by `tools/lint/lib.f:246-422`. These scanners keep parse state and
-capture spans in globals (`PSA`, `PSU`, `PX`, `P1A`, `P1U`, `P2A`, `P2U`,
-`PTA`, `PTU`).
+Owned today by `tools/lint/lib.f`. These checked scanners keep parse state and
+capture spans in compatibility globals (`PSA`, `PSU`, `PX`, `P1A`, `P1U`,
+`P2A`, `P2U`, `PTA`, `PTU`), with typed pointer accessors (`P1A@`, `P2A@`,
+`PTA@`, etc.) for checked callers.
 
 Users:
 
-- `tools/trust-lint.f:264` calls `TRUST-SITE?` when checking source against
+- `tools/trust-lint.f` calls `TRUST-SITE?` when checking source against
   `TRUSTED.md`.
-- `tools/lint/text-foundation-test.f:151-159` tests `TRUST-SITE?`.
+- `tools/lint/text-foundation-test.f` tests `TRUST-SITE?`, `SRC-PATH-REF?`, and
+  `BACKTICK-PATH?`.
 - `SRC-PATH-REF?` and `BACKTICK-PATH?` remain in `tools/lint/lib.f` and are part
-  of the legacy scanner surface.
+  of the compatibility scanner surface.
 
-Replacement direction: trust and path-site recognition should be a checked
-source scanner with token matching, comment/string skipping, and explicit span
-outputs. It should not rely on shared PAT global captures.
+Remaining direction: callers should use the typed capture accessors, not raw
+pointer-cell fetches. Future cleanup can replace the shared capture globals with
+explicit span outputs once all compatibility callers are gone.
 
 ## Follow-Up Dot Map
 

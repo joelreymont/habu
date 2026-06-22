@@ -237,8 +237,8 @@ TRUSTED: REPL-TOK-A@ ( -- ptr u8 ) REPL-TOK-A @ ;
 
 : LINT-REPL-FILE  {: pa pu :}  ( -- )
    pa pu REPL-ROOTED$ FILE-EXISTS? 0= if exit then
-   pa pu REPL-ROOTED$ REPL-FB REPL-FILE-CAP READ-FILE  P2U ! P2A !
-   pa pu  P2A @ P2U @  LINT-REPL-SOURCE ;
+   pa pu REPL-ROOTED$ REPL-FB REPL-FILE-CAP READ-FILE  P2U ! P2A!
+   pa pu  P2A@ P2U @  LINT-REPL-SOURCE ;
 
 : REPL-LINT  ( -- )
    0 REPL-BAD !

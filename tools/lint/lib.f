@@ -46,190 +46,206 @@ variable INTERN-END
    INTERN-FOLD-BUF u INTERN? ;
 
 \ ---- named scanners replacing the former regex use-cases ------------------
-0 set-check
-\ Explicit unchecked boundary: PAT-* scanners keep current parse state and
-\ captured source pointers in global cells shared with legacy lints.
+\ Scanner captures remain in shared cells for legacy callers, but scanner logic
+\ is checked and returns typed bools.
 variable PSA  variable PSU  variable PX  variable PSTART
 variable P1A  variable P1U  variable P2A  variable P2U
 variable PTA  variable PTU
-: PAT-RESET  {: a u :}  ( -- )  a PSA !  u PSU !  0 PX !  0 P1U !  0 P2U ! ;
-: PAT-END?  ( -- f )  PX @ PSU @ >= ;
-: PAT-C@  ( -- c )  PSA @ PX @ + c@ ;
-: PAT-WS?  ( -- f )  PAT-END? 0= IF PAT-C@ WS? ELSE 0 THEN ;
-: PAT-SKIP-WS  ( -- )  begin PAT-WS? while PX @ 1+ PX ! repeat ;
-: PAT-WORD-END?  ( -- f )  PAT-END? IF -1 ELSE PAT-C@ WS? THEN ;
-: PAT-SQ?  ( -- f )
-   PX @ 1+ PSU @ >= IF 0 exit THEN
-   PSA @ PX @ + c@ FOLD 115 =  PSA @ PX @ 1+ + c@ DQUOTE = and ;
-: PAT-CAP-1  ( -- f )
-   PAT-SQ? 0= IF 0 exit THEN
-   PX @ 2 + PX !  PAT-WS? 0= IF 0 exit THEN
-   PAT-SKIP-WS  PSA @ PX @ + P1A !
-   begin PAT-END? 0= PAT-C@ DQUOTE <> and while PX @ 1+ PX ! repeat
-   PAT-END? IF 0 exit THEN
-   PSA @ PX @ + P1A @ - P1U !  PX @ 1+ PX !  -1 ;
-: PAT-CAP-2  ( -- f )
-   PAT-SQ? 0= IF 0 exit THEN
-   PX @ 2 + PX !  PAT-WS? 0= IF 0 exit THEN
-   PAT-SKIP-WS  PSA @ PX @ + P2A !
-   begin PAT-END? 0= PAT-C@ DQUOTE <> and while PX @ 1+ PX ! repeat
-   PAT-END? IF 0 exit THEN
-   PSA @ PX @ + P2A @ - P2U !  PX @ 1+ PX !  -1 ;
-: PAT-CAP-WORD-1  ( -- f )
-   PAT-SKIP-WS
-   PAT-END? IF 0 exit THEN
-   PSA @ PX @ + P1A !
-   begin PAT-END? 0= PAT-C@ WS? 0= and while PX @ 1+ PX ! repeat
-   PSA @ PX @ + P1A @ - P1U !
-   P1U @ 0 > ;
-: PAT-CAP-PARENS-2  ( -- f )
-   PAT-SKIP-WS
-   PAT-END? IF 0 exit THEN
-   PAT-C@ 40 <> IF 0 exit THEN
-   PX @ 1+ PX !
-   PAT-SKIP-WS  PSA @ PX @ + P2A !
-   begin PAT-END? 0= PAT-C@ 41 <> and while PX @ 1+ PX ! repeat
-   PAT-END? IF 0 exit THEN
-   PSA @ PX @ + P2A @ - P2U !
-   P2A @ P2U @ TRIM P2U ! P2A !
-   PX @ 1+ PX !  -1 ;
-: PAT-MATCH-WORD  {: a u :}  ( -- f )
-   PSU @ PX @ - u < IF 0 exit THEN
-   PSA @ PX @ + u  a u STR=CI 0= IF 0 exit THEN
-   PX @ u + PX !  PAT-WORD-END? ;
-: PAT-TOK$  ( -- a u )
-   PTA @ PTU @ ;
-: PAT-TOK=  {: a u :}  ( -- f )
+
+: PSA-FIELD ( -- ptr ptr u8 )  PSA 0 ptr-field ;
+: P1A-FIELD ( -- ptr ptr u8 )  P1A 0 ptr-field ;
+: P2A-FIELD ( -- ptr ptr u8 )  P2A 0 ptr-field ;
+: PTA-FIELD ( -- ptr ptr u8 )  PTA 0 ptr-field ;
+
+: PSA@ ( -- ptr u8 )  PSA-FIELD @ ;
+: P1A@ ( -- ptr u8 )  P1A-FIELD @ ;
+: P2A@ ( -- ptr u8 )  P2A-FIELD @ ;
+: PTA@ ( -- ptr u8 )  PTA-FIELD @ ;
+
+: PSA! ( ptr u8 -- )  PSA-FIELD ! ;
+: P1A! ( ptr u8 -- )  P1A-FIELD ! ;
+: P2A! ( ptr u8 -- )  P2A-FIELD ! ;
+: PTA! ( ptr u8 -- )  PTA-FIELD ! ;
+
+: PAT-RESET ( ptr u8 n -- )
+   {: a:ptr u :}
+   a PSA!  u PSU !  0 PX !  0 P1U !  0 P2U ! ;
+
+: PAT-END? ( -- bool )
+   PX @ PSU @ >= ;
+
+: PAT-C@ ( -- n )
+   PSA@ PX @ + c@ ;
+
+: PAT-WS? ( -- bool )
+   PAT-END? IF LINT-FALSE ELSE PAT-C@ WS? THEN ;
+
+: PAT-ADV ( -- )
+   PX @ 1+ PX ! ;
+
+: PAT-SKIP-WS ( -- )
+   begin PAT-WS? while PAT-ADV repeat ;
+
+: PAT-WORD-END? ( -- bool )
+   PAT-END? IF LINT-TRUE ELSE PAT-C@ WS? THEN ;
+
+: PAT-TOK$ ( -- ptr u8 n )
+   PTA@ PTU @ ;
+
+: PAT-TOK= ( ptr u8 n -- bool )
+   {: a:ptr u :}
    PAT-TOK$ a u STR=CI ;
-: PAT-TOK-SQ?  ( -- f )
-   PTU @ 2 <> IF 0 exit THEN
-   PTA @ c@ FOLD 115 <> IF 0 exit THEN
-   PTA @ 1+ c@ DQUOTE = ;
-: PAT-TOK-STRING?  ( -- f )
-   PTU @ 2 <> IF 0 exit THEN
-   PTA @ 1+ c@ DQUOTE <> IF 0 exit THEN
-   PTA @ c@ FOLD 115 = IF -1 exit THEN
-   PTA @ c@ DOT = IF -1 exit THEN
-   PTA @ c@ FOLD 99 = ;
-: PAT-SKIP-LINE-COMMENT  ( -- )
-   begin PAT-END? 0= PAT-C@ 10 <> and while PX @ 1+ PX ! repeat ;
-: PAT-SKIP-PAREN-COMMENT  ( -- )
-   PX @ 1+ PX !
-   begin PAT-END? 0= PAT-C@ 41 <> and while PX @ 1+ PX ! repeat
-   PAT-END? 0= IF PX @ 1+ PX ! THEN ;
-: PAT-SKIP-IGNORED  ( -- )
+
+: PAT-TOK-SQ? ( -- bool )
+   PTU @ 2 <> IF LINT-FALSE exit THEN
+   PTA@ c@ FOLD 115 <> IF LINT-FALSE exit THEN
+   PTA@ 1+ c@ DQUOTE = ;
+
+: PAT-TOK-STRING? ( -- bool )
+   PTU @ 2 <> IF LINT-FALSE exit THEN
+   PTA@ 1+ c@ DQUOTE <> IF LINT-FALSE exit THEN
+   PTA@ c@ FOLD 115 = IF LINT-TRUE exit THEN
+   PTA@ c@ DOT = IF LINT-TRUE exit THEN
+   PTA@ c@ FOLD 99 = ;
+
+: PAT-SKIP-LINE-COMMENT ( -- )
+   begin PAT-END? 0= PAT-C@ 10 <> and while PAT-ADV repeat ;
+
+: PAT-SKIP-PAREN-COMMENT ( -- )
+   PAT-ADV
+   begin PAT-END? 0= PAT-C@ 41 <> and while PAT-ADV repeat
+   PAT-END? 0= IF PAT-ADV THEN ;
+
+: PAT-SKIP-IGNORED ( -- )
    begin
       PAT-SKIP-WS
       PAT-END? IF exit THEN
       PAT-C@ 92 = IF PAT-SKIP-LINE-COMMENT ELSE
       PAT-C@ 40 = IF PAT-SKIP-PAREN-COMMENT ELSE exit THEN THEN
    again ;
-: PAT-SKIP-STRING-BODY  ( -- )
+
+: PAT-SKIP-STRING-BODY ( -- )
    begin PAT-END? 0= while
-      PAT-C@ DQUOTE = IF PX @ 1+ PX ! exit THEN
-      PX @ 1+ PX !
+      PAT-C@ DQUOTE = IF PAT-ADV exit THEN
+      PAT-ADV
    repeat ;
-: PAT-READ-TOKEN  ( -- f )
+
+: PAT-READ-TOKEN ( -- bool )
    PAT-SKIP-IGNORED
-   PAT-END? IF 0 exit THEN
-   PSA @ PX @ + PTA !
-   begin PAT-END? 0= PAT-C@ WS? 0= and while PX @ 1+ PX ! repeat
-   PSA @ PX @ + PTA @ - PTU !
-   -1 ;
-: PAT-CAP-STRING-1  ( -- f )
-   PAT-TOK-SQ? 0= IF 0 exit THEN
-   PAT-END? IF 0 exit THEN
-   PAT-C@ WS? 0= IF 0 exit THEN
+   PAT-END? IF LINT-FALSE exit THEN
+   PSA@ PX @ + PTA!
+   begin PAT-END? 0= PAT-C@ WS? 0= and while PAT-ADV repeat
+   PSA@ PX @ + PTA@ - PTU !
+   LINT-TRUE ;
+
+: PAT-CAP-STRING-1 ( -- bool )
+   PAT-TOK-SQ? 0= IF LINT-FALSE exit THEN
+   PAT-END? IF LINT-FALSE exit THEN
+   PAT-C@ WS? 0= IF LINT-FALSE exit THEN
    PAT-SKIP-WS
-   PSA @ PX @ + P1A !
-   begin PAT-END? 0= PAT-C@ DQUOTE <> and while PX @ 1+ PX ! repeat
-   PAT-END? IF 0 exit THEN
-   PSA @ PX @ + P1A @ - P1U !
-   PX @ 1+ PX !
-   -1 ;
-: PAT-CAP-STRING-2  ( -- f )
-   PAT-TOK-SQ? 0= IF 0 exit THEN
-   PAT-END? IF 0 exit THEN
-   PAT-C@ WS? 0= IF 0 exit THEN
+   PSA@ PX @ + P1A!
+   begin PAT-END? 0= PAT-C@ DQUOTE <> and while PAT-ADV repeat
+   PAT-END? IF LINT-FALSE exit THEN
+   PSA@ PX @ + P1A@ - P1U !
+   PAT-ADV
+   LINT-TRUE ;
+
+: PAT-CAP-STRING-2 ( -- bool )
+   PAT-TOK-SQ? 0= IF LINT-FALSE exit THEN
+   PAT-END? IF LINT-FALSE exit THEN
+   PAT-C@ WS? 0= IF LINT-FALSE exit THEN
    PAT-SKIP-WS
-   PSA @ PX @ + P2A !
-   begin PAT-END? 0= PAT-C@ DQUOTE <> and while PX @ 1+ PX ! repeat
-   PAT-END? IF 0 exit THEN
-   PSA @ PX @ + P2A @ - P2U !
-   PX @ 1+ PX !
-   -1 ;
-: PAT-CAP-TOKEN-1  ( -- f )
-   PAT-READ-TOKEN 0= IF 0 exit THEN
-   PTA @ P1A !  PTU @ P1U !
+   PSA@ PX @ + P2A!
+   begin PAT-END? 0= PAT-C@ DQUOTE <> and while PAT-ADV repeat
+   PAT-END? IF LINT-FALSE exit THEN
+   PSA@ PX @ + P2A@ - P2U !
+   PAT-ADV
+   LINT-TRUE ;
+
+: PAT-CAP-TOKEN-1 ( -- bool )
+   PAT-READ-TOKEN 0= IF LINT-FALSE exit THEN
+   PTA@ P1A!  PTU @ P1U !
    P1U @ 0 > ;
-: PAT-CAP-EFFECT-2  ( -- f )
+
+: PAT-CAP-EFFECT-2 ( -- bool )
    PAT-SKIP-WS
-   PAT-END? IF 0 exit THEN
-   PAT-C@ 40 <> IF 0 exit THEN
-   PX @ 1+ PX !
+   PAT-END? IF LINT-FALSE exit THEN
+   PAT-C@ 40 <> IF LINT-FALSE exit THEN
+   PAT-ADV
    PAT-SKIP-WS
-   PSA @ PX @ + P2A !
-   begin PAT-END? 0= PAT-C@ 41 <> and while PX @ 1+ PX ! repeat
-   PAT-END? IF 0 exit THEN
-   PSA @ PX @ + P2A @ - P2U !
-   P2A @ P2U @ TRIM P2U ! P2A !
-   PX @ 1+ PX !
-   -1 ;
-: TRUST-LITERAL-SITE?  {: a u :}  ( -- f )  \ s" name" s" effect" TRUST
+   PSA@ PX @ + P2A!
+   begin PAT-END? 0= PAT-C@ 41 <> and while PAT-ADV repeat
+   PAT-END? IF LINT-FALSE exit THEN
+   PSA@ PX @ + P2A@ - P2U !
+   P2A@ P2U @ TRIM P2U ! P2A!
+   PAT-ADV
+   LINT-TRUE ;
+
+: TRUST-LITERAL-SITE? ( ptr u8 n -- bool )
+   \ s" name" s" effect" TRUST
+   {: a:ptr u :}
    a u PAT-RESET
    begin PAT-READ-TOKEN while
       PAT-TOK-SQ? IF
          PAT-CAP-STRING-1 IF
             PAT-READ-TOKEN IF
                PAT-CAP-STRING-2 IF
-                  PAT-READ-TOKEN IF s" TRUST" PAT-TOK= IF -1 exit THEN THEN
+                  PAT-READ-TOKEN IF s" TRUST" PAT-TOK= IF LINT-TRUE exit THEN THEN
                THEN
             THEN
          THEN
       ELSE
          PAT-TOK-STRING? IF PAT-SKIP-STRING-BODY THEN
       THEN
-   repeat  0 ;
-: TRUSTED-DEF-SITE?  {: a u :}  ( -- f )  \ TRUSTED: name ( effect )
+   repeat  LINT-FALSE ;
+
+: TRUSTED-DEF-SITE? ( ptr u8 n -- bool )
+   \ TRUSTED: name ( effect )
+   {: a:ptr u :}
    a u PAT-RESET
    begin PAT-READ-TOKEN while
       s" TRUSTED:" PAT-TOK= IF
-         PAT-CAP-TOKEN-1 IF PAT-CAP-EFFECT-2 IF -1 exit THEN THEN
+         PAT-CAP-TOKEN-1 IF PAT-CAP-EFFECT-2 IF LINT-TRUE exit THEN THEN
       ELSE
          PAT-TOK-STRING? IF PAT-SKIP-STRING-BODY THEN
       THEN
-   repeat  0 ;
-: TRUST-SITE?  {: a u :}  ( -- f )
-   a u TRUST-LITERAL-SITE? IF -1 exit THEN
+   repeat  LINT-FALSE ;
+
+: TRUST-SITE? ( ptr u8 n -- bool )
+   {: a:ptr u :}
+   a u TRUST-LITERAL-SITE? IF LINT-TRUE exit THEN
    a u TRUSTED-DEF-SITE? ;
-: SRC-PATH-REF?  {: a u :}  ( -- f )  \ token ending -SRC, then s" src/*.f"
+
+: SRC-PATH-REF? ( ptr u8 n -- bool )
+   \ token ending -SRC, then s" src/*.f"
+   {: a:ptr u :}
    a u PAT-RESET
-   begin PAT-END? 0= while
-      begin PAT-END? 0= PAT-C@ WS? and while PX @ 1+ PX ! repeat
-      PX @ PSTART !
-      begin PAT-END? 0= PAT-C@ WS? 0= and while PX @ 1+ PX ! repeat
-      PSA @ PSTART @ +  PX @ PSTART @ -  s" -SRC" SUFFIX? IF
-         PAT-SKIP-WS
-         PAT-CAP-1 IF
-            P1A @ P1U @ s" src/" STARTS-WITH?  P1A @ P1U @ s" .f" HAS-EXT? and IF -1 exit THEN
+   begin PAT-READ-TOKEN while
+      PAT-TOK$ s" -SRC" SUFFIX? IF
+         PAT-READ-TOKEN IF
+            PAT-CAP-STRING-1 IF
+               P1A@ P1U @ s" src/" STARTS-WITH?
+               P1A@ P1U @ s" .f" HAS-EXT? and IF LINT-TRUE exit THEN
+            THEN
          THEN
       THEN
-   repeat  0 ;
-: BACKTICK-PATH?  {: a u :}  ( -- f )
+   repeat  LINT-FALSE ;
+
+: BACKTICK-PATH? ( ptr u8 n -- bool )
+   {: a:ptr u :}
    a u PAT-RESET
    begin PAT-END? 0= while
       PAT-C@ 96 = IF
-         PX @ 1+ PX !  PSA @ PX @ + P1A !
-         begin PAT-END? 0= PAT-C@ 96 <> and while PX @ 1+ PX ! repeat
-         PAT-END? IF 0 exit THEN
-         PSA @ PX @ + P1A @ - P1U !
-         P1A @ P1U @ PATHISH? IF -1 exit THEN
+         PAT-ADV  PSA@ PX @ + P1A!
+         begin PAT-END? 0= PAT-C@ 96 <> and while PAT-ADV repeat
+         PAT-END? IF LINT-FALSE exit THEN
+         PSA@ PX @ + P1A@ - P1U !
+         P1A@ P1U @ PATHISH? IF LINT-TRUE exit THEN
       THEN
-      PX @ 1+ PX !
-   repeat  0 ;
+      PAT-ADV
+   repeat  LINT-FALSE ;
 
 \ Signature comment classification used by strict source tools.
-' LINT-CHECK-HOOK set-check
 
 0 constant SIG-MISSING
 1 constant SIG-TYPED
