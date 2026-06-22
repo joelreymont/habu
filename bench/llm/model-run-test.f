@@ -64,6 +64,7 @@ prompt	Prompt	/bin/echo	{prompt}	raw		2
 claude	Claude	/bin/echo	-p {prompt} --output-format json	raw		2
 codex	Codex	/bin/echo	codex-exec {prompt}	raw		2
 empty	Empty	/bin/echo		raw		2
+slow	Slow	/bin/sleep	{prompt}	raw		1
 bad	Bad	/bin/echo	--bad-template	raw		2
 " ;
 
@@ -129,6 +130,10 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    s" empty" s" fallback" MRT-RUN
    MRUN-TEXT$ s" fallback
 " T$=
+   s" slow" s" 2" MRT-RUN
+   MRUN-RC @ 137 T=
+   MRUN-OUT$ nip 0 T=
+   MRUN-ERR$ nip 0 T=
    [: MRT-BAD-TEMPLATE ;] E-MRUN-TEMPLATE TTHROWSQ
    T-REPORT
    s" model-run-test: ok" type cr ;

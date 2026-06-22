@@ -70,10 +70,12 @@ variable PROC-OUTCOME-CODE
    then
    PROC-OUTCOME-SIGNAL term ;
 
-: PROC-STATUS>RC ( n -- rc )
-   PROC-STATUS>OUTCOME {: kind code :}
+: PROC-OUTCOME>RC ( n n -- rc ) {: kind code :}
    kind PROC-OUTCOME-EXIT = if code >RC exit then
    128 code + >RC ;
+
+: PROC-STATUS>RC ( n -- rc )
+   PROC-STATUS>OUTCOME PROC-OUTCOME>RC ;
 
 : WAIT-OUTCOME ( pid -- n n )
    WAIT-STATUS PROC-STATUS>OUTCOME ;

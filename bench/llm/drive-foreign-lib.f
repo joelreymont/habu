@@ -311,7 +311,7 @@ variable DFG-START
    kind DFG-RUNTIME-KIND !
    erru LEN>N DS-ERR-U !
    outu LEN>N DS-OUT-U !
-   kind PROC-OUTCOME-EXIT = if code else 128 code + then DS-RC ! ;
+   kind code PROC-OUTCOME>RC RC>N DS-RC ! ;
 
 : DFG-CAPTURE-ARGV ( ptr u8 n -- ) {: exe:ptr exeu :}
    PROC-ENV-INHERIT-MISSING

@@ -190,8 +190,29 @@ variable REBT-NUM-I
    s" 10" BFT-TSV-LAST
    BFT$ ;
 
+: REBT-BAD-MODELS-TEXT$ ( -- ptr u8 n )
+   BFT-RESET
+   s" id" BFT-TSV-CELL
+   s" label" BFT-TSV-CELL
+   s" command" BFT-TSV-CELL
+   s" args" BFT-TSV-CELL
+   s" parser" BFT-TSV-CELL
+   s" token_fields" BFT-TSV-CELL
+   s" timeout_s" BFT-TSV-LAST
+   s" aotfix" BFT-TSV-CELL
+   s" BrokenFixture" BFT-TSV-CELL
+   s" /bin/echo" BFT-TSV-CELL
+   s" --bad-template" BFT-TSV-CELL
+   s" raw" BFT-TSV-CELL
+   BFT-TSV-BLANK
+   s" 10" BFT-TSV-LAST
+   BFT$ ;
+
 : REBT-WRITE-MODELS ( -- )
    REBT-MODELS$ REBT-MODELS-TEXT$ WRITE-ALL ;
+
+: REBT-WRITE-BAD-MODELS ( -- )
+   REBT-MODELS$ REBT-BAD-MODELS-TEXT$ WRITE-ALL ;
 
 : REBT-RUN-EXPANDED-LOADS ( -- )
    s" --load"  >LEN PROC-ARGV+
@@ -215,7 +236,7 @@ variable REBT-NUM-I
    s" BENCH_RESULTS" >LEN REBT-REPORT$ >LEN PROC-ENV+
    s" BENCH_SEED" >LEN seed seedu >LEN PROC-ENV+ ;
 
-: REBT-RUN-EXPANDED-SPAWN ( -- )
+: REBT-RUN-EXPANDED-CAPTURE ( -- n n n )
    PROC-ENV-INHERIT-MISSING
    REBT-RUN-EXPANDED-LOADS
    s" --"  >LEN PROC-ARGV+
@@ -223,8 +244,12 @@ variable REBT-NUM-I
    REBT-OUT-PATH$  >LEN PROC-ARGV+
    s" bin/hb" >LEN REBT-OUT REBT-CAP >LEN REBT-ERR REBT-CAP >LEN
    REBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
-   rc RC>N 0 T=
-   erru LEN>N 0 T=
+   outu LEN>N erru LEN>N rc RC>N ;
+
+: REBT-RUN-EXPANDED-SPAWN ( -- )
+   REBT-RUN-EXPANDED-CAPTURE {: outu erru rc :}
+   rc 0 T=
+   erru 0 T=
    outu drop ;
 
 : REBT-RUN-AOT-EXPANDED ( -- )
@@ -256,6 +281,20 @@ variable REBT-NUM-I
 
 : REBT-NOT-CONTAINS ( ptr u8 n ptr u8 n -- )
    CONTAINS? 0= TTRUE ;
+
+: REBT-RUN-MISSING-FORTH-ROW ( -- )
+   REBT-WRITE-BAD-MODELS
+   s" 1" s" run-expanded-missing-row-2026-06-22" REBT-RUN-EXPANDED-START
+   s" BENCH_FORTH_MODES" >LEN s" repair" >LEN PROC-ENV+
+   REBT-RUN-EXPANDED-CAPTURE {: outu erru rc :}
+   rc 0= 0= TTRUE
+   outu drop
+   REBT-ERR erru s" missing forth result row" REBT-CONTAINS
+   REBT-ERR erru s" task_id=1" REBT-CONTAINS
+   REBT-ERR erru s" model_id=aotfix" REBT-CONTAINS
+   REBT-ERR erru s" arm=habu-forth" REBT-CONTAINS
+   REBT-ERR erru s" trial=1" REBT-CONTAINS
+   REBT-ERR erru s" child_rc=" REBT-CONTAINS ;
 
 : REBT-ARM-REPORT$ ( ptr u8 n -- ptr u8 n ) {: arm:ptr armu :}
    SB-RESET
@@ -379,6 +418,7 @@ variable REBT-NUM-I
 : REBT-MAIN ( -- )
    T-RESET
    REBT-PREPARE
+   REBT-RUN-MISSING-FORTH-ROW
    REBT-RUN-AOT-CASE
    REBT-RUN-FORTH-CASE
    REBT-RUN-ARRAY-CASE

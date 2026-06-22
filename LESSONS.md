@@ -149,6 +149,11 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **PTY behavior needs a real pty harness:** `script(1)` interleaves echo/output.
   Drive a pty directly and poll for exit when testing prompt, raw mode, history,
   Ctrl-C/Ctrl-D, and async termination.
+- **Row-emitting benchmark children use outcome capture:** rc-only capture throws
+  on timeout before the child can emit a JSONL row, leaving the parent with only
+  a missing-row symptom. Use the checked `*-OUTCOME` process APIs and convert
+  `kind code` with `PROC-OUTCOME>RC`, then make parent missing-row errors include
+  task/model/arm/trial/child rc.
 
 ## Native Codegen And AOT
 

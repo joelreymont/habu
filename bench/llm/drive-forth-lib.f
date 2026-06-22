@@ -211,11 +211,7 @@ TRUSTED: DFH-BUNDLE$ ( -- ptr u8 n )
    kind DFH-TEST-KIND !
    erru LEN>N DS-ERR-U !
    outu LEN>N DS-OUT-U !
-   kind PROC-OUTCOME-EXIT = if
-      code DS-RC !
-   else
-      128 code + DS-RC !
-   then ;
+   kind code PROC-OUTCOME>RC RC>N DS-RC ! ;
 
 : DFH-CHECK-ARGV ( -- )
    PROC-ARGV-ENV-RESET

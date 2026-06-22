@@ -492,6 +492,22 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    s" ," SB-APPEND
    RB-SNIP4 RB-SNIP4-U RB-SNIP-COPY ;
 
+: RB-MISSING-ROW-DIE ( ptr u8 n ptr u8 n ptr u8 n n n -- )
+   {: msg:ptr msgu model:ptr modelu arm:ptr armu trial rc :}
+   SB-RESET
+   msg msgu SB-APPEND
+   s"  task_id=" SB-APPEND
+   BM-T-ID RB-TASK-FIELD$ SB-APPEND
+   s"  model_id=" SB-APPEND
+   model modelu SB-APPEND
+   s"  arm=" SB-APPEND
+   arm armu SB-APPEND
+   s"  trial=" SB-APPEND
+   trial RB-SB-U+
+   s"  child_rc=" SB-APPEND
+   rc RB-SB-U+
+   SB$ RB-DIE ;
+
 TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    RB-ROW-A @ RB-ROW-U @ ;
 
@@ -524,6 +540,13 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
       RB-ROW-MATCH? if RB-TRUE exit then
    repeat
    RB-FALSE ;
+
+: RB-RUN-HB-EXPECT-ROW ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: msg:ptr msgu model:ptr modelu arm:ptr armu trial :}
+   RB-RUN-HB-APPEND {: rc :}
+   BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? 0= if
+      msg msgu model modelu arm armu trial rc RB-MISSING-ROW-DIE
+   then ;
 
 : RB-ADD-COMMON-ENV ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    RB-PROC-PATH
@@ -715,10 +738,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    mode modeu RB-ARM-FOR-MODE$ {: arm:ptr armu :}
    BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
    model modelu mode modeu trial RB-FORTH-ARGS
-   RB-RUN-HB-APPEND drop
-   BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? 0= if
-      s" run-expanded-bench: missing forth result row" RB-DIE
-   then ;
+   s" run-expanded-bench: missing forth result row" model modelu arm armu trial RB-RUN-HB-EXPECT-ROW ;
 
 : RB-RUN-FORTH-MODES ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    0 RB-MODE-NEXT !
@@ -739,71 +759,46 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
    arm armu RB-ARRAY-HABU? if
       model modelu arm armu trial RB-ARRAY-HABU-ARGS
-      RB-RUN-HB-APPEND drop
    else
       arm armu RB-ARRAY-FOREIGN? 0= if s" run-expanded-bench: unknown BENCH_ARRAY_ARMS entry" RB-DIE then
       model modelu arm armu trial RB-ARRAY-ARGS
-      RB-RUN-HB-APPEND drop
    then
-   BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? 0= if
-      s" run-expanded-bench: missing array result row" RB-DIE
-   then ;
+   s" run-expanded-bench: missing array result row" model modelu arm armu trial RB-RUN-HB-EXPECT-ROW ;
 
 : RB-RUN-STDLIB-STACK-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib" trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
    model modelu trial RB-STDLIB-ARGS
-   RB-RUN-HB-APPEND drop
-   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib" trial RB-ROW-DONE? 0= if
-      s" run-expanded-bench: missing stdlib stack result row" RB-DIE
-   then ;
+   s" run-expanded-bench: missing stdlib stack result row" model modelu s" habu-stdlib" trial RB-RUN-HB-EXPECT-ROW ;
 
 : RB-RUN-STDLIB-REGEX-NEGATIVE-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib" trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
    model modelu trial RB-REGEX-NEGATIVE-ARGS
-   RB-RUN-HB-APPEND drop
-   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib" trial RB-ROW-DONE? 0= if
-      s" run-expanded-bench: missing regex negative result row" RB-DIE
-   then ;
+   s" run-expanded-bench: missing regex negative result row" model modelu s" habu-stdlib" trial RB-RUN-HB-EXPECT-ROW ;
 
 : RB-RUN-STDLIB-FILE-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib-file" trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
    model modelu trial RB-FILE-ARGS
-   RB-RUN-HB-APPEND drop
-   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib-file" trial RB-ROW-DONE? 0= if
-      s" run-expanded-bench: missing stdlib file result row" RB-DIE
-   then ;
+   s" run-expanded-bench: missing stdlib file result row" model modelu s" habu-stdlib-file" trial RB-RUN-HB-EXPECT-ROW ;
 
 : RB-RUN-STDLIB-PROCESS-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib-process" trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
    model modelu trial RB-PROCESS-ARGS
-   RB-RUN-HB-APPEND drop
-   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib-process" trial RB-ROW-DONE? 0= if
-      s" run-expanded-bench: missing stdlib process result row" RB-DIE
-   then ;
+   s" run-expanded-bench: missing stdlib process result row" model modelu s" habu-stdlib-process" trial RB-RUN-HB-EXPECT-ROW ;
 
 : RB-RUN-STDLIB-PROPERTY-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib-property" trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
    model modelu trial RB-PROPERTY-ARGS
-   RB-RUN-HB-APPEND drop
-   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib-property" trial RB-ROW-DONE? 0= if
-      s" run-expanded-bench: missing stdlib property result row" RB-DIE
-   then ;
+   s" run-expanded-bench: missing stdlib property result row" model modelu s" habu-stdlib-property" trial RB-RUN-HB-EXPECT-ROW ;
 
 : RB-RUN-STDLIB-BUILD-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib-build" trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
    model modelu trial RB-BUILD-ARGS
-   RB-RUN-HB-APPEND drop
-   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-stdlib-build" trial RB-ROW-DONE? 0= if
-      s" run-expanded-bench: missing stdlib build result row" RB-DIE
-   then ;
+   s" run-expanded-bench: missing stdlib build result row" model modelu s" habu-stdlib-build" trial RB-RUN-HB-EXPECT-ROW ;
 
 : RB-RUN-AOT-ONE ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    BM-T-ID RB-TASK-FIELD$ model modelu s" habu-aot" trial RB-ROW-DONE? RB-RESUME @ 0 <> and if exit then
    model modelu trial RB-AOT-ARGS
-   RB-RUN-HB-APPEND drop
-   BM-T-ID RB-TASK-FIELD$ model modelu s" habu-aot" trial RB-ROW-DONE? 0= if
-      s" run-expanded-bench: missing AOT result row" RB-DIE
-   then ;
+   s" run-expanded-bench: missing AOT result row" model modelu s" habu-aot" trial RB-RUN-HB-EXPECT-ROW ;
 
 : RB-RUN-ARRAY-ARMS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    0 RB-MODE-NEXT !

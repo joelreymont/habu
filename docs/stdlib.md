@@ -603,6 +603,7 @@ PROC-ZCOPY          ( ptr u8 len ptr u8 len -- ptr u8 )
 PATHZ               ( ptr u8 len -- ptr u8 )
 WAIT-STATUS         ( pid -- n )
 PROC-STATUS>OUTCOME ( n -- n n )
+PROC-OUTCOME>RC     ( n n -- rc )
 PROC-STATUS>RC      ( n -- rc )
 WAIT-OUTCOME        ( pid -- n n )
 WAIT-RC             ( pid -- rc )
@@ -655,8 +656,8 @@ explicit stdin, stdout, and stderr fds. `SPAWN-IO` and `WAIT-RC` throw
 `E-PROC-WAIT` on primitive failure. `WAIT-OUTCOME` decodes that status into
 `kind code`; `kind` is `PROC-OUTCOME-EXIT`, `PROC-OUTCOME-SIGNAL`, or
 `PROC-OUTCOME-TIMEOUT`, and `code` is the exit code or signal number.
-`WAIT-RC` preserves the historical exit-code API for normal exits and maps
-signaled children to `128 + signal`.
+`PROC-OUTCOME>RC` preserves the historical exit-code API for normal exits and
+maps non-exit outcomes to `128 + signal`; `PROC-STATUS>RC` and `WAIT-RC` use it.
 
 `SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
 `fd` roles. Negative fd values mean inherit/default; nonnegative fd values are passed
