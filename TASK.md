@@ -17,11 +17,11 @@ Bootstrap emitters are no longer inputs to the default lint gate.
 ## Status
 
 ### Done
-- **`tools/lint/lib.f`** — habu string/file library: `READ-FILE` (slurp via
-  open/read/close), `STR=`/`STR=CI`/`PREFIX?`/`FIND-SUB`/`CONTAINS?`,
-  `TOKENIZE` (whitespace tokens, strips `\` and — when `PARENS?` set — `( )`
-  comments, tracks column-0 via `TBOL`), `TOK`/`TOK0?`/`TEOL?`/`TOK=` (stack-based),
-  `BMOVE`/`FOLD`/`FOLD-TO`, and bounded intern/set helpers.
+- **`tools/lint/text.f`** — checked habu string/file library: `READ-FILE`
+  (slurp via open/read/close), `STR=`/`STR=CI`/`PREFIX?`/`FIND-SUB`/
+  `CONTAINS?`, `BMOVE`/`FOLD`/`FOLD-TO`, and split/path helpers.
+- **`tools/lint/lib.f`** — tokenizer, PAT scanners, and bounded intern/set
+  helpers that are still being split into checked foundations.
 - **`tools/lint/shadow-lint.f`** — reproduces the prim-shadow check.
 - **`tools/lint/clobber-lint.f`** — reproduces the register-clobber model.
 - **`tools/host-lint.f`** — gates retired host-script workflow tokens and stale
@@ -35,6 +35,6 @@ status for the self-hosted lint migration.
 
 ## How to run / verify
 ```
-cat tools/lint/lib.f tools/lint/shadow-lint.f  | bin/hb
-cat tools/lint/lib.f tools/lint/clobber-lint.f | bin/hb
+bin/hb --load tools/lint/text.f tools/lint/lib.f tools/lint/shadow-lint.f
+bin/hb --load tools/lint/text.f tools/lint/lib.f tools/lint/clobber-lint.f
 ```

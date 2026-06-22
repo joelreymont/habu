@@ -1,6 +1,6 @@
 # Lint Foundation Inventory
 
-Current state for retiring `tools/lint/lib.f` as a broad unchecked foundation.
+Current state for retiring `tools/lint/lib.f` as a broad foundation.
 The goal is to replace each concern with checked Habu libraries or narrow,
 manifested boundaries, then remove the file-wide `0 set-check` dependency.
 
@@ -8,8 +8,7 @@ manifested boundaries, then remove the file-wide `0 set-check` dependency.
 
 ### File and string helpers
 
-Owned today by `tools/lint/lib.f:14-58`, `tools/lint/lib.f:95-113`, and
-`tools/lint/lib.f:159-244`.
+Owned today by checked `tools/lint/text.f`.
 
 Users:
 
@@ -22,10 +21,10 @@ Users:
 - `bench/llm/validate-results.f:1039` uses `READ-FILE` to load the task
   manifest while validating result rows.
 
-Replacement direction: checked `lib/fs.f`, `lib/string.f`, `tools/string.f`, and
-a checked line-stream API should own this. Entry points already made checked
-should stop depending on legacy `tools/lint/lib.f` once the shared APIs cover the
-same behavior.
+Replacement direction: keep callers loading `tools/lint/text.f` explicitly while
+shared `lib/fs.f`, `lib/string.f`, `tools/string.f`, and a checked line-stream
+API mature enough to absorb the surface. Do not move text helpers back into
+`tools/lint/lib.f`.
 
 ### Tokenizer arrays
 
@@ -103,6 +102,8 @@ outputs. It should not rely on shared PAT global captures.
 
 ## Follow-Up Dot Map
 
+- `caf-5d0e5d9f745ae1a9` extracted checked text/file helpers into
+  `tools/lint/text.f`.
 - `caf-ca64bff01d98a49f` adds the checked line-stream/read foundation.
 - `caf-7df3176d9a848aa6` adds typed growable vectors needed by token and set
   tables.

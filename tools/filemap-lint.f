@@ -1,5 +1,5 @@
 \ filemap-lint.f - keep FILEMAP.md useful as an agent navigation index.
-\ Load after tools/lint/lib.f.
+\ Load after tools/lint/text.f and tools/lint/lib.f.
 
 create FM-BUF $20000 allot
 create FM-NUM 32 allot

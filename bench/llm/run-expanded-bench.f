@@ -633,7 +633,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
 
 : RB-FORTH-LOADS ( -- )
    RB-STDLIB-LOADS
-   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/lib.f"  >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
    s" bench/llm/forth-task-lines-lib.f"  >LEN PROC-ARGV+
    s" bench/llm/attempt-solutions-lib.f"  >LEN PROC-ARGV+

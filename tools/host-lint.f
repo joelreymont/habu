@@ -1,5 +1,5 @@
 \ host-lint.f - reject retired host-script workflow hooks.
-\ Load after tools/lint/lib.f and tools/fs.f.
+\ Load after tools/lint/text.f, tools/lint/lib.f, and tools/fs.f.
 
 0 set-check
 

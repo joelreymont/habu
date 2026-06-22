@@ -1,5 +1,5 @@
 \ json-writer.f - small emit-only JSON writer for native lints.
-\ Load after tools/lint/lib.f. This is intentionally smaller than tools/json.f.
+\ Load after tools/lint/text.f and tools/lint/lib.f. This is intentionally smaller than tools/json.f.
 
 0 set-check
 

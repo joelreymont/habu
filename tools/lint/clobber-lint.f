@@ -1,6 +1,6 @@
 \ clobber-lint.f -- register-clobber analysis for BL-able emitter routines.
 \ Self-hosted clobber lint. Run:
-\   cat tools/lint/lib.f tools/lint/clobber-lint.f | bin/hb
+\   bin/hb --load tools/lint/text.f tools/lint/lib.f tools/lint/clobber-lint.f
 
 create FB 131072 allot
 

@@ -1,6 +1,6 @@
 \ trust-lint.f - keep TRUST sites pinned to TRUSTED.md.
-\ Load after tools/date.f, tools/lint/lib.f, tools/fs.f, and tools/argv.f.
-\ Run: bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/argv.f tools/trust-lint.f -- [ROOT] [TODAY]
+\ Load after tools/date.f, tools/lint/text.f, tools/lint/lib.f, tools/fs.f, and tools/argv.f.
+\ Run: bin/hb --load tools/date.f tools/lint/text.f tools/lint/lib.f tools/fs.f tools/argv.f tools/trust-lint.f -- [ROOT] [TODAY]
 \ Or:  bin/hb --load ... tools/trust-lint.f -- source-only SOURCE [ROOT] [TODAY]
 
 0 set-check

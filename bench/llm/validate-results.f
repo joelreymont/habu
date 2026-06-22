@@ -1,5 +1,6 @@
 \ validate-results.f - validate and summarize LLM benchmark metrics.
-\ Load after lib/errors.f, lib/memory.f, tools/lint/lib.f, tools/json.f,
+\ Load after lib/errors.f, lib/memory.f, tools/lint/text.f, tools/lint/lib.f,
+\ tools/json.f,
 \ and tools/argv.f.
 
 0 set-check

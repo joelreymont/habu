@@ -1,5 +1,5 @@
 \ source-lex.f — source lexer records for self-hosted tooling.
-\ Load after lib/memory.f, lib/vector.f, and tools/lint/lib.f.
+\ Load after lib/memory.f, lib/vector.f, tools/lint/text.f, and tools/lint/lib.f.
 
 1 constant L-WORD
 2 constant L-COMMENT
@@ -134,7 +134,7 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
 
 : LEX-WORD ( -- )
    begin LEX-END? 0= LEX-C@ WS? 0= and while LEX-ADV drop repeat
-   L-WORD LEX-A@ LS @ + LX @ LS @ - LS @ LSL @ LSC @ 0 0 LEX-ADD
+   L-WORD LEX-A@ LS @ + LX @ LS @ - LS @ LSL @ LSC @ LEX-A@ 0 LEX-ADD
    L# @ 1- LTOK STRING-OPENER? if LEX-SKIP-QUOTE then ;
 
 : LEX-SOURCE ( ptr u8 n -- ) {: a:ptr u :}

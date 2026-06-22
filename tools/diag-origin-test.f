@@ -80,7 +80,7 @@ create DGT-ERR DGT-BUF-CAP allot
 : DGT-RUN ( -- n n n )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/lib.f"  >LEN PROC-ARGV+
    s" tools/diag-origin.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    DGT-IN  >LEN PROC-ARGV+

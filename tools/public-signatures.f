@@ -1,5 +1,5 @@
 \ public-signatures.f - emit a JSON manifest of typed public Forth definitions.
-\ Load after tools/lint/lib.f.
+\ Load after tools/lint/text.f and tools/lint/lib.f.
 
 0 set-check
 

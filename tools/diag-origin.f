@@ -1,5 +1,5 @@
 \ diag-origin.f - inject checker diagnostic origin markers before definitions.
-\ Load after tools/lint/lib.f. Run with bin/hb.
+\ Load after tools/lint/text.f and tools/lint/lib.f. Run with bin/hb.
 
 0 set-check
 
