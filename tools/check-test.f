@@ -160,6 +160,41 @@ variable CKT-LIST-U
    s" : GOOD ( bool -- i64 ) if FAIL else 7 then ;" SB-APPEND
    SB$ ;
 
+: CKT-THROW-BRANCH$ ( -- ptr u8 n )
+   SB-RESET
+   s" : GOOD ( bool -- i64 ) if 1 throw else 7 then ;" SB-APPEND
+   SB$ ;
+
+: CKT-THROW-WRAPPER$ ( -- ptr u8 n )
+   SB-RESET
+   s" : FAIL ( -- ) 1 throw ;" SB-APPEND
+   10 SB-APPEND-C
+   s" : GOOD ( bool -- i64 ) if FAIL else 7 then ;" SB-APPEND
+   SB$ ;
+
+: CKT-CATCH-THROW-RESIDUE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : OK ( i64 -- i64 n ) [: 99 1 throw ;] catch ;" SB-APPEND
+   SB$ ;
+
+: CKT-CATCH-THROW-WRAPPER$ ( -- ptr u8 n )
+   SB-RESET
+   s" : FAIL ( -- ) 1 throw ;" SB-APPEND
+   10 SB-APPEND-C
+   s" : OK ( -- n ) [: 99 FAIL ;] catch ;" SB-APPEND
+   SB$ ;
+
+: CKT-THROW-REDEF$ ( -- ptr u8 n )
+   SB-RESET
+   s" : FAIL ( -- ) 1 throw ;" SB-APPEND
+   10 SB-APPEND-C
+   s" : GOOD ( bool -- i64 ) if FAIL else 7 then ;" SB-APPEND
+   10 SB-APPEND-C
+   s" : FAIL ( -- ) ;" SB-APPEND
+   10 SB-APPEND-C
+   s" : BAD ( bool -- i64 ) if FAIL else 7 then ;" SB-APPEND
+   SB$ ;
+
 : CKT-EXIT-RETURNS$ ( -- ptr u8 n )
    SB-RESET
    s" : RET ( -- ) exit ;" SB-APPEND
@@ -284,6 +319,36 @@ variable CKT-LIST-U
    outu 0 T=
    erru 0 T= ;
 
+: CKT-TEST-THROW-BRANCH ( -- )
+   CKT-THROW-BRANCH$ CKT-RUN 0 T=
+   {: outu erru :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-THROW-WRAPPER ( -- )
+   CKT-THROW-WRAPPER$ CKT-RUN 0 T=
+   {: outu erru :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-CATCH-THROW-RESIDUE ( -- )
+   CKT-CATCH-THROW-RESIDUE$ CKT-RUN 0 T=
+   {: outu erru :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-CATCH-THROW-WRAPPER ( -- )
+   CKT-CATCH-THROW-WRAPPER$ CKT-RUN 0 T=
+   {: outu erru :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-THROW-REDEF ( -- )
+   CKT-THROW-REDEF$ CKT-RUN-JSON 70 T=
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" bad" CONTAINS? TTRUE ;
+
 : CKT-TEST-EXIT-RETURNS ( -- )
    CKT-EXIT-RETURNS$ CKT-RUN 70 T=
    {: outu erru :}
@@ -363,6 +428,11 @@ variable CKT-LIST-U
    CKT-TEST-PARSE-WORDS
    CKT-TEST-DIE
    CKT-TEST-DIE-NORETURN
+   CKT-TEST-THROW-BRANCH
+   CKT-TEST-THROW-WRAPPER
+   CKT-TEST-CATCH-THROW-RESIDUE
+   CKT-TEST-CATCH-THROW-WRAPPER
+   CKT-TEST-THROW-REDEF
    CKT-TEST-EXIT-RETURNS
    CKT-TEST-SET-CHECK-OFF
    CKT-TEST-HOOK-REPLACE

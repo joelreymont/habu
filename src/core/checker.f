@@ -40,12 +40,13 @@ create PTRA MAXPTR cells allot   variable PTRN
 256 constant MAXQE             \ quotation effects (din dout rin rout per record)
 create QEA MAXQE 32 * allot
 create QXDA MAXQE cells allot   create QXRA MAXQE cells allot
-create QXHA MAXQE cells allot   variable QEN
+create QXHA MAXQE cells allot   create QXNA MAXQE cells allot   variable QEN
 : MK-QUOT {: din dout rin rout :}   \ ( -- t ) allocate a quot<effect> term
    QEN @ MAXQE 1 - > IF s" checker: out of quot effects" 76 die THEN
    QEN @ 32 * QEA + {: a :}
    din a !  dout a 8 + !  rin a 16 + !  rout a 24 + !
    0 QEN @ cells QXHA + !
+   0 QEN @ cells QXNA + !
    0 QEN @ cells QXDA + !
    0 QEN @ cells QXRA + !
    QEN @ 3 lshift T-QUOT or  QEN @ 1 + QEN ! ;
@@ -54,10 +55,12 @@ create QXHA MAXQE cells allot   variable QEN
 : Q>RIN  PAY 32 * QEA + 16 + @ ;
 : Q>ROUT PAY 32 * QEA + 24 + @ ;
 : Q>XHAS PAY cells QXHA + @ ;
+: Q>XDEAD PAY cells QXNA + @ ;
 : Q>XDOUT PAY cells QXDA + @ ;
 : Q>XROUT PAY cells QXRA + @ ;
-: QX! {: q xhas xd xr :}
+: QX! {: q xhas xdead xd xr :}
    xhas q PAY cells QXHA + !
+   xdead q PAY cells QXNA + !
    xd q PAY cells QXDA + !
    xr q PAY cells QXRA + ! ;
 
@@ -193,6 +196,7 @@ variable FV
 variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
 variable THDROW  variable THRROW  variable THSET
+variable XROW  variable XRROW  variable XSET  variable DEADP
 
 : NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! 0 QEN ! 0 PTRN !
    FRESH MK-ROW dup BROW ! DCUR !
@@ -248,6 +252,10 @@ variable JSON-DIAGS   0 JSON-DIAGS !
    t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR ! ;
 variable QTT  variable QD2  variable QR2
 
+: THROW-EDGE ( -- )
+   THSET @ 0= IF DCUR @ THDROW !  RCUR @ THRROW ! THEN
+   -1 THSET ! ;
+
 : RSEXEC   \ execute: pop the xt; apply its quot effect (or bind a var to one)
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
@@ -256,7 +264,14 @@ variable QTT  variable QD2  variable QR2
    QTT @ TAG T-QUOT = IF
      DCUR @ QTT @ Q>DIN  UNIFY OK @ and OK !
      RCUR @ QTT @ Q>RIN  UNIFY OK @ and OK !
-     QTT @ Q>DOUT DCUR !  QTT @ Q>ROUT RCUR !
+     QTT @ Q>XHAS IF
+        THROW-EDGE
+     THEN
+     QTT @ Q>XDEAD IF
+        -1 DEADP !
+     ELSE
+        QTT @ Q>DOUT DCUR !  QTT @ Q>ROUT RCUR !
+     THEN
    ELSE QTT @ TAG T-VAR = IF
      \ unknown xt: bind it to a RETURN-PURE quot over the current state (a
      \ return-impure literal quot then fails to unify at the bind — sound).
@@ -268,26 +283,33 @@ variable QTT  variable QD2  variable QR2
      THEN
    ELSE 0 OK ! THEN THEN ;
 
+variable RSRET
+
 : RSCATCH   \ catch: stack-preserving quotation -> same stack plus throw code
    \ Catchable `throw` is not process no-return. The checker tracks throw paths
    \ as an exceptional edge owned by `catch`; `die` remains separate no-return
    \ metadata because it cannot be recovered by a quotation catch.
+   -1 RSRET !
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    rest DCUR !
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
      DCUR @ QTT @ Q>DIN   UNIFY OK @ and OK !
-     DCUR @ QTT @ Q>DOUT  UNIFY OK @ and OK !
      RCUR @ QTT @ Q>RIN   UNIFY OK @ and OK !
-     RCUR @ QTT @ Q>ROUT  UNIFY OK @ and OK !
+     QTT @ Q>XDEAD IF
+        QTT @ Q>XHAS 0= IF 0 RSRET !  -1 DEADP ! THEN
+     ELSE
+        DCUR @ QTT @ Q>DOUT  UNIFY OK @ and OK !
+        RCUR @ QTT @ Q>ROUT  UNIFY OK @ and OK !
+     THEN
    ELSE QTT @ TAG T-VAR = IF
      DCUR @ DCUR @ RCUR @ RCUR @ MK-QUOT QR2 !
      QTT @ PAY QR2 @ TY-OCC? IF 0 OK ! ELSE
        QR2 @ QTT @ PAY TV!
      THEN
    ELSE 0 OK ! THEN THEN
-   1 MK-CON DCUR @ MK-PUSH DCUR ! ;
+   RSRET @ IF 1 MK-CON DCUR @ MK-PUSH DCUR ! THEN ;
 
 variable RSH
 
@@ -699,11 +721,11 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS c!
 
 : FIND-SIG {: a u :}  0 FSU !  PTAB a u SCAN-SIGS  USIGS a u SCAN-SIGS  FSU @ ;
 
-\ Non-returning words are a control-flow effect. `die` exits the process and
-\ wrappers around it must make the current branch unreachable for IF/ELSE joins.
-\ Catchable `throw` is intentionally excluded from this table; it has its own
-\ exception edge so `catch` can restore the pre-call stack shape. The table is
-\ append-only and later-wins so a redefinition can remove the flag.
+\ Control-effect flags are append-only and later-wins so redefinitions can clear
+\ stale metadata. CTL-DEAD means a call has no normal continuation. CTL-THROW
+\ means a call may reach a catchable throw edge.
+1 constant CTL-DEAD
+2 constant CTL-THROW
 $1000 constant NORET-INIT-CAP
 create NORET-BOOT NORET-INIT-CAP allot
 variable NORET-P   variable NORET-CAP-U   variable NORET-END
@@ -733,11 +755,11 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
       NORET-END @ 1 + NORET-END !
       1 +
    REPEAT drop
-   flag IF 1 ELSE 0 THEN NORETS NORET-END @ + c!
+   flag NORETS NORET-END @ + c!
    NORET-END @ 1 + NORET-END !
    0 NORETS NORET-END @ + c! ;
 
-: NORET-USER? {: a u :}
+: CTL-FLAGS {: a u :}
    0 NORET-FLAG !
    0 NORET-POS !
    BEGIN NORETS NORET-POS @ + c@ dup WHILE
@@ -747,11 +769,22 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
       THEN
       NORET-POS @ 1 + NORET-LEN @ + 1 + NORET-POS !
    REPEAT drop
-   NORET-FLAG @ 0 <> ;
+   NORET-FLAG @ ;
 
-: NORET-TOK? {: a u :}
+: NORET-USER? {: a u :}
+   a u CTL-FLAGS CTL-DEAD and 0 <> ;
+
+: THROW-USER? {: a u :}
+   a u CTL-FLAGS CTL-THROW and 0 <> ;
+
+: DEAD-TOK? {: a u :}
    a u s" die" STR= IF -1 EXIT THEN
+   a u s" throw" STR= IF -1 EXIT THEN
    a u NORET-USER? ;
+
+: THROW-TOK? {: a u :}
+   a u s" throw" STR= IF -1 EXIT THEN
+   a u THROW-USER? ;
 create TVSAVE MAXTV cells allot   create RVSAVE MAXTV cells allot
 variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
@@ -910,7 +943,6 @@ variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
 \ CFDED[i] saves the if-branch's deadness across CF-ELSE. (leave targets the
 \ enclosing DO frame's loop-exit row; unloop is a typing no-op — loop control
 \ isn't on the typed rows.)
-variable XROW  variable XRROW  variable XSET  variable DEADP
 variable RSHAS  variable RSGIN  variable RSGOUT  variable RSGRIN  variable RSGROUT
 variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF@DED #CFC @ 1 - cells CFDED + @ ;
@@ -990,6 +1022,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
               RCUR @ XRROW @ UNIFY OK @ and OK !
    ELSE  DCUR @ XROW !  RCUR @ XRROW !  -1 XSET ! THEN
    -1 DEADP ! ;
+
 : CF-UNLOOP ;                                             \ loop control isn't typed -> no-op
 
 : CF-BEGIN  3 DCUR @ 0 RCUR @ 0 CF-PUSH ;
@@ -1087,7 +1120,7 @@ variable QTMP
        ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
      THEN
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
-     QTMP @ THSET @ THDROW @ THRROW @ QX!
+     QTMP @ THSET @ DEADP @ XSET @ 0= and THDROW @ THRROW @ QX!
      #CFC @ 1 - cells CFXRO + @ XROW !  #CFC @ 1 - cells CFXRR + @ XRROW !
      #CFC @ 1 - cells CFXST + @ XSET !  #CFC @ 1 - cells CFXDP + @ DEADP !  \ restore outer exit state
      #CFC @ 1 - cells CFTXD + @ THDROW !  #CFC @ 1 - cells CFTXR + @ THRROW !
@@ -1127,6 +1160,7 @@ variable TBASE variable TBLEN variable TI variable TSTART
 \ recorder); RECXT (installed by render.f) records certified sigs by name.
 variable NMA  variable NMU  variable TOK0  variable RECXT  0 RECXT !
 variable DIAGXT  0 DIAGXT !              \ reject-diagnostic hook (render.f installs)
+variable CTLNEW
 \ the engine folds A-Z in keyword and dict matching — fold every token the same
 \ way (into a scratch copy: the source text may live in the read-only image).
 create TKF 64 allot   create NMB 64 allot   variable TFU
@@ -1208,7 +1242,8 @@ s" <input>" DIAG-FILE!
    TKF TFU @ RS-TOK? 0= IF
    TKF TFU @ LOC-REF? 0= IF
    TKF TFU @ DO-TOK
-   OK @ IF TKF TFU @ NORET-TOK? IF -1 DEADP ! THEN THEN
+   OK @ IF TKF TFU @ THROW-TOK? IF THROW-EDGE THEN THEN
+   OK @ IF TKF TFU @ DEAD-TOK? IF -1 DEADP ! THEN THEN
    TKF TFU @ STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN
    THEN THEN THEN THEN THEN THEN THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -1223,7 +1258,8 @@ s" <input>" DIAG-FILE!
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !
-   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 THSET !  0 SGBAD !  0 UNSAFE ! ;
+   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 THDROW !  0 THRROW !  0 THSET !
+   0 SGBAD !  0 UNSAFE ! ;
 
 : CHECK-SCAN ( -- )
    BEGIN TI @ TBLEN @ < WHILE
@@ -1278,10 +1314,11 @@ s" <input>" DIAG-FILE!
    dup 0 =  over 1 = JSON-DIAGS @ and  or
    DIAGXT @ 0 <> and IF DIAGXT @ execute THEN
    dup -1 = NMU @ 0 > and IF
-      DEADP @ XSET @ 0= and IF
-         NMA @ NMU @ -1 NORET-ADD
-      ELSE
-         NMA @ NMU @ NORET-USER? IF NMA @ NMU @ 0 NORET-ADD THEN
+      0 CTLNEW !
+      DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
+      THSET @ IF CTLNEW @ CTL-THROW or CTLNEW ! THEN
+      NMA @ NMU @ CTL-FLAGS CTLNEW @ <> IF
+         NMA @ NMU @ CTLNEW @ NORET-ADD
       THEN
       VSIG @ SGSEEN @ and IF
          SGA @ SGU @  NMA @ NMU @  USIG-ADD
