@@ -3,8 +3,6 @@
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ tools/lint/json-writer.f, tools/lint/source-lex.f, and tools/argv.f.
 
-0 set-check
-
 $10000 constant CA-PROG-EXTRA
 $10000 constant CA-ERR-CAP
 $400 constant CA-OUT-CAP
@@ -76,10 +74,55 @@ variable CA-NEXT-S
 variable CA-FILE-A
 variable CA-FILE-U
 
-: CA-CELL@ ( base k -- n )
+: CA-TRUE ( -- bool )
+   0 0= ;
+
+: CA-FALSE ( -- bool )
+   CA-TRUE 0= ;
+
+: CA-PROG-A-FIELD ( -- ptr ptr u8 )
+   CA-PROG-A 0 ptr-field ;
+
+: CA-PROG-A@ ( -- ptr u8 )
+   CA-PROG-A-FIELD @ ;
+
+: CA-PROG-A! ( ptr u8 -- )
+   CA-PROG-A-FIELD ! ;
+
+: CA-SRC-A-FIELD ( -- ptr ptr u8 )
+   CA-SRC-A 0 ptr-field ;
+
+: CA-SRC-A@ ( -- ptr u8 )
+   CA-SRC-A-FIELD @ ;
+
+: CA-SRC-A! ( ptr u8 -- )
+   CA-SRC-A-FIELD ! ;
+
+: CA-RAW-A-FIELD ( -- ptr ptr u8 )
+   CA-RAW-A 0 ptr-field ;
+
+: CA-RAW-A@ ( -- ptr u8 )
+   CA-RAW-A-FIELD @ ;
+
+: CA-RAW-A! ( ptr u8 -- )
+   CA-RAW-A-FIELD ! ;
+
+: CA-FILE-A-FIELD ( -- ptr ptr u8 )
+   CA-FILE-A 0 ptr-field ;
+
+: CA-FILE-A@ ( -- ptr u8 )
+   CA-FILE-A-FIELD @ ;
+
+: CA-FILE-A! ( ptr u8 -- )
+   CA-FILE-A-FIELD ! ;
+
+: CA-FAIL ( ptr u8 n n -- )
+   die ;
+
+: CA-CELL@ ( ptr a n -- n )
    cells + @ ;
 
-: CA-CELL! ( n base k -- )
+: CA-CELL! ( n ptr a n -- )
    cells + ! ;
 
 : CA-START@ ( k -- n ) CA-DEF-START swap CA-CELL@ ;
@@ -102,18 +145,18 @@ variable CA-FILE-U
 : CA-SUP-START! ( n k -- ) CA-SUP-START swap CA-CELL! ;
 : CA-SUP-END! ( n k -- ) CA-SUP-END swap CA-CELL! ;
 
-: CA-WRITE {: fd a u :} ( fd a u -- )
+: CA-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
    u 0= IF exit THEN
-   fd a u write u <> IF s" check-all-errors: write failed" 74 die THEN ;
+   fd a u write u <> IF s" check-all-errors: write failed" 74 CA-FAIL THEN ;
 
-: CA-ERR ( a u -- )
+: CA-ERR ( ptr u8 n -- )
    2 -rot CA-WRITE ;
 
-: CA-LF$ ( -- a u )
+: CA-LF$ ( -- ptr u8 n )
    CA-LF CA-LF-BUF c!
    CA-LF-BUF 1 ;
 
-: CA-U$ {: u :} ( u -- a u )
+: CA-U$ ( n -- ptr u8 n ) {: u :}
    CA-NUM-CAP CA-NUM-I !
    u 0= IF
       CA-NUM-I @ 1- CA-NUM-I !
@@ -129,9 +172,9 @@ variable CA-FILE-U
    repeat drop
    CA-NUM-BUF CA-NUM-I @ + CA-NUM-CAP CA-NUM-I @ - ;
 
-: CA-PROG+ {: a u :} ( a u -- )
-   CA-PROG-LEN @ u + CA-PROG-CAP @ > IF s" check-all-errors: generated program too large" 76 die THEN
-   a CA-PROG-A @ CA-PROG-LEN @ + u BMOVE
+: CA-PROG+ ( ptr u8 n -- ) {: a:ptr u :}
+   CA-PROG-LEN @ u + CA-PROG-CAP @ > IF s" check-all-errors: generated program too large" 76 CA-FAIL THEN
+   a CA-PROG-A@ CA-PROG-LEN @ + u BYTE-COPY
    CA-PROG-LEN @ u + CA-PROG-LEN ! ;
 
 : CA-PROG-C ( c -- )
@@ -145,24 +188,25 @@ variable CA-FILE-U
 : CA-PROG-U ( u -- )
    CA-U$ CA-PROG+ ;
 
-: CA-PFD! {: fd events :} ( fd events -- )
+: CA-PFD! ( n n -- ) {: fd events :}
    events 32 lshift fd $FFFFFFFF and or CA-PFD ! ;
 
-: CA-POLL-IN {: fd ms :} ( fd ms -- rc )
+: CA-POLL-IN ( n n -- n ) {: fd ms :}
    fd POLLIN CA-PFD!
    CA-PFD 1 ms poll ;
 
-: CA-CLOEXEC {: fd :} ( fd -- )
+: CA-CLOEXEC ( n -- ) {: fd :}
    fd F-SETFD FD-CLOEXEC fcntl drop ;
 
-: CA-MKPIPE {: rvar wvar :} ( rvar wvar -- )
-   pipe 0 <> IF s" check-all-errors: pipe failed" 74 die THEN
+: CA-MKPIPE ( ptr n ptr n -- ) {: rvar:ptr wvar:ptr :}
+   pipe 0 <> IF s" check-all-errors: pipe failed" 74 CA-FAIL THEN
    wvar !
    rvar ! ;
 
-: CA-DRAIN-FD {: fd buf cap lenp :} ( fd buf cap lenp -- )
+: CA-DRAIN-FD ( n ptr u8 n ptr n -- ) {: fd buf:ptr cap lenp:ptr :}
    0 lenp !
    begin fd 0 CA-POLL-IN 0 > while
+      lenp @ cap >= IF s" check-all-errors: child output too large" 76 CA-FAIL THEN
       fd buf lenp @ + cap lenp @ - read CA-GOT !
       CA-GOT @ 0 > IF
          lenp @ CA-GOT @ + lenp !
@@ -171,24 +215,24 @@ variable CA-FILE-U
       THEN
    repeat ;
 
-: CA-TOK-WORD? {: k :} ( k -- f )
-   k L# @ >= IF 0 exit THEN
+: CA-TOK-WORD? ( n -- bool ) {: k :}
+   k L# @ >= IF CA-FALSE exit THEN
    k LK@ L-WORD = ;
 
-: CA-TOK= {: k a u :} ( k a u -- f )
-   k CA-TOK-WORD? 0= IF 0 exit THEN
+: CA-TOK= ( n ptr u8 n -- bool ) {: k a:ptr u :}
+   k CA-TOK-WORD? 0= IF CA-FALSE exit THEN
    k LTOK a u STR= ;
 
-: CA-TOK-CI= {: k a u :} ( k a u -- f )
-   k CA-TOK-WORD? 0= IF 0 exit THEN
+: CA-TOK-CI= ( n ptr u8 n -- bool ) {: k a:ptr u :}
+   k CA-TOK-WORD? 0= IF CA-FALSE exit THEN
    k LTOK a u STR=CI ;
 
-: CA-PARSE-NEXT? {: k :} ( k -- f )
-   k s" char" CA-TOK= IF -1 exit THEN
+: CA-PARSE-NEXT? ( n -- bool ) {: k :}
+   k s" char" CA-TOK= IF CA-TRUE exit THEN
    k s" [char]" CA-TOK= ;
 
 : CA-SRC-C@ ( n -- c )
-   CA-SRC-A @ + c@ ;
+   CA-SRC-A@ + c@ ;
 
 : CA-TOK-END-BYTE {: k :} ( k -- n )
    k LB@ k LTOK nip + ;
@@ -205,7 +249,7 @@ variable CA-FILE-U
       1+
    repeat ;
 
-: CA-LINE-SEG-START {: k :} ( k -- n )
+: CA-LINE-SEG-START ( n -- n ) {: k :}
    k LB@ CA-LINE-START-BYTE CA-LS !
    k 1- CA-J !
    begin CA-J @ 0 >= while
@@ -218,7 +262,7 @@ variable CA-FILE-U
    repeat
    CA-LS @ ;
 
-: CA-LINE-SAFE-END {: k :} ( k -- n )
+: CA-LINE-SAFE-END ( n -- n ) {: k :}
    k LB@ CA-LINE-END-BYTE CA-LE !
    k 1+ CA-J !
    begin CA-J @ L# @ < while
@@ -228,7 +272,7 @@ variable CA-FILE-U
    repeat
    CA-LE @ ;
 
-: CA-LAST-TOK-BEFORE {: k end :} ( k n -- k )
+: CA-LAST-TOK-BEFORE ( n n -- n ) {: k end :}
    k CA-J !
    begin CA-J @ 1+ L# @ < while
       CA-J @ 1+ LB@ end < IF
@@ -239,33 +283,33 @@ variable CA-FILE-U
    repeat
    CA-J @ ;
 
-: CA-ADD-SUPPORT {: start end :} ( start end -- )
+: CA-ADD-SUPPORT ( n n -- ) {: start end :}
    end start <= IF exit THEN
-   CA-SUP# @ CA-SUP-MAX >= IF s" check-all-errors: too many support slices" 76 die THEN
+   CA-SUP# @ CA-SUP-MAX >= IF s" check-all-errors: too many support slices" 76 CA-FAIL THEN
    start CA-SUP# @ CA-SUP-START!
    end CA-SUP# @ CA-SUP-END!
    CA-SUP# @ 1+ CA-SUP# ! ;
 
-: CA-ADD-SUPPORT-LINE {: k :} ( k -- )
+: CA-ADD-SUPPORT-LINE ( n -- ) {: k :}
    k CA-LINE-SEG-START
    k CA-LINE-SAFE-END
    CA-ADD-SUPPORT ;
 
-: CA-ADD-SUPPORT-PAIR {: k :} ( k -- )
+: CA-ADD-SUPPORT-PAIR ( n -- ) {: k :}
    k 1+ L# @ >= IF exit THEN
    k LB@
    k 1+ CA-TOK-END-BYTE
    CA-ADD-SUPPORT
    k 1+ CA-I ! ;
 
-: CA-ADD-SUPPORT-CONSTANT {: k :} ( k -- )
+: CA-ADD-SUPPORT-CONSTANT ( n -- ) {: k :}
    k 1+ L# @ >= IF exit THEN
    k CA-LINE-SEG-START
    k 1+ CA-TOK-END-BYTE
    CA-ADD-SUPPORT
    k 1+ CA-I ! ;
 
-: CA-FIND-SEMI {: k :} ( k -- tok )
+: CA-FIND-SEMI ( n -- n ) {: k :}
    k 1+ CA-J !
    begin CA-J @ L# @ < while
       CA-J @ CA-PARSE-NEXT? IF
@@ -278,17 +322,17 @@ variable CA-FILE-U
    repeat
    L# @ ;
 
-: CA-ADD-SUPPORT-TRUSTED {: k :} ( k -- )
+: CA-ADD-SUPPORT-TRUSTED ( n -- ) {: k :}
    k CA-FIND-SEMI dup L# @ >= IF drop exit THEN
    k LB@ swap CA-TOK-END-BYTE CA-ADD-SUPPORT
    CA-J @ CA-I ! ;
 
-: CA-ADD-SUPPORT-TRUST {: k :} ( k -- )
+: CA-ADD-SUPPORT-TRUST ( n -- ) {: k :}
    k CA-LINE-SEG-START
    k CA-TOK-END-BYTE
    CA-ADD-SUPPORT ;
 
-: CA-ORIGIN! {: src dst :} ( src dst -- )
+: CA-ORIGIN! ( n n -- ) {: src dst :}
    src 1+ CA-TOK-WORD? IF
       src 1+ LL@ dst CA-LINE!
       src 1+ LC@ dst CA-COL!
@@ -299,8 +343,8 @@ variable CA-FILE-U
       src LB@ dst CA-BYTE!
    THEN ;
 
-: CA-ADD-DEF {: start end tok :} ( start end tok -- )
-   CA-DEF# @ CA-DEF-MAX >= IF s" check-all-errors: too many definitions" 76 die THEN
+: CA-ADD-DEF ( n n n -- ) {: start end tok :}
+   CA-DEF# @ CA-DEF-MAX >= IF s" check-all-errors: too many definitions" 76 CA-FAIL THEN
    start CA-DEF# @ CA-START!
    end CA-DEF# @ CA-END!
    tok CA-DEF# @ CA-DEFTOK!
@@ -344,10 +388,10 @@ variable CA-FILE-U
       CA-I @ 1+ CA-I !
    repeat ;
 
-: CA-SLICE$ {: start end :} ( start end -- a u )
-   CA-SRC-A @ start + end start - ;
+: CA-SLICE$ ( n n -- ptr u8 n ) {: start end :}
+   CA-SRC-A@ start + end start - ;
 
-: CA-PROG-SLICE ( start end -- )
+: CA-PROG-SLICE ( n n -- )
    CA-SLICE$ CA-PROG+ ;
 
 : CA-PROG-PREFIX ( -- )
@@ -355,7 +399,7 @@ variable CA-FILE-U
    s" s" CA-PROG+
    34 CA-PROG-C
    CA-SP CA-PROG-C
-   CA-FILE-A @ CA-FILE-U @ CA-PROG+
+   CA-FILE-A@ CA-FILE-U @ CA-PROG+
    34 CA-PROG-C
    s"  DIAG-FILE!" CA-PROG-LN
    ARGV-JSON? IF s" -1 JSON-DIAGS !" CA-PROG-LN THEN
@@ -366,13 +410,13 @@ variable CA-FILE-U
 : CA-INF ( -- n )
    CA-SRC-U @ 1+ ;
 
-: CA-NEXT-DEF {: limit :} ( -- n )
+: CA-NEXT-DEF ( n -- n ) {: limit :}
    CA-I @ CA-DEF# @ < IF
       CA-I @ CA-START@ limit < IF CA-I @ CA-START@ exit THEN
    THEN
    CA-INF ;
 
-: CA-NEXT-SUP {: limit :} ( -- n )
+: CA-NEXT-SUP ( n -- n ) {: limit :}
    CA-J @ CA-SUP# @ < IF
       CA-J @ CA-SUP-START@ limit < IF CA-J @ CA-SUP-START@ exit THEN
    THEN
@@ -390,7 +434,7 @@ variable CA-FILE-U
    CA-LF CA-PROG-C
    CA-J @ 1+ CA-J ! ;
 
-: CA-PROG-CONTEXT {: k :} ( k -- )
+: CA-PROG-CONTEXT ( n -- ) {: k :}
    0 CA-I !
    0 CA-J !
    begin
@@ -405,20 +449,20 @@ variable CA-FILE-U
       THEN
    repeat ;
 
-: CA-PROG-ORIGIN {: k :} ( k -- )
+: CA-PROG-ORIGIN ( n -- ) {: k :}
    k CA-LINE@ CA-PROG-U  CA-SP CA-PROG-C
    k CA-COL@ CA-PROG-U   CA-SP CA-PROG-C
    k CA-BYTE@ CA-PROG-U
    s"  DIAG-ORIGIN!" CA-PROG-LN ;
 
-: CA-BUILD-PROGRAM {: k :} ( k -- )
+: CA-BUILD-PROGRAM ( n -- ) {: k :}
    0 CA-PROG-LEN !
    CA-PROG-PREFIX
    k CA-PROG-CONTEXT
    k CA-PROG-ORIGIN
    k CA-START@ k CA-END@ CA-PROG-SLICE ;
 
-: CA-SPAWN-HB {: k :} ( k -- rc )
+: CA-SPAWN-HB ( n -- n ) {: k :}
    CA-IN-R CA-IN-W CA-MKPIPE
    CA-OUT-R CA-OUT-W CA-MKPIPE
    CA-ERR-R CA-ERR-W CA-MKPIPE
@@ -430,7 +474,7 @@ variable CA-FILE-U
    CA-OUT-W @ close
    CA-ERR-W @ close
    k CA-BUILD-PROGRAM
-   CA-IN-W @ CA-PROG-A @ CA-PROG-LEN @ CA-WRITE
+   CA-IN-W @ CA-PROG-A@ CA-PROG-LEN @ CA-WRITE
    CA-IN-W @ close
    CA-PID @ wait-rc CA-RC !
    CA-OUT-R @ CA-OUT-BUF CA-OUT-CAP CA-OUT-LEN CA-DRAIN-FD
@@ -439,53 +483,53 @@ variable CA-FILE-U
    CA-ERR-R @ close
    CA-RC @ ;
 
-: CA-JSON-LINE? ( a u -- f )
-   TRIM dup 0= IF 2drop 0 exit THEN
+: CA-JSON-LINE? ( ptr u8 n -- bool )
+   TRIM dup 0= IF 2drop CA-FALSE exit THEN
    over c@ CA-LBRACE = ;
 
-: CA-ERR-LINE {: start end :} ( start end -- a u )
+: CA-ERR-LINE ( n n -- ptr u8 n ) {: start end :}
    CA-ERR-BUF start + end start - ;
 
-: CA-EMIT-ERR-LINE {: start end :} ( start end -- )
+: CA-EMIT-ERR-LINE ( n n -- ) {: start end :}
    start end CA-ERR-LINE TRIM CA-ERR
    CA-LF$ CA-ERR ;
 
-: CA-WORD$ {: k :} ( k -- a u )
+: CA-WORD$ ( n -- ptr u8 n ) {: k :}
    k CA-DEFTOK@ 1+ LTOK ;
 
-: CA-DEF-SOURCE$ {: k :} ( k -- a u )
-   CA-SRC-A @ k CA-DEFTOK@ 1+ LB@ +
+: CA-DEF-SOURCE$ ( n -- ptr u8 n ) {: k :}
+   CA-SRC-A@ k CA-DEFTOK@ 1+ LB@ +
    k CA-END@ 1- k CA-DEFTOK@ 1+ LB@ - ;
 
-: CA-DECLARED$ {: k :} ( k -- a u f )
-   k CA-DEFTOK@ 2 + dup L# @ >= IF drop 0 0 0 exit THEN
-   dup LK@ L-COMMENT <> IF drop 0 0 0 exit THEN
-   LCONTENT TRIM -1 ;
+: CA-DECLARED$ ( n -- ptr u8 n bool ) {: k :}
+   k CA-DEFTOK@ 2 + dup L# @ >= IF drop s" " CA-FALSE exit THEN
+   dup LK@ L-COMMENT <> IF drop s" " CA-FALSE exit THEN
+   LCONTENT TRIM CA-TRUE ;
 
-: CA-BODY-START {: k :} ( k -- tok )
+: CA-BODY-START ( n -- n ) {: k :}
    k CA-DEFTOK@ 2 +
    begin dup L# @ < while
       dup LK@ L-COMMENT = IF 1+ ELSE exit THEN
    repeat ;
 
-: CA-FIND-BODY-TOKEN {: k a u :} ( k a u -- tok ord f )
+: CA-FIND-BODY-TOKEN ( n ptr u8 n -- n n bool ) {: k a:ptr u :}
    0 CA-ORD !
    k CA-BODY-START CA-J !
    begin CA-J @ L# @ < while
-      CA-J @ LB@ k CA-END@ >= IF 0 0 0 exit THEN
+      CA-J @ LB@ k CA-END@ >= IF 0 0 CA-FALSE exit THEN
       CA-J @ CA-TOK-WORD? IF
-         CA-J @ s" ;" CA-TOK= IF 0 0 0 exit THEN
+         CA-J @ s" ;" CA-TOK= IF 0 0 CA-FALSE exit THEN
          CA-ORD @ 1+ CA-ORD !
-         CA-J @ LTOK a u STR= IF CA-J @ CA-ORD @ -1 exit THEN
+         CA-J @ LTOK a u STR= IF CA-J @ CA-ORD @ CA-TRUE exit THEN
       THEN
       CA-J @ 1+ CA-J !
    repeat
-   0 0 0 ;
+   0 0 CA-FALSE ;
 
-: CA-JSON-EMPTY-FIELD ( a u -- )
+: CA-JSON-EMPTY-FIELD ( ptr u8 n -- )
    LJW-KEY s" " LJW-STRING ;
 
-: CA-JSON-UNDEF {: k tok ord :} ( k tok ord -- )
+: CA-JSON-UNDEF ( n n n -- ) {: k tok ord :}
    LJW-RESET
    LJW-OBJECT-START
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
@@ -495,7 +539,7 @@ variable CA-FILE-U
    s" word" LJW-KEY k CA-WORD$ LJW-STRING LJW-COMMA
    s" token" LJW-KEY tok LTOK LJW-STRING LJW-COMMA
    s" token_index" LJW-KEY ord LJW-U LJW-COMMA
-   s" file" LJW-KEY CA-FILE-A @ CA-FILE-U @ LJW-STRING LJW-COMMA
+   s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
    s" line" LJW-KEY tok LL@ LJW-U LJW-COMMA
    s" column" LJW-KEY tok LC@ LJW-U LJW-COMMA
    s" byte_start" LJW-KEY tok LB@ LJW-U LJW-COMMA
@@ -518,16 +562,16 @@ variable CA-FILE-U
    LJW$ CA-ERR
    CA-LF$ CA-ERR ;
 
-: CA-TRY-RAW-JSON {: k :} ( k -- f )
-   CA-ERR-BUF CA-ERR-LEN @ TRIM CA-RAW-U ! CA-RAW-A !
-   CA-RAW-U @ 0= IF 0 exit THEN
-   k CA-RAW-A @ CA-RAW-U @ CA-FIND-BODY-TOKEN IF
+: CA-TRY-RAW-JSON ( n -- bool ) {: k :}
+   CA-ERR-BUF CA-ERR-LEN @ TRIM CA-RAW-U ! CA-RAW-A!
+   CA-RAW-U @ 0= IF CA-FALSE exit THEN
+   k CA-RAW-A@ CA-RAW-U @ CA-FIND-BODY-TOKEN IF
       CA-MATCH-ORD ! CA-MATCH-TOK !
       k CA-MATCH-TOK @ CA-MATCH-ORD @ CA-JSON-UNDEF
-      -1
+      CA-TRUE
    ELSE
       2drop
-      0
+      CA-FALSE
    THEN ;
 
 : CA-FILTER-JSON ( -- )
@@ -579,24 +623,24 @@ variable CA-FILE-U
    repeat ;
 
 : CA-CHECK-PROG-NEED ( n -- n )
-   CA-PROG-EXTRA + dup 0 <= IF s" check-all-errors: source too large" 76 die THEN ;
+   CA-PROG-EXTRA + dup 0 <= IF s" check-all-errors: source too large" 76 CA-FAIL THEN ;
 
 : CA-ALLOC-SOURCE ( n -- )
-   dup MEM-ALLOC-64K-SPAN CA-SRC-CAP ! CA-SRC-A !
-   CA-CHECK-PROG-NEED MEM-ALLOC-64K-SPAN CA-PROG-CAP ! CA-PROG-A ! ;
+   dup MEM-ALLOC-64K-SPAN CA-SRC-CAP ! CA-SRC-A!
+   CA-CHECK-PROG-NEED MEM-ALLOC-64K-SPAN CA-PROG-CAP ! CA-PROG-A! ;
 
-: CA-READ-SOURCE {: path pu :} ( path pu -- )
+: CA-READ-SOURCE ( ptr u8 n -- ) {: path:ptr pu :}
    path pu FILE-SIZE dup CA-ALLOC-SOURCE
-   path pu CA-SRC-A @ CA-SRC-CAP @ READ-ALL CA-SRC-U ! ;
+   path pu CA-SRC-A@ CA-SRC-CAP @ READ-ALL CA-SRC-U ! ;
 
 : CHECK-ALL-ERRORS ( -- )
    s" tools/check-all-errors.f [--json-errors] --label name source" ARGV-USAGE!
    ARGV-PARSE
    ARGV-REQUIRE-LABEL
    1 ARGV-EXPECT-POS-EXACT
-   ARGV-LABEL$ CA-FILE-U ! CA-FILE-A !
+   ARGV-LABEL$ CA-FILE-U ! CA-FILE-A!
    0 ARGV-POS$ CA-READ-SOURCE
-   CA-SRC-A @ CA-SRC-U @ LEX-SOURCE
+   CA-SRC-A@ CA-SRC-U @ LEX-SOURCE
    CA-COLLECT-DEFS
    CA-RUN-DEFS
    CA-RAW-FAILURE @ IF CA-RAW-FAILURE @ throw THEN
