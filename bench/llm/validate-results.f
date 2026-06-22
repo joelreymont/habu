@@ -222,6 +222,9 @@ variable LV-BI
 variable LV-LINE-U
 variable LV-RESULT-A
 variable LV-RESULT-CAP-U
+variable LV-ROW-ROOT
+variable LV-ROW-KIND
+variable LV-ROW-CODE
 
 : LV-CHECK-HOOK ( -- )
    CHECK! ;
@@ -366,6 +369,13 @@ TRUSTED: LV-RESULT-BUF ( -- ptr u8 )
    THEN
    LV-NL
    1 throw ;
+
+: LV-ROW! ( n n n -- )
+   LV-ROW-CODE ! LV-ROW-KIND ! LV-ROW-ROOT ! ;
+
+: LV-RESULT-BLANK-FAIL ( -- )
+   JSONL-LINE$ JSON-PARSE-TRY LV-ROW!
+   LV-ROW-CODE @ LV-JSON-FAIL ;
 
 : LV-LINE-LEN ( ptr u8 n -- ptr u8 n )
    dup 0 > IF
@@ -1478,10 +1488,23 @@ TRUSTED: LV-RESULT-BUF ( -- ptr u8 )
       root LV-ACCUM-ROW
    THEN ;
 
+: LV-CHECK-RESULT-ROW ( -- )
+   JSONL-NEXT-ROW IF
+      LV-ROW!
+      LV-ROW-KIND @ JSONL-ROW-JSON = IF LV-ROW-ROOT @ LV-CHECK-ROW exit THEN
+      LV-ROW-KIND @ JSONL-ROW-ERROR = IF LV-ROW-CODE @ LV-JSON-FAIL exit THEN
+      LV-ROW-KIND @ JSONL-ROW-BLANK = IF LV-RESULT-BLANK-FAIL exit THEN
+      LV-ROW-CODE @ LV-JSON-FAIL exit
+   THEN
+   2drop drop E-JSON-SYNTAX LV-JSON-FAIL ;
+
 : LV-RESULT-LINE ( ptr u8 n -- )
-   JSON-PARSE-TRY {: root kind code :}
-   kind JSON-PARSE-OK = IF root LV-CHECK-ROW exit THEN
-   code LV-JSON-FAIL ;
+   dup 0= IF
+      JSON-PARSE-TRY LV-ROW!
+      LV-ROW-CODE @ LV-JSON-FAIL exit
+   THEN
+   JSONL-START-STRICT
+   LV-CHECK-RESULT-ROW ;
 
 : LV-FINISH-RESULT-LINE ( -- )
    LV-LINE @ 1+ LV-LINE !

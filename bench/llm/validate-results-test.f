@@ -550,6 +550,10 @@ VRT-LF VRT-LF-BUF c!
    VRT-CLEAR-LIVE
    VRT-LIVE$ s" {" WRITE-ALL ;
 
+: VRT-WRITE-BLANK-JSON ( -- )
+   VRT-CLEAR-LIVE
+   VRT-LIVE$ VRT-LF-BUF 1 APPEND-FILE ;
+
 : VRT-WRITE-ARMS ( -- )
    VRT-LIVE$ VRT-CLEAR-DEST
    s" arm-fixture-2026-06-18" s" toy-model" s" toy-model" s" habu-forth" VRT-TRUE VRT-WRITE-SINGLE-V2
@@ -867,6 +871,8 @@ VRT-LF VRT-LF-BUF c!
    VRT-WRITE-BAD-FINAL-HASH
    VRT-LIVE$ s" invalid sha256 hash" VRT-EXPECT-FAIL
    VRT-WRITE-BAD-JSON
+   VRT-LIVE$ s" json:" VRT-EXPECT-FAIL
+   VRT-WRITE-BLANK-JSON
    VRT-LIVE$ s" json:" VRT-EXPECT-FAIL
    VRT-WRITE-BAD-FALSE-REJECT
    VRT-LIVE$ s" checker_false_reject requires rejected checker" VRT-EXPECT-FAIL
