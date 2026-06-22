@@ -892,6 +892,15 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
       RB-TASK-LINE$ BM-BLANK-OR-COMMENT? 0= if RB-RUN-TASK then
    repeat ;
 
+: RB-OUT-HAS-ROWS? ( -- bool )
+   RB-OUT$ FILE? 0= if RB-FALSE exit then
+   RB-OUT$ FILE-SIZE 0 > ;
+
+: RB-REQUIRE-REPORT-INPUT ( -- )
+   RB-SELECTED @ 0= if
+      RB-OUT-HAS-ROWS? 0= if s" run-expanded-bench: no selected tasks" RB-DIE then
+   then ;
+
 : RB-RUN-REPORT ( -- )
    RB-RESULTS-RESET
    PROC-ARGV-ENV-RESET
@@ -948,6 +957,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    RB-LOAD-FILES
    RB-RESUME @ 0= if RB-OUT-RESET then
    RB-RUN-TASKS
+   RB-REQUIRE-REPORT-INPUT
    RB-RUN-REPORT ;
 
 RB-MAIN

@@ -308,6 +308,16 @@ variable REBT-NUM-I
    outu drop
    REBT-ERR erru s" run-expanded-bench: report failed" REBT-CONTAINS ;
 
+: REBT-RUN-NO-SELECTED-TASKS ( -- )
+   REBT-WRITE-MODELS
+   s" 999" s" run-expanded-empty-selection-2026-06-22" REBT-RUN-EXPANDED-START
+   s" BENCH_RESUME" >LEN s" 1" >LEN PROC-ENV+
+   REBT-RUN-EXPANDED-CAPTURE {: outu erru rc :}
+   rc 0= 0= TTRUE
+   outu drop
+   REBT-ERR erru s" run-expanded-bench: no selected tasks" REBT-CONTAINS
+   REBT-ERR erru s" run-expanded-bench: report failed" REBT-NOT-CONTAINS ;
+
 : REBT-ARM-REPORT$ ( ptr u8 n -- ptr u8 n ) {: arm:ptr armu :}
    SB-RESET
    s" arm " SB-APPEND
@@ -437,6 +447,7 @@ variable REBT-NUM-I
 : REBT-MAIN ( -- )
    T-RESET
    REBT-PREPARE
+   REBT-RUN-NO-SELECTED-TASKS
    REBT-RUN-REPORT-FAILURE
    REBT-RUN-MISSING-FORTH-ROW
    REBT-RUN-AOT-CASE
