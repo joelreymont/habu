@@ -1,14 +1,14 @@
 \ run-expanded-bench.f - native expanded live benchmark runner.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/process.f,
-\ lib/process-argv.f, lib/process-env.f, lib/argv.f, and
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
+\ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/argv.f, and
 \ bench/llm/manifest.f.
 
 64 constant RB-USAGE-RC
 74 constant RB-RUN-RC
 65536 constant RB-TASK-CAP
 8192 constant RB-MODEL-CAP
-524288 constant RB-OUT-CAP
+1 constant RB-OUT-MIN-CAP
 32 constant RB-SPACE
 44 constant RB-COMMA
 48 constant RB-ZERO
@@ -17,7 +17,6 @@
 
 create RB-TASK-BUF RB-TASK-CAP allot
 create RB-MODEL-BUF RB-MODEL-CAP allot
-create RB-OUT-BUF RB-OUT-CAP allot
 create RB-NUM-BUF 32 allot
 create RB-SNIP1 256 allot
 create RB-SNIP2 256 allot
@@ -31,6 +30,8 @@ variable RB-K
 variable RB-TASK-LEN
 variable RB-MODEL-LEN
 variable RB-OUT-LEN
+variable RB-OUT-BUF-A
+variable RB-OUT-CAP-U
 variable RB-TASK-NEXT
 variable RB-TASK-A
 variable RB-TASK-U
@@ -107,6 +108,26 @@ TRUSTED: RB-ROW-LINE! ( ptr u8 n -- )
 
 TRUSTED: RB-MODE! ( ptr u8 n -- )
    RB-MODE-U ! RB-MODE-A ! ;
+
+: RB-OUT-CAP ( -- n )
+   RB-OUT-CAP-U @ ;
+
+TRUSTED: RB-OUT-BUF ( -- ptr u8 )
+   RB-OUT-BUF-A @ ;
+
+: RB-STORE-OUT-SPAN ( ptr u8 n -- )
+   RB-OUT-CAP-U ! RB-OUT-BUF-A ! ;
+
+: RB-OUT-NEED-CAP ( n -- n ) {: need :}
+   need RB-OUT-MIN-CAP < if RB-OUT-MIN-CAP exit then
+   need ;
+
+: RB-ENSURE-OUT-CAP ( n -- ) {: need :}
+   need 0 < if E-FS-CAPACITY throw then
+   RB-OUT-CAP 0 > if
+      need RB-OUT-CAP <= if exit then
+   then
+   need RB-OUT-NEED-CAP MEM-ALLOC-64K-SPAN RB-STORE-OUT-SPAN ;
 
 : RB-TASKS! ( ptr u8 n -- )
    RB-TASKS-A RB-TASKS-U RB-SET$ ;
@@ -437,6 +458,10 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    RB-PID @ 0 < if s" run-expanded-bench: report spawn failed" RB-DIE then
    RB-PID @ WAIT-RC RC>N ;
 
+: RB-REQUIRE-REPORT-RC ( n -- )
+   0 = if exit then
+   s" run-expanded-bench: report failed" RB-DIE ;
+
 : RB-RUN-HB-APPEND ( -- n )
    s" bin/hb" RB-RESOLVE-EXE PROC-ARGV-PREPARE
    PROC-ENV-INHERIT-MISSING
@@ -450,6 +475,7 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
 
 : RB-OUT-LOAD ( -- )
    RB-OUT$ FILE? if
+      RB-OUT$ FILE-SIZE RB-ENSURE-OUT-CAP
       RB-OUT$ RB-OUT-BUF RB-OUT-CAP READ-ALL RB-OUT-LEN !
    else
       0 RB-OUT-LEN !
@@ -885,7 +911,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" --"  >LEN PROC-ARGV+
    RB-OUT$  >LEN PROC-ARGV+
    RB-PERF? if RB-PERF$  >LEN PROC-ARGV+ then
-   RB-RUN-TO-RESULTS drop ;
+   RB-RUN-TO-RESULTS RB-REQUIRE-REPORT-RC ;
 
 : RB-CONFIG ( -- )
    s" bench/llm/run-expanded-bench.f [k_trials] [out.jsonl]" ARGV-USAGE!

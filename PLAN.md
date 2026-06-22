@@ -928,7 +928,7 @@ Live benchmark evidence after benchmark-surface changes:
 
 ```sh
 bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f bench/llm/perf-lib.f bench/llm/perf.f -- --json > bench/llm/results/perf.json
-BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 bench/llm/results/run-expanded.jsonl
+BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 bench/llm/results/run-expanded.jsonl
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f tools/json.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
 ```
 

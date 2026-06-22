@@ -218,6 +218,7 @@ variable REBT-NUM-I
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" lib/process.f"  >LEN PROC-ARGV+
    s" lib/process-argv.f"  >LEN PROC-ARGV+
@@ -295,6 +296,17 @@ variable REBT-NUM-I
    REBT-ERR erru s" arm=habu-forth" REBT-CONTAINS
    REBT-ERR erru s" trial=1" REBT-CONTAINS
    REBT-ERR erru s" child_rc=" REBT-CONTAINS ;
+
+: REBT-RUN-REPORT-FAILURE ( -- )
+   REBT-WRITE-MODELS
+   REBT-OUT-PATH$ s" not-json" WRITE-ALL
+   s" 1" s" run-expanded-report-fail-2026-06-22" REBT-RUN-EXPANDED-START
+   s" BENCH_TASK_LIMIT" >LEN s" 0" >LEN PROC-ENV+
+   s" BENCH_RESUME" >LEN s" 1" >LEN PROC-ENV+
+   REBT-RUN-EXPANDED-CAPTURE {: outu erru rc :}
+   rc 0= 0= TTRUE
+   outu drop
+   REBT-ERR erru s" run-expanded-bench: report failed" REBT-CONTAINS ;
 
 : REBT-ARM-REPORT$ ( ptr u8 n -- ptr u8 n ) {: arm:ptr armu :}
    SB-RESET
@@ -376,6 +388,12 @@ variable REBT-NUM-I
    a u s" RB-RUN-PREPARE" REBT-NOT-CONTAINS
    a u s" RB-RUN-APPEND" REBT-NOT-CONTAINS ;
 
+: REBT-ASSERT-RUNNER-RESUME-BUFFER ( -- )
+   s" bench/llm/run-expanded-bench.f" REBT-FILE$ {: a:ptr u :}
+   a u s" MEM-ALLOC-64K-SPAN" REBT-CONTAINS
+   a u s" create RB-OUT-BUF" REBT-NOT-CONTAINS
+   a u s" 524288 constant RB-OUT-CAP" REBT-NOT-CONTAINS ;
+
 : REBT-RUN-AOT-CASE ( -- )
    REBT-AOT-CANDIDATE$ REBT-WRITE-MODEL
    REBT-BUILD-MODEL
@@ -413,11 +431,13 @@ variable REBT-NUM-I
    REBT-RUN-FORTH-EXPANDED
    REBT-ASSERT-FORTH-JSONL
    REBT-ASSERT-FORTH-REPORT
-   REBT-ASSERT-RUNNER-NO-SHELL ;
+   REBT-ASSERT-RUNNER-NO-SHELL
+   REBT-ASSERT-RUNNER-RESUME-BUFFER ;
 
 : REBT-MAIN ( -- )
    T-RESET
    REBT-PREPARE
+   REBT-RUN-REPORT-FAILURE
    REBT-RUN-MISSING-FORTH-ROW
    REBT-RUN-AOT-CASE
    REBT-RUN-FORTH-CASE

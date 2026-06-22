@@ -108,7 +108,7 @@ harness and hangs.)
 ### V3 — Reproduce the benchmark (uses real `claude -p`; costs tokens; non-deterministic)
 ```
 bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f bench/llm/perf-lib.f bench/llm/perf.f -- --json > bench/llm/results/perf.json
-BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 bench/llm/results/run-expanded.jsonl
+BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 2 bench/llm/results/run-expanded.jsonl
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/time.f lib/date.f lib/argv.f tools/json.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
 ```
 Then compare `/tmp/RESULTS.md` to the committed `bench/llm/RESULTS.md`. Exact token counts
@@ -120,7 +120,7 @@ committed `run.jsonl` is the exact evidence behind all four arms in §2.
 ### V4 — Spot-check a single live cell
 ```
 BENCH_TASK_IDS=4 BENCH_ARRAY_ARMS=habu-a \
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 /tmp/argmax.jsonl
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 /tmp/argmax.jsonl
 ```
 Emits one raw-Habu JSONL row. Expect `outcome:pass` with a token count far above
 the JS/Rust cost for the same task when run through the native expanded runner
