@@ -1,8 +1,6 @@
 \ host-lint.f - reject retired host-script workflow hooks.
 \ Load after tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and tools/fs.f.
 
-0 set-check
-
 $20000 constant HOST-CAP
 
 create HOST-BUF HOST-CAP allot
@@ -15,10 +13,6 @@ variable HOST-LEN
 variable HOST-NUM-L
 variable HOST-PATH-A
 variable HOST-PATH-U
-
-: HOST-CHECK-HOOK ( -- )
-   CHECK! ;
-' HOST-CHECK-HOOK set-check
 
 : HOST-NL ( -- )
    10 emit ;
