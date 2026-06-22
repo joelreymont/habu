@@ -910,12 +910,14 @@ success flag. `FORMAT-YMD` writes `YYYY-MM-DD`; `FORMAT-EPOCH-UTC` writes
 ## Argv
 
 `lib/argv.f` provides checked command-line parsing for `hb script.f args...`
-scripts. It reads `SCRIPT-ARGC` and `SCRIPT-ARGV$` by default, or an in-memory
-mock argv set for focused tests. `ARGV-PARSE` recognizes `--json`, `-o OUT`,
-and `--`; tokens after `--` are always positionals, even when they begin with a
-dash. Unknown dash-prefixed options and missing option values throw
-`ARGV-E-USAGE` after emitting the configured usage text unless quiet mode is
-enabled.
+scripts and multi-source tools. `tools/argv.f` is a compatibility path to the
+same module. The parser reads `SCRIPT-ARGC` and `SCRIPT-ARGV$` by default, or an
+in-memory mock argv set for focused tests. `ARGV-PARSE` recognizes `--json`,
+`--json-errors`, `--label NAME`, `--strict-signatures`, `--all-errors`,
+`--strict-boundary`, `-o OUT`, and `--`; tokens after `--` are always
+positionals, even when they begin with a dash. Unknown dash-prefixed options and
+missing option values throw `ARGV-E-USAGE` after emitting the configured usage
+text unless quiet mode is enabled.
 
 ```forth
 ARGV-USAGE!             ( ptr u8 n -- )
@@ -933,21 +935,30 @@ ARGV-POS#               ( -- n )
 ARGV-POS$               ( n -- ptr u8 n )
 ARGV-POSZ               ( n -- ptr u8 )
 ARGV-JSON?              ( -- bool )
+ARGV-STRICT-SIGNATURES? ( -- bool )
+ARGV-ALL-ERRORS?        ( -- bool )
+ARGV-STRICT-BOUNDARY?   ( -- bool )
+ARGV-LABEL-DEFAULT!     ( ptr u8 n -- )
+ARGV-LABEL!             ( ptr u8 n -- )
+ARGV-LABEL?             ( -- bool )
+ARGV-LABEL$             ( -- ptr u8 n )
 ARGV-OUT-DEFAULT!       ( ptr u8 n -- )
 ARGV-OUT!               ( ptr u8 n -- )
 ARGV-OUT?               ( -- bool )
 ARGV-OUT$               ( -- ptr u8 n )
 ARGV-OUTZ               ( -- ptr u8 )
 ARGV-REQUIRE-OUT        ( -- )
+ARGV-REQUIRE-LABEL      ( -- )
 ARGV-PATHZ              ( ptr u8 n -- ptr u8 )
 ARGV-ZCOPY              ( ptr u8 n ptr u8 n -- ptr u8 )
 ```
 
 Drivers set usage/defaults, call `ARGV-PARSE`, validate positional arity with
 `ARGV-EXPECT-POS` or `ARGV-EXPECT-POS-EXACT`, then read counted outputs through
-`ARGV-POS$`, `ARGV-OUT$`, and `ARGV-JSON?`. Path-oriented syscall wrappers may
-use `ARGV-POSZ`, `ARGV-OUTZ`, or `ARGV-PATHZ`; these copy into the module-owned
-path buffer and throw `ARGV-E-INTERNAL` on capacity failure.
+`ARGV-POS$`, `ARGV-LABEL$`, `ARGV-OUT$`, and the flag predicates.
+Path-oriented syscall wrappers may use `ARGV-POSZ`, `ARGV-OUTZ`, or
+`ARGV-PATHZ`; these copy into the module-owned path buffer and throw
+`ARGV-E-INTERNAL` on capacity failure.
 
 Mocks keep parser tests self-hosted: `ARGV-MOCK-CLEAR` enables mock mode and
 empties the mock list, `ARGV-MOCK+` appends one counted token, and

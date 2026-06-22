@@ -1,7 +1,8 @@
 # Habu Tool Argv
 
-`tools/argv.f` is a small parser for native `bin/hb tool.f args...` scripts.
-Load it before the tool body, then call `ARGV-PARSE`.
+`lib/argv.f` is the checked parser for native `bin/hb tool.f args...` scripts.
+`tools/argv.f` is a compatibility path to the same module. Load either path
+before the tool body, then call `ARGV-PARSE`.
 
 For multi-file tools, pass every source after `--load` and before `--`;
 `SCRIPT-ARGV$` starts after that separator. `--load` is explicit file-source
@@ -9,6 +10,7 @@ mode, so non-tty stdin is not consumed by startup and remains available to the
 loaded tool:
 
 ```sh
+bin/hb --load lib/argv.f my-tool.f -- --json --label NAME -o out file.f
 bin/hb --load tools/argv.f my-tool.f -- --json --label NAME -o out file.f
 printf DATA | bin/hb --load lib/source.f my-tool.f -- arg
 ```
@@ -16,9 +18,11 @@ printf DATA | bin/hb --load lib/source.f my-tool.f -- arg
 ## Supported Options
 
 - `--json`
+- `--json-errors`
 - `--label NAME`
 - `--strict-signatures`
 - `--all-errors`
+- `--strict-boundary`
 - `-o OUT`
 - `--` to stop option scanning
 
@@ -34,6 +38,7 @@ exits 64.
 - `ARGV-EXPECT-POS ( lo hi -- )` validates positional count; `hi < 0` means unbounded.
 - `ARGV-EXPECT-POS-EXACT ( n -- )` validates an exact positional count.
 - `ARGV-REQUIRE-OUT ( -- )` and `ARGV-REQUIRE-LABEL ( -- )` require those options.
-- `ARGV-JSON?`, `ARGV-STRICT-SIGNATURES?`, `ARGV-ALL-ERRORS?` return flags.
+- `ARGV-JSON?`, `ARGV-STRICT-SIGNATURES?`, `ARGV-ALL-ERRORS?`, and
+  `ARGV-STRICT-BOUNDARY?` return flags.
 - `ARGV-LABEL$`, `ARGV-OUT$`, and `ARGV-POS$ ( idx -- a u )` return parsed strings.
 - `ARGV-PATHZ`, `ARGV-POSZ`, and `ARGV-OUTZ` return NUL-terminated scratch paths.

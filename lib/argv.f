@@ -19,6 +19,15 @@ create ARGV-POS-A ARGV-MAX cells allot
 create ARGV-POS-U ARGV-MAX cells allot
 
 variable ARGV-JSON
+variable ARGV-STRICT-SIGNATURES
+variable ARGV-ALL-ERRORS
+variable ARGV-STRICT-BOUNDARY
+
+variable ARGV-LABEL-A
+variable ARGV-LABEL-U
+variable ARGV-LABEL-SET
+variable ARGV-LABEL-DEFAULT-A
+variable ARGV-LABEL-DEFAULT-U
 
 variable ARGV-OUT-A
 variable ARGV-OUT-U
@@ -93,6 +102,10 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    0 ARGV-I !
    0 ARGV-NPOS !
    0 ARGV-JSON !
+   0 ARGV-STRICT-SIGNATURES !
+   0 ARGV-ALL-ERRORS !
+   0 ARGV-STRICT-BOUNDARY !
+   NULL$ drop ARGV-LABEL-A !  0 ARGV-LABEL-U !  0 ARGV-LABEL-SET !
    NULL$ drop ARGV-OUT-A !  0 ARGV-OUT-U !  0 ARGV-OUT-SET ! ;
 
 : ARGV-USE-SCRIPT ( -- )  0 ARGV-USE-MOCK? ! ;
@@ -137,6 +150,21 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    idx cells ARGV-POS-A + @
    idx cells ARGV-POS-U + @ ;
 
+: ARGV-LABEL! ( ptr u8 n -- ) {: a:ptr u :}
+   a ARGV-LABEL-A !  u ARGV-LABEL-U !  -1 ARGV-LABEL-SET ! ;
+
+: ARGV-LABEL-DEFAULT! ( ptr u8 n -- ) {: a:ptr u :}
+   a ARGV-LABEL-DEFAULT-A !  u ARGV-LABEL-DEFAULT-U ! ;
+
+: ARGV-LABEL? ( -- bool )  ARGV-LABEL-SET @ 0 <> ;
+
+: ARGV-LABEL$ ( -- ptr u8 n )
+   ARGV-LABEL? if
+      ARGV-LABEL-A @  ARGV-LABEL-U @
+   else
+      ARGV-LABEL-DEFAULT-A @  ARGV-LABEL-DEFAULT-U @
+   then ;
+
 : ARGV-OUT! ( ptr u8 n -- ) {: a:ptr u :}
    a ARGV-OUT-A !  u ARGV-OUT-U !  -1 ARGV-OUT-SET ! ;
 
@@ -154,6 +182,12 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-JSON? ( -- bool )  ARGV-JSON @ 0 <> ;
 
+: ARGV-STRICT-SIGNATURES? ( -- bool )  ARGV-STRICT-SIGNATURES @ 0 <> ;
+
+: ARGV-ALL-ERRORS? ( -- bool )  ARGV-ALL-ERRORS @ 0 <> ;
+
+: ARGV-STRICT-BOUNDARY? ( -- bool )  ARGV-STRICT-BOUNDARY @ 0 <> ;
+
 : ARGV-TAKE-NEXT ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    ARGV-I @ 1 + ARGV-COUNT >= if a u ARGV-MISSING then
    ARGV-I @ 1 + ARGV-I !
@@ -161,6 +195,11 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-PARSE-OPT ( ptr u8 n -- ) {: a:ptr u :}
    a u s" --json" ARGV-BYTES= if -1 ARGV-JSON ! exit then
+   a u s" --json-errors" ARGV-BYTES= if -1 ARGV-JSON ! exit then
+   a u s" --label" ARGV-BYTES= if a u ARGV-TAKE-NEXT ARGV-LABEL! exit then
+   a u s" --strict-signatures" ARGV-BYTES= if -1 ARGV-STRICT-SIGNATURES ! exit then
+   a u s" --all-errors" ARGV-BYTES= if -1 ARGV-ALL-ERRORS ! exit then
+   a u s" --strict-boundary" ARGV-BYTES= if -1 ARGV-STRICT-BOUNDARY ! exit then
    a u s" -o" ARGV-BYTES= if a u ARGV-TAKE-NEXT ARGV-OUT! exit then
    a u ARGV-DASH? if a u ARGV-UNKNOWN else a u ARGV-POS+ then ;
 
@@ -194,6 +233,9 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 : ARGV-REQUIRE-OUT ( -- )
    ARGV-OUT? 0= if s" missing -o OUT" ARGV-FAIL then ;
 
+: ARGV-REQUIRE-LABEL ( -- )
+   ARGV-LABEL? 0= if s" missing --label NAME" ARGV-FAIL then ;
+
 : ARGV-ZCOPY ( ptr u8 n ptr u8 n -- ptr u8 ) {: a:ptr u dst:ptr cap :}
    u 1 + cap > if ARGV-E-INTERNAL throw then
    0 begin dup u < while
@@ -215,6 +257,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 : ARGV-INIT ( -- )
    ARGV-USE-SCRIPT
    ARGV-RESET
+   NULL$ ARGV-LABEL-DEFAULT!
    NULL$ ARGV-OUT-DEFAULT!
    0 ARGV-QUIET!
    s" hb script.f [options] file ..." ARGV-USAGE! ;

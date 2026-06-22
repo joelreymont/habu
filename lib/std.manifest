@@ -551,11 +551,18 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	argv	lib/argv.f	word	ARGV-POS+	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	append one positional argument
 1	argv	lib/argv.f	word	ARGV-POS#	(-- n)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return positional argument count
 1	argv	lib/argv.f	word	ARGV-POS$	(n -- ptr u8 n)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	fetch one positional argument
+1	argv	lib/argv.f	word	ARGV-LABEL!	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	set label option
+1	argv	lib/argv.f	word	ARGV-LABEL-DEFAULT!	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	set default label
+1	argv	lib/argv.f	word	ARGV-LABEL?	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	report whether label was set
+1	argv	lib/argv.f	word	ARGV-LABEL$	(-- ptr u8 n)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return label or default
 1	argv	lib/argv.f	word	ARGV-OUT!	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	set output path option
 1	argv	lib/argv.f	word	ARGV-OUT-DEFAULT!	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	set default output path
 1	argv	lib/argv.f	word	ARGV-OUT?	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	report whether output path was set
 1	argv	lib/argv.f	word	ARGV-OUT$	(-- ptr u8 n)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return output path or default
 1	argv	lib/argv.f	word	ARGV-JSON?	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	report whether --json was set
+1	argv	lib/argv.f	word	ARGV-STRICT-SIGNATURES?	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	report whether --strict-signatures was set
+1	argv	lib/argv.f	word	ARGV-ALL-ERRORS?	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	report whether --all-errors was set
+1	argv	lib/argv.f	word	ARGV-STRICT-BOUNDARY?	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	report whether --strict-boundary was set
 1	argv	lib/argv.f	word	ARGV-TAKE-NEXT	(ptr u8 n -- ptr u8 n)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	consume the token after an option
 1	argv	lib/argv.f	word	ARGV-PARSE-OPT	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	parse one option or positional token
 1	argv	lib/argv.f	word	ARGV-COLLECT-REST	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	collect all tokens after --
@@ -563,6 +570,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	argv	lib/argv.f	word	ARGV-EXPECT-POS	(n n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	validate positional argument count range
 1	argv	lib/argv.f	word	ARGV-EXPECT-POS-EXACT	(n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	validate exact positional argument count
 1	argv	lib/argv.f	word	ARGV-REQUIRE-OUT	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	require -o OUT
+1	argv	lib/argv.f	word	ARGV-REQUIRE-LABEL	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	require --label NAME
 1	argv	lib/argv.f	word	ARGV-ZCOPY	(ptr u8 n ptr u8 n -- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	copy counted bytes into NUL-terminated buffer
 1	argv	lib/argv.f	word	ARGV-PATHZ	(ptr u8 n -- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	copy counted path bytes into argv path buffer
 1	argv	lib/argv.f	word	ARGV-POSZ	(n -- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return positional argument as pathz
