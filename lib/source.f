@@ -4,12 +4,15 @@
 
 $20000 constant SOURCE-CAP
 1 constant SOURCE-PROBE-CAP
+4096 constant SOURCE-LS-READ-CAP
 9 constant SOURCE-TAB
 10 constant SOURCE-LF
+13 constant SOURCE-CR
 32 constant SOURCE-SPACE
 
 create SOURCE-BUF SOURCE-CAP allot
 create SOURCE-PROBE SOURCE-PROBE-CAP allot
+create SOURCE-LS-READ-BUF SOURCE-LS-READ-CAP allot
 
 variable SOURCE-LEN
 variable SOURCE-RD
@@ -18,6 +21,10 @@ variable SOURCE-J
 variable SOURCE-CUT
 variable SOURCE-SKIP
 variable SOURCE-END
+variable SOURCE-LS-FD
+variable SOURCE-LS-RD
+variable SOURCE-LS-LEN
+variable SOURCE-LS-LINE#
 
 : SOURCE-READ-PROBE ( -- )
    0 SOURCE-PROBE SOURCE-PROBE-CAP read SOURCE-RD !
@@ -137,3 +144,62 @@ variable SOURCE-END
       SOURCE-END @ SOURCE-I !
    repeat
    SOURCE-LEN @ ;
+
+: SOURCE-LS-CLOSE ( -- )
+   SOURCE-LS-FD @ dup 0 >= if close else drop then
+   -1 SOURCE-LS-FD ! ;
+
+: SOURCE-LS-THROW ( n -- )
+   SOURCE-LS-CLOSE
+   throw ;
+
+: SOURCE-LS-OPEN ( ptr u8 n -- )
+   -1 SOURCE-LS-FD !
+   FS-PATHZ open-rd SOURCE-LS-FD !
+   SOURCE-LS-FD @ 0 < if E-FS-OPEN throw then ;
+
+: SOURCE-LS-READ ( -- n )
+   SOURCE-LS-FD @ SOURCE-LS-READ-BUF SOURCE-LS-READ-CAP read SOURCE-LS-RD !
+   SOURCE-LS-RD @ 0 < if E-FS-IO SOURCE-LS-THROW 0 exit then
+   SOURCE-LS-RD @ SOURCE-LS-READ-CAP > if E-FS-IO SOURCE-LS-THROW 0 exit then
+   SOURCE-LS-RD @ ;
+
+: SOURCE-LS-TRIM-CR ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+   u 0 > if
+      a u 1 - + c@ SOURCE-CR = if a u 1 - exit then
+   then
+   a u ;
+
+: SOURCE-LS-APPEND ( n ptr u8 n -- ) {: c line:ptr cap :}
+   SOURCE-LS-LEN @ cap >= if E-FS-CAPACITY SOURCE-LS-THROW then
+   c line SOURCE-LS-LEN @ + c!
+   SOURCE-LS-LEN @ 1+ SOURCE-LS-LEN ! ;
+
+: SOURCE-LS-EMIT ( ptr u8 [ ptr u8 n n -- ] -- ) {: line:ptr q :}
+   SOURCE-LS-LINE# @ 1+ SOURCE-LS-LINE# !
+   line SOURCE-LS-LEN @ SOURCE-LS-TRIM-CR SOURCE-LS-LINE# @ q execute
+   0 SOURCE-LS-LEN ! ;
+
+: SOURCE-LS-BYTE ( n ptr u8 n [ ptr u8 n n -- ] -- ) {: c line:ptr cap q :}
+   c SOURCE-LF = if line q SOURCE-LS-EMIT exit then
+   c line cap SOURCE-LS-APPEND ;
+
+: SOURCE-LS-CHUNK ( n ptr u8 n [ ptr u8 n n -- ] -- ) {: got line:ptr cap q :}
+   0 begin dup got < while
+      SOURCE-LS-READ-BUF over + c@ line cap q SOURCE-LS-BYTE
+      1+
+   repeat drop ;
+
+: SOURCE-LS-DRAIN ( ptr u8 n [ ptr u8 n n -- ] -- ) {: line:ptr cap q :}
+   cap 0 <= if E-FS-CAPACITY SOURCE-LS-THROW then
+   0 SOURCE-LS-LEN !
+   0 SOURCE-LS-LINE# !
+   begin SOURCE-LS-READ dup 0 > while
+      line cap q SOURCE-LS-CHUNK
+   repeat drop
+   SOURCE-LS-LEN @ 0 > if line q SOURCE-LS-EMIT then
+   SOURCE-LS-CLOSE ;
+
+: SOURCE-FILE-LINES ( ptr u8 n ptr u8 n [ ptr u8 n n -- ] -- ) {: path:ptr pathu line:ptr cap q :}
+   path pathu SOURCE-LS-OPEN
+   line cap q SOURCE-LS-DRAIN ;

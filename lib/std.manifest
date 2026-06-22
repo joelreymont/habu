@@ -341,6 +341,17 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	source	lib/source.f	word	SOURCE-APPEND-COMMENTED-EXPORT	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one EXPORT line with leading whitespace replaced by a comment marker
 1	source	lib/source.f	word	SOURCE-APPEND-COMMENT-LINE	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one source line while commenting EXPORT directives
 1	source	lib/source.f	word	COMMENT-EXPORTS	(ptr u8 len ptr u8 len -- len)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	comment source EXPORT directives into a caller buffer
+1	source	lib/source.f	word	SOURCE-LS-CLOSE	(--)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	close the active source line stream file descriptor
+1	source	lib/source.f	word	SOURCE-LS-THROW	(n --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	close the active source line stream and throw the supplied error
+1	source	lib/source.f	word	SOURCE-LS-OPEN	(ptr u8 n --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	open a counted path for source line streaming
+1	source	lib/source.f	word	SOURCE-LS-READ	(-- n)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	read one source line stream chunk
+1	source	lib/source.f	word	SOURCE-LS-TRIM-CR	(ptr u8 n -- ptr u8 n)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	remove a trailing carriage return from one streamed line
+1	source	lib/source.f	word	SOURCE-LS-APPEND	(n ptr u8 n --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one byte to the current streamed line buffer
+1	source	lib/source.f	word	SOURCE-LS-EMIT	(ptr u8 [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	call a source line callback with current line bytes and line number
+1	source	lib/source.f	word	SOURCE-LS-BYTE	(n ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	process one byte from a source line stream chunk
+1	source	lib/source.f	word	SOURCE-LS-CHUNK	(n ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	process one source line stream read chunk
+1	source	lib/source.f	word	SOURCE-LS-DRAIN	(ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	stream all lines from the active file descriptor
+1	source	lib/source.f	word	SOURCE-FILE-LINES	(ptr u8 n ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	stream a counted file path line by line through a callback
 1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup
 1	process	lib/process.f	word	PROC-WAIT-RAW	(pid -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-rc alias captured before checked wrapper shadows the primitive name
 1	process	lib/process.f	word	PROC-WAIT-STATUS-RAW	(pid -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-status alias captured before checked wrappers decode wait outcomes

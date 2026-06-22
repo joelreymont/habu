@@ -2,6 +2,8 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/source.f lib/source-test.f
 
 2048 constant ST-CAP
+16 constant ST-LINE-CAP
+4 constant ST-SMALL-LINE-CAP
 92 constant ST-BACKSLASH
 
 variable ST-ROOT-U
@@ -11,11 +13,14 @@ variable ST-OUT-U
 variable ST-SRC-U
 variable ST-INS-U
 variable ST-WANT-U
+variable ST-LINE-COUNT
 
 create ST-BUF ST-CAP allot
 create ST-SRC-BUF ST-CAP allot
 create ST-INS-BUF ST-CAP allot
 create ST-WANT-BUF ST-CAP allot
+create ST-LINE-BUF ST-LINE-CAP allot
+create ST-SMALL-LINE-BUF ST-SMALL-LINE-CAP allot
 create ST-ROOT-BUF FS-PATH-CAP allot
 create ST-A-BUF FS-PATH-CAP allot
 create ST-B-BUF FS-PATH-CAP allot
@@ -80,8 +85,19 @@ create ST-LENS 2 cells allot
    {: src:ptr srcu dst:ptr cap :}
    src srcu >LEN dst cap >LEN COMMENT-EXPORTS LEN>N ;
 
+: ST-FILE-LINES ( ptr u8 n [ ptr u8 n n -- ] -- )
+   {: path:ptr pathu q :}
+   path pathu ST-LINE-BUF ST-LINE-CAP q SOURCE-FILE-LINES ;
+
+: ST-SMALL-FILE-LINES ( ptr u8 n [ ptr u8 n n -- ] -- )
+   {: path:ptr pathu q :}
+   path pathu ST-SMALL-LINE-BUF ST-SMALL-LINE-CAP q SOURCE-FILE-LINES ;
+
 : ST-LF ( -- )
    10 SB-APPEND-C ;
+
+: ST-CR ( -- )
+   13 SB-APPEND-C ;
 
 : ST-SB>SRC ( -- )
    SB$ ST-SRC-BUF ST-SRC-U ST-BYTES! ;
@@ -156,6 +172,48 @@ create ST-LENS 2 cells allot
    ST-SRC ST-BUF ST-CAP ST-COMMENT-EXPORTS ST-WANT-U @ T=
    ST-BUF ST-WANT-U @ ST-WANT T$= ;
 
+: ST-LINES-PARTIAL-CB ( ptr u8 n n -- ) {: a:ptr u line :}
+   line 1 = if a u s" alpha" T$= then
+   line 2 = if a u s" beta" T$= then
+   line 2 > if STR-FALSE T-ASSERT then
+   ST-LINE-COUNT @ 1+ ST-LINE-COUNT ! ;
+
+: ST-LINES-CRLF-CB ( ptr u8 n n -- ) {: a:ptr u line :}
+   line 1 = if a u s" alpha" T$= then
+   line 2 = if a u s" beta" T$= then
+   ST-LINE-COUNT @ 1+ ST-LINE-COUNT ! ;
+
+: ST-LINES-NOOP ( ptr u8 n n -- )
+   drop 2drop ;
+
+: TEST-SOURCE-FILE-LINES-EMPTY ( -- )
+   ST-A s" " WRITE-ALL
+   0 ST-LINE-COUNT !
+   ST-A [: ST-LINES-NOOP ;] ST-FILE-LINES
+   ST-LINE-COUNT @ 0 T= ;
+
+: TEST-SOURCE-FILE-LINES-PARTIAL ( -- )
+   SB-RESET s" alpha" SB-APPEND ST-LF s" beta" SB-APPEND
+   ST-A SB$ WRITE-ALL
+   0 ST-LINE-COUNT !
+   ST-A [: ST-LINES-PARTIAL-CB ;] ST-FILE-LINES
+   ST-LINE-COUNT @ 2 T= ;
+
+: TEST-SOURCE-FILE-LINES-CRLF ( -- )
+   SB-RESET s" alpha" SB-APPEND ST-CR ST-LF s" beta" SB-APPEND ST-CR ST-LF
+   ST-A SB$ WRITE-ALL
+   0 ST-LINE-COUNT !
+   ST-A [: ST-LINES-CRLF-CB ;] ST-FILE-LINES
+   ST-LINE-COUNT @ 2 T= ;
+
+: TEST-SOURCE-FILE-LINES-LONG ( -- )
+   ST-A s" abcde" WRITE-ALL
+   ST-A [: ST-LINES-NOOP ;] ST-SMALL-FILE-LINES ;
+
+: TEST-SOURCE-FILE-LINES-MISSING ( -- )
+   ST-ROOT s" missing-lines.txt" ST-BUF JOIN-PATH {: u :}
+   ST-BUF u [: ST-LINES-NOOP ;] ST-FILE-LINES ;
+
 : TEST-SOURCE-ERRORS ( -- )
    s" abc" s" xyz" ST-BUF 5 ST-INSERT-BEFORE-FINAL-LINE drop ;
 
@@ -167,6 +225,11 @@ create ST-LENS 2 cells allot
    TEST-WRITE-SOURCE-LIST
    TEST-INSERT-BEFORE-FINAL-LINE
    TEST-COMMENT-EXPORTS
+   TEST-SOURCE-FILE-LINES-EMPTY
+   TEST-SOURCE-FILE-LINES-PARTIAL
+   TEST-SOURCE-FILE-LINES-CRLF
+   [: TEST-SOURCE-FILE-LINES-LONG ;] E-FS-CAPACITY TTHROWSQ
+   [: TEST-SOURCE-FILE-LINES-MISSING ;] E-FS-OPEN TTHROWSQ
    [: TEST-SOURCE-ERRORS ;] E-FS-CAPACITY TTHROWSQ
    CLEANUP-RUN
    ST-ROOT EXISTS? TFALSE
