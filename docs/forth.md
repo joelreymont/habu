@@ -146,11 +146,13 @@ not a matter of taste. Target is the native `bin/hb` engine.
   investigation is `Static invariant:` followed by that invariant and boundary.
   If the invariant is not known yet, say so on that same line and reduce the
   case until it is known. If you have already started with runtime symptoms,
-  stop and restart from this line.
+  stop and restart from this line. Questions about strengthening this rule,
+  quoted examples, and process reviews are still live triggers.
 - Do not put runtime symptoms first. The checker/compiler/primitive model owns
   the investigation until the exact checked path proves that the invariant is
-  outside its contract. Guards, runtime repairs, and library edits come only
-  after the static owner and negative regression are identified.
+  outside its contract. Guards, runtime repairs, documentation edits, and
+  library edits come only after the static owner and negative regression are
+  identified.
 - Use this template before editing runtime/library code:
   `Static invariant:` the pre-runtime fact that should be impossible to violate;
   `Owner:` checker semantics, compiler/codegen model, primitive/boundary effect,

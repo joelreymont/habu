@@ -55,6 +55,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   fail-closed proof, miss class, minimal checked reproducer, and a checker,
   compiler, or primitive-model fix or capability dot; the bad program must end
   as a negative checker regression.
+- **Checker-rule maintenance is not exempt:** a prompt asking how to enforce the
+  checker-first rule still triggers the rule. Start with `Static invariant:`,
+  then strengthen process docs only in support of a compiler/checker fix,
+  negative regression, or capability dot.
 - **Quotations are xts, not closures:** `[: ;]` may not read a surrounding
   local. Until real closure objects exist, both the checker and generated
   compiler must reject local references while a quotation is open; otherwise

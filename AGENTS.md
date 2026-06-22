@@ -12,7 +12,8 @@ roadmap.
   apologies. Scan for “why didn’t the checker catch this?”, “why didn’t the
   compiler catch this?”, or equivalent wording. Quoted examples, meta-process
   questions, and variants such as “why did the checker/compiler miss it?” are
-  live triggers.
+  live triggers. Questions about improving or enforcing this rule are not
+  exempt; they must still start with the invariant line.
 - If that trigger is present, the first visible line must be `Static invariant:`
   followed by the pre-runtime fact that should have been impossible and the
   checker/compiler boundary that should enforce it. No runtime symptom,
@@ -25,7 +26,8 @@ roadmap.
 - Continue with `docs/forth.md` § Checker-Miss RCA: prove the exact path is
   fail-closed, classify the miss, add a minimal negative checked regression, fix
   the checker/compiler/primitive model or dot the missing capability, then repair
-  downstream code.
+  downstream code. Documentation or process edits do not discharge the trigger;
+  they only support the compiler/checker fix or capability dot.
 
 ## Conventions
 
@@ -76,15 +78,16 @@ constants; and a `T{ … -> … }T` test for every word.
   as detailed dots.
 - Checker-first RCA is mandatory. Treat the phrase “why didn’t the checker catch
   this?” and equivalent wording as an immediate trigger, even in meta-discussion
-  about process. The first question is always: **What static invariant should
-  have made this impossible before runtime, and where should the compiler/checker
-  enforce it?** The first visible line of the response, progress update, note,
-  dot, or investigation must be `Static invariant:` with that answer. No runtime
-  symptom, guard, workaround, or library edit may come first. Use the RCA
-  template in `docs/forth.md` § Checker-Miss RCA. Do not edit runtime/library
-  code until the investigation also records: fail-closed proof for the exact
-  command path, miss class, minimal checked reproducer, and the checker/compiler
-  change or explicit dot that will close the soundness gap.
+  about process or rule-maintenance. The first question is always: **What
+  static invariant should have made this impossible before runtime, and where
+  should the compiler/checker enforce it?** The first visible line of the
+  response, progress update, note, dot, or investigation must be
+  `Static invariant:` with that answer. No runtime symptom, guard, workaround,
+  documentation edit, or library edit may come first. Use the RCA template in
+  `docs/forth.md` § Checker-Miss RCA. Do not edit runtime/library code until the
+  investigation also records: fail-closed proof for the exact command path, miss
+  class, minimal checked reproducer, and the checker/compiler change or explicit
+  dot that will close the soundness gap.
   Prove fail-closed status with a minimal bad definition on the same load path,
   command exit status, and stderr/stdout diagnostics. If the path was not
   fail-closed, fix that harness/tooling gap before runtime repair. If it was
