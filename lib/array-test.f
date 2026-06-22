@@ -14,31 +14,38 @@ create AT-NORMAL 3 , -1 , 4 , 4 , 2 ,
 create AT-WORK 5 cells allot
 create AT-ACTUAL 32 cells allot
 
-: AT= {: got want :} ( n n -- )
+: AT-ASSERT ( bool -- )
    AT-CASE @ 1 + AT-CASE !
-   got want <> if
+   0= if
       [char] F emit AT-CASE @ .
       AT-FAIL @ 1 + AT-FAIL !
    then ;
 
+: AT= ( n n -- )
+   = AT-ASSERT ;
+
+: ATTRUE ( bool -- )
+   AT-ASSERT ;
+
+: ATFALSE ( bool -- )
+   0= AT-ASSERT ;
+
 \ T{ -> }T intentionally models an arbitrary stack tail, which is a
 \ metaprogramming test boundary; reusable array helpers below are checked.
-0 set-check
-: T{ ( -- )
+TRUSTED: T{ ( -- )
    depth AT-START-DEPTH ! ;
 
-: -> ( R -- )
+TRUSTED: -> ( R -- )
    depth AT-START-DEPTH @ - dup AT-ACTUAL-DEPTH !
    0 ?do
       AT-ACTUAL i cells + !
    loop ;
 
-: }T ( R -- )
+TRUSTED: }T ( R -- )
    depth AT-START-DEPTH @ - dup AT-ACTUAL-DEPTH @ AT=
    0 ?do
       AT-ACTUAL i cells + @ AT=
    loop ;
-' HB-CHECK-HOOK set-check
 
 : AT-WORK1 ( n -- )
    AT-WORK ! ;
@@ -296,10 +303,10 @@ create AT-ACTUAL 32 cells allot
    [: AT-LAST-EMPTY ;] catch E-A-EMPTY AT=
    5 1 AT-MIRROR-INDEX 3 AT=
    [: AT-MIRROR-HIGH ;] catch E-A-BOUNDS AT=
-   4 EVEN? -1 AT=
-   5 EVEN? 0 AT=
-   -2 EVEN? -1 AT=
-   -3 EVEN? 0 AT= ;
+   4 EVEN? ATTRUE
+   5 EVEN? ATFALSE
+   -2 EVEN? ATTRUE
+   -3 EVEN? ATFALSE ;
 
 : AT-TEST-SCALARS ( -- )
    AT-EMPTY 0 AT-A-SUM 0 AT=
