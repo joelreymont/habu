@@ -5,6 +5,20 @@ Forth is verified by a checker (typed, row-polymorphic stack effects) rather
 than trusting the model to track the stack by hand. See `PLAN.md` for design and
 roadmap.
 
+## First Response Triggers (BLOCKING)
+
+- Before any progress update, tool call, or implementation plan, scan the latest
+  user message for “why didn’t the checker catch this?”, “why didn’t the compiler
+  catch this?”, or equivalent wording.
+- If that trigger is present, the first visible line must be `Static invariant:`
+  followed by the pre-runtime fact that should have been impossible and the
+  checker/compiler boundary that should enforce it. No runtime symptom,
+  workaround, library edit, or test-harness edit comes first.
+- Continue with `docs/forth.md` § Checker-Miss RCA: prove the exact path is
+  fail-closed, classify the miss, add a minimal negative checked regression, fix
+  the checker/compiler/primitive model or dot the missing capability, then repair
+  downstream code.
+
 ## Conventions
 
 - **Project-defined Forth words are UPPER-CASE; built-ins stay as-is/lower-case.**

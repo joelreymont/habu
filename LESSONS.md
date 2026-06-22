@@ -49,6 +49,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   fixes wait for fail-closed proof, miss class, minimal checked reproducer, and
   a checker/compiler/primitive-model fix or capability dot; the bad program must
   end as a negative checker regression.
+- **Trigger scan happens before status text:** checker/compiler-miss prompts must
+  be detected before writing any update or tool plan. If the latest user message
+  contains the trigger, the first visible line is `Static invariant:` and only
+  then the investigation, tooling, and downstream repair plan begin.
 - **Quotations are xts, not closures:** `[: ;]` may not read a surrounding
   local. Until real closure objects exist, both the checker and generated
   compiler must reject local references while a quotation is open; otherwise
