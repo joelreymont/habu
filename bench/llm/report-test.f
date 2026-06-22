@@ -205,6 +205,17 @@ RPT-LF RPT-LF-BUF c!
    s" execution-confirmed" RPT-CONTAINS
    s" Habu raw 1" RPT-CONTAINS ;
 
+: RPT-TEST-TASK-TABLE-ROWS ( -- )
+   RPT-CLEAR
+   1 s" TASK-A" s" fixture" s" habu-a" s" arrays" 100 10 1 RPT-PASS-ROW
+   1 s" TASK-A" s" fixture" s" js" s" arrays" 50 10 1 RPT-PASS-ROW
+   2 s" TASK-B" s" fixture" s" habu-a" s" arrays" 75 10 1 RPT-PASS-ROW
+   2 s" TASK-B" s" fixture" s" js" s" arrays" 25 10 1 RPT-PASS-ROW
+   RPT-CAPTURE
+   s" | TASK-A | 100 |" RPT-CONTAINS
+   s" | TASK-B | 75 |" RPT-CONTAINS
+   s" raw pass/1" RPT-CONTAINS ;
+
 : RPT-MAIN ( -- )
    T-RESET
    RPT-PREPARE
@@ -214,6 +225,7 @@ RPT-LF RPT-LF-BUF c!
    RPT-TEST-ARM-LABELS
    RPT-TEST-CATEGORY-DELTAS
    RPT-TEST-FALSE-REJECT
+   RPT-TEST-TASK-TABLE-ROWS
    CLEANUP-RUN
    T-REPORT
    s" report-test: ok" type cr ;

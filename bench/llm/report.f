@@ -2,9 +2,6 @@
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, tools/json.f,
 \ and tools/argv.f.
 
-\ Tool boundary: streaming JSONL, large replay strings, and CLI/file IO live here.
-0 set-check
-
 16 constant RR-ARM-MAX
 $80000 constant RR-LINE-CAP
 $4000 constant RR-READ-CAP
@@ -187,10 +184,6 @@ variable U-COUNT
 variable RR-PERF-ROOT
 variable RR-PERF-ARR
 
-: RR-CHECK-HOOK ( -- )
-   CHECK! ;
-' RR-CHECK-HOOK set-check
-
 : RR-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
 
@@ -253,8 +246,10 @@ variable RR-PERF-ARR
 : U-MODEL-U ( -- ptr n ) U-MODEL-U-P RR-PTR-N@ ;
 : U-PASS ( -- ptr n ) U-PASS-P RR-PTR-N@ ;
 
-: RR-FAIL ( a u -- )
-   type cr RR-E-INTERNAL die ;
+: RR-FAIL ( ptr u8 n -- )
+   {: a:ptr u :}
+   a u type cr
+   a u RR-E-INTERNAL die ;
 
 : RR-ALLOC-CELLS ( n ptr a -- )
    {: count:n dst:ptr :}
@@ -364,7 +359,9 @@ variable RR-PERF-ARR
 : RR-TASK$ ( n -- ptr u8 n ) dup T-NAME-O swap RR-A@ swap T-NAME-U swap RR-A@ RR-$ ;
 : RR-CAT$ ( n -- ptr u8 n ) dup C-NAME-O swap RR-A@ swap C-NAME-U swap RR-A@ RR-$ ;
 
-: RR-BOOL ( f -- bool ) 0= 0= ;
+: RR-N>BOOL ( n -- bool ) 0 = 0= ;
+: RR-BOOL>N ( bool -- n ) if -1 else 0 then ;
+: RR-FLAG-AT? ( n ptr n -- bool ) RR-AT RR-N>BOOL ;
 
 : RR-U$ ( n -- ptr u8 n )
    {: u:n :}
@@ -436,7 +433,7 @@ variable RR-PERF-ARR
    den 0= if RR-DASH$ RR-OUT exit then
    num 10 * den RR-ROUND-DIV dup 100 < if
       dup 10 / RR-U$ RR-OUT
-      dup 10 mod dup 0= if 2drop else RR-DOT emit RR-U$ RR-OUT then
+      dup 10 mod dup 0= if 2drop else RR-DOT emit RR-U$ RR-OUT drop then
    else
       drop num den RR-ROUND-DIV RR-U.
    then
@@ -645,9 +642,11 @@ variable RR-PERF-ARR
    s" checker_false_reject" RR-KEY= if RR-TOKEN-BOOL CUR-FALSE-REJECT ! exit then
    RR-SKIP-VALUE ;
 
-: RR-ROW-DIAGOK ( -- f )
-   CUR-DTOK @ CUR-DSPAN @ and CUR-DEXPECT @ and CUR-DACTUAL @ and
-   CUR-DCODE @ and CUR-DCLASS @ and CUR-AESTABLE @ and ;
+: RR-ROW-DIAGOK ( -- bool )
+   CUR-DTOK @ RR-N>BOOL CUR-DSPAN @ RR-N>BOOL and
+   CUR-DEXPECT @ RR-N>BOOL and CUR-DACTUAL @ RR-N>BOOL and
+   CUR-DCODE @ RR-N>BOOL and CUR-DCLASS @ RR-N>BOOL and
+   CUR-AESTABLE @ RR-N>BOOL and ;
 
 : RR-CUR-MODEL-KEY ( -- )
    CUR-MODEL-ID-U @ 0 > if
@@ -693,7 +692,7 @@ variable RR-PERF-ARR
    CUR-RUNTIME @ R-RUNTIME RR-ROWS @ RR-A!
    CUR-RUNTIME-KNOWN @ R-RUNTIME-KNOWN RR-ROWS @ RR-A!
    CUR-WALL @ R-WALL RR-ROWS @ RR-A!
-   RR-ROW-DIAGOK R-DIAGOK RR-ROWS @ RR-A!
+   RR-ROW-DIAGOK RR-BOOL>N R-DIAGOK RR-ROWS @ RR-A!
    CUR-FALSE-REJECT @ R-FALSE-REJECT RR-ROWS @ RR-A!
    RR-ROWS @ 1+ RR-ROWS ! ;
 
@@ -953,12 +952,12 @@ variable RR-PERF-ARR
    0 begin dup RR-ROWS @ < while
       dup arm model cat RR-ROW-SELECT? if
          S-TRIALS @ 1+ S-TRIALS !
-         dup R-FALSE-REJECT RR-AT if S-FALSE-REJECT @ 1+ S-FALSE-REJECT ! then
+         dup R-FALSE-REJECT RR-FLAG-AT? if S-FALSE-REJECT @ 1+ S-FALSE-REJECT ! then
          dup RR-ACC-UNIT
-         dup R-DIAGOK RR-AT if S-DIAGOK @ 1+ S-DIAGOK ! then
+         dup R-DIAGOK RR-FLAG-AT? if S-DIAGOK @ 1+ S-DIAGOK ! then
          dup RR-ROW-PASS? if
             S-PASSED @ 1+ S-PASSED !
-            dup R-FIRST RR-AT if S-FIRST @ 1+ S-FIRST ! then
+            dup R-FIRST RR-FLAG-AT? if S-FIRST @ 1+ S-FIRST ! then
             dup R-ROUNDS RR-AT S-ROUND-SUM @ + S-ROUND-SUM !
             dup RR-TOKEN-KNOWN? if
                dup R-TOKENS RR-AT dup S-TOK-SUM @ + S-TOK-SUM !
@@ -985,7 +984,7 @@ variable RR-PERF-ARR
    repeat drop
    U-COUNT @ S-TASKS !
    0 begin dup U-COUNT @ < while
-      dup U-PASS RR-AT if S-PASSK @ 1+ S-PASSK ! then
+      dup U-PASS RR-FLAG-AT? if S-PASSK @ 1+ S-PASSK ! then
       1+
    repeat drop
    S-ROUND-SUM @ S-PASSED @ RR-MEAN S-MEAN-ROUNDS !
@@ -1120,6 +1119,13 @@ variable RR-PERF-ARR
    S-PASSK @ S-TASKS @ RR-PCT. s"  | " RR-OUT
    S-NONPASS @ RR-U. s"  |" RR-OUT RR-NL ;
 
+: RR-PER-MODEL-ROWS. ( n -- )
+   {: model:n :}
+   0 begin dup RR-ARM# < while
+      model over RR-PER-MODEL-ROW.
+      1+
+   repeat drop ;
+
 : RR-EFFORT-ROW. ( n -- )
    {: arm:n :}
    arm -1 -1 RR-COLLECT-STATS
@@ -1147,6 +1153,13 @@ variable RR-PERF-ARR
    S-TOK-MEAN @ RR-FMT-SCALED s"  | " RR-OUT
    S-RUN-MED @ RR-FMT-SCALED s"  | " RR-OUT
    S-DIAGOK @ S-TRIALS @ RR-PCT. s"  |" RR-OUT RR-NL ;
+
+: RR-CATEGORY-ROWS. ( n -- )
+   {: cat:n :}
+   0 begin dup RR-ARM# < while
+      cat over RR-CATEGORY-ROW.
+      1+
+   repeat drop ;
 
 : RR-CATEGORY-DELTA-ROW. ( n -- )
    {: cat:n :}
@@ -1368,7 +1381,7 @@ variable RR-PERF-ARR
    s" | model | language | trials | green trials | trial pass | first-try green | task pass@k | non-pass rows |" RR-OUT RR-NL
    s" |---|---|---:|---:|---:|---:|---:|---:|" RR-OUT RR-NL
    0 begin dup RR-MODEL-N @ < while
-      dup 0 begin dup RR-ARM# < while 2dup RR-PER-MODEL-ROW. 1+ repeat drop
+      dup RR-PER-MODEL-ROWS.
       1+
    repeat drop RR-NL
    s" Aggregate language tables above pool rows only after this per-model breakdown makes each model family visible." RR-OUT RR-NL RR-NL ;
@@ -1388,7 +1401,7 @@ variable RR-PERF-ARR
    s" | category | language | trials | green trials | trial pass | task pass@k | mean rounds | mean output tokens | median runtime ms | diagnostic complete |" RR-OUT RR-NL
    s" |---|---|---:|---:|---:|---:|---:|---:|---:|---:|" RR-OUT RR-NL
    0 begin dup RR-CAT-N @ < while
-      dup 0 begin dup RR-ARM# < while 2dup RR-CATEGORY-ROW. 1+ repeat drop
+      dup RR-CATEGORY-ROWS.
       1+
    repeat drop RR-NL
    s" Category rows keep the same trial pass, task pass@k, repair-round, token, runtime, and diagnostic-quality semantics as the aggregate tables, but make weak task families visible." RR-OUT RR-NL RR-NL

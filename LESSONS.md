@@ -506,6 +506,15 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `bench/llm/report.f` output shape changes, regenerate `bench/llm/RESULTS.md`
   and update the verification prose in the same commit. A green reducer test does
   not prove the checked-in report still matches committed JSONL evidence.
+- **Report dependency splits must update every spawner:** after
+  `expanded-report.f` moved to `validate-results-lib.f`, direct report tests
+  passed but `run-expanded-bench.f` still spawned the old load list. Keep CLI
+  runner load lists synchronized with focused fixtures when a checked report
+  grows library dependencies.
+- **Checked report reducers can expose stale artifacts:** removing an unchecked
+  boundary from `bench/llm/report.f` found a stack leak in `RR-RATIO.` that had
+  truncated the committed per-task table after the first row. Add row-count
+  regressions and compare regenerated reports whenever a reducer becomes checked.
 - **Codex input-token bloat is ambient context:** default `codex exec` loads
   apps/plugins/tool context and project instructions; a smoke prompt fell from
   about 29k input tokens to about 11.5k by using a clean `CODEX_HOME` plus
