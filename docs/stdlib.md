@@ -25,6 +25,7 @@ Planned module files:
 - `lib/process.f`
 - `lib/process-argv.f`
 - `lib/process-env.f`
+- `lib/process-command.f`
 - `lib/process-cwd.f`
 - `lib/argv.f`
 - `lib/test.f`
@@ -848,6 +849,39 @@ names are skipped. `FIND-EXECUTABLE-IN-PATH` accepts an explicit PATH byte strin
 for deterministic tests, while `FIND-EXECUTABLE` reads the current process
 `PATH`. `RESOLVE-EXECUTABLE` throws `E-PROC-PATH` when lookup fails.
 
+`lib/process-command.f` adds a checked command-owned runner above argv/env. It
+keeps separate command arg, env, stdin, stdout, stderr, and outcome storage, then
+transfers that state into the existing `lib/process-argv.f`/`lib/process-env.f`
+spawn wrappers for one run. The primitive spawn calls stay in those existing
+audited boundaries.
+
+```forth
+PROC-CMD-RESET       ( -- )
+PROC-CMD-ARG+        ( ptr u8 len -- )
+PROC-CMD-ENV-ENTRY+  ( ptr u8 len -- )
+PROC-CMD-ENV+        ( ptr u8 len ptr u8 len -- )
+PROC-CMD-ENV-INHERIT ( -- )
+PROC-CMD-ENV-HERMETIC ( -- )
+PROC-CMD-IN-RESET    ( -- )
+PROC-CMD-IN!         ( ptr u8 len -- )
+PROC-CMD-RUN-OUTCOME ( ptr u8 len ms -- n n )
+PROC-CMD-RUN-RC      ( ptr u8 len ms -- rc )
+PROC-CMD-OUT$        ( -- ptr u8 n )
+PROC-CMD-ERR$        ( -- ptr u8 n )
+PROC-CMD-OUTCOME@    ( -- n n )
+PROC-CMD-RC@         ( -- rc )
+```
+
+Call `PROC-CMD-RESET`, append extra args with `PROC-CMD-ARG+`, append explicit
+environment entries with `PROC-CMD-ENV+` or `PROC-CMD-ENV-ENTRY+`, optionally
+replace the default inherited environment with `PROC-CMD-ENV-HERMETIC`, and set
+bounded stdin with `PROC-CMD-IN!`. `PROC-CMD-RUN-OUTCOME` validates the path and
+timeout before transferring state into the lower-level argv/env buffers, captures
+bounded stdout/stderr into command-owned buffers, stores `kind code`, and returns
+that same outcome pair. `PROC-CMD-RUN-RC` returns `PROC-OUTCOME>RC` conversion
+for callers that still need rc semantics. `PROC-CMD-OUT$`, `PROC-CMD-ERR$`,
+`PROC-CMD-OUTCOME@`, and `PROC-CMD-RC@` expose the stored result after the run.
+
 `lib/process-cwd.f` is a post-env layer for running prepared argv/envp children
 with a child-only working directory. It uses the native
 `spawn-argv-env-cwd-io` boundary so the parent process cwd never changes. The cwd
@@ -1185,7 +1219,7 @@ rows describe only public checked definitions that exist in source. The `effect`
 field must match the normalized `signature` emitted by:
 
 ```sh
-bin/hb --load tools/lint/lib.f tools/public-signatures.f -- lib/<module>.f
+bin/hb --load tools/lint/text.f tools/lint/lib.f tools/public-signatures.f -- lib/<module>.f
 ```
 
 The manifest, docs, source coverage, and signature drift are validated by
@@ -1194,5 +1228,5 @@ The manifest, docs, source coverage, and signature drift are validated by
 Run the focused check with:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/lib.f tools/stdlib-manifest-test.f
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/lib.f tools/stdlib-manifest-test.f
 ```
