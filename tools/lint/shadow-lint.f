@@ -67,7 +67,8 @@ variable BAD  variable LI
    s" src/habu/habu1.f" FB 131072 READ-FILE  TOKENIZE  SCAN-PRIMS
    s" tools/lint/lib.f"  LINT-FILE   s" tools/lint/shadow-lint.f" LINT-FILE
    s" src/core/util.f"      LINT-FILE   s" src/core/checker.f"   LINT-FILE
-   s" src/core/render.f"    LINT-FILE   s" src/core/sha256.f"    LINT-FILE
+   s" src/core/render.f"    LINT-FILE   s" src/core/roles.f"     LINT-FILE
+   s" src/core/sha256.f"    LINT-FILE
    s" src/arch/arm64/asm.f" LINT-FILE   s" src/arch/arm64/icode.f" LINT-FILE
    s" src/arch/arm64/mnem.f" LINT-FILE  s" src/os/macos/sys.f"   LINT-FILE
    s" src/os/macos/env.f"   LINT-FILE   s" src/habu/treeshake.f" LINT-FILE

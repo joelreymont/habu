@@ -165,6 +165,7 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    out outu s" src/core/checker.f" BF-APPEND-SOURCE
    out outu s" src/core/render.f" BF-APPEND-SOURCE
    out outu BF-APPEND-HOOK
+   out outu s" src/core/roles.f" BF-APPEND-SOURCE
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE
    out outu s" src/core/combinators.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE

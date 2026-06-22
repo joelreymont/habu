@@ -174,12 +174,15 @@ variable GE-SCRIPT-U
 : GE-ROLE-SOURCE ( -- )
    GE-SRC-RESET
    s" -1 JSON-DIAGS !" GE-SRC-LINE
-   s" IDX" s" -- idx" GE-SRC-TRUST
    s" NEED-IDX" s" idx --" GE-SRC-TRUST
    s" NEED-LEN" s" len --" GE-SRC-TRUST
-   s" ROLE-OK ( -- ) IDX NEED-IDX" GE-SRC-CHECK-LINE
-   s" ROLE-BAD ( -- ) IDX NEED-LEN" GE-SRC-CHECK-LINE
-   s" ROLE-UNKNOWN ( -- size ) IDX" GE-SRC-CHECK-LINE ;
+   s" ROLE-ALL ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N" GE-SRC-CHECK-LINE
+   s" ROLE-OK ( n -- ) >IDX NEED-IDX" GE-SRC-CHECK-LINE
+   s" ROLE-BAD ( n -- ) >IDX NEED-LEN" GE-SRC-CHECK-LINE
+   s" ROLE-BAD2 ( n -- n ) >LEN IDX>N" GE-SRC-CHECK-LINE
+   s" ROLE-UNKNOWN ( n -- size ) >IDX" GE-SRC-CHECK-LINE
+   s" : ROLE-ALL ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N ;" GE-SRC-LINE
+   s" 7 ROLE-ALL ." GE-SRC-LINE ;
 
 : GE-ROLE-TYPES ( -- )
    GE-HB-RESET
@@ -187,8 +190,11 @@ variable GE-SCRIPT-U
    s" hb nominal role types" GE-HB-RUN-STDIN
    SB-RESET
    s" -1" SB-APPEND GE-SB-LF
+   s" -1" SB-APPEND GE-SB-LF
    s" 0" SB-APPEND GE-SB-LF
    s" 0" SB-APPEND GE-SB-LF
+   s" 0" SB-APPEND GE-SB-LF
+   s" 7" SB-APPEND GE-SB-LF
    SB$ s" hb nominal role output" GE-EXPECT-OUT
    s" E-MISMATCH" s" hb nominal role code" GE-EXPECT-ERR-HAS
    s" E-BAD-SIGNATURE" s" hb unknown role code" GE-EXPECT-ERR-HAS

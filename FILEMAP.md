@@ -22,6 +22,7 @@ points stay listed.
 - `src/core/util.f` — shared subset helpers.
 - `src/core/checker.f` — native stack-effect checker and verifier.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
+- `src/core/roles.f` — audited nominal scalar role conversion words.
 - `src/core/sha256.f` — standalone SHA-256, streaming file digest, and hex helpers.
 
 ## Native Engine And Builders

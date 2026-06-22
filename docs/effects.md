@@ -92,6 +92,12 @@ equal effect; loop bodies must be stack-neutral.
   parsing, dictionary ops, raw memory) the checker can't follow.
 - To chart an **already-defined** word's effect (so the checker can use it as a
   leaf) without redefining it in native habu: `s" name" s" eff" TRUST`.
+- Nominal scalar roles (`idx`, `len`, `count`, `off`, `fd`, `rc`, `pid`, `ms`,
+  `ns`, `tok`) are entered and left through audited no-op conversions:
+  `>IDX IDX>N`, `>LEN LEN>N`, `>COUNT COUNT>N`, `>OFF OFF>N`, `>FD FD>N`,
+  `>RC RC>N`, `>PID PID>N`, `>MS MS>N`, `>NS NS>N`, and `>TOK TOK>N`.
+  These are runtime identity casts over one cell; their only purpose is making
+  semantic role changes explicit to the checker.
 - Trusted definers use `TRUSTED: NAME ( definer-eff ) CREATES
   ( created-eff ) body ;`. `definer-eff` is the effect of invoking the defining
   word itself; `created-eff` is recorded for each word produced by runtime

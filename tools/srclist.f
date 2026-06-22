@@ -39,7 +39,7 @@ variable SL-DRIVER-U
 
 : SL-PREFIX ( -- )
    s" src/core/util.f src/core/checker.f src/core/render.f " type
-   s" src/core/sha256.f src/core/combinators.f " type
+   s" src/core/roles.f src/core/sha256.f src/core/combinators.f " type
    s" src/arch/arm64/asm.f src/arch/arm64/icode.f " type
    s" src/arch/arm64/mnem.f src/os/macos/sys.f src/os/macos/env.f " type
    s" src/habu/treeshake.f src/habu/rt.f src/habu/crash.f " type
