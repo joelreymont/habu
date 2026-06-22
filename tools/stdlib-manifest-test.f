@@ -1,5 +1,5 @@
 \ stdlib-manifest-test.f - validate lib/std.manifest without host text tools.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/lib.f tools/stdlib-manifest-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/stdlib-manifest-test.f
 
 0 set-check
 
@@ -494,7 +494,7 @@ variable SMT-J
 : SMT-ARGV-LOAD-PUBLIC ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/public-signatures.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    0 begin dup SMT-MOD-N @ < while

@@ -169,7 +169,7 @@ variable RACT-NEXT
    s" lib/date.f"  >LEN PROC-ARGV+
    s" lib/vector.f"  >LEN PROC-ARGV+
    s" bench/llm/manifest.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" bench/llm/forth-task-lines-lib.f"  >LEN PROC-ARGV+

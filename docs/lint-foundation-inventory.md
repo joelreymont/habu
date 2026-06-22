@@ -28,9 +28,8 @@ API mature enough to absorb the surface. Do not move text helpers back into
 
 ### Tokenizer arrays
 
-Owned today by `tools/lint/lib.f:63-91`. The tokenizer stores source pointers in
-global cell arrays (`TOFF`, `TLEN`, `TBOL`) and exposes them through `TOK`,
-`TOK0?`, and `TOK=`.
+Owned today by checked `tools/lint/token.f`. It stores source pointers through a
+typed token table and exposes `TOKENIZE`, `TOK`, `TOK0?`, `TOK=`, and `TEOL?`.
 
 Users:
 
@@ -40,9 +39,9 @@ Users:
   assembly-like source tokens.
 - `tools/repl-lint.f:140` tokenizes `src/habu/stdin.f` for REPL exit checks.
 
-Replacement direction: a checked token stream or typed token table should expose
-token address, length, beginning-of-line flag, and string comparison without raw
-cell reloads at call sites.
+Replacement direction: keep lint callers on `tools/lint/token.f` while broader
+source tools migrate to `tools/lint/source-lex.f` where line/column metadata is
+needed. Do not add token pointer reloads back to `tools/lint/lib.f`.
 
 ### Intern and string set
 
@@ -108,8 +107,8 @@ outputs. It should not rely on shared PAT global captures.
 - `caf-7df3176d9a848aa6` adds typed growable vectors needed by token and set
   tables.
 - `caf-2be3fefc7725d250` checks source lexer internals.
-- Dedicated dots track the missing tokenizer, trust scanner, intern set, and
-  lint-helper extraction work created from this inventory.
+- Dedicated dots track the trust scanner and intern set work that remain after
+  text and tokenizer extraction.
 
 Validation for each port must include the focused tool fixture plus the default
 native gate:

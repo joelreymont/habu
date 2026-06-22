@@ -2,8 +2,8 @@
 \ Self-hosted shadow lint. The engine dict is later-wins and the checker
 \ records later sigs over PTAB, so a toolchain word named like a prim silently
 \ replaces it for every program the toolchain-loaded engine compiles.
-\ Run: bin/hb --load tools/lint/text.f tools/lint/lib.f tools/lint/shadow-lint.f
-\ (lib.f already did `0 set-check`.)
+\ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/shadow-lint.f
+\ Tokenization is checked; lib.f still owns legacy PAT scanner boundaries.
 
 create FB 131072 allot                       \ one file at a time
 
@@ -65,7 +65,7 @@ variable BAD  variable LI
 : SHADOW-LINT
    0 BAD !
    s" src/habu/habu1.f" FB 131072 READ-FILE  TOKENIZE  SCAN-PRIMS
-   s" tools/lint/text.f" LINT-FILE   s" tools/lint/lib.f" LINT-FILE
+   s" tools/lint/text.f" LINT-FILE   s" tools/lint/token.f" LINT-FILE s" tools/lint/lib.f" LINT-FILE
    s" tools/lint/shadow-lint.f" LINT-FILE
    s" src/core/util.f"      LINT-FILE   s" src/core/checker.f"   LINT-FILE
    s" src/core/render.f"    LINT-FILE   s" src/core/roles.f"     LINT-FILE

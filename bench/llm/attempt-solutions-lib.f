@@ -1,7 +1,7 @@
 \ attempt-solutions-lib.f - checked reference extractor for attempt runners.
 \
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f, lib/fs-mutate.f,
-\ bench/llm/manifest.f, lib/memory.f, tools/lint/text.f, tools/lint/lib.f, and
+\ bench/llm/manifest.f, lib/memory.f, tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and
 \ tools/lint/source-lex.f.
 
 128 constant AS-MAX

@@ -184,21 +184,21 @@ variable GS-SRC-N
    label labelu GS-CHECK-RUN ;
 
 : GS-CHECK-LINTS ( -- )
-   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/shadow-lint.f" GS-ARG+
+   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/shadow-lint.f" GS-ARG+
    s" shadow-lint" GS-HB-RUN
-   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/clobber-lint.f" GS-ARG+
+   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/clobber-lint.f" GS-ARG+
    s" clobber-lint" GS-HB-RUN
-   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/repl-lint.f" GS-ARG+
+   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/repl-lint.f" GS-ARG+
    s" repl-lint" GS-HB-RUN
-   GS-HB s" tools/date.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/fs.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/trust-lint.f" GS-ARG+
+   GS-HB s" tools/date.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/fs.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/trust-lint.f" GS-ARG+
    s" trust-lint" GS-HB-RUN
-   GS-HB s" tools/date.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/fs.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/stale-status-lint.f" GS-ARG+
+   GS-HB s" tools/date.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/fs.f" GS-ARG+ s" tools/argv.f" GS-ARG+ s" tools/stale-status-lint.f" GS-ARG+
    s" stale-status-lint" GS-HB-RUN
-   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/fs.f" GS-ARG+ s" tools/host-lint.f" GS-ARG+
+   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/fs.f" GS-ARG+ s" tools/host-lint.f" GS-ARG+
    s" host-lint" GS-HB-RUN
-   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/parallel-agent-lint.f" GS-ARG+
+   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/parallel-agent-lint.f" GS-ARG+
    s" parallel-agent-lint" GS-HB-RUN
-   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/filemap-lint.f" GS-ARG+
+   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/filemap-lint.f" GS-ARG+
    s" filemap-lint" GS-HB-RUN ;
 
 : GS-CHECK-TOOL-FIXTURES ( -- )
@@ -223,7 +223,7 @@ variable GS-SRC-N
    s" tools/check-test.f" s" native check runner fixture check" GS-CHECK-COMMON-PROC ;
 
 : GS-RUN-TOOL-FIXTURES ( -- )
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/vector.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" tools/lint/text-foundation-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/vector.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" tools/lint/text-foundation-test.f" GS-ARG+
    s" text foundation fixtures" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" tools/repl-lint-test.f" GS-ARG+
    s" repl-lint fixtures" GS-HB-RUN
@@ -237,7 +237,7 @@ variable GS-SRC-N
    s" signature-lint fixtures" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" tools/public-signatures-test.f" GS-ARG+
    s" public-signatures fixtures" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/stdlib-manifest-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/stdlib-manifest-test.f" GS-ARG+
    s" stdlib manifest" GS-HB-RUN
    GS-HB s" tools/aot-call-report.f" GS-ARG+ s" tools/aot-call-report-test.f" GS-ARG+
    s" aot-call-report fixtures" GS-HB-RUN
@@ -245,7 +245,7 @@ variable GS-SRC-N
    s" trust-lint fixtures" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" tools/stale-status-lint-test.f" GS-ARG+
    s" stale-status-lint fixtures" GS-HB-RUN
-   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/fs.f" GS-ARG+ s" tools/host-lint.f" GS-ARG+ s" tools/host-lint-test.f" GS-ARG+
+   GS-HB s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/fs.f" GS-ARG+ s" tools/host-lint.f" GS-ARG+ s" tools/host-lint-test.f" GS-ARG+
    s" host-lint fixtures" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" tools/checked-boundary-lint-test.f" GS-ARG+
    s" checked-boundary-lint" GS-HB-RUN
@@ -283,9 +283,9 @@ variable GS-SRC-N
    s" llm diagnostic stats" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/artifacts.f" GS-ARG+ s" bench/llm/artifacts-test.f" GS-ARG+
    s" llm artifact hashes" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/vector.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" bench/llm/attempt-solutions-lib.f" GS-ARG+ s" bench/llm/attempt-solutions-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/vector.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" bench/llm/attempt-solutions-lib.f" GS-ARG+ s" bench/llm/attempt-solutions-test.f" GS-ARG+
    s" llm attempt solution extractor" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/vector.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" bench/llm/forth-task-lines-lib.f" GS-ARG+ s" bench/llm/attempt-solutions-lib.f" GS-ARG+ s" bench/llm/large-buffer-bundle-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/vector.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" bench/llm/forth-task-lines-lib.f" GS-ARG+ s" bench/llm/attempt-solutions-lib.f" GS-ARG+ s" bench/llm/large-buffer-bundle-test.f" GS-ARG+
    s" llm large buffer bundle" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/diagnostic-stats.f" GS-ARG+ s" bench/llm/run-attempts-lib.f" GS-ARG+ s" bench/llm/run-attempts-test.f" GS-ARG+
    s" llm attempt runner helpers" GS-HB-RUN
@@ -297,7 +297,7 @@ variable GS-SRC-N
    s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+
    s" lib/process-env.f" GS-ARG+ s" lib/time.f" GS-ARG+
    s" lib/date.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+
-   s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+
+   s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+
    s" tools/argv.f" GS-ARG+ s" bench/llm/forth-task-lines-lib.f" GS-ARG+
    s" bench/llm/attempt-solutions-lib.f" GS-ARG+
    s" bench/llm/diagnostic-stats.f" GS-ARG+
@@ -339,7 +339,7 @@ variable GS-SRC-N
    s" bench/llm/driver-test-helpers.f" GS-SRC+ ;
 
 : GS-SRC-LLM-FORTH-SCANNERS ( -- )
-   s" tools/lint/text.f" GS-SRC+ s" tools/lint/lib.f" GS-SRC+ s" tools/lint/source-lex.f" GS-SRC+
+   s" tools/lint/text.f" GS-SRC+ s" tools/lint/token.f" GS-SRC+ s" tools/lint/lib.f" GS-SRC+ s" tools/lint/source-lex.f" GS-SRC+
    s" bench/llm/forth-task-lines-lib.f" GS-SRC+
    s" bench/llm/attempt-solutions-lib.f" GS-SRC+
    s" bench/llm/forth-candidate.f" GS-SRC+
@@ -370,7 +370,7 @@ variable GS-SRC-N
    s" bench/llm/drive-stdlib-lib.f" GS-ARG+
    s" bench/llm/drive-stdlib-live.f" GS-ARG+
    s" bench/llm/driver-test-helpers.f" GS-ARG+
-   s" tools/lint/text.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+
+   s" tools/lint/text.f" GS-ARG+ s" tools/lint/token.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+
    s" bench/llm/forth-task-lines-lib.f" GS-ARG+
    s" bench/llm/attempt-solutions-lib.f" GS-ARG+
    s" bench/llm/forth-candidate.f" GS-ARG+

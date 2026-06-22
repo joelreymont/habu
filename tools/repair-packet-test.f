@@ -93,7 +93,7 @@ create RPT-ERR RPT-CAPTURE-CAP allot
    s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/vector.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+

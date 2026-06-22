@@ -1,6 +1,6 @@
 \ stale-status-lint.f - enforce STATUS.md as the only live self-check count.
-\ Load after tools/date.f, tools/lint/text.f, tools/lint/lib.f, tools/fs.f, and tools/argv.f.
-\ Run: bin/hb --load tools/date.f tools/lint/text.f tools/lint/lib.f tools/fs.f tools/argv.f tools/stale-status-lint.f -- [ROOT] [TODAY]
+\ Load after tools/date.f, tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, tools/fs.f, and tools/argv.f.
+\ Run: bin/hb --load tools/date.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/fs.f tools/argv.f tools/stale-status-lint.f -- [ROOT] [TODAY]
 
 $20000 constant SS-FILE-CAP
 32 constant SS-NUM-CAP

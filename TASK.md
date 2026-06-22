@@ -20,7 +20,8 @@ Bootstrap emitters are no longer inputs to the default lint gate.
 - **`tools/lint/text.f`** — checked habu string/file library: `READ-FILE`
   (slurp via open/read/close), `STR=`/`STR=CI`/`PREFIX?`/`FIND-SUB`/
   `CONTAINS?`, `BMOVE`/`FOLD`/`FOLD-TO`, and split/path helpers.
-- **`tools/lint/lib.f`** — tokenizer, PAT scanners, and bounded intern/set
+- **`tools/lint/token.f`** — checked whitespace tokenizer used by lint tools.
+- **`tools/lint/lib.f`** — PAT scanners and bounded intern/set
   helpers that are still being split into checked foundations.
 - **`tools/lint/shadow-lint.f`** — reproduces the prim-shadow check.
 - **`tools/lint/clobber-lint.f`** — reproduces the register-clobber model.
@@ -35,6 +36,6 @@ status for the self-hosted lint migration.
 
 ## How to run / verify
 ```
-bin/hb --load tools/lint/text.f tools/lint/lib.f tools/lint/shadow-lint.f
-bin/hb --load tools/lint/text.f tools/lint/lib.f tools/lint/clobber-lint.f
+bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/shadow-lint.f
+bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/clobber-lint.f
 ```

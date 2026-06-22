@@ -1,5 +1,5 @@
 \ text-foundation-test.f - focused tests for tools/lint/text.f text helpers.
-\ Run: bin/hb --load lib/errors.f lib/memory.f lib/vector.f tools/lint/text.f tools/lint/lib.f tools/lint/source-lex.f tools/lint/text-foundation-test.f
+\ Run: bin/hb --load lib/errors.f lib/memory.f lib/vector.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/source-lex.f tools/lint/text-foundation-test.f
 
 variable TEST-N
 : ASSERT  ( bool -- )
@@ -18,6 +18,7 @@ create TRUST-FIX FIX-CAP allot   variable TRUST-LEN
 create SRC-FIX FIX-CAP allot     variable SRC-LEN
 create BT-FIX FIX-CAP allot      variable BT-LEN
 create LEX-FIX FIX-CAP allot     variable LEX-LEN
+create TOK-FIX FIX-CAP allot     variable TOK-LEN
 9000 constant BIG-LEX-TOKENS
 variable BIG-LEX-A
 variable BIG-LEX-U
@@ -127,6 +128,15 @@ variable BIG-LEX-U
    10 LEX-FIX FIX-CAP LEX-LEN BUF-APPEND-C ;
 : LEX-FIX$  ( -- a u )  LEX-FIX LEX-LEN @ ;
 
+: INIT-TOK-FIX  ( -- )
+   0 TOK-LEN !
+   s" : X ( n -- n ) dup " TOK-FIX FIX-CAP TOK-LEN BUF-APPEND
+   92 TOK-FIX FIX-CAP TOK-LEN BUF-APPEND-C
+   s"  skip" TOK-FIX FIX-CAP TOK-LEN BUF-APPEND
+   10 TOK-FIX FIX-CAP TOK-LEN BUF-APPEND-C
+   s" : Y ;" TOK-FIX FIX-CAP TOK-LEN BUF-APPEND ;
+: TOK-FIX$  ( -- a u )  TOK-FIX TOK-LEN @ ;
+
 : INIT-BIG-LEX  ( -- )
    BIG-LEX-TOKENS 2 * MEM-ALLOC-BYTES BIG-LEX-U ! BIG-LEX-A!
    0 begin dup BIG-LEX-TOKENS < while
@@ -140,6 +150,7 @@ variable BIG-LEX-U
    INIT-SRC-FIX
    INIT-BT-FIX
    INIT-LEX-FIX
+   INIT-TOK-FIX
    INIT-BIG-LEX ;
 
 : TEST-STRINGS  ( -- )
@@ -196,6 +207,22 @@ variable BIG-LEX-U
    6 LTOK s" ;" ASSERT$
    6 LB@ 54 ASSERT=  6 LL@ 2 ASSERT=  6 LC@ 7 ASSERT= ;
 
+: TEST-TOKENIZER  ( -- )
+   LINT-TRUE PARENS? !
+   TOK-FIX$ TOKENIZE
+   TN# @ 6 ASSERT=
+   0 TOK s" :" ASSERT$
+   0 TOK0? ASSERT
+   1 TOK s" X" ASSERT$
+   1 TOK0? 0= ASSERT
+   2 TOK s" dup" ASSERT$
+   2 TEOL? ASSERT
+   3 TOK s" :" ASSERT$
+   3 TOK0? ASSERT
+   4 TOK s" Y" ASSERT$
+   5 TOK s" ;" ASSERT$
+   5 TEOL? ASSERT ;
+
 : TEST-BIG-LEXER  ( -- )
    BIG-LEX$ LEX-SOURCE
    L# @ BIG-LEX-TOKENS ASSERT=
@@ -210,6 +237,7 @@ variable BIG-LEX-U
    TEST-SCANNERS
    TEST-SIGS
    TEST-LEXER
+   TEST-TOKENIZER
    TEST-BIG-LEXER
    s" text-foundation-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
 

@@ -1,6 +1,6 @@
 \ check-all-errors.f - run the native checker over each top-level definition.
 \ Load after lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f,
-\ tools/lint/text.f, tools/lint/lib.f,
+\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ tools/lint/json-writer.f, tools/lint/source-lex.f, and tools/argv.f.
 
 0 set-check

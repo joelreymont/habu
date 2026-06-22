@@ -156,7 +156,7 @@
    BGR-ERR-STR
    BGR-MEMORY
    s" tools/date.f" BGR-ARG+
-   s" tools/lint/text.f" BGR-ARG+ s" tools/lint/lib.f" BGR-ARG+
+   s" tools/lint/text.f" BGR-ARG+ s" tools/lint/token.f" BGR-ARG+ s" tools/lint/lib.f" BGR-ARG+
    s" tools/json.f" BGR-ARG+
    s" tools/argv.f" BGR-ARG+
    s" bench/llm/validate-results.f" BGR-ARG+

@@ -1,46 +1,5 @@
-\ lib.f — tokenizer, intern, and scanner foundation for native lint tools.
-\ Load after tools/lint/text.f.
-0 set-check
-
-\ ---- tokenizer: whitespace tokens, stripping \ line comments (and ( .. ) stack
-\ comments when PARENS? is set). Parallel arrays: TOFF/TLEN, plus TBOL = was the
-\ token at column 0 (so a real `: NAME` def is a ':' token with TBOL set, not a
-\ ':' inside a string or {: locals :}). ----
-0 set-check
-\ Explicit unchecked boundary: token arrays store source pointers in ordinary
-\ cells and expose them through TOK/TOK0?/TOK= to legacy linters.
-$6000 constant TMAX
-create TOFF TMAX cells allot   create TLEN TMAX cells allot   create TBOL TMAX cells allot
-variable TN#  variable PARENS?  variable TI  variable TS  variable BOL
-: SP?  ( c -- f )  dup 32 = over 9 = or swap 10 = or ;
-: TOKENIZE  {: a u :}   \ fill TOFF/TLEN/TBOL/TN# from a/u (PARENS? gates ( .. ) stripping)
-   0 TN# !  0 TI !  -1 BOL !
-   begin TI @ u < while
-      TI @ a + c@ SP? IF
-         TI @ a + c@ 10 = IF -1 BOL ! THEN  TI @ 1+ TI !
-      ELSE TI @ a + c@ 92 = IF
-         begin TI @ u < TI @ a + c@ 10 <> and while TI @ 1+ TI ! repeat
-      ELSE PARENS? @  TI @ a + c@ 40 = and  TI @ 1+ u < and  TI @ 1+ a + c@ 32 = and IF
-         begin TI @ u < TI @ a + c@ 41 <> and while TI @ 1+ TI ! repeat
-         TI @ u < IF TI @ 1+ TI ! THEN
-      ELSE
-         TI @ TS !  BOL @ TBOL TN# @ cells + !  0 BOL !
-         begin TI @ u < TI @ a + c@ SP? 0= and while TI @ 1+ TI ! repeat
-         a TS @ + TOFF TN# @ cells + !  TI @ TS @ - TLEN TN# @ cells + !  TN# @ 1+ TN# !
-      THEN THEN THEN
-   repeat ;
-\ stack-based (no locals) so a caller can hold its own locals frame without deep
-\ nesting — habu locals do not nest more than ~2 deep reliably.
-: TOK   ( k -- a u )   dup cells TOFF + @   swap cells TLEN + @ ;
-: TOK0? ( k -- f )     cells TBOL + @ ;
-: TOK=  ( k a u -- f )  >R >R TOK R> R> STR= ;
-
-\ Back to checked helpers after the tokenizer's pointer-cell boundary.
-' LINT-CHECK-HOOK set-check
-
-\ ---- token helpers for the def-walkers ----
-: TEOL? ( n -- bool )
-   1+ dup TN# @ >= IF drop LINT-TRUE ELSE TOK0? THEN ;
+\ lib.f - intern and scanner foundation for native lint tools.
+\ Load after tools/lint/text.f and tools/lint/token.f.
 
 \ ---- bounded string-keyed intern/set --------------------------------------
 76 constant E-LINT-INTERN-CAP

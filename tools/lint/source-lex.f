@@ -1,5 +1,5 @@
 \ source-lex.f — source lexer records for self-hosted tooling.
-\ Load after lib/memory.f, lib/vector.f, tools/lint/text.f, and tools/lint/lib.f.
+\ Load after lib/memory.f, lib/vector.f, tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
 
 1 constant L-WORD
 2 constant L-COMMENT

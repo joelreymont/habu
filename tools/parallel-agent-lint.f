@@ -1,5 +1,5 @@
 \ parallel-agent-lint.f - keep docs/parallel-agents.md enforceable.
-\ Load after tools/lint/text.f and tools/lint/lib.f.
+\ Load after tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
 
 $20000 constant PAL-CAP
 

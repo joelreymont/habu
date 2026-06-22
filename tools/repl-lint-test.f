@@ -112,7 +112,7 @@ create RLT-ERR RLT-CAP allot
 : RLT-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/repl-lint.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+

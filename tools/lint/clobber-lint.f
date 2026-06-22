@@ -1,6 +1,6 @@
 \ clobber-lint.f -- register-clobber analysis for BL-able emitter routines.
 \ Self-hosted clobber lint. Run:
-\   bin/hb --load tools/lint/text.f tools/lint/lib.f tools/lint/clobber-lint.f
+\   bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/clobber-lint.f
 
 create FB 131072 allot
 
@@ -255,7 +255,7 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    ON# @ OMAX >= if s" clobber-lint: too many labels in definition" 1 die then
    OPENINGS ON# @ cells + !  ON# @ 1+ ON# ! ;
 : LABEL-OPEN?  {: k hi :}  ( -- f )
-   k 2 + hi >= if 0 exit then
+   k 2 + hi >= if LINT-FALSE exit then
    k TOK START-L?  k 1+ TOK s" @" STR= and  k 2 + TOK s" LBL," STR= and ;
 : COLLECT-OPENINGS  {: lo hi :}  ( -- )
    0 ON# !  lo OX !
@@ -264,10 +264,10 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
       OX @ 1+ OX !
    repeat ;
 : CALLEE?  {: lo hi :}  ( -- f )
-   hi lo - 2 < if 0 exit then
-   hi 1- TOK s" @" STR= 0= if 0 exit then
-   hi 2 - TOK START-L? 0= if 0 exit then
-   hi 2 - TOK  CALU ! CALA !  -1 ;
+   hi lo - 2 < if LINT-FALSE exit then
+   hi 1- TOK s" @" STR= 0= if LINT-FALSE exit then
+   hi 2 - TOK START-L? 0= if LINT-FALSE exit then
+   hi 2 - TOK  CALU ! CALA !  LINT-TRUE ;
 
 : ROUTINE-SCAN  {: cidx oi hi :}  ( -- )
    oi OPEN@ 3 + DI !  oi 1+ RNEXT !  0 LASTSTOP !  0 RDONE !  DI @ OPLO !

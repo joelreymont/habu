@@ -1219,7 +1219,7 @@ rows describe only public checked definitions that exist in source. The `effect`
 field must match the normalized `signature` emitted by:
 
 ```sh
-bin/hb --load tools/lint/text.f tools/lint/lib.f tools/public-signatures.f -- lib/<module>.f
+bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/public-signatures.f -- lib/<module>.f
 ```
 
 The manifest, docs, source coverage, and signature drift are validated by
@@ -1228,5 +1228,5 @@ The manifest, docs, source coverage, and signature drift are validated by
 Run the focused check with:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/lib.f tools/stdlib-manifest-test.f
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/stdlib-manifest-test.f
 ```

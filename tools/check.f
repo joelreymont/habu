@@ -292,7 +292,7 @@ variable CHK-ERR-PATH-U
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/vector.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
@@ -323,7 +323,7 @@ variable CHK-ERR-PATH-U
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/fs.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
@@ -338,7 +338,7 @@ variable CHK-ERR-PATH-U
 : CHK-ARGV-DIAG ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/diag-origin.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    CHK-SOURCE  >LEN PROC-ARGV+ ;
@@ -360,7 +360,7 @@ variable CHK-ERR-PATH-U
    s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/vector.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+

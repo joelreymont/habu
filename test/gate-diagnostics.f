@@ -288,7 +288,7 @@ variable GDX-PATH-U
 : GDX-PUBLIC-SIGNATURES ( -- )
    GE-HB-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/public-signatures.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    s" examples/llm/good.f"  >LEN PROC-ARGV+
@@ -301,7 +301,7 @@ variable GDX-PATH-U
    GE-HB-RESET
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/fs.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
