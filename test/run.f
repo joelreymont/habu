@@ -114,6 +114,7 @@
    TR-BASE
    TR-COMMON
    s" lib/build.f"  >LEN PROC-ARGV+
+   s" lib/codesign.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" test/gate-engine.f"  >LEN PROC-ARGV+
    s" native engine gate phase" TR-RUN ;

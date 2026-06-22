@@ -138,6 +138,7 @@ variable REBT-NUM-I
    s" lib/process-env.f"  >LEN PROC-ARGV+
    s" lib/source.f"  >LEN PROC-ARGV+
    s" lib/build.f"  >LEN PROC-ARGV+
+   s" lib/codesign.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
    s" tools/hb-build.f"  >LEN PROC-ARGV+ ;

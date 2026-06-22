@@ -1,7 +1,8 @@
 \ build-fixpoint.f - checked self-rebuild orchestration.
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/build.f.
+\ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f,
+\ and lib/codesign.f.
 
 262144 constant BF-SOURCE-CAP
 32768 constant BF-CMP-CAP
@@ -126,18 +127,10 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    exe exeu BF-A$ src srcu BF-B$ BF-OPEN-INPUT BF-RUN-ENV-INFD ;
 
 : BF-CODESIGN-VERIFY-TMP ( ptr u8 n -- ) {: a:ptr u :}
-   PROC-ARGV-RESET
-   s" -v"  >LEN PROC-ARGV+
-   a u BF-A$  >LEN PROC-ARGV+
-   s" /usr/bin/codesign" >LEN -1 >FD -1 >FD -1 >FD RUN-ARGV-IO-RC RC>N BF-RC0 ;
+   a u BF-A$ CODESIGN-VERIFY ;
 
 : BF-CODESIGN-FORCE-TMP ( ptr u8 n -- ) {: a:ptr u :}
-   PROC-ARGV-RESET
-   s" -s"  >LEN PROC-ARGV+
-   s" -"  >LEN PROC-ARGV+
-   s" --force"  >LEN PROC-ARGV+
-   a u BF-A$  >LEN PROC-ARGV+
-   s" /usr/bin/codesign" >LEN -1 >FD -1 >FD -1 >FD RUN-ARGV-IO-RC RC>N BF-RC0 ;
+   a u BF-A$ CODESIGN-FORCE ;
 
 : BF-RESET-OUT ( ptr u8 n -- )
    BF-OUT$ BF-SOURCE-BUF 0 WRITE-ALL ;

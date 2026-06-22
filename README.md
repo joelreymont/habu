@@ -29,7 +29,7 @@ built-in checker, and **rebuilds itself byte-for-byte** (stage2 fixpoint):
 ```sh
 /path/to/hb-seed --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f src/core/sha256.f lib/codesign.f tools/seed.f tools/seed-main.f -- /path/to/hb-seed
                        # recover bin/hb from a trusted native seed
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
                        # daily rebuild: bin/hb recompiles itself, no gforth
 echo ': SQ dup * ; 7 SQ .' | bin/hb     # batch: program from stdin
 bin/hb script.f arg...                  # script: program from file; args via
@@ -40,9 +40,9 @@ bin/hb                                  # tty: checked REPL with line editing,
                                         #   history, breakpoints, `step`, and
                                         #   verification of typed definitions
                                         #   against their ( in -- out )
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- prog.f -o prog
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- prog.f -o prog
                                         # AOT: signed binary, tree-shaken to MAIN
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- --repl prog.f -o prog-repl
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- --repl prog.f -o prog-repl
                                         # checked source bundle + interactive REPL
 ```
 

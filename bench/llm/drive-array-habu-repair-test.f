@@ -2,7 +2,7 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/test.f, lib/fs.f,
 \ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
-\ lib/source.f, lib/build.f, tools/build-fixpoint.f, tools/hb-build-lib.f,
+\ lib/source.f, lib/build.f, lib/codesign.f, tools/build-fixpoint.f, tools/hb-build-lib.f,
 \ lib/json-write.f, and bench/llm/fixture-text.f.
 
 120000 constant DART-TIMEOUT-MS
@@ -117,6 +117,7 @@ variable DART-RC
    s" lib/process-env.f"  >LEN PROC-ARGV+
    s" lib/source.f"  >LEN PROC-ARGV+
    s" lib/build.f"  >LEN PROC-ARGV+
+   s" lib/codesign.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
    s" tools/hb-build.f"  >LEN PROC-ARGV+ ;

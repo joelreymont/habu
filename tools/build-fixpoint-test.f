@@ -1,5 +1,5 @@
 \ build-fixpoint-test.f - checked fixture for tools/build-fixpoint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f tools/build-fixpoint.f tools/build-fixpoint-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-test.f
 
 8192 constant BFT-CAPTURE-CAP
 $80000 constant BFT-READ-CAP
@@ -68,6 +68,7 @@ create BFT-READ-BUF BFT-READ-CAP allot
    s" lib/process-argv.f"  >LEN PROC-ARGV+
    s" lib/process-env.f"  >LEN PROC-ARGV+
    s" lib/build.f"  >LEN PROC-ARGV+
+   s" lib/codesign.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint-main.f"  >LEN PROC-ARGV+ ;
 

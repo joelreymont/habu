@@ -487,7 +487,7 @@ variable GS-SRC-N
    s" bench/llm/drive-array-habu-lib.f" GS-ARG+
    s" bench/llm/drive-array-habu-test.f" GS-ARG+
    s" llm Habu array driver" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/source.f" GS-ARG+ s" lib/build.f" GS-ARG+ s" tools/build-fixpoint.f" GS-ARG+ s" tools/hb-build-lib.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/drive-array-habu-repair-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/source.f" GS-ARG+ s" lib/build.f" GS-ARG+ s" lib/codesign.f" GS-ARG+ s" tools/build-fixpoint.f" GS-ARG+ s" tools/hb-build-lib.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/drive-array-habu-repair-test.f" GS-ARG+
    s" llm Habu array repair driver" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/run-expanded-bench-test.f" GS-ARG+
    s" llm expanded runner" GS-HB-RUN
@@ -575,9 +575,9 @@ variable GS-SRC-N
    s" build stdlib check" GS-CHECK-RUN ;
 
 : GS-RUN-BUILD-HELPERS ( -- )
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/build.f" GS-ARG+ s" tools/build-fixpoint.f" GS-ARG+ s" tools/build-fixpoint-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/build.f" GS-ARG+ s" lib/codesign.f" GS-ARG+ s" tools/build-fixpoint.f" GS-ARG+ s" tools/build-fixpoint-test.f" GS-ARG+
    s" build fixpoint driver" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/source.f" GS-ARG+ s" lib/build.f" GS-ARG+ s" tools/build-fixpoint.f" GS-ARG+ s" tools/hb-build-lib.f" GS-ARG+ s" tools/hb-build-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/source.f" GS-ARG+ s" lib/build.f" GS-ARG+ s" lib/codesign.f" GS-ARG+ s" tools/build-fixpoint.f" GS-ARG+ s" tools/hb-build-lib.f" GS-ARG+ s" tools/hb-build-test.f" GS-ARG+
    s" native hb-build fixture" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/codesign.f" GS-ARG+ s" lib/codesign-test.f" GS-ARG+
    s" codesign helpers" GS-HB-RUN
@@ -592,10 +592,10 @@ variable GS-SRC-N
 
 : GS-CHECK-BUILD-HELPERS ( -- )
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" lib/build.f" GS-SRC+ s" tools/build-fixpoint.f" GS-SRC+ s" tools/build-fixpoint-test.f" GS-SRC+
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" lib/build.f" GS-SRC+ s" lib/codesign.f" GS-SRC+ s" tools/build-fixpoint.f" GS-SRC+ s" tools/build-fixpoint-test.f" GS-SRC+
    s" build fixpoint fixture check" GS-CHECK-RUN
    GS-SRC-RESET
-   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" lib/source.f" GS-SRC+ s" lib/build.f" GS-SRC+ s" tools/build-fixpoint.f" GS-SRC+ s" tools/hb-build-lib.f" GS-SRC+ s" tools/hb-build-test.f" GS-SRC+
+   s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/process-env.f" GS-SRC+ s" lib/source.f" GS-SRC+ s" lib/build.f" GS-SRC+ s" lib/codesign.f" GS-SRC+ s" tools/build-fixpoint.f" GS-SRC+ s" tools/hb-build-lib.f" GS-SRC+ s" tools/hb-build-test.f" GS-SRC+
    s" native hb-build fixture check" GS-CHECK-RUN
    GS-SRC-RESET
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+ s" lib/test.f" GS-SRC+ s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+ s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+ s" lib/codesign.f" GS-SRC+ s" lib/codesign-test.f" GS-SRC+

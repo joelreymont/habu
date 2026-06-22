@@ -1,8 +1,8 @@
 \ hb-build-lib.f - native AOT/REPL build CLI library.
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f, and
-\ lib/source.f, and tools/build-fixpoint.f.
+\ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f,
+\ lib/source.f, lib/codesign.f, and tools/build-fixpoint.f.
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC

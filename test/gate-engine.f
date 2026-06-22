@@ -1,6 +1,6 @@
 \ gate-engine.f - checked runner for engine and public hb gate checks.
 \
-\ Load after test/gate-common.f, lib/build.f, and tools/build-fixpoint.f.
+\ Load after test/gate-common.f, lib/build.f, lib/codesign.f, and tools/build-fixpoint.f.
 
 create GE-SCRIPT-PATH FS-PATH-CAP allot
 
