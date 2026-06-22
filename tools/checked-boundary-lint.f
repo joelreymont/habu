@@ -2,8 +2,6 @@
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/json-writer.f, and tools/argv.f.
 
-0 set-check
-
 32 constant UB-NUM-CAP
 
 10 constant UB-LF
@@ -35,10 +33,6 @@ variable UB-PREV-U
 variable UB-BAD
 variable UB-CHECK-OFF
 variable UB-NUM-I
-
-: UB-CHECK-HOOK ( -- )
-   CHECK! ;
-' UB-CHECK-HOOK set-check
 
 : UB-OUT ( ptr u8 n -- )
    type ;
