@@ -38,16 +38,28 @@ create PTRA MAXPTR cells allot   variable PTRN
 
 : RV! cells RVT + ! ;
 256 constant MAXQE             \ quotation effects (din dout rin rout per record)
-create QEA MAXQE 32 * allot   variable QEN
+create QEA MAXQE 32 * allot
+create QXDA MAXQE cells allot   create QXRA MAXQE cells allot
+create QXHA MAXQE cells allot   variable QEN
 : MK-QUOT {: din dout rin rout :}   \ ( -- t ) allocate a quot<effect> term
    QEN @ MAXQE 1 - > IF s" checker: out of quot effects" 76 die THEN
    QEN @ 32 * QEA + {: a :}
    din a !  dout a 8 + !  rin a 16 + !  rout a 24 + !
+   0 QEN @ cells QXHA + !
+   0 QEN @ cells QXDA + !
+   0 QEN @ cells QXRA + !
    QEN @ 3 lshift T-QUOT or  QEN @ 1 + QEN ! ;
 : Q>DIN  PAY 32 * QEA + @ ;
 : Q>DOUT PAY 32 * QEA + 8 + @ ;
 : Q>RIN  PAY 32 * QEA + 16 + @ ;
 : Q>ROUT PAY 32 * QEA + 24 + @ ;
+: Q>XHAS PAY cells QXHA + @ ;
+: Q>XDOUT PAY cells QXDA + @ ;
+: Q>XROUT PAY cells QXRA + @ ;
+: QX! {: q xhas xd xr :}
+   xhas q PAY cells QXHA + !
+   xd q PAY cells QXDA + !
+   xr q PAY cells QXRA + ! ;
 
 4096 constant MAXPUSH          \ push records (engine-sized bodies need hundreds; evaluate's recovery guards grew EM-COMPILE)
 create SPA MAXPUSH 16 * allot   variable SPN
@@ -180,6 +192,7 @@ variable FV
 : FRESH FV @ MAXTV 1 - > IF s" checker: out of typevars" 76 die THEN  FV @ dup 1 + FV ! ;
 variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
+variable THDROW  variable THRROW  variable THSET
 
 : NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! 0 QEN ! 0 PTRN !
    FRESH MK-ROW dup BROW ! DCUR !
@@ -745,6 +758,7 @@ variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
 variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-SGBAD
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
+variable SV-THDROW  variable SV-THRROW  variable SV-THSET
 
 : COPY-CELLS {: src dst n :}
    0 BEGIN dup n < WHILE
@@ -758,7 +772,8 @@ variable SV-SGRIN   variable SV-SGROUT
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !
    SGBAD @ SV-SGBAD !  SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
-   SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT ! ;
+   SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
+   THDROW @ SV-THDROW !  THRROW @ SV-THRROW !  THSET @ SV-THSET ! ;
 
 : TRIAL-CLEAR-NEW
    SV-FV @ BEGIN dup FV @ < WHILE
@@ -776,6 +791,7 @@ variable SV-SGRIN   variable SV-SGROUT
    SV-SPN @ SPN !  SV-QEN @ QEN !  SV-PTRN @ PTRN !
    SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !
    SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !
+   SV-THDROW @ THDROW !  SV-THRROW @ THRROW !  SV-THSET @ THSET !
    TRIAL-REST-SG ;
 
 : TRY-SIG {: a u :}
@@ -885,6 +901,8 @@ create CFRA 32 cells allot    create CFRB 32 cells allot   create CFDED 32 cells
 \ CF-SEMIQ folds the quote's own exits then restores).
 create CFXRO 32 cells allot   create CFXRR 32 cells allot
 create CFXST 32 cells allot    create CFXDP 32 cells allot
+create CFTXD 32 cells allot   create CFTXR 32 cells allot
+create CFTXS 32 cells allot
 variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
 \ EXIT: an early return. XROW accumulates the data row at each exit (all returns,
 \ incl. the fall-through at ';', must unify). DEADP marks the current linear path
@@ -1053,7 +1071,9 @@ variable LVDO  variable LVDN
    6  DCUR @  BROW @  RCUR @  RBROW @  CF-PUSH
    XROW @ #CFC @ 1 - cells CFXRO + !  XRROW @ #CFC @ 1 - cells CFXRR + !
    XSET @ #CFC @ 1 - cells CFXST + !  DEADP @ #CFC @ 1 - cells CFXDP + !
-   0 XSET !  0 DEADP !
+   THDROW @ #CFC @ 1 - cells CFTXD + !  THRROW @ #CFC @ 1 - cells CFTXR + !
+   THSET @ #CFC @ 1 - cells CFTXS + !
+   0 XSET !  0 DEADP !  0 THSET !
    QDEPTH @ 1 + QDEPTH !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
@@ -1067,8 +1087,11 @@ variable QTMP
        ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
      THEN
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
+     QTMP @ THSET @ THDROW @ THRROW @ QX!
      #CFC @ 1 - cells CFXRO + @ XROW !  #CFC @ 1 - cells CFXRR + @ XRROW !
      #CFC @ 1 - cells CFXST + @ XSET !  #CFC @ 1 - cells CFXDP + @ DEADP !  \ restore outer exit state
+     #CFC @ 1 - cells CFTXD + @ THDROW !  #CFC @ 1 - cells CFTXR + @ THRROW !
+     #CFC @ 1 - cells CFTXS + @ THSET !
      QDEPTH @ 1 - QDEPTH !
      CF@B BROW !  CF@RB RBROW !
      CF@RA RCUR !
@@ -1200,7 +1223,7 @@ s" <input>" DIAG-FILE!
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !
-   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 SGBAD !  0 UNSAFE ! ;
+   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 THSET !  0 SGBAD !  0 UNSAFE ! ;
 
 : CHECK-SCAN ( -- )
    BEGIN TI @ TBLEN @ < WHILE
