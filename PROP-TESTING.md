@@ -63,7 +63,6 @@ spawning.
 for each program (seeded PRNG):
   GEN          build ": G ( i64*in -- i64*out ) <body> ;" in a buffer
   ['] VH set-check   evaluate <def>     \ VH = `CHECK! dup VERD !` → VERD = verdict
-  0 set-check
   VERD = -1 ?  →  evaluate "depth BASE ! <in×7> G depth BASE @ - CLEAR-MEAS"
                                                    \ measured out-arity
                EVALERR=0 and measured ≠ declared  →  FALSE-CERT (arity)
@@ -85,9 +84,8 @@ variable instead of on the data stack, so the oracle does not depend on any
 distinguished stack value that a generated program can collide with or consume:
 
 ```forth
-0 set-check                              \ harness words compile unchecked
 variable BASE  variable MC
-: CLEAR-MEAS  ( vals... n -- n )
+TRUSTED: CLEAR-MEAS  ( vals... n -- n )
    dup MC !  BEGIN MC @ 0 > WHILE  swap drop  MC @ 1- MC !  REPEAT ;
 ```
 
@@ -98,8 +96,9 @@ depth BASE !  7 7 … 7   Gi   depth BASE @ - CLEAR-MEAS
 ```
 
 `depth BASE @ -` returns the number of items `Gi` left above the pre-run baseline
-= the **measured out-arity**. `CLEAR-MEAS` drops those residual values and leaves
-only the count, so the next program starts clean. The property:
+= the **measured out-arity**. `CLEAR-MEAS` is the one trusted arbitrary-tail
+measurement boundary: it drops those residual values and leaves only the count,
+so the next program starts clean. The property:
 **measured == declared `out`**. If `Gi` consumes more than its `in` dummies, the
 measurement is negative or `evaluate` recovers from a trap; either is a
 **false-cert signal** (consumed-too-much).

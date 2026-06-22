@@ -6,7 +6,7 @@
 \ See PROP-TESTING.md.  Run:  bin/hb < test/prop-test.f   (exit 1 on a false-cert)
 \ Optional sweep override: bin/hb 123 1000 < test/prop-test.f
 
-TRUSTED: PROP-CHECK-HOOK ( ptr u8 n -- n )
+: PROP-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! ;
 ' PROP-CHECK-HOOK set-check
 
@@ -15,7 +15,7 @@ variable BASE  variable MC
 TRUSTED: CLEAR-MEAS  ( R n -- n )
    dup MC !  begin MC @ 0 > while  swap drop  MC @ 1- MC !  repeat ;
 variable VERD                     \ last verdict, set by the check hook
-TRUSTED: VH  ( ptr u8 n -- n )
+: VH  ( ptr u8 n -- n )
    CHECK! dup VERD ! ;            \ MUST leave the verdict on the stack for the compiler
 TRUSTED: ERR@  ( -- n )
    DATA-VA $37D8 + @ ;            \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
@@ -211,7 +211,7 @@ variable NCMP  variable NCI  variable CAI  variable CAO  variable CBO
 \ STILL satisfies a predicate (certify-and-mismatch in real use; "still certifies"
 \ in the self-test). Drops one trailing token per step, restoring any drop that
 \ breaks the predicate. Token surgery just moves BLEN — the bytes stay put. ----
-variable PRED  variable BSAVE
+variable BSAVE
 : TRIM-TRAIL ( -- )  begin BLEN @ 0 > BBUF BLEN @ 1- + c@ 32 = and while  BLEN @ 1- BLEN !  repeat ;
 : DROP-LAST  ( -- bool )   \ remove the last space-delimited token; f = did-remove
    TRIM-TRAIL  BLEN @ 0= IF 0 0= 0= exit THEN
@@ -231,12 +231,14 @@ TRUSTED: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejec
 : LOG-FR ( -- )
    s" prop-test: false-reject confirmed: " type POS. cr
    s" definition: " type REBUILD-G DEF. ;
-TRUSTED: SHRINK  ( R [ -- bool ] -- R )   \ minimize BBUF keeping (pred) true
-   PRED !
+: SHRINK  ( R [ -- bool ] -- R ) {: pred :}  \ minimize BBUF keeping (pred) true
    begin
       BLEN @ BSAVE !
-      DROP-LAST IF  PRED @ execute IF -1 ELSE  BSAVE @ BLEN !  0 THEN
-      ELSE 0 THEN
+      DROP-LAST if
+         pred execute if 0 0= else BSAVE @ BLEN ! 0 0= 0= then
+      else
+         0 0= 0=
+      then
    while repeat ;
 
 \ ---- driver: base program (false-cert + false-reject), then metamorphic amplifiers ----
@@ -280,8 +282,8 @@ variable NFC0
 
 \ regression baits: programs that a SOUND checker rejects. If a regression ever
 \ certifies one, either arity or type/signature soundness regressed.
-TRUSTED: BAIT  ( ptr u8 n -- )   \ MUST NOT certify
-   ['] VH set-check  evaluate  ['] PROP-CHECK-HOOK set-check
+: BAIT  ( ptr u8 n -- )   \ MUST NOT certify
+   CHK
    VERD @ -1 = IF s" prop-test: BAIT certified - checker soundness regressed!" 1 die THEN ;
 : BAITS ( -- )
    s" : G ( -- ) 3 0 ?do 99 leave loop ;"            BAIT   \ leave carries an extra value
