@@ -1,8 +1,6 @@
 \ diag-origin.f - inject checker diagnostic origin markers before definitions.
 \ Load after tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f. Run with bin/hb.
 
-0 set-check
-
 $40000 constant DO-FILE-CAP
 32 constant DO-NUM-CAP
 
@@ -44,33 +42,58 @@ variable DO-ORIG-COL
 variable DO-ORIG-BYTE
 variable DO-ORIG-POS
 
-: DO-WRITE {: fd a u :} ( fd a u -- )
-   u 0= IF exit THEN
-   fd a u write u <> IF s" diag-origin: write failed" 74 die THEN ;
+: DO-TRUE ( -- bool )
+   0 0= ;
 
-: DO-OUT ( a u -- )
+: DO-FALSE ( -- bool )
+   DO-TRUE 0= ;
+
+: DO-SRC-A-FIELD ( -- ptr ptr u8 )
+   DO-SRC-A 0 ptr-field ;
+
+: DO-SRC-A@ ( -- ptr u8 )
+   DO-SRC-A-FIELD @ ;
+
+: DO-SRC-A! ( ptr u8 -- )
+   DO-SRC-A-FIELD ! ;
+
+: DO-TOK-A-FIELD ( -- ptr ptr u8 )
+   DO-TOK-A 0 ptr-field ;
+
+: DO-TOK-A@ ( -- ptr u8 )
+   DO-TOK-A-FIELD @ ;
+
+: DO-TOK-A! ( ptr u8 -- )
+   DO-TOK-A-FIELD ! ;
+
+: DO-FAIL ( ptr u8 n n -- )
+   die ;
+
+: DO-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
+   u 0= IF exit THEN
+   fd a u write u <> IF s" diag-origin: write failed" 74 DO-FAIL THEN ;
+
+: DO-OUT ( ptr u8 n -- )
    1 -rot DO-WRITE ;
 
-: DO-ERR ( a u -- )
+: DO-ERR ( ptr u8 n -- )
    2 -rot DO-WRITE ;
 
-: DO-C! ( c -- )
+: DO-C! ( n -- )
    DO-ONE c! ;
 
-: DO-C ( c -- )
+: DO-C ( n -- )
    DO-C!
    DO-ONE 1 DO-OUT ;
 
-: DO-ERR-C ( c -- )
+: DO-ERR-C ( n -- )
    DO-C!
    2 DO-ONE 1 DO-WRITE ;
 
 : DO-USAGE ( -- )
-   s" usage: tools/diag-origin.f file" DO-ERR
-   DO-LF DO-ERR-C
-   64 die ;
+   s" usage: tools/diag-origin.f file" 64 DO-FAIL ;
 
-: DO-U$ {: u :} ( u -- a u )
+: DO-U$ ( n -- ptr u8 n ) {: u :}
    DO-NUM-CAP DO-NUM-I !
    u 0= IF
       DO-NUM-I @ 1- DO-NUM-I !
@@ -86,13 +109,13 @@ variable DO-ORIG-POS
    repeat drop
    DO-NUM-BUF DO-NUM-I @ + DO-NUM-CAP DO-NUM-I @ - ;
 
-: DO-END? ( -- f )
+: DO-END? ( -- bool )
    DO-X @ DO-SRC-U @ >= ;
 
-: DO-C@ ( -- c )
-   DO-SRC-A @ DO-X @ + c@ ;
+: DO-C@ ( -- n )
+   DO-SRC-A@ DO-X @ + c@ ;
 
-: DO-ADV ( -- c )
+: DO-ADV ( -- n )
    DO-C@
    DO-X @ 1+ DO-X !
    dup DO-LF = IF
@@ -113,16 +136,16 @@ variable DO-ORIG-POS
       DO-ADV DO-DQ = IF exit THEN
    repeat ;
 
-: DO-STRING-OPENER? {: a u :} ( a u -- f )
-   u 2 <> IF 0 exit THEN
-   a 1+ c@ DO-DQ <> IF 0 exit THEN
-   a c@ FOLD 115 = IF -1 exit THEN
-   a c@ FOLD 99 = IF -1 exit THEN
+: DO-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u :}
+   u 2 <> IF DO-FALSE exit THEN
+   a 1+ c@ DO-DQ <> IF DO-FALSE exit THEN
+   a c@ FOLD 115 = IF DO-TRUE exit THEN
+   a c@ FOLD 99 = IF DO-TRUE exit THEN
    a c@ 46 = ;
 
-: DO-SAVE-TOKEN {: k start end line col :} ( k start end line col -- )
+: DO-SAVE-TOKEN ( n n n n n -- ) {: k start end line col :}
    k DO-TOK-K !
-   DO-SRC-A @ start + DO-TOK-A !
+   DO-SRC-A@ start + DO-TOK-A!
    end start - DO-TOK-U !
    start DO-TOK-BYTE !
    line DO-TOK-LINE !
@@ -139,7 +162,7 @@ variable DO-ORIG-POS
       THEN THEN
    repeat ;
 
-: DO-PAREN-TOKEN {: start line col :} ( start line col -- )
+: DO-PAREN-TOKEN ( n n n -- ) {: start line col :}
    DO-ADV drop
    begin DO-END? 0= while
       DO-C@ DO-RPAREN = IF
@@ -151,16 +174,16 @@ variable DO-ORIG-POS
    repeat
    DO-COMMENT start DO-X @ line col DO-SAVE-TOKEN ;
 
-: DO-WORD-TOKEN {: start line col :} ( start line col -- )
+: DO-WORD-TOKEN ( n n n -- ) {: start line col :}
    begin DO-END? 0= DO-C@ WS? 0= and while
       DO-ADV drop
    repeat
    DO-WORD start DO-X @ line col DO-SAVE-TOKEN
-   DO-TOK-A @ DO-TOK-U @ DO-STRING-OPENER? IF DO-SKIP-QUOTE THEN ;
+   DO-TOK-A@ DO-TOK-U @ DO-STRING-OPENER? IF DO-SKIP-QUOTE THEN ;
 
-: DO-NEXT-TOKEN ( -- f )
+: DO-NEXT-TOKEN ( -- bool )
    DO-SKIP-IGNORED
-   DO-END? IF 0 exit THEN
+   DO-END? IF DO-FALSE exit THEN
    DO-X @ DO-SAVE-X !
    DO-LINE @ DO-SAVE-LINE !
    DO-COL @ DO-SAVE-COL !
@@ -169,7 +192,7 @@ variable DO-ORIG-POS
    ELSE
       DO-SAVE-X @ DO-SAVE-LINE @ DO-SAVE-COL @ DO-WORD-TOKEN
    THEN
-   -1 ;
+   DO-TRUE ;
 
 : DO-SAVE-SCAN ( -- )
    DO-X @ DO-SAVE-X !
@@ -181,26 +204,26 @@ variable DO-ORIG-POS
    DO-SAVE-LINE @ DO-LINE !
    DO-SAVE-COL @ DO-COL ! ;
 
-: DO-COLON? ( -- f )
-   DO-TOK-K @ DO-WORD <> IF 0 exit THEN
-   DO-TOK-U @ 1 <> IF 0 exit THEN
-   DO-TOK-A @ c@ DO-COLON-C = ;
+: DO-COLON? ( -- bool )
+   DO-TOK-K @ DO-WORD <> IF DO-FALSE exit THEN
+   DO-TOK-U @ 1 <> IF DO-FALSE exit THEN
+   DO-TOK-A@ c@ DO-COLON-C = ;
 
-: DO-ORIGIN-WORD? ( -- f )
+: DO-ORIGIN-WORD? ( -- bool )
    DO-TOK-K @ DO-WORD = ;
 
-: DO-EMIT-RANGE {: start end :} ( start end -- )
+: DO-EMIT-RANGE ( n n -- ) {: start end :}
    end start <= IF exit THEN
-   DO-SRC-A @ start + end start - DO-OUT ;
+   DO-SRC-A@ start + end start - DO-OUT ;
 
-: DO-EMIT-UNTIL {: pos :} ( pos -- )
+: DO-EMIT-UNTIL ( n -- ) {: pos :}
    DO-OUT-X @ pos DO-EMIT-RANGE
    pos DO-OUT-X ! ;
 
 : DO-EMIT-NUM ( u -- )
    DO-U$ DO-OUT ;
 
-: DO-EMIT-MARKER {: line col byte pos :} ( line col byte pos -- )
+: DO-EMIT-MARKER ( n n n n -- ) {: line col byte pos :}
    pos DO-EMIT-UNTIL
    DO-LF DO-C
    line DO-EMIT-NUM DO-SP DO-C
@@ -225,9 +248,9 @@ variable DO-ORIG-POS
    DO-RESTORE-SCAN
    DO-ORIG-LINE @ DO-ORIG-COL @ DO-ORIG-BYTE @ DO-ORIG-POS @ DO-EMIT-MARKER ;
 
-: DIAG-ORIGIN ( a u -- )
+: DIAG-ORIGIN ( ptr u8 n -- )
    DO-FILE-BUF DO-FILE-CAP READ-FILE
-   DO-SRC-U ! DO-SRC-A !
+   DO-SRC-U ! DO-SRC-A!
    0 DO-X !
    0 DO-OUT-X !
    1 DO-LINE !
