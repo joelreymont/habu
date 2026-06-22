@@ -1,8 +1,6 @@
 \ parallel-agent-lint.f - keep docs/parallel-agents.md enforceable.
 \ Load after tools/lint/lib.f.
 
-0 set-check
-
 $20000 constant PAL-CAP
 
 create PAL-BUF PAL-CAP allot
