@@ -135,6 +135,7 @@ create CBLT-LF-BYTE 10 c,
    s" bench/llm/report.f"  >LEN PROC-ARGV+
    s" bench/llm/parse-resp-lib.f"  >LEN PROC-ARGV+
    s" bench/llm/parse-resp.f"  >LEN PROC-ARGV+
+   s" bench/llm/validate-results-lib.f"  >LEN PROC-ARGV+
    s" bench/llm/validate-results.f"  >LEN PROC-ARGV+
    s" tools/host-lint.f"  >LEN PROC-ARGV+
    s" tools/filemap-lint.f"  >LEN PROC-ARGV+

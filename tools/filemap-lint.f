@@ -155,6 +155,7 @@ variable FM-NUM-L
    s" bench/llm/drive-array-habu-lib.f" FM-REQ
    s" bench/llm/drive-array-habu-test.f" FM-REQ
    s" bench/llm/drive-array-habu-repair-test.f" FM-REQ
+   s" bench/llm/validate-results-lib.f" FM-REQ
    s" bench/llm/validate-results.f" FM-REQ
    s" bench/llm/validate-results-test.f" FM-REQ ;
 

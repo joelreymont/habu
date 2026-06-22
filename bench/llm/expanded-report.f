@@ -132,6 +132,7 @@ variable ER-PARSE-N
    s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
+   s" bench/llm/validate-results-lib.f"  >LEN PROC-ARGV+
    s" bench/llm/validate-results.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 

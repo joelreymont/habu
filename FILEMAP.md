@@ -214,7 +214,8 @@ points stay listed.
 - `bench/llm/grade.f` — native isolated benchmark grader for pass/fail/reject/trap/timeout outcomes.
 - `bench/llm/grade-test.f` — focused coverage for native benchmark grader outcome classification.
 - `bench/llm/solutions.f` — reference benchmark solutions.
-- `bench/llm/validate-results.f` — native reference/attempt metric validator and summarizer.
+- `bench/llm/validate-results-lib.f` — checked reference/attempt metric validator and summarizer library.
+- `bench/llm/validate-results.f` — CLI entrypoint for the metric validator.
 - `bench/llm/validate-results-test.f` — checked positive and rejection fixture coverage for metric validation.
 - `bench/llm/perf-lib.f` — native LLM feedback-loop performance timing harness.
 - `bench/llm/perf.f` — CLI wrapper for native LLM feedback-loop performance timing.

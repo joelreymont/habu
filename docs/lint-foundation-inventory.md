@@ -19,7 +19,7 @@ Users:
 - `tools/host-lint.f:154` uses `READ-FILE` plus case-insensitive search helpers.
 - `tools/stdlib-manifest-test.f:336` and `tools/stdlib-manifest-test.f:460` use
   `READ-FILE` for docs and manifest inputs.
-- `bench/llm/validate-results.f:1039` uses `READ-FILE` to load the task
+- `bench/llm/validate-results-lib.f:1114` uses `READ-FILE` to load the task
   manifest while validating result rows.
 
 Replacement direction: keep callers loading `tools/lint/text.f` explicitly while
