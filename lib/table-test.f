@@ -12,23 +12,53 @@ create TBLT-TABLE 12 cells allot
 : TBLT-FALSE ( -- bool )
    0 0= 0= ;
 
+: TBLT-CELLS ( n n -- n ) {: rows fields :}
+   rows >COUNT fields >COUNT TBL-CELLS COUNT>N ;
+
+: TBLT-FIELD ( ptr a n n n n -- ptr a ) {: tbl:ptr rows fields row field :}
+   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-FIELD ;
+
+: TBLT-CELL@ ( ptr a n n n n -- a ) {: tbl:ptr rows fields row field :}
+   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-CELL@ ;
+
+: TBLT-CELL! ( a ptr a n n n n -- ) {: value tbl:ptr rows fields row field :}
+   value tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-CELL! ;
+
+: TBLT-N@ ( ptr a n n n n -- n ) {: tbl:ptr rows fields row field :}
+   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-N@ ;
+
+: TBLT-N! ( n ptr a n n n n -- ) {: value tbl:ptr rows fields row field :}
+   value tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-N! ;
+
+: TBLT-BOOL@ ( ptr a n n n n -- bool ) {: tbl:ptr rows fields row field :}
+   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-BOOL@ ;
+
+: TBLT-BOOL! ( bool ptr a n n n n -- ) {: value tbl:ptr rows fields row field :}
+   value tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-BOOL! ;
+
+: TBLT-PAIR! ( ptr u8 n ptr a n n n n -- ) {: a:ptr u tbl:ptr rows fields row field :}
+   a u >LEN tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-PAIR! ;
+
+: TBLT-PAIR$ ( ptr a n n n n -- ptr u8 n ) {: tbl:ptr rows fields row field :}
+   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-PAIR$ LEN>N ;
+
 : TBLT-MARK-FIELD ( n n n -- ) {: value row field :}
-   value TBLT-TABLE 3 4 row field TBL-FIELD ! ;
+   value TBLT-TABLE 3 4 row field TBLT-FIELD ! ;
 
 : TBLT-ROW-HIGH ( -- )
-   TBLT-TABLE 3 4 3 0 TBL-CELL@ drop ;
+   TBLT-TABLE 3 4 3 0 TBLT-CELL@ drop ;
 
 : TBLT-ROW-NEG ( -- )
-   TBLT-TABLE 3 4 -1 0 TBL-CELL@ drop ;
+   TBLT-TABLE 3 4 -1 0 TBLT-CELL@ drop ;
 
 : TBLT-FIELD-HIGH ( -- )
-   TBLT-TABLE 3 4 0 4 TBL-CELL@ drop ;
+   TBLT-TABLE 3 4 0 4 TBLT-CELL@ drop ;
 
 : TBLT-FIELD-NEG ( -- )
-   TBLT-TABLE 3 4 0 -1 TBL-CELL@ drop ;
+   TBLT-TABLE 3 4 0 -1 TBLT-CELL@ drop ;
 
 : TBLT-PAIR-HIGH ( -- )
-   s" tool" TBLT-TABLE 3 4 0 3 TBL-PAIR! ;
+   s" tool" TBLT-TABLE 3 4 0 3 TBLT-PAIR! ;
 
 : TBLT-SETUP ( -- )
    T-RESET
@@ -36,7 +66,7 @@ create TBLT-TABLE 12 cells allot
 
 : TBLT-LAYOUT ( -- )
    TBL-PAIR-CELLS 2 T=
-   3 4 TBL-CELLS 12 T=
+   3 4 TBLT-CELLS 12 T=
    77 0 0 TBLT-MARK-FIELD
    88 0 3 TBLT-MARK-FIELD
    99 2 1 TBLT-MARK-FIELD
@@ -45,14 +75,14 @@ create TBLT-TABLE 12 cells allot
    TBLT-TABLE 12 >LEN 9 >IDX A@ 99 T= ;
 
 : TBLT-GET-SET ( -- )
-   99 TBLT-TABLE 3 4 1 2 TBL-N!
-   TBLT-TABLE 3 4 1 2 TBL-N@ 99 T=
-   TBLT-TRUE TBLT-TABLE 3 4 2 0 TBL-BOOL!
-   TBLT-TABLE 3 4 2 0 TBL-BOOL@ TTRUE
-   TBLT-FALSE TBLT-TABLE 3 4 2 0 TBL-BOOL!
-   TBLT-TABLE 3 4 2 0 TBL-BOOL@ TFALSE
-   12345 TBLT-TABLE 3 4 0 1 TBL-CELL!
-   TBLT-TABLE 3 4 0 1 TBL-CELL@ 12345 T= ;
+   99 TBLT-TABLE 3 4 1 2 TBLT-N!
+   TBLT-TABLE 3 4 1 2 TBLT-N@ 99 T=
+   TBLT-TRUE TBLT-TABLE 3 4 2 0 TBLT-BOOL!
+   TBLT-TABLE 3 4 2 0 TBLT-BOOL@ TTRUE
+   TBLT-FALSE TBLT-TABLE 3 4 2 0 TBLT-BOOL!
+   TBLT-TABLE 3 4 2 0 TBLT-BOOL@ TFALSE
+   12345 TBLT-TABLE 3 4 0 1 TBLT-CELL!
+   TBLT-TABLE 3 4 0 1 TBLT-CELL@ 12345 T= ;
 
 : TBLT-BOUNDS ( -- )
    ['] TBLT-ROW-HIGH E-TBL-BOUNDS TTHROWS
@@ -62,8 +92,8 @@ create TBLT-TABLE 12 cells allot
    ['] TBLT-PAIR-HIGH E-TBL-FIELD TTHROWS ;
 
 : TBLT-STRING ( -- )
-   s" model" TBLT-TABLE 3 4 1 2 TBL-PAIR!
-   TBLT-TABLE 3 4 1 2 TBL-PAIR$ s" model" T$= ;
+   s" model" TBLT-TABLE 3 4 1 2 TBLT-PAIR!
+   TBLT-TABLE 3 4 1 2 TBLT-PAIR$ s" model" T$= ;
 
 : TBLT-RUN ( -- )
    TBLT-SETUP

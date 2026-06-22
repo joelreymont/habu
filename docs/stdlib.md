@@ -141,9 +141,10 @@ A-FIND-INDEXI     ( ptr a len [ idx a -- bool ] -- n )
 
 `lib/table.f` provides checked helpers for fixed-capacity cell tables. A table is
 plain `ptr a` storage with an explicit row count and field count supplied to each
-operation. `TBL-FIELD ( ptr a n n n n -- ptr a )` returns the checked address
-for `table[row][field]`; rows outside `[0, rows)` throw `E-TBL-BOUNDS`, and
-fields outside `[0, fields)` throw `E-TBL-FIELD`.
+operation. Row and field capacities are `count`; row and field positions are
+`idx`; counted byte-string lengths are `len`. `TBL-FIELD ( ptr a count count idx idx -- ptr a )`
+returns the checked address for `table[row][field]`; rows outside `[0, rows)`
+throw `E-TBL-BOUNDS`, and fields outside `[0, fields)` throw `E-TBL-FIELD`.
 
 Typed accessors make common tool records explicit without inventing nominal
 handles yet: numeric fields use `TBL-N@` / `TBL-N!`, booleans use `TBL-BOOL@` /
@@ -152,21 +153,21 @@ pairs use `TBL-PAIR$` / `TBL-PAIR!`. Pair fields occupy two adjacent cells and
 are rejected unless both cells fit in the record width.
 
 ```forth
-TBL-CHECK-ROW    ( n n -- )
-TBL-CHECK-FIELD  ( n n -- )
-TBL-CHECK-PAIR   ( n n -- )
-TBL-CELLS        ( n n -- n )
-TBL-FIELD        ( ptr a n n n n -- ptr a )
-TBL-CELL@        ( ptr a n n n n -- a )
-TBL-CELL!        ( a ptr a n n n n -- )
-TBL-N@           ( ptr a n n n n -- n )
-TBL-N!           ( n ptr a n n n n -- )
-TBL-BOOL@        ( ptr a n n n n -- bool )
-TBL-BOOL!        ( bool ptr a n n n n -- )
-TBL-A@           ( ptr a n n n n -- ptr u8 )
-TBL-A!           ( ptr u8 ptr a n n n n -- )
-TBL-PAIR!        ( ptr u8 n ptr a n n n n -- )
-TBL-PAIR$        ( ptr a n n n n -- ptr u8 n )
+TBL-CHECK-ROW    ( count idx -- )
+TBL-CHECK-FIELD  ( count idx -- )
+TBL-CHECK-PAIR   ( count idx -- )
+TBL-CELLS        ( count count -- count )
+TBL-FIELD        ( ptr a count count idx idx -- ptr a )
+TBL-CELL@        ( ptr a count count idx idx -- a )
+TBL-CELL!        ( a ptr a count count idx idx -- )
+TBL-N@           ( ptr a count count idx idx -- n )
+TBL-N!           ( n ptr a count count idx idx -- )
+TBL-BOOL@        ( ptr a count count idx idx -- bool )
+TBL-BOOL!        ( bool ptr a count count idx idx -- )
+TBL-A@           ( ptr a count count idx idx -- ptr u8 )
+TBL-A!           ( ptr u8 ptr a count count idx idx -- )
+TBL-PAIR!        ( ptr u8 len ptr a count count idx idx -- )
+TBL-PAIR$        ( ptr a count count idx idx -- ptr u8 len )
 ```
 
 ## String
