@@ -149,6 +149,24 @@ variable CKT-LIST-U
    s" BYE" SB-APPEND
    SB$ ;
 
+: CKT-DIE-NORETURN$ ( -- ptr u8 n )
+   SB-RESET
+   s" : FAIL ( -- ) s" SB-APPEND
+   34 SB-APPEND-C
+   s"  fail" SB-APPEND
+   34 SB-APPEND-C
+   s"  5 die ;" SB-APPEND
+   10 SB-APPEND-C
+   s" : GOOD ( bool -- i64 ) if FAIL else 7 then ;" SB-APPEND
+   SB$ ;
+
+: CKT-EXIT-RETURNS$ ( -- ptr u8 n )
+   SB-RESET
+   s" : RET ( -- ) exit ;" SB-APPEND
+   10 SB-APPEND-C
+   s" : BAD ( bool -- i64 ) if RET else 7 then ;" SB-APPEND
+   SB$ ;
+
 : CKT-OFF-BAD$ ( -- ptr u8 n )
    SB-RESET
    s" 0 set-check" SB-APPEND
@@ -260,6 +278,18 @@ variable CKT-LIST-U
    outu 0 T=
    CKT-ERR erru s" bye" CONTAINS? TTRUE ;
 
+: CKT-TEST-DIE-NORETURN ( -- )
+   CKT-DIE-NORETURN$ CKT-RUN 0 T=
+   {: outu erru :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-EXIT-RETURNS ( -- )
+   CKT-EXIT-RETURNS$ CKT-RUN 70 T=
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" bad" CONTAINS? TTRUE ;
+
 : CKT-TEST-SET-CHECK-OFF ( -- )
    CKT-OFF-BAD$ CKT-RUN-JSON 0 T<>
    {: outu erru :}
@@ -332,6 +362,8 @@ variable CKT-LIST-U
    CKT-TEST-USAGE
    CKT-TEST-PARSE-WORDS
    CKT-TEST-DIE
+   CKT-TEST-DIE-NORETURN
+   CKT-TEST-EXIT-RETURNS
    CKT-TEST-SET-CHECK-OFF
    CKT-TEST-HOOK-REPLACE
    CKT-TEST-TRUST-REJECT

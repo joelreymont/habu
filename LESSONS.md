@@ -539,6 +539,14 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Checked tool fatal paths use the modeled `die` effect:** `die` is modeled as
   `( ptr u8 n n -- )`; old unchecked `s" msg" type cr 1 die` branches do not
   type-check. Use `s" msg" code die` or a checked wrapper.
+- **`die` is no-return; `throw` is catchable:** checker RCA should model process
+  exits as branch-killing control flow and propagate that metadata through
+  certified wrappers. Do not reuse that model for `throw`; it needs an explicit
+  exception/catch effect so quotations passed to `catch` remain sound.
+- **Checker metadata should record sparse facts:** append no-return metadata only
+  for non-returning words and clearing redefinitions. Recording a "returning"
+  row for every certified word creates startup metadata pressure and can surface
+  unrelated image crashes before the intended invariant is tested.
 - **Shared tool libraries must hand off checker state deliberately:** when a
   bundled helper library re-enables `CHECK!`, end with an explicit boundary if
   downstream legacy scanner modules are expected to choose their own hook.

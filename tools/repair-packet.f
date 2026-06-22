@@ -3,8 +3,7 @@
 \   cat tools/argv.f tools/json.f tools/repair-packet.f > /tmp/repair-packet.f
 \   bin/hb /tmp/repair-packet.f checker-jsonl.err
 
-\ Tool driver boundary: file IO, JSONL aggregation, and process exit behavior.
-0 set-check
+\ Checked CLI packet builder. Raw fd primitives are used through checked effects.
 
 74 constant RP-E-IO
 64 constant RP-E-USAGE
@@ -82,7 +81,7 @@ variable RP-NODE
    drop
    RP-N @ ;
 
-: RP-FIRST ( ptr u8 n -- root )
+: RP-FIRST ( ptr u8 n -- n )
    JSONL-START
    JSONL-NEXT-OBJECT dup -1 = if
       drop
@@ -104,19 +103,19 @@ variable RP-NODE
    repeat drop
    RP-NUM RP-NUM-I @ + RP-NUM-CAP RP-NUM-I @ - JSONW-RAW ;
 
-: RP-REQ ( root ptr u8 n -- node )
+: RP-REQ ( n ptr u8 n -- n )
    JSON-GET dup -1 = if
       s" repair-packet: missing diagnostic field" RP-E-IO RP-FAIL
    then ;
 
-: RP-REQ-STR ( root ptr u8 n -- )
+: RP-REQ-STR ( n ptr u8 n -- )
    RP-REQ dup JSON-KIND J-STR <> if
       drop
       s" repair-packet: expected string field" RP-E-IO RP-FAIL
    then
    JSON-STRING$ JSONW-STRING ;
 
-: RP-OPT-STR ( root ptr u8 n -- )
+: RP-OPT-STR ( n ptr u8 n -- )
    JSON-GET dup -1 = if drop RP-NULL exit then
    dup JSON-KIND J-NULL = if drop RP-NULL exit then
    dup JSON-KIND J-STR <> if
@@ -125,29 +124,29 @@ variable RP-NODE
    then
    JSON-STRING$ JSONW-STRING ;
 
-: RP-REQ-NUM ( root ptr u8 n -- )
+: RP-REQ-NUM ( n ptr u8 n -- )
    RP-REQ dup JSON-KIND J-NUM <> if
       drop
       s" repair-packet: expected number field" RP-E-IO RP-FAIL
    then
    JSON-NUMBER$ JSONW-RAW ;
 
-: RP-REQ-STR-FIELD ( root ptr u8 n -- )
+: RP-REQ-STR-FIELD ( n ptr u8 n -- )
    {: root key:ptr ku :}
    key ku JSONW-KEY
    root key ku RP-REQ-STR ;
 
-: RP-OPT-STR-FIELD ( root ptr u8 n -- )
+: RP-OPT-STR-FIELD ( n ptr u8 n -- )
    {: root key:ptr ku :}
    key ku JSONW-KEY
    root key ku RP-OPT-STR ;
 
-: RP-REQ-NUM-FIELD ( root ptr u8 n -- )
+: RP-REQ-NUM-FIELD ( n ptr u8 n -- )
    {: root key:ptr ku :}
    key ku JSONW-KEY
    root key ku RP-REQ-NUM ;
 
-: RP-RETURN-STACK ( root -- )
+: RP-RETURN-STACK ( n -- )
    {: root :}
    s" return_stack" JSONW-KEY
    root s" return_stack" RP-REQ RP-NODE !
@@ -158,7 +157,7 @@ variable RP-NODE
    RP-NODE @ s" actual" RP-OPT-STR-FIELD
    JSONW-OBJECT-END ;
 
-: RP-PACKET ( root count -- ptr u8 n )
+: RP-PACKET ( n n -- ptr u8 n )
    {: root count :}
    JSONW-RESET
    JSONW-OBJECT-START

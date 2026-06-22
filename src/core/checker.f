@@ -636,6 +636,7 @@ $1002 constant USIGS-MAP-ANON
 0 constant USIGS-OFF-ZERO
 create USIGS-BOOT USIGS-INIT-CAP allot
 variable USIGS-P   variable USIGS-CAP-U   variable UEND
+variable USIGS-GROW-CAP   variable USIGS-GROW-NEXT
 
 : USIGS ( -- ptr u8 ) USIGS-P @ ;
 
@@ -654,11 +655,11 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS c!
    dup 0 < IF s" checker: user sigs mmap failed" 76 die THEN ;
 
 : USIGS-GROW {: need :}
-   need USIGS-ROUND-CAP {: cap :}
-   cap USIGS-ALLOC {: next:ptr :}
-   USIGS next UEND @ 1 + USIGS-COPY
-   next USIGS-P !
-   cap USIGS-CAP-U ! ;
+   need USIGS-ROUND-CAP USIGS-GROW-CAP !
+   USIGS-GROW-CAP @ USIGS-ALLOC USIGS-GROW-NEXT !
+   USIGS USIGS-GROW-NEXT @ UEND @ 1 + USIGS-COPY
+   USIGS-GROW-NEXT @ USIGS-P !
+   USIGS-GROW-CAP @ USIGS-CAP-U ! ;
 
 : USIGS-ENSURE {: need :}
    need USIGS-CAP-U @ <= IF exit THEN
@@ -681,6 +682,58 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS c!
    REPEAT drop ;
 
 : FIND-SIG {: a u :}  0 FSU !  PTAB a u SCAN-SIGS  USIGS a u SCAN-SIGS  FSU @ ;
+
+\ Non-returning words are a control-flow effect. `die` exits the process and
+\ wrappers around it must make the current branch unreachable for IF/ELSE joins.
+\ The table is append-only and later-wins so a redefinition can remove the flag.
+$1000 constant NORET-INIT-CAP
+create NORET-BOOT NORET-INIT-CAP allot
+variable NORET-P   variable NORET-CAP-U   variable NORET-END
+NORET-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !   0 NORET-BOOT c!
+variable NORET-POS   variable NORET-LEN   variable NORET-FLAG
+variable NORET-GROW-CAP   variable NORET-GROW-NEXT
+
+: NORETS ( -- ptr u8 ) NORET-P @ ;
+
+: NORET-GROW {: need :}
+   need USIGS-ROUND-CAP NORET-GROW-CAP !
+   NORET-GROW-CAP @ USIGS-ALLOC NORET-GROW-NEXT !
+   NORETS NORET-GROW-NEXT @ NORET-END @ 1 + USIGS-COPY
+   NORET-GROW-NEXT @ NORET-P !
+   NORET-GROW-CAP @ NORET-CAP-U ! ;
+
+: NORET-ENSURE {: need :}
+   need NORET-CAP-U @ <= IF exit THEN
+   need NORET-GROW ;
+
+: NORET-ADD {: a u flag :}
+   NORET-END @ u + 3 + NORET-ENSURE
+   u NORETS NORET-END @ + c!
+   NORET-END @ 1 + NORET-END !
+   0 BEGIN dup u < WHILE
+      dup a + c@ NORETS NORET-END @ + c!
+      NORET-END @ 1 + NORET-END !
+      1 +
+   REPEAT drop
+   flag IF 1 ELSE 0 THEN NORETS NORET-END @ + c!
+   NORET-END @ 1 + NORET-END !
+   0 NORETS NORET-END @ + c! ;
+
+: NORET-USER? {: a u :}
+   0 NORET-FLAG !
+   0 NORET-POS !
+   BEGIN NORETS NORET-POS @ + c@ dup WHILE
+      NORET-LEN !
+      a u NORETS NORET-POS @ + 1 + NORET-LEN @ STR= IF
+         NORETS NORET-POS @ + 1 + NORET-LEN @ + c@ NORET-FLAG !
+      THEN
+      NORET-POS @ 1 + NORET-LEN @ + 1 + NORET-POS !
+   REPEAT drop
+   NORET-FLAG @ 0 <> ;
+
+: NORET-TOK? {: a u :}
+   a u s" die" STR= IF -1 EXIT THEN
+   a u NORET-USER? ;
 create TVSAVE MAXTV cells allot   create RVSAVE MAXTV cells allot
 variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
@@ -1126,7 +1179,9 @@ s" <input>" DIAG-FILE!
    TKF TFU @ CF-TOK? 0= IF
    TKF TFU @ RS-TOK? 0= IF
    TKF TFU @ LOC-REF? 0= IF
-   TKF TFU @ DO-TOK  TKF TFU @ STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN
+   TKF TFU @ DO-TOK
+   OK @ IF TKF TFU @ NORET-TOK? IF -1 DEADP ! THEN THEN
+   TKF TFU @ STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN
    THEN THEN THEN THEN THEN THEN THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -1195,6 +1250,11 @@ s" <input>" DIAG-FILE!
    dup 0 =  over 1 = JSON-DIAGS @ and  or
    DIAGXT @ 0 <> and IF DIAGXT @ execute THEN
    dup -1 = NMU @ 0 > and IF
+      DEADP @ XSET @ 0= and IF
+         NMA @ NMU @ -1 NORET-ADD
+      ELSE
+         NMA @ NMU @ NORET-USER? IF NMA @ NMU @ 0 NORET-ADD THEN
+      THEN
       VSIG @ SGSEEN @ and IF
          SGA @ SGU @  NMA @ NMU @  USIG-ADD
       ELSE
