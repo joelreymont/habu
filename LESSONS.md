@@ -42,16 +42,13 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 
 ## Checker Soundness
 
-- **Checker RCA asks the static question first:** “why didn’t the checker catch
-  this?” is an immediate trigger, even in meta-discussion. First write
-  `Static invariant:` with the pre-runtime invariant and enforcement owner.
-  Runtime fixes wait for fail-closed proof, miss class, minimal checked
-  reproducer, and a checker/compiler fix or capability dot; the bad program must
+- **Checker RCA starts with invariant, then compiler ownership:** “why didn’t
+  the checker catch this?” is an immediate trigger, even in meta-discussion.
+  First write `Static invariant:` answering what pre-runtime fact should have
+  been impossible and where the compiler/checker should enforce it. Runtime
+  fixes wait for fail-closed proof, miss class, minimal checked reproducer, and
+  a checker/compiler/primitive-model fix or capability dot; the bad program must
   end as a negative checker regression.
-- **Checker misses default to compiler work:** after the `Static invariant:`
-  line, assume the checker/compiler/primitive model owns the bug until the exact
-  checked path proves that invariant is outside its contract. Fix the model and
-  add the negative regression before accepting downstream runtime code.
 - **Quotations are xts, not closures:** `[: ;]` may not read a surrounding
   local. Until real closure objects exist, both the checker and generated
   compiler must reject local references while a quotation is open; otherwise

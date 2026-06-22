@@ -54,15 +54,15 @@ constants; and a `T{ … -> … }T` test for every word.
   as detailed dots.
 - Checker-first RCA is mandatory. Treat the phrase “why didn’t the checker catch
   this?” and equivalent wording as an immediate trigger, even in meta-discussion
-  about process. For any such failure, process/status reply, note, or dot, ask
-  this before any runtime explanation: **What static invariant
-  should have made this impossible before runtime, and where should the
-  compiler/checker enforce it?** The first visible line of the response,
-  progress update, note, dot, or investigation must be `Static invariant:` with
-  that answer. Use the RCA template in `docs/forth.md` § Checker-Miss RCA. Do not edit
-  runtime/library code until the investigation also records: fail-closed proof
-  for the exact command path, miss class, minimal checked reproducer, and the
-  checker/compiler change or explicit dot that will close the soundness gap.
+  about process. The first question is always: **What static invariant should
+  have made this impossible before runtime, and where should the compiler/checker
+  enforce it?** The first visible line of the response, progress update, note,
+  dot, or investigation must be `Static invariant:` with that answer. No runtime
+  symptom, guard, workaround, or library edit may come first. Use the RCA
+  template in `docs/forth.md` § Checker-Miss RCA. Do not edit runtime/library
+  code until the investigation also records: fail-closed proof for the exact
+  command path, miss class, minimal checked reproducer, and the checker/compiler
+  change or explicit dot that will close the soundness gap.
   Prove fail-closed status with a minimal bad definition on the same load path,
   command exit status, and stderr/stdout diagnostics. If the path was not
   fail-closed, fix that harness/tooling gap before runtime repair. If it was

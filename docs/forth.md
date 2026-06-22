@@ -129,20 +129,23 @@ not a matter of taste. Target is the native `bin/hb` engine.
 ### Checker-Miss RCA
 
 - Treat the phrase "why didn't the checker catch this?" and equivalent wording
-  as an immediate trigger, even in meta-discussion about process. For any such
-  failure, process/status reply, note, or dot, ask this before any runtime
-  explanation: **What static
-  invariant should have made this impossible before runtime, and where should
-  the compiler/checker enforce it?** The first visible line of the response,
-  progress update, note, dot, or investigation is
+  as an immediate trigger, even in meta-discussion about process. The first
+  question is always: **What static invariant should have made this impossible
+  before runtime, and where should the compiler/checker enforce it?** The first
+  visible line of the response, progress update, note, dot, or investigation is
   `Static invariant:` followed by that invariant and boundary. If you have
   already started with runtime symptoms, stop and restart from this line.
+- Do not put runtime symptoms first. The checker/compiler/primitive model owns
+  the investigation until the exact checked path proves that the invariant is
+  outside its contract. Guards, runtime repairs, and library edits come only
+  after the static owner and negative regression are identified.
 - Use this template before editing runtime/library code:
   `Static invariant:` the pre-runtime fact that should be impossible to violate;
   `Owner:` checker semantics, compiler/codegen model, primitive/boundary effect,
   or typed capability gap; `Path proof:` exact command proving the source path is
   fail-closed or the harness gap to fix first; `Reproducer:` minimal checked
-  source that should reject; `Regression:` negative test added with the fix.
+  source that should reject; `Compiler fix:` checker/compiler/primitive metadata
+  change or capability dot; `Regression:` negative test added with the fix.
 - Prove the exact command path is fail-closed before touching runtime/library
   code. If bad checked source can run on that path, fix the harness/tooling path
   first.
