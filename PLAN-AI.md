@@ -82,13 +82,14 @@ the native build-fixpoint installer from current source.
 ```
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/grade.f bench/llm/grade-test.f
                                 # -> grade-test: ok
-./bench/llm/bench-test.sh      # -> PASS: array drivers (as + aa, 4 arms + habu repair)
+bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/json-write.f bench/llm/fixture-text.f bench/llm/run-expanded-bench-test.f
+                                # -> run-expanded-bench-test: ok
 ```
 `grade-test` proves the isolated run+grade spine classifies a correct/wrong/non-certifying/
-trapping/looping candidate correctly. `bench-test` drives raw Habu, library
-Habu, JavaScript, and Rust with STUB models (canned answers) for both
-conventions and checks the JSONL each emits — including that Habu's repair loop
-fires on a checker rejection (rounds=2).
+trapping/looping candidate correctly. `run-expanded-bench-test.f` drives the
+native benchmark dispatcher with STUB models (canned answers), checks the JSONL
+it emits, and proves foreign arms dispatch through `bin/hb --load` instead of
+retired shell launchers.
 
 ### V2 — Tasks are FEASIBLE in habu and the io-vector ground truth is correct
 ```
@@ -122,11 +123,11 @@ sh bench/llm/drive-habu.sh 4 ARGMAX "ptr a n -- i64" \
    "Return the index of the maximum element; on ties the smallest index." as \
    "[3 1 4 1 5] -> 4; [9 1 1] -> 0; [1 5 5 2] -> 1; [5] -> 0" a </dev/null
 ```
-Emits one raw-Habu JSONL row. Expect `outcome:pass` with a token count far above the JS/Rust
-cost for the same task (run `drive-js.sh` / `drive-rust.sh` with the same args, dropping the
-trailing `a`, to compare). To spot-check the helper arm, rerun the same command with trailing
-`lib` instead of `a`; the driver emits `arm:"habu-lib"` and bundles `habu-array-lib.f` before
-checking/grading the candidate.
+Emits one raw-Habu JSONL row. Expect `outcome:pass` with a token count far above
+the JS/Rust cost for the same task when run through the native expanded runner
+with `BENCH_ARRAY_ARMS` selecting those arms. To spot-check the helper arm,
+select `habu-lib`; the native driver emits `arm:"habu-lib"` and bundles
+`habu-array-lib.f` before checking/grading the candidate.
 
 ---
 
@@ -136,10 +137,9 @@ checking/grading the candidate.
   `{as, aa}` (array→scalar, array→array). Vectors use `[..]` for arrays, e.g.
   `[3 1 4] -> 8` (as) or `[3 1 2] -> [2 1 3]` (aa). **Single source of truth** — every arm's
   test harness is generated from these vectors.
-- `bench/llm/lib.sh` — sourced helpers. `hb_test/js_test/rust_test <conv> …` generate the
-  per-language test harness from a task's vectors; `emit_row` writes a JSONL metrics line.
-  (Note: `hb_test` forces `IFS=' '` internally — it builds the habu array with `here v , v , …`
-  and must split on spaces regardless of the caller's IFS.)
+- `bench/llm/foreign-vectors.f` — checked vector snippet emitters for
+  JavaScript, Python, TypeScript, and Rust. Native drivers share this path so
+  the per-language harnesses come from one checked implementation.
 - `bench/llm/habu-preamble.txt` — the in-context teaching for the raw Habu arm (typed-pointer
   locals, `i cells arr + @`/`!` indexing, `?do … loop`, explicit-boolean conditions, in-place
   rule). This is the *only* habu knowledge the model gets; the corpus-familiarity tax is what
@@ -161,8 +161,10 @@ checking/grading the candidate.
   (`arm:"habu-forth-blind"`) sends only generic failure feedback. This ablation is the
   evidence path for whether Habu diagnostics help LLM repair, separate from replay
   artifact auditability.
-- `bench/llm/drive-js.sh`, `drive-rust.sh` — JS/Rust arms. `f(a)` returns a number (`as`) or
-  array/`Vec` (`aa`); repair on node test failures / rustc errors + test failures.
+- `bench/llm/drive-js.f`, `drive-python.f`, `drive-ts.f`, `drive-rust.f` —
+  native wrappers for the foreign arms. `f(a)` returns a number (`as`) or
+  array/list/`Vec` (`aa`); repair uses the language runner diagnostics and
+  vector-test failures through checked Habu orchestration.
 - `bench/llm/grade.f` — runs a candidate in an isolated, timeout-bounded child so a trap/hang
   is *recorded, not fatal*; classifies `pass|fail|reject|trap|timeout`. For habu it builds the
   array in memory (`here , ,`) and runs the io-vectors via generated `G=` assertions.
@@ -176,7 +178,8 @@ checking/grading the candidate.
   green, task pass@k, non-pass rows, wall time, mean rounds, median/mean/max output tokens,
   per-task token table with raw/best and lib/best ratios, verdict).
 - `bench/llm/ref-solutions.f` — certified habu answer key (see V2).
-- `bench/llm/grade-test.f`, `bench-test.sh` — the deterministic teeth (see V1).
+- `bench/llm/grade-test.f`, `bench/llm/run-expanded-bench-test.f`, and the
+  driver-specific `*-test.f` files — the deterministic native teeth (see V1).
 
 Also delivered to `habu` master earlier in this effort: a native `depth ( -- n )` primitive
 (`src/habu/habu1.f`, `src/core/checker.f`) — a standard Forth core word habu lacked. It is NOT

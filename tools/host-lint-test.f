@@ -23,10 +23,18 @@ variable HLT-N
    s" ./bench/llm/drive-foreign-lib.f" HOST-SCAN-CONTENT? 0= HLT-ASSERT
    s" ./FILEMAP.md" HOST-SCAN-CONTENT? 0= HLT-ASSERT ;
 
+: HLT-BENCH-SHELL-POLICY ( -- )
+   s" ./bench/llm/drive-js.sh" HOST-BENCH-DRIVER-SHELL? HLT-ASSERT
+   s" ./bench/llm/drive-python.sh" HOST-BENCH-DRIVER-SHELL? HLT-ASSERT
+   s" ./bench/llm/drive-python.f" HOST-BENCH-DRIVER-SHELL? 0= HLT-ASSERT
+   s" ./bench/llm/drive-js.sh" HOST-BENCH-BASELINE? 0= HLT-ASSERT
+   s" ./bench/llm/drive-js.sh" HOST-RETIRED-SHELL? HLT-ASSERT ;
+
 : HLT-MAIN ( -- )
    1 HLT-N !
    HLT-PATH-POLICY
    HLT-CONTENT-POLICY
+   HLT-BENCH-SHELL-POLICY
    s" host-lint-test: ok (" type HLT-N @ 1- . s"  assertions)" type cr ;
 
 HLT-MAIN

@@ -349,7 +349,8 @@ Success for Phase 1:
 
 - `ARGMAX`, `REVERSE`, `PREFIXSUM`, and `RUNMAX` hard-tail ratios drop below 3x
   mainstream best in the `habu-stdlib` arm.
-- `bench/llm/bench-test.sh` covers the new arm without live model calls.
+- Native benchmark fixtures cover the new arm without live model calls through
+  `bench/llm/run-expanded-bench-test.f` and the driver-specific checked tests.
 - `lib/array.f` public words certify through the native `tools/check.f` runner.
 
 Tracked dots:
@@ -913,7 +914,6 @@ test "$(find bin -type f -perm -111 ! -name hb -print | wc -l)" -eq 0
 bin/hb --load lib/errors.f lib/string.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f bench/llm/perf-lib.f bench/llm/perf.f
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f tools/check.f -- lib/array.f
 bin/hb --load lib/errors.f lib/array.f lib/array-test.f
-./bench/llm/bench-test.sh
 bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f bench/llm/grade.f bench/llm/grade-test.f
 bin/hb < bench/llm/ref-solutions.f
 ```
