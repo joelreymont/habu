@@ -185,6 +185,9 @@ points stay listed.
 - `bench/llm/drive-array-habu.f` — CLI wrapper for the native Habu array benchmark driver.
 - `bench/llm/drive-array-habu-test.f` — focused coverage for native Habu array driver pass, fail, reject, and repair-packet outcomes.
 - `bench/llm/drive-array-habu-repair-test.f` — focused live-model coverage for native Habu array repair-loop success and row accounting.
+- `bench/llm/drive-foreign-lib.f` — native foreign-language benchmark driver core for JavaScript-style function arms.
+- `bench/llm/drive-js.f` — CLI wrapper for the native JavaScript array benchmark driver.
+- `bench/llm/drive-js-test.f` — focused coverage for native JavaScript pass, fail, timeout, runtime, and repair-loop outcomes.
 - `bench/llm/negative-score.f` — checked scorer for negative benchmark expected codes/tokens/classes.
 - `bench/llm/negative-score-test.f` — focused coverage for negative-harness scoring outcomes.
 - `bench/llm/run-expanded-bench.f` — native expanded live benchmark runner and arm dispatcher.

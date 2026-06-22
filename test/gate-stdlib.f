@@ -491,6 +491,11 @@ variable GS-SRC-N
    s" bench/llm/drive-array-habu-lib.f" GS-ARG+
    s" bench/llm/drive-array-habu-test.f" GS-ARG+
    s" llm Habu array driver" GS-HB-RUN
+   GS-ARG-LLM-DRIVER-BASE
+   s" bench/llm/foreign-vectors.f" GS-ARG+
+   s" bench/llm/drive-foreign-lib.f" GS-ARG+
+   s" bench/llm/drive-js-test.f" GS-ARG+
+   s" llm JavaScript driver" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/source.f" GS-ARG+ s" lib/build.f" GS-ARG+ s" lib/codesign.f" GS-ARG+ s" tools/build-fixpoint.f" GS-ARG+ s" tools/hb-build-lib.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/drive-array-habu-repair-test.f" GS-ARG+
    s" llm Habu array repair driver" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" bench/llm/fixture-text.f" GS-ARG+ s" bench/llm/run-expanded-bench-test.f" GS-ARG+

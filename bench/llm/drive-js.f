@@ -1,0 +1,5 @@
+\ drive-js.f - CLI wrapper for the native JavaScript benchmark driver.
+\
+\ Load after bench/llm/drive-foreign-lib.f.
+
+DFG-MAIN
