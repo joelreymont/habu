@@ -117,6 +117,19 @@ TRUSTED: DFHT-SRC-BUF ( -- ptr u8 )
 : DFHT-PROMPT-NOT ( ptr u8 n -- )
    DS-PROMPT$ 2swap CONTAINS? 0= TTRUE ;
 
+: DFHT-TEST-PROMPT-SIG-INNER ( -- )
+   s" repair" s" habu-forth" DFHT-CONFIG-SQUARE
+   DFH-BUILD-PROMPT
+   s" : SQUARE ( i64 -- i64 ) ... ;" DFHT-PROMPT-HAS
+   s" ( (i64 -- i64) )" DFHT-PROMPT-NOT ;
+
+: DFHT-TEST-PROMPT-SIG-PARENS ( -- )
+   s" repair" s" habu-forth" DFHT-CONFIG-SQUARE
+   s"  ( i64 -- i64 )  " DS-SIG!
+   DFH-BUILD-PROMPT
+   s" : SQUARE ( i64 -- i64 ) ... ;" DFHT-PROMPT-HAS
+   s" (  i64 -- i64  )" DFHT-PROMPT-NOT ;
+
 : DFHT-TEST-PASS ( -- )
    s" repair" s" habu-forth" DFHT-CONFIG-SQUARE
    s" : SQUARE ( i64 -- i64 ) dup * ;" DFH-RUN-TEXT
@@ -222,6 +235,8 @@ TRUSTED: DFHT-SRC-BUF ( -- ptr u8 )
 : DFHT-MAIN ( -- )
    T-RESET
    DFHT-TEST-LARGE-TASK-COPY
+   DFHT-TEST-PROMPT-SIG-INNER
+   DFHT-TEST-PROMPT-SIG-PARENS
    DFHT-TEST-PASS
    DFHT-TEST-FAIL-RAW
    DFHT-TEST-CHECKER-REJECT

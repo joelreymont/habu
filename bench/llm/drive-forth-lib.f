@@ -11,6 +11,10 @@
 2 constant DFH-FIRST-FAIL
 3 constant DFH-FIRST-REJECT
 10 constant DFH-LF
+40 constant DFH-LPAREN
+41 constant DFH-RPAREN
+1 constant DFH-PAREN-EDGE
+2 constant DFH-PAREN-PAIR
 64 constant DFH-USAGE-RC
 66 constant DFH-DATA-RC
 
@@ -328,13 +332,28 @@ TRUSTED: DFH-BUNDLE$ ( -- ptr u8 n )
    repeat
    drop 2drop ;
 
+: DFH-SIG-PAREN? ( ptr u8 n -- bool ) {: a:ptr u :}
+   u DFH-PAREN-PAIR < if DS-FALSE exit then
+   a c@ DFH-LPAREN =
+   a u DFH-PAREN-EDGE - + c@ DFH-RPAREN =
+   and ;
+
+: DFH-SIG-STRIP-PARENS ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+   a u DFH-SIG-PAREN? if
+      a DFH-PAREN-EDGE + u DFH-PAREN-PAIR - TRIM exit
+   then
+   a u ;
+
+: DFH-SIG-INNER$ ( -- ptr u8 n )
+   DS-SIG$ TRIM DFH-SIG-STRIP-PARENS ;
+
 : DFH-BUILD-PROMPT ( -- )
    DS-PROMPT-RESET
    s" Define exactly one checked Habu Forth word:" DS-PROMPT-LN
    s"   : " DS-PROMPT+
    DS-NAME$ DS-PROMPT+
    s"  ( " DS-PROMPT+
-   DS-SIG$ DS-PROMPT+
+   DFH-SIG-INNER$ DS-PROMPT+
    s"  ) ... ;" DS-PROMPT-LN
    s" " DS-PROMPT-LN
    DS-SPEC$ DS-PROMPT-LN
