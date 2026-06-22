@@ -144,7 +144,6 @@ variable LV-C
 variable LV-M
 variable LV-N
 variable LV-ID
-variable LV-ROOT
 variable LV-NODE
 variable LV-LINE
 variable LV-LA
@@ -352,11 +351,6 @@ TRUSTED: LV-RESULT-BUF ( -- ptr u8 )
    id LV-U.
    LV-NL
    1 throw ;
-
-TRUSTED: LV-CATCH-PARSE ( ptr u8 n -- n )
-   ['] JSON-PARSE catch
-   dup 0= IF drop LV-ROOT ! 0 exit THEN
-   >r 2drop r> ;
 
 : LV-JSON-FAIL ( n -- )
    drop
@@ -1485,8 +1479,9 @@ TRUSTED: LV-CATCH-PARSE ( ptr u8 n -- n )
    THEN ;
 
 : LV-RESULT-LINE ( ptr u8 n -- )
-   LV-CATCH-PARSE dup 0= IF drop ELSE LV-JSON-FAIL THEN
-   LV-ROOT @ LV-CHECK-ROW ;
+   JSON-PARSE-TRY {: root kind code :}
+   kind JSON-PARSE-OK = IF root LV-CHECK-ROW exit THEN
+   code LV-JSON-FAIL ;
 
 : LV-FINISH-RESULT-LINE ( -- )
    LV-LINE @ 1+ LV-LINE !

@@ -206,8 +206,8 @@ TRUSTED: PR-TF-CONFIG$ ( -- ptr u8 n )
 : PR-PARSE-FALLBACK? ( n -- bool )
    dup E-JSON-SYNTAX = swap E-JSON-TYPE = or ;
 
-TRUSTED: PR-PARSE-RESP ( -- )
-   ['] PR-PARSE-RESP-STRICT catch
+: PR-PARSE-RESP ( -- )
+   [: PR-PARSE-RESP-STRICT ;] catch
    dup 0= IF drop exit THEN
    dup PR-PARSE-FALLBACK? IF drop PR-PARSE-RAW exit THEN
    throw ;

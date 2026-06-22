@@ -104,9 +104,12 @@ variable JSONL-LU
 variable JSONL-ROOT
 variable JSONL-SKIPS
 variable JSONL-MODE
+variable JSON-PARSE-TRY-ROOT
 
 0 constant JSONL-MODE-STRICT
 1 constant JSONL-MODE-SKIP
+0 constant JSON-PARSE-OK
+1 constant JSON-PARSE-THROW
 : JSON-A@ JSON-A @ ;
 s" JSON-A@" s" -- ptr u8" TRUST
 : JSON-GKA@ JSON-GKA @ ;
@@ -559,6 +562,12 @@ TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
    JSON-I @ JSON-U @ <> IF s" json: trailing data" JSON-SYNTAX THEN
    JSON-VN @ ;
 
+: JSON-PARSE-TRY ( ptr u8 i64 -- i64 i64 i64 )
+   [: 2dup JSON-PARSE JSON-PARSE-TRY-ROOT ! ;] catch {: code :}
+   2drop
+   code 0= IF JSON-PARSE-TRY-ROOT @ JSON-PARSE-OK 0 exit THEN
+   -1 JSON-PARSE-THROW code ;
+
 : JSON-KIND ( i64 -- i64 ) J-KIND@ ;
 : JSON-COUNT ( i64 -- i64 ) J-COUNT@ ;
 
@@ -793,12 +802,8 @@ TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
 : JSONL-PARSE-LINE ( -- i64 )
    JSONL-LA@ JSONL-LU @ JSON-PARSE ;
 
-\ Unchecked boundary: this catches an execution token over dynamic parser state.
-\ Checked catch covers stack-preserving quotations; checked code decides whether
-\ a code may skip.
-TRUSTED: JSONL-CATCH-LINE ( -- i64 )
-   ['] JSONL-PARSE-LINE catch
-   dup 0= IF drop JSONL-ROOT ! 0 exit THEN ;
+: JSONL-PARSE-TRY ( -- i64 i64 i64 )
+   JSONL-LA@ JSONL-LU @ JSON-PARSE-TRY ;
 
 : JSONL-OBJECT? ( i64 -- bool )
    JSON-KIND J-OBJ = ;
@@ -826,15 +831,15 @@ TRUSTED: JSONL-CATCH-LINE ( -- i64 )
          JSONL-SKIP
       ELSE
          JSONL-SKIP-MODE? IF
-            JSONL-CATCH-LINE JSON-TMP !
+            JSONL-PARSE-TRY JSON-TMP ! JSON-TMP2 ! JSONL-ROOT !
+            JSON-TMP2 @ JSON-PARSE-OK = IF
+               JSONL-ROOT @ JSONL-OBJECT-OR-SKIP IF exit THEN drop
+            ELSE
+               JSON-TMP @ JSONL-RECOVER? drop
+            THEN
          ELSE
             JSONL-PARSE-LINE JSONL-ROOT !
-            0 JSON-TMP !
-         THEN
-         JSON-TMP @ 0= IF
             JSONL-ROOT @ JSONL-OBJECT-OR-SKIP IF exit THEN drop
-         ELSE
-            JSON-TMP @ JSONL-RECOVER? drop
          THEN
       THEN
    repeat

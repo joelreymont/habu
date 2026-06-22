@@ -21,6 +21,11 @@ errors on failure:
 `JSON-ERROR$ ( -- ptr u8 u )` and `JSON-ERR-POS @` expose the last parser error
 message and byte offset.
 
+`JSON-PARSE-TRY ( ptr u8 u -- node kind code )` runs the same parser through a
+checked stack-preserving recovery path. On success it returns
+`node JSON-PARSE-OK 0`; on failure it returns `-1 JSON-PARSE-THROW code` while
+leaving `JSON-ERROR$` and `JSON-ERR-POS @` set for diagnostics.
+
 The parser accepts objects, arrays, strings, numbers, `true`, `false`, and
 `null`. Strings are decoded into UTF-8, including `\uXXXX` escapes and surrogate
 pairs. Numbers are validated with the JSON grammar and stored as their original

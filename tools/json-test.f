@@ -58,15 +58,8 @@ variable T-LARGE-LEN
 : T-LARGE$  \ ( -- a u )
    T-LARGE-A @ T-LARGE-LEN @ ;
 
-variable TRY-A
-variable TRY-U
-: TRY-PARSE  \ ( -- node )
-   TRY-A @ TRY-U @ JSON-PARSE ;
-
 : PARSE-CODE  \ ( a u -- code )
-   TRY-U ! TRY-A !
-   [: TRY-PARSE ;] catch
-   dup 0= IF drop drop 0 exit THEN ;
+   JSON-PARSE-TRY >r 2drop r> ;
 
 variable TA
 variable TU
@@ -191,6 +184,16 @@ variable NODE
    BUILD-BAD-ESCAPE PARSE-CODE E-JSON-SYNTAX ASSERT=
    s" prose not json" PARSE-CODE E-JSON-SYNTAX ASSERT= ;
 
+: TEST-PARSE-TRY  \ ( -- )
+   BUILD-NESTED JSON-PARSE-TRY
+   0 ASSERT=
+   JSON-PARSE-OK ASSERT=
+   dup JSON-KIND J-OBJ ASSERT=
+   s" prose not json" JSON-PARSE-TRY
+   E-JSON-SYNTAX ASSERT=
+   JSON-PARSE-THROW ASSERT=
+   -1 ASSERT= ;
+
 : ADD-LINE  \ ( -- )
    J-LF T+C ;
 
@@ -249,6 +252,7 @@ variable NODE
    TEST-WRITE-ROUNDTRIP
    TEST-LARGE-STRING
    TEST-STRICT-ERRORS
+   TEST-PARSE-TRY
    TEST-JSONL
    TEST-JSONL-BLANK-ROWS
    TEST-JSONL-MODES

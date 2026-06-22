@@ -50,6 +50,11 @@ not a matter of taste. Target is the native `bin/hb` engine.
 - **Locals `{: a b :}`** are encouraged where they remove juggling. They bind
   inputs only; do not put `-- outputs` inside the locals form. Keep the effect in
   the stack comment.
+- **Bind locals only at a helper entry or before control flow opens.** Do not
+  introduce `{:` groups inside an active `if`, `begin`/`while`, `?do`, or after an
+  `exit` path. Factor a helper whose inputs can be bound at entry, or use owned
+  scratch cells for loop/control state. Mid-control locals can fail in raw
+  compilation at `{:` before the checked diagnostic path can explain the bug.
 - **Do not build deep locals stacks.** Habu locals are reliable for shallow
   factoring; nested helper calls from loop/callback bodies should use stack-based
   leaf helpers or explicitly separate scratch variables so inner helpers cannot

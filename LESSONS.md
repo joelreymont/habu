@@ -246,9 +246,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   must pass `a b` explicitly; do not assume the original inputs are still on the
   stack. For checked counted loops, prefer an explicit scratch index when the
   body calls helpers so the call effect stays visible.
-- **Locals are input-only:** do not introduce `{:` groups mid-definition to name
-  intermediate values. Store intermediate values in owned scratch cells or factor
-  a helper whose inputs can be bound at entry.
+- **Locals are input-only and pre-control:** do not introduce `{:` groups
+  mid-definition or inside active control flow to name intermediate values. Store
+  intermediates in owned scratch cells or factor a helper whose inputs can be
+  bound at entry.
 - **Do not bind locals after `exit`:** the compiler keeps the exit accumulator
   active until `;`, so a later `{:` in that definition aborts as an illegal
   locals group. Keep post-validation values on the stack or bind before the
