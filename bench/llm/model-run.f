@@ -97,6 +97,19 @@ TRUSTED: MRUN-TEXT-BUF ( -- ptr u8 )
    a MRUN-TEXT-BUF u BYTE-COPY
    u MRUN-TEXT-U ! ;
 
+: MRUN-COPY-ERR ( ptr u8 n -- ) {: a:ptr u :}
+   u MRUN-ERR-CAP > if E-MRUN-CAPACITY throw then
+   a MRUN-ERR-BUF u BYTE-COPY
+   u MRUN-ERR-U ! ;
+
+: MRUN-PARSE-ERR$ ( n -- ptr u8 n ) {: code :}
+   code E-JSON-CAPACITY = if s" model response parse capacity" exit then
+   s" model response parse failed" ;
+
+: MRUN-PARSE-FAILED ( n -- ) {: code :}
+   code MRUN-RC !
+   code MRUN-PARSE-ERR$ MRUN-COPY-ERR ;
+
 : MRUN-RESOLVE ( -- ptr u8 n )
    MR-COMMAND$ >LEN MRUN-EXE-BUF RESOLVE-EXECUTABLE LEN>N MRUN-EXE-U !
    MRUN-EXE-BUF MRUN-EXE-U @ ;
@@ -171,4 +184,7 @@ TRUSTED: MRUN-TEXT-BUF ( -- ptr u8 )
 
 : MRUN-RUN ( ptr u8 n -- )
    MRUN-CAPTURE
-   MRUN-RC @ 0= if MRUN-PARSE then ;
+   MRUN-RC @ 0= if
+      [: MRUN-PARSE ;] catch dup 0= if drop exit then
+      MRUN-PARSE-FAILED
+   then ;

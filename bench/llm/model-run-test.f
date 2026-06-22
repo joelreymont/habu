@@ -58,11 +58,22 @@ variable MRT-RESP-U
    J-RBRACE MRT-RESP-C
    MRT-RESP$ ;
 
+: MRT-CLAUDE-MANY-NODES$ ( -- ptr u8 n )
+   MRT-RESP-RESET
+   J-LBRACE MRT-RESP-C
+   JSON-MAX-NODES 1+ 0 ?do
+      i 0 > if J-COMMA MRT-RESP-C then
+      s" k" MRT-RESP-KEY s" 0" MRT-RESP+
+   loop
+   J-RBRACE MRT-RESP-C
+   MRT-RESP$ ;
+
 : MRT-REGISTRY$ ( -- ptr u8 n )
    s" id	label	command	args	parser	token_fields	timeout_s
 prompt	Prompt	/bin/echo	{prompt}	raw		2
 claude	Claude	/bin/echo	-p {prompt} --output-format json	raw		2
 codex	Codex	/bin/echo	codex-exec {prompt}	raw		2
+claudeparse	ClaudeParse	/bin/echo	{prompt}	claude-json	usage.output_tokens	2
 empty	Empty	/bin/echo		raw		2
 slow	Slow	/bin/sleep	{prompt}	raw		1
 bad	Bad	/bin/echo	--bad-template	raw		2
@@ -109,6 +120,12 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    PR-OUT$ s" []" T$=
    PR-TOKEN-COUNT 0 T= ;
 
+: MRT-TEST-MRUN-PARSE-CAPACITY ( -- )
+   s" claudeparse" MRT-CLAUDE-MANY-NODES$ MRT-RUN
+   MRUN-RC @ E-JSON-CAPACITY T=
+   MRUN-OUT$ nip 0 > TTRUE
+   MRUN-ERR$ s" model response parse capacity" T$= ;
+
 : MRT-MAIN ( -- )
    T-RESET
    MRT-TEST-BUFFERS
@@ -116,6 +133,7 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    MRT-TEST-PARSE-SYNTAX-FALLBACK
    MRT-TEST-PARSE-TYPE-FALLBACK
    [: MRT-PARSE-LARGE-CLAUDE ;] E-JSON-CAPACITY TTHROWSQ
+   MRT-TEST-MRUN-PARSE-CAPACITY
    s" prompt" s" hello" MRT-RUN
    MRUN-RC @ 0 T=
    MRUN-TEXT$ s" hello
