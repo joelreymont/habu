@@ -45,7 +45,7 @@ variable GDX-PATH-U
 
 : GDX-PATH-ARGV+ ( ptr u8 n -- )
    GDX-PATH!
-   GDX-PATH$ PROC-ARGV+ ;
+   GDX-PATH$  >LEN PROC-ARGV+ ;
 
 : GDX-WRITE-ERR ( ptr u8 n -- )
    GDX-PATH!
@@ -61,10 +61,10 @@ variable GDX-PATH-U
 
 : GDX-GJA-RESET ( -- )
    GE-HB-RESET
-   s" --load" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/gate-json-assert.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
 
 : GDX-GJA-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
@@ -72,70 +72,70 @@ variable GDX-PATH-U
 
 : GDX-GJA1 ( ptr u8 n ptr u8 n ptr u8 n -- ) {: mode:ptr modeu file:ptr fileu label:ptr labelu :}
    GDX-GJA-RESET
-   mode modeu PROC-ARGV+
+   mode modeu  >LEN PROC-ARGV+
    file fileu GDX-PATH-ARGV+
    label labelu GDX-GJA-RUN ;
 
 : GDX-GJA2S ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) {: mode:ptr modeu file:ptr fileu arg:ptr argu label:ptr labelu :}
    GDX-GJA-RESET
-   mode modeu PROC-ARGV+
+   mode modeu  >LEN PROC-ARGV+
    file fileu GDX-PATH-ARGV+
-   arg argu PROC-ARGV+
+   arg argu  >LEN PROC-ARGV+
    label labelu GDX-GJA-RUN ;
 
 : GDX-GJA2P ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) {: mode:ptr modeu file:ptr fileu arg:ptr argu label:ptr labelu :}
    GDX-GJA-RESET
-   mode modeu PROC-ARGV+
+   mode modeu  >LEN PROC-ARGV+
    file fileu GDX-PATH-ARGV+
    arg argu GDX-PATH-ARGV+
    label labelu GDX-GJA-RUN ;
 
 : GDX-CHECK-JSON ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
-   s" --json-errors" PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-JSON-ALL ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
-   s" --json-errors" PROC-ARGV+
-   s" --all-errors" PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
+   s" --all-errors"  >LEN PROC-ARGV+
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-FILE-JSON ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu label:ptr labelu :}
    GE-CHECK-ARGV
-   s" --json-errors" PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
    file fileu GDX-PATH-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-FILE-JSON-ALL ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu label:ptr labelu :}
    GE-CHECK-ARGV
-   s" --json-errors" PROC-ARGV+
-   s" --all-errors" PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
+   s" --all-errors"  >LEN PROC-ARGV+
    file fileu GDX-PATH-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-FILE-STRICT-JSON ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu label:ptr labelu :}
    GE-CHECK-ARGV
-   s" --strict-signatures" PROC-ARGV+
-   s" --json-errors" PROC-ARGV+
+   s" --strict-signatures"  >LEN PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
    file fileu GDX-PATH-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-STRICT ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
-   s" --strict-signatures" PROC-ARGV+
+   s" --strict-signatures"  >LEN PROC-ARGV+
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-STRICT-JSON ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
-   s" --strict-signatures" PROC-ARGV+
-   s" --json-errors" PROC-ARGV+
+   s" --strict-signatures"  >LEN PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
@@ -275,10 +275,10 @@ variable GDX-PATH-U
 
 : GDX-SARIF ( -- )
    GE-HB-RESET
-   s" --load" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/diag-to-sarif.f" PROC-ARGV+
-   s" --" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/diag-to-sarif.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
    s" habu-all-errors.err" GDX-PATH-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" diag-to-sarif" GE-EXPECT-OK
@@ -287,11 +287,11 @@ variable GDX-PATH-U
 
 : GDX-PUBLIC-SIGNATURES ( -- )
    GE-HB-RESET
-   s" --load" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/public-signatures.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" examples/llm/good.f" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/public-signatures.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" examples/llm/good.f"  >LEN PROC-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" public-signatures" GE-EXPECT-OK
    s" public-signatures.json" GDX-WRITE-OUT
@@ -299,15 +299,15 @@ variable GDX-PATH-U
 
 : GDX-TRUST-LINT-STALE ( -- )
    GE-HB-RESET
-   s" --load" PROC-ARGV+
-   s" tools/date.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/fs.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/trust-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" ." PROC-ARGV+
-   s" 2026-10-01" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/fs.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/trust-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" ."  >LEN PROC-ARGV+
+   s" 2026-10-01"  >LEN PROC-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" trust-lint accepted stale audit dates" GE-EXPECT-NONZERO
    s" STALE-AUDIT" s" trust-lint stale audit diagnostic" GE-EXPECT-OUT-HAS ;

@@ -53,15 +53,19 @@ create HCT-ERR HCT-CAP allot
 
 : HCT-EXPECT-LOAD-STDIN ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   HCT-CHILD PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" bin/hb" s" DATA" HCT-OUT HCT-CAP HCT-ERR HCT-CAP 1000 RUN-ARGV-STDIN-CAPTURE
-   HCT-RC ! HCT-ERR-U ! HCT-OUT-U !
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   HCT-CHILD  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" bin/hb" >LEN s" DATA" >LEN HCT-OUT HCT-CAP >LEN
+   HCT-ERR HCT-CAP >LEN 1000 >MS RUN-ARGV-STDIN-CAPTURE
+   {: outu erru rc :}
+   rc RC>N HCT-RC !
+   erru LEN>N HCT-ERR-U !
+   outu LEN>N HCT-OUT-U !
    HCT-RC @ 0 T= HCT-ERR-U @ 0 T= HCT-OUT-U @ 7 T=
    HCT-OUT 7 HCT-WANT$ T$= ;
 

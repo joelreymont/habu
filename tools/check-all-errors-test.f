@@ -153,43 +153,48 @@ create CAE-LF-BYTE 10 c,
    CAE-LARGE CAE-LARGE-END$ APPEND-FILE
    CAE-LARGE CAE-APPEND-LF ;
 
+: CAE-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
 : CAE-RUN ( -- n n n )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/lint/json-writer.f" PROC-ARGV+
-   s" tools/lint/source-lex.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/check-all-errors.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" --json-errors" PROC-ARGV+
-   s" --label" PROC-ARGV+
-   CAE-IN PROC-ARGV+
-   CAE-IN PROC-ARGV+
-   s" bin/hb" CAE-OUT CAE-BUF-CAP CAE-ERR CAE-BUF-CAP 2000 RUN-ARGV-CAPTURE ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/check-all-errors.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
+   s" --label"  >LEN PROC-ARGV+
+   CAE-IN  >LEN PROC-ARGV+
+   CAE-IN  >LEN PROC-ARGV+
+   s" bin/hb" >LEN CAE-OUT CAE-BUF-CAP >LEN CAE-ERR CAE-BUF-CAP >LEN 2000 >MS RUN-ARGV-CAPTURE
+   CAE-CAPTURE>N ;
 
 : CAE-RUN-LARGE ( -- n n n )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/lint/json-writer.f" PROC-ARGV+
-   s" tools/lint/source-lex.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/check-all-errors.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" --json-errors" PROC-ARGV+
-   s" --label" PROC-ARGV+
-   CAE-LARGE PROC-ARGV+
-   CAE-LARGE PROC-ARGV+
-   s" bin/hb" CAE-OUT CAE-BUF-CAP CAE-ERR CAE-BUF-CAP 2000 RUN-ARGV-CAPTURE ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/check-all-errors.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
+   s" --label"  >LEN PROC-ARGV+
+   CAE-LARGE  >LEN PROC-ARGV+
+   CAE-LARGE  >LEN PROC-ARGV+
+   s" bin/hb" >LEN CAE-OUT CAE-BUF-CAP >LEN CAE-ERR CAE-BUF-CAP >LEN 2000 >MS RUN-ARGV-CAPTURE
+   CAE-CAPTURE>N ;
 
 : CAE-TEST-SUPPORT-PRELUDE ( -- )
    CAE-IN CAE-SUPPORT-SOURCE$ WRITE-ALL

@@ -43,7 +43,7 @@ variable SFD
    0 RN ! ;
 
 : READ+ {: fd :} ( fd -- )
-   fd RBUF RN @ + 4096 RN @ - read
+   fd FD>N RBUF RN @ + 4096 RN @ - read
    dup 0 > if RN @ + RN ! else drop then ;
 
 : MATCH-AT {: ha:ptr na:ptr nu off :} ( ptr u8 ptr u8 n n -- bool )
@@ -63,10 +63,10 @@ variable SFD
 : TCONTAINS {: a:ptr u :} ( ptr u8 n -- )
    RBUF RN @ a u CONTAINS? TTRUE ;
 
-: FD-WRITE {: fd a:ptr u :} ( n ptr u8 n -- )
-   fd a u write u T= ;
+: FD-WRITE {: fd a:ptr u :} ( fd ptr u8 n -- )
+   fd FD>N a u write u T= ;
 
-: FD-WRITE-LN {: fd a:ptr u :} ( n ptr u8 n -- )
+: FD-WRITE-LN {: fd a:ptr u :} ( fd ptr u8 n -- )
    fd a u FD-WRITE
    fd NL 1 FD-WRITE ;
 
@@ -74,19 +74,22 @@ variable SFD
    RCLR
    0 QUIET !
    0 begin dup 60 < QUIET @ 6 < and while
-      fd 50 POLL-IN 0 > if fd READ+ 0 QUIET ! else QUIET @ 1 + QUIET ! then
+      fd 50 >MS POLL-IN COUNT>N 0 > if fd READ+ 0 QUIET ! else QUIET @ 1 + QUIET ! then
       1 +
    repeat drop ;
 
+: MFD-DRAIN ( -- )
+   MFD @ >FD DRAIN ;
+
 : SEND-C {: c :} ( c -- )
    c CH c!
-   MFD @ CH 1 FD-WRITE ;
+   MFD @ >FD CH 1 FD-WRITE ;
 
 : SEND-S {: a:ptr u :} ( ptr u8 n -- )
-   MFD @ a u FD-WRITE ;
+   MFD @ >FD a u FD-WRITE ;
 
 : SEND-LN {: a:ptr u :} ( ptr u8 n -- )
-   MFD @ a u FD-WRITE-LN ;
+   MFD @ >FD a u FD-WRITE-LN ;
 
 : SEND-ESC ( c -- )
    27 SEND-C
@@ -95,11 +98,11 @@ variable SFD
 
 : STEP-LN {: a:ptr u :} ( ptr u8 n -- )
    a u SEND-LN
-   MFD @ DRAIN ;
+   MFD-DRAIN ;
 
 : STEP-S {: a:ptr u :} ( ptr u8 n -- )
    a u SEND-S
-   MFD @ DRAIN ;
+   MFD-DRAIN ;
 
 : EXPECT ( ptr u8 n -- )
    TCONTAINS ;
@@ -111,30 +114,30 @@ variable SFD
    PIPE-PAIR IN-W ! IN-R !
    PIPE-PAIR OUT-W ! OUT-R !
    PIPE-PAIR ERR-W ! ERR-R !
-   IN-W @ FD-CLOEXEC!
-   OUT-R @ FD-CLOEXEC!
-   ERR-R @ FD-CLOEXEC!
-   s" bin/hb" IN-R @ OUT-W @ ERR-W @ SPAWN-IO PID !
+   IN-W @ >FD FD-CLOEXEC!
+   OUT-R @ >FD FD-CLOEXEC!
+   ERR-R @ >FD FD-CLOEXEC!
+   s" bin/hb" >LEN IN-R @ >FD OUT-W @ >FD ERR-W @ >FD SPAWN-IO PID !
    PID @ 0 > TTRUE
    IN-R @ close
    OUT-W @ close
    ERR-W @ close
-   IN-W @ s" 2 3 + ." FD-WRITE-LN
+   IN-W @ >FD s" 2 3 + ." FD-WRITE-LN
    IN-W @ close
-   PID @ WAIT-RC 0 T=
+   PID @ >PID WAIT-RC RC>N 0 T=
    RCLR
-   OUT-R @ READ+
+   OUT-R @ >FD READ+
    s" 5" TCONTAINS
    OUT-R @ close
    RCLR
-   ERR-R @ READ+
+   ERR-R @ >FD READ+
    RN @ 0 T=
    ERR-R @ close ;
 
 : OPEN-PTY ( -- )
-   s" /dev/ptmx" PATHZ 2 0 open MFD !
+   s" /dev/ptmx" >LEN PATHZ 2 0 open MFD !
    MFD @ 2 > TTRUE
-   MFD @ FD-CLOEXEC!
+   MFD @ >FD FD-CLOEXEC!
    MFD @ TIOCPTYGRANT NULL$ drop ioctl 0 T=
    MFD @ TIOCPTYUNLK NULL$ drop ioctl 0 T=
    MFD @ TIOCPTYGNAME PTYNAME ioctl 0 T=
@@ -143,10 +146,10 @@ variable SFD
 
 : PTY-HB ( -- )
    OPEN-PTY
-   s" bin/hb" SFD @ SFD @ SFD @ SPAWN-IO PID !
+   s" bin/hb" >LEN SFD @ >FD SFD @ >FD SFD @ >FD SPAWN-IO PID !
    PID @ 0 > TTRUE
    SFD @ close
-   MFD @ DRAIN
+   MFD-DRAIN
    s"  ok" EXPECT
    s" habu> " EXPECT
    s" 1 2 + ." STEP-LN
@@ -165,12 +168,12 @@ variable SFD
    s" 1 2 + .." SEND-S
    127 SEND-C
    10 SEND-C
-   MFD @ DRAIN
+   MFD-DRAIN
    s" 3" EXPECT
    s"  ok" EXPECT
    s" garbage" SEND-S
    3 SEND-C
-   MFD @ DRAIN
+   MFD-DRAIN
    s" habu> " EXPECT
    s" garbage?" REJECT
    s" 5 ." STEP-LN
@@ -182,12 +185,12 @@ variable SFD
    68 SEND-ESC
    48 SEND-C
    10 SEND-C
-   MFD @ DRAIN
+   MFD-DRAIN
    s" 103" EXPECT
    s"  ok" EXPECT
    65 SEND-ESC
    10 SEND-C
-   MFD @ DRAIN
+   MFD-DRAIN
    s" 103" EXPECT
    s"  ok" EXPECT
    s" : SQ dup * ;" STEP-LN
@@ -308,7 +311,7 @@ variable SFD
    s" 6" EXPECT
    s"  ok" EXPECT
    4 SEND-C
-   PID @ WAIT-RC 0 T=
+   PID @ >PID WAIT-RC RC>N 0 T=
    MFD @ close ;
 
 : REPORT ( -- )

@@ -22,7 +22,7 @@ variable GHR-SIZE
    s" EXPORT RBAD" GE-SRC-LINE ;
 
 : GHR-BUILD-REPL-CAPTURE ( -- )
-   s" --repl" PROC-ARGV+
+   s" --repl"  >LEN PROC-ARGV+
    GB-HB-BUILD-ARGS
    GB-HB-BUILD-CAPTURE ;
 
@@ -45,8 +45,8 @@ variable GHR-SIZE
 
 : GHR-IMGDUMP ( -- )
    GE-HB-RESET
-   s" tools/imgdump.f" PROC-ARGV+
-   GB-OUT$ PROC-ARGV+
+   s" tools/imgdump.f"  >LEN PROC-ARGV+
+   GB-OUT$  >LEN PROC-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" imgdump generated engine" GE-EXPECT-OK
    s" + " s" imgdump missing seed dict" GE-EXPECT-OUT-HAS ;

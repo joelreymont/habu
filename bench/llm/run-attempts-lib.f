@@ -482,37 +482,39 @@ RA-DEFAULT-TIMEOUT!
 
 : RA-CHECK-ARGV ( ptr u8 n -- ) {: cand:ptr candu :}
    PROC-ARGV-ENV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/check.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" --json-errors" PROC-ARGV+
-   s" --all-errors" PROC-ARGV+
-   cand candu PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/check.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
+   s" --all-errors"  >LEN PROC-ARGV+
+   cand candu  >LEN PROC-ARGV+ ;
 
 : RA-HB-CAPTURE ( -- )
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" RA-OUT-BUF RA-CAPTURE-CAP RA-ERR-BUF RA-CAPTURE-CAP
-   RA-TIMEOUT-MS @ RUN-ARGV-ENV-CAPTURE
-   RA-RC !
-   RA-ERR-U !
-   RA-OUT-U ! ;
+   s" bin/hb" >LEN RA-OUT-BUF RA-CAPTURE-CAP >LEN
+   RA-ERR-BUF RA-CAPTURE-CAP >LEN RA-TIMEOUT-MS @ >MS
+   RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
+   rc RC>N RA-RC !
+   erru LEN>N RA-ERR-U !
+   outu LEN>N RA-OUT-U ! ;
 
 : RA-HB-STDIN-CAPTURE ( ptr u8 n -- ) {: in:ptr inu :}
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" in inu RA-OUT-BUF RA-CAPTURE-CAP RA-ERR-BUF RA-CAPTURE-CAP
-   RA-TIMEOUT-MS @ RUN-ARGV-ENV-STDIN-CAPTURE
-   RA-RC !
-   RA-ERR-U !
-   RA-OUT-U ! ;
+   s" bin/hb" >LEN in inu >LEN RA-OUT-BUF RA-CAPTURE-CAP >LEN
+   RA-ERR-BUF RA-CAPTURE-CAP >LEN RA-TIMEOUT-MS @ >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE {: outu erru rc :}
+   rc RC>N RA-RC !
+   erru LEN>N RA-ERR-U !
+   outu LEN>N RA-OUT-U ! ;
 
 : RA-CHECK-CANDIDATE ( ptr u8 n -- bool )
    RA-CHECK-ARGV

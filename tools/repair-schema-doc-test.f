@@ -136,34 +136,39 @@ create RSD-ERR RSD-BUF-CAP allot
    RSD-SRC RSD-SRC$ WRITE-ALL
    RSD-LOAD-DOCS ;
 
+: RSD-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
 : RSD-RUN-CHECK ( -- n n n )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/lint/json-writer.f" PROC-ARGV+
-   s" tools/lint/source-lex.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/check-all-errors.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" --json-errors" PROC-ARGV+
-   s" --label" PROC-ARGV+
-   RSD-SRC PROC-ARGV+
-   RSD-SRC PROC-ARGV+
-   s" bin/hb" RSD-OUT RSD-BUF-CAP RSD-ERR RSD-BUF-CAP RSD-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/check-all-errors.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
+   s" --label"  >LEN PROC-ARGV+
+   RSD-SRC  >LEN PROC-ARGV+
+   RSD-SRC  >LEN PROC-ARGV+
+   s" bin/hb"  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
+   RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE RSD-CAPTURE>N ;
 
 : RSD-RUN-ASSERT ( ptr u8 n -- n n n ) {: mode:ptr modeu :}
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/gate-json-assert.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   mode modeu PROC-ARGV+
-   RSD-DIAG PROC-ARGV+
-   s" bin/hb" RSD-OUT RSD-BUF-CAP RSD-ERR RSD-BUF-CAP RSD-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   mode modeu  >LEN PROC-ARGV+
+   RSD-DIAG  >LEN PROC-ARGV+
+   s" bin/hb"  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
+   RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE RSD-CAPTURE>N ;
 
 : RSD-DIAG-FIELD$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    SB-RESET

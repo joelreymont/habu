@@ -91,41 +91,49 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 
 : BLTT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
-   s" tools/bundle-lib.f" PROC-ARGV+
-   s" -o" PROC-ARGV+
-   BLTT-BUNDLE PROC-ARGV+ ;
+   s" tools/bundle-lib.f"  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   BLTT-BUNDLE  >LEN PROC-ARGV+ ;
 
 : BLTT-ARGV-ERRORS ( -- )
    BLTT-ARGV-BASE
-   s" errors" PROC-ARGV+ ;
+   s" errors"  >LEN PROC-ARGV+ ;
+
+: BLTT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
+: BLTT-HB-CAPTURE ( -- n n n )
+   s" bin/hb"  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
+   BLTT-ERR BLTT-BUF-CAP >LEN 1000 >MS
+   RUN-ARGV-CAPTURE BLTT-CAPTURE>N ;
 
 : BLTT-RUN-MISSING-MODULE ( -- n n n )
    BLTT-ARGV-ERRORS
-   s" missing-module" PROC-ARGV+
-   s" --" PROC-ARGV+
-   BLTT-DRIVER PROC-ARGV+
-   s" bin/hb" BLTT-OUT BLTT-BUF-CAP BLTT-ERR BLTT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" missing-module"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   BLTT-DRIVER  >LEN PROC-ARGV+
+   BLTT-HB-CAPTURE ;
 
 : BLTT-RUN-MISSING-SCRIPT ( -- n n n )
    BLTT-ARGV-ERRORS
-   s" array" PROC-ARGV+
-   s" --" PROC-ARGV+
-   BLTT-MISSING PROC-ARGV+
-   s" bin/hb" BLTT-OUT BLTT-BUF-CAP BLTT-ERR BLTT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" array"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   BLTT-MISSING  >LEN PROC-ARGV+
+   BLTT-HB-CAPTURE ;
 
 : BLTT-RUN-BUNDLE-LIB ( -- n n n )
    BLTT-ARGV-ERRORS
-   s" array" PROC-ARGV+
-   s" --" PROC-ARGV+
-   BLTT-DRIVER PROC-ARGV+
-   s" bin/hb" BLTT-OUT BLTT-BUF-CAP BLTT-ERR BLTT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" array"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   BLTT-DRIVER  >LEN PROC-ARGV+
+   BLTT-HB-CAPTURE ;
 
 : BLTT-RUN-BUNDLE ( -- n n n )
    PROC-ARGV-RESET
-   BLTT-BUNDLE PROC-ARGV+
-   s" unused" PROC-ARGV+
-   s" args" PROC-ARGV+
-   s" bin/hb" BLTT-OUT BLTT-BUF-CAP BLTT-ERR BLTT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   BLTT-BUNDLE  >LEN PROC-ARGV+
+   s" unused"  >LEN PROC-ARGV+
+   s" args"  >LEN PROC-ARGV+
+   BLTT-HB-CAPTURE ;
 
 : BLTT-TEST-MISSING-MODULE ( -- )
    BLTT-RUN-MISSING-MODULE 0 T<>

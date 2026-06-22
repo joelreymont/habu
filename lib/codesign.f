@@ -29,17 +29,18 @@ create CODESIGN-ERR CODESIGN-ERR-CAP allot
 
 : CODESIGN-RUN ( -- n )
    CODESIGN-EXPECT-TOOL
-   CODESIGN-TOOL
-   CODESIGN-OUT CODESIGN-OUT-CAP
-   CODESIGN-ERR CODESIGN-ERR-CAP
-   CODESIGN-TIMEOUT-MS RUN-ARGV-CAPTURE
-   nip nip ;
+   CODESIGN-TOOL >LEN
+   CODESIGN-OUT CODESIGN-OUT-CAP >LEN
+   CODESIGN-ERR CODESIGN-ERR-CAP >LEN
+   CODESIGN-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
+   {: outu erru rc :}
+   outu drop erru drop rc RC>N ;
 
 : CODESIGN-VERIFY-RC ( ptr u8 n -- n ) {: a:ptr u :}
    a u CODESIGN-EXPECT-EXECUTABLE
    PROC-ARGV-RESET
-   s" -v" PROC-ARGV+
-   a u PROC-ARGV+
+   s" -v"  >LEN PROC-ARGV+
+   a u  >LEN PROC-ARGV+
    CODESIGN-RUN ;
 
 : CODESIGN-VERIFY ( ptr u8 n -- ) {: a:ptr u :}
@@ -48,10 +49,10 @@ create CODESIGN-ERR CODESIGN-ERR-CAP allot
 : CODESIGN-FORCE ( ptr u8 n -- ) {: a:ptr u :}
    a u CODESIGN-EXPECT-FILE
    PROC-ARGV-RESET
-   s" -s" PROC-ARGV+
-   s" -" PROC-ARGV+
-   s" --force" PROC-ARGV+
-   a u PROC-ARGV+
+   s" -s"  >LEN PROC-ARGV+
+   s" -"  >LEN PROC-ARGV+
+   s" --force"  >LEN PROC-ARGV+
+   a u  >LEN PROC-ARGV+
    CODESIGN-RUN CODESIGN-RC0 ;
 
 : CODESIGN-ENSURE ( ptr u8 n -- ) {: a:ptr u :}

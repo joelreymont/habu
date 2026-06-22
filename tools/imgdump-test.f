@@ -68,18 +68,23 @@ variable IDT-DIFF-U
 
 : IDT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
-   s" tools/imgdump.f" PROC-ARGV+ ;
+   s" tools/imgdump.f"  >LEN PROC-ARGV+ ;
+
+: IDT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : IDT-RUN-1 ( ptr u8 n -- n n n ) {: a:ptr u :}
    IDT-ARGV-BASE
-   a u PROC-ARGV+
-   s" bin/hb" IDT-OUT IDT-CAP IDT-ERR IDT-CAP IDT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   a u  >LEN PROC-ARGV+
+   s" bin/hb"  >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
 : IDT-RUN-2 ( ptr u8 n ptr u8 n -- n n n ) {: a:ptr au b:ptr bu :}
    IDT-ARGV-BASE
-   a au PROC-ARGV+
-   b bu PROC-ARGV+
-   s" bin/hb" IDT-OUT IDT-CAP IDT-ERR IDT-CAP IDT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   a au  >LEN PROC-ARGV+
+   b bu  >LEN PROC-ARGV+
+   s" bin/hb"  >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
 : IDT-TEST-DUMP ( -- )
    IDT-A$ IDT-RUN-1 0 T=

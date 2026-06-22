@@ -104,64 +104,77 @@ create CRHT-ERR CRHT-BUF-CAP allot
 
 : CRHT-CHECK-ARGS ( ptr u8 n -- ) {: label:ptr labelu :}
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/lint/json-writer.f" PROC-ARGV+
-   s" tools/lint/source-lex.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/check-all-errors.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" --json-errors" PROC-ARGV+
-   s" --label" PROC-ARGV+
-   label labelu PROC-ARGV+
-   CRHT-SRC PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/check-all-errors.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
+   s" --label"  >LEN PROC-ARGV+
+   label labelu  >LEN PROC-ARGV+
+   CRHT-SRC  >LEN PROC-ARGV+ ;
+
+: CRHT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : CRHT-RUN-CHECK ( ptr u8 n -- n n n )
    CRHT-CHECK-ARGS
-   s" bin/hb" CRHT-OUT CRHT-BUF-CAP CRHT-ERR CRHT-BUF-CAP CRHT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" bin/hb" >LEN CRHT-OUT CRHT-BUF-CAP >LEN
+   CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
 
 : CRHT-ASSERT-ARGS ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/gate-json-assert.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
 
 : CRHT-RUN-SCHEMA ( -- n n n )
    CRHT-ASSERT-ARGS
-   s" json-one-schema" PROC-ARGV+
-   CRHT-DIAG PROC-ARGV+
-   s" bin/hb" CRHT-OUT CRHT-BUF-CAP CRHT-ERR CRHT-BUF-CAP CRHT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" json-one-schema"  >LEN PROC-ARGV+
+   CRHT-DIAG  >LEN PROC-ARGV+
+   s" bin/hb" >LEN CRHT-OUT CRHT-BUF-CAP >LEN
+   CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
 
 : CRHT-RUN-CLASS ( ptr u8 n -- n n n ) {: class:ptr classu :}
    CRHT-ASSERT-ARGS
-   s" diag-repair-class" PROC-ARGV+
-   CRHT-DIAG PROC-ARGV+
-   class classu PROC-ARGV+
-   s" bin/hb" CRHT-OUT CRHT-BUF-CAP CRHT-ERR CRHT-BUF-CAP CRHT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" diag-repair-class"  >LEN PROC-ARGV+
+   CRHT-DIAG  >LEN PROC-ARGV+
+   class classu  >LEN PROC-ARGV+
+   s" bin/hb" >LEN CRHT-OUT CRHT-BUF-CAP >LEN
+   CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
 
 : CRHT-RUN-RSTACK ( ptr u8 n ptr u8 n -- n n n ) {: exp:ptr expu act:ptr actu :}
    CRHT-ASSERT-ARGS
-   s" diag-return-stack" PROC-ARGV+
-   CRHT-DIAG PROC-ARGV+
-   exp expu PROC-ARGV+
-   act actu PROC-ARGV+
-   s" bin/hb" CRHT-OUT CRHT-BUF-CAP CRHT-ERR CRHT-BUF-CAP CRHT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" diag-return-stack"  >LEN PROC-ARGV+
+   CRHT-DIAG  >LEN PROC-ARGV+
+   exp expu  >LEN PROC-ARGV+
+   act actu  >LEN PROC-ARGV+
+   s" bin/hb" >LEN CRHT-OUT CRHT-BUF-CAP >LEN
+   CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
 
 : CRHT-RUN-ROW-EFFECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n n n )
    {: src:ptr srcu exp:ptr expu act:ptr actu class:ptr classu :}
    CRHT-ASSERT-ARGS
-   s" diag-row-effect" PROC-ARGV+
-   CRHT-DIAG PROC-ARGV+
-   src srcu PROC-ARGV+
-   exp expu PROC-ARGV+
-   act actu PROC-ARGV+
-   class classu PROC-ARGV+
-   s" bin/hb" CRHT-OUT CRHT-BUF-CAP CRHT-ERR CRHT-BUF-CAP CRHT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" diag-row-effect"  >LEN PROC-ARGV+
+   CRHT-DIAG  >LEN PROC-ARGV+
+   src srcu  >LEN PROC-ARGV+
+   exp expu  >LEN PROC-ARGV+
+   act actu  >LEN PROC-ARGV+
+   class classu  >LEN PROC-ARGV+
+   s" bin/hb" >LEN CRHT-OUT CRHT-BUF-CAP >LEN
+   CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
 
 : CRHT-ASSERT-CLEAN ( n n n -- )
    0 T=

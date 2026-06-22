@@ -140,22 +140,23 @@ STR-LF RUNA-LF-BUF c!
 : RUNA-VALIDATE-ARGS ( -- )
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
-   s" --load" PROC-ARGV+
-   s" tools/date.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" bench/llm/validate-results.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   RUNA-OUT$ PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" bench/llm/validate-results.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   RUNA-OUT$  >LEN PROC-ARGV+ ;
 
 : RUNA-VALIDATE ( -- )
    RUNA-VALIDATE-ARGS
-   s" bin/hb" RUNA-VALIDATE-OUT RUNA-VALIDATE-CAP RUNA-VALIDATE-ERR RUNA-VALIDATE-CAP RUNA-VALIDATE-TIMEOUT-MS
+   s" bin/hb" >LEN RUNA-VALIDATE-OUT RUNA-VALIDATE-CAP >LEN
+   RUNA-VALIDATE-ERR RUNA-VALIDATE-CAP >LEN RUNA-VALIDATE-TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
-   2 RUNA-VALIDATE-OUT outu RUNA-WRITE-FD
-   2 RUNA-VALIDATE-ERR erru RUNA-WRITE-FD
-   rc 0 <> if s" run-attempts: validator failed" RUNA-VALIDATOR-RC die then ;
+   2 RUNA-VALIDATE-OUT outu LEN>N RUNA-WRITE-FD
+   2 RUNA-VALIDATE-ERR erru LEN>N RUNA-WRITE-FD
+   rc RC>N 0 <> if s" run-attempts: validator failed" RUNA-VALIDATOR-RC die then ;
 
 : RUNA-WROTE. ( -- )
    2 s" run-attempts: wrote " RUNA-WRITE-FD

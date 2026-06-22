@@ -39,17 +39,17 @@
 : TR-BASE ( -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   s" HB_TMP" GT-ROOT PROC-ENV+
+   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/test-runner.f" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/test-runner.f"  >LEN PROC-ARGV+ ;
 
 : TR-FLUSH-CAPTURE-LINES ( -- )
    1 GT-OUT-BUF PROC-OUT-LEN GT-FLUSH-LINES-FD
@@ -60,17 +60,17 @@
    2 GT-ERR-BUF PROC-ERR-LEN GT-FLUSH-REMAINDER-FD ;
 
 : TR-SPAWN-CAPTURE ( -- )
-   s" bin/hb" PROC-ARGV-CHECK-PATH
+   s" bin/hb" >LEN PROC-ARGV-CHECK-PATH
    PROC-CAPTURE-RESET
-   TR-TIMEOUT-MS PROC-CAPTURE-DEADLINE!
+   TR-TIMEOUT-MS >MS PROC-CAPTURE-DEADLINE!
    PROC-SETUP-CAPTURE-FDS
-   s" bin/hb" PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-CAPTURE ;
+   s" bin/hb" >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-CAPTURE ;
 
 : TR-RUN-CAPTURE-LOOP ( ptr u8 n -- ) {: label:ptr labelu :}
    begin PROC-CAPTURE-DONE? 0= while
-      GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup 0= if
+      GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup COUNT>N 0= if
          drop
-         PROC-REMAINING-MS 0 <= if
+         PROC-REMAINING-MS MS>N 0 <= if
             PROC-REAP-CAPTURE-TIMEOUT
             TR-FLUSH-CAPTURE-FINAL
             exit
@@ -78,7 +78,7 @@
          label labelu GT-PROGRESS-WAIT
       else
          drop
-         GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP PROC-DRAIN-READY
+         GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-DRAIN-READY
          TR-FLUSH-CAPTURE-LINES
          label labelu GT-PROGRESS-WAIT
       then
@@ -99,23 +99,23 @@
    label labelu GT-PROGRESS-PASS ;
 
 : TR-COMMON ( -- )
-   s" test/gate-common.f" PROC-ARGV+ ;
+   s" test/gate-common.f"  >LEN PROC-ARGV+ ;
 
 : TR-BUILD-COMMON ( -- )
    TR-COMMON
-   s" test/gate-build-common.f" PROC-ARGV+ ;
+   s" test/gate-build-common.f"  >LEN PROC-ARGV+ ;
 
 : TR-STDLIB ( -- )
    TR-BASE
-   s" test/gate-stdlib.f" PROC-ARGV+
+   s" test/gate-stdlib.f"  >LEN PROC-ARGV+
    s" native lint/stdlib gate phase" TR-RUN ;
 
 : TR-ENGINE ( -- )
    TR-BASE
    TR-COMMON
-   s" lib/build.f" PROC-ARGV+
-   s" tools/build-fixpoint.f" PROC-ARGV+
-   s" test/gate-engine.f" PROC-ARGV+
+   s" lib/build.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
+   s" test/gate-engine.f"  >LEN PROC-ARGV+
    s" native engine gate phase" TR-RUN ;
 
 : TR-EXPECT-HB ( -- )
@@ -124,38 +124,38 @@
 : TR-DICTIONARY ( -- )
    TR-BASE
    TR-COMMON
-   s" test/gate-dictionary.f" PROC-ARGV+
+   s" test/gate-dictionary.f"  >LEN PROC-ARGV+
    s" native dictionary/checker gate phase" TR-RUN ;
 
 : TR-DIAGNOSTICS ( -- )
    TR-BASE
    TR-COMMON
-   s" test/gate-diagnostics.f" PROC-ARGV+
+   s" test/gate-diagnostics.f"  >LEN PROC-ARGV+
    s" native checker diagnostics gate phase" TR-RUN ;
 
 : TR-DEBUG ( -- )
    TR-BASE
    TR-COMMON
-   s" lib/codesign.f" PROC-ARGV+
-   s" test/gate-debug.f" PROC-ARGV+
+   s" lib/codesign.f"  >LEN PROC-ARGV+
+   s" test/gate-debug.f"  >LEN PROC-ARGV+
    s" native prop/snapshot/debug gate phase" TR-RUN ;
 
 : TR-AOT-POSITIVE ( -- )
    TR-BASE
    TR-BUILD-COMMON
-   s" test/gate-aot-positive.f" PROC-ARGV+
+   s" test/gate-aot-positive.f"  >LEN PROC-ARGV+
    s" native hb-build AOT positive gate phase" TR-RUN ;
 
 : TR-AOT-NEGATIVE ( -- )
    TR-BASE
    TR-BUILD-COMMON
-   s" test/gate-aot-negative.f" PROC-ARGV+
+   s" test/gate-aot-negative.f"  >LEN PROC-ARGV+
    s" native hb-build AOT negative gate phase" TR-RUN ;
 
 : TR-HB-BUILD-REPL ( -- )
    TR-BASE
    TR-BUILD-COMMON
-   s" test/gate-hb-build-repl.f" PROC-ARGV+
+   s" test/gate-hb-build-repl.f"  >LEN PROC-ARGV+
    s" native hb-build REPL gate phase" TR-RUN ;
 
 : TR-MAIN ( -- )

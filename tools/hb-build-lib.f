@@ -173,45 +173,50 @@ variable HBB-JSON-FOUND
    BF-PREPARE-ENV ;
 
 : HBB-ADD-LINT-LOADS ( -- )
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/lint/json-writer.f" PROC-ARGV+
-   s" tools/lint/source-lex.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+ ;
 
 : HBB-ADD-AOT-LINT-CMD ( -- )
    HBB-CMD-RESET
    HBB-ADD-LINT-LOADS
-   s" tools/aot-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   HBB-JSON @ if s" --json" PROC-ARGV+ then
-   HBB-SRC$ PROC-ARGV+ ;
+   s" tools/aot-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
+   HBB-SRC$  >LEN PROC-ARGV+ ;
 
 : HBB-ADD-SIGNATURE-LINT-CMD ( -- )
    HBB-CMD-RESET
    HBB-ADD-LINT-LOADS
-   s" tools/signature-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   HBB-JSON @ if s" --json" PROC-ARGV+ then
-   HBB-SRC$ PROC-ARGV+ ;
+   s" tools/signature-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
+   HBB-SRC$  >LEN PROC-ARGV+ ;
 
 : HBB-ADD-DIAG-ORIGIN-CMD ( -- )
    HBB-CMD-RESET
-   s" --load" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/diag-origin.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   HBB-SRC$ PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/diag-origin.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   HBB-SRC$  >LEN PROC-ARGV+ ;
+
+: HBB-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : HBB-RUN-HB-CAPTURE ( -- n n n )
-   s" bin/hb" HBB-OUT-BUF HBB-CAPTURE-CAP HBB-ERR-BUF HBB-CAPTURE-CAP
-   HBB-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE ;
+   s" bin/hb" >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
+   HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   HBB-CAPTURE>N ;
 
 : HBB-RUN-DIAG-CAPTURE ( -- n n n )
-   s" bin/hb" BF-SOURCE-BUF BF-SOURCE-CAP HBB-ERR-BUF HBB-CAPTURE-CAP
-   HBB-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE ;
+   s" bin/hb" >LEN BF-SOURCE-BUF BF-SOURCE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
+   HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   HBB-CAPTURE>N ;
 
 : HBB-FINISH-TOOL ( n n n -- ) {: outu erru rc :}
    rc 0= if exit then
@@ -350,8 +355,9 @@ variable HBB-JSON-FOUND
 : HBB-RUN-MAKER-CMD ( -- n n n )
    PROC-ARGV-RESET
    BF-PREPARE-ENV
-   HBB-MK-NAME$ BF-A$ HBB-OUT-BUF HBB-CAPTURE-CAP HBB-ERR-BUF HBB-CAPTURE-CAP
-   HBB-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE ;
+   HBB-MK-NAME$ BF-A$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
+   HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   HBB-CAPTURE>N ;
 
 : HBB-FINISH-MAKER ( n n n -- ) {: outu erru rc :}
    rc 0= if exit then

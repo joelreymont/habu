@@ -13,11 +13,43 @@ create PET-EMPTY-OUT 10 c, 10 c, 10 c,
    PROC-ARGV-RESET
    PROC-ENV-RESET ;
 
+: PET-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
+: PET-OUTCOME>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
+
+: PET-FIND>N ( len bool -- n bool ) {: gotu found :}
+   gotu LEN>N found ;
+
+: PET-ENV+ ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu val:ptr valu :}
+   name nameu >LEN val valu >LEN PROC-ENV+ ;
+
+: PET-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+   path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CAPTURE
+   PET-CAPTURE>N ;
+
+: PET-STDIN-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+   {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+   path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
+   PET-OUTCOME>N ;
+
+: PET-FIND-IN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n bool )
+   {: cmd:ptr cmdu path:ptr pathu dst:ptr :}
+   cmd cmdu >LEN path pathu >LEN dst FIND-EXECUTABLE-IN-PATH
+   PET-FIND>N ;
+
+: PET-RESOLVE ( ptr u8 n ptr u8 -- n )
+   {: cmd:ptr cmdu dst:ptr :}
+   cmd cmdu >LEN dst RESOLVE-EXECUTABLE LEN>N ;
+
 : PET-RUN-ENV-CHILD ( -- )
    PET-RESET
-   s" test/process-env-child.f" PROC-ARGV+
-   s" HABU_PROC_ENV_TEST" s" alpha" PROC-ENV+
-   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP 1000 RUN-ARGV-ENV-CAPTURE
+   s" test/process-env-child.f"  >LEN PROC-ARGV+
+   s" HABU_PROC_ENV_TEST" s" alpha" PET-ENV+
+   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP 1000 PET-CAPTURE
    0 T= 0 T= 8 T=
    PET-OUT 8 PET-ENV-OUT 8 T$=
    PROC-ARGV-N @ 0 T=
@@ -25,8 +57,8 @@ create PET-EMPTY-OUT 10 c, 10 c, 10 c,
 
 : PET-RUN-EMPTY-ENV-CHILD ( -- )
    PET-RESET
-   s" test/process-env-child.f" PROC-ARGV+
-   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP 1000 RUN-ARGV-ENV-CAPTURE
+   s" test/process-env-child.f"  >LEN PROC-ARGV+
+   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP 1000 PET-CAPTURE
    0 T= 0 T= 3 T=
    PET-OUT 3 PET-EMPTY-OUT 3 T$= ;
 
@@ -42,45 +74,45 @@ create PET-EMPTY-OUT 10 c, 10 c, 10 c,
 
 : PET-RUN-INHERIT-ENV-CHILD ( -- )
    PET-RESET
-   s" test/process-env-child.f" PROC-ARGV+
-   s" HABU_PROC_ENV_TEST" s" alpha" PROC-ENV+
+   s" test/process-env-child.f"  >LEN PROC-ARGV+
+   s" HABU_PROC_ENV_TEST" s" alpha" PET-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP 1000 RUN-ARGV-ENV-CAPTURE
+   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP 1000 PET-CAPTURE
    0 T= 0 T= {: outu :}
    PET-OUT outu PET-INHERIT-EXPECTED$ T$= ;
 
 : PET-RUN-ENV-STDIN-OUTCOME ( -- )
    PET-RESET
-   s" /bin/cat" s" env-stdin" PET-OUT PET-CAP PET-ERR PET-CAP 1000 RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
+   s" /bin/cat" s" env-stdin" PET-OUT PET-CAP PET-ERR PET-CAP 1000 PET-STDIN-OUTCOME
    0 T= PROC-OUTCOME-EXIT T= 0 T= 9 T=
    PET-OUT 9 s" env-stdin" T$= ;
 
 : PET-BAD-ENV-NAME ( -- )
    PET-RESET
-   s" BAD=NAME" s" x" PROC-ENV+ ;
+   s" BAD=NAME" s" x" PET-ENV+ ;
 
 : PET-BAD-ENV-ENTRY ( -- )
    PET-RESET
-   s" MISSING_EQUALS" PROC-ENV-ENTRY+ ;
+   s" MISSING_EQUALS"  >LEN PROC-ENV-ENTRY+ ;
 
 : PET-BAD-ENV-EMPTY ( -- )
    PET-RESET
-   s" " s" x" PROC-ENV+ ;
+   s" " s" x" PET-ENV+ ;
 
 : PET-PATH-FIND-HB ( -- )
-   s" hb" s" bin" PET-PATH FIND-EXECUTABLE-IN-PATH TTRUE
+   s" hb" s" bin" PET-PATH PET-FIND-IN-PATH TTRUE
    PET-PATH swap s" bin/hb" T$= ;
 
 : PET-PATH-DIRECT-HB ( -- )
-   s" bin/hb" s" nowhere" PET-PATH FIND-EXECUTABLE-IN-PATH TTRUE
+   s" bin/hb" s" nowhere" PET-PATH PET-FIND-IN-PATH TTRUE
    PET-PATH swap s" bin/hb" T$= ;
 
 : PET-PATH-MISSING ( -- )
-   s" no-habu-process-env-test" s" bin" PET-PATH FIND-EXECUTABLE-IN-PATH TFALSE
+   s" no-habu-process-env-test" s" bin" PET-PATH PET-FIND-IN-PATH TFALSE
    drop ;
 
 : PET-RESOLVE-MISSING ( -- )
-   s" no-habu-process-env-test" PET-PATH RESOLVE-EXECUTABLE drop ;
+   s" no-habu-process-env-test" PET-PATH PET-RESOLVE drop ;
 
 : PROCESS-ENV-TEST-MAIN ( -- )
    T-RESET

@@ -126,27 +126,28 @@ variable SET-FAIL-SCRIPT-U
 
 : SET-FAIL-ARGV ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" src/core/sha256.f" PROC-ARGV+
-   s" lib/codesign.f" PROC-ARGV+
-   s" tools/seed.f" PROC-ARGV+
-   SET-FAIL-SCRIPT$ PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" src/core/sha256.f"  >LEN PROC-ARGV+
+   s" lib/codesign.f"  >LEN PROC-ARGV+
+   s" tools/seed.f"  >LEN PROC-ARGV+
+   SET-FAIL-SCRIPT$  >LEN PROC-ARGV+ ;
 
 : SET-TEST-BUILD-FAIL-REPLAYS-ERR ( -- )
    SET-FAIL-SCRIPT$ SET-FAIL-SOURCE$ WRITE-ALL
    SET-FAIL-ARGV
-   s" bin/hb" SET-OUT SET-CAP SET-ERR SET-CAP 10000 RUN-ARGV-CAPTURE
+   s" bin/hb" >LEN SET-OUT SET-CAP >LEN SET-ERR SET-CAP >LEN
+   10000 >MS RUN-ARGV-CAPTURE
    {: outu erru rc :}
-   rc 0 T<>
-   SET-ERR erru s" illegal option" CONTAINS? TTRUE
-   SET-ERR erru s" seed: build-fixpoint failed" CONTAINS? TTRUE ;
+   rc RC>N 0 T<>
+   SET-ERR erru LEN>N s" illegal option" CONTAINS? TTRUE
+   SET-ERR erru LEN>N s" seed: build-fixpoint failed" CONTAINS? TTRUE ;
 
 : SET-INSTALL-MISSING ( -- )
    SET-BAD$ SET-HB$ SEED-INSTALL ;

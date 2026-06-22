@@ -65,7 +65,7 @@ variable CX-HOME-FILE-U
    s" auth.json" CX-LINK-REQUIRED
    s" models_cache.json" CX-LINK-OPTIONAL
    s" version.json" CX-LINK-OPTIONAL
-   s" CODEX_HOME" CX-HOME$ PROC-ENV+ ;
+   s" CODEX_HOME" >LEN CX-HOME$ >LEN PROC-ENV+ ;
 
 : CX-NONEMPTY$ ( ptr u8 n -- ptr u8 n )
    dup 0= if E-MRUN-CODEX-HOME throw then ;

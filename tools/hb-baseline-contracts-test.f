@@ -104,11 +104,17 @@ variable HBT-PROP-U
    HBT-STDIN-TOOL$ HBT-STDIN-TOOL$SRC WRITE-ALL
    s" test/prop-test.f" HBT-PROP-SRC HBT-PROP-CAP READ-ALL HBT-PROP-U ! ;
 
+: HBT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
 : HBT-RUN-STDIN ( ptr u8 n -- n n n ) {: input:ptr inputu :}
-   s" bin/hb" input inputu HBT-OUT HBT-CAP HBT-ERR HBT-CAP HBT-TIMEOUT-MS RUN-ARGV-STDIN-CAPTURE ;
+   s" bin/hb" >LEN input inputu >LEN HBT-OUT HBT-CAP >LEN
+   HBT-ERR HBT-CAP >LEN HBT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE
+   HBT-CAPTURE>N ;
 
 : HBT-RUN-CAPTURE ( -- n n n )
-   s" bin/hb" HBT-OUT HBT-CAP HBT-ERR HBT-CAP HBT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" bin/hb" >LEN HBT-OUT HBT-CAP >LEN HBT-ERR HBT-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE HBT-CAPTURE>N ;
 
 : HBT-TEST-PUBLIC-BIN ( -- )
    s" bin/hb" FILE? TTRUE
@@ -130,7 +136,7 @@ variable HBT-PROP-U
 
 : HBT-TEST-PIPE-WINS ( -- )
    PROC-ARGV-RESET
-   HBT-SCRIPT$ PROC-ARGV+
+   HBT-SCRIPT$  >LEN PROC-ARGV+
    SB-RESET
    s" ." SB-APPEND 34 SB-APPEND-C s"  PIPE" SB-APPEND 34 SB-APPEND-C s"  cr" SB-APPEND HBT-LF
    SB$ HBT-RUN-STDIN 0 T= 0 T= 5 T=
@@ -140,8 +146,8 @@ variable HBT-PROP-U
 
 : HBT-TEST-SCRIPT-MODE ( -- )
    PROC-ARGV-RESET
-   HBT-SCRIPT$ PROC-ARGV+
-   s" omega" PROC-ARGV+
+   HBT-SCRIPT$  >LEN PROC-ARGV+
+   s" omega"  >LEN PROC-ARGV+
    s" " HBT-RUN-STDIN 0 T= 0 T= 15 T=
    SB-RESET
    s" SCRIPT" SB-APPEND HBT-LF
@@ -151,12 +157,12 @@ variable HBT-PROP-U
 
 : HBT-TEST-MULTI-SOURCE ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   HBT-MULTI-A$ PROC-ARGV+
-   HBT-MULTI-B$ PROC-ARGV+
-   HBT-MULTI-MAIN$ PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" theta" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+
+   HBT-MULTI-A$  >LEN PROC-ARGV+
+   HBT-MULTI-B$  >LEN PROC-ARGV+
+   HBT-MULTI-MAIN$  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" theta"  >LEN PROC-ARGV+
    s" " HBT-RUN-STDIN 0 T= 0 T= 11 T=
    SB-RESET
    s" 42" SB-APPEND HBT-LF
@@ -166,13 +172,13 @@ variable HBT-PROP-U
 
 : HBT-TEST-STDIN-DATA ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   HBT-STDIN-TOOL$ PROC-ARGV+
-   s" --" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   HBT-STDIN-TOOL$  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
    s" DATA" HBT-RUN-STDIN 0 T= 0 T= 7 T=
    SB-RESET
    s" 4" SB-APPEND HBT-LF
@@ -181,8 +187,8 @@ variable HBT-PROP-U
 
 : HBT-TEST-PROP-ARGV ( -- )
    PROC-ARGV-RESET
-   s" 123" PROC-ARGV+
-   s" 4" PROC-ARGV+
+   s" 123"  >LEN PROC-ARGV+
+   s" 4"  >LEN PROC-ARGV+
    HBT-PROP-SRC HBT-PROP-U @ HBT-RUN-STDIN 0 T=
    {: outu erru :}
    erru 0 T<>

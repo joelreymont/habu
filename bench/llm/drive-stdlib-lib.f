@@ -470,22 +470,24 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
    DS-CAND-PATH$ s" \ no candidate extracted" WRITE-ALL ;
 
 : DS-ADD-LIBS ( -- )
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/test.f" PROC-ARGV+
-   s" lib/time.f" PROC-ARGV+
-   s" lib/date.f" PROC-ARGV+
-   s" lib/map.f" PROC-ARGV+
-   s" lib/regex.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/test.f"  >LEN PROC-ARGV+
+   s" lib/time.f"  >LEN PROC-ARGV+
+   s" lib/date.f"  >LEN PROC-ARGV+
+   s" lib/map.f"  >LEN PROC-ARGV+
+   s" lib/regex.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+ ;
 
 : DS-HB-CAPTURE ( -- )
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" DS-OUT-BUF DS-OUT-CAP DS-ERR-BUF DS-ERR-CAP DS-HB-TIMEOUT RUN-ARGV-ENV-CAPTURE
-   DS-RC !
-   DS-ERR-U !
-   DS-OUT-U ! ;
+   s" bin/hb" >LEN DS-OUT-BUF DS-OUT-CAP >LEN
+   DS-ERR-BUF DS-ERR-CAP >LEN DS-HB-TIMEOUT >MS
+   RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
+   rc RC>N DS-RC !
+   erru LEN>N DS-ERR-U !
+   outu LEN>N DS-OUT-U ! ;
 
 : DS-WRITE-CAPTURE ( ptr u8 n -- ) {: path:ptr pathu :}
    path pathu DS-OUT-BUF DS-OUT-U @ WRITE-ALL
@@ -524,12 +526,12 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
 
 : DS-REPAIR-ARGV ( -- )
    PROC-ARGV-ENV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/repair-packet.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   DS-DIAG-PATH$ PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/repair-packet.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   DS-DIAG-PATH$  >LEN PROC-ARGV+ ;
 
 : DS-RUN-REPAIR ( -- )
    DS-REPAIR-ARGV
@@ -565,7 +567,7 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
 : DS-RUN-CHECK ( -- )
    PROC-ARGV-ENV-RESET
    DS-ADD-LIBS
-   DS-CAND-PATH$ PROC-ARGV+
+   DS-CAND-PATH$  >LEN PROC-ARGV+
    DS-HB-CAPTURE
    DS-CHECK-CLEAN? if
       DS-DIAG-PATH$ s" " WRITE-ALL
@@ -578,8 +580,8 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
 : DS-RUN-TESTS ( -- )
    PROC-ARGV-ENV-RESET
    DS-ADD-LIBS
-   DS-CAND-PATH$ PROC-ARGV+
-   DS-BUNDLE-PATH$ PROC-ARGV+
+   DS-CAND-PATH$  >LEN PROC-ARGV+
+   DS-BUNDLE-PATH$  >LEN PROC-ARGV+
    DS-HB-CAPTURE
    DS-TEST-PATH$ DS-WRITE-CAPTURE ;
 

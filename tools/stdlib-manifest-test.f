@@ -359,7 +359,7 @@ variable SMT-J
    s" depth-first" SMT-REQ-DOC
    s" per-depth recursion buffers" SMT-REQ-DOC
    s" ## Processes" SMT-REQ-DOC
-   s" RUN-CAPTURE  ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )" SMT-REQ-DOC
+   s" RUN-CAPTURE  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )" SMT-REQ-DOC
    s" counted paths/commands" SMT-REQ-DOC
    s" FD_CLOEXEC" SMT-REQ-DOC
    s" rc in that order" SMT-REQ-DOC
@@ -492,22 +492,22 @@ variable SMT-J
 
 : SMT-ARGV-LOAD-PUBLIC ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/public-signatures.f" PROC-ARGV+
-   s" --" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/public-signatures.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
    0 begin dup SMT-MOD-N @ < while
-      dup SMT-MOD-F$ 2dup FILE? IF PROC-ARGV+ ELSE 2drop THEN
+      dup SMT-MOD-F$ 2dup FILE? IF  >LEN PROC-ARGV+ ELSE 2drop THEN
       1+
    repeat drop ;
 
 : SMT-RUN-PUBLIC ( -- )
    SMT-ARGV-LOAD-PUBLIC
-   s" bin/hb" SMT-PUB-BUF SMT-PUB-CAP SMT-ERR-BUF SMT-ERR-CAP SMT-TIMEOUT-MS RUN-ARGV-CAPTURE
+   s" bin/hb" >LEN SMT-PUB-BUF SMT-PUB-CAP >LEN SMT-ERR-BUF SMT-ERR-CAP >LEN SMT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    {: outu erru rc :}
-   outu SMT-PUB-U !
-   rc 0 <> IF s" public-signatures run failed" SMT-FINDING THEN
-   erru 0 <> IF s" public-signatures wrote stderr" SMT-FINDING THEN ;
+   outu LEN>N SMT-PUB-U !
+   rc RC>N 0 <> IF s" public-signatures run failed" SMT-FINDING THEN
+   erru LEN>N 0 <> IF s" public-signatures wrote stderr" SMT-FINDING THEN ;
 
 : SMT-FIND-FROM ( ptr u8 n ptr u8 n n -- n )
    {: a:ptr u needle:ptr nu start :}

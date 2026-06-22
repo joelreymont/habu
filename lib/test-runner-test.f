@@ -123,7 +123,7 @@ variable GTT-LINE-FD
 
 : GTT-RUN-HB ( ptr u8 n n -- ) {: script:ptr scriptu timeout :}
    PROC-ARGV-RESET
-   script scriptu PROC-ARGV+
+   script scriptu  >LEN PROC-ARGV+
    s" bin/hb" timeout GT-RUN ;
 
 : GTT-RUN-OK ( -- )

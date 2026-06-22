@@ -126,34 +126,36 @@ variable ER-PARSE-N
 
 : ER-VALIDATOR-BASE ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/date.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" bench/llm/validate-results.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" bench/llm/validate-results.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
 
 : ER-VALIDATOR-FAILED ( n -- ) {: erru :}
    erru 0 > if 2 ER-ERR-BUF erru write drop then
    s" expanded-report: validator failed" ER-IO-RC die ;
 
-: ER-CHECK-RUN ( n n n -- n ) {: outu erru rc :}
-   rc 0 <> if erru ER-VALIDATOR-FAILED then
-   erru 0 > if 2 ER-ERR-BUF erru write drop then
-   outu ;
+: ER-CHECK-RUN ( len len rc -- n ) {: outu erru rc :}
+   rc RC>N 0 <> if erru LEN>N ER-VALIDATOR-FAILED then
+   erru LEN>N 0 > if 2 ER-ERR-BUF erru LEN>N write drop then
+   outu LEN>N ;
 
 : ER-RUN-VALIDATOR-TEXT ( -- )
    ER-VALIDATOR-BASE
-   ER-RESULT$ PROC-ARGV+
-   s" bin/hb" ER-SUM-BUF ER-SUM-CAP ER-ERR-BUF ER-ERR-CAP ER-VALIDATOR-TIMEOUT-MS RUN-ARGV-CAPTURE
+   ER-RESULT$  >LEN PROC-ARGV+
+   s" bin/hb" >LEN ER-SUM-BUF ER-SUM-CAP >LEN
+   ER-ERR-BUF ER-ERR-CAP >LEN ER-VALIDATOR-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    ER-CHECK-RUN ER-SUM-U ! ;
 
 : ER-RUN-VALIDATOR-JSON ( -- )
    ER-VALIDATOR-BASE
-   s" --json" PROC-ARGV+
-   ER-RESULT$ PROC-ARGV+
-   s" bin/hb" ER-JSON-BUF ER-JSON-CAP ER-ERR-BUF ER-ERR-CAP ER-VALIDATOR-TIMEOUT-MS RUN-ARGV-CAPTURE
+   s" --json"  >LEN PROC-ARGV+
+   ER-RESULT$  >LEN PROC-ARGV+
+   s" bin/hb" >LEN ER-JSON-BUF ER-JSON-CAP >LEN
+   ER-ERR-BUF ER-ERR-CAP >LEN ER-VALIDATOR-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    ER-CHECK-RUN ER-JSON-U ! ;
 
 : ER-FENCE-TEXT ( -- )

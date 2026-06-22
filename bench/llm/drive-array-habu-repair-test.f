@@ -50,10 +50,10 @@ variable DART-RC
 : DART-JOIN! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu dst:ptr up:ptr :}
    DART-ROOT$ name nameu dst JOIN-PATH up ! ;
 
-: DART-CAPTURE! ( n n n -- )
-   DART-RC !
-   DART-ERR-U !
-   DART-OUT-U ! ;
+: DART-CAPTURE! ( len len rc -- ) {: outu erru rc :}
+   rc RC>N DART-RC !
+   erru LEN>N DART-ERR-U !
+   outu LEN>N DART-OUT-U ! ;
 
 : DART-DUMP-RUN ( ptr u8 n -- )
    s" FAIL: " type type cr
@@ -106,33 +106,34 @@ variable DART-RC
    DART-MODEL-SRC$ DART-MODEL-MAIN$ APPEND-FILE ;
 
 : DART-HB-BUILD-LOADS ( -- )
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   s" lib/build.f" PROC-ARGV+
-   s" tools/build-fixpoint.f" PROC-ARGV+
-   s" tools/hb-build-lib.f" PROC-ARGV+
-   s" tools/hb-build.f" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   s" lib/build.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
+   s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
+   s" tools/hb-build.f"  >LEN PROC-ARGV+ ;
 
 : DART-BUILD-MODEL ( -- )
    PROC-ARGV-ENV-RESET
-   s" HB_TMP" DART-HB-TMP$ PROC-ENV+
+   s" HB_TMP" >LEN DART-HB-TMP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    DART-HB-BUILD-LOADS
-   s" --" PROC-ARGV+
-   s" --repl" PROC-ARGV+
-   s" --strict-signatures" PROC-ARGV+
-   DART-MODEL-SRC$ PROC-ARGV+
-   s" -o" PROC-ARGV+
-   DART-MODEL-BIN$ PROC-ARGV+
-   s" bin/hb" DART-OUT DART-CAP DART-ERR DART-CAP DART-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE
+   s" --"  >LEN PROC-ARGV+
+   s" --repl"  >LEN PROC-ARGV+
+   s" --strict-signatures"  >LEN PROC-ARGV+
+   DART-MODEL-SRC$  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   DART-MODEL-BIN$  >LEN PROC-ARGV+
+   s" bin/hb" >LEN DART-OUT DART-CAP >LEN DART-ERR DART-CAP >LEN
+   DART-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    DART-CAPTURE!
    s" build fixture model" DART-EXPECT-OK
    DART-MODEL-BIN$ FILE? TTRUE ;
@@ -150,47 +151,48 @@ variable DART-RC
    DART-MODELS$ BFT$ WRITE-ALL ;
 
 : DART-ARRAY-LOADS ( -- )
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" bench/llm/manifest.f" PROC-ARGV+
-   s" bench/llm/model.f" PROC-ARGV+
-   s" bench/llm/parse-resp-lib.f" PROC-ARGV+
-   s" bench/llm/codex-home.f" PROC-ARGV+
-   s" bench/llm/model-run.f" PROC-ARGV+
-   s" bench/llm/vectors.f" PROC-ARGV+
-   s" lib/json-write.f" PROC-ARGV+
-   s" src/core/sha256.f" PROC-ARGV+
-   s" bench/llm/live-row.f" PROC-ARGV+
-   s" bench/llm/drive-stdlib-lib.f" PROC-ARGV+
-   s" bench/llm/driver-token-helpers.f" PROC-ARGV+
-   s" bench/llm/drive-array-habu-lib.f" PROC-ARGV+
-   s" bench/llm/drive-array-habu.f" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" bench/llm/manifest.f"  >LEN PROC-ARGV+
+   s" bench/llm/model.f"  >LEN PROC-ARGV+
+   s" bench/llm/parse-resp-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/codex-home.f"  >LEN PROC-ARGV+
+   s" bench/llm/model-run.f"  >LEN PROC-ARGV+
+   s" bench/llm/vectors.f"  >LEN PROC-ARGV+
+   s" lib/json-write.f"  >LEN PROC-ARGV+
+   s" src/core/sha256.f"  >LEN PROC-ARGV+
+   s" bench/llm/live-row.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-stdlib-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/driver-token-helpers.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-array-habu-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-array-habu.f"  >LEN PROC-ARGV+ ;
 
 : DART-RUN-ARRAY ( -- )
    PROC-ARGV-ENV-RESET
-   s" MODEL_REGISTRY" DART-MODELS$ PROC-ENV+
-   s" MODEL_ID" s" fix" PROC-ENV+
+   s" MODEL_REGISTRY" >LEN DART-MODELS$ >LEN PROC-ENV+
+   s" MODEL_ID" >LEN s" fix" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    DART-ARRAY-LOADS
-   s" --" PROC-ARGV+
-   s" 46" PROC-ARGV+
-   s" ARR-SUM" PROC-ARGV+
-   s" ptr a n -- i64" PROC-ARGV+
-   s" Sum the array." PROC-ARGV+
-   s" as" PROC-ARGV+
-   s" [3 1 4] -> 8; [5] -> 5; [-2 -3] -> -5" PROC-ARGV+
-   s" lib" PROC-ARGV+
-   s" 2" PROC-ARGV+
-   s" bin/hb" DART-OUT DART-CAP DART-ERR DART-CAP DART-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE
+   s" --"  >LEN PROC-ARGV+
+   s" 46"  >LEN PROC-ARGV+
+   s" ARR-SUM"  >LEN PROC-ARGV+
+   s" ptr a n -- i64"  >LEN PROC-ARGV+
+   s" Sum the array."  >LEN PROC-ARGV+
+   s" as"  >LEN PROC-ARGV+
+   s" [3 1 4] -> 8; [5] -> 5; [-2 -3] -> -5"  >LEN PROC-ARGV+
+   s" lib"  >LEN PROC-ARGV+
+   s" 2"  >LEN PROC-ARGV+
+   s" bin/hb" >LEN DART-OUT DART-CAP >LEN DART-ERR DART-CAP >LEN
+   DART-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    DART-CAPTURE!
    s" run array driver" DART-EXPECT-OK
    DART-ERR DART-ERR-U @ s" " T$= ;

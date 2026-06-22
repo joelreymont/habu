@@ -105,10 +105,10 @@ variable PERF-AOT-BIN-U
 : PERF-ELAPSED-MS ( n n -- n ) {: start:n stop:n :}
    stop start - PERF-NS-PER-MS 1- + PERF-NS-PER-MS / ;
 
-: PERF-CAPTURE! ( n n n -- )
-   PERF-RC !
-   PERF-ERR-U !
-   PERF-OUT-U ! ;
+: PERF-CAPTURE! ( len len rc -- ) {: outu erru rc :}
+   rc RC>N PERF-RC !
+   erru LEN>N PERF-ERR-U !
+   outu LEN>N PERF-OUT-U ! ;
 
 : PERF-FAIL ( ptr u8 n -- ) {: name:ptr nameu :}
    PERF-JSON @ 0 <> if s" ]}" type cr then
@@ -145,24 +145,27 @@ variable PERF-AOT-BIN-U
 
 : PERF-MEASURE-ARGV ( ptr u8 n -- ) {: name:ptr nameu :}
    TIME-MONO-NS PERF-START !
-   s" bin/hb" PERF-OUT PERF-CAPTURE-CAP PERF-ERR PERF-CAPTURE-CAP
-   PERF-TIMEOUT-MS RUN-ARGV-CAPTURE PERF-CAPTURE!
+   s" bin/hb" >LEN PERF-OUT PERF-CAPTURE-CAP >LEN
+   PERF-ERR PERF-CAPTURE-CAP >LEN PERF-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE PERF-CAPTURE!
    PERF-START @ TIME-MONO-NS PERF-ELAPSED-MS PERF-MS !
    PERF-RC @ 0 <> if name nameu PERF-FAIL then
    name nameu PERF-MS @ PERF-RECORD ;
 
 : PERF-MEASURE-STDIN ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu src:ptr srcu :}
    TIME-MONO-NS PERF-START !
-   s" bin/hb" src srcu PERF-OUT PERF-CAPTURE-CAP PERF-ERR PERF-CAPTURE-CAP
-   PERF-TIMEOUT-MS RUN-ARGV-STDIN-CAPTURE PERF-CAPTURE!
+   s" bin/hb" >LEN src srcu >LEN PERF-OUT PERF-CAPTURE-CAP >LEN
+   PERF-ERR PERF-CAPTURE-CAP >LEN PERF-TIMEOUT-MS >MS
+   RUN-ARGV-STDIN-CAPTURE PERF-CAPTURE!
    PERF-START @ TIME-MONO-NS PERF-ELAPSED-MS PERF-MS !
    PERF-RC @ 0 <> if name nameu PERF-FAIL then
    name nameu PERF-MS @ PERF-RECORD ;
 
 : PERF-MEASURE-PATH ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu path:ptr pathu :}
    TIME-MONO-NS PERF-START !
-   path pathu PERF-OUT PERF-CAPTURE-CAP PERF-ERR PERF-CAPTURE-CAP
-   PERF-TIMEOUT-MS RUN-CAPTURE PERF-CAPTURE!
+   path pathu >LEN PERF-OUT PERF-CAPTURE-CAP >LEN
+   PERF-ERR PERF-CAPTURE-CAP >LEN PERF-TIMEOUT-MS >MS
+   RUN-CAPTURE PERF-CAPTURE!
    PERF-START @ TIME-MONO-NS PERF-ELAPSED-MS PERF-MS !
    PERF-RC @ 0 <> if name nameu PERF-FAIL then
    name nameu PERF-MS @ PERF-RECORD ;
@@ -176,18 +179,18 @@ variable PERF-AOT-BIN-U
 
 : PERF-CHECK-ARGS ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/check.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" bench/llm/solutions.f" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/check.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" bench/llm/solutions.f"  >LEN PROC-ARGV+ ;
 
 : PERF-CHECK-SOLUTIONS ( -- )
    PERF-STUB? if s" check_solutions" PERF-MEASURE-STUB exit then
@@ -204,13 +207,13 @@ variable PERF-AOT-BIN-U
 
 : PERF-VALIDATOR-ARGS ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/date.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" bench/llm/validate-results.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" bench/llm/validate-results.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
 
 : PERF-METRIC-VALIDATOR ( -- )
    PERF-STUB? if s" metric_validator" PERF-MEASURE-STUB exit then
@@ -220,8 +223,8 @@ variable PERF-AOT-BIN-U
 : PERF-PROP-SMOKE ( -- )
    PERF-STUB? if s" prop_smoke_250" PERF-MEASURE-STUB exit then
    PROC-ARGV-RESET
-   s" 123" PROC-ARGV+
-   s" 250" PROC-ARGV+
+   s" 123"  >LEN PROC-ARGV+
+   s" 250"  >LEN PROC-ARGV+
    PERF-SRC-RESET
    s" test/prop-test.f" PERF-SRC+
    s" prop_smoke_250" PERF-SRC$ PERF-MEASURE-STDIN ;
@@ -229,25 +232,25 @@ variable PERF-AOT-BIN-U
 : PERF-MICROBENCH-SMOKE ( -- )
    PERF-STUB? if s" microbench_smoke" PERF-MEASURE-STUB exit then
    PROC-ARGV-RESET
-   s" tools/bench.f" PROC-ARGV+
-   s" --smoke" PROC-ARGV+
+   s" tools/bench.f"  >LEN PROC-ARGV+
+   s" --smoke"  >LEN PROC-ARGV+
    s" microbench_smoke" PERF-MEASURE-ARGV ;
 
 : PERF-INSTALL-ARGS ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/build.f" PROC-ARGV+
-   s" tools/build-fixpoint.f" PROC-ARGV+
-   s" tools/build-fixpoint-main.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" install" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/build.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint-main.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" install"  >LEN PROC-ARGV+ ;
 
 : PERF-SELF-REBUILD ( -- )
    PERF-STUB? if s" self_rebuild" PERF-MEASURE-STUB exit then
@@ -268,23 +271,23 @@ variable PERF-AOT-BIN-U
 
 : PERF-BUILD-AOT-ARGS ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   s" lib/build.f" PROC-ARGV+
-   s" tools/build-fixpoint.f" PROC-ARGV+
-   s" tools/hb-build-lib.f" PROC-ARGV+
-   s" tools/hb-build.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   PERF-AOT-SRC$ PROC-ARGV+
-   s" -o" PROC-ARGV+
-   PERF-AOT-BIN$ PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   s" lib/build.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
+   s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
+   s" tools/hb-build.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   PERF-AOT-SRC$  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   PERF-AOT-BIN$  >LEN PROC-ARGV+ ;
 
 : PERF-HB-BUILD-AOT ( -- )
    PERF-STUB? if s" hb_build_aot" PERF-MEASURE-STUB exit then

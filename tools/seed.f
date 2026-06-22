@@ -138,40 +138,40 @@ variable SEED-LAST
 
 : SEED-SMOKE ( ptr u8 n -- ) {: hb:ptr hbu :}
    PROC-ARGV-RESET
-   hb hbu SEED-SMOKE-IN SEED-SMOKE-IN-U
-   SEED-SMOKE-OUT SEED-SMOKE-OUT-CAP
-   SEED-SMOKE-ERR SEED-SMOKE-ERR-CAP
-   SEED-SMOKE-TIMEOUT-MS RUN-ARGV-STDIN-CAPTURE
+   hb hbu >LEN SEED-SMOKE-IN SEED-SMOKE-IN-U >LEN
+   SEED-SMOKE-OUT SEED-SMOKE-OUT-CAP >LEN
+   SEED-SMOKE-ERR SEED-SMOKE-ERR-CAP >LEN
+   SEED-SMOKE-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE
    {: outu erru rc :}
-   rc SEED-RC0
-   erru SEED-EXPECT-NO-STDERR
-   SEED-SMOKE-OUT outu SEED-SMOKE-OUT-OK? 0= if E-BUILD-STATUS throw then ;
+   rc RC>N SEED-RC0
+   erru LEN>N SEED-EXPECT-NO-STDERR
+   SEED-SMOKE-OUT outu LEN>N SEED-SMOKE-OUT-OK? 0= if E-BUILD-STATUS throw then ;
 
 : SEED-PREPARE-BUILD-ARGV ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/build.f" PROC-ARGV+
-   s" tools/build-fixpoint.f" PROC-ARGV+
-   s" tools/build-fixpoint-main.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" install" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/build.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint-main.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" install"  >LEN PROC-ARGV+ ;
 
 : SEED-RUN-BUILD-FIXPOINT ( ptr u8 n -- ) {: hb:ptr hbu :}
    SEED-PREPARE-BUILD-ARGV
-   hb hbu
-   SEED-BUILD-OUT SEED-BUILD-OUT-CAP
-   SEED-BUILD-ERR SEED-BUILD-ERR-CAP
-   SEED-BUILD-TIMEOUT-MS RUN-ARGV-CAPTURE
+   hb hbu >LEN
+   SEED-BUILD-OUT SEED-BUILD-OUT-CAP >LEN
+   SEED-BUILD-ERR SEED-BUILD-ERR-CAP >LEN
+   SEED-BUILD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    {: outu erru rc :}
-   rc 0= if exit then
-   outu erru SEED-REPLAY-BUILD-OUTPUT
+   rc RC>N 0= if exit then
+   outu LEN>N erru LEN>N SEED-REPLAY-BUILD-OUTPUT
    s" seed: build-fixpoint failed" SEED-ERR
    SEED-LF 1 SEED-ERR
    E-BUILD-STATUS throw ;

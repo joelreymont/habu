@@ -104,19 +104,23 @@ create SST-ERR SST-CAP allot
 
 : SST-ARGV ( ptr u8 n -- ) {: today:ptr todayu :}
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/date.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/fs.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/stale-status-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   SST-ROOT PROC-ARGV+
-   today todayu PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/fs.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/stale-status-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   SST-ROOT  >LEN PROC-ARGV+
+   today todayu  >LEN PROC-ARGV+ ;
+
+: SST-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : SST-RUN ( ptr u8 n -- n n n )
    SST-ARGV
-   s" bin/hb" SST-OUT SST-CAP SST-ERR SST-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" bin/hb"  >LEN SST-OUT SST-CAP >LEN SST-ERR SST-CAP >LEN
+   1000 >MS RUN-ARGV-CAPTURE SST-CAPTURE>N ;
 
 : SST-RUN-DEFAULT ( -- n n n )
    s" 2026-06-16" SST-RUN ;

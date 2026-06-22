@@ -94,24 +94,24 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
 
 : BF-PREPARE-ENV ( -- )
    PROC-ENV-RESET
-   s" HB_TMP" BF-TMP$ PROC-ENV+ ;
+   s" HB_TMP" >LEN BF-TMP$ >LEN PROC-ENV+ ;
+
+: BF-FINISH-PID ( pid -- n ) {: pid :}
+   PROC-ARGV-ENV-RESET
+   pid PID>N 0 < if E-PROC-SPAWN throw then
+   pid WAIT-RC RC>N ;
 
 : BF-RUN-ENV-FDS ( ptr u8 n n n n -- n ) {: exe:ptr exeu infd outfd errfd :}
    BF-PREPARE-ENV
-   exe exeu PROC-ARGV-PREPARE PROC-ENV-PREPARE infd outfd errfd
-   PROC-SPAWN-ARGV-ENV-RAW BF-PID !
-   PROC-ARGV-ENV-RESET
-   BF-PID @ 0 < if E-PROC-SPAWN throw then
-   BF-PID @ WAIT-RC ;
+   exe exeu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE infd >FD outfd >FD errfd >FD
+   PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID ;
 
 : BF-RUN-ENV-INFD ( ptr u8 n n -- n ) {: exe:ptr exeu infd :}
    BF-PREPARE-ENV
-   exe exeu PROC-ARGV-PREPARE PROC-ENV-PREPARE infd -1 -1
-   PROC-SPAWN-ARGV-ENV-RAW BF-PID !
-   PROC-ARGV-ENV-RESET
+   exe exeu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE infd >FD -1 >FD -1 >FD
+   PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    infd close
-   BF-PID @ 0 < if E-PROC-SPAWN throw then
-   BF-PID @ WAIT-RC ;
+   pid BF-FINISH-PID ;
 
 : BF-RUN-ENV-EXE ( ptr u8 n -- n )
    -1 -1 -1 BF-RUN-ENV-FDS ;
@@ -127,17 +127,17 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
 
 : BF-CODESIGN-VERIFY-TMP ( ptr u8 n -- ) {: a:ptr u :}
    PROC-ARGV-RESET
-   s" -v" PROC-ARGV+
-   a u BF-A$ PROC-ARGV+
-   s" /usr/bin/codesign" -1 -1 -1 RUN-ARGV-IO-RC BF-RC0 ;
+   s" -v"  >LEN PROC-ARGV+
+   a u BF-A$  >LEN PROC-ARGV+
+   s" /usr/bin/codesign" >LEN -1 >FD -1 >FD -1 >FD RUN-ARGV-IO-RC RC>N BF-RC0 ;
 
 : BF-CODESIGN-FORCE-TMP ( ptr u8 n -- ) {: a:ptr u :}
    PROC-ARGV-RESET
-   s" -s" PROC-ARGV+
-   s" -" PROC-ARGV+
-   s" --force" PROC-ARGV+
-   a u BF-A$ PROC-ARGV+
-   s" /usr/bin/codesign" -1 -1 -1 RUN-ARGV-IO-RC BF-RC0 ;
+   s" -s"  >LEN PROC-ARGV+
+   s" -"  >LEN PROC-ARGV+
+   s" --force"  >LEN PROC-ARGV+
+   a u BF-A$  >LEN PROC-ARGV+
+   s" /usr/bin/codesign" >LEN -1 >FD -1 >FD -1 >FD RUN-ARGV-IO-RC RC>N BF-RC0 ;
 
 : BF-RESET-OUT ( ptr u8 n -- )
    BF-OUT$ BF-SOURCE-BUF 0 WRITE-ALL ;

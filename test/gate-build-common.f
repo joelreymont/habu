@@ -50,26 +50,26 @@ variable GB-LC-OFF
 
 : GB-BUILD-ARGV ( -- )
    GE-HB-RESET
-   s" HB_TMP" GT-ROOT PROC-ENV+
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   s" lib/build.f" PROC-ARGV+
-   s" tools/build-fixpoint.f" PROC-ARGV+
-   s" tools/hb-build-lib.f" PROC-ARGV+
-   s" tools/hb-build.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   s" lib/build.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
+   s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
+   s" tools/hb-build.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
 
 : GB-HB-BUILD-ARGS ( -- )
-   GB-SRC$ PROC-ARGV+
-   s" -o" PROC-ARGV+
-   GB-OUT$ PROC-ARGV+ ;
+   GB-SRC$  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   GB-OUT$  >LEN PROC-ARGV+ ;
 
 : GB-HB-BUILD-CAPTURE ( -- )
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
@@ -93,23 +93,23 @@ variable GB-LC-OFF
 
 : GB-AOT-REPORT ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-HB-RESET
-   s" tools/aot-call-report.f" PROC-ARGV+
-   GB-OUT$ PROC-ARGV+
+   s" tools/aot-call-report.f"  >LEN PROC-ARGV+
+   GB-OUT$  >LEN PROC-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK
    GB-REPORT$ GT-OUT$ WRITE-ALL ;
 
 : GB-GJA-ARGV ( -- )
    GE-HB-RESET
-   s" --load" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/gate-json-assert.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
 
 : GB-GJA ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu label:ptr labelu :}
    GB-GJA-ARGV
-   mode modeu PROC-ARGV+
-   GB-REPORT$ PROC-ARGV+
+   mode modeu  >LEN PROC-ARGV+
+   GB-REPORT$  >LEN PROC-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK ;
 

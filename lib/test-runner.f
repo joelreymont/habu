@@ -97,13 +97,16 @@ variable GT-TAIL-U
 : GT-CHECK ( bool ptr u8 n -- ) {: ok name:ptr nameu :}
    ok 0= if name nameu GT-FAIL+ then ;
 
+: GT-STORE-RUN ( len len n n -- ) {: outu erru kind code :}
+   code GT-OUTCOME-CODE !
+   kind GT-OUTCOME-KIND !
+   erru LEN>N GT-ERR-U !
+   outu LEN>N GT-OUT-U ! ;
+
 : GT-RUN ( ptr u8 n n -- ) {: path:ptr pathu timeout :}
-   path pathu GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP timeout
+   path pathu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN timeout >MS
    RUN-ARGV-CAPTURE-OUTCOME
-   GT-OUTCOME-CODE !
-   GT-OUTCOME-KIND !
-   GT-ERR-U !
-   GT-OUT-U ! ;
+   GT-STORE-RUN ;
 
 : GT-RUN-DEFAULT ( ptr u8 n -- )
    GT-DEFAULT-TIMEOUT-MS GT-RUN ;
@@ -163,8 +166,8 @@ variable GT-TAIL-U
       s"  (" type GT-PROGRESS-ELAPSED-MS GT-U-TYPE s" ms)" type cr
    then ;
 
-: GT-PROGRESS-SLICE-MS ( -- n )
-   PROC-REMAINING-MS dup GT-HEARTBEAT-MS > if drop GT-HEARTBEAT-MS then ;
+: GT-PROGRESS-SLICE-MS ( -- ms )
+   PROC-REMAINING-MS dup MS>N GT-HEARTBEAT-MS > if drop GT-HEARTBEAT-MS >MS then ;
 
 : GT-PROGRESS-PASS ( ptr u8 n -- ) {: label:ptr labelu :}
    s" PASS: " type label labelu type

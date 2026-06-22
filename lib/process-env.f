@@ -23,105 +23,106 @@ variable PROC-PATH-I
 : PROC-ENV-FALSE ( -- bool )
    0 0= 0= ;
 
-: PROC-SPAWN-ARGV-ENV-RAW ( ptr u8 ptr a ptr a n n n -- n )
-   spawn-argv-env-io ;
+: PROC-SPAWN-ARGV-ENV-RAW ( ptr u8 ptr a ptr a fd fd fd -- pid )
+   {: pathz:ptr argv:ptr envp:ptr infd outfd errfd :}
+   pathz argv envp infd FD>N outfd FD>N errfd FD>N spawn-argv-env-io >PID ;
 
 : PROC-ENV-RESET ( -- )
-   0 PROC-ENV-N !
-   0 PROC-ENV-OFF ! ;
+   0 >COUNT PROC-ENV-N !
+   0 >OFF PROC-ENV-OFF ! ;
 
-: PROC-ENV-SLOT ( n -- ptr a ) {: idx :}
-   idx 0 < if E-PROC-ENV throw then
-   idx PROC-ENV-MAX > if E-PROC-ENV throw then
-   idx cells PROC-ENV-TABLE + ;
+: PROC-ENV-SLOT ( idx -- ptr a ) {: idx :}
+   idx IDX>N 0 < if E-PROC-ENV throw then
+   idx IDX>N PROC-ENV-MAX > if E-PROC-ENV throw then
+   idx IDX>N cells PROC-ENV-TABLE + ;
 
 : PROC-ENV-CHECK-EXTRA ( -- )
-   PROC-ENV-N @ PROC-ENV-MAX >= if E-PROC-ENV throw then ;
+   PROC-ENV-N @ COUNT>N PROC-ENV-MAX >= if E-PROC-ENV throw then ;
 
-: PROC-ENV-HAS-EQUAL? ( ptr u8 n -- bool ) {: a:ptr u :}
-   0 begin dup u < while
+: PROC-ENV-HAS-EQUAL? ( ptr u8 len -- bool ) {: a:ptr u :}
+   0 begin dup u LEN>N < while
       dup a + c@ PROC-ENV-EQUAL = if drop PROC-ENV-TRUE exit then
       1+
    repeat drop PROC-ENV-FALSE ;
 
-: PROC-ENV-CHECK-NAME ( ptr u8 n -- ) {: a:ptr u :}
-   u 0 <= if E-PROC-ENV throw then
-   0 begin dup u < while
+: PROC-ENV-CHECK-NAME ( ptr u8 len -- ) {: a:ptr u :}
+   u LEN>N 0 <= if E-PROC-ENV throw then
+   0 begin dup u LEN>N < while
       dup a + c@ PROC-ENV-EQUAL = if E-PROC-ENV throw then
       1+
    repeat drop ;
 
-: PROC-ENV-CHECK-ENTRY ( ptr u8 n -- ) {: a:ptr u :}
-   u 0 <= if E-PROC-ENV throw then
+: PROC-ENV-CHECK-ENTRY ( ptr u8 len -- ) {: a:ptr u :}
+   u LEN>N 0 <= if E-PROC-ENV throw then
    a c@ PROC-ENV-EQUAL = if E-PROC-ENV throw then
    a u PROC-ENV-HAS-EQUAL? 0= if E-PROC-ENV throw then ;
 
-: PROC-ENV-STORE-Z ( ptr u8 n -- ptr u8 ) {: a:ptr u :}
-   u 0 < if E-PROC-ENV throw then
+: PROC-ENV-STORE-Z ( ptr u8 len -- ptr u8 ) {: a:ptr u :}
+   u LEN>N 0 < if E-PROC-ENV throw then
    PROC-ENV-OFF @ {: off :}
-   off u 1 + + PROC-ENV-BUF-CAP > if E-PROC-ENV throw then
-   a PROC-ENV-BUF off + u BYTE-COPY
-   0 PROC-ENV-BUF off + u + c!
-   off u 1 + + PROC-ENV-OFF !
-   PROC-ENV-BUF off + ;
+   off OFF>N u LEN>N 1 + + PROC-ENV-BUF-CAP > if E-PROC-ENV throw then
+   a PROC-ENV-BUF off OFF>N + u LEN>N BYTE-COPY
+   0 PROC-ENV-BUF off OFF>N + u LEN>N + c!
+   off OFF>N u LEN>N 1 + + >OFF PROC-ENV-OFF !
+   PROC-ENV-BUF off OFF>N + ;
 
 : PROC-ENV-INSTALL-Z ( ptr u8 -- )
-   PROC-ENV-N @ PROC-ENV-SLOT !
-   PROC-ENV-N @ 1+ PROC-ENV-N ! ;
+   PROC-ENV-N @ COUNT>N >IDX PROC-ENV-SLOT !
+   PROC-ENV-N @ COUNT>N 1+ >COUNT PROC-ENV-N ! ;
 
-: PROC-ENV-ENTRY+ ( ptr u8 n -- ) {: a:ptr u :}
+: PROC-ENV-ENTRY+ ( ptr u8 len -- ) {: a:ptr u :}
    a u PROC-ENV-CHECK-ENTRY
    PROC-ENV-CHECK-EXTRA
    a u PROC-ENV-STORE-Z PROC-ENV-INSTALL-Z ;
 
-: PROC-ENV-NAME-LEN ( ptr u8 n -- n ) {: a:ptr u :}
-   0 begin dup u < while
-      dup a + c@ PROC-ENV-EQUAL = if exit then
+: PROC-ENV-NAME-LEN ( ptr u8 len -- len ) {: a:ptr u :}
+   0 begin dup u LEN>N < while
+      dup a + c@ PROC-ENV-EQUAL = if >LEN exit then
       1+
-   repeat ;
+   repeat >LEN ;
 
-: PROC-ENV-SAME-NAME? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+: PROC-ENV-SAME-NAME? ( ptr u8 len ptr u8 len -- bool ) {: a:ptr u b:ptr v :}
    a u PROC-ENV-NAME-LEN {: au :}
    b v PROC-ENV-NAME-LEN {: bv :}
-   au bv <> if PROC-ENV-FALSE exit then
-   a au b bv STR= ;
+   au LEN>N bv LEN>N <> if PROC-ENV-FALSE exit then
+   a au LEN>N b bv LEN>N STR= ;
 
-: PROC-ENV-SLOT-NAME? ( ptr u8 n n -- bool ) {: a:ptr u idx :}
+: PROC-ENV-SLOT-NAME? ( ptr u8 len idx -- bool ) {: a:ptr u idx :}
    idx PROC-ENV-SLOT @ {: z:ptr :}
-   a u z z ZLEN PROC-ENV-SAME-NAME? ;
+   a u z z ZLEN >LEN PROC-ENV-SAME-NAME? ;
 
-: PROC-ENV-HAS-NAME? ( ptr u8 n -- bool ) {: a:ptr u :}
-   0 begin dup PROC-ENV-N @ < while
-      dup PROC-ENV-I !
+: PROC-ENV-HAS-NAME? ( ptr u8 len -- bool ) {: a:ptr u :}
+   0 begin dup PROC-ENV-N @ COUNT>N < while
+      dup >IDX PROC-ENV-I !
       a u PROC-ENV-I @ PROC-ENV-SLOT-NAME? if drop PROC-ENV-TRUE exit then
       1+
    repeat drop PROC-ENV-FALSE ;
 
-: PROC-ENV+ ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu val:ptr valu :}
+: PROC-ENV+ ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu val:ptr valu :}
    name nameu PROC-ENV-CHECK-NAME
-   valu 0 < if E-PROC-ENV throw then
+   valu LEN>N 0 < if E-PROC-ENV throw then
    PROC-ENV-CHECK-EXTRA
    PROC-ENV-OFF @ {: off :}
-   off nameu valu + 2 + + PROC-ENV-BUF-CAP > if E-PROC-ENV throw then
-   name PROC-ENV-BUF off + nameu BYTE-COPY
-   PROC-ENV-EQUAL PROC-ENV-BUF off + nameu + c!
-   val PROC-ENV-BUF off + nameu + 1 + valu BYTE-COPY
-   0 PROC-ENV-BUF off + nameu + 1 + valu + c!
-   PROC-ENV-BUF off + PROC-ENV-INSTALL-Z
-   off nameu valu + 2 + + PROC-ENV-OFF ! ;
+   off OFF>N nameu LEN>N valu LEN>N + 2 + + PROC-ENV-BUF-CAP > if E-PROC-ENV throw then
+   name PROC-ENV-BUF off OFF>N + nameu LEN>N BYTE-COPY
+   PROC-ENV-EQUAL PROC-ENV-BUF off OFF>N + nameu LEN>N + c!
+   val PROC-ENV-BUF off OFF>N + nameu LEN>N + 1 + valu LEN>N BYTE-COPY
+   0 PROC-ENV-BUF off OFF>N + nameu LEN>N + 1 + valu LEN>N + c!
+   PROC-ENV-BUF off OFF>N + PROC-ENV-INSTALL-Z
+   off OFF>N nameu LEN>N valu LEN>N + 2 + + >OFF PROC-ENV-OFF ! ;
 
 : PROC-ENV-PREPARE ( -- ptr a )
-   0 PROC-ENV-N @ PROC-ENV-SLOT !
+   0 PROC-ENV-N @ COUNT>N >IDX PROC-ENV-SLOT !
    PROC-ENV-TABLE ;
 
-: PROC-ENV-INHERIT-ONE ( n -- n ) {: idx :}
-   idx ENVP dup ZLEN {: z:ptr u :}
-   z u PROC-ENV-CHECK-ENTRY
-   z u PROC-ENV-HAS-NAME? 0= if z u PROC-ENV-ENTRY+ then
-   idx 1+ ;
+: PROC-ENV-INHERIT-ONE ( idx -- idx ) {: idx :}
+   idx IDX>N ENVP dup ZLEN {: z:ptr u :}
+   z u >LEN PROC-ENV-CHECK-ENTRY
+   z u >LEN PROC-ENV-HAS-NAME? 0= if z u >LEN PROC-ENV-ENTRY+ then
+   idx IDX>N 1+ >IDX ;
 
 : PROC-ENV-INHERIT-MISSING ( -- )
-   0 begin dup ENVP 0= 0= while
+   0 >IDX begin dup IDX>N ENVP 0= 0= while
       PROC-ENV-INHERIT-ONE
    repeat drop ;
 
@@ -129,20 +130,20 @@ variable PROC-PATH-I
    PROC-ARGV-RESET
    PROC-ENV-RESET ;
 
-: SPAWN-ARGV-ENV-IO ( ptr u8 n n n n -- n ) {: a:ptr u infd outfd errfd :}
+: SPAWN-ARGV-ENV-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
    a u PROC-ARGV-PREPARE PROC-ENV-PREPARE infd outfd errfd
    PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    PROC-ARGV-ENV-RESET
-   pid 0 < if E-PROC-SPAWN throw then
+   pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: RUN-ARGV-ENV-IO-RC ( ptr u8 n n n n -- n )
+: RUN-ARGV-ENV-IO-RC ( ptr u8 len fd fd fd -- rc )
    SPAWN-ARGV-ENV-IO WAIT-RC ;
 
 : PROC-SPAWN-ARGV-ENV-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
-   pathz argv envp -1 PROC-OUT-W @ PROC-ERR-W @ PROC-SPAWN-ARGV-ENV-RAW {: pid :}
+   pathz argv envp -1 >FD PROC-OUT-W @ PROC-ERR-W @ PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    PROC-ARGV-ENV-RESET
-   pid 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
+   pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-PID !
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
@@ -151,17 +152,17 @@ variable PROC-PATH-I
    pathz argv envp PROC-ARGV-IN-R @ PROC-OUT-W @ PROC-ERR-W @
    PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    PROC-ARGV-ENV-RESET
-   pid 0 < if E-PROC-SPAWN PROC-ARGV-THROW-CAPTURE then
+   pid PID>N 0 < if E-PROC-SPAWN PROC-ARGV-THROW-CAPTURE then
    pid PROC-PID !
    PROC-ARGV-IN-R PROC-CLOSE-CELL
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
-: RUN-ARGV-ENV-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+: RUN-ARGV-ENV-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
-   outcap 0 < if E-PROC-OUTPUT throw then
-   errcap 0 < if E-PROC-OUTPUT throw then
+   outcap LEN>N 0 < if E-PROC-OUTPUT throw then
+   errcap LEN>N 0 < if E-PROC-OUTPUT throw then
    PROC-CAPTURE-RESET
    timeout PROC-CAPTURE-DEADLINE!
    PROC-SETUP-CAPTURE-FDS
@@ -171,12 +172,12 @@ variable PROC-PATH-I
    PROC-REAP-CAPTURE
    PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
 
-: RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+: RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
-   inu 0 < if E-PROC-OUTPUT throw then
-   outcap 0 < if E-PROC-OUTPUT throw then
-   errcap 0 < if E-PROC-OUTPUT throw then
+   inu LEN>N 0 < if E-PROC-OUTPUT throw then
+   outcap LEN>N 0 < if E-PROC-OUTPUT throw then
+   errcap LEN>N 0 < if E-PROC-OUTPUT throw then
    PROC-ARGV-CAPTURE-RESET
    timeout PROC-CAPTURE-DEADLINE!
    PROC-SETUP-CAPTURE-FDS
@@ -188,12 +189,12 @@ variable PROC-PATH-I
    PROC-REAP-CAPTURE
    PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
 
-: RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+: RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
-   inu 0 < if E-PROC-OUTPUT throw then
-   outcap 0 < if E-PROC-OUTPUT throw then
-   errcap 0 < if E-PROC-OUTPUT throw then
+   inu LEN>N 0 < if E-PROC-OUTPUT throw then
+   outcap LEN>N 0 < if E-PROC-OUTPUT throw then
+   errcap LEN>N 0 < if E-PROC-OUTPUT throw then
    PROC-ARGV-CAPTURE-RESET
    timeout PROC-CAPTURE-DEADLINE!
    PROC-SETUP-CAPTURE-FDS
@@ -204,54 +205,54 @@ variable PROC-PATH-I
    PROC-CLOSE-CAPTURE-FDS
    PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-OUTCOME-KIND @ PROC-OUTCOME-CODE @ ;
 
-: PROC-HAS-SLASH? ( ptr u8 n -- bool )
-   PROC-PATH-SLASH INDEX-OF 0 >= ;
+: PROC-HAS-SLASH? ( ptr u8 len -- bool )
+   LEN>N PROC-PATH-SLASH INDEX-OF 0 >= ;
 
-: PROC-EXECUTABLE? ( ptr u8 n -- bool )
-   EXECUTABLE? ;
+: PROC-EXECUTABLE? ( ptr u8 len -- bool )
+   LEN>N EXECUTABLE? ;
 
-: PROC-COPY-PATH ( ptr u8 n ptr u8 -- n ) {: a:ptr u dst:ptr :}
-   u 0 < if E-PROC-PATH throw then
-   u FS-PATH-CAP > if E-PROC-PATH throw then
-   a dst u BYTE-COPY
+: PROC-COPY-PATH ( ptr u8 len ptr u8 -- len ) {: a:ptr u dst:ptr :}
+   u LEN>N 0 < if E-PROC-PATH throw then
+   u LEN>N FS-PATH-CAP > if E-PROC-PATH throw then
+   a dst u LEN>N BYTE-COPY
    u ;
 
-: PROC-JOIN-PATH-SEG ( ptr u8 n ptr u8 n ptr u8 -- n )
+: PROC-JOIN-PATH-SEG ( ptr u8 len ptr u8 len ptr u8 -- len )
    {: seg:ptr segu cmd:ptr cmdu dst:ptr :}
-   segu 0= if
-      s" ." cmd cmdu dst JOIN-PATH
+   segu LEN>N 0= if
+      s" ." cmd cmdu LEN>N dst JOIN-PATH >LEN
    else
-      seg segu cmd cmdu dst JOIN-PATH
+      seg segu LEN>N cmd cmdu LEN>N dst JOIN-PATH >LEN
    then ;
 
-: PROC-TRY-PATH-SEG ( ptr u8 n ptr u8 n ptr u8 -- n bool )
+: PROC-TRY-PATH-SEG ( ptr u8 len ptr u8 len ptr u8 -- len bool )
    {: seg:ptr segu cmd:ptr cmdu dst:ptr :}
    seg segu cmd cmdu dst PROC-JOIN-PATH-SEG {: gotu :}
    dst gotu PROC-EXECUTABLE? if gotu PROC-ENV-TRUE exit then
    gotu PROC-ENV-FALSE ;
 
-: FIND-EXECUTABLE-IN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n bool )
+: FIND-EXECUTABLE-IN-PATH ( ptr u8 len ptr u8 len ptr u8 -- len bool )
    {: cmd:ptr cmdu path:ptr pathu dst:ptr :}
    cmd cmdu PROC-HAS-SLASH? if
       cmd cmdu PROC-EXECUTABLE? if
          cmd cmdu dst PROC-COPY-PATH PROC-ENV-TRUE exit
       then
-      0 PROC-ENV-FALSE exit
+      0 >LEN PROC-ENV-FALSE exit
    then
-   0 PROC-PATH-I !
-   begin path pathu PROC-PATH-SEP PROC-PATH-I @ SPLIT-NEXT while
-      PROC-PATH-I !
-      cmd cmdu dst PROC-TRY-PATH-SEG if PROC-ENV-TRUE exit then
+   0 >OFF PROC-PATH-I !
+   begin path pathu LEN>N PROC-PATH-SEP PROC-PATH-I @ OFF>N SPLIT-NEXT while
+      >OFF PROC-PATH-I !
+      >LEN cmd cmdu dst PROC-TRY-PATH-SEG if PROC-ENV-TRUE exit then
       drop
    repeat
    drop 2drop
-   0 PROC-ENV-FALSE ;
+   0 >LEN PROC-ENV-FALSE ;
 
-: FIND-EXECUTABLE ( ptr u8 n ptr u8 -- n bool ) {: cmd:ptr cmdu dst:ptr :}
+: FIND-EXECUTABLE ( ptr u8 len ptr u8 -- len bool ) {: cmd:ptr cmdu dst:ptr :}
    s" PATH" GETENV {: path:ptr pathu :}
-   pathu 0= if 0 PROC-ENV-FALSE exit then
-   cmd cmdu path pathu dst FIND-EXECUTABLE-IN-PATH ;
+   pathu 0= if 0 >LEN PROC-ENV-FALSE exit then
+   cmd cmdu path pathu >LEN dst FIND-EXECUTABLE-IN-PATH ;
 
-: RESOLVE-EXECUTABLE ( ptr u8 n ptr u8 -- n )
+: RESOLVE-EXECUTABLE ( ptr u8 len ptr u8 -- len )
    FIND-EXECUTABLE if exit then
    E-PROC-PATH throw ;

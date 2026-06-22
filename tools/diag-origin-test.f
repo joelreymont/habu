@@ -74,14 +74,18 @@ create DGT-ERR DGT-BUF-CAP allot
    DGT-ROOT s" input.f" DGT-IN-BUF JOIN-PATH DGT-IN-U !
    DGT-IN CLEANUP+ ;
 
+: DGT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
 : DGT-RUN ( -- n n n )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/diag-origin.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   DGT-IN PROC-ARGV+
-   s" bin/hb" DGT-OUT DGT-BUF-CAP DGT-ERR DGT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/diag-origin.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   DGT-IN  >LEN PROC-ARGV+
+   s" bin/hb" >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   DGT-CAPTURE>N ;
 
 : DGT-MAIN ( -- )
    T-RESET

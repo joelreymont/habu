@@ -128,32 +128,35 @@ variable REBT-NUM-I
    REBT-MODEL-SRC$ a u REBT-MODEL-SOURCE$ WRITE-ALL ;
 
 : REBT-HB-BUILD-LOADS ( -- )
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   s" lib/build.f" PROC-ARGV+
-   s" tools/build-fixpoint.f" PROC-ARGV+
-   s" tools/hb-build-lib.f" PROC-ARGV+
-   s" tools/hb-build.f" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   s" lib/build.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
+   s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
+   s" tools/hb-build.f"  >LEN PROC-ARGV+ ;
 
 : REBT-BUILD-MODEL ( -- )
    PROC-ARGV-ENV-RESET
-   s" HB_TMP" REBT-HB-TMP$ PROC-ENV+
+   s" HB_TMP" >LEN REBT-HB-TMP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    REBT-HB-BUILD-LOADS
-   s" --" PROC-ARGV+
-   s" --strict-signatures" PROC-ARGV+
-   REBT-MODEL-SRC$ PROC-ARGV+
-   s" -o" PROC-ARGV+
-   REBT-MODEL-BIN$ PROC-ARGV+
-   s" bin/hb" REBT-OUT REBT-CAP REBT-ERR REBT-CAP REBT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE
-   0 T= 0 T= drop ;
+   s" --"  >LEN PROC-ARGV+
+   s" --strict-signatures"  >LEN PROC-ARGV+
+   REBT-MODEL-SRC$  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   REBT-MODEL-BIN$  >LEN PROC-ARGV+
+   s" bin/hb" >LEN REBT-OUT REBT-CAP >LEN REBT-ERR REBT-CAP >LEN
+   REBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
+   rc RC>N 0 T=
+   erru LEN>N 0 T=
+   outu drop ;
 
 : REBT-MODELS-TEXT$ ( -- ptr u8 n )
    BFT-RESET
@@ -177,35 +180,38 @@ variable REBT-NUM-I
    REBT-MODELS$ REBT-MODELS-TEXT$ WRITE-ALL ;
 
 : REBT-RUN-EXPANDED-LOADS ( -- )
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/time.f" PROC-ARGV+
-   s" lib/date.f" PROC-ARGV+
-   s" lib/argv.f" PROC-ARGV+
-   s" bench/llm/manifest.f" PROC-ARGV+
-   s" bench/llm/run-expanded-bench.f" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/time.f"  >LEN PROC-ARGV+
+   s" lib/date.f"  >LEN PROC-ARGV+
+   s" lib/argv.f"  >LEN PROC-ARGV+
+   s" bench/llm/manifest.f"  >LEN PROC-ARGV+
+   s" bench/llm/run-expanded-bench.f"  >LEN PROC-ARGV+ ;
 
 : REBT-RUN-EXPANDED-START ( ptr u8 n ptr u8 n -- ) {: task:ptr tasku seed:ptr seedu :}
    PROC-ARGV-ENV-RESET
-   s" MODEL_REGISTRY" REBT-MODELS$ PROC-ENV+
-   s" MODEL_ID" s" aotfix" PROC-ENV+
-   s" BENCH_TASK_IDS" task tasku PROC-ENV+
-   s" BENCH_RESULTS" REBT-REPORT$ PROC-ENV+
-   s" BENCH_SEED" seed seedu PROC-ENV+ ;
+   s" MODEL_REGISTRY" >LEN REBT-MODELS$ >LEN PROC-ENV+
+   s" MODEL_ID" >LEN s" aotfix" >LEN PROC-ENV+
+   s" BENCH_TASK_IDS" >LEN task tasku >LEN PROC-ENV+
+   s" BENCH_RESULTS" >LEN REBT-REPORT$ >LEN PROC-ENV+
+   s" BENCH_SEED" >LEN seed seedu >LEN PROC-ENV+ ;
 
 : REBT-RUN-EXPANDED-SPAWN ( -- )
    PROC-ENV-INHERIT-MISSING
    REBT-RUN-EXPANDED-LOADS
-   s" --" PROC-ARGV+
-   s" 1" PROC-ARGV+
-   REBT-OUT-PATH$ PROC-ARGV+
-   s" bin/hb" REBT-OUT REBT-CAP REBT-ERR REBT-CAP REBT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE
-   0 T= 0 T= drop ;
+   s" --"  >LEN PROC-ARGV+
+   s" 1"  >LEN PROC-ARGV+
+   REBT-OUT-PATH$  >LEN PROC-ARGV+
+   s" bin/hb" >LEN REBT-OUT REBT-CAP >LEN REBT-ERR REBT-CAP >LEN
+   REBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
+   rc RC>N 0 T=
+   erru LEN>N 0 T=
+   outu drop ;
 
 : REBT-RUN-AOT-EXPANDED ( -- )
    s" 69" s" run-expanded-aot-2026-06-21" REBT-RUN-EXPANDED-START
@@ -213,13 +219,13 @@ variable REBT-NUM-I
 
 : REBT-RUN-ARRAY-EXPANDED ( -- )
    s" 46" s" run-expanded-array-2026-06-21" REBT-RUN-EXPANDED-START
-   s" BENCH_ARRAY_ARMS" s" habu-stdlib" PROC-ENV+
-   s" PATH" REBT-ROOT$ PROC-ENV+
+   s" BENCH_ARRAY_ARMS" >LEN s" habu-stdlib" >LEN PROC-ENV+
+   s" PATH" >LEN REBT-ROOT$ >LEN PROC-ENV+
    REBT-RUN-EXPANDED-SPAWN ;
 
 : REBT-RUN-FORTH-EXPANDED ( -- )
    s" 1" s" run-expanded-forth-2026-06-21" REBT-RUN-EXPANDED-START
-   s" BENCH_FORTH_MODES" s" repair raw blind" PROC-ENV+
+   s" BENCH_FORTH_MODES" >LEN s" repair raw blind" >LEN PROC-ENV+
    REBT-RUN-EXPANDED-SPAWN ;
 
 : REBT-FILE$ ( ptr u8 n -- ptr u8 n )

@@ -111,16 +111,20 @@ create RLT-ERR RLT-CAP allot
 
 : RLT-ARGV ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/repl-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   RLT-ROOT PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/repl-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   RLT-ROOT  >LEN PROC-ARGV+ ;
+
+: RLT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : RLT-RUN ( -- n n n )
    RLT-ARGV
-   s" bin/hb" RLT-OUT RLT-CAP RLT-ERR RLT-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" bin/hb" >LEN RLT-OUT RLT-CAP >LEN RLT-ERR RLT-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   RLT-CAPTURE>N ;
 
 : RLT-TEST-GOOD ( -- )
    RLT-REPL RLT-GOOD$ WRITE-ALL

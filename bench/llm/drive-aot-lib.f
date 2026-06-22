@@ -142,38 +142,39 @@ variable DA-BIN-U
    s" reject" DA-LR-REJECT ;
 
 : DA-ADD-HB-BUILD-LOADS ( -- )
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   s" lib/build.f" PROC-ARGV+
-   s" tools/build-fixpoint.f" PROC-ARGV+
-   s" tools/hb-build-lib.f" PROC-ARGV+
-   s" tools/hb-build.f" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   s" lib/build.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
+   s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
+   s" tools/hb-build.f"  >LEN PROC-ARGV+ ;
 
 : DA-HB-BUILD-ARGS ( bool -- ) {: json? :}
    PROC-ARGV-ENV-RESET
-   s" HB_TMP" DA-TMP$ PROC-ENV+
+   s" HB_TMP" >LEN DA-TMP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    DA-ADD-HB-BUILD-LOADS
-   s" --" PROC-ARGV+
-   s" --strict-signatures" PROC-ARGV+
-   json? if s" --json-errors" PROC-ARGV+ then
-   DS-CAND-PATH$ PROC-ARGV+
-   s" -o" PROC-ARGV+
-   DA-BIN$ PROC-ARGV+ ;
+   s" --"  >LEN PROC-ARGV+
+   s" --strict-signatures"  >LEN PROC-ARGV+
+   json? if s" --json-errors"  >LEN PROC-ARGV+ then
+   DS-CAND-PATH$  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   DA-BIN$  >LEN PROC-ARGV+ ;
 
 : DA-HB-BUILD-CAPTURE ( -- )
-   s" bin/hb" DS-OUT-BUF DS-OUT-CAP DS-ERR-BUF DS-ERR-CAP
-   DA-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE
-   DS-RC !
-   DS-ERR-U !
-   DS-OUT-U ! ;
+   s" bin/hb" >LEN DS-OUT-BUF DS-OUT-CAP >LEN
+   DS-ERR-BUF DS-ERR-CAP >LEN DA-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
+   rc RC>N DS-RC !
+   erru LEN>N DS-ERR-U !
+   outu LEN>N DS-OUT-U ! ;
 
 : DA-RUN-HB-BUILD ( bool -- )
    DA-HB-BUILD-ARGS
@@ -195,11 +196,12 @@ variable DA-BIN-U
    DA-EXPECTED-TOKEN$ DA-CAPTURE-HAS? ;
 
 : DA-RUN-BINARY ( -- )
-   DA-BIN$ DS-OUT-BUF DS-OUT-CAP DS-ERR-BUF DS-ERR-CAP
-   DA-TIMEOUT-MS RUN-CAPTURE
-   DS-RC !
-   DS-ERR-U !
-   DS-OUT-U ! ;
+   DA-BIN$ >LEN DS-OUT-BUF DS-OUT-CAP >LEN
+   DS-ERR-BUF DS-ERR-CAP >LEN DA-TIMEOUT-MS >MS
+   RUN-CAPTURE {: outu erru rc :}
+   rc RC>N DS-RC !
+   erru LEN>N DS-ERR-U !
+   outu LEN>N DS-OUT-U ! ;
 
 : DA-RUN-PASS? ( -- bool )
    DS-RC @ 0= if

@@ -119,34 +119,40 @@ create SLT-ERR SLT-BUF-CAP allot
 
 : SLT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/lint/json-writer.f" PROC-ARGV+
-   s" tools/lint/source-lex.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/signature-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/signature-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
+
+: SLT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : SLT-RUN ( ptr u8 n -- n n n ) {: a:ptr u :}
    SLT-ARGV-LOAD
-   a u PROC-ARGV+
-   s" bin/hb" SLT-OUT SLT-BUF-CAP SLT-ERR SLT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   a u  >LEN PROC-ARGV+
+   s" bin/hb" >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   SLT-CAPTURE>N ;
 
 : SLT-RUN-JSON ( ptr u8 n -- n n n ) {: a:ptr u :}
    SLT-ARGV-LOAD
-   s" --json" PROC-ARGV+
-   a u PROC-ARGV+
-   s" bin/hb" SLT-OUT SLT-BUF-CAP SLT-ERR SLT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" --json"  >LEN PROC-ARGV+
+   a u  >LEN PROC-ARGV+
+   s" bin/hb" >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   SLT-CAPTURE>N ;
 
 : SLT-RUN-JSON-LABEL ( ptr u8 n -- n n n ) {: a:ptr u :}
    SLT-ARGV-LOAD
-   s" --json" PROC-ARGV+
-   s" --label" PROC-ARGV+
-   s" <stdin>" PROC-ARGV+
-   a u PROC-ARGV+
-   s" bin/hb" SLT-OUT SLT-BUF-CAP SLT-ERR SLT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" --json"  >LEN PROC-ARGV+
+   s" --label"  >LEN PROC-ARGV+
+   s" <stdin>"  >LEN PROC-ARGV+
+   a u  >LEN PROC-ARGV+
+   s" bin/hb" >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   SLT-CAPTURE>N ;
 
 : SLT-TEST-GOOD ( -- )
    SLT-GOOD SLT-RUN 0 T=

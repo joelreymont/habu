@@ -22,13 +22,34 @@ variable PAT-I
 : PAT-READ ( -- n )
    PAT-OUT-R @ PAT-BUF 64 read ;
 
+: PAT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
+: PAT-OUTCOME>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
+
+: PAT-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+   path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
+   PAT-CAPTURE>N ;
+
+: PAT-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+   {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+   path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE
+   PAT-CAPTURE>N ;
+
+: PAT-STDIN-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+   {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+   path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   PAT-OUTCOME>N ;
+
 : PAT-RUN-PRINTF ( -- )
    PIPE-PAIR PAT-OUT-W ! PAT-OUT-R !
    PROC-ARGV-RESET
-   s" %s-%s" PROC-ARGV+
-   s" left" PROC-ARGV+
-   s" right" PROC-ARGV+
-   s" /usr/bin/printf" -1 PAT-OUT-W @ -1 RUN-ARGV-IO-RC 0 T=
+   s" %s-%s"  >LEN PROC-ARGV+
+   s" left"  >LEN PROC-ARGV+
+   s" right"  >LEN PROC-ARGV+
+   s" /usr/bin/printf" >LEN -1 >FD PAT-OUT-W @ -1 >FD RUN-ARGV-IO-RC RC>N 0 T=
    PAT-OUT-W @ close
    PAT-READ 10 T=
    PAT-BUF 10 s" left-right" T$=
@@ -40,7 +61,7 @@ variable PAT-I
    PAT-IN-W @ s" argv-stdin" write 10 T=
    PAT-IN-W @ close
    PROC-ARGV-RESET
-   s" /bin/cat" PAT-IN-R @ PAT-OUT-W @ -1 RUN-ARGV-IO-RC 0 T=
+   s" /bin/cat" >LEN PAT-IN-R @ PAT-OUT-W @ -1 >FD RUN-ARGV-IO-RC RC>N 0 T=
    PAT-IN-R @ close
    PAT-OUT-W @ close
    PAT-READ 10 T=
@@ -49,85 +70,85 @@ variable PAT-I
 
 : PAT-SPAWN-MISSING ( -- )
    PROC-ARGV-RESET
-   s" ignored" PROC-ARGV+
-   s" /no/such/habu-process-argv-test" -1 -1 -1 SPAWN-ARGV-IO drop ;
+   s" ignored"  >LEN PROC-ARGV+
+   s" /no/such/habu-process-argv-test" >LEN -1 >FD -1 >FD -1 >FD SPAWN-ARGV-IO drop ;
 
 : PAT-TOO-MANY-ARGS ( -- )
    PROC-ARGV-RESET
    0 begin dup PROC-ARGV-MAX 1- < while
-      s" x" PROC-ARGV+
+      s" x"  >LEN PROC-ARGV+
       1+
    repeat drop
-   s" overflow" PROC-ARGV+ ;
+   s" overflow"  >LEN PROC-ARGV+ ;
 
 : PAT-LONG-ARG ( -- )
    PROC-ARGV-RESET
-   s" x" PROC-ARGV+
-   PAT-LONG! PAT-LONG PAT-LONG-CAP PROC-ARGV+ ;
+   s" x"  >LEN PROC-ARGV+
+   PAT-LONG! PAT-LONG PAT-LONG-CAP  >LEN PROC-ARGV+ ;
 
 : PAT-RUN-ARGV-CAPTURE ( -- )
    PROC-ARGV-RESET
-   s" %s:%s" PROC-ARGV+
-   s" left" PROC-ARGV+
-   s" right" PROC-ARGV+
-   s" /usr/bin/printf" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 RUN-ARGV-CAPTURE
+   s" %s:%s"  >LEN PROC-ARGV+
+   s" left"  >LEN PROC-ARGV+
+   s" right"  >LEN PROC-ARGV+
+   s" /usr/bin/printf" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-CAPTURE
    0 T= 0 T= 10 T=
    PAT-CAP-OUT 10 s" left:right" T$=
    PROC-ARGV-N @ 0 T= ;
 
 : PAT-RUN-ARGV-CAPTURE-EXACT ( -- )
    PROC-ARGV-RESET
-   s" %s" PROC-ARGV+
-   s" abc" PROC-ARGV+
-   s" /usr/bin/printf" PAT-CAP-OUT 3 PAT-CAP-ERR 0 1000 RUN-ARGV-CAPTURE
+   s" %s"  >LEN PROC-ARGV+
+   s" abc"  >LEN PROC-ARGV+
+   s" /usr/bin/printf" PAT-CAP-OUT 3 PAT-CAP-ERR 0 1000 PAT-CAPTURE
    0 T= 0 T= 3 T=
    PAT-CAP-OUT 3 s" abc" T$= ;
 
 : PAT-RUN-ARGV-CAPTURE-TRUNCATED ( -- )
    PROC-ARGV-RESET
-   s" %s" PROC-ARGV+
-   s" abcd" PROC-ARGV+
-   s" /usr/bin/printf" PAT-CAP-OUT 3 PAT-CAP-ERR 0 1000 RUN-ARGV-CAPTURE
+   s" %s"  >LEN PROC-ARGV+
+   s" abcd"  >LEN PROC-ARGV+
+   s" /usr/bin/printf" PAT-CAP-OUT 3 PAT-CAP-ERR 0 1000 PAT-CAPTURE
    2drop drop ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-CAT ( -- )
    PROC-ARGV-RESET
-   s" /bin/cat" s" stdin-echo" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 RUN-ARGV-STDIN-CAPTURE
+   s" /bin/cat" s" stdin-echo" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-STDIN-CAPTURE
    0 T= 0 T= 10 T=
    PAT-CAP-OUT 10 s" stdin-echo" T$=
    PROC-ARGV-N @ 0 T= ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-EMPTY ( -- )
    PROC-ARGV-RESET
-   s" /bin/cat" s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 RUN-ARGV-STDIN-CAPTURE
+   s" /bin/cat" s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-STDIN-CAPTURE
    0 T= 0 T= 0 T= ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-FALSE ( -- )
    PROC-ARGV-RESET
-   s" /usr/bin/false" s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 RUN-ARGV-STDIN-CAPTURE
+   s" /usr/bin/false" s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-STDIN-CAPTURE
    1 T= 0 T= 0 T= ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-TRUNCATED ( -- )
    PROC-ARGV-RESET
-   s" /bin/cat" s" abcd" PAT-CAP-OUT 3 PAT-CAP-ERR 32 1000 RUN-ARGV-STDIN-CAPTURE
+   s" /bin/cat" s" abcd" PAT-CAP-OUT 3 PAT-CAP-ERR 32 1000 PAT-STDIN-CAPTURE
    2drop drop ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-TIMEOUT ( -- )
    PROC-ARGV-RESET
-   s" 5" PROC-ARGV+
-   s" /bin/sleep" s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 50 RUN-ARGV-STDIN-CAPTURE
+   s" 5"  >LEN PROC-ARGV+
+   s" /bin/sleep" s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 50 PAT-STDIN-CAPTURE
    2drop drop ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-OUTCOME-CAT ( -- )
    PROC-ARGV-RESET
-   s" /bin/cat" s" stdin-outcome" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   s" /bin/cat" s" stdin-outcome" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-STDIN-CAPTURE-OUTCOME
    0 T= PROC-OUTCOME-EXIT T= 0 T= 13 T=
    PAT-CAP-OUT 13 s" stdin-outcome" T$= ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-OUTCOME-TIMEOUT ( -- )
    PROC-ARGV-RESET
-   s" 5" PROC-ARGV+
-   s" /bin/sleep" s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 50 RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   s" 5"  >LEN PROC-ARGV+
+   s" /bin/sleep" s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 50 PAT-STDIN-CAPTURE-OUTCOME
    SIGKILL T= PROC-OUTCOME-TIMEOUT T= 0 T= 0 T= ;
 
 : PROCESS-ARGV-TEST-MAIN ( -- )

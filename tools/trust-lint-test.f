@@ -176,40 +176,45 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-ARGV ( ptr u8 n -- ) {: today:ptr todayu :}
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/date.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/fs.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/trust-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   TLT-CASE PROC-ARGV+
-   today todayu PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/fs.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/trust-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   TLT-CASE  >LEN PROC-ARGV+
+   today todayu  >LEN PROC-ARGV+ ;
 
 : TLT-SOURCE-ARGV ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu today:ptr todayu :}
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/date.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/fs.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/trust-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" source-only" PROC-ARGV+
-   src srcu PROC-ARGV+
-   TLT-CASE PROC-ARGV+
-   today todayu PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/fs.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/trust-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" source-only"  >LEN PROC-ARGV+
+   src srcu  >LEN PROC-ARGV+
+   TLT-CASE  >LEN PROC-ARGV+
+   today todayu  >LEN PROC-ARGV+ ;
+
+: TLT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : TLT-RUN ( ptr u8 n -- n n n )
    TLT-ARGV
-   s" bin/hb" TLT-OUT TLT-CAP TLT-ERR TLT-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" bin/hb"  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
+   1000 >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
 
 : TLT-RUN-DEFAULT ( -- n n n )
    s" 2026-06-16" TLT-RUN ;
 
 : TLT-RUN-SOURCE ( ptr u8 n -- n n n )
    s" 2026-06-16" TLT-SOURCE-ARGV
-   s" bin/hb" TLT-OUT TLT-CAP TLT-ERR TLT-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" bin/hb"  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
+   1000 >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
 
 : TLT-EXPECT-OK ( n n -- ) {: sites rows :}
    TLT-RUN-DEFAULT 0 T=

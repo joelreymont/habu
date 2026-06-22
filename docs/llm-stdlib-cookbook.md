@@ -191,9 +191,9 @@ variable FE-FILE#
 
 Load `lib/errors.f lib/test.f lib/process.f`; add `lib/process-argv.f` when a
 real argv vector is needed. Use checked wrappers such as
-`SPAWN-IO ( ptr u8 n n n n -- n )`, `WAIT-RC ( n -- n )`,
-`RUN-IO-RC ( ptr u8 n n n n -- n )`, and
-`RUN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )`. They are covered by
+`SPAWN-IO ( ptr u8 len fd fd fd -- pid )`, `WAIT-RC ( pid -- rc )`,
+`RUN-IO-RC ( ptr u8 len fd fd fd -- rc )`, and
+`RUN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )`. They are covered by
 `lib/process-test.f`, `lib/process-argv-test.f`, and `docs/process-pty.md`.
 
 ```forth
@@ -204,11 +204,14 @@ create PE-OUT PE-OUT-CAP allot
 create PE-ERR PE-ERR-CAP allot
 
 : PE-TRUE-RC ( -- n )
-   s" /usr/bin/true" -1 -1 -1 SPAWN-IO WAIT-RC ;
+   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD SPAWN-IO WAIT-RC RC>N ;
 
 : PE-CAPTURE-TRUE ( -- )
-   s" /usr/bin/true" PE-OUT PE-OUT-CAP PE-ERR PE-ERR-CAP 1000 RUN-CAPTURE
-   0 T= 0 T= 0 T= ;
+   s" /usr/bin/true" >LEN PE-OUT PE-OUT-CAP >LEN PE-ERR PE-ERR-CAP >LEN 1000 >MS RUN-CAPTURE
+   {: outu erru rc :}
+   rc RC>N 0 T=
+   erru LEN>N 0 T=
+   outu LEN>N 0 T= ;
 
 : PE-TEST ( -- )
    T-RESET

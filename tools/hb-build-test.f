@@ -141,51 +141,55 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 : HBT-ARGV-BASE-TMP ( ptr u8 n -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   s" HB_TMP" 2swap PROC-ENV+
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   s" lib/build.f" PROC-ARGV+
-   s" tools/build-fixpoint.f" PROC-ARGV+
-   s" tools/hb-build-lib.f" PROC-ARGV+
-   s" tools/hb-build.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" HB_TMP" >LEN 2swap >LEN PROC-ENV+
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   s" lib/build.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
+   s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
+   s" tools/hb-build.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
 
 : HBT-ARGV-BASE ( -- )
    HBT-TMP HBT-ARGV-BASE-TMP ;
 
+: HBT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
 : HBT-RUN-HB-BUILD ( -- n n n )
-   s" bin/hb" HBT-OUT HBT-CAPTURE-CAP HBT-ERR HBT-CAPTURE-CAP
-   HBT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE ;
+   s" bin/hb" >LEN HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   HBT-CAPTURE>N ;
 
 : HBT-ADD-OK ( -- )
-   HBT-OK-SRC PROC-ARGV+
-   s" -o" PROC-ARGV+
-   HBT-OK-OUT PROC-ARGV+ ;
+   HBT-OK-SRC  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   HBT-OK-OUT  >LEN PROC-ARGV+ ;
 
 : HBT-ADD-BAD ( -- )
-   s" --json-errors" PROC-ARGV+
-   HBT-BAD-SRC PROC-ARGV+
-   s" -o" PROC-ARGV+
-   HBT-BAD-OUT PROC-ARGV+ ;
+   s" --json-errors"  >LEN PROC-ARGV+
+   HBT-BAD-SRC  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   HBT-BAD-OUT  >LEN PROC-ARGV+ ;
 
 : HBT-ADD-REPL ( -- )
-   s" --repl" PROC-ARGV+
-   HBT-REPL-SRC PROC-ARGV+
-   s" -o" PROC-ARGV+
-   HBT-REPL-OUT PROC-ARGV+ ;
+   s" --repl"  >LEN PROC-ARGV+
+   HBT-REPL-SRC  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   HBT-REPL-OUT  >LEN PROC-ARGV+ ;
 
 : HBT-ADD-REPL-BAD ( -- )
-   s" --repl" PROC-ARGV+
-   HBT-REPL-BAD-SRC PROC-ARGV+
-   s" -o" PROC-ARGV+
-   HBT-REPL-BAD-OUT PROC-ARGV+ ;
+   s" --repl"  >LEN PROC-ARGV+
+   HBT-REPL-BAD-SRC  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   HBT-REPL-BAD-OUT  >LEN PROC-ARGV+ ;
 
 : HBT-BUILD-OK ( -- )
    HBT-ARGV-BASE
@@ -198,11 +202,11 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBT-OK-OUT FILE? TTRUE ;
 
 : HBT-RUN-OK ( -- )
-   HBT-OK-OUT HBT-RUN-OUT HBT-CAPTURE-CAP HBT-RUN-ERR HBT-CAPTURE-CAP
-   HBT-TIMEOUT-MS RUN-CAPTURE 0 T=
-   {: outu erru :}
-   HBT-RUN-ERR erru HBT-EMPTY$ T$=
-   HBT-RUN-OUT outu HBT-42$ T$= ;
+   HBT-OK-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn errn rcn :}
+   rcn 0 T=
+   HBT-RUN-ERR errn HBT-EMPTY$ T$=
+   HBT-RUN-OUT outn HBT-42$ T$= ;
 
 : HBT-81$ ( -- ptr u8 n )
    SB-RESET
@@ -222,12 +226,12 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBT-REPL-OUT FILE? TTRUE ;
 
 : HBT-RUN-REPL ( -- )
-   HBT-REPL-OUT HBT-RUN-OUT HBT-CAPTURE-CAP HBT-RUN-ERR HBT-CAPTURE-CAP
-   HBT-TIMEOUT-MS RUN-CAPTURE {: outu erru rc :}
-   rc 0 <> if s" repl rc: " type rc . cr HBT-RUN-OUT outu type HBT-RUN-ERR erru type then
-   rc 0 T=
-   HBT-RUN-ERR erru HBT-EMPTY$ T$=
-   HBT-RUN-OUT outu HBT-81$ T$= ;
+   HBT-REPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn errn rcn :}
+   rcn 0 <> if s" repl rc: " type rcn . cr HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   HBT-RUN-ERR errn HBT-EMPTY$ T$=
+   HBT-RUN-OUT outn HBT-81$ T$= ;
 
 : HBT-81-ARGS$ ( -- ptr u8 n )
    SB-RESET
@@ -243,20 +247,20 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 
 : HBT-RUN-REPL-ARGS ( -- )
    PROC-ARGV-ENV-RESET
-   s" alpha" PROC-ARGV+
-   s" beta" PROC-ARGV+
+   s" alpha"  >LEN PROC-ARGV+
+   s" beta"  >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   HBT-REPL-OUT HBT-RUN-OUT HBT-CAPTURE-CAP HBT-RUN-ERR HBT-CAPTURE-CAP
-   HBT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
-   rc 0 <> if s" repl args rc: " type rc . cr HBT-RUN-OUT outu type HBT-RUN-ERR erru type then
-   rc 0 T=
-   HBT-RUN-ERR erru HBT-EMPTY$ T$=
-   HBT-RUN-OUT outu HBT-81-ARGS$ T-STR= 0= if
-      s" repl args stdout: " type HBT-RUN-OUT outu type cr
-      s" actual len: " type outu . cr
+   HBT-REPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE HBT-CAPTURE>N {: outn errn rcn :}
+   rcn 0 <> if s" repl args rc: " type rcn . cr HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   HBT-RUN-ERR errn HBT-EMPTY$ T$=
+   HBT-RUN-OUT outn HBT-81-ARGS$ T-STR= 0= if
+      s" repl args stdout: " type HBT-RUN-OUT outn type cr
+      s" actual len: " type outn . cr
       s" expect len: " type HBT-81-ARGS$ nip . cr
    then
-   HBT-RUN-OUT outu HBT-81-ARGS$ T$= ;
+   HBT-RUN-OUT outn HBT-81-ARGS$ T$= ;
 
 : HBT-BUILD-MISSING-TMP ( -- )
    HBT-NEW-TMP EXISTS? TFALSE

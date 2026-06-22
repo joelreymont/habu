@@ -616,23 +616,25 @@ VRT-LF VRT-LF-BUF c!
    s" bench/llm/tasks.tsv" VRT-TASKS$ COPY-FILE-STREAM ;
 
 : VRT-VALIDATOR-LOADS ( -- )
-   s" --load" PROC-ARGV+
-   s" tools/date.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" bench/llm/validate-results.f" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" bench/llm/validate-results.f"  >LEN PROC-ARGV+ ;
 
 : VRT-CAPTURE-VALIDATE ( ptr u8 n bool -- n n n ) {: path:ptr pathu json :}
    PROC-ARGV-ENV-RESET
-   s" BENCH_TASKS" VRT-TASKS$ PROC-ENV+
-   s" BENCH_REFERENCE_RESULTS" VRT-REF$ PROC-ENV+
+   s" BENCH_TASKS" >LEN VRT-TASKS$ >LEN PROC-ENV+
+   s" BENCH_REFERENCE_RESULTS" >LEN VRT-REF$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    VRT-VALIDATOR-LOADS
-   s" --" PROC-ARGV+
-   json if s" --json" PROC-ARGV+ then
-   pathu 0 > if path pathu PROC-ARGV+ then
-   s" bin/hb" VRT-OUT VRT-CAP VRT-ERR VRT-CAP VRT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE ;
+   s" --"  >LEN PROC-ARGV+
+   json if s" --json"  >LEN PROC-ARGV+ then
+   pathu 0 > if path pathu  >LEN PROC-ARGV+ then
+   s" bin/hb" >LEN VRT-OUT VRT-CAP >LEN VRT-ERR VRT-CAP >LEN
+   VRT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : VRT-RUN-VALIDATE ( ptr u8 n bool -- ) {: path:ptr pathu json :}
    path pathu json VRT-CAPTURE-VALIDATE {: outu erru rc :}

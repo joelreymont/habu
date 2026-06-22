@@ -98,39 +98,39 @@ TRUSTED: MRUN-TEXT-BUF ( -- ptr u8 )
    u MRUN-TEXT-U ! ;
 
 : MRUN-RESOLVE ( -- ptr u8 n )
-   MR-COMMAND$ MRUN-EXE-BUF RESOLVE-EXECUTABLE MRUN-EXE-U !
+   MR-COMMAND$ >LEN MRUN-EXE-BUF RESOLVE-EXECUTABLE LEN>N MRUN-EXE-U !
    MRUN-EXE-BUF MRUN-EXE-U @ ;
 
 : MRUN-EMPTY$ ( -- ptr u8 n )
    s" " drop 0 ;
 
 : MRUN-ARGS-PROMPT ( ptr u8 n -- )
-   PROC-ARGV+ ;
+    >LEN PROC-ARGV+ ;
 
 : MRUN-ARGS-CLAUDE ( ptr u8 n -- ) {: prompt:ptr promptu :}
-   s" -p" PROC-ARGV+
-   prompt promptu PROC-ARGV+
-   s" --output-format" PROC-ARGV+
-   s" json" PROC-ARGV+ ;
+   s" -p"  >LEN PROC-ARGV+
+   prompt promptu  >LEN PROC-ARGV+
+   s" --output-format"  >LEN PROC-ARGV+
+   s" json"  >LEN PROC-ARGV+ ;
 
 : MRUN-ARGS-CODEX-DISABLE ( ptr u8 n -- )
-   s" --disable" PROC-ARGV+
-   PROC-ARGV+ ;
+   s" --disable"  >LEN PROC-ARGV+
+    >LEN PROC-ARGV+ ;
 
 : MRUN-ARGS-CODEX ( ptr u8 n -- ) {: prompt:ptr promptu :}
-   s" exec" PROC-ARGV+
+   s" exec"  >LEN PROC-ARGV+
    s" plugins" MRUN-ARGS-CODEX-DISABLE
    s" apps" MRUN-ARGS-CODEX-DISABLE
    s" multi_agent" MRUN-ARGS-CODEX-DISABLE
    s" tool_suggest" MRUN-ARGS-CODEX-DISABLE
    s" workspace_dependencies" MRUN-ARGS-CODEX-DISABLE
-   s" --skip-git-repo-check" PROC-ARGV+
-   s" --ignore-rules" PROC-ARGV+
-   s" --ignore-user-config" PROC-ARGV+
-   s" --sandbox" PROC-ARGV+
-   s" read-only" PROC-ARGV+
-   s" --json" PROC-ARGV+
-   prompt promptu PROC-ARGV+ ;
+   s" --skip-git-repo-check"  >LEN PROC-ARGV+
+   s" --ignore-rules"  >LEN PROC-ARGV+
+   s" --ignore-user-config"  >LEN PROC-ARGV+
+   s" --sandbox"  >LEN PROC-ARGV+
+   s" read-only"  >LEN PROC-ARGV+
+   s" --json"  >LEN PROC-ARGV+
+   prompt promptu  >LEN PROC-ARGV+ ;
 
 : MRUN-BUILD-ARGS ( ptr u8 n -- ) {: prompt:ptr promptu :}
    MR-ARGS$ s" -p {prompt} --output-format json" STR= if
@@ -157,10 +157,12 @@ TRUSTED: MRUN-TEXT-BUF ( -- ptr u8 )
    prompt promptu MRUN-BUILD-ARGS
    MRUN-CODEX-CLEAN? if CODEX-HOME-PREPARE-ENV then
    PROC-ENV-INHERIT-MISSING
-   MRUN-RESOLVE MRUN-EMPTY$ MRUN-OUT-BUF MRUN-OUT-CAP MRUN-ERR-BUF MRUN-ERR-CAP MR-TIMEOUT 1000 * RUN-ARGV-ENV-STDIN-CAPTURE
-   MRUN-RC !
-   MRUN-ERR-U !
-   MRUN-OUT-U ! ;
+   MRUN-RESOLVE >LEN MRUN-EMPTY$ >LEN
+   MRUN-OUT-BUF MRUN-OUT-CAP >LEN MRUN-ERR-BUF MRUN-ERR-CAP >LEN
+   MR-TIMEOUT 1000 * >MS RUN-ARGV-ENV-STDIN-CAPTURE {: outu erru rc :}
+   rc RC>N MRUN-RC !
+   erru LEN>N MRUN-ERR-U !
+   outu LEN>N MRUN-OUT-U ! ;
 
 : MRUN-PARSE ( -- )
    MRUN-OUT$ MR-PARSER$ MR-TOKEN-FIELDS$ PR-PARSE-BUFFER

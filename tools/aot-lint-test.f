@@ -79,33 +79,39 @@ create ALT-ERR ALT-BUF-CAP allot
 
 : ALT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/lint/json-writer.f" PROC-ARGV+
-   s" tools/lint/source-lex.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/aot-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/aot-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
+
+: ALT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : ALT-RUN-GOOD ( -- n n n )
    ALT-ARGV-LOAD
-   ALT-GOOD PROC-ARGV+
-   s" bin/hb" ALT-OUT ALT-BUF-CAP ALT-ERR ALT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   ALT-GOOD  >LEN PROC-ARGV+
+   s" bin/hb" >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   ALT-CAPTURE>N ;
 
 : ALT-RUN-BAD ( -- n n n )
    ALT-ARGV-LOAD
-   ALT-BAD PROC-ARGV+
-   s" bin/hb" ALT-OUT ALT-BUF-CAP ALT-ERR ALT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   ALT-BAD  >LEN PROC-ARGV+
+   s" bin/hb" >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   ALT-CAPTURE>N ;
 
 : ALT-RUN-BAD-JSON ( -- n n n )
    ALT-ARGV-LOAD
-   s" --json" PROC-ARGV+
-   s" --label" PROC-ARGV+
-   s" <stdin>" PROC-ARGV+
-   ALT-BAD PROC-ARGV+
-   s" bin/hb" ALT-OUT ALT-BUF-CAP ALT-ERR ALT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" --json"  >LEN PROC-ARGV+
+   s" --label"  >LEN PROC-ARGV+
+   s" <stdin>"  >LEN PROC-ARGV+
+   ALT-BAD  >LEN PROC-ARGV+
+   s" bin/hb" >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   ALT-CAPTURE>N ;
 
 : ALT-TEST-GOOD ( -- )
    ALT-RUN-GOOD 0 T=

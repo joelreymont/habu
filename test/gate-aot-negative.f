@@ -28,7 +28,7 @@
 : GAN-BUILD-STRICT-OK ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC
    GB-BUILD-ARGV
-   s" --strict-signatures" PROC-ARGV+
+   s" --strict-signatures"  >LEN PROC-ARGV+
    GAN-BUILD-CAPTURE
    label labelu GE-EXPECT-OK
    GB-OUT$ FILE? 0= if label labelu GE-FAIL then ;
@@ -36,14 +36,14 @@
 : GAN-BUILD-STRICT-NZ ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC
    GB-BUILD-ARGV
-   s" --strict-signatures" PROC-ARGV+
+   s" --strict-signatures"  >LEN PROC-ARGV+
    GAN-BUILD-CAPTURE
    label labelu GE-EXPECT-NONZERO ;
 
 : GAN-BUILD-JSON-NZ ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC
    GB-BUILD-ARGV
-   s" --json-errors" PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
    GAN-BUILD-CAPTURE
    label labelu GE-EXPECT-NONZERO ;
 

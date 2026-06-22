@@ -110,10 +110,12 @@ variable CHT-RC
 
 : CHT-RUN-ENV ( -- )
    PROC-ENV-INHERIT-MISSING
-   s" /usr/bin/env" CHT-OUT-BUF CHT-CAP CHT-ERR-BUF CHT-CAP CHT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE
-   CHT-RC !
-   CHT-ERR-U !
-   CHT-OUT-U ! ;
+   s" /usr/bin/env" >LEN CHT-OUT-BUF CHT-CAP >LEN
+   CHT-ERR-BUF CHT-CAP >LEN CHT-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
+   rc RC>N CHT-RC !
+   erru LEN>N CHT-ERR-U !
+   outu LEN>N CHT-OUT-U ! ;
 
 : CHT-TEST-PREPARE ( -- )
    PROC-ARGV-ENV-RESET

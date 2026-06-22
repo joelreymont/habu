@@ -95,11 +95,12 @@ GR-DQ GR-DQ-BUF c!
 
 : GR-RUN-CHILD ( n -- ) {: timeout :}
    PROC-ARGV-RESET
-   GR-PROG$ PROC-ARGV+
-   s" bin/hb" GR-OUT-BUF GR-CAPTURE-CAP GR-ERR-BUF GR-CAPTURE-CAP timeout
+   GR-PROG$  >LEN PROC-ARGV+
+   s" bin/hb" >LEN GR-OUT-BUF GR-CAPTURE-CAP >LEN
+   GR-ERR-BUF GR-CAPTURE-CAP >LEN timeout >MS
    RUN-ARGV-CAPTURE-OUTCOME {: outu erru kind code :}
-   outu GR-OUT-U !
-   erru GR-ERR-U !
+   outu LEN>N GR-OUT-U !
+   erru LEN>N GR-ERR-U !
    kind GR-KIND !
    code GR-CODE ! ;
 

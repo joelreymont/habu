@@ -19,23 +19,25 @@ variable GE-SRC-U
 variable GE-SRC-N
 variable GE-RD
 
+: GE-STORE-CAPTURE ( len len rc -- ) {: outu erru rc :}
+   rc RC>N GT-OUTCOME-CODE !
+   PROC-OUTCOME-EXIT GT-OUTCOME-KIND !
+   erru LEN>N GT-ERR-U !
+   outu LEN>N GT-OUT-U ! ;
+
 : GE-RUN-ENV ( ptr u8 n n -- ) {: path:ptr pathu timeout :}
    PROC-ENV-INHERIT-MISSING
-   path pathu GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP timeout
+   path pathu >LEN GT-OUT-BUF GT-OUT-CAP >LEN
+   GT-ERR-BUF GT-ERR-CAP >LEN timeout >MS
    RUN-ARGV-ENV-CAPTURE
-   GT-OUTCOME-CODE !
-   PROC-OUTCOME-EXIT GT-OUTCOME-KIND !
-   GT-ERR-U !
-   GT-OUT-U ! ;
+   GE-STORE-CAPTURE ;
 
 : GE-RUN-STDIN ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu in:ptr inu timeout :}
    PROC-ENV-INHERIT-MISSING
-   path pathu in inu GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP timeout
+   path pathu >LEN in inu >LEN GT-OUT-BUF GT-OUT-CAP >LEN
+   GT-ERR-BUF GT-ERR-CAP >LEN timeout >MS
    RUN-ARGV-ENV-STDIN-CAPTURE
-   GT-OUTCOME-CODE !
-   PROC-OUTCOME-EXIT GT-OUTCOME-KIND !
-   GT-ERR-U !
-   GT-OUT-U ! ;
+   GE-STORE-CAPTURE ;
 
 : GE-FAIL ( ptr u8 n -- ) {: label:ptr labelu :}
    s" FAIL: " type label labelu type cr
@@ -168,17 +170,17 @@ variable GE-RD
 
 : GE-CHECK-ARGV ( -- )
    GE-HB-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/check.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/check.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
 
 : GE-CHECK-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
@@ -187,9 +189,9 @@ variable GE-RD
 
 : GE-CHECK-SRC-LIST ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
-   s" --source-list" PROC-ARGV+
+   s" --source-list"  >LEN PROC-ARGV+
    0 begin dup GE-SRC-N @ < while
-      dup GE-SRC$ PROC-ARGV+
+      dup GE-SRC$  >LEN PROC-ARGV+
       1+
    repeat drop
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV

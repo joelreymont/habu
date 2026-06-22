@@ -147,9 +147,13 @@ create EXT-ERR EXT-CAPTURE-CAP allot
    b u s" examples/build-script.f" EXT-ADD-SOURCE
    b u ;
 
+: EXT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
 : EXT-RUN-HB ( -- n n n )
-   s" bin/hb" EXT-OUT EXT-CAPTURE-CAP EXT-ERR EXT-CAPTURE-CAP
-   EXT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" bin/hb"  >LEN EXT-OUT EXT-CAPTURE-CAP >LEN
+   EXT-ERR EXT-CAPTURE-CAP >LEN EXT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE EXT-CAPTURE>N ;
 
 : EXT-ASSERT-OK ( n n n -- )
    0 T=
@@ -159,22 +163,22 @@ create EXT-ERR EXT-CAPTURE-CAP allot
 
 : EXT-RUN-PLAIN ( ptr u8 n -- )
    PROC-ARGV-RESET
-   PROC-ARGV+
+    >LEN PROC-ARGV+
    EXT-RUN-HB EXT-ASSERT-OK ;
 
 : EXT-RUN-FILE-MAP ( ptr u8 n -- )
    PROC-ARGV-RESET
-   PROC-ARGV+
-   EXT-FILES PROC-ARGV+
+    >LEN PROC-ARGV+
+   EXT-FILES  >LEN PROC-ARGV+
    EXT-RUN-HB EXT-ASSERT-OK ;
 
 : EXT-RUN-BUILD-SCRIPT ( ptr u8 n -- )
    PROC-ARGV-RESET
-   PROC-ARGV+
-   s" --json" PROC-ARGV+
-   s" -o" PROC-ARGV+
-   EXT-TEMP s" app.hb" EXT-JOIN$ PROC-ARGV+
-   s" examples/array.f" PROC-ARGV+
+    >LEN PROC-ARGV+
+   s" --json"  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   EXT-TEMP s" app.hb" EXT-JOIN$  >LEN PROC-ARGV+
+   s" examples/array.f"  >LEN PROC-ARGV+
    EXT-RUN-HB EXT-ASSERT-OK ;
 
 : EXT-TEST-ARRAY ( -- )

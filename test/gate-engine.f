@@ -15,32 +15,32 @@ variable GE-SCRIPT-U
 
 : GE-RUN-EXTRA-FIXTURES ( -- )
    GE-HB-RESET
-   s" --load" PROC-ARGV+ s" lib/errors.f" PROC-ARGV+ s" lib/string.f" PROC-ARGV+ s" lib/test.f" PROC-ARGV+ s" lib/fs.f" PROC-ARGV+ s" lib/fs-mutate.f" PROC-ARGV+ s" lib/fs-mutate-test.f" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+ s" lib/errors.f"  >LEN PROC-ARGV+ s" lib/string.f"  >LEN PROC-ARGV+ s" lib/test.f"  >LEN PROC-ARGV+ s" lib/fs.f"  >LEN PROC-ARGV+ s" lib/fs-mutate.f"  >LEN PROC-ARGV+ s" lib/fs-mutate-test.f"  >LEN PROC-ARGV+
    s" fs mutation stdlib" GE-HB-RUN
    GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/string.f" GE-SRC-FILE+ s" lib/test.f" GE-SRC-FILE+ s" lib/fs.f" GE-SRC-FILE+ s" lib/fs-mutate.f" GE-SRC-FILE+ s" lib/fs-mutate-test.f" GE-SRC-FILE+
    s" fs mutation stdlib check" GE-CHECK-SRC-LIST
    GE-HB-RESET
-   s" --load" PROC-ARGV+ s" lib/errors.f" PROC-ARGV+ s" lib/test.f" PROC-ARGV+ s" lib/process.f" PROC-ARGV+ s" lib/process-argv.f" PROC-ARGV+ s" lib/process-argv-test.f" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+ s" lib/errors.f"  >LEN PROC-ARGV+ s" lib/test.f"  >LEN PROC-ARGV+ s" lib/process.f"  >LEN PROC-ARGV+ s" lib/process-argv.f"  >LEN PROC-ARGV+ s" lib/process-argv-test.f"  >LEN PROC-ARGV+
    s" process argv stdlib" GE-HB-RUN
    GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/process.f" GE-SRC-FILE+ s" lib/process-argv.f" GE-SRC-FILE+
    s" process argv check" GE-CHECK-SRC-LIST
    GE-HB-RESET
-   s" --load" PROC-ARGV+ s" lib/errors.f" PROC-ARGV+ s" lib/string.f" PROC-ARGV+ s" lib/test.f" PROC-ARGV+ s" lib/fs.f" PROC-ARGV+ s" lib/process.f" PROC-ARGV+ s" lib/process-argv.f" PROC-ARGV+ s" lib/process-env.f" PROC-ARGV+ s" lib/process-env-test.f" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+ s" lib/errors.f"  >LEN PROC-ARGV+ s" lib/string.f"  >LEN PROC-ARGV+ s" lib/test.f"  >LEN PROC-ARGV+ s" lib/fs.f"  >LEN PROC-ARGV+ s" lib/process.f"  >LEN PROC-ARGV+ s" lib/process-argv.f"  >LEN PROC-ARGV+ s" lib/process-env.f"  >LEN PROC-ARGV+ s" lib/process-env-test.f"  >LEN PROC-ARGV+
    s" process env stdlib" GE-HB-RUN
    GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/string.f" GE-SRC-FILE+ s" lib/fs.f" GE-SRC-FILE+ s" lib/process.f" GE-SRC-FILE+ s" lib/process-argv.f" GE-SRC-FILE+ s" lib/process-env.f" GE-SRC-FILE+
    s" process env check" GE-CHECK-SRC-LIST
    GE-HB-RESET
-   s" --load" PROC-ARGV+ s" lib/errors.f" PROC-ARGV+ s" lib/string.f" PROC-ARGV+ s" lib/test.f" PROC-ARGV+ s" lib/fs.f" PROC-ARGV+ s" lib/fs-mutate.f" PROC-ARGV+ s" lib/process.f" PROC-ARGV+ s" lib/process-argv.f" PROC-ARGV+ s" lib/process-env.f" PROC-ARGV+ s" lib/process-cwd.f" PROC-ARGV+ s" lib/process-cwd-test.f" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+ s" lib/errors.f"  >LEN PROC-ARGV+ s" lib/string.f"  >LEN PROC-ARGV+ s" lib/test.f"  >LEN PROC-ARGV+ s" lib/fs.f"  >LEN PROC-ARGV+ s" lib/fs-mutate.f"  >LEN PROC-ARGV+ s" lib/process.f"  >LEN PROC-ARGV+ s" lib/process-argv.f"  >LEN PROC-ARGV+ s" lib/process-env.f"  >LEN PROC-ARGV+ s" lib/process-cwd.f"  >LEN PROC-ARGV+ s" lib/process-cwd-test.f"  >LEN PROC-ARGV+
    s" process cwd stdlib" GE-HB-RUN
    GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/string.f" GE-SRC-FILE+ s" lib/fs.f" GE-SRC-FILE+ s" lib/process.f" GE-SRC-FILE+ s" lib/process-argv.f" GE-SRC-FILE+ s" lib/process-env.f" GE-SRC-FILE+ s" lib/process-cwd.f" GE-SRC-FILE+
    s" process cwd check" GE-CHECK-SRC-LIST
    GE-HB-RESET
-   s" --load" PROC-ARGV+ s" lib/errors.f" PROC-ARGV+ s" lib/string.f" PROC-ARGV+ s" lib/test.f" PROC-ARGV+ s" lib/fs.f" PROC-ARGV+ s" lib/fs-mutate.f" PROC-ARGV+ s" lib/process.f" PROC-ARGV+ s" lib/process-argv.f" PROC-ARGV+ s" tools/check-repair-hints-test.f" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+ s" lib/errors.f"  >LEN PROC-ARGV+ s" lib/string.f"  >LEN PROC-ARGV+ s" lib/test.f"  >LEN PROC-ARGV+ s" lib/fs.f"  >LEN PROC-ARGV+ s" lib/fs-mutate.f"  >LEN PROC-ARGV+ s" lib/process.f"  >LEN PROC-ARGV+ s" lib/process-argv.f"  >LEN PROC-ARGV+ s" tools/check-repair-hints-test.f"  >LEN PROC-ARGV+
    s" repair diagnostic hints" GE-HB-RUN
    GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/string.f" GE-SRC-FILE+ s" lib/test.f" GE-SRC-FILE+ s" lib/fs.f" GE-SRC-FILE+ s" lib/fs-mutate.f" GE-SRC-FILE+ s" lib/process.f" GE-SRC-FILE+ s" lib/process-argv.f" GE-SRC-FILE+ s" tools/check-repair-hints-test.f" GE-SRC-FILE+
    s" repair diagnostic hints check" GE-CHECK-SRC-LIST
    GE-HB-RESET
-   s" --load" PROC-ARGV+ s" lib/errors.f" PROC-ARGV+ s" lib/string.f" PROC-ARGV+ s" lib/test.f" PROC-ARGV+ s" lib/fs.f" PROC-ARGV+ s" lib/fs-mutate.f" PROC-ARGV+ s" lib/process.f" PROC-ARGV+ s" lib/process-argv.f" PROC-ARGV+ s" tools/hb-baseline-contracts-test.f" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+ s" lib/errors.f"  >LEN PROC-ARGV+ s" lib/string.f"  >LEN PROC-ARGV+ s" lib/test.f"  >LEN PROC-ARGV+ s" lib/fs.f"  >LEN PROC-ARGV+ s" lib/fs-mutate.f"  >LEN PROC-ARGV+ s" lib/process.f"  >LEN PROC-ARGV+ s" lib/process-argv.f"  >LEN PROC-ARGV+ s" tools/hb-baseline-contracts-test.f"  >LEN PROC-ARGV+
    s" hb baseline contracts" GE-HB-RUN ;
 
 : GE-ENGINE-SUITE ( -- )
@@ -96,16 +96,16 @@ variable GE-SCRIPT-U
 : GE-ARGV-MODES ( -- )
    GE-WRITE-SCRIPT-ARGV
    GE-HB-RESET
-   GE-SCRIPT-PATH GE-SCRIPT-U @ PROC-ARGV+
-   s" alpha" PROC-ARGV+
-   s" beta" PROC-ARGV+
+   GE-SCRIPT-PATH GE-SCRIPT-U @  >LEN PROC-ARGV+
+   s" alpha"  >LEN PROC-ARGV+
+   s" beta"  >LEN PROC-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" hb script argv mode" GE-EXPECT-OK
    SB-RESET s" 2" SB-APPEND GE-SB-LF s" alpha" SB-APPEND GE-SB-LF s" beta" SB-APPEND GE-SB-LF
    SB$ s" hb script argv mode output" GE-EXPECT-OUT
    GE-HB-RESET
-   s" alpha" PROC-ARGV+
-   s" beta" PROC-ARGV+
+   s" alpha"  >LEN PROC-ARGV+
+   s" beta"  >LEN PROC-ARGV+
    GE-SRC-RESET
    s" ARGC ." GE-SRC-LINE
    s" 1 ARGV$ type cr" GE-SRC-LINE
@@ -116,7 +116,7 @@ variable GE-SCRIPT-U
    SB$ s" hb pipeline argv mode output" GE-EXPECT-OUT
    GE-HB-RESET
    GT-ROOT s" no-such-hb-script.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
-   GE-SCRIPT-PATH GE-SCRIPT-U @ PROC-ARGV+
+   GE-SCRIPT-PATH GE-SCRIPT-U @  >LEN PROC-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    74 s" hb missing script rc" GE-EXPECT-RC ;
 

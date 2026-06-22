@@ -186,21 +186,24 @@ ERT-LF ERT-LF-BUF c!
 
 : ERT-RUN-REPORT ( -- n n n )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/time.f" PROC-ARGV+
-   s" lib/date.f" PROC-ARGV+
-   s" lib/argv.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" bench/llm/expanded-report.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   ERT-RESULT$ PROC-ARGV+
-   ERT-PERF$ PROC-ARGV+
-   s" bin/hb" ERT-OUT ERT-CAPTURE-CAP ERT-ERR ERT-CAPTURE-CAP ERT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/time.f"  >LEN PROC-ARGV+
+   s" lib/date.f"  >LEN PROC-ARGV+
+   s" lib/argv.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" bench/llm/expanded-report.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   ERT-RESULT$  >LEN PROC-ARGV+
+   ERT-PERF$  >LEN PROC-ARGV+
+   s" bin/hb" >LEN ERT-OUT ERT-CAPTURE-CAP >LEN
+   ERT-ERR ERT-CAPTURE-CAP >LEN ERT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : ERT-CONTAINS ( ptr u8 n -- ) {: a:ptr u :}
    ERT-OUT ERT-OUT-U @ a u FIND-SUB 0 >= TTRUE ;

@@ -595,30 +595,30 @@ wrappers accept counted paths/commands, own conversion to private `pathz`
 buffers, and never require LLM code to build C strings by hand.
 
 ```forth
-PROC-WAIT-RAW       ( n -- n )
-PROC-WAIT-STATUS-RAW ( n -- n )
-PROC-SPAWN-RAW      ( ptr u8 n n n -- n )
-PROC-KILL-RAW       ( n n -- n )
-PROC-ZCOPY          ( ptr u8 n ptr u8 n -- ptr u8 )
-PATHZ               ( ptr u8 n -- ptr u8 )
-WAIT-STATUS         ( n -- n )
+PROC-WAIT-RAW       ( pid -- rc )
+PROC-WAIT-STATUS-RAW ( pid -- n )
+PROC-SPAWN-RAW      ( ptr u8 fd fd fd -- pid )
+PROC-KILL-RAW       ( pid n -- rc )
+PROC-ZCOPY          ( ptr u8 len ptr u8 len -- ptr u8 )
+PATHZ               ( ptr u8 len -- ptr u8 )
+WAIT-STATUS         ( pid -- n )
 PROC-STATUS>OUTCOME ( n -- n n )
-PROC-STATUS>RC      ( n -- n )
-WAIT-OUTCOME        ( n -- n n )
-WAIT-RC             ( n -- n )
-SPAWN-IO            ( ptr u8 n n n n -- n )
-RUN-RC              ( ptr u8 n -- n )
-RUN-IO-RC           ( ptr u8 n n n n -- n )
-FD-CLOEXEC!         ( n -- )
-PIPE-PAIR           ( -- n n )
-PROC-PFD-SLOT       ( n -- ptr a )
-PROC-PFD-AT!        ( n n n -- )
-PROC-PFD!           ( n n -- )
-PROC-PFD-REVENTS    ( n -- n )
-POLL-IN             ( n n -- n )
-POLL-IN-OR-TIMEOUT  ( n n -- n )
+PROC-STATUS>RC      ( n -- rc )
+WAIT-OUTCOME        ( pid -- n n )
+WAIT-RC             ( pid -- rc )
+SPAWN-IO            ( ptr u8 len fd fd fd -- pid )
+RUN-RC              ( ptr u8 len -- rc )
+RUN-IO-RC           ( ptr u8 len fd fd fd -- rc )
+FD-CLOEXEC!         ( fd -- )
+PIPE-PAIR           ( -- fd fd )
+PROC-PFD-SLOT       ( idx -- ptr a )
+PROC-PFD-AT!        ( fd n idx -- )
+PROC-PFD!           ( fd n -- )
+PROC-PFD-REVENTS    ( idx -- n )
+POLL-IN             ( fd ms -- count )
+POLL-IN-OR-TIMEOUT  ( fd ms -- count )
 PROC-CAPTURE-RESET       ( -- )
-PROC-CLOSE-CELL          ( ptr a -- )
+PROC-CLOSE-CELL          ( ptr fd -- )
 PROC-CLOSE-CAPTURE-FDS   ( -- )
 PROC-REAP-CAPTURE        ( -- )
 PROC-REAP-CAPTURE-TIMEOUT ( -- )
@@ -627,20 +627,20 @@ PROC-THROW-CAPTURE       ( n -- )
 PROC-OPEN-PIPE           ( ptr a ptr a -- )
 PROC-CLOEXEC-CELL        ( ptr a -- )
 PROC-SETUP-CAPTURE-FDS   ( -- )
-PROC-CAPTURE-DEADLINE!   ( n -- )
-PROC-REMAINING-MS        ( -- n )
-PROC-POLL-CAPTURE        ( n -- n )
-PROC-POLL-CAPTURE-OUTCOME ( n -- n )
-PROC-READ-STREAM         ( ptr a ptr u8 n ptr a -- )
-PROC-PROBE-FULL-STREAM   ( ptr a -- )
-PROC-READ-OR-PROBE-STREAM ( ptr a ptr u8 n ptr a -- )
-PROC-DRAIN-READY         ( ptr u8 n ptr u8 n -- )
+PROC-CAPTURE-DEADLINE!   ( ms -- )
+PROC-REMAINING-MS        ( -- ms )
+PROC-POLL-CAPTURE        ( ms -- count )
+PROC-POLL-CAPTURE-OUTCOME ( ms -- count )
+PROC-READ-STREAM         ( ptr fd ptr u8 len ptr len -- )
+PROC-PROBE-FULL-STREAM   ( ptr fd -- )
+PROC-READ-OR-PROBE-STREAM ( ptr fd ptr u8 len ptr len -- )
+PROC-DRAIN-READY         ( ptr u8 len ptr u8 len -- )
 PROC-CAPTURE-DONE?       ( -- bool )
-PROC-RUN-CAPTURE-LOOP    ( ptr u8 n ptr u8 n -- )
-PROC-RUN-CAPTURE-OUTCOME-LOOP ( ptr u8 n ptr u8 n -- )
+PROC-RUN-CAPTURE-LOOP    ( ptr u8 len ptr u8 len -- )
+PROC-RUN-CAPTURE-OUTCOME-LOOP ( ptr u8 len ptr u8 len -- )
 PROC-SPAWN-CAPTURE       ( ptr u8 -- )
-RUN-CAPTURE  ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-RUN-CAPTURE-OUTCOME  ( ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+RUN-CAPTURE  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+RUN-CAPTURE-OUTCOME  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
 ```
 
 `PATHZ` copies a counted path into the module's private NUL-terminated path
@@ -658,13 +658,13 @@ explicit stdin, stdout, and stderr fds. `SPAWN-IO` and `WAIT-RC` throw
 signaled children to `128 + signal`.
 
 `SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
-fds. Negative fd values mean inherit/default; nonnegative fd values are passed
+`fd` roles. Negative fd values mean inherit/default; nonnegative fd values are passed
 through explicitly. `PIPE-PAIR` creates a pipe as read fd then write fd.
 Parent-only pipe and PTY fds must be marked close-on-exec with `FD-CLOEXEC!`
 before spawning; this sets the Darwin `FD_CLOEXEC` flag. Parent code then closes
 the fd after the child no longer needs it.
 Every spawn path must close all fds it owns on success and failure. `POLL-IN`
-polls one fd for readable input and returns the raw poll result;
+polls one fd for readable input and returns the raw poll result as `count`;
 `POLL-IN-OR-TIMEOUT` throws `E-PROC-TIMEOUT` for a zero poll result and
 `E-PROC-OUTPUT` for poll failure.
 
@@ -678,21 +678,21 @@ the raw `spawn-argv-io` primitive. It owns bounded argv table and string buffers
 so callers append counted extra args and never hand-build C argv storage.
 
 ```forth
-PROC-SPAWN-ARGV-RAW   ( ptr u8 ptr a n n n -- n )
+PROC-SPAWN-ARGV-RAW   ( ptr u8 ptr a fd fd fd -- pid )
 PROC-ARGV-RESET       ( -- )
-PROC-ARGV-SLOT        ( n -- ptr a )
+PROC-ARGV-SLOT        ( idx -- ptr a )
 PROC-ARGV-CHECK-EXTRA ( -- )
-PROC-ARGV-ZCOPY       ( ptr u8 n -- ptr u8 )
-PROC-ARGV+            ( ptr u8 n -- )
-PROC-ARGV-PREPARE     ( ptr u8 n -- ptr u8 ptr a )
-SPAWN-ARGV-IO         ( ptr u8 n n n n -- n )
-RUN-ARGV-IO-RC        ( ptr u8 n n n n -- n )
-PROC-ARGV-CHECK-PATH  ( ptr u8 n -- )
+PROC-ARGV-ZCOPY       ( ptr u8 len -- ptr u8 )
+PROC-ARGV+            ( ptr u8 len -- )
+PROC-ARGV-PREPARE     ( ptr u8 len -- ptr u8 ptr a )
+SPAWN-ARGV-IO         ( ptr u8 len fd fd fd -- pid )
+RUN-ARGV-IO-RC        ( ptr u8 len fd fd fd -- rc )
+PROC-ARGV-CHECK-PATH  ( ptr u8 len -- )
 PROC-SPAWN-ARGV-CAPTURE ( ptr u8 ptr a -- )
-RUN-ARGV-CAPTURE      ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-RUN-ARGV-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
-RUN-ARGV-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-RUN-ARGV-STDIN-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+RUN-ARGV-CAPTURE      ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+RUN-ARGV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
+RUN-ARGV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+RUN-ARGV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
 ```
 
 Use `PROC-ARGV-RESET`, append zero or more extra args with `PROC-ARGV+`, then
@@ -705,7 +705,7 @@ the primitive spawn returns, throws `E-PROC-SPAWN` on spawn failure, and reuses
 the same fd inheritance rules as `SPAWN-IO`.
 
 `RUN-CAPTURE` and `RUN-ARGV-CAPTURE` take stdout buffer/capacity, stderr
-buffer/capacity, and timeout milliseconds. `RUN-CAPTURE` runs a counted
+buffer/capacity, and timeout `ms`. `RUN-CAPTURE` runs a counted
 executable path with no extra args; `RUN-ARGV-CAPTURE` runs the current prepared
 argv vector and then resets argv state. Both return stdout length, stderr length,
 and rc in that order. Captures are bounded by the caller capacities; if either
@@ -730,19 +730,19 @@ fixpoint installer
 before the newer `spawn-argv-env-io` primitive exists.
 
 ```forth
-PROC-SPAWN-ARGV-ENV-RAW   ( ptr u8 ptr a ptr a n n n -- n )
+PROC-SPAWN-ARGV-ENV-RAW   ( ptr u8 ptr a ptr a fd fd fd -- pid )
 PROC-ENV-RESET            ( -- )
-PROC-ENV-ENTRY+           ( ptr u8 n -- )
-PROC-ENV+                 ( ptr u8 n ptr u8 n -- )
+PROC-ENV-ENTRY+           ( ptr u8 len -- )
+PROC-ENV+                 ( ptr u8 len ptr u8 len -- )
 PROC-ENV-PREPARE          ( -- ptr a )
 PROC-ENV-INHERIT-MISSING  ( -- )
-SPAWN-ARGV-ENV-IO         ( ptr u8 n n n n -- n )
-RUN-ARGV-ENV-IO-RC        ( ptr u8 n n n n -- n )
-RUN-ARGV-ENV-CAPTURE      ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-FIND-EXECUTABLE-IN-PATH   ( ptr u8 n ptr u8 n ptr u8 -- n bool )
-FIND-EXECUTABLE           ( ptr u8 n ptr u8 -- n bool )
-RESOLVE-EXECUTABLE        ( ptr u8 n ptr u8 -- n )
+SPAWN-ARGV-ENV-IO         ( ptr u8 len fd fd fd -- pid )
+RUN-ARGV-ENV-IO-RC        ( ptr u8 len fd fd fd -- rc )
+RUN-ARGV-ENV-CAPTURE      ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+FIND-EXECUTABLE-IN-PATH   ( ptr u8 len ptr u8 len ptr u8 -- len bool )
+FIND-EXECUTABLE           ( ptr u8 len ptr u8 -- len bool )
+RESOLVE-EXECUTABLE        ( ptr u8 len ptr u8 -- len )
 ```
 
 Call `PROC-ENV-RESET`, append exact `NAME=VALUE` entries with
@@ -761,14 +761,14 @@ is copied into a separate NUL buffer from the executable path to avoid
 overwriting `argv[0]`.
 
 ```forth
-PROC-SPAWN-ARGV-ENV-CWD-RAW ( ptr u8 ptr a ptr a ptr u8 n n n -- n )
-PROC-CWDZ                   ( ptr u8 n -- ptr u8 )
-SPAWN-ARGV-ENV-CWD-IO      ( ptr u8 n ptr u8 n n n n -- n )
-RUN-ARGV-ENV-CWD-IO-RC     ( ptr u8 n ptr u8 n n n n -- n )
+PROC-SPAWN-ARGV-ENV-CWD-RAW ( ptr u8 ptr a ptr a ptr u8 fd fd fd -- pid )
+PROC-CWDZ                   ( ptr u8 len -- ptr u8 )
+SPAWN-ARGV-ENV-CWD-IO      ( ptr u8 len ptr u8 len fd fd fd -- pid )
+RUN-ARGV-ENV-CWD-IO-RC     ( ptr u8 len ptr u8 len fd fd fd -- rc )
 PROC-SPAWN-ARGV-ENV-CWD-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
 PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
-RUN-ARGV-ENV-CWD-CAPTURE   ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-RUN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+RUN-ARGV-ENV-CWD-CAPTURE   ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+RUN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
 ```
 
 Call `PROC-ARGV-RESET`/`PROC-ENV-RESET`, append prepared args/env entries, then

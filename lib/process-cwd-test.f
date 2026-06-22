@@ -27,6 +27,20 @@ variable PCT-I
    PROC-ARGV-RESET
    PROC-ENV-RESET ;
 
+: PCT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
+: PCT-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+   {: path:ptr pathu cwd:ptr cwdu out:ptr outcap err:ptr errcap timeout :}
+   path pathu >LEN cwd cwdu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CWD-CAPTURE
+   PCT-CAPTURE>N ;
+
+: PCT-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+   {: path:ptr pathu cwd:ptr cwdu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+   path pathu >LEN cwd cwdu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
+   RUN-ARGV-ENV-CWD-STDIN-CAPTURE
+   PCT-CAPTURE>N ;
+
 : PCT-SETUP-ROOT ( -- )
    CLEANUP-RESET
    s" hb-process-cwd" TMPDIR-MKDIR {: root:ptr rootu :}
@@ -39,9 +53,9 @@ variable PCT-I
 : PCT-RUN-CAT-CWD ( -- )
    PCT-SETUP-ROOT
    PCT-RESET
-   s" rel.txt" PROC-ARGV+
+   s" rel.txt"  >LEN PROC-ARGV+
    s" /bin/cat" PCT-ROOT PCT-ROOT-U @ PCT-OUT PCT-CAP PCT-ERR PCT-CAP 1000
-   RUN-ARGV-ENV-CWD-CAPTURE
+   PCT-CAPTURE
    0 T= 0 T= PCT-OK-U T=
    PCT-OUT PCT-OK-U PCT-OK PCT-OK-U T$=
    s" FILEMAP.md" FILE? TTRUE
@@ -54,7 +68,7 @@ variable PCT-I
    PCT-SETUP-ROOT
    PCT-RESET
    s" /bin/cat" PCT-ROOT PCT-ROOT-U @ PCT-OK PCT-OK-U PCT-OUT PCT-CAP PCT-ERR PCT-CAP 1000
-   RUN-ARGV-ENV-CWD-STDIN-CAPTURE
+   PCT-STDIN-CAPTURE
    0 T= 0 T= PCT-OK-U T=
    PCT-OUT PCT-OK-U PCT-OK PCT-OK-U T$=
    PROC-ARGV-N @ 0 T=
@@ -63,8 +77,8 @@ variable PCT-I
 
 : PCT-MISSING-CWD ( -- )
    PCT-RESET
-   s" rel.txt" PROC-ARGV+
-   s" /bin/cat" s" /no/such/habu-process-cwd-test" -1 -1 -1
+   s" rel.txt"  >LEN PROC-ARGV+
+   s" /bin/cat" >LEN s" /no/such/habu-process-cwd-test" >LEN -1 >FD -1 >FD -1 >FD
    SPAWN-ARGV-ENV-CWD-IO drop ;
 
 : PCT-RUN-MISSING-CWD ( -- )
@@ -74,7 +88,7 @@ variable PCT-I
 
 : PCT-CWD-TOO-LONG ( -- )
    PCT-LONG!
-   PCT-LONG PCT-LONG-U PROC-CWDZ drop ;
+   PCT-LONG PCT-LONG-U >LEN PROC-CWDZ drop ;
 
 : PROCESS-CWD-TEST-MAIN ( -- )
    T-RESET

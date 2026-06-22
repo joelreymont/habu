@@ -154,40 +154,42 @@ variable RACT-NEXT
 : RACT-CLI-ARGS ( -- )
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/json-write.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/time.f" PROC-ARGV+
-   s" lib/date.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" bench/llm/manifest.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/lint/source-lex.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" bench/llm/forth-task-lines-lib.f" PROC-ARGV+
-   s" bench/llm/attempt-solutions-lib.f" PROC-ARGV+
-   s" bench/llm/diagnostic-stats.f" PROC-ARGV+
-   s" bench/llm/run-attempts-lib.f" PROC-ARGV+
-   s" bench/llm/run-attempts.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   RACT-CAND$ PROC-ARGV+
-   RACT-OUT-PATH$ PROC-ARGV+
-   s" attempt-fixture-2026-06-16" PROC-ARGV+
-   s" fixture-model" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/json-write.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/time.f"  >LEN PROC-ARGV+
+   s" lib/date.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" bench/llm/manifest.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" bench/llm/forth-task-lines-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/attempt-solutions-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/diagnostic-stats.f"  >LEN PROC-ARGV+
+   s" bench/llm/run-attempts-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/run-attempts.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   RACT-CAND$  >LEN PROC-ARGV+
+   RACT-OUT-PATH$  >LEN PROC-ARGV+
+   s" attempt-fixture-2026-06-16"  >LEN PROC-ARGV+
+   s" fixture-model"  >LEN PROC-ARGV+ ;
 
 : RACT-RUN-CLI ( -- )
    RACT-CLI-ARGS
-   s" bin/hb" RACT-OUT RACT-CAP RACT-ERR RACT-CAP RACT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE
-   RACT-RC !
-   RACT-ERR-U !
-   RACT-OUT-U ! ;
+   s" bin/hb" >LEN RACT-OUT RACT-CAP >LEN
+   RACT-ERR RACT-CAP >LEN RACT-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
+   rc RC>N RACT-RC !
+   erru LEN>N RACT-ERR-U !
+   outu LEN>N RACT-OUT-U ! ;
 
 : RACT-READ-JSONL ( -- )
    RACT-OUT-PATH$ RACT-JSONL RACT-CAP READ-ALL RACT-JSONL-U ! ;

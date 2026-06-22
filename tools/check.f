@@ -288,93 +288,101 @@ variable CHK-ERR-PATH-U
 
 : CHK-ARGV-SIG ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/lint/json-writer.f" PROC-ARGV+
-   s" tools/lint/source-lex.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/signature-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   CHK-JSON @ if s" --json" PROC-ARGV+ then
-   s" --label" PROC-ARGV+
-   CHK-LABEL PROC-ARGV+
-   CHK-SOURCE PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/signature-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   CHK-JSON @ if s" --json"  >LEN PROC-ARGV+ then
+   s" --label"  >LEN PROC-ARGV+
+   CHK-LABEL  >LEN PROC-ARGV+
+   CHK-SOURCE  >LEN PROC-ARGV+ ;
 
 : CHK-ARGV-BOUNDARY ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" tools/lint/json-writer.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/checked-boundary-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   CHK-JSON @ if s" --json-errors" PROC-ARGV+ then
-   s" --strict-boundary" PROC-ARGV+
-   CHK-SOURCE PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/checked-boundary-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   CHK-JSON @ if s" --json-errors"  >LEN PROC-ARGV+ then
+   s" --strict-boundary"  >LEN PROC-ARGV+
+   CHK-SOURCE  >LEN PROC-ARGV+ ;
 
 : CHK-ARGV-TRUST-PATH ( ptr u8 n -- ) {: path:ptr pathu :}
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/date.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/fs.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/trust-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" source-only" PROC-ARGV+
-   path pathu PROC-ARGV+
-   s" ." PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/fs.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/trust-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" source-only"  >LEN PROC-ARGV+
+   path pathu  >LEN PROC-ARGV+
+   s" ."  >LEN PROC-ARGV+ ;
 
 : CHK-ARGV-TRUST ( -- )
    CHK-SOURCE CHK-ARGV-TRUST-PATH ;
 
 : CHK-ARGV-DIAG ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/diag-origin.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   CHK-SOURCE PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/diag-origin.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   CHK-SOURCE  >LEN PROC-ARGV+ ;
 
 : CHK-ARGV-JSON-ONLY ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/json-only.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   CHK-ERR-PATH PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/json-only.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   CHK-ERR-PATH  >LEN PROC-ARGV+ ;
 
 : CHK-ARGV-ALL ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/lint/json-writer.f" PROC-ARGV+
-   s" tools/lint/source-lex.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/check-all-errors.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   CHK-JSON @ if s" --json-errors" PROC-ARGV+ then
-   s" --label" PROC-ARGV+
-   CHK-LABEL PROC-ARGV+
-   CHK-SOURCE PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/check-all-errors.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   CHK-JSON @ if s" --json-errors"  >LEN PROC-ARGV+ then
+   s" --label"  >LEN PROC-ARGV+
+   CHK-LABEL  >LEN PROC-ARGV+
+   CHK-SOURCE  >LEN PROC-ARGV+ ;
 
 : CHK-RUN-CAPTURE ( -- )
-   s" bin/hb" CHK-OUT-BUF CHK-OUT-CAP CHK-ERR-BUF CHK-ERR-CAP CHK-TIMEOUT-MS RUN-ARGV-CAPTURE
-   CHK-RC ! CHK-ERR-U ! CHK-OUT-U ! ;
+   s" bin/hb" >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
+   CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE {: outu erru rc :}
+   rc RC>N CHK-RC !
+   erru LEN>N CHK-ERR-U !
+   outu LEN>N CHK-OUT-U ! ;
 
 : CHK-RUN-STDIN-CAPTURE ( ptr u8 n -- ) {: in:ptr inu :}
-   s" bin/hb" in inu CHK-OUT-BUF CHK-OUT-CAP CHK-ERR-BUF CHK-ERR-CAP CHK-TIMEOUT-MS RUN-ARGV-STDIN-CAPTURE
-   CHK-RC ! CHK-ERR-U ! CHK-OUT-U ! ;
+   s" bin/hb" >LEN in inu >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
+   CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
+   RUN-ARGV-STDIN-CAPTURE {: outu erru rc :}
+   rc RC>N CHK-RC !
+   erru LEN>N CHK-ERR-U !
+   outu LEN>N CHK-OUT-U ! ;
 
 : CHK-REPLAY ( -- )
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
@@ -433,8 +441,12 @@ variable CHK-ERR-PATH-U
 
 : CHK-RUN-DIAG ( -- )
    CHK-ARGV-DIAG
-   s" bin/hb" CHK-ORIGIN-BUF CHK-ORIGIN-CAP CHK-ERR-BUF CHK-ERR-CAP CHK-TIMEOUT-MS RUN-ARGV-CAPTURE
-   CHK-RC ! CHK-ERR-U ! CHK-ORIGIN-U !
+   s" bin/hb" >LEN CHK-ORIGIN-BUF CHK-ORIGIN-CAP >LEN
+   CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE {: outu erru rc :}
+   rc RC>N CHK-RC !
+   erru LEN>N CHK-ERR-U !
+   outu LEN>N CHK-ORIGIN-U !
    CHK-RC @ 0 <> if
       CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
       CHK-RC @ CHK-THROW

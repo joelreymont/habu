@@ -203,34 +203,35 @@ TRUSTED: DFH-BUNDLE$ ( -- ptr u8 n )
 : DFH-HB-STDIN-CAPTURE ( ptr u8 n -- ) {: in:ptr inu :}
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" in inu DS-OUT-BUF DS-OUT-CAP DS-ERR-BUF DS-ERR-CAP
-   DS-HB-TIMEOUT RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
-   DFH-TEST-CODE !
-   DFH-TEST-KIND !
-   DS-ERR-U !
-   DS-OUT-U !
-   DFH-TEST-KIND @ PROC-OUTCOME-EXIT = if
-      DFH-TEST-CODE @ DS-RC !
+   s" bin/hb" >LEN in inu >LEN DS-OUT-BUF DS-OUT-CAP >LEN
+   DS-ERR-BUF DS-ERR-CAP >LEN DS-HB-TIMEOUT >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu erru kind code :}
+   code DFH-TEST-CODE !
+   kind DFH-TEST-KIND !
+   erru LEN>N DS-ERR-U !
+   outu LEN>N DS-OUT-U !
+   kind PROC-OUTCOME-EXIT = if
+      code DS-RC !
    else
-      128 DFH-TEST-CODE @ + DS-RC !
+      128 code + DS-RC !
    then ;
 
 : DFH-CHECK-ARGV ( -- )
    PROC-ARGV-ENV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/check.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" --json-errors" PROC-ARGV+
-   s" --all-errors" PROC-ARGV+
-   DS-CAND-PATH$ PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/check.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
+   s" --all-errors"  >LEN PROC-ARGV+
+   DS-CAND-PATH$  >LEN PROC-ARGV+ ;
 
 : DFH-RUN-CHECK ( -- )
    DFH-CHECK-ARGV

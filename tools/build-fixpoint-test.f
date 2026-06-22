@@ -58,23 +58,27 @@ create BFT-READ-BUF BFT-READ-CAP allot
 : BFT-ARGV-BUILD ( -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   s" HB_TMP" BFT-ENV$ PROC-ENV+
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/build.f" PROC-ARGV+
-   s" tools/build-fixpoint.f" PROC-ARGV+
-   s" tools/build-fixpoint-main.f" PROC-ARGV+ ;
+   s" HB_TMP" >LEN BFT-ENV$ >LEN PROC-ENV+
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/build.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint-main.f"  >LEN PROC-ARGV+ ;
+
+: BFT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : BFT-RUN-BUILD ( -- n n n )
    BFT-ARGV-BUILD
-   s" bin/hb" BFT-OUT BFT-CAPTURE-CAP BFT-ERR BFT-CAPTURE-CAP
-   BFT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE ;
+   s" bin/hb" >LEN BFT-OUT BFT-CAPTURE-CAP >LEN BFT-ERR BFT-CAPTURE-CAP >LEN
+   BFT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   BFT-CAPTURE>N ;
 
 : BFT-TEST-BUILD ( -- )
    BFT-RUN-BUILD 0 T=

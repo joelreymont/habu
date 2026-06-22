@@ -63,9 +63,9 @@ create CST-ENSURE-BUF FS-PATH-CAP allot
 
 : CST-CP ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
    PROC-ARGV-RESET
-   src srcu PROC-ARGV+
-   dst dstu PROC-ARGV+
-   s" /bin/cp" -1 -1 -1 RUN-ARGV-IO-RC 0 T= ;
+   src srcu  >LEN PROC-ARGV+
+   dst dstu  >LEN PROC-ARGV+
+   s" /bin/cp" >LEN -1 >FD -1 >FD -1 >FD RUN-ARGV-IO-RC RC>N 0 T= ;
 
 : CST-WRITE-SCRIPT ( -- )
    CST-SCRIPT-SRC s" #!/bin/sh\nexit 0\n" WRITE-ALL ;

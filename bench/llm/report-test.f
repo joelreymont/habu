@@ -117,16 +117,19 @@ RPT-LF RPT-LF-BUF c!
 
 : RPT-RUN-REPORT ( -- n n n )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" bench/llm/report.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   RPT-RESULT$ PROC-ARGV+
-   s" bin/hb" RPT-OUT RPT-CAPTURE-CAP RPT-ERR RPT-CAPTURE-CAP RPT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" bench/llm/report.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   RPT-RESULT$  >LEN PROC-ARGV+
+   s" bin/hb" >LEN RPT-OUT RPT-CAPTURE-CAP >LEN
+   RPT-ERR RPT-CAPTURE-CAP >LEN RPT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : RPT-CAPTURE ( -- )
    RPT-RUN-REPORT {: outu erru rc :}

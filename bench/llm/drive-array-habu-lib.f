@@ -81,23 +81,23 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DS-BUNDLE-PATH$ ;
 
 : DAH-CHECK-SOURCE-LIST ( -- )
-   s" --source-list" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/array.f" PROC-ARGV+
+   s" --source-list"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/array.f"  >LEN PROC-ARGV+
    DAH-STDLIB? if
-      s" lib/string.f" PROC-ARGV+
-      s" lib/map.f" PROC-ARGV+
-      s" lib/fs.f" PROC-ARGV+
-      s" lib/argv.f" PROC-ARGV+
-      s" lib/test.f" PROC-ARGV+
-      s" lib/time.f" PROC-ARGV+
-      s" lib/date.f" PROC-ARGV+
+      s" lib/string.f"  >LEN PROC-ARGV+
+      s" lib/map.f"  >LEN PROC-ARGV+
+      s" lib/fs.f"  >LEN PROC-ARGV+
+      s" lib/argv.f"  >LEN PROC-ARGV+
+      s" lib/test.f"  >LEN PROC-ARGV+
+      s" lib/time.f"  >LEN PROC-ARGV+
+      s" lib/date.f"  >LEN PROC-ARGV+
    then
-   DAH-SCRIPT$ PROC-ARGV+ ;
+   DAH-SCRIPT$  >LEN PROC-ARGV+ ;
 
 : DAH-CHECK-SOURCES ( -- )
    DAH-BUNDLED? if DAH-CHECK-SOURCE-LIST exit then
-   DAH-CHECK-SOURCE$ PROC-ARGV+ ;
+   DAH-CHECK-SOURCE$  >LEN PROC-ARGV+ ;
 
 : DAH-ARM-VALID? ( -- bool )
    DAH-RAW? if DS-TRUE exit then
@@ -338,22 +338,22 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
 
 : DAH-BUNDLE-ARGV ( -- )
    PROC-ARGV-ENV-RESET
-   s" tools/bundle-lib.f" PROC-ARGV+
-   s" -o" PROC-ARGV+
-   DAH-RUN-BUNDLE$ PROC-ARGV+
-   s" errors" PROC-ARGV+
-   s" array" PROC-ARGV+
+   s" tools/bundle-lib.f"  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   DAH-RUN-BUNDLE$  >LEN PROC-ARGV+
+   s" errors"  >LEN PROC-ARGV+
+   s" array"  >LEN PROC-ARGV+
    DAH-STDLIB? if
-      s" string" PROC-ARGV+
-      s" map" PROC-ARGV+
-      s" fs" PROC-ARGV+
-      s" argv" PROC-ARGV+
-      s" test" PROC-ARGV+
-      s" time" PROC-ARGV+
-      s" date" PROC-ARGV+
+      s" string"  >LEN PROC-ARGV+
+      s" map"  >LEN PROC-ARGV+
+      s" fs"  >LEN PROC-ARGV+
+      s" argv"  >LEN PROC-ARGV+
+      s" test"  >LEN PROC-ARGV+
+      s" time"  >LEN PROC-ARGV+
+      s" date"  >LEN PROC-ARGV+
    then
-   s" --" PROC-ARGV+
-   DAH-SCRIPT$ PROC-ARGV+ ;
+   s" --"  >LEN PROC-ARGV+
+   DAH-SCRIPT$  >LEN PROC-ARGV+ ;
 
 : DAH-RUN-BUNDLE ( -- )
    DAH-WRITE-SCRIPT
@@ -370,18 +370,18 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
 
 : DAH-CHECK-ARGV ( -- )
    PROC-ARGV-ENV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/check.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" --json-errors" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/check.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
    DAH-CHECK-SOURCES ;
 
 : DAH-RUN-CHECK ( -- )
@@ -421,12 +421,12 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
 
 : DAH-REPAIR-ARGV ( -- )
    PROC-ARGV-ENV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/repair-packet.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   DS-DIAG-PATH$ PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/repair-packet.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   DS-DIAG-PATH$  >LEN PROC-ARGV+ ;
 
 : DAH-RUN-REPAIR ( -- )
    DAH-REPAIR-ARGV
@@ -449,22 +449,22 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
 : DAH-ARG-U ( n -- )
    DS-MSG-RESET
    DS-U+
-   DS-MSG$ PROC-ARGV+ ;
+   DS-MSG$  >LEN PROC-ARGV+ ;
 
 : DAH-GRADE-ARGV ( -- )
    PROC-ARGV-ENV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" bench/llm/grade.f" PROC-ARGV+
-   s" --" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" bench/llm/grade.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
    DAH-GRADE-TIMEOUT-S DAH-ARG-U
-   DAH-CHECK-SOURCE$ PROC-ARGV+
-   DAH-VEC$ PROC-ARGV+ ;
+   DAH-CHECK-SOURCE$  >LEN PROC-ARGV+
+   DAH-VEC$  >LEN PROC-ARGV+ ;
 
 : DAH-FINISH-GRADE ( -- )
    mono-ns {: t0 :}

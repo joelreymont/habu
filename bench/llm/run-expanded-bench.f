@@ -200,13 +200,13 @@ TRUSTED: RB-MODE$ ( -- ptr u8 n )
    n RB-DEC >= if n RB-DEC / recurse then
    n RB-DEC mod RB-ZERO + SB-APPEND-C ;
 
-: RB-PROC-ENV$ ( ptr u8 n ptr u8 n -- )
-   PROC-ENV+ ;
+: RB-PROC-ENV$ ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu val:ptr valu :}
+   key keyu >LEN val valu >LEN PROC-ENV+ ;
 
 : RB-PROC-ENV-U ( ptr u8 n n -- ) {: key:ptr keyu val :}
    SB-RESET
    val RB-SB-U+
-   key keyu SB$ PROC-ENV+ ;
+   key keyu SB$ RB-PROC-ENV$ ;
 
 : RB-PATH$ ( -- ptr u8 n )
    s" PATH" GETENV dup 0= if
@@ -216,12 +216,15 @@ TRUSTED: RB-MODE$ ( -- ptr u8 n )
 : RB-PROC-PATH ( -- )
    s" PATH" RB-PATH$ RB-PROC-ENV$ ;
 
-: RB-RESOLVE-EXE ( ptr u8 n -- ptr u8 n )
-   RB-PATH$ RB-EXE-BUF FIND-EXECUTABLE-IN-PATH 0= if
-      drop 0 E-PROC-PATH throw
-   then
-   RB-EXE-U !
-   RB-EXE-BUF RB-EXE-U @ ;
+: RB-RESOLVE-EXE-LEN ( ptr u8 n -- len ) {: cmd:ptr cmdu :}
+   cmd cmdu >LEN RB-PATH$ >LEN RB-EXE-BUF FIND-EXECUTABLE-IN-PATH 0= if
+      E-PROC-PATH throw
+   then ;
+
+: RB-RESOLVE-EXE ( ptr u8 n -- ptr u8 len )
+   RB-RESOLVE-EXE-LEN
+   LEN>N RB-EXE-U !
+   RB-EXE-BUF RB-EXE-U @ >LEN ;
 
 : RB-LOAD-FILES ( -- )
    RB-TASKS$ RB-TASK-BUF RB-TASK-CAP READ-ALL RB-TASK-LEN !
@@ -421,36 +424,36 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    PROC-ENV-INHERIT-MISSING
    PROC-ENV-PREPARE
    RB-OUT$ OPEN-APPEND-FD RB-OUT-FD !
-   -1 RB-OUT-FD @ -1 PROC-SPAWN-ARGV-ENV-RAW RB-PID !
+   -1 >FD RB-OUT-FD @ >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW RB-PID !
    PROC-ARGV-ENV-RESET
    RB-OUT-FD @ close
    RB-PID @ 0 < if s" run-expanded-bench: spawn failed" RB-DIE then ;
 
 : RB-RUN-APPEND ( -- n )
    RB-RUN-PREPARE
-   RB-PID @ WAIT-RC ;
+   RB-PID @ WAIT-RC RC>N ;
 
 : RB-RUN-TO-RESULTS ( -- n )
    s" bin/hb" RB-RESOLVE-EXE PROC-ARGV-PREPARE
    PROC-ENV-INHERIT-MISSING
    PROC-ENV-PREPARE
    RB-RESULTS$ OPEN-APPEND-FD RB-OUT-FD !
-   -1 RB-OUT-FD @ -1 PROC-SPAWN-ARGV-ENV-RAW RB-PID !
+   -1 >FD RB-OUT-FD @ >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW RB-PID !
    PROC-ARGV-ENV-RESET
    RB-OUT-FD @ close
    RB-PID @ 0 < if s" run-expanded-bench: report spawn failed" RB-DIE then
-   RB-PID @ WAIT-RC ;
+   RB-PID @ WAIT-RC RC>N ;
 
 : RB-RUN-HB-APPEND ( -- n )
    s" bin/hb" RB-RESOLVE-EXE PROC-ARGV-PREPARE
    PROC-ENV-INHERIT-MISSING
    PROC-ENV-PREPARE
    RB-OUT$ OPEN-APPEND-FD RB-OUT-FD !
-   -1 RB-OUT-FD @ -1 PROC-SPAWN-ARGV-ENV-RAW RB-PID !
+   -1 >FD RB-OUT-FD @ >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW RB-PID !
    PROC-ARGV-ENV-RESET
    RB-OUT-FD @ close
    RB-PID @ 0 < if s" run-expanded-bench: hb spawn failed" RB-DIE then
-   RB-PID @ WAIT-RC ;
+   RB-PID @ WAIT-RC RC>N ;
 
 : RB-OUT-LOAD ( -- )
    RB-OUT$ FILE? if
@@ -542,53 +545,53 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
 : RB-ARRAY-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu arm:ptr armu trial :}
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
-   arm armu RB-ARRAY-SCRIPT$ PROC-ARGV+
-   BM-T-ID RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-NAME RB-TASK-FIELD$ PROC-ARGV+
-   RB-TASK-LINE$ BM-TASK-SIG$ PROC-ARGV+
-   BM-T-SPEC RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-CONV RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-VECTORS RB-TASK-FIELD$ PROC-ARGV+
+   arm armu RB-ARRAY-SCRIPT$  >LEN PROC-ARGV+
+   BM-T-ID RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-NAME RB-TASK-FIELD$  >LEN PROC-ARGV+
+   RB-TASK-LINE$ BM-TASK-SIG$  >LEN PROC-ARGV+
+   BM-T-SPEC RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-CONV RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-VECTORS RB-TASK-FIELD$  >LEN PROC-ARGV+
    arm armu RB-ARRAY-HABU? if
-      arm armu RB-ARRAY-HABU-ARM$ PROC-ARGV+
+      arm armu RB-ARRAY-HABU-ARM$  >LEN PROC-ARGV+
    then
    SB-RESET
    RB-MAX-REPAIRS @ RB-SB-U+
-   SB$ PROC-ARGV+ ;
+   SB$  >LEN PROC-ARGV+ ;
 
 : RB-STDLIB-LOADS ( -- )
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" bench/llm/manifest.f" PROC-ARGV+
-   s" bench/llm/model.f" PROC-ARGV+
-   s" bench/llm/parse-resp-lib.f" PROC-ARGV+
-   s" bench/llm/codex-home.f" PROC-ARGV+
-   s" bench/llm/model-run.f" PROC-ARGV+
-   s" bench/llm/vectors.f" PROC-ARGV+
-   s" lib/json-write.f" PROC-ARGV+
-   s" src/core/sha256.f" PROC-ARGV+
-   s" bench/llm/live-row.f" PROC-ARGV+
-   s" bench/llm/drive-stdlib-lib.f" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" bench/llm/manifest.f"  >LEN PROC-ARGV+
+   s" bench/llm/model.f"  >LEN PROC-ARGV+
+   s" bench/llm/parse-resp-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/codex-home.f"  >LEN PROC-ARGV+
+   s" bench/llm/model-run.f"  >LEN PROC-ARGV+
+   s" bench/llm/vectors.f"  >LEN PROC-ARGV+
+   s" lib/json-write.f"  >LEN PROC-ARGV+
+   s" src/core/sha256.f"  >LEN PROC-ARGV+
+   s" bench/llm/live-row.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-stdlib-lib.f"  >LEN PROC-ARGV+ ;
 
 : RB-FORTH-LOADS ( -- )
    RB-STDLIB-LOADS
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/lint/source-lex.f" PROC-ARGV+
-   s" bench/llm/forth-task-lines-lib.f" PROC-ARGV+
-   s" bench/llm/attempt-solutions-lib.f" PROC-ARGV+
-   s" bench/llm/forth-candidate.f" PROC-ARGV+
-   s" bench/llm/forth-bundle.f" PROC-ARGV+
-   s" bench/llm/drive-forth-lib.f" PROC-ARGV+
-   s" bench/llm/drive-forth.f" PROC-ARGV+ ;
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" bench/llm/forth-task-lines-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/attempt-solutions-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/forth-candidate.f"  >LEN PROC-ARGV+
+   s" bench/llm/forth-bundle.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-forth-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-forth.f"  >LEN PROC-ARGV+ ;
 
 : RB-FORTH-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu mode:ptr modeu trial :}
    PROC-ARGV-ENV-RESET
@@ -596,117 +599,117 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" BENCH_FORTH_FEEDBACK" mode modeu RB-PROC-ENV$
    s" BENCH_FORTH_ARM" mode modeu RB-ARM-FOR-MODE$ RB-PROC-ENV$
    RB-FORTH-LOADS
-   s" --" PROC-ARGV+
-   BM-T-ID RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-NAME RB-TASK-FIELD$ PROC-ARGV+
-   RB-TASK-LINE$ BM-TASK-SIG$ PROC-ARGV+
-   BM-T-CATEGORY RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-TESTS RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-SPEC RB-TASK-FIELD$ PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   BM-T-ID RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-NAME RB-TASK-FIELD$  >LEN PROC-ARGV+
+   RB-TASK-LINE$ BM-TASK-SIG$  >LEN PROC-ARGV+
+   BM-T-CATEGORY RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-TESTS RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-SPEC RB-TASK-FIELD$  >LEN PROC-ARGV+
    SB-RESET
    RB-MAX-REPAIRS @ RB-SB-U+
-   SB$ PROC-ARGV+ ;
+   SB$  >LEN PROC-ARGV+ ;
 
 : RB-ARRAY-HABU-LOADS ( -- )
    RB-STDLIB-LOADS
-   s" bench/llm/driver-token-helpers.f" PROC-ARGV+
-   s" bench/llm/drive-array-habu-lib.f" PROC-ARGV+
-   s" bench/llm/drive-array-habu.f" PROC-ARGV+ ;
+   s" bench/llm/driver-token-helpers.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-array-habu-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-array-habu.f"  >LEN PROC-ARGV+ ;
 
 : RB-ARRAY-HABU-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu arm:ptr armu trial :}
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
    RB-ARRAY-HABU-LOADS
-   s" --" PROC-ARGV+
-   BM-T-ID RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-NAME RB-TASK-FIELD$ PROC-ARGV+
-   RB-TASK-LINE$ BM-TASK-SIG$ PROC-ARGV+
-   BM-T-SPEC RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-CONV RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-VECTORS RB-TASK-FIELD$ PROC-ARGV+
-   arm armu RB-ARRAY-HABU-ARM$ PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   BM-T-ID RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-NAME RB-TASK-FIELD$  >LEN PROC-ARGV+
+   RB-TASK-LINE$ BM-TASK-SIG$  >LEN PROC-ARGV+
+   BM-T-SPEC RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-CONV RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-VECTORS RB-TASK-FIELD$  >LEN PROC-ARGV+
+   arm armu RB-ARRAY-HABU-ARM$  >LEN PROC-ARGV+
    SB-RESET
    RB-MAX-REPAIRS @ RB-SB-U+
-   SB$ PROC-ARGV+ ;
+   SB$  >LEN PROC-ARGV+ ;
 
 : RB-STDLIB-TASK-ARGS ( -- )
-   BM-T-ID RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-NAME RB-TASK-FIELD$ PROC-ARGV+
-   RB-TASK-LINE$ BM-TASK-SIG$ PROC-ARGV+
-   BM-T-CATEGORY RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-TESTS RB-TASK-FIELD$ PROC-ARGV+
-   BM-T-SPEC RB-TASK-FIELD$ PROC-ARGV+
+   BM-T-ID RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-NAME RB-TASK-FIELD$  >LEN PROC-ARGV+
+   RB-TASK-LINE$ BM-TASK-SIG$  >LEN PROC-ARGV+
+   BM-T-CATEGORY RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-TESTS RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-SPEC RB-TASK-FIELD$  >LEN PROC-ARGV+
    SB-RESET
    RB-MAX-REPAIRS @ RB-SB-U+
-   SB$ PROC-ARGV+ ;
+   SB$  >LEN PROC-ARGV+ ;
 
 : RB-STDLIB-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
    RB-STDLIB-LOADS
-   s" bench/llm/drive-stdlib.f" PROC-ARGV+
-   s" --" PROC-ARGV+
+   s" bench/llm/drive-stdlib.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
    RB-STDLIB-TASK-ARGS ;
 
 : RB-FILE-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
    RB-STDLIB-LOADS
-   s" bench/llm/driver-fixture-helpers.f" PROC-ARGV+
-   s" bench/llm/drive-file-lib.f" PROC-ARGV+
-   s" bench/llm/drive-file.f" PROC-ARGV+
-   s" --" PROC-ARGV+
+   s" bench/llm/driver-fixture-helpers.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-file-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-file.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
    RB-STDLIB-TASK-ARGS ;
 
 : RB-PROCESS-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
    RB-STDLIB-LOADS
-   s" bench/llm/driver-fixture-helpers.f" PROC-ARGV+
-   s" bench/llm/drive-process-lib.f" PROC-ARGV+
-   s" bench/llm/drive-process.f" PROC-ARGV+
-   s" --" PROC-ARGV+
+   s" bench/llm/driver-fixture-helpers.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-process-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-process.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
    RB-STDLIB-TASK-ARGS ;
 
 : RB-PROPERTY-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
    RB-STDLIB-LOADS
-   s" bench/llm/driver-token-helpers.f" PROC-ARGV+
-   s" bench/llm/driver-fixture-helpers.f" PROC-ARGV+
-   s" bench/llm/drive-property-lib.f" PROC-ARGV+
-   s" bench/llm/drive-property.f" PROC-ARGV+
-   s" --" PROC-ARGV+
+   s" bench/llm/driver-token-helpers.f"  >LEN PROC-ARGV+
+   s" bench/llm/driver-fixture-helpers.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-property-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-property.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
    RB-STDLIB-TASK-ARGS ;
 
 : RB-BUILD-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
    RB-STDLIB-LOADS
-   s" bench/llm/driver-token-helpers.f" PROC-ARGV+
-   s" bench/llm/driver-fixture-helpers.f" PROC-ARGV+
-   s" bench/llm/drive-build-lib.f" PROC-ARGV+
-   s" bench/llm/drive-build.f" PROC-ARGV+
-   s" --" PROC-ARGV+
+   s" bench/llm/driver-token-helpers.f"  >LEN PROC-ARGV+
+   s" bench/llm/driver-fixture-helpers.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-build-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-build.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
    RB-STDLIB-TASK-ARGS ;
 
 : RB-REGEX-NEGATIVE-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
    RB-STDLIB-LOADS
-   s" bench/llm/drive-regex-negative-lib.f" PROC-ARGV+
-   s" bench/llm/drive-regex-negative.f" PROC-ARGV+
-   s" --" PROC-ARGV+
+   s" bench/llm/drive-regex-negative-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-regex-negative.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
    RB-STDLIB-TASK-ARGS ;
 
 : RB-AOT-ARGS ( ptr u8 n n -- ) {: model:ptr modelu trial :}
    PROC-ARGV-ENV-RESET
    model modelu trial RB-ADD-COMMON-ENV
    RB-STDLIB-LOADS
-   s" bench/llm/driver-token-helpers.f" PROC-ARGV+
-   s" bench/llm/drive-aot-lib.f" PROC-ARGV+
-   s" bench/llm/drive-aot.f" PROC-ARGV+
-   s" --" PROC-ARGV+
+   s" bench/llm/driver-token-helpers.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-aot-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-aot.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
    RB-STDLIB-TASK-ARGS ;
 
 : RB-RUN-FORTH-ONE ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu mode:ptr modeu trial :}
@@ -872,21 +875,21 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    RB-RESULTS-RESET
    PROC-ARGV-ENV-RESET
    RB-PROC-PATH
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/time.f" PROC-ARGV+
-   s" lib/date.f" PROC-ARGV+
-   s" lib/argv.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" bench/llm/expanded-report.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   RB-OUT$ PROC-ARGV+
-   RB-PERF? if RB-PERF$ PROC-ARGV+ then
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/time.f"  >LEN PROC-ARGV+
+   s" lib/date.f"  >LEN PROC-ARGV+
+   s" lib/argv.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" bench/llm/expanded-report.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   RB-OUT$  >LEN PROC-ARGV+
+   RB-PERF? if RB-PERF$  >LEN PROC-ARGV+ then
    RB-RUN-TO-RESULTS drop ;
 
 : RB-CONFIG ( -- )

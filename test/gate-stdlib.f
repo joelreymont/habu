@@ -13,48 +13,48 @@ create GS-SRC-LEN GS-SRC-MAX cells allot
 variable GS-SRC-N
 
 : GS-CAPTURE-STORE ( -- )
-   PROC-OUT-LEN @ GT-OUT-U !
-   PROC-ERR-LEN @ GT-ERR-U !
+   PROC-OUT-LEN @ LEN>N GT-OUT-U !
+   PROC-ERR-LEN @ LEN>N GT-ERR-U !
    PROC-OUTCOME-KIND @ GT-OUTCOME-KIND !
    PROC-OUTCOME-CODE @ GT-OUTCOME-CODE ! ;
 
 : GS-RUN-CAPTURE-LOOP ( ptr u8 n -- ) {: label:ptr labelu :}
    begin PROC-CAPTURE-DONE? 0= while
-      GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup 0= if
+      GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup COUNT>N 0= if
          drop
-         PROC-REMAINING-MS 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
+         PROC-REMAINING-MS MS>N 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
          label labelu GT-PROGRESS-WAIT
       else
          drop
-         GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP PROC-DRAIN-READY
+         GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-DRAIN-READY
          label labelu GT-PROGRESS-WAIT
       then
    repeat
    PROC-REAP-CAPTURE ;
 
-: GS-POLL-STDIN-CAPTURE ( n -- n ) {: ms :}
-   PROC-OUT-R @ POLLIN 0 PROC-ARGV-PFD-AT!
-   PROC-ERR-R @ POLLIN 1 PROC-ARGV-PFD-AT!
-   PROC-ARGV-IN-W @ 0 >= if
-      PROC-ARGV-IN-W @ POLLOUT 2 PROC-ARGV-PFD-AT!
+: GS-POLL-STDIN-CAPTURE ( ms -- count ) {: ms :}
+   PROC-OUT-R @ POLLIN 0 >IDX PROC-ARGV-PFD-AT!
+   PROC-ERR-R @ POLLIN 1 >IDX PROC-ARGV-PFD-AT!
+   PROC-ARGV-IN-W @ FD>N 0 >= if
+      PROC-ARGV-IN-W @ POLLOUT 2 >IDX PROC-ARGV-PFD-AT!
    else
-      -1 0 2 PROC-ARGV-PFD-AT!
+      -1 >FD 0 2 >IDX PROC-ARGV-PFD-AT!
    then
-   PROC-ARGV-PFD 3 ms poll {: rc :}
+   PROC-ARGV-PFD 3 ms MS>N poll {: rc :}
    rc 0 < if E-PROC-OUTPUT PROC-ARGV-THROW-CAPTURE then
-   rc ;
+   rc >COUNT ;
 
-: GS-RUN-STDIN-CAPTURE-LOOP ( ptr u8 n ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
-   inu 0 <= if PROC-ARGV-IN-W PROC-CLOSE-CELL then
+: GS-RUN-STDIN-CAPTURE-LOOP ( ptr u8 len ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
+   inu LEN>N 0 <= if PROC-ARGV-IN-W PROC-CLOSE-CELL then
    begin PROC-ARGV-STDIN-CAPTURE-DONE? 0= while
-      GT-PROGRESS-SLICE-MS GS-POLL-STDIN-CAPTURE dup 0= if
+      GT-PROGRESS-SLICE-MS GS-POLL-STDIN-CAPTURE dup COUNT>N 0= if
          drop
-         PROC-REMAINING-MS 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
+         PROC-REMAINING-MS MS>N 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
          label labelu GT-PROGRESS-WAIT
       else
          drop
          in inu PROC-ARGV-DRIVE-STDIN
-         GT-OUT-BUF GT-OUT-CAP GT-ERR-BUF GT-ERR-CAP PROC-ARGV-DRAIN-READY
+         GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-ARGV-DRAIN-READY
          label labelu GT-PROGRESS-WAIT
       then
    repeat
@@ -62,25 +62,25 @@ variable GS-SRC-N
 
 : GS-RUN-ENV ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu timeout label:ptr labelu :}
    PROC-ENV-INHERIT-MISSING
-   path pathu PROC-ARGV-CHECK-PATH
+   path pathu >LEN PROC-ARGV-CHECK-PATH
    PROC-CAPTURE-RESET
-   timeout PROC-CAPTURE-DEADLINE!
+   timeout >MS PROC-CAPTURE-DEADLINE!
    PROC-SETUP-CAPTURE-FDS
-   path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-CAPTURE
+   path pathu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-CAPTURE
    label labelu GS-RUN-CAPTURE-LOOP
    PROC-CLOSE-CAPTURE-FDS
    GS-CAPTURE-STORE ;
 
 : GS-RUN-STDIN ( ptr u8 n ptr u8 n n ptr u8 n -- ) {: path:ptr pathu in:ptr inu timeout label:ptr labelu :}
    PROC-ENV-INHERIT-MISSING
-   path pathu PROC-ARGV-CHECK-PATH
+   path pathu >LEN PROC-ARGV-CHECK-PATH
    inu 0 < if E-PROC-OUTPUT throw then
    PROC-ARGV-CAPTURE-RESET
-   timeout PROC-CAPTURE-DEADLINE!
+   timeout >MS PROC-CAPTURE-DEADLINE!
    PROC-SETUP-CAPTURE-FDS
    PROC-ARGV-SETUP-STDIN-FDS
-   path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
-   in inu label labelu GS-RUN-STDIN-CAPTURE-LOOP
+   path pathu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
+   in inu >LEN label labelu GS-RUN-STDIN-CAPTURE-LOOP
    PROC-ARGV-CLOSE-STDIN-FDS
    PROC-CLOSE-CAPTURE-FDS
    GS-CAPTURE-STORE ;
@@ -96,7 +96,7 @@ variable GS-SRC-N
    GT-RC@ 0 <> if label labelu GS-FAIL then ;
 
 : GS-ARG+ ( ptr u8 n -- )
-   PROC-ARGV+ ;
+    >LEN PROC-ARGV+ ;
 
 : GS-HB ( -- )
    PROC-ARGV-RESET

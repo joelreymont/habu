@@ -30,50 +30,63 @@ variable CKT-LIST-U
 
 : CKT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/source.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/check.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/check.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
+
+: CKT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
+: CKT-STDIN-CAPTURE ( ptr u8 n -- n n n ) {: src:ptr srcu :}
+   s" bin/hb" >LEN src srcu >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
+   CKT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE
+   CKT-CAPTURE>N ;
+
+: CKT-CAPTURE ( -- n n n )
+   s" bin/hb" >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
+   CKT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
+   CKT-CAPTURE>N ;
 
 : CKT-RUN ( ptr u8 n -- n n n ) {: src:ptr srcu :}
    CKT-ARGV-BASE
-   s" bin/hb" src srcu CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-STDIN-CAPTURE ;
+   src srcu CKT-STDIN-CAPTURE ;
 
 : CKT-RUN-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu :}
    CKT-ARGV-BASE
-   s" --json-errors" PROC-ARGV+
-   s" bin/hb" src srcu CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-STDIN-CAPTURE ;
+   s" --json-errors"  >LEN PROC-ARGV+
+   src srcu CKT-STDIN-CAPTURE ;
 
 : CKT-RUN-STRICT-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu :}
    CKT-ARGV-BASE
-   s" --strict-signatures" PROC-ARGV+
-   s" --json-errors" PROC-ARGV+
-   s" bin/hb" src srcu CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-STDIN-CAPTURE ;
+   s" --strict-signatures"  >LEN PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
+   src srcu CKT-STDIN-CAPTURE ;
 
 : CKT-RUN-ALL-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu :}
    CKT-ARGV-BASE
-   s" --json-errors" PROC-ARGV+
-   s" --all-errors" PROC-ARGV+
-   s" bin/hb" src srcu CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-STDIN-CAPTURE ;
+   s" --json-errors"  >LEN PROC-ARGV+
+   s" --all-errors"  >LEN PROC-ARGV+
+   src srcu CKT-STDIN-CAPTURE ;
 
 : CKT-RUN-FILE-JSON ( -- n n n )
    CKT-ARGV-BASE
-   s" --json-errors" PROC-ARGV+
-   CKT-BAD$ PROC-ARGV+
-   s" bin/hb" CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" --json-errors"  >LEN PROC-ARGV+
+   CKT-BAD$  >LEN PROC-ARGV+
+   CKT-CAPTURE ;
 
 : CKT-RUN-PATH-JSON ( ptr u8 n -- n n n )
    CKT-ARGV-BASE
-   s" --json-errors" PROC-ARGV+
-   PROC-ARGV+
-   s" bin/hb" CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" --json-errors"  >LEN PROC-ARGV+
+    >LEN PROC-ARGV+
+   CKT-CAPTURE ;
 
 : CKT-RUN-SRC-FILE-JSON ( ptr u8 n -- n n n )
    CKT-BAD$ 2swap WRITE-ALL
@@ -81,14 +94,14 @@ variable CKT-LIST-U
 
 : CKT-RUN-ARGS ( -- n n n )
    CKT-ARGV-BASE
-   s" --bad-flag" PROC-ARGV+
-   s" bin/hb" CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" --bad-flag"  >LEN PROC-ARGV+
+   CKT-CAPTURE ;
 
 : CKT-RUN-SOURCE-LIST-PATH ( ptr u8 n -- n n n )
    CKT-ARGV-BASE
-   s" --source-list" PROC-ARGV+
-   PROC-ARGV+
-   s" bin/hb" CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CKT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   s" --source-list"  >LEN PROC-ARGV+
+    >LEN PROC-ARGV+
+   CKT-CAPTURE ;
 
 : CKT-RUN-SOURCE-LIST ( ptr u8 n -- n n n )
    CKT-LIST$ 2swap WRITE-ALL

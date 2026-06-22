@@ -87,26 +87,33 @@ create RPT-ERR RPT-CAPTURE-CAP allot
 
 : RPT-ARGV-CHECK ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu file:ptr fileu :}
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" tools/lint/lib.f" PROC-ARGV+
-   s" tools/lint/json-writer.f" PROC-ARGV+
-   s" tools/lint/source-lex.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/check-all-errors.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" --json-errors" PROC-ARGV+
-   s" --label" PROC-ARGV+
-   label labelu PROC-ARGV+
-   file fileu PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/check-all-errors.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" --json-errors"  >LEN PROC-ARGV+
+   s" --label"  >LEN PROC-ARGV+
+   label labelu  >LEN PROC-ARGV+
+   file fileu  >LEN PROC-ARGV+ ;
+
+: RPT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
+: RPT-HB-CAPTURE ( -- n n n )
+   s" bin/hb"  >LEN RPT-OUT RPT-CAPTURE-CAP >LEN
+   RPT-ERR RPT-CAPTURE-CAP >LEN RPT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE RPT-CAPTURE>N ;
 
 : RPT-RUN-CHECK ( ptr u8 n -- n n n ) {: label:ptr labelu :}
    label labelu RPT-SRC RPT-ARGV-CHECK
-   s" bin/hb" RPT-OUT RPT-CAPTURE-CAP RPT-ERR RPT-CAPTURE-CAP
-   RPT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   RPT-HB-CAPTURE ;
 
 : RPT-WRITE-DIAG ( n -- ) {: erru :}
    RPT-DIAG RPT-ERR erru WRITE-ALL ;
@@ -121,17 +128,16 @@ create RPT-ERR RPT-CAPTURE-CAP allot
 
 : RPT-ARGV-REPAIR ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/repair-packet.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   RPT-DIAG PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/repair-packet.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   RPT-DIAG  >LEN PROC-ARGV+ ;
 
 : RPT-RUN-REPAIR ( -- n n n )
    RPT-ARGV-REPAIR
-   s" bin/hb" RPT-OUT RPT-CAPTURE-CAP RPT-ERR RPT-CAPTURE-CAP
-   RPT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   RPT-HB-CAPTURE ;
 
 : RPT-WRITE-PACKET ( n -- ) {: outu :}
    RPT-PACKET RPT-OUT outu WRITE-ALL ;
@@ -145,18 +151,17 @@ create RPT-ERR RPT-CAPTURE-CAP allot
 
 : RPT-ARGV-ASSERT ( ptr u8 n -- ) {: class:ptr classu :}
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/gate-json-assert.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" repair-packet" PROC-ARGV+
-   RPT-PACKET PROC-ARGV+
-   class classu PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" repair-packet"  >LEN PROC-ARGV+
+   RPT-PACKET  >LEN PROC-ARGV+
+   class classu  >LEN PROC-ARGV+ ;
 
 : RPT-RUN-ASSERT ( ptr u8 n -- n n n ) {: class:ptr classu :}
    class classu RPT-ARGV-ASSERT
-   s" bin/hb" RPT-OUT RPT-CAPTURE-CAP RPT-ERR RPT-CAPTURE-CAP
-   RPT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   RPT-HB-CAPTURE ;
 
 : RPT-ASSERT-PACKET ( ptr u8 n -- ) {: class:ptr classu :}
    class classu RPT-RUN-ASSERT 0 T=
@@ -199,16 +204,15 @@ create RPT-ERR RPT-CAPTURE-CAP allot
 
 : RPT-ARGV-REPAIR-NOARGS ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/repair-packet.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/repair-packet.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
 
 : RPT-RUN-REPAIR-NOARGS ( -- n n n )
    RPT-ARGV-REPAIR-NOARGS
-   s" bin/hb" RPT-OUT RPT-CAPTURE-CAP RPT-ERR RPT-CAPTURE-CAP
-   RPT-TIMEOUT-MS RUN-ARGV-CAPTURE ;
+   RPT-HB-CAPTURE ;
 
 : RPT-TEST-NOARGS ( -- )
    RPT-RUN-REPAIR-NOARGS 64 T=

@@ -54,6 +54,12 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 : PT-CAPTURE-HB ( -- ptr u8 n )
    PT-CAPTURE-HB-BUF PT-CAPTURE-HB-U @ ;
 
+: PT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
+: PT-OUTCOME>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
+
 : PT-ROOT! ( -- )
    s" habu-process" TMPDIR-MKDIR {: a:ptr u :}
    a u PT-ROOT-BUF PT-ROOT-U PT-COPY! ;
@@ -92,49 +98,56 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 : PT-RUN-HB-SCRIPT ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: script:ptr scriptu out:ptr outcap err:ptr errcap timeout :}
    PROC-ARGV-RESET
-   script scriptu PROC-ARGV+
-   s" bin/hb" out outcap err errcap timeout RUN-ARGV-CAPTURE ;
+   script scriptu  >LEN PROC-ARGV+
+   s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
+   PT-CAPTURE>N ;
 
 : PT-RUN-HB-SCRIPT-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
    {: script:ptr scriptu out:ptr outcap err:ptr errcap timeout :}
    PROC-ARGV-RESET
-   script scriptu PROC-ARGV+
-   s" bin/hb" out outcap err errcap timeout RUN-ARGV-CAPTURE-OUTCOME ;
+   script scriptu  >LEN PROC-ARGV+
+   s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE-OUTCOME
+   PT-OUTCOME>N ;
+
+: PT-RUN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
+   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+   path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-CAPTURE
+   PT-CAPTURE>N ;
 
 : PT-READ ( n -- n )
    PT-BUF 32 read ;
 
 : TEST-SPAWN-FAIL ( -- )
-   s" /no/such/habu-process-test" -1 -1 -1 SPAWN-IO drop ;
+   s" /no/such/habu-process-test" >LEN -1 >FD -1 >FD -1 >FD SPAWN-IO drop ;
 
 : TEST-WAIT-BAD ( -- )
-   -1 WAIT-RC drop ;
+   -1 >PID WAIT-RC drop ;
 
 : TEST-POLL-WAIT ( -- )
-   PT-R @ 1 POLL-IN-OR-TIMEOUT drop ;
+   PT-R @ 1 >MS POLL-IN-OR-TIMEOUT drop ;
 
 : TEST-PATHZ ( -- )
-   s" /usr/bin/true" PATHZ dup ZLEN 13 T=
+   s" /usr/bin/true" >LEN PATHZ dup ZLEN 13 T=
    13 + c@ 0 T=
-   s" /usr/bin/true" RUN-RC 0 T=
-   s" /usr/bin/false" RUN-RC 1 T= ;
+   s" /usr/bin/true" >LEN RUN-RC RC>N 0 T=
+   s" /usr/bin/false" >LEN RUN-RC RC>N 1 T= ;
 
 : TEST-SPAWN-WAIT ( -- )
-   s" /usr/bin/true" -1 -1 -1 SPAWN-IO WAIT-RC 0 T=
+   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD SPAWN-IO WAIT-RC RC>N 0 T=
    ['] TEST-SPAWN-FAIL E-PROC-SPAWN TTHROWS ;
 
 : TEST-WAIT-STATUS ( -- )
-   s" /usr/bin/true" -1 -1 -1 SPAWN-IO WAIT-STATUS 0 T=
-   s" /usr/bin/false" -1 -1 -1 SPAWN-IO WAIT-STATUS 256 T= ;
+   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD SPAWN-IO WAIT-STATUS 0 T=
+   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD SPAWN-IO WAIT-STATUS 256 T= ;
 
 : TEST-WAIT-OUTCOME-EXIT ( -- )
-   s" /usr/bin/false" -1 -1 -1 SPAWN-IO WAIT-OUTCOME 1 T= PROC-OUTCOME-EXIT T= ;
+   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD SPAWN-IO WAIT-OUTCOME 1 T= PROC-OUTCOME-EXIT T= ;
 
 : TEST-WAIT-OUTCOME-SIGNAL ( -- )
    PROC-ARGV-RESET
-   s" -c" PROC-ARGV+
-   s" kill -TERM $$" PROC-ARGV+
-   s" /bin/sh" -1 -1 -1 SPAWN-ARGV-IO WAIT-OUTCOME 15 T= PROC-OUTCOME-SIGNAL T= ;
+   s" -c"  >LEN PROC-ARGV+
+   s" kill -TERM $$"  >LEN PROC-ARGV+
+   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD SPAWN-ARGV-IO WAIT-OUTCOME 15 T= PROC-OUTCOME-SIGNAL T= ;
 
 : TEST-WAIT-FAIL ( -- )
    ['] TEST-WAIT-BAD E-PROC-WAIT TTHROWS ;
@@ -143,9 +156,9 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PIPE-PAIR PT-W ! PT-R !
    PT-R @ FD-CLOEXEC!
    PT-W @ FD-CLOEXEC!
-   PT-R @ 0 POLL-IN 0 T=
+   PT-R @ 0 >MS POLL-IN COUNT>N 0 T=
    PT-W @ s" x" write 1 T=
-   PT-R @ 100 POLL-IN 1 T=
+   PT-R @ 100 >MS POLL-IN COUNT>N 1 T=
    PT-R @ PT-READ 1 T=
    PT-R @ close
    PT-W @ close ;
@@ -157,7 +170,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PT-W @ close ;
 
 : TEST-RUN-CAPTURE-BASIC ( -- )
-   s" /bin/pwd" PT-PWD-OUT 256 PT-ERR 32 1000 RUN-CAPTURE 0 T= 0 T= 0 > TTRUE ;
+   s" /bin/pwd" PT-PWD-OUT 256 PT-ERR 32 1000 PT-RUN-CAPTURE 0 T= 0 T= 0 > TTRUE ;
 
 : TEST-RUN-ARGV-CAPTURE-BASIC ( -- )
    PT-CAPTURE-OK PT-OUT 32 PT-ERR 32 1000 PT-RUN-HB-SCRIPT 7 T= 3 T= 3 T=
@@ -170,7 +183,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PT-ERR 3 s" err" T$= ;
 
 : TEST-RUN-CAPTURE-TRUNCATED ( -- )
-   s" /usr/bin/yes" PT-OUT 3 PT-ERR 32 1000 RUN-CAPTURE 2drop drop ;
+   s" /usr/bin/yes" PT-OUT 3 PT-ERR 32 1000 PT-RUN-CAPTURE 2drop drop ;
 
 : TEST-RUN-ARGV-CAPTURE-TRUNCATED ( -- )
    PT-CAPTURE-LONG PT-OUT 3 PT-ERR 32 1000 PT-RUN-HB-SCRIPT 2drop drop ;
@@ -182,7 +195,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PT-CAPTURE-ERR-LONG PT-OUT 32 PT-ERR 3 1000 PT-RUN-HB-SCRIPT 2drop drop ;
 
 : TEST-RUN-CAPTURE-FALSE ( -- )
-   s" /usr/bin/false" PT-OUT 32 PT-ERR 32 1000 RUN-CAPTURE 1 T= 0 T= 0 T= ;
+   s" /usr/bin/false" PT-OUT 32 PT-ERR 32 1000 PT-RUN-CAPTURE 1 T= 0 T= 0 T= ;
 
 : TEST-RUN-ARGV-CAPTURE-FALSE ( -- )
    PT-CAPTURE-FALSE PT-OUT 32 PT-ERR 32 1000 PT-RUN-HB-SCRIPT 1 T= 0 T= 0 T= ;
@@ -203,7 +216,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 
 : TEST-RUN-CAPTURE-FD-CLEANUP ( -- )
    0 begin dup 80 < while
-      s" /usr/bin/true" PT-OUT 32 PT-ERR 32 1000 RUN-CAPTURE 0 T= 0 T= 0 T=
+      s" /usr/bin/true" PT-OUT 32 PT-ERR 32 1000 PT-RUN-CAPTURE 0 T= 0 T= 0 T=
       1+
    repeat drop ;
 
@@ -212,7 +225,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PIPE-PAIR PT-OUT-W ! PT-OUT-R !
    PT-IN-W @ s" cat-in" write 6 T=
    PT-IN-W @ close
-   s" /bin/cat" PT-IN-R @ PT-OUT-W @ -1 RUN-IO-RC 0 T=
+   s" /bin/cat" >LEN PT-IN-R @ PT-OUT-W @ -1 >FD RUN-IO-RC RC>N 0 T=
    PT-IN-R @ close
    PT-OUT-W @ close
    PT-OUT-R @ PT-READ 6 T=

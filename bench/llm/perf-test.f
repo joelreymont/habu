@@ -16,34 +16,35 @@ variable PT-ROW
 
 : PT-RESET ( -- )
    PROC-ARGV-ENV-RESET
-   s" HABU_LLM_PERF_STUB" s" 1" PROC-ENV+
+   s" HABU_LLM_PERF_STUB" >LEN s" 1" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 : PT-PERF-ARGV ( -- )
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" lib/fs-mutate.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" lib/process-argv.f" PROC-ARGV+
-   s" lib/process-env.f" PROC-ARGV+
-   s" lib/time.f" PROC-ARGV+
-   s" lib/json-write.f" PROC-ARGV+
-   s" bench/llm/perf-lib.f" PROC-ARGV+
-   s" bench/llm/perf.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" lib/process-env.f"  >LEN PROC-ARGV+
+   s" lib/time.f"  >LEN PROC-ARGV+
+   s" lib/json-write.f"  >LEN PROC-ARGV+
+   s" bench/llm/perf-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/perf.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
 
 : PT-RUN ( -- )
-   s" bin/hb" PT-OUT PT-CAP PT-ERR PT-CAP PT-TIMEOUT-MS RUN-ARGV-ENV-CAPTURE
-   PT-RC !
-   PT-ERR-U !
-   PT-OUT-U ! ;
+   s" bin/hb" >LEN PT-OUT PT-CAP >LEN PT-ERR PT-CAP >LEN
+   PT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
+   rc RC>N PT-RC !
+   erru LEN>N PT-ERR-U !
+   outu LEN>N PT-OUT-U ! ;
 
 : PT-RUN-PERF-JSON ( -- )
    PT-RESET
    PT-PERF-ARGV
-   s" --json" PROC-ARGV+
+   s" --json"  >LEN PROC-ARGV+
    PT-RUN ;
 
 : PT-OUT$ ( -- ptr u8 n )
@@ -98,8 +99,8 @@ variable PT-ROW
 : PT-FULL-JSON ( -- )
    PT-RESET
    PT-PERF-ARGV
-   s" --json" PROC-ARGV+
-   s" --full" PROC-ARGV+
+   s" --json"  >LEN PROC-ARGV+
+   s" --full"  >LEN PROC-ARGV+
    PT-RUN
    PT-EXPECT-OK
    PT-PARSE-JSON
@@ -123,7 +124,7 @@ variable PT-ROW
 : PT-USAGE-ERROR ( -- )
    PT-RESET
    PT-PERF-ARGV
-   s" --bogus" PROC-ARGV+
+   s" --bogus"  >LEN PROC-ARGV+
    PT-RUN
    PT-RC @ PT-USAGE-RC T=
    s" usage: bench/llm/perf.f [--json] [--full]" PT-CONTAINS-ERR ;
@@ -131,8 +132,8 @@ variable PT-ROW
 : PT-DOUBLE-DASH-ERROR ( -- )
    PT-RESET
    PT-PERF-ARGV
-   s" --" PROC-ARGV+
-   s" extra" PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" extra"  >LEN PROC-ARGV+
    PT-RUN
    PT-RC @ PT-USAGE-RC T=
    s" usage: bench/llm/perf.f [--json] [--full]" PT-CONTAINS-ERR ;

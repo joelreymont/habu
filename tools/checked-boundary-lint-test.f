@@ -111,57 +111,65 @@ create CBLT-LF-BYTE 10 c,
 
 : CBLT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/string.f" PROC-ARGV+
-   s" lib/memory.f" PROC-ARGV+
-   s" lib/fs.f" PROC-ARGV+
-   s" tools/lint/json-writer.f" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/checked-boundary-lint.f" PROC-ARGV+
-   s" --" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/checked-boundary-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
+
+: CBLT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
+
+: CBLT-HB-CAPTURE ( -- n n n )
+   s" bin/hb"  >LEN CBLT-OUT CBLT-BUF-CAP >LEN
+   CBLT-ERR CBLT-BUF-CAP >LEN 1000 >MS
+   RUN-ARGV-CAPTURE CBLT-CAPTURE>N ;
 
 : CBLT-RUN-CURRENT ( -- n n n )
    CBLT-ARGV-LOAD
-   s" tools/checked-boundary-lint.f" PROC-ARGV+
-   s" bench/llm/report.f" PROC-ARGV+
-   s" bench/llm/parse-resp-lib.f" PROC-ARGV+
-   s" bench/llm/parse-resp.f" PROC-ARGV+
-   s" bench/llm/validate-results.f" PROC-ARGV+
-   s" tools/host-lint.f" PROC-ARGV+
-   s" tools/filemap-lint.f" PROC-ARGV+
-   s" tools/parallel-agent-lint.f" PROC-ARGV+
-   s" tools/signature-lint.f" PROC-ARGV+
-   s" tools/stale-status-lint.f" PROC-ARGV+
-   s" tools/trust-lint.f" PROC-ARGV+
-   s" bin/hb" CBLT-OUT CBLT-BUF-CAP CBLT-ERR CBLT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" tools/checked-boundary-lint.f"  >LEN PROC-ARGV+
+   s" bench/llm/report.f"  >LEN PROC-ARGV+
+   s" bench/llm/parse-resp-lib.f"  >LEN PROC-ARGV+
+   s" bench/llm/parse-resp.f"  >LEN PROC-ARGV+
+   s" bench/llm/validate-results.f"  >LEN PROC-ARGV+
+   s" tools/host-lint.f"  >LEN PROC-ARGV+
+   s" tools/filemap-lint.f"  >LEN PROC-ARGV+
+   s" tools/parallel-agent-lint.f"  >LEN PROC-ARGV+
+   s" tools/signature-lint.f"  >LEN PROC-ARGV+
+   s" tools/stale-status-lint.f"  >LEN PROC-ARGV+
+   s" tools/trust-lint.f"  >LEN PROC-ARGV+
+   CBLT-HB-CAPTURE ;
 
 : CBLT-RUN-GOOD ( -- n n n )
    CBLT-ARGV-LOAD
-   CBLT-GOOD PROC-ARGV+
-   s" bin/hb" CBLT-OUT CBLT-BUF-CAP CBLT-ERR CBLT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   CBLT-GOOD  >LEN PROC-ARGV+
+   CBLT-HB-CAPTURE ;
 
 : CBLT-RUN-STRICT-GOOD ( -- n n n )
    CBLT-ARGV-LOAD
-   s" --strict-boundary" PROC-ARGV+
-   CBLT-GOOD PROC-ARGV+
-   s" bin/hb" CBLT-OUT CBLT-BUF-CAP CBLT-ERR CBLT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" --strict-boundary"  >LEN PROC-ARGV+
+   CBLT-GOOD  >LEN PROC-ARGV+
+   CBLT-HB-CAPTURE ;
 
 : CBLT-RUN-LARGE ( -- n n n )
    CBLT-ARGV-LOAD
-   CBLT-LARGE PROC-ARGV+
-   s" bin/hb" CBLT-OUT CBLT-BUF-CAP CBLT-ERR CBLT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   CBLT-LARGE  >LEN PROC-ARGV+
+   CBLT-HB-CAPTURE ;
 
 : CBLT-RUN-BAD ( -- n n n )
    CBLT-ARGV-LOAD
-   CBLT-BAD PROC-ARGV+
-   s" bin/hb" CBLT-OUT CBLT-BUF-CAP CBLT-ERR CBLT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   CBLT-BAD  >LEN PROC-ARGV+
+   CBLT-HB-CAPTURE ;
 
 : CBLT-RUN-CROSS ( -- n n n )
    CBLT-ARGV-LOAD
-   CBLT-OFF PROC-ARGV+
-   CBLT-CROSS PROC-ARGV+
-   s" bin/hb" CBLT-OUT CBLT-BUF-CAP CBLT-ERR CBLT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   CBLT-OFF  >LEN PROC-ARGV+
+   CBLT-CROSS  >LEN PROC-ARGV+
+   CBLT-HB-CAPTURE ;
 
 : CBLT-ASSERT-CLEAN ( n n n -- ) {: rc outu erru :}
    rc 0 T=

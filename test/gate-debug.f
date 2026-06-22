@@ -33,7 +33,7 @@ variable GDB-PATH2-U
    path pathu FILE? 0= if label labelu GE-FAIL then ;
 
 : GDB-HB-TMP-ENV ( -- )
-   s" HB_TMP" GT-ROOT PROC-ENV+ ;
+   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+ ;
 
 : GDB-PROP ( -- )
    GE-HB-RESET
@@ -105,10 +105,10 @@ variable GDB-PATH2-U
 
 : GDB-PTY ( -- )
    GE-HB-RESET
-   s" --load" PROC-ARGV+
-   s" lib/errors.f" PROC-ARGV+
-   s" lib/process.f" PROC-ARGV+
-   s" test/proc-pty.f" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" test/proc-pty.f"  >LEN PROC-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" process/pty" GE-EXPECT-OK
    s" PASS: process/pty primitives" s" process/pty output" GE-EXPECT-OUT-HAS
@@ -131,12 +131,12 @@ variable GDB-PATH2-U
 
 : GDB-JITDUMP ( -- )
    GE-HB-RESET
-   s" --load" PROC-ARGV+
-   s" src/arch/arm64/disasm.f" PROC-ARGV+
-   s" tools/jitdump.f" PROC-ARGV+
-   s" --" PROC-ARGV+
-   s" : JITDUMP-SMOKE ( -- i64 ) 7 ;" PROC-ARGV+
-   s" JITDUMP-SMOKE" PROC-ARGV+
+   s" --load"  >LEN PROC-ARGV+
+   s" src/arch/arm64/disasm.f"  >LEN PROC-ARGV+
+   s" tools/jitdump.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" : JITDUMP-SMOKE ( -- i64 ) 7 ;"  >LEN PROC-ARGV+
+   s" JITDUMP-SMOKE"  >LEN PROC-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" jitdump direct CLI" GE-EXPECT-OK
    s" ret" s" jitdump direct CLI output" GE-EXPECT-OUT-HAS

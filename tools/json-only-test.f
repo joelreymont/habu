@@ -91,20 +91,25 @@ create JOT-ERR JOT-BUF-CAP allot
 
 : JOT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
-   s" --load" PROC-ARGV+
-   s" tools/argv.f" PROC-ARGV+
-   s" tools/json.f" PROC-ARGV+
-   s" tools/json-only.f" PROC-ARGV+ ;
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/json-only.f"  >LEN PROC-ARGV+ ;
+
+: JOT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
+   outu LEN>N erru LEN>N rc RC>N ;
 
 : JOT-RUN ( ptr u8 n -- n n n ) {: path:ptr pathu :}
    JOT-ARGV-LOAD
-   s" --" PROC-ARGV+
-   path pathu PROC-ARGV+
-   s" bin/hb" JOT-OUT JOT-BUF-CAP JOT-ERR JOT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" --"  >LEN PROC-ARGV+
+   path pathu  >LEN PROC-ARGV+
+   s" bin/hb"  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
+   1000 >MS RUN-ARGV-CAPTURE JOT-CAPTURE>N ;
 
 : JOT-RUN-NOARG ( -- n n n )
    JOT-ARGV-LOAD
-   s" bin/hb" JOT-OUT JOT-BUF-CAP JOT-ERR JOT-BUF-CAP 1000 RUN-ARGV-CAPTURE ;
+   s" bin/hb"  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
+   1000 >MS RUN-ARGV-CAPTURE JOT-CAPTURE>N ;
 
 : JOT-MIXED-CASE ( -- )
    JOT-IN JOT-MIXED-IN$ WRITE-ALL
