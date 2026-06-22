@@ -48,21 +48,30 @@ variable DFG-START
 : DFG-JS! ( -- )
    FV-LANG-JS DFG-LANG ! ;
 
+: DFG-PY! ( -- )
+   FV-LANG-PY DFG-LANG ! ;
+
 : DFG-TS! ( -- )
    FV-LANG-TS DFG-LANG ! ;
+
+: DFG-PY? ( -- bool )
+   DFG-LANG @ FV-LANG-PY = ;
 
 : DFG-TS? ( -- bool )
    DFG-LANG @ FV-LANG-TS = ;
 
 : DFG-ARM$ ( -- ptr u8 n )
+   DFG-PY? if s" python" exit then
    DFG-TS? if s" ts" exit then
    s" js" ;
 
 : DFG-RUNTIME-CMD$ ( -- ptr u8 n )
+   DFG-PY? if s" PYTHON" s" python3" DS-ENV$ exit then
    DFG-TS? if s" bun" exit then
    s" node" ;
 
 : DFG-TIMEOUT-ENV$ ( -- ptr u8 n )
+   DFG-PY? if s" BENCH_PY_TIMEOUT_MS" exit then
    DFG-TS? if s" BENCH_TS_TIMEOUT_MS" exit then
    s" BENCH_JS_TIMEOUT_MS" ;
 
@@ -80,6 +89,11 @@ variable DFG-START
    mono-ns DFG-START-NS @ - DFG-NS-PER-MS 1- + DFG-NS-PER-MS / DFG-WALL-MS ! ;
 
 : DFG-PATHS! ( -- )
+   DFG-PY? if
+      s" test.py" DS-BUNDLE-PATH DS-BUNDLE-PATH-U DS-JOIN!
+      s" runtime.py" DFG-RUNTIME-PATH DFG-RUNTIME-U DS-JOIN!
+      exit
+   then
    DFG-TS? if
       s" test.ts" DS-BUNDLE-PATH DS-BUNDLE-PATH-U DS-JOIN!
       s" runtime.ts" DFG-RUNTIME-PATH DFG-RUNTIME-U DS-JOIN!
@@ -135,7 +149,11 @@ variable DFG-START
 
 : DFG-BUILD-PROMPT ( -- )
    DS-PROMPT-RESET
-   DFG-TS? if
+   DFG-PY? if
+      s" Write a Python function with this exact signature:" DS-PROMPT-LN
+      s"   def f(a):" DS-PROMPT-LN
+      s"       ..." DS-PROMPT-LN
+   else DFG-TS? if
       s" Write a TypeScript function with this exact signature:" DS-PROMPT-LN
       DFG-CONV$ s" as" STR= if
          s"   function f(a: number[]): number { ... }" DS-PROMPT-LN
@@ -145,9 +163,14 @@ variable DFG-START
    else
       s" Write a JavaScript function with this exact signature:" DS-PROMPT-LN
       s"   function f(a) { ... }" DS-PROMPT-LN
+   then then
+   DFG-PY? if
+      s" where a is a list of integers." DS-PROMPT-LN
+   else
+      s" where a is an array of integers." DS-PROMPT-LN
    then
-   s" where a is an array of integers." DS-PROMPT-LN
    DFG-CONV$ s" as" STR= if s" It must return one integer result." else s" It must return a new array of integers." then DS-PROMPT-LN
+   DFG-PY? if s" Use only the Python standard library." DS-PROMPT-LN then
    DS-SPEC$ DS-PROMPT-LN
    s" " DS-PROMPT-LN
    s" Expected examples:" DS-PROMPT-LN
@@ -173,12 +196,26 @@ variable DFG-START
       DFG-CAND-LINE
    repeat
    drop 2drop
-   DS-CAND-U @ 0= if s" // no candidate extracted" DS-CAND-LN then ;
+   DS-CAND-U @ 0= if
+      DFG-PY? if s" # no candidate extracted" else s" // no candidate extracted" then
+      DS-CAND-LN
+   then ;
 
 : DFG-BUILD-TEST-BUNDLE ( -- )
    DS-TEST-RESET
    DS-CAND$ DS-TEST+
    s" " DS-TEST-LN
+   DFG-PY? if
+      s" import sys" DS-TEST-LN
+      s" def check(g,w,a):" DS-TEST-LN
+      s"     if g != w:" DS-TEST-LN
+      s"         print('FAIL f(' + a + ') = ' + repr(g) + ' expected ' + repr(w), file=sys.stderr)" DS-TEST-LN
+      s"         sys.exit(1)" DS-TEST-LN
+      DFG-CONV$ DS-TESTS$ FV-PY-TESTS DS-TEST+
+      s" print('ALL-OK')" DS-TEST-LN
+      DS-BUNDLE-PATH$ DS-TEST$ WRITE-ALL
+      exit
+   then
    DFG-TS? if
       s" function check(g: unknown,w: unknown,a: string): void { if(JSON.stringify(g)!==JSON.stringify(w)){ console.error('FAIL f('+a+') = '+JSON.stringify(g)+' expected '+JSON.stringify(w)); process.exit(1); } }" DS-TEST-LN
       DFG-CONV$ DS-TESTS$ FV-TS-TESTS DS-TEST+
@@ -193,11 +230,13 @@ variable DFG-START
    DS-TEST-RESET
    DS-CAND$ DS-TEST+
    s" " DS-TEST-LN
-   DFG-TS? if
+   DFG-PY? if
+      DS-TESTS$ 10 100 FV-PY-BENCH DS-TEST+
+   else DFG-TS? if
       DS-TESTS$ 10 100 FV-TS-BENCH DS-TEST+
    else
       DS-TESTS$ 10 100 FV-JS-BENCH DS-TEST+
-   then
+   then then
    DFG-RUNTIME$ DS-TEST$ WRITE-ALL ;
 
 : DFG-SCRIPT-CAPTURE ( ptr u8 n -- ) {: script:ptr scriptu :}
@@ -358,7 +397,7 @@ variable DFG-START
    s" BENCH_MAX_REPAIRS" 5 DS-ENV-U ;
 
 : DFG-USAGE ( -- )
-   s" usage: bench/llm/drive-js.f|drive-ts.f <id> <name> <sig> <spec> <conv> <vectors> [maxr]" E-DS-USAGE die ;
+   s" usage: bench/llm/drive-js.f|drive-python.f|drive-ts.f <id> <name> <sig> <spec> <conv> <vectors> [maxr]" E-DS-USAGE die ;
 
 : DFG-CONFIG ( -- )
    SCRIPT-ARGC 6 < if DFG-USAGE then

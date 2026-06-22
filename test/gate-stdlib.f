@@ -244,6 +244,8 @@ variable GS-SRC-N
    s" trust-lint fixtures" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" tools/stale-status-lint-test.f" GS-ARG+
    s" stale-status-lint fixtures" GS-HB-RUN
+   GS-HB s" tools/lint/lib.f" GS-ARG+ s" tools/fs.f" GS-ARG+ s" tools/host-lint.f" GS-ARG+ s" tools/host-lint-test.f" GS-ARG+
+   s" host-lint fixtures" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" tools/checked-boundary-lint-test.f" GS-ARG+
    s" checked-boundary-lint" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" tools/imgdump.f" GS-ARG+ s" tools/imgdump-test.f" GS-ARG+
@@ -496,6 +498,11 @@ variable GS-SRC-N
    s" bench/llm/drive-foreign-lib.f" GS-ARG+
    s" bench/llm/drive-js-test.f" GS-ARG+
    s" llm JavaScript driver" GS-HB-RUN
+   GS-ARG-LLM-DRIVER-BASE
+   s" bench/llm/foreign-vectors.f" GS-ARG+
+   s" bench/llm/drive-foreign-lib.f" GS-ARG+
+   s" bench/llm/drive-python-test.f" GS-ARG+
+   s" llm Python driver" GS-HB-RUN
    GS-ARG-LLM-DRIVER-BASE
    s" bench/llm/foreign-vectors.f" GS-ARG+
    s" bench/llm/drive-foreign-lib.f" GS-ARG+

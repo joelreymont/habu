@@ -92,8 +92,10 @@ variable HOST-PATH-U
    HOST-BAD @ 1+ HOST-BAD ! ;
 
 : HOST-PATH-BAD? ( ptr u8 n -- bool )
-   2dup HOST-PAT-A 6 HOST-FIND-CI 0 >= IF 2drop -1 exit THEN
-   HOST-PAT-B 3 HOST-FIND-CI 0 >= ;
+   s" .py" HAS-EXT? ;
+
+: HOST-SCAN-CONTENT? ( ptr u8 n -- bool )
+   s" .sh" HAS-EXT? ;
 
 : HOST-FORTH-SHELL? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" ./bench/llm/drive-forth" PREFIX? 0= IF LINT-FALSE exit THEN
@@ -115,7 +117,7 @@ variable HOST-PATH-U
    2drop LINT-FALSE ;
 
 : HOST-CHECK-A ( ptr u8 n -- )
-   HOST-PAT-A 6 HOST-FIND
+   HOST-PAT-A 6 HOST-FIND-CI
    dup 0 >= IF
       HOST-BUF HOST-LEN @ rot HOST-LINE#
       HOST-PATH-A @ HOST-PATH-U @ rot HOST-REPORT-CONTENT
@@ -124,7 +126,7 @@ variable HOST-PATH-U
    THEN ;
 
 : HOST-CHECK-B ( ptr u8 n -- )
-   HOST-PAT-B 3 HOST-FIND
+   HOST-PAT-B 3 HOST-FIND-CI
    dup 0 >= IF
       HOST-BUF HOST-LEN @ rot HOST-LINE#
       HOST-PATH-A @ HOST-PATH-U @ rot HOST-REPORT-CONTENT
@@ -141,6 +143,7 @@ variable HOST-PATH-U
    a u HOST-RETIRED-SHELL? IF a u HOST-REPORT-PATH exit THEN
    a u HOST-PATH-BAD? IF a u HOST-REPORT-PATH exit THEN
    a u HOST-TEXT? 0= IF exit THEN
+   a u HOST-SCAN-CONTENT? 0= IF exit THEN
    a HOST-PATH-A !  u HOST-PATH-U !
    a u HOST-BUF HOST-CAP READ-FILE nip HOST-LEN !
    HOST-SCAN-CONTENT ;

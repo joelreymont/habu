@@ -93,6 +93,7 @@ points stay listed.
 - `tools/repl-lint-test.f` — checked fixture coverage for REPL exit lint.
 - `tools/trust-lint.f` — `TRUSTED.md` drift lint.
 - `tools/trust-lint-test.f` — checked fixture coverage for `TRUSTED.md` drift lint.
+- `tools/host-lint-test.f` — focused coverage for host-script lint policy helpers.
 - `tools/stale-status-lint.f` — stale status/count lint.
 - `tools/stale-status-lint-test.f` — checked fixture coverage for stale status/count lint.
 - `tools/parallel-agent-lint.f` — freshness lint for the parallel-agent protocol.
@@ -185,9 +186,11 @@ points stay listed.
 - `bench/llm/drive-array-habu.f` — CLI wrapper for the native Habu array benchmark driver.
 - `bench/llm/drive-array-habu-test.f` — focused coverage for native Habu array driver pass, fail, reject, and repair-packet outcomes.
 - `bench/llm/drive-array-habu-repair-test.f` — focused live-model coverage for native Habu array repair-loop success and row accounting.
-- `bench/llm/drive-foreign-lib.f` — native foreign-language benchmark driver core for JavaScript and TypeScript function arms.
+- `bench/llm/drive-foreign-lib.f` — native foreign-language benchmark driver core for JavaScript, Python, and TypeScript function arms.
 - `bench/llm/drive-js.f` — CLI wrapper for the native JavaScript array benchmark driver.
 - `bench/llm/drive-js-test.f` — focused coverage for native JavaScript pass, fail, timeout, runtime, and repair-loop outcomes.
+- `bench/llm/drive-python.f` — CLI wrapper for the native Python array benchmark driver.
+- `bench/llm/drive-python-test.f` — focused coverage for native Python pass, fail, timeout, runtime, and repair-loop outcomes.
 - `bench/llm/drive-ts.f` — CLI wrapper for the native TypeScript array benchmark driver.
 - `bench/llm/drive-ts-test.f` — focused coverage for native TypeScript pass, fail, timeout, runtime, and repair-loop outcomes.
 - `bench/llm/negative-score.f` — checked scorer for negative benchmark expected codes/tokens/classes.
