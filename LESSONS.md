@@ -110,6 +110,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   pointer types once the address is `ptr ptr x`; use the checked `ptr-field`
   primitive to construct that address instead of adding `TRUSTED:` reload
   helpers for variables, record fields, or shared scanner capture cells.
+- **Removing unchecked lint boundaries finds real bugs:** after deleting
+  file-scope `0 set-check`, fix pointer variables with `ptr-field` accessors and
+  trust checker stack-shape errors. `trust-lint` had a duplicate manifest-name
+  residue before `TL-ADD-MAN`; the checked path exposed it.
 
 ## Runtime And REPL
 

@@ -3,8 +3,6 @@
 \ Run: bin/hb --load tools/date.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/fs.f tools/argv.f tools/trust-lint.f -- [ROOT] [TODAY]
 \ Or:  bin/hb --load ... tools/trust-lint.f -- source-only SOURCE [ROOT] [TODAY]
 
-0 set-check
-
 90 constant TL-MAX-AUDIT-AGE
 256 constant TL-MAX
 $10000 constant TL-STR-CAP
@@ -82,9 +80,26 @@ variable TL-NU
 variable TL-NB
 variable TL-NV
 
-: TL-CHECK-HOOK ( -- )
-   CHECK! ;
-' TL-CHECK-HOOK set-check
+: TL-CUR-PATH-A-FIELD ( -- ptr ptr u8 ) TL-CUR-PATH-A 0 ptr-field ;
+: TL-ROOT-A-FIELD ( -- ptr ptr u8 ) TL-ROOT-A 0 ptr-field ;
+: TL-SOURCE-A-FIELD ( -- ptr ptr u8 ) TL-SOURCE-A 0 ptr-field ;
+: TL-LA-FIELD ( -- ptr ptr u8 ) TL-LA 0 ptr-field ;
+: TL-NA-FIELD ( -- ptr ptr u8 ) TL-NA 0 ptr-field ;
+: TL-NB-FIELD ( -- ptr ptr u8 ) TL-NB 0 ptr-field ;
+
+: TL-CUR-PATH-A@ ( -- ptr u8 ) TL-CUR-PATH-A-FIELD @ ;
+: TL-ROOT-A@ ( -- ptr u8 ) TL-ROOT-A-FIELD @ ;
+: TL-SOURCE-A@ ( -- ptr u8 ) TL-SOURCE-A-FIELD @ ;
+: TL-LA@ ( -- ptr u8 ) TL-LA-FIELD @ ;
+: TL-NA@ ( -- ptr u8 ) TL-NA-FIELD @ ;
+: TL-NB@ ( -- ptr u8 ) TL-NB-FIELD @ ;
+
+: TL-CUR-PATH-A! ( ptr u8 -- ) TL-CUR-PATH-A-FIELD ! ;
+: TL-ROOT-A! ( ptr u8 -- ) TL-ROOT-A-FIELD ! ;
+: TL-SOURCE-A! ( ptr u8 -- ) TL-SOURCE-A-FIELD ! ;
+: TL-LA! ( ptr u8 -- ) TL-LA-FIELD ! ;
+: TL-NA! ( ptr u8 -- ) TL-NA-FIELD ! ;
+: TL-NB! ( ptr u8 -- ) TL-NB-FIELD ! ;
 
 : TL-C! ( n -- ) TL-ONE c! ;
 : TL-OUT ( ptr u8 n -- ) dup 0= IF 2drop exit THEN 1 -rot write drop ;
@@ -116,18 +131,18 @@ variable TL-NV
 : TL-FAIL ( ptr u8 n -- ) 76 die ;
 
 : TL-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
-   a TL-ROOT-A !
+   a TL-ROOT-A!
    u TL-ROOT-U ! ;
 
 : TL-ROOT-SELF? ( -- bool )
    TL-ROOT-U @ 0= IF TL-TRUE exit THEN
-   TL-ROOT-A @ TL-ROOT-U @ s" ." STR= ;
+   TL-ROOT-A@ TL-ROOT-U @ s" ." STR= ;
 
 : TL-ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    TL-ROOT-SELF? IF a u exit THEN
    TL-ROOT-U @ u + 1 + FS-PATH-CAP > IF s" trust-lint: root path too long" TL-FAIL THEN
-   TL-ROOT-A @ TL-PATH-BUF TL-ROOT-U @ COPY-BYTES
-   TL-ROOT-A @ TL-ROOT-U @ 1- + c@ FS-SLASH = IF
+   TL-ROOT-A@ TL-PATH-BUF TL-ROOT-U @ COPY-BYTES
+   TL-ROOT-A@ TL-ROOT-U @ 1- + c@ FS-SLASH = IF
       a TL-PATH-BUF TL-ROOT-U @ + u COPY-BYTES
       TL-PATH-BUF TL-ROOT-U @ u +
       exit
@@ -139,7 +154,7 @@ variable TL-NV
 : TL-REL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    TL-ROOT-SELF? IF a u exit THEN
    u TL-ROOT-U @ <= IF a u exit THEN
-   a TL-ROOT-U @ TL-ROOT-A @ TL-ROOT-U @ STR= 0= IF a u exit THEN
+   a TL-ROOT-U @ TL-ROOT-A@ TL-ROOT-U @ STR= 0= IF a u exit THEN
    a TL-ROOT-U @ + c@ FS-SLASH <> IF a u exit THEN
    a TL-ROOT-U @ 1 + +  u TL-ROOT-U @ 1 + - ;
 
@@ -218,7 +233,7 @@ variable TL-NV
 
 : TL-DUP-SITE ( n -- )
    s" DUPLICATE-TRUST " TL-OUT
-   TL-CUR-PATH-A @ TL-CUR-PATH-U @ TL-OUT TL-COLON TL-C TL-CUR-LINE @ TL-U.
+   TL-CUR-PATH-A@ TL-CUR-PATH-U @ TL-OUT TL-COLON TL-C TL-CUR-LINE @ TL-U.
    s" : `" TL-OUT P1A@ P1U @ TL-OUT
    s" ` already trusted at " TL-OUT
    TL-PRINT-SITE TL-NL
@@ -229,7 +244,7 @@ variable TL-NV
    TL-S# @ TL-MAX >= IF s" trust-lint: too many TRUST sites" TL-FAIL THEN
    P1A@ P1U @ TL-STORE$ TL-S-NL TL-S# @ TL-A! TL-S-NO TL-S# @ TL-A!
    P2A@ P2U @ TL-STORE$ TL-S-EL TL-S# @ TL-A! TL-S-EO TL-S# @ TL-A!
-   TL-CUR-PATH-A @ TL-CUR-PATH-U @ TL-STORE$ TL-S-PL TL-S# @ TL-A! TL-S-PO TL-S# @ TL-A!
+   TL-CUR-PATH-A@ TL-CUR-PATH-U @ TL-STORE$ TL-S-PL TL-S# @ TL-A! TL-S-PO TL-S# @ TL-A!
    TL-CUR-LINE @ TL-S-LINE TL-S# @ TL-A!
    TL-S# @ 1+ TL-S# ! ;
 
@@ -269,22 +284,22 @@ variable TL-NV
    TL-LE !
    TL-LINE @ 1+ TL-LINE !
    TL-LINE @ TL-CUR-LINE !
-   TL-LA @ TL-LS @ +  TL-LE @ TL-LS @ -  TL-LINE-LEN
+   TL-LA@ TL-LS @ +  TL-LE @ TL-LS @ -  TL-LINE-LEN
    TL-SCAN-SRC-LINE
    TL-LE @ 1+ TL-LS ! ;
 
 : TL-FOR-SRC-LINES ( ptr u8 n -- )
-   TL-LU !  TL-LA !
+   TL-LU !  TL-LA!
    0 TL-LINE !  0 TL-LX !  0 TL-LS !
    begin TL-LX @ TL-LU @ < while
-      TL-LA @ TL-LX @ + c@ TL-LF = IF TL-LX @ TL-DO-SRC-LINE THEN
+      TL-LA@ TL-LX @ + c@ TL-LF = IF TL-LX @ TL-DO-SRC-LINE THEN
       TL-LX @ 1+ TL-LX !
    repeat
    TL-LS @ TL-LU @ < IF TL-LU @ TL-DO-SRC-LINE THEN ;
 
 : TL-SCAN-SRC-FILE ( ptr u8 n -- ) {: a:ptr u :}
    a u s" .f" HAS-EXT? 0= IF exit THEN
-   a u TL-REL$ TL-CUR-PATH-U ! TL-CUR-PATH-A !
+   a u TL-REL$ TL-CUR-PATH-U ! TL-CUR-PATH-A!
    a u TL-FILE-BUF TL-FILE-CAP READ-FILE TL-FOR-SRC-LINES ;
 
 : TL-CELL! ( ptr u8 n -- ) {: a:ptr u :}
@@ -333,7 +348,7 @@ variable TL-NV
    0 TL-CELL$ TL-UNBACKTICK TRIM
    2dup s" Word" STR= IF 2drop exit THEN
    2dup TL-SEPARATOR? IF 2drop exit THEN
-   2dup 1 TL-CELL$ TL-UNBACKTICK TRIM
+   1 TL-CELL$ TL-UNBACKTICK TRIM
    3 TL-CELL$ TRIM
    4 TL-CELL$ TRIM
    5 TL-CELL$ TRIM
@@ -343,15 +358,15 @@ variable TL-NV
    TL-LE !
    TL-LINE @ 1+ TL-LINE !
    TL-LINE @ TL-CUR-LINE !
-   TL-LA @ TL-LS @ +  TL-LE @ TL-LS @ -  TL-LINE-LEN
+   TL-LA@ TL-LS @ +  TL-LE @ TL-LS @ -  TL-LINE-LEN
    TL-SCAN-MAN-LINE
    TL-LE @ 1+ TL-LS ! ;
 
 : TL-FOR-MAN-LINES ( ptr u8 n -- )
-   TL-LU !  TL-LA !
+   TL-LU !  TL-LA!
    0 TL-LINE !  0 TL-LX !  0 TL-LS !
    begin TL-LX @ TL-LU @ < while
-      TL-LA @ TL-LX @ + c@ TL-LF = IF TL-LX @ TL-DO-MAN-LINE THEN
+      TL-LA@ TL-LX @ + c@ TL-LF = IF TL-LX @ TL-DO-MAN-LINE THEN
       TL-LX @ 1+ TL-LX !
    repeat
    TL-LS @ TL-LU @ < IF TL-LU @ TL-DO-MAN-LINE THEN ;
@@ -366,8 +381,8 @@ variable TL-NV
 
 : TL-A-END? ( -- bool ) TL-AI @ TL-NU @ >= ;
 : TL-B-END? ( -- bool ) TL-BI @ TL-NV @ >= ;
-: TL-A-C@ ( -- n ) TL-NA @ TL-AI @ + c@ ;
-: TL-B-C@ ( -- n ) TL-NB @ TL-BI @ + c@ ;
+: TL-A-C@ ( -- n ) TL-NA@ TL-AI @ + c@ ;
+: TL-B-C@ ( -- n ) TL-NB@ TL-BI @ + c@ ;
 : TL-A-WS? ( -- bool ) TL-A-END? IF TL-FALSE ELSE TL-A-C@ WS? THEN ;
 : TL-B-WS? ( -- bool ) TL-B-END? IF TL-FALSE ELSE TL-B-C@ WS? THEN ;
 
@@ -386,7 +401,7 @@ variable TL-NV
    again ;
 
 : TL-NORM= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
-   a TL-NA !  u TL-NU !  b TL-NB !  v TL-NV !
+   a TL-NA!  u TL-NU !  b TL-NB!  v TL-NV !
    0 TL-AI !  0 TL-BI !
    begin
       TL-N-SKIP
@@ -495,7 +510,7 @@ variable TL-NV
 
 : TRUST-LINT-SOURCE ( -- )
    TL-RESET
-   TL-SOURCE-A @ TL-SOURCE-U @ TL-SCAN-SRC-FILE
+   TL-SOURCE-A@ TL-SOURCE-U @ TL-SCAN-SRC-FILE
    TL-SCAN-MANIFEST
    TL-CHECK-SITES
    TL-REPORT ;
@@ -507,7 +522,7 @@ variable TL-NV
 : TL-CONFIG-SOURCE ( -- )
    ARGV-POS# 2 < IF s" wrong number of positional arguments" ARGV-FAIL THEN
    ARGV-POS# 4 > IF s" wrong number of positional arguments" ARGV-FAIL THEN
-   1 ARGV-POS$ TL-SOURCE-U ! TL-SOURCE-A !
+   1 ARGV-POS$ TL-SOURCE-U ! TL-SOURCE-A!
    ARGV-POS# 2 > IF 2 ARGV-POS$ TL-ROOT! ELSE s" ." TL-ROOT! THEN
    ARGV-POS# 3 > IF 3 TL-CONFIG-TODAY ELSE epoch-seconds DATE-SECONDS-DAY / TL-TODAY-DAYS ! THEN ;
 
