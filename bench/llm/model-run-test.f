@@ -67,6 +67,26 @@ create MRT-MANY-PATH-BUF FS-PATH-CAP allot
    J-RBRACE MRT-RESP-C
    MRT-RESP$ ;
 
+: MRT-RESP-TEXT-OBJ ( ptr u8 n -- )
+   J-LBRACE MRT-RESP-C
+   s" text" MRT-RESP-KEY MRT-RESP-S
+   J-RBRACE MRT-RESP-C ;
+
+: MRT-CLAUDE-CONTENT$ ( -- ptr u8 n )
+   MRT-RESP-RESET
+   J-LBRACE MRT-RESP-C
+   s" content" MRT-RESP-KEY J-LBRACK MRT-RESP-C
+   s" hi" MRT-RESP-TEXT-OBJ
+   J-COMMA MRT-RESP-C
+   s"  there" MRT-RESP-TEXT-OBJ
+   J-RBRACK MRT-RESP-C
+   J-COMMA MRT-RESP-C
+   s" usage" MRT-RESP-KEY J-LBRACE MRT-RESP-C
+   s" output_tokens" MRT-RESP-KEY s" 5" MRT-RESP+
+   J-RBRACE MRT-RESP-C
+   J-RBRACE MRT-RESP-C
+   MRT-RESP$ ;
+
 : MRT-CLAUDE-LARGE$ ( -- ptr u8 n )
    MRT-RESP-RESET
    J-LBRACE MRT-RESP-C
@@ -144,6 +164,11 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    PR-OUT$ s" ok" T$=
    PR-TOKEN-COUNT 3 T= ;
 
+: MRT-TEST-PARSE-CLAUDE-CONTENT ( -- )
+   MRT-CLAUDE-CONTENT$ s" claude-json" s" usage.output_tokens" PR-PARSE-BUFFER
+   PR-OUT$ s" hi there" T$=
+   PR-TOKEN-COUNT 5 T= ;
+
 : MRT-TEST-PARSE-SYNTAX-FALLBACK ( -- )
    s" prose not json" s" claude-json" s" usage.output_tokens" PR-PARSE-BUFFER
    PR-OUT$ s" prose not json" T$=
@@ -186,6 +211,7 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    MRT-PREPARE-FILES
    MRT-TEST-BUFFERS
    MRT-TEST-PARSE-CLAUDE
+   MRT-TEST-PARSE-CLAUDE-CONTENT
    MRT-TEST-PARSE-SYNTAX-FALLBACK
    MRT-TEST-PARSE-TYPE-FALLBACK
    MRT-TEST-PARSE-LARGE-CLAUDE

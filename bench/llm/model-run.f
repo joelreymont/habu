@@ -214,7 +214,7 @@ TRUSTED: MRUN-PROMPT$ ( -- ptr u8 n )
 
 : MRUN-RUN ( ptr u8 n -- ) {: prompt:ptr promptu :}
    prompt promptu MRUN-PROMPT!
-   ['] MRUN-CAPTURE-SAVED catch dup 0= if
+   [: MRUN-CAPTURE-SAVED ;] catch dup 0= if
       drop
    else
       dup MRUN-PROC-ERROR? if MRUN-CAPTURE-FAILED exit then

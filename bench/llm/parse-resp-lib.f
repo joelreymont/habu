@@ -1,8 +1,6 @@
 \ parse-resp-lib.f - loadable Habu-native model response parser.
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, tools/json.f, tools/argv.f.
 
-0 set-check
-
 $40000 constant PR-IN-CAP
 $10000 constant PR-OUT-CAP
 32 constant PR-NUM-CAP
@@ -27,12 +25,23 @@ variable PR-TF-U
 variable PR-PARSER-SET
 variable PR-TF-SET
 
-: PR-CHECK-HOOK ( -- )
-   CHECK! ;
-' PR-CHECK-HOOK set-check
+: PR-PARSER-A-FIELD ( -- ptr ptr u8 ) PR-PARSER-A 0 ptr-field ;
+: PR-TF-A-FIELD ( -- ptr ptr u8 ) PR-TF-A 0 ptr-field ;
+
+: PR-PARSER-A@ ( -- ptr u8 ) PR-PARSER-A-FIELD @ ;
+: PR-TF-A@ ( -- ptr u8 ) PR-TF-A-FIELD @ ;
+
+: PR-PARSER-A! ( ptr u8 -- ) PR-PARSER-A-FIELD ! ;
+: PR-TF-A! ( ptr u8 -- ) PR-TF-A-FIELD ! ;
+
+: PR-TRUE ( -- bool )
+   0 0= ;
+
+: PR-FALSE ( -- bool )
+   0 1 = ;
 
 : PR-FAIL ( ptr u8 n -- )
-   type cr PR-E-INTERNAL die ;
+   PR-E-INTERNAL die ;
 
 : PR-OUT-CHECK ( n -- )
    PR-OUT-CAP > IF s" parse-resp: output overflow" PR-FAIL THEN ;
@@ -46,19 +55,21 @@ variable PR-TF-SET
    0 PR-TF-SET !
    0 PR-TF-U ! ;
 
-TRUSTED: PR-PARSER! ( ptr u8 n -- )
+: PR-PARSER! ( ptr u8 n -- ) {: a:ptr u :}
    -1 PR-PARSER-SET !
-   PR-PARSER-U ! PR-PARSER-A ! ;
+   u PR-PARSER-U !
+   a PR-PARSER-A! ;
 
-TRUSTED: PR-TOKEN-FIELDS! ( ptr u8 n -- )
+: PR-TOKEN-FIELDS! ( ptr u8 n -- ) {: a:ptr u :}
    -1 PR-TF-SET !
-   PR-TF-U ! PR-TF-A ! ;
+   u PR-TF-U !
+   a PR-TF-A! ;
 
-TRUSTED: PR-PARSER-CONFIG$ ( -- ptr u8 n )
-   PR-PARSER-A @ PR-PARSER-U @ ;
+: PR-PARSER-CONFIG$ ( -- ptr u8 n )
+   PR-PARSER-A@ PR-PARSER-U @ ;
 
-TRUSTED: PR-TF-CONFIG$ ( -- ptr u8 n )
-   PR-TF-A @ PR-TF-U @ ;
+: PR-TF-CONFIG$ ( -- ptr u8 n )
+   PR-TF-A@ PR-TF-U @ ;
 
 : PR-IN! ( ptr u8 n -- ) {: a:ptr u :}
    u PR-IN-CAP > IF s" parse-resp: input overflow" PR-FAIL THEN
@@ -129,10 +140,10 @@ TRUSTED: PR-TF-CONFIG$ ( -- ptr u8 n )
    THEN ;
 
 : PR-MAYBE-SET-STRING ( n -- bool ) {: node :}
-   node 0 < IF 0 exit THEN
-   node JSON-KIND J-STR <> IF 0 exit THEN
+   node 0 < IF PR-FALSE exit THEN
+   node JSON-KIND J-STR <> IF PR-FALSE exit THEN
    node JSON-STRING$ PR-OUT-SET
-   -1 ;
+   PR-TRUE ;
 
 : PR-MAYBE-APPEND-TEXT ( n -- )
    s" text" PR-GET
@@ -153,7 +164,7 @@ TRUSTED: PR-TF-CONFIG$ ( -- ptr u8 n )
    PR-IN PR-IN-U @ JSON-PARSE PR-ROOT !
    PR-ROOT @ PR-ADD-TOKEN-FIELDS
    PR-ROOT @ s" result" PR-GET PR-MAYBE-SET-STRING IF exit THEN
-   PR-CLAUDE-CONTENT ;
+   PR-ROOT @ PR-CLAUDE-CONTENT ;
 
 : PR-PARSE-OPENAI-CHOICE ( n -- ) {: choices :}
    choices 0 < IF exit THEN
@@ -173,8 +184,8 @@ TRUSTED: PR-TF-CONFIG$ ( -- ptr u8 n )
 
 : PR-CODEX-AGENT-MESSAGE? ( n -- bool ) {: item :}
    item s" type" PR-GET PR-TYPE-NODE !
-   PR-TYPE-NODE @ 0 < IF 0 exit THEN
-   PR-TYPE-NODE @ JSON-KIND J-STR <> IF 0 exit THEN
+   PR-TYPE-NODE @ 0 < IF PR-FALSE exit THEN
+   PR-TYPE-NODE @ JSON-KIND J-STR <> IF PR-FALSE exit THEN
    PR-TYPE-NODE @ JSON-STRING$ PR-AGENT-MESSAGE$? ;
 
 : PR-CODEX-EVENT ( n -- ) {: root :}
