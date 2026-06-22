@@ -8,6 +8,7 @@
 65536 constant REBT-CAP
 10 constant REBT-DEC
 48 constant REBT-ZERO
+32 constant REBT-SPACE
 32 constant REBT-NUM-CAP
 
 create REBT-ROOT FS-PATH-CAP allot
@@ -124,6 +125,18 @@ variable REBT-NUM-I
 : REBT-ARRAY-CANDIDATE$ ( -- ptr u8 n )
    s" : ARR-SUM ( ptr a n -- i64 ) >LEN A-SUM ;" ;
 
+: REBT-JS-CANDIDATE$ ( -- ptr u8 n )
+   s" function f(a){ return a.reduce((s,x)=>s+x,0); }" ;
+
+: REBT-PY-CANDIDATE$ ( -- ptr u8 n )
+   s" def f(a): return sum(a)" ;
+
+: REBT-RUST-CANDIDATE$ ( -- ptr u8 n )
+   s" fn f(a: &[i64]) -> i64 { a.iter().sum() }" ;
+
+: REBT-TS-CANDIDATE$ ( -- ptr u8 n )
+   s" function f(a: number[]): number { return a.reduce((s,x)=>s+x,0); }" ;
+
 : REBT-WRITE-MODEL ( ptr u8 n -- ) {: a:ptr u :}
    REBT-MODEL-SRC$ a u REBT-MODEL-SOURCE$ WRITE-ALL ;
 
@@ -224,6 +237,11 @@ variable REBT-NUM-I
    s" PATH" >LEN REBT-ROOT$ >LEN PROC-ENV+
    REBT-RUN-EXPANDED-SPAWN ;
 
+: REBT-RUN-FOREIGN-ARRAY-EXPANDED ( ptr u8 n ptr u8 n -- ) {: arm:ptr armu seed:ptr seedu :}
+   s" 46" seed seedu REBT-RUN-EXPANDED-START
+   s" BENCH_ARRAY_ARMS" >LEN arm armu >LEN PROC-ENV+
+   REBT-RUN-EXPANDED-SPAWN ;
+
 : REBT-RUN-FORTH-EXPANDED ( -- )
    s" 1" s" run-expanded-forth-2026-06-21" REBT-RUN-EXPANDED-START
    s" BENCH_FORTH_MODES" >LEN s" repair raw blind" >LEN PROC-ENV+
@@ -235,6 +253,17 @@ variable REBT-NUM-I
 
 : REBT-CONTAINS ( ptr u8 n ptr u8 n -- )
    CONTAINS? TTRUE ;
+
+: REBT-NOT-CONTAINS ( ptr u8 n ptr u8 n -- )
+   CONTAINS? 0= TTRUE ;
+
+: REBT-ARM-REPORT$ ( ptr u8 n -- ptr u8 n ) {: arm:ptr armu :}
+   SB-RESET
+   s" arm " SB-APPEND
+   arm armu SB-APPEND
+   REBT-SPACE SB-APPEND-C
+   s" rows=1" SB-APPEND
+   SB$ ;
 
 : REBT-ASSERT-AOT-JSONL ( -- )
    REBT-OUT-PATH$ REBT-FILE$ {: a:ptr u :}
@@ -267,6 +296,22 @@ variable REBT-NUM-I
    a u s" category arrays rows=1" REBT-CONTAINS
    a u s" arm habu-stdlib rows=1" REBT-CONTAINS ;
 
+: REBT-ASSERT-FOREIGN-ARRAY-JSONL ( ptr u8 n -- ) {: arm:ptr armu :}
+   REBT-OUT-PATH$ REBT-FILE$ {: a:ptr u :}
+   a u s" outcome" REBT-CONTAINS
+   a u s" pass" REBT-CONTAINS
+   a u s" first_pass_checker" REBT-CONTAINS
+   a u s" certified" REBT-CONTAINS
+   a u s" runtime_status" REBT-CONTAINS
+   a u s" task_id" REBT-CONTAINS
+   a u arm armu REBT-CONTAINS
+   a u s" .sh" REBT-NOT-CONTAINS ;
+
+: REBT-ASSERT-FOREIGN-ARRAY-REPORT ( ptr u8 n -- ) {: arm:ptr armu :}
+   REBT-REPORT$ REBT-FILE$ {: a:ptr u :}
+   a u s" category arrays rows=1" REBT-CONTAINS
+   a u arm armu REBT-ARM-REPORT$ REBT-CONTAINS ;
+
 : REBT-ASSERT-FORTH-JSONL ( -- )
    REBT-OUT-PATH$ REBT-FILE$ {: a:ptr u :}
    a u s" outcome" REBT-CONTAINS
@@ -283,7 +328,14 @@ variable REBT-NUM-I
    a u s" arm habu-forth-blind rows=1" REBT-CONTAINS ;
 
 : REBT-ASSERT-RUNNER-NO-SHELL ( -- )
-   s" bench/llm/run-expanded-bench.f" REBT-FILE$ REBT-FORTH-SHELL$ CONTAINS? 0= TTRUE ;
+   s" bench/llm/run-expanded-bench.f" REBT-FILE$ {: a:ptr u :}
+   a u REBT-FORTH-SHELL$ REBT-NOT-CONTAINS
+   a u s" drive-js.sh" REBT-NOT-CONTAINS
+   a u s" drive-python.sh" REBT-NOT-CONTAINS
+   a u s" drive-rust.sh" REBT-NOT-CONTAINS
+   a u s" drive-ts.sh" REBT-NOT-CONTAINS
+   a u s" RB-RUN-PREPARE" REBT-NOT-CONTAINS
+   a u s" RB-RUN-APPEND" REBT-NOT-CONTAINS ;
 
 : REBT-RUN-AOT-CASE ( -- )
    REBT-AOT-CANDIDATE$ REBT-WRITE-MODEL
@@ -301,6 +353,20 @@ variable REBT-NUM-I
    REBT-ASSERT-ARRAY-JSONL
    REBT-ASSERT-ARRAY-REPORT ;
 
+: REBT-RUN-FOREIGN-ARRAY-CASE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: candidate:ptr candidateu arm:ptr armu seed:ptr seedu :}
+   candidate candidateu REBT-WRITE-MODEL
+   REBT-BUILD-MODEL
+   REBT-WRITE-MODELS
+   arm armu seed seedu REBT-RUN-FOREIGN-ARRAY-EXPANDED
+   arm armu REBT-ASSERT-FOREIGN-ARRAY-JSONL
+   arm armu REBT-ASSERT-FOREIGN-ARRAY-REPORT ;
+
+: REBT-RUN-FOREIGN-ARRAY-CASES ( -- )
+   REBT-JS-CANDIDATE$ s" js" s" run-expanded-array-js-2026-06-21" REBT-RUN-FOREIGN-ARRAY-CASE
+   REBT-PY-CANDIDATE$ s" python" s" run-expanded-array-python-2026-06-21" REBT-RUN-FOREIGN-ARRAY-CASE
+   REBT-RUST-CANDIDATE$ s" rust" s" run-expanded-array-rust-2026-06-21" REBT-RUN-FOREIGN-ARRAY-CASE
+   REBT-TS-CANDIDATE$ s" ts" s" run-expanded-array-ts-2026-06-21" REBT-RUN-FOREIGN-ARRAY-CASE ;
+
 : REBT-RUN-FORTH-CASE ( -- )
    REBT-FORTH-CANDIDATE$ REBT-WRITE-MODEL
    REBT-BUILD-MODEL
@@ -316,6 +382,7 @@ variable REBT-NUM-I
    REBT-RUN-AOT-CASE
    REBT-RUN-FORTH-CASE
    REBT-RUN-ARRAY-CASE
+   REBT-RUN-FOREIGN-ARRAY-CASES
    CLEANUP-RUN
    T-REPORT
    s" run-expanded-bench-test: ok" type cr ;

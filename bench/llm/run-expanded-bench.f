@@ -406,10 +406,17 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
    arm armu s" habu-stdlib" STR= if RB-TRUE exit then
    arm armu s" habu-skeleton" STR= ;
 
-: RB-ARRAY-SCRIPT$ ( ptr u8 n -- ptr u8 n ) {: arm:ptr armu :}
-   arm armu s" js" STR= if s" bench/llm/drive-js.sh" exit then
-   arm armu s" ts" STR= if s" bench/llm/drive-ts.sh" exit then
-   arm armu s" rust" STR= if s" bench/llm/drive-rust.sh" exit then
+: RB-ARRAY-FOREIGN? ( ptr u8 n -- bool ) {: arm:ptr armu :}
+   arm armu s" js" STR= if RB-TRUE exit then
+   arm armu s" python" STR= if RB-TRUE exit then
+   arm armu s" ts" STR= if RB-TRUE exit then
+   arm armu s" rust" STR= ;
+
+: RB-ARRAY-FOREIGN-DRIVER$ ( ptr u8 n -- ptr u8 n ) {: arm:ptr armu :}
+   arm armu s" js" STR= if s" bench/llm/drive-js.f" exit then
+   arm armu s" python" STR= if s" bench/llm/drive-python.f" exit then
+   arm armu s" ts" STR= if s" bench/llm/drive-ts.f" exit then
+   arm armu s" rust" STR= if s" bench/llm/drive-rust.f" exit then
    s" run-expanded-bench: unknown BENCH_ARRAY_ARMS entry" RB-DIE
    s" " ;
 
@@ -418,20 +425,6 @@ TRUSTED: RB-MODEL-LINE$ ( -- ptr u8 n )
 
 : RB-RESULTS-RESET ( -- )
    RB-RESULTS$ RB-LF-BUF 0 WRITE-ALL ;
-
-: RB-RUN-PREPARE ( -- )
-   s" sh" RB-RESOLVE-EXE PROC-ARGV-PREPARE
-   PROC-ENV-INHERIT-MISSING
-   PROC-ENV-PREPARE
-   RB-OUT$ OPEN-APPEND-FD RB-OUT-FD !
-   -1 >FD RB-OUT-FD @ >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW RB-PID !
-   PROC-ARGV-ENV-RESET
-   RB-OUT-FD @ close
-   RB-PID @ 0 < if s" run-expanded-bench: spawn failed" RB-DIE then ;
-
-: RB-RUN-APPEND ( -- n )
-   RB-RUN-PREPARE
-   RB-PID @ WAIT-RC RC>N ;
 
 : RB-RUN-TO-RESULTS ( -- n )
    s" bin/hb" RB-RESOLVE-EXE PROC-ARGV-PREPARE
@@ -542,23 +535,6 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" BENCH_TASK_FAMILY" BM-T-CATEGORY RB-TASK-FIELD$ RB-PROC-ENV$
    s" MODEL_REGISTRY" RB-MODEL-REG$ RB-PROC-ENV$ ;
 
-: RB-ARRAY-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu arm:ptr armu trial :}
-   PROC-ARGV-ENV-RESET
-   model modelu trial RB-ADD-COMMON-ENV
-   arm armu RB-ARRAY-SCRIPT$  >LEN PROC-ARGV+
-   BM-T-ID RB-TASK-FIELD$  >LEN PROC-ARGV+
-   BM-T-NAME RB-TASK-FIELD$  >LEN PROC-ARGV+
-   RB-TASK-LINE$ BM-TASK-SIG$  >LEN PROC-ARGV+
-   BM-T-SPEC RB-TASK-FIELD$  >LEN PROC-ARGV+
-   BM-T-CONV RB-TASK-FIELD$  >LEN PROC-ARGV+
-   BM-T-VECTORS RB-TASK-FIELD$  >LEN PROC-ARGV+
-   arm armu RB-ARRAY-HABU? if
-      arm armu RB-ARRAY-HABU-ARM$  >LEN PROC-ARGV+
-   then
-   SB-RESET
-   RB-MAX-REPAIRS @ RB-SB-U+
-   SB$  >LEN PROC-ARGV+ ;
-
 : RB-STDLIB-LOADS ( -- )
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -581,6 +557,27 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" src/core/sha256.f"  >LEN PROC-ARGV+
    s" bench/llm/live-row.f"  >LEN PROC-ARGV+
    s" bench/llm/drive-stdlib-lib.f"  >LEN PROC-ARGV+ ;
+
+: RB-ARRAY-FOREIGN-LOADS ( ptr u8 n -- ) {: arm:ptr armu :}
+   RB-STDLIB-LOADS
+   s" bench/llm/foreign-vectors.f"  >LEN PROC-ARGV+
+   s" bench/llm/drive-foreign-lib.f"  >LEN PROC-ARGV+
+   arm armu RB-ARRAY-FOREIGN-DRIVER$  >LEN PROC-ARGV+ ;
+
+: RB-ARRAY-ARGS ( ptr u8 n ptr u8 n n -- ) {: model:ptr modelu arm:ptr armu trial :}
+   PROC-ARGV-ENV-RESET
+   model modelu trial RB-ADD-COMMON-ENV
+   arm armu RB-ARRAY-FOREIGN-LOADS
+   s" --"  >LEN PROC-ARGV+
+   BM-T-ID RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-NAME RB-TASK-FIELD$  >LEN PROC-ARGV+
+   RB-TASK-LINE$ BM-TASK-SIG$  >LEN PROC-ARGV+
+   BM-T-SPEC RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-CONV RB-TASK-FIELD$  >LEN PROC-ARGV+
+   BM-T-VECTORS RB-TASK-FIELD$  >LEN PROC-ARGV+
+   SB-RESET
+   RB-MAX-REPAIRS @ RB-SB-U+
+   SB$  >LEN PROC-ARGV+ ;
 
 : RB-FORTH-LOADS ( -- )
    RB-STDLIB-LOADS
@@ -742,8 +739,9 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
       model modelu arm armu trial RB-ARRAY-HABU-ARGS
       RB-RUN-HB-APPEND drop
    else
+      arm armu RB-ARRAY-FOREIGN? 0= if s" run-expanded-bench: unknown BENCH_ARRAY_ARMS entry" RB-DIE then
       model modelu arm armu trial RB-ARRAY-ARGS
-      RB-RUN-APPEND drop
+      RB-RUN-HB-APPEND drop
    then
    BM-T-ID RB-TASK-FIELD$ model modelu arm armu trial RB-ROW-DONE? 0= if
       s" run-expanded-bench: missing array result row" RB-DIE
@@ -913,7 +911,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
       RB-ARRAY-ARMS!
    else
       2drop
-      s" habu-a habu-lib habu-stdlib habu-skeleton js ts rust" RB-ARRAY-ARMS!
+      s" habu-a habu-lib habu-stdlib habu-skeleton js python ts rust" RB-ARRAY-ARMS!
    then
    s" BENCH_FORTH_MODES" GETENV dup 0 > if
       RB-FORTH-MODES!
