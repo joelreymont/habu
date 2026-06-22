@@ -54,6 +54,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   line, assume the checker/compiler/primitive model owns the bug until the exact
   checked path proves that invariant is outside its contract. Fix the model and
   add the negative regression before accepting downstream runtime code.
+- **Quotations are xts, not closures:** `[: ;]` may not read a surrounding
+  local. Until real closure objects exist, both the checker and generated
+  compiler must reject local references while a quotation is open; otherwise
+  runtime reads the wrong frame even though the source looked stack-balanced.
 - **Checker misses need class labels:** after fail-closed proof, classify the
   miss as wrong boundary effect, checker semantics, codegen/runtime mismatch, or
   same-type semantic-role gap before editing downstream runtime code.
@@ -194,6 +198,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   Inline-only emission corrupts fixed `DREC` records and later primitive lookup.
 - **Label locals must match label values exactly:** an extra local name consumes
   stale generator stack state and can crash much later in unrelated emitted code.
+- **Factor compiler emitters before growing them:** `EM-COMPILE` is close enough
+  to the native body-capture limit that new compile paths should become named
+  emitter helpers with TRUST manifest rows. A body-capacity exit during
+  self-build is a structure signal, not permission to raise limits blindly.
 - **Checked process code uses modeled primitives:** `run-rc` executes but is not
   checker-modeled. Use `spawn-io wait-rc` in checked examples until `run-rc` is
   expressed as a checked wrapper or given an audited checker model.
