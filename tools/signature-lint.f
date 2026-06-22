@@ -1,5 +1,5 @@
 \ signature-lint.f - strict typed-signature lint.
-\ Load after lib/memory.f, tools/lint/lib.f, tools/lint/source-lex.f,
+\ Load after lib/memory.f, lib/vector.f, tools/lint/lib.f, tools/lint/source-lex.f,
 \ and tools/argv.f.
 
 0 set-check

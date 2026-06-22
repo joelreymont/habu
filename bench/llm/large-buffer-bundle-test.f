@@ -1,6 +1,6 @@
 \ large-buffer-bundle-test.f - composed OS-backed 64K buffer regression.
 \
-\ Load after lib/test.f, lib/memory.f, tools/lint/source-lex.f,
+\ Load after lib/test.f, lib/memory.f, lib/vector.f, tools/lint/source-lex.f,
 \ bench/llm/forth-task-lines-lib.f, and bench/llm/attempt-solutions-lib.f.
 
 4096 constant LBB-BUFS

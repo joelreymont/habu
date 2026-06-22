@@ -626,16 +626,49 @@ PTABLE
 variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable FSP  variable FP
 \ user sigs: certified words recorded as [len|name|len|sig]*, 0-terminated.
 \ Appended by the renderer (RECXT hook); scanned after PTAB so later wins.
-65536 constant USIGS-CAP
-USIGS-CAP 2 - constant USIGS-LIMIT
-create USIGS USIGS-CAP allot   0 USIGS c!   variable UEND   0 UEND !
+$10000 constant USIGS-INIT-CAP
+$10000 constant USIGS-GRAIN
+$7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
+3 constant USIGS-PROT-RW
+$1002 constant USIGS-MAP-ANON
+-1 constant USIGS-ANON-FD
+0 constant USIGS-OFF-ZERO
+create USIGS-BOOT USIGS-INIT-CAP allot
+variable USIGS-P   variable USIGS-CAP-U   variable UEND
+
+: USIGS ( -- ptr u8 ) USIGS-P @ ;
+
+USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS c!
+
+: USIGS-COPY {: src:ptr dst:ptr n :}
+   n 0 > IF n 0 DO src i + c@ dst i + c! LOOP THEN ;
+
+: USIGS-ROUND-CAP {: need :}
+   need 0 <= IF s" checker: bad user sig cap" 76 die THEN
+   need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN
+   need 1 - USIGS-GRAIN / 1 + USIGS-GRAIN * ;
+
+: USIGS-ALLOC {: cap :}
+   0 cap USIGS-PROT-RW USIGS-MAP-ANON USIGS-ANON-FD USIGS-OFF-ZERO mmap
+   dup 0 < IF s" checker: user sigs mmap failed" 76 die THEN ;
+
+: USIGS-GROW {: need :}
+   need USIGS-ROUND-CAP {: cap :}
+   cap USIGS-ALLOC {: next:ptr :}
+   USIGS next UEND @ 1 + USIGS-COPY
+   next USIGS-P !
+   cap USIGS-CAP-U ! ;
+
+: USIGS-ENSURE {: need :}
+   need USIGS-CAP-U @ <= IF exit THEN
+   need USIGS-GROW ;
 
 : UB! {: c :}  c USIGS UEND @ + c!  UEND @ 1 + UEND ! ;
 
 : UBS {: a u :}  0 BEGIN dup u < WHILE  dup a + c@ UB!  1 + REPEAT drop ;
 
 : USIG-ADD {: sa su na nu :}
-   UEND @ nu + su + 3 + USIGS-LIMIT > IF s" checker: user sigs full" 76 die THEN
+   UEND @ nu + su + 3 + USIGS-ENSURE
    nu UB!  na nu UBS  su UB!  sa su UBS  0 USIGS UEND @ + c! ;
 
 : SCAN-SIGS {: tab a u :}  tab FP !

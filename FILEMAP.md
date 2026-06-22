@@ -64,7 +64,7 @@ points stay listed.
 - `tools/build-fixpoint-main.f` — CLI entrypoint for the self-rebuild fixpoint driver.
 - `tools/build-fixpoint-test.f` — checked fixture coverage for the self-rebuild fixpoint driver.
 - `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.
-- `tools/lint/source-lex.f` — shared dynamic source lexer for native lints.
+- `tools/lint/source-lex.f` — checked vector-backed source lexer for native lints.
 - `tools/signature-lint.f` — strict typed-signature lint.
 - `tools/signature-lint-test.f` — checked fixture coverage for strict typed-signature lint.
 - `tools/aot-lint.f` — stripped-AOT unsupported-word lint.

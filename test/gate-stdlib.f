@@ -223,7 +223,7 @@ variable GS-SRC-N
    s" tools/check-test.f" s" native check runner fixture check" GS-CHECK-COMMON-PROC ;
 
 : GS-RUN-TOOL-FIXTURES ( -- )
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" tools/lint/text-foundation-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/vector.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" tools/lint/text-foundation-test.f" GS-ARG+
    s" text foundation fixtures" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" tools/repl-lint-test.f" GS-ARG+
    s" repl-lint fixtures" GS-HB-RUN
@@ -283,14 +283,15 @@ variable GS-SRC-N
    s" llm diagnostic stats" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" src/core/sha256.f" GS-ARG+ s" bench/llm/artifacts.f" GS-ARG+ s" bench/llm/artifacts-test.f" GS-ARG+
    s" llm artifact hashes" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" bench/llm/attempt-solutions-lib.f" GS-ARG+ s" bench/llm/attempt-solutions-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/vector.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" bench/llm/attempt-solutions-lib.f" GS-ARG+ s" bench/llm/attempt-solutions-test.f" GS-ARG+
    s" llm attempt solution extractor" GS-HB-RUN
-   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" bench/llm/forth-task-lines-lib.f" GS-ARG+ s" bench/llm/attempt-solutions-lib.f" GS-ARG+ s" bench/llm/large-buffer-bundle-test.f" GS-ARG+
+   GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/vector.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" tools/lint/lib.f" GS-ARG+ s" tools/lint/source-lex.f" GS-ARG+ s" bench/llm/forth-task-lines-lib.f" GS-ARG+ s" bench/llm/attempt-solutions-lib.f" GS-ARG+ s" bench/llm/large-buffer-bundle-test.f" GS-ARG+
    s" llm large buffer bundle" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+ s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+ s" lib/json-write.f" GS-ARG+ s" tools/json.f" GS-ARG+ s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+ s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+ s" lib/process-env.f" GS-ARG+ s" bench/llm/manifest.f" GS-ARG+ s" bench/llm/diagnostic-stats.f" GS-ARG+ s" bench/llm/run-attempts-lib.f" GS-ARG+ s" bench/llm/run-attempts-test.f" GS-ARG+
    s" llm attempt runner helpers" GS-HB-RUN
    GS-HB s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+
    s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+
+   s" lib/vector.f" GS-ARG+
    s" lib/json-write.f" GS-ARG+ s" tools/json.f" GS-ARG+
    s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+
    s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+
@@ -322,6 +323,7 @@ variable GS-SRC-N
 : GS-SRC-LLM-FORTH-BASE ( -- )
    s" lib/errors.f" GS-SRC+ s" lib/string.f" GS-SRC+
    s" lib/test.f" GS-SRC+ s" lib/memory.f" GS-SRC+
+   s" lib/vector.f" GS-SRC+
    s" lib/fs.f" GS-SRC+ s" lib/fs-mutate.f" GS-SRC+
    s" lib/process.f" GS-SRC+ s" lib/process-argv.f" GS-SRC+
    s" lib/process-env.f" GS-SRC+ s" tools/argv.f" GS-SRC+
@@ -356,6 +358,7 @@ variable GS-SRC-N
    GS-HB
    s" lib/errors.f" GS-ARG+ s" lib/string.f" GS-ARG+
    s" lib/test.f" GS-ARG+ s" lib/memory.f" GS-ARG+
+   s" lib/vector.f" GS-ARG+
    s" lib/fs.f" GS-ARG+ s" lib/fs-mutate.f" GS-ARG+
    s" lib/process.f" GS-ARG+ s" lib/process-argv.f" GS-ARG+
    s" lib/process-env.f" GS-ARG+ s" tools/argv.f" GS-ARG+

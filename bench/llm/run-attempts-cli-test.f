@@ -167,6 +167,7 @@ variable RACT-NEXT
    s" lib/process-env.f"  >LEN PROC-ARGV+
    s" lib/time.f"  >LEN PROC-ARGV+
    s" lib/date.f"  >LEN PROC-ARGV+
+   s" lib/vector.f"  >LEN PROC-ARGV+
    s" bench/llm/manifest.f"  >LEN PROC-ARGV+
    s" tools/lint/lib.f"  >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+

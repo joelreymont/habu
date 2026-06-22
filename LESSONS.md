@@ -42,6 +42,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 
 ## Checker Soundness
 
+- **Checker persistent stores must scale and roll back:** certified signatures
+  live in `USIGS`, which must grow for real composed checked bundles and still
+  roll back by restoring `UEND` in define-check-discard loops. Fixed checker
+  storage limits are compiler infrastructure bugs, not reasons to trim bundles.
 - **Checker RCA starts with invariant, then compiler ownership:** “why didn’t
   the checker catch this?” is an immediate trigger, even in meta-discussion.
   First write `Static invariant:` answering what pre-runtime fact should have

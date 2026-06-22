@@ -1,6 +1,6 @@
 \ attempt-solutions-lib.f - checked reference extractor for attempt runners.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f, lib/fs-mutate.f,
 \ bench/llm/manifest.f, lib/memory.f, tools/lint/lib.f, and
 \ tools/lint/source-lex.f.
 
@@ -223,12 +223,16 @@ TRUSTED: AS-SOL-BUF ( -- ptr u8 )
    k LK@ L-WORD <> if AS-FALSE exit then
    k LTOK a u STR= ;
 
-: AS-DEF-END ( n -- n ) {: start :}
+: AS-FIND-DEF-END ( n -- n bool ) {: start :}
    start AS-J !
    begin AS-J @ L# @ < while
-      AS-J @ s" ;" AS-TOK= if AS-J @ exit then
+      AS-J @ s" ;" AS-TOK= if AS-J @ AS-TRUE exit then
       AS-J @ 1+ AS-J !
    repeat
+   start AS-FALSE ;
+
+: AS-DEF-END ( n -- n )
+   AS-FIND-DEF-END if exit then
    E-AS-SYNTAX throw ;
 
 : AS-TOK-END-BYTE ( n -- n ) {: k :}
@@ -255,19 +259,29 @@ TRUSTED: AS-SOL-BUF ( -- ptr u8 )
    AS-SOL-BUF start LB@ +
    semi AS-TOK-END-BYTE start LB@ - ;
 
-: AS-HANDLE-DEF ( n -- n ) {: k :}
+: AS-REQUIRE-DEF-HEAD ( n -- ) {: k :}
    k 1+ L# @ >= if E-AS-SYNTAX throw then
-   k 1+ LK@ L-WORD <> if E-AS-SYNTAX throw then
+   k 1+ LK@ L-WORD <> if E-AS-SYNTAX throw then ;
+
+: AS-LOAD-DEF-NAME ( n -- ) {: k :}
    k 1+ LTOK AS-FIND-NAME if
       AS-I !
-      AS-I @ AS-SEEN? if E-AS-DUPLICATE throw then
-      k 2 + AS-DEF-END AS-SEMI !
-      AS-I @ AS-SEEN!
-      AS-OUT-U @ 0 > if AS-I @ k AS-SEMI @ AS-DEF-SOURCE$ AS-WRITE-SOLUTION then
-      AS-SEMI @ 1+ exit
+      exit
    then
    drop
    E-AS-EXTRA throw ;
+
+: AS-REQUIRE-UNSEEN ( -- )
+   AS-I @ AS-SEEN? if E-AS-DUPLICATE throw then ;
+
+: AS-HANDLE-DEF ( n -- n ) {: k :}
+   k AS-REQUIRE-DEF-HEAD
+   k AS-LOAD-DEF-NAME
+   AS-REQUIRE-UNSEEN
+   k 2 + AS-DEF-END AS-SEMI !
+   AS-I @ AS-SEEN!
+   AS-OUT-U @ 0 > if AS-I @ k AS-SEMI @ AS-DEF-SOURCE$ AS-WRITE-SOLUTION then
+   AS-SEMI @ 1+ ;
 
 : AS-SCAN-SOLUTIONS ( -- )
    AS-SOL-BUF AS-SOL-LEN @ LEX-SOURCE

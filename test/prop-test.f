@@ -129,9 +129,10 @@ variable FC-KIND  variable FC-EXP  variable FC-MEAS
 \ code (CP), the name dict (NDICT) and the checker's certified-signature table
 \ (UEND, the USIGS cursor). Per-check transient pools (the term arena, QEN) reset
 \ themselves in the checker's NEW; the `:` handler resets the codegen scratch. So a
-\ correct forget = restore exactly CP/NDICT/UEND. Without UEND, an unbounded sweep
-\ overflows USIGS ("user sigs full") after ~1k certified defs. Two levels (program
-\ + shrink variant) so shrinking can roll back inside a program's own checkpoint.
+\ correct forget = restore exactly CP/NDICT/UEND. USIGS can grow for real composed
+\ tools, but an unbounded sweep must restore UEND so discarded certified defs do
+\ not accumulate. Two levels (program + shrink variant) let shrinking roll back
+\ inside a program's own checkpoint.
 variable CPSAVE  variable NDSAVE  variable UESAVE
 variable SCPSV   variable SNDSV   variable SUESV
 : MARK    ( -- )  cp@ CPSAVE !  ndict@ NDSAVE !  UEND @ UESAVE ! ;

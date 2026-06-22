@@ -3,7 +3,7 @@
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/json-write.f, tools/json.f,
 \ lib/fs.f, lib/fs-mutate.f, lib/process.f, lib/process-argv.f,
 \ lib/process-env.f, lib/time.f, lib/date.f, bench/llm/manifest.f,
-\ tools/lint/lib.f, tools/lint/source-lex.f, tools/argv.f,
+\ tools/lint/lib.f, lib/vector.f, tools/lint/source-lex.f, tools/argv.f,
 \ bench/llm/forth-task-lines-lib.f, bench/llm/attempt-solutions-lib.f,
 \ bench/llm/diagnostic-stats.f, and bench/llm/run-attempts-lib.f.
 

@@ -176,6 +176,7 @@ variable HBB-JSON-FOUND
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/vector.f"  >LEN PROC-ARGV+
    s" tools/lint/lib.f"  >LEN PROC-ARGV+
    s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+

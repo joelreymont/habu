@@ -589,6 +589,7 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/vector.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" lib/fs-mutate.f"  >LEN PROC-ARGV+
    s" lib/process.f"  >LEN PROC-ARGV+

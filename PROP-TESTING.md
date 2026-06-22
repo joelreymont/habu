@@ -201,7 +201,7 @@ A `: G … ;` grows THREE persistent stores: code (`CP`), the name dict (`NDICT`
 and the checker's certified-signature table (`UEND`, the `USIGS` cursor). The
 per-program **forget** restores exactly those three, so the sweep reuses the same
 memory every iteration and runs **unbounded** — 50 000+ programs in one process
-with no growth. (Per-check transient pools reset themselves: the term arena and
+without accumulating discarded signatures. (Per-check transient pools reset themselves: the term arena and
 the quot-effect pool `QEN` in the checker's `NEW`, the codegen scratch at `:`.)
 Two checkpoint levels nest cleanly: a program-level mark, and a variant-level mark
 so shrinking and the metamorphic amplifiers can define-check-discard derived words
@@ -220,7 +220,7 @@ is no dict cap to hit.
   checker must reject stay rejected.
 - **Sweep:** pass a larger count on argv — the complete forget reuses
   CP/NDICT/USIGS every iteration, so a single process runs unbounded (50 000+
-  programs verified, no growth).
+  programs verified without accumulating discarded signatures).
 - **Regression:** freeze any counterexample as a `BAIT` in `prop-test.f` (a
   program that must not certify) so it can never silently return. Current baits
   cover non-neutral `leave`, divergent `exit`, bool-as-`i64`, malformed
