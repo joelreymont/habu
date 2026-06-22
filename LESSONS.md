@@ -53,6 +53,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   be detected before writing any update or tool plan. If the latest user message
   contains the trigger, the first visible line is `Static invariant:` and only
   then the investigation, tooling, and downstream repair plan begin.
+- **Quoted checker-miss prompts still trigger:** process questions and quoted
+  examples such as “why didn’t the checker catch this?” are not inert text. If
+  the trigger is missed, the next visible message restarts at `Static invariant:`
+  before any explanation.
 - **Quotations are xts, not closures:** `[: ;]` may not read a surrounding
   local. Until real closure objects exist, both the checker and generated
   compiler must reject local references while a quotation is open; otherwise

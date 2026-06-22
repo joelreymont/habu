@@ -9,11 +9,14 @@ roadmap.
 
 - Before any progress update, tool call, or implementation plan, scan the latest
   user message for “why didn’t the checker catch this?”, “why didn’t the compiler
-  catch this?”, or equivalent wording.
+  catch this?”, or equivalent wording. Quoted examples, meta-process questions,
+  and variants such as “why did the checker/compiler miss it?” are live triggers.
 - If that trigger is present, the first visible line must be `Static invariant:`
   followed by the pre-runtime fact that should have been impossible and the
   checker/compiler boundary that should enforce it. No runtime symptom,
   workaround, library edit, or test-harness edit comes first.
+- If the trigger was missed, the next visible message must restart with
+  `Static invariant:` before continuing. Do not explain the process first.
 - Continue with `docs/forth.md` § Checker-Miss RCA: prove the exact path is
   fail-closed, classify the miss, add a minimal negative checked regression, fix
   the checker/compiler/primitive model or dot the missing capability, then repair
