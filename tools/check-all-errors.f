@@ -55,6 +55,7 @@ variable CA-RAW-U
 variable CA-MATCH-TOK
 variable CA-MATCH-ORD
 variable CA-ORD
+variable CA-ALL-DEFS
 
 variable CA-IN-R
 variable CA-IN-W
@@ -489,7 +490,7 @@ variable CA-FILE-U
    CA-INF ;
 
 : CA-PROG-DEF-I ( -- )
-   CA-I @ CA-OK@ IF
+   CA-ALL-DEFS @ CA-I @ CA-OK@ or IF
       CA-I @ CA-START@ CA-I @ CA-END@ CA-PROG-SLICE
       CA-LF CA-PROG-C
    THEN
@@ -500,12 +501,12 @@ variable CA-FILE-U
    CA-LF CA-PROG-C
    CA-J @ 1+ CA-J ! ;
 
-: CA-PROG-CONTEXT ( n -- ) {: k :}
+: CA-PROG-CONTEXT-LIMIT ( n -- ) {: limit :}
    0 CA-I !
    0 CA-J !
    begin
-      k CA-START@ CA-NEXT-DEF CA-NEXT-D !
-      k CA-START@ CA-NEXT-SUP CA-NEXT-S !
+      limit CA-NEXT-DEF CA-NEXT-D !
+      limit CA-NEXT-SUP CA-NEXT-S !
       CA-NEXT-D @ CA-INF < CA-NEXT-S @ CA-INF < or
    while
       CA-NEXT-D @ CA-NEXT-S @ <= IF
@@ -514,6 +515,9 @@ variable CA-FILE-U
          CA-PROG-SUP-J
       THEN
    repeat ;
+
+: CA-PROG-CONTEXT ( n -- ) {: k :}
+   k CA-START@ CA-PROG-CONTEXT-LIMIT ;
 
 : CA-PROG-ORIGIN ( n -- ) {: k :}
    k CA-LINE@ CA-PROG-U  CA-SP CA-PROG-C
@@ -528,7 +532,14 @@ variable CA-FILE-U
    k CA-PROG-ORIGIN
    k CA-START@ k CA-END@ CA-PROG-SLICE ;
 
-: CA-SPAWN-HB ( n -- n ) {: k :}
+: CA-BUILD-FULL-PROGRAM ( -- )
+   0 CA-PROG-LEN !
+   CA-PROG-PREFIX
+   -1 CA-ALL-DEFS !
+   CA-INF CA-PROG-CONTEXT-LIMIT
+   0 CA-ALL-DEFS ! ;
+
+: CA-RUN-PROGRAM ( -- n )
    CA-IN-R CA-IN-W CA-MKPIPE
    CA-OUT-R CA-OUT-W CA-MKPIPE
    CA-ERR-R CA-ERR-W CA-MKPIPE
@@ -539,7 +550,6 @@ variable CA-FILE-U
    CA-IN-R @ close
    CA-OUT-W @ close
    CA-ERR-W @ close
-   k CA-BUILD-PROGRAM
    CA-IN-W @ CA-PROG-A@ CA-PROG-LEN @ CA-WRITE
    CA-IN-W @ close
    CA-PID @ wait-rc CA-RC !
@@ -548,6 +558,14 @@ variable CA-FILE-U
    CA-OUT-R @ close
    CA-ERR-R @ close
    CA-RC @ ;
+
+: CA-SPAWN-HB ( n -- n )
+   CA-BUILD-PROGRAM
+   CA-RUN-PROGRAM ;
+
+: CA-SPAWN-HB-FULL ( -- n )
+   CA-BUILD-FULL-PROGRAM
+   CA-RUN-PROGRAM ;
 
 : CA-JSON-LINE? ( ptr u8 n -- bool )
    TRIM dup 0= IF 2drop CA-FALSE exit THEN
@@ -678,6 +696,7 @@ variable CA-FILE-U
 : CA-RUN-DEFS ( -- )
    0 CA-FAILED !
    0 CA-RAW-FAILURE !
+   CA-SPAWN-HB-FULL 0= IF exit THEN
    0 CA-K !
    begin CA-K @ CA-DEF# @ < while
       CA-K @ CA-SPAWN-HB dup 0= IF
