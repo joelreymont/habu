@@ -132,7 +132,10 @@ failures so checker precision gaps do not depress language reliability.
 
 Replay fields are `prompt`, `raw_response`, `extracted_candidate`,
 `checker_diagnostics`, `repair_packet`, `test_output`, and `final_bundle`; every
-one must have a paired `*_sha256` field.
+one must have a paired `*_sha256` field. `prompt`, `raw_response`, and
+`extracted_candidate` are nonempty. `final_bundle` is nonempty for rows where
+`tests_passed` is true; error rows that cannot build a candidate may record an
+empty `final_bundle` with the SHA-256 of the empty payload.
 
 Benchmark rows score diagnostic quality with boolean fields derived from the
 checker or repair packets:

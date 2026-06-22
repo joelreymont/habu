@@ -3,10 +3,10 @@
 `tools/json.f` is a bounded Habu-native JSON foundation for tools that run with
 `bin/hb`.
 
-Load it by concatenating it before the tool that uses it:
+Load it before the tool that uses it:
 
 ```sh
-cat tools/json.f my-tool.f | bin/hb
+bin/hb --load tools/json.f my-tool.f -- args...
 ```
 
 ## Parser
@@ -54,7 +54,7 @@ Skipped rows are part of the iterator contract and can be inspected with
 `JSONL-SKIPPED ( -- u )`.
 
 The returned node is valid until the next `JSONL-NEXT-OBJECT` call, because each
-line parse reuses the static DOM buffers.
+line parse reuses the parser DOM tables and string arena.
 
 ## Writer
 
@@ -74,7 +74,11 @@ Manual writer helpers share the same output buffer:
 
 ## Bounds
 
-The implementation is intentionally static-buffered. Current caps are
-`JSON-MAX-NODES`, `JSON-MAX-ITEMS`, `JSON-MAX-PAIRS`, `JSON-STR-CAP`,
-`JSON-OUT-CAP`, and `JSON-MAX-DEPTH` in `tools/json.f`. Exceeding any cap throws
-`E-JSON-CAPACITY`.
+The parser string arena starts at `JSON-STR-BOOT-CAP` and grows in
+`JSON-STR-GRAIN` OS-backed spans as needed. This lets large JSONL benchmark rows
+carry long prompts, responses, and bundles without a fixed string cap.
+
+The DOM and writer structures remain explicitly bounded by `JSON-MAX-NODES`,
+`JSON-MAX-ITEMS`, `JSON-MAX-PAIRS`, `JSON-OUT-CAP`, and `JSON-MAX-DEPTH` in
+`tools/json.f`. Exceeding any fixed table cap, overflow guard, or OS allocation
+throws `E-JSON-CAPACITY`.

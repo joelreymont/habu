@@ -15,8 +15,12 @@ variable TEST-N
    JSON-STR= ASSERT ;
 
 $1000 constant T-CAP
+$9000 constant T-LARGE-BODY
 create TBUF T-CAP allot
 variable TLEN
+variable T-LARGE-A
+variable T-LARGE-CAP
+variable T-LARGE-LEN
 
 : T-CLEAR  \ ( -- )
    0 TLEN ! ;
@@ -34,6 +38,25 @@ variable TLEN
 
 : T$  \ ( -- a u )
    TBUF TLEN @ ;
+
+: T-LARGE-RESET  \ ( -- )
+   T-LARGE-BODY 32 + JSON-ALLOC-STR-PTR T-LARGE-A !
+   T-LARGE-BODY 32 + T-LARGE-CAP !
+   0 T-LARGE-LEN ! ;
+
+: T-LARGE+C  \ ( c -- )
+   T-LARGE-LEN @ 1+ T-LARGE-CAP @ > IF s" json-test: large buffer full" 1 die THEN
+   T-LARGE-A @ T-LARGE-LEN @ + c!
+   T-LARGE-LEN @ 1+ T-LARGE-LEN ! ;
+
+: T-LARGE+  \ ( a u -- )
+   {: a u :}
+   T-LARGE-LEN @ u + T-LARGE-CAP @ > IF s" json-test: large buffer full" 1 die THEN
+   a u T-LARGE-A @ T-LARGE-LEN @ + JSON-COPY
+   T-LARGE-LEN @ u + T-LARGE-LEN ! ;
+
+: T-LARGE$  \ ( -- a u )
+   T-LARGE-A @ T-LARGE-LEN @ ;
 
 variable TRY-A
 variable TRY-U
@@ -56,6 +79,9 @@ variable NODE
 
 : ADD-DQ$  \ ( a u -- )
    J-DQ T+C T+ J-DQ T+C ;
+
+: ADD-LARGE-DQ$  \ ( a u -- )
+   J-DQ T-LARGE+C T-LARGE+ J-DQ T-LARGE+C ;
 
 : BUILD-NESTED  \ ( -- a u )
    T-CLEAR
@@ -123,6 +149,25 @@ variable NODE
    JSON-OUT-BUF JSON-OUT-LEN @ JSON-PARSE ROOT !
    ROOT @ s" msg" JSON-GET JSON-STRING$ s" a" ASSERT$
    ROOT @ s" n" JSON-GET JSON-NUMBER$ s" -7.25e-1" ASSERT$ ;
+
+: BUILD-LARGE-STRING  \ ( -- a u )
+   T-LARGE-RESET
+   J-LBRACE T-LARGE+C
+   s" big" ADD-LARGE-DQ$ J-COLON T-LARGE+C J-DQ T-LARGE+C
+   0 begin dup T-LARGE-BODY < while
+      97 T-LARGE+C
+      1+
+   repeat drop
+   J-DQ T-LARGE+C J-RBRACE T-LARGE+C
+   T-LARGE$ ;
+
+: TEST-LARGE-STRING  \ ( -- )
+   BUILD-LARGE-STRING JSON-PARSE ROOT !
+   ROOT @ s" big" JSON-GET JSON-STRING$ TU ! TA !
+   TU @ T-LARGE-BODY ASSERT=
+   TA @ 0 97 ASSERT-BYTE
+   TA @ T-LARGE-BODY 1- 97 ASSERT-BYTE
+   JSON-STR-CAP JSON-STR-BOOT-CAP > ASSERT ;
 
 : BUILD-LEADING-ZERO  \ ( -- a u )
    T-CLEAR
@@ -202,6 +247,7 @@ variable NODE
    1 TEST-N !
    TEST-NESTED
    TEST-WRITE-ROUNDTRIP
+   TEST-LARGE-STRING
    TEST-STRICT-ERRORS
    TEST-JSONL
    TEST-JSONL-BLANK-ROWS

@@ -1,10 +1,10 @@
 \ validate-results.f - validate and summarize LLM benchmark metrics.
-\ Load after tools/lint/lib.f, tools/json.f, and tools/argv.f.
+\ Load after lib/errors.f, lib/memory.f, tools/lint/lib.f, tools/json.f,
+\ and tools/argv.f.
 
 0 set-check
 
 $8000 constant LV-TASK-CAP
-$20000 constant LV-RESULT-CAP
 $4000 constant LV-READ-CAP
 256 constant LV-MAX
 2048 constant LV-ROW-MAX
@@ -35,7 +35,6 @@ $40000 constant LV-KEY-STR-CAP
 102 constant LV-LOWER-F
 
 create LV-TASK-BUF LV-TASK-CAP allot
-create LV-RESULT-BUF LV-RESULT-CAP allot
 create LV-READ-BUF LV-READ-CAP allot
 create LV-NUM-BUF LV-NUM-CAP allot
 create LV-RUN-BUF LV-RUN-CAP allot
@@ -222,10 +221,35 @@ variable LV-RFD
 variable LV-RGOT
 variable LV-BI
 variable LV-LINE-U
+variable LV-RESULT-A
+variable LV-RESULT-CAP-U
 
 : LV-CHECK-HOOK ( -- )
    CHECK! ;
 ' LV-CHECK-HOOK set-check
+
+: LV-RESULT-CAP ( -- n )
+   LV-RESULT-CAP-U @ ;
+
+TRUSTED: LV-RESULT-BUF ( -- ptr u8 )
+   LV-RESULT-A @ ;
+
+: LV-COPY-RESULT-OLD ( ptr u8 -- ) {: dst:ptr :}
+   LV-RESULT-BUF dst LV-LINE-U @ BMOVE ;
+
+: LV-GROW-RESULT ( n -- ) {: need :}
+   need MEM-ALLOC-64K-SPAN {: dst:ptr cap :}
+   LV-RESULT-CAP 0 > IF dst LV-COPY-RESULT-OLD THEN
+   dst LV-RESULT-A !
+   cap LV-RESULT-CAP-U ! ;
+
+: LV-ENSURE-RESULT ( n -- ) {: need :}
+   need 0 <= IF exit THEN
+   need LV-RESULT-CAP <= IF exit THEN
+   need LV-GROW-RESULT ;
+
+: LV-INIT-RESULT ( -- )
+   LV-RESULT-CAP 0= IF LV-READ-CAP LV-ENSURE-RESULT THEN ;
 
 : LV-OUT ( ptr u8 n -- ) type ;
 : LV-NL ( -- ) 10 emit ;
@@ -307,6 +331,17 @@ variable LV-LINE-U
    LV-NL
    1 throw ;
 
+: LV-FAIL-AT-FIELD {: msg:ptr msgu field:ptr fieldu :} ( ptr u8 n ptr u8 n -- )
+   s" llm-results: " LV-OUT
+   LV-RESULT-PATH$ LV-OUT
+   s" :" LV-OUT
+   LV-LINE @ LV-U.
+   s" : " LV-OUT
+   msg msgu LV-OUT
+   field fieldu LV-OUT
+   LV-NL
+   1 throw ;
+
 : LV-FAIL-AT-ID {: a:ptr u id :} ( ptr u8 n n -- )
    s" llm-results: " LV-OUT
    LV-RESULT-PATH$ LV-OUT
@@ -315,6 +350,26 @@ variable LV-LINE-U
    s" : " LV-OUT
    a u LV-OUT
    id LV-U.
+   LV-NL
+   1 throw ;
+
+TRUSTED: LV-CATCH-PARSE ( ptr u8 n -- n )
+   ['] JSON-PARSE catch
+   dup 0= IF drop LV-ROOT ! 0 exit THEN
+   >r 2drop r> ;
+
+: LV-JSON-FAIL ( n -- )
+   drop
+   s" llm-results: " LV-OUT
+   LV-RESULT-PATH$ LV-OUT
+   s" :" LV-OUT
+   LV-LINE @ LV-U.
+   s" : " LV-OUT
+   JSON-ERROR$ dup 0= IF
+      2drop s" JSON parse failed" LV-OUT
+   ELSE
+      LV-OUT
+   THEN
    LV-NL
    1 throw ;
 
@@ -1079,10 +1134,13 @@ variable LV-LINE-U
 : LV-CHECK-ARTIFACT {: root a:ptr u ha:ptr hu must :} ( n ptr u8 n ptr u8 n bool -- )
    root a u LV-REQ
    root a u LV-STR-FIELD
-   must IF dup 0= IF 2drop s" empty string field" LV-FAIL-AT THEN THEN
+   must IF dup 0= IF 2drop s" empty artifact field " a u LV-FAIL-AT-FIELD THEN THEN
    2drop
    root ha hu LV-REQ
    root ha hu LV-STR-FIELD LV-SHA256? 0= IF s" invalid sha256 hash" LV-FAIL-AT THEN ;
+
+: LV-CHECK-FINAL-BUNDLE {: root :} ( n -- )
+   root s" final_bundle" s" final_bundle_sha256" root s" tests_passed" LV-BOOL-FIELD LV-CHECK-ARTIFACT ;
 
 : LV-CHECK-V2-ARTIFACTS {: root :} ( n -- )
    root s" prompt" s" prompt_sha256" -1 LV-CHECK-ARTIFACT
@@ -1091,7 +1149,7 @@ variable LV-LINE-U
    root s" checker_diagnostics" s" checker_diagnostics_sha256" 0 LV-CHECK-ARTIFACT
    root s" repair_packet" s" repair_packet_sha256" 0 LV-CHECK-ARTIFACT
    root s" test_output" s" test_output_sha256" 0 LV-CHECK-ARTIFACT
-   root s" final_bundle" s" final_bundle_sha256" -1 LV-CHECK-ARTIFACT ;
+   root LV-CHECK-FINAL-BUNDLE ;
 
 : LV-CHECK-V2-IDENTITY {: root :} ( n -- )
    root s" run_id" LV-REQ
@@ -1427,7 +1485,7 @@ variable LV-LINE-U
    THEN ;
 
 : LV-RESULT-LINE ( ptr u8 n -- )
-   JSON-PARSE LV-ROOT !
+   LV-CATCH-PARSE dup 0= IF drop ELSE LV-JSON-FAIL THEN
    LV-ROOT @ LV-CHECK-ROW ;
 
 : LV-FINISH-RESULT-LINE ( -- )
@@ -1437,7 +1495,7 @@ variable LV-LINE-U
 
 : LV-RESULT-BYTE {: c :} ( n -- )
    c LV-LF = IF LV-FINISH-RESULT-LINE exit THEN
-   LV-LINE-U @ LV-RESULT-CAP >= IF s" result line too long" LV-FAIL THEN
+   LV-LINE-U @ 1+ LV-ENSURE-RESULT
    c LV-RESULT-BUF LV-LINE-U @ + c!
    LV-LINE-U @ 1+ LV-LINE-U ! ;
 
@@ -1511,6 +1569,7 @@ variable LV-LINE-U
    LV-RESET-SUMMARY
    0 LV-LINE !
    0 LV-LINE-U !
+   LV-INIT-RESULT
    LV-OPEN-RESULT
    begin
       LV-RFD @ LV-READ-BUF LV-READ-CAP read dup LV-RGOT ! 0 >

@@ -34,8 +34,16 @@
 $400 constant JSON-MAX-NODES
 $800 constant JSON-MAX-ITEMS
 $800 constant JSON-MAX-PAIRS
-$8000 constant JSON-STR-CAP
+$8000 constant JSON-STR-BOOT-CAP
 $8000 constant JSON-OUT-CAP
+$10000 constant JSON-STR-GRAIN
+$7FFFFFFFFFFFFFFF constant JSON-MAX-N
+JSON-MAX-N JSON-STR-GRAIN / constant JSON-MAX-STR-GRAINS
+0 constant JSON-MMAP-ANY
+3 constant JSON-MMAP-RW
+$1002 constant JSON-MMAP-PRIVATE-ANON
+-1 constant JSON-MMAP-FD
+0 constant JSON-MMAP-OFF
 64 constant JSON-MAX-DEPTH
 128 constant JSON-ERR-CAP
 
@@ -53,7 +61,7 @@ create J-KEY-LEN JSON-MAX-PAIRS cells allot
 create J-PAIR-VAL JSON-MAX-PAIRS cells allot
 create J-PAIR-NEXT JSON-MAX-PAIRS cells allot
 
-create JSON-STR-BUF JSON-STR-CAP allot
+create JSON-STR-BOOT JSON-STR-BOOT-CAP allot
 create JSON-OUT-BUF JSON-OUT-CAP allot
 create JSON-ERR-BUF JSON-ERR-CAP allot
 
@@ -64,6 +72,8 @@ variable JSON-STR-LEN
 variable JSON-OUT-LEN
 variable JSON-ERR-LEN
 variable JSON-ERR-POS
+variable JSON-STR-P
+variable JSON-STR-CAP-U
 
 variable JSON-A
 variable JSON-U
@@ -105,6 +115,11 @@ s" JSON-GKA@" s" -- ptr u8" TRUST
 s" JSONL-A@" s" -- ptr u8" TRUST
 : JSONL-LA@ JSONL-LA @ ;
 s" JSONL-LA@" s" -- ptr u8" TRUST
+: JSON-STR-BUF JSON-STR-P @ ;
+s" JSON-STR-BUF" s" -- ptr u8" TRUST
+
+JSON-STR-BOOT JSON-STR-P !
+JSON-STR-BOOT-CAP JSON-STR-CAP-U !
 
 : JSON-COPY ( ptr u8 i64 ptr u8 -- )
    {: a:ptr u dst:ptr :}
@@ -144,6 +159,45 @@ s" JSONL-LA@" s" -- ptr u8" TRUST
 
 : JSON-TYPE-ERROR ( ptr u8 i64 -- )
    E-JSON-TYPE JSON-FAIL ;
+
+: JSON-STR-CAP ( -- n )
+   JSON-STR-CAP-U @ ;
+
+: JSON-CHECK-STR-NEED ( n -- )
+   dup 0 < IF s" json: string buffer full" JSON-CAPACITY THEN
+   dup JSON-MAX-N > IF s" json: string buffer full" JSON-CAPACITY THEN
+   drop ;
+
+: JSON-STR-AT-LEAST-ONE ( n -- n )
+   dup 1 < IF drop 1 THEN ;
+
+: JSON-STR-GRAINS ( n -- n ) {: need :}
+   need JSON-CHECK-STR-NEED
+   need JSON-STR-AT-LEAST-ONE 1 - JSON-STR-GRAIN / 1 + dup JSON-MAX-STR-GRAINS > IF
+      s" json: string buffer full" JSON-CAPACITY
+   THEN ;
+
+: JSON-STR-SPAN ( n -- n )
+   JSON-STR-GRAINS JSON-STR-GRAIN * ;
+
+TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
+   JSON-MMAP-ANY swap JSON-MMAP-RW JSON-MMAP-PRIVATE-ANON JSON-MMAP-FD JSON-MMAP-OFF mmap
+   dup 0 < IF s" json: string buffer mmap failed" JSON-CAPACITY THEN ;
+
+: JSON-COPY-STR-OLD ( ptr u8 -- ) {: dst:ptr :}
+   JSON-STR-BUF JSON-STR-LEN @ dst JSON-COPY ;
+
+: JSON-GROW-STR ( n -- ) {: need :}
+   need JSON-STR-SPAN {: cap :}
+   cap JSON-ALLOC-STR-PTR {: dst:ptr :}
+   dst JSON-COPY-STR-OLD
+   dst JSON-STR-P !
+   cap JSON-STR-CAP-U ! ;
+
+: JSON-ENSURE-STR ( n -- ) {: need :}
+   need JSON-CHECK-STR-NEED
+   need JSON-STR-CAP <= IF exit THEN
+   need JSON-GROW-STR ;
 
 : JSON-RESET ( -- )
    0 JSON-NODES !
@@ -192,14 +246,14 @@ s" JSONL-LA@" s" -- ptr u8" TRUST
 
 : JSON-STR+ ( n -- )
    {: c :}
-   JSON-STR-LEN @ 1+ JSON-STR-CAP > IF s" json: string buffer full" JSON-CAPACITY THEN
+   JSON-STR-LEN @ 1+ JSON-ENSURE-STR
    c JSON-STR-BUF JSON-STR-LEN @ + c!
    JSON-STR-LEN @ 1+ JSON-STR-LEN ! ;
 
 : JSON-SAVE$ ( ptr u8 i64 -- i64 i64 )
    {: a:ptr u :}
    JSON-STR-LEN @ JSON-START !
-   JSON-STR-LEN @ u + JSON-STR-CAP > IF s" json: string buffer full" JSON-CAPACITY THEN
+   JSON-STR-LEN @ u + JSON-ENSURE-STR
    a u JSON-STR-BUF JSON-STR-LEN @ + JSON-COPY
    JSON-STR-LEN @ u + JSON-STR-LEN !
    JSON-START @ u ;

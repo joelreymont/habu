@@ -153,6 +153,8 @@
 
 : BGR-VALIDATE-RESULTS ( -- )
    BGR-HB
+   BGR-ERR-STR
+   BGR-MEMORY
    s" tools/date.f" BGR-ARG+
    s" tools/lint/lib.f" BGR-ARG+
    s" tools/json.f" BGR-ARG+

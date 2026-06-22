@@ -19,6 +19,7 @@ $10000 constant VRT-TASK-CAP
 1 constant VRT-ROW-MISSING-META
 2 constant VRT-ROW-MISSING-RAW-HASH
 3 constant VRT-ROW-BAD-FINAL-HASH
+4 constant VRT-ROW-EMPTY-FINAL-ERROR
 
 create VRT-ROOT FS-PATH-CAP allot
 create VRT-TASKS FS-PATH-CAP allot
@@ -70,6 +71,17 @@ VRT-LF VRT-LF-BUF c!
 
 : VRT-OUTCOME$ ( bool -- ptr u8 n )
    if s" pass" else s" fail" then ;
+
+: VRT-ROW-ERROR? ( -- bool )
+   VRT-ROW-MODE @ VRT-ROW-EMPTY-FINAL-ERROR = ;
+
+: VRT-ROW-OUTCOME$ ( bool -- ptr u8 n )
+   VRT-ROW-ERROR? if drop s" error" exit then
+   VRT-OUTCOME$ ;
+
+: VRT-FINAL-BUNDLE$ ( -- ptr u8 n )
+   VRT-ROW-ERROR? if s" " exit then
+   s" bundle" ;
 
 : VRT-ROW-NORMAL! ( -- )
    VRT-ROW-NORMAL VRT-ROW-MODE !
@@ -335,7 +347,7 @@ VRT-LF VRT-LF-BUF c!
    s" final_chars" 1 VRT-FIELD-U
    s" trust_uses" 0 VRT-FIELD-U
    s" signature_weakened" VRT-FALSE VRT-FIELD-BOOL
-   s" outcome" pass VRT-EFFECTIVE-PASS VRT-OUTCOME$ VRT-FIELD-S
+   s" outcome" pass VRT-EFFECTIVE-PASS VRT-ROW-OUTCOME$ VRT-FIELD-S
    s" rounds" 1 VRT-FIELD-U
    s" first_pass" pass VRT-FIELD-BOOL
    s" tokens" 0 VRT-FIELD-U
@@ -360,7 +372,7 @@ VRT-LF VRT-LF-BUF c!
    s" repair_packet_sha256" VRT-HASH$ VRT-FIELD-S
    s" test_output" s" ok" VRT-FIELD-S
    s" test_output_sha256" VRT-HASH$ VRT-FIELD-S
-   s" final_bundle" s" bundle" VRT-FIELD-S
+   s" final_bundle" VRT-FINAL-BUNDLE$ VRT-FIELD-S
    s" final_bundle_sha256"
    VRT-ROW-MODE @ VRT-ROW-BAD-FINAL-HASH = if s" not-a-sha" else VRT-HASH$ then
    VRT-FIELD-S
@@ -527,6 +539,17 @@ VRT-LF VRT-LF-BUF c!
    VRT-CLEAR-LIVE
    1 1 VRT-ROW-BAD-FINAL-HASH VRT-APPEND-FIRST-V2 ;
 
+: VRT-WRITE-EMPTY-FINAL-ERROR ( -- )
+   VRT-CLEAR-LIVE
+   VRT-ROW-NORMAL!
+   VRT-ROW-EMPTY-FINAL-ERROR VRT-ROW-MODE !
+   s" empty-final-fixture-2026-06-18" s" toy-model" s" toy-model" s" forth" VRT-FALSE VRT-WRITE-SINGLE-V2-ROW
+   VRT-ROW-NORMAL! ;
+
+: VRT-WRITE-BAD-JSON ( -- )
+   VRT-CLEAR-LIVE
+   VRT-LIVE$ s" {" WRITE-ALL ;
+
 : VRT-WRITE-ARMS ( -- )
    VRT-LIVE$ VRT-CLEAR-DEST
    s" arm-fixture-2026-06-18" s" toy-model" s" toy-model" s" habu-forth" VRT-TRUE VRT-WRITE-SINGLE-V2
@@ -619,6 +642,8 @@ VRT-LF VRT-LF-BUF c!
 
 : VRT-VALIDATOR-LOADS ( -- )
    s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
    s" tools/lint/lib.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
@@ -821,6 +846,12 @@ VRT-LF VRT-LF-BUF c!
    s" checker_false_rejects" VRT-OUT-CONTAINS
    s" checker_model_rejected" VRT-OUT-CONTAINS ;
 
+: VRT-TEST-EMPTY-FINAL-ERROR ( -- )
+   VRT-WRITE-EMPTY-FINAL-ERROR
+   VRT-LIVE$ VRT-FALSE VRT-RUN-VALIDATE
+   s" run=empty-final-fixture-2026-06-18 model=toy-model rows=1" VRT-OUT-CONTAINS
+   s" tests=0" VRT-OUT-CONTAINS ;
+
 : VRT-TEST-REJECTIONS ( -- )
    2 VRT-WRITE-LIVE
    VRT-WRITE-MISSING-K
@@ -835,6 +866,8 @@ VRT-LF VRT-LF-BUF c!
    VRT-LIVE$ s" missing fields raw_response_sha256" VRT-EXPECT-FAIL
    VRT-WRITE-BAD-FINAL-HASH
    VRT-LIVE$ s" invalid sha256 hash" VRT-EXPECT-FAIL
+   VRT-WRITE-BAD-JSON
+   VRT-LIVE$ s" json:" VRT-EXPECT-FAIL
    VRT-WRITE-BAD-FALSE-REJECT
    VRT-LIVE$ s" checker_false_reject requires rejected checker" VRT-EXPECT-FAIL
    VRT-WRITE-REFERENCE
@@ -870,6 +903,7 @@ VRT-LF VRT-LF-BUF c!
    VRT-TEST-MODELS
    VRT-TEST-CONFIDENCE
    VRT-TEST-FALSE-REJECT
+   VRT-TEST-EMPTY-FINAL-ERROR
    VRT-TEST-REJECTIONS
    CLEANUP-RUN
    T-REPORT

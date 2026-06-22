@@ -157,6 +157,11 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   a missing-row symptom. Use the checked `*-OUTCOME` process APIs and convert
   `kind code` with `PROC-OUTCOME>RC`, then make parent missing-row errors include
   task/model/arm/trial/child rc.
+- **Benchmark validators need row-scoped parser diagnostics:** a hidden JSON
+  capacity throw looked like a report failure until the validator printed
+  `path:line`. Live rows can contain long prompts and raw responses, so JSON
+  parser string storage and validator row input buffers must grow instead of
+  imposing fixed row-size ceilings.
 
 ## Native Codegen And AOT
 
