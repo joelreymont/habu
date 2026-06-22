@@ -2,9 +2,7 @@
 \ Run with argv/json support:
 \   bin/hb --load tools/argv.f tools/json.f tools/json-only.f -- stderr-file
 
-\ Tool driver boundary: raw file descriptors plus wrapper exit behavior. The
-\ JSON parser loaded before this file stays checked.
-0 set-check
+\ Checked CLI filter. Raw fd primitives are used through checked effects.
 
 10 constant JSON-ONLY-LF-C
 74 constant JSON-ONLY-E-IO
@@ -19,13 +17,15 @@ variable JSON-ONLY-FD
 variable JSON-ONLY-LEN
 variable JSON-ONLY-RD
 
-: JSON-ONLY-COPY-BYTES {: a:ptr dst:ptr u :} ( ptr u8 ptr u8 n -- )
+: JSON-ONLY-COPY-BYTES ( ptr u8 ptr u8 n -- )
+   {: a:ptr dst:ptr u :}
    0 begin dup u < while
       dup a + c@ over dst + c!
       1+
    repeat drop ;
 
-: JSON-ONLY-PATHZ {: a:ptr u :} ( ptr u8 n -- ptr u8 )
+: JSON-ONLY-PATHZ ( ptr u8 n -- ptr u8 )
+   {: a:ptr u :}
    u 1+ JSON-ONLY-PATH-CAP > IF s" json-only: path too long" JSON-ONLY-E-IO die THEN
    a JSON-ONLY-PATH u JSON-ONLY-COPY-BYTES
    0 JSON-ONLY-PATH u + c!
