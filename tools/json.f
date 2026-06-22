@@ -863,21 +863,17 @@ TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
    0 0= 0= ;
 
 : JSONL-NEXT-OBJECT ( -- i64 )
-   begin JSONL-TAKE-LINE while
-      JSONL-LU @ 0= IF
+   begin JSONL-NEXT-ROW while
+      JSON-TMP ! JSON-TMP2 ! JSONL-ROOT !
+      JSON-TMP2 @ JSONL-ROW-BLANK = IF
          JSONL-SKIP
+      ELSE JSON-TMP2 @ JSONL-ROW-ERROR = IF
+         JSON-TMP @ JSONL-RECOVER? drop
+      ELSE JSON-TMP2 @ JSONL-ROW-JSON = IF
+         JSONL-ROOT @ JSONL-OBJECT-OR-SKIP IF exit THEN drop
       ELSE
-         JSONL-SKIP-MODE? IF
-            JSONL-PARSE-TRY JSON-TMP ! JSON-TMP2 ! JSONL-ROOT !
-            JSON-TMP2 @ JSON-PARSE-OK = IF
-               JSONL-ROOT @ JSONL-OBJECT-OR-SKIP IF exit THEN drop
-            ELSE
-               JSON-TMP @ JSONL-RECOVER? drop
-            THEN
-         ELSE
-            JSONL-PARSE-LINE JSONL-ROOT !
-            JSONL-ROOT @ JSONL-OBJECT-OR-SKIP IF exit THEN drop
-         THEN
-      THEN
+         s" jsonl: bad row outcome" JSON-TYPE-ERROR
+      THEN THEN THEN
    repeat
+   2drop drop
    -1 ;
