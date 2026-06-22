@@ -16,7 +16,7 @@ create ACRT-PATH 128 allot
 variable ACRT-FD
 variable ACRT-N
 
-TRUSTED: ACRT-COUNT-FILE ( ptr u8 n -- n n n )
+: ACRT-COUNT-FILE ( ptr u8 n -- n n n )
    REPORT-FILE!
    REPORT-COUNT
    REPORT-BYTES @

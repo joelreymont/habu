@@ -1,6 +1,5 @@
 \ aot-call-report.f — report patched AOT call stencils in a binary.
 \ Run: bin/hb tools/aot-call-report.f binary
-0 set-check
 
 $D503201F constant NOP-INSTR
 $FC000000 constant BL-MASK
@@ -43,8 +42,7 @@ create SCAN-BUF SCAN-BUF-CAP allot
 create OUT-BYTE 1 allot
 create JSON-NUM-BUF JSON-NUM-CAP allot
 
-variable FILE-A
-variable FILE-U
+variable REPORT-PATH-U
 variable SCAN-FD
 variable SCAN-GOT
 variable SCAN-FILE-OFF
@@ -61,30 +59,38 @@ variable ARRAY-FIRST
 variable JSON-NUM-V
 variable JSON-NUM-N
 
-: REPORT-COPY-BYTES {: a dst u :} ( a dst u -- )
+: REPORT-TRUE ( -- bool )
+   0 0= ;
+
+: REPORT-FALSE ( -- bool )
+   0 0= 0= ;
+
+: REPORT-COPY-BYTES ( ptr u8 ptr u8 n -- ) {: a:ptr dst:ptr u :}
    0 begin dup u < while
       dup a + c@  over dst + c!
       1+
    repeat drop ;
 
-: REPORT-FILE! {: a u :} ( a u -- )
-   a FILE-A !
-   u FILE-U ! ;
-
-: PATHZ {: a u :} ( a u -- z )
+: REPORT-FILE! ( ptr u8 n -- ) {: a:ptr u :}
    u 1+ REPORT-PATH-CAP > if s" aot-call-report: path too long" 74 die then
    a REPORT-PATH u REPORT-COPY-BYTES
    0 REPORT-PATH u + c!
+   u REPORT-PATH-U ! ;
+
+: REPORT-FILE$ ( -- ptr u8 n )
+   REPORT-PATH REPORT-PATH-U @ ;
+
+: REPORT-PATH0 ( -- ptr u8 )
    REPORT-PATH ;
 
-: OUT-C {: c :} ( c -- )
+: OUT-C ( n -- ) {: c :}
    c OUT-BYTE c!
    OUT-BYTE 1 type ;
 
-: JSON-NIBBLE {: n :} ( n -- c )
+: JSON-NIBBLE ( n -- n ) {: n :}
    n 10 < if n C-ZERO + else n 55 + then ;
 
-: JSON-U00 {: c :} ( c -- )
+: JSON-U00 ( n -- ) {: c :}
    C-BACKSLASH OUT-C
    C-U OUT-C
    C-ZERO OUT-C
@@ -92,7 +98,7 @@ variable JSON-NUM-N
    c 4 rshift JSON-NIBBLE OUT-C
    c $F and JSON-NIBBLE OUT-C ;
 
-: JSON-ESC-C {: c :} ( c -- )
+: JSON-ESC-C ( n -- ) {: c :}
    c C-DQ = if C-BACKSLASH OUT-C C-DQ OUT-C exit then
    c C-BACKSLASH = if C-BACKSLASH OUT-C C-BACKSLASH OUT-C exit then
    c C-LF = if C-BACKSLASH OUT-C C-N OUT-C exit then
@@ -101,7 +107,7 @@ variable JSON-NUM-N
    c C-SP < if c JSON-U00 exit then
    c OUT-C ;
 
-: JSON-STRING {: a u :} ( a u -- )
+: JSON-STRING ( ptr u8 n -- ) {: a:ptr u :}
    C-DQ OUT-C
    0 begin dup u < while
       dup a + c@ JSON-ESC-C
@@ -109,11 +115,11 @@ variable JSON-NUM-N
    repeat drop
    C-DQ OUT-C ;
 
-: JSON-KEY ( a u -- )
+: JSON-KEY ( ptr u8 n -- )
    JSON-STRING
    C-COLON OUT-C ;
 
-: JSON-NUM {: n :} ( n -- )
+: JSON-NUM ( n -- ) {: n :}
    n 0 < if s" aot-call-report: negative json number" 74 die then
    n JSON-NUM-V !
    0 JSON-NUM-N !
@@ -129,7 +135,7 @@ variable JSON-NUM-N
       JSON-NUM-BUF JSON-NUM-N @ + c@ OUT-C
    repeat ;
 
-: ARRAY-NUM {: n :} ( n -- )
+: ARRAY-NUM ( n -- ) {: n :}
    ARRAY-FIRST @ if
       0 ARRAY-FIRST !
    else
@@ -137,15 +143,15 @@ variable JSON-NUM-N
    then
    n JSON-NUM ;
 
-: LE32@ {: p :} ( p -- u )
+: LE32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or
    p 2 + c@ 16 lshift or
    p 3 + c@ 24 lshift or ;
 
-: BL? ( u -- f )
+: BL? ( n -- bool )
    BL-MASK and BL-OP = ;
 
-: STENCIL? {: p :} ( p -- f )
+: STENCIL? ( ptr u8 -- bool ) {: p:ptr :}
    p LE32@ NOP-INSTR =
    p WORD-BYTES + LE32@ NOP-INSTR = and
    p WORD-BYTES 2 * + LE32@ NOP-INSTR = and
@@ -154,17 +160,17 @@ variable JSON-NUM-N
 : SCAN-END ( -- n )
    SCAN-BASE @ SCAN-LEN @ + ;
 
-: SCAN-ADDR {: off :} ( off -- a )
+: SCAN-ADDR ( n -- ptr u8 ) {: off :}
    SCAN-BUF off SCAN-BASE @ - + ;
 
-: MATCH-BL {: off :} ( off -- )
+: MATCH-BL ( n -- ) {: off :}
    SCAN-MODE @ SCAN-COUNT = if
       REPORT-BLS @ 1+ REPORT-BLS !
       exit
    then
    SCAN-MODE @ SCAN-DIRECT-SITES = if off ARRAY-NUM then ;
 
-: MATCH-STENCIL {: off :} ( off -- )
+: MATCH-STENCIL ( n -- ) {: off :}
    SCAN-MODE @ SCAN-COUNT = if
       REPORT-STENCILS @ 1+ REPORT-STENCILS !
       exit
@@ -199,8 +205,8 @@ variable JSON-NUM-N
       SCAN-BUF SCAN-LEN @ SCAN-CARRY @ - +  SCAN-BUF  SCAN-CARRY @ REPORT-COPY-BYTES
    then ;
 
-: OPEN-INPUT ( -- fd )
-   FILE-A @ FILE-U @ PATHZ 0 0 open
+: OPEN-INPUT ( -- n )
+   REPORT-PATH0 0 0 open
    dup 0 < if s" aot-call-report: cannot open input" 74 die then ;
 
 : SCAN-RESET ( -- )
@@ -209,10 +215,10 @@ variable JSON-NUM-N
    0 SCAN-NEXT-BL !
    0 SCAN-NEXT-STENCIL ! ;
 
-: SCAN-ONE-READ ( -- more )
+: SCAN-ONE-READ ( -- bool )
    SCAN-FD @  SCAN-BUF SCAN-CARRY @ +  SCAN-READ-CAP read SCAN-GOT !
    SCAN-GOT @ 0 < if s" aot-call-report: read failed" 74 die then
-   SCAN-GOT @ 0= if 0 exit then
+   SCAN-GOT @ 0= if REPORT-FALSE exit then
    SCAN-FILE-OFF @ SCAN-CARRY @ - SCAN-BASE !
    SCAN-CARRY @ SCAN-GOT @ + SCAN-LEN !
    SCAN-MODE @ SCAN-COUNT = if
@@ -221,9 +227,9 @@ variable JSON-NUM-N
    PROCESS-CHUNK
    SCAN-FILE-OFF @ SCAN-GOT @ + SCAN-FILE-OFF !
    SAVE-CARRY
-   -1 ;
+   REPORT-TRUE ;
 
-: SCAN-FILE {: mode :} ( mode -- )
+: SCAN-FILE ( n -- ) {: mode :}
    mode SCAN-MODE !
    SCAN-RESET
    OPEN-INPUT SCAN-FD !
@@ -255,7 +261,7 @@ variable JSON-NUM-N
    REPORT-COUNT
    C-LBRACE OUT-C
    s" schema_version" JSON-KEY 1 JSON-NUM JSON-FIELD-COMMA
-   s" file" JSON-KEY FILE-A @ FILE-U @ JSON-STRING JSON-FIELD-COMMA
+   s" file" JSON-KEY REPORT-FILE$ JSON-STRING JSON-FIELD-COMMA
    s" file_bytes" JSON-KEY REPORT-BYTES @ JSON-NUM JSON-FIELD-COMMA
    s" patched_call_stencils" JSON-KEY REPORT-STENCILS @ JSON-NUM JSON-FIELD-COMMA
    s" padding_bytes" JSON-KEY REPORT-STENCILS @ STENCIL-PADDING-BYTES * JSON-NUM JSON-FIELD-COMMA
@@ -274,18 +280,7 @@ variable JSON-NUM-N
    0 SCRIPT-ARGV$ REPORT-FILE!
    REPORT-JSON ;
 
-: REPORT-CHECK-HOOK ( -- )
-   CHECK! ;
-
-: REPORT-RESTORE-CHECK ( -- )
-   ['] REPORT-CHECK-HOOK set-check ;
-
 : MAYBE-REPORT-MAIN ( -- )
-   ARGC 1 = if REPORT-RESTORE-CHECK exit then
-   SCRIPT-LOAD? if
-      SCRIPT-ARGC 0 > if REPORT-MAIN else REPORT-RESTORE-CHECK then
-      exit
-   then
-   REPORT-MAIN ;
+   SCRIPT-ARGC 0 > if REPORT-MAIN then ;
 
 MAYBE-REPORT-MAIN

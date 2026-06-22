@@ -215,6 +215,10 @@ variable GS-SRC-N
    s" tools/repair-schema-doc-test.f" s" repair diagnostic schema doc check" GS-CHECK-COMMON-PROC
    s" tools/repair-packet-test.f" s" repair packet fixture check" GS-CHECK-COMMON-PROC
    s" tools/json-only-test.f" s" json-only tool check" GS-CHECK-COMMON-PROC
+   GS-SRC-RESET
+   s" tools/aot-call-report.f" GS-SRC+
+   s" tools/aot-call-report-test.f" GS-SRC+
+   s" aot-call-report fixture check" GS-CHECK-RUN
    s" tools/check-test.f" s" native check runner fixture check" GS-CHECK-COMMON-PROC ;
 
 : GS-RUN-TOOL-FIXTURES ( -- )
