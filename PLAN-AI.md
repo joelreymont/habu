@@ -149,11 +149,11 @@ select `habu-lib`; the native driver emits `arm:"habu-lib"` and bundles
   candidate, so the model writes against certified Habu code rather than an unchecked foreign API.
 - `bench/llm/habu-preamble-lib.txt` — in-context teaching for the helper arm. It tells the model
   to prefer `A@`, `A!`, `A-SWAP`, `MIRROR-INDEX`, and `EVEN?` over raw address arithmetic.
-- `bench/llm/drive-habu.sh` — Habu driver. The final argument selects `a` (raw Habu,
-  `arm:"habu-a"`) or `lib` (helper arm, `arm:"habu-lib"`). Prompt = preamble + task;
-  `claude -p` -> extract def -> bundle helper library when selected -> `tools/check.f`
-  (certify) → on reject feed the checker diagnostic back (≤5 rounds); on certify, grade via
-  `grade.sh`.
+- `bench/llm/drive-array-habu.f` — Habu array driver. The mode selects raw
+  Habu (`arm:"habu-a"`), helper (`arm:"habu-lib"`), stdlib, or skeleton arms.
+  Prompt = preamble + task; model output -> extract def -> bundle helper
+  library when selected -> `tools/check.f` (certify) -> on reject feed the
+  checker diagnostic back; on certify, grade via `bench/llm/grade.f`.
 - `bench/llm/drive-forth.f` — checked-Habu manifest driver run by `bin/hb --load`.
   The expanded runner invokes it directly with checked Habu argv. Feedback mode selects
   the repair signal for the same task: `repair` (`arm:"habu-forth"`) sends normalized

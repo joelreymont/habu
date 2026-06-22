@@ -113,6 +113,8 @@ variable HOST-PATH-U
 
 : HOST-RETIRED-SHELL? ( ptr u8 n -- bool )
    2dup HOST-BENCH-DRIVER-SHELL? IF 2drop LINT-TRUE exit THEN
+   2dup s" ./bench/llm/grade.sh" PATH= IF 2drop LINT-TRUE exit THEN
+   2dup s" ./bench/llm/grade-test.sh" PATH= IF 2drop LINT-TRUE exit THEN
    2dup s" ./bench/llm/perf.sh" PATH= IF 2drop LINT-TRUE exit THEN
    2dup HOST-FORTH-SHELL? IF 2drop LINT-TRUE exit THEN
    2dup s" ./tools/seed.sh" PATH= IF 2drop LINT-TRUE exit THEN

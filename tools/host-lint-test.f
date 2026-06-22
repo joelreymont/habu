@@ -28,7 +28,9 @@ variable HLT-N
    s" ./bench/llm/drive-python.sh" HOST-BENCH-DRIVER-SHELL? HLT-ASSERT
    s" ./bench/llm/drive-python.f" HOST-BENCH-DRIVER-SHELL? 0= HLT-ASSERT
    s" ./bench/llm/drive-js.sh" HOST-BENCH-BASELINE? 0= HLT-ASSERT
-   s" ./bench/llm/drive-js.sh" HOST-RETIRED-SHELL? HLT-ASSERT ;
+   s" ./bench/llm/drive-js.sh" HOST-RETIRED-SHELL? HLT-ASSERT
+   s" ./bench/llm/grade.sh" HOST-RETIRED-SHELL? HLT-ASSERT
+   s" ./bench/llm/grade-test.sh" HOST-RETIRED-SHELL? HLT-ASSERT ;
 
 : HLT-MAIN ( -- )
    1 HLT-N !
