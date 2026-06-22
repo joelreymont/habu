@@ -734,6 +734,7 @@ variable FLD  variable FLI  variable FLO  variable FLC
 : CCOPY {: a d u :}  0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop ;
 create LOCNB 1024 allot   create LOCLN 64 cells allot   create LOCTV 64 cells allot
 variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  variable LI  variable LRF
+variable QDEPTH
 
 variable LCO
 
@@ -774,7 +775,12 @@ variable LCO
    BEGIN LI @ 0 >  LRF @ 0=  and WHILE
      LI @ 1 - LI !
      a u  LOCNB LI @ 16 * +  LI @ cells LOCLN + @  STR= IF
-       LI @ cells LOCTV + @  DCUR @ MK-PUSH DCUR !  -1 LRF ! THEN
+       QDEPTH @ 0 > IF
+          0 OK !
+       ELSE
+          LI @ cells LOCTV + @  DCUR @ MK-PUSH DCUR !
+       THEN
+       -1 LRF ! THEN
    REPEAT  LRF @ ;
 \ --- control flow: branch states saved on a CF stack and unified at joins.
 \ Both rows are snapshot: A/B = data, RA/RB = return (PLAN: net growth on
@@ -956,6 +962,7 @@ variable LVDO  variable LVDN
    XROW @ #CFC @ 1 - cells CFXRO + !  XRROW @ #CFC @ 1 - cells CFXRR + !
    XSET @ #CFC @ 1 - cells CFXST + !  DEADP @ #CFC @ 1 - cells CFXDP + !
    0 XSET !  0 DEADP !
+   QDEPTH @ 1 + QDEPTH !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 
@@ -970,6 +977,7 @@ variable QTMP
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
      #CFC @ 1 - cells CFXRO + @ XROW !  #CFC @ 1 - cells CFXRR + @ XRROW !
      #CFC @ 1 - cells CFXST + @ XSET !  #CFC @ 1 - cells CFXDP + @ DEADP !  \ restore outer exit state
+     QDEPTH @ 1 - QDEPTH !
      CF@B BROW !  CF@RB RBROW !
      CF@RA RCUR !
      QTMP @  CF@A  MK-PUSH DCUR !
@@ -1094,7 +1102,7 @@ s" <input>" DIAG-FILE!
 \ CHECK-RESET ( a u -- )
 : CHECK-RESET {: a u :}
    a TBASE !  u TBLEN !  NEW
-   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !
+   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !

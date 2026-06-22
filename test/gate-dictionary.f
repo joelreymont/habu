@@ -194,6 +194,24 @@ $63 constant GD-C-LOWER
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
    SB$ s" hb combinator/iterator verdicts output" GE-EXPECT-OUT ;
 
+: GD-LOCAL-QUOT-CHECKS ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" GE-SRC-CHECK-LINE
+   s" hb rejects local capture in quotation" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 0" GE-OUT-LINE
+   SB$ s" hb rejects local capture in quotation output" GE-EXPECT-OUT ;
+
+: GD-LOCAL-QUOT-COMPILE-FAIL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 0 set-check" GE-SRC-LINE
+   s" : QLOCAL {: x:n :} [: x ;] execute ;" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   75 s" hb compiler rejects local capture in quotation rc" GE-EXPECT-RC
+   s" x" s" hb compiler rejects local capture in quotation diagnostic" GE-EXPECT-ERR-HAS ;
+
 : GD-PARSING-RUNTIME-SOURCE ( -- )
    GE-SRC-RESET
    s" hi" GD-SRC-DOTQ s"  cr" GE-SRC-LINE
@@ -247,6 +265,8 @@ $63 constant GD-C-LOWER
    GD-PRIMITIVE-CHECKS
    GD-RETURN-CHECKS
    GD-COMBINATOR-CHECKS
+   GD-LOCAL-QUOT-CHECKS
+   GD-LOCAL-QUOT-COMPILE-FAIL
    GD-PARSING-RUNTIME
    GD-PARSING-CHECK
    GD-DATA-OVERFLOW

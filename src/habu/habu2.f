@@ -1073,6 +1073,26 @@ s" cfbn-entry" s" n ptr a n n n --" TRUST
    8 $AA0003F1 LIT64,  7 14 16 LSLI,  9 8 7 ORR,  LCEMIT @ BL,   \ may reload into it
    J-UNTILX ;
 
+: C-LOCAL-REF {: lmainlbl notloc :}
+   LBL LBL {: lmem qlrefok :}
+   LLOC-FIND @ BL,  0 0 CMPI,  C-LT notloc BCOND,
+   11 DATA QPATCH-CELL LDR,  11 qlrefok CBZ,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
+   qlrefok LBL,
+   LVRALLOC @ BL,  14 lmem CBZ,
+   7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
+   9 $F94003E0 LIT64,  9 9 14 ORR,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
+   LVPUSHR @ BL,
+   lmainlbl B,
+   lmem LBL,
+   LVSPILL @ BL,
+   7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
+   9 $F94003E9 LIT64,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
+   9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL,
+   lmainlbl B ;
+s" c-local-ref" s" n n --" TRUST
+
 : EM-STARTUP
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    LBL LBL LBL
@@ -1306,7 +1326,7 @@ s" em-interpret" s" --" TRUST
 
 : EM-COMPILE
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: lnotsemi notd nohook rejected notloc lmem lcnotnum notimm tpub ndhas ndchk ndclr :}
+   {: lnotsemi notd nohook rejected notloc lcnotnum notimm tpub ndhas ndchk ndclr :}
    LCOMPILE @ LBL,
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
@@ -1381,18 +1401,7 @@ s" em-interpret" s" --" TRUST
       s" leave" KEEP? IF LMAIN @ LKWLEAVE  5 ['] J-LEAVE   CF-ENTRY THEN
       s" unloop" KEEP? IF LMAIN @ LKWUNLOOP 6 ['] J-UNLOOP  CF-ENTRY THEN
       s" {:" KEEP? IF LMAIN @ LKWLBRACE 2 ['] C-LBRACE CF-ENTRY THEN
-      LLOC-FIND @ BL,  0 0 CMPI,  C-LT notloc BCOND,
-         LVRALLOC @ BL,  14 lmem CBZ,
-         7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
-         9 $F94003E0 LIT64,  9 9 14 ORR,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
-         LVPUSHR @ BL,
-         LMAIN @ B,
-         lmem LBL,
-         LVSPILL @ BL,
-         7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
-         9 $F94003E9 LIT64,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
-         9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL,
-         LMAIN @ B,
+      LMAIN @ notloc C-LOCAL-REF
       notloc LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,
       12 lcnotnum CBZ,

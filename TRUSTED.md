@@ -44,11 +44,12 @@ that source is explicitly certified; they are not stale-checked by the default
 | cfn-entry | `n ptr a n n --` | Like CF-ENTRY, no spill (loop words manage the VS); keyword label cell is a pointer. | `test/run.f` | src/habu/habu2.f:1017 | 2026-06-16 |
 | cfb-entry | `n ptr a n n n --` | Branch-keyword case (if/until/while) with a reg-aware condition path; asm + two `hxt execute` handlers. | `test/run.f` | src/habu/habu2.f:1045 | 2026-06-16 |
 | cfbn-entry | `n ptr a n n n --` | Like CFB-ENTRY, no-spill register path; raw asm + indirect xts. | `test/run.f` | src/habu/habu2.f:1066 | 2026-06-16 |
-| em-interpret | `--` | Emits the interpreter-mode main-loop dispatch as raw ARM64. | `test/run.f` | src/habu/habu2.f:1305 | 2026-06-13 |
-| em-compile | `--` | Emits the compile-mode main-loop dispatch as raw ARM64. | `test/run.f` | src/habu/habu2.f:1514 | 2026-06-13 |
-| emit-main | `--` | Allocates main-loop labels and chains EM-STARTUP/COMMENT/INTERPRET/COMPILE. | `test/run.f` | src/habu/habu2.f:1519 | 2026-06-13 |
-| SRCA@ | `-- ptr u8` | Reads EMIT-FORTH's saved source pointer from a raw variable for the final `BYTES,` copy. | `test/run.f` | src/habu/habu2.f:1522 | 2026-06-16 |
-| emit-forth | `ptr u8 n --` | Top-level engine builder: consumes source bytes, allocates every forward-ref label, and emits the complete image. | `test/run.f` | src/habu/habu2.f:1572 | 2026-06-16 |
+| c-local-ref | `n n --` | Compile-mode local-reference emitter: branches to the caller's not-local continuation or emits local loads, and rejects quotation-local captures with raw exit code 75. | `test/engine-suite.f`, `test/run.f` | src/habu/habu2.f:1094 | 2026-06-22 |
+| em-interpret | `--` | Emits the interpreter-mode main-loop dispatch as raw ARM64. | `test/run.f` | src/habu/habu2.f:1325 | 2026-06-13 |
+| em-compile | `--` | Emits the compile-mode main-loop dispatch as raw ARM64. | `test/run.f` | src/habu/habu2.f:1523 | 2026-06-13 |
+| emit-main | `--` | Allocates main-loop labels and chains EM-STARTUP/COMMENT/INTERPRET/COMPILE. | `test/run.f` | src/habu/habu2.f:1528 | 2026-06-13 |
+| SRCA@ | `-- ptr u8` | Reads EMIT-FORTH's saved source pointer from a raw variable for the final `BYTES,` copy. | `test/run.f` | src/habu/habu2.f:1531 | 2026-06-16 |
+| emit-forth | `ptr u8 n --` | Top-level engine builder: consumes source bytes, allocates every forward-ref label, and emits the complete image. | `test/run.f` | src/habu/habu2.f:1581 | 2026-06-16 |
 | fold-entry | `n ptr a n n --` | JIT constant-fold case: emits the keyword guard then `fxt execute`s a fold handler + raw branches. | `test/run.f` | src/habu/jit.f:103 | 2026-06-16 |
 | vop-entry | `n ptr a n n n --` | JIT binop case: fold-vs-emit split with two indirect xts and raw asm. | `test/run.f` | src/habu/jit.f:324 | 2026-06-16 |
 | vopi-entry | `n ptr a n n n n --` | JIT binop-immediate case: fold/register/immediate split with three indirect xts and raw asm. | `test/run.f` | src/habu/jit.f:323 | 2026-06-16 |
