@@ -108,7 +108,7 @@ variable RX-COUNT-POS
       else
          1 +
       then
-   repeat drop E-RX-SYNTAX throw 0 >OFF ;
+   repeat drop E-RX-SYNTAX throw ;
 
 : RX-SCAN-CLASS ( ptr u8 len off -- off off n ) {: a:ptr u start :}
    start OFF>N 1 + u LEN>N >= if E-RX-SYNTAX throw then
@@ -227,7 +227,7 @@ variable RX-COUNT-POS
       drop rx rx-u off RX-CLASS-RAW-LEN LEN>N 2 + >LEN exit
    then
    RX-QUANT? if E-RX-SYNTAX throw then
-   E-RX-SYNTAX throw 0 >LEN ;
+   E-RX-SYNTAX throw ;
 
 : RX-ATOM-END ( ptr u8 len off -- off ) {: rx:ptr rx-u off :}
    off OFF>N rx rx-u off RX-ATOM-LEN LEN>N + >OFF ;
@@ -312,12 +312,12 @@ variable RX-COUNT-POS
       drop c rx off OFF>N 2 + + rx rx-u off RX-CLASS-RAW-LEN RX-CLASS-MEMBER? 0= exit
    then
    RX-CONSUMING? 0= if E-RX-SYNTAX throw then
-   E-RX-SYNTAX throw STR-FALSE ;
+   E-RX-SYNTAX throw ;
 
 : RX-ANCHOR-MATCH? ( n off len -- bool ) {: op pos text-u :}
    op RX-TOK-BOL = if pos OFF>N 0 = exit then
    op RX-TOK-EOL = if pos OFF>N text-u LEN>N = exit then
-   E-RX-SYNTAX throw STR-FALSE ;
+   E-RX-SYNTAX throw ;
 
 : RX-CLOSE-ONE ( ptr u8 len off len ptr u8 off -- ) {: rx:ptr rx-u pos text-u flags:ptr off :}
    flags off RX-FLAG? 0= if exit then
