@@ -108,6 +108,11 @@ not a matter of taste. Target is the native `bin/hb` engine.
   interactive failures should `throw` into REPL recovery (`?`, rollback, reread).
   Use process exits such as `die` for build-time makers and CLI boundaries where
   terminating the process is the contract.
+- **`throw` and `die` are different control effects.** `throw` is catchable and
+  belongs to the checker exception edge; `die` terminates the process and belongs
+  to no-return metadata. Do not add dummy output values after `throw` to balance
+  a branch. If the checker cannot accept a real throw guard, fix the exception
+  model or track that capability gap.
 
 ## Constants
 

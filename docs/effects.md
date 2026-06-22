@@ -85,6 +85,39 @@ omits the leading `R` and the return clause; the checker supplies fresh rows.
 `RECURSE` (fresh instantiation of the word's own effect). Both `IF` arms must have
 equal effect; loop bodies must be stack-neutral.
 
+## Exceptional control flow
+
+The public signature grammar describes a word's normal data and return stack
+effect. The checker also tracks a separate internal exceptional edge for
+catchable `throw` paths:
+
+- `die` is process no-return. It consumes its message/code and kills the current
+  normal path; wrappers whose every path reaches `die` are recorded as
+  non-returning.
+- `throw` is catchable no-normal-return. It consumes the throw code, records an
+  exceptional edge for the current scope, and kills only the current normal path.
+  It must not be recorded as process no-return.
+- A word can have both a normal effect and one or more `throw` paths. Calls use
+  the normal effect for the continuing path while preserving the exceptional
+  edge for an enclosing `catch`.
+- A word whose every path reaches `throw` is a catchable throwing word. Calls to
+  it kill the caller's current normal path, but the edge remains catchable by an
+  enclosing `catch`.
+- `catch` consumes an execution token / quotation. Its normal path requires the
+  quotation to be stack-preserving on both data and return stacks, then pushes a
+  throw code (`0` for normal completion). Its exceptional path restores the stack
+  shape that existed before invoking the quotation, then pushes the thrown code.
+
+This model is the reason a checked guard may be written directly:
+
+```
+: REQUIRE-NONEMPTY ( len -- ) dup 0 <= if E-A-EMPTY throw then drop ;
+: HEAD ( ptr i64 len -- i64 ) REQUIRE-NONEMPTY @ ;
+```
+
+No dummy value should be pushed after `throw` merely to satisfy a branch join.
+If a branch only throws, it contributes no normal output to the join.
+
 ## Escape hatches
 
 - `TRUSTED: NAME ( eff ) body ;` — record `eff` for `NAME` **without** checking

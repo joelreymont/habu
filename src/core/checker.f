@@ -256,6 +256,9 @@ variable QTT  variable QD2  variable QR2
    ELSE 0 OK ! THEN THEN ;
 
 : RSCATCH   \ catch: stack-preserving quotation -> same stack plus throw code
+   \ Catchable `throw` is not process no-return. The checker tracks throw paths
+   \ as an exceptional edge owned by `catch`; `die` remains separate no-return
+   \ metadata because it cannot be recovered by a quotation catch.
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    rest DCUR !
@@ -685,7 +688,9 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS c!
 
 \ Non-returning words are a control-flow effect. `die` exits the process and
 \ wrappers around it must make the current branch unreachable for IF/ELSE joins.
-\ The table is append-only and later-wins so a redefinition can remove the flag.
+\ Catchable `throw` is intentionally excluded from this table; it has its own
+\ exception edge so `catch` can restore the pre-call stack shape. The table is
+\ append-only and later-wins so a redefinition can remove the flag.
 $1000 constant NORET-INIT-CAP
 create NORET-BOOT NORET-INIT-CAP allot
 variable NORET-P   variable NORET-CAP-U   variable NORET-END
