@@ -58,8 +58,16 @@ remains a compatibility alias for `JSONL-START-SKIP`.
 Skipped rows are part of the iterator contract and can be inspected with
 `JSONL-SKIPPED ( -- u )`.
 
-The returned node is valid until the next `JSONL-NEXT-OBJECT` call, because each
-line parse reuses the parser DOM tables and string arena.
+`JSONL-NEXT-ROW ( -- node kind code found? )` exposes the lower-level cursor
+outcome. `kind` is `JSONL-ROW-JSON`, `JSONL-ROW-BLANK`, `JSONL-ROW-ERROR`, or
+`JSONL-ROW-EOF`; `code` is the parser throw code for `JSONL-ROW-ERROR` and `0`
+otherwise. `JSONL-LINE# ( -- u )` reports the physical row number for the
+current row, including final partial rows without a trailing newline, and
+`JSONL-LINE$ ( -- ptr u8 u )` reports the trimmed current row bytes.
+
+Returned nodes are valid until the next `JSONL-NEXT-OBJECT` or
+`JSONL-NEXT-ROW` call, because each line parse reuses the parser DOM tables and
+string arena.
 
 ## Writer
 

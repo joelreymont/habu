@@ -104,10 +104,15 @@ variable JSONL-LU
 variable JSONL-ROOT
 variable JSONL-SKIPS
 variable JSONL-MODE
+variable JSONL-LINE-N
 variable JSON-PARSE-TRY-ROOT
 
 0 constant JSONL-MODE-STRICT
 1 constant JSONL-MODE-SKIP
+0 constant JSONL-ROW-JSON
+1 constant JSONL-ROW-BLANK
+2 constant JSONL-ROW-ERROR
+3 constant JSONL-ROW-EOF
 0 constant JSON-PARSE-OK
 1 constant JSON-PARSE-THROW
 : JSON-A@ JSON-A @ ;
@@ -762,6 +767,7 @@ TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
    u JSONL-U !
    0 JSONL-I !
    0 JSONL-SKIPS !
+   0 JSONL-LINE-N !
    mode JSONL-MODE ! ;
 
 : JSONL-START-STRICT ( ptr u8 i64 -- )
@@ -782,28 +788,59 @@ TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
 : JSONL-SKIP-MODE? ( -- bool )
    JSONL-MODE @ JSONL-MODE-SKIP = ;
 
+: JSONL-TRUE ( -- bool )
+   0 0= ;
+
+: JSONL-FALSE ( -- bool )
+   JSONL-TRUE 0= ;
+
+: JSONL-LINE# ( -- i64 )
+   JSONL-LINE-N @ ;
+
+: JSONL-LINE$ ( -- ptr u8 i64 )
+   JSONL-LA@ JSONL-LU @ ;
+
+: JSONL-LINE++ ( -- )
+   JSONL-LINE-N @ 1+ JSONL-LINE-N ! ;
+
 : JSONL-TAKE-LINE ( -- bool )
-   JSONL-I @ JSONL-U @ >= IF 0 0= 0= exit THEN
+   JSONL-I @ JSONL-U @ >= IF JSONL-FALSE exit THEN
    JSONL-I @ JSON-START !
    begin JSONL-I @ JSONL-U @ < while
       JSONL-A@ JSONL-I @ + c@ J-LF = IF
          JSONL-A@ JSON-START @ +  JSONL-I @ JSON-START @ -  JSON-TRIM
          JSONL-LU ! JSONL-LA !
          JSONL-I @ 1+ JSONL-I !
-         0 0= exit
+         JSONL-LINE++ JSONL-TRUE exit
       THEN
       JSONL-I @ 1+ JSONL-I !
    repeat
    JSONL-A@ JSON-START @ +  JSONL-U @ JSON-START @ -  JSON-TRIM
    JSONL-LU ! JSONL-LA !
    JSONL-U @ JSONL-I !
-   0 0= ;
+   JSONL-LINE++ JSONL-TRUE ;
 
 : JSONL-PARSE-LINE ( -- i64 )
    JSONL-LA@ JSONL-LU @ JSON-PARSE ;
 
 : JSONL-PARSE-TRY ( -- i64 i64 i64 )
    JSONL-LA@ JSONL-LU @ JSON-PARSE-TRY ;
+
+: JSONL-PARSE-ROW ( -- i64 i64 i64 bool )
+   JSONL-PARSE-TRY JSON-TMP ! JSON-TMP2 ! JSONL-ROOT !
+   JSON-TMP2 @ JSON-PARSE-OK = IF
+      JSONL-ROOT @ JSONL-ROW-JSON JSON-TMP @ JSONL-TRUE exit
+   THEN
+   JSONL-ROOT @ JSONL-ROW-ERROR JSON-TMP @ JSONL-TRUE ;
+
+: JSONL-NEXT-ROW ( -- i64 i64 i64 bool )
+   JSONL-TAKE-LINE 0= IF
+      -1 JSONL-ROW-EOF 0 JSONL-FALSE exit
+   THEN
+   JSONL-LU @ 0= IF
+      -1 JSONL-ROW-BLANK 0 JSONL-TRUE exit
+   THEN
+   JSONL-PARSE-ROW ;
 
 : JSONL-OBJECT? ( i64 -- bool )
    JSON-KIND J-OBJ = ;
