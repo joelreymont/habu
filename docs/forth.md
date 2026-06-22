@@ -128,10 +128,11 @@ not a matter of taste. Target is the native `bin/hb` engine.
 
 ### Checker-Miss RCA
 
-- For any "why didn't the checker catch this?" failure, ask this before any
-  runtime explanation: **What static invariant should have made this impossible
-  before runtime, and where should the compiler/checker enforce it?** The first
-  visible line of the response, note, dot, or investigation is
+- For any "why didn't the checker catch this?" failure, or any process/status
+  reply about one, ask this before any runtime explanation: **What static
+  invariant should have made this impossible before runtime, and where should
+  the compiler/checker enforce it?** The first visible line of the response,
+  progress update, note, dot, or investigation is
   `Static invariant:` followed by that invariant and boundary. If you have
   already started with runtime symptoms, stop and restart from this line.
 - Use this template before editing runtime/library code:

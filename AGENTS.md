@@ -53,7 +53,8 @@ constants; and a `T{ … -> … }T` test for every word.
   add/keep tests that prove the fix, and record any remaining substantive work
   as detailed dots.
 - Checker-first RCA is mandatory. For any “why didn’t the checker catch this?”
-  failure, ask this before any runtime explanation: **What static invariant
+  failure, or any process/status reply about one, ask this before any runtime
+  explanation: **What static invariant
   should have made this impossible before runtime, and where should the
   compiler/checker enforce it?** The first visible line of the response,
   progress update, note, dot, or investigation must be `Static invariant:` with
