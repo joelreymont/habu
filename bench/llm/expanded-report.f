@@ -1,37 +1,25 @@
 \ expanded-report.f - native expanded live benchmark Markdown report.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/process.f,
-\ lib/process-argv.f, lib/argv.f, and tools/json.f.
+\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/argv.f, tools/json.f,
+\ and bench/llm/validate-results-lib.f.
 
 66 constant ER-NOINPUT-RC
 74 constant ER-IO-RC
 10 constant ER-LF
-30000 constant ER-VALIDATOR-TIMEOUT-MS
 4096 constant ER-READ-CAP
-65536 constant ER-SUM-CAP
-65536 constant ER-JSON-CAP
 65536 constant ER-PERF-CAP
-16384 constant ER-ERR-CAP
 45 constant ER-MINUS
 46 constant ER-DOT
 48 constant ER-ZERO
 57 constant ER-NINE
 
 create ER-READ-BUF ER-READ-CAP allot
-create ER-SUM-BUF ER-SUM-CAP allot
-create ER-JSON-BUF ER-JSON-CAP allot
 create ER-PERF-BUF ER-PERF-CAP allot
-create ER-ERR-BUF ER-ERR-CAP allot
 
-variable ER-SUM-U
-variable ER-JSON-U
 variable ER-PERF-U
 variable ER-READ-U
 variable ER-FD
 variable ER-ROWS
-variable ER-SUM-ROOT
-variable ER-FAM-ARR
-variable ER-FAM-ROW
 variable ER-PERF-ROOT
 variable ER-PERF-ARR
 variable ER-PERF-ROW
@@ -123,51 +111,20 @@ variable ER-PARSE-N
    ARGV-POS# 1 <= if exit then
    ER-PERF$ FILE? 0= if s" expanded-report: missing perf file" ER-NOINPUT-RC die then ;
 
-: ER-VALIDATOR-BASE ( -- )
-   PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" tools/date.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/json.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" bench/llm/validate-results-lib.f"  >LEN PROC-ARGV+
-   s" bench/llm/validate-results.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+ ;
-
-: ER-VALIDATOR-FAILED ( n -- ) {: erru :}
-   erru 0 > if 2 ER-ERR-BUF erru write drop then
-   s" expanded-report: validator failed" ER-IO-RC die ;
-
-: ER-CHECK-RUN ( len len rc -- n ) {: outu erru rc :}
-   rc RC>N 0 <> if erru LEN>N ER-VALIDATOR-FAILED then
-   erru LEN>N 0 > if 2 ER-ERR-BUF erru LEN>N write drop then
-   outu LEN>N ;
-
-: ER-RUN-VALIDATOR-TEXT ( -- )
-   ER-VALIDATOR-BASE
-   ER-RESULT$  >LEN PROC-ARGV+
-   s" bin/hb" >LEN ER-SUM-BUF ER-SUM-CAP >LEN
-   ER-ERR-BUF ER-ERR-CAP >LEN ER-VALIDATOR-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
-   ER-CHECK-RUN ER-SUM-U ! ;
-
-: ER-RUN-VALIDATOR-JSON ( -- )
-   ER-VALIDATOR-BASE
-   s" --json"  >LEN PROC-ARGV+
-   ER-RESULT$  >LEN PROC-ARGV+
-   s" bin/hb" >LEN ER-JSON-BUF ER-JSON-CAP >LEN
-   ER-ERR-BUF ER-ERR-CAP >LEN ER-VALIDATOR-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
-   ER-CHECK-RUN ER-JSON-U ! ;
+: ER-VALIDATE ( -- )
+   LV-MODE-SUMMARY LV-MODE !
+   ER-RESULT$ LV-RESULT-PATH!
+   LV-SCAN-TASKS
+   LV-SCAN-RESULTS ;
 
 : ER-FENCE-TEXT ( -- )
    s" ```text" type cr
-   ER-SUM-BUF ER-SUM-U @ type cr
+   LV-OUTPUT-SUMMARY-TEXT
    s" ```" type cr cr ;
 
 : ER-FENCE-JSON ( -- )
    s" ```json" type cr
-   ER-JSON-BUF ER-JSON-U @ type cr
+   LV-OUTPUT-SUMMARY-JSON
    s" ```" type cr ;
 
 : ER-PERF-GET ( n ptr u8 n -- n ) {: node:n a:ptr u:n :}
@@ -181,49 +138,6 @@ variable ER-PARSE-N
 
 : ER-PERF-NUM ( n -- n bool )
    dup ER-PERF-NUM? if JSON-NUMBER$ ER-PARSE-U? else drop 0 ER-FALSE then ;
-
-: ER-CELL-GET ( ptr u8 n -- n )
-   ER-FAM-ROW @ -rot ER-PERF-GET ;
-
-: ER-CELL-N ( ptr u8 n -- n bool )
-   ER-CELL-GET ER-PERF-NUM ;
-
-: ER-CELL-N@ ( ptr u8 n -- n )
-   ER-CELL-N 0= if drop 0 then ;
-
-: ER-CELL-S. ( ptr u8 n -- )
-   ER-CELL-GET dup 0 < if drop ER-DASH. exit then
-   dup JSON-KIND J-STR <> if drop ER-DASH. exit then
-   JSON-STRING$ type ;
-
-: ER-CELL-U. ( ptr u8 n -- )
-   ER-CELL-N if ER-U. else drop ER-DASH. then ;
-
-: ER-CELL-BP. ( ptr u8 n -- )
-   ER-CELL-N if ER-SCALED. else drop ER-DASH. then ;
-
-: ER-CELL-FIRST. ( -- )
-   s" first_tests_passed" ER-CELL-N@
-   s" rows" ER-CELL-N@
-   ER-RATIO-BP ER-SCALED. ;
-
-: ER-CELL-ROUNDS. ( -- )
-   s" rounds" ER-CELL-N@
-   s" rows" ER-CELL-N@
-   ER-MEAN-CENTI ER-SCALED. ;
-
-: ER-CELL-WALL-S. ( -- )
-   s" wall_ms" ER-CELL-N@ ER-SEC-CENTI ER-SCALED. ;
-
-: ER-CELL-DIAG. ( -- )
-   s" diagnostic_complete" ER-CELL-N@
-   s" rows" ER-CELL-N@
-   ER-RATIO-BP ER-SCALED. ;
-
-: ER-CELL-REPLAY. ( -- )
-   s" replay_ok" ER-CELL-N@
-   s" rows" ER-CELL-N@
-   ER-RATIO-BP ER-SCALED. ;
 
 : ER-PERF-NUM. ( n -- )
    ER-PERF-NUM if ER-U. else drop ER-DASH. then ;
@@ -256,35 +170,31 @@ variable ER-PARSE-N
    s" | category | model | arm | rows | tests | pass@k | first pass | mean rounds | tokens | wall s | diagnostics | replay |" type cr
    s" |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|" type cr ;
 
-: ER-FAMILY-ROW. ( -- )
-   s" | " type s" category" ER-CELL-S.
-   s"  | " type s" model" ER-CELL-S.
-   s"  | " type s" arm" ER-CELL-S.
-   s"  | " type s" rows" ER-CELL-U.
-   s"  | " type s" tests_passed" ER-CELL-U.
-   s"  | " type s" task_pass_bp" ER-CELL-BP.
-   s"  | " type ER-CELL-FIRST.
-   s"  | " type ER-CELL-ROUNDS.
-   s"  | " type s" tokens_used" ER-CELL-U.
-   s"  | " type ER-CELL-WALL-S.
-   s"  | " type ER-CELL-DIAG.
-   s"  | " type ER-CELL-REPLAY.
+: ER-FAMILY-ROW. ( n -- ) {: k :}
+   s" | " type k LV-FAM-CAT$ type
+   s"  | " type k LV-FAM-MODEL$ type
+   s"  | " type k LV-FAM-ARM$ type
+   s"  | " type k LV-FAM-ROWS@ ER-U.
+   s"  | " type k LV-FAM-TESTS@ ER-U.
+   s"  | " type k LV-FAM-PASS-GROUPS k LV-FAM-GROUPS ER-RATIO-BP ER-SCALED.
+   s"  | " type k LV-FAM-FIRST@ k LV-FAM-ROWS@ ER-RATIO-BP ER-SCALED.
+   s"  | " type k LV-FAM-ROUNDS@ k LV-FAM-ROWS@ ER-MEAN-CENTI ER-SCALED.
+   s"  | " type k LV-FAM-TOKENS@ ER-U.
+   s"  | " type k LV-FAM-WALL@ ER-SEC-CENTI ER-SCALED.
+   s"  | " type k LV-FAM-DIAG-OK@ k LV-FAM-ROWS@ ER-RATIO-BP ER-SCALED.
+   s"  | " type k LV-FAM-REPLAY@ k LV-FAM-ROWS@ ER-RATIO-BP ER-SCALED.
    s"  |" type cr ;
 
 : ER-FAMILY-TABLE. ( -- )
    ER-FAMILY-HEADER.
-   0 begin dup ER-FAM-ARR @ JSON-COUNT < while
-      ER-FAM-ARR @ over JSON-ARR@ ER-FAM-ROW !
-      ER-FAMILY-ROW.
+   0 begin dup LV-FAM# @ < while
+      dup ER-FAMILY-ROW.
       1+
    repeat drop cr ;
 
 : ER-FAMILY. ( -- )
    s" ## Category by Arm and Model" type cr cr
-   ER-JSON-BUF ER-JSON-U @ JSON-PARSE ER-SUM-ROOT !
-   ER-SUM-ROOT @ s" family_cells" ER-PERF-GET ER-FAM-ARR !
-   ER-FAM-ARR @ 0 < if ER-FAMILY-NOTE. exit then
-   ER-FAM-ARR @ JSON-KIND J-ARR <> if ER-FAMILY-NOTE. exit then
+   LV-FAM# @ 0= if ER-FAMILY-NOTE. exit then
    ER-FAMILY-TABLE. ;
 
 : ER-PERF. ( -- )
@@ -313,6 +223,5 @@ variable ER-PARSE-N
 ER-CONFIG
 ER-REQUIRE-RESULT
 ER-REQUIRE-PERF
-ER-RUN-VALIDATOR-TEXT
-ER-RUN-VALIDATOR-JSON
+ER-VALIDATE
 ER-REPORT.

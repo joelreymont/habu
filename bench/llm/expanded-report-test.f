@@ -191,11 +191,17 @@ ERT-LF ERT-LF-BUF c!
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" lib/process.f"  >LEN PROC-ARGV+
    s" lib/process-argv.f"  >LEN PROC-ARGV+
    s" lib/argv.f"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+
+   s" tools/lint/token.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
+   s" bench/llm/validate-results-lib.f"  >LEN PROC-ARGV+
    s" bench/llm/expanded-report.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    ERT-RESULT$  >LEN PROC-ARGV+
