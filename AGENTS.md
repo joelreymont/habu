@@ -55,9 +55,9 @@ constants; and a `T{ … -> … }T` test for every word.
 - Checker-first RCA is mandatory. For any “why didn’t the checker catch this?”
   failure, ask this before any runtime explanation: **What static invariant
   should have made this impossible before runtime, and where should the
-  compiler/checker enforce it?** The first visible line of the response, note,
-  dot, or investigation must be `Static invariant:` with that answer. Use the
-  RCA template in `docs/forth.md` § Checker-Miss RCA. Do not edit
+  compiler/checker enforce it?** The first visible line of the response,
+  progress update, note, dot, or investigation must be `Static invariant:` with
+  that answer. Use the RCA template in `docs/forth.md` § Checker-Miss RCA. Do not edit
   runtime/library code until the investigation also records: fail-closed proof
   for the exact command path, miss class, minimal checked reproducer, and the
   checker/compiler change or explicit dot that will close the soundness gap.

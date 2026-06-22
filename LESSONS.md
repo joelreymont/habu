@@ -45,8 +45,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Checker RCA asks the static question first:** for any “why didn’t the checker
   catch this?” failure, first ask what static invariant should have made the
   program impossible before runtime and where the compiler/checker should enforce
-  it. Write that answer as `Static invariant:` before runtime symptoms. Runtime
-  fixes wait until fail-closed proof, miss class, minimal checked reproducer, and
+  it. Write that answer as `Static invariant:` before runtime symptoms in the
+  first response, progress update, note, dot, or investigation. Runtime fixes
+  wait until fail-closed proof, miss class, minimal checked reproducer, and
   the checker/compiler fix or capability dot are recorded; the bad program must
   end as a negative checker regression.
 - **Checker misses default to compiler work:** after the `Static invariant:`
