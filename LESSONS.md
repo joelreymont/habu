@@ -216,6 +216,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   pointers in ordinary variables makes the checker see them as `n` on reload.
   Keep capture buffers as typed locals/arguments and store only numeric fd/count
   state in process variables.
+- **Raw pointer state needs named accessors:** if a tool must store byte-pointer
+  pairs in variables across scanner callbacks, expose the reload through small
+  manifested `TRUSTED:` accessors and keep the rest of the scanner checked; do
+  not leave a file-wide `0 set-check`.
 - **Scratch cells are caller state:** helper words must not reuse a caller's
   loop-index scratch variable. `COMMENT-EXPORTS` once handed only newline bytes
   to its line appender because `SOURCE-LINE-END` clobbered the outer `SOURCE-I`;

@@ -2,8 +2,6 @@
 \ Load after tools/date.f, tools/lint/lib.f, tools/fs.f, and tools/argv.f.
 \ Run: bin/hb --load tools/date.f tools/lint/lib.f tools/fs.f tools/argv.f tools/stale-status-lint.f -- [ROOT] [TODAY]
 
-0 set-check
-
 $20000 constant SS-FILE-CAP
 32 constant SS-NUM-CAP
 
@@ -43,6 +41,18 @@ variable SS-FENCE
 : SS-CHECK-HOOK ( -- )
    CHECK! ;
 ' SS-CHECK-HOOK set-check
+
+TRUSTED: SS-ROOT$ ( -- ptr u8 n )
+   SS-ROOT-A @ SS-ROOT-U @ ;
+
+TRUSTED: SS-SRC$ ( -- ptr u8 n )
+   SS-SRC-A @ SS-SRC-U @ ;
+
+TRUSTED: SS-DATE$ ( -- ptr u8 n )
+   SS-DATE-A @ SS-DATE-U @ ;
+
+TRUSTED: SS-DISP$ ( -- ptr u8 n )
+   SS-DISP-A @ SS-DISP-U @ ;
 
 : SS-SKIP ( ptr u8 n n -- ptr u8 n ) {: a:ptr u n :}
    a n +  u n - ;
@@ -104,11 +114,12 @@ variable SS-FENCE
    c 96 > c 123 < and ;
 
 : SS-REL ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
-   SS-ROOT-U @ 0 >  SS-ROOT-A @ SS-ROOT-U @ s" ." STR= 0= and IF
-      u SS-ROOT-U @ > IF
-         a SS-ROOT-U @ SS-ROOT-A @ SS-ROOT-U @ STR= IF
-            a SS-ROOT-U @ + c@ SS-SLASH = IF
-               a SS-ROOT-U @ 1 + +  u SS-ROOT-U @ 1 + -  exit
+   SS-ROOT$ {: root:ptr rootu :}
+   rootu 0 >  root rootu s" ." STR= 0= and IF
+      u rootu > IF
+         a rootu root rootu STR= IF
+            a rootu + c@ SS-SLASH = IF
+               a rootu 1 + +  u rootu 1 + -  exit
             THEN
          THEN
       THEN
@@ -119,27 +130,29 @@ variable SS-FENCE
    a u ;
 
 : SS-ROOT ( -- ptr u8 n )
-   SS-ROOT-A @ SS-ROOT-U @ ;
+   SS-ROOT$ ;
 
 : SS-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
    a SS-ROOT-A !
    u SS-ROOT-U ! ;
 
 : SS-ROOT-SELF? ( -- bool )
-   SS-ROOT-U @ 0= IF SS-TRUE exit THEN
-   SS-ROOT-A @ SS-ROOT-U @ s" ." STR= ;
+   SS-ROOT$ {: root:ptr rootu :}
+   rootu 0= IF SS-TRUE exit THEN
+   root rootu s" ." STR= ;
 
 : SS-ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+   SS-ROOT$ {: root:ptr rootu :}
    SS-ROOT-SELF? IF a u exit THEN
-   SS-ROOT-U @ u + 1 + FS-PATH-CAP > IF s" stale-status-lint: root path too long" 1 die THEN
-   SS-ROOT-A @ SS-PATH-BUF SS-ROOT-U @ COPY-BYTES
-   SS-ROOT-A @ SS-ROOT-U @ 1 - + c@ SS-SLASH = IF
-      a SS-PATH-BUF SS-ROOT-U @ + u COPY-BYTES
-      SS-PATH-BUF SS-ROOT-U @ u + exit
+   rootu u + 1 + FS-PATH-CAP > IF s" stale-status-lint: root path too long" 1 die THEN
+   root SS-PATH-BUF rootu COPY-BYTES
+   root rootu 1 - + c@ SS-SLASH = IF
+      a SS-PATH-BUF rootu + u COPY-BYTES
+      SS-PATH-BUF rootu u + exit
    THEN
-   SS-SLASH SS-PATH-BUF SS-ROOT-U @ + c!
-   a SS-PATH-BUF SS-ROOT-U @ 1 + + u COPY-BYTES
-   SS-PATH-BUF SS-ROOT-U @ 1 + u + ;
+   SS-SLASH SS-PATH-BUF rootu + c!
+   a SS-PATH-BUF rootu 1 + + u COPY-BYTES
+   SS-PATH-BUF rootu 1 + u + ;
 
 : SS-DISPLAY! ( ptr u8 n -- )
    SS-REL SS-DISP-U ! SS-DISP-A ! ;
@@ -182,10 +195,11 @@ variable SS-FENCE
    SS-SRC-U ! SS-SRC-A ! ;
 
 : SS-SET-LINE-END ( -- )
-   SS-SRC-A @ SS-SRC-U @ SS-LINE-S @ SS-LINE-END SS-LINE-E ! ;
+   SS-SRC$ SS-LINE-S @ SS-LINE-END SS-LINE-E ! ;
 
 : SS-CURRENT-LINE ( -- ptr u8 n )
-   SS-SRC-A @ SS-LINE-S @ +  SS-LINE-E @ SS-LINE-S @ - ;
+   SS-SRC$ {: src:ptr srcu :}
+   src SS-LINE-S @ +  SS-LINE-E @ SS-LINE-S @ - ;
 
 : SS-ADVANCE-LINE ( -- )
    SS-LINE-E @ 1+ SS-LINE-S ! ;
@@ -194,7 +208,7 @@ variable SS-FENCE
    0 SS-FOUND? !
    s" STATUS.md" SS-ROOTED$ SS-LOAD-FILE
    0 SS-LINE-S !
-   begin SS-LINE-S @ SS-SRC-U @ < while
+   begin SS-LINE-S @ SS-SRC$ nip < while
       SS-SET-LINE-END
       SS-CURRENT-LINE SS-STATUS-LINE
       SS-ADVANCE-LINE
@@ -212,9 +226,12 @@ variable SS-FENCE
    s" `" SS-OUT SS-NL
    1 throw ;
 
+: SS-PARSE-TODAY ( ptr u8 n -- n ) {: a:ptr u :}
+   a u PARSE-YMD 0= IF drop a u SS-BAD-TODAY 0 THEN ;
+
 : SS-BAD-STATUS-DATE ( -- )
    s" BAD-STATUS-DATE STATUS.md: Last verified invalid `" SS-OUT
-   SS-DATE-A @ SS-DATE-U @ SS-OUT
+   SS-DATE$ SS-OUT
    s" `" SS-OUT SS-NL
    SS-BAD+ ;
 
@@ -227,7 +244,7 @@ variable SS-FENCE
 
 : SS-DATE-MISMATCH ( ptr u8 n -- )
    s" STALE-STATUS STATUS.md: Last verified is " SS-OUT
-   SS-DATE-A @ SS-DATE-U @ SS-OUT
+   SS-DATE$ SS-OUT
    s" , expected " SS-OUT
    SS-OUT SS-NL
    SS-BAD+ ;
@@ -235,9 +252,9 @@ variable SS-FENCE
 : SS-CHECK-STATUS ( -- )
    SS-STATUS-DATE!
    SS-FOUND? @ 0= IF SS-MISSING-STATUS exit THEN
-   SS-DATE-A @ SS-DATE-U @ PARSE-YMD 0= IF drop SS-BAD-STATUS-DATE exit THEN
+   SS-DATE$ PARSE-YMD 0= IF drop SS-BAD-STATUS-DATE exit THEN
    drop
-   SS-TODAY$ 2dup SS-DATE-A @ SS-DATE-U @ STR= 0= IF SS-DATE-MISMATCH ELSE 2drop THEN ;
+   SS-TODAY$ 2dup SS-DATE$ STR= 0= IF SS-DATE-MISMATCH ELSE 2drop THEN ;
 
 : SS-BEFORE-BOUND? ( ptr u8 n -- bool ) {: a:ptr pos :}
    pos 0= IF SS-TRUE exit THEN
@@ -307,7 +324,7 @@ variable SS-FENCE
 
 : SS-FINDING ( -- )
    s" STALE-STATUS " SS-OUT
-   SS-DISP-A @ SS-DISP-U @ SS-OUT
+   SS-DISP$ SS-OUT
    SS-COLON SS-C
    SS-LINE-N @ SS-U.
    s" : count-shaped string - point to STATUS.md instead of quoting a number" SS-OUT
@@ -329,7 +346,7 @@ variable SS-FENCE
    0 SS-FENCE !
    0 SS-LINE-N !
    0 SS-LINE-S !
-   begin SS-LINE-S @ SS-SRC-U @ < while
+   begin SS-LINE-S @ SS-SRC$ nip < while
       SS-LINE-N @ 1+ SS-LINE-N !
       SS-SET-LINE-END
       SS-SCAN-CURRENT-LINE
@@ -349,8 +366,7 @@ variable SS-FENCE
    0 2 ARGV-EXPECT-POS
    ARGV-POS# 0 > IF 0 ARGV-POS$ SS-ROOT! ELSE s" ." SS-ROOT! THEN
    ARGV-POS# 1 > IF
-      1 ARGV-POS$ 2dup PARSE-YMD 0= IF drop SS-BAD-TODAY THEN
-      SS-TODAY-DAYS ! 2drop
+      1 ARGV-POS$ SS-PARSE-TODAY SS-TODAY-DAYS !
    ELSE
       epoch-seconds DATE-SECONDS-DAY / SS-TODAY-DAYS !
    THEN ;
