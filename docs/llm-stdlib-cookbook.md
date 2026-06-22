@@ -14,9 +14,11 @@ keeps an explicit checked effect.
 ## Arrays
 
 Load `lib/errors.f lib/test.f lib/array.f`. The published signatures include
-`A@ ( ptr a n n -- a )`, `A! ( a ptr a n n -- )`, `A-SUM ( ptr n n -- n )`,
-`A-MAP! ( ptr a n [ a -- a ] -- )`, `A-FOLDI ( ptr a n b [ b n a -- b ] -- b )`,
-and `A-FIND-INDEX ( ptr a n [ a -- bool ] -- n )`. They are covered by
+`A@ ( ptr a len idx -- a )`, `A! ( a ptr a len idx -- )`,
+`A-SUM ( ptr n len -- n )`, `A-MAP! ( ptr a len [ a -- a ] -- )`,
+`A-FOLDI ( ptr a len b [ b idx a -- b ] -- b )`, and
+`A-FIND-INDEX ( ptr a len [ a -- bool ] -- n )`. Convert numeric lengths and
+indexes with `>LEN` and `>IDX` at public API boundaries. They are covered by
 `lib/array-test.f` and `examples/array.f`.
 
 ```forth
@@ -25,24 +27,24 @@ and `A-FIND-INDEX ( ptr a n [ a -- bool ] -- n )`. They are covered by
 create AE-DATA AE-LEN cells allot
 
 : AE-LOAD ( -- )
-   1 AE-DATA AE-LEN 0 A!
-   2 AE-DATA AE-LEN 1 A!
-   3 AE-DATA AE-LEN 2 A!
-   4 AE-DATA AE-LEN 3 A! ;
+   1 AE-DATA AE-LEN >LEN 0 >IDX A!
+   2 AE-DATA AE-LEN >LEN 1 >IDX A!
+   3 AE-DATA AE-LEN >LEN 2 >IDX A!
+   4 AE-DATA AE-LEN >LEN 3 >IDX A! ;
 
 : AE-WEIGHTED ( -- n )
-   AE-DATA AE-LEN 0 [: * + ;] A-FOLDI ;
+   AE-DATA AE-LEN >LEN 0 [: swap IDX>N * + ;] A-FOLDI ;
 
 : AE-DOUBLE! ( -- )
-   AE-DATA AE-LEN [: 2 * ;] A-MAP! ;
+   AE-DATA AE-LEN >LEN [: 2 * ;] A-MAP! ;
 
 : AE-TEST ( -- )
    T-RESET
    AE-LOAD
-   AE-DATA AE-LEN A-SUM 10 T=
+   AE-DATA AE-LEN >LEN A-SUM 10 T=
    AE-WEIGHTED 20 T=
    AE-DOUBLE!
-   AE-DATA AE-LEN [: 6 > ;] A-FIND-INDEX 3 T=
+   AE-DATA AE-LEN >LEN [: 6 > ;] A-FIND-INDEX 3 T=
    T-REPORT ;
 ```
 

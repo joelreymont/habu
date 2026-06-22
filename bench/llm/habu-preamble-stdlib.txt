@@ -11,30 +11,31 @@ over raw address arithmetic when a helper matches the task.
 
 For array tasks, the most relevant helpers are:
 
-  A@                ( ptr a n n -- a )
-  A!                ( a ptr a n n -- )
-  A+!               ( n ptr a n n -- )
-  A-SWAP            ( ptr a n n n -- )
-  A-MAX-INDEX       ( ptr n n -- n )
-  A-REVERSE-RANGE!  ( ptr a n n n -- )
-  A-MAP!            ( ptr a n [ a -- a ] -- )
-  A-MAPI!           ( ptr a n [ n a -- a ] -- )
-  A-FOLD            ( ptr a n b [ b a -- b ] -- b )
-  A-FOLDI           ( ptr a n b [ b n a -- b ] -- b )
-  A-SCAN!           ( ptr n n n [ n n -- n ] -- )
-  A-SCAN1!          ( ptr n n [ n n -- n ] -- )
-  A-FIND-INDEX      ( ptr a n [ a -- bool ] -- n )
-  A-FIND-INDEXI     ( ptr a n [ n a -- bool ] -- n )
+  A@                ( ptr a len idx -- a )
+  A!                ( a ptr a len idx -- )
+  A+!               ( n ptr a len idx -- )
+  A-SWAP            ( ptr a len idx idx -- )
+  A-MAX-INDEX       ( ptr n len -- idx )
+  A-REVERSE-RANGE!  ( ptr a len idx count -- )
+  A-MAP!            ( ptr a len [ a -- a ] -- )
+  A-MAPI!           ( ptr a len [ idx a -- a ] -- )
+  A-FOLD            ( ptr a len b [ b a -- b ] -- b )
+  A-FOLDI           ( ptr a len b [ b idx a -- b ] -- b )
+  A-SCAN!           ( ptr n len n [ n n -- n ] -- )
+  A-SCAN1!          ( ptr n len [ n n -- n ] -- )
+  A-FIND-INDEX      ( ptr a len [ a -- bool ] -- n )
+  A-FIND-INDEXI     ( ptr a len [ idx a -- bool ] -- n )
 
 Use typed locals for the array pointer:
 
   : ARR-SUM ( ptr a n -- i64 ) {: arr:ptr len :}
-    arr len 0 [: + ;] A-FOLD ;
+    arr len >LEN 0 [: + ;] A-FOLD ;
 
   : SQ-EACH ( ptr a n -- ) {: arr:ptr len :}
-    arr len [: dup * ;] A-MAP! ;
+    arr len >LEN [: dup * ;] A-MAP! ;
 
-Rules: pass both `arr` and `len` to checked array helpers. For an array->array
-task, MODIFY THE ARRAY IN PLACE; do not return anything. For an array->scalar
-task, leave exactly one integer. Output ONLY the definition. No prose, no code
-fences.
+Rules: pass both `arr` and `len >LEN` to checked array helpers, and pass
+indexes as `i >IDX`. Index-aware quotations receive `idx`; use `IDX>N` only
+when numeric arithmetic or comparison is needed. For an array->array task,
+MODIFY THE ARRAY IN PLACE; do not return anything. For an array->scalar task,
+leave exactly one integer. Output ONLY the definition. No prose, no code fences.

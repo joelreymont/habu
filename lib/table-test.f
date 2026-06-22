@@ -4,7 +4,7 @@
 create TBLT-TABLE 12 cells allot
 
 : TBLT-CLEAR ( -- )
-   0 TBLT-TABLE 12 A-FILL! ;
+   0 TBLT-TABLE 12 >LEN A-FILL! ;
 
 : TBLT-TRUE ( -- bool )
    0 0= ;
@@ -40,9 +40,9 @@ create TBLT-TABLE 12 cells allot
    77 0 0 TBLT-MARK-FIELD
    88 0 3 TBLT-MARK-FIELD
    99 2 1 TBLT-MARK-FIELD
-   TBLT-TABLE 12 0 A@ 77 T=
-   TBLT-TABLE 12 3 A@ 88 T=
-   TBLT-TABLE 12 9 A@ 99 T= ;
+   TBLT-TABLE 12 >LEN 0 >IDX A@ 77 T=
+   TBLT-TABLE 12 >LEN 3 >IDX A@ 88 T=
+   TBLT-TABLE 12 >LEN 9 >IDX A@ 99 T= ;
 
 : TBLT-GET-SET ( -- )
    99 TBLT-TABLE 3 4 1 2 TBL-N!

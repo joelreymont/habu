@@ -355,8 +355,8 @@ chk expanded-native-array-report 'category arrays rows=1 certified=1 tests=1' "$
 
 # --- conv=aa : REVERSE (array -> array, in place) ---
 mkstub "$T/hb2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do i cells arr + @ len 1 - i - cells arr + @ i cells arr + ! len 1 - i - cells arr + ! loop ;"'
-mkstub "$T/hbl2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr len i len i MIRROR-INDEX A-SWAP loop ;"'
-mkstub "$T/hbstd2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr len i len i MIRROR-INDEX A-SWAP loop ;"'
+mkstub "$T/hbl2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr len >LEN i >IDX len >LEN i >IDX MIRROR-INDEX A-SWAP loop ;"'
+mkstub "$T/hbstd2.sh" 'echo ": REVERSE ( ptr a n -- ) {: arr:ptr len :} len 2 / 0 ?do arr len >LEN i >IDX len >LEN i >IDX MIRROR-INDEX A-SWAP loop ;"'
 mkstub "$T/hbsk2.sh" 'echo "len 2 / 0 ?do i cells arr + @ len 1 - i - cells arr + @ i cells arr + ! len 1 - i - cells arr + ! loop"'
 mkstub "$T/js2.sh" 'echo "function f(a){ return a.slice().reverse(); }"'
 mkstub "$T/py2.sh" 'echo "def f(a): return list(reversed(a))"'

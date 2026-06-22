@@ -273,19 +273,20 @@ Goal: make current array hard tails library composition.
 Create `lib/array.f` and move the benchmark-private helper surface there. Effects
 below use the v1 representation.
 
-Indexed helpers. The raw pointer/index words do not take a length and therefore
-do not perform bounds checks; they are for already-validated loops and small
-LLM-facing kernels. Public length-aware words must validate before indexing.
+Indexed helpers use nominal `len`, `idx`, and `count` roles at the public API.
+Convert plain numeric task inputs with `>LEN`, `>IDX`, and `>COUNT` at the call
+boundary. The roles make length/index/count mixups checker-visible while the
+implementation erases them to cells for arithmetic and address generation.
 
 ```forth
-A@             ( ptr a n -- a )       \ pointer, index
-A!             ( a ptr a n -- )       \ value, pointer, index
-A+!            ( n ptr i64 n -- )     \ delta, pointer, index
-A-SWAP         ( ptr a n n -- )       \ pointer, first index, second index
-A-CHECK-INDEX  ( n n -- )             \ length, index; throws on invalid index
-A-CHECK-RANGE  ( n n n -- )           \ length, start, count; throws on invalid range
-LAST-INDEX    ( n -- n )
-MIRROR-INDEX  ( n n -- n )
+A@             ( ptr a len idx -- a )     \ pointer, length, index
+A!             ( a ptr a len idx -- )     \ value, pointer, length, index
+A+!            ( n ptr i64 len idx -- )   \ delta, pointer, length, index
+A-SWAP         ( ptr a len idx idx -- )   \ pointer, first index, second index
+A-CHECK-INDEX  ( len idx -- )             \ throws on invalid index
+A-CHECK-RANGE  ( len idx count -- )       \ throws on invalid range
+LAST-INDEX     ( len -- idx )
+MIRROR-INDEX   ( len idx -- idx )
 EVEN?         ( n -- bool )
 ```
 
@@ -302,20 +303,22 @@ Bounds semantics:
 Whole-array scalar kernels:
 
 ```forth
-A-SUM         ( ptr i64 n -- i64 )  \ empty => 0
-A-MIN         ( ptr i64 n -- i64 )  \ length must be > 0
-A-MAX         ( ptr i64 n -- i64 )  \ length must be > 0
-A-COUNT-EVEN  ( ptr i64 n -- i64 )
-A-ARGMAX      ( ptr i64 n -- i64 )  \ length > 0, ties choose smallest index
+A-SUM         ( ptr i64 len -- i64 )  \ empty => 0
+A-MIN         ( ptr i64 len -- i64 )  \ length must be > 0
+A-MAX         ( ptr i64 len -- i64 )  \ length must be > 0
+A-COUNT-EVEN  ( ptr i64 len -- count )
+A-ARGMAX      ( ptr i64 len -- idx )  \ length > 0, ties choose smallest index
+A-MAX-INDEX   ( ptr i64 len -- idx )  \ alias for A-ARGMAX
 ```
 
 Whole-array mutating kernels:
 
 ```forth
-A-REVERSE!     ( ptr a n -- )
-A-PREFIX-SUM!  ( ptr i64 n -- )  \ empty is no-op
-A-RUNMAX!      ( ptr i64 n -- )  \ empty is no-op
-A-FILL!        ( a ptr a n -- )
+A-REVERSE-RANGE!  ( ptr a len idx count -- )
+A-REVERSE!        ( ptr a len -- )
+A-PREFIX-SUM!     ( ptr i64 len -- )  \ empty is no-op
+A-RUNMAX!         ( ptr i64 len -- )  \ empty is no-op
+A-FILL!           ( a ptr a len -- )
 ```
 
 Array errors:
@@ -366,20 +369,22 @@ Goal: support new array tasks by composition, not one-off kernels.
 Public combinators:
 
 ```forth
-A-MAP!    ( ptr a n [ a -- a ] -- )
-A-MAPI!   ( ptr a n [ n a -- a ] -- )
-A-FOLD    ( ptr a n b [ b a -- b ] -- b )
-A-FOLDI   ( ptr a n b [ b n a -- b ] -- b )
-A-SCAN!   ( ptr i64 n i64 [ i64 i64 -- i64 ] -- )
-A-SCAN1!  ( ptr i64 n [ i64 i64 -- i64 ] -- )
+A-MAP!          ( ptr a len [ a -- a ] -- )
+A-MAPI!         ( ptr a len [ idx a -- a ] -- )
+A-FOLD          ( ptr a len b [ b a -- b ] -- b )
+A-FOLDI         ( ptr a len b [ b idx a -- b ] -- b )
+A-SCAN!         ( ptr i64 len i64 [ i64 i64 -- i64 ] -- )
+A-SCAN1!        ( ptr i64 len [ i64 i64 -- i64 ] -- )
+A-FIND-INDEX    ( ptr a len [ a -- bool ] -- n )
+A-FIND-INDEXI   ( ptr a len [ idx a -- bool ] -- n )
 ```
 
 Semantics:
 
 - `A-MAP!` replaces each element with the quotation result.
-- `A-MAPI!` also passes the zero-based index.
+- `A-MAPI!` also passes the zero-based index as `idx`.
 - `A-FOLD` returns the final accumulator and does not mutate the array.
-- `A-FOLDI` also passes the zero-based index.
+- `A-FOLDI` also passes the zero-based index as `idx`.
 - `A-SCAN!` threads an explicit initial accumulator; each new accumulator is
   stored into the current element.
 - `A-SCAN1!` uses the first element as the initial accumulator; empty input is a

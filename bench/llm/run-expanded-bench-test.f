@@ -122,7 +122,7 @@ variable REBT-NUM-I
    s" : SQUARE ( i64 -- i64 ) dup * ;" ;
 
 : REBT-ARRAY-CANDIDATE$ ( -- ptr u8 n )
-   s" : ARR-SUM ( ptr a n -- i64 ) A-SUM ;" ;
+   s" : ARR-SUM ( ptr a n -- i64 ) >LEN A-SUM ;" ;
 
 : REBT-WRITE-MODEL ( ptr u8 n -- ) {: a:ptr u :}
    REBT-MODEL-SRC$ a u REBT-MODEL-SOURCE$ WRITE-ALL ;

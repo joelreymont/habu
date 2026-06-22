@@ -10,7 +10,7 @@ s" test-seed" DS-SEED! 1 DS-TRIAL ! 8 DS-TASK-ORDER ! 2 DS-K ! 1 DS-MAX-REPAIRS 
 46 DS-ID ! s" ARR-SUM" DS-NAME! s" ptr a n -- i64" DS-SIG! s" Sum the array." DS-SPEC!
 s" as" DAH-CONV! s" [3 1 4] -> 8; [5] -> 5; [-2 -3] -> -5" DAH-VECTORS! DAH-VECTORS$ DS-TESTS!
 s" lib" DAH-ARM!
-s" : ARR-SUM ( ptr a n -- i64 ) A-SUM ;" DAH-RUN-TEXT
+s" : ARR-SUM ( ptr a n -- i64 ) >LEN A-SUM ;" DAH-RUN-TEXT
 LR-OUTCOME$ s" pass" T$=
 LR-FIRST-CHECKER$ s" certified" T$=
 LR-TESTS-PASSED @ -1 T=
@@ -28,7 +28,7 @@ s" test-seed" DS-SEED! 1 DS-TRIAL ! 8 DS-TASK-ORDER ! 2 DS-K ! 1 DS-MAX-REPAIRS 
 51 DS-ID ! s" REVERSE" DS-NAME! s" ptr a n --" DS-SIG! s" Reverse the array in place." DS-SPEC!
 s" aa" DAH-CONV! s" [1 2 3] -> [3 2 1]; [7] -> [7]" DAH-VECTORS! DAH-VECTORS$ DS-TESTS!
 s" stdlib" DAH-ARM!
-s" : REVERSE ( ptr a n -- ) A-REVERSE! ;" DAH-RUN-TEXT
+s" : REVERSE ( ptr a n -- ) >LEN A-REVERSE! ;" DAH-RUN-TEXT
 LR-OUTCOME$ s" pass" T$=
 LR-FIRST-CHECKER$ s" certified" T$=
 LR-TESTS-PASSED @ -1 T=
@@ -64,7 +64,7 @@ s" test-seed" DS-SEED! 1 DS-TRIAL ! 8 DS-TASK-ORDER ! 2 DS-K ! 1 DS-MAX-REPAIRS 
 46 DS-ID ! s" ARR-SUM" DS-NAME! s" ptr a n -- i64" DS-SIG! s" Sum the array." DS-SPEC!
 s" as" DAH-CONV! s" [3 1 4] -> 8; [5] -> 5; [-2 -3] -> -5" DAH-VECTORS! DAH-VECTORS$ DS-TESTS!
 s" lib" DAH-ARM!
-s" : ARR-SUM ( ptr a n -- i64 ) A-SUM 1 + ;" DAH-RUN-TEXT
+s" : ARR-SUM ( ptr a n -- i64 ) >LEN A-SUM 1 + ;" DAH-RUN-TEXT
 LR-OUTCOME$ s" fail" T$=
 LR-FIRST-CHECKER$ s" certified" T$=
 LR-TESTS-PASSED @ 0 T=
@@ -88,7 +88,7 @@ s" test-seed" DS-SEED! 1 DS-TRIAL ! 8 DS-TASK-ORDER ! 2 DS-K ! 1 DS-MAX-REPAIRS 
 46 DS-ID ! s" ARR-SUM" DS-NAME! s" ptr a n -- i64" DS-SIG! s" Sum the array." DS-SPEC!
 s" as" DAH-CONV! s" [3 1 4] -> 8; [5] -> 5; [-2 -3] -> -5" DAH-VECTORS! DAH-VECTORS$ DS-TESTS!
 s" lib" DAH-ARM!
-s" : ARR-SUM ( ptr a n -- i64 ) A-SUM dup ;" DAH-RUN-TEXT
+s" : ARR-SUM ( ptr a n -- i64 ) >LEN A-SUM dup ;" DAH-RUN-TEXT
 LR-OUTCOME$ s" reject" T$=
 LR-FIRST-CHECKER$ s" rejected" T$=
 LR-TESTS-PASSED @ 0 T=

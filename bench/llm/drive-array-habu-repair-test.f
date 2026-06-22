@@ -86,10 +86,10 @@ variable DART-RC
 : DART-MODEL-MAIN$ ( -- ptr u8 n )
    BFT-RESET
    s" : BAD ( -- ) " BFT+
-   s" : ARR-SUM ( ptr a n -- i64 ) A-SUM dup ;" BFT-SOURCE-S"
+   s" : ARR-SUM ( ptr a n -- i64 ) >LEN A-SUM dup ;" BFT-SOURCE-S"
    s"  type cr ;" BFT+ BFT-LF+
    s" : GOOD ( -- ) " BFT+
-   s" : ARR-SUM ( ptr a n -- i64 ) A-SUM ;" BFT-SOURCE-S"
+   s" : ARR-SUM ( ptr a n -- i64 ) >LEN A-SUM ;" BFT-SOURCE-S"
    s"  type cr ;" BFT+ BFT-LF+
    s" : MAIN ( -- ) 0 SCRIPT-ARGV$ " BFT+
    s" habu_repair_packet" BFT-SOURCE-S"

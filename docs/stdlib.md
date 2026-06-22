@@ -71,16 +71,18 @@ and `ptr u8 n` for keys.
 
 ## Array
 
-`lib/array.f` provides checked helpers for cell arrays. Array words take a base
-cell pointer and an element count; indexed access additionally takes a zero-based
-index. `A@ ( ptr a n n -- a )` fetches `arr[index]`, and
-`A! ( a ptr a n n -- )` stores one element. `A-CHECK-INDEX ( n n -- )` throws
-`E-A-BOUNDS` when an index is negative or outside `[0, len)`.
-`A-CHECK-RANGE ( n n n -- )` validates `len start count` and allows empty ranges
-at either end, while rejecting negative lengths, negative starts, negative
-counts, starts past `len`, and ranges that overrun `len`.
-`A-CHECK-NONEMPTY ( n -- )` throws `E-A-BOUNDS` for negative lengths and
-`E-A-EMPTY` for zero length.
+`lib/array.f` provides checked helpers for cell arrays. Public array helpers use
+nominal role types: array lengths are `len`, valid indexes are `idx`, and range
+counts are `count`. Enter these roles explicitly with `>LEN`, `>IDX`, and
+`>COUNT` at call boundaries. `A@ ( ptr a len idx -- a )` fetches `arr[index]`,
+and `A! ( a ptr a len idx -- )` stores one element.
+`A-CHECK-INDEX ( len idx -- )` throws `E-A-BOUNDS` when an index is negative or
+outside `[0, len)`. `A-CHECK-RANGE ( len idx count -- )` validates
+`len start count` and allows empty ranges at either end, while rejecting negative
+lengths, negative starts, negative counts, starts past `len`, and ranges that
+overrun `len`. `A-CHECK-NONEMPTY ( len -- )` throws `E-A-BOUNDS` for negative
+lengths and `E-A-EMPTY` for zero length. `A-CHECK-WHOLE ( len -- )` accepts
+empty arrays and throws `E-A-BOUNDS` only for negative lengths.
 
 Numeric scalar kernels are `A-SUM`, `A-MIN`, `A-MAX`, `A-COUNT-EVEN`,
 `A-ARGMAX`, and `A-MAX-INDEX`. `A-MIN`, `A-MAX`, `A-ARGMAX`, and `A-MAX-INDEX`
@@ -103,35 +105,36 @@ non-empty array, `MIRROR-INDEX` returns `len - 1 - index`, and `EVEN?` returns a
 Forth boolean for integer parity.
 
 ```forth
-A-CHECK-INDEX     ( n n -- )
-A-CHECK-RANGE     ( n n n -- )
-A-CHECK-NONEMPTY  ( n -- )
-A@                ( ptr a n n -- a )
-A!                ( a ptr a n n -- )
-A+!               ( n ptr a n n -- )
-A-SWAP            ( ptr a n n n -- )
-LAST-INDEX        ( n -- n )
-MIRROR-INDEX      ( n n -- n )
+A-CHECK-INDEX     ( len idx -- )
+A-CHECK-RANGE     ( len idx count -- )
+A-CHECK-NONEMPTY  ( len -- )
+A-CHECK-WHOLE     ( len -- )
+A@                ( ptr a len idx -- a )
+A!                ( a ptr a len idx -- )
+A+!               ( n ptr a len idx -- )
+A-SWAP            ( ptr a len idx idx -- )
+LAST-INDEX        ( len -- idx )
+MIRROR-INDEX      ( len idx -- idx )
 EVEN?             ( n -- bool )
-A-SUM             ( ptr n n -- n )
-A-MIN             ( ptr n n -- n )
-A-MAX             ( ptr n n -- n )
-A-COUNT-EVEN      ( ptr n n -- n )
-A-ARGMAX          ( ptr n n -- n )
-A-MAX-INDEX       ( ptr n n -- n )
-A-REVERSE-RANGE!  ( ptr a n n n -- )
-A-REVERSE!        ( ptr a n -- )
-A-PREFIX-SUM!     ( ptr n n -- )
-A-RUNMAX!         ( ptr n n -- )
-A-FILL!           ( a ptr a n -- )
-A-MAP!            ( ptr a n [ a -- a ] -- )
-A-MAPI!           ( ptr a n [ n a -- a ] -- )
-A-FOLD            ( ptr a n b [ b a -- b ] -- b )
-A-FOLDI           ( ptr a n b [ b n a -- b ] -- b )
-A-SCAN!           ( ptr n n n [ n n -- n ] -- )
-A-SCAN1!          ( ptr n n [ n n -- n ] -- )
-A-FIND-INDEX      ( ptr a n [ a -- bool ] -- n )
-A-FIND-INDEXI     ( ptr a n [ n a -- bool ] -- n )
+A-SUM             ( ptr n len -- n )
+A-MIN             ( ptr n len -- n )
+A-MAX             ( ptr n len -- n )
+A-COUNT-EVEN      ( ptr n len -- count )
+A-ARGMAX          ( ptr n len -- idx )
+A-MAX-INDEX       ( ptr n len -- idx )
+A-REVERSE-RANGE!  ( ptr a len idx count -- )
+A-REVERSE!        ( ptr a len -- )
+A-PREFIX-SUM!     ( ptr n len -- )
+A-RUNMAX!         ( ptr n len -- )
+A-FILL!           ( a ptr a len -- )
+A-MAP!            ( ptr a len [ a -- a ] -- )
+A-MAPI!           ( ptr a len [ idx a -- a ] -- )
+A-FOLD            ( ptr a len b [ b a -- b ] -- b )
+A-FOLDI           ( ptr a len b [ b idx a -- b ] -- b )
+A-SCAN!           ( ptr n len n [ n n -- n ] -- )
+A-SCAN1!          ( ptr n len [ n n -- n ] -- )
+A-FIND-INDEX      ( ptr a len [ a -- bool ] -- n )
+A-FIND-INDEXI     ( ptr a len [ idx a -- bool ] -- n )
 ```
 
 ## Table
