@@ -517,6 +517,37 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-env	lib/process-env.f	word	FIND-EXECUTABLE-IN-PATH	(ptr u8 len ptr u8 len ptr u8 -- len bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command against an explicit PATH byte string into caller storage
 1	process-env	lib/process-env.f	word	FIND-EXECUTABLE	(ptr u8 len ptr u8 -- len bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command against the current process PATH
 1	process-env	lib/process-env.f	word	RESOLVE-EXECUTABLE	(ptr u8 len ptr u8 -- len)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command or throw E-PROC-PATH when lookup fails
+1	process-command	lib/process-command.f	module			lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	checked command-owned argv env stdin capture and outcome runner
+1	process-command	lib/process-command.f	word	PROC-CMD-CAPTURE-RESET	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	clear stored command capture lengths outcome and rc
+1	process-command	lib/process-command.f	word	PROC-CMD-RESET	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	clear command-owned argv env stdin capture and lower-level process state
+1	process-command	lib/process-command.f	word	PROC-CMD-ARG-SLOT	(idx -- ptr a)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	return one command-owned argv pointer-table slot
+1	process-command	lib/process-command.f	word	PROC-CMD-CHECK-ARG-EXTRA	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	validate that one more command argument fits
+1	process-command	lib/process-command.f	word	PROC-CMD-ARG-ZCOPY	(ptr u8 len -- ptr u8)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	copy one command argument into NUL-terminated storage
+1	process-command	lib/process-command.f	word	PROC-CMD-ARG-INSTALL-Z	(ptr u8 --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	install one command argument pointer into the command argv table
+1	process-command	lib/process-command.f	word	PROC-CMD-ARG+	(ptr u8 len --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	append one counted extra argument to the command builder
+1	process-command	lib/process-command.f	word	PROC-CMD-ENV-SLOT	(idx -- ptr a)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	return one command-owned env pointer-table slot
+1	process-command	lib/process-command.f	word	PROC-CMD-CHECK-ENV-EXTRA	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	validate that one more command environment entry fits
+1	process-command	lib/process-command.f	word	PROC-CMD-ENV-STORE-Z	(ptr u8 len -- ptr u8)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	copy one command environment entry into NUL-terminated storage
+1	process-command	lib/process-command.f	word	PROC-CMD-ENV-INSTALL-Z	(ptr u8 --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	install one command environment pointer into the command env table
+1	process-command	lib/process-command.f	word	PROC-CMD-ENV-ENTRY+	(ptr u8 len --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	append one exact NAME=VALUE command environment entry
+1	process-command	lib/process-command.f	word	PROC-CMD-ENV+	(ptr u8 len ptr u8 len --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	append one checked command environment name and value pair
+1	process-command	lib/process-command.f	word	PROC-CMD-ENV-INHERIT	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	enable inheriting missing parent environment entries for command runs
+1	process-command	lib/process-command.f	word	PROC-CMD-ENV-HERMETIC	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	disable parent environment inheritance for command runs
+1	process-command	lib/process-command.f	word	PROC-CMD-IN-RESET	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	clear the command-owned stdin buffer length
+1	process-command	lib/process-command.f	word	PROC-CMD-IN!	(ptr u8 len --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	copy bounded stdin bytes into command-owned storage
+1	process-command	lib/process-command.f	word	PROC-CMD-LOAD-ARG	(idx --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	transfer one command-owned argument into the argv spawn builder
+1	process-command	lib/process-command.f	word	PROC-CMD-LOAD-ARGS	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	transfer command-owned arguments into the argv spawn builder
+1	process-command	lib/process-command.f	word	PROC-CMD-LOAD-ENV	(idx --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	transfer one command-owned environment entry into the env spawn builder
+1	process-command	lib/process-command.f	word	PROC-CMD-LOAD-ENVS	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	transfer command-owned environment entries into the env spawn builder
+1	process-command	lib/process-command.f	word	PROC-CMD-PREPARE	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	reset lower-level process builders and transfer command-owned state
+1	process-command	lib/process-command.f	word	PROC-CMD-CHECK-RUN	(ptr u8 len ms --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	validate command executable path and timeout before transfer
+1	process-command	lib/process-command.f	word	PROC-CMD-STORE-RUN	(len len n n --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	store command capture lengths outcome and converted rc
+1	process-command	lib/process-command.f	word	PROC-CMD-RUN-OUTCOME	(ptr u8 len ms -- n n)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	run command-owned state and return stored outcome kind code
+1	process-command	lib/process-command.f	word	PROC-CMD-RUN-RC	(ptr u8 len ms -- rc)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	run command-owned state and return converted rc
+1	process-command	lib/process-command.f	word	PROC-CMD-OUT$	(-- ptr u8 n)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	return captured command stdout bytes
+1	process-command	lib/process-command.f	word	PROC-CMD-ERR$	(-- ptr u8 n)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	return captured command stderr bytes
+1	process-command	lib/process-command.f	word	PROC-CMD-OUTCOME@	(-- n n)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	return stored command outcome kind code
+1	process-command	lib/process-command.f	word	PROC-CMD-RC@	(-- rc)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	return stored converted command rc
 1	process-cwd	lib/process-cwd.f	module			lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	active	checked child cwd process helpers layered on prepared argv and envp
 1	process-cwd	lib/process-cwd.f	word	PROC-SPAWN-ARGV-ENV-CWD-RAW	(ptr u8 ptr a ptr a ptr u8 fd fd fd -- pid)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-env-cwd-io alias captured after native primitive rebuild
 1	process-cwd	lib/process-cwd.f	word	PROC-CWDZ	(ptr u8 len -- ptr u8)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	active	copy one checked cwd path into separate NUL-terminated storage
