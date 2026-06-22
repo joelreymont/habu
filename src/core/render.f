@@ -28,6 +28,19 @@ create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PA
 
 : RSTR {: a u :}  0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
+: ROLE-OUT? {: p :}
+   p CC-IDX   = IF s" idx"   RSTR -1 EXIT THEN
+   p CC-LEN   = IF s" len"   RSTR -1 EXIT THEN
+   p CC-COUNT = IF s" count" RSTR -1 EXIT THEN
+   p CC-OFF   = IF s" off"   RSTR -1 EXIT THEN
+   p CC-FD    = IF s" fd"    RSTR -1 EXIT THEN
+   p CC-RC    = IF s" rc"    RSTR -1 EXIT THEN
+   p CC-PID   = IF s" pid"   RSTR -1 EXIT THEN
+   p CC-MS    = IF s" ms"    RSTR -1 EXIT THEN
+   p CC-NS    = IF s" ns"    RSTR -1 EXIT THEN
+   p CC-TOK   = IF s" tok"   RSTR -1 EXIT THEN
+   0 ;
+
 : CON-OUT {: p :}
    p 1 = IF 110 EMIT1 ELSE
    p 2 = IF 102 EMIT1 ELSE
@@ -40,7 +53,8 @@ create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PA
    p CC-STR  = IF s" str"  RSTR ELSE
    p CC-ADDR = IF s" addr" RSTR ELSE
    p CC-BOOL = IF s" bool" RSTR ELSE
-   63 EMIT1 THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+   p ROLE-OUT? 0= IF 63 EMIT1 THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 \ a quot type renders [ in -- out ] or [ in -- out | rin -- rout ] when the
 \ quotation has a non-neutral return-stack effect (two nesting levels; deeper

@@ -9,6 +9,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   reads piped stdin, runs `hb script.f args...`, or runs a source list as
   `hb --load lib.f tool.f -- args...`. Build-only engines stay temporary under
   `HB_TMP`; do not publish legacy aliases or maker binaries.
+- **Background Codex agents need explicit stdin/output:** when launching
+  `codex exec` in the background, redirect stdin from `/dev/null` and pass
+  `--output-last-message /tmp/name.out`; stdout logs alone can be empty or noisy
+  and are not reliable evidence of the scout result.
 - **No-binary recovery is native-seeded:** `bin/hb` is generated/ignored. Recover
   with `tools/seed.sh /path/to/hb-seed`; optional SHA-256 verification plus the
   immediate native build-fixpoint install make the installed binary current-source

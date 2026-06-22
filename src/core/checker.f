@@ -101,7 +101,10 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 
 4 constant CC-I64   5 constant CC-U8    6 constant CC-U32   7 constant CC-CELL
 8 constant CC-CHAR  9 constant CC-STR  10 constant CC-ADDR  11 constant CC-BOOL
-12 constant CC-MAX
+12 constant CC-IDX  13 constant CC-LEN  14 constant CC-COUNT 15 constant CC-OFF
+16 constant CC-FD   17 constant CC-RC   18 constant CC-PID   19 constant CC-MS
+20 constant CC-NS   21 constant CC-TOK
+22 constant CC-MAX
 : INT-FAM? {: code :}
    code 1 = IF -1 EXIT THEN
    code CC-I64 = IF -1 EXIT THEN  code CC-U8 = IF -1 EXIT THEN
@@ -304,11 +307,19 @@ variable UNSAFE
 \ (the prim DB and the toolchain's own body use n), and the unifier lets n
 \ subsume any int-family code (so '( i64 -- i64 )' over an n-typed prim still
 \ checks). r(3)=float. Table-driven to keep the body small (inline-safe).
+: ROLE-OF {: a u :}                     \ nominal scalar role -> con code, or 0
+   a u s" idx"   STR= IF CC-IDX   EXIT THEN   a u s" len" STR= IF CC-LEN EXIT THEN
+   a u s" count" STR= IF CC-COUNT EXIT THEN   a u s" off" STR= IF CC-OFF EXIT THEN
+   a u s" fd"    STR= IF CC-FD    EXIT THEN   a u s" rc"  STR= IF CC-RC  EXIT THEN
+   a u s" pid"   STR= IF CC-PID   EXIT THEN   a u s" ms"  STR= IF CC-MS  EXIT THEN
+   a u s" ns"    STR= IF CC-NS    EXIT THEN   a u s" tok" STR= IF CC-TOK EXIT THEN   0 ;
+
 : CON-OF {: a u :}                      \ multi-char name -> con code, or 0
    a u s" i64"  STR= IF CC-I64  EXIT THEN   a u s" u8"   STR= IF CC-U8   EXIT THEN
    a u s" u32"  STR= IF CC-U32  EXIT THEN   a u s" cell" STR= IF CC-CELL EXIT THEN
    a u s" char" STR= IF CC-CHAR EXIT THEN   a u s" str"  STR= IF CC-STR  EXIT THEN
-   a u s" addr" STR= IF CC-ADDR EXIT THEN   a u s" bool" STR= IF CC-BOOL EXIT THEN   0 ;
+   a u s" addr" STR= IF CC-ADDR EXIT THEN   a u s" bool" STR= IF CC-BOOL EXIT THEN
+   a u ROLE-OF ;
 : BAD-SIG-TYPE  -1 SGBAD !  1 MK-CON ;
 : TOK-TYPE {: a u :}  a c@ {: c :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)

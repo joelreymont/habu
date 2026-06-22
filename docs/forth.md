@@ -79,8 +79,10 @@ not a matter of taste. Target is the native `bin/hb` engine.
 - **Every definition** carries `( before -- after )`.
 - **Checked definitions use type tokens only.** The checker reads the stack
   comment as the signature, so write `( n n -- )`, `( bool -- )`, or
-  `( ptr u8 n -- )`, not role names such as `( got want -- )`. Put role names in
-  locals (`{: got want :}`), helper names, or nearby prose.
+  `( ptr u8 n -- )`, not arbitrary role names such as `( got want -- )`. Standard
+  nominal role tokens such as `idx`, `len`, `count`, `fd`, and `rc` are real
+  checker types; informal names still belong in locals (`{: got want :}`),
+  helper names, or nearby prose.
 - **Unchecked/prose-only comments may name roles** when no checker hook consumes
   the comment, but keep the type shape obvious.
 - Add inline `( … )` at non-obvious points inside a longer word so the reader can

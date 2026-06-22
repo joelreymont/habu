@@ -10,8 +10,9 @@ notation, parsed by `PARSE-SIG` (`src/sigparse.fs`).
 ```
 sig    = stack '--' stack ( '|' stack '--' stack )?
 stack  = rowvar? type*
-type   = conname | tyvar | 'ptr' type | '[' stack '--' stack ']'
+type   = conname | role | tyvar | 'ptr' type | '[' stack '--' stack ']'
 conname= i64 u8 u32 cell bool char str addr
+role   = idx len count off fd rc pid ms ns tok
 tyvar  = a..z          (same letter → same type var, per signature)
 rowvar = A..Z          (same letter → same row var; leading = the stack tail)
 ```
@@ -32,8 +33,17 @@ rowvar = A..Z          (same letter → same row var; leading = the stack tail)
 | `i64 u8 u32 cell` | integers of given width (`cell` = machine word) |
 | `bool` | a flag (distinct from `i64` — comparisons return `bool`) |
 | `char str addr` | character, string body (`c-addr u` as one value), raw address |
+| `idx len count off fd rc pid ms ns tok` | nominal scalar roles; distinct from each other and from plain `n` |
 | `ptr<τ>` written `ptr τ` | typed pointer; `@`/`!` move `τ` |
 | `[ S -- S' ]` | a quotation / `xt` carrying its own effect |
+
+Nominal roles are for same-representation values whose meanings must not mix:
+array indexes vs lengths, file descriptors vs return codes, elapsed milliseconds
+vs nanoseconds, and token indexes vs counts. They are fail-closed concrete types:
+`idx` does not unify with `len`, and neither unifies with a plain `n`. Introduce
+or remove a role only through an explicit checked constructor/coercion word or an
+audited boundary effect; do not rely on generic integer operations to launder a
+role.
 
 ## Examples (from `src/prims.fs`)
 

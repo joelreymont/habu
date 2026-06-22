@@ -165,11 +165,44 @@ variable GE-SCRIPT-U
    s" 5" SB-APPEND GE-SB-LF
    SB$ s" hb TRUSTED: effect recording output" GE-EXPECT-OUT ;
 
+: GE-SRC-TRUST ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu sig:ptr sigu :}
+   name nameu GE-SRC-S"
+   GE-SRC-SP
+   sig sigu GE-SRC-S"
+   s"  TRUST" GE-SRC-LINE ;
+
+: GE-ROLE-SOURCE ( -- )
+   GE-SRC-RESET
+   s" -1 JSON-DIAGS !" GE-SRC-LINE
+   s" IDX" s" -- idx" GE-SRC-TRUST
+   s" NEED-IDX" s" idx --" GE-SRC-TRUST
+   s" NEED-LEN" s" len --" GE-SRC-TRUST
+   s" ROLE-OK ( -- ) IDX NEED-IDX" GE-SRC-CHECK-LINE
+   s" ROLE-BAD ( -- ) IDX NEED-LEN" GE-SRC-CHECK-LINE
+   s" ROLE-UNKNOWN ( -- size ) IDX" GE-SRC-CHECK-LINE ;
+
+: GE-ROLE-TYPES ( -- )
+   GE-HB-RESET
+   GE-ROLE-SOURCE
+   s" hb nominal role types" GE-HB-RUN-STDIN
+   SB-RESET
+   s" -1" SB-APPEND GE-SB-LF
+   s" 0" SB-APPEND GE-SB-LF
+   s" 0" SB-APPEND GE-SB-LF
+   SB$ s" hb nominal role output" GE-EXPECT-OUT
+   s" E-MISMATCH" s" hb nominal role code" GE-EXPECT-ERR-HAS
+   s" E-BAD-SIGNATURE" s" hb unknown role code" GE-EXPECT-ERR-HAS
+   s" expected" s" hb nominal role expected field" GE-EXPECT-ERR-HAS
+   s" len" s" hb nominal role expected type" GE-EXPECT-ERR-HAS
+   s" actual" s" hb nominal role actual field" GE-EXPECT-ERR-HAS
+   s" idx" s" hb nominal role actual type" GE-EXPECT-ERR-HAS ;
+
 : GE-TYPED-SMOKE ( -- )
    GE-GOOD-TYPED
    GE-BAD-TYPED
    GE-DEPTH
-   GE-TRUSTED-EFFECT ;
+   GE-TRUSTED-EFFECT
+   GE-ROLE-TYPES ;
 
 : GE-MAIN ( -- )
    GE-BUILD-FIXPOINT
