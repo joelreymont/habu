@@ -14,6 +14,7 @@ s" : ARR-SUM ( ptr a n -- i64 ) >LEN A-SUM ;" DAH-RUN-TEXT
 LR-OUTCOME$ s" pass" T$=
 LR-FIRST-CHECKER$ s" certified" T$=
 LR-TESTS-PASSED @ -1 T=
+LR-WALL-MS @ 0 > TTRUE
 LR-RUNTIME-MS @ 0 >= TTRUE
 LR-ROW$ s" habu-lib" CONTAINS? TTRUE
 LR-ROW$ s" prompt_sha256" CONTAINS? TTRUE
@@ -32,6 +33,7 @@ s" : REVERSE ( ptr a n -- ) >LEN A-REVERSE! ;" DAH-RUN-TEXT
 LR-OUTCOME$ s" pass" T$=
 LR-FIRST-CHECKER$ s" certified" T$=
 LR-TESTS-PASSED @ -1 T=
+LR-WALL-MS @ 0 > TTRUE
 LR-RUNTIME-MS @ 0 >= TTRUE
 LR-ROW$ s" habu-stdlib" CONTAINS? TTRUE
 LR-ROW$ s" prompt_sha256" CONTAINS? TTRUE
@@ -50,6 +52,7 @@ s" 0 len 0 ?do arr i cells + @ + loop" DAH-RUN-TEXT
 LR-OUTCOME$ s" pass" T$=
 LR-FIRST-CHECKER$ s" certified" T$=
 LR-TESTS-PASSED @ -1 T=
+LR-WALL-MS @ 0 > TTRUE
 LR-RUNTIME-MS @ 0 >= TTRUE
 LR-ROW$ s" habu-skeleton" CONTAINS? TTRUE
 LR-ROW$ s" prompt_sha256" CONTAINS? TTRUE

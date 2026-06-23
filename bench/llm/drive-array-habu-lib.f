@@ -32,6 +32,8 @@ variable DAH-START
 variable DAH-STOP
 variable DAH-ROUND
 variable DAH-FIRST-KIND
+variable DAH-START-NS
+variable DAH-WALL-MS
 
 : DAH-CONV! ( ptr u8 n -- )
    DAH-CONV-A DAH-CONV-U DS-SET$ ;
@@ -118,6 +120,12 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DAH-ROUND @ 0 > if DAH-ROUND @ 1- exit then
    0 ;
 
+: DAH-WALL-SNAPSHOT ( -- )
+   mono-ns DAH-START-NS ! ;
+
+: DAH-WALL-CAPTURE ( -- )
+   mono-ns DAH-START-NS @ - DAH-NS-PER-MS 1- + DAH-NS-PER-MS / DAH-WALL-MS ! ;
+
 : DAH-APPLY-FIRST ( -- )
    DAH-FIRST-KIND @ DAH-FIRST-REJECT = if
       s" rejected" LR-FIRST-CHECKER!
@@ -138,6 +146,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    then ;
 
 : DAH-APPLY-ROW-STATS ( -- )
+   DAH-WALL-MS @ LR-WALL-MS !
    DAH-ROUND @ LR-ROUNDS !
    DAH-REPAIR-ROUNDS LR-REPAIR-ITERATIONS !
    DAH-ROUND @ LR-CHECKER-ITERATIONS !
@@ -145,6 +154,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DAH-APPLY-FIRST ;
 
 : DAH-LR-REJECT ( ptr u8 n -- )
+   DAH-WALL-CAPTURE
    DAH-FIRST-REJECT DAH-FIRST!
    DS-LR-REJECT
    DAH-LR-ARM!
@@ -152,12 +162,14 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DAH-APPLY-ROW-STATS ;
 
 : DAH-LR-PASS ( -- )
+   DAH-WALL-CAPTURE
    DAH-FIRST-PASS DAH-FIRST!
    DS-LR-PASS
    DAH-LR-ARM!
    DAH-APPLY-ROW-STATS ;
 
 : DAH-LR-CERTIFIED-OUTCOME ( ptr u8 n -- ) {: out:ptr outu :}
+   DAH-WALL-CAPTURE
    DAH-FIRST-FAIL DAH-FIRST!
    DS-LR-FAIL
    DAH-LR-ARM!
@@ -505,6 +517,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
 : DAH-STATE-RESET ( -- )
    0 DS-TOKENS !
    0 DS-DIAG-COUNT !
+   0 DAH-WALL-MS !
    0 DAH-ROUND !
    DAH-FIRST-NONE DAH-FIRST-KIND ! ;
 
@@ -548,6 +561,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    1 ;
 
 : DAH-MODEL-ERROR ( -- )
+   DAH-WALL-CAPTURE
    DAH-FIRST-REJECT DAH-FIRST!
    1 DS-DIAG-COUNT !
    DS-MODEL-ERROR
@@ -573,6 +587,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
 : DAH-RUN-MODEL ( -- )
    DAH-PREPARE
    DAH-STATE-RESET
+   DAH-WALL-SNAPSHOT
    begin
       DAH-ROUND @ DAH-MAX-ROUNDS <
    while
@@ -589,6 +604,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    textu DS-OUT-U !
    DAH-PREPARE
    DAH-STATE-RESET
+   DAH-WALL-SNAPSHOT
    DAH-NEXT-ROUND
    DS-RAW-PATH$ DS-OUT-BUF DS-OUT-U @ WRITE-ALL
    DS-OUT-BUF DS-OUT-U @ DAH-EVALUATE-TEXT ;
