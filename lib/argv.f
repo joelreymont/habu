@@ -46,6 +46,24 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-TRUE ( -- bool )  0 0= ;
 
+: ARGV-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: ARGV-PTR-U8@ ( ptr a -- ptr u8 )
+   ARGV-PTR-U8-FIELD @ ;
+
+: ARGV-PTR-U8! ( ptr u8 ptr a -- )
+   ARGV-PTR-U8-FIELD ! ;
+
+: ARGV-PTR-U8-SLOT ( n ptr a -- ptr ptr u8 )
+   swap cells + ARGV-PTR-U8-FIELD ;
+
+: ARGV-PTR-U8-SLOT@ ( n ptr a -- ptr u8 )
+   ARGV-PTR-U8-SLOT @ ;
+
+: ARGV-PTR-U8-SLOT! ( ptr u8 n ptr a -- )
+   ARGV-PTR-U8-SLOT ! ;
+
 : ARGV-BYTES= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    u v <> if ARGV-FALSE exit then
    0 begin dup u < while
@@ -69,14 +87,14 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    ARGV-MSG-L @ 1 + ARGV-MSG-L ! ;
 
 : ARGV-USAGE! ( ptr u8 n -- ) {: a:ptr u :}
-   a ARGV-USAGE-A !  u ARGV-USAGE-U ! ;
+   a ARGV-USAGE-A ARGV-PTR-U8!  u ARGV-USAGE-U ! ;
 
 : ARGV-QUIET! ( n -- )  ARGV-QUIET ! ;
 
 : ARGV-FAIL-DONE ( -- )
    ARGV-CHAR-LF ARGV-MSG-C+
    s" usage: " ARGV-MSG+
-   ARGV-USAGE-A @ ARGV-USAGE-U @ ARGV-MSG+
+   ARGV-USAGE-A ARGV-PTR-U8@ ARGV-USAGE-U @ ARGV-MSG+
    ARGV-CHAR-LF ARGV-MSG-C+
    ARGV-QUIET @ 0 = if 2 ARGV-MSG ARGV-MSG-L @ write drop then
    ARGV-E-USAGE throw ;
@@ -105,8 +123,8 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    0 ARGV-STRICT-SIGNATURES !
    0 ARGV-ALL-ERRORS !
    0 ARGV-STRICT-BOUNDARY !
-   NULL$ drop ARGV-LABEL-A !  0 ARGV-LABEL-U !  0 ARGV-LABEL-SET !
-   NULL$ drop ARGV-OUT-A !  0 ARGV-OUT-U !  0 ARGV-OUT-SET ! ;
+   NULL$ drop ARGV-LABEL-A ARGV-PTR-U8!  0 ARGV-LABEL-U !  0 ARGV-LABEL-SET !
+   NULL$ drop ARGV-OUT-A ARGV-PTR-U8!  0 ARGV-OUT-U !  0 ARGV-OUT-SET ! ;
 
 : ARGV-USE-SCRIPT ( -- )  0 ARGV-USE-MOCK? ! ;
 
@@ -116,7 +134,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-MOCK+ ( ptr u8 n -- ) {: a:ptr u :}
    ARGV-MOCK# @ ARGV-MAX >= if ARGV-E-INTERNAL throw then
-   a ARGV-MOCK-A ARGV-MOCK# @ cells + !
+   a ARGV-MOCK# @ ARGV-MOCK-A ARGV-PTR-U8-SLOT!
    u ARGV-MOCK-U ARGV-MOCK# @ cells + !
    ARGV-MOCK# @ 1 + ARGV-MOCK# ! ;
 
@@ -125,7 +143,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-TOK$ ( n -- ptr u8 n ) {: idx :}
    ARGV-USE-MOCK? @ if
-      idx cells ARGV-MOCK-A + @
+      idx ARGV-MOCK-A ARGV-PTR-U8-SLOT@
       idx cells ARGV-MOCK-U + @
    else
       idx SCRIPT-ARGV$
@@ -139,7 +157,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-POS+ ( ptr u8 n -- ) {: a:ptr u :}
    ARGV-NPOS @ ARGV-MAX >= if s" too many positional arguments" ARGV-FAIL then
-   a ARGV-POS-A ARGV-NPOS @ cells + !
+   a ARGV-NPOS @ ARGV-POS-A ARGV-PTR-U8-SLOT!
    u ARGV-POS-U ARGV-NPOS @ cells + !
    ARGV-NPOS @ 1 + ARGV-NPOS ! ;
 
@@ -147,37 +165,37 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-POS$ ( n -- ptr u8 n ) {: idx :}
    idx 0 <  idx ARGV-NPOS @ >= or if s" positional index out of range" ARGV-FAIL then
-   idx cells ARGV-POS-A + @
+   idx ARGV-POS-A ARGV-PTR-U8-SLOT@
    idx cells ARGV-POS-U + @ ;
 
 : ARGV-LABEL! ( ptr u8 n -- ) {: a:ptr u :}
-   a ARGV-LABEL-A !  u ARGV-LABEL-U !  -1 ARGV-LABEL-SET ! ;
+   a ARGV-LABEL-A ARGV-PTR-U8!  u ARGV-LABEL-U !  -1 ARGV-LABEL-SET ! ;
 
 : ARGV-LABEL-DEFAULT! ( ptr u8 n -- ) {: a:ptr u :}
-   a ARGV-LABEL-DEFAULT-A !  u ARGV-LABEL-DEFAULT-U ! ;
+   a ARGV-LABEL-DEFAULT-A ARGV-PTR-U8!  u ARGV-LABEL-DEFAULT-U ! ;
 
 : ARGV-LABEL? ( -- bool )  ARGV-LABEL-SET @ 0 <> ;
 
 : ARGV-LABEL$ ( -- ptr u8 n )
    ARGV-LABEL? if
-      ARGV-LABEL-A @  ARGV-LABEL-U @
+      ARGV-LABEL-A ARGV-PTR-U8@  ARGV-LABEL-U @
    else
-      ARGV-LABEL-DEFAULT-A @  ARGV-LABEL-DEFAULT-U @
+      ARGV-LABEL-DEFAULT-A ARGV-PTR-U8@  ARGV-LABEL-DEFAULT-U @
    then ;
 
 : ARGV-OUT! ( ptr u8 n -- ) {: a:ptr u :}
-   a ARGV-OUT-A !  u ARGV-OUT-U !  -1 ARGV-OUT-SET ! ;
+   a ARGV-OUT-A ARGV-PTR-U8!  u ARGV-OUT-U !  -1 ARGV-OUT-SET ! ;
 
 : ARGV-OUT-DEFAULT! ( ptr u8 n -- ) {: a:ptr u :}
-   a ARGV-OUT-DEFAULT-A !  u ARGV-OUT-DEFAULT-U ! ;
+   a ARGV-OUT-DEFAULT-A ARGV-PTR-U8!  u ARGV-OUT-DEFAULT-U ! ;
 
 : ARGV-OUT? ( -- bool )  ARGV-OUT-SET @ 0 <> ;
 
 : ARGV-OUT$ ( -- ptr u8 n )
    ARGV-OUT? if
-      ARGV-OUT-A @  ARGV-OUT-U @
+      ARGV-OUT-A ARGV-PTR-U8@  ARGV-OUT-U @
    else
-      ARGV-OUT-DEFAULT-A @  ARGV-OUT-DEFAULT-U @
+      ARGV-OUT-DEFAULT-A ARGV-PTR-U8@  ARGV-OUT-DEFAULT-U @
    then ;
 
 : ARGV-JSON? ( -- bool )  ARGV-JSON @ 0 <> ;

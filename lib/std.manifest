@@ -561,6 +561,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	argv	lib/argv.f	module			lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	checked command-line parser helpers for hb script args
 1	argv	lib/argv.f	word	ARGV-FALSE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a false flag for parser internals
 1	argv	lib/argv.f	word	ARGV-TRUE	(-- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return a true flag for parser internals
+1	argv	lib/argv.f	word	ARGV-PTR-U8-FIELD	(ptr a -- ptr ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	construct a typed byte-pointer field address for argv storage
+1	argv	lib/argv.f	word	ARGV-PTR-U8@	(ptr a -- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	read a byte pointer through a typed argv pointer field
+1	argv	lib/argv.f	word	ARGV-PTR-U8!	(ptr u8 ptr a --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	write a byte pointer through a typed argv pointer field
+1	argv	lib/argv.f	word	ARGV-PTR-U8-SLOT	(n ptr a -- ptr ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	construct an indexed typed byte-pointer slot for argv storage
+1	argv	lib/argv.f	word	ARGV-PTR-U8-SLOT@	(n ptr a -- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	read an indexed byte pointer through a typed argv pointer slot
+1	argv	lib/argv.f	word	ARGV-PTR-U8-SLOT!	(ptr u8 n ptr a --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	active	write an indexed byte pointer through a typed argv pointer slot
 1	argv	lib/argv.f	word	ARGV-BYTES=	(ptr u8 n ptr u8 n -- bool)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	compare counted argv byte strings
 1	argv	lib/argv.f	word	ARGV-BUF-FAIL	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	throw argv internal buffer failure
 1	argv	lib/argv.f	word	ARGV-MSG+	(ptr u8 n --)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	append bytes to the argv error buffer

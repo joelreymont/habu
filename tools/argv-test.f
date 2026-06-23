@@ -101,6 +101,21 @@ variable TEST-FAIL
    ARGV-POS# 1 ASSERT=
    0 ARGV-POS$ s" file.f" ASSERT$ ;
 
+: TEST-STRING-ORDER ( -- )
+   QUIET-MOCK
+   s" first.f" ARGV-MOCK+
+   s" --label" ARGV-MOCK+
+   s" LABEL" ARGV-MOCK+
+   s" second.f" ARGV-MOCK+
+   s" -o" ARGV-MOCK+
+   s" OUT" ARGV-MOCK+
+   ARGV-PARSE
+   ARGV-LABEL$ s" LABEL" ASSERT$
+   ARGV-OUT$ s" OUT" ASSERT$
+   ARGV-POS# 2 ASSERT=
+   0 ARGV-POS$ s" first.f" ASSERT$
+   1 ARGV-POS$ s" second.f" ASSERT$ ;
+
 : TEST-UNKNOWN ( -- )
    QUIET-MOCK
    s" --wat" ARGV-MOCK+
@@ -141,6 +156,7 @@ variable TEST-FAIL
    TEST-DEFAULTS
    TEST-DASHDASH
    TEST-JSON-ERRORS
+   TEST-STRING-ORDER
    TEST-UNKNOWN
    TEST-MISSING-LABEL
    TEST-MISSING-OUT
