@@ -933,9 +933,9 @@ TRUSTED: RB-ROW-LINE$ ( -- ptr u8 n )
    ARGV-PARSE
    ARGV-POS# 2 > if RB-USAGE then
    ARGV-POS# 0 > if 0 ARGV-POS$ RB-PARSE-U else 5 then RB-K !
-   ARGV-POS# 1 > if 1 ARGV-POS$ else s" BENCH_OUT" s" bench/llm/results/run-expanded.jsonl" RB-ENV-OR then RB-OUT!
+   ARGV-POS# 1 > if 1 ARGV-POS$ else s" BENCH_OUT" s" /tmp/habu-run-expanded.jsonl" RB-ENV-OR then RB-OUT!
    s" BENCH_TASKS" s" bench/llm/tasks.tsv" RB-ENV-OR RB-TASKS!
-   s" BENCH_RESULTS" s" bench/llm/RESULTS-expanded.md" RB-ENV-OR RB-RESULTS!
+   s" BENCH_RESULTS" s" /tmp/habu-RESULTS-expanded.md" RB-ENV-OR RB-RESULTS!
    s" BENCH_PERF_JSON" GETENV RB-PERF!
    s" BENCH_SEED" s" manifest" RB-ENV-OR RB-SEED!
    s" MODEL_REGISTRY" s" bench/llm/models.tsv" RB-ENV-OR RB-MODEL-REG!

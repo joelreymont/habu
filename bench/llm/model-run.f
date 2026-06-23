@@ -19,11 +19,15 @@ variable MRUN-ERR-CAP-U
 variable MRUN-TEXT-P
 variable MRUN-TEXT-CAP-U
 create MRUN-EXE-BUF MRUN-EXE-CAP allot
+create MRUN-FINAL-DIR-BUF FS-PATH-CAP allot
+create MRUN-FINAL-PATH-BUF FS-PATH-CAP allot
 
 variable MRUN-OUT-U
 variable MRUN-ERR-U
 variable MRUN-TEXT-U
 variable MRUN-EXE-U
+variable MRUN-FINAL-DIR-U
+variable MRUN-FINAL-PATH-U
 variable MRUN-RC
 variable MRUN-TOKENS
 variable MRUN-PROMPT-A
@@ -59,6 +63,9 @@ TRUSTED: MRUN-PROMPT$ ( -- ptr u8 n )
 
 : MRUN-TEXT$ ( -- ptr u8 n )
    MRUN-TEXT-BUF MRUN-TEXT-U @ ;
+
+: MRUN-FINAL-PATH$ ( -- ptr u8 n )
+   MRUN-FINAL-PATH-BUF MRUN-FINAL-PATH-U @ ;
 
 : MRUN-MIN-ONE ( n -- n )
    dup 1 < if drop 1 then ;
@@ -107,6 +114,11 @@ TRUSTED: MRUN-PROMPT$ ( -- ptr u8 n )
    a MRUN-TEXT-BUF u BYTE-COPY
    u MRUN-TEXT-U ! ;
 
+: MRUN-COPY-OUT ( ptr u8 n -- ) {: a:ptr u :}
+   u MRUN-OUT-CAP > if E-MRUN-CAPACITY throw then
+   a MRUN-OUT-BUF u BYTE-COPY
+   u MRUN-OUT-U ! ;
+
 : MRUN-COPY-ERR ( ptr u8 n -- ) {: a:ptr u :}
    u MRUN-ERR-CAP > if E-MRUN-CAPACITY throw then
    a MRUN-ERR-BUF u BYTE-COPY
@@ -141,6 +153,21 @@ TRUSTED: MRUN-PROMPT$ ( -- ptr u8 n )
    MR-COMMAND$ >LEN MRUN-EXE-BUF RESOLVE-EXECUTABLE LEN>N MRUN-EXE-U !
    MRUN-EXE-BUF MRUN-EXE-U @ ;
 
+: MRUN-COPY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
+   u FS-PATH-CAP > if E-MRUN-CAPACITY throw then
+   a dst u BYTE-COPY
+   u lenp ! ;
+
+: MRUN-FINAL-DIR$ ( -- ptr u8 n )
+   MRUN-FINAL-DIR-BUF MRUN-FINAL-DIR-U @ ;
+
+: MRUN-FINAL-PREPARE ( -- )
+   s" habu-codex-final" TMPDIR-MKDIR
+   MRUN-FINAL-DIR-BUF MRUN-FINAL-DIR-U MRUN-COPY-PATH!
+   MRUN-FINAL-DIR$ CLEANUP-TREE+
+   MRUN-FINAL-DIR$ s" last-message.txt" MRUN-FINAL-PATH-BUF JOIN-PATH
+   MRUN-FINAL-PATH-U ! ;
+
 : MRUN-EMPTY$ ( -- ptr u8 n )
    s" " drop 0 ;
 
@@ -169,8 +196,12 @@ TRUSTED: MRUN-PROMPT$ ( -- ptr u8 n )
    s" --ignore-user-config"  >LEN PROC-ARGV+
    s" --sandbox"  >LEN PROC-ARGV+
    s" read-only"  >LEN PROC-ARGV+
-   s" --json"  >LEN PROC-ARGV+
+   s" --output-last-message"  >LEN PROC-ARGV+
+   MRUN-FINAL-PATH$  >LEN PROC-ARGV+
    prompt promptu  >LEN PROC-ARGV+ ;
+
+: MRUN-CODEX-ARGS? ( -- bool )
+   MR-ARGS$ s" codex-exec {prompt}" STR= ;
 
 : MRUN-BUILD-ARGS ( ptr u8 n -- ) {: prompt:ptr promptu :}
    MR-ARGS$ s" -p {prompt} --output-format json" STR= if
@@ -188,12 +219,13 @@ TRUSTED: MRUN-PROMPT$ ( -- ptr u8 n )
    E-MRUN-TEMPLATE throw ;
 
 : MRUN-CODEX-CLEAN? ( -- bool )
-   MR-ARGS$ s" codex-exec {prompt}" STR=
+   MRUN-CODEX-ARGS?
    MR-PARSER$ s" codex-jsonl" STR= and ;
 
 : MRUN-CAPTURE ( ptr u8 n -- ) {: prompt:ptr promptu :}
    MRUN-RESET
    PROC-ARGV-ENV-RESET
+   MRUN-CODEX-ARGS? if MRUN-FINAL-PREPARE then
    prompt promptu MRUN-BUILD-ARGS
    MRUN-CODEX-CLEAN? if CODEX-HOME-PREPARE-ENV then
    PROC-ENV-INHERIT-MISSING
@@ -205,6 +237,12 @@ TRUSTED: MRUN-PROMPT$ ( -- ptr u8 n )
    outu LEN>N MRUN-OUT-U ! ;
 
 : MRUN-PARSE ( -- )
+   MRUN-CODEX-CLEAN? if
+      MRUN-OUT$ MR-PARSER$ MR-TOKEN-FIELDS$ PR-PARSE-BUFFER
+      PR-TOKEN-COUNT MRUN-TOKENS !
+      MRUN-FINAL-PATH$ MRUN-TEXT-BUF MRUN-TEXT-CAP READ-ALL MRUN-TEXT-U !
+      exit
+   then
    MRUN-OUT$ MR-PARSER$ MR-TOKEN-FIELDS$ PR-PARSE-BUFFER
    PR-OUT$ MRUN-COPY-TEXT
    PR-TOKEN-COUNT MRUN-TOKENS ! ;

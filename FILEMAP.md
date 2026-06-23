@@ -126,9 +126,6 @@ points stay listed.
 - `test/run.f` — default native gate.
 - `test/prop-test.f` — self-hosted property-based checker-soundness test (in-process via `evaluate`).
 - `test/engine-suite.f` — native engine behavior suite.
-- `bench/llm/RESULTS-array-expanded.md` — current 600-row Codex cross-language array benchmark report.
-- `bench/llm/results/run-array-expanded.jsonl` — raw replayable JSONL evidence for the current cross-language array benchmark.
-- `bench/llm/results/perf-array-expanded.json` — latency snapshot paired with the current cross-language array benchmark.
 - `bench/llm/tasks.tsv` — LLM benchmark task set.
 - `bench/llm/models.tsv` — model registry for live benchmark sweeps.
 - `bench/llm/manifest-audit.f` — checked required-row audit for expanded benchmark tasks.

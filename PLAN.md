@@ -12,28 +12,24 @@ Forth coding standards live in `docs/forth.md`.
 
 ## Current Diagnosis
 
-The decisive current cross-language array evidence is a Codex k=5 run:
+The last attempted Codex cross-language array run is invalid as language
+evidence. It produced 600 rows, but 248 rows were `outcome:error`; all 248 had
+`checker_diagnostics="model output truncated"`, and 246 had
+`extracted_candidate="\\ no candidate extracted"`. That measures the benchmark
+harness/model invocation contract, not Habu pass rate.
 
-| arm | rows | task pass@5 | trial pass | mean output tokens | median runtime ms |
-|---|---:|---:|---:|---:|---:|
-| Habu raw | 75 | 5/15 = 33% | 7% | 1181 | 242 |
-| Habu + array helpers | 75 | 6/15 = 40% | 9% | 743 | 266 |
-| Habu + stdlib | 75 | 12/15 = 80% | 36% | 642 | 461 |
-| Habu + skeleton | 75 | 8/15 = 53% | 17% | 801 | 241 |
-| JavaScript | 75 | 15/15 = 100% | 100% | 79 | 1 |
-| Python | 75 | 15/15 = 100% | 100% | 70 | 1 |
-| TypeScript | 75 | 15/15 = 100% | 100% | 74 | 1 |
-| Rust | 75 | 15/15 = 100% | 100% | 84 | 1 |
+The root cause was Codex being invoked through `codex exec --json`, so the
+driver captured agent event streams and tool output as the candidate source. The
+model spent the run reading project docs and emitting JSONL events until the
+capture buffer truncated. The benchmark runner now uses Codex
+`--output-last-message` and reads that final-answer file as the candidate while
+keeping stdout only for diagnostics/token metadata.
 
-Raw evidence: `bench/llm/results/run-array-expanded.jsonl`; summary:
-`bench/llm/RESULTS-array-expanded.md`.
-
-Conclusion: Habu is not the best LLM target yet on array/memory tasks. The
-checked stdlib arm is real progress: it improves task pass@5 by 47 percentage
-points over raw Habu and cuts passing-row output tokens roughly in half. It
-still trails every mainstream baseline by 20 task-pass points, 64 trial-pass
-points, and roughly 8-9x generated output-token effort. This is the actionable
-gap the remaining plan must close.
+Until the array matrix is rerun with the fixed Codex contract, there is no
+current valid cross-language claim that Habu is better or worse than
+JS/Python/TS/Rust on this expanded array suite. The plan remains to make
+`habu-stdlib` match or beat mainstream baselines, but the previous 600-row
+numbers must not be used as evidence.
 
 The current expanded Habu-only live evidence is a Codex Forth-only k=5 run:
 
@@ -47,7 +43,7 @@ yet. The remaining task-pass failures are concentrated in quotation and
 combinator tasks, so the plan still needs stronger checked DSL/library shapes
 and diagnostics before rerunning cross-language baselines.
 
-The older committed four-arm LLM benchmark has 80 live rows:
+The older local four-arm LLM benchmark had 80 live rows:
 
 | arm | trial pass | task pass@k | mean output tokens | max output tokens |
 |---|---:|---:|---:|---:|
@@ -86,11 +82,9 @@ Hard gates:
   tests and trust lint.
 - The full native gate passes.
 
-Current gate status from the 600-row cross-language array run: benchmark gates
-are **not met**. `habu-stdlib` is 80% task pass@5 vs 100% for JS/Python/TS/Rust,
-and 36% trial pass vs 100% for those baselines. Diagnostic completeness is met
-for this run, with 600/600 diagnostic fields present, zero false rejects, zero
-`TRUST` use, and zero signature weakening.
+Current gate status: cross-language benchmark gates are **unmeasured** after the
+Codex truncation RCA. Rerun the array matrix with the fixed final-message
+contract before deciding whether the gates are met.
 
 Win conditions:
 
@@ -965,34 +959,24 @@ Full gate before merging implementation stacks:
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f
 ```
 
-Live benchmark evidence after benchmark-surface changes:
+Live benchmark evidence after benchmark-surface changes writes local artifacts:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f bench/llm/perf-lib.f bench/llm/perf.f -- --json > bench/llm/results/perf.json
-MODEL_ID=codex BENCH_FORTH_MODES=repair BENCH_TASK_IDS=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,56,57,58,59,60,61,71,72,73,74,75,76,77 BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 5 bench/llm/results/run-expanded.jsonl
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f tools/date.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/json.f tools/json-file.f bench/llm/validate-results-lib.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
-cmp /tmp/RESULTS-expanded.md bench/llm/RESULTS-expanded.md
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f lib/date.f bench/llm/perf-lib.f bench/llm/perf.f -- --json > /tmp/habu-llm-perf.json
+MODEL_ID=codex BENCH_FORTH_MODES=repair BENCH_TASK_IDS=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,56,57,58,59,60,61,71,72,73,74,75,76,77 BENCH_PERF_JSON=/tmp/habu-llm-perf.json bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 5 /tmp/habu-run-expanded.jsonl
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f tools/date.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/json.f tools/json-file.f bench/llm/validate-results-lib.f bench/llm/expanded-report.f -- /tmp/habu-run-expanded.jsonl /tmp/habu-llm-perf.json > /tmp/habu-RESULTS-expanded.md
 ```
 
-Cross-language array evidence for final comparison claims:
+Cross-language array evidence for final comparison claims also stays outside git:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/json.f tools/json-file.f tools/argv.f bench/llm/report.f -- bench/llm/results/run-array-expanded.jsonl bench/llm/results/perf-array-expanded.json > /tmp/RESULTS-array-expanded.md
-cmp /tmp/RESULTS-array-expanded.md bench/llm/RESULTS-array-expanded.md
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/date.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/json.f tools/json-file.f tools/argv.f bench/llm/validate-results-lib.f bench/llm/validate-results.f -- --json bench/llm/results/run-array-expanded.jsonl > /tmp/run-array-expanded-validate.json
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/json.f tools/json-file.f tools/argv.f bench/llm/report.f -- /tmp/habu-array-expanded.jsonl /tmp/habu-llm-perf.json > /tmp/habu-RESULTS-array-expanded.md
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/date.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/json.f tools/json-file.f tools/argv.f bench/llm/validate-results-lib.f bench/llm/validate-results.f -- --json /tmp/habu-array-expanded.jsonl > /tmp/habu-array-expanded-validate.json
 ```
 
-Fresh live model runs are nondeterministic. Review `/tmp/RESULTS-expanded.md`
-for the expected shape before replacing `bench/llm/RESULTS-expanded.md`. For
-committed legacy JSONL evidence, report generation must be deterministic:
-
-```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/json.f tools/json-file.f tools/argv.f bench/llm/report.f -- bench/llm/results/run.jsonl > /tmp/RESULTS.md
-cmp /tmp/RESULTS.md bench/llm/RESULTS.md
-```
-
-For final benchmark claims, run k=5 or higher and commit JSONL evidence in a
-separate commit from harness/library changes.
+Fresh live model runs are nondeterministic. Review local reports for the
+expected shape, archive large evidence outside git, and commit only source,
+tests, docs, and concise hand-written summaries.
 
 ## Completion Checklist
 
@@ -1023,6 +1007,7 @@ The plan is done only when all of these are true:
   validation.
 - Time/date, file, process, map, regex, test, property, and build helper contracts
   are documented and tested.
-- Expanded live benchmark evidence is committed.
+- Expanded live benchmark evidence is generated, validated, and archived outside
+  git; source commits do not include generated JSONL/JSON/RESULTS artifacts.
 - Success criteria in this file are met or the remaining misses have new dots
   with measured evidence.

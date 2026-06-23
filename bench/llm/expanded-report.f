@@ -26,7 +26,7 @@ variable ER-PERF-ROW
 variable ER-PARSE-N
 
 : ER-RESULT$ ( -- ptr u8 n )
-   ARGV-POS# 0= if s" bench/llm/results/run-expanded.jsonl" else 0 ARGV-POS$ then ;
+   ARGV-POS# 0= if s" /tmp/habu-run-expanded.jsonl" else 0 ARGV-POS$ then ;
 
 : ER-PERF$ ( -- ptr u8 n )
    1 ARGV-POS$ ;

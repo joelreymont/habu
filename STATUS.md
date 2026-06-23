@@ -91,11 +91,10 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   Date-stamped run IDs (`*-YYYY-MM-DD`) are validated in Habu. The reference
   gate requires quotation, return-stack, strings, files, and AOT-safe benchmark
   categories. `bench/llm/perf.f` records quick feedback-loop latency, with
-  `--full` covering rebuild and AOT timings. The current committed
-  cross-language array comparison is `bench/llm/RESULTS-array-expanded.md`:
-  `habu-stdlib` reaches 80% task pass@5 / 36% trial pass, while
-  JS/Python/TS/Rust each reach 100% / 100%, so the "best LLM target" benchmark
-  gate is not met yet.
+  `--full` covering rebuild and AOT timings. The last attempted Codex
+  cross-language array comparison was invalidated by model-output truncation;
+  `model-run.f` now uses Codex `--output-last-message`, and the matrix must be
+  rerun before updating "best LLM target" benchmark status.
 - **AOT-strip linker** — done and the DEFAULT. The native `tools/hb-build.f` path AOT-
   compiles `: MAIN ;` to a native binary with the engine stripped (fib __text
   540 B vs 11836 B embed). `--repl` verifies the user source's checked

@@ -1304,8 +1304,8 @@ variable RR-PERF-ARR
    s" common index patterns; JS, Python, TypeScript, and Rust use idiomatic array/list/slice APIs." RR-OUT RR-NL
    RR-HAS-LIB? 0= if
       RR-NL
-      s" **Habu + array helpers data is missing from this committed run.** The harness now runs the `habu-lib` arm, but" RR-OUT RR-NL
-      s" the checked-in `results/run.jsonl` predates that arm; re-run the native expanded benchmark runner to fill it." RR-OUT RR-NL
+      s" **Habu + array helpers data is missing from this run.** The harness now runs the `habu-lib` arm, but" RR-OUT RR-NL
+      s" the input JSONL predates that arm; re-run the native expanded benchmark runner to fill it." RR-OUT RR-NL
    then
    RR-NL
    s" _Each task: the model writes the function in the target language; we compile/check + run all io-vectors," RR-OUT RR-NL

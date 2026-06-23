@@ -1067,7 +1067,7 @@ variable LV-ROW-CODE
    s" BENCH_TASKS" GETENV dup 0= IF 2drop s" bench/llm/tasks.tsv" THEN ;
 
 : LV-REFERENCE-PATH$ ( -- ptr u8 n )
-   s" BENCH_REFERENCE_RESULTS" GETENV dup 0= IF 2drop s" bench/llm/results/reference.jsonl" THEN ;
+   s" BENCH_REFERENCE_RESULTS" GETENV dup 0= IF 2drop s" /tmp/habu-reference.jsonl" THEN ;
 
 : LV-SCAN-TASKS ( -- )
    0 LV-TASK# !

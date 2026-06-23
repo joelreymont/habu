@@ -33,42 +33,21 @@ concatenative loops, while being one-liners in JS/Rust.
 
 ### Current cross-language array evidence
 
-The current decisive comparison is 15 array tasks × 8 arms × 5 trials =
-600 Codex trials (`bench/llm/results/run-array-expanded.jsonl`, summarized in
-`bench/llm/RESULTS-array-expanded.md`).
+There is no valid current cross-language array conclusion after the Codex
+truncation RCA. The last attempted 15 task × 8 arm × k=5 run is invalid as
+language evidence: 248 rows were `outcome:error`, every one had
+`checker_diagnostics="model output truncated"`, and 246 had no extracted
+candidate. The run mostly measured the Codex event-stream capture contract, not
+Habu.
 
-| language | rows | green trials | trial pass | task pass@5 | mean output tokens | median runtime ms | diagnostic fields |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Habu raw | 75 | 5 | 7% | 33% | 1181 | 242 | 75/75 |
-| Habu + array helpers | 75 | 7 | 9% | 40% | 743 | 266 | 75/75 |
-| Habu + stdlib | 75 | 27 | 36% | 80% | 642 | 461 | 75/75 |
-| Habu + skeleton | 75 | 13 | 17% | 53% | 801 | 241 | 75/75 |
-| JavaScript | 75 | 75 | 100% | 100% | 79 | 1 | 75/75 |
-| Python | 75 | 75 | 100% | 100% | 70 | 1 | 75/75 |
-| TypeScript | 75 | 75 | 100% | 100% | 74 | 1 | 75/75 |
-| Rust | 75 | 75 | 100% | 100% | 84 | 1 | 75/75 |
-
-Current cross-language conclusions:
-
-1. **Habu is not best yet on array/memory tasks.** Every mainstream baseline
-   reaches 100% trial pass and 100% task pass@5; the strongest Habu arm,
-   `habu-stdlib`, reaches 36% trial pass and 80% task pass@5.
-2. **The checked stdlib is the right direction.** `habu-stdlib` improves task
-   pass@5 by 47 percentage points over raw Habu and reduces passing-row output
-   tokens from 1181 to 642. Helpers alone are insufficient, and skeleton-only
-   prompting loses to stdlib composition.
-3. **The effort gap remains large.** `habu-stdlib` still costs roughly 8-9x the
-   mainstream generated-output tokens on passing rows, and its warmed runtime is
-   slower than the foreign-language harnesses on these small array kernels.
-4. **The evidence is replayable.** The run has 600/600 diagnostic fields, zero
-   checker false rejects, zero `TRUST` use, zero signature weakening, and raw
-   replay artifacts embedded in every row.
+The harness now uses Codex `--output-last-message` and reads the final-answer
+file as the candidate. Rerun the matrix before making any Habu-vs-mainstream
+claim.
 
 ### Expanded Habu-Forth evidence
 
-The committed expanded evidence is 58 Forth/checker/system tasks × 5 trials =
-290 trials (`bench/llm/results/run-expanded.jsonl`, summarized in
-`bench/llm/RESULTS-expanded.md`). This is a **Forth-only Codex run** for the
+The previous expanded local evidence was 58 Forth/checker/system tasks × 5
+trials = 290 trials. This is a **Forth-only Codex run** for the
 `habu-forth` repair arm. It evaluates whether Codex can produce checked Habu
 from diagnostics across the expanded task surface; it is not a cross-language
 Rust/JS comparison.
@@ -97,11 +76,10 @@ Expanded-run conclusions:
 
 ### Legacy cross-language array baseline
 
-The earlier committed evidence is 10 array tasks × 4 arms × 2 trials = 80 trials
-(`bench/llm/results/run.jsonl`, summarized in `bench/llm/RESULTS.md`). The fourth
-arm, `habu-lib`, gives Habu checked array helpers (`A@`, `A!`, `A-SWAP`,
-`MIRROR-INDEX`, `EVEN?`) so the run directly compares raw Habu against a small
-LLM-facing checked library.
+An earlier local evidence set covered 10 array tasks × 4 arms × 2 trials =
+80 trials. The fourth arm, `habu-lib`, gives Habu checked array helpers (`A@`,
+`A!`, `A-SWAP`, `MIRROR-INDEX`, `EVEN?`) so the run directly compares raw Habu
+against a small LLM-facing checked library.
 
 | language | trial pass | first-try green | task pass@k | mean output-tokens-to-green | max |
 |---|---|---|---|---|---|
@@ -111,11 +89,11 @@ LLM-facing checked library.
 | Rust | 95% | 90% | 100% | 78 | 200 |
 
 Legacy cross-language conclusions:
-1. **Task-level correctness parity, trial-level misses.** In the committed
+1. **Task-level correctness parity, trial-level misses.** In that
    four-arm evidence, every arm reaches a correct solution for every task under
    k=2 (task pass@k 100%). The stricter trial-level result is Habu raw 18/20,
    Habu + helpers 19/20, JS 17/20, Rust 19/20; the misses are recorded in
-   `RESULTS.md` as non-pass rows.
+   local report as non-pass rows.
 2. **A large but SKEWED effort gap.** "Output tokens to green" counts generated output
    tokens on passing trials with positive token counts. It is not direct access
    to hidden reasoning, but it is a useful generation-effort proxy. The
@@ -135,8 +113,7 @@ Legacy cross-language conclusions:
    COUNT-EVEN, ARGMAX, and RUNMAX in this run, but hurt PREFIXSUM and several simple
    loops.
 
-All passing rows in the committed evidence have positive output-token counts. The
-per-task token table is in `RESULTS.md`.
+All passing rows in that evidence had positive output-token counts.
 
 ---
 
@@ -173,36 +150,21 @@ prints `-1` per certified word. The native `tools/check.f` runner on the def sec
 do NOT run the checker runner on the whole file — it executes the runtime assertions in its checking
 harness and hangs.)
 
-### V3 — Verify the committed cross-language array comparison
+### V3 — Verify a local cross-language array comparison
 ```
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/json.f tools/json-file.f tools/argv.f bench/llm/report.f -- bench/llm/results/run-array-expanded.jsonl bench/llm/results/perf-array-expanded.json > /tmp/RESULTS-array-expanded.md
-cmp /tmp/RESULTS-array-expanded.md bench/llm/RESULTS-array-expanded.md
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/date.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/json.f tools/json-file.f tools/argv.f bench/llm/validate-results-lib.f bench/llm/validate-results.f -- --json bench/llm/results/run-array-expanded.jsonl > /tmp/run-array-expanded-validate.json
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/json.f tools/json-file.f tools/argv.f bench/llm/report.f -- /tmp/habu-array-expanded.jsonl /tmp/habu-llm-perf.json > /tmp/habu-RESULTS-array-expanded.md
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/date.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/json.f tools/json-file.f tools/argv.f bench/llm/validate-results-lib.f bench/llm/validate-results.f -- --json /tmp/habu-array-expanded.jsonl > /tmp/habu-array-expanded-validate.json
 ```
-Expected shape: 600 rows, 120 task/model/arm groups, 91 task groups passed,
-`habu-stdlib` at 12/15 task pass@5 and 27/75 green trials, all mainstream arms
-at 15/15 task pass@5 and 75/75 green trials, complete diagnostic/replay fields,
-zero checker false rejects, zero `TRUST` use, and zero signature weakening.
+Generated JSONL/JSON/Markdown reports are ignored by git. Archive large replay
+evidence outside the repo.
 
 ### V4 — Reproduce the expanded Forth-only benchmark (uses a live model; costs tokens; non-deterministic)
 ```
 bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f bench/llm/perf-lib.f bench/llm/perf.f -- --json > /tmp/habu-llm-perf.json
 MODEL_ID=codex BENCH_FORTH_MODES=repair BENCH_TASK_IDS=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,56,57,58,59,60,61,71,72,73,74,75,76,77 BENCH_PERF_JSON=/tmp/habu-llm-perf.json BENCH_RESULTS=/tmp/habu-RESULTS-expanded.md bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 5 /tmp/habu-run-expanded.jsonl
 ```
-Then review `/tmp/habu-RESULTS-expanded.md`. Exact token counts WILL differ run-to-run
-(model nondeterminism). For the committed expanded Forth evidence, verify the
-shape in §2: 58 task groups, roughly 93% task pass@5, roughly 72% trial pass,
-complete diagnostic/replay fields, no trust use, no signature weakening, and
-remaining failures concentrated in quotation/combinator tasks. The committed
-`run.jsonl` is the exact legacy cross-language evidence; committed expanded
-evidence lives in `bench/llm/results/run-expanded.jsonl`.
-
-To verify the committed expanded report byte-for-byte without rerunning a model:
-
-```
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f tools/json.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
-cmp /tmp/RESULTS-expanded.md bench/llm/RESULTS-expanded.md
-```
+Then review `/tmp/habu-RESULTS-expanded.md`. Exact token counts WILL differ
+run-to-run (model nondeterminism). Verify the shape, not exact tokens.
 
 ### V5 — Spot-check a single live cell
 ```
@@ -257,10 +219,10 @@ select `habu-lib`; the native driver emits `arm:"habu-lib"` and bundles
 - `bench/llm/parse-resp.f` — extracts the completion text + **output_tokens** from
   `claude -p --output-format json`. Input tokens are deliberately excluded (Claude Code harness
   overhead ~7–22K/call + prompt caching distort them); output tokens track generated-token cost.
-- `bench/llm/run-expanded-bench.f <k>` — orchestrator: selected tasks × selected arms × k trials → `run-expanded.jsonl`,
-  then the Habu report reducer → `RESULTS.md`. Drivers are invoked with `</dev/null` (else `claude -p`
+- `bench/llm/run-expanded-bench.f <k>` — orchestrator: selected tasks × selected arms × k trials → local JSONL,
+  then the Habu report reducer → local Markdown. Drivers are invoked with `</dev/null` (else `claude -p`
   swallows the loop's stdin) and `|| true` (a failing driver must not abort the sweep).
-- `bench/llm/report.f` — aggregates `run.jsonl` → `RESULTS.md` (trial pass, first-try
+- `bench/llm/report.f` — aggregates local JSONL → Markdown (trial pass, first-try
   green, task pass@k, non-pass rows, wall time, mean rounds, median/mean/max output tokens,
   per-task token table with raw/best and lib/best ratios, verdict).
 - `bench/llm/ref-solutions.f` — certified habu answer key (see V2).
@@ -289,10 +251,9 @@ addition.
 - **Task pass@k hides trial misses.** The current array run shows this clearly:
   `habu-stdlib` is 80% task pass@5 but only 36% trial pass. Use both numbers.
   The expanded Forth-only run is 93.10% task pass@5 and 72.41% trial pass.
-- **Model nondeterminism.** Live Codex runs are not bit-reproducible. Verify the
-  committed JSONL/reports byte-for-byte; for fresh live reruns, verify the shape,
-  not exact tokens. The Habu side (engine, checker, grading, validation, and
-  report reduction) is deterministic.
+- **Model nondeterminism.** Live Codex runs are not bit-reproducible. For fresh
+  live reruns, verify the shape, not exact tokens. The Habu side (engine,
+  checker, grading, validation, and report reduction) is deterministic.
 - **Output-tokens-as-effort** is a proxy. It is generated-token cost, not direct hidden
   reasoning. It correlates with wall time in the data (ARGMAX raw Habu: 4494 tokens / 63 s vs
   JS: 77 / 6 s), but a model that emits less verbose output could shift absolute numbers;
@@ -306,14 +267,7 @@ addition.
 
 ## 6. Provenance
 
-- The original three-arm harness code, `RESULTS.md`, and `run.jsonl` landed in jj commit
-  `ce34f03f bench: habu vs JS/Rust on array/memory algorithms`. `run.jsonl` is tracked as the
-  evidence record; only `*.log` under `results/` is gitignored.
-- The four-arm harness adds `habu-lib` as a checked-library A/B against raw Habu; the committed
-  `run.jsonl` includes all four arms.
-- The expanded cross-language array evidence is
-  `bench/llm/results/run-array-expanded.jsonl` with matching latency snapshot
-  `bench/llm/results/perf-array-expanded.json` and report
-  `bench/llm/RESULTS-array-expanded.md`. It is the current source for
-  "Habu vs mainstream languages" claims.
+- Historical generated benchmark artifacts were removed from git. Keep future
+  JSONL/JSON/Markdown benchmark outputs in `/tmp`, release artifacts, or another
+  explicit artifact store, not in repository commits.
 - The `depth` primitive is a separate commit already on `habu` master.

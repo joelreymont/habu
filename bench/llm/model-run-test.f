@@ -112,6 +112,7 @@ create MRT-MANY-PATH-BUF FS-PATH-CAP allot
 prompt	Prompt	/bin/echo	{prompt}	raw		2
 claude	Claude	/bin/echo	-p {prompt} --output-format json	raw		2
 codex	Codex	/bin/echo	codex-exec {prompt}	raw		2
+codexparse	CodexParse	/bin/echo	codex-exec {prompt}	codex-jsonl	usage.output_tokens	2
 claudeparse	ClaudeParse	/bin/echo	{prompt}	claude-json	usage.output_tokens	2
 catparse	CatParse	/bin/cat	{prompt}	claude-json	usage.output_tokens	2
 trunc	Trunc	/usr/bin/yes	{prompt}	raw		2
@@ -200,6 +201,33 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    MRUN-OUT$ nip MRUN-OUT-CAP T=
    MRUN-ERR$ s" model output truncated" T$= ;
 
+: MRT-CODEX-EVENT$ ( -- ptr u8 n )
+   MRT-RESP-RESET
+   J-LBRACE MRT-RESP-C
+   s" usage" MRT-RESP-KEY J-LBRACE MRT-RESP-C
+   s" output_tokens" MRT-RESP-KEY s" 7" MRT-RESP+
+   J-RBRACE MRT-RESP-C
+   J-COMMA MRT-RESP-C
+   s" item" MRT-RESP-KEY J-LBRACE MRT-RESP-C
+   s" type" MRT-RESP-KEY s" agent_message" MRT-RESP-S
+   J-COMMA MRT-RESP-C
+   s" text" MRT-RESP-KEY s" event text" MRT-RESP-S
+   J-RBRACE MRT-RESP-C
+   J-RBRACE MRT-RESP-C
+   10 MRT-RESP-C
+   MRT-RESP$ ;
+
+: MRT-TEST-CODEX-FINAL-PARSE ( -- )
+   MRT-REGISTRY$ MR-REGISTRY!
+   s" codexparse" MR-REQUIRE
+   MRUN-RESET
+   MRUN-FINAL-PREPARE
+   MRUN-FINAL-PATH$ s" final checked source" WRITE-ALL
+   MRT-CODEX-EVENT$ MRUN-COPY-OUT
+   MRUN-PARSE
+   MRUN-TEXT$ s" final checked source" T$=
+   MRUN-TOKENS @ 7 T= ;
+
 : MRT-TEST-MRUN-REPEATED-PARSE-CAPACITY ( -- )
    s" catparse" MRT-MANY-PATH$ MRT-RUN
    MRUN-RC @ E-JSON-CAPACITY T=
@@ -219,6 +247,7 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    MRT-TEST-MRUN-REPEATED-PARSE-CAPACITY
    MRT-TEST-MRUN-CAPTURE-TRUNCATES
    MRT-TEST-MRUN-CAPTURE-TRUNCATED
+   MRT-TEST-CODEX-FINAL-PARSE
    s" prompt" s" hello" MRT-RUN
    MRUN-RC @ 0 T=
    MRUN-TEXT$ s" hello
@@ -228,8 +257,9 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    MRUN-TEXT$ s" -p hi --output-format json
 " T$=
    s" codex" s" task" MRT-RUN
-   MRUN-TEXT$ s" exec --disable plugins --disable apps --disable multi_agent --disable tool_suggest --disable workspace_dependencies --skip-git-repo-check --ignore-rules --ignore-user-config --sandbox read-only --json task
-" T$=
+   MRUN-TEXT$ s" exec --disable plugins --disable apps --disable multi_agent --disable tool_suggest --disable workspace_dependencies --skip-git-repo-check --ignore-rules --ignore-user-config --sandbox read-only --output-last-message" CONTAINS? TTRUE
+   MRUN-TEXT$ s" --json" CONTAINS? TFALSE
+   MRUN-TEXT$ s" task" CONTAINS? TTRUE
    s" empty" s" fallback" MRT-RUN
    MRUN-TEXT$ s" fallback
 " T$=

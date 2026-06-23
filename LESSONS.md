@@ -185,8 +185,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   parser string storage and validator row input buffers must grow instead of
   imposing fixed row-size ceilings.
 - **Benchmark reports must be deterministic:** evidence reducers must not stamp
-  wall-clock generation time into committed reports. Use evidence-derived text
-  so regenerating from the same JSONL/perf artifacts can be proven with `cmp`.
+  wall-clock generation time into reports. Use evidence-derived text so
+  regenerating from the same local JSONL/perf artifacts can be proven with
+  `cmp` before archiving outside git.
 - **Stale status lint must distinguish prose from evidence blocks:** live-count
   prose belongs in `STATUS.md`, but fenced machine output in benchmark evidence
   is a replay artifact. Lint should ignore fenced code blocks and keep prose
@@ -509,10 +510,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Schema-v2 changes must update every fixture:** report fixtures that only
   invoke validators indirectly still build full rows by hand; add new required
   fields there in the same change or the report child exits before assertions.
-- **Report reducer changes must refresh generated evidence docs:** when
-  `bench/llm/report.f` output shape changes, regenerate `bench/llm/RESULTS.md`
-  and update the verification prose in the same commit. A green reducer test does
-  not prove the checked-in report still matches committed JSONL evidence.
+- **Report reducer changes must refresh verification prose:** when
+  `bench/llm/report.f` output shape changes, update the local-artifact
+  verification commands in docs. A green reducer test does not prove archived
+  benchmark evidence still matches the current reducer.
 - **Report dependency splits must update every spawner:** after
   `expanded-report.f` moved to `validate-results-lib.f`, direct report tests
   passed but `run-expanded-bench.f` still spawned the old load list. Keep CLI
@@ -520,8 +521,13 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   grows library dependencies.
 - **Checked report reducers can expose stale artifacts:** removing an unchecked
   boundary from `bench/llm/report.f` found a stack leak in `RR-RATIO.` that had
-  truncated the committed per-task table after the first row. Add row-count
-  regressions and compare regenerated reports whenever a reducer becomes checked.
+  truncated a per-task table after the first row. Add row-count regressions and
+  compare regenerated local reports whenever a reducer becomes checked.
+- **Codex benchmark candidates come from final messages:** `codex exec --json`
+  emits agent event streams that can include tool output and truncate before any
+  usable candidate. Benchmark drivers must use `--output-last-message` and read
+  that file as candidate source; stdout event streams are diagnostics/token
+  metadata only.
 - **Codex input-token bloat is ambient context:** default `codex exec` loads
   apps/plugins/tool context and project instructions; a smoke prompt fell from
   about 29k input tokens to about 11.5k by using a clean `CODEX_HOME` plus
@@ -529,7 +535,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   output tokens only; raw artifacts preserve full Codex usage for audits.
 - **LLM validator fixtures should isolate corpus churn:** generate temporary
   reference metric rows from the task manifest under test instead of assuming the
-  checked-in reference JSONL has already been refreshed for concurrent task
+  archived reference JSONL has already been refreshed for concurrent task
   additions.
 - **Cross-row JSON state must copy strings:** `JSON-STRING$` points into the
   parser's reusable string buffer. Validators that compare data across
@@ -686,5 +692,5 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   gains a dependency such as `tools/json.f` on `lib/memory.f`, update every
   Habu-spawned `--load` list and gate assertion helper, not just top-level
   commands. Manual verification commands in `PLAN.md`/docs are part of the same
-  contract; regenerate and compare committed artifacts to catch fixture gaps.
-  Prove with the exact failing child fixture before rerunning the full gate.
+  contract. Prove with the exact failing child fixture before rerunning the full
+  gate.

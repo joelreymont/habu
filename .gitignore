@@ -14,5 +14,8 @@ __pycache__/
 # generated test scratch
 test/*.tmp
 
-# benchmark run logs (regenerable); run.jsonl IS tracked as the evidence record
+# generated benchmark evidence and reports stay outside git
+bench/llm/RESULTS*.md
+bench/llm/results/*.json
+bench/llm/results/*.jsonl
 bench/llm/results/*.log
