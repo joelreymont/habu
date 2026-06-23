@@ -184,6 +184,12 @@
    s" bench/llm/run-expanded-bench-test.f" BGR-ARG+
    s" llm expanded runner" BGR-RUN ;
 
+: BGR-JSONL-MERGE ( -- )
+   BGR-HB
+   BGR-ERR-STR BGR-TEST BGR-FS BGR-PROC
+   s" tools/jsonl-merge-test.f" BGR-ARG+
+   s" llm jsonl merge" BGR-RUN ;
+
 : BGR-REPORT ( -- )
    BGR-HB
    BGR-ERR-STR BGR-TEST
@@ -220,6 +226,7 @@
    BGR-VALIDATE-RESULTS
    BGR-VALIDATOR-TEST
    BGR-EXPANDED-RUNNER
+   BGR-JSONL-MERGE
    BGR-REPORT
    BGR-EXPANDED-REPORT ;
 

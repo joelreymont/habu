@@ -13,6 +13,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   `codex exec` in the background, redirect stdin from `/dev/null` and pass
   `--output-last-message /tmp/name.out`; stdout logs alone can be empty or noisy
   and are not reliable evidence of the scout result.
+- **Use returned dot IDs directly:** after `dot add`, mark/close the exact ID
+  printed by the command. Do not infer IDs from `.dots` filenames with shell
+  glue; malformed inference creates avoidable tracker errors.
 - **No-binary recovery is native-seeded:** `bin/hb` is generated/ignored. Recover
   with `tools/seed.sh /path/to/hb-seed`; optional SHA-256 verification plus the
   immediate native build-fixpoint install make the installed binary current-source
