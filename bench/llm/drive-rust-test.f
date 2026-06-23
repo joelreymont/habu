@@ -17,7 +17,8 @@ fixture	Fixture	/bin/echo	{prompt}	raw		2
    s" Implement the requested array function." DS-SPEC!
    conv convu DFG-CONV!
    vectors vectorsu DS-TESTS!
-   5000 DFG-TIMEOUT-U ! ;
+   5000 DFG-TIMEOUT-U !
+   5000 DFG-COMPILE-TIMEOUT-U ! ;
 
 : DRT-AS ( -- )
    s" as" s" [3 1 4] -> 8; [5] -> 5; [-2 -3] -> -5" DRT-CONFIG ;
@@ -63,6 +64,7 @@ fixture	Fixture	/bin/echo	{prompt}	raw		2
 : DRT-TIMEOUT ( -- )
    DRT-AS
    100 DFG-TIMEOUT-U !
+   5000 DFG-COMPILE-TIMEOUT-U !
    s" fn f(a: &[i64]) -> i64 { loop {} }" DFG-RUN-TEXT
    LR-OUTCOME$ s" timeout" T$=
    LR-TESTS-PASSED @ 0 T=

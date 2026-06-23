@@ -670,3 +670,6 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Live-row extras come after `DS-LR-*`:** driver result setters call
   `DS-CONFIG-LR-COMMON`, which resets live-row fields. Set driver-specific
   extensions such as runtime measurements after `DS-LR-PASS`/`DS-LR-FAIL`.
+- **Separate setup and execution budgets:** live-driver timeout tests should not
+  reuse runtime limits for compile/build/setup work. Lowering runtime to test an
+  infinite loop must not turn compiler latency into a `reject`.
