@@ -115,18 +115,27 @@ variable JSON-PARSE-TRY-ROOT
 3 constant JSONL-ROW-EOF
 0 constant JSON-PARSE-OK
 1 constant JSON-PARSE-THROW
-: JSON-A@ JSON-A @ ;
-s" JSON-A@" s" -- ptr u8" TRUST
-: JSON-GKA@ JSON-GKA @ ;
-s" JSON-GKA@" s" -- ptr u8" TRUST
-: JSONL-A@ JSONL-A @ ;
-s" JSONL-A@" s" -- ptr u8" TRUST
-: JSONL-LA@ JSONL-LA @ ;
-s" JSONL-LA@" s" -- ptr u8" TRUST
-: JSON-STR-BUF JSON-STR-P @ ;
-s" JSON-STR-BUF" s" -- ptr u8" TRUST
+: JSON-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
 
-JSON-STR-BOOT JSON-STR-P !
+: JSON-PTR-U8@ ( ptr a -- ptr u8 )
+   JSON-PTR-U8-FIELD @ ;
+
+: JSON-PTR-U8! ( ptr u8 ptr a -- )
+   JSON-PTR-U8-FIELD ! ;
+
+: JSON-A@ ( -- ptr u8 ) JSON-A JSON-PTR-U8@ ;
+: JSON-A! ( ptr u8 -- ) JSON-A JSON-PTR-U8! ;
+: JSON-GKA@ ( -- ptr u8 ) JSON-GKA JSON-PTR-U8@ ;
+: JSON-GKA! ( ptr u8 -- ) JSON-GKA JSON-PTR-U8! ;
+: JSONL-A@ ( -- ptr u8 ) JSONL-A JSON-PTR-U8@ ;
+: JSONL-A! ( ptr u8 -- ) JSONL-A JSON-PTR-U8! ;
+: JSONL-LA@ ( -- ptr u8 ) JSONL-LA JSON-PTR-U8@ ;
+: JSONL-LA! ( ptr u8 -- ) JSONL-LA JSON-PTR-U8! ;
+: JSON-STR-BUF ( -- ptr u8 ) JSON-STR-P JSON-PTR-U8@ ;
+: JSON-STR-P! ( ptr u8 -- ) JSON-STR-P JSON-PTR-U8! ;
+
+JSON-STR-BOOT JSON-STR-P!
 JSON-STR-BOOT-CAP JSON-STR-CAP-U !
 
 : JSON-COPY ( ptr u8 i64 ptr u8 -- )
@@ -199,7 +208,7 @@ TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
    need JSON-STR-SPAN {: cap :}
    cap JSON-ALLOC-STR-PTR {: dst:ptr :}
    dst JSON-COPY-STR-OLD
-   dst JSON-STR-P !
+   dst JSON-STR-P!
    cap JSON-STR-CAP-U ! ;
 
 : JSON-ENSURE-STR ( n -- ) {: need :}
@@ -559,7 +568,7 @@ TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
 : JSON-PARSE ( ptr u8 i64 -- i64 )
    {: a:ptr u :}
    JSON-RESET
-   a JSON-A !
+   a JSON-A!
    u JSON-U !
    0 JSON-I !
    JSON-VALUE JSON-VN !
@@ -630,7 +639,7 @@ TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
    -1 JSON-GOT !
    0 JSON-GI !
    begin JSON-GI @ node J-COUNT@ < while
-      node JSON-GI @ JSON-OBJ@ JSON-GVAL ! JSON-GKL ! JSON-GKA !
+      node JSON-GI @ JSON-OBJ@ JSON-GVAL ! JSON-GKL ! JSON-GKA!
       JSON-GKA@ JSON-GKL @ key ku JSON-STR= IF
          JSON-GVAL @ JSON-GOT !
          node J-COUNT@ JSON-GI !
@@ -720,7 +729,7 @@ TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
       J-LBRACE JSONW-C
       0 begin dup node J-COUNT@ < while
          dup 0 > IF J-COMMA JSONW-C THEN
-         node over JSON-OBJ@ JSON-GVAL ! JSON-GKL ! JSON-GKA !
+         node over JSON-OBJ@ JSON-GVAL ! JSON-GKL ! JSON-GKA!
          JSON-GKA@ JSON-GKL @ JSONW-KEY
          JSON-GVAL @ RECURSE
          1+
@@ -763,7 +772,7 @@ TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
    mode JSONL-MODE-STRICT <> mode JSONL-MODE-SKIP <> and IF
       s" jsonl: bad cursor mode" JSON-TYPE-ERROR
    THEN
-   a JSONL-A !
+   a JSONL-A!
    u JSONL-U !
    0 JSONL-I !
    0 JSONL-SKIPS !
@@ -809,14 +818,14 @@ TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
    begin JSONL-I @ JSONL-U @ < while
       JSONL-A@ JSONL-I @ + c@ J-LF = IF
          JSONL-A@ JSON-START @ +  JSONL-I @ JSON-START @ -  JSON-TRIM
-         JSONL-LU ! JSONL-LA !
+         JSONL-LU ! JSONL-LA!
          JSONL-I @ 1+ JSONL-I !
          JSONL-LINE++ JSONL-TRUE exit
       THEN
       JSONL-I @ 1+ JSONL-I !
    repeat
    JSONL-A@ JSON-START @ +  JSONL-U @ JSON-START @ -  JSON-TRIM
-   JSONL-LU ! JSONL-LA !
+   JSONL-LU ! JSONL-LA!
    JSONL-U @ JSONL-I !
    JSONL-LINE++ JSONL-TRUE ;
 
