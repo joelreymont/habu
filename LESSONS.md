@@ -20,18 +20,22 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   Forth-only run proves checked repair/replay behavior; the 600-row
   cross-language array run is the evidence for "best LLM target" claims. Do not
   use one artifact to answer the other's question.
-- **No-binary recovery is native-seeded:** `bin/hb` is generated/ignored. Recover
-  with `tools/seed.sh /path/to/hb-seed`; optional SHA-256 verification plus the
-  immediate native build-fixpoint install make the installed binary current-source
-  native, without making gforth the normal trust root.
+- **No-binary recovery installs only `bin/hb`:** `bin/hb` is
+  generated/ignored. Recover with `HABU_ALLOW_BOOTSTRAP=1
+  tools/bootstrap.sh`; Gforth creates only private `HB_TMP` artifacts, then
+  the installed `bin/hb` immediately refreshes itself from current source.
+- **Gforth must support locals:** Homebrew `gforth` 0.7.3 cannot parse `{:
+  :}` locals and is not a usable bootstrap host. Use a current Gforth snapshot
+  such as `0.7.9_20260610`, or set `GFORTH=/path/to/gforth-fast`.
 - **No hosted bootstrap in daily work:** daily work uses `bin/hb`, the native
-  build-fixpoint installer, and `test/run.f`. No-binary recovery uses `tools/seed.sh`.
+  `bin/hb` refresh command, and `test/run.f`. The Gforth path is only
+  no-binary recovery and must stay out of default gates and benchmarks.
 - **Early stdlib fixtures can load libraries directly:** before manifest/bundle
   plumbing exists, focused `tools/*-test.f` fixtures can concatenate `lib/*.f`
   directly with their driver to test canonical library policy in isolation.
 - **Native rebuilds need private temp dirs:** parallel jj workspaces share host
   `/tmp`; fixed names like `stage2-got` race. Native build flows,
-  `tools/seed.sh`, and `test/run.f` allocate and export private `HB_TMP`
+  seed recovery, and `test/run.f` allocate and export private `HB_TMP`
   by default where they run builds, while preserving explicit `HB_TMP` for repro.
 - **Build temp overrides must drive every path:** if a checked build helper
   accepts a temp override, both parent artifact paths and child `HB_TMP` must
@@ -179,6 +183,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   a missing-row symptom. Use the checked `*-OUTCOME` process APIs and convert
   `kind code` with `PROC-OUTCOME>RC`, then make parent missing-row errors include
   task/model/arm/trial/child rc.
+- **`close` has no status result:** the native `close` primitive is `( fd -- )`.
+  Do not model it as `( fd -- rc )` in checked tools; doing so leaves a phantom
+  cell and rejects at branch joins. If a tool needs atomic output semantics,
+  write to a temp file and commit with the fallible filesystem words.
 - **Benchmark validators need row-scoped parser diagnostics:** a hidden JSON
   capacity throw looked like a report failure until the validator printed
   `path:line`. Live rows can contain long prompts and raw responses, so JSON
@@ -538,6 +546,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   about 29k input tokens to about 11.5k by using a clean `CODEX_HOME` plus
   disabled apps/plugins/tool features. Benchmark rows still report generated
   output tokens only; raw artifacts preserve full Codex usage for audits.
+- **Codex benchmark isolation needs both streams:** keep `--json` on stdout for
+  token accounting, `--output-last-message` for candidate source, and `--cd` to a
+  clean temp directory so repo instructions do not become benchmark context.
 - **LLM validator fixtures should isolate corpus churn:** generate temporary
   reference metric rows from the task manifest under test instead of assuming the
   archived reference JSONL has already been refreshed for concurrent task
@@ -699,3 +710,11 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   commands. Manual verification commands in `PLAN.md`/docs are part of the same
   contract. Prove with the exact failing child fixture before rerunning the full
   gate.
+- **Ignore generated benchmark output by shape, not run name:** live LLM runs can
+  write JSON, JSONL, logs, and reports either at `bench/llm/` or under
+  `bench/llm/results/`. Ignore those output shapes/directories so reruns cannot
+  accidentally enter a jj change.
+- **LLM helper surfaces must match validator surfaces:** when the candidate
+  validator accepts direct helpers such as `A-ARGMAX`, `A-PREFIX-SUM!`, or
+  `A-RUNMAX!`, the prompt preamble must name those exact helpers. Otherwise the
+  benchmark still rewards stack gymnastics despite having checked stdlib words.

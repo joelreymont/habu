@@ -191,13 +191,16 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
 : DAH-PROMPT-LIBS ( -- )
    DAH-LIB? if
       s" The driver preloads lib/errors.f, lib/array.f, and the benchmark array shim." DS-PROMPT-LN
-      s" Use A@, A!, A+!, A-SWAP, LAST-INDEX, MIRROR-INDEX, EVEN?, or whole-array A-* helpers where they fit." DS-PROMPT-LN
+      s" Use direct helpers such as A-SUM, A-COUNT-EVEN, A-ARGMAX, A-REVERSE!, A-PREFIX-SUM!, and A-RUNMAX!." DS-PROMPT-LN
+      s" Use A@, A!, A+!, A-SWAP, LAST-INDEX, MIRROR-INDEX, and EVEN? for smaller loops." DS-PROMPT-LN
       s" Pass lengths as len >LEN and indexes as i >IDX when calling array helpers." DS-PROMPT-LN
       exit
    then
    DAH-STDLIB? if
       s" The driver preloads the checked public stdlib including lib/array.f." DS-PROMPT-LN
-      s" Prefer direct array helpers such as A-SUM, A-MAX, A-ARGMAX, A-REVERSE!, A-SCAN1!, A-MAP!, and A-FIND-INDEX." DS-PROMPT-LN
+      s" Prefer scalar helpers: A-SUM, A-MIN, A-MAX, A-COUNT-EVEN, A-ARGMAX, and A-MAX-INDEX." DS-PROMPT-LN
+      s" Prefer mutation helpers: A-REVERSE!, A-REVERSE-RANGE!, A-PREFIX-SUM!, A-RUNMAX!, A-MAP!, and A-MAPI!." DS-PROMPT-LN
+      s" Prefer scan/find helpers: A-SCAN!, A-SCAN1!, A-FOLD, A-FOLDI, A-FIND-INDEX, and A-FIND-INDEXI." DS-PROMPT-LN
       s" Pass lengths as len >LEN; index-aware quotations receive idx and can use IDX>N for arithmetic." DS-PROMPT-LN
       exit
    then

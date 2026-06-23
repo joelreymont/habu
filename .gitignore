@@ -16,6 +16,7 @@ test/*.tmp
 
 # generated benchmark evidence and reports stay outside git
 bench/llm/RESULTS*.md
-bench/llm/results/*.json
-bench/llm/results/*.jsonl
-bench/llm/results/*.log
+bench/llm/*.json
+bench/llm/*.jsonl
+bench/llm/*.log
+bench/llm/results/

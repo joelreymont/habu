@@ -276,7 +276,7 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
       then
    repeat
    BF-FOUND @ 0= if s" FIXPOINT BROKEN: no convergence after 4 generations" BF-BUILD-RC die then
-   s" build OK: stage compiler fixpoint" type cr ;
+   s" bin/hb refresh OK: compiler fixpoint" type cr ;
 
 : BF-BUILD-STDIN ( -- )
    BF-STDIN-SOURCE
@@ -300,7 +300,7 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    s" hb-new" BF-CODESIGN-FORCE-TMP
    s" hb-new" BF-CHMOD-X-TMP
    s" hb-new" BF-EXPECT
-   s" build OK: hb-new validated" type cr ;
+   s" bin/hb refresh OK: candidate validated" type cr ;
 
 : BF-BUILD-SNAP ( -- )
    BF-STAGE-FIXPOINT
@@ -331,7 +331,7 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    BF-BUILD-ALL
    BF-INSTALL-HB-NEW
    BF-CLEAN-BIN
-   s" build OK: bin/hb (checked engine, tty REPL + stdin)" type cr ;
+   s" bin/hb ready (checked engine, tty REPL + stdin)" type cr ;
 
 : BF-USAGE ( -- )
    s" usage: tools/build-fixpoint.f [all|install|stage|stdin|snap]" BF-USAGE-RC die ;

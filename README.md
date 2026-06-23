@@ -15,8 +15,11 @@ and no GC** — accepted code runs under the native `bin/hb` engine.
 
 ## Requirements
 
-macOS ARM64 and a trusted native `hb` seed if `bin/hb` is not already present.
-See [`docs/seed.md`](docs/seed.md).
+macOS ARM64. If `bin/hb` is missing, bootstrap it with Gforth; Gforth only
+creates private `HB_TMP` artifacts used to produce `bin/hb`. Gforth must support
+`{:` locals; Homebrew `gforth` 0.7.3 is too old. See
+[`docs/bootstrap.md`](docs/bootstrap.md). A trusted native seed remains an
+alternate recovery path; see [`docs/seed.md`](docs/seed.md).
 
 ## Use
 
@@ -24,13 +27,17 @@ Two tiers ship in this repo:
 
 **The native engine** — `bin/hb` is a standalone macOS ARM64 Forth (no gforth,
 no C) that JIT-compiles to machine code, type-checks definitions with its
-built-in checker, and **rebuilds itself byte-for-byte** (stage2 fixpoint):
+built-in checker, and **rebuilds itself byte-for-byte**. It is the only native
+build output installed by this repo:
 
 ```sh
-/path/to/hb-seed --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f src/core/sha256.f lib/codesign.f tools/seed.f tools/seed-main.f -- /path/to/hb-seed
-                       # recover bin/hb from a trusted native seed
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
-                       # daily rebuild: bin/hb recompiles itself, no gforth
+HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth-fast tools/bootstrap.sh
+                       # no-binary recovery: Gforth creates private HB_TMP
+                       #   artifacts, then installs exactly bin/hb
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f \
+  lib/process.f lib/process-argv.f lib/process-env.f lib/build.f \
+  lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
+                       # refresh bin/hb from current source, no Gforth
 echo ': SQ dup * ; 7 SQ .' | bin/hb     # batch: program from stdin
 bin/hb script.f arg...                  # script: program from file; args via
                                         #   SCRIPT-ARGC / SCRIPT-ARGV$
@@ -117,7 +124,7 @@ primitives consume typed pointers, and `ptr` without an inner type is rejected.
 - `test/` — `T{ … }T` tests. `test/run.f` is the DEFAULT gate, habu-native
   end to end: lints + self-rebuild fixpoint + engine suite + checked `hb` +
 	  tty REPL + hb-build (runs with gforth absent). `tools/` also holds
-	  seed/build-fixpoint/hb-build/imgdump/
+	  bootstrap/seed/build-fixpoint/hb-build/imgdump/
 	  jitdump/clobber-lint/shadow-lint/repl-lint; snapshot refreshes run through
   the checked `tools/build-fixpoint.f snap|install` driver.
 

@@ -1,0 +1,97 @@
+\ cgloop.fs — register-resident DO..LOOP mechanism. A straight-line loop body
+\ keeps its loop-carried values in registers across the back-edge instead of
+\ round-tripping memory every iteration. This file is the pure mechanism:
+\   CARRY-SNAP   — pin the live VS into fixed register homes at loop entry
+\   CARRY-RECON  — parallel-move the carry-out registers back into those homes
+\   carry-restore— rebuild the VS from the homes after the loop
+\   cg-snapshot/cg-rollback — speculative compile + clean undo when a candidate
+\                  loop turns out not to be register-eligible (depth mismatch)
+\ walk.fs decides eligibility (straight-line pre-scan) and drives the body.
+
+require regstack.fs
+
+CHECKING-ON? @  CHECKING-ON? off          \ IR mutation / bit math / loops = unchecked
+
+\ Force VS entry i to a GP register (CON -> LIT, FREG -> FMOVDX), rewriting the
+\ entry in place; return the register. Idempotent on an already-REG entry.
+: VS-FORCE ( i -- r )
+   {: i :}  VTAG i cells + @ {: t :}  VVAL i cells + @ {: v :}
+   t V-REG = if  v exit  then
+   R-ALLOC {: r :}
+   t V-FREG = if  r v FMOVDX,  v D-FREE  else  r v LIT64,  then
+   V-REG i cells VTAG + !  r i cells VVAL + !  r ;
+
+\ --- carry homes: the registers the loop body expects its carry in at ltop ---
+create CARRY-R 16 cells allot   variable CARRY-N
+
+: CARRY-SNAP ( -- )                       \ all live VS entries -> regs, record homes
+   VSP @ dup 16 > if 1 abort" cg: loop carry too deep for register residency" then
+   dup CARRY-N !  0 ?do  i VS-FORCE  CARRY-R i cells + !  loop ;
+
+\ --- parallel register move: src[i] -> dst[i], cycle-safe via T0 scratch ---
+create PM-SRC 16 cells allot   create PM-DST 16 cells allot
+create PM-DONE 16 cells allot  variable PM-N
+
+: PM-NOOP? ( i -- f )  cells {: o :}  PM-SRC o + @  PM-DST o + @ = ;
+
+: PM-READY? ( i -- f )                    \ pending, non-noop, dst read by no pending move
+   dup cells PM-DONE + @ if  drop false exit then
+   dup PM-NOOP? if  drop false exit then
+   cells PM-DST + @ {: d :}  true
+   PM-N @ 0 ?do  PM-DONE i cells + @ 0= if
+      PM-SRC i cells + @ d = if  drop false  leave then  then  loop ;
+
+: PM-FIND ( -- i|-1 )  PM-N @ 0 ?do  i PM-READY? if  i unloop exit then  loop  -1 ;
+
+: PM-REM  ( -- n )     0 PM-N @ 0 ?do  PM-DONE i cells + @ 0= if 1+ then  loop ;
+
+: PM-EMIT ( i -- )  >r  PM-DST r@ cells + @  PM-SRC r@ cells + @  MOV,  1 PM-DONE r> cells + ! ;
+
+: PM-BREAK ( -- )                         \ redirect a pending move's src through T0
+   PM-N @ 0 ?do  PM-DONE i cells + @ 0= if
+      T0 PM-SRC i cells + @ MOV,  T0 PM-SRC i cells + !  unloop exit then  loop ;
+
+: PM-RUN ( -- )
+   PM-N @ 0 ?do  i PM-NOOP? if 1 else 0 then  PM-DONE i cells + !  loop
+   begin  PM-REM 0>  while
+      PM-FIND dup 0>= if  PM-EMIT  else  drop  PM-BREAK  then
+   repeat ;
+
+\ Reconcile carry-out (current VS) into the carry homes. RL-FAIL (set when the body
+\ touched memory below the carry) or a net depth change means this was never a
+\ register loop; signal it (no parallel move) and walk.fs rolls back to memory.
+\ Flag, don't throw: gforth 0.7.9 faults unwinding `throw` across emit-rloop's locals.
+: CARRY-RECON ( -- )
+   VSP @ CARRY-N @ <> if  RL-FAIL on  then
+   RL-FAIL @ if exit then
+   CARRY-N @ 0 ?do  i VS-FORCE  PM-SRC i cells + !  CARRY-R i cells + @  PM-DST i cells + !  loop
+   CARRY-N @ PM-N !  PM-RUN ;
+
+\ After the loop the live values are in the carry homes; rebuild the VS to match
+\ and fix the pool free-state so only the homes are allocated.
+: R-TAKE ( r -- )  #RPOOL 0 ?do  RPOOL i cells + @ over = if  0 RFREE i cells + !  then  loop  drop ;
+
+: CARRY-RESTORE ( -- )
+   RP-RESET  DP-RESET  0 VSP !
+   CARRY-N @ 0 ?do  CARRY-R i cells + @  dup R-TAKE  V-PUSHR  loop ;
+
+\ --- speculative compile / rollback (undo a register-loop attempt cleanly) ---
+create VS-STAG VMAX cells allot   create VS-SVAL VMAX cells allot   variable VS-SSP
+create RF-SAVE #RPOOL cells allot  create DF-SAVE #DPOOL cells allot
+variable ICSV  variable LBLSV  variable LDSV  variable CFSV
+
+: CG-SNAPSHOT ( -- )
+   #IC @ ICSV !  #LBL @ LBLSV !  LOOP-DEPTH @ LDSV !  CF-SP @ CFSV !
+   VSP @ VS-SSP !
+   VSP @ 0 ?do  VTAG i cells + @ VS-STAG i cells + !  VVAL i cells + @ VS-SVAL i cells + !  loop
+   #RPOOL 0 ?do  RFREE i cells + @ RF-SAVE i cells + !  loop
+   #DPOOL 0 ?do  DFREE i cells + @ DF-SAVE i cells + !  loop ;
+
+: CG-ROLLBACK ( -- )
+   ICSV @ #IC !  LBLSV @ #LBL !  LDSV @ LOOP-DEPTH !  CFSV @ CF-SP !
+   VS-SSP @ VSP !
+   VSP @ 0 ?do  VS-STAG i cells + @ VTAG i cells + !  VS-SVAL i cells + @ VVAL i cells + !  loop
+   #RPOOL 0 ?do  RF-SAVE i cells + @ RFREE i cells + !  loop
+   #DPOOL 0 ?do  DF-SAVE i cells + @ DFREE i cells + !  loop ;
+
+CHECKING-ON? !

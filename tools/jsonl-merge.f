@@ -12,6 +12,7 @@
 48 constant JM-ZERO
 
 create JM-LF 1 allot
+create JM-TMP-PATH FS-PATH-CAP allot
 
 variable JM-OUT-FD
 variable JM-WR-OFF
@@ -19,6 +20,7 @@ variable JM-WR-N
 variable JM-NODE
 variable JM-KIND
 variable JM-CODE
+variable JM-TMP-U
 
 JM-LF-C JM-LF c!
 -1 JM-OUT-FD !
@@ -32,6 +34,9 @@ JM-LF-C JM-LF c!
 : JM-EMPTY$ ( -- ptr u8 n )
    s" " drop 0 ;
 
+: JM-TMP$ ( -- ptr u8 n )
+   JM-TMP-PATH JM-TMP-U @ ;
+
 : JM-USAGE ( -- )
    s" tools/jsonl-merge.f OUT.jsonl IN1.jsonl [IN2.jsonl ...]" ARGV-USAGE! ;
 
@@ -42,7 +47,16 @@ JM-LF-C JM-LF c!
 : JM-DIE ( ptr u8 n -- )
    JM-CLOSE-OUT
    JSONLF-CLOSE
+   JM-TMP$ nip 0 > if JM-TMP$ EXISTS? if JM-TMP$ REMOVE-FILE then then
    JM-IO-RC die ;
+
+: JM-CLOSE-COMMIT ( -- )
+   JM-OUT-FD @ dup 0 >= if
+      close
+   else
+      drop
+   then
+   -1 JM-OUT-FD ! ;
 
 : JM-SB-U+ ( n -- ) {: n :}
    n JM-DEC >= if n JM-DEC / recurse then
@@ -55,6 +69,16 @@ JM-LF-C JM-LF c!
       exit
    then
    n JM-SB-U+ ;
+
+: JM-BUILD-TMP ( ptr u8 n -- ) {: path:ptr pathu :}
+   SB-RESET
+   path pathu SB-APPEND
+   s" .tmp-" SB-APPEND
+   mono-ns JM-SB-U+
+   SB$ {: a:ptr u :}
+   u FS-PATH-CAP > if s" jsonl-merge: temp path too long" JM-DIE then
+   a JM-TMP-PATH u BYTE-COPY
+   u JM-TMP-U ! ;
 
 : JM-ROW-DIE ( ptr u8 n n -- ) {: path:ptr pathu code :}
    SB-RESET
@@ -113,8 +137,14 @@ JM-LF-C JM-LF c!
    JSONLF-CLOSE ;
 
 : JM-OPEN-OUT ( -- )
-   0 ARGV-POS$ JM-EMPTY$ WRITE-ALL
-   0 ARGV-POS$ OPEN-APPEND-FD JM-OUT-FD ! ;
+   0 ARGV-POS$ JM-BUILD-TMP
+   JM-TMP$ JM-EMPTY$ WRITE-ALL
+   JM-TMP$ OPEN-APPEND-FD JM-OUT-FD ! ;
+
+: JM-COMMIT-OUT ( -- )
+   JM-CLOSE-COMMIT
+   JM-TMP$ 0 ARGV-POS$ RENAME-FILE
+   0 JM-TMP-U ! ;
 
 : JM-MERGE-INPUTS ( -- )
    1 begin dup ARGV-POS# < while
@@ -128,6 +158,6 @@ JM-LF-C JM-LF c!
    2 -1 ARGV-EXPECT-POS
    JM-OPEN-OUT
    JM-MERGE-INPUTS
-   JM-CLOSE-OUT ;
+   JM-COMMIT-OUT ;
 
 JM-MAIN

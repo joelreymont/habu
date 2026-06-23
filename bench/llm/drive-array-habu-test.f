@@ -2,6 +2,9 @@
 
 T-RESET
 
+: DAHT-PROMPT-HAS ( ptr u8 n -- )
+   DS-PROMPT$ 2swap CONTAINS? TTRUE ;
+
 s" id	label	command	args	parser	token_fields	timeout_s
 fixture	Fixture	/bin/echo	{prompt}	raw		2
 " MR-REGISTRY!
@@ -29,6 +32,13 @@ s" test-seed" DS-SEED! 1 DS-TRIAL ! 8 DS-TASK-ORDER ! 2 DS-K ! 1 DS-MAX-REPAIRS 
 51 DS-ID ! s" REVERSE" DS-NAME! s" ptr a n --" DS-SIG! s" Reverse the array in place." DS-SPEC!
 s" aa" DAH-CONV! s" [1 2 3] -> [3 2 1]; [7] -> [7]" DAH-VECTORS! DAH-VECTORS$ DS-TESTS!
 s" stdlib" DAH-ARM!
+DAH-BUILD-PROMPT
+s" A-COUNT-EVEN" DAHT-PROMPT-HAS
+s" A-ARGMAX" DAHT-PROMPT-HAS
+s" A-REVERSE!" DAHT-PROMPT-HAS
+s" A-PREFIX-SUM!" DAHT-PROMPT-HAS
+s" A-RUNMAX!" DAHT-PROMPT-HAS
+s" A-FIND-INDEXI" DAHT-PROMPT-HAS
 s" : REVERSE ( ptr a n -- ) >LEN A-REVERSE! ;" DAH-RUN-TEXT
 LR-OUTCOME$ s" pass" T$=
 LR-FIRST-CHECKER$ s" certified" T$=

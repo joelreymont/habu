@@ -257,8 +257,10 @@ bad	Bad	/bin/echo	--bad-template	raw		2
    MRUN-TEXT$ s" -p hi --output-format json
 " T$=
    s" codex" s" task" MRT-RUN
-   MRUN-TEXT$ s" exec --disable plugins --disable apps --disable multi_agent --disable tool_suggest --disable workspace_dependencies --skip-git-repo-check --ignore-rules --ignore-user-config --sandbox read-only --output-last-message" CONTAINS? TTRUE
-   MRUN-TEXT$ s" --json" CONTAINS? TFALSE
+   MRUN-TEXT$ s" exec --disable plugins --disable apps --disable multi_agent --disable tool_suggest --disable workspace_dependencies --skip-git-repo-check --ignore-rules --ignore-user-config --sandbox read-only" CONTAINS? TTRUE
+   MRUN-TEXT$ s" --cd" CONTAINS? TTRUE
+   MRUN-TEXT$ s" --json" CONTAINS? TTRUE
+   MRUN-TEXT$ s" --output-last-message" CONTAINS? TTRUE
    MRUN-TEXT$ s" task" CONTAINS? TTRUE
    s" empty" s" fallback" MRT-RUN
    MRUN-TEXT$ s" fallback

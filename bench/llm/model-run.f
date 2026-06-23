@@ -196,6 +196,9 @@ TRUSTED: MRUN-PROMPT$ ( -- ptr u8 n )
    s" --ignore-user-config"  >LEN PROC-ARGV+
    s" --sandbox"  >LEN PROC-ARGV+
    s" read-only"  >LEN PROC-ARGV+
+   s" --cd"  >LEN PROC-ARGV+
+   MRUN-FINAL-DIR$  >LEN PROC-ARGV+
+   s" --json"  >LEN PROC-ARGV+
    s" --output-last-message"  >LEN PROC-ARGV+
    MRUN-FINAL-PATH$  >LEN PROC-ARGV+
    prompt promptu  >LEN PROC-ARGV+ ;

@@ -85,8 +85,8 @@ create BFT-READ-BUF BFT-READ-CAP allot
    BFT-RUN-BUILD 0 T=
    {: outu erru :}
    BFT-ERR erru BFT-EMPTY$ T$=
-   BFT-OUT outu s" build OK: stage compiler fixpoint" CONTAINS? TTRUE
-   BFT-OUT outu s" build OK: hb-new validated" CONTAINS? TTRUE
+   BFT-OUT outu s" bin/hb refresh OK: compiler fixpoint" CONTAINS? TTRUE
+   BFT-OUT outu s" bin/hb refresh OK: candidate validated" CONTAINS? TTRUE
    BFT-HB-NEW FILE? TTRUE ;
 
 : BFT-READ ( ptr u8 n -- n )

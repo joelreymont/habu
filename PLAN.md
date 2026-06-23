@@ -160,15 +160,16 @@ rebuild/snapshot.
 
 ### Native-Only Trust Root
 
-Daily work uses `bin/hb`, `tools/build-fixpoint-main.f -- install`, and `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f`.
-No-binary recovery runs `tools/seed.f tools/seed-main.f` under a trusted native
-`hb` seed, then immediately rebuilds current source. A gforth or hosted
-bootstrap path must not become a normal gate, benchmark dependency, or
-documented workflow.
+Daily work uses `bin/hb`, `tools/build-fixpoint-main.f -- install` to refresh
+`bin/hb`, and `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f`.
+No-binary recovery runs `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh`.
+That Gforth path exists only for no-binary recovery: it creates private `HB_TMP`
+artifacts from `bootstrap/`, installs exactly `bin/hb`, and immediately refreshes
+`bin/hb` from current source.
 
-Historical bootstrap sources may remain only as inert reference material. They
-must not feed default lint, benchmark, build, or self-check paths. The native
-fixpoint build and native gate are the active parity proof.
+The Gforth bootstrap must not feed default lint, benchmark, daily refresh, or
+self-check paths. The native `bin/hb` fixpoint and native gate remain the active
+parity proof.
 
 Verification must assert that `bin/` exposes no public executable except `hb`
 after rebuild, and that maker/build engines remain private temp artifacts under
@@ -985,8 +986,8 @@ The plan is done only when all of these are true:
 - `bin/hb` is the only public binary, and REPL/stdin/script invocation modes are
   covered by docs and tests, including pipe-with-args and empty-stdin script
   fallback.
-- Daily build/test paths stay native-only; no gforth or hosted bootstrap path is
-  reintroduced into the default workflow.
+- Daily refresh/test paths stay native-only; the explicit Gforth bootstrap remains
+  no-binary recovery only and is not reintroduced into the default workflow.
 - The build shell/Habu boundary is documented, and build policy/step validation
   lives in Habu scripts/libraries.
 - `test/prop-test.f` remains in the gate and keeps using `depth`, not a stack

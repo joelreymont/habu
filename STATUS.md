@@ -1,6 +1,6 @@
 # habu — Status
 
-Last verified: 2026-06-23
+Last verified: 2026-06-24
 Gate: passing
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
@@ -14,13 +14,16 @@ The native engine type-checks its own toolchain source (`src/`) as it compiles
 it. "Certified" = body inferred and (where a signature is declared) verified
 against it; "Uncheckable" = effect not statically inferable and not trusted;
 "Rejected" = inferred effect contradicts the declaration. Native
-`tools/build-fixpoint-main.f -- install` runs the self-check on every rebuild;
+`tools/build-fixpoint-main.f -- install` refreshes `bin/hb` and runs the self-check;
 `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f` is the Habu-native
 gate. That gate runs native parity/shadow/clobber/trust/status/filemap lints,
 the retired host-script token lint, the rebuild fixpoint, JSON diagnostic
 assertions, property soundness smoke, PTY/process checks, and AOT/`--repl`
-builder checks. The old gforth bootstrap oracle is retired; native recovery uses
-`tools/seed.sh` and native verification uses this gate.
+builder checks. No-binary recovery uses `tools/bootstrap.sh`: Gforth creates
+only private `HB_TMP` artifacts from `bootstrap/`, then installs exactly
+`bin/hb` and immediately refreshes that binary from current source. The gate,
+daily refresh, benchmark, and verification paths remain Habu-native and run with
+Gforth absent.
 
 History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling,
 890/0/0 after that model landed, and 979/0/0 after the native primitive,

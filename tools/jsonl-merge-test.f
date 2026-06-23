@@ -140,10 +140,13 @@ variable JMT-FILE-U
    JMT-FILE JMT-FILE-U @ JMT-WANT$ T$= ;
 
 : TEST-JMT-BAD ( -- )
+   JMT-BAD-OUT-PATH$ s" keep-me" WRITE-ALL
    JMT-RUN-BAD {: outu erru rc :}
    outu drop
    rc 0 T<>
-   JMT-ERR erru s" jsonl-merge: invalid row" CONTAINS? TTRUE ;
+   JMT-ERR erru s" jsonl-merge: invalid row" CONTAINS? TTRUE
+   JMT-BAD-OUT-PATH$ JMT-FILE JMT-CAP READ-ALL JMT-FILE-U !
+   JMT-FILE JMT-FILE-U @ s" keep-me" T$= ;
 
 : JSONL-MERGE-TEST ( -- )
    T-RESET

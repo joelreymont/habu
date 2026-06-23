@@ -820,8 +820,8 @@ behavior and returns kind/code.
 
 `lib/process-env.f` is a post-rebuild layer on top of `lib/process-argv.f` for
 explicit child environments and PATH lookup. Keeping it separate preserves the
-native seed path: old seeds can still load `process-argv` for the native build
-fixpoint installer
+native seed path: old seeds can still load `process-argv` for the `bin/hb`
+fixpoint refresh
 before the newer `spawn-argv-env-io` primitive exists.
 
 ```forth
