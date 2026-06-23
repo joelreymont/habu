@@ -1,10 +1,8 @@
 \ report.f - Habu-native LLM benchmark report reducer.
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, tools/json.f,
-\ and tools/argv.f.
+\ tools/json-file.f, and tools/argv.f.
 
 16 constant RR-ARM-MAX
-$80000 constant RR-LINE-CAP
-$4000 constant RR-READ-CAP
 $40000 constant RR-PERF-CAP
 512 constant RR-KEY-CAP
 1024 constant RR-VALUE-CAP
@@ -42,8 +40,6 @@ $40000 constant RR-PERF-CAP
 123 constant RR-LBRACE
 125 constant RR-RBRACE
 
-create RR-LINE RR-LINE-CAP allot
-create RR-READ RR-READ-CAP allot
 create RR-PERF RR-PERF-CAP allot
 create RR-KEY RR-KEY-CAP allot
 create RR-VALUE RR-VALUE-CAP allot
@@ -57,8 +53,6 @@ variable RR-MODEL-CAP
 variable RR-CAT-CAP
 variable RR-BYTE-COUNT
 variable RR-COUNT-ROWS
-variable RR-COUNT-SEEN
-variable RR-COUNT-FD
 
 variable RR-VALS-P
 
@@ -106,8 +100,8 @@ variable U-PASS-P
 variable RR-ROWS
 variable RR-STR-U
 variable RR-LINE-U
+variable RR-LINE-A
 variable RR-LINE#
-variable RR-RFD
 variable RR-I
 variable RR-J
 variable RR-K
@@ -203,6 +197,8 @@ variable RR-PERF-ARR
    RR-PTR-N-FIELD ! ;
 
 : RR-STR ( -- ptr u8 ) RR-STR-P RR-PTR-U8@ ;
+: RR-LINE-A@ ( -- ptr u8 ) RR-LINE-A RR-PTR-U8@ ;
+: RR-LINE-A! ( ptr u8 -- ) RR-LINE-A RR-PTR-U8! ;
 : RR-VALS ( -- ptr n ) RR-VALS-P RR-PTR-N@ ;
 
 : R-TASK-ID ( -- ptr n ) R-TASK-ID-P RR-PTR-N@ ;
@@ -471,7 +467,7 @@ variable RR-PERF-ARR
 : RR-END? ( -- f ) RR-I @ RR-LINE-U @ >= ;
 : RR-CH@ ( -- c )
    RR-END? if s" report: malformed JSON row" RR-FAIL then
-   RR-LINE RR-I @ + c@ ;
+   RR-LINE-A@ RR-I @ + c@ ;
 : RR-ADV ( -- ) RR-I @ 1+ RR-I ! ;
 
 : RR-WS? ( c -- f )
@@ -564,11 +560,11 @@ variable RR-PERF-ARR
    RR-I @ RR-J !
    begin RR-END? 0= while
       RR-CH@ dup RR-COMMA = swap RR-RBRACE = or if
-         RR-J @ RR-LINE + RR-I @ RR-J @ - TRIM exit
+         RR-LINE-A@ RR-J @ + RR-I @ RR-J @ - TRIM exit
       then
       RR-ADV
    repeat
-   RR-J @ RR-LINE + RR-I @ RR-J @ - TRIM ;
+   RR-LINE-A@ RR-J @ + RR-I @ RR-J @ - TRIM ;
 
 : RR-TOKEN-NUM ( -- n )
    RR-VALUE-TOKEN$ STR>NUMBER? 0= if drop 0 then ;
@@ -714,68 +710,33 @@ variable RR-PERF-ARR
       RR-COMMA RR-EXPECT
    again ;
 
-: RR-FINISH-LINE ( -- )
-   RR-LINE-U @ 0= if exit then
-   RR-PARSE-ROW
-   0 RR-LINE-U !
-   RR-LINE# @ 1+ RR-LINE# ! ;
-
-: RR-LINE-BYTE ( c -- )
-   dup RR-LF = if drop RR-FINISH-LINE exit then
-   RR-LINE-U @ RR-LINE-CAP >= if s" report: JSONL line too long" RR-FAIL then
-   RR-LINE RR-LINE-U @ + c!
-   RR-LINE-U @ 1+ RR-LINE-U ! ;
-
-: RR-SCAN-BUF ( n -- )
-   {: n :}
-   0 begin dup n < while
-      RR-READ over + c@ RR-LINE-BYTE
+: RR-LINE-NONCR? ( ptr u8 n -- bool ) {: a:ptr u :}
+   0 begin dup u < while
+      dup a + c@ RR-CR <> if drop 0 0= exit then
       1+
-   repeat drop ;
+   repeat drop
+   0 0= 0= ;
 
-: RR-COUNT-LINE ( -- )
-   RR-COUNT-SEEN @ 0= 0= if
-      RR-COUNT-ROWS @ 1+ RR-COUNT-ROWS !
-      0 RR-COUNT-SEEN !
-   then ;
-
-: RR-COUNT-BYTE ( n -- )
-   RR-BYTE-COUNT @ 1+ RR-BYTE-COUNT !
-   dup RR-LF = if drop RR-COUNT-LINE exit then
-   RR-CR = if exit then
-   1 RR-COUNT-SEEN ! ;
-
-: RR-COUNT-BUF ( n -- )
-   {: n :}
-   0 begin dup n < while
-      RR-READ over + c@ RR-COUNT-BYTE
-      1+
-   repeat drop ;
+: RR-SCAN-LINE ( ptr u8 n -- ) {: a:ptr u :}
+   u 0= if exit then
+   a RR-LINE-A!
+   u RR-LINE-U !
+   RR-PARSE-ROW ;
 
 : RR-COUNT-RUN ( ptr u8 n -- )
-   0 RR-BYTE-COUNT !
+   2dup FILE-SIZE RR-BYTE-COUNT !
    0 RR-COUNT-ROWS !
-   0 RR-COUNT-SEEN !
-   FS-PATHZ open-rd RR-COUNT-FD !
-   RR-COUNT-FD @ 0 < if s" report: cannot open run JSONL" RR-FAIL then
-   begin
-      RR-COUNT-FD @ RR-READ RR-READ-CAP read dup 0 < if RR-COUNT-FD @ close s" report: read failed" RR-FAIL then
-      dup 0 > while
-      RR-COUNT-BUF
-   repeat drop
-   RR-COUNT-FD @ close
-   RR-COUNT-LINE ;
+   JSONLF-OPEN
+   begin JSONLF-NEXT-LINE while
+      RR-LINE-NONCR? if RR-COUNT-ROWS @ 1+ RR-COUNT-ROWS ! then
+   repeat 2drop ;
 
 : RR-SCAN-RUN ( ptr u8 n -- )
-   FS-PATHZ open-rd RR-RFD !
-   RR-RFD @ 0 < if s" report: cannot open run JSONL" RR-FAIL then
-   begin
-      RR-RFD @ RR-READ RR-READ-CAP read dup 0 < if RR-RFD @ close s" report: read failed" RR-FAIL then
-      dup 0 > while
-      RR-SCAN-BUF
-   repeat drop
-   RR-RFD @ close
-   RR-FINISH-LINE ;
+   JSONLF-OPEN
+   begin JSONLF-NEXT-LINE while
+      JSONLF-LINE# RR-LINE# !
+      RR-SCAN-LINE
+   repeat 2drop ;
 
 : RR-STR-EQ-OFF ( n n ptr u8 n -- bool )
    {: off:n u:n a:ptr v:n :}

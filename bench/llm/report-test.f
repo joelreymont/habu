@@ -123,6 +123,7 @@ RPT-LF RPT-LF-BUF c!
    s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/json-file.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" bench/llm/report.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+

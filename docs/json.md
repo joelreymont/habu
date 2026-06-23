@@ -72,6 +72,30 @@ Returned nodes are valid until the next `JSONL-NEXT-OBJECT` or
 `JSONL-NEXT-ROW` call, because each line parse reuses the parser DOM tables and
 string arena.
 
+## JSONL Files
+
+`tools/json-file.f` adds a dynamic file-backed JSONL cursor. Load it after
+`lib/errors.f`, `lib/memory.f`, `lib/fs.f`, and `tools/json.f`:
+
+```sh
+bin/hb --load lib/errors.f lib/memory.f lib/fs.f tools/json.f tools/json-file.f my-tool.f -- rows.jsonl
+```
+
+Core words:
+
+- `JSONLF-OPEN ( ptr u8 n -- )`
+- `JSONLF-NEXT-LINE ( -- ptr u8 n bool )`
+- `JSONLF-NEXT-ROW ( -- node kind code bool )`
+- `JSONLF-LINE# ( -- n )`
+- `JSONLF-LINE-CAP ( -- n )`
+- `JSONLF-CLOSE ( -- )`
+
+The cursor reads fixed-size chunks and grows the current line through
+`lib/memory.f`, so benchmark rows are limited by OS allocation and parser table
+capacity, not by a fixed line buffer. Empty physical lines are reported as
+`JSONL-ROW-BLANK`, final partial lines are returned once, EOF is idempotent, and
+early `JSONLF-CLOSE` is allowed.
+
 ## Writer
 
 `JSON-WRITE ( node -- ptr u8 u )` emits compact JSON for a parsed node. It escapes

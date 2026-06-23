@@ -1,10 +1,10 @@
 \ validate-results-lib.f - validate and summarize LLM benchmark metrics.
-\ Load after lib/errors.f, lib/memory.f, tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/json.f,
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
+\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
+\ tools/json.f, tools/json-file.f,
 \ and tools/argv.f.
 
 $8000 constant LV-TASK-CAP
-$4000 constant LV-READ-CAP
 256 constant LV-MAX
 2048 constant LV-ROW-MAX
 512 constant LV-GRP-MAX
@@ -34,7 +34,6 @@ $40000 constant LV-KEY-STR-CAP
 102 constant LV-LOWER-F
 
 create LV-TASK-BUF LV-TASK-CAP allot
-create LV-READ-BUF LV-READ-CAP allot
 create LV-NUM-BUF LV-NUM-CAP allot
 create LV-RUN-BUF LV-RUN-CAP allot
 create LV-MODEL-BUF LV-MODEL-CAP allot
@@ -215,12 +214,6 @@ variable LV-RC-TOK
 variable LV-RC-FIRST-R
 variable LV-RC-FIRST-O
 variable LV-RC-SUM
-variable LV-RFD
-variable LV-RGOT
-variable LV-BI
-variable LV-LINE-U
-variable LV-RESULT-A
-variable LV-RESULT-CAP-U
 variable LV-ROW-ROOT
 variable LV-ROW-KIND
 variable LV-ROW-CODE
@@ -291,38 +284,6 @@ variable LV-ROW-CODE
 
 : LV-CUR-TRIAL-A! ( ptr u8 -- )
    LV-CUR-TRIAL-A LV-PTR-U8! ;
-
-: LV-RESULT-CAP ( -- n )
-   LV-RESULT-CAP-U @ ;
-
-: LV-RESULT-A-FIELD ( -- ptr ptr u8 )
-   LV-RESULT-A LV-PTR-U8-FIELD ;
-
-: LV-RESULT-A@ ( -- ptr u8 )
-   LV-RESULT-A-FIELD @ ;
-
-: LV-RESULT-A! ( ptr u8 -- )
-   LV-RESULT-A-FIELD ! ;
-
-: LV-RESULT-BUF ( -- ptr u8 )
-   LV-RESULT-A@ ;
-
-: LV-COPY-RESULT-OLD ( ptr u8 -- ) {: dst:ptr :}
-   LV-RESULT-BUF dst LV-LINE-U @ BMOVE ;
-
-: LV-GROW-RESULT ( n -- ) {: need :}
-   need MEM-ALLOC-64K-SPAN {: dst:ptr cap :}
-   LV-RESULT-CAP 0 > IF dst LV-COPY-RESULT-OLD THEN
-   dst LV-RESULT-A!
-   cap LV-RESULT-CAP-U ! ;
-
-: LV-ENSURE-RESULT ( n -- ) {: need :}
-   need 0 <= IF exit THEN
-   need LV-RESULT-CAP <= IF exit THEN
-   need LV-GROW-RESULT ;
-
-: LV-INIT-RESULT ( -- )
-   LV-RESULT-CAP 0= IF LV-READ-CAP LV-ENSURE-RESULT THEN ;
 
 : LV-OUT ( ptr u8 n -- ) type ;
 : LV-NL ( -- ) 10 emit ;
@@ -1569,6 +1530,13 @@ variable LV-ROW-CODE
    THEN
    2drop drop E-JSON-SYNTAX LV-JSON-FAIL ;
 
+: LV-CHECK-RESULT-OUTCOME ( n n n -- )
+   LV-ROW!
+   LV-ROW-KIND @ JSONL-ROW-JSON = IF LV-ROW-ROOT @ LV-CHECK-ROW exit THEN
+   LV-ROW-KIND @ JSONL-ROW-ERROR = IF LV-ROW-CODE @ LV-JSON-FAIL exit THEN
+   LV-ROW-KIND @ JSONL-ROW-BLANK = IF LV-RESULT-BLANK-FAIL exit THEN
+   LV-ROW-CODE @ LV-JSON-FAIL ;
+
 : LV-RESULT-LINE ( ptr u8 n -- )
    dup 0= IF
       JSON-PARSE-TRY LV-ROW!
@@ -1576,29 +1544,6 @@ variable LV-ROW-CODE
    THEN
    JSONL-START-STRICT
    LV-CHECK-RESULT-ROW ;
-
-: LV-FINISH-RESULT-LINE ( -- )
-   LV-LINE @ 1+ LV-LINE !
-   LV-RESULT-BUF LV-LINE-U @ LV-LINE-LEN LV-RESULT-LINE
-   0 LV-LINE-U ! ;
-
-: LV-RESULT-BYTE {: c :} ( n -- )
-   c LV-LF = IF LV-FINISH-RESULT-LINE exit THEN
-   LV-LINE-U @ 1+ LV-ENSURE-RESULT
-   c LV-RESULT-BUF LV-LINE-U @ + c!
-   LV-LINE-U @ 1+ LV-LINE-U ! ;
-
-: LV-SCAN-RESULT-BYTES {: n :} ( n -- )
-   0 LV-BI !
-   begin LV-BI @ n < while
-      LV-READ-BUF LV-BI @ + c@ LV-RESULT-BYTE
-      LV-BI @ 1+ LV-BI !
-   repeat ;
-
-: LV-OPEN-RESULT ( -- )
-   LV-RESULT-PATH$ PATHZ
-   PATHBUF 0 0 open LV-RFD !
-   LV-RFD @ 0 < IF s" cannot open result file" LV-FAIL THEN ;
 
 : LV-RESET-SUMMARY ( -- )
    0 LV-SEEN# !
@@ -1657,17 +1602,12 @@ variable LV-ROW-CODE
 : LV-SCAN-RESULTS ( -- )
    LV-RESET-SUMMARY
    0 LV-LINE !
-   0 LV-LINE-U !
-   LV-INIT-RESULT
-   LV-OPEN-RESULT
-   begin
-      LV-RFD @ LV-READ-BUF LV-READ-CAP read dup LV-RGOT ! 0 >
-   while
-      LV-RGOT @ LV-SCAN-RESULT-BYTES
+   LV-RESULT-PATH$ JSONLF-OPEN
+   begin JSONLF-NEXT-ROW while
+      JSONLF-LINE# LV-LINE !
+      LV-CHECK-RESULT-OUTCOME
    repeat
-   LV-RFD @ close
-   LV-RGOT @ 0 < IF s" result read failed" LV-FAIL THEN
-   LV-LINE-U @ 0 > IF LV-FINISH-RESULT-LINE THEN ;
+   2drop drop ;
 
 : LV-OUTPUT-REFERENCE ( -- )
    LV-SEEN# @ LV-REF-TASK# @ <> IF

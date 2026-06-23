@@ -678,5 +678,6 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Foundational load changes must update child argv builders:** when a module
   gains a dependency such as `tools/json.f` on `lib/memory.f`, update every
   Habu-spawned `--load` list and gate assertion helper, not just top-level
-  commands. Prove with the exact failing child fixture before rerunning the full
-  gate.
+  commands. Manual verification commands in `PLAN.md`/docs are part of the same
+  contract; regenerate and compare committed artifacts to catch fixture gaps.
+  Prove with the exact failing child fixture before rerunning the full gate.

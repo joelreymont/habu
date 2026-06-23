@@ -201,6 +201,7 @@ ERT-LF ERT-LF-BUF c!
    s" tools/lint/token.f"  >LEN PROC-ARGV+
    s" tools/lint/lib.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/json-file.f"  >LEN PROC-ARGV+
    s" bench/llm/validate-results-lib.f"  >LEN PROC-ARGV+
    s" bench/llm/expanded-report.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
