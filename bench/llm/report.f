@@ -1297,7 +1297,7 @@ variable RR-PERF-ARR
 
 : RR-HEADER. ( -- )
    s" # RESULTS.md — Habu vs JavaScript, Python, TypeScript, and Rust: LLM codegen on array/memory algorithms" RR-OUT RR-NL RR-NL
-   s" Generated from `results/run.jsonl` (" RR-OUT RR-ROWS @ RR-U. s"  trials). Models: " RR-OUT RR-MODELS.
+   s" Generated from `" RR-OUT 0 ARGV-POS$ RR-OUT s" ` (" RR-OUT RR-ROWS @ RR-U. s"  trials). Models: " RR-OUT RR-MODELS.
    s" . Tasks: " RR-OUT RR-TASK-N @ RR-U. s"  algorithms over an integer array (sum/max/min/argmax/count, reverse/prefix-sum/square/negate/running-max)." RR-OUT RR-NL
    s" Raw Habu requires typed pointers, `i cells arr + @`/`!` indexing, in-place mutation, and concatenative" RR-OUT RR-NL
    s" loops — unfamiliar territory for an LLM. The Habu + array helpers arm exposes checked helpers for array access and" RR-OUT RR-NL

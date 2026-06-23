@@ -217,6 +217,13 @@ RPT-LF RPT-LF-BUF c!
    s" | TASK-B | 75 |" RPT-CONTAINS
    s" raw pass/1" RPT-CONTAINS ;
 
+: RPT-TEST-INPUT-PATH-HEADING ( -- )
+   RPT-CLEAR
+   1 s" PATH" s" fixture" s" js" s" arrays" 5 10 1 RPT-PASS-ROW
+   RPT-CAPTURE
+   s" Generated from `" RPT-CONTAINS
+   RPT-RESULT$ RPT-CONTAINS ;
+
 : RPT-MAIN ( -- )
    T-RESET
    RPT-PREPARE
@@ -227,6 +234,7 @@ RPT-LF RPT-LF-BUF c!
    RPT-TEST-CATEGORY-DELTAS
    RPT-TEST-FALSE-REJECT
    RPT-TEST-TASK-TABLE-ROWS
+   RPT-TEST-INPUT-PATH-HEADING
    CLEANUP-RUN
    T-REPORT
    s" report-test: ok" type cr ;
