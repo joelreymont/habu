@@ -626,7 +626,9 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   can create a malformed dot; subcommands such as `dot purge` do not support
   `--help` and may mutate state. Use `dot add "Title" -d "Full context..."`,
   `dot ready`, `dot ls`, `dot tree`, `dot show <id>`, and
-  `dot on <id>`/`dot off <id> -r "completed: evidence..."`.
+  `dot on <id>`/`dot off <id> -r "completed: evidence..."`. Do not use `-a` to
+  mean "child of"; it writes a blocking edge. Do not nest under an ID that is
+  already a dot file inside the root bucket, because that creates ambiguous IDs.
 - **Same-typed string pairs need order tests:** the checker cannot distinguish a
   path `(ptr u8 n)` from stdin bytes `(ptr u8 n)`. When a helper takes multiple
   string pairs, add a focused test or first live use that proves the semantic
