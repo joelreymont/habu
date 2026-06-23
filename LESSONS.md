@@ -502,6 +502,11 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   can exceed small writer buffers. Quote artifact bytes with a chunked Habu
   emitter instead of routing row bodies through fixed-capacity JSON builders or
   host JSON encoders.
+- **History filters must include JJ artifact refs:** after removing generated
+  benchmark outputs, verify `git rev-list --objects --all`, not just
+  `master`. Colocated JJ can keep old blobs reachable through `refs/jj/keep` and
+  `.jjconflict-*` paths; rebuild local JJ metadata from cleaned Git when those
+  refs belong only to stale local operation history.
 - **Diagnostic rows must balance repair stats:** schema-v2 rows with
   `diagnostic_count > 0` need `repair_class_stats` whose diagnostic counts sum
   to the row total and whose `first_round`/`first_order` fields preserve
