@@ -133,6 +133,8 @@ create CRHT-ERR CRHT-BUF-CAP allot
 : CRHT-ASSERT-ARGS ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;

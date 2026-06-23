@@ -121,7 +121,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | STB@ | `-- ptr u8` | Reads the snapshot source text base pointer stored in a raw variable. | `test/run.f`, `tools/build-fixpoint.f snap` | src/habu/snap.f:21 | 2026-06-16 |
 | SDB@ | `-- ptr u8` | Reads the snapshot dictionary/data-region pointer stored in a raw variable. | `test/run.f`, `tools/build-fixpoint.f snap` | src/habu/snap.f:23 | 2026-06-16 |
 | SBUF@ | `-- ptr u8` | Reads the stage2 source buffer pointer stored in a raw variable. | `test/run.f` | src/habu/stage2.f:12 | 2026-06-16 |
-| JSON-ALLOC-STR-PTR | `n -- ptr u8` | Refines an anonymous `mmap` result into a typed byte pointer for growable JSON parser string storage after size and failure checks. | `tools/json-test.f`, `tools/json-only-test.f`, `test/run.f` | tools/json.f:191 | 2026-06-22 |
 | SS-ROOT$ | `-- ptr u8 n` | Reads the stale-status lint root path pointer and length stored in raw variables across path scans. | `tools/stale-status-lint-test.f`, `test/run.f` | tools/stale-status-lint.f:45 | 2026-06-22 |
 | SS-SRC$ | `-- ptr u8 n` | Reads the stale-status lint current source buffer pointer and length stored in raw variables while scanning Markdown lines. | `tools/stale-status-lint-test.f`, `test/run.f` | tools/stale-status-lint.f:48 | 2026-06-22 |
 | SS-DATE$ | `-- ptr u8 n` | Reads the parsed STATUS.md date pointer and length stored in raw variables for validation and diagnostics. | `tools/stale-status-lint-test.f`, `test/run.f` | tools/stale-status-lint.f:51 | 2026-06-22 |

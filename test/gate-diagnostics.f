@@ -62,6 +62,8 @@ variable GDX-PATH-U
 : GDX-GJA-RESET ( -- )
    GE-HB-RESET
    s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
@@ -276,6 +278,8 @@ variable GDX-PATH-U
 : GDX-SARIF ( -- )
    GE-HB-RESET
    s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/diag-to-sarif.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+

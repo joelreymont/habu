@@ -675,3 +675,8 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Separate setup and execution budgets:** live-driver timeout tests should not
   reuse runtime limits for compile/build/setup work. Lowering runtime to test an
   infinite loop must not turn compiler latency into a `reject`.
+- **Foundational load changes must update child argv builders:** when a module
+  gains a dependency such as `tools/json.f` on `lib/memory.f`, update every
+  Habu-spawned `--load` list and gate assertion helper, not just top-level
+  commands. Prove with the exact failing child fixture before rerunning the full
+  gate.

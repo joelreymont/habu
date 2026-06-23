@@ -1,6 +1,6 @@
 \ repair-packet.f - normalize checker JSONL into an LLM repair packet.
 \ Load with argv/json support:
-\   cat tools/argv.f tools/json.f tools/repair-packet.f > /tmp/repair-packet.f
+\   bin/hb --load lib/errors.f lib/memory.f tools/argv.f tools/json.f tools/repair-packet.f -- INPUT
 \   bin/hb /tmp/repair-packet.f checker-jsonl.err
 
 \ Checked CLI packet builder. Raw fd primitives are used through checked effects.

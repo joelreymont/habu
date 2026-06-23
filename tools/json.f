@@ -1,5 +1,5 @@
 \ json.f - bounded JSON/JSONL parser and compact writer for Habu tools.
-\ Load directly with bin/hb. Parser failures throw named JSON errors.
+\ Load after lib/errors.f and lib/memory.f. Parser failures throw named JSON errors.
 
 -7100 constant E-JSON-SYNTAX
 -7101 constant E-JSON-CAPACITY
@@ -39,11 +39,6 @@ $8000 constant JSON-OUT-CAP
 $10000 constant JSON-STR-GRAIN
 $7FFFFFFFFFFFFFFF constant JSON-MAX-N
 JSON-MAX-N JSON-STR-GRAIN / constant JSON-MAX-STR-GRAINS
-0 constant JSON-MMAP-ANY
-3 constant JSON-MMAP-RW
-$1002 constant JSON-MMAP-PRIVATE-ANON
--1 constant JSON-MMAP-FD
-0 constant JSON-MMAP-OFF
 64 constant JSON-MAX-DEPTH
 128 constant JSON-ERR-CAP
 
@@ -197,9 +192,8 @@ JSON-STR-BOOT-CAP JSON-STR-CAP-U !
 : JSON-STR-SPAN ( n -- n )
    JSON-STR-GRAINS JSON-STR-GRAIN * ;
 
-TRUSTED: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
-   JSON-MMAP-ANY swap JSON-MMAP-RW JSON-MMAP-PRIVATE-ANON JSON-MMAP-FD JSON-MMAP-OFF mmap
-   dup 0 < IF s" json: string buffer mmap failed" JSON-CAPACITY THEN ;
+: JSON-ALLOC-STR-PTR ( n -- ptr u8 )
+   MEM-ALLOC-PTR ;
 
 : JSON-COPY-STR-OLD ( ptr u8 -- ) {: dst:ptr :}
    JSON-STR-BUF JSON-STR-LEN @ dst JSON-COPY ;

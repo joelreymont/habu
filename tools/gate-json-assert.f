@@ -1,5 +1,5 @@
 \ gate-json-assert.f - native JSON assertions for test/run.f.
-\ Load after tools/json.f.
+\ Load after lib/errors.f, lib/memory.f, and tools/json.f.
 
 $8000 constant GJA-IN-CAP
 $1000 constant GJA-SRC-CAP

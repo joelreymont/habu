@@ -1,6 +1,6 @@
 \ expanded-report.f - native expanded live benchmark Markdown report.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/argv.f, tools/json.f,
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/argv.f, tools/json.f,
 \ and bench/llm/validate-results-lib.f.
 
 66 constant ER-NOINPUT-RC

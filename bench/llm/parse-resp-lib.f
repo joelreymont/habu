@@ -1,5 +1,6 @@
 \ parse-resp-lib.f - loadable Habu-native model response parser.
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, tools/json.f, tools/argv.f.
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, tools/json.f,
+\ and tools/argv.f.
 
 $40000 constant PR-IN-CAP
 $10000 constant PR-OUT-CAP

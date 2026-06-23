@@ -1,6 +1,6 @@
 \ json-only.f - emit JSON diagnostic object lines, else pass stderr through.
 \ Run with argv/json support:
-\   bin/hb --load tools/argv.f tools/json.f tools/json-only.f -- stderr-file
+\   bin/hb --load lib/errors.f lib/memory.f tools/argv.f tools/json.f tools/json-only.f -- stderr-file
 
 \ Checked CLI filter. Raw fd primitives are used through checked effects.
 

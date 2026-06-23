@@ -1,5 +1,5 @@
 \ diag-to-sarif.f - convert Habu diagnostic JSONL to SARIF 2.1.0.
-\ Load after tools/json.f and run with bin/hb.
+\ Load after lib/errors.f, lib/memory.f, and tools/json.f, then run with bin/hb.
 
 65 constant SARIF-E-DATA
 74 constant SARIF-E-IO

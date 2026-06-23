@@ -92,6 +92,8 @@ create JOT-ERR JOT-BUF-CAP allot
 : JOT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/json-only.f"  >LEN PROC-ARGV+ ;

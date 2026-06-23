@@ -6,7 +6,7 @@
 Load it before the tool that uses it:
 
 ```sh
-bin/hb --load tools/json.f my-tool.f -- args...
+bin/hb --load lib/errors.f lib/memory.f tools/json.f my-tool.f -- args...
 ```
 
 ## Parser

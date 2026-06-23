@@ -1,5 +1,5 @@
 \ json-test.f - focused tests for tools/json.f.
-\ Run: cat tools/json.f tools/json-test.f | bin/hb
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f tools/json.f tools/json-test.f
 
 0 set-check
 

@@ -130,6 +130,8 @@ create RPT-ERR RPT-CAPTURE-CAP allot
 : RPT-ARGV-REPAIR ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/repair-packet.f"  >LEN PROC-ARGV+
@@ -153,6 +155,8 @@ create RPT-ERR RPT-CAPTURE-CAP allot
 : RPT-ARGV-ASSERT ( ptr u8 n -- ) {: class:ptr classu :}
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
@@ -206,6 +210,8 @@ create RPT-ERR RPT-CAPTURE-CAP allot
 : RPT-ARGV-REPAIR-NOARGS ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/repair-packet.f"  >LEN PROC-ARGV+

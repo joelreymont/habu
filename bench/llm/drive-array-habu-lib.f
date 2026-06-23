@@ -422,6 +422,8 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
 : DAH-REPAIR-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/repair-packet.f"  >LEN PROC-ARGV+

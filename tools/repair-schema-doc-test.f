@@ -163,6 +163,8 @@ create RSD-ERR RSD-BUF-CAP allot
 : RSD-RUN-ASSERT ( ptr u8 n -- n n n ) {: mode:ptr modeu :}
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
