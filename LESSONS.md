@@ -16,6 +16,10 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Use returned dot IDs directly:** after `dot add`, mark/close the exact ID
   printed by the command. Do not infer IDs from `.dots` filenames with shell
   glue; malformed inference creates avoidable tracker errors.
+- **Separate Habu-only and cross-language benchmark claims:** the expanded
+  Forth-only run proves checked repair/replay behavior; the 600-row
+  cross-language array run is the evidence for "best LLM target" claims. Do not
+  use one artifact to answer the other's question.
 - **No-binary recovery is native-seeded:** `bin/hb` is generated/ignored. Recover
   with `tools/seed.sh /path/to/hb-seed`; optional SHA-256 verification plus the
   immediate native build-fixpoint install make the installed binary current-source

@@ -12,7 +12,30 @@ Forth coding standards live in `docs/forth.md`.
 
 ## Current Diagnosis
 
-The current expanded live evidence is a Codex Forth-only k=5 run:
+The decisive current cross-language array evidence is a Codex k=5 run:
+
+| arm | rows | task pass@5 | trial pass | mean output tokens | median runtime ms |
+|---|---:|---:|---:|---:|---:|
+| Habu raw | 75 | 5/15 = 33% | 7% | 1181 | 242 |
+| Habu + array helpers | 75 | 6/15 = 40% | 9% | 743 | 266 |
+| Habu + stdlib | 75 | 12/15 = 80% | 36% | 642 | 461 |
+| Habu + skeleton | 75 | 8/15 = 53% | 17% | 801 | 241 |
+| JavaScript | 75 | 15/15 = 100% | 100% | 79 | 1 |
+| Python | 75 | 15/15 = 100% | 100% | 70 | 1 |
+| TypeScript | 75 | 15/15 = 100% | 100% | 74 | 1 |
+| Rust | 75 | 15/15 = 100% | 100% | 84 | 1 |
+
+Raw evidence: `bench/llm/results/run-array-expanded.jsonl`; summary:
+`bench/llm/RESULTS-array-expanded.md`.
+
+Conclusion: Habu is not the best LLM target yet on array/memory tasks. The
+checked stdlib arm is real progress: it improves task pass@5 by 47 percentage
+points over raw Habu and cuts passing-row output tokens roughly in half. It
+still trails every mainstream baseline by 20 task-pass points, 64 trial-pass
+points, and roughly 8-9x generated output-token effort. This is the actionable
+gap the remaining plan must close.
+
+The current expanded Habu-only live evidence is a Codex Forth-only k=5 run:
 
 | arm | rows | task pass@5 | trial pass | diagnostics complete | trust/signature weakening |
 |---|---:|---:|---:|---:|---:|
@@ -24,7 +47,7 @@ yet. The remaining task-pass failures are concentrated in quotation and
 combinator tasks, so the plan still needs stronger checked DSL/library shapes
 and diagnostics before rerunning cross-language baselines.
 
-The committed four-arm LLM benchmark has 80 live rows:
+The older committed four-arm LLM benchmark has 80 live rows:
 
 | arm | trial pass | task pass@k | mean output tokens | max output tokens |
 |---|---:|---:|---:|---:|
@@ -62,6 +85,12 @@ Hard gates:
 - Public stdlib code is checked typed Habu, except audited boundaries covered by
   tests and trust lint.
 - The full native gate passes.
+
+Current gate status from the 600-row cross-language array run: benchmark gates
+are **not met**. `habu-stdlib` is 80% task pass@5 vs 100% for JS/Python/TS/Rust,
+and 36% trial pass vs 100% for those baselines. Diagnostic completeness is met
+for this run, with 600/600 diagnostic fields present, zero false rejects, zero
+`TRUST` use, and zero signature weakening.
 
 Win conditions:
 
@@ -943,6 +972,14 @@ bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/json-write.f lib/fs.f l
 MODEL_ID=codex BENCH_FORTH_MODES=repair BENCH_TASK_IDS=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,56,57,58,59,60,61,71,72,73,74,75,76,77 BENCH_PERF_JSON=bench/llm/results/perf.json bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 5 bench/llm/results/run-expanded.jsonl
 bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f tools/date.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/json.f tools/json-file.f bench/llm/validate-results-lib.f bench/llm/expanded-report.f -- bench/llm/results/run-expanded.jsonl bench/llm/results/perf.json > /tmp/RESULTS-expanded.md
 cmp /tmp/RESULTS-expanded.md bench/llm/RESULTS-expanded.md
+```
+
+Cross-language array evidence for final comparison claims:
+
+```sh
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/json.f tools/json-file.f tools/argv.f bench/llm/report.f -- bench/llm/results/run-array-expanded.jsonl bench/llm/results/perf-array-expanded.json > /tmp/RESULTS-array-expanded.md
+cmp /tmp/RESULTS-array-expanded.md bench/llm/RESULTS-array-expanded.md
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/date.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/json.f tools/json-file.f tools/argv.f bench/llm/validate-results-lib.f bench/llm/validate-results.f -- --json bench/llm/results/run-array-expanded.jsonl > /tmp/run-array-expanded-validate.json
 ```
 
 Fresh live model runs are nondeterministic. Review `/tmp/RESULTS-expanded.md`

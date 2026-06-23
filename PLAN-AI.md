@@ -12,12 +12,14 @@ Run verification commands from the repository root.
 ## 1. Goal (what we set out to measure)
 
 > **Is habu a good language for an LLM to produce code in, vs mainstream languages, on
-> complex tasks?** For each task an LLM (`claude -p`) writes the solution in raw Habu,
-> library-assisted Habu, JavaScript, and Rust; we compile/check and run it against
-> io-vectors, and measure the cost to reach a correct solution. The question is *how
-> Habu stacks up against Rust/JS as a codegen target*, and whether an LLM-facing checked
-> stdlib closes the raw-pointer gap — NOT (as an earlier iteration wrongly focused on)
-> whether Habu's checker helps in isolation.
+> complex tasks?** For each task an LLM writes the solution in raw Habu,
+> library-assisted Habu, stdlib-assisted Habu, scaffold-assisted Habu,
+> JavaScript, Python, TypeScript, and Rust; we compile/check and run it against
+> io-vectors, and measure the cost to reach a correct solution. The question is
+> *how Habu stacks up against mainstream languages as a codegen target*, and
+> whether an LLM-facing checked stdlib closes the raw-pointer gap — NOT (as an
+> earlier iteration wrongly focused on) whether Habu's checker helps in
+> isolation.
 
 Two earlier task sets were rejected as too easy (a strong model one-shots them, so they don't
 discriminate): single-function integer katas (gcd, fib, …) and fixed-size linear algebra
@@ -29,7 +31,40 @@ concatenative loops, while being one-liners in JS/Rust.
 
 ## 2. The result (claims to be verified)
 
-### Current expanded Habu-Forth evidence
+### Current cross-language array evidence
+
+The current decisive comparison is 15 array tasks × 8 arms × 5 trials =
+600 Codex trials (`bench/llm/results/run-array-expanded.jsonl`, summarized in
+`bench/llm/RESULTS-array-expanded.md`).
+
+| language | rows | green trials | trial pass | task pass@5 | mean output tokens | median runtime ms | diagnostic fields |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Habu raw | 75 | 5 | 7% | 33% | 1181 | 242 | 75/75 |
+| Habu + array helpers | 75 | 7 | 9% | 40% | 743 | 266 | 75/75 |
+| Habu + stdlib | 75 | 27 | 36% | 80% | 642 | 461 | 75/75 |
+| Habu + skeleton | 75 | 13 | 17% | 53% | 801 | 241 | 75/75 |
+| JavaScript | 75 | 75 | 100% | 100% | 79 | 1 | 75/75 |
+| Python | 75 | 75 | 100% | 100% | 70 | 1 | 75/75 |
+| TypeScript | 75 | 75 | 100% | 100% | 74 | 1 | 75/75 |
+| Rust | 75 | 75 | 100% | 100% | 84 | 1 | 75/75 |
+
+Current cross-language conclusions:
+
+1. **Habu is not best yet on array/memory tasks.** Every mainstream baseline
+   reaches 100% trial pass and 100% task pass@5; the strongest Habu arm,
+   `habu-stdlib`, reaches 36% trial pass and 80% task pass@5.
+2. **The checked stdlib is the right direction.** `habu-stdlib` improves task
+   pass@5 by 47 percentage points over raw Habu and reduces passing-row output
+   tokens from 1181 to 642. Helpers alone are insufficient, and skeleton-only
+   prompting loses to stdlib composition.
+3. **The effort gap remains large.** `habu-stdlib` still costs roughly 8-9x the
+   mainstream generated-output tokens on passing rows, and its warmed runtime is
+   slower than the foreign-language harnesses on these small array kernels.
+4. **The evidence is replayable.** The run has 600/600 diagnostic fields, zero
+   checker false rejects, zero `TRUST` use, zero signature weakening, and raw
+   replay artifacts embedded in every row.
+
+### Expanded Habu-Forth evidence
 
 The committed expanded evidence is 58 Forth/checker/system tasks × 5 trials =
 290 trials (`bench/llm/results/run-expanded.jsonl`, summarized in
@@ -138,7 +173,18 @@ prints `-1` per certified word. The native `tools/check.f` runner on the def sec
 do NOT run the checker runner on the whole file — it executes the runtime assertions in its checking
 harness and hangs.)
 
-### V3 — Reproduce the expanded Forth-only benchmark (uses a live model; costs tokens; non-deterministic)
+### V3 — Verify the committed cross-language array comparison
+```
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/json.f tools/json-file.f tools/argv.f bench/llm/report.f -- bench/llm/results/run-array-expanded.jsonl bench/llm/results/perf-array-expanded.json > /tmp/RESULTS-array-expanded.md
+cmp /tmp/RESULTS-array-expanded.md bench/llm/RESULTS-array-expanded.md
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/date.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/json.f tools/json-file.f tools/argv.f bench/llm/validate-results-lib.f bench/llm/validate-results.f -- --json bench/llm/results/run-array-expanded.jsonl > /tmp/run-array-expanded-validate.json
+```
+Expected shape: 600 rows, 120 task/model/arm groups, 91 task groups passed,
+`habu-stdlib` at 12/15 task pass@5 and 27/75 green trials, all mainstream arms
+at 15/15 task pass@5 and 75/75 green trials, complete diagnostic/replay fields,
+zero checker false rejects, zero `TRUST` use, and zero signature weakening.
+
+### V4 — Reproduce the expanded Forth-only benchmark (uses a live model; costs tokens; non-deterministic)
 ```
 bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/time.f bench/llm/perf-lib.f bench/llm/perf.f -- --json > /tmp/habu-llm-perf.json
 MODEL_ID=codex BENCH_FORTH_MODES=repair BENCH_TASK_IDS=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,56,57,58,59,60,61,71,72,73,74,75,76,77 BENCH_PERF_JSON=/tmp/habu-llm-perf.json BENCH_RESULTS=/tmp/habu-RESULTS-expanded.md bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 5 /tmp/habu-run-expanded.jsonl
@@ -158,7 +204,7 @@ bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.
 cmp /tmp/RESULTS-expanded.md bench/llm/RESULTS-expanded.md
 ```
 
-### V4 — Spot-check a single live cell
+### V5 — Spot-check a single live cell
 ```
 MODEL_ID=codex BENCH_TASK_IDS=49 BENCH_ARRAY_ARMS=habu-a \
 bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/argv.f bench/llm/manifest.f bench/llm/run-expanded-bench.f -- 1 /tmp/argmax.jsonl
@@ -235,22 +281,26 @@ addition.
   reasoning cost overwhelms this and biases habu HIGH. The robust signals are **pass-rate**
   (parity) and the **direction + magnitude of the skew** (cheap on elementwise, expensive on
   juggling), which are insensitive to per-token terseness.
-- **Both Habu arms use the checker** (it's how you'd really write habu); a rejection costs a
-  repair round. This *helps* habu (localizes errors) but also means over-strict rejections cost
-  rounds. Observed repair rounds were low (raw mean 1.11, helper mean 1.0), so this is a minor
-  factor here.
-- **Task pass@k hides trial misses.** The legacy cross-language array run is
-  100% at task pass@k for every arm because each task has at least one green
-  trial, while trial pass ranges from 85% to 95%. The expanded Forth-only run is
-  93.10% task pass@5 and 72.41% trial pass. Use both numbers.
-- **Model nondeterminism.** `claude -p` is not bit-reproducible. k=2; verify the *shape*, not
-  exact tokens. The habu side (engine, checker, grading) is fully deterministic.
+- **All Habu arms use the checker** (it is how you should write Habu); a rejection costs a
+  repair round. This helps Habu by localizing errors but also means over-strict
+  rejections cost rounds. The current array run records zero checker false
+  rejects, so the main failure mode is model code failing to certify or pass
+  vectors, not checker overreach.
+- **Task pass@k hides trial misses.** The current array run shows this clearly:
+  `habu-stdlib` is 80% task pass@5 but only 36% trial pass. Use both numbers.
+  The expanded Forth-only run is 93.10% task pass@5 and 72.41% trial pass.
+- **Model nondeterminism.** Live Codex runs are not bit-reproducible. Verify the
+  committed JSONL/reports byte-for-byte; for fresh live reruns, verify the shape,
+  not exact tokens. The Habu side (engine, checker, grading, validation, and
+  report reduction) is deterministic.
 - **Output-tokens-as-effort** is a proxy. It is generated-token cost, not direct hidden
   reasoning. It correlates with wall time in the data (ARGMAX raw Habu: 4494 tokens / 63 s vs
   JS: 77 / 6 s), but a model that emits less verbose output could shift absolute numbers;
   the *ratio* across languages is the durable signal.
-- **Scope.** 10 single-array tasks, two conventions. Harder tasks (sorting, binary search,
-  NxN matrices over memory) would likely *widen* the tail — an obvious next step.
+- **Scope.** The current cross-language comparison is 15 single-array tasks.
+  Harder tasks (sorting, binary search, maps, files, processes, property tests,
+  and NxN matrices over memory) are still needed before any broad "best for LLMs"
+  claim.
 
 ---
 
@@ -261,4 +311,9 @@ addition.
   evidence record; only `*.log` under `results/` is gitignored.
 - The four-arm harness adds `habu-lib` as a checked-library A/B against raw Habu; the committed
   `run.jsonl` includes all four arms.
+- The expanded cross-language array evidence is
+  `bench/llm/results/run-array-expanded.jsonl` with matching latency snapshot
+  `bench/llm/results/perf-array-expanded.json` and report
+  `bench/llm/RESULTS-array-expanded.md`. It is the current source for
+  "Habu vs mainstream languages" claims.
 - The `depth` primitive is a separate commit already on `habu` master.
