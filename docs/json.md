@@ -55,6 +55,9 @@ and throws `E-JSON-TYPE` for valid non-object rows.
 prose, invalid JSON syntax, and valid non-object JSON values. `JSONL-START`
 remains a compatibility alias for `JSONL-START-SKIP`.
 
+Skip mode only recovers syntax/prose rows. Capacity and type failures remain
+hard parser errors and are rethrown by `JSONL-NEXT-OBJECT`.
+
 Skipped rows are part of the iterator contract and can be inspected with
 `JSONL-SKIPPED ( -- u )`.
 

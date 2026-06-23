@@ -172,6 +172,17 @@ variable NODE
    J-LBRACK T+C s" 1" T+ J-COMMA T+C J-RBRACK T+C
    T$ ;
 
+: BUILD-TOO-MANY-NODES  \ ( -- a u )
+   T-CLEAR
+   J-LBRACK T+C
+   0 begin dup JSON-MAX-NODES < while
+      dup 0 > IF J-COMMA T+C THEN
+      s" 0" T+
+      1+
+   repeat drop
+   J-RBRACK T+C
+   T$ ;
+
 : BUILD-BAD-ESCAPE  \ ( -- a u )
    T-CLEAR
    J-DQ T+C s" \q" T+ J-DQ T+C
@@ -293,6 +304,20 @@ variable NODE
    -1 ASSERT=
    JSONL-LINE# 2 ASSERT= ;
 
+: JSONL-CAPACITY-BAD  \ ( -- node )
+   BUILD-TOO-MANY-NODES JSONL-START-SKIP
+   JSONL-NEXT-OBJECT ;
+
+: TEST-JSONL-NONSYNTAX-ERROR  \ ( -- )
+   BUILD-TOO-MANY-NODES JSONL-START-SKIP
+   JSONL-NEXT-ROW ASSERT
+   E-JSON-CAPACITY ASSERT=
+   JSONL-ROW-ERROR ASSERT=
+   -1 ASSERT=
+   JSONL-LINE# 1 ASSERT=
+   [: JSONL-CAPACITY-BAD ;] catch E-JSON-CAPACITY ASSERT=
+   JSONL-SKIPPED 0 ASSERT= ;
+
 : JSON-TEST  \ ( -- )
    1 TEST-N !
    TEST-NESTED
@@ -305,6 +330,7 @@ variable NODE
    TEST-JSONL-MODES
    TEST-JSONL-ROW-OUTCOMES
    TEST-JSONL-FINAL-PARTIAL
+   TEST-JSONL-NONSYNTAX-ERROR
    s" json-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
 
 JSON-TEST

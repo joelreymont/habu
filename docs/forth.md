@@ -101,8 +101,9 @@ not a matter of taste. Target is the native `bin/hb` engine.
 - **Fallible words `throw` a named code** (defined in `src/config.fs`,
   e.g. `E-MISMATCH`); they never fail silently or return an out-of-band flag in
   place of an error.
-- **`catch` only at boundaries** (the `:` override wrapper). No `… catch drop`,
-  `catch 2drop`, or other masking — that is forbidden by the global error rules.
+- **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
+  assertions, and stack-preserving outcome adapters that return the exact throw
+  code as data. No `… catch drop`, broad `catch 2drop`, or other masking.
 - `unreachable`-style `abort"` only for proven-impossible states, with a message.
 - **Interactive/REPL support recovers; builders may exit.** Recoverable
   interactive failures should `throw` into REPL recovery (`?`, rollback, reread).

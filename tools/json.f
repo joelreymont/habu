@@ -857,13 +857,12 @@ JSON-STR-BOOT-CAP JSON-STR-CAP-U !
    THEN
    0 0= ;
 
-: JSONL-RECOVER? ( i64 -- bool )
+: JSONL-RECOVER-ERROR ( i64 -- )
    {: code :}
    code E-JSON-SYNTAX = JSONL-SKIP-MODE? and IF
-      JSONL-SKIP 0 0= exit
+      JSONL-SKIP exit
    THEN
-   code throw
-   0 0= 0= ;
+   code throw ;
 
 : JSONL-NEXT-OBJECT ( -- i64 )
    begin JSONL-NEXT-ROW while
@@ -871,7 +870,7 @@ JSON-STR-BOOT-CAP JSON-STR-CAP-U !
       JSON-TMP2 @ JSONL-ROW-BLANK = IF
          JSONL-SKIP
       ELSE JSON-TMP2 @ JSONL-ROW-ERROR = IF
-         JSON-TMP @ JSONL-RECOVER? drop
+         JSON-TMP @ JSONL-RECOVER-ERROR
       ELSE JSON-TMP2 @ JSONL-ROW-JSON = IF
          JSONL-ROOT @ JSONL-OBJECT-OR-SKIP IF exit THEN drop
       ELSE
