@@ -3,7 +3,7 @@
 \ (via `evaluate`), and fails (exit 1) if a certified def's real out-arity differs
 \ from its declared ( in -- out ) — a false-cert. No host scripting, no gforth, no
 \ spawning: generator, driver and measurement are all habu, run by bin/hb.
-\ See PROP-TESTING.md.  Run:  bin/hb < test/prop-test.f   (exit 1 on a false-cert)
+\ Run:  bin/hb < test/prop-test.f   (exit 1 on a false-cert)
 \ Optional sweep override: bin/hb 123 1000 < test/prop-test.f
 
 : PROP-CHECK-HOOK ( ptr u8 n -- n )

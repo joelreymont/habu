@@ -7,11 +7,11 @@ points stay listed.
 ## Agent Context
 
 - `AGENTS.md` — repository conventions, workflow, and gate.
+- `PLAN.md` — active implementation plan and root-doc policy.
 - `LLM.md` — operating protocol for LLM-written Forth.
 - `LESSONS.md` — running project memory and recent implementation findings.
 - `STATUS.md` — current verification status and known gaps.
 - `TRUSTED.md` — audited `TRUST` escape-hatch manifest.
-- `PROP-TESTING.md` — property-based checker-soundness design (generate→check→run→compare).
 - `docs/forth.md` — blocking Forth style rules.
 - `docs/lint-foundation-inventory.md` — dependency map for retiring the legacy lint foundation.
 - `docs/llm-stdlib-cookbook.md` — prompt-sized checked stdlib examples for LLM-generated Habu.
@@ -124,7 +124,7 @@ points stay listed.
 ## Tests And Benchmarks
 
 - `test/run.f` — default native gate.
-- `test/prop-test.f` — self-hosted property-based checker-soundness test (in-process via `evaluate`).
+- `test/prop-test.f` — implemented property-based checker-soundness test (in-process via `evaluate`).
 - `test/engine-suite.f` — native engine behavior suite.
 - `bench/llm/tasks.tsv` — LLM benchmark task set.
 - `bench/llm/models.tsv` — model registry for live benchmark sweeps.

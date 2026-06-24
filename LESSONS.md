@@ -718,3 +718,7 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   validator accepts direct helpers such as `A-ARGMAX`, `A-PREFIX-SUM!`, or
   `A-RUNMAX!`, the prompt preamble must name those exact helpers. Otherwise the
   benchmark still rewards stack gymnastics despite having checked stdlib words.
+- **Completed feature plans leave the root:** once a plan has landed in code and
+  gate coverage, keep the implementation docs near the code and retire root
+  planning files. Root Markdown should be contracts, current status, or active
+  work only.

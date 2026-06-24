@@ -113,7 +113,7 @@ primitives consume typed pointers, and `ptr` without an inner type is rejected.
 
 ## Layout
 
-- [`PLAN.md`](PLAN.md) — the checker design (type system, unification, pipeline).
+- [`PLAN.md`](PLAN.md) — active roadmap and root-doc policy.
 - [`docs/forth.md`](docs/forth.md) — Forth coding standards for this repo.
 - [`LESSONS.md`](LESSONS.md) — build recipe + findings (the project's memory).
 - `src/` — the NATIVE toolchain source the engine compiles (and re-checks) when
