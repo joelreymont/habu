@@ -3,12 +3,14 @@
 \ ---- whole-file read -------------------------------------------------------
 \ open/read/close are engine prims: open ( path flags mode -- fd ), read ( fd
 \ buf n -- n ), close ( fd -- ). O_RDONLY = 0. Path must be NUL-terminated.
+0 set-check
+
+: LINT-CHECK-HOOK ( ptr u8 n -- n )
+   CHECK! dup -1 <> IF 70 throw THEN ;
+' LINT-CHECK-HOOK set-check
+
 create PATHBUF 1024 allot
 variable RFD  variable RGOT  variable RLEN
-
-: LINT-CHECK-HOOK ( -- )
-   CHECK! ;
-' LINT-CHECK-HOOK set-check
 
 : LINT-TRUE ( -- bool )
    0 0= ;

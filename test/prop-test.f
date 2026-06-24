@@ -6,19 +6,20 @@
 \ Run:  bin/hb < test/prop-test.f   (exit 1 on a false-cert)
 \ Optional sweep override: bin/hb 123 1000 < test/prop-test.f
 
-: PROP-CHECK-HOOK ( ptr u8 n -- n )
-   CHECK! ;
-' PROP-CHECK-HOOK set-check
+TRUSTED: PROP-CHECK-HOOK ( ptr u8 n -- n )
+   CHECK! dup -1 <> if 70 throw then ;
+TRUSTED: PROP-INSTALL-HOOK ( -- )
+   ['] PROP-CHECK-HOOK set-check ;
+PROP-INSTALL-HOOK
 
 \ ---- measurement: compare stack depth before and after a certified run
 variable BASE  variable MC
 TRUSTED: CLEAR-MEAS  ( R n -- n )
    dup MC !  begin MC @ 0 > while  swap drop  MC @ 1- MC !  repeat ;
 variable VERD                     \ last verdict, set by the check hook
-: VH  ( ptr u8 n -- n )
-   CHECK! dup VERD ! ;            \ MUST leave the verdict on the stack for the compiler
+$37D8 constant PROP-EVALERR-CELL
 TRUSTED: ERR@  ( -- n )
-   DATA-VA $37D8 + @ ;            \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
+   data-base PROP-EVALERR-CELL + @ ; \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
 
 \ ---- seeded PRNG (LCG) ----
 1 constant DEFAULT-SEED
@@ -135,17 +136,26 @@ variable FC-KIND  variable FC-EXP  variable FC-MEAS
 \ inside a program's own checkpoint.
 variable CPSAVE  variable NDSAVE  variable UESAVE
 variable SCPSV   variable SNDSV   variable SUESV
-: MARK    ( -- )  cp@ CPSAVE !  ndict@ NDSAVE !  UEND @ UESAVE ! ;
-: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ UEND ! ;
-: SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
-: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ UEND ! ;
+variable CHKCPSV variable CHKNDSV variable CHKUESV
+TRUSTED: MARK    ( -- )  cp@ CPSAVE !  ndict@ NDSAVE !  UEND @ UESAVE ! ;
+TRUSTED: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ UEND ! ;
+TRUSTED: SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
+TRUSTED: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ UEND ! ;
+TRUSTED: CHK-MARK ( -- ) cp@ CHKCPSV ! ndict@ CHKNDSV ! UEND @ CHKUESV ! ;
+TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ UEND ! ;
 \ ---- shared measurement: build "depth BASE ! <nin×7> <nch> depth BASE @ - CLEAR-MEAS" ----
 : RUN1  ( n n -- ) {: name-ch in-arity :}
    0 PLEN ! s" depth BASE ! " P+
    0 RJ ! begin RJ @ in-arity < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
    name-ch PC  32 PC  s" depth BASE @ - CLEAR-MEAS" P+ ;
+TRUSTED: CHK-HOOK ( ptr u8 n -- n )
+   CHECK! dup VERD ! drop -1 ;
 TRUSTED: CHK  ( ptr u8 n -- )
-   ['] VH set-check  evaluate  ['] PROP-CHECK-HOOK set-check ;     \ check one def; VERD := verdict
+   CHK-MARK
+   ['] CHK-HOOK set-check
+   evaluate
+   ['] PROP-CHECK-HOOK set-check
+   VERD @ -1 <> IF CHK-FORGET THEN ;
 TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    0 LAST-TRAP !  RUN1  PBUF PLEN @ evaluate
    ERR@ 0 = IF
@@ -185,8 +195,10 @@ variable NSUB  variable NSI
 \ ---- metamorphic render round-trip: render the just-certified body's effect, then
 \ re-declare the SAME body with that exact rendered sig — it must re-certify. ----
 variable NRT  variable NRI  variable RSA  variable RSU
+TRUSTED: REND-SIG$ ( -- ptr u8 n )
+   REND-SIG ;
 : ROUNDTRIP  ( -- )   \ pre: G just certified; REND-SIG holds G's rendered effect
-   REND-SIG  RSU !  RSA !
+   REND-SIG$  RSU !  RSA !
    SMARK  0 PLEN ! s" : G ( " P+  RSA @ RSU @ P+  s"  ) " P+  BBUF BLEN @ P+  s" ; " P+  PBUF PLEN @ CHK
    VERD @ -1 = IF  NRT @ 1+ NRT !  71 NIN @ DOUT @ MEASURE
    ELSE  NRI @ LOG-LIMIT < IF s" round-trip" LOG-META THEN  NRI @ 1+ NRI !  THEN

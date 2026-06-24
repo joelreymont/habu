@@ -51,26 +51,38 @@ prim (RW→store→RX→isync, atomic from JIT-resident code). A full
 Forth-predicate conditional would need signal-safe deferred evaluation; the
 supported conditional breakpoint mechanism is skip-count (`BPN`).
 
-## lldb — native stepping (habu-built binaries)
-lldb works on habu/standalone binaries (needs the admin password once). Reveals
-load-time vs runtime kills. NB: an AMFI **signature cache** keys on the path/cdhash —
-a binary that ran fine can be SIGKILLed at a path that previously held an invalid
-signature. Write to a fresh path when in doubt.
+## gdb/lldb — native stepping boundary
+Use the Habu stepper, breakpoints, watch cells, `jitdump`, and `imgdump` first.
+Use gdb on Linux and lldb on macOS only when the fault is in startup or emitted
+machine code before the Forth debugger is reachable. Inspect data-stack cells,
+DATA header cells, and watch-cell addresses before adding print probes. On macOS,
+lldb may need the admin password once. AMFI signature cache keys on the
+path/cdhash, so a binary that ran fine can be SIGKILLed at a path that previously
+held an invalid signature. Write to a fresh path when in doubt.
 
 ## Forth disassembler (preferred over external disassemblers)
 The native disassembler decodes habu's ARM64 subset to mnemonics. Its decode math
 and encoders are written as checked Forth where expressible. Use this to inspect
 generated code before falling back to external tools.
 
+```
+bin/hb --load src/arch/arm64/disasm.f tools/jitdump.f -- ': S dup * ;' S
+bin/hb --load src/os/linux/layout.f src/habu/layout.f tools/imgdump.f -- bin/hb
+bin/hb --load src/os/linux/layout.f src/habu/layout.f tools/imgdump.f -- old-hb new-hb
+```
+
 ## External disassembly — last resort
-`otool -tv <bin>` can inspect `__text` when the native disassembler lacks an
-encoding. Verify page hashes vs the embedded CodeDirectory the same way.
+Use external disassemblers only when the native disassembler lacks an encoding.
+On Linux, `objdump -d` or `readelf -l` can inspect ELF text and load segments.
+On macOS, `otool -tv` can inspect `__text`; verify page hashes against the
+embedded CodeDirectory when signature behavior is involved.
 
 ## Standalone gotchas a stepper catches fast
 - A 2nd `{: :}` locals group mis-reads its slot (use a variable instead).
 - Declaring locals inside `IF`/loop corrupts the frame.
 - Plain `DO` is do-while (`0 0 DO` runs once); guard zero-trip loops.
-- An UNDEFINED word compiles to a silent no-op (e.g. `0<` isn't a prim — `dup 0<`
-  silently becomes `dup IF`). Watch for words not in `emit-prims`.
-- The dictionary search returns the newest definition (fixed); decimal-only number
-  parser; no `move`/`fill`/`emit`/`+!`/`0<`.
+- Undefined words must fail closed through the checked load path. If a runtime
+  path reaches an unknown word without diagnostics, treat that as a
+  checker/compiler RCA before editing downstream code.
+- The dictionary search returns the newest definition; use the checker and
+  shadow lint when a new word appears to change built-in behavior.

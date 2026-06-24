@@ -1,6 +1,7 @@
 # habu — Checked Forth
 
-A complete, **checked Forth** with a native self-hosted macOS ARM64 engine.
+A complete, **checked Forth** with native self-hosted macOS ARM64 and Linux
+AArch64 engines.
 Checked code is ordinary Forth that fails to compile unless its body's inferred stack effect
 unifies with its declared effect — so an LLM (or human) writing Forth gets the
 stack discipline enforced by the compiler, not by hand.
@@ -15,7 +16,7 @@ and no GC** — accepted code runs under the native `bin/hb` engine.
 
 ## Requirements
 
-macOS ARM64. If `bin/hb` is missing, bootstrap it with Gforth; Gforth only
+macOS ARM64 and Linux AArch64. If `bin/hb` is missing, bootstrap it with Gforth; Gforth only
 creates private `HB_TMP` artifacts used to produce `bin/hb`. Gforth must support
 `{:` locals; Homebrew `gforth` 0.7.3 is too old. See
 [`docs/bootstrap.md`](docs/bootstrap.md). A trusted native seed remains an
@@ -25,7 +26,7 @@ alternate recovery path; see [`docs/seed.md`](docs/seed.md).
 
 Two tiers ship in this repo:
 
-**The native engine** — `bin/hb` is a standalone macOS ARM64 Forth (no gforth,
+**The native engine** — `bin/hb` is a standalone ARM64 Forth (no gforth,
 no C) that JIT-compiles to machine code, type-checks definitions with its
 built-in checker, and **rebuilds itself byte-for-byte**. It is the only native
 build output installed by this repo:
@@ -34,9 +35,9 @@ build output installed by this repo:
 HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth-fast tools/bootstrap.sh
                        # no-binary recovery: Gforth creates private HB_TMP
                        #   artifacts, then installs exactly bin/hb
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/build.f \
-  lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
+  lib/process-argv.f lib/process-env.f lib/codesign.f tools/build-fixpoint.f \
+  tools/build-fixpoint-main.f -- install
                        # refresh bin/hb from current source, no Gforth
 echo ': SQ dup * ; 7 SQ .' | bin/hb     # batch: program from stdin
 bin/hb script.f arg...                  # script: program from file; args via
@@ -47,15 +48,35 @@ bin/hb                                  # tty: checked REPL with line editing,
                                         #   history, breakpoints, `step`, and
                                         #   verification of typed definitions
                                         #   against their ( in -- out )
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- prog.f -o prog
+bin/hb --load lib/errors.f \
+  lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f \
+  lib/process-env.f lib/source.f lib/build.f lib/codesign.f \
+  tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- prog.f -o prog
                                         # AOT: signed binary, tree-shaken to MAIN
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- --repl prog.f -o prog-repl
+bin/hb --load lib/errors.f \
+  lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f \
+  lib/process-env.f lib/source.f lib/build.f lib/codesign.f \
+  tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- --repl prog.f -o prog-repl
                                         # checked source bundle + interactive REPL
 ```
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f
+bin/hb --load lib/errors.f \
+  lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f \
+  lib/process-env.f lib/test-runner.f test/run.f
                        # default gate: habu-native, no gforth
+```
+
+The default gate is the native platform-port gate. It must pass on the target
+machine and does not run LLM benchmark fixtures or require JavaScript, Rust,
+TypeScript, or model runtimes. LLM benchmark checks are separate benchmark-host
+work; on the Mac benchmark machine, run:
+
+```sh
+bin/hb --load lib/errors.f \
+  lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f \
+  lib/process-env.f lib/test-runner.f test/gate-common.f \
+  bench/llm/run-lib.f bench/llm/run.f
 ```
 
 ## The type system
@@ -119,14 +140,14 @@ primitives consume typed pointers, and `ptr` without an inner type is rejected.
 - `src/` — the NATIVE toolchain source the engine compiles (and re-checks) when
   rebuilding itself: `src/core/` (checker, render, sha256), `src/arch/arm64/`
   (encoders, assembler, disassembler, mnemonics), `src/habu/` (engine builder
-  parts, jit, profiler, crash, stage2 driver), `src/os/macos/` (Mach-O,
-  signing).
+  parts, jit, profiler, crash, stage2 driver), and `src/os/` target seams
+  (Mach-O, ELF, signing, syscalls).
 - `test/` — `T{ … }T` tests. `test/run.f` is the DEFAULT gate, habu-native
   end to end: lints + self-rebuild fixpoint + engine suite + checked `hb` +
 	  tty REPL + hb-build (runs with gforth absent). `tools/` also holds
 	  bootstrap/seed/build-fixpoint/hb-build/imgdump/
-	  jitdump/clobber-lint/shadow-lint/repl-lint; snapshot refreshes run through
-  the checked `tools/build-fixpoint.f snap|install` driver.
+  jitdump/clobber-lint/shadow-lint/repl-lint; snapshot refreshes run through
+  the checked `tools/build-fixpoint.f all|install` driver.
 
 ## Combinators
 
@@ -155,11 +176,11 @@ self-hosting compiler always trusts its runtime.
 The checker's algorithmic core (the unifier, the string tokenizer, the wordlist
 DB) uses address arithmetic, `parse-name`, and `CREATE` — code whose effect is
 not statically inferable. That is exactly what **`TRUSTED:`** is for: you assert
-the effect, the checker trusts it, and call sites are still checked. Trusted
-definers can also declare `CREATES ( created-effect )`; native `hb` records that
-effect for each word the definer creates, and checks a `DOES>` body with the
-created word's data-field pointer on the stack. Every word is either checked or
-explicitly trusted.
+the effect, the checker trusts it, and call sites are still checked. Defining
+words declare created-word effects with plain `CREATE ... DOES> ( created-effect )`;
+native `hb` records that effect for each word the definer creates, and checks a
+`DOES>` body with the created word's data-field pointer on the stack. Every word
+is either checked or explicitly trusted.
 
 ## Notes
 

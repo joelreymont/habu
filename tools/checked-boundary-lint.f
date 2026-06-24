@@ -33,6 +33,7 @@ variable UB-PREV-U
 variable UB-BAD
 variable UB-CHECK-OFF
 variable UB-NUM-I
+variable UB-TRUSTED
 
 : UB-OUT ( ptr u8 n -- )
    type ;
@@ -163,6 +164,12 @@ variable UB-NUM-I
 : UB-COLON? ( -- bool )
    s" :" UB-TOK= ;
 
+: UB-TRUSTED? ( -- bool )
+   s" TRUSTED:" UB-TOK=CI ;
+
+: UB-SEMI? ( -- bool )
+   s" ;" UB-TOK= ;
+
 : UB-HOOK-NAME? ( ptr u8 n -- bool )
    s" CHECK-HOOK" ENDS-WITH? ;
 
@@ -235,17 +242,20 @@ variable UB-NUM-I
 
 : UB-RESET-FILE-SCAN ( -- )
    0 UB-PREV-A ! 0 UB-PREV-U !
-   0 UB-I ! 1 UB-LINE ! 1 UB-COL ! ;
+   0 UB-I ! 1 UB-LINE ! 1 UB-COL !
+   0 UB-TRUSTED ! ;
 
 : UB-SCAN ( -- )
    UB-RESET-FILE-SCAN
    begin UB-NEXT-TOK while
+      UB-TRUSTED? if -1 UB-TRUSTED ! then
       ARGV-STRICT-BOUNDARY? if
-         UB-CHECKER-MUTATION? if UB-REPORT-MUTATION then
+         UB-CHECKER-MUTATION? UB-TRUSTED @ 0= and if UB-REPORT-MUTATION then
       then
       UB-SET-CHECK-OFF? if -1 UB-CHECK-OFF ! then
       UB-COLON? if UB-HANDLE-COLON then
       UB-SET-CHECK-ON? if 0 UB-CHECK-OFF ! then
+      UB-SEMI? if 0 UB-TRUSTED ! then
       UB-SAVE-PREV
    repeat ;
 

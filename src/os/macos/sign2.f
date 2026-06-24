@@ -8,6 +8,7 @@ variable SIGA  variable SIGU
 s" SIGA@" s" -- ptr u8" TRUST
 
 : SET-SIGID {: a:ptr u :}  a SIGA !  u SIGU ! ;
+s" SET-SIGID" s" ptr u8 n --" TRUST
 
 : SIG-IDLEN  SIGU @ 1 + ;
 $1D       constant LC-CODE-SIG
@@ -93,3 +94,4 @@ variable CSI
      MBUF CSI @ CS-PAGE * +  CS-PAGE  MBUF SC @ +  SHA256  SC @ CS-HASH + SC !
      CSI @ 1 + CSI ! REPEAT
    SC @ MLEN ! ;
+s" CODESIG2" s" --" TRUST

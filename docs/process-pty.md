@@ -1,76 +1,52 @@
 # Process And PTY Runtime Notes
 
-Habu's native Darwin process harness uses raw syscalls only. It does not call
+Habu's native process harness uses raw target syscalls only. It does not call
 libc helpers.
+
+## Focused Gate
+
+Use the native gate slice through `bin/hb --load`; do not concatenate files with
+host shell logic:
+
+```sh
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f \
+  lib/process-argv.f lib/process-env.f lib/test.f test/proc-pty.f
+```
+
+The full port gate loads this slice through `test/run.f`.
 
 ## Process Capture
 
-`lib/process.f` exposes checked helpers over the raw runtime primitives. The
-focused process/PTY gate bundles it with:
+`lib/process.f` exposes checked helpers over the raw runtime primitives.
+Checked code should use `SPAWN-IO`, `WAIT-RC`, `RUN-RC`, and capture helpers;
+they accept counted paths and throw named process errors for primitive failures.
 
-```sh
-cat lib/errors.f lib/process.f test/proc-pty.f | bin/hb
-```
+`spawn-io ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )` is target-specific:
 
-The raw `spawn-io ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )` primitive wraps syscall 244,
-`posix_spawn(pid*, path, adesc, argv, envp)`. Darwin's kernel ABI differs from
-libc's public `posix_spawn` signature: the third argument is a private
-`struct _posix_spawn_args_desc`.
+- macOS wraps syscall 244, `posix_spawn(pid*, path, adesc, argv, envp)`. The
+  descriptor folds file actions and attributes; Habu emits only dup2 actions.
+- Linux uses a close-on-exec exec-failure pipe around `clone`/`execve`. The
+  parent returns a pid only after the child has either successfully exec'd
+  (pipe EOF) or reported setup failure.
 
-The descriptor fields used by Habu are:
-
-- `file_actions_size` at offset 16
-- `file_actions` at offset 24
-- total descriptor size 128 bytes on arm64
-
-The file-actions blob is the XNU `_posix_spawn_file_actions` layout:
-
-- header: `psfa_act_alloc` at offset 0, `psfa_act_count` at offset 4
-- action array starts at offset 8
-- `_psfa_action_t` stride is 1040 bytes
-- `PSFA_DUP2 = 2`
-- each dup2 action writes `type` at `+0`, source fd at `+4`, target fd at `+8`
-
-`spawn-io` emits only dup2 actions. Pass a negative fd to leave that stream
-unchanged. It returns the spawned pid or `-1`; `wait-rc ( pid -- rc )` returns
-`WEXITSTATUS(status)` or `-1`. Checked code should use `SPAWN-IO`,
-`WAIT-RC`, and `RUN-RC`; those wrappers accept counted paths and throw named
-process errors for primitive failures.
-
-`kill ( pid sig -- rc )` wraps Darwin syscall 37 and returns `0` or `-1`.
-`RUN-CAPTURE` uses it with `SIGKILL` before `wait-rc` whenever timeout or
-overflow cleanup must terminate the active child.
-
-When all three fds are negative, `spawn-io` passes a null descriptor. XNU rejects
-an args descriptor whose file-actions pointer names a zero-action blob with
-`EINVAL`.
-
-The parent must mark parent-only fds close-on-exec with `FD-CLOEXEC!` before
-spawning. For stdin capture, this includes the pipe write end; otherwise the
-child inherits that writer and never sees EOF after the parent closes its copy.
+Pass a negative fd to leave that stream unchanged. Parent-only pipe and PTY fds
+must be marked close-on-exec before spawning, or children can inherit writers and
+prevent EOF.
 
 ## PTY Foundation
 
-Darwin's `openpty`, `forkpty`, `posix_openpt`, `grantpt`, `unlockpt`, and
-`ptsname` are libc symbols, not direct syscalls. The raw path is:
+The PTY flow is target-specific but the parent contract is shared:
 
-1. `open("/dev/ptmx", O_RDWR, 0)` for the master.
-2. `ioctl(master, TIOCPTYGRANT, 0)`.
-3. `ioctl(master, TIOCPTYUNLK, 0)`.
-4. `ioctl(master, TIOCPTYGNAME, pathbuf)` for the slave path.
-5. `open(pathbuf, O_RDWR, 0)` for the slave.
-6. `spawn-io` with the slave fd duplicated to `0`, `1`, and `2`.
-7. Parent drives the close-on-exec master with `POLL-IN` and `read`/`write`.
+1. open the PTY master;
+2. unlock/grant or derive the slave path with target ioctls;
+3. open the slave;
+4. spawn with the slave duplicated to fd 0, 1, and 2;
+5. parent drives the close-on-exec master with `POLL-IN` and `read`/`write`.
 
-Darwin constants used by `test/proc-pty.f`:
+macOS uses `/dev/ptmx` with `TIOCPTYGRANT`, `TIOCPTYUNLK`, and `TIOCPTYGNAME`.
+Linux uses `/dev/ptmx`, `TIOCSPTLCK`, `TIOCGPTN`, and `/dev/pts/<n>`. Linux
+gate hosts must provide `/dev/ptmx` and a mounted `/dev/pts`.
 
-- `TIOCPTYGRANT = $20007454`
-- `TIOCPTYGNAME = $40807453`
-- `TIOCPTYUNLK = $20007452`
-- `POLLIN = 1`
-- `F_SETFD = 2`
-- `FD_CLOEXEC = 1`
-
-The focused gate is the bundled command shown above. It is the native
-compatibility baseline for process capture, PTY startup, line editing, history,
-breakpoints, stepper recovery, Ctrl-C, Ctrl-D, and async exit.
+The PTY gate is the native compatibility baseline for process capture, PTY
+startup, line editing, history, breakpoints, stepper recovery, Ctrl-C, Ctrl-D,
+and async exit.

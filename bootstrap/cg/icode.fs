@@ -41,7 +41,7 @@ IOP# @ constant #IOPS
 
 \ --- IR record storage ---
 5    constant /IC
-8192 constant MAX-IC
+16384 constant MAX-IC
 create ICBUF MAX-IC /IC * cells allot
 variable #IC
 
@@ -64,7 +64,7 @@ variable #IC
    1 #IC +! ;
 
 \ --- labels (positions bound by asm.fs PASS1; -1 = unplaced) ---
-1024 constant MAX-LBL
+2048 constant MAX-LBL
 create LBLPOS MAX-LBL cells allot
 variable #LBL
 

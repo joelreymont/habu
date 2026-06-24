@@ -71,10 +71,16 @@ variable BAD  variable LI
    s" src/core/render.f"    LINT-FILE   s" src/core/roles.f"     LINT-FILE
    s" src/core/sha256.f"    LINT-FILE
    s" src/arch/arm64/asm.f" LINT-FILE   s" src/arch/arm64/icode.f" LINT-FILE
-   s" src/arch/arm64/mnem.f" LINT-FILE  s" src/os/macos/sys.f"   LINT-FILE
-   s" src/os/macos/env.f"   LINT-FILE   s" src/habu/treeshake.f" LINT-FILE
+   s" src/arch/arm64/mnem.f" LINT-FILE  s" src/os/macos/layout.f" LINT-FILE
+   s" src/os/macos/sys.f"   LINT-FILE   s" src/os/macos/env.f"   LINT-FILE
+   s" src/os/macos/repl-term.f" LINT-FILE
+   s" src/os/linux/layout.f" LINT-FILE   s" src/os/linux/sys.f"   LINT-FILE
+   s" src/os/linux/env.f"   LINT-FILE   s" src/habu/layout.f"    LINT-FILE
+   s" src/os/linux/repl-term.f" LINT-FILE
+   s" src/habu/treeshake.f" LINT-FILE
    s" src/habu/rt.f"        LINT-FILE   s" src/habu/crash.f"     LINT-FILE
    s" src/os/macos/macho.f" LINT-FILE   s" src/os/macos/sign2.f" LINT-FILE
+   s" src/os/linux/elf.f"   LINT-FILE   s" src/os/linux/sign.f"  LINT-FILE
    s" src/habu/habu1.f"     LINT-FILE   s" src/habu/prof.f"      LINT-FILE
    s" src/habu/regalloc.f"  LINT-FILE   s" src/habu/jit.f"       LINT-FILE
    s" src/habu/habu2.f"     LINT-FILE   s" src/habu/snap.f"      LINT-FILE

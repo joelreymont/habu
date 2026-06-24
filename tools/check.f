@@ -4,6 +4,10 @@
 
 0 set-check
 
+: CHK-CHECK-HOOK ( ptr u8 n -- n )
+   CHECK! dup -1 <> if 70 throw then ;
+' CHK-CHECK-HOOK set-check
+
 $40000 constant CHK-SRC-CAP
 $50000 constant CHK-RUN-CAP
 $50000 constant CHK-ORIGIN-CAP
@@ -30,6 +34,7 @@ create CHK-ERR-BUF CHK-ERR-CAP allot
 create CHK-NUM-BUF CHK-NUM-CAP allot
 create CHK-ROOT-BUF FS-PATH-CAP allot
 create CHK-SRC-PATH-BUF FS-PATH-CAP allot
+create CHK-RUN-PATH-BUF FS-PATH-CAP allot
 create CHK-ERR-PATH-BUF FS-PATH-CAP allot
 create CHK-POS-A CHK-MAX-POS cells allot
 create CHK-POS-U CHK-MAX-POS cells allot
@@ -53,12 +58,27 @@ variable CHK-LABEL-A
 variable CHK-LABEL-U
 variable CHK-SRC-A
 variable CHK-SRC-PATH-U
+variable CHK-RUN-PATH-U
 variable CHK-ROOT-U
 variable CHK-ERR-PATH-U
 
-: CHK-CHECK-HOOK ( -- )
-   CHECK! ;
-' CHK-CHECK-HOOK set-check
+: CHK-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: CHK-PTR-U8@ ( ptr a -- ptr u8 )
+   CHK-PTR-U8-FIELD @ ;
+
+: CHK-PTR-U8! ( ptr u8 ptr a -- )
+   CHK-PTR-U8-FIELD ! ;
+
+: CHK-PTR-U8-SLOT ( n ptr a -- ptr ptr u8 )
+   swap cells + CHK-PTR-U8-FIELD ;
+
+: CHK-PTR-U8-SLOT@ ( n ptr a -- ptr u8 )
+   CHK-PTR-U8-SLOT @ ;
+
+: CHK-PTR-U8-SLOT! ( ptr u8 n ptr a -- )
+   CHK-PTR-U8-SLOT ! ;
 
 : CHK-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
    u 0= if exit then
@@ -102,8 +122,8 @@ variable CHK-ERR-PATH-U
 : CHK-DASH? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 0 > if a c@ CHK-DASH = else 0 0= 0= then ;
 
-: CHK-POS-SLOT ( n -- ptr n )
-   cells CHK-POS-A + ;
+: CHK-POS-SLOT ( n -- ptr ptr u8 )
+   CHK-POS-A CHK-PTR-U8-SLOT ;
 
 : CHK-POS-U-SLOT ( n -- ptr n )
    cells CHK-POS-U + ;
@@ -117,7 +137,7 @@ variable CHK-ERR-PATH-U
 : CHK-ADD-POS ( ptr u8 n -- ) {: a:ptr u :}
    CHK-POS-N @ CHK-MAX-POS >= if CHK-USAGE then
    CHK-SOURCE-LIST @ 0= if CHK-POS-N @ 0 > if CHK-USAGE then then
-   a CHK-POS-N @ CHK-POS-SLOT !
+   a CHK-POS-N @ CHK-POS-A CHK-PTR-U8-SLOT!
    u CHK-POS-N @ CHK-POS-U-SLOT !
    CHK-POS-N @ 1+ CHK-POS-N ! ;
 
@@ -166,34 +186,38 @@ variable CHK-ERR-PATH-U
 : CHK-ERR-PATH ( -- ptr u8 n )
    CHK-ERR-PATH-BUF CHK-ERR-PATH-U @ ;
 
+: CHK-RUN-PATH ( -- ptr u8 n )
+   CHK-RUN-PATH-BUF CHK-RUN-PATH-U @ ;
+
 : CHK-MAKE-TEMP ( -- )
    CLEANUP-RESET
    s" habu-check" TMPDIR-MKDIR CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
    CHK-ROOT CLEANUP-TREE+
    CHK-ROOT s" source.f" CHK-SRC-PATH-BUF JOIN-PATH CHK-SRC-PATH-U !
+   CHK-ROOT s" run.f" CHK-RUN-PATH-BUF JOIN-PATH CHK-RUN-PATH-U !
    CHK-ROOT s" stderr.txt" CHK-ERR-PATH-BUF JOIN-PATH CHK-ERR-PATH-U ! ;
 
 : CHK-LABEL-STDIN ( -- )
-   s" <stdin>" CHK-LABEL-U ! CHK-LABEL-A ! ;
+   s" <stdin>" CHK-LABEL-U ! CHK-LABEL-A CHK-PTR-U8! ;
 
 : CHK-LABEL-FILE ( -- )
-   CHK-SRC-A @ CHK-LABEL-A !
+   CHK-SRC-A CHK-PTR-U8@ CHK-LABEL-A CHK-PTR-U8!
    CHK-SRC-U @ CHK-LABEL-U ! ;
 
 : CHK-LABEL ( -- ptr u8 n )
-   CHK-LABEL-A @ CHK-LABEL-U @ ;
+   CHK-LABEL-A CHK-PTR-U8@ CHK-LABEL-U @ ;
 
 : CHK-SOURCE ( -- ptr u8 n )
-   CHK-SRC-A @ CHK-SRC-U @ ;
+   CHK-SRC-A CHK-PTR-U8@ CHK-SRC-U @ ;
 
 : CHK-MATERIALIZE-STDIN ( -- )
    CHK-LABEL-STDIN
    CHK-SRC-BUF CHK-SRC-CAP >LEN READ-STDIN-ALL LEN>N CHK-SRC-U !
    CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
-   CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A ! ;
+   CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
 
 : CHK-MATERIALIZE-FILE ( -- )
-   0 CHK-POS$ CHK-SRC-U ! CHK-SRC-A !
+   0 CHK-POS$ CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8!
    CHK-SOURCE FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    CHK-LABEL-FILE ;
 
@@ -211,14 +235,14 @@ variable CHK-ERR-PATH-U
 
 : CHK-MATERIALIZE-LIST ( -- )
    CHK-POS-N @ 0= if CHK-USAGE then
-   s" <source-list>" CHK-LABEL-U ! CHK-LABEL-A !
+   s" <source-list>" CHK-LABEL-U ! CHK-LABEL-A CHK-PTR-U8!
    0 CHK-SRC-U !
    0 begin dup CHK-POS-N @ < while
       dup CHK-POS$ CHK-SRC-READ+
       1+
    repeat drop
    CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
-   CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A ! ;
+   CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
 
 : CHK-MATERIALIZE ( -- )
    s" bin/hb" FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
@@ -277,7 +301,7 @@ variable CHK-ERR-PATH-U
    CHK-DQ CHK-RUN-C
    s"  DIAG-FILE!" CHK-RUN-LN
    CHK-JSON @ if s" -1 JSON-DIAGS !" CHK-RUN-LN then
-   s" : CHECK-F-HOOK ( n n -- n )" CHK-RUN-LN
+   s" : CHECK-F-HOOK ( ptr u8 n -- n )" CHK-RUN-LN
    s"    CHECK! dup -1 <> IF 70 throw THEN ;" CHK-RUN-LN
    s" ' CHECK-F-HOOK set-check" CHK-RUN-LN ;
 
@@ -285,6 +309,9 @@ variable CHK-ERR-PATH-U
    CHK-RUN-RESET
    CHK-BUILD-PREFIX
    CHK-ORIGIN-BUF CHK-ORIGIN-U @ CHK-RUN+ ;
+
+: CHK-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
 
 : CHK-ARGV-SIG ( -- )
    PROC-ARGV-RESET
@@ -311,6 +338,9 @@ variable CHK-ERR-PATH-U
    s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/vector.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/checked-boundary-lint.f"  >LEN PROC-ARGV+
@@ -323,8 +353,10 @@ variable CHK-ERR-PATH-U
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
    s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/fs.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
@@ -334,6 +366,24 @@ variable CHK-ERR-PATH-U
 
 : CHK-ARGV-TRUST ( -- )
    CHK-SOURCE CHK-ARGV-TRUST-PATH ;
+
+: CHK-ARGV-TRUST-LIST ( -- )
+   PROC-ARGV-RESET
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/trust-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" source-list"  >LEN PROC-ARGV+
+   s" ."  >LEN PROC-ARGV+
+   0 begin dup CHK-POS-N @ < while
+      dup CHK-POS$  >LEN PROC-ARGV+
+      1+
+   repeat drop ;
 
 : CHK-ARGV-DIAG ( -- )
    PROC-ARGV-RESET
@@ -362,6 +412,8 @@ variable CHK-ERR-PATH-U
    s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/vector.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
    s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
@@ -377,14 +429,6 @@ variable CHK-ERR-PATH-U
    s" bin/hb" >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
    CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE {: outu erru rc :}
-   rc RC>N CHK-RC !
-   erru LEN>N CHK-ERR-U !
-   outu LEN>N CHK-OUT-U ! ;
-
-: CHK-RUN-STDIN-CAPTURE ( ptr u8 n -- ) {: in:ptr inu :}
-   s" bin/hb" >LEN in inu >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
-   CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE {: outu erru rc :}
    rc RC>N CHK-RC !
    erru LEN>N CHK-ERR-U !
    outu LEN>N CHK-OUT-U ! ;
@@ -421,10 +465,8 @@ variable CHK-ERR-PATH-U
    CHK-RUN-TRUST-CURRENT ;
 
 : CHK-RUN-TRUST-LIST ( -- )
-   0 begin dup CHK-POS-N @ < while
-      dup CHK-POS$ CHK-RUN-TRUST-PATH
-      1+
-   repeat drop ;
+   CHK-ARGV-TRUST-LIST
+   CHK-RUN-TRUST-CURRENT ;
 
 : CHK-RUN-TRUST ( -- )
    CHK-SOURCE-LIST @ if CHK-RUN-TRUST-LIST exit then
@@ -458,8 +500,11 @@ variable CHK-ERR-PATH-U
    then ;
 
 : CHK-RUN-HB ( -- )
+   CHK-RUN-PATH CHK-RUN-BUF CHK-RUN-U @ WRITE-ALL
    PROC-ARGV-RESET
-   CHK-RUN-BUF CHK-RUN-U @ CHK-RUN-STDIN-CAPTURE ;
+   s" --load"  >LEN PROC-ARGV+
+   CHK-RUN-PATH CHK-ARG+
+   CHK-RUN-CAPTURE ;
 
 : CHK-WRITE-ERR-FILE ( -- )
    CHK-ERR-PATH CHK-ERR-BUF CHK-ERR-U @ WRITE-ALL

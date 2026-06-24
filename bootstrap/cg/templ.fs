@@ -16,7 +16,7 @@ require sys.fs
 $100000 constant HEAPSZ
 
 : G-HEAP-INIT ( -- )
-   0 0 MOVZ,  1 HEAPSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 0 MOVZ,  1 HEAPSZ LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,  HP 0 0 ADDI, ;     \ mmap RW; HP = base
 
 \ data-stack ops (Xds points just past TOS; full-ascending)

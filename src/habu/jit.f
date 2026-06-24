@@ -555,15 +555,13 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 \ chains for cons emitted HERE, before the loop top) and push (k, packed regs —
 \ a byte per slot, bottom-up) on the snapshot stack. Deep VS or a failed
 \ force: spill-all and push (0,0) — that loop runs memory-resident as before.
-: EMIT-VSNAP
-   LVSNAP @ LBL,
-   LBL LBL LBL LBL LBL LBL {: fl fd fail spush pl pd :}
-   LBL {: plo :}  LBL {: pnx :}  LBL {: snok :}
+: EMIT-SNAP-NEST-CHECK ( n -- ) {: snok :}
    SP SP 16 SUBI,  30 SP 0 STR,
    6 DATA SNAPSP-CELL LDR,  6 28 CMPI,  C-LT snok BCOND,
       0 75 MOVZ,  NR-EXIT SYS,              \ BEGIN nesting past the frame area
-   snok LBL,
-   6 DATA VSP-CELL LDR,  6 14 CMPI,  C-GE fail BCOND,   \ two cells pack 13 (the pool)
+   snok LBL, ;
+
+: EMIT-SNAP-FORCE-LOOP ( n n n -- ) {: fl fd fail :}
    5 0 MOVZ,
    fl LBL,                                  \ force entry x5 (Lvforcek saves x5)
       6 DATA VSP-CELL LDR,  5 6 CMP,  C-GE fd BCOND,
@@ -572,8 +570,9 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
       7 3 CMPI,  C-EQ fif BCOND,
       LVFORCEK @ BL,  14 fail CBZ,  fgo B,
       fif LBL,  LFFORCEK @ BL,  14 fail CBZ,
-      fgo LBL,  5 5 1 ADDI,  fl B,
-   fd LBL,                                  \ pack: x12 = slots 0-7, x10 = slots 8+
+      fgo LBL,  5 5 1 ADDI,  fl B, ;
+
+: EMIT-SNAP-PACK-LOOP ( n n n n -- ) {: pl pd plo pnx :}
    12 0 MOVZ,  10 0 MOVZ,  11 0 MOVZ,
    pl LBL,
       6 DATA VSP-CELL LDR,  11 6 CMP,  C-GE pd BCOND,
@@ -587,31 +586,46 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
          12 12 7 ORR,  pnx B,
       plo LBL,  10 10 7 ORR,
       pnx LBL,  11 11 1 ADDI,  pl B,
-   pd LBL,
-   6 DATA VSP-CELL LDR,  13 6 0 ADDI,  spush B,
-   fail LBL,
-      LVSPILL @ BL,  13 0 MOVZ,  12 0 MOVZ,  10 0 MOVZ,
-   spush LBL,                               \ frame = (k, p0, p1); 24 B stride
+   pd LBL, ;
+
+: EMIT-SNAP-FALLBACK ( n -- ) {: spush :}
+   LVSPILL @ BL,  13 0 MOVZ,  12 0 MOVZ,  10 0 MOVZ,
+   spush B, ;
+
+: EMIT-SNAP-PUSH-FRAME ( -- )
    6 DATA SNAPSP-CELL LDR,
    7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,  7 7 SNAPSTK-OFF ADDI,  7 DATA 7 ADD,
    13 7 0 STR,  12 7 8 STR,  10 7 16 STR,
    6 6 1 ADDI,  6 DATA SNAPSP-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
+: EMIT-VSNAP
+   LVSNAP @ LBL,
+   LBL LBL LBL LBL LBL LBL {: fl fd fail spush pl pd :}
+   LBL {: plo :}  LBL {: pnx :}  LBL {: snok :}
+   snok EMIT-SNAP-NEST-CHECK
+   6 DATA VSP-CELL LDR,  6 14 CMPI,  C-GE fail BCOND,   \ two cells pack 13 (the pool)
+   fl fd fail EMIT-SNAP-FORCE-LOOP
+   fd LBL,                                  \ pack: x12 = slots 0-7, x10 = slots 8+
+   pl pd plo pnx EMIT-SNAP-PACK-LOOP
+   6 DATA VSP-CELL LDR,  13 6 0 ADDI,  spush B,
+   fail LBL,
+      spush EMIT-SNAP-FALLBACK
+   spush LBL,                               \ frame = (k, p0, p1); 24 B stride
+   EMIT-SNAP-PUSH-FRAME ;
+
 \ LVRECON ( -- ) : back edge (UNTIL/AGAIN/REPEAT). Pop the snapshot; if the VS
 \ is exactly it (k register entries, same registers, bottom-up) emit nothing.
 \ Otherwise spill-all then emit k pops into the snapshot registers (top-down)
 \ and set the VS to exactly the snapshot. Loop-carried values stay in their
 \ BEGIN registers across iterations either way.
-: EMIT-VRECON
-   LVRECON @ LBL,
-   LBL LBL LBL LBL LBL {: cl cd rel rl rln :}
-   LBL {: chi :}  LBL {: cnx :}  LBL {: rhi :}  LBL {: rnx :}
+: EMIT-RECON-LOAD-FRAME ( -- )
    SP SP 32 SUBI,  30 SP 0 STR,
    6 DATA SNAPSP-CELL LDR,  6 6 1 SUBI,  6 DATA SNAPSP-CELL STR,
    7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,  7 7 SNAPSTK-OFF ADDI,  7 DATA 7 ADD,
-   13 7 0 LDR,  12 7 8 LDR,  14 7 16 LDR,             \ x13=k x12=p0 x14=p1 (x10 = LVBIT scratch)
-   6 DATA VSP-CELL LDR,  6 13 CMP,  C-NE rel BCOND,   \ depth differs -> reload
+   13 7 0 LDR,  12 7 8 LDR,  14 7 16 LDR, ;          \ x13=k x12=p0 x14=p1
+
+: EMIT-RECON-CHECK-LOOP ( n n n n n -- ) {: cl cd rel chi cnx :}
    5 0 MOVZ,
    cl LBL,
       5 13 CMP,  C-GE cd BCOND,
@@ -629,14 +643,42 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
       cnx LBL,  7 7 $FF ANDI,
       8 7 CMP,  C-NE rel BCOND,
       5 5 1 ADDI,  cl B,
-   cd LBL,
-   30 SP 0 LDR,  SP SP 32 ADDI,  RET,                 \ exact: emit nothing
-   rel LBL,
+   cd LBL, ;
+
+: EMIT-RECON-SAVE-FRAME ( -- )
    13 SP 8 STR,  12 SP 16 STR,  14 SP 24 STR,
    LVSPILL @ BL,
    13 SP 8 LDR,  12 SP 16 LDR,  14 SP 24 LDR,
    11 0 MOVZ,  6 0 MOVZ,  6 DATA FRCLM-CELL STR,
-   5 13 0 ADDI,                           \ x11=claimed bits, x5=i
+   5 13 0 ADDI, ;                           \ x11=claimed bits, x5=i
+
+: EMIT-RECON-RESTORE-INT ( n -- ) {: rgo :}
+   7 7 $FF ANDI,                                      \ x7 = L[i] (int reg)
+   9 $D1002273 LIT64,  LCEMIT @ BL,                   \ sub x19,#8
+   8 $F9400260 LIT64,  9 8 7 ORR,  LCEMIT @ BL,       \ ldr L[i],[x19]
+   8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  6 0 MOVZ,  6 8 0 STRB,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  7 8 0 STR,
+   LVBIT @ BL,  11 11 8 ORR,
+   rgo B, ;
+
+: EMIT-RECON-RESTORE-FLOAT ( n -- ) {: rgo :}
+   7 7 $7F ANDI,                                      \ x7 = the d-reg
+   9 $D1002273 LIT64,  LCEMIT @ BL,                   \ sub x19,#8
+   8 W-FPOPR LIT64,  9 8 7 ORR,  LCEMIT @ BL,         \ ldr dN,[x19]
+   8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  6 2 MOVZ,  6 8 0 STRB,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  7 8 0 STR,
+   7 7 8 SUBI,  8 1 MOVZ,  8 8 7 LSLV,
+   6 DATA FRCLM-CELL LDR,  6 6 8 ORR,  6 DATA FRCLM-CELL STR,
+   rgo LBL, ;
+
+: EMIT-RECON-RESTORE-SLOT ( -- )
+   LBL {: rfl :}  LBL {: rgo :}
+   6 7 $80 ANDI,  6 rfl CBNZ,
+   rgo EMIT-RECON-RESTORE-INT
+   rfl LBL,
+   rgo EMIT-RECON-RESTORE-FLOAT ;
+
+: EMIT-RECON-RESTORE-LOOP ( n n n n -- ) {: rl rln rhi rnx :}
    rl LBL,
       5 rln CBZ,
       5 5 1 SUBI,
@@ -645,30 +687,28 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
          7 12 6 LSRV,  rnx B,
       rhi LBL,  7 14 6 LSRV,
       rnx LBL,
-      LBL {: rfl :}  LBL {: rgo :}
-      6 7 $80 ANDI,  6 rfl CBNZ,
-      7 7 $FF ANDI,                                   \ x7 = L[i] (int reg)
-      9 $D1002273 LIT64,  LCEMIT @ BL,                \ sub x19,#8
-      8 $F9400260 LIT64,  9 8 7 ORR,  LCEMIT @ BL,    \ ldr L[i],[x19]
-      8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  6 0 MOVZ,  6 8 0 STRB,
-      8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  7 8 0 STR,
-      LVBIT @ BL,  11 11 8 ORR,
-      rgo B,
-      rfl LBL,
-      7 7 $7F ANDI,                                   \ x7 = the d-reg
-      9 $D1002273 LIT64,  LCEMIT @ BL,                \ sub x19,#8
-      8 W-FPOPR LIT64,  9 8 7 ORR,  LCEMIT @ BL,      \ ldr dN,[x19]
-      8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  6 2 MOVZ,  6 8 0 STRB,
-      8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  7 8 0 STR,
-      7 7 8 SUBI,  8 1 MOVZ,  8 8 7 LSLV,
-      6 DATA FRCLM-CELL LDR,  6 6 8 ORR,  6 DATA FRCLM-CELL STR,
-      rgo LBL,
+      EMIT-RECON-RESTORE-SLOT
       rl B,
-   rln LBL,
+   rln LBL, ;
+
+: EMIT-RECON-FINISH ( -- )
    13 DATA VSP-CELL STR,
    6 VRALL MOVZ,  6 6 11 EOR,  6 DATA VRFREE-CELL STR,
    6 FRALL MOVZ,  7 DATA FRCLM-CELL LDR,  6 6 7 EOR,  6 DATA FRFREE-CELL STR,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
+: EMIT-VRECON
+   LVRECON @ LBL,
+   LBL LBL LBL LBL LBL {: cl cd rel rl rln :}
+   LBL {: chi :}  LBL {: cnx :}  LBL {: rhi :}  LBL {: rnx :}
+   EMIT-RECON-LOAD-FRAME
+   6 DATA VSP-CELL LDR,  6 13 CMP,  C-NE rel BCOND,   \ depth differs -> reload
+   cl cd rel chi cnx EMIT-RECON-CHECK-LOOP
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET,                 \ exact: emit nothing
+   rel LBL,
+   EMIT-RECON-SAVE-FRAME
+   rl rln rhi rnx EMIT-RECON-RESTORE-LOOP
+   EMIT-RECON-FINISH ;
 variable FESK3
 
 \ vshuf-entry: reg-aware stack ops — relabels and register moves, no memory traffic

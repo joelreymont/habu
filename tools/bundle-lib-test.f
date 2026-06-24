@@ -1,5 +1,6 @@
 \ bundle-lib-test.f - checked fixtures for tools/bundle-lib.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/bundle-lib-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/bundle-lib-test.f
 
 8192 constant BLTT-BUF-CAP
 $20000 constant BLTT-BUNDLE-CAP
@@ -52,7 +53,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 
 : BLTT-DRIVER$ ( -- ptr u8 n )
    SB-RESET
-   92 SB-APPEND-C s"  bundle-lib smoke driver; loaded after lib/errors.f and lib/array.f." SB-APPEND BLTT-LF
+   92 SB-APPEND-C s"  bundle-lib smoke driver; loaded after errors, combinators, and array." SB-APPEND BLTT-LF
    BLTT-LF
    s" 100 constant BLT-FAIL" SB-APPEND BLTT-LF
    BLTT-LF
@@ -89,11 +90,23 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-BUNDLE CLEANUP+
    BLTT-DRIVER BLTT-DRIVER$ WRITE-ALL ;
 
-: BLTT-ARGV-BASE ( -- )
+: BLTT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
+: BLTT-ARGV-TOOL ( -- )
    PROC-ARGV-RESET
-   s" tools/bundle-lib.f"  >LEN PROC-ARGV+
-   s" -o"  >LEN PROC-ARGV+
-   BLTT-BUNDLE  >LEN PROC-ARGV+ ;
+   s" --load" BLTT-ARG+
+   s" lib/errors.f" BLTT-ARG+
+   s" lib/string.f" BLTT-ARG+
+   s" lib/fs.f" BLTT-ARG+
+   s" lib/fs-mutate.f" BLTT-ARG+
+   s" tools/bundle-lib.f" BLTT-ARG+
+   s" --" BLTT-ARG+ ;
+
+: BLTT-ARGV-BASE ( -- )
+   BLTT-ARGV-TOOL
+   s" -o" BLTT-ARG+
+   BLTT-BUNDLE BLTT-ARG+ ;
 
 : BLTT-ARGV-ERRORS ( -- )
    BLTT-ARGV-BASE
@@ -109,30 +122,32 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 
 : BLTT-RUN-MISSING-MODULE ( -- n n n )
    BLTT-ARGV-ERRORS
-   s" missing-module"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   BLTT-DRIVER  >LEN PROC-ARGV+
+   s" missing-module" BLTT-ARG+
+   s" --" BLTT-ARG+
+   BLTT-DRIVER BLTT-ARG+
    BLTT-HB-CAPTURE ;
 
 : BLTT-RUN-MISSING-SCRIPT ( -- n n n )
    BLTT-ARGV-ERRORS
-   s" array"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   BLTT-MISSING  >LEN PROC-ARGV+
+   s" array" BLTT-ARG+
+   s" --" BLTT-ARG+
+   BLTT-MISSING BLTT-ARG+
    BLTT-HB-CAPTURE ;
 
 : BLTT-RUN-BUNDLE-LIB ( -- n n n )
    BLTT-ARGV-ERRORS
-   s" array"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   BLTT-DRIVER  >LEN PROC-ARGV+
+   s" array" BLTT-ARG+
+   s" --" BLTT-ARG+
+   BLTT-DRIVER BLTT-ARG+
    BLTT-HB-CAPTURE ;
 
 : BLTT-RUN-BUNDLE ( -- n n n )
    PROC-ARGV-RESET
-   BLTT-BUNDLE  >LEN PROC-ARGV+
-   s" unused"  >LEN PROC-ARGV+
-   s" args"  >LEN PROC-ARGV+
+   s" --load" BLTT-ARG+
+   BLTT-BUNDLE BLTT-ARG+
+   s" --" BLTT-ARG+
+   s" unused" BLTT-ARG+
+   s" args" BLTT-ARG+
    BLTT-HB-CAPTURE ;
 
 : BLTT-TEST-MISSING-MODULE ( -- )
@@ -154,6 +169,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-ERR erru BLTT-EMPTY$ T$=
    BLTT-BUNDLE BLTT-BUNDLE-READ BLTT-BUNDLE-CAP READ-ALL {: bundleu :}
    BLTT-BUNDLE-READ bundleu s" lib/errors.f" CONTAINS? TTRUE
+   BLTT-BUNDLE-READ bundleu s" src/core/combinators.f" CONTAINS? TTRUE
    BLTT-BUNDLE-READ bundleu s" lib/array.f" CONTAINS? TTRUE
    BLTT-BUNDLE-READ bundleu s" BLT-MAIN" CONTAINS? TTRUE ;
 

@@ -6,6 +6,109 @@ create GE-SCRIPT-PATH FS-PATH-CAP allot
 
 variable GE-SCRIPT-U
 
+GE-FILES: GE-FS-MUTATE-RUN-FILES
+   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
+   lib/fs-mutate-test.f
+;GE-FILES
+
+GE-FILES: GE-FS-MUTATE-CHECK-FILES
+   lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f
+;GE-FILES
+
+GE-FILES: GE-PROCESS-ARGV-RUN-FILES
+   lib/errors.f lib/test.f lib/process.f lib/process-argv.f
+   lib/process-argv-test.f
+;GE-FILES
+
+GE-FILES: GE-PROCESS-ARGV-CHECK-FILES
+   lib/errors.f lib/process.f lib/process-argv.f
+;GE-FILES
+
+GE-FILES: GE-PROCESS-ENV-RUN-FILES
+   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f
+   lib/process-argv.f lib/process-env.f lib/process-env-test.f
+;GE-FILES
+
+GE-FILES: GE-PROCESS-ENV-CHECK-FILES
+   lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f
+   lib/process-env.f
+;GE-FILES
+
+GE-FILES: GE-PROCESS-CWD-RUN-FILES
+   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
+   lib/process.f lib/process-argv.f lib/process-env.f lib/process-cwd.f
+   lib/process-cwd-test.f
+;GE-FILES
+
+GE-FILES: GE-PROCESS-CWD-CHECK-FILES
+   lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f
+   lib/process-env.f lib/process-cwd.f
+;GE-FILES
+
+GE-FILES: GE-REPAIR-HINTS-RUN-FILES
+   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
+   lib/process.f lib/process-argv.f tools/check-repair-hints-test.f
+;GE-FILES
+
+GE-FILES: GE-HB-BASELINE-RUN-FILES
+   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
+   lib/process.f lib/process-argv.f tools/hb-baseline-contracts-test.f
+;GE-FILES
+
+: GE-LOAD-RESET ( -- )
+   GE-HB-RESET
+   s" --load" GE-ARG+ ;
+
+: GE-FS-MUTATE-RUN ( -- )
+   GE-LOAD-RESET
+   [: GE-ARG+ ;] GE-FS-MUTATE-RUN-FILES
+   s" fs mutation stdlib" GE-HB-RUN ;
+
+: GE-FS-MUTATE-CHECK ( -- )
+   GE-SRC-RESET
+   [: GE-SRC-FILE+ ;] GE-FS-MUTATE-CHECK-FILES
+   s" fs mutation stdlib check" GE-CHECK-SRC-LIST ;
+
+: GE-PROCESS-ARGV-RUN ( -- )
+   GE-LOAD-RESET
+   [: GE-ARG+ ;] GE-PROCESS-ARGV-RUN-FILES
+   s" process argv stdlib" GE-HB-RUN ;
+
+: GE-PROCESS-ARGV-CHECK ( -- )
+   GE-SRC-RESET
+   [: GE-SRC-FILE+ ;] GE-PROCESS-ARGV-CHECK-FILES
+   s" process argv check" GE-CHECK-SRC-LIST ;
+
+: GE-PROCESS-ENV-RUN ( -- )
+   GE-LOAD-RESET
+   [: GE-ARG+ ;] GE-PROCESS-ENV-RUN-FILES
+   s" process env stdlib" GE-HB-RUN ;
+
+: GE-PROCESS-ENV-CHECK ( -- )
+   GE-SRC-RESET
+   [: GE-SRC-FILE+ ;] GE-PROCESS-ENV-CHECK-FILES
+   s" process env check" GE-CHECK-SRC-LIST ;
+
+: GE-PROCESS-CWD-RUN ( -- )
+   GE-LOAD-RESET
+   [: GE-ARG+ ;] GE-PROCESS-CWD-RUN-FILES
+   s" process cwd stdlib" GE-HB-RUN ;
+
+: GE-PROCESS-CWD-CHECK ( -- )
+   GE-SRC-RESET
+   [: GE-SRC-FILE+ ;] GE-PROCESS-CWD-CHECK-FILES
+   s" process cwd check" GE-CHECK-SRC-LIST ;
+
+: GE-REPAIR-HINTS-RUN ( -- )
+   GE-LOAD-RESET
+   [: GE-ARG+ ;] GE-REPAIR-HINTS-RUN-FILES
+   s" repair diagnostic hints" GE-HB-RUN ;
+
+: GE-HB-BASELINE-RUN ( -- )
+   GE-LOAD-RESET
+   [: GE-ARG+ ;] GE-HB-BASELINE-RUN-FILES
+   s" hb baseline contracts" GE-HB-RUN ;
+
 : GE-BUILD-FIXPOINT ( -- )
    s" hb-gate-engine" GT-START
    GT-ROOT BF-TMP!
@@ -14,34 +117,16 @@ variable GE-SCRIPT-U
    s" PASS: self-rebuild fixpoint" type cr ;
 
 : GE-RUN-EXTRA-FIXTURES ( -- )
-   GE-HB-RESET
-   s" --load"  >LEN PROC-ARGV+ s" lib/errors.f"  >LEN PROC-ARGV+ s" lib/string.f"  >LEN PROC-ARGV+ s" lib/test.f"  >LEN PROC-ARGV+ s" lib/fs.f"  >LEN PROC-ARGV+ s" lib/fs-mutate.f"  >LEN PROC-ARGV+ s" lib/fs-mutate-test.f"  >LEN PROC-ARGV+
-   s" fs mutation stdlib" GE-HB-RUN
-   GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/string.f" GE-SRC-FILE+ s" lib/test.f" GE-SRC-FILE+ s" lib/fs.f" GE-SRC-FILE+ s" lib/fs-mutate.f" GE-SRC-FILE+ s" lib/fs-mutate-test.f" GE-SRC-FILE+
-   s" fs mutation stdlib check" GE-CHECK-SRC-LIST
-   GE-HB-RESET
-   s" --load"  >LEN PROC-ARGV+ s" lib/errors.f"  >LEN PROC-ARGV+ s" lib/test.f"  >LEN PROC-ARGV+ s" lib/process.f"  >LEN PROC-ARGV+ s" lib/process-argv.f"  >LEN PROC-ARGV+ s" lib/process-argv-test.f"  >LEN PROC-ARGV+
-   s" process argv stdlib" GE-HB-RUN
-   GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/process.f" GE-SRC-FILE+ s" lib/process-argv.f" GE-SRC-FILE+
-   s" process argv check" GE-CHECK-SRC-LIST
-   GE-HB-RESET
-   s" --load"  >LEN PROC-ARGV+ s" lib/errors.f"  >LEN PROC-ARGV+ s" lib/string.f"  >LEN PROC-ARGV+ s" lib/test.f"  >LEN PROC-ARGV+ s" lib/fs.f"  >LEN PROC-ARGV+ s" lib/process.f"  >LEN PROC-ARGV+ s" lib/process-argv.f"  >LEN PROC-ARGV+ s" lib/process-env.f"  >LEN PROC-ARGV+ s" lib/process-env-test.f"  >LEN PROC-ARGV+
-   s" process env stdlib" GE-HB-RUN
-   GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/string.f" GE-SRC-FILE+ s" lib/fs.f" GE-SRC-FILE+ s" lib/process.f" GE-SRC-FILE+ s" lib/process-argv.f" GE-SRC-FILE+ s" lib/process-env.f" GE-SRC-FILE+
-   s" process env check" GE-CHECK-SRC-LIST
-   GE-HB-RESET
-   s" --load"  >LEN PROC-ARGV+ s" lib/errors.f"  >LEN PROC-ARGV+ s" lib/string.f"  >LEN PROC-ARGV+ s" lib/test.f"  >LEN PROC-ARGV+ s" lib/fs.f"  >LEN PROC-ARGV+ s" lib/fs-mutate.f"  >LEN PROC-ARGV+ s" lib/process.f"  >LEN PROC-ARGV+ s" lib/process-argv.f"  >LEN PROC-ARGV+ s" lib/process-env.f"  >LEN PROC-ARGV+ s" lib/process-cwd.f"  >LEN PROC-ARGV+ s" lib/process-cwd-test.f"  >LEN PROC-ARGV+
-   s" process cwd stdlib" GE-HB-RUN
-   GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/string.f" GE-SRC-FILE+ s" lib/fs.f" GE-SRC-FILE+ s" lib/process.f" GE-SRC-FILE+ s" lib/process-argv.f" GE-SRC-FILE+ s" lib/process-env.f" GE-SRC-FILE+ s" lib/process-cwd.f" GE-SRC-FILE+
-   s" process cwd check" GE-CHECK-SRC-LIST
-   GE-HB-RESET
-   s" --load"  >LEN PROC-ARGV+ s" lib/errors.f"  >LEN PROC-ARGV+ s" lib/string.f"  >LEN PROC-ARGV+ s" lib/test.f"  >LEN PROC-ARGV+ s" lib/fs.f"  >LEN PROC-ARGV+ s" lib/fs-mutate.f"  >LEN PROC-ARGV+ s" lib/process.f"  >LEN PROC-ARGV+ s" lib/process-argv.f"  >LEN PROC-ARGV+ s" tools/check-repair-hints-test.f"  >LEN PROC-ARGV+
-   s" repair diagnostic hints" GE-HB-RUN
-   GE-SRC-RESET s" lib/errors.f" GE-SRC-FILE+ s" lib/string.f" GE-SRC-FILE+ s" lib/test.f" GE-SRC-FILE+ s" lib/fs.f" GE-SRC-FILE+ s" lib/fs-mutate.f" GE-SRC-FILE+ s" lib/process.f" GE-SRC-FILE+ s" lib/process-argv.f" GE-SRC-FILE+ s" tools/check-repair-hints-test.f" GE-SRC-FILE+
-   s" repair diagnostic hints check" GE-CHECK-SRC-LIST
-   GE-HB-RESET
-   s" --load"  >LEN PROC-ARGV+ s" lib/errors.f"  >LEN PROC-ARGV+ s" lib/string.f"  >LEN PROC-ARGV+ s" lib/test.f"  >LEN PROC-ARGV+ s" lib/fs.f"  >LEN PROC-ARGV+ s" lib/fs-mutate.f"  >LEN PROC-ARGV+ s" lib/process.f"  >LEN PROC-ARGV+ s" lib/process-argv.f"  >LEN PROC-ARGV+ s" tools/hb-baseline-contracts-test.f"  >LEN PROC-ARGV+
-   s" hb baseline contracts" GE-HB-RUN ;
+   GE-FS-MUTATE-RUN
+   GE-FS-MUTATE-CHECK
+   GE-PROCESS-ARGV-RUN
+   GE-PROCESS-ARGV-CHECK
+   GE-PROCESS-ENV-RUN
+   GE-PROCESS-ENV-CHECK
+   GE-PROCESS-CWD-RUN
+   GE-PROCESS-CWD-CHECK
+   GE-REPAIR-HINTS-RUN
+   GE-HB-BASELINE-RUN ;
 
 : GE-ENGINE-SUITE ( -- )
    GE-HB-RESET

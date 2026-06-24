@@ -26,6 +26,12 @@ variable GHR-SIZE
    GB-HB-BUILD-ARGS
    GB-HB-BUILD-CAPTURE ;
 
+: GHR-REMOVE-OUT ( -- )
+   GB-OUT$ FILE? if GB-OUT$ REMOVE-FILE then ;
+
+: GHR-EXPECT-NO-OUT ( ptr u8 n -- ) {: label:ptr labelu :}
+   GB-OUT$ FILE? if label labelu GE-FAIL then ;
+
 : GHR-BUILD-REPL-OK ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC
    GB-BUILD-ARGV
@@ -36,8 +42,10 @@ variable GHR-SIZE
 : GHR-BUILD-REPL-NZ ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC
    GB-BUILD-ARGV
+   GHR-REMOVE-OUT
    GHR-BUILD-REPL-CAPTURE
-   label labelu GE-EXPECT-NONZERO ;
+   label labelu GE-EXPECT-NONZERO
+   label labelu GHR-EXPECT-NO-OUT ;
 
 : GHR-RUN-EXPECT ( -- )
    SB-RESET s" 81" GE-OUT-LINE GE-SB-LF
@@ -45,8 +53,12 @@ variable GHR-SIZE
 
 : GHR-IMGDUMP ( -- )
    GE-HB-RESET
-   s" tools/imgdump.f"  >LEN PROC-ARGV+
-   GB-OUT$  >LEN PROC-ARGV+
+   s" --load" GB-ARGV+
+   GB-TARGET-LAYOUT
+   s" src/habu/layout.f" GB-ARGV+
+   s" tools/imgdump.f" GB-ARGV+
+   s" --" GB-ARGV+
+   GB-OUT$ GB-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" imgdump generated engine" GE-EXPECT-OK
    s" + " s" imgdump missing seed dict" GE-EXPECT-OUT-HAS ;

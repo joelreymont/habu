@@ -8,12 +8,14 @@ variable PAT-OUT-W
 create PAT-BUF 64 allot
 create PAT-CAP-OUT 64 allot
 create PAT-CAP-ERR 32 allot
-create PAT-WC-OUT 32 c, 32 c, 49 c, 51 c, 49 c, 48 c, 55 c, 50 c, 10 c,
+7 constant PAT-WC-COUNT-U
+create PAT-WC-COUNT 49 c, 51 c, 49 c, 48 c, 55 c, 50 c, 10 c,
 PROC-ARGV-BUF-CAP 1 + constant PAT-LONG-CAP
 131072 constant PAT-EARLY-IN-CAP
 create PAT-LONG PAT-LONG-CAP allot
 create PAT-EARLY-IN PAT-EARLY-IN-CAP allot
 variable PAT-I
+32 constant PAT-SPACE
 
 : PAT-LONG! ( -- )
    0 PAT-I !
@@ -38,6 +40,12 @@ variable PAT-I
 : PAT-OUTCOME>N ( len len n n -- n n n n ) {: outu erru kind code :}
    outu LEN>N erru LEN>N kind code ;
 
+: PAT-LTRIM-SPACES ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+   0 begin dup u < while
+      dup a + c@ PAT-SPACE <> if dup a + u rot - exit then
+      1+
+   repeat drop a 0 ;
+
 : PAT-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
@@ -52,6 +60,11 @@ variable PAT-I
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
    PAT-OUTCOME>N ;
+
+: PAT-CHECK-WC-COUNT ( n n n -- ) {: outu erru rc :}
+   rc 0 T=
+   erru 0 T=
+   PAT-CAP-OUT outu PAT-LTRIM-SPACES PAT-WC-COUNT PAT-WC-COUNT-U T$= ;
 
 : PAT-RUN-PRINTF ( -- )
    PIPE-PAIR PAT-OUT-W ! PAT-OUT-R !
@@ -153,8 +166,7 @@ variable PAT-I
    s" /usr/bin/wc" PAT-EARLY-IN PAT-EARLY-IN-CAP
    PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000
    PAT-STDIN-CAPTURE
-   0 T= 0 T= 9 T=
-   PAT-CAP-OUT 9 PAT-WC-OUT 9 T$= ;
+   PAT-CHECK-WC-COUNT ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-TRUNCATED ( -- )
    PROC-ARGV-RESET

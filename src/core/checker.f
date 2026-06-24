@@ -78,9 +78,9 @@ create SPA MAXPUSH 16 * allot   variable SPN
 
 : ISROW TAG S-ROW = ;
 
-: T-RES BEGIN dup ISVAR IF dup PAY TV@ dup UNBOUND = IF drop 0 ELSE nip -1 THEN ELSE 0 THEN WHILE REPEAT ;
+: T-RES BEGIN dup ISVAR IF dup PAY TV@ dup UNBOUND = IF drop 0 0= 0= ELSE nip 0 0= THEN ELSE 0 0= 0= THEN WHILE REPEAT ;
 
-: R-RES BEGIN dup ISROW IF dup PAY RV@ dup UNBOUND = IF drop 0 ELSE nip -1 THEN ELSE 0 THEN WHILE REPEAT ;
+: R-RES BEGIN dup ISROW IF dup PAY RV@ dup UNBOUND = IF drop 0 0= 0= ELSE nip 0 0= THEN ELSE 0 0= 0= THEN WHILE REPEAT ;
 4096 constant MAXUWL           \ unify worklist cells (deep spines queue many pairs)
 create UWL MAXUWL cells allot   variable USP   variable UOK
 
@@ -205,7 +205,48 @@ variable WAS   variable DEXP   variable DACT   variable FAILSET
 variable VSIG   variable SGSEEN   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT
 variable SGA  variable SGU
-create FAILTK 64 allot   variable FAILTU
+$1000 constant TOKBUF-INIT-CAP
+$10000 constant TOKBUF-GRAIN
+$7FFFFFFFFFFFFFFF constant TOKBUF-MAX-CAP
+3 constant TOKBUF-PROT-RW
+$1002 constant TOKBUF-MAP-ANON
+-1 constant TOKBUF-ANON-FD
+0 constant TOKBUF-OFF-ZERO
+create FAILTK-BOOT TOKBUF-INIT-CAP allot
+create TKF-BOOT TOKBUF-INIT-CAP allot
+create NMB-BOOT TOKBUF-INIT-CAP allot
+variable FAILTK-P   variable TKF-P   variable NMB-P   variable TOKBUF-CAP-U
+variable FAILTU
+FAILTK-BOOT FAILTK-P !   TKF-BOOT TKF-P !   NMB-BOOT NMB-P !
+TOKBUF-INIT-CAP TOKBUF-CAP-U !
+\ FAILTK-FIELD/TKF-FIELD/NMB-FIELD ( -- ptr ptr u8 )
+: FAILTK-FIELD FAILTK-P 0 ptr-field ;
+: TKF-FIELD TKF-P 0 ptr-field ;
+: NMB-FIELD NMB-P 0 ptr-field ;
+\ FAILTK/TKF/NMB ( -- ptr u8 )
+: FAILTK FAILTK-FIELD @ ;
+: TKF TKF-FIELD @ ;
+: NMB NMB-FIELD @ ;
+\ FAILTK!/TKF!/NMB! ( ptr u8 -- )
+: FAILTK! FAILTK-FIELD ! ;
+: TKF! TKF-FIELD ! ;
+: NMB! NMB-FIELD ! ;
+: TOKBUF-ROUND-CAP {: need :}
+   need 0 <= IF s" checker: bad token buffer cap" 76 die THEN
+   need TOKBUF-MAX-CAP TOKBUF-GRAIN - > IF s" checker: token buffer too large" 76 die THEN
+   need 1 - TOKBUF-GRAIN / 1 + TOKBUF-GRAIN * ;
+: TOKBUF-ALLOC {: cap :}
+   0 cap TOKBUF-PROT-RW TOKBUF-MAP-ANON TOKBUF-ANON-FD TOKBUF-OFF-ZERO mmap
+   dup 0 < IF s" checker: token buffer mmap failed" 76 die THEN ;
+: TOKBUF-GROW {: need :}
+   need TOKBUF-ROUND-CAP {: cap :}
+   cap TOKBUF-ALLOC FAILTK!
+   cap TOKBUF-ALLOC TKF!
+   cap TOKBUF-ALLOC NMB!
+   cap TOKBUF-CAP-U ! ;
+: TOKBUF-ENSURE {: need :}
+   need TOKBUF-CAP-U @ <= IF exit THEN
+   need TOKBUF-GROW ;
 variable TOKIX  variable FAILIX  variable DVERD
 variable FAILB  variable FAILE
 variable JSON-DIAGS   0 JSON-DIAGS !
@@ -633,11 +674,18 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" close" s" n --" PT+
    s" epoch-seconds" s" -- n" PT+
    s" mono-ns" s" -- n" PT+
+   s" prof-on" s" n --" PT+
+   s" prof-report" s" --" PT+
    s" rbase" s" -- n" PT+
+   s" cp@" s" -- n" PT+
+   s" dbase@" s" -- n" PT+
+   s" ndict@" s" -- n" PT+
    s" data-base" s" -- ptr a" PT+
    s" wordlist" s" -- n" PT+
    s" get-current" s" -- n" PT+
    s" set-current" s" n --" PT+
+   s" search-wl" s" ptr u8 n n -- n" PT+
+   s" parse-name" s" -- ptr u8 n" PT+
    \ floats: r = real (concrete), distinct from n (int) and f (flag)
    s" f+" s" r r -- r" PT+    s" f-" s" r r -- r" PT+
    s" f*" s" r r -- r" PT+    s" f/" s" r r -- r" PT+
@@ -663,7 +711,8 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" constant" s" -- a" PT+ ;
 PTABLE
 variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable FSP  variable FP
-\ user sigs: certified words recorded as [len|name|len|sig]*, 0-terminated.
+\ user sigs: certified words recorded as [ulen][name][ulen][sig]*, cell-0
+\ terminated. Names are dictionary strings, not counted bytes.
 \ Appended by the renderer (RECXT hook); scanned after PTAB so later wins.
 $10000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
@@ -678,7 +727,7 @@ variable USIGS-GROW-CAP   variable USIGS-GROW-NEXT
 
 : USIGS ( -- ptr u8 ) USIGS-P @ ;
 
-USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS c!
+USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
 
 : USIGS-COPY {: src:ptr dst:ptr n :}
    n 0 > IF n 0 DO src i + c@ dst i + c! LOOP THEN ;
@@ -695,7 +744,7 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS c!
 : USIGS-GROW {: need :}
    need USIGS-ROUND-CAP USIGS-GROW-CAP !
    USIGS-GROW-CAP @ USIGS-ALLOC USIGS-GROW-NEXT !
-   USIGS USIGS-GROW-NEXT @ UEND @ 1 + USIGS-COPY
+   USIGS USIGS-GROW-NEXT @ UEND @ cell+ USIGS-COPY
    USIGS-GROW-NEXT @ USIGS-P !
    USIGS-GROW-CAP @ USIGS-CAP-U ! ;
 
@@ -707,9 +756,27 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS c!
 
 : UBS {: a u :}  0 BEGIN dup u < WHILE  dup a + c@ UB!  1 + REPEAT drop ;
 
+\ UALIGN ( n -- n )
+: UALIGN 7 + $FFFFFFFFFFFFFFF8 and ;
+
+\ UALIGN! ( -- )
+: UALIGN! UEND @ UALIGN UEND ! ;
+
+: U!+ {: x :}  x USIGS UEND @ + !  UEND @ cell+ UEND ! ;
+
+\ UTERM! ( -- )
+: UTERM! 0 USIGS UEND @ + ! ;
+
+: UREC-END {: su nu :}
+   UEND @ cell+ nu + UALIGN cell+ su + UALIGN ;
+
+: UREC-NEXT {: fp len :} fp USIGS - cell+ len + UALIGN USIGS + ;
+
 : USIG-ADD {: sa su na nu :}
-   UEND @ nu + su + 3 + USIGS-ENSURE
-   nu UB!  na nu UBS  su UB!  sa su UBS  0 USIGS UEND @ + c! ;
+   su nu UREC-END cell+ USIGS-ENSURE
+   nu U!+  na nu UBS  UALIGN!
+   su U!+  sa su UBS  UALIGN!
+   UTERM! ;
 
 : SCAN-SIGS {: tab a u :}  tab FP !
    BEGIN FP @ c@ dup WHILE                       \ no locals inside the loop (corrupts frame)
@@ -719,7 +786,15 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS c!
      FSP @ FSL @ + FP !
    REPEAT drop ;
 
-: FIND-SIG {: a u :}  0 FSU !  PTAB a u SCAN-SIGS  USIGS a u SCAN-SIGS  FSU @ ;
+: SCAN-USIGS {: a u :}  USIGS FP !
+   BEGIN FP @ @ dup WHILE
+     FNL !  FP @ cell+ FNP !
+     FP @ FNL @ UREC-NEXT dup @ FSL ! cell+ FSP !
+     a u FNP @ FNL @ STR= IF FSP @ FSA ! FSL @ FSU ! THEN
+     FSP @ FSL @ + USIGS - UALIGN USIGS + FP !
+   REPEAT drop ;
+
+: FIND-SIG {: a u :}  0 FSU !  PTAB a u SCAN-SIGS  a u SCAN-USIGS  FSU @ ;
 
 \ Control-effect flags are append-only and later-wins so redefinitions can clear
 \ stale metadata. CTL-DEAD means a call has no normal continuation. CTL-THROW
@@ -862,8 +937,16 @@ variable FLD  variable FLI  variable FLO  variable FLC
    u 0 > IF a u 1 - + c@ 46 = IF drop 0 THEN THEN
    a FLI @ + c@ 46 = IF drop 0 THEN ;
 
+: DEFINER-TOK {: a u :}
+   SGSEEN @ 0= IF 0 EXIT THEN
+   a u s" create" STR= IF -1 EXIT THEN
+   a u s" variable" STR= IF -1 EXIT THEN
+   a u s" constant" STR= IF s" n --" PARSE-SIG -1 EXIT THEN
+   0 ;
+
 : DO-TOK {: a u :}
-   0 FSU !  USIGS a u SCAN-SIGS
+   a u DEFINER-TOK IF EXIT THEN
+   0 FSU !  a u SCAN-USIGS
    FSU @ IF FSA @ FSU @ PARSE-SIG ELSE
    PTAB a u TRY-TAB IF EXIT THEN
    TSEEN @ IF TFA @ TFU @ PARSE-SIG ELSE
@@ -1163,7 +1246,7 @@ variable DIAGXT  0 DIAGXT !              \ reject-diagnostic hook (render.f inst
 variable CTLNEW
 \ the engine folds A-Z in keyword and dict matching — fold every token the same
 \ way (into a scratch copy: the source text may live in the read-only image).
-create TKF 64 allot   create NMB 64 allot   variable TFU
+variable TFU
 variable SKI  variable SKF
 
 : STRING-OPENER? {: a u :}
@@ -1179,11 +1262,12 @@ variable SKI  variable SKF
    SKF @ IF SKI @ 1 + TI ! THEN ;
 
 : TOKFOLD {: a u :}
-   u 64 > IF 0 ELSE
-     0 BEGIN dup u < WHILE
-       dup a + c@  dup 64 >  over 91 <  and IF 32 or THEN
-       over TKF + c!  1 +
-     REPEAT drop  u TFU !  -1 THEN ;
+   u TOKBUF-ENSURE
+   0 BEGIN dup u < WHILE
+     dup a + c@  dup 64 >  over 91 <  and IF 32 or THEN
+     over TKF + c!  1 +
+   REPEAT drop
+   u TFU !  -1 ;
 : FAIL-SPAN! ( -- )
    TSTART @ TBASE @ - FAILB !
    FAILB @ TFU @ + FAILE ! ;
@@ -1191,12 +1275,6 @@ variable SKI  variable SKF
    FAILSET @ 0= IF
       TKF FAILTK TFU @ CCOPY  TFU @ FAILTU !  TOKIX @ FAILIX !  FAIL-SPAN!
    THEN ;
-: CAP-LONG {: a u :}
-   FAILSET @ 0= IF
-      a FAILTK u CCOPY  u FAILTU !  TOKIX @ FAILIX !
-      TSTART @ TBASE @ - FAILB !  FAILB @ u + FAILE !
-   THEN ;
-
 create DIAGFB 256 allot   variable DIAGFU
 variable DIAGL0  variable DIAGC0  variable DIAGB0
 : DIAG-FILE! {: a u :}
@@ -1215,7 +1293,7 @@ s" <input>" DIAG-FILE!
 \ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
 \ Usage:  s" myword" s" n n -- n" trust
 : TRUST {: na nu sa su :}
-   na nu TOKFOLD 0= IF s" trust: name too long" 76 die THEN
+   na nu TOKFOLD drop
    sa su  TKF TFU @  USIG-ADD ;
 
 : UNSAFE-TOK? {: a u :}
@@ -1232,7 +1310,7 @@ s" <input>" DIAG-FILE!
    -1 UNSAFE !  0 OK !  -1 FAILSET ! ;
 
 : DO-TOK1 {: a u :}
-   a u TOKFOLD 0= IF s" <too-long-token>" CAP-LONG  -1 UNCK !  -1 FAILSET ! ELSE
+   a u TOKFOLD drop
    CAP-FAIL
    TOK0 @ IF TKF NMB TFU @ CCOPY  NMB NMA !  TFU @ NMU !  0 TOK0 ! ELSE
    LMODE @ IF TKF TFU @ LOC-TOK ELSE
@@ -1248,11 +1326,11 @@ s" <input>" DIAG-FILE!
    THEN THEN THEN THEN THEN THEN THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
-   THEN
    TOKIX @ 1 + TOKIX ! ;
 
 \ CHECK-RESET ( a u -- )
 : CHECK-RESET {: a u :}
+   u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !

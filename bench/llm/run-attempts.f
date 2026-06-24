@@ -20,6 +20,9 @@ create RUNA-CAND-BUF FS-PATH-CAP allot
 create RUNA-OUT-BUF FS-PATH-CAP allot
 create RUNA-TMP-BUF FS-PATH-CAP allot
 create RUNA-REF-BUF FS-PATH-CAP allot
+create RUNA-TASKS-BUF FS-PATH-CAP allot
+create RUNA-SOLUTIONS-BUF FS-PATH-CAP allot
+create RUNA-TESTS-BUF FS-PATH-CAP allot
 create RUNA-RUN-BUF RUNA-TEXT-CAP allot
 create RUNA-MODEL-BUF RUNA-TEXT-CAP allot
 create RUNA-DATE-BUF DATE-LEN allot
@@ -31,9 +34,13 @@ variable RUNA-CAND-U
 variable RUNA-OUT-U
 variable RUNA-TMP-U
 variable RUNA-REF-U
+variable RUNA-TASKS-U
+variable RUNA-SOLUTIONS-U
+variable RUNA-TESTS-U
 variable RUNA-RUN-U
 variable RUNA-MODEL-U
 variable RUNA-LAST
+variable RUNA-FIXTURE-TASKS
 
 STR-LF RUNA-LF-BUF c!
 
@@ -61,8 +68,17 @@ STR-LF RUNA-LF-BUF c!
 : RUNA-REF$ ( -- ptr u8 n )
    RUNA-REF-BUF RUNA-REF-U @ ;
 
+: RUNA-TASKS$ ( -- ptr u8 n )
+   RUNA-TASKS-BUF RUNA-TASKS-U @ ;
+
+: RUNA-SOLUTIONS$ ( -- ptr u8 n )
+   RUNA-SOLUTIONS-BUF RUNA-SOLUTIONS-U @ ;
+
+: RUNA-TESTS$ ( -- ptr u8 n )
+   RUNA-TESTS-BUF RUNA-TESTS-U @ ;
+
 : RUNA-TASK-LINES$ ( -- ptr u8 n )
-   FTL$ ;
+   RUNA-TASKS$ FTL-FILE$ ;
 
 : RUNA-RUN$ ( -- ptr u8 n )
    RUNA-RUN-BUF RUNA-RUN-U @ ;
@@ -88,17 +104,36 @@ STR-LF RUNA-LF-BUF c!
    ARGV-POS# 3 > if 3 ARGV-POS$ exit then
    s" candidate-dir" ;
 
+: RUNA-TASKS-ARG$ ( -- ptr u8 n )
+   ARGV-POS# 4 > if 4 ARGV-POS$ exit then
+   s" bench/llm/tasks.tsv" ;
+
+: RUNA-SOLUTIONS-ARG$ ( -- ptr u8 n )
+   ARGV-POS# 5 > if 5 ARGV-POS$ exit then
+   s" bench/llm/solutions.f" ;
+
+: RUNA-TESTS-ARG$ ( -- ptr u8 n )
+   ARGV-POS# 6 > if 6 ARGV-POS$ exit then
+   s" bench/llm/tests.f" ;
+
+: RUNA-FIXTURE-TASKS? ( -- bool )
+   ARGV-POS# 4 > ;
+
 : RUNA-USAGE ( -- )
-   s" bench/llm/run-attempts.f CANDIDATE_DIR [out.jsonl] [run_id] [model]" ARGV-USAGE! ;
+   s" bench/llm/run-attempts.f CANDIDATE_DIR [out.jsonl] [run_id] [model] [tasks.tsv] [solutions.f] [tests.f]" ARGV-USAGE! ;
 
 : RUNA-CONFIG ( -- )
    RUNA-USAGE
    ARGV-PARSE
-   1 4 ARGV-EXPECT-POS
+   1 7 ARGV-EXPECT-POS
+   RUNA-FIXTURE-TASKS? if -1 else 0 then RUNA-FIXTURE-TASKS !
    0 ARGV-POS$ RUNA-CAND-BUF RUNA-CAND-U RUNA-PATH!
    RUNA-OUT-ARG$ RUNA-OUT-BUF RUNA-OUT-U RUNA-PATH!
    RUNA-RUN-ARG$ RUNA-RUN-BUF RUNA-RUN-U RUNA-TEXT!
-   RUNA-MODEL-ARG$ RUNA-MODEL-BUF RUNA-MODEL-U RUNA-TEXT! ;
+   RUNA-MODEL-ARG$ RUNA-MODEL-BUF RUNA-MODEL-U RUNA-TEXT!
+   RUNA-TASKS-ARG$ RUNA-TASKS-BUF RUNA-TASKS-U RUNA-PATH!
+   RUNA-SOLUTIONS-ARG$ RUNA-SOLUTIONS-BUF RUNA-SOLUTIONS-U RUNA-PATH!
+   RUNA-TESTS-ARG$ RUNA-TESTS-BUF RUNA-TESTS-U RUNA-PATH! ;
 
 : RUNA-REQUIRE-CANDIDATES ( -- )
    RUNA-CAND$ DIR? 0= if s" run-attempts: no such candidate dir" RUNA-DATAERR-RC die then ;
@@ -113,8 +148,8 @@ STR-LF RUNA-LF-BUF c!
    s" ref" RUNA-REF-BUF RUNA-REF-U RUNA-JOIN! ;
 
 : RUNA-MATERIALIZE ( -- )
-   s" bench/llm/tasks.tsv" FTL-FILE$ 2drop
-   s" bench/llm/tasks.tsv" s" bench/llm/solutions.f" RUNA-REF$ AS-EXTRACT-FILES ;
+   RUNA-TASKS$ FTL-FILE$ 2drop
+   RUNA-TASKS$ RUNA-SOLUTIONS$ RUNA-REF$ AS-EXTRACT-FILES ;
 
 : RUNA-LAST-SLASH ( ptr u8 n -- n ) {: a:ptr u :}
    -1 RUNA-LAST !
@@ -140,6 +175,8 @@ STR-LF RUNA-LF-BUF c!
 
 : RUNA-VALIDATE-ARGS ( -- )
    PROC-ARGV-ENV-RESET
+   s" BENCH_TASKS" >LEN RUNA-TASKS$ >LEN PROC-ENV+
+   RUNA-FIXTURE-TASKS @ if s" BENCH_TASKS_FIXTURE" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -175,7 +212,7 @@ STR-LF RUNA-LF-BUF c!
    RUNA-REQUIRE-CANDIDATES
    RUNA-PREPARE-TEMP
    RUNA-MATERIALIZE
-   RUNA-TASK-LINES$ RUNA-REF$ RUNA-CAND$ s" bench/llm/tests.f" RUNA-RUN$ RUNA-MODEL$ RA-RUN-TASKS
+   RUNA-TASK-LINES$ RUNA-REF$ RUNA-CAND$ RUNA-TESTS$ RUNA-RUN$ RUNA-MODEL$ RA-RUN-TASKS
    RUNA-WRITE-RESULTS
    RUNA-VALIDATE
    RUNA-WROTE.

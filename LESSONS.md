@@ -1,7 +1,55 @@
 # Lessons
 
+Last updated: 2026-06-25
+
 Concise findings only: what worked, what failed, and why. Coding standards live
 in `docs/forth.md`; API details live in `docs/` near their feature.
+
+## Tool & Infra
+
+### Native port gates are not benchmark runtime gates
+Linux/aarch64 port validation should prove `bin/hb`, target source selection,
+syscalls/env, ELF AOT output, checker/lints, self-refresh, REPL, and Habu-native
+tooling on the target box. JavaScript, Python, Rust, TypeScript, and live model
+driver runs prove benchmark-host setup, so keep them under the explicit
+`bench/llm/run.f` benchmark gate on the Mac benchmark machine instead of
+installing those runtimes on a small port target.
+
+### Split driver timeouts by phase
+The Forth live-driver timeout fixture set a one-second child timeout and
+accidentally timed out the checker subprocess on Linux/aarch64 before the
+candidate runtime started. Keep checker/model/setup budgets separate from
+runtime execution budgets (`DS-HB-TIMEOUT` versus `DS-RUN-TIMEOUT`) so a timeout
+test proves the intended infinite-loop boundary instead of host speed.
+
+### Linux AOT gates must parse ELF structure
+The positive AOT gate cannot measure Linux output with Mach-O text assumptions.
+On Linux/aarch64, inspect the ELF64 program headers and validate the executable
+`PT_LOAD` segment; raw text thresholds are target-format facts, not portable
+constants.
+
+### Keep native debugger docs in the agent index
+`docs/debugging.md` already described `.s`, watch cells, REPL `step`,
+compiled-word breakpoints, `jitdump`, and `imgdump`, but `FILEMAP.md` did not
+surface it in the agent orientation path. Keep debugger/stepper docs listed in
+`FILEMAP.md` and guarded by `tools/filemap-lint.f` so runtime RCA starts with
+existing Forth tools instead of rediscovering them or adding print-marker probes.
+
+### Layout constants need one source owner
+`src/habu/layout.f` must be loaded by every standard runtime source prefix before
+target env, baked REPL, stepper, watch, and debugger sources. Duplicating fixed
+DATA offsets in support files caused line drift, stale trust rows, and review
+work that had to compare constants by hand. When source prefixes change, refresh
+once with compatibility constants if the installed `bin/hb` still needs them,
+then remove the duplicates and prove the next refresh with the regenerated
+binary.
+
+### Split open and read failure labels
+The native and bootstrap `EMIT-SOURCE-READ` words shared one error label for
+`open` and `read`. On open failure, x12 still held the path pointer, so the
+handler could call `close` on a non-fd before exiting. Source-loading emitters
+need distinct labels for no-resource-acquired and resource-acquired failures,
+even when both ultimately report the same exit code.
 
 ## Current Boundaries
 
@@ -27,6 +75,14 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 - **Gforth must support locals:** Homebrew `gforth` 0.7.3 cannot parse `{:
   :}` locals and is not a usable bootstrap host. Use a current Gforth snapshot
   such as `0.7.9_20260610`, or set `GFORTH=/path/to/gforth-fast`.
+- **Bootstrap probes must check output, not just exit:** Ubuntu Gforth 0.7.3 can
+  report unsupported `{:` locals in one command path while still letting later
+  shell stages continue. The bootstrap probe now runs a temporary file and
+  requires both exit zero and the exact `1` output before building artifacts.
+- **Target source lists are a build invariant:** bootstrap and native fixpoint
+  source order must select `src/os/<target>/{sys,env,image,sign}` together.
+  Hard-coding macOS in one list silently bakes Mach-O/syscall assumptions into
+  later generations.
 - **No hosted bootstrap in daily work:** daily work uses `bin/hb`, the native
   `bin/hb` refresh command, and `test/run.f`. The Gforth path is only
   no-binary recovery and must stay out of default gates and benchmarks.
@@ -53,6 +109,19 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 
 ## Checker Soundness
 
+### Large words hide unchecked reasoning
+When review requires reconstructing a long word's stack state by hand, the code
+has already bypassed Habu's main advantage. The `test/gate-stdlib.f` suite DSL
+rewrite exposed this: a generic copy helper with a compact-looking stack comment
+still had the wrong typed destination shape, while smaller parse/copy/run words
+let the checker reject the mismatch immediately. Factor first, then change
+behavior, so every intermediate contract is checked.
+
+- **Unchecked emitters still need checked-style shape:** raw compiler and
+  register-emitter words are where stack mistakes are most expensive, so they
+  must be factored into named helpers with explicit stack effects before
+  behavior is extended. If a reviewer has to reconstruct the stack or register
+  contract from a long emitter body, the code is not reviewable enough to land.
 - **Checker persistent stores must scale and roll back:** certified signatures
   live in `USIGS`, which must grow for real composed checked bundles and still
   roll back by restoring `UEND` in define-check-discard loops. Fixed checker
@@ -128,10 +197,26 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
 
 ## Runtime And REPL
 
+### Linux spawn needs an exec-failure handshake
+`clone` success is not `execve` success. The Linux `SPAWN-IO` primitive must use
+a close-on-exec error pipe: the child writes one byte before exiting on `chdir`,
+`dup2`, or `execve` failure; the parent reads EOF for successful exec, or reads
+the byte, reaps the child, and returns `-1`. Otherwise checked `SPAWN-IO` can
+return a pid for a missing executable and leak a waitable child into later tests.
+When reporting through a register-held fd, copy the fd to x0 before using that
+register for the marker byte.
+
 - **Baked REPL support needs an explicit hook boundary:** installed `hb` preserves
   its check hook. Baked REPL/stepper/debug source is trusted engine UI code, so
   the snapshot prepends `0 set-check` and then reinstalls a `CHECK!` hook before
   user input begins.
+- **Baked support boundaries must survive standard prefixes:** the normal source
+  prefix loads `roles.f`, which deliberately restores `' HOOK set-check` for user
+  source. A baked tty REPL bundle must therefore emit another `0 set-check` after
+  the prefix and before `repl-term.f`, `repl.f`, watch, stepper, and debug
+  support. Without that boundary, the tty path compiles LSRC under the user hook,
+  rejects audited debug words with rc 70, and `bin/hb` appears to echo PTY input
+  without printing a prompt.
 - **`evaluate` is re-entrant state, not a normal call:** `B-EVAL` saves INP/INE,
   SP, XDS, CP, NDICT, DP, and the return address, then branches to the interpreter
   top. Clean end keeps definitions; error restores compile state and sets
@@ -722,3 +807,19 @@ in `docs/forth.md`; API details live in `docs/` near their feature.
   gate coverage, keep the implementation docs near the code and retire root
   planning files. Root Markdown should be contracts, current status, or active
   work only.
+- **Large words hide stack reasoning:** when a word mixes lookup, validation,
+  diagnostics, and execution, split it by responsibility before editing behavior.
+  `TL-CHECK-SITE`, `GJA-DISPATCH`, and `JSON-VALUE` were safer to change once
+  policy checks, command arity, and scalar parsing had their own typed words.
+- **Lists and dispatch tables need structure:** repeated `ARG+`/source-list
+  chains and one giant mode dispatcher invite manual stack tracking. Prefer a
+  checked list DSL such as `GE-FILES: ... ;GE-FILES`, or small arity-specific
+  dispatch helpers, and prove the first live use with focused gate tests.
+- **Recovery seed primitives drift unless grouped and bootstrapped:** when native
+  gains primitive bodies such as `ptr-field`, update the Gforth recovery seed's
+  primitive registry by concern and run `tools/bootstrap.sh`. A native fixpoint
+  alone does not prove no-binary recovery.
+- **Mirrored codegen refactors must land twice:** JIT/compiler helpers in
+  `src/habu/` and `bootstrap/cg/` are one contract with two sources. Factor both
+  mirrors in the same change and prove native fixpoint plus Gforth recovery
+  bootstrap before trusting the port.

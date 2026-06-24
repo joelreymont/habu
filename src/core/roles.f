@@ -6,6 +6,10 @@
 
 0 set-check
 
+s" HB-TARGET-LINUX?" s" -- bool" TRUST
+s" HB-TARGET-MACOS?" s" -- bool" TRUST
+s" HB-TARGET-KNOWN?" s" -- bool" TRUST
+
 : >IDX ( n -- idx ) ;
 s" >IDX" s" n -- idx" TRUST
 : IDX>N ( idx -- n ) ;

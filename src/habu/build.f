@@ -8,6 +8,10 @@
 \ It does NOT execute top-level user code at build time; the emitted bundle still
 \ recompiles/runs the full source at its own startup.
 
+\ Audited driver boundary: generated makers run this source at startup, then
+\ VERIFY-SOURCE below checks user colon definitions explicitly.
+0 set-check
+
 : BLD-IN  s" hb-build-src" TMP-PATH ;
 : BLD-CHK s" hb-build-check-src" TMP-PATH ;
 : BLD-OUT s" hb-build-got" TMP-PATH ;
@@ -158,7 +162,7 @@ TRUSTED: V-TRUST-SIG ( ptr u8 n ptr u8 n -- )
    READ-CHECK
    VERIFY-SOURCE
    READ-PROG
-   BLD-PB@ SHK-A !  PN @ SHK-U !  -1 SHAKE? !
+   BLD-PB@ SHK-A !  PN @ SHK-U !  0 SHAKE? !
    0 STDIN? !
    BLD-PB@ PN @ EMIT-FORTH
    BUILD-IMAGE

@@ -1,5 +1,6 @@
 \ check-all-errors.f - run the native checker over each top-level definition.
 \ Load after lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f,
+\ lib/process.f, lib/process-argv.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ tools/lint/json-writer.f, tools/lint/source-lex.f, and tools/argv.f.
 
@@ -8,20 +9,21 @@ $10000 constant CA-ERR-CAP
 $400 constant CA-OUT-CAP
 512 constant CA-INIT-CAP
 32 constant CA-NUM-CAP
+128 constant CA-RUN-NAME-CAP
+256 constant CA-RUN-PATH-CAP
+120000 constant CA-TIMEOUT-MS
 
 10 constant CA-LF
 32 constant CA-SP
 58 constant CA-COLON-C
 123 constant CA-LBRACE
-1 constant POLLIN
-2 constant F-SETFD
-1 constant FD-CLOEXEC
 
 create CA-ERR-BUF CA-ERR-CAP allot
 create CA-OUT-BUF CA-OUT-CAP allot
 create CA-NUM-BUF CA-NUM-CAP allot
-create CA-PFD 8 allot
 create CA-LF-BUF 1 allot
+create CA-RUN-NAME CA-RUN-NAME-CAP allot
+create CA-RUN-PATH-BUF CA-RUN-PATH-CAP allot
 
 create CA-DEF-START VEC-HEADER-CELLS cells allot
 create CA-DEF-END VEC-HEADER-CELLS cells allot
@@ -39,7 +41,6 @@ variable CA-I
 variable CA-J
 variable CA-K
 variable CA-NUM-I
-variable CA-PID
 variable CA-RC
 variable CA-FAILED
 variable CA-RAW-FAILURE
@@ -56,16 +57,10 @@ variable CA-MATCH-TOK
 variable CA-MATCH-ORD
 variable CA-ORD
 variable CA-ALL-DEFS
-
-variable CA-IN-R
-variable CA-IN-W
-variable CA-OUT-R
-variable CA-OUT-W
-variable CA-ERR-R
-variable CA-ERR-W
 variable CA-ERR-LEN
 variable CA-OUT-LEN
-variable CA-GOT
+variable CA-RUN-NAME-U
+variable CA-RUN-PATH-U
 variable CA-LS
 variable CA-LE
 variable CA-NEXT-D
@@ -115,6 +110,9 @@ variable CA-FILE-U
 
 : CA-FILE-A! ( ptr u8 -- )
    CA-FILE-A-FIELD ! ;
+
+: CA-RUN-PATH ( -- ptr u8 n )
+   CA-RUN-PATH-BUF CA-RUN-PATH-U @ ;
 
 : CA-FAIL ( ptr u8 n n -- )
    die ;
@@ -254,32 +252,25 @@ variable CA-FILE-U
 : CA-PROG-U ( u -- )
    CA-U$ CA-PROG+ ;
 
-: CA-PFD! ( n n -- ) {: fd events :}
-   events 32 lshift fd $FFFFFFFF and or CA-PFD ! ;
+: CA-NAME+ ( ptr u8 n -- ) {: a:ptr u :}
+   CA-RUN-NAME-U @ u + CA-RUN-NAME-CAP > IF s" check-all-errors: run name too large" 76 CA-FAIL THEN
+   a CA-RUN-NAME CA-RUN-NAME-U @ + u BYTE-COPY
+   CA-RUN-NAME-U @ u + CA-RUN-NAME-U ! ;
 
-: CA-POLL-IN ( n n -- n ) {: fd ms :}
-   fd POLLIN CA-PFD!
-   CA-PFD 1 ms poll ;
+: CA-COPY-RUN-PATH! ( ptr u8 n -- ) {: a:ptr u :}
+   u CA-RUN-PATH-CAP > IF s" check-all-errors: run path too large" 76 CA-FAIL THEN
+   a CA-RUN-PATH-BUF u BYTE-COPY
+   u CA-RUN-PATH-U ! ;
 
-: CA-CLOEXEC ( n -- ) {: fd :}
-   fd F-SETFD FD-CLOEXEC fcntl drop ;
+: CA-MAKE-RUN-PATH ( -- )
+   0 CA-RUN-NAME-U !
+   s" habu-check-all-" CA-NAME+
+   mono-ns CA-U$ CA-NAME+
+   s" .f" CA-NAME+
+   CA-RUN-NAME CA-RUN-NAME-U @ TMP-PATH CA-COPY-RUN-PATH! ;
 
-: CA-MKPIPE ( ptr n ptr n -- ) {: rvar:ptr wvar:ptr :}
-   pipe 0 <> IF s" check-all-errors: pipe failed" 74 CA-FAIL THEN
-   wvar !
-   rvar ! ;
-
-: CA-DRAIN-FD ( n ptr u8 n ptr n -- ) {: fd buf:ptr cap lenp:ptr :}
-   0 lenp !
-   begin fd 0 CA-POLL-IN 0 > while
-      lenp @ cap >= IF s" check-all-errors: child output too large" 76 CA-FAIL THEN
-      fd buf lenp @ + cap lenp @ - read CA-GOT !
-      CA-GOT @ 0 > IF
-         lenp @ CA-GOT @ + lenp !
-      ELSE
-         exit
-      THEN
-   repeat ;
+: CA-ARGV+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
 
 : CA-TOK-WORD? ( n -- bool ) {: k :}
    k L# @ >= IF CA-FALSE exit THEN
@@ -470,7 +461,7 @@ variable CA-FILE-U
    34 CA-PROG-C
    s"  DIAG-FILE!" CA-PROG-LN
    ARGV-JSON? IF s" -1 JSON-DIAGS !" CA-PROG-LN THEN
-   s" : CHECK-SH-HOOK ( n n -- n )" CA-PROG-LN
+   s" : CHECK-SH-HOOK ( ptr u8 n -- n )" CA-PROG-LN
    s"    CHECK! dup -1 <> IF 70 throw THEN ;" CA-PROG-LN
    s" ' CHECK-SH-HOOK set-check" CA-PROG-LN ;
 
@@ -540,23 +531,18 @@ variable CA-FILE-U
    0 CA-ALL-DEFS ! ;
 
 : CA-RUN-PROGRAM ( -- n )
-   CA-IN-R CA-IN-W CA-MKPIPE
-   CA-OUT-R CA-OUT-W CA-MKPIPE
-   CA-ERR-R CA-ERR-W CA-MKPIPE
-   CA-IN-W @ CA-CLOEXEC
-   CA-OUT-R @ CA-CLOEXEC
-   CA-ERR-R @ CA-CLOEXEC
-   s" bin/hb" PATHZ PATHBUF CA-IN-R @ CA-OUT-W @ CA-ERR-W @ spawn-io CA-PID !
-   CA-IN-R @ close
-   CA-OUT-W @ close
-   CA-ERR-W @ close
-   CA-IN-W @ CA-PROG-A@ CA-PROG-LEN @ CA-WRITE
-   CA-IN-W @ close
-   CA-PID @ wait-rc CA-RC !
-   CA-OUT-R @ CA-OUT-BUF CA-OUT-CAP CA-OUT-LEN CA-DRAIN-FD
-   CA-ERR-R @ CA-ERR-BUF CA-ERR-CAP CA-ERR-LEN CA-DRAIN-FD
-   CA-OUT-R @ close
-   CA-ERR-R @ close
+   CA-MAKE-RUN-PATH
+   CA-RUN-PATH CA-PROG-A@ CA-PROG-LEN @ WRITE-ALL
+   PROC-ARGV-RESET
+   s" --load" CA-ARGV+
+   CA-RUN-PATH CA-ARGV+
+   s" bin/hb" >LEN CA-OUT-BUF CA-OUT-CAP >LEN
+   CA-ERR-BUF CA-ERR-CAP >LEN CA-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE {: outu erru rc :}
+   outu LEN>N CA-OUT-LEN !
+   erru LEN>N CA-ERR-LEN !
+   rc RC>N CA-RC !
+   CA-RUN-PATH FS-PATHZ unlink drop
    CA-RC @ ;
 
 : CA-SPAWN-HB ( n -- n )

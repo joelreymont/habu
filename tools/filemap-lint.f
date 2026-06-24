@@ -13,7 +13,7 @@ variable FM-NUM-L
 
 : FM-NL ( -- ) 10 emit ;
 
-: FM-PATHISH? {: a:ptr u :} ( ptr u8 n -- bool )
+: FM-PATHISH? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" /" CONTAINS? IF LINT-TRUE exit THEN
    a u s" .md" HAS-EXT? IF LINT-TRUE exit THEN
    a u s" .sh" HAS-EXT? IF LINT-TRUE exit THEN
@@ -74,19 +74,33 @@ variable FM-NUM-L
 : FM-REQ ( ptr u8 n -- )
    2dup INTERN? 0= IF FM-MISSING ELSE 2drop THEN ;
 
-: FM-CHECK-REQUIRED ( -- )
+: FM-CHECK-REQUIRED-ROOT ( -- )
    s" AGENTS.md" FM-REQ
    s" LLM.md" FM-REQ
    s" LESSONS.md" FM-REQ
    s" STATUS.md" FM-REQ
    s" TRUSTED.md" FM-REQ
    s" docs/parallel-agents.md" FM-REQ
-   s" docs/seed.md" FM-REQ
+   s" docs/seed.md" FM-REQ ;
+
+: FM-CHECK-REQUIRED-CORE ( -- )
    s" src/core/checker.f" FM-REQ
    s" src/core/render.f" FM-REQ
    s" src/core/sha256.f" FM-REQ
+   s" src/os/linux/layout.f" FM-REQ
+   s" src/os/macos/layout.f" FM-REQ
+   s" src/os/linux/repl-term.f" FM-REQ
+   s" src/os/macos/repl-term.f" FM-REQ
    s" src/habu/aot.f" FM-REQ
    s" src/habu/build.f" FM-REQ
+   s" src/habu/maker.f" FM-REQ
+   s" src/habu/debug-watch.f" FM-REQ
+   s" src/habu/stepper.f" FM-REQ
+   s" src/habu/debug.f" FM-REQ
+   s" src/habu/layout.f" FM-REQ
+   s" src/arch/arm64/disasm.f" FM-REQ ;
+
+: FM-CHECK-REQUIRED-BUILD ( -- )
    s" tools/check.f" FM-REQ
    s" tools/check-test.f" FM-REQ
    s" tools/sha256-file-test.f" FM-REQ
@@ -102,7 +116,9 @@ variable FM-NUM-L
    s" tools/imgdump-test.f" FM-REQ
    s" tools/build-fixpoint.f" FM-REQ
    s" tools/build-fixpoint-main.f" FM-REQ
-   s" tools/build-fixpoint-test.f" FM-REQ
+   s" tools/build-fixpoint-test.f" FM-REQ ;
+
+: FM-CHECK-REQUIRED-DIAG ( -- )
    s" tools/lint/json-writer.f" FM-REQ
    s" tools/lint/source-lex.f" FM-REQ
    s" tools/signature-lint.f" FM-REQ
@@ -127,7 +143,9 @@ variable FM-NUM-L
    s" tools/diag-to-sarif.f" FM-REQ
    s" tools/public-signatures.f" FM-REQ
    s" tools/public-signatures-test.f" FM-REQ
-   s" tools/stdlib-manifest-test.f" FM-REQ
+   s" tools/stdlib-manifest-test.f" FM-REQ ;
+
+: FM-CHECK-REQUIRED-TOOLS ( -- )
    s" tools/aot-call-report.f" FM-REQ
    s" tools/aot-call-report-test.f" FM-REQ
    s" tools/bundle-lib-test.f" FM-REQ
@@ -149,7 +167,9 @@ variable FM-NUM-L
    s" lib/source.f" FM-REQ
    s" lib/source-test.f" FM-REQ
    s" test/process-env-child.f" FM-REQ
-   s" test/run.f" FM-REQ
+   s" test/run.f" FM-REQ ;
+
+: FM-CHECK-REQUIRED-LLM-BENCH ( -- )
    s" bench/llm/tasks.tsv" FM-REQ
    s" bench/llm/grade.f" FM-REQ
    s" bench/llm/grade-test.f" FM-REQ
@@ -161,6 +181,14 @@ variable FM-NUM-L
    s" bench/llm/validate-results-lib.f" FM-REQ
    s" bench/llm/validate-results.f" FM-REQ
    s" bench/llm/validate-results-test.f" FM-REQ ;
+
+: FM-CHECK-REQUIRED ( -- )
+   FM-CHECK-REQUIRED-ROOT
+   FM-CHECK-REQUIRED-CORE
+   FM-CHECK-REQUIRED-BUILD
+   FM-CHECK-REQUIRED-DIAG
+   FM-CHECK-REQUIRED-TOOLS
+   FM-CHECK-REQUIRED-LLM-BENCH ;
 
 : FM-U. ( n -- )
    0 FM-NUM-L !

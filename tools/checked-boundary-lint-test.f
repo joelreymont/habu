@@ -1,5 +1,7 @@
 \ checked-boundary-lint-test.f - checked fixtures for tools/checked-boundary-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/checked-boundary-lint-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
+\ tools/checked-boundary-lint-test.f
 
 4096 constant CBLT-BUF-CAP
 1400 constant CBLT-LARGE-LINES
@@ -10,6 +12,7 @@ variable CBLT-BAD-U
 variable CBLT-OFF-U
 variable CBLT-CROSS-U
 variable CBLT-LARGE-U
+variable CBLT-TRUSTED-U
 
 create CBLT-ROOT-BUF FS-PATH-CAP allot
 create CBLT-GOOD-BUF FS-PATH-CAP allot
@@ -17,6 +20,7 @@ create CBLT-BAD-BUF FS-PATH-CAP allot
 create CBLT-OFF-BUF FS-PATH-CAP allot
 create CBLT-CROSS-BUF FS-PATH-CAP allot
 create CBLT-LARGE-BUF FS-PATH-CAP allot
+create CBLT-TRUSTED-BUF FS-PATH-CAP allot
 create CBLT-OUT CBLT-BUF-CAP allot
 create CBLT-ERR CBLT-BUF-CAP allot
 create CBLT-LF-BYTE 10 c,
@@ -42,6 +46,9 @@ create CBLT-LF-BYTE 10 c,
 
 : CBLT-LARGE ( -- ptr u8 n )
    CBLT-LARGE-BUF CBLT-LARGE-U @ ;
+
+: CBLT-TRUSTED ( -- ptr u8 n )
+   CBLT-TRUSTED-BUF CBLT-TRUSTED-U @ ;
 
 : CBLT-LF ( -- )
    10 SB-APPEND-C ;
@@ -69,6 +76,14 @@ create CBLT-LF-BYTE 10 c,
 
 : CBLT-CROSS$ ( -- ptr u8 n )
    s" : CROSS-BAD ( n -- n ) dup ;" ;
+
+: CBLT-TRUSTED$ ( -- ptr u8 n )
+   SB-RESET
+   s" TRUSTED: GOOD-HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ;" SB-APPEND CBLT-LF
+   s" TRUSTED: INSTALL-HOOK ( -- ) ['] GOOD-HOOK set-check ;" SB-APPEND CBLT-LF
+   s" INSTALL-HOOK" SB-APPEND CBLT-LF
+   s" : GOOD ( n -- n ) dup ;" SB-APPEND CBLT-LF
+   SB$ ;
 
 : CBLT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
@@ -98,28 +113,35 @@ create CBLT-LF-BYTE 10 c,
    CBLT-ROOT s" off.f" CBLT-OFF-BUF JOIN-PATH CBLT-OFF-U !
    CBLT-ROOT s" cross.f" CBLT-CROSS-BUF JOIN-PATH CBLT-CROSS-U !
    CBLT-ROOT s" large.f" CBLT-LARGE-BUF JOIN-PATH CBLT-LARGE-U !
+   CBLT-ROOT s" trusted.f" CBLT-TRUSTED-BUF JOIN-PATH CBLT-TRUSTED-U !
    CBLT-GOOD CLEANUP+
    CBLT-BAD CLEANUP+
    CBLT-OFF CLEANUP+
    CBLT-CROSS CLEANUP+
    CBLT-LARGE CLEANUP+
+   CBLT-TRUSTED CLEANUP+
    CBLT-GOOD CBLT-GOOD$ WRITE-ALL
    CBLT-BAD CBLT-BAD$ WRITE-ALL
    CBLT-OFF CBLT-OFF$ WRITE-ALL
    CBLT-CROSS CBLT-CROSS$ WRITE-ALL
+   CBLT-TRUSTED CBLT-TRUSTED$ WRITE-ALL
    CBLT-WRITE-LARGE ;
+
+: CBLT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
 
 : CBLT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/checked-boundary-lint.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+ ;
+   s" --load" CBLT-ARG+
+   s" lib/errors.f" CBLT-ARG+
+   s" lib/string.f" CBLT-ARG+
+   s" lib/memory.f" CBLT-ARG+
+   s" lib/fs.f" CBLT-ARG+
+   s" tools/lint/text.f" CBLT-ARG+
+   s" tools/lint/json-writer.f" CBLT-ARG+
+   s" tools/argv.f" CBLT-ARG+
+   s" tools/checked-boundary-lint.f" CBLT-ARG+
+   s" --" CBLT-ARG+ ;
 
 : CBLT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
@@ -155,6 +177,12 @@ create CBLT-LF-BYTE 10 c,
    CBLT-ARGV-LOAD
    s" --strict-boundary"  >LEN PROC-ARGV+
    CBLT-GOOD  >LEN PROC-ARGV+
+   CBLT-HB-CAPTURE ;
+
+: CBLT-RUN-STRICT-TRUSTED ( -- n n n )
+   CBLT-ARGV-LOAD
+   s" --strict-boundary"  >LEN PROC-ARGV+
+   CBLT-TRUSTED  >LEN PROC-ARGV+
    CBLT-HB-CAPTURE ;
 
 : CBLT-RUN-LARGE ( -- n n n )
@@ -206,6 +234,9 @@ create CBLT-LF-BYTE 10 c,
    CBLT-OUT outu s" CHECKER-MUTATION" CONTAINS? TTRUE
    CBLT-OUT outu s" set-check" CONTAINS? TTRUE ;
 
+: CBLT-TEST-STRICT-TRUSTED ( -- )
+   CBLT-RUN-STRICT-TRUSTED CBLT-ASSERT-CLEAN ;
+
 : CBLT-MAIN ( -- )
    T-RESET
    CBLT-PREPARE
@@ -215,6 +246,7 @@ create CBLT-LF-BYTE 10 c,
    CBLT-TEST-BAD
    CBLT-TEST-CROSS
    CBLT-TEST-STRICT
+   CBLT-TEST-STRICT-TRUSTED
    CLEANUP-RUN
    CBLT-ROOT EXISTS? TFALSE
    T-REPORT

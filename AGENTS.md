@@ -35,10 +35,11 @@ roadmap.
   Define and call our words in upper case (`SQUARE`, `CHECKED:`); keep core words
   lower-case (`dup`, `drop`, `if`, `?do`). Lower-case only for `\` comments and
   prose outside code.
-- No-binary recovery runs the checked seed tool with a trusted native `hb` seed:
-  see `docs/seed.md`. The seed immediately rebuilds current source through
-  `tools/build-fixpoint-main.f -- install`.
-  There is no supported build-from-gforth recovery path in this checkout.
+- No-binary recovery uses the explicit Gforth bootstrap path in
+  `docs/bootstrap.md`. Gforth is only a recovery host: it creates private
+  `HB_TMP` artifacts, installs `bin/hb`, and the native checked fixpoint refresh
+  takes over immediately. A trusted native seed remains documented in
+  `docs/seed.md` for seed-maintenance work.
 
 ## Forth style (BLOCKING)
 
@@ -57,14 +58,16 @@ constants; and a `T{ … -> … }T` test for every word.
 
 - New repo automation, tests, benchmarks, report reducers, parsers, code
   generators, build logic, repair tools, and LLM tooling must be checked/typed
-  Habu Forth run by `bin/hb`.
+  Habu Forth run by `bin/hb`, except the audited no-binary recovery launcher
+  `tools/bootstrap.sh`.
 - Do not add new Python, JavaScript, Node, shell, awk, sed, or Perl logic. A
   shell file is allowed only as a compatibility launcher whose behavior is
   `exec bin/hb tool.f "$@"`, and the remaining launcher must be tracked as host
   glue to retire.
-- Existing host glue is legacy debt. Do not extend it; replace it. When Habu
-  lacks a needed primitive or typed abstraction, add a detailed dot for that
-  capability and build it in Habu instead of adding host code.
+- Existing host glue is legacy debt. Do not extend it outside the audited
+  no-binary recovery launcher; replace it. When Habu lacks a needed primitive or
+  typed abstraction, add a detailed dot for that capability and build it in Habu
+  instead of adding host code.
 - Unchecked Habu (`0 set-check`, `TRUSTED:`) is allowed only as a named, tested
   boundary for behavior the checker cannot yet express. The missing typed
   capability must be tracked by dot and removed from the unchecked boundary when
@@ -129,10 +132,12 @@ constants; and a `T{ … -> … }T` test for every word.
 - Native crash/memory RCA must use debugger evidence first: set breakpoints,
   step, and inspect stack/data/watch cells. If the debugger cannot expose the
   needed state, extend the debugger/stepper before falling back to print-marker
-  probes.
+  probes. See `docs/debugging.md` for the baked Forth stepper, breakpoint/watch
+  tools, JIT/image dumpers, and gdb/lldb fallback boundary.
 - Parallel dot execution follows `docs/parallel-agents.md`: read-only scouts do
   not edit the current tree; workers edit isolated jj workspaces unless their
   file ownership is disjoint.
-- Gate: `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f` — Habu-native, no gforth. If `bin/hb`
-  is missing, recover from a trusted native seed with the checked command in
-  `docs/seed.md`.
+- Gate: use the target/checker/env prelude and native gate command from
+  `docs/bootstrap.md` — Habu-native, no gforth. If `bin/hb`
+  is missing, recover with `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh` as
+  documented in `docs/bootstrap.md`.

@@ -1,8 +1,7 @@
 \ build-fixpoint.f - checked self-rebuild orchestration.
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f,
-\ and lib/codesign.f.
+\ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/codesign.f.
 
 262144 constant BF-SOURCE-CAP
 32768 constant BF-CMP-CAP
@@ -75,8 +74,12 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    BF-B-PATH BF-TMP> BF-B-LEN !
    BF-B-PATH BF-B-LEN @ ;
 
+: BF-EXPECT-PATH ( ptr u8 n -- ) {: path:ptr pathu :}
+   pathu 0 <= if E-BUILD-PATH throw then
+   path pathu FILE? 0= if E-BUILD-PATH throw then ;
+
 : BF-EXPECT ( ptr u8 n -- )
-   BF-ART$ BUILD-EXPECT ;
+   BF-ART$ BF-EXPECT-PATH ;
 
 : BF-RC0 ( n -- )
    0 <> if E-BUILD-STATUS throw then ;
@@ -150,32 +153,70 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    out outu BF-OUT$ BF-SOURCE-BUF BF-SOURCE-LEN @ APPEND-FILE
    out outu BF-APPEND-LF ;
 
-: BF-APPEND-HOOK ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu s" : HOOK CHECK ; ' HOOK set-check" BF-APPEND-LINE ;
+: BF-APPEND-CHECK-OFF ( ptr u8 n -- ) {: out:ptr outu :}
+   out outu s" 0 set-check" BF-APPEND-LINE ;
+
+: BF-APPEND-CHECK-ON ( ptr u8 n -- ) {: out:ptr outu :}
+   out outu s" ' HOOK set-check" BF-APPEND-LINE ;
+
+: BF-TARGET-UNKNOWN ( -- )
+   s" build-fixpoint: unknown target" BF-BUILD-RC die ;
+
+: BF-APPEND-TARGET-LAYOUT ( ptr u8 n -- ) {: out:ptr outu :}
+   HB-TARGET-LINUX? if
+      out outu s" src/os/linux/layout.f" BF-APPEND-SOURCE
+      exit
+   then
+   HB-TARGET-MACOS? if
+      out outu s" src/os/macos/layout.f" BF-APPEND-SOURCE
+      exit
+   then
+   BF-TARGET-UNKNOWN ;
+
+: BF-APPEND-TARGET-SYS ( ptr u8 n -- ) {: out:ptr outu :}
+   HB-TARGET-LINUX? if
+      out outu s" src/os/linux/sys.f" BF-APPEND-SOURCE
+      exit
+   then
+   HB-TARGET-MACOS? if
+      out outu s" src/os/macos/sys.f" BF-APPEND-SOURCE
+      exit
+   then
+   BF-TARGET-UNKNOWN ;
+
+: BF-APPEND-TARGET-IMAGE ( ptr u8 n -- ) {: out:ptr outu :}
+   HB-TARGET-LINUX? if
+      out outu s" src/os/linux/elf.f" BF-APPEND-SOURCE
+      out outu s" src/os/linux/sign.f" BF-APPEND-SOURCE
+      exit
+   then
+   HB-TARGET-MACOS? if
+      out outu s" src/os/macos/macho.f" BF-APPEND-SOURCE
+      out outu s" src/os/macos/sign2.f" BF-APPEND-SOURCE
+      exit
+   then
+   BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-COMMON ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu s" src/core/util.f" BF-APPEND-SOURCE
-   out outu s" src/core/checker.f" BF-APPEND-SOURCE
-   out outu s" src/core/render.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-HOOK
-   out outu s" src/core/roles.f" BF-APPEND-SOURCE
-   out outu s" src/core/sha256.f" BF-APPEND-SOURCE
-   out outu s" src/core/combinators.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/icode.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
-   out outu s" src/os/macos/sys.f" BF-APPEND-SOURCE
-   out outu s" src/os/macos/env.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-TARGET-LAYOUT
+   out outu BF-APPEND-TARGET-SYS
+   out outu s" src/core/sha256.f" BF-APPEND-SOURCE
+   out outu s" src/core/combinators.f" BF-APPEND-SOURCE
+   out outu s" src/habu/layout.f" BF-APPEND-SOURCE
    out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-CHECK-OFF
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
-   out outu s" src/os/macos/macho.f" BF-APPEND-SOURCE
-   out outu s" src/os/macos/sign2.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-TARGET-IMAGE
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
-   out outu s" src/habu/habu2.f" BF-APPEND-SOURCE ;
+   out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-CHECK-ON ;
 
 : BF-EMIT-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu driver:ptr driveru :}
    out outu BF-RESET-OUT
@@ -239,7 +280,7 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
 : BF-BOOTSTRAP-STAGE ( -- )
    s" stage2-got" BF-REMOVE-TMP
    s" hb-stage" BF-REMOVE-TMP
-   s" bin/hb" s" src/habu/stage2.f" BF-RUN-ENV-PATH-INFILE BF-RC0
+   s" bin/hb" s" stage2-src" BF-A$ BF-RUN-ENV-PATH-INFILE BF-RC0
    s" stage2-got" BF-EXPECT
    s" stage2-got" s" hb-stage" BF-RENAME-TMP
    s" hb-stage" BF-CHMOD-X-TMP ;
@@ -290,6 +331,10 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    s" hb-stdin" BF-CHMOD-X-TMP
    s" hb-stdin" BF-CODESIGN-VERIFY-TMP ;
 
+: BF-BUILD-STDIN-FRESH ( -- )
+   BF-STAGE-FIXPOINT
+   BF-BUILD-STDIN ;
+
 : BF-BUILD-SNAP-FROM-STDIN ( -- )
    BF-SNAP-SOURCE
    s" hb-snap0" BF-REMOVE-TMP
@@ -301,11 +346,6 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    s" hb-new" BF-CHMOD-X-TMP
    s" hb-new" BF-EXPECT
    s" bin/hb refresh OK: candidate validated" type cr ;
-
-: BF-BUILD-SNAP ( -- )
-   BF-STAGE-FIXPOINT
-   BF-BUILD-STDIN
-   BF-BUILD-SNAP-FROM-STDIN ;
 
 : BF-BUILD-ALL ( -- )
    BF-STAGE-FIXPOINT
@@ -334,7 +374,7 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    s" bin/hb ready (checked engine, tty REPL + stdin)" type cr ;
 
 : BF-USAGE ( -- )
-   s" usage: tools/build-fixpoint.f [all|install|stage|stdin|snap]" BF-USAGE-RC die ;
+   s" usage: tools/build-fixpoint.f [all|install|stage|stdin]" BF-USAGE-RC die ;
 
 : BF-ARG0= ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
@@ -345,6 +385,5 @@ TRUSTED: BF-TMP! ( ptr u8 n -- )
    s" all" BF-ARG0= if BF-BUILD-ALL exit then
    s" install" BF-ARG0= if BF-INSTALL exit then
    s" stage" BF-ARG0= if BF-STAGE-FIXPOINT exit then
-   s" stdin" BF-ARG0= if BF-BUILD-STDIN exit then
-   s" snap" BF-ARG0= if BF-BUILD-SNAP exit then
+   s" stdin" BF-ARG0= if BF-BUILD-STDIN-FRESH exit then
    BF-USAGE ;

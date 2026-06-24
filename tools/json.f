@@ -465,99 +465,128 @@ JSON-STR-BOOT-CAP JSON-STR-CAP-U !
    obj J-COUNT@ 1+ obj J-COUNT!
    JSON-PAIRS @ 1+ JSON-PAIRS ! ;
 
-: JSON-VALUE ( -- i64 )
+: JSON-VALUE-ENTER ( -- )
    JSON-DEPTH @ JSON-MAX-DEPTH >= IF s" json: nesting too deep" JSON-CAPACITY THEN
-   JSON-DEPTH @ 1+ JSON-DEPTH !
+   JSON-DEPTH @ 1+ JSON-DEPTH ! ;
+
+: JSON-VALUE-LEAVE ( -- i64 )
+   JSON-DEPTH @ 1- JSON-DEPTH !
+   JSON-VN @ ;
+
+: JSON-SPAN-VALUE ( i64 i64 i64 -- )
+   {: off len kind :}
+   kind JSON-NEW JSON-VN !
+   off JSON-VN @ J-OFF!
+   len JSON-VN @ J-LEN! ;
+
+: JSON-STRING-VALUE ( -- )
+   JSON-PARSE-STRING$ J-STR JSON-SPAN-VALUE ;
+
+: JSON-NUMBER-VALUE ( -- )
+   JSON-PARSE-NUMBER$ J-NUM JSON-SPAN-VALUE ;
+
+: JSON-BOOL-VALUE ( i64 -- ) {: value :}
+   J-BOOL JSON-NEW JSON-VN !
+   value JSON-VN @ J-VAL! ;
+
+: JSON-TRUE-VALUE ( -- )
+   s" true" JSON-MATCH
+   -1 JSON-BOOL-VALUE ;
+
+: JSON-FALSE-VALUE ( -- )
+   s" false" JSON-MATCH
+   0 JSON-BOOL-VALUE ;
+
+: JSON-NULL-VALUE ( -- )
+   s" null" JSON-MATCH
+   J-NULL JSON-NEW JSON-VN ! ;
+
+: JSON-COMPOSITE-VALUE ( i64 -- i64 )
+   JSON-NEW >r
+   -1 r@ J-START!
+   -1 r@ J-VAL!
+   r> ;
+
+: JSON-OBJECT-VALUE-START ( -- i64 )
+   J-OBJ JSON-COMPOSITE-VALUE ;
+
+: JSON-ARRAY-VALUE-START ( -- i64 )
+   J-ARR JSON-COMPOSITE-VALUE ;
+
+: JSON-OBJECT-EMPTY? ( -- bool )
+   JSON-SKIP-WS
+   JSON-END? IF s" json: unterminated object" JSON-SYNTAX THEN
+   JSON-AT J-RBRACE = IF JSON-TAKE drop 0 0= exit THEN
+   0 0= 0= ;
+
+: JSON-ARRAY-EMPTY? ( -- bool )
+   JSON-SKIP-WS
+   JSON-END? IF s" json: unterminated array" JSON-SYNTAX THEN
+   JSON-AT J-RBRACK = IF JSON-TAKE drop 0 0= exit THEN
+   0 0= 0= ;
+
+: JSON-OBJECT-KEY ( -- i64 i64 )
+   JSON-SKIP-WS
+   JSON-AT J-DQ <> IF s" json: object key must be string" JSON-SYNTAX THEN
+   JSON-PARSE-STRING$
+   JSON-SKIP-WS
+   J-COLON JSON-EXPECT ;
+
+: JSON-OBJECT-MORE? ( -- bool )
+   JSON-SKIP-WS
+   JSON-END? IF s" json: unterminated object" JSON-SYNTAX THEN
+   JSON-AT J-RBRACE = IF JSON-TAKE drop 0 0= 0= exit THEN
+   J-COMMA JSON-EXPECT
+   JSON-SKIP-WS
+   JSON-AT J-RBRACE = IF s" json: trailing object comma" JSON-SYNTAX THEN
+   0 0= ;
+
+: JSON-ARRAY-MORE? ( -- bool )
+   JSON-SKIP-WS
+   JSON-END? IF s" json: unterminated array" JSON-SYNTAX THEN
+   JSON-AT J-RBRACK = IF JSON-TAKE drop 0 0= 0= exit THEN
+   J-COMMA JSON-EXPECT
+   JSON-SKIP-WS
+   JSON-AT J-RBRACK = IF s" json: trailing array comma" JSON-SYNTAX THEN
+   0 0= ;
+
+: JSON-SCALAR-VALUE ( i64 -- )
+   dup J-DQ = IF drop JSON-STRING-VALUE exit THEN
+   dup J-MINUS = over JSON-DIGIT? or IF drop JSON-NUMBER-VALUE exit THEN
+   dup 116 = IF drop JSON-TRUE-VALUE exit THEN
+   dup 102 = IF drop JSON-FALSE-VALUE exit THEN
+   110 = IF JSON-NULL-VALUE exit THEN
+   s" json: bad value" JSON-SYNTAX ;
+
+: JSON-VALUE ( -- i64 )
+   JSON-VALUE-ENTER
    JSON-SKIP-WS
    JSON-END? IF s" json: empty value" JSON-SYNTAX THEN
    JSON-AT JSON-TMP !
    JSON-TMP @ J-LBRACE = IF
       JSON-TAKE drop
-      J-OBJ JSON-NEW >r
-      -1 r@ J-START!
-      -1 r@ J-VAL!
-      JSON-SKIP-WS
-      JSON-END? IF s" json: unterminated object" JSON-SYNTAX THEN
-      JSON-AT J-RBRACE = IF
-         JSON-TAKE drop
-      ELSE
+      JSON-OBJECT-VALUE-START >r
+      JSON-OBJECT-EMPTY? 0= IF
          begin
-            JSON-SKIP-WS
-            JSON-AT J-DQ <> IF s" json: object key must be string" JSON-SYNTAX THEN
-            JSON-PARSE-STRING$ >r >r
-            JSON-SKIP-WS
-            J-COLON JSON-EXPECT
-            RECURSE JSON-NODE !
-            r> JSON-KO !
-            r> JSON-KL !
-            r@ JSON-KO @ JSON-KL @ JSON-NODE @ JSON-PAIR-APPEND
-            JSON-SKIP-WS
-            JSON-END? IF s" json: unterminated object" JSON-SYNTAX THEN
-            JSON-AT J-RBRACE = IF
-               JSON-TAKE drop
-               0 0= 0=
-            ELSE
-               J-COMMA JSON-EXPECT
-               JSON-SKIP-WS
-               JSON-AT J-RBRACE = IF s" json: trailing object comma" JSON-SYNTAX THEN
-               0 0=
-            THEN
+            r@ JSON-OBJECT-KEY RECURSE JSON-PAIR-APPEND
+            JSON-OBJECT-MORE?
          while repeat
       THEN
       r> JSON-VN !
    ELSE JSON-TMP @ J-LBRACK = IF
       JSON-TAKE drop
-      J-ARR JSON-NEW >r
-      -1 r@ J-START!
-      -1 r@ J-VAL!
-      JSON-SKIP-WS
-      JSON-END? IF s" json: unterminated array" JSON-SYNTAX THEN
-      JSON-AT J-RBRACK = IF
-         JSON-TAKE drop
-      ELSE
+      JSON-ARRAY-VALUE-START >r
+      JSON-ARRAY-EMPTY? 0= IF
          begin
-            RECURSE JSON-NODE !
-            r@ JSON-NODE @ JSON-ITEM-APPEND
-            JSON-SKIP-WS
-            JSON-END? IF s" json: unterminated array" JSON-SYNTAX THEN
-            JSON-AT J-RBRACK = IF
-               JSON-TAKE drop
-               0 0= 0=
-            ELSE
-               J-COMMA JSON-EXPECT
-               JSON-SKIP-WS
-               JSON-AT J-RBRACK = IF s" json: trailing array comma" JSON-SYNTAX THEN
-               0 0=
-            THEN
+            r@ RECURSE JSON-ITEM-APPEND
+            JSON-ARRAY-MORE?
          while repeat
       THEN
       r> JSON-VN !
-   ELSE JSON-TMP @ J-DQ = IF
-      JSON-PARSE-STRING$ JSON-TMP2 ! JSON-TMP !
-      J-STR JSON-NEW JSON-VN !
-      JSON-TMP @ JSON-VN @ J-OFF!
-      JSON-TMP2 @ JSON-VN @ J-LEN!
-   ELSE JSON-TMP @ J-MINUS = JSON-TMP @ JSON-DIGIT? or IF
-      JSON-PARSE-NUMBER$ JSON-TMP2 ! JSON-TMP !
-      J-NUM JSON-NEW JSON-VN !
-      JSON-TMP @ JSON-VN @ J-OFF!
-      JSON-TMP2 @ JSON-VN @ J-LEN!
-   ELSE JSON-TMP @ 116 = IF
-      s" true" JSON-MATCH
-      J-BOOL JSON-NEW JSON-VN !
-      -1 JSON-VN @ J-VAL!
-   ELSE JSON-TMP @ 102 = IF
-      s" false" JSON-MATCH
-      J-BOOL JSON-NEW JSON-VN !
-      0 JSON-VN @ J-VAL!
-   ELSE JSON-TMP @ 110 = IF
-      s" null" JSON-MATCH
-      J-NULL JSON-NEW JSON-VN !
    ELSE
-      s" json: bad value" JSON-SYNTAX
-   THEN THEN THEN THEN THEN THEN THEN
-   JSON-DEPTH @ 1- JSON-DEPTH !
-   JSON-VN @ ;
+      JSON-TMP @ JSON-SCALAR-VALUE
+   THEN THEN
+   JSON-VALUE-LEAVE ;
 
 : JSON-PARSE ( ptr u8 i64 -- i64 )
    {: a:ptr u :}

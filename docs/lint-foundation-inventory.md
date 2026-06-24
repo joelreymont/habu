@@ -117,4 +117,4 @@ explicit span outputs once all compatibility callers are gone.
 Validation for each port must include the focused tool fixture plus the default
 native gate:
 
-`bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f`
+Run the full native gate command from `docs/bootstrap.md`.

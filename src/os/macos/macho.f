@@ -7,6 +7,8 @@ $90000 constant MSIZE
 create MBUF MSIZE allot
 variable MP
 variable MLEN
+s" MBUF" s" -- ptr u8" TRUST
+s" MLEN" s" -- ptr n" TRUST
 : MP@ MP @ ;
 s" MP@" s" -- ptr u8" TRUST
 
@@ -43,11 +45,11 @@ $0E       constant LC-DYLINKER
 $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $100000000 constant VMBASE
-$1000     constant CODE-OFF          \ entry file offset (slack below for codesign)
 $80000    constant MPAGE             \ maximum generated code window for builder images
 variable CODELEN
 
 : ASM-CODE  ASM-LEN CODELEN ! ;      \ code already assembled in icode's CODE
+s" ASM-CODE" s" --" TRUST
 
 \ __TEXT sized to CONTENT (16 KB pages), not a fixed page count: a 24 KB
 \ program is a 28 KB binary, not a fixed-cap binary. MPAGE is only the fail-closed
@@ -115,3 +117,19 @@ s" PHP@" s" -- ptr u8" TRUST
 
 \ the target-neutral driver entry: another OS swaps in an ELF builder here
 : BUILD-IMAGE  BUILD-MACHO ;
+s" BUILD-IMAGE" s" --" TRUST
+
+: BUILD-SNAP-HDR {: snl :} ( n -- n )
+   CODE-OFF snl + $3FFF + $3FFF invert and {: sfts :}
+   M-RESET  0 NCMDS !
+   MH-HDR,
+   s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
+   s" __TEXT" VMBASE sfts 0 sfts 5 1 80 SEG,  LC+
+      s" __text" s" __TEXT" VMBASE CODE-OFF + snl CODE-OFF 2 $80000400 SECT,
+   M-HERE LE-OFF !
+   s" __LINKEDIT" VMBASE sfts + MPAGE sfts 0 1 0 0 SEG,  LC+
+   DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
+   PATCH-HDR
+   CODE-OFF M-PAD
+   sfts ;
+s" BUILD-SNAP-HDR" s" n -- n" TRUST

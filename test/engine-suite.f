@@ -65,7 +65,7 @@ TRS2@ 6 T=
 : TEXIT dup 5 > if drop 99 exit then 1 + ;
 3 TEXIT 4 T=
 7 TEXIT 99 T=
-: FIB dup 2 < if drop 1 exit then dup 1- recurse swap 2 - recurse + ;
+: FIB ( i64 -- i64 ) dup 2 < if drop 1 exit then dup 1- recurse swap 2 - recurse + ;
 10 FIB 89 T=
 
 \ locals (typed)
@@ -73,10 +73,10 @@ TRS2@ 6 T=
 3 4 TLOC 7 T=
 
 \ create/does>
-: CONST create , does> @ ;
+: CONST ( n -- ) create , does> ( -- n ) @ ;
 5 CONST FIVE
 FIVE 5 T=
-: ARR create cells allot does> swap cells + ;
+: ARR ( n -- ) create cells allot does> ( n -- ptr a ) swap cells + ;
 4 ARR A4
 7 2 A4 !
 2 A4 @ 7 T=
@@ -128,16 +128,15 @@ s" CBAD-QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" T-CHECK-REJECTS
 : TI IM5 ;
 TI 5 T=
 \ POSTPONE is compiler-manipulating; this fixture tests the runtime primitive,
-\ not checked user code. TP must compile through P5 while the boundary is active.
-0 set-check
-: P5 postpone IM5 ; immediate
+\ not checked user code. TP must compile through P5 while the trusted immediate
+\ boundary is active.
+TRUSTED: P5 ( -- i64 ) postpone IM5 ; immediate
 : TP P5 ;
 TP 5 T=
-' HB-CHECK-HOOK set-check
 
 \ child processes: run-rc spawns + waits (paths need a NUL)
 create PZB 64 allot
-: PATHZ {: a u :}
+: PATHZ ( ptr u8 n -- ptr u8 ) {: a:ptr u :}
    0 begin dup u < while  dup a + c@  over PZB + c!  1 + repeat drop
    0 PZB u + c!  PZB ;
 s" /usr/bin/true" PATHZ run-rc 0 T=
@@ -201,8 +200,17 @@ s" " nip 0 T=
 s" /nonexistent-habu-x" PATHZ run-rc -1 T=
 
 \ snapshot-writer intrinsics are sane
+$340000000 constant ES-LINUX-DATA-VA
+$44000000000 constant ES-MACOS-DATA-VA
+: ES-TARGET-UNKNOWN ( -- )
+   s" engine-suite: unknown target" 76 die ;
+
+: ES-DATA-VA ( -- n )
+   HB-TARGET-LINUX? if ES-LINUX-DATA-VA exit then
+   HB-TARGET-MACOS? if ES-MACOS-DATA-VA exit then
+   ES-TARGET-UNKNOWN ;
 dbase@ $300000000 = -1 T=
-data-base DATA-VA = -1 T=
+data-base ES-DATA-VA = -1 T=
 cp@ dbase@ - 0 > -1 T=
 ndict@ 0 > -1 T=
 
@@ -241,6 +249,14 @@ TLR 78 T=
 5 KR 15 T=
 : KW {: a :} 0 begin dup 12 < while a + repeat ;
 4 KW 12 T=
+
+\ Public parser primitive: runtime and immediate paths both use the native
+\ tokenizer and advance the caller's input cursor.
+: TPN1 ( -- ) parse-name 5 T= c@ 97 T= ;
+TPN1 alpha
+: TPNI ( -- ) parse-name 4 T= c@ 98 T= ; immediate
+: TPN2 ( -- n ) TPNI beta 7 ;
+TPN2 7 T=
 
 \ float VS: d-reg binops (FADD path), dup of a float constant, and a
 \ loop-resident float accumulator surviving BEGIN back edges in a d-reg

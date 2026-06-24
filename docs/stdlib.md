@@ -187,8 +187,10 @@ the current capacity; it throws `E-VEC-CAPACITY` only for invalid or overflowing
 capacity requests and `E-VEC-BOUNDS` for invalid indexes or impossible lengths.
 
 The data pointer field is checked with `ptr-field`, which constructs the typed
-`ptr ptr x` address used by normal `@` and `!`. Bounds, growth, copying, length,
-capacity, and iteration behavior are checked Forth.
+`ptr ptr x` address used by normal `@` and `!`. Numeric header fields and vector
+slots use `VEC-CELL-FIELD` so indexed cell addresses remain typed as `ptr a`.
+Bounds, growth, copying, length, capacity, and iteration behavior are checked
+Forth.
 
 ```forth
 VEC-CHECK-NEED      ( count -- )
@@ -196,6 +198,7 @@ VEC-CHECK-CAP       ( count -- )
 VEC-CHECK-LEN       ( len -- )
 VEC-CELLS>BYTES     ( count -- n )
 VEC-ALLOC-CELLS     ( count -- ptr a )
+VEC-CELL-FIELD      ( ptr a n -- ptr a )
 VEC-DATA-FIELD      ( ptr a -- ptr ptr a )
 VEC-DATA@           ( ptr a -- ptr a )
 VEC-DATA!           ( ptr a ptr a -- )
@@ -221,7 +224,7 @@ VEC-PUSH-AT         ( a ptr a n -- idx )
 VEC-PUSH            ( a ptr a -- idx )
 VEC-PUSH-N          ( n ptr a -- idx )
 VEC-PUSH-A          ( ptr u8 ptr a -- idx )
-VEC-EACH            ( ptr a [ idx a -- ] -- )
+VEC-EACH            ( R ptr a [ R idx a -- R ] -- R )
 ```
 
 ## String
@@ -493,9 +496,8 @@ it for source/report buffers whose exact required size is known only at runtime.
 
 ## Files
 
-`lib/fs.f` promotes the native filesystem helper surface from `tools/fs.f`.
-Public path words accept counted byte strings and own any private NUL-terminated
-copy needed for syscalls.
+`lib/fs.f` is the canonical filesystem helper surface. Public path words accept
+counted byte strings and own any private NUL-terminated copy needed for syscalls.
 
 The current source-backed surface covers path predicates, stat mode and size,
 basename, bounded path joining, bounded file I/O, file mutation, and recursive file
@@ -1149,12 +1151,14 @@ requires the artifact, stores the rc, and returns it. Argv is modeled as metadat
 until the process layer grows argv-vector spawning; it is still part of the
 checked build contract so drivers can preserve intended command arguments.
 
-`lib/codesign.f` owns checked executable promotion and macOS ad-hoc signing
-helpers for build drivers that already produced an artifact. It validates every
-input path before mutation, runs `/usr/bin/codesign` through the checked argv
-process layer, throws `E-BUILD-COMMAND` when the tool is absent, throws
-`E-BUILD-PATH` for missing artifacts, and throws `E-BUILD-STATUS` for nonzero
-signing or verification status:
+`lib/codesign.f` owns checked executable promotion and target signing policy for
+build drivers that already produced an artifact. On macOS it runs
+`/usr/bin/codesign` through the checked argv process layer and throws
+`E-BUILD-COMMAND` when the tool is absent. On Linux there is no fake signing
+tool: signing force/ensure means chmod executable, and verification means the
+artifact exists and is executable. All targets throw `E-BUILD-PATH` for missing
+artifacts and `E-BUILD-STATUS` for nonzero signing or verification status when a
+target signing tool is actually invoked:
 
 ```forth
 CODESIGN-TOOL                ( -- ptr u8 n )
@@ -1173,10 +1177,11 @@ PROMOTE-SIGNED-EXECUTABLE    ( ptr u8 n ptr u8 n -- )
 
 `PROMOTE-EXECUTABLE` chmods the source artifact executable, renames it to the
 destination, and verifies the destination file exists. The source path is gone
-after successful promotion. `CODESIGN-ENSURE` verifies an executable path; when
-verification fails, it forces an ad-hoc signature and verifies again.
-`PROMOTE-SIGNED-EXECUTABLE` ad-hoc signs the source, promotes it, and verifies
-the promoted executable signature.
+after successful promotion. `CODESIGN-ENSURE` verifies an executable path; on
+macOS, when verification fails, it forces an ad-hoc signature and verifies
+again. On Linux it ensures the executable bit and verifies the path.
+`PROMOTE-SIGNED-EXECUTABLE` applies the target signing policy to the source,
+promotes it, and verifies the promoted executable.
 
 ## Build Shell Boundary
 

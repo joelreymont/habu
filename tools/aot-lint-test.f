@@ -1,5 +1,6 @@
 \ aot-lint-test.f - checked fixtures for tools/aot-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/aot-lint-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/aot-lint-test.f
 
 4096 constant ALT-BUF-CAP
 
@@ -77,40 +78,45 @@ create ALT-ERR ALT-BUF-CAP allot
    ALT-GOOD ALT-GOOD$ WRITE-ALL
    ALT-BAD ALT-BAD$ WRITE-ALL ;
 
+: ALT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
 : ALT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/aot-lint.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+ ;
+   s" --load" ALT-ARG+
+   s" lib/errors.f" ALT-ARG+
+   s" lib/memory.f" ALT-ARG+
+   s" lib/vector.f" ALT-ARG+
+   s" tools/lint/text.f" ALT-ARG+
+   s" tools/lint/token.f" ALT-ARG+
+   s" tools/lint/lib.f" ALT-ARG+
+   s" tools/lint/json-writer.f" ALT-ARG+
+   s" tools/lint/source-lex.f" ALT-ARG+
+   s" tools/argv.f" ALT-ARG+
+   s" tools/aot-lint.f" ALT-ARG+
+   s" --" ALT-ARG+ ;
 
 : ALT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
 : ALT-RUN-GOOD ( -- n n n )
    ALT-ARGV-LOAD
-   ALT-GOOD  >LEN PROC-ARGV+
+   ALT-GOOD ALT-ARG+
    s" bin/hb" >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    ALT-CAPTURE>N ;
 
 : ALT-RUN-BAD ( -- n n n )
    ALT-ARGV-LOAD
-   ALT-BAD  >LEN PROC-ARGV+
+   ALT-BAD ALT-ARG+
    s" bin/hb" >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    ALT-CAPTURE>N ;
 
 : ALT-RUN-BAD-JSON ( -- n n n )
    ALT-ARGV-LOAD
-   s" --json"  >LEN PROC-ARGV+
-   s" --label"  >LEN PROC-ARGV+
-   s" <stdin>"  >LEN PROC-ARGV+
-   ALT-BAD  >LEN PROC-ARGV+
+   s" --json" ALT-ARG+
+   s" --label" ALT-ARG+
+   s" <stdin>" ALT-ARG+
+   ALT-BAD ALT-ARG+
    s" bin/hb" >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    ALT-CAPTURE>N ;
 

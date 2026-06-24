@@ -15,7 +15,13 @@ $1E8 constant PROF-LIM          \ sample limit (auto-dump + exit(99) when reache
 $1F8 constant PROF-OTHER      \ samples outside any dict word (main loop, helpers)
 $1F0000 constant PROF-CNT       \ counters: one cell per dict slot (high in data region)
 14  constant SIGALRM
-$0042 constant SA-PROF-FLAGS    \ SA_SIGINFO|SA_RESTART
+48 constant PROF-MACOS-MCTX-OFF
+176 constant PROF-LINUX-UC-MCTX-OFF
+264 constant PROF-LINUX-MCTX-PC-OFF
+272 constant PROF-MACOS-MCTX-PC-OFF
+8 constant PROF-LINUX-SIGSET-SIZE
+$10000004 constant LINUX-SA-PROF-FLAGS
+$0042 constant MACOS-SA-PROF-FLAGS
 
 \ LPROFDUMP ( -- ) : write "name count\n" (fd 1) for every dict word with samples.
 \ Clobbers x0-x2,x9-x17; loop regs x5/x6 survive G-PRINT9 (x9..x14) + syscalls.
@@ -43,14 +49,29 @@ $0042 constant SA-PROF-FLAGS    \ SA_SIGINFO|SA_RESTART
       9 17 0 ADDI,  G-PRINT9
    dret LBL,  RET, ;
 
-\ The SIGALRM handler, entered directly as sa_tramp: x1=infostyle, x4=ucontext.
+\ The SIGALRM handler is entered directly. Linux SA_SIGINFO passes
+\ x0=sig,x1=siginfo,x2=ucontext; macOS sa_tramp passes x4=ucontext.
+: C-PROF-MCTX>R21 ( -- )
+   HB-TARGET-LINUX? IF
+      21 2 PROF-LINUX-UC-MCTX-OFF ADDI,
+   ELSE
+      21 4 PROF-MACOS-MCTX-OFF LDR,
+   THEN ;
+
+: C-PROF-PC>R9 ( -- )
+   HB-TARGET-LINUX? IF
+      9 21 PROF-LINUX-MCTX-PC-OFF LDR,
+   ELSE
+      9 21 PROF-MACOS-MCTX-PC-OFF LDR,
+   THEN ;
+
 \ Bump the owning word's counter; at the sample limit dump + exit(99); else
-\ sigreturn(ucontext, infostyle) — the kernel restores the interrupted context,
-\ so clobbering registers here is safe.
+\ sigreturn — the kernel restores the interrupted context, so clobbering
+\ registers here is safe.
 : EMIT-PROF ( -- )
    LPROFH @ LBL,
    LBL {: pl :}  LBL {: pnext :}  LBL {: pdone :}  LBL {: prep :}  LBL {: psig :}
-   21 4 MCTX-OFF LDR,  9 21 272 LDR,                \ x9 = interrupted pc
+   C-PROF-MCTX>R21  C-PROF-PC>R9                    \ x9 = interrupted pc
    10 DATA PROF-TOT LDR,  10 10 1 ADDI,  10 DATA PROF-TOT STR,
    11 DATA PROF-LIM LDR,  10 11 CMP,  C-GE prep BCOND,
    5 DBASE 0 ADDI,  6 0 MOVZ,                       \ rec, i
@@ -69,6 +90,36 @@ $0042 constant SA-PROF-FLAGS    \ SA_SIGINFO|SA_RESTART
    prep LBL,  LPROFDUMP @ BL,  0 99 MOVZ,  NR-EXIT SYS, ;
 
 \ prims. prof-on ( n -- ): zero counters, set limit, install handler + 1ms timer.
+: C-PROF-SIGACTION-FRAME ( -- )
+   SP SP 32 SUBI,
+   9 LPROFH @ ADR,  9 SP 0 STR,
+   HB-TARGET-LINUX? IF
+      10 LINUX-SA-PROF-FLAGS LIT64,  10 SP 8 STR,
+      10 0 MOVZ,  10 SP 16 STR,  10 SP 24 STR,
+   ELSE
+      9 SP 8 STR,
+      10 MACOS-SA-PROF-FLAGS MOVZ,  10 10 32 LSLI,  10 SP 16 STR,
+   THEN ;
+
+: C-PROF-SIGACTION ( -- )
+   0 SIGALRM MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,
+   HB-TARGET-LINUX? IF 3 PROF-LINUX-SIGSET-SIZE MOVZ, THEN
+   NR-SIGACTION SYS, ;
+
+: C-PROF-SIGACTION-DONE ( -- )
+   SP SP 32 ADDI, ;
+
+: C-PROF-TIMER-FRAME ( -- )
+   SP SP 32 SUBI,
+   9 0 MOVZ,   9 SP 0 STR,  10 1000 MOVZ,  10 SP 8 STR,
+   9 SP 16 STR,  10 SP 24 STR, ;
+
+: C-PROF-TIMER ( -- )
+   0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS, ;
+
+: C-PROF-TIMER-DONE ( -- )
+   SP SP 32 ADDI, ;
+
 : BPROF-ON
    LBL {: zl :}  LBL {: zd :}
    A G-POP  A DATA PROF-LIM STR,
@@ -76,14 +127,12 @@ $0042 constant SA-PROF-FLAGS    \ SA_SIGINFO|SA_RESTART
    7 PROF-CNT LIT64,  7 DATA 7 ADD,  8 NDICT 0 ADDI,         \ zero NDICT counters
    zl LBL,  8 zd CBZ,  9 0 MOVZ,  9 7 0 STR,  7 7 8 ADDI,  8 8 1 SUBI,  zl B,
    zd LBL,
-   SP SP 64 SUBI,
-   9 LPROFH @ ADR,  9 SP 0 STR,  9 SP 8 STR,                  \ sa_handler, sa_tramp
-   10 SA-PROF-FLAGS MOVZ,  10 10 32 LSLI,  10 SP 16 STR,      \ mask=0, flags
-   0 SIGALRM MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SIGACTION SYS,   \ sigaction
-   9 0 MOVZ,   9 SP 32 STR,  10 1000 MOVZ,  10 SP 40 STR,     \ it_interval = 0s 1000us
-   9 SP 48 STR,  10 SP 56 STR,                                \ it_value    = 0s 1000us
-   0 0 MOVZ,  1 SP 32 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS,
-   SP SP 64 ADDI, ;
+   C-PROF-SIGACTION-FRAME
+   C-PROF-SIGACTION
+   C-PROF-SIGACTION-DONE
+   C-PROF-TIMER-FRAME
+   C-PROF-TIMER
+   C-PROF-TIMER-DONE ;
 
 : BPROF-REPORT  SP SP 16 SUBI,  30 SP 0 STR,  LPROFDUMP @ BL,
    30 SP 0 LDR,  SP SP 16 ADDI, ;

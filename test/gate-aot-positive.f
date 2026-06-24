@@ -4,7 +4,8 @@
 
 46 constant GAP-DOT
 99 constant GAP-C-LOWER
-2000 constant GAP-STRIPPED-TEXT-MAX
+2000 constant GAP-MACHO-STRIPPED-TEXT-MAX
+$3000 constant GAP-ELF-STRIPPED-TEXT-MAX
 
 : GAP-SRC-DOTQ ( ptr u8 n -- ) {: a:ptr u :}
    GAP-DOT GE-SRC-C
@@ -34,6 +35,11 @@
    label labelu GB-AOT-REPORT
    mode modeu label labelu GB-GJA ;
 
+: GAP-STRIPPED-TEXT-MAX ( -- n )
+   HB-TARGET-LINUX? if GAP-ELF-STRIPPED-TEXT-MAX exit then
+   HB-TARGET-MACOS? if GAP-MACHO-STRIPPED-TEXT-MAX exit then
+   GB-TARGET-UNKNOWN ;
+
 : GAP-FIB-SOURCE ( -- )
    GE-SRC-RESET
    s" : FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;" GE-SRC-LINE
@@ -45,10 +51,10 @@
    s" hb-build AOT FIB" GAP-BUILD
    SB-RESET s" 55" GE-OUT-LINE GE-SB-LF
    SB$ s" hb-build AOT output" GB-RUN-EXPECT
-   GB-OUT$ GB-MACHO-TEXT-SIZE {: textsz :}
-   textsz GAP-STRIPPED-TEXT-MAX >= if s" hb-build AOT stripped __text" GE-FAIL then
+   GB-OUT$ GB-EXEC-TEXT-SIZE {: textsz :}
+   textsz GAP-STRIPPED-TEXT-MAX >= if s" hb-build AOT stripped text" GE-FAIL then
    s" aot-stripped" s" aot-stripped call report" GAP-AOT-ASSERT
-   s" PASS: hb-build AOT (engine stripped, __text " type
+   s" PASS: hb-build AOT (engine stripped, text " type
    textsz GB-U.
    s"  B vs ~11800 embed)" type cr ;
 

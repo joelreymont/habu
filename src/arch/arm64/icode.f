@@ -25,14 +25,15 @@ s" EP@" s" -- ptr u8" TRUST
 : PATCH {: u w :}  w CW@ EP !                        \ OR u into the word already at w (delta bits)
    u 255 and EP@ c@ or EP@ c!  u 8 rshift 255 and EP@ 1 + c@ or EP@ 1 + c!
    u 16 rshift 255 and EP@ 2 + c@ or EP@ 2 + c!  u 24 rshift 255 and EP@ 3 + c@ or EP@ 3 + c! ;
-\ labels: LBLP[id] = defining word pos, or -1 if pending (1024 — engine-builder sized)
-create LBLP 1024 cells allot   variable NLBL
+\ labels: LBLP[id] = defining word pos, or -1 if pending.
+2048 constant LBL-CAP
+create LBLP LBL-CAP cells allot   variable NLBL
 \ fixups: site word-pos, target label, kind (0=B26, 1=cond/CBZ 19-bit, 2=ADR)
 create FXS 2048 cells allot   create FXL 2048 cells allot   create FXK 2048 cells allot   variable NFX
 
-: ASM-INIT  ARESET  0 NLBL !  0 NFX !  0 BEGIN dup cells LBLP + -1 swap ! 1 + dup 1023 > UNTIL drop ;
+: ASM-INIT  ARESET  0 NLBL !  0 NFX !  0 BEGIN dup cells LBLP + -1 swap ! 1 + dup LBL-CAP 1- > UNTIL drop ;
 
-: ?LBL  NLBL @ 1023 > IF s" icode: out of labels" 72 die THEN ;
+: ?LBL  NLBL @ LBL-CAP 1- > IF s" icode: out of labels" 72 die THEN ;
 
 : FX?      NFX @ 2047 > IF s" icode: out of fixups" 72 die THEN ;
 

@@ -18,6 +18,7 @@ variable VECT-IDX-SUM
    0 >COUNT VEC-CHECK-NEED
    1 >COUNT VEC-CELLS>BYTES 1 cells T=
    1 >LEN VEC-CHECK-LEN
+   VECT-VEC 1 VEC-CELL-FIELD VECT-VEC cell+ = TTRUE
    VECT-VEC VEC-CAP@ VEC-CHECK-CAP
    VECT-VEC 2 >COUNT VEC-ENSURE
    VECT-VEC VEC-CAP@ COUNT>N 2 T=
@@ -63,9 +64,9 @@ variable VECT-IDX-SUM
    s" beta" drop VECT-PTR-VEC 0 >IDX VEC-A!
    VECT-PTR-VEC 0 >IDX VEC-A@ 4 s" beta" T$= ;
 
-: VECT-EACH-ACC ( idx a -- )
-   VECT-SUM @ + VECT-SUM !
-   VECT-IDX-SUM @ swap IDX>N + VECT-IDX-SUM ! ;
+: VECT-EACH-ACC ( idx n -- ) {: ix value :}
+   VECT-SUM @ value + VECT-SUM !
+   VECT-IDX-SUM @ ix IDX>N + VECT-IDX-SUM ! ;
 
 : VECT-EACH-TEST ( -- )
    VECT-RESET

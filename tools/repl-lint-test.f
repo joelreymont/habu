@@ -1,5 +1,6 @@
 \ repl-lint-test.f - checked fixtures for tools/repl-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repl-lint-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repl-lint-test.f
 
 4096 constant RLT-CAP
 
@@ -92,6 +93,9 @@ create RLT-ERR RLT-CAP allot
 : RLT-BAD-SUMMARY$ ( -- ptr u8 n )
    s" repl-lint: 1 finding(s)" ;
 
+: RLT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
 : RLT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-repl-lint" TMPDIR-MKDIR {: a:ptr u :}
@@ -111,18 +115,18 @@ create RLT-ERR RLT-CAP allot
 
 : RLT-ARGV ( -- )
    PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+
-   s" tools/lint/intern.f"  >LEN PROC-ARGV+
-   s" tools/lint/token.f"  >LEN PROC-ARGV+
-   s" tools/lint/lib.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/repl-lint.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   RLT-ROOT  >LEN PROC-ARGV+ ;
+   s" --load" RLT-ARG+
+   s" lib/errors.f" RLT-ARG+
+   s" lib/memory.f" RLT-ARG+
+   s" lib/vector.f" RLT-ARG+
+   s" tools/lint/text.f" RLT-ARG+
+   s" tools/lint/intern.f" RLT-ARG+
+   s" tools/lint/token.f" RLT-ARG+
+   s" tools/lint/lib.f" RLT-ARG+
+   s" tools/argv.f" RLT-ARG+
+   s" tools/repl-lint.f" RLT-ARG+
+   s" --" RLT-ARG+
+   RLT-ROOT RLT-ARG+ ;
 
 : RLT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;

@@ -55,6 +55,10 @@ variable GE-RD
 : GE-EXPECT-NONZERO ( ptr u8 n -- ) {: label:ptr labelu :}
    GT-RC@ 0= if label labelu GE-FAIL then ;
 
+: GE-EXPECT-SILENT ( ptr u8 n -- ) {: label:ptr labelu :}
+   GT-OUT$ nip 0 <> if label labelu GE-FAIL then
+   GT-ERR$ nip 0 <> if label labelu GE-FAIL then ;
+
 : GE-EXPECT-OUT ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu label:ptr labelu :}
    GT-OUT$ want wantu STR= 0= if label labelu GE-FAIL then ;
 
@@ -136,6 +140,42 @@ variable GE-RD
    READ-ALL GE-RD !
    GE-SRC-U @ GE-RD @ + GE-SRC-U ! ;
 
+: GE-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
+: GE-FILES-END? ( ptr u8 n -- bool )
+   s" ;GE-FILES" STR= ;
+
+: GE-FILES-ITEM, ( ptr u8 n -- ) {: a:ptr u :}
+   u 0 < if E-STR-BOUNDS throw then
+   u STR-BYTE-MAX > if E-STR-BOUNDS throw then
+   u c,
+   0 begin dup u < while
+      dup a + c@ c,
+      1+
+   repeat drop ;
+
+: GE-FILES-PARSE ( -- )
+   begin
+      parse-name dup 0= if 2drop E-STR-BOUNDS throw then
+      2dup GE-FILES-END? if 2drop 0 c, exit then
+      GE-FILES-ITEM,
+   again ;
+
+: GE-FILES-WALK ( ptr a [ ptr u8 n -- ] -- ) {: p:ptr q :}
+   p begin dup c@ 0= 0= while
+      dup 1+ over c@ q execute
+      dup c@ 1 + +
+   repeat drop ;
+
+: GE-FILES-RUN ( [ ptr u8 n -- ] ptr a -- )
+   swap GE-FILES-WALK ;
+
+: GE-FILES: ( -- )
+   create GE-FILES-PARSE
+   does> ( [ ptr u8 n -- ] -- )
+      GE-FILES-RUN ;
+
 : GE-HB-RESET ( -- )
    PROC-ARGV-ENV-RESET ;
 
@@ -170,29 +210,31 @@ variable GE-RD
 
 : GE-CHECK-ARGV ( -- )
    GE-HB-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" lib/source.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/check.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+ ;
+   s" --load" GE-ARG+
+   s" lib/errors.f" GE-ARG+
+   s" lib/string.f" GE-ARG+
+   s" lib/fs.f" GE-ARG+
+   s" lib/fs-mutate.f" GE-ARG+
+   s" lib/process.f" GE-ARG+
+   s" lib/process-argv.f" GE-ARG+
+   s" lib/source.f" GE-ARG+
+   s" tools/argv.f" GE-ARG+
+   s" tools/check.f" GE-ARG+
+   s" --" GE-ARG+ ;
 
 : GE-CHECK-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   label labelu GE-EXPECT-OK ;
+   label labelu GE-EXPECT-OK
+   label labelu GE-EXPECT-SILENT ;
 
 : GE-CHECK-SRC-LIST ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
-   s" --source-list"  >LEN PROC-ARGV+
+   s" --source-list" GE-ARG+
    0 begin dup GE-SRC-N @ < while
-      dup GE-SRC$  >LEN PROC-ARGV+
+      dup GE-SRC$ GE-ARG+
       1+
    repeat drop
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   label labelu GE-EXPECT-OK ;
+   label labelu GE-EXPECT-OK
+   label labelu GE-EXPECT-SILENT ;

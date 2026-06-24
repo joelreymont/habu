@@ -16,8 +16,9 @@ variable RX  variable RACC
 : CL-WOR  ( n -- )  WMSK @ or WMSK ! ;
 : CL-ROR  ( n -- )  RMSK @ or RMSK ! ;
 
-0 28 CL-ADD 30 CL-ADD 31 CL-ADD constant CONTRACT-MASK
+0 28 CL-ADD 31 CL-ADD constant CONTRACT-MASK
 0 0 CL-ADD 2 CL-ADD 3 CL-ADD 4 CL-ADD 5 CL-ADD constant KWCMP-MASK
+0 8 CL-ADD 16 CL-ADD constant SYS-SCRATCH-MASK
 
 : CL-DIGIT?  ( n -- bool )  dup 47 > swap 58 < and ;
 : CL-NUM-REG  ( ptr u8 n -- n ) {: a:ptr u :}
@@ -66,6 +67,7 @@ variable RX  variable RACC
    a u s" Lkwcmp" STR=CI if 0 0 CL-ADD exit then
    a u s" Lloc-find" STR=CI if 0 0 CL-ADD exit then
    a u s" Ltok" STR=CI if 0 0 CL-ADD exit then
+   a u s" Lsrcrd" STR=CI if 0 9 CL-ADD exit then
    a u s" Lfind" STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u s" Lnum" STR=CI if 0 2 CL-ADD 11 CL-ADD 12 CL-ADD exit then
    a u s" Lvralloc" STR=CI if 0 14 CL-ADD exit then
@@ -177,6 +179,14 @@ variable RK
    a u s" vshuf-entry" STR=CI if KWCMP-MASK CL-WOR exit then
    a u s" vun-entry" STR=CI if KWCMP-MASK CL-WOR exit then ;
 
+: SYS-EXIT?  ( n n -- bool ) {: lo hi :}
+   hi lo <= if LINT-FALSE exit then
+   hi 1- TOK s" NR-EXIT" STR= ;
+: SYS?  ( ptr u8 n -- bool )
+   s" SYS," STR= ;
+: BLR?  ( ptr u8 n -- bool )
+   s" BLR," STR= ;
+
 : EFFECTS  {: a u lo hi :}  ( -- )
    0 WMSK !  0 RMSK !  lo hi COLLECT-REGS
    a u MN-W3? if 0 EW 1 ER 2 ER exit then
@@ -190,7 +200,10 @@ variable RK
    a u s" CBZ," STR= if 0 ER exit then
    a u s" CBNZ," STR= if 0 ER exit then
    a u s" SVC," STR= if 0 0 CL-ADD CL-WOR  0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-ROR exit then
-   a u s" SYS," STR= if 0 0 CL-ADD 16 CL-ADD CL-WOR  0 0 CL-ADD 1 CL-ADD 2 CL-ADD CL-ROR exit then
+   a u s" SYS," STR= if
+      lo hi SYS-EXIT? if 0 0 CL-ADD 8 CL-ADD 16 CL-ADD CL-WOR  0 0 CL-ADD CL-ROR exit then
+      0 0 CL-ADD 8 CL-ADD 16 CL-ADD CL-WOR  0 0 CL-ADD 1 CL-ADD 2 CL-ADD CL-ROR exit
+   then
    a u s" RET," STR= if 0 30 CL-ADD CL-ROR exit then
    a u s" BLR," STR= if 1 18 lshift 1 -  30 CL-ADD CL-WOR  0 ER exit then
    a u PSEUDO? if a u PSEUDO-EFFECTS then ;
@@ -337,6 +350,7 @@ variable APPLY-MASK
 create WNAME 128 allot       variable WLEN
 create NUMBUF 2 allot
 variable BAD  variable PR  variable CW  variable RETS  variable CALIDX
+variable TRACK-LR
 
 : POIS@ ( n -- n )  POIS swap cells + @ ;
 : POIS! ( n n -- )  POIS swap cells + ! ;
@@ -366,6 +380,8 @@ variable BAD  variable PR  variable CW  variable RETS  variable CALIDX
    0 PR !
    begin PR @ 32 < while
       rmask CONTRACT-MASK invert and PR @ CL-HAS? if
+         PR @ 30 = TRACK-LR @ 0= and if
+         else
          PR @ POIS@ CALIDX !
          CALIDX @ 0 >= if
             DIRTY @ PR @ CL-HAS? if
@@ -374,6 +390,7 @@ variable BAD  variable PR  variable CW  variable RETS  variable CALIDX
                then
                -1 PR @ POIS!
             then
+         then
          then
       then
       PR @ 1+ PR !
@@ -402,9 +419,22 @@ variable BAD  variable PR  variable CW  variable RETS  variable CALIDX
       then
       PR @ 1+ PR !
    repeat ;
+: POISON-SYS-SCRATCH  ( -- )
+   SYS-SCRATCH-MASK s" sys" C-ENSURE POISON-DIRTY ;
+: POISON-LINK-REGISTER  ( n -- )
+   TRACK-LR @ 0= if drop exit then
+   0 30 CL-ADD swap POISON-DIRTY ;
+: RET-IN-RANGE?  {: lo hi :}  ( -- bool )
+   lo DI !
+   begin DI @ hi < while
+      DI @ TOK s" RET," STR= if LINT-TRUE exit then
+      DI @ 1+ DI !
+   repeat
+   LINT-FALSE ;
 
 : PASS2-DEF  {: fa fu lo hi :}  ( -- )
-   0 DIRTY !  POIS-CLEAR  lo OPLO !  lo DI !
+   lo hi RET-IN-RANGE? TRACK-LR !
+   TRACK-LR @ if 0 30 CL-ADD else 0 then DIRTY !  POIS-CLEAR  lo OPLO !  lo DI !
    begin DI @ hi < while
       DI @ TOK INSTR? if
          OPLO @ DI @ CALLEE?  DI @ TOK s" BL," STR= and if
@@ -413,11 +443,14 @@ variable BAD  variable PR  variable CW  variable RETS  variable CALIDX
             CALIDX @ 0 >= if CALIDX @ CWS@ else 0 then
             CONTRACT-MASK invert and  RETS @ invert and CW !
             CW @ CALIDX @ POISON-DIRTY
+            CALIDX @ POISON-LINK-REGISTER
             RETS @ APPLY-RETURNS
          else
             DI @ TOK  OPLO @ DI @ EFFECTS
             fa fu RMSK @ NOTE-READS
             WMSK @ APPLY-WRITES
+            DI @ TOK SYS? OPLO @ DI @ SYS-EXIT? 0= and if POISON-SYS-SCRATCH then
+            DI @ TOK BLR? if s" blr" C-ENSURE POISON-LINK-REGISTER then
          then
          DI @ 1+ OPLO !
       then

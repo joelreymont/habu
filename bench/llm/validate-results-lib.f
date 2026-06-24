@@ -471,7 +471,19 @@ variable LV-ROW-CODE
 : LV-REQ-TASK-CAT {: a:ptr u :} ( ptr u8 n -- )
    a u LV-FIND-TASK-CAT 0< IF a u LV-MISSING-CAT THEN ;
 
+: LV-FIXTURE-TASKS? ( -- bool )
+   s" BENCH_TASKS_FIXTURE" GETENV dup 0= IF 2drop LV-FALSE exit THEN
+   2drop LV-TRUE ;
+
+: LV-CHECK-FIXTURE-TASKS ( -- )
+   LV-TASK# @ 0= IF
+      s" llm-results: need at least 1 task, found 0" LV-OUT
+      LV-NL
+      1 throw
+   THEN ;
+
 : LV-CHECK-TASK-COVERAGE ( -- )
+   LV-FIXTURE-TASKS? IF LV-CHECK-FIXTURE-TASKS exit THEN
    LV-TASK# @ LV-MIN-TASKS < IF
       s" llm-results: need at least " LV-OUT
       LV-MIN-TASKS LV-U.

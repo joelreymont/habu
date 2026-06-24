@@ -1,5 +1,6 @@
 \ signature-lint-test.f - checked fixtures for tools/signature-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/signature-lint-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/signature-lint-test.f
 
 4096 constant SLT-BUF-CAP
 
@@ -117,41 +118,46 @@ create SLT-ERR SLT-BUF-CAP allot
    SLT-OPTOUT SLT-OPTOUT$ WRITE-ALL
    SLT-NAME SLT-NAME$ WRITE-ALL ;
 
+: SLT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
 : SLT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/signature-lint.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+ ;
+   s" --load" SLT-ARG+
+   s" lib/errors.f" SLT-ARG+
+   s" lib/memory.f" SLT-ARG+
+   s" lib/vector.f" SLT-ARG+
+   s" tools/lint/text.f" SLT-ARG+
+   s" tools/lint/token.f" SLT-ARG+
+   s" tools/lint/lib.f" SLT-ARG+
+   s" tools/lint/json-writer.f" SLT-ARG+
+   s" tools/lint/source-lex.f" SLT-ARG+
+   s" tools/argv.f" SLT-ARG+
+   s" tools/signature-lint.f" SLT-ARG+
+   s" --" SLT-ARG+ ;
 
 : SLT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
 : SLT-RUN ( ptr u8 n -- n n n ) {: a:ptr u :}
    SLT-ARGV-LOAD
-   a u  >LEN PROC-ARGV+
+   a u SLT-ARG+
    s" bin/hb" >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    SLT-CAPTURE>N ;
 
 : SLT-RUN-JSON ( ptr u8 n -- n n n ) {: a:ptr u :}
    SLT-ARGV-LOAD
-   s" --json"  >LEN PROC-ARGV+
-   a u  >LEN PROC-ARGV+
+   s" --json" SLT-ARG+
+   a u SLT-ARG+
    s" bin/hb" >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    SLT-CAPTURE>N ;
 
 : SLT-RUN-JSON-LABEL ( ptr u8 n -- n n n ) {: a:ptr u :}
    SLT-ARGV-LOAD
-   s" --json"  >LEN PROC-ARGV+
-   s" --label"  >LEN PROC-ARGV+
-   s" <stdin>"  >LEN PROC-ARGV+
-   a u  >LEN PROC-ARGV+
+   s" --json" SLT-ARG+
+   s" --label" SLT-ARG+
+   s" <stdin>" SLT-ARG+
+   a u SLT-ARG+
    s" bin/hb" >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    SLT-CAPTURE>N ;
 

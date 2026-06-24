@@ -223,7 +223,7 @@ TRUSTED: DFHT-SRC-BUF ( -- ptr u8 )
 
 : DFHT-TEST-TIMEOUT-CHILD ( -- )
    s" repair" s" habu-forth" DFHT-CONFIG-SQUARE
-   1000 DS-HB-TIMEOUT-U !
+   1000 DS-RUN-TIMEOUT-U !
    s" : SQUARE ( i64 -- i64 ) begin again ;" DFH-RUN-TEXT
    LR-OUTCOME$ s" timeout" T$=
    LR-FIRST-CHECKER$ s" certified" T$=

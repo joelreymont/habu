@@ -1,5 +1,5 @@
 \ host-lint.f - reject retired host-script workflow hooks.
-\ Load after tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and tools/fs.f.
+\ Load after lib/errors.f, lib/string.f, lib/fs.f, tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
 
 $20000 constant HOST-CAP
 
@@ -105,15 +105,15 @@ variable HOST-PATH-U
    a u s" .sh" HAS-EXT? ;
 
 : HOST-BENCH-BASELINE? ( ptr u8 n -- bool )
-   2dup s" ./bench/llm/drive-habu.sh" PATH= IF 2drop LINT-FALSE exit THEN
+   2dup s" ./bench/llm/drive-habu.sh" FS-PATH= IF 2drop LINT-FALSE exit THEN
    2dup HOST-FORTH-SHELL? IF 2drop LINT-FALSE exit THEN
-   s" ./bench/llm/report.f" PATH= ;
+   s" ./bench/llm/report.f" FS-PATH= ;
 
 : HOST-RETIRED-SHELL? ( ptr u8 n -- bool )
    2dup HOST-BENCH-SHELL? IF 2drop LINT-TRUE exit THEN
-   2dup s" ./bench/llm/perf.sh" PATH= IF 2drop LINT-TRUE exit THEN
+   2dup s" ./bench/llm/perf.sh" FS-PATH= IF 2drop LINT-TRUE exit THEN
    2dup HOST-FORTH-SHELL? IF 2drop LINT-TRUE exit THEN
-   2dup s" ./tools/seed.sh" PATH= IF 2drop LINT-TRUE exit THEN
+   2dup s" ./tools/seed.sh" FS-PATH= IF 2drop LINT-TRUE exit THEN
    2drop LINT-FALSE ;
 
 : HOST-CHECK-A ( ptr u8 n -- )
@@ -151,7 +151,7 @@ variable HOST-PATH-U
 : HOST-LINT ( -- )
    HOST-PATTERNS
    0 HOST-BAD !
-   s" ." ['] HOST-SCAN-FILE WALK-FILES
+   s" ." [: HOST-SCAN-FILE ;] WALK-FILES
    s" host-lint: " type HOST-BAD @ HOST-U. s"  finding(s)" type HOST-NL
    HOST-BAD @ 0 > IF 1 throw THEN ;
 

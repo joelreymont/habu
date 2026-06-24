@@ -44,6 +44,11 @@ not a matter of taste. Target is the native `bin/hb` engine.
   emitters are bugs unless they are the tested boundary of that DSL.
 - **Small, single-purpose words**, aim ≤ 5 lines. A word should read top-to-bottom
   without you tracking more than a few stack items.
+- **Raw compiler/emitter code is not exempt.** Unchecked words, register-level
+  emitters, and bootstrap/compiler helpers still need exact stack-effect comments
+  and small factored helper words. If review requires reconstructing stack state
+  from surrounding code or register side effects, factor first; do not rely on
+  hand-tracked effects.
 - **Factor when the stack gets unreadable.** If you reach for `ROT -ROT PICK
   ROLL`, stop and either factor a helper or use locals. Deep juggling is exactly
   what this project forbids in *user* code — hold our own code to it.
@@ -135,7 +140,7 @@ not a matter of taste. Target is the native `bin/hb` engine.
   the exact THROW code; top-level scripts that cannot push quotations may use
   `' WORD TTHROWS`. For diagnostics, capture text and match a substring.
 - Run focused fixtures during dev with their owning `tools/*-test.f`, then run
-  the full native gate: `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f`.
+  the full native gate command shown in `docs/bootstrap.md`.
 
 ### Checker-Miss RCA
 
@@ -187,6 +192,11 @@ not a matter of taste. Target is the native `bin/hb` engine.
 
 ## Habu Native Tooling Gotchas
 
+- **Use the native debugger stack before print-marker probes.** Runtime and
+  codegen RCA starts with `docs/debugging.md`: `.s`, `BPW+` watch cells, REPL
+  `step`, compiled-word breakpoints (`BP+`, `BP*`, `BPN`), `tools/jitdump.f`,
+  and `tools/imgdump.f`. Extend those tools when they cannot expose the needed
+  state; do not hide a missing debug surface behind ad hoc prints.
 - **Large native tool bundles are supported.** Do not split tools merely to dodge
   DATA pressure. `create ... allot` is for dictionary-sized static storage; large
   runtime-sized buffers use `lib/memory.f` (`MEM-ALLOC-BYTES` or

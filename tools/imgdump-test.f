@@ -1,5 +1,7 @@
 \ imgdump-test.f - checked fixture coverage for tools/imgdump.f compare mode.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ Run: bin/hb --load src/os/linux/layout.f src/habu/layout.f lib/errors.f
+\ lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f
+\ lib/process-argv.f tools/imgdump-test.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/imgdump.f
 \ tools/imgdump-test.f
 
@@ -66,23 +68,43 @@ variable IDT-DIFF-U
    IDT-SHIFT$ $120 $0c 65 IDT-WRITE-IMG
    IDT-DIFF$ $100 $10 66 IDT-WRITE-IMG ;
 
+: IDT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
+: IDT-TARGET-UNKNOWN ( -- )
+   s" imgdump-test: unknown target" 64 die ;
+
+: IDT-ARGV-LAYOUT ( -- )
+   HB-TARGET-LINUX? IF
+      s" src/os/linux/layout.f" IDT-ARG+
+   ELSE HB-TARGET-MACOS? IF
+      s" src/os/macos/layout.f" IDT-ARG+
+   ELSE
+      IDT-TARGET-UNKNOWN
+   THEN
+   THEN
+   s" src/habu/layout.f" IDT-ARG+ ;
+
 : IDT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
-   s" tools/imgdump.f"  >LEN PROC-ARGV+ ;
+   s" --load" IDT-ARG+
+   IDT-ARGV-LAYOUT
+   s" tools/imgdump.f" IDT-ARG+
+   s" --" IDT-ARG+ ;
 
 : IDT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
 : IDT-RUN-1 ( ptr u8 n -- n n n ) {: a:ptr u :}
    IDT-ARGV-BASE
-   a u  >LEN PROC-ARGV+
+   a u IDT-ARG+
    s" bin/hb"  >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
 : IDT-RUN-2 ( ptr u8 n ptr u8 n -- n n n ) {: a:ptr au b:ptr bu :}
    IDT-ARGV-BASE
-   a au  >LEN PROC-ARGV+
-   b bu  >LEN PROC-ARGV+
+   a au IDT-ARG+
+   b bu IDT-ARG+
    s" bin/hb"  >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 

@@ -110,7 +110,7 @@ $63 constant GD-C-LOWER
 
 : GD-TRUSTED-DOES-SOURCE ( -- )
    GE-SRC-RESET
-   s" TRUSTED: ARR ( n -- ) CREATES ( n -- ptr a ) create cells allot does> swap 0 ?do cell+ loop ;" GE-SRC-LINE
+   s" TRUSTED: ARR ( n -- ) create cells allot does> ( n -- ptr a ) swap 0 ?do cell+ loop ;" GE-SRC-LINE
    s" 4 ARR A4" GE-SRC-LINE
    s" USE ( n -- ptr a ) A4" GE-SRC-CHECK-LINE
    s" 7 2 A4 !" GE-SRC-LINE
@@ -128,7 +128,7 @@ $63 constant GD-C-LOWER
 : GD-BAD-DOES ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" TRUSTED: BADARR ( n -- ) CREATES ( n -- ptr a ) create cells allot does> drop ;" GE-SRC-LINE
+   s" TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb bad trusted DOES> rc" GE-EXPECT-RC
    s" does>" s" hb bad trusted DOES> diagnostic" GE-EXPECT-ERR-HAS
@@ -136,8 +136,8 @@ $63 constant GD-C-LOWER
    GE-SRC-RESET
    s" TRUSTED: BADDEF ( n -- ) create cells allot does> drop ;" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   70 s" hb trusted DOES> without CREATES rc" GE-EXPECT-RC
-   s" does>" s" hb trusted DOES> without CREATES diagnostic" GE-EXPECT-ERR-HAS ;
+   76 s" hb trusted DOES> without created signature rc" GE-EXPECT-RC
+   s" does>" s" hb trusted DOES> without created signature diagnostic" GE-EXPECT-ERR-HAS ;
 
 : GD-ROW-QUOT-CHECKS ( -- )
    GE-HB-RESET
@@ -242,7 +242,7 @@ $63 constant GD-C-LOWER
 : GD-DATA-OVERFLOW ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" DATA-SIZE allot" GE-SRC-LINE
+   s" $10000000001 allot" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    76 s" data-space overflow rc" GE-EXPECT-RC ;
 

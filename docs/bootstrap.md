@@ -6,14 +6,19 @@ artifacts under `HB_TMP`; those artifacts exist only to produce `bin/hb`.
 
 ## Requirements
 
-- macOS ARM64.
+- macOS ARM64 or Linux AArch64.
+- Linux gates require a working devpts setup: `/dev/ptmx`, `/dev/pts`, and PTY
+  ioctls must be available to the user running the gate.
 - Gforth with `{:` locals support. Homebrew `gforth` 0.7.3 is too old.
   A current Gforth snapshot such as `0.7.9_20260610` works.
 
 Verify the Gforth requirement:
 
 ```sh
-printf ': f {: a :} a . ; 1 f bye\n' | gforth
+tmp=$(mktemp)
+printf ': f {: a :} a . cr ; 1 f bye\n' > "$tmp"
+gforth "$tmp"
+rm -f "$tmp"
 ```
 
 That command must print `1` and exit zero. If the usable Gforth is not first on
@@ -24,6 +29,10 @@ That command must print `1` and exit zero. If the usable Gforth is not first on
 ```sh
 HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth-fast tools/bootstrap.sh
 ```
+
+The script defaults `HABU_TARGET` from the host (`macos-aarch64` or
+`linux-aarch64`). Set `HABU_TARGET` explicitly only when the host cannot be
+detected.
 
 `tools/bootstrap.sh` does the whole recovery and installs exactly one file:
 `bin/hb`.
@@ -43,14 +52,53 @@ native checked engine rebuilt from current source.
 After `bin/hb` exists, do not use Gforth for normal work:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/build.f \
-  lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
+  lib/process-argv.f lib/process-env.f lib/codesign.f tools/build-fixpoint.f \
+  tools/build-fixpoint-main.f -- install
 ```
+
+`bin/hb --load` selects the host core/checker/env source prefix from the
+running binary. Callers load only the libraries and tool source they need.
 
 Run the gate after bootstrap or refresh:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
+  lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f
 ```
+
+This is the native port gate. It proves the host `bin/hb`, source selection,
+checker/lints, self-refresh, engine suite, REPL build, and AOT output for the
+current platform. It intentionally does not run LLM benchmark fixtures or
+require JavaScript, Python, Rust, TypeScript, or model runtimes.
+
+LLM benchmark checks are separate benchmark-host work. Run the benchmark gate on
+the Mac benchmark machine, where language runtimes and model tooling are
+maintained:
+
+```sh
+bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
+  lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f \
+  bench/llm/run-lib.f bench/llm/run.f
+```
+
+Live cross-language benchmark comparisons additionally require `node`,
+`python3` or `PYTHON`, `rustc` or `RUSTC`, `bun`, and model tooling on `PATH`.
+Do not install those runtimes on a small target box solely to validate a Habu
+platform port; they prove benchmark host setup, not the native engine.
+
+## Future Port Checklist
+
+1. Add one target source seam under `src/os/<target>/` for syscalls, environment,
+   executable layout, signing policy, terminal constants, and target metadata.
+2. Wire the target into `tools/bootstrap.sh`, `tools/build-fixpoint.f`, and the
+   native source-list builders (`src/habu/habu2.f`, `bootstrap/cg/forth.fs`,
+   `src/habu/stdin.f`, and `tools/hb-build-lib.f`) so bootstrap, refresh,
+   `--load`, baked REPL, and AOT all select the same target prefix automatically
+   from the running `bin/hb`.
+3. Recover `bin/hb` only if needed with `HABU_ALLOW_BOOTSTRAP=1
+   tools/bootstrap.sh`; after that, use only native `bin/hb`.
+4. Run the refresh command above and require a byte-for-byte fixpoint.
+5. Run the native port gate above on the target machine.
+6. Run the `bench/llm/run.f` benchmark gate on the Mac benchmark host when
+   changing LLM benchmark drivers or reducers.

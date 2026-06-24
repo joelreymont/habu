@@ -1,13 +1,13 @@
 \ run.f - checked native default gate runner.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/test-runner.f.
+\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f, lib/process.f, lib/process-argv.f,
+\ lib/process-env.f, and lib/test-runner.f.
 
 64 constant TR-USAGE-RC
 600000 constant TR-TIMEOUT-MS
 
 : TR-USAGE ( -- )
-   s" usage: bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f" TR-USAGE-RC die ;
+   s" usage: bin/hb --load libs test/run.f" TR-USAGE-RC die ;
 
 : TR-ARG0= ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
@@ -138,6 +138,7 @@
    TR-BASE
    TR-COMMON
    s" lib/codesign.f"  >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" test/gate-debug.f"  >LEN PROC-ARGV+
    s" native prop/snapshot/debug gate phase" TR-RUN ;
 

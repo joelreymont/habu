@@ -1,8 +1,10 @@
-\ imgdump.f — habu image inspector, in habu. Run: bin/hb tools/imgdump.f <image> [image2]
+\ imgdump.f — habu image inspector, in habu.
+\ Run: bin/hb --load src/os/<target>/layout.f src/habu/layout.f
+\ tools/imgdump.f -- <image> [image2]
 \ Reads the image path argument, locates the snapshot trailer, maps the live region
 \ payload, and prints one line per word: name $start $len. With two images,
 \ compares name+length first, then reports offset-only shifts.
-\ Self-contained: runs on bin/hb with nothing prepended.
+\ Requires the target layout plus src/habu/layout.f.
 
 variable IB   variable IL                    \ image buffer, length
 variable IFD
@@ -26,7 +28,7 @@ create A-LEN DICT-CAP cells allot
 s" IB@" s" -- ptr u8" TRUST
 
 : IMG-USAGE ( -- )
-   s" usage: bin/hb tools/imgdump.f image [image2]" 64 die ;
+   s" usage: bin/hb --load src/os/<target>/layout.f src/habu/layout.f tools/imgdump.f -- image [image2]" 64 die ;
 
 : IMG-PATH$ ( -- ptr u8 n )
    SCRIPT-ARGC 1 < if IMG-USAGE then

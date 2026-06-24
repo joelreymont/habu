@@ -36,17 +36,17 @@ create CODESIGN-ERR CODESIGN-ERR-CAP allot
    {: outu erru rc :}
    outu drop erru drop rc RC>N ;
 
-: CODESIGN-VERIFY-RC ( ptr u8 n -- n ) {: a:ptr u :}
+: CODESIGN-TARGET-UNKNOWN ( -- )
+   E-BUILD-SOURCE throw ;
+
+: CODESIGN-MACOS-VERIFY-RC ( ptr u8 n -- n ) {: a:ptr u :}
    a u CODESIGN-EXPECT-EXECUTABLE
    PROC-ARGV-RESET
    s" -v"  >LEN PROC-ARGV+
    a u  >LEN PROC-ARGV+
    CODESIGN-RUN ;
 
-: CODESIGN-VERIFY ( ptr u8 n -- ) {: a:ptr u :}
-   a u CODESIGN-VERIFY-RC CODESIGN-RC0 ;
-
-: CODESIGN-FORCE ( ptr u8 n -- ) {: a:ptr u :}
+: CODESIGN-MACOS-FORCE ( ptr u8 n -- ) {: a:ptr u :}
    a u CODESIGN-EXPECT-FILE
    PROC-ARGV-RESET
    s" -s"  >LEN PROC-ARGV+
@@ -55,10 +55,48 @@ create CODESIGN-ERR CODESIGN-ERR-CAP allot
    a u  >LEN PROC-ARGV+
    CODESIGN-RUN CODESIGN-RC0 ;
 
+: CODESIGN-LINUX-VERIFY-RC ( ptr u8 n -- n )
+   CODESIGN-EXPECT-EXECUTABLE
+   0 ;
+
+: CODESIGN-LINUX-FORCE ( ptr u8 n -- )
+   2dup CODESIGN-EXPECT-FILE
+   CHMOD-X ;
+
+: CODESIGN-VERIFY-RC ( ptr u8 n -- n ) {: a:ptr u :}
+   HB-TARGET-LINUX? if a u CODESIGN-LINUX-VERIFY-RC exit then
+   HB-TARGET-MACOS? if a u CODESIGN-MACOS-VERIFY-RC exit then
+   CODESIGN-TARGET-UNKNOWN ;
+
+: CODESIGN-VERIFY ( ptr u8 n -- ) {: a:ptr u :}
+   HB-TARGET-LINUX? if
+      a u CODESIGN-EXPECT-EXECUTABLE
+      exit
+   then
+   HB-TARGET-MACOS? if
+      a u CODESIGN-VERIFY-RC CODESIGN-RC0
+      exit
+   then
+   CODESIGN-TARGET-UNKNOWN ;
+
+: CODESIGN-FORCE ( ptr u8 n -- ) {: a:ptr u :}
+   HB-TARGET-LINUX? if a u CODESIGN-LINUX-FORCE exit then
+   HB-TARGET-MACOS? if a u CODESIGN-MACOS-FORCE exit then
+   CODESIGN-TARGET-UNKNOWN ;
+
 : CODESIGN-ENSURE ( ptr u8 n -- ) {: a:ptr u :}
-   a u CODESIGN-VERIFY-RC 0= if exit then
-   a u CODESIGN-FORCE
-   a u CODESIGN-VERIFY ;
+   HB-TARGET-LINUX? if
+      a u CODESIGN-FORCE
+      a u CODESIGN-VERIFY
+      exit
+   then
+   HB-TARGET-MACOS? if
+      a u CODESIGN-VERIFY-RC 0= if exit then
+      a u CODESIGN-FORCE
+      a u CODESIGN-VERIFY
+      exit
+   then
+   CODESIGN-TARGET-UNKNOWN ;
 
 : PROMOTE-EXECUTABLE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
    src srcu CODESIGN-EXPECT-FILE

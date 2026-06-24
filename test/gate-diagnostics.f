@@ -242,6 +242,16 @@ variable GDX-PATH-U
    s" EV ." GE-SRC-LINE
    s" hb published unsafe evaluate definition" GE-HB-RUN-STDIN-NZ ;
 
+: GDX-LOAD-FAIL-CLOSED ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : LOAD-BAD ( -- ) 1 ;" GE-SRC-LINE
+   s" load-bad.f" GDX-WRITE-SRC
+   s" --load"  >LEN PROC-ARGV+
+   s" load-bad.f" GDX-PATH-ARGV+
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" checked load accepted bad declared effect" GE-EXPECT-NONZERO ;
+
 : GDX-ALL-ERRORS-SOURCE ( -- )
    GE-SRC-RESET
    s" : OK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
@@ -311,8 +321,10 @@ variable GDX-PATH-U
    GE-HB-RESET
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
    s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/fs.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
@@ -329,6 +341,7 @@ variable GDX-PATH-U
    GDX-FILE-ORIGIN
    GDX-STRICT-SIGNATURES
    GDX-UNSAFE-CHECKS
+   GDX-LOAD-FAIL-CLOSED
    GDX-ALL-ERRORS
    GDX-UNDEFINED-RECURSIVE
    GDX-SARIF

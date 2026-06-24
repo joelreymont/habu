@@ -1,8 +1,13 @@
-\ exec.fs — write the in-memory Mach-O to disk, ad-hoc sign it, and (optionally)
+\ exec.fs — write the in-memory target executable to disk and (optionally)
 \ run it. Pure Forth + gforth's built-in file I/O and `system` — no FFI, no C,
-\ and no external `codesign` (sign.fs embeds the ad-hoc CodeDirectory itself).
+\ and no external `codesign`.
 
+require sys.fs
+HB-TARGET-LINUX? [IF]
+require elf.fs
+[ELSE]
 require sign.fs
+[THEN]
 
 create CMD$ 512 allot   variable CMD#
 
@@ -35,9 +40,9 @@ s" cg: chmod failed"     exception constant E-CHMOD
 
 \ Build current ICODE -> self-signed runnable executable at `filename`.
 : EMIT-EXE ( addr u -- )
-   2dup BASENAME SIG-ID 2!            \ ad-hoc identifier = binary basename
-   BUILD-MACHO                        \ reserves the signature area in __LINKEDIT
-   CODESIG                            \ fill it: embedded ad-hoc CodeDirectory
+   HB-TARGET-LINUX? 0= if 2dup BASENAME SIG-ID 2! then
+   BUILD-IMAGE
+   SIGN-IMAGE
    2dup WRITE-EXE
    CHMODX ;
 

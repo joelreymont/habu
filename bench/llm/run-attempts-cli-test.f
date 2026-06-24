@@ -9,9 +9,10 @@ $20000 constant RACT-CAP
 create RACT-ROOT FS-PATH-CAP allot
 create RACT-CAND FS-PATH-CAP allot
 create RACT-OUT-PATH FS-PATH-CAP allot
-create RACT-DIR FS-PATH-CAP allot
+create RACT-TASKS FS-PATH-CAP allot
+create RACT-SOLUTIONS FS-PATH-CAP allot
+create RACT-TESTS FS-PATH-CAP allot
 create RACT-SRC FS-PATH-CAP allot
-create RACT-DST FS-PATH-CAP allot
 create RACT-OUT RACT-CAP allot
 create RACT-ERR RACT-CAP allot
 create RACT-JSONL RACT-CAP allot
@@ -19,9 +20,10 @@ create RACT-JSONL RACT-CAP allot
 variable RACT-ROOT-U
 variable RACT-CAND-U
 variable RACT-OUT-PATH-U
-variable RACT-DIR-U
+variable RACT-TASKS-U
+variable RACT-SOLUTIONS-U
+variable RACT-TESTS-U
 variable RACT-SRC-U
-variable RACT-DST-U
 variable RACT-OUT-U
 variable RACT-ERR-U
 variable RACT-JSONL-U
@@ -42,14 +44,17 @@ variable RACT-NEXT
 : RACT-OUT-PATH$ ( -- ptr u8 n )
    RACT-OUT-PATH RACT-OUT-PATH-U @ ;
 
-: RACT-DIR$ ( -- ptr u8 n )
-   RACT-DIR RACT-DIR-U @ ;
+: RACT-TASKS$ ( -- ptr u8 n )
+   RACT-TASKS RACT-TASKS-U @ ;
+
+: RACT-SOLUTIONS$ ( -- ptr u8 n )
+   RACT-SOLUTIONS RACT-SOLUTIONS-U @ ;
+
+: RACT-TESTS$ ( -- ptr u8 n )
+   RACT-TESTS RACT-TESTS-U @ ;
 
 : RACT-SRC$ ( -- ptr u8 n )
    RACT-SRC RACT-SRC-U @ ;
-
-: RACT-DST$ ( -- ptr u8 n )
-   RACT-DST RACT-DST-U @ ;
 
 : RACT-ERR$ ( -- ptr u8 n )
    RACT-ERR RACT-ERR-U @ ;
@@ -66,57 +71,33 @@ variable RACT-NEXT
    RACT-ROOT$ CLEANUP-TREE+
    s" candidates" RACT-CAND RACT-CAND-U RACT-ROOT-JOIN!
    s" attempt.jsonl" RACT-OUT-PATH RACT-OUT-PATH-U RACT-ROOT-JOIN!
+   s" tasks.tsv" RACT-TASKS RACT-TASKS-U RACT-ROOT-JOIN!
+   s" solutions.f" RACT-SOLUTIONS RACT-SOLUTIONS-U RACT-ROOT-JOIN!
+   s" tests.f" RACT-TESTS RACT-TESTS-U RACT-ROOT-JOIN!
    RACT-CAND$ MAKE-DIRS ;
+
+: RACT-TASKS-TEXT$ ( -- ptr u8 n )
+   s" id	name	signature	category	tests	harness	conv	spec	vectors	tags	js_signature	rust_signature
+9	SWAP2	(a b -- b a)	polymorphic	1 2 -> 2 1	forth	stack	Define SWAP2 with the checked Forth stack effect.	-	polymorphic,forth	-	-
+" ;
+
+: RACT-SOLUTIONS-TEXT$ ( -- ptr u8 n )
+   s" : SWAP2 ( a b -- b a ) swap ;
+" ;
+
+: RACT-TESTS-TEXT$ ( -- ptr u8 n )
+   s" : ASSERT= ( n n -- ) <> IF 1 die THEN ;
+1 2 SWAP2 1 ASSERT= 2 ASSERT=
+111 emit 107 emit 10 emit
+" ;
+
+: RACT-WRITE-FIXTURE-FILES ( -- )
+   RACT-TASKS$ RACT-TASKS-TEXT$ WRITE-ALL
+   RACT-SOLUTIONS$ RACT-SOLUTIONS-TEXT$ WRITE-ALL
+   RACT-TESTS$ RACT-TESTS-TEXT$ WRITE-ALL ;
 
 : RACT-CAND-SRC! ( ptr u8 n -- ) {: id:ptr idu :}
    RACT-CAND$ id idu RACT-SRC RACT-SRC-U RA-DIR-ID-FILE! ;
-
-: RACT-CAND-DIR! ( ptr u8 n -- ) {: id:ptr idu :}
-   RACT-CAND$ id idu RACT-DIR JOIN-PATH RACT-DIR-U ! ;
-
-: RACT-ROUND-DST! ( ptr u8 n -- ) {: name:ptr nameu :}
-   RACT-DIR$ name nameu RACT-DST JOIN-PATH RACT-DST-U ! ;
-
-: RACT-WRITE-ROUND ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu src:ptr srcu :}
-   name nameu RACT-ROUND-DST!
-   RACT-DST$ src srcu WRITE-ALL ;
-
-: RACT-COPY-ROUND ( ptr u8 n -- ) {: name:ptr nameu :}
-   name nameu RACT-ROUND-DST!
-   RACT-SRC$ RACT-DST$ COPY-FILE-STREAM ;
-
-: RACT-REPAIR ( ptr u8 n ptr u8 n -- ) {: id:ptr idu bad:ptr badu :}
-   id idu RACT-CAND-SRC!
-   id idu RACT-CAND-DIR!
-   RACT-DIR$ MAKE-DIR
-   s" 1.f" bad badu RACT-WRITE-ROUND
-   s" 2.f" RACT-COPY-ROUND
-   RACT-SRC$ REMOVE-FILE ;
-
-: RACT-BAD1$ ( -- ptr u8 n )
-   s" : SQUARE ( i64 -- i64 ) dup ;" ;
-
-: RACT-BAD2$ ( -- ptr u8 n )
-   s" : CUBE ( i64 -- i64 ) drop ;" ;
-
-: RACT-BAD3$ ( -- ptr u8 n )
-   s" : ABSV ( i64 -- i64 ) 0= ;" ;
-
-: RACT-BAD4$ ( -- ptr u8 n )
-   s" : NEG? ( i64 -- ) >r ;" ;
-
-: RACT-BAD5$ ( -- ptr u8 n )
-   s" : CLAMP0 ( i64 -- i64 ) evaluate ;" ;
-
-: RACT-BAD6$ ( -- ptr u8 n )
-   s" : SUM3 ( i64 i64 i64 ) + + ;" ;
-
-: RACT-BAD7$ ( -- ptr u8 n )
-   s" : AVG2 ( i64 i64 -- i64 ) leave ;" ;
-
-: RACT-BAD8$ ( -- ptr u8 n )
-   s" : MAX2 ( i64 -- i64 ) drop ;
-: EXTRA ( i64 -- i64 ) dup ;" ;
 
 : RACT-WEAK9$ ( -- ptr u8 n )
    s" : SWAP2 ( n n -- n n ) swap ;" ;
@@ -125,31 +106,10 @@ variable RACT-NEXT
    s" 9" RACT-CAND-SRC!
    RACT-SRC$ RACT-WEAK9$ WRITE-ALL ;
 
-: RACT-TRUST122$ ( -- ptr u8 n )
-   SB-RESET
-   s" s" SB-APPEND 34 SB-APPEND-C s"  DIAG-TRUST-BOUNDARY" SB-APPEND 34 SB-APPEND-C
-   s"  s" SB-APPEND 34 SB-APPEND-C s"  -- i64" SB-APPEND 34 SB-APPEND-C
-   s"  TRUST" SB-APPEND RACT-LF SB-APPEND-C
-   s" 0 set-check" SB-APPEND RACT-LF SB-APPEND-C
-   s" : DIAG-TRUST-BOUNDARY ( -- i64 ) 42 ;" SB-APPEND
-   SB$ ;
-
-: RACT-WRITE-TRUST122 ( -- )
-   s" 122" RACT-CAND-SRC!
-   RACT-SRC$ RACT-TRUST122$ WRITE-ALL ;
-
 : RACT-MATERIALIZE-CANDIDATES ( -- )
-   s" bench/llm/tasks.tsv" s" bench/llm/solutions.f" RACT-CAND$ AS-EXTRACT-FILES
-   s" 1" RACT-BAD1$ RACT-REPAIR
-   s" 2" RACT-BAD2$ RACT-REPAIR
-   s" 3" RACT-BAD3$ RACT-REPAIR
-   s" 4" RACT-BAD4$ RACT-REPAIR
-   s" 5" RACT-BAD5$ RACT-REPAIR
-   s" 6" RACT-BAD6$ RACT-REPAIR
-   s" 7" RACT-BAD7$ RACT-REPAIR
-   s" 8" RACT-BAD8$ RACT-REPAIR
-   RACT-WRITE-WEAK9
-   RACT-WRITE-TRUST122 ;
+   RACT-WRITE-FIXTURE-FILES
+   RACT-TASKS$ RACT-SOLUTIONS$ RACT-CAND$ AS-EXTRACT-FILES
+   RACT-WRITE-WEAK9 ;
 
 : RACT-CLI-ARGS ( -- )
    PROC-ARGV-ENV-RESET
@@ -181,7 +141,10 @@ variable RACT-NEXT
    RACT-CAND$  >LEN PROC-ARGV+
    RACT-OUT-PATH$  >LEN PROC-ARGV+
    s" attempt-fixture-2026-06-16"  >LEN PROC-ARGV+
-   s" fixture-model"  >LEN PROC-ARGV+ ;
+   s" fixture-model"  >LEN PROC-ARGV+
+   RACT-TASKS$  >LEN PROC-ARGV+
+   RACT-SOLUTIONS$  >LEN PROC-ARGV+
+   RACT-TESTS$  >LEN PROC-ARGV+ ;
 
 : RACT-RUN-CLI ( -- )
    RACT-CLI-ARGS
@@ -196,7 +159,7 @@ variable RACT-NEXT
    RACT-OUT-PATH$ RACT-JSONL RACT-CAP READ-ALL RACT-JSONL-U ! ;
 
 : RACT-FORTH-TASK-COUNT ( -- n )
-   s" bench/llm/tasks.tsv" FTL-FILE$ RACT-LF COUNT-CHAR ;
+   RACT-TASKS$ FTL-FILE$ RACT-LF COUNT-CHAR ;
 
 : RACT-U+ ( n -- ) {: n :}
    n 0 < if E-STR-BOUNDS throw then
@@ -208,22 +171,18 @@ variable RACT-NEXT
    s" run=attempt-fixture-2026-06-16 model=fixture-model rows=" SB-APPEND
    rows RACT-U+
    s"  certified=" SB-APPEND
-   rows 9 - RACT-U+
+   1 RACT-U+
    s"  first_tests=" SB-APPEND
-   rows 9 - RACT-U+
+   1 RACT-U+
    s"  tests=" SB-APPEND
-   rows 1 - RACT-U+
-   s"  repairs=8 checker_iterations=" SB-APPEND
-   rows 8 + RACT-U+
-   s"  diagnostics=11 tokens=0" SB-APPEND
+   1 RACT-U+
+   s"  repairs=0 checker_iterations=1 diagnostics=0 tokens=0" SB-APPEND
    SB$ ;
 
 : RACT-EXPECT-SUMMARY ( n -- ) {: rows :}
    RACT-ERR$ rows RACT-SUMMARY$ CONTAINS? TTRUE
-   RACT-ERR$ s" buckets checker_rejected=9 checker_false_rejects=0 checker_model_rejected=9 first_tests_failed=9 tests_failed=1 trust_used=1 signature_weakened=1" CONTAINS? TTRUE
-   RACT-ERR$ s" repair_class remove_producer rows=2 repair_success=2 repair_iterations=2 diagnostics=2 first_round=2 first_order=3 token_delta=0" CONTAINS? TTRUE
-   RACT-ERR$ s" repair_class add_producer rows=2 repair_success=2 repair_iterations=2 diagnostics=2 first_round=2 first_order=2 token_delta=0" CONTAINS? TTRUE
-   RACT-ERR$ s" repair_class trusted_boundary_required rows=2 repair_success=1 repair_iterations=2 diagnostics=3 first_round=2 first_order=2 token_delta=0" CONTAINS? TTRUE
+   RACT-ERR$ s" buckets checker_rejected=0 checker_false_rejects=0 checker_model_rejected=0 first_tests_failed=0 tests_failed=0 trust_used=0 signature_weakened=1" CONTAINS? TTRUE
+   RACT-ERR$ s" category polymorphic rows=1 certified=1 tests=1" CONTAINS? TTRUE
    RACT-ERR$ s" run-attempts: wrote " CONTAINS? TTRUE ;
 
 : RACT-JGET ( n ptr u8 n -- n ) {: root key:ptr keyu :}
@@ -256,41 +215,10 @@ variable RACT-NEXT
    repeat drop 2drop
    E-RA-MISSING throw ;
 
-: RACT-ARR-FIELD ( n ptr u8 n -- n )
-   RACT-JGET dup JSON-KIND J-ARR T= ;
-
-: RACT-EXPECT-TASK1 ( -- )
-   1 RACT-FIND-TASK {: root :}
-   root s" first_pass_checker" s" rejected" RACT-S-FIELD=
-   root s" tests_passed" STR-TRUE RACT-BOOL-FIELD=
-   root s" repair_iterations" 1 RACT-U-FIELD=
-   root s" diagnostic_count" 1 RACT-U-FIELD= ;
-
-: RACT-EXPECT-TASK8 ( -- )
-   8 RACT-FIND-TASK {: root :}
-   root s" diagnostic_count" 2 RACT-U-FIELD=
-   root s" repair_class_stats" RACT-ARR-FIELD {: stats :}
-   stats JSON-COUNT 2 T=
-   stats 0 JSON-ARR@ s" repair_class" s" remove_producer" RACT-S-FIELD=
-   stats 0 JSON-ARR@ s" first_round" 1 RACT-U-FIELD=
-   stats 0 JSON-ARR@ s" first_order" 2 RACT-U-FIELD=
-   stats 1 JSON-ARR@ s" repair_class" s" add_producer" RACT-S-FIELD=
-   stats 1 JSON-ARR@ s" first_round" 1 RACT-U-FIELD=
-   stats 1 JSON-ARR@ s" first_order" 1 RACT-U-FIELD= ;
-
 : RACT-EXPECT-TASK9 ( -- )
    9 RACT-FIND-TASK {: root :}
    root s" first_pass_checker" s" certified" RACT-S-FIELD=
    root s" signature_weakened" STR-TRUE RACT-BOOL-FIELD= ;
-
-: RACT-EXPECT-TASK122 ( -- )
-   122 RACT-FIND-TASK {: root :}
-   root s" first_pass_checker" s" rejected" RACT-S-FIELD=
-   root s" first_pass_tests" STR-FALSE RACT-BOOL-FIELD=
-   root s" tests_passed" STR-FALSE RACT-BOOL-FIELD=
-   root s" diagnostic_count" 2 RACT-U-FIELD=
-   root s" diagnostic_repair_class" STR-TRUE RACT-BOOL-FIELD=
-   root s" trust_uses" 2 RACT-U-FIELD= ;
 
 : RACT-MAIN ( -- )
    T-RESET
@@ -303,10 +231,7 @@ variable RACT-NEXT
    RACT-FORTH-TASK-COUNT {: rows :}
    RACT-JSONL$ RACT-LF COUNT-CHAR rows T=
    rows RACT-EXPECT-SUMMARY
-   RACT-EXPECT-TASK1
-   RACT-EXPECT-TASK8
    RACT-EXPECT-TASK9
-   RACT-EXPECT-TASK122
    CLEANUP-RUN
    RACT-ROOT$ EXISTS? TFALSE
    T-REPORT

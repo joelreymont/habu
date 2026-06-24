@@ -1,5 +1,6 @@
 \ public-signatures-test.f - checked fixtures for tools/public-signatures.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/public-signatures-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/public-signatures-test.f
 
 8192 constant PST-BUF-CAP
 
@@ -88,25 +89,28 @@ create PST-ERR PST-BUF-CAP allot
    PST-FIX CLEANUP+
    PST-FIX PST-FIXTURE$ WRITE-ALL ;
 
+: PST-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
 : PST-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+
-   s" tools/lint/intern.f"  >LEN PROC-ARGV+
-   s" tools/lint/token.f"  >LEN PROC-ARGV+
-   s" tools/lint/lib.f"  >LEN PROC-ARGV+
-   s" tools/public-signatures.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+ ;
+   s" --load" PST-ARG+
+   s" lib/errors.f" PST-ARG+
+   s" lib/memory.f" PST-ARG+
+   s" lib/vector.f" PST-ARG+
+   s" tools/lint/text.f" PST-ARG+
+   s" tools/lint/intern.f" PST-ARG+
+   s" tools/lint/token.f" PST-ARG+
+   s" tools/lint/lib.f" PST-ARG+
+   s" tools/public-signatures.f" PST-ARG+
+   s" --" PST-ARG+ ;
 
 : PST-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
 : PST-RUN ( ptr u8 n -- n n n ) {: a:ptr u :}
    PST-ARGV-LOAD
-   a u  >LEN PROC-ARGV+
+   a u PST-ARG+
    s" bin/hb"  >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
    1000 >MS RUN-ARGV-CAPTURE PST-CAPTURE>N ;
 

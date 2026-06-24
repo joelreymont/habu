@@ -263,6 +263,9 @@ variable HBB-JSON-FOUND
 : HBB-MK-NAME$ ( -- ptr u8 n )
    HBB-REPL @ if s" hb-build-mk" else s" hb-aot-mk" then ;
 
+: HBB-MAKER-SRC-NAME$ ( -- ptr u8 n )
+   s" hb-maker-src" ;
+
 : HBB-SB-DQ ( -- )
    HBB-DQ SB-APPEND-C ;
 
@@ -298,17 +301,22 @@ variable HBB-JSON-FOUND
    out outu BF-OUT$ BF-SOURCE-BUF tail + BF-SOURCE-LEN @ tail - APPEND-FILE
    out outu BF-APPEND-LF ;
 
+: HBB-MAKER-SOURCE ( -- )
+   HBB-MAKER-SRC-NAME$ BF-RESET-OUT
+   HBB-MAKER-SRC-NAME$ BF-APPEND-COMMON
+   HBB-MAKER-SRC-NAME$ HBB-APPEND-DRIVER ;
+
 : HBB-STAGE2-SOURCE ( -- )
    s" stage2-src" BF-RESET-OUT
-   s" stage2-src" s" 0 set-check" BF-APPEND-LINE
    s" stage2-src" BF-APPEND-COMMON
-   s" stage2-src" HBB-APPEND-DRIVER ;
+   s" stage2-src" s" src/habu/maker.f" BF-APPEND-SOURCE ;
 
 : HBB-BUILD-MAKER ( -- )
+   HBB-MAKER-SOURCE
    HBB-STAGE2-SOURCE
    s" stage2-got" BF-REMOVE-TMP
    HBB-MK-NAME$ BF-REMOVE-TMP
-   s" bin/hb" s" src/habu/stage2.f" BF-RUN-ENV-PATH-INFILE
+   s" bin/hb" s" stage2-src" BF-A$ BF-RUN-ENV-PATH-INFILE
    dup 0 <> if s" hb-build: native maker build failed" HBB-BUILD-RC die then drop
    s" stage2-got" BF-EXPECT
    s" stage2-got" HBB-MK-NAME$ BF-RENAME-TMP
@@ -325,14 +333,44 @@ variable HBB-JSON-FOUND
 : HBB-WRITE-COMMENTED-SOURCE ( ptr u8 n -- ) {: name:ptr nameu :}
    name nameu BF-OUT$ SOURCE-BUF SOURCE-LEN @ LEN>N WRITE-ALL ;
 
+: HBB-TARGET-UNKNOWN ( -- )
+   s" hb-build: unknown target" HBB-BUILD-RC die ;
+
+: HBB-APPEND-TARGET-ENV ( -- )
+   HB-TARGET-LINUX? if
+      HBB-SRC-NAME$ s" src/os/linux/env.f" BF-APPEND-SOURCE
+      exit
+   then
+   HB-TARGET-MACOS? if
+      HBB-SRC-NAME$ s" src/os/macos/env.f" BF-APPEND-SOURCE
+      exit
+   then
+   HBB-TARGET-UNKNOWN ;
+
+: HBB-APPEND-TARGET-REPL-TERM ( -- )
+   HB-TARGET-LINUX? if
+      HBB-SRC-NAME$ s" src/os/linux/repl-term.f" BF-APPEND-SOURCE
+      exit
+   then
+   HB-TARGET-MACOS? if
+      HBB-SRC-NAME$ s" src/os/macos/repl-term.f" BF-APPEND-SOURCE
+      exit
+   then
+   HBB-TARGET-UNKNOWN ;
+
 : HBB-RESET-RUNTIME-SOURCE ( -- )
    HBB-SRC-NAME$ BF-RESET-OUT
-   HBB-SRC-NAME$ s" : TRUST 2drop 2drop ;" BF-APPEND-LINE
-   HBB-SRC-NAME$ s" src/os/macos/env.f" BF-APPEND-SOURCE
+   HBB-SRC-NAME$ s" 0 set-check" BF-APPEND-LINE
+   HBB-SRC-NAME$ s" : TRUST ( ptr u8 n ptr u8 n -- ) 2drop 2drop ;" BF-APPEND-LINE
+   HBB-SRC-NAME$ s" src/habu/layout.f" BF-APPEND-SOURCE
+   HBB-APPEND-TARGET-ENV
    HBB-SRC-NAME$ s" : SCRIPT-ARG-START ( -- n ) 1 ;" BF-APPEND-LINE
    HBB-SRC-NAME$ s" : SCRIPT-ARGC ( -- n ) ARGC 1 - dup 0 < if drop 0 then ;" BF-APPEND-LINE
    HBB-SRC-NAME$ s" : SCRIPT-ARGV ( i -- z ) 1 + ARGV ;" BF-APPEND-LINE
    HBB-SRC-NAME$ s" : SCRIPT-ARGV$ ( i -- a u ) SCRIPT-ARGV dup ZLEN ;" BF-APPEND-LINE ;
+
+: HBB-APPEND-REPL-TARGET ( -- )
+   HBB-APPEND-TARGET-REPL-TERM ;
 
 : HBB-APPEND-COMMENTED-SOURCE ( -- )
    HBB-SRC-NAME$ SOURCE-BUF SOURCE-LEN @ BF-APPEND-BYTES ;
@@ -348,6 +386,7 @@ variable HBB-JSON-FOUND
    HBB-RESET-RUNTIME-SOURCE
    HBB-APPEND-COMMENTED-SOURCE
    HBB-SRC-NAME$ BF-APPEND-LF
+   HBB-APPEND-REPL-TARGET
    HBB-SRC-NAME$ s" src/habu/repl.f" BF-APPEND-SOURCE ;
 
 : HBB-PREPARE-PROGRAM-SOURCE ( -- )

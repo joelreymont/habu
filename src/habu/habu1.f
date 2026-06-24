@@ -3,87 +3,8 @@
 \ icode.fs + mnem.fs + rt.fs (g-push/g-pop/g-print9) + crash.fs + macho.fs.
 \ Part 1: prims + tok/find/num/prot/flush/cemit + dict. The interpreter main
 \ loop, keyword JIT and EMIT-FORTH follow in part 2 (habu2.f).
-20 constant XREG-RBASE
-26 constant DBASE  27 constant NDICT  28 constant CP
-$200000 constant REGION
-$300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
-$44000000000 constant DATA-VA \ high FIXED data VA for sparse 1 TiB reservation
-$48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
-$31000  constant DICT-SIZE
-48      constant DREC
-16      constant DNAME-INL
-$0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
-$1000000000000000 constant DNAME-IMM
-$2000000000000000 constant DNAME-EXT
-4096    constant DICT-CAP  \ CFSTK-OFF / DREC; slots 0..4095 end exactly at CFSTK.
-$30000  constant CFSTK-OFF
-$10000000000 constant DATA-SIZE \ 1 TiB sparse fixed reservation; pages are committed lazily by the OS.
-$100000 constant IBUFSZ
-20 constant DATA
-0   constant DP-CELL    8  constant HND-CELL
-16  constant LOCN-CELL   24 constant LOCF-CELL
-$3000 constant LOCNAMES   \ 64 records x 24 B ($3000-$3600); was 16 at DATA+32
-24  constant LOC-REC
-$1A0 constant CUR-CELL
-$1A8 constant WIDN-CELL
-$1B0 constant HOOK-CELL
-$1B8 constant BODYLEN-CELL
-$1C0 constant RBASE-CELL
-$1C8 constant LOOPSP-CELL
-$1D0 constant S0-CELL
-$3640 constant REPLH-CELL  \ REPL line-reader xt (0 = batch; repl.f INSTALL sets it)
-$3648 constant RSAVCP-CELL \ line-start CP    (REPL error rollback)
-$3650 constant RSAVND-CELL \ line-start NDICT
-$3658 constant RSAVDP-CELL \ line-start DP
-$3660 constant RSAVSP-CELL \ loop-level machine SP (throw recovery unwinds to it)
-$3668 constant RRECP-CELL  \ runtime addr of the REPL recovery entry (EMIT-MAIN stores it)
-$3670 constant ARGC-CELL   \ dyld main(argc,argv,envp): x0-x2, captured at entry
-$3678 constant ARGV-CELL
-$3680 constant ENVP-CELL
-$3688 constant PEND-CELL   \ pending dict record ptr (0 = interpret mode; was x25)
-$3690 constant TKA-CELL    \ current token addr (was x23)
-$3698 constant TKL-CELL    \ current token len  (was x24)
-$36A0 constant INP-CELL    \ input cursor (was x21)
-$36A8 constant INE-CELL    \ input end    (was x22)
-$36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; legacy single-BP)
-$36C8 constant BPI-CELL    \ (legacy single-BP; unused)
-$36D0 constant BPTAB-OFF   \ 8 breakpoints: (addr, saved-instr, hits, ctrl) 32 B each
-$37E8 constant BPWBASE-CELL \ watch table pointer for debug-watch.f / trap dumps
-$37F0 constant BPWN-CELL    \ active watch cell count
-$2740 constant EVAL-FRAME  \ re-entrant evaluate save frame, 8 cells ($2740-$277F: the free hole
-                           \ between BODYBUF end ($800+8000=$2740) and RSTK ($2800)). NOT $3600 —
-                           \ that COLLIDED with VRTAB-OFF/$3600 + VRITAB-OFF/$3620 (regalloc.f), so every
-                           \ evaluate clobbered the reg-alloc tables -> LVRALLOC returned saved stack-
-                           \ pointer bytes as register numbers -> illegal SUB encodings (nondeterm SIGILL).
-                           \ +0 INP +8 INE +16 RET +24 SP +32 XDS +40 CP +48 NDICT +56 DP
-$2780 constant TSIG-A-CELL  \ TRUSTED: pending word effect source pointer
-$2788 constant TSIG-U-CELL
-$2790 constant TCSIG-A-CELL \ TRUSTED: pending created-word effect pointer
-$2798 constant TCSIG-U-CELL
-$27A0 constant CRSIG-A-CELL \ runtime created-word effect pending for CREATE
-$27A8 constant CRSIG-U-CELL
-$27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
-$37D0 constant EVALD-CELL  \ evaluate nesting depth (0 = top-level REPL/batch; gates the nested paths)
-$37D8 constant EVALERR-CELL \ result of the last evaluate: 0 = clean, 1 = recovered from an error
-$37E0 constant LMAINP-CELL  \ runtime addr of the interpret loop top (EM-STARTUP stores it; B-EVAL branches there)
-$1D8 constant SSCR-CELL
-$1E0 constant GTOD-SCRATCH \ gettimeofday timeval scratch, 16 B; ends before DOESP-CELL
-$600 constant LOOP-STK-OFF
-$800 constant BODYBUF-OFF
-8000 constant BODYBUF-CAP
-$568 constant RSP-CELL    \ user return-stack depth (>r r> r@)
-$570 constant EXITH-CELL  \ EXIT placeholder chain head (code offset; 0 = none)
-$578 constant LVD-CELL    \ compile-time DO nesting depth (LEAVE chains)
-$580 constant LVH-OFF     \ LEAVE chain head per nesting level — 16 levels
-$560 constant LASTC-CELL  \ last CREATEd slot addr (DOES> patches it)
-$1F0 constant DOESP-CELL  \ runtime address of LDOESPATCH (stored at startup)
-$230 constant CREATEP-CELL \ runtime address of LCREATE (prims must not name labels)
-$238 constant QPATCH-CELL \ [: b-over patch site (0 = not inside a quotation)
-$240 constant QENT-CELL   \ [: nested entry address (the xt ;] pushes)
-$248 constant QXH-CELL    \ saved EXIT chain head across the quotation
-$2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
-$3800 constant DATA-START
 variable STDIN?   0 STDIN? !
+s" STDIN?" s" -- ptr n" TRUST
 \ runtime instruction-word constants the JIT compiler stamps out
 $D65F03C0 constant W-RET
 $F9000269 constant W-PUSH0
@@ -149,7 +70,7 @@ variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUN
 variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
-variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
+variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
 
@@ -170,8 +91,174 @@ variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
 
 : BU.   A G-POP  G-PRINTU9 ;
 
+56 constant LINUX-SPAWN-PIPE-R-OFF
+60 constant LINUX-SPAWN-PIPE-W-OFF
+64 constant LINUX-SPAWN-ERR-OFF
+72 constant LINUX-SPAWN-PID-OFF
+80 constant LINUX-SPAWN-STATUS-OFF
+96 constant LINUX-SPAWN-FRAME
+3 constant LINUX-SPAWN-MIN-ERRFD
+1024 constant LINUX-F-LINUX-SPECIFIC-BASE
+6 constant LINUX-F-DUPFD-CLOEXEC-OFF
+2 constant LINUX-F-SETFD
+1 constant LINUX-FD-CLOEXEC
+$80000 constant LINUX-O-CLOEXEC
+LINUX-F-LINUX-SPECIFIC-BASE LINUX-F-DUPFD-CLOEXEC-OFF + constant LINUX-F-DUPFD-CLOEXEC
+
+: LINUX-SPAWN-FAIL ( n -- )
+   {: errfd :}
+   0 errfd 0 ADDI,
+   15 1 MOVZ,  15 SP LINUX-SPAWN-ERR-OFF STRB,
+   1 SP LINUX-SPAWN-ERR-OFF ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 127 MOVZ,  NR-EXIT-GROUP SYS, ;
+s" linux-spawn-fail" s" n --" TRUST
+
+: LINUX-DUP2-FD ( n n n -- )
+   {: fdreg newfd errfd :}
+   LBL LBL {: skip ok :}
+   fdreg 0 CMPI,  C-LT skip BCOND,
+   fdreg newfd CMPI,  C-EQ skip BCOND,
+   0 fdreg 0 ADDI,  1 newfd MOVZ,  2 0 MOVZ,  NR-DUP2 SYS,
+   9 C-CS CSET,  9 ok CBZ,
+      errfd LINUX-SPAWN-FAIL
+   ok LBL,
+   skip LBL, ;
+s" linux-dup2-fd" s" n n n --" TRUST
+
+: LINUX-CHDIR-FD ( n n -- )
+   {: cwdreg errfd :}
+   LBL LBL {: skip ok :}
+   cwdreg 0 CMPI,  C-LT skip BCOND,
+   0 cwdreg 0 ADDI,  NR-CHDIR SYS,
+   9 C-CS CSET,  9 ok CBZ,
+      errfd LINUX-SPAWN-FAIL
+   ok LBL,
+   skip LBL, ;
+s" linux-chdir-fd" s" n n --" TRUST
+
+: LINUX-SPAWN-CLOSE-R ( -- )
+   0 SP LINUX-SPAWN-PIPE-R-OFF LDRW,  NR-CLOSE SYS, ;
+s" linux-spawn-close-r" s" --" TRUST
+
+: LINUX-SPAWN-CLOSE-W ( -- )
+   0 SP LINUX-SPAWN-PIPE-W-OFF LDRW,  NR-CLOSE SYS, ;
+s" linux-spawn-close-w" s" --" TRUST
+
+: LINUX-SPAWN-CLOSE-PIPE ( -- )
+   LINUX-SPAWN-CLOSE-R
+   LINUX-SPAWN-CLOSE-W ;
+s" linux-spawn-close-pipe" s" --" TRUST
+
+: LINUX-SPAWN-PREP-W ( -- )
+   LBL LBL LBL {: high fail done :}
+   9 0 MOVZ,
+   0 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
+   0 LINUX-SPAWN-MIN-ERRFD 1- CMPI,  C-GT done BCOND,
+      1 LINUX-F-DUPFD-CLOEXEC MOVZ,  2 LINUX-SPAWN-MIN-ERRFD MOVZ,
+      NR-FCNTL SYS,
+      9 C-CS CSET,  9 fail CBNZ,
+      14 0 0 ADDI,
+      0 SP LINUX-SPAWN-PIPE-W-OFF LDRW,  NR-CLOSE SYS,
+      14 SP LINUX-SPAWN-PIPE-W-OFF STRW,
+      9 0 MOVZ,  done B,
+   fail LBL,
+      9 1 MOVZ,
+   done LBL, ;
+s" linux-spawn-prep-w" s" --" TRUST
+
+: LINUX-SPAWN-WAIT-STORED ( -- )
+   0 SP LINUX-SPAWN-PID-OFF LDR,
+   1 SP LINUX-SPAWN-STATUS-OFF ADDI,  2 0 MOVZ,  3 0 MOVZ,
+   NR-WAIT4 SYS, ;
+s" linux-spawn-wait-stored" s" --" TRUST
+
+: LINUX-SPAWN-PARENT ( -- )
+   LBL LBL LBL {: ok fail done :}
+   0 SP LINUX-SPAWN-PID-OFF STR,
+   LINUX-SPAWN-CLOSE-W
+   0 SP LINUX-SPAWN-PIPE-R-OFF LDRW,
+   1 SP LINUX-SPAWN-ERR-OFF ADDI,  2 1 MOVZ,  NR-READ SYS,
+   9 C-CS CSET,  9 fail CBNZ,
+   0 0 CMPI,  C-EQ ok BCOND,
+   fail LBL,
+      LINUX-SPAWN-CLOSE-R
+      LINUX-SPAWN-WAIT-STORED
+      9 0 MOVN,  done B,
+   ok LBL,
+      LINUX-SPAWN-CLOSE-R
+      9 SP LINUX-SPAWN-PID-OFF LDR,
+   done LBL, ;
+s" linux-spawn-parent" s" --" TRUST
+
+: LINUX-SPAWN-CHILD ( -- )
+   LINUX-SPAWN-CLOSE-R
+   14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
+   9 SP 24 LDR,  9 14 LINUX-CHDIR-FD
+   14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
+   9 SP 32 LDR,  9 0 14 LINUX-DUP2-FD
+   14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
+   9 SP 40 LDR,  9 1 14 LINUX-DUP2-FD
+   14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
+   9 SP 48 LDR,  9 2 14 LINUX-DUP2-FD
+   0 SP 0 LDR,  1 SP 8 LDR,  2 SP 16 LDR,
+   NR-EXECVE SYS,
+   14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
+   14 LINUX-SPAWN-FAIL ;
+s" linux-spawn-child" s" --" TRUST
+
+: LINUX-SPAWN ( n n n n n n n -- )
+   {: pathreg argvreg envreg cwdreg infd outfd errfd :}
+   LBL LBL LBL LBL {: child closefail fail done :}
+   SP SP LINUX-SPAWN-FRAME SUBI,
+   pathreg SP 0 STR,  argvreg SP 8 STR,  envreg SP 16 STR,  cwdreg SP 24 STR,
+   infd SP 32 STR,  outfd SP 40 STR,  errfd SP 48 STR,
+   0 SP LINUX-SPAWN-PIPE-R-OFF ADDI,  1 LINUX-O-CLOEXEC LIT64,  NR-PIPE SYS,
+   9 C-CS CSET,  9 fail CBNZ,
+   LINUX-SPAWN-PREP-W
+   9 closefail CBNZ,
+   0 17 MOVZ,  1 0 MOVZ,  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,
+   NR-SPAWN SYS,
+   9 C-CS CSET,  9 closefail CBNZ,
+   0 child CBZ,
+      LINUX-SPAWN-PARENT
+      done B,
+   child LBL,
+      LINUX-SPAWN-CHILD
+   closefail LBL,
+      LINUX-SPAWN-CLOSE-PIPE
+   fail LBL,
+      9 0 MOVN,
+   done LBL,
+   SP SP LINUX-SPAWN-FRAME ADDI,
+   9 G-PUSH ;
+s" linux-spawn" s" n n n n n n n --" TRUST
+
 : BRUNRC  A G-POP                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
    LBL LBL LBL {: spok spdn spw :}
+   HB-TARGET-LINUX? IF
+      SP SP 64 SUBI,
+      9 SP 16 STR,
+      10 0 MOVZ,  10 SP 24 STR,
+      10 SP 48 STR,
+      10 SP 16 ADDI,
+      11 SP 48 ADDI,
+      13 0 MOVN,
+      9 10 11 13 13 13 13 LINUX-SPAWN
+      9 G-POP
+      9 0 CMPI,  C-LT spdn BCOND,
+      0 9 0 ADDI,
+      1 SP 8 ADDI,  2 0 MOVZ,  3 0 MOVZ,
+      NR-WAIT4 SYS,
+      10 C-CS CSET,  10 spw CBZ,
+         9 0 MOVN,  spdn B,
+      spw LBL,
+      9 SP 8 LDRW,
+      9 9 8 LSRI,  9 9 $FF ANDI,
+      spdn LBL,
+      9 G-PUSH
+      SP SP 64 ADDI,
+      exit
+   THEN
    SP SP 64 SUBI,
    9 SP 16 STR,                      \ argv[0] = path
    10 0 MOVZ,  10 SP 24 STR,         \ argv[1] = 0
@@ -199,6 +286,18 @@ variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
 
 : BPIPE                              \ ( -- rfd wfd rc ) rc=0, or -1 -1 -1
    LBL LBL {: pok pdn :}
+   HB-TARGET-LINUX? IF
+      SP SP 16 SUBI,
+      0 SP 0 ADDI,  1 0 MOVZ,  NR-PIPE SYS,
+      9 C-CS CSET,  9 pok CBZ,
+         9 0 MOVN,  9 G-PUSH  9 G-PUSH  9 G-PUSH  pdn B,
+      pok LBL,
+      0 SP 0 LDRW,  1 SP 4 LDRW,
+      0 G-PUSH  1 G-PUSH  9 0 MOVZ,  9 G-PUSH
+      pdn LBL,
+      SP SP 16 ADDI,
+      exit
+   THEN
    NR-PIPE SYS,
    9 C-CS CSET,  9 pok CBZ,
       9 0 MOVN,  9 G-PUSH  9 G-PUSH  9 G-PUSH  pdn B,
@@ -206,8 +305,9 @@ variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
    0 G-PUSH  1 G-PUSH  9 0 MOVZ,  9 G-PUSH
    pdn LBL, ;
 
-: BDUP2  B G-POP  A G-POP            \ ( oldfd newfd -- rc ) rc=newfd or -1
+: BDUP2  1 G-POP  0 G-POP            \ ( oldfd newfd -- rc ) rc=newfd or -1
    LBL LBL {: dok ddn :}
+   HB-TARGET-LINUX? IF 2 0 MOVZ, THEN
    NR-DUP2 SYS,
    9 C-CS CSET,  9 dok CBZ,
       0 0 MOVN,  ddn B,
@@ -215,8 +315,33 @@ variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
    ddn LBL,
    0 G-PUSH ;
 
+13 constant LINUX-SIGPIPE
+1 constant LINUX-SIG-IGN
+8 constant LINUX-SIGSET-SIZE
+
+: LINUX-IGNORE-SIGPIPE ( -- )
+   LBL LBL {: ok done :}
+   SP SP 64 SUBI,
+   9 LINUX-SIG-IGN MOVZ,  9 SP 0 STR,
+   9 0 MOVZ,  9 SP 8 STR,  9 SP 16 STR,  9 SP 24 STR,
+   0 LINUX-SIGPIPE MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  3 LINUX-SIGSET-SIZE MOVZ,
+   NR-SIGACTION SYS,
+   9 C-CS CSET,  9 ok CBZ,
+      0 0 MOVN,  done B,
+   ok LBL,
+      0 0 MOVZ,
+   done LBL,
+   SP SP 64 ADDI, ;
+s" linux-ignore-sigpipe" s" --" TRUST
+
 : BFCNTL  2 G-POP  1 G-POP  0 G-POP  \ ( fd cmd arg -- rc ) rc=sysret or -1
-   LBL LBL {: fok fdn :}
+   LBL LBL LBL {: fok fdn freal :}
+   HB-TARGET-LINUX? IF
+      1 73 CMPI,  C-NE freal BCOND,
+         LINUX-IGNORE-SIGPIPE
+         fdn B,
+      freal LBL,
+   THEN
    NR-FCNTL SYS,
    9 C-CS CSET,  9 fok CBZ,
       0 0 MOVN,  fdn B,
@@ -225,7 +350,28 @@ variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
    0 G-PUSH ;
 
 : BPOLL  2 G-POP  1 G-POP  0 G-POP   \ ( fds nfds timeout -- rc ) rc=nready/0 or -1
-   LBL LBL {: pok pdn :}
+   LBL LBL LBL LBL {: pok pdn pneg pcall :}
+   HB-TARGET-LINUX? IF
+      SP SP 32 SUBI,
+      2 0 CMPI,  C-LT pneg BCOND,
+         5 1000 MOVZ,  6 2 5 UDIV,
+         7 6 5 MUL,  7 2 7 SUB,
+         5 1000 MOVZ,  7 7 5 MUL,  5 1000 MOVZ,  7 7 5 MUL,
+         6 SP 0 STR,  7 SP 8 STR,
+         2 SP 0 ADDI,  pcall B,
+      pneg LBL,
+         2 0 MOVZ,
+      pcall LBL,
+      3 0 MOVZ,  4 0 MOVZ,
+      NR-POLL SYS,
+      9 C-CS CSET,  9 pok CBZ,
+         0 0 MOVN,  pdn B,
+      pok LBL,
+      pdn LBL,
+      0 G-PUSH
+      SP SP 32 ADDI,
+      exit
+   THEN
    NR-POLL SYS,
    9 C-CS CSET,  9 pok CBZ,
       0 0 MOVN,  pdn B,
@@ -317,8 +463,19 @@ s" spawn-dup2-action" s" n n --" TRUST
 s" spawn-chdir-action" s" n --" TRUST
 
 : BSPAWNIO                            \ ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )
+   LBL LBL LBL {: spok spdn sad :}
    12 G-POP  11 G-POP  10 G-POP  9 G-POP
-   LBL LBL {: spok spdn :}
+   HB-TARGET-LINUX? IF
+      SP SP 64 SUBI,
+      9 SP 16 STR,
+      13 0 MOVZ,  13 SP 24 STR,
+      13 SP 32 STR,
+      13 0 MOVN,
+      14 SP 16 ADDI,  15 SP 32 ADDI,
+      9 14 15 13 10 11 12 LINUX-SPAWN
+      SP SP 64 ADDI,
+      exit
+   THEN
    SP SP 3584 SUBI,
    9 SP 16 STR,                       \ argv[0] = path
    14 0 MOVZ,  14 SP 24 STR,          \ argv[1] = 0
@@ -340,7 +497,6 @@ s" spawn-chdir-action" s" n --" TRUST
    0 SP 0 ADDI,                       \ &pid
    1 9 0 ADDI,                        \ path
    14 13 4 LDRW,  2 SP 48 ADDI,
-   LBL {: sad :}
    14 sad CBNZ,
       2 0 MOVZ,                       \ no actions: XNU rejects an empty blob
    sad LBL,
@@ -355,8 +511,17 @@ s" spawn-chdir-action" s" n --" TRUST
    SP SP 3584 ADDI, ;
 
 : BSPAWNARGVIO                        \ ( pathz argvp stdinfd stdoutfd stderrfd -- pid|-1 )
+   LBL LBL LBL {: spok spdn sad :}
    12 G-POP  11 G-POP  10 G-POP  9 G-POP  8 G-POP
-   LBL LBL {: spok spdn :}
+   HB-TARGET-LINUX? IF
+      SP SP 16 SUBI,
+      13 0 MOVZ,  13 SP 0 STR,
+      13 0 MOVN,
+      15 SP 0 ADDI,
+      8 9 15 13 10 11 12 LINUX-SPAWN
+      SP SP 16 ADDI,
+      exit
+   THEN
    SP SP 3584 SUBI,
    14 0 MOVZ,  14 SP 16 STR,          \ envp[0] = 0
    13 SP 176 ADDI,                    \ file actions
@@ -376,7 +541,6 @@ s" spawn-chdir-action" s" n --" TRUST
    0 SP 0 ADDI,                       \ &pid
    1 8 0 ADDI,                        \ path
    14 13 4 LDRW,  2 SP 48 ADDI,
-   LBL {: sad :}
    14 sad CBNZ,
       2 0 MOVZ,                       \ no actions: XNU rejects an empty blob
    sad LBL,
@@ -391,8 +555,13 @@ s" spawn-chdir-action" s" n --" TRUST
    SP SP 3584 ADDI, ;
 
 : BSPAWNARGVENVIO                     \ ( pathz argvp envp stdinfd stdoutfd stderrfd -- pid|-1 )
+   LBL LBL LBL {: spok spdn sad :}
    12 G-POP  11 G-POP  10 G-POP  7 G-POP  9 G-POP  8 G-POP
-   LBL LBL {: spok spdn :}
+   HB-TARGET-LINUX? IF
+      13 0 MOVN,
+      8 9 7 13 10 11 12 LINUX-SPAWN
+      exit
+   THEN
    SP SP 3584 SUBI,
    13 SP 176 ADDI,                    \ file actions
    14 3 MOVZ,  14 13 0 STRW,
@@ -411,7 +580,6 @@ s" spawn-chdir-action" s" n --" TRUST
    0 SP 0 ADDI,                       \ &pid
    1 8 0 ADDI,                        \ path
    14 13 4 LDRW,  2 SP 48 ADDI,
-   LBL {: sad :}
    14 sad CBNZ,
       2 0 MOVZ,                       \ no actions: XNU rejects an empty blob
    sad LBL,
@@ -426,8 +594,12 @@ s" spawn-chdir-action" s" n --" TRUST
    SP SP 3584 ADDI, ;
 
 : BSPAWNARGVENVCWDIO                  \ ( pathz argvp envp cwdz stdinfd stdoutfd stderrfd -- pid|-1 )
-   12 G-POP  11 G-POP  10 G-POP  6 G-POP  7 G-POP  9 G-POP  8 G-POP
    LBL LBL {: spok spdn :}
+   12 G-POP  11 G-POP  10 G-POP  6 G-POP  7 G-POP  9 G-POP  8 G-POP
+   HB-TARGET-LINUX? IF
+      8 9 7 6 10 11 12 LINUX-SPAWN
+      exit
+   THEN
    SP SP SPAWN-FRAME4-A SUBI,
    SP SP SPAWN-FRAME4-B SUBI,
    SP SP SPAWN-FRAME4-C SUBI,
@@ -689,7 +861,15 @@ s" spawn-chdir-action" s" n --" TRUST
    done LBL,
    0 G-PUSH ;
 
-: BOPEN   2 G-POP  1 G-POP  0 G-POP  NR-OPEN SYS,  SYS-PUSH ;
+: BOPEN
+   2 G-POP  1 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF
+      3 2 0 ADDI,
+      OS-OPEN-FLAGS
+      1 0 0 ADDI,
+      0 99 MOVN,
+   THEN
+   NR-OPEN SYS,  SYS-PUSH ;
 
 : BWRITE  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH ;
 
@@ -697,38 +877,107 @@ s" spawn-chdir-action" s" n --" TRUST
 
 : BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  SYS-PUSH ;
 
-: BMMAP   5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP  NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
+: BMMAP
+   5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
+   NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
-: BOPENRD A G-POP  0 9 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS,  SYS-PUSH ;
+: BOPENRD A G-POP  A OS-OPEN-RD  SYS-PUSH ;
 
-: BACCESS 1 G-POP  0 G-POP  NR-ACCESS SYS,  SYS-PUSH ;
+: BACCESS
+   1 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF
+      2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
+   THEN
+   NR-ACCESS SYS,  SYS-PUSH ;
 
-: BUNLINK 0 G-POP  NR-UNLINK SYS,  SYS-PUSH ;
+: BUNLINK
+   0 G-POP
+   HB-TARGET-LINUX? IF
+      1 0 0 ADDI,  0 99 MOVN,  2 0 MOVZ,
+   THEN
+   NR-UNLINK SYS,  SYS-PUSH ;
 
-: BRENAME 1 G-POP  0 G-POP  NR-RENAME SYS,  SYS-PUSH ;
+: BRENAME
+   1 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF
+      3 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  2 99 MOVN,
+   THEN
+   NR-RENAME SYS,  SYS-PUSH ;
 
-: BCHMOD  1 G-POP  0 G-POP  NR-CHMOD SYS,  SYS-PUSH ;
+: BCHMOD
+   1 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF
+      2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
+   THEN
+   NR-CHMOD SYS,  SYS-PUSH ;
 
 : BSYMLINK
-   2 G-POP  0 G-POP  1 1 MOVN,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
+   2 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF 1 99 MOVN, ELSE 1 1 MOVN, THEN
+   3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
    NR-SYMLINKAT SYS,  SYS-PUSH ;
 
 : BREADLINK
-   3 G-POP  2 G-POP  1 G-POP  0 1 MOVN,  4 0 MOVZ,  5 0 MOVZ,
+   3 G-POP  2 G-POP  1 G-POP
+   HB-TARGET-LINUX? IF 0 99 MOVN, ELSE 0 1 MOVN, THEN
+   4 0 MOVZ,  5 0 MOVZ,
    NR-READLINKAT SYS,  SYS-PUSH ;
 
-: BMKDIR  1 G-POP  0 G-POP  NR-MKDIR SYS,  SYS-PUSH ;
+: BMKDIR
+   1 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF
+      2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,
+   THEN
+   NR-MKDIR SYS,  SYS-PUSH ;
 
-: BRMDIR  0 G-POP  NR-RMDIR SYS,  SYS-PUSH ;
+: BRMDIR
+   0 G-POP
+   HB-TARGET-LINUX? IF
+      1 0 0 ADDI,  0 99 MOVN,  2 $200 MOVZ,
+   THEN
+   NR-RMDIR SYS,  SYS-PUSH ;
 
-: BSTAT64 1 G-POP  0 G-POP  NR-STAT64 SYS,  SYS-PUSH ;
+: LINUX-STAT-FIX {: bufreg :}
+   5 bufreg 16 LDRW,  5 bufreg 4 STRW,
+   5 bufreg 48 LDR,   5 bufreg 96 STR, ;
+s" linux-stat-fix" s" n --" TRUST
+
+: BSTAT64
+   1 G-POP  0 G-POP
+   LBL LBL {: ok done :}
+   HB-TARGET-LINUX? IF
+      2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
+      NR-STAT64 SYS,
+      9 C-CS CSET,  9 ok CBZ,
+         0 0 MOVN,  done B,
+      ok LBL,
+      2 LINUX-STAT-FIX
+      done LBL,
+      0 G-PUSH
+      exit
+   THEN
+   NR-STAT64 SYS,  SYS-PUSH ;
 
 : BLSTAT64
    1 G-POP  0 G-POP  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
+   LBL LBL {: ok done :}
+   HB-TARGET-LINUX? IF
+      2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 AT-SYMLINK-NOFOLLOW MOVZ,
+      NR-LSTAT64 SYS,
+      9 C-CS CSET,  9 ok CBZ,
+         0 0 MOVN,  done B,
+      ok LBL,
+      2 LINUX-STAT-FIX
+      done LBL,
+      0 G-PUSH
+      exit
+   THEN
    NR-LSTAT64 SYS,  SYS-PUSH ;
 
 : BGETDIRENTRIES64
-   3 G-POP  2 G-POP  1 G-POP  0 G-POP  NR-GETDIRENTRIES64 SYS,  SYS-PUSH ;
+   3 G-POP  2 G-POP  1 G-POP  0 G-POP
+   NR-GETDIRENTRIES64 SYS,  SYS-PUSH ;
 
 : BPATCH32                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
@@ -810,36 +1059,63 @@ s" spawn-chdir-action" s" n --" TRUST
       wnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  wl B,
    wend LBL,  11 G-PUSH ;
 
-: EMIT-PRIMS
+: BPARSE-NAME
+   LBL LBL {: none done :}
+   LTOK @ BL,
+   0 none CBZ,
+      9 DATA TKA-CELL LDR,  9 G-PUSH
+      9 DATA TKL-CELL LDR,  9 G-PUSH
+      done B,
+   none LBL,
+      9 DATA INP-CELL LDR,  9 G-PUSH
+      9 0 MOVZ,  9 G-PUSH
+   done LBL, ;
+
+: EMIT-ARITH-PRIMS ( -- )
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
-   s" dup"  ['] BDUP  FPRIM-L   s" drop" ['] BDROP FPRIM-L   s" swap" ['] BSWAP FPRIM-L
-   s" ."    ['] BDOT  FPRIM-L   s" .s"   ['] B.S   FPRIM-L   s" depth" ['] BDEPTH FPRIM-L
-   s" u."   ['] BU.   FPRIM-L   s" emit" ['] BEMIT FPRIM-L
-   s" cr"   ['] BCR   FPRIM-L   s" space" ['] BSPACE FPRIM-L
+   s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
+   s" abs"  ['] BABS  FPRIM-L   s" min"  ['] BMIN  FPRIM-L   s" max"  ['] BMAX FPRIM-L ;
+
+: EMIT-COMPARE-PRIMS ( -- )
    s" ="    ['] B=    FPRIM-L   s" <>"   ['] B<>   FPRIM-L   s" <"    ['] B<    FPRIM-L
    s" >"    ['] B>    FPRIM-L   s" <="   ['] B<=   FPRIM-L   s" >="   ['] B>=   FPRIM-L
    s" 0="   ['] B0=   FPRIM-L   s" 0<"   ['] B0<   FPRIM-L
    s" 1+"   ['] B1+   FPRIM-L   s" 1-"   ['] B1-   FPRIM-L
    s" and"  ['] BAND  FPRIM-L   s" or"   ['] BOR   FPRIM-L   s" xor"  ['] BXOR  FPRIM-L
    s" invert" ['] BINV FPRIM-L  s" negate" ['] BNEG FPRIM-L
-   s" lshift" ['] BLSH FPRIM-L  s" rshift" ['] BRSH FPRIM-L
-   s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
-   s" abs"  ['] BABS  FPRIM-L   s" min"  ['] BMIN  FPRIM-L   s" max"  ['] BMAX FPRIM-L
+   s" lshift" ['] BLSH FPRIM-L  s" rshift" ['] BRSH FPRIM-L ;
+
+: EMIT-STACK-PRIMS ( -- )
+   s" dup"  ['] BDUP  FPRIM-L   s" drop" ['] BDROP FPRIM-L   s" swap" ['] BSWAP FPRIM-L
    s" nip"  ['] BNIP  FPRIM-L   s" over" ['] BOVER FPRIM-L   s" tuck" ['] BTUCK FPRIM-L
    s" rot"  ['] BROT  FPRIM-L   s" -rot" ['] BMROT FPRIM-L
    s" 2dup" ['] B2DUP FPRIM-L   s" 2drop" ['] B2DROP FPRIM-L
    s" 2swap" ['] B2SWAP FPRIM-L  s" 2over" ['] B2OVER FPRIM-L  s" ?dup" ['] BQDUP FPRIM-L
+   s" 2>r" ['] B2TOR FPRIM-L  s" 2r>" ['] B2RFROM FPRIM-L  s" 2r@" ['] B2RFETCH FPRIM-L ;
+
+: EMIT-MEMORY-PRIMS ( -- )
    s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L   s" ptr-field" ['] BPTRFIELD FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM-L
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
-   s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT FPRIM-L
-   s" 2>r" ['] B2TOR FPRIM-L  s" 2r>" ['] B2RFROM FPRIM-L  s" 2r@" ['] B2RFETCH FPRIM-L
+   s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT FPRIM-L ;
+
+: EMIT-OUTPUT-PRIMS ( -- )
+   s" ."    ['] BDOT  FPRIM-L   s" .s"   ['] B.S   FPRIM-L   s" depth" ['] BDEPTH FPRIM-L
+   s" u."   ['] BU.   FPRIM-L   s" emit" ['] BEMIT FPRIM-L
+   s" cr"   ['] BCR   FPRIM-L   s" space" ['] BSPACE FPRIM-L
+   s" type" ['] BTYPE  FPRIM-L ;
+
+: EMIT-DICT-PRIMS ( -- )
    s" here" ['] BHERE  FPRIM-L   s" allot" ['] BALLOT FPRIM-L
    s" ,"    ['] BCOMMA FPRIM-L   s" c,"   ['] BCCOMMA FPRIM-L
-   s" type" ['] BTYPE  FPRIM-L   s" execute" ['] BEXEC FPRIM
+   s" execute" ['] BEXEC FPRIM
    s" compile," ['] BCOMPILE FPRIM
    s" create" ['] BCREATE FPRIM
+   s" parse-name" ['] BPARSE-NAME FPRIM
+   s" evaluate" ['] B-EVAL FPRIM-L ;
+
+: EMIT-PROCESS-PRIMS ( -- )
    s" run-rc" ['] BRUNRC FPRIM-L
    s" pipe" ['] BPIPE FPRIM-L   s" dup2" ['] BDUP2 FPRIM-L
    s" fcntl" ['] BFCNTL FPRIM-L   s" poll" ['] BPOLL FPRIM-L
@@ -849,15 +1125,18 @@ s" spawn-chdir-action" s" n --" TRUST
    s" spawn-argv-env-io" ['] BSPAWNARGVENVIO FPRIM-L
    s" spawn-argv-env-cwd-io" ['] BSPAWNARGVENVCWDIO FPRIM-L
    s" wait-rc" ['] BWAITRC FPRIM-L
-   s" wait-status" ['] BWAITSTATUS FPRIM-L
+   s" wait-status" ['] BWAITSTATUS FPRIM-L ;
+
+: EMIT-ENGINE-PRIMS ( -- )
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
-   s" evaluate" ['] B-EVAL FPRIM-L
-   s" die"  ['] BDIE   FPRIM-L
+   s" die"  ['] BDIE   FPRIM-L ;
+
+: EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L
    s" open-rd" ['] BOPENRD FPRIM-L
@@ -869,11 +1148,19 @@ s" spawn-chdir-action" s" n --" TRUST
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM-L
    s" patch32" ['] BPATCH32 FPRIM
    s" close" ['] BCLOSE FPRIM-L
-   s" rbase" ['] BRBASE FPRIM-L
+   s" rbase" ['] BRBASE FPRIM-L ;
+
+: EMIT-CHECKER-PRIMS ( -- )
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
    s" set-check" ['] BSETCHECK FPRIM-L ;
+
+: EMIT-PRIMS ( -- )
+   EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
+   EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
+   EMIT-PROCESS-PRIMS  EMIT-ENGINE-PRIMS  EMIT-FS-PRIMS
+   EMIT-CHECKER-PRIMS ;
 s" emit-prims" s" --" TRUST
 
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.

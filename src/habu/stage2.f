@@ -1,6 +1,6 @@
 \ stage2.fs — the FIXPOINT driver: the running standalone (stage1) reads the
 \ compiler's own source from /tmp/stage2-src, compiles it with the ported engine
-\ builder (EMIT-FORTH), wraps it in the full Mach-O (BUILD-IMAGE), and writes the
+\ builder (EMIT-FORTH), wraps it in the target executable (BUILD-IMAGE), and writes the
 \ unsigned stage2 binary to /tmp/stage2-got. The native build-fixpoint driver
 \ asserts stage2 is byte-identical to the previous native stage for the same source.
 \ fixpoint I/O paths — the single knobs; the build-fixpoint driver owns artifacts

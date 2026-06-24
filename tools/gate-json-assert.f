@@ -55,6 +55,9 @@ variable GJA-DIRECT
 : GJA-USAGE ( -- )
    s" usage: tools/gate-json-assert.f MODE FILE [ARG]" GJA-FAIL ;
 
+: GJA-ARGC= ( n -- ) {: n :}
+   SCRIPT-ARGC n <> IF GJA-USAGE THEN ;
+
 : GJA-COPY ( ptr u8 ptr u8 n -- )
    {: a:ptr dst:ptr u :}
    0 begin dup u < while
@@ -76,6 +79,9 @@ variable GJA-DIRECT
       dup a + c@ over b + c@ <> IF drop GJA-FALSE exit THEN
       1+
    repeat drop GJA-TRUE ;
+
+: GJA-CMD? ( ptr u8 n -- bool ) {: a:ptr u :}
+   0 SCRIPT-ARGV$ a u GJA-BYTES= ;
 
 : GJA-LINE! ( ptr u8 n n -- )
    {: a:ptr u k :}
@@ -359,7 +365,7 @@ variable GJA-DIRECT
    dup s" expected" GJA-REQ-STRF
    s" actual" GJA-REQ-STRF ;
 
-: GJA-DIAG-RETURN-STACK {: json:ptr jsonu exp:ptr expu act:ptr actu :}
+: GJA-DIAG-RETURN-STACK ( ptr u8 n ptr u8 n ptr u8 n -- ) {: json:ptr jsonu exp:ptr expu act:ptr actu :}
    json jsonu GJA-FIRST-JSON GJA-ROOT !
    GJA-ROOT @ GJA-DIAG-COMMON
    GJA-ROOT @ s" repair_class" GJA-REQ s" fix_return_stack" GJA-ASSERT-STR
@@ -367,7 +373,7 @@ variable GJA-DIRECT
    dup s" expected" GJA-REQ exp expu GJA-ASSERT-STR
    s" actual" GJA-REQ act actu GJA-ASSERT-STR ;
 
-: GJA-DIAG-ROW-EFFECT {: json:ptr jsonu src:ptr srcu exp:ptr expu act:ptr actu class:ptr classu :}
+: GJA-DIAG-ROW-EFFECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) {: json:ptr jsonu src:ptr srcu exp:ptr expu act:ptr actu class:ptr classu :}
    json jsonu GJA-FIRST-JSON GJA-ROOT !
    GJA-ROOT @ GJA-DIAG-COMMON
    GJA-ROOT @ s" declared_effect_source" GJA-REQ src srcu GJA-ASSERT-STR
@@ -459,56 +465,73 @@ variable GJA-DIRECT
    GJA-PADDING @ 0 <> IF s" compact AOT report found padding" GJA-FAIL THEN
    GJA-DIRECT @ 3 < IF s" compact AOT report missing direct BLs" GJA-FAIL THEN ;
 
+: GJA-DISPATCH-ONE-FILE ( -- bool )
+   0 SCRIPT-ARGV$ s" json-lines-schema" GJA-BYTES= IF
+      2 GJA-ARGC=
+      1 SCRIPT-ARGV$ GJA-JSON-LINES-SCHEMA GJA-TRUE exit
+   THEN
+   s" json-one-schema" GJA-CMD? IF
+      2 GJA-ARGC=
+      1 SCRIPT-ARGV$ GJA-JSON-ONE-SCHEMA GJA-TRUE exit
+   THEN
+   s" all-errors" GJA-CMD? IF
+      2 GJA-ARGC=
+      1 SCRIPT-ARGV$ GJA-ALL-ERRORS GJA-TRUE exit
+   THEN
+   s" sarif" GJA-CMD? IF
+      2 GJA-ARGC=
+      1 SCRIPT-ARGV$ GJA-SARIF GJA-TRUE exit
+   THEN
+   s" public-signatures" GJA-CMD? IF
+      2 GJA-ARGC=
+      1 SCRIPT-ARGV$ GJA-PUBLIC-SIGNATURES GJA-TRUE exit
+   THEN
+   s" aot-stripped" GJA-CMD? IF
+      2 GJA-ARGC=
+      1 SCRIPT-ARGV$ GJA-AOT-STRIPPED GJA-TRUE exit
+   THEN
+   s" aot-compact" GJA-CMD? IF
+      2 GJA-ARGC=
+      1 SCRIPT-ARGV$ GJA-AOT-COMPACT GJA-TRUE exit
+   THEN
+   GJA-FALSE ;
+
+: GJA-DISPATCH-TWO-ARG ( -- bool )
+   s" diag-file-origin" GJA-CMD? IF
+      3 GJA-ARGC=
+      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-DIAG-FILE-ORIGIN GJA-TRUE exit
+   THEN
+   s" diag-repair-class" GJA-CMD? IF
+      3 GJA-ARGC=
+      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-DIAG-REPAIR-CLASS GJA-TRUE exit
+   THEN
+   s" repair-packet" GJA-CMD? IF
+      3 GJA-ARGC=
+      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-REPAIR-PACKET GJA-TRUE exit
+   THEN
+   GJA-FALSE ;
+
+: GJA-DISPATCH-RETURN-STACK ( -- bool )
+   s" diag-return-stack" GJA-CMD? IF
+      4 GJA-ARGC=
+      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ 3 SCRIPT-ARGV$ GJA-DIAG-RETURN-STACK GJA-TRUE exit
+   THEN
+   GJA-FALSE ;
+
+: GJA-DISPATCH-ROW-EFFECT ( -- bool )
+   s" diag-row-effect" GJA-CMD? IF
+      6 GJA-ARGC=
+      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ 3 SCRIPT-ARGV$ 4 SCRIPT-ARGV$ 5 SCRIPT-ARGV$
+      GJA-DIAG-ROW-EFFECT GJA-TRUE exit
+   THEN
+   GJA-FALSE ;
+
 : GJA-DISPATCH ( -- )
    SCRIPT-ARGC 2 < IF GJA-USAGE THEN
-   0 SCRIPT-ARGV$ s" json-lines-schema" GJA-BYTES= IF
-      SCRIPT-ARGC 2 <> IF GJA-USAGE THEN
-      1 SCRIPT-ARGV$ GJA-JSON-LINES-SCHEMA exit
-   THEN
-   0 SCRIPT-ARGV$ s" json-one-schema" GJA-BYTES= IF
-      SCRIPT-ARGC 2 <> IF GJA-USAGE THEN
-      1 SCRIPT-ARGV$ GJA-JSON-ONE-SCHEMA exit
-   THEN
-   0 SCRIPT-ARGV$ s" diag-file-origin" GJA-BYTES= IF
-      SCRIPT-ARGC 3 <> IF GJA-USAGE THEN
-      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-DIAG-FILE-ORIGIN exit
-   THEN
-   0 SCRIPT-ARGV$ s" diag-repair-class" GJA-BYTES= IF
-      SCRIPT-ARGC 3 <> IF GJA-USAGE THEN
-      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-DIAG-REPAIR-CLASS exit
-   THEN
-   0 SCRIPT-ARGV$ s" diag-return-stack" GJA-BYTES= IF
-      SCRIPT-ARGC 4 <> IF GJA-USAGE THEN
-      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ 3 SCRIPT-ARGV$ GJA-DIAG-RETURN-STACK exit
-   THEN
-   0 SCRIPT-ARGV$ s" diag-row-effect" GJA-BYTES= IF
-      SCRIPT-ARGC 6 <> IF GJA-USAGE THEN
-      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ 3 SCRIPT-ARGV$ 4 SCRIPT-ARGV$ 5 SCRIPT-ARGV$ GJA-DIAG-ROW-EFFECT exit
-   THEN
-   0 SCRIPT-ARGV$ s" repair-packet" GJA-BYTES= IF
-      SCRIPT-ARGC 3 <> IF GJA-USAGE THEN
-      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-REPAIR-PACKET exit
-   THEN
-   0 SCRIPT-ARGV$ s" all-errors" GJA-BYTES= IF
-      SCRIPT-ARGC 2 <> IF GJA-USAGE THEN
-      1 SCRIPT-ARGV$ GJA-ALL-ERRORS exit
-   THEN
-   0 SCRIPT-ARGV$ s" sarif" GJA-BYTES= IF
-      SCRIPT-ARGC 2 <> IF GJA-USAGE THEN
-      1 SCRIPT-ARGV$ GJA-SARIF exit
-   THEN
-   0 SCRIPT-ARGV$ s" public-signatures" GJA-BYTES= IF
-      SCRIPT-ARGC 2 <> IF GJA-USAGE THEN
-      1 SCRIPT-ARGV$ GJA-PUBLIC-SIGNATURES exit
-   THEN
-   0 SCRIPT-ARGV$ s" aot-stripped" GJA-BYTES= IF
-      SCRIPT-ARGC 2 <> IF GJA-USAGE THEN
-      1 SCRIPT-ARGV$ GJA-AOT-STRIPPED exit
-   THEN
-   0 SCRIPT-ARGV$ s" aot-compact" GJA-BYTES= IF
-      SCRIPT-ARGC 2 <> IF GJA-USAGE THEN
-      1 SCRIPT-ARGV$ GJA-AOT-COMPACT exit
-   THEN
+   GJA-DISPATCH-ONE-FILE IF exit THEN
+   GJA-DISPATCH-TWO-ARG IF exit THEN
+   GJA-DISPATCH-RETURN-STACK IF exit THEN
+   GJA-DISPATCH-ROW-EFFECT IF exit THEN
    GJA-USAGE ;
 
 GJA-DISPATCH

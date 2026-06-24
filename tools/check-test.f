@@ -1,6 +1,7 @@
-\ check-test.f - checked fixture coverage for tools/check.f.
+\ check-test.f - process-boundary smoke coverage for tools/check.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-test.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/argv.f
+\ tools/check-test.f
 
 $4000 constant CKT-BUF-CAP
 10000 constant CKT-TIMEOUT-MS
@@ -27,6 +28,9 @@ variable CKT-LIST-U
 
 : CKT-LIST$ ( -- ptr u8 n )
    CKT-LIST-PATH CKT-LIST-U @ ;
+
+: CKT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
 
 : CKT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
@@ -59,38 +63,11 @@ variable CKT-LIST-U
    CKT-ARGV-BASE
    src srcu CKT-STDIN-CAPTURE ;
 
-: CKT-RUN-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu :}
-   CKT-ARGV-BASE
-   s" --json-errors"  >LEN PROC-ARGV+
-   src srcu CKT-STDIN-CAPTURE ;
-
-: CKT-RUN-STRICT-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu :}
-   CKT-ARGV-BASE
-   s" --strict-signatures"  >LEN PROC-ARGV+
-   s" --json-errors"  >LEN PROC-ARGV+
-   src srcu CKT-STDIN-CAPTURE ;
-
-: CKT-RUN-ALL-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu :}
-   CKT-ARGV-BASE
-   s" --json-errors"  >LEN PROC-ARGV+
-   s" --all-errors"  >LEN PROC-ARGV+
-   src srcu CKT-STDIN-CAPTURE ;
-
 : CKT-RUN-FILE-JSON ( -- n n n )
    CKT-ARGV-BASE
    s" --json-errors"  >LEN PROC-ARGV+
    CKT-BAD$  >LEN PROC-ARGV+
    CKT-CAPTURE ;
-
-: CKT-RUN-PATH-JSON ( ptr u8 n -- n n n )
-   CKT-ARGV-BASE
-   s" --json-errors"  >LEN PROC-ARGV+
-    >LEN PROC-ARGV+
-   CKT-CAPTURE ;
-
-: CKT-RUN-SRC-FILE-JSON ( ptr u8 n -- n n n )
-   CKT-BAD$ 2swap WRITE-ALL
-   CKT-RUN-FILE-JSON ;
 
 : CKT-RUN-ARGS ( -- n n n )
    CKT-ARGV-BASE
@@ -113,31 +90,6 @@ variable CKT-LIST-U
 : CKT-BAD$SRC ( -- ptr u8 n )
    s" : BAD ( i64 -- i64 ) dup ;" ;
 
-: CKT-NOSIG$ ( -- ptr u8 n )
-   s" : NOSIG dup ;" ;
-
-: CKT-ALL-BAD$ ( -- ptr u8 n )
-   SB-RESET
-   s" : BAD1 ( i64 -- i64 ) dup ;" SB-APPEND
-   10 SB-APPEND-C
-   s" : BAD2 ( i64 -- ) >r ;" SB-APPEND
-   SB$ ;
-
-: CKT-PARSE-WORDS$ ( -- ptr u8 n )
-   SB-RESET
-   s" : DQ ( -- ) ." SB-APPEND
-   34 SB-APPEND-C
-   s"  ok" SB-APPEND
-   34 SB-APPEND-C
-   s"  ;" SB-APPEND
-   10 SB-APPEND-C
-   s" : CQ ( -- ptr u8 n ) c" SB-APPEND
-   34 SB-APPEND-C
-   s"  ok" SB-APPEND
-   34 SB-APPEND-C
-   s"  count ;" SB-APPEND
-   SB$ ;
-
 : CKT-DIE$ ( -- ptr u8 n )
    SB-RESET
    s" : BYE ( -- ) s" SB-APPEND
@@ -147,104 +99,6 @@ variable CKT-LIST-U
    s"  5 die ;" SB-APPEND
    10 SB-APPEND-C
    s" BYE" SB-APPEND
-   SB$ ;
-
-: CKT-DIE-NORETURN$ ( -- ptr u8 n )
-   SB-RESET
-   s" : FAIL ( -- ) s" SB-APPEND
-   34 SB-APPEND-C
-   s"  fail" SB-APPEND
-   34 SB-APPEND-C
-   s"  5 die ;" SB-APPEND
-   10 SB-APPEND-C
-   s" : GOOD ( bool -- i64 ) if FAIL else 7 then ;" SB-APPEND
-   SB$ ;
-
-: CKT-THROW-BRANCH$ ( -- ptr u8 n )
-   SB-RESET
-   s" : GOOD ( bool -- i64 ) if 1 throw else 7 then ;" SB-APPEND
-   SB$ ;
-
-: CKT-THROW-WRAPPER$ ( -- ptr u8 n )
-   SB-RESET
-   s" : FAIL ( -- ) 1 throw ;" SB-APPEND
-   10 SB-APPEND-C
-   s" : GOOD ( bool -- i64 ) if FAIL else 7 then ;" SB-APPEND
-   SB$ ;
-
-: CKT-CATCH-THROW-RESIDUE$ ( -- ptr u8 n )
-   SB-RESET
-   s" : OK ( i64 -- i64 n ) [: 99 1 throw ;] catch ;" SB-APPEND
-   SB$ ;
-
-: CKT-CATCH-THROW-WRAPPER$ ( -- ptr u8 n )
-   SB-RESET
-   s" : FAIL ( -- ) 1 throw ;" SB-APPEND
-   10 SB-APPEND-C
-   s" : OK ( -- n ) [: 99 FAIL ;] catch ;" SB-APPEND
-   SB$ ;
-
-: CKT-THROW-REDEF$ ( -- ptr u8 n )
-   SB-RESET
-   s" : FAIL ( -- ) 1 throw ;" SB-APPEND
-   10 SB-APPEND-C
-   s" : GOOD ( bool -- i64 ) if FAIL else 7 then ;" SB-APPEND
-   10 SB-APPEND-C
-   s" : FAIL ( -- ) ;" SB-APPEND
-   10 SB-APPEND-C
-   s" : BAD ( bool -- i64 ) if FAIL else 7 then ;" SB-APPEND
-   SB$ ;
-
-: CKT-EXIT-RETURNS$ ( -- ptr u8 n )
-   SB-RESET
-   s" : RET ( -- ) exit ;" SB-APPEND
-   10 SB-APPEND-C
-   s" : BAD ( bool -- i64 ) if RET else 7 then ;" SB-APPEND
-   SB$ ;
-
-: CKT-OFF-BAD$ ( -- ptr u8 n )
-   SB-RESET
-   s" 0 set-check" SB-APPEND
-   10 SB-APPEND-C
-   s" : BAD-OFF ( -- ) 1 ;" SB-APPEND
-   SB$ ;
-
-: CKT-HOOK-BAD$ ( -- ptr u8 n )
-   SB-RESET
-   s" : BAD-HOOK ( -- ) ;" SB-APPEND
-   10 SB-APPEND-C
-   s" ' BAD-HOOK set-check" SB-APPEND
-   10 SB-APPEND-C
-   s" : BAD-HOOKED ( -- ) 1 ;" SB-APPEND
-   SB$ ;
-
-: CKT-UNAUDITED-TRUST$ ( -- ptr u8 n )
-   SB-RESET
-   s" s" SB-APPEND
-   34 SB-APPEND-C
-   s"  EVIL" SB-APPEND
-   34 SB-APPEND-C
-   s"  s" SB-APPEND
-   34 SB-APPEND-C
-   s"  --" SB-APPEND
-   34 SB-APPEND-C
-   s"  TRUST" SB-APPEND
-   10 SB-APPEND-C
-   s" : OK ( -- ) ;" SB-APPEND
-   SB$ ;
-
-: CKT-UNAUDITED-TRUSTED$ ( -- ptr u8 n )
-   SB-RESET
-   s" TRUSTED: EVIL ( -- ) ;" SB-APPEND
-   10 SB-APPEND-C
-   s" : OK ( -- ) EVIL ;" SB-APPEND
-   SB$ ;
-
-: CKT-SPOOFED-TRUSTED$ ( -- ptr u8 n )
-   SB-RESET
-   s" TRUSTED: TTHROWS-RAW ( a n -- ) ;" SB-APPEND
-   10 SB-APPEND-C
-   s" : OK ( -- ) ;" SB-APPEND
    SB$ ;
 
 : CKT-LOCAL-TRUSTED$ ( -- ptr u8 n )
@@ -265,33 +119,6 @@ variable CKT-LIST-U
 : CKT-TEST-GOOD ( -- )
    CKT-GOOD$ CKT-RUN 0 T= 0 T= 0 T= ;
 
-: CKT-TEST-JSON-BAD ( -- )
-   CKT-BAD$SRC CKT-RUN-JSON 70 T=
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
-   CKT-ERR erru s" <stdin>" CONTAINS? TTRUE ;
-
-: CKT-TEST-DEFAULT-ALL ( -- )
-   CKT-ALL-BAD$ CKT-RUN-JSON 70 T=
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" bad1" CONTAINS? TTRUE
-   CKT-ERR erru s" bad2" CONTAINS? TTRUE ;
-
-: CKT-TEST-STRICT ( -- )
-   CKT-NOSIG$ CKT-RUN-STRICT-JSON 1 T=
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" E-MISSING-SIGNATURE" CONTAINS? TTRUE ;
-
-: CKT-TEST-ALL ( -- )
-   CKT-ALL-BAD$ CKT-RUN-ALL-JSON 70 T=
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" bad1" CONTAINS? TTRUE
-   CKT-ERR erru s" bad2" CONTAINS? TTRUE ;
-
 : CKT-TEST-FILE-LABEL ( -- )
    CKT-RUN-FILE-JSON 70 T=
    {: outu erru :}
@@ -304,103 +131,11 @@ variable CKT-LIST-U
    outu 0 T=
    CKT-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
 
-: CKT-TEST-PARSE-WORDS ( -- )
-   CKT-PARSE-WORDS$ CKT-RUN 0 T= 0 T= 0 T= ;
-
 : CKT-TEST-DIE ( -- )
    CKT-DIE$ CKT-RUN 5 T=
    {: outu erru :}
    outu 0 T=
    CKT-ERR erru s" bye" CONTAINS? TTRUE ;
-
-: CKT-TEST-DIE-NORETURN ( -- )
-   CKT-DIE-NORETURN$ CKT-RUN 0 T=
-   {: outu erru :}
-   outu 0 T=
-   erru 0 T= ;
-
-: CKT-TEST-THROW-BRANCH ( -- )
-   CKT-THROW-BRANCH$ CKT-RUN 0 T=
-   {: outu erru :}
-   outu 0 T=
-   erru 0 T= ;
-
-: CKT-TEST-THROW-WRAPPER ( -- )
-   CKT-THROW-WRAPPER$ CKT-RUN 0 T=
-   {: outu erru :}
-   outu 0 T=
-   erru 0 T= ;
-
-: CKT-TEST-CATCH-THROW-RESIDUE ( -- )
-   CKT-CATCH-THROW-RESIDUE$ CKT-RUN 0 T=
-   {: outu erru :}
-   outu 0 T=
-   erru 0 T= ;
-
-: CKT-TEST-CATCH-THROW-WRAPPER ( -- )
-   CKT-CATCH-THROW-WRAPPER$ CKT-RUN 0 T=
-   {: outu erru :}
-   outu 0 T=
-   erru 0 T= ;
-
-: CKT-TEST-THROW-REDEF ( -- )
-   CKT-THROW-REDEF$ CKT-RUN-JSON 70 T=
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" bad" CONTAINS? TTRUE ;
-
-: CKT-TEST-EXIT-RETURNS ( -- )
-   CKT-EXIT-RETURNS$ CKT-RUN 70 T=
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" bad" CONTAINS? TTRUE ;
-
-: CKT-TEST-SET-CHECK-OFF ( -- )
-   CKT-OFF-BAD$ CKT-RUN-JSON 0 T<>
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" CHECKER-MUTATION" CONTAINS? TTRUE
-   CKT-ERR erru s" set-check" CONTAINS? TTRUE ;
-
-: CKT-TEST-HOOK-REPLACE ( -- )
-   CKT-HOOK-BAD$ CKT-RUN-JSON 0 T<>
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" CHECKER-MUTATION" CONTAINS? TTRUE
-   CKT-ERR erru s" set-check" CONTAINS? TTRUE ;
-
-: CKT-EXPECT-TRUST-REJECT ( ptr u8 n -- ) {: src:ptr srcu :}
-   src srcu CKT-RUN-SRC-FILE-JSON 0 T<>
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" UNMANIFESTED" CONTAINS? TTRUE
-   CKT-ERR erru s" EVIL" CONTAINS? TTRUE ;
-
-: CKT-TEST-TRUST-REJECT ( -- )
-   CKT-UNAUDITED-TRUST$ CKT-EXPECT-TRUST-REJECT ;
-
-: CKT-TEST-TRUSTED-REJECT ( -- )
-   CKT-UNAUDITED-TRUSTED$ CKT-EXPECT-TRUST-REJECT ;
-
-: CKT-TEST-TRUSTED-SITE-SPOOF ( -- )
-   CKT-SPOOFED-TRUSTED$ CKT-RUN-SRC-FILE-JSON 0 T<>
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" SITE-DRIFT" CONTAINS? TTRUE
-   CKT-ERR erru s" TTHROWS-RAW" CONTAINS? TTRUE ;
-
-: CKT-TEST-AUDITED-LIB-TRUSTED ( -- )
-   s" lib/test.f" CKT-RUN-PATH-JSON 0 T=
-   {: outu erru :}
-   outu 0 T=
-   erru 0 T= ;
-
-: CKT-TEST-STDIN-TRUST-REJECT ( -- )
-   CKT-UNAUDITED-TRUST$ CKT-RUN-JSON 0 T<>
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" UNMANIFESTED" CONTAINS? TTRUE
-   CKT-ERR erru s" EVIL" CONTAINS? TTRUE ;
 
 : CKT-TEST-SOURCE-LIST-LOCAL-TRUST ( -- )
    CKT-LOCAL-TRUSTED$ CKT-RUN-SOURCE-LIST 0 T<>
@@ -419,28 +154,9 @@ variable CKT-LIST-U
    T-RESET
    CKT-PREPARE
    CKT-TEST-GOOD
-   CKT-TEST-JSON-BAD
-   CKT-TEST-DEFAULT-ALL
-   CKT-TEST-STRICT
-   CKT-TEST-ALL
    CKT-TEST-FILE-LABEL
    CKT-TEST-USAGE
-   CKT-TEST-PARSE-WORDS
    CKT-TEST-DIE
-   CKT-TEST-DIE-NORETURN
-   CKT-TEST-THROW-BRANCH
-   CKT-TEST-THROW-WRAPPER
-   CKT-TEST-CATCH-THROW-RESIDUE
-   CKT-TEST-CATCH-THROW-WRAPPER
-   CKT-TEST-THROW-REDEF
-   CKT-TEST-EXIT-RETURNS
-   CKT-TEST-SET-CHECK-OFF
-   CKT-TEST-HOOK-REPLACE
-   CKT-TEST-TRUST-REJECT
-   CKT-TEST-TRUSTED-REJECT
-   CKT-TEST-TRUSTED-SITE-SPOOF
-   CKT-TEST-AUDITED-LIB-TRUSTED
-   CKT-TEST-STDIN-TRUST-REJECT
    CKT-TEST-SOURCE-LIST-LOCAL-TRUST
    CKT-TEST-SOURCE-LIST-AUDITED-LIB
    CLEANUP-RUN

@@ -147,6 +147,9 @@ variable SEED-LAST
    erru LEN>N SEED-EXPECT-NO-STDERR
    SEED-SMOKE-OUT outu LEN>N SEED-SMOKE-OUT-OK? 0= if E-BUILD-STATUS throw then ;
 
+: SEED-ARGV+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
 : SEED-PREPARE-BUILD-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
@@ -157,7 +160,6 @@ variable SEED-LAST
    s" lib/process.f"  >LEN PROC-ARGV+
    s" lib/process-argv.f"  >LEN PROC-ARGV+
    s" lib/process-env.f"  >LEN PROC-ARGV+
-   s" lib/build.f"  >LEN PROC-ARGV+
    s" lib/codesign.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint-main.f"  >LEN PROC-ARGV+

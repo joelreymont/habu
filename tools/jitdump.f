@@ -2,11 +2,15 @@
 \ Run: bin/hb --load src/arch/arm64/disasm.f tools/jitdump.f -- '<program>' WORD
 \ Inline usage when disasm.f is already loaded: <program> ' WORD JD
 \ Walks from the xt to the first RET (inclusive), capped at 512 instructions.
-: W32@ {: p :} p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
+: W32@ ( ptr u8 -- n ) {: p :}
+   p c@
+   p 1 + c@ 8 lshift or
+   p 2 + c@ 16 lshift or
+   p 3 + c@ 24 lshift or ;
 variable JDP  variable JDN
 
-TRUSTED: JDP@ ( -- ptr u8 )
-   JDP @ ;
+: JDP@ ( -- ptr u8 )
+   JDP 0 ptr-field @ ;
 
 : JD ( n -- ) {: xt :}
    xt JDP !  0 JDN !
@@ -20,7 +24,7 @@ TRUSTED: JDP@ ( -- ptr u8 )
 : JIT-USAGE ( -- )
    s" usage: bin/hb --load src/arch/arm64/disasm.f tools/jitdump.f -- '<program>' WORD" 64 die ;
 
-TRUSTED: JIT-FIND ( ptr u8 n -- n )
+: JIT-FIND ( ptr u8 n -- n )
    get-current search-wl dup 0= if s" jitdump: target word not found" 74 die then ;
 
 TRUSTED: JIT-EVALUATE ( ptr u8 n -- )

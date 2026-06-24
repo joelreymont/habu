@@ -8,6 +8,10 @@
 \ inter-word calls relocated. The program MUST define `: MAIN ;`.
 \ tools/hb-build.f owns the I/O paths. A DRIVER (appended last, like build.f).
 
+\ Audited driver boundary: the toolchain hook is on when this file is appended;
+\ the driver installs USER-HOOK below for user source only.
+0 set-check
+
 variable PB  variable PN  variable PFD  variable PRD
 variable SI
 $40000 constant PMAX
@@ -383,8 +387,6 @@ variable RP  variable RE  variable RV
    ASM-CODE  BUILD-IMAGE  s" hb-prog" SET-SIGID  CODESIG2
    AOT-OUT PATH0  1537 493 open  dup MBUF MLEN @ write drop  close ;
 
-\ Audited driver boundary: this word installs the checker hook for user source.
-0 set-check
 : GO  READ-PROG  SENTSET
    ['] USER-HOOK set-check
    AOT-PB@ DATA-VA INP-CELL + !

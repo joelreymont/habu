@@ -32,6 +32,10 @@ variable GDB-PATH2-U
 : GDB-EXPECT-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu label:ptr labelu :}
    path pathu FILE? 0= if label labelu GE-FAIL then ;
 
+: GDB-SNAP-SRC+ ( -- )
+   BF-SNAP-SOURCE
+   s" hb-snap-src" BF-OUT$ GE-SRC-FILE+ ;
+
 : GDB-HB-TMP-ENV ( -- )
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+ ;
 
@@ -55,14 +59,14 @@ variable GDB-PATH2-U
 
 : GDB-SNAPSHOT-REFRESH ( -- )
    GE-SRC-RESET
-   s" src/habu/snap.f" GE-SRC-FILE+
+   GDB-SNAP-SRC+
    s" HB_TMP isolation" GDB-SNAPSHOT-RUN
    GDB-SNAP0$ s" bin/hb" PROMOTE-SIGNED-EXECUTABLE
    GE-CLEAN-BIN ;
 
 : GDB-HOOK-SOURCE ( -- )
    GE-SRC-RESET
-   s" DATA-VA $1B0 + @ 0= ." GE-SRC-LINE
+   s" data-base $1B0 + @ 0= ." GE-SRC-LINE
    s" : SQOK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
    s" 7 SQOK ." GE-SRC-LINE ;
 
@@ -75,32 +79,23 @@ variable GDB-PATH2-U
    s" 49" GE-OUT-LINE
    SB$ s" hb refresh/check hook output" GE-EXPECT-OUT ;
 
-: GDB-LONG-SNAPSHOT-SOURCE ( -- )
+: GDB-LONG-LOOKUP-SOURCE ( -- )
    GE-SRC-RESET
-   s" : LONG-SNAPSHOT-DICTIONARY-WORD ( i64 -- i64 ) 3 + ;" GE-SRC-LINE
-   s" src/habu/snap.f" GE-SRC-FILE+ ;
+   s" ' spawn-argv-env-cwd-io drop 42 ." GE-SRC-LINE ;
 
-: GDB-LONG-SNAPSHOT-BUILD ( -- )
-   GDB-LONG-SNAPSHOT-SOURCE
-   s" long-name snapshot write" GDB-SNAPSHOT-RUN
-   GDB-SNAP0$ CODESIGN-FORCE
-   GDB-SNAP0$ CHMOD-X ;
-
-: GDB-LONG-SNAPSHOT-RUN ( -- )
+: GDB-LONG-LOOKUP ( -- )
    GE-HB-RESET
-   GE-SRC-RESET
-   s" 39 LONG-SNAPSHOT-DICTIONARY-WORD ." GE-SRC-LINE
-   GDB-SNAP0$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   s" long-name snapshot restore" GE-EXPECT-OK
+   GDB-LONG-LOOKUP-SOURCE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" long-name snapshot dictionary lookup" GE-EXPECT-OK
    SB-RESET
    s" 42" GE-OUT-LINE
-   SB$ s" long-name snapshot restore output" GE-EXPECT-OUT ;
+   SB$ s" long-name snapshot dictionary lookup output" GE-EXPECT-OUT ;
 
 : GDB-SNAPSHOT ( -- )
    GDB-SNAPSHOT-REFRESH
    GDB-HOOK-CHECK
-   GDB-LONG-SNAPSHOT-BUILD
-   GDB-LONG-SNAPSHOT-RUN
+   GDB-LONG-LOOKUP
    s" PASS: HB_TMP isolation" type cr ;
 
 : GDB-PTY ( -- )

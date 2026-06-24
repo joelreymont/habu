@@ -174,12 +174,17 @@ TLT-LF TLT-LF-BUF c!
 : TLT-ADD-GOOD-BENCH-ROW ( -- )
    s" | bench-trusted | `-- ptr u8` | fixture | `test/t-bench-fixture.fs` | bench/trust.f:1 | 2026-06-13 |" TLT-APPEND-MAN ;
 
+: TLT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
 : TLT-ARGV ( ptr u8 n -- ) {: today:ptr todayu :}
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
    s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/fs.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
@@ -190,8 +195,10 @@ TLT-LF TLT-LF-BUF c!
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
    s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/fs.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
@@ -199,6 +206,23 @@ TLT-LF TLT-LF-BUF c!
    src srcu  >LEN PROC-ARGV+
    TLT-CASE  >LEN PROC-ARGV+
    today todayu  >LEN PROC-ARGV+ ;
+
+: TLT-SOURCE-LIST-ARGV ( ptr u8 n -- ) {: today:ptr todayu :}
+   PROC-ARGV-RESET
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
+   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/trust-lint.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   s" source-list"  >LEN PROC-ARGV+
+   TLT-CASE  >LEN PROC-ARGV+
+   today todayu  >LEN PROC-ARGV+
+   TLT-SRC-TRUST  >LEN PROC-ARGV+
+   TLT-LIB-TRUST  >LEN PROC-ARGV+ ;
 
 : TLT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
@@ -216,6 +240,11 @@ TLT-LF TLT-LF-BUF c!
    s" bin/hb"  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
    1000 >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
 
+: TLT-RUN-SOURCE-LIST ( -- n n n )
+   s" 2026-06-16" TLT-SOURCE-LIST-ARGV
+   s" bin/hb"  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
+   1000 >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
+
 : TLT-EXPECT-OK ( n n -- ) {: sites rows :}
    TLT-RUN-DEFAULT 0 T=
    {: outu erru :}
@@ -224,6 +253,12 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-EXPECT-SOURCE-OK ( ptr u8 n n n -- ) {: src:ptr srcu sites rows :}
    src srcu TLT-RUN-SOURCE 0 T=
+   {: outu erru :}
+   TLT-OUT outu sites rows TLT-OK$ T$=
+   TLT-ERR erru TLT-EMPTY$ T$= ;
+
+: TLT-EXPECT-SOURCE-LIST-OK ( n n -- ) {: sites rows :}
+   TLT-RUN-SOURCE-LIST 0 T=
    {: outu erru :}
    TLT-OUT outu sites rows TLT-OK$ T$=
    TLT-ERR erru TLT-EMPTY$ T$= ;
@@ -278,7 +313,15 @@ TLT-LF TLT-LF-BUF c!
    s" duplicate-src-lib" TLT-MAKE-BASE
    TLT-LIB MAKE-DIRS
    TLT-LIB-TRUST TLT-BASE-SRC$ WRITE-ALL
-   s" DUPLICATE-TRUST" s" lib/trust.f:1" TLT-EXPECT-BAD-CONTAINS ;
+   s" SITE-DRIFT" s" lib/trust.f:1" TLT-EXPECT-BAD-CONTAINS ;
+
+: TLT-TEST-MULTISITE-TRUST ( -- )
+   s" multisite-trust" TLT-MAKE-BASE
+   TLT-LIB MAKE-DIRS
+   TLT-LIB-TRUST TLT-BASE-SRC$ WRITE-ALL
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | lib/trust.f:1 | 2026-06-13 |" TLT-APPEND-MAN
+   2 2 TLT-EXPECT-OK
+   2 2 TLT-EXPECT-SOURCE-LIST-OK ;
 
 : TLT-TEST-DUP-TRUST ( -- )
    s" duplicate-trust" TLT-MAKE-BASE
@@ -354,6 +397,7 @@ TLT-LF TLT-LF-BUF c!
    TLT-TEST-UNMANIFESTED-TRUSTED
    TLT-TEST-STALE-LIB-ROW
    TLT-TEST-DUP-SRC-LIB
+   TLT-TEST-MULTISITE-TRUST
    TLT-TEST-DUP-TRUST
    TLT-TEST-EFFECT-DRIFT
    TLT-TEST-SITE-DRIFT-PATH

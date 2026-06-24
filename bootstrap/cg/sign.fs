@@ -92,3 +92,5 @@ $00020400 constant CD-VERSION                \ supports execSeg fields
    SIG-ID 2@ BSTR  0 B8                       \ identifier + NUL
    NCSLOTS 0 ?do  MBUF i CS-PAGE * +  CS-PAGE  MBUF SC @ +  SHA256  CS-HASH SC +!  loop
    SC @ MLEN ! ;
+
+: SIGN-IMAGE ( -- )  CODESIG ;

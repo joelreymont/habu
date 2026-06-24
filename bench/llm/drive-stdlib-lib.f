@@ -66,6 +66,7 @@ variable DS-TOKENS
 variable DS-RC
 variable DS-DIAG-COUNT
 variable DS-HB-TIMEOUT-U
+variable DS-RUN-TIMEOUT-U
 
 variable DS-NAME-A
 variable DS-NAME-U
@@ -100,6 +101,10 @@ variable DS-STOP
 : DS-HB-TIMEOUT ( -- n )
    DS-HB-TIMEOUT-U @ 0 > if DS-HB-TIMEOUT-U @ exit then
    DS-HB-TIMEOUT-MS ;
+
+: DS-RUN-TIMEOUT ( -- n )
+   DS-RUN-TIMEOUT-U @ 0 > if DS-RUN-TIMEOUT-U @ exit then
+   DS-HB-TIMEOUT ;
 
 : DS-BUF-ROOM ( n n n -- ) {: add cap used :}
    add 0 < if E-DS-CAPACITY throw then
@@ -509,14 +514,20 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
    s" lib/regex.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+ ;
 
-: DS-HB-CAPTURE ( -- )
+: DS-HB-CAPTURE-MS ( n -- ) {: timeout :}
    PROC-ENV-INHERIT-MISSING
    s" bin/hb" >LEN DS-OUT-BUF DS-OUT-CAP >LEN
-   DS-ERR-BUF DS-ERR-CAP >LEN DS-HB-TIMEOUT >MS
+   DS-ERR-BUF DS-ERR-CAP >LEN timeout >MS
    RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
    rc RC>N DS-RC !
    erru LEN>N DS-ERR-U !
    outu LEN>N DS-OUT-U ! ;
+
+: DS-HB-CAPTURE ( -- )
+   DS-HB-TIMEOUT DS-HB-CAPTURE-MS ;
+
+: DS-HB-RUN-CAPTURE ( -- )
+   DS-RUN-TIMEOUT DS-HB-CAPTURE-MS ;
 
 : DS-WRITE-CAPTURE ( ptr u8 n -- ) {: path:ptr pathu :}
    path pathu DS-OUT-BUF DS-OUT-U @ WRITE-ALL
@@ -613,7 +624,7 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
    DS-ADD-LIBS
    DS-CAND-PATH$  >LEN PROC-ARGV+
    DS-BUNDLE-PATH$  >LEN PROC-ARGV+
-   DS-HB-CAPTURE
+   DS-HB-RUN-CAPTURE
    DS-TEST-PATH$ DS-WRITE-CAPTURE ;
 
 : DS-TEST-PASS? ( -- bool )
@@ -754,6 +765,7 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
    s" BENCH_K" 1 DS-ENV-U DS-K !
    s" BENCH_MAX_REPAIRS" 1 DS-ENV-U DS-MAX-REPAIRS !
    s" BENCH_HB_TIMEOUT_MS" DS-HB-TIMEOUT-MS DS-ENV-U DS-HB-TIMEOUT-U !
+   s" BENCH_RUN_TIMEOUT_MS" 0 DS-ENV-U DS-RUN-TIMEOUT-U !
    s" BENCH_SEED" s" manifest" DS-ENV$ DS-SEED! ;
 
 : DS-USAGE ( -- )

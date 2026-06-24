@@ -10,7 +10,48 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 GF="${GFORTH:-gforth}"
-printf ': f {: a :} a . ; 1 f bye\n' | "$GF" >/dev/null
+if [[ -z "${HABU_TARGET:-}" ]]; then
+  case "$(uname -s)-$(uname -m)" in
+    Darwin-arm64|Darwin-aarch64) HABU_TARGET=macos-aarch64 ;;
+    Linux-aarch64|Linux-arm64) HABU_TARGET=linux-aarch64 ;;
+    *)
+      printf 'unsupported bootstrap host %s-%s; set HABU_TARGET explicitly\n' "$(uname -s)" "$(uname -m)" >&2
+      exit 64
+      ;;
+  esac
+fi
+export HABU_TARGET
+
+case "$HABU_TARGET" in
+  macos-aarch64)
+    OS_LAYOUT=src/os/macos/layout.f
+    OS_SYS=src/os/macos/sys.f
+    OS_IMAGE=src/os/macos/macho.f
+    OS_SIGN=src/os/macos/sign2.f
+    ;;
+  linux-aarch64)
+    OS_LAYOUT=src/os/linux/layout.f
+    OS_SYS=src/os/linux/sys.f
+    OS_IMAGE=src/os/linux/elf.f
+    OS_SIGN=src/os/linux/sign.f
+    ;;
+  *)
+    printf 'unsupported HABU_TARGET=%s\n' "$HABU_TARGET" >&2
+    exit 64
+    ;;
+esac
+
+PROBE="$(mktemp "${TMPDIR:-/tmp}/habu-gforth-probe.XXXXXX")"
+printf ': f {: a :} a . cr ; 1 f bye\n' > "$PROBE"
+set +e
+PROBE_OUT="$("$GF" "$PROBE" 2>&1)"
+PROBE_RC=$?
+set -e
+rm -f "$PROBE"
+if [[ "$PROBE_RC" -ne 0 || ( "$PROBE_OUT" != $'1 \n' && "$PROBE_OUT" != "1 " ) ]]; then
+  printf 'Gforth must support {: :} locals and print exactly "1"; got rc=%s output:\n%s\n' "$PROBE_RC" "$PROBE_OUT" >&2
+  exit 69
+fi
 
 if [[ -n "${HB_TMP:-}" ]]; then
   T="$HB_TMP"
@@ -20,22 +61,19 @@ else
 fi
 
 SRC_COMMON=(
-  src/core/util.f
-  src/core/checker.f
-  src/core/render.f
-  src/core/roles.f
-  src/core/sha256.f
-  src/core/combinators.f
   src/arch/arm64/asm.f
   src/arch/arm64/icode.f
   src/arch/arm64/mnem.f
-  src/os/macos/sys.f
-  src/os/macos/env.f
+  "$OS_LAYOUT"
+  "$OS_SYS"
+  src/core/sha256.f
+  src/core/combinators.f
+  src/habu/layout.f
   src/habu/treeshake.f
   src/habu/rt.f
   src/habu/crash.f
-  src/os/macos/macho.f
-  src/os/macos/sign2.f
+  "$OS_IMAGE"
+  "$OS_SIGN"
   src/habu/habu1.f
   src/habu/prof.f
   src/habu/regalloc.f
@@ -51,8 +89,11 @@ emit_src() {
   for f in "${SRC_COMMON[@]}"; do
     cat "$f" >> "$out"
     printf '\n' >> "$out"
-    if [[ "$f" == "src/core/render.f" ]]; then
-      printf ": HOOK CHECK ; ' HOOK set-check\n" >> "$out"
+    if [[ "$f" == "src/habu/treeshake.f" ]]; then
+      printf "0 set-check\n" >> "$out"
+    fi
+    if [[ "$f" == "src/habu/habu2.f" ]]; then
+      printf "' HOOK set-check\n" >> "$out"
     fi
   done
   cat "$driver" >> "$out"
@@ -102,13 +143,16 @@ rm -f "$T/hb-snap0" "$T/hb-new"
 env HB_TMP="$T" "$T/hb-stdin" < "$T/hb-snap-src"
 test -f "$T/hb-snap0"
 mv "$T/hb-snap0" "$T/hb-new"
-codesign -s - --force "$T/hb-new" >/dev/null
+if [[ "$HABU_TARGET" == "macos-aarch64" ]]; then
+  codesign -s - --force "$T/hb-new" >/dev/null
+fi
 chmod +x "$T/hb-new"
 
 mkdir -p bin "$T/native"
 mv "$T/hb-new" bin/hb
-env HB_TMP="$T/native" bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/build.f lib/codesign.f \
+env HB_TMP="$T/native" bin/hb --load \
+  lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f \
+  lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f \
   tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
 
 printf 'bootstrap OK: bin/hb\n'

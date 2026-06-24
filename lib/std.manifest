@@ -53,9 +53,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	vector	lib/vector.f	word	VEC-CHECK-LEN	(len --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	validate a nonnegative vector length
 1	vector	lib/vector.f	word	VEC-CELLS>BYTES	(count -- n)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	convert a checked cell capacity to bytes
 1	vector	lib/vector.f	word	VEC-ALLOC-CELLS	(count -- ptr a)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	allocate checked vector cell storage
+1	vector	lib/vector.f	word	VEC-CELL-FIELD	(ptr a n -- ptr a)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	return a typed cell address at a nonnegative offset
 1	vector	lib/vector.f	word	VEC-DATA-FIELD	(ptr a -- ptr ptr a)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	construct the typed pointer field address for vector storage
 1	vector	lib/vector.f	word	VEC-DATA@	(ptr a -- ptr a)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	read a vector storage pointer through a typed pointer field
 1	vector	lib/vector.f	word	VEC-DATA!	(ptr a ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	write a vector storage pointer through a typed pointer field
+1	vector	lib/vector.f	word	VEC-LEN-FIELD	(ptr a -- ptr a)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	return the vector active-length field address
+1	vector	lib/vector.f	word	VEC-CAP-FIELD	(ptr a -- ptr a)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	return the vector capacity field address
 1	vector	lib/vector.f	word	VEC-LEN@	(ptr a -- len)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	read a vector active length
 1	vector	lib/vector.f	word	VEC-CAP@	(ptr a -- count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	read a vector capacity
 1	vector	lib/vector.f	word	VEC-CAP!	(count ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	write a checked vector capacity
@@ -78,7 +81,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	vector	lib/vector.f	word	VEC-PUSH	(a ptr a -- idx)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	append a generic cell and return its index
 1	vector	lib/vector.f	word	VEC-PUSH-N	(n ptr a -- idx)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	append a numeric cell and return its index
 1	vector	lib/vector.f	word	VEC-PUSH-A	(ptr u8 ptr a -- idx)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	append a byte pointer and return its index
-1	vector	lib/vector.f	word	VEC-EACH	(ptr a [ idx a -- ] --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	visit active vector cells in index order
+1	vector	lib/vector.f	word	VEC-EACH	(R ptr a [ R idx a -- R ] -- R)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	visit active vector cells in index order
 1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	active	checked byte-string predicates builders split and parse helpers
 1	string	lib/string.f	word	STR-TRUE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a true flag for string helpers
 1	string	lib/string.f	word	STR-FALSE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a false flag for string helpers
@@ -252,6 +255,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	checked path stat size join read write append helpers and WALK-FILES contract
 1	fs	lib/fs.f	word	FS-FALSE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a false flag for filesystem helpers
 1	fs	lib/fs.f	word	FS-TRUE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a true flag for filesystem helpers
+1	fs	lib/fs.f	word	FS-TARGET-UNKNOWN	(--)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	throw when filesystem target selection finds no supported host target
+1	fs	lib/fs.f	word	FS-BYTE@	(ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	read one byte at a checked byte offset
 1	fs	lib/fs.f	word	FS-U16@	(ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read a little-endian 16-bit field from bytes
 1	fs	lib/fs.f	word	FS-U64@	(ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read a little-endian 64-bit field from bytes
 1	fs	lib/fs.f	word	FS-CHECK-DEPTH	(n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	validate filesystem walk recursion depth
@@ -305,8 +310,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs	lib/fs.f	word	FS-SKIP-ENTRY?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test skipped directory entry names
 1	fs	lib/fs.f	word	FS-OPEN-DIR	(ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	open a directory for walking
 1	fs	lib/fs.f	word	FS-DIRENT-RECLEN	(ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read dirent record length
+1	fs	lib/fs.f	word	FS-DIRENT-NAME-OFFSET	(-- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	return the target-specific dirent name offset
+1	fs	lib/fs.f	word	FS-LINUX-DIRENT-NAMELEN-SCAN	(ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	scan a Linux dirent name up to its record length
+1	fs	lib/fs.f	word	FS-LINUX-DIRENT-NAMELEN	(ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	read a Linux dirent name length by scanning bytes
 1	fs	lib/fs.f	word	FS-DIRENT-NAMELEN	(ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read dirent name length
 1	fs	lib/fs.f	word	FS-DIRENT-NAME	(ptr u8 -- ptr u8 n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return counted dirent name
+1	fs	lib/fs.f	word	FS-DIRENT-NAME-END	(ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	return the target-specific dirent name end offset
 1	fs	lib/fs.f	word	FS-CHECK-RECORD	(--)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	validate current dirent record bounds
 1	fs	lib/fs.f	word	FS-READ-DIR	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read the next directory buffer chunk
 1	fs	lib/fs.f	word	FS-WALK-ROOT!	(ptr u8 n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	copy root path into walk buffer
@@ -730,19 +739,24 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	build	lib/build.f	word	BUILD-STEP-VALIDATE	(ptr a --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	validate required command temp and artifact fields in a step record
 1	build	lib/build.f	word	BUILD-TRUE	(-- bool)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	return a true flag for build helpers
 1	build	lib/build.f	word	BUILD-WHITE?	(n -- bool)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	test whether a byte is build-source whitespace
-1	codesign	lib/codesign.f	module			lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	checked executable promotion and ad-hoc codesign helpers for build artifacts
-1	codesign	lib/codesign.f	word	CODESIGN-TOOL	(-- ptr u8 n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return the absolute codesign executable path
+1	codesign	lib/codesign.f	module			lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	checked executable promotion and target signing policy helpers for build artifacts
+1	codesign	lib/codesign.f	word	CODESIGN-TOOL	(-- ptr u8 n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return the absolute macOS codesign executable path
 1	codesign	lib/codesign.f	word	CODESIGN-RC0	(n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	throw E-BUILD-STATUS for nonzero codesign rc
 1	codesign	lib/codesign.f	word	CODESIGN-EXPECT-TOOL	(--)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	require the codesign tool to exist
 1	codesign	lib/codesign.f	word	CODESIGN-EXPECT-FILE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	require a nonempty counted path naming a file
 1	codesign	lib/codesign.f	word	CODESIGN-EXPECT-EXECUTABLE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	require a nonempty counted path naming an executable file
 1	codesign	lib/codesign.f	word	CODESIGN-RUN	(-- n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	run codesign with prepared argv and return rc
-1	codesign	lib/codesign.f	word	CODESIGN-VERIFY-RC	(ptr u8 n -- n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return the codesign -v status for one executable path
-1	codesign	lib/codesign.f	word	CODESIGN-VERIFY	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	verify one counted executable path with codesign -v
-1	codesign	lib/codesign.f	word	CODESIGN-FORCE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	ad-hoc sign one counted executable path with codesign --force
-1	codesign	lib/codesign.f	word	CODESIGN-ENSURE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	verify an executable path or ad-hoc sign and verify it
+1	codesign	lib/codesign.f	word	CODESIGN-TARGET-UNKNOWN	(--)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	throw when codesign target selection finds no supported host target
+1	codesign	lib/codesign.f	word	CODESIGN-MACOS-VERIFY-RC	(ptr u8 n -- n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	run macOS codesign verification for one executable path
+1	codesign	lib/codesign.f	word	CODESIGN-MACOS-FORCE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	force macOS ad-hoc signing for one executable path
+1	codesign	lib/codesign.f	word	CODESIGN-LINUX-VERIFY-RC	(ptr u8 n -- n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	verify Linux executable policy for one path
+1	codesign	lib/codesign.f	word	CODESIGN-LINUX-FORCE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	apply Linux executable policy for one path
+1	codesign	lib/codesign.f	word	CODESIGN-VERIFY-RC	(ptr u8 n -- n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return target verification status for one executable path
+1	codesign	lib/codesign.f	word	CODESIGN-VERIFY	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	verify one counted executable path with target signing policy
+1	codesign	lib/codesign.f	word	CODESIGN-FORCE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	apply target signing policy to one counted executable path
+1	codesign	lib/codesign.f	word	CODESIGN-ENSURE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	verify an executable path or apply target signing policy and verify it
 1	codesign	lib/codesign.f	word	PROMOTE-EXECUTABLE	(ptr u8 n ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	chmod executable and rename a source artifact to a destination
-1	codesign	lib/codesign.f	word	PROMOTE-SIGNED-EXECUTABLE	(ptr u8 n ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	ad-hoc sign chmod promote and verify an executable artifact
+1	codesign	lib/codesign.f	word	PROMOTE-SIGNED-EXECUTABLE	(ptr u8 n ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	apply target signing policy chmod promote and verify an executable artifact
 1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers
 1	time	lib/time.f	word	TIME-EPOCH-SECONDS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native UTC epoch seconds
 1	time	lib/time.f	word	TIME-MONO-NS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native monotonic nanoseconds

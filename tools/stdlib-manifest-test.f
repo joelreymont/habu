@@ -3,6 +3,10 @@
 
 0 set-check
 
+: SMT-CHECK-HOOK ( ptr u8 n -- n )
+   CHECK! dup -1 <> IF 70 throw THEN ;
+' SMT-CHECK-HOOK set-check
+
 $30000 constant SMT-MAN-CAP
 $10000 constant SMT-DOC-CAP
 $20000 constant SMT-PUB-CAP
@@ -74,11 +78,7 @@ variable SMT-JSON-END
 variable SMT-I
 variable SMT-J
 
-: SMT-CHECK-HOOK ( -- )
-   CHECK! ;
-' SMT-CHECK-HOOK set-check
-
-: SMT-C! ( n -- )
+: SMT-C! ( u8 -- )
    SMT-ONE c! ;
 
 : SMT-ERR ( ptr u8 n -- )
@@ -89,7 +89,7 @@ variable SMT-J
    dup 0= IF 2drop exit THEN
    1 -rot write drop ;
 
-: SMT-ERR-C ( n -- )
+: SMT-ERR-C ( u8 -- )
    SMT-C!
    SMT-ONE 1 SMT-ERR ;
 
@@ -478,7 +478,7 @@ variable SMT-J
    a u SMT-LIB-SOURCE? IF a u SMT-ADD-LIB-FILE THEN ;
 
 : SMT-CHECK-LIB-COVERAGE ( -- )
-   s" lib" ['] SMT-COLLECT-LIB-FILE WALK-FILES
+   s" lib" [: SMT-COLLECT-LIB-FILE ;] WALK-FILES
    0 begin dup SMT-LIB-N @ < while
       dup SMT-LIB-F$ 2dup SMT-FIND-MOD-FILE 0 < IF
          s" missing module row for " SMT-ERR
@@ -491,20 +491,23 @@ variable SMT-J
       1+
    repeat drop ;
 
+: SMT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
 : SMT-ARGV-LOAD-PUBLIC ( -- )
    PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+
-   s" tools/lint/intern.f"  >LEN PROC-ARGV+
-   s" tools/lint/token.f"  >LEN PROC-ARGV+
-   s" tools/lint/lib.f"  >LEN PROC-ARGV+
-   s" tools/public-signatures.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
+   s" --load" SMT-ARG+
+   s" lib/errors.f" SMT-ARG+
+   s" lib/memory.f" SMT-ARG+
+   s" lib/vector.f" SMT-ARG+
+   s" tools/lint/text.f" SMT-ARG+
+   s" tools/lint/intern.f" SMT-ARG+
+   s" tools/lint/token.f" SMT-ARG+
+   s" tools/lint/lib.f" SMT-ARG+
+   s" tools/public-signatures.f" SMT-ARG+
+   s" --" SMT-ARG+
    0 begin dup SMT-MOD-N @ < while
-      dup SMT-MOD-F$ 2dup FILE? IF  >LEN PROC-ARGV+ ELSE 2drop THEN
+      dup SMT-MOD-F$ 2dup FILE? IF SMT-ARG+ ELSE 2drop THEN
       1+
    repeat drop ;
 

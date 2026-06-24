@@ -131,11 +131,11 @@ If a branch only throws, it contributes no normal output to the join.
   `>RC RC>N`, `>PID PID>N`, `>MS MS>N`, `>NS NS>N`, and `>TOK TOK>N`.
   These are runtime identity casts over one cell; their only purpose is making
   semantic role changes explicit to the checker.
-- Trusted definers use `TRUSTED: NAME ( definer-eff ) CREATES
+- Trusted defining words use `TRUSTED: NAME ( definer-eff ) create ... does>
   ( created-eff ) body ;`. `definer-eff` is the effect of invoking the defining
-  word itself; `created-eff` is recorded for each word produced by runtime
-  `CREATE` while that definer runs. If a trusted definer contains `DOES>`, it must
-  declare `CREATES`.
+  word itself; the `created-eff` immediately after `does>` is recorded for each
+  word produced by runtime `create` while that definer runs. If a trusted definer
+  contains `does>`, the created effect must appear immediately after `does>`.
 - For `CREATE...DOES>`, if `created-eff` is `( in -- out )`, the native checker
   verifies the `DOES>` body as `( in ptr a -- out )`: the created word pushes its
   data-field pointer before entering the `DOES>` body. Use typed pointer steps
@@ -143,8 +143,8 @@ If a branch only throws, it contributes no normal output to the join.
 - **Literal-argument `PICK`/`ROLL` are folded** to a concrete shuffle at check
   time: `0 PICK`≡`DUP`, `1 PICK`≡`OVER`, `2 PICK ( a b c -- a b c a )`;
   `1 ROLL`≡`SWAP`, `2 ROLL`≡`ROT`. A **dynamic** (runtime-computed) index can't be
-  folded and stays untypeable → `E-UNCHECKED` (native fallback) or behind
-  `TRUSTED:`. See `src/pickroll.fs`.
+  folded and stays untypeable; keep it outside checked code or behind a named,
+  tested `TRUSTED:` boundary. See `src/pickroll.fs`.
 - Words the checker can't type (variadic `?DUP`, dynamic `PICK`/`ROLL`)
   must stay outside checked code or behind `TRUSTED:`.
 
@@ -152,8 +152,8 @@ If a branch only throws, it contributes no normal output to the join.
 
 - `CHECKING-ON?` toggles the override; with it off, `:` is the plain native colon
   (used to load infrastructure that isn't checkable habu).
-- A body using a word with no charted effect raises `E-UNCHECKED` and falls back
-  to the native colon (a warning, not a refusal) — so unmodeled code still
-  compiles, it just isn't verified. A genuine type error **refuses** the def.
+- A body using a word with no charted effect raises `E-UNCHECKED`; checked
+  build paths must treat that as a refusal unless the call is behind a named,
+  tested `TRUSTED:` boundary. A genuine type error also refuses the definition.
 - `EFFECT-OF ( a u -- ea eu | 0 )` returns the canonical effect string for a
   charted name, or a single `0` if absent (note the asymmetric stack effect).

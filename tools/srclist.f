@@ -37,13 +37,38 @@ variable SL-DRIVER-U
    a SL-DRIVER-A !
    u SL-DRIVER-U ! ;
 
+: SL-TARGET-UNKNOWN ( -- )
+   s" srclist: unknown target" SL-USAGE-RC die ;
+
+: SL-TARGET-LAYOUT-SYS ( -- )
+   HB-TARGET-LINUX? if
+      s" src/os/linux/layout.f src/os/linux/sys.f " type
+      exit
+   then
+   HB-TARGET-MACOS? if
+      s" src/os/macos/layout.f src/os/macos/sys.f " type
+      exit
+   then
+   SL-TARGET-UNKNOWN ;
+
+: SL-TARGET-IMAGE ( -- )
+   HB-TARGET-LINUX? if
+      s" src/os/linux/elf.f src/os/linux/sign.f " type
+      exit
+   then
+   HB-TARGET-MACOS? if
+      s" src/os/macos/macho.f src/os/macos/sign2.f " type
+      exit
+   then
+   SL-TARGET-UNKNOWN ;
+
 : SL-PREFIX ( -- )
-   s" src/core/util.f src/core/checker.f src/core/render.f " type
-   s" src/core/roles.f src/core/sha256.f src/core/combinators.f " type
    s" src/arch/arm64/asm.f src/arch/arm64/icode.f " type
-   s" src/arch/arm64/mnem.f src/os/macos/sys.f src/os/macos/env.f " type
-   s" src/habu/treeshake.f src/habu/rt.f src/habu/crash.f " type
-   s" src/os/macos/macho.f src/os/macos/sign2.f " type
+   s" src/arch/arm64/mnem.f " type
+   SL-TARGET-LAYOUT-SYS
+   s" src/core/sha256.f src/core/combinators.f " type
+   s" src/habu/layout.f src/habu/treeshake.f src/habu/rt.f src/habu/crash.f " type
+   SL-TARGET-IMAGE
    s" src/habu/habu1.f src/habu/prof.f src/habu/regalloc.f " type
    s" src/habu/jit.f src/habu/habu2.f src/habu/" type ;
 

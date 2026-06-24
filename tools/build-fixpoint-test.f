@@ -1,5 +1,8 @@
 \ build-fixpoint-test.f - checked fixture for tools/build-fixpoint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/build.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f
+\ lib/process-argv.f lib/process-env.f lib/build.f lib/codesign.f
+\ tools/build-fixpoint.f tools/build-fixpoint-test.f
 
 8192 constant BFT-CAPTURE-CAP
 $80000 constant BFT-READ-CAP
@@ -46,6 +49,9 @@ create BFT-READ-BUF BFT-READ-CAP allot
 : BFT-ENV$ ( -- ptr u8 n )
    BFT-ROOT ;
 
+: BFT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
 : BFT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-build-fixpoint" TMPDIR-MKDIR {: a:ptr u :}
@@ -60,17 +66,17 @@ create BFT-READ-BUF BFT-READ-CAP allot
    PROC-ENV-RESET
    s" HB_TMP" >LEN BFT-ENV$ >LEN PROC-ENV+
    s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" lib/process-env.f"  >LEN PROC-ARGV+
-   s" lib/build.f"  >LEN PROC-ARGV+
-   s" lib/codesign.f"  >LEN PROC-ARGV+
-   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
-   s" tools/build-fixpoint-main.f"  >LEN PROC-ARGV+ ;
+   s" lib/errors.f" BFT-ARG+
+   s" lib/string.f" BFT-ARG+
+   s" lib/fs.f" BFT-ARG+
+   s" lib/fs-mutate.f" BFT-ARG+
+   s" lib/process.f" BFT-ARG+
+   s" lib/process-argv.f" BFT-ARG+
+   s" lib/process-env.f" BFT-ARG+
+   s" lib/build.f" BFT-ARG+
+   s" lib/codesign.f" BFT-ARG+
+   s" tools/build-fixpoint.f" BFT-ARG+
+   s" tools/build-fixpoint-main.f" BFT-ARG+ ;
 
 : BFT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
@@ -94,7 +100,9 @@ create BFT-READ-BUF BFT-READ-CAP allot
 
 : BFT-TEST-STAGE2-SOURCE ( -- )
    BFT-STAGE2 BFT-READ {: u :}
-   BFT-READ-BUF u s" : HOOK CHECK ; ' HOOK set-check" CONTAINS? TTRUE
+   BFT-READ-BUF u s" : HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ; ' HOOK set-check" CONTAINS? TFALSE
+   BFT-READ-BUF u s" 0 set-check" CONTAINS? TTRUE
+   BFT-READ-BUF u s" ' HOOK set-check" CONTAINS? TTRUE
    BFT-READ-BUF u s" STDIN-OUT" CONTAINS? TTRUE ;
 
 : BFT-TEST-SNAP-SOURCE ( -- )
@@ -124,11 +132,11 @@ create BFT-READ-BUF BFT-READ-CAP allot
    BFT-ROOT [: BFT-CHECK-BUILD-FILE ;] WALK-FILES
    BFT-BUILD-FILES @ 0 T= ;
 
-: BFT-TEST-SNAP-STANDALONE ( -- )
+: BFT-TEST-ALL-STANDALONE ( -- )
    CLEANUP-RUN
    BFT-PREPARE
    BFT-ROOT BF-TMP!
-   BF-BUILD-SNAP
+   BF-BUILD-ALL
    BF-TMP-RESET
    BFT-HB-NEW FILE? TTRUE ;
 
@@ -140,7 +148,7 @@ create BFT-READ-BUF BFT-READ-CAP allot
    BFT-TEST-NO-BUILD-SHIMS
    BFT-TEST-STAGE2-SOURCE
    BFT-TEST-SNAP-SOURCE
-   BFT-TEST-SNAP-STANDALONE
+   BFT-TEST-ALL-STANDALONE
    CLEANUP-RUN
    BFT-ROOT EXISTS? TFALSE
    T-REPORT

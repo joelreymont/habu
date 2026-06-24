@@ -2,7 +2,7 @@
 \
 \ Load after test/gate-common.f.
 
-$40000 constant GB-MACHO-CAP
+$40000 constant GB-EXEC-CAP
 $FEEDFACF constant GB-MH-MAGIC64
 $19 constant GB-LC-SEGMENT-64
 32 constant GB-MH-SIZE
@@ -12,17 +12,30 @@ $19 constant GB-LC-SEGMENT-64
 72 constant GB-SEG-SECTIONS-OFF
 40 constant GB-SECT-SIZE-OFF
 80 constant GB-SECT-SIZE
+$464C457F constant GB-ELF-MAGIC
+$B7 constant GB-ELF-MACHINE-AARCH64
+1 constant GB-ELF-PT-LOAD
+1 constant GB-ELF-PF-X
+2 constant GB-ELF-PF-W
+4 constant GB-ELF-PF-R
+18 constant GB-ELF-MACHINE-OFF
+32 constant GB-ELF-PHOFF-OFF
+54 constant GB-ELF-PHENTSIZE-OFF
+56 constant GB-ELF-PHNUM-OFF
+0 constant GB-ELF-PH-TYPE-OFF
+4 constant GB-ELF-PH-FLAGS-OFF
+32 constant GB-ELF-PH-FILESZ-OFF
 34 constant GB-DQ
 
 create GB-SRC-PATH FS-PATH-CAP allot
 create GB-OUT-PATH FS-PATH-CAP allot
 create GB-REPORT-PATH FS-PATH-CAP allot
-create GB-MACHO-BUF GB-MACHO-CAP allot
+create GB-EXEC-BUF GB-EXEC-CAP allot
 
 variable GB-SRC-U
 variable GB-OUT-U
 variable GB-REPORT-U
-variable GB-MACHO-U
+variable GB-EXEC-U
 variable GB-TEXT-SIZE-V
 variable GB-TEXT-FOUND
 variable GB-LC-OFF
@@ -47,6 +60,23 @@ variable GB-LC-OFF
 
 : GB-WRITE-SRC ( -- )
    GB-SRC$ GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
+
+: GB-ARGV+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
+: GB-TARGET-UNKNOWN ( -- )
+   E-BUILD-SOURCE throw ;
+
+: GB-TARGET-LAYOUT ( -- )
+   HB-TARGET-LINUX? if
+      s" src/os/linux/layout.f" GB-ARGV+
+      exit
+   then
+   HB-TARGET-MACOS? if
+      s" src/os/macos/layout.f" GB-ARGV+
+      exit
+   then
+   GB-TARGET-UNKNOWN ;
 
 : GB-BUILD-ARGV ( -- )
    GE-HB-RESET
@@ -154,14 +184,24 @@ variable GB-LC-OFF
    p 2 + c@ 16 lshift or
    p 3 + c@ 24 lshift or ;
 
+: GB-U16@ ( ptr u8 -- n ) {: p:ptr :}
+   p c@  p 1 + c@ 8 lshift or ;
+
+: GB-READ-EXEC ( ptr u8 n -- ) {: path:ptr pathu :}
+   path pathu GB-EXEC-BUF GB-EXEC-CAP READ-ALL GB-EXEC-U ! ;
+
 : GB-RANGE ( n n -- ) {: off u :}
    off 0 < if E-BUILD-SOURCE throw then
    u 0 < if E-BUILD-SOURCE throw then
-   off u + GB-MACHO-U @ > if E-BUILD-SOURCE throw then ;
+   off u + GB-EXEC-U @ > if E-BUILD-SOURCE throw then ;
 
 : GB-ADDR ( n -- ptr u8 ) {: off :}
    off 1 GB-RANGE
-   GB-MACHO-BUF off + ;
+   GB-EXEC-BUF off + ;
+
+: GB-U16-OFF ( n -- n ) {: off :}
+   off 2 GB-RANGE
+   off GB-ADDR GB-U16@ ;
 
 : GB-U32-OFF ( n -- n ) {: off :}
    off 4 GB-RANGE
@@ -200,12 +240,65 @@ variable GB-LC-OFF
       1+
    repeat drop ;
 
-: GB-MACHO-TEXT-SIZE ( ptr u8 n -- n ) {: path:ptr pathu :}
-   path pathu GB-MACHO-BUF GB-MACHO-CAP READ-ALL GB-MACHO-U !
+: GB-MACHO-TEXT-SIZE-LOADED ( -- n )
    0 GB-U32-OFF GB-MH-MAGIC64 <> if E-BUILD-SOURCE throw then
    GB-SCAN-LOADS
    GB-TEXT-FOUND @ 0= if E-BUILD-SOURCE throw then
    GB-TEXT-SIZE-V @ ;
+
+: GB-MACHO-TEXT-SIZE ( ptr u8 n -- n )
+   GB-READ-EXEC
+   GB-MACHO-TEXT-SIZE-LOADED ;
+
+: GB-ELF-PH-OFF ( n -- n ) {: idx :}
+   GB-ELF-PHOFF-OFF GB-U64-OFF
+   idx GB-ELF-PHENTSIZE-OFF GB-U16-OFF * + ;
+
+: GB-ELF-RX-FLAGS? ( n -- bool ) {: flags :}
+   flags GB-ELF-PF-R and 0= 0= 
+   flags GB-ELF-PF-X and 0= 0= and
+   flags GB-ELF-PF-W and 0= and ;
+
+: GB-ELF-RX-LOAD? ( n -- bool ) {: off :}
+   off GB-ELF-PH-TYPE-OFF + GB-U32-OFF GB-ELF-PT-LOAD =
+   off GB-ELF-PH-FLAGS-OFF + GB-U32-OFF GB-ELF-RX-FLAGS? and ;
+
+: GB-SCAN-PHDR ( n -- ) {: idx :}
+   idx GB-ELF-PH-OFF {: off :}
+   off GB-ELF-RX-LOAD? if
+      off GB-ELF-PH-FILESZ-OFF + GB-U64-OFF GB-TEXT-SIZE-V !
+      -1 GB-TEXT-FOUND !
+   then ;
+
+: GB-SCAN-PHDRS ( -- )
+   0 GB-TEXT-FOUND !
+   0 begin dup GB-ELF-PHNUM-OFF GB-U16-OFF < GB-TEXT-FOUND @ 0= and while
+      dup GB-SCAN-PHDR
+      1+
+   repeat drop ;
+
+: GB-ELF-TEXT-SIZE-LOADED ( -- n )
+   0 GB-U32-OFF GB-ELF-MAGIC <> if E-BUILD-SOURCE throw then
+   GB-ELF-MACHINE-OFF GB-U16-OFF GB-ELF-MACHINE-AARCH64 <> if E-BUILD-SOURCE throw then
+   GB-SCAN-PHDRS
+   GB-TEXT-FOUND @ 0= if E-BUILD-SOURCE throw then
+   GB-TEXT-SIZE-V @ ;
+
+: GB-ELF-TEXT-SIZE ( ptr u8 n -- n )
+   GB-READ-EXEC
+   GB-ELF-TEXT-SIZE-LOADED ;
+
+: GB-EXEC-TEXT-SIZE ( ptr u8 n -- n )
+   GB-READ-EXEC
+   HB-TARGET-LINUX? if
+      GB-ELF-TEXT-SIZE-LOADED
+      exit
+   then
+   HB-TARGET-MACOS? if
+      GB-MACHO-TEXT-SIZE-LOADED
+      exit
+   then
+   GB-TARGET-UNKNOWN ;
 
 : GB-U. ( n -- ) {: n :}
    n 0 < if [char] - emit n negate recurse exit then

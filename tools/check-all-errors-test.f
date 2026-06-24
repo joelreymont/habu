@@ -1,5 +1,6 @@
 \ check-all-errors-test.f - checked fixtures for tools/check-all-errors.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-all-errors-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-all-errors-test.f
 
 4096 constant CAE-BUF-CAP
 1400 constant CAE-LARGE-LINES
@@ -188,6 +189,9 @@ create CAE-LF-BYTE 10 c,
 : CAE-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
+: CAE-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
 : CAE-RUN ( -- n n n )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
@@ -196,6 +200,8 @@ create CAE-LF-BYTE 10 c,
    s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/vector.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
    s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
@@ -217,6 +223,8 @@ create CAE-LF-BYTE 10 c,
    s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/vector.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/process.f"  >LEN PROC-ARGV+
+   s" lib/process-argv.f"  >LEN PROC-ARGV+
    s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
@@ -230,7 +238,7 @@ create CAE-LF-BYTE 10 c,
    s" bin/hb" >LEN CAE-OUT CAE-BUF-CAP >LEN CAE-ERR CAE-BUF-CAP >LEN 2000 >MS RUN-ARGV-CAPTURE
    CAE-CAPTURE>N ;
 
-: CAE-TEST-SUPPORT-PRELUDE ( -- )
+: CAE-TEST-SUPPORT-SOURCE ( -- )
    CAE-IN CAE-SUPPORT-SOURCE$ WRITE-ALL
    CAE-RUN 70 T=
    {: outu erru :}
@@ -278,7 +286,7 @@ create CAE-LF-BYTE 10 c,
    {: loutu lerru :}
    CAE-OUT loutu CAE-EMPTY$ T$=
    CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE
-   CAE-TEST-SUPPORT-PRELUDE
+   CAE-TEST-SUPPORT-SOURCE
    CAE-TEST-AS-ADD-TASK-LEAK
    CAE-TEST-MANY-DEFS-OK
    CAE-TEST-MANY-SUPPORT

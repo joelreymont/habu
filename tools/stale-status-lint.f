@@ -1,6 +1,8 @@
 \ stale-status-lint.f - enforce STATUS.md as the only live self-check count.
-\ Load after tools/date.f, tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, tools/fs.f, and tools/argv.f.
-\ Run: bin/hb --load tools/date.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/fs.f tools/argv.f tools/stale-status-lint.f -- [ROOT] [TODAY]
+\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/fs.f, tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and tools/argv.f.
+\ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/fs.f
+\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
+\ tools/stale-status-lint.f -- [ROOT] [TODAY]
 
 $20000 constant SS-FILE-CAP
 32 constant SS-NUM-CAP
@@ -141,13 +143,13 @@ TRUSTED: SS-DISP$ ( -- ptr u8 n )
    SS-ROOT$ {: root:ptr rootu :}
    SS-ROOT-SELF? IF a u exit THEN
    rootu u + 1 + FS-PATH-CAP > IF s" stale-status-lint: root path too long" 1 die THEN
-   root SS-PATH-BUF rootu COPY-BYTES
+   root SS-PATH-BUF rootu BYTE-COPY
    root rootu 1 - + c@ SS-SLASH = IF
-      a SS-PATH-BUF rootu + u COPY-BYTES
+      a SS-PATH-BUF rootu + u BYTE-COPY
       SS-PATH-BUF rootu u + exit
    THEN
    SS-SLASH SS-PATH-BUF rootu + c!
-   a SS-PATH-BUF rootu 1 + + u COPY-BYTES
+   a SS-PATH-BUF rootu 1 + + u BYTE-COPY
    SS-PATH-BUF rootu 1 + u + ;
 
 : SS-DISPLAY! ( ptr u8 n -- )
@@ -352,7 +354,7 @@ TRUSTED: SS-DISP$ ( -- ptr u8 n )
 : STALE-STATUS-LINT ( -- )
    0 SS-BAD !
    SS-CHECK-STATUS
-   SS-ROOT ['] SS-SCAN-MD WALK-FILES
+   SS-ROOT [: SS-SCAN-MD ;] WALK-FILES
    s" stale-status-lint: " SS-OUT SS-BAD @ SS-U. s"  finding(s)" SS-OUT SS-NL
    SS-BAD @ 0 > IF 1 throw THEN ;
 

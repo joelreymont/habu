@@ -12,6 +12,12 @@
    GB-HB-BUILD-ARGS
    GB-HB-BUILD-CAPTURE ;
 
+: GAN-REMOVE-OUT ( -- )
+   GB-OUT$ FILE? if GB-OUT$ REMOVE-FILE then ;
+
+: GAN-EXPECT-NO-OUT ( ptr u8 n -- ) {: label:ptr labelu :}
+   GB-OUT$ FILE? if label labelu GE-FAIL then ;
+
 : GAN-BUILD-OK ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC
    GB-BUILD-ARGV
@@ -22,8 +28,10 @@
 : GAN-BUILD-NZ ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC
    GB-BUILD-ARGV
+   GAN-REMOVE-OUT
    GAN-BUILD-CAPTURE
-   label labelu GE-EXPECT-NONZERO ;
+   label labelu GE-EXPECT-NONZERO
+   label labelu GAN-EXPECT-NO-OUT ;
 
 : GAN-BUILD-STRICT-OK ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC
@@ -37,15 +45,19 @@
    GB-WRITE-SRC
    GB-BUILD-ARGV
    s" --strict-signatures"  >LEN PROC-ARGV+
+   GAN-REMOVE-OUT
    GAN-BUILD-CAPTURE
-   label labelu GE-EXPECT-NONZERO ;
+   label labelu GE-EXPECT-NONZERO
+   label labelu GAN-EXPECT-NO-OUT ;
 
 : GAN-BUILD-JSON-NZ ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC
    GB-BUILD-ARGV
    s" --json-errors"  >LEN PROC-ARGV+
+   GAN-REMOVE-OUT
    GAN-BUILD-CAPTURE
-   label labelu GE-EXPECT-NONZERO ;
+   label labelu GE-EXPECT-NONZERO
+   label labelu GAN-EXPECT-NO-OUT ;
 
 : GAN-ERR-SCHEMA ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-REPORT$ GT-ERR$ WRITE-ALL

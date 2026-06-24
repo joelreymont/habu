@@ -1,6 +1,6 @@
 # habu — Status
 
-Last verified: 2026-06-24
+Last verified: 2026-06-25
 Gate: passing
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
@@ -21,7 +21,8 @@ the retired host-script token lint, the rebuild fixpoint, JSON diagnostic
 assertions, property soundness smoke, PTY/process checks, and AOT/`--repl`
 builder checks. No-binary recovery uses `tools/bootstrap.sh`: Gforth creates
 only private `HB_TMP` artifacts from `bootstrap/`, then installs exactly
-`bin/hb` and immediately refreshes that binary from current source. The gate,
+`bin/hb` for macOS ARM64 or Linux AArch64 and immediately refreshes that binary
+from current source. The gate,
 daily refresh, benchmark, and verification paths remain Habu-native and run with
 Gforth absent.
 

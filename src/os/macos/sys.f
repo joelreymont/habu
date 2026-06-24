@@ -2,6 +2,17 @@
 \ Engine emitters say
 \ `NR-WRITE SYS,`; porting to another OS/arch swaps this file.
 
+: HB-TARGET-LINUX? ( -- bool )
+   0 0= 0= ;
+
+: HB-TARGET-MACOS? ( -- bool )
+   0 0= ;
+
+: HB-TARGET-KNOWN? ( -- bool )
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or ;
+$1002 constant MAP-ANON-PRIVATE
+$1012 constant MAP-ANON-PRIVATE-FIXED
+
 1   constant NR-EXIT
 3   constant NR-READ
 4   constant NR-WRITE
@@ -33,5 +44,19 @@
 473 constant NR-READLINKAT
 474 constant NR-SYMLINKAT
 7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
+0   constant NR-EXECVE
+0   constant NR-CHDIR
+1   constant NR-EXIT-GROUP
+
+-2 constant AT-FDCWD
+0 constant AT-SYMLINK-NOFOLLOW
 
 : SYS, ( n -- )  16 swap MOVZ,  $80 SVC, ;
+
+: OS-OPEN-RD ( n -- )
+   {: pathreg :}
+   0 pathreg 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS, ;
+
+: OS-OPEN-FLAGS ( -- ) ;
+
+: OS-MMAP-FLAGS ( -- ) ;

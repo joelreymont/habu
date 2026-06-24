@@ -19,6 +19,7 @@ FS-PATH-CAP 1 + constant FS-PATHZ-CAP
 16 constant FS-DIRENT-RECLEN-OFF
 18 constant FS-DIRENT-NAMELEN-OFF
 21 constant FS-DIRENT-NAME-OFF
+19 constant FS-LINUX-DIRENT-NAME-OFF
 1 constant FS-O-WRONLY
 $8 constant FS-O-APPEND
 $200 constant FS-O-CREAT
@@ -63,18 +64,24 @@ variable FS-IO-WR
 : FS-TRUE ( -- bool )
    0 0= ;
 
-: FS-U16@ ( ptr u8 -- n ) {: a:ptr :}
-   a c@ a 1 + c@ FS-BYTE-BITS lshift or ;
+TRUSTED: FS-BYTE-OFFSET ( ptr u8 n -- ptr u8 )
+   + ;
 
-: FS-U64@ ( ptr u8 -- n )
-   dup c@
-   over 1 + c@ FS-BYTE-BITS lshift or
-   over 2 + c@ FS-BYTE-BITS-2 lshift or
-   over 3 + c@ FS-BYTE-BITS-3 lshift or
-   over 4 + c@ FS-BYTE-BITS-4 lshift or
-   over 5 + c@ FS-BYTE-BITS-5 lshift or
-   over 6 + c@ FS-BYTE-BITS-6 lshift or
-   swap 7 + c@ FS-BYTE-BITS-7 lshift or ;
+: FS-BYTE@ ( ptr u8 n -- n )
+   FS-BYTE-OFFSET c@ ;
+
+: FS-U16@ ( ptr u8 -- n ) {: a:ptr :}
+   a 0 FS-BYTE@ a 1 FS-BYTE@ FS-BYTE-BITS lshift or ;
+
+: FS-U64@ ( ptr u8 -- n ) {: a:ptr :}
+   a 0 FS-BYTE@
+   a 1 FS-BYTE@ FS-BYTE-BITS lshift or
+   a 2 FS-BYTE@ FS-BYTE-BITS-2 lshift or
+   a 3 FS-BYTE@ FS-BYTE-BITS-3 lshift or
+   a 4 FS-BYTE@ FS-BYTE-BITS-4 lshift or
+   a 5 FS-BYTE@ FS-BYTE-BITS-5 lshift or
+   a 6 FS-BYTE@ FS-BYTE-BITS-6 lshift or
+   a 7 FS-BYTE@ FS-BYTE-BITS-7 lshift or ;
 
 : FS-CHECK-DEPTH ( n -- ) {: d :}
    d 0 < if E-FS-DEPTH throw then
@@ -321,18 +328,45 @@ variable FS-IO-WR
    FS-PATHZ open-rd dup 0 < if drop E-FS-OPEN FS-THROW-WALK 0 then ;
 
 : FS-DIRENT-RECLEN ( ptr u8 -- n )
-   FS-DIRENT-RECLEN-OFF + FS-U16@ ;
+   FS-DIRENT-RECLEN-OFF FS-BYTE-OFFSET FS-U16@ ;
+
+: FS-TARGET-UNKNOWN ( -- )
+   E-FS-DIR throw ;
+
+: FS-DIRENT-NAME-OFFSET ( -- n )
+   HB-TARGET-LINUX? if
+      FS-LINUX-DIRENT-NAME-OFF exit
+   then
+   HB-TARGET-MACOS? if
+      FS-DIRENT-NAME-OFF exit
+   then
+   FS-TARGET-UNKNOWN ;
+
+: FS-LINUX-DIRENT-NAMELEN-SCAN ( ptr u8 n -- n ) {: ent:ptr rec :}
+   0 begin dup FS-LINUX-DIRENT-NAME-OFF + rec < while
+      ent over FS-LINUX-DIRENT-NAME-OFF + FS-BYTE@ 0= if exit then
+      1+
+   repeat
+   E-FS-DIR FS-THROW-WALK ;
+
+: FS-LINUX-DIRENT-NAMELEN ( ptr u8 -- n ) {: ent:ptr :}
+   ent ent FS-DIRENT-RECLEN FS-LINUX-DIRENT-NAMELEN-SCAN ;
 
 : FS-DIRENT-NAMELEN ( ptr u8 -- n )
-   FS-DIRENT-NAMELEN-OFF + FS-U16@ ;
+   HB-TARGET-LINUX? if FS-LINUX-DIRENT-NAMELEN exit then
+   HB-TARGET-MACOS? if FS-DIRENT-NAMELEN-OFF FS-BYTE-OFFSET FS-U16@ exit then
+   FS-TARGET-UNKNOWN ;
 
 : FS-DIRENT-NAME ( ptr u8 -- ptr u8 n )
-   dup FS-DIRENT-NAME-OFF + swap FS-DIRENT-NAMELEN ;
+   dup FS-DIRENT-NAME-OFFSET FS-BYTE-OFFSET swap FS-DIRENT-NAMELEN ;
+
+: FS-DIRENT-NAME-END ( ptr u8 -- n ) {: ent:ptr :}
+   FS-DIRENT-NAME-OFFSET ent FS-DIRENT-NAMELEN + ;
 
 : FS-CHECK-RECORD ( -- )
    FS-REC@ 0 <= if E-FS-DIR FS-THROW-WALK then
    FS-OFF@ FS-REC@ + FS-N@ > if E-FS-DIR FS-THROW-WALK then
-   FS-ENT @ FS-DIRENT-NAMELEN FS-DIRENT-NAME-OFF + FS-REC@ > if
+   FS-ENT @ FS-DIRENT-NAME-END FS-REC@ > if
       E-FS-DIR FS-THROW-WALK
    then ;
 

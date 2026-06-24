@@ -1,5 +1,6 @@
 \ diag-origin-test.f - checked fixtures for tools/diag-origin.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/diag-origin-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/diag-origin-test.f
 
 4096 constant DGT-BUF-CAP
 
@@ -77,13 +78,18 @@ create DGT-ERR DGT-BUF-CAP allot
 : DGT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
+: DGT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
 : DGT-RUN ( -- n n n )
    PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/diag-origin.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   DGT-IN  >LEN PROC-ARGV+
+   s" --load" DGT-ARG+
+   s" tools/lint/text.f" DGT-ARG+
+   s" tools/lint/token.f" DGT-ARG+
+   s" tools/lint/lib.f" DGT-ARG+
+   s" tools/diag-origin.f" DGT-ARG+
+   s" --" DGT-ARG+
+   DGT-IN DGT-ARG+
    s" bin/hb" >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    DGT-CAPTURE>N ;
 

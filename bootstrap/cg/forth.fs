@@ -15,28 +15,29 @@
 \   x26=DBASE mmap region = runtime dict base   x27=NDICT live word count   x28=CP compile ptr
 \   x9-x15,x5-x8,x0-x4,x16 scratch.
 
-require exec.fs
-require templ.fs           \ g-push, XDS(=19)
-require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
-require crash.fs           \ in-binary crash handler (register dump on signal)
-
 20 constant RBASE
 26 constant DBASE  27 constant NDICT  28 constant CP
 
-$100000 constant REGION       \ mmap region size (1 MB)
+$200000 constant REGION       \ mmap region size (2 MB)
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
-$1C000  constant DICT-SIZE     \ dict area at region+0 (112 KB); code area follows
+$31000  constant DICT-SIZE     \ dict + control-flow stack; code area follows
 48      constant DREC          \ dict record: addr(8) clen(8) name-len|flags(8) name|ptr(16) wid(8)
 16      constant DNAME-INL
 $0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
-2304    constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..2303 end exactly at CFSTK.
-$1B000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
+4096    constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..4095 end exactly at CFSTK.
+$30000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
 $300000 constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
 $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
+
+require exec.fs
+require templ.fs           \ g-push, XDS(=19)
+require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
+require crash.fs           \ in-binary crash handler (register dump on signal)
+
 \ x20 (RBASE) is dead after startup, so it doubles as DATA: the data-space base.
 \ [x20] holds DP (next-free pointer); usable space is [x20+8 .. x20+DATA-SIZE).
 20 constant DATA
@@ -72,7 +73,7 @@ $36A8 constant INE-CELL    \ input end    (was x22)
 $36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
 $36C8 constant BPI-CELL    \ (legacy single-BP; unused)
 $36D0 constant BPTAB-OFF   \ 16 breakpoints: (addr, saved-instr) 16 B each, addr 0 = empty
-$3600 constant EVAL-FRAME  \ re-entrant evaluate save frame, 8 cells (free LOCNAMES tail $3600-$363F):
+$2740 constant EVAL-FRAME  \ re-entrant evaluate save frame, 8 cells:
                            \ +0 INP +8 INE +16 RET +24 SP +32 XDS +40 CP +48 NDICT +56 DP
 $2780 constant TSIG-A-CELL  \ TRUSTED: pending word effect source pointer
 $2788 constant TSIG-U-CELL
@@ -81,6 +82,7 @@ $2798 constant TCSIG-U-CELL
 $27A0 constant CRSIG-A-CELL \ runtime created-word effect pending for CREATE
 $27A8 constant CRSIG-U-CELL
 $27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
+$27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 $37D0 constant EVALD-CELL  \ evaluate nesting depth (0 = top-level REPL/batch; gates the nested paths)
 $37D8 constant EVALERR-CELL \ result of the last evaluate: 0 = clean, 1 = recovered from an error
 $37E0 constant LMAINP-CELL  \ runtime addr of the interpret loop top (EM-STARTUP stores it; B-EVAL branches there)
@@ -124,9 +126,9 @@ $F2C00009 constant W-MOVK2     \ movk x9,#0,lsl#32
 $F2E00009 constant W-MOVK3     \ movk x9,#0,lsl#48
 
 \ --- primitive registry (host-side, to build the seed dictionary) ---
-create PLBL 96 cells allot   create PEL 96 cells allot
-create PLEN 96 cells allot   create PNAM 96 cells allot
-create PNPOOL 1024 chars allot   variable PNP   variable #PL
+create PLBL 128 cells allot   create PEL 128 cells allot
+create PLEN 128 cells allot   create PNAM 128 cells allot
+create PNPOOL 2048 chars allot   variable PNP   variable #PL
 
 
 : REG-PRIM {: na nu lbl elbl -- :}
@@ -148,7 +150,7 @@ create PNPOOL 1024 chars allot   variable PNP   variable #PL
    lbl LBL,  xt execute  RET,  elbl LBL, ;
 
 \ shared label ids (forward refs)
-variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
+variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN  variable SRCA
 variable LCEMIT   variable LTOK   variable LPROT  variable LFLUSH variable LNCOUNT
 \ control-flow JIT helpers + keyword data labels (self-host 1b)
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
@@ -168,7 +170,7 @@ variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUN
 variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
-variable LKWTRUSTED variable LKWCREATES variable LKWTRUST variable LKWCHKDOES
+variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES
 
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
@@ -326,6 +328,14 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BMOD B G-POP A G-POP  BDIV0?  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
 
+: BDIVMOD B G-POP A G-POP  BDIV0?  C A B SDIV,  DREG C B MUL,  A A DREG SUB,  A G-PUSH C G-PUSH ;
+
+: BABS A G-POP  A 0 CMPI,  LBL {: done :}  C-GE done BCOND,  A SP A SUB,  done LBL,  A G-PUSH ;
+
+: BMIN B G-POP A G-POP  A B CMP,  LBL {: done :}  C-LE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
+
+: BMAX B G-POP A G-POP  A B CMP,  LBL {: done :}  C-GE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
+
 \ stack shuffles (memory on x19)
 : BNIP  A G-POP  XDS XDS 8 SUBI,  A G-PUSH ;
 
@@ -343,16 +353,32 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : B2SWAP EREG G-POP DREG G-POP C G-POP A G-POP  DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
 
+: B2OVER EREG G-POP DREG G-POP C G-POP A G-POP  A G-PUSH C G-PUSH DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
+
+: BQDUP A G-POP  A G-PUSH  LBL {: done :}  A done CBZ,  A G-PUSH  done LBL, ;
+
 \ memory access (absolute addresses on the stack)
 : BFETCH  A G-POP  A A 0 LDR,  A G-PUSH ;
 
 : BSTORE  B G-POP A G-POP  A B 0 STR, ;               \ ( val addr -- )
+
+: BPTRFIELD  B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
+
+: BPLUSSTORE B G-POP A G-POP  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
 : BCFETCH A G-POP  A A 0 LDRB, A G-PUSH ;
 
 : BCSTORE B G-POP A G-POP  A B 0 STRB, ;
 
 : BCELLS  A G-POP  A A 3 LSLI, A G-PUSH ;             \ n*8
+
+: BCELLPLUS A G-POP  A A 8 ADDI, A G-PUSH ;
+
+: BCHARS ;
+
+: BCHARPLUS A G-POP  A A 1 ADDI, A G-PUSH ;
+
+: BCOUNT A G-POP  B A 0 LDRB,  A A 1 ADDI,  A G-PUSH  B G-PUSH ;
 
 \ data space: DP cell is [x20]; HERE/ALLOT/,/C, bump it (x20 region is always RW)
 : BHERE   7 DATA 0 LDR,  7 G-PUSH ;
@@ -381,9 +407,6 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 : BDIE    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
           0 7 0 ADDI,  NR-EXIT SYS, ;
 
-\ file I/O (path must be NUL-terminated by the caller)
-: BOPEN   2 G-POP  1 G-POP  0 G-POP  NR-OPEN SYS,  0 G-PUSH ;   \ ( pathz flags mode -- fd )
-
 : SYS-PUSH                         \ ( -- ) push x0, or -1 when the syscall carry is set
    LBL LBL {: ok done :}
    9 C-CS CSET,  9 ok CBZ,
@@ -392,7 +415,21 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    done LBL,
    0 G-PUSH ;
 
-: BOPENRD A G-POP  0 9 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS,  SYS-PUSH ;
+\ file I/O (path must be NUL-terminated by the caller)
+: BOPEN
+   2 G-POP  1 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF
+      3 2 0 ADDI,
+      OS-OPEN-FLAGS
+      1 0 0 ADDI,
+      0 99 MOVN,
+   THEN
+   NR-OPEN SYS,  SYS-PUSH ;   \ ( pathz flags mode -- fd )
+
+: BOPENRD
+   A G-POP
+   A OS-OPEN-RD
+   SYS-PUSH ;
 
 : BWRITE  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
 
@@ -400,7 +437,10 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  0 G-PUSH ;  \ ( fd req buf -- rc )
 
-: BMMAP   5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP  NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
+: BMMAP
+   5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
+   NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
 : BPATCH32                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
@@ -487,47 +527,85 @@ require jit.fs          \ runtime abstract value stack for the : compiler
       wnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  wl B,
    wend LBL,  11 G-PUSH ;
 
-: EMIT-PRIMS ( -- )
+: BPARSE-NAME
+   LBL LBL {: none done :}
+   LTOK @ BL,
+   0 none CBZ,
+      9 DATA TKA-CELL LDR,  9 G-PUSH
+      9 DATA TKL-CELL LDR,  9 G-PUSH
+      done B,
+   none LBL,
+      9 DATA INP-CELL LDR,  9 G-PUSH
+      9 0 MOVZ,  9 G-PUSH
+   done LBL, ;
+
+: EMIT-ARITH-PRIMS ( -- )
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
-   s" dup"  ['] BDUP  FPRIM-L   s" drop" ['] BDROP FPRIM-L   s" swap" ['] BSWAP FPRIM-L
-   s" ."    ['] BDOT  FPRIM-L   s" .s"   ['] B.S   FPRIM-L   s" depth" ['] BDEPTH FPRIM-L
-   s" u."   ['] BU.   FPRIM-L   s" emit" ['] BEMIT FPRIM-L
-   s" cr"   ['] BCR   FPRIM-L   s" space" ['] BSPACE FPRIM-L
+   s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
+   s" abs"  ['] BABS  FPRIM-L   s" min"  ['] BMIN  FPRIM-L   s" max"  ['] BMAX FPRIM-L ;
+
+: EMIT-COMPARE-PRIMS ( -- )
    s" ="    ['] B=    FPRIM-L   s" <>"   ['] B<>   FPRIM-L   s" <"    ['] B<    FPRIM-L
    s" >"    ['] B>    FPRIM-L   s" <="   ['] B<=   FPRIM-L   s" >="   ['] B>=   FPRIM-L
    s" 0="   ['] B0=   FPRIM-L   s" 0<"   ['] B0<   FPRIM-L
    s" 1+"   ['] B1+   FPRIM-L   s" 1-"   ['] B1-   FPRIM-L
    s" and"  ['] BAND  FPRIM-L   s" or"   ['] BOR   FPRIM-L   s" xor"  ['] BXOR  FPRIM-L
    s" invert" ['] BINV FPRIM-L  s" negate" ['] BNEG FPRIM-L
-   s" lshift" ['] BLSH FPRIM-L  s" rshift" ['] BRSH FPRIM-L
-   s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L
+   s" lshift" ['] BLSH FPRIM-L  s" rshift" ['] BRSH FPRIM-L ;
+
+: EMIT-STACK-PRIMS ( -- )
+   s" dup"  ['] BDUP  FPRIM-L   s" drop" ['] BDROP FPRIM-L   s" swap" ['] BSWAP FPRIM-L
    s" nip"  ['] BNIP  FPRIM-L   s" over" ['] BOVER FPRIM-L   s" tuck" ['] BTUCK FPRIM-L
    s" rot"  ['] BROT  FPRIM-L   s" -rot" ['] BMROT FPRIM-L
    s" 2dup" ['] B2DUP FPRIM-L   s" 2drop" ['] B2DROP FPRIM-L
-   s" 2swap" ['] B2SWAP FPRIM-L
-   s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L
+   s" 2swap" ['] B2SWAP FPRIM-L  s" 2over" ['] B2OVER FPRIM-L  s" ?dup" ['] BQDUP FPRIM-L ;
+
+: EMIT-MEMORY-PRIMS ( -- )
+   s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L   s" ptr-field" ['] BPTRFIELD FPRIM-L
+   s" +!" ['] BPLUSSTORE FPRIM-L
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
-   s" cells" ['] BCELLS FPRIM-L
+   s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
+   s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT FPRIM-L ;
+
+: EMIT-OUTPUT-PRIMS ( -- )
+   s" ."    ['] BDOT  FPRIM-L   s" .s"   ['] B.S   FPRIM-L   s" depth" ['] BDEPTH FPRIM-L
+   s" u."   ['] BU.   FPRIM-L   s" emit" ['] BEMIT FPRIM-L
+   s" cr"   ['] BCR   FPRIM-L   s" space" ['] BSPACE FPRIM-L
+   s" type" ['] BTYPE  FPRIM-L ;
+
+: EMIT-DICT-PRIMS ( -- )
    s" here" ['] BHERE  FPRIM-L   s" allot" ['] BALLOT FPRIM-L
    s" ,"    ['] BCOMMA FPRIM-L   s" c,"   ['] BCCOMMA FPRIM-L
-   s" type" ['] BTYPE  FPRIM-L   s" execute" ['] BEXEC FPRIM
+   s" execute" ['] BEXEC FPRIM
    s" compile," ['] BCOMPILE FPRIM
    s" create" ['] BCREATE FPRIM
+   s" parse-name" ['] BPARSE-NAME FPRIM
+   s" evaluate" ['] B-EVAL FPRIM-L ;
+
+: EMIT-ENGINE-PRIMS ( -- )
    s" run-rc" ['] BRUNRC FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
-   s" evaluate" ['] B-EVAL FPRIM-L
-   s" die"  ['] BDIE   FPRIM-L
+   s" die"  ['] BDIE   FPRIM-L ;
+
+: EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
    s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
    s" close" ['] BCLOSE FPRIM-L
-   s" rbase" ['] BRBASE FPRIM-L
+   s" rbase" ['] BRBASE FPRIM-L ;
+
+: EMIT-CHECKER-PRIMS ( -- )
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
    s" set-check" ['] BSETCHECK FPRIM-L ;
+
+: EMIT-PRIMS ( -- )
+   EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
+   EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
+   EMIT-ENGINE-PRIMS  EMIT-FS-PRIMS  EMIT-CHECKER-PRIMS ;
 
 \ ---- CEMIT ( x9=word -- ) : str w9,[x28] ; CP += 4 ----
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
@@ -770,6 +848,13 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
    9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL, ;
 
+: C-X9-LIT ( -- )
+   6 11 0 ADDI,  5 $FFFF MOVZ,
+   7 6 5 AND,    7 7 5 LSLI,  8 W-MOVZ0 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
+   7 6 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK1 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
+   7 6 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK2 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
+   7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 LIT64,  9 8 7 ORR,  LCEMIT @ BL, ;
+
 \ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
 \ Small leaf bodies are inlined (copy the meat between the x30 prologue/epilogue);
 \ everything else gets an absolute `movz/movk x16 + blr x16` call. Absolute, not BL:
@@ -823,17 +908,61 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ stdin mode reads all of fd 0 into a fresh RW mmap buffer, then interprets it
 \ (batch REPL: `echo ': SQ DUP * ; 5 SQ .' | ./forth`). Clobbers x0-x5,x9,x11,x16.
 variable LTRAPH   variable LBPH
+variable LSRCRD   variable LSHBANG
+variable LPLINUXTARGET  variable LPMACOSTARGET
+variable LPUTIL         variable LPCHECKER      variable LPRENDER
+variable LPHOOK         variable LPHABULAYOUT   variable LPLINUXENV     variable LPMACOSENV
+variable LPROLES        variable LPCOMBINATORS
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
+create ZBYTE 0 c,
 
-\ LTRAPH: SIGTRAP entry (x1=infostyle x2=sig x4=ucontext). A one-shot
+: ZBYTES, ( ptr u8 n -- )
+   BYTES, ZBYTE 1 BYTES, ;
+
+: C-TRAP-MCTX>R9 ( -- )
+   HB-TARGET-LINUX? IF
+      9 2 LINUX-UC-MCTX-OFF ADDI,
+   ELSE
+      9 4 MCTX-OFF LDR,
+   THEN ;
+
+: C-MCTX-PC>R10 ( -- )
+   HB-TARGET-LINUX? IF
+      10 9 LINUX-MCTX-PC-OFF LDR,
+   ELSE
+      10 9 MACOS-MCTX-PC-OFF LDR,
+   THEN ;
+
+: C-MCTX-X19>R12 ( -- )
+   HB-TARGET-LINUX? IF
+      12 9 LINUX-MCTX-X19-OFF LDR,
+   ELSE
+      12 9 MACOS-MCTX-X19-OFF LDR,
+   THEN ;
+
+: C-MCTX-SP-16! ( -- )
+   HB-TARGET-LINUX? IF
+      12 9 LINUX-MCTX-SP-OFF LDR,  12 12 16 SUBI,  12 9 LINUX-MCTX-SP-OFF STR,
+   ELSE
+      12 9 MACOS-MCTX-SP-OFF LDR,  12 12 16 SUBI,  12 9 MACOS-MCTX-SP-OFF STR,
+   THEN ;
+
+: C-MCTX-PC+4! ( -- )
+   HB-TARGET-LINUX? IF
+      12 9 LINUX-MCTX-PC-OFF LDR,  12 12 4 ADDI,  12 9 LINUX-MCTX-PC-OFF STR,
+   ELSE
+      12 9 MACOS-MCTX-PC-OFF LDR,  12 12 4 ADDI,  12 9 MACOS-MCTX-PC-OFF STR,
+   THEN ;
+
+\ LTRAPH: target signal entry. A one-shot
 \ breakpoint at [BPA-CELL]: print habu-bp: + pc + the data-stack top, restore
 \ the original instruction, clear the bp, sigreturn to re-execute the word.
 \ Any other trap falls through to the crash dump (x2/x4 untouched).
 : EMIT-TRAPH
    LTRAPH @ LBL,
    LBL {: tno :}
-   9 4 MCTX-OFF LDR,                                 \ x9 = mcontext
-   10 9 272 LDR,                                     \ x10 = pc
+   C-TRAP-MCTX>R9                                    \ x9 = mcontext
+   C-MCTX-PC>R10                                     \ x10 = pc
    LBL {: bscan :}  LBL {: bnext :}  LBL {: bhit :}
    LBL {: emu :}  LBL {: fin :}
    6 8 MOVZ,  7 0 MOVZ,                              \ MAXBP=8, i  (scan BPTAB[0..8))
@@ -852,7 +981,7 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    14 12 CMP,  C-LS emu BCOND,                       \ hits <= skip -> silent, just emulate
    1 LBPH @ ADR,  0 2 MOVZ,  2 9 MOVZ,  NR-WRITE SYS,   \ "habu-bp:"
    9 SP 32 LDR,  LHEX @ BL,                          \ pc
-   9 SP 24 LDR,  12 9 168 LDR,  9 12 8 SUBI,  9 9 0 LDR,  LHEX @ BL,   \ [x19-8] = tos
+   9 SP 24 LDR,  C-MCTX-X19>R12  9 12 8 SUBI,  9 9 0 LDR,  LHEX @ BL,   \ [x19-8] = tos
    8 SP 40 LDR,  15 8 24 LDR,  15 15 1 ANDI,  15 emu CBNZ,   \ persistent -> emulate, keep BRK
    2 3 MOVZ,  LPROT @ BL,                            \ one-shot: restore + remove
    8 SP 40 LDR,  11 8 0 LDR,  12 8 8 LDR,  12 11 0 STRW,
@@ -862,8 +991,8 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    fin B,
    emu LBL,                                          \ emulate the entry prologue, keep BRK:
    9 SP 24 LDR,                                      \ mctx
-   12 9 264 LDR,  12 12 16 SUBI,  12 9 264 STR,      \ sp -= 16  (sub sp,sp,#16)
-   12 9 272 LDR,  12 12 4 ADDI,  12 9 272 STR,       \ pc += 4   (skip the BRK)
+   C-MCTX-SP-16!                                     \ sp -= 16  (sub sp,sp,#16)
+   C-MCTX-PC+4!                                      \ pc += 4   (skip the BRK)
    fin LBL,
    0 SP 8 LDR,  1 SP 0 LDR,  2 SP 16 LDR,  SP SP 48 ADDI,
    NR-SIGRETURN SYS,                                 \ sigreturn(uctx, infostyle, token)
@@ -874,38 +1003,254 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
 : G-INSTALL-TRAP
-   SP SP 32 SUBI,
-   9 LTRAPH @ ADR,  9 SP 0 STR,  9 SP 8 STR,
-   10 SA-SIGINFO MOVZ,  10 10 32 LSLI,  10 SP 16 STR,
-   5 (SIGACT)
-   SP SP 32 ADDI, ;
+   9 LTRAPH @ ADR,  9 C-SIGACTION-FRAME
+   5 INSTALL-SIGACT
+   C-SIGACTION-FRAME-DONE ;
+
+: EMIT-SHEBANG-COMMENT ( -- )
+   LSHBANG @ LBL,
+   LBL {: done :}
+   4 9 17 SUB,  4 2 CMPI,  C-LT done BCOND,
+   4 17 0 LDRB,  4 $23 CMPI,  C-NE done BCOND,
+   4 17 1 LDRB,  4 $21 CMPI,  C-NE done BCOND,
+   4 92 MOVZ,  4 17 0 STRB,
+   4 32 MOVZ,  4 17 1 STRB,
+   done LBL,
+   RET, ;
+
+: EMIT-SOURCE-READ ( -- )
+   LSRCRD @ LBL,
+   LBL LBL LBL LBL {: srl sdone sreaderr sopenerr :}
+   12 OS-OPEN-RD
+   13 C-CS CSET,  13 sopenerr CBNZ,
+   12 0 0 ADDI,
+   17 9 0 ADDI,
+   srl LBL,
+      0 12 0 ADDI,  1 9 0 ADDI,
+      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 sdone CBZ,
+      NR-READ SYS,
+      13 C-CS CSET,  13 sreaderr CBNZ,
+      0 sdone CBZ,
+      9 9 0 ADD,  srl B,
+   sdone LBL,
+   0 12 0 ADDI,  NR-CLOSE SYS,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   LSHBANG @ BL,
+   30 SP 0 LDR,  SP SP 16 ADDI,
+   RET,
+   sreaderr LBL,  0 12 0 ADDI,  NR-CLOSE SYS,
+   sopenerr LBL,
+   0 74 MOVZ,  NR-EXIT SYS, ;
+
+: C-TARGET-UNKNOWN ( -- )
+   1 abort" hb: unknown target" ;
+
+: EMIT-HOST-LOAD-PREFIX ( -- )
+   16 0 MOVZ,  16 DATA HOOK-CELL STR,
+   12 LPUTIL @ ADR,     LSRCRD @ BL,
+   HB-TARGET-LINUX? if
+      12 LPLINUXTARGET @ ADR,  LSRCRD @ BL,
+   else HB-TARGET-MACOS? if
+      12 LPMACOSTARGET @ ADR,  LSRCRD @ BL,
+   else
+      C-TARGET-UNKNOWN
+   then
+   then
+   12 LPCHECKER @ ADR,  LSRCRD @ BL,
+   12 LPRENDER @ ADR,   LSRCRD @ BL,
+   12 LPHABULAYOUT @ ADR, LSRCRD @ BL,
+   HB-TARGET-LINUX? if
+      12 LPLINUXENV @ ADR,  LSRCRD @ BL,
+   else HB-TARGET-MACOS? if
+      12 LPMACOSENV @ ADR,  LSRCRD @ BL,
+   else
+      C-TARGET-UNKNOWN
+   then
+   then
+   12 LPHOOK @ ADR,     LSRCRD @ BL,
+   12 LPROLES @ ADR,    LSRCRD @ BL,
+   12 LPCOMBINATORS @ ADR, LSRCRD @ BL, ;
+
+: C-EMIT-TTY-PROBE ( -- )
+   0 0 MOVZ,
+   HB-TARGET-LINUX? if 1 $5401 LIT64, else
+      HB-TARGET-MACOS? if 1 $40487413 LIT64, else C-TARGET-UNKNOWN then
+   then
+   2 DATA BODYBUF-OFF ADDI,
+   NR-IOCTL SYS, ;
+
+variable SRC-TTY  variable SRC-FILE  variable SRC-SFAIL
+variable SRC-RL   variable SRC-RD    variable SRC-PIPEOK
+variable SRC-REPL variable SRC-DONE  variable SRC-FSCAN
+variable SRC-FNEXT variable SRC-FREADY variable SRC-FPLAIN
+variable SRC-FLOOP variable SRC-SHLOOP variable SRC-STDINPROG
+variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
+
+: C-SOURCE-LABELS ( -- )
+   LBL SRC-TTY !   LBL SRC-FILE !  LBL SRC-SFAIL !
+   LBL SRC-RL !    LBL SRC-RD !    LBL SRC-PIPEOK !
+   LBL SRC-REPL !  LBL SRC-DONE !  LBL SRC-FSCAN !
+   LBL SRC-FNEXT ! LBL SRC-FREADY ! LBL SRC-FPLAIN !
+   LBL SRC-FLOOP ! LBL SRC-SHLOOP ! LBL SRC-STDINPROG !
+   LBL SRC-BLOOP ! LBL SRC-BDONE ! LBL SRC-BFAIL ! ;
+
+: C-SOURCE-MMAP ( fail -- )
+   >r
+   0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,
+   3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
+   NR-MMAP SYS,
+   13 C-CS CSET,  13 r> CBNZ, ;
+
+: C-ARG--LOAD? ( notload -- )
+   >r
+   4 12 0 LDRB,  4 $2D CMPI,  C-NE r@ BCOND,
+   4 12 1 LDRB,  4 $2D CMPI,  C-NE r@ BCOND,
+   4 12 2 LDRB,  4 108 CMPI,  C-NE r@ BCOND,
+   4 12 3 LDRB,  4 111 CMPI,  C-NE r@ BCOND,
+   4 12 4 LDRB,  4 97 CMPI,   C-NE r@ BCOND,
+   4 12 5 LDRB,  4 100 CMPI,  C-NE r@ BCOND,
+   4 12 6 LDRB,  4 0 CMPI,    C-NE r> BCOND, ;
+
+: C-ARG-SEP? ( notsep -- )
+   >r
+   4 12 0 LDRB,  4 $2D CMPI,  C-NE r@ BCOND,
+   4 12 1 LDRB,  4 $2D CMPI,  C-NE r@ BCOND,
+   4 12 2 LDRB,  4 0 CMPI,    C-NE r> BCOND, ;
+
+: C-SOURCE-SKIP-SHEBANG ( -- )
+   12 9 11 SUB,  12 2 CMPI,  C-LT SRC-DONE @ BCOND,
+   4 11 0 LDRB,  4 $23 CMPI,  C-NE SRC-DONE @ BCOND,
+   4 11 1 LDRB,  4 $21 CMPI,  C-NE SRC-DONE @ BCOND,
+   11 11 2 ADDI,
+   SRC-SHLOOP @ LBL,
+      11 9 CMP,  C-GE SRC-DONE @ BCOND,
+      4 11 0 LDRB,  11 11 1 ADDI,
+      11 DATA INP-CELL STR,
+      4 10 CMPI,  C-EQ SRC-DONE @ BCOND,
+      SRC-SHLOOP @ B, ;
+
+: C-SOURCE-PIPE ( -- )
+   SRC-STDINPROG @ LBL,
+   SRC-SFAIL @ C-SOURCE-MMAP
+   11 0 0 ADDI,  9 0 0 ADDI,
+   EMIT-HOST-LOAD-PREFIX
+   17 9 0 ADDI,
+   SRC-RL @ LBL,
+      0 0 MOVZ,  1 9 0 ADDI,
+      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 SRC-RD @ CBZ,
+      NR-READ SYS,
+      13 C-CS CSET,  13 SRC-SFAIL @ CBNZ,
+      0 SRC-RD @ CBZ,
+      9 9 0 ADD,  SRC-RL @ B,
+   SRC-RD @ LBL,
+   LSHBANG @ BL,
+   9 17 CMP,  C-NE SRC-PIPEOK @ BCOND,
+   10 DATA ARGC-CELL LDR,  10 1 CMPI,  C-GT SRC-FILE @ BCOND,
+   SRC-PIPEOK @ LBL,
+   11 DATA INP-CELL STR,  9 DATA INE-CELL STR,
+   C-SOURCE-SKIP-SHEBANG ;
+
+: C-SOURCE-FIND-SEP ( -- )
+   SRC-FSCAN @ LBL,
+      13 10 CMP,  C-GE SRC-FREADY @ BCOND,
+      12 DATA ARGV-CELL LDR,  5 13 3 LSLI,  12 12 5 ADD,  12 12 0 LDR,
+      SRC-FNEXT @ C-ARG-SEP?
+      15 13 0 ADDI,  SRC-FREADY @ B,
+   SRC-FNEXT @ LBL,  13 13 1 ADDI,  SRC-FSCAN @ B, ;
+
+: C-SOURCE-ARGV1 ( -- )
+   12 DATA ARGV-CELL LDR,  12 12 8 LDR, ;
+
+: C-SOURCE-FILE-MAP ( -- )
+   SRC-SFAIL @ C-SOURCE-MMAP
+   11 0 0 ADDI, ;
+
+: C-SOURCE-FILE-INIT ( -- )
+   9 11 0 ADDI,
+   10 DATA ARGC-CELL LDR,
+   14 1 MOVZ,  15 2 MOVZ,
+   C-SOURCE-ARGV1 ;
+
+: C-SOURCE-FILE-PREFIX ( -- )
+   SRC-FPLAIN @ C-ARG--LOAD?
+   14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
+   EMIT-HOST-LOAD-PREFIX
+   C-SOURCE-FIND-SEP
+   SRC-FPLAIN @ LBL,
+   EMIT-HOST-LOAD-PREFIX
+   SRC-FREADY @ LBL, ;
+
+: C-SOURCE-APPEND-ARG ( -- )
+   12 DATA ARGV-CELL LDR,  5 14 3 LSLI,
+   12 12 5 ADD,  12 12 0 LDR,
+   LSRCRD @ BL,
+   14 14 1 ADDI, ;
+
+: C-SOURCE-APPEND-LF ( -- )
+   2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,
+   9 2 CMP,  C-GE SRC-SFAIL @ BCOND,
+   5 10 MOVZ,  5 9 0 STRB,  9 9 1 ADDI, ;
+
+: C-SOURCE-FILE-LOOP ( -- )
+   SRC-FLOOP @ LBL,
+      14 15 CMP,  C-GE SRC-PIPEOK @ BCOND,
+      C-SOURCE-APPEND-ARG
+      14 15 CMP,  C-GE SRC-PIPEOK @ BCOND,
+      C-SOURCE-APPEND-LF
+      SRC-FLOOP @ B, ;
+
+: C-SOURCE-FAIL-REPL-DONE ( -- )
+   SRC-SFAIL @ LBL,  0 74 MOVZ,  NR-EXIT SYS,
+   SRC-REPL @ LBL,
+   11 LSRC @ ADR,  11 DATA INP-CELL STR,
+   5 SRCN @ LIT64,  11 11 5 ADD,  11 DATA INE-CELL STR,
+   SRC-DONE @ B,
+   SRC-DONE @ LBL, ;
+
+: C-SOURCE-FILE-LIST ( -- )
+   9 DATA ARGC-CELL LDR,  9 1 CMPI,  C-LE SRC-REPL @ BCOND,
+   C-SOURCE-FILE-MAP
+   SRC-FILE @ LBL,
+   C-SOURCE-FILE-INIT
+   C-SOURCE-FILE-PREFIX
+   14 15 CMP,  C-GE SRC-SFAIL @ BCOND,
+   C-SOURCE-FILE-LOOP
+   C-SOURCE-FAIL-REPL-DONE ;
+
+: C-SOURCE-STDIN ( -- )
+   C-EMIT-TTY-PROBE
+   0 SRC-TTY @ CBZ,
+   10 DATA ARGC-CELL LDR,  10 1 CMPI,  C-LE SRC-STDINPROG @ BCOND,
+   C-SOURCE-ARGV1
+   SRC-STDINPROG @ C-ARG--LOAD?
+   SRC-TTY @ B,
+   C-SOURCE-PIPE
+   SRC-TTY @ LBL,
+   C-SOURCE-FILE-LIST ;
+
+: C-SOURCE-BAKED ( -- )
+   SRC-BFAIL @ C-SOURCE-MMAP
+   11 0 0 ADDI,  9 0 0 ADDI,
+   EMIT-HOST-LOAD-PREFIX
+   17 9 0 ADDI,
+   12 LSRC @ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
+   SRC-BLOOP @ LBL,
+      12 13 CMP,  C-GE SRC-BDONE @ BCOND,
+      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  9 2 CMP,  C-GE SRC-BFAIL @ BCOND,
+      4 12 0 LDRB,  4 9 0 STRB,
+      12 12 1 ADDI,  9 9 1 ADDI,
+      SRC-BLOOP @ B,
+   SRC-BDONE @ LBL,
+   LSHBANG @ BL,
+   11 DATA INP-CELL STR,  9 DATA INE-CELL STR,  SRC-DONE @ B,
+   SRC-BFAIL @ LBL,  0 74 MOVZ,  NR-EXIT SYS,
+   SRC-DONE @ LBL, ;
 
 : EMIT-SOURCE ( -- )
-   STDIN? @ if
-      LBL {: rpipe :}  LBL {: rgo :}
-      \ a tty? run the BAKED source (the REPL bootstrap) instead of a blocking
-      \ read-to-EOF; a pipe keeps the classic batch read-all below.
-      0 0 MOVZ,  1 $40487413 LIT64,  2 DATA BODYBUF-OFF ADDI,  NR-IOCTL SYS,
-      0 rpipe CBNZ,
-      11 LSRC @ ADR,  11 DATA INP-CELL STR,  5 SRCN @ LIT64,  11 11 5 ADD,  11 DATA INE-CELL STR,  rgo B,
-      rpipe LBL,
-      0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,  3 $1002 LIT64,  4 0 MOVN,  5 0 MOVZ,
-      NR-MMAP SYS,                       \ mmap RW input buffer -> x0
-      11 0 0 ADDI,  9 0 0 ADDI,                    \ x11 = base, x9 = write ptr
-      LBL {: rl :}  LBL {: RD :}
-      rl LBL,
-         0 0 MOVZ,  1 9 0 ADDI,                    \ read(fd=0, buf=ptr, …)
-         2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,   \ count = base+SZ-ptr
-         2 RD CBZ,                                 \ buffer full -> done
-         NR-READ SYS,                      \ -> x0 = n
-         0 RD CBZ,                                 \ EOF (n=0) -> done
-         9 9 0 ADD,  rl B,                         \ ptr += n
-      RD LBL,
-      11 DATA INP-CELL STR,  9 DATA INE-CELL STR,                \ INP=base, INE=ptr
-      rgo LBL,
-   else
-      11 LSRC @ ADR,  11 DATA INP-CELL STR,  5 SRCN @ LIT64,  11 11 5 ADD,  11 DATA INE-CELL STR,
-   then ;
+   C-SOURCE-LABELS
+   STDIN? @ if C-SOURCE-STDIN else C-SOURCE-BAKED then ;
 
 \ ---- control-flow JIT: a CF stack (region+CFSTK-OFF) of placeholder branch
 \ addresses; THEN/ELSE/REPEAT patch the recorded branch's relative offset. ----
@@ -998,9 +1343,20 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    LKWIMM @ LBL,  s" immediate" BYTES,   LKWPOST @ LBL,  s" postpone" BYTES,
    LKWCOMPC @ LBL,  s" compile," BYTES,
    LKWDOES @ LBL,  s" does>" BYTES,
-   LKWTRUSTED @ LBL, s" trusted:" BYTES, LKWCREATES @ LBL, s" creates" BYTES,
+   LKWTRUSTED @ LBL, s" trusted:" BYTES,
    LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
-   LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES, ;
+   LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES,
+   LPLINUXTARGET @ LBL, s" src/os/linux/target.f" ZBYTES,
+   LPMACOSTARGET @ LBL, s" src/os/macos/target.f" ZBYTES,
+   LPUTIL @ LBL,        s" src/core/util.f" ZBYTES,
+   LPCHECKER @ LBL,     s" src/core/checker.f" ZBYTES,
+   LPRENDER @ LBL,      s" src/core/render.f" ZBYTES,
+   LPHOOK @ LBL,        s" src/core/check-hook.f" ZBYTES,
+   LPHABULAYOUT @ LBL,  s" src/habu/layout.f" ZBYTES,
+   LPLINUXENV @ LBL,    s" src/os/linux/env.f" ZBYTES,
+   LPMACOSENV @ LBL,    s" src/os/macos/env.f" ZBYTES,
+   LPROLES @ LBL,       s" src/core/roles.f" ZBYTES,
+   LPCOMBINATORS @ LBL, s" src/core/combinators.f" ZBYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : C-EMITW  ( word -- )  9 swap LIT64,  LCEMIT @ BL, ;          \ emit one fixed instr word
@@ -1159,6 +1515,81 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
 : J-RECURSE
    9 DATA PEND-CELL LDR,  9 9 0 LDR,  $94000000 $3FFFFFF C-BBACK ;   \ bl entry
 
+: C-FIND-TRUST  LBL {: ok :}
+   9 LKWTRUST @ ADR,  10 5 MOVZ,  LFIND @ BL,
+   13 ok CBNZ,
+      0 2 MOVZ,  1 LKWTRUST @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT SYS,
+   ok LBL, ;
+
+: C-PUSH-DREC-NAME ( -- )
+   LBL {: pinl :}
+   9 12 24 ADDI,
+   10 12 16 LDR,  10 10 DNAME-EXT ANDI,  10 pinl CBZ,
+      9 12 24 LDR,
+   pinl LBL,
+   9 G-PUSH
+   9 12 16 LDR,  9 9 4 LSLI,  9 9 4 LSRI,  9 G-PUSH ;
+
+: C-CALL-TRUST-LASTC ( -- )
+   C-FIND-TRUST
+   12 DATA LASTC-CELL LDR,
+   C-PUSH-DREC-NAME
+   9 DATA CRSIG-A-CELL LDR,  9 G-PUSH
+   9 DATA CRSIG-U-CELL LDR,  9 G-PUSH
+   SP SP 16 SUBI,  30 SP 0 STR,  11 BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
+
+: C-EMIT-DATA-X9! ( n -- ) {: off :}
+   9 20 off W-STRX C-EMITW ;
+
+: C-EMIT-CRSIG-PART! ( n n -- ) {: src dst :}
+   11 DATA src LDR,  C-X9-LIT
+   dst C-EMIT-DATA-X9! ;
+
+: C-EMIT-CRSIG-A! ( -- )
+   TCSIG-A-CELL CRSIG-A-CELL C-EMIT-CRSIG-PART! ;
+
+: C-EMIT-CRSIG-U! ( -- )
+   TCSIG-U-CELL CRSIG-U-CELL C-EMIT-CRSIG-PART! ;
+
+: C-EMIT-CRSIG-SET ( -- )
+   LBL {: none :}
+   9 DATA TCSIG-U-CELL LDR,  9 none CBZ,
+      C-EMIT-CRSIG-A!
+      C-EMIT-CRSIG-U!
+   none LBL, ;
+
+: C-RUNTIME-CRSIG-CLEAR ( -- )
+   9 0 MOVZ,
+   9 DATA CRSIG-A-CELL STR,
+   9 DATA CRSIG-U-CELL STR, ;
+
+: C-PARSE-CREATED-SIG ( -- )
+   LBL LBL LBL LBL LBL LBL LBL {: ws got scan cpy cpd done bad :}
+   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
+   ws LBL,  11 12 CMP,  C-GE bad BCOND,
+      13 11 0 LDRB,  13 32 CMPI,  C-HI got BCOND,
+      11 11 1 ADDI,  ws B,
+   got LBL,  13 40 CMPI,  C-NE bad BCOND,
+      14 11 0 ADDI,  15 11 0 ADDI,
+   scan LBL,  15 12 CMP,  C-GE bad BCOND,
+      13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE scan BCOND,
+   15 DATA INP-CELL STR,
+   16 14 1 ADDI,  10 15 14 SUB,  10 10 2 SUBI,
+   12 DATA 0 LDR,  15 12 0 ADDI,
+   14 12 10 ADD,  14 DP-CHECK
+   11 16 0 ADDI,  9 10 0 ADDI,
+   cpy LBL,  9 cpd CBZ,
+      13 11 0 LDRB,  13 12 0 STRB,
+      12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cpy B,
+   cpd LBL,
+   12 DATA 0 STR,
+   15 DATA TCSIG-A-CELL STR,  10 DATA TCSIG-U-CELL STR,
+   done B,
+   bad LBL,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 76 MOVZ,  NR-EXIT SYS,
+   done LBL, ;
+
 \ DOES> — the defining word patches its LAST create into `push dfield ; b D`,
 \ then exits; D (the does-body) follows with its own prologue and shares `;`'s
 \ epilogue. The patch itself runs in LDOESPATCH (ENGINE text): flipping the
@@ -1171,6 +1602,8 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
       0 75 MOVZ,  NR-EXIT SYS,
    dok LBL,
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
+   C-PARSE-CREATED-SIG
+   C-EMIT-CRSIG-SET
    $1000008A C-EMITW                     \ adr x10, #+16 = D (4 words ahead)
    16 20 DOESP-CELL W-LDRX C-EMITW       \ x16 = LDOESPATCH runtime addr
    $D63F0200 C-EMITW                     \ blr x16
@@ -1214,6 +1647,7 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
 \ LDOESPATCH ( x10=D ): patch the last-created word's RET into `b D`.
 \ Runs from engine text, so the region RW/RX flips are safe mid-execution.
 : EMIT-DOESPATCH ( -- )
+   LBL {: nocr :}
    LDOESPATCH @ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
    2 3 MOVZ,  LPROT @ BL,                                \ region -> RW
@@ -1228,6 +1662,10 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    2 5 MOVZ,  LPROT @ BL,                                \ region -> RX
    12 SP 16 LDR,
    12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
+   9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
+      C-CALL-TRUST-LASTC
+      C-RUNTIME-CRSIG-CLEAR
+   nocr LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 \ CREATE/VARIABLE (interpret-mode defining words): make a dict word whose body
@@ -1278,28 +1716,13 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
       0 76 MOVZ,  NR-EXIT SYS,
    done LBL, ;
 
-: C-FIND-TRUST  LBL {: ok :}
-   9 LKWTRUST @ ADR,  10 5 MOVZ,  LFIND @ BL,
-   13 ok CBNZ,
-      0 2 MOVZ,  1 LKWTRUST @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT SYS,
-   ok LBL, ;
-
-: C-CALL-TRUST-CURRENT ( -- )
-   C-FIND-TRUST
-   9 DATA TKA-CELL LDR,  9 G-PUSH
-   9 DATA TKL-CELL LDR,  9 G-PUSH
-   9 DATA CRSIG-A-CELL LDR,  9 G-PUSH
-   9 DATA CRSIG-U-CELL LDR,  9 G-PUSH
-   SP SP 16 SUBI,  30 SP 0 STR,  11 BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
-
 \ CREATE as a BL-able routine: the interpret keyword AND the runtime `create`
 \ prim share it, so defining words (`: CONST create , does> @ ;`) work.
 \ LCREATE ( x15=top-level? ): the hook KIND record (`NAME create` -> sig -- n)
-\ applies to top-level creates. When a trusted definer arms CRSIG, runtime CREATE
-\ records the created word's declared effect with TRUST before the optional hook.
+\ applies to top-level creates. Created-word effects are recorded by DOESPATCH
+\ after DOES> has parsed the created-word effect.
 : EMIT-CREATE ( -- )
-   LBL LBL {: nocr nokind :}
+   LBL {: nokind :}
    LCREATE @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  15 SP 8 STR,
    2 3 MOVZ,  LPROT @ BL,                               \ region -> RW
@@ -1317,9 +1740,6 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    9 DATA LASTC-CELL STR,                               \ DOES> patches this slot
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,                 \ region -> RX + flush
-   9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
-      C-CALL-TRUST-CURRENT
-   nocr LBL,
    15 SP 8 LDR,  15 nokind CBZ,
    LKWCREATE 6 C-DEFHOOK
    nokind LBL,
@@ -1388,73 +1808,58 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
    LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    LBL {: bk :}  13 bk CBZ,  C-LIT  bk LBL, ;
 
-\ {: a b :} (compile): record the names in the locals table, carve a machine-stack
-\ frame, and pop the declared values into slots (slot 0 = first/deepest name). The
-\ frame is torn down at ';'. Local references are resolved by LLOC-FIND -> a load.
-: C-LBRACE ( -- )
-   \ FOOTGUN GUARD 1: {: inside IF/BEGIN/DO corrupts the frame (the CF stack is
-   \ non-empty while compiling control flow) — refuse loudly: token + exit(75).
-   LBL {: cfok :}
+: C-LBRACE-GUARDS ( -- )
+   LBL LBL LBL {: cfok qlok xok :}
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    cfok LBL,
-   \ FOOTGUN GUARD 1c: {: inside [: ;] — the locals frame belongs to the OUTER
-   \ word; the quotation's epilogue would not tear it down. Refuse: exit(75).
-   LBL {: qlok :}
    11 DATA QPATCH-CELL LDR,  11 qlok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
    qlok LBL,
-   \ FOOTGUN GUARD 1b: {: after EXIT — the patched epilogue would tear down a
-   \ frame the exit path never carved. Refuse loudly: token + exit(75).
-   LBL {: xok :}
    11 DATA EXITH-CELL LDR,  11 xok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
-   xok LBL,
-   \ each {: :} group carves EXACTLY its own slots at ':}' — no fixed frame, no
-   \ slot cap from the frame. A slot's sp offset is LOCF - 8*(slot+1): earlier
-   \ slots shift UP by each later carve, and LOCF tracks the running total, so
-   \ the offset stays compile-time computable. Teardown stays `add sp,#LOCF`.
-   6 DATA LOCN-CELL LDR,                      \ x6 = start slot for this block (= current N)
-   LBL {: nl :}  LBL {: nd :}  LBL {: nstore :}  LBL {: ncp :}  LBL {: ncd :}
+   xok LBL, ;
+
+: C-LBRACE-STORE-ONE ( -- )
+   LBL LBL LBL LBL LBL LBL {: nlok noti ncp ncd tsl tsd :}
+   11 DATA LOCN-CELL LDR,  11 64 CMPI,  C-LT nlok BCOND,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
+   nlok LBL,
+   13 DATA TKL-CELL LDR,  13 1 CMPI,  C-NE noti BCOND,
+   13 DATA TKA-CELL LDR,  13 13 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT SYS,
+   noti LBL,
+   11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
+   14 0 MOVZ,  8 DATA TKL-CELL LDR,  10 DATA TKA-CELL LDR,
+   tsl LBL,  14 8 CMP,  C-GE tsd BCOND,
+      15 10 14 ADD,  15 15 0 LDRB,  15 58 CMPI,  C-EQ tsd BCOND,
+      14 14 1 ADDI,  tsl B,
+   tsd LBL,
+   14 11 0 STR,
+   12 11 8 ADDI,  13 DATA TKA-CELL LDR,
+   ncp LBL,  14 ncd CBZ,  15 13 0 LDRB, 15 12 0 STRB, 12 12 1 ADDI, 13 13 1 ADDI, 14 14 1 SUBI, ncp B,
+   ncd LBL,
+   11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR, ;
+
+: C-LBRACE-PARSE-NAMES ( -- )
+   LBL LBL LBL {: nl nd nstore :}
+   6 DATA LOCN-CELL LDR,
    nl LBL,
       LTOK @ BL,  0 nd CBZ,
       LBCAP @ BL,                                          \ locals reach the checker too
       0 LKWENDLOC @ ADR,  1 2 MOVZ,  LKWCMP @ BL,  0 nstore CBZ,  nd B,   \ ":}" -> done
       nstore LBL,
-      \ cap: the LOCNAMES table holds 64 records — die loudly past it
-      LBL {: nlok :}
-      11 DATA LOCN-CELL LDR,  11 64 CMPI,  C-LT nlok BCOND,
-         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 75 MOVZ,  NR-EXIT SYS,
-      nlok LBL,
-      \ FOOTGUN GUARD 2: a local named i/I is shadowed by the loop-index keyword
-      LBL {: noti :}
-      13 DATA TKL-CELL LDR,  13 1 CMPI,  C-NE noti BCOND,
-      13 DATA TKA-CELL LDR,  13 13 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
-         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 75 MOVZ,  NR-EXIT SYS,
-      noti LBL,
-      11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
-      \ typed local a:n — references use the BARE name; the :type suffix is
-      \ checker-only (it reaches the hook via the body capture). x14 = bare len.
-      LBL {: tsl :}  LBL {: tsd :}
-      14 0 MOVZ,  8 DATA TKL-CELL LDR,  10 DATA TKA-CELL LDR,
-      tsl LBL,  14 8 CMP,  C-GE tsd BCOND,
-         15 10 14 ADD,  15 15 0 LDRB,  15 58 CMPI,  C-EQ tsd BCOND,
-         14 14 1 ADDI,  tsl B,
-      tsd LBL,
-      14 11 0 STR,                            \ entry.len = bare len
-      12 11 8 ADDI,  13 DATA TKA-CELL LDR,           \ copy bare bytes (x14 already the count)
-      ncp LBL,  14 ncd CBZ,  15 13 0 LDRB, 15 12 0 STRB, 12 12 1 ADDI, 13 13 1 ADDI, 14 14 1 SUBI, ncp B,
-      ncd LBL,
-      11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR,   \ N++
+      C-LBRACE-STORE-ONE
       nl B,
-   nd LBL,
-   \ carve exactly this group's slots, bump LOCF, then pop top -> highest
-   \ NEW slot at offset LOCF - 8*(i+1)
+   nd LBL, ;
+
+: C-LBRACE-CARVE-FRAME ( -- )
+   LBL LBL {: pl pd :}
    13 DATA LOCN-CELL LDR,  14 13 6 SUB,       \ n = N - start
    5 14 3 LSLI,  5 5 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,   \ carve = align16(n*8):
    9 $D10003FF LIT64,  15 5 10 LSLI,  9 9 15 ORR,  LCEMIT @ BL,   \ SP must stay 16-aligned
@@ -1470,6 +1875,13 @@ create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-
       9 $F90003E9 LIT64,  5 5 10 LSLI,  9 9 5 ORR,  LCEMIT @ BL,   \ str x9,[sp,#off]
       13 13 1 SUBI,  pl B,
    pd LBL, ;
+
+\ {: a b :} (compile): record names, carve a machine-stack frame, and pop
+\ declared values into slots. References are resolved by LLOC-FIND.
+: C-LBRACE ( -- )
+   C-LBRACE-GUARDS
+   C-LBRACE-PARSE-NAMES
+   C-LBRACE-CARVE-FRAME ;
 
 \ S" (interpret mode): copy the string to HERE (transient — no allot) and push
 \ ( addr len ). Compile mode bakes bytes into the code image instead (c-sdq).
@@ -1641,91 +2053,84 @@ variable CFSK2
    8 $AA0003F1 LIT64,  7 14 16 LSLI,  9 8 7 ORR,  LCEMIT @ BL,   \ may reload into it
    J-UNTILX ;
 
-\ ---- MAIN: startup (data stack + mmap + seed dict) then the outer interpreter ----
-: EMIT-MAIN ( -- )
-   LANCHOR @ LBL,
-   13 0 0 ADDI,  14 1 0 ADDI,  15 2 0 ADDI,          \ main(argc,argv,envp) from dyld
-   RBASE LANCHOR @ ADR,                              \ x20 = __TEXT base
-   SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  XDS SP 0 ADDI,                  \ data stack on machine sp
-   \ mmap(0, REGION, PROT_READ|WRITE=3, MAP_ANON|MAP_PRIVATE=0x1002, -1, 0)
-   0 RBASE-VA LIT64,  1 REGION LIT64,  2 3 MOVZ,  3 $1012 LIT64,  4 0 MOVN,  5 0 MOVZ,
+: EMIT-ENTRY-ARGS ( -- )
+   HB-TARGET-LINUX? IF
+      13 SP 0 LDR,  14 SP 8 ADDI,
+      15 13 1 ADDI,  15 15 3 LSLI,  15 14 15 ADD,
+      exit
+   THEN
+   HB-TARGET-MACOS? IF
+      13 0 0 ADDI,  14 1 0 ADDI,  15 2 0 ADDI,
+      exit
+   THEN
+   C-TARGET-UNKNOWN ;
+
+: EMIT-RUNTIME-STACK ( -- )
+   RBASE LANCHOR @ ADR,
+   SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
+   SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
+   XDS SP 0 ADDI, ;
+
+: EMIT-MMAP-CODE-REGION ( -- )
+   LBL {: rvok :}
+   0 RBASE-VA LIT64,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
    5 RBASE-VA LIT64,  0 5 CMP,
-   LBL {: rvok :}  C-EQ rvok BCOND,
-      0 78 MOVZ,  NR-EXIT SYS,                         \ fixed VA taken: die loudly
+   C-EQ rvok BCOND,
+      0 78 MOVZ,  NR-EXIT SYS,
    rvok LBL,
-   DBASE 0 0 ADDI,                                    \ x26 = region
-   CP DBASE 0 ADDI,  5 DICT-SIZE LIT64,  CP CP 5 ADD, \ x28 = region + DICT-SIZE
-   \ seed runtime dict from build-time dict (convert offsets -> absolute addr + clen)
-   11 LNCOUNT @ ADR,  11 11 0 LDR,  NDICT 11 0 ADDI,  \ x27 = NDICT = seed count
-   9 LDICT @ ADR,  10 DBASE 0 ADDI,  12 11 0 ADDI,    \ src, dst, i
-   LBL {: scopy :}  LBL {: scdone :}
+   DBASE 0 0 ADDI,
+   CP DBASE 0 ADDI,  5 DICT-SIZE LIT64,  CP CP 5 ADD, ;
+
+: EMIT-SEED-DICT ( -- )
+   LBL LBL {: scopy scdone :}
+   11 LNCOUNT @ ADR,  11 11 0 LDR,  NDICT 11 0 ADDI,
+   9 LDICT @ ADR,  10 DBASE 0 ADDI,  12 11 0 ADDI,
    scopy LBL,
       12 scdone CBZ,
-      5 9 0 LDR,  6 9 8 LDR,                          \ startoff, endoff
-      7 RBASE 5 ADD,  7 10 0 STR,                     \ addr = RBASE+startoff
-      6 6 5 SUB,  6 6 4 SUBI,  6 10 8 STR,            \ clen = endoff-startoff-4
-      5 9 16 LDR,  5 10 16 STR,                       \ namelen
-      5 9 24 LDR,  5 10 24 STR,  5 9 32 LDR,  5 10 32 STR,  \ name[0..15]
-      5 9 40 LDR,  5 10 40 STR,                       \ wid
+      5 9 0 LDR,  6 9 8 LDR,
+      7 RBASE 5 ADD,  7 10 0 STR,
+      6 6 5 SUB,  6 6 4 SUBI,  6 10 8 STR,
+      5 9 16 LDR,  5 10 16 STR,
+      5 9 24 LDR,  5 10 24 STR,  5 9 32 LDR,  5 10 32 STR,
+      5 9 40 LDR,  5 10 40 STR,
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
-   scdone LBL,
-   \ separate always-RW data region (x20 is free after the seed copy); [x20]=DP=x20+8
-   0 DATA-VA LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 $1012 LIT64,  4 0 MOVN,  5 0 MOVZ,
+   scdone LBL, ;
+
+: EMIT-MMAP-DATA-REGION ( -- )
+   LBL {: dvok :}
+   0 DATA-VA LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
    5 DATA-VA LIT64,  0 5 CMP,
-   LBL {: dvok :}  C-EQ dvok BCOND,
+   C-EQ dvok BCOND,
       0 78 MOVZ,  NR-EXIT SYS,
-   dvok LBL,
-   20 0 RBASE-CELL STR,                               \ save RBASE (x20=__TEXT base) into the data region
+   dvok LBL, ;
+
+: EMIT-DATA-INIT ( -- )
+   20 0 RBASE-CELL STR,
    DATA 0 0 ADDI,
-   XDS DATA S0-CELL STR,                              \ save data-stack base for `.s`
+   XDS DATA S0-CELL STR,
    13 DATA ARGC-CELL STR,  14 DATA ARGV-CELL STR,  15 DATA ENVP-CELL STR,
-   5 DATA-START MOVZ,  7 DATA 5 ADD,  7 DATA DP-CELL STR,   \ DP = base + header ($2800 > imm12)
-   \ ---- AOT snapshot? (trailer at the end of our own __text). If present:
-   \ restore both regions verbatim (fixed VAs keep region addresses valid),
-   \ relocate engine-text call chains (the only ASLR-movers), boot WARM. ----
-   LBL {: snomag :}  LBL {: sc1 :}  LBL {: sc1d :}
-   LBL {: sc2 :}  LBL {: sc2d :}
-   LBL {: srl :}  LBL {: srn :}  LBL {: srx :}  LBL {: snapdone :}
-   24 0 MOVZ,                                       \ x24 = snapshot flag
-   9 DATA RBASE-CELL LDR,  25 9 0 ADDI,             \ x25 = live text CONTENT base
-   10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
-   11 10 216 LDR,                                   \ S = our __text size
-   12 9 11 ADD,  12 12 40 SUBI,                     \ trailer
-   13 12 0 LDR,  5 SNAP-MAGIC LIT64,  13 5 CMP,  C-NE snomag BCOND,
-   21 12 8 LDR,                                     \ x21 = snapshot-time text base
-   15 12 16 LDR,                                    \ x15 = ndict
-   6 12 24 LDR,                                     \ x6 = region payload len
-   7 12 32 LDR,                                     \ x7 = data payload len
-   \ corrupt/truncated trailer must never smear the regions: exit 79
-   LBL {: snbad :}  LBL {: snokz :}
-   5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
-   5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
-   5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
-   snokz B,
-   snbad LBL,  0 79 MOVZ,  NR-EXIT SYS,
-   snokz LBL,
-   9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
-   22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,       \ x22 = engine text len then
-   8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
+   5 DATA-START MOVZ,  7 DATA 5 ADD,  7 DATA DP-CELL STR, ;
+
+: EMIT-SNAPSHOT-COPY-CODE ( -- )
+   LBL LBL {: sc1 sc1d :}
    13 DBASE 0 ADDI,  14 0 MOVZ,
    sc1 LBL,  14 6 CMP,  C-GE sc1d BCOND,
       3 8 14 ADD,  3 3 0 LDRB,  4 13 14 ADD,  3 4 0 STRB,
       14 14 1 ADDI,  sc1 B,
-   sc1d LBL,
+   sc1d LBL, ;
+
+: EMIT-SNAPSHOT-COPY-DATA ( -- )
+   LBL LBL {: sc2 sc2d :}
    8 12 7 SUB,  13 DATA 0 ADDI,  14 0 MOVZ,
    sc2 LBL,  14 7 CMP,  C-GE sc2d BCOND,
       3 8 14 ADD,  3 3 0 LDRB,  4 13 14 ADD,  3 4 0 STRB,
       14 14 1 ADDI,  sc2 B,
-   sc2d LBL,
-   25 DATA RBASE-CELL STR,                          \ live values over stale copies
-   XDS DATA S0-CELL STR,
-   9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
-   NDICT 15 0 ADDI,
-   CP DBASE 6 ADD,
-   LBL {: sdl2 :}  LBL {: sdn2 :}  LBL {: sds2 :}  LBL {: snrn :}
-   \ rebase seed-prim dict entries and external names in the old engine text
+   sc2d LBL, ;
+
+: EMIT-SNAPSHOT-REBASE-DICT ( -- )
+   LBL LBL LBL LBL {: sdl2 sdn2 sds2 srn :}
    9 DBASE 0 ADDI,  10 0 MOVZ,
    sdl2 LBL,  10 NDICT CMP,  C-GE sdn2 BCOND,
       13 9 0 LDR,
@@ -1733,14 +2138,16 @@ variable CFSK2
       14 21 22 ADD,  13 14 CMP,  C-GE sds2 BCOND,
       13 13 21 SUB,  13 13 25 ADD,  13 9 0 STR,
       sds2 LBL,
-      13 9 16 LDR,  13 13 DNAME-EXT ANDI,  13 snrn CBZ,
+      13 9 16 LDR,  13 13 DNAME-EXT ANDI,  13 srn CBZ,
       13 9 24 LDR,
-      13 21 CMP,  C-LT snrn BCOND,
-      14 21 22 ADD,  13 14 CMP,  C-GE snrn BCOND,
+      13 21 CMP,  C-LT srn BCOND,
+      14 21 22 ADD,  13 14 CMP,  C-GE srn BCOND,
       13 13 21 SUB,  13 13 25 ADD,  13 9 24 STR,
-      snrn LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
-   sdn2 LBL,
-   \ relocation: movz/movk/movk x16 + blr x16 whose value sat in the OLD text
+      srn LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
+   sdn2 LBL, ;
+
+: EMIT-SNAPSHOT-REBASE-CALLS ( -- )
+   LBL LBL LBL {: srl srn srx :}
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,
    srl LBL,  9 CP CMP,  C-GE srx BCOND,
       10 9 0 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
@@ -1755,7 +2162,7 @@ variable CFSK2
       10 9 8 LDRW,  10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 32 LSLI,  13 13 10 ORR,
       13 21 CMP,  C-LT srn BCOND,
       14 21 22 ADD,  13 14 CMP,  C-GE srn BCOND,
-      13 13 21 SUB,  13 13 25 ADD,                  \ rebase into the live text
+      13 13 21 SUB,  13 13 25 ADD,
       10 9 0 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
         14 13 0 ADDI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 0 STRW,
       10 9 4 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
@@ -1764,305 +2171,417 @@ variable CFSK2
         14 13 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
       9 9 12 ADDI,
    srn LBL,  9 9 4 ADDI,  srl B,
-   srx LBL,
-   2 5 MOVZ,  LPROT @ BL,                           \ region RX +
-   9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH @ BL,   \ coherent
+   srx LBL, ;
+
+: EMIT-SNAPSHOT-RX-FLUSH ( -- )
+   2 5 MOVZ,  LPROT @ BL,
+   9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH @ BL, ;
+
+: EMIT-SNAPSHOT-RESTORE ( -- )
+   LBL LBL LBL {: snomag snbad snok :}
+   24 0 MOVZ,
+   9 DATA RBASE-CELL LDR,  25 9 0 ADDI,
+   10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
+   11 10 IMAGE-TEXT-SIZE-OFF LDR,
+   12 10 11 ADD,  12 12 40 SUBI,
+   13 12 0 LDR,  5 SNAP-MAGIC LIT64,  13 5 CMP,  C-NE snomag BCOND,
+   21 12 8 LDR,
+   15 12 16 LDR,
+   6 12 24 LDR,
+   7 12 32 LDR,
+   5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
+   5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
+   5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
+   snok B,
+   snbad LBL,  0 79 MOVZ,  NR-EXIT SYS,
+   snok LBL,
+   9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
+   22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,
+   8 12 7 SUB,  8 8 6 SUB,
+   EMIT-SNAPSHOT-COPY-CODE
+   EMIT-SNAPSHOT-COPY-DATA
+   25 DATA RBASE-CELL STR,
+   XDS DATA S0-CELL STR,
+   9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
+   NDICT 15 0 ADDI,
+   CP DBASE 6 ADD,
+   EMIT-SNAPSHOT-REBASE-DICT
+   EMIT-SNAPSHOT-REBASE-CALLS
+   EMIT-SNAPSHOT-RX-FLUSH
    24 1 MOVZ,
-   snomag LBL,
-   9 0 MOVZ,  9 DATA HND-CELL STR,                    \ HND (catch handler chain) = 0
-   LBL {: cwok :}  24 cwok CBNZ,                   \ snapshot preserves live CUR/WIDN/HOOK
-   9 0 MOVZ,  9 DATA CUR-CELL STR,                    \ CURRENT wordlist = 0 (FORTH)
-   9 1 MOVZ,  9 DATA WIDN-CELL STR,                   \ next fresh wid = 1
-   9 0 MOVZ,  9 DATA HOOK-CELL STR,                   \ check hook = none
+   snomag LBL, ;
+
+: EMIT-STARTUP-RUNTIME-STATE ( -- )
+   LBL {: cwok :}
+   9 0 MOVZ,  9 DATA HND-CELL STR,
+   24 cwok CBNZ,
+   9 0 MOVZ,  9 DATA CUR-CELL STR,
+   9 1 MOVZ,  9 DATA WIDN-CELL STR,
+   9 0 MOVZ,  9 DATA HOOK-CELL STR,
    cwok LBL,
-   9 0 MOVZ,  9 DATA LOOPSP-CELL STR,                 \ DO/LOOP frame depth = 0
-   G-INSTALL-CRASH                                    \ self-diagnosing crash (register dump)
-   G-INSTALL-TRAP                                     \ SIGTRAP -> breakpoint resume
-   LBL {: LMAIN :}  LBL {: LEXIT :}  LBL {: LCOMPILE :}  LBL {: LUNDEF :}   \ allocate up-front (byte-free) so the LMAIN store below is in scope
+   9 0 MOVZ,  9 DATA LOOPSP-CELL STR,
+   G-INSTALL-CRASH
+   G-INSTALL-TRAP ;
+
+: EMIT-STARTUP ( -- )
+   LANCHOR @ LBL,
+   EMIT-ENTRY-ARGS
+   EMIT-RUNTIME-STACK
+   EMIT-MMAP-CODE-REGION
+   EMIT-SEED-DICT
+   EMIT-MMAP-DATA-REGION
+   EMIT-DATA-INIT
+   EMIT-SNAPSHOT-RESTORE
+   EMIT-STARTUP-RUNTIME-STATE ;
+
+: EMIT-MAIN-RUNTIME-LABELS ( n -- ) {: lmain :}
    9 LDOESPATCH @ ADR,  9 DATA DOESP-CELL STR,
-   9 LCREATE @ ADR,  9 DATA CREATEP-CELL STR,        \ DOES> patch routine addr
-   9 LRREC @ ADR,  9 DATA RRECP-CELL STR,             \ throw's REPL recovery entry
-   9 LMAIN ADR,  9 DATA LMAINP-CELL STR,              \ interpret-loop top (B-EVAL branches here)
-   LVRINIT @ BL,                                     \ fill VRTAB/VRITAB from VRPACK
-   EMIT-SOURCE                                        \ INP/INE <- baked LSRC or stdin
-   9 0 MOVZ,  9 DATA PEND-CELL STR,                   \ interpret mode
-   LMAIN LBL,
-      LTOK @ BL,  0 LEXIT CBZ,
-      \ skip comments (both modes): \ to end-of-line, ( to ')'
-      LBL {: notcom :}  LBL {: skln :}  LBL {: skpar :}
-      9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
-      9 DATA TKA-CELL LDR,  9 9 0 LDRB,
-      9 92 CMPI,  C-EQ skln BCOND,                       \ '\'
-      9 40 CMPI,  C-NE notcom BCOND,                     \ '('
-      skpar LBL,  11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN BCOND,
-         9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 41 CMPI,  C-NE skpar BCOND,  LMAIN B,
-      skln LBL,   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN BCOND,
-         9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 10 CMPI,  C-NE skln BCOND,  LMAIN B,
-      notcom LBL,
-      9 DATA PEND-CELL LDR,  9 LCOMPILE CBNZ,
-      \ ---------------- INTERPRET ----------------
-      LBL {: lnotcolon :}
-      9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotcolon BCOND,
-      9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,     \ ':'
-         2 3 MOVZ,  LPROT @ BL,                             \ region -> RW *before* any write
-         LBL {: cpok :}  LBL {: ndok :}
-         9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
-            0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-            0 76 MOVZ,  NR-EXIT SYS,                    \ code region full
-         cpok LBL,
-         9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slots 0..2303 end at CFSTK-OFF
-            0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-            0 77 MOVZ,  NR-EXIT SYS,                    \ dictionary full
-         ndok LBL,
-         LTOK @ BL,                                         \ read NAME
-         9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,  \ slot
-         9 DATA PEND-CELL STR,
-         C-STORE-NAME
-         CP 9 0 STR,
-         14 DATA CUR-CELL LDR,  14 9 40 STR,                \ slot.wid = CURRENT
-         5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,   \ reset CFSP
-         12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,      \ reset locals
-         12 0 MOVZ,  12 DATA BODYLEN-CELL STR,                           \ reset body capture
-         LBCAP @ BL,             \ seed with the NAME (checker records certified sigs)
-         \ capture an optional leading ( in -- out ) into the body, so the check
-         \ hook sees the declared sig (CHECK! verifies the body against it)
-         LBL {: nsig :}  LBL {: sigq :}  LBL {: sp1 :}  LBL {: sc2 :}  LBL {: scd :}
-         11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
-         sp1 LBL,  11 12 CMP,  C-GE nsig BCOND,
-            13 11 0 LDRB,  13 32 CMPI,  C-HI sigq BCOND,
-            11 11 1 ADDI,  sp1 B,
-         sigq LBL,  13 40 CMPI,  C-NE nsig BCOND,         \ not '(' -> no sig
-         14 11 0 ADDI,  15 11 0 ADDI,                     \ x14=start x15=cursor
-         sc2 LBL,  15 12 CMP,  C-GE scd BCOND,
-            13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE sc2 BCOND,
-         scd LBL,  15 DATA INP-CELL STR,                  \ consume through ')'
-         11 14 0 ADDI,  12 15 14 SUB,  LBCS @ BL,         \ append "( ... )" to body
-         nsig LBL,
-         12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,     \ reset the VS
-         12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,                  \ reset EXIT/LEAVE chains
-         12 DATA QPATCH-CELL STR,                                        \ reset quotation state
-         12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
-         12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
-         9 $D10043FF LIT64,  LCEMIT @ BL,                  \ prologue: sub sp,sp,#16
-         9 $F90003FE LIT64,  LCEMIT @ BL,                  \   str x30,[sp]  (slot.addr points here)
-         LMAIN B,
-      lnotcolon LBL,
-      \ interpret-mode defining words + tick
-      LMAIN LKWCREATE 6 ['] C-CREATE   CF-ENTRY
-      LMAIN LKWVAR    8 ['] C-VARIABLE CF-ENTRY
-      LMAIN LKWCONST  8 ['] C-CONSTANT CF-ENTRY
-      LMAIN LKWTICK   1 ['] C-TICK     CF-ENTRY
-      LMAIN LKWCHAR   4 ['] C-CHAR     CF-ENTRY
-      LMAIN LKWIMM    9 ['] C-IMMEDIATE CF-ENTRY
-      LMAIN LKWSQ     2 ['] C-ISDQ     CF-ENTRY
-      LMAIN LKWCQ     2 ['] C-ICQ      CF-ENTRY
-      LMAIN LKWDOTQ   2 ['] C-IDOTQ    CF-ENTRY
-      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,             \ NUMBER?
-      LBL {: lnotnum :}
-      12 lnotnum CBZ,  11 G-PUSH  LMAIN B,
-      lnotnum LBL,
-      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,            \ FIND
-      13 LUNDEF CBZ,                                         \ unknown -> error (exit 70)
-      11 BLR,  LMAIN B,                                      \ EXECUTE
-      \ ---------------- COMPILE ----------------
-   LCOMPILE LBL,
-      LBL {: lnotsemi :}
-      9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
-      9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,       \ ';'
-         LVSPILL @ BL,                                       \ VS -> real pushes first
-         \ patch every EXIT placeholder to `b here` (epilogue, incl. teardown)
-         14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,
-         12 DATA LOCF-CELL LDR,  LBL {: notd :}  12 notd CBZ,   \ tear down locals frame
-            9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  LCEMIT @ BL,   \ add sp,sp,#frame
-         notd LBL,
-         9 $F94003FE LIT64,  LCEMIT @ BL,                   \ epilogue: ldr x30,[sp]
-         9 $910043FF LIT64,  LCEMIT @ BL,                   \   add sp,sp,#16
-         9 W-RET LIT64,  LCEMIT @ BL,                       \ emit RET
-         11 DATA PEND-CELL LDR,  9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,  \ clen
-         2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,               \ region -> RX + flush (callable now)
-         \ run the check hook on the captured body; publish only if it returns nonzero
-         LBL {: nohook :}  LBL {: rejected :}
-         9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-            10 DATA BODYBUF-OFF ADDI,  10 G-PUSH           \ ( body-addr )
-            10 DATA BODYLEN-CELL LDR,  10 G-PUSH           \ ( body-len )
-            SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
-            10 G-POP  10 rejected CBZ,                     \ ok==0 -> don't publish
-         nohook LBL,
-            NDICT NDICT 1 ADDI,                            \ publish word
-         rejected LBL,
-         9 0 MOVZ,  9 DATA PEND-CELL STR,                  \ leave compile mode
-         LMAIN B,
-      lnotsemi LBL,
-      \ capture the token into the body buffer (for the check hook); space-joined.
-      LBCAP @ BL,
-      \ control-flow keywords (compile-only): emit/patch JIT branches, then loop
-      LMAIN LKWIF     2 ['] J-IF   ['] J-IFR    CFB-ENTRY
-      LMAIN LKWTHEN   4 ['] J-THEN   CF-ENTRY
-      LMAIN LKWELSE   4 ['] J-ELSE   CF-ENTRY
-      LMAIN LKWBEGIN  5 ['] J-BEGIN  CFN-ENTRY
-      LMAIN LKWUNTIL  5 ['] J-UNTIL ['] J-UNTILR CFBN-ENTRY
-      LMAIN LKWAGAIN  5 ['] J-AGAIN  CFN-ENTRY
-      LMAIN LKWWHILE  5 ['] J-WHILE ['] J-WHILER CFB-ENTRY
-      LMAIN LKWREPEAT 6 ['] J-REPEAT CFN-ENTRY
-      LMAIN LKWSQ     2 ['] C-SDQ    CF-ENTRY            \ S" string"
-      LMAIN LKWCQ     2 ['] C-CQ     CF-ENTRY            \ C" counted string"
-      LMAIN LKWDOTQ   2 ['] C-DOTQ   CF-ENTRY            \ ." print string"
-      LMAIN LKWBTICK  3 ['] C-BTICK  CF-ENTRY            \ ['] NAME
-      LMAIN LKWBCHAR  6 ['] C-BCHAR  CF-ENTRY            \ [CHAR] X
-      LMAIN LKWPOST   8 ['] C-POSTPONE CF-ENTRY           \ POSTPONE NAME
-      LMAIN LKWDOES   5 ['] J-DOES     CF-ENTRY           \ DOES>
-      LMAIN LKWQUOT   2 ['] J-QUOT     CF-ENTRY           \ [:
-      LMAIN LKWSEMIQ  2 ['] J-SEMIQUOT CF-ENTRY           \ ;]
-      LMAIN LKWDO     2 ['] J-DO     CF-ENTRY            \ DO
-      LMAIN LKWLOOP   4 ['] J-LOOP   CF-ENTRY            \ LOOP
-      LMAIN LKWI      1 ['] J-I      CF-ENTRY            \ I
-      LMAIN LKWTOR    2 ['] J-TOR    CF-ENTRY            \ >R
-      LMAIN LKWRFROM  2 ['] J-RFROM  CF-ENTRY            \ R>
-      LMAIN LKWRFET   2 ['] J-RFETCH CF-ENTRY            \ R@
-      LMAIN LKWEXIT   4 ['] J-EXIT    CF-ENTRY            \ EXIT
-      LMAIN LKWREC    7 ['] J-RECURSE CF-ENTRY            \ RECURSE
-      LMAIN LKWQDO    3 ['] J-?DO     CF-ENTRY            \ ?DO
-      LMAIN LKWPLOOP  5 ['] J-+LOOP   CF-ENTRY            \ +LOOP
-      LMAIN LKWJ      1 ['] J-J       CF-ENTRY            \ J
-      LMAIN LKWLEAVE  5 ['] J-LEAVE   CF-ENTRY            \ LEAVE
-      LMAIN LKWUNLOOP 6 ['] J-UNLOOP  CF-ENTRY            \ UNLOOP
-      LMAIN LKWLBRACE 2 ['] C-LBRACE CF-ENTRY            \ {: a b :} locals
-      \ local-name reference -> load from its frame slot, push
-      LLOC-FIND @ BL,  LBL {: notloc :}  LBL {: lmem :}  0 0 CMPI,  C-LT notloc BCOND,
-         LVRALLOC @ BL,  14 lmem CBZ,                  \ local -> straight into a register
-         7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,   \ off = total-slot-1
-         9 $F94003E0 LIT64,  9 9 14 ORR,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
-         LVPUSHR @ BL,
-         LMAIN B,
-         lmem LBL,                                     \ no free reg: classic memory push
-         LVSPILL @ BL,
-         7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
-         9 $F94003E9 LIT64,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,   \ ldr x9,[sp,#off]
-         9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL,
-         LMAIN B,
-      notloc LBL,
-      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,             \ NUMBER? -> literal
-      LBL {: lcnotnum :}
-      12 lcnotnum CBZ,
-      LBL {: lcflt :}  2 lcflt CBNZ,  LVPUSHC @ BL,  LMAIN B,
-      lcflt LBL,  LVPUSHF @ BL,  LMAIN B,
-      lcnotnum LBL,
-      LMAIN LKWPLUS  1 ['] VF+ ['] E+ ['] EI+ VOPI-ENTRY
-      LMAIN LKWMINUS 1 ['] VF- ['] E- ['] EI- VOPI-ENTRY
-      LMAIN LKWSTAR  1 ['] VF* ['] E* VOP-ENTRY
-      LMAIN LKWAND2  3 ['] FAND ['] EAND VOP-ENTRY
-      LMAIN LKWOR2   2 ['] FOR2 ['] EOR2 VOP-ENTRY
-      LMAIN LKWXOR2  3 ['] FXOR2 ['] EXOR VOP-ENTRY
-      LMAIN LKWDUP2  3 1 ['] XDUP  VSHUF-ENTRY
-      LMAIN LKWDROP2 4 1 ['] XDROP VSHUF-ENTRY
-      LMAIN LKWSWAP2 4 2 ['] XSWAP VSHUF-ENTRY
-      LMAIN LKWOVER2 4 2 ['] XOVER VSHUF-ENTRY
-      LMAIN LKWNIP2  3 2 ['] XNIP  VSHUF-ENTRY
-      LMAIN LKWEQ2 1 0 VCMP-ENTRY
-      LMAIN LKWNE2 2 1 VCMP-ENTRY
-      LMAIN LKWLT2 1 11 VCMP-ENTRY
-      LMAIN LKWGT2 1 12 VCMP-ENTRY
-      LMAIN LKWLE2 2 13 VCMP-ENTRY
-      LMAIN LKWGE2 2 10 VCMP-ENTRY
-      LMAIN LKWINC  2 ['] FU1+ ['] EU1+ VUN-ENTRY
-      LMAIN LKWDEC  2 ['] FU1- ['] EU1- VUN-ENTRY
-      LMAIN LKWZEQ  2 ['] FU0= ['] EU0= VUN-ENTRY
-      LMAIN LKWZLT  2 ['] FU0< ['] EU0< VUN-ENTRY
-      LMAIN LKWNEG2 6 ['] FUNEG ['] EUNEG VUN-ENTRY
-      LMAIN LKWINV2 6 ['] FUINV ['] EUINV VUN-ENTRY
-      LMAIN LKWFPLUS  2 $1E602800 FOP-ENTRY
-      LMAIN LKWFMINUS 2 $1E603800 FOP-ENTRY
-      LMAIN LKWFSTAR  2 $1E600800 FOP-ENTRY
-      LMAIN LKWFSLASH 2 $1E601800 FOP-ENTRY
+   9 LCREATE @ ADR,  9 DATA CREATEP-CELL STR,
+   9 LRREC @ ADR,  9 DATA RRECP-CELL STR,
+   9 lmain ADR,  9 DATA LMAINP-CELL STR,
+   LVRINIT @ BL,
+   EMIT-SOURCE
+   9 0 MOVZ,  9 DATA PEND-CELL STR, ;
 
-      LVSPILL @ BL,                                          \ VS -> memory before a call
-      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,            \ FIND -> inline stencil
-      13 LUNDEF CBZ,                                         \ undefined word in a : body -> error
-      LBL {: notimm :}
-      14 13 2 ANDI,  14 notimm CBZ,                          \ IMMEDIATE: execute NOW
-         SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
-         2 5 MOVZ,  LPROT @ BL,                              \ region RX to run it
-         11 SP 8 LDR,  11 BLR,
-         2 3 MOVZ,  LPROT @ BL,                              \ back to RW (still compiling)
-         30 SP 0 LDR,  SP SP 16 ADDI,
-         LMAIN B,
-      notimm LBL,
-      C-CALL  LMAIN B,                                      \ x11=addr -> emit BL (no longer inline)
-   \ undefined word during compilation: write the name to stderr and exit(70). Silently
-   \ skipping it (the old behaviour) hid real bugs (e.g. `0<`, `STR=` -> no-op).
-   LUNDEF LBL,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,   \ write(2, name)
-      9 DATA EVALD-CELL LDR,  9 LUN0 @ CBZ,          \ inside evaluate? roll back to the frame, return err=1
-         14 EVAL-FRAME LIT64,  14 DATA 14 ADD,
-         9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
-         CP 14 40 LDR,  NDICT 14 48 LDR,  XDS 14 32 LDR,
-         9 14 56 LDR,  9 DATA DP-CELL STR,
-         9 0 MOVZ,
-         9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
-         9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
-         9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
-         9 DATA PEND-CELL STR,
-         9 VRALL MOVZ,  9 DATA VRFREE-CELL STR,
-         9 14 0 LDR,  9 DATA INP-CELL STR,
-         9 14 8 LDR,  9 DATA INE-CELL STR,
-         9 1 MOVZ,  9 DATA EVALERR-CELL STR,
-         9 14 24 LDR,  SP 9 0 ADDI,                  \ restore the machine SP, then return
-         9 14 16 LDR,  9 BR,
-      LUN0 @ LBL,
-      9 DATA REPLH-CELL LDR,  9 LRDIE @ CBZ,
-   LRREC @ LBL,
-      \ REPL recovery (also throw's no-handler target): "?", roll back the
-      \ line's compile state, reset stacks AND the machine SP, read again
-      0 2 MOVZ,  1 LQNL @ ADR,  2 2 MOVZ,  NR-WRITE SYS,
-      CP DATA RSAVCP-CELL LDR,
-      NDICT DATA RSAVND-CELL LDR,
-      9 DATA RSAVDP-CELL LDR,  9 DATA DP-CELL STR,
-      9 DATA S0-CELL LDR,  XDS 9 0 ADDI,
-      9 0 MOVZ,
-      9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
-      9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
-      9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
+: EMIT-TOKEN-DISPATCH ( n n n -- ) {: lmain lexit lcompile :}
+   LBL LBL LBL {: notcom skln skpar :}
+   LTOK @ BL,  0 lexit CBZ,
+   9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
+   9 DATA TKA-CELL LDR,  9 9 0 LDRB,
+   9 92 CMPI,  C-EQ skln BCOND,
+   9 40 CMPI,  C-NE notcom BCOND,
+   skpar LBL,  11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE lmain BCOND,
+      9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 41 CMPI,  C-NE skpar BCOND,  lmain B,
+   skln LBL,  11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE lmain BCOND,
+      9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 10 CMPI,  C-NE skln BCOND,  lmain B,
+   notcom LBL,
+   9 DATA PEND-CELL LDR,  9 lcompile CBNZ, ;
+
+: EMIT-INTERPRET-COLON ( n n -- ) {: lmain lnotcolon :}
+   9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotcolon BCOND,
+   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,
+      2 3 MOVZ,  LPROT @ BL,
+      LBL {: cpok :}  LBL {: ndok :}
+      9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+         0 76 MOVZ,  NR-EXIT SYS,
+      cpok LBL,
+      9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+         0 77 MOVZ,  NR-EXIT SYS,
+      ndok LBL,
+      LTOK @ BL,
+      9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
       9 DATA PEND-CELL STR,
-      9 VRALL MOVZ,  9 DATA VRFREE-CELL STR,
-      9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
-      LREAD @ B,
-   LRDIE @ LBL,
-      0 70 MOVZ,  NR-EXIT SYS,                       \ exit(70)
-   LEXIT LBL,
-      9 DATA EVALD-CELL LDR,  9 LEX0 @ CBZ,          \ inside evaluate? clean end-of-buffer -> return
-         14 EVAL-FRAME LIT64,  14 DATA 14 ADD,
-         9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
-         9 14 0 LDR,  9 DATA INP-CELL STR,           \ restore outer INP/INE (defs persist)
-         9 14 8 LDR,  9 DATA INE-CELL STR,
-         9 0 MOVZ,  9 DATA EVALERR-CELL STR,         \ clean
-         9 14 16 LDR,  9 BR,                         \ return to the evaluate caller
-      LEX0 @ LBL,
-      9 DATA REPLH-CELL LDR,  9 LRBYE @ CBZ,
-      0 1 MOVZ,  1 LOKS @ ADR,  2 4 MOVZ,  NR-WRITE SYS,        \ " ok"
-   LREAD @ LBL,
-      \ save line-start compile state, then call RD-LINE ( -- a u )
-      9 SP 0 ADDI,  9 DATA RSAVSP-CELL STR,
-      CP DATA RSAVCP-CELL STR,
-      NDICT DATA RSAVND-CELL STR,
-      9 DATA DP-CELL LDR,  9 DATA RSAVDP-CELL STR,
-      9 DATA REPLH-CELL LDR,  9 BLR,
-      XDS XDS 8 SUBI,  10 XDS 0 LDR,
-      XDS XDS 8 SUBI,  11 XDS 0 LDR,
-      10 LRBYE @ CBZ,                                 \ empty = EOF
-      11 DATA INP-CELL STR,  11 11 10 ADD,  11 DATA INE-CELL STR,  LMAIN B,
-   LRBYE @ LBL,
-      0 0 MOVZ,  NR-EXIT SYS, ;                     \ exit(0)
+      C-STORE-NAME
+      CP 9 0 STR,
+      14 DATA CUR-CELL LDR,  14 9 40 STR,
+      5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
+      12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
+      12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
+      LBCAP @ BL,
+      LBL {: nsig :}  LBL {: sigq :}  LBL {: sp1 :}  LBL {: sc2 :}  LBL {: scd :}
+      11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
+      sp1 LBL,  11 12 CMP,  C-GE nsig BCOND,
+         13 11 0 LDRB,  13 32 CMPI,  C-HI sigq BCOND,
+         11 11 1 ADDI,  sp1 B,
+      sigq LBL,  13 40 CMPI,  C-NE nsig BCOND,
+      14 11 0 ADDI,  15 11 0 ADDI,
+      sc2 LBL,  15 12 CMP,  C-GE scd BCOND,
+         13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE sc2 BCOND,
+      scd LBL,  15 DATA INP-CELL STR,
+      11 14 1 ADDI,  12 15 14 SUB,  12 12 2 SUBI,
+      11 DATA TSIG-A-CELL STR,  12 DATA TSIG-U-CELL STR,
+      11 14 0 ADDI,  12 15 14 SUB,  LBCS @ BL,
+      nsig LBL,
+      12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
+      12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
+      12 DATA QPATCH-CELL STR,
+      12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
+      12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
+      9 $D10043FF LIT64,  LCEMIT @ BL,
+      9 $F90003FE LIT64,  LCEMIT @ BL,
+      lmain B,
+   lnotcolon LBL, ;
 
-: EMIT-FORTH ( src-a src-u -- )
-   SRCN !  >r
-   ICODE-RESET  CF-RESET  0 #PL !  0 PNP !
+: EMIT-INTERPRET-WORDS ( n n -- ) {: lmain lundef :}
+   LBL {: lnotnum :}
+   lmain LKWCREATE 6 ['] C-CREATE   CF-ENTRY
+   lmain LKWVAR    8 ['] C-VARIABLE CF-ENTRY
+   lmain LKWCONST  8 ['] C-CONSTANT CF-ENTRY
+   lmain LKWTICK   1 ['] C-TICK     CF-ENTRY
+   lmain LKWCHAR   4 ['] C-CHAR     CF-ENTRY
+   lmain LKWIMM    9 ['] C-IMMEDIATE CF-ENTRY
+   lmain LKWSQ     2 ['] C-ISDQ     CF-ENTRY
+   lmain LKWCQ     2 ['] C-ICQ      CF-ENTRY
+   lmain LKWDOTQ   2 ['] C-IDOTQ    CF-ENTRY
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,
+   12 lnotnum CBZ,  11 G-PUSH  lmain B,
+   lnotnum LBL,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
+   13 lundef CBZ,
+   11 BLR,  lmain B, ;
+
+: EMIT-INTERPRET ( n n -- ) {: lmain lundef :}
+   LBL {: lnotcolon :}
+   lmain lnotcolon EMIT-INTERPRET-COLON
+   lmain lundef EMIT-INTERPRET-WORDS ;
+
+: EMIT-COMPILE-DROP-LOCALS ( -- )
+   LBL {: done :}
+   12 DATA LOCF-CELL LDR,  12 done CBZ,
+      9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  LCEMIT @ BL,
+   done LBL, ;
+
+: EMIT-COMPILE-RET ( -- )
+   9 $F94003FE LIT64,  LCEMIT @ BL,
+   9 $910043FF LIT64,  LCEMIT @ BL,
+   9 W-RET LIT64,  LCEMIT @ BL, ;
+
+: EMIT-COMPILE-FLUSH-PEND ( -- )
+   11 DATA PEND-CELL LDR,
+   9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
+   2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL, ;
+
+: EMIT-COMPILE-PUBLISH-HOOKED ( n -- ) {: lmain :}
+   LBL LBL {: nohook rejected :}
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+      10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
+      10 DATA BODYLEN-CELL LDR,  10 G-PUSH
+      SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
+      10 G-POP  10 rejected CBZ,
+   nohook LBL,
+      NDICT NDICT 1 ADDI,
+   rejected LBL,
+   9 0 MOVZ,  9 DATA PEND-CELL STR,
+   lmain B, ;
+
+: EMIT-COMPILE-SEMI ( n n -- ) {: lmain lnotsemi :}
+   9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
+   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
+      LVSPILL @ BL,
+      14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,
+      EMIT-COMPILE-DROP-LOCALS
+      EMIT-COMPILE-RET
+      EMIT-COMPILE-FLUSH-PEND
+      lmain EMIT-COMPILE-PUBLISH-HOOKED
+   lnotsemi LBL, ;
+
+: EMIT-COMPILE-KEYWORDS ( n -- ) {: lmain :}
+   LBCAP @ BL,
+   lmain LKWIF     2 ['] J-IF   ['] J-IFR    CFB-ENTRY
+   lmain LKWTHEN   4 ['] J-THEN   CF-ENTRY
+   lmain LKWELSE   4 ['] J-ELSE   CF-ENTRY
+   lmain LKWBEGIN  5 ['] J-BEGIN  CFN-ENTRY
+   lmain LKWUNTIL  5 ['] J-UNTIL ['] J-UNTILR CFBN-ENTRY
+   lmain LKWAGAIN  5 ['] J-AGAIN  CFN-ENTRY
+   lmain LKWWHILE  5 ['] J-WHILE ['] J-WHILER CFB-ENTRY
+   lmain LKWREPEAT 6 ['] J-REPEAT CFN-ENTRY
+   lmain LKWSQ     2 ['] C-SDQ    CF-ENTRY
+   lmain LKWCQ     2 ['] C-CQ     CF-ENTRY
+   lmain LKWDOTQ   2 ['] C-DOTQ   CF-ENTRY
+   lmain LKWBTICK  3 ['] C-BTICK  CF-ENTRY
+   lmain LKWBCHAR  6 ['] C-BCHAR  CF-ENTRY
+   lmain LKWPOST   8 ['] C-POSTPONE CF-ENTRY
+   lmain LKWDOES   5 ['] J-DOES     CF-ENTRY
+   lmain LKWQUOT   2 ['] J-QUOT     CF-ENTRY
+   lmain LKWSEMIQ  2 ['] J-SEMIQUOT CF-ENTRY
+   lmain LKWDO     2 ['] J-DO     CF-ENTRY
+   lmain LKWLOOP   4 ['] J-LOOP   CF-ENTRY
+   lmain LKWI      1 ['] J-I      CF-ENTRY
+   lmain LKWTOR    2 ['] J-TOR    CF-ENTRY
+   lmain LKWRFROM  2 ['] J-RFROM  CF-ENTRY
+   lmain LKWRFET   2 ['] J-RFETCH CF-ENTRY
+   lmain LKWEXIT   4 ['] J-EXIT    CF-ENTRY
+   lmain LKWREC    7 ['] J-RECURSE CF-ENTRY
+   lmain LKWQDO    3 ['] J-?DO     CF-ENTRY
+   lmain LKWPLOOP  5 ['] J-+LOOP   CF-ENTRY
+   lmain LKWJ      1 ['] J-J       CF-ENTRY
+   lmain LKWLEAVE  5 ['] J-LEAVE   CF-ENTRY
+   lmain LKWUNLOOP 6 ['] J-UNLOOP  CF-ENTRY
+   lmain LKWLBRACE 2 ['] C-LBRACE CF-ENTRY ;
+
+: EMIT-COMPILE-LOCAL ( n -- ) {: lmain :}
+   LBL LBL {: notloc lmem :}
+   LLOC-FIND @ BL,  0 0 CMPI,  C-LT notloc BCOND,
+      LVRALLOC @ BL,  14 lmem CBZ,
+      7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
+      9 $F94003E0 LIT64,  9 9 14 ORR,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
+      LVPUSHR @ BL,
+      lmain B,
+      lmem LBL,
+      LVSPILL @ BL,
+      7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
+      9 $F94003E9 LIT64,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
+      9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL,
+      lmain B,
+   notloc LBL, ;
+
+: EMIT-COMPILE-LITERAL ( n -- ) {: lmain :}
+   LBL LBL {: lcnotnum lcflt :}
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,
+   12 lcnotnum CBZ,
+   2 lcflt CBNZ,
+      LVPUSHC @ BL,  lmain B,
+   lcflt LBL,
+      LVPUSHF @ BL,  lmain B,
+   lcnotnum LBL, ;
+
+: EMIT-COMPILE-OPS ( n -- ) {: lmain :}
+   lmain LKWPLUS  1 ['] VF+ ['] E+ ['] EI+ VOPI-ENTRY
+   lmain LKWMINUS 1 ['] VF- ['] E- ['] EI- VOPI-ENTRY
+   lmain LKWSTAR  1 ['] VF* ['] E* VOP-ENTRY
+   lmain LKWAND2  3 ['] FAND ['] EAND VOP-ENTRY
+   lmain LKWOR2   2 ['] FOR2 ['] EOR2 VOP-ENTRY
+   lmain LKWXOR2  3 ['] FXOR2 ['] EXOR VOP-ENTRY
+   lmain LKWDUP2  3 1 ['] XDUP  VSHUF-ENTRY
+   lmain LKWDROP2 4 1 ['] XDROP VSHUF-ENTRY
+   lmain LKWSWAP2 4 2 ['] XSWAP VSHUF-ENTRY
+   lmain LKWOVER2 4 2 ['] XOVER VSHUF-ENTRY
+   lmain LKWNIP2  3 2 ['] XNIP  VSHUF-ENTRY
+   lmain LKWEQ2 1 0 VCMP-ENTRY
+   lmain LKWNE2 2 1 VCMP-ENTRY
+   lmain LKWLT2 1 11 VCMP-ENTRY
+   lmain LKWGT2 1 12 VCMP-ENTRY
+   lmain LKWLE2 2 13 VCMP-ENTRY
+   lmain LKWGE2 2 10 VCMP-ENTRY
+   lmain LKWINC  2 ['] FU1+ ['] EU1+ VUN-ENTRY
+   lmain LKWDEC  2 ['] FU1- ['] EU1- VUN-ENTRY
+   lmain LKWZEQ  2 ['] FU0= ['] EU0= VUN-ENTRY
+   lmain LKWZLT  2 ['] FU0< ['] EU0< VUN-ENTRY
+   lmain LKWNEG2 6 ['] FUNEG ['] EUNEG VUN-ENTRY
+   lmain LKWINV2 6 ['] FUINV ['] EUINV VUN-ENTRY
+   lmain LKWFPLUS  2 $1E602800 FOP-ENTRY
+   lmain LKWFMINUS 2 $1E603800 FOP-ENTRY
+   lmain LKWFSTAR  2 $1E600800 FOP-ENTRY
+   lmain LKWFSLASH 2 $1E601800 FOP-ENTRY ;
+
+: EMIT-COMPILE-CALL ( n n -- ) {: lmain lundef :}
+   LBL {: notimm :}
+   LVSPILL @ BL,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
+   13 lundef CBZ,
+   14 13 2 ANDI,  14 notimm CBZ,
+      SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
+      2 5 MOVZ,  LPROT @ BL,
+      11 SP 8 LDR,  11 BLR,
+      2 3 MOVZ,  LPROT @ BL,
+      30 SP 0 LDR,  SP SP 16 ADDI,
+      lmain B,
+   notimm LBL,
+   C-CALL  lmain B, ;
+
+: EMIT-COMPILE ( n n -- ) {: lmain lundef :}
+   LBL {: lnotsemi :}
+   lmain lnotsemi EMIT-COMPILE-SEMI
+   lmain EMIT-COMPILE-KEYWORDS
+   lmain EMIT-COMPILE-LOCAL
+   lmain EMIT-COMPILE-LITERAL
+   lmain EMIT-COMPILE-OPS
+   lmain lundef EMIT-COMPILE-CALL ;
+
+: EMIT-RESET-COMPILE-STATE ( -- )
+   9 0 MOVZ,
+   9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
+   9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
+   9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
+   9 DATA PEND-CELL STR,
+   9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
+
+: EMIT-EVAL-UNDEF-ROLLBACK ( -- )
+   14 EVAL-FRAME LIT64,  14 DATA 14 ADD,
+   9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
+   CP 14 40 LDR,  NDICT 14 48 LDR,  XDS 14 32 LDR,
+   9 14 56 LDR,  9 DATA DP-CELL STR,
+   EMIT-RESET-COMPILE-STATE
+   9 14 0 LDR,  9 DATA INP-CELL STR,
+   9 14 8 LDR,  9 DATA INE-CELL STR,
+   9 1 MOVZ,  9 DATA EVALERR-CELL STR,
+   9 14 24 LDR,  SP 9 0 ADDI,
+   9 14 16 LDR,  9 BR, ;
+
+: EMIT-REPL-RECOVER ( -- )
+   LRREC @ LBL,
+   0 2 MOVZ,  1 LQNL @ ADR,  2 2 MOVZ,  NR-WRITE SYS,
+   CP DATA RSAVCP-CELL LDR,
+   NDICT DATA RSAVND-CELL LDR,
+   9 DATA RSAVDP-CELL LDR,  9 DATA DP-CELL STR,
+   9 DATA S0-CELL LDR,  XDS 9 0 ADDI,
+   EMIT-RESET-COMPILE-STATE
+   9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
+   LREAD @ B, ;
+
+: EMIT-UNDEF ( n -- ) {: lundef :}
+   lundef LBL,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   9 DATA EVALD-CELL LDR,  9 LUN0 @ CBZ,
+      EMIT-EVAL-UNDEF-ROLLBACK
+   LUN0 @ LBL,
+   9 DATA REPLH-CELL LDR,  9 LRDIE @ CBZ,
+   EMIT-REPL-RECOVER
+   LRDIE @ LBL,
+   0 70 MOVZ,  NR-EXIT SYS, ;
+
+: EMIT-EVAL-CLEAN-EXIT ( -- )
+   14 EVAL-FRAME LIT64,  14 DATA 14 ADD,
+   9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
+   9 14 0 LDR,  9 DATA INP-CELL STR,
+   9 14 8 LDR,  9 DATA INE-CELL STR,
+   9 0 MOVZ,  9 DATA EVALERR-CELL STR,
+   9 14 16 LDR,  9 BR, ;
+
+: EMIT-REPL-READ ( n -- ) {: lmain :}
+   LREAD @ LBL,
+   9 SP 0 ADDI,  9 DATA RSAVSP-CELL STR,
+   CP DATA RSAVCP-CELL STR,
+   NDICT DATA RSAVND-CELL STR,
+   9 DATA DP-CELL LDR,  9 DATA RSAVDP-CELL STR,
+   9 DATA REPLH-CELL LDR,  9 BLR,
+   XDS XDS 8 SUBI,  10 XDS 0 LDR,
+   XDS XDS 8 SUBI,  11 XDS 0 LDR,
+   10 LRBYE @ CBZ,
+   11 DATA INP-CELL STR,  11 11 10 ADD,  11 DATA INE-CELL STR,  lmain B, ;
+
+: EMIT-EXIT ( n n -- ) {: lexit lmain :}
+   lexit LBL,
+   9 DATA EVALD-CELL LDR,  9 LEX0 @ CBZ,
+      EMIT-EVAL-CLEAN-EXIT
+   LEX0 @ LBL,
+   9 DATA REPLH-CELL LDR,  9 LRBYE @ CBZ,
+   0 1 MOVZ,  1 LOKS @ ADR,  2 4 MOVZ,  NR-WRITE SYS,
+   lmain EMIT-REPL-READ
+   LRBYE @ LBL,
+   0 0 MOVZ,  NR-EXIT SYS, ;
+
+\ ---- MAIN: startup (data stack + mmap + seed dict) then the outer interpreter ----
+: EMIT-MAIN ( -- )
+   EMIT-STARTUP
+   LBL {: LMAIN :}  LBL {: LEXIT :}  LBL {: LCOMPILE :}  LBL {: LUNDEF :}   \ allocate up-front (byte-free) so the LMAIN store below is in scope
+   LMAIN EMIT-MAIN-RUNTIME-LABELS
+   LMAIN LBL,
+      LMAIN LEXIT LCOMPILE EMIT-TOKEN-DISPATCH
+      LMAIN LUNDEF EMIT-INTERPRET
+	      \ ---------------- COMPILE ----------------
+	   LCOMPILE LBL,
+	      LMAIN LUNDEF EMIT-COMPILE
+	   LUNDEF EMIT-UNDEF
+	   LEXIT LMAIN EMIT-EXIT ;
+
+: EMIT-RESET-BUILDER ( -- )
+   ICODE-RESET  CF-RESET  0 #PL !  0 PNP ! ;
+
+: EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LBCAP !  LBL LBCS !
-   LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !
+   LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
+
+: EMIT-LABEL-RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
-   LBL LEX0 !  LBL LUN0 !
+   LBL LEX0 !  LBL LUN0 ! ;
+
+: EMIT-LABEL-CONTROL ( -- )
    LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
    LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
    LBL LKWCREATE !  LBL LKWVAR !  LBL LKWSQ !  LBL LKWCQ !  LBL LKWDOTQ !
@@ -2075,9 +2594,19 @@ variable CFSK2
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
-   LBL LKWTRUSTED !  LBL LKWCREATES !  LBL LKWTRUST !  LBL LKWCHKDOES !
-   LBL LKWQUOT !  LBL LKWSEMIQ !
+   LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !
+   LBL LKWQUOT !  LBL LKWSEMIQ ! ;
+
+: EMIT-LABEL-SIGNALS ( -- )
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !
+   LBL LSRCRD !  LBL LSHBANG ! ;
+
+: EMIT-LABEL-SOURCES ( -- )
+   LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
+   LBL LPUTIL !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !  LBL LPHABULAYOUT !
+   LBL LPLINUXENV !  LBL LPMACOSENV !  LBL LPROLES !  LBL LPCOMBINATORS ! ;
+
+: EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !
    LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
    LBL LVTOP2C !  LBL LVFOLDPUT !
@@ -2085,7 +2614,9 @@ variable CFSK2
    LBL LVPUSHF !  LBL LFRALLOC !  LBL LFFORCEK !  LBL LFBINPREP !
    LBL LKWFPLUS !  LBL LKWFMINUS !  LBL LKWFSTAR !  LBL LKWFSLASH !
    LBL LVDROP !  LBL LVSWAPX !  LBL LVNIPX !  LBL LVCOPY !
-   LBL LVSNAP !  LBL LVRECON !
+   LBL LVSNAP !  LBL LVRECON ! ;
+
+: EMIT-LABEL-OPS ( -- )
    LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !
    LBL LKWAND2 !  LBL LKWOR2 !  LBL LKWXOR2 !
    LBL LKWDUP2 !  LBL LKWDROP2 !  LBL LKWSWAP2 !
@@ -2093,14 +2624,34 @@ variable CFSK2
    LBL LKWEQ2 !  LBL LKWNE2 !  LBL LKWLT2 !
    LBL LKWGT2 !  LBL LKWLE2 !  LBL LKWGE2 !
    LBL LKWINC !  LBL LKWDEC !  LBL LKWZEQ !
-   LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 !
+   LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 ! ;
+
+: EMIT-LABELS ( -- )
+   EMIT-LABEL-CORE
+   EMIT-LABEL-RUNTIME
+   EMIT-LABEL-CONTROL
+   EMIT-LABEL-SIGNALS
+   EMIT-LABEL-SOURCES
+   EMIT-LABEL-JIT
+   EMIT-LABEL-OPS ;
+
+: EMIT-CODE-SECTIONS ( -- )
    EMIT-MAIN                                              \ entry @ offset 0
    EMIT-PRIMS  EMIT-PROF-PRIMS  EMIT-FP-PRIMS  EMIT-CEMIT  EMIT-BCAP  EMIT-TOK  EMIT-PROT  EMIT-FLUSH  EMIT-FIND  EMIT-NUM
    EMIT-CREATE  EMIT-DOESPATCH
    EMIT-CF-HELPERS  EMIT-LOC-FIND  EMIT-KWDATA  EMIT-FOLDKW  EMIT-SHUFKW  EMIT-CMPKW  EMIT-UNKW  EMIT-CRASH-HANDLER  EMIT-TRAPH  EMIT-HEX
-   EMIT-PROFDUMP  EMIT-PROF  EMIT-JIT
-   EMIT-DICT                                              \ after #PL is final
-   LSRC @ LBL,  r> SRCN @ BYTES, ;
+   EMIT-PROFDUMP  EMIT-PROF  EMIT-SHEBANG-COMMENT  EMIT-SOURCE-READ  EMIT-JIT
+   EMIT-DICT ;                                            \ after #PL is final
+
+: EMIT-SOURCE-BYTES ( -- )
+   LSRC @ LBL,  SRCA @ SRCN @ BYTES, ;
+
+: EMIT-FORTH ( src-a src-u -- )
+   SRCN !  SRCA !
+   EMIT-RESET-BUILDER
+   EMIT-LABELS
+   EMIT-CODE-SECTIONS
+   EMIT-SOURCE-BYTES ;
 
 \ Build a standalone native Forth that interprets `src`, write it to `outfile`.
 : FORTH-EXE ( src-a src-u out-a out-u -- )

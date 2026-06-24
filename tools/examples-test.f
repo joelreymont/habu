@@ -1,5 +1,6 @@
 \ examples-test.f - checked fixture for examples/*.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f
 
 65536 constant EXT-COPY-CAP
 8192 constant EXT-CAPTURE-CAP
@@ -101,6 +102,7 @@ create EXT-ERR EXT-CAPTURE-CAP allot
    b u EXT-CLEAR-BUNDLE
    b u s" lib/errors.f" EXT-ADD-SOURCE-LF
    b u s" lib/test.f" EXT-ADD-SOURCE-LF
+   b u s" src/core/combinators.f" EXT-ADD-SOURCE-LF
    b u s" lib/array.f" EXT-ADD-SOURCE-LF
    b u s" examples/array.f" EXT-ADD-SOURCE
    b u ;
@@ -155,6 +157,15 @@ create EXT-ERR EXT-CAPTURE-CAP allot
    EXT-ERR EXT-CAPTURE-CAP >LEN EXT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE EXT-CAPTURE>N ;
 
+: EXT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
+: EXT-ARGV-BUNDLE ( ptr u8 n -- )
+   PROC-ARGV-RESET
+   s" --load" EXT-ARG+
+   EXT-ARG+
+   s" --" EXT-ARG+ ;
+
 : EXT-ASSERT-OK ( n n n -- )
    0 T=
    {: outu erru :}
@@ -162,23 +173,20 @@ create EXT-ERR EXT-CAPTURE-CAP allot
    EXT-OUT outu EXT-OK$ T$= ;
 
 : EXT-RUN-PLAIN ( ptr u8 n -- )
-   PROC-ARGV-RESET
-    >LEN PROC-ARGV+
+   EXT-ARGV-BUNDLE
    EXT-RUN-HB EXT-ASSERT-OK ;
 
 : EXT-RUN-FILE-MAP ( ptr u8 n -- )
-   PROC-ARGV-RESET
-    >LEN PROC-ARGV+
-   EXT-FILES  >LEN PROC-ARGV+
+   EXT-ARGV-BUNDLE
+   EXT-FILES EXT-ARG+
    EXT-RUN-HB EXT-ASSERT-OK ;
 
 : EXT-RUN-BUILD-SCRIPT ( ptr u8 n -- )
-   PROC-ARGV-RESET
-    >LEN PROC-ARGV+
-   s" --json"  >LEN PROC-ARGV+
-   s" -o"  >LEN PROC-ARGV+
-   EXT-TEMP s" app.hb" EXT-JOIN$  >LEN PROC-ARGV+
-   s" examples/array.f"  >LEN PROC-ARGV+
+   EXT-ARGV-BUNDLE
+   s" --json" EXT-ARG+
+   s" -o" EXT-ARG+
+   EXT-TEMP s" app.hb" EXT-JOIN$ EXT-ARG+
+   s" examples/array.f" EXT-ARG+
    EXT-RUN-HB EXT-ASSERT-OK ;
 
 : EXT-TEST-ARRAY ( -- )
