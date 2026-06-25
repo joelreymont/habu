@@ -3,6 +3,8 @@
 \ ---- whole-file read -------------------------------------------------------
 \ open/read/close are engine prims: open ( path flags mode -- fd ), read ( fd
 \ buf n -- n ), close ( fd -- ). O_RDONLY = 0. Path must be NUL-terminated.
+\ Audited hook-install boundary: lint tools load this first so shared helpers
+\ fail closed under LINT-CHECK-HOOK.
 0 set-check
 
 : LINT-CHECK-HOOK ( ptr u8 n -- n )

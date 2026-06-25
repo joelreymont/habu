@@ -2,6 +2,8 @@
 \ Load after lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f
 \ lib/process.f lib/process-argv.f lib/source.f and tools/argv.f.
 
+\ Audited hook-install boundary: this tool must install its checker hook before
+\ validating generated source snippets with CHECK!.
 0 set-check
 
 : CHK-CHECK-HOOK ( ptr u8 n -- n )
