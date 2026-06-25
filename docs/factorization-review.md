@@ -132,6 +132,18 @@ The local `.dots/` store is ignored by the repository, so this section is the
 durable committed queue. A fresh checkout can recreate the tracker from this
 table if the local dot store is unavailable.
 
+Handoff snapshot:
+
+- The working copy had no source edits in progress when this handoff was
+  written; the latest code commit was `63e5d2a5` (`Unify bootstrap prefix list`).
+- The remaining factorization work already has one dot per open finding. Do not
+  create duplicates; start the next open row, commit that focused batch, then
+  update this document and close that row's dot.
+- `habu-factor-bootstrap-trust-71f82afa` remains open. It was not implemented in
+  this handoff docs batch.
+- The three non-factorization top-level dots listed below are also open and
+  should stay separate from the all-repo factorization parent.
+
 Next continuation step:
 
 1. Start `habu-factor-bootstrap-trust-71f82afa`.

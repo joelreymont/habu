@@ -28,6 +28,11 @@ step-level child dots for validation and closeout and record the exact touched
 files in the durable handoff doc. A parent finding dot alone does not tell the
 next agent whether to continue, validate, or discard local work.
 
+### `dot off` closes work
+`dot off <id>` completes a dot; it is not a pause or handoff command. For
+handoff, leave the dot open, record the state in the committed review document,
+and only close the dot after the validated implementation commit lands.
+
 ### Emitter comments describe host effects
 Bootstrap and native emitter words run at build time and often emit code that
 will later consume the runtime data stack. Their definition-local stack effects
