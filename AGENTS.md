@@ -118,6 +118,14 @@ constants; and a `T{ … -> … }T` test for every word.
 ## Workflow
 
 - VCS is `jj` (Jujutsu). One change per commit; 50-char imperative subject; no emoji.
+- Commit rule for Forth changes: before `jj commit`, any change touching `.f` or
+  `.fs` source must prove checked Habu was used wherever possible. Scan the diff
+  for new/changed `:`, `TRUSTED:`, `0 set-check`, and `TRUST` sites; every new or
+  changed definition needs a real typed stack effect, every changed Forth file
+  must be checked through its exact owning `bin/hb --load ...` path or documented
+  as an explicit uncheckable boundary, and every unchecked boundary needs a
+  focused test plus a dot for the missing typed capability. Do not commit first
+  and "clean it up later."
 - Commit after each significant change or feature; include new files.
 - RCA is blocking for generated checked fixtures: if a generated checked fixture
   stalls, times out, or exits without diagnostics, immediately isolate the
