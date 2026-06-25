@@ -780,31 +780,32 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 \ ---- NUMBER? ( x9=tka x10=tkl -- x11=val x12=ok ) ----
 \ Accepts decimal and $hex, each with an optional leading '-'.  x6=base, x7=digit.
-: EMIT-NUM ( -- )
-   LNUM @ LBL,
-   11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ,   \ val sign idx ok base=10
-   LBL {: ldone :}
+: C-NUM-INIT-REGS ( -- )
+   11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ ;
+
+: C-NUM-SIGN ( n n -- ) {: ldone ndoll :}
    10 ldone CBZ,                                                \ empty token -> fail
-   15 9 0 LDRB,  15 45 CMPI,  LBL {: ndoll :}  C-NE ndoll BCOND,  \ leading '-'
+   15 9 0 LDRB,  15 45 CMPI,  C-NE ndoll BCOND,                 \ leading '-'
       13 0 MOVN,  14 1 MOVZ,
    ndoll LBL,
-   14 10 CMP,  C-GE ldone BCOND,                                \ "-" only -> fail (before probe!)
-   5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  LBL {: nohex :}  C-NE nohex BCOND,  \ '$' prefix
+   14 10 CMP,  C-GE ldone BCOND ;                               \ "-" only -> fail
+
+: C-NUM-BASE ( n n -- ) {: ldone nohex :}
+   5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  C-NE nohex BCOND,    \ '$' prefix
       6 16 MOVZ,  14 14 1 ADDI,
    nohex LBL,
    2 0 MOVZ,                                                    \ frac mode off
-   14 10 CMP,  C-GE ldone BCOND,                                \ nothing after sign/$ -> fail
-   LBL {: lloop :}  LBL {: lok :}  LBL {: gotd :}  LBL {: nd :}  LBL {: nuc :}
-   LBL {: ndot :}  LBL {: isfrac :}  LBL {: lint :}  LBL {: fpos :}
-   lloop LBL,
-   14 10 CMP,  C-GE lok BCOND,
-   5 9 14 ADD,  15 5 0 LDRB,                                    \ c = next byte
+   14 10 CMP,  C-GE ldone BCOND ;                               \ nothing after sign/$ -> fail
+
+: C-NUM-DOT ( n n n -- ) {: ldone lloop ndot :}
    15 46 CMPI,  C-NE ndot BCOND,                                \ '.' -> frac mode
       6 10 CMPI,  C-NE ldone BCOND,
       2 ldone CBNZ,
       2 1 MOVZ,  4 0 MOVZ,  3 1 MOVZ,
       14 14 1 ADDI,  lloop B,
-   ndot LBL,
+   ndot LBL, ;
+
+: C-NUM-DIGIT ( n n n n -- ) {: ldone gotd nd nuc :}
    15 48 CMPI,  C-LT ldone BCOND,                               \ < '0' -> fail
    15 57 CMPI,  C-GT nd BCOND,
       7 15 48 SUBI,  gotd B,                                    \ '0'..'9' -> c-48
@@ -814,22 +815,47 @@ require jit.fs          \ runtime abstract value stack for the : compiler
       7 15 87 SUBI,  gotd B,                                    \ 'a'..'f' -> c-87
    nuc LBL,
    15 65 CMPI,  C-LT ldone BCOND,  15 70 CMPI,  C-GT ldone BCOND,
-      7 15 55 SUBI,                                             \ 'A'..'F' -> c-55
-   gotd LBL,
-   2 isfrac CBNZ,
+      7 15 55 SUBI, ;                                           \ 'A'..'F' -> c-55
+
+: C-NUM-INT-STEP ( n -- ) {: lloop :}
    11 11 6 MUL,  11 11 7 ADD,                                   \ val = val*base + digit
-   14 14 1 ADDI,  lloop B,
-   isfrac LBL,                                                  \ frac digit: f=f*10+d, k*=10
+   14 14 1 ADDI,  lloop B, ;
+
+: C-NUM-FRAC-STEP ( n -- ) {: lloop :}
    5 10 MOVZ,  4 4 5 MUL,  4 4 7 ADD,  3 3 5 MUL,
-   14 14 1 ADDI,  lloop B,
-   lok LBL,
-   2 lint CBZ,
+   14 14 1 ADDI,  lloop B, ;
+
+: C-NUM-FLOAT-FINISH ( n n -- ) {: ldone fpos :}
    3 1 CMPI,  C-EQ ldone BCOND,                                 \ "1." (no frac digits) -> fail
    0 11 SCVTF,  1 4 SCVTF,  2 3 SCVTF,                          \ int, frac, scale
    1 1 2 FDIV,  0 0 1 FADD,
    13 0 CMPI,  C-GE fpos BCOND,  0 0 FNEG,
-   fpos LBL,  11 0 FMOVDX,  12 1 MOVZ,  RET,
-   lint LBL,  11 11 13 MUL,  12 1 MOVZ,
+   fpos LBL,  11 0 FMOVDX,  12 1 MOVZ,  RET, ;
+
+: C-NUM-INT-FINISH ( -- )
+   11 11 13 MUL,  12 1 MOVZ ;
+
+: EMIT-NUM ( -- )
+   LNUM @ LBL,
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: ldone ndoll nohex lloop lok gotd nd nuc ndot isfrac lint fpos :}
+   C-NUM-INIT-REGS
+   ldone ndoll C-NUM-SIGN
+   ldone nohex C-NUM-BASE
+   lloop LBL,
+   14 10 CMP,  C-GE lok BCOND,
+   5 9 14 ADD,  15 5 0 LDRB,                                    \ c = next byte
+   ldone lloop ndot C-NUM-DOT
+   ldone gotd nd nuc C-NUM-DIGIT
+   gotd LBL,
+   2 isfrac CBNZ,
+   lloop C-NUM-INT-STEP
+   isfrac LBL,                                                  \ frac digit: f=f*10+d, k*=10
+   lloop C-NUM-FRAC-STEP
+   lok LBL,
+   2 lint CBZ,
+   ldone fpos C-NUM-FLOAT-FINISH
+   lint LBL,  C-NUM-INT-FINISH
    ldone LBL,  RET, ;
 
 \ ---- seed dictionary: NPRIMS records of [startoff(8) endoff(8) namelen(8) name(16)] ----

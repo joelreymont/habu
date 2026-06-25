@@ -84,50 +84,69 @@ the first review round:
   `trust-lint`, and the full native gate passed. No-binary recovery bootstrap
   was not run on this host because installed Gforth 0.7.3 fails the documented
   `{:` locals probe and `tools/bootstrap.sh` exits 69 before touching `bin/hb`.
+- F06 native and bootstrap numeric parsing mirrors were split into phase helpers
+  in `src/habu/habu1.f` and `bootstrap/cg/forth.fs`; numeric literal coverage
+  was added for hex, negative hex, and negative float literals. The focused
+  engine suite, `tools/bootstrap-codegen-test.f`, `trust-lint`, the focused
+  native engine gate, and the full native gate passed. No-binary recovery
+  bootstrap was not run on this host because installed Gforth 0.7.3 fails the
+  documented `{:` locals probe and `tools/bootstrap.sh` exits 69 before touching
+  `bin/hb`; `bin/hb` kept sha256
+  `cba97dd68f37e1b9f7eacb90cc17b3c3c93717c335d77f8352a1e4e7bba33a7c` before
+  and after the recovery probe.
 
 ## Continuation Handoff
 
 Tracker state was verified with `dot tree habu-review-whole-repo-5e087327`.
-The parent dot is `habu-review-whole-repo-5e087327`; F01, F02, and F03 are
-closed; F09 is addressed by the stack-effect batch; all rows below are open. No
-duplicate top-level dots are needed.
+The parent dot is `habu-review-whole-repo-5e087327`; F01, F02, F03, F06, and
+F09 are addressed; all rows below are open. No duplicate top-level dots are
+needed.
 The local `.dots/` store is ignored by the repository, so this section is the
 durable committed queue. A fresh checkout can recreate the tracker from this
 table if the local dot store is unavailable.
 
 First continuation step:
 
-1. Start `habu-factor-mirrored-num-c2faa343`.
-2. Factor the native and bootstrap numeric parser mirrors without changing
-   accepted number syntax.
-3. Keep native and bootstrap behavior in lockstep with focused parser/codegen
-   tests before running `trust-lint` and the full native gate from
-   `docs/bootstrap.md`.
+1. Start `habu-factor-bootstrap-move-9722fa8e`.
+2. Factor `bootstrap/cg/jit.fs` move-wide emission without changing emitted
+   ARM64 instruction sequences.
+3. Prove the focused bootstrap codegen tests first, then `trust-lint`, the
+   native fixpoint/full gate from `docs/bootstrap.md`, and no-binary recovery
+   when a Gforth with `{:` locals is available.
 
 Open dot queue:
 
 | Order | Finding | Dot | Scope |
 | --- | --- | --- | --- |
-| 1 | F06 | `habu-factor-mirrored-num-c2faa343` | Factor native/bootstrap numeric parsing mirrors. |
-| 2 | F07 | `habu-factor-bootstrap-move-9722fa8e` | Factor bootstrap move-wide emission. |
-| 3 | F08 | `habu-unify-bootstrap-prefix-26788bfa` | Replace mirrored prefix path/load lists with one checked table or DSL. |
-| 4 | F21 | `habu-factor-bootstrap-trust-71f82afa` | Split bootstrap trust lookup, argument pushing, and save-LR call helper. |
-| 5 | F19 | `habu-share-bootstrap-image-ef41b8f8` | Share bootstrap ELF/Mach-O image buffer emitters. |
-| 6 | F20 | `habu-factor-checked-arm64-f1f46265` | Add checked ARM64 layout combinators. |
-| 7 | F10 | `habu-factor-typed-byte-b311d5c7` | Factor shared ELF/Mach-O/signing byte cursor layer. |
-| 8 | F04 | `habu-factor-darwin-spawn-5a82930c` | Factor Darwin spawn emitter variants. |
-| 9 | F05 | `habu-factor-native-c-230e1316` | Split native `C-CALL` phases. |
-| 10 | F17 | `habu-share-signature-scan-5353e68b` | Share required/optional signature scanning. |
-| 11 | F18 | `habu-factor-compiler-dispatch-0167f41a` | Split compiler dispatch/data chains by concern or checked rows. |
-| 12 | F12 | `habu-factor-process-capture-467f9021` | Factor capture setup, probe, drain, close, and reap lifecycle. |
-| 13 | F14 | `habu-factor-gate-progress-555aa42d` | Share progress-aware capture helpers. |
-| 14 | F13 | `habu-factor-check-load-2e29d26a` | Split check/load builders and keep only true boundary spawns. |
-| 15 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. |
-| 16 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. |
-| 17 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. |
-| 18 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. |
-| 19 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. |
-| 20 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. |
+| 1 | F07 | `habu-factor-bootstrap-move-9722fa8e` | Factor bootstrap move-wide emission. |
+| 2 | F08 | `habu-unify-bootstrap-prefix-26788bfa` | Replace mirrored prefix path/load lists with one checked table or DSL. |
+| 3 | F21 | `habu-factor-bootstrap-trust-71f82afa` | Split bootstrap trust lookup, argument pushing, and save-LR call helper. |
+| 4 | F19 | `habu-share-bootstrap-image-ef41b8f8` | Share bootstrap ELF/Mach-O image buffer emitters. |
+| 5 | F20 | `habu-factor-checked-arm64-f1f46265` | Add checked ARM64 layout combinators. |
+| 6 | F10 | `habu-factor-typed-byte-b311d5c7` | Factor shared ELF/Mach-O/signing byte cursor layer. |
+| 7 | F04 | `habu-factor-darwin-spawn-5a82930c` | Factor Darwin spawn emitter variants. |
+| 8 | F05 | `habu-factor-native-c-230e1316` | Split native `C-CALL` phases. |
+| 9 | F17 | `habu-share-signature-scan-5353e68b` | Share required/optional signature scanning. |
+| 10 | F18 | `habu-factor-compiler-dispatch-0167f41a` | Split compiler dispatch/data chains by concern or checked rows. |
+| 11 | F12 | `habu-factor-process-capture-467f9021` | Factor capture setup, probe, drain, close, and reap lifecycle. |
+| 12 | F14 | `habu-factor-gate-progress-555aa42d` | Share progress-aware capture helpers. |
+| 13 | F13 | `habu-factor-check-load-2e29d26a` | Split check/load builders and keep only true boundary spawns. |
+| 14 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. |
+| 15 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. |
+| 16 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. |
+| 17 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. |
+| 18 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. |
+| 19 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. |
+
+## Other Open Top-Level Dots
+
+These dots are outside the factorization parent and remain open in `dot ready`.
+
+| Priority | Dot | Required Fix |
+| --- | --- | --- |
+| 1 | `habu-replace-creates-with-d9c4b404` | Replace the project-specific `CREATES` marker with standard checked `CREATE ... DOES>`, update tests/docs/gate DSL users, and remove the legacy keyword path. |
+| 2 | `habu-add-typed-byte-b25e923e` | Add a checked byte-pointer offset primitive/model so `lib/fs.f` can drop the trusted `FS-BYTE-OFFSET` boundary. |
+| 2 | `habu-model-engine-builder-38ddc643` | Model raw engine-builder asm/codegen effects under the hard hook so the generated `0 set-check` boundary can be removed. |
 
 ## Tracking Dots
 
@@ -162,12 +181,19 @@ Parent: `habu-review-whole-repo-5e087327`
 
 ## Verification Status
 
-This review was read-only. No gates were run by the subagents. The validated
-port stack before this report passed:
+This review was read-only. No gates were run by the subagents. The latest
+validated port stack after the F06 numeric-parser batch passed:
 
 - `trust-lint`: 236 TRUST sites, 318 manifest rows, 0 findings;
+- `tools/bootstrap-codegen-test.f`: `test: ok`,
+  `bootstrap-codegen-test: ok`;
+- `bin/hb test/engine-suite.f`: `ok`;
+- focused native engine gate phase: `PASS: native engine gate phase`;
 - `test/gate-stdlib.f`: `PASS: native lint/stdlib gate phase`;
 - `test/run.f`: `PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)`.
+- recovery-host probe: installed `gforth 0.7.3` failed the required `{:` locals
+  probe with rc 1, so `tools/bootstrap.sh` exited 69 before generation and left
+  `bin/hb` checksum unchanged.
 
 ## Agent Command Notes
 

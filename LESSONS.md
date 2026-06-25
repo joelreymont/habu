@@ -868,6 +868,11 @@ register for the marker byte.
   `src/habu/` and `bootstrap/cg/` are one contract with two sources. Factor both
   mirrors in the same change and prove native fixpoint plus Gforth recovery
   bootstrap before trusting the port.
+- **Mirrored emitter structure is not vocabulary parity:** native codegen in
+  `src/habu/` and bootstrap codegen in `bootstrap/cg/` may use different
+  assembler-word vocabularies even when they emit the same runtime instructions.
+  Preserve each file's local opcode spelling and run a focused native engine
+  gate plus bootstrap codegen tests before treating a structural copy as safe.
 - **Deep factoring reviews need repo artifacts:** an all-repo factorization audit
   is not complete when the findings only live in chat. Record agent scopes,
   concrete `file:line` findings, fixed items, remaining work, and validation in a

@@ -16,6 +16,8 @@ variable #CASE
 1 2 3 rot + + 6 T=
 10 3 - 7 T=
 -1 $FF and 255 T=
+$AF 175 T=
+-$10 -16 T=
 7 2 mod 1 T=
 7 2 /mod 3 T= 1 T=
 $10 4 lshift $100 T=
@@ -187,6 +189,8 @@ ES-LINKZ unlink 0 T=
 TFP -1 T=
 : TFL 1.5 2.5 f< ;
 TFL -1 T=
+: TFNEG -1.5 -2.5 f+ -4.0 f= ;
+TFNEG -1 T=
 
 \ exit inside a quotation targets the QUOTATION's epilogue (scoped chain)
 : TQX [: dup 0 > if exit then drop 99 ;] execute ;
