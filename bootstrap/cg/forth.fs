@@ -1885,11 +1885,29 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 \ S" (interpret mode): copy the string to HERE (transient — no allot) and push
 \ ( addr len ). Compile mode bakes bytes into the code image instead (c-sdq).
+: C-QUOTE-START ( -- )
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI ;
+
+: C-QUOTE-EOF ( -- )
+   0 74 MOVZ,  NR-EXIT SYS, ;
+
+: C-QUOTE-SCAN ( -- )
+   LBL {: sl :}  LBL {: sd :}  LBL {: eof :}
+   sl LBL,
+      14 DATA INE-CELL LDR,
+      12 14 CMP,  C-GE eof BCOND,
+      9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,
+      12 12 1 ADDI,  sl B,
+   eof LBL,  C-QUOTE-EOF
+   sd LBL, ;
+
+: C-QUOTE-CONSUME ( -- )
+   10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
+
 : C-ISDQ ( -- )
-   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,                      \ skip one space; x13 = start
-   LBL {: sl :}  LBL {: sd :}
-   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
-   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,             \ x10 = len; skip closing "
+   C-QUOTE-START
+   C-QUOTE-SCAN
+   C-QUOTE-CONSUME
    12 DATA 0 LDR,  15 12 0 ADDI,                        \ x12 = DP, x15 = string base
    14 12 10 ADD,  14 DP-CHECK
    11 13 0 ADDI,  9 10 0 ADDI,
@@ -1901,10 +1919,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    15 G-PUSH  10 G-PUSH ;
 
 : C-ICQ ( -- )
-   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
-   LBL {: sl :}  LBL {: sd :}  LBL {: capok :}  LBL {: cl :}  LBL {: cd :}
-   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
-   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   C-QUOTE-START
+   C-QUOTE-SCAN
+   C-QUOTE-CONSUME
+   LBL {: capok :}  LBL {: cl :}  LBL {: cd :}
    10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
    capok LBL,
    12 DATA 0 LDR,  15 12 0 ADDI,                       \ x15 = counted string base
@@ -1918,10 +1936,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    15 G-PUSH ;
 
 : C-IDOTQ ( -- )
-   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
-   LBL {: sl :}  LBL {: sd :}
-   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
-   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   C-QUOTE-START
+   C-QUOTE-SCAN
+   C-QUOTE-CONSUME
    0 1 MOVZ,  1 13 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS, ;
 
 \ S" string" (compile mode): emit  B over the bytes ; <bytes> ; push abs-addr ;
@@ -1940,10 +1957,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL, ;
 
 : C-SDQ ( -- )
-   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,                      \ skip one space; x13 = start
-   LBL {: sl :}  LBL {: sd :}
-   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
-   sd LBL,  10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR,  \ x10 = len; skip closing "
+   C-QUOTE-START
+   C-QUOTE-SCAN
+   C-QUOTE-CONSUME
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,      \ x15 = B addr; emit B placeholder
    12 CP 0 ADDI,                                        \ x12 = byte addr (after the B)
@@ -1958,10 +1974,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 15 0 ADDI,  C-LIT ;                               \ push len (x15)
 
 : C-CQ ( -- )
-   LBL {: sl :}  LBL {: sd :}  LBL {: capok :}  LBL {: cl :}  LBL {: cd :}
-   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
-   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
-   sd LBL,  10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   C-QUOTE-START
+   C-QUOTE-SCAN
+   C-QUOTE-CONSUME
+   LBL {: capok :}  LBL {: cl :}  LBL {: cd :}
    10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
    capok LBL,
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,

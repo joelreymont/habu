@@ -9,6 +9,10 @@ variable LEX-CAP
 variable L#   variable LEX-A   variable LEX-U   variable LX
 variable LNO  variable LCO  variable LS  variable LSL  variable LSC
 variable LEX-COMMENT-LEN
+variable LEX-UNTERM-QUOTE
+variable LEX-UNTERM-BYTE
+variable LEX-UNTERM-LINE
+variable LEX-UNTERM-COL
 
 create LEX-KIND-V VEC-HEADER-CELLS cells allot
 create LEX-ADDR-V VEC-HEADER-CELLS cells allot
@@ -104,8 +108,18 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
    LX @ 1+ LX !
    dup 10 = if LNO @ 1+ LNO ! 1 LCO ! else LCO @ 1+ LCO ! then ;
 
-: LEX-SKIP-QUOTE ( -- )
-   begin LEX-END? 0= while LEX-ADV DQUOTE = if exit then repeat ;
+: LEX-SKIP-QUOTE ( -- bool )
+   begin LEX-END? 0= while LEX-ADV DQUOTE = if LINT-TRUE exit then repeat
+   LINT-FALSE ;
+
+: LEX-MARK-UNTERM-QUOTE ( n -- ) {: k :}
+   -1 LEX-UNTERM-QUOTE !
+   k LB@ LEX-UNTERM-BYTE !
+   k LL@ LEX-UNTERM-LINE !
+   k LC@ LEX-UNTERM-COL ! ;
+
+: LEX-UNTERM-QUOTE? ( -- bool )
+   LEX-UNTERM-QUOTE @ ;
 
 : STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 2 <> if LINT-FALSE exit then
@@ -135,10 +149,13 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
 : LEX-WORD ( -- )
    begin LEX-END? 0= LEX-C@ WS? 0= and while LEX-ADV drop repeat
    L-WORD LEX-A@ LS @ + LX @ LS @ - LS @ LSL @ LSC @ LEX-A@ 0 LEX-ADD
-   L# @ 1- LTOK STRING-OPENER? if LEX-SKIP-QUOTE then ;
+   L# @ 1- dup LTOK STRING-OPENER? if
+      LEX-SKIP-QUOTE 0= if dup LEX-MARK-UNTERM-QUOTE then
+   then drop ;
 
 : LEX-SOURCE ( ptr u8 n -- ) {: a:ptr u :}
    a LEX-A! u LEX-U ! 0 LX ! 1 LNO ! 1 LCO !
+   0 LEX-UNTERM-QUOTE !
    LEX-RESET-TABLES
    begin LEX-END? 0= while
       LEX-C@ WS? if LEX-ADV drop

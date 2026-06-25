@@ -1259,7 +1259,7 @@ variable SKI  variable SKF
    BEGIN SKI @ TBLEN @ <  SKF @ 0=  and WHILE
       TBASE @ SKI @ + c@ 34 = IF -1 SKF ! ELSE SKI @ 1 + SKI ! THEN
    REPEAT
-   SKF @ IF SKI @ 1 + TI ! THEN ;
+   SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
 
 : TOKFOLD {: a u :}
    u TOKBUF-ENSURE

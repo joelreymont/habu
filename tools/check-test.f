@@ -63,6 +63,12 @@ variable CKT-LIST-U
    CKT-ARGV-BASE
    src srcu CKT-STDIN-CAPTURE ;
 
+: CKT-RUN-JSON-ALL ( ptr u8 n -- n n n ) {: src:ptr srcu :}
+   CKT-ARGV-BASE
+   s" --json-errors"  >LEN PROC-ARGV+
+   s" --all-errors"  >LEN PROC-ARGV+
+   src srcu CKT-STDIN-CAPTURE ;
+
 : CKT-RUN-FILE-JSON ( -- n n n )
    CKT-ARGV-BASE
    s" --json-errors"  >LEN PROC-ARGV+
@@ -101,6 +107,27 @@ variable CKT-LIST-U
    s" BYE" SB-APPEND
    SB$ ;
 
+: CKT-UNTERM-SDQ$ ( -- ptr u8 n )
+   SB-RESET
+   s" : BAD ( -- ptr u8 n ) s" SB-APPEND
+   34 SB-APPEND-C
+   s"  nope ;" SB-APPEND
+   SB$ ;
+
+: CKT-UNTERM-CQ$ ( -- ptr u8 n )
+   SB-RESET
+   s" : BAD ( -- ptr u8 ) c" SB-APPEND
+   34 SB-APPEND-C
+   s"  nope ;" SB-APPEND
+   SB$ ;
+
+: CKT-UNTERM-DOTQ$ ( -- ptr u8 n )
+   SB-RESET
+   s" : BAD ( -- ) ." SB-APPEND
+   34 SB-APPEND-C
+   s"  nope ;" SB-APPEND
+   SB$ ;
+
 : CKT-LOCAL-TRUSTED$ ( -- ptr u8 n )
    SB-RESET
    s" TRUSTED: LOCAL-TEST ( -- ) ;" SB-APPEND
@@ -137,6 +164,17 @@ variable CKT-LIST-U
    outu 0 T=
    CKT-ERR erru s" bye" CONTAINS? TTRUE ;
 
+: CKT-EXPECT-UNTERM-STRING ( ptr u8 n -- ) {: src:ptr srcu :}
+   src srcu CKT-RUN-JSON-ALL 70 T=
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" E-" CONTAINS? TTRUE ;
+
+: CKT-TEST-UNTERM-STRINGS ( -- )
+   CKT-UNTERM-SDQ$ CKT-EXPECT-UNTERM-STRING
+   CKT-UNTERM-CQ$ CKT-EXPECT-UNTERM-STRING
+   CKT-UNTERM-DOTQ$ CKT-EXPECT-UNTERM-STRING ;
+
 : CKT-TEST-SOURCE-LIST-LOCAL-TRUST ( -- )
    CKT-LOCAL-TRUSTED$ CKT-RUN-SOURCE-LIST 0 T<>
    {: outu erru :}
@@ -157,6 +195,7 @@ variable CKT-LIST-U
    CKT-TEST-FILE-LABEL
    CKT-TEST-USAGE
    CKT-TEST-DIE
+   CKT-TEST-UNTERM-STRINGS
    CKT-TEST-SOURCE-LIST-LOCAL-TRUST
    CKT-TEST-SOURCE-LIST-AUDITED-LIB
    CLEANUP-RUN

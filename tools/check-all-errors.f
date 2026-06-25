@@ -632,6 +632,34 @@ variable CA-FILE-U
    LJW$ CA-ERR
    CA-LF$ CA-ERR ;
 
+: CA-JSON-LEX-UNTERM ( -- )
+   LJW-RESET
+   LJW-OBJECT-START
+   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
+   s" code" LJW-KEY s" E-UNTERMINATED-STRING" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" fix_source" LJW-STRING LJW-COMMA
+   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
+   s" token" LJW-KEY CA-SRC-A@ LEX-UNTERM-BYTE @ + 2 LJW-STRING LJW-COMMA
+   s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
+   s" line" LJW-KEY LEX-UNTERM-LINE @ LJW-U LJW-COMMA
+   s" column" LJW-KEY LEX-UNTERM-COL @ LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY LEX-UNTERM-BYTE @ LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY LEX-UNTERM-BYTE @ 2 + LJW-U LJW-COMMA
+   s" suggestion" LJW-KEY s" Close the string literal before the definition ends." LJW-STRING
+   LJW-OBJECT-END
+   LJW$ CA-ERR
+   CA-LF$ CA-ERR ;
+
+: CA-HANDLE-LEX-UNTERM ( -- )
+   LEX-UNTERM-QUOTE? 0= IF exit THEN
+   ARGV-JSON? IF
+      CA-JSON-LEX-UNTERM
+   ELSE
+      s" E-UNTERMINATED-STRING" CA-ERR
+      CA-LF$ CA-ERR
+   THEN
+   70 throw ;
+
 : CA-TRY-RAW-JSON ( n -- bool ) {: k :}
    CA-ERR-BUF CA-ERR-LEN @ TRIM CA-RAW-U ! CA-RAW-A!
    CA-RAW-U @ 0= IF CA-FALSE exit THEN
@@ -713,6 +741,7 @@ variable CA-FILE-U
    ARGV-LABEL$ CA-FILE-U ! CA-FILE-A!
    0 ARGV-POS$ CA-READ-SOURCE
    CA-SRC-A@ CA-SRC-U @ LEX-SOURCE
+   CA-HANDLE-LEX-UNTERM
    CA-COLLECT-DEFS
    CA-RUN-DEFS
    CA-RAW-FAILURE @ IF CA-RAW-FAILURE @ throw THEN

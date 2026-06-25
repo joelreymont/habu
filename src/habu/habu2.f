@@ -1091,11 +1091,30 @@ create ENDLOC-KW 58 c, 125 c,
       C-CALL
    pdone LBL, ;
 
+: C-QUOTE-START ( -- )
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI, ;
+
+: C-QUOTE-EOF ( -- )
+   0 74 MOVZ,  NR-EXIT SYS, ;
+
+: C-QUOTE-SCAN ( -- )
+   LBL LBL LBL {: sl sd eof :}
+   sl LBL,
+      14 DATA INE-CELL LDR,
+      12 14 CMP,  C-GE eof BCOND,
+      9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,
+      12 12 1 ADDI,  sl B,
+   eof LBL,  C-QUOTE-EOF
+   sd LBL, ;
+
+: C-QUOTE-CONSUME ( -- )
+   10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
+
 : C-ISDQ ( -- )
-   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
-   LBL LBL LBL LBL {: sl sd cl cd :}
-   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
-   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   C-QUOTE-START
+   C-QUOTE-SCAN
+   C-QUOTE-CONSUME
+   LBL LBL {: cl cd :}
    12 DATA 0 LDR,  15 12 0 ADDI,                        \ x12 = DP, x15 = string base
    14 12 10 ADD,  14 DP-CHECK
    11 13 0 ADDI,  9 10 0 ADDI,
@@ -1106,10 +1125,10 @@ create ENDLOC-KW 58 c, 125 c,
    15 G-PUSH  10 G-PUSH ;
 
 : C-ICQ ( -- )
-   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
-   LBL LBL LBL LBL LBL {: sl sd capok cl cd :}
-   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
-   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   C-QUOTE-START
+   C-QUOTE-SCAN
+   C-QUOTE-CONSUME
+   LBL LBL LBL {: capok cl cd :}
    10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
    capok LBL,
    12 DATA 0 LDR,  15 12 0 ADDI,                       \ x15 = counted string base
@@ -1123,10 +1142,9 @@ create ENDLOC-KW 58 c, 125 c,
    15 G-PUSH ;
 
 : C-IDOTQ ( -- )
-   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
-   LBL LBL {: sl sd :}
-   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
-   sd LBL,  10 12 13 SUB,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   C-QUOTE-START
+   C-QUOTE-SCAN
+   C-QUOTE-CONSUME
    0 1 MOVZ,  1 13 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS, ;
 
 : C-CHAR ( -- )   LTOK @ BL,  9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH ;
@@ -1228,10 +1246,10 @@ create ENDLOC-KW 58 c, 125 c,
    9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL, ;
 
 : C-SDQ ( -- )
-   LBL LBL LBL LBL {: sl sd cl cd :}
-   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
-   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
-   sd LBL,  10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   LBL LBL {: cl cd :}
+   C-QUOTE-START
+   C-QUOTE-SCAN
+   C-QUOTE-CONSUME
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
    12 CP 0 ADDI,
@@ -1245,10 +1263,10 @@ create ENDLOC-KW 58 c, 125 c,
    11 15 0 ADDI,  C-LIT ;                              \ push len (a value, absolute is fine)
 
 : C-CQ ( -- )
-   LBL LBL LBL LBL LBL {: sl sd capok cl cd :}
-   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI,
-   sl LBL,  9 12 0 LDRB,  9 $22 CMPI,  C-EQ sd BCOND,  12 12 1 ADDI,  sl B,
-   sd LBL,  10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR,
+   LBL LBL LBL {: capok cl cd :}
+   C-QUOTE-START
+   C-QUOTE-SCAN
+   C-QUOTE-CONSUME
    10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
    capok LBL,
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
