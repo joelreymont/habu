@@ -315,117 +315,158 @@ variable CHK-ERR-PATH-U
 : CHK-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-: CHK-ARGV-SIG ( -- )
+: CHK-FILES-END? ( ptr u8 n -- bool )
+   s" ;CHK-FILES" STR= ;
+
+: CHK-FILES-ITEM, ( ptr u8 n -- ) {: a:ptr u :}
+   u 0 < if E-STR-BOUNDS throw then
+   u STR-BYTE-MAX > if E-STR-BOUNDS throw then
+   u c,
+   0 begin dup u < while
+      dup a + c@ c,
+      1+
+   repeat drop ;
+
+: CHK-FILES-PARSE ( -- )
+   begin
+      parse-name dup 0= if 2drop E-STR-BOUNDS throw then
+      2dup CHK-FILES-END? if 2drop 0 c, exit then
+      CHK-FILES-ITEM,
+   again ;
+
+: CHK-FILES-WALK ( ptr a [ ptr u8 n -- ] -- ) {: p:ptr q :}
+   p begin dup c@ 0= 0= while
+      dup 1+ over c@ q execute
+      dup c@ 1 + +
+   repeat drop ;
+
+: CHK-FILES-RUN ( [ ptr u8 n -- ] ptr a -- )
+   swap CHK-FILES-WALK ;
+
+: CHK-FILES: ( -- )
+   create CHK-FILES-PARSE
+   does> ( [ ptr u8 n -- ] -- )
+      CHK-FILES-RUN ;
+
+CHK-FILES: CHK-SIGNATURE-FILES
+   lib/errors.f lib/memory.f lib/vector.f tools/lint/text.f
+   tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
+   tools/lint/source-lex.f tools/argv.f tools/signature-lint.f
+;CHK-FILES
+
+CHK-FILES: CHK-BOUNDARY-FILES
+   lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
+   lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f
+   tools/lint/lib.f tools/lint/json-writer.f tools/argv.f
+   tools/checked-boundary-lint.f
+;CHK-FILES
+
+CHK-FILES: CHK-TRUST-FILES
+   tools/date.f lib/errors.f lib/string.f lib/fs.f tools/lint/text.f
+   tools/lint/token.f tools/lint/lib.f tools/argv.f tools/trust-lint.f
+;CHK-FILES
+
+CHK-FILES: CHK-DIAG-FILES
+   tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/diag-origin.f
+;CHK-FILES
+
+CHK-FILES: CHK-JSON-ONLY-FILES
+   lib/errors.f lib/memory.f tools/argv.f tools/json.f tools/json-only.f
+;CHK-FILES
+
+CHK-FILES: CHK-ALL-ERRORS-FILES
+   lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
+   lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f
+   tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f
+   tools/argv.f tools/check-all-errors.f
+;CHK-FILES
+
+: CHK-LOAD-RESET ( -- )
    PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/signature-lint.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   CHK-JSON @ if s" --json"  >LEN PROC-ARGV+ then
-   s" --label"  >LEN PROC-ARGV+
-   CHK-LABEL  >LEN PROC-ARGV+
-   CHK-SOURCE  >LEN PROC-ARGV+ ;
+   s" --load" CHK-ARG+ ;
+
+: CHK-LOAD-END ( -- )
+   s" --" CHK-ARG+ ;
+
+: CHK-LOAD-SIGNATURE ( -- )
+   CHK-LOAD-RESET
+   [: CHK-ARG+ ;] CHK-SIGNATURE-FILES
+   CHK-LOAD-END ;
+
+: CHK-LOAD-BOUNDARY ( -- )
+   CHK-LOAD-RESET
+   [: CHK-ARG+ ;] CHK-BOUNDARY-FILES
+   CHK-LOAD-END ;
+
+: CHK-LOAD-TRUST ( -- )
+   CHK-LOAD-RESET
+   [: CHK-ARG+ ;] CHK-TRUST-FILES
+   CHK-LOAD-END ;
+
+: CHK-LOAD-DIAG ( -- )
+   CHK-LOAD-RESET
+   [: CHK-ARG+ ;] CHK-DIAG-FILES
+   CHK-LOAD-END ;
+
+: CHK-LOAD-JSON-ONLY ( -- )
+   CHK-LOAD-RESET
+   [: CHK-ARG+ ;] CHK-JSON-ONLY-FILES
+   CHK-LOAD-END ;
+
+: CHK-LOAD-ALL-ERRORS ( -- )
+   CHK-LOAD-RESET
+   [: CHK-ARG+ ;] CHK-ALL-ERRORS-FILES
+   CHK-LOAD-END ;
+
+: CHK-JSON-OPT ( ptr u8 n -- )
+   CHK-JSON @ if CHK-ARG+ else 2drop then ;
+
+: CHK-ADD-LABEL-SOURCE ( -- )
+   s" --label" CHK-ARG+
+   CHK-LABEL CHK-ARG+
+   CHK-SOURCE CHK-ARG+ ;
+
+: CHK-ARGV-SIG ( -- )
+   CHK-LOAD-SIGNATURE
+   s" --json" CHK-JSON-OPT
+   CHK-ADD-LABEL-SOURCE ;
 
 : CHK-ARGV-BOUNDARY ( -- )
-   PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/checked-boundary-lint.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   CHK-JSON @ if s" --json-errors"  >LEN PROC-ARGV+ then
-   s" --strict-boundary"  >LEN PROC-ARGV+
-   CHK-SOURCE  >LEN PROC-ARGV+ ;
+   CHK-LOAD-BOUNDARY
+   s" --json-errors" CHK-JSON-OPT
+   s" --strict-boundary" CHK-ARG+
+   CHK-SOURCE CHK-ARG+ ;
 
 : CHK-ARGV-TRUST-PATH ( ptr u8 n -- ) {: path:ptr pathu :}
-   PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" tools/date.f"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/trust-lint.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   s" source-only"  >LEN PROC-ARGV+
-   path pathu  >LEN PROC-ARGV+
-   s" ."  >LEN PROC-ARGV+ ;
+   CHK-LOAD-TRUST
+   s" source-only" CHK-ARG+
+   path pathu CHK-ARG+
+   s" ." CHK-ARG+ ;
 
 : CHK-ARGV-TRUST ( -- )
    CHK-SOURCE CHK-ARGV-TRUST-PATH ;
 
 : CHK-ARGV-TRUST-LIST ( -- )
-   PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" tools/date.f"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/trust-lint.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   s" source-list"  >LEN PROC-ARGV+
-   s" ."  >LEN PROC-ARGV+
+   CHK-LOAD-TRUST
+   s" source-list" CHK-ARG+
+   s" ." CHK-ARG+
    0 begin dup CHK-POS-N @ < while
-      dup CHK-POS$  >LEN PROC-ARGV+
+      dup CHK-POS$ CHK-ARG+
       1+
    repeat drop ;
 
 : CHK-ARGV-DIAG ( -- )
-   PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/diag-origin.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   CHK-SOURCE  >LEN PROC-ARGV+ ;
+   CHK-LOAD-DIAG
+   CHK-SOURCE CHK-ARG+ ;
 
 : CHK-ARGV-JSON-ONLY ( -- )
-   PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/json.f"  >LEN PROC-ARGV+
-   s" tools/json-only.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   CHK-ERR-PATH  >LEN PROC-ARGV+ ;
+   CHK-LOAD-JSON-ONLY
+   CHK-ERR-PATH CHK-ARG+ ;
 
 : CHK-ARGV-ALL ( -- )
-   PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/check-all-errors.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   CHK-JSON @ if s" --json-errors"  >LEN PROC-ARGV+ then
-   s" --label"  >LEN PROC-ARGV+
-   CHK-LABEL  >LEN PROC-ARGV+
-   CHK-SOURCE  >LEN PROC-ARGV+ ;
+   CHK-LOAD-ALL-ERRORS
+   s" --json-errors" CHK-JSON-OPT
+   CHK-ADD-LABEL-SOURCE ;
 
 : CHK-RUN-CAPTURE ( -- )
    s" bin/hb" >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
@@ -503,8 +544,7 @@ variable CHK-ERR-PATH-U
 
 : CHK-RUN-HB ( -- )
    CHK-RUN-PATH CHK-RUN-BUF CHK-RUN-U @ WRITE-ALL
-   PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
+   CHK-LOAD-RESET
    CHK-RUN-PATH CHK-ARG+
    CHK-RUN-CAPTURE ;
 

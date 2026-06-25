@@ -130,6 +130,9 @@ lesson — keep the specific word/code/path, cut the prose.
   deps (`tools/date.f`, `lib/memory.f`, `lib/vector.f`, `tools/lint/intern.f`).
   Copy the `TEST-SUITE` list from `test/gate-stdlib.f` or the tool header instead
   of reconstructing from memory.
+- **Created list DSLs run directly:** pass `[: ITEM ;] NAME-FILES`, matching
+  `GE-FILES:`/`CHK-FILES:`. A generic `execute` wrapper needs a higher-order
+  effect the checker does not model and fails before testing the list.
 - **Layout constants need one owner:** load `src/habu/layout.f` before every
   runtime prefix (env, baked REPL, stepper, watch, debug). Refresh once with
   compatibility constants if the installed `bin/hb` needs them, then remove dups

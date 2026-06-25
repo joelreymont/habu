@@ -299,6 +299,14 @@ Handoff snapshot:
   direct polling scan, `lib/test-runner-test.f`, affected `tools/check.f
   --source-list`, `tools/stdlib-manifest-test.f`, `test/gate-stdlib.f`, and the
   full native gate.
+- F13 has a first sub-batch: `tools/check.f` now centralizes child `--load`
+  recipes behind checked `CHK-FILES:` load groups and small command-builder
+  words instead of rebuilding the same argv prefixes in each `CHK-ARGV-*`
+  routine. `tools/check-test.f` and the stdlib gate `check-cli-boundary` phase
+  passed, and the full native gate passed after the sub-batch. F13 remains
+  open: the remaining work is splitting static scanner cores from their CLI
+  wrappers so check phases that are not true process boundaries can run
+  in-process.
 - The remaining factorization work already has one dot per open finding in the
   local tracker. Do not create duplicates; start the next open row, commit that
   focused batch, update this document, close that row's dot, then push.
@@ -377,17 +385,17 @@ Parent: `habu-review-whole-repo-5e087327`
 ## Verification Status
 
 The original subagent review was read-only. The latest implementation batch is
-the Linux-validated F14 gate-progress capture refactor, and the port stack
-after that refactor passed:
+the Linux-validated F13 check-load builder sub-batch. It does not close F13;
+after that sub-batch the port stack passed:
 
-- stale direct gate polling scan: clean;
-- `lib/test-runner-test.f`: `test: ok`, `test-runner: ok`,
-  `test-runner-test: ok`;
-- affected `tools/check.f --source-list` bundle: clean;
-- `tools/stdlib-manifest-test.f`: `stdlib-manifest-test: ok`;
+- `tools/check-test.f`: `test: ok`, `check-test: ok`;
 - `test/gate-stdlib.f`: `PASS: native lint/stdlib gate phase`;
 - `test/run.f`:
   `PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)`.
+
+Remaining F13 work: split static scanner cores from CLI wrappers and rerun
+`tools/check-test.f`, the `check-cli-boundary` gate phase, and the full native
+gate before closing `habu-factor-check-load-2e29d26a`.
 
 ## Agent Command Notes
 
