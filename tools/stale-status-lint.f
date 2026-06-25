@@ -312,47 +312,91 @@ variable SS-FENCE
    u pos - v < IF SS-FALSE exit THEN
    a pos + v b v STR=CI ;
 
+: SS-SCAN-ADVANCE ( -- )
+   SS-SCAN-X @ 1+ SS-SCAN-X ! ;
+
+: SS-SCAN-C@ ( ptr u8 -- n )
+   SS-SCAN-X @ + c@ ;
+
+: SS-SCAN-DIGITS ( ptr u8 n -- )
+   {: a:ptr u :}
+   0 SS-DIGITS !
+   begin SS-SCAN-X @ u <  a SS-SCAN-C@ SS-DIGIT? and while
+      SS-DIGITS @ 1+ SS-DIGITS !
+      SS-SCAN-ADVANCE
+   repeat ;
+
+: SS-LONG-DIGIT-RUN? ( -- bool )
+   SS-DIGITS @ 3 >= ;
+
+: SS-CURRENT-WS? ( ptr u8 n -- bool )
+   {: a:ptr u :}
+   SS-SCAN-X @ u >= IF SS-FALSE exit THEN
+   a SS-SCAN-C@ WS? ;
+
+: SS-SKIP-WS ( ptr u8 n -- )
+   {: a:ptr u :}
+   begin a u SS-CURRENT-WS? while
+      SS-SCAN-ADVANCE
+   repeat ;
+
+: SS-TAKE-SLASH-RUN? ( ptr u8 n -- bool )
+   {: a:ptr u :}
+   a u SS-SCAN-X @ SS-SLASH-RUN IF
+      SS-SCAN-X !
+      SS-TRUE
+   ELSE
+      drop
+      SS-FALSE
+   THEN ;
+
+: SS-COUNT-RATIO? ( ptr u8 n -- bool )
+   {: a:ptr u :}
+   a u SS-TAKE-SLASH-RUN? IF
+      a u SS-TAKE-SLASH-RUN? IF
+         a u SS-SCAN-X @ SS-AFTER-BOUND?
+      ELSE
+         SS-FALSE
+      THEN
+   ELSE
+      SS-FALSE
+   THEN ;
+
+: SS-COUNT-KEYWORD? ( ptr u8 n -- bool )
+   {: a:ptr u :}
+   a u SS-CURRENT-WS? IF
+      a u SS-SKIP-WS
+      a u SS-SCAN-X @ s" certified" SS-WORD-AT? IF SS-TRUE exit THEN
+      a u SS-SCAN-X @ s" uncheckable" SS-WORD-AT?
+   ELSE
+      SS-FALSE
+   THEN ;
+
+: SS-COUNT-TAIL? ( ptr u8 n -- bool )
+   {: a:ptr u :}
+   SS-SCAN-X @ u >= IF SS-FALSE exit THEN
+   a SS-SCAN-C@ SS-SLASH = IF a u SS-COUNT-RATIO? exit THEN
+   a u SS-COUNT-KEYWORD? ;
+
+: SS-COUNT-CANDIDATE? ( ptr u8 n -- bool )
+   {: a:ptr u :}
+   a SS-SCAN-C@ SS-DIGIT? IF
+      a SS-SCAN-X @ SS-BEFORE-BOUND? IF
+         a u SS-SCAN-DIGITS
+         SS-LONG-DIGIT-RUN? IF a u SS-COUNT-TAIL? ELSE SS-FALSE THEN
+      ELSE
+         SS-SCAN-ADVANCE
+         SS-FALSE
+      THEN
+   ELSE
+      SS-SCAN-ADVANCE
+      SS-FALSE
+   THEN ;
+
 : SS-COUNT-LINE? ( ptr u8 n -- bool ) {: a:ptr u :}
    0 SS-SCAN-X !
    begin SS-SCAN-X @ u < while
-      a SS-SCAN-X @ + c@ SS-DIGIT? IF
-         a SS-SCAN-X @ SS-BEFORE-BOUND? IF
-            0 SS-DIGITS !
-            begin SS-SCAN-X @ u <  a SS-SCAN-X @ + c@ SS-DIGIT? and while
-               SS-DIGITS @ 1+ SS-DIGITS !
-               SS-SCAN-X @ 1+ SS-SCAN-X !
-            repeat
-            SS-DIGITS @ 3 >= IF
-               SS-SCAN-X @ u < IF
-                  a SS-SCAN-X @ + c@ SS-SLASH = IF
-                     a u SS-SCAN-X @ SS-SLASH-RUN IF
-                        SS-SCAN-X !
-                        a u SS-SCAN-X @ SS-SLASH-RUN IF
-                           SS-SCAN-X !
-                           a u SS-SCAN-X @ SS-AFTER-BOUND? IF SS-TRUE exit THEN
-                        ELSE
-                           drop
-                        THEN
-                     ELSE
-                        drop
-                     THEN
-                  ELSE
-                     a SS-SCAN-X @ + c@ WS? IF
-                        begin SS-SCAN-X @ u <  a SS-SCAN-X @ + c@ WS? and while
-                           SS-SCAN-X @ 1+ SS-SCAN-X !
-                        repeat
-                        a u SS-SCAN-X @ s" certified" SS-WORD-AT? IF SS-TRUE exit THEN
-                        a u SS-SCAN-X @ s" uncheckable" SS-WORD-AT? IF SS-TRUE exit THEN
-                     THEN
-                  THEN
-               THEN
-            THEN
-         ELSE
-            SS-SCAN-X @ 1+ SS-SCAN-X !
-         THEN
-      ELSE
-         SS-SCAN-X @ 1+ SS-SCAN-X !
-      THEN
+      a u SS-COUNT-CANDIDATE? IF SS-TRUE exit THEN
    repeat
    SS-FALSE ;
 

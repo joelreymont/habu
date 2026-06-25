@@ -412,6 +412,11 @@ lesson — keep the specific word/code/path, cut the prose.
   before archiving outside git). Habu-only vs cross-language claims use distinct
   artifacts (Forth-only run = repair/replay behavior; 600-row array run = "best LLM
   target"). Stale-status lint ignores fenced evidence blocks, keeps prose strict.
+- **Stateful scanners split at cursor phases:** `tools/stale-status-lint.f` became
+  reviewable when `SS-COUNT-LINE?` delegated cursor advance, digit runs, ratio
+  tails, whitespace skipping, and keyword checks to typed helpers. Keep fixtures
+  around the boundary behavior: short counts, embedded alnums, partial ratios,
+  case-insensitive keywords, fenced blocks, and long files.
 - **Live sweeps resume + enforce coverage by identity:** model calls/repairs can
   die before a row; resume on `(model_id, arm, task_id, trial)` without duplicating,
   record expected identities during the run, and fail before report generation if
