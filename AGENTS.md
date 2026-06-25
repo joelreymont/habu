@@ -2,8 +2,8 @@
 
 A checked stack-effect system for Forth, self-hosted by `bin/hb`. LLM-generated
 Forth is verified by a checker (typed, row-polymorphic stack effects) rather
-than trusting the model to track the stack by hand. See `PLAN.md` for design and
-roadmap.
+than trusting the model to track the stack by hand. Active work lives in dots;
+current verification state lives in `STATUS.md`.
 
 ## First Response Triggers (BLOCKING)
 

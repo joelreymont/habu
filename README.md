@@ -134,9 +134,10 @@ primitives consume typed pointers, and `ptr` without an inner type is rejected.
 
 ## Layout
 
-- [`PLAN.md`](PLAN.md) — active roadmap and root-doc policy.
 - [`docs/forth.md`](docs/forth.md) — Forth coding standards for this repo.
 - [`LESSONS.md`](LESSONS.md) — build recipe + findings (the project's memory).
+- `.dots/` — active implementation tasks; use `dot ready` for unblocked work.
+- [`STATUS.md`](STATUS.md) — current verification status and known gaps.
 - `src/` — the NATIVE toolchain source the engine compiles (and re-checks) when
   rebuilding itself: `src/core/` (checker, render, sha256), `src/arch/arm64/`
   (encoders, assembler, disassembler, mnemonics), `src/habu/` (engine builder

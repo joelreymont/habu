@@ -7,7 +7,7 @@ points stay listed.
 ## Agent Context
 
 - `AGENTS.md` — repository conventions, workflow, and gate.
-- `PLAN.md` — active implementation plan and root-doc policy.
+- `.dots/` — active implementation tasks; `dot ready` shows unblocked work.
 - `LLM.md` — operating protocol for LLM-written Forth.
 - `LESSONS.md` — running project memory and recent implementation findings.
 - `STATUS.md` — current verification status and known gaps.

@@ -125,6 +125,10 @@ even when both ultimately report the same exit code.
 - **User-facing builds must fail closed:** `hb-build` verifies user source with
   `CHECK!` and accepts only `-1` certification. Tests assert bad programs fail
   to build, not merely that a later call exits nonzero.
+- **Active work lives in dots, not a root plan:** once active tasks have detailed
+  `.dots/*.md` entries, a root plan is redundant root-doc drift. Keep current
+  verification in `STATUS.md`, project memory in `LESSONS.md`, and unblocked
+  implementation work in `dot ready`.
 
 ## Checker Soundness
 
@@ -833,7 +837,7 @@ register for the marker byte.
 - **Foundational load changes must update child argv builders:** when a module
   gains a dependency such as `tools/json.f` on `lib/memory.f`, update every
   Habu-spawned `--load` list and gate assertion helper, not just top-level
-  commands. Manual verification commands in `PLAN.md`/docs are part of the same
+  commands. Manual verification commands in docs and dots are part of the same
   contract. Prove with the exact failing child fixture before rerunning the full
   gate.
 - **Ignore generated benchmark output by shape, not run name:** live LLM runs can
