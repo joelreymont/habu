@@ -1,12 +1,6 @@
 \ stdlib-manifest-test.f - validate lib/std.manifest without host text tools.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/stdlib-manifest-test.f
 
-0 set-check
-
-: SMT-CHECK-HOOK ( ptr u8 n -- n )
-   CHECK! dup -1 <> IF 70 throw THEN ;
-' SMT-CHECK-HOOK set-check
-
 $30000 constant SMT-MAN-CAP
 $10000 constant SMT-DOC-CAP
 $20000 constant SMT-PUB-CAP

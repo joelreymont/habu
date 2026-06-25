@@ -74,6 +74,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	vector	lib/vector.f	word	VEC-A!	(ptr u8 ptr a idx --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	store a byte-pointer vector cell
 1	vector	lib/vector.f	word	VEC-COPY-CELLS	(ptr a ptr a len --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	copy checked vector cells between typed cell spans
 1	vector	lib/vector.f	word	VEC-INSTALL-RESIZE	(ptr a count ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	install a freshly allocated resized vector span
+1	vector	lib/vector.f	word	VEC-CHECK-RESIZE-CAP	(ptr a count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	validate that a requested resize capacity can hold the active length
 1	vector	lib/vector.f	word	VEC-RESIZE	(ptr a count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	reallocate vector storage to a checked capacity
 1	vector	lib/vector.f	word	VEC-GROW-CAP	(ptr a count -- count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	compute a doubled vector capacity for a requested need
 1	vector	lib/vector.f	word	VEC-ENSURE	(ptr a count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	ensure a vector has capacity for a requested active count
