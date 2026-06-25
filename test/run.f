@@ -51,40 +51,12 @@
    s" lib/process-env.f"  >LEN PROC-ARGV+
    s" lib/test-runner.f"  >LEN PROC-ARGV+ ;
 
-: TR-FLUSH-CAPTURE-LINES ( -- )
-   1 GT-OUT-BUF PROC-OUT-LEN GT-FLUSH-LINES-FD
-   2 GT-ERR-BUF PROC-ERR-LEN GT-FLUSH-LINES-FD ;
-
-: TR-FLUSH-CAPTURE-FINAL ( -- )
-   1 GT-OUT-BUF PROC-OUT-LEN GT-FLUSH-REMAINDER-FD
-   2 GT-ERR-BUF PROC-ERR-LEN GT-FLUSH-REMAINDER-FD ;
-
 : TR-SPAWN-CAPTURE ( -- )
    s" bin/hb" >LEN PROC-ARGV-CHECK-PATH
    PROC-CAPTURE-RESET
    TR-TIMEOUT-MS >MS PROC-CAPTURE-DEADLINE!
    PROC-SETUP-CAPTURE-FDS
    s" bin/hb" >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-CAPTURE ;
-
-: TR-RUN-CAPTURE-LOOP ( ptr u8 n -- ) {: label:ptr labelu :}
-   begin PROC-CAPTURE-DONE? 0= while
-      GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup COUNT>N 0= if
-         drop
-         PROC-REMAINING-MS MS>N 0 <= if
-            PROC-REAP-CAPTURE-TIMEOUT
-            TR-FLUSH-CAPTURE-FINAL
-            exit
-         then
-         label labelu GT-PROGRESS-WAIT
-      else
-         drop
-         GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-DRAIN-READY
-         TR-FLUSH-CAPTURE-LINES
-         label labelu GT-PROGRESS-WAIT
-      then
-   repeat
-   PROC-REAP-CAPTURE
-   TR-FLUSH-CAPTURE-FINAL ;
 
 : TR-PHASE-OK? ( -- bool )
    PROC-OUTCOME-KIND @ PROC-OUTCOME-EXIT =
@@ -93,7 +65,7 @@
 : TR-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    label labelu GT-PROGRESS-RUN
    TR-SPAWN-CAPTURE
-   label labelu TR-RUN-CAPTURE-LOOP
+   label labelu GT-PROGRESS-CAPTURE-FLUSH
    PROC-CLOSE-CAPTURE-FDS
    TR-PHASE-OK? 0= if label labelu TR-FAIL then
    label labelu GT-PROGRESS-PASS ;

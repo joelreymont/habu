@@ -22,54 +22,6 @@ variable SUITE-STDIN-U
    SCRIPT-ARGC 0= if exit then
    SUITE-USAGE ;
 
-: SUITE-CAPTURE-STORE ( -- )
-   PROC-OUT-LEN @ LEN>N GT-OUT-U !
-   PROC-ERR-LEN @ LEN>N GT-ERR-U !
-   PROC-OUTCOME-KIND @ GT-OUTCOME-KIND !
-   PROC-OUTCOME-CODE @ GT-OUTCOME-CODE ! ;
-
-: SUITE-RUN-CAPTURE-LOOP ( ptr u8 n -- ) {: label:ptr labelu :}
-   begin PROC-CAPTURE-DONE? 0= while
-      GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup COUNT>N 0= if
-         drop
-         PROC-REMAINING-MS MS>N 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
-         label labelu GT-PROGRESS-WAIT
-      else
-         drop
-         GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-DRAIN-READY
-         label labelu GT-PROGRESS-WAIT
-      then
-   repeat
-   PROC-REAP-CAPTURE ;
-
-: SUITE-POLL-STDIN-CAPTURE ( ms -- count ) {: ms :}
-   PROC-OUT-R @ POLLIN 0 >IDX PROC-PFD-AT!
-   PROC-ERR-R @ POLLIN 1 >IDX PROC-PFD-AT!
-   PROC-IN-W @ FD>N 0 >= if
-      PROC-IN-W @ POLLOUT 2 >IDX PROC-PFD-AT!
-   else
-      -1 >FD 0 2 >IDX PROC-PFD-AT!
-   then
-   PROC-PFD 3 ms MS>N poll {: rc :}
-   rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
-   rc >COUNT ;
-
-: SUITE-RUN-STDIN-CAPTURE-LOOP ( ptr u8 len ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
-   inu LEN>N 0 <= if PROC-IN-W PROC-CLOSE-CELL then
-   begin PROC-STDIN-CAPTURE-DONE? 0= while
-      GT-PROGRESS-SLICE-MS SUITE-POLL-STDIN-CAPTURE dup COUNT>N 0= if
-         drop
-         PROC-REMAINING-MS MS>N 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
-         label labelu GT-PROGRESS-WAIT
-      else
-         drop
-         in inu PROC-DRIVE-STDIN
-         GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-DRAIN-READY
-         label labelu GT-PROGRESS-WAIT
-      then
-   repeat
-   PROC-REAP-CAPTURE ;
-
 : SUITE-RUN-ENV ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu timeout label:ptr labelu :}
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN PROC-ARGV-CHECK-PATH
@@ -77,9 +29,8 @@ variable SUITE-STDIN-U
    timeout >MS PROC-CAPTURE-DEADLINE!
    PROC-SETUP-CAPTURE-FDS
    path pathu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-CAPTURE
-   label labelu SUITE-RUN-CAPTURE-LOOP
-   PROC-CLOSE-CAPTURE-FDS
-   SUITE-CAPTURE-STORE ;
+   label labelu GT-PROGRESS-CAPTURE
+   PROC-CLOSE-CAPTURE-FDS ;
 
 : SUITE-RUN-STDIN ( ptr u8 n ptr u8 n n ptr u8 n -- ) {: path:ptr pathu in:ptr inu timeout label:ptr labelu :}
    PROC-ENV-INHERIT-MISSING
@@ -90,10 +41,9 @@ variable SUITE-STDIN-U
    PROC-SETUP-CAPTURE-FDS
    PROC-SETUP-STDIN-FDS
    path pathu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
-   in inu >LEN label labelu SUITE-RUN-STDIN-CAPTURE-LOOP
+   in inu >LEN label labelu GT-PROGRESS-STDIN-CAPTURE
    PROC-CLOSE-STDIN-FDS
-   PROC-CLOSE-CAPTURE-FDS
-   SUITE-CAPTURE-STORE ;
+   PROC-CLOSE-CAPTURE-FDS ;
 
 : SUITE-FAIL ( ptr u8 n -- ) {: label:ptr labelu :}
    s" FAIL: " type label labelu type cr

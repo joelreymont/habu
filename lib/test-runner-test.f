@@ -82,6 +82,11 @@ variable GTT-LINE-FD
    s" bad-err" SB-APPEND GTT-LF
    SB$ ;
 
+: GTT-ECHO-OUT$ ( -- ptr u8 n )
+   SB-RESET
+   s" progress-ok" SB-APPEND GTT-LF
+   SB$ ;
+
 : GTT-LINE-BUF! ( ptr u8 n -- ) {: a:ptr u :}
    u 0 < if E-STR-BOUNDS throw then
    u GTT-LINE-CAP > if E-STR-CAPACITY throw then
@@ -134,6 +139,41 @@ variable GTT-LINE-FD
 
 : GTT-RUN-HANG ( -- )
    GTT-HANG$ 50 GTT-RUN-HB ;
+
+: GTT-ARGV-CAPTURE-BEGIN ( ptr u8 n n -- ) {: path:ptr pathu timeout :}
+   path pathu >LEN PROC-ARGV-CHECK-PATH
+   PROC-CAPTURE-RESET
+   timeout >MS PROC-CAPTURE-DEADLINE!
+   PROC-SETUP-CAPTURE-FDS
+   path pathu >LEN PROC-ARGV-PREPARE PROC-SPAWN-ARGV-CAPTURE ;
+
+: GTT-ARGV-STDIN-CAPTURE-BEGIN ( ptr u8 n n -- ) {: path:ptr pathu timeout :}
+   path pathu >LEN PROC-ARGV-CHECK-PATH
+   PROC-CAPTURE-RESET
+   timeout >MS PROC-CAPTURE-DEADLINE!
+   PROC-SETUP-CAPTURE-FDS
+   PROC-SETUP-STDIN-FDS
+   path pathu >LEN PROC-ARGV-PREPARE PROC-SPAWN-ARGV-STDIN-CAPTURE ;
+
+: GTT-PROGRESS-ECHO ( -- )
+   PROC-ARGV-RESET
+   s" progress-ok" >LEN PROC-ARGV+
+   s" /bin/echo" 1000 GTT-ARGV-CAPTURE-BEGIN
+   s" progress capture" GT-PROGRESS-CAPTURE
+   PROC-CLOSE-CAPTURE-FDS ;
+
+: GTT-PROGRESS-FLUSH-TRUE ( -- )
+   PROC-ARGV-RESET
+   s" /usr/bin/true" 1000 GTT-ARGV-CAPTURE-BEGIN
+   s" progress capture flush" GT-PROGRESS-CAPTURE-FLUSH
+   PROC-CLOSE-CAPTURE-FDS ;
+
+: GTT-PROGRESS-STDIN-CAT ( -- )
+   PROC-ARGV-RESET
+   s" /bin/cat" 1000 GTT-ARGV-STDIN-CAPTURE-BEGIN
+   s" stdin-ok" >LEN s" progress stdin" GT-PROGRESS-STDIN-CAPTURE
+   PROC-CLOSE-STDIN-FDS
+   PROC-CLOSE-CAPTURE-FDS ;
 
 : GTT-TEST-TEMP-ROOT ( -- )
    GT-ROOT DIR? TTRUE
@@ -200,6 +240,24 @@ variable GTT-LINE-FD
    s" fixture progress" GT-PROGRESS-WAIT
    s" fixture progress" GT-PROGRESS-PASS ;
 
+: GTT-TEST-PROGRESS-CAPTURE ( -- )
+   GTT-PROGRESS-ECHO
+   GT-OUT$ GTT-ECHO-OUT$ T$=
+   GT-ERR$ s" " T$=
+   GT-RC@ 0 T= ;
+
+: GTT-TEST-PROGRESS-CAPTURE-FLUSH ( -- )
+   GTT-PROGRESS-FLUSH-TRUE
+   GT-RC@ 0 T=
+   GT-OUT$ s" " T$=
+   GT-ERR$ s" " T$= ;
+
+: GTT-TEST-PROGRESS-STDIN-CAPTURE ( -- )
+   GTT-PROGRESS-STDIN-CAT
+   GT-OUT$ s" stdin-ok" T$=
+   GT-ERR$ s" " T$=
+   GT-RC@ 0 T= ;
+
 : TEST-RUNNER-TEST-MAIN ( -- )
    T-RESET
    GTT-PREPARE
@@ -211,6 +269,9 @@ variable GTT-LINE-FD
    GTT-TEST-LINE-FLUSH-U
    GTT-TEST-LINE-FLUSH-FD
    GTT-TEST-PROGRESS
+   GTT-TEST-PROGRESS-CAPTURE
+   GTT-TEST-PROGRESS-CAPTURE-FLUSH
+   GTT-TEST-PROGRESS-STDIN-CAPTURE
    GT-CLEANUP
    GT-ROOT EXISTS? TFALSE
    T-REPORT

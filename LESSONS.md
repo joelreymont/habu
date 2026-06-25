@@ -441,6 +441,9 @@ lesson — keep the specific word/code/path, cut the prose.
   print label-only wait lines, keep child stdout/stderr for failures. Progress
   must exist at every blocking layer — a top-level `WAIT-RC` blinds the user even
   if children print heartbeats.
+- **Gate heartbeat capture has one owner:** `lib/test-runner.f` owns
+  progress-aware drain/flush/stdin capture. Gate files set up phases and
+  assertions only; direct `PROC-PFD`/poll loops there recreate process debt.
 - **Habu-spawned `hb` children need explicit env:** `RUN-ARGV-CAPTURE` doesn't
   inherit env like a shell; use env-aware process APIs + `PROC-ENV-INHERIT-MISSING`.
   Process capture buffers size for isolated jj workspace paths (not the short main

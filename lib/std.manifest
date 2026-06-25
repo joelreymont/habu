@@ -654,18 +654,33 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test-runner	lib/test-runner.f	word	GT-FAIL+	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	record one named aggregate failure
 1	test-runner	lib/test-runner.f	word	GT-CHECK	(bool ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	record a failure name when a boolean check fails
 1	test-runner	lib/test-runner.f	word	GT-STORE-RUN	(len len n n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	store one captured process outcome
+1	test-runner	lib/test-runner.f	word	GT-CAPTURE-STORE	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	store the current low-level process capture outcome
 1	test-runner	lib/test-runner.f	word	GT-RUN	(ptr u8 n n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run a prepared argv capture with timeout
 1	test-runner	lib/test-runner.f	word	GT-RUN-DEFAULT	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run a prepared argv capture with the default timeout
+1	test-runner	lib/test-runner.f	word	GT-CAPTURE-DRAIN	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	drain ready stdout and stderr into the gate buffers
 1	test-runner	lib/test-runner.f	word	GT-LINE-FLUSH-U	(ptr u8 n -- n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	return bytes through the last complete newline in a buffer
 1	test-runner	lib/test-runner.f	word	GT-WRITE-FD	(n ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	write all bytes to one file descriptor or throw
 1	test-runner	lib/test-runner.f	word	GT-FLUSH-LINES-FD	(n ptr u8 ptr a --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	flush complete lines from a mutable buffer and retain its trailing fragment
 1	test-runner	lib/test-runner.f	word	GT-FLUSH-REMAINDER-FD	(n ptr u8 ptr a --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	flush a mutable buffer's final trailing fragment
+1	test-runner	lib/test-runner.f	word	GT-CAPTURE-FLUSH-LINES	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	flush complete captured stdout and stderr lines to their file descriptors
+1	test-runner	lib/test-runner.f	word	GT-CAPTURE-FLUSH-FINAL	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	flush final captured stdout and stderr fragments to their file descriptors
 1	test-runner	lib/test-runner.f	word	GT-PROGRESS-RUN	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a gate progress start line and record its start time
 1	test-runner	lib/test-runner.f	word	GT-PROGRESS-ELAPSED-MS	(-- n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	return elapsed milliseconds since the current progress start
 1	test-runner	lib/test-runner.f	word	GT-U-TYPE	(n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	print an unsigned integer without a trailing newline for progress lines
 1	test-runner	lib/test-runner.f	word	GT-PROGRESS-DUE?	(-- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	test whether the progress heartbeat interval has elapsed
 1	test-runner	lib/test-runner.f	word	GT-PROGRESS-WAIT	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a heartbeat wait line when a long child remains quiet
 1	test-runner	lib/test-runner.f	word	GT-PROGRESS-SLICE-MS	(-- ms)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	return the next poll timeout capped to the heartbeat interval
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE-TIMEOUT?	(ptr u8 n -- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	reap a timed-out progress capture or print a heartbeat wait line
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-STDIN-TIMEOUT?	(ptr u8 n -- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	reap a timed-out stdin progress capture or print a heartbeat wait line
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE-READY	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	drain ready captured output and report progress
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE-READY-FLUSH	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	drain ready captured output flush lines and report progress
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE-STEP?	(ptr u8 n -- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run one non-stdin heartbeat capture step
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE-STEP-FLUSH?	(ptr u8 n -- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run one flushing heartbeat capture step
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-STDIN-READY	(ptr u8 len ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	drive stdin drain ready captured output and report progress
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-STDIN-STEP?	(ptr u8 len ptr u8 n -- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run one stdin heartbeat capture step
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run a progress-aware capture loop into gate buffers
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE-FLUSH	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run a progress-aware capture loop and flush child output lines
+1	test-runner	lib/test-runner.f	word	GT-PROGRESS-STDIN-CAPTURE	(ptr u8 len ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run a progress-aware stdin capture loop into gate buffers
 1	test-runner	lib/test-runner.f	word	GT-PROGRESS-PASS	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a gate progress pass line with elapsed milliseconds
 1	test-runner	lib/test-runner.f	word	GT-RC@	(-- n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return last outcome as shell-style rc
 1	test-runner	lib/test-runner.f	word	GT-RC=	(n ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last rc equals an expected value

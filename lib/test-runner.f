@@ -103,10 +103,16 @@ variable GT-TAIL-U
    erru LEN>N GT-ERR-U !
    outu LEN>N GT-OUT-U ! ;
 
+: GT-CAPTURE-STORE ( -- )
+   PROC-CAPTURE-OUTCOME@ GT-STORE-RUN ;
+
 : GT-RUN ( ptr u8 n n -- ) {: path:ptr pathu timeout :}
    path pathu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN timeout >MS
    RUN-ARGV-CAPTURE-OUTCOME
    GT-STORE-RUN ;
+
+: GT-CAPTURE-DRAIN ( -- )
+   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-DRAIN-READY ;
 
 : GT-RUN-DEFAULT ( ptr u8 n -- )
    GT-DEFAULT-TIMEOUT-MS GT-RUN ;
@@ -143,6 +149,14 @@ variable GT-TAIL-U
    fd buf GT-TAIL-U @ GT-WRITE-FD
    0 lenp ! ;
 
+: GT-CAPTURE-FLUSH-LINES ( -- )
+   1 GT-OUT-BUF PROC-OUT-LEN GT-FLUSH-LINES-FD
+   2 GT-ERR-BUF PROC-ERR-LEN GT-FLUSH-LINES-FD ;
+
+: GT-CAPTURE-FLUSH-FINAL ( -- )
+   1 GT-OUT-BUF PROC-OUT-LEN GT-FLUSH-REMAINDER-FD
+   2 GT-ERR-BUF PROC-ERR-LEN GT-FLUSH-REMAINDER-FD ;
+
 : GT-PROGRESS-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    mono-ns GT-PROGRESS-START-NS !
    GT-PROGRESS-START-NS @ GT-PROGRESS-LAST-NS !
@@ -168,6 +182,95 @@ variable GT-TAIL-U
 
 : GT-PROGRESS-SLICE-MS ( -- ms )
    PROC-REMAINING-MS dup MS>N GT-HEARTBEAT-MS > if drop GT-HEARTBEAT-MS >MS then ;
+
+: GT-PROGRESS-CAPTURE-TIMEOUT? ( ptr u8 n -- bool ) {: label:ptr labelu :}
+   PROC-REMAINING-MS MS>N 0 <= if
+      PROC-REAP-CAPTURE-TIMEOUT
+      0 0=
+      exit
+   then
+   label labelu GT-PROGRESS-WAIT
+   0 0= 0= ;
+
+: GT-PROGRESS-STDIN-TIMEOUT? ( ptr u8 n -- bool ) {: label:ptr labelu :}
+   PROC-REMAINING-MS MS>N 0 <= if
+      PROC-CLOSE-STDIN-FDS
+      PROC-REAP-CAPTURE-TIMEOUT
+      0 0=
+      exit
+   then
+   label labelu GT-PROGRESS-WAIT
+   0 0= 0= ;
+
+: GT-PROGRESS-CAPTURE-READY ( ptr u8 n -- ) {: label:ptr labelu :}
+   GT-CAPTURE-DRAIN
+   label labelu GT-PROGRESS-WAIT ;
+
+: GT-PROGRESS-CAPTURE-READY-FLUSH ( ptr u8 n -- ) {: label:ptr labelu :}
+   GT-CAPTURE-DRAIN
+   GT-CAPTURE-FLUSH-LINES
+   label labelu GT-PROGRESS-WAIT ;
+
+: GT-PROGRESS-CAPTURE-STEP? ( ptr u8 n -- bool ) {: label:ptr labelu :}
+   GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup COUNT>N 0= if
+      drop
+      label labelu GT-PROGRESS-CAPTURE-TIMEOUT?
+      exit
+   then
+   drop
+   label labelu GT-PROGRESS-CAPTURE-READY
+   0 0= 0= ;
+
+: GT-PROGRESS-CAPTURE-STEP-FLUSH? ( ptr u8 n -- bool ) {: label:ptr labelu :}
+   GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup COUNT>N 0= if
+      drop
+      label labelu GT-PROGRESS-CAPTURE-TIMEOUT? dup if
+         GT-CAPTURE-FLUSH-FINAL
+      then
+      exit
+   then
+   drop
+   label labelu GT-PROGRESS-CAPTURE-READY-FLUSH
+   0 0= 0= ;
+
+: GT-PROGRESS-STDIN-READY ( ptr u8 len ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
+   in inu PROC-DRIVE-STDIN
+   GT-CAPTURE-DRAIN
+   label labelu GT-PROGRESS-WAIT ;
+
+: GT-PROGRESS-STDIN-STEP? ( ptr u8 len ptr u8 n -- bool )
+   {: in:ptr inu label:ptr labelu :}
+   GT-PROGRESS-SLICE-MS PROC-POLL-IO-OUTCOME dup COUNT>N 0= if
+      drop
+      label labelu GT-PROGRESS-STDIN-TIMEOUT?
+      exit
+   then
+   drop
+   in inu label labelu GT-PROGRESS-STDIN-READY
+   0 0= 0= ;
+
+: GT-PROGRESS-CAPTURE ( ptr u8 n -- ) {: label:ptr labelu :}
+   begin PROC-CAPTURE-DONE? 0= while
+      label labelu GT-PROGRESS-CAPTURE-STEP? if GT-CAPTURE-STORE exit then
+   repeat
+   PROC-REAP-CAPTURE
+   GT-CAPTURE-STORE ;
+
+: GT-PROGRESS-CAPTURE-FLUSH ( ptr u8 n -- ) {: label:ptr labelu :}
+   begin PROC-CAPTURE-DONE? 0= while
+      label labelu GT-PROGRESS-CAPTURE-STEP-FLUSH? if GT-CAPTURE-STORE exit then
+   repeat
+   PROC-REAP-CAPTURE
+   GT-CAPTURE-FLUSH-FINAL
+   GT-CAPTURE-STORE ;
+
+: GT-PROGRESS-STDIN-CAPTURE ( ptr u8 len ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
+   inu LEN>N 0 <= if PROC-IN-W PROC-CLOSE-CELL then
+   begin PROC-STDIN-CAPTURE-DONE? 0= while
+      in inu label labelu GT-PROGRESS-STDIN-STEP? if GT-CAPTURE-STORE exit then
+   repeat
+   PROC-REAP-CAPTURE
+   GT-CAPTURE-STORE ;
 
 : GT-PROGRESS-PASS ( ptr u8 n -- ) {: label:ptr labelu :}
    s" PASS: " type label labelu type
