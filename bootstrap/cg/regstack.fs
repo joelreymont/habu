@@ -115,17 +115,17 @@ variable RL-ACTIVE   variable RL-FAIL
    loop  V-RESET ;
 
 \ --- primitives (own wordlist; walk.fs prefers these, else spills + old prims) ---
-: VBIN {: emit fold -- :}                          \ emit:(rd rn rm) ic-gen  fold:(a b -- n)
+: VBIN ( xt xt -- ) {: emit fold -- :}             \ emit:(rd rn rm) ic-gen  fold:(a b -- n)
    V-2CON? if  V-POPC {: b :} V-POPC {: a :}  a b fold execute V-PUSHC
    else  V-POPR {: b :} V-POPR {: a :}  a a b emit execute  b R-FREE  a V-PUSHR  then ;
 
-: VUN {: emit fold -- :}            \ emit:(rd rn -- ) closes over an imm; fold:(a -- n)
+: VUN ( xt xt -- ) {: emit fold -- :}              \ emit:(rd rn -- ) closes over an imm; fold:(a -- n)
    V-TOP-TAG V-CON = VSP @ 0> and if  V-POPC fold execute V-PUSHC
    else  V-POPR {: r :}  r r emit execute  r V-PUSHR  then ;
 
 \ comparisons -> Forth flag (0/-1). Distinct names (templ.fs has its own memory
 \ g-cmp in the FORTH wordlist; these must not be shadowed by it).
-: VCMP  ( cond -- )  V-POPR {: b :} V-POPR {: a :}  a b CMP,  a swap CSET,  a SP a SUB,  b R-FREE  a V-PUSHR ;
+: VCMP ( cond -- )  V-POPR {: b :} V-POPR {: a :}  a b CMP,  a swap CSET,  a SP a SUB,  b R-FREE  a V-PUSHR ;
 
 : VCMP0 ( cond -- )  V-POPR {: a :}  a 0 CMPI,  a swap CSET,  a SP a SUB,  a V-PUSHR ;
 
@@ -133,14 +133,14 @@ variable RL-ACTIVE   variable RL-FAIL
 \ materialisation. (igen = ['] ADDI, etc.)
 4096 constant IMM12-MAX
 
-: VADDSUB {: rgen igen fold -- :}
+: VADDSUB ( xt xt xt -- ) {: rgen igen fold -- :}
    V-2CON? if  V-POPC {: b :} V-POPC {: a :}  a b fold execute V-PUSHC exit then
    V-TOP-TAG V-CON = if  V-TOP-VAL 0 IMM12-MAX within if
       V-POPC {: k :} V-POPR {: a :}  a a k igen execute  a V-PUSHR  exit then then
    V-POPR {: b :} V-POPR {: a :}  a a b rgen execute  b R-FREE  a V-PUSHR ;
 
 \ AND/OR/EOR with a const operand that's a valid ARM logical immediate -> #imm form.
-: VLOGIC {: rgen igen fold -- :}
+: VLOGIC ( xt xt xt -- ) {: rgen igen fold -- :}
    V-2CON? if  V-POPC {: b :} V-POPC {: a :}  a b fold execute V-PUSHC exit then
    V-TOP-TAG V-CON = if  V-TOP-VAL ENC-LOGIMM if  drop
       V-POPC {: m :}  V-POPR {: a :}  a a m igen execute  a V-PUSHR  exit
@@ -165,7 +165,7 @@ variable RL-ACTIVE   variable RL-FAIL
 
 : V-SWAP1 ( -- )  V-POP 2>r  V-POP 2r>  V-PUSHX  V-PUSHX ;
 
-: V-NIP1  ( -- )  V-POP {: tb vb :}  V-POP {: ta va :}
+: V-NIP1 ( -- )  V-POP {: tb vb :}  V-POP {: ta va :}
    ta V-REG = if va R-FREE then  ta V-FREG = if va D-FREE then  tb vb V-PUSHX ;
 
 : V-OVER1 ( -- )
@@ -174,7 +174,7 @@ variable RL-ACTIVE   variable RL-FAIL
    ta V-FREG = if  D-ALLOC {: d :} d va FMOVDD,  d V-PUSHF  exit then
    R-ALLOC {: r :} r va MOV, r V-PUSHR ;
 
-: V-ROT1  ( -- )  V-POP {: tc vc :} V-POP {: tb vb :} V-POP {: ta va :}  tb vb V-PUSHX tc vc V-PUSHX ta va V-PUSHX ;
+: V-ROT1 ( -- )  V-POP {: tc vc :} V-POP {: tb vb :} V-POP {: ta va :}  tb vb V-PUSHX tc vc V-PUSHX ta va V-PUSHX ;
 
 : V-MROT1 ( -- )  V-POP {: tc vc :} V-POP {: tb vb :} V-POP {: ta va :}  tc vc V-PUSHX ta va V-PUSHX tb vb V-PUSHX ;
 
@@ -187,154 +187,154 @@ variable RL-ACTIVE   variable RL-FAIL
 \ the D-file with no GP round-trips; V-POPD FMOVs a non-resident operand in, the
 \ result pushes as V-FREG, and v-popr/v-spill FMOV the bits out only when a GP
 \ consumer or control-flow boundary needs them.
-: VFBIN {: emit -- :}                 \ emit:(Dd Dn Dm) e.g. ['] FADD,
+: VFBIN ( xt -- ) {: emit -- :}       \ emit:(Dd Dn Dm) e.g. ['] FADD,
    V-POPD {: db :} V-POPD {: da :}  da da db emit execute  db D-FREE  da V-PUSHF ;
 
-: VFUN {: emit -- :}                  \ emit:(Dd Dn) e.g. ['] FNEG,
+: VFUN ( xt -- ) {: emit -- :}        \ emit:(Dd Dn) e.g. ['] FNEG,
    V-POPD {: da :}  da da emit execute  da V-PUSHF ;
 
-: VFCMP {: cond -- :}                 \ FCMP a,b -> GP flag 0/-1 (cond per FP semantics)
+: VFCMP ( n -- ) {: cond -- :}        \ FCMP a,b -> GP flag 0/-1 (cond per FP semantics)
    V-POPD {: db :} V-POPD {: da :}  da db FCMP,
    R-ALLOC {: r :}  r cond CSET,  r SP r SUB,  da D-FREE db D-FREE  r V-PUSHR ;
 
-: VFCMP0 {: cond -- :}                \ FCMP a,#0.0 -> GP flag 0/-1
+: VFCMP0 ( n -- ) {: cond -- :}       \ FCMP a,#0.0 -> GP flag 0/-1
    V-POPD {: da :}  da FCMP0,  R-ALLOC {: r :}  r cond CSET,  r SP r SUB,  da D-FREE  r V-PUSHR ;
 
 wordlist constant CG-VS
 get-current  CG-VS set-current
 
-: + ['] ADD, ['] ADDI, ['] + VADDSUB ;
+: + ( -- ) ['] ADD, ['] ADDI, ['] + VADDSUB ;
 
-: - ['] SUB, ['] SUBI, ['] - VADDSUB ;
+: - ( -- ) ['] SUB, ['] SUBI, ['] - VADDSUB ;
 
-: * ['] MUL, ['] * VBIN ;
+: * ( -- ) ['] MUL, ['] * VBIN ;
 
-: AND ['] AND, ['] ANDI, ['] and VLOGIC ;
+: AND ( -- ) ['] AND, ['] ANDI, ['] and VLOGIC ;
 
-: OR ['] ORR, ['] ORRI, ['] or VLOGIC ;
+: OR ( -- ) ['] ORR, ['] ORRI, ['] or VLOGIC ;
 
-: XOR ['] EOR, ['] EORI, ['] xor VLOGIC ;
+: XOR ( -- ) ['] EOR, ['] EORI, ['] xor VLOGIC ;
 
-: 1+ [: 1 ADDI, ;] ['] 1+ VUN ;
+: 1+ ( -- ) [: 1 ADDI, ;] ['] 1+ VUN ;
 
-: 1- [: 1 SUBI, ;] ['] 1- VUN ;
+: 1- ( -- ) [: 1 SUBI, ;] ['] 1- VUN ;
 
-: 2* [: 1 LSLI, ;] ['] 2* VUN ;
+: 2* ( -- ) [: 1 LSLI, ;] ['] 2* VUN ;
 
-: NEGATE
+: NEGATE ( -- )
    V-TOP-TAG V-CON = VSP @ 0> and if  V-POPC negate V-PUSHC
    else  V-POPR {: r :}  r SP r SUB,  r V-PUSHR  then ;
 
-: INVERT
+: INVERT ( -- )
    V-TOP-TAG V-CON = VSP @ 0> and if  V-POPC invert V-PUSHC
    else  V-POPR {: r :}  12 0 MOVN,  r r 12 EOR,  r V-PUSHR  then ;
 
-: DUP V-DUP1 ;
+: DUP ( -- ) V-DUP1 ;
 
-: DROP V-DROP1 ;
+: DROP ( -- ) V-DROP1 ;
 
-: SWAP V-SWAP1 ;
+: SWAP ( -- ) V-SWAP1 ;
 
-: NIP V-NIP1 ;
+: NIP ( -- ) V-NIP1 ;
 
-: OVER V-OVER1 ;
+: OVER ( -- ) V-OVER1 ;
 
-: ROT V-ROT1 ;
+: ROT ( -- ) V-ROT1 ;
 
-: -ROT V-MROT1 ;
+: -ROT ( -- ) V-MROT1 ;
 
-: 2SWAP V-2SWAP1 ;
+: 2SWAP ( -- ) V-2SWAP1 ;
 
-: 2DUP V-OVER1 V-OVER1 ;
+: 2DUP ( -- ) V-OVER1 V-OVER1 ;
 
-: 2DROP V-DROP1 V-DROP1 ;
+: 2DROP ( -- ) V-DROP1 V-DROP1 ;
 
-: TUCK V-SWAP1 V-OVER1 ;
+: TUCK ( -- ) V-SWAP1 V-OVER1 ;
 
 \ memory: pointer in a register, LDR/STR; reuse the popped register for the result.
-: @  V-POPR {: p :} p p 0 LDR,  p V-PUSHR ;
+: @ ( -- )  V-POPR {: p :} p p 0 LDR,  p V-PUSHR ;
 
-: c@ V-POPR {: p :} p p 0 LDRB, p V-PUSHR ;
+: c@ ( -- ) V-POPR {: p :} p p 0 LDRB, p V-PUSHR ;
 
-: !  V-POPR {: p :} V-POPR {: v :}  v p 0 STR,   p R-FREE v R-FREE ;
+: ! ( -- )  V-POPR {: p :} V-POPR {: v :}  v p 0 STR,   p R-FREE v R-FREE ;
 
-: c! V-POPR {: p :} V-POPR {: v :}  v p 0 STRB,  p R-FREE v R-FREE ;
+: c! ( -- ) V-POPR {: p :} V-POPR {: v :}  v p 0 STRB,  p R-FREE v R-FREE ;
 
-: +! V-POPR {: p :} V-POPR {: n :}  R-ALLOC {: t :}  t p 0 LDR, t t n ADD, t p 0 STR,  p R-FREE n R-FREE t R-FREE ;
+: +! ( -- ) V-POPR {: p :} V-POPR {: n :}  R-ALLOC {: t :}  t p 0 LDR, t t n ADD, t p 0 STR,  p R-FREE n R-FREE t R-FREE ;
 
 \ bump heap (HP = next-free pointer, set by G-HEAP-INIT at the program entry)
-: HERE   R-ALLOC {: r :}  r HP 0 ADDI,  r V-PUSHR ;          \ push current HP
+: HERE ( -- )   R-ALLOC {: r :}  r HP 0 ADDI,  r V-PUSHR ;          \ push current HP
 
-: ALLOT  V-POPR {: n :}  HP HP n ADD,  n R-FREE ;            \ HP += n
+: ALLOT ( -- )  V-POPR {: n :}  HP HP n ADD,  n R-FREE ;            \ HP += n
 
-: ,      V-POPR {: x :}  x HP 0 STR,   HP HP 8 ADDI,  x R-FREE ;   \ store cell, HP += 8
+: , ( -- )      V-POPR {: x :}  x HP 0 STR,   HP HP 8 ADDI,  x R-FREE ;   \ store cell, HP += 8
 
-: C,     V-POPR {: x :}  x HP 0 STRB,  HP HP 1 ADDI,  x R-FREE ;   \ store byte, HP += 1
+: C, ( -- )     V-POPR {: x :}  x HP 0 STRB,  HP HP 1 ADDI,  x R-FREE ;   \ store byte, HP += 1
 
-: LSHIFT
+: LSHIFT ( -- )
    V-2CON? if  V-POPC {: s :} V-POPC {: v :}  v s lshift V-PUSHC exit then
    V-TOP-TAG V-CON = if  V-POPC {: k :} V-POPR {: v :}  v v k LSLI,  v V-PUSHR
    else  V-POPR {: s :} V-POPR {: v :}  v v s LSLV,  s R-FREE  v V-PUSHR  then ;
 
-: RSHIFT
+: RSHIFT ( -- )
    V-2CON? if  V-POPC {: s :} V-POPC {: v :}  v s rshift V-PUSHC exit then
    V-TOP-TAG V-CON = if  V-POPC {: k :} V-POPR {: v :}  v v k LSRI,  v V-PUSHR
    else  V-POPR {: s :} V-POPR {: v :}  v v s LSRV,  s R-FREE  v V-PUSHR  then ;
 
-: < C-LT VCMP ;
+: < ( -- ) C-LT VCMP ;
 
-: > C-GT VCMP ;
+: > ( -- ) C-GT VCMP ;
 
-: = C-EQ VCMP ;
+: = ( -- ) C-EQ VCMP ;
 
-: <= C-LE VCMP ;
+: <= ( -- ) C-LE VCMP ;
 
-: >= C-GE VCMP ;
+: >= ( -- ) C-GE VCMP ;
 
-: <> C-NE VCMP ;
+: <> ( -- ) C-NE VCMP ;
 
-: U< C-CC VCMP ;
+: U< ( -- ) C-CC VCMP ;
 
-: U> C-HI VCMP ;
+: U> ( -- ) C-HI VCMP ;
 
-: 0= C-EQ VCMP0 ;
+: 0= ( -- ) C-EQ VCMP0 ;
 
-: 0< C-LT VCMP0 ;
+: 0< ( -- ) C-LT VCMP0 ;
 
-: 0> C-GT VCMP0 ;
+: 0> ( -- ) C-GT VCMP0 ;
 
-: 0<> C-NE VCMP0 ;
+: 0<> ( -- ) C-NE VCMP0 ;
 
 \ floating point (f64 bits in a data cell; F< uses MI, F> GT, F= EQ — FP flag semantics)
-: F+ ['] FADD, VFBIN ;
+: F+ ( -- ) ['] FADD, VFBIN ;
 
-: F- ['] FSUB, VFBIN ;
+: F- ( -- ) ['] FSUB, VFBIN ;
 
-: F* ['] FMUL, VFBIN ;
+: F* ( -- ) ['] FMUL, VFBIN ;
 
-: F/ ['] FDIV, VFBIN ;
+: F/ ( -- ) ['] FDIV, VFBIN ;
 
-: FNEGATE ['] FNEG, VFUN ;
+: FNEGATE ( -- ) ['] FNEG, VFUN ;
 
-: FABS ['] FABS, VFUN ;
+: FABS ( -- ) ['] FABS, VFUN ;
 
-: FSQRT ['] FSQRT, VFUN ;
+: FSQRT ( -- ) ['] FSQRT, VFUN ;
 
-: F< C-MI VFCMP ;
+: F< ( -- ) C-MI VFCMP ;
 
-: F> C-GT VFCMP ;
+: F> ( -- ) C-GT VFCMP ;
 
-: F= C-EQ VFCMP ;
+: F= ( -- ) C-EQ VFCMP ;
 
-: F0< C-MI VFCMP0 ;
+: F0< ( -- ) C-MI VFCMP0 ;
 
-: F0= C-EQ VFCMP0 ;
+: F0= ( -- ) C-EQ VFCMP0 ;
 
-: S>F V-POPR {: x :}  D-ALLOC {: d :}  d x SCVTF,  x R-FREE  d V-PUSHF ;   \ int(GP) -> float(D)
+: S>F ( -- ) V-POPR {: x :}  D-ALLOC {: d :}  d x SCVTF,  x R-FREE  d V-PUSHF ;   \ int(GP) -> float(D)
 
-: F>S V-POPD {: d :}  R-ALLOC {: x :}  x d FCVTZS,  d D-FREE  x V-PUSHR ;  \ float(D) -> int(GP)
+: F>S ( -- ) V-POPD {: d :}  R-ALLOC {: x :}  x d FCVTZS,  d D-FREE  x V-PUSHR ;  \ float(D) -> int(GP)
 
 \ loop index -> fresh VS register (register-resident loops keep the index in LIDX)
-: I  R-ALLOC {: r :}  r LIDX MOV,  r V-PUSHR ;
+: I ( -- )  R-ALLOC {: r :}  r LIDX MOV,  r V-PUSHR ;
 
 set-current
