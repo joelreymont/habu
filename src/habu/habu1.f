@@ -422,7 +422,12 @@ s" linux-ignore-sigpipe" s" --" TRUST
 2048 constant SPAWN-FRAME4-A
 2048 constant SPAWN-FRAME4-B
 256 constant SPAWN-FRAME4-C
+0 constant SPAWN-PID-OFF
+16 constant SPAWN-ARGV-OFF
+24 constant SPAWN-ARGV-END-OFF
+32 constant SPAWN-ENVP-OFF
 176 constant SPAWN-ACTIONS-OFF
+0 constant SPAWN-FA-CAP-OFF
 4 constant SPAWN-FA-COUNT-OFF
 8 constant SPAWN-FA-ACTS-OFF
 2 constant PSFA-DUP2
@@ -432,9 +437,10 @@ SPAWN-ACTION-SIZE SPAWN-CHDIR-PATH-OFF - constant SPAWN-CHDIR-PATH-CAP
 48 constant SPAWN-ADESC-OFF
 64 constant SPAWN-ADESC-FA-SIZE-OFF
 72 constant SPAWN-ADESC-FA-PTR-OFF
+128 constant SPAWN-ADESC-SIZE
 
 \ Emit one PSFA_DUP2 record into the runtime file-actions blob at x13.
-: SPAWN-DUP2-ACTION {: fdreg newfd :}
+: SPAWN-DUP2-ACTION ( n n -- ) {: fdreg newfd :}
    LBL {: skip :}
    fdreg 0 CMPI,  C-LT skip BCOND,
    14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,
@@ -447,7 +453,7 @@ SPAWN-ACTION-SIZE SPAWN-CHDIR-PATH-OFF - constant SPAWN-CHDIR-PATH-CAP
 s" spawn-dup2-action" s" n n --" TRUST
 
 \ Emit one PSFA_CHDIR record into the runtime file-actions blob at x13.
-: SPAWN-CHDIR-ACTION {: cwdreg fail :}
+: SPAWN-CHDIR-ACTION ( n n -- ) {: cwdreg fail :}
    LBL LBL LBL {: copy overflow done :}
    14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,
    14 14 SPAWN-FA-ACTS-OFF ADDI,  14 14 13 ADD,
@@ -470,6 +476,109 @@ s" spawn-dup2-action" s" n n --" TRUST
    done LBL, ;
 s" spawn-chdir-action" s" n n --" TRUST
 
+: SPAWN-DARWIN-FRAME3-ENTER ( -- )
+   SP SP SPAWN-FRAME3 SUBI, ;
+s" spawn-darwin-frame3-enter" s" --" TRUST
+
+: SPAWN-DARWIN-FRAME3-LEAVE ( -- )
+   SP SP SPAWN-FRAME3 ADDI, ;
+s" spawn-darwin-frame3-leave" s" --" TRUST
+
+: SPAWN-DARWIN-FRAME4-ENTER ( -- )
+   SP SP SPAWN-FRAME4-A SUBI,
+   SP SP SPAWN-FRAME4-B SUBI,
+   SP SP SPAWN-FRAME4-C SUBI, ;
+s" spawn-darwin-frame4-enter" s" --" TRUST
+
+: SPAWN-DARWIN-FRAME4-LEAVE ( -- )
+   SP SP SPAWN-FRAME4-C ADDI,
+   SP SP SPAWN-FRAME4-B ADDI,
+   SP SP SPAWN-FRAME4-A ADDI, ;
+s" spawn-darwin-frame4-leave" s" --" TRUST
+
+: SPAWN-DARWIN-ACTIONS-RESET ( n -- ) {: cap :}
+   13 SP SPAWN-ACTIONS-OFF ADDI,
+   14 cap MOVZ,  14 13 SPAWN-FA-CAP-OFF STRW,
+   14 0 MOVZ,  14 13 SPAWN-FA-COUNT-OFF STRW, ;
+s" spawn-darwin-actions-reset" s" n --" TRUST
+
+: SPAWN-DARWIN-STDIO-ACTIONS ( -- )
+   10 0 SPAWN-DUP2-ACTION
+   11 1 SPAWN-DUP2-ACTION
+   12 2 SPAWN-DUP2-ACTION ;
+s" spawn-darwin-stdio-actions" s" --" TRUST
+
+: SPAWN-DARWIN-ZERO-ADESC ( -- )
+   14 0 MOVZ,
+   0 begin dup SPAWN-ADESC-SIZE < while
+      14 SP SPAWN-ADESC-OFF + over + STR,
+      8 +
+   repeat drop ;
+s" spawn-darwin-zero-adesc" s" --" TRUST
+
+: SPAWN-DARWIN-FILL-ADESC ( -- )
+   14 13 SPAWN-FA-COUNT-OFF LDRW,
+   15 SPAWN-ACTION-SIZE MOVZ,
+   14 14 15 MUL,
+   14 14 SPAWN-FA-ACTS-OFF ADDI,
+   14 SP SPAWN-ADESC-FA-SIZE-OFF STR,
+   13 SP SPAWN-ADESC-FA-PTR-OFF STR, ;
+s" spawn-darwin-fill-adesc" s" --" TRUST
+
+: SPAWN-DARWIN-NULLABLE-ADESC ( n -- ) {: has-actions :}
+   14 13 SPAWN-FA-COUNT-OFF LDRW,
+   2 SP SPAWN-ADESC-OFF ADDI,
+   14 has-actions CBNZ,
+      2 0 MOVZ,
+   has-actions LBL, ;
+s" spawn-darwin-nullable-adesc" s" n --" TRUST
+
+: SPAWN-DARWIN-USE-ADESC ( -- )
+   2 SP SPAWN-ADESC-OFF ADDI, ;
+s" spawn-darwin-use-adesc" s" --" TRUST
+
+: SPAWN-DARWIN-PID-PATH ( n -- ) {: pathreg :}
+   0 SP SPAWN-PID-OFF ADDI,
+   1 pathreg 0 ADDI, ;
+s" spawn-darwin-pid-path" s" n --" TRUST
+
+: SPAWN-DARWIN-ARGV-ENVP ( n n -- ) {: argvreg envreg :}
+   3 argvreg 0 ADDI,
+   4 envreg 0 ADDI, ;
+s" spawn-darwin-argv-envp" s" n n --" TRUST
+
+: SPAWN-DARWIN-DEFAULT-ARGV-ENVP ( n -- ) {: pathreg :}
+   pathreg SP SPAWN-ARGV-OFF STR,
+   14 0 MOVZ,
+   14 SP SPAWN-ARGV-END-OFF STR,
+   14 SP SPAWN-ENVP-OFF STR, ;
+s" spawn-darwin-default-argv-envp" s" n --" TRUST
+
+: SPAWN-DARWIN-DEFAULT-ENVP ( -- )
+   14 0 MOVZ,
+   14 SP SPAWN-ARGV-OFF STR, ;
+s" spawn-darwin-default-envp" s" --" TRUST
+
+: SPAWN-DARWIN-USE-DEFAULT-ARGV-ENVP ( -- )
+   3 SP SPAWN-ARGV-OFF ADDI,
+   4 SP SPAWN-ENVP-OFF ADDI, ;
+s" spawn-darwin-use-default-argv-envp" s" --" TRUST
+
+: SPAWN-DARWIN-ARGV-DEFAULT-ENVP ( n -- ) {: argvreg :}
+   3 argvreg 0 ADDI,
+   4 SP SPAWN-ARGV-OFF ADDI, ;
+s" spawn-darwin-argv-default-envp" s" n --" TRUST
+
+: SPAWN-DARWIN-FINISH ( n n -- ) {: ok fail :}
+   NR-SPAWN SYS,
+   9 C-CS CSET,  9 9 0 ORR,  9 ok CBZ,
+      9 0 MOVN,  fail B,
+   ok LBL,
+   9 SP SPAWN-PID-OFF LDR,
+   fail LBL,
+   9 G-PUSH ;
+s" spawn-darwin-finish" s" n n --" TRUST
+
 : BSPAWNIO                            \ ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )
    LBL LBL LBL {: spok spdn sad :}
    12 G-POP  11 G-POP  10 G-POP  9 G-POP
@@ -484,39 +593,17 @@ s" spawn-chdir-action" s" n n --" TRUST
       SP SP 64 ADDI,
       exit
    THEN
-   SP SP 3584 SUBI,
-   9 SP 16 STR,                       \ argv[0] = path
-   14 0 MOVZ,  14 SP 24 STR,          \ argv[1] = 0
-   14 SP 32 STR,                      \ envp[0] = 0
-   13 SP 176 ADDI,                    \ file actions
-   14 3 MOVZ,  14 13 0 STRW,
-   14 0 MOVZ,  14 13 4 STRW,
-   10 0 SPAWN-DUP2-ACTION
-   11 1 SPAWN-DUP2-ACTION
-   12 2 SPAWN-DUP2-ACTION
-   14 0 MOVZ,                         \ zero the descriptor
-   14 SP 48 STR,  14 SP 56 STR,  14 SP 64 STR,  14 SP 72 STR,
-   14 SP 80 STR,  14 SP 88 STR,  14 SP 96 STR,  14 SP 104 STR,
-   14 SP 112 STR,  14 SP 120 STR,  14 SP 128 STR,  14 SP 136 STR,
-   14 SP 144 STR,  14 SP 152 STR,  14 SP 160 STR,  14 SP 168 STR,
-   14 13 4 LDRW,  15 1040 MOVZ,  14 14 15 MUL,  14 14 8 ADDI,
-   14 SP 64 STR,                      \ adesc.file_actions_size
-   13 SP 72 STR,                      \ adesc.file_actions
-   0 SP 0 ADDI,                       \ &pid
-   1 9 0 ADDI,                        \ path
-   14 13 4 LDRW,  2 SP 48 ADDI,
-   14 sad CBNZ,
-      2 0 MOVZ,                       \ no actions: XNU rejects an empty blob
-   sad LBL,
-   3 SP 16 ADDI,  4 SP 32 ADDI,       \ argv, envp
-   NR-SPAWN SYS,
-   9 C-CS CSET,  9 9 0 ORR,  9 spok CBZ,
-      9 0 MOVN,  spdn B,
-   spok LBL,
-   9 SP 0 LDR,
-   spdn LBL,
-   9 G-PUSH
-   SP SP 3584 ADDI, ;
+   SPAWN-DARWIN-FRAME3-ENTER
+   9 SPAWN-DARWIN-DEFAULT-ARGV-ENVP
+   3 SPAWN-DARWIN-ACTIONS-RESET
+   SPAWN-DARWIN-STDIO-ACTIONS
+   SPAWN-DARWIN-ZERO-ADESC
+   SPAWN-DARWIN-FILL-ADESC
+   9 SPAWN-DARWIN-PID-PATH
+   sad SPAWN-DARWIN-NULLABLE-ADESC
+   SPAWN-DARWIN-USE-DEFAULT-ARGV-ENVP
+   spok spdn SPAWN-DARWIN-FINISH
+   SPAWN-DARWIN-FRAME3-LEAVE ;
 
 : BSPAWNARGVIO                        \ ( pathz argvp stdinfd stdoutfd stderrfd -- pid|-1 )
    LBL LBL LBL {: spok spdn sad :}
@@ -530,37 +617,17 @@ s" spawn-chdir-action" s" n n --" TRUST
       SP SP 16 ADDI,
       exit
    THEN
-   SP SP 3584 SUBI,
-   14 0 MOVZ,  14 SP 16 STR,          \ envp[0] = 0
-   13 SP 176 ADDI,                    \ file actions
-   14 3 MOVZ,  14 13 0 STRW,
-   14 0 MOVZ,  14 13 4 STRW,
-   10 0 SPAWN-DUP2-ACTION
-   11 1 SPAWN-DUP2-ACTION
-   12 2 SPAWN-DUP2-ACTION
-   14 0 MOVZ,                         \ zero the descriptor
-   14 SP 48 STR,  14 SP 56 STR,  14 SP 64 STR,  14 SP 72 STR,
-   14 SP 80 STR,  14 SP 88 STR,  14 SP 96 STR,  14 SP 104 STR,
-   14 SP 112 STR,  14 SP 120 STR,  14 SP 128 STR,  14 SP 136 STR,
-   14 SP 144 STR,  14 SP 152 STR,  14 SP 160 STR,  14 SP 168 STR,
-   14 13 4 LDRW,  15 1040 MOVZ,  14 14 15 MUL,  14 14 8 ADDI,
-   14 SP 64 STR,                      \ adesc.file_actions_size
-   13 SP 72 STR,                      \ adesc.file_actions
-   0 SP 0 ADDI,                       \ &pid
-   1 8 0 ADDI,                        \ path
-   14 13 4 LDRW,  2 SP 48 ADDI,
-   14 sad CBNZ,
-      2 0 MOVZ,                       \ no actions: XNU rejects an empty blob
-   sad LBL,
-   3 9 0 ADDI,  4 SP 16 ADDI,         \ argv, envp
-   NR-SPAWN SYS,
-   9 C-CS CSET,  9 9 0 ORR,  9 spok CBZ,
-      9 0 MOVN,  spdn B,
-   spok LBL,
-   9 SP 0 LDR,
-   spdn LBL,
-   9 G-PUSH
-   SP SP 3584 ADDI, ;
+   SPAWN-DARWIN-FRAME3-ENTER
+   SPAWN-DARWIN-DEFAULT-ENVP
+   3 SPAWN-DARWIN-ACTIONS-RESET
+   SPAWN-DARWIN-STDIO-ACTIONS
+   SPAWN-DARWIN-ZERO-ADESC
+   SPAWN-DARWIN-FILL-ADESC
+   8 SPAWN-DARWIN-PID-PATH
+   sad SPAWN-DARWIN-NULLABLE-ADESC
+   9 SPAWN-DARWIN-ARGV-DEFAULT-ENVP
+   spok spdn SPAWN-DARWIN-FINISH
+   SPAWN-DARWIN-FRAME3-LEAVE ;
 
 : BSPAWNARGVENVIO                     \ ( pathz argvp envp stdinfd stdoutfd stderrfd -- pid|-1 )
    LBL LBL LBL {: spok spdn sad :}
@@ -570,36 +637,16 @@ s" spawn-chdir-action" s" n n --" TRUST
       8 9 7 13 10 11 12 LINUX-SPAWN
       exit
    THEN
-   SP SP 3584 SUBI,
-   13 SP 176 ADDI,                    \ file actions
-   14 3 MOVZ,  14 13 0 STRW,
-   14 0 MOVZ,  14 13 4 STRW,
-   10 0 SPAWN-DUP2-ACTION
-   11 1 SPAWN-DUP2-ACTION
-   12 2 SPAWN-DUP2-ACTION
-   14 0 MOVZ,                         \ zero the descriptor
-   14 SP 48 STR,  14 SP 56 STR,  14 SP 64 STR,  14 SP 72 STR,
-   14 SP 80 STR,  14 SP 88 STR,  14 SP 96 STR,  14 SP 104 STR,
-   14 SP 112 STR,  14 SP 120 STR,  14 SP 128 STR,  14 SP 136 STR,
-   14 SP 144 STR,  14 SP 152 STR,  14 SP 160 STR,  14 SP 168 STR,
-   14 13 4 LDRW,  15 1040 MOVZ,  14 14 15 MUL,  14 14 8 ADDI,
-   14 SP 64 STR,                      \ adesc.file_actions_size
-   13 SP 72 STR,                      \ adesc.file_actions
-   0 SP 0 ADDI,                       \ &pid
-   1 8 0 ADDI,                        \ path
-   14 13 4 LDRW,  2 SP 48 ADDI,
-   14 sad CBNZ,
-      2 0 MOVZ,                       \ no actions: XNU rejects an empty blob
-   sad LBL,
-   3 9 0 ADDI,  4 7 0 ADDI,           \ argv, envp
-   NR-SPAWN SYS,
-   9 C-CS CSET,  9 9 0 ORR,  9 spok CBZ,
-      9 0 MOVN,  spdn B,
-   spok LBL,
-   9 SP 0 LDR,
-   spdn LBL,
-   9 G-PUSH
-   SP SP 3584 ADDI, ;
+   SPAWN-DARWIN-FRAME3-ENTER
+   3 SPAWN-DARWIN-ACTIONS-RESET
+   SPAWN-DARWIN-STDIO-ACTIONS
+   SPAWN-DARWIN-ZERO-ADESC
+   SPAWN-DARWIN-FILL-ADESC
+   8 SPAWN-DARWIN-PID-PATH
+   sad SPAWN-DARWIN-NULLABLE-ADESC
+   9 7 SPAWN-DARWIN-ARGV-ENVP
+   spok spdn SPAWN-DARWIN-FINISH
+   SPAWN-DARWIN-FRAME3-LEAVE ;
 
 : BSPAWNARGVENVCWDIO                  \ ( pathz argvp envp cwdz stdinfd stdoutfd stderrfd -- pid|-1 )
    LBL LBL {: spok spdn :}
@@ -608,38 +655,17 @@ s" spawn-chdir-action" s" n n --" TRUST
       8 9 7 6 10 11 12 LINUX-SPAWN
       exit
    THEN
-   SP SP SPAWN-FRAME4-A SUBI,
-   SP SP SPAWN-FRAME4-B SUBI,
-   SP SP SPAWN-FRAME4-C SUBI,
-   13 SP SPAWN-ACTIONS-OFF ADDI,       \ file actions
-   14 4 MOVZ,  14 13 0 STRW,
-   14 0 MOVZ,  14 13 SPAWN-FA-COUNT-OFF STRW,
+   SPAWN-DARWIN-FRAME4-ENTER
+   4 SPAWN-DARWIN-ACTIONS-RESET
    6 spdn SPAWN-CHDIR-ACTION
-   10 0 SPAWN-DUP2-ACTION
-   11 1 SPAWN-DUP2-ACTION
-   12 2 SPAWN-DUP2-ACTION
-   14 0 MOVZ,                          \ zero the descriptor
-   14 SP 48 STR,  14 SP 56 STR,  14 SP 64 STR,  14 SP 72 STR,
-   14 SP 80 STR,  14 SP 88 STR,  14 SP 96 STR,  14 SP 104 STR,
-   14 SP 112 STR,  14 SP 120 STR,  14 SP 128 STR,  14 SP 136 STR,
-   14 SP 144 STR,  14 SP 152 STR,  14 SP 160 STR,  14 SP 168 STR,
-   14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,  14 14 SPAWN-FA-ACTS-OFF ADDI,
-   14 SP SPAWN-ADESC-FA-SIZE-OFF STR,  \ adesc.file_actions_size
-   13 SP SPAWN-ADESC-FA-PTR-OFF STR,   \ adesc.file_actions
-   0 SP 0 ADDI,                        \ &pid
-   1 8 0 ADDI,                         \ path
-   2 SP SPAWN-ADESC-OFF ADDI,
-   3 9 0 ADDI,  4 7 0 ADDI,            \ argv, envp
-   NR-SPAWN SYS,
-   9 C-CS CSET,  9 9 0 ORR,  9 spok CBZ,
-      9 0 MOVN,  spdn B,
-   spok LBL,
-   9 SP 0 LDR,
-   spdn LBL,
-   9 G-PUSH
-   SP SP SPAWN-FRAME4-C ADDI,
-   SP SP SPAWN-FRAME4-B ADDI,
-   SP SP SPAWN-FRAME4-A ADDI, ;
+   SPAWN-DARWIN-STDIO-ACTIONS
+   SPAWN-DARWIN-ZERO-ADESC
+   SPAWN-DARWIN-FILL-ADESC
+   8 SPAWN-DARWIN-PID-PATH
+   SPAWN-DARWIN-USE-ADESC
+   9 7 SPAWN-DARWIN-ARGV-ENVP
+   spok spdn SPAWN-DARWIN-FINISH
+   SPAWN-DARWIN-FRAME4-LEAVE ;
 
 : BCPFETCH    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
 : BNDICTFETCH 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count

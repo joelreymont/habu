@@ -96,6 +96,20 @@ handler could call `close` on a non-fd before exiting. Source-loading emitters
 need distinct labels for no-resource-acquired and resource-acquired failures,
 even when both ultimately report the same exit code.
 
+### Source-shape fixtures get small gate suites
+Source-shape tests are cheap alone but still add definitions and string
+literals to their containing bundle. Keep narrow source-shape fixtures in their
+own small `TEST-SUITE` instead of appending them to already capacity-sensitive
+build-helper bundles; otherwise a correct refactor can surface as an unrelated
+rc 76 bundle-capacity failure.
+
+### Focused lint reruns use gate load lists
+Lint tools often have non-obvious support dependencies such as `tools/date.f`,
+`lib/memory.f`, `lib/vector.f`, or `tools/lint/intern.f`. When rerunning a gate
+lint manually, copy the `TEST-SUITE` load list from `test/gate-stdlib.f` or the
+tool's header instead of reconstructing dependencies from memory; otherwise the
+rerun can fail at an undefined token before exercising the changed code.
+
 ## Current Boundaries
 
 - **One public binary:** `bin/hb` is the public interface. It starts a tty REPL,

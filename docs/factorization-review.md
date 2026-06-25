@@ -176,14 +176,24 @@ the first review round:
   `tools/bootstrap.sh` exits 69 before touching `bin/hb`; `bin/hb` kept sha256
   `fd83258137f0c679a6d738378beebe8e437a724d367fbd1a9759a6fb1a61f371`
   before and after the recovery probe.
+- F04 source factoring is implemented in `src/habu/habu1.f`: the Darwin
+  `BSPAWNIO` variants now share frame enter/leave, action reset, stdio dup2
+  append, descriptor zero/fill, nullable descriptor, argv/envp register setup,
+  and `posix_spawn` finish helpers. `tools/spawn-emitter-test.f` guards the
+  source shape and old duplicated literal sequences. On Linux/aarch64,
+  `tools/spawn-emitter-test.f`, process/process-argv/process-env/process-cwd
+  focused fixtures, `trust-lint`, `filemap-lint`, `stale-status-lint`, the
+  focused build-helper bundle, the full native gate, and the local recovery
+  probe passed as far as this host can prove. F04 remains open because this host
+  cannot run the required macOS process tests and macOS full native gate.
 
 ## Continuation Handoff
 
-Tracker state was verified with `dot tree` on 2026-06-25 after commit
-`29233384 Share native image byte writer`. The parent dot is
-`habu-review-whole-repo-5e087327`; F01, F02, F03, F06, F07, F08, F09, F10,
-F19, F20, and F21 are addressed; all rows below are open. No source edits for
-F04 or later are pending in this handoff.
+Tracker state was verified with `dot tree` on 2026-06-25 during the F04
+source-refactor handoff. The parent dot is `habu-review-whole-repo-5e087327`;
+F01, F02, F03, F06, F07, F08, F09, F10,
+F19, F20, and F21 are addressed; F04 has a Linux-validated source refactor but
+remains open for macOS runtime validation; all rows below are open.
 
 The local `.dots/` store is ignored by the repository, so this section is the
 durable committed queue. A fresh checkout can recreate equivalent dots from the
@@ -196,10 +206,11 @@ dots when the local store already contains the IDs below.
 
 Handoff snapshot:
 
-- The F10 source edits were validated by `tools/image-bytes-test.f`,
-  `trust-lint`, `stale-status-lint`, `filemap-lint`, `shadow-lint`, the focused
-  `build-helper-fixtures` bundle, the full native gate, and the local recovery
-  probe described above.
+- The F04 source-refactor edits were validated on Linux/aarch64 by
+  `tools/spawn-emitter-test.f`, process/process-argv/process-env/process-cwd
+  focused fixtures, `trust-lint`, `stale-status-lint`, `filemap-lint`,
+  `shadow-lint` through the full gate, the focused `build-helper-fixtures`
+  bundle, the full native gate, and the local recovery probe described above.
 - The remaining factorization work already has one dot per open finding in the
   local tracker. Do not create duplicates; start the next open row, commit that
   focused batch, update this document, close that row's dot, then push.
@@ -210,20 +221,20 @@ Handoff snapshot:
 
 Next continuation step:
 
-1. Start `habu-factor-darwin-spawn-5a82930c`.
-2. Factor Darwin `BSPAWNIO` variants in `src/habu/habu1.f` into shared frame,
-   file-action, descriptor, spawn, success/failure, and cleanup helpers.
-3. Validate with Darwin-focused source checks when available, the Linux-safe
-   native gate from `docs/bootstrap.md`, and the no-binary recovery probe when a
-   Gforth with `{:` locals is available. A Linux-only source-preserving refactor
-   may be useful, but do not close F04 until macOS process validation has run or
-   a separate macOS validation dot is created and referenced here.
+1. Finish `habu-factor-darwin-spawn-5a82930c` on macOS by running the process,
+   process-argv, process-env, process-cwd, PTY, and full native gates against
+   the factored Darwin emitters.
+2. If those macOS checks pass, update this document with the exact evidence,
+   close F04, and continue to F05.
+3. If macOS exposes a spawn behavior regression, keep F04 open, root-cause the
+   register/frame delta with the native debugger tools in `docs/debugging.md`,
+   and commit the fix with a macOS regression.
 
 Open dot queue:
 
 | Order | Finding | Dot | Scope | Done when |
 | --- | --- | --- | --- | --- |
-| 1 | F04 | `habu-factor-darwin-spawn-5a82930c` | Factor Darwin spawn emitter variants. | Shared helpers preserve the Darwin `posix_spawn` ABI; macOS process tests and full native gate pass, plus Linux-safe gate where run. |
+| 1 | F04 | `habu-factor-darwin-spawn-5a82930c` | Validate the factored Darwin spawn emitter variants on macOS. | Shared helpers preserve the Darwin `posix_spawn` ABI; macOS process tests and full native gate pass, plus Linux-safe gate where run. |
 | 2 | F05 | `habu-factor-native-c-230e1316` | Split native `C-CALL` phases. | Prologue, inline-safety, inline-copy, and absolute-call emission are separate; native fixpoint, `hb-build` tests, and full native gate pass. |
 | 3 | F17 | `habu-share-signature-scan-5353e68b` | Share required/optional signature scanning. | Required and optional signature scanners share one capture path; compiler/checker tests and full native gate pass. |
 | 4 | F18 | `habu-factor-compiler-dispatch-0167f41a` | Split compiler dispatch/data chains by concern or checked rows. | Long dispatch/data chains are split or table-driven with checked rows; focused compiler tests and full native gate pass. |
@@ -281,14 +292,16 @@ Parent: `habu-review-whole-repo-5e087327`
 ## Verification Status
 
 The original subagent review was read-only. The latest implementation batch is
-F10, and the fully validated port stack after the native image-byte refactor
-passed:
+the Linux-validated F04 Darwin spawn source refactor, and the port stack after
+that refactor passed:
 
 - `tools/image-bytes-test.f`: `test: ok`,
   `image-bytes-test: ok`;
-- `trust-lint`: 231 TRUST sites, 313 manifest rows, 0 findings;
+- `tools/spawn-emitter-test.f`: `test: ok`,
+  `spawn-emitter-test: ok`;
+- `trust-lint`: 248 TRUST sites, 330 manifest rows, 0 findings;
 - `stale-status-lint`: 0 findings;
-- `filemap-lint`: 234 paths, 0 findings;
+- `filemap-lint`: 235 paths, 0 findings;
 - `shadow-lint`: clean;
 - `tools/bootstrap-codegen-test.f`: `test: ok`,
   `bootstrap-codegen-test: ok`;
@@ -302,7 +315,7 @@ passed:
 - recovery-host probe: installed `gforth 0.7.3` failed the required `{:` locals
   probe with rc 1, so `tools/bootstrap.sh` exited 69 before generation and left
   `bin/hb` checksum
-  `fd83258137f0c679a6d738378beebe8e437a724d367fbd1a9759a6fb1a61f371`
+  `06f91c7521ed3b59e6c62a44e83aa7d65d567e42e0debaa033d9c59b3fe7f9bf`
   unchanged.
 
 ## Agent Command Notes

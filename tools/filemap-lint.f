@@ -159,6 +159,7 @@ variable FM-NUM-L
    s" tools/stale-status-lint.f" FM-REQ
    s" tools/stale-status-lint-test.f" FM-REQ
    s" tools/parallel-agent-lint.f" FM-REQ
+   s" tools/spawn-emitter-test.f" FM-REQ
    s" tools/string.f" FM-REQ
    s" lib/string-test.f" FM-REQ
    s" tools/date.f" FM-REQ
