@@ -117,14 +117,21 @@ The local `.dots/` store is ignored by the repository, so this section is the
 durable committed queue. A fresh checkout can recreate the tracker from this
 table if the local dot store is unavailable.
 
-First continuation step:
+Current handoff state:
 
-1. Start `habu-unify-bootstrap-prefix-26788bfa`.
-2. Replace mirrored bootstrap prefix path/load lists with one checked table or
-   DSL while preserving current source ordering and target OS selection.
-3. Prove the focused bootstrap codegen tests first, then `trust-lint`, the
-   native fixpoint/full gate from `docs/bootstrap.md`, and no-binary recovery
-   when a Gforth with `{:` locals is available.
+1. `habu-unify-bootstrap-prefix-26788bfa` is active.
+2. The working copy has partial F08 implementation edits in
+   `bootstrap/cg/forth.fs`, `src/habu/habu2.f`,
+   `tools/bootstrap-codegen-test.f`, and `TRUSTED.md`.
+3. Do not commit those source changes until the F08 child validation dot is
+   closed with evidence.
+
+F08 child dots created for the next agent:
+
+| Order | Dot | Required Work |
+| --- | --- | --- |
+| 1 | `habu-validate-f08-prefix-9ab08a32` | Validate the partial prefix-list refactor: rerun `trust-lint`, `tools/bootstrap-codegen-test.f`, `bin/hb test/engine-suite.f`, the full native gate from `docs/bootstrap.md`, and the no-binary recovery probe. On this host, installed Gforth 0.7.3 is expected to fail the documented `{:` locals probe and leave `bin/hb` unchanged. |
+| 2 | `habu-commit-and-close-1f2c2855` | After validation passes, update this review and `LESSONS.md` with exact evidence, commit the F08 source/audit changes as `Unify bootstrap prefix list`, close F08 with the commit id, then fetch/rebase/push `master`. |
 
 Open dot queue:
 
@@ -192,8 +199,8 @@ Parent: `habu-review-whole-repo-5e087327`
 
 ## Verification Status
 
-This review was read-only. No gates were run by the subagents. The latest
-validated port stack after the F07 move-wide emitter batch passed:
+This review was read-only. No gates were run by the subagents. The latest fully
+validated committed port stack is still the F07 move-wide emitter batch:
 
 - `trust-lint`: 236 TRUST sites, 318 manifest rows, 0 findings;
 - `tools/bootstrap-codegen-test.f`: `test: ok`,
@@ -204,6 +211,10 @@ validated port stack after the F07 move-wide emitter batch passed:
 - recovery-host probe: installed `gforth 0.7.3` failed the required `{:` locals
   probe with rc 1, so `tools/bootstrap.sh` exited 69 before generation and left
   `bin/hb` checksum unchanged.
+
+F08 prefix-list work is intentionally not recorded as validated here. It has
+local working-copy edits and child dots for validation/closeout, but the next
+agent must prove the full gate before committing those source changes.
 
 ## Agent Command Notes
 

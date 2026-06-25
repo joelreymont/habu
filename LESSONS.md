@@ -22,6 +22,12 @@ explicitly. An abbreviated "remaining work" list can hide open findings even
 when the tracker itself is correct; an ignored `.dots/` store makes the checked
 in document the only portable handoff.
 
+### Partial implementations need child dots before handoff
+If source edits are in progress but not yet validated enough to commit, create
+step-level child dots for validation and closeout and record the exact touched
+files in the durable handoff doc. A parent finding dot alone does not tell the
+next agent whether to continue, validate, or discard local work.
+
 ### Emitter comments describe host effects
 Bootstrap and native emitter words run at build time and often emit code that
 will later consume the runtime data stack. Their definition-local stack effects
