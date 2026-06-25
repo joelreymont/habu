@@ -231,14 +231,23 @@ the first review round:
   `bin/hb`; `bin/hb` kept sha256
   `a5815a15d473ef295d1bda02e06d89a2dd45aba8eb273c6aed343ae223fa25a1`
   before and after the recovery probe.
+- F12 process capture setup, nonblocking probe/drain, optional stdin write,
+  timeout polling, fd cleanup, and finish helpers now live in `lib/process.f`.
+  `lib/process-argv.f`, `lib/process-env.f`, and `lib/process-cwd.f` prepare
+  argv/env/cwd state and delegate the shared capture lifecycle. The
+  process/process-argv/process-env/process-cwd focused fixtures, affected
+  `tools/check.f --source-list` bundles, `tools/stdlib-manifest-test.f`,
+  `tools/public-signatures-test.f`, `trust-lint`, `stale-status-lint`,
+  `filemap-lint`, `shadow-lint`, `bin/hb test/engine-suite.f`, and
+  `test/gate-stdlib.f` passed; the full native gate passed after the batch.
 
 ## Continuation Handoff
 
 Tracker state was verified with `dot tree` on 2026-06-25 during the F04
 source-refactor handoff. The parent dot is `habu-review-whole-repo-5e087327`;
-F01, F02, F03, F05, F06, F07, F08, F09, F10, F17, F18, F19, F20, and F21
-are addressed; F04 has a Linux-validated source refactor but remains open for
-macOS runtime validation; all rows below are open.
+F01, F02, F03, F05, F06, F07, F08, F09, F10, F12, F17, F18, F19, F20, and
+F21 are addressed; F04 has a Linux-validated source refactor but remains open
+for macOS runtime validation; all rows below are open.
 
 The local `.dots/` store is ignored by the repository, so this section is the
 durable committed queue. A fresh checkout can recreate equivalent dots from the
@@ -272,6 +281,12 @@ Handoff snapshot:
   focused build-helper bundle, `trust-lint`, `stale-status-lint`,
   `filemap-lint`, `shadow-lint`, `bin/hb test/engine-suite.f`, the full native
   gate, and the local recovery probe described above.
+- The F12 process-capture edits were validated on Linux/aarch64 by the
+  process/process-argv/process-env/process-cwd focused fixtures, affected
+  `tools/check.f --source-list` bundles, `tools/stdlib-manifest-test.f`,
+  `tools/public-signatures-test.f`, `trust-lint`, `stale-status-lint`,
+  `filemap-lint`, `shadow-lint`, `bin/hb test/engine-suite.f`, and
+  `test/gate-stdlib.f`; the full native gate also passed.
 - The remaining factorization work already has one dot per open finding in the
   local tracker. Do not create duplicates; start the next open row, commit that
   focused batch, update this document, close that row's dot, then push.
@@ -290,23 +305,22 @@ Next continuation step:
 3. If macOS exposes a spawn behavior regression, keep F04 open, root-cause the
    register/frame delta with the native debugger tools in `docs/debugging.md`,
    and commit the fix with a macOS regression.
-4. On Linux/aarch64, the next unblocked finding is F12
-   (`habu-factor-process-capture-467f9021`).
+4. On Linux/aarch64, the next unblocked finding is F14
+   (`habu-factor-gate-progress-555aa42d`).
 
 Open dot queue:
 
 | Order | Finding | Dot | Scope | Done when |
 | --- | --- | --- | --- | --- |
 | 1 | F04 | `habu-factor-darwin-spawn-5a82930c` | Validate the factored Darwin spawn emitter variants on macOS. | Shared helpers preserve the Darwin `posix_spawn` ABI; macOS process tests and full native gate pass, plus Linux-safe gate where run. |
-| 2 | F12 | `habu-factor-process-capture-467f9021` | Factor capture setup, probe, drain, close, and reap lifecycle. | Plain, argv, stdin, env, and cwd capture variants share lifecycle helpers; process fixtures and full native gate pass. |
-| 3 | F14 | `habu-factor-gate-progress-555aa42d` | Share progress-aware capture helpers. | Gate and stdlib runners use shared heartbeat/capture helpers; progress tests and full native gate pass. |
-| 4 | F13 | `habu-factor-check-load-2e29d26a` | Split check/load builders and keep only true boundary spawns. | Checked load-group builders replace repeated argv recipes; non-boundary static checks run in-process; `tools/check-test.f` and full native gate pass. |
-| 5 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. | Directory iteration and path enter/leave live in `lib/fs.f`; mutation policy stays in `lib/fs-mutate.f`; fs fixtures and full native gate pass. |
-| 6 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. | Documentation policy rows replace imperative branch ladders; stdlib manifest fixtures and full native gate pass. |
-| 7 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. | Digit, ratio, keyword, and whitespace scanning are factored; stale-status lint fixture and full native gate pass. |
-| 8 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. | Regex classification/state transitions use small predicate or row helpers; regex fixtures and full native gate pass. |
-| 9 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. | Command arity/xt rows and repair suggestion rows replace branch ladders; gate-json assertions and full native gate pass. |
-| 10 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. | Missing stack-effect comments and lower-case project words are fixed; focused source loads, lint, and full native gate pass. |
+| 2 | F14 | `habu-factor-gate-progress-555aa42d` | Share progress-aware capture helpers. | Gate and stdlib runners use shared heartbeat/capture helpers; progress tests and full native gate pass. |
+| 3 | F13 | `habu-factor-check-load-2e29d26a` | Split check/load builders and keep only true boundary spawns. | Checked load-group builders replace repeated argv recipes; non-boundary static checks run in-process; `tools/check-test.f` and full native gate pass. |
+| 4 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. | Directory iteration and path enter/leave live in `lib/fs.f`; mutation policy stays in `lib/fs-mutate.f`; fs fixtures and full native gate pass. |
+| 5 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. | Documentation policy rows replace imperative branch ladders; stdlib manifest fixtures and full native gate pass. |
+| 6 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. | Digit, ratio, keyword, and whitespace scanning are factored; stale-status lint fixture and full native gate pass. |
+| 7 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. | Regex classification/state transitions use small predicate or row helpers; regex fixtures and full native gate pass. |
+| 8 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. | Command arity/xt rows and repair suggestion rows replace branch ladders; gate-json assertions and full native gate pass. |
+| 9 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. | Missing stack-effect comments and lower-case project words are fixed; focused source loads, lint, and full native gate pass. |
 
 ## Other Open Top-Level Dots
 
@@ -352,40 +366,23 @@ Parent: `habu-review-whole-repo-5e087327`
 ## Verification Status
 
 The original subagent review was read-only. The latest implementation batch is
-the Linux-validated F18 compiler dispatch/data refactor, and the port stack
+the Linux-validated F12 process-capture lifecycle refactor, and the port stack
 after that refactor passed:
 
-- `tools/compiler-dispatch-test.f`: `test: ok`,
-  `compiler-dispatch-test: ok`;
-- `tools/signature-scan-emitter-test.f`: `test: ok`,
-  `signature-scan-emitter-test: ok`;
-- `tools/image-bytes-test.f`: `test: ok`,
-  `image-bytes-test: ok`;
-- `tools/spawn-emitter-test.f`: `test: ok`,
-  `spawn-emitter-test: ok`;
-- `tools/c-call-emitter-test.f`: `test: ok`,
-  `c-call-emitter-test: ok`;
+- stale argv-private helper scan: clean;
+- process/process-argv/process-env/process-cwd focused fixtures: `test: ok`;
+- affected `tools/check.f --source-list` bundles: clean;
+- `tools/stdlib-manifest-test.f`: `stdlib-manifest-test: ok`;
+- `tools/public-signatures-test.f`: `test: ok`,
+  `public-signatures-test: ok`;
 - `trust-lint`: 261 TRUST sites, 343 manifest rows, 0 findings;
 - `stale-status-lint`: 0 findings;
-- `filemap-lint`: 238 paths, 0 findings after adding
-  `tools/compiler-dispatch-test.f`;
+- `filemap-lint`: 238 paths, 0 findings;
 - `shadow-lint`: clean;
-- `tools/bootstrap-codegen-test.f`: `test: ok`,
-  `bootstrap-codegen-test: ok`;
-- `tools/asm-checked-test.f`: `test: ok`,
-  `asm-checked-test: ok`;
 - `bin/hb test/engine-suite.f`: `ok`;
-- focused `build-helper-fixtures` bundle:
-  `asm-checked-test: ok`, `build-fixpoint-test: ok`, `hb-build-test: ok`,
-  `codesign-test: ok`;
-- dictionary/checker, diagnostics, and AOT negative signature gate phases:
-  passed;
-- `test/run.f`: `PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)`.
-- recovery-host probe: installed `gforth 0.7.3` failed the required `{:` locals
-  probe with rc 1, so `tools/bootstrap.sh` exited 69 before generation and left
-  `bin/hb` checksum
-  `a5815a15d473ef295d1bda02e06d89a2dd45aba8eb273c6aed343ae223fa25a1`
-  unchanged.
+- `test/gate-stdlib.f`: `PASS: native lint/stdlib gate phase`;
+- `test/run.f`:
+  `PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)`.
 
 ## Agent Command Notes
 

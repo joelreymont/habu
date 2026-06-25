@@ -149,61 +149,49 @@ variable PROC-PATH-I
    PROC-ERR-W PROC-CLOSE-CELL ;
 
 : PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
-   pathz argv envp PROC-ARGV-IN-R @ PROC-OUT-W @ PROC-ERR-W @
+   pathz argv envp PROC-IN-R @ PROC-OUT-W @ PROC-ERR-W @
    PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    PROC-ARGV-ENV-RESET
-   pid PID>N 0 < if E-PROC-SPAWN PROC-ARGV-THROW-CAPTURE then
+   pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-PID !
-   PROC-ARGV-IN-R PROC-CLOSE-CELL
+   PROC-IN-R PROC-CLOSE-CELL
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
 : RUN-ARGV-ENV-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
-   outcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   errcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   PROC-CAPTURE-RESET
-   timeout PROC-CAPTURE-DEADLINE!
-   PROC-SETUP-CAPTURE-FDS
-   path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-CAPTURE
+   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   timeout PROC-CAPTURE-BEGIN
+   pathz argv envp PROC-SPAWN-ARGV-ENV-CAPTURE
    out outcap err errcap PROC-RUN-CAPTURE-LOOP
-   PROC-CLOSE-CAPTURE-FDS
-   PROC-REAP-CAPTURE
-   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
+   PROC-CAPTURE-FINISH-RC ;
 
 : RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
-   inu LEN>N 0 < if E-PROC-OUTPUT throw then
-   outcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   errcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   PROC-ARGV-CAPTURE-RESET
-   timeout PROC-CAPTURE-DEADLINE!
-   PROC-SETUP-CAPTURE-FDS
-   PROC-ARGV-SETUP-STDIN-FDS
-   path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
+   inu PROC-CAPTURE-CHECK-STDIN
+   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   timeout PROC-STDIN-CAPTURE-BEGIN
+   pathz argv envp PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
    in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-LOOP
-   PROC-ARGV-CLOSE-STDIN-FDS
-   PROC-CLOSE-CAPTURE-FDS
-   PROC-REAP-CAPTURE
-   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
+   PROC-CAPTURE-FINISH-RC ;
 
 : RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
-   inu LEN>N 0 < if E-PROC-OUTPUT throw then
-   outcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   errcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   PROC-ARGV-CAPTURE-RESET
-   timeout PROC-CAPTURE-DEADLINE!
-   PROC-SETUP-CAPTURE-FDS
-   PROC-ARGV-SETUP-STDIN-FDS
-   path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
+   inu PROC-CAPTURE-CHECK-STDIN
+   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   timeout PROC-STDIN-CAPTURE-BEGIN
+   pathz argv envp PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
    in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
-   PROC-ARGV-CLOSE-STDIN-FDS
-   PROC-CLOSE-CAPTURE-FDS
-   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-OUTCOME-KIND @ PROC-OUTCOME-CODE @ ;
+   PROC-CAPTURE-FINISH-OUTCOME ;
 
 : PROC-HAS-SLASH? ( ptr u8 len -- bool )
    LEN>N PROC-PATH-SLASH INDEX-OF 0 >= ;

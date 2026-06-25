@@ -238,6 +238,10 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Runtime And REPL
 
+- **Process capture lifecycle has one owner:** keep fd setup, nonblocking
+  probe/drain, stdin write, timeout poll, cleanup, and finish in `lib/process.f`;
+  argv/env/cwd layers prepare state only. Duplication made every capture variant
+  a stack-juggling audit.
 - **Linux spawn needs an exec-failure handshake:** `clone` success ≠ `execve`
   success. `SPAWN-IO` uses a close-on-exec error pipe: child writes one byte before
   exiting on `chdir`/`dup2`/`execve` failure; parent reads EOF = success, or reads

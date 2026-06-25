@@ -5,18 +5,26 @@
 1024 constant PROC-PATHZ-CAP
 1000000 constant PROC-NS-PER-MS
 1 constant POLLIN
+4 constant POLLOUT
+8 constant POLLERR
+16 constant POLLHUP
+32 constant POLLNVAL
 9 constant SIGKILL
 2 constant F-SETFD
+3 constant F-GETFL
+4 constant F-SETFL
 73 constant F-SETNOSIGPIPE
 1 constant FD-CLOEXEC
+4 constant O-NONBLOCK
 $7F constant PROC-WAIT-TERM-MASK
 $FF constant PROC-WAIT-EXIT-MASK
 0 constant PROC-OUTCOME-EXIT
 1 constant PROC-OUTCOME-SIGNAL
 2 constant PROC-OUTCOME-TIMEOUT
+4096 constant PROC-STDIN-CHUNK-CAP
 
 create PROC-PATHZ-BUF PROC-PATHZ-CAP allot
-create PROC-PFD 16 allot
+create PROC-PFD 24 allot
 create PROC-PROBE 1 allot
 
 variable PROC-PID
@@ -25,8 +33,11 @@ variable PROC-OUT-R
 variable PROC-OUT-W
 variable PROC-ERR-R
 variable PROC-ERR-W
+variable PROC-IN-R
+variable PROC-IN-W
 variable PROC-OUT-LEN
 variable PROC-ERR-LEN
+variable PROC-IN-OFF
 variable PROC-DEADLINE
 variable PROC-RD
 variable PROC-STATUS
@@ -134,8 +145,11 @@ variable PROC-OUTCOME-CODE
    -1 >FD PROC-OUT-W !
    -1 >FD PROC-ERR-R !
    -1 >FD PROC-ERR-W !
+   -1 >FD PROC-IN-R !
+   -1 >FD PROC-IN-W !
    0 >LEN PROC-OUT-LEN !
    0 >LEN PROC-ERR-LEN !
+   0 >OFF PROC-IN-OFF !
    0 PROC-STATUS !
    PROC-OUTCOME-EXIT PROC-OUTCOME-KIND !
    0 PROC-OUTCOME-CODE ! ;
@@ -153,6 +167,14 @@ variable PROC-OUTCOME-CODE
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-R PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
+
+: PROC-CLOSE-STDIN-FDS ( -- )
+   PROC-IN-R PROC-CLOSE-CELL
+   PROC-IN-W PROC-CLOSE-CELL ;
+
+: PROC-CLOSE-ALL-CAPTURE-FDS ( -- )
+   PROC-CLOSE-STDIN-FDS
+   PROC-CLOSE-CAPTURE-FDS ;
 
 : PROC-REAP-CAPTURE ( -- )
    PROC-PID @ dup PID>N 0 >= if
@@ -186,7 +208,7 @@ variable PROC-OUTCOME-CODE
 
 : PROC-THROW-CAPTURE ( n -- ) {: code :}
    PROC-KILL-CAPTURE
-   PROC-CLOSE-CAPTURE-FDS
+   PROC-CLOSE-ALL-CAPTURE-FDS
    code throw ;
 
 : PROC-OPEN-PIPE ( ptr a ptr a -- ) {: rp:ptr wp:ptr :}
@@ -198,6 +220,14 @@ variable PROC-OUTCOME-CODE
 : PROC-CLOEXEC-CELL ( ptr a -- ) {: p:ptr :}
    p @ FD>N F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then ;
 
+: PROC-NONBLOCK! ( fd -- ) {: fd :}
+   fd FD>N F-GETFL 0 fcntl {: flags :}
+   flags 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
+   fd FD>N F-SETFL flags O-NONBLOCK or fcntl 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then ;
+
+: PROC-NOSIGPIPE! ( fd -- )
+   FD-NOSIGPIPE! ;
+
 : PROC-SETUP-CAPTURE-FDS ( -- )
    PROC-OUT-R PROC-OUT-W PROC-OPEN-PIPE
    PROC-ERR-R PROC-ERR-W PROC-OPEN-PIPE
@@ -205,6 +235,13 @@ variable PROC-OUTCOME-CODE
    PROC-OUT-W PROC-CLOEXEC-CELL
    PROC-ERR-R PROC-CLOEXEC-CELL
    PROC-ERR-W PROC-CLOEXEC-CELL ;
+
+: PROC-SETUP-STDIN-FDS ( -- )
+   PROC-IN-R PROC-IN-W PROC-OPEN-PIPE
+   PROC-IN-R PROC-CLOEXEC-CELL
+   PROC-IN-W PROC-CLOEXEC-CELL
+   PROC-IN-W @ PROC-NOSIGPIPE!
+   PROC-IN-W @ PROC-NONBLOCK! ;
 
 : PROC-CAPTURE-DEADLINE! ( ms -- ) {: timeout :}
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then
@@ -273,6 +310,70 @@ variable PROC-OUTCOME-CODE
 : PROC-CAPTURE-DONE? ( -- bool )
    PROC-OUT-R @ 0 < PROC-ERR-R @ 0 < and ;
 
+: PROC-STDIN-CHUNK ( len -- len ) {: u :}
+   u LEN>N PROC-STDIN-CHUNK-CAP > if
+      PROC-STDIN-CHUNK-CAP >LEN
+   else
+      u
+   then ;
+
+: PROC-CLOSE-STDIN-DONE ( len -- ) {: inu :}
+   PROC-IN-OFF @ OFF>N inu LEN>N >= if PROC-IN-W PROC-CLOSE-CELL then ;
+
+: PROC-BROKEN-STDIN? ( n -- bool ) {: events :}
+   events POLLERR and 0= 0= if 0 0= exit then
+   events POLLHUP and 0= 0= if 0 0= exit then
+   events POLLNVAL and 0= 0= if 0 0= exit then
+   0 0= 0= ;
+
+: PROC-WRITE-STDIN-ACTIVE ( ptr u8 len -- ) {: src:ptr inu :}
+   inu LEN>N PROC-IN-OFF @ OFF>N - >LEN PROC-STDIN-CHUNK {: chunk :}
+   PROC-IN-W @ FD>N src PROC-IN-OFF @ OFF>N + chunk LEN>N write {: wrote :}
+   wrote 0 < if PROC-IN-W PROC-CLOSE-CELL exit then
+   wrote chunk LEN>N > if E-PROC-OUTPUT PROC-THROW-CAPTURE then
+   PROC-IN-OFF @ OFF>N wrote + >OFF PROC-IN-OFF !
+   inu PROC-CLOSE-STDIN-DONE ;
+
+: PROC-WRITE-STDIN ( ptr u8 len -- ) {: src:ptr inu :}
+   PROC-IN-W @ FD>N 0 < if exit then
+   PROC-IN-OFF @ OFF>N inu LEN>N >= if PROC-IN-W PROC-CLOSE-CELL exit then
+   src inu PROC-WRITE-STDIN-ACTIVE ;
+
+: PROC-POLL-IO ( ms -- count ) {: ms :}
+   PROC-OUT-R @ POLLIN 0 >IDX PROC-PFD-AT!
+   PROC-ERR-R @ POLLIN 1 >IDX PROC-PFD-AT!
+   PROC-IN-W @ FD>N 0 >= if
+      PROC-IN-W @ POLLOUT 2 >IDX PROC-PFD-AT!
+   else
+      -1 >FD 0 2 >IDX PROC-PFD-AT!
+   then
+   PROC-PFD 3 ms MS>N poll {: rc :}
+   rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
+   rc 0= if E-PROC-TIMEOUT PROC-THROW-CAPTURE then
+   rc >COUNT ;
+
+: PROC-POLL-IO-OUTCOME ( ms -- count ) {: ms :}
+   PROC-OUT-R @ POLLIN 0 >IDX PROC-PFD-AT!
+   PROC-ERR-R @ POLLIN 1 >IDX PROC-PFD-AT!
+   PROC-IN-W @ FD>N 0 >= if
+      PROC-IN-W @ POLLOUT 2 >IDX PROC-PFD-AT!
+   else
+      -1 >FD 0 2 >IDX PROC-PFD-AT!
+   then
+   PROC-PFD 3 ms MS>N poll {: rc :}
+   rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
+   rc >COUNT ;
+
+: PROC-DRIVE-STDIN ( ptr u8 len -- ) {: in:ptr inu :}
+   2 >IDX PROC-PFD-REVENTS {: events :}
+   events PROC-BROKEN-STDIN? if PROC-IN-W PROC-CLOSE-CELL exit then
+   events POLLOUT and 0= 0= if
+      in inu PROC-WRITE-STDIN
+   then ;
+
+: PROC-STDIN-CAPTURE-DONE? ( -- bool )
+   PROC-CAPTURE-DONE? PROC-IN-W @ 0 < and ;
+
 : PROC-RUN-CAPTURE-LOOP ( ptr u8 len ptr u8 len -- ) {: out:ptr outcap err:ptr errcap :}
    begin PROC-CAPTURE-DONE? 0= while
       PROC-REMAINING-MS PROC-POLL-CAPTURE drop
@@ -291,6 +392,62 @@ variable PROC-OUTCOME-CODE
    repeat
    PROC-REAP-CAPTURE ;
 
+: PROC-RUN-STDIN-CAPTURE-LOOP ( ptr u8 len ptr u8 len ptr u8 len -- )
+   {: in:ptr inu out:ptr outcap err:ptr errcap :}
+   inu LEN>N 0 <= if PROC-IN-W PROC-CLOSE-CELL then
+   begin PROC-STDIN-CAPTURE-DONE? 0= while
+      PROC-REMAINING-MS PROC-POLL-IO drop
+      in inu PROC-DRIVE-STDIN
+      out outcap err errcap PROC-DRAIN-READY
+   repeat ;
+
+: PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP ( ptr u8 len ptr u8 len ptr u8 len -- )
+   {: in:ptr inu out:ptr outcap err:ptr errcap :}
+   inu LEN>N 0 <= if PROC-IN-W PROC-CLOSE-CELL then
+   begin PROC-STDIN-CAPTURE-DONE? 0= while
+      PROC-REMAINING-MS PROC-POLL-IO-OUTCOME dup COUNT>N 0= if
+         drop
+         PROC-CLOSE-STDIN-FDS
+         PROC-REAP-CAPTURE-TIMEOUT
+         exit
+      then
+      drop
+      in inu PROC-DRIVE-STDIN
+      out outcap err errcap PROC-DRAIN-READY
+   repeat
+   PROC-REAP-CAPTURE ;
+
+: PROC-CAPTURE-CHECK-CAPS ( len len -- ) {: outcap errcap :}
+   outcap LEN>N 0 < if E-PROC-OUTPUT throw then
+   errcap LEN>N 0 < if E-PROC-OUTPUT throw then ;
+
+: PROC-CAPTURE-CHECK-STDIN ( len -- ) {: inu :}
+   inu LEN>N 0 < if E-PROC-OUTPUT throw then ;
+
+: PROC-CAPTURE-BEGIN ( ms -- ) {: timeout :}
+   PROC-CAPTURE-RESET
+   timeout PROC-CAPTURE-DEADLINE!
+   PROC-SETUP-CAPTURE-FDS ;
+
+: PROC-STDIN-CAPTURE-BEGIN ( ms -- ) {: timeout :}
+   timeout PROC-CAPTURE-BEGIN
+   PROC-SETUP-STDIN-FDS ;
+
+: PROC-CAPTURE-RC@ ( -- len len rc )
+   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
+
+: PROC-CAPTURE-OUTCOME@ ( -- len len n n )
+   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-OUTCOME-KIND @ PROC-OUTCOME-CODE @ ;
+
+: PROC-CAPTURE-FINISH-RC ( -- len len rc )
+   PROC-CLOSE-ALL-CAPTURE-FDS
+   PROC-REAP-CAPTURE
+   PROC-CAPTURE-RC@ ;
+
+: PROC-CAPTURE-FINISH-OUTCOME ( -- len len n n )
+   PROC-CLOSE-ALL-CAPTURE-FDS
+   PROC-CAPTURE-OUTCOME@ ;
+
 : PROC-SPAWN-CAPTURE ( ptr u8 -- )
    -1 >FD PROC-OUT-W @ PROC-ERR-W @ PROC-SPAWN-RAW {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
@@ -301,28 +458,19 @@ variable PROC-OUTCOME-CODE
 : RUN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    pathu LEN>N 0 < if E-PROC-OUTPUT throw then
-   outcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   errcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   PROC-CAPTURE-RESET
-   timeout PROC-CAPTURE-DEADLINE!
+   outcap errcap PROC-CAPTURE-CHECK-CAPS
    path pathu PATHZ {: pathz:ptr :}
-   PROC-SETUP-CAPTURE-FDS
+   timeout PROC-CAPTURE-BEGIN
    pathz PROC-SPAWN-CAPTURE
    out outcap err errcap PROC-RUN-CAPTURE-LOOP
-   PROC-CLOSE-CAPTURE-FDS
-   PROC-REAP-CAPTURE
-   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
+   PROC-CAPTURE-FINISH-RC ;
 
 : RUN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    pathu LEN>N 0 < if E-PROC-OUTPUT throw then
-   outcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   errcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   PROC-CAPTURE-RESET
-   timeout PROC-CAPTURE-DEADLINE!
+   outcap errcap PROC-CAPTURE-CHECK-CAPS
    path pathu PATHZ {: pathz:ptr :}
-   PROC-SETUP-CAPTURE-FDS
+   timeout PROC-CAPTURE-BEGIN
    pathz PROC-SPAWN-CAPTURE
    out outcap err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
-   PROC-CLOSE-CAPTURE-FDS
-   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-OUTCOME-KIND @ PROC-OUTCOME-CODE @ ;
+   PROC-CAPTURE-FINISH-OUTCOME ;

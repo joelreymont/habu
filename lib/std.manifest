@@ -425,13 +425,18 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-CAPTURE-RESET	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	reset process capture state cells
 1	process	lib/process.f	word	PROC-CLOSE-CELL	(ptr fd --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	close and clear a file descriptor cell
 1	process	lib/process.f	word	PROC-CLOSE-CAPTURE-FDS	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	close every fd owned by the active capture
+1	process	lib/process.f	word	PROC-CLOSE-STDIN-FDS	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	close optional stdin pipe fds owned by the active capture
+1	process	lib/process.f	word	PROC-CLOSE-ALL-CAPTURE-FDS	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	close stdout stderr and optional stdin capture fds
 1	process	lib/process.f	word	PROC-REAP-CAPTURE	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for the active capture child and store its rc
 1	process	lib/process.f	word	PROC-REAP-CAPTURE-TIMEOUT	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	kill the active capture child and store timeout outcome fields
 1	process	lib/process.f	word	PROC-KILL-CAPTURE	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	terminate and reap the active capture child
 1	process	lib/process.f	word	PROC-THROW-CAPTURE	(n --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	clean capture resources and throw the supplied process error
 1	process	lib/process.f	word	PROC-OPEN-PIPE	(ptr a ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	open one capture pipe into read and write fd cells
 1	process	lib/process.f	word	PROC-CLOEXEC-CELL	(ptr a --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	mark one fd cell close-on-exec or throw with cleanup
+1	process	lib/process.f	word	PROC-NONBLOCK!	(fd --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	enable nonblocking writes for stdin capture
+1	process	lib/process.f	word	PROC-NOSIGPIPE!	(fd --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	disable SIGPIPE on a capture-owned stdin write fd
 1	process	lib/process.f	word	PROC-SETUP-CAPTURE-FDS	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	open and protect stdout/stderr capture pipes
+1	process	lib/process.f	word	PROC-SETUP-STDIN-FDS	(--)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	open and protect optional stdin capture pipe fds
 1	process	lib/process.f	word	PROC-CAPTURE-DEADLINE!	(ms --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	record an absolute monotonic capture deadline
 1	process	lib/process.f	word	PROC-REMAINING-MS	(-- ms)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	return milliseconds remaining before capture timeout
 1	process	lib/process.f	word	PROC-POLL-CAPTURE	(ms -- count)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	poll stdout and stderr capture fds together
@@ -441,17 +446,33 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-READ-OR-PROBE-STREAM	(ptr fd ptr u8 len ptr len --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	read or overflow-probe one ready capture stream
 1	process	lib/process.f	word	PROC-DRAIN-READY	(ptr u8 len ptr u8 len --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	drain readable stdout/stderr capture streams
 1	process	lib/process.f	word	PROC-CAPTURE-DONE?	(-- bool)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	test whether both capture streams reached EOF
+1	process	lib/process.f	word	PROC-STDIN-CHUNK	(len -- len)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	limit one nonblocking stdin write chunk
+1	process	lib/process.f	word	PROC-CLOSE-STDIN-DONE	(len --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	close stdin write fd when caller input has been written
+1	process	lib/process.f	word	PROC-BROKEN-STDIN?	(n -- bool)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	test poll revents for a broken stdin write fd
+1	process	lib/process.f	word	PROC-WRITE-STDIN-ACTIVE	(ptr u8 len --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	write one stdin chunk to active capture child
+1	process	lib/process.f	word	PROC-WRITE-STDIN	(ptr u8 len --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	advance bounded stdin writes for capture
+1	process	lib/process.f	word	PROC-POLL-IO	(ms -- count)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	poll stdout stderr and optional stdin fds together
+1	process	lib/process.f	word	PROC-POLL-IO-OUTCOME	(ms -- count)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	poll stdout stderr and optional stdin fds without throwing on timeout
+1	process	lib/process.f	word	PROC-DRIVE-STDIN	(ptr u8 len --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	drive stdin writes when the child pipe is writable
+1	process	lib/process.f	word	PROC-STDIN-CAPTURE-DONE?	(-- bool)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	test whether capture streams and stdin writes are complete
 1	process	lib/process.f	word	PROC-RUN-CAPTURE-LOOP	(ptr u8 len ptr u8 len --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	poll and drain capture streams until EOF or timeout
 1	process	lib/process.f	word	PROC-RUN-CAPTURE-OUTCOME-LOOP	(ptr u8 len ptr u8 len --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	poll and drain capture streams while recording timeout as an outcome
+1	process	lib/process.f	word	PROC-RUN-STDIN-CAPTURE-LOOP	(ptr u8 len ptr u8 len ptr u8 len --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	poll and drain capture streams while feeding stdin
+1	process	lib/process.f	word	PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP	(ptr u8 len ptr u8 len ptr u8 len --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	poll and drain capture streams while feeding stdin without throwing on timeout
+1	process	lib/process.f	word	PROC-CAPTURE-CHECK-CAPS	(len len --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	validate stdout and stderr capture capacities
+1	process	lib/process.f	word	PROC-CAPTURE-CHECK-STDIN	(len --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	validate stdin capture length
+1	process	lib/process.f	word	PROC-CAPTURE-BEGIN	(ms --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	reset capture state, set deadline, and open stdout/stderr pipes
+1	process	lib/process.f	word	PROC-STDIN-CAPTURE-BEGIN	(ms --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	reset capture state, set deadline, and open stdout/stderr/stdin pipes
+1	process	lib/process.f	word	PROC-CAPTURE-RC@	(-- len len rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	return captured stdout length stderr length and rc
+1	process	lib/process.f	word	PROC-CAPTURE-OUTCOME@	(-- len len n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	return captured stdout length stderr length outcome kind and code
+1	process	lib/process.f	word	PROC-CAPTURE-FINISH-RC	(-- len len rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	close capture fds, reap child, and return captured rc fields
+1	process	lib/process.f	word	PROC-CAPTURE-FINISH-OUTCOME	(-- len len n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	close capture fds and return captured outcome fields
 1	process	lib/process.f	word	PROC-SPAWN-CAPTURE	(ptr u8 --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn the capture child and close parent write fds
 1	process	lib/process.f	word	RUN-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr rc
 1	process	lib/process.f	word	RUN-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ms -- len len n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr outcome kind and code
 1	process-argv	lib/process-argv.f	module			lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	checked argv table builder layered after native primitive rebuild
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-RAW	(ptr u8 ptr a fd fd fd -- pid)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-io alias for checked argv wrappers
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-RESET	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	clear argv extra-arg count and backing string buffer offset
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-CAPTURE-RESET	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	reset argv capture state including stdin pipe state
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-TRUE	(-- bool)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	return a checked true flag for process argv helpers
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-FALSE	(-- bool)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	return a checked false flag for process argv helpers
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-SLOT	(idx -- ptr a)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	return one checked argv pointer-table slot
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-CHECK-EXTRA	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	validate that one more extra argv entry fits
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-ZCOPY	(ptr u8 len -- ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	copy counted argv bytes into the module NUL-terminated argv string buffer
@@ -460,32 +481,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	word	SPAWN-ARGV-IO	(ptr u8 len fd fd fd -- pid)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared extra argv strings and explicit stdio fds
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-IO-RC	(ptr u8 len fd fd fd -- rc)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv strings explicit stdio fds and return exit status
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-CHECK-PATH	(ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	validate a counted executable path before argv capture opens fds
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-CLOSE-STDIN-FDS	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	close stdin pipe fds owned by argv capture
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-THROW-CAPTURE	(n --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	cleanup argv stdin capture fds before throwing a process error
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-CLOEXEC-CELL	(ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	mark one argv capture fd cell close-on-exec
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-NONBLOCK!	(fd --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	enable nonblocking writes for argv stdin capture
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-NOSIGPIPE!	(fd --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	disable SIGPIPE on the argv stdin write fd with capture cleanup
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-SETUP-STDIN-FDS	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	open and protect stdin pipe fds for argv capture
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn prepared argv with stdout and stderr capture fds
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-STDIN-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv with stdin stdout and stderr capture fds
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-PFD-SLOT	(idx -- ptr a)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	return one pollfd slot for argv stdin capture
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-PFD-AT!	(fd n idx --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	write one indexed pollfd entry for argv stdin capture
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-PFD-REVENTS	(idx -- n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	read revents from an argv capture pollfd slot
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-READ-STREAM	(ptr fd ptr u8 len ptr len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	read one ready argv capture stream into caller storage
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-PROBE-FULL-STREAM	(ptr fd --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	distinguish exact-capacity EOF from argv capture overflow
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-READ-OR-PROBE-STREAM	(ptr fd ptr u8 len ptr len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	read or overflow-probe one argv capture stream
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-DRAIN-READY	(ptr u8 len ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	drain ready stdout and stderr streams for argv capture
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-STDIN-CHUNK	(len -- len)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	limit one nonblocking stdin write chunk
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-CLOSE-STDIN-DONE	(len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	close stdin write fd when caller input has been written
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-BROKEN-STDIN?	(n -- bool)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	test poll revents for a broken stdin write fd
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-WRITE-STDIN-ACTIVE	(ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	write one stdin chunk to active argv capture child
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-WRITE-STDIN	(ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	advance bounded stdin writes for argv capture
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-POLL-IO	(ms -- count)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	poll stdout stderr and optional stdin fds together
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-POLL-IO-OUTCOME	(ms -- count)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	poll stdout stderr and optional stdin fds without throwing on timeout
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-DRIVE-STDIN	(ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	drive stdin writes when the child pipe is writable
-1	process-argv	lib/process-argv.f	word	PROC-ARGV-STDIN-CAPTURE-DONE?	(-- bool)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	test whether argv capture streams and stdin writes are complete
-1	process-argv	lib/process-argv.f	word	PROC-RUN-STDIN-CAPTURE-LOOP	(ptr u8 len ptr u8 len ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	poll and drain argv capture streams while feeding stdin
-1	process-argv	lib/process-argv.f	word	PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP	(ptr u8 len ptr u8 len ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	poll and drain argv capture streams while feeding stdin without throwing on timeout
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable with prepared argv and capture bounded stdout stderr rc
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ms -- len len n n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv and capture bounded stdout stderr outcome kind and code
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-STDIN-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv with bounded stdin stdout stderr capture

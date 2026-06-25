@@ -39,12 +39,12 @@ create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
 
 : PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}
-   pathz argv envp cwdz PROC-ARGV-IN-R @ PROC-OUT-W @ PROC-ERR-W @
+   pathz argv envp cwdz PROC-IN-R @ PROC-OUT-W @ PROC-ERR-W @
    PROC-SPAWN-ARGV-ENV-CWD-RAW {: pid :}
    PROC-ARGV-ENV-CWD-RESET
-   pid PID>N 0 < if E-PROC-SPAWN PROC-ARGV-THROW-CAPTURE then
+   pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-PID !
-   PROC-ARGV-IN-R PROC-CLOSE-CELL
+   PROC-IN-R PROC-CLOSE-CELL
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
@@ -52,33 +52,25 @@ create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
    {: path:ptr pathu cwd:ptr cwdu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    cwdu LEN>N 0 <= if E-PROC-OUTPUT throw then
-   outcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   errcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   PROC-CAPTURE-RESET
-   timeout PROC-CAPTURE-DEADLINE!
-   PROC-SETUP-CAPTURE-FDS
-   path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE cwd cwdu PROC-CWDZ
-   PROC-SPAWN-ARGV-ENV-CWD-CAPTURE
+   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   cwd cwdu PROC-CWDZ {: cwdz:ptr :}
+   timeout PROC-CAPTURE-BEGIN
+   pathz argv envp cwdz PROC-SPAWN-ARGV-ENV-CWD-CAPTURE
    out outcap err errcap PROC-RUN-CAPTURE-LOOP
-   PROC-CLOSE-CAPTURE-FDS
-   PROC-REAP-CAPTURE
-   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
+   PROC-CAPTURE-FINISH-RC ;
 
 : RUN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
    {: path:ptr pathu cwd:ptr cwdu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    cwdu LEN>N 0 <= if E-PROC-OUTPUT throw then
-   inu LEN>N 0 < if E-PROC-OUTPUT throw then
-   outcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   errcap LEN>N 0 < if E-PROC-OUTPUT throw then
-   PROC-ARGV-CAPTURE-RESET
-   timeout PROC-CAPTURE-DEADLINE!
-   PROC-SETUP-CAPTURE-FDS
-   PROC-ARGV-SETUP-STDIN-FDS
-   path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE cwd cwdu PROC-CWDZ
-   PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE
+   inu PROC-CAPTURE-CHECK-STDIN
+   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   cwd cwdu PROC-CWDZ {: cwdz:ptr :}
+   timeout PROC-STDIN-CAPTURE-BEGIN
+   pathz argv envp cwdz PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE
    in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-LOOP
-   PROC-ARGV-CLOSE-STDIN-FDS
-   PROC-CLOSE-CAPTURE-FDS
-   PROC-REAP-CAPTURE
-   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
+   PROC-CAPTURE-FINISH-RC ;
