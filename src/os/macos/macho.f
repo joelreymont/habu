@@ -3,34 +3,6 @@
 \ DYLINKER, MAIN, DYLIB libSystem), slack to $1000, code at $1000, and TEXT sized
 \ to content. Canonical UNSIGNED artifact; sign.fs post-pass adds the ad-hoc signature.
 \ The self-rebuild gate proves deterministic output. Code comes from icode's CODE.
-$90000 constant MSIZE
-create MBUF MSIZE allot
-variable MP
-variable MLEN
-s" MBUF" s" -- ptr u8" TRUST
-s" MLEN" s" -- ptr n" TRUST
-: MP@ ( -- ptr u8 ) MP @ ;
-s" MP@" s" -- ptr u8" TRUST
-
-: M-RESET ( -- )  MBUF MP ! ;
-
-: M8 ( n -- ) {: b :}  b MP@ c!  MP@ 1 + MP ! ;
-
-: M16 ( n -- ) {: h :}  h M8  h 8 rshift M8 ;
-
-: M32 ( n -- ) {: w :}  w M16  w 16 rshift M16 ;
-
-: M64 ( n -- ) {: x :}  x M32  x 32 rshift M32 ;
-
-: M-HERE ( -- n )  MP@ MBUF - ;
-
-: M-ZEROS ( n -- ) {: n :}  n 0 > IF n BEGIN dup 0 > WHILE 0 M8 1 - REPEAT drop THEN ;
-
-: M-BYTES ( ptr u8 n -- ) {: a:ptr u :}  0 BEGIN dup u < WHILE  dup a + c@ M8  1 + REPEAT drop ;
-
-: M-NAME16 ( ptr u8 n -- ) {: a:ptr u :}  a u M-BYTES  16 u - M-ZEROS ;
-
-: M-PAD ( n -- ) {: off :}  off M-HERE - M-ZEROS ;
 \ Mach-O constants
 $FEEDFACF constant MH-MAGIC64
 $0100000C constant CPU-ARM64
@@ -87,17 +59,10 @@ variable NCMDS
 : MH-HDR, ( -- )
    MH-MAGIC64 M32  CPU-ARM64 M32  0 M32  MH-EXECUTE M32
    0 M32  0 M32  MH-FLAGS M32  0 M32 ;
-variable PHP
-
-: PHP@ ( -- ptr u8 ) PHP @ ;
-s" PHP@" s" -- ptr u8" TRUST
-
-: PL! ( n ptr u8 -- ) {: w a:ptr :}  a PHP !  w $FF and PHP@ c!  w 8 rshift $FF and PHP@ 1 + c!
-   w 16 rshift $FF and PHP@ 2 + c!  w 24 rshift $FF and PHP@ 3 + c! ;
 
 : PATCH-HDR ( -- )
-   NCMDS @  MBUF 16 +  PL!
-   M-HERE MH-HDR-SZ -  MBUF 20 +  PL! ;
+   NCMDS @ 16 M-LE32!
+   M-HERE MH-HDR-SZ - 20 M-LE32! ;
 
 : BUILD-MACHO ( -- )                        \ assumes icode's CODE holds the program
    ASM-CODE  M-RESET  0 NCMDS !

@@ -89,6 +89,7 @@ variable FM-NUM-L
    s" src/core/sha256.f" FM-REQ
    s" src/os/linux/layout.f" FM-REQ
    s" src/os/macos/layout.f" FM-REQ
+   s" src/os/image-bytes.f" FM-REQ
    s" src/os/linux/repl-term.f" FM-REQ
    s" src/os/macos/repl-term.f" FM-REQ
    s" src/habu/aot.f" FM-REQ

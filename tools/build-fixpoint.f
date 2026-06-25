@@ -194,6 +194,7 @@ variable BF-TMP-U
    BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-TARGET-IMAGE ( ptr u8 n -- ) {: out:ptr outu :}
+   out outu s" src/os/image-bytes.f" BF-APPEND-SOURCE
    HB-TARGET-LINUX? if
       out outu s" src/os/linux/elf.f" BF-APPEND-SOURCE
       out outu s" src/os/linux/sign.f" BF-APPEND-SOURCE

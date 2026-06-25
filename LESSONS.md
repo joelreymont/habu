@@ -929,3 +929,7 @@ register for the marker byte.
   prove the file stayed factored. Add executable fixtures with known instruction
   words for every encoder touched, then keep the source-shape guard to prevent
   future copy-pasted bit layouts.
+- **Target image byte cursors are one contract:** ELF, Mach-O, and signing
+  should share the same `MBUF`/cursor/endian patch vocabulary. Put byte-order
+  behavior under executable fixtures and source-shape guards, then keep target
+  files focused on format layout policy.

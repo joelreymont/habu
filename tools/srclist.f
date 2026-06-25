@@ -52,6 +52,7 @@ variable SL-DRIVER-U
    SL-TARGET-UNKNOWN ;
 
 : SL-TARGET-IMAGE ( -- )
+   s" src/os/image-bytes.f " type
    HB-TARGET-LINUX? if
       s" src/os/linux/elf.f src/os/linux/sign.f " type
       exit

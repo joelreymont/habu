@@ -79,6 +79,7 @@ variable BAD  variable LI
    s" src/os/linux/repl-term.f" LINT-FILE
    s" src/habu/treeshake.f" LINT-FILE
    s" src/habu/rt.f"        LINT-FILE   s" src/habu/crash.f"     LINT-FILE
+   s" src/os/image-bytes.f" LINT-FILE
    s" src/os/macos/macho.f" LINT-FILE   s" src/os/macos/sign2.f" LINT-FILE
    s" src/os/linux/elf.f"   LINT-FILE   s" src/os/linux/sign.f"  LINT-FILE
    s" src/habu/habu1.f"     LINT-FILE   s" src/habu/prof.f"      LINT-FILE

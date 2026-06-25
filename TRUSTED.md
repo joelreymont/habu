@@ -128,12 +128,12 @@ that source is explicitly certified; they are not stale-checked by the default
 | IMAGE-TEXT-TRAILER-ADJ | `-- n` | Linux trailer address adjustment for snapshot restore when the text-size field includes the code offset. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:12 | 2026-06-25 |
 | DATA-VA | `-- ptr a` | Linux fixed DATA virtual address used by snapshot and AOT startup writers as both cell-address and byte-span base. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:13 | 2026-06-25 |
 | DATA-SIZE | `-- n` | Linux fixed DATA mapping size used by snapshot validation and image inspection. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:14 | 2026-06-25 |
-| MBUF | `-- ptr u8` | Target image-builder output buffer; checked drivers write the finalized executable bytes through this audited byte span. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:9 | 2026-06-24 |
-| MLEN | `-- ptr n` | Target image-builder output length cell; checked drivers read the finalized executable length after `BUILD-IMAGE`/`CODESIG2`. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:10 | 2026-06-24 |
+| MBUF | `-- ptr u8` | Target image-builder output buffer; checked drivers write the finalized executable bytes through this audited byte span. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/image-bytes.f:7 | 2026-06-25 |
+| MLEN | `-- ptr n` | Target image-builder output length cell; checked drivers read the finalized executable length after `BUILD-IMAGE`/`CODESIG2`. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/image-bytes.f:8 | 2026-06-25 |
 | CODE-OFF | `-- n` | Linux executable code offset used by checked snapshot streaming code. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:15 | 2026-06-25 |
-| ASM-CODE | `--` | Target image-builder bridge that snapshots the current assembler code length before executable wrapping. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:51 | 2026-06-24 |
-| BUILD-IMAGE | `--` | Target image-builder boundary that wraps emitted ARM64 code in the selected executable container. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:91 | 2026-06-24 |
-| BUILD-SNAP-HDR | `n -- n` | Target snapshot-header builder; consumes text payload length and returns padded executable text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:101 | 2026-06-24 |
+| ASM-CODE | `--` | Target image-builder bridge that snapshots the current assembler code length before executable wrapping. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:24 | 2026-06-25 |
+| BUILD-IMAGE | `--` | Target image-builder boundary that wraps emitted ARM64 code in the selected executable container. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:64 | 2026-06-25 |
+| BUILD-SNAP-HDR | `n -- n` | Target snapshot-header builder; consumes text payload length and returns padded executable text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:74 | 2026-06-25 |
 | SET-SIGID | `ptr u8 n --` | Target signing interface stores or ignores the executable identity while preserving the shared checked driver contract. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/sign.f:4 | 2026-06-24 |
 | CODESIG2 | `--` | Target signing pass boundary; Linux is a no-op and macOS mutates the image buffer in place. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/sign.f:7 | 2026-06-24 |
 | IMAGE-TEXT-SIZE-OFF | `-- n` | macOS executable header offset where the snapshot writer reads the mapped text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:10 | 2026-06-25 |
@@ -141,14 +141,12 @@ that source is explicitly certified; they are not stale-checked by the default
 | IMAGE-TEXT-TRAILER-ADJ | `-- n` | macOS trailer address adjustment because the section size excludes the code offset. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:12 | 2026-06-25 |
 | DATA-VA | `-- ptr a` | macOS fixed DATA virtual address used by snapshot and AOT startup writers as both cell-address and byte-span base. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:13 | 2026-06-25 |
 | DATA-SIZE | `-- n` | macOS fixed DATA mapping size used by snapshot validation and image inspection. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:14 | 2026-06-25 |
-| MBUF | `-- ptr u8` | Target image-builder output buffer; checked drivers write the finalized executable bytes through this audited byte span. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:10 | 2026-06-24 |
-| MLEN | `-- ptr n` | Target image-builder output length cell; checked drivers read the finalized executable length after `BUILD-IMAGE`/`CODESIG2`. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:11 | 2026-06-24 |
 | CODE-OFF | `-- n` | macOS executable code offset used by checked snapshot streaming code. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:15 | 2026-06-25 |
-| ASM-CODE | `--` | Target image-builder bridge that snapshots the current assembler code length before executable wrapping. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:52 | 2026-06-24 |
-| BUILD-IMAGE | `--` | Target image-builder boundary that wraps emitted ARM64 code in the selected executable container. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:120 | 2026-06-24 |
-| BUILD-SNAP-HDR | `n -- n` | Target snapshot-header builder; consumes text payload length and returns padded executable text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:135 | 2026-06-24 |
+| ASM-CODE | `--` | Target image-builder bridge that snapshots the current assembler code length before executable wrapping. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:24 | 2026-06-25 |
+| BUILD-IMAGE | `--` | Target image-builder boundary that wraps emitted ARM64 code in the selected executable container. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:85 | 2026-06-25 |
+| BUILD-SNAP-HDR | `n -- n` | Target snapshot-header builder; consumes text payload length and returns padded executable text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:100 | 2026-06-25 |
 | SET-SIGID | `ptr u8 n --` | Target signing interface stores or ignores the executable identity while preserving the shared checked driver contract. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/sign2.f:11 | 2026-06-24 |
-| CODESIG2 | `--` | Target signing pass boundary; Linux is a no-op and macOS mutates the image buffer in place. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/sign2.f:97 | 2026-06-24 |
+| CODESIG2 | `--` | Target signing pass boundary; Linux is a no-op and macOS mutates the image buffer in place. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/sign2.f:74 | 2026-06-25 |
 | fold-entry | `n ptr a n n --` | JIT constant-fold case: emits the keyword guard then `fxt execute`s a fold handler + raw branches. | `test/run.f` | src/habu/jit.f:103 | 2026-06-16 |
 | vop-entry | `n ptr a n n n --` | JIT binop case: fold-vs-emit split with two indirect xts and raw asm. | `test/run.f` | src/habu/jit.f:370 | 2026-06-16 |
 | vopi-entry | `n ptr a n n n n --` | JIT binop-immediate case: fold/register/immediate split with three indirect xts and raw asm. | `test/run.f` | src/habu/jit.f:369 | 2026-06-16 |
@@ -269,11 +267,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | TMP-PATH | `ptr u8 n -- ptr u8 n` | Builds `$HB_TMP` or `/tmp` child paths in pre-hook engine build drivers. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/env.f:112 | 2026-06-25 |
 | SHK-A@ | `-- ptr u8` | Reads the treeshaker source-buffer pointer stored in a raw variable. | `test/run.f` | src/habu/treeshake.f:10 | 2026-06-16 |
 | TA@ | `-- ptr u8` | Reads the current treeshaker token pointer stored in a raw variable. | `test/run.f` | src/habu/treeshake.f:45 | 2026-06-16 |
-| MP@ | `-- ptr u8` | Reads the Mach-O output cursor stored in a raw variable. | `test/run.f` | src/os/macos/macho.f:13 | 2026-06-16 |
-| MP@ | `-- ptr u8` | Reads the ELF output cursor stored in a raw variable. | `test/run.f` | src/os/linux/elf.f:12 | 2026-06-24 |
-| PHP@ | `-- ptr u8` | Reads the Mach-O header patch cursor stored in a raw variable. | `test/run.f` | src/os/macos/macho.f:93 | 2026-06-16 |
+| MP@ | `-- ptr u8` | Reads the shared image output cursor stored in a raw variable. | `test/run.f` | src/os/image-bytes.f:11 | 2026-06-25 |
 | SIGA@ | `-- ptr u8` | Reads the code-signing identifier pointer stored in a raw variable. | `test/run.f` | src/os/macos/sign2.f:8 | 2026-06-16 |
-| HLP@ | `-- ptr u8` | Reads the code-signing header patch cursor stored in a raw variable. | `test/run.f` | src/os/macos/sign2.f:32 | 2026-06-16 |
 | HB@ | `-- ptr u8` | Reads the stdin-engine baked-source buffer pointer stored in a raw variable. | `test/run.f` | src/habu/stdin.f:19 | 2026-06-16 |
 | BLD-PB@ | `-- ptr u8` | Reads the standalone-build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/build.f:22 | 2026-06-24 |
 | V-TRUST-SIG | `ptr u8 n ptr u8 n --` | hb-build pre-verifier records source-order defining-word signatures for parsed names; the checker cannot infer a dynamic mutation of its signature table from scanner state. | `tools/hb-build-test.f`, `test/run.f` | src/habu/build.f:128 | 2026-06-24 |

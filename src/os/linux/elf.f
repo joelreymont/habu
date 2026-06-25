@@ -2,33 +2,6 @@
 \ Provides the same image-builder surface as the Mach-O writer: MBUF, MLEN,
 \ CODE-OFF, MPAGE, ASM-CODE, BUILD-IMAGE.
 
-$90000 constant MSIZE
-create MBUF MSIZE allot
-variable MP
-variable MLEN
-s" MBUF" s" -- ptr u8" TRUST
-s" MLEN" s" -- ptr n" TRUST
-: MP@ ( -- ptr u8 ) MP @ ;
-s" MP@" s" -- ptr u8" TRUST
-
-: M-RESET ( -- )  MBUF MP ! ;
-
-: M8 ( n -- ) {: b :}  b MP@ c!  MP@ 1 + MP ! ;
-
-: M16 ( n -- ) {: h :}  h M8  h 8 rshift M8 ;
-
-: M32 ( n -- ) {: w :}  w M16  w 16 rshift M16 ;
-
-: M64 ( n -- ) {: x :}  x M32  x 32 rshift M32 ;
-
-: M-HERE ( -- n )  MP@ MBUF - ;
-
-: M-ZEROS ( n -- ) {: n :}  n 0 > IF n BEGIN dup 0 > WHILE 0 M8 1 - REPEAT drop THEN ;
-
-: M-BYTES ( ptr u8 n -- ) {: a:ptr u :}  0 BEGIN dup u < WHILE  dup a + c@ M8  1 + REPEAT drop ;
-
-: M-PAD ( n -- ) {: off :}  off M-HERE - M-ZEROS ;
-
 $7F constant ELF-MAG0
 69 constant ELF-MAG1
 76 constant ELF-MAG2

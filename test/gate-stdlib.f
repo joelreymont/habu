@@ -380,6 +380,7 @@ TEST-SUITE build-helper-fixtures
    lib/build.f lib/codesign.f tools/build-fixpoint.f
    tools/hb-build-lib.f tools/bootstrap-codegen-test.f
    bootstrap/cg/asm-checked.fs tools/asm-checked-test.f
+   src/os/image-bytes.f tools/image-bytes-test.f
    tools/build-fixpoint-test.f tools/hb-build-test.f lib/codesign-test.f
 ;TEST-SUITE
 
