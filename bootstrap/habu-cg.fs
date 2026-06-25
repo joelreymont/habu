@@ -1,6 +1,7 @@
-\ habu-cg.fs — habu checker + colon override + the native code generator wired in.
+\ habu-cg.fs — seed-maintenance entry for the checker plus native code generator.
 \ With CODEGEN-ON?, checked definitions whose bodies are in the native subset are
-\ recorded and can be compiled to standalone ARM64 Mac executables via RUN-NATIVE.
+\ recorded and can be compiled to standalone ARM64 executables via RUN-NATIVE.
+\ Daily no-binary recovery goes through tools/bootstrap.sh, not this entrypoint.
 require habu.fs
 
 \ The codegen sources are infrastructure (locals, `( idx -- u32 )` comments that

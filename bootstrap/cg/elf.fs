@@ -45,10 +45,9 @@ variable CODELEN
 create SCODE MPAGE allot
 2variable SIG-ID
 
-: ASM-CODE  SCODE ASSEMBLE CODELEN ! ;
-
-: CODE-FITS? ( -- )
-   CODELEN @  MPAGE CODE-OFF -  > abort" cg: emitted code exceeds ELF text page" ;
+: ASM-CODE ( -- )
+   PASS1  WPOS @ 4 *  MPAGE CODE-OFF -  > abort" cg: code exceeds ELF text page"
+   SCODE ASSEMBLE CODELEN ! ;
 
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $FFF +  $FFF invert and ;
 
@@ -79,7 +78,6 @@ create SCODE MPAGE allot
 
 : BUILD-ELF ( -- )
    ASM-CODE  M-RESET
-   CODE-FITS?
    ELF-HDR,
    ELF-PHDR,
    CODE-OFF M-PAD

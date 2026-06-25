@@ -168,4 +168,4 @@ defer LOOP-HOOK   ( a u -- f )
 
 : NATIVE-EVAL ( ba bu input -- exit-code )
    ['] COMPILE-WORD catch ?dup if  CG-DIAG  throw  then
-   s" /tmp/habu-word" RUN-EXE ;
+   s" habu-word" CG-TMP-PATH RUN-EXE ;

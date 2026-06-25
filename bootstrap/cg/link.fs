@@ -107,7 +107,7 @@ is EMIT-CALL
 : RUN-NATIVE ( input "name" -- exit-code )
    parse-name WORD-PFA dup 0= if E-NO-ENC throw then
    swap BUILD-PROGRAM
-   s" /tmp/habu-prog" RUN-EXE ;
+   s" habu-prog" CG-TMP-PATH RUN-EXE ;
 
 \ --- standalone CLI: read argv[1], call the word, print the result, exit 0 ---
 22 constant ARGV
@@ -119,6 +119,10 @@ is EMIT-CALL
    #DEPS @ 0 ?do  LBL  DEPS i cells + @ PFA>LABEL !  loop
    LBL DOT-LBL !   LBL ATOI-LBL !
    ARGV 1 0 ADDI,                         \ x22 = argv  (entry: x0=argc, x1=argv)
+   LBL {: argc-ok :}
+   9 ar 1 + MOVZ,  0 9 CMP,  C-GE argc-ok BCOND,
+   0 64 MOVZ,  NR-EXIT SYS,
+   argc-ok LBL,
    512 G-PROLOGUE                         \ data + return stacks
    ar 0 ?do  9 ARGV i 1+ 8 *  LDR,  ATOI-LBL @ BL,  loop  \ push atoi(argv[1..ar])
    root PFA>LABEL @ BL,                   \ call the word

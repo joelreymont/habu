@@ -96,6 +96,8 @@ emit_src() {
       printf "' HOOK set-check\n" >> "$out"
     fi
   done
+  cat src/habu/driver-io.f >> "$out"
+  printf '\n' >> "$out"
   cat "$driver" >> "$out"
   printf '\n' >> "$out"
 }

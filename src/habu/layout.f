@@ -49,7 +49,6 @@ $3698 constant TKL-CELL
 $36A0 constant INP-CELL
 $36A8 constant INE-CELL
 $36C0 constant BPA-CELL
-$36C8 constant BPI-CELL
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL

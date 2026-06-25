@@ -1258,7 +1258,8 @@ s" emit-fp-prims" s" --" TRUST
    LBL LBL LBL {: bok bcp bcd :}
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
    14 DATA BODYLEN-CELL LDR,
-   5 BODYBUF-CAP MOVZ,  14 5 CMP,  C-LT bok BCOND,
+   16 14 17 ADD,  16 16 1 ADDI,
+   5 BODYBUF-CAP MOVZ,  16 5 CMP,  C-LE bok BCOND,
       0 2 MOVZ,  1 11 0 ADDI,  2 12 0 ADDI,  NR-WRITE SYS,
       0 71 MOVZ,  NR-EXIT SYS,
    bok LBL,

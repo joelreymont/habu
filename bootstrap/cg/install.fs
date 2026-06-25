@@ -1,8 +1,7 @@
 \ install.fs — wire the codegen into the live `:` checker. When CODEGEN-ON?,
-\ every successfully-handled definition whose body is in the native subset is
-\ recorded in CODE-TABLE; bodies using unmodeled words are skipped silently
-\ (all-or-nothing, never breaks the definition). RUN-NATIVE (link.fs) compiles a
-\ recorded word + its callees to a native Mac executable and runs it.
+\ every successfully-handled definition is recorded in CODE-TABLE. When codegen
+\ is enabled, generator failures are fatal and diagnostic; no alternate threaded
+\ path is allowed. RUN-NATIVE (link.fs) compiles a recorded word + its callees and runs it.
 \ Load via habu-cg.fs (after the checker + colon override).
 
 require link.fs
@@ -11,10 +10,12 @@ variable CODEGEN-ON?   CODEGEN-ON? off
 
 : TRY-WALK ( ba bu -- )  ICODE-RESET CF-RESET  WALK-BODY ;
 
-\ input arity from the declared effect (EF@); default 1 if it won't parse.
+: CG-CATCH ( xt -- ... )
+   catch ?dup if CG-DIAG throw then ;
+
 : TRY-ARITY ( -- n )  ARENA-RESET  EF@ PARSE-SIG EFF>DIN STACK-ARITY ;
 
-: BODY-ARITY ( -- n )  ['] TRY-ARITY catch if 1 else ( n ) then ;
+: BODY-ARITY ( -- n )  ['] TRY-ARITY CG-CATCH ;
 
 1 constant CGF-IN-INTLIKE
 2 constant CGF-OUT-INTLIKE
@@ -47,19 +48,18 @@ variable EFOK
 : TRY-EFFECT ( -- e )  ARENA-RESET  EF@ PARSE-SIG ;
 
 : EFFECT-FLAGS ( -- flags )
-   ['] TRY-EFFECT catch if 0 else
-      0 swap {: flags eff :}
-      eff EFF>DIN  ROW-ALL-INTBOOL? if flags CGF-IN-INTLIKE or to flags then
-      eff EFF>DOUT ROW-ALL-INTBOOL? if flags CGF-OUT-INTLIKE or to flags then
-      eff EFF>DOUT ROW-HAS-BOOL? if flags CGF-OUT-BOOL or to flags then
-      flags CGF-IN-INTLIKE CGF-OUT-INTLIKE or and
-         CGF-IN-INTLIKE CGF-OUT-INTLIKE or = if flags CGF-CONCRETE-INTBOOL or to flags then
-      flags
-   then ;
+   ['] TRY-EFFECT CG-CATCH
+   0 swap {: flags eff :}
+   eff EFF>DIN  ROW-ALL-INTBOOL? if flags CGF-IN-INTLIKE or to flags then
+   eff EFF>DOUT ROW-ALL-INTBOOL? if flags CGF-OUT-INTLIKE or to flags then
+   eff EFF>DOUT ROW-HAS-BOOL? if flags CGF-OUT-BOOL or to flags then
+   flags CGF-IN-INTLIKE CGF-OUT-INTLIKE or and
+      CGF-IN-INTLIKE CGF-OUT-INTLIKE or = if flags CGF-CONCRETE-INTBOOL or to flags then
+   flags ;
 
 : DO-CODEGEN ( -- )
    CODEGEN-ON? @ 0= if exit then
-   CAP$  ['] TRY-WALK catch if  2drop exit then   \ uncompilable → skip
+   CAP$  ['] TRY-WALK CG-CATCH
    NM@ CAP$ BODY-ARITY EFFECT-FLAGS CG-RECORD ;
 
 ' DO-CODEGEN is CODEGEN-HOOK

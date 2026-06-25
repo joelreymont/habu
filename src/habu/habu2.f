@@ -246,7 +246,7 @@ s" c-bp-watch-dump" s" n n --" TRUST
    srl LBL,
       0 12 0 ADDI,  1 9 0 ADDI,
       2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
-      2 sdone CBZ,
+      2 sreaderr CBZ,
       NR-READ SYS,
       13 C-CS CSET,  13 sreaderr CBNZ,
       0 sdone CBZ,
@@ -355,7 +355,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-RL @ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
       2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
-      2 SRC-RD @ CBZ,
+      2 SRC-SFAIL @ CBZ,
       NR-READ SYS,
       13 C-CS CSET,  13 SRC-SFAIL @ CBNZ,
       0 SRC-RD @ CBZ,
@@ -1110,6 +1110,15 @@ create ENDLOC-KW 58 c, 125 c,
 : C-QUOTE-CONSUME ( -- )
    10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
 
+: C-QUOTE-SAVE ( -- )
+   SP SP 16 SUBI,  16 SP 0 STR,  10 SP 8 STR, ;
+
+: C-QUOTE-RESTORE ( -- )
+   16 SP 0 LDR,  10 SP 8 LDR, ;
+
+: C-QUOTE-SAVED-DROP ( -- )
+   SP SP 16 ADDI, ;
+
 : C-ISDQ ( -- )
    C-QUOTE-START
    C-QUOTE-SCAN
@@ -1250,9 +1259,12 @@ create ENDLOC-KW 58 c, 125 c,
    C-QUOTE-START
    C-QUOTE-SCAN
    C-QUOTE-CONSUME
+   C-QUOTE-SAVE
+   C-QUOTE-RESTORE
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
    12 CP 0 ADDI,
+   C-QUOTE-RESTORE
    11 16 0 ADDI,  9 10 0 ADDI,
    cl LBL,  9 cd CBZ,
       14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
@@ -1260,18 +1272,22 @@ create ENDLOC-KW 58 c, 125 c,
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
    9 15 0 ADDI,  15 10 0 ADDI,  LPAT @ BL,
    11 12 0 ADDI,  C-ADR                                \ push byte addr PC-relative (AOT/ASLR-safe)
-   11 15 0 ADDI,  C-LIT ;                              \ push len (a value, absolute is fine)
+   11 15 0 ADDI,  C-LIT                                \ push len (a value, absolute is fine)
+   C-QUOTE-SAVED-DROP ;
 
 : C-CQ ( -- )
    LBL LBL LBL {: capok cl cd :}
    C-QUOTE-START
    C-QUOTE-SCAN
    C-QUOTE-CONSUME
+   C-QUOTE-SAVE
    10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
    capok LBL,
+   C-QUOTE-RESTORE
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
    12 CP 0 ADDI,
+   C-QUOTE-RESTORE
    10 28 0 STRB,  28 28 1 ADDI,
    11 16 0 ADDI,  9 10 0 ADDI,
    cl LBL,  9 cd CBZ,
@@ -1279,7 +1295,8 @@ create ENDLOC-KW 58 c, 125 c,
    cd LBL,
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
    9 15 0 ADDI,  15 10 1 ADDI,  LPAT @ BL,
-   11 12 0 ADDI,  C-ADR ;
+   11 12 0 ADDI,  C-ADR
+   C-QUOTE-SAVED-DROP ;
 
 : C-DOTQ ( -- )
    LBL {: ok :}

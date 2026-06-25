@@ -71,7 +71,6 @@ $3698 constant TKL-CELL    \ current token len  (was x24)
 $36A0 constant INP-CELL    \ input cursor (was x21)
 $36A8 constant INE-CELL    \ input end    (was x22)
 $36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
-$36C8 constant BPI-CELL    \ (legacy single-BP; unused)
 $36D0 constant BPTAB-OFF   \ 16 breakpoints: (addr, saved-instr) 16 B each, addr 0 = empty
 $2740 constant EVAL-FRAME  \ re-entrant evaluate save frame, 8 cells:
                            \ +0 INP +8 INE +16 RET +24 SP +32 XDS +40 CP +48 NDICT +56 DP
@@ -126,12 +125,18 @@ $F2C00009 constant W-MOVK2     \ movk x9,#0,lsl#32
 $F2E00009 constant W-MOVK3     \ movk x9,#0,lsl#48
 
 \ --- primitive registry (host-side, to build the seed dictionary) ---
-create PLBL 128 cells allot   create PEL 128 cells allot
-create PLEN 128 cells allot   create PNAM 128 cells allot
-create PNPOOL 2048 chars allot   variable PNP   variable #PL
+128 constant PRIM-CAP
+2048 constant PRIM-NAME-CAP
+create PLBL PRIM-CAP cells allot   create PEL PRIM-CAP cells allot
+create PLEN PRIM-CAP cells allot   create PNAM PRIM-CAP cells allot
+create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
 
+: REG-ROOM? ( u -- )
+   #PL @ PRIM-CAP >= if 1 abort" cg: primitive table overflow" then
+   PNP @ + PRIM-NAME-CAP > if 1 abort" cg: primitive name pool overflow" then ;
 
 : REG-PRIM {: na nu lbl elbl -- :}
+   nu REG-ROOM?
    lbl  #PL @ cells PLBL + !
    elbl #PL @ cells PEL  + !
    nu   #PL @ cells PLEN + !
@@ -694,7 +699,8 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    LBL LBL LBL {: bok bcp bcd :}
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
    14 DATA BODYLEN-CELL LDR,
-   5 BODYBUF-CAP MOVZ,  14 5 CMP,  C-LT bok BCOND,
+   16 14 17 ADD,  16 16 1 ADDI,
+   5 BODYBUF-CAP MOVZ,  16 5 CMP,  C-LE bok BCOND,
       0 2 MOVZ,  1 11 0 ADDI,  2 12 0 ADDI,  NR-WRITE SYS,
       0 71 MOVZ,  NR-EXIT SYS,
    bok LBL,
@@ -1028,7 +1034,7 @@ create ZBYTE 0 c,
    srl LBL,
       0 12 0 ADDI,  1 9 0 ADDI,
       2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
-      2 sdone CBZ,
+      2 sreaderr CBZ,
       NR-READ SYS,
       13 C-CS CSET,  13 sreaderr CBNZ,
       0 sdone CBZ,
@@ -1139,7 +1145,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-RL @ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
       2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
-      2 SRC-RD @ CBZ,
+      2 SRC-SFAIL @ CBZ,
       NR-READ SYS,
       13 C-CS CSET,  13 SRC-SFAIL @ CBNZ,
       0 SRC-RD @ CBZ,
@@ -1904,6 +1910,15 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-QUOTE-CONSUME ( -- )
    10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
 
+: C-QUOTE-SAVE ( -- )
+   SP SP 16 SUBI,  16 SP 0 STR,  10 SP 8 STR, ;
+
+: C-QUOTE-RESTORE ( -- )
+   16 SP 0 LDR,  10 SP 8 LDR, ;
+
+: C-QUOTE-SAVED-DROP ( -- )
+   SP SP 16 ADDI, ;
+
 : C-ISDQ ( -- )
    C-QUOTE-START
    C-QUOTE-SCAN
@@ -1941,9 +1956,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-QUOTE-CONSUME
    0 1 MOVZ,  1 13 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS, ;
 
-\ S" string" (compile mode): emit  B over the bytes ; <bytes> ; push abs-addr ;
-\ push len. Bytes live in the RX code image; the absolute address is known at
-\ compile time, so C-LIT pushes it (no PC-relative ADR needed).
+\ S" string" (compile mode): emit bytes in the RX code image, then push the
+\ byte address via C-ADR PC-relative addressing plus the counted length.
 \ compile-mode PC-RELATIVE address push: emit `adr x9, target` then the push
 \ stencil. Unlike C-LIT's absolute movz/movk, the offset survives the AOT blob
 \ copy and the ASLR slide, because the target (an embedded S" body) moves WITH
@@ -1960,9 +1974,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-QUOTE-START
    C-QUOTE-SCAN
    C-QUOTE-CONSUME
+   C-QUOTE-SAVE
+   C-QUOTE-RESTORE
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,      \ x15 = B addr; emit B placeholder
    12 CP 0 ADDI,                                        \ x12 = byte addr (after the B)
+   C-QUOTE-RESTORE
    11 16 0 ADDI,  9 10 0 ADDI,                          \ copy x10 bytes start->CP
    LBL {: cl :}  LBL {: cd :}
    cl LBL,  9 cd CBZ,
@@ -1971,18 +1988,22 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,             \ pad CP to 4
    9 15 0 ADDI,  15 10 0 ADDI,  LPAT @ BL,              \ x9=B addr; save len in x15; patch B->here
    11 12 0 ADDI,  C-ADR                                 \ push byte addr PC-relative (AOT/ASLR-safe)
-   11 15 0 ADDI,  C-LIT ;                               \ push len (x15)
+   11 15 0 ADDI,  C-LIT                                 \ push len (x15)
+   C-QUOTE-SAVED-DROP ;
 
 : C-CQ ( -- )
    C-QUOTE-START
    C-QUOTE-SCAN
    C-QUOTE-CONSUME
+   C-QUOTE-SAVE
    LBL {: capok :}  LBL {: cl :}  LBL {: cd :}
    10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
    capok LBL,
+   C-QUOTE-RESTORE
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
    12 CP 0 ADDI,
+   C-QUOTE-RESTORE
    10 28 0 STRB,  28 28 1 ADDI,
    11 16 0 ADDI,  9 10 0 ADDI,
    cl LBL,  9 cd CBZ,
@@ -1990,7 +2011,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    cd LBL,
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
    9 15 0 ADDI,  15 10 1 ADDI,  LPAT @ BL,
-   11 12 0 ADDI,  C-ADR ;
+   11 12 0 ADDI,  C-ADR
+   C-QUOTE-SAVED-DROP ;
 
 : C-DOTQ ( -- )
    LBL {: ok :}

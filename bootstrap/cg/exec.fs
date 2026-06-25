@@ -9,11 +9,40 @@ require elf.fs
 require sign.fs
 [THEN]
 
-create CMD$ 512 allot   variable CMD#
+512 constant CMD-CAP
+create CMD$ CMD-CAP allot   variable CMD#
+512 constant CG-TMP-CAP
+create CG-TMP$ CG-TMP-CAP allot   variable CG-TMP#
 
-: C+ ( c -- )  CMD$ CMD# @ + c!  1 CMD# +! ;
+s" cg: command too long" exception constant E-CMD-LONG
+s" cg: unsafe shell path" exception constant E-CMD-PATH
+
+: C+ ( c -- )
+   CMD# @ CMD-CAP >= if E-CMD-LONG throw then
+   CMD$ CMD# @ + c!  1 CMD# +! ;
 
 : CS+ ( addr u -- )  bounds ?do i c@ C+ loop ;
+
+: CSP+ ( addr u -- )
+   bounds ?do
+      i c@ dup [char] ' = if drop E-CMD-PATH throw then
+      C+
+   loop ;
+
+: P+ ( c -- )
+   CG-TMP# @ CG-TMP-CAP >= if E-CMD-LONG throw then
+   CG-TMP$ CG-TMP# @ + c!  1 CG-TMP# +! ;
+
+: PS+ ( addr u -- )  bounds ?do i c@ P+ loop ;
+
+: CG-TMP-PATH {: a u :}
+   0 CG-TMP# !
+   s" HB_TMP" getenv dup 0= if 2drop s" /tmp" then PS+
+   CG-TMP# @ 0> if
+      CG-TMP$ CG-TMP# @ 1- + c@ [char] / <> if [char] / P+ then
+   then
+   a u PS+
+   CG-TMP$ CG-TMP# @ ;
 
 : CMD( ( -- )  0 CMD# ! ;
 
@@ -29,7 +58,7 @@ create CMD$ 512 allot   variable CMD#
 s" cg: chmod failed"     exception constant E-CHMOD
 
 : CHMODX ( addr u -- )
-   CMD(  s" chmod +x '" CS+  CS+  s" '" CS+  )RUN  if E-CHMOD throw then ;
+   CMD(  s" chmod +x '" CS+  CSP+  s" '" CS+  )RUN  if E-CHMOD throw then ;
 
 : BASENAME ( a u -- a2 u2 )          \ strip directory: text after the last '/'
    {: a u :}  a u + {: e :}  a {: s :}
@@ -69,4 +98,4 @@ s" cg: chmod failed"     exception constant E-CHMOD
 \ Build + run, returning the decoded process exit code (0..255).
 : RUN-EXE ( addr u -- code )
    2dup {: pa pu :} EMIT-EXE          \ EMIT-EXE consumes addr u; keep pa pu for the run
-   CMD(  [char] ' C+  pa pu CS+  [char] ' C+  )RUN  pa pu rot CRASH-CHECK  WSTAT>RC ;
+   CMD(  [char] ' C+  pa pu CSP+  [char] ' C+  )RUN  pa pu rot CRASH-CHECK  WSTAT>RC ;
