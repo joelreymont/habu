@@ -137,6 +137,10 @@ lesson — keep the specific word/code/path, cut the prose.
   runtime prefix (env, baked REPL, stepper, watch, debug). Refresh once with
   compatibility constants if the installed `bin/hb` needs them, then remove dups
   and prove with the regenerated binary.
+- **Manifest policy is row data plus one validator:** doc and module-note
+  requirements in `tools/stdlib-manifest-test.f` stay maintainable when grouped
+  as checked rows; branch ladders hide policy drift and make adding requirements
+  look like control-flow work.
 
 ## VCS
 

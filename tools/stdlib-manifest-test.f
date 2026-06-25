@@ -318,7 +318,7 @@ variable SMT-J
    fa fu SMT-STORE$ SMT-LIB-F-L SMT-LIB-N @ SMT-A! SMT-LIB-F-O SMT-LIB-N @ SMT-A!
    SMT-LIB-N @ 1+ SMT-LIB-N ! ;
 
-: SMT-REQ-DOC ( ptr u8 n -- ) {: a:ptr u :}
+: SMT-CHECK-DOC-ROW ( ptr u8 n -- ) {: a:ptr u :}
    SMT-DOC-BUF SMT-DOC-U @ a u CONTAINS? 0= IF
       s" missing stdlib doc contract: " SMT-ERR
       a u SMT-ERR
@@ -326,60 +326,123 @@ variable SMT-J
       SMT-BAD+
    THEN ;
 
+: SMT-DOC-HANDLE-ROWS ( -- )
+   s" ## Handle Representation" SMT-CHECK-DOC-ROW
+   s" v1 memory-backed handles use `ptr u8 n`" SMT-CHECK-DOC-ROW
+   s" fixed-capacity map slot storage uses" SMT-CHECK-DOC-ROW
+   s" Opaque `addr` values are boundary-only" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-STRING-ROWS ( -- )
+   s" ## LLM Surface" SMT-CHECK-DOC-ROW
+   s" ## String" SMT-CHECK-DOC-ROW
+   s" BYTE-COPY       ( ptr u8 ptr u8 n -- )" SMT-CHECK-DOC-ROW
+   s" SB-APPEND       ( ptr u8 n -- )" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-REGEX-ROWS ( -- )
+   s" ## Regex" SMT-CHECK-DOC-ROW
+   s" RX-COMPILE            ( ptr u8 len ptr u8 len -- len )" SMT-CHECK-DOC-ROW
+   s" RX-MATCH?             ( ptr u8 len ptr u8 len -- bool )" SMT-CHECK-DOC-ROW
+   s" RX-FIND               ( ptr u8 len ptr u8 len -- off len bool )" SMT-CHECK-DOC-ROW
+   s" RX-COUNT              ( ptr u8 len ptr u8 len -- count )" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-MAP-ROWS ( -- )
+   s" ## Map" SMT-CHECK-DOC-ROW
+   s" MAP-CELLS           ( count -- count )" SMT-CHECK-DOC-ROW
+   s" MAP-SET     ( n ptr a count ptr u8 len -- )" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-SOURCE-ROWS ( -- )
+   s" ## Source Materialization" SMT-CHECK-DOC-ROW
+   s" READ-STDIN-ALL                 ( ptr u8 len -- len )" SMT-CHECK-DOC-ROW
+   s" CONCAT-FILES                   ( ptr a ptr a count ptr u8 len -- len )" SMT-CHECK-DOC-ROW
+   s" COMMENT-EXPORTS                ( ptr u8 len ptr u8 len -- len )" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-FS-ROWS ( -- )
+   s" ## Files" SMT-CHECK-DOC-ROW
+   s" WALK-FILES   ( ptr u8 n [ ptr u8 n -- ] -- )" SMT-CHECK-DOC-ROW
+   s" depth-first" SMT-CHECK-DOC-ROW
+   s" per-depth recursion buffers" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-PROC-CAPTURE-ROWS ( -- )
+   s" ## Processes" SMT-CHECK-DOC-ROW
+   s" RUN-CAPTURE  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )" SMT-CHECK-DOC-ROW
+   s" counted paths/commands" SMT-CHECK-DOC-ROW
+   s" FD_CLOEXEC" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-PROC-ERROR-ROWS ( -- )
+   s" rc in that order" SMT-CHECK-DOC-ROW
+   s" E-PROC-TRUNCATED" SMT-CHECK-DOC-ROW
+   s" E-PROC-TIMEOUT" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-PROC-ROWS ( -- )
+   SMT-DOC-PROC-CAPTURE-ROWS
+   SMT-DOC-PROC-ERROR-ROWS ;
+
+: SMT-DOC-ARGV-CORE-ROWS ( -- )
+   s" ## Argv" SMT-CHECK-DOC-ROW
+   s" ARGV-PARSE              ( -- )" SMT-CHECK-DOC-ROW
+   s" ARGV-EXPECT-POS-EXACT   ( n -- )" SMT-CHECK-DOC-ROW
+   s" ARGV-OUT$               ( -- ptr u8 n )" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-ARGV-BOUNDARY-ROWS ( -- )
+   s" `--`" SMT-CHECK-DOC-ROW
+   s" ARGV-E-USAGE" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-ARGV-ROWS ( -- )
+   SMT-DOC-ARGV-CORE-ROWS
+   SMT-DOC-ARGV-BOUNDARY-ROWS ;
+
+: SMT-DOC-TEST-ASSERT-ROWS ( -- )
+   s" ## Test Property And Build Helpers" SMT-CHECK-DOC-ROW
+   s" T-RESET         ( -- )" SMT-CHECK-DOC-ROW
+   s" T=              ( n n -- )" SMT-CHECK-DOC-ROW
+   s" T-REPORT        ( -- )" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-TEST-THROW-ROWS ( -- )
+   s" TTHROWS         ( a n -- )" SMT-CHECK-DOC-ROW
+   s" TTHROWSQ        ( [ -- ] n -- )" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-TEST-ROWS ( -- )
+   SMT-DOC-TEST-ASSERT-ROWS
+   SMT-DOC-TEST-THROW-ROWS ;
+
+: SMT-DOC-BUILD-ROWS ( -- )
+   s" PROP-RUN-RESET  ( n n -- )" SMT-CHECK-DOC-ROW
+   s" PROP-SHRINK     ( [ -- bool ] -- )" SMT-CHECK-DOC-ROW
+   s" BUILD-STEP      ( ptr u8 n [ -- n ] -- )" SMT-CHECK-DOC-ROW
+   s" `evaluate`" SMT-CHECK-DOC-ROW
+   s" source-string generation" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-SHELL-ROWS ( -- )
+   s" ## Build Shell Boundary" SMT-CHECK-DOC-ROW
+   s" Shell wrappers may only" SMT-CHECK-DOC-ROW
+   s" `HB_TMP`" SMT-CHECK-DOC-ROW
+   s" Habu build helpers are responsible" SMT-CHECK-DOC-ROW ;
+
+: SMT-DOC-FOUNDATION-ROWS ( -- )
+   SMT-DOC-HANDLE-ROWS
+   SMT-DOC-STRING-ROWS
+   SMT-DOC-REGEX-ROWS
+   SMT-DOC-MAP-ROWS ;
+
+: SMT-DOC-IO-ROWS ( -- )
+   SMT-DOC-SOURCE-ROWS
+   SMT-DOC-FS-ROWS
+   SMT-DOC-PROC-ROWS
+   SMT-DOC-ARGV-ROWS ;
+
+: SMT-DOC-HARNESS-ROWS ( -- )
+   SMT-DOC-TEST-ROWS
+   SMT-DOC-BUILD-ROWS
+   SMT-DOC-SHELL-ROWS ;
+
+: SMT-CHECK-DOC-ROWS ( -- )
+   SMT-DOC-FOUNDATION-ROWS
+   SMT-DOC-IO-ROWS
+   SMT-DOC-HARNESS-ROWS ;
+
 : SMT-CHECK-DOCS ( -- )
    s" docs/stdlib.md" SMT-DOC-BUF SMT-DOC-CAP READ-FILE nip SMT-DOC-U !
-   s" ## Handle Representation" SMT-REQ-DOC
-   s" v1 memory-backed handles use `ptr u8 n`" SMT-REQ-DOC
-   s" fixed-capacity map slot storage uses" SMT-REQ-DOC
-   s" Opaque `addr` values are boundary-only" SMT-REQ-DOC
-   s" ## LLM Surface" SMT-REQ-DOC
-   s" ## String" SMT-REQ-DOC
-   s" BYTE-COPY       ( ptr u8 ptr u8 n -- )" SMT-REQ-DOC
-   s" SB-APPEND       ( ptr u8 n -- )" SMT-REQ-DOC
-   s" ## Regex" SMT-REQ-DOC
-   s" RX-COMPILE            ( ptr u8 len ptr u8 len -- len )" SMT-REQ-DOC
-   s" RX-MATCH?             ( ptr u8 len ptr u8 len -- bool )" SMT-REQ-DOC
-   s" RX-FIND               ( ptr u8 len ptr u8 len -- off len bool )" SMT-REQ-DOC
-   s" RX-COUNT              ( ptr u8 len ptr u8 len -- count )" SMT-REQ-DOC
-   s" ## Map" SMT-REQ-DOC
-   s" MAP-CELLS           ( count -- count )" SMT-REQ-DOC
-   s" MAP-SET     ( n ptr a count ptr u8 len -- )" SMT-REQ-DOC
-   s" ## Source Materialization" SMT-REQ-DOC
-   s" READ-STDIN-ALL                 ( ptr u8 len -- len )" SMT-REQ-DOC
-   s" CONCAT-FILES                   ( ptr a ptr a count ptr u8 len -- len )" SMT-REQ-DOC
-   s" COMMENT-EXPORTS                ( ptr u8 len ptr u8 len -- len )" SMT-REQ-DOC
-   s" ## Files" SMT-REQ-DOC
-   s" WALK-FILES   ( ptr u8 n [ ptr u8 n -- ] -- )" SMT-REQ-DOC
-   s" depth-first" SMT-REQ-DOC
-   s" per-depth recursion buffers" SMT-REQ-DOC
-   s" ## Processes" SMT-REQ-DOC
-   s" RUN-CAPTURE  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )" SMT-REQ-DOC
-   s" counted paths/commands" SMT-REQ-DOC
-   s" FD_CLOEXEC" SMT-REQ-DOC
-   s" rc in that order" SMT-REQ-DOC
-   s" E-PROC-TRUNCATED" SMT-REQ-DOC
-   s" E-PROC-TIMEOUT" SMT-REQ-DOC
-   s" ## Argv" SMT-REQ-DOC
-   s" ARGV-PARSE              ( -- )" SMT-REQ-DOC
-   s" ARGV-EXPECT-POS-EXACT   ( n -- )" SMT-REQ-DOC
-   s" ARGV-OUT$               ( -- ptr u8 n )" SMT-REQ-DOC
-   s" `--`" SMT-REQ-DOC
-   s" ARGV-E-USAGE" SMT-REQ-DOC
-   s" ## Test Property And Build Helpers" SMT-REQ-DOC
-   s" T-RESET         ( -- )" SMT-REQ-DOC
-   s" T=              ( n n -- )" SMT-REQ-DOC
-   s" T-REPORT        ( -- )" SMT-REQ-DOC
-   s" TTHROWS         ( a n -- )" SMT-REQ-DOC
-   s" TTHROWSQ        ( [ -- ] n -- )" SMT-REQ-DOC
-   s" PROP-RUN-RESET  ( n n -- )" SMT-REQ-DOC
-   s" PROP-SHRINK     ( [ -- bool ] -- )" SMT-REQ-DOC
-   s" BUILD-STEP      ( ptr u8 n [ -- n ] -- )" SMT-REQ-DOC
-   s" `evaluate`" SMT-REQ-DOC
-   s" source-string generation" SMT-REQ-DOC
-   s" ## Build Shell Boundary" SMT-REQ-DOC
-   s" Shell wrappers may only" SMT-REQ-DOC
-   s" `HB_TMP`" SMT-REQ-DOC
-   s" Habu build helpers are responsible" SMT-REQ-DOC ;
+   SMT-CHECK-DOC-ROWS ;
 
 : SMT-EMPTY? ( ptr u8 n -- bool )
    nip 0= ;
@@ -387,39 +450,103 @@ variable SMT-J
 : SMT-NONEMPTY? ( ptr u8 n -- bool )
    nip 0 > ;
 
+: SMT-CHECK-MODULE-NOTE-ROW ( n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: line module:ptr mu notes:ptr nu target:ptr tu need:ptr needu msg:ptr msgu :}
+   module mu target tu STR= IF
+      notes nu need needu CONTAINS? 0= IF line msg msgu SMT-ROW-FINDING THEN
+   THEN ;
+
+: SMT-NOTE-REGEX-ROW ( n ptr u8 n ptr u8 n -- )
+   s" regex"
+   s" ptr u8 len"
+   s" regex module notes must specify ptr u8 len handle representation"
+   SMT-CHECK-MODULE-NOTE-ROW ;
+
+: SMT-NOTE-MAP-STORAGE-ROW ( n ptr u8 n ptr u8 n -- )
+   s" map"
+   s" ptr a n"
+   s" map module notes must specify ptr a n storage"
+   SMT-CHECK-MODULE-NOTE-ROW ;
+
+: SMT-NOTE-MAP-KEY-ROW ( n ptr u8 n ptr u8 n -- )
+   s" map"
+   s" ptr u8 n"
+   s" map module notes must specify ptr u8 n key representation"
+   SMT-CHECK-MODULE-NOTE-ROW ;
+
+: SMT-NOTE-FS-WALK-ROW ( n ptr u8 n ptr u8 n -- )
+   s" fs"
+   s" WALK-FILES"
+   s" fs module notes must mention WALK-FILES contract"
+   SMT-CHECK-MODULE-NOTE-ROW ;
+
+: SMT-NOTE-PROC-RUN-ROW ( n ptr u8 n ptr u8 n -- )
+   s" process"
+   s" RUN-CAPTURE"
+   s" process module notes must mention RUN-CAPTURE"
+   SMT-CHECK-MODULE-NOTE-ROW ;
+
+: SMT-NOTE-PROC-FD-ROW ( n ptr u8 n ptr u8 n -- )
+   s" process"
+   s" FD_CLOEXEC"
+   s" process module notes must mention FD_CLOEXEC"
+   SMT-CHECK-MODULE-NOTE-ROW ;
+
+: SMT-NOTE-TEST-ASSERT-ROW ( n ptr u8 n ptr u8 n -- )
+   s" test"
+   s" checked assertions"
+   s" test module notes must mention checked assertions"
+   SMT-CHECK-MODULE-NOTE-ROW ;
+
+: SMT-NOTE-PROP-PRNG-ROW ( n ptr u8 n ptr u8 n -- )
+   s" property"
+   s" PRNG"
+   s" property module notes must mention PRNG"
+   SMT-CHECK-MODULE-NOTE-ROW ;
+
+: SMT-NOTE-PROP-EVAL-ROW ( n ptr u8 n ptr u8 n -- )
+   s" property"
+   s" evaluate boundary"
+   s" property module notes must mention evaluate boundary"
+   SMT-CHECK-MODULE-NOTE-ROW ;
+
+: SMT-NOTE-BUILD-SHELL-ROW ( n ptr u8 n ptr u8 n -- )
+   s" build"
+   s" shell boundary"
+   s" build module notes must mention shell boundary"
+   SMT-CHECK-MODULE-NOTE-ROW ;
+
+: SMT-NOTE-BUILD-HABU-ROW ( n ptr u8 n ptr u8 n -- )
+   s" build"
+   s" Habu"
+   s" build module notes must mention Habu ownership"
+   SMT-CHECK-MODULE-NOTE-ROW ;
+
+: SMT-CHECK-MODULE-NOTES-REP ( n ptr u8 n ptr u8 n -- )
+   {: line module:ptr mu notes:ptr nu :}
+   line module mu notes nu SMT-NOTE-REGEX-ROW
+   line module mu notes nu SMT-NOTE-MAP-STORAGE-ROW
+   line module mu notes nu SMT-NOTE-MAP-KEY-ROW
+   line module mu notes nu SMT-NOTE-FS-WALK-ROW ;
+
+: SMT-CHECK-MODULE-NOTES-PROC ( n ptr u8 n ptr u8 n -- )
+   {: line module:ptr mu notes:ptr nu :}
+   line module mu notes nu SMT-NOTE-PROC-RUN-ROW
+   line module mu notes nu SMT-NOTE-PROC-FD-ROW
+   line module mu notes nu SMT-NOTE-TEST-ASSERT-ROW ;
+
+: SMT-CHECK-MODULE-NOTES-HARNESS ( n ptr u8 n ptr u8 n -- )
+   {: line module:ptr mu notes:ptr nu :}
+   line module mu notes nu SMT-NOTE-PROP-PRNG-ROW
+   line module mu notes nu SMT-NOTE-PROP-EVAL-ROW
+   line module mu notes nu SMT-NOTE-BUILD-SHELL-ROW
+   line module mu notes nu SMT-NOTE-BUILD-HABU-ROW ;
+
 : SMT-CHECK-MODULE-NOTES ( n ptr u8 n ptr u8 n -- )
    {: line module:ptr mu notes:ptr nu :}
-   module mu s" regex" STR= IF
-      notes nu s" ptr u8 len" CONTAINS? 0= IF line s" regex module notes must specify ptr u8 len handle representation" SMT-ROW-FINDING THEN
-      exit
-   THEN
-   module mu s" map" STR= IF
-      notes nu s" ptr a n" CONTAINS? 0= IF line s" map module notes must specify ptr a n storage" SMT-ROW-FINDING THEN
-      notes nu s" ptr u8 n" CONTAINS? 0= IF line s" map module notes must specify ptr u8 n key representation" SMT-ROW-FINDING THEN
-      exit
-   THEN
-   module mu s" fs" STR= IF
-      notes nu s" WALK-FILES" CONTAINS? 0= IF line s" fs module notes must mention WALK-FILES contract" SMT-ROW-FINDING THEN
-      exit
-   THEN
-   module mu s" process" STR= IF
-      notes nu s" RUN-CAPTURE" CONTAINS? 0= IF line s" process module notes must mention RUN-CAPTURE" SMT-ROW-FINDING THEN
-      notes nu s" FD_CLOEXEC" CONTAINS? 0= IF line s" process module notes must mention FD_CLOEXEC" SMT-ROW-FINDING THEN
-      exit
-   THEN
-   module mu s" test" STR= IF
-      notes nu s" checked assertions" CONTAINS? 0= IF line s" test module notes must mention checked assertions" SMT-ROW-FINDING THEN
-      exit
-   THEN
-   module mu s" property" STR= IF
-      notes nu s" PRNG" CONTAINS? 0= IF line s" property module notes must mention PRNG" SMT-ROW-FINDING THEN
-      notes nu s" evaluate boundary" CONTAINS? 0= IF line s" property module notes must mention evaluate boundary" SMT-ROW-FINDING THEN
-      exit
-   THEN
-   module mu s" build" STR= IF
-      notes nu s" shell boundary" CONTAINS? 0= IF line s" build module notes must mention shell boundary" SMT-ROW-FINDING THEN
-      notes nu s" Habu" CONTAINS? 0= IF line s" build module notes must mention Habu ownership" SMT-ROW-FINDING THEN
-   THEN ;
+   line module mu notes nu SMT-CHECK-MODULE-NOTES-REP
+   line module mu notes nu SMT-CHECK-MODULE-NOTES-PROC
+   line module mu notes nu SMT-CHECK-MODULE-NOTES-HARNESS ;
 
 : SMT-CHECK-ROW ( ptr u8 n n -- ) {: a:ptr u line :}
    a u SMT-SPLIT-FIELDS
