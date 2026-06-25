@@ -75,6 +75,9 @@ variable CA-FILE-U
 : CA-FALSE ( -- bool )
    CA-TRUE 0= ;
 
+: CA-NOT ( bool -- bool )
+   IF CA-FALSE ELSE CA-TRUE THEN ;
+
 : CA-PROG-A-FIELD ( -- ptr ptr u8 )
    CA-PROG-A 0 ptr-field ;
 
@@ -277,11 +280,11 @@ variable CA-FILE-U
    k LK@ L-WORD = ;
 
 : CA-TOK= ( n ptr u8 n -- bool ) {: k a:ptr u :}
-   k CA-TOK-WORD? 0= IF CA-FALSE exit THEN
+   k CA-TOK-WORD? CA-NOT IF CA-FALSE exit THEN
    k LTOK a u STR= ;
 
 : CA-TOK-CI= ( n ptr u8 n -- bool ) {: k a:ptr u :}
-   k CA-TOK-WORD? 0= IF CA-FALSE exit THEN
+   k CA-TOK-WORD? CA-NOT IF CA-FALSE exit THEN
    k LTOK a u STR=CI ;
 
 : CA-PARSE-NEXT? ( n -- bool ) {: k :}
@@ -409,40 +412,42 @@ variable CA-FILE-U
    0 CA-DEF# @ CA-OK!
    CA-DEF# @ 1+ CA-DEF# ! ;
 
-: CA-COLLECT-DEFS ( -- )
+: CA-ADD-DEF-RANGE ( n n -- ) {: k semi :}
+   k LB@ semi CA-TOK-END-BYTE k CA-ADD-DEF ;
+
+: CA-COLLECT-DEF ( n -- ) {: k :}
+   k CA-FIND-SEMI dup L# @ >= IF drop exit THEN
+   dup k swap CA-ADD-DEF-RANGE
+   CA-I ! ;
+
+: CA-COLLECT-CREATE ( n -- ) {: k :}
+   k CA-ADD-SUPPORT-LINE
+   k k CA-LINE-SAFE-END CA-LAST-TOK-BEFORE CA-I ! ;
+
+: CA-COLLECT-SUPPORT ( n -- ) {: k :}
+   k s" TRUSTED:" CA-TOK-CI= IF k CA-ADD-SUPPORT-TRUSTED exit THEN
+   k s" create" CA-TOK-CI= IF k CA-COLLECT-CREATE exit THEN
+   k s" variable" CA-TOK-CI= IF k CA-ADD-SUPPORT-PAIR exit THEN
+   k s" constant" CA-TOK-CI= IF k CA-ADD-SUPPORT-CONSTANT exit THEN
+   k s" TRUST" CA-TOK-CI= IF k CA-ADD-SUPPORT-TRUST exit THEN ;
+
+: CA-COLLECT-ONE ( -- )
+   CA-I @ s" :" CA-TOK= IF
+      CA-I @ CA-COLLECT-DEF
+   ELSE
+      CA-I @ CA-COLLECT-SUPPORT
+   THEN ;
+
+: CA-COLLECT-RESET ( -- )
    0 CA-DEF# !
    0 CA-SUP# !
    CA-STORE-CLEAR
-   0 CA-I !
+   0 CA-I ! ;
+
+: CA-COLLECT-DEFS ( -- )
+   CA-COLLECT-RESET
    begin CA-I @ L# @ < while
-      CA-I @ s" :" CA-TOK= IF
-         CA-I @ 1+ CA-J !
-         begin CA-J @ L# @ < while
-            CA-J @ CA-PARSE-NEXT? IF
-               CA-J @ 2 + CA-J !
-            ELSE CA-J @ s" ;" CA-TOK= IF
-               CA-I @ LB@
-               CA-J @ LB@ CA-J @ LTOK nip +
-               CA-I @ CA-ADD-DEF
-               CA-J @ CA-I !
-               L# @ CA-J !
-            ELSE
-               CA-J @ 1+ CA-J !
-            THEN THEN
-         repeat
-      ELSE CA-I @ s" TRUSTED:" CA-TOK-CI= IF
-         CA-I @ CA-ADD-SUPPORT-TRUSTED
-      ELSE CA-I @ s" create" CA-TOK-CI= IF
-         CA-I @ CA-ADD-SUPPORT-LINE
-         CA-I @ CA-I @ CA-LINE-SAFE-END CA-LAST-TOK-BEFORE CA-I !
-      ELSE CA-I @ s" variable" CA-TOK-CI= IF
-         CA-I @ CA-ADD-SUPPORT-PAIR
-      ELSE CA-I @ s" constant" CA-TOK-CI= IF
-         CA-I @ CA-ADD-SUPPORT-CONSTANT
-      ELSE CA-I @ s" TRUST" CA-TOK-CI= IF
-         CA-I @ CA-ADD-SUPPORT-TRUST
-      THEN THEN THEN THEN THEN
-      THEN
+      CA-COLLECT-ONE
       CA-I @ 1+ CA-I !
    repeat ;
 
@@ -481,7 +486,7 @@ variable CA-FILE-U
    CA-INF ;
 
 : CA-PROG-DEF-I ( -- )
-   CA-ALL-DEFS @ CA-I @ CA-OK@ or IF
+   CA-ALL-DEFS @ 0 <> CA-I @ CA-OK@ 0 <> or IF
       CA-I @ CA-START@ CA-I @ CA-END@ CA-PROG-SLICE
       CA-LF CA-PROG-C
    THEN
@@ -526,9 +531,9 @@ variable CA-FILE-U
 : CA-BUILD-FULL-PROGRAM ( -- )
    0 CA-PROG-LEN !
    CA-PROG-PREFIX
-   -1 CA-ALL-DEFS !
+   CA-TRUE CA-ALL-DEFS !
    CA-INF CA-PROG-CONTEXT-LIMIT
-   0 CA-ALL-DEFS ! ;
+   CA-FALSE CA-ALL-DEFS ! ;
 
 : CA-RUN-PROGRAM ( -- n )
    CA-MAKE-RUN-PATH
@@ -555,7 +560,7 @@ variable CA-FILE-U
 
 : CA-JSON-LINE? ( ptr u8 n -- bool )
    TRIM dup 0= IF 2drop CA-FALSE exit THEN
-   over c@ CA-LBRACE = ;
+   drop c@ CA-LBRACE = ;
 
 : CA-ERR-LINE ( n n -- ptr u8 n ) {: start end :}
    CA-ERR-BUF start + end start - ;
@@ -673,14 +678,14 @@ variable CA-FILE-U
    THEN ;
 
 : CA-FILTER-JSON ( -- )
-   0 CA-JSON-FOUND !
+   CA-FALSE CA-JSON-FOUND !
    0 CA-LS !
    0 CA-LE !
    begin CA-LE @ CA-ERR-LEN @ < while
       CA-ERR-BUF CA-LE @ + c@ CA-LF = IF
          CA-LS @ CA-LE @ CA-ERR-LINE CA-JSON-LINE? IF
             CA-LS @ CA-LE @ CA-EMIT-ERR-LINE
-            -1 CA-JSON-FOUND !
+            CA-TRUE CA-JSON-FOUND !
          THEN
          CA-LE @ 1+ CA-LS !
       THEN
@@ -689,16 +694,16 @@ variable CA-FILE-U
    CA-LS @ CA-ERR-LEN @ < IF
       CA-LS @ CA-ERR-LEN @ CA-ERR-LINE CA-JSON-LINE? IF
          CA-LS @ CA-ERR-LEN @ CA-EMIT-ERR-LINE
-         -1 CA-JSON-FOUND !
+         CA-TRUE CA-JSON-FOUND !
       THEN
    THEN ;
 
 : CA-HANDLE-FAIL {: k rc :} ( k rc -- )
-   -1 CA-FAILED !
+   CA-TRUE CA-FAILED !
    ARGV-JSON? IF
       CA-FILTER-JSON
       CA-JSON-FOUND @ 0= IF
-         k CA-TRY-RAW-JSON 0= IF
+         k CA-TRY-RAW-JSON CA-NOT IF
             CA-ERR-BUF CA-ERR-LEN @ CA-ERR
             rc CA-RAW-FAILURE !
          THEN
@@ -708,7 +713,7 @@ variable CA-FILE-U
    THEN ;
 
 : CA-RUN-DEFS ( -- )
-   0 CA-FAILED !
+   CA-FALSE CA-FAILED !
    0 CA-RAW-FAILURE !
    CA-SPAWN-HB-FULL 0= IF exit THEN
    0 CA-K !
@@ -729,7 +734,7 @@ variable CA-FILE-U
    CA-CHECK-PROG-NEED MEM-ALLOC-64K-SPAN CA-PROG-CAP ! CA-PROG-A! ;
 
 : CA-READ-SOURCE ( ptr u8 n -- ) {: path:ptr pu :}
-   path pu FILE-SIZE dup CA-ALLOC-SOURCE
+   path pu FILE-SIZE CA-ALLOC-SOURCE
    path pu CA-SRC-A@ CA-SRC-CAP @ READ-ALL CA-SRC-U ! ;
 
 : CHECK-ALL-ERRORS ( -- )
@@ -744,7 +749,7 @@ variable CA-FILE-U
    CA-HANDLE-LEX-UNTERM
    CA-COLLECT-DEFS
    CA-RUN-DEFS
-   CA-RAW-FAILURE @ IF CA-RAW-FAILURE @ throw THEN
-   CA-FAILED @ IF 70 throw THEN ;
+   CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
+   CA-FAILED @ 0 <> IF 70 throw THEN ;
 
 CHECK-ALL-ERRORS

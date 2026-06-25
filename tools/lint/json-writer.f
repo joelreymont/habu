@@ -1,8 +1,6 @@
 \ json-writer.f - small emit-only JSON writer for native lints.
 \ Load after tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f. This is intentionally smaller than tools/json.f.
 
-0 set-check
-
 $4000 constant LJW-CAP
 32 constant LJW-NUM-CAP
 
@@ -29,12 +27,12 @@ variable LJW-NUM-I
 : LJW-RESET ( -- )
    0 LJW-LEN ! ;
 
-: LJW-C {: c :} ( c -- )
+: LJW-C ( n -- ) {: c:n :}
    LJW-LEN @ 1+ LJW-CAP > IF s" lint-json: buffer overflow" 76 die THEN
    c LJW-BUF LJW-LEN @ + c!
    LJW-LEN @ 1+ LJW-LEN ! ;
 
-: LJW-RAW {: a u :} ( a u -- )
+: LJW-RAW ( ptr u8 n -- ) {: a:ptr u:n :}
    LJW-LEN @ u + LJW-CAP > IF s" lint-json: buffer overflow" 76 die THEN
    a LJW-BUF LJW-LEN @ + u BMOVE
    LJW-LEN @ u + LJW-LEN ! ;
@@ -42,7 +40,7 @@ variable LJW-NUM-I
 : LJW-HEX ( n -- c )
    dup 10 < IF LJW-ZERO + ELSE 55 + THEN ;
 
-: LJW-U00 ( c -- )
+: LJW-U00 ( n -- )
    LJW-BACKSLASH LJW-C
    117 LJW-C
    LJW-ZERO LJW-C
@@ -50,7 +48,7 @@ variable LJW-NUM-I
    dup 4 rshift LJW-HEX LJW-C
    $F and LJW-HEX LJW-C ;
 
-: LJW-ESC-C {: c :} ( c -- )
+: LJW-ESC-C ( n -- ) {: c:n :}
    c LJW-DQ = IF LJW-BACKSLASH LJW-C LJW-DQ LJW-C exit THEN
    c LJW-BACKSLASH = IF LJW-BACKSLASH LJW-C LJW-BACKSLASH LJW-C exit THEN
    c LJW-BS = IF LJW-BACKSLASH LJW-C 98 LJW-C exit THEN
@@ -61,7 +59,7 @@ variable LJW-NUM-I
    c LJW-SP < IF c LJW-U00 exit THEN
    c LJW-C ;
 
-: LJW-STRING {: a u :} ( a u -- )
+: LJW-STRING ( ptr u8 n -- ) {: a:ptr u:n :}
    LJW-DQ LJW-C
    0 begin dup u < while
       dup a + c@ LJW-ESC-C
@@ -69,7 +67,7 @@ variable LJW-NUM-I
    repeat drop
    LJW-DQ LJW-C ;
 
-: LJW-KEY ( a u -- )
+: LJW-KEY ( ptr u8 n -- )
    LJW-STRING
    LJW-COLON-C LJW-C ;
 
@@ -82,7 +80,7 @@ variable LJW-NUM-I
 : LJW-OBJECT-END ( -- )
    LJW-RBRACE LJW-C ;
 
-: LJW-U {: u :} ( u -- )
+: LJW-U ( n -- ) {: u:n :}
    LJW-NUM-CAP LJW-NUM-I !
    u 0= IF
       LJW-ZERO LJW-C
@@ -96,5 +94,5 @@ variable LJW-NUM-I
    repeat drop
    LJW-NUM-BUF LJW-NUM-I @ + LJW-NUM-CAP LJW-NUM-I @ - LJW-RAW ;
 
-: LJW$ ( -- a u )
+: LJW$ ( -- ptr u8 n )
    LJW-BUF LJW-LEN @ ;

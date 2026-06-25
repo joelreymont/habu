@@ -31,10 +31,46 @@ variable SL-WORD-U
 variable SL-SUG-A
 variable SL-SUG-U
 
+: SL-FILE-A-FIELD ( -- ptr ptr u8 )
+   SL-FILE-A 0 ptr-field ;
+
+: SL-CODE-A-FIELD ( -- ptr ptr u8 )
+   SL-CODE-A 0 ptr-field ;
+
+: SL-WORD-A-FIELD ( -- ptr ptr u8 )
+   SL-WORD-A 0 ptr-field ;
+
+: SL-SUG-A-FIELD ( -- ptr ptr u8 )
+   SL-SUG-A 0 ptr-field ;
+
+: SL-FILE-A@ ( -- ptr u8 )
+   SL-FILE-A-FIELD @ ;
+
+: SL-CODE-A@ ( -- ptr u8 )
+   SL-CODE-A-FIELD @ ;
+
+: SL-WORD-A@ ( -- ptr u8 )
+   SL-WORD-A-FIELD @ ;
+
+: SL-SUG-A@ ( -- ptr u8 )
+   SL-SUG-A-FIELD @ ;
+
+: SL-FILE-A! ( ptr u8 -- )
+   SL-FILE-A-FIELD ! ;
+
+: SL-CODE-A! ( ptr u8 -- )
+   SL-CODE-A-FIELD ! ;
+
+: SL-WORD-A! ( ptr u8 -- )
+   SL-WORD-A-FIELD ! ;
+
+: SL-SUG-A! ( ptr u8 -- )
+   SL-SUG-A-FIELD ! ;
+
 : SL-OUT ( ptr u8 n -- ) type ;
 : SL-NL ( -- ) 10 emit ;
 
-: SL-U$ ( n -- ptr u8 n ) {: u :}
+: SL-U$ ( n -- ptr u8 n ) {: u:n :}
    SL-NUM-CAP SL-NUM-I !
    u 0= IF
       SL-NUM-I @ 1- SL-NUM-I !
@@ -51,13 +87,13 @@ variable SL-SUG-U
    SL-NUM-BUF SL-NUM-I @ + SL-NUM-CAP SL-NUM-I @ - ;
 
 : SL-CODE! ( ptr u8 n -- ) {: a:ptr u :}
-   a SL-CODE-A !  u SL-CODE-U ! ;
+   a SL-CODE-A!  u SL-CODE-U ! ;
 
 : SL-WORD! ( ptr u8 n -- ) {: a:ptr u :}
-   a SL-WORD-A !  u SL-WORD-U ! ;
+   a SL-WORD-A!  u SL-WORD-U ! ;
 
 : SL-SUG! ( ptr u8 n -- ) {: a:ptr u :}
-   a SL-SUG-A !  u SL-SUG-U ! ;
+   a SL-SUG-A!  u SL-SUG-U ! ;
 
 : SL-ORIGIN! ( n -- ) {: k :}
    k LL@ SL-LINE !
@@ -69,37 +105,37 @@ variable SL-SUG-U
 
 : SL-END! ( n -- )
    SL-END !
-   -1 SL-HAS-END ! ;
+   LINT-TRUE SL-HAS-END ! ;
 
 : SL-NO-END ( -- )
-   0 SL-HAS-END ! ;
+   LINT-FALSE SL-HAS-END ! ;
 
 : SL-JSON-FINDING ( -- )
    LJW-RESET
    LJW-OBJECT-START
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
-   s" code" LJW-KEY SL-CODE-A @ SL-CODE-U @ LJW-STRING LJW-COMMA
-   s" file" LJW-KEY SL-FILE-A @ SL-FILE-U @ LJW-STRING LJW-COMMA
+   s" code" LJW-KEY SL-CODE-A@ SL-CODE-U @ LJW-STRING LJW-COMMA
+   s" file" LJW-KEY SL-FILE-A@ SL-FILE-U @ LJW-STRING LJW-COMMA
    s" line" LJW-KEY SL-LINE @ LJW-U LJW-COMMA
    s" column" LJW-KEY SL-COL @ LJW-U LJW-COMMA
    s" byte_start" LJW-KEY SL-BYTE @ LJW-U LJW-COMMA
    SL-HAS-END @ IF s" byte_end" LJW-KEY SL-END @ LJW-U LJW-COMMA THEN
-   s" word" LJW-KEY SL-WORD-A @ SL-WORD-U @ LJW-STRING LJW-COMMA
-   s" suggestion" LJW-KEY SL-SUG-A @ SL-SUG-U @ LJW-STRING
+   s" word" LJW-KEY SL-WORD-A@ SL-WORD-U @ LJW-STRING LJW-COMMA
+   s" suggestion" LJW-KEY SL-SUG-A@ SL-SUG-U @ LJW-STRING
    LJW-OBJECT-END
    LJW$ SL-OUT SL-NL ;
 
 : SL-MISSING-SIG? ( -- f )
-   SL-CODE-A @ SL-CODE-U @ s" E-MISSING-SIGNATURE" STR= ;
+   SL-CODE-A@ SL-CODE-U @ s" E-MISSING-SIGNATURE" STR= ;
 
 : SL-TEXT-FINDING ( -- )
-   SL-CODE-A @ SL-CODE-U @ SL-OUT
+   SL-CODE-A@ SL-CODE-U @ SL-OUT
    32 emit
-   SL-FILE-A @ SL-FILE-U @ SL-OUT
+   SL-FILE-A@ SL-FILE-U @ SL-OUT
    58 emit SL-LINE @ SL-U$ SL-OUT
    58 emit SL-COL @ SL-U$ SL-OUT
    s" : `" SL-OUT
-   SL-WORD-A @ SL-WORD-U @ SL-OUT
+   SL-WORD-A@ SL-WORD-U @ SL-OUT
    s" ` " SL-OUT
    SL-MISSING-SIG? IF
       s" needs a typed `( in -- out )` signature" SL-OUT
@@ -137,19 +173,19 @@ variable SL-SUG-U
    SL-REPORT ;
 
 : SL-WORD-TOK? ( n -- bool ) {: k :}
-   k L# @ >= IF 0 exit THEN
+   k L# @ >= IF LINT-FALSE exit THEN
    k LK@ L-WORD = ;
 
 : SL-COMMENT-TOK? ( n -- bool ) {: k :}
-   k L# @ >= IF 0 exit THEN
+   k L# @ >= IF LINT-FALSE exit THEN
    k LK@ L-COMMENT = ;
 
 : SL-COLON? ( n -- bool ) {: k :}
-   k SL-WORD-TOK? 0= IF 0 exit THEN
+   k SL-WORD-TOK? LINT-NOT IF LINT-FALSE exit THEN
    k LTOK s" :" STR= ;
 
 : SL-SIG-KIND ( n -- n ) {: k :}
-   k SL-COMMENT-TOK? 0= IF SIG-MISSING exit THEN
+   k SL-COMMENT-TOK? LINT-NOT IF SIG-MISSING exit THEN
    k LCONTENT SIG-KIND ;
 
 : SL-HANDLE-COLON ( -- )
@@ -180,7 +216,7 @@ variable SL-SUG-U
    ARGV-LABEL? IF ARGV-LABEL$ ELSE a u THEN ;
 
 : SL-SCAN-FILE ( ptr u8 n -- ) {: a:ptr u :}
-   a u SL-LABEL$ SL-FILE-U ! SL-FILE-A !
+   a u SL-LABEL$ SL-FILE-U ! SL-FILE-A!
    a u SL-FILE-BUF SL-FILE-CAP READ-FILE LEX-SOURCE
    SL-SCAN-TOKENS ;
 
@@ -198,7 +234,7 @@ variable SL-SUG-U
       dup ARGV-POS$ SL-SCAN-FILE
       1+
    repeat drop
-   ARGV-JSON? 0= SL-BAD @ 0 > and IF SL-SUMMARY THEN
+   ARGV-JSON? LINT-NOT SL-BAD @ 0 > and IF SL-SUMMARY THEN
    SL-BAD @ 0 > IF 1 throw THEN ;
 
 SIGNATURE-LINT
