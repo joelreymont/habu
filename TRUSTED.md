@@ -150,10 +150,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | SET-SIGID | `ptr u8 n --` | Target signing interface stores or ignores the executable identity while preserving the shared checked driver contract. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/sign2.f:11 | 2026-06-24 |
 | CODESIG2 | `--` | Target signing pass boundary; Linux is a no-op and macOS mutates the image buffer in place. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/sign2.f:97 | 2026-06-24 |
 | fold-entry | `n ptr a n n --` | JIT constant-fold case: emits the keyword guard then `fxt execute`s a fold handler + raw branches. | `test/run.f` | src/habu/jit.f:103 | 2026-06-16 |
-| vop-entry | `n ptr a n n n --` | JIT binop case: fold-vs-emit split with two indirect xts and raw asm. | `test/run.f` | src/habu/jit.f:324 | 2026-06-16 |
-| vopi-entry | `n ptr a n n n n --` | JIT binop-immediate case: fold/register/immediate split with three indirect xts and raw asm. | `test/run.f` | src/habu/jit.f:323 | 2026-06-16 |
-| vshuf-entry | `n ptr a n n n --` | JIT reg-aware stack-shuffle case (dup/over/swap/drop/nip as register moves); `sxt execute` + raw asm. | `test/run.f` | src/habu/jit.f:724 | 2026-06-16 |
-| vun-entry | `n ptr a n n n --` | JIT unary-op case: con-fold vs in-place reg op via `foldxt`/`emitxt` and raw asm. | `test/run.f` | src/habu/jit.f:757 | 2026-06-16 |
+| vop-entry | `n ptr a n n n --` | JIT binop case: fold-vs-emit split with two indirect xts and raw asm. | `test/run.f` | src/habu/jit.f:328 | 2026-06-16 |
+| vopi-entry | `n ptr a n n n n --` | JIT binop-immediate case: fold/register/immediate split with three indirect xts and raw asm. | `test/run.f` | src/habu/jit.f:327 | 2026-06-16 |
+| vshuf-entry | `n ptr a n n n --` | JIT reg-aware stack-shuffle case (dup/over/swap/drop/nip as register moves); `sxt execute` + raw asm. | `test/run.f` | src/habu/jit.f:728 | 2026-06-16 |
+| vun-entry | `n ptr a n n n --` | JIT unary-op case: con-fold vs in-place reg op via `foldxt`/`emitxt` and raw asm. | `test/run.f` | src/habu/jit.f:761 | 2026-06-16 |
 | c-prof-mctx>r21 | `--` | Profiler SIGALRM handler derives the target mcontext address from raw signal-entry registers. | `test/gate-debug.f`, `test/run.f` | src/habu/prof.f:41 | 2026-06-25 |
 | c-prof-pc>r9 | `--` | Profiler SIGALRM handler reads the target-specific saved PC field from mcontext. | `test/gate-debug.f`, `test/run.f` | src/habu/prof.f:46 | 2026-06-25 |
 | c-prof-sigaction-frame | `--` | Profiler builds the target kernel sigaction record directly on the generated stack. | `test/gate-debug.f`, `test/run.f` | src/habu/prof.f:79 | 2026-06-25 |

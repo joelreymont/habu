@@ -864,3 +864,7 @@ register for the marker byte.
   native gate, then run no-binary recovery only with a Gforth that passes the
   documented `{:` locals probe. If the local Gforth is 0.7.3, record that
   `tools/bootstrap.sh` exits at the probe instead of implying recovery coverage.
+- **TRUST manifest line drift is gate debt:** factoring code above existing
+  `TRUST` sites can shift only the manifest line numbers. Run `trust-lint`
+  before the full gate, update the scanned sites exactly, and do not treat a
+  line-only manifest fix as a trust-base expansion.

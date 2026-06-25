@@ -72,6 +72,12 @@ the first review round:
   gate passed. No-binary recovery bootstrap was not run on this host because the
   installed Gforth 0.7.3 fails the documented `{:` locals probe and
   `tools/bootstrap.sh` exits 69 before touching `bin/hb`.
+- F01 mirrored VBIN prep emission was split into shared helper fragments in
+  `src/habu/jit.f` and `bootstrap/cg/jit.fs`; `tools/bootstrap-codegen-test.f`,
+  `trust-lint`, and the full native gate passed. No-binary recovery bootstrap
+  was not run on this host because the installed Gforth 0.7.3 fails the
+  documented `{:` locals probe and `tools/bootstrap.sh` exits 69 before touching
+  `bin/hb`.
 
 ## Remaining Work Order
 
@@ -81,8 +87,7 @@ These findings are still open as of this review artifact. The safest order is:
    `habu-add-bootstrap-stack-a6b31511`.
 2. Factor mirrored native/bootstrap numeric parser:
    `habu-factor-mirrored-num-c2faa343`.
-3. Factor bootstrap JIT duplicated binary prep and move-wide emission:
-   `habu-factor-bootstrap-vbin-53787869`,
+3. Factor bootstrap JIT move-wide emission:
    `habu-factor-bootstrap-move-9722fa8e`.
 4. Factor byte cursor writers shared by ELF, Mach-O, and signing:
    `habu-factor-typed-byte-b311d5c7`,
@@ -98,26 +103,6 @@ These findings are still open as of this review artifact. The safest order is:
    `habu-table-drive-stdlib-786cb080`,
    `habu-factor-stale-status-615b5a1b`,
    `habu-factor-regex-token-865ebac5`.
-
-## Continuation Handoff
-
-All remaining findings above have tracking dots under parent
-`habu-review-whole-repo-5e087327`; do not create duplicate tracker rows for the
-same finding. As of the docs handoff commit, the working copy has an in-progress
-F01 implementation in `src/habu/jit.f` and `bootstrap/cg/jit.fs` that factors
-VBIN prep helpers (`C-VBIN-FRAME`, `C-VBIN-TAGS`, `C-VBIN-REG-PATH`,
-`C-VBIN-FOLD-PATH`, `C-VBIN-RET`, and `C-VBINI-IMM12-PATH`). That source diff is
-not validated yet and must remain open until the next agent proves:
-
-- `tools/bootstrap-codegen-test.f` passes;
-- the native fixpoint/full gate passes through `test/run.f`;
-- no-binary recovery is either run with a Gforth that passes the documented
-  `{:` locals probe, or explicitly recorded as blocked by the local Gforth
-  0.7.3 probe exit before touching `bin/hb`.
-
-After F01 is validated, update this artifact, close
-`habu-factor-bootstrap-vbin-53787869` with the exact commit/evidence, then move
-to the next dot in the remaining-work order rather than broadening scope.
 
 ## Tracking Dots
 

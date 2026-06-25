@@ -195,15 +195,18 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 
 \ LVBINPREP ( -- x13=mode ) : 0 fall-through; 1 fold (x11=a x12=b, VS untouched);
 \ 2 registers ready (x14=rd result slot, x15=rm; rm freed; VSP already --).
-: EMIT-VBINPREP
-   LVBINPREP @ LBL,
-   LBL LBL LBL {: bno bfold b2 :}
+: C-VBIN-FRAME ( -- )
    SP SP 32 SUBI,  30 SP 0 STR,
+;
+
+: C-VBIN-TAGS ( n n -- ) {: bno bfold :}
    6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT bno BCOND,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    5 6 2 SUBI,  8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDRB,
    7 2 CMPI,  C-EQ bno BCOND,  8 2 CMPI,  C-EQ bno BCOND,
-   7 7 8 AND,  7 1 CMPI,  C-EQ bfold BCOND,
+   7 7 8 AND,  7 1 CMPI,  C-EQ bfold BCOND, ;
+
+: C-VBIN-REG-PATH ( n n -- ) {: bno bdone :}
    \ register path: force deep then top
    6 DATA VSP-CELL LDR,  5 6 2 SUBI,  LVFORCEK @ BL,  14 bno CBZ,
    14 SP 8 STR,
@@ -213,26 +216,31 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    7 15 0 ADDI,  LVBIT @ BL,
    6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
    6 DATA VSP-CELL LDR,  6 6 1 SUBI,  6 DATA VSP-CELL STR,
-   13 2 MOVZ,  b2 B,
-   bfold LBL,
+   13 2 MOVZ,  bdone B, ;
+
+: C-VBIN-FOLD-PATH ( n -- ) {: bdone :}
    6 DATA VSP-CELL LDR,
    5 6 2 SUBI,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
    5 6 1 SUBI,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
-   13 1 MOVZ,  b2 B,
+   13 1 MOVZ,  bdone B, ;
+
+: C-VBIN-RET ( -- )
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
+: EMIT-VBINPREP
+   LVBINPREP @ LBL,
+   LBL LBL LBL {: bno bfold bdone :}
+   C-VBIN-FRAME
+   bno bfold C-VBIN-TAGS
+   bno bdone C-VBIN-REG-PATH
+   bfold LBL,
+   bdone C-VBIN-FOLD-PATH
    bno LBL,  13 0 MOVZ,
-   b2 LBL,  30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+   bdone LBL,  C-VBIN-RET ;
 
 \ LVBINIPREP ( -- x13=mode ) : LVBINPREP plus mode 3 for top small constant.
 \ mode 3: x14=rd/rn for the deep operand, x15=imm12, VSP already --.
-: EMIT-VBINIPREP
-   LVBINIPREP @ LBL,
-   LBL LBL LBL LBL {: bno bfold b2 bdone :}
-   SP SP 32 SUBI,  30 SP 0 STR,
-   6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT bno BCOND,
-   5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
-   5 6 2 SUBI,  8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDRB,
-   7 2 CMPI,  C-EQ bno BCOND,  8 2 CMPI,  C-EQ bno BCOND,
-   7 7 8 AND,  7 1 CMPI,  C-EQ bfold BCOND,
+: C-VBINI-IMM12-PATH ( n n n -- ) {: bno b2 bdone :}
    6 DATA VSP-CELL LDR,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
@@ -245,24 +253,20 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    LVFORCEK @ BL,  14 bno CBZ,
    15 SP 8 LDR,
    6 DATA VSP-CELL LDR,  6 6 1 SUBI,  6 DATA VSP-CELL STR,
-   13 3 MOVZ,  bdone B,
+   13 3 MOVZ,  bdone B, ;
+
+: EMIT-VBINIPREP
+   LVBINIPREP @ LBL,
+   LBL LBL LBL LBL {: bno bfold b2 bdone :}
+   C-VBIN-FRAME
+   bno bfold C-VBIN-TAGS
+   bno b2 bdone C-VBINI-IMM12-PATH
    b2 LBL,
-   \ register path: force deep then top
-   6 DATA VSP-CELL LDR,  5 6 2 SUBI,  LVFORCEK @ BL,  14 bno CBZ,
-   14 SP 8 STR,
-   6 DATA VSP-CELL LDR,  5 6 1 SUBI,  LVFORCEK @ BL,  14 bno CBZ,
-   15 14 0 ADDI,  14 SP 8 LDR,
-   7 15 0 ADDI,  LVBIT @ BL,
-   6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
-   6 DATA VSP-CELL LDR,  6 6 1 SUBI,  6 DATA VSP-CELL STR,
-   13 2 MOVZ,  bdone B,
+   bno bdone C-VBIN-REG-PATH
    bfold LBL,
-   6 DATA VSP-CELL LDR,
-   5 6 2 SUBI,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
-   5 6 1 SUBI,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
-   13 1 MOVZ,  bdone B,
+   bdone C-VBIN-FOLD-PATH
    bno LBL,  13 0 MOVZ,
-   bdone LBL,  30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+   bdone LBL,  C-VBIN-RET ;
 
 \ LVPUSHR ( x14=reg ) : push a register entry (spill-on-full keeps x14 claimed)
 : EMIT-VPUSHR
