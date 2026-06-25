@@ -64,6 +64,7 @@ $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
 $37D8 constant EVALERR-CELL
 $37E0 constant LMAINP-CELL
+$37F8 constant SNAP-CELL
 $1D8 constant SSCR-CELL
 $1E0 constant GTOD-SCRATCH
 $600 constant LOOP-STK-OFF

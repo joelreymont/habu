@@ -1,7 +1,7 @@
 \ checked-boundary-lint-test.f - checked fixtures for tools/checked-boundary-lint.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
-\ tools/checked-boundary-lint-test.f
+\ tools/warm-run.f tools/checked-boundary-lint-test.f
 
 4096 constant CBLT-BUF-CAP
 1400 constant CBLT-LARGE-LINES
@@ -132,6 +132,7 @@ create CBLT-LF-BYTE 10 c,
 
 : CBLT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
+   s" tools/checked-boundary-lint.f" WR-TOOLS-LOAD if exit then
    s" --load" CBLT-ARG+
    s" lib/errors.f" CBLT-ARG+
    s" lib/string.f" CBLT-ARG+
@@ -148,7 +149,7 @@ create CBLT-LF-BYTE 10 c,
    outu LEN>N erru LEN>N rc RC>N ;
 
 : CBLT-HB-CAPTURE ( -- n n n )
-   s" bin/hb"  >LEN CBLT-OUT CBLT-BUF-CAP >LEN
+   WR-TOOLS$  >LEN CBLT-OUT CBLT-BUF-CAP >LEN
    CBLT-ERR CBLT-BUF-CAP >LEN 1000 >MS
    RUN-ARGV-CAPTURE CBLT-CAPTURE>N ;
 

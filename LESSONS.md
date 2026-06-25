@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-06-25
+Last updated: 2026-06-26
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per
@@ -82,9 +82,25 @@ lesson — keep the specific word/code/path, cut the prose.
   audited `TRUSTED:` accessors so checked callers keep seeing `ptr`, not reloaded
   `n`. Removing a file-scope `0 set-check` finds real bugs (it exposed a
   trust-lint duplicate-manifest residue).
+- **Unchecked emitter stack bugs need typed shape gates:** the Darwin spawn
+  descriptor underflow was inside an audited native emitter boundary, not user
+  checked code. Fix was to factor raw emitters away from locals (`C-LOCAL-REF`,
+  `BYTES,`, `REG-PRIM`/`FPRIM`, Darwin spawn helpers), add typed accessor TRUST
+  rows, and gate forbidden source shapes in `tools/build-fixpoint.f` before any
+  image is written. Use `depth .` rather than `.s` when chasing build-time
+  underflow; `.s` can hide negative depth.
 
 ## Tool & Infra
 
+- **Gate speed RCA follows the phase wall clock:** warm images cut repeated
+  inner-tool recompiles; the bigger wall cut came from a bounded checked DAG
+  pool. Do not mutate `bin/hb` inside the gate: build candidates under private
+  `HB_TMP`, run independent stdlib/diagnostic/engine slices concurrently, bound
+  nested pools with `HABU_GATE_POOL_SLOTS`, and delay short timeout-sensitive
+  lints until the heavy wave drains.
+- **Pool slot state is an invariant:** free=`-1`, active=`0`, done=`1`; set
+  active before spawning. A live-count pool with free slots still marked free
+  ignores its fds and spins forever after children exit.
 - **Native port gates ≠ benchmark runtime gates:** port validation proves
   `bin/hb`, target source selection, syscalls/env, ELF AOT, checker/lints,
   self-refresh, REPL, Habu tooling on the target. Keep JS/Python/Rust/TS and live
@@ -171,6 +187,16 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Runtime, Codegen, AOT
 
+- **Warm snapshots must not re-run the cold prefix:** restored images already
+  carry support words/signatures. Mark snapshot boot (`SNAP-CELL`) and skip the
+  source prefix, or reloaded core words can shadow warm support words and bind
+  trusted signatures to the wrong runtime code.
+- **Snapshot persistent stores before image write:** compact checker stores
+  (`USIGS`, `NORET`) back into snapshotted boot arrays and reset only transient
+  token buffers. Never snapshot pointers into build-time anonymous mappings.
+- **Instruction patching flushes the patched line, not `[addr, CP)`:** `patch32`
+  can patch at `cp@`; range flushing through `CP` is empty there and leaves stale
+  instructions at cache-line boundaries.
 - **Snapshot images relocate only engine-text refs:** fixed VAs keep dict/data
   addresses valid; rebase engine-text call chains + seed-prim slots, restore live
   per-boot cells (argv/envp, RBASE, S0, wordlist, hook) after copying. Accept a

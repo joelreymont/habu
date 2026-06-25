@@ -9,6 +9,9 @@ signed decimal per line, **non-destructively**. Interleave it to "step" through 
 word and watch the stack — the practical stepper for standalone Forth. The loop
 pointer lives in a DATA cell (`SSCR-CELL`) because the shared printer `g-print9`
 clobbers x9..x15. The base is saved at startup into `S0-CELL`.
+For build-time underflow, also probe with `depth .`: `.s` walks the saved
+base-to-top range and can hide a negative depth after a native emitter corrupts
+the build stack.
 
 ```
 : GO 11 22 33 .s + + . ;   \ .s prints 11/22/33, then GO continues -> 66
@@ -81,6 +84,9 @@ embedded CodeDirectory when signature behavior is involved.
 ## Standalone gotchas a stepper catches fast
 - A 2nd `{: :}` locals group mis-reads its slot (use a variable instead).
 - Declaring locals inside `IF`/loop corrupts the frame.
+- Unchecked native emitters can be visibly balanced but still corrupt the build
+  stack through saved-register/frame mistakes; bracket phase calls with
+  `depth .`, then factor the offending raw emitter and add a source-shape gate.
 - Plain `DO` is do-while (`0 0 DO` runs once); guard zero-trip loops.
 - Undefined words must fail closed through the checked load path. If a runtime
   path reaches an unknown word without diagnostics, treat that as a

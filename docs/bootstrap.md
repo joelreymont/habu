@@ -88,13 +88,21 @@ Run the gate after bootstrap or refresh:
 
 ```sh
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
-  lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f
+  lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-pool.f \
+  test/run.f
 ```
 
-This is the native port gate. It proves the host `bin/hb`, source selection,
+This is the native port gate. It runs as a checked bounded DAG pool with
+private `HB_TMP` roots. It proves the host `bin/hb`, source selection,
 checker/lints, self-refresh, engine suite, REPL build, and AOT output for the
 current platform. It intentionally does not run LLM benchmark fixtures or
 require JavaScript, Python, Rust, TypeScript, or model runtimes.
+
+Checker-heavy gate fixtures bake warm images with `tools/warm-image.f` under
+the gate temp root. `hb-check-warm` supports checker/diagnostic slices.
+`hb-tools-warm` plus `hb-tools-warm.trust.f` supports tool subprocess fixtures
+such as `check-all-errors` and `gate-json-assert`. These are temporary cache
+artifacts and must not be committed.
 
 LLM benchmark checks are separate benchmark-host work. Run the benchmark gate on
 the Mac benchmark machine, where language runtimes and model tooling are

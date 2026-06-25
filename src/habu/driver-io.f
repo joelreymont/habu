@@ -42,3 +42,6 @@ variable DRV-WALL-U
    DRV-WFD @ 0 < IF s" driver: cannot open output" 74 die THEN
    DRV-WFD @ MBUF MLEN @ DRV-WALL
    DRV-WFD @ close ;
+
+: DRV-EXIT-OK ( -- )
+   s" " 0 die ;

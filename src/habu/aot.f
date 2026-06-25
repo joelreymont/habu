@@ -217,6 +217,7 @@ variable WI
 \ --- emit the image: minimal entry + compacted, relocated blobs.
 variable MLBL  variable REC2
 create OLDA MAX-CLO cells allot   create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
+
 : EMIT-ENTRY
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,

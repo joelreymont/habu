@@ -2,9 +2,38 @@
 \
 \ Load after test/gate-common.f, lib/build.f, lib/codesign.f, and tools/build-fixpoint.f.
 
+64 constant GENG-USAGE-RC
+0 constant GENG-ALL-ID
+1 constant GENG-BUILD-ID
+2 constant GENG-FIXTURES-ID
+3 constant GENG-REPAIR-ID
+4 constant GENG-RUNTIME-ID
+
 create GE-SCRIPT-PATH FS-PATH-CAP allot
+create GE-CAND-PATH FS-PATH-CAP allot
 
 variable GE-SCRIPT-U
+variable GE-CAND-U
+variable GENG-SLICE
+
+: GENG-USAGE ( -- )
+   s" usage: test/gate-engine.f [build|fixtures|repair|runtime]" GENG-USAGE-RC die ;
+
+: GENG-ARG0= ( ptr u8 n -- bool )
+   0 SCRIPT-ARGV$ STR= ;
+
+: GENG-SLICE! ( n -- )
+   GENG-SLICE ! ;
+
+: GENG-PARSE-SLICE ( -- )
+   GENG-ALL-ID GENG-SLICE!
+   SCRIPT-ARGC 0= if exit then
+   SCRIPT-ARGC 1 <> if GENG-USAGE then
+   s" build" GENG-ARG0= if GENG-BUILD-ID GENG-SLICE! exit then
+   s" fixtures" GENG-ARG0= if GENG-FIXTURES-ID GENG-SLICE! exit then
+   s" repair" GENG-ARG0= if GENG-REPAIR-ID GENG-SLICE! exit then
+   s" runtime" GENG-ARG0= if GENG-RUNTIME-ID GENG-SLICE! exit then
+   GENG-USAGE ;
 
 GE-FILES: GE-FS-MUTATE-RUN-FILES
    lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
@@ -47,7 +76,8 @@ GE-FILES: GE-PROCESS-CWD-CHECK-FILES
 
 GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
-   lib/process.f lib/process-argv.f tools/check-repair-hints-test.f
+   lib/process.f lib/process-argv.f tools/warm-run.f
+   tools/check-repair-hints-test.f
 ;GE-FILES
 
 GE-FILES: GE-HB-BASELINE-RUN-FILES
@@ -109,14 +139,27 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    [: GE-ARG+ ;] GE-HB-BASELINE-RUN-FILES
    s" hb baseline contracts" GE-HB-RUN ;
 
+: GE-CANDIDATE! ( -- )
+   GT-ROOT s" hb-new" GE-CAND-PATH JOIN-PATH GE-CAND-U ! ;
+
+: GE-CANDIDATE$ ( -- ptr u8 n )
+   GE-CAND-PATH GE-CAND-U @ ;
+
+: GE-EXPECT-CANDIDATE ( -- )
+   GE-CANDIDATE$ EXECUTABLE? 0= if
+      s" hb-new candidate executable" GE-FAIL
+   then ;
+
 : GE-BUILD-FIXPOINT ( -- )
    s" hb-gate-engine" GT-START
    GT-ROOT BF-TMP!
-   BF-INSTALL
+   BF-BUILD-ALL
    BF-TMP-RESET
+   GE-CANDIDATE!
+   GE-EXPECT-CANDIDATE
    s" PASS: self-rebuild fixpoint" type cr ;
 
-: GE-RUN-EXTRA-FIXTURES ( -- )
+: GE-RUN-STD-FIXTURES ( -- )
    GE-FS-MUTATE-RUN
    GE-FS-MUTATE-CHECK
    GE-PROCESS-ARGV-RUN
@@ -125,18 +168,25 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-PROCESS-ENV-CHECK
    GE-PROCESS-CWD-RUN
    GE-PROCESS-CWD-CHECK
-   GE-REPAIR-HINTS-RUN
    GE-HB-BASELINE-RUN ;
 
-: GE-ENGINE-SUITE ( -- )
+: GE-RUN-EXTRA-FIXTURES ( -- )
+   GE-RUN-STD-FIXTURES
+   GE-REPAIR-HINTS-RUN ;
+
+: GE-ENGINE-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu label:ptr labelu :}
    GE-HB-RESET
    GE-SRC-RESET
    s" test/engine-suite.f" GE-SRC-FILE+
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   s" engine suite died" GE-EXPECT-OK
+   exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   label labelu GE-EXPECT-OK
    SB-RESET s" ok" SB-APPEND GE-SB-LF
-   GT-OUT$ SB$ ENDS-WITH? 0= if s" engine suite" GE-FAIL then
-   s" PASS: engine suite on bin/hb" type cr ;
+   GT-OUT$ SB$ ENDS-WITH? 0= if label labelu GE-FAIL then
+   s" PASS: " type label labelu type cr ;
+
+: GE-ENGINE-SUITE ( -- )
+   GE-CANDIDATE$ s" engine suite on hb-new" GE-ENGINE-SUITE-ON
+   s" bin/hb" s" engine suite on bin/hb" GE-ENGINE-SUITE-ON ;
 
 : GE-DIV-MOD ( -- )
    GE-HB-RESET GE-SRC-RESET s" 1 0 / ." GE-SRC-LINE
@@ -295,14 +345,46 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-TRUSTED-EFFECT
    GE-ROLE-TYPES ;
 
-: GE-MAIN ( -- )
-   GE-BUILD-FIXPOINT
-   GE-RUN-EXTRA-FIXTURES
-   GE-ENGINE-SUITE
+: GE-RUNTIME-CHECKS ( -- )
    GE-DIV-MOD
    GE-TRUST-RUN
    GE-ARGV-MODES
-   GE-TYPED-SMOKE
+   GE-TYPED-SMOKE ;
+
+: GENG-BUILD-SLICE ( -- )
+   GE-BUILD-FIXPOINT
+   GE-ENGINE-SUITE
+   GT-CLEANUP
+   s" PASS: native engine build gate slice" type cr ;
+
+: GENG-FIXTURES-SLICE ( -- )
+   s" hb-gate-engine-fixtures" GT-START
+   GE-RUN-STD-FIXTURES
+   GT-CLEANUP
+   s" PASS: native engine fixture gate slice" type cr ;
+
+: GENG-REPAIR-SLICE ( -- )
+   s" hb-gate-engine-repair" GT-START
+   GE-REPAIR-HINTS-RUN
+   GT-CLEANUP
+   s" PASS: native engine repair gate slice" type cr ;
+
+: GENG-RUNTIME-SLICE ( -- )
+   s" hb-gate-engine-runtime" GT-START
+   GE-RUNTIME-CHECKS
+   GT-CLEANUP
+   s" PASS: native engine runtime gate slice" type cr ;
+
+: GE-MAIN ( -- )
+   GENG-PARSE-SLICE
+   GENG-SLICE @ GENG-BUILD-ID = if GENG-BUILD-SLICE exit then
+   GENG-SLICE @ GENG-FIXTURES-ID = if GENG-FIXTURES-SLICE exit then
+   GENG-SLICE @ GENG-REPAIR-ID = if GENG-REPAIR-SLICE exit then
+   GENG-SLICE @ GENG-RUNTIME-ID = if GENG-RUNTIME-SLICE exit then
+   GE-BUILD-FIXPOINT
+   GE-RUN-EXTRA-FIXTURES
+   GE-ENGINE-SUITE
+   GE-RUNTIME-CHECKS
    GT-CLEANUP
    s" PASS: native engine gate phase" type cr ;
 

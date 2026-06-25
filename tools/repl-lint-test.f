@@ -1,6 +1,7 @@
 \ repl-lint-test.f - checked fixtures for tools/repl-lint.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repl-lint-test.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ tools/repl-lint-test.f
 
 4096 constant RLT-CAP
 
@@ -115,6 +116,7 @@ create RLT-ERR RLT-CAP allot
 
 : RLT-ARGV ( -- )
    PROC-ARGV-RESET
+   s" tools/repl-lint.f" WR-TOOLS-LOAD if RLT-ROOT RLT-ARG+ exit then
    s" --load" RLT-ARG+
    s" lib/errors.f" RLT-ARG+
    s" lib/memory.f" RLT-ARG+
@@ -133,7 +135,7 @@ create RLT-ERR RLT-CAP allot
 
 : RLT-RUN ( -- n n n )
    RLT-ARGV
-   s" bin/hb" >LEN RLT-OUT RLT-CAP >LEN RLT-ERR RLT-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN RLT-OUT RLT-CAP >LEN RLT-ERR RLT-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    RLT-CAPTURE>N ;
 
 : RLT-TEST-GOOD ( -- )

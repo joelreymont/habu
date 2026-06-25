@@ -247,6 +247,13 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
 : TOKBUF-ENSURE {: need :}
    need TOKBUF-CAP-U @ <= IF exit THEN
    need TOKBUF-GROW ;
+
+: TOKBUF-RESET ( -- )
+   FAILTK-BOOT FAILTK!
+   TKF-BOOT TKF!
+   NMB-BOOT NMB!
+   TOKBUF-INIT-CAP TOKBUF-CAP-U !
+   0 FAILTU ! ;
 variable TOKIX  variable FAILIX  variable DVERD
 variable FAILB  variable FAILE
 variable JSON-DIAGS   0 JSON-DIAGS !
@@ -741,7 +748,7 @@ variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable F
 \ user sigs: certified words recorded as [ulen][name][ulen][sig]*, cell-0
 \ terminated. Names are dictionary strings, not counted bytes.
 \ Appended by the renderer (RECXT hook); scanned after PTAB so later wins.
-$10000 constant USIGS-INIT-CAP
+$40000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
 3 constant USIGS-PROT-RW
@@ -758,6 +765,28 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
 
 : USIGS-COPY {: src:ptr dst:ptr n :}
    n 0 > IF n 0 DO src i + c@ dst i + c! LOOP THEN ;
+
+: USIGS-RESET ( -- )
+   USIGS-BOOT USIGS-P !
+   USIGS-INIT-CAP USIGS-CAP-U !
+   0 UEND !
+   0 USIGS !
+   0 USIGS-GROW-CAP !
+   0 USIGS-GROW-NEXT ! ;
+
+: USIGS-BOOT? ( -- bool )
+   USIGS USIGS-BOOT = ;
+
+: USIGS-SNAPSHOT-CAP ( -- )
+   UEND @ cell+ USIGS-INIT-CAP > IF s" checker: user sigs snapshot too large" 76 die THEN ;
+
+: USIGS-SNAPSHOT-PERSIST ( -- )
+   USIGS-SNAPSHOT-CAP
+   USIGS-BOOT? 0= IF USIGS USIGS-BOOT UEND @ cell+ USIGS-COPY THEN
+   USIGS-BOOT USIGS-P !
+   USIGS-INIT-CAP USIGS-CAP-U !
+   0 USIGS-GROW-CAP !
+   0 USIGS-GROW-NEXT ! ;
 
 : USIGS-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad user sig cap" 76 die THEN
@@ -828,7 +857,7 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
 \ means a call may reach a catchable throw edge.
 1 constant CTL-DEAD
 2 constant CTL-THROW
-$1000 constant NORET-INIT-CAP
+$10000 constant NORET-INIT-CAP
 create NORET-BOOT NORET-INIT-CAP allot
 variable NORET-P   variable NORET-CAP-U   variable NORET-END
 NORET-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !   0 NORET-BOOT c!
@@ -836,6 +865,28 @@ variable NORET-POS   variable NORET-LEN   variable NORET-FLAG
 variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 
 : NORETS ( -- ptr u8 ) NORET-P @ ;
+
+: NORET-RESET ( -- )
+   NORET-BOOT NORET-P !
+   NORET-INIT-CAP NORET-CAP-U !
+   0 NORET-END !
+   0 NORET-BOOT c!
+   0 NORET-GROW-CAP !
+   0 NORET-GROW-NEXT ! ;
+
+: NORET-BOOT? ( -- bool )
+   NORETS NORET-BOOT = ;
+
+: NORET-SNAPSHOT-CAP ( -- )
+   NORET-END @ 1 + NORET-INIT-CAP > IF s" checker: no-return snapshot too large" 76 die THEN ;
+
+: NORET-SNAPSHOT-PERSIST ( -- )
+   NORET-SNAPSHOT-CAP
+   NORET-BOOT? 0= IF NORETS NORET-BOOT NORET-END @ 1 + USIGS-COPY THEN
+   NORET-BOOT NORET-P !
+   NORET-INIT-CAP NORET-CAP-U !
+   0 NORET-GROW-CAP !
+   0 NORET-GROW-NEXT ! ;
 
 : NORET-GROW {: need :}
    need USIGS-ROUND-CAP NORET-GROW-CAP !
@@ -847,6 +898,11 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 : NORET-ENSURE {: need :}
    need NORET-CAP-U @ <= IF exit THEN
    need NORET-GROW ;
+
+: CHECKER-SNAPSHOT-PREPARE ( -- )
+   TOKBUF-RESET
+   USIGS-SNAPSHOT-PERSIST
+   NORET-SNAPSHOT-PERSIST ;
 
 : NORET-ADD {: a u flag :}
    NORET-END @ u + 3 + NORET-ENSURE

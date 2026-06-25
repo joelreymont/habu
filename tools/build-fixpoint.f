@@ -162,6 +162,71 @@ variable BF-TMP-U
    out outu BF-OUT$ BF-SOURCE-BUF BF-SOURCE-LEN @ APPEND-FILE
    out outu BF-APPEND-LF ;
 
+: BF-READ-SOURCE ( ptr u8 n -- )
+   BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN ! ;
+
+: BF-SOURCE-HAS? ( ptr u8 n -- bool )
+   BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap CONTAINS? ;
+
+: BF-SOURCE-MUST-HAVE ( ptr u8 n -- )
+   BF-SOURCE-HAS? 0= if s" build-fixpoint: native emitter shape missing" BF-BUILD-RC die then ;
+
+: BF-SOURCE-MUST-LACK ( ptr u8 n -- )
+   BF-SOURCE-HAS? if s" build-fixpoint: unsafe native emitter shape" BF-BUILD-RC die then ;
+
+: BF-PREFLIGHT-HABU2 ( -- )
+   s" src/habu/habu2.f" BF-READ-SOURCE
+   s" variable CLOC-MAIN  variable CLOC-NOT" BF-SOURCE-MUST-HAVE
+   s" variable CLOC-MEM   variable CLOC-QOK" BF-SOURCE-MUST-HAVE
+   s" : C-LOCAL-REF-ARGS ( n n -- )" BF-SOURCE-MUST-HAVE
+   s" : C-LOCAL-REF-LABELS ( -- )" BF-SOURCE-MUST-HAVE
+   s" : EMIT-RESET-BUILDER ( ptr u8 n -- )" BF-SOURCE-MUST-HAVE
+   s" {: lmainlbl notloc :}" BF-SOURCE-MUST-LACK
+   s" LBL LBL {: lmem qlrefok :}" BF-SOURCE-MUST-LACK
+   s" {: a:ptr u :}" BF-SOURCE-MUST-LACK
+   s" CLOC-MAIN @ B," BF-SOURCE-MUST-HAVE
+   s" CLOC-MAIN @ B ;" BF-SOURCE-MUST-LACK ;
+
+: BF-PREFLIGHT-ICODE ( -- )
+   s" src/arch/arm64/icode.f" BF-READ-SOURCE
+   s" variable BYA" BF-SOURCE-MUST-HAVE
+   s" variable BYU" BF-SOURCE-MUST-HAVE
+   s" : BYA@ ( -- ptr u8 )" BF-SOURCE-MUST-HAVE
+   s" : BYTES-ARGS ( ptr u8 n -- )" BF-SOURCE-MUST-HAVE
+   s" : BYTES-CAP ( -- )" BF-SOURCE-MUST-HAVE
+   s" : BYTES-COPY ( -- )" BF-SOURCE-MUST-HAVE
+   s" : BYTES-PAD ( -- )" BF-SOURCE-MUST-HAVE
+   s" : BYTES, ( ptr u8 n -- )" BF-SOURCE-MUST-HAVE
+   s" {: a:ptr u :}" BF-SOURCE-MUST-LACK ;
+
+: BF-PREFLIGHT-HABU1 ( -- )
+   s" src/habu/habu1.f" BF-READ-SOURCE
+   s" variable PR-A  variable PR-U  variable PR-L  variable PR-E" BF-SOURCE-MUST-HAVE
+   s" variable FP-A  variable FP-U  variable FP-XT" BF-SOURCE-MUST-HAVE
+   s" variable SDA-FD  variable SDA-NEW  variable SDA-SKIP" BF-SOURCE-MUST-HAVE
+   s" variable BSP-OK  variable BSP-DN  variable BSP-SAD" BF-SOURCE-MUST-HAVE
+   s" variable SZA-I" BF-SOURCE-MUST-HAVE
+   s" : REG-PRIM ( ptr u8 n n n -- )" BF-SOURCE-MUST-HAVE
+   s" : FPRIM ( ptr u8 n n -- )" BF-SOURCE-MUST-HAVE
+   s" : FPRIM-L ( ptr u8 n n -- )" BF-SOURCE-MUST-HAVE
+   s" : PR-COPY-NAME ( -- )" BF-SOURCE-MUST-HAVE
+   s" : BSP-LABELS3 ( -- )" BF-SOURCE-MUST-HAVE
+   s" : FPRIM {: na:ptr nu xt :}" BF-SOURCE-MUST-LACK
+   s" : FPRIM-L {: na:ptr nu xt :}" BF-SOURCE-MUST-LACK
+   s" : REG-PRIM {: na:ptr nu lbl elbl :}" BF-SOURCE-MUST-LACK
+   s" : ?PRIM-SPACE {: na:ptr nu :}" BF-SOURCE-MUST-LACK
+   s" : SPAWN-DUP2-ACTION ( n n -- ) {: fdreg newfd :}" BF-SOURCE-MUST-LACK
+   s" : SPAWN-CHDIR-ACTION ( n n -- ) {: cwdreg fail :}" BF-SOURCE-MUST-LACK
+   s" 14 SP SPAWN-ADESC-OFF SZA-I @ + STR," BF-SOURCE-MUST-HAVE
+   s" 14 SP SPAWN-ADESC-OFF + over + STR," BF-SOURCE-MUST-LACK
+   s" LBL LBL LBL {: spok spdn sad :}" BF-SOURCE-MUST-LACK
+   s" LBL LBL {: spok spdn :}" BF-SOURCE-MUST-LACK ;
+
+: BF-PREFLIGHT ( -- )
+   BF-PREFLIGHT-HABU2
+   BF-PREFLIGHT-HABU1
+   BF-PREFLIGHT-ICODE ;
+
 : BF-APPEND-CHECK-OFF ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" 0 set-check" BF-APPEND-LINE ;
 
@@ -315,6 +380,7 @@ variable BF-TMP-U
    s" hb-stage" s" stage2-got" BF-TMP-FILE= ;
 
 : BF-STAGE-FIXPOINT ( -- )
+   BF-PREFLIGHT
    BF-STAGE2-SOURCE
    BF-BOOTSTRAP-STAGE
    0 BF-GEN !
@@ -334,6 +400,7 @@ variable BF-TMP-U
    s" bin/hb refresh OK: compiler fixpoint" type cr ;
 
 : BF-BUILD-STDIN ( -- )
+   BF-PREFLIGHT
    BF-STDIN-SOURCE
    BF-RUN-STAGE
    s" stage2-got" s" hb-stdin-mk" BF-RENAME-TMP

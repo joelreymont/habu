@@ -54,15 +54,15 @@ variable PTA  variable PTU
 
 : PAT-TOK-SQ? ( -- bool )
    PTU @ 2 <> IF LINT-FALSE exit THEN
-   PTA@ c@ FOLD 115 <> IF LINT-FALSE exit THEN
+   PTA@ c@ LINT-FOLD 115 <> IF LINT-FALSE exit THEN
    PTA@ 1+ c@ DQUOTE = ;
 
 : PAT-TOK-STRING? ( -- bool )
    PTU @ 2 <> IF LINT-FALSE exit THEN
    PTA@ 1+ c@ DQUOTE <> IF LINT-FALSE exit THEN
-   PTA@ c@ FOLD 115 = IF LINT-TRUE exit THEN
+   PTA@ c@ LINT-FOLD 115 = IF LINT-TRUE exit THEN
    PTA@ c@ DOT = IF LINT-TRUE exit THEN
-   PTA@ c@ FOLD 99 = ;
+   PTA@ c@ LINT-FOLD 99 = ;
 
 : PAT-SKIP-LINE-COMMENT ( -- )
    begin PAT-END? 0= PAT-C@ 10 <> and while PAT-ADV repeat ;

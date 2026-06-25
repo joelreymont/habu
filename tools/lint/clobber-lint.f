@@ -45,7 +45,7 @@ variable RX  variable RACC
 
 \ ---- string/token helpers -------------------------------------------------
 : START-L?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   u 0 > if a c@ FOLD 108 = else LINT-FALSE then ;
+   u 0 > if a c@ LINT-FOLD 108 = else LINT-FALSE then ;
 : ENDS-COMMA?  ( ptr u8 n -- bool ) {: a:ptr u :}
    u 0 > if a u 1- + c@ 44 = else LINT-FALSE then ;
 : START-DOLLAR?  ( ptr u8 n -- bool ) {: a:ptr u :}

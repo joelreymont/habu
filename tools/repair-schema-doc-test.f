@@ -1,5 +1,5 @@
 \ repair-schema-doc-test.f - checked fixture for repair diagnostic docs.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repair-schema-doc-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f tools/repair-schema-doc-test.f
 
 $40000 constant RSD-DOC-CAP
 8192 constant RSD-BUF-CAP
@@ -141,6 +141,15 @@ create RSD-ERR RSD-BUF-CAP allot
 
 : RSD-RUN-CHECK ( -- n n n )
    PROC-ARGV-RESET
+   s" tools/check-all-errors.f" WR-TOOLS-LOAD if
+      s" --json-errors"  >LEN PROC-ARGV+
+      s" --label"  >LEN PROC-ARGV+
+      RSD-SRC  >LEN PROC-ARGV+
+      RSD-SRC  >LEN PROC-ARGV+
+      WR-TOOLS$  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
+      RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE RSD-CAPTURE>N
+      exit
+   then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
@@ -160,11 +169,18 @@ create RSD-ERR RSD-BUF-CAP allot
    s" --label"  >LEN PROC-ARGV+
    RSD-SRC  >LEN PROC-ARGV+
    RSD-SRC  >LEN PROC-ARGV+
-   s" bin/hb"  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
+   WR-TOOLS$  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
    RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE RSD-CAPTURE>N ;
 
 : RSD-RUN-ASSERT ( ptr u8 n -- n n n ) {: mode:ptr modeu :}
    PROC-ARGV-RESET
+   s" tools/gate-json-assert.f" WR-TOOLS-LOAD if
+      mode modeu  >LEN PROC-ARGV+
+      RSD-DIAG  >LEN PROC-ARGV+
+      WR-TOOLS$  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
+      RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE RSD-CAPTURE>N
+      exit
+   then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
@@ -173,7 +189,7 @@ create RSD-ERR RSD-BUF-CAP allot
    s" --"  >LEN PROC-ARGV+
    mode modeu  >LEN PROC-ARGV+
    RSD-DIAG  >LEN PROC-ARGV+
-   s" bin/hb"  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
+   WR-TOOLS$  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
    RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE RSD-CAPTURE>N ;
 
 : RSD-DIAG-FIELD$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}

@@ -71,7 +71,7 @@ variable REPL-ROOT-U
    repeat ;
 
 : FILE-EXISTS?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u PATHZ
+   a u LINT-PATHZ
    PATHBUF 0 0 open REPL-FD !
    REPL-FD @ 0 < if LINT-FALSE exit then
    REPL-FD @ close  LINT-TRUE ;
@@ -104,7 +104,7 @@ variable REPL-ROOT-U
 
 : SQUOTE-TOK?  ( ptr u8 n -- bool ) {: a:ptr u :}
    u 2 <> if LINT-FALSE exit then
-   a c@ FOLD 115 =  a 1+ c@ DQUOTE = and ;
+   a c@ LINT-FOLD 115 =  a 1+ c@ DQUOTE = and ;
 
 : SRC-PATH-TRIMMED? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" src/" STARTS-WITH?
@@ -215,7 +215,7 @@ variable REPL-ROOT-U
 : R-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 2 <> if LINT-FALSE exit then
    a 1+ c@ DQUOTE <> if LINT-FALSE exit then
-   a c@ FOLD dup 115 = swap 99 = or
+   a c@ LINT-FOLD dup 115 = swap 99 = or
    a c@ DOT = or ;
 
 : R-SKIP-IGNORED ( -- )

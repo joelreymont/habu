@@ -165,8 +165,8 @@ variable DO-OUT-BUF?
 : DO-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 2 <> if DO-FALSE exit then
    a 1+ c@ DO-DQ <> if DO-FALSE exit then
-   a c@ FOLD 115 = if DO-TRUE exit then
-   a c@ FOLD 99 = if DO-TRUE exit then
+   a c@ LINT-FOLD 115 = if DO-TRUE exit then
+   a c@ LINT-FOLD 99 = if DO-TRUE exit then
    a c@ 46 = ;
 
 : DO-SAVE-TOKEN ( n n n n n -- ) {: k start end line col :}

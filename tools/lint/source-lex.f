@@ -124,9 +124,9 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
 : STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 2 <> if LINT-FALSE exit then
    a 1+ c@ DQUOTE <> if LINT-FALSE exit then
-   a c@ FOLD 115 = if LINT-TRUE exit then
+   a c@ LINT-FOLD 115 = if LINT-TRUE exit then
    a c@ DOT = if LINT-TRUE exit then
-   a c@ FOLD 99 = ;
+   a c@ LINT-FOLD 99 = ;
 
 : LEX-LINE-COMMENT ( -- )
    begin LEX-END? 0= LEX-C@ 10 <> and while LEX-ADV drop repeat ;

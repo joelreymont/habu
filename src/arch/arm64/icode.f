@@ -89,12 +89,32 @@ variable LBI
 : DLBL, ( n -- ) {: lbl :}                                            \ cell = label's byte offset
    lbl cells LBLP + @ dup 0 < IF s" icode: DLBL forward ref" 72 die THEN  4 * DCQ, ;
 variable BYP
+variable BYA
+variable BYU
 : BYP@ ( -- ptr u8 ) BYP @ ;
 s" BYP@" s" -- ptr u8" TRUST
+: BYA@ ( -- ptr u8 ) BYA @ ;
+s" BYA@" s" -- ptr u8" TRUST
 
-: BYTES, ( ptr u8 n -- ) {: a:ptr u :}  u 3 + 4 / CP?  CP @ 4 * CODE + BYP !     \ raw bytes, zero-padded to 4
-   0 BEGIN dup u < WHILE  dup a + c@  BYP@ c!  BYP@ 1 + BYP !  1 + REPEAT drop
-   BEGIN BYP@ CODE - 3 and 0 <> WHILE  0 BYP@ c!  BYP@ 1 + BYP !  REPEAT
+: BYTES-ARGS ( ptr u8 n -- )
+   BYU !  BYA ! ;
+
+: BYTES-CAP ( -- )
+   BYU @ 3 + 4 / CP?  CP @ 4 * CODE + BYP ! ;
+
+: BYTES-COPY ( -- )
+   0 BEGIN dup BYU @ < WHILE
+      dup BYA@ + c@  BYP@ c!  BYP@ 1 + BYP !  1 +
+   REPEAT drop ;
+
+: BYTES-PAD ( -- )
+   BEGIN BYP@ CODE - 3 and 0 <> WHILE  0 BYP@ c!  BYP@ 1 + BYP !  REPEAT ;
+
+: BYTES, ( ptr u8 n -- )
+   BYTES-ARGS
+   BYTES-CAP
+   BYTES-COPY
+   BYTES-PAD
    BYP@ CODE - 4 / CP ! ;
 \ --- 64-bit constant synthesis: minimal MOVZ/MOVN + MOVK chain. The stage2
 \ fixpoint depends on this exact encoding policy. ---

@@ -6,7 +6,7 @@
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
 \ tools/signature-lint-core.f tools/checked-boundary-lint-core.f
 \ tools/trust-lint-core.f tools/check-all-errors-core.f tools/argv.f
-\ tools/check-test.f
+\ tools/warm-run.f tools/check-test.f
 
 $4000 constant CKT-BUF-CAP
 10000 constant CKT-TIMEOUT-MS
@@ -39,6 +39,7 @@ variable CKT-LIST-U
 
 : CKT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
+   s" tools/check.f" WR-TOOLS-LOAD if exit then
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -70,12 +71,12 @@ variable CKT-LIST-U
    outu LEN>N erru LEN>N rc RC>N ;
 
 : CKT-STDIN-CAPTURE ( ptr u8 n -- n n n ) {: src:ptr srcu :}
-   s" bin/hb" >LEN src srcu >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
+   WR-TOOLS$ >LEN src srcu >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
    CKT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE
    CKT-CAPTURE>N ;
 
 : CKT-CAPTURE ( -- n n n )
-   s" bin/hb" >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
+   WR-TOOLS$ >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
    CKT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    CKT-CAPTURE>N ;
 

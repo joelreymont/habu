@@ -1,6 +1,7 @@
 \ aot-lint-test.f - checked fixtures for tools/aot-lint.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/aot-lint-test.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ tools/aot-lint-test.f
 
 4096 constant ALT-BUF-CAP
 
@@ -83,6 +84,7 @@ create ALT-ERR ALT-BUF-CAP allot
 
 : ALT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
+   s" tools/aot-lint.f" WR-TOOLS-LOAD if exit then
    s" --load" ALT-ARG+
    s" lib/errors.f" ALT-ARG+
    s" lib/memory.f" ALT-ARG+
@@ -102,13 +104,13 @@ create ALT-ERR ALT-BUF-CAP allot
 : ALT-RUN-GOOD ( -- n n n )
    ALT-ARGV-LOAD
    ALT-GOOD ALT-ARG+
-   s" bin/hb" >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    ALT-CAPTURE>N ;
 
 : ALT-RUN-BAD ( -- n n n )
    ALT-ARGV-LOAD
    ALT-BAD ALT-ARG+
-   s" bin/hb" >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    ALT-CAPTURE>N ;
 
 : ALT-RUN-BAD-JSON ( -- n n n )
@@ -117,7 +119,7 @@ create ALT-ERR ALT-BUF-CAP allot
    s" --label" ALT-ARG+
    s" <stdin>" ALT-ARG+
    ALT-BAD ALT-ARG+
-   s" bin/hb" >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    ALT-CAPTURE>N ;
 
 : ALT-TEST-GOOD ( -- )

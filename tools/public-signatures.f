@@ -65,6 +65,8 @@ variable PS-NAME-LINE
 variable PS-NAME-COL
 variable PS-SIG-A
 variable PS-SIG-U
+variable PS-TRUST
+variable PS-ARG-I
 
 : PS-TA-FIELD ( -- ptr ptr u8 )
    PS-TA 0 ptr-field ;
@@ -151,7 +153,7 @@ variable PS-SIG-U
    PS-LF-C PS-ERR-C ;
 
 : PS-USAGE ( -- )
-   s" usage: tools/public-signatures.f file ..." PS-ERRLN
+   s" usage: tools/public-signatures.f [--trust] file ..." PS-ERRLN
    64 throw ;
 
 : PS-U$ ( n -- ptr u8 n ) {: u :}
@@ -216,6 +218,13 @@ variable PS-SIG-U
 : PS-JSON-ARRAY-START ( -- ) PS-LBRACK-C PS-C ;
 : PS-JSON-ARRAY-END ( -- ) PS-RBRACK-C PS-C ;
 
+: PS-TRUST-Q ( ptr u8 n -- ) {: a:ptr u :}
+   115 PS-C
+   PS-DQ PS-C
+   32 PS-C
+   a u PS-OUT
+   PS-DQ PS-C ;
+
 : PS-LOWER? ( n -- bool )
    dup 96 > swap 123 < and ;
 
@@ -238,6 +247,13 @@ variable PS-SIG-U
    u PS-WORD-CAP > IF s" public-signatures: word too long" PS-DIE THEN
    a u PS-WORD-BUF COPY-UPPER
    PS-WORD-BUF u ;
+
+: PS-TRUST-ENTRY ( ptr u8 n -- ) {: sig:ptr sigu :}
+   PS-NAME-A@ PS-NAME-U @ PS-UPPER$ PS-TRUST-Q
+   32 PS-C
+   sig sigu TRIM PS-TRUST-Q
+   s"  TRUST" PS-OUT
+   PS-LF-C PS-C ;
 
 : PS-SIGNATURE$ ( ptr u8 n -- ptr u8 n )
    TRIM PS-TU ! PS-TA!
@@ -313,7 +329,7 @@ variable PS-SIG-U
 : PS-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 2 <> IF PS-FALSE exit THEN
    a 1+ c@ PS-DQ <> IF PS-FALSE exit THEN
-   a c@ FOLD dup 115 = swap 99 = or
+   a c@ LINT-FOLD dup 115 = swap 99 = or
    a c@ DOT = or ;
 
 : PS-SKIP-QUOTE ( -- )
@@ -402,6 +418,14 @@ variable PS-SIG-U
    s" exported" PS-JSON-KEY exported? PS-JSON-BOOL
    PS-DEF-END ;
 
+: PS-EMIT-PUBLIC ( bool ptr u8 n -- ) {: exported? file-a:ptr file-u :}
+   PS-TRUST @ IF
+      exported? drop file-a drop file-u drop
+      PS-SIG-A@ PS-SIG-U @ PS-TRUST-ENTRY
+   ELSE
+      exported? file-a file-u PS-EMIT-DEF
+   THEN ;
+
 : PS-EXPORTED? ( -- bool )
    PS-NAME-A@ PS-NAME-U @ INTERN-FOLD? ;
 
@@ -417,13 +441,30 @@ variable PS-SIG-U
    PS-COMMENT? 0= IF exit THEN
    PS-CONTENT$ s" --" CONTAINS? 0= IF exit THEN
    PS-SAVE-SIG
-   PS-PUBLIC? IF PS-EXPORTED? file-a file-u PS-EMIT-DEF THEN ;
+   PS-PUBLIC? IF PS-EXPORTED? file-a file-u PS-EMIT-PUBLIC THEN ;
+
+: PS-TRUST-DEFINER ( ptr u8 n -- ) {: sig:ptr sigu :}
+   PS-NEXT-TOK 0= IF exit THEN
+   PS-WORD? 0= IF exit THEN
+   PS-SAVE-NAME
+   PS-PUBLIC? IF sig sigu PS-TRUST-ENTRY THEN ;
+
+: PS-MAYBE-TRUST-DEFINER ( ptr u8 n -- bool ) {: a:ptr u :}
+   PS-TRUST @ 0= IF PS-FALSE exit THEN
+   a u s" constant" STR=CI IF s" -- a" PS-TRUST-DEFINER PS-TRUE exit THEN
+   a u s" create" STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
+   a u s" variable" STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
+   PS-FALSE ;
 
 : PS-SCAN-DEFS ( ptr u8 n -- ) {: file-a:ptr file-u :}
    PS-FILE-BUF PS-TU @ PS-LEX-START
    begin PS-NEXT-TOK while
       PS-WORD? IF
-         PS-TOK$ s" :" STR= IF file-a file-u PS-MAYBE-DEF THEN
+         PS-TOK$ s" :" STR= IF
+            file-a file-u PS-MAYBE-DEF
+         ELSE
+            PS-TOK$ PS-MAYBE-TRUST-DEFINER drop
+         THEN
       THEN
    repeat ;
 
@@ -434,22 +475,34 @@ variable PS-SIG-U
 
 : PS-START ( -- )
    -1 PS-FIRST? !
+   PS-TRUST @ IF exit THEN
    PS-JSON-OBJECT-START
    s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-JSON-COMMA
    s" definitions" PS-JSON-KEY PS-JSON-ARRAY-START ;
 
 : PS-END ( -- )
+   PS-TRUST @ IF exit THEN
    PS-JSON-ARRAY-END
    PS-JSON-OBJECT-END
    PS-LF-C PS-C ;
 
-: PS-MAIN ( -- )
+: PS-PARSE-ARGS ( -- )
+   0 PS-TRUST !
+   0 PS-ARG-I !
    SCRIPT-ARGC 0= IF PS-USAGE THEN
+   0 SCRIPT-ARGV$ s" --trust" STR= IF
+      -1 PS-TRUST !
+      1 PS-ARG-I !
+   THEN
+   PS-ARG-I @ SCRIPT-ARGC >= IF PS-USAGE THEN ;
+
+: PS-MAIN ( -- )
+   PS-PARSE-ARGS
    PS-START
-   0 begin dup SCRIPT-ARGC < while
-      dup SCRIPT-ARGV$ PS-SCAN-FILE
-      1+
-   repeat drop
+   begin PS-ARG-I @ SCRIPT-ARGC < while
+      PS-ARG-I @ SCRIPT-ARGV$ PS-SCAN-FILE
+      PS-ARG-I @ 1+ PS-ARG-I !
+   repeat
    PS-END ;
 
 PS-MAIN

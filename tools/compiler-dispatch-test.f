@@ -62,6 +62,22 @@ variable CDT-LEN
    s" EM-COMPILE-UNARY-OPS" 2 CDT-COUNT=
    s" EM-COMPILE-FLOAT-OPS" 2 CDT-COUNT= ;
 
+: CDT-TEST-NATIVE-LOCAL ( -- )
+   s" variable CLOC-MAIN  variable CLOC-NOT" CDT-MUST-HAVE
+   s" variable CLOC-MEM   variable CLOC-QOK" CDT-MUST-HAVE
+   s" : C-LOCAL-REF-ARGS ( n n -- )" CDT-MUST-HAVE
+   s" : C-LOCAL-REF-LABELS ( -- )" CDT-MUST-HAVE
+   s" : EMIT-RESET-BUILDER ( ptr u8 n -- )" CDT-MUST-HAVE
+   s" C-LOCAL-REF-ARGS" 2 CDT-COUNT=
+   s" C-LOCAL-REF-LABELS" 2 CDT-COUNT=
+   s" {: lmainlbl notloc :}" CDT-MUST-LACK
+   s" LBL LBL {: lmem qlrefok :}" CDT-MUST-LACK
+   s" {: a:ptr u :}" CDT-MUST-LACK
+   s" CLOC-MAIN @ B," 2 CDT-COUNT=
+   s" CLOC-MAIN @ B ;" CDT-MUST-LACK
+   s" CLOC-QOK @ LBL," CDT-MUST-HAVE
+   s" CLOC-MEM @ LBL," CDT-MUST-HAVE ;
+
 : CDT-TEST-SECTIONS ( -- )
    s" : EMIT-PRIMITIVE-SECTIONS ( -- )" CDT-MUST-HAVE
    s" : EMIT-DICTIONARY-SECTIONS ( -- )" CDT-MUST-HAVE
@@ -76,7 +92,44 @@ variable CDT-LEN
    s" src/habu/habu2.f" CDT-LOAD
    CDT-TEST-NATIVE-INTERPRET
    CDT-TEST-NATIVE-COMPILE
+   CDT-TEST-NATIVE-LOCAL
    CDT-TEST-SECTIONS ;
+
+: CDT-TEST-HABU1 ( -- )
+   s" src/habu/habu1.f" CDT-LOAD
+   s" variable PR-A  variable PR-U  variable PR-L  variable PR-E" CDT-MUST-HAVE
+   s" variable FP-A  variable FP-U  variable FP-XT" CDT-MUST-HAVE
+   s" variable SDA-FD  variable SDA-NEW  variable SDA-SKIP" CDT-MUST-HAVE
+   s" variable BSP-OK  variable BSP-DN  variable BSP-SAD" CDT-MUST-HAVE
+   s" variable SZA-I" CDT-MUST-HAVE
+   s" : REG-PRIM ( ptr u8 n n n -- )" CDT-MUST-HAVE
+   s" : FPRIM ( ptr u8 n n -- )" CDT-MUST-HAVE
+   s" : FPRIM-L ( ptr u8 n n -- )" CDT-MUST-HAVE
+   s" : PR-COPY-NAME ( -- )" CDT-MUST-HAVE
+   s" : BSP-LABELS3 ( -- )" CDT-MUST-HAVE
+   s" : FPRIM {: na:ptr nu xt :}" CDT-MUST-LACK
+   s" : FPRIM-L {: na:ptr nu xt :}" CDT-MUST-LACK
+   s" : REG-PRIM {: na:ptr nu lbl elbl :}" CDT-MUST-LACK
+   s" : ?PRIM-SPACE {: na:ptr nu :}" CDT-MUST-LACK
+   s" : SPAWN-DUP2-ACTION ( n n -- ) {: fdreg newfd :}" CDT-MUST-LACK
+   s" : SPAWN-CHDIR-ACTION ( n n -- ) {: cwdreg fail :}" CDT-MUST-LACK
+   s" : BSPAWNIO" CDT-MUST-HAVE
+   s" 14 SP SPAWN-ADESC-OFF SZA-I @ + STR," CDT-MUST-HAVE
+   s" 14 SP SPAWN-ADESC-OFF + over + STR," CDT-MUST-LACK
+   s" LBL LBL LBL {: spok spdn sad :}" CDT-MUST-LACK
+   s" LBL LBL {: spok spdn :}" CDT-MUST-LACK ;
+
+: CDT-TEST-ICODE ( -- )
+   s" src/arch/arm64/icode.f" CDT-LOAD
+   s" variable BYA" CDT-MUST-HAVE
+   s" variable BYU" CDT-MUST-HAVE
+   s" : BYA@ ( -- ptr u8 )" CDT-MUST-HAVE
+   s" : BYTES-ARGS ( ptr u8 n -- )" CDT-MUST-HAVE
+   s" : BYTES-CAP ( -- )" CDT-MUST-HAVE
+   s" : BYTES-COPY ( -- )" CDT-MUST-HAVE
+   s" : BYTES-PAD ( -- )" CDT-MUST-HAVE
+   s" : BYTES, ( ptr u8 n -- )" CDT-MUST-HAVE
+   s" {: a:ptr u :}" CDT-MUST-LACK ;
 
 : CDT-TEST-BOOTSTRAP-COMPILE ( -- )
    s" : EMIT-COMPILE-CONTROL-KEYWORDS ( n -- )" CDT-MUST-HAVE
@@ -106,6 +159,8 @@ variable CDT-LEN
 : CDT-MAIN ( -- )
    T-RESET
    CDT-TEST-NATIVE
+   CDT-TEST-HABU1
+   CDT-TEST-ICODE
    CDT-TEST-BOOTSTRAP
    T-REPORT
    s" compiler-dispatch-test: ok" type cr ;

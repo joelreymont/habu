@@ -1,6 +1,7 @@
 \ json-only-test.f - checked fixtures for tools/json-only.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/json-only-test.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ tools/json-only-test.f
 
 1024 constant JOT-BUF-CAP
 
@@ -92,6 +93,7 @@ create JOT-ERR JOT-BUF-CAP allot
 
 : JOT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
+   s" tools/json-only.f" WR-TOOLS-LOAD if exit then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
@@ -105,14 +107,14 @@ create JOT-ERR JOT-BUF-CAP allot
 
 : JOT-RUN ( ptr u8 n -- n n n ) {: path:ptr pathu :}
    JOT-ARGV-LOAD
-   s" --"  >LEN PROC-ARGV+
+   WR-TOOLS? 0= if s" --"  >LEN PROC-ARGV+ then
    path pathu  >LEN PROC-ARGV+
-   s" bin/hb"  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
+   WR-TOOLS$  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
    1000 >MS RUN-ARGV-CAPTURE JOT-CAPTURE>N ;
 
 : JOT-RUN-NOARG ( -- n n n )
    JOT-ARGV-LOAD
-   s" bin/hb"  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
+   WR-TOOLS$  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
    1000 >MS RUN-ARGV-CAPTURE JOT-CAPTURE>N ;
 
 : JOT-MIXED-CASE ( -- )

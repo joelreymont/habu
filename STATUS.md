@@ -1,7 +1,7 @@
 # habu — Status
 
-Last verified: 2026-06-25
-Gate: passing
+Last verified: 2026-06-26
+Gate: passing; 31.39s on 2026-06-26 with warm checker/tool images and the checked DAG pool
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 
@@ -15,7 +15,7 @@ it. "Certified" = body inferred and (where a signature is declared) verified
 against it; "Uncheckable" = effect not statically inferable and not trusted;
 "Rejected" = inferred effect contradicts the declaration. Native
 `tools/build-fixpoint-main.f -- install` refreshes `bin/hb` and runs the self-check;
-`bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/run.f` is the Habu-native
+`bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-pool.f test/run.f` is the Habu-native
 gate. That gate runs native parity/shadow/clobber/trust/status/filemap lints,
 the retired host-script token lint, the rebuild fixpoint, JSON diagnostic
 assertions, property soundness smoke, PTY/process checks, and AOT/`--repl`

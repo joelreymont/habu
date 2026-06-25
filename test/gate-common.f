@@ -14,10 +14,15 @@ $40000 constant GE-SRC-CAP
 create GE-SRC-BUF GE-SRC-CAP allot
 create GE-SRC-A GE-SRC-MAX cells allot
 create GE-SRC-LEN GE-SRC-MAX cells allot
+create GE-WARM-BUF FS-PATH-CAP allot
+create GE-WARM-TRUST-BUF FS-PATH-CAP allot
 
 variable GE-SRC-U
 variable GE-SRC-N
 variable GE-RD
+variable GE-WARM-U
+variable GE-WARM-TRUST-U
+variable GE-WARM-READY
 
 : GE-STORE-CAPTURE ( len len rc -- ) {: outu erru rc :}
    rc RC>N GT-OUTCOME-CODE !
@@ -143,6 +148,90 @@ variable GE-RD
 : GE-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
+: GE-WARM$ ( -- ptr u8 n )
+   GE-WARM-BUF GE-WARM-U @ ;
+
+: GE-WARM-TRUST$ ( -- ptr u8 n )
+   GE-WARM-TRUST-BUF GE-WARM-TRUST-U @ ;
+
+: GE-WARM-ROOT ( -- ptr u8 n )
+   s" HABU_GATE_WARM_ROOT" GETENV dup 0= if 2drop GT-ROOT exit then ;
+
+: GE-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
+   {: a:ptr u suf:ptr su dst:ptr lenp:ptr :}
+   u su + FS-PATH-CAP > if E-FS-PATH throw then
+   a dst u BYTE-COPY
+   suf dst u + su BYTE-COPY
+   u su + lenp ! ;
+
+: GE-WARM-PATHS ( -- )
+   GE-WARM-ROOT s" hb-check-warm" GE-WARM-BUF JOIN-PATH GE-WARM-U !
+   GE-WARM$ s" .trust.f" GE-WARM-TRUST-BUF GE-WARM-TRUST-U GE-SUFFIX! ;
+
+: GE-WARM-CACHED? ( -- bool )
+   GE-WARM$ EXECUTABLE?
+   GE-WARM-TRUST$ FILE?
+   and ;
+
+: GE-WARM-TOOL-ARGV ( -- )
+   PROC-ARGV-ENV-RESET
+   s" --load" GE-ARG+
+   s" lib/errors.f" GE-ARG+
+   s" lib/string.f" GE-ARG+
+   s" lib/fs.f" GE-ARG+
+   s" lib/fs-mutate.f" GE-ARG+
+   s" lib/process.f" GE-ARG+
+   s" lib/process-argv.f" GE-ARG+
+   s" lib/process-env.f" GE-ARG+
+   s" lib/source.f" GE-ARG+
+   s" lib/codesign.f" GE-ARG+
+   s" tools/warm-image-lib.f" GE-ARG+
+   s" tools/warm-image.f" GE-ARG+
+   s" --" GE-ARG+
+   GE-WARM$ GE-ARG+ ;
+
+: GE-CHECK-SUPPORT-ARGV ( -- )
+   s" tools/date.f" GE-ARG+
+   s" lib/errors.f" GE-ARG+
+   s" lib/string.f" GE-ARG+
+   s" lib/memory.f" GE-ARG+
+   s" lib/vector.f" GE-ARG+
+   s" lib/fs.f" GE-ARG+
+   s" lib/fs-mutate.f" GE-ARG+
+   s" lib/process.f" GE-ARG+
+   s" lib/process-argv.f" GE-ARG+
+   s" lib/source.f" GE-ARG+
+   s" tools/lint/text.f" GE-ARG+
+   s" tools/lint/token.f" GE-ARG+
+   s" tools/lint/lib.f" GE-ARG+
+   s" tools/lint/json-writer.f" GE-ARG+
+   s" tools/lint/source-lex.f" GE-ARG+
+   s" tools/diag-origin-core.f" GE-ARG+
+   s" tools/json.f" GE-ARG+
+   s" tools/json-only-core.f" GE-ARG+
+   s" tools/signature-lint-core.f" GE-ARG+
+   s" tools/checked-boundary-lint-core.f" GE-ARG+
+   s" tools/trust-lint-core.f" GE-ARG+
+   s" tools/check-all-errors-core.f" GE-ARG+
+   s" tools/argv.f" GE-ARG+ ;
+
+: GE-WARM-BAKE ( -- )
+   GE-WARM-PATHS
+   GE-WARM-CACHED? if -1 GE-WARM-READY ! exit then
+   GE-WARM-TOOL-ARGV
+   GE-CHECK-SUPPORT-ARGV
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" warm checker image" GE-EXPECT-OK
+   -1 GE-WARM-READY ! ;
+
+: GE-CHECK-WARM ( -- )
+   GE-WARM-READY @ if exit then
+   GE-WARM-BAKE ;
+
+: GE-CHECK-EXE ( -- ptr u8 n )
+   GE-CHECK-WARM
+   GE-WARM$ ;
+
 : GE-FILES-END? ( ptr u8 n -- bool )
    s" ;GE-FILES" STR= ;
 
@@ -209,37 +298,16 @@ variable GE-RD
    s" bin" [: GE-REMOVE-BIN-OTHER ;] WALK-FILES ;
 
 : GE-CHECK-ARGV ( -- )
+   GE-CHECK-WARM
    GE-HB-RESET
    s" --load" GE-ARG+
-   s" tools/date.f" GE-ARG+
-   s" lib/errors.f" GE-ARG+
-   s" lib/string.f" GE-ARG+
-   s" lib/memory.f" GE-ARG+
-   s" lib/vector.f" GE-ARG+
-   s" lib/fs.f" GE-ARG+
-   s" lib/fs-mutate.f" GE-ARG+
-   s" lib/process.f" GE-ARG+
-   s" lib/process-argv.f" GE-ARG+
-   s" lib/source.f" GE-ARG+
-   s" tools/lint/text.f" GE-ARG+
-   s" tools/lint/token.f" GE-ARG+
-   s" tools/lint/lib.f" GE-ARG+
-   s" tools/lint/json-writer.f" GE-ARG+
-   s" tools/lint/source-lex.f" GE-ARG+
-   s" tools/diag-origin-core.f" GE-ARG+
-   s" tools/json.f" GE-ARG+
-   s" tools/json-only-core.f" GE-ARG+
-   s" tools/signature-lint-core.f" GE-ARG+
-   s" tools/checked-boundary-lint-core.f" GE-ARG+
-   s" tools/trust-lint-core.f" GE-ARG+
-   s" tools/check-all-errors-core.f" GE-ARG+
-   s" tools/argv.f" GE-ARG+
+   GE-WARM-TRUST$ GE-ARG+
    s" tools/check.f" GE-ARG+
    s" --" GE-ARG+ ;
 
 : GE-CHECK-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-OK
    label labelu GE-EXPECT-SILENT ;
 
@@ -250,6 +318,6 @@ variable GE-RD
       dup GE-SRC$ GE-ARG+
       1+
    repeat drop
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-CHECK-EXE GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GE-EXPECT-SILENT ;

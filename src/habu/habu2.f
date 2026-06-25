@@ -364,6 +364,13 @@ s" c-bp-watch-dump" s" n n --" TRUST
    PFX-TARGET-OK
    ['] PFX-LOAD-ROW PFX-FILES ;
 
+: EMIT-COLD-PREFIX ( -- )
+   LBL {: done :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   EMIT-HOST-LOAD-PREFIX
+   done LBL, ;
+
 : C-EMIT-TTY-PROBE ( -- )
    0 0 MOVZ,
    HB-TARGET-LINUX? if 1 $5401 LIT64, else
@@ -424,7 +431,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-STDINPROG @ LBL,
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
-   EMIT-HOST-LOAD-PREFIX
+   EMIT-COLD-PREFIX
    17 9 0 ADDI,
    SRC-RL @ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
@@ -466,10 +473,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-SOURCE-FILE-PREFIX ( -- )
    SRC-FPLAIN @ C-ARG--LOAD?
    14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
-   EMIT-HOST-LOAD-PREFIX
+   EMIT-COLD-PREFIX
    C-SOURCE-FIND-SEP
    SRC-FPLAIN @ LBL,
-   EMIT-HOST-LOAD-PREFIX
+   EMIT-COLD-PREFIX
    SRC-FREADY @ LBL, ;
 
 : C-SOURCE-APPEND-ARG ( -- )
@@ -523,7 +530,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-SOURCE-BAKED ( -- )
    SRC-BFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
-   EMIT-HOST-LOAD-PREFIX
+   EMIT-COLD-PREFIX
    17 9 0 ADDI,
    12 LSRC @ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
    SRC-BLOOP @ LBL,
@@ -1427,6 +1434,8 @@ s" cfn-entry" s" n ptr a n n --" TRUST
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable LMAIN  variable LEXIT  variable LCOMPILE  variable LUNDEF
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
+variable CLOC-MAIN  variable CLOC-NOT
+variable CLOC-MEM   variable CLOC-QOK
 variable CFSK2
 
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
@@ -1481,24 +1490,31 @@ s" cfbn-entry" s" n ptr a n n n --" TRUST
    8 $AA0003F1 LIT64,  7 14 16 LSLI,  9 8 7 ORR,  LCEMIT @ BL,   \ may reload into it
    J-UNTILX ;
 
-: C-LOCAL-REF ( n n -- ) {: lmainlbl notloc :}
-   LBL LBL {: lmem qlrefok :}
-   LLOC-FIND @ BL,  0 0 CMPI,  C-LT notloc BCOND,
-   11 DATA QPATCH-CELL LDR,  11 qlrefok CBZ,
+: C-LOCAL-REF-LABELS ( -- )
+   LBL CLOC-MEM !  LBL CLOC-QOK ! ;
+
+: C-LOCAL-REF-ARGS ( n n -- )
+   CLOC-NOT !  CLOC-MAIN ! ;
+
+: C-LOCAL-REF ( n n -- )
+   C-LOCAL-REF-ARGS
+   C-LOCAL-REF-LABELS
+   LLOC-FIND @ BL,  0 0 CMPI,  C-LT CLOC-NOT @ BCOND,
+   11 DATA QPATCH-CELL LDR,  11 CLOC-QOK @ CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
-   qlrefok LBL,
-   LVRALLOC @ BL,  14 lmem CBZ,
+   CLOC-QOK @ LBL,
+   LVRALLOC @ BL,  14 CLOC-MEM @ CBZ,
    7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
    9 $F94003E0 LIT64,  9 9 14 ORR,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
    LVPUSHR @ BL,
-   lmainlbl B,
-   lmem LBL,
+   CLOC-MAIN @ B,
+   CLOC-MEM @ LBL,
    LVSPILL @ BL,
    7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
    9 $F94003E9 LIT64,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
    9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL,
-   lmainlbl B ;
+   CLOC-MAIN @ B, ;
 s" c-local-ref" s" n n --" TRUST
 
 : EM-ENTRY-ARGS ( -- )
@@ -1667,12 +1683,14 @@ s" c-local-ref" s" n n --" TRUST
    EM-SNAPSHOT-REBASE-CALLS
    EM-SNAPSHOT-RX-FLUSH
    24 1 MOVZ,
+   24 DATA SNAP-CELL STR,
    snomag LBL, ;
 
 : EM-STARTUP-RUNTIME-STATE ( -- )
    LBL {: cwok :}
    9 0 MOVZ,  9 DATA HND-CELL STR,
-   24 cwok CBNZ,
+   9 DATA SNAP-CELL LDR,
+   9 cwok CBNZ,
 
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 1 MOVZ,  9 DATA WIDN-CELL STR,
@@ -2113,8 +2131,8 @@ variable SRCA
 : SRCA@ SRCA @ ;
 s" SRCA@" s" -- ptr u8" TRUST
 
-: EMIT-RESET-BUILDER ( ptr u8 n -- ) {: a:ptr u :}
-   u SRCN !  a SRCA !
+: EMIT-RESET-BUILDER ( ptr u8 n -- )
+   SRCN !  SRCA !
    ASM-INIT  0 #PL !  0 PNP ! ;
 
 : EMIT-LABEL-CORE ( -- )

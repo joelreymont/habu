@@ -2,7 +2,7 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/lint/text.f
 \ tools/lint/token.f tools/lint/lib.f tools/diag-origin-core.f
-\ tools/diag-origin-test.f
+\ tools/warm-run.f tools/diag-origin-test.f
 
 4096 constant DGT-BUF-CAP
 
@@ -85,6 +85,7 @@ create DGT-ERR DGT-BUF-CAP allot
 
 : DGT-RUN ( -- n n n )
    PROC-ARGV-RESET
+   s" tools/diag-origin.f" WR-TOOLS-LOAD if DGT-IN DGT-ARG+ else
    s" --load" DGT-ARG+
    s" lib/errors.f" DGT-ARG+
    s" lib/string.f" DGT-ARG+
@@ -95,7 +96,8 @@ create DGT-ERR DGT-BUF-CAP allot
    s" tools/diag-origin.f" DGT-ARG+
    s" --" DGT-ARG+
    DGT-IN DGT-ARG+
-   s" bin/hb" >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   then
+   WR-TOOLS$ >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    DGT-CAPTURE>N ;
 
 : DGT-RUN-CORE ( -- n )

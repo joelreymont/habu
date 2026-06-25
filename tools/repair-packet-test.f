@@ -1,5 +1,5 @@
 \ repair-packet-test.f - checked fixture for repair packet generation.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/repair-packet-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f tools/repair-packet-test.f
 
 $20000 constant RPT-CAPTURE-CAP
 5000 constant RPT-TIMEOUT-MS
@@ -87,6 +87,13 @@ create RPT-ERR RPT-CAPTURE-CAP allot
 
 : RPT-ARGV-CHECK ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu file:ptr fileu :}
    PROC-ARGV-RESET
+   s" tools/check-all-errors.f" WR-TOOLS-LOAD if
+      s" --json-errors"  >LEN PROC-ARGV+
+      s" --label"  >LEN PROC-ARGV+
+      label labelu  >LEN PROC-ARGV+
+      file fileu  >LEN PROC-ARGV+
+      exit
+   then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
@@ -111,7 +118,7 @@ create RPT-ERR RPT-CAPTURE-CAP allot
    outu LEN>N erru LEN>N rc RC>N ;
 
 : RPT-HB-CAPTURE ( -- n n n )
-   s" bin/hb"  >LEN RPT-OUT RPT-CAPTURE-CAP >LEN
+   WR-TOOLS$  >LEN RPT-OUT RPT-CAPTURE-CAP >LEN
    RPT-ERR RPT-CAPTURE-CAP >LEN RPT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE RPT-CAPTURE>N ;
 
@@ -132,6 +139,10 @@ create RPT-ERR RPT-CAPTURE-CAP allot
 
 : RPT-ARGV-REPAIR ( -- )
    PROC-ARGV-RESET
+   s" tools/repair-packet.f" WR-TOOLS-LOAD if
+      RPT-DIAG  >LEN PROC-ARGV+
+      exit
+   then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
@@ -157,6 +168,12 @@ create RPT-ERR RPT-CAPTURE-CAP allot
 
 : RPT-ARGV-ASSERT ( ptr u8 n -- ) {: class:ptr classu :}
    PROC-ARGV-RESET
+   s" tools/gate-json-assert.f" WR-TOOLS-LOAD if
+      s" repair-packet"  >LEN PROC-ARGV+
+      RPT-PACKET  >LEN PROC-ARGV+
+      class classu  >LEN PROC-ARGV+
+      exit
+   then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+

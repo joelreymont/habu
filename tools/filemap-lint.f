@@ -22,7 +22,7 @@ variable FM-NUM-L
    a u s" .tsv" HAS-EXT? ;
 
 : FM-EXISTS? ( ptr u8 n -- bool )
-   PATHZ PATHBUF 0 access 0= ;
+   LINT-PATHZ PATHBUF 0 access 0= ;
 
 : FM-PRINT-PATH ( ptr u8 n -- )
    96 emit type 96 emit ;
@@ -179,6 +179,7 @@ variable FM-NUM-L
    s" lib/source.f" FM-REQ
    s" lib/source-test.f" FM-REQ
    s" test/process-env-child.f" FM-REQ
+   s" test/gate-pool.f" FM-REQ
    s" test/run.f" FM-REQ ;
 
 : FM-CHECK-REQUIRED-LLM-BENCH ( -- )

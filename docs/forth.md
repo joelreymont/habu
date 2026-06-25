@@ -218,6 +218,11 @@ not a matter of taste. Target is the native `bin/hb` engine.
 - **Keep `TRUSTED:` bodies syntax-simple.** Do not use locals inside a trusted
   body. Factor checked helper words for real work, then keep the trusted body to
   the minimal operation that the checker cannot express.
+- **Preflight unchecked native emitters.** Raw image/primitive emitters still
+  need checked shape tests before `BUILD-IMAGE`: no mid-control locals, no second
+  locals groups, no hand-balanced descriptor math. Use named scratch cells and
+  small helpers, then gate the forbidden source shapes in `tools/build-fixpoint.f`
+  so bad emitters fail before a snapshot or `bin/hb` candidate is written.
 
 ## Native Forth Gotchas That Shape How We Write Code
 

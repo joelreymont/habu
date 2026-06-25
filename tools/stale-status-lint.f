@@ -196,6 +196,9 @@ variable SS-FENCE
    2dup s" STATUS.md" STR= IF 2drop SS-TRUE exit THEN
    s" LESSONS.md" STR= ;
 
+: SS-SKIP-PATH? ( ptr u8 n -- bool )
+   SS-REL s" .jj-ws/" STARTS-WITH? ;
+
 : SS-MD? ( ptr u8 n -- bool )
    s" .md" HAS-EXT? ;
 
@@ -416,6 +419,7 @@ variable SS-FENCE
    THEN ;
 
 : SS-SCAN-MD ( ptr u8 n -- ) {: a:ptr u :}
+   a u SS-SKIP-PATH? IF exit THEN
    a u SS-ALLOWED? IF exit THEN
    a u SS-MD? SS-NOT IF exit THEN
    a u EXISTS? SS-NOT IF exit THEN

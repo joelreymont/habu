@@ -98,6 +98,14 @@ points stay listed.
 - `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library.
 - `tools/hb-build.f` — Habu entrypoint for native AOT/REPL builds.
 - `tools/hb-build-test.f` — checked fixture coverage for native AOT/REPL builds.
+- `tools/warm-image-lib.f` — checked tool library that bakes warm snapshot images
+  plus generated trust-sidecar sources from support files for fast fixture
+  subprocesses.
+- `tools/warm-image.f` — CLI entrypoint for warm snapshot image baking.
+- `tools/warm-image-test.f` — checked fixture coverage for warm image baking,
+  support-source availability, and warm-image checker rejection.
+- `tools/warm-run.f` — checked helpers for running warm tool images from
+  subprocess fixtures.
 - `tools/bootstrap-codegen-test.f` — native source regression for bootstrap codegen fail-closed contracts.
 - `tools/imgdump.f` — native image dictionary dump and compare tool.
 - `tools/imgdump-test.f` — checked fixture coverage for image dump compare mode.
@@ -183,6 +191,7 @@ points stay listed.
 
 ## Tests And Benchmarks
 
+- `test/gate-pool.f` — bounded checked process pool used by native gate runners.
 - `test/run.f` — default native gate.
 - `test/prop-test.f` — implemented property-based checker-soundness test (in-process via `evaluate`).
 - `test/engine-suite.f` — native engine behavior suite.

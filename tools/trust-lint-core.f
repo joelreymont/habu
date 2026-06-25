@@ -484,7 +484,7 @@ variable TL-NV
       TL-B-END? IF TL-A-WS? exit THEN
       TL-A-WS? IF TL-B-WS? exit THEN
       TL-B-WS? IF TL-FALSE exit THEN
-      TL-A-C@ FOLD TL-B-C@ FOLD <> IF TL-FALSE exit THEN
+      TL-A-C@ LINT-FOLD TL-B-C@ LINT-FOLD <> IF TL-FALSE exit THEN
       TL-AI @ 1+ TL-AI !  TL-BI @ 1+ TL-BI !
    again ;
 

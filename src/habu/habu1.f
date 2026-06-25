@@ -21,36 +21,60 @@ create PLEN PRIM-CAP cells allot   create PNAM PRIM-CAP cells allot
 create PNLBL PRIM-CAP cells allot
 create PNPOOL PRIM-NAME-CAP allot   variable PNP   variable #PL
 variable RPD
+variable PR-A  variable PR-U  variable PR-L  variable PR-E
+variable FP-A  variable FP-U  variable FP-XT
 : RPD@ RPD @ ;
 s" RPD@" s" -- ptr u8" TRUST
+: PR-A@ PR-A @ ;
+s" PR-A@" s" -- ptr u8" TRUST
+: FP-A@ FP-A @ ;
+s" FP-A@" s" -- ptr u8" TRUST
 
-: ?PRIM-SPACE {: na:ptr nu :} ( na nu -- )
+: PR-SPACE ( -- )
    #PL @ PRIM-CAP >= IF s" primitive registry full" 76 die THEN
-   PNP @ nu + PRIM-NAME-CAP > IF s" primitive name pool full" 76 die THEN ;
+   PNP @ PR-U @ + PRIM-NAME-CAP > IF s" primitive name pool full" 76 die THEN ;
 
-: REG-PRIM {: na:ptr nu lbl elbl :}
-   na nu ?PRIM-SPACE
-   lbl  #PL @ cells PLBL + !
-   elbl #PL @ cells PEL  + !
-   nu   #PL @ cells PLEN + !
+: PR-ARGS ( ptr u8 n n n -- )
+   PR-E !  PR-L !  PR-U !  PR-A ! ;
+
+: PR-COPY-NAME ( -- )
+   0 BEGIN dup PR-U @ < WHILE  dup PR-A@ + c@  over RPD@ + c!  1 + REPEAT drop ;
+
+: REG-PRIM ( ptr u8 n n n -- )
+   PR-ARGS
+   PR-SPACE
+   PR-L @ #PL @ cells PLBL + !
+   PR-E @ #PL @ cells PEL  + !
+   PR-U @ #PL @ cells PLEN + !
    PNPOOL PNP @ + RPD !  RPD@ #PL @ cells PNAM + !
-   0 BEGIN dup nu < WHILE  dup na + c@  over RPD@ + c!  1 + REPEAT drop
-   PNP @ nu + PNP !  #PL @ 1 + #PL ! ;
+   PR-COPY-NAME
+   PNP @ PR-U @ + PNP !  #PL @ 1 + #PL ! ;
 variable FPL  variable FPE
 
-: FPRIM {: na:ptr nu xt :}
-   na nu KEEP? 0= IF EXIT THEN
+: FP-ARGS ( ptr u8 n n -- )
+   FP-XT !  FP-U !  FP-A ! ;
+
+: FP-KEEP? ( -- bool )
+   FP-A@ FP-U @ KEEP? ;
+
+: FP-REG ( -- )
+   FP-A@ FP-U @ FPL @ FPE @ REG-PRIM ;
+
+: FPRIM ( ptr u8 n n -- )
+   FP-ARGS
+   FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
-   na nu FPL @ FPE @ REG-PRIM
+   FP-REG
    FPL @ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
-   xt execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE @ LBL, ;
+   FP-XT @ execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE @ LBL, ;
 s" fprim" s" ptr u8 n n --" TRUST
 
-: FPRIM-L {: na:ptr nu xt :}           \ LEAF prim: no BL/BLR in body -> no x30 frame
-   na nu KEEP? 0= IF EXIT THEN
+: FPRIM-L ( ptr u8 n n -- )           \ LEAF prim: no BL/BLR in body -> no x30 frame
+   FP-ARGS
+   FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
-   na nu FPL @ FPE @ REG-PRIM
-   FPL @ LBL,  xt execute  RET,  FPE @ LBL, ;
+   FP-REG
+   FPL @ LBL,  FP-XT @ execute  RET,  FPE @ LBL, ;
 s" fprim-l" s" ptr u8 n n --" TRUST
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
@@ -439,41 +463,62 @@ SPAWN-ACTION-SIZE SPAWN-CHDIR-PATH-OFF - constant SPAWN-CHDIR-PATH-CAP
 72 constant SPAWN-ADESC-FA-PTR-OFF
 128 constant SPAWN-ADESC-SIZE
 
+variable SDA-FD  variable SDA-NEW  variable SDA-SKIP
+variable SCA-CWD  variable SCA-FAIL
+variable SCA-COPY  variable SCA-OVER  variable SCA-DONE
+variable SACT-CAP  variable SAD-HAS
+variable SPD-PATH  variable SAE-ARGV  variable SAE-ENVP
+variable SDEF-PATH  variable SADV-ARGV
+variable SFIN-OK  variable SFIN-FAIL
+variable BSP-OK  variable BSP-DN  variable BSP-SAD
+variable SZA-I
+
 \ Emit one PSFA_DUP2 record into the runtime file-actions blob at x13.
-: SPAWN-DUP2-ACTION ( n n -- ) {: fdreg newfd :}
-   LBL {: skip :}
-   fdreg 0 CMPI,  C-LT skip BCOND,
+: SPAWN-DUP2-ARGS ( n n -- )
+   SDA-NEW !  SDA-FD ! ;
+
+: SPAWN-DUP2-ACTION ( n n -- )
+   SPAWN-DUP2-ARGS
+   LBL SDA-SKIP !
+   SDA-FD @ 0 CMPI,  C-LT SDA-SKIP @ BCOND,
    14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,
    14 14 SPAWN-FA-ACTS-OFF ADDI,  14 14 13 ADD,
    15 PSFA-DUP2 MOVZ,  15 14 0 STRW,
-   fdreg 14 4 STRW,
-   15 newfd MOVZ,  15 14 8 STRW,
+   SDA-FD @ 14 4 STRW,
+   15 SDA-NEW @ MOVZ,  15 14 8 STRW,
    14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW,
-   skip LBL, ;
+   SDA-SKIP @ LBL, ;
 s" spawn-dup2-action" s" n n --" TRUST
 
 \ Emit one PSFA_CHDIR record into the runtime file-actions blob at x13.
-: SPAWN-CHDIR-ACTION ( n n -- ) {: cwdreg fail :}
-   LBL LBL LBL {: copy overflow done :}
+: SPAWN-CHDIR-ARGS ( n n -- )
+   SCA-FAIL !  SCA-CWD ! ;
+
+: SPAWN-CHDIR-LABELS ( -- )
+   LBL SCA-COPY !  LBL SCA-OVER !  LBL SCA-DONE ! ;
+
+: SPAWN-CHDIR-ACTION ( n n -- )
+   SPAWN-CHDIR-ARGS
+   SPAWN-CHDIR-LABELS
    14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,
    14 14 SPAWN-FA-ACTS-OFF ADDI,  14 14 13 ADD,
    15 PSFA-CHDIR MOVZ,  15 14 0 STRW,
-   16 cwdreg 0 ADDI,
+   16 SCA-CWD @ 0 ADDI,
    17 14 SPAWN-CHDIR-PATH-OFF ADDI,
    18 SPAWN-CHDIR-PATH-CAP MOVZ,
-   copy LBL,
-      18 0 CMPI,  C-EQ overflow BCOND,
+   SCA-COPY @ LBL,
+      18 0 CMPI,  C-EQ SCA-OVER @ BCOND,
       15 16 0 LDRB,
       15 17 0 STRB,
       16 16 1 ADDI,
       17 17 1 ADDI,
       18 18 1 SUBI,
-      15 copy CBNZ,
+      15 SCA-COPY @ CBNZ,
    14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW,
-   done B,
-   overflow LBL,
-   9 0 MOVN,  fail B
-   done LBL, ;
+   SCA-DONE @ B,
+   SCA-OVER @ LBL,
+   9 0 MOVN,  SCA-FAIL @ B,
+   SCA-DONE @ LBL, ;
 s" spawn-chdir-action" s" n n --" TRUST
 
 : SPAWN-DARWIN-FRAME3-ENTER ( -- )
@@ -496,9 +541,10 @@ s" spawn-darwin-frame4-enter" s" --" TRUST
    SP SP SPAWN-FRAME4-A ADDI, ;
 s" spawn-darwin-frame4-leave" s" --" TRUST
 
-: SPAWN-DARWIN-ACTIONS-RESET ( n -- ) {: cap :}
+: SPAWN-DARWIN-ACTIONS-RESET ( n -- )
+   SACT-CAP !
    13 SP SPAWN-ACTIONS-OFF ADDI,
-   14 cap MOVZ,  14 13 SPAWN-FA-CAP-OFF STRW,
+   14 SACT-CAP @ MOVZ,  14 13 SPAWN-FA-CAP-OFF STRW,
    14 0 MOVZ,  14 13 SPAWN-FA-COUNT-OFF STRW, ;
 s" spawn-darwin-actions-reset" s" n --" TRUST
 
@@ -510,10 +556,11 @@ s" spawn-darwin-stdio-actions" s" --" TRUST
 
 : SPAWN-DARWIN-ZERO-ADESC ( -- )
    14 0 MOVZ,
-   0 begin dup SPAWN-ADESC-SIZE < while
-      14 SP SPAWN-ADESC-OFF + over + STR,
-      8 +
-   repeat drop ;
+   0 SZA-I !
+   BEGIN SZA-I @ SPAWN-ADESC-SIZE < WHILE
+      14 SP SPAWN-ADESC-OFF SZA-I @ + STR,
+      SZA-I @ 8 + SZA-I !
+   REPEAT ;
 s" spawn-darwin-zero-adesc" s" --" TRUST
 
 : SPAWN-DARWIN-FILL-ADESC ( -- )
@@ -525,30 +572,34 @@ s" spawn-darwin-zero-adesc" s" --" TRUST
    13 SP SPAWN-ADESC-FA-PTR-OFF STR, ;
 s" spawn-darwin-fill-adesc" s" --" TRUST
 
-: SPAWN-DARWIN-NULLABLE-ADESC ( n -- ) {: has-actions :}
+: SPAWN-DARWIN-NULLABLE-ADESC ( n -- )
+   SAD-HAS !
    14 13 SPAWN-FA-COUNT-OFF LDRW,
    2 SP SPAWN-ADESC-OFF ADDI,
-   14 has-actions CBNZ,
+   14 SAD-HAS @ CBNZ,
       2 0 MOVZ,
-   has-actions LBL, ;
+   SAD-HAS @ LBL, ;
 s" spawn-darwin-nullable-adesc" s" n --" TRUST
 
 : SPAWN-DARWIN-USE-ADESC ( -- )
    2 SP SPAWN-ADESC-OFF ADDI, ;
 s" spawn-darwin-use-adesc" s" --" TRUST
 
-: SPAWN-DARWIN-PID-PATH ( n -- ) {: pathreg :}
+: SPAWN-DARWIN-PID-PATH ( n -- )
+   SPD-PATH !
    0 SP SPAWN-PID-OFF ADDI,
-   1 pathreg 0 ADDI, ;
+   1 SPD-PATH @ 0 ADDI, ;
 s" spawn-darwin-pid-path" s" n --" TRUST
 
-: SPAWN-DARWIN-ARGV-ENVP ( n n -- ) {: argvreg envreg :}
-   3 argvreg 0 ADDI,
-   4 envreg 0 ADDI, ;
+: SPAWN-DARWIN-ARGV-ENVP ( n n -- )
+   SAE-ENVP !  SAE-ARGV !
+   3 SAE-ARGV @ 0 ADDI,
+   4 SAE-ENVP @ 0 ADDI, ;
 s" spawn-darwin-argv-envp" s" n n --" TRUST
 
-: SPAWN-DARWIN-DEFAULT-ARGV-ENVP ( n -- ) {: pathreg :}
-   pathreg SP SPAWN-ARGV-OFF STR,
+: SPAWN-DARWIN-DEFAULT-ARGV-ENVP ( n -- )
+   SDEF-PATH !
+   SDEF-PATH @ SP SPAWN-ARGV-OFF STR,
    14 0 MOVZ,
    14 SP SPAWN-ARGV-END-OFF STR,
    14 SP SPAWN-ENVP-OFF STR, ;
@@ -564,23 +615,31 @@ s" spawn-darwin-default-envp" s" --" TRUST
    4 SP SPAWN-ENVP-OFF ADDI, ;
 s" spawn-darwin-use-default-argv-envp" s" --" TRUST
 
-: SPAWN-DARWIN-ARGV-DEFAULT-ENVP ( n -- ) {: argvreg :}
-   3 argvreg 0 ADDI,
+: SPAWN-DARWIN-ARGV-DEFAULT-ENVP ( n -- )
+   SADV-ARGV !
+   3 SADV-ARGV @ 0 ADDI,
    4 SP SPAWN-ARGV-OFF ADDI, ;
 s" spawn-darwin-argv-default-envp" s" n --" TRUST
 
-: SPAWN-DARWIN-FINISH ( n n -- ) {: ok fail :}
+: SPAWN-DARWIN-FINISH ( n n -- )
+   SFIN-FAIL !  SFIN-OK !
    NR-SPAWN SYS,
-   9 C-CS CSET,  9 9 0 ORR,  9 ok CBZ,
-      9 0 MOVN,  fail B,
-   ok LBL,
+   9 C-CS CSET,  9 9 0 ORR,  9 SFIN-OK @ CBZ,
+      9 0 MOVN,  SFIN-FAIL @ B,
+   SFIN-OK @ LBL,
    9 SP SPAWN-PID-OFF LDR,
-   fail LBL,
+   SFIN-FAIL @ LBL,
    9 G-PUSH ;
 s" spawn-darwin-finish" s" n n --" TRUST
 
+: BSP-LABELS3 ( -- )
+   LBL BSP-OK !  LBL BSP-DN !  LBL BSP-SAD ! ;
+
+: BSP-LABELS2 ( -- )
+   LBL BSP-OK !  LBL BSP-DN ! ;
+
 : BSPAWNIO                            \ ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )
-   LBL LBL LBL {: spok spdn sad :}
+   BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  9 G-POP
    HB-TARGET-LINUX? IF
       SP SP 64 SUBI,
@@ -600,13 +659,13 @@ s" spawn-darwin-finish" s" n n --" TRUST
    SPAWN-DARWIN-ZERO-ADESC
    SPAWN-DARWIN-FILL-ADESC
    9 SPAWN-DARWIN-PID-PATH
-   sad SPAWN-DARWIN-NULLABLE-ADESC
+   BSP-SAD @ SPAWN-DARWIN-NULLABLE-ADESC
    SPAWN-DARWIN-USE-DEFAULT-ARGV-ENVP
-   spok spdn SPAWN-DARWIN-FINISH
+   BSP-OK @ BSP-DN @ SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
 : BSPAWNARGVIO                        \ ( pathz argvp stdinfd stdoutfd stderrfd -- pid|-1 )
-   LBL LBL LBL {: spok spdn sad :}
+   BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
       SP SP 16 SUBI,
@@ -624,13 +683,13 @@ s" spawn-darwin-finish" s" n n --" TRUST
    SPAWN-DARWIN-ZERO-ADESC
    SPAWN-DARWIN-FILL-ADESC
    8 SPAWN-DARWIN-PID-PATH
-   sad SPAWN-DARWIN-NULLABLE-ADESC
+   BSP-SAD @ SPAWN-DARWIN-NULLABLE-ADESC
    9 SPAWN-DARWIN-ARGV-DEFAULT-ENVP
-   spok spdn SPAWN-DARWIN-FINISH
+   BSP-OK @ BSP-DN @ SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
 : BSPAWNARGVENVIO                     \ ( pathz argvp envp stdinfd stdoutfd stderrfd -- pid|-1 )
-   LBL LBL LBL {: spok spdn sad :}
+   BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  7 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
       13 0 MOVN,
@@ -643,13 +702,13 @@ s" spawn-darwin-finish" s" n n --" TRUST
    SPAWN-DARWIN-ZERO-ADESC
    SPAWN-DARWIN-FILL-ADESC
    8 SPAWN-DARWIN-PID-PATH
-   sad SPAWN-DARWIN-NULLABLE-ADESC
+   BSP-SAD @ SPAWN-DARWIN-NULLABLE-ADESC
    9 7 SPAWN-DARWIN-ARGV-ENVP
-   spok spdn SPAWN-DARWIN-FINISH
+   BSP-OK @ BSP-DN @ SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
 : BSPAWNARGVENVCWDIO                  \ ( pathz argvp envp cwdz stdinfd stdoutfd stderrfd -- pid|-1 )
-   LBL LBL {: spok spdn :}
+   BSP-LABELS2
    12 G-POP  11 G-POP  10 G-POP  6 G-POP  7 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
       8 9 7 6 10 11 12 LINUX-SPAWN
@@ -657,14 +716,14 @@ s" spawn-darwin-finish" s" n n --" TRUST
    THEN
    SPAWN-DARWIN-FRAME4-ENTER
    4 SPAWN-DARWIN-ACTIONS-RESET
-   6 spdn SPAWN-CHDIR-ACTION
+   6 BSP-DN @ SPAWN-CHDIR-ACTION
    SPAWN-DARWIN-STDIO-ACTIONS
    SPAWN-DARWIN-ZERO-ADESC
    SPAWN-DARWIN-FILL-ADESC
    8 SPAWN-DARWIN-PID-PATH
    SPAWN-DARWIN-USE-ADESC
    9 7 SPAWN-DARWIN-ARGV-ENVP
-   spok spdn SPAWN-DARWIN-FINISH
+   BSP-OK @ BSP-DN @ SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME4-LEAVE ;
 
 : BCPFETCH    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
@@ -1028,6 +1087,9 @@ s" linux-stat-fix" s" n --" TRUST
    3 G-POP  2 G-POP  1 G-POP  0 G-POP
    NR-GETDIRENTRIES64 SYS,  SYS-PUSH ;
 
+: C-FLUSH-X9-LINE ( -- )
+   9 DCCVAU,  DSB-ISH,  9 ICIVAU,  DSB-ISH,  ISB, ;
+
 : BPATCH32                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
@@ -1035,7 +1097,7 @@ s" linux-stat-fix" s" n --" TRUST
    2 3 MOVZ,  LPROT @ BL,
    9 SP 8 LDR,  10 SP 16 LDR,  10 9 0 STRW,
    2 5 MOVZ,  LPROT @ BL,
-   9 SP 8 LDR,  LFLUSH @ BL,
+   9 SP 8 LDR,  C-FLUSH-X9-LINE
    SP SP 32 ADDI, ;
 
 : BCLOSE  0 G-POP  NR-CLOSE SYS, ;

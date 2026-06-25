@@ -85,6 +85,7 @@ $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 $37D0 constant EVALD-CELL  \ evaluate nesting depth (0 = top-level REPL/batch; gates the nested paths)
 $37D8 constant EVALERR-CELL \ result of the last evaluate: 0 = clean, 1 = recovered from an error
 $37E0 constant LMAINP-CELL  \ runtime addr of the interpret loop top (EM-STARTUP stores it; B-EVAL branches there)
+$37F8 constant SNAP-CELL    \ nonzero after snapshot restore; source setup skips cold prefix reload
 $600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
                            \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
@@ -447,6 +448,9 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
+: C-FLUSH-X9-LINE ( -- )
+   9 DCCVAU,  DSB-ISH,  9 ICIVAU,  DSB-ISH,  ISB, ;
+
 : BPATCH32 ( -- )                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
@@ -454,7 +458,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    2 3 MOVZ,  LPROT @ BL,
    9 SP 8 LDR,  10 SP 16 LDR,  10 9 0 STRW,
    2 5 MOVZ,  LPROT @ BL,
-   9 SP 8 LDR,  LFLUSH @ BL,
+   9 SP 8 LDR,  C-FLUSH-X9-LINE
    SP SP 32 ADDI, ;
 
 : BCLOSE ( -- )  0 G-POP  NR-CLOSE SYS, ;                               \ ( fd -- )
@@ -1119,6 +1123,13 @@ create ZBYTE 0 c,
    PFX-TARGET-OK
    ['] PFX-LOAD-ROW PFX-FILES ;
 
+: EMIT-COLD-PREFIX ( -- )
+   LBL {: done :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   EMIT-HOST-LOAD-PREFIX
+   done LBL, ;
+
 : C-EMIT-TTY-PROBE ( -- )
    0 0 MOVZ,
    HB-TARGET-LINUX? if 1 $5401 LIT64, else
@@ -1181,7 +1192,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-STDINPROG @ LBL,
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
-   EMIT-HOST-LOAD-PREFIX
+   EMIT-COLD-PREFIX
    17 9 0 ADDI,
    SRC-RL @ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
@@ -1223,10 +1234,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-SOURCE-FILE-PREFIX ( -- )
    SRC-FPLAIN @ C-ARG--LOAD?
    14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
-   EMIT-HOST-LOAD-PREFIX
+   EMIT-COLD-PREFIX
    C-SOURCE-FIND-SEP
    SRC-FPLAIN @ LBL,
-   EMIT-HOST-LOAD-PREFIX
+   EMIT-COLD-PREFIX
    SRC-FREADY @ LBL, ;
 
 : C-SOURCE-APPEND-ARG ( -- )
@@ -1280,7 +1291,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-SOURCE-BAKED ( -- )
    SRC-BFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
-   EMIT-HOST-LOAD-PREFIX
+   EMIT-COLD-PREFIX
    17 9 0 ADDI,
    12 LSRC @ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
    SRC-BLOOP @ LBL,
@@ -2314,12 +2325,14 @@ variable CFSK2
    EMIT-SNAPSHOT-REBASE-CALLS
    EMIT-SNAPSHOT-RX-FLUSH
    24 1 MOVZ,
+   24 DATA SNAP-CELL STR,
    snomag LBL, ;
 
 : EMIT-STARTUP-RUNTIME-STATE ( -- )
    LBL {: cwok :}
    9 0 MOVZ,  9 DATA HND-CELL STR,
-   24 cwok CBNZ,
+   9 DATA SNAP-CELL LDR,
+   9 cwok CBNZ,
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 1 MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,

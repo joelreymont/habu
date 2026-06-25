@@ -26,6 +26,12 @@ variable GDB-PATH2-U
 : GDB-SNAP0$ ( -- ptr u8 n )
    GDB-PATH1$ ;
 
+: GDB-SNAP-RUN! ( -- )
+   s" hb-snap-run" GDB-PATH2! ;
+
+: GDB-SNAP-RUN$ ( -- ptr u8 n )
+   GDB-PATH2$ ;
+
 : GDB-REMOVE-FILE? ( ptr u8 n -- ) {: path:ptr pathu :}
    path pathu FILE? if path pathu REMOVE-FILE then ;
 
@@ -61,8 +67,9 @@ variable GDB-PATH2-U
    GE-SRC-RESET
    GDB-SNAP-SRC+
    s" HB_TMP isolation" GDB-SNAPSHOT-RUN
-   GDB-SNAP0$ s" bin/hb" PROMOTE-SIGNED-EXECUTABLE
-   GE-CLEAN-BIN ;
+   GDB-SNAP-RUN!
+   GDB-SNAP-RUN$ GDB-REMOVE-FILE?
+   GDB-SNAP0$ GDB-SNAP-RUN$ PROMOTE-SIGNED-EXECUTABLE ;
 
 : GDB-HOOK-SOURCE ( -- )
    GE-SRC-RESET
@@ -70,10 +77,14 @@ variable GDB-PATH2-U
    s" : SQOK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
    s" 7 SQOK ." GE-SRC-LINE ;
 
+: GDB-SNAP-STDIN ( ptr u8 n -- ) {: label:ptr labelu :}
+   GDB-SNAP-RUN$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   label labelu GE-EXPECT-OK ;
+
 : GDB-HOOK-CHECK ( -- )
    GE-HB-RESET
    GDB-HOOK-SOURCE
-   s" hb refresh/check hook" GE-HB-RUN-STDIN
+   s" hb refresh/check hook" GDB-SNAP-STDIN
    SB-RESET
    s" 0" GE-OUT-LINE
    s" 49" GE-OUT-LINE
@@ -86,8 +97,7 @@ variable GDB-PATH2-U
 : GDB-LONG-LOOKUP ( -- )
    GE-HB-RESET
    GDB-LONG-LOOKUP-SOURCE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   s" long-name snapshot dictionary lookup" GE-EXPECT-OK
+   s" long-name snapshot dictionary lookup" GDB-SNAP-STDIN
    SB-RESET
    s" 42" GE-OUT-LINE
    SB$ s" long-name snapshot dictionary lookup output" GE-EXPECT-OUT ;

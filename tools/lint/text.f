@@ -24,7 +24,7 @@ variable RFD  variable RGOT  variable RLEN
 : LINT-NOT ( bool -- bool )
    IF LINT-FALSE ELSE LINT-TRUE THEN ;
 
-: PATHZ ( ptr u8 n -- ) {: a:ptr u :}
+: LINT-PATHZ ( ptr u8 n -- ) {: a:ptr u :}
    u 1+ 1024 > IF s" lint: path too long" 1 die THEN
    0 begin dup u < while
       dup a + c@ over PATHBUF + c!
@@ -33,7 +33,7 @@ variable RFD  variable RGOT  variable RLEN
    0 u PATHBUF + c! ;
 
 : READ-FILE ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u buf:ptr cap :}
-   a u PATHZ
+   a u LINT-PATHZ
    PATHBUF 0 0 open  RFD !
    RFD @ 0 < IF s" lint: cannot open file" 1 die THEN
    0 RLEN !
@@ -74,18 +74,18 @@ variable RFD  variable RGOT  variable RLEN
 : BMOVE ( ptr u8 ptr u8 n -- ) {: a:ptr dst:ptr u :}
    0 begin dup u < while  dup a + c@  over dst + c!  1+  repeat  drop ;
 
-: FOLD ( n -- n )
+: LINT-FOLD ( n -- n )
    dup 64 > over 91 < and IF 32 + THEN ;
 
 : STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    u v <> IF LINT-FALSE exit THEN
    0 begin dup u < while
-      dup a + c@ FOLD over b + c@ FOLD <> IF drop LINT-FALSE exit THEN
+      dup a + c@ LINT-FOLD over b + c@ LINT-FOLD <> IF drop LINT-FALSE exit THEN
       1+
    repeat drop LINT-TRUE ;
 
 : FOLD-TO ( ptr u8 n ptr u8 -- ) {: a:ptr u dst:ptr :}
-   0 begin dup u < while  dup a + c@ FOLD  over dst + c!  1+  repeat  drop ;
+   0 begin dup u < while  dup a + c@ LINT-FOLD  over dst + c!  1+  repeat  drop ;
 
 \ ---- bounded string helpers for source tools ------------------------------
 13 constant LINT-CR

@@ -1,5 +1,5 @@
 \ stale-status-lint-test.f - checked fixtures for tools/stale-status-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/stale-status-lint-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f tools/stale-status-lint-test.f
 
 4096 constant SST-CAP
 1050 constant SST-LONG-LINES
@@ -9,11 +9,15 @@ variable SST-ROOT-U
 variable SST-STATUS-U
 variable SST-LESSONS-U
 variable SST-README-U
+variable SST-JJ-U
+variable SST-JJ-DIR-U
 
 create SST-ROOT-BUF FS-PATH-CAP allot
 create SST-STATUS-BUF FS-PATH-CAP allot
 create SST-LESSONS-BUF FS-PATH-CAP allot
 create SST-README-BUF FS-PATH-CAP allot
+create SST-JJ-BUF FS-PATH-CAP allot
+create SST-JJ-DIR-BUF FS-PATH-CAP allot
 create SST-OUT SST-CAP allot
 create SST-ERR SST-CAP allot
 
@@ -36,6 +40,12 @@ create SST-ERR SST-CAP allot
 
 : SST-README ( -- ptr u8 n )
    SST-README-BUF SST-README-U @ ;
+
+: SST-JJ ( -- ptr u8 n )
+   SST-JJ-BUF SST-JJ-U @ ;
+
+: SST-JJ-DIR ( -- ptr u8 n )
+   SST-JJ-DIR-BUF SST-JJ-DIR-U @ ;
 
 : SST-LF ( -- )
    SST-LF-C SB-APPEND-C ;
@@ -135,10 +145,17 @@ create SST-ERR SST-CAP allot
    SST-ROOT s" STATUS.md" SST-STATUS-BUF SST-STATUS-U SST-PATH!
    SST-ROOT s" LESSONS.md" SST-LESSONS-BUF SST-LESSONS-U SST-PATH!
    SST-ROOT s" README.md" SST-README-BUF SST-README-U SST-PATH!
+   SST-ROOT s" .jj-ws/master-test" SST-JJ-DIR-BUF SST-JJ-DIR-U SST-PATH!
+   SST-ROOT s" .jj-ws/master-test/STATUS.md" SST-JJ-BUF SST-JJ-U SST-PATH!
    SST-RESET-FILES ;
 
 : SST-ARGV ( ptr u8 n -- ) {: today:ptr todayu :}
    PROC-ARGV-RESET
+   s" tools/stale-status-lint.f" WR-TOOLS-LOAD if
+      SST-ROOT  >LEN PROC-ARGV+
+      today todayu  >LEN PROC-ARGV+
+      exit
+   then
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -156,7 +173,7 @@ create SST-ERR SST-CAP allot
 
 : SST-RUN ( ptr u8 n -- n n n )
    SST-ARGV
-   s" bin/hb"  >LEN SST-OUT SST-CAP >LEN SST-ERR SST-CAP >LEN
+   WR-TOOLS$  >LEN SST-OUT SST-CAP >LEN SST-ERR SST-CAP >LEN
    1000 >MS RUN-ARGV-CAPTURE SST-CAPTURE>N ;
 
 : SST-RUN-DEFAULT ( -- n n n )
@@ -241,6 +258,12 @@ create SST-ERR SST-CAP allot
    SST-WRITE-LONG-README
    SST-EXPECT-OK ;
 
+: SST-TEST-SKIP-JJ-WS ( -- )
+   SST-RESET-FILES
+   SST-JJ-DIR MAKE-DIRS
+   SST-JJ s" 890 certified" WRITE-ALL
+   SST-EXPECT-OK ;
+
 : SST-MAIN ( -- )
    T-RESET
    SST-PREPARE
@@ -257,6 +280,7 @@ create SST-ERR SST-CAP allot
    SST-TEST-PARTIAL-RATIO
    SST-TEST-FENCED-COUNTS
    SST-TEST-LONG-MARKDOWN
+   SST-TEST-SKIP-JJ-WS
    CLEANUP-RUN
    SST-ROOT EXISTS? TFALSE
    T-REPORT

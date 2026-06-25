@@ -2,8 +2,16 @@
 \
 \ Load after test/gate-common.f.
 
+64 constant GDX-USAGE-RC
+
 create GDX-PATH-BUF FS-PATH-CAP allot
 variable GDX-PATH-U
+
+: GDX-USAGE ( -- )
+   s" usage: test/gate-diagnostics.f [warm|diag-repair|diag-undef-primary|diag-all-strict|diag-file-unsafe]" GDX-USAGE-RC die ;
+
+: GDX-ARG0= ( ptr u8 n -- bool )
+   0 SCRIPT-ARGV$ STR= ;
 
 : GDX-J-DQ ( -- )
    GE-DQ SB-APPEND-C ;
@@ -95,21 +103,21 @@ variable GDX-PATH-U
 : GDX-CHECK-JSON ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
    s" --json-errors"  >LEN PROC-ARGV+
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-JSON-ALL ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
    s" --json-errors"  >LEN PROC-ARGV+
    s" --all-errors"  >LEN PROC-ARGV+
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-FILE-JSON ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu label:ptr labelu :}
    GE-CHECK-ARGV
    s" --json-errors"  >LEN PROC-ARGV+
    file fileu GDX-PATH-ARGV+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-CHECK-EXE GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-FILE-JSON-ALL ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu label:ptr labelu :}
@@ -117,7 +125,7 @@ variable GDX-PATH-U
    s" --json-errors"  >LEN PROC-ARGV+
    s" --all-errors"  >LEN PROC-ARGV+
    file fileu GDX-PATH-ARGV+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-CHECK-EXE GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-FILE-STRICT-JSON ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu label:ptr labelu :}
@@ -125,20 +133,20 @@ variable GDX-PATH-U
    s" --strict-signatures"  >LEN PROC-ARGV+
    s" --json-errors"  >LEN PROC-ARGV+
    file fileu GDX-PATH-ARGV+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-CHECK-EXE GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-STRICT ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
    s" --strict-signatures"  >LEN PROC-ARGV+
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-STRICT-JSON ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
    s" --strict-signatures"  >LEN PROC-ARGV+
    s" --json-errors"  >LEN PROC-ARGV+
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-JSON-FIELDS ( -- )
@@ -335,7 +343,44 @@ variable GDX-PATH-U
    s" trust-lint accepted stale audit dates" GE-EXPECT-NONZERO
    s" STALE-AUDIT" s" trust-lint stale audit diagnostic" GE-EXPECT-OUT-HAS ;
 
-: GDX-MAIN ( -- )
+: GDX-WARM ( -- )
+   s" hb-gate-diagnostics-warm" GT-START
+   GE-CHECK-WARM
+   GT-CLEANUP
+   s" PASS: native checker warm image gate phase" type cr ;
+
+: GDX-REPAIR-SLICE ( -- )
+   s" hb-gate-diagnostics-repair" GT-START
+   GDX-REPAIR-CLASSES
+   GDX-PUBLIC-SIGNATURES
+   GDX-TRUST-LINT-STALE
+   GT-CLEANUP
+   s" PASS: native checker diagnostics repair slice" type cr ;
+
+: GDX-UNDEF-PRIMARY-SLICE ( -- )
+   s" hb-gate-diagnostics-undef-primary" GT-START
+   GDX-UNDEFINED-RECURSIVE
+   GDX-PRIMARY-JSON
+   GT-CLEANUP
+   s" PASS: native checker diagnostics undef-primary slice" type cr ;
+
+: GDX-ALL-STRICT-SLICE ( -- )
+   s" hb-gate-diagnostics-all-strict" GT-START
+   GDX-ALL-ERRORS
+   GDX-SARIF
+   GDX-STRICT-SIGNATURES
+   GDX-LOAD-FAIL-CLOSED
+   GT-CLEANUP
+   s" PASS: native checker diagnostics all-strict slice" type cr ;
+
+: GDX-FILE-UNSAFE-SLICE ( -- )
+   s" hb-gate-diagnostics-file-unsafe" GT-START
+   GDX-FILE-ORIGIN
+   GDX-UNSAFE-CHECKS
+   GT-CLEANUP
+   s" PASS: native checker diagnostics file-unsafe slice" type cr ;
+
+: GDX-SERIAL ( -- )
    s" hb-gate-diagnostics" GT-START
    GDX-PRIMARY-JSON
    GDX-REPAIR-CLASSES
@@ -351,4 +396,14 @@ variable GDX-PATH-U
    GT-CLEANUP
    s" PASS: native checker diagnostics gate phase" type cr ;
 
-GDX-MAIN
+: GDX-DISPATCH ( -- )
+   SCRIPT-ARGC 0= if GDX-SERIAL exit then
+   SCRIPT-ARGC 1 <> if GDX-USAGE then
+   s" warm" GDX-ARG0= if GDX-WARM exit then
+   s" diag-repair" GDX-ARG0= if GDX-REPAIR-SLICE exit then
+   s" diag-undef-primary" GDX-ARG0= if GDX-UNDEF-PRIMARY-SLICE exit then
+   s" diag-all-strict" GDX-ARG0= if GDX-ALL-STRICT-SLICE exit then
+   s" diag-file-unsafe" GDX-ARG0= if GDX-FILE-UNSAFE-SLICE exit then
+   GDX-USAGE ;
+
+GDX-DISPATCH

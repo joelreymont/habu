@@ -1,6 +1,7 @@
 \ public-signatures-test.f - checked fixtures for tools/public-signatures.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/public-signatures-test.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ tools/public-signatures-test.f
 
 8192 constant PST-BUF-CAP
 
@@ -37,6 +38,7 @@ create PST-ERR PST-BUF-CAP allot
    s" : CAPS ( i64 [ i64 -- i64 ] -- i64 ) execute ;" SB-APPEND PST-LF
    s" : Mixed ( i64 -- i64 ) dup ;" SB-APPEND PST-LF
    s" : 1+ ( i64 -- i64 ) 1 + ;" SB-APPEND PST-LF
+   s" 99 constant KFIX" SB-APPEND PST-LF
    s" : BAD ( i64 ) dup ;" SB-APPEND PST-LF
    115 SB-APPEND-C PST-DQ s"  : STRINGED ( i64 -- i64 ) dup ;" SB-APPEND PST-DQ PST-LF
    s" ( : COMMENTED ( i64 -- i64 ) dup ; )" SB-APPEND PST-LF
@@ -78,7 +80,7 @@ create PST-ERR PST-BUF-CAP allot
    SB$ ;
 
 : PST-USAGE$ ( -- ptr u8 n )
-   s" usage: tools/public-signatures.f file ..." ;
+   s" usage: tools/public-signatures.f [--trust] file ..." ;
 
 : PST-PREPARE ( -- )
    CLEANUP-RESET
@@ -94,6 +96,7 @@ create PST-ERR PST-BUF-CAP allot
 
 : PST-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
+   s" tools/public-signatures.f" WR-TOOLS-LOAD if exit then
    s" --load" PST-ARG+
    s" lib/errors.f" PST-ARG+
    s" lib/memory.f" PST-ARG+
@@ -111,12 +114,19 @@ create PST-ERR PST-BUF-CAP allot
 : PST-RUN ( ptr u8 n -- n n n ) {: a:ptr u :}
    PST-ARGV-LOAD
    a u PST-ARG+
-   s" bin/hb"  >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
+   WR-TOOLS$  >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
    1000 >MS RUN-ARGV-CAPTURE PST-CAPTURE>N ;
 
 : PST-RUN-NOARG ( -- n n n )
    PST-ARGV-LOAD
-   s" bin/hb"  >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
+   WR-TOOLS$  >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
+   1000 >MS RUN-ARGV-CAPTURE PST-CAPTURE>N ;
+
+: PST-RUN-TRUST ( ptr u8 n -- n n n ) {: a:ptr u :}
+   PST-ARGV-LOAD
+   s" --trust" PST-ARG+
+   a u PST-ARG+
+   WR-TOOLS$  >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
    1000 >MS RUN-ARGV-CAPTURE PST-CAPTURE>N ;
 
 : PST-TEST-GOOD ( -- )
@@ -142,6 +152,39 @@ create PST-ERR PST-BUF-CAP allot
    PST-OUT outu s" MIXED" PST-WORD$ CONTAINS? TFALSE
    PST-OUT outu s" BAD" PST-WORD$ CONTAINS? TFALSE ;
 
+: PST-SQ ( ptr u8 n -- ) {: a:ptr u :}
+   115 SB-APPEND-C
+   PST-DQ
+   STR-SPACE SB-APPEND-C
+   a u SB-APPEND
+   PST-DQ ;
+
+: PST-TRUST$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: wa:ptr wu sa:ptr su :}
+   SB-RESET
+   wa wu PST-SQ
+   STR-SPACE SB-APPEND-C
+   sa su PST-SQ
+   s"  TRUST" SB-APPEND
+   SB$ ;
+
+: PST-TRUST-LOWER$ ( -- ptr u8 n )
+   s" LOWER" s" x -- x" PST-TRUST$ ;
+
+: PST-TRUST-CAPS$ ( -- ptr u8 n )
+   s" CAPS" s" i64 [ i64 -- i64 ] -- i64" PST-TRUST$ ;
+
+: PST-TRUST-KFIX$ ( -- ptr u8 n )
+   s" KFIX" s" -- a" PST-TRUST$ ;
+
+: PST-TEST-TRUST ( -- )
+   PST-FIX PST-RUN-TRUST 0 T=
+   {: outu erru :}
+   erru 0 T=
+   PST-OUT outu PST-TRUST-LOWER$ CONTAINS? TTRUE
+   PST-OUT outu PST-TRUST-CAPS$ CONTAINS? TTRUE
+   PST-OUT outu PST-TRUST-KFIX$ CONTAINS? TTRUE
+   PST-OUT outu s" MIXED" CONTAINS? TFALSE ;
+
 : PST-TEST-NOARG ( -- )
    PST-RUN-NOARG 64 T=
    {: outu erru :}
@@ -153,6 +196,7 @@ create PST-ERR PST-BUF-CAP allot
    PST-PREPARE
    PST-TEST-GOOD
    PST-TEST-FIXTURE
+   PST-TEST-TRUST
    PST-TEST-NOARG
    CLEANUP-RUN
    PST-ROOT EXISTS? TFALSE

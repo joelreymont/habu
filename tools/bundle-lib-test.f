@@ -1,6 +1,7 @@
 \ bundle-lib-test.f - checked fixtures for tools/bundle-lib.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/bundle-lib-test.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ tools/bundle-lib-test.f
 
 8192 constant BLTT-BUF-CAP
 $20000 constant BLTT-BUNDLE-CAP
@@ -95,6 +96,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 
 : BLTT-ARGV-TOOL ( -- )
    PROC-ARGV-RESET
+   s" tools/bundle-lib.f" WR-TOOLS-LOAD if exit then
    s" --load" BLTT-ARG+
    s" lib/errors.f" BLTT-ARG+
    s" lib/string.f" BLTT-ARG+
@@ -120,26 +122,31 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-ERR BLTT-BUF-CAP >LEN 1000 >MS
    RUN-ARGV-CAPTURE BLTT-CAPTURE>N ;
 
+: BLTT-TOOL-CAPTURE ( -- n n n )
+   WR-TOOLS$  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
+   BLTT-ERR BLTT-BUF-CAP >LEN 1000 >MS
+   RUN-ARGV-CAPTURE BLTT-CAPTURE>N ;
+
 : BLTT-RUN-MISSING-MODULE ( -- n n n )
    BLTT-ARGV-ERRORS
    s" missing-module" BLTT-ARG+
    s" --" BLTT-ARG+
    BLTT-DRIVER BLTT-ARG+
-   BLTT-HB-CAPTURE ;
+   BLTT-TOOL-CAPTURE ;
 
 : BLTT-RUN-MISSING-SCRIPT ( -- n n n )
    BLTT-ARGV-ERRORS
    s" array" BLTT-ARG+
    s" --" BLTT-ARG+
    BLTT-MISSING BLTT-ARG+
-   BLTT-HB-CAPTURE ;
+   BLTT-TOOL-CAPTURE ;
 
 : BLTT-RUN-BUNDLE-LIB ( -- n n n )
    BLTT-ARGV-ERRORS
    s" array" BLTT-ARG+
    s" --" BLTT-ARG+
    BLTT-DRIVER BLTT-ARG+
-   BLTT-HB-CAPTURE ;
+   BLTT-TOOL-CAPTURE ;
 
 : BLTT-RUN-BUNDLE ( -- n n n )
    PROC-ARGV-RESET

@@ -63,11 +63,13 @@ bin/hb --load lib/errors.f \
 ```sh
 bin/hb --load lib/errors.f \
   lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f \
-  lib/process-env.f lib/test-runner.f test/run.f
+  lib/process-env.f lib/test-runner.f test/gate-pool.f test/run.f
                        # default gate: habu-native, no gforth
 ```
 
-The default gate is the native platform-port gate. It must pass on the target
+The default gate is the native platform-port gate. It runs as a checked bounded
+DAG pool with private `HB_TMP` roots and temporary warm images; current verified
+timing is recorded in [`STATUS.md`](STATUS.md). It must pass on the target
 machine and does not run LLM benchmark fixtures or require JavaScript, Rust,
 TypeScript, or model runtimes. LLM benchmark checks are separate benchmark-host
 work; on the Mac benchmark machine, run:

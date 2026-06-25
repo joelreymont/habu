@@ -1,6 +1,7 @@
 \ signature-lint-test.f - checked fixtures for tools/signature-lint.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/signature-lint-test.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ tools/signature-lint-test.f
 
 4096 constant SLT-BUF-CAP
 
@@ -123,6 +124,7 @@ create SLT-ERR SLT-BUF-CAP allot
 
 : SLT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
+   s" tools/signature-lint.f" WR-TOOLS-LOAD if exit then
    s" --load" SLT-ARG+
    s" lib/errors.f" SLT-ARG+
    s" lib/memory.f" SLT-ARG+
@@ -143,14 +145,14 @@ create SLT-ERR SLT-BUF-CAP allot
 : SLT-RUN ( ptr u8 n -- n n n ) {: a:ptr u :}
    SLT-ARGV-LOAD
    a u SLT-ARG+
-   s" bin/hb" >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    SLT-CAPTURE>N ;
 
 : SLT-RUN-JSON ( ptr u8 n -- n n n ) {: a:ptr u :}
    SLT-ARGV-LOAD
    s" --json" SLT-ARG+
    a u SLT-ARG+
-   s" bin/hb" >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    SLT-CAPTURE>N ;
 
 : SLT-RUN-JSON-LABEL ( ptr u8 n -- n n n ) {: a:ptr u :}
@@ -159,7 +161,7 @@ create SLT-ERR SLT-BUF-CAP allot
    s" --label" SLT-ARG+
    s" <stdin>" SLT-ARG+
    a u SLT-ARG+
-   s" bin/hb" >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    SLT-CAPTURE>N ;
 
 : SLT-TEST-GOOD ( -- )

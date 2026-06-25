@@ -1,6 +1,7 @@
 \ check-all-errors-test.f - checked fixtures for tools/check-all-errors.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-all-errors-test.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ tools/check-all-errors-test.f
 
 4096 constant CAE-BUF-CAP
 1400 constant CAE-LARGE-LINES
@@ -192,8 +193,9 @@ create CAE-LF-BYTE 10 c,
 : CAE-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-: CAE-RUN ( -- n n n )
+: CAE-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
+   s" tools/check-all-errors.f" WR-TOOLS-LOAD if exit then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
@@ -208,37 +210,26 @@ create CAE-LF-BYTE 10 c,
    s" tools/check-all-errors-core.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/check-all-errors.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
+
+: CAE-ARGV-CHECK ( ptr u8 n -- ) {: file:ptr fileu :}
+   CAE-ARGV-LOAD
    s" --json-errors"  >LEN PROC-ARGV+
    s" --label"  >LEN PROC-ARGV+
-   CAE-IN  >LEN PROC-ARGV+
-   CAE-IN  >LEN PROC-ARGV+
-   s" bin/hb" >LEN CAE-OUT CAE-BUF-CAP >LEN CAE-ERR CAE-BUF-CAP >LEN 2000 >MS RUN-ARGV-CAPTURE
+   file fileu  >LEN PROC-ARGV+
+   file fileu  >LEN PROC-ARGV+ ;
+
+: CAE-HB-CAPTURE ( -- n n n )
+   WR-TOOLS$ >LEN CAE-OUT CAE-BUF-CAP >LEN CAE-ERR CAE-BUF-CAP >LEN 2000 >MS RUN-ARGV-CAPTURE
    CAE-CAPTURE>N ;
 
+: CAE-RUN ( -- n n n )
+   CAE-IN CAE-ARGV-CHECK
+   CAE-HB-CAPTURE ;
+
 : CAE-RUN-LARGE ( -- n n n )
-   PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
-   s" tools/check-all-errors-core.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/check-all-errors.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   s" --json-errors"  >LEN PROC-ARGV+
-   s" --label"  >LEN PROC-ARGV+
-   CAE-LARGE  >LEN PROC-ARGV+
-   CAE-LARGE  >LEN PROC-ARGV+
-   s" bin/hb" >LEN CAE-OUT CAE-BUF-CAP >LEN CAE-ERR CAE-BUF-CAP >LEN 2000 >MS RUN-ARGV-CAPTURE
-   CAE-CAPTURE>N ;
+   CAE-LARGE CAE-ARGV-CHECK
+   CAE-HB-CAPTURE ;
 
 : CAE-TEST-SUPPORT-SOURCE ( -- )
    CAE-IN CAE-SUPPORT-SOURCE$ WRITE-ALL

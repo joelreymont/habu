@@ -104,6 +104,13 @@ create CRHT-ERR CRHT-BUF-CAP allot
 
 : CRHT-CHECK-ARGS ( ptr u8 n -- ) {: label:ptr labelu :}
    PROC-ARGV-RESET
+   s" tools/check-all-errors.f" WR-TOOLS-LOAD if
+      s" --json-errors"  >LEN PROC-ARGV+
+      s" --label"  >LEN PROC-ARGV+
+      label labelu  >LEN PROC-ARGV+
+      CRHT-SRC  >LEN PROC-ARGV+
+      exit
+   then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
@@ -129,12 +136,13 @@ create CRHT-ERR CRHT-BUF-CAP allot
 
 : CRHT-RUN-CHECK ( ptr u8 n -- n n n )
    CRHT-CHECK-ARGS
-   s" bin/hb" >LEN CRHT-OUT CRHT-BUF-CAP >LEN
+   WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
    CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
 
 : CRHT-ASSERT-ARGS ( -- )
    PROC-ARGV-RESET
+   s" tools/gate-json-assert.f" WR-TOOLS-LOAD if exit then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
@@ -146,7 +154,7 @@ create CRHT-ERR CRHT-BUF-CAP allot
    CRHT-ASSERT-ARGS
    s" json-one-schema"  >LEN PROC-ARGV+
    CRHT-DIAG  >LEN PROC-ARGV+
-   s" bin/hb" >LEN CRHT-OUT CRHT-BUF-CAP >LEN
+   WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
    CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
 
@@ -155,7 +163,7 @@ create CRHT-ERR CRHT-BUF-CAP allot
    s" diag-repair-class"  >LEN PROC-ARGV+
    CRHT-DIAG  >LEN PROC-ARGV+
    class classu  >LEN PROC-ARGV+
-   s" bin/hb" >LEN CRHT-OUT CRHT-BUF-CAP >LEN
+   WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
    CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
 
@@ -165,7 +173,7 @@ create CRHT-ERR CRHT-BUF-CAP allot
    CRHT-DIAG  >LEN PROC-ARGV+
    exp expu  >LEN PROC-ARGV+
    act actu  >LEN PROC-ARGV+
-   s" bin/hb" >LEN CRHT-OUT CRHT-BUF-CAP >LEN
+   WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
    CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
 
@@ -178,7 +186,7 @@ create CRHT-ERR CRHT-BUF-CAP allot
    exp expu  >LEN PROC-ARGV+
    act actu  >LEN PROC-ARGV+
    class classu  >LEN PROC-ARGV+
-   s" bin/hb" >LEN CRHT-OUT CRHT-BUF-CAP >LEN
+   WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
    CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
 

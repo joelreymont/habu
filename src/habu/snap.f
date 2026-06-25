@@ -54,7 +54,8 @@ s" SDB@" s" -- ptr u8" TRUST
    SFD @ data-base SDL @ DRV-WALL
    SFD @ TRL 40 DRV-WALL
    SFD @  SFTS @ CODE-OFF - SNL @ -  WPAD
-   SFD @ close ;
+   SFD @ close
+   DRV-EXIT-OK ;
 
 \ Freeze the verify-on-definition hook into the emitted image: hb is fully
 \ loaded, so a typed def in its REPL is checked against its sig.
@@ -63,4 +64,5 @@ TRUSTED: SNAP-CHECK-HOOK ( ptr u8 n -- n )
 TRUSTED: SNAP-INSTALL-HOOK ( -- )
    ['] SNAP-CHECK-HOOK set-check ;
 SNAP-INSTALL-HOOK
+CHECKER-SNAPSHOT-PREPARE
 SNAPGO

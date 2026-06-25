@@ -1,5 +1,5 @@
 \ trust-lint-test.f - checked fixtures for tools/trust-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/trust-lint-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f tools/trust-lint-test.f
 
 8192 constant TLT-CAP
 10 constant TLT-LF
@@ -179,6 +179,11 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-ARGV ( ptr u8 n -- ) {: today:ptr todayu :}
    PROC-ARGV-RESET
+   s" tools/trust-lint.f" WR-TOOLS-LOAD if
+      TLT-CASE  >LEN PROC-ARGV+
+      today todayu  >LEN PROC-ARGV+
+      exit
+   then
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -194,6 +199,13 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-SOURCE-ARGV ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu today:ptr todayu :}
    PROC-ARGV-RESET
+   s" tools/trust-lint.f" WR-TOOLS-LOAD if
+      s" source-only"  >LEN PROC-ARGV+
+      src srcu  >LEN PROC-ARGV+
+      TLT-CASE  >LEN PROC-ARGV+
+      today todayu  >LEN PROC-ARGV+
+      exit
+   then
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -211,6 +223,14 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-SOURCE-LIST-ARGV ( ptr u8 n -- ) {: today:ptr todayu :}
    PROC-ARGV-RESET
+   s" tools/trust-lint.f" WR-TOOLS-LOAD if
+      s" source-list"  >LEN PROC-ARGV+
+      TLT-CASE  >LEN PROC-ARGV+
+      today todayu  >LEN PROC-ARGV+
+      TLT-SRC-TRUST  >LEN PROC-ARGV+
+      TLT-LIB-TRUST  >LEN PROC-ARGV+
+      exit
+   then
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -232,7 +252,7 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-RUN ( ptr u8 n -- n n n )
    TLT-ARGV
-   s" bin/hb"  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
+   WR-TOOLS$  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
    1000 >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
 
 : TLT-RUN-DEFAULT ( -- n n n )
@@ -240,12 +260,12 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-RUN-SOURCE ( ptr u8 n -- n n n )
    s" 2026-06-16" TLT-SOURCE-ARGV
-   s" bin/hb"  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
+   WR-TOOLS$  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
    1000 >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
 
 : TLT-RUN-SOURCE-LIST ( -- n n n )
    s" 2026-06-16" TLT-SOURCE-LIST-ARGV
-   s" bin/hb"  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
+   WR-TOOLS$  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
    1000 >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
 
 : TLT-EXPECT-OK ( n n -- ) {: sites rows :}
