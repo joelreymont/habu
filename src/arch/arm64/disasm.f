@@ -10,6 +10,9 @@ create DTB 0 c, 0 c, 128 c, 255 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 128 c, 210 c, 0
    p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or
    p 4 + c@ 32 lshift or  p 5 + c@ 40 lshift or  p 6 + c@ 48 lshift or  p 7 + c@ 56 lshift or ;
 
+: U32@ ( ptr u8 -- n ) {: p :}
+   p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
+
 : FRD ( n -- n ) {: w :} w 31 and ;
 
 : FRN ( n -- n ) {: w :} w 5 rshift 31 and ;
@@ -24,6 +27,25 @@ create CHB 4 allot
 : EMITC ( n -- ) {: c :} c CHB c! CHB 1 type ;
 
 : SPC ( -- ) 32 EMITC ;
+
+: DTRUE ( -- bool ) 0 0= ;
+
+: DFALSE ( -- bool ) DTRUE 0= ;
+
+: OP? ( n n -- bool ) {: w val :} w $FFC00000 and val = ;
+
+: DLS1 ( n ptr u8 n -- ) {: w name:ptr u :}
+   name u type SPC  w FRD . w FRN . w FI12 . ;
+
+: DLS4 ( n ptr u8 n -- ) {: w name:ptr u :}
+   name u type SPC  w FRD . w FRN . w FI12 4 * . ;
+
+: DLS-SPECIAL ( n -- bool ) {: w :}
+   w $39400000 OP? IF w s" ldrb" DLS1 DTRUE EXIT THEN
+   w $39000000 OP? IF w s" strb" DLS1 DTRUE EXIT THEN
+   w $B9400000 OP? IF w s" ldrw" DLS4 DTRUE EXIT THEN
+   w $B9000000 OP? IF w s" strw" DLS4 DTRUE EXIT THEN
+   DFALSE ;
 
 : DROW-EMIT ( n n -- ) {: w kind :}
    kind 0 = IF w FRD . w FRN . w FRM . THEN
@@ -40,6 +62,7 @@ variable DDONE  variable DRI  variable DRP  variable DMSK  variable DVAL  variab
    DRP 0 ptr-field @ ;
 
 : DIS1 ( n -- ) {: w :}
+   w DLS-SPECIAL IF EXIT THEN
    DTB DRP !
    0 DDONE !
    0 DRI !
@@ -54,6 +77,6 @@ variable DDONE  variable DRI  variable DRP  variable DMSK  variable DVAL  variab
 
 : DISASM ( ptr u8 n -- ) {: a:ptr n :}
    0 BEGIN dup n < WHILE
-      a over 4 * + U64@ 4294967295 and DIS1
+      a over 4 * + U32@ DIS1
       1 +
    REPEAT drop ;

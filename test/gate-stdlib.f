@@ -4,31 +4,31 @@
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and
 \ lib/test-runner.f.
 
-120000 constant GS-TIMEOUT-MS
-64 constant GS-USAGE-RC
-128 constant GS-NAME-CAP
-1024 constant GS-STDIN-CAP
+120000 constant SUITE-TIMEOUT-MS
+64 constant SUITE-USAGE-RC
+128 constant SUITE-NAME-CAP
+1024 constant SUITE-STDIN-CAP
 
-variable GS-DONE
-create GS-LABEL-BUF GS-NAME-CAP allot
-create GS-STDIN-BUF GS-STDIN-CAP allot
-variable GS-LABEL-U
-variable GS-STDIN-U
+variable SUITE-DONE
+create SUITE-LABEL-BUF SUITE-NAME-CAP allot
+create SUITE-STDIN-BUF SUITE-STDIN-CAP allot
+variable SUITE-LABEL-U
+variable SUITE-STDIN-U
 
-: GS-USAGE ( -- )
-   s" usage: test/gate-stdlib.f" GS-USAGE-RC die ;
+: SUITE-USAGE ( -- )
+   s" usage: test/gate-stdlib.f" SUITE-USAGE-RC die ;
 
-: GS-CHECK-ARGS ( -- )
+: SUITE-CHECK-ARGS ( -- )
    SCRIPT-ARGC 0= if exit then
-   GS-USAGE ;
+   SUITE-USAGE ;
 
-: GS-CAPTURE-STORE ( -- )
+: SUITE-CAPTURE-STORE ( -- )
    PROC-OUT-LEN @ LEN>N GT-OUT-U !
    PROC-ERR-LEN @ LEN>N GT-ERR-U !
    PROC-OUTCOME-KIND @ GT-OUTCOME-KIND !
    PROC-OUTCOME-CODE @ GT-OUTCOME-CODE ! ;
 
-: GS-RUN-CAPTURE-LOOP ( ptr u8 n -- ) {: label:ptr labelu :}
+: SUITE-RUN-CAPTURE-LOOP ( ptr u8 n -- ) {: label:ptr labelu :}
    begin PROC-CAPTURE-DONE? 0= while
       GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup COUNT>N 0= if
          drop
@@ -42,7 +42,7 @@ variable GS-STDIN-U
    repeat
    PROC-REAP-CAPTURE ;
 
-: GS-POLL-STDIN-CAPTURE ( ms -- count ) {: ms :}
+: SUITE-POLL-STDIN-CAPTURE ( ms -- count ) {: ms :}
    PROC-OUT-R @ POLLIN 0 >IDX PROC-ARGV-PFD-AT!
    PROC-ERR-R @ POLLIN 1 >IDX PROC-ARGV-PFD-AT!
    PROC-ARGV-IN-W @ FD>N 0 >= if
@@ -54,10 +54,10 @@ variable GS-STDIN-U
    rc 0 < if E-PROC-OUTPUT PROC-ARGV-THROW-CAPTURE then
    rc >COUNT ;
 
-: GS-RUN-STDIN-CAPTURE-LOOP ( ptr u8 len ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
+: SUITE-RUN-STDIN-CAPTURE-LOOP ( ptr u8 len ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
    inu LEN>N 0 <= if PROC-ARGV-IN-W PROC-CLOSE-CELL then
    begin PROC-ARGV-STDIN-CAPTURE-DONE? 0= while
-      GT-PROGRESS-SLICE-MS GS-POLL-STDIN-CAPTURE dup COUNT>N 0= if
+      GT-PROGRESS-SLICE-MS SUITE-POLL-STDIN-CAPTURE dup COUNT>N 0= if
          drop
          PROC-REMAINING-MS MS>N 0 <= if PROC-REAP-CAPTURE-TIMEOUT exit then
          label labelu GT-PROGRESS-WAIT
@@ -70,18 +70,18 @@ variable GS-STDIN-U
    repeat
    PROC-REAP-CAPTURE ;
 
-: GS-RUN-ENV ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu timeout label:ptr labelu :}
+: SUITE-RUN-ENV ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu timeout label:ptr labelu :}
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN PROC-ARGV-CHECK-PATH
    PROC-CAPTURE-RESET
    timeout >MS PROC-CAPTURE-DEADLINE!
    PROC-SETUP-CAPTURE-FDS
    path pathu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-CAPTURE
-   label labelu GS-RUN-CAPTURE-LOOP
+   label labelu SUITE-RUN-CAPTURE-LOOP
    PROC-CLOSE-CAPTURE-FDS
-   GS-CAPTURE-STORE ;
+   SUITE-CAPTURE-STORE ;
 
-: GS-RUN-STDIN ( ptr u8 n ptr u8 n n ptr u8 n -- ) {: path:ptr pathu in:ptr inu timeout label:ptr labelu :}
+: SUITE-RUN-STDIN ( ptr u8 n ptr u8 n n ptr u8 n -- ) {: path:ptr pathu in:ptr inu timeout label:ptr labelu :}
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN PROC-ARGV-CHECK-PATH
    inu 0 < if E-PROC-OUTPUT throw then
@@ -90,119 +90,119 @@ variable GS-STDIN-U
    PROC-SETUP-CAPTURE-FDS
    PROC-ARGV-SETUP-STDIN-FDS
    path pathu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
-   in inu >LEN label labelu GS-RUN-STDIN-CAPTURE-LOOP
+   in inu >LEN label labelu SUITE-RUN-STDIN-CAPTURE-LOOP
    PROC-ARGV-CLOSE-STDIN-FDS
    PROC-CLOSE-CAPTURE-FDS
-   GS-CAPTURE-STORE ;
+   SUITE-CAPTURE-STORE ;
 
-: GS-FAIL ( ptr u8 n -- ) {: label:ptr labelu :}
+: SUITE-FAIL ( ptr u8 n -- ) {: label:ptr labelu :}
    s" FAIL: " type label labelu type cr
    s" rc: " type GT-RC@ . cr
    GT-OUT$ type
    GT-ERR$ type
    s" gate stdlib phase failed" 1 die ;
 
-: GS-EXPECT-OK ( ptr u8 n -- ) {: label:ptr labelu :}
-   GT-RC@ 0 <> if label labelu GS-FAIL then ;
+: SUITE-EXPECT-OK ( ptr u8 n -- ) {: label:ptr labelu :}
+   GT-RC@ 0 <> if label labelu SUITE-FAIL then ;
 
-: GS-ARG+ ( ptr u8 n -- )
+: SUITE-ARG+ ( ptr u8 n -- )
     >LEN PROC-ARGV+ ;
 
-: GS-CHECK-CAP ( n n -- ) {: u cap :}
+: SUITE-CHECK-CAP ( n n -- ) {: u cap :}
    u 0 < if E-STR-BOUNDS throw then
    u cap > if E-STR-CAPACITY throw then ;
 
-: GS-PARSE-NAME ( -- ptr u8 n )
+: SUITE-PARSE-NAME ( -- ptr u8 n )
    parse-name dup 0= if 2drop E-STR-BOUNDS throw then ;
 
-: GS-LABEL! ( ptr u8 n -- ) {: src:ptr u :}
-   u GS-NAME-CAP GS-CHECK-CAP
-   src GS-LABEL-BUF u BYTE-COPY
-   u GS-LABEL-U ! ;
+: SUITE-LABEL! ( ptr u8 n -- ) {: src:ptr u :}
+   u SUITE-NAME-CAP SUITE-CHECK-CAP
+   src SUITE-LABEL-BUF u BYTE-COPY
+   u SUITE-LABEL-U ! ;
 
-: GS-LABEL$ ( -- ptr u8 n )
-   GS-LABEL-BUF GS-LABEL-U @ ;
+: SUITE-LABEL$ ( -- ptr u8 n )
+   SUITE-LABEL-BUF SUITE-LABEL-U @ ;
 
-: GS-STDIN! ( ptr u8 n -- ) {: src:ptr u :}
-   u GS-STDIN-CAP GS-CHECK-CAP
-   src GS-STDIN-BUF u BYTE-COPY
-   u GS-STDIN-U ! ;
+: SUITE-STDIN! ( ptr u8 n -- ) {: src:ptr u :}
+   u SUITE-STDIN-CAP SUITE-CHECK-CAP
+   src SUITE-STDIN-BUF u BYTE-COPY
+   u SUITE-STDIN-U ! ;
 
-: GS-STDIN$ ( -- ptr u8 n )
-   GS-STDIN-BUF GS-STDIN-U @ ;
+: SUITE-STDIN$ ( -- ptr u8 n )
+   SUITE-STDIN-BUF SUITE-STDIN-U @ ;
 
-: GS-PARSE-LABEL ( -- )
-   GS-PARSE-NAME GS-LABEL! ;
+: SUITE-PARSE-LABEL ( -- )
+   SUITE-PARSE-NAME SUITE-LABEL! ;
 
-: GS-PARSE-STDIN ( -- )
-   GS-PARSE-NAME GS-STDIN! ;
+: SUITE-PARSE-STDIN ( -- )
+   SUITE-PARSE-NAME SUITE-STDIN! ;
 
-: GS-END? ( ptr u8 n -- bool )
+: SUITE-END? ( ptr u8 n -- bool )
    s" ;TEST-SUITE" STR= ;
 
-: GS-PARSE-ARGS ( -- )
-   0 GS-DONE !
-   begin GS-DONE @ 0= while
+: SUITE-PARSE-ARGS ( -- )
+   0 SUITE-DONE !
+   begin SUITE-DONE @ 0= while
       parse-name dup 0= if 2drop E-FS-CAPACITY throw then
-      2dup GS-END? if
-         2drop -1 GS-DONE !
+      2dup SUITE-END? if
+         2drop -1 SUITE-DONE !
       else
-         GS-ARG+
+         SUITE-ARG+
       then
    repeat ;
 
-: GS-TARGET-UNKNOWN ( -- )
-   s" gate-stdlib: unknown target" GS-USAGE-RC die ;
+: SUITE-TARGET-UNKNOWN ( -- )
+   s" gate-stdlib: unknown target" SUITE-USAGE-RC die ;
 
-: GS-ARG-TARGET-LAYOUT ( -- )
+: SUITE-ARG-TARGET-LAYOUT ( -- )
    HB-TARGET-LINUX? if
-      s" src/os/linux/layout.f" GS-ARG+
+      s" src/os/linux/layout.f" SUITE-ARG+
       exit
    then
    HB-TARGET-MACOS? if
-      s" src/os/macos/layout.f" GS-ARG+
+      s" src/os/macos/layout.f" SUITE-ARG+
       exit
    then
-   GS-TARGET-UNKNOWN ;
+   SUITE-TARGET-UNKNOWN ;
 
-: GS-HB ( -- )
+: SUITE-HB ( -- )
    PROC-ARGV-RESET
-   s" --load" GS-ARG+ ;
+   s" --load" SUITE-ARG+ ;
 
-: GS-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
+: SUITE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    label labelu GT-PROGRESS-RUN
-   s" bin/hb" GS-TIMEOUT-MS label labelu GS-RUN-ENV
-   label labelu GS-EXPECT-OK
+   s" bin/hb" SUITE-TIMEOUT-MS label labelu SUITE-RUN-ENV
+   label labelu SUITE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
-: GS-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
+: SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
    label labelu GT-PROGRESS-RUN
-   s" bin/hb" in inu GS-TIMEOUT-MS label labelu GS-RUN-STDIN
-   label labelu GS-EXPECT-OK
+   s" bin/hb" in inu SUITE-TIMEOUT-MS label labelu SUITE-RUN-STDIN
+   label labelu SUITE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : TEST-SUITE ( -- )
-   GS-PARSE-LABEL
-   GS-HB
-   GS-PARSE-ARGS
-   GS-LABEL$ GS-HB-RUN ;
+   SUITE-PARSE-LABEL
+   SUITE-HB
+   SUITE-PARSE-ARGS
+   SUITE-LABEL$ SUITE-HB-RUN ;
 
 : TEST-SUITE-STDIN ( -- )
-   GS-PARSE-LABEL
-   GS-PARSE-STDIN
-   GS-HB
-   GS-PARSE-ARGS
-   GS-STDIN$ GS-LABEL$ GS-HB-RUN-STDIN ;
+   SUITE-PARSE-LABEL
+   SUITE-PARSE-STDIN
+   SUITE-HB
+   SUITE-PARSE-ARGS
+   SUITE-STDIN$ SUITE-LABEL$ SUITE-HB-RUN-STDIN ;
 
 : TEST-SUITE-IMGDUMP ( -- )
-   GS-PARSE-LABEL
-   GS-HB
-   GS-ARG-TARGET-LAYOUT
-   GS-PARSE-ARGS
-   GS-LABEL$ GS-HB-RUN ;
+   SUITE-PARSE-LABEL
+   SUITE-HB
+   SUITE-ARG-TARGET-LAYOUT
+   SUITE-PARSE-ARGS
+   SUITE-LABEL$ SUITE-HB-RUN ;
 
 : GATE-STDLIB-MAIN ( -- )
-   GS-CHECK-ARGS
+   SUITE-CHECK-ARGS
    GT-RESET ;
 
 GATE-STDLIB-MAIN
@@ -282,6 +282,12 @@ TEST-SUITE-IMGDUMP imgdump-compare
    src/habu/layout.f lib/errors.f lib/string.f lib/test.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f tools/imgdump.f
    tools/imgdump-test.f
+;TEST-SUITE
+
+TEST-SUITE imagedisasm-tool
+   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
+   lib/process.f lib/process-argv.f src/arch/arm64/disasm.f
+   tools/imagedisasm.f tools/imagedisasm-test.f
 ;TEST-SUITE
 
 TEST-SUITE tool-boundary-fixtures
@@ -372,8 +378,8 @@ TEST-SUITE build-helper-fixtures
    lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/process-env.f lib/source.f
    lib/build.f lib/codesign.f tools/build-fixpoint.f
-   tools/hb-build-lib.f tools/build-fixpoint-test.f tools/hb-build-test.f
-   lib/codesign-test.f
+   tools/hb-build-lib.f tools/bootstrap-codegen-test.f
+   tools/build-fixpoint-test.f tools/hb-build-test.f lib/codesign-test.f
 ;TEST-SUITE
 
 s" PASS: native lint/stdlib gate phase" type cr

@@ -247,9 +247,9 @@ register for the marker byte.
   Put the probe in an explicit loaded source file when measuring `here`/metadata
   after a bundle.
 - **Gate load lists need factoring, not long physical lines:** definitions-only
-  loading of `test/gate-stdlib.f` exposed `GS-ARG+` at top level when repeated
-  LLM driver load lists approached the reader buffer. Factor shared load groups
-  into helper words and keep source lines short.
+  loading of `test/gate-stdlib.f` exposed a repeated suite-argv appender at top
+  level when long load lists approached the reader buffer. Factor shared load
+  groups into `TEST-SUITE ... ;TEST-SUITE` blocks and keep source lines short.
 - **Stdin fixture newlines need explicit bytes:** Habu `s" ...\n"` keeps the
   backslash and `n` bytes. Process smoke tests that need a newline should use a
   byte buffer with `10 c,` or append `STR-LF`, otherwise the child may parse a
@@ -337,6 +337,19 @@ register for the marker byte.
   to the native body-capture limit that new compile paths should become named
   emitter helpers with TRUST manifest rows. A body-capacity exit during
   self-build is a structure signal, not permission to raise limits blindly.
+- **Save across emitted helper calls:** compile-mode string handlers in
+  `src/habu/habu2.f` kept the parsed quote start in `x16` across `LBCS @ BL`.
+  `EMIT-BCAP` legitimately clobbers `x16`, so the generated maker later copied
+  from address `0x40`. Values that survive an emitted `BL` need explicit stack
+  saves or a documented callee-preserved contract, mirrored in `bootstrap/cg/`.
+- **Bootstrap metadata parsing must fail closed:** `bootstrap/cg/install.fs`
+  cannot catch malformed effect parsing and default to arity `1` or flags `0`.
+  `BODY-ARITY` and `EFFECT-FLAGS` must run under the codegen diagnostic boundary
+  and rethrow so the recovery generator never records downgraded metadata.
+- **Instruction disassemblers read instruction width:** `DISASM` decodes one
+  ARM64 u32 at a time, so it must use a 4-byte load. Reading u64 and masking can
+  cross the end of a 4-byte mmap fixture and turns a decoder into a memory-range
+  dependency.
 - **Checked process code uses modeled primitives:** `run-rc` executes but is not
   checker-modeled. Use `spawn-io wait-rc` in checked examples until `run-rc` is
   expressed as a checked wrapper or given an audited checker model.
@@ -778,7 +791,7 @@ register for the marker byte.
   the per-definition checker before every successful `tools/check.f` source run
   multiplies gate time by definition count. Run the fast fail-closed bundle
   check first; invoke all-errors only after failure or explicit `--all-errors`.
-- **Reproduce `GS-CHECK-RUN` with raw stdin source:** the gate feeds bundled
+- **Reproduce check-suite runs with raw stdin source:** the gate feeds bundled
   source bytes to `tools/check.f` over stdin and lets the wrapper add its own
   check prefix. Do not add a manual prefix or switch to file-argument mode when
   isolating a gate check failure; those are different code paths.

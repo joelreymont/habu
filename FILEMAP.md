@@ -30,6 +30,8 @@ points stay listed.
 
 - `src/habu/habu1.f` — primitive engine, dictionary, parser, and prim registry.
 - `src/habu/habu2.f` — compiler/control-flow layer.
+- `src/habu/driver-io.f` — shared fail-closed artifact writer for internal
+  build drivers.
 - `src/habu/jit.f` — register JIT helpers.
 - `src/habu/regalloc.f` — virtual stack register allocator.
 - `src/habu/aot.f` — stripped AOT linker driver.
@@ -52,9 +54,10 @@ points stay listed.
 - `src/habu/layout.f` — shared native image, dictionary, and snapshot layout
   constants used by builders and image inspection tools.
 - `src/arch/arm64/disasm.f` — native ARM64 subset disassembler used by
-  `tools/jitdump.f`.
+  `tools/jitdump.f` and `tools/imagedisasm.f`.
 - `tools/jitdump.f` — disassemble a compiled word from a source snippet; see
   `docs/debugging.md` for command syntax.
+- `tools/imagedisasm.f` — disassemble a raw executable byte slice by file offset.
 - `tools/imgdump.f` — inspect or compare `hb` image dictionaries and snapshot
   trailers.
 - `test/gate-debug.f` — gate slice for property, snapshot, and debug tooling.
@@ -89,8 +92,11 @@ points stay listed.
 - `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library.
 - `tools/hb-build.f` — Habu entrypoint for native AOT/REPL builds.
 - `tools/hb-build-test.f` — checked fixture coverage for native AOT/REPL builds.
+- `tools/bootstrap-codegen-test.f` — native source regression for bootstrap codegen fail-closed contracts.
 - `tools/imgdump.f` — native image dictionary dump and compare tool.
 - `tools/imgdump-test.f` — checked fixture coverage for image dump compare mode.
+- `tools/imagedisasm.f` — native raw image slice disassembler.
+- `tools/imagedisasm-test.f` — checked fixture coverage for raw image disassembly.
 - `tools/srclist.f` — canonical source order.
 - `tools/build-fixpoint.f` — checked self-rebuild fixpoint orchestration definitions.
 - `tools/build-fixpoint-main.f` — CLI entrypoint for the self-rebuild fixpoint driver.
