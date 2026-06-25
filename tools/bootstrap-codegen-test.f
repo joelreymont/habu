@@ -35,10 +35,28 @@ variable BCG-LEN
    s" push abs-addr" BCG-MUST-LACK
    s" absolute address is known" BCG-MUST-LACK ;
 
+: BCG-TEST-PREFIX-LIST-FILE ( ptr u8 n -- )
+   BCG-LOAD
+   s" ['] PFX-LOAD-ROW PFX-FILES" BCG-MUST-HAVE
+   s" ['] PFX-PATH-ROW PFX-FILES" BCG-MUST-HAVE
+   s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-HAVE
+   s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-HAVE
+   s" LSRCRD @ BL," BCG-MUST-HAVE
+   s" a u ZBYTES," BCG-MUST-HAVE
+   s" LPUTIL @ ADR" BCG-MUST-LACK
+   s" LSRCRD @ BL then" BCG-MUST-LACK
+   s" a u ZBYTES ;" BCG-MUST-LACK
+   s" LPLINUXTARGET @ LBL, s" BCG-MUST-LACK ;
+
+: BCG-TEST-PREFIX-LIST ( -- )
+   s" bootstrap/cg/forth.fs" BCG-TEST-PREFIX-LIST-FILE
+   s" src/habu/habu2.f" BCG-TEST-PREFIX-LIST-FILE ;
+
 : BCG-MAIN ( -- )
    T-RESET
    BCG-TEST-INSTALL-FAIL-CLOSED
    BCG-TEST-FORTH-SDQ-COMMENT
+   BCG-TEST-PREFIX-LIST
    T-REPORT
    s" bootstrap-codegen-test: ok" type cr ;
 

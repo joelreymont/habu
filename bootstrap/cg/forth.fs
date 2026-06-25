@@ -1078,31 +1078,46 @@ create ZBYTE 0 c,
 : C-TARGET-UNKNOWN ( -- )
    1 abort" hb: unknown target" ;
 
+0 constant PFX-COMMON
+1 constant PFX-LINUX
+2 constant PFX-MACOS
+
+: PFX-TARGET-OK ( -- )
+   HB-TARGET-LINUX? if exit then
+   HB-TARGET-MACOS? if exit then
+   C-TARGET-UNKNOWN ;
+
+: PFX-LOAD? ( n -- n )
+   dup PFX-COMMON = if drop -1 exit then
+   dup PFX-LINUX = if drop HB-TARGET-LINUX? if -1 else 0 then exit then
+   PFX-MACOS = if HB-TARGET-MACOS? if -1 else 0 then else 0 then ;
+
+: PFX-ROW ( xt n n ptr u8 n -- ) {: xt kind var a u :}
+   kind var a u xt execute ;
+
+: PFX-FILES ( xt -- ) {: xt :}
+   xt PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-ROW
+   xt PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-ROW
+   xt PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-ROW
+   xt PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-ROW
+   xt PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-ROW
+   xt PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-ROW
+   xt PFX-LINUX  LPLINUXENV     s" src/os/linux/env.f"     PFX-ROW
+   xt PFX-MACOS  LPMACOSENV     s" src/os/macos/env.f"     PFX-ROW
+   xt PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-ROW
+   xt PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-ROW
+   xt PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-ROW ;
+
+: PFX-LOAD-ROW ( n n ptr u8 n -- ) {: kind var a u :}
+   kind PFX-LOAD? if 12 var @ ADR,  LSRCRD @ BL, then ;
+
+: PFX-PATH-ROW ( n n ptr u8 n -- ) {: kind var a u :}
+   var @ LBL,  a u ZBYTES, ;
+
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,
-   12 LPUTIL @ ADR,     LSRCRD @ BL,
-   HB-TARGET-LINUX? if
-      12 LPLINUXTARGET @ ADR,  LSRCRD @ BL,
-   else HB-TARGET-MACOS? if
-      12 LPMACOSTARGET @ ADR,  LSRCRD @ BL,
-   else
-      C-TARGET-UNKNOWN
-   then
-   then
-   12 LPCHECKER @ ADR,  LSRCRD @ BL,
-   12 LPRENDER @ ADR,   LSRCRD @ BL,
-   12 LPHABULAYOUT @ ADR, LSRCRD @ BL,
-   HB-TARGET-LINUX? if
-      12 LPLINUXENV @ ADR,  LSRCRD @ BL,
-   else HB-TARGET-MACOS? if
-      12 LPMACOSENV @ ADR,  LSRCRD @ BL,
-   else
-      C-TARGET-UNKNOWN
-   then
-   then
-   12 LPHOOK @ ADR,     LSRCRD @ BL,
-   12 LPROLES @ ADR,    LSRCRD @ BL,
-   12 LPCOMBINATORS @ ADR, LSRCRD @ BL, ;
+   PFX-TARGET-OK
+   ['] PFX-LOAD-ROW PFX-FILES ;
 
 : C-EMIT-TTY-PROBE ( -- )
    0 0 MOVZ,
@@ -1378,17 +1393,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWTRUSTED @ LBL, s" trusted:" BYTES,
    LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES,
-   LPLINUXTARGET @ LBL, s" src/os/linux/target.f" ZBYTES,
-   LPMACOSTARGET @ LBL, s" src/os/macos/target.f" ZBYTES,
-   LPUTIL @ LBL,        s" src/core/util.f" ZBYTES,
-   LPCHECKER @ LBL,     s" src/core/checker.f" ZBYTES,
-   LPRENDER @ LBL,      s" src/core/render.f" ZBYTES,
-   LPHOOK @ LBL,        s" src/core/check-hook.f" ZBYTES,
-   LPHABULAYOUT @ LBL,  s" src/habu/layout.f" ZBYTES,
-   LPLINUXENV @ LBL,    s" src/os/linux/env.f" ZBYTES,
-   LPMACOSENV @ LBL,    s" src/os/macos/env.f" ZBYTES,
-   LPROLES @ LBL,       s" src/core/roles.f" ZBYTES,
-   LPCOMBINATORS @ LBL, s" src/core/combinators.f" ZBYTES, ;
+   ['] PFX-PATH-ROW PFX-FILES ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : C-EMITW ( n -- )  9 swap LIT64,  LCEMIT @ BL, ;          \ emit one fixed instr word

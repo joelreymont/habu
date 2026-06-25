@@ -34,6 +34,13 @@ will later consume the runtime data stack. Their definition-local stack effects
 must describe the host/build stack (`( -- )`, `( n -- )`, etc.); keep emitted
 runtime effects in adjacent prose so reviewers do not conflate the two levels.
 
+### Emitter punctuation is semantic
+Raw builder words such as `BL,`, `LBL,`, `ADR,`, and `ZBYTES,` are distinct
+Forth words; dropping the comma creates a different token, not a spelling
+variant. Source-shape regressions for emitter refactors should assert the exact
+punctuated tokens and reject the bare forms, because bootstrap failures otherwise
+surface later as terse undefined-token exits from generated stage2 source.
+
 ### Split driver timeouts by phase
 The Forth live-driver timeout fixture set a one-second child timeout and
 accidentally timed out the checker subprocess on Linux/aarch64 before the
