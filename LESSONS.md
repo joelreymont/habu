@@ -851,3 +851,7 @@ register for the marker byte.
   `src/habu/` and `bootstrap/cg/` are one contract with two sources. Factor both
   mirrors in the same change and prove native fixpoint plus Gforth recovery
   bootstrap before trusting the port.
+- **Deep factoring reviews need repo artifacts:** an all-repo factorization audit
+  is not complete when the findings only live in chat. Record agent scopes,
+  concrete `file:line` findings, fixed items, remaining work, and validation in a
+  durable doc such as `docs/factorization-review.md`.

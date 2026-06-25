@@ -13,6 +13,8 @@ points stay listed.
 - `STATUS.md` — current verification status and known gaps.
 - `TRUSTED.md` — audited `TRUST` escape-hatch manifest.
 - `docs/forth.md` — blocking Forth style rules.
+- `docs/factorization-review.md` — durable all-repo factorization audit with
+  agent scopes, findings, and remaining factoring work.
 - `docs/lint-foundation-inventory.md` — dependency map for replacing old lint-foundation pieces.
 - `docs/llm-stdlib-cookbook.md` — prompt-sized checked stdlib examples for LLM-generated Habu.
 - `docs/parallel-agents.md` — map-reduce protocol for parallel dot execution.
