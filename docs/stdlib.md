@@ -555,7 +555,17 @@ CLEANUP-DIR+            ( ptr u8 n -- )
 CLEANUP-TREE+           ( ptr u8 n -- )
 CLEANUP-RUN             ( -- )
 FS-SKIP-DIR?            ( ptr u8 n -- bool )
+FS-SKIP-SELF-ENTRY?     ( ptr u8 n -- bool )
 FS-SKIP-ENTRY?          ( ptr u8 n -- bool )
+FS-CHECK-WALK-DESCEND   ( -- )
+FS-OPEN-WALK-DIR        ( ptr u8 n -- )
+FS-CLOSE-CUR-DIR        ( -- )
+FS-DIR-BLOCK-BEGIN      ( -- )
+FS-DIR-MORE?            ( -- bool )
+FS-LOAD-ENTRY           ( -- )
+FS-ADVANCE-ENTRY        ( -- )
+FS-DESCEND-PATH         ( ptr u8 n ptr u8 n -- ptr u8 n )
+FS-ASCEND-PATH          ( -- )
 FS-WALK-PATH            ( ptr u8 n [ ptr u8 n -- ] -- )
 WALK-FILES   ( ptr u8 n [ ptr u8 n -- ] -- )
 ```
@@ -592,9 +602,11 @@ an explicit caller capacity and throws `E-FS-CAPACITY` instead of truncating.
 large files without sizing a whole-file scratch buffer. `ATOMIC-WRITE-FILE`
 writes a sibling `.tmp` file and renames it over the destination.
 `REMOVE-TREE` recursively removes one counted path, using the same per-depth walk
-buffers as `WALK-FILES`, and throws named filesystem errors rather than ignoring
-partial deletion failures. If a tree contains a symlink to a directory,
-`REMOVE-TREE` unlinks the symlink itself and never descends into the target.
+buffers, directory-entry helpers, child-path enter/leave helpers, and close
+handling as `WALK-FILES`, while keeping mutation policy in `lib/fs-mutate.f`.
+It throws named filesystem errors rather than ignoring partial deletion failures.
+If a tree contains a symlink to a directory, `REMOVE-TREE` unlinks the symlink
+itself and never descends into the target.
 
 `MAKE-TEMP-DIR` creates a private unique directory under an explicit base path,
 retrying bounded deterministic candidates if a name already exists.

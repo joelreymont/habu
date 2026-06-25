@@ -380,6 +380,19 @@ Handoff snapshot:
   `run-attempts-cli-check-test`, `drive-forth-test`, `drive-array-habu-test`,
   and the stubbed `bench/llm/perf.f --json --full` CLI), followed by the full
   native gate from `docs/bootstrap.md`. This closes F13 on Linux/aarch64.
+- F11 is closed on Linux/aarch64: directory traversal mechanics now live in
+  checked helpers in `lib/fs.f` (`FS-SKIP-SELF-ENTRY?`, `FS-OPEN-WALK-DIR`,
+  `FS-DIR-BLOCK-BEGIN`, `FS-DIR-MORE?`, `FS-LOAD-ENTRY`, `FS-ADVANCE-ENTRY`,
+  `FS-DESCEND-PATH`, `FS-ASCEND-PATH`, and `FS-CLOSE-CUR-DIR`). `WALK-FILES`,
+  `REMOVE-TREE`, and the attempt-runner round scanner reuse those helpers while
+  keeping their policies separate: `WALK-FILES` still skips repo metadata, and
+  `REMOVE-TREE` still descends into `.dots` while unlinking symlinks without
+  following them. Validation covered `lib/fs-test.f`, `lib/fs-mutate-test.f`,
+  `bench/llm/run-attempts-check-test.f`, `bench/llm/run-attempts-cli-check-test.f`,
+  `bench/llm/run-attempts-test.f`, `tools/stdlib-manifest-test.f`,
+  `tools/filemap-lint.f`, `test/gate-stdlib.f`, and the full native gate from
+  `docs/bootstrap.md`. The manifest validator row cap was raised from 768 to
+  1024 so the expanded checked stdlib inventory remains representable.
 - The remaining factorization work already has one dot per open finding in the
   local tracker. Do not create duplicates; start the next open row, commit that
   focused batch, update this document, close that row's dot, then push.
@@ -398,20 +411,19 @@ Next continuation step:
 3. If macOS exposes a spawn behavior regression, keep F04 open, root-cause the
    register/frame delta with the native debugger tools in `docs/debugging.md`,
    and commit the fix with a macOS regression.
-4. On Linux/aarch64, the next unblocked finding is F11
-   (`habu-factor-filesystem-traversal-f490595e`).
+4. On Linux/aarch64, the next unblocked finding is F15
+   (`habu-table-drive-stdlib-786cb080`).
 
 Open dot queue:
 
 | Order | Finding | Dot | Scope | Done when |
 | --- | --- | --- | --- | --- |
 | 1 | F04 | `habu-factor-darwin-spawn-5a82930c` | Validate the factored Darwin spawn emitter variants on macOS. | Shared helpers preserve the Darwin `posix_spawn` ABI; macOS process tests and full native gate pass, plus Linux-safe gate where run. |
-| 2 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. | Directory iteration and path enter/leave live in `lib/fs.f`; mutation policy stays in `lib/fs-mutate.f`; fs fixtures and full native gate pass. |
-| 3 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. | Documentation policy rows replace imperative branch ladders; stdlib manifest fixtures and full native gate pass. |
-| 4 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. | Digit, ratio, keyword, and whitespace scanning are factored; stale-status lint fixture and full native gate pass. |
-| 5 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. | Regex classification/state transitions use small predicate or row helpers; regex fixtures and full native gate pass. |
-| 6 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. | Command arity/xt rows and repair suggestion rows replace branch ladders; gate-json assertions and full native gate pass. |
-| 7 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. | Missing stack-effect comments and lower-case project words are fixed; focused source loads, lint, and full native gate pass. |
+| 2 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. | Documentation policy rows replace imperative branch ladders; stdlib manifest fixtures and full native gate pass. |
+| 3 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. | Digit, ratio, keyword, and whitespace scanning are factored; stale-status lint fixture and full native gate pass. |
+| 4 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. | Regex classification/state transitions use small predicate or row helpers; regex fixtures and full native gate pass. |
+| 5 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. | Command arity/xt rows and repair suggestion rows replace branch ladders; gate-json assertions and full native gate pass. |
+| 6 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. | Missing stack-effect comments and lower-case project words are fixed; focused source loads, lint, and full native gate pass. |
 
 ## Other Open Top-Level Dots
 
@@ -457,15 +469,17 @@ Parent: `habu-review-whole-repo-5e087327`
 ## Verification Status
 
 The original subagent review was read-only. The latest implementation batch is
-the Linux-validated F13 `check-all-errors` core/wrapper sub-batch. F13 is closed
-on Linux/aarch64; after the F13 sub-batches the port stack passed:
+the Linux-validated F11 filesystem traversal sub-batch. F11 and F13 are closed
+on Linux/aarch64; after the F11 sub-batch the port stack passed:
 
-- `tools/check-all-errors-test.f`: `test: ok`, `check-all-errors-test: ok`;
-- `tools/check-test.f`: `test: ok`, `check-test: ok`;
+- `lib/fs-test.f`: `fs-test: ok`;
+- `lib/fs-mutate-test.f`: `test: ok`, `fs-mutate-test: ok`;
+- affected attempt-runner traversal fixtures:
+  `run-attempts-check-test`, `run-attempts-cli-check-test`, and
+  `run-attempts-test`;
+- `tools/stdlib-manifest-test.f`: `stdlib-manifest-test: ok`;
+- `tools/filemap-lint.f`: `filemap-lint: 245 path(s), 0 finding(s)`;
 - `test/gate-stdlib.f`: `PASS: native lint/stdlib gate phase`;
-- focused native benchmark helper checks:
-  `run-test`, `run-attempts-check-test`, `run-attempts-cli-check-test`,
-  `drive-forth-test`, `drive-array-habu-test`, and stubbed `bench/llm/perf.f`;
 - `test/run.f`:
   `PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)`.
 

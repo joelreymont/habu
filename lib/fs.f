@@ -320,9 +320,12 @@ TRUSTED: FS-BYTE-OFFSET ( ptr u8 n -- ptr u8 )
    2dup s" .git" FS-PATH= if 2drop FS-TRUE exit then
    s" .dots" FS-PATH= ;
 
-: FS-SKIP-ENTRY? ( ptr u8 n -- bool )
+: FS-SKIP-SELF-ENTRY? ( ptr u8 n -- bool )
    2dup FS-DOT-ENTRY? if 2drop FS-TRUE exit then
-   2dup FS-DOTDOT-ENTRY? if 2drop FS-TRUE exit then
+   FS-DOTDOT-ENTRY? ;
+
+: FS-SKIP-ENTRY? ( ptr u8 n -- bool )
+   2dup FS-SKIP-SELF-ENTRY? if 2drop FS-TRUE exit then
    FS-SKIP-DIR? ;
 
 : FS-OPEN-DIR ( ptr u8 n -- n )
@@ -393,34 +396,60 @@ TRUSTED: FS-BYTE-OFFSET ( ptr u8 n -- ptr u8 )
 : FS-CHECK-WALK-JOIN-CAP ( ptr u8 n n -- )
    FS-WALK-JOIN-LEN FS-PATH-CAP > if E-FS-CAPACITY FS-THROW-WALK then ;
 
+: FS-CHECK-WALK-DESCEND ( -- )
+   FS-DEPTH @ 1 + FS-MAX-DEPTH >= if E-FS-DEPTH FS-THROW-WALK then ;
+
+: FS-OPEN-WALK-DIR ( ptr u8 n -- )
+   FS-CHECK-WALK-DESCEND
+   FS-OPEN-DIR FS-FD!
+   0 FS-BASE@ ! ;
+
+: FS-CLOSE-CUR-DIR ( -- )
+   FS-FD@ close
+   -1 FS-FD! ;
+
+: FS-DIR-BLOCK-BEGIN ( -- )
+   0 FS-OFF! ;
+
+: FS-DIR-MORE? ( -- bool )
+   FS-OFF@ FS-N@ < ;
+
+: FS-LOAD-ENTRY ( -- )
+   FS-CUR-DIR FS-OFF@ + FS-ENT !
+   FS-ENT @ FS-DIRENT-RECLEN FS-REC!
+   FS-CHECK-RECORD ;
+
+: FS-ADVANCE-ENTRY ( -- )
+   FS-OFF@ FS-REC@ + FS-OFF! ;
+
+: FS-DESCEND-PATH ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pa:ptr pu na:ptr nu :}
+   pa pu nu FS-CHECK-WALK-JOIN-CAP
+   pa pu na nu FS-NEXT-PATH JOIN-PATH FS-CHILD-U !
+   FS-DEPTH @ 1 + FS-DEPTH !
+   FS-CUR-PATH FS-CHILD-U @ ;
+
+: FS-ASCEND-PATH ( -- )
+   FS-DEPTH @ 1 - FS-DEPTH ! ;
+
 : FS-WALK-PATH ( ptr u8 n [ ptr u8 n -- ] -- ) {: a:ptr u q :}
    a u FS-SKIP-DIR? if exit then
    a u FILE? if a u q execute exit then
    a u DIR? 0= if E-FS-STAT FS-THROW-WALK then
-   FS-DEPTH @ 1 + FS-MAX-DEPTH >= if E-FS-DEPTH FS-THROW-WALK then
-   a u FS-OPEN-DIR FS-FD!
-   0 FS-BASE@ !
+   a u FS-OPEN-WALK-DIR
    begin FS-READ-DIR while
-      0 FS-OFF!
-      begin FS-OFF@ FS-N@ < while
-         FS-CUR-DIR FS-OFF@ + FS-ENT !
-         FS-ENT @ FS-DIRENT-RECLEN FS-REC!
-         FS-CHECK-RECORD
+      FS-DIR-BLOCK-BEGIN
+      begin FS-DIR-MORE? while
+         FS-LOAD-ENTRY
          FS-ENT @ FS-DIRENT-NAME 2dup FS-SKIP-ENTRY? if
             2drop
          else
-            FS-NAME-U ! FS-NAME-A !
-            a u FS-NAME-U @ FS-CHECK-WALK-JOIN-CAP
-            a u FS-NAME-A @ FS-NAME-U @ FS-NEXT-PATH JOIN-PATH FS-CHILD-U !
-            FS-DEPTH @ 1 + FS-DEPTH !
-            FS-CUR-PATH FS-CHILD-U @ q recurse
-            FS-DEPTH @ 1 - FS-DEPTH !
+            a u 2swap FS-DESCEND-PATH q recurse
+            FS-ASCEND-PATH
          then
-         FS-OFF@ FS-REC@ + FS-OFF!
+         FS-ADVANCE-ENTRY
       repeat
    repeat
-   FS-FD@ close
-   -1 FS-FD! ;
+   FS-CLOSE-CUR-DIR ;
 
 : WALK-FILES ( ptr u8 n [ ptr u8 n -- ] -- ) {: a:ptr u q :}
    FS-FDS-RESET

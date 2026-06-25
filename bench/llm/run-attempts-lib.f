@@ -356,20 +356,16 @@ RA-DEFAULT-TIMEOUT!
 : RA-SCAN-ROUND-DIR ( ptr u8 n -- ) {: dir:ptr diru :}
    FS-FDS-RESET
    0 FS-DEPTH !
-   dir diru FS-OPEN-DIR FS-FD!
-   0 FS-BASE@ !
+   dir diru FS-OPEN-WALK-DIR
    begin FS-READ-DIR while
-      0 FS-OFF!
-      begin FS-OFF@ FS-N@ < while
-         FS-CUR-DIR FS-OFF@ + FS-ENT !
-         FS-ENT @ FS-DIRENT-RECLEN FS-REC!
-         FS-CHECK-RECORD
+      FS-DIR-BLOCK-BEGIN
+      begin FS-DIR-MORE? while
+         FS-LOAD-ENTRY
          dir diru RA-SCAN-ROUND-ENTRY
-         FS-OFF@ FS-REC@ + FS-OFF!
+         FS-ADVANCE-ENTRY
       repeat
    repeat
-   FS-FD@ close
-   -1 FS-FD! ;
+   FS-CLOSE-CUR-DIR ;
 
 : RA-STR< ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    0 begin dup u < over v < and while

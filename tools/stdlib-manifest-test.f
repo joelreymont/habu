@@ -6,7 +6,7 @@ $10000 constant SMT-DOC-CAP
 $20000 constant SMT-PUB-CAP
 $4000 constant SMT-ERR-CAP
 $20000 constant SMT-STR-CAP
-768 constant SMT-WORD-MAX
+1024 constant SMT-WORD-MAX
 64 constant SMT-MOD-MAX
 64 constant SMT-LIB-MAX
 11 constant SMT-FIELDS

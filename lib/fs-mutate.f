@@ -99,34 +99,21 @@ create FS-MUT-ATOMIC-SUFFIX
    a u EXISTS? 0= if exit then
    a u FILE? if a u FS-MUT-REMOVE-FILE-WALK exit then
    a u DIR? 0= if E-FS-STAT FS-THROW-WALK then
-   FS-DEPTH @ 1 + FS-MAX-DEPTH >= if E-FS-DEPTH FS-THROW-WALK then
-   a u FS-OPEN-DIR FS-FD!
-   0 FS-BASE@ !
+   a u FS-OPEN-WALK-DIR
    begin FS-READ-DIR while
-      0 FS-OFF!
-      begin FS-OFF@ FS-N@ < while
-         FS-CUR-DIR FS-OFF@ + FS-ENT !
-         FS-ENT @ FS-DIRENT-RECLEN FS-REC!
-         FS-CHECK-RECORD
-         FS-ENT @ FS-DIRENT-NAME 2dup FS-DOT-ENTRY? 0= if
-            2dup FS-DOTDOT-ENTRY? 0= if
-               FS-NAME-U ! FS-NAME-A !
-               a u FS-NAME-U @ FS-CHECK-WALK-JOIN-CAP
-               a u FS-NAME-A @ FS-NAME-U @ FS-NEXT-PATH JOIN-PATH FS-CHILD-U !
-               FS-DEPTH @ 1 + FS-DEPTH !
-               FS-CUR-PATH FS-CHILD-U @ RECURSE
-               FS-DEPTH @ 1 - FS-DEPTH !
-            else
-               2drop
-            then
-         else
+      FS-DIR-BLOCK-BEGIN
+      begin FS-DIR-MORE? while
+         FS-LOAD-ENTRY
+         FS-ENT @ FS-DIRENT-NAME 2dup FS-SKIP-SELF-ENTRY? if
             2drop
+         else
+            a u 2swap FS-DESCEND-PATH RECURSE
+            FS-ASCEND-PATH
          then
-         FS-OFF@ FS-REC@ + FS-OFF!
+         FS-ADVANCE-ENTRY
       repeat
    repeat
-   FS-FD@ close
-   -1 FS-FD!
+   FS-CLOSE-CUR-DIR
    a u FS-MUT-REMOVE-DIR-WALK ;
 
 : REMOVE-TREE ( ptr u8 n -- ) {: a:ptr u :}

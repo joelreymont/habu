@@ -300,6 +300,10 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Recursive dir walks need per-depth buffers:** `getdirentries64` records are
   batch-local; index dirent buffers, offsets, lengths, cookies, fds by depth — even
   a global current-record pointer is unsafe (the child walk overwrites it).
+- **Share filesystem traversal mechanics, not policy:** `WALK-FILES` skips repo
+  metadata while `REMOVE-TREE` must delete `.dots` and unlink symlinks first.
+  Factor open/read/record/child-path/close helpers in `lib/fs.f`; keep deletion
+  choices in `lib/fs-mutate.f`.
 - **Symlink deletion lstats first:** `EXISTS?`/`FILE?`/`DIR?` follow symlinks and
   broken links look absent; `REMOVE-TREE` tests `SYMLINK?` before existence/type.
   Repeatable fixtures use `MAKE-DIRS` or clean the tree before `MAKE-DIR`.
