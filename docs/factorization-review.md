@@ -90,6 +90,9 @@ Tracker state was verified with `dot tree habu-review-whole-repo-5e087327`.
 The parent dot is `habu-review-whole-repo-5e087327`; F01, F02, and F03 are
 closed; F09 is active and partial; all other rows below are open. No duplicate
 top-level dots are needed.
+The local `.dots/` store is ignored by the repository, so this section is the
+durable committed queue. A fresh checkout can recreate the tracker from this
+table if the local dot store is unavailable.
 
 First continuation step:
 

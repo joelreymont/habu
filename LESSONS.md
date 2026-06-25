@@ -19,7 +19,8 @@ installing those runtimes on a small port target.
 When an audit creates per-finding dots, the durable review document must list
 every open dot in one canonical continuation queue and mark partial work
 explicitly. An abbreviated "remaining work" list can hide open findings even
-when the tracker itself is correct.
+when the tracker itself is correct; an ignored `.dots/` store makes the checked
+in document the only portable handoff.
 
 ### Split driver timeouts by phase
 The Forth live-driver timeout fixture set a one-second child timeout and
