@@ -67,15 +67,60 @@ the first review round:
 
 These findings are still open as of this review artifact. The safest order is:
 
-1. Add missing stack-effect comments in arch/platform/bootstrap files, because
-   this improves checker-aided review without changing behavior.
-2. Factor mirrored native/bootstrap numeric parser and colon-open paths together.
-3. Factor bootstrap JIT duplicated binary prep and move-wide emission.
-4. Factor byte cursor writers shared by ELF, Mach-O, and signing.
+1. Add missing stack-effect comments in arch/platform/bootstrap files:
+   `habu-add-arch-platform-4818d614`,
+   `habu-add-bootstrap-stack-a6b31511`.
+2. Factor mirrored native/bootstrap numeric parser and colon-open paths:
+   `habu-factor-mirrored-num-c2faa343`,
+   `habu-factor-bootstrap-colon-0ab81878`.
+3. Factor bootstrap JIT duplicated binary prep and move-wide emission:
+   `habu-factor-bootstrap-vbin-53787869`,
+   `habu-factor-bootstrap-move-9722fa8e`.
+4. Factor byte cursor writers shared by ELF, Mach-O, and signing:
+   `habu-factor-typed-byte-b311d5c7`,
+   `habu-share-bootstrap-image-ef41b8f8`.
 5. Factor process capture and gate progress helpers, then simplify child-spawn
-   tests to true boundaries only.
+   tests to true boundaries only:
+   `habu-factor-process-capture-467f9021`,
+   `habu-factor-gate-progress-555aa42d`,
+   `habu-factor-check-load-2e29d26a`.
 6. Factor fs traversal, manifest-policy rows, stale-status scanner, and regex
-   dispatch in separate changes.
+   dispatch in separate changes:
+   `habu-factor-filesystem-traversal-f490595e`,
+   `habu-table-drive-stdlib-786cb080`,
+   `habu-factor-stale-status-615b5a1b`,
+   `habu-factor-regex-token-865ebac5`.
+
+## Tracking Dots
+
+Parent: `habu-review-whole-repo-5e087327`
+
+| Finding | Dot |
+| --- | --- |
+| F01 | `habu-factor-bootstrap-vbin-53787869` |
+| F02 | `habu-factor-bootstrap-colon-0ab81878` |
+| F03 | `habu-add-arch-platform-4818d614` |
+| F04 | `habu-factor-darwin-spawn-5a82930c` |
+| F05 | `habu-factor-native-c-230e1316` |
+| F06 | `habu-factor-mirrored-num-c2faa343` |
+| F07 | `habu-factor-bootstrap-move-9722fa8e` |
+| F08 | `habu-unify-bootstrap-prefix-26788bfa` |
+| F09 | `habu-add-bootstrap-stack-a6b31511` |
+| F10 | `habu-factor-typed-byte-b311d5c7` |
+| F11 | `habu-factor-filesystem-traversal-f490595e` |
+| F12 | `habu-factor-process-capture-467f9021` |
+| F13 | `habu-factor-check-load-2e29d26a` |
+| F14 | `habu-factor-gate-progress-555aa42d` |
+| F15 | `habu-table-drive-stdlib-786cb080` |
+| F16 | `habu-factor-stale-status-615b5a1b` |
+| F17 | `habu-share-signature-scan-5353e68b` |
+| F18 | `habu-factor-compiler-dispatch-0167f41a` |
+| F19 | `habu-share-bootstrap-image-ef41b8f8` |
+| F20 | `habu-factor-checked-arm64-f1f46265` |
+| F21 | `habu-factor-bootstrap-trust-71f82afa` |
+| F22 | `habu-factor-regex-token-865ebac5` |
+| F23 | `habu-table-drive-gate-698becb6` |
+| F24 | `habu-clean-engine-imgdump-b5c63365` |
 
 ## Verification Status
 
