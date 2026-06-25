@@ -33,12 +33,14 @@ s" HB@" s" -- ptr u8" TRUST
 
 : RD-1 ( z -- )
    0 0 open HFD !
+   HFD @ 0 < IF s" hb: cannot open repl source" 74 die THEN
    BEGIN                                                 \ read() may return short
      HFD @  HB@ HL @ +  HMAX HL @ -  read HRD !
      HRD @ 0 >
    WHILE  HL @ HRD @ + HL !  REPEAT
    HFD @ close
-   10 HB@ HL @ + c!  HL @ 1 + HL ! ;
+   HRD @ 0 < IF s" hb: repl source read failed" 74 die THEN
+   HNL ;
 
 : HFILE ( ptr u8 n -- ) PATH0 RD-1 ;
 
@@ -100,5 +102,5 @@ s" HB@" s" -- ptr u8" TRUST
    HB@ HL @ EMIT-FORTH
    BUILD-IMAGE
    s" hb" SET-SIGID  CODESIG2
-   STDIN-OUT PATH0  1537 493 open  dup MBUF MLEN @ write drop  close ;
+   STDIN-OUT DRV-WRITE-IMAGE ;
 GO

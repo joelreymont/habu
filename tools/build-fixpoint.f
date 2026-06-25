@@ -56,11 +56,6 @@ variable BF-TMP-U
 : BF-TMP-OVERRIDE$ ( -- ptr u8 n )
    BF-TMP-A@ BF-TMP-U @ ;
 
-\ Compatibility alias for existing call sites.
-: BF-TMP-SET ( ptr u8 n -- )
-   BF-TMP-U !
-   BF-TMP-A! ;
-
 : BF-TMP-RESET ( -- )
    0 BF-TMP-U ! ;
 
@@ -232,9 +227,13 @@ variable BF-TMP-U
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu BF-APPEND-CHECK-ON ;
 
+: BF-APPEND-DRIVER-IO ( ptr u8 n -- ) {: out:ptr outu :}
+   out outu s" src/habu/driver-io.f" BF-APPEND-SOURCE ;
+
 : BF-EMIT-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu driver:ptr driveru :}
    out outu BF-RESET-OUT
    out outu BF-APPEND-COMMON
+   out outu BF-APPEND-DRIVER-IO
    out outu driver driveru BF-APPEND-SOURCE ;
 
 : BF-CLOSE-CMP ( -- )

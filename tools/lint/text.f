@@ -12,6 +12,7 @@
 ' LINT-CHECK-HOOK set-check
 
 create PATHBUF 1024 allot
+create READ-PROBE 1 allot
 variable RFD  variable RGOT  variable RLEN
 
 : LINT-TRUE ( -- bool )
@@ -38,6 +39,12 @@ variable RFD  variable RGOT  variable RLEN
    0 RLEN !
    begin  RFD @  buf RLEN @ +  cap RLEN @ -  read  dup RGOT !  0 >
    while  RLEN @ RGOT @ + RLEN !  repeat
+   RGOT @ 0 < IF RFD @ close s" lint: cannot read file" 1 die THEN
+   RLEN @ cap = IF
+      RFD @ READ-PROBE 1 read RGOT !
+      RGOT @ 0 < IF RFD @ close s" lint: cannot read file" 1 die THEN
+      RGOT @ 0 > IF RFD @ close s" lint: file exceeds buffer" 1 die THEN
+   THEN
    RFD @ close
    buf RLEN @ ;
 

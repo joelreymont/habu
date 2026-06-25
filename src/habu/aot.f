@@ -30,11 +30,24 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 
 : READ-PROG
    AOT-IN PATH0  0 0 open PFD !
+   PFD @ 0 < IF s" aot: cannot open source" 74 die THEN
    here PB !  PMAX allot  0 PN !
-   BEGIN  PFD @  AOT-PB@ PN @ +  PMAX PN @ -  read PRD !  PRD @ 0 > WHILE  PN @ PRD @ + PN !  REPEAT
+   BEGIN
+      PFD @  AOT-PB@ PN @ +  PMAX PN @ -  read PRD !
+      PRD @ 0 >
+   WHILE
+      PN @ PRD @ + PN !
+   REPEAT
    PFD @ close
-   PN @ 0 > 0= IF s" aot: empty source" 74 die THEN ;
+   PRD @ 0 < IF s" aot: source read failed" 74 die THEN
+   PN @ 0 > 0= IF s" aot: empty source" 74 die THEN
+   PN @ PMAX = IF s" aot: source exceeds buffer" 74 die THEN ;
+
+: SENT-ROOM ( n -- )
+   PN @ + PMAX > IF s" aot: source exceeds buffer" 74 die THEN ;
+
 : SENTSET  s"  AOT-LINK " {: sa:ptr su :}
+   su SENT-ROOM
    0 SI !
    BEGIN SI @ su < WHILE
       sa SI @ + c@  AOT-PB@ PN @ + SI @ + c!
@@ -385,7 +398,7 @@ variable RP  variable RE  variable RV
    CLOSURE  ASM-INIT  LBL MLBL !
    EMIT-ENTRY  COPY-BLOBS  RELOCATE
    ASM-CODE  BUILD-IMAGE  s" hb-prog" SET-SIGID  CODESIG2
-   AOT-OUT PATH0  1537 493 open  dup MBUF MLEN @ write drop  close ;
+   AOT-OUT DRV-WRITE-IMAGE ;
 
 : GO  READ-PROG  SENTSET
    ['] USER-HOOK set-check

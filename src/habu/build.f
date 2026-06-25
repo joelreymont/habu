@@ -26,11 +26,13 @@ s" BLD-PB@" s" -- ptr u8" TRUST
 
 : READ-PATH {: a:ptr u :}
    a u PATH0  0 0 open PFD !
+   PFD @ 0 < IF s" hb-build: cannot open source" 74 die THEN
    ENSURE-PBUF  0 PN !
    BEGIN                                                 \ read() may return short
      PFD @  BLD-PB@ PN @ +  PMAX PN @ -  read PRD !
      PRD @ 0 >
    WHILE  PN @ PRD @ + PN !  REPEAT
+   PRD @ 0 < IF PFD @ close s" hb-build: read failed" 74 die THEN
    PFD @ close
    PN @ 0 > 0= IF s" hb-build: empty source" 74 die THEN
    PN @ PMAX = IF s" hb-build: source exceeds buffer" 74 die THEN ;
@@ -167,5 +169,5 @@ TRUSTED: V-TRUST-SIG ( ptr u8 n ptr u8 n -- )
    BLD-PB@ PN @ EMIT-FORTH
    BUILD-IMAGE
    s" hb-prog" SET-SIGID  CODESIG2
-   BLD-OUT PATH0  1537 493 open  dup MBUF MLEN @ write drop  close ;
+   BLD-OUT DRV-WRITE-IMAGE ;
 GO

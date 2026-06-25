@@ -3,7 +3,7 @@
 \ records later sigs over PTAB, so a toolchain word named like a prim silently
 \ replaces it for every program the toolchain-loaded engine compiles.
 \ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/shadow-lint.f
-\ Tokenization is checked; lib.f still owns legacy PAT scanner boundaries.
+\ Tokenization is checked; lib.f owns the PAT scanner boundaries.
 
 create FB 131072 allot                       \ one file at a time
 

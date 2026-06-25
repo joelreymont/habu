@@ -40,17 +40,53 @@ variable SS-LINE-S
 variable SS-LINE-E
 variable SS-FENCE
 
-TRUSTED: SS-ROOT$ ( -- ptr u8 n )
-   SS-ROOT-A @ SS-ROOT-U @ ;
+: SS-ROOT-A-FIELD ( -- ptr ptr u8 )
+   SS-ROOT-A 0 ptr-field ;
 
-TRUSTED: SS-SRC$ ( -- ptr u8 n )
-   SS-SRC-A @ SS-SRC-U @ ;
+: SS-SRC-A-FIELD ( -- ptr ptr u8 )
+   SS-SRC-A 0 ptr-field ;
 
-TRUSTED: SS-DATE$ ( -- ptr u8 n )
-   SS-DATE-A @ SS-DATE-U @ ;
+: SS-DATE-A-FIELD ( -- ptr ptr u8 )
+   SS-DATE-A 0 ptr-field ;
 
-TRUSTED: SS-DISP$ ( -- ptr u8 n )
-   SS-DISP-A @ SS-DISP-U @ ;
+: SS-DISP-A-FIELD ( -- ptr ptr u8 )
+   SS-DISP-A 0 ptr-field ;
+
+: SS-ROOT-A@ ( -- ptr u8 )
+   SS-ROOT-A-FIELD @ ;
+
+: SS-SRC-A@ ( -- ptr u8 )
+   SS-SRC-A-FIELD @ ;
+
+: SS-DATE-A@ ( -- ptr u8 )
+   SS-DATE-A-FIELD @ ;
+
+: SS-DISP-A@ ( -- ptr u8 )
+   SS-DISP-A-FIELD @ ;
+
+: SS-ROOT-A! ( ptr u8 -- )
+   SS-ROOT-A-FIELD ! ;
+
+: SS-SRC-A! ( ptr u8 -- )
+   SS-SRC-A-FIELD ! ;
+
+: SS-DATE-A! ( ptr u8 -- )
+   SS-DATE-A-FIELD ! ;
+
+: SS-DISP-A! ( ptr u8 -- )
+   SS-DISP-A-FIELD ! ;
+
+: SS-ROOT$ ( -- ptr u8 n )
+   SS-ROOT-A@ SS-ROOT-U @ ;
+
+: SS-SRC$ ( -- ptr u8 n )
+   SS-SRC-A@ SS-SRC-U @ ;
+
+: SS-DATE$ ( -- ptr u8 n )
+   SS-DATE-A@ SS-DATE-U @ ;
+
+: SS-DISP$ ( -- ptr u8 n )
+   SS-DISP-A@ SS-DISP-U @ ;
 
 : SS-SKIP ( ptr u8 n n -- ptr u8 n ) {: a:ptr u n :}
    a n +  u n - ;
@@ -131,7 +167,7 @@ TRUSTED: SS-DISP$ ( -- ptr u8 n )
    SS-ROOT$ ;
 
 : SS-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
-   a SS-ROOT-A !
+   a SS-ROOT-A!
    u SS-ROOT-U ! ;
 
 : SS-ROOT-SELF? ( -- bool )
@@ -153,7 +189,7 @@ TRUSTED: SS-DISP$ ( -- ptr u8 n )
    SS-PATH-BUF rootu 1 + u + ;
 
 : SS-DISPLAY! ( ptr u8 n -- )
-   SS-REL SS-DISP-U ! SS-DISP-A ! ;
+   SS-REL SS-DISP-U ! SS-DISP-A! ;
 
 : SS-ALLOWED? ( ptr u8 n -- bool )
    SS-REL
@@ -182,7 +218,7 @@ TRUSTED: SS-DISP$ ( -- ptr u8 n )
    a u TRIM
    2dup s" Last verified:" SS-LINE-PREFIX? IF
       14 SS-SKIP LTRIM
-      SS-DATE-U ! SS-DATE-A !
+      SS-DATE-U ! SS-DATE-A!
       -1 SS-FOUND? !
    ELSE
       2drop
@@ -190,7 +226,7 @@ TRUSTED: SS-DISP$ ( -- ptr u8 n )
 
 : SS-LOAD-FILE ( ptr u8 n -- )
    SS-FILE-BUF SS-FILE-CAP READ-FILE
-   SS-SRC-U ! SS-SRC-A ! ;
+   SS-SRC-U ! SS-SRC-A! ;
 
 : SS-SET-LINE-END ( -- )
    SS-SRC$ SS-LINE-S @ SS-LINE-END SS-LINE-E ! ;

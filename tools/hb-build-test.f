@@ -77,14 +77,28 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    SB-RESET
    SB$ ;
 
-: HBT-42$ ( -- ptr u8 n )
+: HBT-OK-RUN$ ( -- ptr u8 n )
    SB-RESET
    s" 42" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" literal" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" counted" SB-APPEND
    HBB-LF SB-APPEND-C
    SB$ ;
 
 : HBT-OK-SRC$ ( -- ptr u8 n )
-   s" : MAIN ( -- ) 6 7 * . ;" ;
+   SB-RESET
+   s" : MAIN ( -- ) 6 7 * . s" SB-APPEND
+   HBB-DQ SB-APPEND-C
+   s"  literal" SB-APPEND
+   HBB-DQ SB-APPEND-C
+   s"  type cr c" SB-APPEND
+   HBB-DQ SB-APPEND-C
+   s"  counted" SB-APPEND
+   HBB-DQ SB-APPEND-C
+   s"  count type cr ;" SB-APPEND
+   SB$ ;
 
 : HBT-BAD-SRC$ ( -- ptr u8 n )
    s" : MAIN ( -- ) here drop ;" ;
@@ -207,7 +221,7 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn errn rcn :}
    rcn 0 T=
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
-   HBT-RUN-OUT outn HBT-42$ T$= ;
+   HBT-RUN-OUT outn HBT-OK-RUN$ T$= ;
 
 : HBT-81$ ( -- ptr u8 n )
    SB-RESET

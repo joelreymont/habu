@@ -11,7 +11,6 @@
 
 create TRL 40 allot
 create ZPG 4096 allot
-variable WOF
 variable ZREM
 variable ZC
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
@@ -23,19 +22,11 @@ s" STB-CELL@" s" -- ptr n" TRUST
 : SDB@ SDB @ ;
 s" SDB@" s" -- ptr u8" TRUST
 
-: WALL {: fd a:ptr u :}
-   0 WOF !
-   BEGIN WOF @ u < WHILE
-     fd  a WOF @ +  u WOF @ -  write
-     dup 0 > 0= IF s" snap: write failed" 74 die THEN
-     WOF @ + WOF !
-   REPEAT ;
-
 : WPAD {: fd n :}
    n ZREM !
    BEGIN ZREM @ 0 > WHILE
      ZREM @ 4096 > IF 4096 ELSE ZREM @ THEN ZC !
-     fd ZPG ZC @ WALL
+     fd ZPG ZC @ DRV-WALL
      ZREM @ ZC @ - ZREM !
    REPEAT ;
 
@@ -56,11 +47,12 @@ s" SDB@" s" -- ptr u8" TRUST
    SCL @ TRL 24 + !  SDL @ TRL 32 + !
    \ stream: header, engine text, region, data, trailer, zero pad
    SNAP-OUT PATH0 1537 493 open SFD !
-   SFD @ MBUF CODE-OFF WALL
-   SFD @ STB@ STSZ @ WALL
-   SFD @ SDB@ SCL @ WALL
-   SFD @ data-base SDL @ WALL
-   SFD @ TRL 40 WALL
+   SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
+   SFD @ MBUF CODE-OFF DRV-WALL
+   SFD @ STB@ STSZ @ DRV-WALL
+   SFD @ SDB@ SCL @ DRV-WALL
+   SFD @ data-base SDL @ DRV-WALL
+   SFD @ TRL 40 DRV-WALL
    SFD @  SFTS @ CODE-OFF - SNL @ -  WPAD
    SFD @ close ;
 

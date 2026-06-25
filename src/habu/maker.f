@@ -26,6 +26,7 @@ s" MK-SBUF@" s" -- ptr u8" TRUST
 
 : MK-READ-SRC ( -- )
    MK-IN PATH0 0 0 open MK-FD !
+   MK-FD @ 0 < IF s" maker: cannot open source" 74 die THEN
    here MK-SBUF !  MK-SOURCE-CAP allot  0 MK-SLEN !
    begin
       MK-FD @ MK-SBUF@ MK-SLEN @ + MK-SOURCE-CAP MK-SLEN @ - read MK-RD !
@@ -33,6 +34,7 @@ s" MK-SBUF@" s" -- ptr u8" TRUST
    while
       MK-SLEN @ MK-RD @ + MK-SLEN !
    repeat
+   MK-RD @ 0 < IF MK-FD @ close s" maker: read failed" 74 die THEN
    MK-FD @ close
    MK-SLEN @ 0 > 0= if s" maker: empty source" 74 die then
    MK-SLEN @ MK-SOURCE-CAP = if s" maker: source exceeds buffer" 74 die then ;
@@ -42,6 +44,6 @@ s" MK-SBUF@" s" -- ptr u8" TRUST
    MK-SBUF@ MK-SLEN @ EMIT-FORTH
    BUILD-IMAGE
    s" hb" SET-SIGID CODESIG2
-   MK-OUT PATH0 1537 493 open dup MBUF MLEN @ write drop close ;
+   MK-OUT DRV-WRITE-IMAGE ;
 
 MK-GO

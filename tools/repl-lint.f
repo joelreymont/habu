@@ -29,9 +29,32 @@ variable REPL-TOK-LINE
 variable REPL-ROOT-A
 variable REPL-ROOT-U
 
-TRUSTED: REPL-ROOT-A@ ( -- ptr u8 ) REPL-ROOT-A @ ;
-TRUSTED: REPL-SRC-A@ ( -- ptr u8 ) REPL-SRC-A @ ;
-TRUSTED: REPL-TOK-A@ ( -- ptr u8 ) REPL-TOK-A @ ;
+: REPL-ROOT-A-FIELD ( -- ptr ptr u8 )
+   REPL-ROOT-A 0 ptr-field ;
+
+: REPL-SRC-A-FIELD ( -- ptr ptr u8 )
+   REPL-SRC-A 0 ptr-field ;
+
+: REPL-TOK-A-FIELD ( -- ptr ptr u8 )
+   REPL-TOK-A 0 ptr-field ;
+
+: REPL-ROOT-A@ ( -- ptr u8 )
+   REPL-ROOT-A-FIELD @ ;
+
+: REPL-SRC-A@ ( -- ptr u8 )
+   REPL-SRC-A-FIELD @ ;
+
+: REPL-TOK-A@ ( -- ptr u8 )
+   REPL-TOK-A-FIELD @ ;
+
+: REPL-ROOT-A! ( ptr u8 -- )
+   REPL-ROOT-A-FIELD ! ;
+
+: REPL-SRC-A! ( ptr u8 -- )
+   REPL-SRC-A-FIELD ! ;
+
+: REPL-TOK-A! ( ptr u8 -- )
+   REPL-TOK-A-FIELD ! ;
 
 : NL ( -- )  10 emit ;
 : EM-DASH ( -- )  $E2 emit $80 emit $94 emit ;
@@ -54,7 +77,7 @@ TRUSTED: REPL-TOK-A@ ( -- ptr u8 ) REPL-TOK-A @ ;
    REPL-FD @ close  LINT-TRUE ;
 
 : REPL-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
-   a REPL-ROOT-A !
+   a REPL-ROOT-A!
    u REPL-ROOT-U ! ;
 
 : REPL-ROOT-SELF? ( -- bool )
@@ -212,7 +235,7 @@ TRUSTED: REPL-TOK-A@ ( -- ptr u8 ) REPL-TOK-A @ ;
 : R-NEXT-WORD ( -- bool )
    R-SKIP-IGNORED
    R-END? if LINT-FALSE exit then
-   REPL-SRC-A@ REPL-X @ + REPL-TOK-A !
+   REPL-SRC-A@ REPL-X @ + REPL-TOK-A!
    REPL-X @ REPL-TMP !
    REPL-LINE @ REPL-TOK-LINE !
    begin R-END? 0= R-C@ WS? 0= and while
@@ -228,7 +251,7 @@ TRUSTED: REPL-TOK-A@ ( -- ptr u8 ) REPL-TOK-A @ ;
    s"  use `throw` (the REPL recovers); `die` is for build-time makers only" type NL ;
 
 : LINT-REPL-SOURCE  {: fa fu a u :}  ( -- )
-   a REPL-SRC-A !  u REPL-SRC-U !  0 REPL-X !  1 REPL-LINE !
+   a REPL-SRC-A!  u REPL-SRC-U !  0 REPL-X !  1 REPL-LINE !
    begin R-NEXT-WORD while
       REPL-TOK-A@ REPL-TOK-U @ FATAL-TOK? if
          fa fu  REPL-TOK-A@ REPL-TOK-U @  REPL-TOK-LINE @  REPL-FINDING

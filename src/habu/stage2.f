@@ -13,11 +13,13 @@ s" SBUF@" s" -- ptr u8" TRUST
 
 : READ-SRC
    S2-IN PATH0 0 0 open SFD !
+   SFD @ 0 < IF s" stage2: cannot open source" 74 die THEN
    here SBUF !  S2-SOURCE-CAP allot  0 SLEN !
    BEGIN                                                 \ loop: read() may return short
      SFD @  SBUF@ SLEN @ +  S2-SOURCE-CAP SLEN @ -  read SRD !
      SRD @ 0 >
    WHILE  SLEN @ SRD @ + SLEN !  REPEAT
+   SRD @ 0 < IF SFD @ close s" stage2: read failed" 74 die THEN
    SFD @ close
    SLEN @ 0 > 0= IF s" stage2: empty source" 74 die THEN
    SLEN @ S2-SOURCE-CAP = IF s" stage2: source exceeds buffer" 74 die THEN ;
@@ -27,5 +29,5 @@ s" SBUF@" s" -- ptr u8" TRUST
    SBUF@ SLEN @ EMIT-FORTH
    BUILD-IMAGE
    s" hb" SET-SIGID  CODESIG2
-   S2-OUT PATH0 1537 493 open  dup MBUF MLEN @ write drop  close ;
+   S2-OUT DRV-WRITE-IMAGE ;
 GO
