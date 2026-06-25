@@ -285,6 +285,7 @@ TRUSTED: FS-BYTE-OFFSET ( ptr u8 n -- ptr u8 )
    u 0 < if E-FS-CAPACITY throw then
    pa pu EXISTS? if pa pu FILE? 0= if E-FS-OPEN throw then then
    pa pu FS-PATHZ flags FS-MODE-0644 open FS-IO-FD !
+   FS-IO-FD @ 0 < if E-FS-OPEN throw then
    pa pu FILE? 0= if E-FS-OPEN throw then
    0 FS-IO-OFF !
    begin FS-IO-OFF @ u < while
