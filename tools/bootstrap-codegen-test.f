@@ -91,6 +91,18 @@ variable BCG-LEN
    s" bootstrap/cg/macho.fs" BCG-LOAD
    BCG-TEST-IMAGE-BUFFER-CURRENT ;
 
+: BCG-TEST-ASM-CHECKED ( -- )
+   s" bootstrap/cg/asm-checked.fs" BCG-LOAD
+   s" : A-RRR16 ( a b c d -- e )" BCG-MUST-HAVE
+   s" : A-RRI10 ( a b c d -- e )" BCG-MUST-HAVE
+   s" : A-MOVW ( a b c d -- e )" BCG-MUST-HAVE
+   s" : A-LS-UOFF ( a b c d -- e )" BCG-MUST-HAVE
+   s" 2332033024 A-RRR16" BCG-MUST-HAVE
+   s" $9AC00C00 A-RRR16" BCG-MUST-HAVE
+   s" $D63F0000 A-R1-5" BCG-MUST-HAVE
+   s" 16 lshift swap 5 lshift or swap or" BCG-MUST-LACK
+   s" 10 lshift swap 5 lshift or swap or" BCG-MUST-LACK ;
+
 : BCG-MAIN ( -- )
    T-RESET
    BCG-TEST-INSTALL-FAIL-CLOSED
@@ -98,6 +110,7 @@ variable BCG-LEN
    BCG-TEST-PREFIX-LIST
    BCG-TEST-TRUST-CALLS
    BCG-TEST-IMAGE-BUFFER
+   BCG-TEST-ASM-CHECKED
    T-REPORT
    s" bootstrap-codegen-test: ok" type cr ;
 

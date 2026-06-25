@@ -924,3 +924,8 @@ register for the marker byte.
   `TRUST` sites can shift only the manifest line numbers. Run `trust-lint`
   before the full gate, update the scanned sites exactly, and do not treat a
   line-only manifest fix as a trust-base expansion.
+- **Encoder factoring needs value fixtures and shape guards:** checked
+  instruction-layout helpers remove stack juggling, but source-shape scans only
+  prove the file stayed factored. Add executable fixtures with known instruction
+  words for every encoder touched, then keep the source-shape guard to prevent
+  future copy-pasted bit layouts.
