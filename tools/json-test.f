@@ -1,17 +1,15 @@
 \ json-test.f - focused tests for tools/json.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f tools/json.f tools/json-test.f
 
-0 set-check
-
 variable TEST-N
-: ASSERT  \ ( f -- )
+: ASSERT ( bool -- )
    0= IF s" json-test failed at assertion " type TEST-N @ . cr 1 die THEN
    TEST-N @ 1+ TEST-N ! ;
 
-: ASSERT=  \ ( got want -- )
+: ASSERT= ( n n -- )
    = ASSERT ;
 
-: ASSERT$  \ ( a u b v -- )
+: ASSERT$ ( ptr u8 n ptr u8 n -- )
    JSON-STR= ASSERT ;
 
 $1000 constant T-CAP
@@ -22,43 +20,50 @@ variable T-LARGE-A
 variable T-LARGE-CAP
 variable T-LARGE-LEN
 
-: T-CLEAR  \ ( -- )
+: T-LARGE-A-FIELD ( -- ptr ptr u8 )
+   T-LARGE-A 0 ptr-field ;
+
+: T-LARGE-A@ ( -- ptr u8 )
+   T-LARGE-A-FIELD @ ;
+
+: T-LARGE-A! ( ptr u8 -- )
+   T-LARGE-A-FIELD ! ;
+
+: T-CLEAR ( -- )
    0 TLEN ! ;
 
-: T+C  \ ( c -- )
+: T+C ( n -- )
    TLEN @ 1+ T-CAP > IF s" json-test: fixture buffer full" 1 die THEN
    TBUF TLEN @ + c!
    TLEN @ 1+ TLEN ! ;
 
-: T+  \ ( a u -- )
-   {: a u :}
+: T+ ( ptr u8 n -- ) {: a:ptr u :}
    TLEN @ u + T-CAP > IF s" json-test: fixture buffer full" 1 die THEN
    a u TBUF TLEN @ + JSON-COPY
    TLEN @ u + TLEN ! ;
 
-: T$  \ ( -- a u )
+: T$ ( -- ptr u8 n )
    TBUF TLEN @ ;
 
-: T-LARGE-RESET  \ ( -- )
-   T-LARGE-BODY 32 + JSON-ALLOC-STR-PTR T-LARGE-A !
+: T-LARGE-RESET ( -- )
+   T-LARGE-BODY 32 + JSON-ALLOC-STR-PTR T-LARGE-A!
    T-LARGE-BODY 32 + T-LARGE-CAP !
    0 T-LARGE-LEN ! ;
 
-: T-LARGE+C  \ ( c -- )
+: T-LARGE+C ( n -- )
    T-LARGE-LEN @ 1+ T-LARGE-CAP @ > IF s" json-test: large buffer full" 1 die THEN
-   T-LARGE-A @ T-LARGE-LEN @ + c!
+   T-LARGE-A@ T-LARGE-LEN @ + c!
    T-LARGE-LEN @ 1+ T-LARGE-LEN ! ;
 
-: T-LARGE+  \ ( a u -- )
-   {: a u :}
+: T-LARGE+ ( ptr u8 n -- ) {: a:ptr u :}
    T-LARGE-LEN @ u + T-LARGE-CAP @ > IF s" json-test: large buffer full" 1 die THEN
-   a u T-LARGE-A @ T-LARGE-LEN @ + JSON-COPY
+   a u T-LARGE-A@ T-LARGE-LEN @ + JSON-COPY
    T-LARGE-LEN @ u + T-LARGE-LEN ! ;
 
-: T-LARGE$  \ ( -- a u )
-   T-LARGE-A @ T-LARGE-LEN @ ;
+: T-LARGE$ ( -- ptr u8 n )
+   T-LARGE-A@ T-LARGE-LEN @ ;
 
-: PARSE-CODE  \ ( a u -- code )
+: PARSE-CODE ( ptr u8 n -- n )
    JSON-PARSE-TRY >r 2drop r> ;
 
 variable TA
@@ -66,17 +71,25 @@ variable TU
 variable ROOT
 variable NODE
 
-: ASSERT-BYTE  \ ( a idx c -- )
-   {: a idx c :}
+: TA-FIELD ( -- ptr ptr u8 )
+   TA 0 ptr-field ;
+
+: TA@ ( -- ptr u8 )
+   TA-FIELD @ ;
+
+: TA! ( ptr u8 -- )
+   TA-FIELD ! ;
+
+: ASSERT-BYTE ( ptr u8 n n -- ) {: a:ptr idx c :}
    a idx + c@ c ASSERT= ;
 
-: ADD-DQ$  \ ( a u -- )
+: ADD-DQ$ ( ptr u8 n -- )
    J-DQ T+C T+ J-DQ T+C ;
 
-: ADD-LARGE-DQ$  \ ( a u -- )
+: ADD-LARGE-DQ$ ( ptr u8 n -- )
    J-DQ T-LARGE+C T-LARGE+ J-DQ T-LARGE+C ;
 
-: BUILD-NESTED  \ ( -- a u )
+: BUILD-NESTED ( -- ptr u8 n )
    T-CLEAR
    J-LBRACE T+C
    s" schema_version" ADD-DQ$ J-COLON T+C s" 1" T+
@@ -101,7 +114,7 @@ variable NODE
    J-RBRACE T+C
    T$ ;
 
-: TEST-NESTED  \ ( -- )
+: TEST-NESTED ( -- )
    BUILD-NESTED JSON-PARSE ROOT !
    ROOT @ JSON-KIND J-OBJ ASSERT=
    ROOT @ s" schema_version" JSON-GET dup JSON-KIND J-NUM ASSERT=
@@ -115,22 +128,22 @@ variable NODE
    NODE @ JSON-COUNT 4 ASSERT=
    NODE @ 0 JSON-ARR@ JSON-NUMBER$ s" -12" ASSERT$
    NODE @ 1 JSON-ARR@ JSON-NUMBER$ s" 3.5e+2" ASSERT$
-   NODE @ 2 JSON-ARR@ JSON-STRING$ TU ! TA !
+   NODE @ 2 JSON-ARR@ JSON-STRING$ TU ! TA!
    TU @ 17 ASSERT=
-   TA @ 4 J-LF ASSERT-BYTE
-   TA @ 10 J-DQ ASSERT-BYTE
-   TA @ 16 J-BACKSLASH ASSERT-BYTE
-   NODE @ 3 JSON-ARR@ s" unicode" JSON-GET JSON-STRING$ TU ! TA !
+   TA@ 4 J-LF ASSERT-BYTE
+   TA@ 10 J-DQ ASSERT-BYTE
+   TA@ 16 J-BACKSLASH ASSERT-BYTE
+   NODE @ 3 JSON-ARR@ s" unicode" JSON-GET JSON-STRING$ TU ! TA!
    TU @ 2 ASSERT=
-   TA @ 0 $CE ASSERT-BYTE
-   TA @ 1 $A9 ASSERT-BYTE ;
+   TA@ 0 $CE ASSERT-BYTE
+   TA@ 1 $A9 ASSERT-BYTE ;
 
-: TEST-WRITE-ROUNDTRIP  \ ( -- )
+: TEST-WRITE-ROUNDTRIP ( -- )
    BUILD-NESTED JSON-PARSE ROOT !
    ROOT @ JSON-WRITE JSON-PARSE ROOT !
-   ROOT @ s" nested" JSON-GET s" arr" JSON-GET 2 JSON-ARR@ JSON-STRING$ TU ! TA !
+   ROOT @ s" nested" JSON-GET s" arr" JSON-GET 2 JSON-ARR@ JSON-STRING$ TU ! TA!
    TU @ 17 ASSERT=
-   TA @ 10 J-DQ ASSERT-BYTE
+   TA@ 10 J-DQ ASSERT-BYTE
    JSONW-RESET
    JSONW-OBJECT-START
    s" msg" JSONW-KEY
@@ -143,7 +156,7 @@ variable NODE
    ROOT @ s" msg" JSON-GET JSON-STRING$ s" a" ASSERT$
    ROOT @ s" n" JSON-GET JSON-NUMBER$ s" -7.25e-1" ASSERT$ ;
 
-: BUILD-LARGE-STRING  \ ( -- a u )
+: BUILD-LARGE-STRING ( -- ptr u8 n )
    T-LARGE-RESET
    J-LBRACE T-LARGE+C
    s" big" ADD-LARGE-DQ$ J-COLON T-LARGE+C J-DQ T-LARGE+C
@@ -154,25 +167,25 @@ variable NODE
    J-DQ T-LARGE+C J-RBRACE T-LARGE+C
    T-LARGE$ ;
 
-: TEST-LARGE-STRING  \ ( -- )
+: TEST-LARGE-STRING ( -- )
    BUILD-LARGE-STRING JSON-PARSE ROOT !
-   ROOT @ s" big" JSON-GET JSON-STRING$ TU ! TA !
+   ROOT @ s" big" JSON-GET JSON-STRING$ TU ! TA!
    TU @ T-LARGE-BODY ASSERT=
-   TA @ 0 97 ASSERT-BYTE
-   TA @ T-LARGE-BODY 1- 97 ASSERT-BYTE
+   TA@ 0 97 ASSERT-BYTE
+   TA@ T-LARGE-BODY 1- 97 ASSERT-BYTE
    JSON-STR-CAP JSON-STR-BOOT-CAP > ASSERT ;
 
-: BUILD-LEADING-ZERO  \ ( -- a u )
+: BUILD-LEADING-ZERO ( -- ptr u8 n )
    T-CLEAR
    J-LBRACE T+C s" n" ADD-DQ$ J-COLON T+C s" 01" T+ J-RBRACE T+C
    T$ ;
 
-: BUILD-TRAILING-COMMA  \ ( -- a u )
+: BUILD-TRAILING-COMMA ( -- ptr u8 n )
    T-CLEAR
    J-LBRACK T+C s" 1" T+ J-COMMA T+C J-RBRACK T+C
    T$ ;
 
-: BUILD-TOO-MANY-NODES  \ ( -- a u )
+: BUILD-TOO-MANY-NODES ( -- ptr u8 n )
    T-CLEAR
    J-LBRACK T+C
    0 begin dup JSON-MAX-NODES < while
@@ -183,32 +196,33 @@ variable NODE
    J-RBRACK T+C
    T$ ;
 
-: BUILD-BAD-ESCAPE  \ ( -- a u )
+: BUILD-BAD-ESCAPE ( -- ptr u8 n )
    T-CLEAR
    J-DQ T+C s" \q" T+ J-DQ T+C
    T$ ;
 
-: TEST-STRICT-ERRORS  \ ( -- )
+: TEST-STRICT-ERRORS ( -- )
    BUILD-LEADING-ZERO PARSE-CODE E-JSON-SYNTAX ASSERT=
    JSON-ERROR$ s" json: leading zero" ASSERT$
    BUILD-TRAILING-COMMA PARSE-CODE E-JSON-SYNTAX ASSERT=
    BUILD-BAD-ESCAPE PARSE-CODE E-JSON-SYNTAX ASSERT=
    s" prose not json" PARSE-CODE E-JSON-SYNTAX ASSERT= ;
 
-: TEST-PARSE-TRY  \ ( -- )
+: TEST-PARSE-TRY ( -- )
    BUILD-NESTED JSON-PARSE-TRY
    0 ASSERT=
    JSON-PARSE-OK ASSERT=
    dup JSON-KIND J-OBJ ASSERT=
+   drop
    s" prose not json" JSON-PARSE-TRY
    E-JSON-SYNTAX ASSERT=
    JSON-PARSE-THROW ASSERT=
    -1 ASSERT= ;
 
-: ADD-LINE  \ ( -- )
+: ADD-LINE ( -- )
    J-LF T+C ;
 
-: BUILD-JSONL  \ ( -- a u )
+: BUILD-JSONL ( -- ptr u8 n )
    T-CLEAR
    s" prose before json" T+ ADD-LINE
    J-LBRACE T+C s" a" ADD-DQ$ J-COLON T+C s" 1" T+ J-RBRACE T+C ADD-LINE
@@ -217,7 +231,7 @@ variable NODE
    J-SP T+C J-LBRACE T+C s" b" ADD-DQ$ J-COLON T+C s" true" T+ J-RBRACE T+C J-SP T+C ADD-LINE
    T$ ;
 
-: TEST-JSONL  \ ( -- )
+: TEST-JSONL ( -- )
    BUILD-JSONL JSONL-START-SKIP
    JSONL-NEXT-OBJECT ROOT !
    ROOT @ -1 <> ASSERT
@@ -228,7 +242,7 @@ variable NODE
    JSONL-NEXT-OBJECT -1 ASSERT=
    JSONL-SKIPPED 3 ASSERT= ;
 
-: TEST-JSONL-BLANK-ROWS  \ ( -- )
+: TEST-JSONL-BLANK-ROWS ( -- )
    T-CLEAR
    ADD-LINE
    J-SP T+C J-TAB T+C ADD-LINE
@@ -239,25 +253,27 @@ variable NODE
    JSONL-NEXT-OBJECT -1 ASSERT=
    JSONL-SKIPPED 2 ASSERT= ;
 
-: JSONL-STRICT-BAD  \ ( -- node )
+: JSONL-STRICT-BAD ( -- n )
    BUILD-JSONL JSONL-START-STRICT
    JSONL-NEXT-OBJECT ;
 
-: JSONL-SKIP-BAD  \ ( -- node )
+: JSONL-STRICT-BAD-THROW ( -- )
+   JSONL-STRICT-BAD drop ;
+
+: JSONL-SKIP-BAD ( -- n )
    BUILD-JSONL JSONL-START-SKIP
    JSONL-NEXT-OBJECT ;
 
-: TEST-JSONL-MODES  \ ( -- )
-   [: JSONL-STRICT-BAD ;] catch E-JSON-SYNTAX ASSERT=
-   [: JSONL-SKIP-BAD ;] catch 0 ASSERT=
-   drop
+: TEST-JSONL-MODES ( -- )
+   [: JSONL-STRICT-BAD-THROW ;] catch E-JSON-SYNTAX ASSERT=
+   JSONL-SKIP-BAD dup -1 <> ASSERT drop
    JSONL-SKIPPED 1 ASSERT=
    JSONL-NEXT-OBJECT ROOT !
    ROOT @ s" b" JSON-GET JSON-BOOL@ ASSERT
    JSONL-NEXT-OBJECT -1 ASSERT=
    JSONL-SKIPPED 3 ASSERT= ;
 
-: TEST-JSONL-ROW-OUTCOMES  \ ( -- )
+: TEST-JSONL-ROW-OUTCOMES ( -- )
    BUILD-JSONL JSONL-START-SKIP
    JSONL-NEXT-ROW ASSERT
    E-JSON-SYNTAX ASSERT=
@@ -282,7 +298,7 @@ variable NODE
    drop
    JSONL-LINE# 4 ASSERT= ;
 
-: TEST-JSONL-FINAL-PARTIAL  \ ( -- )
+: TEST-JSONL-FINAL-PARTIAL ( -- )
    T-CLEAR
    J-LBRACE T+C s" ok" ADD-DQ$ J-COLON T+C s" true" T+ J-RBRACE T+C ADD-LINE
    s" not-json" T+
@@ -304,21 +320,24 @@ variable NODE
    -1 ASSERT=
    JSONL-LINE# 2 ASSERT= ;
 
-: JSONL-CAPACITY-BAD  \ ( -- node )
+: JSONL-CAPACITY-BAD ( -- n )
    BUILD-TOO-MANY-NODES JSONL-START-SKIP
    JSONL-NEXT-OBJECT ;
 
-: TEST-JSONL-NONSYNTAX-ERROR  \ ( -- )
+: JSONL-CAPACITY-BAD-THROW ( -- )
+   JSONL-CAPACITY-BAD drop ;
+
+: TEST-JSONL-NONSYNTAX-ERROR ( -- )
    BUILD-TOO-MANY-NODES JSONL-START-SKIP
    JSONL-NEXT-ROW ASSERT
    E-JSON-CAPACITY ASSERT=
    JSONL-ROW-ERROR ASSERT=
    -1 ASSERT=
    JSONL-LINE# 1 ASSERT=
-   [: JSONL-CAPACITY-BAD ;] catch E-JSON-CAPACITY ASSERT=
+   [: JSONL-CAPACITY-BAD-THROW ;] catch E-JSON-CAPACITY ASSERT=
    JSONL-SKIPPED 0 ASSERT= ;
 
-: JSON-TEST  \ ( -- )
+: JSON-TEST ( -- )
    1 TEST-N !
    TEST-NESTED
    TEST-WRITE-ROUNDTRIP
