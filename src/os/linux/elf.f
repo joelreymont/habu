@@ -8,26 +8,26 @@ variable MP
 variable MLEN
 s" MBUF" s" -- ptr u8" TRUST
 s" MLEN" s" -- ptr n" TRUST
-: MP@ MP @ ;
+: MP@ ( -- ptr u8 ) MP @ ;
 s" MP@" s" -- ptr u8" TRUST
 
-: M-RESET  MBUF MP ! ;
+: M-RESET ( -- )  MBUF MP ! ;
 
-: M8  {: b :}  b MP@ c!  MP@ 1 + MP ! ;
+: M8 ( n -- ) {: b :}  b MP@ c!  MP@ 1 + MP ! ;
 
-: M16 {: h :}  h M8  h 8 rshift M8 ;
+: M16 ( n -- ) {: h :}  h M8  h 8 rshift M8 ;
 
-: M32 {: w :}  w M16  w 16 rshift M16 ;
+: M32 ( n -- ) {: w :}  w M16  w 16 rshift M16 ;
 
-: M64 {: x :}  x M32  x 32 rshift M32 ;
+: M64 ( n -- ) {: x :}  x M32  x 32 rshift M32 ;
 
-: M-HERE  MP@ MBUF - ;
+: M-HERE ( -- n )  MP@ MBUF - ;
 
-: M-ZEROS {: n :}  n 0 > IF n BEGIN dup 0 > WHILE 0 M8 1 - REPEAT drop THEN ;
+: M-ZEROS ( n -- ) {: n :}  n 0 > IF n BEGIN dup 0 > WHILE 0 M8 1 - REPEAT drop THEN ;
 
-: M-BYTES {: a:ptr u :}  0 BEGIN dup u < WHILE  dup a + c@ M8  1 + REPEAT drop ;
+: M-BYTES ( ptr u8 n -- ) {: a:ptr u :}  0 BEGIN dup u < WHILE  dup a + c@ M8  1 + REPEAT drop ;
 
-: M-PAD {: off :}  off M-HERE - M-ZEROS ;
+: M-PAD ( n -- ) {: off :}  off M-HERE - M-ZEROS ;
 
 $7F constant ELF-MAG0
 69 constant ELF-MAG1
@@ -47,17 +47,17 @@ $80000 constant MPAGE
 variable CODELEN
 variable ELF-TEXT-SIZE
 
-: ASM-CODE  ASM-LEN CODELEN ! ;
+: ASM-CODE ( -- )  ASM-LEN CODELEN ! ;
 s" ASM-CODE" s" --" TRUST
 
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $FFF +  $FFF invert and ;
 
-: ELF-IDENT
+: ELF-IDENT ( -- )
    ELF-MAG0 M8  ELF-MAG1 M8  ELF-MAG2 M8  ELF-MAG3 M8
    ELFCLASS64 M8  ELFDATA2LSB M8  EV-CURRENT M8  0 M8  0 M8
    7 M-ZEROS ;
 
-: ELF-HDR,
+: ELF-HDR, ( -- )
    ELF-IDENT
    ET-EXEC M16  EM-AARCH64 M16  EV-CURRENT M32
    VMBASE CODE-OFF + M64
@@ -67,7 +67,7 @@ s" ASM-CODE" s" --" TRUST
    ELF-HDR-SZ M16  ELF-PHDR-SZ M16  1 M16
    0 M16  0 M16  0 M16 ;
 
-: ELF-PHDR,
+: ELF-PHDR, ( -- )
    PT-LOAD M32
    PF-RX M32
    0 M64
@@ -77,7 +77,7 @@ s" ASM-CODE" s" --" TRUST
    ELF-TEXT-SIZE @ M64
    $1000 M64 ;
 
-: BUILD-ELF
+: BUILD-ELF ( -- )
    ASM-CODE  M-RESET
    TEXTSZ ELF-TEXT-SIZE !
    ELF-HDR,
@@ -87,10 +87,10 @@ s" ASM-CODE" s" --" TRUST
    TEXTSZ M-PAD
    M-HERE MLEN ! ;
 
-: BUILD-IMAGE  BUILD-ELF ;
+: BUILD-IMAGE ( -- )  BUILD-ELF ;
 s" BUILD-IMAGE" s" --" TRUST
 
-: BUILD-SNAP-HDR {: snl :} ( n -- n )
+: BUILD-SNAP-HDR ( n -- n ) {: snl :}
    CODE-OFF snl + $FFF + $FFF invert and {: sfts :}
    sfts ELF-TEXT-SIZE !
    M-RESET

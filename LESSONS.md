@@ -855,3 +855,7 @@ register for the marker byte.
   is not complete when the findings only live in chat. Record agent scopes,
   concrete `file:line` findings, fixed items, remaining work, and validation in a
   durable doc such as `docs/factorization-review.md`.
+- **Comment-only standard fixes still need source-path proof:** adding
+  definition-local stack effects to raw platform/arch files should be checked
+  with a mechanical missing-comment scan, focused source loads for each affected
+  target path, `trust-lint` for shifted trusted rows, and then the native gate.

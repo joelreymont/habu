@@ -62,13 +62,17 @@ the first review round:
 - disassembly reads instruction-width words;
 - imagedisasm and bootstrap codegen regressions are in the gate;
 - stale trust rows and several unchecked pointer reloads were removed.
+- F03 platform/arch definition-local stack effects were added for
+  `src/arch/arm64/asm.f`, `src/arch/arm64/mnem.f`,
+  `src/arch/arm64/icode.f`, `src/os/linux/elf.f`,
+  `src/os/macos/macho.f`, and `src/os/macos/sign2.f`; focused source loads,
+  `trust-lint`, and the full native gate passed.
 
 ## Remaining Work Order
 
 These findings are still open as of this review artifact. The safest order is:
 
-1. Add missing stack-effect comments in arch/platform/bootstrap files:
-   `habu-add-arch-platform-4818d614`,
+1. Add missing stack-effect comments in bootstrap files:
    `habu-add-bootstrap-stack-a6b31511`.
 2. Factor mirrored native/bootstrap numeric parser and colon-open paths:
    `habu-factor-mirrored-num-c2faa343`,
