@@ -454,6 +454,11 @@ lesson — keep the specific word/code/path, cut the prose.
   timeouts (`DS-HB-TIMEOUT` vs `DS-RUN-TIMEOUT`) so a checker/build subprocess
   isn't timed out by a runtime-loop budget. Live-row extras (`runtime`) are set
   after `DS-LR-PASS`/`DS-LR-FAIL` (`DS-CONFIG-LR-COMMON` resets row fields).
+- **Core/wrapper splits update every child load list:** when a CLI tool gains a
+  reusable checked core (`tools/diag-origin-core.f`), update the wrapper tests,
+  build drivers, gate suites, benchmark checker builders, docs, and filemap in
+  the same change. Missing transitive deps (`lib/errors.f`, `lib/string.f`) showed
+  up as child rc 70 before the parent test could explain the failure.
 - **`stage2-src` cap is a builder contract:** AOT maker generation can exceed the
   256 KiB stage2 reader for tiny user source; reproduce with `hb-build` child
   output, raise the named cap deliberately, keep fail-closed overflow.

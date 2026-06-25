@@ -218,6 +218,10 @@ variable GE-RD
    s" lib/process.f" GE-ARG+
    s" lib/process-argv.f" GE-ARG+
    s" lib/source.f" GE-ARG+
+   s" tools/lint/text.f" GE-ARG+
+   s" tools/lint/token.f" GE-ARG+
+   s" tools/lint/lib.f" GE-ARG+
+   s" tools/diag-origin-core.f" GE-ARG+
    s" tools/argv.f" GE-ARG+
    s" tools/check.f" GE-ARG+
    s" --" GE-ARG+ ;

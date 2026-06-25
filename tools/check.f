@@ -1,6 +1,8 @@
 \ check.f - Habu-native checked engine wrapper.
 \ Load after lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f
-\ lib/process.f lib/process-argv.f lib/source.f and tools/argv.f.
+\ lib/process.f lib/process-argv.f lib/source.f, tools/lint/text.f,
+\ tools/lint/token.f, tools/lint/lib.f, tools/diag-origin-core.f,
+\ and tools/argv.f.
 
 \ Audited hook-install boundary: this tool must install its checker hook before
 \ validating generated source snippets with CHECK!.
@@ -366,10 +368,6 @@ CHK-FILES: CHK-TRUST-FILES
    tools/lint/token.f tools/lint/lib.f tools/argv.f tools/trust-lint.f
 ;CHK-FILES
 
-CHK-FILES: CHK-DIAG-FILES
-   tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/diag-origin.f
-;CHK-FILES
-
 CHK-FILES: CHK-JSON-ONLY-FILES
    lib/errors.f lib/memory.f tools/argv.f tools/json.f tools/json-only.f
 ;CHK-FILES
@@ -401,11 +399,6 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
 : CHK-LOAD-TRUST ( -- )
    CHK-LOAD-RESET
    [: CHK-ARG+ ;] CHK-TRUST-FILES
-   CHK-LOAD-END ;
-
-: CHK-LOAD-DIAG ( -- )
-   CHK-LOAD-RESET
-   [: CHK-ARG+ ;] CHK-DIAG-FILES
    CHK-LOAD-END ;
 
 : CHK-LOAD-JSON-ONLY ( -- )
@@ -454,10 +447,6 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
       dup CHK-POS$ CHK-ARG+
       1+
    repeat drop ;
-
-: CHK-ARGV-DIAG ( -- )
-   CHK-LOAD-DIAG
-   CHK-SOURCE CHK-ARG+ ;
 
 : CHK-ARGV-JSON-ONLY ( -- )
    CHK-LOAD-JSON-ONLY
@@ -530,17 +519,8 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
    CHK-RC @ CHK-THROW ;
 
 : CHK-RUN-DIAG ( -- )
-   CHK-ARGV-DIAG
-   s" bin/hb" >LEN CHK-ORIGIN-BUF CHK-ORIGIN-CAP >LEN
-   CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE {: outu erru rc :}
-   rc RC>N CHK-RC !
-   erru LEN>N CHK-ERR-U !
-   outu LEN>N CHK-ORIGIN-U !
-   CHK-RC @ 0 <> if
-      CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
-      CHK-RC @ CHK-THROW
-   then ;
+   CHK-SOURCE CHK-ORIGIN-BUF CHK-ORIGIN-CAP >LEN
+   DIAG-ORIGIN>BUF LEN>N CHK-ORIGIN-U ! ;
 
 : CHK-RUN-HB ( -- )
    CHK-RUN-PATH CHK-RUN-BUF CHK-RUN-U @ WRITE-ALL

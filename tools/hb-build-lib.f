@@ -201,7 +201,12 @@ variable HBB-JSON-FOUND
 : HBB-ADD-DIAG-ORIGIN-CMD ( -- )
    HBB-CMD-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+
+   s" tools/lint/token.f" >LEN PROC-ARGV+
+   s" tools/lint/lib.f" >LEN PROC-ARGV+
+   s" tools/diag-origin-core.f"  >LEN PROC-ARGV+
    s" tools/diag-origin.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    HBB-SRC$  >LEN PROC-ARGV+ ;

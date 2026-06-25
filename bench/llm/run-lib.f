@@ -51,6 +51,10 @@
    s" lib/process.f" BGR-ARG+
    s" lib/process-argv.f" BGR-ARG+
    s" lib/source.f" BGR-ARG+
+   s" tools/lint/text.f" BGR-ARG+
+   s" tools/lint/token.f" BGR-ARG+
+   s" tools/lint/lib.f" BGR-ARG+
+   s" tools/diag-origin-core.f" BGR-ARG+
    s" tools/argv.f" BGR-ARG+
    s" tools/check.f" BGR-ARG+
    s" --" BGR-ARG+ ;

@@ -1,6 +1,8 @@
 \ diag-origin-test.f - checked fixtures for tools/diag-origin.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/diag-origin-test.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/lint/text.f
+\ tools/lint/token.f tools/lint/lib.f tools/diag-origin-core.f
+\ tools/diag-origin-test.f
 
 4096 constant DGT-BUF-CAP
 
@@ -84,23 +86,37 @@ create DGT-ERR DGT-BUF-CAP allot
 : DGT-RUN ( -- n n n )
    PROC-ARGV-RESET
    s" --load" DGT-ARG+
+   s" lib/errors.f" DGT-ARG+
+   s" lib/string.f" DGT-ARG+
    s" tools/lint/text.f" DGT-ARG+
    s" tools/lint/token.f" DGT-ARG+
    s" tools/lint/lib.f" DGT-ARG+
+   s" tools/diag-origin-core.f" DGT-ARG+
    s" tools/diag-origin.f" DGT-ARG+
    s" --" DGT-ARG+
    DGT-IN DGT-ARG+
    s" bin/hb" >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
    DGT-CAPTURE>N ;
 
+: DGT-RUN-CORE ( -- n )
+   DGT-IN DGT-OUT DGT-BUF-CAP >LEN DIAG-ORIGIN>BUF LEN>N ;
+
+: DGT-TEST-CORE ( -- )
+   DGT-RUN-CORE {: outu :}
+   DGT-OUT outu DGT-WANT$ T$= ;
+
+: DGT-TEST-CLI ( -- )
+   DGT-RUN 0 T=
+   {: outu erru :}
+   DGT-OUT outu DGT-WANT$ T$=
+   DGT-ERR erru DGT-EMPTY$ T$= ;
+
 : DGT-MAIN ( -- )
    T-RESET
    DGT-PREPARE
    DGT-IN DGT-SOURCE$ WRITE-ALL
-   DGT-RUN 0 T=
-   {: outu erru :}
-   DGT-OUT outu DGT-WANT$ T$=
-   DGT-ERR erru DGT-EMPTY$ T$=
+   DGT-TEST-CORE
+   DGT-TEST-CLI
    CLEANUP-RUN
    DGT-ROOT EXISTS? TFALSE
    T-REPORT

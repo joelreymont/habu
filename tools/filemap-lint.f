@@ -126,6 +126,7 @@ variable FM-NUM-L
    s" tools/signature-lint-test.f" FM-REQ
    s" tools/aot-lint.f" FM-REQ
    s" tools/aot-lint-test.f" FM-REQ
+   s" tools/diag-origin-core.f" FM-REQ
    s" tools/diag-origin.f" FM-REQ
    s" tools/diag-origin-test.f" FM-REQ
    s" tools/json-only.f" FM-REQ

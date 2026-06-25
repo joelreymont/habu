@@ -75,7 +75,7 @@ Users:
 
 - `tools/signature-lint.f:189` runs `READ-FILE LEX-SOURCE`.
 - `tools/aot-lint.f:128` runs `READ-FILE LEX-SOURCE`.
-- `tools/diag-origin.f` and `tools/check-all-errors.f` load this foundation for
+- `tools/diag-origin-core.f`, `tools/diag-origin.f`, and `tools/check-all-errors.f` load this foundation for
   source-origin diagnostics.
 - `bench/llm/attempt-solutions-lib.f`, `bench/llm/forth-task-lines-lib.f`, and
   `bench/llm/large-buffer-bundle-test.f` compose it with benchmark source tools.

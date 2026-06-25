@@ -307,6 +307,15 @@ Handoff snapshot:
   open: the remaining work is splitting static scanner cores from their CLI
   wrappers so check phases that are not true process boundaries can run
   in-process.
+- F13 has a second sub-batch: `tools/diag-origin-core.f` now owns the reusable
+  marker injection core, `tools/diag-origin.f` is only the CLI wrapper, and
+  `tools/check.f` calls `DIAG-ORIGIN>BUF` in-process instead of spawning an
+  `hb` child for origin marker insertion. Validation passed on Linux/aarch64:
+  `tools/diag-origin-test.f`, `tools/check-test.f`, direct `tools/check.f`
+  good/bad JSON smokes, `filemap-lint`, `trust-lint`, `stale-status-lint`,
+  `shadow-lint`, `tools/hb-build-test.f`, focused native bench helper tests
+  covering the changed checker argv builders, and the full native gate from
+  `docs/bootstrap.md`.
 - The remaining factorization work already has one dot per open finding in the
   local tracker. Do not create duplicates; start the next open row, commit that
   focused batch, update this document, close that row's dot, then push.
