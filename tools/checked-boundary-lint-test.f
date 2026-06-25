@@ -201,7 +201,7 @@ create CBLT-LF-BYTE 10 c,
    CBLT-CROSS  >LEN PROC-ARGV+
    CBLT-HB-CAPTURE ;
 
-: CBLT-ASSERT-CLEAN ( n n n -- ) {: rc outu erru :}
+: CBLT-ASSERT-CLEAN ( n n n -- ) {: outu erru rc :}
    rc 0 T=
    CBLT-OUT outu CBLT-EMPTY$ T$=
    CBLT-ERR erru CBLT-EMPTY$ T$= ;
