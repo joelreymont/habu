@@ -141,47 +141,89 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 \ LVMOVK ( x11=val x14=rd ) : emit a MINIMAL movz/movn + movk chain targeting rd —
 \ movn form when $FFFF chunks dominate; chunks the base op already set are skipped.
 \ x5=k x6=val x7=nz/started x8=nf/chunk x9=instr x10=form x12=$FFFF (Lcemit saves all).
-: EMIT-VMOVK ( -- )
-   LVMOVK @ LBL,
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: cl cd ml mk mn mset mnext md mz1 mout :}
-   SP SP 16 SUBI,  30 SP 0 STR,
+: C-VMOVK-FRAME ( -- )
+   SP SP 16 SUBI,  30 SP 0 STR, ;
+
+: C-VMOVK-INIT ( -- )
    6 11 0 ADDI,  12 $FFFF MOVZ,
-   7 0 MOVZ,  8 0 MOVZ,  5 0 MOVZ,
-   cl LBL,
-      5 4 CMPI,  C-GE cd BCOND,
-      9 5 4 LSLI,  10 6 9 LSRV,  10 10 12 AND,
-      10 0 CMPI,  9 1 CSET,  7 7 9 ADD,
-      10 12 CMP,  9 1 CSET,  8 8 9 ADD,
-      5 5 1 ADDI,  cl B,
-   cd LBL,
+   7 0 MOVZ,  8 0 MOVZ,  5 0 MOVZ, ;
+
+: C-VMOVK-COUNT-CHUNK ( -- )
+   9 5 4 LSLI,  10 6 9 LSRV,  10 10 12 AND, ;
+
+: C-VMOVK-COUNT-STEP ( n -- ) {: cl :}
+   C-VMOVK-COUNT-CHUNK
+   10 0 CMPI,  9 1 CSET,  7 7 9 ADD,
+   10 12 CMP,  9 1 CSET,  8 8 9 ADD,
+   5 5 1 ADDI,  cl B, ;
+
+: C-VMOVK-FORM ( -- )
    8 7 CMP,  10 11 CSET,
-   7 0 MOVZ,  5 0 MOVZ,
-   ml LBL,
-      5 4 CMPI,  C-GE md BCOND,
-      9 5 4 LSLI,  8 6 9 LSRV,  8 8 12 AND,
-      9 12 10 MUL,  8 9 CMP,  C-EQ mnext BCOND,
-      7 mk CBNZ,
-      10 mn CBNZ,
-         9 5 21 LSLI,  8 8 5 LSLI,  9 9 8 ORR,  9 9 14 ORR,
-         8 $D2800000 LIT64,  9 9 8 ORR,  LCEMIT @ BL,  mset B,
-      mn LBL,
-         8 8 12 EOR,
-         9 5 21 LSLI,  8 8 5 LSLI,  9 9 8 ORR,  9 9 14 ORR,
-         8 $92800000 LIT64,  9 9 8 ORR,  LCEMIT @ BL,
-      mset LBL,  7 1 MOVZ,  mnext B,
-      mk LBL,
-         9 5 21 LSLI,  8 8 5 LSLI,  9 9 8 ORR,  9 9 14 ORR,
-         8 $F2800000 LIT64,  9 9 8 ORR,  LCEMIT @ BL,
-   mnext LBL,  5 5 1 ADDI,  ml B,
-   md LBL,
+   7 0 MOVZ,  5 0 MOVZ, ;
+
+: C-VMOVK-LOAD-CHUNK ( -- )
+   9 5 4 LSLI,  8 6 9 LSRV,  8 8 12 AND, ;
+
+: C-VMOVK-SKIP? ( n -- ) {: mnext :}
+   9 12 10 MUL,  8 9 CMP,  C-EQ mnext BCOND, ;
+
+: C-VMOVK-INSTR-FIELDS ( -- )
+   9 5 21 LSLI,  8 8 5 LSLI,  9 9 8 ORR,  9 9 14 ORR, ;
+
+: C-VMOVK-EMIT-MOVZ ( n -- ) {: mset :}
+   C-VMOVK-INSTR-FIELDS
+   8 $D2800000 LIT64,  9 9 8 ORR,  LCEMIT @ BL,  mset B, ;
+
+: C-VMOVK-EMIT-MOVN ( -- )
+   8 8 12 EOR,
+   C-VMOVK-INSTR-FIELDS
+   8 $92800000 LIT64,  9 9 8 ORR,  LCEMIT @ BL, ;
+
+: C-VMOVK-MARK-STARTED ( n -- ) {: mnext :}
+   7 1 MOVZ,  mnext B, ;
+
+: C-VMOVK-EMIT-MOVK ( -- )
+   C-VMOVK-INSTR-FIELDS
+   8 $F2800000 LIT64,  9 9 8 ORR,  LCEMIT @ BL, ;
+
+: C-VMOVK-FALLBACK ( n n -- ) {: mz1 mout :}
    7 mout CBNZ,
    10 mz1 CBNZ,
       8 $D2800000 LIT64,  9 8 14 ORR,  LCEMIT @ BL,  mout B,
    mz1 LBL,
-      8 $92800000 LIT64,  9 8 14 ORR,  LCEMIT @ BL,
-   mout LBL,
+      8 $92800000 LIT64,  9 8 14 ORR,  LCEMIT @ BL, ;
+
+: C-VMOVK-RETURN ( -- )
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+: EMIT-VMOVK ( -- )
+   LVMOVK @ LBL,
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: cl cd ml mk mn mset mnext md mz1 mout :}
+   C-VMOVK-FRAME
+   C-VMOVK-INIT
+   cl LBL,
+      5 4 CMPI,  C-GE cd BCOND,
+      cl C-VMOVK-COUNT-STEP
+   cd LBL,
+   C-VMOVK-FORM
+   ml LBL,
+      5 4 CMPI,  C-GE md BCOND,
+      C-VMOVK-LOAD-CHUNK
+      mnext C-VMOVK-SKIP?
+      7 mk CBNZ,
+      10 mn CBNZ,
+         mset C-VMOVK-EMIT-MOVZ
+      mn LBL,
+         C-VMOVK-EMIT-MOVN
+      mset LBL,  mnext C-VMOVK-MARK-STARTED
+      mk LBL,
+         C-VMOVK-EMIT-MOVK
+   mnext LBL,  5 5 1 ADDI,  ml B,
+   md LBL,
+   mz1 mout C-VMOVK-FALLBACK
+   mout LBL,
+   C-VMOVK-RETURN ;
 
 \ LVFORCEK ( x5=k -- x14=reg | 0 ) : force VS entry k into a register, in place.
 \ Atomic: an allocation failure mutates nothing.

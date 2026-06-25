@@ -18,6 +18,8 @@ variable #CASE
 -1 $FF and 255 T=
 $AF 175 T=
 -$10 -16 T=
+: TMOVK-LITS ( -- n n n n ) 0 -1 $123456789ABCDEF0 $FFFFFFFF0000FFFF ;
+TMOVK-LITS $FFFFFFFF0000FFFF T= $123456789ABCDEF0 T= -1 T= 0 T=
 7 2 mod 1 T=
 7 2 /mod 3 T= 1 T=
 $10 4 lshift $100 T=

@@ -94,12 +94,24 @@ the first review round:
   `bin/hb`; `bin/hb` kept sha256
   `cba97dd68f37e1b9f7eacb90cc17b3c3c93717c335d77f8352a1e4e7bba33a7c` before
   and after the recovery probe.
+- F07 native and bootstrap move-wide JIT emitters were split into helper phases
+  for frame setup, initialization, chunk counting, form selection, chunk load,
+  skip checks, first MOVZ/MOVN emission, MOVK continuation emission, fallback,
+  and return. `test/engine-suite.f` now exercises compiled literal
+  materialization for zero, all-ones, MOVZ/MOVK, and MOVN/MOVK forms.
+  `tools/bootstrap-codegen-test.f`, `bin/hb test/engine-suite.f`,
+  `trust-lint`, and the full native gate passed. No-binary recovery bootstrap
+  was not run on this host because installed Gforth 0.7.3 fails the documented
+  `{:` locals probe and `tools/bootstrap.sh` exits 69 before touching `bin/hb`;
+  `bin/hb` kept sha256
+  `4aa06fe536a15961f24a2a1d75a2678c3da7d017c5295b72987c285f2536de92` before
+  and after the recovery probe.
 
 ## Continuation Handoff
 
 Tracker state was verified with `dot tree habu-review-whole-repo-5e087327`.
-The parent dot is `habu-review-whole-repo-5e087327`; F01, F02, F03, F06, and
-F09 are addressed; all rows below are open. No duplicate top-level dots are
+The parent dot is `habu-review-whole-repo-5e087327`; F01, F02, F03, F06, F07,
+and F09 are addressed; all rows below are open. No duplicate top-level dots are
 needed.
 The local `.dots/` store is ignored by the repository, so this section is the
 durable committed queue. A fresh checkout can recreate the tracker from this
@@ -107,9 +119,9 @@ table if the local dot store is unavailable.
 
 First continuation step:
 
-1. Start `habu-factor-bootstrap-move-9722fa8e`.
-2. Factor `bootstrap/cg/jit.fs` move-wide emission without changing emitted
-   ARM64 instruction sequences.
+1. Start `habu-unify-bootstrap-prefix-26788bfa`.
+2. Replace mirrored bootstrap prefix path/load lists with one checked table or
+   DSL while preserving current source ordering and target OS selection.
 3. Prove the focused bootstrap codegen tests first, then `trust-lint`, the
    native fixpoint/full gate from `docs/bootstrap.md`, and no-binary recovery
    when a Gforth with `{:` locals is available.
@@ -118,25 +130,24 @@ Open dot queue:
 
 | Order | Finding | Dot | Scope |
 | --- | --- | --- | --- |
-| 1 | F07 | `habu-factor-bootstrap-move-9722fa8e` | Factor bootstrap move-wide emission. |
-| 2 | F08 | `habu-unify-bootstrap-prefix-26788bfa` | Replace mirrored prefix path/load lists with one checked table or DSL. |
-| 3 | F21 | `habu-factor-bootstrap-trust-71f82afa` | Split bootstrap trust lookup, argument pushing, and save-LR call helper. |
-| 4 | F19 | `habu-share-bootstrap-image-ef41b8f8` | Share bootstrap ELF/Mach-O image buffer emitters. |
-| 5 | F20 | `habu-factor-checked-arm64-f1f46265` | Add checked ARM64 layout combinators. |
-| 6 | F10 | `habu-factor-typed-byte-b311d5c7` | Factor shared ELF/Mach-O/signing byte cursor layer. |
-| 7 | F04 | `habu-factor-darwin-spawn-5a82930c` | Factor Darwin spawn emitter variants. |
-| 8 | F05 | `habu-factor-native-c-230e1316` | Split native `C-CALL` phases. |
-| 9 | F17 | `habu-share-signature-scan-5353e68b` | Share required/optional signature scanning. |
-| 10 | F18 | `habu-factor-compiler-dispatch-0167f41a` | Split compiler dispatch/data chains by concern or checked rows. |
-| 11 | F12 | `habu-factor-process-capture-467f9021` | Factor capture setup, probe, drain, close, and reap lifecycle. |
-| 12 | F14 | `habu-factor-gate-progress-555aa42d` | Share progress-aware capture helpers. |
-| 13 | F13 | `habu-factor-check-load-2e29d26a` | Split check/load builders and keep only true boundary spawns. |
-| 14 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. |
-| 15 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. |
-| 16 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. |
-| 17 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. |
-| 18 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. |
-| 19 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. |
+| 1 | F08 | `habu-unify-bootstrap-prefix-26788bfa` | Replace mirrored prefix path/load lists with one checked table or DSL. |
+| 2 | F21 | `habu-factor-bootstrap-trust-71f82afa` | Split bootstrap trust lookup, argument pushing, and save-LR call helper. |
+| 3 | F19 | `habu-share-bootstrap-image-ef41b8f8` | Share bootstrap ELF/Mach-O image buffer emitters. |
+| 4 | F20 | `habu-factor-checked-arm64-f1f46265` | Add checked ARM64 layout combinators. |
+| 5 | F10 | `habu-factor-typed-byte-b311d5c7` | Factor shared ELF/Mach-O/signing byte cursor layer. |
+| 6 | F04 | `habu-factor-darwin-spawn-5a82930c` | Factor Darwin spawn emitter variants. |
+| 7 | F05 | `habu-factor-native-c-230e1316` | Split native `C-CALL` phases. |
+| 8 | F17 | `habu-share-signature-scan-5353e68b` | Share required/optional signature scanning. |
+| 9 | F18 | `habu-factor-compiler-dispatch-0167f41a` | Split compiler dispatch/data chains by concern or checked rows. |
+| 10 | F12 | `habu-factor-process-capture-467f9021` | Factor capture setup, probe, drain, close, and reap lifecycle. |
+| 11 | F14 | `habu-factor-gate-progress-555aa42d` | Share progress-aware capture helpers. |
+| 12 | F13 | `habu-factor-check-load-2e29d26a` | Split check/load builders and keep only true boundary spawns. |
+| 13 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. |
+| 14 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. |
+| 15 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. |
+| 16 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. |
+| 17 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. |
+| 18 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. |
 
 ## Other Open Top-Level Dots
 
@@ -182,13 +193,12 @@ Parent: `habu-review-whole-repo-5e087327`
 ## Verification Status
 
 This review was read-only. No gates were run by the subagents. The latest
-validated port stack after the F06 numeric-parser batch passed:
+validated port stack after the F07 move-wide emitter batch passed:
 
 - `trust-lint`: 236 TRUST sites, 318 manifest rows, 0 findings;
 - `tools/bootstrap-codegen-test.f`: `test: ok`,
   `bootstrap-codegen-test: ok`;
 - `bin/hb test/engine-suite.f`: `ok`;
-- focused native engine gate phase: `PASS: native engine gate phase`;
 - `test/gate-stdlib.f`: `PASS: native lint/stdlib gate phase`;
 - `test/run.f`: `PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)`.
 - recovery-host probe: installed `gforth 0.7.3` failed the required `{:` locals

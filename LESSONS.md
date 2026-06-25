@@ -873,6 +873,10 @@ register for the marker byte.
   assembler-word vocabularies even when they emit the same runtime instructions.
   Preserve each file's local opcode spelling and run a focused native engine
   gate plus bootstrap codegen tests before treating a structural copy as safe.
+- **Move-wide emitter tests need compiled literals:** refactoring `LVMOVK`-style
+  emitters should add colon-definition literal cases for zero, all-ones,
+  MOVZ/MOVK, and MOVN/MOVK forms. Top-level parser checks do not prove the JIT
+  materializer still emits every constant synthesis path correctly.
 - **Deep factoring reviews need repo artifacts:** an all-repo factorization audit
   is not complete when the findings only live in chat. Record agent scopes,
   concrete `file:line` findings, fixed items, remaining work, and validation in a
