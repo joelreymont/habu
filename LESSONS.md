@@ -919,6 +919,11 @@ register for the marker byte.
   assembler-word vocabularies even when they emit the same runtime instructions.
   Preserve each file's local opcode spelling and run a focused native engine
   gate plus bootstrap codegen tests before treating a structural copy as safe.
+- **Shared codegen scanners keep policy labels at callers:** required and
+  optional syntactic scans can share whitespace/open/close/capture emitters only
+  when the caller supplies the missing-token and missing-close branch labels.
+  This preserves strict `TRUSTED:` failures and optional colon signatures while
+  still removing duplicated scanner mechanics.
 - **Move-wide emitter tests need compiled literals:** refactoring `LVMOVK`-style
   emitters should add colon-definition literal cases for zero, all-ones,
   MOVZ/MOVK, and MOVN/MOVK forms. Top-level parser checks do not prove the JIT

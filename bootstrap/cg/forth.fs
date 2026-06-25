@@ -1612,21 +1612,46 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 DATA CRSIG-A-CELL STR,
    9 DATA CRSIG-U-CELL STR, ;
 
-: C-PARSE-CREATED-SIG ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: ws got scan cpy cpd done bad :}
+: C-SIG-START ( n -- ) {: lmiss :}
+   LBL LBL {: ws got :}
    11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
-   ws LBL,  11 12 CMP,  C-GE bad BCOND,
+   ws LBL,  11 12 CMP,  C-GE lmiss BCOND,
       13 11 0 LDRB,  13 32 CMPI,  C-HI got BCOND,
       11 11 1 ADDI,  ws B,
-   got LBL,  13 40 CMPI,  C-NE bad BCOND,
-      14 11 0 ADDI,  15 11 0 ADDI,
-   scan LBL,  15 12 CMP,  C-GE bad BCOND,
-      13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE scan BCOND,
+   got LBL,  13 40 CMPI,  C-NE lmiss BCOND,
+   14 11 0 ADDI,  15 11 0 ADDI, ;
+
+: C-SIG-END ( n -- ) {: lmiss :}
+   LBL {: scan :}
+   scan LBL,  15 12 CMP,  C-GE lmiss BCOND,
+      13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE scan BCOND, ;
+
+: C-SIG-INNER$ ( -- )
+   11 14 1 ADDI,  12 15 14 SUB,  12 12 2 SUBI, ;
+
+: C-SIG-FULL$ ( -- )
+   11 14 0 ADDI,  12 15 14 SUB, ;
+
+: C-SIG-CAPTURE-TSIG ( -- )
    15 DATA INP-CELL STR,
-   16 14 1 ADDI,  10 15 14 SUB,  10 10 2 SUBI,
+   C-SIG-INNER$
+   11 DATA TSIG-A-CELL STR,  12 DATA TSIG-U-CELL STR,
+   C-SIG-FULL$  LBCS @ BL, ;
+
+: C-SIG-BAD ( -- )
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 76 MOVZ,  NR-EXIT SYS, ;
+
+: C-PARSE-CREATED-SIG ( -- )
+   LBL LBL LBL LBL {: cpy cpd done bad :}
+   bad C-SIG-START
+   bad C-SIG-END
+   15 DATA INP-CELL STR,
+   C-SIG-INNER$
+   10 12 0 ADDI,
    12 DATA 0 LDR,  15 12 0 ADDI,
    14 12 10 ADD,  14 DP-CHECK
-   11 16 0 ADDI,  9 10 0 ADDI,
+   9 10 0 ADDI,
    cpy LBL,  9 cpd CBZ,
       13 11 0 LDRB,  13 12 0 STRB,
       12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cpy B,
@@ -1634,8 +1659,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    12 DATA 0 STR,
    15 DATA TCSIG-A-CELL STR,  10 DATA TCSIG-U-CELL STR,
    done B,
-   bad LBL,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 76 MOVZ,  NR-EXIT SYS,
+   bad LBL,  C-SIG-BAD
    done LBL, ;
 
 \ DOES> — the defining word patches its LAST create into `push dfield ; b D`,
@@ -2369,19 +2393,11 @@ variable CFSK2
    LBCAP @ BL, ;
 
 : C-COLON-MAYBE-SIG ( -- )
-   LBL {: nsig :}  LBL {: sigq :}  LBL {: sp1 :}  LBL {: sc2 :}  LBL {: scd :}
-   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
-   sp1 LBL,  11 12 CMP,  C-GE nsig BCOND,
-      13 11 0 LDRB,  13 32 CMPI,  C-HI sigq BCOND,
-      11 11 1 ADDI,  sp1 B,
-   sigq LBL,  13 40 CMPI,  C-NE nsig BCOND,
-   14 11 0 ADDI,  15 11 0 ADDI,
-   sc2 LBL,  15 12 CMP,  C-GE scd BCOND,
-      13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE sc2 BCOND,
-   scd LBL,  15 DATA INP-CELL STR,
-   11 14 1 ADDI,  12 15 14 SUB,  12 12 2 SUBI,
-   11 DATA TSIG-A-CELL STR,  12 DATA TSIG-U-CELL STR,
-   11 14 0 ADDI,  12 15 14 SUB,  LBCS @ BL,
+   LBL LBL {: nsig scd :}
+   nsig C-SIG-START
+   scd C-SIG-END
+   scd LBL,
+   C-SIG-CAPTURE-TSIG
    nsig LBL, ;
 
 : C-COLON-RESET-COMPILE-STATE ( -- )

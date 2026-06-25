@@ -902,21 +902,46 @@ create ENDLOC-KW 58 c, 125 c,
 : J-RECURSE ( -- )
    9 DATA PEND-CELL LDR,  9 9 0 LDR,  $94000000 $3FFFFFF C-BBACK ;   \ bl entry
 
-: C-PARSE-CREATED-SIG ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: ws got scan cpy cpd done bad :}
+: C-SIG-START ( n -- ) {: lmiss :}
+   LBL LBL {: ws got :}
    11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
-   ws LBL,  11 12 CMP,  C-GE bad BCOND,
+   ws LBL,  11 12 CMP,  C-GE lmiss BCOND,
       13 11 0 LDRB,  13 32 CMPI,  C-HI got BCOND,
       11 11 1 ADDI,  ws B,
-   got LBL,  13 40 CMPI,  C-NE bad BCOND,
-      14 11 0 ADDI,  15 11 0 ADDI,
-   scan LBL,  15 12 CMP,  C-GE bad BCOND,
-      13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE scan BCOND,
+   got LBL,  13 40 CMPI,  C-NE lmiss BCOND,
+   14 11 0 ADDI,  15 11 0 ADDI, ;
+
+: C-SIG-END ( n -- ) {: lmiss :}
+   LBL {: scan :}
+   scan LBL,  15 12 CMP,  C-GE lmiss BCOND,
+      13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE scan BCOND, ;
+
+: C-SIG-INNER$ ( -- )
+   11 14 1 ADDI,  12 15 14 SUB,  12 12 2 SUBI, ;
+
+: C-SIG-FULL$ ( -- )
+   11 14 0 ADDI,  12 15 14 SUB, ;
+
+: C-SIG-CAPTURE-TSIG ( -- )
    15 DATA INP-CELL STR,
-   16 14 1 ADDI,  10 15 14 SUB,  10 10 2 SUBI,
+   C-SIG-INNER$
+   11 DATA TSIG-A-CELL STR,  12 DATA TSIG-U-CELL STR,
+   C-SIG-FULL$  LBCS @ BL, ;
+
+: C-SIG-BAD ( -- )
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 76 MOVZ,  NR-EXIT SYS, ;
+
+: C-PARSE-CREATED-SIG ( -- )
+   LBL LBL LBL LBL {: cpy cpd done bad :}
+   bad C-SIG-START
+   bad C-SIG-END
+   15 DATA INP-CELL STR,
+   C-SIG-INNER$
+   10 12 0 ADDI,
    12 DATA 0 LDR,  15 12 0 ADDI,
    14 12 10 ADD,  14 DP-CHECK
-   11 16 0 ADDI,  9 10 0 ADDI,
+   9 10 0 ADDI,
    cpy LBL,  9 cpd CBZ,
       13 11 0 LDRB,  13 12 0 STRB,
       12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cpy B,
@@ -924,8 +949,7 @@ create ENDLOC-KW 58 c, 125 c,
    12 DATA 0 STR,
    15 DATA TCSIG-A-CELL STR,  10 DATA TCSIG-U-CELL STR,
    done B,
-   bad LBL,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 76 MOVZ,  NR-EXIT SYS,
+   bad LBL,  C-SIG-BAD
    done LBL, ;
 
 : J-DOES ( -- )
@@ -1092,24 +1116,25 @@ create ENDLOC-KW 58 c, 125 c,
    9 DATA DOESB-CELL STR,
    9 DATA TRUSTED-CELL STR, ;
 
-: C-PARSE-TRUST-SIG ( -- )
-   LBL LBL LBL LBL LBL {: ws got scan done bad :}
-   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
-   ws LBL,  11 12 CMP,  C-GE bad BCOND,
-      13 11 0 LDRB,  13 32 CMPI,  C-HI got BCOND,
-      11 11 1 ADDI,  ws B,
-   got LBL,  13 40 CMPI,  C-NE bad BCOND,
-      14 11 0 ADDI,  15 11 0 ADDI,
-   scan LBL,  15 12 CMP,  C-GE bad BCOND,
-      13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE scan BCOND,
-   15 DATA INP-CELL STR,
-   11 14 1 ADDI,  12 15 14 SUB,  12 12 2 SUBI,
-   11 DATA TSIG-A-CELL STR,  12 DATA TSIG-U-CELL STR,
-   11 14 0 ADDI,  12 15 14 SUB,  LBCS @ BL,
+: C-PARSE-REQUIRED-SIG ( -- )
+   LBL LBL {: done bad :}
+   bad C-SIG-START
+   bad C-SIG-END
+   C-SIG-CAPTURE-TSIG
    done B,
-   bad LBL,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 76 MOVZ,  NR-EXIT SYS,
+   bad LBL,  C-SIG-BAD
    done LBL, ;
+
+: C-PARSE-TRUST-SIG ( -- )
+   C-PARSE-REQUIRED-SIG ;
+
+: C-COLON-MAYBE-SIG ( -- )
+   LBL LBL {: nsig scd :}
+   nsig C-SIG-START
+   scd C-SIG-END
+   scd LBL,
+   C-SIG-CAPTURE-TSIG
+   nsig LBL, ;
 
 : C-TRUSTED ( -- )
    LBL LBL LBL {: cpok ndok done :}
@@ -1719,22 +1744,7 @@ s" c-local-ref" s" n n --" TRUST
       12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
       C-CLEAR-TRUSTED-STATE
       LBCAP @ BL,             \ seed with the NAME (checker records certified sigs)
-      \ capture an optional leading ( in -- out ) into the body, so the check
-      \ hook sees the declared sig (CHECK! verifies the body against it)
-         LBL {: nsig :}  LBL {: sigq :}  LBL {: sp1 :}  LBL {: sc2 :}  LBL {: scd :}
-         11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
-         sp1 LBL,  11 12 CMP,  C-GE nsig BCOND,
-            13 11 0 LDRB,  13 32 CMPI,  C-HI sigq BCOND,
-            11 11 1 ADDI,  sp1 B,
-      sigq LBL,  13 40 CMPI,  C-NE nsig BCOND,         \ not '(' -> no sig
-      14 11 0 ADDI,  15 11 0 ADDI,                     \ x14=start x15=cursor
-         sc2 LBL,  15 12 CMP,  C-GE scd BCOND,
-            13 15 0 LDRB,  15 15 1 ADDI,  13 41 CMPI,  C-NE sc2 BCOND,
-         scd LBL,  15 DATA INP-CELL STR,                  \ consume through ')'
-         11 14 1 ADDI,  12 15 14 SUB,  12 12 2 SUBI,
-         11 DATA TSIG-A-CELL STR,  12 DATA TSIG-U-CELL STR,
-         11 14 0 ADDI,  12 15 14 SUB,  LBCS @ BL,         \ append "( ... )" to body
-         nsig LBL,
+      C-COLON-MAYBE-SIG
          12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
          12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
          12 DATA QPATCH-CELL STR,
