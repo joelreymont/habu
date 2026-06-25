@@ -20,7 +20,9 @@ When an audit creates per-finding dots, the durable review document must list
 every open dot in one canonical continuation queue and mark partial work
 explicitly. An abbreviated "remaining work" list can hide open findings even
 when the tracker itself is correct; an ignored `.dots/` store makes the checked
-in document the only portable handoff.
+in document the only portable handoff. Include the current commit, whether any
+source edits are pending, and a definition of done for each open row so another
+checkout can recreate equivalent dots without guessing.
 
 ### Partial implementations need child dots before handoff
 If source edits are in progress but not yet validated enough to commit, create

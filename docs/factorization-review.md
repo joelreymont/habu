@@ -179,13 +179,20 @@ the first review round:
 
 ## Continuation Handoff
 
-Tracker state was verified with `dot tree habu-review-whole-repo-5e087327`.
-The parent dot is `habu-review-whole-repo-5e087327`; F01, F02, F03, F06, F07,
-F08, F09, F10, F19, F20, and F21 are addressed; all rows below are open. No duplicate
-top-level dots are needed.
+Tracker state was verified with `dot tree` on 2026-06-25 after commit
+`29233384 Share native image byte writer`. The parent dot is
+`habu-review-whole-repo-5e087327`; F01, F02, F03, F06, F07, F08, F09, F10,
+F19, F20, and F21 are addressed; all rows below are open. No source edits for
+F04 or later are pending in this handoff.
+
 The local `.dots/` store is ignored by the repository, so this section is the
-durable committed queue. A fresh checkout can recreate the tracker from this
-table if the local dot store is unavailable.
+durable committed queue. A fresh checkout can recreate equivalent dots from the
+tables below if the local dot store is unavailable. Use one parent dot for the
+whole-repo factorization review, one child dot per open finding, and the three
+non-factorization top-level dots listed below. For each finding dot, copy the
+Finding row's evidence, root cause, and required fix into the dot description,
+then add the validation from the "Done when" column. Do not create duplicate
+dots when the local store already contains the IDs below.
 
 Handoff snapshot:
 
@@ -193,11 +200,13 @@ Handoff snapshot:
   `trust-lint`, `stale-status-lint`, `filemap-lint`, `shadow-lint`, the focused
   `build-helper-fixtures` bundle, the full native gate, and the local recovery
   probe described above.
-- The remaining factorization work already has one dot per open finding. Do not
-  create duplicates; start the next open row, commit that focused batch, then
-  update this document and close that row's dot.
+- The remaining factorization work already has one dot per open finding in the
+  local tracker. Do not create duplicates; start the next open row, commit that
+  focused batch, update this document, close that row's dot, then push.
 - The three non-factorization top-level dots listed below are also open and
   should stay separate from the all-repo factorization parent.
+- Do not close the parent dot until every child row is closed and this document
+  records the final validation.
 
 Next continuation step:
 
@@ -206,35 +215,37 @@ Next continuation step:
    file-action, descriptor, spawn, success/failure, and cleanup helpers.
 3. Validate with Darwin-focused source checks when available, the Linux-safe
    native gate from `docs/bootstrap.md`, and the no-binary recovery probe when a
-   Gforth with `{:` locals is available.
+   Gforth with `{:` locals is available. A Linux-only source-preserving refactor
+   may be useful, but do not close F04 until macOS process validation has run or
+   a separate macOS validation dot is created and referenced here.
 
 Open dot queue:
 
-| Order | Finding | Dot | Scope |
-| --- | --- | --- | --- |
-| 1 | F04 | `habu-factor-darwin-spawn-5a82930c` | Factor Darwin spawn emitter variants. |
-| 2 | F05 | `habu-factor-native-c-230e1316` | Split native `C-CALL` phases. |
-| 3 | F17 | `habu-share-signature-scan-5353e68b` | Share required/optional signature scanning. |
-| 4 | F18 | `habu-factor-compiler-dispatch-0167f41a` | Split compiler dispatch/data chains by concern or checked rows. |
-| 5 | F12 | `habu-factor-process-capture-467f9021` | Factor capture setup, probe, drain, close, and reap lifecycle. |
-| 6 | F14 | `habu-factor-gate-progress-555aa42d` | Share progress-aware capture helpers. |
-| 7 | F13 | `habu-factor-check-load-2e29d26a` | Split check/load builders and keep only true boundary spawns. |
-| 8 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. |
-| 9 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. |
-| 10 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. |
-| 11 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. |
-| 12 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. |
-| 13 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. |
+| Order | Finding | Dot | Scope | Done when |
+| --- | --- | --- | --- | --- |
+| 1 | F04 | `habu-factor-darwin-spawn-5a82930c` | Factor Darwin spawn emitter variants. | Shared helpers preserve the Darwin `posix_spawn` ABI; macOS process tests and full native gate pass, plus Linux-safe gate where run. |
+| 2 | F05 | `habu-factor-native-c-230e1316` | Split native `C-CALL` phases. | Prologue, inline-safety, inline-copy, and absolute-call emission are separate; native fixpoint, `hb-build` tests, and full native gate pass. |
+| 3 | F17 | `habu-share-signature-scan-5353e68b` | Share required/optional signature scanning. | Required and optional signature scanners share one capture path; compiler/checker tests and full native gate pass. |
+| 4 | F18 | `habu-factor-compiler-dispatch-0167f41a` | Split compiler dispatch/data chains by concern or checked rows. | Long dispatch/data chains are split or table-driven with checked rows; focused compiler tests and full native gate pass. |
+| 5 | F12 | `habu-factor-process-capture-467f9021` | Factor capture setup, probe, drain, close, and reap lifecycle. | Plain, argv, stdin, env, and cwd capture variants share lifecycle helpers; process fixtures and full native gate pass. |
+| 6 | F14 | `habu-factor-gate-progress-555aa42d` | Share progress-aware capture helpers. | Gate and stdlib runners use shared heartbeat/capture helpers; progress tests and full native gate pass. |
+| 7 | F13 | `habu-factor-check-load-2e29d26a` | Split check/load builders and keep only true boundary spawns. | Checked load-group builders replace repeated argv recipes; non-boundary static checks run in-process; `tools/check-test.f` and full native gate pass. |
+| 8 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. | Directory iteration and path enter/leave live in `lib/fs.f`; mutation policy stays in `lib/fs-mutate.f`; fs fixtures and full native gate pass. |
+| 9 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. | Documentation policy rows replace imperative branch ladders; stdlib manifest fixtures and full native gate pass. |
+| 10 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. | Digit, ratio, keyword, and whitespace scanning are factored; stale-status lint fixture and full native gate pass. |
+| 11 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. | Regex classification/state transitions use small predicate or row helpers; regex fixtures and full native gate pass. |
+| 12 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. | Command arity/xt rows and repair suggestion rows replace branch ladders; gate-json assertions and full native gate pass. |
+| 13 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. | Missing stack-effect comments and lower-case project words are fixed; focused source loads, lint, and full native gate pass. |
 
 ## Other Open Top-Level Dots
 
 These dots are outside the factorization parent and remain open in `dot ready`.
 
-| Priority | Dot | Required Fix |
-| --- | --- | --- |
-| 1 | `habu-replace-creates-with-d9c4b404` | Replace the project-specific `CREATES` marker with standard checked `CREATE ... DOES>`, update tests/docs/gate DSL users, and remove the legacy keyword path. |
-| 2 | `habu-add-typed-byte-b25e923e` | Add a checked byte-pointer offset primitive/model so `lib/fs.f` can drop the trusted `FS-BYTE-OFFSET` boundary. |
-| 2 | `habu-model-engine-builder-38ddc643` | Model raw engine-builder asm/codegen effects under the hard hook so the generated `0 set-check` boundary can be removed. |
+| Priority | Dot | Required Fix | Done when |
+| --- | --- | --- | --- |
+| 1 | `habu-replace-creates-with-d9c4b404` | Replace the project-specific `CREATES` marker with standard checked `CREATE ... DOES>`, update tests/docs/gate DSL users, and remove the legacy keyword path. | No `CREATES` keyword path or fallback remains; `CREATE ... DOES>` tests cover created-word effects; full native gate passes. |
+| 2 | `habu-add-typed-byte-b25e923e` | Add a checked byte-pointer offset primitive/model so `lib/fs.f` can drop the trusted `FS-BYTE-OFFSET` boundary. | The trusted `FS-BYTE-OFFSET` boundary is gone; pointer-offset checker tests, fs dirent/stat tests, and full native gate pass. |
+| 2 | `habu-model-engine-builder-38ddc643` | Model raw engine-builder asm/codegen effects under the hard hook so the generated `0 set-check` boundary can be removed. | Generated build sources no longer need the audited `0 set-check` bracket for engine-builder effects; build-fixpoint tests and full native gate pass. |
 
 ## Tracking Dots
 
