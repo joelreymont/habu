@@ -78,31 +78,58 @@ the first review round:
   was not run on this host because the installed Gforth 0.7.3 fails the
   documented `{:` locals probe and `tools/bootstrap.sh` exits 69 before touching
   `bin/hb`.
+- F09 is partially addressed: `bootstrap/cg/jit.fs` and
+  `bootstrap/cg/regstack.fs` now have definition-local stack-effect comments in
+  commit `268c5921` and `tools/bootstrap-codegen-test.f` passed. The remaining
+  F09 work is `bootstrap/cg/forth.fs`; keep the dot open until that file is
+  complete and the native gate passes.
 
-## Remaining Work Order
+## Continuation Handoff
 
-These findings are still open as of this review artifact. The safest order is:
+Tracker state was verified with `dot tree habu-review-whole-repo-5e087327`.
+The parent dot is `habu-review-whole-repo-5e087327`; F01, F02, and F03 are
+closed; F09 is active and partial; all other rows below are open. No duplicate
+top-level dots are needed.
 
-1. Add missing stack-effect comments in bootstrap files:
-   `habu-add-bootstrap-stack-a6b31511`.
-2. Factor mirrored native/bootstrap numeric parser:
-   `habu-factor-mirrored-num-c2faa343`.
-3. Factor bootstrap JIT move-wide emission:
-   `habu-factor-bootstrap-move-9722fa8e`.
-4. Factor byte cursor writers shared by ELF, Mach-O, and signing:
-   `habu-factor-typed-byte-b311d5c7`,
-   `habu-share-bootstrap-image-ef41b8f8`.
-5. Factor process capture and gate progress helpers, then simplify child-spawn
-   tests to true boundaries only:
-   `habu-factor-process-capture-467f9021`,
-   `habu-factor-gate-progress-555aa42d`,
-   `habu-factor-check-load-2e29d26a`.
-6. Factor fs traversal, manifest-policy rows, stale-status scanner, and regex
-   dispatch in separate changes:
-   `habu-factor-filesystem-traversal-f490595e`,
-   `habu-table-drive-stdlib-786cb080`,
-   `habu-factor-stale-status-615b5a1b`,
-   `habu-factor-regex-token-865ebac5`.
+First continuation step:
+
+1. Finish `habu-add-bootstrap-stack-a6b31511`.
+2. Add exact definition-local `( in -- out )` comments to
+   `bootstrap/cg/forth.fs`.
+3. Re-run:
+   `rg -n -P '^\s*:\s+\S+\s+(?!\()' bootstrap/cg/forth.fs`
+   and `rg -n '^:\s+\S+\s*$' bootstrap/cg/forth.fs`; both must be empty.
+4. Validate with `tools/bootstrap-codegen-test.f`, `trust-lint`, and the full
+   native gate from `docs/bootstrap.md`.
+5. Record recovery-host evidence. On this Linux/aarch64 box, installed Gforth
+   0.7.3 is expected to fail the documented `{:` locals probe and
+   `tools/bootstrap.sh` should exit 69 before touching `bin/hb`.
+
+Open dot queue:
+
+| Order | Finding | Dot | Scope |
+| --- | --- | --- | --- |
+| 1 | F09 | `habu-add-bootstrap-stack-a6b31511` | Finish bootstrap stack comments in `bootstrap/cg/forth.fs`. |
+| 2 | F06 | `habu-factor-mirrored-num-c2faa343` | Factor native/bootstrap numeric parsing mirrors. |
+| 3 | F07 | `habu-factor-bootstrap-move-9722fa8e` | Factor bootstrap move-wide emission. |
+| 4 | F08 | `habu-unify-bootstrap-prefix-26788bfa` | Replace mirrored prefix path/load lists with one checked table or DSL. |
+| 5 | F21 | `habu-factor-bootstrap-trust-71f82afa` | Split bootstrap trust lookup, argument pushing, and save-LR call helper. |
+| 6 | F19 | `habu-share-bootstrap-image-ef41b8f8` | Share bootstrap ELF/Mach-O image buffer emitters. |
+| 7 | F20 | `habu-factor-checked-arm64-f1f46265` | Add checked ARM64 layout combinators. |
+| 8 | F10 | `habu-factor-typed-byte-b311d5c7` | Factor shared ELF/Mach-O/signing byte cursor layer. |
+| 9 | F04 | `habu-factor-darwin-spawn-5a82930c` | Factor Darwin spawn emitter variants. |
+| 10 | F05 | `habu-factor-native-c-230e1316` | Split native `C-CALL` phases. |
+| 11 | F17 | `habu-share-signature-scan-5353e68b` | Share required/optional signature scanning. |
+| 12 | F18 | `habu-factor-compiler-dispatch-0167f41a` | Split compiler dispatch/data chains by concern or checked rows. |
+| 13 | F12 | `habu-factor-process-capture-467f9021` | Factor capture setup, probe, drain, close, and reap lifecycle. |
+| 14 | F14 | `habu-factor-gate-progress-555aa42d` | Share progress-aware capture helpers. |
+| 15 | F13 | `habu-factor-check-load-2e29d26a` | Split check/load builders and keep only true boundary spawns. |
+| 16 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. |
+| 17 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. |
+| 18 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. |
+| 19 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. |
+| 20 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. |
+| 21 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. |
 
 ## Tracking Dots
 
