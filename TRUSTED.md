@@ -49,11 +49,11 @@ that source is explicitly certified; they are not stale-checked by the default
 | linux-spawn-child | `--` | Linux child-side spawn setup: applies cwd/stdio setup, performs raw `execve`, and reports setup/exec failure through the error pipe. | `lib/process-test.f`, `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f:207 | 2026-06-24 |
 | linux-spawn | `n n n n n n n --` | Linux spawn emitter spills child exec parameters across `clone`, uses an exec-error pipe handshake, applies cwd/fd setup, and performs raw `execve`; syscall/control-flow effects are not inferable as a Forth data transform. | `lib/process-test.f`, `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f:234 | 2026-06-24 |
 | linux-ignore-sigpipe | `--` | Linux raw `rt_sigaction` emitter for SIGPIPE ignore used to implement the no-SIGPIPE process fd abstraction. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f:335 | 2026-06-24 |
-| spawn-dup2-action | `n n --` | Build-side helper that emits one raw XNU `PSFA_DUP2` file-action record append; label/register code is not inferable as a Forth data transform. | `test/proc-pty.f`, `test/engine-suite.f` | src/habu/habu1.f:446 | 2026-06-24 |
-| spawn-chdir-action | `n --` | Build-side helper that emits one raw XNU `PSFA_CHDIR` file-action record append and NUL-path copy; label/register code is not inferable as a Forth data transform. | `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f:463 | 2026-06-24 |
-| linux-stat-fix | `n --` | Linux stat syscall layout shim copies the kernel `mode` and `size` fields into the engine's portable `stat64` offsets; raw field writes are outside checker inference. | `lib/fs-test.f`, `test/run.f` | src/habu/habu1.f:944 | 2026-06-24 |
-| emit-prims | `--` | Emits the engine's whole primitive table as raw ARM64. | `test/run.f` | src/habu/habu1.f:1164 | 2026-06-24 |
-| emit-fp-prims | `--` | Emits the floating-point prim table as raw asm via FPRIM-L. | `test/run.f` | src/habu/habu1.f:1238 | 2026-06-24 |
+| spawn-dup2-action | `n n --` | Build-side helper that emits one raw XNU `PSFA_DUP2` file-action record append; label/register code is not inferable as a Forth data transform. | `test/proc-pty.f`, `test/engine-suite.f` | src/habu/habu1.f:447 | 2026-06-24 |
+| spawn-chdir-action | `n n --` | Build-side helper that emits one raw XNU `PSFA_CHDIR` file-action record append, bounded NUL-path copy, and branch to a caller failure label; label/register code is not inferable as a Forth data transform. | `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f:471 | 2026-06-24 |
+| linux-stat-fix | `n --` | Linux stat syscall layout shim copies the kernel `mode` and `size` fields into the engine's portable `stat64` offsets; raw field writes are outside checker inference. | `lib/fs-test.f`, `test/run.f` | src/habu/habu1.f:952 | 2026-06-24 |
+| emit-prims | `--` | Emits the engine's whole primitive table as raw ARM64. | `test/run.f` | src/habu/habu1.f:1172 | 2026-06-24 |
+| emit-fp-prims | `--` | Emits the floating-point prim table as raw asm via FPRIM-L. | `test/run.f` | src/habu/habu1.f:1246 | 2026-06-24 |
 | DATAB | `-- ptr a` | Baked REPL/debug support needs the live DATA base before checked layout accessors are loaded; fixed header access is a native engine boundary. | `test/proc-pty.f`, `test/run.f` | src/habu/repl.f:14 | 2026-06-25 |
 | BPW-TAB | `-- ptr ptr n` | Watch-table storage is dictionary data whose cells hold watched DATA pointers; the checker cannot infer this created table's pointee role. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/debug-watch.f:10 | 2026-06-25 |
 | BPW-PRINT-ADDR | `ptr n --` | Debug watch printer intentionally displays a raw cell address; formatting a pointer through `.` is a REPL/debug boundary. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/debug-watch.f:14 | 2026-06-25 |
@@ -92,37 +92,37 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-bp-stack-dump | `n n --` | Breakpoint stack dump emits a caller-labelled loop over raw data-stack cells. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/habu2.f:173 | 2026-06-25 |
 | c-bp-watch-dump | `n n --` | Breakpoint watch dump emits a caller-labelled loop over raw watched cells. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/habu2.f:184 | 2026-06-25 |
 | c-emit-tty-probe | `--` | Startup source selection emits target-specific tty ioctl setup; the syscall/register effects are not Forth stack effects. | `test/proc-pty.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/habu/habu2.f:300 | 2026-06-25 |
-| cf-entry | `n ptr a n n --` | Control-flow keyword case: spills the VS then `hxt execute`s a code emitter; keyword label cell is a pointer. | `test/run.f` | src/habu/habu2.f:1282 | 2026-06-25 |
-| cfn-entry | `n ptr a n n --` | Like CF-ENTRY, no spill (loop words manage the VS); keyword label cell is a pointer. | `test/run.f` | src/habu/habu2.f:1292 | 2026-06-25 |
-| cfb-entry | `n ptr a n n n --` | Branch-keyword case (if/until/while) with a reg-aware condition path; asm + two `hxt execute` handlers. | `test/run.f` | src/habu/habu2.f:1319 | 2026-06-25 |
-| cfbn-entry | `n ptr a n n n --` | Like CFB-ENTRY, no-spill register path; raw asm + indirect xts. | `test/run.f` | src/habu/habu2.f:1340 | 2026-06-25 |
-| c-local-ref | `n n --` | Compile-mode local-reference emitter: branches to the caller's not-local continuation or emits local loads, and rejects quotation-local captures with raw exit code 75. | `test/engine-suite.f`, `test/run.f` | src/habu/habu2.f:1368 | 2026-06-25 |
-| em-interpret-colon | `n --` | Emits interpreter-mode colon-definition setup and jumps to the caller-provided not-colon label on non-definitions. | `test/run.f` | src/habu/habu2.f:1638 | 2026-06-25 |
-| em-interpret-words | `--` | Emits interpreter-mode defining-word, literal, lookup, and execute dispatch. | `test/run.f` | src/habu/habu2.f:1658 | 2026-06-25 |
-| em-interpret | `--` | Chains the factored interpreter-mode colon and word-dispatch emitters. | `test/run.f` | src/habu/habu2.f:1664 | 2026-06-25 |
-| em-compile-drop-locals | `--` | Emits optional locals-frame teardown before a compiled definition returns. | `test/run.f` | src/habu/habu2.f:1671 | 2026-06-25 |
-| em-compile-ret | `--` | Emits the raw return epilogue for a compiled definition. | `test/run.f` | src/habu/habu2.f:1677 | 2026-06-25 |
-| em-compile-flush-pend | `--` | Finalizes the pending dictionary entry length and flips/flushed the generated code region. | `test/run.f` | src/habu/habu2.f:1683 | 2026-06-25 |
-| em-compile-publish-trusted | `--` | Emits checked/trusted publication for declarations, DOES> signatures, and trust metadata. | `test/run.f` | src/habu/habu2.f:1702 | 2026-06-25 |
-| em-compile-publish-hooked | `--` | Emits hook-based publication for ordinary compiled definitions. | `test/run.f` | src/habu/habu2.f:1717 | 2026-06-25 |
-| em-compile-publish | `--` | Selects trusted-signature or hook publication for a closed compiled definition. | `test/run.f` | src/habu/habu2.f:1725 | 2026-06-25 |
-| em-compile-semi | `n --` | Emits semicolon close handling and binds the caller-provided not-semi continuation label. | `test/run.f` | src/habu/habu2.f:1737 | 2026-06-25 |
-| em-compile-keywords | `--` | Emits compile-mode keyword dispatch cases for control flow, strings, locals, quotations, and loop words. | `test/run.f` | src/habu/habu2.f:1772 | 2026-06-25 |
-| em-compile-local | `--` | Emits compile-mode local-reference lookup and fallthrough. | `test/run.f` | src/habu/habu2.f:1778 | 2026-06-25 |
-| em-compile-literal | `--` | Emits compile-mode numeric literal handling for integer and float literals. | `test/run.f` | src/habu/habu2.f:1789 | 2026-06-25 |
-| em-compile-ops | `--` | Emits compile-mode optimized arithmetic, comparison, stack-shuffle, unary, and float operators. | `test/run.f` | src/habu/habu2.f:1819 | 2026-06-25 |
-| em-compile-call | `--` | Emits compile-mode lookup, immediate execution, and call generation. | `test/run.f` | src/habu/habu2.f:1835 | 2026-06-25 |
-| em-reset-compile-state | `--` | Emits reset of compile/repl/evaluate state cells after rollback or recovery. | `test/run.f` | src/habu/habu2.f:1850 | 2026-06-25 |
-| em-eval-undef-rollback | `--` | Emits evaluate-frame rollback for undefined-word failures. | `test/run.f` | src/habu/habu2.f:1863 | 2026-06-25 |
-| em-repl-recover | `--` | Emits REPL recovery after errors, restoring line-start compile state and stacks. | `test/run.f` | src/habu/habu2.f:1875 | 2026-06-25 |
-| em-compile-undef | `--` | Emits undefined-word diagnostics and evaluate/REPL recovery routing. | `test/run.f` | src/habu/habu2.f:1887 | 2026-06-25 |
-| em-eval-clean-exit | `--` | Emits clean evaluate end-of-buffer return path. | `test/run.f` | src/habu/habu2.f:1897 | 2026-06-25 |
-| em-repl-read | `--` | Emits REPL line-state save, read callback call, EOF handling, and input reset. | `test/run.f` | src/habu/habu2.f:1910 | 2026-06-25 |
-| em-compile-exit | `--` | Emits interpreter end-of-input handling for evaluate, REPL ok/read, and process exit. | `test/run.f` | src/habu/habu2.f:1922 | 2026-06-25 |
-| em-compile | `--` | Chains the factored compile-mode dispatch, call, undefined, and exit emitters. | `test/run.f` | src/habu/habu2.f:1935 | 2026-06-25 |
-| emit-main | `--` | Allocates main-loop labels and chains EM-STARTUP/COMMENT/INTERPRET/COMPILE. | `test/run.f` | src/habu/habu2.f:1940 | 2026-06-25 |
-| SRCA@ | `-- ptr u8` | Reads EMIT-FORTH's saved source pointer from a raw variable for the final `BYTES,` copy. | `test/run.f` | src/habu/habu2.f:1943 | 2026-06-25 |
-| emit-forth | `ptr u8 n --` | Top-level engine builder: consumes source bytes, allocates every forward-ref label, and emits the complete image. | `test/run.f` | src/habu/habu2.f:2027 | 2026-06-25 |
+| cf-entry | `n ptr a n n --` | Control-flow keyword case: spills the VS then `hxt execute`s a code emitter; keyword label cell is a pointer. | `test/run.f` | src/habu/habu2.f:1300 | 2026-06-25 |
+| cfn-entry | `n ptr a n n --` | Like CF-ENTRY, no spill (loop words manage the VS); keyword label cell is a pointer. | `test/run.f` | src/habu/habu2.f:1310 | 2026-06-25 |
+| cfb-entry | `n ptr a n n n --` | Branch-keyword case (if/until/while) with a reg-aware condition path; asm + two `hxt execute` handlers. | `test/run.f` | src/habu/habu2.f:1337 | 2026-06-25 |
+| cfbn-entry | `n ptr a n n n --` | Like CFB-ENTRY, no-spill register path; raw asm + indirect xts. | `test/run.f` | src/habu/habu2.f:1358 | 2026-06-25 |
+| c-local-ref | `n n --` | Compile-mode local-reference emitter: branches to the caller's not-local continuation or emits local loads, and rejects quotation-local captures with raw exit code 75. | `test/engine-suite.f`, `test/run.f` | src/habu/habu2.f:1386 | 2026-06-25 |
+| em-interpret-colon | `n --` | Emits interpreter-mode colon-definition setup and jumps to the caller-provided not-colon label on non-definitions. | `test/run.f` | src/habu/habu2.f:1656 | 2026-06-25 |
+| em-interpret-words | `--` | Emits interpreter-mode defining-word, literal, lookup, and execute dispatch. | `test/run.f` | src/habu/habu2.f:1676 | 2026-06-25 |
+| em-interpret | `--` | Chains the factored interpreter-mode colon and word-dispatch emitters. | `test/run.f` | src/habu/habu2.f:1682 | 2026-06-25 |
+| em-compile-drop-locals | `--` | Emits optional locals-frame teardown before a compiled definition returns. | `test/run.f` | src/habu/habu2.f:1689 | 2026-06-25 |
+| em-compile-ret | `--` | Emits the raw return epilogue for a compiled definition. | `test/run.f` | src/habu/habu2.f:1695 | 2026-06-25 |
+| em-compile-flush-pend | `--` | Finalizes the pending dictionary entry length and flips/flushed the generated code region. | `test/run.f` | src/habu/habu2.f:1701 | 2026-06-25 |
+| em-compile-publish-trusted | `--` | Emits checked/trusted publication for declarations, DOES> signatures, and trust metadata. | `test/run.f` | src/habu/habu2.f:1720 | 2026-06-25 |
+| em-compile-publish-hooked | `--` | Emits hook-based publication for ordinary compiled definitions. | `test/run.f` | src/habu/habu2.f:1735 | 2026-06-25 |
+| em-compile-publish | `--` | Selects trusted-signature or hook publication for a closed compiled definition. | `test/run.f` | src/habu/habu2.f:1743 | 2026-06-25 |
+| em-compile-semi | `n --` | Emits semicolon close handling and binds the caller-provided not-semi continuation label. | `test/run.f` | src/habu/habu2.f:1755 | 2026-06-25 |
+| em-compile-keywords | `--` | Emits compile-mode keyword dispatch cases for control flow, strings, locals, quotations, and loop words. | `test/run.f` | src/habu/habu2.f:1790 | 2026-06-25 |
+| em-compile-local | `--` | Emits compile-mode local-reference lookup and fallthrough. | `test/run.f` | src/habu/habu2.f:1796 | 2026-06-25 |
+| em-compile-literal | `--` | Emits compile-mode numeric literal handling for integer and float literals. | `test/run.f` | src/habu/habu2.f:1807 | 2026-06-25 |
+| em-compile-ops | `--` | Emits compile-mode optimized arithmetic, comparison, stack-shuffle, unary, and float operators. | `test/run.f` | src/habu/habu2.f:1837 | 2026-06-25 |
+| em-compile-call | `--` | Emits compile-mode lookup, immediate execution, and call generation. | `test/run.f` | src/habu/habu2.f:1853 | 2026-06-25 |
+| em-reset-compile-state | `--` | Emits reset of compile/repl/evaluate state cells after rollback or recovery. | `test/run.f` | src/habu/habu2.f:1868 | 2026-06-25 |
+| em-eval-undef-rollback | `--` | Emits evaluate-frame rollback for undefined-word failures. | `test/run.f` | src/habu/habu2.f:1881 | 2026-06-25 |
+| em-repl-recover | `--` | Emits REPL recovery after errors, restoring line-start compile state and stacks. | `test/run.f` | src/habu/habu2.f:1893 | 2026-06-25 |
+| em-compile-undef | `--` | Emits undefined-word diagnostics and evaluate/REPL recovery routing. | `test/run.f` | src/habu/habu2.f:1905 | 2026-06-25 |
+| em-eval-clean-exit | `--` | Emits clean evaluate end-of-buffer return path. | `test/run.f` | src/habu/habu2.f:1915 | 2026-06-25 |
+| em-repl-read | `--` | Emits REPL line-state save, read callback call, EOF handling, and input reset. | `test/run.f` | src/habu/habu2.f:1928 | 2026-06-25 |
+| em-compile-exit | `--` | Emits interpreter end-of-input handling for evaluate, REPL ok/read, and process exit. | `test/run.f` | src/habu/habu2.f:1940 | 2026-06-25 |
+| em-compile | `--` | Chains the factored compile-mode dispatch, call, undefined, and exit emitters. | `test/run.f` | src/habu/habu2.f:1953 | 2026-06-25 |
+| emit-main | `--` | Allocates main-loop labels and chains EM-STARTUP/COMMENT/INTERPRET/COMPILE. | `test/run.f` | src/habu/habu2.f:1958 | 2026-06-25 |
+| SRCA@ | `-- ptr u8` | Reads EMIT-FORTH's saved source pointer from a raw variable for the final `BYTES,` copy. | `test/run.f` | src/habu/habu2.f:1961 | 2026-06-25 |
+| emit-forth | `ptr u8 n --` | Top-level engine builder: consumes source bytes, allocates every forward-ref label, and emits the complete image. | `test/run.f` | src/habu/habu2.f:2045 | 2026-06-25 |
 | IMAGE-TEXT-SIZE-OFF | `-- n` | Linux executable header offset where the snapshot writer reads the mapped text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:10 | 2026-06-25 |
 | IMAGE-TEXT-CONTENT-ADJ | `-- n` | Linux text-size field adjustment from segment size to code-content size for snapshot streaming. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:11 | 2026-06-25 |
 | IMAGE-TEXT-TRAILER-ADJ | `-- n` | Linux trailer address adjustment for snapshot restore when the text-size field includes the code offset. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:12 | 2026-06-25 |
@@ -171,7 +171,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | EACH | `R ptr a i64 [ R a -- R ] -- R` | Array iterator keeps the quotation across element calls; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f:30 | 2026-06-16 |
 | MAP | `R ptr a i64 [ R a -- R a ] -- R` | Array map keeps the quotation across element calls and mutates cells in place; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f:34 | 2026-06-16 |
 | FOLD | `R ptr a i64 b [ R b a -- R b ] -- R b` | Array fold keeps the quotation across accumulator calls; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f:38 | 2026-06-16 |
-| VEC-EACH | `R ptr a [ R idx a -- R ] -- R` | Body checks, but TRUST pins the public higher-order callback scheme because the recorder does not persist this inferred quotation effect for later callers. | `lib/vector-test.f`, `test/run.f` | lib/vector.f:148 | 2026-06-24 |
+| VEC-EACH | `R ptr a [ R idx a -- R ] -- R` | Body checks, but TRUST pins the public higher-order callback scheme because the recorder does not persist this inferred quotation effect for later callers. | `lib/vector-test.f`, `test/run.f` | lib/vector.f:153 | 2026-06-24 |
 | HB-TARGET-LINUX? | `-- bool` | Target selector is defined before the checker hook is installed; this pins the bool effect used by checked multi-platform source lists. | `test/run.f`, `tools/build-fixpoint-test.f` | src/core/roles.f:9 | 2026-06-24 |
 | HB-TARGET-MACOS? | `-- bool` | Target selector is defined before the checker hook is installed; this pins the bool effect used by fail-closed multi-platform source lists. | `test/run.f`, `tools/build-fixpoint-test.f` | src/core/roles.f:10 | 2026-06-25 |
 | HB-TARGET-KNOWN? | `-- bool` | Target selector aggregate is defined before the checker hook is installed; checked tools use it to reject unsupported targets instead of defaulting. | `test/run.f`, `tools/build-fixpoint-test.f` | src/core/roles.f:11 | 2026-06-25 |

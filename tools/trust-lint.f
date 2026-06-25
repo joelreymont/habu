@@ -283,16 +283,6 @@ variable TL-NV
    s" ` appears more than once" TL-OUT TL-NL
    TL-BAD+ ;
 
-: TL-ADD-MAN ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) {: name:ptr nu eff:ptr eu tests:ptr tu site:ptr su audit:ptr au :}
-   name nu site su TL-FIND-MAN-SITE dup 0 >= IF name nu TL-DUP-ROW ELSE drop THEN
-   TL-M# @ TL-MAX >= IF s" trust-lint: too many manifest rows" TL-FAIL THEN
-   name nu TL-STORE$ TL-M-NL TL-M# @ TL-A! TL-M-NO TL-M# @ TL-A!
-   eff eu TL-STORE$ TL-M-EL TL-M# @ TL-A! TL-M-EO TL-M# @ TL-A!
-   tests tu TL-STORE$ TL-M-TL TL-M# @ TL-A! TL-M-TO TL-M# @ TL-A!
-   site su TL-STORE$ TL-M-SL TL-M# @ TL-A! TL-M-SO TL-M# @ TL-A!
-   audit au TL-STORE$ TL-M-AL TL-M# @ TL-A! TL-M-AO TL-M# @ TL-A!
-   TL-M# @ 1+ TL-M# ! ;
-
 : TL-CODE-LEN ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    0 begin dup u < while
       a over + c@ TL-BSLASH = IF a swap exit THEN
@@ -369,18 +359,66 @@ variable TL-NV
       1+
    repeat drop TL-TRUE ;
 
+: TL-MAN-NAME-CELL$ ( -- ptr u8 n )
+   0 TL-CELL$ TL-UNBACKTICK TRIM ;
+
+: TL-MAN-EFF-CELL$ ( -- ptr u8 n )
+   1 TL-CELL$ TL-UNBACKTICK TRIM ;
+
+: TL-MAN-TEST-CELL$ ( -- ptr u8 n )
+   3 TL-CELL$ TRIM ;
+
+: TL-MAN-SITE-CELL$ ( -- ptr u8 n )
+   4 TL-CELL$ TRIM ;
+
+: TL-MAN-AUDIT-CELL$ ( -- ptr u8 n )
+   5 TL-CELL$ TRIM ;
+
+: TL-MAN-HEADER? ( -- bool )
+   TL-MAN-NAME-CELL$ s" Word" STR= ;
+
+: TL-MAN-SEPARATOR? ( -- bool )
+   TL-MAN-NAME-CELL$ TL-SEPARATOR? ;
+
+: TL-CHECK-DUP-MAN ( -- )
+   TL-MAN-NAME-CELL$ TL-MAN-SITE-CELL$ TL-FIND-MAN-SITE dup 0 >= IF
+      TL-MAN-NAME-CELL$ TL-DUP-ROW
+   ELSE
+      drop
+   THEN ;
+
+: TL-STORE-MAN-NAME ( -- )
+   TL-MAN-NAME-CELL$ TL-STORE$ TL-M-NL TL-M# @ TL-A! TL-M-NO TL-M# @ TL-A! ;
+
+: TL-STORE-MAN-EFF ( -- )
+   TL-MAN-EFF-CELL$ TL-STORE$ TL-M-EL TL-M# @ TL-A! TL-M-EO TL-M# @ TL-A! ;
+
+: TL-STORE-MAN-TEST ( -- )
+   TL-MAN-TEST-CELL$ TL-STORE$ TL-M-TL TL-M# @ TL-A! TL-M-TO TL-M# @ TL-A! ;
+
+: TL-STORE-MAN-SITE ( -- )
+   TL-MAN-SITE-CELL$ TL-STORE$ TL-M-SL TL-M# @ TL-A! TL-M-SO TL-M# @ TL-A! ;
+
+: TL-STORE-MAN-AUDIT ( -- )
+   TL-MAN-AUDIT-CELL$ TL-STORE$ TL-M-AL TL-M# @ TL-A! TL-M-AO TL-M# @ TL-A! ;
+
+: TL-ADD-MAN ( -- )
+   TL-CHECK-DUP-MAN
+   TL-M# @ TL-MAX >= IF s" trust-lint: too many manifest rows" TL-FAIL THEN
+   TL-STORE-MAN-NAME
+   TL-STORE-MAN-EFF
+   TL-STORE-MAN-TEST
+   TL-STORE-MAN-SITE
+   TL-STORE-MAN-AUDIT
+   TL-M# @ 1+ TL-M# ! ;
+
 : TL-SCAN-MAN-LINE ( ptr u8 n -- ) {: a:ptr u :}
    u 0= IF exit THEN
    a c@ TL-PIPE <> IF exit THEN
    a u TL-SPLIT-PIPE
    TL-C# @ 6 < IF exit THEN
-   0 TL-CELL$ TL-UNBACKTICK TRIM
-   2dup s" Word" STR= IF 2drop exit THEN
-   2dup TL-SEPARATOR? IF 2drop exit THEN
-   1 TL-CELL$ TL-UNBACKTICK TRIM
-   3 TL-CELL$ TRIM
-   4 TL-CELL$ TRIM
-   5 TL-CELL$ TRIM
+   TL-MAN-HEADER? IF exit THEN
+   TL-MAN-SEPARATOR? IF exit THEN
    TL-ADD-MAN ;
 
 : TL-DO-MAN-LINE ( n -- )

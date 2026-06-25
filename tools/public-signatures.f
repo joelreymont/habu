@@ -2,8 +2,6 @@
 \ Load after lib/errors.f, lib/memory.f, lib/vector.f, tools/lint/text.f,
 \ tools/lint/intern.f, tools/lint/token.f, and tools/lint/lib.f.
 
-0 set-check
-
 $10000 constant PS-FILE-CAP
 256 constant PS-WORD-CAP
 1024 constant PS-SIG-CAP
@@ -68,13 +66,73 @@ variable PS-NAME-COL
 variable PS-SIG-A
 variable PS-SIG-U
 
-: PS-DIE ( a u -- )  76 die ;
+: PS-TA-FIELD ( -- ptr ptr u8 )
+   PS-TA 0 ptr-field ;
 
-: PS-WRITE {: fd a u :} ( fd a u -- )
+: PS-SRC-A-FIELD ( -- ptr ptr u8 )
+   PS-SRC-A 0 ptr-field ;
+
+: PS-TOK-A-FIELD ( -- ptr ptr u8 )
+   PS-TOK-A 0 ptr-field ;
+
+: PS-CONT-A-FIELD ( -- ptr ptr u8 )
+   PS-CONT-A 0 ptr-field ;
+
+: PS-NAME-A-FIELD ( -- ptr ptr u8 )
+   PS-NAME-A 0 ptr-field ;
+
+: PS-SIG-A-FIELD ( -- ptr ptr u8 )
+   PS-SIG-A 0 ptr-field ;
+
+: PS-TA@ ( -- ptr u8 )
+   PS-TA-FIELD @ ;
+
+: PS-SRC-A@ ( -- ptr u8 )
+   PS-SRC-A-FIELD @ ;
+
+: PS-TOK-A@ ( -- ptr u8 )
+   PS-TOK-A-FIELD @ ;
+
+: PS-CONT-A@ ( -- ptr u8 )
+   PS-CONT-A-FIELD @ ;
+
+: PS-NAME-A@ ( -- ptr u8 )
+   PS-NAME-A-FIELD @ ;
+
+: PS-SIG-A@ ( -- ptr u8 )
+   PS-SIG-A-FIELD @ ;
+
+: PS-TA! ( ptr u8 -- )
+   PS-TA-FIELD ! ;
+
+: PS-SRC-A! ( ptr u8 -- )
+   PS-SRC-A-FIELD ! ;
+
+: PS-TOK-A! ( ptr u8 -- )
+   PS-TOK-A-FIELD ! ;
+
+: PS-CONT-A! ( ptr u8 -- )
+   PS-CONT-A-FIELD ! ;
+
+: PS-NAME-A! ( ptr u8 -- )
+   PS-NAME-A-FIELD ! ;
+
+: PS-SIG-A! ( ptr u8 -- )
+   PS-SIG-A-FIELD ! ;
+
+: PS-TRUE ( -- bool )
+   0 0= ;
+
+: PS-FALSE ( -- bool )
+   PS-TRUE 0= ;
+
+: PS-DIE ( ptr u8 n -- )  76 die ;
+
+: PS-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
    u 0= IF exit THEN
    fd a u write u <> IF s" public-signatures: write failed" PS-DIE THEN ;
 
-: PS-OUT {: a u :} ( a u -- )
+: PS-OUT ( ptr u8 n -- ) {: a:ptr u :}
    1 a u PS-WRITE ;
 
 : PS-C! ( c -- )
@@ -88,7 +146,7 @@ variable PS-SIG-U
    PS-C!
    2 PS-ONE 1 PS-WRITE ;
 
-: PS-ERRLN {: a u :} ( -- )
+: PS-ERRLN ( ptr u8 n -- ) {: a:ptr u :}
    2 a u PS-WRITE
    PS-LF-C PS-ERR-C ;
 
@@ -96,7 +154,7 @@ variable PS-SIG-U
    s" usage: tools/public-signatures.f file ..." PS-ERRLN
    64 throw ;
 
-: PS-U$ {: u :} ( -- a u )
+: PS-U$ ( n -- ptr u8 n ) {: u :}
    PS-NUM-CAP PS-NUM-I !
    u 0= IF
       PS-NUM-I @ 1- PS-NUM-I !
@@ -129,7 +187,7 @@ variable PS-SIG-U
    dup 4 rshift PS-JSON-NIBBLE PS-C
    $F and PS-JSON-NIBBLE PS-C ;
 
-: PS-JSON-ESC-C {: c :} ( c -- )
+: PS-JSON-ESC-C ( n -- ) {: c :}
    c PS-DQ = IF PS-BACKSLASH-C PS-C PS-DQ PS-C exit THEN
    c PS-BACKSLASH-C = IF PS-BACKSLASH-C PS-C PS-BACKSLASH-C PS-C exit THEN
    c PS-BS = IF PS-BACKSLASH-C PS-C 98 PS-C exit THEN
@@ -140,7 +198,7 @@ variable PS-SIG-U
    c 32 < IF c PS-JSON-U00 exit THEN
    c PS-C ;
 
-: PS-JSON-STRING {: a u :} ( a u -- )
+: PS-JSON-STRING ( ptr u8 n -- ) {: a:ptr u :}
    PS-DQ PS-C
    0 begin dup u < while
       dup a + c@ PS-JSON-ESC-C
@@ -148,7 +206,7 @@ variable PS-SIG-U
    repeat drop
    PS-DQ PS-C ;
 
-: PS-JSON-KEY ( a u -- )
+: PS-JSON-KEY ( ptr u8 n -- )
    PS-JSON-STRING
    PS-COLON-C PS-C ;
 
@@ -158,47 +216,47 @@ variable PS-SIG-U
 : PS-JSON-ARRAY-START ( -- ) PS-LBRACK-C PS-C ;
 : PS-JSON-ARRAY-END ( -- ) PS-RBRACK-C PS-C ;
 
-: PS-LOWER? ( c -- f )
+: PS-LOWER? ( n -- bool )
    dup 96 > swap 123 < and ;
 
-: PS-UPPER? ( c -- f )
+: PS-UPPER? ( n -- bool )
    dup 64 > swap 91 < and ;
 
-: PS-ALPHA? ( c -- f )
+: PS-ALPHA? ( n -- bool )
    dup PS-UPPER? swap PS-LOWER? or ;
 
-: PS-PROJECT-WORD? {: a u :} ( a u -- f )
-   0 PS-HAS-ALPHA? !
+: PS-PROJECT-WORD? ( ptr u8 n -- bool ) {: a:ptr u :}
+   PS-FALSE PS-HAS-ALPHA? !
    0 begin dup u < while
-      a over + c@ dup PS-LOWER? IF drop 0 exit THEN
-      PS-ALPHA? IF -1 PS-HAS-ALPHA? ! THEN
+      a over + c@ dup PS-LOWER? IF drop drop PS-FALSE exit THEN
+      PS-ALPHA? IF PS-TRUE PS-HAS-ALPHA? ! THEN
       1+
    repeat drop
-   PS-HAS-ALPHA? @ ;
+   PS-HAS-ALPHA? @ IF PS-TRUE ELSE PS-FALSE THEN ;
 
-: PS-UPPER$ {: a u :} ( a u -- a' u )
+: PS-UPPER$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    u PS-WORD-CAP > IF s" public-signatures: word too long" PS-DIE THEN
    a u PS-WORD-BUF COPY-UPPER
    PS-WORD-BUF u ;
 
-: PS-SIGNATURE$ ( a u -- a' u' )
-   TRIM PS-TU ! PS-TA !
+: PS-SIGNATURE$ ( ptr u8 n -- ptr u8 n )
+   TRIM PS-TU ! PS-TA!
    PS-TU @ 2 + PS-SIG-CAP > IF s" public-signatures: signature too long" PS-DIE THEN
    40 PS-SIG-BUF c!
-   PS-TA @ PS-SIG-BUF 1+ PS-TU @ BMOVE
+   PS-TA@ PS-SIG-BUF 1+ PS-TU @ BMOVE
    41 PS-SIG-BUF PS-TU @ 1+ + c!
    PS-SIG-BUF PS-TU @ 2 + ;
 
-: PS-WS? ( c -- f )
+: PS-WS? ( n -- bool )
    dup 32 = over 9 = or over PS-LF-C = or swap PS-CR = or ;
 
-: PS-END? ( -- f )
+: PS-END? ( -- bool )
    PS-X @ PS-SRC-U @ >= ;
 
-: PS-C@ ( -- c )
-   PS-SRC-A @ PS-X @ + c@ ;
+: PS-C@ ( -- n )
+   PS-SRC-A@ PS-X @ + c@ ;
 
-: PS-ADV ( -- c )
+: PS-ADV ( -- n )
    PS-C@
    PS-X @ 1+ PS-X !
    dup PS-LF-C = IF
@@ -227,8 +285,8 @@ variable PS-SIG-U
       THEN
    repeat ;
 
-: PS-LEX-START {: a u :} ( a u -- )
-   a PS-SRC-A !
+: PS-LEX-START ( ptr u8 n -- ) {: a:ptr u :}
+   a PS-SRC-A!
    u PS-SRC-U !
    0 PS-X !
    0 PS-OFF !
@@ -241,20 +299,20 @@ variable PS-SIG-U
    PS-LINE @ PS-START-LINE !
    PS-COL @ PS-START-COL ! ;
 
-: PS-SAVE-TOKEN ( a u ca cu kind -- )
-   {: a u ca cu kind :}
+: PS-SAVE-TOKEN ( ptr u8 n ptr u8 n n -- )
+   {: a:ptr u ca:ptr cu kind :}
    kind PS-TOK-K !
-   a PS-TOK-A !
+   a PS-TOK-A!
    u PS-TOK-U !
-   ca PS-CONT-A !
+   ca PS-CONT-A!
    cu PS-CONT-U !
    PS-START-OFF @ PS-TOK-BYTE !
    PS-START-LINE @ PS-TOK-LINE !
    PS-START-COL @ PS-TOK-COL ! ;
 
-: PS-STRING-OPENER? {: a u :} ( a u -- f )
-   u 2 <> IF 0 exit THEN
-   a 1+ c@ PS-DQ <> IF 0 exit THEN
+: PS-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u :}
+   u 2 <> IF PS-FALSE exit THEN
+   a 1+ c@ PS-DQ <> IF PS-FALSE exit THEN
    a c@ FOLD dup 115 = swap 99 = or
    a c@ DOT = or ;
 
@@ -265,46 +323,46 @@ variable PS-SIG-U
 
 : PS-LEX-COMMENT ( -- )
    PS-ADV drop
-   PS-SRC-A @ PS-X @ + PS-TA !
+   PS-SRC-A@ PS-X @ + PS-TA!
    PS-X @ PS-I !
    begin PS-END? 0= while
       PS-C@ 41 = IF
-         PS-SRC-A @ PS-START @ +  PS-X @ PS-START @ -  PS-TA @  PS-X @ PS-I @ -  PS-COMMENT PS-SAVE-TOKEN
+         PS-SRC-A@ PS-START @ +  PS-X @ PS-START @ -  PS-TA@  PS-X @ PS-I @ -  PS-COMMENT PS-SAVE-TOKEN
          PS-ADV drop
          exit
       THEN
       PS-ADV drop
    repeat
-   PS-SRC-A @ PS-START @ +  PS-X @ PS-START @ -  PS-TA @  PS-X @ PS-I @ -  PS-COMMENT PS-SAVE-TOKEN ;
+   PS-SRC-A@ PS-START @ +  PS-X @ PS-START @ -  PS-TA@  PS-X @ PS-I @ -  PS-COMMENT PS-SAVE-TOKEN ;
 
 : PS-LEX-WORD ( -- )
    begin PS-END? 0= PS-C@ PS-WS? 0= and while
       PS-ADV drop
    repeat
-   PS-SRC-A @ PS-START @ +  PS-X @ PS-START @ -  0 0  PS-WORD PS-SAVE-TOKEN
-   PS-TOK-A @ PS-TOK-U @ PS-STRING-OPENER? IF PS-SKIP-QUOTE THEN ;
+   PS-SRC-A@ PS-START @ +  PS-X @ PS-START @ -  PS-ONE 0  PS-WORD PS-SAVE-TOKEN
+   PS-TOK-A@ PS-TOK-U @ PS-STRING-OPENER? IF PS-SKIP-QUOTE THEN ;
 
-: PS-NEXT-TOK ( -- f )
+: PS-NEXT-TOK ( -- bool )
    PS-SKIP-WS
-   PS-END? IF 0 exit THEN
+   PS-END? IF PS-FALSE exit THEN
    PS-MARK-START
    PS-C@ 40 = IF PS-LEX-COMMENT ELSE PS-LEX-WORD THEN
-   -1 ;
+   PS-TRUE ;
 
-: PS-WORD? ( -- f ) PS-TOK-K @ PS-WORD = ;
-: PS-COMMENT? ( -- f ) PS-TOK-K @ PS-COMMENT = ;
-: PS-TOK$ ( -- a u ) PS-TOK-A @ PS-TOK-U @ ;
-: PS-CONTENT$ ( -- a u ) PS-CONT-A @ PS-CONT-U @ ;
+: PS-WORD? ( -- bool ) PS-TOK-K @ PS-WORD = ;
+: PS-COMMENT? ( -- bool ) PS-TOK-K @ PS-COMMENT = ;
+: PS-TOK$ ( -- ptr u8 n ) PS-TOK-A@ PS-TOK-U @ ;
+: PS-CONTENT$ ( -- ptr u8 n ) PS-CONT-A@ PS-CONT-U @ ;
 
 : PS-SAVE-NAME ( -- )
-   PS-TOK-A @ PS-NAME-A !
+   PS-TOK-A@ PS-NAME-A!
    PS-TOK-U @ PS-NAME-U !
    PS-TOK-BYTE @ PS-NAME-BYTE !
    PS-TOK-LINE @ PS-NAME-LINE !
    PS-TOK-COL @ PS-NAME-COL ! ;
 
 : PS-SAVE-SIG ( -- )
-   PS-CONT-A @ PS-SIG-A !
+   PS-CONT-A@ PS-SIG-A!
    PS-CONT-U @ PS-SIG-U ! ;
 
 : PS-COLLECT-EXPORTS ( -- )
@@ -332,26 +390,26 @@ variable PS-SIG-U
 : PS-PAIR-COMMA ( -- )
    PS-JSON-COMMA ;
 
-: PS-EMIT-DEF {: exported? file-a file-u :} ( exported? file-a file-u -- )
+: PS-EMIT-DEF ( bool ptr u8 n -- ) {: exported? file-a:ptr file-u :}
    PS-DEF-START
    s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
-   s" word" PS-JSON-KEY PS-NAME-A @ PS-NAME-U @ PS-UPPER$ PS-JSON-STRING PS-PAIR-COMMA
+   s" word" PS-JSON-KEY PS-NAME-A@ PS-NAME-U @ PS-UPPER$ PS-JSON-STRING PS-PAIR-COMMA
    s" file" PS-JSON-KEY file-a file-u PS-JSON-STRING PS-PAIR-COMMA
    s" line" PS-JSON-KEY PS-NAME-LINE @ PS-JSON-U PS-PAIR-COMMA
    s" column" PS-JSON-KEY PS-NAME-COL @ PS-JSON-U PS-PAIR-COMMA
    s" byte_start" PS-JSON-KEY PS-NAME-BYTE @ PS-JSON-U PS-PAIR-COMMA
-   s" signature" PS-JSON-KEY PS-SIG-A @ PS-SIG-U @ PS-SIGNATURE$ PS-JSON-STRING PS-PAIR-COMMA
+   s" signature" PS-JSON-KEY PS-SIG-A@ PS-SIG-U @ PS-SIGNATURE$ PS-JSON-STRING PS-PAIR-COMMA
    s" exported" PS-JSON-KEY exported? PS-JSON-BOOL
    PS-DEF-END ;
 
-: PS-EXPORTED? ( -- f )
-   PS-NAME-A @ PS-NAME-U @ INTERN-FOLD? ;
+: PS-EXPORTED? ( -- bool )
+   PS-NAME-A@ PS-NAME-U @ INTERN-FOLD? ;
 
-: PS-PUBLIC? ( -- f )
-   PS-EXPORTED? IF -1 exit THEN
-   PS-NAME-A @ PS-NAME-U @ PS-PROJECT-WORD? ;
+: PS-PUBLIC? ( -- bool )
+   PS-EXPORTED? IF PS-TRUE exit THEN
+   PS-NAME-A@ PS-NAME-U @ PS-PROJECT-WORD? ;
 
-: PS-MAYBE-DEF {: file-a file-u :} ( file-a file-u -- )
+: PS-MAYBE-DEF ( ptr u8 n -- ) {: file-a:ptr file-u :}
    PS-NEXT-TOK 0= IF exit THEN
    PS-WORD? 0= IF exit THEN
    PS-SAVE-NAME
@@ -361,7 +419,7 @@ variable PS-SIG-U
    PS-SAVE-SIG
    PS-PUBLIC? IF PS-EXPORTED? file-a file-u PS-EMIT-DEF THEN ;
 
-: PS-SCAN-DEFS {: file-a file-u :} ( file-a file-u -- )
+: PS-SCAN-DEFS ( ptr u8 n -- ) {: file-a:ptr file-u :}
    PS-FILE-BUF PS-TU @ PS-LEX-START
    begin PS-NEXT-TOK while
       PS-WORD? IF
@@ -369,7 +427,7 @@ variable PS-SIG-U
       THEN
    repeat ;
 
-: PS-SCAN-FILE {: file-a file-u :} ( file-a file-u -- )
+: PS-SCAN-FILE ( ptr u8 n -- ) {: file-a:ptr file-u :}
    file-a file-u PS-FILE-BUF PS-FILE-CAP READ-FILE nip PS-TU !
    PS-COLLECT-EXPORTS
    file-a file-u PS-SCAN-DEFS ;

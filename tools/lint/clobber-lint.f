@@ -282,24 +282,57 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    hi 2 - TOK START-L? 0= if LINT-FALSE exit then
    hi 2 - TOK  CALU ! CALA !  LINT-TRUE ;
 
-: ROUTINE-SCAN  {: cidx oi hi :}  ( -- )
-   oi OPEN@ 3 + DI !  oi 1+ RNEXT !  0 LASTSTOP !  0 RDONE !  DI @ OPLO !
+: ROUTINE-INIT ( n -- ) {: oi :}
+   oi OPEN@ 3 + DI !
+   oi 1+ RNEXT !
+   0 LASTSTOP !
+   0 RDONE !
+   DI @ OPLO ! ;
+
+: ROUTINE-NEXT-OPEN? ( -- bool )
+   RNEXT @ ON# @ <  DI @ RNEXT @ OPEN@ = and ;
+
+: ROUTINE-ADVANCE-OPEN ( -- )
+   LASTSTOP @ if
+      -1 RDONE !
+   else
+      RNEXT @ 1+ RNEXT !
+      DI @ 3 + DI !
+      DI @ OPLO !
+   then ;
+
+: ROUTINE-CALL? ( -- bool )
+   OPLO @ DI @ CALLEE?
+   DI @ TOK s" BL," STR= and ;
+
+: ROUTINE-ADD-EDGE ( n -- ) {: cidx :}
+   CALA @ CALU @ C-ENSURE cidx swap EDGE+ ;
+
+: ROUTINE-ADD-EFFECTS ( n -- ) {: cidx :}
+   DI @ TOK OPLO @ DI @ EFFECTS
+   cidx WMSK @ C-WOR ;
+
+: ROUTINE-INSTR ( n -- ) {: cidx :}
+   ROUTINE-CALL? if
+      cidx ROUTINE-ADD-EDGE
+   else
+      cidx ROUTINE-ADD-EFFECTS
+   then
+   DI @ TOK STOP-MN? LASTSTOP !
+   DI @ 1+ OPLO ! ;
+
+: ROUTINE-STEP ( n -- ) {: cidx :}
+   ROUTINE-NEXT-OPEN? if
+      ROUTINE-ADVANCE-OPEN
+   else
+      DI @ TOK INSTR? if cidx ROUTINE-INSTR then
+      DI @ 1+ DI !
+   then ;
+
+: ROUTINE-SCAN ( n n n -- ) {: cidx oi hi :}
+   oi ROUTINE-INIT
    begin DI @ hi < RDONE @ 0= and while
-      RNEXT @ ON# @ <  DI @ RNEXT @ OPEN@ = and if
-         LASTSTOP @ if -1 RDONE !
-         else RNEXT @ 1+ RNEXT !  DI @ 3 + DI !  DI @ OPLO ! then
-      else
-         DI @ TOK INSTR? if
-            OPLO @ DI @ CALLEE?  DI @ TOK s" BL," STR= and if
-               CALA @ CALU @ C-ENSURE  cidx swap EDGE+
-            else
-               DI @ TOK  OPLO @ DI @ EFFECTS  cidx WMSK @ C-WOR
-            then
-            DI @ TOK STOP-MN? LASTSTOP !
-            DI @ 1+ OPLO !
-         then
-         DI @ 1+ DI !
-      then
+      cidx ROUTINE-STEP
    repeat ;
 : PASS1-DEF  {: lo hi :}  ( -- )
    lo hi COLLECT-OPENINGS

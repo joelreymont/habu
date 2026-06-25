@@ -229,6 +229,38 @@ variable SARIF-PARSE-NODE
    s" verdict" SARIF-KEY obj s" verdict" SARIF-EMIT-GET
    J-RBRACE SARIF-C ;
 
+: SARIF-EMIT-MESSAGE ( n -- )
+   {: obj :}
+   J-LBRACE SARIF-C
+   s" text" SARIF-KEY obj SARIF-MESSAGE$ SARIF-STRING
+   J-RBRACE SARIF-C ;
+
+: SARIF-EMIT-ARTIFACT ( n -- )
+   {: obj :}
+   J-LBRACE SARIF-C
+   s" uri" SARIF-KEY obj SARIF-FILE$ SARIF-STRING
+   J-RBRACE SARIF-C ;
+
+: SARIF-EMIT-PHYSICAL ( n -- )
+   {: obj :}
+   J-LBRACE SARIF-C
+   s" artifactLocation" SARIF-KEY obj SARIF-EMIT-ARTIFACT
+   J-COMMA SARIF-C
+   s" region" SARIF-KEY obj SARIF-EMIT-REGION
+   J-RBRACE SARIF-C ;
+
+: SARIF-EMIT-LOCATION ( n -- )
+   {: obj :}
+   J-LBRACE SARIF-C
+   s" physicalLocation" SARIF-KEY obj SARIF-EMIT-PHYSICAL
+   J-RBRACE SARIF-C ;
+
+: SARIF-EMIT-LOCATIONS ( n -- )
+   {: obj :}
+   J-LBRACK SARIF-C
+   obj SARIF-EMIT-LOCATION
+   J-RBRACK SARIF-C ;
+
 : SARIF-EMIT-RESULT ( n -- )
    {: obj :}
    J-LBRACE SARIF-C
@@ -236,27 +268,11 @@ variable SARIF-PARSE-NODE
    J-COMMA SARIF-C
    s" level" SARIF-KEY s" error" SARIF-STRING
    J-COMMA SARIF-C
-   s" message" SARIF-KEY
-      J-LBRACE SARIF-C
-      s" text" SARIF-KEY obj SARIF-MESSAGE$ SARIF-STRING
-      J-RBRACE SARIF-C
+   s" message" SARIF-KEY obj SARIF-EMIT-MESSAGE
    J-COMMA SARIF-C
    s" properties" SARIF-KEY obj SARIF-EMIT-PROPERTIES
    J-COMMA SARIF-C
-   s" locations" SARIF-KEY
-      J-LBRACK SARIF-C
-      J-LBRACE SARIF-C
-      s" physicalLocation" SARIF-KEY
-         J-LBRACE SARIF-C
-         s" artifactLocation" SARIF-KEY
-            J-LBRACE SARIF-C
-            s" uri" SARIF-KEY obj SARIF-FILE$ SARIF-STRING
-            J-RBRACE SARIF-C
-         J-COMMA SARIF-C
-         s" region" SARIF-KEY obj SARIF-EMIT-REGION
-         J-RBRACE SARIF-C
-      J-RBRACE SARIF-C
-      J-RBRACK SARIF-C
+   s" locations" SARIF-KEY obj SARIF-EMIT-LOCATIONS
    J-RBRACE SARIF-C ;
 
 : SARIF-RULE$ ( n -- ptr u8 n )
