@@ -143,6 +143,8 @@ variable FM-NUM-L
    s" tools/host-lint.f" FM-REQ
    s" tools/check-all-errors.f" FM-REQ
    s" tools/check-all-errors-test.f" FM-REQ
+   s" tools/checked-boundary-lint-core.f" FM-REQ
+   s" tools/checked-boundary-lint.f" FM-REQ
    s" tools/checked-boundary-lint-test.f" FM-REQ
    s" tools/diag-to-sarif.f" FM-REQ
    s" tools/public-signatures.f" FM-REQ

@@ -4,7 +4,8 @@
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
 \ tools/lint/json-writer.f tools/lint/source-lex.f
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
-\ tools/signature-lint-core.f tools/argv.f tools/check-test.f
+\ tools/signature-lint-core.f tools/checked-boundary-lint-core.f
+\ tools/argv.f tools/check-test.f
 
 $4000 constant CKT-BUF-CAP
 10000 constant CKT-TIMEOUT-MS
@@ -56,6 +57,7 @@ variable CKT-LIST-U
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
+   s" tools/checked-boundary-lint-core.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/check.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
@@ -123,6 +125,9 @@ variable CKT-LIST-U
 
 : CKT-NOSIG$ ( -- ptr u8 n )
    s" : NOSIG dup ;" ;
+
+: CKT-UNCHECKED$ ( -- ptr u8 n )
+   s" 0 set-check : BAD ( -- ) ;" ;
 
 : CKT-DIE$ ( -- ptr u8 n )
    SB-RESET
@@ -194,6 +199,12 @@ variable CKT-LIST-U
    CKT-ERR erru s" schema_version" CONTAINS? TTRUE
    CKT-ERR erru s" E-MISSING-SIGNATURE" CONTAINS? TTRUE ;
 
+: CKT-TEST-BOUNDARY-LINT ( -- )
+   CKT-UNCHECKED$ CKT-RUN 1 T=
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" CHECKER-MUTATION" CONTAINS? TTRUE ;
+
 : CKT-TEST-USAGE ( -- )
    CKT-RUN-ARGS 64 T=
    {: outu erru :}
@@ -235,6 +246,7 @@ variable CKT-LIST-U
    CKT-PREPARE
    CKT-TEST-GOOD
    CKT-TEST-FILE-LABEL
+   CKT-TEST-BOUNDARY-LINT
    CKT-TEST-STRICT-SIGNATURE
    CKT-TEST-STRICT-SIGNATURE-JSON
    CKT-TEST-USAGE

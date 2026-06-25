@@ -262,8 +262,8 @@ TEST-SUITE check-cli-boundary
    lib/process.f lib/process-argv.f lib/source.f tools/lint/text.f
    tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
    tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f
-   tools/json-only-core.f tools/signature-lint-core.f tools/argv.f
-   tools/check-test.f
+   tools/json-only-core.f tools/signature-lint-core.f
+   tools/checked-boundary-lint-core.f tools/argv.f tools/check-test.f
 ;TEST-SUITE
 
 TEST-SUITE streaming-sha256

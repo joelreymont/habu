@@ -62,6 +62,7 @@
    s" tools/json.f" BGR-ARG+
    s" tools/json-only-core.f" BGR-ARG+
    s" tools/signature-lint-core.f" BGR-ARG+
+   s" tools/checked-boundary-lint-core.f" BGR-ARG+
    s" tools/argv.f" BGR-ARG+
    s" tools/check.f" BGR-ARG+
    s" --" BGR-ARG+ ;

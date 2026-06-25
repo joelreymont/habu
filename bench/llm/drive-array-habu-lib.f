@@ -404,6 +404,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
+   s" tools/checked-boundary-lint-core.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/check.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+

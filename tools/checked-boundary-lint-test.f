@@ -139,6 +139,7 @@ create CBLT-LF-BYTE 10 c,
    s" lib/fs.f" CBLT-ARG+
    s" tools/lint/text.f" CBLT-ARG+
    s" tools/lint/json-writer.f" CBLT-ARG+
+   s" tools/checked-boundary-lint-core.f" CBLT-ARG+
    s" tools/argv.f" CBLT-ARG+
    s" tools/checked-boundary-lint.f" CBLT-ARG+
    s" --" CBLT-ARG+ ;
@@ -163,6 +164,7 @@ create CBLT-LF-BYTE 10 c,
    s" tools/host-lint.f"  >LEN PROC-ARGV+
    s" tools/filemap-lint.f"  >LEN PROC-ARGV+
    s" tools/parallel-agent-lint.f"  >LEN PROC-ARGV+
+   s" tools/checked-boundary-lint-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint.f"  >LEN PROC-ARGV+
    s" tools/stale-status-lint.f"  >LEN PROC-ARGV+

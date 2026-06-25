@@ -229,6 +229,7 @@ variable GE-RD
    s" tools/json.f" GE-ARG+
    s" tools/json-only-core.f" GE-ARG+
    s" tools/signature-lint-core.f" GE-ARG+
+   s" tools/checked-boundary-lint-core.f" GE-ARG+
    s" tools/argv.f" GE-ARG+
    s" tools/check.f" GE-ARG+
    s" --" GE-ARG+ ;

@@ -4,7 +4,8 @@
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ tools/lint/json-writer.f, tools/lint/source-lex.f,
 \ tools/diag-origin-core.f, tools/json.f, tools/json-only-core.f,
-\ tools/signature-lint-core.f, and tools/argv.f.
+\ tools/signature-lint-core.f, tools/checked-boundary-lint-core.f, and
+\ tools/argv.f.
 
 \ Audited hook-install boundary: this tool must install its checker hook before
 \ validating generated source snippets with CHECK!.
@@ -346,13 +347,6 @@ variable CHK-ROOT-U
    does> ( [ ptr u8 n -- ] -- )
       CHK-FILES-RUN ;
 
-CHK-FILES: CHK-BOUNDARY-FILES
-   lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
-   lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f
-   tools/lint/lib.f tools/lint/json-writer.f tools/argv.f
-   tools/checked-boundary-lint.f
-;CHK-FILES
-
 CHK-FILES: CHK-TRUST-FILES
    tools/date.f lib/errors.f lib/string.f lib/fs.f tools/lint/text.f
    tools/lint/token.f tools/lint/lib.f tools/argv.f tools/trust-lint.f
@@ -372,11 +366,6 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
 : CHK-LOAD-END ( -- )
    s" --" CHK-ARG+ ;
 
-: CHK-LOAD-BOUNDARY ( -- )
-   CHK-LOAD-RESET
-   [: CHK-ARG+ ;] CHK-BOUNDARY-FILES
-   CHK-LOAD-END ;
-
 : CHK-LOAD-TRUST ( -- )
    CHK-LOAD-RESET
    [: CHK-ARG+ ;] CHK-TRUST-FILES
@@ -393,12 +382,6 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
 : CHK-ADD-LABEL-SOURCE ( -- )
    s" --label" CHK-ARG+
    CHK-LABEL CHK-ARG+
-   CHK-SOURCE CHK-ARG+ ;
-
-: CHK-ARGV-BOUNDARY ( -- )
-   CHK-LOAD-BOUNDARY
-   s" --json-errors" CHK-JSON-OPT
-   s" --strict-boundary" CHK-ARG+
    CHK-SOURCE CHK-ARG+ ;
 
 : CHK-ARGV-TRUST-PATH ( ptr u8 n -- ) {: path:ptr pathu :}
@@ -445,12 +428,12 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
    SIGNATURE-LINT-FINISH ;
 
 : CHK-RUN-BOUNDARY ( -- )
-   CHK-ARGV-BOUNDARY
-   CHK-RUN-CAPTURE
-   CHK-RC @ 0= if exit then
-   CHK-OUT-BUF CHK-OUT-U @ CHK-ERR
-   CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
-   CHK-RC @ CHK-THROW ;
+   CHECKED-BOUNDARY-LINT-RESET
+   2 >FD UB-OUT-FD!
+   CHK-JSON @ UB-JSON!
+   UB-TRUE UB-STRICT-BOUNDARY!
+   CHK-SOURCE CHECKED-BOUNDARY-LINT-FILE
+   CHECKED-BOUNDARY-LINT-FINISH ;
 
 : CHK-RUN-TRUST-CURRENT ( -- )
    CHK-RUN-CAPTURE
