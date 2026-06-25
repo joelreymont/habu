@@ -3,8 +3,6 @@
 \ tools/lint/json-writer.f,
 \ tools/lint/source-lex.f, and tools/argv.f.
 
-0 set-check
-
 $10000 constant AL-FILE-CAP
 32 constant AL-NUM-CAP
 
@@ -21,10 +19,30 @@ variable AL-FILE-U
 variable AL-CURRENT-A
 variable AL-CURRENT-U
 
-: AL-OUT ( a u -- ) type ;
+: AL-FILE-A-FIELD ( -- ptr ptr u8 )
+   AL-FILE-A 0 ptr-field ;
+
+: AL-CURRENT-A-FIELD ( -- ptr ptr u8 )
+   AL-CURRENT-A 0 ptr-field ;
+
+: AL-FILE-A@ ( -- ptr u8 )
+   AL-FILE-A-FIELD @ ;
+
+: AL-FILE-A! ( ptr u8 -- )
+   AL-FILE-A-FIELD ! ;
+
+: AL-CURRENT-A@ ( -- ptr u8 )
+   AL-CURRENT-A-FIELD @ ;
+
+: AL-CURRENT-A! ( ptr u8 -- )
+   AL-CURRENT-A-FIELD ! ;
+
+: AL-OUT ( ptr u8 n -- )
+   type ;
+
 : AL-NL ( -- ) 10 emit ;
 
-: AL-U$ {: u :} ( u -- a u )
+: AL-U$ ( n -- ptr u8 n ) {: u :}
    AL-NUM-CAP AL-NUM-I !
    u 0= IF
       AL-NUM-I @ 1- AL-NUM-I !
@@ -40,43 +58,43 @@ variable AL-CURRENT-U
    repeat drop
    AL-NUM-BUF AL-NUM-I @ + AL-NUM-CAP AL-NUM-I @ - ;
 
-: AL-CURRENT! {: a u :} ( a u -- )
-   a AL-CURRENT-A !  u AL-CURRENT-U ! ;
+: AL-CURRENT! ( ptr u8 n -- ) {: a:ptr u :}
+   a AL-CURRENT-A!  u AL-CURRENT-U ! ;
 
-: AL-LABEL$ {: a u :} ( a u -- la lu )
-   ARGV-LABEL? IF 2drop ARGV-LABEL$ ELSE a u THEN ;
+: AL-LABEL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+   ARGV-LABEL? IF ARGV-LABEL$ ELSE a u THEN ;
 
-: AL-UNSAFE? {: a u :} ( a u -- f )
-   a u s" @" STR=CI IF -1 exit THEN
-   a u s" !" STR=CI IF -1 exit THEN
-   a u s" c@" STR=CI IF -1 exit THEN
-   a u s" c!" STR=CI IF -1 exit THEN
-   a u s" here" STR=CI IF -1 exit THEN
-   a u s" allot" STR=CI IF -1 exit THEN
-   a u s" ," STR=CI IF -1 exit THEN
-   a u s" c," STR=CI IF -1 exit THEN
-   a u s" create" STR=CI IF -1 exit THEN
-   a u s" compile," STR=CI IF -1 exit THEN
+: AL-UNSAFE? ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" @" STR=CI IF LINT-TRUE exit THEN
+   a u s" !" STR=CI IF LINT-TRUE exit THEN
+   a u s" c@" STR=CI IF LINT-TRUE exit THEN
+   a u s" c!" STR=CI IF LINT-TRUE exit THEN
+   a u s" here" STR=CI IF LINT-TRUE exit THEN
+   a u s" allot" STR=CI IF LINT-TRUE exit THEN
+   a u s" ," STR=CI IF LINT-TRUE exit THEN
+   a u s" c," STR=CI IF LINT-TRUE exit THEN
+   a u s" create" STR=CI IF LINT-TRUE exit THEN
+   a u s" compile," STR=CI IF LINT-TRUE exit THEN
    a u s" patch32" STR=CI ;
 
-: AL-WORD-TOK? {: k :} ( k -- f )
-   k L# @ >= IF 0 exit THEN
+: AL-WORD-TOK? ( n -- bool ) {: k :}
+   k L# @ >= IF LINT-FALSE exit THEN
    k LK@ L-WORD = ;
 
-: AL-TOK-END {: k :} ( k -- n )
+: AL-TOK-END ( n -- n ) {: k :}
    k LB@ k LTOK nip + ;
 
-: AL-JSON-FINDING {: k :} ( k -- )
+: AL-JSON-FINDING ( n -- ) {: k :}
    LJW-RESET
    LJW-OBJECT-START
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
    s" code" LJW-KEY s" E-AOT-UNSUPPORTED" LJW-STRING LJW-COMMA
-   s" file" LJW-KEY AL-FILE-A @ AL-FILE-U @ LJW-STRING LJW-COMMA
+   s" file" LJW-KEY AL-FILE-A@ AL-FILE-U @ LJW-STRING LJW-COMMA
    s" line" LJW-KEY k LL@ LJW-U LJW-COMMA
    s" column" LJW-KEY k LC@ LJW-U LJW-COMMA
    s" byte_start" LJW-KEY k LB@ LJW-U LJW-COMMA
    s" byte_end" LJW-KEY k AL-TOK-END LJW-U LJW-COMMA
-   s" word" LJW-KEY AL-CURRENT-A @ AL-CURRENT-U @ LJW-STRING LJW-COMMA
+   s" word" LJW-KEY AL-CURRENT-A@ AL-CURRENT-U @ LJW-STRING LJW-COMMA
    s" token" LJW-KEY k LTOK LJW-STRING LJW-COMMA
    s" reason" LJW-KEY s" stripped AOT has no persistent data region" LJW-STRING LJW-COMMA
    s" suggestion" LJW-KEY
@@ -84,9 +102,9 @@ variable AL-CURRENT-U
    LJW-OBJECT-END
    LJW$ AL-OUT AL-NL ;
 
-: AL-TEXT-FINDING {: k :} ( k -- )
+: AL-TEXT-FINDING ( n -- ) {: k :}
    s" E-AOT-UNSUPPORTED " AL-OUT
-   AL-FILE-A @ AL-FILE-U @ AL-OUT
+   AL-FILE-A@ AL-FILE-U @ AL-OUT
    58 emit k LL@ AL-U$ AL-OUT
    58 emit k LC@ AL-U$ AL-OUT
    s" : `" AL-OUT
@@ -94,11 +112,11 @@ variable AL-CURRENT-U
    s" ` is not supported by stripped AOT" AL-OUT
    AL-NL ;
 
-: AL-REPORT {: k :} ( k -- )
+: AL-REPORT ( n -- ) {: k :}
    AL-BAD @ 1+ AL-BAD !
    ARGV-JSON? IF k AL-JSON-FINDING ELSE k AL-TEXT-FINDING THEN ;
 
-: AL-HANDLE-WORD {: k :} ( k -- )
+: AL-HANDLE-WORD ( n -- ) {: k :}
    AL-EXPECT-NAME @ IF
       k LTOK AL-CURRENT!
       0 AL-EXPECT-NAME !
@@ -124,8 +142,8 @@ variable AL-CURRENT-U
       AL-I @ 1+ AL-I !
    repeat ;
 
-: AL-SCAN-FILE {: a u :} ( a u -- )
-   a u AL-LABEL$ AL-FILE-U ! AL-FILE-A !
+: AL-SCAN-FILE ( ptr u8 n -- ) {: a:ptr u :}
+   a u AL-LABEL$ AL-FILE-U ! AL-FILE-A!
    a u AL-FILE-BUF AL-FILE-CAP READ-FILE LEX-SOURCE
    AL-SCAN-TOKENS ;
 
