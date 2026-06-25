@@ -496,3 +496,7 @@ lesson — keep the specific word/code/path, cut the prose.
   factoring/comment-only fixes record `file:line` findings in a durable doc
   (`docs/factorization-review.md`) and prove with focused source loads +
   `trust-lint` + the native gate.
+- **Commit is a gate, not a checkpoint:** the project rule now treats `jj commit`
+  as blocked until changed Forth diffs are scanned for definitions and unchecked
+  boundaries, exact owning `bin/hb --load ...` paths are checked, and boundary
+  tests/dots exist. This prevents "commit first, typecheck later" drift.
