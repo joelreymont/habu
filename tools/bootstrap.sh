@@ -149,10 +149,29 @@ fi
 chmod +x "$T/hb-new"
 
 mkdir -p bin "$T/native"
+OLD_HB="$T/bin-hb-before-bootstrap"
+HAD_HB=0
+if [[ -e bin/hb ]]; then
+  mv bin/hb "$OLD_HB"
+  HAD_HB=1
+fi
+restore_hb_on_failure() {
+  local rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    rm -f bin/hb
+    if [[ "$HAD_HB" == "1" ]]; then
+      mv "$OLD_HB" bin/hb
+    fi
+  fi
+  exit "$rc"
+}
+trap restore_hb_on_failure EXIT
 mv "$T/hb-new" bin/hb
 env HB_TMP="$T/native" bin/hb --load \
   lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f \
   lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f \
   tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
+trap - EXIT
+rm -f "$OLD_HB"
 
 printf 'bootstrap OK: bin/hb\n'
