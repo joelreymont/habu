@@ -99,6 +99,26 @@ These findings are still open as of this review artifact. The safest order is:
    `habu-factor-stale-status-615b5a1b`,
    `habu-factor-regex-token-865ebac5`.
 
+## Continuation Handoff
+
+All remaining findings above have tracking dots under parent
+`habu-review-whole-repo-5e087327`; do not create duplicate tracker rows for the
+same finding. As of the docs handoff commit, the working copy has an in-progress
+F01 implementation in `src/habu/jit.f` and `bootstrap/cg/jit.fs` that factors
+VBIN prep helpers (`C-VBIN-FRAME`, `C-VBIN-TAGS`, `C-VBIN-REG-PATH`,
+`C-VBIN-FOLD-PATH`, `C-VBIN-RET`, and `C-VBINI-IMM12-PATH`). That source diff is
+not validated yet and must remain open until the next agent proves:
+
+- `tools/bootstrap-codegen-test.f` passes;
+- the native fixpoint/full gate passes through `test/run.f`;
+- no-binary recovery is either run with a Gforth that passes the documented
+  `{:` locals probe, or explicitly recorded as blocked by the local Gforth
+  0.7.3 probe exit before touching `bin/hb`.
+
+After F01 is validated, update this artifact, close
+`habu-factor-bootstrap-vbin-53787869` with the exact commit/evidence, then move
+to the next dot in the remaining-work order rather than broadening scope.
+
 ## Tracking Dots
 
 Parent: `habu-review-whole-repo-5e087327`
