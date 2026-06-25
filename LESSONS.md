@@ -46,6 +46,12 @@ variant. Source-shape regressions for emitter refactors should assert the exact
 punctuated tokens and reject the bare forms, because bootstrap failures otherwise
 surface later as terse undefined-token exits from generated stage2 source.
 
+### Trust-call emitters need named protocol helpers
+Mirrored trust-call code should name the runtime protocol pieces: push one data
+cell, push the signature pair, and call x11 with LR saved. Leaving raw `G-PUSH`
+and `BLR` sequences inline makes reviewers re-derive the emitted stack and
+register contract at every trust boundary.
+
 ### Split driver timeouts by phase
 The Forth live-driver timeout fixture set a one-second child timeout and
 accidentally timed out the checker subprocess on Linux/aarch64 before the

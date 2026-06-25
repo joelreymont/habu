@@ -1568,13 +1568,24 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 G-PUSH
    9 12 16 LDR,  9 9 4 LSLI,  9 9 4 LSRI,  9 G-PUSH ;
 
+: C-PUSH-DATA-CELL ( n -- ) {: off :}
+   9 DATA off LDR,  9 G-PUSH ;
+
+: C-PUSH-TRUST-SIG ( n n -- ) {: aoff uoff :}
+   aoff C-PUSH-DATA-CELL
+   uoff C-PUSH-DATA-CELL ;
+
+: C-CALL-X11-SAVED ( -- )
+   SP SP 16 SUBI,  30 SP 0 STR,
+   11 BLR,
+   30 SP 0 LDR,  SP SP 16 ADDI, ;
+
 : C-CALL-TRUST-LASTC ( -- )
    C-FIND-TRUST
    12 DATA LASTC-CELL LDR,
    C-PUSH-DREC-NAME
-   9 DATA CRSIG-A-CELL LDR,  9 G-PUSH
-   9 DATA CRSIG-U-CELL LDR,  9 G-PUSH
-   SP SP 16 SUBI,  30 SP 0 STR,  11 BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
+   CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
+   C-CALL-X11-SAVED ;
 
 : C-EMIT-DATA-X9! ( n -- ) {: off :}
    9 20 off W-STRX C-EMITW ;
