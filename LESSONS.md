@@ -959,3 +959,13 @@ register for the marker byte.
   via `--load` yet `SIGILL`s via the gate's stdin REPL for exactly this reason;
   always reproduce engine-suite changes through the gate's stdin path
   (`bin/hb --repl < test/engine-suite.f`), not just `--load`.
+- **M3 spike proven — Habu-emitted saxpy runs on the Orin GPU, bit-exact:**
+  `tools/ptx/saxpy.f` emits `.version 8.3` / `.target sm_87` / `.address_size 64`
+  PTX accepted by CUDA 12.6 `ptxas -arch=sm_87`; the cubin runs on the Orin and
+  matches a CPU golden 0/1000. Bit-exactness needs **matching rounding**: the
+  kernel uses `mul.rn.f32` + `add.rn.f32` (two roundings; SASS shows `FMUL`+`FADD`,
+  not a fused `FFMA`) and the golden uses separate multiply-then-add compiled
+  `-ffp-contract=off`. The launcher for this proof was a throwaway driver-API C
+  program on the Orin (`cuModuleLoad`/`cuModuleGetFunction`/`cuLaunchKernel`);
+  making Habu itself the launcher is the remaining M1 (FFI harness) work — M3's
+  PTX correctness is now decoupled and done.
