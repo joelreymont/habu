@@ -138,6 +138,8 @@ points stay listed.
   `C-CALL` inline/call emitter phases in `src/habu/habu2.f`.
 - `tools/signature-scan-emitter-test.f` — source-shape coverage for shared
   signature scanner/capture emitters in native and recovery codegen.
+- `tools/compiler-dispatch-test.f` — source-shape coverage for factored compiler
+  dispatch and code-section emitter groups in native and recovery codegen.
 - `tools/aot-call-report.f` — measures patched AOT call-stencil padding.
 - `tools/aot-call-report-test.f` — checked fixture coverage for AOT call-stencil reports.
 - `tools/bundle-lib-test.f` — checked fixture coverage for the stdlib bundle tool.

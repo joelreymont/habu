@@ -377,6 +377,11 @@ TEST-SUITE signature-scan-emitter-shape
    tools/signature-scan-emitter-test.f
 ;TEST-SUITE
 
+TEST-SUITE compiler-dispatch-shape
+   lib/errors.f lib/string.f lib/test.f lib/fs.f
+   tools/compiler-dispatch-test.f
+;TEST-SUITE
+
 TEST-SUITE stdlib-batch-fixtures
    lib/errors.f lib/string.f lib/test.f lib/memory.f lib/vector.f
    lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f

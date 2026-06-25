@@ -2486,8 +2486,7 @@ variable CFSK2
       lmain EMIT-COMPILE-PUBLISH-HOOKED
    lnotsemi LBL, ;
 
-: EMIT-COMPILE-KEYWORDS ( n -- ) {: lmain :}
-   LBCAP @ BL,
+: EMIT-COMPILE-CONTROL-KEYWORDS ( n -- ) {: lmain :}
    lmain LKWIF     2 ['] J-IF   ['] J-IFR    CFB-ENTRY
    lmain LKWTHEN   4 ['] J-THEN   CF-ENTRY
    lmain LKWELSE   4 ['] J-ELSE   CF-ENTRY
@@ -2495,16 +2494,22 @@ variable CFSK2
    lmain LKWUNTIL  5 ['] J-UNTIL ['] J-UNTILR CFBN-ENTRY
    lmain LKWAGAIN  5 ['] J-AGAIN  CFN-ENTRY
    lmain LKWWHILE  5 ['] J-WHILE ['] J-WHILER CFB-ENTRY
-   lmain LKWREPEAT 6 ['] J-REPEAT CFN-ENTRY
+   lmain LKWREPEAT 6 ['] J-REPEAT CFN-ENTRY ;
+
+: EMIT-COMPILE-STRING-KEYWORDS ( n -- ) {: lmain :}
    lmain LKWSQ     2 ['] C-SDQ    CF-ENTRY
    lmain LKWCQ     2 ['] C-CQ     CF-ENTRY
-   lmain LKWDOTQ   2 ['] C-DOTQ   CF-ENTRY
+   lmain LKWDOTQ   2 ['] C-DOTQ   CF-ENTRY ;
+
+: EMIT-COMPILE-META-KEYWORDS ( n -- ) {: lmain :}
    lmain LKWBTICK  3 ['] C-BTICK  CF-ENTRY
    lmain LKWBCHAR  6 ['] C-BCHAR  CF-ENTRY
    lmain LKWPOST   8 ['] C-POSTPONE CF-ENTRY
    lmain LKWDOES   5 ['] J-DOES     CF-ENTRY
    lmain LKWQUOT   2 ['] J-QUOT     CF-ENTRY
-   lmain LKWSEMIQ  2 ['] J-SEMIQUOT CF-ENTRY
+   lmain LKWSEMIQ  2 ['] J-SEMIQUOT CF-ENTRY ;
+
+: EMIT-COMPILE-LOOP-KEYWORDS ( n -- ) {: lmain :}
    lmain LKWDO     2 ['] J-DO     CF-ENTRY
    lmain LKWLOOP   4 ['] J-LOOP   CF-ENTRY
    lmain LKWI      1 ['] J-I      CF-ENTRY
@@ -2519,6 +2524,13 @@ variable CFSK2
    lmain LKWLEAVE  5 ['] J-LEAVE   CF-ENTRY
    lmain LKWUNLOOP 6 ['] J-UNLOOP  CF-ENTRY
    lmain LKWLBRACE 2 ['] C-LBRACE CF-ENTRY ;
+
+: EMIT-COMPILE-KEYWORDS ( n -- ) {: lmain :}
+   LBCAP @ BL,
+   lmain EMIT-COMPILE-CONTROL-KEYWORDS
+   lmain EMIT-COMPILE-STRING-KEYWORDS
+   lmain EMIT-COMPILE-META-KEYWORDS
+   lmain EMIT-COMPILE-LOOP-KEYWORDS ;
 
 : EMIT-COMPILE-LOCAL ( n -- ) {: lmain :}
    LBL LBL {: notloc lmem :}
@@ -2546,34 +2558,49 @@ variable CFSK2
       LVPUSHF @ BL,  lmain B,
    lcnotnum LBL, ;
 
-: EMIT-COMPILE-OPS ( n -- ) {: lmain :}
+: EMIT-COMPILE-ARITH-OPS ( n -- ) {: lmain :}
    lmain LKWPLUS  1 ['] VF+ ['] E+ ['] EI+ VOPI-ENTRY
    lmain LKWMINUS 1 ['] VF- ['] E- ['] EI- VOPI-ENTRY
    lmain LKWSTAR  1 ['] VF* ['] E* VOP-ENTRY
    lmain LKWAND2  3 ['] FAND ['] EAND VOP-ENTRY
    lmain LKWOR2   2 ['] FOR2 ['] EOR2 VOP-ENTRY
-   lmain LKWXOR2  3 ['] FXOR2 ['] EXOR VOP-ENTRY
+   lmain LKWXOR2  3 ['] FXOR2 ['] EXOR VOP-ENTRY ;
+
+: EMIT-COMPILE-SHUFFLE-OPS ( n -- ) {: lmain :}
    lmain LKWDUP2  3 1 ['] XDUP  VSHUF-ENTRY
    lmain LKWDROP2 4 1 ['] XDROP VSHUF-ENTRY
    lmain LKWSWAP2 4 2 ['] XSWAP VSHUF-ENTRY
    lmain LKWOVER2 4 2 ['] XOVER VSHUF-ENTRY
-   lmain LKWNIP2  3 2 ['] XNIP  VSHUF-ENTRY
+   lmain LKWNIP2  3 2 ['] XNIP  VSHUF-ENTRY ;
+
+: EMIT-COMPILE-COMPARE-OPS ( n -- ) {: lmain :}
    lmain LKWEQ2 1 0 VCMP-ENTRY
    lmain LKWNE2 2 1 VCMP-ENTRY
    lmain LKWLT2 1 11 VCMP-ENTRY
    lmain LKWGT2 1 12 VCMP-ENTRY
    lmain LKWLE2 2 13 VCMP-ENTRY
-   lmain LKWGE2 2 10 VCMP-ENTRY
+   lmain LKWGE2 2 10 VCMP-ENTRY ;
+
+: EMIT-COMPILE-UNARY-OPS ( n -- ) {: lmain :}
    lmain LKWINC  2 ['] FU1+ ['] EU1+ VUN-ENTRY
    lmain LKWDEC  2 ['] FU1- ['] EU1- VUN-ENTRY
    lmain LKWZEQ  2 ['] FU0= ['] EU0= VUN-ENTRY
    lmain LKWZLT  2 ['] FU0< ['] EU0< VUN-ENTRY
    lmain LKWNEG2 6 ['] FUNEG ['] EUNEG VUN-ENTRY
-   lmain LKWINV2 6 ['] FUINV ['] EUINV VUN-ENTRY
+   lmain LKWINV2 6 ['] FUINV ['] EUINV VUN-ENTRY ;
+
+: EMIT-COMPILE-FLOAT-OPS ( n -- ) {: lmain :}
    lmain LKWFPLUS  2 $1E602800 FOP-ENTRY
    lmain LKWFMINUS 2 $1E603800 FOP-ENTRY
    lmain LKWFSTAR  2 $1E600800 FOP-ENTRY
    lmain LKWFSLASH 2 $1E601800 FOP-ENTRY ;
+
+: EMIT-COMPILE-OPS ( n -- ) {: lmain :}
+   lmain EMIT-COMPILE-ARITH-OPS
+   lmain EMIT-COMPILE-SHUFFLE-OPS
+   lmain EMIT-COMPILE-COMPARE-OPS
+   lmain EMIT-COMPILE-UNARY-OPS
+   lmain EMIT-COMPILE-FLOAT-OPS ;
 
 : EMIT-COMPILE-CALL ( n n -- ) {: lmain lundef :}
    LBL {: notimm :}
@@ -2754,12 +2781,44 @@ variable CFSK2
    EMIT-LABEL-JIT
    EMIT-LABEL-OPS ;
 
+: EMIT-PRIMITIVE-SECTIONS ( -- )
+   EMIT-PRIMS
+   EMIT-PROF-PRIMS
+   EMIT-FP-PRIMS
+   EMIT-CEMIT
+   EMIT-BCAP
+   EMIT-TOK
+   EMIT-PROT
+   EMIT-FLUSH
+   EMIT-FIND
+   EMIT-NUM ;
+
+: EMIT-DICTIONARY-SECTIONS ( -- )
+   EMIT-CREATE
+   EMIT-DOESPATCH
+   EMIT-CF-HELPERS
+   EMIT-LOC-FIND
+   EMIT-KWDATA
+   EMIT-FOLDKW
+   EMIT-SHUFKW
+   EMIT-CMPKW
+   EMIT-UNKW ;
+
+: EMIT-RUNTIME-SECTIONS ( -- )
+   EMIT-CRASH-HANDLER
+   EMIT-TRAPH
+   EMIT-HEX
+   EMIT-PROFDUMP
+   EMIT-PROF
+   EMIT-SHEBANG-COMMENT
+   EMIT-SOURCE-READ
+   EMIT-JIT ;
+
 : EMIT-CODE-SECTIONS ( -- )
    EMIT-MAIN                                              \ entry @ offset 0
-   EMIT-PRIMS  EMIT-PROF-PRIMS  EMIT-FP-PRIMS  EMIT-CEMIT  EMIT-BCAP  EMIT-TOK  EMIT-PROT  EMIT-FLUSH  EMIT-FIND  EMIT-NUM
-   EMIT-CREATE  EMIT-DOESPATCH
-   EMIT-CF-HELPERS  EMIT-LOC-FIND  EMIT-KWDATA  EMIT-FOLDKW  EMIT-SHUFKW  EMIT-CMPKW  EMIT-UNKW  EMIT-CRASH-HANDLER  EMIT-TRAPH  EMIT-HEX
-   EMIT-PROFDUMP  EMIT-PROF  EMIT-SHEBANG-COMMENT  EMIT-SOURCE-READ  EMIT-JIT
+   EMIT-PRIMITIVE-SECTIONS
+   EMIT-DICTIONARY-SECTIONS
+   EMIT-RUNTIME-SECTIONS
    EMIT-DICT ;                                            \ after #PL is final
 
 : EMIT-SOURCE-BYTES ( -- )

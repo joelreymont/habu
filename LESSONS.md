@@ -198,6 +198,9 @@ lesson — keep the specific word/code/path, cut the prose.
   crashes later). Values surviving an emitted `BL` need explicit stack saves or a
   documented callee-preserved contract — `EMIT-BCAP` clobbers `x16`, so a quote
   start kept there made the maker copy from `0x40`.
+- **Dispatch factoring starts with semantic groups:** split long native/recovery
+  compiler dispatch chains into checked helper groups before adding a row DSL;
+  source-shape tests guard helper presence, call graph, and removal of old chains.
 - **Emitter punctuation is semantic:** `BL,`, `LBL,`, `ADR,`, `ZBYTES,` are
   distinct words; a dropped comma is a different token, surfacing as a terse
   undefined-token exit in generated stage2. Source-shape regressions assert exact
