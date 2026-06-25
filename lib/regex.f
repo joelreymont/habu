@@ -16,6 +16,10 @@ $7B constant RX-C-LBRACE
 $7D constant RX-C-RBRACE
 $7C constant RX-C-BAR
 255 constant RX-TOK-MAX-LEN
+15 constant RX-ESCAPABLE-N
+6 constant RX-UNSUPPORTED-META-N
+7 constant RX-META-TOKEN-N
+2 constant RX-META-TOKEN-STRIDE
 
 1 constant RX-TOK-LITERAL
 2 constant RX-TOK-DOT
@@ -32,34 +36,37 @@ $7C constant RX-C-BAR
 
 create RX-ACTIVE RX-STATE-CAP allot
 create RX-NEXT RX-STATE-CAP allot
+create RX-ESCAPABLE-BYTES
+   RX-C-DOT c, RX-C-CARET c, RX-C-DOLLAR c, RX-C-LBRACKET c,
+   RX-C-RBRACKET c, RX-C-BACKSLASH c, RX-C-QUESTION c, RX-C-STAR c,
+   RX-C-PLUS c, RX-C-DASH c, RX-C-LPAREN c, RX-C-RPAREN c,
+   RX-C-LBRACE c, RX-C-RBRACE c, RX-C-BAR c,
+create RX-UNSUPPORTED-META-BYTES
+   RX-C-RBRACKET c, RX-C-LPAREN c, RX-C-RPAREN c,
+   RX-C-LBRACE c, RX-C-RBRACE c, RX-C-BAR c,
+create RX-META-TOKEN-BYTES
+   RX-C-DOT c, RX-TOK-DOT c,
+   RX-C-CARET c, RX-TOK-BOL c,
+   RX-C-DOLLAR c, RX-TOK-EOL c,
+   RX-C-QUESTION c, RX-TOK-QUESTION c,
+   RX-C-STAR c, RX-TOK-STAR c,
+   RX-C-PLUS c, RX-TOK-PLUS c,
+   RX-C-LBRACKET c, RX-TOK-CLASS c,
 variable RX-BEST
 variable RX-COUNT-N
 variable RX-COUNT-POS
 
+: RX-BYTE-IN? ( n ptr u8 n -- bool ) {: c table:ptr u :}
+   0 begin dup u < while
+      table over + c@ c = if drop STR-TRUE exit then
+      1+
+   repeat drop STR-FALSE ;
+
 : RX-ESCAPABLE? ( n -- bool )
-   dup RX-C-DOT =
-   over RX-C-CARET = or
-   over RX-C-DOLLAR = or
-   over RX-C-LBRACKET = or
-   over RX-C-RBRACKET = or
-   over RX-C-BACKSLASH = or
-   over RX-C-QUESTION = or
-   over RX-C-STAR = or
-   over RX-C-PLUS = or
-   over RX-C-DASH = or
-   over RX-C-LPAREN = or
-   over RX-C-RPAREN = or
-   over RX-C-LBRACE = or
-   over RX-C-RBRACE = or
-   swap RX-C-BAR = or ;
+   RX-ESCAPABLE-BYTES RX-ESCAPABLE-N RX-BYTE-IN? ;
 
 : RX-UNSUPPORTED-META? ( n -- bool )
-   dup RX-C-RBRACKET =
-   over RX-C-LPAREN = or
-   over RX-C-RPAREN = or
-   over RX-C-LBRACE = or
-   over RX-C-RBRACE = or
-   swap RX-C-BAR = or ;
+   RX-UNSUPPORTED-META-BYTES RX-UNSUPPORTED-META-N RX-BYTE-IN? ;
 
 : RX-CHECK-BYTE ( n -- ) {: c :}
    c 0 < if E-RX-SYNTAX throw then
@@ -134,16 +141,26 @@ variable RX-COUNT-POS
    dst cap out RX-EMIT-LIT
    idx OFF>N 2 + >OFF swap ;
 
+: RX-META-TOKEN ( n -- n bool ) {: c :}
+   0 begin dup RX-META-TOKEN-N < while
+      RX-META-TOKEN-BYTES over RX-META-TOKEN-STRIDE * + c@ c = if
+         RX-META-TOKEN-BYTES swap RX-META-TOKEN-STRIDE * 1 + + c@
+         STR-TRUE exit
+      then
+      1+
+   repeat drop c STR-FALSE ;
+
+: RX-EMIT-SINGLE-TOKEN ( n off ptr u8 len off -- off off ) {: op idx dst:ptr cap out :}
+   op dst cap out RX-EMIT-1
+   idx OFF>N 1 + >OFF swap ;
+
 : RX-SCAN-ONE ( ptr u8 len off ptr u8 len off -- off off ) {: a:ptr u idx dst:ptr cap out :}
    a idx OFF>N + c@
    dup RX-C-BACKSLASH = if drop a u idx dst cap out RX-SCAN-ESCAPE exit then
-   dup RX-C-DOT = if drop RX-TOK-DOT dst cap out RX-EMIT-1 idx OFF>N 1 + >OFF swap exit then
-   dup RX-C-CARET = if drop RX-TOK-BOL dst cap out RX-EMIT-1 idx OFF>N 1 + >OFF swap exit then
-   dup RX-C-DOLLAR = if drop RX-TOK-EOL dst cap out RX-EMIT-1 idx OFF>N 1 + >OFF swap exit then
-   dup RX-C-QUESTION = if drop RX-TOK-QUESTION dst cap out RX-EMIT-1 idx OFF>N 1 + >OFF swap exit then
-   dup RX-C-STAR = if drop RX-TOK-STAR dst cap out RX-EMIT-1 idx OFF>N 1 + >OFF swap exit then
-   dup RX-C-PLUS = if drop RX-TOK-PLUS dst cap out RX-EMIT-1 idx OFF>N 1 + >OFF swap exit then
-   dup RX-C-LBRACKET = if drop a u idx dst cap out RX-EMIT-CLASS swap exit then
+   RX-META-TOKEN if
+      dup RX-TOK-CLASS = if drop a u idx dst cap out RX-EMIT-CLASS swap exit then
+      idx dst cap out RX-EMIT-SINGLE-TOKEN exit
+   then
    dup RX-UNSUPPORTED-META? if E-RX-SYNTAX throw then
    dst cap out RX-EMIT-LIT
    idx OFF>N 1 + >OFF swap ;
@@ -321,23 +338,29 @@ variable RX-COUNT-POS
    op RX-TOK-EOL = if pos OFF>N text-u LEN>N = exit then
    E-RX-SYNTAX throw ;
 
+: RX-CLOSE-ANCHOR ( n ptr u8 len off len ptr u8 off -- ) {: op rx:ptr rx-u pos text-u flags:ptr off :}
+   rx rx-u off RX-QUANT-AT RX-NO-QUANT <> if E-RX-SYNTAX throw then
+   op pos text-u RX-ANCHOR-MATCH? if
+      flags rx-u rx rx-u off RX-ATOM-END RX-ADD-STATE
+   then ;
+
+: RX-CLOSE-ZERO-QUANT ( ptr u8 len off ptr u8 -- ) {: rx:ptr rx-u off flags:ptr :}
+   rx rx-u off RX-QUANT-AT RX-ZERO-QUANT? if
+      flags rx-u rx rx-u off RX-AFTER-ATOM-QUANT RX-ADD-STATE
+   then ;
+
 : RX-CLOSE-ONE ( ptr u8 len off len ptr u8 off -- ) {: rx:ptr rx-u pos text-u flags:ptr off :}
    flags off RX-FLAG? 0= if exit then
    off OFF>N rx-u LEN>N = if exit then
    rx off OFF>N + c@
    dup RX-QUANT? if E-RX-SYNTAX throw then
    dup RX-ANCHOR? if
-      rx rx-u off RX-QUANT-AT RX-NO-QUANT <> if E-RX-SYNTAX throw then
-      pos text-u RX-ANCHOR-MATCH? if
-         flags rx-u rx rx-u off RX-ATOM-END RX-ADD-STATE
-      then
+      rx rx-u pos text-u flags off RX-CLOSE-ANCHOR
       exit
    then
    dup RX-CONSUMING? 0= if E-RX-SYNTAX throw then
    drop
-   rx rx-u off RX-QUANT-AT RX-ZERO-QUANT? if
-      flags rx-u rx rx-u off RX-AFTER-ATOM-QUANT RX-ADD-STATE
-   then ;
+   rx rx-u off flags RX-CLOSE-ZERO-QUANT ;
 
 : RX-CLOSE ( ptr u8 len off len ptr u8 -- ) {: rx:ptr rx-u pos text-u flags:ptr :}
    0 >OFF begin dup OFF>N rx-u LEN>N <= while
@@ -354,23 +377,26 @@ variable RX-COUNT-POS
    RX-NEXT RX-ACTIVE rx-u LEN>N 1 + BYTE-COPY
    RX-NEXT rx-u LEN>N 1 + >LEN RX-FLAGS-CLEAR ;
 
-: RX-ADD-CONSUME-TARGET ( ptr u8 len off ptr u8 -- ) {: rx:ptr rx-u off flags:ptr :}
-   rx rx-u off RX-QUANT-AT
-   dup RX-NO-QUANT = if
-      drop flags rx-u rx rx-u off RX-ATOM-END RX-ADD-STATE exit
+: RX-ADD-QUANT-TARGET ( n ptr u8 len off ptr u8 -- ) {: q rx:ptr rx-u off flags:ptr :}
+   q RX-NO-QUANT = if
+      flags rx-u rx rx-u off RX-ATOM-END RX-ADD-STATE exit
    then
-   dup RX-TOK-QUESTION = if
-      drop flags rx-u rx rx-u off RX-AFTER-ATOM-QUANT RX-ADD-STATE exit
+   q RX-TOK-QUESTION = if
+      flags rx-u rx rx-u off RX-AFTER-ATOM-QUANT RX-ADD-STATE exit
    then
-   dup RX-TOK-STAR = if
-      drop flags rx-u off RX-ADD-STATE exit
+   q RX-TOK-STAR = if
+      flags rx-u off RX-ADD-STATE exit
    then
-   RX-TOK-PLUS = if
+   q RX-TOK-PLUS = if
       flags rx-u off RX-ADD-STATE
       flags rx-u rx rx-u off RX-AFTER-ATOM-QUANT RX-ADD-STATE
       exit
    then
    E-RX-SYNTAX throw ;
+
+: RX-ADD-CONSUME-TARGET ( ptr u8 len off ptr u8 -- ) {: rx:ptr rx-u off flags:ptr :}
+   rx rx-u off RX-QUANT-AT
+   rx rx-u off flags RX-ADD-QUANT-TARGET ;
 
 : RX-CONSUME-STATE ( ptr u8 ptr u8 len off ptr u8 ptr u8 off -- ) {: text:ptr rx:ptr rx-u pos active:ptr next:ptr off :}
    active off RX-FLAG? 0= if exit then

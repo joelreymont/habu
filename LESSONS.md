@@ -31,6 +31,11 @@ lesson — keep the specific word/code/path, cut the prose.
   word's stack by hand, factor first (named helpers with explicit effects), then
   change behavior, so every intermediate contract is checked. Applies hardest to
   raw compiler/register emitters.
+- **Classification tables beat token ladders:** `lib/regex.f` stopped repeating
+  `dup`/`over` metacharacter chains once escapable, unsupported, and emitted-token
+  bytes became table data behind `RX-BYTE-IN?`/`RX-META-TOKEN`. Pair those tables
+  with named state-transition helpers so matcher behavior changes stay visible in
+  fixtures instead of hidden inside one branch ladder.
 - **Checker-miss RCA starts before output:** scan the prompt for
   checker/compiler-miss wording (incl. quoted/meta). First visible line is
   `Static invariant:` naming the pre-runtime fact and the enforcing boundary; if

@@ -254,7 +254,7 @@ the first review round:
 Tracker state was verified with `dot tree` on 2026-06-25 during the F04
 source-refactor handoff. The parent dot is `habu-review-whole-repo-5e087327`;
 F01, F02, F03, F05, F06, F07, F08, F09, F10, F12, F13, F14, F16, F17, F18,
-F19, F20, and F21 are addressed; F04 has a Linux-validated source refactor but
+F19, F20, F21, and F22 are addressed; F04 has a Linux-validated source refactor but
 remains open for macOS runtime validation; all rows below are open.
 
 The local `.dots/` store is ignored by the repository, so this section is the
@@ -408,6 +408,16 @@ Handoff snapshot:
   Validation covered the focused `tools/stale-status-lint-test.f` command,
   direct `stale-status-lint`, `test/gate-stdlib.f`, and the full native gate
   from `docs/bootstrap.md`.
+- F22 is closed on Linux/aarch64: `lib/regex.f` now uses byte tables for
+  escapable, unsupported, and compile-token metacharacter classification, and
+  `RX-SCAN-ONE` delegates one-byte token emission to `RX-EMIT-SINGLE-TOKEN`.
+  Regex state transitions now have named helpers for anchor closure, zero-width
+  quantifier closure, and consume-target quantifier policy
+  (`RX-CLOSE-ANCHOR`, `RX-CLOSE-ZERO-QUANT`, `RX-ADD-QUANT-TARGET`). The regex
+  fixture now exercises the token tables and single-token emitter directly.
+  Validation covered the focused `lib/regex-test.f` command,
+  `tools/stdlib-manifest-test.f`, `tools/public-signatures-test.f`,
+  `test/gate-stdlib.f`, and the full native gate from `docs/bootstrap.md`.
 - The remaining factorization work already has one dot per open finding in the
   local tracker. Do not create duplicates; start the next open row, commit that
   focused batch, update this document, close that row's dot, then push.
@@ -426,17 +436,16 @@ Next continuation step:
 3. If macOS exposes a spawn behavior regression, keep F04 open, root-cause the
    register/frame delta with the native debugger tools in `docs/debugging.md`,
    and commit the fix with a macOS regression.
-4. On Linux/aarch64, the next unblocked finding is F22
-   (`habu-factor-regex-token-865ebac5`).
+4. On Linux/aarch64, the next unblocked finding is F23
+   (`habu-table-drive-gate-698becb6`).
 
 Open dot queue:
 
 | Order | Finding | Dot | Scope | Done when |
 | --- | --- | --- | --- | --- |
 | 1 | F04 | `habu-factor-darwin-spawn-5a82930c` | Validate the factored Darwin spawn emitter variants on macOS. | Shared helpers preserve the Darwin `posix_spawn` ABI; macOS process tests and full native gate pass, plus Linux-safe gate where run. |
-| 2 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. | Regex classification/state transitions use small predicate or row helpers; regex fixtures and full native gate pass. |
-| 3 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. | Command arity/xt rows and repair suggestion rows replace branch ladders; gate-json assertions and full native gate pass. |
-| 4 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. | Missing stack-effect comments and lower-case project words are fixed; focused source loads, lint, and full native gate pass. |
+| 2 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. | Command arity/xt rows and repair suggestion rows replace branch ladders; gate-json assertions and full native gate pass. |
+| 3 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. | Missing stack-effect comments and lower-case project words are fixed; focused source loads, lint, and full native gate pass. |
 
 ## Other Open Top-Level Dots
 
@@ -482,11 +491,13 @@ Parent: `habu-review-whole-repo-5e087327`
 ## Verification Status
 
 The original subagent review was read-only. The latest implementation batch is
-the Linux-validated F16 stale-status scanner sub-batch. F11, F13, F15, and F16
-are closed on Linux/aarch64; after the F16 sub-batch the port stack passed:
+the Linux-validated F22 regex token/state factoring sub-batch. F11, F13, F15,
+F16, and F22 are closed on Linux/aarch64; after the F22 sub-batch the port stack
+passed:
 
-- `tools/stale-status-lint-test.f`: `stale-status-lint-test: ok`;
-- direct `stale-status-lint`: `stale-status-lint: 0 finding(s)`;
+- `lib/regex-test.f`: `regex-test: ok`;
+- `tools/stdlib-manifest-test.f`: `stdlib-manifest-test: ok`;
+- `tools/public-signatures-test.f`: `public-signatures-test: ok`;
 - `test/gate-stdlib.f`: `PASS: native lint/stdlib gate phase`;
 - `test/run.f`:
   `PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)`.
