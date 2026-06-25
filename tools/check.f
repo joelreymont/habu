@@ -1,8 +1,10 @@
 \ check.f - Habu-native checked engine wrapper.
-\ Load after lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f
-\ lib/process.f lib/process-argv.f lib/source.f, tools/lint/text.f,
-\ tools/lint/token.f, tools/lint/lib.f, tools/diag-origin-core.f,
-\ tools/json.f, tools/json-only-core.f, and tools/argv.f.
+\ Load after lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f,
+\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
+\ tools/lint/json-writer.f, tools/lint/source-lex.f,
+\ tools/diag-origin-core.f, tools/json.f, tools/json-only-core.f,
+\ tools/signature-lint-core.f, and tools/argv.f.
 
 \ Audited hook-install boundary: this tool must install its checker hook before
 \ validating generated source snippets with CHECK!.
@@ -344,12 +346,6 @@ variable CHK-ROOT-U
    does> ( [ ptr u8 n -- ] -- )
       CHK-FILES-RUN ;
 
-CHK-FILES: CHK-SIGNATURE-FILES
-   lib/errors.f lib/memory.f lib/vector.f tools/lint/text.f
-   tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
-   tools/lint/source-lex.f tools/argv.f tools/signature-lint.f
-;CHK-FILES
-
 CHK-FILES: CHK-BOUNDARY-FILES
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
    lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f
@@ -376,11 +372,6 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
 : CHK-LOAD-END ( -- )
    s" --" CHK-ARG+ ;
 
-: CHK-LOAD-SIGNATURE ( -- )
-   CHK-LOAD-RESET
-   [: CHK-ARG+ ;] CHK-SIGNATURE-FILES
-   CHK-LOAD-END ;
-
 : CHK-LOAD-BOUNDARY ( -- )
    CHK-LOAD-RESET
    [: CHK-ARG+ ;] CHK-BOUNDARY-FILES
@@ -403,11 +394,6 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
    s" --label" CHK-ARG+
    CHK-LABEL CHK-ARG+
    CHK-SOURCE CHK-ARG+ ;
-
-: CHK-ARGV-SIG ( -- )
-   CHK-LOAD-SIGNATURE
-   s" --json" CHK-JSON-OPT
-   CHK-ADD-LABEL-SOURCE ;
 
 : CHK-ARGV-BOUNDARY ( -- )
    CHK-LOAD-BOUNDARY
@@ -452,11 +438,11 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
 
 : CHK-RUN-STRICT ( -- )
    CHK-STRICT @ 0= if exit then
-   CHK-ARGV-SIG
-   CHK-RUN-CAPTURE
-   CHK-OUT-BUF CHK-OUT-U @ CHK-ERR
-   CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
-   CHK-RC @ 0 <> if CHK-RC @ CHK-THROW then ;
+   SIGNATURE-LINT-RESET
+   2 >FD SL-OUT-FD!
+   CHK-JSON @ SL-JSON!
+   CHK-SOURCE CHK-LABEL SIGNATURE-LINT-FILE-AS
+   SIGNATURE-LINT-FINISH ;
 
 : CHK-RUN-BOUNDARY ( -- )
    CHK-ARGV-BOUNDARY

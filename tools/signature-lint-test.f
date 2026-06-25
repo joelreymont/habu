@@ -132,6 +132,7 @@ create SLT-ERR SLT-BUF-CAP allot
    s" tools/lint/lib.f" SLT-ARG+
    s" tools/lint/json-writer.f" SLT-ARG+
    s" tools/lint/source-lex.f" SLT-ARG+
+   s" tools/signature-lint-core.f" SLT-ARG+
    s" tools/argv.f" SLT-ARG+
    s" tools/signature-lint.f" SLT-ARG+
    s" --" SLT-ARG+ ;

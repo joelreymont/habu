@@ -47,6 +47,7 @@
    BGR-HB
    BGR-ERR-STR
    s" lib/memory.f" BGR-ARG+
+   s" lib/vector.f" BGR-ARG+
    s" lib/fs.f" BGR-ARG+
    s" lib/fs-mutate.f" BGR-ARG+
    s" lib/process.f" BGR-ARG+
@@ -55,9 +56,12 @@
    s" tools/lint/text.f" BGR-ARG+
    s" tools/lint/token.f" BGR-ARG+
    s" tools/lint/lib.f" BGR-ARG+
+   s" tools/lint/json-writer.f" BGR-ARG+
+   s" tools/lint/source-lex.f" BGR-ARG+
    s" tools/diag-origin-core.f" BGR-ARG+
    s" tools/json.f" BGR-ARG+
    s" tools/json-only-core.f" BGR-ARG+
+   s" tools/signature-lint-core.f" BGR-ARG+
    s" tools/argv.f" BGR-ARG+
    s" tools/check.f" BGR-ARG+
    s" --" BGR-ARG+ ;

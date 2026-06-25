@@ -193,6 +193,7 @@ variable HBB-JSON-FOUND
 : HBB-ADD-SIGNATURE-LINT-CMD ( -- )
    HBB-CMD-RESET
    HBB-ADD-LINT-LOADS
+   s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then

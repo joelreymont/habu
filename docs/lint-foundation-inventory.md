@@ -73,7 +73,7 @@ boundary for `LEX-A@`.
 
 Users:
 
-- `tools/signature-lint.f:189` runs `READ-FILE LEX-SOURCE`.
+- `tools/signature-lint-core.f` runs `READ-FILE LEX-SOURCE`.
 - `tools/aot-lint.f:128` runs `READ-FILE LEX-SOURCE`.
 - `tools/diag-origin-core.f`, `tools/diag-origin.f`, and `tools/check-all-errors.f` load this foundation for
   source-origin diagnostics.

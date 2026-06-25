@@ -223,6 +223,7 @@ TRUSTED: DFH-BUNDLE$ ( -- ptr u8 n )
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/vector.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" lib/fs-mutate.f"  >LEN PROC-ARGV+
    s" lib/process.f"  >LEN PROC-ARGV+
@@ -231,9 +232,12 @@ TRUSTED: DFH-BUNDLE$ ( -- ptr u8 n )
    s" tools/lint/text.f"  >LEN PROC-ARGV+
    s" tools/lint/token.f"  >LEN PROC-ARGV+
    s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
    s" tools/diag-origin-core.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
+   s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/check.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+

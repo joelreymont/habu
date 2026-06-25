@@ -163,6 +163,7 @@ create CBLT-LF-BYTE 10 c,
    s" tools/host-lint.f"  >LEN PROC-ARGV+
    s" tools/filemap-lint.f"  >LEN PROC-ARGV+
    s" tools/parallel-agent-lint.f"  >LEN PROC-ARGV+
+   s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint.f"  >LEN PROC-ARGV+
    s" tools/stale-status-lint.f"  >LEN PROC-ARGV+
    s" tools/trust-lint.f"  >LEN PROC-ARGV+

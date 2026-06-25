@@ -1,9 +1,10 @@
 \ check-test.f - process-boundary smoke coverage for tools/check.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+\ tools/lint/json-writer.f tools/lint/source-lex.f
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
-\ tools/argv.f tools/check-test.f
+\ tools/signature-lint-core.f tools/argv.f tools/check-test.f
 
 $4000 constant CKT-BUF-CAP
 10000 constant CKT-TIMEOUT-MS
@@ -40,6 +41,7 @@ variable CKT-LIST-U
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/vector.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" lib/fs-mutate.f"  >LEN PROC-ARGV+
    s" lib/process.f"  >LEN PROC-ARGV+
@@ -48,9 +50,12 @@ variable CKT-LIST-U
    s" tools/lint/text.f"  >LEN PROC-ARGV+
    s" tools/lint/token.f"  >LEN PROC-ARGV+
    s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
    s" tools/diag-origin-core.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
+   s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/check.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
@@ -76,6 +81,17 @@ variable CKT-LIST-U
    CKT-ARGV-BASE
    s" --json-errors"  >LEN PROC-ARGV+
    s" --all-errors"  >LEN PROC-ARGV+
+   src srcu CKT-STDIN-CAPTURE ;
+
+: CKT-RUN-STRICT ( ptr u8 n -- n n n ) {: src:ptr srcu :}
+   CKT-ARGV-BASE
+   s" --strict-signatures"  >LEN PROC-ARGV+
+   src srcu CKT-STDIN-CAPTURE ;
+
+: CKT-RUN-STRICT-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu :}
+   CKT-ARGV-BASE
+   s" --json-errors"  >LEN PROC-ARGV+
+   s" --strict-signatures"  >LEN PROC-ARGV+
    src srcu CKT-STDIN-CAPTURE ;
 
 : CKT-RUN-FILE-JSON ( -- n n n )
@@ -104,6 +120,9 @@ variable CKT-LIST-U
 
 : CKT-BAD$SRC ( -- ptr u8 n )
    s" : BAD ( i64 -- i64 ) dup ;" ;
+
+: CKT-NOSIG$ ( -- ptr u8 n )
+   s" : NOSIG dup ;" ;
 
 : CKT-DIE$ ( -- ptr u8 n )
    SB-RESET
@@ -161,6 +180,20 @@ variable CKT-LIST-U
    outu 0 T=
    CKT-ERR erru CKT-BAD$ CONTAINS? TTRUE ;
 
+: CKT-TEST-STRICT-SIGNATURE ( -- )
+   CKT-NOSIG$ CKT-RUN-STRICT 1 T=
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" E-MISSING-SIGNATURE" CONTAINS? TTRUE
+   CKT-ERR erru s" signature-lint:" CONTAINS? TTRUE ;
+
+: CKT-TEST-STRICT-SIGNATURE-JSON ( -- )
+   CKT-NOSIG$ CKT-RUN-STRICT-JSON 1 T=
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" schema_version" CONTAINS? TTRUE
+   CKT-ERR erru s" E-MISSING-SIGNATURE" CONTAINS? TTRUE ;
+
 : CKT-TEST-USAGE ( -- )
    CKT-RUN-ARGS 64 T=
    {: outu erru :}
@@ -202,6 +235,8 @@ variable CKT-LIST-U
    CKT-PREPARE
    CKT-TEST-GOOD
    CKT-TEST-FILE-LABEL
+   CKT-TEST-STRICT-SIGNATURE
+   CKT-TEST-STRICT-SIGNATURE-JSON
    CKT-TEST-USAGE
    CKT-TEST-DIE
    CKT-TEST-UNTERM-STRINGS

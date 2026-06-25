@@ -122,6 +122,7 @@ variable FM-NUM-L
 : FM-CHECK-REQUIRED-DIAG ( -- )
    s" tools/lint/json-writer.f" FM-REQ
    s" tools/lint/source-lex.f" FM-REQ
+   s" tools/signature-lint-core.f" FM-REQ
    s" tools/signature-lint.f" FM-REQ
    s" tools/signature-lint-test.f" FM-REQ
    s" tools/aot-lint.f" FM-REQ

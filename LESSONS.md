@@ -375,6 +375,10 @@ lesson — keep the specific word/code/path, cut the prose.
   a loaded file; live drivers treat ANY stdout/stderr from a check-only child as
   rejection. Expected-throw fixtures stay quiet (opt-in row/error reporters at the
   CLI boundary) so negative tests assert throw codes without `FAIL` lines.
+- **Core/CLI lint splits need output routing:** standalone lint CLIs may write
+  findings to stdout, while `tools/check.f` must surface the same findings on
+  stderr. When moving a lint in-process, make the checked core accept/configure
+  its output fd and add check-wrapper tests for text and JSON stderr routing.
 - **Don't pull unchecked parsers into checked tests:** `tools/json.f` is an
   unchecked `catch` boundary; checked reducers use small checked interface fixtures
   for the checker gate and runtime tests with the real parser until the typed
