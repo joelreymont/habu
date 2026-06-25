@@ -562,7 +562,7 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
 
 : PT+ {: na nu sa su :}  na nu PT2+  sa su PT2+ ;
 
-: PTABLE  PTAB PTP !  0 PTAB c!
+: PT-STACK-PRIMS ( -- )
    s" dup" s" a -- a a" PT+
    s" drop" s" a --" PT+
    s" swap" s" a b -- b a" PT+
@@ -574,7 +574,9 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" 2dup" s" a b -- a b a b" PT+
    s" 2drop" s" a b --" PT+
    s" 2swap" s" a b c d -- c d a b" PT+
-   s" 2over" s" a b c d -- a b c d a b" PT+
+   s" 2over" s" a b c d -- a b c d a b" PT+ ;
+
+: PT-NUMERIC-PRIMS ( -- )
    s" +" s" n n -- n" PT+
    s" +" s" ptr a n -- ptr a" PT+
    s" +" s" n ptr a -- ptr a" PT+
@@ -621,14 +623,18 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" cell+" s" n -- n" PT+
    s" chars" s" n -- n" PT+
    s" char+" s" ptr a -- ptr a" PT+
-   s" char+" s" n -- n" PT+
+   s" char+" s" n -- n" PT+ ;
+
+: PT-MEMORY-PRIMS ( -- )
    s" @" s" ptr a -- a" PT+
    s" !" s" a ptr a --" PT+
    s" ptr-field" s" ptr a n -- ptr ptr b" PT+
    s" +!" s" n ptr n --" PT+
    s" c@" s" ptr u8 -- u8" PT+
    s" c!" s" u8 ptr u8 --" PT+
-   s" count" s" ptr u8 -- ptr u8 n" PT+
+   s" count" s" ptr u8 -- ptr u8 n" PT+ ;
+
+: PT-OUTPUT-PRIMS ( -- )
    s" ." s" n --" PT+
    s" .s" s" --" PT+
    s" depth" s" -- n" PT+
@@ -640,7 +646,9 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" script-argc" s" -- n" PT+
    s" script-argv$" s" n -- ptr u8 n" PT+
    s" throw" s" n --" PT+
-   s" die" s" ptr u8 n n --" PT+
+   s" die" s" ptr u8 n n --" PT+ ;
+
+: PT-FS-PRIMS ( -- )
    s" open" s" ptr u8 n n -- n" PT+
    s" read" s" n ptr u8 n -- n" PT+
    s" ioctl" s" n n ptr a -- n" PT+
@@ -662,7 +670,9 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" dup2" s" n n -- n" PT+
    s" fcntl" s" n n n -- n" PT+
    s" poll" s" ptr a n n -- n" PT+
-   s" kill" s" n n -- n" PT+
+   s" kill" s" n n -- n" PT+ ;
+
+: PT-PROCESS-PRIMS ( -- )
    s" spawn-io" s" ptr u8 n n n -- n" PT+
    s" spawn-argv-io" s" ptr u8 ptr a n n n -- n" PT+
    s" spawn-argv-env-io" s" ptr u8 ptr a ptr a n n n -- n" PT+
@@ -675,7 +685,9 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" epoch-seconds" s" -- n" PT+
    s" mono-ns" s" -- n" PT+
    s" prof-on" s" n --" PT+
-   s" prof-report" s" --" PT+
+   s" prof-report" s" --" PT+ ;
+
+: PT-SYSTEM-PRIMS ( -- )
    s" rbase" s" -- n" PT+
    s" cp@" s" -- n" PT+
    s" dbase@" s" -- n" PT+
@@ -685,16 +697,17 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" get-current" s" -- n" PT+
    s" set-current" s" n --" PT+
    s" search-wl" s" ptr u8 n n -- n" PT+
-   s" parse-name" s" -- ptr u8 n" PT+
-   \ floats: r = real (concrete), distinct from n (int) and f (flag)
+   s" parse-name" s" -- ptr u8 n" PT+ ;
+
+: PT-FLOAT-PRIMS ( -- )
    s" f+" s" r r -- r" PT+    s" f-" s" r r -- r" PT+
    s" f*" s" r r -- r" PT+    s" f/" s" r r -- r" PT+
    s" fnegate" s" r -- r" PT+  s" fabs" s" r -- r" PT+  s" fsqrt" s" r -- r" PT+
    s" f<" s" r r -- f" PT+    s" f>" s" r r -- f" PT+   s" f=" s" r r -- f" PT+
    s" f0<" s" r -- f" PT+     s" f0=" s" r -- f" PT+
-   s" s>f" s" n -- r" PT+     s" f>s" s" r -- n" PT+    s" f." s" r --" PT+
-   \ s" pushes addr+len; ['] pushes an xt. The engine consumes their payload
-   \ inline, so only the bare token reaches the body capture.
+   s" s>f" s" n -- r" PT+     s" f>s" s" r -- n" PT+    s" f." s" r --" PT+ ;
+
+: PT-LITERAL-PRIMS ( -- )
    SDQN 2 PT2+  s" -- ptr u8 n" PT2+
    CDQN 2 PT2+  s" -- ptr u8" PT2+
    DOTQN 2 PT2+ s" --" PT2+
@@ -703,12 +716,25 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" emit" s" n --" PT+
    s" cr" s" --" PT+
    s" space" s" --" PT+
-   s" u." s" n --" PT+
-   \ defining-word kinds (the engine hooks "NAME create" etc. so the name gets
-   \ recorded): create/variable are addresses; a constant's cell is untyped.
+   s" u." s" n --" PT+ ;
+
+: PT-DEFINER-PRIMS ( -- )
    s" create" s" -- ptr a" PT+
    s" variable" s" -- ptr a" PT+
    s" constant" s" -- a" PT+ ;
+
+: PTABLE ( -- )
+   PTAB PTP !  0 PTAB c!
+   PT-STACK-PRIMS
+   PT-NUMERIC-PRIMS
+   PT-MEMORY-PRIMS
+   PT-OUTPUT-PRIMS
+   PT-FS-PRIMS
+   PT-PROCESS-PRIMS
+   PT-SYSTEM-PRIMS
+   PT-FLOAT-PRIMS
+   PT-LITERAL-PRIMS
+   PT-DEFINER-PRIMS ;
 PTABLE
 variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable FSP  variable FP
 \ user sigs: certified words recorded as [ulen][name][ulen][sig]*, cell-0

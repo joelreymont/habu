@@ -428,6 +428,7 @@ s" linux-ignore-sigpipe" s" --" TRUST
 2 constant PSFA-DUP2
 5 constant PSFA-CHDIR
 8 constant SPAWN-CHDIR-PATH-OFF
+SPAWN-ACTION-SIZE SPAWN-CHDIR-PATH-OFF - constant SPAWN-CHDIR-PATH-CAP
 48 constant SPAWN-ADESC-OFF
 64 constant SPAWN-ADESC-FA-SIZE-OFF
 72 constant SPAWN-ADESC-FA-PTR-OFF
@@ -446,21 +447,28 @@ s" linux-ignore-sigpipe" s" --" TRUST
 s" spawn-dup2-action" s" n n --" TRUST
 
 \ Emit one PSFA_CHDIR record into the runtime file-actions blob at x13.
-: SPAWN-CHDIR-ACTION {: cwdreg :}
-   LBL {: copy :}
+: SPAWN-CHDIR-ACTION {: cwdreg fail :}
+   LBL LBL LBL {: copy overflow done :}
    14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,
    14 14 SPAWN-FA-ACTS-OFF ADDI,  14 14 13 ADD,
    15 PSFA-CHDIR MOVZ,  15 14 0 STRW,
    16 cwdreg 0 ADDI,
    17 14 SPAWN-CHDIR-PATH-OFF ADDI,
+   18 SPAWN-CHDIR-PATH-CAP MOVZ,
    copy LBL,
+      18 0 CMPI,  C-EQ overflow BCOND,
       15 16 0 LDRB,
       15 17 0 STRB,
       16 16 1 ADDI,
       17 17 1 ADDI,
+      18 18 1 SUBI,
       15 copy CBNZ,
-   14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW, ;
-s" spawn-chdir-action" s" n --" TRUST
+   14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW,
+   done B,
+   overflow LBL,
+   9 0 MOVN,  fail B
+   done LBL, ;
+s" spawn-chdir-action" s" n n --" TRUST
 
 : BSPAWNIO                            \ ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )
    LBL LBL LBL {: spok spdn sad :}
@@ -606,7 +614,7 @@ s" spawn-chdir-action" s" n --" TRUST
    13 SP SPAWN-ACTIONS-OFF ADDI,       \ file actions
    14 4 MOVZ,  14 13 0 STRW,
    14 0 MOVZ,  14 13 SPAWN-FA-COUNT-OFF STRW,
-   6 SPAWN-CHDIR-ACTION
+   6 spdn SPAWN-CHDIR-ACTION
    10 0 SPAWN-DUP2-ACTION
    11 1 SPAWN-DUP2-ACTION
    12 2 SPAWN-DUP2-ACTION
