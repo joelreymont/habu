@@ -18,18 +18,18 @@
 20 constant RBASE
 26 constant DBASE  27 constant NDICT  28 constant CP
 
-$200000 constant REGION       \ mmap region size (2 MB)
+$400000 constant REGION       \ mmap region size (4 MB)
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
-$31000  constant DICT-SIZE     \ dict + control-flow stack; code area follows
+$61000  constant DICT-SIZE     \ dict + control-flow stack; code area follows
 48      constant DREC          \ dict record: addr(8) clen(8) name-len|flags(8) name|ptr(16) wid(8)
 16      constant DNAME-INL
 $0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
-4096    constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..4095 end exactly at CFSTK.
-$30000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
+8192    constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..8191 end exactly at CFSTK.
+$60000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
 $300000 constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
 $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 
@@ -2183,8 +2183,9 @@ variable CFSK2
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,
    10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
    11 10 IMAGE-TEXT-SIZE-OFF LDR,
-   12 10 11 ADD,  12 12 40 SUBI,
+   12 10 11 ADD,  5 IMAGE-TEXT-TRAILER-ADJ LIT64,  12 12 5 ADD,  12 12 40 SUBI,
    13 12 0 LDR,  5 SNAP-MAGIC LIT64,  13 5 CMP,  C-NE snomag BCOND,
+   5 IMAGE-TEXT-CONTENT-ADJ LIT64,  11 11 5 SUB,
    21 12 8 LDR,
    15 12 16 LDR,
    6 12 24 LDR,

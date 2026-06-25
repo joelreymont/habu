@@ -5,18 +5,18 @@
 27 constant NDICT
 28 constant CP
 
-$200000 constant REGION
+$400000 constant REGION
 $300000000 constant RBASE-VA
 $48425350414E5321 constant SNAP-MAGIC
 
-$31000 constant DICT-SIZE
+$61000 constant DICT-SIZE
 48 constant DREC
 16 constant DNAME-INL
 $0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
-4096 constant DICT-CAP
-$30000 constant CFSTK-OFF
+8192 constant DICT-CAP
+$60000 constant CFSTK-OFF
 
 $100000 constant IBUFSZ
 20 constant DATA

@@ -75,6 +75,12 @@ even when both ultimately report the same exit code.
 - **Gforth must support locals:** Homebrew `gforth` 0.7.3 cannot parse `{:
   :}` locals and is not a usable bootstrap host. Use a current Gforth snapshot
   such as `0.7.9_20260610`, or set `GFORTH=/path/to/gforth-fast`.
+- **Gforth snapshot recovery does not require installed `gforth-fast`:** on macOS
+  the `0.7.9_20260610` snapshot configured with `UNSUITABLE_CC=none` can
+  bootstrap Habu through a wrapper that execs `gforth-itc -i gforth-light.fi`.
+  This avoids treating Homebrew 0.7.3 or a slow full `gforth-fast` build as the
+  recovery blocker; `tools/bootstrap.sh` only needs the wrapper to pass the
+  locals probe.
 - **Bootstrap probes must check output, not just exit:** Ubuntu Gforth 0.7.3 can
   report unsupported `{:` locals in one command path while still letting later
   shell stages continue. The bootstrap probe now runs a temporary file and
@@ -727,6 +733,14 @@ register for the marker byte.
   `REGION - $4000`, check `ndict@` against `DICT-CAP`. Grow `CFSTK-OFF`,
   `DICT-CAP`, and `DICT-SIZE` together so dictionary slots still end at CFSTK
   and code keeps the guard gap.
+- **Tool gate bundles can hit dictionary cap before code cap:** the combined
+  tool-boundary fixture reached `NDICT=4095` with `cp@ dbase@ -` around
+  `$140080`, then the next `:` failed with rc 77. When composed checked tooling
+  grows the live dictionary, raise the dictionary layout (`DICT-CAP`,
+  `CFSTK-OFF`, `DICT-SIZE`) in both native and bootstrap mirrors, then recheck
+  code-region headroom because the larger `DICT-SIZE` moves compiled code
+  upward. Grow `REGION` deliberately when normal tool bundles still need the
+  code space, and prove the focused bundle before the full gate.
 - **Checker capacity bumps are layout work:** increasing global checker tables
   can shift native data layout and break unrelated fixtures. Prefer removing
   one-use fixture signatures first; expand engine regions deliberately.

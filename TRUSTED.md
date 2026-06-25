@@ -97,49 +97,53 @@ that source is explicitly certified; they are not stale-checked by the default
 | cfb-entry | `n ptr a n n n --` | Branch-keyword case (if/until/while) with a reg-aware condition path; asm + two `hxt execute` handlers. | `test/run.f` | src/habu/habu2.f:1319 | 2026-06-25 |
 | cfbn-entry | `n ptr a n n n --` | Like CFB-ENTRY, no-spill register path; raw asm + indirect xts. | `test/run.f` | src/habu/habu2.f:1340 | 2026-06-25 |
 | c-local-ref | `n n --` | Compile-mode local-reference emitter: branches to the caller's not-local continuation or emits local loads, and rejects quotation-local captures with raw exit code 75. | `test/engine-suite.f`, `test/run.f` | src/habu/habu2.f:1368 | 2026-06-25 |
-| em-interpret-colon | `n --` | Emits interpreter-mode colon-definition setup and jumps to the caller-provided not-colon label on non-definitions. | `test/run.f` | src/habu/habu2.f:1637 | 2026-06-25 |
-| em-interpret-words | `--` | Emits interpreter-mode defining-word, literal, lookup, and execute dispatch. | `test/run.f` | src/habu/habu2.f:1657 | 2026-06-25 |
-| em-interpret | `--` | Chains the factored interpreter-mode colon and word-dispatch emitters. | `test/run.f` | src/habu/habu2.f:1663 | 2026-06-25 |
-| em-compile-drop-locals | `--` | Emits optional locals-frame teardown before a compiled definition returns. | `test/run.f` | src/habu/habu2.f:1670 | 2026-06-25 |
-| em-compile-ret | `--` | Emits the raw return epilogue for a compiled definition. | `test/run.f` | src/habu/habu2.f:1676 | 2026-06-25 |
-| em-compile-flush-pend | `--` | Finalizes the pending dictionary entry length and flips/flushed the generated code region. | `test/run.f` | src/habu/habu2.f:1682 | 2026-06-25 |
-| em-compile-publish-trusted | `--` | Emits checked/trusted publication for declarations, DOES> signatures, and trust metadata. | `test/run.f` | src/habu/habu2.f:1701 | 2026-06-25 |
-| em-compile-publish-hooked | `--` | Emits hook-based publication for ordinary compiled definitions. | `test/run.f` | src/habu/habu2.f:1716 | 2026-06-25 |
-| em-compile-publish | `--` | Selects trusted-signature or hook publication for a closed compiled definition. | `test/run.f` | src/habu/habu2.f:1724 | 2026-06-25 |
-| em-compile-semi | `n --` | Emits semicolon close handling and binds the caller-provided not-semi continuation label. | `test/run.f` | src/habu/habu2.f:1736 | 2026-06-25 |
-| em-compile-keywords | `--` | Emits compile-mode keyword dispatch cases for control flow, strings, locals, quotations, and loop words. | `test/run.f` | src/habu/habu2.f:1771 | 2026-06-25 |
-| em-compile-local | `--` | Emits compile-mode local-reference lookup and fallthrough. | `test/run.f` | src/habu/habu2.f:1777 | 2026-06-25 |
-| em-compile-literal | `--` | Emits compile-mode numeric literal handling for integer and float literals. | `test/run.f` | src/habu/habu2.f:1788 | 2026-06-25 |
-| em-compile-ops | `--` | Emits compile-mode optimized arithmetic, comparison, stack-shuffle, unary, and float operators. | `test/run.f` | src/habu/habu2.f:1818 | 2026-06-25 |
-| em-compile-call | `--` | Emits compile-mode lookup, immediate execution, and call generation. | `test/run.f` | src/habu/habu2.f:1834 | 2026-06-25 |
-| em-reset-compile-state | `--` | Emits reset of compile/repl/evaluate state cells after rollback or recovery. | `test/run.f` | src/habu/habu2.f:1849 | 2026-06-25 |
-| em-eval-undef-rollback | `--` | Emits evaluate-frame rollback for undefined-word failures. | `test/run.f` | src/habu/habu2.f:1862 | 2026-06-25 |
-| em-repl-recover | `--` | Emits REPL recovery after errors, restoring line-start compile state and stacks. | `test/run.f` | src/habu/habu2.f:1874 | 2026-06-25 |
-| em-compile-undef | `--` | Emits undefined-word diagnostics and evaluate/REPL recovery routing. | `test/run.f` | src/habu/habu2.f:1886 | 2026-06-25 |
-| em-eval-clean-exit | `--` | Emits clean evaluate end-of-buffer return path. | `test/run.f` | src/habu/habu2.f:1896 | 2026-06-25 |
-| em-repl-read | `--` | Emits REPL line-state save, read callback call, EOF handling, and input reset. | `test/run.f` | src/habu/habu2.f:1909 | 2026-06-25 |
-| em-compile-exit | `--` | Emits interpreter end-of-input handling for evaluate, REPL ok/read, and process exit. | `test/run.f` | src/habu/habu2.f:1921 | 2026-06-25 |
-| em-compile | `--` | Chains the factored compile-mode dispatch, call, undefined, and exit emitters. | `test/run.f` | src/habu/habu2.f:1934 | 2026-06-25 |
-| emit-main | `--` | Allocates main-loop labels and chains EM-STARTUP/COMMENT/INTERPRET/COMPILE. | `test/run.f` | src/habu/habu2.f:1939 | 2026-06-25 |
-| SRCA@ | `-- ptr u8` | Reads EMIT-FORTH's saved source pointer from a raw variable for the final `BYTES,` copy. | `test/run.f` | src/habu/habu2.f:1942 | 2026-06-25 |
-| emit-forth | `ptr u8 n --` | Top-level engine builder: consumes source bytes, allocates every forward-ref label, and emits the complete image. | `test/run.f` | src/habu/habu2.f:2026 | 2026-06-25 |
-| IMAGE-TEXT-SIZE-OFF | `-- n` | Linux executable header offset where the snapshot writer reads the mapped text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:8 | 2026-06-24 |
-| DATA-VA | `-- ptr a` | Linux fixed DATA virtual address used by snapshot and AOT startup writers as both cell-address and byte-span base. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:9 | 2026-06-24 |
-| DATA-SIZE | `-- n` | Linux fixed DATA mapping size used by snapshot validation and image inspection. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:10 | 2026-06-24 |
+| em-interpret-colon | `n --` | Emits interpreter-mode colon-definition setup and jumps to the caller-provided not-colon label on non-definitions. | `test/run.f` | src/habu/habu2.f:1638 | 2026-06-25 |
+| em-interpret-words | `--` | Emits interpreter-mode defining-word, literal, lookup, and execute dispatch. | `test/run.f` | src/habu/habu2.f:1658 | 2026-06-25 |
+| em-interpret | `--` | Chains the factored interpreter-mode colon and word-dispatch emitters. | `test/run.f` | src/habu/habu2.f:1664 | 2026-06-25 |
+| em-compile-drop-locals | `--` | Emits optional locals-frame teardown before a compiled definition returns. | `test/run.f` | src/habu/habu2.f:1671 | 2026-06-25 |
+| em-compile-ret | `--` | Emits the raw return epilogue for a compiled definition. | `test/run.f` | src/habu/habu2.f:1677 | 2026-06-25 |
+| em-compile-flush-pend | `--` | Finalizes the pending dictionary entry length and flips/flushed the generated code region. | `test/run.f` | src/habu/habu2.f:1683 | 2026-06-25 |
+| em-compile-publish-trusted | `--` | Emits checked/trusted publication for declarations, DOES> signatures, and trust metadata. | `test/run.f` | src/habu/habu2.f:1702 | 2026-06-25 |
+| em-compile-publish-hooked | `--` | Emits hook-based publication for ordinary compiled definitions. | `test/run.f` | src/habu/habu2.f:1717 | 2026-06-25 |
+| em-compile-publish | `--` | Selects trusted-signature or hook publication for a closed compiled definition. | `test/run.f` | src/habu/habu2.f:1725 | 2026-06-25 |
+| em-compile-semi | `n --` | Emits semicolon close handling and binds the caller-provided not-semi continuation label. | `test/run.f` | src/habu/habu2.f:1737 | 2026-06-25 |
+| em-compile-keywords | `--` | Emits compile-mode keyword dispatch cases for control flow, strings, locals, quotations, and loop words. | `test/run.f` | src/habu/habu2.f:1772 | 2026-06-25 |
+| em-compile-local | `--` | Emits compile-mode local-reference lookup and fallthrough. | `test/run.f` | src/habu/habu2.f:1778 | 2026-06-25 |
+| em-compile-literal | `--` | Emits compile-mode numeric literal handling for integer and float literals. | `test/run.f` | src/habu/habu2.f:1789 | 2026-06-25 |
+| em-compile-ops | `--` | Emits compile-mode optimized arithmetic, comparison, stack-shuffle, unary, and float operators. | `test/run.f` | src/habu/habu2.f:1819 | 2026-06-25 |
+| em-compile-call | `--` | Emits compile-mode lookup, immediate execution, and call generation. | `test/run.f` | src/habu/habu2.f:1835 | 2026-06-25 |
+| em-reset-compile-state | `--` | Emits reset of compile/repl/evaluate state cells after rollback or recovery. | `test/run.f` | src/habu/habu2.f:1850 | 2026-06-25 |
+| em-eval-undef-rollback | `--` | Emits evaluate-frame rollback for undefined-word failures. | `test/run.f` | src/habu/habu2.f:1863 | 2026-06-25 |
+| em-repl-recover | `--` | Emits REPL recovery after errors, restoring line-start compile state and stacks. | `test/run.f` | src/habu/habu2.f:1875 | 2026-06-25 |
+| em-compile-undef | `--` | Emits undefined-word diagnostics and evaluate/REPL recovery routing. | `test/run.f` | src/habu/habu2.f:1887 | 2026-06-25 |
+| em-eval-clean-exit | `--` | Emits clean evaluate end-of-buffer return path. | `test/run.f` | src/habu/habu2.f:1897 | 2026-06-25 |
+| em-repl-read | `--` | Emits REPL line-state save, read callback call, EOF handling, and input reset. | `test/run.f` | src/habu/habu2.f:1910 | 2026-06-25 |
+| em-compile-exit | `--` | Emits interpreter end-of-input handling for evaluate, REPL ok/read, and process exit. | `test/run.f` | src/habu/habu2.f:1922 | 2026-06-25 |
+| em-compile | `--` | Chains the factored compile-mode dispatch, call, undefined, and exit emitters. | `test/run.f` | src/habu/habu2.f:1935 | 2026-06-25 |
+| emit-main | `--` | Allocates main-loop labels and chains EM-STARTUP/COMMENT/INTERPRET/COMPILE. | `test/run.f` | src/habu/habu2.f:1940 | 2026-06-25 |
+| SRCA@ | `-- ptr u8` | Reads EMIT-FORTH's saved source pointer from a raw variable for the final `BYTES,` copy. | `test/run.f` | src/habu/habu2.f:1943 | 2026-06-25 |
+| emit-forth | `ptr u8 n --` | Top-level engine builder: consumes source bytes, allocates every forward-ref label, and emits the complete image. | `test/run.f` | src/habu/habu2.f:2027 | 2026-06-25 |
+| IMAGE-TEXT-SIZE-OFF | `-- n` | Linux executable header offset where the snapshot writer reads the mapped text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:10 | 2026-06-25 |
+| IMAGE-TEXT-CONTENT-ADJ | `-- n` | Linux text-size field adjustment from segment size to code-content size for snapshot streaming. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:11 | 2026-06-25 |
+| IMAGE-TEXT-TRAILER-ADJ | `-- n` | Linux trailer address adjustment for snapshot restore when the text-size field includes the code offset. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:12 | 2026-06-25 |
+| DATA-VA | `-- ptr a` | Linux fixed DATA virtual address used by snapshot and AOT startup writers as both cell-address and byte-span base. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:13 | 2026-06-25 |
+| DATA-SIZE | `-- n` | Linux fixed DATA mapping size used by snapshot validation and image inspection. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:14 | 2026-06-25 |
 | MBUF | `-- ptr u8` | Target image-builder output buffer; checked drivers write the finalized executable bytes through this audited byte span. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:9 | 2026-06-24 |
 | MLEN | `-- ptr n` | Target image-builder output length cell; checked drivers read the finalized executable length after `BUILD-IMAGE`/`CODESIG2`. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:10 | 2026-06-24 |
-| CODE-OFF | `-- n` | Linux executable code offset used by checked snapshot streaming code. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:11 | 2026-06-24 |
+| CODE-OFF | `-- n` | Linux executable code offset used by checked snapshot streaming code. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:15 | 2026-06-25 |
 | ASM-CODE | `--` | Target image-builder bridge that snapshots the current assembler code length before executable wrapping. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:51 | 2026-06-24 |
 | BUILD-IMAGE | `--` | Target image-builder boundary that wraps emitted ARM64 code in the selected executable container. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:91 | 2026-06-24 |
 | BUILD-SNAP-HDR | `n -- n` | Target snapshot-header builder; consumes text payload length and returns padded executable text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/elf.f:101 | 2026-06-24 |
 | SET-SIGID | `ptr u8 n --` | Target signing interface stores or ignores the executable identity while preserving the shared checked driver contract. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/sign.f:4 | 2026-06-24 |
 | CODESIG2 | `--` | Target signing pass boundary; Linux is a no-op and macOS mutates the image buffer in place. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/sign.f:7 | 2026-06-24 |
-| IMAGE-TEXT-SIZE-OFF | `-- n` | macOS executable header offset where the snapshot writer reads the mapped text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:8 | 2026-06-24 |
-| DATA-VA | `-- ptr a` | macOS fixed DATA virtual address used by snapshot and AOT startup writers as both cell-address and byte-span base. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:9 | 2026-06-24 |
-| DATA-SIZE | `-- n` | macOS fixed DATA mapping size used by snapshot validation and image inspection. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:10 | 2026-06-24 |
+| IMAGE-TEXT-SIZE-OFF | `-- n` | macOS executable header offset where the snapshot writer reads the mapped text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:10 | 2026-06-25 |
+| IMAGE-TEXT-CONTENT-ADJ | `-- n` | macOS text-size field adjustment from section size to code-content size for snapshot streaming. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:11 | 2026-06-25 |
+| IMAGE-TEXT-TRAILER-ADJ | `-- n` | macOS trailer address adjustment because the section size excludes the code offset. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:12 | 2026-06-25 |
+| DATA-VA | `-- ptr a` | macOS fixed DATA virtual address used by snapshot and AOT startup writers as both cell-address and byte-span base. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:13 | 2026-06-25 |
+| DATA-SIZE | `-- n` | macOS fixed DATA mapping size used by snapshot validation and image inspection. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:14 | 2026-06-25 |
 | MBUF | `-- ptr u8` | Target image-builder output buffer; checked drivers write the finalized executable bytes through this audited byte span. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:10 | 2026-06-24 |
 | MLEN | `-- ptr n` | Target image-builder output length cell; checked drivers read the finalized executable length after `BUILD-IMAGE`/`CODESIG2`. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:11 | 2026-06-24 |
-| CODE-OFF | `-- n` | macOS executable code offset used by checked snapshot streaming code. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:11 | 2026-06-24 |
+| CODE-OFF | `-- n` | macOS executable code offset used by checked snapshot streaming code. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/layout.f:15 | 2026-06-25 |
 | ASM-CODE | `--` | Target image-builder bridge that snapshots the current assembler code length before executable wrapping. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:52 | 2026-06-24 |
 | BUILD-IMAGE | `--` | Target image-builder boundary that wraps emitted ARM64 code in the selected executable container. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:120 | 2026-06-24 |
 | BUILD-SNAP-HDR | `n -- n` | Target snapshot-header builder; consumes text payload length and returns padded executable text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/macos/macho.f:135 | 2026-06-24 |

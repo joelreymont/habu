@@ -1505,8 +1505,9 @@ s" c-local-ref" s" n n --" TRUST
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,             \ x25 = live text CONTENT base
    10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
    11 10 IMAGE-TEXT-SIZE-OFF LDR,                   \ S = our executable text size
-   12 10 11 ADD,  12 12 40 SUBI,                    \ trailer from image base
+   12 10 11 ADD,  5 IMAGE-TEXT-TRAILER-ADJ LIT64,  12 12 5 ADD,  12 12 40 SUBI,                    \ trailer from image base
    13 12 0 LDR,  5 SNAP-MAGIC LIT64,  13 5 CMP,  C-NE snomag BCOND,
+   5 IMAGE-TEXT-CONTENT-ADJ LIT64,  11 11 5 SUB,
    21 12 8 LDR,                                     \ x21 = snapshot-time text base
    15 12 16 LDR,                                    \ x15 = ndict
    6 12 24 LDR,                                     \ x6 = region payload len

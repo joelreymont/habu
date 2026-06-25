@@ -24,10 +24,34 @@ rm -f "$tmp"
 That command must print `1` and exit zero. If the usable Gforth is not first on
 `PATH`, set `GFORTH=/path/to/gforth`.
 
+On macOS, a local snapshot build can be used as the recovery host without
+installing it:
+
+```sh
+curl -L https://github.com/forthy42/gforth/archive/refs/tags/0.7.9_20260610.tar.gz -o gforth-0.7.9_20260610.tar.gz
+tar -xzf gforth-0.7.9_20260610.tar.gz
+cd gforth-0.7.9_20260610
+./autogen.sh
+UNSUITABLE_CC=none ./configure --prefix="$HOME/.local/gforth"
+make -j"$(sysctl -n hw.ncpu)" gforth-itc gforth-light.fi
+```
+
+If `gforth-fast` is not installed, point `GFORTH` at a tiny wrapper around the
+snapshot interpreter and image:
+
+```sh
+#!/bin/sh
+exec /path/to/gforth-0.7.9_20260610/gforth-itc \
+  -i /path/to/gforth-0.7.9_20260610/gforth-light.fi "$@"
+```
+
+`tools/bootstrap.sh` only requires the `GFORTH` command to pass the locals probe.
+It does not require that Gforth was installed globally.
+
 ## No-Binary Recovery
 
 ```sh
-HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth-fast tools/bootstrap.sh
+HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth-or-wrapper tools/bootstrap.sh
 ```
 
 The script defaults `HABU_TARGET` from the host (`macos-aarch64` or

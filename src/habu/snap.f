@@ -43,7 +43,7 @@ s" SDB@" s" -- ptr u8" TRUST
    \ The builder's x20 register constant is XREG-RBASE so it does not shadow
    \ the `rbase` primitive; read the saved text base straight from its cell.
    data-base RBASE-CELL + @ STB !         \ text CONTENT base
-   STB-CELL@ CODE-OFF - IMAGE-TEXT-SIZE-OFF + @ CODE-OFF - STSZ !  \ own text content size
+   STB-CELL@ CODE-OFF - IMAGE-TEXT-SIZE-OFF + @ IMAGE-TEXT-CONTENT-ADJ - STSZ !  \ own text content size
    dbase@ SDB !
    cp@ SDB @ - SCL !                      \ region payload (dict + compiled code)
    here data-base - SDL !                 \ data payload (through DP)
