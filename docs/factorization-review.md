@@ -316,6 +316,18 @@ Handoff snapshot:
   `shadow-lint`, `tools/hb-build-test.f`, focused native bench helper tests
   covering the changed checker argv builders, and the full native gate from
   `docs/bootstrap.md`.
+- F13 has a third sub-batch: `tools/json-only-core.f` now owns the reusable JSON
+  diagnostic filter, `tools/json-only.f` is only the CLI file/argv wrapper, and
+  `tools/check.f` filters captured checker stderr in-process instead of writing
+  a temp stderr file and spawning `hb` only to run `tools/json-only.f`.
+  Validation on Linux/aarch64 covered `tools/json-only-test.f`,
+  `tools/check-test.f`, direct `tools/check.f` good/bad JSON smokes, affected
+  native benchmark helper fixtures (`run-test`, `perf` stub,
+  `run-attempts` focused/CLI, `drive-forth`, and `drive-array-habu`), and
+  `filemap-lint`/`trust-lint`/`stale-status-lint`/`shadow-lint`, followed by
+  the full native gate from `docs/bootstrap.md`. F13 remains open: signature
+  lint, checked-boundary lint, trust lint, and all-errors still run as child CLI
+  tools and need core/wrapper splits or an explicit boundary classification.
 - The remaining factorization work already has one dot per open finding in the
   local tracker. Do not create duplicates; start the next open row, commit that
   focused batch, update this document, close that row's dot, then push.
@@ -394,17 +406,18 @@ Parent: `habu-review-whole-repo-5e087327`
 ## Verification Status
 
 The original subagent review was read-only. The latest implementation batch is
-the Linux-validated F13 check-load builder sub-batch. It does not close F13;
-after that sub-batch the port stack passed:
+the Linux-validated F13 `json-only` core/wrapper sub-batch. It does not close
+F13; after the current F13 sub-batches the port stack passed:
 
 - `tools/check-test.f`: `test: ok`, `check-test: ok`;
 - `test/gate-stdlib.f`: `PASS: native lint/stdlib gate phase`;
 - `test/run.f`:
   `PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)`.
 
-Remaining F13 work: split static scanner cores from CLI wrappers and rerun
-`tools/check-test.f`, the `check-cli-boundary` gate phase, and the full native
-gate before closing `habu-factor-check-load-2e29d26a`.
+Remaining F13 work: split signature lint, checked-boundary lint, trust lint, and
+all-errors cores from CLI wrappers where they are not true process boundaries;
+rerun `tools/check-test.f`, the `check-cli-boundary` gate phase, and the full
+native gate before closing `habu-factor-check-load-2e29d26a`.
 
 ## Agent Command Notes
 

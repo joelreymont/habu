@@ -116,6 +116,7 @@ points stay listed.
 - `tools/diag-origin-core.f` — reusable source-origin marker injection core.
 - `tools/diag-origin.f` — CLI wrapper for checker JSON source-origin markers.
 - `tools/diag-origin-test.f` — checked fixture coverage for diagnostic origin markers.
+- `tools/json-only-core.f` — reusable JSON diagnostic line filter core.
 - `tools/json-only.f` — keeps wrapper JSON mode machine-only on known diagnostics.
 - `tools/json-only-test.f` — checked fixture coverage for JSON diagnostic filtering.
 - `tools/json-file.f` — dynamic file-backed JSONL cursor shared by benchmark validators and reducers.

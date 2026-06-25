@@ -129,6 +129,7 @@ variable FM-NUM-L
    s" tools/diag-origin-core.f" FM-REQ
    s" tools/diag-origin.f" FM-REQ
    s" tools/diag-origin-test.f" FM-REQ
+   s" tools/json-only-core.f" FM-REQ
    s" tools/json-only.f" FM-REQ
    s" tools/jsonl-merge.f" FM-REQ
    s" tools/jsonl-merge-test.f" FM-REQ

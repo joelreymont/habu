@@ -245,8 +245,9 @@ TEST-SUITE tool-boundary-fixtures
    lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f
    lib/process-argv.f lib/process-env.f tools/lint/text.f
    tools/lint/intern.f tools/lint/token.f tools/lint/lib.f
-   tools/lint/json-writer.f tools/lint/source-lex.f
-   tools/diag-origin-core.f tools/argv.f tools/aot-call-report.f
+   tools/lint/json-writer.f tools/lint/source-lex.f tools/json.f
+   tools/diag-origin-core.f tools/json-only-core.f tools/argv.f
+   tools/aot-call-report.f
    tools/repl-lint-test.f tools/diag-origin-test.f tools/check-all-errors-test.f
    tools/aot-lint-test.f tools/signature-lint-test.f
    tools/public-signatures-test.f tools/trust-lint-test.f
@@ -257,10 +258,10 @@ TEST-SUITE tool-boundary-fixtures
 ;TEST-SUITE
 
 TEST-SUITE check-cli-boundary
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/source.f tools/lint/text.f
    tools/lint/token.f tools/lint/lib.f tools/diag-origin-core.f
-   tools/argv.f tools/check-test.f
+   tools/json.f tools/json-only-core.f tools/argv.f tools/check-test.f
 ;TEST-SUITE
 
 TEST-SUITE streaming-sha256

@@ -1,8 +1,8 @@
 \ check.f - Habu-native checked engine wrapper.
-\ Load after lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f
+\ Load after lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f
 \ lib/process.f lib/process-argv.f lib/source.f, tools/lint/text.f,
 \ tools/lint/token.f, tools/lint/lib.f, tools/diag-origin-core.f,
-\ and tools/argv.f.
+\ tools/json.f, tools/json-only-core.f, and tools/argv.f.
 
 \ Audited hook-install boundary: this tool must install its checker hook before
 \ validating generated source snippets with CHECK!.
@@ -39,7 +39,6 @@ create CHK-NUM-BUF CHK-NUM-CAP allot
 create CHK-ROOT-BUF FS-PATH-CAP allot
 create CHK-SRC-PATH-BUF FS-PATH-CAP allot
 create CHK-RUN-PATH-BUF FS-PATH-CAP allot
-create CHK-ERR-PATH-BUF FS-PATH-CAP allot
 create CHK-POS-A CHK-MAX-POS cells allot
 create CHK-POS-U CHK-MAX-POS cells allot
 create CHK-ONE 1 allot
@@ -64,7 +63,6 @@ variable CHK-SRC-A
 variable CHK-SRC-PATH-U
 variable CHK-RUN-PATH-U
 variable CHK-ROOT-U
-variable CHK-ERR-PATH-U
 
 : CHK-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -187,9 +185,6 @@ variable CHK-ERR-PATH-U
 : CHK-SRC-PATH ( -- ptr u8 n )
    CHK-SRC-PATH-BUF CHK-SRC-PATH-U @ ;
 
-: CHK-ERR-PATH ( -- ptr u8 n )
-   CHK-ERR-PATH-BUF CHK-ERR-PATH-U @ ;
-
 : CHK-RUN-PATH ( -- ptr u8 n )
    CHK-RUN-PATH-BUF CHK-RUN-PATH-U @ ;
 
@@ -198,8 +193,7 @@ variable CHK-ERR-PATH-U
    s" habu-check" TMPDIR-MKDIR CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
    CHK-ROOT CLEANUP-TREE+
    CHK-ROOT s" source.f" CHK-SRC-PATH-BUF JOIN-PATH CHK-SRC-PATH-U !
-   CHK-ROOT s" run.f" CHK-RUN-PATH-BUF JOIN-PATH CHK-RUN-PATH-U !
-   CHK-ROOT s" stderr.txt" CHK-ERR-PATH-BUF JOIN-PATH CHK-ERR-PATH-U ! ;
+   CHK-ROOT s" run.f" CHK-RUN-PATH-BUF JOIN-PATH CHK-RUN-PATH-U ! ;
 
 : CHK-LABEL-STDIN ( -- )
    s" <stdin>" CHK-LABEL-U ! CHK-LABEL-A CHK-PTR-U8! ;
@@ -368,10 +362,6 @@ CHK-FILES: CHK-TRUST-FILES
    tools/lint/token.f tools/lint/lib.f tools/argv.f tools/trust-lint.f
 ;CHK-FILES
 
-CHK-FILES: CHK-JSON-ONLY-FILES
-   lib/errors.f lib/memory.f tools/argv.f tools/json.f tools/json-only.f
-;CHK-FILES
-
 CHK-FILES: CHK-ALL-ERRORS-FILES
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
    lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f
@@ -399,11 +389,6 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
 : CHK-LOAD-TRUST ( -- )
    CHK-LOAD-RESET
    [: CHK-ARG+ ;] CHK-TRUST-FILES
-   CHK-LOAD-END ;
-
-: CHK-LOAD-JSON-ONLY ( -- )
-   CHK-LOAD-RESET
-   [: CHK-ARG+ ;] CHK-JSON-ONLY-FILES
    CHK-LOAD-END ;
 
 : CHK-LOAD-ALL-ERRORS ( -- )
@@ -447,10 +432,6 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
       dup CHK-POS$ CHK-ARG+
       1+
    repeat drop ;
-
-: CHK-ARGV-JSON-ONLY ( -- )
-   CHK-LOAD-JSON-ONLY
-   CHK-ERR-PATH CHK-ARG+ ;
 
 : CHK-ARGV-ALL ( -- )
    CHK-LOAD-ALL-ERRORS
@@ -528,19 +509,9 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
    CHK-RUN-PATH CHK-ARG+
    CHK-RUN-CAPTURE ;
 
-: CHK-WRITE-ERR-FILE ( -- )
-   CHK-ERR-PATH CHK-ERR-BUF CHK-ERR-U @ WRITE-ALL
-;
-
-: CHK-RUN-JSON-FILE ( -- )
-   CHK-ARGV-JSON-ONLY
-   CHK-RUN-CAPTURE
-   CHK-OUT-BUF CHK-OUT-U @ CHK-ERR
-   CHK-ERR-BUF CHK-ERR-U @ CHK-ERR ;
-
 : CHK-RUN-JSON-ONLY ( -- )
-   CHK-WRITE-ERR-FILE
-   CHK-RUN-JSON-FILE ;
+   2 >FD 2 >FD JSON-ONLY-FDS!
+   CHK-ERR-BUF CHK-ERR-U @ JSON-ONLY-FILTER ;
 
 : CHK-HANDLE-HB ( -- )
    CHK-RC @ 0= if
@@ -551,9 +522,8 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
    CHK-RC @ CHK-CHILD-RC !
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-JSON @ if
-      CHK-WRITE-ERR-FILE
       CHK-RUN-STATIC
-      CHK-RUN-JSON-FILE
+      CHK-RUN-JSON-ONLY
    else
       CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
    then

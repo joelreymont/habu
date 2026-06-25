@@ -1,9 +1,11 @@
 \ ref-solutions.f — certified habu answer key for the array-algorithm benchmark.
 \ Proves every array task is FEASIBLE in habu and that the io-vector
 \ ground truth in the harness=array rows of tasks.tsv is correct. Verify two ways:
-\   bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f
-\      lib/process.f lib/process-argv.f lib/source.f tools/argv.f
-\      tools/check.f -- bench/llm/ref-solutions.f -> rc 0 (all defs certify)
+\   bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f
+\      lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f
+\      tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+\      tools/diag-origin-core.f tools/json.f tools/json-only-core.f
+\      tools/argv.f tools/check.f -- bench/llm/ref-solutions.f -> rc 0
 \   bin/hb < bench/llm/ref-solutions.f         -> prints REF-OK (all io-vectors pass)
 variable BI  variable BV
 variable REF-SPLIT-A

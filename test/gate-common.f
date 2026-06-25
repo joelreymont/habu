@@ -213,6 +213,7 @@ variable GE-RD
    s" --load" GE-ARG+
    s" lib/errors.f" GE-ARG+
    s" lib/string.f" GE-ARG+
+   s" lib/memory.f" GE-ARG+
    s" lib/fs.f" GE-ARG+
    s" lib/fs-mutate.f" GE-ARG+
    s" lib/process.f" GE-ARG+
@@ -222,6 +223,8 @@ variable GE-RD
    s" tools/lint/token.f" GE-ARG+
    s" tools/lint/lib.f" GE-ARG+
    s" tools/diag-origin-core.f" GE-ARG+
+   s" tools/json.f" GE-ARG+
+   s" tools/json-only-core.f" GE-ARG+
    s" tools/argv.f" GE-ARG+
    s" tools/check.f" GE-ARG+
    s" --" GE-ARG+ ;

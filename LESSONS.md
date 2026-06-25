@@ -381,6 +381,10 @@ lesson — keep the specific word/code/path, cut the prose.
   `catch` dot lands. Checker-only stubs are contracts — update the stub in the same
   change as any consumed API move (runtime tests with the real module don't prove
   the gate models new constants/effects/codes).
+- **Never mix JSON stubs with runtime parser tests:** `bench/llm/diagnostic-json-check-stub.f`
+  deliberately redefines `JSON-GET` to return missing data for checker-only
+  fixtures; loading it beside real `tools/json.f` makes row assertions fail with
+  fake `E-RA-MISSING`. Runtime fixtures load the real parser only.
 - **`tools/check.f` modes:** `--all-errors` checks top-level defs independently, so
   on bundled stdlib it falsely flags deps as undefined and multiplies gate time —
   run the fast fail-closed bundle check first, all-errors only after failure or

@@ -1,5 +1,6 @@
 \ json-only-test.f - checked fixtures for tools/json-only.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/json-only-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/json-only-test.f
 
 1024 constant JOT-BUF-CAP
 
@@ -96,6 +97,7 @@ create JOT-ERR JOT-BUF-CAP allot
    s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/json-only-core.f"  >LEN PROC-ARGV+
    s" tools/json-only.f"  >LEN PROC-ARGV+ ;
 
 : JOT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
