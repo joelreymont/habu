@@ -325,6 +325,7 @@ variable GDX-PATH-U
    s" lib/string.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
+   s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+

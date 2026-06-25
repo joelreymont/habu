@@ -152,7 +152,8 @@ points stay listed.
 - `tools/filemap-lint.f` — freshness lint for this file.
 - `tools/repl-lint.f` — rejects REPL-baked code that exits the interactive session.
 - `tools/repl-lint-test.f` — checked fixture coverage for REPL exit lint.
-- `tools/trust-lint.f` — `TRUSTED.md` drift lint.
+- `tools/trust-lint-core.f` — reusable `TRUSTED.md` drift scanner core.
+- `tools/trust-lint.f` — CLI wrapper for `TRUSTED.md` drift lint.
 - `tools/trust-lint-test.f` — checked fixture coverage for `TRUSTED.md` drift lint.
 - `tools/host-lint-test.f` — focused coverage for host-script lint policy helpers.
 - `tools/stale-status-lint.f` — stale status/count lint.

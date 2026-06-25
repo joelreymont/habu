@@ -467,6 +467,11 @@ lesson — keep the specific word/code/path, cut the prose.
   build drivers, gate suites, benchmark checker builders, docs, and filemap in
   the same change. Missing transitive deps (`lib/errors.f`, `lib/string.f`) showed
   up as child rc 70 before the parent test could explain the failure.
+- **Checker-loaded cores borrow scratch buffers:** moving a CLI scanner in-process
+  under `tools/check.f` must not duplicate large static file/string buffers.
+  `trust-lint-core` initially plus `check.f` buffers corrupted `SCRIPT-ARGC`
+  before parsing; expose caller-supplied scratch buffers and let wrappers own
+  standalone storage.
 - **`stage2-src` cap is a builder contract:** AOT maker generation can exceed the
   256 KiB stage2 reader for tiny user source; reproduce with `hb-build` child
   output, raise the named cap deliberately, keep fail-closed overflow.

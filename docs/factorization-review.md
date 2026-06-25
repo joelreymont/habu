@@ -347,9 +347,24 @@ Handoff snapshot:
   (`run-test`, `perf` stub, `run-attempts` focused/CLI/checker-safe,
   `drive-forth`, and `drive-array-habu`), and
   `filemap-lint`/`trust-lint`/`stale-status-lint`/`shadow-lint`, followed by the
-  full native gate from `docs/bootstrap.md`. F13 remains open: trust lint and
-  all-errors still run as child CLI tools and need core/wrapper splits or an
-  explicit boundary classification.
+  full native gate from `docs/bootstrap.md`.
+- F13 has a sixth sub-batch: `tools/trust-lint-core.f` now owns the reusable
+  `TRUSTED.md` scanner, `tools/trust-lint.f` is only the CLI argv wrapper, and
+  `tools/check.f` calls the core in-process with stderr output instead of
+  spawning a child `hb` only to run `tools/trust-lint.f`. RCA found that simply
+  loading the old static trust buffers into `tools/check.f` corrupted
+  `SCRIPT-ARGC` before parse under the combined checker bundle; the core now uses
+  caller-supplied scratch buffers, with the wrapper owning standalone buffers and
+  check lending its existing run/origin buffers during the trust phase. Validation
+  on Linux/aarch64 covered `tools/trust-lint-test.f`, `tools/check-test.f`,
+  direct good-path checker smoke, `tools/checked-boundary-lint-test.f`,
+  `tools/imagedisasm-test.f`, affected native benchmark helper fixtures
+  (`run-test`, `perf` stub, `run-attempts` focused/CLI/checker-safe,
+  `drive-forth`, and `drive-array-habu`), and
+  `filemap-lint`/`trust-lint`/`stale-status-lint`/`shadow-lint`, followed by the
+  full native gate from `docs/bootstrap.md`. F13 remains open: all-errors still
+  runs as a child CLI tool and needs a core/wrapper split or an explicit boundary
+  classification.
 - The remaining factorization work already has one dot per open finding in the
   local tracker. Do not create duplicates; start the next open row, commit that
   focused batch, update this document, close that row's dot, then push.
@@ -428,18 +443,18 @@ Parent: `habu-review-whole-repo-5e087327`
 ## Verification Status
 
 The original subagent review was read-only. The latest implementation batch is
-the Linux-validated F13 `checked-boundary-lint` core/wrapper sub-batch. It does
-not close F13; after the current F13 sub-batches the port stack passed:
+the Linux-validated F13 `trust-lint` core/wrapper sub-batch. It does not close
+F13; after the current F13 sub-batches the port stack passed:
 
 - `tools/check-test.f`: `test: ok`, `check-test: ok`;
 - `test/gate-stdlib.f`: `PASS: native lint/stdlib gate phase`;
 - `test/run.f`:
   `PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)`.
 
-Remaining F13 work: split trust lint and all-errors cores from CLI wrappers
-where they are not true process boundaries; rerun `tools/check-test.f`, the
-`check-cli-boundary` gate phase, and the full native gate before closing
-`habu-factor-check-load-2e29d26a`.
+Remaining F13 work: split the all-errors core from its CLI wrapper where it is
+not a true process boundary, or document why it must remain a boundary; rerun
+`tools/check-test.f`, the `check-cli-boundary` gate phase, and the full native
+gate before closing `habu-factor-check-load-2e29d26a`.
 
 ## Agent Command Notes
 

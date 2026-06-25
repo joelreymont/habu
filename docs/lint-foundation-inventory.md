@@ -92,7 +92,7 @@ capture spans in compatibility globals (`PSA`, `PSU`, `PX`, `P1A`, `P1U`,
 
 Users:
 
-- `tools/trust-lint.f` calls `TRUST-SITE?` when checking source against
+- `tools/trust-lint-core.f` calls `TRUST-SITE?` when checking source against
   `TRUSTED.md`.
 - `tools/lint/text-foundation-test.f` tests `TRUST-SITE?`, `SRC-PATH-REF?`, and
   `BACKTICK-PATH?`.

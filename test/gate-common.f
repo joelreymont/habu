@@ -211,6 +211,7 @@ variable GE-RD
 : GE-CHECK-ARGV ( -- )
    GE-HB-RESET
    s" --load" GE-ARG+
+   s" tools/date.f" GE-ARG+
    s" lib/errors.f" GE-ARG+
    s" lib/string.f" GE-ARG+
    s" lib/memory.f" GE-ARG+
@@ -230,6 +231,7 @@ variable GE-RD
    s" tools/json-only-core.f" GE-ARG+
    s" tools/signature-lint-core.f" GE-ARG+
    s" tools/checked-boundary-lint-core.f" GE-ARG+
+   s" tools/trust-lint-core.f" GE-ARG+
    s" tools/argv.f" GE-ARG+
    s" tools/check.f" GE-ARG+
    s" --" GE-ARG+ ;

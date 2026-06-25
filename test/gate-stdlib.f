@@ -180,7 +180,8 @@ TEST-SUITE repl-lint
 
 TEST-SUITE trust-lint
    tools/date.f lib/errors.f lib/string.f lib/fs.f tools/lint/text.f
-   tools/lint/token.f tools/lint/lib.f tools/argv.f tools/trust-lint.f
+   tools/lint/token.f tools/lint/lib.f tools/trust-lint-core.f tools/argv.f
+   tools/trust-lint.f
 ;TEST-SUITE
 
 TEST-SUITE stale-status-lint
@@ -258,12 +259,13 @@ TEST-SUITE tool-boundary-fixtures
 ;TEST-SUITE
 
 TEST-SUITE check-cli-boundary
-   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f
+   tools/date.f lib/errors.f lib/string.f lib/test.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/source.f tools/lint/text.f
    tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
    tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f
    tools/json-only-core.f tools/signature-lint-core.f
-   tools/checked-boundary-lint-core.f tools/argv.f tools/check-test.f
+   tools/checked-boundary-lint-core.f tools/trust-lint-core.f tools/argv.f
+   tools/check-test.f
 ;TEST-SUITE
 
 TEST-SUITE streaming-sha256

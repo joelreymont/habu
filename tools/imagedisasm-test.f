@@ -75,6 +75,7 @@ variable IMDT-LDRB-U
    s" tools/lint/text.f" IMDT-ARG+
    s" tools/lint/token.f" IMDT-ARG+
    s" tools/lint/lib.f" IMDT-ARG+
+   s" tools/trust-lint-core.f" IMDT-ARG+
    s" tools/argv.f" IMDT-ARG+
    s" tools/trust-lint.f" IMDT-ARG+
    s" --" IMDT-ARG+

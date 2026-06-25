@@ -1,11 +1,11 @@
 \ check-test.f - process-boundary smoke coverage for tools/check.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
 \ tools/lint/json-writer.f tools/lint/source-lex.f
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
 \ tools/signature-lint-core.f tools/checked-boundary-lint-core.f
-\ tools/argv.f tools/check-test.f
+\ tools/trust-lint-core.f tools/argv.f tools/check-test.f
 
 $4000 constant CKT-BUF-CAP
 10000 constant CKT-TIMEOUT-MS
@@ -39,6 +39,7 @@ variable CKT-LIST-U
 : CKT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
@@ -58,6 +59,7 @@ variable CKT-LIST-U
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/checked-boundary-lint-core.f"  >LEN PROC-ARGV+
+   s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/check.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;

@@ -35,7 +35,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   An accepted def is silently added; a rejected one is dropped. For interactive
   **verify mode** (body vs declared sig), prepend `' CHECK! set-check`.
 - For repair loops, run the native checker script:
-  `bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f tools/json-only-core.f tools/signature-lint-core.f tools/checked-boundary-lint-core.f tools/argv.f tools/check.f -- --json-errors --all-errors file.f`.
+  `bin/hb --load tools/date.f lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f tools/json-only-core.f tools/signature-lint-core.f tools/checked-boundary-lint-core.f tools/trust-lint-core.f tools/argv.f tools/check.f -- --json-errors --all-errors file.f`.
   It exits nonzero on checker failure and emits one schema-versioned JSON object
   per failed top-level definition with file/line/column/byte spans. Use
   `docs/repair-diagnostics.md` as the Repair diagnostic schema, and use

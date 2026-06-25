@@ -1,11 +1,11 @@
 \ check.f - Habu-native checked engine wrapper.
-\ Load after lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
+\ Load after tools/date.f, lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ tools/lint/json-writer.f, tools/lint/source-lex.f,
 \ tools/diag-origin-core.f, tools/json.f, tools/json-only-core.f,
-\ tools/signature-lint-core.f, tools/checked-boundary-lint-core.f, and
-\ tools/argv.f.
+\ tools/signature-lint-core.f, tools/checked-boundary-lint-core.f,
+\ tools/trust-lint-core.f, and tools/argv.f.
 
 \ Audited hook-install boundary: this tool must install its checker hook before
 \ validating generated source snippets with CHECK!.
@@ -347,11 +347,6 @@ variable CHK-ROOT-U
    does> ( [ ptr u8 n -- ] -- )
       CHK-FILES-RUN ;
 
-CHK-FILES: CHK-TRUST-FILES
-   tools/date.f lib/errors.f lib/string.f lib/fs.f tools/lint/text.f
-   tools/lint/token.f tools/lint/lib.f tools/argv.f tools/trust-lint.f
-;CHK-FILES
-
 CHK-FILES: CHK-ALL-ERRORS-FILES
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
    lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f
@@ -366,11 +361,6 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
 : CHK-LOAD-END ( -- )
    s" --" CHK-ARG+ ;
 
-: CHK-LOAD-TRUST ( -- )
-   CHK-LOAD-RESET
-   [: CHK-ARG+ ;] CHK-TRUST-FILES
-   CHK-LOAD-END ;
-
 : CHK-LOAD-ALL-ERRORS ( -- )
    CHK-LOAD-RESET
    [: CHK-ARG+ ;] CHK-ALL-ERRORS-FILES
@@ -383,24 +373,6 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
    s" --label" CHK-ARG+
    CHK-LABEL CHK-ARG+
    CHK-SOURCE CHK-ARG+ ;
-
-: CHK-ARGV-TRUST-PATH ( ptr u8 n -- ) {: path:ptr pathu :}
-   CHK-LOAD-TRUST
-   s" source-only" CHK-ARG+
-   path pathu CHK-ARG+
-   s" ." CHK-ARG+ ;
-
-: CHK-ARGV-TRUST ( -- )
-   CHK-SOURCE CHK-ARGV-TRUST-PATH ;
-
-: CHK-ARGV-TRUST-LIST ( -- )
-   CHK-LOAD-TRUST
-   s" source-list" CHK-ARG+
-   s" ." CHK-ARG+
-   0 begin dup CHK-POS-N @ < while
-      dup CHK-POS$ CHK-ARG+
-      1+
-   repeat drop ;
 
 : CHK-ARGV-ALL ( -- )
    CHK-LOAD-ALL-ERRORS
@@ -435,25 +407,37 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
    CHK-SOURCE CHECKED-BOUNDARY-LINT-FILE
    CHECKED-BOUNDARY-LINT-FINISH ;
 
-: CHK-RUN-TRUST-CURRENT ( -- )
-   CHK-RUN-CAPTURE
-   CHK-RC @ 0= if exit then
-   CHK-OUT-BUF CHK-OUT-U @ CHK-ERR
-   CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
-   CHK-RC @ CHK-THROW ;
+: CHK-TRUST-SETUP ( -- )
+   CHK-RUN-BUF CHK-RUN-CAP CHK-ORIGIN-BUF CHK-ORIGIN-CAP TRUST-LINT-BUFFERS!
+   2 >FD TL-OUT-FD!
+   TL-FALSE TL-REPORT-SUCCESS!
+   s" ." TRUST-LINT-ROOT!
+   TRUST-LINT-TODAY-NOW ;
 
-: CHK-RUN-TRUST-PATH ( ptr u8 n -- )
-   CHK-ARGV-TRUST-PATH
-   CHK-RUN-TRUST-CURRENT ;
+: CHK-RUN-TRUST-SOURCE-CURRENT ( -- )
+   CHK-TRUST-SETUP
+   CHK-SOURCE TRUST-LINT-SOURCE-FILE ;
+
+: CHK-RUN-TRUST-LIST-CURRENT ( -- )
+   CHK-TRUST-SETUP
+   TRUST-LINT-RESET
+   0 begin dup CHK-POS-N @ < while
+      dup CHK-POS$ TRUST-LINT-SOURCE+
+      1+
+   repeat drop
+   TRUST-LINT-SOURCES-FINISH ;
+
+: CHK-RUN-TRUST-SOURCE ( -- )
+   [: CHK-RUN-TRUST-SOURCE-CURRENT ;] catch dup 0= if drop exit then
+   CHK-THROW ;
 
 : CHK-RUN-TRUST-LIST ( -- )
-   CHK-ARGV-TRUST-LIST
-   CHK-RUN-TRUST-CURRENT ;
+   [: CHK-RUN-TRUST-LIST-CURRENT ;] catch dup 0= if drop exit then
+   CHK-THROW ;
 
 : CHK-RUN-TRUST ( -- )
    CHK-SOURCE-LIST @ if CHK-RUN-TRUST-LIST exit then
-   CHK-ARGV-TRUST
-   CHK-RUN-TRUST-CURRENT ;
+   CHK-RUN-TRUST-SOURCE ;
 
 : CHK-RUN-ALL ( -- )
    CHK-ARGV-ALL

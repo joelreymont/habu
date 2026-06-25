@@ -180,6 +180,7 @@ variable PERF-AOT-BIN-U
 : PERF-CHECK-ARGS ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
@@ -199,6 +200,7 @@ variable PERF-AOT-BIN-U
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/checked-boundary-lint-core.f"  >LEN PROC-ARGV+
+   s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/check.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+

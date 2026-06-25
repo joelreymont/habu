@@ -386,6 +386,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
 : DAH-CHECK-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load"  >LEN PROC-ARGV+
+   s" tools/date.f"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
@@ -405,6 +406,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/checked-boundary-lint-core.f"  >LEN PROC-ARGV+
+   s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/check.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+

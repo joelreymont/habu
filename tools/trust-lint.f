@@ -1,684 +1,112 @@
-\ trust-lint.f - keep TRUST sites pinned to TRUSTED.md.
-\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/fs.f, tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and tools/argv.f.
+\ trust-lint.f - CLI wrapper for TRUSTED.md drift lint.
+\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/fs.f,
+\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
+\ tools/trust-lint-core.f, and tools/argv.f.
 \ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/fs.f
-\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
-\ tools/trust-lint.f -- [ROOT] [TODAY]
+\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+\ tools/trust-lint-core.f tools/argv.f tools/trust-lint.f -- [ROOT] [TODAY]
 \ Or:  bin/hb --load ... tools/trust-lint.f -- source-only SOURCE [ROOT] [TODAY]
 \ Or:  bin/hb --load ... tools/trust-lint.f -- source-list ROOT [TODAY] SOURCE...
 
-90 constant TL-MAX-AUDIT-AGE
-512 constant TL-MAX
-$10000 constant TL-STR-CAP
-$20000 constant TL-FILE-CAP
-32 constant TL-NUM-CAP
-16 constant TL-CELL-MAX
+$10000 constant TL-ARGV-STR-CAP
+$14000 constant TL-ARGV-FILE-CAP
 
-10 constant TL-LF
-45 constant TL-DASH
-48 constant TL-ZERO
-58 constant TL-COLON
-92 constant TL-BSLASH
-96 constant TL-BTICK
-124 constant TL-PIPE
+create TL-ARGV-STR-BUF TL-ARGV-STR-CAP allot
+create TL-ARGV-FILE-BUF TL-ARGV-FILE-CAP allot
 
-create TL-PATH-BUF FS-PATH-CAP allot
-create TL-SITE-BUF FS-PATH-CAP allot
-create TL-STR-BUF TL-STR-CAP allot
-create TL-FILE-BUF TL-FILE-CAP allot
-create TL-NUM-BUF TL-NUM-CAP allot
-create TL-ONE 1 allot
+variable TL-ARGV-SOURCE-ONLY
+variable TL-ARGV-SOURCE-LIST
+variable TL-ARGV-SOURCE-FIRST
+variable TL-ARGV-SOURCE-A
+variable TL-ARGV-SOURCE-U
 
-create TL-S-NO TL-MAX cells allot
-create TL-S-NL TL-MAX cells allot
-create TL-S-EO TL-MAX cells allot
-create TL-S-EL TL-MAX cells allot
-create TL-S-PO TL-MAX cells allot
-create TL-S-PL TL-MAX cells allot
-create TL-S-LINE TL-MAX cells allot
+: TL-ARGV-SOURCE-A-FIELD ( -- ptr ptr u8 )
+   TL-ARGV-SOURCE-A 0 ptr-field ;
 
-create TL-M-NO TL-MAX cells allot
-create TL-M-NL TL-MAX cells allot
-create TL-M-EO TL-MAX cells allot
-create TL-M-EL TL-MAX cells allot
-create TL-M-TO TL-MAX cells allot
-create TL-M-TL TL-MAX cells allot
-create TL-M-SO TL-MAX cells allot
-create TL-M-SL TL-MAX cells allot
-create TL-M-AO TL-MAX cells allot
-create TL-M-AL TL-MAX cells allot
+: TL-ARGV-SOURCE-A@ ( -- ptr u8 )
+   TL-ARGV-SOURCE-A-FIELD @ ;
 
-create TL-CO TL-CELL-MAX cells allot
-create TL-CL TL-CELL-MAX cells allot
+: TL-ARGV-SOURCE-A! ( ptr u8 -- )
+   TL-ARGV-SOURCE-A-FIELD ! ;
 
-variable TL-END
-variable TL-S#
-variable TL-M#
-variable TL-BAD
-variable TL-NUM-L
-variable TL-SITE-U
-variable TL-LINE
-variable TL-I
-variable TL-J
-variable TL-K
-variable TL-C#
-variable TL-START
-variable TL-AI
-variable TL-BI
-variable TL-TODAY-DAYS
-variable TL-CUR-PATH-A
-variable TL-CUR-PATH-U
-variable TL-CUR-LINE
-variable TL-ROOT-A
-variable TL-ROOT-U
-variable TL-SOURCE-ONLY
-variable TL-SOURCE-LIST
-variable TL-SOURCE-FIRST
-variable TL-SOURCE-A
-variable TL-SOURCE-U
-variable TL-LA
-variable TL-LU
-variable TL-LX
-variable TL-LS
-variable TL-LE
-variable TL-NA
-variable TL-NU
-variable TL-NB
-variable TL-NV
-
-: TL-CUR-PATH-A-FIELD ( -- ptr ptr u8 ) TL-CUR-PATH-A 0 ptr-field ;
-: TL-ROOT-A-FIELD ( -- ptr ptr u8 ) TL-ROOT-A 0 ptr-field ;
-: TL-SOURCE-A-FIELD ( -- ptr ptr u8 ) TL-SOURCE-A 0 ptr-field ;
-: TL-LA-FIELD ( -- ptr ptr u8 ) TL-LA 0 ptr-field ;
-: TL-NA-FIELD ( -- ptr ptr u8 ) TL-NA 0 ptr-field ;
-: TL-NB-FIELD ( -- ptr ptr u8 ) TL-NB 0 ptr-field ;
-
-: TL-CUR-PATH-A@ ( -- ptr u8 ) TL-CUR-PATH-A-FIELD @ ;
-: TL-ROOT-A@ ( -- ptr u8 ) TL-ROOT-A-FIELD @ ;
-: TL-SOURCE-A@ ( -- ptr u8 ) TL-SOURCE-A-FIELD @ ;
-: TL-LA@ ( -- ptr u8 ) TL-LA-FIELD @ ;
-: TL-NA@ ( -- ptr u8 ) TL-NA-FIELD @ ;
-: TL-NB@ ( -- ptr u8 ) TL-NB-FIELD @ ;
-
-: TL-CUR-PATH-A! ( ptr u8 -- ) TL-CUR-PATH-A-FIELD ! ;
-: TL-ROOT-A! ( ptr u8 -- ) TL-ROOT-A-FIELD ! ;
-: TL-SOURCE-A! ( ptr u8 -- ) TL-SOURCE-A-FIELD ! ;
-: TL-LA! ( ptr u8 -- ) TL-LA-FIELD ! ;
-: TL-NA! ( ptr u8 -- ) TL-NA-FIELD ! ;
-: TL-NB! ( ptr u8 -- ) TL-NB-FIELD ! ;
-
-: TL-C! ( n -- ) TL-ONE c! ;
-: TL-OUT ( ptr u8 n -- ) dup 0= IF 2drop exit THEN 1 -rot write drop ;
-: TL-C ( n -- ) TL-C! TL-ONE 1 TL-OUT ;
-: TL-NL ( -- ) TL-LF TL-C ;
-
-: TL-TRUE ( -- bool )
-   0 0= ;
-
-: TL-FALSE ( -- bool )
-   0 1 = ;
-
-: TL-NOT ( bool -- bool )
-   IF TL-FALSE ELSE TL-TRUE THEN ;
-
-: TL-U. ( n -- )
-   0 TL-NUM-L !
-   dup 0= IF drop TL-ZERO TL-C exit THEN
-   begin dup 0 > while
-      dup 10 mod TL-ZERO + TL-NUM-BUF TL-NUM-L @ + c!
-      10 /
-      TL-NUM-L @ 1+ TL-NUM-L !
-   repeat drop
-   begin TL-NUM-L @ 0 > while
-      TL-NUM-L @ 1- TL-NUM-L !
-      TL-NUM-BUF TL-NUM-L @ + c@ TL-C
-   repeat ;
-
-: TL-FAIL ( ptr u8 n -- ) 76 die ;
-
-: TL-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
-   a TL-ROOT-A!
-   u TL-ROOT-U ! ;
-
-: TL-ROOT-SELF? ( -- bool )
-   TL-ROOT-U @ 0= IF TL-TRUE exit THEN
-   TL-ROOT-A@ TL-ROOT-U @ s" ." STR= ;
-
-: TL-ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
-   TL-ROOT-SELF? IF a u exit THEN
-   TL-ROOT-U @ u + 1 + FS-PATH-CAP > IF s" trust-lint: root path too long" TL-FAIL THEN
-   TL-ROOT-A@ TL-PATH-BUF TL-ROOT-U @ BYTE-COPY
-   TL-ROOT-A@ TL-ROOT-U @ 1- + c@ FS-SLASH = IF
-      a TL-PATH-BUF TL-ROOT-U @ + u BYTE-COPY
-      TL-PATH-BUF TL-ROOT-U @ u +
-      exit
-   THEN
-   FS-SLASH TL-PATH-BUF TL-ROOT-U @ + c!
-   a TL-PATH-BUF TL-ROOT-U @ 1 + + u BYTE-COPY
-   TL-PATH-BUF TL-ROOT-U @ 1 + u + ;
-
-: TL-REL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
-   TL-ROOT-SELF? IF a u exit THEN
-   u TL-ROOT-U @ <= IF a u exit THEN
-   a TL-ROOT-U @ TL-ROOT-A@ TL-ROOT-U @ STR= 0= IF a u exit THEN
-   a TL-ROOT-U @ + c@ FS-SLASH <> IF a u exit THEN
-   a TL-ROOT-U @ 1 + +  u TL-ROOT-U @ 1 + - ;
-
-: TL-STORE$ ( ptr u8 n -- n n ) {: a:ptr u :}
-   TL-END @ u + TL-STR-CAP > IF s" trust-lint: string store overflow" TL-FAIL THEN
-   a TL-STR-BUF TL-END @ + u BMOVE
-   TL-END @ u
-   TL-END @ u + TL-END ! ;
-
-: TL-O$ ( n n -- ptr u8 n )
-   swap TL-STR-BUF + swap ;
-
-: TL-A@ ( ptr n n -- n )
-   cells + @ ;
-
-: TL-A! ( n ptr n n -- )
-   cells + ! ;
-
-: TL-S-NAME$ ( n -- ptr u8 n ) {: k :} TL-S-NO k TL-A@ TL-S-NL k TL-A@ TL-O$ ;
-: TL-S-EFF$  ( n -- ptr u8 n ) {: k :} TL-S-EO k TL-A@ TL-S-EL k TL-A@ TL-O$ ;
-: TL-S-PATH$ ( n -- ptr u8 n ) {: k :} TL-S-PO k TL-A@ TL-S-PL k TL-A@ TL-O$ ;
-: TL-M-NAME$ ( n -- ptr u8 n ) {: k :} TL-M-NO k TL-A@ TL-M-NL k TL-A@ TL-O$ ;
-: TL-M-EFF$  ( n -- ptr u8 n ) {: k :} TL-M-EO k TL-A@ TL-M-EL k TL-A@ TL-O$ ;
-: TL-M-TEST$ ( n -- ptr u8 n ) {: k :} TL-M-TO k TL-A@ TL-M-TL k TL-A@ TL-O$ ;
-: TL-M-SITE$ ( n -- ptr u8 n ) {: k :} TL-M-SO k TL-A@ TL-M-SL k TL-A@ TL-O$ ;
-: TL-M-AUDIT$ ( n -- ptr u8 n ) {: k :} TL-M-AO k TL-A@ TL-M-AL k TL-A@ TL-O$ ;
-
-: TL-FIND-SITE ( ptr u8 n -- n ) {: a:ptr u :}
-   0 begin dup TL-S# @ < while
-      dup TL-S-NAME$ a u STR= IF exit THEN
-      1+
-   repeat drop -1 ;
-
-: TL-FIND-MAN ( ptr u8 n -- n ) {: a:ptr u :}
-   0 begin dup TL-M# @ < while
-      dup TL-M-NAME$ a u STR= IF exit THEN
-      1+
-   repeat drop -1 ;
-
-: TL-FIND-SITE-IN-PATH ( ptr u8 n ptr u8 n -- n ) {: name:ptr nameu path:ptr pathu :}
-   0 begin dup TL-S# @ < while
-      dup TL-S-NAME$ name nameu STR= if
-         dup TL-S-PATH$ path pathu STR= if exit then
-      then
-      1+
-   repeat drop -1 ;
-
-: TL-FIND-MAN-SITE ( ptr u8 n ptr u8 n -- n ) {: name:ptr nameu site:ptr siteu :}
-   0 begin dup TL-M# @ < while
-      dup TL-M-NAME$ name nameu STR= if
-         dup TL-M-SITE$ site siteu STR= if exit then
-      then
-      1+
-   repeat drop -1 ;
-
-: TL-PRINT-SITE ( n -- )
-   dup TL-S-PATH$ TL-OUT
-   TL-COLON TL-C
-   TL-S-LINE swap TL-A@ TL-U. ;
-
-: TL-BAD+ ( -- ) TL-BAD @ 1+ TL-BAD ! ;
-
-: TL-SITE+ ( ptr u8 n -- ) {: a:ptr u :}
-   TL-SITE-U @ u + FS-PATH-CAP > IF s" trust-lint: site path too long" TL-FAIL THEN
-   a TL-SITE-BUF TL-SITE-U @ + u BMOVE
-   TL-SITE-U @ u + TL-SITE-U ! ;
-
-: TL-SITE-C ( n -- ) {: c :}
-   TL-SITE-U @ 1 + FS-PATH-CAP > IF s" trust-lint: site path too long" TL-FAIL THEN
-   c TL-SITE-BUF TL-SITE-U @ + c!
-   TL-SITE-U @ 1 + TL-SITE-U ! ;
-
-: TL-SITE-U+ ( n -- ) {: n :}
-   n 0 < IF s" trust-lint: negative line" TL-FAIL THEN
-   n 10 >= IF n 10 / RECURSE THEN
-   n 10 mod TL-ZERO + TL-SITE-C ;
-
-: TL-SCAN-SITE$ ( n -- ptr u8 n ) {: sk :}
-   0 TL-SITE-U !
-   sk TL-S-PATH$ TL-SITE+
-   TL-COLON TL-SITE-C
-   TL-S-LINE sk TL-A@ TL-SITE-U+
-   TL-SITE-BUF TL-SITE-U @ ;
-
-: TL-FIND-SITE-FOR-MAN ( n -- n ) {: mk :}
-   0 begin dup TL-S# @ < while
-      dup TL-S-NAME$ mk TL-M-NAME$ STR= if
-         dup TL-SCAN-SITE$ mk TL-M-SITE$ STR= if exit then
-      then
-      1+
-   repeat drop -1 ;
-
-: TL-SITE-DRIFT ( n n -- ) {: sk mk :}
-   s" SITE-DRIFT " TL-OUT sk TL-PRINT-SITE
-   s" : `" TL-OUT sk TL-S-NAME$ TL-OUT
-   s" ` manifest site `" TL-OUT mk TL-M-SITE$ TL-OUT
-   s" ` does not match scanned site `" TL-OUT sk TL-SCAN-SITE$ TL-OUT
-   s" `" TL-OUT TL-NL
-   TL-BAD+ ;
-
-: TL-DUP-SITE ( n -- )
-   s" DUPLICATE-TRUST " TL-OUT
-   TL-CUR-PATH-A@ TL-CUR-PATH-U @ TL-OUT TL-COLON TL-C TL-CUR-LINE @ TL-U.
-   s" : `" TL-OUT P1A@ P1U @ TL-OUT
-   s" ` already trusted at " TL-OUT
-   TL-PRINT-SITE TL-NL
-   TL-BAD+ ;
-
-: TL-ADD-SITE ( -- )
-   P1A@ P1U @ TL-CUR-PATH-A@ TL-CUR-PATH-U @ TL-FIND-SITE-IN-PATH dup 0 >= IF TL-DUP-SITE ELSE drop THEN
-   TL-S# @ TL-MAX >= IF s" trust-lint: too many TRUST sites" TL-FAIL THEN
-   P1A@ P1U @ TL-STORE$ TL-S-NL TL-S# @ TL-A! TL-S-NO TL-S# @ TL-A!
-   P2A@ P2U @ TL-STORE$ TL-S-EL TL-S# @ TL-A! TL-S-EO TL-S# @ TL-A!
-   TL-CUR-PATH-A@ TL-CUR-PATH-U @ TL-STORE$ TL-S-PL TL-S# @ TL-A! TL-S-PO TL-S# @ TL-A!
-   TL-CUR-LINE @ TL-S-LINE TL-S# @ TL-A!
-   TL-S# @ 1+ TL-S# ! ;
-
-: TL-DUP-ROW ( n ptr u8 n -- ) {: k a:ptr u :}
-   s" DUPLICATE-ROW TRUSTED.md: `" TL-OUT
-   a u TL-OUT
-   s" ` appears more than once" TL-OUT TL-NL
-   TL-BAD+ ;
-
-: TL-CODE-LEN ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
-   0 begin dup u < while
-      a over + c@ TL-BSLASH = IF a swap exit THEN
-      1+
-   repeat drop a u ;
-
-: TL-LINE-LEN ( ptr u8 n -- ptr u8 n )
-   dup 0 > IF
-      2dup + 1- c@ 13 = IF 1- THEN
-   THEN ;
-
-: TL-SCAN-SRC-LINE ( ptr u8 n -- )
-   TL-CODE-LEN TRUST-SITE? IF
-      TL-ADD-SITE
-   THEN ;
-
-: TL-DO-SRC-LINE ( n -- )
-   TL-LE !
-   TL-LINE @ 1+ TL-LINE !
-   TL-LINE @ TL-CUR-LINE !
-   TL-LA@ TL-LS @ +  TL-LE @ TL-LS @ -  TL-LINE-LEN
-   TL-SCAN-SRC-LINE
-   TL-LE @ 1+ TL-LS ! ;
-
-: TL-FOR-SRC-LINES ( ptr u8 n -- )
-   TL-LU !  TL-LA!
-   0 TL-LINE !  0 TL-LX !  0 TL-LS !
-   begin TL-LX @ TL-LU @ < while
-      TL-LA@ TL-LX @ + c@ TL-LF = IF TL-LX @ TL-DO-SRC-LINE THEN
-      TL-LX @ 1+ TL-LX !
-   repeat
-   TL-LS @ TL-LU @ < IF TL-LU @ TL-DO-SRC-LINE THEN ;
-
-: TL-SCAN-SRC-FILE ( ptr u8 n -- ) {: a:ptr u :}
-   a u s" .f" HAS-EXT? 0= IF exit THEN
-   a u TL-REL$ TL-CUR-PATH-U ! TL-CUR-PATH-A!
-   a u TL-FILE-BUF TL-FILE-CAP READ-FILE TL-FOR-SRC-LINES ;
-
-: TL-CELL! ( ptr u8 n -- ) {: a:ptr u :}
-   TL-C# @ TL-CELL-MAX >= IF exit THEN
-   a TL-CO TL-C# @ cells + !
-   u TL-CL TL-C# @ cells + !
-   TL-C# @ 1+ TL-C# ! ;
-
-: TL-CELL$ ( n -- ptr u8 n )
-   dup cells TL-CO + @  swap cells TL-CL + @ ;
-
-: TL-SPLIT-PIPE ( ptr u8 n -- ) {: a:ptr u :}
-   0 TL-C# !
-   0 TL-I !
-   begin TL-I @ u < while
-      a TL-I @ + c@ TL-PIPE = IF
-         TL-I @ 1+ TL-START !
-         TL-I @ 1+ TL-I !
-         begin TL-I @ u <  a TL-I @ + c@ TL-PIPE <> and while
-            TL-I @ 1+ TL-I !
-         repeat
-         a TL-START @ +  TL-I @ TL-START @ -  TRIM TL-CELL!
-      ELSE
-         TL-I @ 1+ TL-I !
-      THEN
-   repeat ;
-
-: TL-UNBACKTICK ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
-   u 2 >= IF
-      a c@ TL-BTICK =  a u 1- + c@ TL-BTICK = and IF a 1+ u 2 - exit THEN
-   THEN
-   a u ;
-
-: TL-SEPARATOR? ( ptr u8 n -- bool ) {: a:ptr u :}
-   u 0= IF TL-FALSE exit THEN
-   0 begin dup u < while
-      a over + c@ dup TL-DASH = over TL-COLON = or swap 32 = or TL-NOT IF drop TL-FALSE exit THEN
-      1+
-   repeat drop TL-TRUE ;
-
-: TL-MAN-NAME-CELL$ ( -- ptr u8 n )
-   0 TL-CELL$ TL-UNBACKTICK TRIM ;
-
-: TL-MAN-EFF-CELL$ ( -- ptr u8 n )
-   1 TL-CELL$ TL-UNBACKTICK TRIM ;
-
-: TL-MAN-TEST-CELL$ ( -- ptr u8 n )
-   3 TL-CELL$ TRIM ;
-
-: TL-MAN-SITE-CELL$ ( -- ptr u8 n )
-   4 TL-CELL$ TRIM ;
-
-: TL-MAN-AUDIT-CELL$ ( -- ptr u8 n )
-   5 TL-CELL$ TRIM ;
-
-: TL-MAN-HEADER? ( -- bool )
-   TL-MAN-NAME-CELL$ s" Word" STR= ;
-
-: TL-MAN-SEPARATOR? ( -- bool )
-   TL-MAN-NAME-CELL$ TL-SEPARATOR? ;
-
-: TL-CHECK-DUP-MAN ( -- )
-   TL-MAN-NAME-CELL$ TL-MAN-SITE-CELL$ TL-FIND-MAN-SITE dup 0 >= IF
-      TL-MAN-NAME-CELL$ TL-DUP-ROW
-   ELSE
-      drop
-   THEN ;
-
-: TL-STORE-MAN-NAME ( -- )
-   TL-MAN-NAME-CELL$ TL-STORE$ TL-M-NL TL-M# @ TL-A! TL-M-NO TL-M# @ TL-A! ;
-
-: TL-STORE-MAN-EFF ( -- )
-   TL-MAN-EFF-CELL$ TL-STORE$ TL-M-EL TL-M# @ TL-A! TL-M-EO TL-M# @ TL-A! ;
-
-: TL-STORE-MAN-TEST ( -- )
-   TL-MAN-TEST-CELL$ TL-STORE$ TL-M-TL TL-M# @ TL-A! TL-M-TO TL-M# @ TL-A! ;
-
-: TL-STORE-MAN-SITE ( -- )
-   TL-MAN-SITE-CELL$ TL-STORE$ TL-M-SL TL-M# @ TL-A! TL-M-SO TL-M# @ TL-A! ;
-
-: TL-STORE-MAN-AUDIT ( -- )
-   TL-MAN-AUDIT-CELL$ TL-STORE$ TL-M-AL TL-M# @ TL-A! TL-M-AO TL-M# @ TL-A! ;
-
-: TL-ADD-MAN ( -- )
-   TL-CHECK-DUP-MAN
-   TL-M# @ TL-MAX >= IF s" trust-lint: too many manifest rows" TL-FAIL THEN
-   TL-STORE-MAN-NAME
-   TL-STORE-MAN-EFF
-   TL-STORE-MAN-TEST
-   TL-STORE-MAN-SITE
-   TL-STORE-MAN-AUDIT
-   TL-M# @ 1+ TL-M# ! ;
-
-: TL-SCAN-MAN-LINE ( ptr u8 n -- ) {: a:ptr u :}
-   u 0= IF exit THEN
-   a c@ TL-PIPE <> IF exit THEN
-   a u TL-SPLIT-PIPE
-   TL-C# @ 6 < IF exit THEN
-   TL-MAN-HEADER? IF exit THEN
-   TL-MAN-SEPARATOR? IF exit THEN
-   TL-ADD-MAN ;
-
-: TL-DO-MAN-LINE ( n -- )
-   TL-LE !
-   TL-LINE @ 1+ TL-LINE !
-   TL-LINE @ TL-CUR-LINE !
-   TL-LA@ TL-LS @ +  TL-LE @ TL-LS @ -  TL-LINE-LEN
-   TL-SCAN-MAN-LINE
-   TL-LE @ 1+ TL-LS ! ;
-
-: TL-FOR-MAN-LINES ( ptr u8 n -- )
-   TL-LU !  TL-LA!
-   0 TL-LINE !  0 TL-LX !  0 TL-LS !
-   begin TL-LX @ TL-LU @ < while
-      TL-LA@ TL-LX @ + c@ TL-LF = IF TL-LX @ TL-DO-MAN-LINE THEN
-      TL-LX @ 1+ TL-LX !
-   repeat
-   TL-LS @ TL-LU @ < IF TL-LU @ TL-DO-MAN-LINE THEN ;
-
-: TL-SCAN-MANIFEST ( -- )
-   s" TRUSTED.md" TL-ROOTED$ 2dup EXISTS? 0= IF
-      2drop
-      s" trust-lint: TRUSTED.md missing - the trust manifest is required" TL-OUT TL-NL
-      1 throw
-   THEN
-   TL-FILE-BUF TL-FILE-CAP READ-FILE TL-FOR-MAN-LINES ;
-
-: TL-A-END? ( -- bool ) TL-AI @ TL-NU @ >= ;
-: TL-B-END? ( -- bool ) TL-BI @ TL-NV @ >= ;
-: TL-A-C@ ( -- n ) TL-NA@ TL-AI @ + c@ ;
-: TL-B-C@ ( -- n ) TL-NB@ TL-BI @ + c@ ;
-: TL-A-WS? ( -- bool ) TL-A-END? IF TL-FALSE ELSE TL-A-C@ WS? THEN ;
-: TL-B-WS? ( -- bool ) TL-B-END? IF TL-FALSE ELSE TL-B-C@ WS? THEN ;
-
-: TL-N-SKIP ( -- )
-   begin TL-A-WS? while TL-AI @ 1+ TL-AI ! repeat
-   begin TL-B-WS? while TL-BI @ 1+ TL-BI ! repeat ;
-
-: TL-N-TOKEN= ( -- bool )
-   begin
-      TL-A-END? IF TL-B-END? IF TL-TRUE exit THEN TL-B-WS? exit THEN
-      TL-B-END? IF TL-A-WS? exit THEN
-      TL-A-WS? IF TL-B-WS? exit THEN
-      TL-B-WS? IF TL-FALSE exit THEN
-      TL-A-C@ FOLD TL-B-C@ FOLD <> IF TL-FALSE exit THEN
-      TL-AI @ 1+ TL-AI !  TL-BI @ 1+ TL-BI !
-   again ;
-
-: TL-NORM= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
-   a TL-NA!  u TL-NU !  b TL-NB!  v TL-NV !
-   0 TL-AI !  0 TL-BI !
-   begin
-      TL-N-SKIP
-      TL-A-END? TL-B-END? and IF TL-TRUE exit THEN
-      TL-A-END? TL-B-END? or IF TL-FALSE exit THEN
-      TL-N-TOKEN= TL-NOT IF TL-FALSE exit THEN
-   again ;
-
-: TL-BAD-TODAY ( ptr u8 n -- )
+: TL-ARGV-BAD-TODAY ( ptr u8 n -- )
    s" BAD-TODAY today argument invalid `" TL-OUT
    TL-OUT
    s" `" TL-OUT TL-NL
    1 throw ;
 
-: TL-TODAY ( -- n )
-   TL-TODAY-DAYS @ ;
+: TL-ARGV-CONFIG-TODAY ( n -- ) {: idx :}
+   idx ARGV-POS$ 2dup PARSE-YMD 0= if drop TL-ARGV-BAD-TODAY then
+   TRUST-LINT-TODAY!
+   2drop ;
 
-: TL-UNMANIFESTED-SITE ( n -- ) {: sk :}
-   s" UNMANIFESTED " TL-OUT sk TL-PRINT-SITE
-   s" : `" TL-OUT sk TL-S-NAME$ TL-OUT
-   s" ` is TRUSTed but has no TRUSTED.md row" TL-OUT TL-NL
-   TL-BAD+ ;
+: TL-ARGV-CONFIG-SOURCE ( -- )
+   ARGV-POS# 2 < if s" wrong number of positional arguments" ARGV-FAIL then
+   ARGV-POS# 4 > if s" wrong number of positional arguments" ARGV-FAIL then
+   1 ARGV-POS$ TL-ARGV-SOURCE-U ! TL-ARGV-SOURCE-A!
+   ARGV-POS# 2 > if 2 ARGV-POS$ TRUST-LINT-ROOT! else s" ." TRUST-LINT-ROOT! then
+   ARGV-POS# 3 > if 3 TL-ARGV-CONFIG-TODAY else TRUST-LINT-TODAY-NOW then ;
 
-: TL-FIND-MANIFEST-SITE ( n -- bool ) {: sk :}
-   sk TL-S-NAME$ sk TL-SCAN-SITE$ TL-FIND-MAN-SITE dup 0 < IF
-      drop
-      sk TL-S-NAME$ TL-FIND-MAN dup 0 < IF
-         drop
-         sk TL-UNMANIFESTED-SITE
-      ELSE
-         sk swap TL-SITE-DRIFT
-      THEN
-      TL-FALSE exit
-   THEN
-   TL-K !
-   TL-TRUE ;
-
-: TL-CHECK-EFFECT-DRIFT ( n -- ) {: sk :}
-   sk TL-S-EFF$ TL-K @ TL-M-EFF$ TL-NORM= TL-NOT IF
-      s" EFFECT-DRIFT " TL-OUT sk TL-PRINT-SITE
-      s" : `" TL-OUT sk TL-S-NAME$ TL-OUT
-      s" ` code effect `" TL-OUT sk TL-S-EFF$ TL-OUT
-      s" ` != TRUSTED.md `" TL-OUT TL-K @ TL-M-EFF$ TL-OUT s" `" TL-OUT TL-NL
-      TL-BAD+
-   THEN ;
-
-: TL-CHECK-SITE-DRIFT ( n -- ) {: sk :}
-   sk TL-SCAN-SITE$ TL-K @ TL-M-SITE$ STR= 0= IF
-      sk TL-K @ TL-SITE-DRIFT
-   THEN ;
-
-: TL-CHECK-TEST-CELL ( n -- ) {: sk :}
-   TL-K @ TL-M-TEST$ TRIM nip 0= IF
-      s" UNTESTED " TL-OUT sk TL-PRINT-SITE
-      s" : `" TL-OUT sk TL-S-NAME$ TL-OUT
-      s" ` has an empty Tests cell in TRUSTED.md" TL-OUT TL-NL
-      TL-BAD+
-   THEN ;
-
-: TL-BAD-AUDIT-DATE ( n -- ) {: sk :}
-   s" BAD-AUDIT-DATE TRUSTED.md: `" TL-OUT sk TL-S-NAME$ TL-OUT
-   s" ` has invalid Last audited `" TL-OUT TL-K @ TL-M-AUDIT$ TL-OUT s" `" TL-OUT TL-NL
-   TL-BAD+ ;
-
-: TL-FUTURE-AUDIT-DATE ( n -- ) {: sk :}
-   s" FUTURE-AUDIT TRUSTED.md: `" TL-OUT sk TL-S-NAME$ TL-OUT
-   s" ` Last audited `" TL-OUT TL-K @ TL-M-AUDIT$ TL-OUT
-   s" ` is in the future" TL-OUT TL-NL
-   TL-BAD+ ;
-
-: TL-STALE-AUDIT-DATE ( n n -- ) {: sk age :}
-   s" STALE-AUDIT TRUSTED.md: `" TL-OUT sk TL-S-NAME$ TL-OUT
-   s" ` Last audited `" TL-OUT TL-K @ TL-M-AUDIT$ TL-OUT
-   s" ` is " TL-OUT age TL-U. s"  day(s) old" TL-OUT TL-NL
-   TL-BAD+ ;
-
-: TL-CHECK-AUDIT-DATE ( n -- ) {: sk :}
-   TL-K @ TL-M-AUDIT$ PARSE-YMD 0= IF
-      drop
-      sk TL-BAD-AUDIT-DATE exit
-   THEN
-   TL-TODAY swap -
-   dup 0 < IF
-      drop
-      sk TL-FUTURE-AUDIT-DATE exit
-   THEN
-   dup TL-MAX-AUDIT-AGE > IF
-      sk swap TL-STALE-AUDIT-DATE
-   ELSE
-      drop
-   THEN ;
-
-: TL-CHECK-SITE ( n -- ) {: sk :}
-   sk TL-FIND-MANIFEST-SITE 0= IF exit THEN
-   sk TL-CHECK-EFFECT-DRIFT
-   sk TL-CHECK-SITE-DRIFT
-   sk TL-CHECK-TEST-CELL
-   sk TL-CHECK-AUDIT-DATE ;
-
-: TL-SCANNED-SITE? ( ptr u8 n -- bool )
-   2dup s" src/" STARTS-WITH? IF 2drop TL-TRUE exit THEN
-   s" lib/" STARTS-WITH? ;
-
-: TL-CHECK-STALE-ROW ( n -- ) {: mk :}
-   mk TL-M-SITE$ TL-SCANNED-SITE? TL-NOT IF exit THEN
-   mk TL-FIND-SITE-FOR-MAN 0 < IF
-      s" STALE-ROW TRUSTED.md " TL-OUT mk TL-M-SITE$ TL-OUT
-      s" : `" TL-OUT mk TL-M-NAME$ TL-OUT
-      s" ` has a row but no TRUST site in src/ or lib/ scanned roots" TL-OUT TL-NL
-      TL-BAD+
-   THEN ;
-
-: TL-SCAN-OPTIONAL-ROOT ( ptr u8 n -- ) {: a:ptr u :}
-   a u TL-ROOTED$ 2dup EXISTS? IF [: TL-SCAN-SRC-FILE ;] WALK-FILES ELSE 2drop THEN ;
-
-: TL-RESET ( -- )
-   0 TL-END !  0 TL-S# !  0 TL-M# !  0 TL-BAD !
-;
-
-: TL-CHECK-SITES ( -- )
-   0 begin dup TL-S# @ < while dup TL-CHECK-SITE 1+ repeat drop ;
-
-: TL-CHECK-STALE-ROWS ( -- )
-   0 begin dup TL-M# @ < while dup TL-CHECK-STALE-ROW 1+ repeat drop ;
-
-: TL-REPORT ( -- )
-   s" trust-lint: " TL-OUT TL-S# @ TL-U. s"  TRUST site(s), " TL-OUT
-   TL-M# @ TL-U. s"  manifest row(s), " TL-OUT TL-BAD @ TL-U.
-   s"  finding(s)" TL-OUT TL-NL
-   TL-BAD @ 0 > IF 1 throw THEN ;
-
-: TRUST-LINT ( -- )
-   TL-RESET
-   s" src" TL-SCAN-OPTIONAL-ROOT
-   s" lib" TL-SCAN-OPTIONAL-ROOT
-   TL-SCAN-MANIFEST
-   TL-CHECK-SITES
-   TL-CHECK-STALE-ROWS
-   TL-REPORT ;
-
-: TRUST-LINT-SOURCE ( -- )
-   TL-RESET
-   TL-SOURCE-A@ TL-SOURCE-U @ TL-SCAN-SRC-FILE
-   TL-SCAN-MANIFEST
-   TL-CHECK-SITES
-   TL-REPORT ;
-
-: TRUST-LINT-SOURCE-LIST ( -- )
-   TL-RESET
-   TL-SOURCE-FIRST @ begin dup ARGV-POS# < while
-      dup ARGV-POS$ TL-SCAN-SRC-FILE
-      1+
-   repeat drop
-   TL-SCAN-MANIFEST
-   TL-CHECK-SITES
-   TL-REPORT ;
-
-: TL-CONFIG-TODAY ( n -- ) {: idx :}
-   idx ARGV-POS$ 2dup PARSE-YMD 0= IF drop TL-BAD-TODAY THEN
-   TL-TODAY-DAYS ! 2drop ;
-
-: TL-CONFIG-SOURCE ( -- )
-   ARGV-POS# 2 < IF s" wrong number of positional arguments" ARGV-FAIL THEN
-   ARGV-POS# 4 > IF s" wrong number of positional arguments" ARGV-FAIL THEN
-   1 ARGV-POS$ TL-SOURCE-U ! TL-SOURCE-A!
-   ARGV-POS# 2 > IF 2 ARGV-POS$ TL-ROOT! ELSE s" ." TL-ROOT! THEN
-   ARGV-POS# 3 > IF 3 TL-CONFIG-TODAY ELSE epoch-seconds DATE-SECONDS-DAY / TL-TODAY-DAYS ! THEN ;
-
-: TL-CONFIG-SOURCE-LIST-TODAY? ( -- bool )
-   ARGV-POS# 4 < IF TL-FALSE exit THEN
-   2 ARGV-POS$ 2dup PARSE-YMD 0= IF drop 2drop TL-FALSE exit THEN
-   TL-TODAY-DAYS !
+: TL-ARGV-CONFIG-SOURCE-LIST-TODAY? ( -- bool )
+   ARGV-POS# 4 < if TL-FALSE exit then
+   2 ARGV-POS$ 2dup PARSE-YMD 0= if drop 2drop TL-FALSE exit then
+   TRUST-LINT-TODAY!
    2drop
-   3 TL-SOURCE-FIRST !
+   3 TL-ARGV-SOURCE-FIRST !
    TL-TRUE ;
 
-: TL-CONFIG-SOURCE-LIST ( -- )
-   ARGV-POS# 3 < IF s" wrong number of positional arguments" ARGV-FAIL THEN
-   1 ARGV-POS$ TL-ROOT!
-   2 TL-SOURCE-FIRST !
-   TL-CONFIG-SOURCE-LIST-TODAY? IF exit THEN
-   epoch-seconds DATE-SECONDS-DAY / TL-TODAY-DAYS ! ;
+: TL-ARGV-CONFIG-SOURCE-LIST ( -- )
+   ARGV-POS# 3 < if s" wrong number of positional arguments" ARGV-FAIL then
+   1 ARGV-POS$ TRUST-LINT-ROOT!
+   2 TL-ARGV-SOURCE-FIRST !
+   TL-ARGV-CONFIG-SOURCE-LIST-TODAY? if exit then
+   TRUST-LINT-TODAY-NOW ;
 
-: TL-CONFIG-ROOT ( -- )
+: TL-ARGV-CONFIG-ROOT ( -- )
    0 2 ARGV-EXPECT-POS
-   ARGV-POS# 0 > IF 0 ARGV-POS$ TL-ROOT! ELSE s" ." TL-ROOT! THEN
-   ARGV-POS# 1 > IF 1 TL-CONFIG-TODAY ELSE epoch-seconds DATE-SECONDS-DAY / TL-TODAY-DAYS ! THEN ;
+   ARGV-POS# 0 > if 0 ARGV-POS$ TRUST-LINT-ROOT! else s" ." TRUST-LINT-ROOT! then
+   ARGV-POS# 1 > if 1 TL-ARGV-CONFIG-TODAY else TRUST-LINT-TODAY-NOW then ;
 
-: TL-CONFIG ( -- )
+: TL-ARGV-CONFIG ( -- )
    s" tools/trust-lint.f [ROOT] [TODAY] | source-only SOURCE [ROOT] [TODAY] | source-list ROOT [TODAY] SOURCE..." ARGV-USAGE!
    ARGV-PARSE
-   0 TL-SOURCE-ONLY !
-   0 TL-SOURCE-LIST !
-   ARGV-POS# 0 > IF
-      0 ARGV-POS$ s" source-only" STR= IF
-         -1 TL-SOURCE-ONLY !
-         TL-CONFIG-SOURCE
+   0 TL-ARGV-SOURCE-ONLY !
+   0 TL-ARGV-SOURCE-LIST !
+   ARGV-POS# 0 > if
+      0 ARGV-POS$ s" source-only" STR= if
+         -1 TL-ARGV-SOURCE-ONLY !
+         TL-ARGV-CONFIG-SOURCE
          exit
-      THEN
-      0 ARGV-POS$ s" source-list" STR= IF
-         -1 TL-SOURCE-LIST !
-         TL-CONFIG-SOURCE-LIST
+      then
+      0 ARGV-POS$ s" source-list" STR= if
+         -1 TL-ARGV-SOURCE-LIST !
+         TL-ARGV-CONFIG-SOURCE-LIST
          exit
-      THEN
-   THEN
-   TL-CONFIG-ROOT ;
+      then
+   then
+   TL-ARGV-CONFIG-ROOT ;
+
+: TL-ARGV-BUFFERS ( -- )
+   TL-ARGV-STR-BUF TL-ARGV-STR-CAP
+   TL-ARGV-FILE-BUF TL-ARGV-FILE-CAP
+   TRUST-LINT-BUFFERS! ;
+
+: TRUST-LINT-SOURCE ( -- )
+   TL-ARGV-SOURCE-A@ TL-ARGV-SOURCE-U @ TRUST-LINT-SOURCE-FILE ;
+
+: TRUST-LINT-SOURCE-LIST ( -- )
+   TRUST-LINT-RESET
+   TL-ARGV-SOURCE-FIRST @ begin dup ARGV-POS# < while
+      dup ARGV-POS$ TRUST-LINT-SOURCE+
+      1+
+   repeat drop
+   TRUST-LINT-SOURCES-FINISH ;
 
 : TL-MAIN ( -- )
-   TL-CONFIG
-   TL-SOURCE-LIST @ IF TRUST-LINT-SOURCE-LIST exit THEN
-   TL-SOURCE-ONLY @ IF TRUST-LINT-SOURCE ELSE TRUST-LINT THEN ;
+   TL-ARGV-BUFFERS
+   TL-TRUE TL-REPORT-SUCCESS!
+   TL-ARGV-CONFIG
+   TL-ARGV-SOURCE-LIST @ if TRUST-LINT-SOURCE-LIST exit then
+   TL-ARGV-SOURCE-ONLY @ if TRUST-LINT-SOURCE else TRUST-LINT then ;
 
 TL-MAIN

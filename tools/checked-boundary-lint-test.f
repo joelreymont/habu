@@ -168,6 +168,7 @@ create CBLT-LF-BYTE 10 c,
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint.f"  >LEN PROC-ARGV+
    s" tools/stale-status-lint.f"  >LEN PROC-ARGV+
+   s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
    CBLT-HB-CAPTURE ;
 
