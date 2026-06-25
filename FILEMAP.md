@@ -134,6 +134,8 @@ points stay listed.
 - `tools/stdlib-manifest-test.f` — validates `lib/std.manifest`, stdlib docs, and source-backed signatures.
 - `tools/spawn-emitter-test.f` — source-shape coverage for factored Darwin
   spawn primitive emitters in `src/habu/habu1.f`.
+- `tools/c-call-emitter-test.f` — source-shape coverage for factored native
+  `C-CALL` inline/call emitter phases in `src/habu/habu2.f`.
 - `tools/aot-call-report.f` — measures patched AOT call-stencil padding.
 - `tools/aot-call-report-test.f` — checked fixture coverage for AOT call-stencil reports.
 - `tools/bundle-lib-test.f` — checked fixture coverage for the stdlib bundle tool.

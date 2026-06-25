@@ -21,42 +21,101 @@
    7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 LIT64,  9 8 7 ORR,  LCEMIT @ BL, ;
 \ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
 $28 constant INL-MAX
+$D10043FF constant C-CALL-PROLOGUE-INSTR
+$D65F03C0 constant C-CALL-RET-INSTR
+$FC000000 constant C-CALL-B-IMM-MASK
+$94000000 constant C-CALL-BL-IMM
+$14000000 constant C-CALL-B-IMM
+$FF000010 constant C-CALL-B-COND-MASK
+$54000000 constant C-CALL-B-COND
+$7E000000 constant C-CALL-CBZ-TBZ-MASK
+$34000000 constant C-CALL-CBZ
+$36000000 constant C-CALL-TBZ
+$FFFFFC1F constant C-CALL-BR-MASK
+$D63F0000 constant C-CALL-BLR
+$D61F0000 constant C-CALL-BR
+$1F000000 constant C-CALL-ADR-MASK
+$10000000 constant C-CALL-ADR
+$D2800010 constant C-CALL-MOVZ-X16
+$F2A00010 constant C-CALL-MOVK-X16-16
+$F2C00010 constant C-CALL-MOVK-X16-32
+$D63F0200 constant C-CALL-BLR-X16
+
+: C-CALL-BRANCH-NO-PROLOGUE ( n -- ) {: lnopro :}
+   9 11 0 LDRW,  8 C-CALL-PROLOGUE-INSTR LIT64,
+   9 8 CMP,  C-NE lnopro BCOND, ;
+
+: C-CALL-PROLOGUE-SPAN ( n -- ) {: lcall :}
+   12 INL-MAX 16 + CMPI,  C-GT lcall BCOND,
+   13 11 8 ADDI,  14 11 12 ADD,  14 14 8 SUBI, ;
+
+: C-CALL-REQUIRE-RET-SLOT ( n -- ) {: lcall :}
+   9 14 0 LDRW,  8 C-CALL-RET-INSTR LIT64,
+   9 8 CMP,  C-NE lcall BCOND, ;
+
+: C-CALL-PLAIN-SPAN ( n -- ) {: lcall :}
+   12 INL-MAX CMPI,  C-GT lcall BCOND,
+   13 11 0 ADDI,  14 11 12 ADD,
+   lcall C-CALL-REQUIRE-RET-SLOT ;   \ ret slot patched (does>) -> never inline
+
+: C-CALL-REJECT-MASKED ( n n n -- ) {: mask op lcall :}
+   8 mask LIT64,  10 9 8 AND,
+   8 op LIT64,  10 8 CMP,  C-EQ lcall BCOND, ;
+
+: C-CALL-REJECT-EXACT ( n n -- ) {: op lcall :}
+   8 op LIT64,  9 8 CMP,  C-EQ lcall BCOND, ;
+
+: C-CALL-REJECT-UNSAFE ( n -- ) {: lcall :}
+   C-CALL-B-IMM-MASK C-CALL-BL-IMM lcall C-CALL-REJECT-MASKED
+   C-CALL-B-IMM-MASK C-CALL-B-IMM lcall C-CALL-REJECT-MASKED
+   C-CALL-B-COND-MASK C-CALL-B-COND lcall C-CALL-REJECT-MASKED
+   C-CALL-CBZ-TBZ-MASK C-CALL-CBZ lcall C-CALL-REJECT-MASKED
+   C-CALL-CBZ-TBZ-MASK C-CALL-TBZ lcall C-CALL-REJECT-MASKED
+   C-CALL-BR-MASK C-CALL-BLR lcall C-CALL-REJECT-MASKED
+   C-CALL-BR-MASK C-CALL-BR lcall C-CALL-REJECT-MASKED
+   C-CALL-RET-INSTR lcall C-CALL-REJECT-EXACT
+   C-CALL-ADR-MASK C-CALL-ADR lcall C-CALL-REJECT-MASKED ;
+
+: C-CALL-SCAN-SAFE ( n n n -- ) {: lcopy lcall lsbody :}
+   15 13 0 ADDI,
+   lsbody LBL,  15 14 CMP,  C-GE lcopy BCOND,
+      9 15 0 LDRW,  15 15 4 ADDI,
+      lcall C-CALL-REJECT-UNSAFE
+      lsbody B, ;
+
+: C-CALL-COPY-INLINE ( n n -- ) {: linl ldone :}
+   15 13 0 ADDI,
+   linl LBL,  15 14 CMP,  C-GE ldone BCOND,
+      9 15 0 LDRW,  15 15 4 ADDI,  LCEMIT @ BL,  linl B, ;
+
+: C-CALL-EMIT-MOVZ-X16 ( -- )
+   5 $FFFF MOVZ,
+   7 11 5 AND,  7 7 5 LSLI,
+   8 C-CALL-MOVZ-X16 LIT64,  9 8 7 ORR,  LCEMIT @ BL, ;
+
+: C-CALL-EMIT-MOVK-X16 ( n n -- ) {: sh op :}
+   7 11 sh LSRI,  7 7 5 AND,  7 7 5 LSLI,
+   8 op LIT64,  9 8 7 ORR,  LCEMIT @ BL, ;
+
+: C-CALL-EMIT-ABSOLUTE ( -- )
+   C-CALL-EMIT-MOVZ-X16
+   16 C-CALL-MOVK-X16-16 C-CALL-EMIT-MOVK-X16
+   32 C-CALL-MOVK-X16-32 C-CALL-EMIT-MOVK-X16
+   9 C-CALL-BLR-X16 LIT64,  LCEMIT @ BL, ;
 
 : C-CALL ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: lcall lcopy lscan lsbody lnopro linl ldone :}
-   9 11 0 LDRW,  8 $D10043FF LIT64,  9 8 CMP,  C-NE lnopro BCOND,
-      12 INL-MAX 16 + CMPI,  C-GT lcall BCOND,
-      13 11 8 ADDI,  14 11 12 ADD,  14 14 8 SUBI,  lscan B,
+   lnopro C-CALL-BRANCH-NO-PROLOGUE
+      lcall C-CALL-PROLOGUE-SPAN
+      lscan B,
    lnopro LBL,
-      12 INL-MAX CMPI,  C-GT lcall BCOND,
-      13 11 0 ADDI,  14 11 12 ADD,
-      9 14 0 LDRW,  8 $D65F03C0 LIT64,  9 8 CMP,  C-NE lcall BCOND,   \ ret slot patched
-                                                               \ (does>) -> never inline
+      lcall C-CALL-PLAIN-SPAN
    lscan LBL,
-      15 13 0 ADDI,
-   lsbody LBL,  15 14 CMP,  C-GE lcopy BCOND,
-      9 15 0 LDRW,  15 15 4 ADDI,
-      8 $FC000000 LIT64,  10 9 8 AND,  8 $94000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,
-      8 $FC000000 LIT64,  10 9 8 AND,  8 $14000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,
-      8 $FF000010 LIT64,  10 9 8 AND,  8 $54000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,
-      8 $7E000000 LIT64,  10 9 8 AND,  8 $34000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,
-      8 $7E000000 LIT64,  10 9 8 AND,  8 $36000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,
-      8 $FFFFFC1F LIT64,  10 9 8 AND,
-         8 $D63F0000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,
-         8 $D61F0000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,
-      8 $D65F03C0 LIT64,  9 8 CMP,  C-EQ lcall BCOND,
-      8 $1F000000 LIT64,  10 9 8 AND,  8 $10000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,
-      lsbody B,
+      lcopy lcall lsbody C-CALL-SCAN-SAFE
    lcopy LBL,
-      15 13 0 ADDI,
-   linl LBL,  15 14 CMP,  C-GE ldone BCOND,
-      9 15 0 LDRW,  15 15 4 ADDI,  LCEMIT @ BL,  linl B,
+      linl ldone C-CALL-COPY-INLINE
    lcall LBL,
-      5 $FFFF MOVZ,
-      7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
-      7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
-      7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
-      9 $D63F0200 LIT64,  LCEMIT @ BL,
+      C-CALL-EMIT-ABSOLUTE
    ldone LBL, ;
 
 \ ---- source setup: baked LSRC or stdin ----

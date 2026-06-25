@@ -368,6 +368,10 @@ TEST-SUITE spawn-emitter-shape
    lib/errors.f lib/string.f lib/test.f lib/fs.f tools/spawn-emitter-test.f
 ;TEST-SUITE
 
+TEST-SUITE c-call-emitter-shape
+   lib/errors.f lib/string.f lib/test.f lib/fs.f tools/c-call-emitter-test.f
+;TEST-SUITE
+
 TEST-SUITE stdlib-batch-fixtures
    lib/errors.f lib/string.f lib/test.f lib/memory.f lib/vector.f
    lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f
