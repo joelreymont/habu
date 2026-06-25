@@ -67,6 +67,11 @@ the first review round:
   `src/arch/arm64/icode.f`, `src/os/linux/elf.f`,
   `src/os/macos/macho.f`, and `src/os/macos/sign2.f`; focused source loads,
   `trust-lint`, and the full native gate passed.
+- F02 bootstrap colon-open emission was split into named phase helpers in
+  `bootstrap/cg/forth.fs`; `tools/bootstrap-codegen-test.f` and the full native
+  gate passed. No-binary recovery bootstrap was not run on this host because the
+  installed Gforth 0.7.3 fails the documented `{:` locals probe and
+  `tools/bootstrap.sh` exits 69 before touching `bin/hb`.
 
 ## Remaining Work Order
 
@@ -74,9 +79,8 @@ These findings are still open as of this review artifact. The safest order is:
 
 1. Add missing stack-effect comments in bootstrap files:
    `habu-add-bootstrap-stack-a6b31511`.
-2. Factor mirrored native/bootstrap numeric parser and colon-open paths:
-   `habu-factor-mirrored-num-c2faa343`,
-   `habu-factor-bootstrap-colon-0ab81878`.
+2. Factor mirrored native/bootstrap numeric parser:
+   `habu-factor-mirrored-num-c2faa343`.
 3. Factor bootstrap JIT duplicated binary prep and move-wide emission:
    `habu-factor-bootstrap-vbin-53787869`,
    `habu-factor-bootstrap-move-9722fa8e`.

@@ -859,3 +859,8 @@ register for the marker byte.
   definition-local stack effects to raw platform/arch files should be checked
   with a mechanical missing-comment scan, focused source loads for each affected
   target path, `trust-lint` for shifted trusted rows, and then the native gate.
+- **Bootstrap generator refactors need explicit recovery-host evidence:** when
+  touching `bootstrap/cg/*.fs`, run `tools/bootstrap-codegen-test.f` and the
+  native gate, then run no-binary recovery only with a Gforth that passes the
+  documented `{:` locals probe. If the local Gforth is 0.7.3, record that
+  `tools/bootstrap.sh` exits at the probe instead of implying recovery coverage.
