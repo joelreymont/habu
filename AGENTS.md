@@ -118,7 +118,13 @@ constants; and a `T{ … -> … }T` test for every word.
 ## Workflow
 
 - VCS is `jj` (Jujutsu). One change per commit; 50-char imperative subject; no emoji.
-- Commit gate for Forth changes (BLOCKING): before `jj commit`, any change
+- Commit rule (BLOCKING): `jj commit` is a proof checkpoint, not a stash. Before
+  creating it, inspect `jj diff`, identify the touched source classes, run the
+  focused validation for those paths through native `bin/hb`, and record any
+  unresolved substantive work as dots instead of committing known failures. If
+  the gate cannot be run, leave the change uncommitted or dot the blocker; do
+  not commit speculative, skipped, or "fix later" code.
+- Forth commit gate (BLOCKING): before `jj commit`, any change
   touching `.f` or `.fs` source must prove checked Habu was used wherever
   possible. Scan the diff for new/changed `:`, `+:`, `CHECKED:`, `TRUSTED:`,
   `0 set-check`, and `TRUST` sites; every new or changed definition needs a real

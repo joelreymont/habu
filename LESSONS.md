@@ -142,6 +142,9 @@ lesson — keep the specific word/code/path, cut the prose.
 
 - **Repo edits go through patches/Edit:** even mechanical/one-line changes, so
   broad rewrites, duplicate defs, and shell-expanded capture groups stay reviewable.
+- **Commits are proof checkpoints:** run the path-specific Habu gate before
+  `jj commit`; a skipped or failed gate stays uncommitted or becomes a blocker
+  dot, never a "commit now, fix later" checkpoint.
 - **Don't parallelize VCS status:** `jj st` and `git status` race on
   `.git/index.lock`; run index-touching Git/JJ commands sequentially.
 - **Pushes reject conflicted ancestors:** a clean worktree + green gate don't clear
