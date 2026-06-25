@@ -254,8 +254,8 @@ the first review round:
 Tracker state was verified with `dot tree` on 2026-06-25 during the F04
 source-refactor handoff. The parent dot is `habu-review-whole-repo-5e087327`;
 F01, F02, F03, F05, F06, F07, F08, F09, F10, F12, F13, F14, F16, F17, F18,
-F19, F20, F21, F22, and F23 are addressed; F04 has a Linux-validated source refactor but
-remains open for macOS runtime validation; all rows below are open.
+F19, F20, F21, F22, F23, and F24 are addressed; F04 has a Linux-validated
+source refactor but remains open for macOS runtime validation.
 
 The local `.dots/` store is ignored by the repository, so this section is the
 durable committed queue. A fresh checkout can recreate equivalent dots from the
@@ -427,6 +427,15 @@ Handoff snapshot:
   `tools/check-repair-hints-test.f`, `tools/repair-packet-test.f`, and
   `tools/repair-schema-doc-test.f` commands, `test/gate-stdlib.f`, and the full
   native gate from `docs/bootstrap.md`.
+- F24 is closed on Linux/aarch64: `test/engine-suite.f` now carries
+  definition-local stack effects for the engine behavior helper words, including
+  locals-heavy, quotation, float, time, register-pressure, and FFI fixture words.
+  `tools/imgdump.f` now puts effects before locals, corrects `E-NAME` to
+  document its `ptr u8 n` output, gives dump helpers explicit effects, and
+  renames the lower-case hex printer `h.` to project-style `H.`. Validation
+  covered `bin/hb test/engine-suite.f`, the focused Linux `imgdump` load from
+  `test/gate-stdlib.f`, the stdlib gate, and the full native gate from
+  `docs/bootstrap.md`.
 - The remaining factorization work already has one dot per open finding in the
   local tracker. Do not create duplicates; start the next open row, commit that
   focused batch, update this document, close that row's dot, then push.
@@ -441,19 +450,18 @@ Next continuation step:
    process-argv, process-env, process-cwd, PTY, and full native gates against
    the factored Darwin emitters.
 2. If those macOS checks pass, update this document with the exact evidence,
-   close F04, and continue to the next Linux-actionable row.
+   close F04, and close the parent factorization dot.
 3. If macOS exposes a spawn behavior regression, keep F04 open, root-cause the
    register/frame delta with the native debugger tools in `docs/debugging.md`,
    and commit the fix with a macOS regression.
-4. On Linux/aarch64, the next unblocked finding is F24
-   (`habu-clean-engine-imgdump-b5c63365`).
+4. There is no remaining Linux-actionable source-factor row in this review table
+   after F24.
 
 Open dot queue:
 
 | Order | Finding | Dot | Scope | Done when |
 | --- | --- | --- | --- | --- |
 | 1 | F04 | `habu-factor-darwin-spawn-5a82930c` | Validate the factored Darwin spawn emitter variants on macOS. | Shared helpers preserve the Darwin `posix_spawn` ABI; macOS process tests and full native gate pass, plus Linux-safe gate where run. |
-| 2 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. | Missing stack-effect comments and lower-case project words are fixed; focused source loads, lint, and full native gate pass. |
 
 ## Other Open Top-Level Dots
 
@@ -499,13 +507,13 @@ Parent: `habu-review-whole-repo-5e087327`
 ## Verification Status
 
 The original subagent review was read-only. The latest implementation batch is
-the Linux-validated F23 gate-json row dispatch sub-batch. F11, F13, F15, F16,
-F22, and F23 are closed on Linux/aarch64; after the F23 sub-batch the port stack
-passed:
+the Linux-validated F24 engine/imgdump stack-effect cleanup. F11, F13, F15, F16,
+F22, F23, and F24 are closed on Linux/aarch64; after the F24 sub-batch the port
+stack passed:
 
-- `tools/check-repair-hints-test.f`: `check-repair-hints-test: ok`;
-- `tools/repair-packet-test.f`: `repair-packet-test: ok`;
-- `tools/repair-schema-doc-test.f`: `repair-schema-doc-test: ok`;
+- `bin/hb test/engine-suite.f`: `ok`;
+- `bin/hb --load src/os/linux/layout.f src/habu/layout.f ... tools/imgdump.f
+  tools/imgdump-test.f`: `test: ok`, `imgdump-test: ok`;
 - `test/gate-stdlib.f`: `PASS: native lint/stdlib gate phase`;
 - `test/run.f`:
   `PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)`.

@@ -44,7 +44,7 @@ TRUSTED: IMG-MMAP-PTR ( n -- ptr u8 )
    SCRIPT-ARGC 2 > if IMG-USAGE then
    0 SCRIPT-ARGV$ ;
 
-: ZPATH {: a:ptr u d:ptr cap :} ( ptr u8 ptr n -- )
+: ZPATH ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n d:ptr cap:n :}
    u cap > if s" imgdump: path too long" 74 die then
    0 begin dup u < while  dup a + c@  over d + c!  1 + repeat drop  0 d u + c! ;
 
@@ -60,16 +60,16 @@ TRUSTED: IMG-MMAP-PTR ( n -- ptr u8 )
    IFD @ close
    ISZ @ IL ! ;
 
-: READ-IMG
+: READ-IMG ( -- )
    IMG-PATH$ READ-IMG-PATH ;
 
 \ ---- hex printing ($-prefixed, lowercase) and char output ----
 create EB 4 allot
-: EMITC {: c :}  c EB c!  EB 1 type ;
-: NIB {: n :}  n 10 < if n 48 + else n 87 + then ;
+: EMITC ( n -- ) {: c:n :}  c EB c!  EB 1 type ;
+: NIB ( n -- n ) {: n:n :}  n 10 < if n 48 + else n 87 + then ;
 create HB 24 allot
 variable HV  variable HP
-: h. {: u :}
+: H. ( n -- ) {: u:n :}
    u HV !  20 HP !  0 HN !
    begin
      HP @ 1 - HP !
@@ -83,18 +83,18 @@ variable HV  variable HP
    HB HP @ +  HN @  type ;
 
 \ ---- snapshot and dict entry fields ----
-: I@ {: o :} ( n -- n )
+: I@ ( n -- n ) {: o:n :}
    IB@ o + @ ;
-: E-S {: o :} ( n -- n )
+: E-S ( n -- n ) {: o:n :}
    o I@ ;
-: E-E {: o :} ( n -- n )
+: E-E ( n -- n ) {: o:n :}
    o 8 + I@ ;
-: E-F {: o :} ( n -- n )
+: E-F ( n -- n ) {: o:n :}
    o 16 + I@ ;
-: E-L {: o :} ( n -- n )
+: E-L ( n -- n ) {: o:n :}
    o E-F DNAME-LEN-MASK and ;
 variable OKV
-: PRN? {: a:ptr u :} ( ptr u8 n -- bool )     \ a..a+u all printable ascii?
+: PRN? ( ptr u8 n -- bool ) {: a:ptr u:n :}     \ a..a+u all printable ascii?
    1 OKV !
    0 begin dup u < while
      dup a + c@ 32 >  OKV @ and
@@ -102,7 +102,7 @@ variable OKV
      1 +
    repeat drop
    OKV @ ;
-: SNAP? {: o :} ( n -- bool )
+: SNAP? ( n -- bool ) {: o:n :}
    o 40 + IL @ > if 0 0= 0= exit then
    o I@ SNAP-MAGIC = 0= if 0 0= 0= exit then
    o 16 + I@ 1 < if 0 0= 0= exit then
@@ -131,18 +131,18 @@ variable OKV
    TOFF @ 32 + I@ TDATA !
    TOFF @ TDATA @ - TREG @ - ROFF ! ;
 
-: PTR>OFF {: p :} ( n -- n )
+: PTR>OFF ( n -- n ) {: p:n :}
    HAS-SNAP @ 0= if -1 exit then
    p RBASE-VA >=  p RBASE-VA TREG @ + < and if p RBASE-VA - ROFF @ + exit then
    p TBASE @ >=  p TBASE @ ROFF @ CODE-OFF - + < and if p TBASE @ - CODE-OFF + exit then
    -1 ;
-: E-NAME-OFF {: o :} ( n -- n )
+: E-NAME-OFF ( n -- n ) {: o:n :}
    o E-F DNAME-EXT and 0= if o 24 + else o 24 + I@ PTR>OFF then ;
-: E-NAME {: o :} ( n -- ptr u8 )
+: E-NAME ( n -- ptr u8 n ) {: o:n :}
    o E-NAME-OFF dup 0 < if s" imgdump: bad external name pointer" 74 die then
    dup o E-L + IL @ > if s" imgdump: truncated name" 74 die then
    IB@ +  o E-L ;
-: ENT? {: o :} ( n -- bool )
+: ENT? ( n -- bool ) {: o:n :}
    o E-S 0 <= if 0 0= 0= exit then
    o E-E 0 < if 0 0= 0= exit then
    HAS-SNAP @ if o E-S PTR>OFF 0 < if 0 0= 0= exit then then
@@ -151,7 +151,7 @@ variable OKV
    dup o E-L + IL @ > if drop 0 0= 0= exit then
    IB@ +  o E-L PRN? ;
 
-: RUN# {: o :} ( n -- n )
+: RUN# ( n -- n ) {: o:n :}
    0 RUNV !
    o begin dup IL @ DREC - <= while
       dup ENT? 0= if drop RUNV @ exit then
@@ -170,17 +170,17 @@ variable OKV
    BESTN @ 0= if s" imgdump: no dict found" 74 die then ;
 
 \ ---- dump ----
-: .ENT {: o :}
+: .ENT ( n -- ) {: o:n :}
    o E-NAME type  32 EMITC
-   o E-S h.  32 EMITC
-   o E-E h.  10 EMITC ;
+   o E-S H.  32 EMITC
+   o E-E H.  10 EMITC ;
 : DICT-START ( -- n )
    HAS-SNAP @ if ROFF @ else BESTO @ then ;
 
 : DICT-END ( -- n )
    HAS-SNAP @ if ROFF @ TNDICT @ DREC * + else BESTO @ BESTN @ DREC * + then ;
 
-: DUMP-DICT
+: DUMP-DICT ( -- )
    DICT-START
    begin dup DICT-END < while
       dup ENT? 0= if s" imgdump: corrupt dict entry" 74 die then
@@ -200,14 +200,14 @@ variable OKV
 : A-START@ ( n -- n ) cells A-START + @ ;
 : A-LEN@ ( n -- n ) cells A-LEN + @ ;
 
-: STR= {: a:ptr au b:ptr bu :} ( ptr u8 n ptr u8 n -- bool )
+: STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr au:n b:ptr bu:n :}
    au bu <> if 0 0= 0= exit then
    0 begin dup au < while
       dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
       1 +
    repeat drop 0 0= ;
 
-: CAPTURE-A-ENTRY {: o idx :} ( n n -- )
+: CAPTURE-A-ENTRY ( n n -- ) {: o:n idx:n :}
    idx DICT-CAP >= if s" imgdump: too many dict entries" 74 die then
    o E-NAME idx A-NAME-U! idx A-NAME-P!
    o E-S idx A-START!
@@ -223,30 +223,30 @@ variable OKV
       DREC +
    repeat drop ;
 
-: PRINT-A-ENTRY {: idx :} ( n -- )
+: PRINT-A-ENTRY ( n -- ) {: idx:n :}
    idx A-NAME-P@ idx A-NAME-U@ type 32 EMITC
-   idx A-START@ h. 32 EMITC
-   idx A-LEN@ h. 10 EMITC ;
+   idx A-START@ H. 32 EMITC
+   idx A-LEN@ H. 10 EMITC ;
 
 : PRINT-B0 ( -- )
    CMP-B0-P @ CMP-B0-U @ type 32 EMITC
-   CMP-B0-S @ h. 32 EMITC
-   CMP-B0-L @ h. 10 EMITC ;
+   CMP-B0-S @ H. 32 EMITC
+   CMP-B0-L @ H. 10 EMITC ;
 
-: PRINT-A-NL {: idx :} ( n -- )
-   idx A-NAME-P@ idx A-NAME-U@ type 32 EMITC idx A-LEN@ h. 10 EMITC ;
+: PRINT-A-NL ( n -- ) {: idx:n :}
+   idx A-NAME-P@ idx A-NAME-U@ type 32 EMITC idx A-LEN@ H. 10 EMITC ;
 
-: PRINT-B-NL {: o :} ( n -- )
-   o E-NAME type 32 EMITC o E-E h. 10 EMITC ;
+: PRINT-B-NL ( n -- ) {: o:n :}
+   o E-NAME type 32 EMITC o E-E H. 10 EMITC ;
 
 : PRINT-BAD-NL ( -- )
-   CMP-BAD-P @ CMP-BAD-U @ type 32 EMITC CMP-BAD-L @ h. 10 EMITC ;
+   CMP-BAD-P @ CMP-BAD-U @ type 32 EMITC CMP-BAD-L @ H. 10 EMITC ;
 
-: CMP-NAME-LEN? {: o idx :} ( n n -- bool )
+: CMP-NAME-LEN? ( n n -- bool ) {: o:n idx:n :}
    idx A-NAME-P@ idx A-NAME-U@ o E-NAME STR=
    idx A-LEN@ o E-E = and ;
 
-: CMP-ENTRY {: o idx :} ( n n -- )
+: CMP-ENTRY ( n n -- ) {: o:n idx:n :}
    idx 0= if
       o E-NAME CMP-B0-U ! CMP-B0-P !
       o E-S CMP-B0-S !

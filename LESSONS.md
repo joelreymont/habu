@@ -531,3 +531,8 @@ lesson — keep the specific word/code/path, cut the prose.
   as blocked until changed Forth diffs are scanned for definitions and unchecked
   boundaries, exact owning `bin/hb --load ...` paths are checked, and boundary
   tests/dots exist. This prevents "commit first, typecheck later" drift.
+- **Gate phase files need their loader prefix:** `test/gate-stdlib.f` is not a
+  standalone script; running it without the documented `docs/bootstrap.md`
+  `--load` prefix omits `lib/process-env.f` and fails at
+  `PROC-ENV-INHERIT-MISSING` before testing changed code. Use the exact native
+  gate command for commit evidence.
