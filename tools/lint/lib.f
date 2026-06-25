@@ -2,8 +2,8 @@
 \ Load after tools/lint/text.f and tools/lint/token.f.
 
 \ ---- named scanners replacing the former regex use-cases ------------------
-\ Scanner captures remain in shared cells for legacy callers, but scanner logic
-\ is checked and returns typed bools.
+\ Scanner captures remain in shared cells for scanner callers; scanner logic is
+\ checked and returns typed bools.
 variable PSA  variable PSU  variable PX  variable PSTART
 variable P1A  variable P1U  variable P2A  variable P2U
 variable PTA  variable PTU
@@ -221,5 +221,5 @@ variable PTA  variable PTU
    a u SIG-OPTOUT? IF SIG-OPTOUT exit THEN
    SIG-MISSING ;
 
-\ Downstream legacy scanner modules that need unchecked mode must declare their
-\ own `0 set-check` boundary instead of inheriting one from this shared library.
+\ Downstream scanner modules that need an unchecked boundary must declare and
+\ test that boundary locally instead of inheriting one from this shared library.

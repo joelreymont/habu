@@ -684,9 +684,10 @@ register for the marker byte.
   for non-returning words and clearing redefinitions. Recording a "returning"
   row for every certified word creates startup metadata pressure and can surface
   unrelated image crashes before the intended invariant is tested.
-- **Shared tool libraries must hand off checker state deliberately:** when a
-  bundled helper library re-enables `CHECK!`, end with an explicit boundary if
-  downstream legacy scanner modules are expected to choose their own hook.
+- **Shared tool libraries must end checked:** a helper such as
+  `tools/lint/lib.f` must not leave callers in inherited unchecked mode. If a
+  downstream scanner needs an unchecked boundary, it declares and tests that
+  boundary locally.
 - **Immediate-word fixtures extend to compiled callers:** a checked definition
   that uses an unchecked immediate word executes that word during compilation.
   Keep wrappers for `postpone`/`compile,` primitive fixtures inside the same
