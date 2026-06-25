@@ -288,6 +288,21 @@ TFQ -1 T=
 : TFG 5.0 3.0 f> ;
 TFG -1 T=
 
+\ FFI: AAPCS64 trampoline runtime proof. Inside a compiled word (so cp@ is the
+\ stable free code slot, not a transient top-level line buffer) emit a C-ABI
+\ leaf `add x0,x0,x1; ret` at cp@ via patch32, then call it through ffi-call
+\ with an 8-cell arg buffer [3,4,..]. Proves x0..x7 marshalling, blr, the x0
+\ return, and that XDS (x19) survives the C call. Trusted boundary (raw code +
+\ foreign call).
+create FFI-ARGS 8 cells allot
+: TFFI ( -- n )
+   3 FFI-ARGS !  4 FFI-ARGS 8 + !
+   cp@ {: fn :}
+   $8B010000 fn patch32            \ add x0, x0, x1   at fn
+   $D65F03C0 fn 4 + patch32        \ ret             at fn+4
+   FFI-ARGS fn ffi-call ;
+TFFI 7 T=
+
 \ report: count + nonzero exit on failure
 : REPORT
    #FAIL @ 0 = if [char] o emit [char] k emit cr exit then

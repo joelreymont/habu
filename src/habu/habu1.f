@@ -890,6 +890,21 @@ s" spawn-chdir-action" s" n n --" TRUST
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
+\ ---- FFI: AAPCS64 trampoline, <=8 integer/pointer args ----
+\ ( argbuf fn -- ret ) : load 8 cells from argbuf into x0-x7, blr fn, push x0.
+\ argbuf must be a >=8-cell (64-byte) buffer; trailing cells are ignored by a
+\ callee that takes fewer args. XDS (x19) is AAPCS64 callee-saved so the C call
+\ preserves the data stack; x30 is framed by FPRIM (this prim has a BLR). Only
+\ integer/pointer args — the entire CUDA Driver surface except cuLaunchKernel,
+\ whose 9th-11th stack args need the >8 path (separate prim, later).
+: BFFI-CALL
+   16 G-POP                                            \ x16 = fn
+   15 G-POP                                            \ x15 = argbuf
+   0 15 0  LDR,   1 15 8  LDR,   2 15 16 LDR,   3 15 24 LDR,
+   4 15 32 LDR,   5 15 40 LDR,   6 15 48 LDR,   7 15 56 LDR,
+   16 BLR,
+   0 G-PUSH ;
+
 : BOPENRD A G-POP  A OS-OPEN-RD  SYS-PUSH ;
 
 : BACCESS
@@ -1147,6 +1162,7 @@ s" linux-stat-fix" s" n --" TRUST
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L
+   s" ffi-call" ['] BFFI-CALL FPRIM
    s" open-rd" ['] BOPENRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L

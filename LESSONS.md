@@ -935,3 +935,27 @@ register for the marker byte.
   should share the same `MBUF`/cursor/endian patch vocabulary. Put byte-order
   behavior under executable fixtures and source-shape guards, then keep target
   files focused on format layout policy.
+- **FFI needs almost no new ABI machinery:** an AAPCS64 C-call from Habu is a
+  normal non-leaf `FPRIM` (so it gets the x30 frame) that pops fn + an arg
+  buffer with `G-POP`, loads `x0..x7` from the buffer, `BLR,`, then `G-PUSH`es
+  `x0`. `XDS` is `x19`, which AAPCS64 makes callee-saved, so the C callee
+  preserves the data stack for free — no save/restore. The CUDA Driver surface
+  (except `cuLaunchKernel`'s 9th–11th args) is integer/pointer-only, so the
+  float `a` rides in the `kernelParams` buffer and the trampoline needs no
+  v-register handling. `ffi-call` checks as `( ptr a n -- n )` and is
+  fail-closed (the gate proves the checker rejects wrong arity).
+- **Verify emitted primitive bytes statically:** to prove a hand-emitted prim
+  without a runtime call, compute the exact ARM64 encodings and search the
+  on-disk `bin/hb` for that contiguous byte stream (`xxd -p | tr -d '\n' |
+  grep`). ASLR slides the runtime xt from `[']`, but the file bytes are fixed,
+  so this confirms codegen even when the only proof-of-execution (a real C call)
+  awaits the symbol-import milestone.
+- **`cp@` is only stable inside a compiled word:** to emit a runtime code stub
+  (e.g. a C-ABI leaf to `ffi-call`), write it at `cp@` via `patch32` and call it
+  from inside a `: WORD ;`, never at top level. The interpreter compiles each
+  top-level line into a transient buffer at `cp@`, so a top-level `cp@ patch32`
+  overwrites the line that is currently executing — the `add` ran (x0 correct)
+  but `ret` landed in clobbered code → `SIGILL`. The engine-suite proof passes
+  via `--load` yet `SIGILL`s via the gate's stdin REPL for exactly this reason;
+  always reproduce engine-suite changes through the gate's stdin path
+  (`bin/hb --repl < test/engine-suite.f`), not just `--load`.
