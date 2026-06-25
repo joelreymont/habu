@@ -141,6 +141,7 @@ variable FM-NUM-L
    s" lib/process-cwd.f" FM-REQ
    s" lib/process-cwd-test.f" FM-REQ
    s" tools/host-lint.f" FM-REQ
+   s" tools/check-all-errors-core.f" FM-REQ
    s" tools/check-all-errors.f" FM-REQ
    s" tools/check-all-errors-test.f" FM-REQ
    s" tools/checked-boundary-lint-core.f" FM-REQ

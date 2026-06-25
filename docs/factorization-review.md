@@ -253,9 +253,9 @@ the first review round:
 
 Tracker state was verified with `dot tree` on 2026-06-25 during the F04
 source-refactor handoff. The parent dot is `habu-review-whole-repo-5e087327`;
-F01, F02, F03, F05, F06, F07, F08, F09, F10, F12, F14, F17, F18, F19, F20,
-and F21 are addressed; F04 has a Linux-validated source refactor but remains
-open for macOS runtime validation; all rows below are open.
+F01, F02, F03, F05, F06, F07, F08, F09, F10, F12, F13, F14, F17, F18, F19,
+F20, and F21 are addressed; F04 has a Linux-validated source refactor but
+remains open for macOS runtime validation; all rows below are open.
 
 The local `.dots/` store is ignored by the repository, so this section is the
 durable committed queue. A fresh checkout can recreate equivalent dots from the
@@ -362,9 +362,24 @@ Handoff snapshot:
   (`run-test`, `perf` stub, `run-attempts` focused/CLI/checker-safe,
   `drive-forth`, and `drive-array-habu`), and
   `filemap-lint`/`trust-lint`/`stale-status-lint`/`shadow-lint`, followed by the
-  full native gate from `docs/bootstrap.md`. F13 remains open: all-errors still
-  runs as a child CLI tool and needs a core/wrapper split or an explicit boundary
-  classification.
+  full native gate from `docs/bootstrap.md`. At that point F13 remained open:
+  all-errors still ran as a child CLI tool and needed a core/wrapper split or an
+  explicit boundary classification.
+- F13 has a seventh sub-batch: `tools/check-all-errors-core.f` now owns the
+  reusable all-errors checker core, `tools/check-all-errors.f` is only the CLI
+  argv wrapper, and `tools/check.f --all-errors` calls the core in-process
+  instead of spawning a child `hb` only to run the wrapper. The core keeps
+  caller-supplied stdout/stderr capture buffers so the checker bundle does not
+  duplicate large static buffers, and the per-definition `bin/hb` runs remain
+  classified as the true process boundary: each generated checked definition can
+  fail/throw independently while the all-errors pass continues collecting later
+  diagnostics. Validation on Linux/aarch64 covered `tools/check-all-errors-test.f`,
+  `tools/check-test.f`, direct good and bad `tools/check.f --json-errors
+  --all-errors` smokes, `test/gate-stdlib.f`, affected native benchmark helper
+  fixtures (`run-test`, `run-attempts-check-test`,
+  `run-attempts-cli-check-test`, `drive-forth-test`, `drive-array-habu-test`,
+  and the stubbed `bench/llm/perf.f --json --full` CLI), followed by the full
+  native gate from `docs/bootstrap.md`. This closes F13 on Linux/aarch64.
 - The remaining factorization work already has one dot per open finding in the
   local tracker. Do not create duplicates; start the next open row, commit that
   focused batch, update this document, close that row's dot, then push.
@@ -383,21 +398,20 @@ Next continuation step:
 3. If macOS exposes a spawn behavior regression, keep F04 open, root-cause the
    register/frame delta with the native debugger tools in `docs/debugging.md`,
    and commit the fix with a macOS regression.
-4. On Linux/aarch64, the next unblocked finding is F13
-   (`habu-factor-check-load-2e29d26a`).
+4. On Linux/aarch64, the next unblocked finding is F11
+   (`habu-factor-filesystem-traversal-f490595e`).
 
 Open dot queue:
 
 | Order | Finding | Dot | Scope | Done when |
 | --- | --- | --- | --- | --- |
 | 1 | F04 | `habu-factor-darwin-spawn-5a82930c` | Validate the factored Darwin spawn emitter variants on macOS. | Shared helpers preserve the Darwin `posix_spawn` ABI; macOS process tests and full native gate pass, plus Linux-safe gate where run. |
-| 2 | F13 | `habu-factor-check-load-2e29d26a` | Split check/load builders and keep only true boundary spawns. | Checked load-group builders replace repeated argv recipes; non-boundary static checks run in-process; `tools/check-test.f` and full native gate pass. |
-| 3 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. | Directory iteration and path enter/leave live in `lib/fs.f`; mutation policy stays in `lib/fs-mutate.f`; fs fixtures and full native gate pass. |
-| 4 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. | Documentation policy rows replace imperative branch ladders; stdlib manifest fixtures and full native gate pass. |
-| 5 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. | Digit, ratio, keyword, and whitespace scanning are factored; stale-status lint fixture and full native gate pass. |
-| 6 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. | Regex classification/state transitions use small predicate or row helpers; regex fixtures and full native gate pass. |
-| 7 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. | Command arity/xt rows and repair suggestion rows replace branch ladders; gate-json assertions and full native gate pass. |
-| 8 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. | Missing stack-effect comments and lower-case project words are fixed; focused source loads, lint, and full native gate pass. |
+| 2 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. | Directory iteration and path enter/leave live in `lib/fs.f`; mutation policy stays in `lib/fs-mutate.f`; fs fixtures and full native gate pass. |
+| 3 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. | Documentation policy rows replace imperative branch ladders; stdlib manifest fixtures and full native gate pass. |
+| 4 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. | Digit, ratio, keyword, and whitespace scanning are factored; stale-status lint fixture and full native gate pass. |
+| 5 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. | Regex classification/state transitions use small predicate or row helpers; regex fixtures and full native gate pass. |
+| 6 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. | Command arity/xt rows and repair suggestion rows replace branch ladders; gate-json assertions and full native gate pass. |
+| 7 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. | Missing stack-effect comments and lower-case project words are fixed; focused source loads, lint, and full native gate pass. |
 
 ## Other Open Top-Level Dots
 
@@ -443,18 +457,17 @@ Parent: `habu-review-whole-repo-5e087327`
 ## Verification Status
 
 The original subagent review was read-only. The latest implementation batch is
-the Linux-validated F13 `trust-lint` core/wrapper sub-batch. It does not close
-F13; after the current F13 sub-batches the port stack passed:
+the Linux-validated F13 `check-all-errors` core/wrapper sub-batch. F13 is closed
+on Linux/aarch64; after the F13 sub-batches the port stack passed:
 
+- `tools/check-all-errors-test.f`: `test: ok`, `check-all-errors-test: ok`;
 - `tools/check-test.f`: `test: ok`, `check-test: ok`;
 - `test/gate-stdlib.f`: `PASS: native lint/stdlib gate phase`;
+- focused native benchmark helper checks:
+  `run-test`, `run-attempts-check-test`, `run-attempts-cli-check-test`,
+  `drive-forth-test`, `drive-array-habu-test`, and stubbed `bench/llm/perf.f`;
 - `test/run.f`:
   `PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)`.
-
-Remaining F13 work: split the all-errors core from its CLI wrapper where it is
-not a true process boundary, or document why it must remain a boundary; rerun
-`tools/check-test.f`, the `check-cli-boundary` gate phase, and the full native
-gate before closing `habu-factor-check-load-2e29d26a`.
 
 ## Agent Command Notes
 

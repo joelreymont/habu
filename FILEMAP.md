@@ -128,7 +128,9 @@ points stay listed.
 - `tools/repair-packet-test.f` — checked fixture coverage for repair packet generation.
 - `tools/check-repair-hints-test.f` — checked fixture coverage for repair-class hints.
 - `tools/host-lint.f` — rejects retired host-script workflow tokens.
-- `tools/check-all-errors.f` — batches checker diagnostics by top-level definition.
+- `tools/check-all-errors-core.f` — reusable all-errors checker core; keeps
+  per-definition checker runs as the diagnostic isolation boundary.
+- `tools/check-all-errors.f` — CLI wrapper for all-errors checking.
 - `tools/check-all-errors-test.f` — checked fixture coverage for all-errors checking.
 - `tools/checked-boundary-lint-core.f` — reusable unchecked-boundary scanner core for checker and CLI paths.
 - `tools/checked-boundary-lint.f` — CLI wrapper for unchecked-boundary lint.

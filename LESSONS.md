@@ -472,6 +472,12 @@ lesson — keep the specific word/code/path, cut the prose.
   `trust-lint-core` initially plus `check.f` buffers corrupted `SCRIPT-ARGC`
   before parsing; expose caller-supplied scratch buffers and let wrappers own
   standalone storage.
+- **All-errors keeps definition isolation, not wrapper spawning:** split
+  `tools/check-all-errors-core.f` from the CLI and call it in-process from
+  `tools/check.f`, but keep the per-definition `bin/hb` children: each generated
+  checked definition may fail independently while later diagnostics still need to
+  be collected. Borrow checker buffers for capture; wrapper-only static buffers
+  stay outside the composed checker bundle.
 - **`stage2-src` cap is a builder contract:** AOT maker generation can exceed the
   256 KiB stage2 reader for tiny user source; reproduce with `hb-build` child
   output, raise the named cap deliberately, keep fail-closed overflow.

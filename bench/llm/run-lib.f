@@ -65,6 +65,7 @@
    s" tools/signature-lint-core.f" BGR-ARG+
    s" tools/checked-boundary-lint-core.f" BGR-ARG+
    s" tools/trust-lint-core.f" BGR-ARG+
+   s" tools/check-all-errors-core.f" BGR-ARG+
    s" tools/argv.f" BGR-ARG+
    s" tools/check.f" BGR-ARG+
    s" --" BGR-ARG+ ;

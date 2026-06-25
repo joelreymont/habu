@@ -5,7 +5,8 @@
 \ tools/lint/json-writer.f tools/lint/source-lex.f
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
 \ tools/signature-lint-core.f tools/checked-boundary-lint-core.f
-\ tools/trust-lint-core.f tools/argv.f tools/check-test.f
+\ tools/trust-lint-core.f tools/check-all-errors-core.f tools/argv.f
+\ tools/check-test.f
 
 $4000 constant CKT-BUF-CAP
 10000 constant CKT-TIMEOUT-MS
@@ -60,6 +61,7 @@ variable CKT-LIST-U
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/checked-boundary-lint-core.f"  >LEN PROC-ARGV+
    s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
+   s" tools/check-all-errors-core.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/check.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;

@@ -407,6 +407,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/checked-boundary-lint-core.f"  >LEN PROC-ARGV+
    s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
+   s" tools/check-all-errors-core.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/check.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+

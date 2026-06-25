@@ -232,6 +232,7 @@ variable GE-RD
    s" tools/signature-lint-core.f" GE-ARG+
    s" tools/checked-boundary-lint-core.f" GE-ARG+
    s" tools/trust-lint-core.f" GE-ARG+
+   s" tools/check-all-errors-core.f" GE-ARG+
    s" tools/argv.f" GE-ARG+
    s" tools/check.f" GE-ARG+
    s" --" GE-ARG+ ;

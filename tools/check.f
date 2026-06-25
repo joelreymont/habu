@@ -5,7 +5,7 @@
 \ tools/lint/json-writer.f, tools/lint/source-lex.f,
 \ tools/diag-origin-core.f, tools/json.f, tools/json-only-core.f,
 \ tools/signature-lint-core.f, tools/checked-boundary-lint-core.f,
-\ tools/trust-lint-core.f, and tools/argv.f.
+\ tools/trust-lint-core.f, tools/check-all-errors-core.f, and tools/argv.f.
 
 \ Audited hook-install boundary: this tool must install its checker hook before
 \ validating generated source snippets with CHECK!.
@@ -314,70 +314,9 @@ variable CHK-ROOT-U
 : CHK-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-: CHK-FILES-END? ( ptr u8 n -- bool )
-   s" ;CHK-FILES" STR= ;
-
-: CHK-FILES-ITEM, ( ptr u8 n -- ) {: a:ptr u :}
-   u 0 < if E-STR-BOUNDS throw then
-   u STR-BYTE-MAX > if E-STR-BOUNDS throw then
-   u c,
-   0 begin dup u < while
-      dup a + c@ c,
-      1+
-   repeat drop ;
-
-: CHK-FILES-PARSE ( -- )
-   begin
-      parse-name dup 0= if 2drop E-STR-BOUNDS throw then
-      2dup CHK-FILES-END? if 2drop 0 c, exit then
-      CHK-FILES-ITEM,
-   again ;
-
-: CHK-FILES-WALK ( ptr a [ ptr u8 n -- ] -- ) {: p:ptr q :}
-   p begin dup c@ 0= 0= while
-      dup 1+ over c@ q execute
-      dup c@ 1 + +
-   repeat drop ;
-
-: CHK-FILES-RUN ( [ ptr u8 n -- ] ptr a -- )
-   swap CHK-FILES-WALK ;
-
-: CHK-FILES: ( -- )
-   create CHK-FILES-PARSE
-   does> ( [ ptr u8 n -- ] -- )
-      CHK-FILES-RUN ;
-
-CHK-FILES: CHK-ALL-ERRORS-FILES
-   lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
-   lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f
-   tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f
-   tools/argv.f tools/check-all-errors.f
-;CHK-FILES
-
 : CHK-LOAD-RESET ( -- )
    PROC-ARGV-RESET
    s" --load" CHK-ARG+ ;
-
-: CHK-LOAD-END ( -- )
-   s" --" CHK-ARG+ ;
-
-: CHK-LOAD-ALL-ERRORS ( -- )
-   CHK-LOAD-RESET
-   [: CHK-ARG+ ;] CHK-ALL-ERRORS-FILES
-   CHK-LOAD-END ;
-
-: CHK-JSON-OPT ( ptr u8 n -- )
-   CHK-JSON @ if CHK-ARG+ else 2drop then ;
-
-: CHK-ADD-LABEL-SOURCE ( -- )
-   s" --label" CHK-ARG+
-   CHK-LABEL CHK-ARG+
-   CHK-SOURCE CHK-ARG+ ;
-
-: CHK-ARGV-ALL ( -- )
-   CHK-LOAD-ALL-ERRORS
-   s" --json-errors" CHK-JSON-OPT
-   CHK-ADD-LABEL-SOURCE ;
 
 : CHK-RUN-CAPTURE ( -- )
    s" bin/hb" >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
@@ -439,18 +378,17 @@ CHK-FILES: CHK-ALL-ERRORS-FILES
    CHK-SOURCE-LIST @ if CHK-RUN-TRUST-LIST exit then
    CHK-RUN-TRUST-SOURCE ;
 
+: CHK-RUN-ALL-CURRENT ( -- )
+   CHK-OUT-BUF CHK-OUT-CAP CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS-BUFFERS!
+   CHK-JSON @ CHECK-ALL-ERRORS-JSON!
+   CHK-LABEL CHK-SOURCE CHECK-ALL-ERRORS-FILE ;
+
 : CHK-RUN-ALL ( -- )
-   CHK-ARGV-ALL
-   CHK-RUN-CAPTURE
-   CHK-REPLAY
-   CHK-RC @ CHK-THROW ;
+   [: CHK-RUN-ALL-CURRENT ;] catch dup 0= if drop exit then
+   CHK-THROW ;
 
 : CHK-RUN-STATIC ( -- )
-   CHK-ARGV-ALL
-   CHK-RUN-CAPTURE
-   CHK-RC @ 0= if exit then
-   CHK-REPLAY
-   CHK-RC @ CHK-THROW ;
+   CHK-RUN-ALL ;
 
 : CHK-RUN-DIAG ( -- )
    CHK-SOURCE CHK-ORIGIN-BUF CHK-ORIGIN-CAP >LEN

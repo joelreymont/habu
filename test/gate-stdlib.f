@@ -264,7 +264,8 @@ TEST-SUITE check-cli-boundary
    tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
    tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f
    tools/json-only-core.f tools/signature-lint-core.f
-   tools/checked-boundary-lint-core.f tools/trust-lint-core.f tools/argv.f
+   tools/checked-boundary-lint-core.f tools/trust-lint-core.f
+   tools/check-all-errors-core.f tools/argv.f
    tools/check-test.f
 ;TEST-SUITE
 
