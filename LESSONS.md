@@ -138,6 +138,10 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Created list DSLs run directly:** pass `[: ITEM ;] NAME-FILES`, matching
   `GE-FILES:`/`CHK-FILES:`. A generic `execute` wrapper needs a higher-order
   effect the checker does not model and fails before testing the list.
+- **Checked dispatch rows need typed quotations:** in `tools/gate-json-assert.f`,
+  raw `[']` row actions reached `GJA-DISPATCH-ONE-FILE-ROW` as an untyped `n`
+  (`expected: ptr u8 n [ ptr u8 n-- ] actual: ptr u8 n n`). Use `[: ACTION ;]`
+  rows when a checked row helper executes a mode-specific command.
 - **Layout constants need one owner:** load `src/habu/layout.f` before every
   runtime prefix (env, baked REPL, stepper, watch, debug). Refresh once with
   compatibility constants if the installed `bin/hb` needs them, then remove dups

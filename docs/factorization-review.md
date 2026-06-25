@@ -254,7 +254,7 @@ the first review round:
 Tracker state was verified with `dot tree` on 2026-06-25 during the F04
 source-refactor handoff. The parent dot is `habu-review-whole-repo-5e087327`;
 F01, F02, F03, F05, F06, F07, F08, F09, F10, F12, F13, F14, F16, F17, F18,
-F19, F20, F21, and F22 are addressed; F04 has a Linux-validated source refactor but
+F19, F20, F21, F22, and F23 are addressed; F04 has a Linux-validated source refactor but
 remains open for macOS runtime validation; all rows below are open.
 
 The local `.dots/` store is ignored by the repository, so this section is the
@@ -418,6 +418,15 @@ Handoff snapshot:
   Validation covered the focused `lib/regex-test.f` command,
   `tools/stdlib-manifest-test.f`, `tools/public-signatures-test.f`,
   `test/gate-stdlib.f`, and the full native gate from `docs/bootstrap.md`.
+- F23 is closed on Linux/aarch64: `tools/gate-json-assert.f` now maps repair
+  classes through `GJA-SUGGEST-ROW` and dispatches CLI modes through checked row
+  helpers for one-file, two-argument, three-argument, and five-argument command
+  shapes. The command rows use typed quotations (`[: ... ;]`) so the checker sees
+  each action's stack effect; a first attempt with raw `[']` xts failed closed
+  before runtime. Validation covered direct `json-one-schema`, the focused
+  `tools/check-repair-hints-test.f`, `tools/repair-packet-test.f`, and
+  `tools/repair-schema-doc-test.f` commands, `test/gate-stdlib.f`, and the full
+  native gate from `docs/bootstrap.md`.
 - The remaining factorization work already has one dot per open finding in the
   local tracker. Do not create duplicates; start the next open row, commit that
   focused batch, update this document, close that row's dot, then push.
@@ -436,16 +445,15 @@ Next continuation step:
 3. If macOS exposes a spawn behavior regression, keep F04 open, root-cause the
    register/frame delta with the native debugger tools in `docs/debugging.md`,
    and commit the fix with a macOS regression.
-4. On Linux/aarch64, the next unblocked finding is F23
-   (`habu-table-drive-gate-698becb6`).
+4. On Linux/aarch64, the next unblocked finding is F24
+   (`habu-clean-engine-imgdump-b5c63365`).
 
 Open dot queue:
 
 | Order | Finding | Dot | Scope | Done when |
 | --- | --- | --- | --- | --- |
 | 1 | F04 | `habu-factor-darwin-spawn-5a82930c` | Validate the factored Darwin spawn emitter variants on macOS. | Shared helpers preserve the Darwin `posix_spawn` ABI; macOS process tests and full native gate pass, plus Linux-safe gate where run. |
-| 2 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. | Command arity/xt rows and repair suggestion rows replace branch ladders; gate-json assertions and full native gate pass. |
-| 3 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. | Missing stack-effect comments and lower-case project words are fixed; focused source loads, lint, and full native gate pass. |
+| 2 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. | Missing stack-effect comments and lower-case project words are fixed; focused source loads, lint, and full native gate pass. |
 
 ## Other Open Top-Level Dots
 
@@ -491,13 +499,13 @@ Parent: `habu-review-whole-repo-5e087327`
 ## Verification Status
 
 The original subagent review was read-only. The latest implementation batch is
-the Linux-validated F22 regex token/state factoring sub-batch. F11, F13, F15,
-F16, and F22 are closed on Linux/aarch64; after the F22 sub-batch the port stack
+the Linux-validated F23 gate-json row dispatch sub-batch. F11, F13, F15, F16,
+F22, and F23 are closed on Linux/aarch64; after the F23 sub-batch the port stack
 passed:
 
-- `lib/regex-test.f`: `regex-test: ok`;
-- `tools/stdlib-manifest-test.f`: `stdlib-manifest-test: ok`;
-- `tools/public-signatures-test.f`: `public-signatures-test: ok`;
+- `tools/check-repair-hints-test.f`: `check-repair-hints-test: ok`;
+- `tools/repair-packet-test.f`: `repair-packet-test: ok`;
+- `tools/repair-schema-doc-test.f`: `repair-schema-doc-test: ok`;
 - `test/gate-stdlib.f`: `PASS: native lint/stdlib gate phase`;
 - `test/run.f`:
   `PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)`.

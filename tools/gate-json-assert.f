@@ -83,6 +83,11 @@ variable GJA-DIRECT
 : GJA-CMD? ( ptr u8 n -- bool ) {: a:ptr u :}
    0 SCRIPT-ARGV$ a u GJA-BYTES= ;
 
+: GJA-SUGGEST-ROW ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n bool )
+   {: class:ptr classu key:ptr keyu suggestion:ptr suggestionu :}
+   class classu key keyu GJA-BYTES= IF suggestion suggestionu GJA-TRUE exit THEN
+   class classu GJA-FALSE ;
+
 : GJA-LINE! ( ptr u8 n n -- )
    {: a:ptr u k :}
    a k GJA-LINE-A!
@@ -281,30 +286,22 @@ variable GJA-DIRECT
    GJA-ROOT @ s" byte_end" GJA-IDX @ 3 + GJA-ASSERT-INT-FIELD ;
 
 : GJA-SUGGEST-FOR ( ptr u8 n -- ptr u8 n )
-   2dup s" remove_producer" GJA-BYTES= IF 2drop
-      s" Remove an extra producer or drop the surplus value." exit
-   THEN
-   2dup s" add_producer" GJA-BYTES= IF 2drop
-      s" Add the missing producer or stop consuming a required value." exit
-   THEN
-   2dup s" fix_type" GJA-BYTES= IF 2drop
-      s" Change the body so produced types match the signature." exit
-   THEN
-   2dup s" fix_return_stack" GJA-BYTES= IF 2drop
-      s" Balance return-stack transfers before the definition exits." exit
-   THEN
-   2dup s" trusted_boundary_required" GJA-BYTES= IF 2drop
-      s" Move this compiler or runtime boundary behind audited TRUST." exit
-   THEN
-   2dup s" fix_signature_syntax" GJA-BYTES= IF 2drop
-      s" Repair the stack-effect comment syntax, including --." exit
-   THEN
-   2dup s" rewrite_uncheckable" GJA-BYTES= IF 2drop
-      s" Rewrite with modeled words or isolate an audited primitive." exit
-   THEN
-   2dup s" unknown_rejection" GJA-BYTES= IF 2drop
-      s" Inspect the token, signature, and raw stack evidence." exit
-   THEN
+   s" remove_producer" s" Remove an extra producer or drop the surplus value."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" add_producer" s" Add the missing producer or stop consuming a required value."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" fix_type" s" Change the body so produced types match the signature."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" fix_return_stack" s" Balance return-stack transfers before the definition exits."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" trusted_boundary_required" s" Move this compiler or runtime boundary behind audited TRUST."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" fix_signature_syntax" s" Repair the stack-effect comment syntax, including --."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" rewrite_uncheckable" s" Rewrite with modeled words or isolate an audited primitive."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" unknown_rejection" s" Inspect the token, signature, and raw stack evidence."
+   GJA-SUGGEST-ROW IF exit THEN
    2drop s" unknown repair class in suggestion assertion" GJA-FAIL ;
 
 : GJA-DIAG-REPAIR-CLASS ( ptr u8 n ptr u8 n -- )
@@ -465,65 +462,77 @@ variable GJA-DIRECT
    GJA-PADDING @ 0 <> IF s" compact AOT report found padding" GJA-FAIL THEN
    GJA-DIRECT @ 3 < IF s" compact AOT report missing direct BLs" GJA-FAIL THEN ;
 
+: GJA-DISPATCH-ONE-FILE-ROW ( ptr u8 n [ ptr u8 n -- ] -- bool )
+   {: cmd:ptr cmdu q :}
+   cmd cmdu GJA-CMD? IF
+      2 GJA-ARGC=
+      1 SCRIPT-ARGV$ q execute
+      GJA-TRUE exit
+   THEN
+   GJA-FALSE ;
+
+: GJA-DISPATCH-TWO-ARG-ROW ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- bool )
+   {: cmd:ptr cmdu q :}
+   cmd cmdu GJA-CMD? IF
+      3 GJA-ARGC=
+      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ q execute
+      GJA-TRUE exit
+   THEN
+   GJA-FALSE ;
+
+: GJA-DISPATCH-THREE-ARG-ROW ( ptr u8 n [ ptr u8 n ptr u8 n ptr u8 n -- ] -- bool )
+   {: cmd:ptr cmdu q :}
+   cmd cmdu GJA-CMD? IF
+      4 GJA-ARGC=
+      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ 3 SCRIPT-ARGV$ q execute
+      GJA-TRUE exit
+   THEN
+   GJA-FALSE ;
+
+: GJA-DISPATCH-FIVE-ARG-ROW ( ptr u8 n [ ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ] -- bool )
+   {: cmd:ptr cmdu q :}
+   cmd cmdu GJA-CMD? IF
+      6 GJA-ARGC=
+      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ 3 SCRIPT-ARGV$ 4 SCRIPT-ARGV$ 5 SCRIPT-ARGV$
+      q execute
+      GJA-TRUE exit
+   THEN
+   GJA-FALSE ;
+
 : GJA-DISPATCH-ONE-FILE ( -- bool )
-   0 SCRIPT-ARGV$ s" json-lines-schema" GJA-BYTES= IF
-      2 GJA-ARGC=
-      1 SCRIPT-ARGV$ GJA-JSON-LINES-SCHEMA GJA-TRUE exit
-   THEN
-   s" json-one-schema" GJA-CMD? IF
-      2 GJA-ARGC=
-      1 SCRIPT-ARGV$ GJA-JSON-ONE-SCHEMA GJA-TRUE exit
-   THEN
-   s" all-errors" GJA-CMD? IF
-      2 GJA-ARGC=
-      1 SCRIPT-ARGV$ GJA-ALL-ERRORS GJA-TRUE exit
-   THEN
-   s" sarif" GJA-CMD? IF
-      2 GJA-ARGC=
-      1 SCRIPT-ARGV$ GJA-SARIF GJA-TRUE exit
-   THEN
-   s" public-signatures" GJA-CMD? IF
-      2 GJA-ARGC=
-      1 SCRIPT-ARGV$ GJA-PUBLIC-SIGNATURES GJA-TRUE exit
-   THEN
-   s" aot-stripped" GJA-CMD? IF
-      2 GJA-ARGC=
-      1 SCRIPT-ARGV$ GJA-AOT-STRIPPED GJA-TRUE exit
-   THEN
-   s" aot-compact" GJA-CMD? IF
-      2 GJA-ARGC=
-      1 SCRIPT-ARGV$ GJA-AOT-COMPACT GJA-TRUE exit
-   THEN
+   s" json-lines-schema" [: GJA-JSON-LINES-SCHEMA ;]
+   GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
+   s" json-one-schema" [: GJA-JSON-ONE-SCHEMA ;]
+   GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
+   s" all-errors" [: GJA-ALL-ERRORS ;]
+   GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
+   s" sarif" [: GJA-SARIF ;]
+   GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
+   s" public-signatures" [: GJA-PUBLIC-SIGNATURES ;]
+   GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
+   s" aot-stripped" [: GJA-AOT-STRIPPED ;]
+   GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
+   s" aot-compact" [: GJA-AOT-COMPACT ;]
+   GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
    GJA-FALSE ;
 
 : GJA-DISPATCH-TWO-ARG ( -- bool )
-   s" diag-file-origin" GJA-CMD? IF
-      3 GJA-ARGC=
-      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-DIAG-FILE-ORIGIN GJA-TRUE exit
-   THEN
-   s" diag-repair-class" GJA-CMD? IF
-      3 GJA-ARGC=
-      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-DIAG-REPAIR-CLASS GJA-TRUE exit
-   THEN
-   s" repair-packet" GJA-CMD? IF
-      3 GJA-ARGC=
-      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ GJA-REPAIR-PACKET GJA-TRUE exit
-   THEN
+   s" diag-file-origin" [: GJA-DIAG-FILE-ORIGIN ;]
+   GJA-DISPATCH-TWO-ARG-ROW IF GJA-TRUE exit THEN
+   s" diag-repair-class" [: GJA-DIAG-REPAIR-CLASS ;]
+   GJA-DISPATCH-TWO-ARG-ROW IF GJA-TRUE exit THEN
+   s" repair-packet" [: GJA-REPAIR-PACKET ;]
+   GJA-DISPATCH-TWO-ARG-ROW IF GJA-TRUE exit THEN
    GJA-FALSE ;
 
 : GJA-DISPATCH-RETURN-STACK ( -- bool )
-   s" diag-return-stack" GJA-CMD? IF
-      4 GJA-ARGC=
-      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ 3 SCRIPT-ARGV$ GJA-DIAG-RETURN-STACK GJA-TRUE exit
-   THEN
+   s" diag-return-stack" [: GJA-DIAG-RETURN-STACK ;]
+   GJA-DISPATCH-THREE-ARG-ROW IF GJA-TRUE exit THEN
    GJA-FALSE ;
 
 : GJA-DISPATCH-ROW-EFFECT ( -- bool )
-   s" diag-row-effect" GJA-CMD? IF
-      6 GJA-ARGC=
-      1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ 3 SCRIPT-ARGV$ 4 SCRIPT-ARGV$ 5 SCRIPT-ARGV$
-      GJA-DIAG-ROW-EFFECT GJA-TRUE exit
-   THEN
+   s" diag-row-effect" [: GJA-DIAG-ROW-EFFECT ;]
+   GJA-DISPATCH-FIVE-ARG-ROW IF GJA-TRUE exit THEN
    GJA-FALSE ;
 
 : GJA-DISPATCH ( -- )
