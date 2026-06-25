@@ -10,12 +10,19 @@ CHECKING-ON? @  CHECKING-ON? off          \ metaprogramming (span capture, recur
 
 defer WALK-INLINE ( a u -- )              \ = WALK-BODY, bound in walk.fs (forward ref)
 
-create QBUF 1024 chars allot   variable QLEN   variable QCAP?   variable QDEPTH
+1024 constant QBUF-CAP
+create QBUF QBUF-CAP chars allot   variable QLEN   variable QCAP?   variable QDEPTH
 2variable QPEND                           \ captured quotation body (a u into QBUF), or 0 0
 
 : Q-RESET ( -- )  QCAP? off  0 0 QPEND 2! ;
 
-: Q+ ( a u -- )  QBUF QLEN @ + swap dup QLEN +! move  bl QBUF QLEN @ + c!  1 QLEN +! ;
+: Q-ROOM ( u -- )
+   QLEN @ + 1+ QBUF-CAP > if 1 abort" cg: quotation buffer overflow" then ;
+
+: Q+ ( a u -- )
+   dup Q-ROOM
+   QBUF QLEN @ + swap dup QLEN +! move
+   bl QBUF QLEN @ + c!  1 QLEN +! ;
 
 \ inline the pending quotation onto the current (already-spilled) stack
 : Q-EXEC ( -- )  V-SPILL  QPEND 2@ WALK-INLINE  Q-RESET ;

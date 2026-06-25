@@ -67,14 +67,21 @@ $100000 constant HEAPSZ
 : P-/MOD T1 G-POP  T0 G-POP  G-DIV0?  T2 T0 T1 SDIV,  12 T2 T1 MUL,  12 T0 12 SUB,  12 G-PUSH  T2 G-PUSH ;
 
 \ control-flow stack (compile-time, holds label ids)
-variable CF-SP   create CF-STK 64 cells allot
+64 constant CF-MAX
+variable CF-SP   create CF-STK CF-MAX cells allot
 variable EPILOG  variable LOOP-DEPTH
 
 : CF-RESET ( -- )  0 CF-SP !  0 LOOP-DEPTH ! ;
 
-: CF-PUSH ( x -- )  CF-STK CF-SP @ cells + !  1 CF-SP +! ;
+: CF-PUSH? ( -- )
+   CF-SP @ CF-MAX >= if 1 abort" cg: control-flow stack overflow" then ;
 
-: CF-POP  ( -- x )  -1 CF-SP +!  CF-STK CF-SP @ cells + @ ;
+: CF-POP? ( -- )
+   CF-SP @ 0 <= if 1 abort" cg: control-flow stack underflow" then ;
+
+: CF-PUSH ( x -- )  CF-PUSH?  CF-STK CF-SP @ cells + !  1 CF-SP +! ;
+
+: CF-POP  ( -- x )  CF-POP?  -1 CF-SP +!  CF-STK CF-SP @ cells + @ ;
 
 : C-IF    T0 G-POP  LBL dup T0 swap CBZ,  CF-PUSH ;
 

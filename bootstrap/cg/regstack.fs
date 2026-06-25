@@ -59,7 +59,15 @@ variable RL-ACTIVE   variable RL-FAIL
 
 : RL-MEM ( -- )  RL-ACTIVE @ if  RL-FAIL on  then ;   \ memory touched below the carry
 
-: V-PUSHX ( tag val -- )  VVAL VSP @ cells + !  VTAG VSP @ cells + !  1 VSP +! ;
+: V-PUSH? ( -- )
+   VSP @ VMAX >= if 1 abort" cg: value stack overflow" then ;
+
+: V-POPC? ( -- )
+   VSP @ 0 <= if 1 abort" cg: value stack underflow" then ;
+
+: V-PUSHX ( tag val -- )
+   V-PUSH?
+   VVAL VSP @ cells + !  VTAG VSP @ cells + !  1 VSP +! ;
 
 : V-PUSHR ( r -- )  V-REG swap V-PUSHX ;
 
@@ -88,7 +96,7 @@ variable RL-ACTIVE   variable RL-FAIL
    t V-FREG = if  R-ALLOC {: r :}  r v FMOVDX,  v D-FREE  r exit then
    R-ALLOC {: r :}  r v LIT64,  r ;       \ V-CON
 
-: V-POPC ( -- n )  -1 VSP +!  VVAL VSP @ cells + @ ;     \ pop a known CON
+: V-POPC ( -- n )  V-POPC?  -1 VSP +!  VVAL VSP @ cells + @ ;     \ pop a known CON
 
 \ pop, materialising into a D (FP) register. FREG is already there; REG/CON/empty
 \ get FMOVXD'd in (the bits become a float in the D-file).

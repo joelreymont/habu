@@ -41,11 +41,15 @@ wordlist constant CODE-TABLE
    repeat ;
 
 \ --- transitive dependency collection ---
-create DEPS 256 cells allot   variable #DEPS
+256 constant MAX-DEPS
+create DEPS MAX-DEPS cells allot   variable #DEPS
 
 : DEP-HAS? ( pfa -- f )  #DEPS @ 0 ?do  dup DEPS i cells + @ = if drop true unloop exit then  loop drop false ;
 
-: DEP-ADD  ( pfa -- )  dup DEP-HAS? if drop else DEPS #DEPS @ cells + !  1 #DEPS +! then ;
+: DEP-ROOM ( -- )
+   #DEPS @ MAX-DEPS >= if 1 abort" cg: dependency table overflow" then ;
+
+: DEP-ADD  ( pfa -- )  dup DEP-HAS? if drop else DEP-ROOM  DEPS #DEPS @ cells + !  1 #DEPS +! then ;
 
 : SCAN-TOK ( ta tu -- )
    2dup s" ." compare 0= if 2drop USES-DOT on exit then

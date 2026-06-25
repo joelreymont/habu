@@ -19,6 +19,7 @@ variable CGL-N        variable CGL-COLLECT?
 
 : CGL-ADD ( a u -- )                       \ record a local name, assign the next slot
    CGL-N @ CGL-MAX >= if 1 abort" cg: too many locals" then
+   dup CGL-NAMESZ > if 1 abort" cg: local name too long" then
    CGL-N @ {: i :}
    dup i cells CGL-LEN + !
    i CGL-NAMESZ chars * CGL-NAME +  swap move
