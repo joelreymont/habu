@@ -52,6 +52,12 @@ cell, push the signature pair, and call x11 with LR saved. Leaving raw `G-PUSH`
 and `BLR` sequences inline makes reviewers re-derive the emitted stack and
 register contract at every trust boundary.
 
+### Bootstrap image writers share cursor vocabulary
+Bootstrap ELF and Mach-O writers should share `MBUF`/`MP`/`MLEN` cursor words in
+one file and leave target files to executable-format policy. Duplicated byte
+stores and copy/pad loops make recovery-host changes harder to audit across
+Linux and macOS.
+
 ### Split driver timeouts by phase
 The Forth live-driver timeout fixture set a one-second child timeout and
 accidentally timed out the checker subprocess on Linux/aarch64 before the

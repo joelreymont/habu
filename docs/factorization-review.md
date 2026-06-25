@@ -133,20 +133,33 @@ the first review round:
   before touching `bin/hb`; `bin/hb` kept sha256
   `50a6cfe5fb69e80f46db229bc7d8c8414e91de7b0e02a12e5c43f5bb1a131b56`
   before and after the recovery probe.
+- F19 bootstrap ELF and Mach-O writers now share the executable image buffer
+  vocabulary in `bootstrap/cg/image.fs`. `bootstrap/cg/elf.fs` and
+  `bootstrap/cg/macho.fs` keep only target header/layout policy and both append
+  assembled code through `M-BYTES`. `tools/bootstrap-codegen-test.f` guards that
+  the target files require the shared buffer and do not redeclare `MSIZE`,
+  `MBUF`, `MP`, `MLEN`, or the byte/word store helpers. `tools/bootstrap-codegen-test.f`,
+  `trust-lint`, `stale-status-lint`, `bin/hb test/engine-suite.f`, the focused
+  `build-helper-fixtures` load bundle, and the full native gate passed.
+  No-binary recovery bootstrap was not run on this host because installed Gforth
+  0.7.3 fails the documented `{:` locals probe and `tools/bootstrap.sh` exits 69
+  before touching `bin/hb`; `bin/hb` kept sha256
+  `3e26563a5bb47ca142f56b3a245a9d9f5c54ac5de171476ecdce024a10d0cae8`
+  before and after the recovery probe.
 
 ## Continuation Handoff
 
 Tracker state was verified with `dot tree habu-review-whole-repo-5e087327`.
 The parent dot is `habu-review-whole-repo-5e087327`; F01, F02, F03, F06, F07,
-F08, F09, and F21 are addressed; all rows below are open. No duplicate top-level
-dots are needed.
+F08, F09, F19, and F21 are addressed; all rows below are open. No duplicate
+top-level dots are needed.
 The local `.dots/` store is ignored by the repository, so this section is the
 durable committed queue. A fresh checkout can recreate the tracker from this
 table if the local dot store is unavailable.
 
 Handoff snapshot:
 
-- The F21 source edits were validated by the focused bootstrap/codegen checks,
+- The F19 source edits were validated by the focused bootstrap/codegen checks,
   `trust-lint`, `stale-status-lint`, the engine suite, the focused
   `build-helper-fixtures` bundle, the full native gate, and the local recovery
   probe described above.
@@ -158,34 +171,33 @@ Handoff snapshot:
 
 Next continuation step:
 
-1. Start `habu-share-bootstrap-image-ef41b8f8`.
-2. Move common bootstrap ELF/Mach-O image-buffer emitters into a shared bootstrap
-   helper file while preserving each target format's policy words.
-3. Validate with focused bootstrap source loads, `tools/bootstrap-codegen-test.f`
-   if source-shape coverage changes, `trust-lint`, the native fixpoint/full gate
-   from `docs/bootstrap.md`, and the no-binary recovery probe when a Gforth with
-   `{:` locals is available.
+1. Start `habu-factor-checked-arm64-f1f46265`.
+2. Add checked ARM64 instruction-layout combinators in `bootstrap/cg/asm-checked.fs`
+   to remove repeated register/register, immediate, move-wide, and load/store
+   arithmetic.
+3. Validate with the owning checked ARM64 source loads or fixtures, `trust-lint`,
+   the native fixpoint/full gate from `docs/bootstrap.md`, and the no-binary
+   recovery probe when a Gforth with `{:` locals is available.
 
 Open dot queue:
 
 | Order | Finding | Dot | Scope |
 | --- | --- | --- | --- |
-| 1 | F19 | `habu-share-bootstrap-image-ef41b8f8` | Share bootstrap ELF/Mach-O image buffer emitters. |
-| 2 | F20 | `habu-factor-checked-arm64-f1f46265` | Add checked ARM64 layout combinators. |
-| 3 | F10 | `habu-factor-typed-byte-b311d5c7` | Factor shared ELF/Mach-O/signing byte cursor layer. |
-| 4 | F04 | `habu-factor-darwin-spawn-5a82930c` | Factor Darwin spawn emitter variants. |
-| 5 | F05 | `habu-factor-native-c-230e1316` | Split native `C-CALL` phases. |
-| 6 | F17 | `habu-share-signature-scan-5353e68b` | Share required/optional signature scanning. |
-| 7 | F18 | `habu-factor-compiler-dispatch-0167f41a` | Split compiler dispatch/data chains by concern or checked rows. |
-| 8 | F12 | `habu-factor-process-capture-467f9021` | Factor capture setup, probe, drain, close, and reap lifecycle. |
-| 9 | F14 | `habu-factor-gate-progress-555aa42d` | Share progress-aware capture helpers. |
-| 10 | F13 | `habu-factor-check-load-2e29d26a` | Split check/load builders and keep only true boundary spawns. |
-| 11 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. |
-| 12 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. |
-| 13 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. |
-| 14 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. |
-| 15 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. |
-| 16 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. |
+| 1 | F20 | `habu-factor-checked-arm64-f1f46265` | Add checked ARM64 layout combinators. |
+| 2 | F10 | `habu-factor-typed-byte-b311d5c7` | Factor shared ELF/Mach-O/signing byte cursor layer. |
+| 3 | F04 | `habu-factor-darwin-spawn-5a82930c` | Factor Darwin spawn emitter variants. |
+| 4 | F05 | `habu-factor-native-c-230e1316` | Split native `C-CALL` phases. |
+| 5 | F17 | `habu-share-signature-scan-5353e68b` | Share required/optional signature scanning. |
+| 6 | F18 | `habu-factor-compiler-dispatch-0167f41a` | Split compiler dispatch/data chains by concern or checked rows. |
+| 7 | F12 | `habu-factor-process-capture-467f9021` | Factor capture setup, probe, drain, close, and reap lifecycle. |
+| 8 | F14 | `habu-factor-gate-progress-555aa42d` | Share progress-aware capture helpers. |
+| 9 | F13 | `habu-factor-check-load-2e29d26a` | Split check/load builders and keep only true boundary spawns. |
+| 10 | F11 | `habu-factor-filesystem-traversal-f490595e` | Factor directory traversal mechanics. |
+| 11 | F15 | `habu-table-drive-stdlib-786cb080` | Table-drive stdlib manifest documentation policy. |
+| 12 | F16 | `habu-factor-stale-status-615b5a1b` | Split stale-status count scanner helpers. |
+| 13 | F22 | `habu-factor-regex-token-865ebac5` | Factor regex token predicates or transitions. |
+| 14 | F23 | `habu-table-drive-gate-698becb6` | Table-drive gate JSON command/repair dispatch. |
+| 15 | F24 | `habu-clean-engine-imgdump-b5c63365` | Add comments and uppercase project words in engine/imgdump tests. |
 
 ## Other Open Top-Level Dots
 
@@ -231,7 +243,8 @@ Parent: `habu-review-whole-repo-5e087327`
 ## Verification Status
 
 The original subagent review was read-only. The latest implementation batch is
-F21, and the fully validated port stack after the trust-call refactor passed:
+F19, and the fully validated port stack after the bootstrap image-buffer refactor
+passed:
 
 - `trust-lint`: 236 TRUST sites, 318 manifest rows, 0 findings;
 - `stale-status-lint`: 0 findings;
@@ -244,7 +257,7 @@ F21, and the fully validated port stack after the trust-call refactor passed:
 - recovery-host probe: installed `gforth 0.7.3` failed the required `{:` locals
   probe with rc 1, so `tools/bootstrap.sh` exited 69 before generation and left
   `bin/hb` checksum
-  `50a6cfe5fb69e80f46db229bc7d8c8414e91de7b0e02a12e5c43f5bb1a131b56`
+  `3e26563a5bb47ca142f56b3a245a9d9f5c54ac5de171476ecdce024a10d0cae8`
   unchanged.
 
 ## Agent Command Notes

@@ -1,29 +1,7 @@
 \ elf.fs -- minimal Linux/aarch64 ELF executable writer for the Gforth bootstrap.
 
 require asm.fs
-
-$90000 constant MSIZE
-create MBUF MSIZE allot
-variable MP
-variable MLEN
-
-: M-RESET ( -- )  MBUF MP ! ;
-
-: M8  ( b -- )  MP @ c!  1 MP +! ;
-
-: M16 ( h -- )  dup M8  8 rshift M8 ;
-
-: M32 ( w -- )  dup M16  16 rshift M16 ;
-
-: M64 ( x -- )  dup M32  32 rshift M32 ;
-
-: M-HERE ( -- off )  MP @ MBUF - ;
-
-: M-ZEROS ( n -- )  0 max 0 ?do 0 M8 loop ;
-
-: M-BYTES ( addr u -- )  bounds ?do i c@ M8 loop ;
-
-: M-PAD ( off -- )  M-HERE - M-ZEROS ;
+require image.fs
 
 $7F constant ELF-MAG0
 69 constant ELF-MAG1
@@ -81,8 +59,7 @@ create SCODE MPAGE allot
    ELF-HDR,
    ELF-PHDR,
    CODE-OFF M-PAD
-   SCODE  MP @  CODELEN @  move
-   CODELEN @ MP +!
+   SCODE CODELEN @ M-BYTES
    TEXTSZ M-PAD
    M-HERE MLEN ! ;
 

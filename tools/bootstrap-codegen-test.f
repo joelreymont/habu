@@ -69,12 +69,35 @@ variable BCG-LEN
    s" 9 DATA TSIG-A-CELL LDR,  9 G-PUSH" BCG-MUST-LACK
    s" 9 DATA TSIG-U-CELL LDR,  9 G-PUSH" BCG-MUST-LACK ;
 
+: BCG-TEST-IMAGE-BUFFER-CURRENT ( -- )
+   s" require image.fs" BCG-MUST-HAVE
+   s" $90000 constant MSIZE" BCG-MUST-LACK
+   s" create MBUF MSIZE allot" BCG-MUST-LACK
+   s" variable MP" BCG-MUST-LACK
+   s" variable MLEN" BCG-MUST-LACK
+   s" : M8" BCG-MUST-LACK
+   s" : M16" BCG-MUST-LACK
+   s" : M32" BCG-MUST-LACK
+   s" : M64" BCG-MUST-LACK
+   s" SCODE CODELEN @ M-BYTES" BCG-MUST-HAVE ;
+
+: BCG-TEST-IMAGE-BUFFER ( -- )
+   s" bootstrap/cg/image.fs" BCG-LOAD
+   s" create MBUF MSIZE allot" BCG-MUST-HAVE
+   s" : M-BYTES ( addr u -- )" BCG-MUST-HAVE
+   s" : M-NAME16 ( addr u -- )" BCG-MUST-HAVE
+   s" bootstrap/cg/elf.fs" BCG-LOAD
+   BCG-TEST-IMAGE-BUFFER-CURRENT
+   s" bootstrap/cg/macho.fs" BCG-LOAD
+   BCG-TEST-IMAGE-BUFFER-CURRENT ;
+
 : BCG-MAIN ( -- )
    T-RESET
    BCG-TEST-INSTALL-FAIL-CLOSED
    BCG-TEST-FORTH-SDQ-COMMENT
    BCG-TEST-PREFIX-LIST
    BCG-TEST-TRUST-CALLS
+   BCG-TEST-IMAGE-BUFFER
    T-REPORT
    s" bootstrap-codegen-test: ok" type cr ;
 

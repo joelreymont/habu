@@ -8,29 +8,7 @@
 \ SIGKILLed (AMFI); this is dynamic, dyld-loaded, zero C. See docs/macho.md.
 
 require asm.fs
-
-$90000 constant MSIZE
-create MBUF MSIZE allot
-variable MP
-variable MLEN
-
-: M-RESET ( -- )  MBUF MP ! ;
-
-: M8  ( b -- )  MP @ c!  1 MP +! ;
-
-: M16 ( h -- )  dup M8  8 rshift M8 ;
-
-: M32 ( w -- )  dup M16  16 rshift M16 ;
-
-: M64 ( x -- )  dup M32  32 rshift M32 ;
-
-: M-HERE ( -- off )  MP @ MBUF - ;
-
-: M-ZEROS ( n -- )  0 max 0 ?do 0 M8 loop ;
-
-: M-NAME16 ( addr u -- )  dup >r  bounds ?do i c@ M8 loop  16 r> - M-ZEROS ;
-
-: M-PAD ( off -- )  M-HERE - M-ZEROS ;
+require image.fs
 
 \ Mach-O constants
 $FEEDFACF constant MH-MAGIC64
@@ -115,8 +93,7 @@ variable NCMDS                        \ load commands counted as emitted
    PATCH-HDR                          \ derive ncmds/sizeofcmds (no frozen magic)
    CODELEN @  MPAGE CODE-OFF -  > abort" cg: emitted code exceeds __TEXT page"
    CODE-OFF M-PAD                    \ header slack (room for the post-pass LC_CODE_SIGNATURE)
-   SCODE  MP @  CODELEN @  move      \ copy assembled code
-   CODELEN @ MP +!
+   SCODE CODELEN @ M-BYTES           \ copy assembled code
    TEXTSZ M-PAD                        \ pad file to content-aligned TEXT size
    M-HERE MLEN ! ;
 
