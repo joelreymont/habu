@@ -18,6 +18,8 @@ points stay listed.
 - `docs/lint-foundation-inventory.md` — dependency map for replacing old lint-foundation pieces.
 - `docs/llm-stdlib-cookbook.md` — prompt-sized checked stdlib examples for LLM-generated Habu.
 - `docs/parallel-agents.md` — map-reduce protocol for parallel dot execution.
+- `docs/ptx.md` — Habu→PTX GPU DSL strategy and scope.
+- `docs/ptx-sketch.md` — Habu→PTX v0 language spec.
 - `docs/seed.md` — native seed trust root and no-binary recovery.
 
 ## Core Checker
