@@ -195,7 +195,9 @@ variable RXT-RX-LEN
    [: RXT-NEG-CAP ;] catch E-RX-CAPACITY T=
    [: RXT-BAD-QUANT ;] catch E-RX-SYNTAX T=
    [: RXT-DOUBLE-QUANT ;] catch E-RX-SYNTAX T=
-   [: RXT-ANCHOR-QUANT ;] catch E-RX-SYNTAX T= ;
+   [: RXT-ANCHOR-QUANT ;] catch E-RX-SYNTAX T=
+   [: RX-ACTIVE -1 >OFF RX-FLAG? drop ;] catch E-RX-CAPACITY T=
+   [: RX-ACTIVE RX-STATE-CAP >OFF RX-FLAG? drop ;] catch E-RX-CAPACITY T= ;
 
 : RXT-REPORT ( -- )
    T-FAILURES 0= if s" regex-test: ok" type cr exit then

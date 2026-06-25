@@ -1,6 +1,6 @@
 \ argv-test.f -- focused tests for lib/argv.f.
-\ Run mocks:  cat lib/argv.f lib/argv-test.f | bin/hb
-\ Run script: cat lib/argv.f lib/argv-test.f > /tmp/hb-argv-test.f
+\ Run mocks:  cat lib/errors.f lib/string.f lib/argv.f lib/argv-test.f | bin/hb
+\ Run script: cat lib/errors.f lib/string.f lib/argv.f lib/argv-test.f > /tmp/hb-argv-test.f
 \             bin/hb /tmp/hb-argv-test.f --json --label NAME --strict-signatures --all-errors --strict-boundary -o OUT -- file.f --literal
 
 variable TEST-N
@@ -152,6 +152,18 @@ variable TEST-FAIL
    s" file.f" ARGV-MOCK+
    NEED-LABEL-RC ARGV-E-USAGE ASSERT-RC ;
 
+: ZCOPY-NEG-CASE ( -- )
+   s" x" drop -1 ARGV-PATH-BUF ARGV-PATH-CAP ARGV-ZCOPY drop ;
+
+: ZCOPY-FULL-CAP-CASE ( -- )
+   ARGV-PATH-BUF ARGV-PATH-CAP ARGV-PATH-BUF ARGV-PATH-CAP ARGV-ZCOPY drop ;
+
+: TEST-ZCOPY-NEG ( -- )
+   [: ZCOPY-NEG-CASE ;] catch ARGV-E-INTERNAL ASSERT-RC ;
+
+: TEST-ZCOPY-FULL-CAP ( -- )
+   [: ZCOPY-FULL-CAP-CASE ;] catch ARGV-E-INTERNAL ASSERT-RC ;
+
 : TEST-MOCKS ( -- )
    TEST-COMMON
    TEST-DEFAULTS
@@ -164,7 +176,9 @@ variable TEST-FAIL
    TEST-POS-LOW
    TEST-POS-HIGH
    TEST-REQUIRE-OUT
-   TEST-REQUIRE-LABEL ;
+   TEST-REQUIRE-LABEL
+   TEST-ZCOPY-NEG
+   TEST-ZCOPY-FULL-CAP ;
 
 : TEST-SCRIPT-ARGS ( -- )
    s" hb argv-test [options] file.f" ARGV-USAGE!

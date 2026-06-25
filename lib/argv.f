@@ -255,7 +255,9 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    ARGV-LABEL? 0= if s" missing --label NAME" ARGV-FAIL then ;
 
 : ARGV-ZCOPY ( ptr u8 n ptr u8 n -- ptr u8 ) {: a:ptr u dst:ptr cap :}
-   u 1 + cap > if ARGV-E-INTERNAL throw then
+   u 0 < if ARGV-E-INTERNAL throw then
+   cap 0 <= if ARGV-E-INTERNAL throw then
+   u cap >= if ARGV-E-INTERNAL throw then
    0 begin dup u < while
       dup a + c@  over dst + c!
       1 +

@@ -23,9 +23,11 @@
 5381 constant MAP-HASH-SEED
 33 constant MAP-HASH-MUL
 $7FFFFFFFFFFFFFFF constant MAP-HASH-MASK
+MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
 
 : MAP-CHECK-CAP ( count -- ) {: cap :}
-   cap COUNT>N 0 <= if E-MAP-BAD-CAP throw then ;
+   cap COUNT>N 0 <= if E-MAP-BAD-CAP throw then
+   cap COUNT>N MAP-MAX-CAP > if E-MAP-BAD-CAP throw then ;
 
 : MAP-CHECK-LEN ( len -- ) {: len :}
    len LEN>N 0 < if E-MAP-BAD-CAP throw then ;

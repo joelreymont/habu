@@ -107,7 +107,12 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    data vec VEC-DATA!
    cap vec VEC-CAP! ;
 
+: VEC-CHECK-RESIZE-CAP ( ptr a count -- ) {: vec:ptr cap :}
+   cap VEC-CHECK-CAP
+   cap COUNT>N vec VEC-LEN@ LEN>N < if E-VEC-BOUNDS throw then ;
+
 : VEC-RESIZE ( ptr a count -- ) {: vec:ptr cap :}
+   vec cap VEC-CHECK-RESIZE-CAP
    vec cap cap VEC-ALLOC-CELLS VEC-INSTALL-RESIZE ;
 
 : VEC-GROW-CAP ( ptr a count -- count ) {: vec:ptr need :}

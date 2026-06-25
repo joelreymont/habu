@@ -24,8 +24,17 @@ create A-NAME-U DICT-CAP cells allot
 create A-START DICT-CAP cells allot
 create A-LEN DICT-CAP cells allot
 
-: IB@ IB @ ;
-s" IB@" s" -- ptr u8" TRUST
+: IB-FIELD ( -- ptr ptr u8 )
+   IB 0 ptr-field ;
+
+: IB@ ( -- ptr u8 )
+   IB-FIELD @ ;
+
+: IB! ( ptr u8 -- )
+   IB-FIELD ! ;
+
+TRUSTED: IMG-MMAP-PTR ( n -- ptr u8 )
+   dup 0 < IF IFD @ close s" imgdump: mmap failed" 74 die THEN ;
 
 : IMG-USAGE ( -- )
    s" usage: bin/hb --load src/os/<target>/layout.f src/habu/layout.f tools/imgdump.f -- image [image2]" 64 die ;
@@ -47,8 +56,7 @@ s" IB@" s" -- ptr u8" TRUST
    IPATH 0 0 open IFD !
    IFD @ 0 < IF s" imgdump: open failed" 74 die THEN
    0 ISZ @ 1 2 IFD @ 0 mmap
-   dup 0 < IF IFD @ close s" imgdump: mmap failed" 74 die THEN
-   IB !
+   IMG-MMAP-PTR IB!
    IFD @ close
    ISZ @ IL ! ;
 

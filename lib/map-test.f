@@ -189,6 +189,9 @@ create MT-KEY-Z 122 c,
 : MT-BAD-CAP-NEG ( -- )
    -1 MT-MAP-CHECK-CAP ;
 
+: MT-BAD-CAP-HIGH ( -- )
+   MAP-MAX-CAP 1 + MT-MAP-CHECK-CAP ;
+
 : MT-GOOD-CAP ( -- )
    1 MT-MAP-CHECK-CAP ;
 
@@ -257,6 +260,7 @@ create MT-KEY-Z 122 c,
    [: MT-GOOD-CAP ;] catch 0 MT=
    [: MT-BAD-CAP-ZERO ;] catch E-MAP-BAD-CAP MT=
    [: MT-BAD-CAP-NEG ;] catch E-MAP-BAD-CAP MT=
+   [: MT-BAD-CAP-HIGH ;] catch E-MAP-BAD-CAP MT=
    MT-MAP MT-CAP MT-MAP-INIT
    MT-CAP MT-MAP MT-MAP-COUNT!  MT-MAP MT-MAP-COUNT@ MT-CAP MT=
    0 MT-MAP MT-MAP-COUNT!

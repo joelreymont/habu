@@ -33,22 +33,36 @@ variable BF-PID
 variable BF-TMP-A
 variable BF-TMP-U
 
+: BF-TMP-A-FIELD ( -- ptr ptr u8 )
+   BF-TMP-A 0 ptr-field ;
+
+: BF-TMP-A@ ( -- ptr u8 )
+   BF-TMP-A-FIELD @ ;
+
+: BF-TMP-A! ( ptr u8 -- )
+   BF-TMP-A-FIELD ! ;
+
 : BF-TRUE ( -- bool )
    0 0= ;
 
 : BF-FALSE ( -- bool )
    0 0= 0= ;
 
-TRUSTED: BF-TMP-OVERRIDE$ ( -- ptr u8 n )
-   BF-TMP-A @ BF-TMP-U @ ;
+: BF-TMP! ( ptr u8 n -- )
+   {: a:ptr u :}
+   u BF-TMP-U !
+   a BF-TMP-A! ;
 
-TRUSTED: BF-TMP! ( ptr u8 n -- )
+: BF-TMP-OVERRIDE$ ( -- ptr u8 n )
+   BF-TMP-A@ BF-TMP-U @ ;
+
+\ Compatibility alias for existing call sites.
+: BF-TMP-SET ( ptr u8 n -- )
    BF-TMP-U !
-   BF-TMP-A ! ;
+   BF-TMP-A! ;
 
 : BF-TMP-RESET ( -- )
-   0 BF-TMP-U !
-   0 BF-TMP-A ! ;
+   0 BF-TMP-U ! ;
 
 : BF-TMP$ ( -- ptr u8 n )
    BF-TMP-U @ 0 > if BF-TMP-OVERRIDE$ exit then

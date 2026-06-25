@@ -1,6 +1,7 @@
 \ table.f - checked fixed-capacity cell table helpers.
 
 2 constant TBL-PAIR-CELLS
+$7FFFFFFFFFFFFFFF constant TBL-MAX-CELLS
 
 : TBL-CHECK-ROW ( count idx -- ) {: rows row :}
    rows COUNT>N 0 < if E-TBL-BOUNDS throw then
@@ -19,6 +20,7 @@
 : TBL-CELLS ( count count -- count ) {: rows fields :}
    rows COUNT>N 0 < if E-TBL-BOUNDS throw then
    fields COUNT>N 0 <= if E-TBL-FIELD throw then
+   fields COUNT>N 0 > rows COUNT>N TBL-MAX-CELLS fields COUNT>N / > and if E-TBL-BOUNDS throw then
    rows COUNT>N fields COUNT>N * >COUNT ;
 
 : TBL-FIELD ( ptr a count count idx idx -- ptr a ) {: tbl:ptr rows fields row field :}

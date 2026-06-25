@@ -138,6 +138,8 @@ variable PROC-ARGV-IN-OFF
    PROC-ARGV-PFD-SLOT @ 48 rshift $FFFF and ;
 
 : PROC-ARGV-READ-STREAM ( ptr fd ptr u8 len ptr len -- ) {: fdp:ptr buf:ptr cap lenp:ptr :}
+   lenp @ LEN>N 0 < if E-PROC-TRUNCATED PROC-ARGV-THROW-CAPTURE then
+   lenp @ LEN>N cap LEN>N > if E-PROC-TRUNCATED PROC-ARGV-THROW-CAPTURE then
    cap LEN>N lenp @ LEN>N - 0 <= if E-PROC-TRUNCATED PROC-ARGV-THROW-CAPTURE then
    fdp @ FD>N buf lenp @ LEN>N + cap LEN>N lenp @ LEN>N - read PROC-RD !
    PROC-RD @ 0 < if E-PROC-OUTPUT PROC-ARGV-THROW-CAPTURE then

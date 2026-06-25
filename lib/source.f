@@ -47,7 +47,9 @@ variable SOURCE-LS-LINE#
 : SOURCE-APPEND-BYTES ( ptr u8 len ptr u8 len ptr len -- )
    {: src:ptr u dst:ptr cap lenp:ptr :}
    u LEN>N 0 < if E-FS-CAPACITY throw then
-   lenp @ LEN>N u LEN>N + cap LEN>N > if E-FS-CAPACITY throw then
+   lenp @ LEN>N 0 < if E-FS-CAPACITY throw then
+   lenp @ LEN>N cap LEN>N > if E-FS-CAPACITY throw then
+   u LEN>N cap LEN>N lenp @ LEN>N - > if E-FS-CAPACITY throw then
    src dst lenp @ LEN>N + u LEN>N BYTE-COPY
    lenp @ LEN>N u LEN>N + >LEN lenp ! ;
 

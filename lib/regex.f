@@ -170,6 +170,8 @@ variable RX-COUNT-POS
    repeat drop ;
 
 : RX-FLAG? ( ptr u8 off -- bool ) {: flags:ptr off :}
+   off OFF>N 0 < if E-RX-CAPACITY throw then
+   off OFF>N RX-STATE-CAP >= if E-RX-CAPACITY throw then
    flags off OFF>N + c@ 0 <> ;
 
 : RX-ANY-FLAG? ( ptr u8 len -- bool ) {: flags:ptr u :}
