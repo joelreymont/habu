@@ -22,6 +22,12 @@ explicitly. An abbreviated "remaining work" list can hide open findings even
 when the tracker itself is correct; an ignored `.dots/` store makes the checked
 in document the only portable handoff.
 
+### Emitter comments describe host effects
+Bootstrap and native emitter words run at build time and often emit code that
+will later consume the runtime data stack. Their definition-local stack effects
+must describe the host/build stack (`( -- )`, `( n -- )`, etc.); keep emitted
+runtime effects in adjacent prose so reviewers do not conflate the two levels.
+
 ### Split driver timeouts by phase
 The Forth live-driver timeout fixture set a one-second child timeout and
 accidentally timed out the checker subprocess on Linux/aarch64 before the

@@ -135,7 +135,7 @@ create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
    #PL @ PRIM-CAP >= if 1 abort" cg: primitive table overflow" then
    PNP @ + PRIM-NAME-CAP > if 1 abort" cg: primitive name pool overflow" then ;
 
-: REG-PRIM {: na nu lbl elbl -- :}
+: REG-PRIM ( ptr u8 n n -- ) {: na nu lbl elbl -- :}
    nu REG-ROOM?
    lbl  #PL @ cells PLBL + !
    elbl #PL @ cells PEL  + !
@@ -143,13 +143,13 @@ create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
    PNPOOL PNP @ +  {: dst :}   dst #PL @ cells PNAM + !
    na dst nu move   nu PNP +!   1 #PL +! ;
 
-: FPRIM {: na nu xt -- :}            \ define+register a primitive (start..RET..end labels)
+: FPRIM ( ptr u8 xt -- ) {: na nu xt -- :}            \ define+register a primitive (start..RET..end labels)
    LBL LBL {: lbl elbl :}                \ both allocated BEFORE the locals bind:
    na nu lbl elbl REG-PRIM               \ a local named lbl shadows the LBL word
    lbl LBL,  SP SP 16 SUBI,  30 SP 0 STR,    \ prologue: save x30 (calls now nest, not inline)
    xt execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  elbl LBL, ;
 
-: FPRIM-L {: na nu xt -- :}          \ LEAF primitive: no BL/BLR in the body, so no
+: FPRIM-L ( ptr u8 xt -- ) {: na nu xt -- :}          \ LEAF primitive: no BL/BLR in the body, so no
    LBL LBL {: lbl elbl :}          \ x30 frame — 2x cheaper calls, fully inlineable
    na nu lbl elbl REG-PRIM
    lbl LBL,  xt execute  RET,  elbl LBL, ;
@@ -183,23 +183,23 @@ require prof.fs           \ in-binary sampling profiler (emitters + prims)
 require jit.fs          \ runtime abstract value stack for the : compiler
 
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
-: B+   B G-POP  A G-POP  A A B ADD,  A G-PUSH ;
+: B+ ( -- )   B G-POP  A G-POP  A A B ADD,  A G-PUSH ;
 
-: B-   B G-POP  A G-POP  A A B SUB,  A G-PUSH ;
+: B- ( -- )   B G-POP  A G-POP  A A B SUB,  A G-PUSH ;
 
-: B*   B G-POP  A G-POP  A A B MUL,  A G-PUSH ;
+: B* ( -- )   B G-POP  A G-POP  A A B MUL,  A G-PUSH ;
 
-: BDUP  A G-POP  A G-PUSH  A G-PUSH ;
+: BDUP ( -- )  A G-POP  A G-PUSH  A G-PUSH ;
 
-: BDROP XDS XDS 8 SUBI, ;
+: BDROP ( -- ) XDS XDS 8 SUBI, ;
 
-: BSWAP A G-POP  B G-POP  A G-PUSH  B G-PUSH ;
+: BSWAP ( -- ) A G-POP  B G-POP  A G-PUSH  B G-PUSH ;
 
-: BDOT  A G-POP  G-PRINT9 ;          \ pop x9, print signed decimal + newline
+: BDOT ( -- )  A G-POP  G-PRINT9 ;          \ pop x9, print signed decimal + newline
 
-: BU.   A G-POP  G-PRINTU9 ;         \ pop x9, print unsigned decimal + newline
+: BU. ( -- )   A G-POP  G-PRINTU9 ;         \ pop x9, print unsigned decimal + newline
 
-: BRUNRC  A G-POP                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
+: BRUNRC ( -- )  A G-POP                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
    LBL {: spok :}  LBL {: spdn :}  LBL {: spw :}
    SP SP 64 SUBI,
    9 SP 16 STR,                      \ argv[0] = path
@@ -225,17 +225,17 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    spdn LBL,
    9 G-PUSH
    SP SP 64 ADDI, ;
-: BCPFETCH    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
-: BNDICTFETCH 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
-: BDBASEFETCH 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
-: BDATAFETCH  9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
+: BCPFETCH ( -- )    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
+: BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
+: BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
+: BDATAFETCH ( -- )  9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
 
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
 \ labels). End-of-buffer (LEXIT) and an error (LUNDEF), when EVALD>0, restore the
 \ frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
-: B-EVAL
+: B-EVAL ( -- )
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
    14 EVAL-FRAME LIT64,  14 DATA 14 ADD,             \ x14 = &frame
    11 DATA INP-CELL LDR,  11 14 0 STR,
@@ -249,10 +249,10 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
    9 DATA LMAINP-CELL LDR,  9 BR, ;
 
-: BCREATE  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
+: BCREATE ( -- )  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
 
-: BCOMPILE  A G-POP  11 9 0 ADDI,    \ ( xt -- ) append `movz-chain x16 ; blr x16` at CP
+: BCOMPILE ( -- )  A G-POP  11 9 0 ADDI,    \ ( xt -- ) append `movz-chain x16 ; blr x16` at CP
    SP SP 16 SUBI,  11 SP 8 STR,
    2 3 MOVZ,  LPROT @ BL,             \ run with region RX (immediate caller) — flip RW
    11 SP 8 LDR,
@@ -264,15 +264,15 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    2 5 MOVZ,  LPROT @ BL,             \ back to RX for the caller
    SP SP 16 ADDI, ;
 
-: BEMIT A G-POP  13 9 0 ADDI,  G-EMITC ;   \ ( c -- ) write one byte
+: BEMIT ( -- ) A G-POP  13 9 0 ADDI,  G-EMITC ;   \ ( c -- ) write one byte
 
-: BCR   13 10 MOVZ,  G-EMITC ;
+: BCR ( -- )   13 10 MOVZ,  G-EMITC ;
 
-: BSPACE 13 32 MOVZ,  G-EMITC ;
+: BSPACE ( -- ) 13 32 MOVZ,  G-EMITC ;
 
 \ .s — print the whole data stack (base..top), one signed decimal per line, WITHOUT
 \ consuming it. The loop pointer lives in a DATA cell because G-PRINT9 clobbers x9..x15.
-: B.S
+: B.S ( -- )
    9 DATA S0-CELL LDR,  9 DATA SSCR-CELL STR,
    LBL {: sl :}  LBL {: sd :}
    sl LBL,
@@ -289,106 +289,106 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    A G-PUSH ;
 
 \ comparisons -> Forth flag 0/-1 (CSET 0/1 then negate via the zero register SP)
-: (CMP) {: cond -- :}  B G-POP  A G-POP  A B CMP,  A cond CSET,  A SP A SUB,  A G-PUSH ;
+: (CMP) ( n -- ) {: cond -- :}  B G-POP  A G-POP  A B CMP,  A cond CSET,  A SP A SUB,  A G-PUSH ;
 
-: B=  C-EQ (CMP) ;
+: B= ( -- )  C-EQ (CMP) ;
 
-: B<> C-NE (CMP) ;
+: B<> ( -- ) C-NE (CMP) ;
 
-: B<  C-LT (CMP) ;
+: B< ( -- )  C-LT (CMP) ;
 
-: B>  C-GT (CMP) ;
+: B> ( -- )  C-GT (CMP) ;
 
-: B<= C-LE (CMP) ;
+: B<= ( -- ) C-LE (CMP) ;
 
-: B>= C-GE (CMP) ;
+: B>= ( -- ) C-GE (CMP) ;
 
-: B0= A G-POP  A 0 CMPI,  A C-EQ CSET,  A SP A SUB,  A G-PUSH ;
+: B0= ( -- ) A G-POP  A 0 CMPI,  A C-EQ CSET,  A SP A SUB,  A G-PUSH ;
 
-: B0< A G-POP  A 0 CMPI,  A C-LT CSET,  A SP A SUB,  A G-PUSH ;
+: B0< ( -- ) A G-POP  A 0 CMPI,  A C-LT CSET,  A SP A SUB,  A G-PUSH ;
 
-: B1+ A G-POP  A A 1 ADDI,  A G-PUSH ;
+: B1+ ( -- ) A G-POP  A A 1 ADDI,  A G-PUSH ;
 
-: B1- A G-POP  A A 1 SUBI,  A G-PUSH ;
+: B1- ( -- ) A G-POP  A A 1 SUBI,  A G-PUSH ;
 
 \ bitwise / logic
-: BAND B G-POP A G-POP  A A B AND, A G-PUSH ;
+: BAND ( -- ) B G-POP A G-POP  A A B AND, A G-PUSH ;
 
-: BOR  B G-POP A G-POP  A A B ORR, A G-PUSH ;
+: BOR ( -- )  B G-POP A G-POP  A A B ORR, A G-PUSH ;
 
-: BXOR B G-POP A G-POP  A A B EOR, A G-PUSH ;
+: BXOR ( -- ) B G-POP A G-POP  A A B EOR, A G-PUSH ;
 
-: BINV A G-POP  B 0 MOVN,  A A B EOR,  A G-PUSH ;     \ A ^ -1
+: BINV ( -- ) A G-POP  B 0 MOVN,  A A B EOR,  A G-PUSH ;     \ A ^ -1
 
-: BNEG A G-POP  A SP A SUB,  A G-PUSH ;               \ 0 - A
+: BNEG ( -- ) A G-POP  A SP A SUB,  A G-PUSH ;               \ 0 - A
 
 \ shifts (variable count); /, mod via SDIV/MUL
-: BLSH B G-POP A G-POP  A A B LSLV, A G-PUSH ;
+: BLSH ( -- ) B G-POP A G-POP  A A B LSLV, A G-PUSH ;
 
-: BRSH B G-POP A G-POP  A A B LSRV, A G-PUSH ;
+: BRSH ( -- ) B G-POP A G-POP  A A B LSRV, A G-PUSH ;
 
-: BDIV0? LBL {: lok :} B lok CBNZ, BRK, lok LBL, ;   \ SDIV by 0 silently yields 0; trap a zero divisor (B)
+: BDIV0? ( -- ) LBL {: lok :} B lok CBNZ, BRK, lok LBL, ;   \ SDIV by 0 silently yields 0; trap a zero divisor (B)
 
-: BDIV B G-POP A G-POP  BDIV0?  A A B SDIV, A G-PUSH ;
+: BDIV ( -- ) B G-POP A G-POP  BDIV0?  A A B SDIV, A G-PUSH ;
 
-: BMOD B G-POP A G-POP  BDIV0?  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
+: BMOD ( -- ) B G-POP A G-POP  BDIV0?  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
 
-: BDIVMOD B G-POP A G-POP  BDIV0?  C A B SDIV,  DREG C B MUL,  A A DREG SUB,  A G-PUSH C G-PUSH ;
+: BDIVMOD ( -- ) B G-POP A G-POP  BDIV0?  C A B SDIV,  DREG C B MUL,  A A DREG SUB,  A G-PUSH C G-PUSH ;
 
-: BABS A G-POP  A 0 CMPI,  LBL {: done :}  C-GE done BCOND,  A SP A SUB,  done LBL,  A G-PUSH ;
+: BABS ( -- ) A G-POP  A 0 CMPI,  LBL {: done :}  C-GE done BCOND,  A SP A SUB,  done LBL,  A G-PUSH ;
 
-: BMIN B G-POP A G-POP  A B CMP,  LBL {: done :}  C-LE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
+: BMIN ( -- ) B G-POP A G-POP  A B CMP,  LBL {: done :}  C-LE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
 
-: BMAX B G-POP A G-POP  A B CMP,  LBL {: done :}  C-GE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
+: BMAX ( -- ) B G-POP A G-POP  A B CMP,  LBL {: done :}  C-GE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
 
 \ stack shuffles (memory on x19)
-: BNIP  A G-POP  XDS XDS 8 SUBI,  A G-PUSH ;
+: BNIP ( -- )  A G-POP  XDS XDS 8 SUBI,  A G-PUSH ;
 
-: BOVER B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH ;
+: BOVER ( -- ) B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH ;
 
-: BTUCK B G-POP A G-POP  B G-PUSH A G-PUSH B G-PUSH ;
+: BTUCK ( -- ) B G-POP A G-POP  B G-PUSH A G-PUSH B G-PUSH ;
 
-: BROT  C G-POP B G-POP A G-POP  B G-PUSH C G-PUSH A G-PUSH ;
+: BROT ( -- )  C G-POP B G-POP A G-POP  B G-PUSH C G-PUSH A G-PUSH ;
 
-: BMROT C G-POP B G-POP A G-POP  C G-PUSH A G-PUSH B G-PUSH ;
+: BMROT ( -- ) C G-POP B G-POP A G-POP  C G-PUSH A G-PUSH B G-PUSH ;
 
-: B2DUP B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH B G-PUSH ;
+: B2DUP ( -- ) B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH B G-PUSH ;
 
-: B2DROP XDS XDS 16 SUBI, ;
+: B2DROP ( -- ) XDS XDS 16 SUBI, ;
 
-: B2SWAP EREG G-POP DREG G-POP C G-POP A G-POP  DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
+: B2SWAP ( -- ) EREG G-POP DREG G-POP C G-POP A G-POP  DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
 
-: B2OVER EREG G-POP DREG G-POP C G-POP A G-POP  A G-PUSH C G-PUSH DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
+: B2OVER ( -- ) EREG G-POP DREG G-POP C G-POP A G-POP  A G-PUSH C G-PUSH DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
 
-: BQDUP A G-POP  A G-PUSH  LBL {: done :}  A done CBZ,  A G-PUSH  done LBL, ;
+: BQDUP ( -- ) A G-POP  A G-PUSH  LBL {: done :}  A done CBZ,  A G-PUSH  done LBL, ;
 
 \ memory access (absolute addresses on the stack)
-: BFETCH  A G-POP  A A 0 LDR,  A G-PUSH ;
+: BFETCH ( -- )  A G-POP  A A 0 LDR,  A G-PUSH ;
 
-: BSTORE  B G-POP A G-POP  A B 0 STR, ;               \ ( val addr -- )
+: BSTORE ( -- )  B G-POP A G-POP  A B 0 STR, ;               \ ( val addr -- )
 
-: BPTRFIELD  B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
+: BPTRFIELD ( -- )  B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
 
-: BPLUSSTORE B G-POP A G-POP  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
+: BPLUSSTORE ( -- ) B G-POP A G-POP  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
-: BCFETCH A G-POP  A A 0 LDRB, A G-PUSH ;
+: BCFETCH ( -- ) A G-POP  A A 0 LDRB, A G-PUSH ;
 
-: BCSTORE B G-POP A G-POP  A B 0 STRB, ;
+: BCSTORE ( -- ) B G-POP A G-POP  A B 0 STRB, ;
 
-: BCELLS  A G-POP  A A 3 LSLI, A G-PUSH ;             \ n*8
+: BCELLS ( -- )  A G-POP  A A 3 LSLI, A G-PUSH ;             \ n*8
 
-: BCELLPLUS A G-POP  A A 8 ADDI, A G-PUSH ;
+: BCELLPLUS ( -- ) A G-POP  A A 8 ADDI, A G-PUSH ;
 
-: BCHARS ;
+: BCHARS ( -- ) ;
 
-: BCHARPLUS A G-POP  A A 1 ADDI, A G-PUSH ;
+: BCHARPLUS ( -- ) A G-POP  A A 1 ADDI, A G-PUSH ;
 
-: BCOUNT A G-POP  B A 0 LDRB,  A A 1 ADDI,  A G-PUSH  B G-PUSH ;
+: BCOUNT ( -- ) A G-POP  B A 0 LDRB,  A A 1 ADDI,  A G-PUSH  B G-PUSH ;
 
 \ data space: DP cell is [x20]; HERE/ALLOT/,/C, bump it (x20 region is always RW)
-: BHERE   7 DATA 0 LDR,  7 G-PUSH ;
+: BHERE ( -- )   7 DATA 0 LDR,  7 G-PUSH ;
 
-: DP-CHECK {: reg -- :}
+: DP-CHECK ( n -- ) {: reg -- :}
    LBL LBL {: low-ok high-ok :}
    5 DATA-START MOVZ,  5 DATA 5 ADD,
    reg 5 CMP,  C-GE low-ok BCOND,
@@ -399,20 +399,20 @@ require jit.fs          \ runtime abstract value stack for the : compiler
       0 76 MOVZ,  NR-EXIT SYS,
    high-ok LBL, ;
 
-: BALLOT  A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
+: BALLOT ( -- )  A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
 
-: BCOMMA  A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR, ;
+: BCOMMA ( -- )  A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR, ;
 
-: BCCOMMA A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
+: BCCOMMA ( -- ) A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
 
-: BTYPE   2 G-POP  1 G-POP  0 1 MOVZ,  NR-WRITE SYS, ;   \ ( addr len -- ) write(1,..)
+: BTYPE ( -- )   2 G-POP  1 G-POP  0 1 MOVZ,  NR-WRITE SYS, ;   \ ( addr len -- ) write(1,..)
 
 \ die ( a u code -- noreturn ): msg to stderr, exit(code). The in-subset abort for
 \ compiler invariant violations — better a loud death than silent memory corruption.
-: BDIE    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
+: BDIE ( -- )    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
           0 7 0 ADDI,  NR-EXIT SYS, ;
 
-: SYS-PUSH                         \ ( -- ) push x0, or -1 when the syscall carry is set
+: SYS-PUSH ( -- )                         \ push x0, or -1 when the syscall carry is set
    LBL LBL {: ok done :}
    9 C-CS CSET,  9 ok CBZ,
       0 0 MOVN,  done B,
@@ -421,7 +421,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    0 G-PUSH ;
 
 \ file I/O (path must be NUL-terminated by the caller)
-: BOPEN
+: BOPEN ( -- )
    2 G-POP  1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       3 2 0 ADDI,
@@ -431,23 +431,23 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    THEN
    NR-OPEN SYS,  SYS-PUSH ;   \ ( pathz flags mode -- fd )
 
-: BOPENRD
+: BOPENRD ( -- )
    A G-POP
    A OS-OPEN-RD
    SYS-PUSH ;
 
-: BWRITE  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
+: BWRITE ( -- )  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
 
-: BREAD   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
+: BREAD ( -- )   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
 
-: BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  0 G-PUSH ;  \ ( fd req buf -- rc )
+: BIOCTL ( -- )  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  0 G-PUSH ;  \ ( fd req buf -- rc )
 
-: BMMAP
+: BMMAP ( -- )
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
-: BPATCH32                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
+: BPATCH32 ( -- )                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
    A SP 8 STR,  B SP 16 STR,
@@ -457,17 +457,17 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    9 SP 8 LDR,  LFLUSH @ BL,
    SP SP 32 ADDI, ;
 
-: BCLOSE  0 G-POP  NR-CLOSE SYS, ;                               \ ( fd -- )
+: BCLOSE ( -- )  0 G-POP  NR-CLOSE SYS, ;                               \ ( fd -- )
 
-: BRBASE  9 DATA RBASE-CELL LDR,  9 G-PUSH ;                            \ ( -- rbase ) __TEXT load base
+: BRBASE ( -- )  9 DATA RBASE-CELL LDR,  9 G-PUSH ;                            \ ( -- rbase ) __TEXT load base
 
-: BEXEC   A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
+: BEXEC ( -- )   A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
 
 \ catch ( xt -- exc ) / throw ( exc -- ). Handler frames chain through [x20+8]
 \ (=HND). A frame (48 B on the machine stack) saves: prev-HND, data-sp(x19),
 \ machine-sp, resume-pc (an ADR within this stencil — PC-relative, survives the
 \ memcpy that inlines the stencil), and the link register.
-: BCATCH
+: BCATCH ( -- )
    A G-POP                               \ xt -> x9
    SP SP 48 SUBI,
    30 SP 32 STR,                         \ save link
@@ -484,7 +484,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    lres LBL,                             \ throw lands here (x9=exc, sp/HND/lr restored)
    lpush LBL,  9 G-PUSH ;                \ push exc (0 normal / exc on throw)
 
-: BTHROW
+: BTHROW ( -- )
    A G-POP                               \ exc -> x9
    11 DATA 8 LDR,                        \ HND
    LBL {: lnoh :}  11 lnoh CBZ,
@@ -498,16 +498,16 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    lnorec LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;   \ no handler -> exit(exc)
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
-: BWORDLIST  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
+: BWORDLIST ( -- )  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
 
-: BGETCUR    9 DATA CUR-CELL LDR,  9 G-PUSH ;                                       \ ( -- wid )
+: BGETCUR ( -- )    9 DATA CUR-CELL LDR,  9 G-PUSH ;                                       \ ( -- wid )
 
-: BSETCUR    A G-POP  A DATA CUR-CELL STR, ;                                        \ ( wid -- )
+: BSETCUR ( -- )    A G-POP  A DATA CUR-CELL STR, ;                                        \ ( wid -- )
 
-: BSETCHECK  A G-POP  A DATA HOOK-CELL STR, ;                                       \ ( xt -- ): install check hook
+: BSETCHECK ( -- )  A G-POP  A DATA HOOK-CELL STR, ;                                       \ ( xt -- ): install check hook
 
 \ search-wl ( a u wid -- addr|0 ): find name (a,u) in wordlist wid (case-folded)
-: BSWL
+: BSWL ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: wl wend wnext wcmp wmatch wf1 wf2 winl :}
    2 G-POP  1 G-POP  0 G-POP                      \ wid=x2, u=x1, a=x0
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,   \ fold mask, rec, count, result
@@ -532,7 +532,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
       wnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  wl B,
    wend LBL,  11 G-PUSH ;
 
-: BPARSE-NAME
+: BPARSE-NAME ( -- )
    LBL LBL {: none done :}
    LTOK @ BL,
    0 none CBZ,
@@ -615,41 +615,41 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ ---- CEMIT ( x9=word -- ) : str w9,[x28] ; CP += 4 ----
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
 \ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
-: BF+    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FADD,  A 0 FMOVDX,  A G-PUSH ;
+: BF+ ( -- )    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FADD,  A 0 FMOVDX,  A G-PUSH ;
 
-: BF-    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FSUB,  A 0 FMOVDX,  A G-PUSH ;
+: BF- ( -- )    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FSUB,  A 0 FMOVDX,  A G-PUSH ;
 
-: BF*    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FMUL,  A 0 FMOVDX,  A G-PUSH ;
+: BF* ( -- )    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FMUL,  A 0 FMOVDX,  A G-PUSH ;
 
-: BF/    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FDIV,  A 0 FMOVDX,  A G-PUSH ;
+: BF/ ( -- )    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FDIV,  A 0 FMOVDX,  A G-PUSH ;
 
-: BFNEG  A G-POP  0 A FMOVXD,  0 0 FNEG,   A 0 FMOVDX,  A G-PUSH ;
+: BFNEG ( -- )  A G-POP  0 A FMOVXD,  0 0 FNEG,   A 0 FMOVDX,  A G-PUSH ;
 
-: BFABS  A G-POP  0 A FMOVXD,  0 0 FABS,   A 0 FMOVDX,  A G-PUSH ;
+: BFABS ( -- )  A G-POP  0 A FMOVXD,  0 0 FABS,   A 0 FMOVDX,  A G-PUSH ;
 
-: BFSQRT A G-POP  0 A FMOVXD,  0 0 FSQRT,  A 0 FMOVDX,  A G-PUSH ;
+: BFSQRT ( -- ) A G-POP  0 A FMOVXD,  0 0 FSQRT,  A 0 FMOVDX,  A G-PUSH ;
 
-: (FCMP) {: cond :}  B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 1 FCMP,
+: (FCMP) ( n -- ) {: cond :}  B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 1 FCMP,
    A cond CSET,  A SP A SUB,  A G-PUSH ;
 
-: BF<  C-MI (FCMP) ;
+: BF< ( -- )  C-MI (FCMP) ;
 
-: BF>  C-GT (FCMP) ;
+: BF> ( -- )  C-GT (FCMP) ;
 
-: BF=  C-EQ (FCMP) ;
+: BF= ( -- )  C-EQ (FCMP) ;
 
-: (FCMP0) {: cond :}  A G-POP  0 A FMOVXD,  0 FCMP0,
+: (FCMP0) ( n -- ) {: cond :}  A G-POP  0 A FMOVXD,  0 FCMP0,
    A cond CSET,  A SP A SUB,  A G-PUSH ;
 
-: BF0< C-MI (FCMP0) ;
+: BF0< ( -- ) C-MI (FCMP0) ;
 
-: BF0= C-EQ (FCMP0) ;
+: BF0= ( -- ) C-EQ (FCMP0) ;
 
-: BS>F  A G-POP  0 A SCVTF,   A 0 FMOVDX,  A G-PUSH ;
+: BS>F ( -- )  A G-POP  0 A SCVTF,   A 0 FMOVDX,  A G-PUSH ;
 
-: BF>S  A G-POP  0 A FMOVXD,  A 0 FCVTZS,  A G-PUSH ;
+: BF>S ( -- )  A G-POP  0 A FMOVXD,  A 0 FCVTZS,  A G-PUSH ;
 
-: BFDOT
+: BFDOT ( -- )
    LBL LBL LBL {: fl il sd :}
    A G-POP  15 A 0 ADDI,                               \ bits (sign test later)
    SP SP 48 SUBI,
@@ -692,7 +692,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ LBCAP ( -- ) : append TKA/TKL + ' ' to the body capture. LBCS ( x11=a x12=u )
 \ is the general entry (defining-word kind tokens). FATAL (exit 71) on overflow —
 \ truncation would let the check hook certify code it never saw.
-: EMIT-BCAP
+: EMIT-BCAP ( -- )
    LBCAP @ LBL,
    11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    LBCS @ LBL,
@@ -964,7 +964,7 @@ create ZBYTE 0 c,
 \ breakpoint at [BPA-CELL]: print habu-bp: + pc + the data-stack top, restore
 \ the original instruction, clear the bp, sigreturn to re-execute the word.
 \ Any other trap falls through to the crash dump (x2/x4 untouched).
-: EMIT-TRAPH
+: EMIT-TRAPH ( -- )
    LTRAPH @ LBL,
    LBL {: tno :}
    C-TRAP-MCTX>R9                                    \ x9 = mcontext
@@ -1008,7 +1008,7 @@ create ZBYTE 0 c,
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
-: G-INSTALL-TRAP
+: G-INSTALL-TRAP ( -- )
    9 LTRAPH @ ADR,  9 C-SIGACTION-FRAME
    5 INSTALL-SIGACT
    C-SIGACTION-FRAME-DONE ;
@@ -1365,27 +1365,27 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LPCOMBINATORS @ LBL, s" src/core/combinators.f" ZBYTES, ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
-: C-EMITW  ( word -- )  9 swap LIT64,  LCEMIT @ BL, ;          \ emit one fixed instr word
+: C-EMITW ( n -- )  9 swap LIT64,  LCEMIT @ BL, ;          \ emit one fixed instr word
 
 : C-POPFLAG ( -- )  $D1002273 C-EMITW  $F9400269 C-EMITW ;     \ sub x19,#8 ; ldr x9,[x19]
 
 : C-PUSHCP ( -- )   9 CP 0 ADDI,  LCFPUSH @ BL, ;              \ push current CP
 
-: C-BBACK {: opc mask -- :}                                    \ branch opc back to x9 target
+: C-BBACK ( n n -- ) {: opc mask -- :}                                    \ branch opc back to x9 target
    10 9 CP SUB,  10 10 2 ASRI,  5 mask LIT64,  10 10 5 AND,  9 opc LIT64,  9 9 10 ORR,  LCEMIT @ BL, ;
 
-: J-IF    C-POPFLAG  C-PUSHCP  $B4000009 C-EMITW ;             \ pop flag; cbz fwd (patched by THEN)
+: J-IF ( -- )    C-POPFLAG  C-PUSHCP  $B4000009 C-EMITW ;             \ pop flag; cbz fwd (patched by THEN)
 
-: J-THEN  LCFPOP @ BL,  LPAT @ BL, ;
+: J-THEN ( -- )  LCFPOP @ BL,  LPAT @ BL, ;
 
-: J-ELSE  LCFPOP @ BL,  14 9 0 ADDI,  C-PUSHCP  $14000000 C-EMITW  9 14 0 ADDI,  LPAT @ BL, ;
+: J-ELSE ( -- )  LCFPOP @ BL,  14 9 0 ADDI,  C-PUSHCP  $14000000 C-EMITW  9 14 0 ADDI,  LPAT @ BL, ;
 
 \ BEGIN loops are register-resident: J-BEGIN snapshots the VS into registers
 \ (Lvsnap), the back edges reconcile to that snapshot (Lvrecon) and branch on
 \ x17 — never a VS register, so the reconcile reload can't clobber the flag.
-: J-BEGIN  LVSNAP @ BL,  C-PUSHCP ;
+: J-BEGIN ( -- )  LVSNAP @ BL,  C-PUSHCP ;
 
-: J-AGAIN  LVRECON @ BL,  LCFPOP @ BL,  $14000000 $3FFFFFF C-BBACK ;
+: J-AGAIN ( -- )  LVRECON @ BL,  LCFPOP @ BL,  $14000000 $3FFFFFF C-BBACK ;
 
 : J-UNTILX ( -- )                          \ shared tail: reconcile + cbz x17,top
    LVRECON @ BL,
@@ -1393,11 +1393,11 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $B4000011 LIT64,  9 9 10 ORR,  LCEMIT @ BL, ;
 
-: J-UNTIL  $D1002273 C-EMITW  $F9400271 C-EMITW  J-UNTILX ;   \ pop flag -> x17
+: J-UNTIL ( -- )  $D1002273 C-EMITW  $F9400271 C-EMITW  J-UNTILX ;   \ pop flag -> x17
 
-: J-WHILE C-POPFLAG  C-PUSHCP  $B4000009 C-EMITW ;
+: J-WHILE ( -- ) C-POPFLAG  C-PUSHCP  $B4000009 C-EMITW ;
 
-: J-REPEAT LVRECON @ BL,  LCFPOP @ BL,  14 9 0 ADDI,  LCFPOP @ BL,  $14000000 $3FFFFFF C-BBACK
+: J-REPEAT ( -- ) LVRECON @ BL,  LCFPOP @ BL,  14 9 0 ADDI,  LCFPOP @ BL,  $14000000 $3FFFFFF C-BBACK
    12 0 MOVZ,  12 DATA VSP-CELL STR,                  \ exit path arrives from
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
    12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,           \ WHILE's spilled state
@@ -1407,47 +1407,47 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ depth [x20+LOOPSP-CELL]) since x27/x28 are the compiler's NDICT/CP. Fixed encodings
 \ (computed offline). J-DO pushes a frame + records loop-top; J-LOOP increments the
 \ index, compares, b.lt back, then pops the frame on exit; J-I pushes the index.
-: J-FRAME  ( -- )                       \ pop limit/start, push a loop frame
+: J-FRAME ( -- )                       \ pop limit/start, push a loop frame
    3506446963 C-EMITW  4181721705 C-EMITW  3506446963 C-EMITW  4181721706 C-EMITW
    4181780107 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4177527177 C-EMITW  4177528202 C-EMITW  2432697707 C-EMITW  4177585803 C-EMITW ;
 
-: J-LVOPEN  ( -- )                       \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
+: J-LVOPEN ( -- )                       \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
    9 DATA LVD-CELL LDR,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    12 0 MOVZ,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
 
-: J-LVLEAVE  ( -- )                      \ chain a B placeholder on the current level
+: J-LVLEAVE ( -- )                      \ chain a B placeholder on the current level
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    9 10 0 LDR,
    11 CP DBASE SUB,  11 10 0 STR,
    LCEMIT @ BL, ;
 
-: J-DO  ( limit start DO )
+: J-DO ( -- )
    J-FRAME  J-LVOPEN  C-PUSHCP ;
 
-: J-?DO ( limit start ?DO )              \ DO, but skip the loop when limit = start
+: J-?DO ( -- )              \ DO, but skip the loop when limit = start
    J-FRAME  J-LVOPEN
    $EB0A013F C-EMITW                     \ cmp x9,x10  (start/limit still live)
    $54000041 C-EMITW                     \ b.ne +8 (over the skip placeholder)
    J-LVLEAVE
    C-PUSHCP ;
 
-: J-LEAVE  J-LVLEAVE ;
+: J-LEAVE ( -- )  J-LVLEAVE ;
 
-: J-UNLOOP                               \ pop one loop frame, no branch
+: J-UNLOOP ( -- )                               \ pop one loop frame, no branch
    4181780107 C-EMITW  3506439531 C-EMITW  4177585803 C-EMITW ;
 
-: J-LOOPEND  ( -- )                      \ shared LOOP/+LOOP tail: pop frame, patch
+: J-LOOPEND ( -- )                      \ shared LOOP/+LOOP tail: pop frame, patch
    14 CP 0 ADDI,                         \ LEAVE/?DO skips to the pop point, LVD--
    4181780107 C-EMITW  3506439531 C-EMITW  4177585803 C-EMITW
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,  9 DATA LVD-CELL STR,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,  9 10 0 LDR,
    LBCHAIN @ BL, ;
 
-: J-LOOP
+: J-LOOP ( -- )
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4181721481 C-EMITW  4181722506 C-EMITW  2432697641 C-EMITW  4177527177 C-EMITW  3943301439 C-EMITW
    LCFPOP @ BL,                                        \ x9 = loop-top
@@ -1455,7 +1455,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 $5400000B LIT64,  9 9 10 ORR,  LCEMIT @ BL,       \ b.lt loop-top
    J-LOOPEND ;
 
-: J-+LOOP  ( n +LOOP )                   \ index += n; loop while (old-limit) and
+: J-+LOOP ( -- )                   \ index += n; loop while (old-limit) and
    $D1002273 C-EMITW  $F9400269 C-EMITW  \ (new-limit) agree in sign (ANS crossing)
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    $F940018D C-EMITW                     \ ldr x13,[x12]      index
@@ -1471,24 +1471,24 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 $5400000A LIT64,  9 9 10 ORR,  LCEMIT @ BL,       \ b.ge loop-top
    J-LOOPEND ;
 
-: J-I
+: J-I ( -- )
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4181721481 C-EMITW  4177527401 C-EMITW  2432705139 C-EMITW ;
 
-: J-J                                    \ outer loop index: frame[LOOPSP-2]
+: J-J ( -- )                                    \ outer loop index: frame[LOOPSP-2]
    4181780107 C-EMITW  $D100096B C-EMITW 3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4181721481 C-EMITW  4177527401 C-EMITW  2432705139 C-EMITW ;
 
 \ >R R> R@ — the user return stack lives in a data-region stack ([x20+RSTK-OFF],
 \ depth at [x20+RSP-CELL]), like the DO/LOOP frames: x25/x28 belong to the
 \ compiler, and word frames on the machine stack would unbalance the epilogue.
-: W-LDRX {: rt RN off -- w :}                          \ ldr rt,[rn,#off]
+: W-LDRX ( n n n -- n ) {: rt RN off -- w :}                          \ ldr rt,[rn,#off]
    $F9400000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
 
-: W-STRX {: rt RN off -- w :}                          \ str rt,[rn,#off]
+: W-STRX ( n n n -- n ) {: rt RN off -- w :}                          \ str rt,[rn,#off]
    $F9000000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
 
-: J-TOR                                                \ pop data -> push RSTK
+: J-TOR ( -- )                                                \ pop data -> push RSTK
    $D1002273 C-EMITW  $F9400269 C-EMITW                \ sub x19,#8 ; ldr x9,[x19]
    10 20 RSP-CELL W-LDRX C-EMITW
    $8B0A0E8B C-EMITW                                   \ add x11,x20,x10,lsl#3
@@ -1496,32 +1496,32 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $9100054A C-EMITW                                   \ add x10,x10,#1
    10 20 RSP-CELL W-STRX C-EMITW ;
 
-: J-RPOP                                               \ x9 = RSTK top, x10 = RSP-1
+: J-RPOP ( -- )                                               \ x9 = RSTK top, x10 = RSP-1
    10 20 RSP-CELL W-LDRX C-EMITW
    $D100054A C-EMITW                                   \ sub x10,x10,#1
    $8B0A0E8B C-EMITW                                   \ add x11,x20,x10,lsl#3
    9 11 RSTK-OFF W-LDRX C-EMITW ;
 
-: J-RFROM  J-RPOP                                      \ pop RSTK -> push data
+: J-RFROM ( -- )  J-RPOP                                      \ pop RSTK -> push data
    10 20 RSP-CELL W-STRX C-EMITW
    $F9000269 C-EMITW  $91002273 C-EMITW ;              \ str x9,[x19] ; add x19,#8
 
-: J-RFETCH  J-RPOP                                     \ peek RSTK -> push data
+: J-RFETCH ( -- )  J-RPOP                                     \ peek RSTK -> push data
    $F9000269 C-EMITW  $91002273 C-EMITW ;
 
 \ EXIT: emit a placeholder word holding the PREVIOUS chain offset (0 = end);
 \ `;` walks the chain and patches each into `b epilogue`. RECURSE: bl back to
 \ the current word's entry (PEND slot.addr) — every word has the standard
 \ prologue/epilogue, so calling into the open definition is well-formed.
-: J-EXIT
+: J-EXIT ( -- )
    9 DATA EXITH-CELL LDR,                              \ x9 = prev chain offset
    10 CP DBASE SUB,  10 DATA EXITH-CELL STR,           \ head := this placeholder
    LCEMIT @ BL, ;
 
-: J-RECURSE
+: J-RECURSE ( -- )
    9 DATA PEND-CELL LDR,  9 9 0 LDR,  $94000000 $3FFFFFF C-BBACK ;   \ bl entry
 
-: C-FIND-TRUST  LBL {: ok :}
+: C-FIND-TRUST ( -- )  LBL {: ok :}
    9 LKWTRUST @ ADR,  10 5 MOVZ,  LFIND @ BL,
    13 ok CBNZ,
       0 2 MOVZ,  1 LKWTRUST @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
@@ -1679,7 +1679,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ C-LIT emitter (with x11 = DP) for the literal-push body.
 \ record defining words for the checker: append the kind token + run the hook
 \ (verdict ignored — create/variable/constant always publish).
-: C-DEFHOOK  LBL {: kwv klen nohk :}
+: C-DEFHOOK ( ptr u8 -- )  LBL {: kwv klen nohk :}
    11 kwv @ ADR,  12 klen MOVZ,  LBCS @ BL,
    9 DATA HOOK-CELL LDR,  9 nohk CBZ,
    10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
@@ -1800,7 +1800,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 \ CHAR NAME (interpret): push NAME's first byte. [CHAR] NAME (compile): bake it
 \ as a VS constant (folds like any literal).
-: C-CHAR  ( -- )   LTOK @ BL,  9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH ;
+: C-CHAR ( -- )   LTOK @ BL,  9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH ;
 
 : C-BCHAR ( -- )   LTOK @ BL,  11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC @ BL, ;
 
@@ -2023,7 +2023,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-CALL ;
 
 \ emit one compile-mode keyword case: if TKA/TKL == kw, run handler then back to lmain
-: CF-ENTRY {: lmainlbl kwvar kwlen hxt -- :}
+: CF-ENTRY ( n ptr u8 xt -- ) {: lmainlbl kwvar kwlen hxt -- :}
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    LBL {: skip :}  0 skip CBZ,
    LVSPILL @ BL,
@@ -2032,7 +2032,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 \ cfn-entry: keyword case WITHOUT the spill — loop words manage the VS
 \ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
-: CFN-ENTRY {: lmainlbl kwvar kwlen hxt -- :}
+: CFN-ENTRY ( n ptr u8 xt -- ) {: lmainlbl kwvar kwlen hxt -- :}
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    LBL {: skip :}  0 skip CBZ,
    hxt execute  lmainlbl B,
@@ -2044,7 +2044,7 @@ variable CFSK2
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
 \ a REGISTER top branches directly (no spill + memory pop); con or empty falls
 \ back to the spill + pop path. hxtr gets the condition reg in x14.
-: CFB-ENTRY {: lmainlbl kwvar kwlen hxtm hxtr :}
+: CFB-ENTRY ( n ptr u8 xt xt -- ) {: lmainlbl kwvar kwlen hxtm hxtr :}
    LBL CFSK !  LBL CFSK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
@@ -2066,7 +2066,7 @@ variable CFSK2
 \ cfbn-entry: like CFB-ENTRY but the register path neither spills nor saves —
 \ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
 \ LVDROP (which only relabels the VS, no emission).
-: CFBN-ENTRY {: lmainlbl kwvar kwlen hxtm hxtr :}
+: CFBN-ENTRY ( n ptr u8 xt xt -- ) {: lmainlbl kwvar kwlen hxtm hxtr :}
    LBL CFSK !  LBL CFSK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
@@ -2083,11 +2083,11 @@ variable CFSK2
    lmainlbl B,
    CFSK @ LBL, ;
 
-: J-IFR  C-PUSHCP  8 $B4000000 LIT64,  9 8 14 ORR,  LCEMIT @ BL, ;
+: J-IFR ( -- )  C-PUSHCP  8 $B4000000 LIT64,  9 8 14 ORR,  LCEMIT @ BL, ;
 
-: J-WHILER  J-IFR ;
+: J-WHILER ( -- )  J-IFR ;
 
-: J-UNTILR                                 \ reg flag -> x17 first: the reconcile
+: J-UNTILR ( -- )                                 \ reg flag -> x17 first: the reconcile
    8 $AA0003F1 LIT64,  7 14 16 LSLI,  9 8 7 ORR,  LCEMIT @ BL,   \ may reload into it
    J-UNTILX ;
 
