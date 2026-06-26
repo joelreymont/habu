@@ -121,6 +121,10 @@ This model is the reason a checked guard may be written directly:
 
 No dummy value should be pushed after `throw` merely to satisfy a branch join.
 If a branch only throws, it contributes no normal output to the join.
+Tokens after a terminated path (`throw`, `die`, `exit`, `leave`, or
+unconditional loop back-edges) are rejected unless they are structural closers
+that merge the dead path, such as `else`, `then`, `loop`, `+loop`, `repeat`,
+`again`, or `;]`.
 
 ## Escape hatches
 

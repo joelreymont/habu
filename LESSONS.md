@@ -116,6 +116,10 @@ lesson — keep the specific word/code/path, cut the prose.
   top-level paths, before control/quotation frames open and before a dead `exit`
   path. Mid-control locals are static rejections, not build-preflight-only style
   failures.
+- **Dead paths only admit structural closers:** after `throw`, `die`, `exit`,
+  `leave`, or `again`, ordinary tokens are unreachable and must reject. Only
+  merge/close tokens (`else`, `then`, `loop`, `+loop`, `repeat`, `again`, `;]`)
+  may appear while `DEADP` is set.
 
 ## Tool & Infra
 

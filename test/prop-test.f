@@ -331,7 +331,7 @@ variable ARG-N  variable ARG-I  variable ARG-L
       ARG-I @ 1+ ARG-I !
    repeat  ARG-N @ 0 0= ;
 : USAGE ( -- )  s" prop-test: usage: bin/hb [seed count] < test/prop-test.f" 64 die ;
-: ARG-U ( n -- n )  ARGV ARG>U? 0= IF drop USAGE 0 THEN ;
+: ARG-U ( n -- n )  ARGV ARG>U? 0= IF drop USAGE THEN ;
 : PROP-MAIN ( -- )
    SELFTEST
    SELFTEST-SHRINK

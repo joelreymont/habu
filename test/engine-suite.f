@@ -121,6 +121,8 @@ TRUSTED: T-CHECK-REJECTS ( ptr u8 n -- )
    CHECK! 0 T=
    r> DIAGXT ! ;
 s" COK-BUILD-IMAGE ( -- ) ASM-CODE BUILD-IMAGE" CHECK! -1 T=
+s" COK-THROW-GUARD ( i64 -- i64 ) dup 0 < if 1 throw then 1 +" CHECK! -1 T=
+s" COK-DIE-GUARD ( i64 -- i64 ) dup 0 < if here 0 1 die then 1 +" CHECK! -1 T=
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
 s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS
@@ -141,6 +143,9 @@ s" CBAD-QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" T-CHECK-REJECTS
 s" CBAD-REG-LABEL ( reg label -- reg ) nip" T-CHECK-REJECTS
 s" CBAD-VA-SYMIDX ( va symidx -- va ) nip" T-CHECK-REJECTS
 s" CBAD-BUILD-IMAGE ( -- ) BUILD-IMAGE" T-CHECK-REJECTS
+s" CBAD-THROW-DUMMY ( i64 -- i64 ) dup 0 < if 1 throw 0 then 1 +" T-CHECK-REJECTS
+s" CBAD-DIE-DUMMY ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 +" T-CHECK-REJECTS
+s" CBAD-EXIT-DUMMY ( i64 -- i64 ) exit 0" T-CHECK-REJECTS
 s" CBAD-LINUX-DUP2-FD ( reg reg reg -- ) LINUX-DUP2-FD" T-CHECK-REJECTS
 s" CBAD-LINUX-SPAWN ( reg reg reg fd reg reg reg -- ) LINUX-SPAWN" T-CHECK-REJECTS
 s" CBAD-DARWIN-DUP2 ( reg reg -- ) SPAWN-DUP2-ACTION" T-CHECK-REJECTS

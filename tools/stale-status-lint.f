@@ -264,7 +264,7 @@ variable SS-FENCE
    1 throw ;
 
 : SS-PARSE-TODAY ( ptr u8 n -- n ) {: a:ptr u :}
-   a u PARSE-YMD 0= IF drop a u SS-BAD-TODAY 0 THEN ;
+   a u PARSE-YMD 0= IF drop a u SS-BAD-TODAY THEN ;
 
 : SS-BAD-STATUS-DATE ( -- )
    s" BAD-STATUS-DATE STATUS.md: Last verified invalid `" SS-OUT

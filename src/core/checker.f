@@ -1359,6 +1359,20 @@ variable SKI  variable SKF
    REPEAT
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
 
+: DEAD-CLOSE? {: a u :}
+   a u s" else"   STR= IF -1 EXIT THEN
+   a u s" then"   STR= IF -1 EXIT THEN
+   a u s" loop"   STR= IF -1 EXIT THEN
+   a u s" +loop"  STR= IF -1 EXIT THEN
+   a u s" repeat" STR= IF -1 EXIT THEN
+   a u s" again"  STR= IF -1 EXIT THEN
+   a u s" ;]"     STR= IF -1 EXIT THEN
+   0 ;
+
+: LIVE-TOKEN? {: a u :}
+   DEADP @ 0= IF -1 EXIT THEN
+   a u DEAD-CLOSE? ;
+
 : TOKFOLD {: a u :}
    u TOKBUF-ENSURE
    0 BEGIN dup u < WHILE
@@ -1411,6 +1425,7 @@ s" <input>" DIAG-FILE!
    a u TOKFOLD drop
    CAP-FAIL
    TOK0 @ IF TKF NMB TFU @ CCOPY  NMB NMA !  TFU @ NMU !  0 TOK0 ! ELSE
+   TKF TFU @ LIVE-TOKEN? 0= IF 0 OK ! ELSE
    LMODE @ IF TKF TFU @ LOC-TOK ELSE
    TKF TFU @ s" {:" STR= IF LOC-BEGIN ELSE
    TKF TFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
@@ -1421,7 +1436,7 @@ s" <input>" DIAG-FILE!
    OK @ IF TKF TFU @ THROW-TOK? IF THROW-EDGE THEN THEN
    OK @ IF TKF TFU @ DEAD-TOK? IF -1 DEADP ! THEN THEN
    TKF TFU @ STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN
-   THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    TOKIX @ 1 + TOKIX ! ;

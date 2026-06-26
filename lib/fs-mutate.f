@@ -229,8 +229,7 @@ create FS-MUT-ATOMIC-SUFFIX
    a u FS-PATHZ FS-MUT-MODE-PRIVATE-DIR mkdir {: rc :}
    rc 0= if 0 0= exit then
    a u FS-MUT-TMP-COLLISION? if 0 0= 0= exit then
-   E-FS-IO throw
-   0 0= 0= ;
+   E-FS-IO throw ;
 
 : FS-MUT-MAKE-TEMP-DIR-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed :}
    0 begin dup FS-MUT-TMP-RETRIES < while
@@ -238,8 +237,7 @@ create FS-MUT-ATOMIC-SUFFIX
       2dup FS-MUT-MKDIR-CANDIDATE? if rot drop exit then
       2drop 1+
    repeat drop
-   E-FS-IO throw
-   FS-MUT-TMP-PATH 0 ;
+   E-FS-IO throw ;
 
 : MAKE-TEMP-DIR ( ptr u8 n ptr u8 n -- ptr u8 n )
    mono-ns FS-MUT-MAKE-TEMP-DIR-SEED ;

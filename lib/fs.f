@@ -329,7 +329,7 @@ TRUSTED: FS-BYTE-OFFSET ( ptr u8 n -- ptr u8 )
    FS-SKIP-DIR? ;
 
 : FS-OPEN-DIR ( ptr u8 n -- n )
-   FS-PATHZ open-rd dup 0 < if drop E-FS-OPEN FS-THROW-WALK 0 then ;
+   FS-PATHZ open-rd dup 0 < if drop E-FS-OPEN FS-THROW-WALK then ;
 
 : FS-DIRENT-RECLEN ( ptr u8 -- n )
    FS-DIRENT-RECLEN-OFF FS-BYTE-OFFSET FS-U16@ ;
@@ -376,7 +376,7 @@ TRUSTED: FS-BYTE-OFFSET ( ptr u8 n -- ptr u8 )
 
 : FS-READ-DIR ( -- bool )
    FS-FD@ FS-CUR-DIR FS-DIR-CAP FS-BASE@ getdirentries64
-   dup 0 < if drop E-FS-DIR FS-THROW-WALK 0 then
+   dup 0 < if drop E-FS-DIR FS-THROW-WALK then
    dup FS-N! 0 > ;
 
 : FS-WALK-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
