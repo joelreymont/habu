@@ -206,7 +206,7 @@ variable DEADERR  variable DEADTA  variable DEADTU
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
 variable VSIG   variable SGSEEN   variable SGIN   variable SGOUT
-variable SGRIN  variable SGROUT
+variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
 variable SGA  variable SGU
 $1000 constant TOKBUF-INIT-CAP
 $10000 constant TOKBUF-GRAIN
@@ -528,7 +528,7 @@ create ROWMAP 26 cells allot
 
 variable SGHASR                          \ a return-stack clause ( ... | rin -- rout ) present?
 variable RR-SHARED                       \ the shared return row, allocated lazily on '|'
-variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT
+variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
 : RRTAIL ( -- rrow )                     \ the shared return row (allocate once, on demand)
    RR-SHARED @ dup 0= IF drop FRESH MK-ROW dup RR-SHARED ! THEN ;
@@ -546,7 +546,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT
 \ PSIG ( -- din dout rin rout ) : data + return rows over the cursor.
 : PSIG
    PKRESET NMAP-RESET ROWMAP-RESET  0 SGHASR !  0 RR-SHARED !
-   FRESH MK-ROW {: dr :}
+   FRESH MK-ROW dup PD-BASE ! {: dr :}
    dr PSIDE  PR-IN ! PD-IN !
    s" --" EXPECT-SIG                              \ require the top-level '--'
    dr PSIDE  PR-OUT ! PD-OUT !
@@ -1156,6 +1156,17 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : RSUNI {: s :}  RCUR @ s UNIFY OK @ and OK ! ;
 
+: ROW-OPEN? ( row -- bool )
+   R-RES TAG S-ROW = ;
+
+: CHECK-ROW-NOT-BORROWED ( row -- )
+   dup 0= if drop exit then
+   ROW-OPEN? 0= if 0 OK ! then ;
+
+: CHECK-NO-BORROW ( -- )
+   SGDBASE @ CHECK-ROW-NOT-BORROWED
+   SGRBASE @ CHECK-ROW-NOT-BORROWED ;
+
 : SG-SAVE
    SGHASR @ RSHAS !  SGIN @ RSGIN !  SGOUT @ RSGOUT !
    SGRIN @ RSGRIN !  SGROUT @ RSGROUT ! ;
@@ -1454,7 +1465,8 @@ s" <input>" DIAG-FILE!
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
-   0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGA !  0 SGU !
+   0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
+   0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
@@ -1470,6 +1482,8 @@ s" <input>" DIAG-FILE!
          VSIG @ IF
            TBASE @ TSTART @ + SGA !  TI @ TSTART @ - SGU !
            TBASE @ TSTART @ +  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
+           PD-BASE @ SGDBASE !
+           RR-SHARED @ SGRBASE !
            SGHASR @ IF
              SGROUT !  dup SGRIN !  RCUR !  SGOUT !  dup SGIN !  DCUR !
            ELSE
@@ -1498,6 +1512,7 @@ s" <input>" DIAG-FILE!
    a u CHECK-RESET
    CHECK-SCAN
    CHECK-FOLD-EXITS
+   VSIG @ SGSEEN @ and IF CHECK-NO-BORROW THEN
    VSIG @ SGSEEN @ and IF
       SGOUT @ SUNI
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
@@ -1534,6 +1549,8 @@ s" <input>" DIAG-FILE!
    FRESH MK-VAR MK-PTR swap MK-PUSH ;
 
 : RAW-SIG! ( din dout rin rout -- )
+   PD-BASE @ SGDBASE !
+   RR-SHARED @ SGRBASE !
    SGHASR @ IF
       SGROUT !  SGRIN !  SGOUT !  SGIN !
    ELSE
@@ -1553,6 +1570,7 @@ s" <input>" DIAG-FILE!
    SGHASR @ IF SGRIN @ dup RBROW ! RCUR ! THEN
    CHECK-SCAN
    CHECK-FOLD-EXITS
+   CHECK-NO-BORROW
    SGOUT @ SUNI
    OK @ IF SGOUT @ DCUR ! THEN
    LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN

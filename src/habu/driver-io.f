@@ -37,11 +37,14 @@ variable DRV-WALL-U
    0 DRV-WOFF !
    BEGIN DRV-WALL-MORE? WHILE DRV-WALL-STEP REPEAT ;
 
-: DRV-WRITE-IMAGE ( ptr u8 n -- )
+: DRV-WRITE-IMAGE-PATH ( ptr u8 n -- )
    PATH0 1537 493 open DRV-WFD !
    DRV-WFD @ 0 < IF s" driver: cannot open output" 74 die THEN
    DRV-WFD @ MBUF MLEN @ DRV-WALL
    DRV-WFD @ close ;
+
+TRUSTED: DRV-WRITE-IMAGE ( img ptr u8 n -- )
+   DRV-WRITE-IMAGE-PATH ;
 
 : DRV-EXIT-OK ( -- )
    s" " 0 die ;

@@ -120,7 +120,12 @@ TRUSTED: T-CHECK-REJECTS ( ptr u8 n -- )
    0 DIAGXT !
    CHECK! 0 T=
    r> DIAGXT ! ;
-s" COK-BUILD-IMAGE ( -- ) ASM-CODE BUILD-IMAGE" CHECK! -1 T=
+s" T-PHASE-ID" s" img -- img" TRUST
+s" COK-PHASE-ID ( img -- img ) T-PHASE-ID" CHECK! -1 T=
+s" CBAD-PHASE-BORROW ( -- ) T-PHASE-ID" T-CHECK-REJECTS
+s" COK-BUILD-IMAGE ( -- img ) ASM-CODE BUILD-IMAGE" CHECK! -1 T=
+s" COK-CODESIG2 ( -- img ) ASM-CODE BUILD-IMAGE CODESIG2" CHECK! -1 T=
+s" COK-SNAP-HDR ( n -- snap n ) BUILD-SNAP-HDR" CHECK! -1 T=
 s" COK-THROW-GUARD ( i64 -- i64 ) dup 0 < if 1 throw then 1 +" CHECK! -1 T=
 s" COK-DIE-GUARD ( i64 -- i64 ) dup 0 < if here 0 1 die then 1 +" CHECK! -1 T=
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
@@ -143,6 +148,9 @@ s" CBAD-QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" T-CHECK-REJECTS
 s" CBAD-REG-LABEL ( reg label -- reg ) nip" T-CHECK-REJECTS
 s" CBAD-VA-SYMIDX ( va symidx -- va ) nip" T-CHECK-REJECTS
 s" CBAD-BUILD-IMAGE ( -- ) BUILD-IMAGE" T-CHECK-REJECTS
+s" CBAD-BUILD-IMAGE-STALE ( -- img ) ASM-CODE BUILD-IMAGE BUILD-IMAGE" T-CHECK-REJECTS
+s" CBAD-CODESIG2 ( -- ) CODESIG2" T-CHECK-REJECTS
+s" CBAD-SNAP-HDR ( n -- n ) BUILD-SNAP-HDR" T-CHECK-REJECTS
 s" CBAD-THROW-DUMMY ( i64 -- i64 ) dup 0 < if 1 throw 0 then 1 +" T-CHECK-REJECTS
 s" CBAD-DIE-DUMMY ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 +" T-CHECK-REJECTS
 s" CBAD-EXIT-DUMMY ( i64 -- i64 ) exit 0" T-CHECK-REJECTS

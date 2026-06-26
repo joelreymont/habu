@@ -85,10 +85,10 @@ variable NCMDS
    M-HERE MLEN ! ;
 
 \ the target-neutral driver entry: another OS swaps in an ELF builder here
-: BUILD-IMAGE ( asm -- )  BUILD-MACHO ;
-s" BUILD-IMAGE" s" asm --" TRUST
+: BUILD-IMAGE ( asm -- img )  BUILD-MACHO ;
+s" BUILD-IMAGE" s" asm -- img" TRUST
 
-: BUILD-SNAP-HDR ( n -- n ) {: snl :}
+: BUILD-SNAP-HDR ( n -- snap n ) {: snl :}
    CODE-OFF snl + $3FFF + $3FFF invert and {: sfts :}
    M-RESET  0 NCMDS !
    MH-HDR,
@@ -101,4 +101,4 @@ s" BUILD-IMAGE" s" asm --" TRUST
    PATCH-HDR
    CODE-OFF M-OFF M-PAD-OFF
    sfts ;
-s" BUILD-SNAP-HDR" s" n -- n" TRUST
+s" BUILD-SNAP-HDR" s" n -- snap n" TRUST

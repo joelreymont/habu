@@ -22,22 +22,24 @@ s" SDB@" s" -- ptr u8" TRUST
 : SNAP-SIZE! ( -- )
    STSZ @ SCL @ + SDL @ + 40 + SNL ! ;
 
-: SNAP-HDR! ( -- )
+: SNAP-HDR! ( -- snap )
    SNL @ BUILD-SNAP-HDR SFTS ! ;
 
-: SNAP-PAD! ( -- )
+: SNAP-PAD! ( -- snap )
    SNAP-HDR!
    SFTS @ CODE-OFF - SNL @ - SPAD ! ;
 
-: SNAP-ABSORB-PAD ( -- )
+TRUSTED: SNAP-STALE ( snap -- ) ;
+
+: SNAP-ABSORB-PAD ( -- snap )
    SNAP-SIZE!
-   SNAP-PAD!
+   SNAP-PAD! SNAP-STALE
    SDL @ SPAD @ + SDL !
    SNAP-SIZE!
    SDL @ DATA-SIZE > if s" snap: data payload exceeds image DATA" 74 die then
    SNAP-HDR! ;
 
-: SNAP-HDR
+: SNAP-HDR ( -- snap )
    \ The builder's x20 register constant is XREG-RBASE so it does not shadow
    \ the `rbase` primitive; read the saved text base straight from its cell.
    data-base RBASE-CELL + @ STB !         \ text CONTENT base
@@ -46,8 +48,8 @@ s" SDB@" s" -- ptr u8" TRUST
    cp@ SDB @ - SCL !                      \ region payload (dict + compiled code)
    here data-base - SDL !                 \ data payload (through DP)
    SNAP-ABSORB-PAD ;
-: SNAPGO
-   SNAP-HDR
+
+: SNAP-WRITE-BYTES ( -- )
    \ trailer: magic, old text base, dict count, region length, data length
    SNAP-MAGIC TRL !  STB @ TRL 8 + !  ndict@ TRL 16 + !
    SCL @ TRL 24 + !  SDL @ TRL 32 + !
@@ -59,7 +61,14 @@ s" SDB@" s" -- ptr u8" TRUST
    SFD @ SDB@ SCL @ DRV-WALL
    SFD @ data-base SDL @ DRV-WALL
    SFD @ TRL 40 DRV-WALL
-   SFD @ close
+   SFD @ close ;
+
+TRUSTED: SNAP-WRITE ( snap -- )
+   SNAP-WRITE-BYTES ;
+
+: SNAPGO ( -- )
+   SNAP-HDR
+   SNAP-WRITE
    DRV-EXIT-OK ;
 
 \ Freeze the verify-on-definition hook into the emitted image: hb is fully

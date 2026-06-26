@@ -22,6 +22,10 @@ rowvar = A..Z          (same letter → same row var; leading = the stack tail)
 - A **row var** (`R`, `S`, …) at the front of a stack stands for "the rest of the
   stack below" — row polymorphism. Stacks with no leading row var share one
   implicit data row (and one implicit return row).
+- The implicit row in a checked definition is sealed for the body: callees may
+  preserve it, but may not bind it by consuming below the declared inputs. This
+  rejects hidden underflow such as a trusted `img -- img` boundary called from a
+  word declared `( -- )`.
 - A **type var** (`a`, `b`, …) is a fresh polymorphic type; reusing the same
   letter in one signature means the same type.
 - Whitespace-delimited. Don't nest `( )` (the inner `)` closes the comment).
@@ -146,8 +150,12 @@ that merge the dead path, such as `else`, `then`, `loop`, `+loop`, `repeat`,
   `VEC-COUNT`, `STR-LEN`, `STR-OFF`, `STR-COUNT`, `JW-LEN`, `M-LEN`, and
   `M-OFF`. These constructors reject negative, overflowing, or out-of-capacity
   inputs before the nominal role reaches checked code.
-- Phase roles (`asm`, `img`, `snap`) are boundary tokens. They are produced and
-  consumed by trusted build-image/snapshot words, not by public numeric casts.
+- Phase roles (`asm`, `img`, `snap`) are ghost boundary tokens, not runtime
+  cells. `ASM-CODE` produces `asm`; `BUILD-IMAGE` consumes it and produces
+  `img`; `CODESIG2` preserves `img`; `DRV-WRITE-IMAGE` consumes `img` when the
+  executable bytes are written. `BUILD-SNAP-HDR` produces `snap`, and
+  `SNAP-WRITE` consumes the current `snap` token. These roles are not public
+  numeric casts.
 - Trusted defining words use `TRUSTED: NAME ( definer-eff ) create ... does>
   ( created-eff ) body ;`. `definer-eff` is the effect of invoking the defining
   word itself; the `created-eff` immediately after `does>` is recorded for each

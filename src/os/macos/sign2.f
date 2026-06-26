@@ -59,7 +59,7 @@ variable EXECSEG-LIM   0 EXECSEG-LIM !   \ 0 = use TEXTSZ (snapshots override: b
    0 M-BE64  EXECSEG-LIM @ dup 0 = if drop TEXTSZ then M-BE64  EXECSEG-MAIN M-BE64 ;
 variable CSI
 
-: CODESIG2 ( -- )
+: CODESIG2-BODY ( -- )
    MLEN @ SIG-DOFF !
    ADD-CODESIG-LC  PATCH-LINKEDIT
    SIG-DOFF @ M-OFF M-BE-RESET
@@ -71,4 +71,6 @@ variable CSI
      MBUF CSI @ CS-PAGE * +  CS-PAGE  M-BE-PTR  SHA256  CS-HASH M-LEN M-BE-SKIP
      CSI @ 1 + CSI ! repeat
    M-BE-HERE MLEN ! ;
-s" CODESIG2" s" --" TRUST
+: CODESIG2 ( img -- img )
+   CODESIG2-BODY ;
+s" CODESIG2" s" img -- img" TRUST

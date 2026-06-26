@@ -629,3 +629,11 @@ lesson — keep the specific word/code/path, cut the prose.
   the same primitive-facing `$1002` anonymous/private `mmap` convention as
   `lib/memory.f` for that buffer; raw Linux `$22` is for emitted startup syscalls,
   not the public `mmap` primitive.
+- **Phase tokens should reach the final side effect:** `asm` on `BUILD-IMAGE`
+  only proves wrapping order. Keep the ghost token alive through signing and the
+  final write (`img`), and through snapshot header construction to stream write
+  (`snap`), so checked callers cannot call a later boundary out of order.
+- **Seal the implicit signature row:** row polymorphism must not let a body borrow
+  below declared inputs. A stack-preserving trusted effect (`img -- img`,
+  `fd -- fd`) can otherwise satisfy final output by binding the implicit base row,
+  hiding underflow. Keep the base row open after body checking.

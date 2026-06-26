@@ -60,10 +60,10 @@ s" ASM-CODE" s" -- asm" TRUST
    TEXTSZ M-OFF M-PAD-OFF
    M-HERE MLEN ! ;
 
-: BUILD-IMAGE ( asm -- )  BUILD-ELF ;
-s" BUILD-IMAGE" s" asm --" TRUST
+: BUILD-IMAGE ( asm -- img )  BUILD-ELF ;
+s" BUILD-IMAGE" s" asm -- img" TRUST
 
-: BUILD-SNAP-HDR ( n -- n ) {: snl :}
+: BUILD-SNAP-HDR ( n -- snap n ) {: snl :}
    CODE-OFF snl + $FFF + $FFF invert and {: sfts :}
    sfts ELF-TEXT-SIZE !
    M-RESET
@@ -71,4 +71,4 @@ s" BUILD-IMAGE" s" asm --" TRUST
    ELF-PHDR,
    CODE-OFF M-OFF M-PAD-OFF
    sfts ;
-s" BUILD-SNAP-HDR" s" n -- n" TRUST
+s" BUILD-SNAP-HDR" s" n -- snap n" TRUST
