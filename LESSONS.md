@@ -132,6 +132,16 @@ lesson — keep the specific word/code/path, cut the prose.
   root plan is drift. Current verification in `STATUS.md`, memory in `LESSONS.md`,
   ready work in `dot ready`. Completed/landed plans retire their root docs; root
   Markdown is contracts, status, or active work only.
+- **Local type inference is already built too (proven 2026-06-27).** Like M2, the
+  inference.md feature ("infer bodies, annotate the edge") is operational in the
+  shipped checker: untyped intermediate locals (`{: x :}`/`{: g :}`/`{: c :}`)
+  certify, the checker infers each from top-of-stack and threads its tokens, and a
+  mis-used inferred local rejects with a precise type (an inferred `gridctx` used
+  where a `span` is required → "expected span actual gridctx", exit 70). The
+  SAXPY/SOFTMAX kernels rely on it (the mask/extent tokens thread through inferred
+  intermediates). Only the `{: x:? :}` show-inferred form (inference.md marks it
+  "proposal, not implemented") is unbuilt. Two named "Habu features to land" (M2,
+  local inference) were already shipped — always probe the checker before sizing.
 - **Ground capability claims in the source, not the dot tracker + spec.** The PLAN
   review concluded "M2 (parametric checker) is a large unbuilt gate" from `dot ls`
   (no `m2` dot) + the spec calling it "large", and elevated it to CRITICAL. A
