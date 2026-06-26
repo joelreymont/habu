@@ -342,8 +342,8 @@ variable BF-TMP-U
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
    out outu BF-APPEND-IMAGE-BYTES
-   out outu BF-APPEND-CHECK-OFF
    out outu BF-APPEND-TARGET-IMAGE
+   out outu BF-APPEND-CHECK-OFF
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu BF-APPEND-CHECK-ON

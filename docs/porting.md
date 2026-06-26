@@ -66,8 +66,8 @@ calling typed helpers such as `M-BYTES-LEN`, `M-NAME16-LEN`, `M-PAD-OFF`,
 `M-LE32@`, `M-LE32!`, and `M-LE64!`; raw byte counts should not cross into
 these helpers.
 `BUILD-IMAGE ( asm -- img )`, `CODESIG2 ( img -- img )`, and
-`DRV-WRITE-IMAGE ( img ptr u8 n -- )` are ghost-token boundaries; their runtime
-implementations do not carry a real cell for the token.
+`DRV-WRITE-IMAGE ( img ptr u8 n -- )` pass nominal phase cells whose payload is
+ignored; they exist so the checker can enforce image-build ordering.
 
 - macOS uses Mach-O plus signing.
 - Linux uses ELF64 with executable `PT_LOAD` detection requiring read+execute

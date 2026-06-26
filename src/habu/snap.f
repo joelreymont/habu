@@ -29,7 +29,8 @@ s" SDB@" s" -- ptr u8" TRUST
    SNAP-HDR!
    SFTS @ CODE-OFF - SNL @ - SPAD ! ;
 
-TRUSTED: SNAP-STALE ( snap -- ) ;
+: SNAP-STALE ( snap -- )
+   SNAP-DROP ;
 
 : SNAP-ABSORB-PAD ( -- snap )
    SNAP-SIZE!
@@ -64,7 +65,8 @@ TRUSTED: SNAP-STALE ( snap -- ) ;
    SFD @ SNAP-EXTRA-PTR SNAP-EXTRA-SIZE DRV-WALL
    SFD @ close ;
 
-TRUSTED: SNAP-WRITE ( snap -- )
+: SNAP-WRITE ( snap -- )
+   SNAP-DROP
    SNAP-WRITE-BYTES ;
 
 : SNAPGO ( -- )

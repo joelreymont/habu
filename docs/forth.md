@@ -193,7 +193,7 @@ file.
   renderer, and `CC-*` checker support, refresh the native binary, then use the
   role in `TRUST` rows and checked definitions.
 - **Phase tokens must reach the side effect they order.** `asm`, `img`, and
-  `snap` ghost values should flow through the final sign/write/header operation,
+  `snap` phase cells should flow through the final sign/write/header operation,
   not just an early wrapper, so callers cannot skip required build stages.
 - **Seal the implicit row under declared inputs.** Row polymorphism must not let a
   body borrow below declared inputs. A stack-preserving trusted effect such as

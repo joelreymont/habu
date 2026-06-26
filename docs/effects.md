@@ -153,8 +153,8 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   `VEC-COUNT`, `STR-LEN`, `STR-OFF`, `STR-COUNT`, `JW-LEN`, `M-LEN`, and
   `M-OFF`. These constructors reject negative, overflowing, or out-of-capacity
   inputs before the nominal role reaches checked code.
-- Phase roles (`asm`, `img`, `snap`) are ghost boundary tokens, not runtime
-  cells. `ASM-CODE` produces `asm`; `BUILD-IMAGE` consumes it and produces
+- Phase roles (`asm`, `img`, `snap`) are nominal ordering cells whose payload is
+  ignored. `ASM-CODE` produces `asm`; `BUILD-IMAGE` consumes it and produces
   `img`; `CODESIG2` preserves `img`; `DRV-WRITE-IMAGE` consumes `img` when the
   executable bytes are written. `BUILD-SNAP-HDR` produces `snap`, and
   `SNAP-WRITE` consumes the current `snap` token. These roles are not public

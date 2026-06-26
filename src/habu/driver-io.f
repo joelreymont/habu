@@ -43,8 +43,9 @@ variable DRV-WALL-U
    DRV-WFD @ MBUF MLEN @ DRV-WALL
    DRV-WFD @ close ;
 
-TRUSTED: DRV-WRITE-IMAGE ( img ptr u8 n -- )
-   DRV-WRITE-IMAGE-PATH ;
+: DRV-WRITE-IMAGE ( img ptr u8 n -- ) {: phase path:ptr pathu :}
+   phase IMG-DROP
+   path pathu DRV-WRITE-IMAGE-PATH ;
 
 : DRV-EXIT-OK ( -- )
    s" " 0 die ;

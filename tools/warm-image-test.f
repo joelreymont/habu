@@ -200,6 +200,7 @@ create WIT-RUN-ERR WIT-CAP allot
    s" src/os/linux/layout.f" WIT-LIB-MUST-HAVE
    s" src/os/macos/layout.f" WIT-LIB-MUST-HAVE
    s" src/habu/layout.f" WIT-LIB-MUST-HAVE
+   s" src/core/roles.f" WIT-LIB-MUST-HAVE
    s" src/os/image-bytes.f" WIT-LIB-MUST-HAVE ;
 
 : WIT-MAIN ( -- )

@@ -38,6 +38,9 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Split generated unchecked spans by evidence:** `build-fixpoint` could keep
   `rt.f`, `crash.f`, `image-bytes.f`, and `regalloc.f` checked; only target
   image/sign, `habu1/prof`, and `jit/habu2` still need the raw emitter boundary.
+- **Model phase tokens as checked cells:** `asm`/`img`/`snap` cannot be empty
+  trusted ghosts when their defining files are checked; push a nominal cell at
+  the producer and erase/preserve it at the next phase boundary.
 
 ## Tool & Infra
 

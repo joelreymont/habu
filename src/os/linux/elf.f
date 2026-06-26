@@ -52,8 +52,12 @@ $80000 constant MPAGE
 variable CODELEN
 variable ELF-TEXT-SIZE
 
-: ASM-CODE ( -- asm )  ASM-LEN CODELEN ! ;
-s" ASM-CODE" s" -- asm" TRUST
+: ASM-CODELEN! ( -- )
+   ASM-LEN CODELEN ! ;
+
+: ASM-CODE ( -- asm )
+   ASM-CODELEN!
+   ASM-PHASE ;
 
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $FFF +  $FFF invert and ;
 
@@ -137,8 +141,8 @@ s" ASM-CODE" s" -- asm" TRUST
 
 : ELF-RELA, ( -- )
    ELF-RELA-OFF M-OFF M-PAD-OFF
-   DLOPEN-SLOT M64  1 ELF-R-INFO M64  0 M64
-   DLSYM-SLOT M64   2 ELF-R-INFO M64  0 M64 ;
+   DLOPEN-SLOT-VA VA>N M64  1 ELF-R-INFO M64  0 M64
+   DLSYM-SLOT-VA VA>N M64   2 ELF-R-INFO M64  0 M64 ;
 
 : ELF-RX-META, ( -- )
    ELF-INTERP,
@@ -181,7 +185,7 @@ $C0 constant SNAP-EXTRA-SIZE
 s" SNAP-EXTRA-SIZE" s" -- n" TRUST
 
 : BUILD-ELF ( -- )
-   ASM-CODE  M-RESET
+   ASM-CODELEN!  M-RESET
    TEXTSZ ELF-TEXT-SIZE !
    ELF-HDR,
    ELF-PHDRS,
@@ -191,8 +195,10 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
    ELF-TEXT-SIZE @ ELF-RW-AT,
    M-HERE MLEN ! ;
 
-: BUILD-IMAGE ( asm -- img )  BUILD-ELF ;
-s" BUILD-IMAGE" s" asm -- img" TRUST
+: BUILD-IMAGE ( asm -- img )
+   ASM-DROP
+   BUILD-ELF
+   IMG-PHASE ;
 
 : BUILD-SNAP-HDR ( n -- snap n ) {: snl :}
    CODE-OFF snl + $FFF + $FFF invert and {: sfts :}
@@ -202,5 +208,4 @@ s" BUILD-IMAGE" s" asm -- img" TRUST
    ELF-PHDRS,
    ELF-RX-META,
    CODE-OFF ELF-RW-AT,
-   sfts ;
-s" BUILD-SNAP-HDR" s" n -- snap n" TRUST
+   SNAP-PHASE sfts ;

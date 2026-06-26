@@ -20,8 +20,12 @@ $100000000 constant VMBASE
 $80000    constant MPAGE             \ maximum generated code window for builder images
 variable CODELEN
 
-: ASM-CODE ( -- asm )  ASM-LEN CODELEN ! ;  \ code already assembled in icode's CODE
-s" ASM-CODE" s" -- asm" TRUST
+: ASM-CODELEN! ( -- )
+   ASM-LEN CODELEN ! ;  \ code already assembled in icode's CODE
+
+: ASM-CODE ( -- asm )
+   ASM-CODELEN!
+   ASM-PHASE ;
 
 \ __TEXT sized to CONTENT (16 KB pages), not a fixed page count: a 24 KB
 \ program is a 28 KB binary, not a fixed-cap binary. MPAGE is only the fail-closed
@@ -69,7 +73,7 @@ variable NCMDS
    M-HERE MH-HDR-SZ - 20 M-OFF M-LE32! ;
 
 : BUILD-MACHO ( -- )                        \ assumes icode's CODE holds the program
-   ASM-CODE  M-RESET  0 NCMDS !
+   ASM-CODELEN!  M-RESET  0 NCMDS !
    MH-HDR,
    s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
    s" __TEXT" VMBASE TEXTSZ 0 TEXTSZ 5 1 80 SEG,  LC+
@@ -85,8 +89,10 @@ variable NCMDS
    M-HERE MLEN ! ;
 
 \ the target-neutral driver entry: another OS swaps in an ELF builder here
-: BUILD-IMAGE ( asm -- img )  BUILD-MACHO ;
-s" BUILD-IMAGE" s" asm -- img" TRUST
+: BUILD-IMAGE ( asm -- img )
+   ASM-DROP
+   BUILD-MACHO
+   IMG-PHASE ;
 
 : BUILD-SNAP-HDR ( n -- snap n ) {: snl :}
    CODE-OFF snl + $3FFF + $3FFF invert and {: sfts :}
@@ -100,8 +106,7 @@ s" BUILD-IMAGE" s" asm -- img" TRUST
    DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
    PATCH-HDR
    CODE-OFF M-OFF M-PAD-OFF
-   sfts ;
-s" BUILD-SNAP-HDR" s" n -- snap n" TRUST
+   SNAP-PHASE sfts ;
 
 : SNAP-EXTRA-PTR ( -- ptr u8 )
    MBUF ;

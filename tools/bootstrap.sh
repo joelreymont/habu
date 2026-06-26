@@ -100,7 +100,7 @@ emit_src() {
   printf "' HOOK set-check\n" >> "$out"
   local f
   for f in "${SRC_COMMON[@]}"; do
-    if [[ "$f" == "$OS_IMAGE" ]]; then
+    if [[ "$f" == "src/habu/habu1.f" ]]; then
       printf "0 set-check\n" >> "$out"
     fi
     cat "$f" >> "$out"

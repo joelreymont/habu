@@ -185,6 +185,7 @@ variable WI-SRC-LEN
    s" src/arch/arm64/icode.f" WI-APPEND-SOURCE
    WI-TARGET-LAYOUT WI-APPEND-SOURCE
    s" src/habu/layout.f" WI-APPEND-SOURCE
+   s" src/core/roles.f" WI-APPEND-SOURCE
    s" src/os/image-bytes.f" WI-APPEND-SOURCE
    WI-TARGET-IMAGE WI-APPEND-SOURCE
    s" src/habu/driver-io.f" WI-APPEND-SOURCE

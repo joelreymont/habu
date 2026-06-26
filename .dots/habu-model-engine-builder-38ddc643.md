@@ -24,3 +24,12 @@ Evidence: progressive generated-prefix loads identified the first failing files;
 `tools/build-fixpoint-test.f` now pins `regalloc.f` between a reinstalled hook
 and the JIT unchecked span; native `tools/build-fixpoint-main.f -- stage` reaches
 the compiler fixpoint.
+
+2026-06-26 update: target image/sign files are no longer in the generated
+unchecked span. `asm`/`img`/`snap` phase tokens are modeled as checked nominal
+cells (`ASM-PHASE`, `IMG-PHASE`, `SNAP-PHASE`) and erased/preserved by the next
+phase boundary. Linux and macOS target image/sign sources load under the hard
+hook, and build-fixpoint/bootstrap now keep target image/sign checked. Remaining
+unchecked spans: raw primitive/profiler emitters (`src/habu/habu1.f`,
+`src/habu/prof.f`) and JIT/compiler emitters (`src/habu/jit.f`,
+`src/habu/habu2.f`).

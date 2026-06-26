@@ -54,3 +54,21 @@ TRUSTED: IMG>N ( img -- n ) ;
 
 TRUSTED: >SNAP ( n -- snap ) ;
 TRUSTED: SNAP>N ( snap -- n ) ;
+
+: ASM-PHASE ( -- asm )
+   0 >ASM ;
+
+: ASM-DROP ( asm -- )
+   ASM>N drop ;
+
+: IMG-PHASE ( -- img )
+   0 >IMG ;
+
+: IMG-DROP ( img -- )
+   IMG>N drop ;
+
+: SNAP-PHASE ( -- snap )
+   0 >SNAP ;
+
+: SNAP-DROP ( snap -- )
+   SNAP>N drop ;
