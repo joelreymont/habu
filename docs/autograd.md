@@ -4,12 +4,27 @@
 concatenative program, so it fits Habu without a runtime tape. A kernel is a
 composition `w₁ w₂ … wₙ`; its gradient is the reversed pipeline of adjoints
 `wₙ′ … w₂′ w₁′`. AD is a compile-time pass over the IR, and — the payoff — the
-backward it emits is checked by the same type system as the forward, so the
-gradient is **verified**: a mask / extent / address-space mistake in a gradient is
-a compile error, not a corrupted training run. This is the forward-kernel thesis
-of [`ptx.md`](ptx.md) applied to the part an LLM is *most* likely to get subtly
-wrong. Surface conventions follow [`inference.md`](inference.md); the type system
-is [`ptx-sketch.md`](ptx-sketch.md).
+backward it emits is checked by the same type system as the forward, so a mask /
+extent / address-space mistake in a gradient is a compile error, not a corrupted
+training run. This is the forward-kernel thesis of [`ptx.md`](ptx.md) applied to
+the part an LLM is *most* likely to get subtly wrong. Surface conventions follow
+[`inference.md`](inference.md); the type system is [`ptx-sketch.md`](ptx-sketch.md).
+
+## What "verified" covers — and what it does not (review 2026-06-26)
+
+The checker proves **types**: address space, extent-relative bounds, mask, and
+uniformity. It does **not** prove that a VJP entry or an algebraic rewrite is the
+correct *derivative*. A wrong rule — a dropped term, a sign flip, a fan-out treated
+as a permutation (the `OVER` bug this review found) — has identical tile in/out
+*types* and so **type-checks and ships a silently wrong gradient**, the exact bug
+this doc claims to eliminate, merely relocated from a hand-written PyTorch backward
+into this VJP table + the simplifier. So "verified gradient" is scoped to the
+mask/extent/space class. The derivative-rule class is verified a different way and
+it is **mandatory, not optional**: every `VJP:` entry and every generated backward
+must pass a device-run **finite-difference gradcheck** (central differences vs the
+analytic VJP, per-element relative tol, randomized inputs) as a hard gate, and the
+algebraic simplifier carries a numeric-equivalence test per rewrite rule. No
+derivative-class "verified" claim until gradcheck is the gate.
 
 Status: **design, not implemented.** AD does not exist in the tree yet. It slots
 after the forward collective milestone (M6): every adjoint the flagship
@@ -106,6 +121,16 @@ tape replacement, supplied by save or recompute (below). Linear ops save nothing
 | `BLOCK-SUM` | Σx | `dx=BROADCAST(ds)` (masked) | — |
 | `BLOCK-MAX` | max x | `dx = ds` at the arg-max lane, 0 elsewhere (sub-gradient) | x, m |
 
+**Tie-break (required, not optional).** When two lanes equal the max the arg-max
+lane is not unique and the sub-gradient is ill-defined. The forward `BLOCK-MAX`
+reduction computes the max *value* via `shfl.sync` and does not pin an index; warp
+reduction order is not a stable tie-break. So the forward contract fixes a
+**deterministic** winner — **lowest global lane index** — and lowers the forward
+argmax to match it; the backward routes the **entire** `ds` to that single lane.
+A tie-input gradcheck fixture (two lanes equal max) must assert `Σ(dx)=ds` and that
+the chosen lane equals the forward's. (`docs/stdlib.md`'s "smallest index" rule is
+for the CPU `A-ARGMAX` and does NOT carry to the GPU `BLOCK-MAX`.)
+
 **Memory** (the adjoint reverses direction):
 
 | forward | adjoint | note |
@@ -117,9 +142,10 @@ tape replacement, supplied by save or recompute (below). Linear ops save nothing
 
 | forward | adjoint | note |
 | --- | --- | --- |
-| `DUP ( t -- t t )` | `+.` | fan-out's adjoint sums the two cotangents |
-| `DROP ( t -- )` | push a zero tile | a dropped value has zero cotangent |
-| `SWAP` / `OVER` / `ROT` | inverse permutation (self for `SWAP`) | the reversal reorders cotangents; no data |
+| `DUP ( t -- t t )` | sum the two cotangents | type-directed: `+.` for a `tile`, scalar add for a `uniform` |
+| `DROP ( t -- )` | push a zero of the dropped value's **exact** type | `tile<…,M>` or `uniform<T>` — not an untyped "zero tile" |
+| `SWAP` / `ROT` | inverse permutation (self for `SWAP`) | genuine permutation; reorders cotangents, no data |
+| `OVER` / `TUCK` / `2DUP` (**fan-out**) | **sum** the duplicated value's two cotangents (like `DUP`) | NOT a permutation — `OVER ( a b -- a b a )` copies `a`, so its adjoint adds the two cotangents of `a`; mis-modeling it as a permutation silently drops a gradient term (and `SCALE`'s VJP body uses `OVER`) |
 | `ROW` `ROW-SPAN` `GRID-CTX` `ROW-CTX` `MK-SPAN` `MK-MATRIX` | **lifted unchanged** | addressing/index/context carry no data gradient; the backward *recomputes* the same addressing (as `SOFTMAX-ROWS-BWD` recomputes `ROW`/`ROW-SPAN`/`ROW-CTX`) |
 
 The table closes the system: the **only** adjoints that are not already M6
@@ -133,6 +159,14 @@ select beyond M6 + matmul (M11).
 ## The reverse pass
 
 Given a forward word `W`:
+
+**v0 scope (straight-line only).** List-reversal reverses *dataflow*, not *control
+flow*. A data-dependent `IF`/loop/`RECURSE` is exactly what forces PyTorch's
+runtime tape (reversing it needs reversed iteration + per-iteration state), so v0
+**rejects, fail-closed with a diagnostic,** any forward containing control flow
+entering the reverse pass — it does not fall through to a type-correct-but-wrong
+reversal. Control-flow reversal (loop adjoint = reversed loop with per-iteration
+save/recompute) is a separate, larger capability with its own gradcheck; dot it.
 
 1. **Linearise** `W` to its IR word list `w₁ … wₙ` (the checker already produces
    the typed sequence).
@@ -148,6 +182,9 @@ Given a forward word `W`:
    [`ptx.md`](ptx.md) on the missing IR/opt layer.
 6. **Check** the result. The backward is an ordinary kernel; the v0 contracts
    (typed spaces, extent-relative bounds, mask / uniformity discipline) all apply.
+7. **Gradcheck** the result on device (finite differences vs the analytic VJP).
+   Step 6 proves *types*, not the *derivative* — see *What "verified" covers*.
+   A backward that type-checks but fails gradcheck is a defect, not a pass.
 
 ## Worked example: softmax backward
 
@@ -159,7 +196,14 @@ and simplifying yields the known closed form
 
 expressible in the *same primitives* and fully checked. The signature shares the
 `extent-r`/`extent-c` tokens across `y`, `dy`, `dx`, so a single `ctx` is valid for
-all three spans (same token ⇒ proven agreement):
+all three spans (same token ⇒ proven agreement). **Caveat (same honesty as the
+forward, ptx-sketch.md §"What is and isn't guaranteed"):** token *agreement* is
+proven, but the *runtime* extent each token stands for is **asserted** at the
+trusted `MK-SPAN*`/`MK-MATRIX` boundary, not checked. So the AD pass must mint each
+gradient-buffer span to **share the primal's extent token** (via `MK-SPAN=` /
+shared-token construction); only then is `len(dx)=len(y)` proven rather than
+re-asserted. A gradient-buffer length mismatch is otherwise a trusted-boundary bug,
+not a compile error:
 
 ```forth
 %BLOCK 1024
@@ -189,8 +233,16 @@ the output's gradient buffer. When a forward value is read **more than once**
 (fan-in across the grid), its cotangent contributions must **accumulate** — the
 adjoint of a gather is a scatter-*add* (`red.global.add` / `atom.global.add`,
 arch-gated on sm_87). A value read exactly once per row (softmax) needs a plain
-store; the AD pass decides add-vs-store from the forward's read multiplicity,
-which the type/effect system already tracks.
+store. **Correction (review 2026-06-26):** the effect system does *not* track read
+multiplicity — `docs/effects.md` has no multiplicity/linearity effect, and read
+multiplicity here is an inter-thread, *grid-global* aliasing property that a
+per-thread checker structurally cannot see. So the AD pass must **not** silently
+guess: scatter-*add* is the **conservative default** for every `LOAD` adjoint;
+plain store is an opt-in refinement only behind a *proven-read-once* witness, never
+an inference. A forward that reads an input across multiple blocks whose backward
+uses plain store must be rejected (or must lower to scatter-add). Tracking
+read-once soundly is a first-class **checker capability** (a substructural/affine
+effect over gradient buffers) — dot it; do not assume it exists.
 
 ## Checkpointing / rematerialization
 
@@ -217,12 +269,29 @@ is a later, smaller addition.
 
 ## What is new work
 
-- **Reverse pass** over the typed IR word list (steps 1–4 above).
+- **A general PTX IR + opt layer** (fold/DCE/CSE/peephole). The simplify step
+  below needs it; [`ptx.md`](ptx.md) §3 confirms only a gforth-bootstrap peephole
+  exists, so this is built fresh and is a **prerequisite** of the simplifier, not
+  part of it. (Alternatively scope AD-v0 to literal reversal and dot the
+  closed-form simplifier as a follow-on.)
+- **Reverse pass** over the typed IR word list (steps 1–4 above), **straight-line
+  only** — fail-closed reject on `IF`/loop/`RECURSE`; control-flow reversal is a
+  separate dotted capability.
 - **Algebraic-simplify / peephole layer** so derived backwards reach closed form;
-  this is the IR/opt layer [`ptx.md`](ptx.md) already flags as not yet present.
-- **Save-vs-recompute policy** + scatter-add lowering for accumulating adjoints.
-- **`VJP:` table** for the M6 forward primitives (all listed above are primitives
-  already specified; `SOFTMAX-ROWS-BWD` is buildable once `BROADCAST` is named).
+  runs on the IR layer above. **Each rewrite rule carries a numeric-equivalence
+  test** — a wrong rewrite type-checks but changes the gradient.
+- **Save-vs-recompute policy** with an **explicit documented cost model** + a test
+  that save and recompute yield within-tol-identical gradients; + **scatter-add**
+  lowering (`red.global.add`, verify sm_87 availability first) as the conservative
+  default for accumulating adjoints.
+- **`VJP:` table** for the M6 forward primitives, **each entry carrying a
+  finite-difference gradcheck** (the table is itself hand-written backwards — the
+  thing ML most fears; it is not trustworthy until gradchecked). `SOFTMAX-ROWS-BWD`
+  is buildable once `BROADCAST` is named, the simplifier exists, and its derived
+  form passes gradcheck (not merely the checker).
+- **A gradcheck harness** (device-run central differences vs the analytic VJP) as a
+  hard gate over every entry and every generated backward — see *What "verified"
+  covers*.
 
 ## Why it matters
 
