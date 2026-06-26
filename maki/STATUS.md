@@ -7,6 +7,11 @@ the maki-skip fence fix lands (dot `habu-add-maki-skip` for stale-status-lint).
 
 ## Built
 
+- **Tensor-scale execution** (`maki/array.f`, `maki/array-test.f`) — real float
+  tensors (contiguous cell buffers) with whole-tensor ops: fill, sum (reduction),
+  elementwise add, and an **in-place tensor SGD step** (`w -= lr*g` over the whole
+  array). The optimizer runs at TENSOR scale on the host now — the same ops the
+  Habu-PTX kernels run on device. Runnable.
 - **Tensor shape + dtype metadata** (`maki/tensor.f`, `maki/tensor-test.f`) — the
   v0 tensor type foundation: 2D shape arithmetic (element count, broadcast
   compatibility/result) and the sm_87 dtype set (f32 / f16 / bf16 / u32 / i32)
