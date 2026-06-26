@@ -43,12 +43,15 @@ current verification state lives in `STATUS.md`.
 
 ## Forth style (BLOCKING)
 
-See **`docs/forth.md`** for the full Forth standards. In short: new public/library
-Forth defaults to checked typed definitions; unchecked code must be an explicit
-tested boundary; our words UPPER-CASE (built-ins as-is); hyphens not underscores;
-small factored words with a `( in -- out )` comment each; shallow stacks (factor /
-`{: :}` locals, no deep juggling); `throw` named codes, never silent; named
-constants; and a `T{ … -> … }T` test for every word.
+See **`docs/forth.md`** for the full Forth standards. The lead principle: **use
+strictly typed Habu everywhere the checker can express it — think in small typed
+words, factor aggressively, and compose them into nice-reading checked DSLs.** In
+short: new public/library Forth is strictly checked/typed (unchecked only as an
+explicit tested boundary the checker cannot express); our words UPPER-CASE
+(built-ins as-is); hyphens not underscores; small factored words with a
+`( in -- out )` comment each; shallow stacks (factor / `{: :}` locals, no deep
+juggling); readable domain DSLs over giant words or raw `s"` blobs; `throw` named
+codes, never silent; named constants; and a `T{ … -> … }T` test for every word.
 
 - **One concern per file** — never bundle unrelated responsibilities (parser vs
   renderer vs DB vs data table). Split at responsibility seams; it aids review

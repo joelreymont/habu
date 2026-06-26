@@ -34,6 +34,15 @@ file.
 
 ## Words & factoring
 
+- **Strictly typed Habu, everywhere you can (BLOCKING).** The default is not
+  "checked when convenient" — it is checked/typed, and unchecked is only a named,
+  tested boundary the checker genuinely cannot express (see *Unchecked code is a
+  named boundary*). Think in small, typed words: factor aggressively, give each a
+  real `( in -- out )` effect, and compose them into **nice-reading checked DSLs**
+  that read as the domain, not as stack plumbing. The three detailed rules below —
+  typed by default, small factored words, DSL-first vocabulary — are this one
+  principle expanded; if you reach for a giant word, deep juggling, or a raw `s"`
+  blob, stop and build the typed words first.
 - **Default new public/library Forth to checked typed definitions.** If the
   checker can express the layer, write an explicit typed effect and let `hb`
   verify it, e.g. `: SQUARE ( i64 -- i64 ) dup * ;`.
